@@ -1,0 +1,82 @@
+
+.bi {
+  vertical-align: -.125em;
+  fill: currentColor;
+}
+
+.pos-relative {
+  position: relative;
+}
+
+.colormode-icon {
+  width: 1em;
+  height: 1em;
+  fill: currentcolor
+}
+
+.header {
+  height: 70px;
+}
+
+header.text-bg-dark {
+  position: fixed;
+  width: 100%;
+  box-shadow: 0 0.5em 1.5em rgba(0, 0, 0, .1), 0 0.125em 0.5em rgba(0, 0, 0, .15);
+}
+
+@media (min-width: 992px) {
+  header .collapsed-info {
+    display: none;
+  }
+}
+
+header .main-search {
+  text-align: center;
+  margin: 0 24px;
+}
+
+header .main-search .search-input {
+  border-color: #495057;
+  max-width: 600px;
+  display: inline-block;
+}
+
+header .main-search .search-input::placeholder {
+  color: #fff;
+}
+
+nav .navbar-nav .nav-link {
+  color: rgba(255, 255, 255, 0.65)
+}
+nav .navbar-nav .nav-link.show,
+nav .navbar-nav .nav-link.active {
+  color: rgb(255, 255, 255)
+}
+
+nav .navbar-nav .nav-link:hover {
+  color: rgba(255, 255, 255, 1)
+}
+
+nav .theme-selector .theme-navicon {
+  display: inline;
+  height: 40px;
+}
+
+nav .theme-selector .theme-navlabel {
+  margin-left: 2px;
+}
+
+@media (max-width: 992px) {
+  header .main-search {
+    margin: 16px 0;
+  }
+
+  header .main-search .search-input {
+    max-width: none;
+  }
+
+  nav .navbar-nav .dropdown-menu {
+    border: none;
+  }
+}
+

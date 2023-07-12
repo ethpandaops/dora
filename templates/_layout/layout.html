@@ -1,0 +1,55 @@
+{{ define "layout" }}
+  <!DOCTYPE html>
+  <html lang="en" data-bs-theme="auto">
+    <head>
+      <meta charset="utf-8" />
+      <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+      <meta name="keywords" content="open source ethereum block explorer light, beacon chain explorer light" />
+      <meta name="description" content="{{ .Meta.Description }}" />
+      <meta property="og:title" content="{{ .Meta.Title }}" />
+      <meta property="og:type" content="website" />
+      <meta property="og:image" content="https://{{ .Meta.Domain }}/img/logo.png" />
+      <meta property="og:image:alt" content="The beaconchain light logo is a satellite dish expanding its signal." />
+      <meta property="og:description" content="{{ .Meta.Description }}" />
+      <meta property="og:url" content="https://{{ .Meta.Domain }}{{ .Meta.Path }}" />
+      <meta property="og:site_name" content="{{ .Meta.Domain }}" />
+      <meta name="twitter:card" content="summary" />
+      <meta name="twitter:site" content="@etherchain_org" />
+      <meta name="twitter:title" content="{{ .Meta.Title }}" />
+      <meta property="twitter:description" content="{{ .Meta.Description }}" />
+      <meta property="twitter:image" content="https://{{ .Meta.Domain }}/img/logo.png" />
+      <meta property="twitter:image:alt" content="The beaconchain light logo is a satellite dish expanding its signal." />
+      <meta name="format-detection" content="telephone=no" />
+
+      <link rel="canonical" href="https://{{ .Meta.Domain }}{{ .Meta.Path }}" />
+      <title>{{ .Meta.Title }}</title>
+      <link rel="shortcut icon" type="image/png" href="/favicon.ico" />
+
+      <link rel="stylesheet" href="/css/bootstrap.min.css" />
+      <link rel="stylesheet" href="/css/fontawesome.min.css" />
+      <link rel="stylesheet" href="/css/fontawesome-all.min.css" />
+      <link rel="preload" as="font" href="/webfonts/fa-solid-900.woff2" crossorigin />
+      <link rel="preload" as="font" href="/webfonts/fa-regular-400.woff2" crossorigin />
+      <link rel="preload" as="font" href="/webfonts/fa-brands-400.woff2" crossorigin />
+      <link id="app-style" rel="stylesheet" href="/css/layout.css" />
+
+      {{ template "css" .Data }}
+    </head>
+    <body>
+      <noscript>
+        <strong>We're sorry but this explorer doesn't work properly without JavaScript enabled. Please enable it to continue.</strong>
+      </noscript>
+      
+      <div class="header">
+        {{ template "header" . }}
+      </div>
+      <main>
+        {{ template "page" .Data }}
+      </main>
+
+      <script src="/js/bootstrap.bundle.min.js"></script>
+      <script src="/js/color-modes.js"></script>
+      {{ template "js" .Data }}
+    </body>
+  </html>
+{{ end }}

@@ -1,0 +1,15 @@
+
+# Chain network configuration
+chain:
+  name: "mainnet"
+
+# HTTP Server configuration
+server:
+  host: "localhost" # Address to listen on
+  port: "8080" # Port to listen on
+
+
+frontend:
+  enabled: true # Enable or disable to web frontend
+  siteName: "Ethereum Block Chain Explorer" # Name of the site, displayed in the title tag
+  
