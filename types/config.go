@@ -32,5 +32,9 @@ type Config struct {
 
 	BeaconApi struct {
 		Endpoint string `yaml:"endpoint" envconfig:"BEACONAPI_ENDPOINT"`
+
+		LocalCacheSize   int    `yaml:"localCacheSize" envconfig:"BEACONAPI_LOCAL_CACHE_SIZE"`
+		RedisCacheAddr   string `yaml:"redisCacheAddr" envconfig:"BEACONAPI_REDIS_CACHE_ADDR"`
+		RedisCachePrefix string `yaml:"redisCachePrefix" envconfig:"BEACONAPI_REDIS_CACHE_PREFIX"`
 	} `yaml:"beaconapi"`
 }

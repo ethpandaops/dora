@@ -18,3 +18,7 @@ frontend:
 beaconapi:
   endpoint: "http://10.16.71.108:5052"
   #endpoint: "http://10.16.71.102:5052"
+  localCacheSize: 100 # 100MB
+  redisCacheAddr: ""
+  redisCachePrefix: ""
+

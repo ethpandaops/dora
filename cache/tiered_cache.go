@@ -3,6 +3,7 @@ package cache
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"time"
@@ -13,11 +14,13 @@ import (
 	"github.com/pk910/light-beaconchain-explorer/utils"
 )
 
-// Tiered cache is a cache implementation combining a
-type tieredCache struct {
+// Tiered cache is a cache implementation combining a local & remote cache
+type TieredCache struct {
 	localGoCache *freecache.Cache
 	remoteCache  RemoteCache
 }
+
+var CacheMissError error = errors.New("cache miss")
 
 type RemoteCache interface {
 	Set(ctx context.Context, key string, value any, expiration time.Duration) error
@@ -31,36 +34,47 @@ type RemoteCache interface {
 	GetBool(ctx context.Context, key string) (bool, error)
 }
 
-var TieredCache *tieredCache
-
-func MustInitTieredCache(redisAddress string) {
+func NewTieredCache(cacheSize int, redisAddress string, redisPrefix string) (*TieredCache, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
 	defer cancel()
 
-	remoteCache, err := InitRedisCache(ctx, redisAddress)
-	if err != nil {
-		logrus.WithError(err).Panicf("error initializing remote redis cache. address: %v", redisAddress)
+	var remoteCache RemoteCache
+	if redisAddress != "" {
+		var err error
+		remoteCache, err = InitRedisCache(ctx, redisAddress, redisPrefix)
+		if err != nil {
+			logrus.WithError(err).Errorf("error initializing remote redis cache. address: %v", redisAddress)
+			return nil, err
+		}
 	}
 
-	TieredCache = &tieredCache{
+	return &TieredCache{
 		remoteCache:  remoteCache,
-		localGoCache: freecache.NewCache(100 * 1024 * 1024), // 100 MB
-	}
+		localGoCache: freecache.NewCache(cacheSize * 1024 * 1024), // 100 MB
+	}, nil
 }
 
-func (cache *tieredCache) SetString(key, value string, expiration time.Duration) error {
+func (cache *TieredCache) SetString(key, value string, expiration time.Duration) error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
 	defer cancel()
 
 	cache.localGoCache.Set([]byte(key), []byte(value), int(expiration.Seconds()))
-	return cache.remoteCache.SetString(ctx, key, value, expiration)
+
+	if cache.remoteCache != nil {
+		return cache.remoteCache.SetString(ctx, key, value, expiration)
+	}
+	return nil
 }
 
-func (cache *tieredCache) GetStringWithLocalTimeout(key string, localExpiration time.Duration) (string, error) {
+func (cache *TieredCache) GetStringWithLocalTimeout(key string, localExpiration time.Duration) (string, error) {
 	// try to retrieve the key from the local cache
 	wanted, err := cache.localGoCache.Get([]byte(key))
 	if err == nil {
 		return string(wanted), nil
+	}
+
+	if cache.remoteCache == nil {
+		return "", CacheMissError
 	}
 
 	// retrieve the key from the remote cache
@@ -76,15 +90,18 @@ func (cache *tieredCache) GetStringWithLocalTimeout(key string, localExpiration 
 	return value, nil
 }
 
-func (cache *tieredCache) SetUint64(key string, value uint64, expiration time.Duration) error {
+func (cache *TieredCache) SetUint64(key string, value uint64, expiration time.Duration) error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
 	defer cancel()
 
 	cache.localGoCache.Set([]byte(key), []byte(fmt.Sprintf("%d", value)), int(expiration.Seconds()))
-	return cache.remoteCache.SetUint64(ctx, key, value, expiration)
+	if cache.remoteCache != nil {
+		return cache.remoteCache.SetUint64(ctx, key, value, expiration)
+	}
+	return nil
 }
 
-func (cache *tieredCache) GetUint64WithLocalTimeout(key string, localExpiration time.Duration) (uint64, error) {
+func (cache *TieredCache) GetUint64WithLocalTimeout(key string, localExpiration time.Duration) (uint64, error) {
 
 	// try to retrieve the key from the local cache
 	wanted, err := cache.localGoCache.Get([]byte(key))
@@ -94,6 +111,10 @@ func (cache *tieredCache) GetUint64WithLocalTimeout(key string, localExpiration 
 			return 0, err
 		}
 		return returnValue, nil
+	}
+
+	if cache.remoteCache == nil {
+		return 0, CacheMissError
 	}
 
 	// retrieve the key from the remote cache
@@ -109,15 +130,18 @@ func (cache *tieredCache) GetUint64WithLocalTimeout(key string, localExpiration 
 	return value, nil
 }
 
-func (cache *tieredCache) SetBool(key string, value bool, expiration time.Duration) error {
+func (cache *TieredCache) SetBool(key string, value bool, expiration time.Duration) error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
 	defer cancel()
 
 	cache.localGoCache.Set([]byte(key), []byte(fmt.Sprintf("%t", value)), int(expiration.Seconds()))
-	return cache.remoteCache.SetBool(ctx, key, value, expiration)
+	if cache.remoteCache != nil {
+		return cache.remoteCache.SetBool(ctx, key, value, expiration)
+	}
+	return nil
 }
 
-func (cache *tieredCache) GetBoolWithLocalTimeout(key string, localExpiration time.Duration) (bool, error) {
+func (cache *TieredCache) GetBoolWithLocalTimeout(key string, localExpiration time.Duration) (bool, error) {
 
 	// try to retrieve the key from the local cache
 	wanted, err := cache.localGoCache.Get([]byte(key))
@@ -127,6 +151,10 @@ func (cache *tieredCache) GetBoolWithLocalTimeout(key string, localExpiration ti
 			return false, err
 		}
 		return returnValue, nil
+	}
+
+	if cache.remoteCache == nil {
+		return false, CacheMissError
 	}
 
 	// retrieve the key from the remote cache
@@ -142,7 +170,7 @@ func (cache *tieredCache) GetBoolWithLocalTimeout(key string, localExpiration ti
 	return value, nil
 }
 
-func (cache *tieredCache) Set(key string, value interface{}, expiration time.Duration) error {
+func (cache *TieredCache) Set(key string, value interface{}, expiration time.Duration) error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
 	defer cancel()
 
@@ -151,10 +179,13 @@ func (cache *tieredCache) Set(key string, value interface{}, expiration time.Dur
 		return err
 	}
 	cache.localGoCache.Set([]byte(key), valueMarshal, int(expiration.Seconds()))
-	return cache.remoteCache.Set(ctx, key, value, expiration)
+	if cache.remoteCache != nil {
+		return cache.remoteCache.Set(ctx, key, value, expiration)
+	}
+	return nil
 }
 
-func (cache *tieredCache) GetWithLocalTimeout(key string, localExpiration time.Duration, returnValue interface{}) (interface{}, error) {
+func (cache *TieredCache) GetWithLocalTimeout(key string, localExpiration time.Duration, returnValue interface{}) (interface{}, error) {
 	// try to retrieve the key from the local cache
 	wanted, err := cache.localGoCache.Get([]byte(key))
 	if err == nil {
@@ -164,6 +195,10 @@ func (cache *tieredCache) GetWithLocalTimeout(key string, localExpiration time.D
 			return nil, err
 		}
 		return returnValue, nil
+	}
+
+	if cache.remoteCache == nil {
+		return nil, CacheMissError
 	}
 
 	// retrieve the key from the remote cache

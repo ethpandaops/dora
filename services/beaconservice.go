@@ -1,13 +1,17 @@
 package services
 
 import (
+	"fmt"
+
+	"github.com/pk910/light-beaconchain-explorer/cache"
 	"github.com/pk910/light-beaconchain-explorer/rpc"
 	"github.com/pk910/light-beaconchain-explorer/rpctypes"
 	"github.com/pk910/light-beaconchain-explorer/utils"
 )
 
 type BeaconService struct {
-	rpcClient *rpc.BeaconClient
+	rpcClient   *rpc.BeaconClient
+	tieredCache *cache.TieredCache
 }
 
 var GlobalBeaconService *BeaconService
@@ -22,8 +26,15 @@ func StartBeaconService() error {
 		return err
 	}
 
+	cachePrefix := fmt.Sprintf("%srpc-", utils.Config.BeaconApi.RedisCachePrefix)
+	tieredCache, err := cache.NewTieredCache(utils.Config.BeaconApi.LocalCacheSize, utils.Config.BeaconApi.RedisCacheAddr, cachePrefix)
+	if err != nil {
+		return err
+	}
+
 	GlobalBeaconService = &BeaconService{
-		rpcClient: rpcClient,
+		rpcClient:   rpcClient,
+		tieredCache: tieredCache,
 	}
 	return nil
 }
@@ -41,5 +52,18 @@ func (bs *BeaconService) GetSlotDetailsBySlot(slot uint64) (*rpctypes.CombinedBl
 }
 
 func (bs *BeaconService) GetEpochAssignments(epoch uint64) (*rpctypes.EpochAssignments, error) {
-	return bs.rpcClient.GetEpochAssignments(epoch)
+	wanted := &rpctypes.EpochAssignments{}
+	cacheKey := fmt.Sprintf("epochduties-%v", epoch)
+	if wanted, err := bs.tieredCache.GetWithLocalTimeout(cacheKey, 0, wanted); err == nil {
+		return wanted.(*rpctypes.EpochAssignments), nil
+	}
+	wanted, err := bs.rpcClient.GetEpochAssignments(epoch)
+	if err != nil {
+		return nil, err
+	}
+	err = bs.tieredCache.Set(cacheKey, wanted, 0)
+	if err != nil {
+		return nil, err
+	}
+	return wanted, nil
 }
