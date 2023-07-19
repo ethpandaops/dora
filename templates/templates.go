@@ -99,23 +99,3 @@ func getFileSysNames(fsys fs.FS, dirname string) ([]string, error) {
 
 	return files, nil
 }
-
-func AddTemplateFile(tmpl *template.Template, path string) *template.Template {
-	name := filepath.Base(path)
-	if utils.Config.Frontend.Debug {
-		return template.Must(tmpl.ParseFiles(path))
-	}
-
-	templateCacheMux.RLock()
-	if templateCache[name] != nil {
-		defer templateCacheMux.RUnlock()
-		return templateCache[name]
-	}
-	templateCacheMux.RUnlock()
-
-	tmpl = template.Must(tmpl.ParseFiles(path))
-	templateCacheMux.Lock()
-	defer templateCacheMux.Unlock()
-	templateCache[name] = tmpl
-	return templateCache[name]
-}
