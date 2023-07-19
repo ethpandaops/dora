@@ -10,6 +10,7 @@ import (
 	"github.com/urfave/negroni"
 
 	"github.com/pk910/light-beaconchain-explorer/handlers"
+	"github.com/pk910/light-beaconchain-explorer/services"
 	"github.com/pk910/light-beaconchain-explorer/static"
 	"github.com/pk910/light-beaconchain-explorer/types"
 	"github.com/pk910/light-beaconchain-explorer/utils"
@@ -35,6 +36,11 @@ func main() {
 		utils.LogFatal(err, "invalid chain configuration specified, you must specify the slots per epoch, seconds per slot and genesis timestamp in the config file", 0)
 	}
 
+	err = services.StartBeaconService()
+	if err != nil {
+		logger.Fatalf("error starting beacon service: %v", err)
+	}
+
 	if cfg.Frontend.Enabled {
 		startFrontend()
 	}
@@ -45,7 +51,7 @@ func startFrontend() {
 	router := mux.NewRouter()
 
 	router.HandleFunc("/", handlers.Index).Methods("GET")
-	router.HandleFunc("/test", handlers.Index).Methods("GET")
+	router.HandleFunc("/slot/{slotOrHash}", handlers.Slot).Methods("GET")
 
 	if utils.Config.Frontend.Debug {
 		// serve files from local directory when debugging, instead of from go embed file

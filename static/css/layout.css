@@ -18,9 +18,11 @@
   height: 70px;
 }
 
-header.text-bg-dark {
+header.header-bar {
   position: fixed;
+  top: 0;
   width: 100%;
+  z-index: 1000;
   box-shadow: 0 0.5em 1.5em rgba(0, 0, 0, .1), 0 0.125em 0.5em rgba(0, 0, 0, .15);
 }
 
@@ -80,3 +82,21 @@ nav .theme-selector .theme-navlabel {
   }
 }
 
+.tab-content .tab-pane > .card:first-child {
+  border-top: none;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+.table-ellipsis table tbody td {
+  text-overflow: ellipsis;
+  max-width: 200px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+@media (max-width: 992px) {
+  .table-ellipsis table tbody td {
+    max-width: 100px;
+  }
+}

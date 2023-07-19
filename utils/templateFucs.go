@@ -33,7 +33,15 @@ func GetTemplateFuncs() template.FuncMap {
 		"round": func(i float64, n int) float64 {
 			return math.Round(i*math.Pow10(n)) / math.Pow10(n)
 		},
-		"percent": func(i float64) float64 { return i * 100 },
+		"percent":                   func(i float64) float64 { return i * 100 },
+		"contains":                  strings.Contains,
+		"formatAddCommas":           FormatAddCommas,
+		"formatBitlist":             FormatBitlist,
+		"formatBitvectorValidators": formatBitvectorValidators,
+		"formatParticipation":       FormatParticipation,
+		"formatEthFromGwei":         FormatETHFromGwei,
+		"formatFullEthFromGwei":     FormatFullETHFromGwei,
+		"formatAmount":              FormatAmount,
 	}
 }
 

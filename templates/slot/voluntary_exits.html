@@ -1,0 +1,24 @@
+{{ define "block_voluntary_exits" }}
+  <div class="table-ellipsis">
+    <table id="block_voluntary_exits" class="table table-sm text-left">
+      <thead>
+        <tr>
+          <th class="border-0">Index</th>
+          <th class="border-0">Validator Index</th>
+          <th class="border-0">Epoch</th>
+          <th class="border-0">Signature</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{ range $i, $exit := .Block.VoluntaryExits }}
+          <tr>
+            <td>{{ $i }}</td>
+            <td>{{ $exit.ValidatorIndex }}</td>
+            <td>{{ $exit.Epoch }}</td>
+            <td>0x{{ printf "%x" $exit.Signature }}</td>
+          </tr>
+        {{ end }}
+      </tbody>
+    </table>
+  </div>
+{{ end }}

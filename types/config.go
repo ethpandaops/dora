@@ -29,4 +29,8 @@ type Config struct {
 		HttpWriteTimeout time.Duration `yaml:"httpWriteTimeout" envconfig:"FRONTEND_HTTP_WRITE_TIMEOUT"`
 		HttpIdleTimeout  time.Duration `yaml:"httpIdleTimeout" envconfig:"FRONTEND_HTTP_IDLE_TIMEOUT"`
 	} `yaml:"frontend"`
+
+	BeaconApi struct {
+		Endpoint string `yaml:"endpoint" envconfig:"BEACONAPI_ENDPOINT"`
+	} `yaml:"beaconapi"`
 }

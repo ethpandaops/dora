@@ -1,0 +1,40 @@
+{{ define "block_withdrawals" }}
+  <div class="table-ellipsis">
+    <table id="block_withdrawals" class="table table-sm text-left">
+      <thead>
+        <tr>
+          <th class="border-0">Index</th>
+          <th class="border-0">Validator Index</th>
+          <th class="border-0">Recipient Address</th>
+          <th class="border-0">Amount</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{ range $i, $withdrawal := .Block.Withdrawals }}
+          <tr>
+            <td>{{ $withdrawal.Index }}</td>
+            <td>{{ $withdrawal.ValidatorIndex }}</td>
+            <td>0x{{ printf "%x" $withdrawal.Address }}</td>
+            <td>{{ formatEthFromGwei $withdrawal.Amount }}</td>
+          </tr>
+        {{ end }}
+      </tbody>
+    </table>
+  </div>
+{{ end }}
+
+{{ define "block_blsChange" }}
+  <div class="table-ellipsis">
+    <table id="block_blsChange" class="table table-sm text-left">
+      <thead>
+        <tr>
+          <th class="border-0">Validator Index</th>
+          <th class="border-0">Signature</th>
+          <th class="border-0">BLS Public Key</th>
+          <th class="border-0">New Withdrawal Address</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+{{ end }}

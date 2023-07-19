@@ -1,0 +1,158 @@
+package models
+
+import "time"
+
+// SlotPageData is a struct to hold info for the slot details page
+type SlotPageData struct {
+	Slot                   uint64  `json:"slot"`
+	Epoch                  uint64  `json:"epoch"`
+	EpochFinalized         bool    `json:"epoch_finalized"`
+	EpochParticipationRate float64 `json:"epoch_participation_rate"`
+	Ts                     time.Time
+	NextSlot               uint64
+	PreviousSlot           uint64
+	Status                 uint16
+	Future                 bool
+	Proposer               uint64 `json:"proposer"`
+	Block                  *SlotPageBlockData
+}
+
+type SlotStatus uint16
+
+const (
+	SlotStatusMissed   SlotStatus = 0
+	SlotStatusFound    SlotStatus = 1
+	SlotStatusOrphaned SlotStatus = 2
+)
+
+type SlotPageBlockData struct {
+	BlockRoot              []byte   `json:"blockroot"`
+	ParentRoot             []byte   `json:"parentroot"`
+	StateRoot              []byte   `json:"stateroot"`
+	Signature              []byte   `json:"signature"`
+	RandaoReveal           []byte   `json:"randaoreveal"`
+	Graffiti               []byte   `json:"graffiti"`
+	ProposerName           string   `json:"name"`
+	Eth1dataDepositroot    []byte   `json:"eth1data_depositroot"`
+	Eth1dataDepositcount   uint64   `json:"eth1data_depositcount"`
+	Eth1dataBlockhash      []byte   `json:"eth1data_blockhash"`
+	SyncAggregateBits      []byte   `json:"syncaggregate_bits"`
+	SyncAggregateSignature []byte   `json:"syncaggregate_signature"`
+	SyncAggParticipation   float64  `json:"syncaggregate_participation"`
+	SyncAggCommittee       []uint64 `json:"syncaggregate_committee"`
+	ProposerSlashingsCount uint64   `json:"proposer_slashings_count"`
+	AttesterSlashingsCount uint64   `json:"attester_slashings_count"`
+	AttestationsCount      uint64   `json:"attestations_count"`
+	DepositsCount          uint64   `json:"deposits_count"`
+	WithdrawalsCount       uint64   `json:"withdrawals_count"`
+	BLSChangesCount        uint64   `json:"bls_changes_count"`
+	VoluntaryExitsCount    uint64   `json:"voluntaryexits_count"`
+	SlashingsCount         uint64
+
+	ExecutionData     *SlotPageExecutionData      `json:"execution_data"`
+	Attestations      []*SlotPageAttestation      `json:"attestations"`       // Attestations included in this block
+	Deposits          []*SlotPageDeposit          `json:"deposits"`           // Deposits included in this block
+	VoluntaryExits    []*SlotPageVoluntaryExit    `json:"voluntary_exits"`    // Voluntary Exits included in this block
+	AttesterSlashings []*SlotPageAttesterSlashing `json:"attester_slashings"` // Attester Slashings included in this block
+	ProposerSlashings []*SlotPageProposerSlashing `json:"proposer_slashings"` // Proposer Slashings included in this block
+	BLSChanges        []*SlotPageBLSChange        `json:"bls_changes"`        // BLSChanges included in this block
+	Withdrawals       []*SlotPageWithdrawal       `json:"withdrawals"`        // Withdrawals included in this block
+}
+
+type SlotPageExecutionData struct {
+	ParentHash        []byte `json:"parent_hash"`
+	FeeRecipient      []byte `json:"fee_recipient"`
+	StateRoot         []byte `json:"state_root"`
+	ReceiptsRoot      []byte `json:"receipts_root"`
+	LogsBloom         []byte `json:"logs_bloom"`
+	Random            []byte `json:"random"`
+	GasLimit          uint64 `json:"gas_limit"`
+	GasUsed           uint64 `json:"gas_used"`
+	Timestamp         uint64 `json:"timestamp"`
+	Time              time.Time
+	ExtraData         []byte `json:"extra_data"`
+	BaseFeePerGas     uint64 `json:"base_fee_per_gas"`
+	BlockHash         []byte `json:"block_hash"`
+	BlockNumber       uint64 `json:"block_number"`
+	TransactionsCount uint64 `json:"transactions_count"`
+}
+
+type SlotPageAttestation struct {
+	Slot           uint64 `json:"slot"`
+	CommitteeIndex uint64 `json:"committeeindex"`
+
+	AggregationBits []byte   `json:"aggregationbits"`
+	Validators      []uint64 `json:"validators"`
+	Signature       []byte   `json:"signature"`
+
+	BeaconBlockRoot []byte `json:"beaconblockroot"`
+	SourceEpoch     uint64 `json:"source_epoch"`
+	SourceRoot      []byte `json:"source_root"`
+	TargetEpoch     uint64 `json:"target_epoch"`
+	TargetRoot      []byte `json:"target_root"`
+}
+
+type SlotPageDeposit struct {
+	PublicKey             []byte `json:"publickey"`
+	Withdrawalcredentials []byte `json:"withdrawalcredentials"`
+	Amount                uint64 `json:"amount"`
+	Signature             []byte `json:"signature"`
+}
+
+type SlotPageVoluntaryExit struct {
+	ValidatorIndex uint64 `json:"validatorindex"`
+	Epoch          uint64 `json:"epoch"`
+	Signature      []byte `json:"signature"`
+}
+
+// BlockPageAttesterSlashing is a struct to hold data for attester slashings on the block page
+type SlotPageAttesterSlashing struct {
+	Attestation1Indices         []uint64 `json:"attestation1_indices"`
+	Attestation1Signature       []byte   `json:"attestation1_signature"`
+	Attestation1Slot            uint64   `json:"attestation1_slot"`
+	Attestation1Index           uint64   `json:"attestation1_index"`
+	Attestation1BeaconBlockRoot []byte   `json:"attestation1_beaconblockroot"`
+	Attestation1SourceEpoch     uint64   `json:"attestation1_source_epoch"`
+	Attestation1SourceRoot      []byte   `json:"attestation1_source_root"`
+	Attestation1TargetEpoch     uint64   `json:"attestation1_target_epoch"`
+	Attestation1TargetRoot      []byte   `json:"attestation1_target_root"`
+	Attestation2Indices         []uint64 `json:"attestation2_indices"`
+	Attestation2Signature       []byte   `json:"attestation2_signature"`
+	Attestation2Slot            uint64   `json:"attestation2_slot"`
+	Attestation2Index           uint64   `json:"attestation2_index"`
+	Attestation2BeaconBlockRoot []byte   `json:"attestation2_beaconblockroot"`
+	Attestation2SourceEpoch     uint64   `json:"attestation2_source_epoch"`
+	Attestation2SourceRoot      []byte   `json:"attestation2_source_root"`
+	Attestation2TargetEpoch     uint64   `json:"attestation2_target_epoch"`
+	Attestation2TargetRoot      []byte   `json:"attestation2_target_root"`
+	SlashedValidators           []uint64
+}
+
+// BlockPageProposerSlashing is a struct to hold data for proposer slashings on the block page
+type SlotPageProposerSlashing struct {
+	ProposerIndex     uint64 `json:"proposerindex"`
+	Header1Slot       uint64 `json:"header1_slot"`
+	Header1ParentRoot []byte `json:"header1_parentroot"`
+	Header1StateRoot  []byte `json:"header1_stateroot"`
+	Header1BodyRoot   []byte `json:"header1_bodyroot"`
+	Header1Signature  []byte `json:"header1_signature"`
+	Header2Slot       uint64 `json:"header2_slot"`
+	Header2ParentRoot []byte `json:"header2_parentroot"`
+	Header2StateRoot  []byte `json:"header2_stateroot"`
+	Header2BodyRoot   []byte `json:"header2_bodyroot"`
+	Header2Signature  []byte `json:"header2_signature"`
+}
+
+type SlotPageBLSChange struct {
+	ValidatorIndex uint64 `json:"validatorindex"`
+	BlsPubkey      []byte `json:"pubkey"`
+	Address        []byte `json:"address"`
+	Signature      []byte `json:"signature"`
+}
+
+type SlotPageWithdrawal struct {
+	Index          uint64 `json:"index"`
+	ValidatorIndex uint64 `json:"validatorindex"`
+	Address        []byte `json:"address"`
+	Amount         uint64 `json:"amount"`
+}
