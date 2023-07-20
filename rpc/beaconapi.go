@@ -53,6 +53,24 @@ func (bc *BeaconClient) get(url string) ([]byte, error) {
 	return data, err
 }
 
+func (bc *BeaconClient) GetLatestBlockHead() (*rpctypes.StandardV1BeaconHeaderResponse, error) {
+	resHeaders, err := bc.get(fmt.Sprintf("%s/eth/v1/beacon/headers/head", bc.endpoint))
+	if err != nil {
+		if err == errNotFound {
+			// no block found
+			return nil, nil
+		}
+		return nil, fmt.Errorf("error retrieving latest block header: %v", err)
+	}
+
+	var parsedHeaders rpctypes.StandardV1BeaconHeaderResponse
+	err = json.Unmarshal(resHeaders, &parsedHeaders)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing response for latest block header: %v", err)
+	}
+	return &parsedHeaders, nil
+}
+
 func (bc *BeaconClient) GetFinalizedBlockHead() (*rpctypes.StandardV1BeaconHeaderResponse, error) {
 	resHeaders, err := bc.get(fmt.Sprintf("%s/eth/v1/beacon/headers/finalized", bc.endpoint))
 	if err != nil {
@@ -71,9 +89,7 @@ func (bc *BeaconClient) GetFinalizedBlockHead() (*rpctypes.StandardV1BeaconHeade
 	return &parsedHeaders, nil
 }
 
-func (bc *BeaconClient) GetBlockByBlockroot(blockroot []byte) (*rpctypes.CombinedBlockResponse, error) {
-	blockResponse := rpctypes.CombinedBlockResponse{}
-
+func (bc *BeaconClient) GetBlockHeaderByBlockroot(blockroot []byte) (*rpctypes.StandardV1BeaconHeaderResponse, error) {
 	resHeaders, err := bc.get(fmt.Sprintf("%s/eth/v1/beacon/headers/0x%x", bc.endpoint, blockroot))
 	if err != nil {
 		if err == errNotFound {
@@ -88,20 +104,10 @@ func (bc *BeaconClient) GetBlockByBlockroot(blockroot []byte) (*rpctypes.Combine
 	if err != nil {
 		return nil, fmt.Errorf("error parsing header-response for blockroot 0x%x: %v", blockroot, err)
 	}
-	blockResponse.Header = &parsedHeaders
-
-	parsedBody, err := bc.getBlockBodyByBlockroot(parsedHeaders.Data.Root)
-	if err != nil {
-		return nil, err
-	}
-	blockResponse.Block = parsedBody
-
-	return &blockResponse, nil
+	return &parsedHeaders, nil
 }
 
-func (bc *BeaconClient) GetBlockBySlot(slot uint64) (*rpctypes.CombinedBlockResponse, error) {
-	blockResponse := rpctypes.CombinedBlockResponse{}
-
+func (bc *BeaconClient) GetBlockHeaderBySlot(slot uint64) (*rpctypes.StandardV1BeaconHeaderResponse, error) {
 	resHeaders, err := bc.get(fmt.Sprintf("%s/eth/v1/beacon/headers/%d", bc.endpoint, slot))
 	if err != nil {
 		if err == errNotFound {
@@ -116,18 +122,10 @@ func (bc *BeaconClient) GetBlockBySlot(slot uint64) (*rpctypes.CombinedBlockResp
 	if err != nil {
 		return nil, fmt.Errorf("error parsing header-response for slot %v: %v", slot, err)
 	}
-	blockResponse.Header = &parsedHeaders
-
-	parsedBody, err := bc.getBlockBodyByBlockroot(parsedHeaders.Data.Root)
-	if err != nil {
-		return nil, err
-	}
-	blockResponse.Block = parsedBody
-
-	return &blockResponse, nil
+	return &parsedHeaders, nil
 }
 
-func (bc *BeaconClient) getBlockBodyByBlockroot(blockroot string) (*rpctypes.StandardV2BeaconBlockResponse, error) {
+func (bc *BeaconClient) GetBlockBodyByBlockroot(blockroot string) (*rpctypes.StandardV2BeaconBlockResponse, error) {
 	resp, err := bc.get(fmt.Sprintf("%s/eth/v1/beacon/blocks/%s", bc.endpoint, blockroot))
 	if err != nil {
 		return nil, fmt.Errorf("error retrieving block body for %s: %v", blockroot, err)

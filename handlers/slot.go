@@ -90,14 +90,14 @@ func Slot(w http.ResponseWriter, r *http.Request) {
 
 	pageData := &models.SlotPageData{
 		Slot:           slot,
-		Epoch:          services.EpochOfSlot(slot),
+		Epoch:          utils.EpochOfSlot(slot),
 		EpochFinalized: uint64(finalizedHead.Data.Header.Message.Slot) >= slot,
-		Ts:             services.SlotToTime(slot),
+		Ts:             utils.SlotToTime(slot),
 		NextSlot:       slot + 1,
 		PreviousSlot:   slot - 1,
 	}
 
-	assignments, err := services.GlobalBeaconService.GetEpochAssignments(services.EpochOfSlot(slot))
+	assignments, err := services.GlobalBeaconService.GetEpochAssignments(utils.EpochOfSlot(slot))
 	if err != nil {
 		logrus.Printf("assignments error: %v", err)
 		data := InitPageData(w, r, "blockchain", "/slots", fmt.Sprintf("Slot %v", slotOrHash), errorTemplateFiles)
@@ -244,7 +244,7 @@ func getSlotPageBlockData(blockData *rpctypes.CombinedBlockResponse, assignments
 		}
 	}
 
-	epoch := services.EpochOfSlot(uint64(blockData.Header.Data.Header.Message.Slot))
+	epoch := utils.EpochOfSlot(uint64(blockData.Header.Data.Header.Message.Slot))
 	if epoch >= utils.Config.Chain.Config.AltairForkEpoch {
 		syncAggregate := blockData.Block.Data.Message.Body.SyncAggregate
 		pageData.SyncAggregateBits = utils.MustParseHex(syncAggregate.SyncCommitteeBits)

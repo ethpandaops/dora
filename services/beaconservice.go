@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/pk910/light-beaconchain-explorer/cache"
+	"github.com/pk910/light-beaconchain-explorer/indexer"
 	"github.com/pk910/light-beaconchain-explorer/rpc"
 	"github.com/pk910/light-beaconchain-explorer/rpctypes"
 	"github.com/pk910/light-beaconchain-explorer/utils"
@@ -12,6 +13,7 @@ import (
 type BeaconService struct {
 	rpcClient   *rpc.BeaconClient
 	tieredCache *cache.TieredCache
+	indexer     *indexer.Indexer
 }
 
 var GlobalBeaconService *BeaconService
@@ -32,9 +34,19 @@ func StartBeaconService() error {
 		return err
 	}
 
+	indexer, err := indexer.NewIndexer(rpcClient)
+	if err != nil {
+		return err
+	}
+	err = indexer.Start()
+	if err != nil {
+		return err
+	}
+
 	GlobalBeaconService = &BeaconService{
 		rpcClient:   rpcClient,
 		tieredCache: tieredCache,
+		indexer:     indexer,
 	}
 	return nil
 }
@@ -44,11 +56,33 @@ func (bs *BeaconService) GetFinalizedBlockHead() (*rpctypes.StandardV1BeaconHead
 }
 
 func (bs *BeaconService) GetSlotDetailsByBlockroot(blockroot []byte) (*rpctypes.CombinedBlockResponse, error) {
-	return bs.rpcClient.GetBlockByBlockroot(blockroot)
+	header, err := bs.rpcClient.GetBlockHeaderByBlockroot(blockroot)
+	if err != nil {
+		return nil, err
+	}
+	block, err := bs.rpcClient.GetBlockBodyByBlockroot(header.Data.Root)
+	if err != nil {
+		return nil, err
+	}
+	return &rpctypes.CombinedBlockResponse{
+		Header: header,
+		Block:  block,
+	}, nil
 }
 
 func (bs *BeaconService) GetSlotDetailsBySlot(slot uint64) (*rpctypes.CombinedBlockResponse, error) {
-	return bs.rpcClient.GetBlockBySlot(slot)
+	header, err := bs.rpcClient.GetBlockHeaderBySlot(slot)
+	if err != nil {
+		return nil, err
+	}
+	block, err := bs.rpcClient.GetBlockBodyByBlockroot(header.Data.Root)
+	if err != nil {
+		return nil, err
+	}
+	return &rpctypes.CombinedBlockResponse{
+		Header: header,
+		Block:  block,
+	}, nil
 }
 
 func (bs *BeaconService) GetEpochAssignments(epoch uint64) (*rpctypes.EpochAssignments, error) {
