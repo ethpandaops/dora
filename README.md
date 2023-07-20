@@ -23,6 +23,9 @@ https://github.com/ethpandaops/tooling-wishlist/blob/master/tools/lightweight-be
   * [ ] Epoch Overview (`/epochs`)
   * [ ] Slots Overview (`/slots`)
   * [x] Slot details (`/slot/{slot_or_root}`)
+    * [ ] Enhance view controls (Hex/UTF8 Grafitti, Local/UTC Time, Copy Buttuns etc.)
+  * [ ] Search (Block Root, Epoch Number, Slot Number, Grafitti)
+    * [ ] Type-Ahead search
 * [ ] RPC Client / Caching
   * [x] Get Block Header by slot / block root
   * [x] Get Block Body by block root
