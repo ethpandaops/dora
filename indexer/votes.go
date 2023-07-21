@@ -43,8 +43,6 @@ func aggregateEpochVotes(blockMap map[uint64]*BlockInfo, epoch uint64, epochStat
 				voteAmount := uint64(0)
 				voteBitset := utils.MustParseHex(att.AggregationBits)
 				votedBitset := votedBitsets[attKey]
-				votedBitsets[attKey] = voteBitset
-
 				voteValidators := epochStats.assignments.AttestorAssignments[attKey]
 				for bitIdx, validatorIdx := range voteValidators {
 					if votedBitset != nil && utils.BitAtVector(votedBitset, bitIdx) {
@@ -54,6 +52,17 @@ func aggregateEpochVotes(blockMap map[uint64]*BlockInfo, epoch uint64, epochStat
 					if utils.BitAtVector(voteBitset, bitIdx) {
 						voteAmount += uint64(epochStats.validatorBalances[validatorIdx])
 					}
+				}
+
+				if votedBitset != nil {
+					// merge bitsets
+					for i := 0; i < len(votedBitset); i++ {
+						votedBitset[i] |= voteBitset[i]
+					}
+				} else {
+					votedBitset = make([]byte, len(voteBitset))
+					copy(votedBitset, voteBitset)
+					votedBitsets[attKey] = voteBitset
 				}
 
 				if att.Data.Target.Root == targetRoot {
