@@ -41,7 +41,9 @@ https://github.com/ethpandaops/tooling-wishlist/blob/master/tools/lightweight-be
   * [ ] Table: SyncState (keeps track of synchronization state for Blocks & Epochs indexes)
 * [ ] Indexer
   * [x] Keep track of current & last epoch in memory
-  * [ ] Aggregate Votes
+  * [x] Aggregate Votes
+  * [x] Check for chain reorgs and track orphaned blocks
+    * [ ] Save orphaned blocks in db (header & body)
   * [ ] Update Slot index in DB
   * [ ] Update Epoch index in DB
   * [ ] Synchronization (index older epochs)
