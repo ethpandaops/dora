@@ -134,15 +134,15 @@ func Slot(w http.ResponseWriter, r *http.Request) {
 
 func getSlotPageBlockData(blockData *rpctypes.CombinedBlockResponse, assignments *rpctypes.EpochAssignments) *models.SlotPageBlockData {
 	pageData := &models.SlotPageBlockData{
-		BlockRoot:              utils.MustParseHex(blockData.Header.Data.Root),
-		ParentRoot:             utils.MustParseHex(blockData.Header.Data.Header.Message.ParentRoot),
-		StateRoot:              utils.MustParseHex(blockData.Header.Data.Header.Message.StateRoot),
-		Signature:              utils.MustParseHex(blockData.Header.Data.Header.Signature),
-		RandaoReveal:           utils.MustParseHex(blockData.Block.Data.Message.Body.RandaoReveal),
-		Graffiti:               utils.MustParseHex(blockData.Block.Data.Message.Body.Graffiti),
-		Eth1dataDepositroot:    utils.MustParseHex(blockData.Block.Data.Message.Body.Eth1Data.DepositRoot),
+		BlockRoot:              blockData.Header.Data.Root,
+		ParentRoot:             blockData.Header.Data.Header.Message.ParentRoot,
+		StateRoot:              blockData.Header.Data.Header.Message.StateRoot,
+		Signature:              blockData.Header.Data.Header.Signature,
+		RandaoReveal:           blockData.Block.Data.Message.Body.RandaoReveal,
+		Graffiti:               blockData.Block.Data.Message.Body.Graffiti,
+		Eth1dataDepositroot:    blockData.Block.Data.Message.Body.Eth1Data.DepositRoot,
 		Eth1dataDepositcount:   uint64(blockData.Block.Data.Message.Body.Eth1Data.DepositCount),
-		Eth1dataBlockhash:      utils.MustParseHex(blockData.Block.Data.Message.Body.Eth1Data.BlockHash),
+		Eth1dataBlockhash:      blockData.Block.Data.Message.Body.Eth1Data.BlockHash,
 		ProposerSlashingsCount: uint64(len(blockData.Block.Data.Message.Body.ProposerSlashings)),
 		AttesterSlashingsCount: uint64(len(blockData.Block.Data.Message.Body.AttesterSlashings)),
 		AttestationsCount:      uint64(len(blockData.Block.Data.Message.Body.Attestations)),
@@ -157,14 +157,14 @@ func getSlotPageBlockData(blockData *rpctypes.CombinedBlockResponse, assignments
 		pageData.Attestations[i] = &models.SlotPageAttestation{
 			Slot:            uint64(attestation.Data.Slot),
 			CommitteeIndex:  uint64(attestation.Data.Index),
-			AggregationBits: utils.MustParseHex(attestation.AggregationBits),
+			AggregationBits: attestation.AggregationBits,
 			Validators:      assignments.AttestorAssignments[fmt.Sprintf("%v-%v", uint64(attestation.Data.Slot), uint64(attestation.Data.Index))],
-			Signature:       utils.MustParseHex(attestation.Signature),
-			BeaconBlockRoot: utils.MustParseHex(attestation.Data.BeaconBlockRoot),
+			Signature:       attestation.Signature,
+			BeaconBlockRoot: attestation.Data.BeaconBlockRoot,
 			SourceEpoch:     uint64(attestation.Data.Source.Epoch),
-			SourceRoot:      utils.MustParseHex(attestation.Data.Source.Root),
+			SourceRoot:      attestation.Data.Source.Root,
 			TargetEpoch:     uint64(attestation.Data.Target.Epoch),
-			TargetRoot:      utils.MustParseHex(attestation.Data.Target.Root),
+			TargetRoot:      attestation.Data.Target.Root,
 		}
 	}
 
@@ -172,10 +172,10 @@ func getSlotPageBlockData(blockData *rpctypes.CombinedBlockResponse, assignments
 	for i := uint64(0); i < pageData.DepositsCount; i++ {
 		deposit := blockData.Block.Data.Message.Body.Deposits[i]
 		pageData.Deposits[i] = &models.SlotPageDeposit{
-			PublicKey:             utils.MustParseHex(deposit.Data.Pubkey),
-			Withdrawalcredentials: utils.MustParseHex(deposit.Data.WithdrawalCredentials),
+			PublicKey:             deposit.Data.Pubkey,
+			Withdrawalcredentials: deposit.Data.WithdrawalCredentials,
 			Amount:                uint64(deposit.Data.Amount),
-			Signature:             utils.MustParseHex(deposit.Data.Signature),
+			Signature:             deposit.Data.Signature,
 		}
 	}
 
@@ -185,7 +185,7 @@ func getSlotPageBlockData(blockData *rpctypes.CombinedBlockResponse, assignments
 		pageData.VoluntaryExits[i] = &models.SlotPageVoluntaryExit{
 			ValidatorIndex: uint64(exit.Message.ValidatorIndex),
 			Epoch:          uint64(exit.Message.Epoch),
-			Signature:      utils.MustParseHex(exit.Signature),
+			Signature:      exit.Signature,
 		}
 	}
 
@@ -194,23 +194,23 @@ func getSlotPageBlockData(blockData *rpctypes.CombinedBlockResponse, assignments
 		slashing := blockData.Block.Data.Message.Body.AttesterSlashings[i]
 		slashingData := &models.SlotPageAttesterSlashing{
 			Attestation1Indices:         make([]uint64, len(slashing.Attestation1.AttestingIndices)),
-			Attestation1Signature:       utils.MustParseHex(slashing.Attestation1.Signature),
+			Attestation1Signature:       slashing.Attestation1.Signature,
 			Attestation1Slot:            uint64(slashing.Attestation1.Data.Slot),
 			Attestation1Index:           uint64(slashing.Attestation1.Data.Index),
-			Attestation1BeaconBlockRoot: utils.MustParseHex(slashing.Attestation1.Data.BeaconBlockRoot),
+			Attestation1BeaconBlockRoot: slashing.Attestation1.Data.BeaconBlockRoot,
 			Attestation1SourceEpoch:     uint64(slashing.Attestation1.Data.Source.Epoch),
-			Attestation1SourceRoot:      utils.MustParseHex(slashing.Attestation1.Data.Source.Root),
+			Attestation1SourceRoot:      slashing.Attestation1.Data.Source.Root,
 			Attestation1TargetEpoch:     uint64(slashing.Attestation1.Data.Target.Epoch),
-			Attestation1TargetRoot:      utils.MustParseHex(slashing.Attestation1.Data.Target.Root),
+			Attestation1TargetRoot:      slashing.Attestation1.Data.Target.Root,
 			Attestation2Indices:         make([]uint64, len(slashing.Attestation2.AttestingIndices)),
-			Attestation2Signature:       utils.MustParseHex(slashing.Attestation2.Signature),
+			Attestation2Signature:       slashing.Attestation2.Signature,
 			Attestation2Slot:            uint64(slashing.Attestation2.Data.Slot),
 			Attestation2Index:           uint64(slashing.Attestation2.Data.Index),
-			Attestation2BeaconBlockRoot: utils.MustParseHex(slashing.Attestation2.Data.BeaconBlockRoot),
+			Attestation2BeaconBlockRoot: slashing.Attestation2.Data.BeaconBlockRoot,
 			Attestation2SourceEpoch:     uint64(slashing.Attestation2.Data.Source.Epoch),
-			Attestation2SourceRoot:      utils.MustParseHex(slashing.Attestation2.Data.Source.Root),
+			Attestation2SourceRoot:      slashing.Attestation2.Data.Source.Root,
 			Attestation2TargetEpoch:     uint64(slashing.Attestation2.Data.Target.Epoch),
-			Attestation2TargetRoot:      utils.MustParseHex(slashing.Attestation2.Data.Target.Root),
+			Attestation2TargetRoot:      slashing.Attestation2.Data.Target.Root,
 			SlashedValidators:           make([]uint64, 0),
 		}
 		pageData.AttesterSlashings[i] = slashingData
@@ -232,23 +232,23 @@ func getSlotPageBlockData(blockData *rpctypes.CombinedBlockResponse, assignments
 		pageData.ProposerSlashings[i] = &models.SlotPageProposerSlashing{
 			ProposerIndex:     uint64(slashing.SignedHeader1.Message.ProposerIndex),
 			Header1Slot:       uint64(slashing.SignedHeader1.Message.Slot),
-			Header1ParentRoot: utils.MustParseHex(slashing.SignedHeader1.Message.ParentRoot),
-			Header1StateRoot:  utils.MustParseHex(slashing.SignedHeader1.Message.StateRoot),
-			Header1BodyRoot:   utils.MustParseHex(slashing.SignedHeader1.Message.BodyRoot),
-			Header1Signature:  utils.MustParseHex(slashing.SignedHeader1.Signature),
+			Header1ParentRoot: slashing.SignedHeader1.Message.ParentRoot,
+			Header1StateRoot:  slashing.SignedHeader1.Message.StateRoot,
+			Header1BodyRoot:   slashing.SignedHeader1.Message.BodyRoot,
+			Header1Signature:  slashing.SignedHeader1.Signature,
 			Header2Slot:       uint64(slashing.SignedHeader2.Message.Slot),
-			Header2ParentRoot: utils.MustParseHex(slashing.SignedHeader2.Message.ParentRoot),
-			Header2StateRoot:  utils.MustParseHex(slashing.SignedHeader2.Message.StateRoot),
-			Header2BodyRoot:   utils.MustParseHex(slashing.SignedHeader2.Message.BodyRoot),
-			Header2Signature:  utils.MustParseHex(slashing.SignedHeader2.Signature),
+			Header2ParentRoot: slashing.SignedHeader2.Message.ParentRoot,
+			Header2StateRoot:  slashing.SignedHeader2.Message.StateRoot,
+			Header2BodyRoot:   slashing.SignedHeader2.Message.BodyRoot,
+			Header2Signature:  slashing.SignedHeader2.Signature,
 		}
 	}
 
 	epoch := utils.EpochOfSlot(uint64(blockData.Header.Data.Header.Message.Slot))
 	if epoch >= utils.Config.Chain.Config.AltairForkEpoch {
 		syncAggregate := blockData.Block.Data.Message.Body.SyncAggregate
-		pageData.SyncAggregateBits = utils.MustParseHex(syncAggregate.SyncCommitteeBits)
-		pageData.SyncAggregateSignature = utils.MustParseHex(syncAggregate.SyncCommitteeSignature)
+		pageData.SyncAggregateBits = syncAggregate.SyncCommitteeBits
+		pageData.SyncAggregateSignature = syncAggregate.SyncCommitteeSignature
 		pageData.SyncAggCommittee = assignments.SyncAssignments
 		pageData.SyncAggParticipation = utils.SyncCommitteeParticipation(pageData.SyncAggregateBits)
 	}

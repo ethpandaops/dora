@@ -22,6 +22,10 @@ func (s *BytesHexStr) UnmarshalText(b []byte) error {
 	return nil
 }
 
+func (s BytesHexStr) String() string {
+	return fmt.Sprintf("0x%x", []byte(s))
+}
+
 type Uint64Str uint64
 
 func (s *Uint64Str) UnmarshalJSON(b []byte) error {

@@ -125,17 +125,17 @@ func (bc *BeaconClient) GetBlockHeaderBySlot(slot uint64) (*rpctypes.StandardV1B
 	return &parsedHeaders, nil
 }
 
-func (bc *BeaconClient) GetBlockBodyByBlockroot(blockroot string) (*rpctypes.StandardV2BeaconBlockResponse, error) {
-	resp, err := bc.get(fmt.Sprintf("%s/eth/v1/beacon/blocks/%s", bc.endpoint, blockroot))
+func (bc *BeaconClient) GetBlockBodyByBlockroot(blockroot []byte) (*rpctypes.StandardV2BeaconBlockResponse, error) {
+	resp, err := bc.get(fmt.Sprintf("%s/eth/v1/beacon/blocks/0x%x", bc.endpoint, blockroot))
 	if err != nil {
-		return nil, fmt.Errorf("error retrieving block body for %s: %v", blockroot, err)
+		return nil, fmt.Errorf("error retrieving block body for 0x%x: %v", blockroot, err)
 	}
 
 	var parsedResponse rpctypes.StandardV2BeaconBlockResponse
 	err = json.Unmarshal(resp, &parsedResponse)
 	if err != nil {
-		logger.Errorf("error parsing block body for %s: %v", blockroot, err)
-		return nil, fmt.Errorf("error parsing block body for %s: %v", blockroot, err)
+		logger.Errorf("error parsing block body for 0x%x: %v", blockroot, err)
+		return nil, fmt.Errorf("error parsing block body for 0x%x: %v", blockroot, err)
 	}
 
 	return &parsedResponse, nil
@@ -162,7 +162,7 @@ func (bc *BeaconClient) GetEpochAssignments(epoch uint64) (*rpctypes.EpochAssign
 	}
 
 	// fetch the block root that the proposer data is dependent on
-	parsedHeader, err := bc.GetBlockHeaderByBlockroot(utils.MustParseHex(parsedProposerResponse.DependentRoot))
+	parsedHeader, err := bc.GetBlockHeaderByBlockroot(parsedProposerResponse.DependentRoot)
 	if err != nil {
 		return nil, err
 	}
@@ -205,7 +205,7 @@ func (bc *BeaconClient) GetEpochAssignments(epoch uint64) (*rpctypes.EpochAssign
 	}
 
 	if epoch >= utils.Config.Chain.Config.AltairForkEpoch {
-		syncCommitteeState := depStateRoot
+		syncCommitteeState := fmt.Sprintf("%s", depStateRoot)
 		if epoch == utils.Config.Chain.Config.AltairForkEpoch {
 			syncCommitteeState = fmt.Sprintf("%d", utils.Config.Chain.Config.AltairForkEpoch*utils.Config.Chain.Config.SlotsPerEpoch)
 		}

@@ -1,16 +1,16 @@
 package rpctypes
 
 type BeaconBlockHeader struct {
-	Slot          Uint64Str `json:"slot"`
-	ProposerIndex Uint64Str `json:"proposer_index"`
-	ParentRoot    string    `json:"parent_root"`
-	StateRoot     string    `json:"state_root"`
-	BodyRoot      string    `json:"body_root"`
+	Slot          Uint64Str   `json:"slot"`
+	ProposerIndex Uint64Str   `json:"proposer_index"`
+	ParentRoot    BytesHexStr `json:"parent_root"`
+	StateRoot     BytesHexStr `json:"state_root"`
+	BodyRoot      BytesHexStr `json:"body_root"`
 }
 
 type SignedBeaconBlockHeader struct {
 	Message   BeaconBlockHeader `json:"message"`
-	Signature string            `json:"signature"`
+	Signature BytesHexStr       `json:"signature"`
 }
 
 type ProposerSlashing struct {
@@ -19,21 +19,21 @@ type ProposerSlashing struct {
 }
 
 type Checkpoint struct {
-	Epoch Uint64Str `json:"epoch"`
-	Root  string    `json:"root"`
+	Epoch Uint64Str   `json:"epoch"`
+	Root  BytesHexStr `json:"root"`
 }
 
 type AttestationData struct {
-	Slot            Uint64Str  `json:"slot"`
-	Index           Uint64Str  `json:"index"`
-	BeaconBlockRoot string     `json:"beacon_block_root"`
-	Source          Checkpoint `json:"source"`
-	Target          Checkpoint `json:"target"`
+	Slot            Uint64Str   `json:"slot"`
+	Index           Uint64Str   `json:"index"`
+	BeaconBlockRoot BytesHexStr `json:"beacon_block_root"`
+	Source          Checkpoint  `json:"source"`
+	Target          Checkpoint  `json:"target"`
 }
 
 type IndexedAttestation struct {
 	AttestingIndices []Uint64Str     `json:"attesting_indices"`
-	Signature        string          `json:"signature"`
+	Signature        BytesHexStr     `json:"signature"`
 	Data             AttestationData `json:"data"`
 }
 
@@ -43,21 +43,21 @@ type AttesterSlashing struct {
 }
 
 type Attestation struct {
-	AggregationBits string          `json:"aggregation_bits"`
-	Signature       string          `json:"signature"`
+	AggregationBits BytesHexStr     `json:"aggregation_bits"`
+	Signature       BytesHexStr     `json:"signature"`
 	Data            AttestationData `json:"data"`
 }
 
 type DepositData struct {
-	Pubkey                string    `json:"pubkey"`
-	WithdrawalCredentials string    `json:"withdrawal_credentials"`
-	Amount                Uint64Str `json:"amount"`
-	Signature             string    `json:"signature"`
+	Pubkey                BytesHexStr `json:"pubkey"`
+	WithdrawalCredentials BytesHexStr `json:"withdrawal_credentials"`
+	Amount                Uint64Str   `json:"amount"`
+	Signature             BytesHexStr `json:"signature"`
 }
 
 type Deposit struct {
-	Proof []string    `json:"proof"`
-	Data  DepositData `json:"data"`
+	Proof []BytesHexStr `json:"proof"`
+	Data  DepositData   `json:"data"`
 }
 
 type VoluntaryExit struct {
@@ -67,18 +67,18 @@ type VoluntaryExit struct {
 
 type SignedVoluntaryExit struct {
 	Message   VoluntaryExit `json:"message"`
-	Signature string        `json:"signature"`
+	Signature BytesHexStr   `json:"signature"`
 }
 
 type Eth1Data struct {
-	DepositRoot  string    `json:"deposit_root"`
-	DepositCount Uint64Str `json:"deposit_count"`
-	BlockHash    string    `json:"block_hash"`
+	DepositRoot  BytesHexStr `json:"deposit_root"`
+	DepositCount Uint64Str   `json:"deposit_count"`
+	BlockHash    BytesHexStr `json:"block_hash"`
 }
 
 type SyncAggregate struct {
-	SyncCommitteeBits      string `json:"sync_committee_bits"`
-	SyncCommitteeSignature string `json:"sync_committee_signature"`
+	SyncCommitteeBits      BytesHexStr `json:"sync_committee_bits"`
+	SyncCommitteeSignature BytesHexStr `json:"sync_committee_signature"`
 }
 
 type ExecutionPayload struct {
@@ -119,9 +119,9 @@ type SignedBLSToExecutionChange struct {
 }
 
 type BeaconBlockBody struct {
-	RandaoReveal      string                `json:"randao_reveal"`
+	RandaoReveal      BytesHexStr           `json:"randao_reveal"`
 	Eth1Data          Eth1Data              `json:"eth1_data"`
-	Graffiti          string                `json:"graffiti"`
+	Graffiti          BytesHexStr           `json:"graffiti"`
 	ProposerSlashings []ProposerSlashing    `json:"proposer_slashings"`
 	AttesterSlashings []AttesterSlashing    `json:"attester_slashings"`
 	Attestations      []Attestation         `json:"attestations"`
@@ -141,8 +141,8 @@ type BeaconBlockBody struct {
 type BeaconBlock struct {
 	Slot          Uint64Str       `json:"slot"`
 	ProposerIndex Uint64Str       `json:"proposer_index"`
-	ParentRoot    string          `json:"parent_root"`
-	StateRoot     string          `json:"state_root"`
+	ParentRoot    BytesHexStr     `json:"parent_root"`
+	StateRoot     BytesHexStr     `json:"state_root"`
 	Body          BeaconBlockBody `json:"body"`
 }
 

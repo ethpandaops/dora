@@ -1,9 +1,15 @@
 package rpctypes
 
+type StandardV1StreamedHeadEvent struct {
+	Slot                Uint64Str   `json:"slot"`
+	Block               BytesHexStr `json:"block"`
+	ExecutionOptimistic bool        `json:"execution_optimistic"`
+}
+
 type StandardV1BeaconHeaderResponse struct {
 	Finalized bool `json:"finalized"`
 	Data      struct {
-		Root      string                  `json:"root"`
+		Root      BytesHexStr             `json:"root"`
 		Canonical bool                    `json:"canonical"`
 		Header    SignedBeaconBlockHeader `json:"header"`
 	} `json:"data"`
@@ -12,7 +18,7 @@ type StandardV1BeaconHeaderResponse struct {
 type StandardV1BeaconHeadersResponse struct {
 	Finalized bool `json:"finalized"`
 	Data      []struct {
-		Root      string                  `json:"root"`
+		Root      BytesHexStr             `json:"root"`
 		Canonical bool                    `json:"canonical"`
 		Header    SignedBeaconBlockHeader `json:"header"`
 	} `json:"data"`
@@ -29,11 +35,11 @@ type CombinedBlockResponse struct {
 }
 
 type StandardV1ProposerDutiesResponse struct {
-	DependentRoot string `json:"dependent_root"`
+	DependentRoot BytesHexStr `json:"dependent_root"`
 	Data          []struct {
-		Pubkey         string    `json:"pubkey"`
-		ValidatorIndex Uint64Str `json:"validator_index"`
-		Slot           Uint64Str `json:"slot"`
+		Pubkey         BytesHexStr `json:"pubkey"`
+		ValidatorIndex Uint64Str   `json:"validator_index"`
+		Slot           Uint64Str   `json:"slot"`
 	} `json:"data"`
 }
 

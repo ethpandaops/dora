@@ -1,6 +1,7 @@
 package indexer
 
 import (
+	"bytes"
 	"fmt"
 
 	"github.com/pk910/light-beaconchain-explorer/utils"
@@ -19,7 +20,7 @@ type EpochVotes struct {
 	}
 }
 
-func aggregateEpochVotes(blockMap map[uint64]*BlockInfo, epoch uint64, epochStats *EpochStats, targetRoot string, currentOnly bool) *EpochVotes {
+func aggregateEpochVotes(blockMap map[uint64][]*BlockInfo, epoch uint64, epochStats *EpochStats, targetRoot []byte, currentOnly bool) *EpochVotes {
 	firstSlot := epoch * utils.Config.Chain.Config.SlotsPerEpoch
 	lastSlot := firstSlot + utils.Config.Chain.Config.SlotsPerEpoch - 1
 	if !currentOnly {
@@ -31,58 +32,67 @@ func aggregateEpochVotes(blockMap map[uint64]*BlockInfo, epoch uint64, epochStat
 	votedBitsets := make(map[string][]byte)
 
 	for slot := firstSlot; slot <= lastSlot; slot++ {
-		block := blockMap[slot]
-		if block != nil && !block.orphaned {
-			isNextEpoch := utils.EpochOfSlot(slot) > epoch
-			for _, att := range block.block.Data.Message.Body.Attestations {
-				if utils.EpochOfSlot(uint64(att.Data.Slot)) != epoch {
-					continue
-				}
+		blocks := blockMap[slot]
+		if blocks == nil {
+			continue
+		}
+		for bidx := 0; bidx < len(blocks); bidx++ {
+			block := blocks[bidx]
 
-				attKey := fmt.Sprintf("%v-%v", uint64(att.Data.Slot), uint64(att.Data.Index))
-				voteAmount := uint64(0)
-				voteBitset := utils.MustParseHex(att.AggregationBits)
-				votedBitset := votedBitsets[attKey]
-				voteValidators := epochStats.assignments.AttestorAssignments[attKey]
-				for bitIdx, validatorIdx := range voteValidators {
-					if votedBitset != nil && utils.BitAtVector(votedBitset, bitIdx) {
-						// don't "double count" votes, if a attestation aggregation has been extended and re-included
+			if !block.orphaned {
+				isNextEpoch := utils.EpochOfSlot(slot) > epoch
+				for _, att := range block.block.Data.Message.Body.Attestations {
+					if utils.EpochOfSlot(uint64(att.Data.Slot)) != epoch {
 						continue
 					}
-					if utils.BitAtVector(voteBitset, bitIdx) {
-						voteAmount += uint64(epochStats.validatorBalances[validatorIdx])
-					}
-				}
 
-				if votedBitset != nil {
-					// merge bitsets
-					for i := 0; i < len(votedBitset); i++ {
-						votedBitset[i] |= voteBitset[i]
+					attKey := fmt.Sprintf("%v-%v", uint64(att.Data.Slot), uint64(att.Data.Index))
+					voteAmount := uint64(0)
+					voteBitset := att.AggregationBits
+					votedBitset := votedBitsets[attKey]
+					voteValidators := epochStats.assignments.AttestorAssignments[attKey]
+					for bitIdx, validatorIdx := range voteValidators {
+						if votedBitset != nil && utils.BitAtVector(votedBitset, bitIdx) {
+							// don't "double count" votes, if a attestation aggregation has been extended and re-included
+							continue
+						}
+						if utils.BitAtVector(voteBitset, bitIdx) {
+							voteAmount += uint64(epochStats.validatorBalances[validatorIdx])
+						}
 					}
-				} else {
-					votedBitset = make([]byte, len(voteBitset))
-					copy(votedBitset, voteBitset)
-					votedBitsets[attKey] = voteBitset
-				}
 
-				if att.Data.Target.Root == targetRoot {
-					if isNextEpoch {
-						votes.nextEpoch.targetVoteAmount += voteAmount
+					if votedBitset != nil {
+						// merge bitsets
+						for i := 0; i < len(votedBitset); i++ {
+							votedBitset[i] |= voteBitset[i]
+						}
 					} else {
-						votes.currentEpoch.targetVoteAmount += voteAmount
+						votedBitset = make([]byte, len(voteBitset))
+						copy(votedBitset, voteBitset)
+						votedBitsets[attKey] = voteBitset
 					}
-				}
-				if att.Data.BeaconBlockRoot == block.header.Data.Header.Message.ParentRoot {
-					if isNextEpoch {
-						votes.nextEpoch.headVoteAmount += voteAmount
+
+					if bytes.Equal(att.Data.Target.Root, targetRoot) {
+						if isNextEpoch {
+							votes.nextEpoch.targetVoteAmount += voteAmount
+						} else {
+							votes.currentEpoch.targetVoteAmount += voteAmount
+						}
 					} else {
-						votes.currentEpoch.headVoteAmount += voteAmount
+						logger.Infof("vote target missmatch %v != 0x%x", att.Data.Target.Root, targetRoot)
 					}
-				}
-				if isNextEpoch {
-					votes.nextEpoch.totalVoteAmount += voteAmount
-				} else {
-					votes.currentEpoch.totalVoteAmount += voteAmount
+					if bytes.Equal(att.Data.BeaconBlockRoot, block.header.Data.Header.Message.ParentRoot) {
+						if isNextEpoch {
+							votes.nextEpoch.headVoteAmount += voteAmount
+						} else {
+							votes.currentEpoch.headVoteAmount += voteAmount
+						}
+					}
+					if isNextEpoch {
+						votes.nextEpoch.totalVoteAmount += voteAmount
+					} else {
+						votes.currentEpoch.totalVoteAmount += voteAmount
+					}
 				}
 			}
 		}
