@@ -32,7 +32,7 @@ func aggregateEpochVotes(blockMap map[uint64]*BlockInfo, epoch uint64, epochStat
 
 	for slot := firstSlot; slot <= lastSlot; slot++ {
 		block := blockMap[slot]
-		if block != nil && !block.orphanded {
+		if block != nil && !block.orphaned {
 			isNextEpoch := utils.EpochOfSlot(slot) > epoch
 			for _, att := range block.block.Data.Message.Body.Attestations {
 				if utils.EpochOfSlot(uint64(att.Data.Slot)) != epoch {

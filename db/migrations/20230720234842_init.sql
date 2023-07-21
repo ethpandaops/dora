@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS public."Blocks"
     "Root" bytea NOT NULL,
     "ParentRoot" bytea NOT NULL,
     "StateRoot" bytea NOT NULL,
-    "Orphanded" boolean NOT NULL,
+    "Orphaned" boolean NOT NULL,
     "Proposer" bigint NOT NULL,
     "Graffiti" bytea NOT NULL,
     "AttestationCount" integer NOT NULL DEFAULT 0,
@@ -35,12 +35,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS "RootIndex"
     ON public."Blocks" 
     ("Root" ASC NULLS LAST);
 
-CREATE TABLE IF NOT EXISTS public."OrphandedBlocks"
+CREATE TABLE IF NOT EXISTS public."OrphanedBlocks"
 (
     "Root" bytea NOT NULL,
     "Header" text COLLATE pg_catalog."default" NOT NULL,
     "Block" text COLLATE pg_catalog."default" NOT NULL,
-    CONSTRAINT "OrphandedBlocks_pkey" PRIMARY KEY ("Root")
+    CONSTRAINT "OrphanedBlocks_pkey" PRIMARY KEY ("Root")
 );
 
 CREATE TABLE IF NOT EXISTS public."Epochs"

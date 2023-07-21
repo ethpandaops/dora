@@ -11,7 +11,7 @@ type Block struct {
 	Root                  []byte  `db:"Root"`
 	ParentRoot            []byte  `db:"ParentRoot"`
 	StateRoot             []byte  `db:"StateRoot"`
-	Orphanded             bool    `db:"Orphanded"`
+	Orphaned              bool    `db:"Orphaned"`
 	Proposer              uint64  `db:"Proposer"`
 	Graffiti              []byte  `db:"Graffiti"`
 	AttestationCount      uint64  `db:"AttestationCount"`
@@ -36,7 +36,7 @@ type Epoch struct {
 	SyncParticipation     float32 `db:"SyncParticipation"`
 }
 
-type OrphandedBlock struct {
+type OrphanedBlock struct {
 	Root   []byte `db:"Root"`
 	Header string `db:"Header"`
 	Block  string `db:"Block"`

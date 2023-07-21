@@ -212,31 +212,31 @@ func (indexer *Indexer) addBlockInfo(slot uint64, header *rpctypes.StandardV1Bea
 		} else {
 			logger.Infof("Chain reorg detected, skipped %v slots", (slot - reorgBaseSlot - 1))
 
-			if reorgBaseBlock.orphanded {
-				// reorg back to a chain we've previously marked as orphanded
-				orphandedBlock := reorgBaseBlock
-				orphandedSlot := reorgBaseSlot - 1
-				orphandedBlock.orphanded = false
-				for ; orphandedSlot >= indexer.state.lowestCachedSlot; orphandedSlot-- {
-					block := indexer.state.cachedBlocks[orphandedSlot]
+			if reorgBaseBlock.orphaned {
+				// reorg back to a chain we've previously marked as orphaned
+				orphanedBlock := reorgBaseBlock
+				orphanedSlot := reorgBaseSlot - 1
+				orphanedBlock.orphaned = false
+				for ; orphanedSlot >= indexer.state.lowestCachedSlot; orphanedSlot-- {
+					block := indexer.state.cachedBlocks[orphanedSlot]
 					if block == nil {
 						resyncNeeded = true
 						logger.Errorf("Chain reorg, but can't find canonical chain in cache")
 						break
 					}
-					if block.header.Data.Root == orphandedBlock.header.Data.Header.Message.ParentRoot {
-						if !block.orphanded {
+					if block.header.Data.Root == orphanedBlock.header.Data.Header.Message.ParentRoot {
+						if !block.orphaned {
 							break
 						}
 						logger.Infof("Chain reorg: mark %v as canonical (complex)", block.header.Data.Header.Message.Slot)
-						block.orphanded = false
+						block.orphaned = false
 					} else {
-						logger.Infof("Chain reorg: mark %v as orphanded (complex)", block.header.Data.Header.Message.Slot)
-						block.orphanded = true
+						logger.Infof("Chain reorg: mark %v as orphaned (complex)", block.header.Data.Header.Message.Slot)
+						block.orphaned = true
 					}
 				}
 
-				if utils.EpochOfSlot(orphandedSlot) != epoch {
+				if utils.EpochOfSlot(orphanedSlot) != epoch {
 					isEpochHead = true
 				}
 			}
@@ -244,8 +244,8 @@ func (indexer *Indexer) addBlockInfo(slot uint64, header *rpctypes.StandardV1Bea
 			for sidx := reorgBaseSlot + 1; sidx < slot; sidx++ {
 				block := indexer.state.cachedBlocks[sidx]
 				if block != nil {
-					logger.Infof("Chain reorg: mark %v as orphanded", block.header.Data.Header.Message.Slot)
-					block.orphanded = true
+					logger.Infof("Chain reorg: mark %v as orphaned", block.header.Data.Header.Message.Slot)
+					block.orphaned = true
 				}
 			}
 		}
@@ -331,7 +331,7 @@ func (indexer *Indexer) processEpoch(epoch uint64) {
 	var epochTarget string = ""
 	for slot := firstSlot; slot <= lastSlot; slot++ {
 		block := indexer.state.cachedBlocks[slot]
-		if block != nil && !block.orphanded {
+		if block != nil && !block.orphaned {
 			if slot == firstSlot {
 				epochTarget = block.header.Data.Root
 			} else {
