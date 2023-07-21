@@ -9,6 +9,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 
+	"github.com/pk910/light-beaconchain-explorer/db"
 	"github.com/pk910/light-beaconchain-explorer/rpc"
 	"github.com/pk910/light-beaconchain-explorer/rpctypes"
 	"github.com/pk910/light-beaconchain-explorer/utils"
@@ -21,11 +22,12 @@ type Indexer struct {
 	controlMutex sync.Mutex
 	runMutex     sync.Mutex
 	running      bool
+	writeDb      bool
 	state        indexerState
+	synchronizer *synchronizerState
 }
 
 type indexerState struct {
-	lastHeadPoll       uint64
 	lastHeadBlock      uint64
 	lastHeadRoot       []byte
 	lastFinalizedBlock uint64
@@ -36,6 +38,10 @@ type indexerState struct {
 	lastProcessedEpoch uint64
 }
 
+type indexerSyncState struct {
+	Epoch uint64 `json:"epoch"`
+}
+
 type EpochStats struct {
 	statsMutex        sync.Mutex
 	validatorCount    uint64
@@ -44,9 +50,10 @@ type EpochStats struct {
 	validatorBalances map[uint64]uint64
 }
 
-func NewIndexer(rpcClient *rpc.BeaconClient) (*Indexer, error) {
+func NewIndexer(rpcClient *rpc.BeaconClient, writeDb bool) (*Indexer, error) {
 	return &Indexer{
 		rpcClient: rpcClient,
+		writeDb:   writeDb,
 		state: indexerState{
 			cachedBlocks: make(map[uint64][]*BlockInfo),
 			epochStats:   make(map[uint64]*EpochStats),
@@ -94,7 +101,17 @@ func (indexer *Indexer) runIndexer() {
 	defer blockStream.Close()
 
 	// check if we need to start a sync job (last synced epoch < lastProcessedEpoch)
-	// TODO
+	if indexer.writeDb {
+		syncState := indexerSyncState{}
+		logger.Infof("Loading sync state")
+		db.GetExplorerState("indexer.syncstate", &syncState)
+
+		logger.Infof("sync state %v", syncState)
+
+		if syncState.Epoch < indexer.state.lastProcessedEpoch {
+			indexer.startSynchronization(syncState.Epoch)
+		}
+	}
 
 	// run indexer loop
 	for {
@@ -108,6 +125,14 @@ func (indexer *Indexer) runIndexer() {
 		select {
 		case blockEvt := <-blockStream.BlockChan:
 			indexer.pollStreamedBlock(blockEvt.Block)
+		case <-blockStream.CloseChan:
+			logger.Warnf("Indexer lost connection to beacon event stream. Reconnection in 5 sec")
+			time.Sleep(5 * time.Second)
+			blockStream.Start()
+			err := indexer.pollHeadBlock()
+			if err != nil {
+				logger.Errorf("Indexer Error while polling latest head: %v", err)
+			}
 		case <-time.After(30 * time.Second):
 			err := indexer.pollHeadBlock()
 			if err != nil {
@@ -115,10 +140,27 @@ func (indexer *Indexer) runIndexer() {
 			}
 		}
 
-		now := time.Now()
+		//now := time.Now()
 		indexer.processIndexing()
-		logger.Infof("indexer loop processing time: %v ms", time.Now().Sub(now).Milliseconds())
+		//logger.Infof("indexer loop processing time: %v ms", time.Now().Sub(now).Milliseconds())
 	}
+}
+
+func (indexer *Indexer) startSynchronization(startEpoch uint64) error {
+	if !indexer.writeDb {
+		return nil
+	}
+
+	indexer.state.cacheMutex.Lock()
+	defer indexer.state.cacheMutex.Unlock()
+
+	if indexer.synchronizer == nil {
+		indexer.synchronizer = newSynchronizer(indexer)
+	}
+	if !indexer.synchronizer.isEpochAhead(startEpoch) {
+		indexer.synchronizer.startSync(startEpoch)
+	}
+	return nil
 }
 
 func (indexer *Indexer) pollHeadBlock() error {
@@ -312,18 +354,16 @@ func (indexer *Indexer) addBlockInfo(slot uint64, header *rpctypes.StandardV1Bea
 			// resync needed
 			resyncNeeded = true
 		} else {
-			logger.Infof("Chain reorg detected, skipped %v slots", (slot - reorgBaseSlot - 1))
-
 			orphanedBlock := reorgBaseBlock
 			orphanedSlot := reorgBaseSlot
 			orphanedIndex := reorgBaseIndex
-		mainLoop:
 			for orphanedBlock.orphaned {
 				// reorg back to a block we've previously marked as orphaned
 				// walk backwards and fix orphaned flags
 				orphanedBlock.orphaned = false
-				logger.Infof("Chain reorg: mark %v.%v as canonical (%v) (complex)", orphanedSlot, orphanedIndex, orphanedBlock.header.Data.Root)
+				logger.Infof("Chain reorg: mark %v.%v as canonical (%v)", orphanedSlot, orphanedIndex, orphanedBlock.header.Data.Root)
 
+				foundReorgBase := false
 				for sidx := reorgBaseSlot - 1; sidx >= indexer.state.lowestCachedSlot; sidx-- {
 					blocks := indexer.state.cachedBlocks[sidx]
 					if blocks == nil {
@@ -335,19 +375,25 @@ func (indexer *Indexer) addBlockInfo(slot uint64, header *rpctypes.StandardV1Bea
 						if bytes.Equal(block.header.Data.Root, orphanedBlock.header.Data.Header.Message.ParentRoot) {
 							if !block.orphaned {
 								// reached end of reorg range
-								break mainLoop
+								foundReorgBase = true
 							}
 
 							orphanedBlock = block
 							orphanedSlot = sidx
 							orphanedIndex = bidx
 						} else {
-							logger.Infof("Chain reorg: mark %v.%v as orphaned (%v) (complex)", sidx, bidx, block.header.Data.Root)
+							logger.Infof("Chain reorg: mark %v.%v as orphaned (%v)", sidx, bidx, block.header.Data.Root)
 							block.orphaned = true
 						}
 					}
+					if foundReorgBase {
+						break
+					}
 				}
 
+				if !foundReorgBase {
+					resyncNeeded = true
+				}
 				if utils.EpochOfSlot(orphanedSlot) != epoch {
 					isEpochHead = true
 				}
@@ -356,6 +402,7 @@ func (indexer *Indexer) addBlockInfo(slot uint64, header *rpctypes.StandardV1Bea
 
 		if resyncNeeded {
 			logger.Errorf("Large chain reorg detected, resync needed")
+			// TODO: Drop all unfinalized & resync
 		}
 	}
 	indexer.state.lastHeadRoot = header.Data.Root
@@ -422,6 +469,35 @@ slotLoop:
 	}
 
 	epochVotes := aggregateEpochVotes(indexer.state.cachedBlocks, epoch, epochStats, epochTarget, false)
+
+	// save to db
+	if indexer.writeDb {
+		tx, err := db.WriterDb.Beginx()
+		if err != nil {
+			logger.Errorf("error starting db transactions: %v", err)
+			return
+		}
+		defer tx.Rollback()
+
+		err = persistEpochData(epoch, indexer.state.cachedBlocks, epochStats, epochVotes, tx)
+		if err != nil {
+			logger.Errorf("error persisting epoch data to db: %v", err)
+		}
+
+		if indexer.synchronizer == nil || !indexer.synchronizer.running {
+			err = db.SetExplorerState("", &indexerSyncState{
+				Epoch: epoch,
+			}, tx)
+			if err != nil {
+				logger.Errorf("error while updating sync state: %v", err)
+			}
+		}
+
+		if err := tx.Commit(); err != nil {
+			logger.Errorf("error committing db transaction: %v", err)
+			return
+		}
+	}
 
 	logger.Infof("Epoch %v stats: %v validators (%v)", epoch, epochStats.validatorCount, epochStats.eligibleAmount)
 	logger.Infof("Epoch %v votes: target %v + %v = %v", epoch, epochVotes.currentEpoch.targetVoteAmount, epochVotes.nextEpoch.targetVoteAmount, epochVotes.currentEpoch.targetVoteAmount+epochVotes.nextEpoch.targetVoteAmount)

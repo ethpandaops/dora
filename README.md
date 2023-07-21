@@ -36,14 +36,15 @@ https://github.com/ethpandaops/tooling-wishlist/blob/master/tools/lightweight-be
     * [ ] Persistent cache for epoch duties in DB
 * [ ] Database
   * [ ] Schema initialization / upgrade
-  * [ ] Table: Blocks (Slot index for search & slot overview)
-  * [ ] Table: Epochs (Epoch index for startpage & epoch overview)
-  * [ ] Table: SyncState (keeps track of synchronization state for Blocks & Epochs indexes)
+  * [x] Table: Blocks (Slot index for search & slot overview)
+  * [x] Table: Epochs (Epoch index for startpage & epoch overview)
+  * [x] Table: SyncState (keeps track of synchronization state for Blocks & Epochs indexes)
 * [ ] Indexer
   * [x] Keep track of current & last epoch in memory
   * [x] Aggregate Votes
   * [x] Check for chain reorgs and track orphaned blocks
-    * [ ] Save orphaned blocks in db (header & body)
-  * [ ] Update Slot index in DB
-  * [ ] Update Epoch index in DB
-  * [ ] Synchronization (index older epochs)
+    * [x] Save orphaned blocks in db (header & body)
+    * [ ] Handle large chain reorgs with >32 slots (needs re-indexing of affected epochs)
+  * [x] Update Slot index in DB
+  * [x] Update Epoch index in DB
+  * [x] Synchronization (index older epochs)

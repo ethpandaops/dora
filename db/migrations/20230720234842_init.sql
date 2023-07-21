@@ -1,62 +1,68 @@
 -- +goose Up
 -- +goose StatementBegin
 
-CREATE TABLE IF NOT EXISTS public."SyncState"
+CREATE TABLE IF NOT EXISTS public."explorer_state"
 (
-    "Id" integer NOT NULL,
-    "HeadSlot" bigint,
-    "HeadRoot" bytea,
-    CONSTRAINT "SyncState_pkey" PRIMARY KEY ("Id")
+    "key" character varying(150) COLLATE pg_catalog."default" NOT NULL,
+    "value" text COLLATE pg_catalog."default",
+    CONSTRAINT "explorer_state_pkey" PRIMARY KEY ("key")
 );
 
-CREATE TABLE IF NOT EXISTS public."Blocks"
+CREATE TABLE IF NOT EXISTS public."blocks"
 (
-    "Slot" bigint NOT NULL,
-    "Root" bytea NOT NULL,
-    "ParentRoot" bytea NOT NULL,
-    "StateRoot" bytea NOT NULL,
-    "Orphaned" boolean NOT NULL,
-    "Proposer" bigint NOT NULL,
-    "Graffiti" bytea NOT NULL,
-    "AttestationCount" integer NOT NULL DEFAULT 0,
-    "DepositCount" integer NOT NULL DEFAULT 0,
-    "ExitCount" integer NOT NULL DEFAULT 0,
-    "AttesterSlashingCount" integer NOT NULL DEFAULT 0,
-    "ProposerSlashingCount" integer NOT NULL DEFAULT 0,
-    "SyncParticipation" real NOT NULL DEFAULT 0,
-    CONSTRAINT "Blocks_pkey" PRIMARY KEY ("Slot")
+    "root" bytea NOT NULL,
+    "slot" bigint NOT NULL,
+    "parent_root" bytea NOT NULL,
+    "state_root" bytea NOT NULL,
+    "orphaned" boolean NOT NULL,
+    "proposer" bigint NOT NULL,
+    "graffiti" bytea NOT NULL,
+    "attestation_count" integer NOT NULL DEFAULT 0,
+    "deposit_count" integer NOT NULL DEFAULT 0,
+    "exit_count" integer NOT NULL DEFAULT 0,
+    "attester_slashing_count" integer NOT NULL DEFAULT 0,
+    "proposer_slashing_count" integer NOT NULL DEFAULT 0,
+    "bls_change_count" integer NOT NULL DEFAULT 0,
+    "eth_transaction_count" integer NOT NULL DEFAULT 0,
+    "sync_participation" real NOT NULL DEFAULT 0,
+    CONSTRAINT "Blocks_pkey" PRIMARY KEY ("root")
 );
 
-CREATE INDEX IF NOT EXISTS "GraffitiIndex"
-    ON public."Blocks" 
-    ("Graffiti" ASC NULLS LAST);
+CREATE INDEX IF NOT EXISTS "blocks_graffiti_idx"
+    ON public."blocks" 
+    ("graffiti" ASC NULLS LAST);
 
-CREATE UNIQUE INDEX IF NOT EXISTS "RootIndex"
-    ON public."Blocks" 
-    ("Root" ASC NULLS LAST);
+CREATE INDEX IF NOT EXISTS "blocks_slot_idx"
+    ON public."blocks" 
+    ("root" ASC NULLS LAST);
 
-CREATE TABLE IF NOT EXISTS public."OrphanedBlocks"
+CREATE TABLE IF NOT EXISTS public."orphaned_blocks"
 (
-    "Root" bytea NOT NULL,
-    "Header" text COLLATE pg_catalog."default" NOT NULL,
-    "Block" text COLLATE pg_catalog."default" NOT NULL,
-    CONSTRAINT "OrphanedBlocks_pkey" PRIMARY KEY ("Root")
+    "root" bytea NOT NULL,
+    "header" text COLLATE pg_catalog."default" NOT NULL,
+    "block" text COLLATE pg_catalog."default" NOT NULL,
+    CONSTRAINT "orphaned_blocks_pkey" PRIMARY KEY ("root")
 );
 
-CREATE TABLE IF NOT EXISTS public."Epochs"
+CREATE TABLE IF NOT EXISTS public."epochs"
 (
-    "Epoch" bigint NOT NULL,
-    "Finalized" boolean NOT NULL DEFAULT false,
-    "Eligible" bigint NOT NULL DEFAULT 0,
-    "Voted" bigint NOT NULL DEFAULT 0,
-    "BlockCount" smallint NOT NULL DEFAULT 0,
-    "AttestationCount" integer NOT NULL DEFAULT 0,
-    "DepositCount" integer NOT NULL DEFAULT 0,
-    "ExitCount" integer NOT NULL DEFAULT 0,
-    "AttesterSlashingCount" integer NOT NULL DEFAULT 0,
-    "ProposerSlashingCount" integer NOT NULL DEFAULT 0,
-    "SyncParticipation" real NOT NULL DEFAULT 0,
-    CONSTRAINT "Epochs_pkey" PRIMARY KEY ("Epoch")
+    "epoch" bigint NOT NULL,
+    "validator_count" bigint NOT NULL DEFAULT 0,
+    "eligible" bigint NOT NULL DEFAULT 0,
+    "voted_target" bigint NOT NULL DEFAULT 0,
+    "voted_head" bigint NOT NULL DEFAULT 0,
+    "voted_total" bigint NOT NULL DEFAULT 0,
+    "block_count" smallint NOT NULL DEFAULT 0,
+    "orphaned_count" smallint NOT NULL DEFAULT 0,
+    "attestation_count" integer NOT NULL DEFAULT 0,
+    "deposit_count" integer NOT NULL DEFAULT 0,
+    "exit_count" integer NOT NULL DEFAULT 0,
+    "attester_slashing_count" integer NOT NULL DEFAULT 0,
+    "proposer_slashing_count" integer NOT NULL DEFAULT 0,
+    "bls_change_count" integer NOT NULL DEFAULT 0,
+    "eth_transaction_count" integer NOT NULL DEFAULT 0,
+    "sync_participation" real NOT NULL DEFAULT 0,
+    CONSTRAINT "epochs_pkey" PRIMARY KEY ("epoch")
 );
 
 -- +goose StatementEnd

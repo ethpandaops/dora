@@ -15,7 +15,9 @@ import (
 type BeaconStream struct {
 	runMutex      sync.Mutex
 	running       bool
-	closeChan     chan bool
+	endpoint      string
+	killChan      chan bool
+	CloseChan     chan bool
 	BlockChan     chan *rpctypes.StandardV1StreamedHeadEvent
 	lastBlockSeen time.Time
 }
@@ -23,7 +25,9 @@ type BeaconStream struct {
 func (bc *BeaconClient) NewBlockStream() *BeaconStream {
 	blockStream := BeaconStream{
 		running:   true,
-		closeChan: make(chan bool),
+		endpoint:  bc.endpoint,
+		killChan:  make(chan bool),
+		CloseChan: make(chan bool),
 		BlockChan: make(chan *rpctypes.StandardV1StreamedHeadEvent, 10),
 	}
 	go blockStream.startStream(bc.endpoint)
@@ -31,10 +35,18 @@ func (bc *BeaconClient) NewBlockStream() *BeaconStream {
 	return &blockStream
 }
 
+func (bs *BeaconStream) Start() {
+	if bs.running {
+		return
+	}
+	bs.running = true
+	go bs.startStream(bs.endpoint)
+}
+
 func (bs *BeaconStream) Close() {
 	if bs.running {
 		bs.running = false
-		bs.closeChan <- true
+		bs.killChan <- true
 	}
 	bs.runMutex.Lock()
 	defer bs.runMutex.Unlock()
@@ -62,8 +74,9 @@ func (bs *BeaconStream) startStream(endpoint string) {
 				}
 				bs.lastBlockSeen = time.Now()
 				bs.BlockChan <- &parsed
-			case <-bs.closeChan:
+			case <-bs.killChan:
 				running = false
+
 			case <-time.After(120 * time.Second):
 				// timeout - no block since 2 mins
 				logger.Errorf("beacon block stream error, no new block retrieved since %v (%v ago)", bs.lastBlockSeen, time.Since(bs.lastBlockSeen))
@@ -72,4 +85,5 @@ func (bs *BeaconStream) startStream(endpoint string) {
 		}
 	}
 	bs.running = false
+	bs.CloseChan <- true
 }

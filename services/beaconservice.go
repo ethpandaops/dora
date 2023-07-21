@@ -34,7 +34,7 @@ func StartBeaconService() error {
 		return err
 	}
 
-	indexer, err := indexer.NewIndexer(rpcClient)
+	indexer, err := indexer.NewIndexer(rpcClient, true)
 	if err != nil {
 		return err
 	}

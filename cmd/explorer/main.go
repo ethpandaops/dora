@@ -9,6 +9,7 @@ import (
 	logger "github.com/sirupsen/logrus"
 	"github.com/urfave/negroni"
 
+	"github.com/pk910/light-beaconchain-explorer/db"
 	"github.com/pk910/light-beaconchain-explorer/handlers"
 	"github.com/pk910/light-beaconchain-explorer/services"
 	"github.com/pk910/light-beaconchain-explorer/static"
@@ -36,6 +37,7 @@ func main() {
 		utils.LogFatal(err, "invalid chain configuration specified, you must specify the slots per epoch, seconds per slot and genesis timestamp in the config file", 0)
 	}
 
+	db.MustInitDB((*types.DatabaseConfig)(&cfg.WriterDatabase), (*types.DatabaseConfig)(&cfg.ReaderDatabase))
 	err = services.StartBeaconService()
 	if err != nil {
 		logger.Fatalf("error starting beacon service: %v", err)
