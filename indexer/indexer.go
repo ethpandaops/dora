@@ -259,7 +259,14 @@ func (indexer *Indexer) addBlockInfo(slot uint64, header *rpctypes.StandardV1Bea
 		indexer.state.cachedBlocks[slot] = make([]*BlockInfo, 1)
 		indexer.state.cachedBlocks[slot][0] = blockInfo
 	} else {
-		indexer.state.cachedBlocks[slot] = append(indexer.state.cachedBlocks[slot], blockInfo)
+		blocks := indexer.state.cachedBlocks[slot]
+		for bidx := 0; bidx < len(blocks); bidx++ {
+			if bytes.Equal(blocks[bidx].header.Data.Root, header.Data.Root) {
+				logger.Infof("Skip duplicate block %v.%v (%v)", slot, bidx, header.Data.Root)
+				return nil, false // block already present - skip
+			}
+		}
+		indexer.state.cachedBlocks[slot] = append(blocks, blockInfo)
 	}
 
 	if indexer.state.lowestCachedSlot == 0 || slot < indexer.state.lowestCachedSlot {
@@ -331,7 +338,6 @@ func (indexer *Indexer) addBlockInfo(slot uint64, header *rpctypes.StandardV1Bea
 								break mainLoop
 							}
 
-							block.orphaned = false
 							orphanedBlock = block
 							orphanedSlot = sidx
 							orphanedIndex = bidx
@@ -421,4 +427,17 @@ slotLoop:
 	logger.Infof("Epoch %v votes: target %v + %v = %v", epoch, epochVotes.currentEpoch.targetVoteAmount, epochVotes.nextEpoch.targetVoteAmount, epochVotes.currentEpoch.targetVoteAmount+epochVotes.nextEpoch.targetVoteAmount)
 	logger.Infof("Epoch %v votes: head %v + %v = %v", epoch, epochVotes.currentEpoch.headVoteAmount, epochVotes.nextEpoch.headVoteAmount, epochVotes.currentEpoch.headVoteAmount+epochVotes.nextEpoch.headVoteAmount)
 	logger.Infof("Epoch %v votes: total %v + %v = %v", epoch, epochVotes.currentEpoch.totalVoteAmount, epochVotes.nextEpoch.totalVoteAmount, epochVotes.currentEpoch.totalVoteAmount+epochVotes.nextEpoch.totalVoteAmount)
+
+	for slot := firstSlot; slot <= lastSlot; slot++ {
+		blocks := indexer.state.cachedBlocks[slot]
+		if blocks == nil {
+			continue
+		}
+		for bidx := 0; bidx < len(blocks); bidx++ {
+			block := blocks[bidx]
+			if block.orphaned {
+				logger.Infof("Epoch %v orphaned block %v.%v: %v", epoch, slot, bidx, block.header.Data.Root)
+			}
+		}
+	}
 }
