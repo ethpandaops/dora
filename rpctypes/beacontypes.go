@@ -150,3 +150,14 @@ type SignedBeaconBlock struct {
 	Message   BeaconBlock `json:"message"`
 	Signature BytesHexStr `json:"signature"`
 }
+
+type Validator struct {
+	PubKey                     BytesHexStr `json:"pubkey"`
+	WithdrawalCredentials      BytesHexStr `json:"withdrawal_credentials"`
+	EffectiveBalance           Uint64Str   `json:"effective_balance"`
+	Slashed                    bool        `json:"slashed"`
+	ActivationEligibilityEpoch Uint64Str   `json:"activation_eligibility_epoch"`
+	ActivationEpoch            Uint64Str   `json:"activation_epoch"`
+	ExitEpoch                  Uint64Str   `json:"exit_epoch"`
+	WithdrawableEpoch          Uint64Str   `json:"withdrawable_epoch"`
+}

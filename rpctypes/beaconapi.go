@@ -57,3 +57,12 @@ type EpochAssignments struct {
 	AttestorAssignments map[string][]uint64
 	SyncAssignments     []uint64
 }
+
+type StandardV1StateValidatorsResponse struct {
+	Data []struct {
+		Index     Uint64Str `json:"index"`
+		Balance   Uint64Str `json:"balance"`
+		Status    string    `json:"status"`
+		Validator Validator `json:"validator"`
+	} `json:"data"`
+}

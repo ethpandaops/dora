@@ -1,6 +1,7 @@
 package indexer
 
 import (
+	"bytes"
 	"errors"
 	"sync"
 	"time"
@@ -12,29 +13,41 @@ import (
 	"github.com/pk910/light-beaconchain-explorer/utils"
 )
 
+var logger = logrus.StandardLogger().WithField("module", "indexer")
+
 type Indexer struct {
 	rpcClient    *rpc.BeaconClient
 	controlMutex sync.Mutex
 	runMutex     sync.Mutex
 	running      bool
-	state        IndexerState
+	state        indexerState
 }
 
-type IndexerState struct {
+type indexerState struct {
 	lastHeadPoll       uint64
 	lastHeadBlock      uint64
+	lastHeadRoot       []byte
 	lastFinalizedBlock uint64
 	cacheMutex         sync.Mutex
 	cachedBlocks       map[uint64]*BlockInfo
+	epochStats         map[uint64]*EpochStats
 	lowestCachedSlot   uint64
 	lastProcessedEpoch uint64
+}
+
+type EpochStats struct {
+	validatorCount uint64
+	eligibleAmount uint64
+	assignments    *rpctypes.EpochAssignments
+	validators     map[uint64]*rpctypes.Validator
 }
 
 func NewIndexer(rpcClient *rpc.BeaconClient) (*Indexer, error) {
 	return &Indexer{
 		rpcClient: rpcClient,
-		state: IndexerState{
+		state: indexerState{
 			cachedBlocks: make(map[uint64]*BlockInfo),
+			epochStats:   make(map[uint64]*EpochStats),
 		},
 	}, nil
 }
@@ -88,10 +101,10 @@ func (indexer *Indexer) runIndexer() {
 		if tout <= 0 {
 			indexer.state.lastHeadPoll = utils.TimeToSlot(uint64(now.Unix()))
 			tout += time.Duration(chainConfig.SecondsPerSlot) * time.Second
-			logrus.Infof("[Indexer] Poll chain head (slot %v)", indexer.state.lastHeadPoll)
+			logger.Infof("Poll chain head (slot %v)", indexer.state.lastHeadPoll)
 			err := indexer.pollHeadBlock()
 			if err != nil {
-				logrus.Errorf("Indexer Error while polling latest head: %v", err)
+				logger.Errorf("Indexer Error while polling latest head: %v", err)
 			}
 		}
 		if sleepDelay == 0 || tout < sleepDelay {
@@ -101,7 +114,7 @@ func (indexer *Indexer) runIndexer() {
 		indexer.processIndexing()
 
 		processingTime := time.Now().Sub(now)
-		logrus.Infof("[Indexer] processing time: %v ms,  sleep: %v ms", processingTime.Milliseconds(), sleepDelay.Milliseconds()-processingTime.Milliseconds())
+		logger.Infof("processing time: %v ms,  sleep: %v ms", processingTime.Milliseconds(), sleepDelay.Milliseconds()-processingTime.Milliseconds())
 		if sleepDelay > processingTime {
 			time.Sleep(sleepDelay - processingTime)
 		}
@@ -130,8 +143,7 @@ func (indexer *Indexer) pollHeadBlock() error {
 		}
 	}
 
-	logrus.Infof("[Indexer] Process  latest  slot %v/%v: %v", utils.EpochOfSlot(headSlot), headSlot, header.Data.Root)
-	indexer.state.lastHeadBlock = headSlot
+	logger.Infof("Process latest  slot %v/%v: %v", utils.EpochOfSlot(headSlot), headSlot, header.Data.Root)
 	indexer.addBlockInfo(headSlot, header, block)
 
 	return nil
@@ -142,12 +154,16 @@ func (indexer *Indexer) pollBackfillBlock(slot uint64) (*BlockInfo, error) {
 	if err != nil {
 		return nil, err
 	}
+	if header == nil {
+		logger.Infof("Process missed  slot %v/%v", utils.EpochOfSlot(slot), slot)
+		return nil, nil
+	}
 	block, err := indexer.rpcClient.GetBlockBodyByBlockroot(header.Data.Root)
 	if err != nil {
 		return nil, err
 	}
 
-	logrus.Infof("[Indexer] Process backfill slot %v/%v: %v", utils.EpochOfSlot(uint64(header.Data.Header.Message.Slot)), header.Data.Header.Message.Slot, header.Data.Root)
+	logger.Infof("Process delayed slot %v/%v: %v", utils.EpochOfSlot(uint64(header.Data.Header.Message.Slot)), header.Data.Header.Message.Slot, header.Data.Root)
 	blockInfo := indexer.addBlockInfo(slot, header, block)
 
 	return blockInfo, nil
@@ -165,6 +181,115 @@ func (indexer *Indexer) addBlockInfo(slot uint64, header *rpctypes.StandardV1Bea
 	if indexer.state.lowestCachedSlot == 0 || slot < indexer.state.lowestCachedSlot {
 		indexer.state.lowestCachedSlot = slot
 	}
+
+	epoch := utils.EpochOfSlot(slot)
+	isEpochHead := utils.EpochOfSlot(indexer.state.lastHeadBlock) != epoch
+	indexer.state.lastHeadBlock = slot
+
+	// check for chain reorgs
+	parentRoot := utils.MustParseHex(header.Data.Header.Message.ParentRoot)
+	if indexer.state.lastHeadRoot != nil && !bytes.Equal(indexer.state.lastHeadRoot, parentRoot) {
+		// reorg detected
+		var reorgBaseBlock *BlockInfo
+		var reorgBaseSlot uint64
+		for sidx := slot - 2; sidx >= indexer.state.lowestCachedSlot; sidx-- {
+			block := indexer.state.cachedBlocks[sidx]
+			if block != nil && block.header.Data.Root == header.Data.Header.Message.ParentRoot {
+				reorgBaseSlot = sidx
+				reorgBaseBlock = block
+			}
+		}
+
+		if utils.EpochOfSlot(reorgBaseSlot) != epoch {
+			isEpochHead = true
+		}
+
+		resyncNeeded := false
+		if reorgBaseBlock == nil {
+			// reorg with > 64 blocks??
+			// resync needed
+			resyncNeeded = true
+		} else {
+			logger.Infof("Chain reorg detected, skipped %v slots", (slot - reorgBaseSlot - 1))
+
+			if reorgBaseBlock.orphanded {
+				// reorg back to a chain we've previously marked as orphanded
+				orphandedBlock := reorgBaseBlock
+				orphandedSlot := reorgBaseSlot - 1
+				orphandedBlock.orphanded = false
+				for ; orphandedSlot >= indexer.state.lowestCachedSlot; orphandedSlot-- {
+					block := indexer.state.cachedBlocks[orphandedSlot]
+					if block == nil {
+						resyncNeeded = true
+						logger.Errorf("Chain reorg, but can't find canonical chain in cache")
+						break
+					}
+					if block.header.Data.Root == orphandedBlock.header.Data.Header.Message.ParentRoot {
+						if !block.orphanded {
+							break
+						}
+						logger.Infof("Chain reorg: mark %v as canonical (complex)", block.header.Data.Header.Message.Slot)
+						block.orphanded = false
+					} else {
+						logger.Infof("Chain reorg: mark %v as orphanded (complex)", block.header.Data.Header.Message.Slot)
+						block.orphanded = true
+					}
+				}
+
+				if utils.EpochOfSlot(orphandedSlot) != epoch {
+					isEpochHead = true
+				}
+			}
+
+			for sidx := reorgBaseSlot + 1; sidx < slot; sidx++ {
+				block := indexer.state.cachedBlocks[sidx]
+				if block != nil {
+					logger.Infof("Chain reorg: mark %v as orphanded", block.header.Data.Header.Message.Slot)
+					block.orphanded = true
+				}
+			}
+		}
+
+		if resyncNeeded {
+			logger.Errorf("Large chain reorg detected, resync needed")
+		}
+	}
+	indexer.state.lastHeadRoot = utils.MustParseHex(header.Data.Root)
+
+	// check for new epoch
+	if isEpochHead {
+		logger.Infof("Epoch %v head, fetching assingments & validator stats", epoch)
+
+		// load epoch assingments
+		epochAssignments, err := indexer.rpcClient.GetEpochAssignments(epoch)
+		if err != nil {
+			logger.Errorf("Error fetching epoch %v duties: %v", epoch, err)
+		}
+
+		// load epoch stats
+		epochValidators, err := indexer.rpcClient.GetStateValidators(utils.MustParseHex(header.Data.Header.Message.StateRoot))
+		if err != nil {
+			logger.Errorf("Error fetching epoch %v/%v validators: %v", epoch, slot, err)
+		} else {
+			epochStats := EpochStats{
+				validatorCount: 0,
+				eligibleAmount: 0,
+				assignments:    epochAssignments,
+				validators:     make(map[uint64]*rpctypes.Validator),
+			}
+			for idx := 0; idx < len(epochValidators.Data); idx++ {
+				validator := epochValidators.Data[idx]
+				epochStats.validators[uint64(validator.Index)] = &validator.Validator
+				if validator.Status != "active_ongoing" {
+					continue
+				}
+				epochStats.validatorCount++
+				epochStats.eligibleAmount += uint64(validator.Validator.EffectiveBalance)
+			}
+			indexer.state.epochStats[epoch] = &epochStats
+		}
+	}
+
 	blockInfo.processAggregations()
 	return blockInfo
 }
@@ -173,17 +298,23 @@ func (indexer *Indexer) processIndexing() {
 	indexer.state.cacheMutex.Lock()
 	defer indexer.state.cacheMutex.Unlock()
 
-	// process old epochs
 	currentEpoch := utils.EpochOfSlot(indexer.state.lastHeadBlock)
-	if indexer.state.lastProcessedEpoch < currentEpoch-2 {
-		indexer.processEpoch(currentEpoch - 2)
-		indexer.state.lastProcessedEpoch = currentEpoch - 2
+	processEpoch := currentEpoch - 2
+
+	// process old epochs
+	if indexer.state.lastProcessedEpoch < processEpoch {
+		indexer.processEpoch(processEpoch)
+		indexer.state.lastProcessedEpoch = processEpoch
+
+		if indexer.state.epochStats[processEpoch] != nil {
+			delete(indexer.state.epochStats, processEpoch)
+		}
 	}
 
 	// cleanup cache
 	for indexer.state.lowestCachedSlot < (currentEpoch-1)*utils.Config.Chain.Config.SlotsPerEpoch {
 		if indexer.state.cachedBlocks[indexer.state.lowestCachedSlot] != nil {
-			logrus.Debugf("[Indexer] Dropped cached block (epoch %v, slot %v)", utils.EpochOfSlot(indexer.state.lowestCachedSlot), indexer.state.lowestCachedSlot)
+			logger.Debugf("Dropped cached block (epoch %v, slot %v)", utils.EpochOfSlot(indexer.state.lowestCachedSlot), indexer.state.lowestCachedSlot)
 			delete(indexer.state.cachedBlocks, indexer.state.lowestCachedSlot)
 		}
 		indexer.state.lowestCachedSlot++
@@ -191,7 +322,33 @@ func (indexer *Indexer) processIndexing() {
 }
 
 func (indexer *Indexer) processEpoch(epoch uint64) {
-	logrus.Infof("[Indexer] Process epoch %v", epoch)
+	logger.Infof("Process epoch %v", epoch)
 	// TODO: Process epoch aggregations and save to DB
+	firstSlot := epoch * utils.Config.Chain.Config.SlotsPerEpoch
+	lastSlot := firstSlot + utils.Config.Chain.Config.SlotsPerEpoch - 1
+	epochStats := indexer.state.epochStats[epoch]
 
+	var epochTarget string = ""
+	for slot := firstSlot; slot <= lastSlot; slot++ {
+		block := indexer.state.cachedBlocks[slot]
+		if block != nil && !block.orphanded {
+			if slot == firstSlot {
+				epochTarget = block.header.Data.Root
+			} else {
+				epochTarget = block.header.Data.Header.Message.ParentRoot
+			}
+			break
+		}
+	}
+	if epochTarget == "" {
+		logger.Errorf("Error fetching epoch %v target block (no block found)", epoch)
+		return
+	}
+
+	epochVotes := aggregateEpochVotes(indexer.state.cachedBlocks, epoch, epochStats, epochTarget, false)
+
+	logger.Infof("Epoch %v stats: %v validators (%v)", epoch, epochStats.validatorCount, epochStats.eligibleAmount)
+	logger.Infof("Epoch %v votes: target %v + %v = %v", epoch, epochVotes.currentEpoch.targetVoteAmount, epochVotes.nextEpoch.targetVoteAmount, epochVotes.currentEpoch.targetVoteAmount+epochVotes.nextEpoch.targetVoteAmount)
+	logger.Infof("Epoch %v votes: head %v + %v = %v", epoch, epochVotes.currentEpoch.headVoteAmount, epochVotes.nextEpoch.headVoteAmount, epochVotes.currentEpoch.headVoteAmount+epochVotes.nextEpoch.headVoteAmount)
+	logger.Infof("Epoch %v votes: total %v + %v = %v", epoch, epochVotes.currentEpoch.totalVoteAmount, epochVotes.nextEpoch.totalVoteAmount, epochVotes.currentEpoch.totalVoteAmount+epochVotes.nextEpoch.totalVoteAmount)
 }

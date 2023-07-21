@@ -141,8 +141,7 @@ func (bc *BeaconClient) GetBlockBodyByBlockroot(blockroot string) (*rpctypes.Sta
 	return &parsedResponse, nil
 }
 
-// GetEpochAssignments will get the epoch assignments from Lighthouse RPC api
-func (bc *BeaconClient) GetEpochAssignments(epoch uint64) (*rpctypes.EpochAssignments, error) {
+func (bc *BeaconClient) GetProposerDuties(epoch uint64) (*rpctypes.StandardV1ProposerDutiesResponse, error) {
 	proposerResp, err := bc.get(fmt.Sprintf("%s/eth/v1/validator/duties/proposer/%d", bc.endpoint, epoch))
 	if err != nil {
 		return nil, fmt.Errorf("error retrieving proposer duties: %v", err)
@@ -152,16 +151,20 @@ func (bc *BeaconClient) GetEpochAssignments(epoch uint64) (*rpctypes.EpochAssign
 	if err != nil {
 		return nil, fmt.Errorf("error parsing proposer duties: %v", err)
 	}
+	return &parsedProposerResponse, nil
+}
+
+// GetEpochAssignments will get the epoch assignments from Lighthouse RPC api
+func (bc *BeaconClient) GetEpochAssignments(epoch uint64) (*rpctypes.EpochAssignments, error) {
+	parsedProposerResponse, err := bc.GetProposerDuties(epoch)
+	if err != nil {
+		return nil, err
+	}
 
 	// fetch the block root that the proposer data is dependent on
-	headerResp, err := bc.get(fmt.Sprintf("%s/eth/v1/beacon/headers/%s", bc.endpoint, parsedProposerResponse.DependentRoot))
+	parsedHeader, err := bc.GetBlockHeaderByBlockroot(utils.MustParseHex(parsedProposerResponse.DependentRoot))
 	if err != nil {
-		return nil, fmt.Errorf("error retrieving chain header: %v", err)
-	}
-	var parsedHeader rpctypes.StandardV1BeaconHeaderResponse
-	err = json.Unmarshal(headerResp, &parsedHeader)
-	if err != nil {
-		return nil, fmt.Errorf("error parsing chain header: %v", err)
+		return nil, err
 	}
 	depStateRoot := parsedHeader.Data.Header.Message.StateRoot
 
@@ -181,12 +184,12 @@ func (bc *BeaconClient) GetEpochAssignments(epoch uint64) (*rpctypes.EpochAssign
 		AttestorAssignments: make(map[string][]uint64),
 	}
 
-	// propose
+	// proposer duties
 	for _, duty := range parsedProposerResponse.Data {
 		assignments.ProposerAssignments[uint64(duty.Slot)] = uint64(duty.ValidatorIndex)
 	}
 
-	// attest
+	// attester duties
 	for _, committee := range parsedCommittees.Data {
 		for i, valIndex := range committee.Validators {
 			valIndexU64, err := strconv.ParseUint(valIndex, 10, 64)
@@ -218,7 +221,7 @@ func (bc *BeaconClient) GetEpochAssignments(epoch uint64) (*rpctypes.EpochAssign
 		}
 		assignments.SyncAssignments = make([]uint64, len(parsedSyncCommittees.Data.Validators))
 
-		// sync
+		// sync committee duties
 		for i, valIndexStr := range parsedSyncCommittees.Data.Validators {
 			valIndexU64, err := strconv.ParseUint(valIndexStr, 10, 64)
 			if err != nil {
@@ -229,4 +232,17 @@ func (bc *BeaconClient) GetEpochAssignments(epoch uint64) (*rpctypes.EpochAssign
 	}
 
 	return assignments, nil
+}
+
+func (bc *BeaconClient) GetStateValidators(stateroot []byte) (*rpctypes.StandardV1StateValidatorsResponse, error) {
+	resp, err := bc.get(fmt.Sprintf("%s/eth/v1/beacon/states/0x%x/validators", bc.endpoint, stateroot))
+	if err != nil {
+		return nil, fmt.Errorf("error retrieving state validators: %v", err)
+	}
+	var parsedResponse rpctypes.StandardV1StateValidatorsResponse
+	err = json.Unmarshal(resp, &parsedResponse)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing state validators: %v", err)
+	}
+	return &parsedResponse, nil
 }
