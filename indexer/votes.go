@@ -52,10 +52,7 @@ func aggregateEpochVotes(blockMap map[uint64]*BlockInfo, epoch uint64, epochStat
 						continue
 					}
 					if utils.BitAtVector(voteBitset, bitIdx) {
-						validator := epochStats.validators[validatorIdx]
-						if validator != nil {
-							voteAmount += uint64(validator.EffectiveBalance)
-						}
+						voteAmount += uint64(epochStats.validatorBalances[validatorIdx])
 					}
 				}
 

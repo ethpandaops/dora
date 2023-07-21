@@ -3,6 +3,7 @@ package indexer
 import (
 	"bytes"
 	"errors"
+	"runtime"
 	"sync"
 	"time"
 
@@ -36,10 +37,10 @@ type indexerState struct {
 }
 
 type EpochStats struct {
-	validatorCount uint64
-	eligibleAmount uint64
-	assignments    *rpctypes.EpochAssignments
-	validators     map[uint64]*rpctypes.Validator
+	validatorCount    uint64
+	eligibleAmount    uint64
+	assignments       *rpctypes.EpochAssignments
+	validatorBalances map[uint64]uint64
 }
 
 func NewIndexer(rpcClient *rpc.BeaconClient) (*Indexer, error) {
@@ -114,6 +115,9 @@ func (indexer *Indexer) runIndexer() {
 		indexer.processIndexing()
 
 		processingTime := time.Now().Sub(now)
+		if sleepDelay < processingTime {
+			sleepDelay = processingTime
+		}
 		logger.Infof("processing time: %v ms,  sleep: %v ms", processingTime.Milliseconds(), sleepDelay.Milliseconds()-processingTime.Milliseconds())
 		if sleepDelay > processingTime {
 			time.Sleep(sleepDelay - processingTime)
@@ -272,14 +276,14 @@ func (indexer *Indexer) addBlockInfo(slot uint64, header *rpctypes.StandardV1Bea
 			logger.Errorf("Error fetching epoch %v/%v validators: %v", epoch, slot, err)
 		} else {
 			epochStats := EpochStats{
-				validatorCount: 0,
-				eligibleAmount: 0,
-				assignments:    epochAssignments,
-				validators:     make(map[uint64]*rpctypes.Validator),
+				validatorCount:    0,
+				eligibleAmount:    0,
+				assignments:       epochAssignments,
+				validatorBalances: make(map[uint64]uint64),
 			}
 			for idx := 0; idx < len(epochValidators.Data); idx++ {
 				validator := epochValidators.Data[idx]
-				epochStats.validators[uint64(validator.Index)] = &validator.Validator
+				epochStats.validatorBalances[uint64(validator.Index)] = uint64(validator.Validator.EffectiveBalance)
 				if validator.Status != "active_ongoing" {
 					continue
 				}
@@ -288,6 +292,8 @@ func (indexer *Indexer) addBlockInfo(slot uint64, header *rpctypes.StandardV1Bea
 			}
 			indexer.state.epochStats[epoch] = &epochStats
 		}
+
+		defer runtime.GC() // free memory used to parse the validators state - this might be hundreds of MBs
 	}
 
 	blockInfo.processAggregations()
