@@ -485,7 +485,7 @@ slotLoop:
 		}
 
 		if indexer.synchronizer == nil || !indexer.synchronizer.running {
-			err = db.SetExplorerState("", &indexerSyncState{
+			err = db.SetExplorerState("indexer.syncstate", &indexerSyncState{
 				Epoch: epoch,
 			}, tx)
 			if err != nil {
