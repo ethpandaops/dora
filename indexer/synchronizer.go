@@ -167,8 +167,8 @@ func (sync *synchronizerState) syncEpoch(syncEpoch uint64) bool {
 			return false
 		}
 		sync.cachedBlocks[slot] = []*BlockInfo{{
-			header: header,
-			block:  block,
+			Header: header,
+			Block:  block,
 		}}
 	}
 	sync.cachedSlot = lastSlot
@@ -193,25 +193,25 @@ func (sync *synchronizerState) syncEpoch(syncEpoch uint64) bool {
 	}
 
 	epochStats := EpochStats{
-		validatorCount:    0,
-		eligibleAmount:    0,
-		assignments:       epochAssignments,
-		validatorBalances: make(map[uint64]uint64),
+		ValidatorCount:    0,
+		EligibleAmount:    0,
+		Assignments:       epochAssignments,
+		ValidatorBalances: make(map[uint64]uint64),
 	}
 
 	// load epoch stats
-	epochValidators, err := sync.indexer.rpcClient.GetStateValidators(firstBlock.header.Data.Header.Message.StateRoot)
+	epochValidators, err := sync.indexer.rpcClient.GetStateValidators(firstBlock.Header.Data.Header.Message.StateRoot)
 	if err != nil {
-		logger.Errorf("Error fetching epoch %v/%v validators: %v", syncEpoch, firstBlock.header.Data.Header.Message.Slot, err)
+		logger.Errorf("Error fetching epoch %v/%v validators: %v", syncEpoch, firstBlock.Header.Data.Header.Message.Slot, err)
 	} else {
 		for idx := 0; idx < len(epochValidators.Data); idx++ {
 			validator := epochValidators.Data[idx]
-			epochStats.validatorBalances[uint64(validator.Index)] = uint64(validator.Validator.EffectiveBalance)
+			epochStats.ValidatorBalances[uint64(validator.Index)] = uint64(validator.Validator.EffectiveBalance)
 			if validator.Status != "active_ongoing" {
 				continue
 			}
-			epochStats.validatorCount++
-			epochStats.eligibleAmount += uint64(validator.Validator.EffectiveBalance)
+			epochStats.ValidatorCount++
+			epochStats.EligibleAmount += uint64(validator.Validator.EffectiveBalance)
 		}
 	}
 	if sync.checkKillChan(0) {
@@ -220,10 +220,10 @@ func (sync *synchronizerState) syncEpoch(syncEpoch uint64) bool {
 
 	// process epoch vote aggregations
 	var targetRoot []byte
-	if uint64(firstBlock.header.Data.Header.Message.Slot) == firstSlot {
-		targetRoot = firstBlock.header.Data.Root
+	if uint64(firstBlock.Header.Data.Header.Message.Slot) == firstSlot {
+		targetRoot = firstBlock.Header.Data.Root
 	} else {
-		targetRoot = firstBlock.header.Data.Header.Message.ParentRoot
+		targetRoot = firstBlock.Header.Data.Header.Message.ParentRoot
 	}
 	epochVotes := aggregateEpochVotes(sync.cachedBlocks, syncEpoch, &epochStats, targetRoot, false)
 

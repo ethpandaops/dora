@@ -39,9 +39,9 @@ func aggregateEpochVotes(blockMap map[uint64][]*BlockInfo, epoch uint64, epochSt
 		for bidx := 0; bidx < len(blocks); bidx++ {
 			block := blocks[bidx]
 
-			if !block.orphaned {
+			if !block.Orphaned {
 				isNextEpoch := utils.EpochOfSlot(slot) > epoch
-				for _, att := range block.block.Data.Message.Body.Attestations {
+				for _, att := range block.Block.Data.Message.Body.Attestations {
 					if utils.EpochOfSlot(uint64(att.Data.Slot)) != epoch {
 						continue
 					}
@@ -50,14 +50,14 @@ func aggregateEpochVotes(blockMap map[uint64][]*BlockInfo, epoch uint64, epochSt
 					voteAmount := uint64(0)
 					voteBitset := att.AggregationBits
 					votedBitset := votedBitsets[attKey]
-					voteValidators := epochStats.assignments.AttestorAssignments[attKey]
+					voteValidators := epochStats.Assignments.AttestorAssignments[attKey]
 					for bitIdx, validatorIdx := range voteValidators {
 						if votedBitset != nil && utils.BitAtVector(votedBitset, bitIdx) {
 							// don't "double count" votes, if a attestation aggregation has been extended and re-included
 							continue
 						}
 						if utils.BitAtVector(voteBitset, bitIdx) {
-							voteAmount += uint64(epochStats.validatorBalances[validatorIdx])
+							voteAmount += uint64(epochStats.ValidatorBalances[validatorIdx])
 						}
 					}
 
@@ -81,7 +81,7 @@ func aggregateEpochVotes(blockMap map[uint64][]*BlockInfo, epoch uint64, epochSt
 					} else {
 						logger.Infof("vote target missmatch %v != 0x%x", att.Data.Target.Root, targetRoot)
 					}
-					if bytes.Equal(att.Data.BeaconBlockRoot, block.header.Data.Header.Message.ParentRoot) {
+					if bytes.Equal(att.Data.BeaconBlockRoot, block.Header.Data.Header.Message.ParentRoot) {
 						if isNextEpoch {
 							votes.nextEpoch.headVoteAmount += voteAmount
 						} else {

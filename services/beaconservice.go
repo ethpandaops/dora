@@ -4,6 +4,8 @@ import (
 	"fmt"
 
 	"github.com/pk910/light-beaconchain-explorer/cache"
+	"github.com/pk910/light-beaconchain-explorer/db"
+	"github.com/pk910/light-beaconchain-explorer/dbtypes"
 	"github.com/pk910/light-beaconchain-explorer/indexer"
 	"github.com/pk910/light-beaconchain-explorer/rpc"
 	"github.com/pk910/light-beaconchain-explorer/rpctypes"
@@ -116,4 +118,80 @@ func (bs *BeaconService) GetEpochAssignments(epoch uint64) (*rpctypes.EpochAssig
 		return nil, err
 	}
 	return wanted, nil
+}
+
+func (bs *BeaconService) GetDbEpochs(firstEpoch uint64, limit uint32) []*dbtypes.Epoch {
+	resEpochs := make([]*dbtypes.Epoch, limit)
+	resIdx := 0
+
+	dbEpochs := db.GetEpochs(firstEpoch, limit)
+	dbIdx := 0
+	dbCnt := len(dbEpochs)
+
+	idxMinEpoch := utils.EpochOfSlot(bs.indexer.GetLowestCachedSlot())
+	idxHeadEpoch := utils.EpochOfSlot(bs.indexer.GetHeadSlot())
+
+	lastEpoch := firstEpoch - uint64(limit)
+	if lastEpoch < 0 {
+		lastEpoch = 0
+	}
+	for epoch := firstEpoch; epoch >= lastEpoch && resIdx < int(limit); epoch-- {
+		var resEpoch *dbtypes.Epoch
+		if dbIdx < dbCnt && dbEpochs[dbIdx].Epoch == epoch {
+			resEpoch = dbEpochs[dbIdx]
+			dbIdx++
+		}
+		if epoch >= idxMinEpoch && epoch <= idxHeadEpoch {
+			resEpoch = bs.indexer.BuildLiveEpoch(epoch)
+		}
+		if resEpoch != nil {
+			resEpochs[resIdx] = resEpoch
+			resIdx++
+		}
+	}
+
+	return resEpochs
+}
+
+func (bs *BeaconService) GetDbBlocks(firstSlot uint64, limit int32, withOrphaned bool) []*dbtypes.Block {
+	resBlocks := make([]*dbtypes.Block, limit)
+	resIdx := 0
+
+	idxMinSlot := bs.indexer.GetLowestCachedSlot()
+	idxHeadSlot := bs.indexer.GetHeadSlot()
+	if firstSlot > idxHeadSlot {
+		firstSlot = idxHeadSlot
+	}
+
+	slot := firstSlot
+	if firstSlot >= idxMinSlot {
+		for ; slot >= idxMinSlot && resIdx < int(limit); slot-- {
+			blocks := bs.indexer.GetCachedBlocks(slot)
+			if blocks != nil {
+				for bidx := 0; bidx < len(blocks) && resIdx < int(limit); bidx++ {
+					block := blocks[bidx]
+					if block.Orphaned && !withOrphaned {
+						continue
+					}
+					dbBlock := bs.indexer.BuildLiveBlock(block)
+					if dbBlock != nil {
+						resBlocks[resIdx] = dbBlock
+						resIdx++
+					}
+				}
+			}
+		}
+	}
+
+	if resIdx < int(limit) {
+		dbBlocks := db.GetBlocks(slot, uint32(limit-int32(resIdx)), withOrphaned)
+		if dbBlocks != nil {
+			for idx := 0; idx < len(dbBlocks) && resIdx < int(limit); idx++ {
+				resBlocks[resIdx] = dbBlocks[idx]
+				resIdx++
+			}
+		}
+	}
+
+	return resBlocks
 }

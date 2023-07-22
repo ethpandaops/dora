@@ -20,6 +20,8 @@ type Block struct {
 	ProposerSlashingCount uint64  `db:"proposer_slashing_count"`
 	BLSChangeCount        uint64  `db:"bls_change_count"`
 	EthTransactionCount   uint64  `db:"eth_transaction_count"`
+	EthBlockNumber        uint64  `db:"eth_block_number"`
+	EthBlockHash          []byte  `db:"eth_block_hash"`
 	SyncParticipation     float32 `db:"sync_participation"`
 }
 

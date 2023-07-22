@@ -10,6 +10,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/pk910/light-beaconchain-explorer/db"
+	"github.com/pk910/light-beaconchain-explorer/dbtypes"
 	"github.com/pk910/light-beaconchain-explorer/rpc"
 	"github.com/pk910/light-beaconchain-explorer/rpctypes"
 	"github.com/pk910/light-beaconchain-explorer/utils"
@@ -45,11 +46,11 @@ type indexerSyncState struct {
 }
 
 type EpochStats struct {
-	statsMutex        sync.Mutex
-	validatorCount    uint64
-	eligibleAmount    uint64
-	assignments       *rpctypes.EpochAssignments
-	validatorBalances map[uint64]uint64
+	StatsMutex        sync.Mutex
+	ValidatorCount    uint64
+	EligibleAmount    uint64
+	Assignments       *rpctypes.EpochAssignments
+	ValidatorBalances map[uint64]uint64
 }
 
 func NewIndexer(rpcClient *rpc.BeaconClient, inMemoryEpochs uint16, epochProcessingDelay uint16, writeDb bool) (*Indexer, error) {
@@ -77,6 +78,172 @@ func (indexer *Indexer) Start() error {
 	go indexer.runIndexer()
 
 	return nil
+}
+
+func (indexer *Indexer) GetLowestCachedSlot() uint64 {
+	indexer.state.cacheMutex.Lock()
+	defer indexer.state.cacheMutex.Unlock()
+	return indexer.state.lowestCachedSlot
+}
+
+func (indexer *Indexer) GetHeadSlot() uint64 {
+	indexer.state.cacheMutex.Lock()
+	defer indexer.state.cacheMutex.Unlock()
+	return indexer.state.lastHeadBlock
+}
+
+func (indexer *Indexer) GetCachedBlocks(slot uint64) []*BlockInfo {
+	indexer.state.cacheMutex.Lock()
+	defer indexer.state.cacheMutex.Unlock()
+
+	if slot < indexer.state.lowestCachedSlot {
+		return nil
+	}
+	blocks := indexer.state.cachedBlocks[slot]
+	if blocks == nil {
+		return nil
+	}
+	resBlocks := make([]*BlockInfo, len(blocks))
+	copy(resBlocks, blocks)
+	return resBlocks
+}
+
+func (indexer *Indexer) GetCachedEpochStats(epoch uint64) *EpochStats {
+	indexer.state.cacheMutex.Lock()
+	defer indexer.state.cacheMutex.Unlock()
+	return indexer.state.epochStats[epoch]
+}
+
+func (indexer *Indexer) BuildLiveEpoch(epoch uint64) *dbtypes.Epoch {
+	indexer.state.cacheMutex.Lock()
+	defer indexer.state.cacheMutex.Unlock()
+
+	epochStats := indexer.state.epochStats[epoch]
+	if epochStats == nil {
+		return nil
+	}
+
+	var firstBlock *BlockInfo
+	firstSlot := epoch * utils.Config.Chain.Config.SlotsPerEpoch
+	lastSlot := firstSlot + (utils.Config.Chain.Config.SlotsPerEpoch) - 1
+slotLoop:
+	for slot := firstSlot; slot <= lastSlot; slot++ {
+		if indexer.state.cachedBlocks[slot] != nil {
+			blocks := indexer.state.cachedBlocks[slot]
+			for bidx := 0; bidx < len(blocks); bidx++ {
+				if !blocks[bidx].Orphaned {
+					firstBlock = blocks[bidx]
+					break slotLoop
+				}
+			}
+		}
+	}
+	if firstBlock == nil {
+		return nil
+	}
+
+	var targetRoot []byte
+	if uint64(firstBlock.Header.Data.Header.Message.Slot) == firstSlot {
+		targetRoot = firstBlock.Header.Data.Root
+	} else {
+		targetRoot = firstBlock.Header.Data.Header.Message.ParentRoot
+	}
+	epochVotes := aggregateEpochVotes(indexer.state.cachedBlocks, epoch, epochStats, targetRoot, false)
+
+	totalSyncAssigned := 0
+	totalSyncVoted := 0
+	dbEpoch := dbtypes.Epoch{
+		Epoch:          epoch,
+		ValidatorCount: epochStats.ValidatorCount,
+		Eligible:       epochStats.EligibleAmount,
+		VotedTarget:    epochVotes.currentEpoch.targetVoteAmount + epochVotes.nextEpoch.targetVoteAmount,
+		VotedHead:      epochVotes.currentEpoch.headVoteAmount + epochVotes.nextEpoch.headVoteAmount,
+		VotedTotal:     epochVotes.currentEpoch.totalVoteAmount + epochVotes.nextEpoch.totalVoteAmount,
+	}
+
+	// aggregate blocks
+	for slot := firstSlot; slot <= lastSlot; slot++ {
+		blocks := indexer.state.cachedBlocks[slot]
+		if blocks == nil {
+			continue
+		}
+		for bidx := 0; bidx < len(blocks); bidx++ {
+			block := blocks[bidx]
+			if block.Orphaned {
+				dbEpoch.OrphanedCount++
+				continue
+			}
+
+			dbEpoch.BlockCount++
+			dbEpoch.AttestationCount += uint64(len(block.Block.Data.Message.Body.Attestations))
+			dbEpoch.DepositCount += uint64(len(block.Block.Data.Message.Body.Deposits))
+			dbEpoch.ExitCount += uint64(len(block.Block.Data.Message.Body.VoluntaryExits))
+			dbEpoch.AttesterSlashingCount += uint64(len(block.Block.Data.Message.Body.AttesterSlashings))
+			dbEpoch.ProposerSlashingCount += uint64(len(block.Block.Data.Message.Body.ProposerSlashings))
+			dbEpoch.BLSChangeCount += uint64(len(block.Block.Data.Message.Body.SignedBLSToExecutionChange))
+
+			syncAggregate := block.Block.Data.Message.Body.SyncAggregate
+			syncAssignments := epochStats.Assignments.SyncAssignments
+			if syncAggregate != nil && syncAssignments != nil {
+				votedCount := 0
+				assignedCount := len(syncAssignments)
+				for i := 0; i < assignedCount; i++ {
+					if utils.BitAtVector(syncAggregate.SyncCommitteeBits, i) {
+						votedCount++
+					}
+				}
+				totalSyncAssigned += assignedCount
+				totalSyncVoted += votedCount
+			}
+
+			if executionPayload := block.Block.Data.Message.Body.ExecutionPayload; executionPayload != nil {
+				dbEpoch.EthTransactionCount += uint64(len(executionPayload.Transactions))
+			}
+		}
+	}
+
+	return &dbEpoch
+}
+
+func (indexer *Indexer) BuildLiveBlock(block *BlockInfo) *dbtypes.Block {
+	dbBlock := dbtypes.Block{
+		Root:                  block.Header.Data.Root,
+		Slot:                  uint64(block.Header.Data.Header.Message.Slot),
+		ParentRoot:            block.Header.Data.Header.Message.ParentRoot,
+		StateRoot:             block.Header.Data.Header.Message.StateRoot,
+		Orphaned:              block.Orphaned,
+		Proposer:              uint64(block.Block.Data.Message.ProposerIndex),
+		Graffiti:              block.Block.Data.Message.Body.Graffiti,
+		AttestationCount:      uint64(len(block.Block.Data.Message.Body.Attestations)),
+		DepositCount:          uint64(len(block.Block.Data.Message.Body.Deposits)),
+		ExitCount:             uint64(len(block.Block.Data.Message.Body.VoluntaryExits)),
+		AttesterSlashingCount: uint64(len(block.Block.Data.Message.Body.AttesterSlashings)),
+		ProposerSlashingCount: uint64(len(block.Block.Data.Message.Body.ProposerSlashings)),
+		BLSChangeCount:        uint64(len(block.Block.Data.Message.Body.SignedBLSToExecutionChange)),
+	}
+
+	epoch := utils.EpochOfSlot(uint64(block.Header.Data.Header.Message.Slot))
+	epochStats := indexer.state.epochStats[epoch]
+	syncAggregate := block.Block.Data.Message.Body.SyncAggregate
+	syncAssignments := epochStats.Assignments.SyncAssignments
+	if syncAggregate != nil && syncAssignments != nil {
+		votedCount := 0
+		assignedCount := len(syncAssignments)
+		for i := 0; i < assignedCount; i++ {
+			if utils.BitAtVector(syncAggregate.SyncCommitteeBits, i) {
+				votedCount++
+			}
+		}
+		dbBlock.SyncParticipation = float32(votedCount) / float32(assignedCount)
+	}
+
+	if executionPayload := block.Block.Data.Message.Body.ExecutionPayload; executionPayload != nil {
+		dbBlock.EthTransactionCount = uint64(len(executionPayload.Transactions))
+		dbBlock.EthBlockNumber = uint64(executionPayload.BlockNumber)
+		dbBlock.EthBlockHash = executionPayload.BlockHash
+	}
+
+	return &dbBlock
 }
 
 func (indexer *Indexer) runIndexer() {
@@ -253,13 +420,13 @@ func (indexer *Indexer) processBlock(slot uint64, header *rpctypes.StandardV1Bea
 
 		indexer.state.cacheMutex.Lock()
 		epochStats := EpochStats{
-			validatorCount:    0,
-			eligibleAmount:    0,
-			assignments:       epochAssignments,
-			validatorBalances: make(map[uint64]uint64),
+			ValidatorCount:    0,
+			EligibleAmount:    0,
+			Assignments:       epochAssignments,
+			ValidatorBalances: make(map[uint64]uint64),
 		}
-		epochStats.statsMutex.Lock()
-		defer epochStats.statsMutex.Unlock()
+		epochStats.StatsMutex.Lock()
+		defer epochStats.StatsMutex.Unlock()
 		indexer.state.epochStats[epoch] = &epochStats
 		indexer.state.cacheMutex.Unlock()
 
@@ -271,12 +438,12 @@ func (indexer *Indexer) processBlock(slot uint64, header *rpctypes.StandardV1Bea
 
 			for idx := 0; idx < len(epochValidators.Data); idx++ {
 				validator := epochValidators.Data[idx]
-				epochStats.validatorBalances[uint64(validator.Index)] = uint64(validator.Validator.EffectiveBalance)
+				epochStats.ValidatorBalances[uint64(validator.Index)] = uint64(validator.Validator.EffectiveBalance)
 				if validator.Status != "active_ongoing" {
 					continue
 				}
-				epochStats.validatorCount++
-				epochStats.eligibleAmount += uint64(validator.Validator.EffectiveBalance)
+				epochStats.ValidatorCount++
+				epochStats.EligibleAmount += uint64(validator.Validator.EffectiveBalance)
 			}
 
 		}
@@ -296,8 +463,8 @@ func (indexer *Indexer) addBlockInfo(slot uint64, header *rpctypes.StandardV1Bea
 	defer indexer.state.cacheMutex.Unlock()
 
 	blockInfo := &BlockInfo{
-		header: header,
-		block:  block,
+		Header: header,
+		Block:  block,
 	}
 	if indexer.state.cachedBlocks[slot] == nil {
 		indexer.state.cachedBlocks[slot] = make([]*BlockInfo, 1)
@@ -305,7 +472,7 @@ func (indexer *Indexer) addBlockInfo(slot uint64, header *rpctypes.StandardV1Bea
 	} else {
 		blocks := indexer.state.cachedBlocks[slot]
 		for bidx := 0; bidx < len(blocks); bidx++ {
-			if bytes.Equal(blocks[bidx].header.Data.Root, header.Data.Root) {
+			if bytes.Equal(blocks[bidx].Header.Data.Root, header.Data.Root) {
 				logger.Infof("Skip duplicate block %v.%v (%v)", slot, bidx, header.Data.Root)
 				return nil, false // block already present - skip
 			}
@@ -333,16 +500,16 @@ func (indexer *Indexer) addBlockInfo(slot uint64, header *rpctypes.StandardV1Bea
 			}
 			for bidx := 0; bidx < len(blocks); bidx++ {
 				block := blocks[bidx]
-				if bytes.Equal(block.header.Data.Root, header.Data.Root) {
+				if bytes.Equal(block.Header.Data.Root, header.Data.Root) {
 					continue
 				}
-				if bytes.Equal(block.header.Data.Root, header.Data.Header.Message.ParentRoot) {
+				if bytes.Equal(block.Header.Data.Root, header.Data.Header.Message.ParentRoot) {
 					reorgBaseSlot = sidx
 					reorgBaseIndex = bidx
 					reorgBaseBlock = block
 				} else {
-					logger.Infof("Chain reorg: mark %v.%v as orphaned (%v)", sidx, bidx, block.header.Data.Root)
-					block.orphaned = true
+					logger.Infof("Chain reorg: mark %v.%v as orphaned (%v)", sidx, bidx, block.Header.Data.Root)
+					block.Orphaned = true
 				}
 			}
 			if reorgBaseBlock != nil {
@@ -359,11 +526,11 @@ func (indexer *Indexer) addBlockInfo(slot uint64, header *rpctypes.StandardV1Bea
 			orphanedBlock := reorgBaseBlock
 			orphanedSlot := reorgBaseSlot
 			orphanedIndex := reorgBaseIndex
-			for orphanedBlock.orphaned {
+			for orphanedBlock.Orphaned {
 				// reorg back to a block we've previously marked as orphaned
 				// walk backwards and fix orphaned flags
-				orphanedBlock.orphaned = false
-				logger.Infof("Chain reorg: mark %v.%v as canonical (%v)", orphanedSlot, orphanedIndex, orphanedBlock.header.Data.Root)
+				orphanedBlock.Orphaned = false
+				logger.Infof("Chain reorg: mark %v.%v as canonical (%v)", orphanedSlot, orphanedIndex, orphanedBlock.Header.Data.Root)
 
 				foundReorgBase := false
 				for sidx := reorgBaseSlot - 1; sidx >= indexer.state.lowestCachedSlot; sidx-- {
@@ -374,8 +541,8 @@ func (indexer *Indexer) addBlockInfo(slot uint64, header *rpctypes.StandardV1Bea
 					for bidx := 0; bidx < len(blocks); bidx++ {
 						block := blocks[bidx]
 
-						if bytes.Equal(block.header.Data.Root, orphanedBlock.header.Data.Header.Message.ParentRoot) {
-							if !block.orphaned {
+						if bytes.Equal(block.Header.Data.Root, orphanedBlock.Header.Data.Header.Message.ParentRoot) {
+							if !block.Orphaned {
 								// reached end of reorg range
 								foundReorgBase = true
 							}
@@ -384,8 +551,8 @@ func (indexer *Indexer) addBlockInfo(slot uint64, header *rpctypes.StandardV1Bea
 							orphanedSlot = sidx
 							orphanedIndex = bidx
 						} else {
-							logger.Infof("Chain reorg: mark %v.%v as orphaned (%v)", sidx, bidx, block.header.Data.Root)
-							block.orphaned = true
+							logger.Infof("Chain reorg: mark %v.%v as orphaned (%v)", sidx, bidx, block.Header.Data.Root)
+							block.Orphaned = true
 						}
 					}
 					if foundReorgBase {
@@ -455,11 +622,11 @@ slotLoop:
 		}
 		for bidx := 0; bidx < len(blocks); bidx++ {
 			block := blocks[bidx]
-			if !block.orphaned {
+			if !block.Orphaned {
 				if slot == firstSlot {
-					epochTarget = block.header.Data.Root
+					epochTarget = block.Header.Data.Root
 				} else {
-					epochTarget = block.header.Data.Header.Message.ParentRoot
+					epochTarget = block.Header.Data.Header.Message.ParentRoot
 				}
 				break slotLoop
 			}
@@ -501,7 +668,7 @@ slotLoop:
 		}
 	}
 
-	logger.Infof("Epoch %v stats: %v validators (%v)", epoch, epochStats.validatorCount, epochStats.eligibleAmount)
+	logger.Infof("Epoch %v stats: %v validators (%v)", epoch, epochStats.ValidatorCount, epochStats.EligibleAmount)
 	logger.Infof("Epoch %v votes: target %v + %v = %v", epoch, epochVotes.currentEpoch.targetVoteAmount, epochVotes.nextEpoch.targetVoteAmount, epochVotes.currentEpoch.targetVoteAmount+epochVotes.nextEpoch.targetVoteAmount)
 	logger.Infof("Epoch %v votes: head %v + %v = %v", epoch, epochVotes.currentEpoch.headVoteAmount, epochVotes.nextEpoch.headVoteAmount, epochVotes.currentEpoch.headVoteAmount+epochVotes.nextEpoch.headVoteAmount)
 	logger.Infof("Epoch %v votes: total %v + %v = %v", epoch, epochVotes.currentEpoch.totalVoteAmount, epochVotes.nextEpoch.totalVoteAmount, epochVotes.currentEpoch.totalVoteAmount+epochVotes.nextEpoch.totalVoteAmount)
@@ -513,8 +680,8 @@ slotLoop:
 		}
 		for bidx := 0; bidx < len(blocks); bidx++ {
 			block := blocks[bidx]
-			if block.orphaned {
-				logger.Infof("Epoch %v orphaned block %v.%v: %v", epoch, slot, bidx, block.header.Data.Root)
+			if block.Orphaned {
+				logger.Infof("Epoch %v orphaned block %v.%v: %v", epoch, slot, bidx, block.Header.Data.Root)
 			}
 		}
 	}

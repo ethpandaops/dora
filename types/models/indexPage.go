@@ -13,7 +13,9 @@ type IndexPageData struct {
 	CurrentFinalizedEpoch uint64                 `json:"current_finalized_epoch"`
 	CurrentSlot           uint64                 `json:"current_slot"`
 	RecentBlocks          []*IndexPageDataBlocks `json:"recent_blocks"`
+	RecentBlockCount      uint64
 	RecentEpochs          []*IndexPageDataEpochs `json:"recent_epochs"`
+	RecentEpochCount      uint64
 }
 
 type IndexPageDataEpochs struct {
@@ -24,7 +26,7 @@ type IndexPageDataEpochs struct {
 	TargetVoted       uint64    `json:"target_voted"`
 	HeadVoted         uint64    `json:"head_voted"`
 	TotalVoted        uint64    `json:"total_voted"`
-	VoteParticipation float32   `json:"vote_participation"`
+	VoteParticipation float64   `json:"vote_participation"`
 }
 
 type IndexPageDataBlocks struct {

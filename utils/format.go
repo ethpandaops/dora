@@ -35,6 +35,10 @@ func FormatFullETHFromGwei(gwei uint64) string {
 	return fmt.Sprintf("%v ETH", uint64(float64(gwei)/math.Pow10(9)))
 }
 
+func FormatETHAddCommasFromGwei(gwei uint64) template.HTML {
+	return FormatAddCommas(uint64(float64(gwei) / math.Pow10(9)))
+}
+
 func FormatFloat(num float64, precision int) string {
 	p := message.NewPrinter(language.English)
 	f := fmt.Sprintf("%%.%vf", precision)
@@ -310,7 +314,7 @@ func FormatRecentTimeShort(ts time.Time) template.HTML {
 	} else if absDuraction < 60*time.Second {
 		timeStr = fmt.Sprintf("%v sec.", uint(absDuraction.Seconds()))
 	} else if absDuraction < 60*time.Minute {
-		timeStr = fmt.Sprintf("%v min.", uint(absDuraction.Seconds()))
+		timeStr = fmt.Sprintf("%v min.", uint(absDuraction.Minutes()))
 	} else if absDuraction < 24*time.Hour {
 		timeStr = fmt.Sprintf("%v hr.", uint(absDuraction.Hours()))
 	} else {

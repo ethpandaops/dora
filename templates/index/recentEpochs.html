@@ -18,19 +18,7 @@
               <th>Voted</th>
             </tr>
           </thead>
-          {{ if not .RecentEpochs }}
-            <tbody>
-              <tr style="height: 430px;">
-                <td></td>
-                <td style="vertical-align: middle;" colspan="4">
-                  <div class="img-fluid mx-auto p-3 d-flex align-items-center" style="max-height: 400px; width: auto; overflow: hidden;">
-                    {{ template "professor_svg" }}
-                  </div>
-                </td>
-                <td></td>
-              </tr>
-            </tbody>
-          {{ else }}
+          {{ if gt .RecentEpochCount 0 }}
             <tbody>
               {{ range $i, $epoch := .RecentEpochs }}
                 <tr>
@@ -43,17 +31,29 @@
                       <span class="badge badge-pill bg-warning text-white" style="font-size: 12px; font-weight: 500;">No</span>
                     {{ end }}
                   </td>
-                  <td>{{ formatEthFromGweiShort $epoch.EligibleEther }}</td>
+                  <td>{{ formatEthAddCommasFromGwei $epoch.EligibleEther }}</td>
                   <td>
                     <div style="position:relative;width:inherit;height:inherit;">
-                      {{ formatEthFromGweiShort $epoch.TargetVoted }} <small class="text-muted ml-3">({{ $epoch.VoteParticipation }}%)</small>
+                      {{ formatEthAddCommasFromGwei $epoch.TargetVoted }} <small class="text-muted ml-3">({{ formatFloat $epoch.VoteParticipation 2 }}%)</small>
                       <div class="progress" style="position:absolute;bottom:-6px;width:100%;height:4px;">
-                      <div class="progress-bar" role="progressbar" style="width: {{ $epoch.VoteParticipation }}%;" aria-valuenow="{{ $epoch.VoteParticipation }}%" aria-valuemin="0" aria-valuemax="100"></div>
+                      <div class="progress-bar" role="progressbar" style="width: {{ formatFloat $epoch.VoteParticipation 2 }}%;" aria-valuenow="{{ formatFloat $epoch.VoteParticipation 2 }}%" aria-valuemin="0" aria-valuemax="100"></div>
                       </div>
                     </div>
                   </td>
                 </tr>
               {{ end }}
+            </tbody>
+          {{ else }}
+            <tbody>
+              <tr style="height: 430px;">
+                <td></td>
+                <td style="vertical-align: middle;" colspan="4">
+                  <div class="img-fluid mx-auto p-3 d-flex align-items-center" style="max-height: 400px; width: auto; overflow: hidden;">
+                    {{ template "professor_svg" }}
+                  </div>
+                </td>
+                <td></td>
+              </tr>
             </tbody>
           {{ end }}
         </table>

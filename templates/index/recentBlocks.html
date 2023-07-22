@@ -3,7 +3,7 @@
     <div class="card-header">
       <h3 class="card-title d-flex justify-content-between align-items-center" style="margin: .5rem 0;">
         <span><i class="fa fa-cubes"></i> Most recent blocks</span>
-        <a class="btn btn-primary btn-sm float-right text-white" href="/blocks">View more</a>
+        <a class="btn btn-primary btn-sm float-right text-white" href="/slots">View more</a>
       </h3>
     </div>
     <div class="card-body p-0">
@@ -19,27 +19,15 @@
               <th>Proposer</th>
             </tr>
           </thead>
-          {{ if not .RecentBlocks }}
-            <tbody>
-              <tr style="height: 430px;">
-                <td></td>
-                <td style="vertical-align: middle;" colspan="4">
-                  <div class="img-fluid mx-auto p-3 d-flex align-items-center" style="max-height: 400px; width: auto; overflow: hidden;">
-                    {{ template "timeline_svg" }}
-                  </div>
-                </td>
-                <td></td>
-              </tr>
-            </tbody>
-          {{ else }}
+          {{ if gt .RecentBlockCount 0 }}
             <tbody>
               {{ range $i, $block := .RecentBlocks }}
                 <tr>
                   <td><a href="/epoch/{{ $block.Epoch }}">{{ formatAddCommas $block.Epoch }}</a></td>
                   {{ if eq .Status 2 }}
-                    <td><a href="/slot/{{ $block.Slot }}">{{ formatAddCommas $block.Slot }}</a></td>
+                  <td><a href="/slot/{{ $block.BlockRoot }}">{{ formatAddCommas $block.Slot }}</a></td>
                   {{ else }}
-                    <td><a href="/slot/{{ $block.BlockRoot }}">{{ formatAddCommas $block.Slot }}</a></td>
+                    <td><a href="/slot/{{ $block.Slot }}">{{ formatAddCommas $block.Slot }}</a></td>
                   {{ end }}
                   <td>{{ ethBlockLink $block.EthBlock }}</td>
                   <td>
@@ -59,6 +47,18 @@
                   <td>{{ formatValidator $block.Proposer $block.ProposerName }}</td>
                 </tr>
               {{ end }}
+            </tbody>
+          {{ else }}
+            <tbody>
+              <tr style="height: 430px;">
+                <td></td>
+                <td style="vertical-align: middle;" colspan="4">
+                  <div class="img-fluid mx-auto p-3 d-flex align-items-center" style="max-height: 400px; width: auto; overflow: hidden;">
+                    {{ template "timeline_svg" }}
+                  </div>
+                </td>
+                <td></td>
+              </tr>
             </tbody>
           {{ end }}
         </table>

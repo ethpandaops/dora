@@ -24,6 +24,8 @@ CREATE TABLE IF NOT EXISTS public."blocks"
     "proposer_slashing_count" integer NOT NULL DEFAULT 0,
     "bls_change_count" integer NOT NULL DEFAULT 0,
     "eth_transaction_count" integer NOT NULL DEFAULT 0,
+    "eth_block_number" bigint NOT NULL DEFAULT 0,
+    "eth_block_hash" bytea NOT NULL,
     "sync_participation" real NOT NULL DEFAULT 0,
     CONSTRAINT "Blocks_pkey" PRIMARY KEY ("root")
 );

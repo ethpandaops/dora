@@ -27,8 +27,8 @@ func persistEpochData(epoch uint64, blockMap map[uint64][]*BlockInfo, epochStats
 	totalSyncVoted := 0
 	dbEpoch := dbtypes.Epoch{
 		Epoch:          epoch,
-		ValidatorCount: epochStats.validatorCount,
-		Eligible:       epochStats.eligibleAmount,
+		ValidatorCount: epochStats.ValidatorCount,
+		Eligible:       epochStats.EligibleAmount,
 		VotedTarget:    epochVotes.currentEpoch.targetVoteAmount + epochVotes.nextEpoch.targetVoteAmount,
 		VotedHead:      epochVotes.currentEpoch.headVoteAmount + epochVotes.nextEpoch.headVoteAmount,
 		VotedTotal:     epochVotes.currentEpoch.totalVoteAmount + epochVotes.nextEpoch.totalVoteAmount,
@@ -45,19 +45,19 @@ func persistEpochData(epoch uint64, blockMap map[uint64][]*BlockInfo, epochStats
 		for bidx := 0; bidx < len(blocks); bidx++ {
 			block := blocks[bidx]
 			dbBlock := dbtypes.Block{
-				Root:                  block.header.Data.Root,
+				Root:                  block.Header.Data.Root,
 				Slot:                  slot,
-				ParentRoot:            block.header.Data.Header.Message.ParentRoot,
-				StateRoot:             block.header.Data.Header.Message.StateRoot,
-				Orphaned:              block.orphaned,
-				Proposer:              uint64(block.block.Data.Message.ProposerIndex),
-				Graffiti:              block.block.Data.Message.Body.Graffiti,
-				AttestationCount:      uint64(len(block.block.Data.Message.Body.Attestations)),
-				DepositCount:          uint64(len(block.block.Data.Message.Body.Deposits)),
-				ExitCount:             uint64(len(block.block.Data.Message.Body.VoluntaryExits)),
-				AttesterSlashingCount: uint64(len(block.block.Data.Message.Body.AttesterSlashings)),
-				ProposerSlashingCount: uint64(len(block.block.Data.Message.Body.ProposerSlashings)),
-				BLSChangeCount:        uint64(len(block.block.Data.Message.Body.SignedBLSToExecutionChange)),
+				ParentRoot:            block.Header.Data.Header.Message.ParentRoot,
+				StateRoot:             block.Header.Data.Header.Message.StateRoot,
+				Orphaned:              block.Orphaned,
+				Proposer:              uint64(block.Block.Data.Message.ProposerIndex),
+				Graffiti:              block.Block.Data.Message.Body.Graffiti,
+				AttestationCount:      uint64(len(block.Block.Data.Message.Body.Attestations)),
+				DepositCount:          uint64(len(block.Block.Data.Message.Body.Deposits)),
+				ExitCount:             uint64(len(block.Block.Data.Message.Body.VoluntaryExits)),
+				AttesterSlashingCount: uint64(len(block.Block.Data.Message.Body.AttesterSlashings)),
+				ProposerSlashingCount: uint64(len(block.Block.Data.Message.Body.ProposerSlashings)),
+				BLSChangeCount:        uint64(len(block.Block.Data.Message.Body.SignedBLSToExecutionChange)),
 			}
 			dbEpoch.AttestationCount += dbBlock.AttestationCount
 			dbEpoch.DepositCount += dbBlock.DepositCount
@@ -66,8 +66,8 @@ func persistEpochData(epoch uint64, blockMap map[uint64][]*BlockInfo, epochStats
 			dbEpoch.ProposerSlashingCount += dbBlock.ProposerSlashingCount
 			dbEpoch.BLSChangeCount += dbBlock.BLSChangeCount
 
-			syncAggregate := block.block.Data.Message.Body.SyncAggregate
-			syncAssignments := epochStats.assignments.SyncAssignments
+			syncAggregate := block.Block.Data.Message.Body.SyncAggregate
+			syncAssignments := epochStats.Assignments.SyncAssignments
 			if syncAggregate != nil && syncAssignments != nil {
 				votedCount := 0
 				assignedCount := len(syncAssignments)
@@ -77,31 +77,33 @@ func persistEpochData(epoch uint64, blockMap map[uint64][]*BlockInfo, epochStats
 					}
 				}
 				dbBlock.SyncParticipation = float32(votedCount) / float32(assignedCount)
-				if !block.orphaned {
+				if !block.Orphaned {
 					totalSyncAssigned += assignedCount
 					totalSyncVoted += votedCount
 				}
 			}
 
-			if executionPayload := block.block.Data.Message.Body.ExecutionPayload; executionPayload != nil {
+			if executionPayload := block.Block.Data.Message.Body.ExecutionPayload; executionPayload != nil {
 				dbBlock.EthTransactionCount = uint64(len(executionPayload.Transactions))
+				dbBlock.EthBlockNumber = uint64(executionPayload.BlockNumber)
+				dbBlock.EthBlockHash = executionPayload.BlockHash
 				dbEpoch.EthTransactionCount += dbBlock.EthTransactionCount
 			}
 
 			db.InsertBlock(&dbBlock, tx)
 
-			if block.orphaned {
+			if block.Orphaned {
 				dbEpoch.OrphanedCount++
-				headerJson, err := json.Marshal(block.header)
+				headerJson, err := json.Marshal(block.Header)
 				if err != nil {
 					return err
 				}
-				blockJson, err := json.Marshal(block.block)
+				blockJson, err := json.Marshal(block.Block)
 				if err != nil {
 					return err
 				}
 				db.InsertOrphanedBlock(&dbtypes.OrphanedBlock{
-					Root:   block.header.Data.Root,
+					Root:   block.Header.Data.Root,
 					Header: string(headerJson),
 					Block:  string(blockJson),
 				}, tx)

@@ -172,14 +172,14 @@ func InsertBlock(block *dbtypes.Block, tx *sqlx.Tx) error {
 	INSERT INTO blocks (
 		root, slot, parent_root, state_root, orphaned, proposer, graffiti, 
 		attestation_count, deposit_count, exit_count, attester_slashing_count, proposer_slashing_count, 
-		bls_change_count, eth_transaction_count, sync_participation
-	) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+		bls_change_count, eth_transaction_count, eth_block_number, eth_block_hash, sync_participation
+	) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
 	ON CONFLICT (root) DO UPDATE SET
 		orphaned = excluded.orphaned
 	`,
 		block.Root, block.Slot, block.ParentRoot, block.StateRoot, block.Orphaned, block.Proposer, block.Graffiti,
 		block.AttestationCount, block.DepositCount, block.ExitCount, block.AttesterSlashingCount, block.ProposerSlashingCount,
-		block.BLSChangeCount, block.EthTransactionCount, block.SyncParticipation)
+		block.BLSChangeCount, block.EthTransactionCount, block.EthBlockNumber, block.EthBlockHash, block.SyncParticipation)
 	if err != nil {
 		return err
 	}
@@ -230,4 +230,46 @@ func InsertOrphanedBlock(block *dbtypes.OrphanedBlock, tx *sqlx.Tx) error {
 		return err
 	}
 	return nil
+}
+
+func GetEpochs(firstEpoch uint64, limit uint32) []*dbtypes.Epoch {
+	epochs := []*dbtypes.Epoch{}
+	err := ReaderDb.Select(&epochs, `
+	SELECT
+		epoch, validator_count, eligible, voted_target, voted_head, voted_total, block_count, orphaned_count,
+		attestation_count, deposit_count, exit_count, attester_slashing_count, proposer_slashing_count, 
+		bls_change_count, eth_transaction_count, sync_participation
+	FROM epochs
+	WHERE epoch <= $1
+	ORDER BY epoch DESC
+	LIMIT $2
+	`, firstEpoch, limit)
+	if err != nil {
+		logger.Errorf("Error while fetching epochs: %v", err)
+		return nil
+	}
+	return epochs
+}
+
+func GetBlocks(firstBlock uint64, limit uint32, withOrphaned bool) []*dbtypes.Block {
+	blocks := []*dbtypes.Block{}
+	orphanedLimit := ""
+	if !withOrphaned {
+		orphanedLimit = "AND NOT orphaned"
+	}
+	err := ReaderDb.Select(&blocks, `
+	SELECT
+		root, slot, parent_root, state_root, orphaned, proposer, graffiti, 
+		attestation_count, deposit_count, exit_count, attester_slashing_count, proposer_slashing_count, 
+		bls_change_count, eth_transaction_count, eth_block_number, eth_block_hash, sync_participation
+	FROM blocks
+	WHERE slot <= $1 `+orphanedLimit+`
+	ORDER BY slot DESC
+	LIMIT $2
+	`, firstBlock, limit)
+	if err != nil {
+		logger.Errorf("Error while fetching blocks: %v", err)
+		return nil
+	}
+	return blocks
 }
