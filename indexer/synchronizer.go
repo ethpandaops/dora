@@ -70,6 +70,8 @@ func (sync *synchronizerState) runSync() {
 
 	sync.cachedBlocks = make(map[uint64][]*BlockInfo)
 	sync.cachedSlot = 0
+	isComplete := false
+	synclogger.Infof("Synchronization started. Head epoch: %v", sync.currentEpoch)
 
 	for {
 		// synchronize next epoch
@@ -87,6 +89,7 @@ func (sync *synchronizerState) runSync() {
 			sync.currentEpoch = syncEpoch
 			sync.stateMutex.Unlock()
 			if syncEpoch >= indexerEpoch {
+				isComplete = true
 				break
 			}
 		} else {
@@ -97,6 +100,13 @@ func (sync *synchronizerState) runSync() {
 			break
 		}
 	}
+
+	if isComplete {
+		synclogger.Infof("Synchronization complete. Head epoch: %v", sync.currentEpoch)
+	} else {
+		synclogger.Infof("Synchronization aborted. Head epoch: %v", sync.currentEpoch)
+	}
+
 	sync.running = false
 }
 
@@ -242,6 +252,13 @@ func (sync *synchronizerState) syncEpoch(syncEpoch uint64) bool {
 	if err := tx.Commit(); err != nil {
 		logger.Errorf("error committing db transaction: %v", err)
 		return false
+	}
+
+	// cleanup cache (remove blocks from this epoch)
+	for slot := firstSlot; slot <= lastSlot; slot++ {
+		if sync.cachedBlocks[slot] != nil {
+			delete(sync.cachedBlocks, slot)
+		}
 	}
 
 	return true
