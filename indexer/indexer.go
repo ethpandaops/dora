@@ -590,19 +590,19 @@ func (indexer *Indexer) processIndexing() {
 	if indexer.state.lastProcessedEpoch < processEpoch {
 		indexer.processEpoch(processEpoch)
 		indexer.state.lastProcessedEpoch = processEpoch
-
-		if indexer.state.epochStats[processEpoch] != nil {
-			delete(indexer.state.epochStats, processEpoch)
-		}
 	}
 
 	// cleanup cache
-	for indexer.state.lowestCachedSlot < (currentEpoch-uint64(indexer.inMemoryEpochs)+1)*utils.Config.Chain.Config.SlotsPerEpoch {
+	cleanEpoch := currentEpoch - uint64(indexer.inMemoryEpochs)
+	for indexer.state.lowestCachedSlot < (cleanEpoch+1)*utils.Config.Chain.Config.SlotsPerEpoch {
 		if indexer.state.cachedBlocks[indexer.state.lowestCachedSlot] != nil {
 			logger.Debugf("Dropped cached block (epoch %v, slot %v)", utils.EpochOfSlot(indexer.state.lowestCachedSlot), indexer.state.lowestCachedSlot)
 			delete(indexer.state.cachedBlocks, indexer.state.lowestCachedSlot)
 		}
 		indexer.state.lowestCachedSlot++
+	}
+	if indexer.state.epochStats[cleanEpoch] != nil {
+		delete(indexer.state.epochStats, cleanEpoch)
 	}
 }
 
