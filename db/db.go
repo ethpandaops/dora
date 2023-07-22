@@ -174,7 +174,9 @@ func InsertBlock(block *dbtypes.Block, tx *sqlx.Tx) error {
 		attestation_count, deposit_count, exit_count, attester_slashing_count, proposer_slashing_count, 
 		bls_change_count, eth_transaction_count, sync_participation
 	) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
-	ON CONFLICT (root) DO NOTHING`,
+	ON CONFLICT (root) DO UPDATE SET
+		orphaned = excluded.orphaned
+	`,
 		block.Root, block.Slot, block.ParentRoot, block.StateRoot, block.Orphaned, block.Proposer, block.Graffiti,
 		block.AttestationCount, block.DepositCount, block.ExitCount, block.AttesterSlashingCount, block.ProposerSlashingCount,
 		block.BLSChangeCount, block.EthTransactionCount, block.SyncParticipation)
@@ -221,8 +223,8 @@ func InsertOrphanedBlock(block *dbtypes.OrphanedBlock, tx *sqlx.Tx) error {
 	_, err := tx.Exec(`
 	INSERT INTO orphaned_blocks (
 		root, header, block
-	) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-	ON CONFLICT (Root) DO NOTHING`,
+	) VALUES ($1, $2, $3)
+	ON CONFLICT (root) DO NOTHING`,
 		block.Root, block.Header, block.Block)
 	if err != nil {
 		return err

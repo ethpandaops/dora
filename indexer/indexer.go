@@ -18,13 +18,15 @@ import (
 var logger = logrus.StandardLogger().WithField("module", "indexer")
 
 type Indexer struct {
-	rpcClient    *rpc.BeaconClient
-	controlMutex sync.Mutex
-	runMutex     sync.Mutex
-	running      bool
-	writeDb      bool
-	state        indexerState
-	synchronizer *synchronizerState
+	rpcClient            *rpc.BeaconClient
+	controlMutex         sync.Mutex
+	runMutex             sync.Mutex
+	running              bool
+	writeDb              bool
+	inMemoryEpochs       uint16
+	epochProcessingDelay uint16
+	state                indexerState
+	synchronizer         *synchronizerState
 }
 
 type indexerState struct {
@@ -50,10 +52,12 @@ type EpochStats struct {
 	validatorBalances map[uint64]uint64
 }
 
-func NewIndexer(rpcClient *rpc.BeaconClient, writeDb bool) (*Indexer, error) {
+func NewIndexer(rpcClient *rpc.BeaconClient, inMemoryEpochs uint16, epochProcessingDelay uint16, writeDb bool) (*Indexer, error) {
 	return &Indexer{
-		rpcClient: rpcClient,
-		writeDb:   writeDb,
+		rpcClient:            rpcClient,
+		writeDb:              writeDb,
+		inMemoryEpochs:       inMemoryEpochs,
+		epochProcessingDelay: epochProcessingDelay,
 		state: indexerState{
 			cachedBlocks: make(map[uint64][]*BlockInfo),
 			epochStats:   make(map[uint64]*EpochStats),
@@ -84,9 +88,11 @@ func (indexer *Indexer) runIndexer() {
 
 	if now := time.Now(); now.Compare(genesisTime) > 0 {
 		currentEpoch := utils.TimeToEpoch(time.Now())
-		if currentEpoch > 2 {
-			indexer.state.lastHeadBlock = uint64((currentEpoch-1)*int64(chainConfig.SlotsPerEpoch)) - 1
-			indexer.state.lastProcessedEpoch = uint64(currentEpoch - 2)
+		if currentEpoch > int64(indexer.inMemoryEpochs) {
+			indexer.state.lastHeadBlock = uint64((currentEpoch-int64(indexer.inMemoryEpochs)+1)*int64(chainConfig.SlotsPerEpoch)) - 1
+		}
+		if currentEpoch > int64(indexer.epochProcessingDelay) {
+			indexer.state.lastProcessedEpoch = uint64(currentEpoch - int64(indexer.epochProcessingDelay))
 		}
 	}
 
@@ -103,11 +109,7 @@ func (indexer *Indexer) runIndexer() {
 	// check if we need to start a sync job (last synced epoch < lastProcessedEpoch)
 	if indexer.writeDb {
 		syncState := indexerSyncState{}
-		logger.Infof("Loading sync state")
 		db.GetExplorerState("indexer.syncstate", &syncState)
-
-		logger.Infof("sync state %v", syncState)
-
 		if syncState.Epoch < indexer.state.lastProcessedEpoch {
 			indexer.startSynchronization(syncState.Epoch)
 		}
@@ -415,7 +417,7 @@ func (indexer *Indexer) processIndexing() {
 	defer indexer.state.cacheMutex.Unlock()
 
 	currentEpoch := utils.EpochOfSlot(indexer.state.lastHeadBlock)
-	processEpoch := currentEpoch - 2
+	processEpoch := currentEpoch - uint64(indexer.epochProcessingDelay)
 
 	// process old epochs
 	if indexer.state.lastProcessedEpoch < processEpoch {
@@ -428,7 +430,7 @@ func (indexer *Indexer) processIndexing() {
 	}
 
 	// cleanup cache
-	for indexer.state.lowestCachedSlot < (currentEpoch-1)*utils.Config.Chain.Config.SlotsPerEpoch {
+	for indexer.state.lowestCachedSlot < (currentEpoch-uint64(indexer.inMemoryEpochs)+1)*utils.Config.Chain.Config.SlotsPerEpoch {
 		if indexer.state.cachedBlocks[indexer.state.lowestCachedSlot] != nil {
 			logger.Debugf("Dropped cached block (epoch %v, slot %v)", utils.EpochOfSlot(indexer.state.lowestCachedSlot), indexer.state.lowestCachedSlot)
 			delete(indexer.state.cachedBlocks, indexer.state.lowestCachedSlot)

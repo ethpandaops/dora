@@ -22,6 +22,11 @@ beaconapi:
   redisCacheAddr: ""
   redisCachePrefix: ""
 
+  inMemoryEpochs: 3
+  epochProcessingDelay: 2
+  disableIndexWriter: false
+
+
 readerDatabase:
   host: "10.16.97.2"
   port: 5432

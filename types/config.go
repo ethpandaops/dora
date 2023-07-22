@@ -36,6 +36,10 @@ type Config struct {
 		LocalCacheSize   int    `yaml:"localCacheSize" envconfig:"BEACONAPI_LOCAL_CACHE_SIZE"`
 		RedisCacheAddr   string `yaml:"redisCacheAddr" envconfig:"BEACONAPI_REDIS_CACHE_ADDR"`
 		RedisCachePrefix string `yaml:"redisCachePrefix" envconfig:"BEACONAPI_REDIS_CACHE_PREFIX"`
+
+		InMemoryEpochs       uint16 `yaml:"inMemoryEpochs" envconfig:"BEACONAPI_IN_MEMORY_EPOCHS"`
+		EpochProcessingDelay uint16 `yaml:"epochProcessingDelay" envconfig:"BEACONAPI_EPOCH_PROCESSING_DELAY"`
+		DisableIndexWriter   bool   `yaml:"disableIndexWriter" envconfig:"BEACONAPI_DISABLE_INDEX_WRITER"`
 	} `yaml:"beaconapi"`
 
 	ReaderDatabase struct {

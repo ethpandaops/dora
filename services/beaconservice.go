@@ -34,7 +34,17 @@ func StartBeaconService() error {
 		return err
 	}
 
-	indexer, err := indexer.NewIndexer(rpcClient, true)
+	inMemoryEpochs := utils.Config.BeaconApi.InMemoryEpochs
+	if inMemoryEpochs < 2 {
+		inMemoryEpochs = 2
+	}
+	epochProcessingDelay := utils.Config.BeaconApi.EpochProcessingDelay
+	if epochProcessingDelay < 2 {
+		epochProcessingDelay = 2
+	} else if epochProcessingDelay > inMemoryEpochs {
+		inMemoryEpochs = epochProcessingDelay
+	}
+	indexer, err := indexer.NewIndexer(rpcClient, inMemoryEpochs, epochProcessingDelay, !utils.Config.BeaconApi.DisableIndexWriter)
 	if err != nil {
 		return err
 	}
