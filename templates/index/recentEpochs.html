@@ -1,0 +1,63 @@
+{{ define "recentEpochs" }}
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title d-flex justify-content-between align-items-center" style="margin: .5rem 0;">
+        <span> <i class="fas fa-history"></i> Most recent epochs </span>
+        <a class="btn btn-primary btn-sm float-right text-white" href="/epochs">View more</a>
+      </h3>
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table" id="recent-epochs">
+          <thead>
+            <tr>
+              <th>Epoch</th>
+              <th data-timecol="duration">Time</th>
+              <th>Final</th>
+              <th>Eligible (ETH)</th>
+              <th>Voted</th>
+            </tr>
+          </thead>
+          {{ if not .RecentEpochs }}
+            <tbody>
+              <tr style="height: 430px;">
+                <td></td>
+                <td style="vertical-align: middle;" colspan="4">
+                  <div class="img-fluid mx-auto p-3 d-flex align-items-center" style="max-height: 400px; width: auto; overflow: hidden;">
+                    {{ template "professor_svg" }}
+                  </div>
+                </td>
+                <td></td>
+              </tr>
+            </tbody>
+          {{ else }}
+            <tbody>
+              {{ range $i, $epoch := .RecentEpochs }}
+                <tr>
+                  <td><a href="/epoch/{{ $epoch.Epoch }}">{{ formatAddCommas $epoch.Epoch }}</a></td>
+                  <td data-time="{{ $epoch.Ts.Unix }}"><span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $epoch.Ts }}">{{ formatRecentTimeShort $epoch.Ts }}</span></td>
+                  <td>
+                    {{ if $epoch.Finalized }}
+                      <span class="badge badge-pill bg-success text-white" style="font-size: 12px; font-weight: 500;">Yes</span>
+                    {{ else }}
+                      <span class="badge badge-pill bg-warning text-white" style="font-size: 12px; font-weight: 500;">No</span>
+                    {{ end }}
+                  </td>
+                  <td>{{ formatEthFromGweiShort $epoch.EligibleEther }}</td>
+                  <td>
+                    <div style="position:relative;width:inherit;height:inherit;">
+                      {{ formatEthFromGweiShort $epoch.TargetVoted }} <small class="text-muted ml-3">({{ $epoch.VoteParticipation }}%)</small>
+                      <div class="progress" style="position:absolute;bottom:-6px;width:100%;height:4px;">
+                      <div class="progress-bar" role="progressbar" style="width: {{ $epoch.VoteParticipation }}%;" aria-valuenow="{{ $epoch.VoteParticipation }}%" aria-valuemin="0" aria-valuemax="100"></div>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              {{ end }}
+            </tbody>
+          {{ end }}
+        </table>
+      </div>
+    </div>
+  </div>
+{{ end }}

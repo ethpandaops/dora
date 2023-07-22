@@ -70,6 +70,9 @@ func (bs *BeaconService) GetSlotDetailsByBlockroot(blockroot []byte) (*rpctypes.
 	if err != nil {
 		return nil, err
 	}
+	if header == nil {
+		return nil, nil
+	}
 	block, err := bs.rpcClient.GetBlockBodyByBlockroot(header.Data.Root)
 	if err != nil {
 		return nil, err
@@ -84,6 +87,9 @@ func (bs *BeaconService) GetSlotDetailsBySlot(slot uint64) (*rpctypes.CombinedBl
 	header, err := bs.rpcClient.GetBlockHeaderBySlot(slot)
 	if err != nil {
 		return nil, err
+	}
+	if header == nil {
+		return nil, nil
 	}
 	block, err := bs.rpcClient.GetBlockBodyByBlockroot(header.Data.Root)
 	if err != nil {

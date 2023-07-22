@@ -1,0 +1,68 @@
+{{ define "recentBlocks" }}
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title d-flex justify-content-between align-items-center" style="margin: .5rem 0;">
+        <span><i class="fa fa-cubes"></i> Most recent blocks</span>
+        <a class="btn btn-primary btn-sm float-right text-white" href="/blocks">View more</a>
+      </h3>
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table" id="recent-blocks">
+          <thead>
+            <tr>
+              <th>Epoch</th>
+              <th>Slot</th>
+              <th data-toggle="tooltip" title="Execution Layer Block Number">Block</th>
+              <th>Status</th>
+              <th data-timecol="duration">Time</th>
+              <th>Proposer</th>
+            </tr>
+          </thead>
+          {{ if not .RecentBlocks }}
+            <tbody>
+              <tr style="height: 430px;">
+                <td></td>
+                <td style="vertical-align: middle;" colspan="4">
+                  <div class="img-fluid mx-auto p-3 d-flex align-items-center" style="max-height: 400px; width: auto; overflow: hidden;">
+                    {{ template "timeline_svg" }}
+                  </div>
+                </td>
+                <td></td>
+              </tr>
+            </tbody>
+          {{ else }}
+            <tbody>
+              {{ range $i, $block := .RecentBlocks }}
+                <tr>
+                  <td><a href="/epoch/{{ $block.Epoch }}">{{ formatAddCommas $block.Epoch }}</a></td>
+                  {{ if eq .Status 2 }}
+                    <td><a href="/slot/{{ $block.Slot }}">{{ formatAddCommas $block.Slot }}</a></td>
+                  {{ else }}
+                    <td><a href="/slot/{{ $block.BlockRoot }}">{{ formatAddCommas $block.Slot }}</a></td>
+                  {{ end }}
+                  <td>{{ ethBlockLink $block.EthBlock }}</td>
+                  <td>
+                    {{ if eq $block.Slot 0 }}
+                      <span class="badge rounded-pill text-bg-info">Genesis</span>
+                    {{ else if eq .Status 0 }}
+                      <span class="badge rounded-pill text-bg-warning">Missed</span>
+                    {{ else if eq .Status 1 }}
+                      <span class="badge rounded-pill text-bg-success">Proposed</span>
+                    {{ else if eq .Status 2 }}
+                      <span class="badge rounded-pill text-bg-info">Missed (Orphaned)</span>
+                    {{ else }}
+                      <span class="badge rounded-pill text-bg-dark">Unknown</span>
+                    {{ end }}
+                  </td>
+                  <td data-time="{{ $block.Ts.Unix }}"><span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $block.Ts }}">{{ formatRecentTimeShort $block.Ts }}</span></td>
+                  <td>{{ formatValidator $block.Proposer $block.ProposerName }}</td>
+                </tr>
+              {{ end }}
+            </tbody>
+          {{ end }}
+        </table>
+      </div>
+    </div>
+  </div>
+{{ end }}

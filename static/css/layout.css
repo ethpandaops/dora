@@ -100,3 +100,7 @@ nav .theme-selector .theme-navlabel {
     max-width: 100px;
   }
 }
+
+span.validator-label {
+  white-space: nowrap;
+}

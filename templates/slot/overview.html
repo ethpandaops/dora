@@ -2,12 +2,12 @@
   <div class="card-body px-0 py-1">
     <div class="row border-bottom p-2 mx-0">
       <div class="col-md-2"><span data-toggle="tooltip" data-placement="top" title="Represents the number of 32 slots">Epoch:</span></div>
-      <div class="col-md-10"><a href="/epoch/{{ .Epoch }}">{{ .Epoch }} </a><i class="fa fa-copy text-muted p-1" role="button" data-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ .Epoch }}"></i></div>
+      <div class="col-md-10"><a href="/epoch/{{ .Epoch }}">{{ formatAddCommas .Epoch }} </a><i class="fa fa-copy text-muted p-1" role="button" data-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ .Epoch }}"></i></div>
     </div>
     <div class="row border-bottom p-2 mx-0">
       <div class="col-md-2"><span data-toggle="tooltip" data-placement="top" title="A slot is a chance for a block to be added to the Beacon Chain and shards">Slot:</span></div>
       <div class="col-md-10">
-        <a href="/slot/{{ .Slot }}"><b>{{ .Slot }} </b></a>
+        <a href="/slot/{{ .Slot }}"><b>{{ formatAddCommas .Slot }} </b></a>
         <i class="fa fa-copy text-muted p-1" role="button" data-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ .Slot }}"></i>
       </div>
     </div>
@@ -18,27 +18,27 @@
         {{ if ne .Slot 0 }}
           {{ if eq .Status 0 }}
             {{ if .Future }}
-              <span class="badge badge-pill bg-light text-dark" style="font-size: 12px; font-weight: 500;">Scheduled</span>
+              <span class="badge rounded-pill text-bg-secondary" style="font-size: 12px; font-weight: 500;">Scheduled</span>
             {{ else }}
-              <span class="badge badge-pill bg-warning text-white" style="font-size: 12px; font-weight: 500;">Missed</span>
+              <span class="badge rounded-pill text-bg-warning" style="font-size: 12px; font-weight: 500;">Missed</span>
             {{ end }}
           {{ else if eq .Status 1 }}
-            <span class="badge badge-pill bg-success text-white" style="font-size: 12px; font-weight: 500;">Proposed</span>
+            <span class="badge rounded-pill text-bg-success" style="font-size: 12px; font-weight: 500;">Proposed</span>
           {{ else if eq .Status 2 }}
-            <span class="badge badge-pill bg-secondary text-white" style="font-size: 12px; font-weight: 500;">Missed (Orphaned)</span>
+            <span class="badge rounded-pill text-bg-info" style="font-size: 12px; font-weight: 500;">Missed (Orphaned)</span>
           {{ end }}
 
           {{ if .EpochFinalized }}
             <span data-html="true" data-toggle="tooltip" data-placement="bottom" title="" data-original-title="This block can't be reverted without manual intervention by all participants." data-container="body">
-              <span class="badge badge-success text-white px-1"><i class="fas fa-check-double"></i> Finalized</span>
+              <span class="badge text-bg-success px-1"><i class="fas fa-check-double"></i> Finalized</span>
             </span>
           {{ else }}
             <span data-html="true" data-toggle="tooltip" data-placement="bottom" title="" data-original-title="This block can still be reverted and shouldn't be considered final." data-container="body">
-              <span class="badge badge-light text-black px-1"><i class="fas fa-exclamation-circle"></i> Not Finalized</span>
+              <span class="badge text-bg-secondary px-1"><i class="fas fa-exclamation-circle"></i> Not Finalized</span>
             </span>
           {{ end }}
         {{ else }}
-          <span class="badge text-dark" style="background: rgba(179, 159, 70, 0.8) none repeat scroll 0% 0%;">Genesis</span>
+          <span class="badge text-bg-light">Genesis</span>
         {{ end }}
       </div>
     </div>
@@ -56,7 +56,7 @@
     {{ if ne .Slot 0 }}
       <div class="row border-bottom p-2 mx-0">
         <div class="col-md-2"><span data-toggle="tooltip" data-placement="top" title="A chosen validator by the beacon chain to propose the next block">Proposer:</span></div>
-        <div class="col-md-10">{{ .Proposer }}</div>
+        <div class="col-md-10">{{ formatValidator .Proposer .ProposerName }}</div>
       </div>
     {{ end }}
 
@@ -96,7 +96,7 @@
           <div class="col-md-10">
             <div class="row py-1">
               <div class="col-md-2"><span data-toggle="tooltip" data-placement="top" title="Hash of the voted on Eth Block">Block Hash:</span></div>
-              <div class="col-md-10 text-monospace text-break">0x{{ printf "%x" .Block.Eth1dataBlockhash }}</div>
+              <div class="col-md-10 text-monospace text-break">{{ ethBlockHashLink .Block.Eth1dataBlockhash }}</div>
             </div>
             <div class="row py-1">
               <div class="col-md-2"><span data-toggle="tooltip" data-placement="top" title="Amount of validator deposits to the deposit contract in this block">Deposit Count:</span></div>
@@ -139,13 +139,13 @@
               <div class="col-md-10">
                 <div class="row py-1">
                   <div class="col-md-2"><span data-toggle="tooltip" data-placement="top" title="Block Number, the height, not the slot">Block Number:</span></div>
-                  <div class="col-md-10 text-monospace text-break">{{ .BlockNumber }}</div>
+                  <div class="col-md-10 text-monospace text-break">{{ ethBlockLink .BlockNumber }}</div>
                 </div>
 
                 <div class="row py-1">
                   <div class="col-md-2"><span data-toggle="tooltip" data-placement="top" title="The Execution Block Hash">Block Hash:</span></div>
                   <div class="col-md-10 text-monospace text-break">
-                    0x{{ printf "%x" .BlockHash }}
+                    {{ ethBlockHashLink .BlockHash }}
                   </div>
                 </div>
 
@@ -159,7 +159,7 @@
                 <div class="row py-1">
                   <div class="col-md-2"><span data-toggle="tooltip" data-placement="top" title="Fee recipient">Fee Recipient:</span></div>
                   <div class="col-md-10 text-monospace text-break">
-                    0x{{ printf "%x" .FeeRecipient }}
+                    {{ ethAddressLink .FeeRecipient }}
                   </div>
                 </div>
 

@@ -21,7 +21,7 @@
           <div class="col-md-2"><span data-toggle="tooltip" data-placement="top" title="Validators who have submitted their attestation and have been included by the block proposer">Validators:</span></div>
           <div class="col-md-10">
             {{ range $validator := $attestation.Validators }}
-              {{ $validator }}
+              {{ formatValidator $validator.Index $validator.Name }}
             {{ end }}
           </div>
         </div>

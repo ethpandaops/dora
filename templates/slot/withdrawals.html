@@ -13,8 +13,8 @@
         {{ range $i, $withdrawal := .Block.Withdrawals }}
           <tr>
             <td>{{ $withdrawal.Index }}</td>
-            <td>{{ $withdrawal.ValidatorIndex }}</td>
-            <td>0x{{ printf "%x" $withdrawal.Address }}</td>
+            <td>{{ formatValidator $withdrawal.ValidatorIndex $withdrawal.ValidatorName }}</td>
+            <td>{{ ethAddressLink $withdrawal.Address }}</td>
             <td>{{ formatEthFromGwei $withdrawal.Amount }}</td>
           </tr>
         {{ end }}
@@ -34,7 +34,16 @@
           <th class="border-0">New Withdrawal Address</th>
         </tr>
       </thead>
-      <tbody></tbody>
+      <tbody>
+        {{ range $i, $blschange := .Block.BLSChanges }}
+          <tr>
+            <td>{{ formatValidator $blschange.ValidatorIndex $blschange.ValidatorName }}</td>
+            <td>0x{{ printf "%x" $blschange.Signature }}</td>
+            <td>0x{{ printf "%x" $blschange.BlsPubkey }}</td>
+            <td>{{ ethAddressLink $blschange.Address }}</td>
+          </tr>
+        {{ end }}
+      </tbody>
     </table>
   </div>
 {{ end }}

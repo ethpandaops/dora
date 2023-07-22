@@ -6,7 +6,7 @@
           <div class="col-md-2">Slashed Validator(s):</div>
           <div class="col-md-10">
             {{ range $validator := $attestationSlashing.SlashedValidators }}
-              {{ $validator }}
+              {{ formatSlashedValidator $validator.Index $validator.Name }}
             {{ end }}
           </div>
         </div>
@@ -94,7 +94,7 @@
         </div>
         <div class="row border-bottom p-1 mx-0">
           <div class="col-md-2">Slashed Validator:</div>
-          <div class="col-md-10">{{ $proposerSlashing.ProposerIndex }}</div>
+          <div class="col-md-10">{{ formatSlashedValidator $proposerSlashing.ProposerIndex $proposerSlashing.ProposerName }}</div>
         </div>
         <div class="row border-bottom p-1 mx-0">
           <div class="col-md-2">Header 1 Slot:</div>

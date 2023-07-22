@@ -40,8 +40,15 @@ func GetTemplateFuncs() template.FuncMap {
 		"formatBitvectorValidators": formatBitvectorValidators,
 		"formatParticipation":       FormatParticipation,
 		"formatEthFromGwei":         FormatETHFromGwei,
+		"formatEthFromGweiShort":    FormatETHFromGweiShort,
 		"formatFullEthFromGwei":     FormatFullETHFromGwei,
 		"formatAmount":              FormatAmount,
+		"ethBlockLink":              FormatEthBlockLink,
+		"ethBlockHashLink":          FormatEthBlockHashLink,
+		"ethAddressLink":            FormatEthAddressLink,
+		"formatValidator":           FormatValidator,
+		"formatSlashedValidator":    FormatSlashedValidator,
+		"formatRecentTimeShort":     FormatRecentTimeShort,
 	}
 }
 

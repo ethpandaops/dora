@@ -137,6 +137,18 @@
             </div>
           </div>
         {{ end }}
+        {{ if gt .Block.BLSChangesCount 0 }}
+          <div class="tab-pane fade" id="blsChange" role="tabpanel" aria-labelledby="blsChange-tab">
+            <div class="card block-card">
+              <div style="margin-bottom: -.25rem;" class="card-body px-0 py-1">
+                <div class="row p-1 mx-0">
+                  <h3 class="h5 col-md-12 text-center"><b>Showing {{ .Block.BLSChangesCount }} BLS changes </b></h3>
+                </div>
+              </div>
+              {{ template "block_blsChange" . }}
+            </div>
+          </div>
+        {{ end }}
 
       {{ end }}
     </div>

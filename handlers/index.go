@@ -12,6 +12,10 @@ import (
 func Index(w http.ResponseWriter, r *http.Request) {
 	var indexTemplateFiles = append(layoutTemplateFiles,
 		"index/index.html",
+		"index/recentBlocks.html",
+		"index/recentEpochs.html",
+		"_svg/professor.html",
+		"_svg/timeline.html",
 	)
 
 	var indexTemplate = templates.GetTemplate(indexTemplateFiles...)

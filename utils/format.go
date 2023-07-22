@@ -2,12 +2,16 @@ package utils
 
 import (
 	"fmt"
+	"html"
 	"html/template"
 	"math"
 	"math/big"
+	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/prysmaticlabs/go-bitfield"
 	"golang.org/x/text/language"
@@ -21,6 +25,10 @@ func FormatETH(num string) string {
 
 func FormatETHFromGwei(gwei uint64) string {
 	return fmt.Sprintf("%.4f", float64(gwei)/math.Pow10(9)) + " ETH"
+}
+
+func FormatETHFromGweiShort(gwei uint64) string {
+	return fmt.Sprintf("%.4f", float64(gwei)/math.Pow10(9))
 }
 
 func FormatFullETHFromGwei(gwei uint64) string {
@@ -243,4 +251,74 @@ func trimAmount(amount *big.Int, unitDigits int, maxPreCommaDigitsBeforeTrim int
 		}
 	}
 	return proceed + trimmedAmount, proceed + fullAmount
+}
+
+func FormatEthBlockLink(blockNum uint64) template.HTML {
+	caption := FormatAddCommas(blockNum)
+	if Config.Frontend.EthExplorerLink != "" {
+		link, err := url.JoinPath(Config.Frontend.EthExplorerLink, "block", strconv.FormatUint(uint64(blockNum), 10))
+		if err == nil {
+			return template.HTML(fmt.Sprintf(`<a href="%v">%v</a>`, link, caption))
+		}
+	}
+	return caption
+}
+
+func FormatEthBlockHashLink(blockHash []byte) template.HTML {
+	caption := fmt.Sprintf("0x%x", blockHash)
+	if Config.Frontend.EthExplorerLink != "" {
+		link, err := url.JoinPath(Config.Frontend.EthExplorerLink, "block", caption)
+		if err == nil {
+			return template.HTML(fmt.Sprintf(`<a href="%v">%v</a>`, link, caption))
+		}
+	}
+	return template.HTML(caption)
+}
+
+func FormatEthAddressLink(address []byte) template.HTML {
+	caption := common.BytesToAddress(address).String()
+	if Config.Frontend.EthExplorerLink != "" {
+		link, err := url.JoinPath(Config.Frontend.EthExplorerLink, "address", caption)
+		if err == nil {
+			return template.HTML(fmt.Sprintf(`<a href="%v">%v</a>`, link, caption))
+		}
+	}
+	return template.HTML(caption)
+}
+
+func FormatValidator(index uint64, name string) template.HTML {
+	return formatValidator(index, name, "fa-male mr-2")
+}
+
+func FormatSlashedValidator(index uint64, name string) template.HTML {
+	return formatValidator(index, name, "fa-user-slash mr-2 text-danger")
+}
+
+func formatValidator(index uint64, name string, icon string) template.HTML {
+	if name != "" {
+		return template.HTML(fmt.Sprintf("<span class=\"validator-label validator-name\"><i class=\"fas %v\"></i> %v</span>", icon, html.EscapeString(name)))
+	}
+	return template.HTML(fmt.Sprintf("<span class=\"validator-label validator-index\"><i class=\"fas %v\"></i> %v</span>", icon, index))
+}
+
+func FormatRecentTimeShort(ts time.Time) template.HTML {
+	duration := ts.Sub(time.Now())
+	var timeStr string
+	absDuraction := duration.Abs()
+	if absDuraction < 1*time.Second {
+		return template.HTML("now")
+	} else if absDuraction < 60*time.Second {
+		timeStr = fmt.Sprintf("%v sec.", uint(absDuraction.Seconds()))
+	} else if absDuraction < 60*time.Minute {
+		timeStr = fmt.Sprintf("%v min.", uint(absDuraction.Seconds()))
+	} else if absDuraction < 24*time.Hour {
+		timeStr = fmt.Sprintf("%v hr.", uint(absDuraction.Hours()))
+	} else {
+		timeStr = fmt.Sprintf("%v day.", uint(absDuraction.Hours()/86400))
+	}
+	if duration < 0 {
+		return template.HTML(fmt.Sprintf("%v ago", timeStr))
+	} else {
+		return template.HTML(fmt.Sprintf("in %v", timeStr))
+	}
 }
