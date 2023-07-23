@@ -463,15 +463,38 @@ func (indexer *Indexer) processHeadEpoch(epoch uint64, dependentRoot []byte) {
 		dependentRoot = epochAssignments.DependendRoot
 	}
 
-	indexer.state.cacheMutex.Lock()
-	if epoch < indexer.state.lastProcessedEpoch {
-		indexer.state.cacheMutex.Unlock()
+	epochStats, loadStats := indexer.newEpochStats(epoch, dependentRoot)
+	if epochStats == nil {
 		return
+	}
+
+	// load epoch assingments
+	if epochAssignments == nil {
+		var err error
+		epochAssignments, err = indexer.rpcClient.GetEpochAssignments(epoch)
+		if err != nil {
+			logger.Errorf("Error fetching epoch %v duties: %v", epoch, err)
+		}
+	}
+	epochStats.Assignments = epochAssignments
+	epochStats.AssignmentsMutex.Unlock()
+
+	if loadStats {
+		// only start this once
+		go indexer.loadEpochStats(epoch, epochStats)
+	}
+}
+
+func (indexer *Indexer) newEpochStats(epoch uint64, dependentRoot []byte) (*EpochStats, bool) {
+	indexer.state.cacheMutex.Lock()
+	defer indexer.state.cacheMutex.Unlock()
+
+	if epoch < indexer.state.lastProcessedEpoch {
+		return nil, false
 	}
 	oldEpochStats := indexer.state.epochStats[epoch]
 	if oldEpochStats != nil && bytes.Equal(oldEpochStats.dependendRoot, dependentRoot) {
-		indexer.state.cacheMutex.Unlock()
-		return
+		return nil, false
 	}
 	logger.Infof("Epoch %v head, fetching assingments (dependend root: 0x%x)", epoch, dependentRoot)
 
@@ -489,24 +512,9 @@ func (indexer *Indexer) processHeadEpoch(epoch uint64, dependentRoot []byte) {
 			ValidatorBalances: make(map[uint64]uint64),
 		}
 		epochStats.Validators.ValidatorsMutex.Lock()
-	}
-	indexer.state.cacheMutex.Unlock()
 
-	// load epoch assingments
-	if epochAssignments == nil {
-		var err error
-		epochAssignments, err = indexer.rpcClient.GetEpochAssignments(epoch)
-		if err != nil {
-			logger.Errorf("Error fetching epoch %v duties: %v", epoch, err)
-		}
 	}
-	epochStats.Assignments = epochAssignments
-	epochStats.AssignmentsMutex.Unlock()
-
-	if oldEpochStats == nil {
-		// only start this once
-		go indexer.loadEpochStats(epoch, epochStats)
-	}
+	return epochStats, oldEpochStats == nil
 }
 
 func (indexer *Indexer) loadEpochStats(epoch uint64, epochStats *EpochStats) {
@@ -519,6 +527,7 @@ func (indexer *Indexer) loadEpochStats(epoch uint64, epochStats *EpochStats) {
 		logger.Errorf("Error fetching epoch %v validators: %v", epoch, err)
 	} else {
 		indexer.state.cacheMutex.Lock()
+		defer indexer.state.cacheMutex.Unlock()
 		if epoch > indexer.state.headValidatorsSlot {
 			indexer.state.headValidators = epochValidators
 		}
@@ -531,30 +540,28 @@ func (indexer *Indexer) loadEpochStats(epoch uint64, epochStats *EpochStats) {
 			epochStats.Validators.ValidatorCount++
 			epochStats.Validators.EligibleAmount += uint64(validator.Validator.EffectiveBalance)
 		}
-		indexer.state.cacheMutex.Unlock()
 	}
 }
 
 func (indexer *Indexer) processIndexing() {
-	indexer.state.cacheMutex.RLock()
+	// process old epochs
 	currentEpoch := utils.EpochOfSlot(indexer.state.lastHeadBlock)
 	processEpoch := currentEpoch - uint64(indexer.epochProcessingDelay)
-	lowestProcessedEpoch := indexer.state.lastProcessedEpoch
-	lowestCachedSlot := indexer.state.lowestCachedSlot
-	indexer.state.cacheMutex.RUnlock()
-
-	// process old epochs
-	if lowestProcessedEpoch < processEpoch {
+	if indexer.state.lastProcessedEpoch < processEpoch {
 		indexer.processEpoch(processEpoch)
-		indexer.state.cacheMutex.Lock()
 		indexer.state.lastProcessedEpoch = processEpoch
-		indexer.state.cacheMutex.Unlock()
 	}
+}
+
+func (indexer *Indexer) processCacheCleanup() {
+	currentEpoch := utils.EpochOfSlot(indexer.state.lastHeadBlock)
+	lowestCachedSlot := indexer.state.lowestCachedSlot
 
 	// cleanup cache
 	cleanEpoch := currentEpoch - uint64(indexer.inMemoryEpochs)
 	if lowestCachedSlot < (cleanEpoch+1)*utils.Config.Chain.Config.SlotsPerEpoch {
 		indexer.state.cacheMutex.Lock()
+		defer indexer.state.cacheMutex.Unlock()
 		for indexer.state.lowestCachedSlot < (cleanEpoch+1)*utils.Config.Chain.Config.SlotsPerEpoch {
 			if indexer.state.cachedBlocks[indexer.state.lowestCachedSlot] != nil {
 				logger.Debugf("Dropped cached block (epoch %v, slot %v)", utils.EpochOfSlot(indexer.state.lowestCachedSlot), indexer.state.lowestCachedSlot)
@@ -567,7 +574,6 @@ func (indexer *Indexer) processIndexing() {
 			indexer.rpcClient.AddCachedEpochAssignments(cleanEpoch, epochStats.Assignments)
 			delete(indexer.state.epochStats, cleanEpoch)
 		}
-		indexer.state.cacheMutex.Unlock()
 	}
 }
 
