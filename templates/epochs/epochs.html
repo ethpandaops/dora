@@ -13,6 +13,36 @@
     <div class="card mt-2">
       <div id="header-placeholder" style="height:45px;"></div>
       <div class="card-body px-0 py-3">
+        <div class="row">
+          <div class="col-sm-12 col-md-6 table-pagesize">
+            <form action="/epochs" method="get">
+              <label class="px-2">
+                <span>Show </span>
+                <select name="count" aria-controls="epochs" class="custom-select custom-select-sm form-control form-control-sm" onchange="this.form.submit()">
+                  <option value="{{ .PageSize }}" selected>{{ .PageSize }}</option>
+                  <option value="10">10</option>
+                  <option value="25">25</option>
+                  <option value="50">50</option>
+                  <option value="100">100</option>
+                </select>
+                {{ if not .IsDefaultPage }}
+                  <input name="epoch" type="hidden" value="{{ .CurrentPageEpoch }}">
+                {{ end }}
+                <span> entries</span>
+              </label>
+            </form>
+          </div>
+          <div class="col-sm-12 col-md-6 table-search">
+            <div class="px-2" style="text-align: right;">
+              <form action="/epochs" method="get">
+                <label>
+                  <input name="epoch" type="search" class="form-control form-control-sm" placeholder="Search by Epoch Number" aria-controls="epochs">
+                  <input name="count" type="hidden" value="1">
+                </label>
+              </form>
+            </div>
+          </div>
+        </div>
         <div class="table-responsive px-0 py-1">
           <table class="table" id="epochs">
             <thead>
@@ -90,18 +120,48 @@
             {{ else }}
               <tbody>
                 <tr style="height: 430px;">
-                  <td></td>
+                  <td class="d-none d-md-table-cell"></td>
                   <td style="vertical-align: middle;" colspan="9">
-                    <div class="img-fluid mx-auto p-3 d-flex align-items-center" style="max-height: 400px; width: auto; overflow: hidden;">
+                    <div class="img-fluid mx-auto p-3 d-flex align-items-center" style="max-height: 400px; max-width: 400px; overflow: hidden;">
                       {{ template "professor_svg" }}
                     </div>
                   </td>
-                  <td></td>
+                  <td class="d-none d-md-table-cell"></td>
                 </tr>
               </tbody>
             {{ end }}
           </table>
         </div>
+        {{ if gt .TotalPages 1 }}
+          <div class="row">
+            <div class="col-sm-12 col-md-5 table-metainfo">
+              <div class="px-2">
+                <div class="table-meta" role="status" aria-live="polite">Showing epoch {{ .FirstEpoch }} to {{ .LastEpoch }}</div>
+              </div>
+            </div>
+            <div class="col-sm-12 col-md-7 table-paging">
+              <div class="d-inline-block px-2">
+                <ul class="pagination">
+                  <li class="first paginate_button page-item {{ if le .PrevPageIndex 1 }}disabled{{ end }}" id="tpg_first">
+                    <a tab-index="1" aria-controls="tpg_first" class="page-link" href="/epochs?count={{ .PageSize }}">First</a>
+                  </li>
+                  <li class="previous paginate_button page-item {{ if eq .PrevPageIndex 0 }}disabled{{ end }}" id="tpg_previous">
+                    <a tab-index="1" aria-controls="tpg_previous" class="page-link" href="/epochs?epoch={{ .PrevPageEpoch }}&count={{ .PageSize }}"><i class="fas fa-chevron-left"></i></a>
+                  </li>
+                  <li class="page-item disabled">
+                    <a class="page-link" style="background-color: transparent;">{{ .CurrentPageIndex }} of {{ .TotalPages }}</a>
+                  </li>
+                  <li class="next paginate_button page-item {{ if eq .NextPageIndex 0 }}disabled{{ end }}" id="tpg_next">
+                    <a tab-index="1" aria-controls="tpg_next" class="page-link" href="/epochs?epoch={{ .NextPageEpoch }}&count={{ .PageSize }}"><i class="fas fa-chevron-right"></i></a>
+                  </li>
+                  <li class="last paginate_button page-item {{ if le .NextPageEpoch .PageSize }}disabled{{ end }}" id="tpg_last">
+                    <a tab-index="1" aria-controls="tpg_last" class="page-link" href="/epochs?epoch={{ .PageSize }}&count={{ .PageSize }}">Last</a>
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        {{ end }}
       </div>
       <div id="footer-placeholder" style="height:71px;"></div>
     </div>

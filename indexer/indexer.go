@@ -547,8 +547,6 @@ func (indexer *Indexer) loadEpochValidators(epoch uint64, epochStats *EpochStats
 	if err != nil {
 		logger.Errorf("Error fetching epoch %v validators: %v", epoch, err)
 	} else {
-		indexer.state.cacheMutex.Lock()
-		defer indexer.state.cacheMutex.Unlock()
 		if epoch > indexer.state.headValidatorsSlot {
 			indexer.state.headValidators = epochValidators
 		}

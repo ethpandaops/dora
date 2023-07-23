@@ -104,3 +104,21 @@ nav .theme-selector .theme-navlabel {
 span.validator-label {
   white-space: nowrap;
 }
+
+.table-paging {
+  text-align: right;
+}
+
+.table-pagesize label {
+  white-space: nowrap;
+}
+
+.table-pagesize label > * {
+  display: inline-block;
+  width: auto;
+  margin: 0 1px;
+}
+
+.table-search label {
+  width: 300px;
+}

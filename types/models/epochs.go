@@ -8,6 +8,18 @@ import (
 type EpochsPageData struct {
 	Epochs     []*EpochsPageDataEpoch `json:"epochs"`
 	EpochCount uint64
+	FirstEpoch uint64
+	LastEpoch  uint64
+
+	IsDefaultPage    bool
+	TotalPages       uint64
+	PageSize         uint64
+	CurrentPageIndex uint64
+	CurrentPageEpoch uint64
+	PrevPageIndex    uint64
+	PrevPageEpoch    uint64
+	NextPageIndex    uint64
+	NextPageEpoch    uint64
 }
 
 type EpochsPageDataEpoch struct {

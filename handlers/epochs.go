@@ -29,7 +29,11 @@ func Epochs(w http.ResponseWriter, r *http.Request) {
 	if urlArgs.Has("epoch") {
 		firstEpoch, _ = strconv.ParseUint(urlArgs.Get("epoch"), 10, 64)
 	}
-	pageData := getEpochsPageData(firstEpoch)
+	var pageSize uint64 = 50
+	if urlArgs.Has("count") {
+		pageSize, _ = strconv.ParseUint(urlArgs.Get("count"), 10, 64)
+	}
+	pageData := getEpochsPageData(firstEpoch, pageSize)
 
 	logrus.Printf("epochs page called")
 	data.Data = pageData
@@ -39,7 +43,7 @@ func Epochs(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func getEpochsPageData(firstEpoch uint64) *models.EpochsPageData {
+func getEpochsPageData(firstEpoch uint64, pageSize uint64) *models.EpochsPageData {
 	pageData := &models.EpochsPageData{}
 
 	now := time.Now()
@@ -51,19 +55,40 @@ func getEpochsPageData(firstEpoch uint64) *models.EpochsPageData {
 	if currentSlot < 0 {
 		currentSlot = 0
 	}
-	if firstEpoch == 0 {
+	if firstEpoch == 0 || firstEpoch > uint64(currentEpoch) {
+		pageData.IsDefaultPage = true
 		firstEpoch = uint64(currentEpoch)
 	}
 
+	if pageSize > 100 {
+		pageSize = 100
+	}
+
+	pageData.TotalPages = (uint64(currentEpoch) / pageSize)
+	if (uint64(currentEpoch) % pageSize) > 0 {
+		pageData.TotalPages++
+	}
+	pageData.PageSize = pageSize
+	epochOffset := currentEpoch - int64(firstEpoch)
+
+	pageData.CurrentPageIndex = (uint64(epochOffset) / pageSize) + 1
+	pageData.CurrentPageEpoch = firstEpoch
+	pageData.PrevPageIndex = pageData.CurrentPageIndex - 1
+	pageData.PrevPageEpoch = pageData.CurrentPageEpoch + pageSize
+	if pageData.CurrentPageEpoch > pageSize {
+		pageData.NextPageIndex = pageData.CurrentPageIndex + 1
+		pageData.NextPageEpoch = pageData.CurrentPageEpoch - pageSize
+	}
+
 	finalizedHead, _ := services.GlobalBeaconService.GetFinalizedBlockHead()
-	epochLimit := 50
+	epochLimit := pageSize
 
 	// load epochs
 	pageData.Epochs = make([]*models.EpochsPageDataEpoch, 0)
 	dbEpochs := services.GlobalBeaconService.GetDbEpochs(uint64(firstEpoch), uint32(epochLimit))
 	dbIdx := 0
 	dbCnt := len(dbEpochs)
-	epochCount := 0
+	epochCount := uint64(0)
 	for epoch := firstEpoch; epoch >= 0 && epochCount < epochLimit; epoch-- {
 		finalized := false
 		if finalizedHead != nil && uint64(finalizedHead.Data.Header.Message.Slot) >= epoch*utils.Config.Chain.Config.SlotsPerEpoch {
@@ -100,6 +125,8 @@ func getEpochsPageData(firstEpoch uint64) *models.EpochsPageData {
 		epochCount++
 	}
 	pageData.EpochCount = uint64(epochCount)
+	pageData.FirstEpoch = firstEpoch
+	pageData.LastEpoch = firstEpoch - pageData.EpochCount + 1
 
 	return pageData
 }
