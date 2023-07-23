@@ -75,10 +75,9 @@ func buildDbBlock(block *BlockInfo, epochStats *EpochStats) *dbtypes.Block {
 	}
 
 	syncAggregate := block.Block.Data.Message.Body.SyncAggregate
-	syncAssignments := epochStats.Assignments.SyncAssignments
-	if syncAggregate != nil && syncAssignments != nil {
+	if syncAggregate != nil && epochStats != nil && epochStats.Assignments != nil && epochStats.Assignments.SyncAssignments != nil {
 		votedCount := 0
-		assignedCount := len(syncAssignments)
+		assignedCount := len(epochStats.Assignments.SyncAssignments)
 		for i := 0; i < assignedCount; i++ {
 			if utils.BitAtVector(syncAggregate.SyncCommitteeBits, i) {
 				votedCount++

@@ -39,7 +39,7 @@ type indexerState struct {
 	epochStats         map[uint64]*EpochStats
 	headValidators     *rpctypes.StandardV1StateValidatorsResponse
 	headValidatorsSlot uint64
-	lowestCachedSlot   uint64
+	lowestCachedSlot   int64
 	lastProcessedEpoch uint64
 }
 
@@ -48,10 +48,11 @@ type indexerSyncState struct {
 }
 
 type EpochStats struct {
-	dependendRoot    []byte
-	AssignmentsMutex sync.Mutex
-	Validators       *EpochValidators
-	Assignments      *rpctypes.EpochAssignments
+	dependendRoot     []byte
+	AssignmentsMutex  sync.Mutex
+	assignmentsFailed bool
+	Validators        *EpochValidators
+	Assignments       *rpctypes.EpochAssignments
 }
 
 type EpochValidators struct {
@@ -69,8 +70,9 @@ func NewIndexer(rpcClient *rpc.BeaconClient, prepopulateEpochs uint16, inMemoryE
 		inMemoryEpochs:       inMemoryEpochs,
 		epochProcessingDelay: epochProcessingDelay,
 		state: indexerState{
-			cachedBlocks: make(map[uint64][]*BlockInfo),
-			epochStats:   make(map[uint64]*EpochStats),
+			cachedBlocks:     make(map[uint64][]*BlockInfo),
+			epochStats:       make(map[uint64]*EpochStats),
+			lowestCachedSlot: -1,
 		},
 	}, nil
 }
@@ -89,7 +91,7 @@ func (indexer *Indexer) Start() error {
 	return nil
 }
 
-func (indexer *Indexer) GetLowestCachedSlot() uint64 {
+func (indexer *Indexer) GetLowestCachedSlot() int64 {
 	indexer.state.cacheMutex.RLock()
 	defer indexer.state.cacheMutex.RUnlock()
 	return indexer.state.lowestCachedSlot
@@ -105,7 +107,7 @@ func (indexer *Indexer) GetCachedBlocks(slot uint64) []*BlockInfo {
 	indexer.state.cacheMutex.RLock()
 	defer indexer.state.cacheMutex.RUnlock()
 
-	if slot < indexer.state.lowestCachedSlot {
+	if slot < uint64(indexer.state.lowestCachedSlot) {
 		return nil
 	}
 	blocks := indexer.state.cachedBlocks[slot]
@@ -215,10 +217,10 @@ func (indexer *Indexer) runIndexer() {
 
 		select {
 		case headEvt := <-blockStream.HeadChan:
-			logger.Infof("RPC Event: Head  %v (root: %v, dep: %v)", headEvt.Slot, headEvt.Block, headEvt.CurrentDutyDependentRoot)
+			//logger.Infof("RPC Event: Head  %v (root: %v, dep: %v)", headEvt.Slot, headEvt.Block, headEvt.CurrentDutyDependentRoot)
 			indexer.processHeadEpoch(utils.EpochOfSlot(uint64(headEvt.Slot)), headEvt.CurrentDutyDependentRoot)
 		case blockEvt := <-blockStream.BlockChan:
-			logger.Infof("RPC Event: Block  %v (root: %v)", blockEvt.Slot, blockEvt.Block)
+			//logger.Infof("RPC Event: Block  %v (root: %v)", blockEvt.Slot, blockEvt.Block)
 			indexer.pollStreamedBlock(blockEvt.Block)
 		case <-blockStream.CloseChan:
 			logger.Warnf("Indexer lost connection to beacon event stream. Reconnection in 5 sec")
@@ -358,8 +360,8 @@ func (indexer *Indexer) processHeadBlock(slot uint64, header *rpctypes.StandardV
 		indexer.state.cachedBlocks[slot] = append(blocks, blockInfo)
 	}
 
-	if indexer.state.lowestCachedSlot == 0 || slot < indexer.state.lowestCachedSlot {
-		indexer.state.lowestCachedSlot = slot
+	if indexer.state.lowestCachedSlot < 0 || int64(slot) < indexer.state.lowestCachedSlot {
+		indexer.state.lowestCachedSlot = int64(slot)
 	}
 
 	// check for chain reorgs
@@ -368,7 +370,8 @@ func (indexer *Indexer) processHeadBlock(slot uint64, header *rpctypes.StandardV
 		var reorgBaseBlock *BlockInfo
 		var reorgBaseSlot uint64
 		var reorgBaseIndex int
-		for sidx := slot; sidx >= indexer.state.lowestCachedSlot; sidx-- {
+
+		for sidx := slot; int64(sidx) >= indexer.state.lowestCachedSlot; sidx-- {
 			blocks := indexer.state.cachedBlocks[sidx]
 			if blocks == nil {
 				continue
@@ -408,7 +411,7 @@ func (indexer *Indexer) processHeadBlock(slot uint64, header *rpctypes.StandardV
 				logger.Infof("Chain reorg: mark %v.%v as canonical (%v)", orphanedSlot, orphanedIndex, orphanedBlock.Header.Data.Root)
 
 				foundReorgBase := false
-				for sidx := reorgBaseSlot - 1; sidx >= indexer.state.lowestCachedSlot; sidx-- {
+				for sidx := reorgBaseSlot - 1; int64(sidx) >= indexer.state.lowestCachedSlot; sidx-- {
 					blocks := indexer.state.cachedBlocks[sidx]
 					if blocks == nil {
 						continue
@@ -462,44 +465,36 @@ func (indexer *Indexer) processHeadEpoch(epoch uint64, dependentRoot []byte) {
 		epochAssignments, err = indexer.rpcClient.GetEpochAssignments(epoch)
 		if err != nil {
 			logger.Errorf("Error fetching epoch %v duties: %v", epoch, err)
+			return
 		}
 		dependentRoot = epochAssignments.DependendRoot
 	}
 
-	epochStats, loadStats := indexer.newEpochStats(epoch, dependentRoot)
-	if epochStats == nil {
-		return
-	}
+	epochStats, loadAssignments, loadValidators := indexer.newEpochStats(epoch, dependentRoot)
 
-	// load epoch assingments
-	if epochAssignments == nil {
-		var err error
-		epochAssignments, err = indexer.rpcClient.GetEpochAssignments(epoch)
-		if err != nil {
-			logger.Errorf("Error fetching epoch %v duties: %v", epoch, err)
-		}
-	}
-	epochStats.Assignments = epochAssignments
-	epochStats.AssignmentsMutex.Unlock()
-
-	if loadStats {
-		// only start this once
-		go indexer.loadEpochStats(epoch, epochStats)
+	if loadAssignments || loadValidators {
+		go indexer.loadEpochStats(epoch, dependentRoot, epochStats, loadValidators)
 	}
 }
 
-func (indexer *Indexer) newEpochStats(epoch uint64, dependentRoot []byte) (*EpochStats, bool) {
+func (indexer *Indexer) newEpochStats(epoch uint64, dependentRoot []byte) (*EpochStats, bool, bool) {
 	indexer.state.cacheMutex.Lock()
 	defer indexer.state.cacheMutex.Unlock()
 
 	if epoch < indexer.state.lastProcessedEpoch {
-		return nil, false
+		return nil, false, false
 	}
 	oldEpochStats := indexer.state.epochStats[epoch]
 	if oldEpochStats != nil && bytes.Equal(oldEpochStats.dependendRoot, dependentRoot) {
-		return nil, false
+		loadAssignments := oldEpochStats.assignmentsFailed
+		if loadAssignments {
+			oldEpochStats.assignmentsFailed = false
+			oldEpochStats.AssignmentsMutex = sync.Mutex{}
+			oldEpochStats.AssignmentsMutex.Lock()
+		}
+
+		return oldEpochStats, loadAssignments, false
 	}
-	logger.Infof("Epoch %v head, fetching assingments (dependend root: 0x%x)", epoch, dependentRoot)
 
 	epochStats := &EpochStats{}
 	epochStats.dependendRoot = dependentRoot
@@ -517,10 +512,33 @@ func (indexer *Indexer) newEpochStats(epoch uint64, dependentRoot []byte) (*Epoc
 		epochStats.Validators.ValidatorsMutex.Lock()
 
 	}
-	return epochStats, oldEpochStats == nil
+
+	return epochStats, oldEpochStats == nil, oldEpochStats == nil
 }
 
-func (indexer *Indexer) loadEpochStats(epoch uint64, epochStats *EpochStats) {
+func (indexer *Indexer) loadEpochStats(epoch uint64, dependentRoot []byte, epochStats *EpochStats, loadValidators bool) {
+	if !indexer.loadEpochAssignments(epoch, dependentRoot, epochStats) {
+		return
+	}
+	if loadValidators {
+		indexer.loadEpochValidators(epoch, epochStats)
+	}
+}
+
+func (indexer *Indexer) loadEpochAssignments(epoch uint64, dependentRoot []byte, epochStats *EpochStats) bool {
+	defer epochStats.AssignmentsMutex.Unlock()
+	logger.Infof("Epoch %v head, fetching assingments (dependend root: 0x%x)", epoch, dependentRoot)
+
+	epochAssignments, err := indexer.rpcClient.GetEpochAssignments(epoch)
+	if err != nil {
+		logger.Errorf("Error fetching epoch %v duties: %v", epoch, err)
+		return false
+	}
+	epochStats.Assignments = epochAssignments
+	return true
+}
+
+func (indexer *Indexer) loadEpochValidators(epoch uint64, epochStats *EpochStats) {
 	defer epochStats.Validators.ValidatorsMutex.Unlock()
 	logger.Infof("Epoch %v head, loading validator set (state: %v)", epoch, epochStats.Assignments.DependendState)
 
@@ -562,13 +580,14 @@ func (indexer *Indexer) processCacheCleanup() {
 
 	// cleanup cache
 	cleanEpoch := currentEpoch - uint64(indexer.inMemoryEpochs)
-	if lowestCachedSlot < (cleanEpoch+1)*utils.Config.Chain.Config.SlotsPerEpoch {
+	if lowestCachedSlot >= 0 && lowestCachedSlot < int64((cleanEpoch+1)*utils.Config.Chain.Config.SlotsPerEpoch) {
 		indexer.state.cacheMutex.Lock()
 		defer indexer.state.cacheMutex.Unlock()
-		for indexer.state.lowestCachedSlot < (cleanEpoch+1)*utils.Config.Chain.Config.SlotsPerEpoch {
-			if indexer.state.cachedBlocks[indexer.state.lowestCachedSlot] != nil {
-				logger.Debugf("Dropped cached block (epoch %v, slot %v)", utils.EpochOfSlot(indexer.state.lowestCachedSlot), indexer.state.lowestCachedSlot)
-				delete(indexer.state.cachedBlocks, indexer.state.lowestCachedSlot)
+		for indexer.state.lowestCachedSlot < int64((cleanEpoch+1)*utils.Config.Chain.Config.SlotsPerEpoch) {
+			cacheSlot := uint64(indexer.state.lowestCachedSlot)
+			if indexer.state.cachedBlocks[cacheSlot] != nil {
+				logger.Debugf("Dropped cached block (epoch %v, slot %v)", utils.EpochOfSlot(cacheSlot), indexer.state.lowestCachedSlot)
+				delete(indexer.state.cachedBlocks, cacheSlot)
 			}
 			indexer.state.lowestCachedSlot++
 		}

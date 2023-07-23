@@ -47,7 +47,7 @@ func StartBeaconService() error {
 	} else if epochProcessingDelay > inMemoryEpochs {
 		inMemoryEpochs = epochProcessingDelay
 	}
-	prepopulateEpochs := utils.Config.BeaconApi.InMemoryEpochs
+	prepopulateEpochs := utils.Config.BeaconApi.PrepopulateEpochs
 	if prepopulateEpochs > inMemoryEpochs {
 		prepopulateEpochs = inMemoryEpochs
 	}
@@ -109,8 +109,8 @@ func (bs *BeaconService) GetSlotDetailsBySlot(slot uint64) (*rpctypes.CombinedBl
 }
 
 func (bs *BeaconService) GetEpochAssignments(epoch uint64) (*rpctypes.EpochAssignments, error) {
-	lowestIndexerEpoch := utils.EpochOfSlot(bs.indexer.GetLowestCachedSlot())
-	if epoch >= lowestIndexerEpoch {
+	idxMinSlot := bs.indexer.GetLowestCachedSlot()
+	if idxMinSlot >= 0 && epoch >= utils.EpochOfSlot(uint64(idxMinSlot)) {
 		epochStats := bs.indexer.GetCachedEpochStats(epoch)
 		if epochStats != nil {
 			return epochStats.Assignments, nil
@@ -130,8 +130,12 @@ func (bs *BeaconService) GetDbEpochs(firstEpoch uint64, limit uint32) []*dbtypes
 	dbIdx := 0
 	dbCnt := len(dbEpochs)
 
-	idxMinEpoch := utils.EpochOfSlot(bs.indexer.GetLowestCachedSlot())
-	idxHeadEpoch := utils.EpochOfSlot(bs.indexer.GetHeadSlot())
+	idxMinSlot := bs.indexer.GetLowestCachedSlot()
+	var idxMinEpoch, idxHeadEpoch uint64
+	if idxMinSlot >= 0 {
+		idxMinEpoch = utils.EpochOfSlot(uint64(idxMinSlot))
+		idxHeadEpoch = utils.EpochOfSlot(bs.indexer.GetHeadSlot())
+	}
 
 	lastEpoch := firstEpoch - uint64(limit)
 	if lastEpoch < 0 {
@@ -143,7 +147,7 @@ func (bs *BeaconService) GetDbEpochs(firstEpoch uint64, limit uint32) []*dbtypes
 			resEpoch = dbEpochs[dbIdx]
 			dbIdx++
 		}
-		if epoch >= idxMinEpoch && epoch <= idxHeadEpoch {
+		if idxMinSlot >= 0 && epoch >= idxMinEpoch && epoch <= idxHeadEpoch {
 			resEpoch = bs.indexer.BuildLiveEpoch(epoch)
 		}
 		if resEpoch != nil {
@@ -166,8 +170,8 @@ func (bs *BeaconService) GetDbBlocks(firstSlot uint64, limit int32, withOrphaned
 	}
 
 	slot := firstSlot
-	if firstSlot >= idxMinSlot {
-		for ; slot >= idxMinSlot && resIdx < int(limit); slot-- {
+	if idxMinSlot >= 0 && firstSlot >= uint64(idxMinSlot) {
+		for ; slot >= uint64(idxMinSlot) && resIdx < int(limit); slot-- {
 			blocks := bs.indexer.GetCachedBlocks(slot)
 			if blocks != nil {
 				for bidx := 0; bidx < len(blocks) && resIdx < int(limit); bidx++ {

@@ -50,14 +50,16 @@ func aggregateEpochVotes(blockMap map[uint64][]*BlockInfo, epoch uint64, epochSt
 					voteAmount := uint64(0)
 					voteBitset := att.AggregationBits
 					votedBitset := votedBitsets[attKey]
-					voteValidators := epochStats.Assignments.AttestorAssignments[attKey]
-					for bitIdx, validatorIdx := range voteValidators {
-						if votedBitset != nil && utils.BitAtVector(votedBitset, bitIdx) {
-							// don't "double count" votes, if a attestation aggregation has been extended and re-included
-							continue
-						}
-						if utils.BitAtVector(voteBitset, bitIdx) {
-							voteAmount += uint64(epochStats.Validators.ValidatorBalances[validatorIdx])
+					if epochStats.Assignments != nil {
+						voteValidators := epochStats.Assignments.AttestorAssignments[attKey]
+						for bitIdx, validatorIdx := range voteValidators {
+							if votedBitset != nil && utils.BitAtVector(votedBitset, bitIdx) {
+								// don't "double count" votes, if a attestation aggregation has been extended and re-included
+								continue
+							}
+							if utils.BitAtVector(voteBitset, bitIdx) {
+								voteAmount += uint64(epochStats.Validators.ValidatorBalances[validatorIdx])
+							}
 						}
 					}
 
