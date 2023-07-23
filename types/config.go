@@ -40,6 +40,7 @@ type Config struct {
 		RedisCacheAddr       string `yaml:"redisCacheAddr" envconfig:"BEACONAPI_REDIS_CACHE_ADDR"`
 		RedisCachePrefix     string `yaml:"redisCachePrefix" envconfig:"BEACONAPI_REDIS_CACHE_PREFIX"`
 
+		PrepopulateEpochs    uint16 `yaml:"prepopulateEpochs" envconfig:"BEACONAPI_PREPOPULATE_EPOCHS"`
 		InMemoryEpochs       uint16 `yaml:"inMemoryEpochs" envconfig:"BEACONAPI_IN_MEMORY_EPOCHS"`
 		EpochProcessingDelay uint16 `yaml:"epochProcessingDelay" envconfig:"BEACONAPI_EPOCH_PROCESSING_DELAY"`
 		DisableIndexWriter   bool   `yaml:"disableIndexWriter" envconfig:"BEACONAPI_DISABLE_INDEX_WRITER"`

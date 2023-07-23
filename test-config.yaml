@@ -23,7 +23,8 @@ beaconapi:
   redisCacheAddr: ""
   redisCachePrefix: ""
 
-  inMemoryEpochs: 3
+  prepopulateEpochs: 2
+  inMemoryEpochs: 10
   epochProcessingDelay: 2
   disableIndexWriter: true
 

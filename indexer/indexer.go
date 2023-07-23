@@ -23,6 +23,7 @@ type Indexer struct {
 	runMutex             sync.Mutex
 	running              bool
 	writeDb              bool
+	prepopulateEpochs    uint16
 	inMemoryEpochs       uint16
 	epochProcessingDelay uint16
 	state                indexerState
@@ -60,10 +61,11 @@ type EpochValidators struct {
 	ValidatorBalances map[uint64]uint64
 }
 
-func NewIndexer(rpcClient *rpc.BeaconClient, inMemoryEpochs uint16, epochProcessingDelay uint16, writeDb bool) (*Indexer, error) {
+func NewIndexer(rpcClient *rpc.BeaconClient, prepopulateEpochs uint16, inMemoryEpochs uint16, epochProcessingDelay uint16, writeDb bool) (*Indexer, error) {
 	return &Indexer{
 		rpcClient:            rpcClient,
 		writeDb:              writeDb,
+		prepopulateEpochs:    prepopulateEpochs,
 		inMemoryEpochs:       inMemoryEpochs,
 		epochProcessingDelay: epochProcessingDelay,
 		state: indexerState{
@@ -175,8 +177,8 @@ func (indexer *Indexer) runIndexer() {
 
 	if now := time.Now(); now.Compare(genesisTime) > 0 {
 		currentEpoch := utils.TimeToEpoch(time.Now())
-		if currentEpoch > int64(indexer.inMemoryEpochs) {
-			indexer.state.lastHeadBlock = uint64((currentEpoch-int64(indexer.inMemoryEpochs)+1)*int64(chainConfig.SlotsPerEpoch)) - 1
+		if currentEpoch > int64(indexer.prepopulateEpochs) {
+			indexer.state.lastHeadBlock = uint64((currentEpoch-int64(indexer.prepopulateEpochs)+1)*int64(chainConfig.SlotsPerEpoch)) - 1
 		}
 		if currentEpoch > int64(indexer.epochProcessingDelay) {
 			indexer.state.lastProcessedEpoch = uint64(currentEpoch - int64(indexer.epochProcessingDelay))
@@ -235,6 +237,7 @@ func (indexer *Indexer) runIndexer() {
 
 		//now := time.Now()
 		indexer.processIndexing()
+		indexer.processCacheCleanup()
 		//logger.Infof("indexer loop processing time: %v ms", time.Now().Sub(now).Milliseconds())
 	}
 }
