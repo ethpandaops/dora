@@ -7,8 +7,10 @@ import (
 	"io/ioutil"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common/lru"
 	logger "github.com/sirupsen/logrus"
 
 	"github.com/pk910/light-beaconchain-explorer/rpctypes"
@@ -16,13 +18,19 @@ import (
 )
 
 type BeaconClient struct {
-	endpoint string
+	endpoint            string
+	assignmentsCache    *lru.Cache[uint64, *rpctypes.EpochAssignments]
+	assignmentsCacheMux sync.Mutex
 }
 
 // NewBeaconClient is used to create a new beacon client
-func NewBeaconClient(endpoint string) (*BeaconClient, error) {
+func NewBeaconClient(endpoint string, assignmentsCacheSize int) (*BeaconClient, error) {
+	if assignmentsCacheSize < 10 {
+		assignmentsCacheSize = 10
+	}
 	client := &BeaconClient{
-		endpoint: endpoint,
+		endpoint:         endpoint,
+		assignmentsCache: lru.NewCache[uint64, *rpctypes.EpochAssignments](assignmentsCacheSize),
 	}
 
 	return client, nil
@@ -31,8 +39,8 @@ func NewBeaconClient(endpoint string) (*BeaconClient, error) {
 var errNotFound = errors.New("not found 404")
 
 func (bc *BeaconClient) get(url string) ([]byte, error) {
-	// t0 := time.Now()
-	// defer func() { fmt.Println(url, time.Since(t0)) }()
+	//t0 := time.Now()
+	//defer func() { fmt.Println("RPC GET: ", url, time.Since(t0)) }()
 	client := &http.Client{Timeout: time.Second * 120}
 	resp, err := client.Get(url)
 	if err != nil {
@@ -51,6 +59,34 @@ func (bc *BeaconClient) get(url string) ([]byte, error) {
 	}
 
 	return data, err
+}
+
+func (bc *BeaconClient) getJson(url string, returnValue interface{}) error {
+	//t0 := time.Now()
+	//defer func() { fmt.Println("RPC GET (json): ", url, time.Since(t0)) }()
+	client := &http.Client{Timeout: time.Second * 120}
+	resp, err := client.Get(url)
+	if err != nil {
+		return err
+	}
+
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		if resp.StatusCode == http.StatusNotFound {
+			return errNotFound
+		}
+		data, _ := ioutil.ReadAll(resp.Body)
+		return fmt.Errorf("url: %v, error-response: %s", url, data)
+	}
+
+	dec := json.NewDecoder(resp.Body)
+	err = dec.Decode(&returnValue)
+	if err != nil {
+		return fmt.Errorf("error parsing json response: %v", err)
+	}
+
+	return nil
 }
 
 func (bc *BeaconClient) GetLatestBlockHead() (*rpctypes.StandardV1BeaconHeaderResponse, error) {
@@ -154,8 +190,37 @@ func (bc *BeaconClient) GetProposerDuties(epoch uint64) (*rpctypes.StandardV1Pro
 	return &parsedProposerResponse, nil
 }
 
-// GetEpochAssignments will get the epoch assignments from Lighthouse RPC api
 func (bc *BeaconClient) GetEpochAssignments(epoch uint64) (*rpctypes.EpochAssignments, error) {
+	currentEpoch := utils.TimeToEpoch(time.Now())
+	// don't cache current & last epoch as these might change due to reorgs
+	// the most recent epoch assignments are cached in the indexer anyway
+	cachable := epoch < uint64(currentEpoch)-1
+	if cachable {
+		bc.assignmentsCacheMux.Lock()
+		cachedValue, found := bc.assignmentsCache.Get(epoch)
+		bc.assignmentsCacheMux.Unlock()
+		if found {
+			return cachedValue, nil
+		}
+	}
+
+	epochAssignments, err := bc.getEpochAssignments(epoch)
+	if cachable && epochAssignments != nil && err == nil {
+		bc.assignmentsCacheMux.Lock()
+		bc.assignmentsCache.Add(epoch, epochAssignments)
+		bc.assignmentsCacheMux.Unlock()
+	}
+	return epochAssignments, err
+}
+
+func (bc *BeaconClient) AddCachedEpochAssignments(epoch uint64, epochAssignments *rpctypes.EpochAssignments) {
+	bc.assignmentsCacheMux.Lock()
+	bc.assignmentsCache.Add(epoch, epochAssignments)
+	bc.assignmentsCacheMux.Unlock()
+}
+
+// GetEpochAssignments will get the epoch assignments from Lighthouse RPC api
+func (bc *BeaconClient) getEpochAssignments(epoch uint64) (*rpctypes.EpochAssignments, error) {
 	parsedProposerResponse, err := bc.GetProposerDuties(epoch)
 	if err != nil {
 		return nil, err
@@ -169,17 +234,14 @@ func (bc *BeaconClient) GetEpochAssignments(epoch uint64) (*rpctypes.EpochAssign
 	depStateRoot := parsedHeader.Data.Header.Message.StateRoot
 
 	// Now use the state root to make a consistent committee query
-	committeesResp, err := bc.get(fmt.Sprintf("%s/eth/v1/beacon/states/%s/committees?epoch=%d", bc.endpoint, depStateRoot, epoch))
+	var parsedCommittees rpctypes.StandardV1CommitteesResponse
+	err = bc.getJson(fmt.Sprintf("%s/eth/v1/beacon/states/%s/committees?epoch=%d", bc.endpoint, depStateRoot, epoch), &parsedCommittees)
 	if err != nil {
 		return nil, fmt.Errorf("error retrieving committees data: %w", err)
 	}
-	var parsedCommittees rpctypes.StandardV1CommitteesResponse
-	err = json.Unmarshal(committeesResp, &parsedCommittees)
-	if err != nil {
-		return nil, fmt.Errorf("error parsing committees data: %w", err)
-	}
-
 	assignments := &rpctypes.EpochAssignments{
+		DependendRoot:       parsedProposerResponse.DependentRoot,
+		DependendState:      depStateRoot,
 		ProposerAssignments: make(map[uint64]uint64),
 		AttestorAssignments: make(map[string][]uint64),
 	}
@@ -210,14 +272,10 @@ func (bc *BeaconClient) GetEpochAssignments(epoch uint64) (*rpctypes.EpochAssign
 			syncCommitteeState = fmt.Sprintf("%d", utils.Config.Chain.Config.AltairForkEpoch*utils.Config.Chain.Config.SlotsPerEpoch)
 		}
 
-		syncCommitteesResp, err := bc.get(fmt.Sprintf("%s/eth/v1/beacon/states/%s/sync_committees?epoch=%d", bc.endpoint, syncCommitteeState, epoch))
+		var parsedSyncCommittees rpctypes.StandardV1SyncCommitteesResponse
+		err := bc.getJson(fmt.Sprintf("%s/eth/v1/beacon/states/%s/sync_committees?epoch=%d", bc.endpoint, syncCommitteeState, epoch), &parsedSyncCommittees)
 		if err != nil {
 			return nil, fmt.Errorf("error retrieving sync_committees for epoch %v (state: %v): %w", epoch, syncCommitteeState, err)
-		}
-		var parsedSyncCommittees rpctypes.StandardV1SyncCommitteesResponse
-		err = json.Unmarshal(syncCommitteesResp, &parsedSyncCommittees)
-		if err != nil {
-			return nil, fmt.Errorf("error parsing sync_committees data for epoch %v (state: %v): %w", epoch, syncCommitteeState, err)
 		}
 		assignments.SyncAssignments = make([]uint64, len(parsedSyncCommittees.Data.Validators))
 
@@ -235,14 +293,10 @@ func (bc *BeaconClient) GetEpochAssignments(epoch uint64) (*rpctypes.EpochAssign
 }
 
 func (bc *BeaconClient) GetStateValidators(stateroot []byte) (*rpctypes.StandardV1StateValidatorsResponse, error) {
-	resp, err := bc.get(fmt.Sprintf("%s/eth/v1/beacon/states/0x%x/validators", bc.endpoint, stateroot))
+	var parsedResponse rpctypes.StandardV1StateValidatorsResponse
+	err := bc.getJson(fmt.Sprintf("%s/eth/v1/beacon/states/0x%x/validators", bc.endpoint, stateroot), &parsedResponse)
 	if err != nil {
 		return nil, fmt.Errorf("error retrieving state validators: %v", err)
-	}
-	var parsedResponse rpctypes.StandardV1StateValidatorsResponse
-	err = json.Unmarshal(resp, &parsedResponse)
-	if err != nil {
-		return nil, fmt.Errorf("error parsing state validators: %v", err)
 	}
 	return &parsedResponse, nil
 }

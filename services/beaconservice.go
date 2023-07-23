@@ -25,7 +25,8 @@ func StartBeaconService() error {
 	if GlobalBeaconService != nil {
 		return nil
 	}
-	rpcClient, err := rpc.NewBeaconClient(utils.Config.BeaconApi.Endpoint)
+
+	rpcClient, err := rpc.NewBeaconClient(utils.Config.BeaconApi.Endpoint, utils.Config.BeaconApi.AssignmentsCacheSize)
 	if err != nil {
 		return err
 	}
@@ -104,20 +105,17 @@ func (bs *BeaconService) GetSlotDetailsBySlot(slot uint64) (*rpctypes.CombinedBl
 }
 
 func (bs *BeaconService) GetEpochAssignments(epoch uint64) (*rpctypes.EpochAssignments, error) {
-	wanted := &rpctypes.EpochAssignments{}
-	cacheKey := fmt.Sprintf("epochduties-%v", epoch)
-	if wanted, err := bs.tieredCache.GetWithLocalTimeout(cacheKey, 0, wanted); err == nil {
-		return wanted.(*rpctypes.EpochAssignments), nil
+	lowestIndexerEpoch := utils.EpochOfSlot(bs.indexer.GetLowestCachedSlot())
+	if epoch >= lowestIndexerEpoch {
+		epochStats := bs.indexer.GetCachedEpochStats(epoch)
+		if epochStats != nil {
+			return epochStats.Assignments, nil
+		} else {
+			return nil, nil
+		}
 	}
-	wanted, err := bs.rpcClient.GetEpochAssignments(epoch)
-	if err != nil {
-		return nil, err
-	}
-	err = bs.tieredCache.Set(cacheKey, wanted, 0)
-	if err != nil {
-		return nil, err
-	}
-	return wanted, nil
+
+	return bs.rpcClient.GetEpochAssignments(epoch)
 }
 
 func (bs *BeaconService) GetDbEpochs(firstEpoch uint64, limit uint32) []*dbtypes.Epoch {

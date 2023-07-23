@@ -193,25 +193,27 @@ func (sync *synchronizerState) syncEpoch(syncEpoch uint64) bool {
 	}
 
 	epochStats := EpochStats{
-		ValidatorCount:    0,
-		EligibleAmount:    0,
-		Assignments:       epochAssignments,
-		ValidatorBalances: make(map[uint64]uint64),
+		Assignments: epochAssignments,
+		Validators: &EpochValidators{
+			ValidatorCount:    0,
+			EligibleAmount:    0,
+			ValidatorBalances: make(map[uint64]uint64),
+		},
 	}
 
 	// load epoch stats
-	epochValidators, err := sync.indexer.rpcClient.GetStateValidators(firstBlock.Header.Data.Header.Message.StateRoot)
+	epochValidators, err := sync.indexer.rpcClient.GetStateValidators(epochAssignments.DependendState)
 	if err != nil {
 		logger.Errorf("Error fetching epoch %v/%v validators: %v", syncEpoch, firstBlock.Header.Data.Header.Message.Slot, err)
 	} else {
 		for idx := 0; idx < len(epochValidators.Data); idx++ {
 			validator := epochValidators.Data[idx]
-			epochStats.ValidatorBalances[uint64(validator.Index)] = uint64(validator.Validator.EffectiveBalance)
+			epochStats.Validators.ValidatorBalances[uint64(validator.Index)] = uint64(validator.Validator.EffectiveBalance)
 			if validator.Status != "active_ongoing" {
 				continue
 			}
-			epochStats.ValidatorCount++
-			epochStats.EligibleAmount += uint64(validator.Validator.EffectiveBalance)
+			epochStats.Validators.ValidatorCount++
+			epochStats.Validators.EligibleAmount += uint64(validator.Validator.EffectiveBalance)
 		}
 	}
 	if sync.checkKillChan(0) {

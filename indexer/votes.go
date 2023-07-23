@@ -57,7 +57,7 @@ func aggregateEpochVotes(blockMap map[uint64][]*BlockInfo, epoch uint64, epochSt
 							continue
 						}
 						if utils.BitAtVector(voteBitset, bitIdx) {
-							voteAmount += uint64(epochStats.ValidatorBalances[validatorIdx])
+							voteAmount += uint64(epochStats.Validators.ValidatorBalances[validatorIdx])
 						}
 					}
 
@@ -79,7 +79,7 @@ func aggregateEpochVotes(blockMap map[uint64][]*BlockInfo, epoch uint64, epochSt
 							votes.currentEpoch.targetVoteAmount += voteAmount
 						}
 					} else {
-						logger.Infof("vote target missmatch %v != 0x%x", att.Data.Target.Root, targetRoot)
+						//logger.Infof("vote target missmatch %v != 0x%x", att.Data.Target.Root, targetRoot)
 					}
 					if bytes.Equal(att.Data.BeaconBlockRoot, block.Header.Data.Header.Message.ParentRoot) {
 						if isNextEpoch {

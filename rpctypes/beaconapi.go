@@ -1,9 +1,19 @@
 package rpctypes
 
-type StandardV1StreamedHeadEvent struct {
+type StandardV1StreamedBlockEvent struct {
 	Slot                Uint64Str   `json:"slot"`
 	Block               BytesHexStr `json:"block"`
 	ExecutionOptimistic bool        `json:"execution_optimistic"`
+}
+
+type StandardV1StreamedHeadEvent struct {
+	Slot                      Uint64Str   `json:"slot"`
+	Block                     BytesHexStr `json:"block"`
+	State                     BytesHexStr `json:"state"`
+	EpochTransition           bool        `json:"epoch_transition"`
+	PreviousDutyDependentRoot BytesHexStr `json:"previous_duty_dependent_root"`
+	CurrentDutyDependentRoot  BytesHexStr `json:"current_duty_dependent_root"`
+	ExecutionOptimistic       bool        `json:"execution_optimistic"`
 }
 
 type StandardV1BeaconHeaderResponse struct {
@@ -59,9 +69,11 @@ type StandardV1SyncCommitteesResponse struct {
 }
 
 type EpochAssignments struct {
-	ProposerAssignments map[uint64]uint64
-	AttestorAssignments map[string][]uint64
-	SyncAssignments     []uint64
+	DependendRoot       BytesHexStr         `json:"dep_root"`
+	DependendState      BytesHexStr         `json:"dep_state"`
+	ProposerAssignments map[uint64]uint64   `json:"prop"`
+	AttestorAssignments map[string][]uint64 `json:"att"`
+	SyncAssignments     []uint64            `json:"sync"`
 }
 
 type StandardV1StateValidatorsResponse struct {

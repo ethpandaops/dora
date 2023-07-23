@@ -35,9 +35,10 @@ type Config struct {
 	BeaconApi struct {
 		Endpoint string `yaml:"endpoint" envconfig:"BEACONAPI_ENDPOINT"`
 
-		LocalCacheSize   int    `yaml:"localCacheSize" envconfig:"BEACONAPI_LOCAL_CACHE_SIZE"`
-		RedisCacheAddr   string `yaml:"redisCacheAddr" envconfig:"BEACONAPI_REDIS_CACHE_ADDR"`
-		RedisCachePrefix string `yaml:"redisCachePrefix" envconfig:"BEACONAPI_REDIS_CACHE_PREFIX"`
+		LocalCacheSize       int    `yaml:"localCacheSize" envconfig:"BEACONAPI_LOCAL_CACHE_SIZE"`
+		AssignmentsCacheSize int    `yaml:"assignmentsCacheSize" envconfig:"BEACONAPI_ASSIGNMENTS_CACHE_SIZE"`
+		RedisCacheAddr       string `yaml:"redisCacheAddr" envconfig:"BEACONAPI_REDIS_CACHE_ADDR"`
+		RedisCachePrefix     string `yaml:"redisCachePrefix" envconfig:"BEACONAPI_REDIS_CACHE_PREFIX"`
 
 		InMemoryEpochs       uint16 `yaml:"inMemoryEpochs" envconfig:"BEACONAPI_IN_MEMORY_EPOCHS"`
 		EpochProcessingDelay uint16 `yaml:"epochProcessingDelay" envconfig:"BEACONAPI_EPOCH_PROCESSING_DELAY"`
