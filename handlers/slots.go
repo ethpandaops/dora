@@ -108,7 +108,8 @@ func getSlotsPageData(firstSlot uint64, pageSize uint64) *models.SlotsPageData {
 	dbIdx := 0
 	dbCnt := len(dbSlots)
 	blockCount := uint64(0)
-	for slot := firstSlot; slot >= lastSlot; slot-- {
+	for slotIdx := int64(firstSlot); slotIdx >= int64(lastSlot); slotIdx-- {
+		slot := uint64(slotIdx)
 		finalized := false
 		if finalizedHead != nil && uint64(finalizedHead.Data.Header.Message.Slot) >= slot {
 			finalized = true

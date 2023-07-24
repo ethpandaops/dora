@@ -149,7 +149,8 @@ func (bs *BeaconService) GetDbEpochs(firstEpoch uint64, limit uint32) []*dbtypes
 	if lastEpoch < 0 {
 		lastEpoch = 0
 	}
-	for epoch := firstEpoch; epoch >= lastEpoch && resIdx < int(limit); epoch-- {
+	for epochIdx := int64(firstEpoch); epochIdx >= int64(lastEpoch) && resIdx < int(limit); epochIdx-- {
+		epoch := uint64(epochIdx)
 		var resEpoch *dbtypes.Epoch
 		if dbIdx < dbCnt && dbEpochs[dbIdx].Epoch == epoch {
 			resEpoch = dbEpochs[dbIdx]
@@ -179,7 +180,8 @@ func (bs *BeaconService) GetDbBlocks(firstSlot uint64, limit int32, withOrphaned
 
 	slot := firstSlot
 	if idxMinSlot >= 0 && firstSlot >= uint64(idxMinSlot) {
-		for ; slot >= uint64(idxMinSlot) && resIdx < int(limit); slot-- {
+		for slotIdx := int64(slot); slotIdx >= idxMinSlot && resIdx < int(limit); slotIdx-- {
+			slot = uint64(slotIdx)
 			blocks := bs.indexer.GetCachedBlocks(slot)
 			if blocks != nil {
 				for bidx := 0; bidx < len(blocks) && resIdx < int(limit); bidx++ {
@@ -227,7 +229,8 @@ func (bs *BeaconService) GetDbBlocksForSlots(firstSlot uint64, slotLimit uint32,
 
 	slot := firstSlot
 	if idxMinSlot >= 0 && firstSlot >= uint64(idxMinSlot) {
-		for ; slot >= uint64(idxMinSlot) && slot >= lastSlot; slot-- {
+		for slotIdx := int64(slot); slotIdx >= int64(idxMinSlot) && slotIdx >= int64(lastSlot); slotIdx-- {
+			slot = uint64(slotIdx)
 			blocks := bs.indexer.GetCachedBlocks(slot)
 			if blocks != nil {
 				for bidx := 0; bidx < len(blocks); bidx++ {
