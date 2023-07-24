@@ -357,6 +357,10 @@ func (indexer *Indexer) processHeadBlock(slot uint64, header *rpctypes.StandardV
 				logger.Infof("Received duplicate (reorg) block %v.%v (%v)", slot, bidx, header.Data.Root)
 				duplicate = true
 				blockInfo = blocks[bidx]
+				if blockInfo.Orphaned {
+					logger.Infof("Chain reorg: mark %v.%v as canonical (%v)", slot, bidx, header.Data.Root)
+					blockInfo.Orphaned = false
+				}
 				break
 			}
 		}
@@ -370,7 +374,7 @@ func (indexer *Indexer) processHeadBlock(slot uint64, header *rpctypes.StandardV
 	}
 
 	// check for chain reorgs
-	if indexer.state.lastHeadRoot != nil && !bytes.Equal(indexer.state.lastHeadRoot, header.Data.Header.Message.ParentRoot) {
+	if indexer.state.lastHeadRoot != nil && !bytes.Equal(indexer.state.lastHeadRoot, header.Data.Header.Message.ParentRoot) && !bytes.Equal(indexer.state.lastHeadRoot, header.Data.Root) {
 		// reorg detected
 		var reorgBaseBlock *BlockInfo
 		var reorgBaseSlot uint64
