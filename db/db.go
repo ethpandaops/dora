@@ -289,7 +289,6 @@ func GetBlocksForSlots(firstSlot uint64, lastSlot uint64, withOrphaned bool) []*
 	FROM blocks
 	WHERE slot <= $1 AND slot >= $2 `+orphanedLimit+`
 	ORDER BY slot DESC
-	LIMIT $2
 	`, firstSlot, lastSlot)
 	if err != nil {
 		logger.Errorf("Error while fetching blocks: %v", err)
