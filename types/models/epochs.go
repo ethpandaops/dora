@@ -20,6 +20,7 @@ type EpochsPageData struct {
 	PrevPageEpoch    uint64
 	NextPageIndex    uint64
 	NextPageEpoch    uint64
+	LastPageEpoch    uint64
 }
 
 type EpochsPageDataEpoch struct {

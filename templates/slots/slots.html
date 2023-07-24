@@ -143,8 +143,8 @@
                   <li class="next paginate_button page-item {{ if eq .NextPageIndex 0 }}disabled{{ end }}" id="tpg_next">
                     <a tab-index="1" aria-controls="tpg_next" class="page-link" href="/slots?slot={{ .NextPageSlot }}&count={{ .PageSize }}"><i class="fas fa-chevron-right"></i></a>
                   </li>
-                  <li class="last paginate_button page-item {{ if le .NextPageSlot .PageSize }}disabled{{ end }}" id="tpg_last">
-                    <a tab-index="1" aria-controls="tpg_last" class="page-link" href="/slots?slot={{ .PageSize }}&count={{ .PageSize }}">Last</a>
+                  <li class="last paginate_button page-item {{ if le .NextPageSlot .LastPageSlot }}disabled{{ end }}" id="tpg_last">
+                    <a tab-index="1" aria-controls="tpg_last" class="page-link" href="/slots?slot={{ .LastPageSlot }}&count={{ .PageSize }}">Last</a>
                   </li>
                 </ul>
               </div>

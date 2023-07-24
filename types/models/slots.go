@@ -20,6 +20,7 @@ type SlotsPageData struct {
 	PrevPageSlot     uint64
 	NextPageIndex    uint64
 	NextPageSlot     uint64
+	LastPageSlot     uint64
 }
 
 type SlotsPageDataSlot struct {

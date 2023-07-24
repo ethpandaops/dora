@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"math"
 	"net/http"
 	"strconv"
 	"time"
@@ -26,7 +27,7 @@ func Slots(w http.ResponseWriter, r *http.Request) {
 	data := InitPageData(w, r, "blockchain", "/slots", "Slots", slotsTemplateFiles)
 
 	urlArgs := r.URL.Query()
-	var firstSlot uint64 = 0
+	var firstSlot uint64 = math.MaxUint64
 	if urlArgs.Has("slot") {
 		firstSlot, _ = strconv.ParseUint(urlArgs.Get("slot"), 10, 64)
 	}
@@ -54,7 +55,7 @@ func getSlotsPageData(firstSlot uint64, pageSize uint64) *models.SlotsPageData {
 	if maxSlot >= (currentEpoch+1)*utils.Config.Chain.Config.SlotsPerEpoch {
 		maxSlot = ((currentEpoch + 1) * utils.Config.Chain.Config.SlotsPerEpoch) - 1
 	}
-	if firstSlot == 0 || firstSlot > uint64(maxSlot) {
+	if firstSlot > uint64(maxSlot) {
 		pageData.IsDefaultPage = true
 		firstSlot = uint64(maxSlot)
 	}
@@ -62,27 +63,29 @@ func getSlotsPageData(firstSlot uint64, pageSize uint64) *models.SlotsPageData {
 	if pageSize > 100 {
 		pageSize = 100
 	}
-	pageData.TotalPages = (maxSlot / pageSize)
-	if (maxSlot % pageSize) > 0 {
-		pageData.TotalPages++
+	pagesBefore := (firstSlot + 1) / pageSize
+	if ((firstSlot + 1) % pageSize) > 0 {
+		pagesBefore++
+	}
+	pagesAfter := (maxSlot - firstSlot) / pageSize
+	if ((maxSlot - firstSlot) % pageSize) > 0 {
+		pagesAfter++
 	}
 	pageData.PageSize = pageSize
-	slotOffset := maxSlot - firstSlot
-	pageData.CurrentPageIndex = (slotOffset / pageSize) + 1
-	if (slotOffset % pageSize) > 0 {
-		pageData.CurrentPageIndex++
-	}
+	pageData.TotalPages = pagesBefore + pagesAfter
+	pageData.CurrentPageIndex = pagesAfter + 1
 	pageData.CurrentPageSlot = firstSlot
 	pageData.PrevPageIndex = pageData.CurrentPageIndex - 1
 	pageData.PrevPageSlot = pageData.CurrentPageSlot + pageSize
-	if pageData.CurrentPageSlot > pageSize {
+	if pageData.CurrentPageSlot >= pageSize {
 		pageData.NextPageIndex = pageData.CurrentPageIndex + 1
 		pageData.NextPageSlot = pageData.CurrentPageSlot - pageSize
 	}
+	pageData.LastPageSlot = pageSize - 1
 
 	finalizedHead, _ := services.GlobalBeaconService.GetFinalizedBlockHead()
 	currentEpochStats := services.GlobalBeaconService.GetCachedEpochStats(currentEpoch)
-	slotLimit := pageSize
+	slotLimit := pageSize - 1
 	var lastSlot uint64
 	if firstSlot > uint64(slotLimit) {
 		lastSlot = firstSlot - uint64(slotLimit)
@@ -104,7 +107,7 @@ func getSlotsPageData(firstSlot uint64, pageSize uint64) *models.SlotsPageData {
 
 	// load slots
 	pageData.Slots = make([]*models.SlotsPageDataSlot, 0)
-	dbSlots := services.GlobalBeaconService.GetDbBlocksForSlots(uint64(firstSlot), uint32(slotLimit), true)
+	dbSlots := services.GlobalBeaconService.GetDbBlocksForSlots(uint64(firstSlot), uint32(pageSize), true)
 	dbIdx := 0
 	dbCnt := len(dbSlots)
 	blockCount := uint64(0)

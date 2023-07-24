@@ -154,8 +154,8 @@
                   <li class="next paginate_button page-item {{ if eq .NextPageIndex 0 }}disabled{{ end }}" id="tpg_next">
                     <a tab-index="1" aria-controls="tpg_next" class="page-link" href="/epochs?epoch={{ .NextPageEpoch }}&count={{ .PageSize }}"><i class="fas fa-chevron-right"></i></a>
                   </li>
-                  <li class="last paginate_button page-item {{ if le .NextPageEpoch .PageSize }}disabled{{ end }}" id="tpg_last">
-                    <a tab-index="1" aria-controls="tpg_last" class="page-link" href="/epochs?epoch={{ .PageSize }}&count={{ .PageSize }}">Last</a>
+                  <li class="last paginate_button page-item {{ if le .NextPageEpoch .LastPageEpoch }}disabled{{ end }}" id="tpg_last">
+                    <a tab-index="1" aria-controls="tpg_last" class="page-link" href="/epochs?epoch={{ .LastPageEpoch }}&count={{ .PageSize }}">Last</a>
                   </li>
                 </ul>
               </div>
