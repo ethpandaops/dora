@@ -351,13 +351,18 @@ func (indexer *Indexer) processHeadBlock(slot uint64, header *rpctypes.StandardV
 		indexer.state.cachedBlocks[slot][0] = blockInfo
 	} else {
 		blocks := indexer.state.cachedBlocks[slot]
+		duplicate := false
 		for bidx := 0; bidx < len(blocks); bidx++ {
 			if bytes.Equal(blocks[bidx].Header.Data.Root, header.Data.Root) {
-				logger.Infof("Skip duplicate block %v.%v (%v)", slot, bidx, header.Data.Root)
-				return nil // block already present - skip
+				logger.Infof("Received duplicate (reorg) block %v.%v (%v)", slot, bidx, header.Data.Root)
+				duplicate = true
+				blockInfo = blocks[bidx]
+				break
 			}
 		}
-		indexer.state.cachedBlocks[slot] = append(blocks, blockInfo)
+		if !duplicate {
+			indexer.state.cachedBlocks[slot] = append(blocks, blockInfo)
+		}
 	}
 
 	if indexer.state.lowestCachedSlot < 0 || int64(slot) < indexer.state.lowestCachedSlot {
@@ -371,7 +376,7 @@ func (indexer *Indexer) processHeadBlock(slot uint64, header *rpctypes.StandardV
 		var reorgBaseSlot uint64
 		var reorgBaseIndex int
 
-		for sidx := slot; int64(sidx) >= indexer.state.lowestCachedSlot; sidx-- {
+		for sidx := indexer.state.lastHeadBlock; int64(sidx) >= indexer.state.lowestCachedSlot; sidx-- {
 			blocks := indexer.state.cachedBlocks[sidx]
 			if blocks == nil {
 				continue
