@@ -1,6 +1,7 @@
 package indexer
 
 import (
+	"strings"
 	"sync"
 	"time"
 
@@ -209,7 +210,7 @@ func (sync *synchronizerState) syncEpoch(syncEpoch uint64) bool {
 		for idx := 0; idx < len(epochValidators.Data); idx++ {
 			validator := epochValidators.Data[idx]
 			epochStats.Validators.ValidatorBalances[uint64(validator.Index)] = uint64(validator.Validator.EffectiveBalance)
-			if validator.Status != "active_ongoing" {
+			if !strings.HasPrefix(validator.Status, "active") {
 				continue
 			}
 			epochStats.Validators.ValidatorCount++

@@ -3,6 +3,7 @@ package indexer
 import (
 	"bytes"
 	"errors"
+	"strings"
 	"sync"
 	"time"
 
@@ -562,7 +563,7 @@ func (indexer *Indexer) loadEpochValidators(epoch uint64, epochStats *EpochStats
 		for idx := 0; idx < len(epochValidators.Data); idx++ {
 			validator := epochValidators.Data[idx]
 			epochStats.Validators.ValidatorBalances[uint64(validator.Index)] = uint64(validator.Validator.EffectiveBalance)
-			if validator.Status != "active_ongoing" {
+			if !strings.HasPrefix(validator.Status, "active") {
 				continue
 			}
 			epochStats.Validators.ValidatorCount++
