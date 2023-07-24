@@ -108,7 +108,7 @@ func getEpochsPageData(firstEpoch uint64, pageSize uint64) *models.EpochsPageDat
 			epochData.OrphanedBlockCount = uint64(dbEpoch.OrphanedCount)
 			epochData.AttestationCount = dbEpoch.AttestationCount
 			epochData.DepositCount = dbEpoch.DepositCount
-			epochData.ExitCount = dbEpoch.DepositCount
+			epochData.ExitCount = dbEpoch.ExitCount
 			epochData.ProposerSlashingCount = dbEpoch.ProposerSlashingCount
 			epochData.AttesterSlashingCount = dbEpoch.AttesterSlashingCount
 			epochData.EligibleEther = dbEpoch.Eligible
