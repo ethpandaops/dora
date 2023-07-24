@@ -64,6 +64,7 @@ CREATE TABLE IF NOT EXISTS public."epochs"
     "bls_change_count" integer NOT NULL DEFAULT 0,
     "eth_transaction_count" integer NOT NULL DEFAULT 0,
     "sync_participation" real NOT NULL DEFAULT 0,
+    "missing_duties" bytea NOT NULL DEFAULT '\xff'::bytea,
     CONSTRAINT "epochs_pkey" PRIMARY KEY ("epoch")
 );
 

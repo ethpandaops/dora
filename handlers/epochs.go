@@ -63,15 +63,16 @@ func getEpochsPageData(firstEpoch uint64, pageSize uint64) *models.EpochsPageDat
 	if pageSize > 100 {
 		pageSize = 100
 	}
-
 	pageData.TotalPages = (uint64(currentEpoch) / pageSize)
 	if (uint64(currentEpoch) % pageSize) > 0 {
 		pageData.TotalPages++
 	}
 	pageData.PageSize = pageSize
 	epochOffset := currentEpoch - int64(firstEpoch)
-
 	pageData.CurrentPageIndex = (uint64(epochOffset) / pageSize) + 1
+	if (uint64(epochOffset) % pageSize) > 0 {
+		pageData.CurrentPageIndex++
+	}
 	pageData.CurrentPageEpoch = firstEpoch
 	pageData.PrevPageIndex = pageData.CurrentPageIndex - 1
 	pageData.PrevPageEpoch = pageData.CurrentPageEpoch + pageSize

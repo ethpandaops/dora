@@ -318,7 +318,7 @@ func FormatRecentTimeShort(ts time.Time) template.HTML {
 	} else if absDuraction < 24*time.Hour {
 		timeStr = fmt.Sprintf("%v hr.", uint(absDuraction.Hours()))
 	} else {
-		timeStr = fmt.Sprintf("%v day.", uint(absDuraction.Hours()/86400))
+		timeStr = fmt.Sprintf("%v day.", uint(absDuraction.Hours()/24))
 	}
 	if duration < 0 {
 		return template.HTML(fmt.Sprintf("%v ago", timeStr))

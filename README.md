@@ -19,10 +19,10 @@ https://github.com/ethpandaops/tooling-wishlist/blob/master/tools/lightweight-be
 
 * [ ] Explorer Pages (UI)
   * [ ] Layout polishing
-  * [] Startpage
+  * [ ] Startpage
   * [x] Epoch Overview (`/epochs`)
   * [ ] Epoch details (`/epoch/{epoch}`)
-  * [ ] Slots Overview (`/slots`)
+  * [x] Slots Overview (`/slots`)
   * [x] Slot details (`/slot/{slot_or_root}`)
     * [x] Overview, Attestations, Slashings, Deposits, BLSChanges, Withdrawals, Voluntary Exits
     * [ ] Blob Sidecars

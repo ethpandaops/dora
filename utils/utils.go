@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"encoding/binary"
 	"encoding/hex"
 	"strings"
 
@@ -44,4 +45,31 @@ func SyncCommitteeParticipation(bits []byte) float64 {
 		}
 	}
 	return float64(participating) / float64(Config.Chain.Config.SyncCommitteeSize)
+}
+
+func MissingDutiesToBytes(missingDuties map[uint8]uint64) []byte {
+	bytes := make([]byte, 0)
+	for slotIdx := uint8(0); slotIdx < uint8(Config.Chain.Config.SlotsPerEpoch); slotIdx++ {
+		validator := missingDuties[slotIdx]
+		if validator > 0 {
+			bytes = append(bytes, slotIdx)
+			bytes = binary.LittleEndian.AppendUint64(bytes, validator)
+		}
+	}
+	return bytes
+}
+
+func BytesToMissingDuties(bytes []byte) map[uint8]uint64 {
+	missingDuties := make(map[uint8]uint64)
+	bIdx := 0
+	bLen := len(bytes)
+	for bIdx < bLen-8 {
+		slotIdx := uint8(bytes[bIdx])
+		if slotIdx == 0xff {
+			break
+		}
+		missingDuties[slotIdx] = binary.LittleEndian.Uint64(bytes[(bIdx + 1):(bIdx + 9)])
+		bIdx += 9
+	}
+	return missingDuties
 }

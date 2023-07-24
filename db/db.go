@@ -192,7 +192,7 @@ func InsertEpoch(epoch *dbtypes.Epoch, tx *sqlx.Tx) error {
 		epoch, validator_count, eligible, voted_target, voted_head, voted_total, block_count, orphaned_count,
 		attestation_count, deposit_count, exit_count, attester_slashing_count, proposer_slashing_count, 
 		bls_change_count, eth_transaction_count, sync_participation
-	) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+	) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
 	ON CONFLICT (Epoch) DO UPDATE SET
 		validator_count = excluded.validator_count,
 		eligible = excluded.eligible,
@@ -209,10 +209,11 @@ func InsertEpoch(epoch *dbtypes.Epoch, tx *sqlx.Tx) error {
 		bls_change_count = excluded.bls_change_count, 
 		eth_transaction_count = excluded.eth_transaction_count, 
 		sync_participation = excluded.sync_participation
+		missing_duties = excluded.missing_duties
 	`,
 		epoch.Epoch, epoch.ValidatorCount, epoch.Eligible, epoch.VotedTarget, epoch.VotedHead, epoch.VotedTotal, epoch.BlockCount, epoch.OrphanedCount,
 		epoch.AttestationCount, epoch.DepositCount, epoch.ExitCount, epoch.AttesterSlashingCount, epoch.ProposerSlashingCount, epoch.BLSChangeCount,
-		epoch.EthTransactionCount, epoch.SyncParticipation)
+		epoch.EthTransactionCount, epoch.SyncParticipation, epoch.MissingDuties)
 	if err != nil {
 		return err
 	}
@@ -238,7 +239,7 @@ func GetEpochs(firstEpoch uint64, limit uint32) []*dbtypes.Epoch {
 	SELECT
 		epoch, validator_count, eligible, voted_target, voted_head, voted_total, block_count, orphaned_count,
 		attestation_count, deposit_count, exit_count, attester_slashing_count, proposer_slashing_count, 
-		bls_change_count, eth_transaction_count, sync_participation
+		bls_change_count, eth_transaction_count, sync_participation, missing_duties
 	FROM epochs
 	WHERE epoch <= $1
 	ORDER BY epoch DESC
@@ -267,6 +268,29 @@ func GetBlocks(firstBlock uint64, limit uint32, withOrphaned bool) []*dbtypes.Bl
 	ORDER BY slot DESC
 	LIMIT $2
 	`, firstBlock, limit)
+	if err != nil {
+		logger.Errorf("Error while fetching blocks: %v", err)
+		return nil
+	}
+	return blocks
+}
+
+func GetBlocksForSlots(firstSlot uint64, lastSlot uint64, withOrphaned bool) []*dbtypes.Block {
+	blocks := []*dbtypes.Block{}
+	orphanedLimit := ""
+	if !withOrphaned {
+		orphanedLimit = "AND NOT orphaned"
+	}
+	err := ReaderDb.Select(&blocks, `
+	SELECT
+		root, slot, parent_root, state_root, orphaned, proposer, graffiti, 
+		attestation_count, deposit_count, exit_count, attester_slashing_count, proposer_slashing_count, 
+		bls_change_count, eth_transaction_count, eth_block_number, eth_block_hash, sync_participation
+	FROM blocks
+	WHERE slot <= $1 AND slot >= $2 `+orphanedLimit+`
+	ORDER BY slot DESC
+	LIMIT $2
+	`, firstSlot, lastSlot)
 	if err != nil {
 		logger.Errorf("Error while fetching blocks: %v", err)
 		return nil

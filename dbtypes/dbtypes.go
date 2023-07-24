@@ -42,6 +42,7 @@ type Epoch struct {
 	BLSChangeCount        uint64  `db:"bls_change_count"`
 	EthTransactionCount   uint64  `db:"eth_transaction_count"`
 	SyncParticipation     float32 `db:"sync_participation"`
+	MissingDuties         []byte  `db:"missing_duties"`
 }
 
 type OrphanedBlock struct {

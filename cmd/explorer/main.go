@@ -54,6 +54,7 @@ func startFrontend() {
 
 	router.HandleFunc("/", handlers.Index).Methods("GET")
 	router.HandleFunc("/epochs", handlers.Epochs).Methods("GET")
+	router.HandleFunc("/slots", handlers.Slots).Methods("GET")
 	router.HandleFunc("/slot/{slotOrHash}", handlers.Slot).Methods("GET")
 
 	if utils.Config.Frontend.Debug {

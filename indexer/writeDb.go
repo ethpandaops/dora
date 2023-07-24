@@ -125,6 +125,7 @@ slotLoop:
 		VotedHead:      epochVotes.currentEpoch.headVoteAmount + epochVotes.nextEpoch.headVoteAmount,
 		VotedTotal:     epochVotes.currentEpoch.totalVoteAmount + epochVotes.nextEpoch.totalVoteAmount,
 	}
+	missingDuties := make(map[uint8]uint64)
 
 	// aggregate blocks
 	for slot := firstSlot; slot <= lastSlot; slot++ {
@@ -132,6 +133,7 @@ slotLoop:
 		if blocks == nil {
 			continue
 		}
+		hasCanonicalBlock := false
 		for bidx := 0; bidx < len(blocks); bidx++ {
 			block := blocks[bidx]
 			if blockFn != nil {
@@ -142,6 +144,7 @@ slotLoop:
 				dbEpoch.OrphanedCount++
 				continue
 			}
+			hasCanonicalBlock = true
 
 			dbEpoch.BlockCount++
 			dbEpoch.AttestationCount += uint64(len(block.Block.Data.Message.Body.Attestations))
@@ -168,8 +171,13 @@ slotLoop:
 				dbEpoch.EthTransactionCount += uint64(len(executionPayload.Transactions))
 			}
 		}
+		if !hasCanonicalBlock {
+			slotIdx := uint8(slot - firstSlot)
+			missingDuties[slotIdx] = epochStats.Assignments.ProposerAssignments[slot]
+		}
 	}
 
+	dbEpoch.MissingDuties = utils.MissingDutiesToBytes(missingDuties)
 	if totalSyncAssigned > 0 {
 		dbEpoch.SyncParticipation = float32(totalSyncVoted) / float32(totalSyncAssigned)
 	}
