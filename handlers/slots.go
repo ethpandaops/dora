@@ -140,6 +140,7 @@ func getSlotsPageData(firstSlot uint64, pageSize uint64) *models.SlotsPageData {
 				EthTransactionCount:   dbSlot.EthTransactionCount,
 				EthBlockNumber:        dbSlot.EthBlockNumber,
 				Graffiti:              dbSlot.Graffiti,
+				BlockRoot:             dbSlot.Root,
 			}
 			pageData.Slots = append(pageData.Slots, slotData)
 			blockCount++

@@ -70,7 +70,11 @@
                 {{ range $i, $slot := .Slots }}
                   <tr>
                     <td><a href="/epoch/{{ $slot.Epoch }}">{{ formatAddCommas $slot.Epoch }}</a></td>
-                    <td><a href="/slot/{{ $slot.Slot }}">{{ formatAddCommas $slot.Slot }}</a></td>
+                    {{ if eq $slot.Status 2 }}
+                      <td><a href="/slot/0x{{ printf "%x" $slot.BlockRoot }}">{{ formatAddCommas $slot.Slot }}</a></td>
+                    {{ else }}
+                      <td><a href="/slot/{{ $slot.Slot }}">{{ formatAddCommas $slot.Slot }}</a></td>
+                    {{ end }}
                     <td>
                       {{ if eq $slot.Slot 0 }}
                         <span class="badge rounded-pill text-bg-info">Genesis</span>
@@ -83,7 +87,7 @@
                       {{ else if eq $slot.Status 1 }}
                         <span class="badge rounded-pill text-bg-success">Proposed</span>
                       {{ else if eq $slot.Status 2 }}
-                        <span class="badge rounded-pill text-bg-info">Missed (Orphaned)</span>
+                        <span class="badge rounded-pill text-bg-info">Orphaned</span>
                       {{ else }}
                         <span class="badge rounded-pill text-bg-dark">Unknown</span>
                       {{ end }}

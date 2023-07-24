@@ -41,4 +41,5 @@ type SlotsPageDataSlot struct {
 	EthTransactionCount   uint64    `json:"eth_transaction_count"`
 	EthBlockNumber        uint64    `json:"eth_block_number"`
 	Graffiti              []byte    `json:"graffiti"`
+	BlockRoot             []byte    `json:"block_root"`
 }
