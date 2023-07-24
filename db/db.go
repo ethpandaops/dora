@@ -191,9 +191,9 @@ func InsertEpoch(epoch *dbtypes.Epoch, tx *sqlx.Tx) error {
 	INSERT INTO epochs (
 		epoch, validator_count, eligible, voted_target, voted_head, voted_total, block_count, orphaned_count,
 		attestation_count, deposit_count, exit_count, attester_slashing_count, proposer_slashing_count, 
-		bls_change_count, eth_transaction_count, sync_participation
+		bls_change_count, eth_transaction_count, sync_participation, missing_duties
 	) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
-	ON CONFLICT (Epoch) DO UPDATE SET
+	ON CONFLICT (epoch) DO UPDATE SET
 		validator_count = excluded.validator_count,
 		eligible = excluded.eligible,
 		voted_target = excluded.voted_target,
@@ -208,7 +208,7 @@ func InsertEpoch(epoch *dbtypes.Epoch, tx *sqlx.Tx) error {
 		proposer_slashing_count = excluded.proposer_slashing_count, 
 		bls_change_count = excluded.bls_change_count, 
 		eth_transaction_count = excluded.eth_transaction_count, 
-		sync_participation = excluded.sync_participation
+		sync_participation = excluded.sync_participation,
 		missing_duties = excluded.missing_duties
 	`,
 		epoch.Epoch, epoch.ValidatorCount, epoch.Eligible, epoch.VotedTarget, epoch.VotedHead, epoch.VotedTotal, epoch.BlockCount, epoch.OrphanedCount,
