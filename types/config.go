@@ -44,6 +44,7 @@ type Config struct {
 		InMemoryEpochs       uint16 `yaml:"inMemoryEpochs" envconfig:"BEACONAPI_IN_MEMORY_EPOCHS"`
 		EpochProcessingDelay uint16 `yaml:"epochProcessingDelay" envconfig:"BEACONAPI_EPOCH_PROCESSING_DELAY"`
 		DisableIndexWriter   bool   `yaml:"disableIndexWriter" envconfig:"BEACONAPI_DISABLE_INDEX_WRITER"`
+		SyncEpochCooldown    uint   `yaml:"syncEpochCooldown" envconfig:"BEACONAPI_SYNC_EPOCH_COOLDOWN"`
 	} `yaml:"beaconapi"`
 
 	ReaderDatabase struct {
