@@ -130,49 +130,48 @@ slotLoop:
 	// aggregate blocks
 	for slot := firstSlot; slot <= lastSlot; slot++ {
 		blocks := blockMap[slot]
-		if blocks == nil {
-			continue
-		}
 		hasCanonicalBlock := false
-		for bidx := 0; bidx < len(blocks); bidx++ {
-			block := blocks[bidx]
-			if blockFn != nil {
-				blockFn(block)
-			}
-
-			if block.Orphaned {
-				dbEpoch.OrphanedCount++
-				continue
-			}
-			hasCanonicalBlock = true
-
-			dbEpoch.BlockCount++
-			dbEpoch.AttestationCount += uint64(len(block.Block.Data.Message.Body.Attestations))
-			dbEpoch.DepositCount += uint64(len(block.Block.Data.Message.Body.Deposits))
-			dbEpoch.ExitCount += uint64(len(block.Block.Data.Message.Body.VoluntaryExits))
-			dbEpoch.AttesterSlashingCount += uint64(len(block.Block.Data.Message.Body.AttesterSlashings))
-			dbEpoch.ProposerSlashingCount += uint64(len(block.Block.Data.Message.Body.ProposerSlashings))
-			dbEpoch.BLSChangeCount += uint64(len(block.Block.Data.Message.Body.SignedBLSToExecutionChange))
-
-			syncAggregate := block.Block.Data.Message.Body.SyncAggregate
-			if syncAggregate != nil && epochStats.Assignments != nil && epochStats.Assignments.SyncAssignments != nil {
-				votedCount := 0
-				assignedCount := len(epochStats.Assignments.SyncAssignments)
-				for i := 0; i < assignedCount; i++ {
-					if utils.BitAtVector(syncAggregate.SyncCommitteeBits, i) {
-						votedCount++
-					}
+		if blocks != nil {
+			for bidx := 0; bidx < len(blocks); bidx++ {
+				block := blocks[bidx]
+				if blockFn != nil {
+					blockFn(block)
 				}
-				totalSyncAssigned += assignedCount
-				totalSyncVoted += votedCount
-			}
 
-			if executionPayload := block.Block.Data.Message.Body.ExecutionPayload; executionPayload != nil {
-				dbEpoch.EthTransactionCount += uint64(len(executionPayload.Transactions))
+				if block.Orphaned {
+					dbEpoch.OrphanedCount++
+					continue
+				}
+				hasCanonicalBlock = true
+
+				dbEpoch.BlockCount++
+				dbEpoch.AttestationCount += uint64(len(block.Block.Data.Message.Body.Attestations))
+				dbEpoch.DepositCount += uint64(len(block.Block.Data.Message.Body.Deposits))
+				dbEpoch.ExitCount += uint64(len(block.Block.Data.Message.Body.VoluntaryExits))
+				dbEpoch.AttesterSlashingCount += uint64(len(block.Block.Data.Message.Body.AttesterSlashings))
+				dbEpoch.ProposerSlashingCount += uint64(len(block.Block.Data.Message.Body.ProposerSlashings))
+				dbEpoch.BLSChangeCount += uint64(len(block.Block.Data.Message.Body.SignedBLSToExecutionChange))
+
+				syncAggregate := block.Block.Data.Message.Body.SyncAggregate
+				if syncAggregate != nil && epochStats.Assignments != nil && epochStats.Assignments.SyncAssignments != nil {
+					votedCount := 0
+					assignedCount := len(epochStats.Assignments.SyncAssignments)
+					for i := 0; i < assignedCount; i++ {
+						if utils.BitAtVector(syncAggregate.SyncCommitteeBits, i) {
+							votedCount++
+						}
+					}
+					totalSyncAssigned += assignedCount
+					totalSyncVoted += votedCount
+				}
+
+				if executionPayload := block.Block.Data.Message.Body.ExecutionPayload; executionPayload != nil {
+					dbEpoch.EthTransactionCount += uint64(len(executionPayload.Transactions))
+				}
 			}
 		}
 		if !hasCanonicalBlock {
-			slotIdx := uint8(slot - firstSlot)
+			slotIdx := uint8(slot % utils.Config.Chain.Config.SlotsPerEpoch)
 			missingDuties[slotIdx] = epochStats.Assignments.ProposerAssignments[slot]
 		}
 	}

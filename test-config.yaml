@@ -1,9 +1,9 @@
 # Chain network configuration
 chain:
-  name: "mainnet"
-  #genesisTimestamp: 1689879900
-  #genesisValidatorsRoot: "0xbf3c3d4683a5a4d286cd2a5ef7a5c1702f649eee82cdc7e87e05030102d12ccf"
-  #configPath: "config.yaml"
+  #name: "mainnet"
+  genesisTimestamp: 1689879900
+  genesisValidatorsRoot: "0xbf3c3d4683a5a4d286cd2a5ef7a5c1702f649eee82cdc7e87e05030102d12ccf"
+  configPath: "config.yaml"
 
 # HTTP Server configuration
 server:
@@ -18,8 +18,8 @@ frontend:
   ethExplorerLink: "https://explorer.ephemery.dev/"
   
 beaconapi:
-  #endpoint: "http://10.16.71.108:5052"
-  endpoint: "http://10.16.71.102:5052"
+  endpoint: "http://10.16.71.108:5052"
+  #endpoint: "http://10.16.71.102:5052"
   localCacheSize: 100 # 100MB
   redisCacheAddr: ""
   redisCachePrefix: ""
