@@ -27,6 +27,12 @@ https://github.com/ethpandaops/tooling-wishlist/blob/master/tools/lightweight-be
     * [x] Overview, Attestations, Slashings, Deposits, BLSChanges, Withdrawals, Voluntary Exits
     * [ ] Blob Sidecars
     * [ ] Enhance view controls (Hex/UTF8 Grafitti, Local/UTC Time, Copy Buttons etc.)
+    * [ ] Load orphaned blocks from db
+  * [ ] Validators List (`/validators`)
+  * [ ] Validator Details (`/validator/{validator_index}`) 
+    * [ ] Recent Blocks (from db) 
+    * [ ] Recent Sync Committees (from db)
+    * [ ] Recent Attestations (from cache) 
   * [ ] Search (Block Root, Epoch Number, Slot Number, Grafitti)
     * [ ] Type-Ahead search
 * [ ] RPC Client / Caching
@@ -34,12 +40,13 @@ https://github.com/ethpandaops/tooling-wishlist/blob/master/tools/lightweight-be
   * [x] Get Block Body by block root
   * [x] Get Epoch assignments (proposer, attester & sync committee duties)
     * [x] Simple cache for epoch duties
-    * [ ] Persistent cache for epoch duties in DB
 * [ ] Database
   * [ ] Schema initialization / upgrade
-  * [x] Table: Blocks (Slot index for search & slot overview)
-  * [x] Table: Epochs (Epoch index for startpage & epoch overview)
-  * [x] Table: SyncState (keeps track of synchronization state for Blocks & Epochs indexes)
+  * [x] Table: blocks (Slot index for search & slot overview)
+  * [x] Table: epochs (Epoch index for startpage & epoch overview)
+  * [x] Table: explorer_state (simple key-value table to track of various states)
+  * [ ] Table: sync_committees (Sync Committee index)
+  * [ ] Table: block_assignments (Block duties for search and block lists)
 * [ ] Indexer
   * [x] Keep track of current & last epoch in memory
   * [x] Aggregate Votes
@@ -49,3 +56,4 @@ https://github.com/ethpandaops/tooling-wishlist/blob/master/tools/lightweight-be
   * [x] Update Slot index in DB
   * [x] Update Epoch index in DB
   * [x] Synchronization (index older epochs)
+  * [ ] Update sync committee stats in DB
