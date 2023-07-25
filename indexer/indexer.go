@@ -59,6 +59,7 @@ type EpochStats struct {
 type EpochValidators struct {
 	ValidatorsMutex   sync.Mutex
 	ValidatorCount    uint64
+	ValidatorBalance  uint64
 	EligibleAmount    uint64
 	ValidatorBalances map[uint64]uint64
 }
@@ -567,6 +568,7 @@ func (indexer *Indexer) loadEpochValidators(epoch uint64, epochStats *EpochStats
 				continue
 			}
 			epochStats.Validators.ValidatorCount++
+			epochStats.Validators.ValidatorBalance += uint64(validator.Balance)
 			epochStats.Validators.EligibleAmount += uint64(validator.Validator.EffectiveBalance)
 		}
 	}

@@ -214,6 +214,7 @@ func (sync *synchronizerState) syncEpoch(syncEpoch uint64) bool {
 				continue
 			}
 			epochStats.Validators.ValidatorCount++
+			epochStats.Validators.ValidatorBalance += uint64(validator.Balance)
 			epochStats.Validators.EligibleAmount += uint64(validator.Validator.EffectiveBalance)
 		}
 	}

@@ -24,9 +24,11 @@ func persistEpochData(epoch uint64, blockMap map[uint64][]*BlockInfo, epochStats
 	}
 
 	dbEpoch := buildDbEpoch(epoch, blockMap, epochStats, epochVotes, func(block *BlockInfo) {
+		// insert block
 		dbBlock := buildDbBlock(block, epochStats)
 		db.InsertBlock(dbBlock, tx)
 
+		// insert orphaned block
 		if dbBlock.Orphaned {
 			headerJson, err := json.Marshal(block.Header)
 			if err != nil {
@@ -43,6 +45,18 @@ func persistEpochData(epoch uint64, blockMap map[uint64][]*BlockInfo, epochStats
 			}, tx)
 		}
 	})
+
+	// insert slot assignments
+	firstSlot := epoch * utils.Config.Chain.Config.SlotsPerEpoch
+	slotAssignments := make([]*dbtypes.SlotAssignment, utils.Config.Chain.Config.SlotsPerEpoch)
+	for slotIdx := uint64(0); slotIdx < utils.Config.Chain.Config.SlotsPerEpoch; slotIdx++ {
+		slot := firstSlot + slotIdx
+		slotAssignments[slotIdx] = &dbtypes.SlotAssignment{
+			Slot:     slot,
+			Proposer: epochStats.Assignments.ProposerAssignments[slot],
+		}
+	}
+	db.InsertSlotAssignments(slotAssignments, tx)
 
 	// insert epoch
 	db.InsertEpoch(dbEpoch, tx)
@@ -90,6 +104,13 @@ func buildDbBlock(block *BlockInfo, epochStats *EpochStats) *dbtypes.Block {
 		dbBlock.EthTransactionCount = uint64(len(executionPayload.Transactions))
 		dbBlock.EthBlockNumber = uint64(executionPayload.BlockNumber)
 		dbBlock.EthBlockHash = executionPayload.BlockHash
+
+		if executionPayload.Withdrawals != nil {
+			dbBlock.WithdrawCount = uint64(len(executionPayload.Withdrawals))
+			for _, withdrawal := range executionPayload.Withdrawals {
+				dbBlock.WithdrawAmount += uint64(withdrawal.Amount)
+			}
+		}
 	}
 
 	return &dbBlock
@@ -118,19 +139,18 @@ slotLoop:
 	totalSyncAssigned := 0
 	totalSyncVoted := 0
 	dbEpoch := dbtypes.Epoch{
-		Epoch:          epoch,
-		ValidatorCount: epochStats.Validators.ValidatorCount,
-		Eligible:       epochStats.Validators.EligibleAmount,
-		VotedTarget:    epochVotes.currentEpoch.targetVoteAmount + epochVotes.nextEpoch.targetVoteAmount,
-		VotedHead:      epochVotes.currentEpoch.headVoteAmount + epochVotes.nextEpoch.headVoteAmount,
-		VotedTotal:     epochVotes.currentEpoch.totalVoteAmount + epochVotes.nextEpoch.totalVoteAmount,
+		Epoch:            epoch,
+		ValidatorCount:   epochStats.Validators.ValidatorCount,
+		ValidatorBalance: epochStats.Validators.ValidatorBalance,
+		Eligible:         epochStats.Validators.EligibleAmount,
+		VotedTarget:      epochVotes.currentEpoch.targetVoteAmount + epochVotes.nextEpoch.targetVoteAmount,
+		VotedHead:        epochVotes.currentEpoch.headVoteAmount + epochVotes.nextEpoch.headVoteAmount,
+		VotedTotal:       epochVotes.currentEpoch.totalVoteAmount + epochVotes.nextEpoch.totalVoteAmount,
 	}
-	missingDuties := make(map[uint8]uint64)
 
 	// aggregate blocks
 	for slot := firstSlot; slot <= lastSlot; slot++ {
 		blocks := blockMap[slot]
-		hasCanonicalBlock := false
 		if blocks != nil {
 			for bidx := 0; bidx < len(blocks); bidx++ {
 				block := blocks[bidx]
@@ -142,7 +162,6 @@ slotLoop:
 					dbEpoch.OrphanedCount++
 					continue
 				}
-				hasCanonicalBlock = true
 
 				dbEpoch.BlockCount++
 				dbEpoch.AttestationCount += uint64(len(block.Block.Data.Message.Body.Attestations))
@@ -167,16 +186,17 @@ slotLoop:
 
 				if executionPayload := block.Block.Data.Message.Body.ExecutionPayload; executionPayload != nil {
 					dbEpoch.EthTransactionCount += uint64(len(executionPayload.Transactions))
+					if executionPayload.Withdrawals != nil {
+						dbEpoch.WithdrawCount = uint64(len(executionPayload.Withdrawals))
+						for _, withdrawal := range executionPayload.Withdrawals {
+							dbEpoch.WithdrawAmount += uint64(withdrawal.Amount)
+						}
+					}
 				}
 			}
 		}
-		if !hasCanonicalBlock {
-			slotIdx := uint8(slot % utils.Config.Chain.Config.SlotsPerEpoch)
-			missingDuties[slotIdx] = epochStats.Assignments.ProposerAssignments[slot]
-		}
 	}
 
-	dbEpoch.MissingDuties = utils.MissingDutiesToBytes(missingDuties)
 	if totalSyncAssigned > 0 {
 		dbEpoch.SyncParticipation = float32(totalSyncVoted) / float32(totalSyncAssigned)
 	}

@@ -130,6 +130,50 @@ func (bs *BeaconService) GetEpochAssignments(epoch uint64) (*rpctypes.EpochAssig
 	return bs.rpcClient.GetEpochAssignments(epoch)
 }
 
+func (bs *BeaconService) GetProposerAssignments(firstEpoch uint64, lastEpoch uint64) (proposerAssignments map[uint64]uint64, synchronizedEpochs map[uint64]bool) {
+	proposerAssignments = make(map[uint64]uint64)
+	synchronizedEpochs = make(map[uint64]bool)
+
+	idxMinSlot := bs.indexer.GetLowestCachedSlot()
+	if idxMinSlot >= 0 {
+		idxMinEpoch := utils.EpochOfSlot(uint64(idxMinSlot))
+		idxHeadEpoch := bs.indexer.GetHeadSlot()
+		if firstEpoch > idxHeadEpoch {
+			firstEpoch = idxHeadEpoch
+		}
+
+		if firstEpoch >= uint64(idxMinEpoch) {
+			var epoch uint64
+			for epochIdx := int64(firstEpoch); epochIdx >= int64(idxMinEpoch) && epochIdx >= int64(lastEpoch); epochIdx-- {
+				epoch = uint64(epochIdx)
+
+				epochStats := bs.indexer.GetCachedEpochStats(epoch)
+				if epochStats != nil && epochStats.Assignments != nil {
+					synchronizedEpochs[epoch] = true
+					for slot, vidx := range epochStats.Assignments.ProposerAssignments {
+						proposerAssignments[slot] = vidx
+					}
+				}
+			}
+			if epoch <= lastEpoch {
+				return
+			}
+			firstEpoch = epoch
+		}
+	}
+
+	// load from db
+	firstSlot := (firstEpoch * utils.Config.Chain.Config.SlotsPerEpoch) + (utils.Config.Chain.Config.SlotsPerEpoch - 1)
+	lastSlot := lastEpoch * utils.Config.Chain.Config.SlotsPerEpoch
+	fmt.Println("get assignments ", firstSlot, " to ", lastSlot)
+	dbSlotAssignments := db.GetSlotAssignmentsForSlots(firstSlot, lastSlot)
+	for _, dbSlotAssignment := range dbSlotAssignments {
+		synchronizedEpochs[utils.EpochOfSlot(dbSlotAssignment.Slot)] = true
+		proposerAssignments[dbSlotAssignment.Slot] = dbSlotAssignment.Proposer
+	}
+	return
+}
+
 func (bs *BeaconService) GetDbEpochs(firstEpoch uint64, limit uint32) []*dbtypes.Epoch {
 	resEpochs := make([]*dbtypes.Epoch, limit)
 	resIdx := 0

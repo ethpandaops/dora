@@ -6,7 +6,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/pk910/light-beaconchain-explorer/dbtypes"
 	"github.com/pk910/light-beaconchain-explorer/services"
 	"github.com/pk910/light-beaconchain-explorer/templates"
 	"github.com/pk910/light-beaconchain-explorer/types/models"
@@ -84,7 +83,6 @@ func getSlotsPageData(firstSlot uint64, pageSize uint64) *models.SlotsPageData {
 	pageData.LastPageSlot = pageSize - 1
 
 	finalizedHead, _ := services.GlobalBeaconService.GetFinalizedBlockHead()
-	currentEpochStats := services.GlobalBeaconService.GetCachedEpochStats(currentEpoch)
 	slotLimit := pageSize - 1
 	var lastSlot uint64
 	if firstSlot > uint64(slotLimit) {
@@ -93,17 +91,10 @@ func getSlotsPageData(firstSlot uint64, pageSize uint64) *models.SlotsPageData {
 		lastSlot = 0
 	}
 
-	// get affected epochs
+	// get slot assignments
 	firstEpoch := utils.EpochOfSlot(firstSlot)
 	lastEpoch := utils.EpochOfSlot(lastSlot)
-	dbEpochs := services.GlobalBeaconService.GetDbEpochs(firstEpoch, uint32(firstEpoch-lastEpoch+1))
-	dbEpochMap := make(map[uint64]*dbtypes.Epoch)
-	for i := 0; i < len(dbEpochs); i++ {
-		if dbEpochs[i] != nil {
-			dbEpochMap[dbEpochs[i].Epoch] = dbEpochs[i]
-		}
-	}
-	missingDuties := make(map[uint64]map[uint8]uint64)
+	slotAssignments, syncedEpochs := services.GlobalBeaconService.GetProposerAssignments(firstEpoch, lastEpoch)
 
 	// load slots
 	pageData.Slots = make([]*models.SlotsPageDataSlot, 0)
@@ -153,38 +144,17 @@ func getSlotsPageData(firstSlot uint64, pageSize uint64) *models.SlotsPageData {
 
 		if !haveBlock {
 			epoch := utils.EpochOfSlot(slot)
-			slotIdx := slot % utils.Config.Chain.Config.SlotsPerEpoch
 			slotData := &models.SlotsPageDataSlot{
-				Slot:      slot,
-				Epoch:     epoch,
-				Ts:        utils.SlotToTime(slot),
-				Finalized: finalized,
-				Scheduled: epoch >= currentEpoch,
-				Status:    0,
+				Slot:         slot,
+				Epoch:        epoch,
+				Ts:           utils.SlotToTime(slot),
+				Finalized:    finalized,
+				Scheduled:    epoch >= currentEpoch,
+				Status:       0,
+				Synchronized: syncedEpochs[epoch],
+				Proposer:     slotAssignments[slot],
+				ProposerName: "", // TODO
 			}
-
-			dbEpoch := dbEpochMap[epoch]
-			if dbEpoch != nil {
-				slotData.Synchronized = true
-			}
-			if epoch == currentEpoch && currentEpochStats != nil {
-				if currentEpochStats.Assignments == nil {
-					slotData.Synchronized = false
-				} else {
-					slotData.Proposer = currentEpochStats.Assignments.ProposerAssignments[slot]
-				}
-			} else {
-				missingEpochDuties := missingDuties[epoch]
-				if missingEpochDuties == nil && dbEpoch != nil {
-					missingEpochDuties = utils.BytesToMissingDuties(dbEpoch.MissingDuties)
-					missingDuties[epoch] = missingEpochDuties
-				}
-				if missingEpochDuties != nil {
-					slotData.Proposer = missingEpochDuties[uint8(slotIdx)]
-				}
-			}
-			slotData.ProposerName = "" // TODO
-
 			pageData.Slots = append(pageData.Slots, slotData)
 			blockCount++
 		}

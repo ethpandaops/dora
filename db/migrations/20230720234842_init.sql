@@ -20,6 +20,8 @@ CREATE TABLE IF NOT EXISTS public."blocks"
     "attestation_count" integer NOT NULL DEFAULT 0,
     "deposit_count" integer NOT NULL DEFAULT 0,
     "exit_count" integer NOT NULL DEFAULT 0,
+    "withdraw_count" integer NOT NULL DEFAULT 0,
+    "withdraw_amount" bigint NOT NULL DEFAULT 0,
     "attester_slashing_count" integer NOT NULL DEFAULT 0,
     "proposer_slashing_count" integer NOT NULL DEFAULT 0,
     "bls_change_count" integer NOT NULL DEFAULT 0,
@@ -46,10 +48,22 @@ CREATE TABLE IF NOT EXISTS public."orphaned_blocks"
     CONSTRAINT "orphaned_blocks_pkey" PRIMARY KEY ("root")
 );
 
+CREATE TABLE IF NOT EXISTS public."slot_assignments"
+(
+    "slot" bigint NOT NULL,
+    "proposer" bigint NOT NULL,
+    CONSTRAINT "slot_assignments_pkey" PRIMARY KEY ("slot")
+);
+
+CREATE INDEX IF NOT EXISTS "slot_assignments_proposer_idx"
+    ON public."slot_assignments" 
+    ("proposer" ASC NULLS LAST);
+
 CREATE TABLE IF NOT EXISTS public."epochs"
 (
     "epoch" bigint NOT NULL,
     "validator_count" bigint NOT NULL DEFAULT 0,
+    "validator_balance" bigint NOT NULL DEFAULT 0,
     "eligible" bigint NOT NULL DEFAULT 0,
     "voted_target" bigint NOT NULL DEFAULT 0,
     "voted_head" bigint NOT NULL DEFAULT 0,
@@ -59,14 +73,17 @@ CREATE TABLE IF NOT EXISTS public."epochs"
     "attestation_count" integer NOT NULL DEFAULT 0,
     "deposit_count" integer NOT NULL DEFAULT 0,
     "exit_count" integer NOT NULL DEFAULT 0,
+    "withdraw_count" integer NOT NULL DEFAULT 0,
+    "withdraw_amount" bigint NOT NULL DEFAULT 0,
     "attester_slashing_count" integer NOT NULL DEFAULT 0,
     "proposer_slashing_count" integer NOT NULL DEFAULT 0,
     "bls_change_count" integer NOT NULL DEFAULT 0,
     "eth_transaction_count" integer NOT NULL DEFAULT 0,
     "sync_participation" real NOT NULL DEFAULT 0,
-    "missing_duties" bytea NOT NULL DEFAULT '\xff'::bytea,
     CONSTRAINT "epochs_pkey" PRIMARY KEY ("epoch")
 );
+
+
 
 -- +goose StatementEnd
 -- +goose Down

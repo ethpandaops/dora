@@ -4,6 +4,7 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -167,19 +168,41 @@ func IsEpochSynchronized(epoch uint64) bool {
 	return count > 0
 }
 
+func InsertSlotAssignments(slotAssignments []*dbtypes.SlotAssignment, tx *sqlx.Tx) error {
+	var sql strings.Builder
+	fmt.Fprintf(&sql, "INSERT INTO slot_assignments (slot, proposer) VALUES ")
+	argIdx := 0
+	args := make([]any, len(slotAssignments)*2)
+	for i, slotAssignment := range slotAssignments {
+		if i > 0 {
+			fmt.Fprintf(&sql, ", ")
+		}
+		fmt.Fprintf(&sql, "($%v, $%v)", argIdx+1, argIdx+2)
+		args[argIdx] = slotAssignment.Slot
+		args[argIdx+1] = slotAssignment.Proposer
+		argIdx += 2
+	}
+	fmt.Fprintf(&sql, " ON CONFLICT (slot) DO UPDATE SET proposer = excluded.proposer")
+	_, err := tx.Exec(sql.String(), args...)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func InsertBlock(block *dbtypes.Block, tx *sqlx.Tx) error {
 	_, err := tx.Exec(`
 	INSERT INTO blocks (
 		root, slot, parent_root, state_root, orphaned, proposer, graffiti, 
-		attestation_count, deposit_count, exit_count, attester_slashing_count, proposer_slashing_count, 
-		bls_change_count, eth_transaction_count, eth_block_number, eth_block_hash, sync_participation
-	) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+		attestation_count, deposit_count, exit_count, withdraw_count, withdraw_amount, attester_slashing_count, 
+		proposer_slashing_count, bls_change_count, eth_transaction_count, eth_block_number, eth_block_hash, sync_participation
+	) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
 	ON CONFLICT (root) DO UPDATE SET
 		orphaned = excluded.orphaned
 	`,
 		block.Root, block.Slot, block.ParentRoot, block.StateRoot, block.Orphaned, block.Proposer, block.Graffiti,
-		block.AttestationCount, block.DepositCount, block.ExitCount, block.AttesterSlashingCount, block.ProposerSlashingCount,
-		block.BLSChangeCount, block.EthTransactionCount, block.EthBlockNumber, block.EthBlockHash, block.SyncParticipation)
+		block.AttestationCount, block.DepositCount, block.ExitCount, block.WithdrawCount, block.WithdrawAmount, block.AttesterSlashingCount,
+		block.ProposerSlashingCount, block.BLSChangeCount, block.EthTransactionCount, block.EthBlockNumber, block.EthBlockHash, block.SyncParticipation)
 	if err != nil {
 		return err
 	}
@@ -189,12 +212,13 @@ func InsertBlock(block *dbtypes.Block, tx *sqlx.Tx) error {
 func InsertEpoch(epoch *dbtypes.Epoch, tx *sqlx.Tx) error {
 	_, err := tx.Exec(`
 	INSERT INTO epochs (
-		epoch, validator_count, eligible, voted_target, voted_head, voted_total, block_count, orphaned_count,
-		attestation_count, deposit_count, exit_count, attester_slashing_count, proposer_slashing_count, 
-		bls_change_count, eth_transaction_count, sync_participation, missing_duties
-	) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+		epoch, validator_count, validator_balance, eligible, voted_target, voted_head, voted_total, block_count, orphaned_count,
+		attestation_count, deposit_count, exit_count, withdraw_count, withdraw_amount, attester_slashing_count, 
+		proposer_slashing_count, bls_change_count, eth_transaction_count, sync_participation
+	) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
 	ON CONFLICT (epoch) DO UPDATE SET
 		validator_count = excluded.validator_count,
+		validator_balance = excluded.validator_balance,
 		eligible = excluded.eligible,
 		voted_target = excluded.voted_target,
 		voted_head = excluded.voted_head, 
@@ -204,16 +228,17 @@ func InsertEpoch(epoch *dbtypes.Epoch, tx *sqlx.Tx) error {
 		attestation_count = excluded.attestation_count, 
 		deposit_count = excluded.deposit_count, 
 		exit_count = excluded.exit_count, 
+		withdraw_count = excluded.withdraw_count, 
+		withdraw_amount = excluded.withdraw_amount, 
 		attester_slashing_count = excluded.attester_slashing_count, 
 		proposer_slashing_count = excluded.proposer_slashing_count, 
 		bls_change_count = excluded.bls_change_count, 
 		eth_transaction_count = excluded.eth_transaction_count, 
-		sync_participation = excluded.sync_participation,
-		missing_duties = excluded.missing_duties
+		sync_participation = excluded.sync_participation
 	`,
-		epoch.Epoch, epoch.ValidatorCount, epoch.Eligible, epoch.VotedTarget, epoch.VotedHead, epoch.VotedTotal, epoch.BlockCount, epoch.OrphanedCount,
-		epoch.AttestationCount, epoch.DepositCount, epoch.ExitCount, epoch.AttesterSlashingCount, epoch.ProposerSlashingCount, epoch.BLSChangeCount,
-		epoch.EthTransactionCount, epoch.SyncParticipation, epoch.MissingDuties)
+		epoch.Epoch, epoch.ValidatorCount, epoch.ValidatorBalance, epoch.Eligible, epoch.VotedTarget, epoch.VotedHead, epoch.VotedTotal, epoch.BlockCount, epoch.OrphanedCount,
+		epoch.AttestationCount, epoch.DepositCount, epoch.ExitCount, epoch.WithdrawCount, epoch.WithdrawAmount, epoch.AttesterSlashingCount, epoch.ProposerSlashingCount,
+		epoch.BLSChangeCount, epoch.EthTransactionCount, epoch.SyncParticipation)
 	if err != nil {
 		return err
 	}
@@ -237,9 +262,9 @@ func GetEpochs(firstEpoch uint64, limit uint32) []*dbtypes.Epoch {
 	epochs := []*dbtypes.Epoch{}
 	err := ReaderDb.Select(&epochs, `
 	SELECT
-		epoch, validator_count, eligible, voted_target, voted_head, voted_total, block_count, orphaned_count,
-		attestation_count, deposit_count, exit_count, attester_slashing_count, proposer_slashing_count, 
-		bls_change_count, eth_transaction_count, sync_participation, missing_duties
+		epoch, validator_count, validator_balance, eligible, voted_target, voted_head, voted_total, block_count, orphaned_count,
+		attestation_count, deposit_count, exit_count, withdraw_count, withdraw_amount, attester_slashing_count,
+		proposer_slashing_count, bls_change_count, eth_transaction_count, sync_participation
 	FROM epochs
 	WHERE epoch <= $1
 	ORDER BY epoch DESC
@@ -261,8 +286,8 @@ func GetBlocks(firstBlock uint64, limit uint32, withOrphaned bool) []*dbtypes.Bl
 	err := ReaderDb.Select(&blocks, `
 	SELECT
 		root, slot, parent_root, state_root, orphaned, proposer, graffiti, 
-		attestation_count, deposit_count, exit_count, attester_slashing_count, proposer_slashing_count, 
-		bls_change_count, eth_transaction_count, eth_block_number, eth_block_hash, sync_participation
+		attestation_count, deposit_count, exit_count, withdraw_count, withdraw_amount, attester_slashing_count, 
+		proposer_slashing_count, bls_change_count, eth_transaction_count, eth_block_number, eth_block_hash, sync_participation
 	FROM blocks
 	WHERE slot <= $1 `+orphanedLimit+`
 	ORDER BY slot DESC
@@ -284,8 +309,8 @@ func GetBlocksForSlots(firstSlot uint64, lastSlot uint64, withOrphaned bool) []*
 	err := ReaderDb.Select(&blocks, `
 	SELECT
 		root, slot, parent_root, state_root, orphaned, proposer, graffiti, 
-		attestation_count, deposit_count, exit_count, attester_slashing_count, proposer_slashing_count, 
-		bls_change_count, eth_transaction_count, eth_block_number, eth_block_hash, sync_participation
+		attestation_count, deposit_count, exit_count, withdraw_count, withdraw_amount, attester_slashing_count, 
+		proposer_slashing_count, bls_change_count, eth_transaction_count, eth_block_number, eth_block_hash, sync_participation
 	FROM blocks
 	WHERE slot <= $1 AND slot >= $2 `+orphanedLimit+`
 	ORDER BY slot DESC
@@ -295,4 +320,19 @@ func GetBlocksForSlots(firstSlot uint64, lastSlot uint64, withOrphaned bool) []*
 		return nil
 	}
 	return blocks
+}
+
+func GetSlotAssignmentsForSlots(firstSlot uint64, lastSlot uint64) []*dbtypes.SlotAssignment {
+	assignments := []*dbtypes.SlotAssignment{}
+	err := ReaderDb.Select(&assignments, `
+	SELECT
+		slot, proposer
+	FROM slot_assignments
+	WHERE slot <= $1 AND slot >= $2 
+	`, firstSlot, lastSlot)
+	if err != nil {
+		logger.Errorf("Error while fetching blocks: %v", err)
+		return nil
+	}
+	return assignments
 }

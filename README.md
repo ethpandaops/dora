@@ -42,11 +42,11 @@ https://github.com/ethpandaops/tooling-wishlist/blob/master/tools/lightweight-be
     * [x] Simple cache for epoch duties
 * [ ] Database
   * [ ] Schema initialization / upgrade
-  * [x] Table: blocks (Slot index for search & slot overview)
+  * [x] Table: blocks (Block index for search & slot overview)
   * [x] Table: epochs (Epoch index for startpage & epoch overview)
   * [x] Table: explorer_state (simple key-value table to track of various states)
   * [ ] Table: sync_committees (Sync Committee index)
-  * [ ] Table: block_assignments (Block duties for search and block lists)
+  * [x] Table: slot_assignments (Slot duties for search and block lists)
 * [ ] Indexer
   * [x] Keep track of current & last epoch in memory
   * [x] Aggregate Votes
