@@ -51,6 +51,7 @@ func GetTemplateFuncs() template.FuncMap {
 		"formatValidator":            FormatValidator,
 		"formatSlashedValidator":     FormatSlashedValidator,
 		"formatRecentTimeShort":      FormatRecentTimeShort,
+		"formatGraffiti":             FormatGraffiti,
 	}
 }
 

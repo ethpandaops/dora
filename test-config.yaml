@@ -27,7 +27,7 @@ beaconapi:
   prepopulateEpochs: 2
   inMemoryEpochs: 10
   epochProcessingDelay: 2
-  disableIndexWriter: false
+  disableIndexWriter: true
   syncEpochCooldown: 4
 
 

@@ -87,7 +87,7 @@
         <div class="row border-bottom p-2 mx-0">
           <div class="col-md-2"><span data-toggle="tooltip" data-placement="top" title="32 byte long message included by the block proposer">Graffiti:</span></div>
           <div class="col-md-10 d-flex justify-between flex-wrap">
-            <div id="graffiti" class="mw-100 text-monospace text-break" aria-hex-data="{{ printf "%#x" .Block.Graffiti }}">{{ printf "%#x" .Block.Graffiti }}</div>
+            <div id="graffiti" class="mw-100 text-monospace text-break" aria-hex-data="{{ printf "%#x" .Block.Graffiti }}">{{ formatGraffiti .Block.Graffiti }}</div>
             
           </div>
         </div>

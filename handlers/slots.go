@@ -131,7 +131,7 @@ func getSlotsPageData(firstSlot uint64, pageSize uint64) *models.SlotsPageData {
 				ExitCount:             dbSlot.ExitCount,
 				ProposerSlashingCount: dbSlot.ProposerSlashingCount,
 				AttesterSlashingCount: dbSlot.AttesterSlashingCount,
-				SyncParticipation:     float64(dbSlot.SyncParticipation),
+				SyncParticipation:     float64(dbSlot.SyncParticipation) * 100,
 				EthTransactionCount:   dbSlot.EthTransactionCount,
 				EthBlockNumber:        dbSlot.EthBlockNumber,
 				Graffiti:              dbSlot.Graffiti,

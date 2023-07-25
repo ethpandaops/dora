@@ -326,3 +326,7 @@ func FormatRecentTimeShort(ts time.Time) template.HTML {
 		return template.HTML(fmt.Sprintf("in %v", timeStr))
 	}
 }
+
+func FormatGraffiti(graffiti []byte) template.HTML {
+	return template.HTML(fmt.Sprintf("<span class=\"graffiti-label\" data-graffiti=\"%#x\">%s</span>", graffiti, html.EscapeString(string(graffiti))))
+}

@@ -21,7 +21,7 @@ https://github.com/ethpandaops/tooling-wishlist/blob/master/tools/lightweight-be
   * [ ] Layout polishing
   * [ ] Startpage
   * [x] Epoch Overview (`/epochs`)
-  * [ ] Epoch details (`/epoch/{epoch}`)
+  * [x] Epoch details (`/epoch/{epoch}`)
   * [x] Slots Overview (`/slots`)
   * [x] Slot details (`/slot/{slot_or_root}`)
     * [x] Overview, Attestations, Slashings, Deposits, BLSChanges, Withdrawals, Voluntary Exits

@@ -1,0 +1,216 @@
+{{ define "page" }}
+  <div class="container mt-2">
+    <div class="d-md-flex py-2 justify-content-md-between">
+      <h1 class="h4 mb-1 mb-md-0">
+        {{ if not (eq .Epoch 0) }}
+          <a href="/epoch/{{ .PreviousEpoch }}"><i class="fa fa-chevron-left"></i></a>
+        {{ end }}
+        <span class="ml-1 mr-1"><i class="fas fa-history mr-2"></i>Epoch <span id="epoch">{{ .Epoch }}</span></span>
+        {{ if gt .NextEpoch 0 }}
+          <a href="/epoch/{{ .NextEpoch }}"><i class="fa fa-chevron-right"></i></a>
+        {{ end }}
+      </h1>
+      <nav aria-label="breadcrumb">
+        <ol class="breadcrumb font-size-1 mb-0" style="padding: 0; background-color: transparent;">
+          <li class="breadcrumb-item"><a href="/" title="Home">Home</a></li>
+          <li class="breadcrumb-item"><a href="/epochs" title="Epochs">Epochs</a></li>
+          <li class="breadcrumb-item active" aria-current="page">Epoch Details</li>
+        </ol>
+      </nav>
+    </div>
+
+    <div class="card mt-2">
+      <div class="card-body px-0 py-1">
+        <div class="row border-bottom p-2 mx-0">
+          <div class="col-md-3">Epoch:</div>
+          <div class="col-md-9">{{ formatAddCommas .Epoch }}</div>
+        </div>
+        <div class="row border-bottom p-2 mx-0">
+          <div class="col-md-3">Finalized:</div>
+          <div class="col-md-9">
+            {{ if .Finalized }}
+              <span class="badge rounded-pill text-bg-success" style="font-size: 12px; font-weight: 500;">Yes</span>
+            {{ else }}
+              <span class="badge rounded-pill text-bg-warning" style="font-size: 12px; font-weight: 500;">No</span>
+            {{ end }}
+          </div>
+        </div>
+        <div class="row border-bottom p-2 mx-0">
+          <div class="col-md-3">Time:</div>
+          <div class="col-md-6"><span aria-ethereum-date="{{ .Ts.Unix }}" aria-ethereum-date-format="FROMNOW">{{ .Ts }}</span> (<span id="timestamp" aria-ethereum-date="{{ .Ts.Unix }}" aria-ethereum-date-format="LOCAL">{{ .Ts }}</span>) <i class="fa fa-copy text-muted p-1" role="button" data-toggle="tooltip" title="Copy to clipboard" onclick="copyTs()"></i></div>
+          <div class="col-md-3 text-right">
+            <div id="unixTs" hidden>{{ .Ts.Unix }}</div>
+            <div class="btn-group btn-group-toggle" data-toggle="buttons">
+              <label class="btn btn-light text-dark active btn-sm" onclick="setTs()"> <input type="radio" name="options" id="optionTs" autocomplete="off" /> Timestamp </label>
+              <label class="btn btn-light text-dark active btn-sm pl-4 pr-4" onclick="setUtc()"> <input type="radio" name="options" id="optionUtc" autocomplete="off" /> UTC </label>
+              <label class="btn btn-light text-dark btn-sm pl-4 pr-4" onclick="setLocal()"> <input type="radio" name="options" id="optionLocal" autocomplete="off" checked /> Local </label>
+            </div>
+          </div>
+        </div>
+        <div class="row border-bottom p-2 mx-0">
+          <div class="col-md-3">
+            <span>Attestations:</span>
+          </div>
+          <div class="col-md-9">{{ formatAddCommas .AttestationCount }}</div>
+        </div>
+        <div class="row border-bottom p-2 mx-0">
+          <div class="col-md-3">Deposits:</div>
+          <div class="col-md-9">{{ .DepositCount }}</div>
+        </div>
+        <div class="row border-bottom p-2 mx-0">
+          <div class="col-md-3">Exits:</div>
+          <div class="col-md-9">{{ .ExitCount }}</div>
+        </div>
+        <div class="row border-bottom p-2 mx-0">
+          <div class="col-md-3">Withdrawals:</div>
+          <div class="col-md-9">{{ .WithdrawalCount }} ({{ formatEthFromGwei .WithdrawalAmount }})</div>
+        </div>
+        <div class="row border-bottom p-2 mx-0">
+          <div class="col-md-3">Slashings <span data-toggle="tooltip" data-placement="top" title="Proposers">P</span> / <span data-toggle="tooltip" data-placement="top" title="Attesters">A</span>:</div>
+          <div class="col-md-9">{{ .ProposerSlashingCount }} / {{ .AttesterSlashingCount }}</div>
+        </div>
+        <div class="row border-bottom p-2 mx-0">
+          <div class="col-md-3">Correct Target Votes:</div>
+          <div class="col-md-9">
+            <div>
+              {{ formatEthAddCommasFromGwei .TargetVoted }} ETH of
+              {{ formatEthAddCommasFromGwei .EligibleEther }} ETH
+              <small class="text-muted ml-1">({{ formatFloat .TargetVoteParticipation 2 }}%)</small>
+            </div>
+            <div class="progress" style="height: 5px; width: 250px;">
+              <div class="progress-bar" role="progressbar" style="width: {{ formatFloat .TargetVoteParticipation 2 }}%;" aria-valuenow="{{ formatFloat .TargetVoteParticipation 2 }}" aria-valuemin="0" aria-valuemax="100"></div>
+            </div>
+          </div>
+        </div>
+        <div class="row border-bottom p-2 mx-0">
+          <div class="col-md-3">Correct Head Votes:</div>
+          <div class="col-md-9">
+            <div>
+              {{ formatEthAddCommasFromGwei .HeadVoted }} ETH of
+              {{ formatEthAddCommasFromGwei .EligibleEther }} ETH
+              <small class="text-muted ml-1">({{ formatFloat .HeadVoteParticipation 2 }}%)</small>
+            </div>
+            <div class="progress" style="height: 5px; width: 250px;">
+              <div class="progress-bar" role="progressbar" style="width: {{ formatFloat .HeadVoteParticipation 2 }}%;" aria-valuenow="{{ formatFloat .HeadVoteParticipation 2 }}" aria-valuemin="0" aria-valuemax="100"></div>
+            </div>
+          </div>
+        </div>
+        <div class="row border-bottom p-2 mx-0">
+          <div class="col-md-3">Total Votes:</div>
+          <div class="col-md-9">
+            <div>
+              {{ formatEthAddCommasFromGwei .TotalVoted }} ETH of
+              {{ formatEthAddCommasFromGwei .EligibleEther }} ETH
+              <small class="text-muted ml-1">({{ formatFloat .TotalVoteParticipation 2 }}%)</small>
+            </div>
+            <div class="progress" style="height: 5px; width: 250px;">
+              <div class="progress-bar" role="progressbar" style="width: {{ formatFloat .TotalVoteParticipation 2 }}%;" aria-valuenow="{{ formatFloat .TotalVoteParticipation 2 }}" aria-valuemin="0" aria-valuemax="100"></div>
+            </div>
+          </div>
+        </div>
+        <div class="row border-bottom p-2 mx-0">
+          <div class="col-md-3">Sync Participation:</div>
+          <div class="col-md-9">
+            <div>{{ formatFloat .SyncParticipation 2 }} % (only counting proposed blocks)</div>
+            <div class="progress" style="height: 5px; width: 250px;">
+              <div class="progress-bar" role="progressbar" style="width: {{ formatFloat .SyncParticipation 2 }}%;" aria-valuenow="{{ formatFloat .SyncParticipation 2 }}" aria-valuemin="0" aria-valuemax="100"></div>
+            </div>
+          </div>
+        </div>
+        <div class="row border-bottom p-2 mx-0">
+          <div class="col-md-3">Validators:</div>
+          <div class="col-md-9">{{ formatAddCommas .ValidatorCount }}</div>
+        </div>
+        <div class="row border-bottom p-2 mx-0">
+          <div class="col-md-3">Avg. Validator Balance:</div>
+          <div class="col-md-9">{{ formatEthFromGwei .AverageValidatorBalance }}</div>
+        </div>
+        <div class="row p-2 mx-0 collapsed">
+          <div style="position:relative" class="col-md-3">Slots:</div>
+          <div class="col-md-9">
+            {{ .BlockCount }}
+            <small class="text-muted"> ({{ if gt .CanonicalCount 0 }}{{ .CanonicalCount }} Proposed{{ end }}{{ if gt .MissedCount 0 }}, {{ .MissedCount }} Missed{{ end }}{{ if gt .ScheduledCount 0 }}, {{ .ScheduledCount }} Pending{{ end }}{{ if gt .OrphanedCount 0 }}, {{ .OrphanedCount }} Orphaned{{ end }}) </small>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card my-3">
+      <div class="card-body px-0 py-0">
+        <div class="table-responsive px-0 py-1">
+          <table class="table" id="slots">
+            <thead>
+              <tr>
+                <th>Epoch</th>
+                <th>Slot</th>
+                <th>Status</th>
+                <th style="min-width: 125px">Time</th>
+                <th>Prop<span class="d-none d-lg-inline">oser</span></th>
+                <th class="d-none d-md-table-cell">Att<span class="d-none d-lg-inline">estations</span></th>
+                <th>
+                  <nobr><span data-toggle="tooltip" data-placement="top" title="Deposits">D<span class="d-none d-lg-inline">eposits</span> </span> / 
+                  <span data-toggle="tooltip" data-placement="top" title="Exits">E<span class="d-none d-lg-inline">xits</span> </span></nobr>
+                </th>
+                <th><span class="d-none d-lg-inline">Slashings</span>
+                  <nobr><span data-toggle="tooltip" data-placement="top" title="Proposer Slashings">P</span> / 
+                  <span data-toggle="tooltip" data-placement="top" title="Attester Slashings">A</span></nobr>
+                </th>
+                <th>Tx<span class="d-none d-lg-inline"> Count</span></th>
+                <th>Sync<span class="d-none d-lg-inline"> Agg</span> %</th>
+                <th>Graffiti</th>
+              </tr>
+            </thead>
+            <tbody>
+              {{$epoch:=.}}
+              {{ range $i, $slot := .Slots }}
+                <tr>
+                  <td><a href="/epoch/{{ $slot.Epoch }}">{{ formatAddCommas $slot.Epoch }}</a></td>
+                  {{ if eq $slot.Status 2 }}
+                    <td><a href="/slot/0x{{ printf "%x" $slot.BlockRoot }}">{{ formatAddCommas $slot.Slot }}</a></td>
+                  {{ else }}
+                    <td><a href="/slot/{{ $slot.Slot }}">{{ formatAddCommas $slot.Slot }}</a></td>
+                  {{ end }}
+                  <td>
+                    {{ if eq $slot.Slot 0 }}
+                      <span class="badge rounded-pill text-bg-info">Genesis</span>
+                    {{ else if $slot.Scheduled }}
+                      <span class="badge rounded-pill text-bg-secondary">Scheduled</span>
+                    {{ else if not $epoch.Synchronized }}
+                      <span class="badge rounded-pill text-bg-secondary">?</span>
+                    {{ else if eq $slot.Status 0 }}
+                      <span class="badge rounded-pill text-bg-warning">Missed</span>
+                    {{ else if eq $slot.Status 1 }}
+                      <span class="badge rounded-pill text-bg-success">Proposed</span>
+                    {{ else if eq $slot.Status 2 }}
+                      <span class="badge rounded-pill text-bg-info">Orphaned</span>
+                    {{ else }}
+                      <span class="badge rounded-pill text-bg-dark">Unknown</span>
+                    {{ end }}
+                  </td>
+                  <td data-time="{{ $slot.Ts.Unix }}"><span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $slot.Ts }}">{{ formatRecentTimeShort $slot.Ts }}</span></td>
+                  {{ if $epoch.Synchronized }}
+                    <td>{{ formatValidator $slot.Proposer $slot.ProposerName }}</td>
+                    <td class="d-none d-md-table-cell">{{ if not (eq $slot.Status 0) }}{{ $slot.AttestationCount }}{{ end }}</td>
+                    <td>{{ if not (eq $slot.Status 0) }}{{ $slot.DepositCount }} / {{ $slot.ExitCount }}{{ end }}</td>
+                    <td>{{ if not (eq $slot.Status 0) }}{{ $slot.ProposerSlashingCount }} / {{ $slot.AttesterSlashingCount }}{{ end }}</td>
+                    <td>{{ if not (eq $slot.Status 0) }}{{ $slot.EthTransactionCount }}{{ end }}</td>
+                    <td>{{ if not (eq $slot.Status 0) }}{{ formatFloat $slot.SyncParticipation 2 }}%{{ end }}</td>
+                    <td>{{ if not (eq $slot.Status 0) }}{{ formatGraffiti $slot.Graffiti }}{{ end }}</td>
+                  {{ else }}
+                    <td colspan="7">Not indexed yet</td>
+                  {{ end }}
+                  
+                </tr>
+              {{ end }}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <div id="footer-placeholder" style="height:71px;"></div>
+  </div>
+{{ end }}
+{{ define "js" }}
+{{ end }}
+{{ define "css" }}
+{{ end }}

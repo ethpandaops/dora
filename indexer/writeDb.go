@@ -187,7 +187,7 @@ slotLoop:
 				if executionPayload := block.Block.Data.Message.Body.ExecutionPayload; executionPayload != nil {
 					dbEpoch.EthTransactionCount += uint64(len(executionPayload.Transactions))
 					if executionPayload.Withdrawals != nil {
-						dbEpoch.WithdrawCount = uint64(len(executionPayload.Withdrawals))
+						dbEpoch.WithdrawCount += uint64(len(executionPayload.Withdrawals))
 						for _, withdrawal := range executionPayload.Withdrawals {
 							dbEpoch.WithdrawAmount += uint64(withdrawal.Amount)
 						}
