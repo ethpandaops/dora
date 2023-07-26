@@ -13,6 +13,7 @@ type Block struct {
 	Orphaned              bool    `db:"orphaned"`
 	Proposer              uint64  `db:"proposer"`
 	Graffiti              []byte  `db:"graffiti"`
+	GraffitiText          string  `db:"graffiti_text"`
 	AttestationCount      uint64  `db:"attestation_count"`
 	DepositCount          uint64  `db:"deposit_count"`
 	ExitCount             uint64  `db:"exit_count"`

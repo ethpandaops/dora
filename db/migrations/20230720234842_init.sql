@@ -1,6 +1,10 @@
 -- +goose Up
 -- +goose StatementBegin
 
+/* trigram extension for faster text-search */
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
+
 CREATE TABLE IF NOT EXISTS public."explorer_state"
 (
     "key" character varying(150) COLLATE pg_catalog."default" NOT NULL,
@@ -17,6 +21,7 @@ CREATE TABLE IF NOT EXISTS public."blocks"
     "orphaned" boolean NOT NULL,
     "proposer" bigint NOT NULL,
     "graffiti" bytea NOT NULL,
+    "graffiti_text" TEXT NULL,
     "attestation_count" integer NOT NULL DEFAULT 0,
     "deposit_count" integer NOT NULL DEFAULT 0,
     "exit_count" integer NOT NULL DEFAULT 0,
@@ -33,12 +38,24 @@ CREATE TABLE IF NOT EXISTS public."blocks"
 );
 
 CREATE INDEX IF NOT EXISTS "blocks_graffiti_idx"
-    ON public."blocks" 
-    ("graffiti" ASC NULLS LAST);
+    ON public."blocks" USING gin 
+    ("graffiti_text" gin_trgm_ops);
 
 CREATE INDEX IF NOT EXISTS "blocks_slot_idx"
     ON public."blocks" 
     ("root" ASC NULLS LAST);
+
+CREATE INDEX IF NOT EXISTS "blocks_eth_block_number_idx"
+    ON public."blocks" 
+    ("eth_block_number" ASC NULLS LAST);
+
+CREATE INDEX IF NOT EXISTS "blocks_eth_block_hash_idx"
+    ON public."blocks" 
+    ("eth_block_hash" ASC NULLS LAST);
+
+CREATE INDEX IF NOT EXISTS "blocks_proposer_idx"
+    ON public."blocks" 
+    ("proposer" ASC NULLS LAST);
 
 CREATE TABLE IF NOT EXISTS public."orphaned_blocks"
 (

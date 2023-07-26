@@ -18,7 +18,7 @@
             <form action="/slots" method="get">
               <label class="px-2">
                 <span>Show </span>
-                <select name="count" aria-controls="slots" class="custom-select custom-select-sm form-control form-control-sm" onchange="this.form.submit()">
+                <select name="c" aria-controls="slots" class="custom-select custom-select-sm form-control form-control-sm" onchange="this.form.submit()">
                   <option value="{{ .PageSize }}" selected>{{ .PageSize }}</option>
                   <option value="10">10</option>
                   <option value="25">25</option>
@@ -26,7 +26,10 @@
                   <option value="100">100</option>
                 </select>
                 {{ if not .IsDefaultPage }}
-                  <input name="slot" type="hidden" value="{{ .CurrentPageSlot }}">
+                  <input name="s" type="hidden" value="{{ .CurrentPageSlot }}">
+                {{ end }}
+                {{ if .GraffitiFilter }}
+                  <input name="q" type="hidden" value="{{ .GraffitiFilter }}">
                 {{ end }}
                 <span> entries</span>
               </label>
@@ -36,8 +39,8 @@
             <div class="px-2" style="text-align: right;">
               <form action="/slots" method="get">
                 <label>
-                  <input name="slot" type="search" class="form-control form-control-sm" placeholder="Search by Slot Number" aria-controls="slots">
-                  <input name="count" type="hidden" value="1">
+                  <input name="q" type="search" class="form-control form-control-sm" placeholder="Search by Graffiti" aria-controls="graffiti" value="{{ .GraffitiFilter }}">
+                  <input name="c" type="hidden" value="{{ .PageSize }}">
                 </label>
               </form>
             </div>
@@ -135,19 +138,19 @@
               <div class="d-inline-block px-2">
                 <ul class="pagination">
                   <li class="first paginate_button page-item {{ if le .PrevPageIndex 1 }}disabled{{ end }}" id="tpg_first">
-                    <a tab-index="1" aria-controls="tpg_first" class="page-link" href="/slots?count={{ .PageSize }}">First</a>
+                    <a tab-index="1" aria-controls="tpg_first" class="page-link" href="/slots?{{ if .GraffitiFilter }}q={{ .GraffitiFilter }}&{{ end }}c={{ .PageSize }}">First</a>
                   </li>
                   <li class="previous paginate_button page-item {{ if eq .PrevPageIndex 0 }}disabled{{ end }}" id="tpg_previous">
-                    <a tab-index="1" aria-controls="tpg_previous" class="page-link" href="/slots?slot={{ .PrevPageSlot }}&count={{ .PageSize }}"><i class="fas fa-chevron-left"></i></a>
+                    <a tab-index="1" aria-controls="tpg_previous" class="page-link" href="/slots?{{ if .GraffitiFilter }}q={{ .GraffitiFilter }}&{{ end }}s={{ .PrevPageSlot }}&c={{ .PageSize }}"><i class="fas fa-chevron-left"></i></a>
                   </li>
                   <li class="page-item disabled">
                     <a class="page-link" style="background-color: transparent;">{{ .CurrentPageIndex }} of {{ .TotalPages }}</a>
                   </li>
                   <li class="next paginate_button page-item {{ if eq .NextPageIndex 0 }}disabled{{ end }}" id="tpg_next">
-                    <a tab-index="1" aria-controls="tpg_next" class="page-link" href="/slots?slot={{ .NextPageSlot }}&count={{ .PageSize }}"><i class="fas fa-chevron-right"></i></a>
+                    <a tab-index="1" aria-controls="tpg_next" class="page-link" href="/slots?{{ if .GraffitiFilter }}q={{ .GraffitiFilter }}&{{ end }}s={{ .NextPageSlot }}&c={{ .PageSize }}"><i class="fas fa-chevron-right"></i></a>
                   </li>
-                  <li class="last paginate_button page-item {{ if le .NextPageSlot .LastPageSlot }}disabled{{ end }}" id="tpg_last">
-                    <a tab-index="1" aria-controls="tpg_last" class="page-link" href="/slots?slot={{ .LastPageSlot }}&count={{ .PageSize }}">Last</a>
+                  <li class="last paginate_button page-item {{ if or (eq .LastPageSlot 0) (le .NextPageSlot .LastPageSlot) }}disabled{{ end }}" id="tpg_last">
+                    <a tab-index="1" aria-controls="tpg_last" class="page-link" href="/slots?{{ if .GraffitiFilter }}q={{ .GraffitiFilter }}&{{ end }}s={{ .LastPageSlot }}&c={{ .PageSize }}">Last</a>
                   </li>
                 </ul>
               </div>

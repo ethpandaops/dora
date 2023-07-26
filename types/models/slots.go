@@ -6,10 +6,11 @@ import (
 
 // SlotsPageData is a struct to hold info for the slots page
 type SlotsPageData struct {
-	Slots     []*SlotsPageDataSlot `json:"slots"`
-	SlotCount uint64
-	FirstSlot uint64
-	LastSlot  uint64
+	Slots          []*SlotsPageDataSlot `json:"slots"`
+	SlotCount      uint64
+	FirstSlot      uint64
+	LastSlot       uint64
+	GraffitiFilter string
 
 	IsDefaultPage    bool
 	TotalPages       uint64

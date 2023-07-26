@@ -80,6 +80,7 @@ func buildDbBlock(block *BlockInfo, epochStats *EpochStats) *dbtypes.Block {
 		Orphaned:              block.Orphaned,
 		Proposer:              uint64(block.Block.Data.Message.ProposerIndex),
 		Graffiti:              block.Block.Data.Message.Body.Graffiti,
+		GraffitiText:          string(block.Block.Data.Message.Body.Graffiti),
 		AttestationCount:      uint64(len(block.Block.Data.Message.Body.Attestations)),
 		DepositCount:          uint64(len(block.Block.Data.Message.Body.Deposits)),
 		ExitCount:             uint64(len(block.Block.Data.Message.Body.VoluntaryExits)),

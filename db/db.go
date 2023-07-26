@@ -193,14 +193,14 @@ func InsertSlotAssignments(slotAssignments []*dbtypes.SlotAssignment, tx *sqlx.T
 func InsertBlock(block *dbtypes.Block, tx *sqlx.Tx) error {
 	_, err := tx.Exec(`
 	INSERT INTO blocks (
-		root, slot, parent_root, state_root, orphaned, proposer, graffiti, 
+		root, slot, parent_root, state_root, orphaned, proposer, graffiti, graffiti_text,
 		attestation_count, deposit_count, exit_count, withdraw_count, withdraw_amount, attester_slashing_count, 
 		proposer_slashing_count, bls_change_count, eth_transaction_count, eth_block_number, eth_block_hash, sync_participation
-	) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+	) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
 	ON CONFLICT (root) DO UPDATE SET
 		orphaned = excluded.orphaned
 	`,
-		block.Root, block.Slot, block.ParentRoot, block.StateRoot, block.Orphaned, block.Proposer, block.Graffiti,
+		block.Root, block.Slot, block.ParentRoot, block.StateRoot, block.Orphaned, block.Proposer, block.Graffiti, block.GraffitiText,
 		block.AttestationCount, block.DepositCount, block.ExitCount, block.WithdrawCount, block.WithdrawAmount, block.AttesterSlashingCount,
 		block.ProposerSlashingCount, block.BLSChangeCount, block.EthTransactionCount, block.EthBlockNumber, block.EthBlockHash, block.SyncParticipation)
 	if err != nil {
@@ -285,7 +285,7 @@ func GetBlocks(firstBlock uint64, limit uint32, withOrphaned bool) []*dbtypes.Bl
 	}
 	err := ReaderDb.Select(&blocks, `
 	SELECT
-		root, slot, parent_root, state_root, orphaned, proposer, graffiti, 
+		root, slot, parent_root, state_root, orphaned, proposer, graffiti, graffiti_text,
 		attestation_count, deposit_count, exit_count, withdraw_count, withdraw_amount, attester_slashing_count, 
 		proposer_slashing_count, bls_change_count, eth_transaction_count, eth_block_number, eth_block_hash, sync_participation
 	FROM blocks
@@ -308,13 +308,36 @@ func GetBlocksForSlots(firstSlot uint64, lastSlot uint64, withOrphaned bool) []*
 	}
 	err := ReaderDb.Select(&blocks, `
 	SELECT
-		root, slot, parent_root, state_root, orphaned, proposer, graffiti, 
+		root, slot, parent_root, state_root, orphaned, proposer, graffiti, graffiti_text,
 		attestation_count, deposit_count, exit_count, withdraw_count, withdraw_amount, attester_slashing_count, 
 		proposer_slashing_count, bls_change_count, eth_transaction_count, eth_block_number, eth_block_hash, sync_participation
 	FROM blocks
 	WHERE slot <= $1 AND slot >= $2 `+orphanedLimit+`
 	ORDER BY slot DESC
 	`, firstSlot, lastSlot)
+	if err != nil {
+		logger.Errorf("Error while fetching blocks: %v", err)
+		return nil
+	}
+	return blocks
+}
+
+func GetBlocksWithGraffiti(graffiti string, firstSlot uint64, offset uint64, limit uint32, withOrphaned bool) []*dbtypes.Block {
+	blocks := []*dbtypes.Block{}
+	orphanedLimit := ""
+	if !withOrphaned {
+		orphanedLimit = "AND NOT orphaned"
+	}
+	err := ReaderDb.Select(&blocks, `
+	SELECT
+		root, slot, parent_root, state_root, orphaned, proposer, graffiti, graffiti_text,
+		attestation_count, deposit_count, exit_count, withdraw_count, withdraw_amount, attester_slashing_count, 
+		proposer_slashing_count, bls_change_count, eth_transaction_count, eth_block_number, eth_block_hash, sync_participation
+	FROM blocks
+	WHERE graffiti_text ilike $1 AND slot < $2 `+orphanedLimit+`
+	ORDER BY slot DESC
+	LIMIT $3 OFFSET $4
+	`, "%"+graffiti+"%", firstSlot, limit, offset)
 	if err != nil {
 		logger.Errorf("Error while fetching blocks: %v", err)
 		return nil

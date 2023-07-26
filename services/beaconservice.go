@@ -2,6 +2,8 @@ package services
 
 import (
 	"fmt"
+	"strings"
+	"time"
 
 	"github.com/pk910/light-beaconchain-explorer/cache"
 	"github.com/pk910/light-beaconchain-explorer/db"
@@ -296,6 +298,82 @@ func (bs *BeaconService) GetDbBlocksForSlots(firstSlot uint64, slotLimit uint32,
 			for idx := 0; idx < len(dbBlocks); idx++ {
 				resBlocks = append(resBlocks, dbBlocks[idx])
 			}
+		}
+	}
+
+	return resBlocks
+}
+
+func (bs *BeaconService) GetDbBlocksByGraffiti(graffiti string, pageIdx uint64, pageSize uint32, withOrphaned bool) []*dbtypes.Block {
+	cachedMatches := make([]*indexer.BlockInfo, 0)
+	idxMinSlot := bs.indexer.GetLowestCachedSlot()
+	idxHeadSlot := bs.indexer.GetHeadSlot()
+	if idxMinSlot >= 0 {
+		for slotIdx := int64(idxHeadSlot); slotIdx >= int64(idxMinSlot); slotIdx-- {
+			slot := uint64(slotIdx)
+			blocks := bs.indexer.GetCachedBlocks(slot)
+			if blocks != nil {
+				for bidx := 0; bidx < len(blocks); bidx++ {
+					block := blocks[bidx]
+					if block.Orphaned && !withOrphaned {
+						continue
+					}
+					blockGraffiti := string(block.Block.Data.Message.Body.Graffiti)
+					if !strings.Contains(blockGraffiti, graffiti) {
+						continue
+					}
+					cachedMatches = append(cachedMatches, block)
+				}
+			}
+		}
+	}
+
+	cachedMatchesLen := uint64(len(cachedMatches))
+	cachedPages := cachedMatchesLen / uint64(pageSize)
+	resBlocks := make([]*dbtypes.Block, 0)
+	resIdx := 0
+
+	cachedStart := pageIdx * uint64(pageSize)
+	cachedEnd := cachedStart + uint64(pageSize)
+	if cachedEnd+1 < cachedMatchesLen {
+		cachedEnd++
+	}
+
+	if cachedPages > 0 && pageIdx < cachedPages {
+		for _, block := range cachedMatches[cachedStart:cachedEnd] {
+			resBlocks = append(resBlocks, bs.indexer.BuildLiveBlock(block))
+			resIdx++
+		}
+	} else if pageIdx == cachedPages {
+		start := pageIdx * uint64(pageSize)
+		for _, block := range cachedMatches[start:] {
+			resBlocks = append(resBlocks, bs.indexer.BuildLiveBlock(block))
+			resIdx++
+		}
+	}
+	if resIdx > int(pageSize) {
+		return resBlocks
+	}
+
+	// load from db
+	var dbMinSlot uint64
+	if idxMinSlot < 0 {
+		dbMinSlot = utils.TimeToSlot(uint64(time.Now().Unix()))
+	} else {
+		dbMinSlot = uint64(idxMinSlot)
+	}
+
+	dbPage := pageIdx - cachedPages
+	dbCacheOffset := cachedMatchesLen % uint64(pageSize)
+	var dbBlocks []*dbtypes.Block
+	if dbPage == 0 {
+		dbBlocks = db.GetBlocksWithGraffiti(graffiti, dbMinSlot, 0, pageSize-uint32(dbCacheOffset)+1, withOrphaned)
+	} else {
+		dbBlocks = db.GetBlocksWithGraffiti(graffiti, dbMinSlot, dbPage*uint64(pageSize)-dbCacheOffset, pageSize+1, withOrphaned)
+	}
+	if dbBlocks != nil {
+		for _, dbBlock := range dbBlocks {
+			resBlocks = append(resBlocks, dbBlock)
 		}
 	}
 
