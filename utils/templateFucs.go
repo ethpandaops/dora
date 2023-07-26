@@ -65,7 +65,7 @@ func IncludeHTML(path string) template.HTML {
 	return template.HTML(string(b))
 }
 
-func GraffitiToSring(graffiti []byte) string {
+func GraffitiToString(graffiti []byte) string {
 	s := strings.Map(fixUtf, string(bytes.Trim(graffiti, "\x00")))
 	s = strings.Replace(s, "\u0000", "", -1) // rempove 0x00 bytes as it is not supported in postgres
 
