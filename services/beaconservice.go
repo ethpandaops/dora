@@ -122,10 +122,7 @@ func (bs *BeaconService) GetSlotDetailsBySlot(slot uint64, withBlobs bool) (*rpc
 	}
 	var blobs *rpctypes.StandardV1BlobSidecarsResponse
 	if withBlobs && utils.EpochOfSlot(uint64(header.Data.Header.Message.Slot)) >= utils.Config.Chain.Config.DenebForkEpoch {
-		blobs, err = bs.rpcClient.GetBlobSidecarsByBlockroot(header.Data.Root)
-		if err != nil {
-			return nil, err
-		}
+		blobs, _ = bs.rpcClient.GetBlobSidecarsByBlockroot(header.Data.Root)
 	}
 	return &rpctypes.CombinedBlockResponse{
 		Header: header,

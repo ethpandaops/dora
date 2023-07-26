@@ -317,7 +317,7 @@ func getSlotPageBlockData(blockData *rpctypes.CombinedBlockResponse, assignments
 		}
 	}
 
-	if epoch >= utils.Config.Chain.Config.DenebForkEpoch {
+	if epoch >= utils.Config.Chain.Config.DenebForkEpoch && blockData.Blobs != nil {
 		pageData.BlobsCount = uint64(len(blockData.Blobs.Data))
 		pageData.Blobs = make([]*models.SlotPageBlob, pageData.BlobsCount)
 		for i := uint64(0); i < pageData.BlobsCount; i++ {
