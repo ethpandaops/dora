@@ -377,12 +377,12 @@ func (bs *BeaconService) GetDbBlocksByGraffiti(graffiti string, pageIdx uint64, 
 	}
 
 	dbPage := pageIdx - cachedPages
-	dbCacheOffset := cachedMatchesLen % uint64(pageSize)
+	dbCacheOffset := uint64(pageSize) - (cachedMatchesLen % uint64(pageSize))
 	var dbBlocks []*dbtypes.Block
 	if dbPage == 0 {
-		dbBlocks = db.GetBlocksWithGraffiti(graffiti, dbMinSlot, 0, pageSize-uint32(dbCacheOffset)+1, withOrphaned)
+		dbBlocks = db.GetBlocksWithGraffiti(graffiti, dbMinSlot, 0, uint32(dbCacheOffset)+1, withOrphaned)
 	} else {
-		dbBlocks = db.GetBlocksWithGraffiti(graffiti, dbMinSlot, dbPage*uint64(pageSize)-dbCacheOffset, pageSize+1, withOrphaned)
+		dbBlocks = db.GetBlocksWithGraffiti(graffiti, dbMinSlot, (dbPage-1)*uint64(pageSize)+dbCacheOffset, pageSize+1, withOrphaned)
 	}
 	if dbBlocks != nil {
 		for _, dbBlock := range dbBlocks {
