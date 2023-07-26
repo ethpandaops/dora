@@ -1,14 +1,18 @@
 {{ define "page" }}
   <div class="container mt-2">
     <div class="d-md-flex py-2 justify-content-md-between">
-      <h1 class="h4 mb-1 mb-md-0">
-        {{ if not (eq .Epoch 0) }}
+      <h1 class="h4 my-3 mb-md-0 h1-pager">
+        {{- if not (eq .Epoch 0) -}}
           <a href="/epoch/{{ .PreviousEpoch }}"><i class="fa fa-chevron-left"></i></a>
-        {{ end }}
-        <span class="ml-1 mr-1"><i class="fas fa-history mr-2"></i>Epoch <span id="epoch">{{ .Epoch }}</span></span>
-        {{ if gt .NextEpoch 0 }}
+        {{- else -}}
+          <a></a>
+        {{- end -}}
+        <span><i class="fas fa-history mx-2"></i>Epoch <span id="epoch">{{ .Epoch }}</span></span>
+        {{- if gt .NextEpoch 0 -}}
           <a href="/epoch/{{ .NextEpoch }}"><i class="fa fa-chevron-right"></i></a>
-        {{ end }}
+        {{- else -}}
+          <a></a>
+        {{- end -}}
       </h1>
       <nav aria-label="breadcrumb">
         <ol class="breadcrumb font-size-1 mb-0" style="padding: 0; background-color: transparent;">
@@ -19,7 +23,7 @@
       </nav>
     </div>
 
-    <div class="card mt-2">
+    <div class="card mt-3">
       <div class="card-body px-0 py-1">
         <div class="row border-bottom p-2 mx-0">
           <div class="col-md-3">Epoch:</div>
@@ -37,14 +41,10 @@
         </div>
         <div class="row border-bottom p-2 mx-0">
           <div class="col-md-3">Time:</div>
-          <div class="col-md-6"><span aria-ethereum-date="{{ .Ts.Unix }}" aria-ethereum-date-format="FROMNOW">{{ .Ts }}</span> (<span id="timestamp" aria-ethereum-date="{{ .Ts.Unix }}" aria-ethereum-date-format="LOCAL">{{ .Ts }}</span>) <i class="fa fa-copy text-muted p-1" role="button" data-toggle="tooltip" title="Copy to clipboard" onclick="copyTs()"></i></div>
-          <div class="col-md-3 text-right">
-            <div id="unixTs" hidden>{{ .Ts.Unix }}</div>
-            <div class="btn-group btn-group-toggle" data-toggle="buttons">
-              <label class="btn btn-light text-dark active btn-sm" onclick="setTs()"> <input type="radio" name="options" id="optionTs" autocomplete="off" /> Timestamp </label>
-              <label class="btn btn-light text-dark active btn-sm pl-4 pr-4" onclick="setUtc()"> <input type="radio" name="options" id="optionUtc" autocomplete="off" /> UTC </label>
-              <label class="btn btn-light text-dark btn-sm pl-4 pr-4" onclick="setLocal()"> <input type="radio" name="options" id="optionLocal" autocomplete="off" checked /> Local </label>
-            </div>
+          <div class="col-md-6">
+            <span aria-ethereum-date="{{ .Ts.Unix }}" aria-ethereum-date-format="FROMNOW">{{ .Ts }}</span>
+            (<span id="timestamp" aria-ethereum-date="{{ .Ts.Unix }}" aria-ethereum-date-format="LOCAL" data-timer="{{ .Ts.Unix }}">{{ formatRecentTimeShort .Ts }}</span>)
+            <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" onclick="copyTs()"></i>
           </div>
         </div>
         <div class="row border-bottom p-2 mx-0">
@@ -66,7 +66,7 @@
           <div class="col-md-9">{{ .WithdrawalCount }} ({{ formatEthFromGwei .WithdrawalAmount }})</div>
         </div>
         <div class="row border-bottom p-2 mx-0">
-          <div class="col-md-3">Slashings <span data-toggle="tooltip" data-placement="top" title="Proposers">P</span> / <span data-toggle="tooltip" data-placement="top" title="Attesters">A</span>:</div>
+          <div class="col-md-3">Slashings <span data-bs-toggle="tooltip" data-bs-placement="top" title="Proposers">P</span> / <span data-bs-toggle="tooltip" data-bs-placement="top" title="Attesters">A</span>:</div>
           <div class="col-md-9">{{ .ProposerSlashingCount }} / {{ .AttesterSlashingCount }}</div>
         </div>
         <div class="row border-bottom p-2 mx-0">
@@ -187,7 +187,7 @@
                       <span class="badge rounded-pill text-bg-dark">Unknown</span>
                     {{ end }}
                   </td>
-                  <td data-time="{{ $slot.Ts.Unix }}"><span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $slot.Ts }}">{{ formatRecentTimeShort $slot.Ts }}</span></td>
+                  <td data-timer="{{ $slot.Ts.Unix }}"><span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $slot.Ts }}">{{ formatRecentTimeShort $slot.Ts }}</span></td>
                   {{ if $epoch.Synchronized }}
                     <td>{{ formatValidator $slot.Proposer $slot.ProposerName }}</td>
                     <td class="d-none d-md-table-cell">{{ if not (eq $slot.Status 0) }}{{ $slot.AttestationCount }}{{ end }}</td>

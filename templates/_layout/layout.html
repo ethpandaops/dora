@@ -32,8 +32,10 @@
       <link rel="preload" as="font" href="/webfonts/fa-regular-400.woff2" crossorigin />
       <link rel="preload" as="font" href="/webfonts/fa-brands-400.woff2" crossorigin />
       <link id="app-style" rel="stylesheet" href="/css/layout.css" />
-
       {{ template "css" .Data }}
+
+      <script src="/js/bootstrap.bundle.min.js"></script>
+      <script src="/js/color-modes.js"></script>
     </head>
     <body>
       <noscript>
@@ -47,8 +49,8 @@
         {{ template "page" .Data }}
       </main>
 
-      <script src="/js/bootstrap.bundle.min.js"></script>
-      <script src="/js/color-modes.js"></script>
+      <script src="/js/clipboard.min.js"></script>
+      <script src="/js/explorer.js"></script>
       {{ template "js" .Data }}
     </body>
   </html>

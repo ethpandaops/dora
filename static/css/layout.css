@@ -122,3 +122,13 @@ span.validator-label {
 .table-search label {
   width: 300px;
 }
+
+.h1-pager > a {
+  width: 24px;
+  display: inline-block;
+  margin: 0 8px;
+}
+.h1-pager > span {
+  display: inline-block;
+  min-width: 180px;
+}

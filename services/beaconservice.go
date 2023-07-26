@@ -165,7 +165,6 @@ func (bs *BeaconService) GetProposerAssignments(firstEpoch uint64, lastEpoch uin
 	// load from db
 	firstSlot := (firstEpoch * utils.Config.Chain.Config.SlotsPerEpoch) + (utils.Config.Chain.Config.SlotsPerEpoch - 1)
 	lastSlot := lastEpoch * utils.Config.Chain.Config.SlotsPerEpoch
-	fmt.Println("get assignments ", firstSlot, " to ", lastSlot)
 	dbSlotAssignments := db.GetSlotAssignmentsForSlots(firstSlot, lastSlot)
 	for _, dbSlotAssignment := range dbSlotAssignments {
 		synchronizedEpochs[utils.EpochOfSlot(dbSlotAssignment.Slot)] = true

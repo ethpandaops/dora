@@ -1,14 +1,18 @@
 {{ define "page" }}
   <div class="container mt-2">
     <div class="d-md-flex py-2 justify-content-md-between">
-      <h1 class="h4 my-3 mb-md-0">
-        {{ if not (eq .Slot 0) }}
+      <h1 class="h4 my-3 mb-md-0 h1-pager">
+        {{- if not (eq .Slot 0) -}}
           <a href="/slot/{{ .PreviousSlot }}"><i class="fa fa-chevron-left"></i></a>
-        {{ end }}
-        <span class="ml-1 mr-1"><i class="fas fa-cube mr-2"></i>Slot <span id="slot">{{ .Slot }}</span></span>
-        {{ if gt .NextSlot 0 }}
+        {{- else -}}
+          <a></a>
+        {{- end -}}
+        <span><i class="fas fa-cube mx-2"></i>Slot <span id="slot">{{ .Slot }}</span></span>
+        {{- if gt .NextSlot 0 -}}
           <a href="/slot/{{ .NextSlot }}"><i class="fa fa-chevron-right"></i></a>
-        {{ end }}
+        {{- else -}}
+          <a></a>
+        {{- end -}}
       </h1>
       <nav aria-label="breadcrumb">
         <ol class="breadcrumb font-size-1 mb-0" style="padding: 0; background-color: transparent;">
@@ -19,7 +23,7 @@
       </nav>
     </div>
 
-    <ul class="nav nav-tabs justify-content-start" id="tab" role="tablist">
+    <ul class="nav nav-tabs justify-content-start mt-3" id="tab" role="tablist">
       <li class="nav-item">
         <a class="nav-link active" id="overview-tab" data-bs-toggle="tab" href="#overview" role="tab" aria-controls="overview" aria-selected="true">Overview</a>
       </li>

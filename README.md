@@ -26,7 +26,7 @@ https://github.com/ethpandaops/tooling-wishlist/blob/master/tools/lightweight-be
   * [x] Slot details (`/slot/{slot_or_root}`)
     * [x] Overview, Attestations, Slashings, Deposits, BLSChanges, Withdrawals, Voluntary Exits
     * [ ] Blob Sidecars
-    * [ ] Enhance view controls (Hex/UTF8 Grafitti, Local/UTC Time, Copy Buttons etc.)
+    * [x] Enhance view controls (Hex/UTF8 Grafitti, Local/UTC Time, Copy Buttons etc.)
     * [ ] Load orphaned blocks from db
   * [ ] Validators List (`/validators`)
   * [ ] Validator Details (`/validator/{validator_index}`) 

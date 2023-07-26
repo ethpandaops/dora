@@ -43,7 +43,7 @@
                       <span class="badge rounded-pill text-bg-dark">Unknown</span>
                     {{ end }}
                   </td>
-                  <td data-time="{{ $block.Ts.Unix }}"><span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $block.Ts }}">{{ formatRecentTimeShort $block.Ts }}</span></td>
+                  <td data-timer="{{ $block.Ts.Unix }}"><span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $block.Ts }}">{{ formatRecentTimeShort $block.Ts }}</span></td>
                   <td>{{ formatValidator $block.Proposer $block.ProposerName }}</td>
                 </tr>
               {{ end }}

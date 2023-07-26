@@ -23,7 +23,7 @@
               {{ range $i, $epoch := .RecentEpochs }}
                 <tr>
                   <td><a href="/epoch/{{ $epoch.Epoch }}">{{ formatAddCommas $epoch.Epoch }}</a></td>
-                  <td data-time="{{ $epoch.Ts.Unix }}"><span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $epoch.Ts }}">{{ formatRecentTimeShort $epoch.Ts }}</span></td>
+                  <td data-timer="{{ $epoch.Ts.Unix }}"><span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $epoch.Ts }}">{{ formatRecentTimeShort $epoch.Ts }}</span></td>
                   <td>
                     {{ if $epoch.Finalized }}
                       <span class="badge badge-pill bg-success text-white" style="font-size: 12px; font-weight: 500;">Yes</span>

@@ -1,7 +1,9 @@
 {{ define "page" }}
   <div class="container mt-2">
     <div class="d-md-flex py-2 justify-content-md-between">
-      <h1 class="h4 mb-1 mb-md-0"><i class="fas fa-history mr-2"></i>Epochs</h1>
+      <h1 class="h4 mb-1 mb-md-0">
+        <i class="fas fa-history mx-2"></i>Epochs
+      </h1>
       <nav aria-label="breadcrumb">
         <ol class="breadcrumb font-size-1 mb-0" style="padding:0; background-color:transparent;">
           <li class="breadcrumb-item"><a href="/" title="Home">Home</a></li>
@@ -71,7 +73,7 @@
                 {{ range $i, $epoch := .Epochs }}
                   <tr>
                     <td><a href="/epoch/{{ $epoch.Epoch }}">{{ formatAddCommas $epoch.Epoch }}</a></td>
-                    <td data-time="{{ $epoch.Ts.Unix }}"><span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $epoch.Ts }}">{{ formatRecentTimeShort $epoch.Ts }}</span></td>
+                    <td data-timer="{{ $epoch.Ts.Unix }}"><span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $epoch.Ts }}">{{ formatRecentTimeShort $epoch.Ts }}</span></td>
                     {{ if $epoch.Synchronized }}
                       <td class="d-none d-md-table-cell">{{ $epoch.AttestationCount }}</td>
                       <td>{{ $epoch.DepositCount }} / {{ $epoch.ExitCount }}</td>
