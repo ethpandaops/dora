@@ -98,24 +98,6 @@ func createMenuItems(active string, isMain bool) []types.MainMenuItem {
 							Icon:  "fa-cube",
 						},
 					},
-				}, {
-					Links: []types.NavigationLink{
-						{
-							Label: "Blocks",
-							Path:  "/blocks",
-							Icon:  "fa-cubes",
-						},
-						{
-							Label: "Txs",
-							Path:  "/transactions",
-							Icon:  "fa-credit-card",
-						},
-						{
-							Label: "Mempool",
-							Path:  "/mempool",
-							Icon:  "fa-upload",
-						},
-					},
 				},
 			},
 		},
