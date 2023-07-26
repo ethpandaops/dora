@@ -42,6 +42,7 @@ type StandardV2BeaconBlockResponse struct {
 type CombinedBlockResponse struct {
 	Header *StandardV1BeaconHeaderResponse
 	Block  *StandardV2BeaconBlockResponse
+	Blobs  *StandardV1BlobSidecarsResponse
 }
 
 type StandardV1ProposerDutiesResponse struct {
@@ -83,4 +84,8 @@ type StandardV1StateValidatorsResponse struct {
 		Status    string    `json:"status"`
 		Validator Validator `json:"validator"`
 	} `json:"data"`
+}
+
+type StandardV1BlobSidecarsResponse struct {
+	Data []BlobSidecar `json:"data"`
 }

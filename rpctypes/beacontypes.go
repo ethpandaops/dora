@@ -136,6 +136,9 @@ type BeaconBlockBody struct {
 
 	// present only after capella
 	SignedBLSToExecutionChange []*SignedBLSToExecutionChange `json:"bls_to_execution_changes"`
+
+	// present only after deneb
+	BlobKzgCommitments []BytesHexStr `json:"blob_kzg_commitments"`
 }
 
 type BeaconBlock struct {
@@ -160,4 +163,15 @@ type Validator struct {
 	ActivationEpoch            Uint64Str   `json:"activation_epoch"`
 	ExitEpoch                  Uint64Str   `json:"exit_epoch"`
 	WithdrawableEpoch          Uint64Str   `json:"withdrawable_epoch"`
+}
+
+type BlobSidecar struct {
+	BlockRoot       BytesHexStr `json:"block_root"`
+	Index           Uint64Str   `json:"index"`
+	Slot            Uint64Str   `json:"slot"`
+	BlockParentRoot BytesHexStr `json:"block_parent_root"`
+	ProposerIndex   Uint64Str   `json:"proposer_index"`
+	Blob            BytesHexStr `json:"blob"`
+	KzgCommitment   BytesHexStr `json:"kzg_commitment"`
+	KzgProof        BytesHexStr `json:"kzg_proof"`
 }

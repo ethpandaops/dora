@@ -48,6 +48,7 @@ type SlotPageBlockData struct {
 	BLSChangesCount        uint64   `json:"bls_changes_count"`
 	VoluntaryExitsCount    uint64   `json:"voluntaryexits_count"`
 	SlashingsCount         uint64
+	BlobsCount             uint64 `json:"blobs_count"`
 
 	ExecutionData     *SlotPageExecutionData      `json:"execution_data"`
 	Attestations      []*SlotPageAttestation      `json:"attestations"`       // Attestations included in this block
@@ -57,6 +58,7 @@ type SlotPageBlockData struct {
 	ProposerSlashings []*SlotPageProposerSlashing `json:"proposer_slashings"` // Proposer Slashings included in this block
 	BLSChanges        []*SlotPageBLSChange        `json:"bls_changes"`        // BLSChanges included in this block
 	Withdrawals       []*SlotPageWithdrawal       `json:"withdrawals"`        // Withdrawals included in this block
+	Blobs             []*SlotPageBlob             `json:"blobs"`              // Blob sidecars included in this block
 }
 
 type SlotPageExecutionData struct {
@@ -165,4 +167,13 @@ type SlotPageWithdrawal struct {
 	ValidatorName  string `json:"validatorname"`
 	Address        []byte `json:"address"`
 	Amount         uint64 `json:"amount"`
+}
+
+type SlotPageBlob struct {
+	Index         uint64 `json:"index"`
+	BlobShort     []byte `json:"blob_short"`
+	IsShort       bool   `json:"is_short"`
+	Blob          []byte `json:"blob"`
+	KzgCommitment []byte `json:"kzg_commitment"`
+	KzgProof      []byte `json:"kzg_proof"`
 }

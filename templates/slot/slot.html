@@ -61,6 +61,11 @@
             <a class="nav-link" id="blsChange-tab" data-bs-toggle="tab" href="#blsChange" role="tab" aria-controls="blsChange" aria-selected="false">BLS Change <span class="badge bg-secondary text-white">{{ .Block.BLSChangesCount }}</span></a>
           </li>
         {{ end }}
+        {{ if gt .Block.BlobsCount 0 }}
+          <li class="nav-item">
+            <a class="nav-link" id="blobSidecars-tab" data-bs-toggle="tab" href="#blobSidecars" role="tab" aria-controls="blobSidecars" aria-selected="false">Blob Sidecars <span class="badge bg-secondary text-white">{{ .Block.BlobsCount }}</span></a>
+          </li>
+        {{ end }}
       {{ end }}
     </ul>
 
@@ -153,10 +158,22 @@
             </div>
           </div>
         {{ end }}
+        {{ if gt .Block.BlobsCount 0 }}
+          <div class="tab-pane fade" id="blobSidecars" role="tabpanel" aria-labelledby="blobSidecars-tab">
+            <div class="card block-card">
+              <div style="margin-bottom: -.25rem;" class="card-body px-0 py-1">
+                <div class="row p-1 mx-0">
+                  <h3 class="h5 col-md-12 text-center"><b>Showing {{ .Block.BlobsCount }} Blob sidecars </b></h3>
+                </div>
+              </div>
+            </div>
+            {{ template "block_blobSidecar" . }}
+          </div>
+        {{ end }}
 
       {{ end }}
     </div>
-
+    <div id="footer-placeholder" style="height:71px;"></div>
   </div>
 {{ end }}
 {{ define "js" }}

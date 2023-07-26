@@ -300,3 +300,19 @@ func (bc *BeaconClient) GetStateValidators(stateroot []byte) (*rpctypes.Standard
 	}
 	return &parsedResponse, nil
 }
+
+func (bc *BeaconClient) GetBlobSidecarsByBlockroot(blockroot []byte) (*rpctypes.StandardV1BlobSidecarsResponse, error) {
+	resp, err := bc.get(fmt.Sprintf("%s/eth/v1/beacon/blob_sidecars/0x%x", bc.endpoint, blockroot))
+	if err != nil {
+		return nil, fmt.Errorf("error retrieving blob sidecars for 0x%x: %v", blockroot, err)
+	}
+
+	var parsedResponse rpctypes.StandardV1BlobSidecarsResponse
+	err = json.Unmarshal(resp, &parsedResponse)
+	if err != nil {
+		logger.Errorf("error parsing blob sidecars for 0x%x: %v", blockroot, err)
+		return nil, fmt.Errorf("error parsing blob sidecars for 0x%x: %v", blockroot, err)
+	}
+
+	return &parsedResponse, nil
+}

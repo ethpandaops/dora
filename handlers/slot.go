@@ -29,6 +29,7 @@ func Slot(w http.ResponseWriter, r *http.Request) {
 		"slot/withdrawals.html",
 		"slot/voluntary_exits.html",
 		"slot/slashings.html",
+		"slot/blobs.html",
 	)
 	var notfoundTemplateFiles = append(layoutTemplateFiles,
 		"slot/notfound.html",
@@ -58,9 +59,9 @@ func Slot(w http.ResponseWriter, r *http.Request) {
 	var blockData *rpctypes.CombinedBlockResponse
 	if err == nil {
 		if blockSlot > -1 {
-			blockData, err = services.GlobalBeaconService.GetSlotDetailsBySlot(uint64(blockSlot))
+			blockData, err = services.GlobalBeaconService.GetSlotDetailsBySlot(uint64(blockSlot), true)
 		} else {
-			blockData, err = services.GlobalBeaconService.GetSlotDetailsByBlockroot(blockRootHash)
+			blockData, err = services.GlobalBeaconService.GetSlotDetailsByBlockroot(blockRootHash, true)
 		}
 	}
 
@@ -313,6 +314,27 @@ func getSlotPageBlockData(blockData *rpctypes.CombinedBlockResponse, assignments
 				Address:        withdrawal.Address,
 				Amount:         uint64(withdrawal.Amount),
 			}
+		}
+	}
+
+	if epoch >= utils.Config.Chain.Config.DenebForkEpoch {
+		pageData.BlobsCount = uint64(len(blockData.Blobs.Data))
+		pageData.Blobs = make([]*models.SlotPageBlob, pageData.BlobsCount)
+		for i := uint64(0); i < pageData.BlobsCount; i++ {
+			blob := blockData.Blobs.Data[i]
+			blobData := &models.SlotPageBlob{
+				Index:         uint64(blob.Index),
+				KzgCommitment: blob.KzgCommitment,
+				KzgProof:      blob.KzgProof,
+				Blob:          blob.Blob,
+			}
+			if len(blob.Blob) > 512 {
+				blobData.BlobShort = blob.Blob[0:512]
+				blobData.IsShort = true
+			} else {
+				blobData.BlobShort = blob.Blob
+			}
+			pageData.Blobs[i] = blobData
 		}
 	}
 

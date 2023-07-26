@@ -1,0 +1,33 @@
+{{ define "block_blobSidecar" }}
+  {{ range $i, $blob := .Block.Blobs }}
+    <div class="card my-2">
+      <div class="card-body px-0 py-1">
+        <div class="row border-bottom p-1 mx-0">
+          <div class="col-md-12 text-center"><b>Blob Sidecar {{ $blob.Index }}</b></div>
+        </div>
+        <div class="row border-bottom p-1 mx-0">
+          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="KGZ Commitment">KGZ Commitment:</span></div>
+          <div class="col-md-10 text-monospace">
+            0x{{ printf "%x" $blob.KzgCommitment }} 
+            <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $blob.KzgCommitment }} "></i>
+          </div>
+        </div>
+        <div class="row border-bottom p-1 mx-0">
+          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="KGZ Proof">KGZ Proof:</span></div>
+          <div class="col-md-10 text-monospace">
+            0x{{ printf "%x" $blob.KzgProof }} 
+            <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $blob.KzgProof }} "></i>
+          </div>
+        </div>
+        <div class="row border-bottom p-1 mx-0">
+          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Blob Data">Data:</span></div>
+          <div class="col-md-10 text-monospace">
+            0x{{ printf "%x" $blob.BlobShort }}
+            {{- if $blob.IsShort -}}...{{ end }} 
+            <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $blob.Blob }} "></i>
+          </div>
+        </div>
+      </div>
+    </div>
+  {{ end }}
+{{ end }}

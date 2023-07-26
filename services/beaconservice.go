@@ -82,7 +82,7 @@ func (bs *BeaconService) GetCachedEpochStats(epoch uint64) *indexer.EpochStats {
 	return bs.indexer.GetCachedEpochStats(epoch)
 }
 
-func (bs *BeaconService) GetSlotDetailsByBlockroot(blockroot []byte) (*rpctypes.CombinedBlockResponse, error) {
+func (bs *BeaconService) GetSlotDetailsByBlockroot(blockroot []byte, withBlobs bool) (*rpctypes.CombinedBlockResponse, error) {
 	header, err := bs.rpcClient.GetBlockHeaderByBlockroot(blockroot)
 	if err != nil {
 		return nil, err
@@ -94,13 +94,21 @@ func (bs *BeaconService) GetSlotDetailsByBlockroot(blockroot []byte) (*rpctypes.
 	if err != nil {
 		return nil, err
 	}
+	var blobs *rpctypes.StandardV1BlobSidecarsResponse
+	if withBlobs && utils.EpochOfSlot(uint64(header.Data.Header.Message.Slot)) >= utils.Config.Chain.Config.DenebForkEpoch {
+		blobs, err = bs.rpcClient.GetBlobSidecarsByBlockroot(header.Data.Root)
+		if err != nil {
+			return nil, err
+		}
+	}
 	return &rpctypes.CombinedBlockResponse{
 		Header: header,
 		Block:  block,
+		Blobs:  blobs,
 	}, nil
 }
 
-func (bs *BeaconService) GetSlotDetailsBySlot(slot uint64) (*rpctypes.CombinedBlockResponse, error) {
+func (bs *BeaconService) GetSlotDetailsBySlot(slot uint64, withBlobs bool) (*rpctypes.CombinedBlockResponse, error) {
 	header, err := bs.rpcClient.GetBlockHeaderBySlot(slot)
 	if err != nil {
 		return nil, err
@@ -112,9 +120,17 @@ func (bs *BeaconService) GetSlotDetailsBySlot(slot uint64) (*rpctypes.CombinedBl
 	if err != nil {
 		return nil, err
 	}
+	var blobs *rpctypes.StandardV1BlobSidecarsResponse
+	if withBlobs && utils.EpochOfSlot(uint64(header.Data.Header.Message.Slot)) >= utils.Config.Chain.Config.DenebForkEpoch {
+		blobs, err = bs.rpcClient.GetBlobSidecarsByBlockroot(header.Data.Root)
+		if err != nil {
+			return nil, err
+		}
+	}
 	return &rpctypes.CombinedBlockResponse{
 		Header: header,
 		Block:  block,
+		Blobs:  blobs,
 	}, nil
 }
 
