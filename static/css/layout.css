@@ -37,15 +37,84 @@ header .main-search {
   margin: 0 24px;
 }
 
+header .main-search .main-search-wrapper {
+  display: inline-block;
+  max-width: 600px;
+  width: 100%;
+}
+
+header .main-search .main-search-wrapper > * {
+  width: 100%;
+}
+
 header .main-search .search-input {
   border-color: #495057;
-  max-width: 600px;
-  display: inline-block;
+  width: 100%;
+  z-index: 101;
 }
 
 header .main-search .search-input::placeholder {
-  color: #fff;
+  color: #adb5bd;
 }
+
+header .main-search .search-input:focus {
+  outline: none !important;
+  box-shadow: none;
+}
+
+header .main-search .main-search-wrapper .tt-menu {
+  width: 100%;
+  top: calc(100% - 2px) !important;
+  background-color: #212529;
+  border: 1px solid #495057;
+  text-align: left;
+  padding: 16px 0 8px 0;
+}
+
+header .main-search .main-search-wrapper .tt-dataset {
+  margin-bottom: 8px;
+}
+
+header .main-search .main-search-wrapper .tt-dataset > h3,
+header .main-search .main-search-wrapper .tt-suggestion {
+  padding-left: 8px;
+  padding-right: 8px;
+}
+
+header .main-search .main-search-wrapper .tt-suggestion {
+  padding-top: 2px;
+  padding-bottom: 2px;
+}
+
+header .main-search .main-search-wrapper .tt-dataset > h3 {
+  font-size: 12px;
+  margin-bottom: 4px;
+  color: #adb5bd;
+  font-weight: normal;
+}
+
+header .main-search .main-search-wrapper .tt-suggestion.tt-selectable {
+  cursor: pointer;
+}
+
+header .main-search .main-search-wrapper .tt-suggestion.tt-selectable.tt-cursor {
+  background-color: #495057;
+}
+
+header .main-search .search-table {
+  display: flex;
+}
+
+header .main-search .search-table > .search-cell {
+  min-width: 100px;
+}
+
+header .main-search .search-table > .search-truncate {
+  flex-grow: 1;
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+
 
 nav .navbar-nav .nav-link {
   color: rgba(255, 255, 255, 0.65)
@@ -69,11 +138,15 @@ nav .theme-selector .theme-navlabel {
 }
 
 @media (max-width: 992px) {
+  header .navbar-brand {
+    margin-right: 0;
+  }
+
   header .main-search {
     margin: 16px 0;
   }
 
-  header .main-search .search-input {
+  header .main-search .main-search-wrapper {
     max-width: none;
   }
 
@@ -132,3 +205,4 @@ span.validator-label {
   display: inline-block;
   min-width: 180px;
 }
+

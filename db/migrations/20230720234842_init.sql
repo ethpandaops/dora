@@ -45,6 +45,10 @@ CREATE INDEX IF NOT EXISTS "blocks_slot_idx"
     ON public."blocks" 
     ("root" ASC NULLS LAST);
 
+CREATE INDEX IF NOT EXISTS "blocks_state_root_idx"
+    ON public."blocks" 
+    ("state_root" ASC NULLS LAST);
+
 CREATE INDEX IF NOT EXISTS "blocks_eth_block_number_idx"
     ON public."blocks" 
     ("eth_block_number" ASC NULLS LAST);

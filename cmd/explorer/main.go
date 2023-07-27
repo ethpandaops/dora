@@ -58,6 +58,7 @@ func startFrontend() {
 	router.HandleFunc("/slots", handlers.Slots).Methods("GET")
 	router.HandleFunc("/slot/{slotOrHash}", handlers.Slot).Methods("GET")
 	router.HandleFunc("/search", handlers.Search).Methods("GET")
+	router.HandleFunc("/search/{type}", handlers.SearchAhead).Methods("GET")
 
 	if utils.Config.Frontend.Debug {
 		// serve files from local directory when debugging, instead of from go embed file

@@ -34,7 +34,7 @@ https://github.com/ethpandaops/tooling-wishlist/blob/master/tools/lightweight-be
     * [ ] Recent Sync Committees (from db)
     * [ ] Recent Attestations (from cache) 
   * [x] Search (Block Root, Epoch Number, Slot Number, Grafitti)
-    * [ ] Type-Ahead search
+    * [x] Type-Ahead search
 * [ ] RPC Client / Caching
   * [x] Get Block Header by slot / block root
   * [x] Get Block Body by block root

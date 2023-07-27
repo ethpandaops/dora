@@ -1,13 +1,24 @@
 package handlers
 
 import (
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 
+	"github.com/gorilla/mux"
+	"github.com/sirupsen/logrus"
+
+	"github.com/pk910/light-beaconchain-explorer/db"
 	"github.com/pk910/light-beaconchain-explorer/templates"
+	"github.com/pk910/light-beaconchain-explorer/types/models"
+	"github.com/pk910/light-beaconchain-explorer/utils"
 )
+
+var searchLikeRE = regexp.MustCompile(`^[0-9a-fA-F]{0,96}$`)
 
 // Search will return the main "search" page using a go template
 func Search(w http.ResponseWriter, r *http.Request) {
@@ -34,5 +45,88 @@ func Search(w http.ResponseWriter, r *http.Request) {
 	data := InitPageData(w, r, "search", "/search", fmt.Sprintf("Search: %v", searchQuery), notfoundTemplateFiles)
 	if handleTemplateError(w, r, "slot.go", "Slot", "blockSlot", templates.GetTemplate(notfoundTemplateFiles...).ExecuteTemplate(w, "layout", data)) != nil {
 		return // an error has occurred and was processed
+	}
+}
+
+// SearchAhead handles responses for the frontend search boxes
+func SearchAhead(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	vars := mux.Vars(r)
+	searchType := vars["type"]
+	urlArgs := r.URL.Query()
+	search := urlArgs.Get("q")
+	search = strings.Replace(search, "0x", "", -1)
+	search = strings.Replace(search, "0X", "", -1)
+	var err error
+	logger := logrus.WithField("searchType", searchType)
+	var result interface{}
+
+	switch searchType {
+	case "epochs":
+		result = &models.SearchAheadEpochsResult{}
+		err = db.ReaderDb.Select(result, "SELECT epoch FROM epochs WHERE CAST(epoch AS text) LIKE $1 ORDER BY epoch LIMIT 10", search+"%")
+	case "slots":
+		if len(search) <= 1 {
+			break
+		}
+		result = &models.SearchAheadSlotsResult{}
+		if searchLikeRE.MatchString(search) {
+			if _, convertErr := strconv.ParseInt(search, 10, 32); convertErr == nil {
+				err = db.ReaderDb.Select(result, `
+				SELECT slot, ENCODE(root, 'hex') AS root, orphaned 
+				FROM blocks 
+				WHERE slot = $1
+				ORDER BY slot LIMIT 10`, search)
+			} else if len(search) == 64 {
+				blockHash, err := hex.DecodeString(search)
+				if err != nil {
+					logger.Errorf("error parsing blockHash to int: %v", err)
+					http.Error(w, "Internal server error", http.StatusServiceUnavailable)
+					return
+				}
+				err = db.ReaderDb.Select(result, `
+				SELECT slot, ENCODE(root, 'hex') AS root, orphaned 
+				FROM blocks 
+				WHERE root = $1 OR
+					state_root = $1
+				ORDER BY slot LIMIT 10`, blockHash)
+				if err != nil {
+					logger.Errorf("error reading block root: %v", err)
+					http.Error(w, "Internal server error", http.StatusServiceUnavailable)
+					return
+				}
+			}
+		}
+	case "graffiti":
+		graffiti := &models.SearchAheadGraffitiResult{}
+		err = db.ReaderDb.Select(graffiti, `
+			SELECT graffiti, count(*)
+			FROM blocks
+			WHERE graffiti_text ILIKE LOWER($1)
+			GROUP BY graffiti
+			ORDER BY count desc
+			LIMIT 10`, "%"+search+"%")
+		if err == nil {
+			for i := range *graffiti {
+				(*graffiti)[i].Graffiti = utils.FormatGraffitiString((*graffiti)[i].Graffiti)
+			}
+		}
+		result = graffiti
+
+	default:
+		http.Error(w, "Not found", 404)
+		return
+	}
+
+	if err != nil {
+		logger.WithError(err).WithField("searchType", searchType).Error("error doing query for searchAhead")
+		http.Error(w, "Internal server error", http.StatusServiceUnavailable)
+		return
+	}
+	err = json.NewEncoder(w).Encode(result)
+	if err != nil {
+		logger.WithError(err).Error("error encoding searchAhead")
+		http.Error(w, "Internal server error", http.StatusServiceUnavailable)
 	}
 }

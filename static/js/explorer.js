@@ -1,5 +1,8 @@
 
 (function() {
+  window.addEventListener('DOMContentLoaded', function() {
+    initControls();
+  });
 
   function initControls() {
     window.setInterval(updateTimers, 1000);
@@ -30,6 +33,9 @@
         tooltip.setContent({ '.tooltip-inner': title });
       }, 1000);
     });
+
+    // init type-ahead search
+    initHeaderSearch()
   }
 
   function updateTimers() {
@@ -66,7 +72,133 @@
     }
   }
 
-  window.addEventListener('DOMContentLoaded', function() {
-    initControls();
-  });
+  function initHeaderSearch() {
+    var searchEl = jQuery("#explorer-search");
+    let requestNum = 9
+
+    var prepareQueryFn = function(query, settings) {
+      settings.url += encodeURIComponent(query);
+      return settings;
+    }
+
+    var bhSlots = new Bloodhound({
+      datumTokenizer: Bloodhound.tokenizers.whitespace,
+      queryTokenizer: Bloodhound.tokenizers.whitespace,
+      identify: function (obj) {
+        return obj.slot
+      },
+      remote: {
+        url: "/search/slots?q=",
+        prepare: prepareQueryFn,
+        maxPendingRequests: requestNum,
+      },
+    });
+    var bhEpochs = new Bloodhound({
+      datumTokenizer: Bloodhound.tokenizers.whitespace,
+      queryTokenizer: Bloodhound.tokenizers.whitespace,
+      identify: function (obj) {
+        return obj.epoch
+      },
+      remote: {
+        url: "/search/epochs?q=",
+        prepare: prepareQueryFn,
+        maxPendingRequests: requestNum,
+      },
+    });
+    var bhGraffiti = new Bloodhound({
+      datumTokenizer: Bloodhound.tokenizers.whitespace,
+      queryTokenizer: Bloodhound.tokenizers.whitespace,
+      identify: function (obj) {
+        return obj.graffiti
+      },
+      remote: {
+        url: "/search/graffiti?q=",
+        prepare: prepareQueryFn,
+        maxPendingRequests: requestNum,
+      },
+    });
+
+
+    searchEl.typeahead(
+      {
+        minLength: 1,
+        highlight: true,
+        hint: false,
+        autoselect: false,
+      },
+      {
+        limit: 5,
+        name: "slot",
+        source: bhSlots,
+        display: "root",
+        templates: {
+          header: '<h3 class="h5">Slots:</h3>',
+          suggestion: function (data) {
+            var status = "";
+            if (data.orphaned) {
+              status = `<span class="search-cell"><span class="badge rounded-pill text-bg-info">Orphaned</span></span>`;
+            }
+            return `<div class="text-monospace"><div class="search-table"><span class="search-cell">${data.slot}:</span><span class="search-cell search-truncate">0x${data.root}</span>${status}</div></div>`;
+          },
+        },
+      },
+      {
+        limit: 5,
+        name: "epoch",
+        source: bhEpochs,
+        display: "epoch",
+        templates: {
+          header: '<h3 class="h5">Epochs:</h3>',
+          suggestion: function (data) {
+            return `<div class="text-monospace">${data.epoch}</div>`
+          },
+        },
+      },
+      {
+        limit: 5,
+        name: "graffiti",
+        source: bhGraffiti,
+        display: "graffiti",
+        templates: {
+          header: '<h3 class="h5">Block Graffitis:</h3>',
+          suggestion: function (data) {
+            return `<div class="text-monospace" style="display:flex"><div class="text-truncate" style="flex:1 1 auto;">${data.graffiti}</div><div style="max-width:fit-content;white-space:nowrap;">${data.count}</div></div>`
+          },
+        },
+      }
+    )
+  
+    searchEl.on("input", function (input) {
+      $(".tt-suggestion").first().addClass("tt-cursor")
+    })
+  
+    jQuery(".tt-menu").on("mouseenter", function () {
+      $(".tt-suggestion").first().removeClass("tt-cursor")
+    })
+  
+    jQuery(".tt-menu").on("mouseleave", function () {
+      $(".tt-suggestion").first().addClass("tt-cursor")
+    })
+  
+    searchEl.on("typeahead:select", function (ev, sug) {
+      if (sug.blockroot !== undefined) {
+        if (sug.orphaned) {
+          window.location = "/slot/0x" + sug.root
+        } else {
+          window.location = "/slot/" + sug.slot
+        }
+      } else if (sug.epoch !== undefined) {
+        window.location = "/epoch/" + sug.epoch
+      } else if (sug.graffiti !== undefined) {
+        // sug.graffiti is html-escaped to prevent xss, we need to unescape it
+        var el = document.createElement("textarea")
+        el.innerHTML = sug.graffiti
+        window.location = "/slots?q=" + encodeURIComponent(el.value)
+      } else {
+        console.log("invalid typeahead-selection", sug)
+      }
+    })
+  }
+
+  
 })()
