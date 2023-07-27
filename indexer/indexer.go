@@ -121,6 +121,27 @@ func (indexer *Indexer) GetCachedBlocks(slot uint64) []*BlockInfo {
 	return resBlocks
 }
 
+func (indexer *Indexer) GetCachedBlock(root []byte) *BlockInfo {
+	indexer.state.cacheMutex.RLock()
+	defer indexer.state.cacheMutex.RUnlock()
+
+	if indexer.state.lowestCachedSlot < 0 {
+		return nil
+	}
+	for slotIdx := int64(indexer.state.lastHeadBlock); slotIdx >= indexer.state.lowestCachedSlot; slotIdx-- {
+		slot := uint64(slotIdx)
+		if indexer.state.cachedBlocks[slot] != nil {
+			blocks := indexer.state.cachedBlocks[slot]
+			for bidx := 0; bidx < len(blocks); bidx++ {
+				if bytes.Equal(blocks[bidx].Header.Data.Root, root) {
+					return blocks[bidx]
+				}
+			}
+		}
+	}
+	return nil
+}
+
 func (indexer *Indexer) GetCachedEpochStats(epoch uint64) *EpochStats {
 	indexer.state.cacheMutex.RLock()
 	defer indexer.state.cacheMutex.RUnlock()

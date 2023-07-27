@@ -83,52 +83,102 @@ func (bs *BeaconService) GetCachedEpochStats(epoch uint64) *indexer.EpochStats {
 }
 
 func (bs *BeaconService) GetSlotDetailsByBlockroot(blockroot []byte, withBlobs bool) (*rpctypes.CombinedBlockResponse, error) {
-	header, err := bs.rpcClient.GetBlockHeaderByBlockroot(blockroot)
-	if err != nil {
-		return nil, err
-	}
-	if header == nil {
-		return nil, nil
-	}
-	block, err := bs.rpcClient.GetBlockBodyByBlockroot(header.Data.Root)
-	if err != nil {
-		return nil, err
-	}
-	var blobs *rpctypes.StandardV1BlobSidecarsResponse
-	if withBlobs && utils.EpochOfSlot(uint64(header.Data.Header.Message.Slot)) >= utils.Config.Chain.Config.DenebForkEpoch {
-		blobs, err = bs.rpcClient.GetBlobSidecarsByBlockroot(header.Data.Root)
+	var result *rpctypes.CombinedBlockResponse
+	if blockInfo := bs.indexer.GetCachedBlock(blockroot); blockInfo != nil {
+		result = &rpctypes.CombinedBlockResponse{
+			Header:   blockInfo.Header,
+			Block:    blockInfo.Block,
+			Orphaned: blockInfo.Orphaned,
+		}
+	} else {
+		header, err := bs.rpcClient.GetBlockHeaderByBlockroot(blockroot)
 		if err != nil {
 			return nil, err
 		}
+		if header == nil {
+			return nil, nil
+		}
+		block, err := bs.rpcClient.GetBlockBodyByBlockroot(header.Data.Root)
+		if err != nil {
+			return nil, err
+		}
+		result = &rpctypes.CombinedBlockResponse{
+			Header:   header,
+			Block:    block,
+			Orphaned: header.Data.Canonical,
+		}
 	}
-	return &rpctypes.CombinedBlockResponse{
-		Header: header,
-		Block:  block,
-		Blobs:  blobs,
-	}, nil
+
+	if result.Block.Data.Message.Body.BlobKzgCommitments != nil && withBlobs && utils.EpochOfSlot(uint64(result.Header.Data.Header.Message.Slot)) >= utils.Config.Chain.Config.DenebForkEpoch {
+		blobs, _ := bs.rpcClient.GetBlobSidecarsByBlockroot(result.Header.Data.Root)
+		if blobs != nil {
+			result.Blobs = blobs
+		}
+	}
+	return result, nil
 }
 
 func (bs *BeaconService) GetSlotDetailsBySlot(slot uint64, withBlobs bool) (*rpctypes.CombinedBlockResponse, error) {
-	header, err := bs.rpcClient.GetBlockHeaderBySlot(slot)
-	if err != nil {
-		return nil, err
+	var result *rpctypes.CombinedBlockResponse
+	if cachedBlocks := bs.indexer.GetCachedBlocks(slot); cachedBlocks != nil {
+		var cachedBlock *indexer.BlockInfo
+		for _, block := range cachedBlocks {
+			if !block.Orphaned {
+				cachedBlock = block
+				break
+			}
+		}
+		if cachedBlock == nil {
+			cachedBlock = cachedBlocks[0]
+		}
+		result = &rpctypes.CombinedBlockResponse{
+			Header:   cachedBlock.Header,
+			Block:    cachedBlock.Block,
+			Orphaned: cachedBlock.Orphaned,
+		}
+	} else {
+		header, err := bs.rpcClient.GetBlockHeaderBySlot(slot)
+		if err != nil {
+			return nil, err
+		}
+		if header == nil {
+			return nil, nil
+		}
+		block, err := bs.rpcClient.GetBlockBodyByBlockroot(header.Data.Root)
+		if err != nil {
+			return nil, err
+		}
+		result = &rpctypes.CombinedBlockResponse{
+			Header:   header,
+			Block:    block,
+			Orphaned: header.Data.Canonical,
+		}
 	}
-	if header == nil {
-		return nil, nil
+
+	if result.Block.Data.Message.Body.BlobKzgCommitments != nil && withBlobs && utils.EpochOfSlot(uint64(result.Header.Data.Header.Message.Slot)) >= utils.Config.Chain.Config.DenebForkEpoch {
+		blobs, _ := bs.rpcClient.GetBlobSidecarsByBlockroot(result.Header.Data.Root)
+		if blobs != nil {
+			result.Blobs = blobs
+		}
 	}
-	block, err := bs.rpcClient.GetBlockBodyByBlockroot(header.Data.Root)
-	if err != nil {
-		return nil, err
+	return result, nil
+}
+
+func (bs *BeaconService) GetOrphanedBlock(blockroot []byte) *rpctypes.CombinedBlockResponse {
+	orphanedBlock := db.GetOrphanedBlock(blockroot)
+	if orphanedBlock == nil {
+		return nil
 	}
-	var blobs *rpctypes.StandardV1BlobSidecarsResponse
-	if withBlobs && utils.EpochOfSlot(uint64(header.Data.Header.Message.Slot)) >= utils.Config.Chain.Config.DenebForkEpoch {
-		blobs, _ = bs.rpcClient.GetBlobSidecarsByBlockroot(header.Data.Root)
+	blockInfo := indexer.ParseOrphanedBlock(orphanedBlock)
+	if blockInfo == nil {
+		return nil
 	}
+
 	return &rpctypes.CombinedBlockResponse{
-		Header: header,
-		Block:  block,
-		Blobs:  blobs,
-	}, nil
+		Header: blockInfo.Header,
+		Block:  blockInfo.Block,
+		Blobs:  nil,
+	}
 }
 
 func (bs *BeaconService) GetEpochAssignments(epoch uint64) (*rpctypes.EpochAssignments, error) {

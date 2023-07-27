@@ -258,6 +258,19 @@ func InsertOrphanedBlock(block *dbtypes.OrphanedBlock, tx *sqlx.Tx) error {
 	return nil
 }
 
+func GetOrphanedBlock(root []byte) *dbtypes.OrphanedBlock {
+	block := dbtypes.OrphanedBlock{}
+	err := ReaderDb.Get(&block, `
+	SELECT root, header, block
+	FROM orphaned_blocks
+	WHERE root = $1
+	`, root)
+	if err != nil {
+		return nil
+	}
+	return &block
+}
+
 func GetEpochs(firstEpoch uint64, limit uint32) []*dbtypes.Epoch {
 	epochs := []*dbtypes.Epoch{}
 	err := ReaderDb.Select(&epochs, `

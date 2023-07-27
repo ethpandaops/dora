@@ -22,6 +22,13 @@ func (s *BytesHexStr) UnmarshalText(b []byte) error {
 	return nil
 }
 
+func (s *BytesHexStr) MarshalJSON() ([]byte, error) {
+	if s == nil {
+		return nil, nil
+	}
+	return []byte(fmt.Sprintf("\"0x%x\"", []byte(*s))), nil
+}
+
 func (s BytesHexStr) String() string {
 	return fmt.Sprintf("0x%x", []byte(s))
 }

@@ -40,9 +40,10 @@ type StandardV2BeaconBlockResponse struct {
 }
 
 type CombinedBlockResponse struct {
-	Header *StandardV1BeaconHeaderResponse
-	Block  *StandardV2BeaconBlockResponse
-	Blobs  *StandardV1BlobSidecarsResponse
+	Header   *StandardV1BeaconHeaderResponse
+	Block    *StandardV2BeaconBlockResponse
+	Blobs    *StandardV1BlobSidecarsResponse
+	Orphaned bool
 }
 
 type StandardV1ProposerDutiesResponse struct {

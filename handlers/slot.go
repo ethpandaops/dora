@@ -65,6 +65,19 @@ func Slot(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if blockData == nil && err == nil {
+		// check for orphaned block
+		if blockSlot > -1 {
+			dbBlocks := services.GlobalBeaconService.GetDbBlocksForSlots(uint64(blockSlot), 1, true)
+			if len(dbBlocks) > 0 {
+				blockRootHash = dbBlocks[0].Root
+			}
+		}
+		if blockRootHash != nil {
+			blockData = services.GlobalBeaconService.GetOrphanedBlock(blockRootHash)
+		}
+	}
+
 	var slot uint64
 	if blockData == nil && err == nil {
 		if blockSlot > -1 {

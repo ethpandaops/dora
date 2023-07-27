@@ -1,11 +1,11 @@
 # Chain network configuration
 chain:
   #name: "mainnet"
-  #genesisTimestamp: 1689879900
+  genesisTimestamp: 1689879900
   genesisValidatorsRoot: "0xbf3c3d4683a5a4d286cd2a5ef7a5c1702f649eee82cdc7e87e05030102d12ccf"
-  #configPath: "config.yaml"
-  genesisTimestamp: 1688126460
-  configPath: "config-devnet7.yaml"
+  configPath: "config.yaml"
+  #genesisTimestamp: 1688126460
+  #configPath: "config-devnet7.yaml"
 
 # HTTP Server configuration
 server:
@@ -17,13 +17,12 @@ frontend:
   enabled: true # Enable or disable to web frontend
   debug: true
   siteName: "Beaconchain Light" # Name of the site, displayed in the title tag
-  siteSubtitle: "Devnet 7"
+  siteSubtitle: "Ephemery"
   ethExplorerLink: "https://explorer.ephemery.dev/"
   
 beaconapi:
-  #endpoint: "http://10.16.71.108:5052"
+  endpoint: "http://10.16.71.108:5052"
   #endpoint: "http://10.16.71.102:5052"
-  endpoint: "http://10.16.97.4:5052"
   localCacheSize: 100 # 100MB
   redisCacheAddr: ""
   redisCachePrefix: ""
@@ -31,34 +30,20 @@ beaconapi:
   prepopulateEpochs: 2
   inMemoryEpochs: 10
   epochProcessingDelay: 2
-  disableIndexWriter: true
+  disableIndexWriter: false
   syncEpochCooldown: 4
 
 
-#readerDatabase:
-#  host: "10.16.97.2"
-#  port: 5432
-#  user: "pk910"
-#  password: "SBekcBFpRW9rZrVL" # internal dev DB, no worries about password leaking ;)
-#  name: "pk910"
-  
-#writerDatabase:
-#  host: "10.16.97.2"
-#  port: 5432
-#  user: "pk910"
-#  password: "SBekcBFpRW9rZrVL" # internal dev DB, no worries about password leaking ;)
-#  name: "pk910"
-
 readerDatabase:
-  host: "10.16.97.4"
+  host: "10.16.97.2"
   port: 5432
-  user: "beaconlight"
-  password: "FV9wjZKBUCWpfB7D" # internal dev DB, no worries about password leaking ;)
-  name: "beaconlight"
-
+  user: "pk910"
+  password: "SBekcBFpRW9rZrVL" # internal dev DB, no worries about password leaking ;)
+  name: "pk910"
+  
 writerDatabase:
-  host: "10.16.97.4"
+  host: "10.16.97.2"
   port: 5432
-  user: "beaconlight"
-  password: "FV9wjZKBUCWpfB7D" # internal dev DB, no worries about password leaking ;)
-  name: "beaconlight"
+  user: "pk910"
+  password: "SBekcBFpRW9rZrVL" # internal dev DB, no worries about password leaking ;)
+  name: "pk910"

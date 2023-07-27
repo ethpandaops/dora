@@ -1,7 +1,6 @@
 package indexer
 
 import (
-	"encoding/json"
 	"fmt"
 
 	"github.com/jmoiron/sqlx"
@@ -30,19 +29,7 @@ func persistEpochData(epoch uint64, blockMap map[uint64][]*BlockInfo, epochStats
 
 		// insert orphaned block
 		if dbBlock.Orphaned {
-			headerJson, err := json.Marshal(block.Header)
-			if err != nil {
-				return
-			}
-			blockJson, err := json.Marshal(block.Block)
-			if err != nil {
-				return
-			}
-			db.InsertOrphanedBlock(&dbtypes.OrphanedBlock{
-				Root:   block.Header.Data.Root,
-				Header: string(headerJson),
-				Block:  string(blockJson),
-			}, tx)
+			db.InsertOrphanedBlock(BuildOrphanedBlock(block), tx)
 		}
 	})
 
