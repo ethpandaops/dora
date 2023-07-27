@@ -2,14 +2,68 @@
 # Chain network configuration
 chain:
   name: "mainnet"
+  #genesisTimestamp: 1688126460
+  #genesisValidatorsRoot: "0xbf3c3d4683a5a4d286cd2a5ef7a5c1702f649eee82cdc7e87e05030102d12ccf"
+  #configPath: "../ephemery/config.yaml"
 
 # HTTP Server configuration
 server:
   host: "localhost" # Address to listen on
   port: "8080" # Port to listen on
 
-
 frontend:
   enabled: true # Enable or disable to web frontend
-  siteName: "Ethereum Block Chain Explorer" # Name of the site, displayed in the title tag
+  debug: false
+
+  # Name of the site, displayed in the title tag
+  siteName: "Beaconchain Light"
+  siteSubtitle: "Ephemery"
   
+  # link to EL Explorer
+  ethExplorerLink: "https://explorer.ephemery.dev/"
+
+  # file or inventory url to load validator names from
+  validatorNamesYaml: "validator_names.yaml"
+  #validatorNamesInventory: "https://config.4844-devnet-7.ethpandaops.io/api/v1/nodes/validator-ranges"
+  
+beaconapi:
+  # CL Client RPC
+  endpoint: "http://127.0.0.1:5052"
+
+  # local cache for RPC calls
+  localCacheSize: 100 # 100MB
+
+  # remote cache
+  redisCacheAddr: ""
+  redisCachePrefix: ""
+
+  # indexer keeps track of the latest epochs in memory.
+  # number of epochs to load on startup
+  prepopulateEpochs: 2
+
+  # max number of epochs to keep in memory
+  inMemoryEpochs: 3
+
+  # epoch processing delay (should be >= 2)
+  epochProcessingDelay: 2
+
+  # disable synchronizing and everything that writes to the db (indexer just maintains local cache)
+  disableIndexWriter: false
+
+  # number of seconds to wait between each epoch (don't overload CL client)
+  syncEpochCooldown: 2
+
+
+readerDatabase:
+  host: "127.0.0.1"
+  port: 5432
+  user: ""
+  password: ""
+  name: ""
+  
+writerDatabase:
+  host: "127.0.0.1"
+  port: 5432
+  user: ""
+  password: ""
+  name: ""
