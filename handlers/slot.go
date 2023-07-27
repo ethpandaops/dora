@@ -127,7 +127,11 @@ func Slot(w http.ResponseWriter, r *http.Request) {
 
 	if blockData == nil {
 		pageData.Status = uint16(models.SlotStatusMissed)
-		pageData.Proposer = assignments.ProposerAssignments[slot]
+
+		if assignments != nil {
+			pageData.Proposer = assignments.ProposerAssignments[slot]
+			pageData.ProposerName = services.GlobalBeaconService.GetValidatorName(pageData.Proposer)
+		}
 	} else {
 		if blockData.Header.Data.Canonical {
 			pageData.Status = uint16(models.SlotStatusFound)
