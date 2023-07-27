@@ -67,6 +67,9 @@ func StartBeaconService() error {
 	if utils.Config.Frontend.ValidatorNamesYaml != "" {
 		validatorNames.LoadFromYaml(utils.Config.Frontend.ValidatorNamesYaml)
 	}
+	if utils.Config.Frontend.ValidatorNamesInventory != "" {
+		validatorNames.LoadFromRangesApi(utils.Config.Frontend.ValidatorNamesInventory)
+	}
 
 	GlobalBeaconService = &BeaconService{
 		rpcClient:      rpcClient,

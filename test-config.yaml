@@ -20,6 +20,7 @@ frontend:
   siteSubtitle: "Ephemery"
   ethExplorerLink: "https://explorer.ephemery.dev/"
   validatorNamesYaml: "validator_names.yaml"
+  #validatorNamesInventory: "https://config.4844-devnet-7.ethpandaops.io/api/v1/nodes/validator-ranges"
   
 beaconapi:
   endpoint: "http://10.16.71.108:5052"
