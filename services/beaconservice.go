@@ -119,7 +119,7 @@ func (bs *BeaconService) GetSlotDetailsByBlockroot(blockroot []byte, withBlobs b
 		result = &rpctypes.CombinedBlockResponse{
 			Header:   header,
 			Block:    block,
-			Orphaned: header.Data.Canonical,
+			Orphaned: !header.Data.Canonical,
 		}
 	}
 
@@ -165,7 +165,7 @@ func (bs *BeaconService) GetSlotDetailsBySlot(slot uint64, withBlobs bool) (*rpc
 		result = &rpctypes.CombinedBlockResponse{
 			Header:   header,
 			Block:    block,
-			Orphaned: header.Data.Canonical,
+			Orphaned: !header.Data.Canonical,
 		}
 	}
 
