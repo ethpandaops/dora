@@ -15,7 +15,7 @@ https://github.com/ethpandaops/tooling-wishlist/blob/master/tools/lightweight-be
 
 ## TODO
 
-(More for myself to keep track of what is done / needs to be done)
+First Version TODO:
 
 * Explorer Pages (UI)
   * [ ] Layout polishing
@@ -29,11 +29,6 @@ https://github.com/ethpandaops/tooling-wishlist/blob/master/tools/lightweight-be
     * [x] Blob Sidecars
     * [x] Enhance view controls (Hex/UTF8 Grafitti, Local/UTC Time, Copy Buttons etc.)
     * [ ] Load orphaned blocks from db
-  * [ ] Validators List (`/validators`)
-  * [ ] Validator Details (`/validator/{validator_index}`) 
-    * [ ] Recent Blocks (from db) 
-    * [ ] Recent Sync Committees (from db)
-    * [ ] Recent Attestations (from cache) 
   * [x] Search (Block Root, Epoch Number, Slot Number, Grafitti)
     * [x] Type-Ahead search
 * RPC Client / Caching
@@ -46,7 +41,6 @@ https://github.com/ethpandaops/tooling-wishlist/blob/master/tools/lightweight-be
   * [x] Table: blocks (Block index for search & slot overview)
   * [x] Table: epochs (Epoch index for startpage & epoch overview)
   * [x] Table: explorer_state (simple key-value table to track of various states)
-  * [ ] Table: sync_committees (Sync Committee index)
   * [x] Table: slot_assignments (Slot duties for search and block lists)
 * Indexer
   * [x] Keep track of current & last epoch in memory
@@ -57,4 +51,29 @@ https://github.com/ethpandaops/tooling-wishlist/blob/master/tools/lightweight-be
   * [x] Update Slot index in DB
   * [x] Update Epoch index in DB
   * [x] Synchronization (index older epochs)
-  * [ ] Update sync committee stats in DB
+
+Advanced TODO (Things that might be worth adding after the first version is ready)
+
+* Validator Overview & Details
+  * [ ] Page: Validators List (`/validators`)
+  * [ ] Page: Validator Details (`/validator/{validator_index}`) 
+    * [ ] Recent Blocks (from db) 
+    * [ ] Recent Attestations (from cache) 
+* Track Sync Committees
+  * [ ] Database: table sync_committees (Sync Committee index)
+  * [ ] Indexer: track sync committees & aggregate participation per validator
+  * [ ] UI: show recent sync committee assignments on Validator Details page
+* Track Deposits
+  * [ ] Database: table deposits (Deposit index)
+  * [ ] RPC Client: get deposit contract events from EL client
+  * [ ] Indexer: track deposits
+  * [ ] UI: deposits list
+
+
+# Thanks To
+
+This explorer is heavily based on the code from [gobitfly/eth2-beaconchain-explorer](https://github.com/gobitfly/eth2-beaconchain-explorer).
+
+# License
+
+[![License: GPL-3.0](https://img.shields.io/badge/License-GPL-3.0-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
