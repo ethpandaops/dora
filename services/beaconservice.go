@@ -181,6 +181,30 @@ func (bs *BeaconService) GetOrphanedBlock(blockroot []byte) *rpctypes.CombinedBl
 	}
 }
 
+func (bs *BeaconService) GetCachedBlockByBlockroot(blockroot []byte) *rpctypes.CombinedBlockResponse {
+	blockInfo := bs.indexer.GetCachedBlock(blockroot)
+	if blockInfo == nil {
+		return nil
+	}
+	return &rpctypes.CombinedBlockResponse{
+		Header:   blockInfo.Header,
+		Block:    blockInfo.Block,
+		Orphaned: blockInfo.Orphaned,
+	}
+}
+
+func (bs *BeaconService) GetCachedBlockByStateroot(stateroot []byte) *rpctypes.CombinedBlockResponse {
+	blockInfo := bs.indexer.GetCachedBlockByStateroot(stateroot)
+	if blockInfo == nil {
+		return nil
+	}
+	return &rpctypes.CombinedBlockResponse{
+		Header:   blockInfo.Header,
+		Block:    blockInfo.Block,
+		Orphaned: blockInfo.Orphaned,
+	}
+}
+
 func (bs *BeaconService) GetEpochAssignments(epoch uint64) (*rpctypes.EpochAssignments, error) {
 	idxMinSlot := bs.indexer.GetLowestCachedSlot()
 	if idxMinSlot >= 0 && epoch >= utils.EpochOfSlot(uint64(idxMinSlot)) {

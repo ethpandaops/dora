@@ -13,6 +13,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/pk910/light-beaconchain-explorer/db"
+	"github.com/pk910/light-beaconchain-explorer/services"
 	"github.com/pk910/light-beaconchain-explorer/templates"
 	"github.com/pk910/light-beaconchain-explorer/types/models"
 	"github.com/pk910/light-beaconchain-explorer/utils"
@@ -79,16 +80,31 @@ func SearchAhead(w http.ResponseWriter, r *http.Request) {
 					http.Error(w, "Internal server error", http.StatusServiceUnavailable)
 					return
 				}
-				err = db.ReaderDb.Select(result, `
-				SELECT slot, ENCODE(root, 'hex') AS root, orphaned 
-				FROM blocks 
-				WHERE root = $1 OR
-					state_root = $1
-				ORDER BY slot LIMIT 10`, blockHash)
-				if err != nil {
-					logger.Errorf("error reading block root: %v", err)
-					http.Error(w, "Internal server error", http.StatusServiceUnavailable)
-					return
+
+				cachedBlock := services.GlobalBeaconService.GetCachedBlockByBlockroot(blockHash)
+				if cachedBlock == nil {
+					cachedBlock = services.GlobalBeaconService.GetCachedBlockByStateroot(blockHash)
+				}
+				if cachedBlock != nil {
+					result = &models.SearchAheadSlotsResult{
+						{
+							Slot:     fmt.Sprintf("%v", uint64(cachedBlock.Header.Data.Header.Message.Slot)),
+							Root:     fmt.Sprintf("%x", []byte(cachedBlock.Header.Data.Root)),
+							Orphaned: cachedBlock.Orphaned,
+						},
+					}
+				} else {
+					err = db.ReaderDb.Select(result, `
+					SELECT slot, ENCODE(root, 'hex') AS root, orphaned 
+					FROM blocks 
+					WHERE root = $1 OR
+						state_root = $1
+					ORDER BY slot LIMIT 10`, blockHash)
+					if err != nil {
+						logger.Errorf("error reading block root: %v", err)
+						http.Error(w, "Internal server error", http.StatusServiceUnavailable)
+						return
+					}
 				}
 			} else if _, convertErr := strconv.ParseInt(search, 10, 32); convertErr == nil {
 				err = db.ReaderDb.Select(result, `
