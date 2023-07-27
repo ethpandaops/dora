@@ -125,6 +125,7 @@ func readConfigFile(cfg *types.Config, path string) error {
 	if err != nil {
 		return fmt.Errorf("error opening config file %v: %v", path, err)
 	}
+	defer f.Close()
 
 	decoder := yaml.NewDecoder(f)
 	err = decoder.Decode(cfg)

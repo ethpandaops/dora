@@ -135,6 +135,7 @@ func Slot(w http.ResponseWriter, r *http.Request) {
 			pageData.Status = uint16(models.SlotStatusOrphaned)
 		}
 		pageData.Proposer = uint64(blockData.Block.Data.Message.ProposerIndex)
+		pageData.ProposerName = services.GlobalBeaconService.GetValidatorName(pageData.Proposer)
 		pageData.Block = getSlotPageBlockData(blockData, assignments)
 	}
 
@@ -189,7 +190,7 @@ func getSlotPageBlockData(blockData *rpctypes.CombinedBlockResponse, assignments
 		for j := 0; j < len(attAssignments); j++ {
 			attPageData.Validators[j] = models.SlotPageValidator{
 				Index: attAssignments[j],
-				Name:  "", // TODO
+				Name:  services.GlobalBeaconService.GetValidatorName(attAssignments[j]),
 			}
 		}
 		pageData.Attestations[i] = &attPageData
@@ -211,7 +212,7 @@ func getSlotPageBlockData(blockData *rpctypes.CombinedBlockResponse, assignments
 		exit := blockData.Block.Data.Message.Body.VoluntaryExits[i]
 		pageData.VoluntaryExits[i] = &models.SlotPageVoluntaryExit{
 			ValidatorIndex: uint64(exit.Message.ValidatorIndex),
-			ValidatorName:  "", // TODO
+			ValidatorName:  services.GlobalBeaconService.GetValidatorName(uint64(exit.Message.ValidatorIndex)),
 			Epoch:          uint64(exit.Message.Epoch),
 			Signature:      exit.Signature,
 		}
@@ -253,7 +254,7 @@ func getSlotPageBlockData(blockData *rpctypes.CombinedBlockResponse, assignments
 			valIdx := uint64(j.(rpctypes.Uint64Str))
 			slashingData.SlashedValidators = append(slashingData.SlashedValidators, models.SlotPageValidator{
 				Index: valIdx,
-				Name:  "", // TODO
+				Name:  services.GlobalBeaconService.GetValidatorName(valIdx),
 			})
 		}
 	}
@@ -263,7 +264,7 @@ func getSlotPageBlockData(blockData *rpctypes.CombinedBlockResponse, assignments
 		slashing := blockData.Block.Data.Message.Body.ProposerSlashings[i]
 		pageData.ProposerSlashings[i] = &models.SlotPageProposerSlashing{
 			ProposerIndex:     uint64(slashing.SignedHeader1.Message.ProposerIndex),
-			ProposerName:      "", // TODO
+			ProposerName:      services.GlobalBeaconService.GetValidatorName(uint64(slashing.SignedHeader1.Message.ProposerIndex)),
 			Header1Slot:       uint64(slashing.SignedHeader1.Message.Slot),
 			Header1ParentRoot: slashing.SignedHeader1.Message.ParentRoot,
 			Header1StateRoot:  slashing.SignedHeader1.Message.StateRoot,
@@ -318,7 +319,7 @@ func getSlotPageBlockData(blockData *rpctypes.CombinedBlockResponse, assignments
 			blschange := blockData.Block.Data.Message.Body.SignedBLSToExecutionChange[i]
 			pageData.BLSChanges[i] = &models.SlotPageBLSChange{
 				ValidatorIndex: uint64(blschange.Message.ValidatorIndex),
-				ValidatorName:  "", // TODO
+				ValidatorName:  services.GlobalBeaconService.GetValidatorName(uint64(blschange.Message.ValidatorIndex)),
 				BlsPubkey:      []byte(blschange.Message.FromBlsPubkey),
 				Address:        []byte(blschange.Message.ToExecutionAddress),
 				Signature:      []byte(blschange.Signature),
@@ -332,7 +333,7 @@ func getSlotPageBlockData(blockData *rpctypes.CombinedBlockResponse, assignments
 			pageData.Withdrawals[i] = &models.SlotPageWithdrawal{
 				Index:          uint64(withdrawal.Index),
 				ValidatorIndex: uint64(withdrawal.ValidatorIndex),
-				ValidatorName:  "", // TODO
+				ValidatorName:  services.GlobalBeaconService.GetValidatorName(uint64(withdrawal.ValidatorIndex)),
 				Address:        withdrawal.Address,
 				Amount:         uint64(withdrawal.Amount),
 			}

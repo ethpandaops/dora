@@ -15,9 +15,10 @@ import (
 )
 
 type BeaconService struct {
-	rpcClient   *rpc.BeaconClient
-	tieredCache *cache.TieredCache
-	indexer     *indexer.Indexer
+	rpcClient      *rpc.BeaconClient
+	tieredCache    *cache.TieredCache
+	indexer        *indexer.Indexer
+	validatorNames *ValidatorNames
 }
 
 var GlobalBeaconService *BeaconService
@@ -62,12 +63,22 @@ func StartBeaconService() error {
 		return err
 	}
 
+	validatorNames := &ValidatorNames{}
+	if utils.Config.Frontend.ValidatorNamesYaml != "" {
+		validatorNames.LoadFromYaml(utils.Config.Frontend.ValidatorNamesYaml)
+	}
+
 	GlobalBeaconService = &BeaconService{
-		rpcClient:   rpcClient,
-		tieredCache: tieredCache,
-		indexer:     indexer,
+		rpcClient:      rpcClient,
+		tieredCache:    tieredCache,
+		indexer:        indexer,
+		validatorNames: validatorNames,
 	}
 	return nil
+}
+
+func (bs *BeaconService) GetValidatorName(index uint64) string {
+	return bs.validatorNames.GetValidatorName(index)
 }
 
 func (bs *BeaconService) GetFinalizedBlockHead() (*rpctypes.StandardV1BeaconHeaderResponse, error) {

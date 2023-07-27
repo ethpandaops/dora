@@ -131,7 +131,7 @@ func getEpochPageData(epoch uint64) *models.EpochPageData {
 				Ts:                    utils.SlotToTime(slot),
 				Status:                blockStatus,
 				Proposer:              dbSlot.Proposer,
-				ProposerName:          "", // TODO
+				ProposerName:          services.GlobalBeaconService.GetValidatorName(dbSlot.Proposer),
 				AttestationCount:      dbSlot.AttestationCount,
 				DepositCount:          dbSlot.DepositCount,
 				ExitCount:             dbSlot.ExitCount,
@@ -156,7 +156,7 @@ func getEpochPageData(epoch uint64) *models.EpochPageData {
 				Scheduled:    slot >= currentSlot,
 				Status:       0,
 				Proposer:     slotAssignments[slot],
-				ProposerName: "", // TODO
+				ProposerName: services.GlobalBeaconService.GetValidatorName(slotAssignments[slot]),
 			}
 			if slotData.Scheduled {
 				pageData.ScheduledCount++

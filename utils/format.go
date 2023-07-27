@@ -300,7 +300,7 @@ func FormatSlashedValidator(index uint64, name string) template.HTML {
 
 func formatValidator(index uint64, name string, icon string) template.HTML {
 	if name != "" {
-		return template.HTML(fmt.Sprintf("<span class=\"validator-label validator-name\"><i class=\"fas %v\"></i> %v</span>", icon, html.EscapeString(name)))
+		return template.HTML(fmt.Sprintf("<span class=\"validator-label validator-name\" data-bs-toggle=\"tooltip\" data-bs-placement=\"top\" data-bs-title=\"%v\"><i class=\"fas %v\"></i> %v</span>", index, icon, html.EscapeString(name)))
 	}
 	return template.HTML(fmt.Sprintf("<span class=\"validator-label validator-index\"><i class=\"fas %v\"></i> %v</span>", icon, index))
 }

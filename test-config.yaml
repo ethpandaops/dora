@@ -19,6 +19,7 @@ frontend:
   siteName: "Beaconchain Light" # Name of the site, displayed in the title tag
   siteSubtitle: "Ephemery"
   ethExplorerLink: "https://explorer.ephemery.dev/"
+  validatorNamesYaml: "validator_names.yaml"
   
 beaconapi:
   endpoint: "http://10.16.71.108:5052"

@@ -97,7 +97,7 @@ func getIndexPageData() *models.IndexPageData {
 			EthBlock:     blockData.EthBlockNumber,
 			Ts:           utils.SlotToTime(blockData.Slot),
 			Proposer:     blockData.Proposer,
-			ProposerName: "", // TODO
+			ProposerName: services.GlobalBeaconService.GetValidatorName(blockData.Proposer),
 			Status:       uint64(blockStatus),
 			BlockRoot:    fmt.Sprintf("0x%x", blockData.Root),
 		})

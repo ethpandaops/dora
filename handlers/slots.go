@@ -138,7 +138,7 @@ func getSlotsPageData(firstSlot uint64, pageSize uint64) *models.SlotsPageData {
 				Status:                blockStatus,
 				Synchronized:          true,
 				Proposer:              dbSlot.Proposer,
-				ProposerName:          "", // TODO
+				ProposerName:          services.GlobalBeaconService.GetValidatorName(dbSlot.Proposer),
 				AttestationCount:      dbSlot.AttestationCount,
 				DepositCount:          dbSlot.DepositCount,
 				ExitCount:             dbSlot.ExitCount,
@@ -166,7 +166,7 @@ func getSlotsPageData(firstSlot uint64, pageSize uint64) *models.SlotsPageData {
 				Status:       0,
 				Synchronized: syncedEpochs[epoch],
 				Proposer:     slotAssignments[slot],
-				ProposerName: "", // TODO
+				ProposerName: services.GlobalBeaconService.GetValidatorName(slotAssignments[slot]),
 			}
 			pageData.Slots = append(pageData.Slots, slotData)
 			blockCount++
@@ -229,7 +229,7 @@ func getSlotsPageDataWithGraffitiFilter(graffiti string, pageIdx uint64, pageSiz
 			Status:                blockStatus,
 			Synchronized:          true,
 			Proposer:              dbBlock.Proposer,
-			ProposerName:          "", // TODO
+			ProposerName:          services.GlobalBeaconService.GetValidatorName(dbBlock.Proposer),
 			AttestationCount:      dbBlock.AttestationCount,
 			DepositCount:          dbBlock.DepositCount,
 			ExitCount:             dbBlock.ExitCount,
