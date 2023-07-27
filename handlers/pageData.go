@@ -17,6 +17,7 @@ import (
 var layoutTemplateFiles = []string{
 	"_layout/layout.html",
 	"_layout/header.html",
+	"_layout/footer.html",
 }
 
 func InitPageData(w http.ResponseWriter, r *http.Request, active, path, title string, mainTemplates []string) *types.PageData {
@@ -37,11 +38,14 @@ func InitPageData(w http.ResponseWriter, r *http.Request, active, path, title st
 		},
 		Active:                active,
 		Data:                  &types.Empty{},
+		Version:               "git-" + utils.BuildVersion,
 		Year:                  time.Now().UTC().Year(),
+		ExplorerTitle:         utils.Config.Frontend.SiteName,
+		ExplorerSubtitle:      utils.Config.Frontend.SiteSubtitle,
 		ChainSlotsPerEpoch:    utils.Config.Chain.Config.SlotsPerEpoch,
 		ChainSecondsPerSlot:   utils.Config.Chain.Config.SecondsPerSlot,
 		ChainGenesisTimestamp: utils.Config.Chain.GenesisTimestamp,
-		Mainnet:               utils.Config.Chain.Config.ConfigName == "mainnet",
+		Mainnet:               isMainnet,
 		DepositContract:       utils.Config.Chain.Config.DepositContractAddress,
 		ChainConfig:           utils.Config.Chain.Config,
 		Lang:                  "en-US",

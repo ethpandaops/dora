@@ -25,12 +25,22 @@
           <svg class="bi me-2" width="40" height="32" role="img" aria-label="Logo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
             <use href="#logo"></use>
           </svg>
-          <span class="brand-text">beaconchain light</span>
+          
+          <div class="explorer-brand">
+            <div class="explorer-brand-container">
+              <span class="brand-text explorer-brand-title">{{ .ExplorerTitle }}</span>
+              {{- if .ExplorerSubtitle -}}
+                <span class="explorer-brand-subtitle">{{ .ExplorerSubtitle }}</span>
+              {{ end }}
+            </div>
+          </div>
         </a>
 
-        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
-          <span class="navbar-toggler-icon"></span>
-        </button>
+        <div class="toggler-wrapper d-block d-lg-none">
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+            <span class="navbar-toggler-icon"></span>
+          </button>
+        </div>
 
         <div class="collapse navbar-collapse" id="navbarSupportedContent">
           <div class="flex-grow-1 main-search" role="search">

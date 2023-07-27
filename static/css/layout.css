@@ -14,8 +14,17 @@
   fill: currentcolor
 }
 
+body main {
+  min-height: calc(100vh - 180px)!important;
+}
+
 .header {
   height: 70px;
+}
+
+.footer {
+  margin-top: 30px;
+  margin-bottom: 20px;
 }
 
 header.header-bar {
@@ -30,6 +39,28 @@ header.header-bar {
   header .collapsed-info {
     display: none;
   }
+}
+
+header .explorer-brand {
+  display: inline-block;
+  position: relative;
+  width: 300px;
+  height: 30px;
+}
+
+header .explorer-brand-container {
+  position: absolute;
+  z-index: 100;
+  width: 100%;
+  height: 60px;
+  top: -10px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+header .explorer-brand .explorer-brand-subtitle {
+  font-size: 14px;
 }
 
 header .main-search {
@@ -135,6 +166,19 @@ nav .theme-selector .theme-navicon {
 
 nav .theme-selector .theme-navlabel {
   margin-left: 2px;
+}
+
+header nav .navbar-toggler.toggler-wrapper {
+  position: relative;
+  border: 0;
+  padding: 0;
+  height: 40px;
+  display: block;
+  width: 55px;
+}
+header nav .navbar-toggler.toggler-wrapper > * {
+  position: absolute;
+  z-index: 101;
 }
 
 @media (max-width: 992px) {

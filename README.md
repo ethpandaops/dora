@@ -17,9 +17,10 @@ https://github.com/ethpandaops/tooling-wishlist/blob/master/tools/lightweight-be
 
 (More for myself to keep track of what is done / needs to be done)
 
-* [ ] Explorer Pages (UI)
+* Explorer Pages (UI)
   * [ ] Layout polishing
-  * [ ] Startpage
+  * [x] Startpage
+    * [ ] Add Network Status (number of validators / deposit & exit queue / ...?)
   * [x] Epoch Overview (`/epochs`)
   * [x] Epoch details (`/epoch/{epoch}`)
   * [x] Slots Overview (`/slots`)
@@ -35,19 +36,19 @@ https://github.com/ethpandaops/tooling-wishlist/blob/master/tools/lightweight-be
     * [ ] Recent Attestations (from cache) 
   * [x] Search (Block Root, Epoch Number, Slot Number, Grafitti)
     * [x] Type-Ahead search
-* [ ] RPC Client / Caching
+* RPC Client / Caching
   * [x] Get Block Header by slot / block root
   * [x] Get Block Body by block root
   * [x] Get Epoch assignments (proposer, attester & sync committee duties)
     * [x] Simple cache for epoch duties
-* [ ] Database
+* Database
   * [ ] Schema initialization / upgrade
   * [x] Table: blocks (Block index for search & slot overview)
   * [x] Table: epochs (Epoch index for startpage & epoch overview)
   * [x] Table: explorer_state (simple key-value table to track of various states)
   * [ ] Table: sync_committees (Sync Committee index)
   * [x] Table: slot_assignments (Slot duties for search and block lists)
-* [ ] Indexer
+* Indexer
   * [x] Keep track of current & last epoch in memory
   * [x] Aggregate Votes
   * [x] Check for chain reorgs and track orphaned blocks

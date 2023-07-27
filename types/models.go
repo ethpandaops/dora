@@ -9,6 +9,8 @@ type PageData struct {
 	Data                  interface{}
 	Version               string
 	Year                  int
+	ExplorerTitle         string
+	ExplorerSubtitle      string
 	ChainSlotsPerEpoch    uint64
 	ChainSecondsPerSlot   uint64
 	ChainGenesisTimestamp uint64
