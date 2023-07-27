@@ -72,13 +72,7 @@ func SearchAhead(w http.ResponseWriter, r *http.Request) {
 		}
 		result = &models.SearchAheadSlotsResult{}
 		if searchLikeRE.MatchString(search) {
-			if _, convertErr := strconv.ParseInt(search, 10, 32); convertErr == nil {
-				err = db.ReaderDb.Select(result, `
-				SELECT slot, ENCODE(root, 'hex') AS root, orphaned 
-				FROM blocks 
-				WHERE slot = $1
-				ORDER BY slot LIMIT 10`, search)
-			} else if len(search) == 64 {
+			if len(search) == 64 {
 				blockHash, err := hex.DecodeString(search)
 				if err != nil {
 					logger.Errorf("error parsing blockHash to int: %v", err)
@@ -96,6 +90,12 @@ func SearchAhead(w http.ResponseWriter, r *http.Request) {
 					http.Error(w, "Internal server error", http.StatusServiceUnavailable)
 					return
 				}
+			} else if _, convertErr := strconv.ParseInt(search, 10, 32); convertErr == nil {
+				err = db.ReaderDb.Select(result, `
+				SELECT slot, ENCODE(root, 'hex') AS root, orphaned 
+				FROM blocks 
+				WHERE slot = $1
+				ORDER BY slot LIMIT 10`, search)
 			}
 		}
 	case "graffiti":
