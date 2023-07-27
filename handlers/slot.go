@@ -168,7 +168,12 @@ func getSlotPageBlockData(blockData *rpctypes.CombinedBlockResponse, assignments
 	pageData.Attestations = make([]*models.SlotPageAttestation, pageData.AttestationsCount)
 	for i := uint64(0); i < pageData.AttestationsCount; i++ {
 		attestation := blockData.Block.Data.Message.Body.Attestations[i]
-		attAssignments := assignments.AttestorAssignments[fmt.Sprintf("%v-%v", uint64(attestation.Data.Slot), uint64(attestation.Data.Index))]
+		var attAssignments []uint64
+		if assignments != nil {
+			attAssignments = assignments.AttestorAssignments[fmt.Sprintf("%v-%v", uint64(attestation.Data.Slot), uint64(attestation.Data.Index))]
+		} else {
+			attAssignments = []uint64{}
+		}
 		attPageData := models.SlotPageAttestation{
 			Slot:            uint64(attestation.Data.Slot),
 			CommitteeIndex:  uint64(attestation.Data.Index),
@@ -277,7 +282,11 @@ func getSlotPageBlockData(blockData *rpctypes.CombinedBlockResponse, assignments
 		syncAggregate := blockData.Block.Data.Message.Body.SyncAggregate
 		pageData.SyncAggregateBits = syncAggregate.SyncCommitteeBits
 		pageData.SyncAggregateSignature = syncAggregate.SyncCommitteeSignature
-		pageData.SyncAggCommittee = assignments.SyncAssignments
+		if assignments != nil {
+			pageData.SyncAggCommittee = assignments.SyncAssignments
+		} else {
+			pageData.SyncAggCommittee = []uint64{}
+		}
 		pageData.SyncAggParticipation = utils.SyncCommitteeParticipation(pageData.SyncAggregateBits)
 	}
 
