@@ -580,7 +580,7 @@ func (indexer *Indexer) loadEpochStats(epoch uint64, dependentRoot []byte, epoch
 
 func (indexer *Indexer) loadEpochAssignments(epoch uint64, dependentRoot []byte, epochStats *EpochStats) bool {
 	defer epochStats.AssignmentsMutex.Unlock()
-	logger.Infof("Epoch %v head, fetching assingments (dependend root: 0x%x)", epoch, dependentRoot)
+	logger.Infof("Epoch %v head, fetching assignments (dependend root: 0x%x)", epoch, dependentRoot)
 
 	epochAssignments, err := indexer.rpcClient.GetEpochAssignments(epoch)
 	if err != nil {

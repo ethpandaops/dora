@@ -134,7 +134,7 @@ func (sync *synchronizerState) syncEpoch(syncEpoch uint64) bool {
 		return true
 	}
 
-	// load epoch assingments
+	// load epoch assignments
 	epochAssignments, err := sync.indexer.rpcClient.GetEpochAssignments(syncEpoch)
 	if err != nil {
 		synclogger.Errorf("Error fetching epoch %v duties: %v", syncEpoch, err)
