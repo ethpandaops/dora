@@ -28,7 +28,7 @@ First Version TODO:
     * [x] Overview, Attestations, Slashings, Deposits, BLSChanges, Withdrawals, Voluntary Exits
     * [x] Blob Sidecars
     * [x] Enhance view controls (Hex/UTF8 Grafitti, Local/UTC Time, Copy Buttons etc.)
-    * [ ] Load orphaned blocks from db
+    * [x] Load orphaned blocks from db
   * [x] Search (Block Root, Epoch Number, Slot Number, Grafitti)
     * [x] Type-Ahead search
 * RPC Client / Caching
