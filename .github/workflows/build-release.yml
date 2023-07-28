@@ -1,0 +1,83 @@
+
+name: Build Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version Number ('0.x.y')"
+        required: true
+
+
+jobs:
+  build_binaries:
+    name: Build Binaries
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    # setup global dependencies
+    - name: Set up Go
+      uses: actions/setup-go@v3
+      with:
+        go-version: 1.20.x
+
+    # setup project dependencies
+    - name: Get dependencies
+      run: |
+        go get -v -t -d ./...
+
+    # build binaries
+    - run: |
+        make build
+
+    # create draft release
+    - name: Create latest release
+      uses: actions/create-release@v1
+      id: create_release
+      with:
+        draft: true
+        prerelease: false
+        release_name: "v${{ inputs.version }}"
+        tag_name: "v${{ inputs.version }}"
+        body: |
+          ### Major Changes
+          ...
+
+          ### Release Artifacts
+          | Release File  | Description |
+          | ------------- | ------------- |
+          | [explorer_windows_amd64.exe](https://github.com/pk910/light-beaconchain-explorer/releases/download/${{ inputs.version }}/explorer_windows_amd64.exe) | explorer executable for windows (64bit) |
+          | [explorer_linux_amd64](https://github.com/pk910/light-beaconchain-explorer/releases/download/${{ inputs.version }}/explorer_linux_amd64) | explorer executable for linux (64bit) |
+          | [explorer_darwin_amd64](https://github.com/pk910/light-beaconchain-explorer/releases/download/${{ inputs.version }}/explorer_darwin_amd64) | explorer executable for macos (64bit) |
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+
+    # upload release artifacts
+    - name: "Upload artifact: explorer_windows_amd64.exe"
+      uses: actions/upload-release-asset@v1
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./bin/explorer_windows_amd64.exe
+        asset_name: explorer_windows_amd64.exe
+        asset_content_type: application/octet-stream
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+    - name: "Upload artifact: explorer_linux_amd64"
+      uses: actions/upload-release-asset@v1
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./bin/explorer_linux_amd64
+        asset_name: explorer_linux_amd64
+        asset_content_type: application/octet-stream
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+    - name: "Upload artifact: explorer_darwin_amd64"
+      uses: actions/upload-release-asset@v1
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./bin/explorer_darwin_amd64
+        asset_name: explorer_darwin_amd64
+        asset_content_type: application/gzip
+      env:
+        GITHUB_TOKEN: ${{ github.token }}

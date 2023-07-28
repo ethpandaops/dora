@@ -18,7 +18,7 @@ https://github.com/ethpandaops/tooling-wishlist/blob/master/tools/lightweight-be
 First Version TODO:
 
 * Explorer Pages (UI)
-  * [ ] Layout polishing
+  * [x] Layout polishing
   * [x] Startpage
     * [x] Add Network Status (number of validators / deposit & exit queue / ...?)
   * [x] Epoch Overview (`/epochs`)
@@ -54,8 +54,8 @@ First Version TODO:
 * Packaging & Release
   * [x] Add license info
   * [ ] Add documentation (setup & configuration)
-  * [ ] Docker image
-  * [ ] Github build & release actions
+  * [x] Docker image
+  * [x] Github build & release actions
 
 Advanced TODO (Things that might be worth adding after the first version is ready)
 
