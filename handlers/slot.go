@@ -114,12 +114,7 @@ func Slot(w http.ResponseWriter, r *http.Request) {
 	assignments, err := services.GlobalBeaconService.GetEpochAssignments(utils.EpochOfSlot(slot))
 	if err != nil {
 		logrus.Printf("assignments error: %v", err)
-		data := InitPageData(w, r, "blockchain", "/slots", fmt.Sprintf("Slot %v", slotOrHash), errorTemplateFiles)
-		data.Data = err.Error()
-		if handleTemplateError(w, r, "slot.go", "Slot", "notFound", templates.GetTemplate(errorTemplateFiles...).ExecuteTemplate(w, "layout", data)) != nil {
-			return // an error has occurred and was processed
-		}
-		return
+		// we can safely continue here. the UI is prepared to work without epoch duties, but fields related to the duties are not shown
 	}
 
 	template := templates.GetTemplate(slotTemplateFiles...)
