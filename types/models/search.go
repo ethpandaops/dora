@@ -1,5 +1,17 @@
 package models
 
+// SearchBlockResult is a struct to hold the search block result with a given graffiti
+type SearchBlockResult struct {
+	Slot     uint64 `json:"slot,omitempty"`
+	Root     []byte `json:"root,omitempty"`
+	Orphaned bool   `json:"orphaned,omitempty"`
+}
+
+// SearchGraffitiResult is a struct to hold the search block result with a given graffiti
+type SearchGraffitiResult struct {
+	Graffiti string `json:"graffiti,omitempty"`
+}
+
 // SearchAheadEpochsResult is a struct to hold the search ahead epochs results
 type SearchAheadEpochsResult []struct {
 	Epoch string `json:"epoch,omitempty"`

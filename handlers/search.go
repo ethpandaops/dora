@@ -32,30 +32,58 @@ func Search(w http.ResponseWriter, r *http.Request) {
 
 	_, err := strconv.Atoi(searchQuery)
 	if err == nil {
-		http.Redirect(w, r, "/slot/"+searchQuery, http.StatusMovedPermanently)
-		return
+		blockResult := &models.SearchBlockResult{}
+		err = db.ReaderDb.Select(blockResult, `
+		SELECT slot, ENCODE(root, 'hex') AS root, orphaned 
+		FROM blocks 
+		WHERE slot = $1
+		LIMIT 1`, searchQuery)
+		if err == nil {
+			if blockResult.Orphaned {
+				http.Redirect(w, r, fmt.Sprintf("/slot/0x%x", blockResult.Root), http.StatusMovedPermanently)
+			} else {
+				http.Redirect(w, r, fmt.Sprintf("/slot/%v", blockResult.Slot), http.StatusMovedPermanently)
+			}
+			return
+		}
 	}
 
 	hashQuery := strings.Replace(searchQuery, "0x", "", -1)
 	if len(hashQuery) == 64 {
-		http.Redirect(w, r, "/slot/0x"+hashQuery, http.StatusMovedPermanently)
-		return
+		blockHash, err := hex.DecodeString(hashQuery)
+		if err == nil {
+			blockResult := &models.SearchBlockResult{}
+			err = db.ReaderDb.Select(blockResult, `
+			SELECT slot, ENCODE(root, 'hex') AS root, orphaned 
+			FROM blocks 
+			WHERE root = $1 OR
+				state_root = $1
+			LIMIT 1`, blockHash)
+			if err == nil {
+				if blockResult.Orphaned {
+					http.Redirect(w, r, fmt.Sprintf("/slot/0x%x", blockResult.Root), http.StatusMovedPermanently)
+				} else {
+					http.Redirect(w, r, fmt.Sprintf("/slot/%v", blockResult.Slot), http.StatusMovedPermanently)
+				}
+				return
+			}
+		}
 	}
 
-	graffiti := &models.SearchAheadGraffitiResult{}
-	err = db.ReaderDb.Select(graffiti, `
+	graffiti := &models.SearchGraffitiResult{}
+	err = db.ReaderDb.Get(graffiti, `
 		SELECT graffiti
 		FROM blocks
 		WHERE graffiti_text ILIKE LOWER($1)
 		LIMIT 1`, "%"+searchQuery+"%")
 	if err == nil {
-		http.Redirect(w, r, "/slots?q="+hashQuery, http.StatusMovedPermanently)
+		http.Redirect(w, r, "/slots?q="+searchQuery, http.StatusMovedPermanently)
 		return
 	}
 
 	w.Header().Set("Content-Type", "text/html")
 	data := InitPageData(w, r, "search", "/search", fmt.Sprintf("Search: %v", searchQuery), notfoundTemplateFiles)
-	if handleTemplateError(w, r, "slot.go", "Slot", "blockSlot", templates.GetTemplate(notfoundTemplateFiles...).ExecuteTemplate(w, "layout", data)) != nil {
+	if handleTemplateError(w, r, "search.go", "Search", "", templates.GetTemplate(notfoundTemplateFiles...).ExecuteTemplate(w, "layout", data)) != nil {
 		return // an error has occurred and was processed
 	}
 }
