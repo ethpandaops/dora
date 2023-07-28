@@ -59,7 +59,7 @@ func Slots(w http.ResponseWriter, r *http.Request) {
 func getSlotsPageData(firstSlot uint64, pageSize uint64) *models.SlotsPageData {
 	pageData := &models.SlotsPageData{}
 	pageCacheKey := fmt.Sprintf("slots:%v:%v", firstSlot, pageSize)
-	if services.GlobalBeaconService.GetFrontendCache(pageCacheKey, pageData) == nil {
+	if !utils.Config.Frontend.Debug && services.GlobalBeaconService.GetFrontendCache(pageCacheKey, pageData) == nil {
 		logrus.Printf("slots page served from cache: %v:%v", firstSlot, pageSize)
 		return pageData
 	}

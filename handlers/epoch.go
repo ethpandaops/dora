@@ -56,7 +56,7 @@ func Epoch(w http.ResponseWriter, r *http.Request) {
 func getEpochPageData(epoch uint64) *models.EpochPageData {
 	pageData := &models.EpochPageData{}
 	pageCacheKey := fmt.Sprintf("epoch:%v", epoch)
-	if services.GlobalBeaconService.GetFrontendCache(pageCacheKey, pageData) == nil {
+	if !utils.Config.Frontend.Debug && services.GlobalBeaconService.GetFrontendCache(pageCacheKey, pageData) == nil {
 		logrus.Printf("epoch page served from cache: %v", epoch)
 		return pageData
 	}

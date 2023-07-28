@@ -8,6 +8,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/pk910/light-beaconchain-explorer/db"
+	"github.com/pk910/light-beaconchain-explorer/dbtypes"
 	"github.com/pk910/light-beaconchain-explorer/utils"
 )
 
@@ -245,7 +246,7 @@ func (sync *synchronizerState) syncEpoch(syncEpoch uint64) bool {
 		return false
 	}
 
-	err = db.SetExplorerState("indexer.syncstate", &indexerSyncState{
+	err = db.SetExplorerState("indexer.syncstate", &dbtypes.IndexerSyncState{
 		Epoch: syncEpoch,
 	}, tx)
 	if err != nil {

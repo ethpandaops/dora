@@ -1,0 +1,116 @@
+{{ define "networkOverview" }}
+  <div style="position:relative" class="card mt-3 index-stats">
+    <div style="position:absolute; border-bottom-left-radius: 0; border-bottom-right-radius: 0; font-size:.70rem; height:.8rem;" class="progress w-100" data-placement="bottom" title="This epoch is {{ formatFloat .CurrentEpochProgress 0 }}% complete">
+      <div style="width:{{ formatFloat .CurrentEpochProgress 0 }}%; padding: 0.3rem;" class="progress-bar bg-secondary" role="progressbar" :aria-valuenow="scheduledCount" aria-valuemin="0" aria-valuemax="32">{{- /**/ -}}
+        {{ if gt .CurrentScheduledCount 0 }}
+          <span>{{ .CurrentScheduledCount }} / 32 slots left in epoch {{ .CurrentEpoch }}</span>
+        {{ else }}
+          <span>{{ .CurrentEpoch }} epoch complete</span>
+        {{ end }}
+      </div>
+    </div>
+
+    <div class="card-header pt-3">
+      <div class="row">
+        <div class="col-md-4 responsive-border-right responsive-border-right-l">
+          <div class="d-flex justify-content-between">
+            <div class="p-2">
+              <div class="text-secondary mb-0">Epoch</div>
+              <h5 class="font-weight-normal mb-0">
+                <span data-bs-toggle="tooltip" data-bs-placement="top" title="The most recent epoch">{{ .CurrentEpoch }}</span> / 
+                <span data-bs-toggle="tooltip" data-bs-placement="top" title="The most recent finalized epoch">{{ .CurrentFinalizedEpoch }}</span>
+              </h5>
+            </div>
+            <div class="text-end p-2">
+              <div class="text-secondary mb-0">Current Slot</div>
+              <h5 class="font-weight-normal mb-0">
+                <span data-bs-toggle="tooltip" data-bs-placement="top" title="The most recent slot">{{ .CurrentSlot }}</span>
+              </h5>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-4 responsive-border-right responsive-border-right-l">
+          <div class="d-flex justify-content-between">
+            <div class="p-2">
+              <div class="text-secondary mb-0">Active Validators</div>
+              <h5 class="font-weight-normal mb-0">
+                <span data-bs-toggle="tooltip" data-bs-placement="top" title="The number of currently active validators">{{ .ActiveValidatorCount }}</span>
+              </h5>
+            </div>
+            <div class="text-end p-2">
+              {{ if eq .EnteringValidatorCount 0 }}
+                <div class="text-secondary mb-0"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Currently there are no pending Validators (churn limit is {{ .ValidatorsPerEpoch }} per epoch or {{ .ValidatorsPerDay }} per day with {{ .ActiveValidatorCount }} validators)">Pending Validators</span></div>
+              {{ else }}
+                <div class="text-secondary mb-0"><span data-bs-toggle="tooltip" data-bs-placement="top" title="It should take at least {{ .NewDepositProcessAfter }} for a new deposit to be processed and an associated validator to be activated (churn limit is {{ .ValidatorsPerEpoch }} per epoch or {{ .ValidatorsPerDay }} per day with {{ .ActiveValidatorCount }} validators)">Pending Validators</span></div>
+              {{ end }}
+              <h5 class="font-weight-normal mb-0">
+                <span data-bs-toggle="tooltip" data-bs-placement="top" title="The number of validators currently waiting to enter the active validator set">{{ .EnteringValidatorCount }}</span>
+                / <span data-bs-toggle="tooltip" data-bs-placement="top" title="The number of validators currently waiting to exit the active validator set">{{ .ExitingValidatorCount }}</span>
+              </h5>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="d-flex justify-content-between">
+            <div class="p-2">
+              <div class="text-secondary mb-0">Staked Ether</div>
+              <h5 class="font-weight-normal mb-0">
+                <span data-bs-toggle="tooltip" data-bs-placement="top" title="The sum of all effective balances">{{ formatEthAddCommasFromGwei .TotalEligibleEther }} ETH</span>
+              </h5>
+            </div>
+            <div class="text-end p-2">
+              <div class="text-secondary mb-0">Average Balance</div>
+              <h5 class="font-weight-normal mb-0">
+                <span data-bs-toggle="tooltip" data-bs-placement="top" title="The average current balance of all validators staked">{{ formatEthFromGwei .AverageValidatorBalance }}</span>
+              </h5>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body px-0 py-1">
+      <div class="row border-bottom p-2 mx-0">
+        <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Name of the Network">Network Name:</span></div>
+        <div class="col-md-10">
+          {{ .NetworkName }}
+        </div>
+      </div>
+      <div class="row border-bottom p-2 mx-0">
+        <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Name of the Network">Genesis Time:</span></div>
+        <div class="col-md-10">
+          <div>
+            <span aria-ethereum-date="{{ .GenesisTime.Unix }}" aria-ethereum-date-format="FROMNOW">{{ .GenesisTime }}</span>
+            (<span id="timestamp" aria-ethereum-date="{{ .GenesisTime.Unix }}" aria-ethereum-date-format="LOCAL" data-timer="{{ .GenesisTime.Unix }}">{{ formatRecentTimeShort .GenesisTime }}</span>)
+            <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ .GenesisTime }}"></i>
+          </div>
+        </div>
+      </div>
+      <div class="row border-bottom p-2 mx-0">
+        <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Name of the Network">Genesis Validators Root:</span></div>
+        <div class="col-md-10">
+          0x{{ printf "%x" .GenesisValidatorsRoot }} 
+          <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" .GenesisValidatorsRoot }}"></i>
+        </div>
+      </div>
+      <div class="row border-bottom p-2 mx-0">
+        <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Name of the Network">Genesis Fork Version:</span></div>
+        <div class="col-md-10">
+          0x{{ printf "%x" .GenesisForkVersion }} 
+          <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" .GenesisForkVersion }}"></i>
+        </div>
+      </div>
+      <div class="row border-bottom p-2 mx-0">
+        <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Name of the Network">Network Forks:</span></div>
+        <div class="col-md-10">
+          {{ range $i, $fork := .NetworkForks }}
+            {{ if $fork.Active }}
+              <span class="badge rounded-pill text-bg-success" data-bs-toggle="tooltip" data-bs-placement="top" title="Epoch: {{ $fork.Epoch }}, Fork Version: 0x{{ printf "%x" $fork.Version }}">{{ $fork.Name }}</span>
+            {{ else }}
+              <span class="badge rounded-pill text-bg-secondary" data-bs-toggle="tooltip" data-bs-placement="top" title="Epoch: {{ $fork.Epoch }}, Fork Version: 0x{{ printf "%x" $fork.Version }}">{{ $fork.Name }}</span>
+            {{ end }}
+          {{ end }}
+        </div>
+      </div>
+    </div>
+  </div>
+{{ end }}

@@ -20,7 +20,7 @@ First Version TODO:
 * Explorer Pages (UI)
   * [ ] Layout polishing
   * [x] Startpage
-    * [ ] Add Network Status (number of validators / deposit & exit queue / ...?)
+    * [x] Add Network Status (number of validators / deposit & exit queue / ...?)
   * [x] Epoch Overview (`/epochs`)
   * [x] Epoch details (`/epoch/{epoch}`)
   * [x] Slots Overview (`/slots`)

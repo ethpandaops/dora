@@ -44,10 +44,6 @@ type indexerState struct {
 	lastProcessedEpoch uint64
 }
 
-type indexerSyncState struct {
-	Epoch uint64 `json:"epoch"`
-}
-
 type EpochStats struct {
 	dependendRoot     []byte
 	AssignmentsMutex  sync.Mutex
@@ -183,6 +179,12 @@ func (indexer *Indexer) GetCachedEpochStats(epoch uint64) *EpochStats {
 	return indexer.state.epochStats[epoch]
 }
 
+func (indexer *Indexer) GetCachedValidatorSet() *rpctypes.StandardV1StateValidatorsResponse {
+	indexer.state.cacheMutex.RLock()
+	defer indexer.state.cacheMutex.RUnlock()
+	return indexer.state.headValidators
+}
+
 func (indexer *Indexer) BuildLiveEpoch(epoch uint64) *dbtypes.Epoch {
 	indexer.state.cacheMutex.RLock()
 	defer indexer.state.cacheMutex.RUnlock()
@@ -257,7 +259,7 @@ func (indexer *Indexer) runIndexer() {
 
 	// check if we need to start a sync job (last synced epoch < lastProcessedEpoch)
 	if indexer.writeDb {
-		syncState := indexerSyncState{}
+		syncState := dbtypes.IndexerSyncState{}
 		db.GetExplorerState("indexer.syncstate", &syncState)
 		if syncState.Epoch < indexer.state.lastProcessedEpoch {
 			indexer.startSynchronization(syncState.Epoch)
@@ -720,7 +722,7 @@ slotLoop:
 		}
 
 		if indexer.synchronizer == nil || !indexer.synchronizer.running {
-			err = db.SetExplorerState("indexer.syncstate", &indexerSyncState{
+			err = db.SetExplorerState("indexer.syncstate", &dbtypes.IndexerSyncState{
 				Epoch: epoch,
 			}, tx)
 			if err != nil {

@@ -79,6 +79,10 @@ func (bs *BeaconService) GetValidatorName(index uint64) string {
 	return bs.validatorNames.GetValidatorName(index)
 }
 
+func (bs *BeaconService) GetCachedValidatorSet() *rpctypes.StandardV1StateValidatorsResponse {
+	return bs.indexer.GetCachedValidatorSet()
+}
+
 func (bs *BeaconService) GetFinalizedBlockHead() (*rpctypes.StandardV1BeaconHeaderResponse, error) {
 	return bs.rpcClient.GetFinalizedBlockHead()
 }
@@ -89,6 +93,10 @@ func (bs *BeaconService) GetLowestCachedSlot() int64 {
 
 func (bs *BeaconService) GetCachedEpochStats(epoch uint64) *indexer.EpochStats {
 	return bs.indexer.GetCachedEpochStats(epoch)
+}
+
+func (bs *BeaconService) GetGenesis() (*rpctypes.StandardV1GenesisResponse, error) {
+	return bs.rpcClient.GetGenesis()
 }
 
 func (bs *BeaconService) GetSlotDetailsByBlockroot(blockroot []byte, withBlobs bool) (*rpctypes.CombinedBlockResponse, error) {

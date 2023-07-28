@@ -87,6 +87,14 @@ type StandardV1StateValidatorsResponse struct {
 	} `json:"data"`
 }
 
+type StandardV1GenesisResponse struct {
+	Data struct {
+		GenesisTime           Uint64Str   `json:"genesis_time"`
+		GenesisValidatorsRoot BytesHexStr `json:"genesis_validators_root"`
+		GenesisForkVersion    BytesHexStr `json:"genesis_fork_version"`
+	} `json:"data"`
+}
+
 type StandardV1BlobSidecarsResponse struct {
 	Data []BlobSidecar `json:"data"`
 }

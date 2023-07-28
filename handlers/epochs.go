@@ -45,7 +45,7 @@ func Epochs(w http.ResponseWriter, r *http.Request) {
 func getEpochsPageData(firstEpoch uint64, pageSize uint64) *models.EpochsPageData {
 	pageData := &models.EpochsPageData{}
 	pageCacheKey := fmt.Sprintf("epochs:%v:%v", firstEpoch, pageSize)
-	if services.GlobalBeaconService.GetFrontendCache(pageCacheKey, pageData) == nil {
+	if !utils.Config.Frontend.Debug && services.GlobalBeaconService.GetFrontendCache(pageCacheKey, pageData) == nil {
 		logrus.Printf("epochs page served from cache: %v:%v", firstEpoch, pageSize)
 		return pageData
 	}

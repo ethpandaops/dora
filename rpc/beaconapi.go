@@ -89,6 +89,24 @@ func (bc *BeaconClient) getJson(url string, returnValue interface{}) error {
 	return nil
 }
 
+func (bc *BeaconClient) GetGenesis() (*rpctypes.StandardV1GenesisResponse, error) {
+	resGenesis, err := bc.get(fmt.Sprintf("%s/eth/v1/beacon/genesis", bc.endpoint))
+	if err != nil {
+		if err == errNotFound {
+			// no block found
+			return nil, nil
+		}
+		return nil, fmt.Errorf("error retrieving genesis: %v", err)
+	}
+
+	var parsedGenesis rpctypes.StandardV1GenesisResponse
+	err = json.Unmarshal(resGenesis, &parsedGenesis)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing genesis response: %v", err)
+	}
+	return &parsedGenesis, nil
+}
+
 func (bc *BeaconClient) GetLatestBlockHead() (*rpctypes.StandardV1BeaconHeaderResponse, error) {
 	resHeaders, err := bc.get(fmt.Sprintf("%s/eth/v1/beacon/headers/head", bc.endpoint))
 	if err != nil {

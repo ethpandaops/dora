@@ -256,3 +256,14 @@ span.validator-label {
   min-width: 180px;
 }
 
+.responsive-border-right {
+  border-right-color: var(--bs-card-border-color);
+  border-right-style: solid;
+  border-right-width: 1px;
+}
+
+@media (max-width: 767px) {
+  .responsive-border-right-l {
+      border: hidden;
+  }
+}
