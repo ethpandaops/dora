@@ -7,21 +7,21 @@ import (
 // SlotsPageData is a struct to hold info for the slots page
 type SlotsPageData struct {
 	Slots          []*SlotsPageDataSlot `json:"slots"`
-	SlotCount      uint64
-	FirstSlot      uint64
-	LastSlot       uint64
-	GraffitiFilter string
+	SlotCount      uint64               `json:"slot_count"`
+	FirstSlot      uint64               `json:"first_slot"`
+	LastSlot       uint64               `json:"last_slot"`
+	GraffitiFilter string               `json:"graffiti_filter"`
 
-	IsDefaultPage    bool
-	TotalPages       uint64
-	PageSize         uint64
-	CurrentPageIndex uint64
-	CurrentPageSlot  uint64
-	PrevPageIndex    uint64
-	PrevPageSlot     uint64
-	NextPageIndex    uint64
-	NextPageSlot     uint64
-	LastPageSlot     uint64
+	IsDefaultPage    bool   `json:"default_page"`
+	TotalPages       uint64 `json:"total_pages"`
+	PageSize         uint64 `json:"page_size"`
+	CurrentPageIndex uint64 `json:"page_index"`
+	CurrentPageSlot  uint64 `json:"page_slot"`
+	PrevPageIndex    uint64 `json:"prev_page_index"`
+	PrevPageSlot     uint64 `json:"prev_page_slot"`
+	NextPageIndex    uint64 `json:"next_page_index"`
+	NextPageSlot     uint64 `json:"next_page_slot"`
+	LastPageSlot     uint64 `json:"last_page_slot"`
 }
 
 type SlotsPageDataSlot struct {

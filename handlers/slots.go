@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"math"
 	"net/http"
 	"strconv"
@@ -48,8 +49,6 @@ func Slots(w http.ResponseWriter, r *http.Request) {
 		}
 		pageData = getSlotsPageDataWithGraffitiFilter(graffiti, pageIdx, pageSize)
 	}
-
-	logrus.Printf("slots page called")
 	data.Data = pageData
 
 	if handleTemplateError(w, r, "slots.go", "Slots", "", pageTemplate.ExecuteTemplate(w, "layout", data)) != nil {
@@ -59,6 +58,12 @@ func Slots(w http.ResponseWriter, r *http.Request) {
 
 func getSlotsPageData(firstSlot uint64, pageSize uint64) *models.SlotsPageData {
 	pageData := &models.SlotsPageData{}
+	pageCacheKey := fmt.Sprintf("slots:%v:%v", firstSlot, pageSize)
+	if services.GlobalBeaconService.GetFrontendCache(pageCacheKey, pageData) == nil {
+		logrus.Printf("slots page served from cache: %v:%v", firstSlot, pageSize)
+		return pageData
+	}
+	logrus.Printf("slots page called: %v:%v", firstSlot, pageSize)
 
 	now := time.Now()
 	currentSlot := utils.TimeToSlot(uint64(now.Unix()))
@@ -176,6 +181,15 @@ func getSlotsPageData(firstSlot uint64, pageSize uint64) *models.SlotsPageData {
 	pageData.FirstSlot = firstSlot
 	pageData.LastSlot = lastSlot
 
+	if pageCacheKey != "" {
+		var cacheTimeout time.Duration
+		if firstEpoch < uint64(currentEpoch) {
+			cacheTimeout = 10 * time.Minute
+		} else {
+			cacheTimeout = 12 * time.Second
+		}
+		services.GlobalBeaconService.SetFrontendCache(pageCacheKey, pageData, cacheTimeout)
+	}
 	return pageData
 }
 
@@ -183,6 +197,7 @@ func getSlotsPageDataWithGraffitiFilter(graffiti string, pageIdx uint64, pageSiz
 	pageData := &models.SlotsPageData{
 		GraffitiFilter: graffiti,
 	}
+	logrus.Printf("slots page called (filtered): %v:%v [%v]", pageIdx, pageSize, graffiti)
 	if pageIdx == 0 {
 		pageData.IsDefaultPage = true
 	}

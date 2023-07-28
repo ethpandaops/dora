@@ -4,18 +4,18 @@ import "time"
 
 // SlotPageData is a struct to hold info for the slot details page
 type SlotPageData struct {
-	Slot                   uint64  `json:"slot"`
-	Epoch                  uint64  `json:"epoch"`
-	EpochFinalized         bool    `json:"epoch_finalized"`
-	EpochParticipationRate float64 `json:"epoch_participation_rate"`
-	Ts                     time.Time
-	NextSlot               uint64
-	PreviousSlot           uint64
-	Status                 uint16
-	Future                 bool
-	Proposer               uint64 `json:"proposer"`
-	ProposerName           string `json:"proposer_name"`
-	Block                  *SlotPageBlockData
+	Slot                   uint64             `json:"slot"`
+	Epoch                  uint64             `json:"epoch"`
+	EpochFinalized         bool               `json:"epoch_finalized"`
+	EpochParticipationRate float64            `json:"epoch_participation_rate"`
+	Ts                     time.Time          `json:"time"`
+	NextSlot               uint64             `json:"next_slot"`
+	PreviousSlot           uint64             `json:"prev_slot"`
+	Status                 uint16             `json:"status"`
+	Future                 bool               `json:"future"`
+	Proposer               uint64             `json:"proposer"`
+	ProposerName           string             `json:"proposer_name"`
+	Block                  *SlotPageBlockData `json:"block"`
 }
 
 type SlotStatus uint16
@@ -62,21 +62,21 @@ type SlotPageBlockData struct {
 }
 
 type SlotPageExecutionData struct {
-	ParentHash        []byte `json:"parent_hash"`
-	FeeRecipient      []byte `json:"fee_recipient"`
-	StateRoot         []byte `json:"state_root"`
-	ReceiptsRoot      []byte `json:"receipts_root"`
-	LogsBloom         []byte `json:"logs_bloom"`
-	Random            []byte `json:"random"`
-	GasLimit          uint64 `json:"gas_limit"`
-	GasUsed           uint64 `json:"gas_used"`
-	Timestamp         uint64 `json:"timestamp"`
-	Time              time.Time
-	ExtraData         []byte `json:"extra_data"`
-	BaseFeePerGas     uint64 `json:"base_fee_per_gas"`
-	BlockHash         []byte `json:"block_hash"`
-	BlockNumber       uint64 `json:"block_number"`
-	TransactionsCount uint64 `json:"transactions_count"`
+	ParentHash        []byte    `json:"parent_hash"`
+	FeeRecipient      []byte    `json:"fee_recipient"`
+	StateRoot         []byte    `json:"state_root"`
+	ReceiptsRoot      []byte    `json:"receipts_root"`
+	LogsBloom         []byte    `json:"logs_bloom"`
+	Random            []byte    `json:"random"`
+	GasLimit          uint64    `json:"gas_limit"`
+	GasUsed           uint64    `json:"gas_used"`
+	Timestamp         uint64    `json:"timestamp"`
+	Time              time.Time `json:"time"`
+	ExtraData         []byte    `json:"extra_data"`
+	BaseFeePerGas     uint64    `json:"base_fee_per_gas"`
+	BlockHash         []byte    `json:"block_hash"`
+	BlockNumber       uint64    `json:"block_number"`
+	TransactionsCount uint64    `json:"transactions_count"`
 }
 
 type SlotPageAttestation struct {

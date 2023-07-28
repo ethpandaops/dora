@@ -45,7 +45,6 @@ func Epoch(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	logrus.Printf("epoch page called")
 	data := InitPageData(w, r, "blockchain", "/epoch", fmt.Sprintf("Epoch %v", epoch), epochTemplateFiles)
 	data.Data = pageData
 
@@ -55,6 +54,13 @@ func Epoch(w http.ResponseWriter, r *http.Request) {
 }
 
 func getEpochPageData(epoch uint64) *models.EpochPageData {
+	pageData := &models.EpochPageData{}
+	pageCacheKey := fmt.Sprintf("epoch:%v", epoch)
+	if services.GlobalBeaconService.GetFrontendCache(pageCacheKey, pageData) == nil {
+		logrus.Printf("epoch page served from cache: %v", epoch)
+		return pageData
+	}
+	logrus.Printf("epoch page called: %v", epoch)
 
 	now := time.Now()
 	currentSlot := utils.TimeToSlot(uint64(now.Unix()))
@@ -77,7 +83,7 @@ func getEpochPageData(epoch uint64) *models.EpochPageData {
 	}
 	firstSlot := epoch * utils.Config.Chain.Config.SlotsPerEpoch
 	lastSlot := firstSlot + utils.Config.Chain.Config.SlotsPerEpoch - 1
-	pageData := &models.EpochPageData{
+	pageData = &models.EpochPageData{
 		Epoch:                   epoch,
 		PreviousEpoch:           epoch - 1,
 		NextEpoch:               nextEpoch,
@@ -168,6 +174,16 @@ func getEpochPageData(epoch uint64) *models.EpochPageData {
 		}
 	}
 	pageData.BlockCount = uint64(blockCount)
+
+	if pageCacheKey != "" {
+		var cacheTimeout time.Duration
+		if pageData.Finalized {
+			cacheTimeout = 30 * time.Minute
+		} else {
+			cacheTimeout = 12 * time.Second
+		}
+		services.GlobalBeaconService.SetFrontendCache(pageCacheKey, pageData, cacheTimeout)
+	}
 
 	return pageData
 }

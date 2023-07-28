@@ -26,10 +26,7 @@ func Index(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/html")
 	data := InitPageData(w, r, "index", "", "", indexTemplateFiles)
-	pageData := getIndexPageData()
-
-	logrus.Printf("index page called")
-	data.Data = pageData
+	data.Data = getIndexPageData()
 
 	if handleTemplateError(w, r, "index.go", "Index", "", indexTemplate.ExecuteTemplate(w, "layout", data)) != nil {
 		return // an error has occurred and was processed
@@ -38,6 +35,12 @@ func Index(w http.ResponseWriter, r *http.Request) {
 
 func getIndexPageData() *models.IndexPageData {
 	pageData := &models.IndexPageData{}
+	pageCacheKey := fmt.Sprintf("index")
+	if services.GlobalBeaconService.GetFrontendCache(pageCacheKey, pageData) == nil {
+		logrus.Printf("index page served from cache")
+		return pageData
+	}
+	logrus.Printf("index page called")
 
 	now := time.Now()
 	currentEpoch := utils.TimeToEpoch(now)
@@ -104,5 +107,8 @@ func getIndexPageData() *models.IndexPageData {
 	}
 	pageData.RecentBlockCount = uint64(len(pageData.RecentBlocks))
 
+	if pageCacheKey != "" {
+		services.GlobalBeaconService.SetFrontendCache(pageCacheKey, pageData, 12*time.Second)
+	}
 	return pageData
 }

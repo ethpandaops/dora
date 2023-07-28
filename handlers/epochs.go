@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"math"
 	"net/http"
 	"strconv"
@@ -34,10 +35,7 @@ func Epochs(w http.ResponseWriter, r *http.Request) {
 	if urlArgs.Has("count") {
 		pageSize, _ = strconv.ParseUint(urlArgs.Get("count"), 10, 64)
 	}
-	pageData := getEpochsPageData(firstEpoch, pageSize)
-
-	logrus.Printf("epochs page called")
-	data.Data = pageData
+	data.Data = getEpochsPageData(firstEpoch, pageSize)
 
 	if handleTemplateError(w, r, "epochs.go", "Epochs", "", pageTemplate.ExecuteTemplate(w, "layout", data)) != nil {
 		return // an error has occurred and was processed
@@ -46,6 +44,12 @@ func Epochs(w http.ResponseWriter, r *http.Request) {
 
 func getEpochsPageData(firstEpoch uint64, pageSize uint64) *models.EpochsPageData {
 	pageData := &models.EpochsPageData{}
+	pageCacheKey := fmt.Sprintf("epochs:%v:%v", firstEpoch, pageSize)
+	if services.GlobalBeaconService.GetFrontendCache(pageCacheKey, pageData) == nil {
+		logrus.Printf("epochs page served from cache: %v:%v", firstEpoch, pageSize)
+		return pageData
+	}
+	logrus.Printf("epochs page called: %v:%v", firstEpoch, pageSize)
 
 	now := time.Now()
 	currentEpoch := utils.TimeToEpoch(now)
@@ -128,6 +132,16 @@ func getEpochsPageData(firstEpoch uint64, pageSize uint64) *models.EpochsPageDat
 	pageData.EpochCount = uint64(epochCount)
 	pageData.FirstEpoch = firstEpoch
 	pageData.LastEpoch = firstEpoch - pageData.EpochCount + 1
+
+	if pageCacheKey != "" {
+		var cacheTimeout time.Duration
+		if firstEpoch+2 < uint64(currentEpoch) {
+			cacheTimeout = 10 * time.Minute
+		} else {
+			cacheTimeout = 12 * time.Second
+		}
+		services.GlobalBeaconService.SetFrontendCache(pageCacheKey, pageData, cacheTimeout)
+	}
 
 	return pageData
 }

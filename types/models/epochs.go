@@ -11,16 +11,16 @@ type EpochsPageData struct {
 	FirstEpoch uint64
 	LastEpoch  uint64
 
-	IsDefaultPage    bool
-	TotalPages       uint64
-	PageSize         uint64
-	CurrentPageIndex uint64
-	CurrentPageEpoch uint64
-	PrevPageIndex    uint64
-	PrevPageEpoch    uint64
-	NextPageIndex    uint64
-	NextPageEpoch    uint64
-	LastPageEpoch    uint64
+	IsDefaultPage    bool   `json:"default_page"`
+	TotalPages       uint64 `json:"total_pages"`
+	PageSize         uint64 `json:"page_size"`
+	CurrentPageIndex uint64 `json:"page_index"`
+	CurrentPageEpoch uint64 `json:"page_epoch"`
+	PrevPageIndex    uint64 `json:"prev_page_index"`
+	PrevPageEpoch    uint64 `json:"prev_page_epoch"`
+	NextPageIndex    uint64 `json:"next_page_index"`
+	NextPageEpoch    uint64 `json:"next_page_epoch"`
+	LastPageEpoch    uint64 `json:"last_page_epoch"`
 }
 
 type EpochsPageDataEpoch struct {

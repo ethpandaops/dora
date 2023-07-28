@@ -16,7 +16,7 @@ import (
 
 type BeaconService struct {
 	rpcClient      *rpc.BeaconClient
-	tieredCache    *cache.TieredCache
+	frontendCache  *cache.TieredCache
 	indexer        *indexer.Indexer
 	validatorNames *ValidatorNames
 }
@@ -34,8 +34,8 @@ func StartBeaconService() error {
 		return err
 	}
 
-	cachePrefix := fmt.Sprintf("%srpc-", utils.Config.BeaconApi.RedisCachePrefix)
-	tieredCache, err := cache.NewTieredCache(utils.Config.BeaconApi.LocalCacheSize, utils.Config.BeaconApi.RedisCacheAddr, cachePrefix)
+	cachePrefix := fmt.Sprintf("%sgui-", utils.Config.BeaconApi.RedisCachePrefix)
+	frontendCache, err := cache.NewTieredCache(utils.Config.BeaconApi.LocalCacheSize, utils.Config.BeaconApi.RedisCacheAddr, cachePrefix)
 	if err != nil {
 		return err
 	}
@@ -59,11 +59,20 @@ func StartBeaconService() error {
 
 	GlobalBeaconService = &BeaconService{
 		rpcClient:      rpcClient,
-		tieredCache:    tieredCache,
+		frontendCache:  frontendCache,
 		indexer:        indexer,
 		validatorNames: validatorNames,
 	}
 	return nil
+}
+
+func (bs *BeaconService) GetFrontendCache(pageKey string, returnValue interface{}) error {
+	_, err := bs.frontendCache.Get(pageKey, returnValue)
+	return err
+}
+
+func (bs *BeaconService) SetFrontendCache(pageKey string, value interface{}, timeout time.Duration) error {
+	return bs.frontendCache.Set(pageKey, value, timeout)
 }
 
 func (bs *BeaconService) GetValidatorName(index uint64) string {

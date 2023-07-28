@@ -84,6 +84,18 @@ func (cache *RedisCache) GetBool(ctx context.Context, key string) (bool, error) 
 	return returnValue, nil
 }
 
+func (cache *RedisCache) SetBytes(ctx context.Context, key string, value []byte, expiration time.Duration) error {
+	return cache.redisRemoteCache.Set(ctx, fmt.Sprintf("%s%s", cache.keyPrefix, key), value, expiration).Err()
+}
+
+func (cache *RedisCache) GetBytes(ctx context.Context, key string) ([]byte, error) {
+	value, err := cache.redisRemoteCache.Get(ctx, fmt.Sprintf("%s%s", cache.keyPrefix, key)).Result()
+	if err != nil {
+		return nil, err
+	}
+	return []byte(value), nil
+}
+
 func (cache *RedisCache) Set(ctx context.Context, key string, value interface{}, expiration time.Duration) error {
 	valueMarshal, err := json.Marshal(value)
 	if err != nil {

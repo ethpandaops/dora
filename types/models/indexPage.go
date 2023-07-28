@@ -6,16 +6,16 @@ import (
 
 // IndexPageData is a struct to hold info for the main web page
 type IndexPageData struct {
-	NetworkName           string `json:"networkName"`
-	DepositContract       string `json:"depositContract"`
-	ShowSyncingMessage    bool
+	NetworkName           string                 `json:"networkName"`
+	DepositContract       string                 `json:"depositContract"`
+	ShowSyncingMessage    bool                   `json:"show_sync_message"`
 	CurrentEpoch          uint64                 `json:"current_epoch"`
 	CurrentFinalizedEpoch uint64                 `json:"current_finalized_epoch"`
 	CurrentSlot           uint64                 `json:"current_slot"`
 	RecentBlocks          []*IndexPageDataBlocks `json:"recent_blocks"`
-	RecentBlockCount      uint64
+	RecentBlockCount      uint64                 `json:"recent_block_count"`
 	RecentEpochs          []*IndexPageDataEpochs `json:"recent_epochs"`
-	RecentEpochCount      uint64
+	RecentEpochCount      uint64                 `json:"recent_epoch_count"`
 }
 
 type IndexPageDataEpochs struct {
