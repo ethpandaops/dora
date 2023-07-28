@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"errors"
+	"fmt"
 	"io/fs"
 	"net/http"
 	"path"
@@ -47,18 +48,25 @@ func (cfs *customFileServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleHTTPError(err error, handler func(http.ResponseWriter, *http.Request), w http.ResponseWriter, r *http.Request) {
+	// If error is 404, use custom handler
+	if errors.Is(err, fs.ErrNotExist) {
+		handler(w, r)
+		return
+	}
 	// otherwise serve http error
 	if errors.Is(err, fs.ErrPermission) {
 		http.Error(w, "403 Forbidden", http.StatusForbidden)
 		return
 	}
 	// Default:
+	fmt.Printf("Error: %v\n", err)
 	http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
 }
 
 func NotFound(w http.ResponseWriter, r *http.Request) {
-	templateFiles := append(layoutTemplateFiles, "404.html")
+	templateFiles := append(layoutTemplateFiles, "_layout/404.html")
 	notFoundTemplate := templates.GetTemplate(templateFiles...)
+	fmt.Printf("Error page\n")
 
 	w.Header().Set("Content-Type", "text/html")
 	w.WriteHeader(http.StatusNotFound)
