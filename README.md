@@ -51,6 +51,11 @@ First Version TODO:
   * [x] Update Slot index in DB
   * [x] Update Epoch index in DB
   * [x] Synchronization (index older epochs)
+* Packaging & Release
+  * [x] Add license info
+  * [ ] Add documentation (setup & configuration)
+  * [ ] Docker image
+  * [ ] Github build & release actions
 
 Advanced TODO (Things that might be worth adding after the first version is ready)
 
