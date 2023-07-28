@@ -128,10 +128,10 @@ func Slot(w http.ResponseWriter, r *http.Request) {
 			pageData.ProposerName = services.GlobalBeaconService.GetValidatorName(pageData.Proposer)
 		}
 	} else {
-		if blockData.Header.Data.Canonical {
-			pageData.Status = uint16(models.SlotStatusFound)
-		} else {
+		if blockData.Orphaned {
 			pageData.Status = uint16(models.SlotStatusOrphaned)
+		} else {
+			pageData.Status = uint16(models.SlotStatusFound)
 		}
 		pageData.Proposer = uint64(blockData.Block.Data.Message.ProposerIndex)
 		pageData.ProposerName = services.GlobalBeaconService.GetValidatorName(pageData.Proposer)

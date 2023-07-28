@@ -192,9 +192,10 @@ func (bs *BeaconService) GetOrphanedBlock(blockroot []byte) *rpctypes.CombinedBl
 	}
 
 	return &rpctypes.CombinedBlockResponse{
-		Header: blockInfo.Header,
-		Block:  blockInfo.Block,
-		Blobs:  nil,
+		Header:   blockInfo.Header,
+		Block:    blockInfo.Block,
+		Blobs:    nil,
+		Orphaned: true,
 	}
 }
 

@@ -42,6 +42,17 @@ func Search(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	graffiti := &models.SearchAheadGraffitiResult{}
+	err = db.ReaderDb.Select(graffiti, `
+		SELECT graffiti
+		FROM blocks
+		WHERE graffiti_text ILIKE LOWER($1)
+		LIMIT 1`, "%"+searchQuery+"%")
+	if err == nil {
+		http.Redirect(w, r, "/slots?q="+hashQuery, http.StatusMovedPermanently)
+		return
+	}
+
 	w.Header().Set("Content-Type", "text/html")
 	data := InitPageData(w, r, "search", "/search", fmt.Sprintf("Search: %v", searchQuery), notfoundTemplateFiles)
 	if handleTemplateError(w, r, "slot.go", "Slot", "blockSlot", templates.GetTemplate(notfoundTemplateFiles...).ExecuteTemplate(w, "layout", data)) != nil {
