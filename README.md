@@ -7,6 +7,9 @@ A Beaconchain explorer is a tool that allows users to view and interact with the
 
 This "lightweight" explorer loads most of the information directly from an underlying standard beacon node api, which makes it a lot easier and cheaper to run (no 3rd party proprietary database like bigtables required).
 
+# Setup & Configuration
+Read through the [wiki](https://github.com/pk910/light-beaconchain-explorer/wiki) for setup & configuration instructions.
+
 ## Dependencies
 
 This explorer requires a postgres database.
