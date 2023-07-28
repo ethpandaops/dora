@@ -44,8 +44,10 @@ header.header-bar {
 header .explorer-brand {
   display: inline-block;
   position: relative;
-  width: calc(100% - 60px);
-  height: 30px;
+}
+
+header .explorer-brand-spacer {
+  visibility: hidden;
 }
 
 header .explorer-brand-container {
@@ -53,7 +55,7 @@ header .explorer-brand-container {
   z-index: 100;
   width: 100%;
   height: 60px;
-  top: -10px;
+  top: -18px;
   display: flex;
   flex-direction: column;
   justify-content: center;
