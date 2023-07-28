@@ -99,9 +99,9 @@ jobs:
           ### Release Artifacts
           | Release File  | Description |
           | ------------- | ------------- |
-          | explorer_windows_amd64.exe | explorer executable for windows (64bit) |
-          | explorer_linux_amd64 | explorer executable for linux (64bit) |
-          | explorer_darwin_amd64 | explorer executable for macos (64bit) |
+          | [explorer_windows_amd64.exe](https://github.com/pk910/light-beaconchain-explorer/releases/download/snapshot/explorer_windows_amd64.exe) | explorer executable for windows (64bit) |
+          | [explorer_linux_amd64](https://github.com/pk910/light-beaconchain-explorer/releases/download/snapshot/explorer_linux_amd64) | explorer executable for linux (64bit) |
+          | [explorer_darwin_amd64](https://github.com/pk910/light-beaconchain-explorer/releases/download/snapshot/explorer_darwin_amd64) | explorer executable for macos (64bit) |
       env:
         GITHUB_TOKEN: ${{ github.token }}
 

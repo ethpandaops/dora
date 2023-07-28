@@ -5,12 +5,12 @@ WORKDIR /src
 RUN go mod download
 ADD . /src
 ARG target=linux
-RUN make -B $target
+RUN make $target
 
 # final stage
-FROM alpine:latest
+FROM debian:stable-slim
 WORKDIR /app
-COPY --from=build-env /src/bin /app/
+COPY --from=build-env /src/bin/explorer_linux_amd64 /app
 COPY --from=build-env /src/config /app/config
 EXPOSE 8080
 ENTRYPOINT ["./explorer_linux_amd64"]
