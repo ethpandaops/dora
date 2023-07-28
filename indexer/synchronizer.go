@@ -97,7 +97,7 @@ func (sync *synchronizerState) runSync() {
 			synclogger.Warnf("Synchronisation of epoch %v failed", syncEpoch)
 		}
 
-		if sync.checkKillChan(time.Duration(utils.Config.BeaconApi.SyncEpochCooldown) * time.Second) {
+		if sync.checkKillChan(time.Duration(utils.Config.Indexer.SyncEpochCooldown) * time.Second) {
 			break
 		}
 	}

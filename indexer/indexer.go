@@ -64,10 +64,24 @@ type EpochValidators struct {
 	ValidatorBalances map[uint64]uint64
 }
 
-func NewIndexer(rpcClient *rpc.BeaconClient, prepopulateEpochs uint16, inMemoryEpochs uint16, epochProcessingDelay uint16, writeDb bool) (*Indexer, error) {
+func NewIndexer(rpcClient *rpc.BeaconClient) (*Indexer, error) {
+	inMemoryEpochs := utils.Config.Indexer.InMemoryEpochs
+	if inMemoryEpochs < 2 {
+		inMemoryEpochs = 2
+	}
+	epochProcessingDelay := utils.Config.Indexer.EpochProcessingDelay
+	if epochProcessingDelay < 2 {
+		epochProcessingDelay = 2
+	} else if epochProcessingDelay > inMemoryEpochs {
+		inMemoryEpochs = epochProcessingDelay
+	}
+	prepopulateEpochs := utils.Config.Indexer.PrepopulateEpochs
+	if prepopulateEpochs > inMemoryEpochs {
+		prepopulateEpochs = inMemoryEpochs
+	}
 	return &Indexer{
 		rpcClient:            rpcClient,
-		writeDb:              writeDb,
+		writeDb:              !utils.Config.Indexer.DisableIndexWriter,
 		prepopulateEpochs:    prepopulateEpochs,
 		inMemoryEpochs:       inMemoryEpochs,
 		epochProcessingDelay: epochProcessingDelay,

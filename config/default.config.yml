@@ -33,11 +33,12 @@ beaconapi:
   # local cache for RPC calls
   localCacheSize: 100 # 100MB
 
-  # remote cache
+  # remote cache for RPC calls & page models
   redisCacheAddr: ""
   redisCachePrefix: ""
 
-  # indexer keeps track of the latest epochs in memory.
+# indexer keeps track of the latest epochs in memory.
+indexer:
   # number of epochs to load on startup
   prepopulateEpochs: 2
 

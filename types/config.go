@@ -41,13 +41,15 @@ type Config struct {
 		AssignmentsCacheSize int    `yaml:"assignmentsCacheSize" envconfig:"BEACONAPI_ASSIGNMENTS_CACHE_SIZE"`
 		RedisCacheAddr       string `yaml:"redisCacheAddr" envconfig:"BEACONAPI_REDIS_CACHE_ADDR"`
 		RedisCachePrefix     string `yaml:"redisCachePrefix" envconfig:"BEACONAPI_REDIS_CACHE_PREFIX"`
-
-		PrepopulateEpochs    uint16 `yaml:"prepopulateEpochs" envconfig:"BEACONAPI_PREPOPULATE_EPOCHS"`
-		InMemoryEpochs       uint16 `yaml:"inMemoryEpochs" envconfig:"BEACONAPI_IN_MEMORY_EPOCHS"`
-		EpochProcessingDelay uint16 `yaml:"epochProcessingDelay" envconfig:"BEACONAPI_EPOCH_PROCESSING_DELAY"`
-		DisableIndexWriter   bool   `yaml:"disableIndexWriter" envconfig:"BEACONAPI_DISABLE_INDEX_WRITER"`
-		SyncEpochCooldown    uint   `yaml:"syncEpochCooldown" envconfig:"BEACONAPI_SYNC_EPOCH_COOLDOWN"`
 	} `yaml:"beaconapi"`
+
+	Indexer struct {
+		PrepopulateEpochs    uint16 `yaml:"prepopulateEpochs" envconfig:"INDEXER_PREPOPULATE_EPOCHS"`
+		InMemoryEpochs       uint16 `yaml:"inMemoryEpochs" envconfig:"INDEXER_IN_MEMORY_EPOCHS"`
+		EpochProcessingDelay uint16 `yaml:"epochProcessingDelay" envconfig:"INDEXER_EPOCH_PROCESSING_DELAY"`
+		DisableIndexWriter   bool   `yaml:"disableIndexWriter" envconfig:"INDEXER_DISABLE_INDEX_WRITER"`
+		SyncEpochCooldown    uint   `yaml:"syncEpochCooldown" envconfig:"INDEXER_SYNC_EPOCH_COOLDOWN"`
+	} `yaml:"indexer"`
 
 	ReaderDatabase struct {
 		Username     string `yaml:"user" envconfig:"READER_DB_USERNAME"`
