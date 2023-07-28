@@ -127,7 +127,7 @@ func getIndexPageData() *models.IndexPageData {
 	}
 
 	pageData.NetworkForks = make([]*models.IndexPageDataForks, 0)
-	if utils.Config.Chain.Config.AltairForkEpoch < uint64(18446744073709551615) {
+	if utils.Config.Chain.Config.AltairForkEpoch < uint64(18446744073709551615) && utils.Config.Chain.Config.AltairForkVersion != "" {
 		pageData.NetworkForks = append(pageData.NetworkForks, &models.IndexPageDataForks{
 			Name:    "Altair",
 			Epoch:   utils.Config.Chain.Config.AltairForkEpoch,
@@ -135,7 +135,7 @@ func getIndexPageData() *models.IndexPageData {
 			Active:  uint64(currentEpoch) >= utils.Config.Chain.Config.AltairForkEpoch,
 		})
 	}
-	if utils.Config.Chain.Config.BellatrixForkEpoch < uint64(18446744073709551615) {
+	if utils.Config.Chain.Config.BellatrixForkEpoch < uint64(18446744073709551615) && utils.Config.Chain.Config.BellatrixForkVersion != "" {
 		pageData.NetworkForks = append(pageData.NetworkForks, &models.IndexPageDataForks{
 			Name:    "Bellatrix",
 			Epoch:   utils.Config.Chain.Config.BellatrixForkEpoch,
@@ -143,7 +143,7 @@ func getIndexPageData() *models.IndexPageData {
 			Active:  uint64(currentEpoch) >= utils.Config.Chain.Config.BellatrixForkEpoch,
 		})
 	}
-	if utils.Config.Chain.Config.CappellaForkEpoch < uint64(18446744073709551615) {
+	if utils.Config.Chain.Config.CappellaForkEpoch < uint64(18446744073709551615) && utils.Config.Chain.Config.CappellaForkVersion != "" {
 		pageData.NetworkForks = append(pageData.NetworkForks, &models.IndexPageDataForks{
 			Name:    "Cappella",
 			Epoch:   utils.Config.Chain.Config.CappellaForkEpoch,
@@ -151,7 +151,7 @@ func getIndexPageData() *models.IndexPageData {
 			Active:  uint64(currentEpoch) >= utils.Config.Chain.Config.CappellaForkEpoch,
 		})
 	}
-	if utils.Config.Chain.Config.DenebForkEpoch < uint64(18446744073709551615) {
+	if utils.Config.Chain.Config.DenebForkEpoch < uint64(18446744073709551615) && utils.Config.Chain.Config.DenebForkVersion != "" {
 		pageData.NetworkForks = append(pageData.NetworkForks, &models.IndexPageDataForks{
 			Name:    "Deneb",
 			Epoch:   utils.Config.Chain.Config.DenebForkEpoch,
