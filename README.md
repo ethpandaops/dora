@@ -37,7 +37,7 @@ First Version TODO:
   * [x] Get Epoch assignments (proposer, attester & sync committee duties)
     * [x] Simple cache for epoch duties
 * Database
-  * [ ] Schema initialization / upgrade
+  * [x] Schema initialization / upgrade
   * [x] Table: blocks (Block index for search & slot overview)
   * [x] Table: epochs (Epoch index for startpage & epoch overview)
   * [x] Table: explorer_state (simple key-value table to track of various states)

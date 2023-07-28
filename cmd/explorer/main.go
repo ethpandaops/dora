@@ -38,6 +38,10 @@ func main() {
 	}
 
 	db.MustInitDB((*types.DatabaseConfig)(&cfg.WriterDatabase), (*types.DatabaseConfig)(&cfg.ReaderDatabase))
+	err = db.ApplyEmbeddedDbSchema(-2)
+	if err != nil {
+		logger.Fatalf("error initializing db schema: %v", err)
+	}
 	err = services.StartBeaconService()
 	if err != nil {
 		logger.Fatalf("error starting beacon service: %v", err)
