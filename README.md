@@ -58,53 +58,12 @@ stop & remove container:
 ## Background
 https://github.com/ethpandaops/tooling-wishlist/blob/master/tools/lightweight-beaconchain-explorer.md
 
-## TODO
+## Open Points / Ideas
 
-First Version TODO:
+Things that might be worth adding at some time
 
-* Explorer Pages (UI)
-  * [x] Layout polishing
-  * [x] Startpage
-    * [x] Add Network Status (number of validators / deposit & exit queue / ...?)
-  * [x] Epoch Overview (`/epochs`)
-  * [x] Epoch details (`/epoch/{epoch}`)
-  * [x] Slots Overview (`/slots`)
-  * [x] Slot details (`/slot/{slot_or_root}`)
-    * [x] Overview, Attestations, Slashings, Deposits, BLSChanges, Withdrawals, Voluntary Exits
-    * [x] Blob Sidecars
-    * [x] Enhance view controls (Hex/UTF8 Grafitti, Local/UTC Time, Copy Buttons etc.)
-    * [x] Load orphaned blocks from db
-  * [x] Search (Block Root, Epoch Number, Slot Number, Grafitti)
-    * [x] Type-Ahead search
-* RPC Client / Caching
-  * [x] Get Block Header by slot / block root
-  * [x] Get Block Body by block root
-  * [x] Get Epoch assignments (proposer, attester & sync committee duties)
-    * [x] Simple cache for epoch duties
-* Database
-  * [x] Schema initialization / upgrade
-  * [x] Table: blocks (Block index for search & slot overview)
-  * [x] Table: epochs (Epoch index for startpage & epoch overview)
-  * [x] Table: explorer_state (simple key-value table to track of various states)
-  * [x] Table: slot_assignments (Slot duties for search and block lists)
-* Indexer
-  * [x] Keep track of current & last epoch in memory
-  * [x] Aggregate Votes
-  * [x] Check for chain reorgs and track orphaned blocks
-    * [x] Save orphaned blocks in db (header & body)
-    * [ ] Handle large chain reorgs with >32 slots (needs re-indexing of affected epochs)
-  * [x] Update Slot index in DB
-  * [x] Update Epoch index in DB
-  * [x] Synchronization (index older epochs)
-* Packaging & Release
-  * [x] Add license info
-  * [ ] Add documentation (setup & configuration)
-  * [x] Docker image
-  * [x] Github build & release actions
-
-Advanced TODO (Things that might be worth adding after the first version is ready)
-
-* Validator Overview & Details
+* Validator Overview & Details\
+  The current validator set is actually already maintained in memory. So it should be easy to add pages for basic validator related stuff.
   * [ ] Page: Validators List (`/validators`)
   * [ ] Page: Validator Details (`/validator/{validator_index}`)
     * [ ] Rough overview with status (activated, slashed, ...) & current balance
