@@ -87,26 +87,12 @@ func ReadConfig(cfg *types.Config, path string) error {
 		case "sepolia":
 			cfg.Chain.GenesisTimestamp = 1655733600
 		default:
-			return fmt.Errorf("tried to set known genesis-timestamp, but unknown chain-name")
-		}
-	}
-
-	if cfg.Chain.GenesisValidatorsRoot == "" {
-		switch cfg.Chain.Name {
-		case "mainnet":
-			cfg.Chain.GenesisValidatorsRoot = "0x4b363db94e286120d76eb905340fdd4e54bfe9f06bf33ff6cf5ad27f511bfe95"
-		case "prater":
-			cfg.Chain.GenesisValidatorsRoot = "0x043db0d9a83813551ee2f33450d23797757d430911a9320530ad8a0eabc43efb"
-		case "sepolia":
-			cfg.Chain.GenesisValidatorsRoot = "0xd8ea171f3c94aea21ebc42a1ed61052acf3f9209c00e4efbaaddac09ed9b8078"
-		default:
-			return fmt.Errorf("tried to set known genesis-validators-root, but unknown chain-name")
+			cfg.Chain.GenesisTimestamp = uint64(cfg.Chain.Config.MinGenesisTime) + cfg.Chain.Config.GenesisDelay
 		}
 	}
 
 	log.WithFields(log.Fields{
 		"genesisTimestamp":       cfg.Chain.GenesisTimestamp,
-		"genesisValidatorsRoot":  cfg.Chain.GenesisValidatorsRoot,
 		"configName":             cfg.Chain.Config.ConfigName,
 		"depositChainID":         cfg.Chain.Config.DepositChainID,
 		"depositNetworkID":       cfg.Chain.Config.DepositNetworkID,

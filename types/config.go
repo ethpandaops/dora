@@ -10,12 +10,11 @@ type Config struct {
 	} `yaml:"server"`
 
 	Chain struct {
-		Name                  string `yaml:"name" envconfig:"CHAIN_NAME"`
-		DisplayName           string `yaml:"displayName" envconfig:"CHAIN_DISPLAY_NAME"`
-		GenesisTimestamp      uint64 `yaml:"genesisTimestamp" envconfig:"CHAIN_GENESIS_TIMESTAMP"`
-		GenesisValidatorsRoot string `yaml:"genesisValidatorsRoot" envconfig:"CHAIN_GENESIS_VALIDATORS_ROOT"`
-		ConfigPath            string `yaml:"configPath" envconfig:"CHAIN_CONFIG_PATH"`
-		Config                ChainConfig
+		Name             string `yaml:"name" envconfig:"CHAIN_NAME"`
+		DisplayName      string `yaml:"displayName" envconfig:"CHAIN_DISPLAY_NAME"`
+		GenesisTimestamp uint64 `yaml:"genesisTimestamp" envconfig:"CHAIN_GENESIS_TIMESTAMP"`
+		ConfigPath       string `yaml:"configPath" envconfig:"CHAIN_CONFIG_PATH"`
+		Config           ChainConfig
 	} `yaml:"chain"`
 
 	Frontend struct {

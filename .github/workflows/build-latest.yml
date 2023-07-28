@@ -94,7 +94,7 @@ jobs:
           ## Latest automatically built executables. (Unstable development snapshot)
           Built from master branch (commit: ${{ github.sha }})
 
-          Please read the [Operator Wiki](https://github.com/pk910/light-beaconchain-explorer/wiki/Operator-Wiki) for setup / configuration instructions.
+          Please read the [wiki](https://github.com/pk910/light-beaconchain-explorer/wiki) for setup / configuration instructions.
 
           ### Release Artifacts
           | Release File  | Description |
