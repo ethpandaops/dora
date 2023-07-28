@@ -90,6 +90,9 @@ func getIndexPageData() *models.IndexPageData {
 		CurrentScheduledCount: utils.Config.Chain.Config.SlotsPerEpoch - currentSlotIndex,
 		CurrentEpochProgress:  float64(100) * float64(currentSlotIndex) / float64(utils.Config.Chain.Config.SlotsPerEpoch),
 	}
+	if utils.Config.Chain.DisplayName != "" {
+		pageData.NetworkName = utils.Config.Chain.DisplayName
+	}
 
 	currentValidatorSet := services.GlobalBeaconService.GetCachedValidatorSet()
 	if currentValidatorSet != nil {

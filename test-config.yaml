@@ -6,6 +6,7 @@ chain:
   configPath: "config.yaml"
   #genesisTimestamp: 1688126460
   #configPath: "config-devnet7.yaml"
+  displayName: "Ephemery Iteration 86"
 
 # HTTP Server configuration
 server:
