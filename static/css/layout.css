@@ -44,7 +44,7 @@ header.header-bar {
 header .explorer-brand {
   display: inline-block;
   position: relative;
-  width: 300px;
+  width: calc(100% - 60px);
   height: 30px;
 }
 
@@ -216,6 +216,10 @@ header nav .navbar-toggler.toggler-wrapper > * {
   .table-ellipsis table tbody td {
     max-width: 100px;
   }
+}
+
+.table.table-nobr tbody td {
+  white-space: nowrap;
 }
 
 span.validator-label {
