@@ -1,0 +1,154 @@
+
+name: Build latest master version
+
+on:
+  push:
+    branches:
+      - 'master'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+
+  build_binaries:
+    name: Build Binaries
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    # setup global dependencies
+    - name: Set up Go
+      uses: actions/setup-go@v3
+      with:
+        go-version: 1.20.x
+
+    # setup project dependencies
+    - name: Get dependencies
+      run: |
+        go get -v -t -d ./...
+
+    # build binaries
+    - run: |
+        make build
+
+    # (re)create snapshot binary release
+    - name: Update snapshot tag & remove previous snapshot release
+      uses: actions/github-script@v3
+      with:
+        github-token: ${{secrets.GITHUB_TOKEN}}          
+        script: |
+          try {
+            var snapshotTag = "snapshot";
+            var snapshotRelease = await github.repos.getReleaseByTag({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag: snapshotTag
+            });
+            if(snapshotRelease && snapshotRelease.data && snapshotRelease.data.tag_name == snapshotTag) {
+              console.log("delete previous snapshot release");
+              await github.repos.deleteRelease({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                release_id: snapshotRelease.data.id
+              });
+            }
+
+            var snapshotRef = await github.git.getRef({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: "tags/" + snapshotTag
+            });
+            if(snapshotRef && snapshotRef.data && snapshotRef.data.ref) {
+              if(snapshotRef.data.object.sha !== context.sha) {
+                await github.git.updateRef({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  ref: "tags/" + snapshotTag,
+                  sha: context.sha,
+                });
+              }
+            }
+            else {
+              await github.git.createRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: "tags/" + snapshotTag,
+                sha: context.sha,
+              });
+            }
+          } catch (e) {
+            console.log(e)
+          }
+    - name: Create snapshot release
+      uses: actions/create-release@v1
+      id: create_release
+      with:
+        draft: false
+        prerelease: true
+        release_name: "Dev Snapshot"
+        tag_name: "snapshot"
+        body: |
+          ## Latest automatically built executables. (Unstable development snapshot)
+          Built from master branch (commit: ${{ github.sha }})
+
+          Please read the [Operator Wiki](https://github.com/pk910/light-beaconchain-explorer/wiki/Operator-Wiki) for setup / configuration instructions.
+
+          ### Release Artifacts
+          | Release File  | Description |
+          | ------------- | ------------- |
+          | explorer_windows_amd64.exe | explorer executable for windows (64bit) |
+          | explorer_linux_amd64 | explorer executable for linux (64bit) |
+          | explorer_darwin_amd64 | explorer executable for macos (64bit) |
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+
+    # upload release artifacts
+    - name: "Upload artifact: explorer_windows_amd64.exe"
+      uses: actions/upload-release-asset@v1
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./bin/explorer_windows_amd64.exe
+        asset_name: explorer_windows_amd64.exe
+        asset_content_type: application/octet-stream
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+    - name: "Upload artifact: explorer_linux_amd64"
+      uses: actions/upload-release-asset@v1
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./bin/explorer_linux_amd64
+        asset_name: explorer_linux_amd64
+        asset_content_type: application/octet-stream
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+    - name: "Upload artifact: explorer_darwin_amd64"
+      uses: actions/upload-release-asset@v1
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./bin/explorer_darwin_amd64
+        asset_name: explorer_darwin_amd64
+        asset_content_type: application/octet-stream
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+    
+  build_docker:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Login to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Build unstable docker image
+        run: docker build . --file Dockerfile --tag pk910/light-beaconchain-explorer:unstable
+      - name: Push unstable docker image
+        run: docker push pk910/light-beaconchain-explorer:unstable
