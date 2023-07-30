@@ -20,7 +20,7 @@ Things that might be worth adding at some time
 
 * Validator Overview & Details\
   The current validator set is actually already maintained in memory. So it should be easy to add pages for basic validator related stuff.
-  * [ ] Page: Validators List (`/validators`)
+  * [x] Page: Validators List (`/validators`)
   * [ ] Page: Validator Details (`/validator/{validator_index}`)
     * [ ] Rough overview with status (activated, slashed, ...) & current balance
     * [ ] Recent Blocks (from db) 
