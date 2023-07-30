@@ -305,6 +305,13 @@ func formatValidator(index uint64, name string, icon string) template.HTML {
 	return template.HTML(fmt.Sprintf("<span class=\"validator-label validator-index\"><i class=\"fas %v\"></i> %v</span>", icon, index))
 }
 
+func FormatValidatorWithIndex(index uint64, name string) template.HTML {
+	if name != "" {
+		return template.HTML(fmt.Sprintf("<span class=\"validator-label validator-name\">%v (%v)</span>", html.EscapeString(name), index))
+	}
+	return template.HTML(fmt.Sprintf("<span class=\"validator-label validator-index\">%v</span>", index))
+}
+
 func FormatRecentTimeShort(ts time.Time) template.HTML {
 	duration := ts.Sub(time.Now())
 	var timeStr string

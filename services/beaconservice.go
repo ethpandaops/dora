@@ -484,3 +484,68 @@ func (bs *BeaconService) GetDbBlocksByGraffiti(graffiti string, pageIdx uint64, 
 
 	return resBlocks
 }
+
+func (bs *BeaconService) GetValidatorActivity(epochLimit uint64, skipCurrent bool) (map[uint64]uint8, uint64) {
+	activityMap := map[uint64]uint8{}
+
+	idxHeadSlot := bs.indexer.GetHeadSlot()
+	idxHeadEpoch := utils.EpochOfSlot(idxHeadSlot)
+	if skipCurrent && idxHeadEpoch > 0 {
+		idxHeadEpoch--
+		idxHeadSlot = (idxHeadEpoch * utils.Config.Chain.Config.SlotsPerEpoch) + (utils.Config.Chain.Config.SlotsPerEpoch - 1)
+	}
+	idxMinSlot := bs.indexer.GetLowestCachedSlot()
+	if idxMinSlot < 0 {
+		return activityMap, 0
+	}
+	idxMinEpoch := utils.EpochOfSlot(uint64(idxMinSlot))
+	if idxHeadEpoch-idxMinEpoch < epochLimit {
+		epochLimit = idxHeadEpoch - idxMinEpoch
+	}
+	minSlot := (idxHeadEpoch - epochLimit) * utils.Config.Chain.Config.SlotsPerEpoch
+	votedBitsets := make(map[string][]byte)
+
+	for slotIdx := int64(minSlot); slotIdx >= int64(minSlot); slotIdx-- {
+		slot := uint64(slotIdx)
+		epoch := utils.EpochOfSlot(slot)
+		epochStats := bs.indexer.GetCachedEpochStats(epoch)
+		if epochStats == nil || epochStats.Assignments == nil {
+			continue
+		}
+		blocks := bs.indexer.GetCachedBlocks(slot)
+		if blocks != nil {
+			for bidx := 0; bidx < len(blocks); bidx++ {
+				block := blocks[bidx]
+				if block.Orphaned {
+					continue
+				}
+				for _, att := range block.Block.Data.Message.Body.Attestations {
+					attKey := fmt.Sprintf("%v-%v", uint64(att.Data.Slot), uint64(att.Data.Index))
+					validators := epochStats.Assignments.AttestorAssignments[attKey]
+					votedBitset := votedBitsets[attKey]
+					if validators != nil {
+						for bitIdx, valIdx := range validators {
+							if votedBitset != nil && utils.BitAtVector(votedBitset, bitIdx) {
+								continue
+							}
+							if utils.BitAtVector(att.AggregationBits, bitIdx) {
+								activityMap[valIdx]++
+							}
+						}
+						if votedBitset != nil {
+							// merge bitsets
+							for i := 0; i < len(votedBitset); i++ {
+								votedBitset[i] |= att.AggregationBits[i]
+							}
+						} else {
+							votedBitset = make([]byte, len(att.AggregationBits))
+							copy(votedBitset, att.AggregationBits)
+							votedBitsets[attKey] = att.AggregationBits
+						}
+					}
+				}
+			}
+		}
+	}
+	return activityMap, epochLimit
+}

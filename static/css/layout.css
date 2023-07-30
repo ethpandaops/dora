@@ -267,3 +267,8 @@ span.validator-label {
       border: hidden;
   }
 }
+
+.text-truncate {
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
