@@ -70,12 +70,12 @@
                     <td>
                       {{- $validator.State -}}
                       {{- if $validator.ShowUpcheck }}
-                        {{- if eq $validator.UpcheckState 2 }}
-                          <i class="fas fa-power-off fa-sm text-success"></i>
-                        {{- else if eq $validator.UpcheckState 1 }}
-                          <i class="fas fa-power-off fa-sm text-warning"></i>
+                        {{- if eq $validator.UpcheckActivity $validator.UpcheckMaximum }}
+                          <i class="fas fa-power-off fa-sm text-success" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $validator.UpcheckActivity }}/{{ $validator.UpcheckMaximum }}"></i>
+                        {{- else if gt $validator.UpcheckActivity 0 }}
+                          <i class="fas fa-power-off fa-sm text-warning" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $validator.UpcheckActivity }}/{{ $validator.UpcheckMaximum }}"></i>
                         {{- else -}}
-                          <i class="fas fa-power-off fa-sm text-danger"></i>
+                          <i class="fas fa-power-off fa-sm text-danger" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $validator.UpcheckActivity }}/{{ $validator.UpcheckMaximum }}"></i>
                         {{- end -}}
                       {{- end -}}
                     </td>

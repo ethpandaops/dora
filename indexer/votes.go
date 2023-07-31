@@ -18,6 +18,7 @@ type EpochVotes struct {
 		headVoteAmount   uint64
 		totalVoteAmount  uint64
 	}
+	ActivityMap map[uint64]bool
 }
 
 func aggregateEpochVotes(blockMap map[uint64][]*BlockInfo, epoch uint64, epochStats *EpochStats, targetRoot []byte, currentOnly bool) *EpochVotes {
@@ -28,7 +29,9 @@ func aggregateEpochVotes(blockMap map[uint64][]*BlockInfo, epoch uint64, epochSt
 		lastSlot += utils.Config.Chain.Config.SlotsPerEpoch
 	}
 
-	votes := EpochVotes{}
+	votes := EpochVotes{
+		ActivityMap: map[uint64]bool{},
+	}
 	votedBitsets := make(map[string][]byte)
 
 	for slot := firstSlot; slot <= lastSlot; slot++ {
@@ -59,6 +62,7 @@ func aggregateEpochVotes(blockMap map[uint64][]*BlockInfo, epoch uint64, epochSt
 							}
 							if utils.BitAtVector(voteBitset, bitIdx) {
 								voteAmount += uint64(epochStats.Validators.ValidatorBalances[validatorIdx])
+								votes.ActivityMap[validatorIdx] = true
 							}
 						}
 					}

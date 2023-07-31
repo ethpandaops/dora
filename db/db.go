@@ -358,6 +358,44 @@ func GetBlocksWithGraffiti(graffiti string, firstSlot uint64, offset uint64, lim
 	return blocks
 }
 
+func GetAssignedBlocks(proposer uint64, firstSlot uint64, offset uint64, limit uint32, withOrphaned bool) []*dbtypes.AssignedBlock {
+	blockAssignments := []*dbtypes.AssignedBlock{}
+	orphanedLimit := ""
+	if !withOrphaned {
+		orphanedLimit = "AND NOT orphaned"
+	}
+	var sql strings.Builder
+	fmt.Fprintf(&sql, `SELECT slot_assignments.slot, slot_assignments.proposer`)
+	blockFields := []string{
+		"root", "slot", "parent_root", "state_root", "orphaned", "proposer", "graffiti", "graffiti_text",
+		"attestation_count", "deposit_count", "exit_count", "withdraw_count", "withdraw_amount", "attester_slashing_count",
+		"proposer_slashing_count", "bls_change_count", "eth_transaction_count", "eth_block_number", "eth_block_hash", "sync_participation",
+	}
+	for _, blockField := range blockFields {
+		fmt.Fprintf(&sql, ", blocks.%v AS \"block.%v\"", blockField, blockField)
+	}
+	fmt.Fprintf(&sql, `
+	FROM slot_assignments
+	LEFT JOIN blocks ON blocks.slot = slot_assignments.slot
+	WHERE slot_assignments.proposer = $1 AND slot_assignments.slot < $2 `+orphanedLimit+`
+	ORDER BY slot_assignments.slot DESC
+	LIMIT $3 OFFSET $4
+	`)
+
+	err := ReaderDb.Select(&blockAssignments, sql.String(), proposer, firstSlot, limit, offset)
+	if err != nil {
+		logger.Errorf("Error while fetching blocks: %v", err)
+		return nil
+	}
+	for _, blockAssignment := range blockAssignments {
+		if blockAssignment.Proposer != blockAssignment.Block.Proposer {
+			blockAssignment.Block = nil
+		}
+	}
+
+	return blockAssignments
+}
+
 func GetSlotAssignmentsForSlots(firstSlot uint64, lastSlot uint64) []*dbtypes.SlotAssignment {
 	assignments := []*dbtypes.SlotAssignment{}
 	err := ReaderDb.Select(&assignments, `

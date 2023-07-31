@@ -32,7 +32,8 @@ type ValidatorsPageDataValidator struct {
 	EffectiveBalance    uint64    `json:"eff_balance"`
 	State               string    `json:"state"`
 	ShowUpcheck         bool      `json:"show_upcheck"`
-	UpcheckState        uint8     `json:"upcheck_state"`
+	UpcheckActivity     uint8     `json:"upcheck_act"`
+	UpcheckMaximum      uint8     `json:"upcheck_max"`
 	ShowActivation      bool      `json:"show_activation"`
 	ActivationTs        time.Time `json:"activation_ts"`
 	ActivationEpoch     uint64    `json:"activation_epoch"`

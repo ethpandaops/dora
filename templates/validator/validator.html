@@ -1,7 +1,7 @@
 {{ define "page" }}
   <div class="container mt-2">
     <div class="d-md-flex py-2 justify-content-md-between">
-      <h1 class="h4 mb-1 mb-md-0"><i class="fas fa-table mx-2"></i> Validator xy</h1>
+      <h1 class="h4 mb-1 mb-md-0"><i class="fas fa-table mx-2"></i> Validator {{ formatValidatorWithIndex .Index .Name }}</h1>
       <nav aria-label="breadcrumb">
         <ol class="breadcrumb font-size-1 mb-0" style="padding:0; background-color:transparent;">
           <li class="breadcrumb-item"><a href="/" title="Home">Home</a></li>
@@ -12,16 +12,159 @@
     </div>
 
     <div class="card mt-2">
-      <div id="header-placeholder" style="height:45px;"></div>
       <div class="card-body px-0 py-3">
-        
+
+        <div class="row border-bottom p-2 mx-0">
+          <div class="col-md-2 d-flex" style="flex-direction: column; justify-content: flex-end;">
+            <span data-bs-toggle="tooltip" data-bs-placement="top" title="Validator Lifecycle Status">Status:</span>
+          </div>
+          <div class="col-md-10">
+            <!-- Validator lifecycle -->
+            <div class="validator__lifecycle-container">
+              <div class="validator__lifecycle-content">
+                <div id="lifecycle-deposited" class="validator__lifecycle-node-container validator__lifecycle-deposited {{ if .ShowEligible }}done{{ else }}active{{ end }}">
+                  <div class="validator__lifecycle-node-header">Deposited</div>
+                  <div class="validator__lifecycle-node" data-bs-toggle="tooltip" title="This will turn green when your deposit has been processed by the beacon chain">
+                    <i class="fas fa-check deposit-success"></i>
+                    <i class="fas fa-times fail deposit-fail"></i>
+                    <div class="spinner">
+                      <div class="double-bounce1"></div>
+                      <div class="double-bounce2"></div>
+                    </div>
+                  </div>
+                </div>
+                <div class="validator__lifecycle-progress validator__lifecycle-deposited text-white">
+                  <div class="validator__lifecycle-progress-epoch">
+                    {{ if .ShowEligible }}
+                    <div data-bs-toggle="tooltip" title="The eligible epoch is when your validator is registered by the beacon chain and joins the queue to be activated.">
+                      <a href="/epoch/{{ .EligibleEpoch }}">{{ if eq .EligibleEpoch 0 }}genesis{{ else }}{{ .EligibleEpoch }}{{ end }}</a>
+                    </div>
+                    {{ end }}
+                  </div>
+                </div>
+                <div id="lifecycle-pending" class="validator__lifecycle-node-container validator__lifecycle-pending {{ if .ShowActivation }}{{ if ge .CurrentEpoch .ActivationEpoch }}done{{ else }}active{{ end }}{{ end }}">
+                  <div class="validator__lifecycle-node-container">
+                    <div class="validator__lifecycle-node-header">Pending</div>
+                    <div class="validator__lifecycle-node" data-bs-toggle="tooltip" title="After being processed your validator joins a queue to be activated">
+                      <i class="fas fa-hourglass-half pending-waiting"></i>
+                      <i class="fas fa-check"></i>
+                      <div class="spinner">
+                        <div class="double-bounce1"></div>
+                        <div class="double-bounce2"></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="validator__lifecycle-progress validator__lifecycle-pending">
+                  <div class="validator__lifecycle-progress-epoch">
+                    {{ if .ShowActivation }}
+                      <div data-bs-toggle="tooltip" title="The activation epoch is when your validator becomes active.">
+                        <a href="/epoch/{{ .ActivationEpoch }}">{{ if eq .ActivationEpoch 0 }}genesis{{ else }}{{ .ActivationEpoch }}{{ end }}</a>
+                      </div>
+                    {{ end }}
+                  </div>
+                </div>
+                <div id="lifecycle-active" class="validator__lifecycle-node-container validator__lifecycle-active {{ if .IsActive }}{{ if gt .UpcheckActivity 0 }}online{{ else }}offline{{ end }}{{ else if .WasActive }}done{{ end }}">
+                  <div class="validator__lifecycle-node-container">
+                    <div class="validator__lifecycle-node-header">Active</div>
+                    <div class="validator__lifecycle-node" data-bs-toggle="tooltip" title="Once your validator reaches this state it can participate in attesting and proposing. Make sure it stays online!">
+                      <i class="fas fa-power-off online"></i>
+                      <i class="fas fa-power-off offline"></i>
+                      <i class="fas fa-check"></i>
+                      <div class="spinner">
+                        <div class="double-bounce1"></div>
+                        <div class="double-bounce2"></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="validator__lifecycle-progress validator__lifecycle-active">
+                  <div class="validator__lifecycle-progress-epoch">
+                    {{ if .ShowExit }}
+                      <div data-bs-toggle="tooltip" title="The exit epoch is when your validator will leave the network">
+                        <a href="/epoch/{{ .ExitEpoch }}">{{ .ExitEpoch }}</a>
+                      </div>
+                    {{ end }}
+                  </div>
+                </div>
+                <div id="lifecycle-exited" class="validator__lifecycle-node-container validator__lifecycle-exited {{ if .ShowExit }}{{ if ge .CurrentEpoch .ExitEpoch }}done{{ else }}active{{ end }}{{ end }}">
+                  <div class="validator__lifecycle-node-container">
+                    <div class="validator__lifecycle-node-header">Exited</div>
+                    <div class="validator__lifecycle-node" data-bs-toggle="tooltip" title="If your validator misbehaves or chooses to leave the network it will join a queue to leave.">
+                      <i class="fas fa-door-open"></i>
+                      <div class="spinner">
+                        <div class="double-bounce1"></div>
+                        <div class="double-bounce2"></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="row border-bottom p-2 mx-0">
+          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Represents the index for this validator in the beacon chain">Index:</span></div>
+          <div class="col-md-10">
+            {{ formatValidatorWithIndex .Index .Name }}
+            <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ .Index }}"></i>
+          </div>
+        </div>
+        <div class="row border-bottom p-2 mx-0">
+          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Represents the public key for this validator">Public Key:</span></div>
+          <div class="col-md-10">
+            0x{{ printf "%x" .PublicKey }}
+            <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" .PublicKey }}"></i>
+          </div>
+        </div>
+        <div class="row border-bottom p-2 mx-0">
+          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="The current status for this validator">Status:</span></div>
+          <div class="col-md-10">
+            {{ .BeaconState }}
+          </div>
+        </div>
+        <div class="row border-bottom p-2 mx-0">
+          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Represents the full balance for this validator (Epoch {{ .CurrentEpoch }})">Balance:</span></div>
+          <div class="col-md-10">
+            {{ formatEthFromGwei .Balance }}
+            <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ formatEthFromGwei .Balance }}"></i>
+          </div>
+        </div>
+        <div class="row border-bottom p-2 mx-0">
+          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Represents the full balance for this validator (Epoch {{ .CurrentEpoch }})">Effective Balance:</span></div>
+          <div class="col-md-10">
+            {{ formatEthAddCommasFromGwei .EffectiveBalance }} ETH
+          </div>
+        </div>
+        <div class="row border-bottom p-2 mx-0">
+          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Represents the current withdrawal credentials for this validator">W/Credentials:</span></div>
+          <div class="col-md-10">
+            0x{{ printf "%x" .WithdrawCredentials }}
+            <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" .WithdrawCredentials }}"></i>
+          </div>
+        </div>
+        {{ if .ShowWithdrawAddress }}
+        <div class="row border-bottom p-2 mx-0">
+          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Represents the current withdrawal credentials for this validator">W/Address:</span></div>
+          <div class="col-md-10">
+            {{ ethAddressLink .WithdrawAddress }}
+          </div>
+        </div>
+        {{ end }}
         
       </div>
-      <div id="footer-placeholder" style="height:71px;"></div>
+    </div>
+
+    <div class="row">
+      <div class="mt-3 pr-lg-2"><!-- col-lg-6 -->
+        {{ template "recentBlocks" . }}
+      </div>
     </div>
   </div>
 {{ end }}
 {{ define "js" }}
 {{ end }}
 {{ define "css" }}
+  <link rel="stylesheet" href="/css/validator.css" />
 {{ end }}
