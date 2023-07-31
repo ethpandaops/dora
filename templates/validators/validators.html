@@ -69,12 +69,12 @@
                     <td>{{ formatEthFromGwei $validator.Balance }} ({{ formatEthAddCommasFromGwei $validator.EffectiveBalance }} ETH)</td>
                     <td>
                       {{- $validator.State -}}
-                      {{- if $validator.ShowUpcheck }}
+                      {{- if $validator.ShowUpcheck -}}
                         {{- if eq $validator.UpcheckActivity $validator.UpcheckMaximum }}
                           <i class="fas fa-power-off fa-sm text-success" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $validator.UpcheckActivity }}/{{ $validator.UpcheckMaximum }}"></i>
                         {{- else if gt $validator.UpcheckActivity 0 }}
                           <i class="fas fa-power-off fa-sm text-warning" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $validator.UpcheckActivity }}/{{ $validator.UpcheckMaximum }}"></i>
-                        {{- else -}}
+                        {{- else }}
                           <i class="fas fa-power-off fa-sm text-danger" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $validator.UpcheckActivity }}/{{ $validator.UpcheckMaximum }}"></i>
                         {{- end -}}
                       {{- end -}}
