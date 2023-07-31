@@ -641,7 +641,7 @@ func (bs *BeaconService) GetValidatorActivity() (map[uint64]uint8, uint64) {
 
 	actualEpochCount := idxHeadEpoch - idxMinEpoch + 1
 	if actualEpochCount > epochLimit {
-		idxMinEpoch = idxHeadEpoch - epochLimit
+		idxMinEpoch = idxHeadEpoch - epochLimit + 1
 	} else if actualEpochCount < epochLimit {
 		epochLimit = actualEpochCount
 	}
