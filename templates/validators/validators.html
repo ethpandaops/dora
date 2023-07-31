@@ -95,7 +95,13 @@
                         -
                       {{- end -}}
                     </td>
-                    <td>{{ ethAddressLink .WithdrawAddress }}</td>
+                    <td>
+                      {{- if .ShowWithdrawAddress -}}
+                        {{ ethAddressLink .WithdrawAddress }}
+                      {{- else -}}
+                        -
+                      {{- end -}}
+                    </td>
                   </tr>
                 {{ end }}
               </tbody>
