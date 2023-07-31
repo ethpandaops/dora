@@ -18,6 +18,7 @@ import (
 
 	"github.com/jackc/pgx/v4/pgxpool"
 	_ "github.com/jackc/pgx/v4/stdlib"
+	"github.com/mitchellh/mapstructure"
 )
 
 //go:embed migrations/*.sql
@@ -381,16 +382,45 @@ func GetAssignedBlocks(proposer uint64, firstSlot uint64, offset uint64, limit u
 	ORDER BY slot_assignments.slot DESC
 	LIMIT $3 OFFSET $4
 	`)
-
-	err := ReaderDb.Select(&blockAssignments, sql.String(), proposer, firstSlot, limit, offset)
+	rows, err := ReaderDb.Query(sql.String(), proposer, firstSlot, limit, offset)
 	if err != nil {
 		logger.Errorf("Error while fetching blocks: %v", err)
 		return nil
 	}
-	for _, blockAssignment := range blockAssignments {
-		if blockAssignment.Proposer != blockAssignment.Block.Proposer {
-			blockAssignment.Block = nil
+
+	scanArgs := make([]interface{}, len(blockFields)+2)
+	for rows.Next() {
+		scanVals := make([]interface{}, len(blockFields)+2)
+		for i := range scanArgs {
+			scanArgs[i] = &scanVals[i]
 		}
+		err := rows.Scan(scanArgs...)
+		if err != nil {
+			logger.Errorf("Error while parsing block: %v", err)
+			continue
+		}
+
+		blockAssignment := dbtypes.AssignedBlock{}
+		blockAssignment.Slot = uint64(scanVals[0].(int64))
+		blockAssignment.Proposer = uint64(scanVals[1].(int64))
+
+		if scanVals[2] != nil {
+			blockValMap := map[string]interface{}{}
+			for idx, fName := range blockFields {
+				blockValMap[fName] = scanVals[idx+2]
+			}
+			var block dbtypes.Block
+			cfg := &mapstructure.DecoderConfig{
+				Metadata: nil,
+				Result:   &block,
+				TagName:  "db",
+			}
+			decoder, _ := mapstructure.NewDecoder(cfg)
+			decoder.Decode(blockValMap)
+			blockAssignment.Block = &block
+		}
+
+		blockAssignments = append(blockAssignments, &blockAssignment)
 	}
 
 	return blockAssignments
