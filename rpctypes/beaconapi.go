@@ -79,12 +79,7 @@ type EpochAssignments struct {
 }
 
 type StandardV1StateValidatorsResponse struct {
-	Data []struct {
-		Index     Uint64Str `json:"index"`
-		Balance   Uint64Str `json:"balance"`
-		Status    string    `json:"status"`
-		Validator Validator `json:"validator"`
-	} `json:"data"`
+	Data []ValidatorEntry `json:"data"`
 }
 
 type StandardV1GenesisResponse struct {

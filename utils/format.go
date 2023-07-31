@@ -300,9 +300,16 @@ func FormatSlashedValidator(index uint64, name string) template.HTML {
 
 func formatValidator(index uint64, name string, icon string) template.HTML {
 	if name != "" {
-		return template.HTML(fmt.Sprintf("<span class=\"validator-label validator-name\" data-bs-toggle=\"tooltip\" data-bs-placement=\"top\" data-bs-title=\"%v\"><i class=\"fas %v\"></i> %v</span>", index, icon, html.EscapeString(name)))
+		return template.HTML(fmt.Sprintf("<span class=\"validator-label validator-name\" data-bs-toggle=\"tooltip\" data-bs-placement=\"top\" data-bs-title=\"%v\"><i class=\"fas %v\"></i> <a href=\"/validator/%v\">%v</a></span>", index, icon, index, html.EscapeString(name)))
 	}
-	return template.HTML(fmt.Sprintf("<span class=\"validator-label validator-index\"><i class=\"fas %v\"></i> %v</span>", icon, index))
+	return template.HTML(fmt.Sprintf("<span class=\"validator-label validator-index\"><i class=\"fas %v\"></i> <a href=\"/validator/%v\">%v</a></span>", icon, index, index))
+}
+
+func FormatValidatorWithIndex(index uint64, name string) template.HTML {
+	if name != "" {
+		return template.HTML(fmt.Sprintf("<span class=\"validator-label validator-name\">%v (%v)</span>", html.EscapeString(name), index))
+	}
+	return template.HTML(fmt.Sprintf("<span class=\"validator-label validator-index\">%v</span>", index))
 }
 
 func FormatRecentTimeShort(ts time.Time) template.HTML {

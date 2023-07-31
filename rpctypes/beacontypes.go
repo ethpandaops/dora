@@ -165,6 +165,13 @@ type Validator struct {
 	WithdrawableEpoch          Uint64Str   `json:"withdrawable_epoch"`
 }
 
+type ValidatorEntry struct {
+	Index     Uint64Str `json:"index"`
+	Balance   Uint64Str `json:"balance"`
+	Status    string    `json:"status"`
+	Validator Validator `json:"validator"`
+}
+
 type BlobSidecar struct {
 	BlockRoot       BytesHexStr `json:"block_root"`
 	Index           Uint64Str   `json:"index"`

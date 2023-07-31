@@ -185,7 +185,7 @@ func (indexer *Indexer) GetCachedValidatorSet() *rpctypes.StandardV1StateValidat
 	return indexer.state.headValidators
 }
 
-func (indexer *Indexer) BuildLiveEpoch(epoch uint64) *dbtypes.Epoch {
+func (indexer *Indexer) GetEpochVotes(epoch uint64) *EpochVotes {
 	indexer.state.cacheMutex.RLock()
 	defer indexer.state.cacheMutex.RUnlock()
 
@@ -194,6 +194,10 @@ func (indexer *Indexer) BuildLiveEpoch(epoch uint64) *dbtypes.Epoch {
 		return nil
 	}
 
+	return indexer.getEpochVotes(epoch, epochStats)
+}
+
+func (indexer *Indexer) getEpochVotes(epoch uint64, epochStats *EpochStats) *EpochVotes {
 	var firstBlock *BlockInfo
 	firstSlot := epoch * utils.Config.Chain.Config.SlotsPerEpoch
 	lastSlot := firstSlot + (utils.Config.Chain.Config.SlotsPerEpoch) - 1
@@ -219,8 +223,18 @@ slotLoop:
 	} else {
 		targetRoot = firstBlock.Header.Data.Header.Message.ParentRoot
 	}
-	epochVotes := aggregateEpochVotes(indexer.state.cachedBlocks, epoch, epochStats, targetRoot, false)
+	return aggregateEpochVotes(indexer.state.cachedBlocks, epoch, epochStats, targetRoot, false)
+}
 
+func (indexer *Indexer) BuildLiveEpoch(epoch uint64) *dbtypes.Epoch {
+	indexer.state.cacheMutex.RLock()
+	defer indexer.state.cacheMutex.RUnlock()
+
+	epochStats := indexer.state.epochStats[epoch]
+	if epochStats == nil {
+		return nil
+	}
+	epochVotes := indexer.getEpochVotes(epoch, epochStats)
 	return buildDbEpoch(epoch, indexer.state.cachedBlocks, epochStats, epochVotes, nil)
 }
 

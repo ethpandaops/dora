@@ -3,6 +3,7 @@ package services
 import (
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/pk910/light-beaconchain-explorer/cache"
@@ -19,6 +20,13 @@ type BeaconService struct {
 	frontendCache  *cache.TieredCache
 	indexer        *indexer.Indexer
 	validatorNames *ValidatorNames
+
+	validatorActivityMutex sync.Mutex
+	validatorActivityStats struct {
+		cacheEpoch uint64
+		epochLimit uint64
+		activity   map[uint64]uint8
+	}
 }
 
 var GlobalBeaconService *BeaconService
@@ -483,4 +491,171 @@ func (bs *BeaconService) GetDbBlocksByGraffiti(graffiti string, pageIdx uint64, 
 	}
 
 	return resBlocks
+}
+
+func (bs *BeaconService) GetDbBlocksByProposer(proposer uint64, pageIdx uint64, pageSize uint32, withMissing bool, withOrphaned bool) []*dbtypes.AssignedBlock {
+	cachedMatches := make([]struct {
+		slot  uint64
+		block *indexer.BlockInfo
+	}, 0)
+	idxMinSlot := bs.indexer.GetLowestCachedSlot()
+	idxHeadSlot := bs.indexer.GetHeadSlot()
+	if idxMinSlot >= 0 {
+		idxHeadEpoch := utils.EpochOfSlot(idxHeadSlot)
+		idxMinEpoch := utils.EpochOfSlot(uint64(idxMinSlot))
+		for epochIdx := int64(idxHeadEpoch); epochIdx >= int64(idxMinEpoch); epochIdx-- {
+			epoch := uint64(epochIdx)
+			epochStats := bs.indexer.GetCachedEpochStats(epoch)
+			if epochStats == nil || epochStats.Assignments == nil {
+				continue
+			}
+
+			for slot, assigned := range epochStats.Assignments.ProposerAssignments {
+				if assigned != proposer {
+					continue
+				}
+				blocks := bs.indexer.GetCachedBlocks(slot)
+				haveBlock := false
+				if blocks != nil {
+					for bidx := 0; bidx < len(blocks); bidx++ {
+						block := blocks[bidx]
+						if block.Orphaned && !withOrphaned {
+							continue
+						}
+						if uint64(block.Block.Data.Message.ProposerIndex) != proposer {
+							continue
+						}
+						cachedMatches = append(cachedMatches, struct {
+							slot  uint64
+							block *indexer.BlockInfo
+						}{
+							slot:  slot,
+							block: block,
+						})
+						haveBlock = true
+					}
+				}
+				if !haveBlock && withMissing {
+					cachedMatches = append(cachedMatches, struct {
+						slot  uint64
+						block *indexer.BlockInfo
+					}{
+						slot:  slot,
+						block: nil,
+					})
+				}
+			}
+
+		}
+	}
+
+	cachedMatchesLen := uint64(len(cachedMatches))
+	cachedPages := cachedMatchesLen / uint64(pageSize)
+	resBlocks := make([]*dbtypes.AssignedBlock, 0)
+	resIdx := 0
+
+	cachedStart := pageIdx * uint64(pageSize)
+	cachedEnd := cachedStart + uint64(pageSize)
+	if cachedEnd+1 < cachedMatchesLen {
+		cachedEnd++
+	}
+
+	if cachedPages > 0 && pageIdx < cachedPages {
+		for _, block := range cachedMatches[cachedStart:cachedEnd] {
+			assignedBlock := dbtypes.AssignedBlock{
+				Slot:     block.slot,
+				Proposer: proposer,
+			}
+			if block.block != nil {
+				assignedBlock.Block = bs.indexer.BuildLiveBlock(block.block)
+			}
+			resBlocks = append(resBlocks, &assignedBlock)
+
+			resIdx++
+		}
+	} else if pageIdx == cachedPages {
+		start := pageIdx * uint64(pageSize)
+		for _, block := range cachedMatches[start:] {
+			assignedBlock := dbtypes.AssignedBlock{
+				Slot:     block.slot,
+				Proposer: proposer,
+			}
+			if block.block != nil {
+				assignedBlock.Block = bs.indexer.BuildLiveBlock(block.block)
+			}
+			resBlocks = append(resBlocks, &assignedBlock)
+			resIdx++
+		}
+	}
+	if resIdx > int(pageSize) {
+		return resBlocks
+	}
+
+	// load from db
+	var dbMinSlot uint64
+	if idxMinSlot < 0 {
+		dbMinSlot = utils.TimeToSlot(uint64(time.Now().Unix()))
+	} else {
+		dbMinSlot = uint64(idxMinSlot)
+	}
+
+	dbPage := pageIdx - cachedPages
+	dbCacheOffset := uint64(pageSize) - (cachedMatchesLen % uint64(pageSize))
+	var dbBlocks []*dbtypes.AssignedBlock
+	if dbPage == 0 {
+		dbBlocks = db.GetAssignedBlocks(proposer, dbMinSlot, 0, uint32(dbCacheOffset)+1, withOrphaned)
+	} else {
+		dbBlocks = db.GetAssignedBlocks(proposer, dbMinSlot, (dbPage-1)*uint64(pageSize)+dbCacheOffset, pageSize+1, withOrphaned)
+	}
+	if dbBlocks != nil {
+		for _, dbBlock := range dbBlocks {
+			resBlocks = append(resBlocks, dbBlock)
+		}
+	}
+
+	return resBlocks
+}
+
+func (bs *BeaconService) GetValidatorActivity() (map[uint64]uint8, uint64) {
+	activityMap := map[uint64]uint8{}
+	epochLimit := uint64(3)
+
+	idxHeadSlot := bs.indexer.GetHeadSlot()
+	idxHeadEpoch := utils.EpochOfSlot(idxHeadSlot)
+	if idxHeadEpoch < 1 {
+		return activityMap, 0
+	}
+	idxHeadEpoch--
+	idxMinSlot := bs.indexer.GetLowestCachedSlot()
+	if idxMinSlot < 0 {
+		return activityMap, 0
+	}
+	idxMinEpoch := utils.EpochOfSlot(uint64(idxMinSlot))
+
+	activityEpoch := utils.EpochOfSlot(idxHeadSlot - 1)
+	bs.validatorActivityMutex.Lock()
+	defer bs.validatorActivityMutex.Unlock()
+	if bs.validatorActivityStats.activity != nil && bs.validatorActivityStats.cacheEpoch == activityEpoch {
+		return bs.validatorActivityStats.activity, bs.validatorActivityStats.epochLimit
+	}
+
+	actualEpochCount := idxHeadEpoch - idxMinEpoch + 1
+	if actualEpochCount > epochLimit {
+		idxMinEpoch = idxHeadEpoch - epochLimit + 1
+	} else if actualEpochCount < epochLimit {
+		epochLimit = actualEpochCount
+	}
+
+	for epochIdx := int64(idxHeadEpoch); epochIdx >= int64(idxMinEpoch); epochIdx-- {
+		epoch := uint64(epochIdx)
+		epochVotes := bs.indexer.GetEpochVotes(epoch)
+		for valIdx := range epochVotes.ActivityMap {
+			activityMap[valIdx]++
+		}
+	}
+
+	bs.validatorActivityStats.cacheEpoch = activityEpoch
+	bs.validatorActivityStats.epochLimit = epochLimit
+	bs.validatorActivityStats.activity = activityMap
+	return activityMap, epochLimit
 }

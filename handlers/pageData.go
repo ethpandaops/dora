@@ -103,6 +103,15 @@ func createMenuItems(active string, isMain bool) []types.MainMenuItem {
 						},
 					},
 				},
+				{
+					Links: []types.NavigationLink{
+						{
+							Label: "Validators",
+							Path:  "/validators",
+							Icon:  "fa-table",
+						},
+					},
+				},
 			},
 		},
 	}

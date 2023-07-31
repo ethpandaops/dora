@@ -18,6 +18,7 @@ import (
 
 	"github.com/jackc/pgx/v4/pgxpool"
 	_ "github.com/jackc/pgx/v4/stdlib"
+	"github.com/mitchellh/mapstructure"
 )
 
 //go:embed migrations/*.sql
@@ -356,6 +357,73 @@ func GetBlocksWithGraffiti(graffiti string, firstSlot uint64, offset uint64, lim
 		return nil
 	}
 	return blocks
+}
+
+func GetAssignedBlocks(proposer uint64, firstSlot uint64, offset uint64, limit uint32, withOrphaned bool) []*dbtypes.AssignedBlock {
+	blockAssignments := []*dbtypes.AssignedBlock{}
+	orphanedLimit := ""
+	if !withOrphaned {
+		orphanedLimit = "AND NOT orphaned"
+	}
+	var sql strings.Builder
+	fmt.Fprintf(&sql, `SELECT slot_assignments.slot, slot_assignments.proposer`)
+	blockFields := []string{
+		"root", "slot", "parent_root", "state_root", "orphaned", "proposer", "graffiti", "graffiti_text",
+		"attestation_count", "deposit_count", "exit_count", "withdraw_count", "withdraw_amount", "attester_slashing_count",
+		"proposer_slashing_count", "bls_change_count", "eth_transaction_count", "eth_block_number", "eth_block_hash", "sync_participation",
+	}
+	for _, blockField := range blockFields {
+		fmt.Fprintf(&sql, ", blocks.%v AS \"block.%v\"", blockField, blockField)
+	}
+	fmt.Fprintf(&sql, `
+	FROM slot_assignments
+	LEFT JOIN blocks ON blocks.slot = slot_assignments.slot
+	WHERE slot_assignments.proposer = $1 AND slot_assignments.slot < $2 `+orphanedLimit+`
+	ORDER BY slot_assignments.slot DESC
+	LIMIT $3 OFFSET $4
+	`)
+	rows, err := ReaderDb.Query(sql.String(), proposer, firstSlot, limit, offset)
+	if err != nil {
+		logger.Errorf("Error while fetching blocks: %v", err)
+		return nil
+	}
+
+	scanArgs := make([]interface{}, len(blockFields)+2)
+	for rows.Next() {
+		scanVals := make([]interface{}, len(blockFields)+2)
+		for i := range scanArgs {
+			scanArgs[i] = &scanVals[i]
+		}
+		err := rows.Scan(scanArgs...)
+		if err != nil {
+			logger.Errorf("Error while parsing block: %v", err)
+			continue
+		}
+
+		blockAssignment := dbtypes.AssignedBlock{}
+		blockAssignment.Slot = uint64(scanVals[0].(int64))
+		blockAssignment.Proposer = uint64(scanVals[1].(int64))
+
+		if scanVals[2] != nil {
+			blockValMap := map[string]interface{}{}
+			for idx, fName := range blockFields {
+				blockValMap[fName] = scanVals[idx+2]
+			}
+			var block dbtypes.Block
+			cfg := &mapstructure.DecoderConfig{
+				Metadata: nil,
+				Result:   &block,
+				TagName:  "db",
+			}
+			decoder, _ := mapstructure.NewDecoder(cfg)
+			decoder.Decode(blockValMap)
+			blockAssignment.Block = &block
+		}
+
+		blockAssignments = append(blockAssignments, &blockAssignment)
+	}
+
+	return blockAssignments
 }
 
 func GetSlotAssignmentsForSlots(firstSlot uint64, lastSlot uint64) []*dbtypes.SlotAssignment {
