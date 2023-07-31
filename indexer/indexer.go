@@ -53,11 +53,12 @@ type EpochStats struct {
 }
 
 type EpochValidators struct {
-	ValidatorsMutex   sync.Mutex
-	ValidatorCount    uint64
-	ValidatorBalance  uint64
-	EligibleAmount    uint64
-	ValidatorBalances map[uint64]uint64
+	ValidatorsReadyMutex sync.Mutex
+	ValidatorsStatsMutex sync.RWMutex
+	ValidatorCount       uint64
+	ValidatorBalance     uint64
+	EligibleAmount       uint64
+	ValidatorBalances    map[uint64]uint64
 }
 
 func NewIndexer(rpcClient *rpc.BeaconClient) (*Indexer, error) {
@@ -592,7 +593,7 @@ func (indexer *Indexer) newEpochStats(epoch uint64, dependentRoot []byte) (*Epoc
 			EligibleAmount:    0,
 			ValidatorBalances: make(map[uint64]uint64),
 		}
-		epochStats.Validators.ValidatorsMutex.Lock()
+		epochStats.Validators.ValidatorsReadyMutex.Lock()
 
 	}
 
@@ -622,7 +623,7 @@ func (indexer *Indexer) loadEpochAssignments(epoch uint64, dependentRoot []byte,
 }
 
 func (indexer *Indexer) loadEpochValidators(epoch uint64, epochStats *EpochStats) {
-	defer epochStats.Validators.ValidatorsMutex.Unlock()
+	defer epochStats.Validators.ValidatorsReadyMutex.Unlock()
 	logger.Infof("Epoch %v head, loading validator set (state: %v)", epoch, epochStats.Assignments.DependendState)
 
 	// load epoch stats
@@ -633,6 +634,7 @@ func (indexer *Indexer) loadEpochValidators(epoch uint64, epochStats *EpochStats
 		if epoch > indexer.state.headValidatorsSlot {
 			indexer.state.headValidators = epochValidators
 		}
+		epochStats.Validators.ValidatorsStatsMutex.Lock()
 		for idx := 0; idx < len(epochValidators.Data); idx++ {
 			validator := epochValidators.Data[idx]
 			epochStats.Validators.ValidatorBalances[uint64(validator.Index)] = uint64(validator.Validator.EffectiveBalance)
@@ -643,6 +645,7 @@ func (indexer *Indexer) loadEpochValidators(epoch uint64, epochStats *EpochStats
 			epochStats.Validators.ValidatorBalance += uint64(validator.Balance)
 			epochStats.Validators.EligibleAmount += uint64(validator.Validator.EffectiveBalance)
 		}
+		epochStats.Validators.ValidatorsStatsMutex.Unlock()
 	}
 }
 
@@ -692,8 +695,8 @@ func (indexer *Indexer) processEpoch(epoch uint64) {
 	epochStats := indexer.state.epochStats[epoch]
 
 	// await full epochStats (might not be ready in some edge cases)
-	epochStats.Validators.ValidatorsMutex.Lock()
-	epochStats.Validators.ValidatorsMutex.Unlock()
+	epochStats.Validators.ValidatorsReadyMutex.Lock()
+	epochStats.Validators.ValidatorsReadyMutex.Unlock()
 
 	var epochTarget []byte
 slotLoop:

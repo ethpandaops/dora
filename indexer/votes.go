@@ -29,6 +29,9 @@ func aggregateEpochVotes(blockMap map[uint64][]*BlockInfo, epoch uint64, epochSt
 		lastSlot += utils.Config.Chain.Config.SlotsPerEpoch
 	}
 
+	epochStats.Validators.ValidatorsStatsMutex.RLock()
+	defer epochStats.Validators.ValidatorsStatsMutex.RUnlock()
+
 	votes := EpochVotes{
 		ActivityMap: map[uint64]bool{},
 	}
