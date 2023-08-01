@@ -73,7 +73,7 @@ func Slot(w http.ResponseWriter, r *http.Request) {
 func getSlotPageData(blockSlot int64, blockRoot []byte) *models.SlotPageData {
 	pageData := &models.SlotPageData{}
 	pageCacheKey := fmt.Sprintf("slot:%v:%x", blockSlot, blockRoot)
-	pageData = services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
+	pageData = services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, false, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
 		return buildSlotPageData(blockSlot, blockRoot)
 	}).(*models.SlotPageData)
 	return pageData
