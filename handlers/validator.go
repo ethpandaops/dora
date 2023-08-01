@@ -73,14 +73,14 @@ func Validator(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func getValidatorPageData(validatorIndex uint64) *models.EpochPageData {
-	pageData := &models.EpochPageData{}
+func getValidatorPageData(validatorIndex uint64) *models.ValidatorPageData {
+	pageData := &models.ValidatorPageData{}
 	pageCacheKey := fmt.Sprintf("validator:%v", validatorIndex)
 	pageData = services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
 		pageData, cacheTimeout := buildValidatorPageData(validatorIndex)
 		pageCall.CacheTimeout = cacheTimeout
 		return pageData
-	}).(*models.EpochPageData)
+	}).(*models.ValidatorPageData)
 	return pageData
 }
 
