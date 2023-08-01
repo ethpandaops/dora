@@ -41,10 +41,15 @@ func Index(w http.ResponseWriter, r *http.Request) {
 func getIndexPageData() *models.IndexPageData {
 	pageData := &models.IndexPageData{}
 	pageCacheKey := fmt.Sprintf("index")
-	if !utils.Config.Frontend.Debug && services.GlobalBeaconService.GetFrontendCache(pageCacheKey, pageData) == nil {
-		logrus.Printf("index page served from cache")
+	pageData = services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
+		pageData, cacheTimeout := buildIndexPageData()
+		pageCall.CacheTimeout = cacheTimeout
 		return pageData
-	}
+	}).(*models.IndexPageData)
+	return pageData
+}
+
+func buildIndexPageData() (*models.IndexPageData, time.Duration) {
 	logrus.Printf("index page called")
 
 	recentEpochCount := 15
@@ -79,7 +84,7 @@ func getIndexPageData() *models.IndexPageData {
 		isSynced = true
 	}
 
-	pageData = &models.IndexPageData{
+	pageData := &models.IndexPageData{
 		NetworkName:           utils.Config.Chain.Name,
 		DepositContract:       utils.Config.Chain.Config.DepositContractAddress,
 		ShowSyncingMessage:    !isSynced,
@@ -214,8 +219,5 @@ func getIndexPageData() *models.IndexPageData {
 	}
 	pageData.RecentBlockCount = uint64(len(pageData.RecentBlocks))
 
-	if pageCacheKey != "" {
-		services.GlobalBeaconService.SetFrontendCache(pageCacheKey, pageData, 12*time.Second)
-	}
-	return pageData
+	return pageData, 12 * time.Second
 }

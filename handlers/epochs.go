@@ -45,11 +45,17 @@ func Epochs(w http.ResponseWriter, r *http.Request) {
 func getEpochsPageData(firstEpoch uint64, pageSize uint64) *models.EpochsPageData {
 	pageData := &models.EpochsPageData{}
 	pageCacheKey := fmt.Sprintf("epochs:%v:%v", firstEpoch, pageSize)
-	if !utils.Config.Frontend.Debug && services.GlobalBeaconService.GetFrontendCache(pageCacheKey, pageData) == nil {
-		logrus.Printf("epochs page served from cache: %v:%v", firstEpoch, pageSize)
+	pageData = services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
+		pageData, cacheTimeout := buildEpochsPageData(firstEpoch, pageSize)
+		pageCall.CacheTimeout = cacheTimeout
 		return pageData
-	}
+	}).(*models.EpochsPageData)
+	return pageData
+}
+
+func buildEpochsPageData(firstEpoch uint64, pageSize uint64) (*models.EpochsPageData, time.Duration) {
 	logrus.Printf("epochs page called: %v:%v", firstEpoch, pageSize)
+	pageData := &models.EpochsPageData{}
 
 	now := time.Now()
 	currentEpoch := utils.TimeToEpoch(now)
@@ -133,15 +139,11 @@ func getEpochsPageData(firstEpoch uint64, pageSize uint64) *models.EpochsPageDat
 	pageData.FirstEpoch = firstEpoch
 	pageData.LastEpoch = firstEpoch - pageData.EpochCount + 1
 
-	if pageCacheKey != "" {
-		var cacheTimeout time.Duration
-		if firstEpoch+2 < uint64(currentEpoch) {
-			cacheTimeout = 10 * time.Minute
-		} else {
-			cacheTimeout = 12 * time.Second
-		}
-		services.GlobalBeaconService.SetFrontendCache(pageCacheKey, pageData, cacheTimeout)
+	var cacheTimeout time.Duration
+	if firstEpoch+2 < uint64(currentEpoch) {
+		cacheTimeout = 10 * time.Minute
+	} else {
+		cacheTimeout = 12 * time.Second
 	}
-
-	return pageData
+	return pageData, cacheTimeout
 }

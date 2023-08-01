@@ -34,9 +34,6 @@ func Slot(w http.ResponseWriter, r *http.Request) {
 	var notfoundTemplateFiles = append(layoutTemplateFiles,
 		"slot/notfound.html",
 	)
-	var errorTemplateFiles = append(layoutTemplateFiles,
-		"slot/error.html",
-	)
 	w.Header().Set("Content-Type", "text/html")
 
 	vars := mux.Vars(r)
@@ -55,13 +52,41 @@ func Slot(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	pageData := getSlotPageData(blockSlot, blockRootHash)
+	if pageData == nil {
+		data := InitPageData(w, r, "blockchain", "/slots", fmt.Sprintf("Slot %v", slotOrHash), notfoundTemplateFiles)
+		data.Data = "slot"
+		if handleTemplateError(w, r, "slot.go", "Slot", "notFound", templates.GetTemplate(notfoundTemplateFiles...).ExecuteTemplate(w, "layout", data)) != nil {
+			return // an error has occurred and was processed
+		}
+		return
+	}
+
+	template := templates.GetTemplate(slotTemplateFiles...)
+	data := InitPageData(w, r, "blockchain", "/slots", fmt.Sprintf("Slot %v", slotOrHash), slotTemplateFiles)
+	data.Data = pageData
+	if handleTemplateError(w, r, "index.go", "Slot", "", template.ExecuteTemplate(w, "layout", data)) != nil {
+		return // an error has occurred and was processed
+	}
+}
+
+func getSlotPageData(blockSlot int64, blockRoot []byte) *models.SlotPageData {
+	pageData := &models.SlotPageData{}
+	pageCacheKey := fmt.Sprintf("slot:%v:%x", blockSlot, blockRoot)
+	pageData = services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
+		return buildSlotPageData(blockSlot, blockRoot)
+	}).(*models.SlotPageData)
+	return pageData
+}
+
+func buildSlotPageData(blockSlot int64, blockRoot []byte) *models.SlotPageData {
 	finalizedHead, err := services.GlobalBeaconService.GetFinalizedBlockHead()
 	var blockData *rpctypes.CombinedBlockResponse
 	if err == nil {
 		if blockSlot > -1 {
 			blockData, err = services.GlobalBeaconService.GetSlotDetailsBySlot(uint64(blockSlot), true)
 		} else {
-			blockData, err = services.GlobalBeaconService.GetSlotDetailsByBlockroot(blockRootHash, true)
+			blockData, err = services.GlobalBeaconService.GetSlotDetailsByBlockroot(blockRoot, true)
 		}
 	}
 
@@ -70,37 +95,19 @@ func Slot(w http.ResponseWriter, r *http.Request) {
 		if blockSlot > -1 {
 			dbBlocks := services.GlobalBeaconService.GetDbBlocksForSlots(uint64(blockSlot), 1, true)
 			if len(dbBlocks) > 0 {
-				blockRootHash = dbBlocks[0].Root
+				blockRoot = dbBlocks[0].Root
 			}
 		}
-		if blockRootHash != nil {
-			blockData = services.GlobalBeaconService.GetOrphanedBlock(blockRootHash)
+		if blockRoot != nil {
+			blockData = services.GlobalBeaconService.GetOrphanedBlock(blockRoot)
 		}
 	}
 
-	var slot uint64
-	if blockData == nil && err == nil {
-		if blockSlot > -1 {
-			slot = uint64(blockSlot)
-		} else {
-			data := InitPageData(w, r, "blockchain", "/slots", fmt.Sprintf("Slot %v", slotOrHash), notfoundTemplateFiles)
-			data.Data = "slot"
-			if handleTemplateError(w, r, "slot.go", "Slot", "notFound", templates.GetTemplate(notfoundTemplateFiles...).ExecuteTemplate(w, "layout", data)) != nil {
-				return // an error has occurred and was processed
-			}
-			return
-		}
-	} else if err != nil {
-		logrus.Printf("slot page error: %v", err)
-		data := InitPageData(w, r, "blockchain", "/slots", fmt.Sprintf("Slot %v", slotOrHash), errorTemplateFiles)
-		data.Data = err.Error()
-		if handleTemplateError(w, r, "slot.go", "Slot", "notFound", templates.GetTemplate(errorTemplateFiles...).ExecuteTemplate(w, "layout", data)) != nil {
-			return // an error has occurred and was processed
-		}
-		return
-	} else {
-		slot = uint64(blockData.Header.Data.Header.Message.Slot)
+	if blockData == nil {
+		return nil
 	}
+	slot := uint64(blockData.Header.Data.Header.Message.Slot)
+	logrus.Printf("slot page called: %v", slot)
 
 	pageData := &models.SlotPageData{
 		Slot:           slot,
@@ -116,9 +123,6 @@ func Slot(w http.ResponseWriter, r *http.Request) {
 		logrus.Printf("assignments error: %v", err)
 		// we can safely continue here. the UI is prepared to work without epoch duties, but fields related to the duties are not shown
 	}
-
-	template := templates.GetTemplate(slotTemplateFiles...)
-	data := InitPageData(w, r, "blockchain", "/slots", fmt.Sprintf("Slot %v", slotOrHash), slotTemplateFiles)
 
 	if blockData == nil {
 		pageData.Status = uint16(models.SlotStatusMissed)
@@ -138,12 +142,7 @@ func Slot(w http.ResponseWriter, r *http.Request) {
 		pageData.Block = getSlotPageBlockData(blockData, assignments)
 	}
 
-	logrus.Printf("slot page called")
-	data.Data = pageData
-
-	if handleTemplateError(w, r, "index.go", "Slot", "", template.ExecuteTemplate(w, "layout", data)) != nil {
-		return // an error has occurred and was processed
-	}
+	return pageData
 }
 
 func getSlotPageBlockData(blockData *rpctypes.CombinedBlockResponse, assignments *rpctypes.EpochAssignments) *models.SlotPageBlockData {

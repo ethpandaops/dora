@@ -46,19 +46,25 @@ func Validators(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func getValidatorsPageData(firstValIdx uint64, pageSize uint64, stateFilter string) *models.ValidatorsPageData {
-	pageData := &models.ValidatorsPageData{}
+func getValidatorsPageData(firstValIdx uint64, pageSize uint64, stateFilter string) *models.EpochPageData {
+	pageData := &models.EpochPageData{}
 	pageCacheKey := fmt.Sprintf("validators:%v:%v:%v", firstValIdx, pageSize, stateFilter)
-	if !utils.Config.Frontend.Debug && services.GlobalBeaconService.GetFrontendCache(pageCacheKey, pageData) == nil {
-		logrus.Printf("validators page served from cache: %v:%v", firstValIdx, pageSize)
+	pageData = services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
+		pageData, cacheTimeout := buildValidatorsPageData(firstValIdx, pageSize, stateFilter)
+		pageCall.CacheTimeout = cacheTimeout
 		return pageData
-	}
+	}).(*models.EpochPageData)
+	return pageData
+}
+
+func buildValidatorsPageData(firstValIdx uint64, pageSize uint64, stateFilter string) (*models.ValidatorsPageData, time.Duration) {
 	logrus.Printf("validators page called: %v:%v:%v", firstValIdx, pageSize, stateFilter)
+	pageData := &models.ValidatorsPageData{}
 
 	// get latest validator set
 	validatorSetRsp := services.GlobalBeaconService.GetCachedValidatorSet()
 	if validatorSetRsp == nil {
-		return pageData
+		return nil, 5 * time.Minute
 	}
 	validatorSet := validatorSetRsp.Data
 	if stateFilter != "" {
@@ -161,8 +167,5 @@ func getValidatorsPageData(firstValIdx uint64, pageSize uint64, stateFilter stri
 	pageData.FirstValidator = firstValIdx
 	pageData.LastValidator = lastValIdx
 
-	if pageCacheKey != "" {
-		services.GlobalBeaconService.SetFrontendCache(pageCacheKey, pageData, 10*time.Minute)
-	}
-	return pageData
+	return pageData, 10 * time.Minute
 }

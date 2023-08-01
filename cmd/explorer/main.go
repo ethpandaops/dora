@@ -48,9 +48,17 @@ func main() {
 	}
 
 	if cfg.Frontend.Enabled {
-		startFrontend()
-	}
+		err = services.StartFrontendCache()
+		if err != nil {
+			logger.Fatalf("error starting frontend cache service: %v", err)
+		}
 
+		startFrontend()
+	} else {
+		utils.WaitForCtrlC()
+
+		logger.Println("exiting...")
+	}
 }
 
 func startFrontend() {

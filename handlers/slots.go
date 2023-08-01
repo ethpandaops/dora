@@ -59,11 +59,17 @@ func Slots(w http.ResponseWriter, r *http.Request) {
 func getSlotsPageData(firstSlot uint64, pageSize uint64) *models.SlotsPageData {
 	pageData := &models.SlotsPageData{}
 	pageCacheKey := fmt.Sprintf("slots:%v:%v", firstSlot, pageSize)
-	if !utils.Config.Frontend.Debug && services.GlobalBeaconService.GetFrontendCache(pageCacheKey, pageData) == nil {
-		logrus.Printf("slots page served from cache: %v:%v", firstSlot, pageSize)
+	pageData = services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
+		pageData, cacheTimeout := buildSlotsPageData(firstSlot, pageSize)
+		pageCall.CacheTimeout = cacheTimeout
 		return pageData
-	}
+	}).(*models.SlotsPageData)
+	return pageData
+}
+
+func buildSlotsPageData(firstSlot uint64, pageSize uint64) (*models.SlotsPageData, time.Duration) {
 	logrus.Printf("slots page called: %v:%v", firstSlot, pageSize)
+	pageData := &models.SlotsPageData{}
 
 	now := time.Now()
 	currentSlot := utils.TimeToSlot(uint64(now.Unix()))
@@ -181,19 +187,25 @@ func getSlotsPageData(firstSlot uint64, pageSize uint64) *models.SlotsPageData {
 	pageData.FirstSlot = firstSlot
 	pageData.LastSlot = lastSlot
 
-	if pageCacheKey != "" {
-		var cacheTimeout time.Duration
-		if firstEpoch < uint64(currentEpoch) {
-			cacheTimeout = 10 * time.Minute
-		} else {
-			cacheTimeout = 12 * time.Second
-		}
-		services.GlobalBeaconService.SetFrontendCache(pageCacheKey, pageData, cacheTimeout)
+	var cacheTimeout time.Duration
+	if firstEpoch < uint64(currentEpoch) {
+		cacheTimeout = 10 * time.Minute
+	} else {
+		cacheTimeout = 12 * time.Second
 	}
-	return pageData
+	return pageData, cacheTimeout
 }
 
 func getSlotsPageDataWithGraffitiFilter(graffiti string, pageIdx uint64, pageSize uint64) *models.SlotsPageData {
+	pageData := &models.SlotsPageData{}
+	pageCacheKey := fmt.Sprintf("slots:%v:%v:g-%v", pageIdx, pageSize, graffiti)
+	pageData = services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(_ *services.FrontendCacheProcessingPage) interface{} {
+		return buildSlotsPageDataWithGraffitiFilter(graffiti, pageIdx, pageSize)
+	}).(*models.SlotsPageData)
+	return pageData
+}
+
+func buildSlotsPageDataWithGraffitiFilter(graffiti string, pageIdx uint64, pageSize uint64) *models.SlotsPageData {
 	pageData := &models.SlotsPageData{
 		GraffitiFilter: graffiti,
 	}

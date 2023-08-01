@@ -1,12 +1,10 @@
 package services
 
 import (
-	"fmt"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/pk910/light-beaconchain-explorer/cache"
 	"github.com/pk910/light-beaconchain-explorer/db"
 	"github.com/pk910/light-beaconchain-explorer/dbtypes"
 	"github.com/pk910/light-beaconchain-explorer/indexer"
@@ -17,7 +15,6 @@ import (
 
 type BeaconService struct {
 	rpcClient      *rpc.BeaconClient
-	frontendCache  *cache.TieredCache
 	indexer        *indexer.Indexer
 	validatorNames *ValidatorNames
 
@@ -42,12 +39,6 @@ func StartBeaconService() error {
 		return err
 	}
 
-	cachePrefix := fmt.Sprintf("%sgui-", utils.Config.BeaconApi.RedisCachePrefix)
-	frontendCache, err := cache.NewTieredCache(utils.Config.BeaconApi.LocalCacheSize, utils.Config.BeaconApi.RedisCacheAddr, cachePrefix)
-	if err != nil {
-		return err
-	}
-
 	indexer, err := indexer.NewIndexer(rpcClient)
 	if err != nil {
 		return err
@@ -67,20 +58,10 @@ func StartBeaconService() error {
 
 	GlobalBeaconService = &BeaconService{
 		rpcClient:      rpcClient,
-		frontendCache:  frontendCache,
 		indexer:        indexer,
 		validatorNames: validatorNames,
 	}
 	return nil
-}
-
-func (bs *BeaconService) GetFrontendCache(pageKey string, returnValue interface{}) error {
-	_, err := bs.frontendCache.Get(pageKey, returnValue)
-	return err
-}
-
-func (bs *BeaconService) SetFrontendCache(pageKey string, value interface{}, timeout time.Duration) error {
-	return bs.frontendCache.Set(pageKey, value, timeout)
 }
 
 func (bs *BeaconService) GetValidatorName(index uint64) string {

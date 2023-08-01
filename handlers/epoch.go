@@ -56,17 +56,22 @@ func Epoch(w http.ResponseWriter, r *http.Request) {
 func getEpochPageData(epoch uint64) *models.EpochPageData {
 	pageData := &models.EpochPageData{}
 	pageCacheKey := fmt.Sprintf("epoch:%v", epoch)
-	if !utils.Config.Frontend.Debug && services.GlobalBeaconService.GetFrontendCache(pageCacheKey, pageData) == nil {
-		logrus.Printf("epoch page served from cache: %v", epoch)
+	pageData = services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
+		pageData, cacheTimeout := buildEpochPageData(epoch)
+		pageCall.CacheTimeout = cacheTimeout
 		return pageData
-	}
+	}).(*models.EpochPageData)
+	return pageData
+}
+
+func buildEpochPageData(epoch uint64) (*models.EpochPageData, time.Duration) {
 	logrus.Printf("epoch page called: %v", epoch)
 
 	now := time.Now()
 	currentSlot := utils.TimeToSlot(uint64(now.Unix()))
 	currentEpoch := utils.EpochOfSlot(currentSlot)
 	if epoch > currentEpoch {
-		return nil
+		return nil, -1
 	}
 
 	finalizedHead, _ := services.GlobalBeaconService.GetFinalizedBlockHead()
@@ -74,7 +79,7 @@ func getEpochPageData(epoch uint64) *models.EpochPageData {
 
 	dbEpochs := services.GlobalBeaconService.GetDbEpochs(epoch, 1)
 	if dbEpochs[0] == nil {
-		return nil
+		return nil, -1
 	}
 	dbEpoch := dbEpochs[0]
 	nextEpoch := epoch + 1
@@ -83,7 +88,7 @@ func getEpochPageData(epoch uint64) *models.EpochPageData {
 	}
 	firstSlot := epoch * utils.Config.Chain.Config.SlotsPerEpoch
 	lastSlot := firstSlot + utils.Config.Chain.Config.SlotsPerEpoch - 1
-	pageData = &models.EpochPageData{
+	pageData := &models.EpochPageData{
 		Epoch:                   epoch,
 		PreviousEpoch:           epoch - 1,
 		NextEpoch:               nextEpoch,
@@ -175,15 +180,11 @@ func getEpochPageData(epoch uint64) *models.EpochPageData {
 	}
 	pageData.BlockCount = uint64(blockCount)
 
-	if pageCacheKey != "" {
-		var cacheTimeout time.Duration
-		if pageData.Finalized {
-			cacheTimeout = 30 * time.Minute
-		} else {
-			cacheTimeout = 12 * time.Second
-		}
-		services.GlobalBeaconService.SetFrontendCache(pageCacheKey, pageData, cacheTimeout)
+	var cacheTimeout time.Duration
+	if pageData.Finalized {
+		cacheTimeout = 30 * time.Minute
+	} else {
+		cacheTimeout = 12 * time.Second
 	}
-
-	return pageData
+	return pageData, cacheTimeout
 }
