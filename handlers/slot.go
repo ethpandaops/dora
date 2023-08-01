@@ -140,6 +140,7 @@ func getSlotPageData(blockSlot int64, blockRoot []byte) *models.SlotPageData {
 }
 
 func buildSlotPageData(blockSlot int64, blockRoot []byte) (*models.SlotPageData, time.Duration) {
+	currentSlot := utils.TimeToSlot(uint64(time.Now().Unix()))
 	finalizedHead, err := services.GlobalBeaconService.GetFinalizedBlockHead()
 	var blockData *rpctypes.CombinedBlockResponse
 	if err == nil {
@@ -176,12 +177,29 @@ func buildSlotPageData(blockSlot int64, blockRoot []byte) (*models.SlotPageData,
 		Ts:             utils.SlotToTime(slot),
 		NextSlot:       slot + 1,
 		PreviousSlot:   slot - 1,
+		Future:         slot >= currentSlot,
 	}
 
 	assignments, err := services.GlobalBeaconService.GetEpochAssignments(utils.EpochOfSlot(slot))
 	if err != nil {
 		logrus.Printf("assignments error: %v", err)
 		// we can safely continue here. the UI is prepared to work without epoch duties, but fields related to the duties are not shown
+	}
+
+	var cacheTimeout time.Duration
+	if pageData.Future {
+		timeDiff := pageData.Ts.Sub(time.Now())
+		if timeDiff > 10*time.Minute {
+			cacheTimeout = 10 * time.Minute
+		} else {
+			cacheTimeout = timeDiff
+		}
+	} else if pageData.EpochFinalized {
+		cacheTimeout = 10 * time.Minute
+	} else if blockData != nil {
+		cacheTimeout = 5 * time.Minute
+	} else {
+		cacheTimeout = 10 * time.Second
 	}
 
 	if blockData == nil {
@@ -202,7 +220,7 @@ func buildSlotPageData(blockSlot int64, blockRoot []byte) (*models.SlotPageData,
 		pageData.Block = getSlotPageBlockData(blockData, assignments)
 	}
 
-	return pageData, -1
+	return pageData, cacheTimeout
 }
 
 func getSlotPageBlockData(blockData *rpctypes.CombinedBlockResponse, assignments *rpctypes.EpochAssignments) *models.SlotPageBlockData {
