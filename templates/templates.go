@@ -1,15 +1,20 @@
 package templates
 
 import (
+	"bufio"
 	"embed"
 	"fmt"
 	"html/template"
+	"io"
 	"io/fs"
+	"path"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 
 	"github.com/sirupsen/logrus"
+	"github.com/tdewolff/minify"
 
 	"github.com/pk910/light-beaconchain-explorer/utils"
 )
@@ -51,11 +56,76 @@ func GetTemplate(files ...string) *template.Template {
 	}
 	templateCacheMux.RUnlock()
 
-	tmpl := template.Must(template.New(name).Funcs(template.FuncMap(templateFuncs)).ParseFS(Files, files...))
+	tmpl := template.New(name).Funcs(template.FuncMap(templateFuncs))
+	tmpl = template.Must(parseTemplateFiles(tmpl, readFileFS(Files), files...))
 	templateCacheMux.Lock()
 	defer templateCacheMux.Unlock()
 	templateCache[name] = tmpl
 	return templateCache[name]
+}
+
+func readFileFS(fsys fs.FS) func(string) (string, []byte, error) {
+	return func(file string) (name string, b []byte, err error) {
+		name = path.Base(file)
+		b, err = fs.ReadFile(fsys, file)
+
+		if utils.Config.Frontend.Minify {
+			// minfiy template
+			m := minify.New()
+			m.AddFunc("text/html", minifyTemplate)
+			b, err = m.Bytes("text/html", b)
+			if err != nil {
+				panic(err)
+			}
+		}
+		return
+	}
+}
+
+func minifyTemplate(m *minify.M, w io.Writer, r io.Reader, _ map[string]string) error {
+	// remove newlines and spaces
+	m1 := regexp.MustCompile(`([ \t]+)?[\r\n]+`)
+	m2 := regexp.MustCompile(`([ \t])[ \t]+`)
+	rb := bufio.NewReader(r)
+	for {
+		line, err := rb.ReadString('\n')
+		if err != nil && err != io.EOF {
+			return err
+		}
+		line = m1.ReplaceAllString(line, "")
+		line = m2.ReplaceAllString(line, " ")
+		if _, errws := io.WriteString(w, line); errws != nil {
+			return errws
+		}
+		if err == io.EOF {
+			break
+		}
+	}
+	return nil
+}
+
+func parseTemplateFiles(t *template.Template, readFile func(string) (string, []byte, error), filenames ...string) (*template.Template, error) {
+	for _, filename := range filenames {
+		name, b, err := readFile(filename)
+		if err != nil {
+			return nil, err
+		}
+		s := string(b)
+		var tmpl *template.Template
+		if t == nil {
+			t = template.New(name)
+		}
+		if name == t.Name() {
+			tmpl = t
+		} else {
+			tmpl = t.New(name)
+		}
+		_, err = tmpl.Parse(s)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return t, nil
 }
 
 func GetTemplateNames() []string {

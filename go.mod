@@ -21,7 +21,11 @@ require (
 	gopkg.in/yaml.v3 v3.0.1
 )
 
-require github.com/mitchellh/mapstructure v1.5.0 // indirect
+require (
+	github.com/mitchellh/mapstructure v1.5.0 // indirect
+	github.com/tdewolff/minify v2.3.6+incompatible // indirect
+	github.com/tdewolff/parse v2.3.4+incompatible // indirect
+)
 
 require (
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
