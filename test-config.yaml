@@ -17,6 +17,7 @@ server:
 frontend:
   enabled: true # Enable or disable to web frontend
   debug: true
+  minimize: false
   siteName: "Beaconchain Light" # Name of the site, displayed in the title tag
   siteSubtitle: "Ephemery"
   ethExplorerLink: "https://explorer.ephemery.dev/"

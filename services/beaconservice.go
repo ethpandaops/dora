@@ -170,6 +170,10 @@ func (bs *BeaconService) GetSlotDetailsBySlot(slot uint64, withBlobs bool) (*rpc
 	return result, nil
 }
 
+func (bs *BeaconService) GetBlobSidecarsByBlockRoot(blockroot []byte) (*rpctypes.StandardV1BlobSidecarsResponse, error) {
+	return bs.rpcClient.GetBlobSidecarsByBlockroot(blockroot)
+}
+
 func (bs *BeaconService) GetOrphanedBlock(blockroot []byte) *rpctypes.CombinedBlockResponse {
 	orphanedBlock := db.GetOrphanedBlock(blockroot)
 	if orphanedBlock == nil {

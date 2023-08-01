@@ -2,11 +2,14 @@
 (function() {
   window.addEventListener('DOMContentLoaded', function() {
     initControls();
+    window.setInterval(updateTimers, 1000);
+    initHeaderSearch();
   });
+  window.explorer = {
+    initControls: initControls,
+  };
 
   function initControls() {
-    window.setInterval(updateTimers, 1000);
-
     // init tooltips
     var tooltipEls = document.querySelectorAll('[data-bs-toggle="tooltip"]');
     Array.prototype.forEach.call(tooltipEls, function(tooltipEl) {
@@ -33,9 +36,6 @@
         tooltip.setContent({ '.tooltip-inner': title });
       }, 1000);
     });
-
-    // init type-ahead search
-    initHeaderSearch()
   }
 
   function updateTimers() {
