@@ -181,7 +181,7 @@ type SlotPageBlob struct {
 
 type SlotPageBlobDetails struct {
 	Index         uint64 `json:"index"`
-	Blob          []byte `json:"blob"`
-	KzgCommitment []byte `json:"kzg_commitment"`
-	KzgProof      []byte `json:"kzg_proof"`
+	Blob          string `json:"blob"`
+	KzgCommitment string `json:"kzg_commitment"`
+	KzgProof      string `json:"kzg_proof"`
 }

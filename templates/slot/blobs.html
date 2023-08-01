@@ -29,13 +29,63 @@
             </div>
           </div>
         {{ else }}
-          <div class="row border-bottom p-1 mx-0 blobloader-container">
-            <div class="col text-center">
-              load
+          <div class="blobloader-container" data-blobidx="{{ $blob.Index }}">
+            <div class="row border-bottom p-1 mx-0">
+              <div class="col text-center">
+                <a class="btn btn-primary blobloader-button" href="?blob=1#blobSidecars" role="button">Load Blob Data</a>
+              </div>
             </div>
           </div>
         {{ end }}
       </div>
     </div>
   {{ end }}
+  <script type="text/javascript">
+    $(function() {
+      $(".blobloader-button").each(function() {
+        var button = $(this);
+        var container = button.closest(".blobloader-container");
+        button.on("click", function(evt) {
+          evt.preventDefault();
+          if(button.hasClass("disabled")) return;
+          button.attr("disabled", "disabled").addClass("disabled");
+          var blobIdx = container.data("blobidx");
+          jQuery.get("/slot/0x{{ printf "%x" .Block.BlockRoot }}/blob/" + blobIdx).then(function(data, status) {
+            if(status == "success")
+              onSuccess(data);
+            else
+              onFail();
+          }, onFail);
+          function onFail() {
+            button.attr("disabled", "").removeClass("disabled");
+          }
+          function onSuccess(data) {
+            var blobShort = data.blob;
+            if(blobShort.length > 1024 + 2) {
+              blobShort = blobShort.substring(0, 1024 + 2) + "...";
+            }
+            var rowHtml = [
+              '<div class="row border-bottom p-1 mx-0">',
+                '<div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="KGZ Proof">KGZ Proof:</span></div>',
+                '<div class="col-md-10 text-monospace">',
+                  data.kzg_proof,
+                  '<i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="' + data.kzg_proof + '"></i>',
+                '</div>',
+              '</div>',
+              '<div class="row border-bottom p-1 mx-0">',
+                '<div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Blob Data">Data:</span></div>',
+                '<div class="col-md-10 text-monospace">',
+                  blobShort,
+                  '<i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="' + data.blob + '"></i>',
+                '</div>',
+              '</div>',
+            ].join("");
+            container.html(rowHtml);
+            explorer.initControls();
+          }
+        });
+      });
+
+    });
+  </script>
 {{ end }}

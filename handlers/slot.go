@@ -63,6 +63,25 @@ func Slot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	urlArgs := r.URL.Query()
+	if urlArgs.Has("blob") && pageData.Block != nil {
+		blobData, err := services.GlobalBeaconService.GetBlobSidecarsByBlockRoot(pageData.Block.BlockRoot)
+		if err == nil && blobData != nil {
+			for blobIdx, blob := range blobData.Data {
+				blobData := pageData.Block.Blobs[blobIdx]
+				blobData.HaveData = true
+				blobData.KzgProof = blob.KzgProof
+				blobData.Blob = blob.Blob
+				if len(blob.Blob) > 512 {
+					blobData.BlobShort = blob.Blob[0:512]
+					blobData.IsShort = true
+				} else {
+					blobData.BlobShort = blob.Blob
+				}
+			}
+		}
+	}
+
 	template := templates.GetTemplate(slotTemplateFiles...)
 	data := InitPageData(w, r, "blockchain", "/slots", fmt.Sprintf("Slot %v", slotOrHash), slotTemplateFiles)
 	data.Data = pageData
@@ -94,7 +113,13 @@ func SlotBlob(w http.ResponseWriter, r *http.Request) {
 	}
 	var result interface{}
 	if blobData != nil && blobIdx < uint64(len(blobData.Data)) {
-		result = blobData.Data[blobIdx]
+		blob := blobData.Data[blobIdx]
+		result = &models.SlotPageBlobDetails{
+			Index:         blobIdx,
+			KzgCommitment: blob.KzgCommitment.String(),
+			KzgProof:      blob.KzgProof.String(),
+			Blob:          blob.Blob.String(),
+		}
 	}
 	err = json.NewEncoder(w).Encode(result)
 	if err != nil {
