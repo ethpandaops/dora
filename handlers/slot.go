@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -70,23 +71,57 @@ func Slot(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// SlotBlob handles responses for the block blobs tab
+func SlotBlob(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	vars := mux.Vars(r)
+	blockRoot, err := hex.DecodeString(strings.Replace(vars["hash"], "0x", "", -1))
+	if err != nil || len(blockRoot) != 32 {
+		http.Error(w, "Internal server error", http.StatusServiceUnavailable)
+		return
+	}
+	blobIdx, err := strconv.ParseUint(vars["blobIdx"], 10, 64)
+	if err != nil {
+		http.Error(w, "Internal server error", http.StatusServiceUnavailable)
+		return
+	}
+	blobData, err := services.GlobalBeaconService.GetBlobSidecarsByBlockRoot(blockRoot)
+	if err != nil {
+		logrus.WithError(err).Error("error loading blob sidecar")
+		http.Error(w, "Internal server error", http.StatusServiceUnavailable)
+		return
+	}
+	var result interface{}
+	if blobData != nil && blobIdx < uint64(len(blobData.Data)) {
+		result = blobData.Data[blobIdx]
+	}
+	err = json.NewEncoder(w).Encode(result)
+	if err != nil {
+		logrus.WithError(err).Error("error encoding blob sidecar")
+		http.Error(w, "Internal server error", http.StatusServiceUnavailable)
+	}
+}
+
 func getSlotPageData(blockSlot int64, blockRoot []byte) *models.SlotPageData {
 	pageData := &models.SlotPageData{}
 	pageCacheKey := fmt.Sprintf("slot:%v:%x", blockSlot, blockRoot)
-	pageData = services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, false, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
-		return buildSlotPageData(blockSlot, blockRoot)
+	pageData = services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
+		pageData, cacheTimeout := buildSlotPageData(blockSlot, blockRoot)
+		pageCall.CacheTimeout = cacheTimeout
+		return pageData
 	}).(*models.SlotPageData)
 	return pageData
 }
 
-func buildSlotPageData(blockSlot int64, blockRoot []byte) *models.SlotPageData {
+func buildSlotPageData(blockSlot int64, blockRoot []byte) (*models.SlotPageData, time.Duration) {
 	finalizedHead, err := services.GlobalBeaconService.GetFinalizedBlockHead()
 	var blockData *rpctypes.CombinedBlockResponse
 	if err == nil {
 		if blockSlot > -1 {
-			blockData, err = services.GlobalBeaconService.GetSlotDetailsBySlot(uint64(blockSlot), true)
+			blockData, err = services.GlobalBeaconService.GetSlotDetailsBySlot(uint64(blockSlot), false)
 		} else {
-			blockData, err = services.GlobalBeaconService.GetSlotDetailsByBlockroot(blockRoot, true)
+			blockData, err = services.GlobalBeaconService.GetSlotDetailsByBlockroot(blockRoot, false)
 		}
 	}
 
@@ -104,7 +139,7 @@ func buildSlotPageData(blockSlot int64, blockRoot []byte) *models.SlotPageData {
 	}
 
 	if blockData == nil {
-		return nil
+		return nil, -1
 	}
 	slot := uint64(blockData.Header.Data.Header.Message.Slot)
 	logrus.Printf("slot page called: %v", slot)
@@ -142,7 +177,7 @@ func buildSlotPageData(blockSlot int64, blockRoot []byte) *models.SlotPageData {
 		pageData.Block = getSlotPageBlockData(blockData, assignments)
 	}
 
-	return pageData
+	return pageData, -1
 }
 
 func getSlotPageBlockData(blockData *rpctypes.CombinedBlockResponse, assignments *rpctypes.EpochAssignments) *models.SlotPageBlockData {
@@ -338,22 +373,13 @@ func getSlotPageBlockData(blockData *rpctypes.CombinedBlockResponse, assignments
 		}
 	}
 
-	if epoch >= utils.Config.Chain.Config.DenebForkEpoch && blockData.Blobs != nil {
-		pageData.BlobsCount = uint64(len(blockData.Blobs.Data))
+	if epoch >= utils.Config.Chain.Config.DenebForkEpoch {
+		pageData.BlobsCount = uint64(len(blockData.Block.Data.Message.Body.BlobKzgCommitments))
 		pageData.Blobs = make([]*models.SlotPageBlob, pageData.BlobsCount)
 		for i := uint64(0); i < pageData.BlobsCount; i++ {
-			blob := blockData.Blobs.Data[i]
 			blobData := &models.SlotPageBlob{
-				Index:         uint64(blob.Index),
-				KzgCommitment: blob.KzgCommitment,
-				KzgProof:      blob.KzgProof,
-				Blob:          blob.Blob,
-			}
-			if len(blob.Blob) > 512 {
-				blobData.BlobShort = blob.Blob[0:512]
-				blobData.IsShort = true
-			} else {
-				blobData.BlobShort = blob.Blob
+				Index:         i,
+				KzgCommitment: blockData.Block.Data.Message.Body.BlobKzgCommitments[i],
 			}
 			pageData.Blobs[i] = blobData
 		}

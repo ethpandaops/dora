@@ -21,10 +21,10 @@ var layoutTemplateFiles = []string{
 }
 
 func InitPageData(w http.ResponseWriter, r *http.Request, active, path, title string, mainTemplates []string) *types.PageData {
-	fullTitle := fmt.Sprintf("%v - %v - beaconchain light - %v", title, utils.Config.Frontend.SiteName, time.Now().Year())
+	fullTitle := fmt.Sprintf("%v - %v - %v", title, utils.Config.Frontend.SiteName, time.Now().Year())
 
 	if title == "" {
-		fullTitle = fmt.Sprintf("%v - beaconchain light - %v", utils.Config.Frontend.SiteName, time.Now().Year())
+		fullTitle = fmt.Sprintf("%v - %v", utils.Config.Frontend.SiteName, time.Now().Year())
 	}
 
 	isMainnet := utils.Config.Chain.Config.ConfigName == "mainnet"
@@ -68,14 +68,6 @@ func InitPageData(w http.ResponseWriter, r *http.Request, active, path, title st
 	}
 
 	return data
-}
-
-func SetPageDataTitle(pageData *types.PageData, title string) {
-	if title == "" {
-		pageData.Meta.Title = fmt.Sprintf("%v - light beaconchain explorer - %v", utils.Config.Frontend.SiteName, time.Now().Year())
-	} else {
-		pageData.Meta.Title = fmt.Sprintf("%v - %v - light beaconchain explorer - %v", title, utils.Config.Frontend.SiteName, time.Now().Year())
-	}
 }
 
 func createMenuItems(active string, isMain bool) []types.MainMenuItem {

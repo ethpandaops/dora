@@ -76,7 +76,7 @@
         </div>
       </div>
       {{ if .Block }}
-        <div class="tab-pane fade" id="attestations" role="tabpanel" aria-labelledby="attestations-tab">
+        <div class="tab-pane fade show active" id="attestations" role="tabpanel" aria-labelledby="attestations-tab">
           <div class="card block-card">
             <div style="margin-bottom: -.25rem;" class="card-body px-0 py-1">
               <div class="row p-1 mx-0">
@@ -87,7 +87,7 @@
           {{ template "block_attestations" . }}
         </div>
         {{ if gt .Block.DepositsCount 0 }}
-          <div class="tab-pane fade" id="deposits" role="tabpanel" aria-labelledby="deposits-tab">
+          <div class="tab-pane fade show active" id="deposits" role="tabpanel" aria-labelledby="deposits-tab">
             <div class="card block-card">
               <div style="margin-bottom: -.25rem;" class="card-body px-0 py-1">
                 <div class="row p-1 mx-0">
@@ -99,7 +99,7 @@
           </div>
         {{ end }}
         {{ if gt .Block.VoluntaryExitsCount 0 }}
-          <div class="tab-pane fade" id="voluntary-exits" role="tabpanel" aria-labelledby="voluntary-exits-tab">
+          <div class="tab-pane fade show active" id="voluntary-exits" role="tabpanel" aria-labelledby="voluntary-exits-tab">
             <div class="card block-card">
               <div style="margin-bottom: -.25rem;" class="card-body px-0 py-1">
                 <div class="row p-1 mx-0">
@@ -111,7 +111,7 @@
           </div>
         {{ end }}
         {{ if gt .Block.AttesterSlashingsCount 0 }}
-          <div class="tab-pane fade" id="attester-slashings" role="tabpanel" aria-labelledby="attester-slashings-tab">
+          <div class="tab-pane fade show active" id="attester-slashings" role="tabpanel" aria-labelledby="attester-slashings-tab">
             <div class="card block-card">
               <div style="margin-bottom: -.25rem;" class="card-body px-0 py-1">
                 <div class="row p-1 mx-0">
@@ -123,7 +123,7 @@
           </div>
         {{ end }}
         {{ if gt .Block.ProposerSlashingsCount 0 }}
-          <div class="tab-pane fade" id="proposer-slashings" role="tabpanel" aria-labelledby="proposer-slashings-tab">
+          <div class="tab-pane fade show active" id="proposer-slashings" role="tabpanel" aria-labelledby="proposer-slashings-tab">
             <div class="card block-card">
               <div style="margin-bottom: -.25rem;" class="card-body px-0 py-1">
                 <div class="row p-1 mx-0">
@@ -135,7 +135,7 @@
           </div>
         {{ end }}
         {{ if gt .Block.WithdrawalsCount 0 }}
-          <div class="tab-pane fade" id="withdrawals" role="tabpanel" aria-labelledby="withdrawals-tab">
+          <div class="tab-pane fade show active" id="withdrawals" role="tabpanel" aria-labelledby="withdrawals-tab">
             <div class="card block-card">
               <div style="margin-bottom: -.25rem;" class="card-body px-0 py-1">
                 <div class="row p-1 mx-0">
@@ -147,7 +147,7 @@
           </div>
         {{ end }}
         {{ if gt .Block.BLSChangesCount 0 }}
-          <div class="tab-pane fade" id="blsChange" role="tabpanel" aria-labelledby="blsChange-tab">
+          <div class="tab-pane fade show active" id="blsChange" role="tabpanel" aria-labelledby="blsChange-tab">
             <div class="card block-card">
               <div style="margin-bottom: -.25rem;" class="card-body px-0 py-1">
                 <div class="row p-1 mx-0">
@@ -159,7 +159,7 @@
           </div>
         {{ end }}
         {{ if gt .Block.BlobsCount 0 }}
-          <div class="tab-pane fade" id="blobSidecars" role="tabpanel" aria-labelledby="blobSidecars-tab">
+          <div class="tab-pane fade show active" id="blobSidecars" role="tabpanel" aria-labelledby="blobSidecars-tab">
             <div class="card block-card">
               <div style="margin-bottom: -.25rem;" class="card-body px-0 py-1">
                 <div class="row p-1 mx-0">
@@ -173,6 +173,18 @@
 
       {{ end }}
     </div>
+    <script type="text/javascript">
+      Array.prototype.forEach.call(document.getElementById("tabContent").querySelectorAll(".tab-pane"), function(paneEl, paneIdx) {
+        if(paneIdx > 0) {
+          paneEl.classList.remove("active");
+          paneEl.classList.remove("show");
+        }
+      });
+      $(function() {
+        if(location.hash)
+          $('.nav-tabs a[href="' + location.hash + '"]').tab('show');
+      });
+    </script>
     <div id="footer-placeholder" style="height:71px;"></div>
   </div>
 {{ end }}

@@ -14,6 +14,7 @@ server:
 frontend:
   enabled: true # Enable or disable to web frontend
   debug: false
+  minimize: false # minimize html templates
 
   # Name of the site, displayed in the title tag
   siteName: "Beaconchain Light"

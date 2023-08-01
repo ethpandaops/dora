@@ -12,21 +12,29 @@
             <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $blob.KzgCommitment }} "></i>
           </div>
         </div>
-        <div class="row border-bottom p-1 mx-0">
-          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="KGZ Proof">KGZ Proof:</span></div>
-          <div class="col-md-10 text-monospace">
-            0x{{ printf "%x" $blob.KzgProof }} 
-            <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $blob.KzgProof }} "></i>
+        {{ if $blob.HaveData }}
+          <div class="row border-bottom p-1 mx-0">
+            <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="KGZ Proof">KGZ Proof:</span></div>
+            <div class="col-md-10 text-monospace">
+              0x{{ printf "%x" $blob.KzgProof }} 
+              <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $blob.KzgProof }} "></i>
+            </div>
           </div>
-        </div>
-        <div class="row border-bottom p-1 mx-0">
-          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Blob Data">Data:</span></div>
-          <div class="col-md-10 text-monospace">
-            0x{{ printf "%x" $blob.BlobShort }}
-            {{- if $blob.IsShort -}}...{{ end }} 
-            <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $blob.Blob }} "></i>
+          <div class="row border-bottom p-1 mx-0">
+            <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Blob Data">Data:</span></div>
+            <div class="col-md-10 text-monospace">
+              0x{{ printf "%x" $blob.BlobShort }}
+              {{- if $blob.IsShort -}}...{{ end }} 
+              <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $blob.Blob }} "></i>
+            </div>
           </div>
-        </div>
+        {{ else }}
+          <div class="row border-bottom p-1 mx-0 blobloader-container">
+            <div class="col text-center">
+              load
+            </div>
+          </div>
+        {{ end }}
       </div>
     </div>
   {{ end }}
