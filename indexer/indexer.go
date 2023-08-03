@@ -41,6 +41,7 @@ type indexerState struct {
 	headValidators     *rpctypes.StandardV1StateValidatorsResponse
 	headValidatorsSlot uint64
 	lowestCachedSlot   int64
+	highestCachedSlot  int64
 	lastProcessedEpoch uint64
 }
 
@@ -83,9 +84,10 @@ func NewIndexer(rpcClient *rpc.BeaconClient) (*Indexer, error) {
 		inMemoryEpochs:       inMemoryEpochs,
 		epochProcessingDelay: epochProcessingDelay,
 		state: indexerState{
-			cachedBlocks:     make(map[uint64][]*BlockInfo),
-			epochStats:       make(map[uint64]*EpochStats),
-			lowestCachedSlot: -1,
+			cachedBlocks:      make(map[uint64][]*BlockInfo),
+			epochStats:        make(map[uint64]*EpochStats),
+			lowestCachedSlot:  -1,
+			highestCachedSlot: -1,
 		},
 	}, nil
 }
@@ -432,10 +434,6 @@ func (indexer *Indexer) processHeadBlock(slot uint64, header *rpctypes.StandardV
 				logger.Infof("Received duplicate (reorg) block %v.%v (%v)", slot, bidx, header.Data.Root)
 				duplicate = true
 				blockInfo = blocks[bidx]
-				if blockInfo.Orphaned {
-					logger.Infof("Chain reorg: mark %v.%v as canonical (%v)", slot, bidx, header.Data.Root)
-					blockInfo.Orphaned = false
-				}
 				break
 			}
 		}
@@ -443,92 +441,52 @@ func (indexer *Indexer) processHeadBlock(slot uint64, header *rpctypes.StandardV
 			indexer.state.cachedBlocks[slot] = append(blocks, blockInfo)
 		}
 	}
-
 	if indexer.state.lowestCachedSlot < 0 || int64(slot) < indexer.state.lowestCachedSlot {
 		indexer.state.lowestCachedSlot = int64(slot)
 	}
+	if indexer.state.highestCachedSlot < 0 || int64(slot) > indexer.state.highestCachedSlot {
+		indexer.state.highestCachedSlot = int64(slot)
+	}
 
-	// check for chain reorgs
-	if indexer.state.lastHeadRoot != nil && !bytes.Equal(indexer.state.lastHeadRoot, header.Data.Header.Message.ParentRoot) && !bytes.Equal(indexer.state.lastHeadRoot, header.Data.Root) {
+	if indexer.state.lastHeadRoot != nil && !bytes.Equal(indexer.state.lastHeadRoot, header.Data.Header.Message.ParentRoot) {
+		// chain did not proceed as usual, check for reorg
 		// reorg detected
-		var reorgBaseBlock *BlockInfo
-		var reorgBaseSlot uint64
-		var reorgBaseIndex int
+		var canonicalBlock *BlockInfo = blockInfo
 
-		for sidx := indexer.state.lastHeadBlock; int64(sidx) >= indexer.state.lowestCachedSlot; sidx-- {
-			blocks := indexer.state.cachedBlocks[sidx]
+		// walk backwards, mark all blocks that are not the parent of canonicalBlock as orphaned
+		// when we find the parent of canonicalBlock, check if it's orphaned
+		// if orphaned: set block as new canonicalBlock and continue walking backwards
+		// if not orphaned, finish index loop and exit (reached end of reorged blocks)
+		reachedEnd := false
+		for sidx := indexer.state.highestCachedSlot; sidx >= int64(indexer.state.lowestCachedSlot) && !reachedEnd; sidx-- {
+			blocks := indexer.state.cachedBlocks[uint64(sidx)]
 			if blocks == nil {
 				continue
 			}
 			for bidx := 0; bidx < len(blocks); bidx++ {
 				block := blocks[bidx]
-				if bytes.Equal(block.Header.Data.Root, header.Data.Root) {
-					continue
-				}
-				if bytes.Equal(block.Header.Data.Root, header.Data.Header.Message.ParentRoot) {
-					reorgBaseSlot = sidx
-					reorgBaseIndex = bidx
-					reorgBaseBlock = block
+				if bytes.Equal(block.Header.Data.Root, canonicalBlock.Header.Data.Root) {
+					if block.Orphaned {
+						logger.Infof("Chain reorg: mark %v.%v as canonical (%v)", sidx, bidx, block.Header.Data.Root)
+						block.Orphaned = false
+					}
+				} else if bytes.Equal(block.Header.Data.Root, canonicalBlock.Header.Data.Header.Message.ParentRoot) {
+					if block.Orphaned {
+						logger.Infof("Chain reorg: mark %v.%v as canonical (%v)", sidx, bidx, block.Header.Data.Root)
+						block.Orphaned = false
+						canonicalBlock = block
+					} else {
+						reachedEnd = true
+					}
 				} else {
-					logger.Infof("Chain reorg: mark %v.%v as orphaned (%v)", sidx, bidx, block.Header.Data.Root)
-					block.Orphaned = true
-				}
-			}
-			if reorgBaseBlock != nil {
-				break
-			}
-		}
-
-		resyncNeeded := false
-		if reorgBaseBlock == nil {
-			// reorg with > 2 epochs length or we missed a block somehow
-			// resync needed
-			resyncNeeded = true
-		} else {
-			orphanedBlock := reorgBaseBlock
-			orphanedSlot := reorgBaseSlot
-			orphanedIndex := reorgBaseIndex
-			for orphanedBlock.Orphaned {
-				// reorg back to a block we've previously marked as orphaned
-				// walk backwards and fix orphaned flags
-				orphanedBlock.Orphaned = false
-				logger.Infof("Chain reorg: mark %v.%v as canonical (%v)", orphanedSlot, orphanedIndex, orphanedBlock.Header.Data.Root)
-
-				foundReorgBase := false
-				for sidx := reorgBaseSlot - 1; int64(sidx) >= indexer.state.lowestCachedSlot; sidx-- {
-					blocks := indexer.state.cachedBlocks[sidx]
-					if blocks == nil {
-						continue
+					if !block.Orphaned {
+						logger.Infof("Chain reorg: mark %v.%v as orphaned (%v)", sidx, bidx, block.Header.Data.Root)
+						block.Orphaned = true
 					}
-					for bidx := 0; bidx < len(blocks); bidx++ {
-						block := blocks[bidx]
-
-						if bytes.Equal(block.Header.Data.Root, orphanedBlock.Header.Data.Header.Message.ParentRoot) {
-							if !block.Orphaned {
-								// reached end of reorg range
-								foundReorgBase = true
-							}
-
-							orphanedBlock = block
-							orphanedSlot = sidx
-							orphanedIndex = bidx
-						} else {
-							logger.Infof("Chain reorg: mark %v.%v as orphaned (%v)", sidx, bidx, block.Header.Data.Root)
-							block.Orphaned = true
-						}
-					}
-					if foundReorgBase {
-						break
-					}
-				}
-
-				if !foundReorgBase {
-					resyncNeeded = true
 				}
 			}
 		}
-
-		if resyncNeeded {
+		if !reachedEnd {
 			logger.Errorf("Large chain reorg detected, resync needed")
 			// TODO: Drop all unfinalized & resync
 		}
