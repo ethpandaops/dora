@@ -4,3 +4,4 @@ temp
 config.yaml
 test-config.yaml
 config-*.yaml
+log-*

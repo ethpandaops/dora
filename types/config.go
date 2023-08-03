@@ -4,6 +4,14 @@ import "time"
 
 // Config is a struct to hold the configuration data
 type Config struct {
+	Logging struct {
+		OutputLevel  string `yaml:"outputLevel" envconfig:"LOGGING_OUTPUT_LEVEL"`
+		OutputStderr bool   `yaml:"outputStderr" envconfig:"LOGGING_OUTPUT_STDERR"`
+
+		FilePath  string `yaml:"filePath" envconfig:"LOGGING_FILE_PATH"`
+		FileLevel string `yaml:"fileLevel" envconfig:"LOGGING_FILE_LEVEL"`
+	} `yaml:"logging"`
+
 	Server struct {
 		Port string `yaml:"port" envconfig:"FRONTEND_SERVER_PORT"`
 		Host string `yaml:"host" envconfig:"FRONTEND_SERVER_HOST"`

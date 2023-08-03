@@ -28,6 +28,8 @@ func main() {
 		logger.Fatalf("error reading config file: %v", err)
 	}
 	utils.Config = cfg
+	logWriter := utils.InitLogger()
+	defer logWriter.Dispose()
 	logger.WithFields(logger.Fields{
 		"config": *configPath,
 		//"version":   version.Version,
