@@ -154,7 +154,7 @@ func buildSlotPageData(blockSlot int64, blockRoot []byte) (*models.SlotPageData,
 	if blockData == nil && err == nil {
 		// check for orphaned block
 		if blockSlot > -1 {
-			dbBlocks := services.GlobalBeaconService.GetDbBlocksForSlots(uint64(blockSlot), 1, true)
+			dbBlocks := services.GlobalBeaconService.GetDbBlocksForSlots(uint64(blockSlot), 0, true)
 			if len(dbBlocks) > 0 {
 				blockRoot = dbBlocks[0].Root
 			}
