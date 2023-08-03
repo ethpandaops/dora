@@ -288,11 +288,11 @@ func (bs *BeaconService) GetDbEpochs(firstEpoch uint64, limit uint32) []*dbtypes
 		idxHeadEpoch = utils.EpochOfSlot(bs.indexer.GetHeadSlot())
 	}
 
-	lastEpoch := firstEpoch - uint64(limit)
+	lastEpoch := int64(firstEpoch) - int64(limit)
 	if lastEpoch < 0 {
 		lastEpoch = 0
 	}
-	for epochIdx := int64(firstEpoch); epochIdx >= int64(lastEpoch) && resIdx < int(limit); epochIdx-- {
+	for epochIdx := int64(firstEpoch); epochIdx >= lastEpoch && resIdx < int(limit); epochIdx-- {
 		epoch := uint64(epochIdx)
 		var resEpoch *dbtypes.Epoch
 		if dbIdx < dbCnt && dbEpochs[dbIdx].Epoch == epoch {
@@ -340,6 +340,7 @@ func (bs *BeaconService) GetDbBlocks(firstSlot uint64, limit int32, withOrphaned
 				}
 			}
 		}
+		slot--
 	}
 
 	if resIdx < int(limit) {
@@ -388,6 +389,7 @@ func (bs *BeaconService) GetDbBlocksForSlots(firstSlot uint64, slotLimit uint32,
 				}
 			}
 		}
+		slot--
 	}
 
 	if slot > lastSlot {

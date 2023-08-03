@@ -164,10 +164,14 @@ func buildSlotPageData(blockSlot int64, blockRoot []byte) (*models.SlotPageData,
 		}
 	}
 
-	if blockData == nil {
+	var slot uint64
+	if blockData != nil {
+		slot = uint64(blockData.Header.Data.Header.Message.Slot)
+	} else if blockSlot > -1 {
+		slot = uint64(blockSlot)
+	} else {
 		return nil, -1
 	}
-	slot := uint64(blockData.Header.Data.Header.Message.Slot)
 	logrus.Printf("slot page called: %v", slot)
 
 	pageData := &models.SlotPageData{
