@@ -199,7 +199,7 @@ func buildSlotPageData(blockSlot int64, blockRoot []byte) (*models.SlotPageData,
 			cacheTimeout = timeDiff
 		}
 	} else if pageData.EpochFinalized {
-		cacheTimeout = 10 * time.Minute
+		cacheTimeout = 30 * time.Minute
 	} else if blockData != nil {
 		cacheTimeout = 5 * time.Minute
 	} else {

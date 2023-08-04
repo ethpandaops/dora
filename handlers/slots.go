@@ -126,11 +126,14 @@ func buildSlotsPageData(firstSlot uint64, pageSize uint64) (*models.SlotsPageDat
 	dbIdx := 0
 	dbCnt := len(dbSlots)
 	blockCount := uint64(0)
+	allFinalized := true
 	for slotIdx := int64(firstSlot); slotIdx >= int64(lastSlot); slotIdx-- {
 		slot := uint64(slotIdx)
 		finalized := false
 		if finalizedHead != nil && uint64(finalizedHead.Data.Header.Message.Slot) >= slot {
 			finalized = true
+		} else {
+			allFinalized = false
 		}
 		haveBlock := false
 		for dbIdx < dbCnt && dbSlots[dbIdx] != nil && dbSlots[dbIdx].Slot == slot {
@@ -188,7 +191,9 @@ func buildSlotsPageData(firstSlot uint64, pageSize uint64) (*models.SlotsPageDat
 	pageData.LastSlot = lastSlot
 
 	var cacheTimeout time.Duration
-	if firstEpoch < uint64(currentEpoch) {
+	if allFinalized {
+		cacheTimeout = 30 * time.Minute
+	} else if firstEpoch < uint64(currentEpoch) {
 		cacheTimeout = 10 * time.Minute
 	} else {
 		cacheTimeout = 12 * time.Second

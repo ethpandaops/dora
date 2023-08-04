@@ -99,11 +99,14 @@ func buildEpochsPageData(firstEpoch uint64, pageSize uint64) (*models.EpochsPage
 	dbIdx := 0
 	dbCnt := len(dbEpochs)
 	epochCount := uint64(0)
+	allFinalized := true
 	for epochIdx := int64(firstEpoch); epochIdx >= 0 && epochCount < epochLimit; epochIdx-- {
 		epoch := uint64(epochIdx)
 		finalized := false
 		if finalizedHead != nil && uint64(finalizedHead.Data.Header.Message.Slot) >= epoch*utils.Config.Chain.Config.SlotsPerEpoch {
 			finalized = true
+		} else {
+			allFinalized = false
 		}
 		epochData := &models.EpochsPageDataEpoch{
 			Epoch:     epoch,
@@ -140,7 +143,9 @@ func buildEpochsPageData(firstEpoch uint64, pageSize uint64) (*models.EpochsPage
 	pageData.LastEpoch = firstEpoch - pageData.EpochCount + 1
 
 	var cacheTimeout time.Duration
-	if firstEpoch+2 < uint64(currentEpoch) {
+	if allFinalized {
+		cacheTimeout = 30 * time.Minute
+	} else if firstEpoch+2 < uint64(currentEpoch) {
 		cacheTimeout = 10 * time.Minute
 	} else {
 		cacheTimeout = 12 * time.Second

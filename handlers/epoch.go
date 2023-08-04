@@ -43,6 +43,7 @@ func Epoch(w http.ResponseWriter, r *http.Request) {
 		if handleTemplateError(w, r, "slot.go", "Slot", "blockSlot", templates.GetTemplate(notfoundTemplateFiles...).ExecuteTemplate(w, "layout", data)) != nil {
 			return // an error has occurred and was processed
 		}
+		return
 	}
 
 	data := InitPageData(w, r, "blockchain", "/epoch", fmt.Sprintf("Epoch %v", epoch), epochTemplateFiles)
@@ -77,11 +78,6 @@ func buildEpochPageData(epoch uint64) (*models.EpochPageData, time.Duration) {
 	finalizedHead, _ := services.GlobalBeaconService.GetFinalizedBlockHead()
 	slotAssignments, syncedEpochs := services.GlobalBeaconService.GetProposerAssignments(epoch, epoch)
 
-	dbEpochs := services.GlobalBeaconService.GetDbEpochs(epoch, 1)
-	if dbEpochs[0] == nil {
-		return nil, -1
-	}
-	dbEpoch := dbEpochs[0]
 	nextEpoch := epoch + 1
 	if nextEpoch > currentEpoch {
 		nextEpoch = 0
@@ -89,31 +85,37 @@ func buildEpochPageData(epoch uint64) (*models.EpochPageData, time.Duration) {
 	firstSlot := epoch * utils.Config.Chain.Config.SlotsPerEpoch
 	lastSlot := firstSlot + utils.Config.Chain.Config.SlotsPerEpoch - 1
 	pageData := &models.EpochPageData{
-		Epoch:                   epoch,
-		PreviousEpoch:           epoch - 1,
-		NextEpoch:               nextEpoch,
-		Ts:                      utils.EpochToTime(epoch),
-		Synchronized:            syncedEpochs[epoch],
-		Finalized:               uint64(finalizedHead.Data.Header.Message.Slot) >= lastSlot,
-		AttestationCount:        dbEpoch.AttestationCount,
-		DepositCount:            dbEpoch.DepositCount,
-		ExitCount:               dbEpoch.ExitCount,
-		WithdrawalCount:         dbEpoch.WithdrawCount,
-		WithdrawalAmount:        dbEpoch.WithdrawAmount,
-		ProposerSlashingCount:   dbEpoch.ProposerSlashingCount,
-		AttesterSlashingCount:   dbEpoch.AttesterSlashingCount,
-		EligibleEther:           dbEpoch.Eligible,
-		TargetVoted:             dbEpoch.VotedTarget,
-		HeadVoted:               dbEpoch.VotedHead,
-		TotalVoted:              dbEpoch.VotedTotal,
-		SyncParticipation:       float64(dbEpoch.SyncParticipation) * 100,
-		ValidatorCount:          dbEpoch.ValidatorCount,
-		AverageValidatorBalance: dbEpoch.ValidatorBalance / dbEpoch.ValidatorCount,
+		Epoch:         epoch,
+		PreviousEpoch: epoch - 1,
+		NextEpoch:     nextEpoch,
+		Ts:            utils.EpochToTime(epoch),
+		Synchronized:  syncedEpochs[epoch],
+		Finalized:     uint64(finalizedHead.Data.Header.Message.Slot) >= lastSlot,
 	}
-	if dbEpoch.Eligible > 0 {
-		pageData.TargetVoteParticipation = float64(dbEpoch.VotedTarget) * 100.0 / float64(dbEpoch.Eligible)
-		pageData.HeadVoteParticipation = float64(dbEpoch.VotedHead) * 100.0 / float64(dbEpoch.Eligible)
-		pageData.TotalVoteParticipation = float64(dbEpoch.VotedTotal) * 100.0 / float64(dbEpoch.Eligible)
+
+	dbEpochs := services.GlobalBeaconService.GetDbEpochs(epoch, 1)
+	dbEpoch := dbEpochs[0]
+	if dbEpoch != nil {
+		pageData.AttestationCount = dbEpoch.AttestationCount
+		pageData.DepositCount = dbEpoch.DepositCount
+		pageData.ExitCount = dbEpoch.ExitCount
+		pageData.WithdrawalCount = dbEpoch.WithdrawCount
+		pageData.WithdrawalAmount = dbEpoch.WithdrawAmount
+		pageData.ProposerSlashingCount = dbEpoch.ProposerSlashingCount
+		pageData.AttesterSlashingCount = dbEpoch.AttesterSlashingCount
+		pageData.EligibleEther = dbEpoch.Eligible
+		pageData.TargetVoted = dbEpoch.VotedTarget
+		pageData.HeadVoted = dbEpoch.VotedHead
+		pageData.TotalVoted = dbEpoch.VotedTotal
+		pageData.SyncParticipation = float64(dbEpoch.SyncParticipation) * 100
+		pageData.ValidatorCount = dbEpoch.ValidatorCount
+		pageData.AverageValidatorBalance = dbEpoch.ValidatorBalance / dbEpoch.ValidatorCount
+
+		if dbEpoch.Eligible > 0 {
+			pageData.TargetVoteParticipation = float64(dbEpoch.VotedTarget) * 100.0 / float64(dbEpoch.Eligible)
+			pageData.HeadVoteParticipation = float64(dbEpoch.VotedHead) * 100.0 / float64(dbEpoch.Eligible)
+			pageData.TotalVoteParticipation = float64(dbEpoch.VotedTotal) * 100.0 / float64(dbEpoch.Eligible)
+		}
 	}
 
 	// load slots
@@ -181,7 +183,9 @@ func buildEpochPageData(epoch uint64) (*models.EpochPageData, time.Duration) {
 	pageData.BlockCount = uint64(blockCount)
 
 	var cacheTimeout time.Duration
-	if pageData.Finalized {
+	if !pageData.Synchronized {
+		cacheTimeout = 5 * time.Minute
+	} else if pageData.Finalized {
 		cacheTimeout = 30 * time.Minute
 	} else {
 		cacheTimeout = 12 * time.Second
