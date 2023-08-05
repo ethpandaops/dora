@@ -16,6 +16,7 @@ import (
 	"github.com/pk910/light-beaconchain-explorer/rpctypes"
 	"github.com/pk910/light-beaconchain-explorer/services"
 	"github.com/pk910/light-beaconchain-explorer/templates"
+	"github.com/pk910/light-beaconchain-explorer/types"
 	"github.com/pk910/light-beaconchain-explorer/types/models"
 	"github.com/pk910/light-beaconchain-explorer/utils"
 )
@@ -259,7 +260,7 @@ func getSlotPageBlockData(blockData *rpctypes.CombinedBlockResponse, assignments
 			Slot:            uint64(attestation.Data.Slot),
 			CommitteeIndex:  uint64(attestation.Data.Index),
 			AggregationBits: attestation.AggregationBits,
-			Validators:      make([]models.SlotPageValidator, len(attAssignments)),
+			Validators:      make([]types.NamedValidator, len(attAssignments)),
 			Signature:       attestation.Signature,
 			BeaconBlockRoot: attestation.Data.BeaconBlockRoot,
 			SourceEpoch:     uint64(attestation.Data.Source.Epoch),
@@ -268,7 +269,7 @@ func getSlotPageBlockData(blockData *rpctypes.CombinedBlockResponse, assignments
 			TargetRoot:      attestation.Data.Target.Root,
 		}
 		for j := 0; j < len(attAssignments); j++ {
-			attPageData.Validators[j] = models.SlotPageValidator{
+			attPageData.Validators[j] = types.NamedValidator{
 				Index: attAssignments[j],
 				Name:  services.GlobalBeaconService.GetValidatorName(attAssignments[j]),
 			}
@@ -320,7 +321,7 @@ func getSlotPageBlockData(blockData *rpctypes.CombinedBlockResponse, assignments
 			Attestation2SourceRoot:      slashing.Attestation2.Data.Source.Root,
 			Attestation2TargetEpoch:     uint64(slashing.Attestation2.Data.Target.Epoch),
 			Attestation2TargetRoot:      slashing.Attestation2.Data.Target.Root,
-			SlashedValidators:           make([]models.SlotPageValidator, 0),
+			SlashedValidators:           make([]types.NamedValidator, 0),
 		}
 		pageData.AttesterSlashings[i] = slashingData
 		for j := range slashing.Attestation1.AttestingIndices {
@@ -332,7 +333,7 @@ func getSlotPageBlockData(blockData *rpctypes.CombinedBlockResponse, assignments
 		inter := intersect.Simple(slashing.Attestation1.AttestingIndices, slashing.Attestation2.AttestingIndices)
 		for _, j := range inter {
 			valIdx := uint64(j.(rpctypes.Uint64Str))
-			slashingData.SlashedValidators = append(slashingData.SlashedValidators, models.SlotPageValidator{
+			slashingData.SlashedValidators = append(slashingData.SlashedValidators, types.NamedValidator{
 				Index: valIdx,
 				Name:  services.GlobalBeaconService.GetValidatorName(valIdx),
 			})
@@ -364,9 +365,15 @@ func getSlotPageBlockData(blockData *rpctypes.CombinedBlockResponse, assignments
 		pageData.SyncAggregateBits = syncAggregate.SyncCommitteeBits
 		pageData.SyncAggregateSignature = syncAggregate.SyncCommitteeSignature
 		if assignments != nil {
-			pageData.SyncAggCommittee = assignments.SyncAssignments
+			pageData.SyncAggCommittee = make([]types.NamedValidator, len(assignments.SyncAssignments))
+			for idx, vidx := range assignments.SyncAssignments {
+				pageData.SyncAggCommittee[idx] = types.NamedValidator{
+					Index: vidx,
+					Name:  services.GlobalBeaconService.GetValidatorName(vidx),
+				}
+			}
 		} else {
-			pageData.SyncAggCommittee = []uint64{}
+			pageData.SyncAggCommittee = []types.NamedValidator{}
 		}
 		pageData.SyncAggParticipation = utils.SyncCommitteeParticipation(pageData.SyncAggregateBits)
 	}

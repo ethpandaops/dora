@@ -68,3 +68,8 @@ type Meta struct {
 
 type Empty struct {
 }
+
+type NamedValidator struct {
+	Index uint64 `json:"index"`
+	Name  string `json:"name"`
+}

@@ -1,6 +1,10 @@
 package models
 
-import "time"
+import (
+	"time"
+
+	"github.com/pk910/light-beaconchain-explorer/types"
+)
 
 // SlotPageData is a struct to hold info for the slot details page
 type SlotPageData struct {
@@ -27,26 +31,26 @@ const (
 )
 
 type SlotPageBlockData struct {
-	BlockRoot              []byte   `json:"blockroot"`
-	ParentRoot             []byte   `json:"parentroot"`
-	StateRoot              []byte   `json:"stateroot"`
-	Signature              []byte   `json:"signature"`
-	RandaoReveal           []byte   `json:"randaoreveal"`
-	Graffiti               []byte   `json:"graffiti"`
-	Eth1dataDepositroot    []byte   `json:"eth1data_depositroot"`
-	Eth1dataDepositcount   uint64   `json:"eth1data_depositcount"`
-	Eth1dataBlockhash      []byte   `json:"eth1data_blockhash"`
-	SyncAggregateBits      []byte   `json:"syncaggregate_bits"`
-	SyncAggregateSignature []byte   `json:"syncaggregate_signature"`
-	SyncAggParticipation   float64  `json:"syncaggregate_participation"`
-	SyncAggCommittee       []uint64 `json:"syncaggregate_committee"`
-	ProposerSlashingsCount uint64   `json:"proposer_slashings_count"`
-	AttesterSlashingsCount uint64   `json:"attester_slashings_count"`
-	AttestationsCount      uint64   `json:"attestations_count"`
-	DepositsCount          uint64   `json:"deposits_count"`
-	WithdrawalsCount       uint64   `json:"withdrawals_count"`
-	BLSChangesCount        uint64   `json:"bls_changes_count"`
-	VoluntaryExitsCount    uint64   `json:"voluntaryexits_count"`
+	BlockRoot              []byte                 `json:"blockroot"`
+	ParentRoot             []byte                 `json:"parentroot"`
+	StateRoot              []byte                 `json:"stateroot"`
+	Signature              []byte                 `json:"signature"`
+	RandaoReveal           []byte                 `json:"randaoreveal"`
+	Graffiti               []byte                 `json:"graffiti"`
+	Eth1dataDepositroot    []byte                 `json:"eth1data_depositroot"`
+	Eth1dataDepositcount   uint64                 `json:"eth1data_depositcount"`
+	Eth1dataBlockhash      []byte                 `json:"eth1data_blockhash"`
+	SyncAggregateBits      []byte                 `json:"syncaggregate_bits"`
+	SyncAggregateSignature []byte                 `json:"syncaggregate_signature"`
+	SyncAggParticipation   float64                `json:"syncaggregate_participation"`
+	SyncAggCommittee       []types.NamedValidator `json:"syncaggregate_committee"`
+	ProposerSlashingsCount uint64                 `json:"proposer_slashings_count"`
+	AttesterSlashingsCount uint64                 `json:"attester_slashings_count"`
+	AttestationsCount      uint64                 `json:"attestations_count"`
+	DepositsCount          uint64                 `json:"deposits_count"`
+	WithdrawalsCount       uint64                 `json:"withdrawals_count"`
+	BLSChangesCount        uint64                 `json:"bls_changes_count"`
+	VoluntaryExitsCount    uint64                 `json:"voluntaryexits_count"`
 	SlashingsCount         uint64
 	BlobsCount             uint64 `json:"blobs_count"`
 
@@ -83,8 +87,8 @@ type SlotPageAttestation struct {
 	Slot           uint64 `json:"slot"`
 	CommitteeIndex uint64 `json:"committeeindex"`
 
-	AggregationBits []byte              `json:"aggregationbits"`
-	Validators      []SlotPageValidator `json:"validators"`
+	AggregationBits []byte                 `json:"aggregationbits"`
+	Validators      []types.NamedValidator `json:"validators"`
 
 	Signature []byte `json:"signature"`
 
@@ -93,11 +97,6 @@ type SlotPageAttestation struct {
 	SourceRoot      []byte `json:"source_root"`
 	TargetEpoch     uint64 `json:"target_epoch"`
 	TargetRoot      []byte `json:"target_root"`
-}
-
-type SlotPageValidator struct {
-	Index uint64 `json:"index"`
-	Name  string `json:"name"`
 }
 
 type SlotPageDeposit struct {
@@ -116,25 +115,25 @@ type SlotPageVoluntaryExit struct {
 
 // BlockPageAttesterSlashing is a struct to hold data for attester slashings on the block page
 type SlotPageAttesterSlashing struct {
-	Attestation1Indices         []uint64            `json:"attestation1_indices"`
-	Attestation1Signature       []byte              `json:"attestation1_signature"`
-	Attestation1Slot            uint64              `json:"attestation1_slot"`
-	Attestation1Index           uint64              `json:"attestation1_index"`
-	Attestation1BeaconBlockRoot []byte              `json:"attestation1_beaconblockroot"`
-	Attestation1SourceEpoch     uint64              `json:"attestation1_source_epoch"`
-	Attestation1SourceRoot      []byte              `json:"attestation1_source_root"`
-	Attestation1TargetEpoch     uint64              `json:"attestation1_target_epoch"`
-	Attestation1TargetRoot      []byte              `json:"attestation1_target_root"`
-	Attestation2Indices         []uint64            `json:"attestation2_indices"`
-	Attestation2Signature       []byte              `json:"attestation2_signature"`
-	Attestation2Slot            uint64              `json:"attestation2_slot"`
-	Attestation2Index           uint64              `json:"attestation2_index"`
-	Attestation2BeaconBlockRoot []byte              `json:"attestation2_beaconblockroot"`
-	Attestation2SourceEpoch     uint64              `json:"attestation2_source_epoch"`
-	Attestation2SourceRoot      []byte              `json:"attestation2_source_root"`
-	Attestation2TargetEpoch     uint64              `json:"attestation2_target_epoch"`
-	Attestation2TargetRoot      []byte              `json:"attestation2_target_root"`
-	SlashedValidators           []SlotPageValidator `json:"validators"`
+	Attestation1Indices         []uint64               `json:"attestation1_indices"`
+	Attestation1Signature       []byte                 `json:"attestation1_signature"`
+	Attestation1Slot            uint64                 `json:"attestation1_slot"`
+	Attestation1Index           uint64                 `json:"attestation1_index"`
+	Attestation1BeaconBlockRoot []byte                 `json:"attestation1_beaconblockroot"`
+	Attestation1SourceEpoch     uint64                 `json:"attestation1_source_epoch"`
+	Attestation1SourceRoot      []byte                 `json:"attestation1_source_root"`
+	Attestation1TargetEpoch     uint64                 `json:"attestation1_target_epoch"`
+	Attestation1TargetRoot      []byte                 `json:"attestation1_target_root"`
+	Attestation2Indices         []uint64               `json:"attestation2_indices"`
+	Attestation2Signature       []byte                 `json:"attestation2_signature"`
+	Attestation2Slot            uint64                 `json:"attestation2_slot"`
+	Attestation2Index           uint64                 `json:"attestation2_index"`
+	Attestation2BeaconBlockRoot []byte                 `json:"attestation2_beaconblockroot"`
+	Attestation2SourceEpoch     uint64                 `json:"attestation2_source_epoch"`
+	Attestation2SourceRoot      []byte                 `json:"attestation2_source_root"`
+	Attestation2TargetEpoch     uint64                 `json:"attestation2_target_epoch"`
+	Attestation2TargetRoot      []byte                 `json:"attestation2_target_root"`
+	SlashedValidators           []types.NamedValidator `json:"validators"`
 }
 
 // BlockPageProposerSlashing is a struct to hold data for proposer slashings on the block page

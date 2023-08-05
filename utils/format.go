@@ -13,6 +13,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/pk910/light-beaconchain-explorer/types"
 	"github.com/prysmaticlabs/go-bitfield"
 	"golang.org/x/text/language"
 	"golang.org/x/text/message"
@@ -67,12 +68,12 @@ func FormatAddCommas(n uint64) template.HTML {
 	return template.HTML(number)
 }
 
-func FormatBitlist(b []byte) template.HTML {
+func FormatBitlist(b []byte, v []types.NamedValidator) template.HTML {
 	p := bitfield.Bitlist(b)
-	return formatBits(p.BytesNoTrim(), int(p.Len()))
+	return formatBits(p.BytesNoTrim(), int(p.Len()), v)
 }
 
-func formatBits(b []byte, length int) template.HTML {
+func formatBits(b []byte, length int, v []types.NamedValidator) template.HTML {
 	var buf strings.Builder
 	buf.WriteString("<div class=\"text-bitfield text-monospace\">")
 	perLine := 8
@@ -88,11 +89,22 @@ func formatBits(b []byte, length int) template.HTML {
 				}
 				buf.WriteString("<span>")
 			}
+			if v != nil {
+				val := v[x]
+				if val.Name != "" {
+					buf.WriteString(fmt.Sprintf(`<span data-bs-toggle="tooltip" data-bs-placement="top" title="%v (%v)">`, val.Name, val.Index))
+				} else {
+					buf.WriteString(fmt.Sprintf(`<span data-bs-toggle="tooltip" data-bs-placement="top" title="%v">`, val.Index))
+				}
+			}
 			bit := BitAtVector(b, x)
 			if bit {
 				buf.WriteString("1")
 			} else {
 				buf.WriteString("0")
+			}
+			if v != nil {
+				buf.WriteString("</span>")
 			}
 		}
 		buf.WriteString("</span><br/>")
@@ -101,7 +113,7 @@ func formatBits(b []byte, length int) template.HTML {
 	return template.HTML(buf.String())
 }
 
-func formatBitvectorValidators(bits []byte, validators []uint64) template.HTML {
+func formatBitvectorValidators(bits []byte, validators []types.NamedValidator) template.HTML {
 	invalidLen := false
 	if len(bits)*8 != len(validators) {
 		invalidLen = true
@@ -117,11 +129,17 @@ func formatBitvectorValidators(bits []byte, validators []uint64) template.HTML {
 			}
 		} else {
 			val := validators[i]
-			if BitAtVector(bits, i) {
-				buf.WriteString(fmt.Sprintf("<span title=\"Validator %[1]d\" data-validx=\"%[1]d\">1</span>", val))
+			if val.Name != "" {
+				buf.WriteString(fmt.Sprintf(`<span data-bs-toggle="tooltip" data-bs-placement="top" title="%v (%v)">`, val.Name, val.Index))
 			} else {
-				buf.WriteString(fmt.Sprintf("<span title=\"Validator %[1]d\" data-validx=\"%[1]d\">0</span>", val))
+				buf.WriteString(fmt.Sprintf(`<span data-bs-toggle="tooltip" data-bs-placement="top" title="%v">`, val.Index))
 			}
+			if BitAtVector(bits, i) {
+				buf.WriteString("1")
+			} else {
+				buf.WriteString("0")
+			}
+			buf.WriteString("</span>")
 		}
 
 		if (i+1)%64 == 0 {
@@ -185,7 +203,7 @@ func formatAmount(amount *big.Int, unit string, digits int, maxPreCommaDigitsBef
 	trimmedAmount, fullAmount := trimAmount(amount, unitDigits, maxPreCommaDigitsBeforeTrim, digits, false)
 	tooltip := ""
 	if fullAmountTooltip {
-		tooltip = fmt.Sprintf(` data-toggle="tooltip" data-placement="top" title="%s"`, fullAmount)
+		tooltip = fmt.Sprintf(` data-bs-toggle="tooltip" data-bs-placement="top" title="%s"`, fullAmount)
 	}
 
 	// done, convert to HTML & return
