@@ -89,7 +89,7 @@ func formatBits(b []byte, length int, v []types.NamedValidator) template.HTML {
 				}
 				buf.WriteString("<span>")
 			}
-			if v != nil {
+			if v != nil && x < len(v) {
 				val := v[x]
 				if val.Name != "" {
 					buf.WriteString(fmt.Sprintf(`<span data-bs-toggle="tooltip" data-bs-placement="top" title="%v (%v)">`, val.Name, val.Index))
@@ -103,7 +103,7 @@ func formatBits(b []byte, length int, v []types.NamedValidator) template.HTML {
 			} else {
 				buf.WriteString("0")
 			}
-			if v != nil {
+			if v != nil && x < len(v) {
 				buf.WriteString("</span>")
 			}
 		}
