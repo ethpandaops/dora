@@ -448,9 +448,9 @@ func (indexer *Indexer) processHeadBlock(slot uint64, header *rpctypes.StandardV
 		indexer.state.highestCachedSlot = int64(slot)
 	}
 
-	if indexer.state.lastHeadRoot != nil && !bytes.Equal(indexer.state.lastHeadRoot, header.Data.Header.Message.ParentRoot) {
+	if (indexer.state.lastHeadRoot != nil && !bytes.Equal(indexer.state.lastHeadRoot, header.Data.Header.Message.ParentRoot)) || blockInfo.Orphaned {
 		// chain did not proceed as usual, check for reorg
-		// reorg detected
+		logger.Debugf("Unusual chain progress, check for reorg %v (%v)", slot, header.Data.Root)
 		var canonicalBlock *BlockInfo = blockInfo
 
 		// walk backwards, mark all blocks that are not the parent of canonicalBlock as orphaned
