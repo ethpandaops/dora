@@ -1,0 +1,150 @@
+{{ define "page" }}
+  <div class="container mt-2">
+    <div class="d-md-flex py-2 justify-content-md-between">
+      <h1 class="h4 mb-1 mb-md-0"><i class="fas fa-cube mx-2"></i> Validator {{ formatValidatorWithIndex .Index .Name }}: Slots</h1>
+      <nav aria-label="breadcrumb">
+        <ol class="breadcrumb font-size-1 mb-0" style="padding:0; background-color:transparent;">
+          <li class="breadcrumb-item"><a href="/" title="Home">Home</a></li>
+          <li class="breadcrumb-item"><a href="/validators" title="Validators">Validators</a></li>
+          <li class="breadcrumb-item"><a href="/validator/{{ .Index }}" title="Validator {{ .Index }}">{{ .Index }}</a></li>
+          <li class="breadcrumb-item active" aria-current="page">Slots</li>
+        </ol>
+      </nav>
+    </div>
+
+    <div class="card mt-2">
+      <div id="header-placeholder" style="height:45px;"></div>
+      <div class="card-body px-0 py-3">
+        <div class="row">
+          <div class="col-sm-12 col-md-6 table-pagesize">
+            <form action="/validator/{{ .Index }}/slots" method="get">
+              <label class="px-2">
+                <span>Show </span>
+                <select name="c" aria-controls="slots" class="custom-select custom-select-sm form-control form-control-sm" onchange="this.form.submit()">
+                  <option value="{{ .PageSize }}" selected>{{ .PageSize }}</option>
+                  <option value="10">10</option>
+                  <option value="25">25</option>
+                  <option value="50">50</option>
+                  <option value="100">100</option>
+                </select>
+                {{ if not .IsDefaultPage }}
+                  <input name="s" type="hidden" value="{{ .CurrentPageSlot }}">
+                {{ end }}
+                <span> entries</span>
+              </label>
+            </form>
+          </div>
+        </div>
+        <div class="table-responsive px-0 py-1">
+          <table class="table table-nobr" id="slots">
+            <thead>
+              <tr>
+                <th>Epoch</th>
+                <th>Slot</th>
+                <th>Status</th>
+                <th style="min-width: 125px">Time</th>
+                <th>Prop<span class="d-none d-lg-inline">oser</span></th>
+                <th class="d-none d-md-table-cell">Att<span class="d-none d-lg-inline">estations</span></th>
+                <th>
+                  <nobr><span data-toggle="tooltip" data-placement="top" title="Deposits">D<span class="d-none d-lg-inline">eposits</span> </span> / 
+                  <span data-toggle="tooltip" data-placement="top" title="Exits">E<span class="d-none d-lg-inline">xits</span> </span></nobr>
+                </th>
+                <th><span class="d-none d-lg-inline">Slashings</span>
+                  <nobr><span data-toggle="tooltip" data-placement="top" title="Proposer Slashings">P</span> / 
+                  <span data-toggle="tooltip" data-placement="top" title="Attester Slashings">A</span></nobr>
+                </th>
+                <th>Tx<span class="d-none d-lg-inline"> Count</span></th>
+                <th>Sync<span class="d-none d-lg-inline"> Agg</span> %</th>
+                <th>Graffiti</th>
+              </tr>
+            </thead>
+            {{ if gt .SlotCount 0 }}
+              <tbody>
+                {{ range $i, $slot := .Slots }}
+                  <tr>
+                    <td><a href="/epoch/{{ $slot.Epoch }}">{{ formatAddCommas $slot.Epoch }}</a></td>
+                    {{ if eq $slot.Status 2 }}
+                      <td><a href="/slot/0x{{ printf "%x" $slot.BlockRoot }}">{{ formatAddCommas $slot.Slot }}</a></td>
+                    {{ else }}
+                      <td><a href="/slot/{{ $slot.Slot }}">{{ formatAddCommas $slot.Slot }}</a></td>
+                    {{ end }}
+                    <td>
+                      {{ if eq $slot.Slot 0 }}
+                        <span class="badge rounded-pill text-bg-info">Genesis</span>
+                      {{ else if $slot.Scheduled }}
+                        <span class="badge rounded-pill text-bg-secondary">Scheduled</span>
+                      {{ else if eq $slot.Status 0 }}
+                        <span class="badge rounded-pill text-bg-warning">Missed</span>
+                      {{ else if eq $slot.Status 1 }}
+                        <span class="badge rounded-pill text-bg-success">Proposed</span>
+                      {{ else if eq $slot.Status 2 }}
+                        <span class="badge rounded-pill text-bg-info">Orphaned</span>
+                      {{ else }}
+                        <span class="badge rounded-pill text-bg-dark">Unknown</span>
+                      {{ end }}
+                    </td>
+                    <td data-timer="{{ $slot.Ts.Unix }}"><span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $slot.Ts }}">{{ formatRecentTimeShort $slot.Ts }}</span></td>
+                    <td>{{ formatValidator $slot.Proposer $slot.ProposerName }}</td>
+                    <td class="d-none d-md-table-cell">{{ if not (eq $slot.Status 0) }}{{ $slot.AttestationCount }}{{ end }}</td>
+                    <td>{{ if not (eq $slot.Status 0) }}{{ $slot.DepositCount }} / {{ $slot.ExitCount }}{{ end }}</td>
+                    <td>{{ if not (eq $slot.Status 0) }}{{ $slot.ProposerSlashingCount }} / {{ $slot.AttesterSlashingCount }}{{ end }}</td>
+                    <td>{{ if not (eq $slot.Status 0) }}{{ $slot.EthTransactionCount }}{{ end }}</td>
+                    <td>{{ if not (eq $slot.Status 0) }}{{ formatFloat $slot.SyncParticipation 2 }}%{{ end }}</td>
+                    <td>{{ if not (eq $slot.Status 0) }}{{ formatGraffiti $slot.Graffiti }}{{ end }}</td>
+                  </tr>
+                {{ end }}
+              </tbody>
+            {{ else }}
+              <tbody>
+                <tr style="height: 430px;">
+                  <td class="d-none d-md-table-cell"></td>
+                  <td style="vertical-align: middle;" colspan="9">
+                    <div class="img-fluid mx-auto p-3 d-flex align-items-center" style="max-height: 400px; max-width: 400px; overflow: hidden;">
+                      {{ template "professor_svg" }}
+                    </div>
+                  </td>
+                  <td class="d-none d-md-table-cell"></td>
+                </tr>
+              </tbody>
+            {{ end }}
+          </table>
+        </div>
+        {{ if gt .TotalPages 1 }}
+          <div class="row">
+            <div class="col-sm-12 col-md-5 table-metainfo">
+              <div class="px-2">
+                <div class="table-meta" role="status" aria-live="polite">Showing slot {{ .FirstSlot }} to {{ .LastSlot }}</div>
+              </div>
+            </div>
+            <div class="col-sm-12 col-md-7 table-paging">
+              <div class="d-inline-block px-2">
+                <ul class="pagination">
+                  <li class="first paginate_button page-item {{ if le .PrevPageIndex 1 }}disabled{{ end }}" id="tpg_first">
+                    <a tab-index="1" aria-controls="tpg_first" class="page-link" href="/validator/{{ .Index }}/slots?c={{ .PageSize }}">First</a>
+                  </li>
+                  <li class="previous paginate_button page-item {{ if eq .PrevPageIndex 0 }}disabled{{ end }}" id="tpg_previous">
+                    <a tab-index="1" aria-controls="tpg_previous" class="page-link" href="/validator/{{ .Index }}/slots?s={{ .PrevPageSlot }}&c={{ .PageSize }}"><i class="fas fa-chevron-left"></i></a>
+                  </li>
+                  <li class="page-item disabled">
+                    <a class="page-link" style="background-color: transparent;">{{ .CurrentPageIndex }} of {{ .TotalPages }}</a>
+                  </li>
+                  <li class="next paginate_button page-item {{ if eq .NextPageIndex 0 }}disabled{{ end }}" id="tpg_next">
+                    <a tab-index="1" aria-controls="tpg_next" class="page-link" href="/validator/{{ .Index }}/slots?s={{ .NextPageSlot }}&c={{ .PageSize }}"><i class="fas fa-chevron-right"></i></a>
+                  </li>
+                  <li class="last paginate_button page-item {{ if or (eq .LastPageSlot 0) (le .NextPageSlot .LastPageSlot) }}disabled{{ end }}" id="tpg_last">
+                    <a tab-index="1" aria-controls="tpg_last" class="page-link" href="/validator/{{ .Index }}/slots?s={{ .LastPageSlot }}&c={{ .PageSize }}">Last</a>
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        {{ end }}
+      </div>
+      <div id="footer-placeholder" style="height:71px;"></div>
+    </div>
+  </div>
+{{ end }}
+{{ define "js" }}
+{{ end }}
+{{ define "css" }}
+{{ end }}
