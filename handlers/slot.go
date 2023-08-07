@@ -247,12 +247,25 @@ func getSlotPageBlockData(blockData *rpctypes.CombinedBlockResponse, assignments
 		SlashingsCount:         uint64(len(blockData.Block.Data.Message.Body.ProposerSlashings)) + uint64(len(blockData.Block.Data.Message.Body.AttesterSlashings)),
 	}
 
+	epoch := utils.EpochOfSlot(uint64(blockData.Header.Data.Header.Message.Slot))
+	assignmentsMap := make(map[uint64]*rpctypes.EpochAssignments)
+	assignmentsLoaded := make(map[uint64]bool)
+	assignmentsMap[epoch] = assignments
+	assignmentsLoaded[epoch] = true
+
 	pageData.Attestations = make([]*models.SlotPageAttestation, pageData.AttestationsCount)
 	for i := uint64(0); i < pageData.AttestationsCount; i++ {
 		attestation := blockData.Block.Data.Message.Body.Attestations[i]
 		var attAssignments []uint64
-		if assignments != nil {
-			attAssignments = assignments.AttestorAssignments[fmt.Sprintf("%v-%v", uint64(attestation.Data.Slot), uint64(attestation.Data.Index))]
+		attEpoch := utils.EpochOfSlot(uint64(attestation.Data.Slot))
+		if !assignmentsLoaded[attEpoch] { // load epoch duties if needed
+			attEpochAssignments, _ := services.GlobalBeaconService.GetEpochAssignments(attEpoch)
+			assignmentsMap[attEpoch] = attEpochAssignments
+			assignmentsLoaded[attEpoch] = true
+		}
+
+		if assignmentsMap[attEpoch] != nil {
+			attAssignments = assignmentsMap[attEpoch].AttestorAssignments[fmt.Sprintf("%v-%v", uint64(attestation.Data.Slot), uint64(attestation.Data.Index))]
 		} else {
 			attAssignments = []uint64{}
 		}
@@ -359,7 +372,6 @@ func getSlotPageBlockData(blockData *rpctypes.CombinedBlockResponse, assignments
 		}
 	}
 
-	epoch := utils.EpochOfSlot(uint64(blockData.Header.Data.Header.Message.Slot))
 	if epoch >= utils.Config.Chain.Config.AltairForkEpoch {
 		syncAggregate := blockData.Block.Data.Message.Body.SyncAggregate
 		pageData.SyncAggregateBits = syncAggregate.SyncCommitteeBits
