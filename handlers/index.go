@@ -202,6 +202,9 @@ func buildIndexPageData() (*models.IndexPageData, time.Duration) {
 	blocksData := services.GlobalBeaconService.GetDbBlocks(uint64(currentSlot), int32(recentBlockCount), false)
 	for i := 0; i < len(blocksData); i++ {
 		blockData := blocksData[i]
+		if blockData == nil {
+			continue
+		}
 		blockStatus := 1
 		if blockData.Orphaned {
 			blockStatus = 2
