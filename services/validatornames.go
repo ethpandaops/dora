@@ -20,10 +20,6 @@ type ValidatorNames struct {
 	names      map[uint64]string
 }
 
-type validatorNamesYaml struct {
-	ValidatorNames map[string]string `yaml:"validatorNames"`
-}
-
 func (vn *ValidatorNames) GetValidatorName(index uint64) string {
 	vn.namesMutex.RLock()
 	defer vn.namesMutex.RUnlock()
@@ -40,24 +36,37 @@ func (vn *ValidatorNames) LoadFromYaml(fileName string) error {
 	if err != nil {
 		return fmt.Errorf("error opening validator names file %v: %v", fileName, err)
 	}
-	namesYaml := &validatorNamesYaml{}
+	namesYaml := map[string]string{}
 	decoder := yaml.NewDecoder(f)
 	err = decoder.Decode(&namesYaml)
 	if err != nil {
 		return fmt.Errorf("error decoding validator names file %v: %v", fileName, err)
 	}
-	logrus.Infof("Loaded %v validator names from yaml (%v)", len(namesYaml.ValidatorNames), fileName)
 
+	nameCount := 0
 	if vn.names == nil {
 		vn.names = make(map[uint64]string)
 	}
-	for idxStr, name := range namesYaml.ValidatorNames {
-		idx, err := strconv.ParseUint(idxStr, 10, 64)
+	for idxStr, name := range namesYaml {
+		rangeParts := strings.Split(idxStr, "-")
+		minIdx, err := strconv.ParseUint(rangeParts[0], 10, 64)
 		if err != nil {
 			continue
 		}
-		vn.names[idx] = name
+		maxIdx := minIdx + 1
+		if len(rangeParts) > 1 {
+			maxIdx, err = strconv.ParseUint(rangeParts[1], 10, 64)
+			if err != nil {
+				continue
+			}
+		}
+		for idx := minIdx; idx < maxIdx; idx++ {
+			vn.names[idx] = name
+			nameCount++
+		}
 	}
+	logrus.Infof("Loaded %v validator names from yaml (%v)", nameCount, fileName)
+
 	return nil
 }
 
