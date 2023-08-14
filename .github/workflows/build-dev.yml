@@ -30,17 +30,17 @@ jobs:
         make build
 
     # upload artifacts
-    - name: Upload artifact: explorer_windows_amd64.exe
+    - name: "Upload artifact: explorer_windows_amd64.exe"
       uses: actions/upload-artifact@v3
       with:
         path: ./bin/explorer_windows_amd64.exe
         name: explorer_windows_amd64.exe
-    - name: Upload artifact: explorer_linux_amd64
+    - name: "Upload artifact: explorer_linux_amd64"
       uses: actions/upload-artifact@v3
       with:
         path: ./bin/explorer_linux_amd64
         name: explorer_linux_amd64
-    - name: Upload artifact: explorer_darwin_amd64
+    - name: "Upload artifact: explorer_darwin_amd64"
       uses: actions/upload-artifact@v3
       with:
         path: ./bin/explorer_darwin_amd64
