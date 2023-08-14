@@ -33,19 +33,12 @@ func Search(w http.ResponseWriter, r *http.Request) {
 
 	_, err := strconv.Atoi(searchQuery)
 	if err == nil {
-		blockResult := &models.SearchBlockResult{}
-		err = db.ReaderDb.Select(blockResult, db.EngineQuery(map[dbtypes.DBEngineType]string{
-			dbtypes.DBEnginePgsql: `
-				SELECT slot, ENCODE(root, 'hex') AS root, orphaned 
-				FROM blocks 
-				WHERE slot = $1
-				LIMIT 1`,
-			dbtypes.DBEngineSqlite: `
-				SELECT slot, root, orphaned 
-				FROM blocks 
-				WHERE slot = $1
-				LIMIT 1`,
-		}), searchQuery)
+		blockResult := &dbtypes.SearchBlockResult{}
+		err = db.ReaderDb.Get(blockResult, `
+			SELECT slot, root, orphaned 
+			FROM blocks 
+			WHERE slot = $1
+			LIMIT 1`, searchQuery)
 		if err == nil {
 			if blockResult.Orphaned {
 				http.Redirect(w, r, fmt.Sprintf("/slot/0x%x", blockResult.Root), http.StatusMovedPermanently)
@@ -60,9 +53,9 @@ func Search(w http.ResponseWriter, r *http.Request) {
 	if len(hashQuery) == 64 {
 		blockHash, err := hex.DecodeString(hashQuery)
 		if err == nil {
-			blockResult := &models.SearchBlockResult{}
-			err = db.ReaderDb.Select(blockResult, `
-			SELECT slot, ENCODE(root, 'hex') AS root, orphaned 
+			blockResult := &dbtypes.SearchBlockResult{}
+			err = db.ReaderDb.Get(blockResult, `
+			SELECT slot, root, orphaned 
 			FROM blocks 
 			WHERE root = $1 OR
 				state_root = $1
@@ -78,7 +71,7 @@ func Search(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	graffiti := &models.SearchGraffitiResult{}
+	graffiti := &dbtypes.SearchGraffitiResult{}
 	err = db.ReaderDb.Get(graffiti, db.EngineQuery(map[dbtypes.DBEngineType]string{
 		dbtypes.DBEnginePgsql: `
 			SELECT graffiti
@@ -119,13 +112,21 @@ func SearchAhead(w http.ResponseWriter, r *http.Request) {
 
 	switch searchType {
 	case "epochs":
-		result = &models.SearchAheadEpochsResult{}
-		err = db.ReaderDb.Select(result, "SELECT epoch FROM epochs WHERE CAST(epoch AS text) LIKE $1 ORDER BY epoch LIMIT 10", search+"%")
+		dbres := &dbtypes.SearchAheadEpochsResult{}
+		err = db.ReaderDb.Select(dbres, "SELECT epoch FROM epochs WHERE CAST(epoch AS text) LIKE $1 ORDER BY epoch LIMIT 10", search+"%")
+		if err == nil {
+			model := make([]models.SearchAheadEpochsResult, len(*dbres))
+			for idx, entry := range *dbres {
+				model[idx] = models.SearchAheadEpochsResult{
+					Epoch: fmt.Sprintf("%v", entry.Epoch),
+				}
+			}
+			result = model
+		}
 	case "slots":
 		if len(search) <= 1 {
 			break
 		}
-		result = &models.SearchAheadSlotsResult{}
 		if searchLikeRE.MatchString(search) {
 			if len(search) == 64 {
 				blockHash, err := hex.DecodeString(search)
@@ -140,7 +141,7 @@ func SearchAhead(w http.ResponseWriter, r *http.Request) {
 					cachedBlock = services.GlobalBeaconService.GetCachedBlockByStateroot(blockHash)
 				}
 				if cachedBlock != nil {
-					result = &models.SearchAheadSlotsResult{
+					result = &[]models.SearchAheadSlotsResult{
 						{
 							Slot:     fmt.Sprintf("%v", uint64(cachedBlock.Header.Data.Header.Message.Slot)),
 							Root:     cachedBlock.Header.Data.Root,
@@ -148,28 +149,51 @@ func SearchAhead(w http.ResponseWriter, r *http.Request) {
 						},
 					}
 				} else {
-					err = db.ReaderDb.Select(result, `
+					dbres := &dbtypes.SearchAheadSlotsResult{}
+					err = db.ReaderDb.Select(dbres, `
 					SELECT slot, root, orphaned 
 					FROM blocks 
 					WHERE root = $1 OR
 						state_root = $1
-					ORDER BY slot LIMIT 10`, blockHash)
+					ORDER BY slot LIMIT 1`, blockHash)
 					if err != nil {
 						logger.Errorf("error reading block root: %v", err)
 						http.Error(w, "Internal server error", http.StatusServiceUnavailable)
 						return
 					}
+					if len(*dbres) > 0 {
+						result = &[]models.SearchAheadSlotsResult{
+							{
+								Slot:     fmt.Sprintf("%v", (*dbres)[0].Slot),
+								Root:     (*dbres)[0].Root,
+								Orphaned: (*dbres)[0].Orphaned,
+							},
+						}
+					}
+
 				}
 			} else if _, convertErr := strconv.ParseInt(search, 10, 32); convertErr == nil {
-				err = db.ReaderDb.Select(result, `
+				dbres := &dbtypes.SearchAheadSlotsResult{}
+				err = db.ReaderDb.Select(dbres, `
 				SELECT slot, root, orphaned 
 				FROM blocks 
 				WHERE slot = $1
 				ORDER BY slot LIMIT 10`, search)
+				if err == nil {
+					model := make([]models.SearchAheadSlotsResult, len(*dbres))
+					for idx, entry := range *dbres {
+						model[idx] = models.SearchAheadSlotsResult{
+							Slot:     fmt.Sprintf("%v", entry.Slot),
+							Root:     entry.Root,
+							Orphaned: entry.Orphaned,
+						}
+					}
+					result = model
+				}
 			}
 		}
 	case "graffiti":
-		graffiti := &models.SearchAheadGraffitiResult{}
+		graffiti := &dbtypes.SearchAheadGraffitiResult{}
 		err = db.ReaderDb.Select(graffiti, db.EngineQuery(map[dbtypes.DBEngineType]string{
 			dbtypes.DBEnginePgsql: `
 				SELECT graffiti, count(*) as count
@@ -187,11 +211,15 @@ func SearchAhead(w http.ResponseWriter, r *http.Request) {
 				LIMIT 10`,
 		}), "%"+search+"%")
 		if err == nil {
-			for i := range *graffiti {
-				(*graffiti)[i].Graffiti = utils.FormatGraffitiString((*graffiti)[i].Graffiti)
+			model := make([]models.SearchAheadGraffitiResult, len(*graffiti))
+			for i, entry := range *graffiti {
+				model[i] = models.SearchAheadGraffitiResult{
+					Graffiti: utils.FormatGraffitiString(entry.Graffiti),
+					Count:    fmt.Sprintf("%v", entry.Count),
+				}
 			}
+			result = model
 		}
-		result = graffiti
 
 	default:
 		http.Error(w, "Not found", 404)

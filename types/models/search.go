@@ -15,19 +15,19 @@ type SearchGraffitiResult struct {
 }
 
 // SearchAheadEpochsResult is a struct to hold the search ahead epochs results
-type SearchAheadEpochsResult []struct {
+type SearchAheadEpochsResult struct {
 	Epoch string `json:"epoch,omitempty"`
 }
 
 // SearchAheadSlotsResult is a struct to hold the search ahead slots results
-type SearchAheadSlotsResult []struct {
+type SearchAheadSlotsResult struct {
 	Slot     string               `json:"slot,omitempty"`
 	Root     rpctypes.BytesHexStr `json:"root,omitempty"`
 	Orphaned bool                 `json:"orphaned,omitempty"`
 }
 
 // SearchAheadGraffitiResult is a struct to hold the search ahead blocks results with a given graffiti
-type SearchAheadGraffitiResult []struct {
+type SearchAheadGraffitiResult struct {
 	Graffiti string `json:"graffiti,omitempty"`
 	Count    string `json:"count,omitempty"`
 }

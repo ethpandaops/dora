@@ -181,9 +181,9 @@
     })
   
     searchEl.on("typeahead:select", function (ev, sug) {
-      if (sug.blockroot !== undefined) {
+      if (sug.root !== undefined) {
         if (sug.orphaned) {
-          window.location = "/slot/0x" + sug.root
+          window.location = "/slot/" + sug.root
         } else {
           window.location = "/slot/" + sug.slot
         }
