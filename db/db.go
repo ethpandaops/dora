@@ -73,8 +73,8 @@ func mustInitSqlite(config *types.SqliteDatabaseConfig) (*sqlx.DB, *sqlx.DB) {
 	}
 
 	checkDbConn(dbConn, "database")
-	dbConn.SetConnMaxIdleTime(time.Second * 30)
-	dbConn.SetConnMaxLifetime(time.Second * 60)
+	dbConn.SetConnMaxIdleTime(0)
+	dbConn.SetConnMaxLifetime(0)
 	dbConn.SetMaxOpenConns(config.MaxOpenConns)
 	dbConn.SetMaxIdleConns(config.MaxIdleConns)
 

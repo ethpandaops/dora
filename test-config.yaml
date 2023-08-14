@@ -41,7 +41,8 @@ indexer:
 database:
   engine: "sqlite"
   sqlite:
-    file: "./tmp-database.sqlite"
+    #file: "./tmp-database.sqlite"
+    file: ":memory:"
   pgsql:
     host: "10.16.97.2"
     port: 5432
