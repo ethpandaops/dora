@@ -56,11 +56,11 @@ func main() {
 		}
 
 		startFrontend()
-	} else {
-		utils.WaitForCtrlC()
-
-		logger.Println("exiting...")
 	}
+
+	utils.WaitForCtrlC()
+	logger.Println("exiting...")
+	db.MustCloseDB()
 }
 
 func startFrontend() {
@@ -121,8 +121,4 @@ func startFrontend() {
 			logger.WithError(err).Fatal("Error serving frontend")
 		}
 	}()
-
-	utils.WaitForCtrlC()
-
-	logger.Println("exiting...")
 }

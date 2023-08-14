@@ -138,7 +138,7 @@
             if (data.orphaned) {
               status = `<span class="search-cell"><span class="badge rounded-pill text-bg-info">Orphaned</span></span>`;
             }
-            return `<div class="text-monospace"><div class="search-table"><span class="search-cell">${data.slot}:</span><span class="search-cell search-truncate">0x${data.root}</span>${status}</div></div>`;
+            return `<div class="text-monospace"><div class="search-table"><span class="search-cell">${data.slot}:</span><span class="search-cell search-truncate">${data.root}</span>${status}</div></div>`;
           },
         },
       },

@@ -148,6 +148,17 @@ func MustInitDB() {
 	}
 }
 
+func MustCloseDB() {
+	err := WriterDb.Close()
+	if err != nil {
+		logger.Errorf("Error closing writer db connection: %v", err)
+	}
+	err = ReaderDb.Close()
+	if err != nil {
+		logger.Errorf("Error closing reader db connection: %v", err)
+	}
+}
+
 func ApplyEmbeddedDbSchema(version int64) error {
 	var engineDialect string
 	var schemaDirectory string
