@@ -1,0 +1,93 @@
+
+name: Reusable build workflow
+on:
+  workflow_call:
+
+# shared build jobs
+jobs:
+  build_linux_binary:
+    name: Build Linux binary
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    # setup global dependencies
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: 1.20.x
+
+    # setup project dependencies
+    - name: Get dependencies
+      run: |
+        go get -v -t -d ./...
+
+    # build binaries
+    - name: Build linux binary
+      run: |
+        make linux
+
+    # upload artifacts
+    - name: "Upload artifact: explorer_linux_amd64"
+      uses: actions/upload-artifact@v3
+      with:
+        path: ./bin/explorer_linux_amd64
+        name: explorer_linux_amd64
+
+  build_windows_binary:
+    name: Build Windows binary
+    runs-on: windows-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    # setup global dependencies
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: 1.20.x
+
+    # setup project dependencies
+    - name: Get dependencies
+      run: |
+        go get -v -t -d ./...
+
+    # build binaries
+    - name: Build windows binary
+      run: |
+        make windows
+
+    # upload artifacts
+    - name: "Upload artifact: explorer_windows_amd64.exe"
+      uses: actions/upload-artifact@v3
+      with:
+        path: ./bin/explorer_windows_amd64.exe
+        name: explorer_windows_amd64.exe
+
+  build_darwin_binary:
+    name: Build MacOS binary
+    runs-on: macos-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    # setup global dependencies
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: 1.20.x
+
+    # setup project dependencies
+    - name: Get dependencies
+      run: |
+        go get -v -t -d ./...
+
+    # build binaries
+    - name: Build macos binary
+      run: |
+        make darwin
+
+    # upload artifacts
+    - name: "Upload artifact: explorer_darwin_amd64"
+      uses: actions/upload-artifact@v3
+      with:
+        path: ./bin/explorer_darwin_amd64
+        name: explorer_darwin_amd64

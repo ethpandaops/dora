@@ -26,13 +26,13 @@ linux: $(LINUX)
 darwin: $(DARWIN)
 
 $(WINDOWS):
-	env GOOS=windows GOARCH=amd64 go build -v -o bin/$(WINDOWS) -ldflags="-s -w $(GOLDFLAGS)" ./cmd/explorer
+	env CGO_ENABLED=1 GOOS=windows GOARCH=amd64 go build -v -o bin/$(WINDOWS) -ldflags="-s -w $(GOLDFLAGS)" ./cmd/explorer
 
 $(LINUX):
-	env GOOS=linux GOARCH=amd64 go build -v -o bin/$(LINUX) -ldflags="-s -w $(GOLDFLAGS)" ./cmd/explorer
+	env CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -v -o bin/$(LINUX) -ldflags="-s -w $(GOLDFLAGS)" ./cmd/explorer
 
 $(DARWIN):
-	env GOOS=darwin GOARCH=amd64 go build -v -o bin/$(DARWIN) -ldflags="-s -w $(GOLDFLAGS)" ./cmd/explorer
+	env CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 go build -v -o bin/$(DARWIN) -ldflags="-s -w $(GOLDFLAGS)" ./cmd/explorer
 
 clean:
 	rm -f $(WINDOWS) $(LINUX) $(DARWIN)
