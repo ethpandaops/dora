@@ -90,7 +90,10 @@ func buildEpochPageData(epoch uint64) (*models.EpochPageData, time.Duration) {
 		NextEpoch:     nextEpoch,
 		Ts:            utils.EpochToTime(epoch),
 		Synchronized:  syncedEpochs[epoch],
-		Finalized:     uint64(finalizedHead.Data.Header.Message.Slot) >= lastSlot,
+	}
+
+	if finalizedHead != nil {
+		pageData.Finalized = uint64(finalizedHead.Data.Header.Message.Slot) >= lastSlot
 	}
 
 	dbEpochs := services.GlobalBeaconService.GetDbEpochs(epoch, 1)

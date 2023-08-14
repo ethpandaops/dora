@@ -176,13 +176,16 @@ func buildSlotPageData(blockSlot int64, blockRoot []byte) (*models.SlotPageData,
 	logrus.Printf("slot page called: %v", slot)
 
 	pageData := &models.SlotPageData{
-		Slot:           slot,
-		Epoch:          utils.EpochOfSlot(slot),
-		EpochFinalized: uint64(finalizedHead.Data.Header.Message.Slot) >= slot,
-		Ts:             utils.SlotToTime(slot),
-		NextSlot:       slot + 1,
-		PreviousSlot:   slot - 1,
-		Future:         slot >= currentSlot,
+		Slot:         slot,
+		Epoch:        utils.EpochOfSlot(slot),
+		Ts:           utils.SlotToTime(slot),
+		NextSlot:     slot + 1,
+		PreviousSlot: slot - 1,
+		Future:       slot >= currentSlot,
+	}
+
+	if finalizedHead != nil {
+		pageData.EpochFinalized = uint64(finalizedHead.Data.Header.Message.Slot) >= slot
 	}
 
 	assignments, err := services.GlobalBeaconService.GetEpochAssignments(utils.EpochOfSlot(slot))
