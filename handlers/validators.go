@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/pk910/light-beaconchain-explorer/rpctypes"
 	"github.com/pk910/light-beaconchain-explorer/services"
 	"github.com/pk910/light-beaconchain-explorer/templates"
 	"github.com/pk910/light-beaconchain-explorer/types/models"
@@ -60,13 +61,18 @@ func getValidatorsPageData(firstValIdx uint64, pageSize uint64, stateFilter stri
 func buildValidatorsPageData(firstValIdx uint64, pageSize uint64, stateFilter string) (*models.ValidatorsPageData, time.Duration) {
 	logrus.Printf("validators page called: %v:%v:%v", firstValIdx, pageSize, stateFilter)
 	pageData := &models.ValidatorsPageData{}
+	cacheTime := 10 * time.Minute
 
 	// get latest validator set
+	var validatorSet []rpctypes.ValidatorEntry
 	validatorSetRsp := services.GlobalBeaconService.GetCachedValidatorSet()
 	if validatorSetRsp == nil {
-		return nil, 5 * time.Minute
+		cacheTime = 5 * time.Minute
+		validatorSet = []rpctypes.ValidatorEntry{}
+	} else {
+		validatorSet = validatorSetRsp.Data
 	}
-	validatorSet := validatorSetRsp.Data
+
 	if stateFilter != "" {
 		// TODO: apply filter
 	}
@@ -167,5 +173,5 @@ func buildValidatorsPageData(firstValIdx uint64, pageSize uint64, stateFilter st
 	pageData.FirstValidator = firstValIdx
 	pageData.LastValidator = lastValIdx
 
-	return pageData, 10 * time.Minute
+	return pageData, cacheTime
 }
