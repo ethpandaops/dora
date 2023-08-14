@@ -60,6 +60,33 @@ type Config struct {
 		SyncEpochCooldown    uint   `yaml:"syncEpochCooldown" envconfig:"INDEXER_SYNC_EPOCH_COOLDOWN"`
 	} `yaml:"indexer"`
 
+	Database struct {
+		Engine string `yaml:"engine" envconfig:"DATABASE_ENGINE"`
+		Sqlite struct {
+			File         string `yaml:"file" envconfig:"DATABASE_SQLITE_FILE"`
+			MaxOpenConns int    `yaml:"maxOpenConns" envconfig:"DATABASE_SQLITE_MAX_OPEN_CONNS"`
+			MaxIdleConns int    `yaml:"maxIdleConns" envconfig:"DATABASE_SQLITE_MAX_IDLE_CONNS"`
+		} `yaml:"sqlite"`
+		Pgsql struct {
+			Username     string `yaml:"user" envconfig:"DATABASE_PGSQL_USERNAME"`
+			Password     string `yaml:"password" envconfig:"DATABASE_PGSQL_PASSWORD"`
+			Name         string `yaml:"name" envconfig:"DATABASE_PGSQL_NAME"`
+			Host         string `yaml:"host" envconfig:"DATABASE_PGSQL_HOST"`
+			Port         string `yaml:"port" envconfig:"DATABASE_PGSQL_PORT"`
+			MaxOpenConns int    `yaml:"maxOpenConns" envconfig:"DATABASE_PGSQL_MAX_OPEN_CONNS"`
+			MaxIdleConns int    `yaml:"maxIdleConns" envconfig:"DATABASE_PGSQL_MAX_IDLE_CONNS"`
+		} `yaml:"pgsql"`
+		PgsqlWriter struct {
+			Username     string `yaml:"user" envconfig:"DATABASE_PGSQL_WRITER_USERNAME"`
+			Password     string `yaml:"password" envconfig:"DATABASE_PGSQL_WRITER_PASSWORD"`
+			Name         string `yaml:"name" envconfig:"DATABASE_PGSQL_WRITER_NAME"`
+			Host         string `yaml:"host" envconfig:"DATABASE_PGSQL_WRITER_HOST"`
+			Port         string `yaml:"port" envconfig:"DATABASE_PGSQL_WRITER_PORT"`
+			MaxOpenConns int    `yaml:"maxOpenConns" envconfig:"DATABASE_PGSQL_WRITER_MAX_OPEN_CONNS"`
+			MaxIdleConns int    `yaml:"maxIdleConns" envconfig:"DATABASE_PGSQL_WRITER_MAX_IDLE_CONNS"`
+		} `yaml:"pgsqlWriter"`
+	} `yaml:"database"`
+
 	ReaderDatabase struct {
 		Username     string `yaml:"user" envconfig:"READER_DB_USERNAME"`
 		Password     string `yaml:"password" envconfig:"READER_DB_PASSWORD"`
@@ -80,7 +107,13 @@ type Config struct {
 	} `yaml:"writerDatabase"`
 }
 
-type DatabaseConfig struct {
+type SqliteDatabaseConfig struct {
+	File         string
+	MaxOpenConns int
+	MaxIdleConns int
+}
+
+type PgsqlDatabaseConfig struct {
 	Username     string
 	Password     string
 	Name         string
