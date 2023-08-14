@@ -1,5 +1,5 @@
 
-name: Build latest master version
+name: Build master
 
 on:
   push:

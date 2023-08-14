@@ -1,5 +1,9 @@
 # Lightweight Beaconchain Explorer
 
+[![Badge](https://github.com/pk910/light-beaconchain-explorer/actions/workflows/build-master.yml/badge.svg)](https://github.com/pk910/light-beaconchain-explorer/actions?query=workflow%3A%22Build+master%22)
+[![Go Report Card](https://goreportcard.com/badge/github.com/pk910/light-beaconchain-explorer)](https://goreportcard.com/report/github.com/pk910/light-beaconchain-explorer)
+[![GitHub release (latest by date)](https://img.shields.io/github/v/release/pk910/light-beaconchain-explorer?label=Latest%20Release)](https://github.com/pk910/light-beaconchain-explorer/releases/latest)
+
 ## What is this?
 This is a lightweight beaconchain explorer.
 
@@ -12,7 +16,8 @@ Read through the [wiki](https://github.com/pk910/light-beaconchain-explorer/wiki
 
 ## Dependencies
 
-This explorer requires a postgres database.
+The explorer has no mandatory external dependencies. It can even run completely in memory only.\
+However, for best performance I recommend using a PostgreSQL database.
 
 ## Background
 https://github.com/ethpandaops/tooling-wishlist/blob/master/tools/lightweight-beaconchain-explorer.md
@@ -21,23 +26,8 @@ https://github.com/ethpandaops/tooling-wishlist/blob/master/tools/lightweight-be
 
 Things that might be worth adding at some time
 
-* Validator Overview & Details\
-  The current validator set is actually already maintained in memory. So it should be easy to add pages for basic validator related stuff.
-  * [x] Page: Validators List (`/validators`)
-  * [x] Page: Validator Details (`/validator/{validator_index}`)
-    * [x] Rough overview with status (activated, slashed, ...) & current balance
-    * [x] Recent Blocks (from db) 
-    * [ ] Recent Attestations (from cache) 
-* Track Sync Committees
-  * [ ] Database: table sync_committees (Sync Committee index)
-  * [ ] Indexer: track sync committees & aggregate participation per validator
-  * [ ] UI: show recent sync committee assignments on Validator Details page
-* Track Deposits
-  * [ ] Database: table deposits (Deposit index)
-  * [ ] RPC Client: get deposit contract events from EL client
-  * [ ] Indexer: track deposits
-  * [ ] UI: deposits list
-
+* [ ] Show Sync Committees
+* [ ] Show Deposits
 
 # Thanks To
 
