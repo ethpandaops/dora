@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS public."blocks"
     "eth_block_number" bigint NOT NULL DEFAULT 0,
     "eth_block_hash" bytea NOT NULL,
     "sync_participation" real NOT NULL DEFAULT 0,
-    CONSTRAINT "Blocks_pkey" PRIMARY KEY ("root")
+    CONSTRAINT "blocks_pkey" PRIMARY KEY ("root")
 );
 
 CREATE INDEX IF NOT EXISTS "blocks_graffiti_idx"

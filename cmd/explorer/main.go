@@ -39,7 +39,7 @@ func main() {
 		utils.LogFatal(err, "invalid chain configuration specified, you must specify the slots per epoch, seconds per slot and genesis timestamp in the config file", 0)
 	}
 
-	db.MustInitDB((*types.DatabaseConfig)(&cfg.WriterDatabase), (*types.DatabaseConfig)(&cfg.ReaderDatabase))
+	db.MustInitDB()
 	err = db.ApplyEmbeddedDbSchema(-2)
 	if err != nil {
 		logger.Fatalf("error initializing db schema: %v", err)
@@ -56,11 +56,11 @@ func main() {
 		}
 
 		startFrontend()
-	} else {
-		utils.WaitForCtrlC()
-
-		logger.Println("exiting...")
 	}
+
+	utils.WaitForCtrlC()
+	logger.Println("exiting...")
+	db.MustCloseDB()
 }
 
 func startFrontend() {
@@ -121,8 +121,4 @@ func startFrontend() {
 			logger.WithError(err).Fatal("Error serving frontend")
 		}
 	}()
-
-	utils.WaitForCtrlC()
-
-	logger.Println("exiting...")
 }

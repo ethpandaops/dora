@@ -35,20 +35,22 @@ indexer:
   prepopulateEpochs: 2
   inMemoryEpochs: 10
   epochProcessingDelay: 2
-  disableIndexWriter: true
-  syncEpochCooldown: 4
+  disableIndexWriter: false
+  syncEpochCooldown: 2
 
-
-readerDatabase:
-  host: "10.16.97.2"
-  port: 5432
-  user: "pk910"
-  password: "SBekcBFpRW9rZrVL" # internal dev DB, no worries about password leaking ;)
-  name: "pk910"
-  
-writerDatabase:
-  host: "10.16.97.2"
-  port: 5432
-  user: "pk910"
-  password: "SBekcBFpRW9rZrVL" # internal dev DB, no worries about password leaking ;)
-  name: "pk910"
+database:
+  engine: "sqlite"
+  sqlite:
+    file: "./tmp-database.sqlite"
+  pgsql:
+    host: "10.16.97.2"
+    port: 5432
+    user: "pk910"
+    password: "SBekcBFpRW9rZrVL" # internal dev DB, no worries about password leaking ;)
+    name: "pk910"
+  pgsqlWriter:
+    host: "10.16.97.2"
+    port: 5432
+    user: "pk910"
+    password: "SBekcBFpRW9rZrVL" # internal dev DB, no worries about password leaking ;)
+    name: "pk910"

@@ -13,6 +13,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/pk910/light-beaconchain-explorer/db"
+	"github.com/pk910/light-beaconchain-explorer/dbtypes"
 	"github.com/pk910/light-beaconchain-explorer/services"
 	"github.com/pk910/light-beaconchain-explorer/templates"
 	"github.com/pk910/light-beaconchain-explorer/types/models"
@@ -33,11 +34,18 @@ func Search(w http.ResponseWriter, r *http.Request) {
 	_, err := strconv.Atoi(searchQuery)
 	if err == nil {
 		blockResult := &models.SearchBlockResult{}
-		err = db.ReaderDb.Select(blockResult, `
-		SELECT slot, ENCODE(root, 'hex') AS root, orphaned 
-		FROM blocks 
-		WHERE slot = $1
-		LIMIT 1`, searchQuery)
+		err = db.ReaderDb.Select(blockResult, db.EngineQuery(map[dbtypes.DBEngineType]string{
+			dbtypes.DBEnginePgsql: `
+				SELECT slot, ENCODE(root, 'hex') AS root, orphaned 
+				FROM blocks 
+				WHERE slot = $1
+				LIMIT 1`,
+			dbtypes.DBEngineSqlite: `
+				SELECT slot, root, orphaned 
+				FROM blocks 
+				WHERE slot = $1
+				LIMIT 1`,
+		}), searchQuery)
 		if err == nil {
 			if blockResult.Orphaned {
 				http.Redirect(w, r, fmt.Sprintf("/slot/0x%x", blockResult.Root), http.StatusMovedPermanently)
@@ -71,11 +79,18 @@ func Search(w http.ResponseWriter, r *http.Request) {
 	}
 
 	graffiti := &models.SearchGraffitiResult{}
-	err = db.ReaderDb.Get(graffiti, `
-		SELECT graffiti
-		FROM blocks
-		WHERE graffiti_text ILIKE LOWER($1)
-		LIMIT 1`, "%"+searchQuery+"%")
+	err = db.ReaderDb.Get(graffiti, db.EngineQuery(map[dbtypes.DBEngineType]string{
+		dbtypes.DBEnginePgsql: `
+			SELECT graffiti
+			FROM blocks
+			WHERE graffiti_text ILIKE LOWER($1)
+			LIMIT 1`,
+		dbtypes.DBEngineSqlite: `
+			SELECT graffiti
+			FROM blocks
+			WHERE graffiti_text LIKE LOWER($1)
+			LIMIT 1`,
+	}), "%"+searchQuery+"%")
 	if err == nil {
 		http.Redirect(w, r, "/slots?q="+searchQuery, http.StatusMovedPermanently)
 		return
@@ -128,13 +143,13 @@ func SearchAhead(w http.ResponseWriter, r *http.Request) {
 					result = &models.SearchAheadSlotsResult{
 						{
 							Slot:     fmt.Sprintf("%v", uint64(cachedBlock.Header.Data.Header.Message.Slot)),
-							Root:     fmt.Sprintf("%x", []byte(cachedBlock.Header.Data.Root)),
+							Root:     cachedBlock.Header.Data.Root,
 							Orphaned: cachedBlock.Orphaned,
 						},
 					}
 				} else {
 					err = db.ReaderDb.Select(result, `
-					SELECT slot, ENCODE(root, 'hex') AS root, orphaned 
+					SELECT slot, root, orphaned 
 					FROM blocks 
 					WHERE root = $1 OR
 						state_root = $1
@@ -147,7 +162,7 @@ func SearchAhead(w http.ResponseWriter, r *http.Request) {
 				}
 			} else if _, convertErr := strconv.ParseInt(search, 10, 32); convertErr == nil {
 				err = db.ReaderDb.Select(result, `
-				SELECT slot, ENCODE(root, 'hex') AS root, orphaned 
+				SELECT slot, root, orphaned 
 				FROM blocks 
 				WHERE slot = $1
 				ORDER BY slot LIMIT 10`, search)
@@ -155,13 +170,22 @@ func SearchAhead(w http.ResponseWriter, r *http.Request) {
 		}
 	case "graffiti":
 		graffiti := &models.SearchAheadGraffitiResult{}
-		err = db.ReaderDb.Select(graffiti, `
-			SELECT graffiti, count(*)
-			FROM blocks
-			WHERE graffiti_text ILIKE LOWER($1)
-			GROUP BY graffiti
-			ORDER BY count desc
-			LIMIT 10`, "%"+search+"%")
+		err = db.ReaderDb.Select(graffiti, db.EngineQuery(map[dbtypes.DBEngineType]string{
+			dbtypes.DBEnginePgsql: `
+				SELECT graffiti, count(*) as count
+				FROM blocks
+				WHERE graffiti_text ILIKE LOWER($1)
+				GROUP BY graffiti
+				ORDER BY count desc
+				LIMIT 10`,
+			dbtypes.DBEngineSqlite: `
+				SELECT graffiti, count(*) as count
+				FROM blocks
+				WHERE graffiti_text LIKE LOWER($1)
+				GROUP BY graffiti
+				ORDER BY count desc
+				LIMIT 10`,
+		}), "%"+search+"%")
 		if err == nil {
 			for i := range *graffiti {
 				(*graffiti)[i].Graffiti = utils.FormatGraffitiString((*graffiti)[i].Graffiti)

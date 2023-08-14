@@ -62,17 +62,24 @@ indexer:
   # number of seconds to wait between each epoch (don't overload CL client)
   syncEpochCooldown: 2
 
+# database configuration
+database:
+  engine: "sqlite" # sqlite / pgsql
 
-readerDatabase:
-  host: "127.0.0.1"
-  port: 5432
-  user: ""
-  password: ""
-  name: ""
-  
-writerDatabase:
-  host: "127.0.0.1"
-  port: 5432
-  user: ""
-  password: ""
-  name: ""
+  # sqlite settings
+  sqlite:
+    file: "./explorer-db.sqlite"
+
+  # pgsql settings
+  pgsql:
+    host: "127.0.0.1"
+    port: 5432
+    user: ""
+    password: ""
+    name: ""
+  pgsqlWriter: # optional separate writer connection (used for replication setups)
+    host: ""
+    port: 5432
+    user: ""
+    password: ""
+    name: ""
