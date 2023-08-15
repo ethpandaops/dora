@@ -436,7 +436,7 @@ func GetBlocksForSlots(firstSlot uint64, lastSlot uint64, withOrphaned bool) []*
 	ORDER BY slot DESC
 	`, firstSlot, lastSlot)
 	if err != nil {
-		logger.Errorf("Error while fetching blocks: %v", err)
+		logger.Errorf("Error while fetching blocks for slot: %v", err)
 		return nil
 	}
 	return blocks
@@ -469,7 +469,7 @@ func GetBlocksWithGraffiti(graffiti string, firstSlot uint64, offset uint64, lim
 			LIMIT $3 OFFSET $4`,
 	}), "%"+graffiti+"%", firstSlot, limit, offset)
 	if err != nil {
-		logger.Errorf("Error while fetching blocks: %v", err)
+		logger.Errorf("Error while fetching blocks with graffiti: %v", err)
 		return nil
 	}
 	return blocks
@@ -500,7 +500,7 @@ func GetAssignedBlocks(proposer uint64, firstSlot uint64, offset uint64, limit u
 	`)
 	rows, err := ReaderDb.Query(sql.String(), proposer, firstSlot, limit, offset)
 	if err != nil {
-		logger.Errorf("Error while fetching blocks: %v", err)
+		logger.Errorf("Error while fetching assigned blocks: %v", err)
 		return nil
 	}
 
@@ -512,7 +512,7 @@ func GetAssignedBlocks(proposer uint64, firstSlot uint64, offset uint64, limit u
 		}
 		err := rows.Scan(scanArgs...)
 		if err != nil {
-			logger.Errorf("Error while parsing block: %v", err)
+			logger.Errorf("Error while parsing assigned block: %v", err)
 			continue
 		}
 

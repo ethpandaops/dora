@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/donovanhide/eventsource"
-	logger "github.com/sirupsen/logrus"
 
 	"github.com/pk910/light-beaconchain-explorer/rpctypes"
 )
@@ -58,16 +57,13 @@ func (bs *BeaconStream) startStream(endpoint string) {
 	bs.runMutex.Lock()
 	defer bs.runMutex.Unlock()
 
-	stream, err := eventsource.Subscribe(fmt.Sprintf("%s/eth/v1/events?topics=block,head", endpoint), "")
-	if err != nil {
-		logger.Errorf("Error while subscribing beacon block stream: %v", err)
-	} else {
-		defer stream.Close()
-
+	stream := bs.subscribeStream(endpoint)
+	if stream != nil {
 		running := true
 		for running {
 			select {
 			case evt := <-stream.Events:
+				logger.Debugf("Event received from rpc event stream: %v", evt.Event())
 				if evt.Event() == "block" {
 					bs.processBlockEvent(evt)
 				} else if evt.Event() == "head" {
@@ -75,14 +71,38 @@ func (bs *BeaconStream) startStream(endpoint string) {
 				}
 			case <-bs.killChan:
 				running = false
-			case <-time.After(120 * time.Second):
-				// timeout - no block since 2 mins
+			case <-time.After(300 * time.Second):
+				// timeout - no block since 5 mins
 				logger.Errorf("beacon block stream error, no new head retrieved since %v (%v ago)", bs.lastHeadSeen, time.Since(bs.lastHeadSeen))
+				stream.Close()
+				stream = bs.subscribeStream(endpoint)
+				if stream == nil {
+					running = false
+				}
 			}
 		}
 	}
+	if stream != nil {
+		stream.Close()
+	}
 	bs.running = false
 	bs.CloseChan <- true
+}
+
+func (bs *BeaconStream) subscribeStream(endpoint string) *eventsource.Stream {
+	for {
+		stream, err := eventsource.Subscribe(fmt.Sprintf("%s/eth/v1/events?topics=block,head", endpoint), "")
+		if err != nil {
+			logger.Errorf("Error while subscribing beacon event stream: %v", err)
+			select {
+			case <-bs.killChan:
+				return nil
+			case <-time.After(10 * time.Second):
+			}
+		} else {
+			return stream
+		}
+	}
 }
 
 func (bs *BeaconStream) processBlockEvent(evt eventsource.Event) {
@@ -92,6 +112,7 @@ func (bs *BeaconStream) processBlockEvent(evt eventsource.Event) {
 		logger.Warnf("beacon block stream failed to decode block event: %v", err)
 		return
 	}
+	logger.Debugf("RPC block event! slot: %v, block: %v", parsed.Slot, parsed.Block)
 	bs.BlockChan <- &parsed
 }
 
@@ -102,6 +123,7 @@ func (bs *BeaconStream) processHeadEvent(evt eventsource.Event) {
 		logger.Warnf("beacon block stream failed to decode block event: %v", err)
 		return
 	}
+	logger.Debugf("RPC head event! slot: %v, block: %v, state: %v", parsed.Slot, parsed.Block, parsed.State)
 	bs.lastHeadSeen = time.Now()
 	bs.HeadChan <- &parsed
 }

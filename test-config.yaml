@@ -1,3 +1,10 @@
+logging:
+  outputLevel: "info"
+  #outputStderr: false
+
+  #filePath: "explorer.log"
+  #fileLevel: "warn"
+
 # Chain network configuration
 chain:
   #name: "mainnet"

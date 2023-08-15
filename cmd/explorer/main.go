@@ -19,7 +19,6 @@ import (
 
 func main() {
 	configPath := flag.String("config", "", "Path to the config file, if empty string defaults will be used")
-
 	flag.Parse()
 
 	cfg := &types.Config{}
@@ -30,9 +29,10 @@ func main() {
 	utils.Config = cfg
 	logWriter := utils.InitLogger()
 	defer logWriter.Dispose()
+
 	logger.WithFields(logger.Fields{
-		"config": *configPath,
-		//"version":   version.Version,
+		"config":    *configPath,
+		"version":   utils.BuildVersion,
 		"chainName": utils.Config.Chain.Config.ConfigName}).Printf("starting")
 
 	if utils.Config.Chain.Config.SlotsPerEpoch == 0 || utils.Config.Chain.Config.SecondsPerSlot == 0 {

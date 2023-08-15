@@ -11,11 +11,13 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common/lru"
-	logger "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 
 	"github.com/pk910/light-beaconchain-explorer/rpctypes"
 	"github.com/pk910/light-beaconchain-explorer/utils"
 )
+
+var logger = logrus.StandardLogger().WithField("module", "rpc")
 
 type BeaconClient struct {
 	endpoint            string
@@ -39,8 +41,8 @@ func NewBeaconClient(endpoint string, assignmentsCacheSize int) (*BeaconClient, 
 var errNotFound = errors.New("not found 404")
 
 func (bc *BeaconClient) get(url string) ([]byte, error) {
-	//t0 := time.Now()
-	//defer func() { fmt.Println("RPC GET: ", url, time.Since(t0)) }()
+	t0 := time.Now()
+	defer func() { logger.Debugf("RPC call (byte): %v [%v ms]", url, time.Since(t0).Milliseconds()) }()
 	client := &http.Client{Timeout: time.Second * 120}
 	resp, err := client.Get(url)
 	if err != nil {
@@ -62,8 +64,8 @@ func (bc *BeaconClient) get(url string) ([]byte, error) {
 }
 
 func (bc *BeaconClient) getJson(url string, returnValue interface{}) error {
-	//t0 := time.Now()
-	//defer func() { fmt.Println("RPC GET (json): ", url, time.Since(t0)) }()
+	t0 := time.Now()
+	defer func() { logger.Debugf("RPC call (json): %v [%v ms]", url, time.Since(t0).Milliseconds()) }()
 	client := &http.Client{Timeout: time.Second * 120}
 	resp, err := client.Get(url)
 	if err != nil {
