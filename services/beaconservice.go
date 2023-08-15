@@ -340,10 +340,12 @@ func (bs *BeaconService) GetDbBlocks(firstSlot uint64, limit int32, withOrphaned
 				}
 			}
 		}
-		slot--
+		if slot > 0 {
+			slot--
+		}
 	}
 
-	if resIdx < int(limit) {
+	if resIdx < int(limit) && slot >= 0 {
 		dbBlocks := db.GetBlocks(slot, uint32(limit-int32(resIdx)), withOrphaned)
 		if dbBlocks != nil {
 			for idx := 0; idx < len(dbBlocks) && resIdx < int(limit); idx++ {
@@ -389,10 +391,12 @@ func (bs *BeaconService) GetDbBlocksForSlots(firstSlot uint64, slotLimit uint32,
 				}
 			}
 		}
-		slot--
+		if slot > 0 {
+			slot--
+		}
 	}
 
-	if slot > lastSlot {
+	if slot > lastSlot && slot >= 0 {
 		dbBlocks := db.GetBlocksForSlots(slot, lastSlot, withOrphaned)
 		if dbBlocks != nil {
 			for idx := 0; idx < len(dbBlocks); idx++ {
