@@ -99,7 +99,6 @@ func ReadConfig(cfg *types.Config, path string) error {
 		"depositContractAddress": cfg.Chain.Config.DepositContractAddress,
 	}).Infof("did init config")
 
-	cfg.Logging.OutputLevel = "debug"
 	return nil
 }
 
