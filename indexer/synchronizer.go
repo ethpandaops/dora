@@ -90,7 +90,7 @@ func (sync *synchronizerState) runSync() {
 			syncEpoch++
 			sync.currentEpoch = syncEpoch
 			sync.stateMutex.Unlock()
-			if syncEpoch > indexerEpoch {
+			if int64(syncEpoch) > indexerEpoch {
 				isComplete = true
 				break
 			}
