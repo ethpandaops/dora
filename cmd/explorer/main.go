@@ -34,7 +34,6 @@ func main() {
 		"config":    *configPath,
 		"version":   utils.BuildVersion,
 		"chainName": utils.Config.Chain.Config.ConfigName}).Printf("starting")
-	logger.Debug("test")
 
 	if utils.Config.Chain.Config.SlotsPerEpoch == 0 || utils.Config.Chain.Config.SecondsPerSlot == 0 {
 		utils.LogFatal(err, "invalid chain configuration specified, you must specify the slots per epoch, seconds per slot and genesis timestamp in the config file", 0)

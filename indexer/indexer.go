@@ -257,7 +257,6 @@ func (indexer *Indexer) runIndexer() {
 			logger.Errorf("Indexer Error while fetching genesis: %v", err)
 		} else if genesis != nil {
 			genesisTime := uint64(genesis.Data.GenesisTime)
-			logger.Infof("RPC Genesis: Time: %v, ForkVersion: %v, GVR: %v", genesisTime, genesis.Data.GenesisForkVersion, genesis.Data.GenesisValidatorsRoot)
 			if genesisTime != utils.Config.Chain.GenesisTimestamp {
 				logger.Warnf("Genesis time from RPC does not match the genesis time from explorer configuration.")
 			}
@@ -649,11 +648,13 @@ func (indexer *Indexer) loadEpochValidators(epoch uint64, epochStats *EpochStats
 func (indexer *Indexer) processIndexing() {
 	// process old epochs
 	currentEpoch := utils.EpochOfSlot(indexer.state.lastHeadBlock)
-	maxProcessEpoch := currentEpoch - uint64(indexer.epochProcessingDelay)
-	for indexer.state.lastProcessedEpoch < maxProcessEpoch {
-		processEpoch := indexer.state.lastProcessedEpoch + 1
-		indexer.processEpoch(processEpoch)
-		indexer.state.lastProcessedEpoch = processEpoch
+	if currentEpoch >= uint64(indexer.epochProcessingDelay) {
+		maxProcessEpoch := currentEpoch - uint64(indexer.epochProcessingDelay)
+		for indexer.state.lastProcessedEpoch < maxProcessEpoch {
+			processEpoch := indexer.state.lastProcessedEpoch + 1
+			indexer.processEpoch(processEpoch)
+			indexer.state.lastProcessedEpoch = processEpoch
+		}
 	}
 }
 
