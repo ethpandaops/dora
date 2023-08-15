@@ -251,6 +251,36 @@ func (indexer *Indexer) runIndexer() {
 	indexer.runMutex.Lock()
 	defer indexer.runMutex.Unlock()
 
+	for {
+		genesis, err := indexer.rpcClient.GetGenesis()
+		if err != nil {
+			logger.Errorf("Indexer Error while fetching genesis: %v", err)
+		} else if genesis != nil {
+			genesisTime := uint64(genesis.Data.GenesisTime)
+			logger.Infof("RPC Genesis: Time: %v, ForkVersion: %v, GVR: %v", genesisTime, genesis.Data.GenesisForkVersion, genesis.Data.GenesisValidatorsRoot)
+			if genesisTime != utils.Config.Chain.GenesisTimestamp {
+				logger.Warnf("Genesis time from RPC does not match the genesis time from explorer configuration.")
+			}
+			if genesis.Data.GenesisForkVersion.String() != utils.Config.Chain.Config.GenesisForkVersion {
+				logger.Warnf("Genesis fork version from RPC does not match the genesis fork version explorer configuration.")
+			}
+
+			err := indexer.runIndexerLoop()
+			if err == nil {
+				break
+			}
+		}
+
+		logger.Warnf("Indexer couldn't do stuff it is supposed to do. Retrying in 10 sec...")
+		select {
+		case <-time.After(10 * time.Second):
+		}
+	}
+
+	logger.Debugf("Indexer process shutdown")
+}
+
+func (indexer *Indexer) runIndexerLoop() error {
 	chainConfig := utils.Config.Chain.Config
 	genesisTime := time.Unix(int64(utils.Config.Chain.GenesisTimestamp), 0)
 
@@ -268,6 +298,7 @@ func (indexer *Indexer) runIndexer() {
 	err := indexer.pollHeadBlock()
 	if err != nil {
 		logger.Errorf("Indexer Error while polling latest head: %v", err)
+		return err
 	}
 
 	// start block stream
@@ -314,11 +345,13 @@ func (indexer *Indexer) runIndexer() {
 			}
 		}
 
-		//now := time.Now()
+		now := time.Now()
 		indexer.processIndexing()
 		indexer.processCacheCleanup()
-		//logger.Infof("indexer loop processing time: %v ms", time.Now().Sub(now).Milliseconds())
+		logger.Debugf("indexer loop processing time: %v ms", time.Now().Sub(now).Milliseconds())
 	}
+
+	return nil
 }
 
 func (indexer *Indexer) startSynchronization(startEpoch uint64) error {
