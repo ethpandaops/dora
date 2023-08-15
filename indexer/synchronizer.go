@@ -179,21 +179,7 @@ func (sync *synchronizerState) syncEpoch(syncEpoch uint64) bool {
 		return false
 	}
 
-	// load epoch validators
-	var firstBlock *BlockInfo
-	lastSlot = firstSlot + (utils.Config.Chain.Config.SlotsPerEpoch) - 1
-	for slot := firstSlot; slot <= lastSlot; slot++ {
-		if sync.cachedBlocks[slot] != nil {
-			firstBlock = sync.cachedBlocks[slot][0]
-			break
-		}
-	}
-	if firstBlock == nil {
-		// TODO: How to handle a epoch without any blocks?
-		synclogger.Errorf("Syncing epoch %v without any block is not supported", syncEpoch)
-		return true
-	}
-
+	// load epoch stats
 	epochStats := EpochStats{
 		Assignments: epochAssignments,
 		Validators: &EpochValidators{
@@ -202,11 +188,9 @@ func (sync *synchronizerState) syncEpoch(syncEpoch uint64) bool {
 			ValidatorBalances: make(map[uint64]uint64),
 		},
 	}
-
-	// load epoch stats
 	epochValidators, err := sync.indexer.rpcClient.GetStateValidators(epochAssignments.DependendState)
 	if err != nil {
-		logger.Errorf("Error fetching epoch %v/%v validators: %v", syncEpoch, firstBlock.Header.Data.Header.Message.Slot, err)
+		logger.Errorf("Error fetching epoch %v validators (state: %v): %v", syncEpoch, epochAssignments.DependendState, err)
 	} else {
 		for idx := 0; idx < len(epochValidators.Data); idx++ {
 			validator := epochValidators.Data[idx]
@@ -224,11 +208,22 @@ func (sync *synchronizerState) syncEpoch(syncEpoch uint64) bool {
 	}
 
 	// process epoch vote aggregations
+	var firstBlock *BlockInfo
+	lastSlot = firstSlot + (utils.Config.Chain.Config.SlotsPerEpoch) - 1
+	for slot := firstSlot; slot <= lastSlot; slot++ {
+		if sync.cachedBlocks[slot] != nil {
+			firstBlock = sync.cachedBlocks[slot][0]
+			break
+		}
+	}
+
 	var targetRoot []byte
-	if uint64(firstBlock.Header.Data.Header.Message.Slot) == firstSlot {
-		targetRoot = firstBlock.Header.Data.Root
-	} else {
-		targetRoot = firstBlock.Header.Data.Header.Message.ParentRoot
+	if firstBlock != nil {
+		if uint64(firstBlock.Header.Data.Header.Message.Slot) == firstSlot {
+			targetRoot = firstBlock.Header.Data.Root
+		} else {
+			targetRoot = firstBlock.Header.Data.Header.Message.ParentRoot
+		}
 	}
 	epochVotes := aggregateEpochVotes(sync.cachedBlocks, syncEpoch, &epochStats, targetRoot, false)
 

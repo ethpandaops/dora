@@ -720,8 +720,7 @@ slotLoop:
 		}
 	}
 	if epochTarget == nil {
-		logger.Errorf("Error fetching epoch %v target block (no block found)", epoch)
-		return
+		logger.Warnf("Counld not find epoch %v target (no block found)", epoch)
 	}
 
 	epochVotes := aggregateEpochVotes(indexer.state.cachedBlocks, epoch, epochStats, epochTarget, false)
