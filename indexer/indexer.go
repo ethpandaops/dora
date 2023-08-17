@@ -254,18 +254,38 @@ func (indexer *Indexer) runIndexer() {
 	defer indexer.runMutex.Unlock()
 
 	for {
+		runIndexerLoop := true
+
 		genesis, err := indexer.rpcClient.GetGenesis()
 		if err != nil {
 			logger.Errorf("Indexer Error while fetching genesis: %v", err)
+			runIndexerLoop = false
 		} else if genesis != nil {
 			genesisTime := uint64(genesis.Data.GenesisTime)
 			if genesisTime != utils.Config.Chain.GenesisTimestamp {
 				logger.Warnf("Genesis time from RPC does not match the genesis time from explorer configuration.")
+				runIndexerLoop = false
 			}
 			if genesis.Data.GenesisForkVersion.String() != utils.Config.Chain.Config.GenesisForkVersion {
 				logger.Warnf("Genesis fork version from RPC does not match the genesis fork version explorer configuration.")
+				runIndexerLoop = false
 			}
+		}
 
+		if runIndexerLoop {
+			syncStatus, err := indexer.rpcClient.GetNodeSyncing()
+			if err != nil {
+				logger.Errorf("Indexer Error while fetching syncing status: %v", err)
+				runIndexerLoop = false
+			} else if syncStatus != nil {
+				if syncStatus.Data.IsSyncing {
+					logger.Errorf("Cannot run indexer, beacon node is synchronizing.")
+					runIndexerLoop = false
+				}
+			}
+		}
+
+		if runIndexerLoop {
 			err := indexer.runIndexerLoop()
 			if err == nil {
 				break

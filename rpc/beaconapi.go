@@ -109,6 +109,24 @@ func (bc *BeaconClient) GetGenesis() (*rpctypes.StandardV1GenesisResponse, error
 	return &parsedGenesis, nil
 }
 
+func (bc *BeaconClient) GetNodeSyncing() (*rpctypes.StandardV1NodeSyncingResponse, error) {
+	resGenesis, err := bc.get(fmt.Sprintf("%s/eth/v1/node/syncing", bc.endpoint))
+	if err != nil {
+		if err == errNotFound {
+			// no block found
+			return nil, nil
+		}
+		return nil, fmt.Errorf("error retrieving syncing status: %v", err)
+	}
+
+	var parsedSyncingStatus rpctypes.StandardV1NodeSyncingResponse
+	err = json.Unmarshal(resGenesis, &parsedSyncingStatus)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing syncing status response: %v", err)
+	}
+	return &parsedSyncingStatus, nil
+}
+
 func (bc *BeaconClient) GetLatestBlockHead() (*rpctypes.StandardV1BeaconHeaderResponse, error) {
 	resHeaders, err := bc.get(fmt.Sprintf("%s/eth/v1/beacon/headers/head", bc.endpoint))
 	if err != nil {

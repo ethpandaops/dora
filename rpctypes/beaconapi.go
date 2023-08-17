@@ -93,3 +93,13 @@ type StandardV1GenesisResponse struct {
 type StandardV1BlobSidecarsResponse struct {
 	Data []BlobSidecar `json:"data"`
 }
+
+type StandardV1NodeSyncingResponse struct {
+	Data struct {
+		HeadSlot     Uint64Str `json:"head_slot"`
+		SyncDistance Uint64Str `json:"sync_distance"`
+		IsSyncing    bool      `json:"is_syncing"`
+		IsOptimistic bool      `json:"is_optimistic"`
+		ElOffline    bool      `json:"el_offline"`
+	} `json:"data"`
+}
