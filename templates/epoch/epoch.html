@@ -175,21 +175,21 @@
                       <span class="badge rounded-pill text-bg-info">Genesis</span>
                     {{ else if $slot.Scheduled }}
                       <span class="badge rounded-pill text-bg-secondary">Scheduled</span>
-                    {{ else if not $epoch.Synchronized }}
-                      <span class="badge rounded-pill text-bg-secondary">?</span>
-                    {{ else if eq $slot.Status 0 }}
-                      <span class="badge rounded-pill text-bg-warning">Missed</span>
                     {{ else if eq $slot.Status 1 }}
                       <span class="badge rounded-pill text-bg-success">Proposed</span>
                     {{ else if eq $slot.Status 2 }}
                       <span class="badge rounded-pill text-bg-info">Orphaned</span>
+                    {{ else if not $epoch.Synchronized }}
+                      <span class="badge rounded-pill text-bg-secondary">?</span>
+                    {{ else if eq $slot.Status 0 }}
+                      <span class="badge rounded-pill text-bg-warning">Missed</span>
                     {{ else }}
                       <span class="badge rounded-pill text-bg-dark">Unknown</span>
                     {{ end }}
                   </td>
                   <td data-timer="{{ $slot.Ts.Unix }}"><span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $slot.Ts }}">{{ formatRecentTimeShort $slot.Ts }}</span></td>
+                  <td>{{ formatValidator $slot.Proposer $slot.ProposerName }}</td>
                   {{ if $epoch.Synchronized }}
-                    <td>{{ formatValidator $slot.Proposer $slot.ProposerName }}</td>
                     <td class="d-none d-md-table-cell">{{ if not (eq $slot.Status 0) }}{{ $slot.AttestationCount }}{{ end }}</td>
                     <td>{{ if not (eq $slot.Status 0) }}{{ $slot.DepositCount }} / {{ $slot.ExitCount }}{{ end }}</td>
                     <td>{{ if not (eq $slot.Status 0) }}{{ $slot.ProposerSlashingCount }} / {{ $slot.AttesterSlashingCount }}{{ end }}</td>
@@ -197,7 +197,7 @@
                     <td>{{ if not (eq $slot.Status 0) }}{{ formatFloat $slot.SyncParticipation 2 }}%{{ end }}</td>
                     <td>{{ if not (eq $slot.Status 0) }}{{ formatGraffiti $slot.Graffiti }}{{ end }}</td>
                   {{ else }}
-                    <td colspan="7">Not indexed yet</td>
+                    <td colspan="6">Not indexed yet</td>
                   {{ end }}
                   
                 </tr>
