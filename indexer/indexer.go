@@ -340,6 +340,7 @@ func (indexer *Indexer) runIndexerLoop() error {
 				logger.Errorf("Indexer Error while polling latest head: %v", err)
 			}
 		case <-time.After(30 * time.Second):
+			logger.Info("No head event since 30 secs, polling chain head")
 			err := indexer.pollHeadBlock()
 			if err != nil {
 				logger.Errorf("Indexer Error while polling latest head: %v", err)

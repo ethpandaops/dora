@@ -182,7 +182,10 @@ func (bc *BeaconClient) GetBlockHeaderBySlot(slot uint64) (*rpctypes.StandardV1B
 }
 
 func (bc *BeaconClient) GetBlockBodyByBlockroot(blockroot []byte) (*rpctypes.StandardV2BeaconBlockResponse, error) {
-	resp, err := bc.get(fmt.Sprintf("%s/eth/v1/beacon/blocks/0x%x", bc.endpoint, blockroot))
+	resp, err := bc.get(fmt.Sprintf("%s/eth/v2/beacon/blocks/0x%x", bc.endpoint, blockroot))
+	if err != nil {
+		resp, err = bc.get(fmt.Sprintf("%s/eth/v1/beacon/blocks/0x%x", bc.endpoint, blockroot))
+	}
 	if err != nil {
 		return nil, fmt.Errorf("error retrieving block body for 0x%x: %v", blockroot, err)
 	}
