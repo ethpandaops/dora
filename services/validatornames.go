@@ -77,15 +77,18 @@ type validatorNamesRangesResponse struct {
 func (vn *ValidatorNames) LoadFromRangesApi(apiUrl string) error {
 	vn.namesMutex.Lock()
 	defer vn.namesMutex.Unlock()
+	logrus.Debugf("Loading validator names from inventory: %v", apiUrl)
 
 	client := &http.Client{Timeout: time.Second * 120}
 	resp, err := client.Get(apiUrl)
 	if err != nil {
+		logrus.Errorf("Could not fetch validator names from inventory (%v): %v", apiUrl, err)
 		return err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		if resp.StatusCode == http.StatusNotFound {
+			logrus.Errorf("Could not fetch validator names from inventory (%v): not found", apiUrl)
 			return nil
 		}
 		data, _ := ioutil.ReadAll(resp.Body)
