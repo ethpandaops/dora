@@ -112,8 +112,9 @@ func buildEpochPageData(epoch uint64) (*models.EpochPageData, time.Duration) {
 		pageData.TotalVoted = dbEpoch.VotedTotal
 		pageData.SyncParticipation = float64(dbEpoch.SyncParticipation) * 100
 		pageData.ValidatorCount = dbEpoch.ValidatorCount
-		pageData.AverageValidatorBalance = dbEpoch.ValidatorBalance / dbEpoch.ValidatorCount
-
+		if dbEpoch.ValidatorCount > 0 {
+			pageData.AverageValidatorBalance = dbEpoch.ValidatorBalance / dbEpoch.ValidatorCount
+		}
 		if dbEpoch.Eligible > 0 {
 			pageData.TargetVoteParticipation = float64(dbEpoch.VotedTarget) * 100.0 / float64(dbEpoch.Eligible)
 			pageData.HeadVoteParticipation = float64(dbEpoch.VotedHead) * 100.0 / float64(dbEpoch.Eligible)
