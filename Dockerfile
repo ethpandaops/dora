@@ -10,6 +10,8 @@ RUN make $target
 # final stage
 FROM debian:stable-slim
 WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
+RUN update-ca-certificates
 COPY --from=build-env /src/bin/explorer_linux_amd64 /app
 COPY --from=build-env /src/config /app/config
 EXPOSE 8080
