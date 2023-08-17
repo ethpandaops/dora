@@ -253,12 +253,6 @@ func (bc *BeaconClient) getEpochAssignments(epoch uint64) (*rpctypes.EpochAssign
 	}
 	depStateRoot := parsedHeader.Data.Header.Message.StateRoot
 
-	// Now use the state root to make a consistent committee query
-	var parsedCommittees rpctypes.StandardV1CommitteesResponse
-	err = bc.getJson(fmt.Sprintf("%s/eth/v1/beacon/states/%s/committees?epoch=%d", bc.endpoint, depStateRoot, epoch), &parsedCommittees)
-	if err != nil {
-		return nil, fmt.Errorf("error retrieving committees data: %w", err)
-	}
 	assignments := &rpctypes.EpochAssignments{
 		DependendRoot:       parsedProposerResponse.DependentRoot,
 		DependendState:      depStateRoot,
@@ -271,18 +265,25 @@ func (bc *BeaconClient) getEpochAssignments(epoch uint64) (*rpctypes.EpochAssign
 		assignments.ProposerAssignments[uint64(duty.Slot)] = uint64(duty.ValidatorIndex)
 	}
 
-	// attester duties
-	for _, committee := range parsedCommittees.Data {
-		for i, valIndex := range committee.Validators {
-			valIndexU64, err := strconv.ParseUint(valIndex, 10, 64)
-			if err != nil {
-				return nil, fmt.Errorf("epoch %d committee %d index %d has bad validator index %q", epoch, committee.Index, i, valIndex)
+	// Now use the state root to make a consistent committee query
+	var parsedCommittees rpctypes.StandardV1CommitteesResponse
+	err = bc.getJson(fmt.Sprintf("%s/eth/v1/beacon/states/%s/committees?epoch=%d", bc.endpoint, depStateRoot, epoch), &parsedCommittees)
+	if err != nil {
+		logger.Errorf("error retrieving committees data: %v", err)
+	} else {
+		// attester duties
+		for _, committee := range parsedCommittees.Data {
+			for i, valIndex := range committee.Validators {
+				valIndexU64, err := strconv.ParseUint(valIndex, 10, 64)
+				if err != nil {
+					return nil, fmt.Errorf("epoch %d committee %d index %d has bad validator index %q", epoch, committee.Index, i, valIndex)
+				}
+				k := fmt.Sprintf("%v-%v", uint64(committee.Slot), uint64(committee.Index))
+				if assignments.AttestorAssignments[k] == nil {
+					assignments.AttestorAssignments[k] = make([]uint64, 0)
+				}
+				assignments.AttestorAssignments[k] = append(assignments.AttestorAssignments[k], valIndexU64)
 			}
-			k := fmt.Sprintf("%v-%v", uint64(committee.Slot), uint64(committee.Index))
-			if assignments.AttestorAssignments[k] == nil {
-				assignments.AttestorAssignments[k] = make([]uint64, 0)
-			}
-			assignments.AttestorAssignments[k] = append(assignments.AttestorAssignments[k], valIndexU64)
 		}
 	}
 
@@ -295,17 +296,18 @@ func (bc *BeaconClient) getEpochAssignments(epoch uint64) (*rpctypes.EpochAssign
 		var parsedSyncCommittees rpctypes.StandardV1SyncCommitteesResponse
 		err := bc.getJson(fmt.Sprintf("%s/eth/v1/beacon/states/%s/sync_committees?epoch=%d", bc.endpoint, syncCommitteeState, epoch), &parsedSyncCommittees)
 		if err != nil {
-			return nil, fmt.Errorf("error retrieving sync_committees for epoch %v (state: %v): %w", epoch, syncCommitteeState, err)
-		}
-		assignments.SyncAssignments = make([]uint64, len(parsedSyncCommittees.Data.Validators))
+			logger.Errorf("error retrieving sync_committees for epoch %v (state: %v): %v", epoch, syncCommitteeState, err)
+		} else {
+			assignments.SyncAssignments = make([]uint64, len(parsedSyncCommittees.Data.Validators))
 
-		// sync committee duties
-		for i, valIndexStr := range parsedSyncCommittees.Data.Validators {
-			valIndexU64, err := strconv.ParseUint(valIndexStr, 10, 64)
-			if err != nil {
-				return nil, fmt.Errorf("in sync_committee for epoch %d validator %d has bad validator index: %q", epoch, i, valIndexStr)
+			// sync committee duties
+			for i, valIndexStr := range parsedSyncCommittees.Data.Validators {
+				valIndexU64, err := strconv.ParseUint(valIndexStr, 10, 64)
+				if err != nil {
+					return nil, fmt.Errorf("in sync_committee for epoch %d validator %d has bad validator index: %q", epoch, i, valIndexStr)
+				}
+				assignments.SyncAssignments[i] = valIndexU64
 			}
-			assignments.SyncAssignments[i] = valIndexU64
 		}
 	}
 

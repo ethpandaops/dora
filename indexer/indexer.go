@@ -691,7 +691,6 @@ func (indexer *Indexer) processEpoch(epoch uint64) {
 	defer indexer.state.cacheMutex.RUnlock()
 
 	logger.Infof("Process epoch %v", epoch)
-	// TODO: Process epoch aggregations and save to DB
 	firstSlot := epoch * utils.Config.Chain.Config.SlotsPerEpoch
 	lastSlot := firstSlot + utils.Config.Chain.Config.SlotsPerEpoch - 1
 	epochStats := indexer.state.epochStats[epoch]

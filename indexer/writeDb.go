@@ -105,24 +105,8 @@ func buildDbBlock(block *BlockInfo, epochStats *EpochStats) *dbtypes.Block {
 }
 
 func buildDbEpoch(epoch uint64, blockMap map[uint64][]*BlockInfo, epochStats *EpochStats, epochVotes *EpochVotes, blockFn func(block *BlockInfo)) *dbtypes.Epoch {
-	var firstBlock *BlockInfo
 	firstSlot := epoch * utils.Config.Chain.Config.SlotsPerEpoch
 	lastSlot := firstSlot + (utils.Config.Chain.Config.SlotsPerEpoch) - 1
-slotLoop:
-	for slot := firstSlot; slot <= lastSlot; slot++ {
-		if blockMap[slot] != nil {
-			blocks := blockMap[slot]
-			for bidx := 0; bidx < len(blocks); bidx++ {
-				if !blocks[bidx].Orphaned {
-					firstBlock = blocks[bidx]
-					break slotLoop
-				}
-			}
-		}
-	}
-	if firstBlock == nil {
-		return nil
-	}
 
 	totalSyncAssigned := 0
 	totalSyncVoted := 0
