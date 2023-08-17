@@ -35,15 +35,17 @@ func persistEpochData(epoch uint64, blockMap map[uint64][]*BlockInfo, epochStats
 
 	// insert slot assignments
 	firstSlot := epoch * utils.Config.Chain.Config.SlotsPerEpoch
-	slotAssignments := make([]*dbtypes.SlotAssignment, utils.Config.Chain.Config.SlotsPerEpoch)
-	for slotIdx := uint64(0); slotIdx < utils.Config.Chain.Config.SlotsPerEpoch; slotIdx++ {
-		slot := firstSlot + slotIdx
-		slotAssignments[slotIdx] = &dbtypes.SlotAssignment{
-			Slot:     slot,
-			Proposer: epochStats.Assignments.ProposerAssignments[slot],
+	if epochStats.Assignments != nil {
+		slotAssignments := make([]*dbtypes.SlotAssignment, utils.Config.Chain.Config.SlotsPerEpoch)
+		for slotIdx := uint64(0); slotIdx < utils.Config.Chain.Config.SlotsPerEpoch; slotIdx++ {
+			slot := firstSlot + slotIdx
+			slotAssignments[slotIdx] = &dbtypes.SlotAssignment{
+				Slot:     slot,
+				Proposer: epochStats.Assignments.ProposerAssignments[slot],
+			}
 		}
+		db.InsertSlotAssignments(slotAssignments, tx)
 	}
-	db.InsertSlotAssignments(slotAssignments, tx)
 
 	// insert epoch
 	db.InsertEpoch(dbEpoch, tx)

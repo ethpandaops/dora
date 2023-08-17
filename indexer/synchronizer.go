@@ -188,19 +188,21 @@ func (sync *synchronizerState) syncEpoch(syncEpoch uint64) bool {
 			ValidatorBalances: make(map[uint64]uint64),
 		},
 	}
-	epochValidators, err := sync.indexer.rpcClient.GetStateValidators(epochAssignments.DependendState)
-	if err != nil {
-		logger.Errorf("Error fetching epoch %v validators (state: %v): %v", syncEpoch, epochAssignments.DependendState, err)
-	} else {
-		for idx := 0; idx < len(epochValidators.Data); idx++ {
-			validator := epochValidators.Data[idx]
-			epochStats.Validators.ValidatorBalances[uint64(validator.Index)] = uint64(validator.Validator.EffectiveBalance)
-			if !strings.HasPrefix(validator.Status, "active") {
-				continue
+	if epochAssignments != nil {
+		epochValidators, err := sync.indexer.rpcClient.GetStateValidators(epochAssignments.DependendState)
+		if err != nil {
+			logger.Errorf("Error fetching epoch %v validators (state: %v): %v", syncEpoch, epochAssignments.DependendState, err)
+		} else {
+			for idx := 0; idx < len(epochValidators.Data); idx++ {
+				validator := epochValidators.Data[idx]
+				epochStats.Validators.ValidatorBalances[uint64(validator.Index)] = uint64(validator.Validator.EffectiveBalance)
+				if !strings.HasPrefix(validator.Status, "active") {
+					continue
+				}
+				epochStats.Validators.ValidatorCount++
+				epochStats.Validators.ValidatorBalance += uint64(validator.Balance)
+				epochStats.Validators.EligibleAmount += uint64(validator.Validator.EffectiveBalance)
 			}
-			epochStats.Validators.ValidatorCount++
-			epochStats.Validators.ValidatorBalance += uint64(validator.Balance)
-			epochStats.Validators.EligibleAmount += uint64(validator.Validator.EffectiveBalance)
 		}
 	}
 	if sync.checkKillChan(0) {
