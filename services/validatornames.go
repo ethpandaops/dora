@@ -32,14 +32,18 @@ func (vn *ValidatorNames) GetValidatorName(index uint64) string {
 func (vn *ValidatorNames) LoadFromYaml(fileName string) error {
 	vn.namesMutex.Lock()
 	defer vn.namesMutex.Unlock()
+
 	f, err := os.Open(fileName)
 	if err != nil {
+		logrus.Errorf("error opening validator names file %v: %v", fileName, err)
 		return fmt.Errorf("error opening validator names file %v: %v", fileName, err)
 	}
+
 	namesYaml := map[string]string{}
 	decoder := yaml.NewDecoder(f)
 	err = decoder.Decode(&namesYaml)
 	if err != nil {
+		logrus.Errorf("error decoding validator names file %v: %v", fileName, err)
 		return fmt.Errorf("error decoding validator names file %v: %v", fileName, err)
 	}
 
