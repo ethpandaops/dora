@@ -73,6 +73,7 @@ type StandardV1SyncCommitteesResponse struct {
 type EpochAssignments struct {
 	DependendRoot       BytesHexStr         `json:"dep_root"`
 	DependendState      BytesHexStr         `json:"dep_state"`
+	DependendIsGenesis  bool                `json:"dep_genesis"`
 	ProposerAssignments map[uint64]uint64   `json:"prop"`
 	AttestorAssignments map[string][]uint64 `json:"att"`
 	SyncAssignments     []uint64            `json:"sync"`

@@ -9,6 +9,7 @@ import (
 
 	"github.com/pk910/light-beaconchain-explorer/db"
 	"github.com/pk910/light-beaconchain-explorer/dbtypes"
+	"github.com/pk910/light-beaconchain-explorer/rpctypes"
 	"github.com/pk910/light-beaconchain-explorer/utils"
 )
 
@@ -189,7 +190,13 @@ func (sync *synchronizerState) syncEpoch(syncEpoch uint64) bool {
 		},
 	}
 	if epochAssignments != nil {
-		epochValidators, err := sync.indexer.rpcClient.GetStateValidators(epochAssignments.DependendState)
+		var epochValidators *rpctypes.StandardV1StateValidatorsResponse
+		var err error
+		if epochAssignments.DependendIsGenesis {
+			epochValidators, err = sync.indexer.rpcClient.GetGenesisValidators()
+		} else {
+			epochValidators, err = sync.indexer.rpcClient.GetStateValidators(epochAssignments.DependendState)
+		}
 		if err != nil {
 			logger.Errorf("Error fetching epoch %v validators (state: %v): %v", syncEpoch, epochAssignments.DependendState, err)
 		} else {

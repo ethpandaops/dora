@@ -646,7 +646,13 @@ func (indexer *Indexer) loadEpochValidators(epoch uint64, epochStats *EpochStats
 	logger.Infof("Epoch %v head, loading validator set (state: %v)", epoch, epochStats.Assignments.DependendState)
 
 	// load epoch stats
-	epochValidators, err := indexer.rpcClient.GetStateValidators(epochStats.Assignments.DependendState)
+	var epochValidators *rpctypes.StandardV1StateValidatorsResponse
+	var err error
+	if epochStats.Assignments.DependendIsGenesis {
+		epochValidators, err = indexer.rpcClient.GetGenesisValidators()
+	} else {
+		epochValidators, err = indexer.rpcClient.GetStateValidators(epochStats.Assignments.DependendState)
+	}
 	if err != nil {
 		logger.Errorf("Error fetching epoch %v validators: %v", epoch, err)
 	} else {

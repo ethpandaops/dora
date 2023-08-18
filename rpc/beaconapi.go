@@ -272,11 +272,15 @@ func (bc *BeaconClient) getEpochAssignments(epoch uint64) (*rpctypes.EpochAssign
 	if err != nil {
 		return nil, err
 	}
-	depStateRoot := parsedHeader.Data.Header.Message.StateRoot
+	var depStateRoot string = parsedHeader.Data.Header.Message.StateRoot.String()
+	if epoch == 0 {
+		depStateRoot = "genesis"
+	}
 
 	assignments := &rpctypes.EpochAssignments{
 		DependendRoot:       parsedProposerResponse.DependentRoot,
-		DependendState:      depStateRoot,
+		DependendState:      parsedHeader.Data.Header.Message.StateRoot,
+		DependendIsGenesis:  epoch == 0,
 		ProposerAssignments: make(map[uint64]uint64),
 		AttestorAssignments: make(map[string][]uint64),
 	}
@@ -310,7 +314,7 @@ func (bc *BeaconClient) getEpochAssignments(epoch uint64) (*rpctypes.EpochAssign
 
 	if epoch >= utils.Config.Chain.Config.AltairForkEpoch {
 		syncCommitteeState := fmt.Sprintf("%s", depStateRoot)
-		if epoch == utils.Config.Chain.Config.AltairForkEpoch {
+		if epoch > 0 && epoch == utils.Config.Chain.Config.AltairForkEpoch {
 			syncCommitteeState = fmt.Sprintf("%d", utils.Config.Chain.Config.AltairForkEpoch*utils.Config.Chain.Config.SlotsPerEpoch)
 		}
 
@@ -338,6 +342,15 @@ func (bc *BeaconClient) getEpochAssignments(epoch uint64) (*rpctypes.EpochAssign
 func (bc *BeaconClient) GetStateValidators(stateroot []byte) (*rpctypes.StandardV1StateValidatorsResponse, error) {
 	var parsedResponse rpctypes.StandardV1StateValidatorsResponse
 	err := bc.getJson(fmt.Sprintf("%s/eth/v1/beacon/states/0x%x/validators", bc.endpoint, stateroot), &parsedResponse)
+	if err != nil {
+		return nil, fmt.Errorf("error retrieving state validators: %v", err)
+	}
+	return &parsedResponse, nil
+}
+
+func (bc *BeaconClient) GetGenesisValidators() (*rpctypes.StandardV1StateValidatorsResponse, error) {
+	var parsedResponse rpctypes.StandardV1StateValidatorsResponse
+	err := bc.getJson(fmt.Sprintf("%s/eth/v1/beacon/states/genesis/validators", bc.endpoint), &parsedResponse)
 	if err != nil {
 		return nil, fmt.Errorf("error retrieving state validators: %v", err)
 	}
