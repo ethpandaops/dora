@@ -64,7 +64,7 @@ func (vn *ValidatorNames) LoadFromYaml(fileName string) error {
 				continue
 			}
 		}
-		for idx := minIdx; idx < maxIdx; idx++ {
+		for idx := minIdx; idx <= maxIdx; idx++ {
 			vn.names[idx] = name
 			nameCount++
 		}
@@ -122,7 +122,7 @@ func (vn *ValidatorNames) LoadFromRangesApi(apiUrl string) error {
 				continue
 			}
 		}
-		for idx := minIdx; idx < maxIdx; idx++ {
+		for idx := minIdx; idx <= maxIdx; idx++ {
 			vn.names[idx] = name
 			nameCount++
 		}
