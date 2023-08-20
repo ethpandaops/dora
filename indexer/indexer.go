@@ -1,15 +1,10 @@
 package indexer
 
 import (
-	"bytes"
-	"errors"
-	"strings"
 	"sync"
-	"time"
 
 	"github.com/sirupsen/logrus"
 
-	"github.com/pk910/light-beaconchain-explorer/db"
 	"github.com/pk910/light-beaconchain-explorer/dbtypes"
 	"github.com/pk910/light-beaconchain-explorer/rpc"
 	"github.com/pk910/light-beaconchain-explorer/rpctypes"
@@ -19,38 +14,12 @@ import (
 var logger = logrus.StandardLogger().WithField("module", "indexer")
 
 type Indexer struct {
-	rpcClient            *rpc.BeaconClient
-	controlMutex         sync.Mutex
-	runMutex             sync.Mutex
-	running              bool
-	writeDb              bool
+	indexerCache   *indexerCache
+	indexerClients []*indexerClient
+
 	prepopulateEpochs    uint16
 	inMemoryEpochs       uint16
 	epochProcessingDelay uint16
-	state                indexerState
-	synchronizer         *synchronizerState
-}
-
-type indexerState struct {
-	lastHeadBlock       uint64
-	lastHeadRoot        []byte
-	lastFinalizedBlock  uint64
-	cacheMutex          sync.RWMutex
-	cachedBlocks        map[uint64][]*BlockInfo
-	epochStats          map[uint64]*EpochStats
-	headValidators      *rpctypes.StandardV1StateValidatorsResponse
-	headValidatorsEpoch int64
-	lowestCachedSlot    int64
-	highestCachedSlot   int64
-	lastProcessedEpoch  int64
-}
-
-type EpochStats struct {
-	dependendRoot     []byte
-	AssignmentsMutex  sync.Mutex
-	assignmentsFailed bool
-	Validators        *EpochValidators
-	Assignments       *rpctypes.EpochAssignments
 }
 
 type EpochValidators struct {
@@ -62,7 +31,7 @@ type EpochValidators struct {
 	ValidatorBalances    map[uint64]uint64
 }
 
-func NewIndexer(rpcClient *rpc.BeaconClient) (*Indexer, error) {
+func NewIndexer() (*Indexer, error) {
 	inMemoryEpochs := utils.Config.Indexer.InMemoryEpochs
 	if inMemoryEpochs < 2 {
 		inMemoryEpochs = 2
@@ -77,305 +46,199 @@ func NewIndexer(rpcClient *rpc.BeaconClient) (*Indexer, error) {
 	if prepopulateEpochs > inMemoryEpochs {
 		prepopulateEpochs = inMemoryEpochs
 	}
+
+	cache := newIndexerCache(!utils.Config.Indexer.DisableIndexWriter)
 	return &Indexer{
-		rpcClient:            rpcClient,
-		writeDb:              !utils.Config.Indexer.DisableIndexWriter,
+		indexerCache:   cache,
+		indexerClients: make([]*indexerClient, 0),
+
 		prepopulateEpochs:    prepopulateEpochs,
 		inMemoryEpochs:       inMemoryEpochs,
 		epochProcessingDelay: epochProcessingDelay,
-		state: indexerState{
-			cachedBlocks:        make(map[uint64][]*BlockInfo),
-			epochStats:          make(map[uint64]*EpochStats),
-			headValidatorsEpoch: -1,
-			lowestCachedSlot:    -1,
-			highestCachedSlot:   -1,
-			lastProcessedEpoch:  -1,
-		},
 	}, nil
 }
 
-func (indexer *Indexer) Start() error {
-	indexer.controlMutex.Lock()
-	defer indexer.controlMutex.Unlock()
-
-	if indexer.running {
-		return errors.New("indexer already running")
+func (indexer *Indexer) AddClient(index uint8, name string, endpoint string) {
+	rpcClient, err := rpc.NewBeaconClient(endpoint)
+	if err != nil {
+		logger.Errorf("Error while adding client %v to indexer: %v", name, err)
+		return
 	}
-	indexer.running = true
+	client := newIndexerClient(index, name, rpcClient, indexer.indexerCache)
+	indexer.indexerClients = append(indexer.indexerClients, client)
+}
 
-	go indexer.runIndexer()
+func (indexer *Indexer) GetRpcClient() *rpc.BeaconClient {
+	return indexer.indexerClients[0].rpcClient
+}
+
+func (indexer *Indexer) Start() error {
 
 	return nil
 }
 
 func (indexer *Indexer) GetLowestCachedSlot() int64 {
-	indexer.state.cacheMutex.RLock()
-	defer indexer.state.cacheMutex.RUnlock()
-	return indexer.state.lowestCachedSlot
+	return -1
 }
 
 func (indexer *Indexer) GetHeadSlot() uint64 {
-	indexer.state.cacheMutex.RLock()
-	defer indexer.state.cacheMutex.RUnlock()
-	return indexer.state.lastHeadBlock
+	return 0
 }
 
 func (indexer *Indexer) GetCachedBlocks(slot uint64) []*BlockInfo {
-	indexer.state.cacheMutex.RLock()
-	defer indexer.state.cacheMutex.RUnlock()
+	/*
+		indexer.state.cacheMutex.RLock()
+		defer indexer.state.cacheMutex.RUnlock()
 
-	if slot < uint64(indexer.state.lowestCachedSlot) {
-		return nil
-	}
-	blocks := indexer.state.cachedBlocks[slot]
-	if blocks == nil {
-		return nil
-	}
-	resBlocks := make([]*BlockInfo, len(blocks))
-	copy(resBlocks, blocks)
-	return resBlocks
+		if slot < uint64(indexer.state.lowestCachedSlot) {
+			return nil
+		}
+		blocks := indexer.state.cachedBlocks[slot]
+		if blocks == nil {
+			return nil
+		}
+		resBlocks := make([]*BlockInfo, len(blocks))
+		copy(resBlocks, blocks)
+	*/
+	return nil
 }
 
 func (indexer *Indexer) GetCachedBlock(root []byte) *BlockInfo {
-	indexer.state.cacheMutex.RLock()
-	defer indexer.state.cacheMutex.RUnlock()
+	/*
+		indexer.state.cacheMutex.RLock()
+		defer indexer.state.cacheMutex.RUnlock()
 
-	if indexer.state.lowestCachedSlot < 0 {
-		return nil
-	}
-	for slotIdx := int64(indexer.state.lastHeadBlock); slotIdx >= indexer.state.lowestCachedSlot; slotIdx-- {
-		slot := uint64(slotIdx)
-		if indexer.state.cachedBlocks[slot] != nil {
-			blocks := indexer.state.cachedBlocks[slot]
-			for bidx := 0; bidx < len(blocks); bidx++ {
-				if bytes.Equal(blocks[bidx].Header.Data.Root, root) {
-					return blocks[bidx]
+		if indexer.state.lowestCachedSlot < 0 {
+			return nil
+		}
+		for slotIdx := int64(indexer.state.lastHeadBlock); slotIdx >= indexer.state.lowestCachedSlot; slotIdx-- {
+			slot := uint64(slotIdx)
+			if indexer.state.cachedBlocks[slot] != nil {
+				blocks := indexer.state.cachedBlocks[slot]
+				for bidx := 0; bidx < len(blocks); bidx++ {
+					if bytes.Equal(blocks[bidx].Header.Data.Root, root) {
+						return blocks[bidx]
+					}
 				}
 			}
 		}
-	}
+	*/
 	return nil
 }
 
 func (indexer *Indexer) GetCachedBlockByStateroot(stateroot []byte) *BlockInfo {
-	indexer.state.cacheMutex.RLock()
-	defer indexer.state.cacheMutex.RUnlock()
+	/*
+		indexer.state.cacheMutex.RLock()
+		defer indexer.state.cacheMutex.RUnlock()
 
-	if indexer.state.lowestCachedSlot < 0 {
-		return nil
-	}
-	for slotIdx := int64(indexer.state.lastHeadBlock); slotIdx >= indexer.state.lowestCachedSlot; slotIdx-- {
-		slot := uint64(slotIdx)
-		if indexer.state.cachedBlocks[slot] != nil {
-			blocks := indexer.state.cachedBlocks[slot]
-			for bidx := 0; bidx < len(blocks); bidx++ {
-				if bytes.Equal(blocks[bidx].Header.Data.Header.Message.StateRoot, stateroot) {
-					return blocks[bidx]
+		if indexer.state.lowestCachedSlot < 0 {
+			return nil
+		}
+		for slotIdx := int64(indexer.state.lastHeadBlock); slotIdx >= indexer.state.lowestCachedSlot; slotIdx-- {
+			slot := uint64(slotIdx)
+			if indexer.state.cachedBlocks[slot] != nil {
+				blocks := indexer.state.cachedBlocks[slot]
+				for bidx := 0; bidx < len(blocks); bidx++ {
+					if bytes.Equal(blocks[bidx].Header.Data.Header.Message.StateRoot, stateroot) {
+						return blocks[bidx]
+					}
 				}
 			}
 		}
-	}
+	*/
 	return nil
 }
 
 func (indexer *Indexer) GetCachedEpochStats(epoch uint64) *EpochStats {
-	indexer.state.cacheMutex.RLock()
-	defer indexer.state.cacheMutex.RUnlock()
-	return indexer.state.epochStats[epoch]
-}
-
-func (indexer *Indexer) GetCachedValidatorSet() *rpctypes.StandardV1StateValidatorsResponse {
-	indexer.state.cacheMutex.RLock()
-	defer indexer.state.cacheMutex.RUnlock()
-	return indexer.state.headValidators
-}
-
-func (indexer *Indexer) GetEpochVotes(epoch uint64) *EpochVotes {
-	indexer.state.cacheMutex.RLock()
-	defer indexer.state.cacheMutex.RUnlock()
-
-	epochStats := indexer.state.epochStats[epoch]
-	if epochStats == nil {
-		return nil
-	}
-
-	return indexer.getEpochVotes(epoch, epochStats)
-}
-
-func (indexer *Indexer) getEpochVotes(epoch uint64, epochStats *EpochStats) *EpochVotes {
-	var firstBlock *BlockInfo
-	firstSlot := epoch * utils.Config.Chain.Config.SlotsPerEpoch
-	lastSlot := firstSlot + (utils.Config.Chain.Config.SlotsPerEpoch) - 1
-slotLoop:
-	for slot := firstSlot; slot <= lastSlot; slot++ {
-		if indexer.state.cachedBlocks[slot] != nil {
-			blocks := indexer.state.cachedBlocks[slot]
-			for bidx := 0; bidx < len(blocks); bidx++ {
-				if !blocks[bidx].Orphaned {
-					firstBlock = blocks[bidx]
-					break slotLoop
-				}
-			}
-		}
-	}
-	if firstBlock == nil {
-		return nil
-	}
-
-	var targetRoot []byte
-	if uint64(firstBlock.Header.Data.Header.Message.Slot) == firstSlot {
-		targetRoot = firstBlock.Header.Data.Root
-	} else {
-		targetRoot = firstBlock.Header.Data.Header.Message.ParentRoot
-	}
-	return aggregateEpochVotes(indexer.state.cachedBlocks, epoch, epochStats, targetRoot, false)
-}
-
-func (indexer *Indexer) BuildLiveEpoch(epoch uint64) *dbtypes.Epoch {
-	indexer.state.cacheMutex.RLock()
-	defer indexer.state.cacheMutex.RUnlock()
-
-	epochStats := indexer.state.epochStats[epoch]
-	if epochStats == nil {
-		return nil
-	}
-	epochVotes := indexer.getEpochVotes(epoch, epochStats)
-	return buildDbEpoch(epoch, indexer.state.cachedBlocks, epochStats, epochVotes, nil)
-}
-
-func (indexer *Indexer) BuildLiveBlock(block *BlockInfo) *dbtypes.Block {
-	epoch := utils.EpochOfSlot(uint64(block.Header.Data.Header.Message.Slot))
-	epochStats := indexer.state.epochStats[epoch]
-	return buildDbBlock(block, epochStats)
-}
-
-func (indexer *Indexer) runIndexer() {
-	indexer.runMutex.Lock()
-	defer indexer.runMutex.Unlock()
-
-	for {
-		runIndexerLoop := true
-
-		genesis, err := indexer.rpcClient.GetGenesis()
-		if err != nil {
-			logger.Errorf("Indexer Error while fetching genesis: %v", err)
-			runIndexerLoop = false
-		} else if genesis != nil {
-			genesisTime := uint64(genesis.Data.GenesisTime)
-			if genesisTime != utils.Config.Chain.GenesisTimestamp {
-				logger.Warnf("Genesis time from RPC does not match the genesis time from explorer configuration.")
-				runIndexerLoop = false
-			}
-			if genesis.Data.GenesisForkVersion.String() != utils.Config.Chain.Config.GenesisForkVersion {
-				logger.Warnf("Genesis fork version from RPC does not match the genesis fork version explorer configuration.")
-				runIndexerLoop = false
-			}
-		}
-
-		if runIndexerLoop {
-			syncStatus, err := indexer.rpcClient.GetNodeSyncing()
-			if err != nil {
-				logger.Errorf("Indexer Error while fetching syncing status: %v", err)
-				runIndexerLoop = false
-			} else if syncStatus != nil {
-				if syncStatus.Data.IsSyncing {
-					logger.Errorf("Cannot run indexer, beacon node is synchronizing.")
-					runIndexerLoop = false
-				}
-			}
-		}
-
-		if runIndexerLoop {
-			err := indexer.runIndexerLoop()
-			if err == nil {
-				break
-			}
-		}
-
-		logger.Warnf("Indexer couldn't do stuff it is supposed to do. Retrying in 10 sec...")
-		select {
-		case <-time.After(10 * time.Second):
-		}
-	}
-
-	logger.Debugf("Indexer process shutdown")
-}
-
-func (indexer *Indexer) runIndexerLoop() error {
-	chainConfig := utils.Config.Chain.Config
-	genesisTime := time.Unix(int64(utils.Config.Chain.GenesisTimestamp), 0)
-
-	if now := time.Now(); now.Compare(genesisTime) > 0 {
-		currentEpoch := utils.TimeToEpoch(time.Now())
-		if currentEpoch > int64(indexer.prepopulateEpochs) {
-			indexer.state.lastHeadBlock = uint64((currentEpoch-int64(indexer.prepopulateEpochs)+1)*int64(chainConfig.SlotsPerEpoch)) - 1
-		}
-		if currentEpoch > int64(indexer.epochProcessingDelay) {
-			indexer.state.lastProcessedEpoch = currentEpoch - int64(indexer.epochProcessingDelay)
-		}
-	}
-
-	// fill indexer cache
-	err := indexer.pollHeadBlock()
-	if err != nil {
-		logger.Errorf("Indexer Error while polling latest head: %v", err)
-		return err
-	}
-
-	// start block stream
-	blockStream := indexer.rpcClient.NewBlockStream()
-	defer blockStream.Close()
-
-	// check if we need to start a sync job (last synced epoch < lastProcessedEpoch)
-	if indexer.writeDb {
-		syncState := dbtypes.IndexerSyncState{}
-		db.GetExplorerState("indexer.syncstate", &syncState)
-		if int64(syncState.Epoch) < indexer.state.lastProcessedEpoch {
-			indexer.startSynchronization(syncState.Epoch)
-		}
-	}
-
-	// run indexer loop
-	for {
-		indexer.controlMutex.Lock()
-		isRunning := indexer.running
-		indexer.controlMutex.Unlock()
-		if !isRunning {
-			break
-		}
-
-		select {
-		case headEvt := <-blockStream.HeadChan:
-			//logger.Infof("RPC Event: Head  %v (root: %v, dep: %v)", headEvt.Slot, headEvt.Block, headEvt.CurrentDutyDependentRoot)
-			indexer.processHeadEpoch(utils.EpochOfSlot(uint64(headEvt.Slot)), headEvt.CurrentDutyDependentRoot)
-		case blockEvt := <-blockStream.BlockChan:
-			//logger.Infof("RPC Event: Block  %v (root: %v)", blockEvt.Slot, blockEvt.Block)
-			indexer.pollStreamedBlock(blockEvt.Block)
-		case <-blockStream.CloseChan:
-			logger.Warnf("Indexer lost connection to beacon event stream. Reconnection in 5 sec")
-			time.Sleep(5 * time.Second)
-			blockStream.Start()
-			err := indexer.pollHeadBlock()
-			if err != nil {
-				logger.Errorf("Indexer Error while polling latest head: %v", err)
-			}
-		case <-time.After(30 * time.Second):
-			logger.Info("No head event since 30 secs, polling chain head")
-			err := indexer.pollHeadBlock()
-			if err != nil {
-				logger.Errorf("Indexer Error while polling latest head: %v", err)
-			}
-		}
-
-		now := time.Now()
-		indexer.processIndexing()
-		indexer.processCacheCleanup()
-		logger.Debugf("indexer loop processing time: %v ms", time.Now().Sub(now).Milliseconds())
-	}
-
+	/*
+		indexer.state.cacheMutex.RLock()
+		defer indexer.state.cacheMutex.RUnlock()
+		return indexer.state.epochStats[epoch]
+	*/
 	return nil
 }
 
+func (indexer *Indexer) GetCachedValidatorSet() *rpctypes.StandardV1StateValidatorsResponse {
+	/*
+		indexer.state.cacheMutex.RLock()
+		defer indexer.state.cacheMutex.RUnlock()
+		return indexer.state.headValidators
+	*/
+	return nil
+}
+
+func (indexer *Indexer) GetEpochVotes(epoch uint64) *EpochVotes {
+	/*
+		indexer.state.cacheMutex.RLock()
+		defer indexer.state.cacheMutex.RUnlock()
+
+		epochStats := indexer.state.epochStats[epoch]
+		if epochStats == nil {
+			return nil
+		}
+
+		return indexer.getEpochVotes(epoch, epochStats)
+	*/
+	return nil
+}
+
+func (indexer *Indexer) getEpochVotes(epoch uint64, epochStats *EpochStats) *EpochVotes {
+	/*
+			var firstBlock *BlockInfo
+			firstSlot := epoch * utils.Config.Chain.Config.SlotsPerEpoch
+			lastSlot := firstSlot + (utils.Config.Chain.Config.SlotsPerEpoch) - 1
+		slotLoop:
+			for slot := firstSlot; slot <= lastSlot; slot++ {
+				if indexer.state.cachedBlocks[slot] != nil {
+					blocks := indexer.state.cachedBlocks[slot]
+					for bidx := 0; bidx < len(blocks); bidx++ {
+						if !blocks[bidx].Orphaned {
+							firstBlock = blocks[bidx]
+							break slotLoop
+						}
+					}
+				}
+			}
+			if firstBlock == nil {
+				return nil
+			}
+
+			var targetRoot []byte
+			if uint64(firstBlock.Header.Data.Header.Message.Slot) == firstSlot {
+				targetRoot = firstBlock.Header.Data.Root
+			} else {
+				targetRoot = firstBlock.Header.Data.Header.Message.ParentRoot
+			}
+			return aggregateEpochVotes(indexer.state.cachedBlocks, epoch, epochStats, targetRoot, false)
+	*/
+	return nil
+}
+
+func (indexer *Indexer) BuildLiveEpoch(epoch uint64) *dbtypes.Epoch {
+	/*
+		indexer.state.cacheMutex.RLock()
+		defer indexer.state.cacheMutex.RUnlock()
+
+		epochStats := indexer.state.epochStats[epoch]
+		if epochStats == nil {
+			return nil
+		}
+		epochVotes := indexer.getEpochVotes(epoch, epochStats)
+		return buildDbEpoch(epoch, indexer.state.cachedBlocks, epochStats, epochVotes, nil)
+	*/
+	return nil
+}
+
+func (indexer *Indexer) BuildLiveBlock(block *BlockInfo) *dbtypes.Block {
+	/*
+		epoch := utils.EpochOfSlot(uint64(block.Header.Data.Header.Message.Slot))
+		epochStats := indexer.state.epochStats[epoch]
+		return buildDbBlock(block, epochStats)
+	*/
+	return nil
+}
+
+/*
 func (indexer *Indexer) startSynchronization(startEpoch uint64) error {
 	if !indexer.writeDb {
 		return nil
@@ -798,3 +661,4 @@ slotLoop:
 		}
 	}
 }
+*/

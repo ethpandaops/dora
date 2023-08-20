@@ -43,7 +43,7 @@ CREATE INDEX IF NOT EXISTS "blocks_graffiti_idx"
 
 CREATE INDEX IF NOT EXISTS "blocks_slot_idx"
     ON public."blocks" 
-    ("root" ASC NULLS LAST);
+    ("slot" ASC NULLS LAST);
 
 CREATE INDEX IF NOT EXISTS "blocks_state_root_idx"
     ON public."blocks" 

@@ -1,14 +1,6 @@
 package indexer
 
-import (
-	"fmt"
-
-	"github.com/jmoiron/sqlx"
-	"github.com/pk910/light-beaconchain-explorer/db"
-	"github.com/pk910/light-beaconchain-explorer/dbtypes"
-	"github.com/pk910/light-beaconchain-explorer/utils"
-)
-
+/*
 func persistEpochData(epoch uint64, blockMap map[uint64][]*BlockInfo, epochStats *EpochStats, epochVotes *EpochVotes, tx *sqlx.Tx) error {
 	commitTx := false
 	if tx == nil {
@@ -177,3 +169,4 @@ func buildDbEpoch(epoch uint64, blockMap map[uint64][]*BlockInfo, epochStats *Ep
 
 	return &dbEpoch
 }
+*/

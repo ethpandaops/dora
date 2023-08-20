@@ -1,16 +1,9 @@
 package indexer
 
 import (
-	"strings"
 	"sync"
-	"time"
 
 	"github.com/sirupsen/logrus"
-
-	"github.com/pk910/light-beaconchain-explorer/db"
-	"github.com/pk910/light-beaconchain-explorer/dbtypes"
-	"github.com/pk910/light-beaconchain-explorer/rpctypes"
-	"github.com/pk910/light-beaconchain-explorer/utils"
 )
 
 var synclogger = logrus.StandardLogger().WithField("module", "synchronizer")
@@ -33,6 +26,7 @@ func newSynchronizer(indexer *Indexer) *synchronizerState {
 	}
 }
 
+/*
 func (sync *synchronizerState) isEpochAhead(epoch uint64) bool {
 	sync.stateMutex.Lock()
 	defer sync.stateMutex.Unlock()
@@ -272,3 +266,4 @@ func (sync *synchronizerState) syncEpoch(syncEpoch uint64) bool {
 
 	return true
 }
+*/

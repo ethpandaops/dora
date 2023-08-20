@@ -3,6 +3,7 @@ package rpc
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -11,27 +12,41 @@ import (
 	"github.com/pk910/light-beaconchain-explorer/rpctypes"
 )
 
+const (
+	StreamBlockEvent     uint16 = 0x01
+	StreamHeadEvent      uint16 = 0x02
+	StreamFinalizedEvent uint16 = 0x04
+)
+
+type BeaconStreamEvent struct {
+	Event uint16
+	Data  interface{}
+}
+
 type BeaconStream struct {
 	runMutex     sync.Mutex
 	running      bool
+	ready        bool
+	events       uint16
 	endpoint     string
 	killChan     chan bool
 	CloseChan    chan bool
-	BlockChan    chan *rpctypes.StandardV1StreamedBlockEvent
-	HeadChan     chan *rpctypes.StandardV1StreamedHeadEvent
+	ReadyChan    chan bool
+	EventChan    chan *BeaconStreamEvent
 	lastHeadSeen time.Time
 }
 
-func (bc *BeaconClient) NewBlockStream() *BeaconStream {
+func (bc *BeaconClient) NewBlockStream(events uint16) *BeaconStream {
 	blockStream := BeaconStream{
 		running:   true,
+		events:    events,
 		endpoint:  bc.endpoint,
 		killChan:  make(chan bool),
 		CloseChan: make(chan bool),
-		BlockChan: make(chan *rpctypes.StandardV1StreamedBlockEvent, 10),
-		HeadChan:  make(chan *rpctypes.StandardV1StreamedHeadEvent, 10),
+		ReadyChan: make(chan bool),
+		EventChan: make(chan *BeaconStreamEvent, 10),
 	}
-	go blockStream.startStream(bc.endpoint)
+	go blockStream.startStream()
 
 	return &blockStream
 }
@@ -41,7 +56,7 @@ func (bs *BeaconStream) Start() {
 		return
 	}
 	bs.running = true
-	go bs.startStream(bs.endpoint)
+	go bs.startStream()
 }
 
 func (bs *BeaconStream) Close() {
@@ -53,12 +68,14 @@ func (bs *BeaconStream) Close() {
 	defer bs.runMutex.Unlock()
 }
 
-func (bs *BeaconStream) startStream(endpoint string) {
+func (bs *BeaconStream) startStream() {
 	bs.runMutex.Lock()
 	defer bs.runMutex.Unlock()
 
-	stream := bs.subscribeStream(endpoint)
+	stream := bs.subscribeStream(bs.endpoint, bs.events)
 	if stream != nil {
+		bs.ready = true
+		bs.ReadyChan <- true
 		running := true
 		for running {
 			select {
@@ -68,6 +85,8 @@ func (bs *BeaconStream) startStream(endpoint string) {
 					bs.processBlockEvent(evt)
 				} else if evt.Event() == "head" {
 					bs.processHeadEvent(evt)
+				} else if evt.Event() == "finalized_checkpoint" {
+					bs.processFinalizedEvent(evt)
 				}
 			case <-bs.killChan:
 				running = false
@@ -75,7 +94,9 @@ func (bs *BeaconStream) startStream(endpoint string) {
 				// timeout - no block since 5 mins
 				logger.Errorf("beacon block stream error, no new head retrieved since %v (%v ago)", bs.lastHeadSeen, time.Since(bs.lastHeadSeen))
 				stream.Close()
-				stream = bs.subscribeStream(endpoint)
+				bs.ready = false
+				bs.ReadyChan <- false
+				stream = bs.subscribeStream(bs.endpoint, bs.events)
 				if stream == nil {
 					running = false
 				}
@@ -85,15 +106,44 @@ func (bs *BeaconStream) startStream(endpoint string) {
 	if stream != nil {
 		stream.Close()
 	}
+	if bs.ready {
+		bs.ready = false
+		bs.ReadyChan <- false
+	}
 	bs.running = false
 	bs.CloseChan <- true
 }
 
-func (bs *BeaconStream) subscribeStream(endpoint string) *eventsource.Stream {
+func (bs *BeaconStream) subscribeStream(endpoint string, events uint16) *eventsource.Stream {
+	var topics strings.Builder
+	topicsCount := 0
+	if events&StreamBlockEvent > 0 {
+		if topicsCount > 0 {
+			fmt.Fprintf(&topics, ",")
+		}
+		fmt.Fprintf(&topics, "block")
+		topicsCount++
+	}
+	if events&StreamHeadEvent > 0 {
+		if topicsCount > 0 {
+			fmt.Fprintf(&topics, ",")
+		}
+		fmt.Fprintf(&topics, "head")
+		topicsCount++
+	}
+	if events&StreamFinalizedEvent > 0 {
+		if topicsCount > 0 {
+			fmt.Fprintf(&topics, ",")
+		}
+		fmt.Fprintf(&topics, "finalized_checkpoint")
+		topicsCount++
+	}
+
 	for {
-		stream, err := eventsource.Subscribe(fmt.Sprintf("%s/eth/v1/events?topics=block,head", endpoint), "")
+		url := fmt.Sprintf("%s/eth/v1/events?topics=%v", endpoint, topics.String())
+		stream, err := eventsource.Subscribe(url, "")
 		if err != nil {
-			logger.Errorf("Error while subscribing beacon event stream: %v", err)
+			logger.Errorf("Error while subscribing beacon event stream %v: %v", url, err)
 			select {
 			case <-bs.killChan:
 				return nil
@@ -113,7 +163,10 @@ func (bs *BeaconStream) processBlockEvent(evt eventsource.Event) {
 		return
 	}
 	logger.Debugf("RPC block event! slot: %v, block: %v", parsed.Slot, parsed.Block)
-	bs.BlockChan <- &parsed
+	bs.EventChan <- &BeaconStreamEvent{
+		Event: StreamBlockEvent,
+		Data:  &parsed,
+	}
 }
 
 func (bs *BeaconStream) processHeadEvent(evt eventsource.Event) {
@@ -125,5 +178,22 @@ func (bs *BeaconStream) processHeadEvent(evt eventsource.Event) {
 	}
 	logger.Debugf("RPC head event! slot: %v, block: %v, state: %v", parsed.Slot, parsed.Block, parsed.State)
 	bs.lastHeadSeen = time.Now()
-	bs.HeadChan <- &parsed
+	bs.EventChan <- &BeaconStreamEvent{
+		Event: StreamHeadEvent,
+		Data:  &parsed,
+	}
+}
+
+func (bs *BeaconStream) processFinalizedEvent(evt eventsource.Event) {
+	var parsed rpctypes.StandardV1StreamedFinalizedCheckpointEvent
+	err := json.Unmarshal([]byte(evt.Data()), &parsed)
+	if err != nil {
+		logger.Warnf("beacon block stream failed to decode finalized_checkpoint event: %v", err)
+		return
+	}
+	logger.Debugf("RPC finalized_checkpoint event! epoch: %v, block: %v, state: %v", parsed.Epoch, parsed.Block, parsed.State)
+	bs.EventChan <- &BeaconStreamEvent{
+		Event: StreamFinalizedEvent,
+		Data:  &parsed,
+	}
 }

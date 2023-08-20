@@ -7,10 +7,8 @@ import (
 	"io/ioutil"
 	"net/http"
 	"strconv"
-	"sync"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common/lru"
 	"github.com/sirupsen/logrus"
 
 	"github.com/pk910/light-beaconchain-explorer/rpctypes"
@@ -20,19 +18,13 @@ import (
 var logger = logrus.StandardLogger().WithField("module", "rpc")
 
 type BeaconClient struct {
-	endpoint            string
-	assignmentsCache    *lru.Cache[uint64, *rpctypes.EpochAssignments]
-	assignmentsCacheMux sync.Mutex
+	endpoint string
 }
 
 // NewBeaconClient is used to create a new beacon client
-func NewBeaconClient(endpoint string, assignmentsCacheSize int) (*BeaconClient, error) {
-	if assignmentsCacheSize < 10 {
-		assignmentsCacheSize = 10
-	}
+func NewBeaconClient(endpoint string) (*BeaconClient, error) {
 	client := &BeaconClient{
-		endpoint:         endpoint,
-		assignmentsCache: lru.NewCache[uint64, *rpctypes.EpochAssignments](assignmentsCacheSize),
+		endpoint: endpoint,
 	}
 
 	return client, nil
@@ -231,37 +223,8 @@ func (bc *BeaconClient) GetProposerDuties(epoch uint64) (*rpctypes.StandardV1Pro
 	return &parsedProposerResponse, nil
 }
 
-func (bc *BeaconClient) GetEpochAssignments(epoch uint64) (*rpctypes.EpochAssignments, error) {
-	currentEpoch := utils.TimeToEpoch(time.Now())
-	// don't cache current & last epoch as these might change due to reorgs
-	// the most recent epoch assignments are cached in the indexer anyway
-	cachable := epoch < uint64(currentEpoch)-1
-	if cachable {
-		bc.assignmentsCacheMux.Lock()
-		cachedValue, found := bc.assignmentsCache.Get(epoch)
-		bc.assignmentsCacheMux.Unlock()
-		if found {
-			return cachedValue, nil
-		}
-	}
-
-	epochAssignments, err := bc.getEpochAssignments(epoch)
-	if cachable && epochAssignments != nil && err == nil {
-		bc.assignmentsCacheMux.Lock()
-		bc.assignmentsCache.Add(epoch, epochAssignments)
-		bc.assignmentsCacheMux.Unlock()
-	}
-	return epochAssignments, err
-}
-
-func (bc *BeaconClient) AddCachedEpochAssignments(epoch uint64, epochAssignments *rpctypes.EpochAssignments) {
-	bc.assignmentsCacheMux.Lock()
-	bc.assignmentsCache.Add(epoch, epochAssignments)
-	bc.assignmentsCacheMux.Unlock()
-}
-
 // GetEpochAssignments will get the epoch assignments from Lighthouse RPC api
-func (bc *BeaconClient) getEpochAssignments(epoch uint64) (*rpctypes.EpochAssignments, error) {
+func (bc *BeaconClient) GetEpochAssignments(epoch uint64) (*rpctypes.EpochAssignments, error) {
 	parsedProposerResponse, err := bc.GetProposerDuties(epoch)
 	if err != nil {
 		return nil, err

@@ -16,6 +16,13 @@ type StandardV1StreamedHeadEvent struct {
 	ExecutionOptimistic       bool        `json:"execution_optimistic"`
 }
 
+type StandardV1StreamedFinalizedCheckpointEvent struct {
+	Epoch               Uint64Str   `json:"epoch"`
+	Block               BytesHexStr `json:"block"`
+	State               BytesHexStr `json:"state"`
+	ExecutionOptimistic bool        `json:"execution_optimistic"`
+}
+
 type StandardV1BeaconHeaderResponse struct {
 	Finalized bool `json:"finalized"`
 	Data      struct {
