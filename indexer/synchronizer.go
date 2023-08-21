@@ -83,7 +83,7 @@ func (sync *synchronizerState) runSync() {
 		// synchronize next epoch
 		syncEpoch := sync.currentEpoch
 
-		synclogger.Infof("Synchronising epoch %v", syncEpoch)
+		synclogger.Infof("Synchronizing epoch %v", syncEpoch)
 		if sync.syncEpoch(syncEpoch) {
 			finalizedEpoch, _ := sync.indexer.indexerCache.getFinalizedHead()
 			sync.stateMutex.Lock()
@@ -95,7 +95,7 @@ func (sync *synchronizerState) runSync() {
 				break
 			}
 		} else {
-			synclogger.Warnf("Synchronisation of epoch %v failed", syncEpoch)
+			synclogger.Warnf("Synchronization of epoch %v failed", syncEpoch)
 		}
 
 		if sync.checkKillChan(time.Duration(utils.Config.Indexer.SyncEpochCooldown) * time.Second) {

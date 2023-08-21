@@ -557,6 +557,36 @@ func GetSlotAssignmentsForSlots(firstSlot uint64, lastSlot uint64) []*dbtypes.Sl
 	return assignments
 }
 
+func GetBlockOrphanedRefs(blockRoots [][]byte) []*dbtypes.BlockOrphanedRef {
+	orphanedRefs := []*dbtypes.BlockOrphanedRef{}
+	if len(blockRoots) == 0 {
+		return orphanedRefs
+	}
+	var sql strings.Builder
+	fmt.Fprintf(&sql, `
+	SELECT
+		root, orphaned
+	FROM blocks
+	WHERE root in (`)
+	argIdx := 0
+	args := make([]any, len(blockRoots))
+	for i, root := range blockRoots {
+		if i > 0 {
+			fmt.Fprintf(&sql, ", ")
+		}
+		fmt.Fprintf(&sql, "$%v", argIdx+1)
+		args[argIdx] = root
+		argIdx += 1
+	}
+	fmt.Fprintf(&sql, ")")
+	err := ReaderDb.Select(&orphanedRefs, sql.String(), args...)
+	if err != nil {
+		logger.Errorf("Error while fetching blocks: %v", err)
+		return nil
+	}
+	return orphanedRefs
+}
+
 func InsertUnfinalizedBlock(block *dbtypes.UnfinalizedBlock, tx *sqlx.Tx) error {
 	_, err := tx.Exec(EngineQuery(map[dbtypes.DBEngineType]string{
 		dbtypes.DBEnginePgsql: `

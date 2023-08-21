@@ -28,6 +28,11 @@ type Block struct {
 	SyncParticipation     float32 `db:"sync_participation"`
 }
 
+type BlockOrphanedRef struct {
+	Root     []byte `db:"root"`
+	Orphaned bool   `db:"orphaned"`
+}
+
 type Epoch struct {
 	Epoch                 uint64  `db:"epoch"`
 	ValidatorCount        uint64  `db:"validator_count"`

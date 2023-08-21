@@ -1,5 +1,5 @@
 logging:
-  outputLevel: "debug"
+  #outputLevel: "debug"
   #outputStderr: false
 
   #filePath: "explorer.log"
@@ -43,7 +43,7 @@ indexer:
   inMemoryEpochs: 10
   epochProcessingDelay: 2
   disableIndexWriter: false
-  syncEpochCooldown: 2
+  syncEpochCooldown: 1
 
 database:
   engine: "sqlite"

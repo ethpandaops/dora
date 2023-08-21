@@ -35,7 +35,7 @@ func (cache *indexerCache) getEpochStats(epoch uint64, dependendRoot []byte) *Ep
 	defer cache.epochStatsMutex.RUnlock()
 	if cache.epochStatsMap[epoch] != nil {
 		for _, epochStats := range cache.epochStatsMap[epoch] {
-			if bytes.Equal(epochStats.dependendRoot, dependendRoot) {
+			if dependendRoot == nil || bytes.Equal(epochStats.dependendRoot, dependendRoot) {
 				return epochStats
 			}
 		}
@@ -61,6 +61,33 @@ func (cache *indexerCache) createOrGetEpochStats(epoch uint64, dependendRoot []b
 	}
 	cache.epochStatsMap[epoch] = append(cache.epochStatsMap[epoch], epochStats)
 	return epochStats, true
+}
+
+func (cache *indexerCache) removeEpochStats(epochStats *EpochStats) {
+	cache.epochStatsMutex.Lock()
+	defer cache.epochStatsMutex.Unlock()
+	logger.Debugf("Remove cached epoch stats: %v", epochStats.epoch)
+
+	allEpochStats := cache.epochStatsMap[epochStats.epoch]
+	if allEpochStats != nil {
+		var idx uint64
+		len := uint64(len(allEpochStats))
+		for idx = 0; idx < len; idx++ {
+			if allEpochStats[idx] == epochStats {
+				break
+			}
+		}
+		if idx < len {
+			if len == 1 {
+				delete(cache.epochStatsMap, epochStats.epoch)
+			} else {
+				if idx < len-1 {
+					cache.epochStatsMap[epochStats.epoch][idx] = cache.epochStatsMap[epochStats.epoch][len-1]
+				}
+				cache.epochStatsMap[epochStats.epoch] = cache.epochStatsMap[epochStats.epoch][0 : len-1]
+			}
+		}
+	}
 }
 
 func (client *indexerClient) ensureEpochStats(epoch uint64, head []byte) error {

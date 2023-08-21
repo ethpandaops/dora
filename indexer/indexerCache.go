@@ -22,6 +22,7 @@ type indexerCache struct {
 	finalizedRoot           []byte
 	processedEpoch          int64
 	persistEpoch            int64
+	cleanupEpoch            int64
 	slotMap                 map[uint64][]*indexerCacheBlock
 	rootMap                 map[string]*indexerCacheBlock
 	epochStatsMutex         sync.RWMutex
@@ -40,6 +41,7 @@ func newIndexerCache(indexer *Indexer) *indexerCache {
 		finalizedEpoch:          -1,
 		processedEpoch:          -2,
 		persistEpoch:            -1,
+		cleanupEpoch:            -1,
 		slotMap:                 make(map[uint64][]*indexerCacheBlock),
 		rootMap:                 make(map[string]*indexerCacheBlock),
 		epochStatsMap:           make(map[uint64][]*EpochStats),
@@ -135,9 +137,8 @@ func (cache *indexerCache) runCacheLogic() error {
 	if cache.highestSlot < 0 {
 		return nil
 	}
-	currentSlot := utils.TimeToSlot(uint64(time.Now().Unix()))
-	currentEpoch := utils.EpochOfSlot(currentSlot)
 
+	var cleanupEpoch int64
 	if cache.indexer.writeDb {
 		if cache.finalizedEpoch > 0 && cache.processedEpoch == -2 {
 			syncState := dbtypes.IndexerSyncState{}
@@ -170,16 +171,30 @@ func (cache *indexerCache) runCacheLogic() error {
 		}
 
 		if cache.lowestSlot >= 0 && int64(utils.EpochOfSlot(uint64(cache.lowestSlot))) < cache.processedEpoch {
-			// process new blocks already processed epochs (duplicates or new orphaned blocks)
-			// TODO
+			// process cached blocks in already processed epochs (duplicates or new orphaned blocks)
+			err := cache.processOrphanedBlocks(cache.processedEpoch)
+			if err != nil {
+				return err
+			}
 		}
 
-		if cache.persistEpoch < int64(currentEpoch) {
+		if cache.persistEpoch < cache.processedEpoch {
 			// process cache persistence
-			// TODO: move old but unfinalized block bodies to db
+			cache.persistEpoch = cache.processedEpoch
+
 		}
+		cleanupEpoch = cache.processedEpoch
 	} else {
-		// non writing instance, just cleanup cache
+		cleanupEpoch = cache.finalizedEpoch
+	}
+
+	if cache.cleanupEpoch < cleanupEpoch {
+		// process cache persistence
+		err := cache.processCacheCleanup(cleanupEpoch)
+		if err != nil {
+			return err
+		}
+		cache.cleanupEpoch = cleanupEpoch
 	}
 
 	return nil
@@ -292,32 +307,140 @@ func (cache *indexerCache) processFinalizedEpoch(epoch uint64) error {
 	logger.Infof("Epoch %v votes: total %v + %v = %v", epoch, epochVotes.currentEpoch.totalVoteAmount, epochVotes.nextEpoch.totalVoteAmount, epochVotes.currentEpoch.totalVoteAmount+epochVotes.nextEpoch.totalVoteAmount)
 
 	// store canonical blocks to db and remove from cache
-	// save to db
-	if cache.indexer.writeDb {
-		tx, err := db.WriterDb.Beginx()
-		if err != nil {
-			logger.Errorf("error starting db transactions: %v", err)
-			return err
-		}
-		defer tx.Rollback()
+	tx, err := db.WriterDb.Beginx()
+	if err != nil {
+		logger.Errorf("error starting db transactions: %v", err)
+		return err
+	}
+	defer tx.Rollback()
 
-		err = persistEpochData(epoch, canonicalMap, epochStats, epochVotes, tx)
-		if err != nil {
-			logger.Errorf("error persisting epoch data to db: %v", err)
-		}
+	err = persistEpochData(epoch, canonicalMap, epochStats, epochVotes, tx)
+	if err != nil {
+		logger.Errorf("error persisting epoch data to db: %v", err)
+	}
 
-		if cache.synchronizer == nil || !cache.synchronizer.running {
-			err = db.SetExplorerState("indexer.syncstate", &dbtypes.IndexerSyncState{
-				Epoch: epoch,
-			}, tx)
-			if err != nil {
-				logger.Errorf("error while updating sync state: %v", err)
+	if cache.synchronizer == nil || !cache.synchronizer.running {
+		err = db.SetExplorerState("indexer.syncstate", &dbtypes.IndexerSyncState{
+			Epoch: epoch,
+		}, tx)
+		if err != nil {
+			logger.Errorf("error while updating sync state: %v", err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		logger.Errorf("error committing db transaction: %v", err)
+		return err
+	}
+
+	// remove canonical blocks from cache
+	for slot, block := range canonicalMap {
+		if utils.EpochOfSlot(slot) == epoch {
+			cache.removeCachedBlock(block)
+		}
+	}
+
+	return nil
+}
+
+func (cache *indexerCache) processOrphanedBlocks(processedEpoch int64) error {
+	cachedBlocks := map[string]*indexerCacheBlock{}
+	orphanedBlocks := map[string]*indexerCacheBlock{}
+	blockRoots := [][]byte{}
+	cache.cacheMutex.RLock()
+	for slot, blocks := range cache.slotMap {
+		if int64(utils.EpochOfSlot(slot)) <= processedEpoch {
+			for _, block := range blocks {
+				cachedBlocks[string(block.root)] = block
+				orphanedBlocks[string(block.root)] = block
+				blockRoots = append(blockRoots, block.root)
 			}
 		}
+	}
+	cache.cacheMutex.RUnlock()
 
-		if err := tx.Commit(); err != nil {
-			logger.Errorf("error committing db transaction: %v", err)
-			return err
+	logger.Infof("Processing %v non-canonical blocks (epoch <= %v)", len(cachedBlocks), processedEpoch)
+	if len(cachedBlocks) == 0 {
+		return nil
+	}
+
+	// check if blocks are already in db
+	for _, blockRef := range db.GetBlockOrphanedRefs(blockRoots) {
+		if blockRef.Orphaned {
+			logger.Debugf("Processed duplicate orphaned block: 0x%x", blockRef.Root)
+		} else {
+			logger.Warnf("Processed duplicate canonical block in orphaned handler: 0x%x", blockRef.Root)
+		}
+		delete(orphanedBlocks, string(blockRef.Root))
+	}
+
+	// save orphaned blocks to db
+	tx, err := db.WriterDb.Beginx()
+	if err != nil {
+		logger.Errorf("error starting db transactions: %v", err)
+		return err
+	}
+	defer tx.Rollback()
+
+	for _, block := range orphanedBlocks {
+		dbBlock := buildDbBlock(block, cache.getEpochStats(utils.EpochOfSlot(block.slot), nil))
+		dbBlock.Orphaned = true
+		db.InsertBlock(dbBlock, tx)
+		db.InsertOrphanedBlock(block.buildOrphanedBlock(), tx)
+	}
+
+	if err := tx.Commit(); err != nil {
+		logger.Errorf("error committing db transaction: %v", err)
+		return err
+	}
+
+	// remove blocks from cache
+	for _, block := range cachedBlocks {
+		cache.removeCachedBlock(block)
+	}
+
+	return nil
+}
+
+func (cache *indexerCache) processCachePersistence() error {
+	logger.Infof("Processing cache persistence")
+	return nil
+}
+
+func (cache *indexerCache) processCacheCleanup(processedEpoch int64) error {
+	cachedBlocks := map[string]*indexerCacheBlock{}
+	clearStats := []*EpochStats{}
+	cache.cacheMutex.RLock()
+	for slot, blocks := range cache.slotMap {
+		if int64(utils.EpochOfSlot(slot)) <= processedEpoch {
+			for _, block := range blocks {
+				cachedBlocks[string(block.root)] = block
+			}
+		}
+	}
+	cache.cacheMutex.RUnlock()
+	cache.epochStatsMutex.RLock()
+	for epoch, stats := range cache.epochStatsMap {
+		if int64(epoch) <= processedEpoch {
+			for _, s := range stats {
+				clearStats = append(clearStats, s)
+			}
+		}
+	}
+	cache.epochStatsMutex.RUnlock()
+
+	logger.Infof("Cache cleanup: remove %v blocks, %v epoch stats", len(cachedBlocks), len(clearStats))
+	if len(cachedBlocks) > 0 {
+		// remove blocks from cache
+		for _, block := range cachedBlocks {
+			cache.removeCachedBlock(block)
+		}
+	}
+
+	if len(clearStats) > 0 {
+		// remove blocks from cache
+		for _, stats := range clearStats {
+			cache.removeEpochStats(stats)
 		}
 	}
 
