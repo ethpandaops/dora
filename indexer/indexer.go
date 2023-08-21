@@ -1,8 +1,6 @@
 package indexer
 
 import (
-	"sync"
-
 	"github.com/sirupsen/logrus"
 
 	"github.com/pk910/light-beaconchain-explorer/dbtypes"
@@ -17,18 +15,10 @@ type Indexer struct {
 	indexerCache   *indexerCache
 	indexerClients []*indexerClient
 
+	writeDb              bool
 	prepopulateEpochs    uint16
 	inMemoryEpochs       uint16
 	epochProcessingDelay uint16
-}
-
-type EpochValidators struct {
-	ValidatorsReadyMutex sync.Mutex
-	ValidatorsStatsMutex sync.RWMutex
-	ValidatorCount       uint64
-	ValidatorBalance     uint64
-	EligibleAmount       uint64
-	ValidatorBalances    map[uint64]uint64
 }
 
 func NewIndexer() (*Indexer, error) {
@@ -47,15 +37,17 @@ func NewIndexer() (*Indexer, error) {
 		prepopulateEpochs = inMemoryEpochs
 	}
 
-	cache := newIndexerCache(!utils.Config.Indexer.DisableIndexWriter)
-	return &Indexer{
-		indexerCache:   cache,
+	indexer := &Indexer{
 		indexerClients: make([]*indexerClient, 0),
 
+		writeDb:              !utils.Config.Indexer.DisableIndexWriter,
 		prepopulateEpochs:    prepopulateEpochs,
 		inMemoryEpochs:       inMemoryEpochs,
 		epochProcessingDelay: epochProcessingDelay,
-	}, nil
+	}
+	indexer.indexerCache = newIndexerCache(indexer)
+
+	return indexer, nil
 }
 
 func (indexer *Indexer) AddClient(index uint8, name string, endpoint string) {
@@ -68,13 +60,12 @@ func (indexer *Indexer) AddClient(index uint8, name string, endpoint string) {
 	indexer.indexerClients = append(indexer.indexerClients, client)
 }
 
-func (indexer *Indexer) GetRpcClient() *rpc.BeaconClient {
-	return indexer.indexerClients[0].rpcClient
+func (indexer *Indexer) getReadyClient() *indexerClient {
+	return indexer.indexerClients[0]
 }
 
-func (indexer *Indexer) Start() error {
-
-	return nil
+func (indexer *Indexer) GetRpcClient() *rpc.BeaconClient {
+	return indexer.indexerClients[0].rpcClient
 }
 
 func (indexer *Indexer) GetLowestCachedSlot() int64 {

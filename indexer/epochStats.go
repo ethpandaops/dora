@@ -112,7 +112,7 @@ func (client *indexerClient) ensureEpochStats(epoch uint64, head []byte) error {
 func (epochStats *EpochStats) ensureEpochStatsLazy(client *indexerClient, proposerRsp *rpctypes.StandardV1ProposerDutiesResponse) {
 	defer func() {
 		if err := recover(); err != nil {
-			logger.WithField("client", client.clientName).Errorf("Uncaught panig in ensureEpochStats subroutine: %v", err)
+			logger.WithField("client", client.clientName).Errorf("Uncaught panic in ensureEpochStats subroutine: %v", err)
 		}
 	}()
 
@@ -226,10 +226,13 @@ func (epochStats *EpochStats) ensureEpochStatsLazy(client *indexerClient, propos
 func (epochStats *EpochStats) ensureValidatorStatsLazy(client *indexerClient, stateRef string) {
 	defer func() {
 		if err := recover(); err != nil {
-			logger.WithField("client", client.clientName).Errorf("Uncaught panig in ensureValidatorStats subroutine: %v", err)
+			logger.WithField("client", client.clientName).Errorf("Uncaught panic in ensureValidatorStats subroutine: %v", err)
 		}
 	}()
+	epochStats.loadValidatorStats(client, stateRef)
+}
 
+func (epochStats *EpochStats) loadValidatorStats(client *indexerClient, stateRef string) {
 	epochStats.validatorsMutex.Lock()
 	defer epochStats.validatorsMutex.Unlock()
 	if epochStats.validatorStats != nil {

@@ -12,8 +12,9 @@ import (
 )
 
 type indexerCache struct {
-	writeDb                 bool
+	indexer                 *Indexer
 	triggerChan             chan bool
+	synchronizer            *synchronizerState
 	cacheMutex              sync.RWMutex
 	highestSlot             int64
 	lowestSlot              int64
@@ -30,9 +31,9 @@ type indexerCache struct {
 	validatorLoadingLimiter chan int
 }
 
-func newIndexerCache(writeDb bool) *indexerCache {
+func newIndexerCache(indexer *Indexer) *indexerCache {
 	cache := &indexerCache{
-		writeDb:                 writeDb,
+		indexer:                 indexer,
 		triggerChan:             make(chan bool, 10),
 		highestSlot:             -1,
 		lowestSlot:              -1,
@@ -50,6 +51,18 @@ func newIndexerCache(writeDb bool) *indexerCache {
 	return cache
 }
 
+func (cache *indexerCache) startSynchronizer(startEpoch uint64) {
+	cache.cacheMutex.Lock()
+	defer cache.cacheMutex.Unlock()
+
+	if cache.synchronizer == nil {
+		cache.synchronizer = newSynchronizer(cache.indexer)
+	}
+	if !cache.synchronizer.isEpochAhead(startEpoch) {
+		cache.synchronizer.startSync(startEpoch)
+	}
+}
+
 func (cache *indexerCache) setFinalizedHead(epoch int64, root []byte) {
 	cache.cacheMutex.Lock()
 	defer cache.cacheMutex.Unlock()
@@ -60,6 +73,12 @@ func (cache *indexerCache) setFinalizedHead(epoch int64, root []byte) {
 		// trigger processing
 		cache.triggerChan <- true
 	}
+}
+
+func (cache *indexerCache) getFinalizedHead() (int64, []byte) {
+	cache.cacheMutex.RLock()
+	defer cache.cacheMutex.RUnlock()
+	return cache.finalizedEpoch, cache.finalizedRoot
 }
 
 func (cache *indexerCache) setLastValidators(epoch uint64, validators *rpctypes.StandardV1StateValidatorsResponse) {
@@ -119,7 +138,7 @@ func (cache *indexerCache) runCacheLogic() error {
 	currentSlot := utils.TimeToSlot(uint64(time.Now().Unix()))
 	currentEpoch := utils.EpochOfSlot(currentSlot)
 
-	if cache.writeDb {
+	if cache.indexer.writeDb {
 		if cache.finalizedEpoch > 0 && cache.processedEpoch == -2 {
 			syncState := dbtypes.IndexerSyncState{}
 			_, err := db.GetExplorerState("indexer.syncstate", &syncState)
@@ -130,7 +149,13 @@ func (cache *indexerCache) runCacheLogic() error {
 			}
 
 			if cache.processedEpoch < cache.finalizedEpoch {
-				logger.Infof("Start synchronizer!")
+				var syncStartEpoch uint64
+				if cache.processedEpoch < 0 {
+					syncStartEpoch = 0
+				} else {
+					syncStartEpoch = uint64(cache.processedEpoch)
+				}
+				cache.startSynchronizer(syncStartEpoch)
 				cache.processedEpoch = cache.finalizedEpoch
 			}
 		}
@@ -174,9 +199,6 @@ func (cache *indexerCache) processFinalizedEpochs() error {
 
 func (cache *indexerCache) getLastCanonicalBlock(epoch uint64, head []byte) *indexerCacheBlock {
 	if head == nil {
-		if int64(epoch) >= cache.finalizedEpoch {
-			return nil
-		}
 		head = cache.finalizedRoot
 	}
 	canonicalBlock := cache.getCachedBlock(head)
@@ -271,7 +293,7 @@ func (cache *indexerCache) processFinalizedEpoch(epoch uint64) error {
 
 	// store canonical blocks to db and remove from cache
 	// save to db
-	if cache.writeDb {
+	if cache.indexer.writeDb {
 		tx, err := db.WriterDb.Beginx()
 		if err != nil {
 			logger.Errorf("error starting db transactions: %v", err)
@@ -284,16 +306,14 @@ func (cache *indexerCache) processFinalizedEpoch(epoch uint64) error {
 			logger.Errorf("error persisting epoch data to db: %v", err)
 		}
 
-		/*
-			if indexer.synchronizer == nil || !indexer.synchronizer.running {
-				err = db.SetExplorerState("indexer.syncstate", &dbtypes.IndexerSyncState{
-					Epoch: epoch,
-				}, tx)
-				if err != nil {
-					logger.Errorf("error while updating sync state: %v", err)
-				}
+		if cache.synchronizer == nil || !cache.synchronizer.running {
+			err = db.SetExplorerState("indexer.syncstate", &dbtypes.IndexerSyncState{
+				Epoch: epoch,
+			}, tx)
+			if err != nil {
+				logger.Errorf("error while updating sync state: %v", err)
 			}
-		*/
+		}
 
 		if err := tx.Commit(); err != nil {
 			logger.Errorf("error committing db transaction: %v", err)
