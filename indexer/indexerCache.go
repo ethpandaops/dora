@@ -11,53 +11,41 @@ import (
 	"github.com/pk910/light-beaconchain-explorer/utils"
 )
 
-type indexerCacheBlock struct {
-	root   []byte
-	slot   uint64
-	mutex  sync.RWMutex
-	seenBy uint64
-	isInDb bool
-	header *rpctypes.SignedBeaconBlockHeader
-	block  *rpctypes.SignedBeaconBlock
-}
-
 type indexerCache struct {
-	cacheMutex      sync.RWMutex
-	highestSlot     int64
-	lowestSlot      int64
-	finalizedEpoch  int64
-	finalizedRoot   []byte
-	processedEpoch  int64
-	cleanupEpoch    int64
-	slotMap         map[uint64][]*indexerCacheBlock
-	rootMap         map[string]*indexerCacheBlock
-	epochStatsMutex sync.RWMutex
-	epochStatsMap   map[uint64][]*EpochStats
-	triggerChan     chan bool
-	writeDb         bool
+	writeDb                 bool
+	triggerChan             chan bool
+	cacheMutex              sync.RWMutex
+	highestSlot             int64
+	lowestSlot              int64
+	finalizedEpoch          int64
+	finalizedRoot           []byte
+	processedEpoch          int64
+	persistEpoch            int64
+	slotMap                 map[uint64][]*indexerCacheBlock
+	rootMap                 map[string]*indexerCacheBlock
+	epochStatsMutex         sync.RWMutex
+	epochStatsMap           map[uint64][]*EpochStats
+	lastValidatorsEpoch     int64
+	lastValidatorsResp      *rpctypes.StandardV1StateValidatorsResponse
+	validatorLoadingLimiter chan int
 }
 
 func newIndexerCache(writeDb bool) *indexerCache {
 	cache := &indexerCache{
-		highestSlot:    -1,
-		lowestSlot:     -1,
-		finalizedEpoch: -1,
-		processedEpoch: -1,
-		cleanupEpoch:   -1,
-		slotMap:        make(map[uint64][]*indexerCacheBlock),
-		rootMap:        make(map[string]*indexerCacheBlock),
-		epochStatsMap:  make(map[uint64][]*EpochStats),
-		triggerChan:    make(chan bool, 10),
-		writeDb:        writeDb,
+		writeDb:                 writeDb,
+		triggerChan:             make(chan bool, 10),
+		highestSlot:             -1,
+		lowestSlot:              -1,
+		finalizedEpoch:          -1,
+		processedEpoch:          -2,
+		persistEpoch:            -1,
+		slotMap:                 make(map[uint64][]*indexerCacheBlock),
+		rootMap:                 make(map[string]*indexerCacheBlock),
+		epochStatsMap:           make(map[uint64][]*EpochStats),
+		lastValidatorsEpoch:     -1,
+		validatorLoadingLimiter: make(chan int, 2),
 	}
 	cache.loadStoredUnfinalizedCache()
-	if writeDb {
-		syncState := dbtypes.IndexerSyncState{}
-		_, err := db.GetExplorerState("indexer.syncstate", &syncState)
-		if err == nil {
-			cache.processedEpoch = int64(syncState.Epoch)
-		}
-	}
 	go cache.runCacheLoop()
 	return cache
 }
@@ -74,37 +62,13 @@ func (cache *indexerCache) setFinalizedHead(epoch int64, root []byte) {
 	}
 }
 
-func (cache *indexerCache) getCachedBlock(root []byte) *indexerCacheBlock {
-	cache.cacheMutex.RLock()
-	defer cache.cacheMutex.RUnlock()
-	rootKey := string(root)
-	return cache.rootMap[rootKey]
-}
-
-func (cache *indexerCache) createOrGetCachedBlock(root []byte, slot uint64) (*indexerCacheBlock, bool) {
+func (cache *indexerCache) setLastValidators(epoch uint64, validators *rpctypes.StandardV1StateValidatorsResponse) {
 	cache.cacheMutex.Lock()
 	defer cache.cacheMutex.Unlock()
-	rootKey := string(root)
-	if cache.rootMap[rootKey] != nil {
-		return cache.rootMap[rootKey], false
+	if int64(epoch) > cache.lastValidatorsEpoch {
+		cache.lastValidatorsEpoch = int64(epoch)
+		cache.lastValidatorsResp = validators
 	}
-	cacheBlock := &indexerCacheBlock{
-		root: root,
-		slot: slot,
-	}
-	cache.rootMap[rootKey] = cacheBlock
-	if cache.slotMap[slot] == nil {
-		cache.slotMap[slot] = []*indexerCacheBlock{cacheBlock}
-	} else {
-		cache.slotMap[slot] = append(cache.slotMap[slot], cacheBlock)
-	}
-	if int64(slot) > cache.highestSlot {
-		cache.highestSlot = int64(slot)
-	}
-	if int64(slot) > cache.lowestSlot {
-		cache.lowestSlot = int64(slot)
-	}
-	return cacheBlock, true
 }
 
 func (cache *indexerCache) loadStoredUnfinalizedCache() error {
@@ -126,7 +90,7 @@ func (cache *indexerCache) loadStoredUnfinalizedCache() error {
 	epochDuties := db.GetUnfinalizedEpochDutyRefs()
 	for _, epochDuty := range epochDuties {
 		logger.Debugf("Restored unfinalized block duty ref from db: %v/0x%x", epochDuty.Epoch, epochDuty.DependentRoot)
-		epochStats := cache.createOrGetEpochStats(epochDuty.Epoch, epochDuty.DependentRoot, nil)
+		epochStats, _ := cache.createOrGetEpochStats(epochDuty.Epoch, epochDuty.DependentRoot)
 		epochStats.dutiesInDb = true
 	}
 	return nil
@@ -149,25 +113,48 @@ func (cache *indexerCache) runCacheLoop() {
 }
 
 func (cache *indexerCache) runCacheLogic() error {
-	if cache.highestSlot <= 0 {
+	if cache.highestSlot < 0 {
 		return nil
 	}
 	currentSlot := utils.TimeToSlot(uint64(time.Now().Unix()))
 	currentEpoch := utils.EpochOfSlot(currentSlot)
 
-	if cache.processedEpoch < cache.finalizedEpoch {
-		// process finalized epochs
-		cache.processFinalizedEpochs()
-	}
+	if cache.writeDb {
+		if cache.finalizedEpoch > 0 && cache.processedEpoch == -2 {
+			syncState := dbtypes.IndexerSyncState{}
+			_, err := db.GetExplorerState("indexer.syncstate", &syncState)
+			if err != nil {
+				cache.processedEpoch = -1
+			} else {
+				cache.processedEpoch = int64(syncState.Epoch)
+			}
 
-	if cache.lowestSlot >= 0 && int64(utils.EpochOfSlot(uint64(cache.lowestSlot))) < cache.processedEpoch {
-		// process new blocks already processed epochs (duplicates or new orphaned blocks)
+			if cache.processedEpoch < cache.finalizedEpoch {
+				logger.Infof("Start synchronizer!")
+				cache.processedEpoch = cache.finalizedEpoch
+			}
+		}
 
-	}
+		logger.Debugf("check finalized processing %v < %v", cache.processedEpoch, cache.finalizedEpoch)
+		if cache.processedEpoch < cache.finalizedEpoch {
+			// process finalized epochs
+			err := cache.processFinalizedEpochs()
+			if err != nil {
+				return err
+			}
+		}
 
-	if cache.cleanupEpoch < int64(currentEpoch) {
-		// process cache cleanup
-		// TODO: move old but unfinalized block bodies to db
+		if cache.lowestSlot >= 0 && int64(utils.EpochOfSlot(uint64(cache.lowestSlot))) < cache.processedEpoch {
+			// process new blocks already processed epochs (duplicates or new orphaned blocks)
+			// TODO
+		}
+
+		if cache.persistEpoch < int64(currentEpoch) {
+			// process cache persistence
+			// TODO: move old but unfinalized block bodies to db
+		}
+	} else {
+		// non writing instance, just cleanup cache
 	}
 
 	return nil
@@ -194,17 +181,24 @@ func (cache *indexerCache) getLastCanonicalBlock(epoch uint64, head []byte) *ind
 	}
 	canonicalBlock := cache.getCachedBlock(head)
 	for canonicalBlock != nil && utils.EpochOfSlot(canonicalBlock.slot) > epoch {
-		canonicalBlock.mutex.RLock()
-		parentRoot := []byte(canonicalBlock.header.Message.ParentRoot)
-		canonicalBlock.mutex.RUnlock()
+		parentRoot := canonicalBlock.getParentRoot()
+		if parentRoot == nil {
+			return nil
+		}
 		canonicalBlock = cache.getCachedBlock(parentRoot)
+		if canonicalBlock == nil {
+			return nil
+		}
 	}
-	return canonicalBlock
+	if utils.EpochOfSlot(canonicalBlock.slot) == epoch {
+		return canonicalBlock
+	} else {
+		return nil
+	}
 }
 
 func (cache *indexerCache) getFirstCanonicalBlock(epoch uint64, head []byte) *indexerCacheBlock {
 	canonicalBlock := cache.getLastCanonicalBlock(epoch, head)
-
 	for canonicalBlock != nil {
 		canonicalBlock.mutex.RLock()
 		parentRoot := []byte(canonicalBlock.header.Message.ParentRoot)
@@ -218,14 +212,13 @@ func (cache *indexerCache) getFirstCanonicalBlock(epoch uint64, head []byte) *in
 	return nil
 }
 
-func (cache *indexerCache) getCanonicalBlockMap(epoch uint64, head []byte) map[string]*indexerCacheBlock {
-	canonicalMap := make(map[string]*indexerCacheBlock)
+func (cache *indexerCache) getCanonicalBlockMap(epoch uint64, head []byte) map[uint64]*indexerCacheBlock {
+	canonicalMap := make(map[uint64]*indexerCacheBlock)
 	canonicalBlock := cache.getLastCanonicalBlock(epoch, head)
 	for canonicalBlock != nil && utils.EpochOfSlot(canonicalBlock.slot) == epoch {
 		canonicalBlock.mutex.RLock()
 		parentRoot := []byte(canonicalBlock.header.Message.ParentRoot)
-		canonicalKey := string(canonicalBlock.root)
-		canonicalMap[canonicalKey] = canonicalBlock
+		canonicalMap[canonicalBlock.slot] = canonicalBlock
 		canonicalBlock.mutex.RUnlock()
 		canonicalBlock = cache.getCachedBlock(parentRoot)
 	}
@@ -247,7 +240,66 @@ func (cache *indexerCache) processFinalizedEpoch(epoch uint64) error {
 		}
 		epochDependentRoot = firstBlock.header.Message.ParentRoot
 	}
-
 	logger.Infof("Processing finalized epoch %v:  target: 0x%x, dependent: 0x%x", epoch, epochTarget, epochDependentRoot)
+
+	// get epoch stats
+	epochStats, isNewStats := cache.createOrGetEpochStats(epoch, epochDependentRoot)
+	if isNewStats {
+		logger.Warnf("Loading epoch stats during finalized epoch %v processing.", epoch)
+	}
+	epochStats.dutiesMutex.RLock()
+	epochStats.dutiesMutex.RUnlock()
+	epochStats.validatorsMutex.RLock()
+	epochStats.validatorsMutex.RUnlock()
+
+	// get canonical blocks
+	canonicalMap := cache.getCanonicalBlockMap(epoch, nil)
+	// append next epoch blocks (needed for vote aggregation)
+	for slot, block := range cache.getCanonicalBlockMap(epoch+1, nil) {
+		canonicalMap[slot] = block
+	}
+
+	// calculate votes
+	epochVotes := aggregateEpochVotes(canonicalMap, epoch, epochStats, epochTarget, false)
+
+	if epochStats.validatorStats != nil {
+		logger.Infof("Epoch %v stats: %v validators (%v)", epoch, epochStats.validatorStats.ValidatorCount, epochStats.validatorStats.EligibleAmount)
+	}
+	logger.Infof("Epoch %v votes: target %v + %v = %v", epoch, epochVotes.currentEpoch.targetVoteAmount, epochVotes.nextEpoch.targetVoteAmount, epochVotes.currentEpoch.targetVoteAmount+epochVotes.nextEpoch.targetVoteAmount)
+	logger.Infof("Epoch %v votes: head %v + %v = %v", epoch, epochVotes.currentEpoch.headVoteAmount, epochVotes.nextEpoch.headVoteAmount, epochVotes.currentEpoch.headVoteAmount+epochVotes.nextEpoch.headVoteAmount)
+	logger.Infof("Epoch %v votes: total %v + %v = %v", epoch, epochVotes.currentEpoch.totalVoteAmount, epochVotes.nextEpoch.totalVoteAmount, epochVotes.currentEpoch.totalVoteAmount+epochVotes.nextEpoch.totalVoteAmount)
+
+	// store canonical blocks to db and remove from cache
+	// save to db
+	if cache.writeDb {
+		tx, err := db.WriterDb.Beginx()
+		if err != nil {
+			logger.Errorf("error starting db transactions: %v", err)
+			return err
+		}
+		defer tx.Rollback()
+
+		err = persistEpochData(epoch, canonicalMap, epochStats, epochVotes, tx)
+		if err != nil {
+			logger.Errorf("error persisting epoch data to db: %v", err)
+		}
+
+		/*
+			if indexer.synchronizer == nil || !indexer.synchronizer.running {
+				err = db.SetExplorerState("indexer.syncstate", &dbtypes.IndexerSyncState{
+					Epoch: epoch,
+				}, tx)
+				if err != nil {
+					logger.Errorf("error while updating sync state: %v", err)
+				}
+			}
+		*/
+
+		if err := tx.Commit(); err != nil {
+			logger.Errorf("error committing db transaction: %v", err)
+			return err
+		}
+	}
+
 	return nil
 }

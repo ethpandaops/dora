@@ -1,7 +1,15 @@
 package indexer
 
-/*
-func persistEpochData(epoch uint64, blockMap map[uint64][]*BlockInfo, epochStats *EpochStats, epochVotes *EpochVotes, tx *sqlx.Tx) error {
+import (
+	"fmt"
+
+	"github.com/jmoiron/sqlx"
+	"github.com/pk910/light-beaconchain-explorer/db"
+	"github.com/pk910/light-beaconchain-explorer/dbtypes"
+	"github.com/pk910/light-beaconchain-explorer/utils"
+)
+
+func persistEpochData(epoch uint64, blockMap map[uint64]*indexerCacheBlock, epochStats *EpochStats, epochVotes *EpochVotes, tx *sqlx.Tx) error {
 	commitTx := false
 	if tx == nil {
 		var err error
@@ -14,26 +22,21 @@ func persistEpochData(epoch uint64, blockMap map[uint64][]*BlockInfo, epochStats
 		commitTx = true
 	}
 
-	dbEpoch := buildDbEpoch(epoch, blockMap, epochStats, epochVotes, func(block *BlockInfo) {
+	dbEpoch := buildDbEpoch(epoch, blockMap, epochStats, epochVotes, func(block *indexerCacheBlock) {
 		// insert block
 		dbBlock := buildDbBlock(block, epochStats)
 		db.InsertBlock(dbBlock, tx)
-
-		// insert orphaned block
-		if dbBlock.Orphaned {
-			db.InsertOrphanedBlock(BuildOrphanedBlock(block), tx)
-		}
 	})
 
 	// insert slot assignments
 	firstSlot := epoch * utils.Config.Chain.Config.SlotsPerEpoch
-	if epochStats.Assignments != nil {
+	if epochStats.proposerAssignments != nil {
 		slotAssignments := make([]*dbtypes.SlotAssignment, utils.Config.Chain.Config.SlotsPerEpoch)
 		for slotIdx := uint64(0); slotIdx < utils.Config.Chain.Config.SlotsPerEpoch; slotIdx++ {
 			slot := firstSlot + slotIdx
 			slotAssignments[slotIdx] = &dbtypes.SlotAssignment{
 				Slot:     slot,
-				Proposer: epochStats.Assignments.ProposerAssignments[slot],
+				Proposer: epochStats.proposerAssignments[slot],
 			}
 		}
 		db.InsertSlotAssignments(slotAssignments, tx)
@@ -52,28 +55,33 @@ func persistEpochData(epoch uint64, blockMap map[uint64][]*BlockInfo, epochStats
 	return nil
 }
 
-func buildDbBlock(block *BlockInfo, epochStats *EpochStats) *dbtypes.Block {
-	dbBlock := dbtypes.Block{
-		Root:                  block.Header.Data.Root,
-		Slot:                  uint64(block.Header.Data.Header.Message.Slot),
-		ParentRoot:            block.Header.Data.Header.Message.ParentRoot,
-		StateRoot:             block.Header.Data.Header.Message.StateRoot,
-		Orphaned:              block.Orphaned,
-		Proposer:              uint64(block.Block.Data.Message.ProposerIndex),
-		Graffiti:              block.Block.Data.Message.Body.Graffiti,
-		GraffitiText:          utils.GraffitiToString(block.Block.Data.Message.Body.Graffiti),
-		AttestationCount:      uint64(len(block.Block.Data.Message.Body.Attestations)),
-		DepositCount:          uint64(len(block.Block.Data.Message.Body.Deposits)),
-		ExitCount:             uint64(len(block.Block.Data.Message.Body.VoluntaryExits)),
-		AttesterSlashingCount: uint64(len(block.Block.Data.Message.Body.AttesterSlashings)),
-		ProposerSlashingCount: uint64(len(block.Block.Data.Message.Body.ProposerSlashings)),
-		BLSChangeCount:        uint64(len(block.Block.Data.Message.Body.SignedBLSToExecutionChange)),
+func buildDbBlock(block *indexerCacheBlock, epochStats *EpochStats) *dbtypes.Block {
+	blockBody := block.getBlockBody()
+	if blockBody == nil {
+		logger.Errorf("Error while aggregating epoch blocks: canonical block body not found: %v", block.slot)
+		return nil
 	}
 
-	syncAggregate := block.Block.Data.Message.Body.SyncAggregate
-	if syncAggregate != nil && epochStats != nil && epochStats.Assignments != nil && epochStats.Assignments.SyncAssignments != nil {
+	dbBlock := dbtypes.Block{
+		Root:                  block.root,
+		Slot:                  uint64(block.header.Message.Slot),
+		ParentRoot:            block.header.Message.ParentRoot,
+		StateRoot:             block.header.Message.StateRoot,
+		Proposer:              uint64(blockBody.Message.ProposerIndex),
+		Graffiti:              blockBody.Message.Body.Graffiti,
+		GraffitiText:          utils.GraffitiToString(blockBody.Message.Body.Graffiti),
+		AttestationCount:      uint64(len(blockBody.Message.Body.Attestations)),
+		DepositCount:          uint64(len(blockBody.Message.Body.Deposits)),
+		ExitCount:             uint64(len(blockBody.Message.Body.VoluntaryExits)),
+		AttesterSlashingCount: uint64(len(blockBody.Message.Body.AttesterSlashings)),
+		ProposerSlashingCount: uint64(len(blockBody.Message.Body.ProposerSlashings)),
+		BLSChangeCount:        uint64(len(blockBody.Message.Body.SignedBLSToExecutionChange)),
+	}
+
+	syncAggregate := blockBody.Message.Body.SyncAggregate
+	if syncAggregate != nil && epochStats.syncAssignments != nil {
 		votedCount := 0
-		assignedCount := len(epochStats.Assignments.SyncAssignments)
+		assignedCount := len(epochStats.syncAssignments)
 		for i := 0; i < assignedCount; i++ {
 			if utils.BitAtVector(syncAggregate.SyncCommitteeBits, i) {
 				votedCount++
@@ -82,7 +90,7 @@ func buildDbBlock(block *BlockInfo, epochStats *EpochStats) *dbtypes.Block {
 		dbBlock.SyncParticipation = float32(votedCount) / float32(assignedCount)
 	}
 
-	if executionPayload := block.Block.Data.Message.Body.ExecutionPayload; executionPayload != nil {
+	if executionPayload := blockBody.Message.Body.ExecutionPayload; executionPayload != nil {
 		dbBlock.EthTransactionCount = uint64(len(executionPayload.Transactions))
 		dbBlock.EthBlockNumber = uint64(executionPayload.BlockNumber)
 		dbBlock.EthBlockHash = executionPayload.BlockHash
@@ -98,65 +106,65 @@ func buildDbBlock(block *BlockInfo, epochStats *EpochStats) *dbtypes.Block {
 	return &dbBlock
 }
 
-func buildDbEpoch(epoch uint64, blockMap map[uint64][]*BlockInfo, epochStats *EpochStats, epochVotes *EpochVotes, blockFn func(block *BlockInfo)) *dbtypes.Epoch {
+func buildDbEpoch(epoch uint64, blockMap map[uint64]*indexerCacheBlock, epochStats *EpochStats, epochVotes *EpochVotes, blockFn func(block *indexerCacheBlock)) *dbtypes.Epoch {
 	firstSlot := epoch * utils.Config.Chain.Config.SlotsPerEpoch
 	lastSlot := firstSlot + (utils.Config.Chain.Config.SlotsPerEpoch) - 1
 
 	totalSyncAssigned := 0
 	totalSyncVoted := 0
 	dbEpoch := dbtypes.Epoch{
-		Epoch:            epoch,
-		ValidatorCount:   epochStats.Validators.ValidatorCount,
-		ValidatorBalance: epochStats.Validators.ValidatorBalance,
-		Eligible:         epochStats.Validators.EligibleAmount,
-		VotedTarget:      epochVotes.currentEpoch.targetVoteAmount + epochVotes.nextEpoch.targetVoteAmount,
-		VotedHead:        epochVotes.currentEpoch.headVoteAmount + epochVotes.nextEpoch.headVoteAmount,
-		VotedTotal:       epochVotes.currentEpoch.totalVoteAmount + epochVotes.nextEpoch.totalVoteAmount,
+		Epoch:       epoch,
+		VotedTarget: epochVotes.currentEpoch.targetVoteAmount + epochVotes.nextEpoch.targetVoteAmount,
+		VotedHead:   epochVotes.currentEpoch.headVoteAmount + epochVotes.nextEpoch.headVoteAmount,
+		VotedTotal:  epochVotes.currentEpoch.totalVoteAmount + epochVotes.nextEpoch.totalVoteAmount,
+	}
+	if epochStats.validatorStats != nil {
+		dbEpoch.ValidatorCount = epochStats.validatorStats.ValidatorCount
+		dbEpoch.ValidatorBalance = epochStats.validatorStats.ValidatorBalance
+		dbEpoch.Eligible = epochStats.validatorStats.EligibleAmount
 	}
 
 	// aggregate blocks
 	for slot := firstSlot; slot <= lastSlot; slot++ {
-		blocks := blockMap[slot]
-		if blocks != nil {
-			for bidx := 0; bidx < len(blocks); bidx++ {
-				block := blocks[bidx]
-				if blockFn != nil {
-					blockFn(block)
-				}
+		block := blockMap[slot]
 
-				if block.Orphaned {
-					dbEpoch.OrphanedCount++
-					continue
-				}
+		if block != nil {
+			dbEpoch.BlockCount++
+			blockBody := block.getBlockBody()
+			if blockBody == nil {
+				logger.Errorf("Error while aggregating epoch blocks: canonical block body not found: %v", block.slot)
+				continue
+			}
+			if blockFn != nil {
+				blockFn(block)
+			}
 
-				dbEpoch.BlockCount++
-				dbEpoch.AttestationCount += uint64(len(block.Block.Data.Message.Body.Attestations))
-				dbEpoch.DepositCount += uint64(len(block.Block.Data.Message.Body.Deposits))
-				dbEpoch.ExitCount += uint64(len(block.Block.Data.Message.Body.VoluntaryExits))
-				dbEpoch.AttesterSlashingCount += uint64(len(block.Block.Data.Message.Body.AttesterSlashings))
-				dbEpoch.ProposerSlashingCount += uint64(len(block.Block.Data.Message.Body.ProposerSlashings))
-				dbEpoch.BLSChangeCount += uint64(len(block.Block.Data.Message.Body.SignedBLSToExecutionChange))
+			dbEpoch.AttestationCount += uint64(len(blockBody.Message.Body.Attestations))
+			dbEpoch.DepositCount += uint64(len(blockBody.Message.Body.Deposits))
+			dbEpoch.ExitCount += uint64(len(blockBody.Message.Body.VoluntaryExits))
+			dbEpoch.AttesterSlashingCount += uint64(len(blockBody.Message.Body.AttesterSlashings))
+			dbEpoch.ProposerSlashingCount += uint64(len(blockBody.Message.Body.ProposerSlashings))
+			dbEpoch.BLSChangeCount += uint64(len(blockBody.Message.Body.SignedBLSToExecutionChange))
 
-				syncAggregate := block.Block.Data.Message.Body.SyncAggregate
-				if syncAggregate != nil && epochStats.Assignments != nil && epochStats.Assignments.SyncAssignments != nil {
-					votedCount := 0
-					assignedCount := len(epochStats.Assignments.SyncAssignments)
-					for i := 0; i < assignedCount; i++ {
-						if utils.BitAtVector(syncAggregate.SyncCommitteeBits, i) {
-							votedCount++
-						}
+			syncAggregate := blockBody.Message.Body.SyncAggregate
+			if syncAggregate != nil && epochStats.syncAssignments != nil {
+				votedCount := 0
+				assignedCount := len(epochStats.syncAssignments)
+				for i := 0; i < assignedCount; i++ {
+					if utils.BitAtVector(syncAggregate.SyncCommitteeBits, i) {
+						votedCount++
 					}
-					totalSyncAssigned += assignedCount
-					totalSyncVoted += votedCount
 				}
+				totalSyncAssigned += assignedCount
+				totalSyncVoted += votedCount
+			}
 
-				if executionPayload := block.Block.Data.Message.Body.ExecutionPayload; executionPayload != nil {
-					dbEpoch.EthTransactionCount += uint64(len(executionPayload.Transactions))
-					if executionPayload.Withdrawals != nil {
-						dbEpoch.WithdrawCount += uint64(len(executionPayload.Withdrawals))
-						for _, withdrawal := range executionPayload.Withdrawals {
-							dbEpoch.WithdrawAmount += uint64(withdrawal.Amount)
-						}
+			if executionPayload := blockBody.Message.Body.ExecutionPayload; executionPayload != nil {
+				dbEpoch.EthTransactionCount += uint64(len(executionPayload.Transactions))
+				if executionPayload.Withdrawals != nil {
+					dbEpoch.WithdrawCount += uint64(len(executionPayload.Withdrawals))
+					for _, withdrawal := range executionPayload.Withdrawals {
+						dbEpoch.WithdrawAmount += uint64(withdrawal.Amount)
 					}
 				}
 			}
@@ -169,4 +177,3 @@ func buildDbEpoch(epoch uint64, blockMap map[uint64][]*BlockInfo, epochStats *Ep
 
 	return &dbEpoch
 }
-*/

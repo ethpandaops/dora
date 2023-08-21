@@ -225,35 +225,9 @@ func (client *indexerClient) prefillCache(finalizedSlot uint64) error {
 		currentEpoch = -1
 	}
 	for epoch := firstEpoch; int64(epoch) <= currentEpoch; epoch++ {
-		fmt.Printf("enshure epoch stats %v\n", epoch)
 		client.ensureEpochStats(epoch, currentBlock.root)
 	}
 
-	return nil
-}
-
-func (client *indexerClient) ensureEpochStats(epoch uint64, head []byte) error {
-	firstBlock := client.indexerCache.getFirstCanonicalBlock(epoch, head)
-	var dependendRoot []byte
-	logger.WithField("client", client.clientName).Debugf("canonical first block for epoch %v: %v/0x%x", epoch, firstBlock.slot, firstBlock.root)
-	if firstBlock != nil {
-		dependendRoot = firstBlock.header.Message.ParentRoot
-	} else {
-		fmt.Printf("get proposer duties %v\n", epoch)
-		proposerRsp, err := client.rpcClient.GetProposerDuties(epoch)
-		if err != nil {
-			logger.WithField("client", client.clientName).Warnf("Could not load proposer duties for epoch %v: %v", epoch, err)
-		}
-		if proposerRsp == nil {
-			return fmt.Errorf("Could not fine proposer duties for epoch %v", epoch)
-		}
-		dependendRoot = proposerRsp.DependentRoot
-	}
-	logger.WithField("client", client.clientName).Debugf("Ensure epoch stats for epoch %v (dependend: 0x%x)", epoch, dependendRoot)
-	client.indexerCache.createOrGetEpochStats(epoch, dependendRoot, client)
-	if int64(epoch) > client.lastEpochStats {
-		client.lastEpochStats = int64(epoch)
-	}
 	return nil
 }
 
@@ -404,6 +378,6 @@ func (client *indexerClient) processHeadEvent(evt *rpctypes.StandardV1StreamedHe
 
 func (client *indexerClient) processFinalizedEvent(evt *rpctypes.StandardV1StreamedFinalizedCheckpointEvent) error {
 	logger.WithField("client", client.clientName).Debugf("Received finalization_checkpoint event: epoch %v (%s)", evt.Epoch, evt.Block.String())
-	client.indexerCache.setFinalizedHead(int64(evt.Epoch), evt.Block)
+	client.indexerCache.setFinalizedHead(int64(evt.Epoch)-1, evt.Block)
 	return nil
 }
