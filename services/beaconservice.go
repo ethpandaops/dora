@@ -2,6 +2,7 @@ package services
 
 import (
 	"encoding/json"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -498,57 +499,57 @@ func (bs *BeaconService) GetDbBlocksByProposer(proposer uint64, pageIdx uint64, 
 	}, 0)
 	finalizedEpoch, _ := bs.indexer.GetFinalizedEpoch()
 	idxMinSlot := (finalizedEpoch + 1) * int64(utils.Config.Chain.Config.SlotsPerEpoch)
-	/*
-		idxHeadSlot := bs.indexer.GetHeadSlot()
-		if idxMinSlot >= 0 {
-			idxHeadEpoch := utils.EpochOfSlot(idxHeadSlot)
-			idxMinEpoch := utils.EpochOfSlot(uint64(idxMinSlot))
-			for epochIdx := int64(idxHeadEpoch); epochIdx >= int64(idxMinEpoch); epochIdx-- {
-				epoch := uint64(epochIdx)
-				epochStats := bs.indexer.GetCachedEpochStats(epoch)
-				if epochStats == nil || epochStats.Assignments == nil {
+
+	// get proposed blocks
+	proposedMap := map[uint64]bool{}
+	for _, block := range bs.indexer.GetCachedBlocksByProposer(proposer) {
+		if !withOrphaned && block.Orphaned {
+			continue
+		}
+		slot := uint64(block.Header.Message.Slot)
+		proposedMap[slot] = true
+		cachedMatches = append(cachedMatches, struct {
+			slot  uint64
+			block *indexer.BlockInfo
+		}{
+			slot:  slot,
+			block: block,
+		})
+	}
+
+	if withMissing {
+		// add missed blocks
+		idxHeadSlot := bs.indexer.GetHighestSlot()
+		idxHeadEpoch := utils.EpochOfSlot(idxHeadSlot)
+		idxMinEpoch := utils.EpochOfSlot(uint64(idxMinSlot))
+		for epochIdx := int64(idxHeadEpoch); epochIdx >= int64(idxMinEpoch); epochIdx-- {
+			epoch := uint64(epochIdx)
+			epochStats := bs.indexer.GetCachedEpochStats(epoch)
+			if epochStats == nil {
+				continue
+			}
+			for slot, assigned := range epochStats.GetProposerAssignments() {
+				if assigned != proposer {
 					continue
 				}
-
-				for slot, assigned := range epochStats.Assignments.ProposerAssignments {
-					if assigned != proposer {
-						continue
-					}
-					blocks := bs.indexer.GetCachedBlocks(slot)
-					haveBlock := false
-					if blocks != nil {
-						for bidx := 0; bidx < len(blocks); bidx++ {
-							block := blocks[bidx]
-							if block.Orphaned && !withOrphaned {
-								continue
-							}
-							if uint64(block.Block.Data.Message.ProposerIndex) != proposer {
-								continue
-							}
-							cachedMatches = append(cachedMatches, struct {
-								slot  uint64
-								block *indexer.BlockInfo
-							}{
-								slot:  slot,
-								block: block,
-							})
-							haveBlock = true
-						}
-					}
-					if !haveBlock && withMissing {
-						cachedMatches = append(cachedMatches, struct {
-							slot  uint64
-							block *indexer.BlockInfo
-						}{
-							slot:  slot,
-							block: nil,
-						})
-					}
+				if proposedMap[slot] {
+					continue
 				}
-
+				cachedMatches = append(cachedMatches, struct {
+					slot  uint64
+					block *indexer.BlockInfo
+				}{
+					slot:  slot,
+					block: nil,
+				})
 			}
+			sort.Slice(cachedMatches, func(a, b int) bool {
+				slotA := cachedMatches[a].slot
+				slotB := cachedMatches[b].slot
+				return slotA > slotB
+			})
 		}
-	*/
+	}
 
 	cachedMatchesLen := uint64(len(cachedMatches))
 	cachedPages := cachedMatchesLen / uint64(pageSize)

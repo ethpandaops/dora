@@ -168,26 +168,50 @@ func (indexer *Indexer) GetCachedBlock(root []byte) *BlockInfo {
 }
 
 func (indexer *Indexer) GetCachedBlockByStateroot(stateroot []byte) *BlockInfo {
-	/*
-		indexer.state.cacheMutex.RLock()
-		defer indexer.state.cacheMutex.RUnlock()
+	_, headRoot := indexer.GetCanonicalHead()
+	indexer.indexerCache.cacheMutex.RLock()
+	defer indexer.indexerCache.cacheMutex.RUnlock()
 
-		if indexer.state.lowestCachedSlot < 0 {
-			return nil
-		}
-		for slotIdx := int64(indexer.state.lastHeadBlock); slotIdx >= indexer.state.lowestCachedSlot; slotIdx-- {
-			slot := uint64(slotIdx)
-			if indexer.state.cachedBlocks[slot] != nil {
-				blocks := indexer.state.cachedBlocks[slot]
-				for bidx := 0; bidx < len(blocks); bidx++ {
-					if bytes.Equal(blocks[bidx].Header.Data.Header.Message.StateRoot, stateroot) {
-						return blocks[bidx]
-					}
-				}
+	var lowestSlotIdx int64
+	if indexer.indexerCache.finalizedEpoch >= 0 {
+		lowestSlotIdx = (indexer.indexerCache.finalizedEpoch + 1) * int64(utils.Config.Chain.Config.SlotsPerEpoch)
+	} else {
+		lowestSlotIdx = 0
+	}
+	for slotIdx := int64(indexer.indexerCache.highestSlot); slotIdx >= lowestSlotIdx; slotIdx-- {
+		slot := uint64(slotIdx)
+		blocks := indexer.indexerCache.slotMap[slot]
+		for _, block := range blocks {
+			if bytes.Equal(block.header.Message.StateRoot, stateroot) {
+				return indexer.indexerCache.getBlockInfoFromCachedBlock(block, headRoot)
 			}
 		}
-	*/
+	}
 	return nil
+}
+
+func (indexer *Indexer) GetCachedBlocksByProposer(proposer uint64) []*BlockInfo {
+	_, headRoot := indexer.GetCanonicalHead()
+	indexer.indexerCache.cacheMutex.RLock()
+	defer indexer.indexerCache.cacheMutex.RUnlock()
+
+	resBlocks := make([]*BlockInfo, 0)
+	var lowestSlotIdx int64
+	if indexer.indexerCache.finalizedEpoch >= 0 {
+		lowestSlotIdx = (indexer.indexerCache.finalizedEpoch + 1) * int64(utils.Config.Chain.Config.SlotsPerEpoch)
+	} else {
+		lowestSlotIdx = 0
+	}
+	for slotIdx := int64(indexer.indexerCache.highestSlot); slotIdx >= lowestSlotIdx; slotIdx-- {
+		slot := uint64(slotIdx)
+		blocks := indexer.indexerCache.slotMap[slot]
+		for _, block := range blocks {
+			if uint64(block.header.Message.ProposerIndex) == proposer {
+				resBlocks = append(resBlocks, indexer.indexerCache.getBlockInfoFromCachedBlock(block, headRoot))
+			}
+		}
+	}
+	return resBlocks
 }
 
 func (indexer *Indexer) GetCachedEpochStats(epoch uint64) *EpochStats {
@@ -247,13 +271,14 @@ func (indexer *Indexer) GetEpochVotes(epoch uint64) (*EpochStats, *EpochVotes) {
 }
 
 func (indexer *Indexer) BuildLiveEpoch(epoch uint64) *dbtypes.Epoch {
+	_, headRoot := indexer.GetCanonicalHead()
 	epochStats, epochVotes := indexer.GetEpochVotes(epoch)
 	if epochStats == nil {
 		return nil
 	}
 
 	// get canonical blocks
-	canonicalMap := indexer.indexerCache.getCanonicalBlockMap(epoch, nil)
+	canonicalMap := indexer.indexerCache.getCanonicalBlockMap(epoch, headRoot)
 
 	return buildDbEpoch(epoch, canonicalMap, epochStats, epochVotes, nil)
 }

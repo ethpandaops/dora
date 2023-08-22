@@ -11,7 +11,7 @@ import (
 func (cache *indexerCache) runCacheLoop() {
 	defer func() {
 		if err := recover(); err != nil {
-			logger.Errorf("Uncaught panic in runCacheLoop subroutine: %v", err)
+			logger.Errorf("uncaught panic in runCacheLoop subroutine: %v", err)
 		}
 	}()
 
@@ -20,10 +20,10 @@ func (cache *indexerCache) runCacheLoop() {
 		case <-cache.triggerChan:
 		case <-time.After(30 * time.Second):
 		}
-		logger.Debugf("Run indexer cache logic")
+		logger.Debugf("run indexer cache logic")
 		err := cache.runCacheLogic()
 		if err != nil {
-			logger.Errorf("Indexer cache error: %v, retrying in 10 sec...", err)
+			logger.Errorf("indexer cache error: %v, retrying in 10 sec...", err)
 			time.Sleep(10 * time.Second)
 		}
 	}
@@ -117,7 +117,7 @@ func (cache *indexerCache) processFinalizedEpoch(epoch uint64) error {
 	var epochTarget []byte
 	var epochDependentRoot []byte
 	if firstBlock == nil {
-		logger.Warnf("Counld not find epoch %v target (no block found)", epoch)
+		logger.Warnf("counld not find epoch %v target (no block found)", epoch)
 	} else {
 		if firstBlock.slot == firstSlot {
 			epochTarget = firstBlock.root
@@ -126,12 +126,17 @@ func (cache *indexerCache) processFinalizedEpoch(epoch uint64) error {
 		}
 		epochDependentRoot = firstBlock.header.Message.ParentRoot
 	}
-	logger.Infof("Processing finalized epoch %v:  target: 0x%x, dependent: 0x%x", epoch, epochTarget, epochDependentRoot)
+	logger.Infof("processing finalized epoch %v:  target: 0x%x, dependent: 0x%x", epoch, epochTarget, epochDependentRoot)
 
 	// get epoch stats
 	epochStats, isNewStats := cache.createOrGetEpochStats(epoch, epochDependentRoot)
 	if isNewStats {
-		logger.Warnf("Loading epoch stats during finalized epoch %v processing.", epoch)
+		logger.Warnf("missing epoch stats during finalization processing (epoch: %v)", epoch)
+		client := cache.indexer.getReadyClient()
+		if client != nil {
+			client.ensureEpochStats(epoch, client.lastHeadRoot)
+			time.Sleep(10 * time.Millisecond)
+		}
 	}
 	epochStats.dutiesMutex.RLock()
 	defer epochStats.dutiesMutex.RUnlock()
@@ -149,11 +154,11 @@ func (cache *indexerCache) processFinalizedEpoch(epoch uint64) error {
 	epochVotes := aggregateEpochVotes(canonicalMap, epoch, epochStats, epochTarget, false)
 
 	if epochStats.validatorStats != nil {
-		logger.Infof("Epoch %v stats: %v validators (%v)", epoch, epochStats.validatorStats.ValidatorCount, epochStats.validatorStats.EligibleAmount)
+		logger.Infof("epoch %v stats: %v validators (%v)", epoch, epochStats.validatorStats.ValidatorCount, epochStats.validatorStats.EligibleAmount)
 	}
-	logger.Infof("Epoch %v votes: target %v + %v = %v", epoch, epochVotes.currentEpoch.targetVoteAmount, epochVotes.nextEpoch.targetVoteAmount, epochVotes.currentEpoch.targetVoteAmount+epochVotes.nextEpoch.targetVoteAmount)
-	logger.Infof("Epoch %v votes: head %v + %v = %v", epoch, epochVotes.currentEpoch.headVoteAmount, epochVotes.nextEpoch.headVoteAmount, epochVotes.currentEpoch.headVoteAmount+epochVotes.nextEpoch.headVoteAmount)
-	logger.Infof("Epoch %v votes: total %v + %v = %v", epoch, epochVotes.currentEpoch.totalVoteAmount, epochVotes.nextEpoch.totalVoteAmount, epochVotes.currentEpoch.totalVoteAmount+epochVotes.nextEpoch.totalVoteAmount)
+	logger.Infof("epoch %v votes: target %v + %v = %v", epoch, epochVotes.currentEpoch.targetVoteAmount, epochVotes.nextEpoch.targetVoteAmount, epochVotes.currentEpoch.targetVoteAmount+epochVotes.nextEpoch.targetVoteAmount)
+	logger.Infof("epoch %v votes: head %v + %v = %v", epoch, epochVotes.currentEpoch.headVoteAmount, epochVotes.nextEpoch.headVoteAmount, epochVotes.currentEpoch.headVoteAmount+epochVotes.nextEpoch.headVoteAmount)
+	logger.Infof("epoch %v votes: total %v + %v = %v", epoch, epochVotes.currentEpoch.totalVoteAmount, epochVotes.nextEpoch.totalVoteAmount, epochVotes.currentEpoch.totalVoteAmount+epochVotes.nextEpoch.totalVoteAmount)
 
 	// store canonical blocks to db and remove from cache
 	tx, err := db.WriterDb.Beginx()
@@ -208,7 +213,7 @@ func (cache *indexerCache) processOrphanedBlocks(processedEpoch int64) error {
 	}
 	cache.cacheMutex.RUnlock()
 
-	logger.Infof("Processing %v non-canonical blocks (epoch <= %v)", len(cachedBlocks), processedEpoch)
+	logger.Infof("processing %v non-canonical blocks (epoch <= %v)", len(cachedBlocks), processedEpoch)
 	if len(cachedBlocks) == 0 {
 		return nil
 	}
@@ -216,9 +221,9 @@ func (cache *indexerCache) processOrphanedBlocks(processedEpoch int64) error {
 	// check if blocks are already in db
 	for _, blockRef := range db.GetBlockOrphanedRefs(blockRoots) {
 		if blockRef.Orphaned {
-			logger.Debugf("Processed duplicate orphaned block: 0x%x", blockRef.Root)
+			logger.Debugf("processed duplicate orphaned block: 0x%x", blockRef.Root)
 		} else {
-			logger.Warnf("Processed duplicate canonical block in orphaned handler: 0x%x", blockRef.Root)
+			logger.Warnf("processed duplicate canonical block in orphaned handler: 0x%x", blockRef.Root)
 		}
 		delete(orphanedBlocks, string(blockRef.Root))
 	}
@@ -247,12 +252,13 @@ func (cache *indexerCache) processOrphanedBlocks(processedEpoch int64) error {
 	for _, block := range cachedBlocks {
 		cache.removeCachedBlock(block)
 	}
+	cache.resetLowestSlot()
 
 	return nil
 }
 
 func (cache *indexerCache) processCachePersistence() error {
-	logger.Infof("Processing cache persistence")
+	logger.Infof("processing cache persistence")
 
 	// TODO
 	return nil
@@ -278,7 +284,7 @@ func (cache *indexerCache) processCacheCleanup(processedEpoch int64) error {
 	}
 	cache.epochStatsMutex.RUnlock()
 
-	logger.Infof("Cache cleanup: remove %v blocks, %v epoch stats", len(cachedBlocks), len(clearStats))
+	logger.Infof("processing cache cleanup: remove %v blocks, %v epoch stats", len(cachedBlocks), len(clearStats))
 	if len(cachedBlocks) > 0 {
 		// remove blocks from cache
 		for _, block := range cachedBlocks {

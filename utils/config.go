@@ -91,6 +91,19 @@ func ReadConfig(cfg *types.Config, path string) error {
 		}
 	}
 
+	// endpoints
+	if cfg.BeaconApi.Endpoints == nil && cfg.BeaconApi.Endpoint != "" {
+		cfg.BeaconApi.Endpoints = []types.EndpointConfig{
+			{
+				Url:  cfg.BeaconApi.Endpoint,
+				Name: "default",
+			},
+		}
+	}
+	if cfg.BeaconApi.Endpoints == nil || len(cfg.BeaconApi.Endpoints) == 0 {
+		return fmt.Errorf("missing beacon node endpoints (need at least 1 endpoint to run the explorer)")
+	}
+
 	log.WithFields(log.Fields{
 		"genesisTimestamp":       cfg.Chain.GenesisTimestamp,
 		"configName":             cfg.Chain.Config.ConfigName,

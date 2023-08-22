@@ -3,9 +3,9 @@ package utils
 import (
 	"bytes"
 	"html/template"
-	"io/ioutil"
 	"math"
 	"math/big"
+	"os"
 	"strings"
 	"unicode/utf8"
 
@@ -58,7 +58,7 @@ func GetTemplateFuncs() template.FuncMap {
 
 // IncludeHTML adds html to the page
 func IncludeHTML(path string) template.HTML {
-	b, err := ioutil.ReadFile(path)
+	b, err := os.ReadFile(path)
 	if err != nil {
 		logger.Printf("includeHTML - error reading file: %v", err)
 		return ""

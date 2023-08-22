@@ -167,12 +167,12 @@ func (epochStats *EpochStats) ensureEpochStatsLazy(client *IndexerClient, propos
 			logger.WithField("client", client.clientName).Errorf("uncaught panic in ensureEpochStats subroutine: %v", err)
 		}
 	}()
+	epochStats.dutiesMutex.Lock()
+	defer epochStats.dutiesMutex.Unlock()
 
 	if epochStats.dutiesInDb {
 		return
 	}
-	epochStats.dutiesMutex.Lock()
-	defer epochStats.dutiesMutex.Unlock()
 
 	// proposer duties
 	if epochStats.proposerAssignments == nil {

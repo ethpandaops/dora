@@ -44,7 +44,8 @@ type Config struct {
 	} `yaml:"frontend"`
 
 	BeaconApi struct {
-		Endpoint string `yaml:"endpoint" envconfig:"BEACONAPI_ENDPOINT"`
+		Endpoint  string           `yaml:"endpoint" envconfig:"BEACONAPI_ENDPOINT"`
+		Endpoints []EndpointConfig `yaml:"endpoint"`
 
 		LocalCacheSize       int    `yaml:"localCacheSize" envconfig:"BEACONAPI_LOCAL_CACHE_SIZE"`
 		AssignmentsCacheSize int    `yaml:"assignmentsCacheSize" envconfig:"BEACONAPI_ASSIGNMENTS_CACHE_SIZE"`
@@ -86,6 +87,11 @@ type Config struct {
 			MaxIdleConns int    `yaml:"maxIdleConns" envconfig:"DATABASE_PGSQL_WRITER_MAX_IDLE_CONNS"`
 		} `yaml:"pgsqlWriter"`
 	} `yaml:"database"`
+}
+
+type EndpointConfig struct {
+	Url  string `yaml:"url"`
+	Name string `yaml:"name"`
 }
 
 type SqliteDatabaseConfig struct {

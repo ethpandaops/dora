@@ -116,7 +116,6 @@ func (cache *indexerCache) loadStoredUnfinalizedCache() error {
 	return nil
 }
 
-/*
 func (cache *indexerCache) resetLowestSlot() {
 	cache.cacheMutex.Lock()
 	defer cache.cacheMutex.Unlock()
@@ -131,7 +130,6 @@ func (cache *indexerCache) resetLowestSlot() {
 		cache.lowestSlot = lowestSlot
 	}
 }
-*/
 
 func (cache *indexerCache) isCanonicalBlock(blockRoot []byte, head []byte) bool {
 	res, _ := cache.getCanonicalDistance(blockRoot, head)

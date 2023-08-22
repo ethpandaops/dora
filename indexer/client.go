@@ -134,9 +134,9 @@ func (client *IndexerClient) runIndexerClient() error {
 		case ready := <-blockStream.ReadyChan:
 			client.isConnected = ready
 			if ready {
-				logger.WithField("client", client.clientName).Debug("event stream connected")
+				logger.WithField("client", client.clientName).Info("RPC event stream connected")
 			} else {
-				logger.WithField("client", client.clientName).Debug("event stream disconnected")
+				logger.WithField("client", client.clientName).Info("RPC event stream disconnected")
 			}
 		case <-blockStream.CloseChan:
 			return fmt.Errorf("lost connection to beacon event stream")
@@ -169,9 +169,9 @@ func (client *IndexerClient) prefillCache(finalizedSlot uint64) error {
 
 	currentBlock, isNewBlock := client.indexerCache.createOrGetCachedBlock(latestHeader.Data.Root, uint64(latestHeader.Data.Header.Message.Slot))
 	if isNewBlock {
-		logger.WithField("client", client.clientName).Infof("prefill new block: head slot %v (0x%x)", client.lastHeadSlot, client.lastHeadRoot)
+		logger.WithField("client", client.clientName).Infof("received block %v:%v [0x%x] warmup, head", utils.EpochOfSlot(uint64(client.lastHeadSlot)), client.lastHeadSlot, client.lastHeadRoot)
 	} else {
-		logger.WithField("client", client.clientName).Debugf("prefill known block cache: head slot %v (0x%x)", client.lastHeadSlot, client.lastHeadRoot)
+		logger.WithField("client", client.clientName).Debugf("received known block %v:%v [0x%x] warmup, head", utils.EpochOfSlot(uint64(client.lastHeadSlot)), client.lastHeadSlot, client.lastHeadRoot)
 	}
 	client.ensureBlock(currentBlock, &latestHeader.Data.Header)
 
@@ -201,18 +201,17 @@ func (client *IndexerClient) prefillCache(finalizedSlot uint64) error {
 			parentBlock, isNewBlock = client.indexerCache.createOrGetCachedBlock(parentRoot, parentSlot)
 		}
 		if isNewBlock {
-			logger.WithField("client", client.clientName).Infof("prefill new block: slot %v (0x%x)", parentSlot, parentRoot)
+			logger.WithField("client", client.clientName).Infof("received block %v:%v [0x%x] warmup", utils.EpochOfSlot(parentSlot), parentSlot, parentRoot)
 		} else {
-			logger.WithField("client", client.clientName).Debugf("prefill known block: slot %v (0x%x)", parentSlot, parentRoot)
+			logger.WithField("client", client.clientName).Debugf("received known block %v:%v [0x%x] warmup", utils.EpochOfSlot(parentSlot), parentSlot, parentRoot)
 		}
 		client.ensureBlock(parentBlock, parentHead)
-
 		if parentSlot <= finalizedSlot {
-			logger.WithField("client", client.clientName).Debugf("prefill block cache: reached finalized slot %v (0x%x)", parentSlot, parentRoot)
+			logger.WithField("client", client.clientName).Debugf("prefill cache: reached finalized slot %v:%v [0x%x]", utils.EpochOfSlot(parentSlot), parentSlot, parentRoot)
 			break
 		}
 		if parentSlot == 0 {
-			logger.WithField("client", client.clientName).Debugf("prefill block cache: reached gensis slot (0x%x)", parentRoot)
+			logger.WithField("client", client.clientName).Debugf("prefill cache: reached gensis slot [0x%x]", parentRoot)
 			break
 		}
 		parentRoot = parentHead.Message.ParentRoot
@@ -276,9 +275,9 @@ func (client *IndexerClient) pollLatestBlocks() error {
 
 	currentBlock, isNewBlock := client.indexerCache.createOrGetCachedBlock(latestHeader.Data.Root, uint64(latestHeader.Data.Header.Message.Slot))
 	if isNewBlock {
-		logger.WithField("client", client.clientName).Infof("polled new block: head slot %v (0x%x)", client.lastHeadSlot, client.lastHeadRoot)
+		logger.WithField("client", client.clientName).Infof("received block %v:%v [0x%x] polled, head", utils.EpochOfSlot(uint64(client.lastHeadSlot)), client.lastHeadSlot, client.lastHeadRoot)
 	} else {
-		logger.WithField("client", client.clientName).Debugf("polled known block: head slot %v (0x%x)", client.lastHeadSlot, client.lastHeadRoot)
+		logger.WithField("client", client.clientName).Debugf("received known block %v:%v [0x%x] polled, head", utils.EpochOfSlot(uint64(client.lastHeadSlot)), client.lastHeadSlot, client.lastHeadRoot)
 	}
 	err = client.ensureBlock(currentBlock, &latestHeader.Data.Header)
 	if err != nil {
@@ -311,32 +310,32 @@ func (client *IndexerClient) ensureParentBlocks(currentBlock *indexerCacheBlock)
 		if parentHead == nil {
 			headerRsp, err := client.rpcClient.GetBlockHeaderByBlockroot(parentRoot)
 			if err != nil {
-				return fmt.Errorf("could not load parent header: %v", err)
+				return fmt.Errorf("could not load parent header [0x%x]: %v", parentRoot, err)
 			}
 			if headerRsp == nil {
-				return fmt.Errorf("could not find parent header 0x%x", parentRoot)
+				return fmt.Errorf("could not find parent header [0x%x]", parentRoot)
 			}
 			parentHead = &headerRsp.Data.Header
 		}
 		parentSlot := uint64(parentHead.Message.Slot)
-		if int64(utils.EpochOfSlot(parentSlot)) <= client.lastFinalizedEpoch {
-			logger.WithField("client", client.clientName).Debugf("check for parent blocks reached finalized slot %v (0x%x)", parentSlot, parentRoot)
-			break
-		}
-		if parentSlot == 0 {
-			logger.WithField("client", client.clientName).Debugf("check for parent blocks reached gensis slot (0x%x)", parentRoot)
-			break
-		}
 		isNewBlock := false
 		if parentBlock == nil {
 			parentBlock, isNewBlock = client.indexerCache.createOrGetCachedBlock(parentRoot, parentSlot)
 		}
 		if isNewBlock {
-			logger.WithField("client", client.clientName).Infof("backfilled new block: slot %v (0x%x)", parentSlot, parentRoot)
+			logger.WithField("client", client.clientName).Infof("received block %v:%v [0x%x] backfill", utils.EpochOfSlot(parentSlot), parentSlot, parentRoot)
 		} else {
-			logger.WithField("client", client.clientName).Infof("backfilled known block: slot %v (0x%x)", parentSlot, parentRoot)
+			logger.WithField("client", client.clientName).Infof("received known block %v:%v [0x%x] backfill", utils.EpochOfSlot(parentSlot), parentSlot, parentRoot)
 		}
 		client.ensureBlock(parentBlock, parentHead)
+		if int64(utils.EpochOfSlot(parentSlot)) <= client.lastFinalizedEpoch {
+			logger.WithField("client", client.clientName).Debugf("backfill cache: reached finalized slot %v:%v [0x%x]", utils.EpochOfSlot(parentSlot), parentSlot, parentRoot)
+			break
+		}
+		if parentSlot == 0 {
+			logger.WithField("client", client.clientName).Debugf("backfill cache: reached gensis slot [0x%x]", parentRoot)
+			break
+		}
 		parentRoot = parentHead.Message.ParentRoot
 	}
 	return nil
@@ -358,9 +357,9 @@ func (client *IndexerClient) setHeadBlock(root []byte, slot uint64) error {
 func (client *IndexerClient) processBlockEvent(evt *rpctypes.StandardV1StreamedBlockEvent) error {
 	currentBlock, isNewBlock := client.indexerCache.createOrGetCachedBlock(evt.Block, uint64(evt.Slot))
 	if isNewBlock {
-		logger.WithField("client", client.clientName).Infof("streamed new block: slot %v (0x%x)", currentBlock.slot, currentBlock.root)
+		logger.WithField("client", client.clientName).Infof("received block %v:%v [0x%x] stream", utils.EpochOfSlot(currentBlock.slot), currentBlock.slot, currentBlock.root)
 	} else {
-		logger.WithField("client", client.clientName).Debugf("streamed known block: slot %v (0x%x)", currentBlock.slot, currentBlock.root)
+		logger.WithField("client", client.clientName).Debugf("received known block %v:%v [0x%x] stream", utils.EpochOfSlot(currentBlock.slot), currentBlock.slot, currentBlock.root)
 	}
 	err := client.ensureBlock(currentBlock, nil)
 	if err != nil {
@@ -382,7 +381,7 @@ func (client *IndexerClient) processHeadEvent(evt *rpctypes.StandardV1StreamedHe
 }
 
 func (client *IndexerClient) processFinalizedEvent(evt *rpctypes.StandardV1StreamedFinalizedCheckpointEvent) error {
-	logger.WithField("client", client.clientName).Debugf("received finalization_checkpoint event: epoch %v (%s)", evt.Epoch, evt.Block.String())
+	logger.WithField("client", client.clientName).Debugf("received finalization_checkpoint event: epoch %v [%s]", evt.Epoch, evt.Block.String())
 	client.indexerCache.setFinalizedHead(int64(evt.Epoch)-1, evt.Block)
 	return nil
 }
