@@ -325,7 +325,7 @@ func (client *IndexerClient) ensureParentBlocks(currentBlock *CacheBlock) error 
 		if isNewBlock {
 			logger.WithField("client", client.clientName).Infof("received block %v:%v [0x%x] backfill", utils.EpochOfSlot(parentSlot), parentSlot, parentRoot)
 		} else {
-			logger.WithField("client", client.clientName).Infof("received known block %v:%v [0x%x] backfill", utils.EpochOfSlot(parentSlot), parentSlot, parentRoot)
+			logger.WithField("client", client.clientName).Debugf("received known block %v:%v [0x%x] backfill", utils.EpochOfSlot(parentSlot), parentSlot, parentRoot)
 		}
 		client.ensureBlock(parentBlock, parentHead)
 		if int64(utils.EpochOfSlot(parentSlot)) <= client.lastFinalizedEpoch {

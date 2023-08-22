@@ -9,6 +9,7 @@ import (
 
 	"github.com/donovanhide/eventsource"
 
+	"github.com/pk910/light-beaconchain-explorer/rpc/eventstream"
 	"github.com/pk910/light-beaconchain-explorer/rpctypes"
 )
 
@@ -72,6 +73,7 @@ func (bs *BeaconStream) startStream() {
 	bs.runMutex.Lock()
 	defer bs.runMutex.Unlock()
 
+	errorChan := make(chan error)
 	stream := bs.subscribeStream(bs.endpoint, bs.events)
 	if stream != nil {
 		bs.ready = true
@@ -90,10 +92,15 @@ func (bs *BeaconStream) startStream() {
 				}
 			case <-bs.killChan:
 				running = false
-			case <-time.After(300 * time.Second):
+			case err := <-stream.Errors:
+				logger.Errorf("beacon block stream error: %v", err)
+			case err := <-errorChan:
+				logger.Errorf("beacon block stream error: %v", err)
+			case <-time.After(60 * time.Second):
 				// timeout - no block since 5 mins
 				logger.Errorf("beacon block stream error, no new head retrieved since %v (%v ago)", bs.lastHeadSeen, time.Since(bs.lastHeadSeen))
 				stream.Close()
+				stream.Errors = errorChan
 				bs.ready = false
 				bs.ReadyChan <- false
 				stream = bs.subscribeStream(bs.endpoint, bs.events)
@@ -114,7 +121,7 @@ func (bs *BeaconStream) startStream() {
 	bs.CloseChan <- true
 }
 
-func (bs *BeaconStream) subscribeStream(endpoint string, events uint16) *eventsource.Stream {
+func (bs *BeaconStream) subscribeStream(endpoint string, events uint16) *eventstream.Stream {
 	var topics strings.Builder
 	topicsCount := 0
 	if events&StreamBlockEvent > 0 {
@@ -141,7 +148,7 @@ func (bs *BeaconStream) subscribeStream(endpoint string, events uint16) *eventso
 
 	for {
 		url := fmt.Sprintf("%s/eth/v1/events?topics=%v", endpoint, topics.String())
-		stream, err := eventsource.Subscribe(url, "")
+		stream, err := eventstream.Subscribe(url, "")
 		if err != nil {
 			logger.Errorf("Error while subscribing beacon event stream %v: %v", url, err)
 			select {

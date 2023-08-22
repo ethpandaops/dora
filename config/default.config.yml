@@ -47,14 +47,8 @@ beaconapi:
 
 # indexer keeps track of the latest epochs in memory.
 indexer:
-  # number of epochs to load on startup
-  prepopulateEpochs: 2
-
   # max number of epochs to keep in memory
   inMemoryEpochs: 3
-
-  # epoch processing delay (should be >= 2)
-  epochProcessingDelay: 2
 
   # disable synchronizing and everything that writes to the db (indexer just maintains local cache)
   disableIndexWriter: false
