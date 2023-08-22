@@ -45,7 +45,7 @@ type Config struct {
 
 	BeaconApi struct {
 		Endpoint  string           `yaml:"endpoint" envconfig:"BEACONAPI_ENDPOINT"`
-		Endpoints []EndpointConfig `yaml:"endpoint"`
+		Endpoints []EndpointConfig `yaml:"endpoints"`
 
 		LocalCacheSize       int    `yaml:"localCacheSize" envconfig:"BEACONAPI_LOCAL_CACHE_SIZE"`
 		AssignmentsCacheSize int    `yaml:"assignmentsCacheSize" envconfig:"BEACONAPI_ASSIGNMENTS_CACHE_SIZE"`

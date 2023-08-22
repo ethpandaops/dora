@@ -40,7 +40,9 @@ func StartBeaconService() error {
 		return err
 	}
 
-	indexer.AddClient(1, "client-1", utils.Config.BeaconApi.Endpoint)
+	for idx, endpoint := range utils.Config.BeaconApi.Endpoints {
+		indexer.AddClient(uint8(idx), endpoint.Name, endpoint.Url)
+	}
 
 	validatorNames := &ValidatorNames{}
 	if utils.Config.Frontend.ValidatorNamesYaml != "" {

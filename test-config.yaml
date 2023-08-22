@@ -32,7 +32,13 @@ frontend:
   #validatorNamesInventory: "https://config.4844-devnet-7.ethpandaops.io/api/v1/nodes/validator-ranges"
   
 beaconapi:
-  endpoint: "http://10.16.71.108:5052"
+  endpoints:
+    - name: "pk01"
+      url: "http://10.16.71.108:5052"
+    - name: "lh"
+      url: "http://10.16.97.2:5052"
+    - name: "teku"
+      url: "http://10.16.97.3:5051"
   #endpoint: "http://10.16.71.102:5052"
   localCacheSize: 100 # 100MB
   redisCacheAddr: ""
