@@ -1,7 +1,6 @@
 package indexer
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/pk910/light-beaconchain-explorer/db"
@@ -36,6 +35,7 @@ func (cache *indexerCache) runCacheLogic() error {
 	}
 
 	var processingEpoch int64
+	headEpoch := int64(utils.EpochOfSlot(uint64(cache.highestSlot)))
 	if cache.indexer.writeDb {
 		if cache.finalizedEpoch > 0 && cache.processedEpoch == -2 {
 			syncState := dbtypes.IndexerSyncState{}
@@ -79,13 +79,13 @@ func (cache *indexerCache) runCacheLogic() error {
 		processingEpoch = cache.finalizedEpoch
 	}
 
-	if cache.persistEpoch < processingEpoch {
+	if cache.persistEpoch < headEpoch {
 		// process cache persistence
 		err := cache.processCachePersistence()
 		if err != nil {
 			return err
 		}
-		cache.persistEpoch = processingEpoch
+		cache.persistEpoch = headEpoch
 	}
 
 	if cache.cleanupEpoch < processingEpoch {
@@ -268,7 +268,6 @@ func (cache *indexerCache) processCachePersistence() error {
 	}
 	if headEpoch > uint64(cache.indexer.inMemoryEpochs) {
 		pruneEpoch := headEpoch - uint64(cache.indexer.inMemoryEpochs)
-		fmt.Printf("prune epoch %v\n", pruneEpoch)
 		for slot, blocks := range cache.slotMap {
 			if utils.EpochOfSlot(slot) <= pruneEpoch {
 				for _, block := range blocks {
