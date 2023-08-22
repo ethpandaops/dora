@@ -98,9 +98,9 @@ func aggregateEpochVotes(blockMap map[uint64]*indexerCacheBlock, epoch uint64, e
 				} else {
 					votes.currentEpoch.targetVoteAmount += voteAmount
 				}
-			} else {
-				//logger.Infof("vote target missmatch %v != 0x%x", att.Data.Target.Root, targetRoot)
-			}
+			} /*else {
+				logger.Infof("vote target missmatch %v != 0x%x", att.Data.Target.Root, targetRoot)
+			}*/
 			if bytes.Equal(att.Data.BeaconBlockRoot, block.getParentRoot()) {
 				if isNextEpoch {
 					votes.nextEpoch.headVoteAmount += voteAmount

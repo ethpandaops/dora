@@ -56,30 +56,30 @@ func (client *indexerClient) runIndexerClient() error {
 	// check genesis
 	genesis, err := client.rpcClient.GetGenesis()
 	if err != nil {
-		return fmt.Errorf("Error while fetching genesis: %v", err)
+		return fmt.Errorf("error while fetching genesis: %v", err)
 	}
 	if genesis == nil {
-		return fmt.Errorf("No genesis block found")
+		return fmt.Errorf("no genesis block found")
 	}
 	genesisTime := uint64(genesis.Data.GenesisTime)
 	if genesisTime != utils.Config.Chain.GenesisTimestamp {
-		return fmt.Errorf("Genesis time from RPC does not match the genesis time from explorer configuration")
+		return fmt.Errorf("genesis time from RPC does not match the genesis time from explorer configuration")
 	}
 	if genesis.Data.GenesisForkVersion.String() != utils.Config.Chain.Config.GenesisForkVersion {
-		return fmt.Errorf("Genesis fork version from RPC does not match the genesis fork version explorer configuration")
+		return fmt.Errorf("genesis fork version from RPC does not match the genesis fork version explorer configuration")
 	}
 
 	// check syncronization state
 	syncStatus, err := client.rpcClient.GetNodeSyncing()
 	if err != nil {
-		return fmt.Errorf("Error while fetching synchronization status: %v", err)
+		return fmt.Errorf("error while fetching synchronization status: %v", err)
 	}
 	if syncStatus == nil {
-		return fmt.Errorf("Could not get synchronization status")
+		return fmt.Errorf("could not get synchronization status")
 	}
 	client.isSynchronizing = syncStatus.Data.IsSyncing
 	if syncStatus.Data.IsSyncing {
-		return fmt.Errorf("Beacon node is synchronizing.")
+		return fmt.Errorf("beacon node is synchronizing")
 	}
 
 	// start event stream
@@ -89,7 +89,7 @@ func (client *indexerClient) runIndexerClient() error {
 	// get finalized header
 	finalizedHeader, err := client.rpcClient.GetFinalizedBlockHead()
 	if err != nil {
-		logger.WithField("client", client.clientName).Warnf("Could not get finalized header: %v", err)
+		logger.WithField("client", client.clientName).Warnf("could not get finalized header: %v", err)
 	}
 	var finalizedSlot uint64
 	if finalizedHeader != nil {
@@ -102,6 +102,9 @@ func (client *indexerClient) runIndexerClient() error {
 
 	// prefill cache
 	err = client.prefillCache(finalizedSlot)
+	if err != nil {
+		return err
+	}
 
 	// set finalized head and trigger epoch processing / synchronization
 	if finalizedHeader != nil {
@@ -116,27 +119,23 @@ func (client *indexerClient) runIndexerClient() error {
 			switch evt.Event {
 			case rpc.StreamBlockEvent:
 				client.processBlockEvent(evt.Data.(*rpctypes.StandardV1StreamedBlockEvent))
-				break
 			case rpc.StreamHeadEvent:
 				client.processHeadEvent(evt.Data.(*rpctypes.StandardV1StreamedHeadEvent))
-				break
 			case rpc.StreamFinalizedEvent:
 				client.processFinalizedEvent(evt.Data.(*rpctypes.StandardV1StreamedFinalizedCheckpointEvent))
-				break
 			}
-			logger.WithField("client", client.clientName).Debugf("event (%v) processing time: %v ms", evt.Event, time.Now().Sub(now).Milliseconds())
+			logger.WithField("client", client.clientName).Debugf("event (%v) processing time: %v ms", evt.Event, time.Since(now).Milliseconds())
 		case ready := <-blockStream.ReadyChan:
 			client.isConnected = ready
 			if ready {
-				logger.WithField("client", client.clientName).Debug("Event stream connected")
+				logger.WithField("client", client.clientName).Debug("event stream connected")
 			} else {
-				logger.WithField("client", client.clientName).Debug("Event stream disconnected")
+				logger.WithField("client", client.clientName).Debug("event stream disconnected")
 			}
-			break
 		case <-blockStream.CloseChan:
-			return fmt.Errorf("Lost connection to beacon event stream.")
+			return fmt.Errorf("lost connection to beacon event stream")
 		case <-time.After(30 * time.Second):
-			logger.WithField("client", client.clientName).Info("No head event since 30 secs, polling chain head")
+			logger.WithField("client", client.clientName).Info("no head event since 30 secs, polling chain head")
 			err := client.pollLatestBlocks()
 			if err != nil {
 				return err
@@ -155,18 +154,18 @@ func (client *indexerClient) prefillCache(finalizedSlot uint64) error {
 	// get latest header
 	latestHeader, err := client.rpcClient.GetLatestBlockHead()
 	if err != nil {
-		return fmt.Errorf("Could not get latest header: %v", err)
+		return fmt.Errorf("could not get latest header: %v", err)
 	}
 	if latestHeader == nil {
-		return fmt.Errorf("Could not find latest header")
+		return fmt.Errorf("could not find latest header")
 	}
 	client.setHeadBlock(latestHeader.Data.Root, uint64(latestHeader.Data.Header.Message.Slot))
 
 	currentBlock, isNewBlock := client.indexerCache.createOrGetCachedBlock(latestHeader.Data.Root, uint64(latestHeader.Data.Header.Message.Slot))
 	if isNewBlock {
-		logger.WithField("client", client.clientName).Infof("Prefill new block: head slot %v (0x%x)", client.lastHeadSlot, client.lastHeadRoot)
+		logger.WithField("client", client.clientName).Infof("prefill new block: head slot %v (0x%x)", client.lastHeadSlot, client.lastHeadRoot)
 	} else {
-		logger.WithField("client", client.clientName).Debugf("Prefill known block cache: head slot %v (0x%x)", client.lastHeadSlot, client.lastHeadRoot)
+		logger.WithField("client", client.clientName).Debugf("prefill known block cache: head slot %v (0x%x)", client.lastHeadSlot, client.lastHeadRoot)
 	}
 	client.ensureBlock(currentBlock, &latestHeader.Data.Header)
 
@@ -183,10 +182,10 @@ func (client *indexerClient) prefillCache(finalizedSlot uint64) error {
 		if parentHead == nil {
 			headerRsp, err := client.rpcClient.GetBlockHeaderByBlockroot(parentRoot)
 			if err != nil {
-				return fmt.Errorf("Could not load parent header: %v", err)
+				return fmt.Errorf("could not load parent header: %v", err)
 			}
 			if headerRsp == nil {
-				return fmt.Errorf("Could not find parent header 0x%x", parentRoot)
+				return fmt.Errorf("could not find parent header 0x%x", parentRoot)
 			}
 			parentHead = &headerRsp.Data.Header
 		}
@@ -196,18 +195,18 @@ func (client *indexerClient) prefillCache(finalizedSlot uint64) error {
 			parentBlock, isNewBlock = client.indexerCache.createOrGetCachedBlock(parentRoot, parentSlot)
 		}
 		if isNewBlock {
-			logger.WithField("client", client.clientName).Infof("Prefill new block: slot %v (0x%x)", parentSlot, parentRoot)
+			logger.WithField("client", client.clientName).Infof("prefill new block: slot %v (0x%x)", parentSlot, parentRoot)
 		} else {
-			logger.WithField("client", client.clientName).Debugf("Prefill known block: slot %v (0x%x)", parentSlot, parentRoot)
+			logger.WithField("client", client.clientName).Debugf("prefill known block: slot %v (0x%x)", parentSlot, parentRoot)
 		}
 		client.ensureBlock(parentBlock, parentHead)
 
 		if parentSlot <= finalizedSlot {
-			logger.WithField("client", client.clientName).Debugf("Prefill block cache: reached finalized slot %v (0x%x)", parentSlot, parentRoot)
+			logger.WithField("client", client.clientName).Debugf("prefill block cache: reached finalized slot %v (0x%x)", parentSlot, parentRoot)
 			break
 		}
 		if parentSlot == 0 {
-			logger.WithField("client", client.clientName).Debugf("Prefill block cache: reached gensis slot (0x%x)", parentRoot)
+			logger.WithField("client", client.clientName).Debugf("prefill block cache: reached gensis slot (0x%x)", parentRoot)
 			break
 		}
 		parentRoot = parentHead.Message.ParentRoot
@@ -262,18 +261,18 @@ func (client *indexerClient) pollLatestBlocks() error {
 	// get latest header
 	latestHeader, err := client.rpcClient.GetLatestBlockHead()
 	if err != nil {
-		return fmt.Errorf("Could not get latest header: %v", err)
+		return fmt.Errorf("could not get latest header: %v", err)
 	}
 	if latestHeader == nil {
-		return fmt.Errorf("Could not find latest header")
+		return fmt.Errorf("could not find latest header")
 	}
 	client.setHeadBlock(latestHeader.Data.Root, uint64(latestHeader.Data.Header.Message.Slot))
 
 	currentBlock, isNewBlock := client.indexerCache.createOrGetCachedBlock(latestHeader.Data.Root, uint64(latestHeader.Data.Header.Message.Slot))
 	if isNewBlock {
-		logger.WithField("client", client.clientName).Infof("Polled new block: head slot %v (0x%x)", client.lastHeadSlot, client.lastHeadRoot)
+		logger.WithField("client", client.clientName).Infof("polled new block: head slot %v (0x%x)", client.lastHeadSlot, client.lastHeadRoot)
 	} else {
-		logger.WithField("client", client.clientName).Debugf("Polled known block: head slot %v (0x%x)", client.lastHeadSlot, client.lastHeadRoot)
+		logger.WithField("client", client.clientName).Debugf("polled known block: head slot %v (0x%x)", client.lastHeadSlot, client.lastHeadRoot)
 	}
 	err = client.ensureBlock(currentBlock, &latestHeader.Data.Header)
 	if err != nil {
@@ -306,20 +305,20 @@ func (client *indexerClient) ensureParentBlocks(currentBlock *indexerCacheBlock)
 		if parentHead == nil {
 			headerRsp, err := client.rpcClient.GetBlockHeaderByBlockroot(parentRoot)
 			if err != nil {
-				return fmt.Errorf("Could not load parent header: %v", err)
+				return fmt.Errorf("could not load parent header: %v", err)
 			}
 			if headerRsp == nil {
-				return fmt.Errorf("Could not find parent header 0x%x", parentRoot)
+				return fmt.Errorf("could not find parent header 0x%x", parentRoot)
 			}
 			parentHead = &headerRsp.Data.Header
 		}
 		parentSlot := uint64(parentHead.Message.Slot)
 		if int64(utils.EpochOfSlot(parentSlot)) <= client.lastFinalizedEpoch {
-			logger.WithField("client", client.clientName).Debugf("Check for parent blocks reached finalized slot %v (0x%x)", parentSlot, parentRoot)
+			logger.WithField("client", client.clientName).Debugf("check for parent blocks reached finalized slot %v (0x%x)", parentSlot, parentRoot)
 			break
 		}
 		if parentSlot == 0 {
-			logger.WithField("client", client.clientName).Debugf("Check for parent blocks reached gensis slot (0x%x)", parentRoot)
+			logger.WithField("client", client.clientName).Debugf("check for parent blocks reached gensis slot (0x%x)", parentRoot)
 			break
 		}
 		isNewBlock := false
@@ -327,9 +326,9 @@ func (client *indexerClient) ensureParentBlocks(currentBlock *indexerCacheBlock)
 			parentBlock, isNewBlock = client.indexerCache.createOrGetCachedBlock(parentRoot, parentSlot)
 		}
 		if isNewBlock {
-			logger.WithField("client", client.clientName).Infof("Backfilled new block: slot %v (0x%x)", parentSlot, parentRoot)
+			logger.WithField("client", client.clientName).Infof("backfilled new block: slot %v (0x%x)", parentSlot, parentRoot)
 		} else {
-			logger.WithField("client", client.clientName).Infof("Backfilled known block: slot %v (0x%x)", parentSlot, parentRoot)
+			logger.WithField("client", client.clientName).Infof("backfilled known block: slot %v (0x%x)", parentSlot, parentRoot)
 		}
 		client.ensureBlock(parentBlock, parentHead)
 		parentRoot = parentHead.Message.ParentRoot
@@ -353,9 +352,9 @@ func (client *indexerClient) setHeadBlock(root []byte, slot uint64) error {
 func (client *indexerClient) processBlockEvent(evt *rpctypes.StandardV1StreamedBlockEvent) error {
 	currentBlock, isNewBlock := client.indexerCache.createOrGetCachedBlock(evt.Block, uint64(evt.Slot))
 	if isNewBlock {
-		logger.WithField("client", client.clientName).Infof("Streamed new block: slot %v (0x%x)", currentBlock.slot, currentBlock.root)
+		logger.WithField("client", client.clientName).Infof("streamed new block: slot %v (0x%x)", currentBlock.slot, currentBlock.root)
 	} else {
-		logger.WithField("client", client.clientName).Debugf("Streamed known block: slot %v (0x%x)", currentBlock.slot, currentBlock.root)
+		logger.WithField("client", client.clientName).Debugf("streamed known block: slot %v (0x%x)", currentBlock.slot, currentBlock.root)
 	}
 	err := client.ensureBlock(currentBlock, nil)
 	if err != nil {
@@ -371,13 +370,13 @@ func (client *indexerClient) processBlockEvent(evt *rpctypes.StandardV1StreamedB
 func (client *indexerClient) processHeadEvent(evt *rpctypes.StandardV1StreamedHeadEvent) error {
 	currentBlock := client.indexerCache.getCachedBlock(evt.Block)
 	if currentBlock == nil {
-		return fmt.Errorf("Received head event for non existing block: %v", evt.Block.String())
+		return fmt.Errorf("received head event for non existing block: %v", evt.Block.String())
 	}
 	return client.setHeadBlock(evt.Block, uint64(evt.Slot))
 }
 
 func (client *indexerClient) processFinalizedEvent(evt *rpctypes.StandardV1StreamedFinalizedCheckpointEvent) error {
-	logger.WithField("client", client.clientName).Debugf("Received finalization_checkpoint event: epoch %v (%s)", evt.Epoch, evt.Block.String())
+	logger.WithField("client", client.clientName).Debugf("received finalization_checkpoint event: epoch %v (%s)", evt.Epoch, evt.Block.String())
 	client.indexerCache.setFinalizedHead(int64(evt.Epoch)-1, evt.Block)
 	return nil
 }

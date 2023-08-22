@@ -10,6 +10,7 @@ type BlockInfo struct {
 	cachedBlock *indexerCacheBlock
 }
 
+/*
 func getBlockInfoFromCachedBlock(cachedBlock *indexerCacheBlock) *BlockInfo {
 	cachedBlock.mutex.RLock()
 	defer cachedBlock.mutex.RUnlock()
@@ -19,6 +20,7 @@ func getBlockInfoFromCachedBlock(cachedBlock *indexerCacheBlock) *BlockInfo {
 		cachedBlock: cachedBlock,
 	}
 }
+*/
 
 func (block *BlockInfo) GetBlockBody() *rpctypes.SignedBeaconBlock {
 	return block.cachedBlock.getBlockBody()

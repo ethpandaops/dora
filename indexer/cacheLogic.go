@@ -9,11 +9,16 @@ import (
 )
 
 func (cache *indexerCache) runCacheLoop() {
+	defer func() {
+		if err := recover(); err != nil {
+			logger.Errorf("Uncaught panic in runCacheLoop subroutine: %v", err)
+		}
+	}()
+
 	for {
 		select {
 		case <-cache.triggerChan:
 		case <-time.After(30 * time.Second):
-			break
 		}
 		logger.Debugf("Run indexer cache logic")
 		err := cache.runCacheLogic()
@@ -129,9 +134,9 @@ func (cache *indexerCache) processFinalizedEpoch(epoch uint64) error {
 		logger.Warnf("Loading epoch stats during finalized epoch %v processing.", epoch)
 	}
 	epochStats.dutiesMutex.RLock()
-	epochStats.dutiesMutex.RUnlock()
+	defer epochStats.dutiesMutex.RUnlock()
 	epochStats.validatorsMutex.RLock()
-	epochStats.validatorsMutex.RUnlock()
+	defer epochStats.validatorsMutex.RUnlock()
 
 	// get canonical blocks
 	canonicalMap := cache.getCanonicalBlockMap(epoch, nil)
@@ -268,9 +273,7 @@ func (cache *indexerCache) processCacheCleanup(processedEpoch int64) error {
 	cache.epochStatsMutex.RLock()
 	for epoch, stats := range cache.epochStatsMap {
 		if int64(epoch) <= processedEpoch {
-			for _, s := range stats {
-				clearStats = append(clearStats, s)
-			}
+			clearStats = append(clearStats, stats...)
 		}
 	}
 	cache.epochStatsMutex.RUnlock()

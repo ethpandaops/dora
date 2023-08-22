@@ -49,13 +49,13 @@ func (sync *synchronizerState) startSync(startEpoch uint64) {
 	sync.stateMutex.Unlock()
 	// wait for synchronizer to stop
 	sync.runMutex.Lock()
-	sync.runMutex.Unlock()
+	defer sync.runMutex.Unlock()
 
 	// start synchronizer
 	sync.stateMutex.Lock()
 	defer sync.stateMutex.Unlock()
 	if sync.running {
-		synclogger.Errorf("Cannot start synchronizer: already running")
+		synclogger.Errorf("cannot start synchronizer: already running")
 		return
 	}
 	sync.currentEpoch = startEpoch
@@ -67,7 +67,7 @@ func (sync *synchronizerState) startSync(startEpoch uint64) {
 func (sync *synchronizerState) runSync() {
 	defer func() {
 		if err := recover(); err != nil {
-			synclogger.Errorf("Uncaught panic in runSync subroutine: %v", err)
+			synclogger.Errorf("uncaught panic in runSync subroutine: %v", err)
 		}
 	}()
 
@@ -77,13 +77,13 @@ func (sync *synchronizerState) runSync() {
 	sync.cachedBlocks = make(map[uint64]*indexerCacheBlock)
 	sync.cachedSlot = 0
 	isComplete := false
-	synclogger.Infof("Synchronization started. Head epoch: %v", sync.currentEpoch)
+	synclogger.Infof("synchronization started. Head epoch: %v", sync.currentEpoch)
 
 	for {
 		// synchronize next epoch
 		syncEpoch := sync.currentEpoch
 
-		synclogger.Infof("Synchronizing epoch %v", syncEpoch)
+		synclogger.Infof("synchronizing epoch %v", syncEpoch)
 		if sync.syncEpoch(syncEpoch) {
 			finalizedEpoch, _ := sync.indexer.indexerCache.getFinalizedHead()
 			sync.stateMutex.Lock()
@@ -95,7 +95,7 @@ func (sync *synchronizerState) runSync() {
 				break
 			}
 		} else {
-			synclogger.Warnf("Synchronization of epoch %v failed", syncEpoch)
+			synclogger.Warnf("synchronization of epoch %v failed", syncEpoch)
 		}
 
 		if sync.checkKillChan(time.Duration(utils.Config.Indexer.SyncEpochCooldown) * time.Second) {
@@ -104,9 +104,9 @@ func (sync *synchronizerState) runSync() {
 	}
 
 	if isComplete {
-		synclogger.Infof("Synchronization complete. Head epoch: %v", sync.currentEpoch)
+		synclogger.Infof("synchronization complete. Head epoch: %v", sync.currentEpoch)
 	} else {
-		synclogger.Infof("Synchronization aborted. Head epoch: %v", sync.currentEpoch)
+		synclogger.Infof("synchronization aborted. Head epoch: %v", sync.currentEpoch)
 	}
 
 	sync.running = false
@@ -140,7 +140,7 @@ func (sync *synchronizerState) syncEpoch(syncEpoch uint64) bool {
 	// load epoch assignments
 	epochAssignments, err := client.rpcClient.GetEpochAssignments(syncEpoch)
 	if err != nil {
-		synclogger.Errorf("Error fetching epoch %v duties: %v", syncEpoch, err)
+		synclogger.Errorf("error fetching epoch %v duties: %v", syncEpoch, err)
 	}
 
 	if sync.checkKillChan(0) {
@@ -156,7 +156,7 @@ func (sync *synchronizerState) syncEpoch(syncEpoch uint64) bool {
 		}
 		headerRsp, err := client.rpcClient.GetBlockHeaderBySlot(slot)
 		if err != nil {
-			synclogger.Errorf("Error fetching slot %v header: %v", slot, err)
+			synclogger.Errorf("error fetching slot %v header: %v", slot, err)
 			return false
 		}
 		if headerRsp == nil {
@@ -167,7 +167,7 @@ func (sync *synchronizerState) syncEpoch(syncEpoch uint64) bool {
 		}
 		blockRsp, err := client.rpcClient.GetBlockBodyByBlockroot(headerRsp.Data.Root)
 		if err != nil {
-			synclogger.Errorf("Error fetching slot %v block: %v", slot, err)
+			synclogger.Errorf("error fetching slot %v block: %v", slot, err)
 			return false
 		}
 		sync.cachedBlocks[slot] = &indexerCacheBlock{

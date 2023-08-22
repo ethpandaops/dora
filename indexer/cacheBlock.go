@@ -21,9 +21,7 @@ type indexerCacheBlock struct {
 func (cache *indexerCache) getCachedBlock(root []byte) *indexerCacheBlock {
 	cache.cacheMutex.RLock()
 	defer cache.cacheMutex.RUnlock()
-	rootKey := string(root)
-	cacheBlock := cache.rootMap[rootKey]
-	return cacheBlock
+	return cache.rootMap[string(root)]
 }
 
 func (cache *indexerCache) createOrGetCachedBlock(root []byte, slot uint64) (*indexerCacheBlock, bool) {
@@ -79,21 +77,6 @@ func (cache *indexerCache) removeCachedBlock(cachedBlock *indexerCacheBlock) {
 				cache.slotMap[cachedBlock.slot] = cache.slotMap[cachedBlock.slot][0 : len-1]
 			}
 		}
-	}
-}
-
-func (cache *indexerCache) resetLowestSlot() {
-	cache.cacheMutex.Lock()
-	defer cache.cacheMutex.Unlock()
-	var lowestSlot int64 = -1
-	for slot := range cache.slotMap {
-		if lowestSlot == -1 || int64(slot) < lowestSlot {
-			lowestSlot = int64(slot)
-		}
-	}
-	if lowestSlot != cache.lowestSlot {
-		logger.Debugf("Reset lowest cached slot: %v", lowestSlot)
-		cache.lowestSlot = lowestSlot
 	}
 }
 

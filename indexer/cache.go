@@ -115,6 +115,23 @@ func (cache *indexerCache) loadStoredUnfinalizedCache() error {
 	return nil
 }
 
+/*
+func (cache *indexerCache) resetLowestSlot() {
+	cache.cacheMutex.Lock()
+	defer cache.cacheMutex.Unlock()
+	var lowestSlot int64 = -1
+	for slot := range cache.slotMap {
+		if lowestSlot == -1 || int64(slot) < lowestSlot {
+			lowestSlot = int64(slot)
+		}
+	}
+	if lowestSlot != cache.lowestSlot {
+		logger.Debugf("Reset lowest cached slot: %v", lowestSlot)
+		cache.lowestSlot = lowestSlot
+	}
+}
+*/
+
 func (cache *indexerCache) getLastCanonicalBlock(epoch uint64, head []byte) *indexerCacheBlock {
 	if head == nil {
 		head = cache.finalizedRoot
