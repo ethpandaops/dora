@@ -102,7 +102,7 @@ func buildEpochsPageData(firstEpoch uint64, pageSize uint64) (*models.EpochsPage
 	allFinalized := true
 	for epochIdx := int64(firstEpoch); epochIdx >= 0 && epochCount < epochLimit; epochIdx-- {
 		epoch := uint64(epochIdx)
-		finalized := epochIdx >= finalizedEpoch
+		finalized := finalizedEpoch >= epochIdx
 		if !finalized {
 			allFinalized = false
 		}

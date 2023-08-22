@@ -11,7 +11,7 @@ import (
 	"github.com/pk910/light-beaconchain-explorer/utils"
 )
 
-type indexerClient struct {
+type IndexerClient struct {
 	clientIdx          uint8
 	clientName         string
 	rpcClient          *rpc.BeaconClient
@@ -26,8 +26,8 @@ type indexerClient struct {
 	lastFinalizedRoot  []byte
 }
 
-func newIndexerClient(clientIdx uint8, clientName string, rpcClient *rpc.BeaconClient, indexerCache *indexerCache) *indexerClient {
-	client := indexerClient{
+func newIndexerClient(clientIdx uint8, clientName string, rpcClient *rpc.BeaconClient, indexerCache *indexerCache) *IndexerClient {
+	client := IndexerClient{
 		clientIdx:          clientIdx,
 		clientName:         clientName,
 		rpcClient:          rpcClient,
@@ -40,7 +40,13 @@ func newIndexerClient(clientIdx uint8, clientName string, rpcClient *rpc.BeaconC
 	return &client
 }
 
-func (client *indexerClient) runIndexerClientLoop() {
+func (client *IndexerClient) getLastHead() (int64, []byte) {
+	client.cacheMutex.RLock()
+	defer client.cacheMutex.RUnlock()
+	return client.lastHeadSlot, client.lastHeadRoot
+}
+
+func (client *IndexerClient) runIndexerClientLoop() {
 	for {
 		err := client.runIndexerClient()
 		if err != nil {
@@ -52,7 +58,7 @@ func (client *indexerClient) runIndexerClientLoop() {
 	}
 }
 
-func (client *indexerClient) runIndexerClient() error {
+func (client *IndexerClient) runIndexerClient() error {
 	// check genesis
 	genesis, err := client.rpcClient.GetGenesis()
 	if err != nil {
@@ -150,7 +156,7 @@ func (client *indexerClient) runIndexerClient() error {
 	}
 }
 
-func (client *indexerClient) prefillCache(finalizedSlot uint64) error {
+func (client *IndexerClient) prefillCache(finalizedSlot uint64) error {
 	// get latest header
 	latestHeader, err := client.rpcClient.GetLatestBlockHead()
 	if err != nil {
@@ -230,7 +236,7 @@ func (client *indexerClient) prefillCache(finalizedSlot uint64) error {
 	return nil
 }
 
-func (client *indexerClient) ensureBlock(block *indexerCacheBlock, header *rpctypes.SignedBeaconBlockHeader) error {
+func (client *IndexerClient) ensureBlock(block *indexerCacheBlock, header *rpctypes.SignedBeaconBlockHeader) error {
 	// ensure the cached block is loaded (header & block body), load missing parts
 	block.mutex.Lock()
 	defer block.mutex.Unlock()
@@ -257,7 +263,7 @@ func (client *indexerClient) ensureBlock(block *indexerCacheBlock, header *rpcty
 	return nil
 }
 
-func (client *indexerClient) pollLatestBlocks() error {
+func (client *IndexerClient) pollLatestBlocks() error {
 	// get latest header
 	latestHeader, err := client.rpcClient.GetLatestBlockHead()
 	if err != nil {
@@ -285,7 +291,7 @@ func (client *indexerClient) pollLatestBlocks() error {
 	return nil
 }
 
-func (client *indexerClient) ensureParentBlocks(currentBlock *indexerCacheBlock) error {
+func (client *IndexerClient) ensureParentBlocks(currentBlock *indexerCacheBlock) error {
 	// walk backwards and load all blocks until we reach a block that is marked as seen by this client or is smaller than finalized
 	parentRoot := []byte(currentBlock.header.Message.ParentRoot)
 	for {
@@ -336,7 +342,7 @@ func (client *indexerClient) ensureParentBlocks(currentBlock *indexerCacheBlock)
 	return nil
 }
 
-func (client *indexerClient) setHeadBlock(root []byte, slot uint64) error {
+func (client *IndexerClient) setHeadBlock(root []byte, slot uint64) error {
 	client.cacheMutex.Lock()
 	if bytes.Equal(client.lastHeadRoot, root) {
 		client.cacheMutex.Unlock()
@@ -349,7 +355,7 @@ func (client *indexerClient) setHeadBlock(root []byte, slot uint64) error {
 	return nil
 }
 
-func (client *indexerClient) processBlockEvent(evt *rpctypes.StandardV1StreamedBlockEvent) error {
+func (client *IndexerClient) processBlockEvent(evt *rpctypes.StandardV1StreamedBlockEvent) error {
 	currentBlock, isNewBlock := client.indexerCache.createOrGetCachedBlock(evt.Block, uint64(evt.Slot))
 	if isNewBlock {
 		logger.WithField("client", client.clientName).Infof("streamed new block: slot %v (0x%x)", currentBlock.slot, currentBlock.root)
@@ -367,7 +373,7 @@ func (client *indexerClient) processBlockEvent(evt *rpctypes.StandardV1StreamedB
 	return nil
 }
 
-func (client *indexerClient) processHeadEvent(evt *rpctypes.StandardV1StreamedHeadEvent) error {
+func (client *IndexerClient) processHeadEvent(evt *rpctypes.StandardV1StreamedHeadEvent) error {
 	currentBlock := client.indexerCache.getCachedBlock(evt.Block)
 	if currentBlock == nil {
 		return fmt.Errorf("received head event for non existing block: %v", evt.Block.String())
@@ -375,7 +381,7 @@ func (client *indexerClient) processHeadEvent(evt *rpctypes.StandardV1StreamedHe
 	return client.setHeadBlock(evt.Block, uint64(evt.Slot))
 }
 
-func (client *indexerClient) processFinalizedEvent(evt *rpctypes.StandardV1StreamedFinalizedCheckpointEvent) error {
+func (client *IndexerClient) processFinalizedEvent(evt *rpctypes.StandardV1StreamedFinalizedCheckpointEvent) error {
 	logger.WithField("client", client.clientName).Debugf("received finalization_checkpoint event: epoch %v (%s)", evt.Epoch, evt.Block.String())
 	client.indexerCache.setFinalizedHead(int64(evt.Epoch)-1, evt.Block)
 	return nil

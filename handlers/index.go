@@ -40,7 +40,7 @@ func Index(w http.ResponseWriter, r *http.Request) {
 
 func getIndexPageData() *models.IndexPageData {
 	pageData := &models.IndexPageData{}
-	pageCacheKey := fmt.Sprintf("index")
+	pageCacheKey := "index"
 	pageData = services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
 		pageData, cacheTimeout := buildIndexPageData()
 		pageCall.CacheTimeout = cacheTimeout
@@ -62,9 +62,6 @@ func buildIndexPageData() (*models.IndexPageData, time.Duration) {
 		currentEpoch = 0
 	}
 	currentSlot := utils.TimeToSlot(uint64(now.Unix()))
-	if currentSlot < 0 {
-		currentSlot = 0
-	}
 	currentSlotIndex := (currentSlot % utils.Config.Chain.Config.SlotsPerEpoch) + 1
 
 	finalizedEpoch, _ := services.GlobalBeaconService.GetFinalizedEpoch()

@@ -185,19 +185,13 @@ func (sync *synchronizerState) syncEpoch(syncEpoch uint64) bool {
 
 	// load epoch stats
 	epochStats := &EpochStats{
-		epoch:               syncEpoch,
-		dependendRoot:       epochAssignments.DependendRoot,
+		Epoch:               syncEpoch,
+		DependentRoot:       epochAssignments.DependendRoot,
 		proposerAssignments: epochAssignments.ProposerAssignments,
 		attestorAssignments: epochAssignments.AttestorAssignments,
 		syncAssignments:     epochAssignments.SyncAssignments,
 	}
-	var stateRef string
-	if epochAssignments.DependendIsGenesis {
-		stateRef = "genesis"
-	} else {
-		stateRef = epochAssignments.DependendState.String()
-	}
-	epochStats.loadValidatorStats(client, stateRef)
+	epochStats.loadValidatorStats(client, epochAssignments.DependendStateRef)
 
 	if sync.checkKillChan(0) {
 		return false

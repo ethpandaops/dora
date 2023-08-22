@@ -1,6 +1,7 @@
 package indexer
 
 import (
+	"bytes"
 	"encoding/json"
 	"sync"
 
@@ -131,6 +132,47 @@ func (cache *indexerCache) resetLowestSlot() {
 	}
 }
 */
+
+func (cache *indexerCache) isCanonicalBlock(blockRoot []byte, head []byte) bool {
+	res, _ := cache.getCanonicalDistance(blockRoot, head)
+	return res
+}
+
+func (cache *indexerCache) getCanonicalDistance(blockRoot []byte, head []byte) (bool, uint64) {
+	if head == nil {
+		head = cache.finalizedRoot
+	}
+	block := cache.getCachedBlock(blockRoot)
+	var blockSlot uint64
+	if block == nil {
+		blockSlot = uint64(cache.finalizedEpoch+1) * utils.Config.Chain.Config.SlotsPerEpoch
+	} else {
+		blockSlot = block.slot
+	}
+	canonicalBlock := cache.getCachedBlock(head)
+	var distance uint64 = 0
+	if bytes.Equal(canonicalBlock.root, blockRoot) {
+		return true, distance
+	}
+	for canonicalBlock != nil {
+		if canonicalBlock.slot < blockSlot {
+			return false, 0
+		}
+		parentRoot := canonicalBlock.getParentRoot()
+		if parentRoot == nil {
+			return false, 0
+		}
+		distance++
+		if bytes.Equal(parentRoot, blockRoot) {
+			return true, distance
+		}
+		canonicalBlock = cache.getCachedBlock(parentRoot)
+		if canonicalBlock == nil {
+			return false, 0
+		}
+	}
+	return false, 0
+}
 
 func (cache *indexerCache) getLastCanonicalBlock(epoch uint64, head []byte) *indexerCacheBlock {
 	if head == nil {

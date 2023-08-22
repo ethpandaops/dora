@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"strconv"
 	"time"
@@ -43,7 +43,7 @@ func (bc *BeaconClient) get(url string) ([]byte, error) {
 
 	defer resp.Body.Close()
 
-	data, err := ioutil.ReadAll(resp.Body)
+	data, err := io.ReadAll(resp.Body)
 
 	if resp.StatusCode != http.StatusOK {
 		if resp.StatusCode == http.StatusNotFound {
@@ -70,7 +70,7 @@ func (bc *BeaconClient) getJson(url string, returnValue interface{}) error {
 		if resp.StatusCode == http.StatusNotFound {
 			return errNotFound
 		}
-		data, _ := ioutil.ReadAll(resp.Body)
+		data, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("url: %v, error-response: %s", url, data)
 	}
 
@@ -263,8 +263,7 @@ func (bc *BeaconClient) GetEpochAssignments(epoch uint64) (*rpctypes.EpochAssign
 
 	assignments := &rpctypes.EpochAssignments{
 		DependendRoot:       parsedProposerResponse.DependentRoot,
-		DependendState:      parsedHeader.Data.Header.Message.StateRoot,
-		DependendIsGenesis:  epoch == 0,
+		DependendStateRef:   depStateRoot,
 		ProposerAssignments: make(map[uint64]uint64),
 		AttestorAssignments: make(map[string][]uint64),
 	}
@@ -296,7 +295,7 @@ func (bc *BeaconClient) GetEpochAssignments(epoch uint64) (*rpctypes.EpochAssign
 	}
 
 	if epoch >= utils.Config.Chain.Config.AltairForkEpoch {
-		syncCommitteeState := fmt.Sprintf("%s", depStateRoot)
+		syncCommitteeState := depStateRoot
 		if epoch > 0 && epoch == utils.Config.Chain.Config.AltairForkEpoch {
 			syncCommitteeState = fmt.Sprintf("%d", utils.Config.Chain.Config.AltairForkEpoch*utils.Config.Chain.Config.SlotsPerEpoch)
 		}

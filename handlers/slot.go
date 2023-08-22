@@ -192,7 +192,7 @@ func buildSlotPageData(blockSlot int64, blockRoot []byte) (*models.SlotPageData,
 
 	var cacheTimeout time.Duration
 	if pageData.Future {
-		timeDiff := pageData.Ts.Sub(time.Now())
+		timeDiff := time.Until(pageData.Ts)
 		if timeDiff > 10*time.Minute {
 			cacheTimeout = 10 * time.Minute
 		} else {

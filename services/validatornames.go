@@ -3,7 +3,7 @@ package services
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"os"
 	"strconv"
@@ -95,7 +95,7 @@ func (vn *ValidatorNames) LoadFromRangesApi(apiUrl string) error {
 			logrus.Errorf("Could not fetch validator names from inventory (%v): not found", apiUrl)
 			return nil
 		}
-		data, _ := ioutil.ReadAll(resp.Body)
+		data, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("url: %v, error-response: %s", apiUrl, data)
 	}
 	rangesResponse := &validatorNamesRangesResponse{}
