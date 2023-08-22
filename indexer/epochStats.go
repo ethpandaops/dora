@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/pk910/light-beaconchain-explorer/dbtypes"
 	"github.com/pk910/light-beaconchain-explorer/rpctypes"
 	"github.com/pk910/light-beaconchain-explorer/utils"
 )
@@ -22,6 +23,8 @@ type EpochStats struct {
 	attestorAssignments map[string][]uint64
 	syncAssignments     []uint64
 	validatorStats      *EpochValidatorStats
+	dbEpochMutex        sync.Mutex
+	dbEpochCache        *dbtypes.Epoch
 }
 
 type EpochValidatorStats struct {

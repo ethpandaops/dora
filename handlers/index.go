@@ -69,8 +69,8 @@ func buildIndexPageData() (*models.IndexPageData, time.Duration) {
 	syncState := dbtypes.IndexerSyncState{}
 	db.GetExplorerState("indexer.syncstate", &syncState)
 	var isSynced bool
-	if currentEpoch > int64(utils.Config.Indexer.EpochProcessingDelay) {
-		isSynced = syncState.Epoch >= uint64(currentEpoch-int64(utils.Config.Indexer.EpochProcessingDelay))
+	if finalizedEpoch >= 1 {
+		isSynced = syncState.Epoch >= uint64(finalizedEpoch-1)
 	} else {
 		isSynced = true
 	}

@@ -45,9 +45,7 @@ beaconapi:
   redisCachePrefix: ""
 
 indexer:
-  prepopulateEpochs: 2
-  inMemoryEpochs: 10
-  epochProcessingDelay: 2
+  inMemoryEpochs: 2
   disableIndexWriter: false
   syncEpochCooldown: 1
 

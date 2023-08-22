@@ -595,7 +595,7 @@ func InsertUnfinalizedBlock(block *dbtypes.UnfinalizedBlock, tx *sqlx.Tx) error 
 			) VALUES ($1, $2, $3, $4)
 			ON CONFLICT (root) DO NOTHING`,
 		dbtypes.DBEngineSqlite: `
-			INSERT OR IGNORE unfinalized_blocks (
+			INSERT OR IGNORE INTO unfinalized_blocks (
 				root, slot, header, block
 			) VALUES ($1, $2, $3, $4)`,
 	}),
@@ -642,7 +642,7 @@ func InsertUnfinalizedEpochDuty(epochDuty *dbtypes.UnfinalizedEpochDuty, tx *sql
 			) VALUES ($1, $2, $3)
 			ON CONFLICT (root) DO NOTHING`,
 		dbtypes.DBEngineSqlite: `
-			INSERT OR IGNORE unfinalized_duties (
+			INSERT OR IGNORE INTO unfinalized_duties (
 				epoch, dependent_root, duties
 			) VALUES ($1, $2, $3)`,
 	}),
@@ -679,4 +679,16 @@ func GetUnfinalizedDuty(epoch uint64, dependentRoot []byte) *dbtypes.Unfinalized
 		return nil
 	}
 	return &epochDuty
+}
+
+func DeleteUnfinalizedBefore(slot uint64, tx *sqlx.Tx) error {
+	_, err := tx.Exec(`DELETE FROM unfinalized_blocks WHERE slot < $1`, slot)
+	if err != nil {
+		return err
+	}
+	_, err = tx.Exec(`DELETE FROM unfinalized_duties WHERE epoch < $1`, utils.EpochOfSlot(slot))
+	if err != nil {
+		return err
+	}
+	return nil
 }

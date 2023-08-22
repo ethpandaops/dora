@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"sync"
 
+	"github.com/pk910/light-beaconchain-explorer/db"
 	"github.com/pk910/light-beaconchain-explorer/dbtypes"
 	"github.com/pk910/light-beaconchain-explorer/rpctypes"
 )
@@ -16,6 +17,9 @@ type CacheBlock struct {
 	isInDb bool
 	header *rpctypes.SignedBeaconBlockHeader
 	block  *rpctypes.SignedBeaconBlock
+
+	dbBlockMutex sync.Mutex
+	dbBlockCache *dbtypes.Block
 }
 
 func (cache *indexerCache) getCachedBlock(root []byte) *CacheBlock {
@@ -120,8 +124,18 @@ func (block *CacheBlock) GetBlockBody() *rpctypes.SignedBeaconBlock {
 	if !block.isInDb {
 		return nil
 	}
-	// TODO: load from DB
-	return nil
+
+	logger.Debugf("loading pruned block body from db: %v", block.Slot)
+	blockData := db.GetUnfinalizedBlock(block.Root)
+	var blockBody rpctypes.SignedBeaconBlock
+	err := json.Unmarshal([]byte(blockData.Block), &blockBody)
+	if err != nil {
+		logger.Warnf("Error parsing unfinalized block body from db: %v", err)
+		return nil
+	}
+	block.block = &blockBody
+
+	return block.block
 }
 
 func (block *CacheBlock) IsCanonical(indexer *Indexer, head []byte) bool {

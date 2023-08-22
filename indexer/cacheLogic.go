@@ -1,6 +1,7 @@
 package indexer
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/pk910/light-beaconchain-explorer/db"
@@ -34,7 +35,7 @@ func (cache *indexerCache) runCacheLogic() error {
 		return nil
 	}
 
-	var cleanupEpoch int64
+	var processingEpoch int64
 	if cache.indexer.writeDb {
 		if cache.finalizedEpoch > 0 && cache.processedEpoch == -2 {
 			syncState := dbtypes.IndexerSyncState{}
@@ -73,27 +74,27 @@ func (cache *indexerCache) runCacheLogic() error {
 				return err
 			}
 		}
-
-		if cache.persistEpoch < cache.processedEpoch {
-			// process cache persistence
-			err := cache.processCachePersistence()
-			if err != nil {
-				return err
-			}
-			cache.persistEpoch = cache.processedEpoch
-		}
-		cleanupEpoch = cache.processedEpoch
+		processingEpoch = cache.processedEpoch
 	} else {
-		cleanupEpoch = cache.finalizedEpoch
+		processingEpoch = cache.finalizedEpoch
 	}
 
-	if cache.cleanupEpoch < cleanupEpoch {
+	if cache.persistEpoch < processingEpoch {
 		// process cache persistence
-		err := cache.processCacheCleanup(cleanupEpoch)
+		err := cache.processCachePersistence()
 		if err != nil {
 			return err
 		}
-		cache.cleanupEpoch = cleanupEpoch
+		cache.persistEpoch = processingEpoch
+	}
+
+	if cache.cleanupEpoch < processingEpoch {
+		// process cache persistence
+		err := cache.processCacheCleanup(processingEpoch)
+		if err != nil {
+			return err
+		}
+		cache.cleanupEpoch = processingEpoch
 	}
 
 	return nil
@@ -258,9 +259,70 @@ func (cache *indexerCache) processOrphanedBlocks(processedEpoch int64) error {
 }
 
 func (cache *indexerCache) processCachePersistence() error {
-	logger.Infof("processing cache persistence")
+	pruneBlocks := []*CacheBlock{}
+	cache.cacheMutex.RLock()
+	headSlot := cache.highestSlot
+	var headEpoch uint64
+	if headSlot >= 0 {
+		headEpoch = utils.EpochOfSlot(uint64(headSlot))
+	}
+	if headEpoch > uint64(cache.indexer.inMemoryEpochs) {
+		pruneEpoch := headEpoch - uint64(cache.indexer.inMemoryEpochs)
+		fmt.Printf("prune epoch %v\n", pruneEpoch)
+		for slot, blocks := range cache.slotMap {
+			if utils.EpochOfSlot(slot) <= pruneEpoch {
+				for _, block := range blocks {
+					if block.block == nil {
+						continue
+					}
+					pruneBlocks = append(pruneBlocks, block)
+				}
+			}
+		}
+	}
+	cache.cacheMutex.RUnlock()
 
-	// TODO
+	pruneCount := len(pruneBlocks)
+	logger.Infof("processing cache persistence: prune %v blocks", pruneCount)
+	if pruneCount == 0 {
+		return nil
+	}
+
+	if cache.indexer.writeDb {
+		tx, err := db.WriterDb.Beginx()
+		if err != nil {
+			logger.Errorf("error starting db transactions: %v", err)
+			return err
+		}
+		defer tx.Rollback()
+
+		for _, block := range pruneBlocks {
+			if !block.isInDb {
+				orphanedBlock := block.buildOrphanedBlock()
+				err := db.InsertUnfinalizedBlock(&dbtypes.UnfinalizedBlock{
+					Root:   block.Root,
+					Slot:   block.Slot,
+					Header: orphanedBlock.Header,
+					Block:  orphanedBlock.Block,
+				}, tx)
+				if err != nil {
+					logger.Errorf("error inserting unfinalized block: %v", err)
+					return err
+				}
+				block.isInDb = true
+			}
+		}
+
+		if err := tx.Commit(); err != nil {
+			logger.Errorf("error committing db transaction: %v", err)
+			return err
+		}
+	}
+
+	for _, block := range pruneBlocks {
+		block.block = nil
+	}
+
 	return nil
 }
 
@@ -296,6 +358,24 @@ func (cache *indexerCache) processCacheCleanup(processedEpoch int64) error {
 		// remove blocks from cache
 		for _, stats := range clearStats {
 			cache.removeEpochStats(stats)
+		}
+	}
+
+	if cache.indexer.writeDb {
+		tx, err := db.WriterDb.Beginx()
+		if err != nil {
+			logger.Errorf("error starting db transactions: %v", err)
+			return err
+		}
+		defer tx.Rollback()
+
+		deleteBefore := uint64(processedEpoch+1) * utils.Config.Chain.Config.SlotsPerEpoch
+		logger.Debugf("delete persisted unfinalized cache before slot %v", deleteBefore)
+		db.DeleteUnfinalizedBefore(deleteBefore, tx)
+
+		if err := tx.Commit(); err != nil {
+			logger.Errorf("error committing db transaction: %v", err)
+			return err
 		}
 	}
 

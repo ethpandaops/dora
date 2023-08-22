@@ -54,11 +54,9 @@ type Config struct {
 	} `yaml:"beaconapi"`
 
 	Indexer struct {
-		PrepopulateEpochs    uint16 `yaml:"prepopulateEpochs" envconfig:"INDEXER_PREPOPULATE_EPOCHS"`
-		InMemoryEpochs       uint16 `yaml:"inMemoryEpochs" envconfig:"INDEXER_IN_MEMORY_EPOCHS"`
-		EpochProcessingDelay uint16 `yaml:"epochProcessingDelay" envconfig:"INDEXER_EPOCH_PROCESSING_DELAY"`
-		DisableIndexWriter   bool   `yaml:"disableIndexWriter" envconfig:"INDEXER_DISABLE_INDEX_WRITER"`
-		SyncEpochCooldown    uint   `yaml:"syncEpochCooldown" envconfig:"INDEXER_SYNC_EPOCH_COOLDOWN"`
+		InMemoryEpochs     uint16 `yaml:"inMemoryEpochs" envconfig:"INDEXER_IN_MEMORY_EPOCHS"`
+		DisableIndexWriter bool   `yaml:"disableIndexWriter" envconfig:"INDEXER_DISABLE_INDEX_WRITER"`
+		SyncEpochCooldown  uint   `yaml:"syncEpochCooldown" envconfig:"INDEXER_SYNC_EPOCH_COOLDOWN"`
 	} `yaml:"indexer"`
 
 	Database struct {
