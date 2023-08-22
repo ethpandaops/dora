@@ -84,7 +84,7 @@ func buildValidatorSlotsPageData(validator uint64, pageIdx uint64, pageSize uint
 	}
 	pageData.LastPageSlot = 0
 
-	finalizedHead, _ := services.GlobalBeaconService.GetFinalizedBlockHead()
+	finalizedEpoch, _ := services.GlobalBeaconService.GetFinalizedEpoch()
 
 	// load slots
 	pageData.Slots = make([]*models.ValidatorSlotsPageDataSlot, 0)
@@ -96,17 +96,13 @@ func buildValidatorSlotsPageData(validator uint64, pageIdx uint64, pageSize uint
 			break
 		}
 		slot := blockAssignment.Slot
-		finalized := false
-		if finalizedHead != nil && uint64(finalizedHead.Data.Header.Message.Slot) >= slot {
-			finalized = true
-		}
 		blockStatus := uint8(0)
 
 		slotData := &models.ValidatorSlotsPageDataSlot{
 			Slot:         slot,
 			Epoch:        utils.EpochOfSlot(slot),
 			Ts:           utils.SlotToTime(slot),
-			Finalized:    finalized,
+			Finalized:    finalizedEpoch >= int64(utils.EpochOfSlot(slot)),
 			Status:       blockStatus,
 			Proposer:     validator,
 			ProposerName: pageData.Name,

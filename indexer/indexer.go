@@ -68,12 +68,17 @@ func (indexer *Indexer) GetRpcClient() *rpc.BeaconClient {
 	return indexer.indexerClients[0].rpcClient
 }
 
-func (indexer *Indexer) GetLowestCachedSlot() int64 {
-	return -1
+func (indexer *Indexer) GetFinalizedEpoch() (int64, []byte) {
+	return indexer.indexerCache.getFinalizedHead()
 }
 
-func (indexer *Indexer) GetHeadSlot() uint64 {
-	return 0
+func (indexer *Indexer) GetHighestSlot() uint64 {
+	indexer.indexerCache.cacheMutex.RLock()
+	defer indexer.indexerCache.cacheMutex.RUnlock()
+	if indexer.indexerCache.highestSlot < 0 {
+		return 0
+	}
+	return uint64(indexer.indexerCache.highestSlot)
 }
 
 func (indexer *Indexer) GetCachedBlocks(slot uint64) []*BlockInfo {

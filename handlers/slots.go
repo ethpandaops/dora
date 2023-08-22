@@ -106,7 +106,7 @@ func buildSlotsPageData(firstSlot uint64, pageSize uint64) (*models.SlotsPageDat
 	}
 	pageData.LastPageSlot = pageSize - 1
 
-	finalizedHead, _ := services.GlobalBeaconService.GetFinalizedBlockHead()
+	finalizedEpoch, _ := services.GlobalBeaconService.GetFinalizedEpoch()
 	slotLimit := pageSize - 1
 	var lastSlot uint64
 	if firstSlot > uint64(slotLimit) {
@@ -129,10 +129,8 @@ func buildSlotsPageData(firstSlot uint64, pageSize uint64) (*models.SlotsPageDat
 	allFinalized := true
 	for slotIdx := int64(firstSlot); slotIdx >= int64(lastSlot); slotIdx-- {
 		slot := uint64(slotIdx)
-		finalized := false
-		if finalizedHead != nil && uint64(finalizedHead.Data.Header.Message.Slot) >= slot {
-			finalized = true
-		} else {
+		finalized := finalizedEpoch >= int64(utils.EpochOfSlot(slot))
+		if !finalized {
 			allFinalized = false
 		}
 		haveBlock := false
@@ -232,7 +230,7 @@ func buildSlotsPageDataWithGraffitiFilter(graffiti string, pageIdx uint64, pageS
 	}
 	pageData.LastPageSlot = 0
 
-	finalizedHead, _ := services.GlobalBeaconService.GetFinalizedBlockHead()
+	finalizedEpoch, _ := services.GlobalBeaconService.GetFinalizedEpoch()
 
 	// load slots
 	pageData.Slots = make([]*models.SlotsPageDataSlot, 0)
@@ -244,10 +242,6 @@ func buildSlotsPageDataWithGraffitiFilter(graffiti string, pageIdx uint64, pageS
 			break
 		}
 		slot := dbBlock.Slot
-		finalized := false
-		if finalizedHead != nil && uint64(finalizedHead.Data.Header.Message.Slot) >= slot {
-			finalized = true
-		}
 		blockStatus := uint8(1)
 		if dbBlock.Orphaned {
 			blockStatus = 2
@@ -257,7 +251,7 @@ func buildSlotsPageDataWithGraffitiFilter(graffiti string, pageIdx uint64, pageS
 			Slot:                  slot,
 			Epoch:                 utils.EpochOfSlot(slot),
 			Ts:                    utils.SlotToTime(slot),
-			Finalized:             finalized,
+			Finalized:             finalizedEpoch >= int64(utils.EpochOfSlot(slot)),
 			Status:                blockStatus,
 			Synchronized:          true,
 			Proposer:              dbBlock.Proposer,

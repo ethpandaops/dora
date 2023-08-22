@@ -180,8 +180,11 @@ func (cache *indexerCache) runCacheLogic() error {
 
 		if cache.persistEpoch < cache.processedEpoch {
 			// process cache persistence
+			err := cache.processCachePersistence()
+			if err != nil {
+				return err
+			}
 			cache.persistEpoch = cache.processedEpoch
-
 		}
 		cleanupEpoch = cache.processedEpoch
 	} else {
@@ -404,6 +407,8 @@ func (cache *indexerCache) processOrphanedBlocks(processedEpoch int64) error {
 
 func (cache *indexerCache) processCachePersistence() error {
 	logger.Infof("Processing cache persistence")
+
+	// TODO
 	return nil
 }
 

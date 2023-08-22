@@ -1,6 +1,7 @@
 package services
 
 import (
+	"encoding/json"
 	"strings"
 	"sync"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"github.com/pk910/light-beaconchain-explorer/indexer"
 	"github.com/pk910/light-beaconchain-explorer/rpctypes"
 	"github.com/pk910/light-beaconchain-explorer/utils"
+	"github.com/sirupsen/logrus"
 )
 
 type BeaconService struct {
@@ -62,12 +64,8 @@ func (bs *BeaconService) GetCachedValidatorSet() *rpctypes.StandardV1StateValida
 	return bs.indexer.GetCachedValidatorSet()
 }
 
-func (bs *BeaconService) GetFinalizedBlockHead() (*rpctypes.StandardV1BeaconHeaderResponse, error) {
-	return bs.indexer.GetRpcClient().GetFinalizedBlockHead()
-}
-
-func (bs *BeaconService) GetLowestCachedSlot() int64 {
-	return bs.indexer.GetLowestCachedSlot()
+func (bs *BeaconService) GetFinalizedEpoch() (int64, []byte) {
+	return bs.indexer.GetFinalizedEpoch()
 }
 
 func (bs *BeaconService) GetCachedEpochStats(epoch uint64) *indexer.EpochStats {
@@ -82,9 +80,10 @@ func (bs *BeaconService) GetSlotDetailsByBlockroot(blockroot []byte, withBlobs b
 	var result *rpctypes.CombinedBlockResponse
 	if blockInfo := bs.indexer.GetCachedBlock(blockroot); blockInfo != nil {
 		result = &rpctypes.CombinedBlockResponse{
+			Root:     blockInfo.Root,
 			Header:   blockInfo.Header,
-			Block:    blockInfo.Block,
-			Orphaned: blockInfo.Orphaned,
+			Block:    blockInfo.GetBlockBody(),
+			Orphaned: blockInfo.GetOrphaned(),
 		}
 	} else {
 		header, err := bs.indexer.GetRpcClient().GetBlockHeaderByBlockroot(blockroot)
@@ -99,14 +98,15 @@ func (bs *BeaconService) GetSlotDetailsByBlockroot(blockroot []byte, withBlobs b
 			return nil, err
 		}
 		result = &rpctypes.CombinedBlockResponse{
-			Header:   header,
-			Block:    block,
+			Root:     header.Data.Root,
+			Header:   &header.Data.Header,
+			Block:    &block.Data,
 			Orphaned: !header.Data.Canonical,
 		}
 	}
 
-	if result.Block.Data.Message.Body.BlobKzgCommitments != nil && withBlobs && utils.EpochOfSlot(uint64(result.Header.Data.Header.Message.Slot)) >= utils.Config.Chain.Config.DenebForkEpoch {
-		blobs, _ := bs.indexer.GetRpcClient().GetBlobSidecarsByBlockroot(result.Header.Data.Root)
+	if result.Block.Message.Body.BlobKzgCommitments != nil && withBlobs && utils.EpochOfSlot(uint64(result.Header.Message.Slot)) >= utils.Config.Chain.Config.DenebForkEpoch {
+		blobs, _ := bs.indexer.GetRpcClient().GetBlobSidecarsByBlockroot(result.Root)
 		if blobs != nil {
 			result.Blobs = blobs
 		}
@@ -119,7 +119,7 @@ func (bs *BeaconService) GetSlotDetailsBySlot(slot uint64, withBlobs bool) (*rpc
 	if cachedBlocks := bs.indexer.GetCachedBlocks(slot); cachedBlocks != nil {
 		var cachedBlock *indexer.BlockInfo
 		for _, block := range cachedBlocks {
-			if !block.Orphaned {
+			if !block.GetOrphaned() {
 				cachedBlock = block
 				break
 			}
@@ -128,9 +128,10 @@ func (bs *BeaconService) GetSlotDetailsBySlot(slot uint64, withBlobs bool) (*rpc
 			cachedBlock = cachedBlocks[0]
 		}
 		result = &rpctypes.CombinedBlockResponse{
+			Root:     cachedBlock.Root,
 			Header:   cachedBlock.Header,
-			Block:    cachedBlock.Block,
-			Orphaned: cachedBlock.Orphaned,
+			Block:    cachedBlock.GetBlockBody(),
+			Orphaned: cachedBlock.GetOrphaned(),
 		}
 	} else {
 		header, err := bs.indexer.GetRpcClient().GetBlockHeaderBySlot(slot)
@@ -145,14 +146,15 @@ func (bs *BeaconService) GetSlotDetailsBySlot(slot uint64, withBlobs bool) (*rpc
 			return nil, err
 		}
 		result = &rpctypes.CombinedBlockResponse{
-			Header:   header,
-			Block:    block,
+			Root:     header.Data.Root,
+			Header:   &header.Data.Header,
+			Block:    &block.Data,
 			Orphaned: !header.Data.Canonical,
 		}
 	}
 
-	if result.Block.Data.Message.Body.BlobKzgCommitments != nil && withBlobs && utils.EpochOfSlot(uint64(result.Header.Data.Header.Message.Slot)) >= utils.Config.Chain.Config.DenebForkEpoch {
-		blobs, _ := bs.indexer.GetRpcClient().GetBlobSidecarsByBlockroot(result.Header.Data.Root)
+	if result.Block.Message.Body.BlobKzgCommitments != nil && withBlobs && utils.EpochOfSlot(uint64(result.Header.Message.Slot)) >= utils.Config.Chain.Config.DenebForkEpoch {
+		blobs, _ := bs.indexer.GetRpcClient().GetBlobSidecarsByBlockroot(result.Root)
 		if blobs != nil {
 			result.Blobs = blobs
 		}
@@ -169,14 +171,24 @@ func (bs *BeaconService) GetOrphanedBlock(blockroot []byte) *rpctypes.CombinedBl
 	if orphanedBlock == nil {
 		return nil
 	}
-	blockInfo := indexer.ParseOrphanedBlock(orphanedBlock)
-	if blockInfo == nil {
+
+	var header rpctypes.SignedBeaconBlockHeader
+	err := json.Unmarshal([]byte(orphanedBlock.Header), &header)
+	if err != nil {
+		logrus.Warnf("Error parsing orphaned block header from db: %v", err)
+		return nil
+	}
+	var block rpctypes.SignedBeaconBlock
+	err = json.Unmarshal([]byte(orphanedBlock.Block), &block)
+	if err != nil {
+		logrus.Warnf("Error parsing orphaned block body from db: %v", err)
 		return nil
 	}
 
 	return &rpctypes.CombinedBlockResponse{
-		Header:   blockInfo.Header,
-		Block:    blockInfo.Block,
+		Root:     orphanedBlock.Root,
+		Header:   &header,
+		Block:    &block,
 		Blobs:    nil,
 		Orphaned: true,
 	}
@@ -188,9 +200,10 @@ func (bs *BeaconService) GetCachedBlockByBlockroot(blockroot []byte) *rpctypes.C
 		return nil
 	}
 	return &rpctypes.CombinedBlockResponse{
+		Root:     blockInfo.Root,
 		Header:   blockInfo.Header,
-		Block:    blockInfo.Block,
-		Orphaned: blockInfo.Orphaned,
+		Block:    blockInfo.GetBlockBody(),
+		Orphaned: blockInfo.GetOrphaned(),
 	}
 }
 
@@ -200,17 +213,20 @@ func (bs *BeaconService) GetCachedBlockByStateroot(stateroot []byte) *rpctypes.C
 		return nil
 	}
 	return &rpctypes.CombinedBlockResponse{
+		Root:     blockInfo.Root,
 		Header:   blockInfo.Header,
-		Block:    blockInfo.Block,
-		Orphaned: blockInfo.Orphaned,
+		Block:    blockInfo.GetBlockBody(),
+		Orphaned: blockInfo.GetOrphaned(),
 	}
 }
 
 func (bs *BeaconService) GetEpochAssignments(epoch uint64) (*rpctypes.EpochAssignments, error) {
-	idxMinSlot := bs.indexer.GetLowestCachedSlot()
-	if idxMinSlot >= 0 && epoch >= utils.EpochOfSlot(uint64(idxMinSlot)) {
+	finalizedEpoch, _ := bs.indexer.GetFinalizedEpoch()
+
+	if int64(epoch) > finalizedEpoch {
 		epochStats := bs.indexer.GetCachedEpochStats(epoch)
 		if epochStats != nil {
+
 			//return epochStats.Assignments, nil
 			return nil, nil
 		} else {
@@ -225,33 +241,31 @@ func (bs *BeaconService) GetProposerAssignments(firstEpoch uint64, lastEpoch uin
 	proposerAssignments = make(map[uint64]uint64)
 	synchronizedEpochs = make(map[uint64]bool)
 
-	idxMinSlot := bs.indexer.GetLowestCachedSlot()
-	if idxMinSlot >= 0 {
-		idxMinEpoch := utils.EpochOfSlot(uint64(idxMinSlot))
-		idxHeadEpoch := bs.indexer.GetHeadSlot()
-		if firstEpoch > idxHeadEpoch {
-			firstEpoch = idxHeadEpoch
-		}
+	finalizedEpoch, _ := bs.indexer.GetFinalizedEpoch()
+	idxMinEpoch := finalizedEpoch + 1
+	idxHeadEpoch := utils.EpochOfSlot(bs.indexer.GetHighestSlot())
+	if firstEpoch > idxHeadEpoch {
+		firstEpoch = idxHeadEpoch
+	}
 
-		if firstEpoch >= uint64(idxMinEpoch) {
-			var epoch uint64
-			for epochIdx := int64(firstEpoch); epochIdx >= int64(idxMinEpoch) && epochIdx >= int64(lastEpoch); epochIdx-- {
-				epoch = uint64(epochIdx)
-				/*
-					epochStats := bs.indexer.GetCachedEpochStats(epoch)
-					if epochStats != nil && epochStats.Assignments != nil {
-						synchronizedEpochs[epoch] = true
-						for slot, vidx := range epochStats.Assignments.ProposerAssignments {
-							proposerAssignments[slot] = vidx
-						}
+	if firstEpoch >= uint64(idxMinEpoch) {
+		var epoch uint64
+		for epochIdx := int64(firstEpoch); epochIdx >= int64(idxMinEpoch) && epochIdx >= int64(lastEpoch); epochIdx-- {
+			epoch = uint64(epochIdx)
+			/*
+				epochStats := bs.indexer.GetCachedEpochStats(epoch)
+				if epochStats != nil && epochStats.Assignments != nil {
+					synchronizedEpochs[epoch] = true
+					for slot, vidx := range epochStats.Assignments.ProposerAssignments {
+						proposerAssignments[slot] = vidx
 					}
-				*/
-			}
-			if epoch <= lastEpoch {
-				return
-			}
-			firstEpoch = epoch
+				}
+			*/
 		}
+		if epoch <= lastEpoch {
+			return
+		}
+		firstEpoch = epoch
 	}
 
 	// load from db
@@ -273,12 +287,10 @@ func (bs *BeaconService) GetDbEpochs(firstEpoch uint64, limit uint32) []*dbtypes
 	dbIdx := 0
 	dbCnt := len(dbEpochs)
 
-	idxMinSlot := bs.indexer.GetLowestCachedSlot()
+	finalizedEpoch, _ := bs.indexer.GetFinalizedEpoch()
 	var idxMinEpoch, idxHeadEpoch uint64
-	if idxMinSlot >= 0 {
-		idxMinEpoch = utils.EpochOfSlot(uint64(idxMinSlot))
-		idxHeadEpoch = utils.EpochOfSlot(bs.indexer.GetHeadSlot())
-	}
+	idxMinEpoch = uint64(finalizedEpoch + 1)
+	idxHeadEpoch = utils.EpochOfSlot(bs.indexer.GetHighestSlot())
 
 	lastEpoch := int64(firstEpoch) - int64(limit)
 	if lastEpoch < 0 {
@@ -291,7 +303,7 @@ func (bs *BeaconService) GetDbEpochs(firstEpoch uint64, limit uint32) []*dbtypes
 			resEpoch = dbEpochs[dbIdx]
 			dbIdx++
 		}
-		if idxMinSlot >= 0 && epoch >= idxMinEpoch && epoch <= idxHeadEpoch {
+		if epoch >= idxMinEpoch && epoch <= idxHeadEpoch {
 			resEpoch = bs.indexer.BuildLiveEpoch(epoch)
 		}
 		if resEpoch != nil {
@@ -307,8 +319,9 @@ func (bs *BeaconService) GetDbBlocks(firstSlot uint64, limit int32, withOrphaned
 	resBlocks := make([]*dbtypes.Block, limit)
 	resIdx := 0
 
-	idxMinSlot := bs.indexer.GetLowestCachedSlot()
-	idxHeadSlot := bs.indexer.GetHeadSlot()
+	finalizedEpoch, _ := bs.indexer.GetFinalizedEpoch()
+	idxMinSlot := (finalizedEpoch + 1) * int64(utils.Config.Chain.Config.SlotsPerEpoch)
+	idxHeadSlot := bs.indexer.GetHighestSlot()
 	if firstSlot > idxHeadSlot {
 		firstSlot = idxHeadSlot
 	}
@@ -321,7 +334,7 @@ func (bs *BeaconService) GetDbBlocks(firstSlot uint64, limit int32, withOrphaned
 			if blocks != nil {
 				for bidx := 0; bidx < len(blocks) && resIdx < int(limit); bidx++ {
 					block := blocks[bidx]
-					if block.Orphaned && !withOrphaned {
+					if block.GetOrphaned() && !withOrphaned {
 						continue
 					}
 					dbBlock := bs.indexer.BuildLiveBlock(block)
@@ -353,8 +366,9 @@ func (bs *BeaconService) GetDbBlocks(firstSlot uint64, limit int32, withOrphaned
 func (bs *BeaconService) GetDbBlocksForSlots(firstSlot uint64, slotLimit uint32, withOrphaned bool) []*dbtypes.Block {
 	resBlocks := make([]*dbtypes.Block, 0)
 
-	idxMinSlot := bs.indexer.GetLowestCachedSlot()
-	idxHeadSlot := bs.indexer.GetHeadSlot()
+	finalizedEpoch, _ := bs.indexer.GetFinalizedEpoch()
+	idxMinSlot := (finalizedEpoch + 1) * int64(utils.Config.Chain.Config.SlotsPerEpoch)
+	idxHeadSlot := bs.indexer.GetHighestSlot()
 	if firstSlot > idxHeadSlot {
 		firstSlot = idxHeadSlot
 	}
@@ -373,7 +387,7 @@ func (bs *BeaconService) GetDbBlocksForSlots(firstSlot uint64, slotLimit uint32,
 			if blocks != nil {
 				for bidx := 0; bidx < len(blocks); bidx++ {
 					block := blocks[bidx]
-					if block.Orphaned && !withOrphaned {
+					if block.GetOrphaned() && !withOrphaned {
 						continue
 					}
 					dbBlock := bs.indexer.BuildLiveBlock(block)
@@ -402,8 +416,9 @@ func (bs *BeaconService) GetDbBlocksForSlots(firstSlot uint64, slotLimit uint32,
 
 func (bs *BeaconService) GetDbBlocksByGraffiti(graffiti string, pageIdx uint64, pageSize uint32, withOrphaned bool) []*dbtypes.Block {
 	cachedMatches := make([]*indexer.BlockInfo, 0)
-	idxMinSlot := bs.indexer.GetLowestCachedSlot()
-	idxHeadSlot := bs.indexer.GetHeadSlot()
+	finalizedEpoch, _ := bs.indexer.GetFinalizedEpoch()
+	idxMinSlot := (finalizedEpoch + 1) * int64(utils.Config.Chain.Config.SlotsPerEpoch)
+	idxHeadSlot := bs.indexer.GetHighestSlot()
 	if idxMinSlot >= 0 {
 		for slotIdx := int64(idxHeadSlot); slotIdx >= int64(idxMinSlot); slotIdx-- {
 			slot := uint64(slotIdx)
@@ -411,10 +426,10 @@ func (bs *BeaconService) GetDbBlocksByGraffiti(graffiti string, pageIdx uint64, 
 			if blocks != nil {
 				for bidx := 0; bidx < len(blocks); bidx++ {
 					block := blocks[bidx]
-					if block.Orphaned && !withOrphaned {
+					if block.GetOrphaned() && !withOrphaned {
 						continue
 					}
-					blockGraffiti := string(block.Block.Data.Message.Body.Graffiti)
+					blockGraffiti := string(block.GetBlockBody().Message.Body.Graffiti)
 					if !strings.Contains(blockGraffiti, graffiti) {
 						continue
 					}
@@ -481,7 +496,8 @@ func (bs *BeaconService) GetDbBlocksByProposer(proposer uint64, pageIdx uint64, 
 		slot  uint64
 		block *indexer.BlockInfo
 	}, 0)
-	idxMinSlot := bs.indexer.GetLowestCachedSlot()
+	finalizedEpoch, _ := bs.indexer.GetFinalizedEpoch()
+	idxMinSlot := (finalizedEpoch + 1) * int64(utils.Config.Chain.Config.SlotsPerEpoch)
 	/*
 		idxHeadSlot := bs.indexer.GetHeadSlot()
 		if idxMinSlot >= 0 {
@@ -605,17 +621,19 @@ func (bs *BeaconService) GetValidatorActivity() (map[uint64]uint8, uint64) {
 	activityMap := map[uint64]uint8{}
 	epochLimit := uint64(3)
 
-	idxHeadSlot := bs.indexer.GetHeadSlot()
+	idxHeadSlot := bs.indexer.GetHighestSlot()
 	idxHeadEpoch := utils.EpochOfSlot(idxHeadSlot)
 	if idxHeadEpoch < 1 {
 		return activityMap, 0
 	}
 	idxHeadEpoch--
-	idxMinSlot := bs.indexer.GetLowestCachedSlot()
-	if idxMinSlot < 0 {
-		return activityMap, 0
+	finalizedEpoch, _ := bs.indexer.GetFinalizedEpoch()
+	var idxMinEpoch uint64
+	if finalizedEpoch < 0 {
+		idxMinEpoch = 0
+	} else {
+		idxMinEpoch = uint64(finalizedEpoch + 1)
 	}
-	idxMinEpoch := utils.EpochOfSlot(uint64(idxMinSlot))
 
 	activityEpoch := utils.EpochOfSlot(idxHeadSlot - 1)
 	bs.validatorActivityMutex.Lock()

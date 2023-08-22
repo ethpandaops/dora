@@ -75,7 +75,7 @@ func buildEpochPageData(epoch uint64) (*models.EpochPageData, time.Duration) {
 		return nil, -1
 	}
 
-	finalizedHead, _ := services.GlobalBeaconService.GetFinalizedBlockHead()
+	finalizedEpoch, _ := services.GlobalBeaconService.GetFinalizedEpoch()
 	slotAssignments, syncedEpochs := services.GlobalBeaconService.GetProposerAssignments(epoch, epoch)
 
 	nextEpoch := epoch + 1
@@ -90,10 +90,7 @@ func buildEpochPageData(epoch uint64) (*models.EpochPageData, time.Duration) {
 		NextEpoch:     nextEpoch,
 		Ts:            utils.EpochToTime(epoch),
 		Synchronized:  syncedEpochs[epoch],
-	}
-
-	if finalizedHead != nil {
-		pageData.Finalized = uint64(finalizedHead.Data.Header.Message.Slot) >= lastSlot
+		Finalized:     finalizedEpoch >= int64(epoch),
 	}
 
 	dbEpochs := services.GlobalBeaconService.GetDbEpochs(epoch, 1)

@@ -67,13 +67,7 @@ func buildIndexPageData() (*models.IndexPageData, time.Duration) {
 	}
 	currentSlotIndex := (currentSlot % utils.Config.Chain.Config.SlotsPerEpoch) + 1
 
-	finalizedHead, _ := services.GlobalBeaconService.GetFinalizedBlockHead()
-	var finalizedSlot uint64
-	if finalizedHead != nil {
-		finalizedSlot = uint64(finalizedHead.Data.Header.Message.Slot)
-	} else {
-		finalizedSlot = 0
-	}
+	finalizedEpoch, _ := services.GlobalBeaconService.GetFinalizedEpoch()
 
 	syncState := dbtypes.IndexerSyncState{}
 	db.GetExplorerState("indexer.syncstate", &syncState)
@@ -89,7 +83,7 @@ func buildIndexPageData() (*models.IndexPageData, time.Duration) {
 		DepositContract:       utils.Config.Chain.Config.DepositContractAddress,
 		ShowSyncingMessage:    !isSynced,
 		CurrentEpoch:          uint64(currentEpoch),
-		CurrentFinalizedEpoch: utils.EpochOfSlot(finalizedSlot),
+		CurrentFinalizedEpoch: finalizedEpoch,
 		CurrentSlot:           currentSlot,
 		CurrentSlotIndex:      currentSlotIndex,
 		CurrentScheduledCount: utils.Config.Chain.Config.SlotsPerEpoch - currentSlotIndex,
@@ -176,10 +170,6 @@ func buildIndexPageData() (*models.IndexPageData, time.Duration) {
 		if epochData == nil {
 			continue
 		}
-		finalized := false
-		if finalizedHead != nil && uint64(finalizedHead.Data.Header.Message.Slot) >= epochData.Epoch*utils.Config.Chain.Config.SlotsPerEpoch {
-			finalized = true
-		}
 		voteParticipation := float64(1)
 		if epochData.Eligible > 0 {
 			voteParticipation = float64(epochData.VotedTarget) * 100.0 / float64(epochData.Eligible)
@@ -187,7 +177,7 @@ func buildIndexPageData() (*models.IndexPageData, time.Duration) {
 		pageData.RecentEpochs = append(pageData.RecentEpochs, &models.IndexPageDataEpochs{
 			Epoch:             epochData.Epoch,
 			Ts:                utils.EpochToTime(epochData.Epoch),
-			Finalized:         finalized,
+			Finalized:         finalizedEpoch >= int64(epochData.Epoch),
 			EligibleEther:     epochData.Eligible,
 			TargetVoted:       epochData.VotedTarget,
 			HeadVoted:         epochData.VotedHead,

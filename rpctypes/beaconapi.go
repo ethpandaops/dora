@@ -47,8 +47,9 @@ type StandardV2BeaconBlockResponse struct {
 }
 
 type CombinedBlockResponse struct {
-	Header   *StandardV1BeaconHeaderResponse
-	Block    *StandardV2BeaconBlockResponse
+	Root     []byte
+	Header   *SignedBeaconBlockHeader
+	Block    *SignedBeaconBlock
 	Blobs    *StandardV1BlobSidecarsResponse
 	Orphaned bool
 }

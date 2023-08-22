@@ -143,8 +143,8 @@ func SearchAhead(w http.ResponseWriter, r *http.Request) {
 				if cachedBlock != nil {
 					result = &[]models.SearchAheadSlotsResult{
 						{
-							Slot:     fmt.Sprintf("%v", uint64(cachedBlock.Header.Data.Header.Message.Slot)),
-							Root:     cachedBlock.Header.Data.Root,
+							Slot:     fmt.Sprintf("%v", uint64(cachedBlock.Header.Message.Slot)),
+							Root:     cachedBlock.Root,
 							Orphaned: cachedBlock.Orphaned,
 						},
 					}

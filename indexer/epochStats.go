@@ -90,6 +90,12 @@ func (cache *indexerCache) removeEpochStats(epochStats *EpochStats) {
 	}
 }
 
+func (epochStats *EpochStats) GetProposerAssignments() map[uint64]uint64 {
+	epochStats.dutiesMutex.RLock()
+	defer epochStats.dutiesMutex.RUnlock()
+	return epochStats.proposerAssignments
+}
+
 func (client *indexerClient) ensureEpochStats(epoch uint64, head []byte) error {
 	var dependendRoot []byte
 	var proposerRsp *rpctypes.StandardV1ProposerDutiesResponse
