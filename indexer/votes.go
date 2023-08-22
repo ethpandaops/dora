@@ -22,7 +22,7 @@ type EpochVotes struct {
 	ActivityMap map[uint64]bool
 }
 
-func aggregateEpochVotes(blockMap map[uint64]*indexerCacheBlock, epoch uint64, epochStats *EpochStats, targetRoot []byte, currentOnly bool) *EpochVotes {
+func aggregateEpochVotes(blockMap map[uint64]*CacheBlock, epoch uint64, epochStats *EpochStats, targetRoot []byte, currentOnly bool) *EpochVotes {
 	firstSlot := epoch * utils.Config.Chain.Config.SlotsPerEpoch
 	lastSlot := firstSlot + utils.Config.Chain.Config.SlotsPerEpoch - 1
 	if !currentOnly {
@@ -48,7 +48,7 @@ func aggregateEpochVotes(blockMap map[uint64]*indexerCacheBlock, epoch uint64, e
 			continue
 		}
 
-		blockBody := block.getBlockBody()
+		blockBody := block.GetBlockBody()
 		if blockBody == nil {
 			continue
 		}
@@ -101,7 +101,7 @@ func aggregateEpochVotes(blockMap map[uint64]*indexerCacheBlock, epoch uint64, e
 			} /*else {
 				logger.Infof("vote target missmatch %v != 0x%x", att.Data.Target.Root, targetRoot)
 			}*/
-			if bytes.Equal(att.Data.BeaconBlockRoot, block.getParentRoot()) {
+			if bytes.Equal(att.Data.BeaconBlockRoot, block.GetParentRoot()) {
 				if isNextEpoch {
 					votes.nextEpoch.headVoteAmount += voteAmount
 				} else {

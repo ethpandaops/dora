@@ -84,9 +84,9 @@ func (bs *BeaconService) GetSlotDetailsByBlockroot(blockroot []byte, withBlobs b
 	if blockInfo := bs.indexer.GetCachedBlock(blockroot); blockInfo != nil {
 		result = &rpctypes.CombinedBlockResponse{
 			Root:     blockInfo.Root,
-			Header:   blockInfo.Header,
+			Header:   blockInfo.GetHeader(),
 			Block:    blockInfo.GetBlockBody(),
-			Orphaned: blockInfo.Orphaned,
+			Orphaned: !blockInfo.IsCanonical(bs.indexer, nil),
 		}
 	} else {
 		header, err := bs.indexer.GetRpcClient().GetBlockHeaderByBlockroot(blockroot)
@@ -120,9 +120,9 @@ func (bs *BeaconService) GetSlotDetailsByBlockroot(blockroot []byte, withBlobs b
 func (bs *BeaconService) GetSlotDetailsBySlot(slot uint64, withBlobs bool) (*rpctypes.CombinedBlockResponse, error) {
 	var result *rpctypes.CombinedBlockResponse
 	if cachedBlocks := bs.indexer.GetCachedBlocks(slot); cachedBlocks != nil {
-		var cachedBlock *indexer.BlockInfo
+		var cachedBlock *indexer.CacheBlock
 		for _, block := range cachedBlocks {
-			if !block.Orphaned {
+			if block.IsCanonical(bs.indexer, nil) {
 				cachedBlock = block
 				break
 			}
@@ -132,9 +132,9 @@ func (bs *BeaconService) GetSlotDetailsBySlot(slot uint64, withBlobs bool) (*rpc
 		}
 		result = &rpctypes.CombinedBlockResponse{
 			Root:     cachedBlock.Root,
-			Header:   cachedBlock.Header,
+			Header:   cachedBlock.GetHeader(),
 			Block:    cachedBlock.GetBlockBody(),
-			Orphaned: cachedBlock.Orphaned,
+			Orphaned: !cachedBlock.IsCanonical(bs.indexer, nil),
 		}
 	} else {
 		header, err := bs.indexer.GetRpcClient().GetBlockHeaderBySlot(slot)
@@ -198,28 +198,28 @@ func (bs *BeaconService) GetOrphanedBlock(blockroot []byte) *rpctypes.CombinedBl
 }
 
 func (bs *BeaconService) GetCachedBlockByBlockroot(blockroot []byte) *rpctypes.CombinedBlockResponse {
-	blockInfo := bs.indexer.GetCachedBlock(blockroot)
-	if blockInfo == nil {
+	cachedBlock := bs.indexer.GetCachedBlock(blockroot)
+	if cachedBlock == nil {
 		return nil
 	}
 	return &rpctypes.CombinedBlockResponse{
-		Root:     blockInfo.Root,
-		Header:   blockInfo.Header,
-		Block:    blockInfo.GetBlockBody(),
-		Orphaned: blockInfo.Orphaned,
+		Root:     cachedBlock.Root,
+		Header:   cachedBlock.GetHeader(),
+		Block:    cachedBlock.GetBlockBody(),
+		Orphaned: !cachedBlock.IsCanonical(bs.indexer, nil),
 	}
 }
 
 func (bs *BeaconService) GetCachedBlockByStateroot(stateroot []byte) *rpctypes.CombinedBlockResponse {
-	blockInfo := bs.indexer.GetCachedBlockByStateroot(stateroot)
-	if blockInfo == nil {
+	cachedBlock := bs.indexer.GetCachedBlockByStateroot(stateroot)
+	if cachedBlock == nil {
 		return nil
 	}
 	return &rpctypes.CombinedBlockResponse{
-		Root:     blockInfo.Root,
-		Header:   blockInfo.Header,
-		Block:    blockInfo.GetBlockBody(),
-		Orphaned: blockInfo.Orphaned,
+		Root:     cachedBlock.Root,
+		Header:   cachedBlock.GetHeader(),
+		Block:    cachedBlock.GetBlockBody(),
+		Orphaned: !cachedBlock.IsCanonical(bs.indexer, nil),
 	}
 }
 
@@ -340,7 +340,7 @@ func (bs *BeaconService) GetDbBlocks(firstSlot uint64, limit int32, withOrphaned
 			if blocks != nil {
 				for bidx := 0; bidx < len(blocks) && resIdx < int(limit); bidx++ {
 					block := blocks[bidx]
-					if block.Orphaned && !withOrphaned {
+					if !withOrphaned && !block.IsCanonical(bs.indexer, nil) {
 						continue
 					}
 					dbBlock := bs.indexer.BuildLiveBlock(block)
@@ -394,7 +394,7 @@ func (bs *BeaconService) GetDbBlocksForSlots(firstSlot uint64, slotLimit uint32,
 			if blocks != nil {
 				for bidx := 0; bidx < len(blocks); bidx++ {
 					block := blocks[bidx]
-					if block.Orphaned && !withOrphaned {
+					if !withOrphaned && !block.IsCanonical(bs.indexer, nil) {
 						continue
 					}
 					dbBlock := bs.indexer.BuildLiveBlock(block)
@@ -422,7 +422,7 @@ func (bs *BeaconService) GetDbBlocksForSlots(firstSlot uint64, slotLimit uint32,
 }
 
 func (bs *BeaconService) GetDbBlocksByGraffiti(graffiti string, pageIdx uint64, pageSize uint32, withOrphaned bool) []*dbtypes.Block {
-	cachedMatches := make([]*indexer.BlockInfo, 0)
+	cachedMatches := make([]*indexer.CacheBlock, 0)
 	finalizedEpoch, _ := bs.indexer.GetFinalizedEpoch()
 	idxMinSlot := (finalizedEpoch + 1) * int64(utils.Config.Chain.Config.SlotsPerEpoch)
 	idxHeadSlot := bs.indexer.GetHighestSlot()
@@ -433,7 +433,7 @@ func (bs *BeaconService) GetDbBlocksByGraffiti(graffiti string, pageIdx uint64, 
 			if blocks != nil {
 				for bidx := 0; bidx < len(blocks); bidx++ {
 					block := blocks[bidx]
-					if block.Orphaned && !withOrphaned {
+					if !withOrphaned && !block.IsCanonical(bs.indexer, nil) {
 						continue
 					}
 					blockGraffiti := string(block.GetBlockBody().Message.Body.Graffiti)
@@ -497,7 +497,7 @@ func (bs *BeaconService) GetDbBlocksByGraffiti(graffiti string, pageIdx uint64, 
 func (bs *BeaconService) GetDbBlocksByProposer(proposer uint64, pageIdx uint64, pageSize uint32, withMissing bool, withOrphaned bool) []*dbtypes.AssignedBlock {
 	cachedMatches := make([]struct {
 		slot  uint64
-		block *indexer.BlockInfo
+		block *indexer.CacheBlock
 	}, 0)
 	finalizedEpoch, _ := bs.indexer.GetFinalizedEpoch()
 	idxMinSlot := (finalizedEpoch + 1) * int64(utils.Config.Chain.Config.SlotsPerEpoch)
@@ -505,16 +505,15 @@ func (bs *BeaconService) GetDbBlocksByProposer(proposer uint64, pageIdx uint64, 
 	// get proposed blocks
 	proposedMap := map[uint64]bool{}
 	for _, block := range bs.indexer.GetCachedBlocksByProposer(proposer) {
-		if !withOrphaned && block.Orphaned {
+		if !withOrphaned && !block.IsCanonical(bs.indexer, nil) {
 			continue
 		}
-		slot := uint64(block.Header.Message.Slot)
-		proposedMap[slot] = true
+		proposedMap[block.Slot] = true
 		cachedMatches = append(cachedMatches, struct {
 			slot  uint64
-			block *indexer.BlockInfo
+			block *indexer.CacheBlock
 		}{
-			slot:  slot,
+			slot:  block.Slot,
 			block: block,
 		})
 	}
@@ -539,7 +538,7 @@ func (bs *BeaconService) GetDbBlocksByProposer(proposer uint64, pageIdx uint64, 
 				}
 				cachedMatches = append(cachedMatches, struct {
 					slot  uint64
-					block *indexer.BlockInfo
+					block *indexer.CacheBlock
 				}{
 					slot:  slot,
 					block: nil,

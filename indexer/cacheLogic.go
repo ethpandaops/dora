@@ -119,8 +119,8 @@ func (cache *indexerCache) processFinalizedEpoch(epoch uint64) error {
 	if firstBlock == nil {
 		logger.Warnf("counld not find epoch %v target (no block found)", epoch)
 	} else {
-		if firstBlock.slot == firstSlot {
-			epochTarget = firstBlock.root
+		if firstBlock.Slot == firstSlot {
+			epochTarget = firstBlock.Root
 		} else {
 			epochTarget = firstBlock.header.Message.ParentRoot
 		}
@@ -198,16 +198,16 @@ func (cache *indexerCache) processFinalizedEpoch(epoch uint64) error {
 }
 
 func (cache *indexerCache) processOrphanedBlocks(processedEpoch int64) error {
-	cachedBlocks := map[string]*indexerCacheBlock{}
-	orphanedBlocks := map[string]*indexerCacheBlock{}
+	cachedBlocks := map[string]*CacheBlock{}
+	orphanedBlocks := map[string]*CacheBlock{}
 	blockRoots := [][]byte{}
 	cache.cacheMutex.RLock()
 	for slot, blocks := range cache.slotMap {
 		if int64(utils.EpochOfSlot(slot)) <= processedEpoch {
 			for _, block := range blocks {
-				cachedBlocks[string(block.root)] = block
-				orphanedBlocks[string(block.root)] = block
-				blockRoots = append(blockRoots, block.root)
+				cachedBlocks[string(block.Root)] = block
+				orphanedBlocks[string(block.Root)] = block
+				blockRoots = append(blockRoots, block.Root)
 			}
 		}
 	}
@@ -237,7 +237,7 @@ func (cache *indexerCache) processOrphanedBlocks(processedEpoch int64) error {
 	defer tx.Rollback()
 
 	for _, block := range orphanedBlocks {
-		dbBlock := buildDbBlock(block, cache.getEpochStats(utils.EpochOfSlot(block.slot), nil))
+		dbBlock := buildDbBlock(block, cache.getEpochStats(utils.EpochOfSlot(block.Slot), nil))
 		dbBlock.Orphaned = true
 		db.InsertBlock(dbBlock, tx)
 		db.InsertOrphanedBlock(block.buildOrphanedBlock(), tx)
@@ -265,13 +265,13 @@ func (cache *indexerCache) processCachePersistence() error {
 }
 
 func (cache *indexerCache) processCacheCleanup(processedEpoch int64) error {
-	cachedBlocks := map[string]*indexerCacheBlock{}
+	cachedBlocks := map[string]*CacheBlock{}
 	clearStats := []*EpochStats{}
 	cache.cacheMutex.RLock()
 	for slot, blocks := range cache.slotMap {
 		if int64(utils.EpochOfSlot(slot)) <= processedEpoch {
 			for _, block := range blocks {
-				cachedBlocks[string(block.root)] = block
+				cachedBlocks[string(block.Root)] = block
 			}
 		}
 	}

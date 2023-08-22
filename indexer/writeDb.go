@@ -9,7 +9,7 @@ import (
 	"github.com/pk910/light-beaconchain-explorer/utils"
 )
 
-func persistEpochData(epoch uint64, blockMap map[uint64]*indexerCacheBlock, epochStats *EpochStats, epochVotes *EpochVotes, tx *sqlx.Tx) error {
+func persistEpochData(epoch uint64, blockMap map[uint64]*CacheBlock, epochStats *EpochStats, epochVotes *EpochVotes, tx *sqlx.Tx) error {
 	commitTx := false
 	if tx == nil {
 		var err error
@@ -22,7 +22,7 @@ func persistEpochData(epoch uint64, blockMap map[uint64]*indexerCacheBlock, epoc
 		commitTx = true
 	}
 
-	dbEpoch := buildDbEpoch(epoch, blockMap, epochStats, epochVotes, func(block *indexerCacheBlock) {
+	dbEpoch := buildDbEpoch(epoch, blockMap, epochStats, epochVotes, func(block *CacheBlock) {
 		// insert block
 		dbBlock := buildDbBlock(block, epochStats)
 		db.InsertBlock(dbBlock, tx)
@@ -55,15 +55,15 @@ func persistEpochData(epoch uint64, blockMap map[uint64]*indexerCacheBlock, epoc
 	return nil
 }
 
-func buildDbBlock(block *indexerCacheBlock, epochStats *EpochStats) *dbtypes.Block {
-	blockBody := block.getBlockBody()
+func buildDbBlock(block *CacheBlock, epochStats *EpochStats) *dbtypes.Block {
+	blockBody := block.GetBlockBody()
 	if blockBody == nil {
-		logger.Errorf("Error while aggregating epoch blocks: canonical block body not found: %v", block.slot)
+		logger.Errorf("Error while aggregating epoch blocks: canonical block body not found: %v", block.Slot)
 		return nil
 	}
 
 	dbBlock := dbtypes.Block{
-		Root:                  block.root,
+		Root:                  block.Root,
 		Slot:                  uint64(block.header.Message.Slot),
 		ParentRoot:            block.header.Message.ParentRoot,
 		StateRoot:             block.header.Message.StateRoot,
@@ -112,7 +112,7 @@ func buildDbBlock(block *indexerCacheBlock, epochStats *EpochStats) *dbtypes.Blo
 	return &dbBlock
 }
 
-func buildDbEpoch(epoch uint64, blockMap map[uint64]*indexerCacheBlock, epochStats *EpochStats, epochVotes *EpochVotes, blockFn func(block *indexerCacheBlock)) *dbtypes.Epoch {
+func buildDbEpoch(epoch uint64, blockMap map[uint64]*CacheBlock, epochStats *EpochStats, epochVotes *EpochVotes, blockFn func(block *CacheBlock)) *dbtypes.Epoch {
 	firstSlot := epoch * utils.Config.Chain.Config.SlotsPerEpoch
 	lastSlot := firstSlot + (utils.Config.Chain.Config.SlotsPerEpoch) - 1
 
@@ -136,9 +136,9 @@ func buildDbEpoch(epoch uint64, blockMap map[uint64]*indexerCacheBlock, epochSta
 
 		if block != nil {
 			dbEpoch.BlockCount++
-			blockBody := block.getBlockBody()
+			blockBody := block.GetBlockBody()
 			if blockBody == nil {
-				logger.Errorf("Error while aggregating epoch blocks: canonical block body not found: %v", block.slot)
+				logger.Errorf("Error while aggregating epoch blocks: canonical block body not found: %v", block.Slot)
 				continue
 			}
 			if blockFn != nil {

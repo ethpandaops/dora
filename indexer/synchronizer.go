@@ -20,7 +20,7 @@ type synchronizerState struct {
 	killChan     chan bool
 	currentEpoch uint64
 	cachedSlot   uint64
-	cachedBlocks map[uint64]*indexerCacheBlock
+	cachedBlocks map[uint64]*CacheBlock
 }
 
 func newSynchronizer(indexer *Indexer) *synchronizerState {
@@ -74,7 +74,7 @@ func (sync *synchronizerState) runSync() {
 	sync.runMutex.Lock()
 	defer sync.runMutex.Unlock()
 
-	sync.cachedBlocks = make(map[uint64]*indexerCacheBlock)
+	sync.cachedBlocks = make(map[uint64]*CacheBlock)
 	sync.cachedSlot = 0
 	isComplete := false
 	synclogger.Infof("synchronization started. Head epoch: %v", sync.currentEpoch)
@@ -170,9 +170,9 @@ func (sync *synchronizerState) syncEpoch(syncEpoch uint64) bool {
 			synclogger.Errorf("error fetching slot %v block: %v", slot, err)
 			return false
 		}
-		sync.cachedBlocks[slot] = &indexerCacheBlock{
-			root:   headerRsp.Data.Root,
-			slot:   slot,
+		sync.cachedBlocks[slot] = &CacheBlock{
+			Root:   headerRsp.Data.Root,
+			Slot:   slot,
 			header: &headerRsp.Data.Header,
 			block:  &blockRsp.Data,
 		}
@@ -198,7 +198,7 @@ func (sync *synchronizerState) syncEpoch(syncEpoch uint64) bool {
 	}
 
 	// process epoch vote aggregations
-	var firstBlock *indexerCacheBlock
+	var firstBlock *CacheBlock
 	lastSlot = firstSlot + (utils.Config.Chain.Config.SlotsPerEpoch) - 1
 	for slot := firstSlot; slot <= lastSlot; slot++ {
 		if sync.cachedBlocks[slot] != nil {
@@ -210,7 +210,7 @@ func (sync *synchronizerState) syncEpoch(syncEpoch uint64) bool {
 	var targetRoot []byte
 	if firstBlock != nil {
 		if uint64(firstBlock.header.Message.Slot) == firstSlot {
-			targetRoot = firstBlock.root
+			targetRoot = firstBlock.Root
 		} else {
 			targetRoot = firstBlock.header.Message.ParentRoot
 		}

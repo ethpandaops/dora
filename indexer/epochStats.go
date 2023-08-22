@@ -121,7 +121,7 @@ func (client *IndexerClient) ensureEpochStats(epoch uint64, head []byte) error {
 	if epoch > 0 {
 		firstBlock := client.indexerCache.getFirstCanonicalBlock(epoch, head)
 		if firstBlock != nil {
-			logger.WithField("client", client.clientName).Debugf("canonical first block for epoch %v: %v/0x%x (head: 0x%x)", epoch, firstBlock.slot, firstBlock.root, head)
+			logger.WithField("client", client.clientName).Debugf("canonical first block for epoch %v: %v/0x%x (head: 0x%x)", epoch, firstBlock.Slot, firstBlock.Root, head)
 			firstBlock.mutex.RLock()
 			if firstBlock.header != nil {
 				dependendRoot = firstBlock.header.Message.ParentRoot
@@ -131,8 +131,8 @@ func (client *IndexerClient) ensureEpochStats(epoch uint64, head []byte) error {
 		if dependendRoot == nil {
 			lastBlock := client.indexerCache.getLastCanonicalBlock(epoch-1, head)
 			if lastBlock != nil {
-				logger.WithField("client", client.clientName).Debugf("canonical last block for epoch %v: %v/0x%x (head: 0x%x)", epoch-1, lastBlock.slot, lastBlock.root, head)
-				dependendRoot = lastBlock.root
+				logger.WithField("client", client.clientName).Debugf("canonical last block for epoch %v: %v/0x%x (head: 0x%x)", epoch-1, lastBlock.Slot, lastBlock.Root, head)
+				dependendRoot = lastBlock.Root
 			}
 		}
 	}
@@ -202,7 +202,7 @@ func (epochStats *EpochStats) ensureEpochStatsLazy(client *IndexerClient, propos
 		if epochStats.Epoch == 0 {
 			epochStats.dependentStateRef = "genesis"
 		} else if dependendBlock := client.indexerCache.getCachedBlock(epochStats.DependentRoot); dependendBlock != nil {
-			if dependendBlock.slot == 0 {
+			if dependendBlock.Slot == 0 {
 				epochStats.dependentStateRef = "genesis"
 			} else {
 				dependendBlock.mutex.RLock()

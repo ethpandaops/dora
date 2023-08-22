@@ -229,19 +229,19 @@ func (client *IndexerClient) prefillCache(finalizedSlot uint64) error {
 		currentEpoch = -1
 	}
 	for epoch := firstEpoch; int64(epoch) <= currentEpoch; epoch++ {
-		client.ensureEpochStats(epoch, currentBlock.root)
+		client.ensureEpochStats(epoch, currentBlock.Root)
 	}
 
 	return nil
 }
 
-func (client *IndexerClient) ensureBlock(block *indexerCacheBlock, header *rpctypes.SignedBeaconBlockHeader) error {
+func (client *IndexerClient) ensureBlock(block *CacheBlock, header *rpctypes.SignedBeaconBlockHeader) error {
 	// ensure the cached block is loaded (header & block body), load missing parts
 	block.mutex.Lock()
 	defer block.mutex.Unlock()
 	if block.header == nil {
 		if header == nil {
-			headerRsp, err := client.rpcClient.GetBlockHeaderByBlockroot(block.root)
+			headerRsp, err := client.rpcClient.GetBlockHeaderByBlockroot(block.Root)
 			if err != nil {
 				return err
 			}
@@ -250,7 +250,7 @@ func (client *IndexerClient) ensureBlock(block *indexerCacheBlock, header *rpcty
 		block.header = header
 	}
 	if block.block == nil && !block.isInDb {
-		blockRsp, err := client.rpcClient.GetBlockBodyByBlockroot(block.root)
+		blockRsp, err := client.rpcClient.GetBlockBodyByBlockroot(block.Root)
 		if err != nil {
 			return err
 		}
@@ -290,7 +290,7 @@ func (client *IndexerClient) pollLatestBlocks() error {
 	return nil
 }
 
-func (client *IndexerClient) ensureParentBlocks(currentBlock *indexerCacheBlock) error {
+func (client *IndexerClient) ensureParentBlocks(currentBlock *CacheBlock) error {
 	// walk backwards and load all blocks until we reach a block that is marked as seen by this client or is smaller than finalized
 	parentRoot := []byte(currentBlock.header.Message.ParentRoot)
 	for {
@@ -357,9 +357,9 @@ func (client *IndexerClient) setHeadBlock(root []byte, slot uint64) error {
 func (client *IndexerClient) processBlockEvent(evt *rpctypes.StandardV1StreamedBlockEvent) error {
 	currentBlock, isNewBlock := client.indexerCache.createOrGetCachedBlock(evt.Block, uint64(evt.Slot))
 	if isNewBlock {
-		logger.WithField("client", client.clientName).Infof("received block %v:%v [0x%x] stream", utils.EpochOfSlot(currentBlock.slot), currentBlock.slot, currentBlock.root)
+		logger.WithField("client", client.clientName).Infof("received block %v:%v [0x%x] stream", utils.EpochOfSlot(currentBlock.Slot), currentBlock.Slot, currentBlock.Root)
 	} else {
-		logger.WithField("client", client.clientName).Debugf("received known block %v:%v [0x%x] stream", utils.EpochOfSlot(currentBlock.slot), currentBlock.slot, currentBlock.root)
+		logger.WithField("client", client.clientName).Debugf("received known block %v:%v [0x%x] stream", utils.EpochOfSlot(currentBlock.Slot), currentBlock.Slot, currentBlock.Root)
 	}
 	err := client.ensureBlock(currentBlock, nil)
 	if err != nil {

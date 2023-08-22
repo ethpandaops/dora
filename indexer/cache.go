@@ -22,8 +22,8 @@ type indexerCache struct {
 	processedEpoch          int64
 	persistEpoch            int64
 	cleanupEpoch            int64
-	slotMap                 map[uint64][]*indexerCacheBlock
-	rootMap                 map[string]*indexerCacheBlock
+	slotMap                 map[uint64][]*CacheBlock
+	rootMap                 map[string]*CacheBlock
 	epochStatsMutex         sync.RWMutex
 	epochStatsMap           map[uint64][]*EpochStats
 	lastValidatorsEpoch     int64
@@ -41,8 +41,8 @@ func newIndexerCache(indexer *Indexer) *indexerCache {
 		processedEpoch:          -2,
 		persistEpoch:            -1,
 		cleanupEpoch:            -1,
-		slotMap:                 make(map[uint64][]*indexerCacheBlock),
-		rootMap:                 make(map[string]*indexerCacheBlock),
+		slotMap:                 make(map[uint64][]*CacheBlock),
+		rootMap:                 make(map[string]*CacheBlock),
 		epochStatsMap:           make(map[uint64][]*EpochStats),
 		lastValidatorsEpoch:     -1,
 		validatorLoadingLimiter: make(chan int, 2),
@@ -145,18 +145,18 @@ func (cache *indexerCache) getCanonicalDistance(blockRoot []byte, head []byte) (
 	if block == nil {
 		blockSlot = uint64(cache.finalizedEpoch+1) * utils.Config.Chain.Config.SlotsPerEpoch
 	} else {
-		blockSlot = block.slot
+		blockSlot = block.Slot
 	}
 	canonicalBlock := cache.getCachedBlock(head)
 	var distance uint64 = 0
-	if bytes.Equal(canonicalBlock.root, blockRoot) {
+	if bytes.Equal(canonicalBlock.Root, blockRoot) {
 		return true, distance
 	}
 	for canonicalBlock != nil {
-		if canonicalBlock.slot < blockSlot {
+		if canonicalBlock.Slot < blockSlot {
 			return false, 0
 		}
-		parentRoot := canonicalBlock.getParentRoot()
+		parentRoot := canonicalBlock.GetParentRoot()
 		if parentRoot == nil {
 			return false, 0
 		}
@@ -172,13 +172,13 @@ func (cache *indexerCache) getCanonicalDistance(blockRoot []byte, head []byte) (
 	return false, 0
 }
 
-func (cache *indexerCache) getLastCanonicalBlock(epoch uint64, head []byte) *indexerCacheBlock {
+func (cache *indexerCache) getLastCanonicalBlock(epoch uint64, head []byte) *CacheBlock {
 	if head == nil {
 		head = cache.finalizedRoot
 	}
 	canonicalBlock := cache.getCachedBlock(head)
-	for canonicalBlock != nil && utils.EpochOfSlot(canonicalBlock.slot) > epoch {
-		parentRoot := canonicalBlock.getParentRoot()
+	for canonicalBlock != nil && utils.EpochOfSlot(canonicalBlock.Slot) > epoch {
+		parentRoot := canonicalBlock.GetParentRoot()
 		if parentRoot == nil {
 			return nil
 		}
@@ -187,21 +187,21 @@ func (cache *indexerCache) getLastCanonicalBlock(epoch uint64, head []byte) *ind
 			return nil
 		}
 	}
-	if utils.EpochOfSlot(canonicalBlock.slot) == epoch {
+	if utils.EpochOfSlot(canonicalBlock.Slot) == epoch {
 		return canonicalBlock
 	} else {
 		return nil
 	}
 }
 
-func (cache *indexerCache) getFirstCanonicalBlock(epoch uint64, head []byte) *indexerCacheBlock {
+func (cache *indexerCache) getFirstCanonicalBlock(epoch uint64, head []byte) *CacheBlock {
 	canonicalBlock := cache.getLastCanonicalBlock(epoch, head)
 	for canonicalBlock != nil {
 		canonicalBlock.mutex.RLock()
 		parentRoot := []byte(canonicalBlock.header.Message.ParentRoot)
 		canonicalBlock.mutex.RUnlock()
 		parentCanonicalBlock := cache.getCachedBlock(parentRoot)
-		if parentCanonicalBlock == nil || utils.EpochOfSlot(parentCanonicalBlock.slot) != epoch {
+		if parentCanonicalBlock == nil || utils.EpochOfSlot(parentCanonicalBlock.Slot) != epoch {
 			return canonicalBlock
 		}
 		canonicalBlock = parentCanonicalBlock
@@ -209,13 +209,13 @@ func (cache *indexerCache) getFirstCanonicalBlock(epoch uint64, head []byte) *in
 	return nil
 }
 
-func (cache *indexerCache) getCanonicalBlockMap(epoch uint64, head []byte) map[uint64]*indexerCacheBlock {
-	canonicalMap := make(map[uint64]*indexerCacheBlock)
+func (cache *indexerCache) getCanonicalBlockMap(epoch uint64, head []byte) map[uint64]*CacheBlock {
+	canonicalMap := make(map[uint64]*CacheBlock)
 	canonicalBlock := cache.getLastCanonicalBlock(epoch, head)
-	for canonicalBlock != nil && utils.EpochOfSlot(canonicalBlock.slot) == epoch {
+	for canonicalBlock != nil && utils.EpochOfSlot(canonicalBlock.Slot) == epoch {
 		canonicalBlock.mutex.RLock()
 		parentRoot := []byte(canonicalBlock.header.Message.ParentRoot)
-		canonicalMap[canonicalBlock.slot] = canonicalBlock
+		canonicalMap[canonicalBlock.Slot] = canonicalBlock
 		canonicalBlock.mutex.RUnlock()
 		canonicalBlock = cache.getCachedBlock(parentRoot)
 	}

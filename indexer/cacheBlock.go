@@ -8,9 +8,9 @@ import (
 	"github.com/pk910/light-beaconchain-explorer/rpctypes"
 )
 
-type indexerCacheBlock struct {
-	root   []byte
-	slot   uint64
+type CacheBlock struct {
+	Root   []byte
+	Slot   uint64
 	mutex  sync.RWMutex
 	seenBy uint64
 	isInDb bool
@@ -18,26 +18,26 @@ type indexerCacheBlock struct {
 	block  *rpctypes.SignedBeaconBlock
 }
 
-func (cache *indexerCache) getCachedBlock(root []byte) *indexerCacheBlock {
+func (cache *indexerCache) getCachedBlock(root []byte) *CacheBlock {
 	cache.cacheMutex.RLock()
 	defer cache.cacheMutex.RUnlock()
 	return cache.rootMap[string(root)]
 }
 
-func (cache *indexerCache) createOrGetCachedBlock(root []byte, slot uint64) (*indexerCacheBlock, bool) {
+func (cache *indexerCache) createOrGetCachedBlock(root []byte, slot uint64) (*CacheBlock, bool) {
 	cache.cacheMutex.Lock()
 	defer cache.cacheMutex.Unlock()
 	rootKey := string(root)
 	if cache.rootMap[rootKey] != nil {
 		return cache.rootMap[rootKey], false
 	}
-	cacheBlock := &indexerCacheBlock{
-		root: root,
-		slot: slot,
+	cacheBlock := &CacheBlock{
+		Root: root,
+		Slot: slot,
 	}
 	cache.rootMap[rootKey] = cacheBlock
 	if cache.slotMap[slot] == nil {
-		cache.slotMap[slot] = []*indexerCacheBlock{cacheBlock}
+		cache.slotMap[slot] = []*CacheBlock{cacheBlock}
 	} else {
 		cache.slotMap[slot] = append(cache.slotMap[slot], cacheBlock)
 	}
@@ -50,15 +50,15 @@ func (cache *indexerCache) createOrGetCachedBlock(root []byte, slot uint64) (*in
 	return cacheBlock, true
 }
 
-func (cache *indexerCache) removeCachedBlock(cachedBlock *indexerCacheBlock) {
+func (cache *indexerCache) removeCachedBlock(cachedBlock *CacheBlock) {
 	cache.cacheMutex.Lock()
 	defer cache.cacheMutex.Unlock()
-	logger.Debugf("Remove cached block: %v (0x%x)", cachedBlock.slot, cachedBlock.root)
+	logger.Debugf("Remove cached block: %v (0x%x)", cachedBlock.Slot, cachedBlock.Root)
 
-	rootKey := string(cachedBlock.root)
+	rootKey := string(cachedBlock.Root)
 	delete(cache.rootMap, rootKey)
 
-	slotBlocks := cache.slotMap[cachedBlock.slot]
+	slotBlocks := cache.slotMap[cachedBlock.Slot]
 	if slotBlocks != nil {
 		var idx uint64
 		len := uint64(len(slotBlocks))
@@ -69,34 +69,34 @@ func (cache *indexerCache) removeCachedBlock(cachedBlock *indexerCacheBlock) {
 		}
 		if idx < len {
 			if len == 1 {
-				delete(cache.slotMap, cachedBlock.slot)
+				delete(cache.slotMap, cachedBlock.Slot)
 			} else {
 				if idx < len-1 {
-					cache.slotMap[cachedBlock.slot][idx] = cache.slotMap[cachedBlock.slot][len-1]
+					cache.slotMap[cachedBlock.Slot][idx] = cache.slotMap[cachedBlock.Slot][len-1]
 				}
-				cache.slotMap[cachedBlock.slot] = cache.slotMap[cachedBlock.slot][0 : len-1]
+				cache.slotMap[cachedBlock.Slot] = cache.slotMap[cachedBlock.Slot][0 : len-1]
 			}
 		}
 	}
 }
 
-func (block *indexerCacheBlock) buildOrphanedBlock() *dbtypes.OrphanedBlock {
+func (block *CacheBlock) buildOrphanedBlock() *dbtypes.OrphanedBlock {
 	headerJson, err := json.Marshal(block.header)
 	if err != nil {
 		return nil
 	}
-	blockJson, err := json.Marshal(block.getBlockBody())
+	blockJson, err := json.Marshal(block.GetBlockBody())
 	if err != nil {
 		return nil
 	}
 	return &dbtypes.OrphanedBlock{
-		Root:   block.root,
+		Root:   block.Root,
 		Header: string(headerJson),
 		Block:  string(blockJson),
 	}
 }
 
-func (block *indexerCacheBlock) getParentRoot() []byte {
+func (block *CacheBlock) GetParentRoot() []byte {
 	block.mutex.RLock()
 	defer block.mutex.RUnlock()
 	if block.header != nil {
@@ -105,7 +105,13 @@ func (block *indexerCacheBlock) getParentRoot() []byte {
 	return nil
 }
 
-func (block *indexerCacheBlock) getBlockBody() *rpctypes.SignedBeaconBlock {
+func (block *CacheBlock) GetHeader() *rpctypes.SignedBeaconBlockHeader {
+	block.mutex.RLock()
+	defer block.mutex.RUnlock()
+	return block.header
+}
+
+func (block *CacheBlock) GetBlockBody() *rpctypes.SignedBeaconBlock {
 	block.mutex.RLock()
 	defer block.mutex.RUnlock()
 	if block.block != nil {
@@ -116,4 +122,11 @@ func (block *indexerCacheBlock) getBlockBody() *rpctypes.SignedBeaconBlock {
 	}
 	// TODO: load from DB
 	return nil
+}
+
+func (block *CacheBlock) IsCanonical(indexer *Indexer, head []byte) bool {
+	if head == nil {
+		_, head = indexer.GetCanonicalHead()
+	}
+	return indexer.indexerCache.isCanonicalBlock(block.Root, head)
 }
