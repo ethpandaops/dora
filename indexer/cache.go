@@ -201,8 +201,14 @@ func (cache *indexerCache) getFirstCanonicalBlock(epoch uint64, head []byte) *Ca
 	canonicalBlock := cache.getLastCanonicalBlock(epoch, head)
 	for canonicalBlock != nil {
 		canonicalBlock.mutex.RLock()
-		parentRoot := []byte(canonicalBlock.header.Message.ParentRoot)
+		var parentRoot []byte = nil
+		if canonicalBlock.header != nil {
+			parentRoot = []byte(canonicalBlock.header.Message.ParentRoot)
+		}
 		canonicalBlock.mutex.RUnlock()
+		if parentRoot == nil {
+			return canonicalBlock
+		}
 		parentCanonicalBlock := cache.getCachedBlock(parentRoot)
 		if parentCanonicalBlock == nil || utils.EpochOfSlot(parentCanonicalBlock.Slot) != epoch {
 			return canonicalBlock
