@@ -17,6 +17,7 @@ type IndexerClient struct {
 	rpcClient          *rpc.BeaconClient
 	indexerCache       *indexerCache
 	cacheMutex         sync.RWMutex
+	lastStreamEvent    time.Time
 	isSynchronizing    bool
 	isConnected        bool
 	lastHeadSlot       int64
@@ -118,7 +119,14 @@ func (client *IndexerClient) runIndexerClient() error {
 	}
 
 	// process events
+	client.lastStreamEvent = time.Now()
 	for {
+		var eventTimeout time.Duration = time.Since(client.lastStreamEvent)
+		if eventTimeout > 30*time.Second {
+			eventTimeout = 0
+		} else {
+			eventTimeout = 30*time.Second - eventTimeout
+		}
 		select {
 		case evt := <-blockStream.EventChan:
 			now := time.Now()
@@ -131,19 +139,21 @@ func (client *IndexerClient) runIndexerClient() error {
 				client.processFinalizedEvent(evt.Data.(*rpctypes.StandardV1StreamedFinalizedCheckpointEvent))
 			}
 			logger.WithField("client", client.clientName).Debugf("event (%v) processing time: %v ms", evt.Event, time.Since(now).Milliseconds())
+			client.lastStreamEvent = time.Now()
 		case ready := <-blockStream.ReadyChan:
-			client.isConnected = ready
-			if ready {
-				logger.WithField("client", client.clientName).Info("RPC event stream connected")
-			} else {
-				logger.WithField("client", client.clientName).Info("RPC event stream disconnected")
+			if client.isConnected != ready {
+				client.isConnected = ready
+				if ready {
+					logger.WithField("client", client.clientName).Info("RPC event stream connected")
+				} else {
+					logger.WithField("client", client.clientName).Info("RPC event stream disconnected")
+				}
 			}
-		case <-blockStream.CloseChan:
-			return fmt.Errorf("lost connection to beacon event stream")
-		case <-time.After(30 * time.Second):
+		case <-time.After(eventTimeout):
 			logger.WithField("client", client.clientName).Info("no head event since 30 secs, polling chain head")
 			err := client.pollLatestBlocks()
 			if err != nil {
+				client.isConnected = false
 				return err
 			}
 		}

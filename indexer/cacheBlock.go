@@ -125,12 +125,12 @@ func (block *CacheBlock) GetBlockBody() *rpctypes.SignedBeaconBlock {
 		return nil
 	}
 
-	logger.Debugf("loading pruned block body from db: %v", block.Slot)
+	logger.Debugf("loading unfinalized block body from db: %v", block.Slot)
 	blockData := db.GetUnfinalizedBlock(block.Root)
 	var blockBody rpctypes.SignedBeaconBlock
 	err := json.Unmarshal([]byte(blockData.Block), &blockBody)
 	if err != nil {
-		logger.Warnf("Error parsing unfinalized block body from db: %v", err)
+		logger.Warnf("error parsing unfinalized block body from db: %v", err)
 		return nil
 	}
 	block.block = &blockBody

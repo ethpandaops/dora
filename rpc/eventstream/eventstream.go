@@ -1,7 +1,6 @@
 package eventstream
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -22,7 +21,8 @@ type Stream struct {
 	lastEventId string
 	retry       time.Duration
 	// Events emits the events received by the stream
-	Events chan eventsource.Event
+	Events chan StreamEvent
+	Ready  chan bool
 	// Errors emits any errors encountered while reading events from the stream.
 	// It's mainly for informative purposes - the client isn't required to take any
 	// action when an error is encountered. The stream will always attempt to continue,
@@ -33,17 +33,7 @@ type Stream struct {
 	// isClosed is a marker that the stream is/should be closed
 	isClosed bool
 	// isClosedMutex is a mutex protecting concurrent read/write access of isClosed
-	isClosedMutex sync.RWMutex
-	// streamWaitGroup drops to 0 when all the goroutines that process
-	// events have ended.
-	streamWaitGroup sync.WaitGroup
-	// cancelRequest cancels the context on the outbound request.
-	cancelRequest func()
-}
-
-type SubscriptionError struct {
-	Code    int
-	Message string
+	closeMutex sync.Mutex
 }
 
 type StreamEvent interface {
@@ -56,6 +46,11 @@ type StreamEvent interface {
 	// The payload of the event.
 	Data() string
 	Retry() int64
+}
+
+type SubscriptionError struct {
+	Code    int
+	Message string
 }
 
 func (e SubscriptionError) Error() string {
@@ -81,17 +76,14 @@ func SubscribeWithRequest(lastEventId string, request *http.Request) (*Stream, e
 // SubscribeWith takes a http client and request providing customization over both headers and
 // control over the http client settings (timeouts, tls, etc)
 func SubscribeWith(lastEventId string, client *http.Client, request *http.Request) (*Stream, error) {
-	ctx, cancelRequest := context.WithCancel(request.Context())
-	request = request.WithContext(ctx)
-
 	stream := &Stream{
-		c:             client,
-		req:           request,
-		cancelRequest: cancelRequest,
-		lastEventId:   lastEventId,
-		retry:         time.Millisecond * 3000,
-		Events:        make(chan eventsource.Event),
-		Errors:        make(chan error),
+		c:           client,
+		req:         request,
+		lastEventId: lastEventId,
+		retry:       time.Millisecond * 3000,
+		Events:      make(chan StreamEvent),
+		Errors:      make(chan error, 10),
+		Ready:       make(chan bool),
 	}
 	stream.c.CheckRedirect = checkRedirect
 
@@ -99,38 +91,24 @@ func SubscribeWith(lastEventId string, client *http.Client, request *http.Reques
 	if err != nil {
 		return nil, err
 	}
-	stream.stream(r)
+	go stream.stream(r)
 	return stream, nil
 }
 
 // Close will close the stream. It is safe for concurrent access and can be called multiple times.
 func (stream *Stream) Close() {
-	if stream.isStreamClosed() {
-		return
-	}
+	go func() {
+		stream.closeMutex.Lock()
+		defer stream.closeMutex.Unlock()
+		if stream.isClosed {
+			return
+		}
+		fmt.Printf("closed event stream\n")
 
-	stream.markStreamClosed()
-
-	// Cancel the request and wait for the goroutine that processes the
-	// response to end. This ensures that nothing further will be written
-	// to the output channels.
-	stream.cancelRequest()
-	stream.streamWaitGroup.Wait()
-
-	close(stream.Errors)
-	close(stream.Events)
-}
-
-func (stream *Stream) isStreamClosed() bool {
-	stream.isClosedMutex.RLock()
-	defer stream.isClosedMutex.RUnlock()
-	return stream.isClosed
-}
-
-func (stream *Stream) markStreamClosed() {
-	stream.isClosedMutex.Lock()
-	defer stream.isClosedMutex.Unlock()
-	stream.isClosed = true
+		stream.isClosed = true
+		close(stream.Errors)
+		close(stream.Events)
+	}()
 }
 
 // Go's http package doesn't copy headers across when it encounters
@@ -169,23 +147,15 @@ func (stream *Stream) connect() (r io.ReadCloser, err error) {
 }
 
 func (stream *Stream) stream(r io.ReadCloser) {
-	stream.streamWaitGroup.Add(1)
+	defer r.Close()
 
-	go func() {
-		defer stream.streamWaitGroup.Done()
-		defer r.Close()
+	stream.Ready <- true
 
-		// receives events until an error is encountered
-		stream.receiveEvents(r)
+	// receives events until an error is encountered
+	stream.receiveEvents(r)
 
-		// If the stream was closed, don't attempt to reconnect.
-		if stream.isStreamClosed() {
-			return
-		}
-
-		// tries to reconnect and start the stream again
-		stream.retryRestartStream()
-	}()
+	// tries to reconnect and start the stream again
+	stream.retryRestartStream()
 }
 
 func (stream *Stream) receiveEvents(r io.ReadCloser) {
@@ -193,13 +163,17 @@ func (stream *Stream) receiveEvents(r io.ReadCloser) {
 
 	for {
 		ev, err := dec.Decode()
-		if stream.isStreamClosed() {
+		stream.closeMutex.Lock()
+		if stream.isClosed {
+			stream.closeMutex.Unlock()
 			return
 		}
 		if err != nil {
 			stream.Errors <- err
+			stream.closeMutex.Unlock()
 			return
 		}
+		stream.closeMutex.Unlock()
 
 		pub := ev.(StreamEvent)
 		if pub.Retry() > 0 {
@@ -208,7 +182,7 @@ func (stream *Stream) receiveEvents(r io.ReadCloser) {
 		if len(pub.Id()) > 0 {
 			stream.lastEventId = pub.Id()
 		}
-		stream.Events <- ev
+		stream.Events <- pub
 	}
 }
 
@@ -219,7 +193,7 @@ func (stream *Stream) retryRestartStream() {
 			stream.Logger.Printf("Reconnecting in %0.4f secs\n", backoff.Seconds())
 		}
 		time.Sleep(backoff)
-		if stream.isStreamClosed() {
+		if stream.isClosed {
 			return
 		}
 		// NOTE: because of the defer we're opening the new connection
@@ -227,10 +201,10 @@ func (stream *Stream) retryRestartStream() {
 		// but something to be aware of.
 		r, err := stream.connect()
 		if err == nil {
-			stream.stream(r)
+			go stream.stream(r)
 			return
 		}
 		stream.Errors <- err
-		backoff *= 2
+		backoff = 10 * time.Second
 	}
 }

@@ -31,7 +31,6 @@ type BeaconStream struct {
 	events       uint16
 	endpoint     string
 	killChan     chan bool
-	CloseChan    chan bool
 	ReadyChan    chan bool
 	EventChan    chan *BeaconStreamEvent
 	lastHeadSeen time.Time
@@ -43,7 +42,6 @@ func (bc *BeaconClient) NewBlockStream(events uint16) *BeaconStream {
 		events:    events,
 		endpoint:  bc.endpoint,
 		killChan:  make(chan bool),
-		CloseChan: make(chan bool),
 		ReadyChan: make(chan bool),
 		EventChan: make(chan *BeaconStreamEvent, 10),
 	}
@@ -73,11 +71,9 @@ func (bs *BeaconStream) startStream() {
 	bs.runMutex.Lock()
 	defer bs.runMutex.Unlock()
 
-	errorChan := make(chan error)
 	stream := bs.subscribeStream(bs.endpoint, bs.events)
 	if stream != nil {
 		bs.ready = true
-		bs.ReadyChan <- true
 		running := true
 		for running {
 			select {
@@ -92,33 +88,18 @@ func (bs *BeaconStream) startStream() {
 				}
 			case <-bs.killChan:
 				running = false
+			case <-stream.Ready:
+				bs.ReadyChan <- true
 			case err := <-stream.Errors:
 				logger.Errorf("beacon block stream error: %v", err)
-			case err := <-errorChan:
-				logger.Errorf("beacon block stream error: %v", err)
-			case <-time.After(60 * time.Second):
-				// timeout - no block since 5 mins
-				logger.Errorf("beacon block stream error, no new head retrieved since %v (%v ago)", bs.lastHeadSeen, time.Since(bs.lastHeadSeen))
-				stream.Close()
-				stream.Errors = errorChan
-				bs.ready = false
 				bs.ReadyChan <- false
-				stream = bs.subscribeStream(bs.endpoint, bs.events)
-				if stream == nil {
-					running = false
-				}
 			}
 		}
 	}
 	if stream != nil {
 		stream.Close()
 	}
-	if bs.ready {
-		bs.ready = false
-		bs.ReadyChan <- false
-	}
 	bs.running = false
-	bs.CloseChan <- true
 }
 
 func (bs *BeaconStream) subscribeStream(endpoint string, events uint16) *eventstream.Stream {
