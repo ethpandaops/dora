@@ -187,7 +187,7 @@ func (cache *indexerCache) getLastCanonicalBlock(epoch uint64, head []byte) *Cac
 			return nil
 		}
 	}
-	if utils.EpochOfSlot(canonicalBlock.Slot) == epoch {
+	if canonicalBlock != nil && utils.EpochOfSlot(canonicalBlock.Slot) == epoch {
 		return canonicalBlock
 	} else {
 		return nil

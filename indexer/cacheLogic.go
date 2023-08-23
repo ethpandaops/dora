@@ -11,7 +11,7 @@ import (
 func (cache *indexerCache) runCacheLoop() {
 	defer func() {
 		if err := recover(); err != nil {
-			logger.Errorf("uncaught panic in runCacheLoop subroutine: %v", err)
+			logger.WithError(err.(error)).Errorf("uncaught panic in runCacheLoop subroutine: %v", err)
 		}
 	}()
 
@@ -101,6 +101,9 @@ func (cache *indexerCache) runCacheLogic() error {
 }
 
 func (cache *indexerCache) processFinalizedEpochs() error {
+	if cache.finalizedEpoch < 0 {
+		return nil
+	}
 	for cache.processedEpoch < cache.finalizedEpoch {
 		processEpoch := uint64(cache.processedEpoch + 1)
 		err := cache.processFinalizedEpoch(processEpoch)
@@ -139,10 +142,6 @@ func (cache *indexerCache) processFinalizedEpoch(epoch uint64) error {
 			time.Sleep(10 * time.Millisecond)
 		}
 	}
-	epochStats.dutiesMutex.RLock()
-	defer epochStats.dutiesMutex.RUnlock()
-	epochStats.validatorsMutex.RLock()
-	defer epochStats.validatorsMutex.RUnlock()
 
 	// get canonical blocks
 	canonicalMap := cache.getCanonicalBlockMap(epoch, nil)
