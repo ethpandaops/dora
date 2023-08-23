@@ -48,7 +48,7 @@ func (cache *indexerCache) createOrGetCachedBlock(root []byte, slot uint64) (*Ca
 	if int64(slot) > cache.highestSlot {
 		cache.highestSlot = int64(slot)
 	}
-	if int64(slot) > cache.lowestSlot {
+	if cache.lowestSlot < 0 || int64(slot) < cache.lowestSlot {
 		cache.lowestSlot = int64(slot)
 	}
 	return cacheBlock, true
