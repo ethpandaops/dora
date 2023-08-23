@@ -214,6 +214,11 @@ func (client *IndexerClient) prefillCache(finalizedSlot uint64, latestHeader *rp
 	}
 	client.ensureBlock(currentBlock, &latestHeader.Data.Header)
 
+	finalizedCheckpoint := (client.indexerCache.finalizedEpoch + 1) * int64(utils.Config.Chain.Config.SlotsPerEpoch)
+	if finalizedCheckpoint > int64(finalizedSlot) {
+		finalizedSlot = uint64(finalizedCheckpoint)
+	}
+
 	// walk backwards and load all blocks until we reach a finalized epoch
 	parentRoot := []byte(currentBlock.header.Message.ParentRoot)
 	for {
@@ -364,7 +369,12 @@ func (client *IndexerClient) ensureParentBlocks(currentBlock *CacheBlock) error 
 			logger.WithField("client", client.clientName).Debugf("received known block %v:%v [0x%x] backfill", utils.EpochOfSlot(parentSlot), parentSlot, parentRoot)
 		}
 		client.ensureBlock(parentBlock, parentHead)
-		if int64(utils.EpochOfSlot(parentSlot)) <= client.lastFinalizedEpoch {
+
+		finalizedEpoch := client.indexerCache.finalizedEpoch
+		if client.lastFinalizedEpoch > finalizedEpoch {
+			finalizedEpoch = client.lastFinalizedEpoch
+		}
+		if int64(utils.EpochOfSlot(parentSlot)) <= finalizedEpoch {
 			logger.WithField("client", client.clientName).Debugf("backfill cache: reached finalized slot %v:%v [0x%x]", utils.EpochOfSlot(parentSlot), parentSlot, parentRoot)
 			break
 		}
