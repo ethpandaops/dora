@@ -2,6 +2,7 @@ package rpctypes
 
 import (
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -19,6 +20,44 @@ func (s *BytesHexStr) UnmarshalText(b []byte) error {
 	out := make([]byte, len(b)/2)
 	hex.Decode(out, b)
 	*s = out
+	return nil
+}
+
+func (s *BytesHexStr) UnmarshalJSON(b []byte) error {
+	if s == nil {
+		return fmt.Errorf("cannot unmarshal bytes into nil")
+	}
+	var bytes []byte
+	var tmpStr string
+	if err := json.Unmarshal(b, &tmpStr); err == nil {
+		if len(tmpStr) >= 2 && tmpStr[0] == '0' && tmpStr[1] == 'x' {
+			tmpStr = tmpStr[2:]
+		}
+		bytes = make([]byte, len(tmpStr)/2)
+		hex.Decode(bytes, []byte(tmpStr))
+	} else {
+		err := json.Unmarshal(b, &bytes)
+		if err != nil {
+			var tmpStrArr []string
+			err = json.Unmarshal(b, &tmpStrArr)
+			if err == nil {
+				bytes = make([]byte, len(tmpStrArr))
+				for idx, str := range tmpStrArr {
+					n, e := strconv.ParseUint(str, 0, 64)
+					if e != nil {
+						err = e
+						break
+					}
+					bytes[idx] = uint8(n)
+				}
+			}
+		}
+		if err != nil {
+			fmt.Printf("err: %v\n", err)
+			return err
+		}
+	}
+	*s = bytes
 	return nil
 }
 

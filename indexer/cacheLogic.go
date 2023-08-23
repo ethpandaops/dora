@@ -213,8 +213,9 @@ func (cache *indexerCache) processOrphanedBlocks(processedEpoch int64) error {
 	}
 	cache.cacheMutex.RUnlock()
 
-	logger.Infof("processing %v non-canonical blocks (epoch <= %v)", len(cachedBlocks), processedEpoch)
+	logger.Infof("processing %v non-canonical blocks (epoch <= %v, lowest slot: %v)", len(cachedBlocks), processedEpoch, cache.lowestSlot)
 	if len(cachedBlocks) == 0 {
+		cache.resetLowestSlot()
 		return nil
 	}
 
