@@ -67,7 +67,7 @@ func (cache *indexerCache) runCacheLogic() error {
 			}
 		}
 
-		if cache.lowestSlot >= 0 && int64(utils.EpochOfSlot(uint64(cache.lowestSlot))) < cache.processedEpoch {
+		if cache.lowestSlot >= 0 && int64(utils.EpochOfSlot(uint64(cache.lowestSlot))) <= cache.processedEpoch {
 			// process cached blocks in already processed epochs (duplicates or new orphaned blocks)
 			err := cache.processOrphanedBlocks(cache.processedEpoch)
 			if err != nil {
