@@ -2,7 +2,12 @@ package utils
 
 import (
 	"fmt"
+	"io"
+	"net/http"
+	"net/url"
 	"os"
+	"strings"
+	"time"
 
 	"dario.cat/mergo"
 	"github.com/kelseyhightower/envconfig"
@@ -40,12 +45,29 @@ func ReadConfig(cfg *types.Config, path string) error {
 		if err != nil {
 			return err
 		}
+
 	} else {
-		f, err := os.Open(cfg.Chain.ConfigPath)
-		if err != nil {
-			return fmt.Errorf("error opening Chain Config file %v: %w", cfg.Chain.ConfigPath, err)
+		var reader io.Reader
+		if strings.HasPrefix(cfg.Chain.ConfigPath, "http://") || strings.HasPrefix(cfg.Chain.ConfigPath, "https://") {
+			client := &http.Client{Timeout: time.Second * 120}
+			resp, err := client.Get(cfg.Chain.ConfigPath)
+			if err != nil {
+				return err
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode != http.StatusOK {
+				return fmt.Errorf("url: %v, result: %v %v", path, resp.StatusCode, resp.Status)
+			}
+			reader = resp.Body
+		} else {
+			f, err := os.Open(cfg.Chain.ConfigPath)
+			if err != nil {
+				return fmt.Errorf("error opening Chain Config file %v: %w", cfg.Chain.ConfigPath, err)
+			}
+			defer f.Close()
+			reader = f
 		}
-		decoder := yaml.NewDecoder(f)
+		decoder := yaml.NewDecoder(reader)
 		err = decoder.Decode(&chainConfig)
 		if err != nil {
 			return fmt.Errorf("error decoding Chain Config file %v: %v", cfg.Chain.ConfigPath, err)
@@ -100,6 +122,16 @@ func ReadConfig(cfg *types.Config, path string) error {
 			},
 		}
 	}
+	for idx, endpoint := range cfg.BeaconApi.Endpoints {
+		if endpoint.Name == "" {
+			url, _ := url.Parse(endpoint.Url)
+			if url != nil {
+				cfg.BeaconApi.Endpoints[idx].Name = url.Hostname()
+			} else {
+				cfg.BeaconApi.Endpoints[idx].Name = fmt.Sprintf("endpoint-%v", idx+1)
+			}
+		}
+	}
 	if cfg.BeaconApi.Endpoints == nil || len(cfg.BeaconApi.Endpoints) == 0 {
 		return fmt.Errorf("missing beacon node endpoints (need at least 1 endpoint to run the explorer)")
 	}
@@ -129,9 +161,8 @@ func readConfigFile(cfg *types.Config, path string) error {
 	decoder := yaml.NewDecoder(f)
 	err = decoder.Decode(cfg)
 	if err != nil {
-		return fmt.Errorf("error decoding config file %v: %v", path, err)
+		return fmt.Errorf("error decoding explorer config: %v", err)
 	}
-
 	return nil
 }
 
