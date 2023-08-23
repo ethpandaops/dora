@@ -149,6 +149,9 @@ func (cache *indexerCache) getCanonicalDistance(blockRoot []byte, head []byte) (
 	}
 	canonicalBlock := cache.getCachedBlock(head)
 	var distance uint64 = 0
+	if canonicalBlock == nil {
+		return false, 0
+	}
 	if bytes.Equal(canonicalBlock.Root, blockRoot) {
 		return true, distance
 	}

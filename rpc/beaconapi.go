@@ -18,12 +18,14 @@ import (
 var logger = logrus.StandardLogger().WithField("module", "rpc")
 
 type BeaconClient struct {
+	name     string
 	endpoint string
 }
 
 // NewBeaconClient is used to create a new beacon client
-func NewBeaconClient(endpoint string) (*BeaconClient, error) {
+func NewBeaconClient(endpoint string, name string) (*BeaconClient, error) {
 	client := &BeaconClient{
+		name:     name,
 		endpoint: endpoint,
 	}
 
@@ -34,7 +36,9 @@ var errNotFound = errors.New("not found 404")
 
 func (bc *BeaconClient) get(url string) ([]byte, error) {
 	t0 := time.Now()
-	defer func() { logger.Debugf("RPC call (byte): %v [%v ms]", url, time.Since(t0).Milliseconds()) }()
+	defer func() {
+		logger.WithField("client", bc.name).Debugf("RPC call (byte): %v [%v ms]", url, time.Since(t0).Milliseconds())
+	}()
 	client := &http.Client{Timeout: time.Second * 120}
 	resp, err := client.Get(url)
 	if err != nil {
@@ -57,7 +61,9 @@ func (bc *BeaconClient) get(url string) ([]byte, error) {
 
 func (bc *BeaconClient) getJson(url string, returnValue interface{}) error {
 	t0 := time.Now()
-	defer func() { logger.Debugf("RPC call (json): %v [%v ms]", url, time.Since(t0).Milliseconds()) }()
+	defer func() {
+		logger.WithField("client", bc.name).Debugf("RPC call (json): %v [%v ms]", url, time.Since(t0).Milliseconds())
+	}()
 	client := &http.Client{Timeout: time.Second * 120}
 	resp, err := client.Get(url)
 	if err != nil {

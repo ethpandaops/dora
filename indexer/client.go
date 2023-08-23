@@ -22,6 +22,7 @@ type IndexerClient struct {
 	cacheMutex         sync.RWMutex
 	lastStreamEvent    time.Time
 	isSynchronizing    bool
+	syncDistance       uint64
 	isConnected        bool
 	lastHeadSlot       int64
 	lastHeadRoot       []byte
@@ -56,7 +57,7 @@ func (client *IndexerClient) runIndexerClientLoop() {
 	for {
 		err := client.runIndexerClient()
 		if err != nil {
-			logger.WithField("client", client.clientName).Errorf("Indexer client error: %v, retrying in 10 sec...", err)
+			logger.WithField("client", client.clientName).Errorf("indexer client error: %v, retrying in 10 sec...", err)
 			time.Sleep(10 * time.Second)
 		} else {
 			return
@@ -96,8 +97,9 @@ func (client *IndexerClient) runIndexerClient() error {
 	if syncStatus == nil {
 		return fmt.Errorf("could not get synchronization status")
 	}
-	client.isSynchronizing = syncStatus.Data.IsSyncing
-	if syncStatus.Data.IsSyncing {
+	client.isSynchronizing = syncStatus.Data.IsSyncing || syncStatus.Data.IsOptimistic
+	client.syncDistance = uint64(syncStatus.Data.SyncDistance)
+	if syncStatus.Data.IsSyncing || syncStatus.Data.IsOptimistic {
 		return fmt.Errorf("beacon node is synchronizing")
 	}
 
@@ -170,6 +172,7 @@ func (client *IndexerClient) runIndexerClient() error {
 				client.isConnected = false
 				return err
 			}
+			client.lastStreamEvent = time.Now()
 		}
 
 		currentEpoch := utils.TimeToEpoch(time.Now())
@@ -248,11 +251,8 @@ func (client *IndexerClient) prefillCache(finalizedSlot uint64) error {
 	} else {
 		firstEpoch = utils.EpochOfSlot(finalizedSlot)
 	}
-	currentEpoch := utils.TimeToEpoch(time.Now())
-	if currentEpoch < 0 {
-		currentEpoch = -1
-	}
-	for epoch := firstEpoch; int64(epoch) <= currentEpoch; epoch++ {
+	currentEpoch := utils.EpochOfSlot(currentBlock.Slot)
+	for epoch := firstEpoch; epoch <= currentEpoch; epoch++ {
 		client.ensureEpochStats(epoch, currentBlock.Root)
 	}
 
