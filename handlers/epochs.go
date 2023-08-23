@@ -90,7 +90,7 @@ func buildEpochsPageData(firstEpoch uint64, pageSize uint64) (*models.EpochsPage
 	}
 	pageData.LastPageEpoch = pageSize - 1
 
-	finalizedHead, _ := services.GlobalBeaconService.GetFinalizedBlockHead()
+	finalizedEpoch, _ := services.GlobalBeaconService.GetFinalizedEpoch()
 	epochLimit := pageSize
 
 	// load epochs
@@ -102,10 +102,8 @@ func buildEpochsPageData(firstEpoch uint64, pageSize uint64) (*models.EpochsPage
 	allFinalized := true
 	for epochIdx := int64(firstEpoch); epochIdx >= 0 && epochCount < epochLimit; epochIdx-- {
 		epoch := uint64(epochIdx)
-		finalized := false
-		if finalizedHead != nil && uint64(finalizedHead.Data.Header.Message.Slot) >= epoch*utils.Config.Chain.Config.SlotsPerEpoch {
-			finalized = true
-		} else {
+		finalized := finalizedEpoch >= epochIdx
+		if !finalized {
 			allFinalized = false
 		}
 		epochData := &models.EpochsPageDataEpoch{

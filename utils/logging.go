@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -18,7 +17,7 @@ type LogWriter struct {
 }
 
 func InitLogger() *LogWriter {
-	logger.SetOutput(ioutil.Discard) // Send all logs to nowhere by default
+	logger.SetOutput(io.Discard) // Send all logs to nowhere by default
 	logger.SetLevel(logger.TraceLevel)
 	logWriter := &LogWriter{}
 

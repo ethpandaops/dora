@@ -1,5 +1,5 @@
 logging:
-  outputLevel: "info"
+  #outputLevel: "debug"
   #outputStderr: false
 
   #filePath: "explorer.log"
@@ -32,18 +32,26 @@ frontend:
   #validatorNamesInventory: "https://config.4844-devnet-7.ethpandaops.io/api/v1/nodes/validator-ranges"
   
 beaconapi:
-  endpoint: "http://10.16.71.108:5052"
+  endpoints:
+    - name: "pk01"
+      url: "http://10.16.71.108:5052"
+      priority: 4
+      archive: true
+    - name: "lh"
+      url: "http://10.16.97.2:5052"
+      priority: 5
+    - name: "teku"
+      url: "http://10.16.97.3:5051"
+      priority: 5
   #endpoint: "http://10.16.71.102:5052"
   localCacheSize: 100 # 100MB
   redisCacheAddr: ""
   redisCachePrefix: ""
 
 indexer:
-  prepopulateEpochs: 2
-  inMemoryEpochs: 10
-  epochProcessingDelay: 2
+  inMemoryEpochs: 2
   disableIndexWriter: false
-  syncEpochCooldown: 2
+  syncEpochCooldown: 1
 
 database:
   engine: "sqlite"

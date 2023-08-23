@@ -142,14 +142,13 @@ func getSlotPageData(blockSlot int64, blockRoot []byte) *models.SlotPageData {
 
 func buildSlotPageData(blockSlot int64, blockRoot []byte) (*models.SlotPageData, time.Duration) {
 	currentSlot := utils.TimeToSlot(uint64(time.Now().Unix()))
-	finalizedHead, err := services.GlobalBeaconService.GetFinalizedBlockHead()
+	finalizedEpoch, _ := services.GlobalBeaconService.GetFinalizedEpoch()
 	var blockData *rpctypes.CombinedBlockResponse
-	if err == nil {
-		if blockSlot > -1 {
-			blockData, err = services.GlobalBeaconService.GetSlotDetailsBySlot(uint64(blockSlot), false)
-		} else {
-			blockData, err = services.GlobalBeaconService.GetSlotDetailsByBlockroot(blockRoot, false)
-		}
+	var err error
+	if blockSlot > -1 {
+		blockData, err = services.GlobalBeaconService.GetSlotDetailsBySlot(uint64(blockSlot), false)
+	} else {
+		blockData, err = services.GlobalBeaconService.GetSlotDetailsByBlockroot(blockRoot, false)
 	}
 
 	if blockData == nil && err == nil {
@@ -167,7 +166,7 @@ func buildSlotPageData(blockSlot int64, blockRoot []byte) (*models.SlotPageData,
 
 	var slot uint64
 	if blockData != nil {
-		slot = uint64(blockData.Header.Data.Header.Message.Slot)
+		slot = uint64(blockData.Header.Message.Slot)
 	} else if blockSlot > -1 {
 		slot = uint64(blockSlot)
 	} else {
@@ -176,16 +175,13 @@ func buildSlotPageData(blockSlot int64, blockRoot []byte) (*models.SlotPageData,
 	logrus.Printf("slot page called: %v", slot)
 
 	pageData := &models.SlotPageData{
-		Slot:         slot,
-		Epoch:        utils.EpochOfSlot(slot),
-		Ts:           utils.SlotToTime(slot),
-		NextSlot:     slot + 1,
-		PreviousSlot: slot - 1,
-		Future:       slot >= currentSlot,
-	}
-
-	if finalizedHead != nil {
-		pageData.EpochFinalized = uint64(finalizedHead.Data.Header.Message.Slot) >= slot
+		Slot:           slot,
+		Epoch:          utils.EpochOfSlot(slot),
+		Ts:             utils.SlotToTime(slot),
+		NextSlot:       slot + 1,
+		PreviousSlot:   slot - 1,
+		Future:         slot >= currentSlot,
+		EpochFinalized: finalizedEpoch >= int64(utils.EpochOfSlot(slot)),
 	}
 
 	assignments, err := services.GlobalBeaconService.GetEpochAssignments(utils.EpochOfSlot(slot))
@@ -196,7 +192,7 @@ func buildSlotPageData(blockSlot int64, blockRoot []byte) (*models.SlotPageData,
 
 	var cacheTimeout time.Duration
 	if pageData.Future {
-		timeDiff := pageData.Ts.Sub(time.Now())
+		timeDiff := time.Until(pageData.Ts)
 		if timeDiff > 10*time.Minute {
 			cacheTimeout = 10 * time.Minute
 		} else {
@@ -223,7 +219,7 @@ func buildSlotPageData(blockSlot int64, blockRoot []byte) (*models.SlotPageData,
 		} else {
 			pageData.Status = uint16(models.SlotStatusFound)
 		}
-		pageData.Proposer = uint64(blockData.Block.Data.Message.ProposerIndex)
+		pageData.Proposer = uint64(blockData.Block.Message.ProposerIndex)
 		pageData.ProposerName = services.GlobalBeaconService.GetValidatorName(pageData.Proposer)
 		pageData.Block = getSlotPageBlockData(blockData, assignments)
 	}
@@ -233,24 +229,24 @@ func buildSlotPageData(blockSlot int64, blockRoot []byte) (*models.SlotPageData,
 
 func getSlotPageBlockData(blockData *rpctypes.CombinedBlockResponse, assignments *rpctypes.EpochAssignments) *models.SlotPageBlockData {
 	pageData := &models.SlotPageBlockData{
-		BlockRoot:              blockData.Header.Data.Root,
-		ParentRoot:             blockData.Header.Data.Header.Message.ParentRoot,
-		StateRoot:              blockData.Header.Data.Header.Message.StateRoot,
-		Signature:              blockData.Header.Data.Header.Signature,
-		RandaoReveal:           blockData.Block.Data.Message.Body.RandaoReveal,
-		Graffiti:               blockData.Block.Data.Message.Body.Graffiti,
-		Eth1dataDepositroot:    blockData.Block.Data.Message.Body.Eth1Data.DepositRoot,
-		Eth1dataDepositcount:   uint64(blockData.Block.Data.Message.Body.Eth1Data.DepositCount),
-		Eth1dataBlockhash:      blockData.Block.Data.Message.Body.Eth1Data.BlockHash,
-		ProposerSlashingsCount: uint64(len(blockData.Block.Data.Message.Body.ProposerSlashings)),
-		AttesterSlashingsCount: uint64(len(blockData.Block.Data.Message.Body.AttesterSlashings)),
-		AttestationsCount:      uint64(len(blockData.Block.Data.Message.Body.Attestations)),
-		DepositsCount:          uint64(len(blockData.Block.Data.Message.Body.Deposits)),
-		VoluntaryExitsCount:    uint64(len(blockData.Block.Data.Message.Body.VoluntaryExits)),
-		SlashingsCount:         uint64(len(blockData.Block.Data.Message.Body.ProposerSlashings)) + uint64(len(blockData.Block.Data.Message.Body.AttesterSlashings)),
+		BlockRoot:              blockData.Root,
+		ParentRoot:             blockData.Header.Message.ParentRoot,
+		StateRoot:              blockData.Header.Message.StateRoot,
+		Signature:              blockData.Header.Signature,
+		RandaoReveal:           blockData.Block.Message.Body.RandaoReveal,
+		Graffiti:               blockData.Block.Message.Body.Graffiti,
+		Eth1dataDepositroot:    blockData.Block.Message.Body.Eth1Data.DepositRoot,
+		Eth1dataDepositcount:   uint64(blockData.Block.Message.Body.Eth1Data.DepositCount),
+		Eth1dataBlockhash:      blockData.Block.Message.Body.Eth1Data.BlockHash,
+		ProposerSlashingsCount: uint64(len(blockData.Block.Message.Body.ProposerSlashings)),
+		AttesterSlashingsCount: uint64(len(blockData.Block.Message.Body.AttesterSlashings)),
+		AttestationsCount:      uint64(len(blockData.Block.Message.Body.Attestations)),
+		DepositsCount:          uint64(len(blockData.Block.Message.Body.Deposits)),
+		VoluntaryExitsCount:    uint64(len(blockData.Block.Message.Body.VoluntaryExits)),
+		SlashingsCount:         uint64(len(blockData.Block.Message.Body.ProposerSlashings)) + uint64(len(blockData.Block.Message.Body.AttesterSlashings)),
 	}
 
-	epoch := utils.EpochOfSlot(uint64(blockData.Header.Data.Header.Message.Slot))
+	epoch := utils.EpochOfSlot(uint64(blockData.Header.Message.Slot))
 	assignmentsMap := make(map[uint64]*rpctypes.EpochAssignments)
 	assignmentsLoaded := make(map[uint64]bool)
 	assignmentsMap[epoch] = assignments
@@ -258,7 +254,7 @@ func getSlotPageBlockData(blockData *rpctypes.CombinedBlockResponse, assignments
 
 	pageData.Attestations = make([]*models.SlotPageAttestation, pageData.AttestationsCount)
 	for i := uint64(0); i < pageData.AttestationsCount; i++ {
-		attestation := blockData.Block.Data.Message.Body.Attestations[i]
+		attestation := blockData.Block.Message.Body.Attestations[i]
 		var attAssignments []uint64
 		attEpoch := utils.EpochOfSlot(uint64(attestation.Data.Slot))
 		if !assignmentsLoaded[attEpoch] { // load epoch duties if needed
@@ -295,7 +291,7 @@ func getSlotPageBlockData(blockData *rpctypes.CombinedBlockResponse, assignments
 
 	pageData.Deposits = make([]*models.SlotPageDeposit, pageData.DepositsCount)
 	for i := uint64(0); i < pageData.DepositsCount; i++ {
-		deposit := blockData.Block.Data.Message.Body.Deposits[i]
+		deposit := blockData.Block.Message.Body.Deposits[i]
 		pageData.Deposits[i] = &models.SlotPageDeposit{
 			PublicKey:             deposit.Data.Pubkey,
 			Withdrawalcredentials: deposit.Data.WithdrawalCredentials,
@@ -306,7 +302,7 @@ func getSlotPageBlockData(blockData *rpctypes.CombinedBlockResponse, assignments
 
 	pageData.VoluntaryExits = make([]*models.SlotPageVoluntaryExit, pageData.VoluntaryExitsCount)
 	for i := uint64(0); i < pageData.VoluntaryExitsCount; i++ {
-		exit := blockData.Block.Data.Message.Body.VoluntaryExits[i]
+		exit := blockData.Block.Message.Body.VoluntaryExits[i]
 		pageData.VoluntaryExits[i] = &models.SlotPageVoluntaryExit{
 			ValidatorIndex: uint64(exit.Message.ValidatorIndex),
 			ValidatorName:  services.GlobalBeaconService.GetValidatorName(uint64(exit.Message.ValidatorIndex)),
@@ -317,7 +313,7 @@ func getSlotPageBlockData(blockData *rpctypes.CombinedBlockResponse, assignments
 
 	pageData.AttesterSlashings = make([]*models.SlotPageAttesterSlashing, pageData.AttesterSlashingsCount)
 	for i := uint64(0); i < pageData.AttesterSlashingsCount; i++ {
-		slashing := blockData.Block.Data.Message.Body.AttesterSlashings[i]
+		slashing := blockData.Block.Message.Body.AttesterSlashings[i]
 		slashingData := &models.SlotPageAttesterSlashing{
 			Attestation1Indices:         make([]uint64, len(slashing.Attestation1.AttestingIndices)),
 			Attestation1Signature:       slashing.Attestation1.Signature,
@@ -358,7 +354,7 @@ func getSlotPageBlockData(blockData *rpctypes.CombinedBlockResponse, assignments
 
 	pageData.ProposerSlashings = make([]*models.SlotPageProposerSlashing, pageData.ProposerSlashingsCount)
 	for i := uint64(0); i < pageData.ProposerSlashingsCount; i++ {
-		slashing := blockData.Block.Data.Message.Body.ProposerSlashings[i]
+		slashing := blockData.Block.Message.Body.ProposerSlashings[i]
 		pageData.ProposerSlashings[i] = &models.SlotPageProposerSlashing{
 			ProposerIndex:     uint64(slashing.SignedHeader1.Message.ProposerIndex),
 			ProposerName:      services.GlobalBeaconService.GetValidatorName(uint64(slashing.SignedHeader1.Message.ProposerIndex)),
@@ -376,7 +372,7 @@ func getSlotPageBlockData(blockData *rpctypes.CombinedBlockResponse, assignments
 	}
 
 	if epoch >= utils.Config.Chain.Config.AltairForkEpoch {
-		syncAggregate := blockData.Block.Data.Message.Body.SyncAggregate
+		syncAggregate := blockData.Block.Message.Body.SyncAggregate
 		pageData.SyncAggregateBits = syncAggregate.SyncCommitteeBits
 		pageData.SyncAggregateSignature = syncAggregate.SyncCommitteeSignature
 		if assignments != nil {
@@ -394,7 +390,7 @@ func getSlotPageBlockData(blockData *rpctypes.CombinedBlockResponse, assignments
 	}
 
 	if epoch >= utils.Config.Chain.Config.BellatrixForkEpoch {
-		executionPayload := blockData.Block.Data.Message.Body.ExecutionPayload
+		executionPayload := blockData.Block.Message.Body.ExecutionPayload
 		pageData.ExecutionData = &models.SlotPageExecutionData{
 			ParentHash:        executionPayload.ParentHash,
 			FeeRecipient:      executionPayload.FeeRecipient,
@@ -415,10 +411,10 @@ func getSlotPageBlockData(blockData *rpctypes.CombinedBlockResponse, assignments
 	}
 
 	if epoch >= utils.Config.Chain.Config.CappellaForkEpoch {
-		pageData.BLSChangesCount = uint64(len(blockData.Block.Data.Message.Body.SignedBLSToExecutionChange))
+		pageData.BLSChangesCount = uint64(len(blockData.Block.Message.Body.SignedBLSToExecutionChange))
 		pageData.BLSChanges = make([]*models.SlotPageBLSChange, pageData.BLSChangesCount)
 		for i := uint64(0); i < pageData.BLSChangesCount; i++ {
-			blschange := blockData.Block.Data.Message.Body.SignedBLSToExecutionChange[i]
+			blschange := blockData.Block.Message.Body.SignedBLSToExecutionChange[i]
 			pageData.BLSChanges[i] = &models.SlotPageBLSChange{
 				ValidatorIndex: uint64(blschange.Message.ValidatorIndex),
 				ValidatorName:  services.GlobalBeaconService.GetValidatorName(uint64(blschange.Message.ValidatorIndex)),
@@ -428,10 +424,10 @@ func getSlotPageBlockData(blockData *rpctypes.CombinedBlockResponse, assignments
 			}
 		}
 
-		pageData.WithdrawalsCount = uint64(len(blockData.Block.Data.Message.Body.ExecutionPayload.Withdrawals))
+		pageData.WithdrawalsCount = uint64(len(blockData.Block.Message.Body.ExecutionPayload.Withdrawals))
 		pageData.Withdrawals = make([]*models.SlotPageWithdrawal, pageData.WithdrawalsCount)
 		for i := uint64(0); i < pageData.WithdrawalsCount; i++ {
-			withdrawal := blockData.Block.Data.Message.Body.ExecutionPayload.Withdrawals[i]
+			withdrawal := blockData.Block.Message.Body.ExecutionPayload.Withdrawals[i]
 			pageData.Withdrawals[i] = &models.SlotPageWithdrawal{
 				Index:          uint64(withdrawal.Index),
 				ValidatorIndex: uint64(withdrawal.ValidatorIndex),
@@ -443,12 +439,12 @@ func getSlotPageBlockData(blockData *rpctypes.CombinedBlockResponse, assignments
 	}
 
 	if epoch >= utils.Config.Chain.Config.DenebForkEpoch {
-		pageData.BlobsCount = uint64(len(blockData.Block.Data.Message.Body.BlobKzgCommitments))
+		pageData.BlobsCount = uint64(len(blockData.Block.Message.Body.BlobKzgCommitments))
 		pageData.Blobs = make([]*models.SlotPageBlob, pageData.BlobsCount)
 		for i := uint64(0); i < pageData.BlobsCount; i++ {
 			blobData := &models.SlotPageBlob{
 				Index:         i,
-				KzgCommitment: blockData.Block.Data.Message.Body.BlobKzgCommitments[i],
+				KzgCommitment: blockData.Block.Message.Body.BlobKzgCommitments[i],
 			}
 			pageData.Blobs[i] = blobData
 		}

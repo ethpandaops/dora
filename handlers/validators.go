@@ -73,9 +73,9 @@ func buildValidatorsPageData(firstValIdx uint64, pageSize uint64, stateFilter st
 		validatorSet = validatorSetRsp.Data
 	}
 
-	if stateFilter != "" {
-		// TODO: apply filter
-	}
+	//if stateFilter != "" {
+	// TODO: apply filter
+	//}
 
 	totalValidatorCount := uint64(len(validatorSet))
 	if firstValIdx == 0 {

@@ -44,7 +44,8 @@ type Config struct {
 	} `yaml:"frontend"`
 
 	BeaconApi struct {
-		Endpoint string `yaml:"endpoint" envconfig:"BEACONAPI_ENDPOINT"`
+		Endpoint  string           `yaml:"endpoint" envconfig:"BEACONAPI_ENDPOINT"`
+		Endpoints []EndpointConfig `yaml:"endpoints"`
 
 		LocalCacheSize       int    `yaml:"localCacheSize" envconfig:"BEACONAPI_LOCAL_CACHE_SIZE"`
 		AssignmentsCacheSize int    `yaml:"assignmentsCacheSize" envconfig:"BEACONAPI_ASSIGNMENTS_CACHE_SIZE"`
@@ -53,11 +54,9 @@ type Config struct {
 	} `yaml:"beaconapi"`
 
 	Indexer struct {
-		PrepopulateEpochs    uint16 `yaml:"prepopulateEpochs" envconfig:"INDEXER_PREPOPULATE_EPOCHS"`
-		InMemoryEpochs       uint16 `yaml:"inMemoryEpochs" envconfig:"INDEXER_IN_MEMORY_EPOCHS"`
-		EpochProcessingDelay uint16 `yaml:"epochProcessingDelay" envconfig:"INDEXER_EPOCH_PROCESSING_DELAY"`
-		DisableIndexWriter   bool   `yaml:"disableIndexWriter" envconfig:"INDEXER_DISABLE_INDEX_WRITER"`
-		SyncEpochCooldown    uint   `yaml:"syncEpochCooldown" envconfig:"INDEXER_SYNC_EPOCH_COOLDOWN"`
+		InMemoryEpochs     uint16 `yaml:"inMemoryEpochs" envconfig:"INDEXER_IN_MEMORY_EPOCHS"`
+		DisableIndexWriter bool   `yaml:"disableIndexWriter" envconfig:"INDEXER_DISABLE_INDEX_WRITER"`
+		SyncEpochCooldown  uint   `yaml:"syncEpochCooldown" envconfig:"INDEXER_SYNC_EPOCH_COOLDOWN"`
 	} `yaml:"indexer"`
 
 	Database struct {
@@ -86,6 +85,13 @@ type Config struct {
 			MaxIdleConns int    `yaml:"maxIdleConns" envconfig:"DATABASE_PGSQL_WRITER_MAX_IDLE_CONNS"`
 		} `yaml:"pgsqlWriter"`
 	} `yaml:"database"`
+}
+
+type EndpointConfig struct {
+	Url      string `yaml:"url"`
+	Name     string `yaml:"name"`
+	Archive  bool   `yaml:"archive"`
+	Priority int    `yaml:"priority"`
 }
 
 type SqliteDatabaseConfig struct {

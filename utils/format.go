@@ -331,7 +331,7 @@ func FormatValidatorWithIndex(index uint64, name string) template.HTML {
 }
 
 func FormatRecentTimeShort(ts time.Time) template.HTML {
-	duration := ts.Sub(time.Now())
+	duration := time.Until(ts)
 	var timeStr string
 	absDuraction := duration.Abs()
 	if absDuraction < 1*time.Second {

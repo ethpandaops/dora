@@ -1,16 +1,13 @@
 package indexer
 
 import (
-	"strings"
 	"sync"
 	"time"
 
-	"github.com/sirupsen/logrus"
-
 	"github.com/pk910/light-beaconchain-explorer/db"
 	"github.com/pk910/light-beaconchain-explorer/dbtypes"
-	"github.com/pk910/light-beaconchain-explorer/rpctypes"
 	"github.com/pk910/light-beaconchain-explorer/utils"
+	"github.com/sirupsen/logrus"
 )
 
 var synclogger = logrus.StandardLogger().WithField("module", "synchronizer")
@@ -23,7 +20,7 @@ type synchronizerState struct {
 	killChan     chan bool
 	currentEpoch uint64
 	cachedSlot   uint64
-	cachedBlocks map[uint64][]*BlockInfo
+	cachedBlocks map[uint64]*CacheBlock
 }
 
 func newSynchronizer(indexer *Indexer) *synchronizerState {
@@ -52,13 +49,13 @@ func (sync *synchronizerState) startSync(startEpoch uint64) {
 	sync.stateMutex.Unlock()
 	// wait for synchronizer to stop
 	sync.runMutex.Lock()
-	sync.runMutex.Unlock()
+	defer sync.runMutex.Unlock()
 
 	// start synchronizer
 	sync.stateMutex.Lock()
 	defer sync.stateMutex.Unlock()
 	if sync.running {
-		synclogger.Errorf("Cannot start synchronizer: already running")
+		synclogger.Errorf("cannot start synchronizer: already running")
 		return
 	}
 	sync.currentEpoch = startEpoch
@@ -68,35 +65,37 @@ func (sync *synchronizerState) startSync(startEpoch uint64) {
 }
 
 func (sync *synchronizerState) runSync() {
+	defer func() {
+		if err := recover(); err != nil {
+			synclogger.Errorf("uncaught panic in runSync subroutine: %v", err)
+		}
+	}()
+
 	sync.runMutex.Lock()
 	defer sync.runMutex.Unlock()
 
-	sync.cachedBlocks = make(map[uint64][]*BlockInfo)
+	sync.cachedBlocks = make(map[uint64]*CacheBlock)
 	sync.cachedSlot = 0
 	isComplete := false
-	synclogger.Infof("Synchronization started. Head epoch: %v", sync.currentEpoch)
+	synclogger.Infof("synchronization started. Head epoch: %v", sync.currentEpoch)
 
 	for {
 		// synchronize next epoch
-		sync.stateMutex.Lock()
 		syncEpoch := sync.currentEpoch
-		sync.stateMutex.Unlock()
 
-		synclogger.Infof("Synchronising epoch %v", syncEpoch)
+		synclogger.Infof("synchronizing epoch %v", syncEpoch)
 		if sync.syncEpoch(syncEpoch) {
-			sync.indexer.state.cacheMutex.Lock()
-			indexerEpoch := sync.indexer.state.lastProcessedEpoch
-			sync.indexer.state.cacheMutex.Unlock()
+			finalizedEpoch, _ := sync.indexer.indexerCache.getFinalizedHead()
 			sync.stateMutex.Lock()
 			syncEpoch++
 			sync.currentEpoch = syncEpoch
 			sync.stateMutex.Unlock()
-			if int64(syncEpoch) > indexerEpoch {
+			if int64(syncEpoch) > finalizedEpoch {
 				isComplete = true
 				break
 			}
 		} else {
-			synclogger.Warnf("Synchronisation of epoch %v failed", syncEpoch)
+			synclogger.Warnf("synchronization of epoch %v failed", syncEpoch)
 		}
 
 		if sync.checkKillChan(time.Duration(utils.Config.Indexer.SyncEpochCooldown) * time.Second) {
@@ -105,9 +104,9 @@ func (sync *synchronizerState) runSync() {
 	}
 
 	if isComplete {
-		synclogger.Infof("Synchronization complete. Head epoch: %v", sync.currentEpoch)
+		synclogger.Infof("synchronization complete. Head epoch: %v", sync.currentEpoch)
 	} else {
-		synclogger.Infof("Synchronization aborted. Head epoch: %v", sync.currentEpoch)
+		synclogger.Infof("synchronization aborted. Head epoch: %v", sync.currentEpoch)
 	}
 
 	sync.running = false
@@ -136,10 +135,12 @@ func (sync *synchronizerState) syncEpoch(syncEpoch uint64) bool {
 		return true
 	}
 
+	client := sync.indexer.getReadyClient(true, nil)
+
 	// load epoch assignments
-	epochAssignments, err := sync.indexer.rpcClient.GetEpochAssignments(syncEpoch)
+	epochAssignments, err := client.rpcClient.GetEpochAssignments(syncEpoch)
 	if err != nil {
-		synclogger.Errorf("Error fetching epoch %v duties: %v", syncEpoch, err)
+		synclogger.Errorf("error fetching epoch %v duties: %v", syncEpoch, err)
 	}
 
 	if sync.checkKillChan(0) {
@@ -153,26 +154,28 @@ func (sync *synchronizerState) syncEpoch(syncEpoch uint64) bool {
 		if sync.cachedSlot >= slot {
 			continue
 		}
-		header, err := sync.indexer.rpcClient.GetBlockHeaderBySlot(slot)
+		headerRsp, err := client.rpcClient.GetBlockHeaderBySlot(slot)
 		if err != nil {
-			synclogger.Errorf("Error fetching slot %v header: %v", slot, err)
+			synclogger.Errorf("error fetching slot %v header: %v", slot, err)
 			return false
 		}
-		if header == nil {
+		if headerRsp == nil {
 			continue
 		}
 		if sync.checkKillChan(0) {
 			return false
 		}
-		block, err := sync.indexer.rpcClient.GetBlockBodyByBlockroot(header.Data.Root)
+		blockRsp, err := client.rpcClient.GetBlockBodyByBlockroot(headerRsp.Data.Root)
 		if err != nil {
-			synclogger.Errorf("Error fetching slot %v block: %v", slot, err)
+			synclogger.Errorf("error fetching slot %v block: %v", slot, err)
 			return false
 		}
-		sync.cachedBlocks[slot] = []*BlockInfo{{
-			Header: header,
-			Block:  block,
-		}}
+		sync.cachedBlocks[slot] = &CacheBlock{
+			Root:   headerRsp.Data.Root,
+			Slot:   slot,
+			header: &headerRsp.Data.Header,
+			block:  &blockRsp.Data,
+		}
 	}
 	sync.cachedSlot = lastSlot
 
@@ -181,60 +184,38 @@ func (sync *synchronizerState) syncEpoch(syncEpoch uint64) bool {
 	}
 
 	// load epoch stats
-	epochStats := EpochStats{
-		Assignments: epochAssignments,
-		Validators: &EpochValidators{
-			ValidatorCount:    0,
-			EligibleAmount:    0,
-			ValidatorBalances: make(map[uint64]uint64),
-		},
+	epochStats := &EpochStats{
+		Epoch:               syncEpoch,
+		DependentRoot:       epochAssignments.DependendRoot,
+		proposerAssignments: epochAssignments.ProposerAssignments,
+		attestorAssignments: epochAssignments.AttestorAssignments,
+		syncAssignments:     epochAssignments.SyncAssignments,
 	}
-	if epochAssignments != nil {
-		var epochValidators *rpctypes.StandardV1StateValidatorsResponse
-		var err error
-		if epochAssignments.DependendIsGenesis {
-			epochValidators, err = sync.indexer.rpcClient.GetGenesisValidators()
-		} else {
-			epochValidators, err = sync.indexer.rpcClient.GetStateValidators(epochAssignments.DependendState)
-		}
-		if err != nil {
-			logger.Errorf("Error fetching epoch %v validators (state: %v): %v", syncEpoch, epochAssignments.DependendState, err)
-		} else {
-			for idx := 0; idx < len(epochValidators.Data); idx++ {
-				validator := epochValidators.Data[idx]
-				epochStats.Validators.ValidatorBalances[uint64(validator.Index)] = uint64(validator.Validator.EffectiveBalance)
-				if !strings.HasPrefix(validator.Status, "active") {
-					continue
-				}
-				epochStats.Validators.ValidatorCount++
-				epochStats.Validators.ValidatorBalance += uint64(validator.Balance)
-				epochStats.Validators.EligibleAmount += uint64(validator.Validator.EffectiveBalance)
-			}
-		}
-	}
+	epochStats.loadValidatorStats(client, epochAssignments.DependendStateRef)
+
 	if sync.checkKillChan(0) {
 		return false
 	}
 
 	// process epoch vote aggregations
-	var firstBlock *BlockInfo
+	var firstBlock *CacheBlock
 	lastSlot = firstSlot + (utils.Config.Chain.Config.SlotsPerEpoch) - 1
 	for slot := firstSlot; slot <= lastSlot; slot++ {
 		if sync.cachedBlocks[slot] != nil {
-			firstBlock = sync.cachedBlocks[slot][0]
+			firstBlock = sync.cachedBlocks[slot]
 			break
 		}
 	}
 
 	var targetRoot []byte
 	if firstBlock != nil {
-		if uint64(firstBlock.Header.Data.Header.Message.Slot) == firstSlot {
-			targetRoot = firstBlock.Header.Data.Root
+		if uint64(firstBlock.header.Message.Slot) == firstSlot {
+			targetRoot = firstBlock.Root
 		} else {
-			targetRoot = firstBlock.Header.Data.Header.Message.ParentRoot
+			targetRoot = firstBlock.header.Message.ParentRoot
 		}
 	}
-	epochVotes := aggregateEpochVotes(sync.cachedBlocks, syncEpoch, &epochStats, targetRoot, false)
+	epochVotes := aggregateEpochVotes(sync.cachedBlocks, syncEpoch, epochStats, targetRoot, false)
 
 	// save blocks
 	tx, err := db.WriterDb.Beginx()
@@ -244,7 +225,7 @@ func (sync *synchronizerState) syncEpoch(syncEpoch uint64) bool {
 	}
 	defer tx.Rollback()
 
-	err = persistEpochData(syncEpoch, sync.cachedBlocks, &epochStats, epochVotes, tx)
+	err = persistEpochData(syncEpoch, sync.cachedBlocks, epochStats, epochVotes, tx)
 	if err != nil {
 		logger.Errorf("error persisting epoch data to db: %v", err)
 		return false

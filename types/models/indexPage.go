@@ -10,7 +10,7 @@ type IndexPageData struct {
 	DepositContract         string    `json:"depositContract"`
 	ShowSyncingMessage      bool      `json:"show_sync_message"`
 	CurrentEpoch            uint64    `json:"current_epoch"`
-	CurrentFinalizedEpoch   uint64    `json:"current_finalized_epoch"`
+	CurrentFinalizedEpoch   int64     `json:"current_finalized_epoch"`
 	CurrentSlot             uint64    `json:"current_slot"`
 	CurrentSlotIndex        uint64    `json:"current_slot_index"`
 	CurrentScheduledCount   uint64    `json:"current_scheduled_count"`

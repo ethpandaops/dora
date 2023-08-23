@@ -28,6 +28,11 @@ type Block struct {
 	SyncParticipation     float32 `db:"sync_participation"`
 }
 
+type BlockOrphanedRef struct {
+	Root     []byte `db:"root"`
+	Orphaned bool   `db:"orphaned"`
+}
+
 type Epoch struct {
 	Epoch                 uint64  `db:"epoch"`
 	ValidatorCount        uint64  `db:"validator_count"`
@@ -59,4 +64,28 @@ type OrphanedBlock struct {
 type SlotAssignment struct {
 	Slot     uint64 `db:"slot"`
 	Proposer uint64 `db:"proposer"`
+}
+
+type UnfinalizedBlock struct {
+	Root   []byte `db:"root"`
+	Slot   uint64 `db:"slot"`
+	Header string `db:"header"`
+	Block  string `db:"block"`
+}
+
+type UnfinalizedBlockHeader struct {
+	Root   []byte `db:"root"`
+	Slot   uint64 `db:"slot"`
+	Header string `db:"header"`
+}
+
+type UnfinalizedEpochDuty struct {
+	Epoch         uint64 `db:"epoch"`
+	DependentRoot []byte `db:"dependent_root"`
+	Duties        []byte `db:"duties"`
+}
+
+type UnfinalizedEpochDutyRef struct {
+	Epoch         uint64 `db:"epoch"`
+	DependentRoot []byte `db:"dependent_root"`
 }

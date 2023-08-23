@@ -556,3 +556,139 @@ func GetSlotAssignmentsForSlots(firstSlot uint64, lastSlot uint64) []*dbtypes.Sl
 	}
 	return assignments
 }
+
+func GetBlockOrphanedRefs(blockRoots [][]byte) []*dbtypes.BlockOrphanedRef {
+	orphanedRefs := []*dbtypes.BlockOrphanedRef{}
+	if len(blockRoots) == 0 {
+		return orphanedRefs
+	}
+	var sql strings.Builder
+	fmt.Fprintf(&sql, `
+	SELECT
+		root, orphaned
+	FROM blocks
+	WHERE root in (`)
+	argIdx := 0
+	args := make([]any, len(blockRoots))
+	for i, root := range blockRoots {
+		if i > 0 {
+			fmt.Fprintf(&sql, ", ")
+		}
+		fmt.Fprintf(&sql, "$%v", argIdx+1)
+		args[argIdx] = root
+		argIdx += 1
+	}
+	fmt.Fprintf(&sql, ")")
+	err := ReaderDb.Select(&orphanedRefs, sql.String(), args...)
+	if err != nil {
+		logger.Errorf("Error while fetching blocks: %v", err)
+		return nil
+	}
+	return orphanedRefs
+}
+
+func InsertUnfinalizedBlock(block *dbtypes.UnfinalizedBlock, tx *sqlx.Tx) error {
+	_, err := tx.Exec(EngineQuery(map[dbtypes.DBEngineType]string{
+		dbtypes.DBEnginePgsql: `
+			INSERT INTO unfinalized_blocks (
+				root, slot, header, block
+			) VALUES ($1, $2, $3, $4)
+			ON CONFLICT (root) DO NOTHING`,
+		dbtypes.DBEngineSqlite: `
+			INSERT OR IGNORE INTO unfinalized_blocks (
+				root, slot, header, block
+			) VALUES ($1, $2, $3, $4)`,
+	}),
+		block.Root, block.Slot, block.Header, block.Block)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func GetUnfinalizedBlockHeader() []*dbtypes.UnfinalizedBlockHeader {
+	blockRefs := []*dbtypes.UnfinalizedBlockHeader{}
+	err := ReaderDb.Select(&blockRefs, `
+	SELECT
+		root, slot, header
+	FROM unfinalized_blocks
+	`)
+	if err != nil {
+		logger.Errorf("Error while fetching unfinalized block refs: %v", err)
+		return nil
+	}
+	return blockRefs
+}
+
+func GetUnfinalizedBlock(root []byte) *dbtypes.UnfinalizedBlock {
+	block := dbtypes.UnfinalizedBlock{}
+	err := ReaderDb.Get(&block, `
+	SELECT root, slot, header, block
+	FROM unfinalized_blocks
+	WHERE root = $1
+	`, root)
+	if err != nil {
+		logger.Errorf("Error while fetching unfinalized block 0x%x: %v", root, err)
+		return nil
+	}
+	return &block
+}
+
+func InsertUnfinalizedEpochDuty(epochDuty *dbtypes.UnfinalizedEpochDuty, tx *sqlx.Tx) error {
+	_, err := tx.Exec(EngineQuery(map[dbtypes.DBEngineType]string{
+		dbtypes.DBEnginePgsql: `
+			INSERT INTO unfinalized_duties (
+				epoch, dependent_root, duties
+			) VALUES ($1, $2, $3)
+			ON CONFLICT (root) DO NOTHING`,
+		dbtypes.DBEngineSqlite: `
+			INSERT OR IGNORE INTO unfinalized_duties (
+				epoch, dependent_root, duties
+			) VALUES ($1, $2, $3)`,
+	}),
+		epochDuty.Epoch, epochDuty.DependentRoot, epochDuty.Duties)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func GetUnfinalizedEpochDutyRefs() []*dbtypes.UnfinalizedEpochDutyRef {
+	dutyRefs := []*dbtypes.UnfinalizedEpochDutyRef{}
+	err := ReaderDb.Select(&dutyRefs, `
+	SELECT
+		epoch, dependent_root
+	FROM unfinalized_duties
+	`)
+	if err != nil {
+		logger.Errorf("Error while fetching unfinalized duty refs: %v", err)
+		return nil
+	}
+	return dutyRefs
+}
+
+func GetUnfinalizedDuty(epoch uint64, dependentRoot []byte) *dbtypes.UnfinalizedEpochDuty {
+	epochDuty := dbtypes.UnfinalizedEpochDuty{}
+	err := ReaderDb.Get(&epochDuty, `
+	SELECT epoch, dependent_root, duties
+	FROM unfinalized_duties
+	WHERE epoch = $1 AND dependent_root = $2
+	`, epoch, dependentRoot)
+	if err != nil {
+		logger.Errorf("Error while fetching unfinalized duty %v/0x%x: %v", epoch, dependentRoot, err)
+		return nil
+	}
+	return &epochDuty
+}
+
+func DeleteUnfinalizedBefore(slot uint64, tx *sqlx.Tx) error {
+	_, err := tx.Exec(`DELETE FROM unfinalized_blocks WHERE slot < $1`, slot)
+	if err != nil {
+		return err
+	}
+	_, err = tx.Exec(`DELETE FROM unfinalized_duties WHERE epoch < $1`, utils.EpochOfSlot(slot))
+	if err != nil {
+		return err
+	}
+	return nil
+}

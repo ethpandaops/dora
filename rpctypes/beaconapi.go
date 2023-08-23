@@ -16,6 +16,13 @@ type StandardV1StreamedHeadEvent struct {
 	ExecutionOptimistic       bool        `json:"execution_optimistic"`
 }
 
+type StandardV1StreamedFinalizedCheckpointEvent struct {
+	Epoch               Uint64Str   `json:"epoch"`
+	Block               BytesHexStr `json:"block"`
+	State               BytesHexStr `json:"state"`
+	ExecutionOptimistic bool        `json:"execution_optimistic"`
+}
+
 type StandardV1BeaconHeaderResponse struct {
 	Finalized bool `json:"finalized"`
 	Data      struct {
@@ -40,8 +47,9 @@ type StandardV2BeaconBlockResponse struct {
 }
 
 type CombinedBlockResponse struct {
-	Header   *StandardV1BeaconHeaderResponse
-	Block    *StandardV2BeaconBlockResponse
+	Root     []byte
+	Header   *SignedBeaconBlockHeader
+	Block    *SignedBeaconBlock
 	Blobs    *StandardV1BlobSidecarsResponse
 	Orphaned bool
 }
@@ -72,8 +80,7 @@ type StandardV1SyncCommitteesResponse struct {
 
 type EpochAssignments struct {
 	DependendRoot       BytesHexStr         `json:"dep_root"`
-	DependendState      BytesHexStr         `json:"dep_state"`
-	DependendIsGenesis  bool                `json:"dep_genesis"`
+	DependendStateRef   string              `json:"dep_state"`
 	ProposerAssignments map[uint64]uint64   `json:"prop"`
 	AttestorAssignments map[string][]uint64 `json:"att"`
 	SyncAssignments     []uint64            `json:"sync"`
@@ -102,5 +109,11 @@ type StandardV1NodeSyncingResponse struct {
 		IsSyncing    bool      `json:"is_syncing"`
 		IsOptimistic bool      `json:"is_optimistic"`
 		ElOffline    bool      `json:"el_offline"`
+	} `json:"data"`
+}
+
+type StandardV1NodeVersionResponse struct {
+	Data struct {
+		Version string `json:"version"`
 	} `json:"data"`
 }
