@@ -2,6 +2,7 @@ package indexer
 
 import (
 	"bytes"
+	"math/rand"
 	"sort"
 
 	"github.com/sirupsen/logrus"
@@ -39,23 +40,71 @@ func NewIndexer() (*Indexer, error) {
 	return indexer, nil
 }
 
-func (indexer *Indexer) AddClient(index uint8, name string, endpoint string) *IndexerClient {
+func (indexer *Indexer) AddClient(index uint8, name string, endpoint string, archive bool, priority int) *IndexerClient {
 	rpcClient, err := rpc.NewBeaconClient(endpoint)
 	if err != nil {
 		logger.Errorf("error while adding client %v to indexer: %v", name, err)
 		return nil
 	}
-	client := newIndexerClient(index, name, rpcClient, indexer.indexerCache)
+	client := newIndexerClient(index, name, rpcClient, indexer.indexerCache, archive, priority)
 	indexer.indexerClients = append(indexer.indexerClients, client)
 	return client
 }
 
-func (indexer *Indexer) getReadyClient() *IndexerClient {
-	return indexer.indexerClients[0]
+func (indexer *Indexer) getReadyClient(archive bool, head []byte) *IndexerClient {
+	headCandidates := indexer.GetHeadForks()
+	if len(headCandidates) == 0 {
+		return indexer.indexerClients[0]
+	}
+
+	var headFork *HeadFork
+	if head != nil {
+		cachedBlock := indexer.indexerCache.getCachedBlock(head)
+		if cachedBlock != nil {
+			for _, fork := range headCandidates {
+				if indexer.indexerCache.isCanonicalBlock(head, fork.Root) {
+					headFork = fork
+					break
+				}
+			}
+		}
+	}
+	if headFork == nil {
+		headFork = headCandidates[0]
+	}
+
+	clientCandidates := indexer.getReadyClientCandidates(headFork, archive)
+	if len(clientCandidates) == 0 && archive {
+		clientCandidates = indexer.getReadyClientCandidates(headFork, false)
+	}
+	candidateCount := len(clientCandidates)
+	if candidateCount == 0 {
+		return indexer.indexerClients[0]
+	}
+	selectedIndex := rand.Intn(candidateCount)
+	return clientCandidates[selectedIndex]
 }
 
-func (indexer *Indexer) GetRpcClient() *rpc.BeaconClient {
-	return indexer.indexerClients[0].rpcClient
+func (indexer *Indexer) getReadyClientCandidates(headFork *HeadFork, archive bool) []*IndexerClient {
+	var clientCandidates []*IndexerClient = nil
+	for _, client := range headFork.ReadyClients {
+		if archive && !client.archive {
+			continue
+		}
+		if clientCandidates != nil && clientCandidates[0].priority != client.priority {
+			break
+		}
+		if clientCandidates != nil {
+			clientCandidates = append(clientCandidates, client)
+		} else {
+			clientCandidates = []*IndexerClient{client}
+		}
+	}
+	return clientCandidates
+}
+
+func (indexer *Indexer) GetRpcClient(archive bool, head []byte) *rpc.BeaconClient {
+	return indexer.getReadyClient(archive, head).rpcClient
 }
 
 func (indexer *Indexer) GetFinalizedEpoch() (int64, []byte) {
@@ -93,15 +142,49 @@ func (indexer *Indexer) GetHeadForks() []*HeadFork {
 		}
 		if matchingFork == nil {
 			matchingFork = &HeadFork{
-				Root:    cHeadRoot,
-				Slot:    uint64(cHeadSlot),
-				Clients: []*IndexerClient{client},
+				Root:       cHeadRoot,
+				Slot:       uint64(cHeadSlot),
+				AllClients: []*IndexerClient{client},
 			}
 			headForks = append(headForks, matchingFork)
 		} else {
-			matchingFork.Clients = append(matchingFork.Clients, client)
+			matchingFork.AllClients = append(matchingFork.AllClients, client)
 		}
 	}
+	for _, fork := range headForks {
+		fork.ReadyClients = make([]*IndexerClient, 0)
+		sort.Slice(fork.AllClients, func(a, b int) bool {
+			prioA := fork.AllClients[a].priority
+			prioB := fork.AllClients[b].priority
+			return prioA > prioB
+		})
+		for _, client := range fork.AllClients {
+			var headDistance uint64 = 0
+			_, cHeadRoot := client.getLastHead()
+			if !bytes.Equal(fork.Root, cHeadRoot) {
+				_, headDistance = indexer.indexerCache.getCanonicalDistance(cHeadRoot, fork.Root)
+			}
+			if headDistance < 2 {
+				fork.ReadyClients = append(fork.ReadyClients, client)
+			}
+		}
+	}
+
+	// sort by relevance (client count & head slot)
+	sort.Slice(headForks, func(a, b int) bool {
+		slotA := headForks[a].Slot
+		slotB := headForks[b].Slot
+		if slotA > slotB && slotA-slotB >= 16 {
+			return true
+		} else if slotB > slotA && slotB-slotA >= 16 {
+			return false
+		} else {
+			countA := len(headForks[a].ReadyClients)
+			countB := len(headForks[b].ReadyClients)
+			return countA > countB
+		}
+	})
+
 	return headForks
 }
 
@@ -110,13 +193,6 @@ func (indexer *Indexer) GetCanonicalHead() (uint64, []byte) {
 	if len(headCandidates) == 0 {
 		return 0, nil
 	}
-
-	// sort by client count
-	sort.Slice(headCandidates, func(a, b int) bool {
-		countA := len(headCandidates[a].Clients)
-		countB := len(headCandidates[b].Clients)
-		return countA < countB
-	})
 
 	return headCandidates[0].Slot, headCandidates[0].Root
 }

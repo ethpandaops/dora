@@ -135,7 +135,7 @@ func (sync *synchronizerState) syncEpoch(syncEpoch uint64) bool {
 		return true
 	}
 
-	client := sync.indexer.getReadyClient()
+	client := sync.indexer.getReadyClient(true, nil)
 
 	// load epoch assignments
 	epochAssignments, err := client.rpcClient.GetEpochAssignments(syncEpoch)

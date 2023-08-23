@@ -111,3 +111,9 @@ type StandardV1NodeSyncingResponse struct {
 		ElOffline    bool      `json:"el_offline"`
 	} `json:"data"`
 }
+
+type StandardV1NodeVersionResponse struct {
+	Data struct {
+		Version string `json:"version"`
+	} `json:"data"`
+}

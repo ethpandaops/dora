@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common/lru"
 	"github.com/pk910/light-beaconchain-explorer/db"
 	"github.com/pk910/light-beaconchain-explorer/dbtypes"
 	"github.com/pk910/light-beaconchain-explorer/indexer"
@@ -25,6 +26,9 @@ type BeaconService struct {
 		epochLimit uint64
 		activity   map[uint64]uint8
 	}
+
+	assignmentsCacheMux sync.Mutex
+	assignmentsCache    *lru.Cache[uint64, *rpctypes.EpochAssignments]
 }
 
 var GlobalBeaconService *BeaconService
@@ -41,7 +45,7 @@ func StartBeaconService() error {
 	}
 
 	for idx, endpoint := range utils.Config.BeaconApi.Endpoints {
-		indexer.AddClient(uint8(idx), endpoint.Name, endpoint.Url)
+		indexer.AddClient(uint8(idx), endpoint.Name, endpoint.Url, endpoint.Archive, endpoint.Priority)
 	}
 
 	validatorNames := &ValidatorNames{}
@@ -53,8 +57,9 @@ func StartBeaconService() error {
 	}
 
 	GlobalBeaconService = &BeaconService{
-		indexer:        indexer,
-		validatorNames: validatorNames,
+		indexer:          indexer,
+		validatorNames:   validatorNames,
+		assignmentsCache: lru.NewCache[uint64, *rpctypes.EpochAssignments](10),
 	}
 	return nil
 }
@@ -76,7 +81,7 @@ func (bs *BeaconService) GetCachedEpochStats(epoch uint64) *indexer.EpochStats {
 }
 
 func (bs *BeaconService) GetGenesis() (*rpctypes.StandardV1GenesisResponse, error) {
-	return bs.indexer.GetRpcClient().GetGenesis()
+	return bs.indexer.GetRpcClient(false, nil).GetGenesis()
 }
 
 func (bs *BeaconService) GetSlotDetailsByBlockroot(blockroot []byte, withBlobs bool) (*rpctypes.CombinedBlockResponse, error) {
@@ -89,14 +94,14 @@ func (bs *BeaconService) GetSlotDetailsByBlockroot(blockroot []byte, withBlobs b
 			Orphaned: !blockInfo.IsCanonical(bs.indexer, nil),
 		}
 	} else {
-		header, err := bs.indexer.GetRpcClient().GetBlockHeaderByBlockroot(blockroot)
+		header, err := bs.indexer.GetRpcClient(false, blockroot).GetBlockHeaderByBlockroot(blockroot)
 		if err != nil {
 			return nil, err
 		}
 		if header == nil {
 			return nil, nil
 		}
-		block, err := bs.indexer.GetRpcClient().GetBlockBodyByBlockroot(header.Data.Root)
+		block, err := bs.indexer.GetRpcClient(false, blockroot).GetBlockBodyByBlockroot(header.Data.Root)
 		if err != nil {
 			return nil, err
 		}
@@ -109,7 +114,7 @@ func (bs *BeaconService) GetSlotDetailsByBlockroot(blockroot []byte, withBlobs b
 	}
 
 	if result.Block.Message.Body.BlobKzgCommitments != nil && withBlobs && utils.EpochOfSlot(uint64(result.Header.Message.Slot)) >= utils.Config.Chain.Config.DenebForkEpoch {
-		blobs, _ := bs.indexer.GetRpcClient().GetBlobSidecarsByBlockroot(result.Root)
+		blobs, _ := bs.indexer.GetRpcClient(true, blockroot).GetBlobSidecarsByBlockroot(result.Root)
 		if blobs != nil {
 			result.Blobs = blobs
 		}
@@ -137,14 +142,14 @@ func (bs *BeaconService) GetSlotDetailsBySlot(slot uint64, withBlobs bool) (*rpc
 			Orphaned: !cachedBlock.IsCanonical(bs.indexer, nil),
 		}
 	} else {
-		header, err := bs.indexer.GetRpcClient().GetBlockHeaderBySlot(slot)
+		header, err := bs.indexer.GetRpcClient(false, nil).GetBlockHeaderBySlot(slot)
 		if err != nil {
 			return nil, err
 		}
 		if header == nil {
 			return nil, nil
 		}
-		block, err := bs.indexer.GetRpcClient().GetBlockBodyByBlockroot(header.Data.Root)
+		block, err := bs.indexer.GetRpcClient(false, header.Data.Root).GetBlockBodyByBlockroot(header.Data.Root)
 		if err != nil {
 			return nil, err
 		}
@@ -157,7 +162,7 @@ func (bs *BeaconService) GetSlotDetailsBySlot(slot uint64, withBlobs bool) (*rpc
 	}
 
 	if result.Block.Message.Body.BlobKzgCommitments != nil && withBlobs && utils.EpochOfSlot(uint64(result.Header.Message.Slot)) >= utils.Config.Chain.Config.DenebForkEpoch {
-		blobs, _ := bs.indexer.GetRpcClient().GetBlobSidecarsByBlockroot(result.Root)
+		blobs, _ := bs.indexer.GetRpcClient(true, result.Root).GetBlobSidecarsByBlockroot(result.Root)
 		if blobs != nil {
 			result.Blobs = blobs
 		}
@@ -166,7 +171,7 @@ func (bs *BeaconService) GetSlotDetailsBySlot(slot uint64, withBlobs bool) (*rpc
 }
 
 func (bs *BeaconService) GetBlobSidecarsByBlockRoot(blockroot []byte) (*rpctypes.StandardV1BlobSidecarsResponse, error) {
-	return bs.indexer.GetRpcClient().GetBlobSidecarsByBlockroot(blockroot)
+	return bs.indexer.GetRpcClient(true, blockroot).GetBlobSidecarsByBlockroot(blockroot)
 }
 
 func (bs *BeaconService) GetOrphanedBlock(blockroot []byte) *rpctypes.CombinedBlockResponse {
@@ -242,7 +247,24 @@ func (bs *BeaconService) GetEpochAssignments(epoch uint64) (*rpctypes.EpochAssig
 		}
 	}
 
-	return bs.indexer.GetRpcClient().GetEpochAssignments(epoch)
+	bs.assignmentsCacheMux.Lock()
+	epochAssignments, found := bs.assignmentsCache.Get(epoch)
+	bs.assignmentsCacheMux.Unlock()
+	if found {
+		return epochAssignments, nil
+	}
+
+	var err error
+	epochAssignments, err = bs.indexer.GetRpcClient(true, nil).GetEpochAssignments(epoch)
+	if err != nil {
+		return nil, err
+	}
+
+	bs.assignmentsCacheMux.Lock()
+	bs.assignmentsCache.Add(epoch, epochAssignments)
+	bs.assignmentsCacheMux.Unlock()
+
+	return epochAssignments, nil
 }
 
 func (bs *BeaconService) GetProposerAssignments(firstEpoch uint64, lastEpoch uint64) (proposerAssignments map[uint64]uint64, synchronizedEpochs map[uint64]bool) {

@@ -15,6 +15,9 @@ type IndexerClient struct {
 	clientIdx          uint8
 	clientName         string
 	rpcClient          *rpc.BeaconClient
+	archive            bool
+	priority           int
+	versionStr         string
 	indexerCache       *indexerCache
 	cacheMutex         sync.RWMutex
 	lastStreamEvent    time.Time
@@ -27,11 +30,13 @@ type IndexerClient struct {
 	lastFinalizedRoot  []byte
 }
 
-func newIndexerClient(clientIdx uint8, clientName string, rpcClient *rpc.BeaconClient, indexerCache *indexerCache) *IndexerClient {
+func newIndexerClient(clientIdx uint8, clientName string, rpcClient *rpc.BeaconClient, indexerCache *indexerCache, archive bool, priority int) *IndexerClient {
 	client := IndexerClient{
 		clientIdx:          clientIdx,
 		clientName:         clientName,
 		rpcClient:          rpcClient,
+		archive:            archive,
+		priority:           priority,
 		indexerCache:       indexerCache,
 		lastHeadSlot:       -1,
 		lastEpochStats:     -1,
@@ -60,6 +65,13 @@ func (client *IndexerClient) runIndexerClientLoop() {
 }
 
 func (client *IndexerClient) runIndexerClient() error {
+	// get node version
+	nodeVersion, err := client.rpcClient.GetNodeVersion()
+	if err != nil {
+		return fmt.Errorf("error while fetching node version: %v", err)
+	}
+	client.versionStr = nodeVersion.Data.Version
+
 	// check genesis
 	genesis, err := client.rpcClient.GetGenesis()
 	if err != nil {
@@ -88,6 +100,8 @@ func (client *IndexerClient) runIndexerClient() error {
 	if syncStatus.Data.IsSyncing {
 		return fmt.Errorf("beacon node is synchronizing")
 	}
+
+	logger.WithField("client", client.clientName).Debugf("endpoint %v ready: %v ", client.clientName, client.versionStr)
 
 	// start event stream
 	blockStream := client.rpcClient.NewBlockStream(rpc.StreamBlockEvent | rpc.StreamHeadEvent | rpc.StreamFinalizedEvent)

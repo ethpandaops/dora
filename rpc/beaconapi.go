@@ -119,6 +119,19 @@ func (bc *BeaconClient) GetNodeSyncing() (*rpctypes.StandardV1NodeSyncingRespons
 	return &parsedSyncingStatus, nil
 }
 
+func (bc *BeaconClient) GetNodeVersion() (*rpctypes.StandardV1NodeVersionResponse, error) {
+	var parsedRsp rpctypes.StandardV1NodeVersionResponse
+	err := bc.getJson(fmt.Sprintf("%s/eth/v1/node/syncing", bc.endpoint), &parsedRsp)
+	if err != nil {
+		if err == errNotFound {
+			// no block found
+			return nil, nil
+		}
+		return nil, fmt.Errorf("error retrieving node version: %v", err)
+	}
+	return &parsedRsp, nil
+}
+
 func (bc *BeaconClient) GetLatestBlockHead() (*rpctypes.StandardV1BeaconHeaderResponse, error) {
 	resHeaders, err := bc.get(fmt.Sprintf("%s/eth/v1/beacon/headers/head", bc.endpoint))
 	if err != nil {

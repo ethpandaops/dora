@@ -88,8 +88,10 @@ type Config struct {
 }
 
 type EndpointConfig struct {
-	Url  string `yaml:"url"`
-	Name string `yaml:"name"`
+	Url      string `yaml:"url"`
+	Name     string `yaml:"name"`
+	Archive  bool   `yaml:"archive"`
+	Priority int    `yaml:"priority"`
 }
 
 type SqliteDatabaseConfig struct {
