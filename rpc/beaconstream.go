@@ -3,6 +3,7 @@ package rpc
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -128,7 +129,14 @@ func (bs *BeaconStream) subscribeStream(endpoint string, events uint16) *eventst
 
 	for {
 		url := fmt.Sprintf("%s/eth/v1/events?topics=%v", endpoint, topics.String())
-		stream, err := eventstream.Subscribe(url, "")
+		req, err := http.NewRequest("GET", url, nil)
+		var stream *eventstream.Stream
+		if err != nil {
+			for headerKey, headerVal := range bs.client.headers {
+				req.Header.Set(headerKey, headerVal)
+			}
+			stream, err = eventstream.SubscribeWithRequest("", req)
+		}
 		if err != nil {
 			logger.WithField("client", bs.client.name).Errorf("Error while subscribing beacon event stream %v: %v", url, err)
 			select {

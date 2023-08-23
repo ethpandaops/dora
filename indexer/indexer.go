@@ -40,8 +40,8 @@ func NewIndexer() (*Indexer, error) {
 	return indexer, nil
 }
 
-func (indexer *Indexer) AddClient(index uint8, name string, endpoint string, archive bool, priority int) *IndexerClient {
-	rpcClient, err := rpc.NewBeaconClient(endpoint, name)
+func (indexer *Indexer) AddClient(index uint8, name string, endpoint string, archive bool, priority int, headers map[string]string) *IndexerClient {
+	rpcClient, err := rpc.NewBeaconClient(endpoint, name, headers)
 	if err != nil {
 		logger.Errorf("error while adding client %v to indexer: %v", name, err)
 		return nil

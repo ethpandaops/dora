@@ -20,13 +20,15 @@ var logger = logrus.StandardLogger().WithField("module", "rpc")
 type BeaconClient struct {
 	name     string
 	endpoint string
+	headers  map[string]string
 }
 
 // NewBeaconClient is used to create a new beacon client
-func NewBeaconClient(endpoint string, name string) (*BeaconClient, error) {
+func NewBeaconClient(endpoint string, name string, headers map[string]string) (*BeaconClient, error) {
 	client := &BeaconClient{
 		name:     name,
 		endpoint: endpoint,
+		headers:  headers,
 	}
 
 	return client, nil
@@ -39,8 +41,17 @@ func (bc *BeaconClient) get(url string) ([]byte, error) {
 	defer func() {
 		logger.WithField("client", bc.name).Debugf("RPC call (byte): %v [%v ms]", url, time.Since(t0).Milliseconds())
 	}()
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	for headerKey, headerVal := range bc.headers {
+		req.Header.Set(headerKey, headerVal)
+	}
+
 	client := &http.Client{Timeout: time.Second * 120}
-	resp, err := client.Get(url)
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -64,8 +75,17 @@ func (bc *BeaconClient) getJson(url string, returnValue interface{}) error {
 	defer func() {
 		logger.WithField("client", bc.name).Debugf("RPC call (json): %v [%v ms]", url, time.Since(t0).Milliseconds())
 	}()
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return err
+	}
+	for headerKey, headerVal := range bc.headers {
+		req.Header.Set(headerKey, headerVal)
+	}
+
 	client := &http.Client{Timeout: time.Second * 120}
-	resp, err := client.Get(url)
+	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}
