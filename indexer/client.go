@@ -24,6 +24,7 @@ type IndexerClient struct {
 	isSynchronizing    bool
 	syncDistance       uint64
 	isConnected        bool
+	retryCounter       uint64
 	lastHeadSlot       int64
 	lastHeadRoot       []byte
 	lastEpochStats     int64
@@ -57,8 +58,15 @@ func (client *IndexerClient) runIndexerClientLoop() {
 	for {
 		err := client.runIndexerClient()
 		if err != nil {
-			logger.WithField("client", client.clientName).Errorf("indexer client error: %v, retrying in 10 sec...", err)
-			time.Sleep(10 * time.Second)
+			client.retryCounter++
+			waitTime := 10
+			if client.retryCounter > 10 {
+				waitTime = 300
+			} else if client.retryCounter > 5 {
+				waitTime = 60
+			}
+			logger.WithField("client", client.clientName).Errorf("indexer client error: %v, retrying in %v sec...", err, waitTime)
+			time.Sleep(time.Duration(waitTime) * time.Second)
 		} else {
 			return
 		}
@@ -103,12 +111,6 @@ func (client *IndexerClient) runIndexerClient() error {
 		return fmt.Errorf("beacon node is synchronizing")
 	}
 
-	logger.WithField("client", client.clientName).Debugf("endpoint %v ready: %v ", client.clientName, client.versionStr)
-
-	// start event stream
-	blockStream := client.rpcClient.NewBlockStream(rpc.StreamBlockEvent | rpc.StreamHeadEvent | rpc.StreamFinalizedEvent)
-	defer blockStream.Close()
-
 	// get finalized header
 	finalizedHeader, err := client.rpcClient.GetFinalizedBlockHead()
 	if err != nil {
@@ -122,6 +124,13 @@ func (client *IndexerClient) runIndexerClient() error {
 		client.lastFinalizedRoot = finalizedHeader.Data.Root
 		client.cacheMutex.Unlock()
 	}
+
+	logger.WithField("client", client.clientName).Debugf("endpoint %v ready: %v ", client.clientName, client.versionStr)
+	client.retryCounter = 0
+
+	// start event stream
+	blockStream := client.rpcClient.NewBlockStream(rpc.StreamBlockEvent | rpc.StreamHeadEvent | rpc.StreamFinalizedEvent)
+	defer blockStream.Close()
 
 	// prefill cache
 	err = client.prefillCache(finalizedSlot)
