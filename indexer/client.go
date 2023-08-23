@@ -125,6 +125,19 @@ func (client *IndexerClient) runIndexerClient() error {
 		client.cacheMutex.Unlock()
 	}
 
+	// get latest header
+	latestHeader, err := client.rpcClient.GetLatestBlockHead()
+	if err != nil {
+		return fmt.Errorf("could not get latest header: %v", err)
+	}
+	if latestHeader == nil {
+		return fmt.Errorf("could not find latest header")
+	}
+	client.setHeadBlock(latestHeader.Data.Root, uint64(latestHeader.Data.Header.Message.Slot))
+	if client.indexerCache.finalizedEpoch >= 0 && utils.EpochOfSlot(uint64(latestHeader.Data.Header.Message.Slot)) <= uint64(client.indexerCache.finalizedEpoch) {
+		return fmt.Errorf("client is far behind - head is before synchronized checkpoint")
+	}
+
 	logger.WithField("client", client.clientName).Debugf("endpoint %v ready: %v ", client.clientName, client.versionStr)
 	client.retryCounter = 0
 
@@ -133,7 +146,7 @@ func (client *IndexerClient) runIndexerClient() error {
 	defer blockStream.Close()
 
 	// prefill cache
-	err = client.prefillCache(finalizedSlot)
+	err = client.prefillCache(finalizedSlot, latestHeader)
 	if err != nil {
 		return err
 	}
@@ -192,17 +205,7 @@ func (client *IndexerClient) runIndexerClient() error {
 	}
 }
 
-func (client *IndexerClient) prefillCache(finalizedSlot uint64) error {
-	// get latest header
-	latestHeader, err := client.rpcClient.GetLatestBlockHead()
-	if err != nil {
-		return fmt.Errorf("could not get latest header: %v", err)
-	}
-	if latestHeader == nil {
-		return fmt.Errorf("could not find latest header")
-	}
-	client.setHeadBlock(latestHeader.Data.Root, uint64(latestHeader.Data.Header.Message.Slot))
-
+func (client *IndexerClient) prefillCache(finalizedSlot uint64, latestHeader *rpctypes.StandardV1BeaconHeaderResponse) error {
 	currentBlock, isNewBlock := client.indexerCache.createOrGetCachedBlock(latestHeader.Data.Root, uint64(latestHeader.Data.Header.Message.Slot))
 	if isNewBlock {
 		logger.WithField("client", client.clientName).Infof("received block %v:%v [0x%x] warmup, head", utils.EpochOfSlot(uint64(client.lastHeadSlot)), client.lastHeadSlot, client.lastHeadRoot)
