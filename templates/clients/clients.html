@@ -18,10 +18,10 @@
               <tr>
                 <th>#</th>
                 <th>Name</th>
-                <th>Version</th>
                 <th>Head Slot</th>
                 <th>Head Root</th>
                 <th>Status</th>
+                <th>Version</th>
               </tr>
             </thead>
               <tbody>
@@ -29,20 +29,20 @@
                   <tr>
                     <td>{{ $client.Index }}</td>
                     <td>{{ $client.Name }}</td>
-                    <td>{{ $client.Version }}</td>
                     <td><a href="/slot/{{ $client.HeadSlot }}">{{ formatAddCommas $client.HeadSlot }}</a></td>
                     <td><a href="/slot/0x{{ printf "%x" $client.HeadRoot }}">0x{{ printf "%x" $client.HeadRoot }}</a></td>
                     <td>
                       {{ if eq $client.Status "ready" }}
                         <span class="badge rounded-pill text-bg-success">Connected</span>
-                      {{ else if eq $client.Status "syncing" }}
-                        <span class="badge rounded-pill text-bg-secondary">Synchronizing</span>
+                      {{ else if eq $client.Status "synchronizing" }}
+                        <span class="badge rounded-pill text-bg-warning">Synchronizing</span>
                       {{ else if eq $client.Status "disconnected" }}
                         <span class="badge rounded-pill text-bg-secondary">Disconnected</span>
                       {{ else }}
-                        <span class="badge rounded-pill text-bg-dark">Unknown</span>
+                        <span class="badge rounded-pill text-bg-dark">{{ $client.Status }}</span>
                       {{ end }}
                     </td>
+                    <td>{{ $client.Version }}</td>
                   </tr>
                 {{ end }}
               </tbody>

@@ -43,7 +43,7 @@ func (bc *BeaconClient) NewBlockStream(events uint16) *BeaconStream {
 		events:    events,
 		client:    bc,
 		killChan:  make(chan bool),
-		ReadyChan: make(chan bool),
+		ReadyChan: make(chan bool, 10),
 		EventChan: make(chan *BeaconStreamEvent, 10),
 	}
 	go blockStream.startStream()

@@ -67,10 +67,10 @@ func (client *IndexerClient) GetLastHead() (int64, []byte) {
 }
 
 func (client *IndexerClient) GetStatus() string {
-	if !client.isConnected {
-		return "disconnected"
-	} else if client.isSynchronizing {
+	if client.isSynchronizing {
 		return "synchronizing"
+	} else if !client.isConnected {
+		return "disconnected"
 	} else {
 		return "ready"
 	}
@@ -119,6 +119,16 @@ func (client *IndexerClient) runIndexerClient() error {
 		return fmt.Errorf("genesis fork version from RPC does not match the genesis fork version explorer configuration")
 	}
 
+	// get latest header
+	latestHeader, err := client.rpcClient.GetLatestBlockHead()
+	if err != nil {
+		return fmt.Errorf("could not get latest header: %v", err)
+	}
+	if latestHeader == nil {
+		return fmt.Errorf("could not find latest header")
+	}
+	client.setHeadBlock(latestHeader.Data.Root, uint64(latestHeader.Data.Header.Message.Slot))
+
 	// check syncronization state
 	syncStatus, err := client.rpcClient.GetNodeSyncing()
 	if err != nil {
@@ -131,6 +141,9 @@ func (client *IndexerClient) runIndexerClient() error {
 	client.syncDistance = uint64(syncStatus.Data.SyncDistance)
 	if syncStatus.Data.IsSyncing || syncStatus.Data.IsOptimistic {
 		return fmt.Errorf("beacon node is synchronizing")
+	}
+	if client.indexerCache.finalizedEpoch >= 0 && utils.EpochOfSlot(uint64(latestHeader.Data.Header.Message.Slot)) <= uint64(client.indexerCache.finalizedEpoch) {
+		return fmt.Errorf("client is far behind - head is before synchronized checkpoint")
 	}
 
 	// get finalized header
@@ -145,19 +158,6 @@ func (client *IndexerClient) runIndexerClient() error {
 		client.lastFinalizedEpoch = int64(utils.EpochOfSlot(uint64(finalizedHeader.Data.Header.Message.Slot)) - 1)
 		client.lastFinalizedRoot = finalizedHeader.Data.Root
 		client.cacheMutex.Unlock()
-	}
-
-	// get latest header
-	latestHeader, err := client.rpcClient.GetLatestBlockHead()
-	if err != nil {
-		return fmt.Errorf("could not get latest header: %v", err)
-	}
-	if latestHeader == nil {
-		return fmt.Errorf("could not find latest header")
-	}
-	client.setHeadBlock(latestHeader.Data.Root, uint64(latestHeader.Data.Header.Message.Slot))
-	if client.indexerCache.finalizedEpoch >= 0 && utils.EpochOfSlot(uint64(latestHeader.Data.Header.Message.Slot)) <= uint64(client.indexerCache.finalizedEpoch) {
-		return fmt.Errorf("client is far behind - head is before synchronized checkpoint")
 	}
 
 	logger.WithField("client", client.clientName).Debugf("endpoint %v ready: %v ", client.clientName, client.versionStr)
