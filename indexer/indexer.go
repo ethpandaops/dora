@@ -2,6 +2,7 @@ package indexer
 
 import (
 	"bytes"
+	"fmt"
 	"math/rand"
 	"sort"
 
@@ -108,7 +109,11 @@ func (indexer *Indexer) getReadyClientCandidates(headFork *HeadFork, archive boo
 }
 
 func (indexer *Indexer) GetRpcClient(archive bool, head []byte) *rpc.BeaconClient {
-	return indexer.getReadyClient(archive, head).rpcClient
+	readyClient := indexer.getReadyClient(archive, head)
+	if head != nil {
+		fmt.Printf("client for head 0x%x: %v\n", head, readyClient.clientName)
+	}
+	return readyClient.rpcClient
 }
 
 func (indexer *Indexer) GetFinalizedEpoch() (int64, []byte) {
@@ -207,9 +212,11 @@ func (indexer *Indexer) GetCachedBlocks(slot uint64) []*CacheBlock {
 	}
 	indexer.indexerCache.cacheMutex.RLock()
 	defer indexer.indexerCache.cacheMutex.RUnlock()
-	blocks := indexer.indexerCache.slotMap[slot]
-	if blocks == nil {
-		return nil
+	blocks := make([]*CacheBlock, 0)
+	for _, block := range indexer.indexerCache.slotMap[slot] {
+		if block.IsReady() {
+			blocks = append(blocks, block)
+		}
 	}
 	return blocks
 }
@@ -217,8 +224,11 @@ func (indexer *Indexer) GetCachedBlocks(slot uint64) []*CacheBlock {
 func (indexer *Indexer) GetCachedBlock(root []byte) *CacheBlock {
 	indexer.indexerCache.cacheMutex.RLock()
 	defer indexer.indexerCache.cacheMutex.RUnlock()
-
-	return indexer.indexerCache.rootMap[string(root)]
+	block := indexer.indexerCache.rootMap[string(root)]
+	if block != nil && !block.IsReady() {
+		return nil
+	}
+	return block
 }
 
 func (indexer *Indexer) GetCachedBlockByStateroot(stateroot []byte) *CacheBlock {
@@ -236,7 +246,11 @@ func (indexer *Indexer) GetCachedBlockByStateroot(stateroot []byte) *CacheBlock 
 		blocks := indexer.indexerCache.slotMap[slot]
 		for _, block := range blocks {
 			if bytes.Equal(block.header.Message.StateRoot, stateroot) {
-				return block
+				if !block.IsReady() {
+					return nil
+				} else {
+					return block
+				}
 			}
 		}
 	}
@@ -258,7 +272,7 @@ func (indexer *Indexer) GetCachedBlocksByProposer(proposer uint64) []*CacheBlock
 		slot := uint64(slotIdx)
 		blocks := indexer.indexerCache.slotMap[slot]
 		for _, block := range blocks {
-			if uint64(block.header.Message.ProposerIndex) == proposer {
+			if block.IsReady() && uint64(block.header.Message.ProposerIndex) == proposer {
 				resBlocks = append(resBlocks, block)
 			}
 		}
@@ -271,7 +285,7 @@ func (indexer *Indexer) GetCachedBlocksByParentRoot(parentRoot []byte) []*CacheB
 	defer indexer.indexerCache.cacheMutex.RUnlock()
 	resBlocks := make([]*CacheBlock, 0)
 	for _, block := range indexer.indexerCache.rootMap {
-		if block.header != nil && bytes.Equal(block.header.Message.ParentRoot, parentRoot) {
+		if block.IsReady() && bytes.Equal(block.header.Message.ParentRoot, parentRoot) {
 			resBlocks = append(resBlocks, block)
 		}
 	}

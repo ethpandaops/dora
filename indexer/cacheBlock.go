@@ -144,3 +144,7 @@ func (block *CacheBlock) IsCanonical(indexer *Indexer, head []byte) bool {
 	}
 	return indexer.indexerCache.isCanonicalBlock(block.Root, head)
 }
+
+func (block *CacheBlock) IsReady() bool {
+	return block.header != nil && (block.block != nil || block.isInDb)
+}

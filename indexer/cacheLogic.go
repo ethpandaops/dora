@@ -239,6 +239,9 @@ func (cache *indexerCache) processOrphanedBlocks(processedEpoch int64) error {
 	defer tx.Rollback()
 
 	for _, block := range orphanedBlocks {
+		if !block.IsReady() {
+			continue
+		}
 		dbBlock := buildDbBlock(block, cache.getEpochStats(utils.EpochOfSlot(block.Slot), nil))
 		dbBlock.Orphaned = true
 		db.InsertBlock(dbBlock, tx)
@@ -297,7 +300,7 @@ func (cache *indexerCache) processCachePersistence() error {
 		defer tx.Rollback()
 
 		for _, block := range pruneBlocks {
-			if !block.isInDb {
+			if !block.isInDb && block.IsReady() {
 				orphanedBlock := block.buildOrphanedBlock()
 				err := db.InsertUnfinalizedBlock(&dbtypes.UnfinalizedBlock{
 					Root:   block.Root,
@@ -320,7 +323,9 @@ func (cache *indexerCache) processCachePersistence() error {
 	}
 
 	for _, block := range pruneBlocks {
-		block.block = nil
+		if block.isInDb {
+			block.block = nil
+		}
 	}
 
 	return nil

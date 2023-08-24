@@ -238,14 +238,14 @@ func (client *IndexerClient) prefillCache(finalizedSlot uint64, latestHeader *rp
 	}
 	client.ensureBlock(currentBlock, &latestHeader.Data.Header)
 
-	finalizedCheckpoint := (client.indexerCache.finalizedEpoch + 1) * int64(utils.Config.Chain.Config.SlotsPerEpoch)
-	if finalizedCheckpoint > int64(finalizedSlot) {
-		finalizedSlot = uint64(finalizedCheckpoint)
-	}
-
 	// walk backwards and load all blocks until we reach a finalized epoch
 	parentRoot := []byte(currentBlock.header.Message.ParentRoot)
 	for {
+		finalizedCheckpoint := (client.indexerCache.finalizedEpoch + 1) * int64(utils.Config.Chain.Config.SlotsPerEpoch)
+		if finalizedCheckpoint > int64(finalizedSlot) {
+			finalizedSlot = uint64(finalizedCheckpoint)
+		}
+
 		var parentHead *rpctypes.SignedBeaconBlockHeader
 		parentBlock := client.indexerCache.getCachedBlock(parentRoot)
 		if parentBlock != nil {
@@ -274,6 +274,7 @@ func (client *IndexerClient) prefillCache(finalizedSlot uint64, latestHeader *rp
 			logger.WithField("client", client.clientName).Debugf("received known block %v:%v [0x%x] warmup", utils.EpochOfSlot(parentSlot), parentSlot, parentRoot)
 		}
 		client.ensureBlock(parentBlock, parentHead)
+
 		if parentSlot <= finalizedSlot {
 			logger.WithField("client", client.clientName).Debugf("prefill cache: reached finalized slot %v:%v [0x%x]", utils.EpochOfSlot(parentSlot), parentSlot, parentRoot)
 			break
@@ -308,6 +309,7 @@ func (client *IndexerClient) ensureBlock(block *CacheBlock, header *rpctypes.Sig
 		if header == nil {
 			headerRsp, err := client.rpcClient.GetBlockHeaderByBlockroot(block.Root)
 			if err != nil {
+				logger.WithField("client", client.clientName).Warnf("ensure block %v [0x%x] failed (header): %v", block.Slot, block.Root, err)
 				return err
 			}
 			header = &headerRsp.Data.Header
@@ -317,6 +319,7 @@ func (client *IndexerClient) ensureBlock(block *CacheBlock, header *rpctypes.Sig
 	if block.block == nil && !block.isInDb {
 		blockRsp, err := client.rpcClient.GetBlockBodyByBlockroot(block.Root)
 		if err != nil {
+			logger.WithField("client", client.clientName).Warnf("ensure block %v [0x%x] failed (block): %v", block.Slot, block.Root, err)
 			return err
 		}
 		block.block = &blockRsp.Data
