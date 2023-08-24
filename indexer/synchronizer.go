@@ -2,6 +2,7 @@ package indexer
 
 import (
 	"fmt"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -68,7 +69,7 @@ func (sync *synchronizerState) startSync(startEpoch uint64) {
 func (sync *synchronizerState) runSync() {
 	defer func() {
 		if err := recover(); err != nil {
-			synclogger.Errorf("uncaught panic in runSync subroutine: %v", err)
+			synclogger.Errorf("uncaught panic in runSync subroutine: %v, stack: %v", err, string(debug.Stack()))
 		}
 	}()
 

@@ -3,6 +3,7 @@ package indexer
 import (
 	"bytes"
 	"fmt"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
@@ -167,7 +168,7 @@ func (client *IndexerClient) ensureEpochStats(epoch uint64, head []byte) error {
 func (epochStats *EpochStats) ensureEpochStatsLazy(client *IndexerClient, proposerRsp *rpctypes.StandardV1ProposerDutiesResponse) {
 	defer func() {
 		if err := recover(); err != nil {
-			logger.WithField("client", client.clientName).Errorf("uncaught panic in ensureEpochStats subroutine: %v", err)
+			logger.WithField("client", client.clientName).Errorf("uncaught panic in ensureEpochStats subroutine: %v, stack: %v", err, string(debug.Stack()))
 		}
 	}()
 	epochStats.dutiesMutex.Lock()
@@ -285,7 +286,7 @@ func (epochStats *EpochStats) ensureEpochStatsLazy(client *IndexerClient, propos
 func (epochStats *EpochStats) ensureValidatorStatsLazy(client *IndexerClient, stateRef string) {
 	defer func() {
 		if err := recover(); err != nil {
-			logger.WithField("client", client.clientName).Errorf("uncaught panic in ensureValidatorStats subroutine: %v", err)
+			logger.WithField("client", client.clientName).Errorf("uncaught panic in ensureValidatorStats subroutine: %v, stack: %v", err, string(debug.Stack()))
 		}
 	}()
 	epochStats.loadValidatorStats(client, stateRef)

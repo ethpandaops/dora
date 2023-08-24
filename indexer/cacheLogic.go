@@ -1,6 +1,7 @@
 package indexer
 
 import (
+	"runtime/debug"
 	"time"
 
 	"github.com/pk910/light-beaconchain-explorer/db"
@@ -11,7 +12,7 @@ import (
 func (cache *indexerCache) runCacheLoop() {
 	defer func() {
 		if err := recover(); err != nil {
-			logger.WithError(err.(error)).Errorf("uncaught panic in runCacheLoop subroutine: %v", err)
+			logger.WithError(err.(error)).Errorf("uncaught panic in runCacheLoop subroutine: %v, stack: %v", err, string(debug.Stack()))
 		}
 	}()
 
