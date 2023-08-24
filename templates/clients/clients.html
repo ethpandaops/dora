@@ -1,0 +1,59 @@
+{{ define "page" }}
+  <div class="container mt-2">
+    <div class="d-md-flex py-2 justify-content-md-between">
+      <h1 class="h4 mb-1 mb-md-0"><i class="fas fa-server mx-2"></i>Clients</h1>
+      <nav aria-label="breadcrumb">
+        <ol class="breadcrumb font-size-1 mb-0" style="padding:0; background-color:transparent;">
+          <li class="breadcrumb-item"><a href="/" title="Home">Home</a></li>
+          <li class="breadcrumb-item active" aria-current="page">Clients</li>
+        </ol>
+      </nav>
+    </div>
+
+    <div class="card mt-2">
+      <div class="card-body px-0 py-3">
+        <div class="table-responsive px-0 py-1">
+          <table class="table table-nobr" id="clients">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Name</th>
+                <th>Version</th>
+                <th>Head Slot</th>
+                <th>Head Root</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+              <tbody>
+                {{ range $i, $client := .Clients }}
+                  <tr>
+                    <td>{{ $client.Index }}</td>
+                    <td>{{ $client.Name }}</td>
+                    <td>{{ $client.Version }}</td>
+                    <td><a href="/slot/{{ $client.HeadSlot }}">{{ formatAddCommas $client.HeadSlot }}</a></td>
+                    <td><a href="/slot/0x{{ printf "%x" $client.HeadRoot }}">0x{{ printf "%x" $client.HeadRoot }}</a></td>
+                    <td>
+                      {{ if eq $client.Status "ready" }}
+                        <span class="badge rounded-pill text-bg-success">Connected</span>
+                      {{ else if eq $client.Status "syncing" }}
+                        <span class="badge rounded-pill text-bg-secondary">Synchronizing</span>
+                      {{ else if eq $client.Status "disconnected" }}
+                        <span class="badge rounded-pill text-bg-secondary">Disconnected</span>
+                      {{ else }}
+                        <span class="badge rounded-pill text-bg-dark">Unknown</span>
+                      {{ end }}
+                    </td>
+                  </tr>
+                {{ end }}
+              </tbody>
+          </table>
+        </div>
+      </div>
+      <div id="footer-placeholder" style="height:30px;"></div>
+    </div>
+  </div>
+{{ end }}
+{{ define "js" }}
+{{ end }}
+{{ define "css" }}
+{{ end }}

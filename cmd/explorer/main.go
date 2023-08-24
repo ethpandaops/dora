@@ -68,6 +68,7 @@ func startFrontend() {
 	router := mux.NewRouter()
 
 	router.HandleFunc("/", handlers.Index).Methods("GET")
+	router.HandleFunc("/clients", handlers.Clients).Methods("GET")
 	router.HandleFunc("/epochs", handlers.Epochs).Methods("GET")
 	router.HandleFunc("/epoch/{epoch}", handlers.Epoch).Methods("GET")
 	router.HandleFunc("/slots", handlers.Slots).Methods("GET")

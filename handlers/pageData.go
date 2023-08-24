@@ -110,6 +110,15 @@ func createMenuItems(active string, isMain bool) []types.MainMenuItem {
 						},
 					},
 				},
+				{
+					Links: []types.NavigationLink{
+						{
+							Label: "Clients",
+							Path:  "/clients",
+							Icon:  "fa-server",
+						},
+					},
+				},
 			},
 		},
 	}

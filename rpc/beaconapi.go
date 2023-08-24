@@ -147,7 +147,7 @@ func (bc *BeaconClient) GetNodeSyncing() (*rpctypes.StandardV1NodeSyncingRespons
 
 func (bc *BeaconClient) GetNodeVersion() (*rpctypes.StandardV1NodeVersionResponse, error) {
 	var parsedRsp rpctypes.StandardV1NodeVersionResponse
-	err := bc.getJson(fmt.Sprintf("%s/eth/v1/node/syncing", bc.endpoint), &parsedRsp)
+	err := bc.getJson(fmt.Sprintf("%s/eth/v1/node/version", bc.endpoint), &parsedRsp)
 	if err != nil {
 		if err == errNotFound {
 			// no block found

@@ -48,10 +48,32 @@ func newIndexerClient(clientIdx uint8, clientName string, rpcClient *rpc.BeaconC
 	return &client
 }
 
-func (client *IndexerClient) getLastHead() (int64, []byte) {
+func (client *IndexerClient) GetIndex() uint8 {
+	return client.clientIdx
+}
+
+func (client *IndexerClient) GetName() string {
+	return client.clientName
+}
+
+func (client *IndexerClient) GetVersion() string {
+	return client.versionStr
+}
+
+func (client *IndexerClient) GetLastHead() (int64, []byte) {
 	client.cacheMutex.RLock()
 	defer client.cacheMutex.RUnlock()
 	return client.lastHeadSlot, client.lastHeadRoot
+}
+
+func (client *IndexerClient) GetStatus() string {
+	if !client.isConnected {
+		return "disconnected"
+	} else if client.isSynchronizing {
+		return "synchronizing"
+	} else {
+		return "ready"
+	}
 }
 
 func (client *IndexerClient) runIndexerClientLoop() {

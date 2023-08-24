@@ -64,6 +64,10 @@ func StartBeaconService() error {
 	return nil
 }
 
+func (bs *BeaconService) GetClients() []*indexer.IndexerClient {
+	return bs.indexer.GetClients()
+}
+
 func (bs *BeaconService) GetValidatorName(index uint64) string {
 	return bs.validatorNames.GetValidatorName(index)
 }
