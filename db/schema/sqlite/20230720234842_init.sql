@@ -58,6 +58,10 @@ CREATE INDEX IF NOT EXISTS "blocks_proposer_idx"
     ON "blocks" 
     ("proposer" ASC);
 
+CREATE INDEX IF NOT EXISTS "blocks_parent_root_idx"
+    ON "blocks" 
+    ("parent_root" ASC);
+
 CREATE TABLE IF NOT EXISTS "orphaned_blocks"
 (
     "root" BLOB NOT NULL UNIQUE,

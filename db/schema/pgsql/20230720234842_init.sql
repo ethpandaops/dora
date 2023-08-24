@@ -61,6 +61,10 @@ CREATE INDEX IF NOT EXISTS "blocks_proposer_idx"
     ON public."blocks" 
     ("proposer" ASC NULLS LAST);
 
+CREATE INDEX IF NOT EXISTS "blocks_parent_root_idx"
+    ON public."blocks" 
+    ("parent_root" ASC NULLS LAST);
+
 CREATE TABLE IF NOT EXISTS public."orphaned_blocks"
 (
     "root" bytea NOT NULL,

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bytes"
 	"fmt"
 	"math"
 	"net/http"
@@ -69,7 +70,9 @@ func getSlotsPageData(firstSlot uint64, pageSize uint64) *models.SlotsPageData {
 
 func buildSlotsPageData(firstSlot uint64, pageSize uint64) (*models.SlotsPageData, time.Duration) {
 	logrus.Printf("slots page called: %v:%v", firstSlot, pageSize)
-	pageData := &models.SlotsPageData{}
+	pageData := &models.SlotsPageData{
+		ShowForkTree: true,
+	}
 
 	now := time.Now()
 	currentSlot := utils.TimeToSlot(uint64(now.Unix()))
@@ -127,6 +130,9 @@ func buildSlotsPageData(firstSlot uint64, pageSize uint64) (*models.SlotsPageDat
 	dbCnt := len(dbSlots)
 	blockCount := uint64(0)
 	allFinalized := true
+	isFirstPage := firstSlot >= currentSlot
+	openForks := map[int][]byte{}
+	maxOpenFork := 0
 	for slotIdx := int64(firstSlot); slotIdx >= int64(lastSlot); slotIdx-- {
 		slot := uint64(slotIdx)
 		finalized := finalizedEpoch >= int64(utils.EpochOfSlot(slot))
@@ -161,10 +167,13 @@ func buildSlotsPageData(firstSlot uint64, pageSize uint64) (*models.SlotsPageDat
 				EthBlockNumber:        dbSlot.EthBlockNumber,
 				Graffiti:              dbSlot.Graffiti,
 				BlockRoot:             dbSlot.Root,
+				ParentRoot:            dbSlot.ParentRoot,
+				ForkGraph:             make([]*models.SlotsPageDataForkGraph, 0),
 			}
 			pageData.Slots = append(pageData.Slots, slotData)
 			blockCount++
 			haveBlock = true
+			buildSlotsPageSlotGraph(pageData, slotData, &maxOpenFork, openForks, isFirstPage)
 		}
 
 		if !haveBlock {
@@ -182,11 +191,13 @@ func buildSlotsPageData(firstSlot uint64, pageSize uint64) (*models.SlotsPageDat
 			}
 			pageData.Slots = append(pageData.Slots, slotData)
 			blockCount++
+			buildSlotsPageSlotGraph(pageData, slotData, &maxOpenFork, openForks, isFirstPage)
 		}
 	}
 	pageData.SlotCount = uint64(blockCount)
 	pageData.FirstSlot = firstSlot
 	pageData.LastSlot = lastSlot
+	pageData.ForkTreeWidth = (maxOpenFork * 20) + 20
 
 	var cacheTimeout time.Duration
 	if allFinalized {
@@ -197,6 +208,124 @@ func buildSlotsPageData(firstSlot uint64, pageSize uint64) (*models.SlotsPageDat
 		cacheTimeout = 12 * time.Second
 	}
 	return pageData, cacheTimeout
+}
+
+func buildSlotsPageSlotGraph(pageData *models.SlotsPageData, slotData *models.SlotsPageDataSlot, maxOpenFork *int, openForks map[int][]byte, isFirstPage bool) {
+	// fork tree
+	var forkGraphIdx int = -1
+	var freeForkIdx int = -1
+	getForkGraph := func(slotData *models.SlotsPageDataSlot, forkIdx int) *models.SlotsPageDataForkGraph {
+		forkGraph := &models.SlotsPageDataForkGraph{}
+		graphCount := len(slotData.ForkGraph)
+		if graphCount > forkIdx {
+			forkGraph = slotData.ForkGraph[forkIdx]
+		} else {
+			for graphCount <= forkIdx {
+				forkGraph = &models.SlotsPageDataForkGraph{
+					Index: graphCount,
+					Left:  10 + (graphCount * 20),
+					Tiles: map[string]bool{},
+				}
+				slotData.ForkGraph = append(slotData.ForkGraph, forkGraph)
+				graphCount++
+			}
+		}
+		return forkGraph
+	}
+
+	for forkIdx := 0; forkIdx < *maxOpenFork; forkIdx++ {
+		forkGraph := getForkGraph(slotData, forkIdx)
+		if openForks[forkIdx] == nil {
+			if freeForkIdx == -1 {
+				freeForkIdx = forkIdx
+			}
+			continue
+		} else {
+			forkGraph.Tiles["vline"] = true
+			if bytes.Equal(openForks[forkIdx], slotData.BlockRoot) {
+				if forkGraphIdx != -1 {
+					continue
+				}
+				forkGraphIdx = forkIdx
+				openForks[forkIdx] = slotData.ParentRoot
+				forkGraph.Block = true
+				for targetIdx := forkIdx + 1; targetIdx < *maxOpenFork; targetIdx++ {
+					if openForks[targetIdx] == nil || !bytes.Equal(openForks[targetIdx], slotData.BlockRoot) {
+						continue
+					}
+					for idx := forkIdx + 1; idx <= targetIdx; idx++ {
+						splitGraph := getForkGraph(slotData, idx)
+						if idx == targetIdx {
+							splitGraph.Tiles["tline"] = true
+							splitGraph.Tiles["lline"] = true
+							splitGraph.Tiles["fork"] = true
+						} else {
+							splitGraph.Tiles["hline"] = true
+						}
+					}
+					forkGraph.Tiles["rline"] = true
+					openForks[targetIdx] = nil
+				}
+			}
+		}
+	}
+	if forkGraphIdx == -1 && slotData.Status > 0 {
+		// fork head
+		hasHead := false
+		hasForks := false
+		if !isFirstPage {
+			// get blocks that build on top of this
+			refBlocks := services.GlobalBeaconService.GetDbBlocksByParentRoot(slotData.BlockRoot)
+			refBlockCount := len(refBlocks)
+			if refBlockCount > 0 {
+				freeForkIdx = *maxOpenFork
+				*maxOpenFork++
+				hasHead = true
+
+				// add additional forks
+				if refBlockCount > 1 {
+					for idx := 1; idx < refBlockCount; idx++ {
+						graphIdx := *maxOpenFork
+						*maxOpenFork++
+						splitGraph := getForkGraph(slotData, graphIdx)
+						splitGraph.Tiles["tline"] = true
+						splitGraph.Tiles["lline"] = true
+						splitGraph.Tiles["fork"] = true
+						if idx < refBlockCount-1 {
+							splitGraph.Tiles["hline"] = true
+						}
+					}
+				}
+
+				// add line up to the top for each fork
+				for _, slot := range pageData.Slots {
+					if bytes.Equal(slot.BlockRoot, slotData.BlockRoot) {
+						continue
+					}
+					for idx := 0; idx < refBlockCount; idx++ {
+						splitGraph := getForkGraph(slot, freeForkIdx+idx)
+						splitGraph.Tiles["vline"] = true
+					}
+				}
+			}
+		}
+
+		if freeForkIdx == -1 {
+			freeForkIdx = *maxOpenFork
+			*maxOpenFork++
+		}
+		openForks[freeForkIdx] = slotData.ParentRoot
+		forkGraph := getForkGraph(slotData, freeForkIdx)
+		forkGraph.Block = true
+		if hasHead {
+			forkGraph.Tiles["vline"] = true
+			if hasForks {
+				forkGraph.Tiles["rline"] = true
+			}
+		} else {
+			forkGraph.Tiles["bline"] = true
+		}
+	}
 }
 
 func getSlotsPageDataWithGraffitiFilter(graffiti string, pageIdx uint64, pageSize uint64) *models.SlotsPageData {

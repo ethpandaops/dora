@@ -262,6 +262,18 @@ func (indexer *Indexer) GetCachedBlocksByProposer(proposer uint64) []*CacheBlock
 	return resBlocks
 }
 
+func (indexer *Indexer) GetCachedBlocksByParentRoot(parentRoot []byte) []*CacheBlock {
+	indexer.indexerCache.cacheMutex.RLock()
+	defer indexer.indexerCache.cacheMutex.RUnlock()
+	resBlocks := make([]*CacheBlock, 0)
+	for _, block := range indexer.indexerCache.rootMap {
+		if block.header != nil && bytes.Equal(block.header.Message.ParentRoot, parentRoot) {
+			resBlocks = append(resBlocks, block)
+		}
+	}
+	return resBlocks
+}
+
 func (indexer *Indexer) GetCachedEpochStats(epoch uint64) *EpochStats {
 	_, headRoot := indexer.GetCanonicalHead()
 	return indexer.getCachedEpochStats(epoch, headRoot)

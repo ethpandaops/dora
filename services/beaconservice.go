@@ -637,6 +637,19 @@ func (bs *BeaconService) GetDbBlocksByProposer(proposer uint64, pageIdx uint64, 
 	return resBlocks
 }
 
+func (bs *BeaconService) GetDbBlocksByParentRoot(parentRoot []byte) []*dbtypes.Block {
+	parentBlock := bs.indexer.GetCachedBlock(parentRoot)
+	cachedMatches := bs.indexer.GetCachedBlocksByParentRoot(parentRoot)
+	resBlocks := make([]*dbtypes.Block, len(cachedMatches))
+	for idx, block := range cachedMatches {
+		resBlocks[idx] = bs.indexer.BuildLiveBlock(block)
+	}
+	if parentBlock == nil {
+		resBlocks = append(resBlocks, db.GetBlocksByParentRoot(parentRoot)...)
+	}
+	return resBlocks
+}
+
 func (bs *BeaconService) GetValidatorActivity() (map[uint64]uint8, uint64) {
 	activityMap := map[uint64]uint8{}
 	epochLimit := uint64(3)

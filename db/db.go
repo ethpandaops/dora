@@ -442,6 +442,24 @@ func GetBlocksForSlots(firstSlot uint64, lastSlot uint64, withOrphaned bool) []*
 	return blocks
 }
 
+func GetBlocksByParentRoot(parentRoot []byte) []*dbtypes.Block {
+	blocks := []*dbtypes.Block{}
+	err := ReaderDb.Select(&blocks, `
+	SELECT
+		root, slot, parent_root, state_root, orphaned, proposer, graffiti, graffiti_text,
+		attestation_count, deposit_count, exit_count, withdraw_count, withdraw_amount, attester_slashing_count, 
+		proposer_slashing_count, bls_change_count, eth_transaction_count, eth_block_number, eth_block_hash, sync_participation
+	FROM blocks
+	WHERE parent_root = $1
+	ORDER BY slot DESC
+	`, parentRoot)
+	if err != nil {
+		logger.Errorf("Error while fetching blocks by parent root: %v", err)
+		return nil
+	}
+	return blocks
+}
+
 func GetBlocksWithGraffiti(graffiti string, firstSlot uint64, offset uint64, limit uint32, withOrphaned bool) []*dbtypes.Block {
 	blocks := []*dbtypes.Block{}
 	orphanedLimit := ""
