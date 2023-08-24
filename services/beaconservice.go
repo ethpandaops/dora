@@ -64,6 +64,10 @@ func StartBeaconService() error {
 	return nil
 }
 
+func (bs *BeaconService) GetClients() []*indexer.IndexerClient {
+	return bs.indexer.GetClients()
+}
+
 func (bs *BeaconService) GetValidatorName(index uint64) string {
 	return bs.validatorNames.GetValidatorName(index)
 }
@@ -634,6 +638,19 @@ func (bs *BeaconService) GetDbBlocksByProposer(proposer uint64, pageIdx uint64, 
 	}
 	resBlocks = append(resBlocks, dbBlocks...)
 
+	return resBlocks
+}
+
+func (bs *BeaconService) GetDbBlocksByParentRoot(parentRoot []byte) []*dbtypes.Block {
+	parentBlock := bs.indexer.GetCachedBlock(parentRoot)
+	cachedMatches := bs.indexer.GetCachedBlocksByParentRoot(parentRoot)
+	resBlocks := make([]*dbtypes.Block, len(cachedMatches))
+	for idx, block := range cachedMatches {
+		resBlocks[idx] = bs.indexer.BuildLiveBlock(block)
+	}
+	if parentBlock == nil {
+		resBlocks = append(resBlocks, db.GetBlocksByParentRoot(parentRoot)...)
+	}
 	return resBlocks
 }
 

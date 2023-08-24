@@ -10,6 +10,8 @@ type SlotsPageData struct {
 	SlotCount      uint64               `json:"slot_count"`
 	FirstSlot      uint64               `json:"first_slot"`
 	LastSlot       uint64               `json:"last_slot"`
+	ShowForkTree   bool                 `json:"show_forktree"`
+	ForkTreeWidth  int                  `json:"forktree_width"`
 	GraffitiFilter string               `json:"graffiti_filter"`
 
 	IsDefaultPage    bool   `json:"default_page"`
@@ -25,23 +27,32 @@ type SlotsPageData struct {
 }
 
 type SlotsPageDataSlot struct {
-	Slot                  uint64    `json:"slot"`
-	Epoch                 uint64    `json:"epoch"`
-	Ts                    time.Time `json:"ts"`
-	Finalized             bool      `json:"scheduled"`
-	Scheduled             bool      `json:"finalized"`
-	Status                uint8     `json:"status"`
-	Synchronized          bool      `json:"synchronized"`
-	Proposer              uint64    `json:"proposer"`
-	ProposerName          string    `json:"proposer_name"`
-	AttestationCount      uint64    `json:"attestation_count"`
-	DepositCount          uint64    `json:"deposit_count"`
-	ExitCount             uint64    `json:"exit_count"`
-	ProposerSlashingCount uint64    `json:"proposer_slashing_count"`
-	AttesterSlashingCount uint64    `json:"attester_slashing_count"`
-	SyncParticipation     float64   `json:"sync_participation"`
-	EthTransactionCount   uint64    `json:"eth_transaction_count"`
-	EthBlockNumber        uint64    `json:"eth_block_number"`
-	Graffiti              []byte    `json:"graffiti"`
-	BlockRoot             []byte    `json:"block_root"`
+	Slot                  uint64                    `json:"slot"`
+	Epoch                 uint64                    `json:"epoch"`
+	Ts                    time.Time                 `json:"ts"`
+	Finalized             bool                      `json:"scheduled"`
+	Scheduled             bool                      `json:"finalized"`
+	Status                uint8                     `json:"status"`
+	Synchronized          bool                      `json:"synchronized"`
+	Proposer              uint64                    `json:"proposer"`
+	ProposerName          string                    `json:"proposer_name"`
+	AttestationCount      uint64                    `json:"attestation_count"`
+	DepositCount          uint64                    `json:"deposit_count"`
+	ExitCount             uint64                    `json:"exit_count"`
+	ProposerSlashingCount uint64                    `json:"proposer_slashing_count"`
+	AttesterSlashingCount uint64                    `json:"attester_slashing_count"`
+	SyncParticipation     float64                   `json:"sync_participation"`
+	EthTransactionCount   uint64                    `json:"eth_transaction_count"`
+	EthBlockNumber        uint64                    `json:"eth_block_number"`
+	Graffiti              []byte                    `json:"graffiti"`
+	BlockRoot             []byte                    `json:"block_root"`
+	ParentRoot            []byte                    `json:"parent_root"`
+	ForkGraph             []*SlotsPageDataForkGraph `json:"fork_graph"`
+}
+
+type SlotsPageDataForkGraph struct {
+	Index int             `json:"index"`
+	Left  int             `json:"left"`
+	Tiles map[string]bool `json:"tiles"`
+	Block bool            `json:"block"`
 }

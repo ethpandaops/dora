@@ -51,6 +51,10 @@ func (indexer *Indexer) AddClient(index uint8, name string, endpoint string, arc
 	return client
 }
 
+func (indexer *Indexer) GetClients() []*IndexerClient {
+	return indexer.indexerClients
+}
+
 func (indexer *Indexer) getReadyClient(archive bool, head []byte) *IndexerClient {
 	headCandidates := indexer.GetHeadForks()
 	if len(headCandidates) == 0 {
@@ -126,7 +130,7 @@ func (indexer *Indexer) GetHeadForks() []*HeadFork {
 		if !client.isConnected || client.isSynchronizing {
 			continue
 		}
-		cHeadSlot, cHeadRoot := client.getLastHead()
+		cHeadSlot, cHeadRoot := client.GetLastHead()
 		var matchingFork *HeadFork
 		for _, fork := range headForks {
 			if bytes.Equal(fork.Root, cHeadRoot) || indexer.indexerCache.isCanonicalBlock(cHeadRoot, fork.Root) {
@@ -160,7 +164,7 @@ func (indexer *Indexer) GetHeadForks() []*HeadFork {
 		})
 		for _, client := range fork.AllClients {
 			var headDistance uint64 = 0
-			_, cHeadRoot := client.getLastHead()
+			_, cHeadRoot := client.GetLastHead()
 			if !bytes.Equal(fork.Root, cHeadRoot) {
 				_, headDistance = indexer.indexerCache.getCanonicalDistance(cHeadRoot, fork.Root)
 			}
@@ -257,6 +261,18 @@ func (indexer *Indexer) GetCachedBlocksByProposer(proposer uint64) []*CacheBlock
 			if uint64(block.header.Message.ProposerIndex) == proposer {
 				resBlocks = append(resBlocks, block)
 			}
+		}
+	}
+	return resBlocks
+}
+
+func (indexer *Indexer) GetCachedBlocksByParentRoot(parentRoot []byte) []*CacheBlock {
+	indexer.indexerCache.cacheMutex.RLock()
+	defer indexer.indexerCache.cacheMutex.RUnlock()
+	resBlocks := make([]*CacheBlock, 0)
+	for _, block := range indexer.indexerCache.rootMap {
+		if block.header != nil && bytes.Equal(block.header.Message.ParentRoot, parentRoot) {
+			resBlocks = append(resBlocks, block)
 		}
 	}
 	return resBlocks

@@ -50,6 +50,9 @@
           <table class="table table-nobr" id="slots">
             <thead>
               <tr>
+                {{ if .ShowForkTree -}}
+                  <th>Graph</th>
+                {{- end }}
                 <th>Epoch</th>
                 <th>Slot</th>
                 <th>Status</th>
@@ -71,8 +74,26 @@
             </thead>
             {{ if gt .SlotCount 0 }}
               <tbody>
+                {{ $showTree := .ShowForkTree }}
+                {{ $treeWidth := .ForkTreeWidth }}
                 {{ range $i, $slot := .Slots }}
                   <tr>
+                    {{ if $showTree -}}
+                      <td class="graph-container" style="min-width: {{ $treeWidth }}px;">
+                        {{ range $j, $graph := $slot.ForkGraph }}
+                          <div class="graph-fork" data-index="{{ $graph.Index }}" style="left: {{ $graph.Left }}px;">
+                            {{- range $tile, $val := $graph.Tiles -}}
+                              <div class="graph-layer graph-layer-{{ $tile }}"></div>
+                            {{- end -}}
+                            {{- if $graph.Block }}
+                              <div class="graph-layer graph-layer-block">
+                                <i class="fas fa-circle"></i>
+                              </div>
+                            {{ end -}}
+                          </div>
+                        {{ end }}
+                      </td>
+                    {{- end }}
                     <td><a href="/epoch/{{ $slot.Epoch }}">{{ formatAddCommas $slot.Epoch }}</a></td>
                     {{ if eq $slot.Status 2 }}
                       <td><a href="/slot/0x{{ printf "%x" $slot.BlockRoot }}">{{ formatAddCommas $slot.Slot }}</a></td>
@@ -165,4 +186,5 @@
 {{ define "js" }}
 {{ end }}
 {{ define "css" }}
+  <link rel="stylesheet" href="/css/forkgraph.css" />
 {{ end }}
