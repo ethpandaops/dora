@@ -101,7 +101,9 @@ func (client *IndexerClient) runIndexerClient() error {
 	if err != nil {
 		return fmt.Errorf("error while fetching node version: %v", err)
 	}
-	client.versionStr = nodeVersion.Data.Version
+	if nodeVersion != nil {
+		client.versionStr = nodeVersion.Data.Version
+	}
 
 	// check genesis
 	genesis, err := client.rpcClient.GetGenesis()
