@@ -100,6 +100,7 @@ func buildEpochsPageData(firstEpoch uint64, pageSize uint64) (*models.EpochsPage
 	dbCnt := len(dbEpochs)
 	epochCount := uint64(0)
 	allFinalized := true
+	allSynchronized := true
 	for epochIdx := int64(firstEpoch); epochIdx >= 0 && epochCount < epochLimit; epochIdx-- {
 		epoch := uint64(epochIdx)
 		finalized := finalizedEpoch >= epochIdx
@@ -132,6 +133,8 @@ func buildEpochsPageData(firstEpoch uint64, pageSize uint64) (*models.EpochsPage
 				epochData.TotalVoteParticipation = float64(dbEpoch.VotedTotal) * 100.0 / float64(dbEpoch.Eligible)
 			}
 			epochData.EthTransactionCount = dbEpoch.EthTransactionCount
+		} else {
+			allSynchronized = false
 		}
 		pageData.Epochs = append(pageData.Epochs, epochData)
 		epochCount++
@@ -141,7 +144,9 @@ func buildEpochsPageData(firstEpoch uint64, pageSize uint64) (*models.EpochsPage
 	pageData.LastEpoch = firstEpoch - pageData.EpochCount + 1
 
 	var cacheTimeout time.Duration
-	if allFinalized {
+	if !allSynchronized {
+		cacheTimeout = 30 * time.Second
+	} else if allFinalized {
 		cacheTimeout = 30 * time.Minute
 	} else if firstEpoch+2 < uint64(currentEpoch) {
 		cacheTimeout = 10 * time.Minute

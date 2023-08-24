@@ -130,6 +130,7 @@ func buildSlotsPageData(firstSlot uint64, pageSize uint64) (*models.SlotsPageDat
 	dbCnt := len(dbSlots)
 	blockCount := uint64(0)
 	allFinalized := true
+	allSynchronized := true
 	isFirstPage := firstSlot >= currentSlot
 	openForks := map[int][]byte{}
 	maxOpenFork := 0
@@ -189,6 +190,9 @@ func buildSlotsPageData(firstSlot uint64, pageSize uint64) (*models.SlotsPageDat
 				Proposer:     slotAssignments[slot],
 				ProposerName: services.GlobalBeaconService.GetValidatorName(slotAssignments[slot]),
 			}
+			if !slotData.Synchronized {
+				allSynchronized = false
+			}
 			pageData.Slots = append(pageData.Slots, slotData)
 			blockCount++
 			buildSlotsPageSlotGraph(pageData, slotData, &maxOpenFork, openForks, isFirstPage)
@@ -200,7 +204,10 @@ func buildSlotsPageData(firstSlot uint64, pageSize uint64) (*models.SlotsPageDat
 	pageData.ForkTreeWidth = (maxOpenFork * 20) + 20
 
 	var cacheTimeout time.Duration
-	if allFinalized {
+
+	if !allSynchronized {
+		cacheTimeout = 30 * time.Second
+	} else if allFinalized {
 		cacheTimeout = 30 * time.Minute
 	} else if firstEpoch < uint64(currentEpoch) {
 		cacheTimeout = 10 * time.Minute
