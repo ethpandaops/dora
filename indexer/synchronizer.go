@@ -79,15 +79,27 @@ func (sync *synchronizerState) runSync() {
 	sync.cachedBlocks = make(map[uint64]*CacheBlock)
 	sync.cachedSlot = 0
 	isComplete := false
+	retryCount := 0
 	synclogger.Infof("synchronization started. Head epoch: %v", sync.currentEpoch)
 
 	for {
 		// synchronize next epoch
 		syncEpoch := sync.currentEpoch
 
-		synclogger.Infof("synchronizing epoch %v", syncEpoch)
-		done, err := sync.syncEpoch(syncEpoch)
-		if done {
+		lastRetry := retryCount >= 10
+		if lastRetry {
+			synclogger.Infof("synchronizing epoch %v (retry: %v, last retry!)", syncEpoch, retryCount)
+		} else if retryCount > 0 {
+			synclogger.Infof("synchronizing epoch %v (retry: %v)", syncEpoch, retryCount)
+		} else {
+			synclogger.Infof("synchronizing epoch %v", syncEpoch)
+		}
+		done, err := sync.syncEpoch(syncEpoch, lastRetry)
+		if done || lastRetry {
+			if err != nil {
+				synclogger.Warnf("synchronization of epoch %v failed: %v - skipping epoch", syncEpoch, err)
+			}
+			retryCount = 0
 			finalizedEpoch, _ := sync.indexer.indexerCache.getFinalizedHead()
 			sync.stateMutex.Lock()
 			syncEpoch++
@@ -99,6 +111,7 @@ func (sync *synchronizerState) runSync() {
 			}
 		} else if err != nil {
 			synclogger.Warnf("synchronization of epoch %v failed: %v - Retrying in 10 sec...", syncEpoch, err)
+			retryCount++
 			time.Sleep(10 * time.Second)
 		}
 
@@ -134,7 +147,7 @@ func (sync *synchronizerState) checkKillChan(timeout time.Duration) bool {
 	}
 }
 
-func (sync *synchronizerState) syncEpoch(syncEpoch uint64) (bool, error) {
+func (sync *synchronizerState) syncEpoch(syncEpoch uint64, lastTry bool) (bool, error) {
 	if db.IsEpochSynchronized(syncEpoch) {
 		return true, nil
 	}
@@ -144,8 +157,10 @@ func (sync *synchronizerState) syncEpoch(syncEpoch uint64) (bool, error) {
 	// load epoch assignments
 	epochAssignments, err := client.rpcClient.GetEpochAssignments(syncEpoch)
 	if err != nil || epochAssignments == nil {
-		synclogger.Errorf("error fetching epoch %v duties: %v", syncEpoch, err)
-		return false, err
+		return false, fmt.Errorf("error fetching epoch %v duties: %v", syncEpoch, err)
+	}
+	if epochAssignments.AttestorAssignments == nil && !lastTry {
+		return false, fmt.Errorf("error fetching epoch %v duties: attestor assignments empty", syncEpoch)
 	}
 
 	if sync.checkKillChan(0) {
@@ -196,7 +211,7 @@ func (sync *synchronizerState) syncEpoch(syncEpoch uint64) (bool, error) {
 	}
 	epochStats.loadValidatorStats(client, epochAssignments.DependendStateRef)
 
-	if epochStats.validatorStats == nil {
+	if epochStats.validatorStats == nil && !lastTry {
 		return false, fmt.Errorf("error fetching validator stats for epoch %v: %v", syncEpoch, err)
 	}
 	if sync.checkKillChan(0) {
