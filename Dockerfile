@@ -5,6 +5,8 @@ WORKDIR /src
 RUN go mod download
 ADD . /src
 ARG target=linux
+ARG release=
+ENV RELEASE=$release
 RUN make $target
 
 # final stage

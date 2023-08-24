@@ -33,6 +33,7 @@ func main() {
 	logger.WithFields(logger.Fields{
 		"config":    *configPath,
 		"version":   utils.BuildVersion,
+		"release":   utils.BuildRelease,
 		"chainName": utils.Config.Chain.Config.ConfigName}).Printf("starting")
 
 	if utils.Config.Chain.Config.SlotsPerEpoch == 0 || utils.Config.Chain.Config.SecondsPerSlot == 0 {

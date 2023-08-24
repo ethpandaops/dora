@@ -16,6 +16,8 @@ jobs:
   build_binaries:
     name: "Build binaries"
     uses: ./.github/workflows/_shared-build.yaml
+    with:
+      release: "snapshot"
 
   create_snapshot_release:
     name: Create snapshot release
@@ -141,6 +143,6 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Build unstable docker image
-        run: docker build . --file Dockerfile --tag pk910/light-beaconchain-explorer:unstable
+        run: docker build . --build-arg release=snapshot --file Dockerfile --tag pk910/light-beaconchain-explorer:unstable
       - name: Push unstable docker image
         run: docker push pk910/light-beaconchain-explorer:unstable

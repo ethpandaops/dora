@@ -12,6 +12,8 @@ jobs:
   build_binaries:
     name: "Build binaries"
     uses: ./.github/workflows/_shared-build.yaml
+    with:
+      release: "v${{ inputs.version }}"
 
   create_release:
     name: Create Release

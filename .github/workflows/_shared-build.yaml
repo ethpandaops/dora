@@ -2,6 +2,12 @@
 name: Reusable build workflow
 on:
   workflow_call:
+     inputs:
+        release:
+          description: 'Release version tag for this build'
+          default: ''
+          required: false
+          type: string
 
 # shared build jobs
 jobs:
@@ -26,6 +32,8 @@ jobs:
     - name: Build linux binary
       run: |
         make linux
+      env:
+        RELEASE: ${{ inputs.release }}
 
     # upload artifacts
     - name: "Upload artifact: explorer_linux_amd64"
@@ -55,6 +63,8 @@ jobs:
     - name: Build windows binary
       run: |
         make windows
+      env:
+        RELEASE: ${{ inputs.release }}
 
     # upload artifacts
     - name: "Upload artifact: explorer_windows_amd64.exe"
@@ -84,6 +94,8 @@ jobs:
     - name: Build macos binary
       run: |
         make darwin
+      env:
+        RELEASE: ${{ inputs.release }}
 
     # upload artifacts
     - name: "Upload artifact: explorer_darwin_amd64"

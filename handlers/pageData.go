@@ -53,6 +53,12 @@ func InitPageData(w http.ResponseWriter, r *http.Request, active, path, title st
 		MainMenuItems:         createMenuItems(active, isMainnet),
 	}
 
+	if utils.BuildRelease == "" {
+		data.Version = fmt.Sprintf("git-%v", utils.BuildVersion)
+	} else {
+		data.Version = fmt.Sprintf("%v (git-%v)", utils.BuildRelease, utils.BuildVersion)
+	}
+
 	acceptedLangs := strings.Split(r.Header.Get("Accept-Language"), ",")
 	if len(acceptedLangs) > 0 {
 		if strings.Contains(acceptedLangs[0], "ru") || strings.Contains(acceptedLangs[0], "RU") {

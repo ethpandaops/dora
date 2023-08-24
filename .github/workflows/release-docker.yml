@@ -23,10 +23,10 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Build version specific docker image
-        run: docker build . --file Dockerfile --tag pk910/light-beaconchain-explorer:${{ github.event.release.tag_name }}
+        run: docker build . --build-arg release=${{ github.event.release.tag_name }} --file Dockerfile --tag pk910/light-beaconchain-explorer:${{ github.event.release.tag_name }}
       - name: Push version specific docker image
         run: docker push pk910/light-beaconchain-explorer:${{ github.event.release.tag_name }}
       - name: Build latest docker image
-        run: docker build . --file Dockerfile --tag pk910/light-beaconchain-explorer:latest
+        run: docker build . --build-arg release=${{ github.event.release.tag_name }} --file Dockerfile --tag pk910/light-beaconchain-explorer:latest
       - name: Push latest docker image
         run: docker push pk910/light-beaconchain-explorer:latest
