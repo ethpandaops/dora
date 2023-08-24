@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"time"
 
@@ -36,13 +37,13 @@ func NewBeaconClient(endpoint string, name string, headers map[string]string) (*
 
 var errNotFound = errors.New("not found 404")
 
-func (bc *BeaconClient) get(url string) ([]byte, error) {
+func (bc *BeaconClient) get(requrl string) ([]byte, error) {
 	t0 := time.Now()
 	defer func() {
-		logger.WithField("client", bc.name).Debugf("RPC call (byte): %v [%v ms]", url, time.Since(t0).Milliseconds())
+		logger.WithField("client", bc.name).Debugf("RPC call (byte): %v [%v ms]", requrl, time.Since(t0).Milliseconds())
 	}()
 
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequest("GET", requrl, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -64,19 +65,23 @@ func (bc *BeaconClient) get(url string) ([]byte, error) {
 		if resp.StatusCode == http.StatusNotFound {
 			return nil, errNotFound
 		}
-		return nil, fmt.Errorf("url: %v, error-response: %s", url, data)
+		urlData, _ := url.Parse(requrl)
+		if urlData != nil {
+			requrl = urlData.Redacted()
+		}
+		return nil, fmt.Errorf("url: %v, error-response: %s", requrl, data)
 	}
 
 	return data, err
 }
 
-func (bc *BeaconClient) getJson(url string, returnValue interface{}) error {
+func (bc *BeaconClient) getJson(requrl string, returnValue interface{}) error {
 	t0 := time.Now()
 	defer func() {
-		logger.WithField("client", bc.name).Debugf("RPC call (json): %v [%v ms]", url, time.Since(t0).Milliseconds())
+		logger.WithField("client", bc.name).Debugf("RPC call (json): %v [%v ms]", requrl, time.Since(t0).Milliseconds())
 	}()
 
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequest("GET", requrl, nil)
 	if err != nil {
 		return err
 	}
@@ -97,7 +102,11 @@ func (bc *BeaconClient) getJson(url string, returnValue interface{}) error {
 			return errNotFound
 		}
 		data, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("url: %v, error-response: %s", url, data)
+		urlData, _ := url.Parse(requrl)
+		if urlData != nil {
+			requrl = urlData.Redacted()
+		}
+		return fmt.Errorf("url: %v, error-response: %s", requrl, data)
 	}
 
 	dec := json.NewDecoder(resp.Body)
