@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bytes"
 	"fmt"
 	"math"
 	"net/http"
@@ -23,6 +24,7 @@ func Index(w http.ResponseWriter, r *http.Request) {
 		"index/networkOverview.html",
 		"index/recentBlocks.html",
 		"index/recentEpochs.html",
+		"index/recentSlots.html",
 		"_svg/professor.html",
 		"_svg/timeline.html",
 	)
@@ -52,8 +54,9 @@ func getIndexPageData() *models.IndexPageData {
 func buildIndexPageData() (*models.IndexPageData, time.Duration) {
 	logrus.Printf("index page called")
 
-	recentEpochCount := 15
-	recentBlockCount := 15
+	recentEpochCount := 7
+	recentBlockCount := 7
+	recentSlotsCount := 16
 
 	// network overview
 	now := time.Now()
@@ -160,8 +163,20 @@ func buildIndexPageData() (*models.IndexPageData, time.Duration) {
 	}
 
 	// load recent epochs
+	buildIndexPageRecentEpochsData(pageData, uint64(currentEpoch), finalizedEpoch, recentEpochCount)
+
+	// load recent blocks
+	buildIndexPageRecentBlocksData(pageData, currentSlot, recentBlockCount)
+
+	// load recent slots
+	buildIndexPageRecentSlotsData(pageData, currentSlot, recentSlotsCount)
+
+	return pageData, 12 * time.Second
+}
+
+func buildIndexPageRecentEpochsData(pageData *models.IndexPageData, currentEpoch uint64, finalizedEpoch int64, recentEpochCount int) {
 	pageData.RecentEpochs = make([]*models.IndexPageDataEpochs, 0)
-	epochsData := services.GlobalBeaconService.GetDbEpochs(uint64(currentEpoch), uint32(recentEpochCount))
+	epochsData := services.GlobalBeaconService.GetDbEpochs(currentEpoch, uint32(recentEpochCount))
 	for i := 0; i < len(epochsData); i++ {
 		epochData := epochsData[i]
 		if epochData == nil {
@@ -183,8 +198,9 @@ func buildIndexPageData() (*models.IndexPageData, time.Duration) {
 		})
 	}
 	pageData.RecentEpochCount = uint64(len(pageData.RecentEpochs))
+}
 
-	// load recent blocks
+func buildIndexPageRecentBlocksData(pageData *models.IndexPageData, currentSlot uint64, recentBlockCount int) {
 	pageData.RecentBlocks = make([]*models.IndexPageDataBlocks, 0)
 	blocksData := services.GlobalBeaconService.GetDbBlocks(uint64(currentSlot), int32(recentBlockCount), false)
 	for i := 0; i < len(blocksData); i++ {
@@ -204,10 +220,149 @@ func buildIndexPageData() (*models.IndexPageData, time.Duration) {
 			Proposer:     blockData.Proposer,
 			ProposerName: services.GlobalBeaconService.GetValidatorName(blockData.Proposer),
 			Status:       uint64(blockStatus),
-			BlockRoot:    fmt.Sprintf("0x%x", blockData.Root),
+			BlockRoot:    blockData.Root,
 		})
 	}
 	pageData.RecentBlockCount = uint64(len(pageData.RecentBlocks))
+}
 
-	return pageData, 12 * time.Second
+func buildIndexPageRecentSlotsData(pageData *models.IndexPageData, firstSlot uint64, slotLimit int) {
+	var lastSlot uint64
+	if firstSlot >= uint64(slotLimit) {
+		lastSlot = firstSlot - uint64(slotLimit)
+	} else {
+		lastSlot = 0
+	}
+
+	// get slot assignments
+	firstEpoch := utils.EpochOfSlot(firstSlot)
+	lastEpoch := utils.EpochOfSlot(lastSlot)
+	slotAssignments, _ := services.GlobalBeaconService.GetProposerAssignments(firstEpoch, lastEpoch)
+
+	// load slots
+	pageData.RecentSlots = make([]*models.IndexPageDataSlots, 0)
+	dbSlots := services.GlobalBeaconService.GetDbBlocksForSlots(uint64(firstSlot), uint32(slotLimit), true)
+	dbIdx := 0
+	dbCnt := len(dbSlots)
+	blockCount := uint64(0)
+	openForks := map[int][]byte{}
+	maxOpenFork := 0
+	for slotIdx := int64(firstSlot); slotIdx >= int64(lastSlot); slotIdx-- {
+		slot := uint64(slotIdx)
+		haveBlock := false
+		for dbIdx < dbCnt && dbSlots[dbIdx] != nil && dbSlots[dbIdx].Slot == slot {
+			dbSlot := dbSlots[dbIdx]
+			dbIdx++
+			blockStatus := uint64(1)
+			if dbSlot.Orphaned {
+				blockStatus = 2
+			}
+
+			slotData := &models.IndexPageDataSlots{
+				Slot:         slot,
+				Epoch:        utils.EpochOfSlot(slot),
+				Ts:           utils.SlotToTime(slot),
+				Status:       blockStatus,
+				Proposer:     dbSlot.Proposer,
+				ProposerName: services.GlobalBeaconService.GetValidatorName(dbSlot.Proposer),
+				BlockRoot:    dbSlot.Root,
+				ParentRoot:   dbSlot.ParentRoot,
+				ForkGraph:    make([]*models.IndexPageDataForkGraph, 0),
+			}
+			pageData.RecentSlots = append(pageData.RecentSlots, slotData)
+			blockCount++
+			haveBlock = true
+			buildIndexPageSlotGraph(pageData, slotData, &maxOpenFork, openForks)
+		}
+
+		if !haveBlock {
+			epoch := utils.EpochOfSlot(slot)
+			slotData := &models.IndexPageDataSlots{
+				Slot:         slot,
+				Epoch:        epoch,
+				Ts:           utils.SlotToTime(slot),
+				Status:       0,
+				Proposer:     slotAssignments[slot],
+				ProposerName: services.GlobalBeaconService.GetValidatorName(slotAssignments[slot]),
+				ForkGraph:    make([]*models.IndexPageDataForkGraph, 0),
+			}
+			pageData.RecentSlots = append(pageData.RecentSlots, slotData)
+			blockCount++
+			buildIndexPageSlotGraph(pageData, slotData, &maxOpenFork, openForks)
+		}
+	}
+	pageData.RecentSlotCount = uint64(blockCount)
+
+}
+
+func buildIndexPageSlotGraph(pageData *models.IndexPageData, slotData *models.IndexPageDataSlots, maxOpenFork *int, openForks map[int][]byte) {
+	// fork tree
+	var forkGraphIdx int = -1
+	var freeForkIdx int = -1
+	getForkGraph := func(slotData *models.IndexPageDataSlots, forkIdx int) *models.IndexPageDataForkGraph {
+		forkGraph := &models.IndexPageDataForkGraph{}
+		graphCount := len(slotData.ForkGraph)
+		if graphCount > forkIdx {
+			forkGraph = slotData.ForkGraph[forkIdx]
+		} else {
+			for graphCount <= forkIdx {
+				forkGraph = &models.IndexPageDataForkGraph{
+					Index: graphCount,
+					Left:  10 + (graphCount * 20),
+					Tiles: map[string]bool{},
+				}
+				slotData.ForkGraph = append(slotData.ForkGraph, forkGraph)
+				graphCount++
+			}
+		}
+		return forkGraph
+	}
+
+	for forkIdx := 0; forkIdx < *maxOpenFork; forkIdx++ {
+		forkGraph := getForkGraph(slotData, forkIdx)
+		if openForks[forkIdx] == nil {
+			if freeForkIdx == -1 {
+				freeForkIdx = forkIdx
+			}
+			continue
+		} else {
+			forkGraph.Tiles["vline"] = true
+			if bytes.Equal(openForks[forkIdx], slotData.BlockRoot) {
+				if forkGraphIdx != -1 {
+					continue
+				}
+				forkGraphIdx = forkIdx
+				openForks[forkIdx] = slotData.ParentRoot
+				forkGraph.Block = true
+				for targetIdx := forkIdx + 1; targetIdx < *maxOpenFork; targetIdx++ {
+					if openForks[targetIdx] == nil || !bytes.Equal(openForks[targetIdx], slotData.BlockRoot) {
+						continue
+					}
+					for idx := forkIdx + 1; idx <= targetIdx; idx++ {
+						splitGraph := getForkGraph(slotData, idx)
+						if idx == targetIdx {
+							splitGraph.Tiles["tline"] = true
+							splitGraph.Tiles["lline"] = true
+							splitGraph.Tiles["fork"] = true
+						} else {
+							splitGraph.Tiles["hline"] = true
+						}
+					}
+					forkGraph.Tiles["rline"] = true
+					openForks[targetIdx] = nil
+				}
+			}
+		}
+	}
+	if forkGraphIdx == -1 && slotData.Status > 0 {
+		// fork head
+		if freeForkIdx == -1 {
+			freeForkIdx = *maxOpenFork
+			*maxOpenFork++
+		}
+		openForks[freeForkIdx] = slotData.ParentRoot
+		forkGraph := getForkGraph(slotData, freeForkIdx)
+		forkGraph.Block = true
+		forkGraph.Tiles["bline"] = true
+	}
 }

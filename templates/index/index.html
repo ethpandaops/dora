@@ -3,10 +3,17 @@
     {{ template "networkOverview" . }}
     <div class="row">
       <div class="col-lg-6 mt-3 pr-lg-2">
-        {{ template "recentEpochs" . }}
+        <div class="startpage-panel">
+          {{ template "recentEpochs" . }}
+        </div>
+        <div class="startpage-panel">
+          {{ template "recentBlocks" . }}
+        </div>
       </div>
       <div class="col-lg-6 mt-3 pl-lg-2">
-        {{ template "recentBlocks" . }}
+        <div class="startpage-panel">
+          {{ template "recentSlots" . }}
+        </div>
       </div>
     </div>
   </div>
@@ -14,4 +21,20 @@
 {{ define "js" }}
 {{ end }}
 {{ define "css" }}
+<link rel="stylesheet" href="/css/forkgraph.css" />
+<style>
+  #recent-epochs, #recent-blocks, #recent-slots {
+    margin-bottom: 0;
+  }
+  .startpage-panel {
+    margin-bottom: 30px;
+  }
+  .startpage-panel .card-header {
+    padding-top: 2px;
+    padding-bottom: 2px;
+  }
+  .startpage-panel .card-header i {
+    margin-right: 5px;
+  }
+</style>
 {{ end }}

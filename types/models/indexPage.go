@@ -32,6 +32,9 @@ type IndexPageData struct {
 	RecentBlockCount uint64                 `json:"recent_block_count"`
 	RecentEpochs     []*IndexPageDataEpochs `json:"recent_epochs"`
 	RecentEpochCount uint64                 `json:"recent_epoch_count"`
+	RecentSlots      []*IndexPageDataSlots  `json:"recent_slots"`
+	RecentSlotCount  uint64                 `json:"recent_slot_count"`
+	ForkTreeWidth    int                    `json:"forktree_width"`
 }
 
 type IndexPageDataForks struct {
@@ -60,5 +63,25 @@ type IndexPageDataBlocks struct {
 	Proposer     uint64    `json:"proposer"`
 	ProposerName string    `json:"proposer_name"`
 	Status       uint64    `json:"status"`
-	BlockRoot    string    `json:"block_root"`
+	BlockRoot    []byte    `json:"block_root"`
+}
+
+type IndexPageDataSlots struct {
+	Epoch        uint64                    `json:"epoch"`
+	Slot         uint64                    `json:"slot"`
+	EthBlock     uint64                    `json:"eth_block"`
+	Ts           time.Time                 `json:"ts"`
+	Proposer     uint64                    `json:"proposer"`
+	ProposerName string                    `json:"proposer_name"`
+	Status       uint64                    `json:"status"`
+	BlockRoot    []byte                    `json:"block_root"`
+	ParentRoot   []byte                    `json:"parent_root"`
+	ForkGraph    []*IndexPageDataForkGraph `json:"fork_graph"`
+}
+
+type IndexPageDataForkGraph struct {
+	Index int             `json:"index"`
+	Left  int             `json:"left"`
+	Tiles map[string]bool `json:"tiles"`
+	Block bool            `json:"block"`
 }
