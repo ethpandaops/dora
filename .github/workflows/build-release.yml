@@ -38,6 +38,7 @@ jobs:
           ...
 
           ### Release Artifacts
+          Please read through the [wiki](https://github.com/pk910/light-beaconchain-explorer/wiki) for setup & configuration instructions.
           | Release File  | Description |
           | ------------- | ------------- |
           | [explorer_windows_amd64.exe](https://github.com/pk910/light-beaconchain-explorer/releases/download/v${{ inputs.version }}/explorer_windows_amd64.exe) | explorer executable for windows (64bit) |
