@@ -66,8 +66,6 @@ func handleHTTPError(err error, handler func(http.ResponseWriter, *http.Request)
 func NotFound(w http.ResponseWriter, r *http.Request) {
 	templateFiles := append(layoutTemplateFiles, "_layout/404.html")
 	notFoundTemplate := templates.GetTemplate(templateFiles...)
-	fmt.Printf("Error page\n")
-
 	w.Header().Set("Content-Type", "text/html")
 	w.WriteHeader(http.StatusNotFound)
 	data := InitPageData(w, r, "blockchain", r.URL.Path, "Not Found", templateFiles)
