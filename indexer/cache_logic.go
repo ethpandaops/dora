@@ -117,7 +117,7 @@ func (cache *indexerCache) processFinalizedEpoch(epoch uint64) error {
 	var epochTarget []byte
 	var epochDependentRoot []byte
 	if firstBlock == nil {
-		logger.Warnf("counld not find epoch %v target (no block found)", epoch)
+		logger.Warnf("could not find epoch %v target (no block found)", epoch)
 	} else {
 		if firstBlock.Slot == firstSlot {
 			epochTarget = firstBlock.Root

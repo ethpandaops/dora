@@ -1,10 +1,12 @@
 package rpc
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"strconv"
 	"time"
@@ -40,7 +42,7 @@ func (bc *BeaconClient) get(requrl string) ([]byte, error) {
 	logurl := utils.GetRedactedUrl(requrl)
 	t0 := time.Now()
 	defer func() {
-		logger.WithField("client", bc.name).Debugf("RPC call (byte): %v [%v ms]", logurl, time.Since(t0).Milliseconds())
+		logger.WithField("client", bc.name).Debugf("RPC GET call (byte): %v [%v ms]", logurl, time.Since(t0).Milliseconds())
 	}()
 
 	req, err := http.NewRequest("GET", requrl, nil)
@@ -75,13 +77,59 @@ func (bc *BeaconClient) getJson(requrl string, returnValue interface{}) error {
 	logurl := utils.GetRedactedUrl(requrl)
 	t0 := time.Now()
 	defer func() {
-		logger.WithField("client", bc.name).Debugf("RPC call (json): %v [%v ms]", logurl, time.Since(t0).Milliseconds())
+		logger.WithField("client", bc.name).Debugf("RPC GET call (json): %v [%v ms]", logurl, time.Since(t0).Milliseconds())
 	}()
 
 	req, err := http.NewRequest("GET", requrl, nil)
 	if err != nil {
 		return err
 	}
+	for headerKey, headerVal := range bc.headers {
+		req.Header.Set(headerKey, headerVal)
+	}
+
+	client := &http.Client{Timeout: time.Second * 120}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		if resp.StatusCode == http.StatusNotFound {
+			return errNotFound
+		}
+		data, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("url: %v, error-response: %s", logurl, data)
+	}
+
+	dec := json.NewDecoder(resp.Body)
+	err = dec.Decode(&returnValue)
+	if err != nil {
+		return fmt.Errorf("error parsing json response: %v", err)
+	}
+
+	return nil
+}
+
+func (bc *BeaconClient) postJson(requrl string, postData interface{}, returnValue interface{}) error {
+	logurl := utils.GetRedactedUrl(requrl)
+	t0 := time.Now()
+	defer func() {
+		logger.WithField("client", bc.name).Debugf("RPC POST call (json): %v [%v ms]", logurl, time.Since(t0).Milliseconds())
+	}()
+
+	postDataBytes, err := json.Marshal(postData)
+	if err != nil {
+		return fmt.Errorf("error encoding json request: %v", err)
+	}
+	reader := bytes.NewReader(postDataBytes)
+	req, err := http.NewRequest("POST", requrl, reader)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
 	for headerKey, headerVal := range bc.headers {
 		req.Header.Set(headerKey, headerVal)
 	}
@@ -253,11 +301,15 @@ func (bc *BeaconClient) GetBlockBodyByBlockroot(blockroot []byte) (*rpctypes.Sta
 }
 
 func (bc *BeaconClient) GetProposerDuties(epoch uint64) (*rpctypes.StandardV1ProposerDutiesResponse, error) {
+	if utils.Config.Chain.WhiskForkEpoch != nil && epoch >= *utils.Config.Chain.WhiskForkEpoch {
+		// whisk activated - cannot fetch proposer duties
+		return nil, nil
+	}
+	var parsedProposerResponse rpctypes.StandardV1ProposerDutiesResponse
 	proposerResp, err := bc.get(fmt.Sprintf("%s/eth/v1/validator/duties/proposer/%d", bc.endpoint, epoch))
 	if err != nil {
 		return nil, fmt.Errorf("error retrieving proposer duties: %v", err)
 	}
-	var parsedProposerResponse rpctypes.StandardV1ProposerDutiesResponse
 	err = json.Unmarshal(proposerResp, &parsedProposerResponse)
 	if err != nil {
 		return nil, fmt.Errorf("error parsing proposer duties: %v", err)
@@ -287,32 +339,48 @@ func (bc *BeaconClient) GetSyncCommitteeDuties(stateRef string, epoch uint64) (*
 }
 
 // GetEpochAssignments will get the epoch assignments from Lighthouse RPC api
-func (bc *BeaconClient) GetEpochAssignments(epoch uint64) (*rpctypes.EpochAssignments, error) {
+func (bc *BeaconClient) GetEpochAssignments(epoch uint64, dependendRoot []byte) (*rpctypes.EpochAssignments, error) {
 	parsedProposerResponse, err := bc.GetProposerDuties(epoch)
 	if err != nil {
 		return nil, err
 	}
 
+	if parsedProposerResponse != nil {
+		dependendRoot = parsedProposerResponse.DependentRoot
+	}
+	if dependendRoot == nil {
+		return nil, fmt.Errorf("couldn't find dependent root for epoch %v", epoch)
+	}
+
+	var depStateRoot string
 	// fetch the block root that the proposer data is dependent on
-	parsedHeader, err := bc.GetBlockHeaderByBlockroot(parsedProposerResponse.DependentRoot)
+	parsedHeader, err := bc.GetBlockHeaderByBlockroot(dependendRoot)
 	if err != nil {
 		return nil, err
 	}
-	var depStateRoot string = parsedHeader.Data.Header.Message.StateRoot.String()
+	depStateRoot = parsedHeader.Data.Header.Message.StateRoot.String()
 	if epoch == 0 {
 		depStateRoot = "genesis"
 	}
 
 	assignments := &rpctypes.EpochAssignments{
-		DependendRoot:       parsedProposerResponse.DependentRoot,
+		DependendRoot:       dependendRoot,
 		DependendStateRef:   depStateRoot,
 		ProposerAssignments: make(map[uint64]uint64),
 		AttestorAssignments: make(map[string][]uint64),
 	}
 
 	// proposer duties
-	for _, duty := range parsedProposerResponse.Data {
-		assignments.ProposerAssignments[uint64(duty.Slot)] = uint64(duty.ValidatorIndex)
+	if utils.Config.Chain.WhiskForkEpoch != nil && epoch >= *utils.Config.Chain.WhiskForkEpoch {
+		firstSlot := epoch * utils.Config.Chain.Config.SlotsPerEpoch
+		lastSlot := firstSlot + utils.Config.Chain.Config.SlotsPerEpoch - 1
+		for slot := firstSlot; slot <= lastSlot; slot++ {
+			assignments.ProposerAssignments[slot] = math.MaxInt64
+		}
+	} else if parsedProposerResponse != nil {
+		for _, duty := range parsedProposerResponse.Data {
+			assignments.ProposerAssignments[uint64(duty.Slot)] = uint64(duty.ValidatorIndex)
+		}
 	}
 
 	// Now use the state root to make a consistent committee query

@@ -605,6 +605,23 @@ func GetBlockOrphanedRefs(blockRoots [][]byte) []*dbtypes.BlockOrphanedRef {
 	return orphanedRefs
 }
 
+func GetHighestRootBeforeSlot(slot uint64, withOrphaned bool) []byte {
+	var result []byte
+	orphanedLimit := ""
+	if !withOrphaned {
+		orphanedLimit = "AND NOT orphaned"
+	}
+
+	err := ReaderDb.Get(&result, `
+	SELECT root FROM blocks WHERE slot < $1 `+orphanedLimit+` ORDER BY slot DESC LIMIT 1
+	`, slot)
+	if err != nil {
+		logger.Errorf("Error while fetching highest root before %v: %v", slot, err)
+		return nil
+	}
+	return result
+}
+
 func InsertUnfinalizedBlock(block *dbtypes.UnfinalizedBlock, tx *sqlx.Tx) error {
 	_, err := tx.Exec(EngineQuery(map[dbtypes.DBEngineType]string{
 		dbtypes.DBEnginePgsql: `

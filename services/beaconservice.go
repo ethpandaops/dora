@@ -317,8 +317,10 @@ func (bs *BeaconService) GetEpochAssignments(epoch uint64) (*rpctypes.EpochAssig
 		return epochAssignments, nil
 	}
 
+	firstSlot := epoch * utils.Config.Chain.Config.SlotsPerEpoch
+	dependentRoot := db.GetHighestRootBeforeSlot(firstSlot, false)
 	var err error
-	epochAssignments, err = bs.indexer.GetRpcClient(true, nil).GetEpochAssignments(epoch)
+	epochAssignments, err = bs.indexer.GetRpcClient(true, nil).GetEpochAssignments(epoch, dependentRoot)
 	if err != nil {
 		return nil, err
 	}
@@ -719,10 +721,7 @@ func (bs *BeaconService) CheckBlockOrphanedStatus(blockRoot []byte) bool {
 		return !cachedBlock.IsCanonical(bs.indexer, nil)
 	}
 	dbRefs := db.GetBlockOrphanedRefs([][]byte{blockRoot})
-	if len(dbRefs) > 0 {
-		return true
-	}
-	return false
+	return len(dbRefs) > 0
 }
 
 func (bs *BeaconService) GetValidatorActivity() (map[uint64]uint8, uint64) {

@@ -156,48 +156,59 @@ func (sync *synchronizerState) syncEpoch(syncEpoch uint64, lastTry bool, skipCli
 
 	client := sync.indexer.GetReadyClient(true, nil, skipClients)
 
+	// load headers & blocks from this & next epoch
+	firstSlot := syncEpoch * utils.Config.Chain.Config.SlotsPerEpoch
+	lastSlot := firstSlot + (utils.Config.Chain.Config.SlotsPerEpoch * 2) - 1
+	var firstBlock *CacheBlock
+	for slot := firstSlot; slot <= lastSlot; slot++ {
+		if sync.cachedSlot < slot {
+			headerRsp, err := client.rpcClient.GetBlockHeaderBySlot(slot)
+			if err != nil {
+				return false, client, fmt.Errorf("error fetching slot %v header: %v", slot, err)
+			}
+			if headerRsp == nil {
+				continue
+			}
+			if sync.checkKillChan(0) {
+				return false, nil, nil
+			}
+			blockRsp, err := client.rpcClient.GetBlockBodyByBlockroot(headerRsp.Data.Root)
+			if err != nil {
+				return false, client, fmt.Errorf("error fetching slot %v block: %v", slot, err)
+			}
+			sync.cachedBlocks[slot] = &CacheBlock{
+				Root:   headerRsp.Data.Root,
+				Slot:   slot,
+				header: &headerRsp.Data.Header,
+				block:  &blockRsp.Data,
+			}
+		}
+		if firstBlock == nil && sync.cachedBlocks[slot] != nil {
+			firstBlock = sync.cachedBlocks[slot]
+		}
+	}
+	sync.cachedSlot = lastSlot
+
+	if sync.checkKillChan(0) {
+		return false, nil, nil
+	}
+
 	// load epoch assignments
-	epochAssignments, err := client.rpcClient.GetEpochAssignments(syncEpoch)
+	var dependentRoot []byte
+	if firstBlock != nil {
+		dependentRoot = firstBlock.header.Message.ParentRoot
+	} else {
+		// get from db
+		dependentRoot = db.GetHighestRootBeforeSlot(firstSlot, false)
+	}
+
+	epochAssignments, err := client.rpcClient.GetEpochAssignments(syncEpoch, dependentRoot)
 	if err != nil || epochAssignments == nil {
 		return false, client, fmt.Errorf("error fetching epoch %v duties: %v", syncEpoch, err)
 	}
 	if epochAssignments.AttestorAssignments == nil && !lastTry {
 		return false, client, fmt.Errorf("error fetching epoch %v duties: attestor assignments empty", syncEpoch)
 	}
-
-	if sync.checkKillChan(0) {
-		return false, nil, nil
-	}
-
-	// load headers & blocks from this & next epoch
-	firstSlot := syncEpoch * utils.Config.Chain.Config.SlotsPerEpoch
-	lastSlot := firstSlot + (utils.Config.Chain.Config.SlotsPerEpoch * 2) - 1
-	for slot := firstSlot; slot <= lastSlot; slot++ {
-		if sync.cachedSlot >= slot {
-			continue
-		}
-		headerRsp, err := client.rpcClient.GetBlockHeaderBySlot(slot)
-		if err != nil {
-			return false, client, fmt.Errorf("error fetching slot %v header: %v", slot, err)
-		}
-		if headerRsp == nil {
-			continue
-		}
-		if sync.checkKillChan(0) {
-			return false, nil, nil
-		}
-		blockRsp, err := client.rpcClient.GetBlockBodyByBlockroot(headerRsp.Data.Root)
-		if err != nil {
-			return false, client, fmt.Errorf("error fetching slot %v block: %v", slot, err)
-		}
-		sync.cachedBlocks[slot] = &CacheBlock{
-			Root:   headerRsp.Data.Root,
-			Slot:   slot,
-			header: &headerRsp.Data.Header,
-			block:  &blockRsp.Data,
-		}
-	}
-	sync.cachedSlot = lastSlot
 
 	if sync.checkKillChan(0) {
 		return false, nil, nil
@@ -221,15 +232,6 @@ func (sync *synchronizerState) syncEpoch(syncEpoch uint64, lastTry bool, skipCli
 	}
 
 	// process epoch vote aggregations
-	var firstBlock *CacheBlock
-	lastSlot = firstSlot + (utils.Config.Chain.Config.SlotsPerEpoch) - 1
-	for slot := firstSlot; slot <= lastSlot; slot++ {
-		if sync.cachedBlocks[slot] != nil {
-			firstBlock = sync.cachedBlocks[slot]
-			break
-		}
-	}
-
 	var targetRoot []byte
 	if firstBlock != nil {
 		if uint64(firstBlock.header.Message.Slot) == firstSlot {
@@ -239,6 +241,9 @@ func (sync *synchronizerState) syncEpoch(syncEpoch uint64, lastTry bool, skipCli
 		}
 	}
 	epochVotes := aggregateEpochVotes(sync.cachedBlocks, syncEpoch, epochStats, targetRoot, false)
+	if epochVotes.currentEpoch.targetVoteAmount < 10000 {
+		epochVotes = aggregateEpochVotes(sync.cachedBlocks, syncEpoch, epochStats, targetRoot, false)
+	}
 
 	// save blocks
 	tx, err := db.WriterDb.Beginx()
@@ -264,6 +269,7 @@ func (sync *synchronizerState) syncEpoch(syncEpoch uint64, lastTry bool, skipCli
 	}
 
 	// cleanup cache (remove blocks from this epoch)
+	lastSlot = firstSlot + utils.Config.Chain.Config.SlotsPerEpoch - 1
 	for slot := firstSlot; slot <= lastSlot; slot++ {
 		if sync.cachedBlocks[slot] != nil {
 			delete(sync.cachedBlocks, slot)

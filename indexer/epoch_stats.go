@@ -3,10 +3,12 @@ package indexer
 import (
 	"bytes"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"sync"
 
+	"github.com/pk910/light-beaconchain-explorer/db"
 	"github.com/pk910/light-beaconchain-explorer/dbtypes"
 	"github.com/pk910/light-beaconchain-explorer/rpctypes"
 	"github.com/pk910/light-beaconchain-explorer/utils"
@@ -119,7 +121,7 @@ func (epochStats *EpochStats) GetSyncAssignments() []uint64 {
 }
 
 func (client *IndexerClient) ensureEpochStats(epoch uint64, head []byte) error {
-	var dependendRoot []byte
+	var dependentRoot []byte
 	var proposerRsp *rpctypes.StandardV1ProposerDutiesResponse
 	if epoch > 0 {
 		firstBlock := client.indexerCache.getFirstCanonicalBlock(epoch, head)
@@ -127,35 +129,40 @@ func (client *IndexerClient) ensureEpochStats(epoch uint64, head []byte) error {
 			logger.WithField("client", client.clientName).Debugf("canonical first block for epoch %v: %v/0x%x (head: 0x%x)", epoch, firstBlock.Slot, firstBlock.Root, head)
 			firstBlock.mutex.RLock()
 			if firstBlock.header != nil {
-				dependendRoot = firstBlock.header.Message.ParentRoot
+				dependentRoot = firstBlock.header.Message.ParentRoot
 			}
 			firstBlock.mutex.RUnlock()
 		}
-		if dependendRoot == nil {
+		if dependentRoot == nil {
 			lastBlock := client.indexerCache.getLastCanonicalBlock(epoch-1, head)
 			if lastBlock != nil {
 				logger.WithField("client", client.clientName).Debugf("canonical last block for epoch %v: %v/0x%x (head: 0x%x)", epoch-1, lastBlock.Slot, lastBlock.Root, head)
-				dependendRoot = lastBlock.Root
+				dependentRoot = lastBlock.Root
 			}
 		}
 	}
-	if dependendRoot == nil {
-		var err error
-		proposerRsp, err = client.rpcClient.GetProposerDuties(epoch)
-		if err != nil {
-			logger.WithField("client", client.clientName).Warnf("could not load proposer duties for epoch %v: %v", epoch, err)
+	if dependentRoot == nil {
+		if utils.Config.Chain.WhiskForkEpoch != nil && epoch >= *utils.Config.Chain.WhiskForkEpoch {
+			firstSlot := epoch * utils.Config.Chain.Config.SlotsPerEpoch
+			dependentRoot = db.GetHighestRootBeforeSlot(firstSlot, false)
+		} else {
+			var err error
+			proposerRsp, err = client.rpcClient.GetProposerDuties(epoch)
+			if err != nil {
+				logger.WithField("client", client.clientName).Warnf("could not load proposer duties for epoch %v: %v", epoch, err)
+			}
+			if proposerRsp == nil {
+				return fmt.Errorf("could not find proposer duties for epoch %v", epoch)
+			}
+			dependentRoot = proposerRsp.DependentRoot
 		}
-		if proposerRsp == nil {
-			return fmt.Errorf("could not find proposer duties for epoch %v", epoch)
-		}
-		dependendRoot = proposerRsp.DependentRoot
 	}
 
-	epochStats, isNewStats := client.indexerCache.createOrGetEpochStats(epoch, dependendRoot)
+	epochStats, isNewStats := client.indexerCache.createOrGetEpochStats(epoch, dependentRoot)
 	if isNewStats {
-		logger.WithField("client", client.clientName).Infof("load epoch stats for epoch %v (dependend: 0x%x)", epoch, dependendRoot)
+		logger.WithField("client", client.clientName).Infof("load epoch stats for epoch %v (dependend: 0x%x)", epoch, dependentRoot)
 	} else {
-		logger.WithField("client", client.clientName).Debugf("ensure epoch stats for epoch %v (dependend: 0x%x)", epoch, dependendRoot)
+		logger.WithField("client", client.clientName).Debugf("ensure epoch stats for epoch %v (dependend: 0x%x)", epoch, dependentRoot)
 	}
 	go epochStats.ensureEpochStatsLazy(client, proposerRsp)
 	if int64(epoch) > client.lastEpochStats {
@@ -175,7 +182,8 @@ func (epochStats *EpochStats) ensureEpochStatsLazy(client *IndexerClient, propos
 
 	// proposer duties
 	if epochStats.proposerAssignments == nil {
-		if proposerRsp == nil {
+		whiskActivated := utils.Config.Chain.WhiskForkEpoch != nil && epochStats.Epoch >= *utils.Config.Chain.WhiskForkEpoch
+		if proposerRsp == nil && !whiskActivated {
 			var err error
 			proposerRsp, err = client.rpcClient.GetProposerDuties(epochStats.Epoch)
 			if err != nil {
@@ -191,8 +199,16 @@ func (epochStats *EpochStats) ensureEpochStatsLazy(client *IndexerClient, propos
 			}
 		}
 		epochStats.proposerAssignments = map[uint64]uint64{}
-		for _, duty := range proposerRsp.Data {
-			epochStats.proposerAssignments[uint64(duty.Slot)] = uint64(duty.ValidatorIndex)
+		if whiskActivated {
+			firstSlot := epochStats.Epoch * utils.Config.Chain.Config.SlotsPerEpoch
+			lastSlot := firstSlot + utils.Config.Chain.Config.SlotsPerEpoch - 1
+			for slot := firstSlot; slot <= lastSlot; slot++ {
+				epochStats.proposerAssignments[slot] = math.MaxInt64
+			}
+		} else {
+			for _, duty := range proposerRsp.Data {
+				epochStats.proposerAssignments[uint64(duty.Slot)] = uint64(duty.ValidatorIndex)
+			}
 		}
 	}
 
@@ -210,19 +226,20 @@ func (epochStats *EpochStats) ensureEpochStatsLazy(client *IndexerClient, propos
 			}
 		} else {
 			parsedHeader, err := client.rpcClient.GetBlockHeaderByBlockroot(epochStats.DependentRoot)
-			if err != nil {
+			if err != nil || parsedHeader == nil {
 				logger.WithField("client", client.clientName).Warnf("could not get dependent block header for epoch %v (0x%x)", epochStats.Epoch, epochStats.DependentRoot)
-			}
-			if parsedHeader.Data.Header.Message.Slot == 0 {
-				epochStats.dependentStateRef = "genesis"
 			} else {
-				epochStats.dependentStateRef = parsedHeader.Data.Header.Message.StateRoot.String()
+				if parsedHeader.Data.Header.Message.Slot == 0 {
+					epochStats.dependentStateRef = "genesis"
+				} else {
+					epochStats.dependentStateRef = parsedHeader.Data.Header.Message.StateRoot.String()
+				}
 			}
 		}
 	}
 
 	// load validators
-	if epochStats.validatorStats == nil {
+	if epochStats.validatorStats == nil && epochStats.dependentStateRef != "" {
 		go epochStats.ensureValidatorStatsLazy(client, epochStats.dependentStateRef)
 	}
 

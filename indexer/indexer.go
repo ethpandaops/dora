@@ -330,6 +330,13 @@ func (indexer *Indexer) GetCachedBlocksByParentRoot(parentRoot []byte) []*CacheB
 	return resBlocks
 }
 
+func (indexer *Indexer) GetFirstCachedCanonicalBlock(epoch uint64, head []byte) *CacheBlock {
+	indexer.indexerCache.cacheMutex.RLock()
+	defer indexer.indexerCache.cacheMutex.RUnlock()
+	block := indexer.indexerCache.getFirstCanonicalBlock(epoch, head)
+	return block
+}
+
 func (indexer *Indexer) GetCachedEpochStats(epoch uint64) *EpochStats {
 	_, headRoot := indexer.GetCanonicalHead()
 	return indexer.getCachedEpochStats(epoch, headRoot)
@@ -369,7 +376,7 @@ func (indexer *Indexer) getEpochVotes(epoch uint64, epochStats *EpochStats) *Epo
 	firstBlock := indexer.indexerCache.getFirstCanonicalBlock(epoch, headRoot)
 	var epochTarget []byte
 	if firstBlock == nil {
-		logger.Warnf("Counld not find epoch %v target (no block found)", epoch)
+		logger.Warnf("could not find epoch %v target (no block found)", epoch)
 	} else {
 		if firstBlock.Slot == firstSlot {
 			epochTarget = firstBlock.Root

@@ -23,6 +23,9 @@ type Config struct {
 		GenesisTimestamp uint64 `yaml:"genesisTimestamp" envconfig:"CHAIN_GENESIS_TIMESTAMP"`
 		ConfigPath       string `yaml:"configPath" envconfig:"CHAIN_CONFIG_PATH"`
 		Config           ChainConfig
+
+		// optional features
+		WhiskForkEpoch *uint64 `yaml:"whiskForkEpoch" envconfig:"WHISK_FORK_EPOCH"`
 	} `yaml:"chain"`
 
 	Frontend struct {
