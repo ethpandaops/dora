@@ -204,6 +204,9 @@ func (stream *Stream) retryRestartStream() {
 			go stream.stream(r)
 			return
 		}
+		if stream.isClosed {
+			return
+		}
 		stream.Errors <- err
 		backoff = 10 * time.Second
 	}
