@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -263,4 +264,15 @@ func logErrorInfo(err error, callerSkip int, additionalInfos ...map[string]inter
 	}
 
 	return logFields
+}
+
+func GetRedactedUrl(requrl string) string {
+	urlData, _ := url.Parse(requrl)
+	var logurl string
+	if urlData != nil {
+		logurl = urlData.Redacted()
+	} else {
+		logurl = requrl
+	}
+	return logurl
 }

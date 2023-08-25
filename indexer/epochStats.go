@@ -3,7 +3,6 @@ package indexer
 import (
 	"bytes"
 	"fmt"
-	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
@@ -166,11 +165,7 @@ func (client *IndexerClient) ensureEpochStats(epoch uint64, head []byte) error {
 }
 
 func (epochStats *EpochStats) ensureEpochStatsLazy(client *IndexerClient, proposerRsp *rpctypes.StandardV1ProposerDutiesResponse) {
-	defer func() {
-		if err := recover(); err != nil {
-			logger.WithField("client", client.clientName).Errorf("uncaught panic in ensureEpochStats subroutine: %v, stack: %v", err, string(debug.Stack()))
-		}
-	}()
+	defer utils.HandleSubroutinePanic("ensureEpochStatsLazy")
 	epochStats.dutiesMutex.Lock()
 	defer epochStats.dutiesMutex.Unlock()
 
@@ -187,11 +182,11 @@ func (epochStats *EpochStats) ensureEpochStatsLazy(client *IndexerClient, propos
 				logger.WithField("client", client.clientName).Warnf("could not lazy load proposer duties for epoch %v: %v", epochStats.Epoch, err)
 			}
 			if proposerRsp == nil {
-				logger.WithField("client", client.clientName).Errorf("could not find proposer duties for epoch %v", epochStats.Epoch)
+				logger.WithField("client", client.clientName).Warnf("could not find proposer duties for epoch %v", epochStats.Epoch)
 				return
 			}
 			if !bytes.Equal(proposerRsp.DependentRoot, epochStats.DependentRoot) {
-				logger.WithField("client", client.clientName).Errorf("got unexpected dependend root for proposer duties %v (got: %v, expected: 0x%x)", epochStats.Epoch, proposerRsp.DependentRoot.String(), epochStats.DependentRoot)
+				logger.WithField("client", client.clientName).Warnf("got unexpected dependend root for proposer duties %v (got: %v, expected: 0x%x)", epochStats.Epoch, proposerRsp.DependentRoot.String(), epochStats.DependentRoot)
 				return
 			}
 		}
@@ -216,7 +211,7 @@ func (epochStats *EpochStats) ensureEpochStatsLazy(client *IndexerClient, propos
 		} else {
 			parsedHeader, err := client.rpcClient.GetBlockHeaderByBlockroot(epochStats.DependentRoot)
 			if err != nil {
-				logger.WithField("client", client.clientName).Errorf("could not get dependent block header for epoch %v (0x%x)", epochStats.Epoch, epochStats.DependentRoot)
+				logger.WithField("client", client.clientName).Warnf("could not get dependent block header for epoch %v (0x%x)", epochStats.Epoch, epochStats.DependentRoot)
 			}
 			if parsedHeader.Data.Header.Message.Slot == 0 {
 				epochStats.dependentStateRef = "genesis"
@@ -238,7 +233,7 @@ func (epochStats *EpochStats) ensureEpochStatsLazy(client *IndexerClient, propos
 		}
 		parsedCommittees, err := client.rpcClient.GetCommitteeDuties(epochStats.dependentStateRef, epochStats.Epoch)
 		if err != nil {
-			logger.WithField("client", client.clientName).Errorf("error retrieving committees data: %v", err)
+			logger.WithField("client", client.clientName).Warnf("error retrieving committees data: %v", err)
 			return
 		}
 		epochStats.attestorAssignments = map[string][]uint64{}
@@ -269,13 +264,13 @@ func (epochStats *EpochStats) ensureEpochStatsLazy(client *IndexerClient, propos
 		}
 		parsedSyncCommittees, err := client.rpcClient.GetSyncCommitteeDuties(syncCommitteeState, epochStats.Epoch)
 		if err != nil {
-			logger.WithField("client", client.clientName).Errorf("error retrieving sync_committees for epoch %v (state: %v): %v", epochStats.Epoch, syncCommitteeState, err)
+			logger.WithField("client", client.clientName).Warnf("error retrieving sync_committees for epoch %v (state: %v): %v", epochStats.Epoch, syncCommitteeState, err)
 		}
 		epochStats.syncAssignments = make([]uint64, len(parsedSyncCommittees.Data.Validators))
 		for i, valIndexStr := range parsedSyncCommittees.Data.Validators {
 			valIndexU64, err := strconv.ParseUint(valIndexStr, 10, 64)
 			if err != nil {
-				logger.WithField("client", client.clientName).Errorf("in sync_committee for epoch %d validator %d has bad validator index: %q", epochStats.Epoch, i, valIndexStr)
+				logger.WithField("client", client.clientName).Warnf("in sync_committee for epoch %d validator %d has bad validator index: %q", epochStats.Epoch, i, valIndexStr)
 				continue
 			}
 			epochStats.syncAssignments[i] = valIndexU64
@@ -284,11 +279,7 @@ func (epochStats *EpochStats) ensureEpochStatsLazy(client *IndexerClient, propos
 }
 
 func (epochStats *EpochStats) ensureValidatorStatsLazy(client *IndexerClient, stateRef string) {
-	defer func() {
-		if err := recover(); err != nil {
-			logger.WithField("client", client.clientName).Errorf("uncaught panic in ensureValidatorStats subroutine: %v, stack: %v", err, string(debug.Stack()))
-		}
-	}()
+	defer utils.HandleSubroutinePanic("ensureValidatorStatsLazy")
 	epochStats.loadValidatorStats(client, stateRef)
 }
 
@@ -314,7 +305,7 @@ func (epochStats *EpochStats) loadValidatorStats(client *IndexerClient, stateRef
 	<-client.indexerCache.validatorLoadingLimiter
 
 	if err != nil {
-		logger.Errorf("error fetching epoch %v validators: %v", epochStats.Epoch, err)
+		logger.Warnf("error fetching epoch %v validators: %v", epochStats.Epoch, err)
 		return
 	}
 	client.indexerCache.setLastValidators(epochStats.Epoch, epochValidators)

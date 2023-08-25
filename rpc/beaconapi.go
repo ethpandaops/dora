@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"strconv"
 	"time"
 
@@ -38,13 +37,7 @@ func NewBeaconClient(endpoint string, name string, headers map[string]string) (*
 var errNotFound = errors.New("not found 404")
 
 func (bc *BeaconClient) get(requrl string) ([]byte, error) {
-	urlData, _ := url.Parse(requrl)
-	var logurl string
-	if urlData != nil {
-		logurl = urlData.Redacted()
-	} else {
-		logurl = requrl
-	}
+	logurl := utils.GetRedactedUrl(requrl)
 	t0 := time.Now()
 	defer func() {
 		logger.WithField("client", bc.name).Debugf("RPC call (byte): %v [%v ms]", logurl, time.Since(t0).Milliseconds())
@@ -79,13 +72,7 @@ func (bc *BeaconClient) get(requrl string) ([]byte, error) {
 }
 
 func (bc *BeaconClient) getJson(requrl string, returnValue interface{}) error {
-	urlData, _ := url.Parse(requrl)
-	var logurl string
-	if urlData != nil {
-		logurl = urlData.Redacted()
-	} else {
-		logurl = requrl
-	}
+	logurl := utils.GetRedactedUrl(requrl)
 	t0 := time.Now()
 	defer func() {
 		logger.WithField("client", bc.name).Debugf("RPC call (json): %v [%v ms]", logurl, time.Since(t0).Milliseconds())

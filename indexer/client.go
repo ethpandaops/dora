@@ -81,6 +81,8 @@ func (client *IndexerClient) GetStatus() string {
 }
 
 func (client *IndexerClient) runIndexerClientLoop() {
+	defer utils.HandleSubroutinePanic("runIndexerClientLoop")
+
 	for {
 		err := client.runIndexerClient()
 		if err != nil {
@@ -91,7 +93,7 @@ func (client *IndexerClient) runIndexerClientLoop() {
 			} else if client.retryCounter > 5 {
 				waitTime = 60
 			}
-			logger.WithField("client", client.clientName).Errorf("indexer client error: %v, retrying in %v sec...", err, waitTime)
+			logger.WithField("client", client.clientName).Warnf("indexer client error: %v, retrying in %v sec...", err, waitTime)
 			time.Sleep(time.Duration(waitTime) * time.Second)
 		} else {
 			return
@@ -204,19 +206,19 @@ func (client *IndexerClient) runIndexerClient() error {
 			case rpc.StreamFinalizedEvent:
 				client.processFinalizedEvent(evt.Data.(*rpctypes.StandardV1StreamedFinalizedCheckpointEvent))
 			}
-			logger.WithField("client", client.clientName).Debugf("event (%v) processing time: %v ms", evt.Event, time.Since(now).Milliseconds())
+			logger.WithField("client", client.clientName).Tracef("event (%v) processing time: %v ms", evt.Event, time.Since(now).Milliseconds())
 			client.lastStreamEvent = time.Now()
 		case ready := <-blockStream.ReadyChan:
 			if client.isConnected != ready {
 				client.isConnected = ready
 				if ready {
-					logger.WithField("client", client.clientName).Info("RPC event stream connected")
+					logger.WithField("client", client.clientName).Debug("RPC event stream connected")
 				} else {
-					logger.WithField("client", client.clientName).Info("RPC event stream disconnected")
+					logger.WithField("client", client.clientName).Debug("RPC event stream disconnected")
 				}
 			}
 		case <-time.After(eventTimeout):
-			logger.WithField("client", client.clientName).Info("no head event since 30 secs, polling chain head")
+			logger.WithField("client", client.clientName).Debug("no head event since 30 secs, polling chain head")
 			err := client.pollLatestBlocks()
 			if err != nil {
 				client.isConnected = false

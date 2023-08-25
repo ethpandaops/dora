@@ -12,6 +12,7 @@ import (
 
 	"github.com/pk910/light-beaconchain-explorer/rpc/eventstream"
 	"github.com/pk910/light-beaconchain-explorer/rpctypes"
+	"github.com/pk910/light-beaconchain-explorer/utils"
 )
 
 const (
@@ -91,7 +92,7 @@ func (bs *BeaconStream) startStream() {
 			case <-stream.Ready:
 				bs.ReadyChan <- true
 			case err := <-stream.Errors:
-				logger.WithField("client", bs.client.name).Errorf("beacon block stream error: %v", err)
+				logger.WithField("client", bs.client.name).Warnf("beacon block stream error: %v", err)
 				bs.ReadyChan <- false
 			}
 		}
@@ -138,7 +139,7 @@ func (bs *BeaconStream) subscribeStream(endpoint string, events uint16) *eventst
 			stream, err = eventstream.SubscribeWithRequest("", req)
 		}
 		if err != nil {
-			logger.WithField("client", bs.client.name).Errorf("Error while subscribing beacon event stream %v: %v", url, err)
+			logger.WithField("client", bs.client.name).Warnf("Error while subscribing beacon event stream %v: %v", utils.GetRedactedUrl(url), err)
 			select {
 			case <-bs.killChan:
 				return nil
