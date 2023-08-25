@@ -292,7 +292,7 @@ func buildIndexPageRecentSlotsData(pageData *models.IndexPageData, firstSlot uin
 		}
 	}
 	pageData.RecentSlotCount = uint64(blockCount)
-
+	pageData.ForkTreeWidth = (maxOpenFork * 20) + 20
 }
 
 func buildIndexPageSlotGraph(pageData *models.IndexPageData, slotData *models.IndexPageDataSlots, maxOpenFork *int, openForks map[int][]byte) {
