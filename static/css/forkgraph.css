@@ -23,8 +23,8 @@
 }
 
 .graph-container .graph-fork .graph-layer-block {
-  padding: 10px 4px;
-  font-size: 13px;
+  padding: 12px 5px;
+  font-size: 11px;
   color: black;
 }
 
@@ -61,7 +61,7 @@
 }
 
 .graph-container .graph-fork .graph-layer-lline {
-  width: 9px;
+  width: 5px;
   background-image: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAAAAXNSR0IArs4c6QAAAAlwSFlzAAAOxAAADsQBlSsOGwAAAAd0SU1FB9wIHAYTA3/8uYgAAAA3SURBVDjLY2AYBUMecIwGAQZgZGBg+E+RCVwMDFzfIExpBgYGJoqdxMXAwAWhGG6PRtAoGK4AAB2zAym2GI80AAAAAElFTkSuQmCC");
   background-repeat: repeat no-repeat;
 }
