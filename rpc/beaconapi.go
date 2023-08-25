@@ -38,9 +38,16 @@ func NewBeaconClient(endpoint string, name string, headers map[string]string) (*
 var errNotFound = errors.New("not found 404")
 
 func (bc *BeaconClient) get(requrl string) ([]byte, error) {
+	urlData, _ := url.Parse(requrl)
+	var logurl string
+	if urlData != nil {
+		logurl = urlData.Redacted()
+	} else {
+		logurl = requrl
+	}
 	t0 := time.Now()
 	defer func() {
-		logger.WithField("client", bc.name).Debugf("RPC call (byte): %v [%v ms]", requrl, time.Since(t0).Milliseconds())
+		logger.WithField("client", bc.name).Debugf("RPC call (byte): %v [%v ms]", logurl, time.Since(t0).Milliseconds())
 	}()
 
 	req, err := http.NewRequest("GET", requrl, nil)
@@ -65,20 +72,23 @@ func (bc *BeaconClient) get(requrl string) ([]byte, error) {
 		if resp.StatusCode == http.StatusNotFound {
 			return nil, errNotFound
 		}
-		urlData, _ := url.Parse(requrl)
-		if urlData != nil {
-			requrl = urlData.Redacted()
-		}
-		return nil, fmt.Errorf("url: %v, error-response: %s", requrl, data)
+		return nil, fmt.Errorf("url: %v, error-response: %s", logurl, data)
 	}
 
 	return data, err
 }
 
 func (bc *BeaconClient) getJson(requrl string, returnValue interface{}) error {
+	urlData, _ := url.Parse(requrl)
+	var logurl string
+	if urlData != nil {
+		logurl = urlData.Redacted()
+	} else {
+		logurl = requrl
+	}
 	t0 := time.Now()
 	defer func() {
-		logger.WithField("client", bc.name).Debugf("RPC call (json): %v [%v ms]", requrl, time.Since(t0).Milliseconds())
+		logger.WithField("client", bc.name).Debugf("RPC call (json): %v [%v ms]", logurl, time.Since(t0).Milliseconds())
 	}()
 
 	req, err := http.NewRequest("GET", requrl, nil)
@@ -102,11 +112,7 @@ func (bc *BeaconClient) getJson(requrl string, returnValue interface{}) error {
 			return errNotFound
 		}
 		data, _ := io.ReadAll(resp.Body)
-		urlData, _ := url.Parse(requrl)
-		if urlData != nil {
-			requrl = urlData.Redacted()
-		}
-		return fmt.Errorf("url: %v, error-response: %s", requrl, data)
+		return fmt.Errorf("url: %v, error-response: %s", logurl, data)
 	}
 
 	dec := json.NewDecoder(resp.Body)
