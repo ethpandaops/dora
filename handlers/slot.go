@@ -151,16 +151,21 @@ func buildSlotPageData(blockSlot int64, blockRoot []byte) (*models.SlotPageData,
 		blockData, err = services.GlobalBeaconService.GetSlotDetailsByBlockroot(blockRoot, false)
 	}
 
-	if blockData == nil && err == nil {
-		// check for orphaned block
-		if blockSlot > -1 {
-			dbBlocks := services.GlobalBeaconService.GetDbBlocksForSlots(uint64(blockSlot), 0, true)
-			if len(dbBlocks) > 0 {
-				blockRoot = dbBlocks[0].Root
+	if err == nil {
+		if blockData == nil {
+			// check for orphaned block
+			if blockSlot > -1 {
+				dbBlocks := services.GlobalBeaconService.GetDbBlocksForSlots(uint64(blockSlot), 0, true)
+				if len(dbBlocks) > 0 {
+					blockRoot = dbBlocks[0].Root
+				}
 			}
-		}
-		if blockRoot != nil {
-			blockData = services.GlobalBeaconService.GetOrphanedBlock(blockRoot)
+			if blockRoot != nil {
+				blockData = services.GlobalBeaconService.GetOrphanedBlock(blockRoot)
+			}
+		} else {
+			// check orphaned status
+			blockData.Orphaned = services.GlobalBeaconService.CheckBlockOrphanedStatus(blockData.Root)
 		}
 	}
 

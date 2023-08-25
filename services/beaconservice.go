@@ -713,6 +713,18 @@ func (bs *BeaconService) GetDbBlocksByParentRoot(parentRoot []byte) []*dbtypes.B
 	return resBlocks
 }
 
+func (bs *BeaconService) CheckBlockOrphanedStatus(blockRoot []byte) bool {
+	cachedBlock := bs.indexer.GetCachedBlock(blockRoot)
+	if cachedBlock != nil {
+		return !cachedBlock.IsCanonical(bs.indexer, nil)
+	}
+	dbRefs := db.GetBlockOrphanedRefs([][]byte{blockRoot})
+	if len(dbRefs) > 0 {
+		return true
+	}
+	return false
+}
+
 func (bs *BeaconService) GetValidatorActivity() (map[uint64]uint8, uint64) {
 	activityMap := map[uint64]uint8{}
 	epochLimit := uint64(3)
