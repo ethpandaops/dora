@@ -56,10 +56,53 @@ func (indexer *Indexer) GetClients() []*IndexerClient {
 	return indexer.indexerClients
 }
 
-func (indexer *Indexer) getReadyClient(archive bool, head []byte) *IndexerClient {
+func (indexer *Indexer) GetReadyClient(archive bool, head []byte, skip []*IndexerClient) *IndexerClient {
+	clientCandidates := indexer.GetReadyClients(archive, head)
+	candidateCount := len(clientCandidates)
+	if candidateCount == 0 {
+		clientCandidates = make([]*IndexerClient, 0)
+		for _, client := range indexer.indexerClients {
+			if client.isConnected && !client.isSynchronizing {
+				clientCandidates = append(clientCandidates, client)
+			}
+		}
+		candidateCount = len(clientCandidates)
+	}
+	allCandidates := make([]*IndexerClient, candidateCount)
+	copy(allCandidates, clientCandidates)
+
+	// remove skipped
+	for _, skipClient := range skip {
+		skipIdx := -1
+		for idx, tClient := range clientCandidates {
+			if idx >= candidateCount {
+				break
+			}
+			if tClient == skipClient {
+				skipIdx = idx
+				break
+			}
+		}
+		if skipIdx != -1 {
+			candidateCount--
+			if skipIdx < candidateCount {
+				clientCandidates[skipIdx] = clientCandidates[candidateCount]
+			}
+		}
+	}
+
+	if candidateCount == 0 {
+		clientCandidates = allCandidates
+		candidateCount = len(clientCandidates)
+	}
+	selectedIndex := rand.Intn(candidateCount)
+	return clientCandidates[selectedIndex]
+}
+
+func (indexer *Indexer) GetReadyClients(archive bool, head []byte) []*IndexerClient {
 	headCandidates := indexer.GetHeadForks()
 	if len(headCandidates) == 0 {
-		return indexer.indexerClients[0]
+		return indexer.indexerClients
 	}
 
 	var headFork *HeadFork
@@ -82,12 +125,7 @@ func (indexer *Indexer) getReadyClient(archive bool, head []byte) *IndexerClient
 	if len(clientCandidates) == 0 && archive {
 		clientCandidates = indexer.getReadyClientCandidates(headFork, false)
 	}
-	candidateCount := len(clientCandidates)
-	if candidateCount == 0 {
-		return indexer.indexerClients[0]
-	}
-	selectedIndex := rand.Intn(candidateCount)
-	return clientCandidates[selectedIndex]
+	return clientCandidates
 }
 
 func (indexer *Indexer) getReadyClientCandidates(headFork *HeadFork, archive bool) []*IndexerClient {
@@ -109,7 +147,7 @@ func (indexer *Indexer) getReadyClientCandidates(headFork *HeadFork, archive boo
 }
 
 func (indexer *Indexer) GetRpcClient(archive bool, head []byte) *rpc.BeaconClient {
-	readyClient := indexer.getReadyClient(archive, head)
+	readyClient := indexer.GetReadyClient(archive, head, nil)
 	if head != nil {
 		fmt.Printf("client for head 0x%x: %v\n", head, readyClient.clientName)
 	}

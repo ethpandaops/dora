@@ -80,6 +80,7 @@ func (sync *synchronizerState) runSync() {
 	sync.cachedSlot = 0
 	isComplete := false
 	retryCount := 0
+	var skipClients []*IndexerClient = nil
 	synclogger.Infof("synchronization started. Head epoch: %v", sync.currentEpoch)
 
 	for {
@@ -94,12 +95,13 @@ func (sync *synchronizerState) runSync() {
 		} else {
 			synclogger.Infof("synchronizing epoch %v", syncEpoch)
 		}
-		done, err := sync.syncEpoch(syncEpoch, lastRetry)
+		done, usedClient, err := sync.syncEpoch(syncEpoch, lastRetry, skipClients)
 		if done || lastRetry {
 			if err != nil {
 				synclogger.Warnf("synchronization of epoch %v failed: %v - skipping epoch", syncEpoch, err)
 			}
 			retryCount = 0
+			skipClients = nil
 			finalizedEpoch, _ := sync.indexer.indexerCache.getFinalizedHead()
 			sync.stateMutex.Lock()
 			syncEpoch++
@@ -110,7 +112,12 @@ func (sync *synchronizerState) runSync() {
 				break
 			}
 		} else if err != nil {
-			synclogger.Warnf("synchronization of epoch %v failed: %v - Retrying in 10 sec...", syncEpoch, err)
+			log := synclogger
+			if usedClient != nil {
+				log = synclogger.WithField("client", usedClient.clientName)
+				skipClients = append(skipClients, usedClient)
+			}
+			log.Warnf("synchronization of epoch %v failed: %v - Retrying in 10 sec...", syncEpoch, err)
 			retryCount++
 			time.Sleep(10 * time.Second)
 		}
@@ -147,24 +154,24 @@ func (sync *synchronizerState) checkKillChan(timeout time.Duration) bool {
 	}
 }
 
-func (sync *synchronizerState) syncEpoch(syncEpoch uint64, lastTry bool) (bool, error) {
+func (sync *synchronizerState) syncEpoch(syncEpoch uint64, lastTry bool, skipClients []*IndexerClient) (bool, *IndexerClient, error) {
 	if db.IsEpochSynchronized(syncEpoch) {
-		return true, nil
+		return true, nil, nil
 	}
 
-	client := sync.indexer.getReadyClient(true, nil)
+	client := sync.indexer.GetReadyClient(true, nil, skipClients)
 
 	// load epoch assignments
 	epochAssignments, err := client.rpcClient.GetEpochAssignments(syncEpoch)
 	if err != nil || epochAssignments == nil {
-		return false, fmt.Errorf("error fetching epoch %v duties: %v", syncEpoch, err)
+		return false, client, fmt.Errorf("error fetching epoch %v duties: %v", syncEpoch, err)
 	}
 	if epochAssignments.AttestorAssignments == nil && !lastTry {
-		return false, fmt.Errorf("error fetching epoch %v duties: attestor assignments empty", syncEpoch)
+		return false, client, fmt.Errorf("error fetching epoch %v duties: attestor assignments empty", syncEpoch)
 	}
 
 	if sync.checkKillChan(0) {
-		return false, nil
+		return false, nil, nil
 	}
 
 	// load headers & blocks from this & next epoch
@@ -176,17 +183,17 @@ func (sync *synchronizerState) syncEpoch(syncEpoch uint64, lastTry bool) (bool, 
 		}
 		headerRsp, err := client.rpcClient.GetBlockHeaderBySlot(slot)
 		if err != nil {
-			return false, fmt.Errorf("error fetching slot %v header: %v", slot, err)
+			return false, client, fmt.Errorf("error fetching slot %v header: %v", slot, err)
 		}
 		if headerRsp == nil {
 			continue
 		}
 		if sync.checkKillChan(0) {
-			return false, nil
+			return false, nil, nil
 		}
 		blockRsp, err := client.rpcClient.GetBlockBodyByBlockroot(headerRsp.Data.Root)
 		if err != nil {
-			return false, fmt.Errorf("error fetching slot %v block: %v", slot, err)
+			return false, client, fmt.Errorf("error fetching slot %v block: %v", slot, err)
 		}
 		sync.cachedBlocks[slot] = &CacheBlock{
 			Root:   headerRsp.Data.Root,
@@ -198,7 +205,7 @@ func (sync *synchronizerState) syncEpoch(syncEpoch uint64, lastTry bool) (bool, 
 	sync.cachedSlot = lastSlot
 
 	if sync.checkKillChan(0) {
-		return false, nil
+		return false, nil, nil
 	}
 
 	// load epoch stats
@@ -212,10 +219,10 @@ func (sync *synchronizerState) syncEpoch(syncEpoch uint64, lastTry bool) (bool, 
 	epochStats.loadValidatorStats(client, epochAssignments.DependendStateRef)
 
 	if epochStats.validatorStats == nil && !lastTry {
-		return false, fmt.Errorf("error fetching validator stats for epoch %v: %v", syncEpoch, err)
+		return false, client, fmt.Errorf("error fetching validator stats for epoch %v: %v", syncEpoch, err)
 	}
 	if sync.checkKillChan(0) {
-		return false, nil
+		return false, nil, nil
 	}
 
 	// process epoch vote aggregations
@@ -241,24 +248,24 @@ func (sync *synchronizerState) syncEpoch(syncEpoch uint64, lastTry bool) (bool, 
 	// save blocks
 	tx, err := db.WriterDb.Beginx()
 	if err != nil {
-		return false, fmt.Errorf("error starting db transactions: %v", err)
+		return false, nil, fmt.Errorf("error starting db transactions: %v", err)
 	}
 	defer tx.Rollback()
 
 	err = persistEpochData(syncEpoch, sync.cachedBlocks, epochStats, epochVotes, tx)
 	if err != nil {
-		return false, fmt.Errorf("error persisting epoch data to db: %v", err)
+		return false, client, fmt.Errorf("error persisting epoch data to db: %v", err)
 	}
 
 	err = db.SetExplorerState("indexer.syncstate", &dbtypes.IndexerSyncState{
 		Epoch: syncEpoch,
 	}, tx)
 	if err != nil {
-		return false, fmt.Errorf("error while updating sync state: %v", err)
+		return false, nil, fmt.Errorf("error while updating sync state: %v", err)
 	}
 
 	if err := tx.Commit(); err != nil {
-		return false, fmt.Errorf("error committing db transaction: %v", err)
+		return false, nil, fmt.Errorf("error committing db transaction: %v", err)
 	}
 
 	// cleanup cache (remove blocks from this epoch)
@@ -268,5 +275,5 @@ func (sync *synchronizerState) syncEpoch(syncEpoch uint64, lastTry bool) (bool, 
 		}
 	}
 
-	return true, nil
+	return true, nil, nil
 }

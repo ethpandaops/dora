@@ -98,15 +98,44 @@ func (bs *BeaconService) GetSlotDetailsByBlockroot(blockroot []byte, withBlobs b
 			Orphaned: !blockInfo.IsCanonical(bs.indexer, nil),
 		}
 	} else {
-		header, err := bs.indexer.GetRpcClient(false, blockroot).GetBlockHeaderByBlockroot(blockroot)
-		if err != nil {
+		var skipClients []*indexer.IndexerClient = nil
+
+		var header *rpctypes.StandardV1BeaconHeaderResponse
+		var err error
+		for retry := 0; retry < 3; retry++ {
+			client := bs.indexer.GetReadyClient(false, blockroot, skipClients)
+			header, err = client.GetRpcClient().GetBlockHeaderByBlockroot(blockroot)
+			if header != nil {
+				break
+			} else if err != nil {
+				log := logrus.WithError(err)
+				if client != nil {
+					log = log.WithField("client", client.GetName())
+				}
+				log.Warnf("Error loading block header for root 0x%x", blockroot)
+				skipClients = append(skipClients, client)
+			}
+		}
+		if err != nil || header == nil {
 			return nil, err
 		}
-		if header == nil {
-			return nil, nil
+
+		var block *rpctypes.StandardV2BeaconBlockResponse
+		for retry := 0; retry < 3; retry++ {
+			client := bs.indexer.GetReadyClient(false, header.Data.Root, skipClients)
+			block, err = client.GetRpcClient().GetBlockBodyByBlockroot(header.Data.Root)
+			if block != nil {
+				break
+			} else if err != nil {
+				log := logrus.WithError(err)
+				if client != nil {
+					log = log.WithField("client", client.GetName())
+				}
+				log.Warnf("Error loading block body for root 0x%x", blockroot)
+				skipClients = append(skipClients, client)
+			}
 		}
-		block, err := bs.indexer.GetRpcClient(false, blockroot).GetBlockBodyByBlockroot(header.Data.Root)
-		if err != nil {
+		if err != nil || block == nil {
 			return nil, err
 		}
 		result = &rpctypes.CombinedBlockResponse{
@@ -146,17 +175,47 @@ func (bs *BeaconService) GetSlotDetailsBySlot(slot uint64, withBlobs bool) (*rpc
 			Orphaned: !cachedBlock.IsCanonical(bs.indexer, nil),
 		}
 	} else {
-		header, err := bs.indexer.GetRpcClient(false, nil).GetBlockHeaderBySlot(slot)
-		if err != nil {
+		var skipClients []*indexer.IndexerClient = nil
+
+		var header *rpctypes.StandardV1BeaconHeaderResponse
+		var err error
+		for retry := 0; retry < 3; retry++ {
+			client := bs.indexer.GetReadyClient(false, nil, skipClients)
+			header, err = client.GetRpcClient().GetBlockHeaderBySlot(slot)
+			if header != nil {
+				break
+			} else if err != nil {
+				log := logrus.WithError(err)
+				if client != nil {
+					log = log.WithField("client", client.GetName())
+				}
+				log.Warnf("Error loading block header for slot %v", slot)
+				skipClients = append(skipClients, client)
+			}
+		}
+		if err != nil || header == nil {
 			return nil, err
 		}
-		if header == nil {
-			return nil, nil
+
+		var block *rpctypes.StandardV2BeaconBlockResponse
+		for retry := 0; retry < 3; retry++ {
+			client := bs.indexer.GetReadyClient(false, header.Data.Root, skipClients)
+			block, err = client.GetRpcClient().GetBlockBodyByBlockroot(header.Data.Root)
+			if block != nil {
+				break
+			} else if err != nil {
+				log := logrus.WithError(err)
+				if client != nil {
+					log = log.WithField("client", client.GetName())
+				}
+				log.Warnf("Error loading block body for slot %v", slot)
+				skipClients = append(skipClients, client)
+			}
 		}
-		block, err := bs.indexer.GetRpcClient(false, header.Data.Root).GetBlockBodyByBlockroot(header.Data.Root)
-		if err != nil {
+		if err != nil || block == nil {
 			return nil, err
 		}
+
 		result = &rpctypes.CombinedBlockResponse{
 			Root:     header.Data.Root,
 			Header:   &header.Data.Header,

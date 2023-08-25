@@ -60,6 +60,10 @@ func (client *IndexerClient) GetVersion() string {
 	return client.versionStr
 }
 
+func (client *IndexerClient) GetRpcClient() *rpc.BeaconClient {
+	return client.rpcClient
+}
+
 func (client *IndexerClient) GetLastHead() (int64, []byte) {
 	client.cacheMutex.RLock()
 	defer client.cacheMutex.RUnlock()

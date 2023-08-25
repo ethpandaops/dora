@@ -137,7 +137,7 @@ func (cache *indexerCache) processFinalizedEpoch(epoch uint64) error {
 	epochStats, isNewStats := cache.createOrGetEpochStats(epoch, epochDependentRoot)
 	if isNewStats {
 		logger.Warnf("missing epoch stats during finalization processing (epoch: %v)", epoch)
-		client := cache.indexer.getReadyClient(true, nil)
+		client := cache.indexer.GetReadyClient(true, nil, nil)
 		if client != nil {
 			client.ensureEpochStats(epoch, client.lastHeadRoot)
 			time.Sleep(10 * time.Millisecond)
