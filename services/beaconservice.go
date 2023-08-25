@@ -721,7 +721,7 @@ func (bs *BeaconService) CheckBlockOrphanedStatus(blockRoot []byte) bool {
 		return !cachedBlock.IsCanonical(bs.indexer, nil)
 	}
 	dbRefs := db.GetBlockOrphanedRefs([][]byte{blockRoot})
-	return len(dbRefs) > 0
+	return len(dbRefs) > 0 && dbRefs[0].Orphaned
 }
 
 func (bs *BeaconService) GetValidatorActivity() (map[uint64]uint8, uint64) {
