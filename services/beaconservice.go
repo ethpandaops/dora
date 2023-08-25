@@ -128,7 +128,7 @@ func (bs *BeaconService) GetSlotDetailsByBlockroot(blockroot []byte, withBlobs b
 
 func (bs *BeaconService) GetSlotDetailsBySlot(slot uint64, withBlobs bool) (*rpctypes.CombinedBlockResponse, error) {
 	var result *rpctypes.CombinedBlockResponse
-	if cachedBlocks := bs.indexer.GetCachedBlocks(slot); cachedBlocks != nil {
+	if cachedBlocks := bs.indexer.GetCachedBlocks(slot); len(cachedBlocks) > 0 {
 		var cachedBlock *indexer.CacheBlock
 		for _, block := range cachedBlocks {
 			if block.IsCanonical(bs.indexer, nil) {
