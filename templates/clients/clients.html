@@ -30,7 +30,10 @@
                     <td>{{ $client.Index }}</td>
                     <td>{{ $client.Name }}</td>
                     <td><a href="/slot/{{ $client.HeadSlot }}">{{ formatAddCommas $client.HeadSlot }}</a></td>
-                    <td><a href="/slot/0x{{ printf "%x" $client.HeadRoot }}">0x{{ printf "%x" $client.HeadRoot }}</a></td>
+                    <td>
+                      <a href="/slot/0x{{ printf "%x" $client.HeadRoot }}" class="text-truncate d-inline-block" style="max-width: 200px">0x{{ printf "%x" $client.HeadRoot }}</a>
+                      <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $client.HeadRoot }}"></i>
+                    </td>
                     <td>
                       {{ if eq $client.Status "ready" }}
                         <span class="badge rounded-pill text-bg-success">Connected</span>
@@ -42,7 +45,10 @@
                         <span class="badge rounded-pill text-bg-dark">{{ $client.Status }}</span>
                       {{ end }}
                     </td>
-                    <td>{{ $client.Version }}</td>
+                    <td>
+                      <span class="text-truncate d-inline-block" style="max-width: 400px">{{ $client.Version }}</span>
+                      <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $client.Version }}"></i>
+                    </td>
                   </tr>
                 {{ end }}
               </tbody>
