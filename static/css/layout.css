@@ -183,6 +183,11 @@ header nav .navbar-toggler.toggler-wrapper > * {
   z-index: 101;
 }
 
+header nav .nav-item:hover .dropdown-menu,
+header nav .nav-item:focus-within .dropdown-menu {
+  display: block;
+}
+
 @media (max-width: 992px) {
   header .navbar-brand {
     margin-right: 0;
