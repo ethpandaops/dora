@@ -172,7 +172,7 @@ func (client *IndexerClient) runIndexerClient() error {
 	client.retryCounter = 0
 
 	// start event stream
-	blockStream := client.rpcClient.NewBlockStream(rpc.StreamBlockEvent | rpc.StreamHeadEvent | rpc.StreamFinalizedEvent)
+	blockStream := client.rpcClient.NewBlockStream(rpc.StreamBlockEvent | rpc.StreamFinalizedEvent)
 	defer blockStream.Close()
 
 	// prefill cache
@@ -201,8 +201,6 @@ func (client *IndexerClient) runIndexerClient() error {
 			switch evt.Event {
 			case rpc.StreamBlockEvent:
 				client.processBlockEvent(evt.Data.(*rpctypes.StandardV1StreamedBlockEvent))
-			case rpc.StreamHeadEvent:
-				client.processHeadEvent(evt.Data.(*rpctypes.StandardV1StreamedHeadEvent))
 			case rpc.StreamFinalizedEvent:
 				client.processFinalizedEvent(evt.Data.(*rpctypes.StandardV1StreamedFinalizedCheckpointEvent))
 			}
@@ -243,6 +241,7 @@ func (client *IndexerClient) prefillCache(finalizedSlot uint64, latestHeader *rp
 		logger.WithField("client", client.clientName).Debugf("received known block %v:%v [0x%x] warmup, head", utils.EpochOfSlot(uint64(client.lastHeadSlot)), client.lastHeadSlot, client.lastHeadRoot)
 	}
 	client.ensureBlock(currentBlock, &latestHeader.Data.Header)
+	client.setHeadBlock(latestHeader.Data.Root, uint64(latestHeader.Data.Header.Message.Slot))
 
 	// walk backwards and load all blocks until we reach a finalized epoch
 	parentRoot := []byte(currentBlock.header.Message.ParentRoot)
@@ -448,15 +447,8 @@ func (client *IndexerClient) processBlockEvent(evt *rpctypes.StandardV1StreamedB
 	if err != nil {
 		return err
 	}
+	client.setHeadBlock(evt.Block, uint64(evt.Slot))
 	return nil
-}
-
-func (client *IndexerClient) processHeadEvent(evt *rpctypes.StandardV1StreamedHeadEvent) error {
-	currentBlock := client.indexerCache.getCachedBlock(evt.Block)
-	if currentBlock == nil {
-		return fmt.Errorf("received head event for non existing block: %v", evt.Block.String())
-	}
-	return client.setHeadBlock(evt.Block, uint64(evt.Slot))
 }
 
 func (client *IndexerClient) processFinalizedEvent(evt *rpctypes.StandardV1StreamedFinalizedCheckpointEvent) error {
