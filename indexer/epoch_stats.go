@@ -160,9 +160,9 @@ func (client *IndexerClient) ensureEpochStats(epoch uint64, head []byte) error {
 
 	epochStats, isNewStats := client.indexerCache.createOrGetEpochStats(epoch, dependentRoot)
 	if isNewStats {
-		logger.WithField("client", client.clientName).Infof("load epoch stats for epoch %v (dependend: 0x%x)", epoch, dependentRoot)
+		logger.WithField("client", client.clientName).Infof("load epoch stats for epoch %v (dependend: 0x%x, head: 0x%x)", epoch, dependentRoot, head)
 	} else {
-		logger.WithField("client", client.clientName).Debugf("ensure epoch stats for epoch %v (dependend: 0x%x)", epoch, dependentRoot)
+		logger.WithField("client", client.clientName).Debugf("ensure epoch stats for epoch %v (dependend: 0x%x, head: 0x%x)", epoch, dependentRoot, head)
 	}
 	go epochStats.ensureEpochStatsLazy(client, proposerRsp)
 	if int64(epoch) > client.lastEpochStats {
