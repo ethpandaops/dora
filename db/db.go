@@ -512,7 +512,7 @@ func GetAssignedBlocks(proposer uint64, firstSlot uint64, offset uint64, limit u
 	fmt.Fprintf(&sql, `
 	FROM slot_assignments
 	LEFT JOIN blocks ON blocks.slot = slot_assignments.slot
-	WHERE slot_assignments.proposer = $1 AND slot_assignments.slot < $2 `+orphanedLimit+`
+	WHERE (slot_assignments.proposer = $1 OR blocks.proposer = $1) AND slot_assignments.slot < $2 `+orphanedLimit+`
 	ORDER BY slot_assignments.slot DESC
 	LIMIT $3 OFFSET $4
 	`)
