@@ -145,7 +145,7 @@ func SearchAhead(w http.ResponseWriter, r *http.Request) {
 			if cachedBlock == nil {
 				cachedBlock = indexer.GetCachedBlockByStateroot(blockHash)
 			}
-			if !cachedBlock.IsReady() {
+			if cachedBlock != nil && !cachedBlock.IsReady() {
 				cachedBlock = nil
 			}
 			if cachedBlock != nil {
