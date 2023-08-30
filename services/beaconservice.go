@@ -64,6 +64,10 @@ func StartBeaconService() error {
 	return nil
 }
 
+func (bs *BeaconService) GetIndexer() *indexer.Indexer {
+	return bs.indexer
+}
+
 func (bs *BeaconService) GetClients() []*indexer.IndexerClient {
 	return bs.indexer.GetClients()
 }
@@ -262,32 +266,6 @@ func (bs *BeaconService) GetOrphanedBlock(blockroot []byte) *rpctypes.CombinedBl
 		Block:    &block,
 		Blobs:    nil,
 		Orphaned: true,
-	}
-}
-
-func (bs *BeaconService) GetCachedBlockByBlockroot(blockroot []byte) *rpctypes.CombinedBlockResponse {
-	cachedBlock := bs.indexer.GetCachedBlock(blockroot)
-	if cachedBlock == nil {
-		return nil
-	}
-	return &rpctypes.CombinedBlockResponse{
-		Root:     cachedBlock.Root,
-		Header:   cachedBlock.GetHeader(),
-		Block:    cachedBlock.GetBlockBody(),
-		Orphaned: !cachedBlock.IsCanonical(bs.indexer, nil),
-	}
-}
-
-func (bs *BeaconService) GetCachedBlockByStateroot(stateroot []byte) *rpctypes.CombinedBlockResponse {
-	cachedBlock := bs.indexer.GetCachedBlockByStateroot(stateroot)
-	if cachedBlock == nil {
-		return nil
-	}
-	return &rpctypes.CombinedBlockResponse{
-		Root:     cachedBlock.Root,
-		Header:   cachedBlock.GetHeader(),
-		Block:    cachedBlock.GetBlockBody(),
-		Orphaned: !cachedBlock.IsCanonical(bs.indexer, nil),
 	}
 }
 

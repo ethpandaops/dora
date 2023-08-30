@@ -92,19 +92,27 @@ func (cache *indexerCache) setLastValidators(epoch uint64, validators *rpctypes.
 }
 
 func (cache *indexerCache) loadStoredUnfinalizedCache() error {
-	blockHeaders := db.GetUnfinalizedBlockHeader()
-	for _, blockHeader := range blockHeaders {
+	blocks := db.GetUnfinalizedBlocks()
+	for _, block := range blocks {
 		var header rpctypes.SignedBeaconBlockHeader
-		err := json.Unmarshal([]byte(blockHeader.Header), &header)
+		err := json.Unmarshal([]byte(block.Header), &header)
 		if err != nil {
 			logger.Warnf("Error parsing unfinalized block header from db: %v", err)
 			continue
 		}
-		logger.Debugf("Restored unfinalized block header from db: %v", blockHeader.Slot)
-		cachedBlock, _ := cache.createOrGetCachedBlock(blockHeader.Root, blockHeader.Slot)
+		var body rpctypes.SignedBeaconBlock
+		err = json.Unmarshal([]byte(block.Block), &body)
+		if err != nil {
+			logger.Warnf("Error parsing unfinalized block body from db: %v", err)
+			continue
+		}
+		logger.Debugf("Restored unfinalized block header from db: %v", block.Slot)
+		cachedBlock, _ := cache.createOrGetCachedBlock(block.Root, block.Slot)
 		cachedBlock.mutex.Lock()
 		cachedBlock.header = &header
+		cachedBlock.block = &body
 		cachedBlock.isInDb = true
+		cachedBlock.parseBlockRefs()
 		cachedBlock.mutex.Unlock()
 	}
 	epochDuties := db.GetUnfinalizedEpochDutyRefs()

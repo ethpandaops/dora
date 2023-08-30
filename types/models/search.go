@@ -26,6 +26,15 @@ type SearchAheadSlotsResult struct {
 	Orphaned bool                 `json:"orphaned,omitempty"`
 }
 
+// SearchAheadExecBlocksResult is a struct to hold the search ahead execution blocks results
+type SearchAheadExecBlocksResult struct {
+	Slot       string               `json:"slot,omitempty"`
+	Root       rpctypes.BytesHexStr `json:"root,omitempty"`
+	ExecHash   rpctypes.BytesHexStr `json:"exec_hash,omitempty"`
+	ExecNumber uint64               `json:"exec_number,omitempty"`
+	Orphaned   bool                 `json:"orphaned,omitempty"`
+}
+
 // SearchAheadGraffitiResult is a struct to hold the search ahead blocks results with a given graffiti
 type SearchAheadGraffitiResult struct {
 	Graffiti string `json:"graffiti,omitempty"`

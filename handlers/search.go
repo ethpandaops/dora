@@ -104,11 +104,14 @@ func SearchAhead(w http.ResponseWriter, r *http.Request) {
 	searchType := vars["type"]
 	urlArgs := r.URL.Query()
 	search := urlArgs.Get("q")
+	search = strings.Trim(search, " \t")
 	search = strings.Replace(search, "0x", "", -1)
 	search = strings.Replace(search, "0X", "", -1)
 	var err error
 	logger := logrus.WithField("searchType", searchType)
 	var result interface{}
+
+	indexer := services.GlobalBeaconService.GetIndexer()
 
 	switch searchType {
 	case "epochs":
@@ -124,61 +127,83 @@ func SearchAhead(w http.ResponseWriter, r *http.Request) {
 			result = model
 		}
 	case "slots":
-		if len(search) <= 1 {
+		if len(search) == 0 {
 			break
 		}
-		if searchLikeRE.MatchString(search) {
-			if len(search) == 64 {
-				blockHash, err := hex.DecodeString(search)
+		if !searchLikeRE.MatchString(search) {
+			break
+		}
+		if len(search) == 64 {
+			blockHash, err := hex.DecodeString(search)
+			if err != nil {
+				logger.Errorf("error parsing blockHash to int: %v", err)
+				http.Error(w, "Internal server error", http.StatusServiceUnavailable)
+				return
+			}
+
+			cachedBlock := indexer.GetCachedBlock(blockHash)
+			if cachedBlock == nil {
+				cachedBlock = indexer.GetCachedBlockByStateroot(blockHash)
+			}
+			if !cachedBlock.IsReady() {
+				cachedBlock = nil
+			}
+			if cachedBlock != nil {
+				header := cachedBlock.GetHeader()
+				result = &[]models.SearchAheadSlotsResult{
+					{
+						Slot:     fmt.Sprintf("%v", uint64(header.Message.Slot)),
+						Root:     cachedBlock.Root,
+						Orphaned: !cachedBlock.IsCanonical(indexer, nil),
+					},
+				}
+			} else {
+				dbres := &dbtypes.SearchAheadSlotsResult{}
+				err = db.ReaderDb.Select(dbres, `
+				SELECT slot, root, orphaned 
+				FROM blocks 
+				WHERE root = $1 OR
+					state_root = $1
+				ORDER BY slot LIMIT 1`, blockHash)
 				if err != nil {
-					logger.Errorf("error parsing blockHash to int: %v", err)
+					logger.Errorf("error reading block root: %v", err)
 					http.Error(w, "Internal server error", http.StatusServiceUnavailable)
 					return
 				}
-
-				cachedBlock := services.GlobalBeaconService.GetCachedBlockByBlockroot(blockHash)
-				if cachedBlock == nil {
-					cachedBlock = services.GlobalBeaconService.GetCachedBlockByStateroot(blockHash)
-				}
-				if cachedBlock != nil {
+				if len(*dbres) > 0 {
 					result = &[]models.SearchAheadSlotsResult{
 						{
-							Slot:     fmt.Sprintf("%v", uint64(cachedBlock.Header.Message.Slot)),
-							Root:     cachedBlock.Root,
-							Orphaned: cachedBlock.Orphaned,
+							Slot:     fmt.Sprintf("%v", (*dbres)[0].Slot),
+							Root:     (*dbres)[0].Root,
+							Orphaned: (*dbres)[0].Orphaned,
 						},
 					}
-				} else {
-					dbres := &dbtypes.SearchAheadSlotsResult{}
-					err = db.ReaderDb.Select(dbres, `
-					SELECT slot, root, orphaned 
-					FROM blocks 
-					WHERE root = $1 OR
-						state_root = $1
-					ORDER BY slot LIMIT 1`, blockHash)
-					if err != nil {
-						logger.Errorf("error reading block root: %v", err)
-						http.Error(w, "Internal server error", http.StatusServiceUnavailable)
-						return
-					}
-					if len(*dbres) > 0 {
-						result = &[]models.SearchAheadSlotsResult{
-							{
-								Slot:     fmt.Sprintf("%v", (*dbres)[0].Slot),
-								Root:     (*dbres)[0].Root,
-								Orphaned: (*dbres)[0].Orphaned,
-							},
-						}
-					}
-
 				}
-			} else if _, convertErr := strconv.ParseInt(search, 10, 32); convertErr == nil {
+
+			}
+		} else if blockNumber, convertErr := strconv.ParseUint(search, 10, 32); convertErr == nil {
+			cachedBlocks := indexer.GetCachedBlocks(blockNumber)
+			if len(cachedBlocks) > 0 {
+				res := make([]*models.SearchAheadSlotsResult, 0)
+				for _, cachedBlock := range cachedBlocks {
+					if !cachedBlock.IsReady() {
+						continue
+					}
+					header := cachedBlock.GetHeader()
+					res = append(res, &models.SearchAheadSlotsResult{
+						Slot:     fmt.Sprintf("%v", uint64(header.Message.Slot)),
+						Root:     cachedBlock.Root,
+						Orphaned: !cachedBlock.IsCanonical(indexer, nil),
+					})
+				}
+				result = res
+			} else {
 				dbres := &dbtypes.SearchAheadSlotsResult{}
 				err = db.ReaderDb.Select(dbres, `
 				SELECT slot, root, orphaned 
 				FROM blocks 
 				WHERE slot = $1
-				ORDER BY slot LIMIT 10`, search)
+				ORDER BY slot LIMIT 10`, blockNumber)
 				if err == nil {
 					model := make([]models.SearchAheadSlotsResult, len(*dbres))
 					for idx, entry := range *dbres {
@@ -186,6 +211,103 @@ func SearchAhead(w http.ResponseWriter, r *http.Request) {
 							Slot:     fmt.Sprintf("%v", entry.Slot),
 							Root:     entry.Root,
 							Orphaned: entry.Orphaned,
+						}
+					}
+					result = model
+				}
+			}
+		}
+	case "execblocks":
+		if len(search) == 0 {
+			break
+		}
+		if !searchLikeRE.MatchString(search) {
+			break
+		}
+		if len(search) == 64 {
+			blockHash, err := hex.DecodeString(search)
+			if err != nil {
+				logger.Errorf("error parsing blockHash to int: %v", err)
+				http.Error(w, "Internal server error", http.StatusServiceUnavailable)
+				return
+			}
+
+			cachedBlocks := indexer.GetCachedBlocksByExecutionBlockHash(blockHash)
+			if len(cachedBlocks) > 0 {
+				res := make([]*models.SearchAheadExecBlocksResult, 0)
+				for idx, cachedBlock := range cachedBlocks {
+					if !cachedBlock.IsReady() {
+						continue
+					}
+					header := cachedBlock.GetHeader()
+					res[idx] = &models.SearchAheadExecBlocksResult{
+						Slot:       fmt.Sprintf("%v", uint64(header.Message.Slot)),
+						Root:       cachedBlock.Root,
+						ExecHash:   cachedBlock.Refs.ExecutionHash,
+						ExecNumber: cachedBlock.Refs.ExecutionNumber,
+						Orphaned:   !cachedBlock.IsCanonical(indexer, nil),
+					}
+				}
+				result = res
+			} else {
+				dbres := &dbtypes.SearchAheadExecBlocksResult{}
+				err = db.ReaderDb.Select(dbres, `
+				SELECT slot, root, eth_block_hash, eth_block_number, orphaned 
+				FROM blocks 
+				WHERE eth_block_hash = $1 
+				ORDER BY slot LIMIT 10`, blockHash)
+				if err != nil {
+					logger.Errorf("error reading block: %v", err)
+					http.Error(w, "Internal server error", http.StatusServiceUnavailable)
+					return
+				}
+				if len(*dbres) > 0 {
+					result = &[]models.SearchAheadExecBlocksResult{
+						{
+							Slot:       fmt.Sprintf("%v", (*dbres)[0].Slot),
+							Root:       (*dbres)[0].Root,
+							ExecHash:   (*dbres)[0].ExecHash,
+							ExecNumber: (*dbres)[0].ExecNumber,
+							Orphaned:   (*dbres)[0].Orphaned,
+						},
+					}
+				}
+
+			}
+		} else if blockNumber, convertErr := strconv.ParseUint(search, 10, 32); convertErr == nil {
+			cachedBlocks := indexer.GetCachedBlocksByExecutionBlockNumber(blockNumber)
+			if len(cachedBlocks) > 0 {
+				res := make([]*models.SearchAheadExecBlocksResult, 0)
+				for _, cachedBlock := range cachedBlocks {
+					if !cachedBlock.IsReady() {
+						continue
+					}
+					header := cachedBlock.GetHeader()
+					res = append(res, &models.SearchAheadExecBlocksResult{
+						Slot:       fmt.Sprintf("%v", uint64(header.Message.Slot)),
+						Root:       cachedBlock.Root,
+						ExecHash:   cachedBlock.Refs.ExecutionHash,
+						ExecNumber: cachedBlock.Refs.ExecutionNumber,
+						Orphaned:   !cachedBlock.IsCanonical(indexer, nil),
+					})
+				}
+				result = res
+			} else {
+				dbres := &dbtypes.SearchAheadExecBlocksResult{}
+				err = db.ReaderDb.Select(dbres, `
+				SELECT slot, root, eth_block_hash, eth_block_number, orphaned 
+				FROM blocks 
+				WHERE eth_block_number = $1
+				ORDER BY slot LIMIT 10`, blockNumber)
+				if err == nil {
+					model := make([]models.SearchAheadExecBlocksResult, len(*dbres))
+					for idx, entry := range *dbres {
+						model[idx] = models.SearchAheadExecBlocksResult{
+							Slot:       fmt.Sprintf("%v", entry.Slot),
+							Root:       entry.Root,
+							ExecHash:   entry.ExecHash,
+							ExecNumber: entry.ExecNumber,
+							Orphaned:   entry.Orphaned,
 						}
 					}
 					result = model

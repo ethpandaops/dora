@@ -295,6 +295,52 @@ func (indexer *Indexer) GetCachedBlockByStateroot(stateroot []byte) *CacheBlock 
 	return nil
 }
 
+func (indexer *Indexer) GetCachedBlocksByExecutionBlockHash(hash []byte) []*CacheBlock {
+	indexer.indexerCache.cacheMutex.RLock()
+	defer indexer.indexerCache.cacheMutex.RUnlock()
+
+	resBlocks := make([]*CacheBlock, 0)
+	var lowestSlotIdx int64
+	if indexer.indexerCache.finalizedEpoch >= 0 {
+		lowestSlotIdx = (indexer.indexerCache.finalizedEpoch + 1) * int64(utils.Config.Chain.Config.SlotsPerEpoch)
+	} else {
+		lowestSlotIdx = 0
+	}
+	for slotIdx := int64(indexer.indexerCache.highestSlot); slotIdx >= lowestSlotIdx; slotIdx-- {
+		slot := uint64(slotIdx)
+		blocks := indexer.indexerCache.slotMap[slot]
+		for _, block := range blocks {
+			if block.IsReady() && bytes.Equal(block.Refs.ExecutionHash, hash) {
+				resBlocks = append(resBlocks, block)
+			}
+		}
+	}
+	return resBlocks
+}
+
+func (indexer *Indexer) GetCachedBlocksByExecutionBlockNumber(number uint64) []*CacheBlock {
+	indexer.indexerCache.cacheMutex.RLock()
+	defer indexer.indexerCache.cacheMutex.RUnlock()
+
+	resBlocks := make([]*CacheBlock, 0)
+	var lowestSlotIdx int64
+	if indexer.indexerCache.finalizedEpoch >= 0 {
+		lowestSlotIdx = (indexer.indexerCache.finalizedEpoch + 1) * int64(utils.Config.Chain.Config.SlotsPerEpoch)
+	} else {
+		lowestSlotIdx = 0
+	}
+	for slotIdx := int64(indexer.indexerCache.highestSlot); slotIdx >= lowestSlotIdx; slotIdx-- {
+		slot := uint64(slotIdx)
+		blocks := indexer.indexerCache.slotMap[slot]
+		for _, block := range blocks {
+			if block.IsReady() && block.Refs.ExecutionNumber == number {
+				resBlocks = append(resBlocks, block)
+			}
+		}
+	}
+	return resBlocks
+}
+
 func (indexer *Indexer) GetCachedBlocksByProposer(proposer uint64) []*CacheBlock {
 	indexer.indexerCache.cacheMutex.RLock()
 	defer indexer.indexerCache.cacheMutex.RUnlock()

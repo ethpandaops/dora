@@ -93,6 +93,18 @@
         maxPendingRequests: requestNum,
       },
     });
+    var bhExecBlocks = new Bloodhound({
+      datumTokenizer: Bloodhound.tokenizers.whitespace,
+      queryTokenizer: Bloodhound.tokenizers.whitespace,
+      identify: function (obj) {
+        return obj.slot
+      },
+      remote: {
+        url: "/search/execblocks?q=",
+        prepare: prepareQueryFn,
+        maxPendingRequests: requestNum,
+      },
+    });
     var bhEpochs = new Bloodhound({
       datumTokenizer: Bloodhound.tokenizers.whitespace,
       queryTokenizer: Bloodhound.tokenizers.whitespace,
@@ -139,6 +151,22 @@
               status = `<span class="search-cell"><span class="badge rounded-pill text-bg-info">Orphaned</span></span>`;
             }
             return `<div class="text-monospace"><div class="search-table"><span class="search-cell">${data.slot}:</span><span class="search-cell search-truncate">${data.root}</span>${status}</div></div>`;
+          },
+        },
+      },
+      {
+        limit: 5,
+        name: "execblocks",
+        source: bhExecBlocks,
+        display: "root",
+        templates: {
+          header: '<h3 class="h5">Slots (by execution block):</h3>',
+          suggestion: function (data) {
+            var status = "";
+            if (data.orphaned) {
+              status = `<span class="search-cell"><span class="badge rounded-pill text-bg-info">Orphaned</span></span>`;
+            }
+            return `<div class="text-monospace"><div class="search-table"><span class="search-cell">${data.slot}:</span><span class="search-cell search-truncate"><nobr>Block ${data.exec_number} / ${data.exec_hash}</nobr></span>${status}</div></div>`;
           },
         },
       },

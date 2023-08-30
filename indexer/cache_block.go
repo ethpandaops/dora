@@ -17,6 +17,10 @@ type CacheBlock struct {
 	isInDb bool
 	header *rpctypes.SignedBeaconBlockHeader
 	block  *rpctypes.SignedBeaconBlock
+	Refs   struct {
+		ExecutionHash   []byte
+		ExecutionNumber uint64
+	}
 
 	dbBlockMutex sync.Mutex
 	dbBlockCache *dbtypes.Block
@@ -100,6 +104,17 @@ func (block *CacheBlock) buildOrphanedBlock() *dbtypes.OrphanedBlock {
 	}
 }
 
+func (block *CacheBlock) parseBlockRefs() {
+	if block.block == nil {
+		return
+	}
+	execPayload := block.block.Message.Body.ExecutionPayload
+	if execPayload != nil {
+		block.Refs.ExecutionHash = execPayload.BlockHash
+		block.Refs.ExecutionNumber = uint64(execPayload.BlockNumber)
+	}
+}
+
 func (block *CacheBlock) GetParentRoot() []byte {
 	block.mutex.RLock()
 	defer block.mutex.RUnlock()
@@ -134,6 +149,7 @@ func (block *CacheBlock) GetBlockBody() *rpctypes.SignedBeaconBlock {
 		return nil
 	}
 	block.block = &blockBody
+	block.parseBlockRefs()
 
 	return block.block
 }

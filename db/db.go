@@ -641,15 +641,15 @@ func InsertUnfinalizedBlock(block *dbtypes.UnfinalizedBlock, tx *sqlx.Tx) error 
 	return nil
 }
 
-func GetUnfinalizedBlockHeader() []*dbtypes.UnfinalizedBlockHeader {
-	blockRefs := []*dbtypes.UnfinalizedBlockHeader{}
+func GetUnfinalizedBlocks() []*dbtypes.UnfinalizedBlock {
+	blockRefs := []*dbtypes.UnfinalizedBlock{}
 	err := ReaderDb.Select(&blockRefs, `
 	SELECT
-		root, slot, header
+		root, slot, header, block
 	FROM unfinalized_blocks
 	`)
 	if err != nil {
-		logger.Errorf("Error while fetching unfinalized block refs: %v", err)
+		logger.Errorf("Error while fetching unfinalized blocks: %v", err)
 		return nil
 	}
 	return blockRefs

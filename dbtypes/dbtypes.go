@@ -73,12 +73,6 @@ type UnfinalizedBlock struct {
 	Block  string `db:"block"`
 }
 
-type UnfinalizedBlockHeader struct {
-	Root   []byte `db:"root"`
-	Slot   uint64 `db:"slot"`
-	Header string `db:"header"`
-}
-
 type UnfinalizedEpochDuty struct {
 	Epoch         uint64 `db:"epoch"`
 	DependentRoot []byte `db:"dependent_root"`
