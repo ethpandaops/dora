@@ -45,13 +45,13 @@ func Validator(w http.ResponseWriter, r *http.Request) {
 			// search by index^
 			validatorIndex, err := strconv.ParseUint(vars["idxOrPubKey"], 10, 64)
 			if err == nil && validatorIndex < uint64(len(validatorSetRsp.Data)) {
-				validator = &validatorSetRsp.Data[validatorIndex]
+				validator = validatorSetRsp.Data[validatorIndex]
 			}
 		} else {
 			// search by pubkey
 			for _, val := range validatorSetRsp.Data {
 				if bytes.Equal(val.Validator.PubKey, validatorPubKey) {
-					validator = &val
+					validator = val
 					break
 				}
 			}

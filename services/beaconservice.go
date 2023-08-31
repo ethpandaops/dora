@@ -737,8 +737,12 @@ func (bs *BeaconService) GetValidatorActivity() (map[uint64]uint8, uint64) {
 	for epochIdx := int64(idxHeadEpoch); epochIdx >= int64(idxMinEpoch); epochIdx-- {
 		epoch := uint64(epochIdx)
 		_, epochVotes := bs.indexer.GetEpochVotes(epoch)
-		for valIdx := range epochVotes.ActivityMap {
-			activityMap[valIdx]++
+		if epochVotes == nil {
+			epochLimit--
+		} else {
+			for valIdx := range epochVotes.ActivityMap {
+				activityMap[valIdx]++
+			}
 		}
 	}
 

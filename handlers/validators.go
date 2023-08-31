@@ -1,8 +1,10 @@
 package handlers
 
 import (
+	"bytes"
 	"fmt"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -40,35 +42,39 @@ func Validators(w http.ResponseWriter, r *http.Request) {
 	if urlArgs.Has("q") {
 		stateFilter = urlArgs.Get("q")
 	}
-	data.Data = getValidatorsPageData(firstIdx, pageSize, stateFilter)
+	var sortOrder string
+	if urlArgs.Has("o") {
+		sortOrder = urlArgs.Get("o")
+	}
+	data.Data = getValidatorsPageData(firstIdx, pageSize, stateFilter, sortOrder)
 
 	if handleTemplateError(w, r, "validators.go", "Validators", "", pageTemplate.ExecuteTemplate(w, "layout", data)) != nil {
 		return // an error has occurred and was processed
 	}
 }
 
-func getValidatorsPageData(firstValIdx uint64, pageSize uint64, stateFilter string) *models.ValidatorsPageData {
+func getValidatorsPageData(firstValIdx uint64, pageSize uint64, stateFilter string, sortOrder string) *models.ValidatorsPageData {
 	pageData := &models.ValidatorsPageData{}
-	pageCacheKey := fmt.Sprintf("validators:%v:%v:%v", firstValIdx, pageSize, stateFilter)
+	pageCacheKey := fmt.Sprintf("validators:%v:%v:%v:%v", firstValIdx, pageSize, stateFilter, sortOrder)
 	pageData = services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
-		pageData, cacheTimeout := buildValidatorsPageData(firstValIdx, pageSize, stateFilter)
+		pageData, cacheTimeout := buildValidatorsPageData(firstValIdx, pageSize, stateFilter, sortOrder)
 		pageCall.CacheTimeout = cacheTimeout
 		return pageData
 	}).(*models.ValidatorsPageData)
 	return pageData
 }
 
-func buildValidatorsPageData(firstValIdx uint64, pageSize uint64, stateFilter string) (*models.ValidatorsPageData, time.Duration) {
-	logrus.Printf("validators page called: %v:%v:%v", firstValIdx, pageSize, stateFilter)
+func buildValidatorsPageData(firstValIdx uint64, pageSize uint64, stateFilter string, sortOrder string) (*models.ValidatorsPageData, time.Duration) {
+	logrus.Printf("validators page called: %v:%v:%v:%v", firstValIdx, pageSize, stateFilter, sortOrder)
 	pageData := &models.ValidatorsPageData{}
 	cacheTime := 10 * time.Minute
 
 	// get latest validator set
-	var validatorSet []rpctypes.ValidatorEntry
+	var validatorSet []*rpctypes.ValidatorEntry
 	validatorSetRsp := services.GlobalBeaconService.GetCachedValidatorSet()
 	if validatorSetRsp == nil {
 		cacheTime = 5 * time.Minute
-		validatorSet = []rpctypes.ValidatorEntry{}
+		validatorSet = []*rpctypes.ValidatorEntry{}
 	} else {
 		validatorSet = validatorSetRsp.Data
 	}
@@ -77,7 +83,60 @@ func buildValidatorsPageData(firstValIdx uint64, pageSize uint64, stateFilter st
 	// TODO: apply filter
 	//}
 
-	totalValidatorCount := uint64(len(validatorSet))
+	// apply sort order
+	validatorSetLen := len(validatorSet)
+	if sortOrder == "" {
+		sortOrder = "index"
+	}
+	if sortOrder != "index" {
+		sortedValidatorSet := make([]*rpctypes.ValidatorEntry, validatorSetLen)
+		copy(sortedValidatorSet, validatorSet)
+
+		switch sortOrder {
+		case "index-d":
+			sort.Slice(sortedValidatorSet, func(a, b int) bool {
+				return sortedValidatorSet[a].Index > sortedValidatorSet[b].Index
+			})
+		case "pubkey":
+			sort.Slice(sortedValidatorSet, func(a, b int) bool {
+				return bytes.Compare(sortedValidatorSet[a].Validator.PubKey, sortedValidatorSet[b].Validator.PubKey) < 0
+			})
+		case "pubkey-d":
+			sort.Slice(sortedValidatorSet, func(a, b int) bool {
+				return bytes.Compare(sortedValidatorSet[a].Validator.PubKey, sortedValidatorSet[b].Validator.PubKey) > 0
+			})
+		case "balance":
+			sort.Slice(sortedValidatorSet, func(a, b int) bool {
+				return sortedValidatorSet[a].Balance < sortedValidatorSet[b].Balance
+			})
+		case "balance-d":
+			sort.Slice(sortedValidatorSet, func(a, b int) bool {
+				return sortedValidatorSet[a].Balance > sortedValidatorSet[b].Balance
+			})
+		case "activation":
+			sort.Slice(sortedValidatorSet, func(a, b int) bool {
+				return sortedValidatorSet[a].Validator.ActivationEpoch < sortedValidatorSet[b].Validator.ActivationEpoch
+			})
+		case "activation-d":
+			sort.Slice(sortedValidatorSet, func(a, b int) bool {
+				return sortedValidatorSet[a].Validator.ActivationEpoch > sortedValidatorSet[b].Validator.ActivationEpoch
+			})
+		case "exit":
+			sort.Slice(sortedValidatorSet, func(a, b int) bool {
+				return sortedValidatorSet[a].Validator.ExitEpoch < sortedValidatorSet[b].Validator.ExitEpoch
+			})
+		case "exit-d":
+			sort.Slice(sortedValidatorSet, func(a, b int) bool {
+				return sortedValidatorSet[a].Validator.ExitEpoch > sortedValidatorSet[b].Validator.ExitEpoch
+			})
+		}
+		validatorSet = sortedValidatorSet
+	} else {
+		pageData.IsDefaultSorting = true
+	}
+	pageData.Sorting = sortOrder
+
+	totalValidatorCount := uint64(validatorSetLen)
 	if firstValIdx == 0 {
 		pageData.IsDefaultPage = true
 	} else if firstValIdx > totalValidatorCount {

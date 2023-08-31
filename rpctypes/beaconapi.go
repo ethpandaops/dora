@@ -87,7 +87,7 @@ type EpochAssignments struct {
 }
 
 type StandardV1StateValidatorsResponse struct {
-	Data []ValidatorEntry `json:"data"`
+	Data []*ValidatorEntry `json:"data"`
 }
 
 type StandardV1GenesisResponse struct {

@@ -277,3 +277,18 @@ span.validator-label {
   text-overflow: ellipsis;
   overflow: hidden;
 }
+
+.table-sorting thead .col-sorting {
+  float: right;
+}
+
+.table-sorting thead .sort-link {
+  margin-left: -3px;
+  color: var(--bs-table-color-state,var(--bs-table-color-type,var(--bs-table-color)));
+  font-size: 14px;
+  opacity: 0.3;
+}
+
+.table-sorting thead .sort-link:hover, .table-sorting thead .sort-link.active {
+  opacity: 1;
+}
