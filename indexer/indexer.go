@@ -439,7 +439,7 @@ func (indexer *Indexer) getEpochVotes(epoch uint64, epochStats *EpochStats) *Epo
 	}
 
 	// calculate votes
-	return aggregateEpochVotes(canonicalMap, epoch, epochStats, epochTarget, false)
+	return aggregateEpochVotes(canonicalMap, epoch, epochStats, epochTarget, false, false)
 }
 
 func (indexer *Indexer) BuildLiveEpoch(epoch uint64) *dbtypes.Epoch {
@@ -447,7 +447,7 @@ func (indexer *Indexer) BuildLiveEpoch(epoch uint64) *dbtypes.Epoch {
 	headEpoch := utils.EpochOfSlot(headSlot)
 
 	epochStats := indexer.getCachedEpochStats(epoch, headRoot)
-	if epochStats == nil {
+	if epochStats == nil || !epochStats.IsReady() {
 		return nil
 	}
 

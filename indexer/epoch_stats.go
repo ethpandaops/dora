@@ -96,6 +96,22 @@ func (cache *indexerCache) removeEpochStats(epochStats *EpochStats) {
 	}
 }
 
+func (epochStats *EpochStats) IsReady() bool {
+	if !epochStats.dutiesMutex.TryRLock() {
+		return false
+	}
+	epochStats.dutiesMutex.RUnlock()
+	return true
+}
+
+func (epochStats *EpochStats) IsValidatorsReady() bool {
+	if !epochStats.validatorsMutex.TryRLock() {
+		return false
+	}
+	epochStats.validatorsMutex.RUnlock()
+	return true
+}
+
 func (epochStats *EpochStats) GetDependentStateRef() string {
 	epochStats.dutiesMutex.RLock()
 	defer epochStats.dutiesMutex.RUnlock()

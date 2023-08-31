@@ -22,7 +22,7 @@ type EpochVotes struct {
 	ActivityMap map[uint64]bool
 }
 
-func aggregateEpochVotes(blockMap map[uint64]*CacheBlock, epoch uint64, epochStats *EpochStats, targetRoot []byte, currentOnly bool) *EpochVotes {
+func aggregateEpochVotes(blockMap map[uint64]*CacheBlock, epoch uint64, epochStats *EpochStats, targetRoot []byte, currentOnly bool, awaitValidaotStats bool) *EpochVotes {
 	firstSlot := epoch * utils.Config.Chain.Config.SlotsPerEpoch
 	lastSlot := firstSlot + utils.Config.Chain.Config.SlotsPerEpoch - 1
 	if !currentOnly {
@@ -33,8 +33,10 @@ func aggregateEpochVotes(blockMap map[uint64]*CacheBlock, epoch uint64, epochSta
 	// avait all lazy loaded data is available
 	epochStats.dutiesMutex.RLock()
 	defer epochStats.dutiesMutex.RUnlock()
-	epochStats.validatorsMutex.RLock()
-	defer epochStats.validatorsMutex.RUnlock()
+	if awaitValidaotStats {
+		epochStats.validatorsMutex.RLock()
+		defer epochStats.validatorsMutex.RUnlock()
+	}
 
 	votes := EpochVotes{
 		ActivityMap: map[uint64]bool{},
