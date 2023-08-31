@@ -15,6 +15,7 @@ type IndexerClient struct {
 	clientIdx          uint8
 	clientName         string
 	rpcClient          *rpc.BeaconClient
+	skipValidators     bool
 	archive            bool
 	priority           int
 	versionStr         string
@@ -32,11 +33,12 @@ type IndexerClient struct {
 	lastFinalizedRoot  []byte
 }
 
-func newIndexerClient(clientIdx uint8, clientName string, rpcClient *rpc.BeaconClient, indexerCache *indexerCache, archive bool, priority int) *IndexerClient {
+func newIndexerClient(clientIdx uint8, clientName string, rpcClient *rpc.BeaconClient, indexerCache *indexerCache, archive bool, priority int, skipValidators bool) *IndexerClient {
 	client := IndexerClient{
 		clientIdx:          clientIdx,
 		clientName:         clientName,
 		rpcClient:          rpcClient,
+		skipValidators:     skipValidators,
 		archive:            archive,
 		priority:           priority,
 		indexerCache:       indexerCache,

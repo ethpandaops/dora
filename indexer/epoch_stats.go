@@ -313,6 +313,9 @@ func (epochStats *EpochStats) ensureEpochStatsLazy(client *IndexerClient, propos
 
 func (epochStats *EpochStats) ensureValidatorStatsLazy(client *IndexerClient, stateRef string) {
 	defer utils.HandleSubroutinePanic("ensureValidatorStatsLazy")
+	if client.skipValidators {
+		return
+	}
 	epochStats.loadValidatorStats(client, stateRef)
 }
 

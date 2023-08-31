@@ -11,6 +11,7 @@ import (
 	"github.com/pk910/light-beaconchain-explorer/dbtypes"
 	"github.com/pk910/light-beaconchain-explorer/rpc"
 	"github.com/pk910/light-beaconchain-explorer/rpctypes"
+	"github.com/pk910/light-beaconchain-explorer/types"
 	"github.com/pk910/light-beaconchain-explorer/utils"
 )
 
@@ -43,13 +44,13 @@ func NewIndexer() (*Indexer, error) {
 	return indexer, nil
 }
 
-func (indexer *Indexer) AddClient(index uint8, name string, endpoint string, archive bool, priority int, headers map[string]string) *IndexerClient {
-	rpcClient, err := rpc.NewBeaconClient(endpoint, name, headers)
+func (indexer *Indexer) AddClient(index uint8, endpoint *types.EndpointConfig) *IndexerClient {
+	rpcClient, err := rpc.NewBeaconClient(endpoint.Url, endpoint.Name, endpoint.Headers)
 	if err != nil {
-		logger.Errorf("error while adding client %v to indexer: %v", name, err)
+		logger.Errorf("error while adding client %v to indexer: %v", endpoint.Name, err)
 		return nil
 	}
-	client := newIndexerClient(index, name, rpcClient, indexer.indexerCache, archive, priority)
+	client := newIndexerClient(index, endpoint.Name, rpcClient, indexer.indexerCache, endpoint.Archive, endpoint.Priority, endpoint.SkipValidators)
 	indexer.indexerClients = append(indexer.indexerClients, client)
 	return client
 }
