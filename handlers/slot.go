@@ -146,7 +146,9 @@ func buildSlotPageData(blockSlot int64, blockRoot []byte) (*models.SlotPageData,
 	var blockData *rpctypes.CombinedBlockResponse
 	var err error
 	if blockSlot > -1 {
-		blockData, err = services.GlobalBeaconService.GetSlotDetailsBySlot(uint64(blockSlot), false)
+		if uint64(blockSlot) <= currentSlot {
+			blockData, err = services.GlobalBeaconService.GetSlotDetailsBySlot(uint64(blockSlot), false)
+		}
 	} else {
 		blockData, err = services.GlobalBeaconService.GetSlotDetailsByBlockroot(blockRoot, false)
 	}

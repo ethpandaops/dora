@@ -86,7 +86,10 @@ func (client *IndexerClient) runIndexerClientLoop() {
 	defer utils.HandleSubroutinePanic("runIndexerClientLoop")
 
 	for {
-		err := client.runIndexerClient()
+		err := client.checkIndexerClient()
+		if err == nil {
+			err = client.runIndexerClient()
+		}
 		if err != nil {
 			client.retryCounter++
 			waitTime := 10
@@ -94,6 +97,19 @@ func (client *IndexerClient) runIndexerClientLoop() {
 				waitTime = 300
 			} else if client.retryCounter > 5 {
 				waitTime = 60
+			}
+
+			genesisTime := time.Unix(int64(utils.Config.Chain.GenesisTimestamp), 0)
+			genesisSince := time.Since(genesisTime)
+			fmt.Printf("genesis %v\n", int(genesisSince.Seconds()))
+			if genesisSince < 0 {
+				if genesisSince > (time.Duration)(0-waitTime)*time.Second {
+					waitTime = int(genesisSince.Abs().Seconds())
+					client.retryCounter = 0
+					logger.WithField("client", client.clientName).Infof("waiting for genesis (%v secs)", waitTime)
+				} else {
+					waitTime = 600
+				}
 			}
 			logger.WithField("client", client.clientName).Warnf("indexer client error: %v, retrying in %v sec...", err, waitTime)
 			time.Sleep(time.Duration(waitTime) * time.Second)
@@ -103,7 +119,7 @@ func (client *IndexerClient) runIndexerClientLoop() {
 	}
 }
 
-func (client *IndexerClient) runIndexerClient() error {
+func (client *IndexerClient) checkIndexerClient() error {
 	// get node version
 	nodeVersion, err := client.rpcClient.GetNodeVersion()
 	if err != nil {
@@ -129,16 +145,6 @@ func (client *IndexerClient) runIndexerClient() error {
 		return fmt.Errorf("genesis fork version from RPC does not match the genesis fork version explorer configuration")
 	}
 
-	// get latest header
-	latestHeader, err := client.rpcClient.GetLatestBlockHead()
-	if err != nil {
-		return fmt.Errorf("could not get latest header: %v", err)
-	}
-	if latestHeader == nil {
-		return fmt.Errorf("could not find latest header")
-	}
-	client.setHeadBlock(latestHeader.Data.Root, uint64(latestHeader.Data.Header.Message.Slot))
-
 	// check syncronization state
 	syncStatus, err := client.rpcClient.GetNodeSyncing()
 	if err != nil {
@@ -149,7 +155,23 @@ func (client *IndexerClient) runIndexerClient() error {
 	}
 	client.isSynchronizing = syncStatus.Data.IsSyncing || syncStatus.Data.IsOptimistic
 	client.syncDistance = uint64(syncStatus.Data.SyncDistance)
-	if syncStatus.Data.IsSyncing || syncStatus.Data.IsOptimistic {
+
+	return nil
+}
+
+func (client *IndexerClient) runIndexerClient() error {
+	// get latest header
+	latestHeader, err := client.rpcClient.GetLatestBlockHead()
+	if err != nil {
+		return fmt.Errorf("could not get latest header: %v", err)
+	}
+	if latestHeader == nil {
+		return fmt.Errorf("could not find latest header")
+	}
+	client.setHeadBlock(latestHeader.Data.Root, uint64(latestHeader.Data.Header.Message.Slot))
+
+	// check latest header / sync status
+	if client.isSynchronizing {
 		return fmt.Errorf("beacon node is synchronizing")
 	}
 	if client.indexerCache.finalizedEpoch >= 0 && utils.EpochOfSlot(uint64(latestHeader.Data.Header.Message.Slot)) <= uint64(client.indexerCache.finalizedEpoch) {
