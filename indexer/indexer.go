@@ -21,6 +21,7 @@ type Indexer struct {
 	indexerClients []*IndexerClient
 
 	writeDb        bool
+	disableSync    bool
 	inMemoryEpochs uint16
 }
 
@@ -34,6 +35,7 @@ func NewIndexer() (*Indexer, error) {
 		indexerClients: make([]*IndexerClient, 0),
 
 		writeDb:        !utils.Config.Indexer.DisableIndexWriter,
+		disableSync:    utils.Config.Indexer.DisableSynchronizer,
 		inMemoryEpochs: inMemoryEpochs,
 	}
 	indexer.indexerCache = newIndexerCache(indexer)

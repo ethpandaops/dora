@@ -56,6 +56,9 @@ func (cache *indexerCache) startSynchronizer(startEpoch uint64) {
 	cache.cacheMutex.Lock()
 	defer cache.cacheMutex.Unlock()
 
+	if cache.indexer.disableSync {
+		return
+	}
 	if cache.synchronizer == nil {
 		cache.synchronizer = newSynchronizer(cache.indexer)
 	}

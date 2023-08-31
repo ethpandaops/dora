@@ -288,6 +288,10 @@ func (bs *BeaconService) GetEpochAssignments(epoch uint64) (*rpctypes.EpochAssig
 		}
 	}
 
+	if utils.Config.BeaconApi.SkipFinalAssignments {
+		return nil, nil
+	}
+
 	bs.assignmentsCacheMux.Lock()
 	epochAssignments, found := bs.assignmentsCache.Get(epoch)
 	bs.assignmentsCacheMux.Unlock()
