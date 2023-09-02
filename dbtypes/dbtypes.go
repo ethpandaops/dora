@@ -5,6 +5,11 @@ type ExplorerState struct {
 	Value string `db:"value"`
 }
 
+type ValidatorName struct {
+	Index uint64 `db:"index"`
+	Name  string `db:"name"`
+}
+
 type Block struct {
 	Root                  []byte  `db:"root"`
 	Slot                  uint64  `db:"slot"`

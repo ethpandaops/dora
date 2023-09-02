@@ -49,12 +49,7 @@ func StartBeaconService() error {
 	}
 
 	validatorNames := &ValidatorNames{}
-	if utils.Config.Frontend.ValidatorNamesYaml != "" {
-		validatorNames.LoadFromYaml(utils.Config.Frontend.ValidatorNamesYaml)
-	}
-	if utils.Config.Frontend.ValidatorNamesInventory != "" {
-		validatorNames.LoadFromRangesApi(utils.Config.Frontend.ValidatorNamesInventory)
-	}
+	validatorNames.LoadValidatorNames()
 
 	GlobalBeaconService = &BeaconService{
 		indexer:          indexer,

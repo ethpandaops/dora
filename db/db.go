@@ -240,6 +240,35 @@ func SetExplorerState(key string, value interface{}, tx *sqlx.Tx) error {
 	return nil
 }
 
+func ClearValidatorNames(tx *sqlx.Tx) error {
+	_, err := tx.Exec("DELETE FROM validator_names")
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func InsertValidatorNames(validatorNames []*dbtypes.ValidatorName, tx *sqlx.Tx) error {
+	var sql strings.Builder
+	fmt.Fprintf(&sql, `INSERT INTO validator_names ("index", "name") VALUES `)
+	argIdx := 0
+	args := make([]any, len(validatorNames)*2)
+	for i, validatorName := range validatorNames {
+		if i > 0 {
+			fmt.Fprintf(&sql, ", ")
+		}
+		fmt.Fprintf(&sql, "($%v, $%v)", argIdx+1, argIdx+2)
+		args[argIdx] = validatorName.Index
+		args[argIdx+1] = validatorName.Name
+		argIdx += 2
+	}
+	_, err := tx.Exec(sql.String(), args...)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func IsEpochSynchronized(epoch uint64) bool {
 	var count uint64
 	err := ReaderDb.Get(&count, `SELECT COUNT(*) FROM epochs WHERE epoch = $1`, epoch)

@@ -101,7 +101,6 @@ func (client *IndexerClient) runIndexerClientLoop() {
 
 			genesisTime := time.Unix(int64(utils.Config.Chain.GenesisTimestamp), 0)
 			genesisSince := time.Since(genesisTime)
-			fmt.Printf("genesis %v\n", int(genesisSince.Seconds()))
 			if genesisSince < 0 {
 				if genesisSince > (time.Duration)(0-waitTime)*time.Second {
 					waitTime = int(genesisSince.Abs().Seconds())
