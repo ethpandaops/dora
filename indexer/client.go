@@ -87,34 +87,44 @@ func (client *IndexerClient) runIndexerClientLoop() {
 
 	for {
 		err := client.checkIndexerClient()
-		if err == nil {
-			err = client.runIndexerClient()
-		}
-		if err != nil {
-			client.retryCounter++
-			waitTime := 10
-			if client.retryCounter > 10 {
-				waitTime = 300
-			} else if client.retryCounter > 5 {
-				waitTime = 60
-			}
 
+		if err == nil {
 			genesisTime := time.Unix(int64(utils.Config.Chain.GenesisTimestamp), 0)
 			genesisSince := time.Since(genesisTime)
+			waitTime := 0
 			if genesisSince < 0 {
-				if genesisSince > (time.Duration)(0-waitTime)*time.Second {
-					waitTime = int(genesisSince.Abs().Seconds())
-					client.retryCounter = 0
-					logger.WithField("client", client.clientName).Infof("waiting for genesis (%v secs)", waitTime)
-				} else {
+				// preload genesis validator set
+				if !client.skipValidators {
+					epochStats, _ := client.indexerCache.createOrGetEpochStats(0, nil)
+					epochStats.loadValidatorStats(client, "genesis")
+				}
+
+				waitTime = int(time.Since(genesisTime).Abs().Seconds())
+				if waitTime > 600 {
 					waitTime = 600
 				}
+				logger.WithField("client", client.clientName).Infof("waiting for genesis (%v secs)", waitTime)
+
+				time.Sleep(time.Duration(waitTime) * time.Second)
+				continue
 			}
-			logger.WithField("client", client.clientName).Warnf("indexer client error: %v, retrying in %v sec...", err, waitTime)
-			time.Sleep(time.Duration(waitTime) * time.Second)
-		} else {
+
+			err = client.runIndexerClient()
+		}
+		if err == nil {
 			return
 		}
+
+		client.retryCounter++
+		waitTime := 10
+		if client.retryCounter > 10 {
+			waitTime = 300
+		} else if client.retryCounter > 5 {
+			waitTime = 60
+		}
+
+		logger.WithField("client", client.clientName).Warnf("indexer client error: %v, retrying in %v sec...", err, waitTime)
+		time.Sleep(time.Duration(waitTime) * time.Second)
 	}
 }
 
