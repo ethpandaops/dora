@@ -5,12 +5,17 @@ type ExplorerState struct {
 	Value string `db:"value"`
 }
 
+type ValidatorName struct {
+	Index uint64 `db:"index"`
+	Name  string `db:"name"`
+}
+
 type Block struct {
 	Root                  []byte  `db:"root"`
 	Slot                  uint64  `db:"slot"`
 	ParentRoot            []byte  `db:"parent_root"`
 	StateRoot             []byte  `db:"state_root"`
-	Orphaned              bool    `db:"orphaned"`
+	Orphaned              uint8   `db:"orphaned"`
 	Proposer              uint64  `db:"proposer"`
 	Graffiti              []byte  `db:"graffiti"`
 	GraffitiText          string  `db:"graffiti_text"`

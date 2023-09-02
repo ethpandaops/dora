@@ -85,7 +85,7 @@ func Search(w http.ResponseWriter, r *http.Request) {
 			LIMIT 1`,
 	}), "%"+searchQuery+"%")
 	if err == nil {
-		http.Redirect(w, r, "/slots?q="+searchQuery, http.StatusMovedPermanently)
+		http.Redirect(w, r, "/filtered?f&f.graffiti="+searchQuery, http.StatusMovedPermanently)
 		return
 	}
 

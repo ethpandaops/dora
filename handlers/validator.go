@@ -12,6 +12,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
 
+	"github.com/pk910/light-beaconchain-explorer/dbtypes"
 	"github.com/pk910/light-beaconchain-explorer/rpctypes"
 	"github.com/pk910/light-beaconchain-explorer/services"
 	"github.com/pk910/light-beaconchain-explorer/templates"
@@ -149,12 +150,16 @@ func buildValidatorPageData(validatorIndex uint64) (*models.ValidatorPageData, t
 
 	// load latest blocks
 	pageData.RecentBlocks = make([]*models.ValidatorPageDataBlocks, 0)
-	blocksData := services.GlobalBeaconService.GetDbBlocksByProposer(validatorIndex, 0, 10, true, true)
+	blocksData := services.GlobalBeaconService.GetDbBlocksByFilter(&dbtypes.BlockFilter{
+		ProposerIndex: &validatorIndex,
+		WithOrphaned:  1,
+		WithMissing:   1,
+	}, 0, 10)
 	for _, blockData := range blocksData {
 		blockStatus := 1
 		if blockData.Block == nil {
 			blockStatus = 0
-		} else if blockData.Block.Orphaned {
+		} else if blockData.Block.Orphaned == 1 {
 			blockStatus = 2
 		}
 		blockEntry := models.ValidatorPageDataBlocks{

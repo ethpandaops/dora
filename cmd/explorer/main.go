@@ -72,6 +72,7 @@ func startFrontend() {
 	router.HandleFunc("/epochs", handlers.Epochs).Methods("GET")
 	router.HandleFunc("/epoch/{epoch}", handlers.Epoch).Methods("GET")
 	router.HandleFunc("/slots", handlers.Slots).Methods("GET")
+	router.HandleFunc("/slots/filtered", handlers.SlotsFiltered).Methods("GET")
 	router.HandleFunc("/slot/{slotOrHash}", handlers.Slot).Methods("GET")
 	router.HandleFunc("/slot/{hash}/blob/{blobIdx}", handlers.SlotBlob).Methods("GET")
 	router.HandleFunc("/search", handlers.Search).Methods("GET")

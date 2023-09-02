@@ -167,17 +167,15 @@ func ApplyEmbeddedDbSchema(version int64) error {
 		goose.SetBaseFS(EmbedPgsqlSchema)
 		engineDialect = "postgres"
 		schemaDirectory = "schema/pgsql"
-		break
 	case dbtypes.DBEngineSqlite:
 		goose.SetBaseFS(EmbedSqliteSchema)
 		engineDialect = "sqlite3"
 		schemaDirectory = "schema/sqlite"
-		break
 	default:
 		logger.Fatalf("unknown database engine")
 	}
 
-	fmt.Printf(engineDialect)
+	fmt.Print(engineDialect)
 	if err := goose.SetDialect(engineDialect); err != nil {
 		return err
 	}
@@ -240,6 +238,65 @@ func SetExplorerState(key string, value interface{}, tx *sqlx.Tx) error {
 	return nil
 }
 
+func GetValidatorNames(minIdx uint64, maxIdx uint64, tx *sqlx.Tx) []*dbtypes.ValidatorName {
+	names := []*dbtypes.ValidatorName{}
+	err := ReaderDb.Select(&names, `SELECT "index", "name" FROM validator_names WHERE "index" >= $1 AND "index" <= $2`, minIdx, maxIdx)
+	if err != nil {
+		logger.Errorf("Error while fetching validator names: %v", err)
+		return nil
+	}
+	return names
+}
+
+func InsertValidatorNames(validatorNames []*dbtypes.ValidatorName, tx *sqlx.Tx) error {
+	var sql strings.Builder
+	fmt.Fprint(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
+		dbtypes.DBEnginePgsql:  `INSERT INTO validator_names ("index", "name") VALUES `,
+		dbtypes.DBEngineSqlite: `INSERT OR REPLACE INTO validator_names ("index", "name") VALUES `,
+	}))
+	argIdx := 0
+	args := make([]any, len(validatorNames)*2)
+	for i, validatorName := range validatorNames {
+		if i > 0 {
+			fmt.Fprintf(&sql, ", ")
+		}
+		fmt.Fprintf(&sql, "($%v, $%v)", argIdx+1, argIdx+2)
+		args[argIdx] = validatorName.Index
+		args[argIdx+1] = validatorName.Name
+		argIdx += 2
+	}
+	fmt.Fprint(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
+		dbtypes.DBEnginePgsql:  ` ON CONFLICT ("index") DO UPDATE SET name = excluded.name`,
+		dbtypes.DBEngineSqlite: "",
+	}))
+	_, err := tx.Exec(sql.String(), args...)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func DeleteValidatorNames(validatorNames []uint64, tx *sqlx.Tx) error {
+	var sql strings.Builder
+	fmt.Fprint(&sql, `DELETE FROM validator_names WHERE "index" IN (`)
+	argIdx := 0
+	args := make([]any, len(validatorNames)*2)
+	for i, validatorName := range validatorNames {
+		if i > 0 {
+			fmt.Fprintf(&sql, ", ")
+		}
+		fmt.Fprintf(&sql, "$%v", argIdx+1)
+		args[argIdx] = validatorName
+		argIdx += 1
+	}
+	fmt.Fprint(&sql, ")")
+	_, err := tx.Exec(sql.String(), args...)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func IsEpochSynchronized(epoch uint64) bool {
 	var count uint64
 	err := ReaderDb.Get(&count, `SELECT COUNT(*) FROM epochs WHERE epoch = $1`, epoch)
@@ -251,7 +308,7 @@ func IsEpochSynchronized(epoch uint64) bool {
 
 func InsertSlotAssignments(slotAssignments []*dbtypes.SlotAssignment, tx *sqlx.Tx) error {
 	var sql strings.Builder
-	fmt.Fprintf(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
+	fmt.Fprint(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
 		dbtypes.DBEnginePgsql:  "INSERT INTO slot_assignments (slot, proposer) VALUES ",
 		dbtypes.DBEngineSqlite: "INSERT OR REPLACE INTO slot_assignments (slot, proposer) VALUES ",
 	}))
@@ -266,7 +323,7 @@ func InsertSlotAssignments(slotAssignments []*dbtypes.SlotAssignment, tx *sqlx.T
 		args[argIdx+1] = slotAssignment.Proposer
 		argIdx += 2
 	}
-	fmt.Fprintf(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
+	fmt.Fprint(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
 		dbtypes.DBEnginePgsql:  " ON CONFLICT (slot) DO UPDATE SET proposer = excluded.proposer",
 		dbtypes.DBEngineSqlite: "",
 	}))
@@ -460,45 +517,8 @@ func GetBlocksByParentRoot(parentRoot []byte) []*dbtypes.Block {
 	return blocks
 }
 
-func GetBlocksWithGraffiti(graffiti string, firstSlot uint64, offset uint64, limit uint32, withOrphaned bool) []*dbtypes.Block {
-	blocks := []*dbtypes.Block{}
-	orphanedLimit := ""
-	if !withOrphaned {
-		orphanedLimit = "AND NOT orphaned"
-	}
-	err := ReaderDb.Select(&blocks, EngineQuery(map[dbtypes.DBEngineType]string{
-		dbtypes.DBEnginePgsql: `
-			SELECT
-				root, slot, parent_root, state_root, orphaned, proposer, graffiti, graffiti_text,
-				attestation_count, deposit_count, exit_count, withdraw_count, withdraw_amount, attester_slashing_count, 
-				proposer_slashing_count, bls_change_count, eth_transaction_count, eth_block_number, eth_block_hash, sync_participation
-			FROM blocks
-			WHERE graffiti_text ilike $1 AND slot < $2 ` + orphanedLimit + `
-			ORDER BY slot DESC
-			LIMIT $3 OFFSET $4`,
-		dbtypes.DBEngineSqlite: `
-			SELECT
-				root, slot, parent_root, state_root, orphaned, proposer, graffiti, graffiti_text,
-				attestation_count, deposit_count, exit_count, withdraw_count, withdraw_amount, attester_slashing_count, 
-				proposer_slashing_count, bls_change_count, eth_transaction_count, eth_block_number, eth_block_hash, sync_participation
-			FROM blocks
-			WHERE graffiti_text LIKE $1 AND slot < $2 ` + orphanedLimit + `
-			ORDER BY slot DESC
-			LIMIT $3 OFFSET $4`,
-	}), "%"+graffiti+"%", firstSlot, limit, offset)
-	if err != nil {
-		logger.Errorf("Error while fetching blocks with graffiti: %v", err)
-		return nil
-	}
-	return blocks
-}
-
-func GetAssignedBlocks(proposer uint64, firstSlot uint64, offset uint64, limit uint32, withOrphaned bool) []*dbtypes.AssignedBlock {
+func GetFilteredBlocks(filter *dbtypes.BlockFilter, firstSlot uint64, offset uint64, limit uint32) []*dbtypes.AssignedBlock {
 	blockAssignments := []*dbtypes.AssignedBlock{}
-	orphanedLimit := ""
-	if !withOrphaned {
-		orphanedLimit = "AND NOT orphaned"
-	}
 	var sql strings.Builder
 	fmt.Fprintf(&sql, `SELECT slot_assignments.slot, slot_assignments.proposer`)
 	blockFields := []string{
@@ -509,16 +529,65 @@ func GetAssignedBlocks(proposer uint64, firstSlot uint64, offset uint64, limit u
 	for _, blockField := range blockFields {
 		fmt.Fprintf(&sql, ", blocks.%v AS \"block.%v\"", blockField, blockField)
 	}
-	fmt.Fprintf(&sql, `
-	FROM slot_assignments
-	LEFT JOIN blocks ON blocks.slot = slot_assignments.slot
-	WHERE (slot_assignments.proposer = $1 OR blocks.proposer = $1) AND slot_assignments.slot < $2 `+orphanedLimit+`
-	ORDER BY slot_assignments.slot DESC
-	LIMIT $3 OFFSET $4
-	`)
-	rows, err := ReaderDb.Query(sql.String(), proposer, firstSlot, limit, offset)
+	fmt.Fprintf(&sql, ` FROM slot_assignments `)
+	fmt.Fprintf(&sql, ` LEFT JOIN blocks ON blocks.slot = slot_assignments.slot `)
+	if filter.ProposerName != "" {
+		fmt.Fprintf(&sql, ` LEFT JOIN validator_names ON validator_names."index" = COALESCE(blocks.proposer, slot_assignments.proposer) `)
+	}
+
+	argIdx := 0
+	args := make([]any, 0)
+
+	argIdx++
+	fmt.Fprintf(&sql, ` WHERE slot_assignments.slot < $%v `, argIdx)
+	args = append(args, firstSlot)
+
+	if filter.WithMissing == 0 {
+		fmt.Fprintf(&sql, ` AND blocks.root IS NOT NULL `)
+	} else if filter.WithMissing == 2 {
+		fmt.Fprintf(&sql, ` AND blocks.root IS NULL `)
+	}
+	if filter.WithOrphaned == 0 {
+		fmt.Fprintf(&sql, ` AND (`)
+		if filter.WithMissing != 0 {
+			fmt.Fprintf(&sql, `blocks.orphaned IS NULL OR`)
+		}
+		fmt.Fprintf(&sql, ` NOT blocks.orphaned) `)
+	} else if filter.WithOrphaned == 2 {
+		fmt.Fprintf(&sql, ` AND blocks.orphaned `)
+	}
+	if filter.ProposerIndex != nil {
+		argIdx++
+		fmt.Fprintf(&sql, ` AND (slot_assignments.proposer = $%v OR blocks.proposer = $%v) `, argIdx, argIdx)
+		args = append(args, *filter.ProposerIndex)
+	}
+	if filter.Graffiti != "" {
+		argIdx++
+		fmt.Fprintf(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
+			dbtypes.DBEnginePgsql:  ` AND blocks.graffiti_text ilike $%v `,
+			dbtypes.DBEngineSqlite: ` AND blocks.graffiti_text LIKE $%v `,
+		}), argIdx)
+		args = append(args, "%"+filter.Graffiti+"%")
+	}
+	if filter.ProposerName != "" {
+		argIdx++
+		fmt.Fprintf(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
+			dbtypes.DBEnginePgsql:  ` AND validator_names.name ilike $%v `,
+			dbtypes.DBEngineSqlite: ` AND validator_names.name LIKE $%v `,
+		}), argIdx)
+		args = append(args, "%"+filter.ProposerName+"%")
+	}
+
+	fmt.Fprintf(&sql, `	ORDER BY slot_assignments.slot DESC `)
+	fmt.Fprintf(&sql, ` LIMIT $%v OFFSET $%v `, argIdx+1, argIdx+2)
+	argIdx += 2
+	args = append(args, limit)
+	args = append(args, offset)
+
+	//fmt.Printf("sql: %v, args: %v\n", sql.String(), args)
+	rows, err := ReaderDb.Query(sql.String(), args...)
 	if err != nil {
-		logger.Errorf("Error while fetching assigned blocks: %v", err)
+		logger.WithError(err).Errorf("Error while fetching filtered blocks: %v", sql.String())
 		return nil
 	}
 

@@ -132,7 +132,7 @@ func buildEpochPageData(epoch uint64) (*models.EpochPageData, time.Duration) {
 			dbSlot := dbSlots[dbIdx]
 			dbIdx++
 			blockStatus := uint8(1)
-			if dbSlot.Orphaned {
+			if dbSlot.Orphaned == 1 {
 				blockStatus = 2
 				pageData.OrphanedCount++
 			} else {
