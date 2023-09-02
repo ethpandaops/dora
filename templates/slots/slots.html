@@ -11,7 +11,6 @@
     </div>
 
     <div class="card mt-2">
-      <div id="header-placeholder" style="height:45px;"></div>
       <div class="card-body px-0 py-3">
         <div class="row">
           <div class="col-sm-12 col-md-6 table-pagesize">
@@ -34,13 +33,9 @@
           </div>
           <div class="col-sm-12 col-md-6 table-search">
             <div class="px-2" style="text-align: right;">
-              <form action="/slots/filtered" method="get">
-                <label>
-                  <input name="f" type="hidden" value="1">
-                  <input name="f.graffiti" type="search" class="form-control form-control-sm" placeholder="Search by Graffiti" aria-controls="graffiti" value="">
-                  <input name="f.orphaned" type="hidden" value="1">
-                </label>
-              </form>
+              <a href="/slots/filtered">
+                <i class="fas fa-filter mx-2"></i>Filter Blocks
+              </a>
             </div>
           </div>
         </div>

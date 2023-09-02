@@ -38,24 +38,30 @@ func SlotsFiltered(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var graffiti string
-	if urlArgs.Has("f.graffiti") {
-		graffiti = urlArgs.Get("f.graffiti")
-	}
 	var proposer string
-	if urlArgs.Has("f.proposer") {
-		proposer = urlArgs.Get("f.proposer")
-	}
 	var pname string
-	if urlArgs.Has("f.pname") {
-		pname = urlArgs.Get("f.pname")
-	}
 	var withOrphaned uint64
-	if urlArgs.Has("f.orphaned") {
-		withOrphaned, _ = strconv.ParseUint(urlArgs.Get("f.orphaned"), 10, 64)
-	}
 	var withMissing uint64
-	if urlArgs.Has("f.missing") {
-		withMissing, _ = strconv.ParseUint(urlArgs.Get("f.missing"), 10, 64)
+
+	if urlArgs.Has("f") {
+		if urlArgs.Has("f.graffiti") {
+			graffiti = urlArgs.Get("f.graffiti")
+		}
+		if urlArgs.Has("f.proposer") {
+			proposer = urlArgs.Get("f.proposer")
+		}
+		if urlArgs.Has("f.pname") {
+			pname = urlArgs.Get("f.pname")
+		}
+		if urlArgs.Has("f.orphaned") {
+			withOrphaned, _ = strconv.ParseUint(urlArgs.Get("f.orphaned"), 10, 64)
+		}
+		if urlArgs.Has("f.missing") {
+			withMissing, _ = strconv.ParseUint(urlArgs.Get("f.missing"), 10, 64)
+		}
+	} else {
+		withOrphaned = 1
+		withMissing = 1
 	}
 	data.Data = getFilteredSlotsPageData(pageIdx, pageSize, graffiti, proposer, pname, uint8(withOrphaned), uint8(withMissing))
 
