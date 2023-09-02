@@ -458,7 +458,7 @@ func GetBlocks(firstBlock uint64, limit uint32, withOrphaned bool) []*dbtypes.Bl
 	blocks := []*dbtypes.Block{}
 	orphanedLimit := ""
 	if !withOrphaned {
-		orphanedLimit = "AND NOT orphaned"
+		orphanedLimit = "AND orphaned = 0"
 	}
 	err := ReaderDb.Select(&blocks, `
 	SELECT
@@ -481,7 +481,7 @@ func GetBlocksForSlots(firstSlot uint64, lastSlot uint64, withOrphaned bool) []*
 	blocks := []*dbtypes.Block{}
 	orphanedLimit := ""
 	if !withOrphaned {
-		orphanedLimit = "AND NOT orphaned"
+		orphanedLimit = "AND orphaned = 0"
 	}
 	err := ReaderDb.Select(&blocks, `
 	SELECT
@@ -552,9 +552,9 @@ func GetFilteredBlocks(filter *dbtypes.BlockFilter, firstSlot uint64, offset uin
 		if filter.WithMissing != 0 {
 			fmt.Fprintf(&sql, `blocks.orphaned IS NULL OR`)
 		}
-		fmt.Fprintf(&sql, ` NOT blocks.orphaned) `)
+		fmt.Fprintf(&sql, ` blocks.orphaned = 0) `)
 	} else if filter.WithOrphaned == 2 {
-		fmt.Fprintf(&sql, ` AND blocks.orphaned `)
+		fmt.Fprintf(&sql, ` AND blocks.orphaned = 1`)
 	}
 	if filter.ProposerIndex != nil {
 		argIdx++
@@ -678,7 +678,7 @@ func GetHighestRootBeforeSlot(slot uint64, withOrphaned bool) []byte {
 	var result []byte
 	orphanedLimit := ""
 	if !withOrphaned {
-		orphanedLimit = "AND NOT orphaned"
+		orphanedLimit = "AND orphaned = 0"
 	}
 
 	err := ReaderDb.Get(&result, `

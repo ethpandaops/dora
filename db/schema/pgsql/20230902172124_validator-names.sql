@@ -12,6 +12,10 @@ CREATE INDEX IF NOT EXISTS "validator_names_name_idx"
     ON public."validator_names" USING gin 
     ("name" gin_trgm_ops);
 
+ALTER TABLE public."blocks" ALTER COLUMN "orphaned" TYPE smallint USING CASE
+    WHEN "orphaned" THEN 1 ELSE 0
+    END;
+
 -- +goose StatementEnd
 -- +goose Down
 -- +goose StatementBegin
