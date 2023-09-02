@@ -9,6 +9,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
 
+	"github.com/pk910/light-beaconchain-explorer/dbtypes"
 	"github.com/pk910/light-beaconchain-explorer/services"
 	"github.com/pk910/light-beaconchain-explorer/templates"
 	"github.com/pk910/light-beaconchain-explorer/types/models"
@@ -88,7 +89,11 @@ func buildValidatorSlotsPageData(validator uint64, pageIdx uint64, pageSize uint
 
 	// load slots
 	pageData.Slots = make([]*models.ValidatorSlotsPageDataSlot, 0)
-	dbBlocks := services.GlobalBeaconService.GetDbBlocksByProposer(validator, pageIdx, uint32(pageSize), true, true)
+	dbBlocks := services.GlobalBeaconService.GetDbBlocksByFilter(&dbtypes.BlockFilter{
+		ProposerIndex: &validator,
+		WithOrphaned:  true,
+		WithMissing:   true,
+	}, pageIdx, uint32(pageSize))
 	haveMore := false
 	for idx, blockAssignment := range dbBlocks {
 		if idx >= int(pageSize) {

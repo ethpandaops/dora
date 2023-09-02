@@ -517,45 +517,8 @@ func GetBlocksByParentRoot(parentRoot []byte) []*dbtypes.Block {
 	return blocks
 }
 
-func GetBlocksWithGraffiti(graffiti string, firstSlot uint64, offset uint64, limit uint32, withOrphaned bool) []*dbtypes.Block {
-	blocks := []*dbtypes.Block{}
-	orphanedLimit := ""
-	if !withOrphaned {
-		orphanedLimit = "AND NOT orphaned"
-	}
-	err := ReaderDb.Select(&blocks, EngineQuery(map[dbtypes.DBEngineType]string{
-		dbtypes.DBEnginePgsql: `
-			SELECT
-				root, slot, parent_root, state_root, orphaned, proposer, graffiti, graffiti_text,
-				attestation_count, deposit_count, exit_count, withdraw_count, withdraw_amount, attester_slashing_count, 
-				proposer_slashing_count, bls_change_count, eth_transaction_count, eth_block_number, eth_block_hash, sync_participation
-			FROM blocks
-			WHERE graffiti_text ilike $1 AND slot < $2 ` + orphanedLimit + `
-			ORDER BY slot DESC
-			LIMIT $3 OFFSET $4`,
-		dbtypes.DBEngineSqlite: `
-			SELECT
-				root, slot, parent_root, state_root, orphaned, proposer, graffiti, graffiti_text,
-				attestation_count, deposit_count, exit_count, withdraw_count, withdraw_amount, attester_slashing_count, 
-				proposer_slashing_count, bls_change_count, eth_transaction_count, eth_block_number, eth_block_hash, sync_participation
-			FROM blocks
-			WHERE graffiti_text LIKE $1 AND slot < $2 ` + orphanedLimit + `
-			ORDER BY slot DESC
-			LIMIT $3 OFFSET $4`,
-	}), "%"+graffiti+"%", firstSlot, limit, offset)
-	if err != nil {
-		logger.Errorf("Error while fetching blocks with graffiti: %v", err)
-		return nil
-	}
-	return blocks
-}
-
-func GetAssignedBlocks(proposer uint64, firstSlot uint64, offset uint64, limit uint32, withOrphaned bool) []*dbtypes.AssignedBlock {
+func GetFilteredBlocks(filter *dbtypes.BlockFilter, firstSlot uint64, offset uint64, limit uint32) []*dbtypes.AssignedBlock {
 	blockAssignments := []*dbtypes.AssignedBlock{}
-	orphanedLimit := ""
-	if !withOrphaned {
-		orphanedLimit = "AND NOT orphaned"
-	}
 	var sql strings.Builder
 	fmt.Fprintf(&sql, `SELECT slot_assignments.slot, slot_assignments.proposer`)
 	blockFields := []string{
@@ -566,16 +529,56 @@ func GetAssignedBlocks(proposer uint64, firstSlot uint64, offset uint64, limit u
 	for _, blockField := range blockFields {
 		fmt.Fprintf(&sql, ", blocks.%v AS \"block.%v\"", blockField, blockField)
 	}
-	fmt.Fprintf(&sql, `
-	FROM slot_assignments
-	LEFT JOIN blocks ON blocks.slot = slot_assignments.slot
-	WHERE (slot_assignments.proposer = $1 OR blocks.proposer = $1) AND slot_assignments.slot < $2 `+orphanedLimit+`
-	ORDER BY slot_assignments.slot DESC
-	LIMIT $3 OFFSET $4
-	`)
-	rows, err := ReaderDb.Query(sql.String(), proposer, firstSlot, limit, offset)
+	fmt.Fprintf(&sql, ` FROM slot_assignments `)
+	fmt.Fprintf(&sql, ` LEFT JOIN blocks ON blocks.slot = slot_assignments.slot `)
+	if filter.ProposerName != "" {
+		fmt.Fprintf(&sql, ` LEFT JOIN validator_names ON validator_names."index" = COALESCE(blocks.proposer, slot_assignments.proposer) `)
+	}
+
+	argIdx := 0
+	args := make([]any, 0)
+
+	argIdx++
+	fmt.Fprintf(&sql, ` WHERE slot_assignments.slot < $%v `, argIdx)
+	args = append(args, firstSlot)
+
+	if !filter.WithMissing {
+		fmt.Fprintf(&sql, ` AND blocks.root IS NOT NULL `)
+	}
+	if !filter.WithOrphaned {
+		fmt.Fprintf(&sql, ` AND NOT blocks.orphaned `)
+	}
+	if filter.ProposerIndex != nil {
+		argIdx++
+		fmt.Fprintf(&sql, ` AND (slot_assignments.proposer = $%v OR blocks.proposer = $%v) `, argIdx, argIdx)
+		args = append(args, *filter.ProposerIndex)
+	}
+	if filter.Graffiti != "" {
+		argIdx++
+		fmt.Fprintf(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
+			dbtypes.DBEnginePgsql:  ` AND blocks.graffiti_text ilike $%v `,
+			dbtypes.DBEngineSqlite: ` AND blocks.graffiti_text LIKE $%v `,
+		}), argIdx)
+		args = append(args, "%"+filter.Graffiti+"%")
+	}
+	if filter.ProposerName != "" {
+		argIdx++
+		fmt.Fprintf(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
+			dbtypes.DBEnginePgsql:  ` AND validator_names.name ilike $%v `,
+			dbtypes.DBEngineSqlite: ` AND validator_names.name LIKE $%v `,
+		}), argIdx)
+		args = append(args, "%"+filter.ProposerName+"%")
+	}
+
+	fmt.Fprintf(&sql, `	ORDER BY slot_assignments.slot DESC `)
+	fmt.Fprintf(&sql, ` LIMIT $3 OFFSET $4 `)
+	argIdx += 2
+	args = append(args, limit)
+	args = append(args, offset)
+
+	rows, err := ReaderDb.Query(sql.String(), args...)
 	if err != nil {
-		logger.Errorf("Error while fetching assigned blocks: %v", err)
+		logger.WithError(err).Errorf("Error while fetching filtered blocks: %v", sql.String())
 		return nil
 	}
 

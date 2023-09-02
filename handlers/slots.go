@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/pk910/light-beaconchain-explorer/dbtypes"
 	"github.com/pk910/light-beaconchain-explorer/services"
 	"github.com/pk910/light-beaconchain-explorer/templates"
 	"github.com/pk910/light-beaconchain-explorer/types/models"
@@ -370,7 +371,10 @@ func buildSlotsPageDataWithGraffitiFilter(graffiti string, pageIdx uint64, pageS
 
 	// load slots
 	pageData.Slots = make([]*models.SlotsPageDataSlot, 0)
-	dbBlocks := services.GlobalBeaconService.GetDbBlocksByGraffiti(graffiti, pageIdx, uint32(pageSize), true)
+	dbBlocks := services.GlobalBeaconService.GetDbBlocksByFilter(&dbtypes.BlockFilter{
+		Graffiti:     graffiti,
+		WithOrphaned: true,
+	}, pageIdx, uint32(pageSize))
 	haveMore := false
 	for idx, dbBlock := range dbBlocks {
 		if idx >= int(pageSize) {
@@ -379,7 +383,7 @@ func buildSlotsPageDataWithGraffitiFilter(graffiti string, pageIdx uint64, pageS
 		}
 		slot := dbBlock.Slot
 		blockStatus := uint8(1)
-		if dbBlock.Orphaned {
+		if dbBlock.Block.Orphaned {
 			blockStatus = 2
 		}
 
@@ -392,16 +396,16 @@ func buildSlotsPageDataWithGraffitiFilter(graffiti string, pageIdx uint64, pageS
 			Synchronized:          true,
 			Proposer:              dbBlock.Proposer,
 			ProposerName:          services.GlobalBeaconService.GetValidatorName(dbBlock.Proposer),
-			AttestationCount:      dbBlock.AttestationCount,
-			DepositCount:          dbBlock.DepositCount,
-			ExitCount:             dbBlock.ExitCount,
-			ProposerSlashingCount: dbBlock.ProposerSlashingCount,
-			AttesterSlashingCount: dbBlock.AttesterSlashingCount,
-			SyncParticipation:     float64(dbBlock.SyncParticipation) * 100,
-			EthTransactionCount:   dbBlock.EthTransactionCount,
-			EthBlockNumber:        dbBlock.EthBlockNumber,
-			Graffiti:              dbBlock.Graffiti,
-			BlockRoot:             dbBlock.Root,
+			AttestationCount:      dbBlock.Block.AttestationCount,
+			DepositCount:          dbBlock.Block.DepositCount,
+			ExitCount:             dbBlock.Block.ExitCount,
+			ProposerSlashingCount: dbBlock.Block.ProposerSlashingCount,
+			AttesterSlashingCount: dbBlock.Block.AttesterSlashingCount,
+			SyncParticipation:     float64(dbBlock.Block.SyncParticipation) * 100,
+			EthTransactionCount:   dbBlock.Block.EthTransactionCount,
+			EthBlockNumber:        dbBlock.Block.EthBlockNumber,
+			Graffiti:              dbBlock.Block.Graffiti,
+			BlockRoot:             dbBlock.Block.Root,
 		}
 		pageData.Slots = append(pageData.Slots, slotData)
 
