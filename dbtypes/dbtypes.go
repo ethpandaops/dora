@@ -15,7 +15,7 @@ type Block struct {
 	Slot                  uint64  `db:"slot"`
 	ParentRoot            []byte  `db:"parent_root"`
 	StateRoot             []byte  `db:"state_root"`
-	Orphaned              bool    `db:"orphaned"`
+	Orphaned              uint8   `db:"orphaned"`
 	Proposer              uint64  `db:"proposer"`
 	Graffiti              []byte  `db:"graffiti"`
 	GraffitiText          string  `db:"graffiti_text"`

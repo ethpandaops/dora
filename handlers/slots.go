@@ -8,7 +8,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/pk910/light-beaconchain-explorer/dbtypes"
 	"github.com/pk910/light-beaconchain-explorer/services"
 	"github.com/pk910/light-beaconchain-explorer/templates"
 	"github.com/pk910/light-beaconchain-explorer/types/models"
@@ -33,25 +32,11 @@ func Slots(w http.ResponseWriter, r *http.Request) {
 	if urlArgs.Has("c") {
 		pageSize, _ = strconv.ParseUint(urlArgs.Get("c"), 10, 64)
 	}
-	var graffiti string
-	if urlArgs.Has("q") {
-		graffiti = urlArgs.Get("q")
+	var firstSlot uint64 = math.MaxUint64
+	if urlArgs.Has("s") {
+		firstSlot, _ = strconv.ParseUint(urlArgs.Get("s"), 10, 64)
 	}
-	var pageData *models.SlotsPageData
-	if graffiti == "" {
-		var firstSlot uint64 = math.MaxUint64
-		if urlArgs.Has("s") {
-			firstSlot, _ = strconv.ParseUint(urlArgs.Get("s"), 10, 64)
-		}
-		pageData = getSlotsPageData(firstSlot, pageSize)
-	} else {
-		var pageIdx uint64 = 0
-		if urlArgs.Has("s") {
-			pageIdx, _ = strconv.ParseUint(urlArgs.Get("s"), 10, 64)
-		}
-		pageData = getSlotsPageDataWithGraffitiFilter(graffiti, pageIdx, pageSize)
-	}
-	data.Data = pageData
+	data.Data = getSlotsPageData(firstSlot, pageSize)
 
 	if handleTemplateError(w, r, "slots.go", "Slots", "", pageTemplate.ExecuteTemplate(w, "layout", data)) != nil {
 		return // an error has occurred and was processed
@@ -71,9 +56,7 @@ func getSlotsPageData(firstSlot uint64, pageSize uint64) *models.SlotsPageData {
 
 func buildSlotsPageData(firstSlot uint64, pageSize uint64) (*models.SlotsPageData, time.Duration) {
 	logrus.Printf("slots page called: %v:%v", firstSlot, pageSize)
-	pageData := &models.SlotsPageData{
-		ShowForkTree: true,
-	}
+	pageData := &models.SlotsPageData{}
 
 	now := time.Now()
 	currentSlot := utils.TimeToSlot(uint64(now.Unix()))
@@ -146,7 +129,7 @@ func buildSlotsPageData(firstSlot uint64, pageSize uint64) (*models.SlotsPageDat
 			dbSlot := dbSlots[dbIdx]
 			dbIdx++
 			blockStatus := uint8(1)
-			if dbSlot.Orphaned {
+			if dbSlot.Orphaned == 1 {
 				blockStatus = 2
 			}
 
@@ -334,92 +317,4 @@ func buildSlotsPageSlotGraph(pageData *models.SlotsPageData, slotData *models.Sl
 			forkGraph.Tiles["bline"] = true
 		}
 	}
-}
-
-func getSlotsPageDataWithGraffitiFilter(graffiti string, pageIdx uint64, pageSize uint64) *models.SlotsPageData {
-	pageData := &models.SlotsPageData{}
-	pageCacheKey := fmt.Sprintf("slots:%v:%v:g-%v", pageIdx, pageSize, graffiti)
-	pageData = services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(_ *services.FrontendCacheProcessingPage) interface{} {
-		return buildSlotsPageDataWithGraffitiFilter(graffiti, pageIdx, pageSize)
-	}).(*models.SlotsPageData)
-	return pageData
-}
-
-func buildSlotsPageDataWithGraffitiFilter(graffiti string, pageIdx uint64, pageSize uint64) *models.SlotsPageData {
-	pageData := &models.SlotsPageData{
-		GraffitiFilter: graffiti,
-	}
-	logrus.Printf("slots page called (filtered): %v:%v [%v]", pageIdx, pageSize, graffiti)
-	if pageIdx == 0 {
-		pageData.IsDefaultPage = true
-	}
-
-	if pageSize > 100 {
-		pageSize = 100
-	}
-	pageData.PageSize = pageSize
-	pageData.TotalPages = pageIdx + 1
-	pageData.CurrentPageIndex = pageIdx + 1
-	pageData.CurrentPageSlot = pageIdx
-	if pageIdx >= 1 {
-		pageData.PrevPageIndex = pageIdx
-		pageData.PrevPageSlot = pageIdx - 1
-	}
-	pageData.LastPageSlot = 0
-
-	finalizedEpoch, _ := services.GlobalBeaconService.GetFinalizedEpoch()
-
-	// load slots
-	pageData.Slots = make([]*models.SlotsPageDataSlot, 0)
-	dbBlocks := services.GlobalBeaconService.GetDbBlocksByFilter(&dbtypes.BlockFilter{
-		Graffiti:     graffiti,
-		WithOrphaned: true,
-	}, pageIdx, uint32(pageSize))
-	haveMore := false
-	for idx, dbBlock := range dbBlocks {
-		if idx >= int(pageSize) {
-			haveMore = true
-			break
-		}
-		slot := dbBlock.Slot
-		blockStatus := uint8(1)
-		if dbBlock.Block.Orphaned {
-			blockStatus = 2
-		}
-
-		slotData := &models.SlotsPageDataSlot{
-			Slot:                  slot,
-			Epoch:                 utils.EpochOfSlot(slot),
-			Ts:                    utils.SlotToTime(slot),
-			Finalized:             finalizedEpoch >= int64(utils.EpochOfSlot(slot)),
-			Status:                blockStatus,
-			Synchronized:          true,
-			Proposer:              dbBlock.Proposer,
-			ProposerName:          services.GlobalBeaconService.GetValidatorName(dbBlock.Proposer),
-			AttestationCount:      dbBlock.Block.AttestationCount,
-			DepositCount:          dbBlock.Block.DepositCount,
-			ExitCount:             dbBlock.Block.ExitCount,
-			ProposerSlashingCount: dbBlock.Block.ProposerSlashingCount,
-			AttesterSlashingCount: dbBlock.Block.AttesterSlashingCount,
-			SyncParticipation:     float64(dbBlock.Block.SyncParticipation) * 100,
-			EthTransactionCount:   dbBlock.Block.EthTransactionCount,
-			EthBlockNumber:        dbBlock.Block.EthBlockNumber,
-			Graffiti:              dbBlock.Block.Graffiti,
-			BlockRoot:             dbBlock.Block.Root,
-		}
-		pageData.Slots = append(pageData.Slots, slotData)
-
-	}
-	pageData.SlotCount = uint64(len(pageData.Slots))
-	if pageData.SlotCount > 0 {
-		pageData.FirstSlot = pageData.Slots[0].Slot
-		pageData.LastSlot = pageData.Slots[pageData.SlotCount-1].Slot
-	}
-	if haveMore {
-		pageData.NextPageIndex = pageIdx + 1
-		pageData.NextPageSlot = pageIdx + 1
-		pageData.TotalPages++
-	}
-
-	return pageData
 }

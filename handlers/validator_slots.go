@@ -91,8 +91,8 @@ func buildValidatorSlotsPageData(validator uint64, pageIdx uint64, pageSize uint
 	pageData.Slots = make([]*models.ValidatorSlotsPageDataSlot, 0)
 	dbBlocks := services.GlobalBeaconService.GetDbBlocksByFilter(&dbtypes.BlockFilter{
 		ProposerIndex: &validator,
-		WithOrphaned:  true,
-		WithMissing:   true,
+		WithOrphaned:  1,
+		WithMissing:   1,
 	}, pageIdx, uint32(pageSize))
 	haveMore := false
 	for idx, blockAssignment := range dbBlocks {
@@ -115,7 +115,7 @@ func buildValidatorSlotsPageData(validator uint64, pageIdx uint64, pageSize uint
 
 		if blockAssignment.Block != nil {
 			dbBlock := blockAssignment.Block
-			if dbBlock.Orphaned {
+			if dbBlock.Orphaned == 1 {
 				slotData.Status = 2
 			} else {
 				slotData.Status = 1

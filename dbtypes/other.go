@@ -10,6 +10,6 @@ type BlockFilter struct {
 	Graffiti      string
 	ProposerIndex *uint64
 	ProposerName  string
-	WithOrphaned  bool
-	WithMissing   bool
+	WithOrphaned  uint8
+	WithMissing   uint8
 }

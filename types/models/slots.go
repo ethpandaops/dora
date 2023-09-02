@@ -6,13 +6,11 @@ import (
 
 // SlotsPageData is a struct to hold info for the slots page
 type SlotsPageData struct {
-	Slots          []*SlotsPageDataSlot `json:"slots"`
-	SlotCount      uint64               `json:"slot_count"`
-	FirstSlot      uint64               `json:"first_slot"`
-	LastSlot       uint64               `json:"last_slot"`
-	ShowForkTree   bool                 `json:"show_forktree"`
-	ForkTreeWidth  int                  `json:"forktree_width"`
-	GraffitiFilter string               `json:"graffiti_filter"`
+	Slots         []*SlotsPageDataSlot `json:"slots"`
+	SlotCount     uint64               `json:"slot_count"`
+	FirstSlot     uint64               `json:"first_slot"`
+	LastSlot      uint64               `json:"last_slot"`
+	ForkTreeWidth int                  `json:"forktree_width"`
 
 	IsDefaultPage    bool   `json:"default_page"`
 	TotalPages       uint64 `json:"total_pages"`

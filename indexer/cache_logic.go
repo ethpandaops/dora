@@ -238,7 +238,7 @@ func (cache *indexerCache) processOrphanedBlocks(processedEpoch int64) error {
 			continue
 		}
 		dbBlock := buildDbBlock(block, cache.getEpochStats(utils.EpochOfSlot(block.Slot), nil))
-		dbBlock.Orphaned = true
+		dbBlock.Orphaned = 1
 		db.InsertBlock(dbBlock, tx)
 		db.InsertOrphanedBlock(block.buildOrphanedBlock(), tx)
 	}

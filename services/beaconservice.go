@@ -486,8 +486,9 @@ func (bs *BeaconService) GetDbBlocksForSlots(firstSlot uint64, slotLimit uint32,
 }
 
 type cachedDbBlock struct {
-	slot  uint64
-	block *indexer.CacheBlock
+	slot     uint64
+	proposer uint64
+	block    *indexer.CacheBlock
 }
 
 func (bs *BeaconService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageIdx uint64, pageSize uint32) []*dbtypes.AssignedBlock {
@@ -502,10 +503,19 @@ func (bs *BeaconService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageId
 		if blocks != nil {
 			for bidx := 0; bidx < len(blocks); bidx++ {
 				block := blocks[bidx]
-				if !filter.WithOrphaned && !block.IsCanonical(bs.indexer, nil) {
-					continue
+				if filter.WithOrphaned != 1 {
+					isOrphaned := !block.IsCanonical(bs.indexer, nil)
+					if filter.WithOrphaned == 0 && isOrphaned {
+						continue
+					}
+					if filter.WithOrphaned == 2 && !isOrphaned {
+						continue
+					}
 				}
 				proposedMap[block.Slot] = true
+				if filter.WithMissing == 2 {
+					continue
+				}
 
 				if filter.Graffiti != "" {
 					blockGraffiti := string(block.GetBlockBody().Message.Body.Graffiti)
@@ -527,14 +537,15 @@ func (bs *BeaconService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageId
 				}
 
 				cachedMatches = append(cachedMatches, cachedDbBlock{
-					slot:  block.Slot,
-					block: block,
+					slot:     block.Slot,
+					proposer: uint64(block.GetBlockBody().Message.ProposerIndex),
+					block:    block,
 				})
 			}
 		}
 	}
 
-	if filter.WithMissing && filter.Graffiti == "" {
+	if filter.WithMissing != 0 && filter.Graffiti == "" && filter.WithOrphaned != 2 {
 		// add missed blocks
 		idxHeadSlot := bs.indexer.GetHighestSlot()
 		idxHeadEpoch := utils.EpochOfSlot(idxHeadSlot)
@@ -562,12 +573,10 @@ func (bs *BeaconService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageId
 					}
 				}
 
-				cachedMatches = append(cachedMatches, struct {
-					slot  uint64
-					block *indexer.CacheBlock
-				}{
-					slot:  slot,
-					block: nil,
+				cachedMatches = append(cachedMatches, cachedDbBlock{
+					slot:     slot,
+					proposer: assigned,
+					block:    nil,
 				})
 			}
 			sort.Slice(cachedMatches, func(a, b int) bool {
@@ -593,7 +602,7 @@ func (bs *BeaconService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageId
 		for _, block := range cachedMatches[cachedStart:cachedEnd] {
 			assignedBlock := dbtypes.AssignedBlock{
 				Slot:     block.slot,
-				Proposer: uint64(block.block.GetBlockBody().Message.ProposerIndex),
+				Proposer: block.proposer,
 			}
 			if block.block != nil {
 				assignedBlock.Block = bs.indexer.BuildLiveBlock(block.block)
@@ -606,7 +615,7 @@ func (bs *BeaconService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageId
 		for _, block := range cachedMatches[start:] {
 			assignedBlock := dbtypes.AssignedBlock{
 				Slot:     block.slot,
-				Proposer: uint64(block.block.GetBlockBody().Message.ProposerIndex),
+				Proposer: block.proposer,
 			}
 			if block.block != nil {
 				assignedBlock.Block = bs.indexer.BuildLiveBlock(block.block)

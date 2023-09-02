@@ -208,7 +208,7 @@ func buildIndexPageRecentBlocksData(pageData *models.IndexPageData, currentSlot 
 			continue
 		}
 		blockStatus := 1
-		if blockData.Orphaned {
+		if blockData.Orphaned == 1 {
 			blockStatus = 2
 		}
 		pageData.RecentBlocks = append(pageData.RecentBlocks, &models.IndexPageDataBlocks{
@@ -253,7 +253,7 @@ func buildIndexPageRecentSlotsData(pageData *models.IndexPageData, firstSlot uin
 			dbSlot := dbSlots[dbIdx]
 			dbIdx++
 			blockStatus := uint64(1)
-			if dbSlot.Orphaned {
+			if dbSlot.Orphaned == 1 {
 				blockStatus = 2
 			}
 

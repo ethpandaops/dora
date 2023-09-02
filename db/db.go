@@ -542,11 +542,19 @@ func GetFilteredBlocks(filter *dbtypes.BlockFilter, firstSlot uint64, offset uin
 	fmt.Fprintf(&sql, ` WHERE slot_assignments.slot < $%v `, argIdx)
 	args = append(args, firstSlot)
 
-	if !filter.WithMissing {
+	if filter.WithMissing == 0 {
 		fmt.Fprintf(&sql, ` AND blocks.root IS NOT NULL `)
+	} else if filter.WithMissing == 2 {
+		fmt.Fprintf(&sql, ` AND blocks.root IS NULL `)
 	}
-	if !filter.WithOrphaned {
-		fmt.Fprintf(&sql, ` AND NOT blocks.orphaned `)
+	if filter.WithOrphaned == 0 {
+		fmt.Fprintf(&sql, ` AND (`)
+		if filter.WithMissing != 0 {
+			fmt.Fprintf(&sql, `blocks.orphaned IS NULL OR`)
+		}
+		fmt.Fprintf(&sql, ` NOT blocks.orphaned) `)
+	} else if filter.WithOrphaned == 2 {
+		fmt.Fprintf(&sql, ` AND blocks.orphaned `)
 	}
 	if filter.ProposerIndex != nil {
 		argIdx++
@@ -571,11 +579,12 @@ func GetFilteredBlocks(filter *dbtypes.BlockFilter, firstSlot uint64, offset uin
 	}
 
 	fmt.Fprintf(&sql, `	ORDER BY slot_assignments.slot DESC `)
-	fmt.Fprintf(&sql, ` LIMIT $3 OFFSET $4 `)
+	fmt.Fprintf(&sql, ` LIMIT $%v OFFSET $%v `, argIdx+1, argIdx+2)
 	argIdx += 2
 	args = append(args, limit)
 	args = append(args, offset)
 
+	//fmt.Printf("sql: %v, args: %v\n", sql.String(), args)
 	rows, err := ReaderDb.Query(sql.String(), args...)
 	if err != nil {
 		logger.WithError(err).Errorf("Error while fetching filtered blocks: %v", sql.String())

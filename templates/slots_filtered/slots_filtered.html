@@ -1,54 +1,118 @@
 {{ define "page" }}
   <div class="container mt-2">
     <div class="d-md-flex py-2 justify-content-md-between">
-      <h1 class="h4 mb-1 mb-md-0"><i class="fas fa-cube mx-2"></i>Slots</h1>
+      <h1 class="h4 mb-1 mb-md-0"><i class="fas fa-cube mx-2"></i>Filtered Slots</h1>
       <nav aria-label="breadcrumb">
         <ol class="breadcrumb font-size-1 mb-0" style="padding:0; background-color:transparent;">
           <li class="breadcrumb-item"><a href="/" title="Home">Home</a></li>
-          <li class="breadcrumb-item active" aria-current="page">Slots</li>
+          <li class="breadcrumb-item"><a href="/slots" title="Slots">Slots</a></li>
+          <li class="breadcrumb-item active" aria-current="page">Filtered</li>
         </ol>
       </nav>
     </div>
 
-    <div class="card mt-2">
-      <div id="header-placeholder" style="height:45px;"></div>
-      <div class="card-body px-0 py-3">
-        <div class="row">
-          <div class="col-sm-12 col-md-6 table-pagesize">
-            <form action="/slots" method="get">
+    <div id="header-placeholder" style="height:35px;"></div>
+    <form action="/slots/filtered" method="get" id="slotsFilterForm">
+      <div class="card mt-2">
+        <div class="card-header">
+          Slot Filters
+        </div>
+        <div class="card-body p-2">
+          <div class="row">
+            <div class="col-sm-12 col-md-6">
+              <div class="container">
+                <div class="row mt-1">
+                  <div class="col-sm-12 col-md-6 col-lg-4">
+                    Graffiti
+                  </div>
+                  <div class="col-sm-12 col-md-6 col-lg-8">
+                    <input name="f.graffiti" type="text" class="form-control" placeholder="Graffiti" aria-label="Graffiti" aria-describedby="basic-addon1" value="{{ .FilterGraffiti }}">
+                  </div>
+                </div>
+                <div class="row mt-1">
+                  <div class="col-sm-12 col-md-6 col-lg-4">
+                    Proposer Index
+                  </div>
+                  <div class="col-sm-12 col-md-6 col-lg-8">
+                    <input name="f.proposer" type="number" class="form-control" placeholder="Proposer Index" aria-label="Proposer Index" aria-describedby="basic-addon1" value="{{ .FilterProposer }}">
+                  </div>
+                </div>
+                <div class="row mt-1">
+                  <div class="col-sm-12 col-md-6 col-lg-4">
+                    Proposer Name
+                  </div>
+                  <div class="col-sm-12 col-md-6 col-lg-8">
+                    <input name="f.pname" type="text" class="form-control" placeholder="Proposer Name" aria-label="Proposer Name" aria-describedby="basic-addon1" value="{{ .FilterProposerName }}">
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="col-sm-12 col-md-6">
+              <div class="container">
+                <div class="row mt-1">
+                  <div class="col-sm-12 col-md-6 col-lg-4">
+                    <nobr>Missing Blocks</nobr>
+                  </div>
+                  <div class="col-sm-12 col-md-6 col-lg-4">
+                    <select name="f.missing" aria-controls="missing" class="form-control">
+                      <option value="0" {{ if eq .FilterWithMissing 0 }}selected{{ end }}>Hide missing</option>
+                      <option value="1" {{ if eq .FilterWithMissing 1 }}selected{{ end }}>Show all</option>
+                      <option value="2" {{ if eq .FilterWithMissing 2 }}selected{{ end }}>Missing only</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="row mt-1">
+                  <div class="col-sm-12 col-md-6 col-lg-4">
+                    <nobr>Orphaned Blocks</nobr>
+                  </div>
+                  <div class="col-sm-12 col-md-6 col-lg-4">
+                    <select name="f.orphaned" aria-controls="orphaned" class="form-control">
+                      <option value="0" {{ if eq .FilterWithOrphaned 0 }}selected{{ end }}>Hide orphaned</option>
+                      <option value="1" {{ if eq .FilterWithOrphaned 1 }}selected{{ end }}>Show all</option>
+                      <option value="2" {{ if eq .FilterWithOrphaned 2 }}selected{{ end }}>Orphaned only</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+          <div class="row mt-3">
+            <div class="col-8 col-md-6 table-pagesize">
               <label class="px-2">
                 <span>Show </span>
-                <select name="c" aria-controls="slots" class="custom-select custom-select-sm form-control form-control-sm" onchange="this.form.submit()">
+                <select name="c" aria-controls="slots" class="custom-select custom-select-sm form-control form-control-sm">
                   <option value="{{ .PageSize }}" selected>{{ .PageSize }}</option>
                   <option value="10">10</option>
                   <option value="25">25</option>
                   <option value="50">50</option>
                   <option value="100">100</option>
                 </select>
-                {{ if not .IsDefaultPage }}
-                  <input name="s" type="hidden" value="{{ .CurrentPageSlot }}">
-                {{ end }}
-                <span> entries</span>
+                <span> entries per page</span>
               </label>
-            </form>
-          </div>
-          <div class="col-sm-12 col-md-6 table-search">
-            <div class="px-2" style="text-align: right;">
-              <form action="/slots/filtered" method="get">
-                <label>
-                  <input name="f" type="hidden" value="1">
-                  <input name="f.graffiti" type="search" class="form-control form-control-sm" placeholder="Search by Graffiti" aria-controls="graffiti" value="">
-                  <input name="f.orphaned" type="hidden" value="1">
-                </label>
-              </form>
+            </div>
+            <div class="col-4 col-md-6">
+              <div class="container text-end">
+                <button type="submit" class="btn btn-primary">Apply Filter</button>
+              </div>
             </div>
           </div>
         </div>
+      </div>
+    </form>
+    <script type="text/javascript">
+      $('#slotsFilterForm').submit(function () {
+        $(this).find('input[type="text"],input[type="number"]').filter(function () { return !this.value; }).prop('name', '');
+      });
+    </script>
+
+    <div class="card mt-2">
+      <div class="card-body px-0 py-3">
+            
         <div class="table-responsive px-0 py-1">
           <table class="table table-nobr" id="slots">
             <thead>
               <tr>
-                <th>Chain</th>
                 <th>Epoch</th>
                 <th>Slot</th>
                 <th>Status</th>
@@ -70,23 +134,8 @@
             </thead>
             {{ if gt .SlotCount 0 }}
               <tbody>
-                {{ $treeWidth := .ForkTreeWidth }}
                 {{ range $i, $slot := .Slots }}
                   <tr>
-                    <td class="graph-container" style="min-width: {{ $treeWidth }}px;">
-                      {{ range $j, $graph := $slot.ForkGraph }}
-                        <div class="graph-fork" data-index="{{ $graph.Index }}" style="left: {{ $graph.Left }}px;">
-                          {{- range $tile, $val := $graph.Tiles -}}
-                            <div class="graph-layer graph-layer-{{ $tile }}"></div>
-                          {{- end -}}
-                          {{- if $graph.Block }}
-                            <div class="graph-layer graph-layer-block">
-                              <i class="fas fa-circle"></i>
-                            </div>
-                          {{ end -}}
-                        </div>
-                      {{ end }}
-                    </td>
                     <td><a href="/epoch/{{ $slot.Epoch }}">{{ formatAddCommas $slot.Epoch }}</a></td>
                     {{ if eq $slot.Status 2 }}
                       <td><a href="/slot/0x{{ printf "%x" $slot.BlockRoot }}">{{ formatAddCommas $slot.Slot }}</a></td>
@@ -152,19 +201,19 @@
               <div class="d-inline-block px-2">
                 <ul class="pagination">
                   <li class="first paginate_button page-item {{ if le .PrevPageIndex 1 }}disabled{{ end }}" id="tpg_first">
-                    <a tab-index="1" aria-controls="tpg_first" class="page-link" href="/slots?c={{ .PageSize }}">First</a>
+                    <a tab-index="1" aria-controls="tpg_first" class="page-link" href="{{ .FirstPageLink }}">First</a>
                   </li>
                   <li class="previous paginate_button page-item {{ if eq .PrevPageIndex 0 }}disabled{{ end }}" id="tpg_previous">
-                    <a tab-index="1" aria-controls="tpg_previous" class="page-link" href="/slots?s={{ .PrevPageSlot }}&c={{ .PageSize }}"><i class="fas fa-chevron-left"></i></a>
+                    <a tab-index="1" aria-controls="tpg_previous" class="page-link" href="{{ .PrevPageLink }}"><i class="fas fa-chevron-left"></i></a>
                   </li>
                   <li class="page-item disabled">
                     <a class="page-link" style="background-color: transparent;">{{ .CurrentPageIndex }} of {{ .TotalPages }}</a>
                   </li>
                   <li class="next paginate_button page-item {{ if eq .NextPageIndex 0 }}disabled{{ end }}" id="tpg_next">
-                    <a tab-index="1" aria-controls="tpg_next" class="page-link" href="/slots?s={{ .NextPageSlot }}&c={{ .PageSize }}"><i class="fas fa-chevron-right"></i></a>
+                    <a tab-index="1" aria-controls="tpg_next" class="page-link" href="{{ .NextPageLink }}"><i class="fas fa-chevron-right"></i></a>
                   </li>
                   <li class="last paginate_button page-item {{ if or (eq .LastPageSlot 0) (le .NextPageSlot .LastPageSlot) }}disabled{{ end }}" id="tpg_last">
-                    <a tab-index="1" aria-controls="tpg_last" class="page-link" href="/slots?s={{ .LastPageSlot }}&c={{ .PageSize }}">Last</a>
+                    <a tab-index="1" aria-controls="tpg_last" class="page-link" href="{{ .LastPageLink }}">Last</a>
                   </li>
                 </ul>
               </div>
@@ -179,5 +228,4 @@
 {{ define "js" }}
 {{ end }}
 {{ define "css" }}
-  <link rel="stylesheet" href="/css/forkgraph.css" />
 {{ end }}

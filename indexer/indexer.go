@@ -485,6 +485,10 @@ func (indexer *Indexer) BuildLiveBlock(block *CacheBlock) *dbtypes.Block {
 		}
 		block.dbBlockCache = buildDbBlock(block, epochStats)
 	}
-	block.dbBlockCache.Orphaned = !block.IsCanonical(indexer, nil)
+	if block.IsCanonical(indexer, nil) {
+		block.dbBlockCache.Orphaned = 0
+	} else {
+		block.dbBlockCache.Orphaned = 1
+	}
 	return block.dbBlockCache
 }
