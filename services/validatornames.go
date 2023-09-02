@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -66,7 +67,9 @@ func (vn *ValidatorNames) LoadValidatorNames() {
 		}
 
 		// update db
-		vn.updateDb()
+		if !utils.Config.Indexer.DisableIndexWriter {
+			vn.updateDb()
+		}
 
 		vn.loading = false
 	}()
@@ -165,18 +168,6 @@ func (vn *ValidatorNames) loadFromRangesApi(apiUrl string) error {
 }
 
 func (vn *ValidatorNames) updateDb() error {
-	// save blocks
-	tx, err := db.WriterDb.Beginx()
-	if err != nil {
-		return fmt.Errorf("error starting db transaction: %v", err)
-	}
-	defer tx.Rollback()
-
-	err = db.ClearValidatorNames(tx)
-	if err != nil {
-		return fmt.Errorf("error clearing old validator names: %v", err)
-	}
-
 	vn.namesMutex.RLock()
 	nameRows := make([]*dbtypes.ValidatorName, 0)
 	for index, name := range vn.names {
@@ -187,18 +178,68 @@ func (vn *ValidatorNames) updateDb() error {
 	}
 	vn.namesMutex.RUnlock()
 
+	sort.Slice(nameRows, func(a, b int) bool {
+		return nameRows[a].Index < nameRows[b].Index
+	})
+
+	tx, err := db.WriterDb.Beginx()
+	if err != nil {
+		return fmt.Errorf("error starting db transaction: %v", err)
+	}
+	defer tx.Rollback()
+
+	batchSize := 10000
+
+	lastIndex := uint64(0)
 	nameIdx := 0
 	nameLen := len(nameRows)
 	for nameIdx < nameLen {
-		maxIdx := nameIdx + 1000
+		maxIdx := nameIdx + batchSize
 		if maxIdx >= nameLen {
-			maxIdx = nameLen - 1
+			maxIdx = nameLen
 		}
-		err := db.InsertValidatorNames(nameRows[nameIdx:maxIdx], tx)
-		if err != nil {
-			logger_vn.WithError(err).Errorf("error while adding validator names to db")
+		sliceLen := maxIdx - nameIdx
+		namesSlice := nameRows[nameIdx:maxIdx]
+		maxIndex := namesSlice[sliceLen-1].Index
+
+		// get existing db entries
+		dbNamesMap := map[uint64]string{}
+		for _, dbName := range db.GetValidatorNames(lastIndex, maxIndex, tx) {
+			dbNamesMap[dbName.Index] = dbName.Name
 		}
-		nameIdx = maxIdx + 1
+
+		// get diffs
+		updateNames := make([]*dbtypes.ValidatorName, 0)
+		for _, nameRow := range namesSlice {
+			dbName := dbNamesMap[nameRow.Index]
+			delete(dbNamesMap, nameRow.Index)
+			if dbName == nameRow.Name {
+				continue // no update
+			}
+			updateNames = append(updateNames, nameRow)
+		}
+
+		removeIndexes := make([]uint64, 0)
+		for index := range dbNamesMap {
+			removeIndexes = append(removeIndexes, index)
+		}
+
+		if len(updateNames) > 0 {
+			err := db.InsertValidatorNames(updateNames, tx)
+			if err != nil {
+				logger_vn.WithError(err).Errorf("error while adding validator names to db")
+			}
+		}
+		if len(removeIndexes) > 0 {
+			err := db.DeleteValidatorNames(removeIndexes, tx)
+			if err != nil {
+				logger_vn.WithError(err).Errorf("error while deleting validator names from db")
+			}
+		}
+		logger_vn.Debugf("update validator names %v-%v: %v changed, %v removed", lastIndex, maxIdx, len(updateNames), len(removeIndexes))
+
+		lastIndex = maxIndex + 1
+		nameIdx = maxIdx
 	}
 
 	if err := tx.Commit(); err != nil {

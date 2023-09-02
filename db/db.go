@@ -167,17 +167,15 @@ func ApplyEmbeddedDbSchema(version int64) error {
 		goose.SetBaseFS(EmbedPgsqlSchema)
 		engineDialect = "postgres"
 		schemaDirectory = "schema/pgsql"
-		break
 	case dbtypes.DBEngineSqlite:
 		goose.SetBaseFS(EmbedSqliteSchema)
 		engineDialect = "sqlite3"
 		schemaDirectory = "schema/sqlite"
-		break
 	default:
 		logger.Fatalf("unknown database engine")
 	}
 
-	fmt.Printf(engineDialect)
+	fmt.Print(engineDialect)
 	if err := goose.SetDialect(engineDialect); err != nil {
 		return err
 	}
@@ -240,17 +238,22 @@ func SetExplorerState(key string, value interface{}, tx *sqlx.Tx) error {
 	return nil
 }
 
-func ClearValidatorNames(tx *sqlx.Tx) error {
-	_, err := tx.Exec("DELETE FROM validator_names")
+func GetValidatorNames(minIdx uint64, maxIdx uint64, tx *sqlx.Tx) []*dbtypes.ValidatorName {
+	names := []*dbtypes.ValidatorName{}
+	err := ReaderDb.Select(&names, `SELECT "index", "name" FROM validator_names WHERE "index" >= $1 AND "index" <= $2`, minIdx, maxIdx)
 	if err != nil {
-		return err
+		logger.Errorf("Error while fetching validator names: %v", err)
+		return nil
 	}
-	return nil
+	return names
 }
 
 func InsertValidatorNames(validatorNames []*dbtypes.ValidatorName, tx *sqlx.Tx) error {
 	var sql strings.Builder
-	fmt.Fprintf(&sql, `INSERT INTO validator_names ("index", "name") VALUES `)
+	fmt.Fprint(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
+		dbtypes.DBEnginePgsql:  `INSERT INTO validator_names ("index", "name") VALUES `,
+		dbtypes.DBEngineSqlite: `INSERT OR REPLACE INTO validator_names ("index", "name") VALUES `,
+	}))
 	argIdx := 0
 	args := make([]any, len(validatorNames)*2)
 	for i, validatorName := range validatorNames {
@@ -262,6 +265,31 @@ func InsertValidatorNames(validatorNames []*dbtypes.ValidatorName, tx *sqlx.Tx) 
 		args[argIdx+1] = validatorName.Name
 		argIdx += 2
 	}
+	fmt.Fprint(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
+		dbtypes.DBEnginePgsql:  ` ON CONFLICT ("index") DO UPDATE SET name = excluded.name`,
+		dbtypes.DBEngineSqlite: "",
+	}))
+	_, err := tx.Exec(sql.String(), args...)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func DeleteValidatorNames(validatorNames []uint64, tx *sqlx.Tx) error {
+	var sql strings.Builder
+	fmt.Fprint(&sql, `DELETE FROM validator_names WHERE "index" IN (`)
+	argIdx := 0
+	args := make([]any, len(validatorNames)*2)
+	for i, validatorName := range validatorNames {
+		if i > 0 {
+			fmt.Fprintf(&sql, ", ")
+		}
+		fmt.Fprintf(&sql, "$%v", argIdx+1)
+		args[argIdx] = validatorName
+		argIdx += 1
+	}
+	fmt.Fprint(&sql, ")")
 	_, err := tx.Exec(sql.String(), args...)
 	if err != nil {
 		return err
@@ -280,7 +308,7 @@ func IsEpochSynchronized(epoch uint64) bool {
 
 func InsertSlotAssignments(slotAssignments []*dbtypes.SlotAssignment, tx *sqlx.Tx) error {
 	var sql strings.Builder
-	fmt.Fprintf(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
+	fmt.Fprint(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
 		dbtypes.DBEnginePgsql:  "INSERT INTO slot_assignments (slot, proposer) VALUES ",
 		dbtypes.DBEngineSqlite: "INSERT OR REPLACE INTO slot_assignments (slot, proposer) VALUES ",
 	}))
@@ -295,7 +323,7 @@ func InsertSlotAssignments(slotAssignments []*dbtypes.SlotAssignment, tx *sqlx.T
 		args[argIdx+1] = slotAssignment.Proposer
 		argIdx += 2
 	}
-	fmt.Fprintf(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
+	fmt.Fprint(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
 		dbtypes.DBEnginePgsql:  " ON CONFLICT (slot) DO UPDATE SET proposer = excluded.proposer",
 		dbtypes.DBEngineSqlite: "",
 	}))
