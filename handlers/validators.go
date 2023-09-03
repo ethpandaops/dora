@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/http"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -110,17 +111,25 @@ func buildValidatorsPageData(firstValIdx uint64, pageSize uint64, sortOrder stri
 		return strings.Compare(pageData.FilterStatusOpts[a].Status, pageData.FilterStatusOpts[b].Status) < 0
 	})
 
+	filterArgs := url.Values{}
 	if filterPubKey != "" || filterIndex != "" || filterName != "" || filterStatus != "" {
 		var filterPubKeyVal []byte
 		var filterIndexVal uint64
 		var filterStatusVal []string
+
 		if filterPubKey != "" {
+			filterArgs.Add("f.pubkey", filterPubKey)
 			filterPubKeyVal, _ = hex.DecodeString(strings.Replace(filterPubKey, "0x", "", -1))
 		}
 		if filterIndex != "" {
+			filterArgs.Add("f.index", filterIndex)
 			filterIndexVal, _ = strconv.ParseUint(filterIndex, 10, 64)
 		}
+		if filterName != "" {
+			filterArgs.Add("f.name", filterName)
+		}
 		if filterStatus != "" {
+			filterArgs.Add("f.status", filterStatus)
 			filterStatusVal = strings.Split(filterStatus, ",")
 		}
 
@@ -299,6 +308,7 @@ func buildValidatorsPageData(firstValIdx uint64, pageSize uint64, sortOrder stri
 	pageData.ValidatorCount = uint64(len(pageData.Validators))
 	pageData.FirstValidator = firstValIdx
 	pageData.LastValidator = lastValIdx
+	pageData.FilteredPageLink = fmt.Sprintf("/validators?f&%v&c=%v", filterArgs.Encode(), pageData.PageSize)
 
 	return pageData, cacheTime
 }
