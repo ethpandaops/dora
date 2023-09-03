@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -219,7 +220,10 @@ func buildSlotPageData(blockSlot int64, blockRoot []byte) (*models.SlotPageData,
 		if assignments != nil {
 			pageData.Proposer = assignments.ProposerAssignments[slot]
 			pageData.ProposerName = services.GlobalBeaconService.GetValidatorName(pageData.Proposer)
+		} else {
+			pageData.Proposer = math.MaxInt64
 		}
+
 	} else {
 		if blockData.Orphaned {
 			pageData.Status = uint16(models.SlotStatusOrphaned)

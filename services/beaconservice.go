@@ -2,6 +2,7 @@ package services
 
 import (
 	"encoding/json"
+	"math"
 	"sort"
 	"strings"
 	"sync"
@@ -329,6 +330,10 @@ func (bs *BeaconService) GetProposerAssignments(firstEpoch uint64, lastEpoch uin
 				synchronizedEpochs[epoch] = true
 				for slot, vidx := range epochStats.GetProposerAssignments() {
 					proposerAssignments[slot] = vidx
+				}
+			} else {
+				for idx := uint64(0); idx < utils.Config.Chain.Config.SlotsPerEpoch; idx++ {
+					proposerAssignments[(epoch*utils.Config.Chain.Config.SlotsPerEpoch)+idx] = math.MaxInt64
 				}
 			}
 		}
