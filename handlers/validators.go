@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bytes"
+	"encoding/hex"
 	"fmt"
 	"net/http"
 	"sort"
@@ -38,34 +39,48 @@ func Validators(w http.ResponseWriter, r *http.Request) {
 	if urlArgs.Has("c") {
 		pageSize, _ = strconv.ParseUint(urlArgs.Get("c"), 10, 64)
 	}
-	var stateFilter string
-	if urlArgs.Has("q") {
-		stateFilter = urlArgs.Get("q")
+	var filterPubKey string
+	var filterIndex string
+	var filterName string
+	var filterStatus string
+	if urlArgs.Has("f") {
+		if urlArgs.Has("f.pubkey") {
+			filterPubKey = urlArgs.Get("f.pubkey")
+		}
+		if urlArgs.Has("f.index") {
+			filterIndex = urlArgs.Get("f.index")
+		}
+		if urlArgs.Has("f.name") {
+			filterName = urlArgs.Get("f.name")
+		}
+		if urlArgs.Has("f.status") {
+			filterStatus = strings.Join(urlArgs["f.status"], ",")
+		}
 	}
 	var sortOrder string
 	if urlArgs.Has("o") {
 		sortOrder = urlArgs.Get("o")
 	}
-	data.Data = getValidatorsPageData(firstIdx, pageSize, stateFilter, sortOrder)
+	data.Data = getValidatorsPageData(firstIdx, pageSize, sortOrder, filterPubKey, filterIndex, filterName, filterStatus)
 
 	if handleTemplateError(w, r, "validators.go", "Validators", "", pageTemplate.ExecuteTemplate(w, "layout", data)) != nil {
 		return // an error has occurred and was processed
 	}
 }
 
-func getValidatorsPageData(firstValIdx uint64, pageSize uint64, stateFilter string, sortOrder string) *models.ValidatorsPageData {
+func getValidatorsPageData(firstValIdx uint64, pageSize uint64, sortOrder string, filterPubKey string, filterIndex string, filterName string, filterStatus string) *models.ValidatorsPageData {
 	pageData := &models.ValidatorsPageData{}
-	pageCacheKey := fmt.Sprintf("validators:%v:%v:%v:%v", firstValIdx, pageSize, stateFilter, sortOrder)
+	pageCacheKey := fmt.Sprintf("validators:%v:%v:%v:%v:%v:%v:%v", firstValIdx, pageSize, sortOrder, filterPubKey, filterIndex, filterName, filterStatus)
 	pageData = services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
-		pageData, cacheTimeout := buildValidatorsPageData(firstValIdx, pageSize, stateFilter, sortOrder)
+		pageData, cacheTimeout := buildValidatorsPageData(firstValIdx, pageSize, sortOrder, filterPubKey, filterIndex, filterName, filterStatus)
 		pageCall.CacheTimeout = cacheTimeout
 		return pageData
 	}).(*models.ValidatorsPageData)
 	return pageData
 }
 
-func buildValidatorsPageData(firstValIdx uint64, pageSize uint64, stateFilter string, sortOrder string) (*models.ValidatorsPageData, time.Duration) {
-	logrus.Printf("validators page called: %v:%v:%v:%v", firstValIdx, pageSize, stateFilter, sortOrder)
+func buildValidatorsPageData(firstValIdx uint64, pageSize uint64, sortOrder string, filterPubKey string, filterIndex string, filterName string, filterStatus string) (*models.ValidatorsPageData, time.Duration) {
+	logrus.Printf("validators page called: %v:%v:%v:%v:%v:%v:%v", firstValIdx, pageSize, sortOrder, filterPubKey, filterIndex, filterName, filterStatus)
 	pageData := &models.ValidatorsPageData{}
 	cacheTime := 10 * time.Minute
 
@@ -79,9 +94,62 @@ func buildValidatorsPageData(firstValIdx uint64, pageSize uint64, stateFilter st
 		validatorSet = validatorSetRsp.Data
 	}
 
-	//if stateFilter != "" {
-	// TODO: apply filter
-	//}
+	// get status options
+	statusMap := map[string]uint64{}
+	for _, val := range validatorSet {
+		statusMap[val.Status]++
+	}
+	pageData.FilterStatusOpts = make([]models.ValidatorsPageDataStatusOption, 0)
+	for status, count := range statusMap {
+		pageData.FilterStatusOpts = append(pageData.FilterStatusOpts, models.ValidatorsPageDataStatusOption{
+			Status: status,
+			Count:  count,
+		})
+	}
+	sort.Slice(pageData.FilterStatusOpts, func(a, b int) bool {
+		return strings.Compare(pageData.FilterStatusOpts[a].Status, pageData.FilterStatusOpts[b].Status) < 0
+	})
+
+	if filterPubKey != "" || filterIndex != "" || filterName != "" || filterStatus != "" {
+		var filterPubKeyVal []byte
+		var filterIndexVal uint64
+		var filterStatusVal []string
+		if filterPubKey != "" {
+			filterPubKeyVal, _ = hex.DecodeString(strings.Replace(filterPubKey, "0x", "", -1))
+		}
+		if filterIndex != "" {
+			filterIndexVal, _ = strconv.ParseUint(filterIndex, 10, 64)
+		}
+		if filterStatus != "" {
+			filterStatusVal = strings.Split(filterStatus, ",")
+		}
+
+		// apply filter
+		filteredValidatorSet := make([]*rpctypes.ValidatorEntry, 0)
+		for _, val := range validatorSet {
+			if filterPubKey != "" && !bytes.Equal(filterPubKeyVal, val.Validator.PubKey) {
+				continue
+			}
+			if filterIndex != "" && filterIndexVal != uint64(val.Index) {
+				continue
+			}
+			if filterName != "" {
+				valName := services.GlobalBeaconService.GetValidatorName(uint64(val.Index))
+				if !strings.Contains(valName, filterName) {
+					continue
+				}
+			}
+			if filterStatus != "" && !utils.SliceContains(filterStatusVal, val.Status) {
+				continue
+			}
+			filteredValidatorSet = append(filteredValidatorSet, val)
+		}
+		validatorSet = filteredValidatorSet
+	}
+	pageData.FilterPubKey = filterPubKey
+	pageData.FilterIndex = filterIndex
+	pageData.FilterName = filterName
+	pageData.FilterStatus = filterStatus
 
 	// apply sort order
 	validatorSetLen := len(validatorSet)

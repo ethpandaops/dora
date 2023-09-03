@@ -11,46 +11,89 @@
       </nav>
     </div>
 
-    <div class="card mt-2">
-      <div class="card-body px-0 py-3">
-        <div class="row">
-          <div class="col-sm-12 col-md-6 table-pagesize">
-            <form action="/validators" method="get">
+    <div id="header-placeholder" style="height:35px;"></div>
+    <form action="/validators" method="get" id="validatorsFilterForm">
+      <input type="hidden" name="f">
+      <div class="card mt-2">
+        <div class="card-header">
+          Validator Filters
+        </div>
+        <div class="card-body p-2">
+          <div class="row">
+            <div class="col-sm-12 col-md-6">
+              <div class="container">
+                <div class="row mt-1">
+                  <div class="col-sm-12 col-md-6 col-lg-4">
+                    PubKey
+                  </div>
+                  <div class="col-sm-12 col-md-6 col-lg-8">
+                    <input name="f.graffiti" type="text" class="form-control" placeholder="PubKey" aria-label="PubKey" aria-describedby="basic-addon1" value="{{ .FilterPubKey }}">
+                  </div>
+                </div>
+                <div class="row mt-1">
+                  <div class="col-sm-12 col-md-6 col-lg-4">
+                    Index
+                  </div>
+                  <div class="col-sm-12 col-md-6 col-lg-8">
+                    <input name="f.index" type="number" class="form-control" placeholder="Index" aria-label="Index" aria-describedby="basic-addon1" value="{{ .FilterIndex }}">
+                  </div>
+                </div>
+                <div class="row mt-1">
+                  <div class="col-sm-12 col-md-6 col-lg-4">
+                    Name
+                  </div>
+                  <div class="col-sm-12 col-md-6 col-lg-8">
+                    <input name="f.name" type="text" class="form-control" placeholder="Name" aria-label="Name" aria-describedby="basic-addon1" value="{{ .FilterName }}">
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="col-sm-12 col-md-6">
+              <div class="container">
+                <div class="row mt-1">
+                  <div class="col-sm-12 col-md-4 col-lg-3">
+                    <nobr>Status</nobr>
+                  </div>
+                  <div class="col-sm-12 col-md-8 col-lg-7 col-xl-6">
+                    <select name="f.status" multiple="multiple" class="filter-multiselect">
+                      {{ $filterStatusList := .FilterStatus }}
+                      {{ range $i, $option := .FilterStatusOpts }}
+                        <option value="{{ $option.Status }}" {{ if inlist $option.Status $filterStatusList }}selected{{ end }}>{{ $option.Status }} ({{ $option.Count }})</option>
+                      {{ end }}
+                    </select>
+                  </div>
+                </div>
+                
+              </div>
+            </div>
+
+          </div>
+          <div class="row mt-3">
+            <div class="col-8 col-md-6 table-pagesize">
               <label class="px-2">
                 <span>Show </span>
-                <select name="c" aria-controls="validators" class="custom-select custom-select-sm form-control form-control-sm" onchange="this.form.submit()">
+                <select name="c" aria-controls="slots" class="custom-select custom-select-sm form-control form-control-sm">
                   <option value="{{ .PageSize }}" selected>{{ .PageSize }}</option>
                   <option value="10">10</option>
                   <option value="25">25</option>
                   <option value="50">50</option>
                   <option value="100">100</option>
                 </select>
-                {{ if not .IsDefaultPage }}
-                  <input name="s" type="hidden" value="{{ .CurrentPageIndex }}">
-                {{ end }}
-                {{ if not .IsDefaultSorting }}
-                  <input name="o" type="hidden" value="{{ .Sorting }}">
-                {{ end }}
-                {{ if .StateFilter }}
-                  <input name="q" type="hidden" value="{{ .StateFilter }}">
-                {{ end }}
-                <span> entries</span>
+                <span> entries per page</span>
               </label>
-            </form>
-          </div>
-          <!--
-          <div class="col-sm-12 col-md-6 table-search">
-            <div class="px-2" style="text-align: right;">
-              <form action="/validators" method="get">
-                <label>
-                  <input name="q" type="search" class="form-control form-control-sm" placeholder="Search by Pubkey / State" aria-controls="graffiti" value="{{ .StateFilter }}">
-                  <input name="c" type="hidden" value="{{ .PageSize }}">
-                </label>
-              </form>
+            </div>
+            <div class="col-4 col-md-6">
+              <div class="container text-end">
+                <button type="submit" class="btn btn-primary">Apply Filter</button>
+              </div>
             </div>
           </div>
-        -->
         </div>
+      </div>
+    </form>
+
+    <div class="card mt-2">
+      <div class="card-body px-0 py-3">
         <div class="table-responsive table-sorting px-0 py-1">
           <table class="table table-nobr" id="validators">
             <thead>
@@ -190,6 +233,43 @@
   </div>
 {{ end }}
 {{ define "js" }}
+<script src="/js/bootstrap-multiselect.js"></script>
+<script type="text/javascript">
+$('#validatorsFilterForm').submit(function () { 
+  $(this).find('input[type="text"],input[type="number"]').filter(function () { return !this.value; }).prop('name', ''); 
+});
+$(function() { 
+  $('#validatorsFilterForm .filter-multiselect').each(function() { 
+    $(this).multiselect({
+      onInitialized: function() {
+        this.$button.attr("data-bs-toggle", "dropdown");
+        this.$container.addClass("filter-multiselect-container");
+      }
+    });
+  });
+});
+</script>
 {{ end }}
 {{ define "css" }}
+<link rel="stylesheet" href="/css/bootstrap-multiselect.css">
+<style>
+  .filter-multiselect-container {
+    width: 100%;
+  }
+  .filter-multiselect-container.btn-group>.btn {
+    text-align: left;
+  }
+  .filter-multiselect-container .multiselect-container {
+    width: 100%;
+  }
+  .filter-multiselect-container .multiselect-container>li>a>label {
+    padding: 4px 8px;
+    width: 100%;
+    white-space: nowrap;
+  }
+  .filter-multiselect-container .multiselect-container>li>a>label>input {
+    margin: 0 4px;
+  }
+  
+</style>
 {{ end }}
