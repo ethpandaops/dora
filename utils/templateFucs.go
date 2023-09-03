@@ -30,6 +30,7 @@ func GetTemplateFuncs() template.FuncMap {
 		"nef":         func(i, j float64) bool { return i != j },
 		"gtf":         func(i, j float64) bool { return i > j },
 		"ltf":         func(i, j float64) bool { return i < j },
+		"inlist":      checkInList,
 		"round": func(i float64, n int) float64 {
 			return math.Round(i*math.Pow10(n)) / math.Pow10(n)
 		},
@@ -54,6 +55,16 @@ func GetTemplateFuncs() template.FuncMap {
 		"formatRecentTimeShort":      FormatRecentTimeShort,
 		"formatGraffiti":             FormatGraffiti,
 	}
+}
+
+func checkInList(item, list string) bool {
+	items := strings.Split(list, ",")
+	for _, i := range items {
+		if i == item {
+			return true
+		}
+	}
+	return false
 }
 
 // IncludeHTML adds html to the page

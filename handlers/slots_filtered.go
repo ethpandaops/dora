@@ -187,10 +187,10 @@ func buildFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string
 		pageData.TotalPages++
 	}
 
-	pageData.FirstPageLink = fmt.Sprintf("/slots/filtered?%v&c=%v", filterArgs.Encode(), pageData.PageSize)
-	pageData.PrevPageLink = fmt.Sprintf("/slots/filtered?%v&c=%v&s=%v", filterArgs.Encode(), pageData.PageSize, pageData.PrevPageSlot)
-	pageData.NextPageLink = fmt.Sprintf("/slots/filtered?%v&c=%v&s=%v", filterArgs.Encode(), pageData.PageSize, pageData.NextPageSlot)
-	pageData.LastPageLink = fmt.Sprintf("/slots/filtered?%v&c=%v&s=%v", filterArgs.Encode(), pageData.PageSize, pageData.LastPageSlot)
+	pageData.FirstPageLink = fmt.Sprintf("/slots/filtered?f&%v&c=%v", filterArgs.Encode(), pageData.PageSize)
+	pageData.PrevPageLink = fmt.Sprintf("/slots/filtered?f&%v&c=%v&s=%v", filterArgs.Encode(), pageData.PageSize, pageData.PrevPageSlot)
+	pageData.NextPageLink = fmt.Sprintf("/slots/filtered?f&%v&c=%v&s=%v", filterArgs.Encode(), pageData.PageSize, pageData.NextPageSlot)
+	pageData.LastPageLink = fmt.Sprintf("/slots/filtered?f&%v&c=%v&s=%v", filterArgs.Encode(), pageData.PageSize, pageData.LastPageSlot)
 
 	return pageData
 }
