@@ -188,7 +188,7 @@
         source: bhValNames,
         display: "name",
         templates: {
-          header: '<h3 class="h5">Slots (by vlidator name):</h3>',
+          header: '<h3 class="h5">Slots (by validator name):</h3>',
           suggestion: function (data) {
             return `<div class="text-monospace" style="display:flex"><div class="text-truncate" style="flex:1 1 auto;">${data.name}</div><div style="max-width:fit-content;white-space:nowrap;">${data.count}</div></div>`
           },
