@@ -32,3 +32,8 @@ type SearchAheadGraffitiResult []struct {
 	Graffiti string `db:"graffiti"`
 	Count    uint64 `db:"count"`
 }
+
+type SearchAheadValidatorNameResult []struct {
+	Name  string `db:"name"`
+	Count uint64 `db:"count"`
+}

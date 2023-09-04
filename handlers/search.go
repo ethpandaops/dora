@@ -71,6 +71,24 @@ func Search(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	var namesCount uint64
+	err = db.ReaderDb.Get(namesCount, db.EngineQuery(map[dbtypes.DBEngineType]string{
+		dbtypes.DBEnginePgsql: `
+			SELECT COUNT(*)
+			FROM validator_names
+			WHERE name ILIKE LOWER($1)
+			LIMIT 1`,
+		dbtypes.DBEngineSqlite: `
+			SELECT COUNT(*)
+			FROM validator_names
+			WHERE name LIKE LOWER($1)
+			LIMIT 1`,
+	}), "%"+searchQuery+"%")
+	if err == nil {
+		http.Redirect(w, r, "/slots/filtered?f&f.missing=1&f.orphaned=1&f.pname="+searchQuery, http.StatusMovedPermanently)
+		return
+	}
+
 	graffiti := &dbtypes.SearchGraffitiResult{}
 	err = db.ReaderDb.Get(graffiti, db.EngineQuery(map[dbtypes.DBEngineType]string{
 		dbtypes.DBEnginePgsql: `
@@ -85,7 +103,7 @@ func Search(w http.ResponseWriter, r *http.Request) {
 			LIMIT 1`,
 	}), "%"+searchQuery+"%")
 	if err == nil {
-		http.Redirect(w, r, "/filtered?f&f.graffiti="+searchQuery, http.StatusMovedPermanently)
+		http.Redirect(w, r, "/slots/filtered?f&f.missing=1&f.orphaned=1&f.graffiti="+searchQuery, http.StatusMovedPermanently)
 		return
 	}
 
@@ -338,6 +356,36 @@ func SearchAhead(w http.ResponseWriter, r *http.Request) {
 				model[i] = models.SearchAheadGraffitiResult{
 					Graffiti: utils.FormatGraffitiString(entry.Graffiti),
 					Count:    fmt.Sprintf("%v", entry.Count),
+				}
+			}
+			result = model
+		}
+	case "valname":
+		names := &dbtypes.SearchAheadValidatorNameResult{}
+		err = db.ReaderDb.Select(names, db.EngineQuery(map[dbtypes.DBEngineType]string{
+			dbtypes.DBEnginePgsql: `
+				SELECT name, count(*) as count
+				FROM validator_names
+				LEFT JOIN slot_assignments ON validator_names."index" = slot_assignments.proposer
+				WHERE name ILIKE LOWER($1)
+				GROUP BY name
+				ORDER BY count desc
+				LIMIT 10`,
+			dbtypes.DBEngineSqlite: `
+				SELECT name, count(*) as count
+				FROM validator_names
+				LEFT JOIN slot_assignments ON validator_names."index" = slot_assignments.proposer
+				WHERE name LIKE LOWER($1)
+				GROUP BY name
+				ORDER BY count desc
+				LIMIT 10`,
+		}), "%"+search+"%")
+		if err == nil {
+			model := make([]models.SearchAheadValidatorNameResult, len(*names))
+			for i, entry := range *names {
+				model[i] = models.SearchAheadValidatorNameResult{
+					Name:  utils.FormatGraffitiString(entry.Name),
+					Count: fmt.Sprintf("%v", entry.Count),
 				}
 			}
 			result = model

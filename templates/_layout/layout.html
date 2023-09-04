@@ -31,7 +31,7 @@
       <link rel="preload" as="font" href="/webfonts/fa-solid-900.woff2" crossorigin />
       <link rel="preload" as="font" href="/webfonts/fa-regular-400.woff2" crossorigin />
       <link rel="preload" as="font" href="/webfonts/fa-brands-400.woff2" crossorigin />
-      <link id="app-style" rel="stylesheet" href="/css/layout.css" />
+      <link id="app-style" rel="stylesheet" href="/css/layout.css?{{ .BuildTime }}" />
       {{ template "css" .Data }}
 
       <script src="/js/jquery.min.js"></script>
@@ -54,7 +54,7 @@
       </div>
       <script src="/js/typeahead.min.js"></script>
       <script src="/js/clipboard.min.js"></script>
-      <script src="/js/explorer.js"></script>
+      <script src="/js/explorer.js?{{ .BuildTime }}"></script>
       {{ template "js" .Data }}
     </body>
   </html>
