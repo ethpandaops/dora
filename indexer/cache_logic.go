@@ -157,9 +157,7 @@ func (cache *indexerCache) processFinalizedEpoch(epoch uint64) error {
 			if err != nil {
 				return fmt.Errorf("cannot load blobs for block 0x%x: %v", block.Root, err)
 			}
-			for _, blob := range blobRsp.Data {
-				blobs = append(blobs, &blob)
-			}
+			blobs = append(blobs, blobRsp.Data...)
 		}
 	}
 	// append next epoch blocks (needed for vote aggregation)

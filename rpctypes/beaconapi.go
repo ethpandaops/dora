@@ -99,7 +99,7 @@ type StandardV1GenesisResponse struct {
 }
 
 type StandardV1BlobSidecarsResponse struct {
-	Data []BlobSidecar `json:"data"`
+	Data []*BlobSidecar `json:"data"`
 }
 
 type StandardV1NodeSyncingResponse struct {
