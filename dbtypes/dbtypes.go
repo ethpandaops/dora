@@ -88,3 +88,13 @@ type UnfinalizedEpochDutyRef struct {
 	Epoch         uint64 `db:"epoch"`
 	DependentRoot []byte `db:"dependent_root"`
 }
+
+type Blob struct {
+	Commitment []byte  `db:"commitment"`
+	Slot       uint64  `db:"slot"`
+	Root       []byte  `db:"root"`
+	Proof      []byte  `db:"proof"`
+	Size       uint32  `db:"size"`
+	Storage    *string `db:"storage"`
+	Blob       *[]byte `db:"blob"`
+}

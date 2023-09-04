@@ -64,6 +64,20 @@ type Config struct {
 		SyncEpochCooldown   uint   `yaml:"syncEpochCooldown" envconfig:"INDEXER_SYNC_EPOCH_COOLDOWN"`
 	} `yaml:"indexer"`
 
+	BlobStore struct {
+		Engine string `yaml:"engine" envconfig:"BLOBSTORE_ENGINE"`
+		Fs     struct {
+			Path   string `yaml:"path" envconfig:"BLOBSTORE_FS_PATH"`
+			Prefix string `yaml:"prefix" envconfig:"BLOBSTORE_FS_PREFIX"`
+		} `yaml:"fs"`
+		Aws struct {
+			AccessKey string `yaml:"accessKey" envconfig:"BLOBSTORE_AWS_ACCESSKEY"`
+			SecretKey string `yaml:"secretKey" envconfig:"BLOBSTORE_AWS_SECRETKEY"`
+			S3Region  string `yaml:"s3Region" envconfig:"BLOBSTORE_AWS_S3REGION"`
+			S3Bucket  string `yaml:"s3Bucket" envconfig:"BLOBSTORE_AWS_S3BUCKET"`
+		} `yaml:"aws"`
+	} `yaml:"blobstore"`
+
 	Database struct {
 		Engine string `yaml:"engine" envconfig:"DATABASE_ENGINE"`
 		Sqlite struct {

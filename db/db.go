@@ -796,3 +796,42 @@ func DeleteUnfinalizedBefore(slot uint64, tx *sqlx.Tx) error {
 	}
 	return nil
 }
+
+func InsertBlob(blob *dbtypes.Blob, tx *sqlx.Tx) error {
+	_, err := tx.Exec(EngineQuery(map[dbtypes.DBEngineType]string{
+		dbtypes.DBEnginePgsql: `
+			INSERT INTO blobs (
+				commitment, slot, root, proof, size, storage, blob
+			) VALUES ($1, $2, $3, $4, $5, $6, $7)
+			ON CONFLICT (commitment) DO UPDATE SET
+				slot = excluded.slot,
+				root = excluded.root,
+				size = excluded.size,
+				storage = excluded.storage,
+				blob = excluded.blob`,
+		dbtypes.DBEngineSqlite: `
+			INSERT OR REPLACE INTO blobs (
+				commitment, slot, root, proof, size, storage, blob
+			) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+	}),
+		blob.Commitment, blob.Slot, blob.Root, blob.Proof, blob.Size, blob.Storage, blob.Blob)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func GetBlob(commitment []byte, withData bool) *dbtypes.Blob {
+	blob := dbtypes.Blob{}
+	var sql strings.Builder
+	fmt.Fprintf(&sql, `SELECT commitment, slot, root, proof, size, storage`)
+	if withData {
+		fmt.Fprintf(&sql, `, blob`)
+	}
+	fmt.Fprintf(&sql, ` FROM blobs WHERE commitment = $1`)
+	err := ReaderDb.Get(&blob, sql.String(), commitment)
+	if err != nil {
+		return nil
+	}
+	return &blob
+}
