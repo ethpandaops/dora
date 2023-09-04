@@ -43,6 +43,7 @@ func newBlobStore() *BlobStore {
 			logger_blobs.Errorf("cannot init blobstore with 'fs' engine: missing path")
 			break
 		}
+		os.Mkdir(utils.Config.BlobStore.Fs.Path, 0755)
 		store.mode = blobPersistenceModeFs
 	case "aws":
 		s3store, err := aws.NewS3Store(utils.Config.BlobStore.Aws.AccessKey, utils.Config.BlobStore.Aws.SecretKey, utils.Config.BlobStore.Aws.S3Region, utils.Config.BlobStore.Aws.S3Bucket)
@@ -81,10 +82,9 @@ func (store *BlobStore) saveBlob(blob *rpctypes.BlobSidecar, tx *sqlx.Tx) error 
 		dbBlob.Blob = (*[]byte)(&blob.Blob)
 	case blobPersistenceModeFs:
 		blobFile := path.Join(utils.Config.BlobStore.Fs.Path, blobName)
-		os.Mkdir(utils.Config.BlobStore.Fs.Path, 0755)
 		err := os.WriteFile(blobFile, blob.Blob, 0644)
 		if err != nil {
-			return fmt.Errorf("could not open blob file '%v': %w", blobFile, err)
+			return fmt.Errorf("could not save blob to file '%v': %w", blobFile, err)
 		}
 	case blobPersistenceModeAws:
 		err := store.s3Store.Upload(blobName, blob.Blob)
