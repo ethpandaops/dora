@@ -71,15 +71,15 @@ func Search(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	var namesCount uint64
-	err = db.ReaderDb.Get(namesCount, db.EngineQuery(map[dbtypes.DBEngineType]string{
+	names := &dbtypes.SearchNameResult{}
+	err = db.ReaderDb.Get(names, db.EngineQuery(map[dbtypes.DBEngineType]string{
 		dbtypes.DBEnginePgsql: `
-			SELECT COUNT(*)
+			SELECT name
 			FROM validator_names
 			WHERE name ILIKE LOWER($1)
 			LIMIT 1`,
 		dbtypes.DBEngineSqlite: `
-			SELECT COUNT(*)
+			SELECT name
 			FROM validator_names
 			WHERE name LIKE LOWER($1)
 			LIMIT 1`,
