@@ -801,20 +801,19 @@ func InsertBlob(blob *dbtypes.Blob, tx *sqlx.Tx) error {
 	_, err := tx.Exec(EngineQuery(map[dbtypes.DBEngineType]string{
 		dbtypes.DBEnginePgsql: `
 			INSERT INTO blobs (
-				commitment, slot, root, proof, size, storage, blob
-			) VALUES ($1, $2, $3, $4, $5, $6, $7)
+				commitment, slot, root, proof, size, blob
+			) VALUES ($1, $2, $3, $4, $5, $6)
 			ON CONFLICT (commitment) DO UPDATE SET
 				slot = excluded.slot,
 				root = excluded.root,
 				size = excluded.size,
-				storage = excluded.storage,
 				blob = excluded.blob`,
 		dbtypes.DBEngineSqlite: `
 			INSERT OR REPLACE INTO blobs (
-				commitment, slot, root, proof, size, storage, blob
-			) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+				commitment, slot, root, proof, size, blob
+			) VALUES ($1, $2, $3, $4, $5, $6)`,
 	}),
-		blob.Commitment, blob.Slot, blob.Root, blob.Proof, blob.Size, blob.Storage, blob.Blob)
+		blob.Commitment, blob.Slot, blob.Root, blob.Proof, blob.Size, blob.Blob)
 	if err != nil {
 		return err
 	}
@@ -824,7 +823,7 @@ func InsertBlob(blob *dbtypes.Blob, tx *sqlx.Tx) error {
 func GetBlob(commitment []byte, withData bool) *dbtypes.Blob {
 	blob := dbtypes.Blob{}
 	var sql strings.Builder
-	fmt.Fprintf(&sql, `SELECT commitment, slot, root, proof, size, storage`)
+	fmt.Fprintf(&sql, `SELECT commitment, slot, root, proof, size`)
 	if withData {
 		fmt.Fprintf(&sql, `, blob`)
 	}

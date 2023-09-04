@@ -65,10 +65,11 @@ type Config struct {
 	} `yaml:"indexer"`
 
 	BlobStore struct {
-		Engine string `yaml:"engine" envconfig:"BLOBSTORE_ENGINE"`
-		Fs     struct {
-			Path   string `yaml:"path" envconfig:"BLOBSTORE_FS_PATH"`
-			Prefix string `yaml:"prefix" envconfig:"BLOBSTORE_FS_PREFIX"`
+		PersistenceMode string `yaml:"persistenceMode" envconfig:"BLOBSTORE_PERSISTENCE_MODE"`
+		NameTemplate    string `yaml:"nameTemplate" envconfig:"BLOBSTORE_NAME_TEMPLATE"`
+
+		Fs struct {
+			Path string `yaml:"path" envconfig:"BLOBSTORE_FS_PATH"`
 		} `yaml:"fs"`
 		Aws struct {
 			AccessKey string `yaml:"accessKey" envconfig:"BLOBSTORE_AWS_ACCESSKEY"`

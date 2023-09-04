@@ -95,6 +95,5 @@ type Blob struct {
 	Root       []byte  `db:"root"`
 	Proof      []byte  `db:"proof"`
 	Size       uint32  `db:"size"`
-	Storage    *string `db:"storage"`
 	Blob       *[]byte `db:"blob"`
 }

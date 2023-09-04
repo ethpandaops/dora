@@ -136,6 +136,11 @@ func ReadConfig(cfg *types.Config, path string) error {
 		return fmt.Errorf("missing beacon node endpoints (need at least 1 endpoint to run the explorer)")
 	}
 
+	// blobstore
+	if cfg.BlobStore.NameTemplate == "" {
+		cfg.BlobStore.NameTemplate = "{slot}-{commitment}.blob"
+	}
+
 	log.WithFields(log.Fields{
 		"genesisTimestamp":       cfg.Chain.GenesisTimestamp,
 		"configName":             cfg.Chain.Config.ConfigName,

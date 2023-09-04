@@ -147,7 +147,7 @@ func (cache *indexerCache) processFinalizedEpoch(epoch uint64) error {
 
 	for slot, block := range cache.getCanonicalBlockMap(epoch, nil) {
 		canonicalMap[slot] = block
-		if cache.indexer.blobStore.engine != blobEngineNone && len(block.block.Message.Body.BlobKzgCommitments) > 0 {
+		if cache.indexer.blobStore.mode != blobPersistenceModeNone && len(block.block.Message.Body.BlobKzgCommitments) > 0 {
 			logger.Infof("loading blobs for slot %v: %v blobs", slot, len(block.block.Message.Body.BlobKzgCommitments))
 			if client == nil {
 				return fmt.Errorf("cannot load blobs for block 0x%x: no client", block.Root)

@@ -8,7 +8,6 @@ CREATE TABLE IF NOT EXISTS public."blobs"
     "root" bytea NOT NULL,
     "proof" bytea NOT NULL,
     "size" INT NOT NULL,
-    "storage" character varying(250) NOT NULL,
     "blob" bytea NULL,
     PRIMARY KEY ("commitment")
 );

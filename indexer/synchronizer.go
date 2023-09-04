@@ -249,7 +249,7 @@ func (sync *synchronizerState) syncEpoch(syncEpoch uint64, lastTry bool, skipCli
 	// load blobs
 	lastSlot = firstSlot + utils.Config.Chain.Config.SlotsPerEpoch - 1
 	blobs := []*rpctypes.BlobSidecar{}
-	if sync.indexer.blobStore.engine != blobEngineNone {
+	if sync.indexer.blobStore.mode != blobPersistenceModeNone {
 		for slot := firstSlot; slot <= lastSlot; slot++ {
 			block := sync.cachedBlocks[slot]
 			if block == nil {

@@ -8,7 +8,6 @@ CREATE TABLE IF NOT EXISTS "blobs"
     "root" BLOB NOT NULL,
     "proof" BLOB NOT NULL,
     "size" INT NOT NULL,
-    "storage" VARCHAR(250) NULL,
     "blob" BLOB NULL,
     PRIMARY KEY ("commitment")
 );

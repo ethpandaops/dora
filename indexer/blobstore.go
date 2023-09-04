@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"strings"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/sirupsen/logrus"
@@ -18,41 +19,49 @@ import (
 var logger_blobs = logrus.StandardLogger().WithField("module", "blobstore")
 
 const (
-	blobEngineNone uint64 = 0
-	blobEngineDb   uint64 = 1
-	blobEngineFs   uint64 = 2
-	blobEngineAws  uint64 = 3
+	blobPersistenceModeNone uint64 = 0
+	blobPersistenceModeDb   uint64 = 1
+	blobPersistenceModeFs   uint64 = 2
+	blobPersistenceModeAws  uint64 = 3
 )
 
 type BlobStore struct {
-	engine  uint64
+	mode    uint64
 	s3Store *aws.S3Store
 }
 
 func newBlobStore() *BlobStore {
 	store := &BlobStore{}
 
-	switch utils.Config.BlobStore.Engine {
+	switch utils.Config.BlobStore.PersistenceMode {
 	case "none":
-		store.engine = blobEngineNone
+		store.mode = blobPersistenceModeNone
 	case "db":
-		store.engine = blobEngineDb
+		store.mode = blobPersistenceModeDb
 	case "fs":
 		if utils.Config.BlobStore.Fs.Path == "" {
 			logger_blobs.Errorf("cannot init blobstore with 'fs' engine: missing path")
 			break
 		}
-		store.engine = blobEngineFs
+		store.mode = blobPersistenceModeFs
 	case "aws":
 		s3store, err := aws.NewS3Store(utils.Config.BlobStore.Aws.AccessKey, utils.Config.BlobStore.Aws.SecretKey, utils.Config.BlobStore.Aws.S3Region, utils.Config.BlobStore.Aws.S3Bucket)
 		if err != nil {
 			logger_blobs.Errorf("cannot init blobstore with 'aws' engine: %v", err)
 			break
 		}
-		store.engine = blobEngineAws
+		store.mode = blobPersistenceModeAws
 		store.s3Store = s3store
 	}
 	return store
+}
+
+func (store *BlobStore) getBlobName(blob *dbtypes.Blob) string {
+	blobName := utils.Config.BlobStore.NameTemplate
+	blobName = strings.ReplaceAll(blobName, "{slot}", fmt.Sprintf("%v", blob.Slot))
+	blobName = strings.ReplaceAll(blobName, "{root}", fmt.Sprintf("%x", blob.Root))
+	blobName = strings.ReplaceAll(blobName, "{commitment}", fmt.Sprintf("%x", blob.Commitment))
+	return blobName
 }
 
 func (store *BlobStore) saveBlob(blob *rpctypes.BlobSidecar, tx *sqlx.Tx) error {
@@ -63,27 +72,24 @@ func (store *BlobStore) saveBlob(blob *rpctypes.BlobSidecar, tx *sqlx.Tx) error 
 		Proof:      blob.KzgProof,
 		Size:       uint32(len(blob.Blob)),
 	}
-	switch store.engine {
-	case blobEngineNone:
+	blobName := store.getBlobName(dbBlob)
+
+	switch store.mode {
+	case blobPersistenceModeNone:
 		return nil
-	case blobEngineDb:
+	case blobPersistenceModeDb:
 		dbBlob.Blob = (*[]byte)(&blob.Blob)
-	case blobEngineFs:
-		fsName := fmt.Sprintf("%v%x.blob", utils.Config.BlobStore.Fs.Prefix, dbBlob.Commitment)
-		storage := fmt.Sprintf("fs:%v", fsName)
-		dbBlob.Storage = &storage
-		blobFile := path.Join(utils.Config.BlobStore.Fs.Path, fsName)
+	case blobPersistenceModeFs:
+		blobFile := path.Join(utils.Config.BlobStore.Fs.Path, blobName)
+		os.Mkdir(utils.Config.BlobStore.Fs.Path, 0755)
 		err := os.WriteFile(blobFile, blob.Blob, 0644)
 		if err != nil {
 			return fmt.Errorf("could not open blob file '%v': %w", blobFile, err)
 		}
-	case blobEngineAws:
-		s3Key := fmt.Sprintf("%v-%x", dbBlob.Slot, dbBlob.Commitment)
-		storage := fmt.Sprintf("aws:%v", s3Key)
-		dbBlob.Storage = &storage
-		err := store.s3Store.Upload(s3Key, blob.Blob)
+	case blobPersistenceModeAws:
+		err := store.s3Store.Upload(blobName, blob.Blob)
 		if err != nil {
-			return fmt.Errorf("could not upload blob to s3 '%v': %w", s3Key, err)
+			return fmt.Errorf("could not upload blob to s3 '%v': %w", blobName, err)
 		}
 	}
 
