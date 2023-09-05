@@ -520,7 +520,7 @@ func GetBlocksByParentRoot(parentRoot []byte) []*dbtypes.Block {
 func GetFilteredBlocks(filter *dbtypes.BlockFilter, firstSlot uint64, offset uint64, limit uint32) []*dbtypes.AssignedBlock {
 	blockAssignments := []*dbtypes.AssignedBlock{}
 	var sql strings.Builder
-	fmt.Fprintf(&sql, `SELECT slot_assignments.slot, slot_assignments.proposer`)
+	fmt.Fprintf(&sql, `SELECT slot_assignments.slot, COALESCE(blocks.proposer, slot_assignments.proposer) AS proposer`)
 	blockFields := []string{
 		"root", "slot", "parent_root", "state_root", "orphaned", "proposer", "graffiti", "graffiti_text",
 		"attestation_count", "deposit_count", "exit_count", "withdraw_count", "withdraw_amount", "attester_slashing_count",
