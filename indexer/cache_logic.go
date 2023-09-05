@@ -1,10 +1,12 @@
 package indexer
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/pk910/light-beaconchain-explorer/db"
 	"github.com/pk910/light-beaconchain-explorer/dbtypes"
+	"github.com/pk910/light-beaconchain-explorer/rpctypes"
 	"github.com/pk910/light-beaconchain-explorer/utils"
 )
 
@@ -129,10 +131,10 @@ func (cache *indexerCache) processFinalizedEpoch(epoch uint64) error {
 	logger.Infof("processing finalized epoch %v:  target: 0x%x, dependent: 0x%x", epoch, epochTarget, epochDependentRoot)
 
 	// get epoch stats
+	client := cache.indexer.GetReadyClient(true, nil, nil)
 	epochStats, isNewStats := cache.createOrGetEpochStats(epoch, epochDependentRoot)
 	if isNewStats {
 		logger.Warnf("missing epoch stats during finalization processing (epoch: %v)", epoch)
-		client := cache.indexer.GetReadyClient(true, nil, nil)
 		if client != nil {
 			client.ensureEpochStats(epoch, client.lastHeadRoot)
 			time.Sleep(10 * time.Millisecond)
@@ -140,7 +142,24 @@ func (cache *indexerCache) processFinalizedEpoch(epoch uint64) error {
 	}
 
 	// get canonical blocks
-	canonicalMap := cache.getCanonicalBlockMap(epoch, nil)
+	canonicalMap := map[uint64]*CacheBlock{}
+	blobs := []*rpctypes.BlobSidecar{}
+
+	for slot, block := range cache.getCanonicalBlockMap(epoch, nil) {
+		canonicalMap[slot] = block
+		if len(block.block.Message.Body.BlobKzgCommitments) > 0 {
+			logger.Infof("loading blobs for slot %v: %v blobs", slot, len(block.block.Message.Body.BlobKzgCommitments))
+			if client == nil {
+				return fmt.Errorf("cannot load blobs for block 0x%x: no client", block.Root)
+			}
+
+			blobRsp, err := client.rpcClient.GetBlobSidecarsByBlockroot(block.Root)
+			if err != nil {
+				return fmt.Errorf("cannot load blobs for block 0x%x: %v", block.Root, err)
+			}
+			blobs = append(blobs, blobRsp.Data...)
+		}
+	}
 	// append next epoch blocks (needed for vote aggregation)
 	for slot, block := range cache.getCanonicalBlockMap(epoch+1, nil) {
 		canonicalMap[slot] = block
@@ -167,6 +186,17 @@ func (cache *indexerCache) processFinalizedEpoch(epoch uint64) error {
 	err = persistEpochData(epoch, canonicalMap, epochStats, epochVotes, tx)
 	if err != nil {
 		logger.Errorf("error persisting epoch data to db: %v", err)
+		return err
+	}
+
+	if len(blobs) > 0 {
+		for _, blob := range blobs {
+			err := cache.indexer.BlobStore.saveBlob(blob, tx)
+			if err != nil {
+				logger.Errorf("error persisting blobs: %v", err)
+				return err
+			}
+		}
 	}
 
 	if cache.synchronizer == nil || !cache.synchronizer.running {

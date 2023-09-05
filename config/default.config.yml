@@ -56,6 +56,19 @@ indexer:
   # number of seconds to wait between each epoch (don't overload CL client)
   syncEpochCooldown: 2
 
+# blob storage configuration
+blobstore:
+  # persistence mode: none, db, fs, aws
+  persistenceMode: "none"
+  nameTemplate: ""
+  fs:
+    path: ""
+  aws:
+    accessKey: ""
+    secretKey: ""
+    s3Region: "eu-central-1"
+    s3Bucket: ""
+
 # database configuration
 database:
   engine: "sqlite" # sqlite / pgsql

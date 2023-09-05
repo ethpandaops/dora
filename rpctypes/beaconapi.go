@@ -50,7 +50,6 @@ type CombinedBlockResponse struct {
 	Root     []byte
 	Header   *SignedBeaconBlockHeader
 	Block    *SignedBeaconBlock
-	Blobs    *StandardV1BlobSidecarsResponse
 	Orphaned bool
 }
 
@@ -99,7 +98,7 @@ type StandardV1GenesisResponse struct {
 }
 
 type StandardV1BlobSidecarsResponse struct {
-	Data []BlobSidecar `json:"data"`
+	Data []*BlobSidecar `json:"data"`
 }
 
 type StandardV1NodeSyncingResponse struct {

@@ -7,6 +7,7 @@ import (
 
 	"github.com/pk910/light-beaconchain-explorer/db"
 	"github.com/pk910/light-beaconchain-explorer/dbtypes"
+	"github.com/pk910/light-beaconchain-explorer/rpctypes"
 	"github.com/pk910/light-beaconchain-explorer/utils"
 	"github.com/sirupsen/logrus"
 )
@@ -245,6 +246,24 @@ func (sync *synchronizerState) syncEpoch(syncEpoch uint64, lastTry bool, skipCli
 		epochVotes = aggregateEpochVotes(sync.cachedBlocks, syncEpoch, epochStats, targetRoot, false, true)
 	}
 
+	// load blobs
+	lastSlot = firstSlot + utils.Config.Chain.Config.SlotsPerEpoch - 1
+	blobs := []*rpctypes.BlobSidecar{}
+	for slot := firstSlot; slot <= lastSlot; slot++ {
+		block := sync.cachedBlocks[slot]
+		if block == nil {
+			continue
+		}
+		if len(block.block.Message.Body.BlobKzgCommitments) == 0 {
+			continue
+		}
+		blobRsp, err := client.rpcClient.GetBlobSidecarsByBlockroot(block.Root)
+		if err != nil {
+			return false, client, fmt.Errorf("cannot load blobs for block 0x%x: %v", block.Root, err)
+		}
+		blobs = append(blobs, blobRsp.Data...)
+	}
+
 	// save blocks
 	tx, err := db.WriterDb.Beginx()
 	if err != nil {
@@ -255,6 +274,15 @@ func (sync *synchronizerState) syncEpoch(syncEpoch uint64, lastTry bool, skipCli
 	err = persistEpochData(syncEpoch, sync.cachedBlocks, epochStats, epochVotes, tx)
 	if err != nil {
 		return false, client, fmt.Errorf("error persisting epoch data to db: %v", err)
+	}
+
+	if len(blobs) > 0 {
+		for _, blob := range blobs {
+			err := sync.indexer.BlobStore.saveBlob(blob, tx)
+			if err != nil {
+				return false, client, fmt.Errorf("error persisting blobs: %v", err)
+			}
+		}
 	}
 
 	err = db.SetExplorerState("indexer.syncstate", &dbtypes.IndexerSyncState{
@@ -269,7 +297,6 @@ func (sync *synchronizerState) syncEpoch(syncEpoch uint64, lastTry bool, skipCli
 	}
 
 	// cleanup cache (remove blocks from this epoch)
-	lastSlot = firstSlot + utils.Config.Chain.Config.SlotsPerEpoch - 1
 	for slot := firstSlot; slot <= lastSlot; slot++ {
 		if sync.cachedBlocks[slot] != nil {
 			delete(sync.cachedBlocks, slot)

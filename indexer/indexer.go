@@ -18,9 +18,9 @@ import (
 var logger = logrus.StandardLogger().WithField("module", "indexer")
 
 type Indexer struct {
+	BlobStore      *BlobStore
 	indexerCache   *indexerCache
 	indexerClients []*IndexerClient
-
 	writeDb        bool
 	disableSync    bool
 	inMemoryEpochs uint16
@@ -33,8 +33,8 @@ func NewIndexer() (*Indexer, error) {
 	}
 
 	indexer := &Indexer{
+		BlobStore:      newBlobStore(),
 		indexerClients: make([]*IndexerClient, 0),
-
 		writeDb:        !utils.Config.Indexer.DisableIndexWriter,
 		disableSync:    utils.Config.Indexer.DisableSynchronizer,
 		inMemoryEpochs: inMemoryEpochs,
