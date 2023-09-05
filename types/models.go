@@ -8,6 +8,7 @@ type PageData struct {
 	Meta                  *Meta
 	Data                  interface{}
 	Version               string
+	BuildTime             string
 	Year                  int
 	ExplorerTitle         string
 	ExplorerSubtitle      string

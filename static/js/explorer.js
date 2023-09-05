@@ -129,6 +129,18 @@
         maxPendingRequests: requestNum,
       },
     });
+    var bhValNames = new Bloodhound({
+      datumTokenizer: Bloodhound.tokenizers.whitespace,
+      queryTokenizer: Bloodhound.tokenizers.whitespace,
+      identify: function (obj) {
+        return obj.name
+      },
+      remote: {
+        url: "/search/valname?q=",
+        prepare: prepareQueryFn,
+        maxPendingRequests: requestNum,
+      },
+    });
 
 
     searchEl.typeahead(
@@ -172,6 +184,18 @@
       },
       {
         limit: 5,
+        name: "name",
+        source: bhValNames,
+        display: "name",
+        templates: {
+          header: '<h3 class="h5">Slots (by validator name):</h3>',
+          suggestion: function (data) {
+            return `<div class="text-monospace" style="display:flex"><div class="text-truncate" style="flex:1 1 auto;">${data.name}</div><div style="max-width:fit-content;white-space:nowrap;">${data.count}</div></div>`
+          },
+        },
+      },
+      {
+        limit: 5,
         name: "epoch",
         source: bhEpochs,
         display: "epoch",
@@ -188,7 +212,7 @@
         source: bhGraffiti,
         display: "graffiti",
         templates: {
-          header: '<h3 class="h5">Block Graffitis:</h3>',
+          header: '<h3 class="h5">Blocks (by graffitis):</h3>',
           suggestion: function (data) {
             return `<div class="text-monospace" style="display:flex"><div class="text-truncate" style="flex:1 1 auto;">${data.graffiti}</div><div style="max-width:fit-content;white-space:nowrap;">${data.count}</div></div>`
           },
@@ -221,7 +245,12 @@
         // sug.graffiti is html-escaped to prevent xss, we need to unescape it
         var el = document.createElement("textarea")
         el.innerHTML = sug.graffiti
-        window.location = "/slots/filtered?f&f.graffiti=" + encodeURIComponent(el.value)
+        window.location = "/slots/filtered?f&f.orphaned=1&f.graffiti=" + encodeURIComponent(el.value)
+      } else if (sug.name !== undefined) {
+          // sug.name is html-escaped to prevent xss, we need to unescape it
+          var el = document.createElement("textarea")
+          el.innerHTML = sug.name
+          window.location = "/slots/filtered?f&f.missing=1&f.orphaned=1&f.pname=" + encodeURIComponent(el.value)
       } else {
         console.log("invalid typeahead-selection", sug)
       }

@@ -28,6 +28,7 @@ func InitPageData(w http.ResponseWriter, r *http.Request, active, path, title st
 	}
 
 	isMainnet := utils.Config.Chain.Config.ConfigName == "mainnet"
+	buildTime, _ := time.Parse("2006-01-02T15:04:05Z", utils.Buildtime)
 	data := &types.PageData{
 		Meta: &types.Meta{
 			Title:       fullTitle,
@@ -39,6 +40,7 @@ func InitPageData(w http.ResponseWriter, r *http.Request, active, path, title st
 		Active:                active,
 		Data:                  &types.Empty{},
 		Version:               "git-" + utils.BuildVersion,
+		BuildTime:             fmt.Sprintf("%v", buildTime.Unix()),
 		Year:                  time.Now().UTC().Year(),
 		ExplorerTitle:         utils.Config.Frontend.SiteName,
 		ExplorerSubtitle:      utils.Config.Frontend.SiteSubtitle,

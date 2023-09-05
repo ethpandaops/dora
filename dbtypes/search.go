@@ -10,6 +10,10 @@ type SearchGraffitiResult struct {
 	Graffiti string `db:"graffiti"`
 }
 
+type SearchNameResult struct {
+	Name string `db:"name"`
+}
+
 type SearchAheadEpochsResult []struct {
 	Epoch uint64 `db:"epoch"`
 }
@@ -31,4 +35,9 @@ type SearchAheadExecBlocksResult []struct {
 type SearchAheadGraffitiResult []struct {
 	Graffiti string `db:"graffiti"`
 	Count    uint64 `db:"count"`
+}
+
+type SearchAheadValidatorNameResult []struct {
+	Name  string `db:"name"`
+	Count uint64 `db:"count"`
 }

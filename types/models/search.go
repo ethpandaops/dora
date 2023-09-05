@@ -40,3 +40,9 @@ type SearchAheadGraffitiResult struct {
 	Graffiti string `json:"graffiti,omitempty"`
 	Count    string `json:"count,omitempty"`
 }
+
+// SearchAheadValidatorNameResult is a struct to hold the search ahead blocks results with a given graffiti
+type SearchAheadValidatorNameResult struct {
+	Name  string `json:"name,omitempty"`
+	Count string `json:"count,omitempty"`
+}
