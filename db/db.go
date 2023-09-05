@@ -174,8 +174,6 @@ func ApplyEmbeddedDbSchema(version int64) error {
 	default:
 		logger.Fatalf("unknown database engine")
 	}
-
-	fmt.Print(engineDialect)
 	if err := goose.SetDialect(engineDialect); err != nil {
 		return err
 	}

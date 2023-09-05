@@ -242,9 +242,6 @@ func (sync *synchronizerState) syncEpoch(syncEpoch uint64, lastTry bool, skipCli
 		}
 	}
 	epochVotes := aggregateEpochVotes(sync.cachedBlocks, syncEpoch, epochStats, targetRoot, false, true)
-	if epochVotes.currentEpoch.targetVoteAmount < 10000 {
-		epochVotes = aggregateEpochVotes(sync.cachedBlocks, syncEpoch, epochStats, targetRoot, false, true)
-	}
 
 	// load blobs
 	lastSlot = firstSlot + utils.Config.Chain.Config.SlotsPerEpoch - 1

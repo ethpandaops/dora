@@ -103,7 +103,6 @@ func (stream *Stream) Close() {
 		if stream.isClosed {
 			return
 		}
-		fmt.Printf("closed event stream\n")
 
 		stream.isClosed = true
 		close(stream.Errors)

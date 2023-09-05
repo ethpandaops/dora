@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"errors"
-	"fmt"
 	"io/fs"
 	"net/http"
 	"path"
@@ -59,7 +58,7 @@ func handleHTTPError(err error, handler func(http.ResponseWriter, *http.Request)
 		return
 	}
 	// Default:
-	fmt.Printf("Error: %v\n", err)
+	logrus.WithError(err).Errorf("page handler error")
 	http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
 }
 

@@ -53,7 +53,6 @@ func (s *BytesHexStr) UnmarshalJSON(b []byte) error {
 			}
 		}
 		if err != nil {
-			fmt.Printf("err: %v\n", err)
 			return err
 		}
 	}

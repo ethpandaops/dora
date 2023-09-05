@@ -30,7 +30,7 @@ func aggregateEpochVotes(blockMap map[uint64]*CacheBlock, epoch uint64, epochSta
 		lastSlot += utils.Config.Chain.Config.SlotsPerEpoch
 	}
 
-	// avait all lazy loaded data is available
+	// await all lazy loaded data is available
 	epochStats.dutiesMutex.RLock()
 	defer epochStats.dutiesMutex.RUnlock()
 	if awaitValidaotStats {

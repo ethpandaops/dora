@@ -114,14 +114,12 @@ func SlotBlob(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	commitment, err := hex.DecodeString(strings.Replace(vars["commitment"], "0x", "", -1))
 	if err != nil || len(commitment) != 48 {
-		fmt.Printf("blob commitment len %v\n", len(commitment))
 		http.Error(w, "Internal server error", http.StatusServiceUnavailable)
 		return
 	}
 
 	blockRoot, err := hex.DecodeString(strings.Replace(vars["root"], "0x", "", -1))
 	if err != nil || len(blockRoot) != 32 {
-		fmt.Printf("blob blockRoot len %v\n", len(blockRoot))
 		http.Error(w, "Internal server error", http.StatusServiceUnavailable)
 		return
 	}

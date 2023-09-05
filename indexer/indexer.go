@@ -2,7 +2,6 @@ package indexer
 
 import (
 	"bytes"
-	"fmt"
 	"math/rand"
 	"sort"
 
@@ -151,9 +150,6 @@ func (indexer *Indexer) getReadyClientCandidates(headFork *HeadFork, archive boo
 
 func (indexer *Indexer) GetRpcClient(archive bool, head []byte) *rpc.BeaconClient {
 	readyClient := indexer.GetReadyClient(archive, head, nil)
-	if head != nil {
-		fmt.Printf("client for head 0x%x: %v\n", head, readyClient.clientName)
-	}
 	return readyClient.rpcClient
 }
 
