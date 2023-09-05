@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bytes"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 	"github.com/juliangruber/go-intersect"
 	"github.com/sirupsen/logrus"
 
+	"github.com/pk910/light-beaconchain-explorer/dbtypes"
 	"github.com/pk910/light-beaconchain-explorer/rpctypes"
 	"github.com/pk910/light-beaconchain-explorer/services"
 	"github.com/pk910/light-beaconchain-explorer/templates"
@@ -67,18 +69,31 @@ func Slot(w http.ResponseWriter, r *http.Request) {
 
 	urlArgs := r.URL.Query()
 	if urlArgs.Has("blob") && pageData.Block != nil {
-		blobData, err := services.GlobalBeaconService.GetBlobSidecarsByBlockRoot(pageData.Block.BlockRoot)
+		commitment, err := hex.DecodeString(strings.Replace(urlArgs.Get("blob"), "0x", "", -1))
+		var blobData *dbtypes.Blob
+		if err == nil {
+			client := services.GlobalBeaconService.GetIndexer().GetReadyClient(false, nil, nil)
+			blobData, err = services.GlobalBeaconService.GetIndexer().BlobStore.LoadBlob(commitment, pageData.Block.BlockRoot, client)
+		}
 		if err == nil && blobData != nil {
-			for blobIdx, blob := range blobData.Data {
-				blobData := pageData.Block.Blobs[blobIdx]
-				blobData.HaveData = true
-				blobData.KzgProof = blob.KzgProof
-				blobData.Blob = blob.Blob
-				if len(blob.Blob) > 512 {
-					blobData.BlobShort = blob.Blob[0:512]
-					blobData.IsShort = true
-				} else {
-					blobData.BlobShort = blob.Blob
+			var blobModel *models.SlotPageBlob
+			for _, blob := range pageData.Block.Blobs {
+				if bytes.Equal(blob.KzgCommitment, commitment) {
+					blobModel = blob
+					break
+				}
+			}
+			if blobModel != nil {
+				blobModel.KzgProof = blobData.Proof
+				if blobData.Blob != nil {
+					blobModel.HaveData = true
+					blobModel.Blob = *blobData.Blob
+					if len(blobModel.Blob) > 512 {
+						blobModel.BlobShort = blobModel.Blob[0:512]
+						blobModel.IsShort = true
+					} else {
+						blobModel.BlobShort = blobModel.Blob
+					}
 				}
 			}
 		}
@@ -97,31 +112,33 @@ func SlotBlob(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	vars := mux.Vars(r)
-	blockRoot, err := hex.DecodeString(strings.Replace(vars["hash"], "0x", "", -1))
+	commitment, err := hex.DecodeString(strings.Replace(vars["commitment"], "0x", "", -1))
+	if err != nil || len(commitment) != 48 {
+		fmt.Printf("blob commitment len %v\n", len(commitment))
+		http.Error(w, "Internal server error", http.StatusServiceUnavailable)
+		return
+	}
+
+	blockRoot, err := hex.DecodeString(strings.Replace(vars["root"], "0x", "", -1))
 	if err != nil || len(blockRoot) != 32 {
+		fmt.Printf("blob blockRoot len %v\n", len(blockRoot))
 		http.Error(w, "Internal server error", http.StatusServiceUnavailable)
 		return
 	}
-	blobIdx, err := strconv.ParseUint(vars["blobIdx"], 10, 64)
+
+	client := services.GlobalBeaconService.GetIndexer().GetReadyClient(false, nil, nil)
+	blobData, err := services.GlobalBeaconService.GetIndexer().BlobStore.LoadBlob(commitment, blockRoot, client)
 	if err != nil {
+		logrus.WithError(err).Error("error loading blob data")
 		http.Error(w, "Internal server error", http.StatusServiceUnavailable)
 		return
 	}
-	blobData, err := services.GlobalBeaconService.GetBlobSidecarsByBlockRoot(blockRoot)
-	if err != nil {
-		logrus.WithError(err).Error("error loading blob sidecar")
-		http.Error(w, "Internal server error", http.StatusServiceUnavailable)
-		return
+	result := &models.SlotPageBlobDetails{
+		KzgCommitment: fmt.Sprintf("%x", blobData.Commitment),
+		KzgProof:      fmt.Sprintf("%x", blobData.Proof),
 	}
-	var result interface{}
-	if blobData != nil && blobIdx < uint64(len(blobData.Data)) {
-		blob := blobData.Data[blobIdx]
-		result = &models.SlotPageBlobDetails{
-			Index:         blobIdx,
-			KzgCommitment: blob.KzgCommitment.String(),
-			KzgProof:      blob.KzgProof.String(),
-			Blob:          blob.Blob.String(),
-		}
+	if blobData.Blob != nil {
+		result.Blob = fmt.Sprintf("%x", *blobData.Blob)
 	}
 	err = json.NewEncoder(w).Encode(result)
 	if err != nil {
@@ -148,10 +165,10 @@ func buildSlotPageData(blockSlot int64, blockRoot []byte) (*models.SlotPageData,
 	var err error
 	if blockSlot > -1 {
 		if uint64(blockSlot) <= currentSlot {
-			blockData, err = services.GlobalBeaconService.GetSlotDetailsBySlot(uint64(blockSlot), false)
+			blockData, err = services.GlobalBeaconService.GetSlotDetailsBySlot(uint64(blockSlot))
 		}
 	} else {
-		blockData, err = services.GlobalBeaconService.GetSlotDetailsByBlockroot(blockRoot, false)
+		blockData, err = services.GlobalBeaconService.GetSlotDetailsByBlockroot(blockRoot)
 	}
 
 	if err == nil {

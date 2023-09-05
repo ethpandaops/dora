@@ -74,7 +74,7 @@ func startFrontend() {
 	router.HandleFunc("/slots", handlers.Slots).Methods("GET")
 	router.HandleFunc("/slots/filtered", handlers.SlotsFiltered).Methods("GET")
 	router.HandleFunc("/slot/{slotOrHash}", handlers.Slot).Methods("GET")
-	router.HandleFunc("/slot/{hash}/blob/{blobIdx}", handlers.SlotBlob).Methods("GET")
+	router.HandleFunc("/slot/{root}/blob/{commitment}", handlers.SlotBlob).Methods("GET")
 	router.HandleFunc("/search", handlers.Search).Methods("GET")
 	router.HandleFunc("/search/{type}", handlers.SearchAhead).Methods("GET")
 	router.HandleFunc("/validators", handlers.Validators).Methods("GET")

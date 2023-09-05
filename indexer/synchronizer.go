@@ -249,21 +249,19 @@ func (sync *synchronizerState) syncEpoch(syncEpoch uint64, lastTry bool, skipCli
 	// load blobs
 	lastSlot = firstSlot + utils.Config.Chain.Config.SlotsPerEpoch - 1
 	blobs := []*rpctypes.BlobSidecar{}
-	if sync.indexer.blobStore.mode != blobPersistenceModeNone {
-		for slot := firstSlot; slot <= lastSlot; slot++ {
-			block := sync.cachedBlocks[slot]
-			if block == nil {
-				continue
-			}
-			if len(block.block.Message.Body.BlobKzgCommitments) == 0 {
-				continue
-			}
-			blobRsp, err := client.rpcClient.GetBlobSidecarsByBlockroot(block.Root)
-			if err != nil {
-				return false, client, fmt.Errorf("cannot load blobs for block 0x%x: %v", block.Root, err)
-			}
-			blobs = append(blobs, blobRsp.Data...)
+	for slot := firstSlot; slot <= lastSlot; slot++ {
+		block := sync.cachedBlocks[slot]
+		if block == nil {
+			continue
 		}
+		if len(block.block.Message.Body.BlobKzgCommitments) == 0 {
+			continue
+		}
+		blobRsp, err := client.rpcClient.GetBlobSidecarsByBlockroot(block.Root)
+		if err != nil {
+			return false, client, fmt.Errorf("cannot load blobs for block 0x%x: %v", block.Root, err)
+		}
+		blobs = append(blobs, blobRsp.Data...)
 	}
 
 	// save blocks
@@ -280,7 +278,7 @@ func (sync *synchronizerState) syncEpoch(syncEpoch uint64, lastTry bool, skipCli
 
 	if len(blobs) > 0 {
 		for _, blob := range blobs {
-			err := sync.indexer.blobStore.saveBlob(blob, tx)
+			err := sync.indexer.BlobStore.saveBlob(blob, tx)
 			if err != nil {
 				return false, client, fmt.Errorf("error persisting blobs: %v", err)
 			}

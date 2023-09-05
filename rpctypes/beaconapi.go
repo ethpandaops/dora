@@ -50,7 +50,6 @@ type CombinedBlockResponse struct {
 	Root     []byte
 	Header   *SignedBeaconBlockHeader
 	Block    *SignedBeaconBlock
-	Blobs    *StandardV1BlobSidecarsResponse
 	Orphaned bool
 }
 

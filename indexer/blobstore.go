@@ -1,6 +1,7 @@
 package indexer
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path"
@@ -76,8 +77,6 @@ func (store *BlobStore) saveBlob(blob *rpctypes.BlobSidecar, tx *sqlx.Tx) error 
 	blobName := store.getBlobName(dbBlob)
 
 	switch store.mode {
-	case blobPersistenceModeNone:
-		return nil
 	case blobPersistenceModeDb:
 		dbBlob.Blob = (*[]byte)(&blob.Blob)
 	case blobPersistenceModeFs:
@@ -99,4 +98,64 @@ func (store *BlobStore) saveBlob(blob *rpctypes.BlobSidecar, tx *sqlx.Tx) error 
 	}
 
 	return nil
+}
+
+func (store *BlobStore) LoadBlob(commitment []byte, blockroot []byte, client *IndexerClient) (*dbtypes.Blob, error) {
+	dbBlob := db.GetBlob(commitment, true)
+	if dbBlob != nil {
+		blobName := store.getBlobName(dbBlob)
+
+		if dbBlob.Blob == nil {
+			switch store.mode {
+			case blobPersistenceModeFs:
+				blobFile := path.Join(utils.Config.BlobStore.Fs.Path, blobName)
+				data, err := os.ReadFile(blobFile)
+				if err != nil {
+					logger_blobs.Warnf("cannot load blob from fs (%v): %v", blobFile, err)
+				} else {
+					dbBlob.Blob = &data
+				}
+			case blobPersistenceModeAws:
+				data, err := store.s3Store.Download(blobName)
+				if err != nil {
+					logger_blobs.Warnf("cannot load blob from aws (%v): %v", blobName, err)
+				} else {
+					dbBlob.Blob = &data
+				}
+			}
+		}
+		blockroot = dbBlob.Root
+	}
+
+	if (dbBlob == nil || dbBlob.Blob == nil) && client != nil && blockroot != nil {
+		// load from rpc
+		var blob *rpctypes.BlobSidecar
+		blobRsp, err := client.rpcClient.GetBlobSidecarsByBlockroot(blockroot)
+		if err != nil {
+			logger_blobs.Warnf("cannot load blobs from rpc (0x%x): %v", blockroot, err)
+		} else {
+			for _, cblob := range blobRsp.Data {
+				if bytes.Equal(cblob.KzgCommitment, commitment) {
+					blob = cblob
+					break
+				}
+			}
+		}
+
+		if blob != nil {
+			blobData := ([]byte)(blob.Blob)
+			if dbBlob == nil {
+				dbBlob = &dbtypes.Blob{
+					Commitment: commitment,
+					Slot:       uint64(blob.Index),
+					Root:       blockroot,
+					Proof:      blob.KzgProof,
+					Size:       uint32(len(blobData)),
+				}
+			}
+			dbBlob.Blob = &blobData
+		}
+	}
+
+	return dbBlob, nil
 }

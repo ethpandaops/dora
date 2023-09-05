@@ -9,7 +9,7 @@
           <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="KGZ Commitment">KGZ Commitment:</span></div>
           <div class="col-md-10 text-monospace">
             0x{{ printf "%x" $blob.KzgCommitment }} 
-            <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $blob.KzgCommitment }} "></i>
+            <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $blob.KzgCommitment }}"></i>
           </div>
         </div>
         {{ if $blob.HaveData }}
@@ -17,7 +17,7 @@
             <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="KGZ Proof">KGZ Proof:</span></div>
             <div class="col-md-10 text-monospace">
               0x{{ printf "%x" $blob.KzgProof }} 
-              <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $blob.KzgProof }} "></i>
+              <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $blob.KzgProof }}"></i>
             </div>
           </div>
           <div class="row border-bottom p-1 mx-0">
@@ -25,14 +25,14 @@
             <div class="col-md-10 text-monospace">
               0x{{ printf "%x" $blob.BlobShort }}
               {{- if $blob.IsShort -}}...{{ end }} 
-              <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $blob.Blob }} "></i>
+              <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $blob.Blob }}"></i>
             </div>
           </div>
         {{ else }}
-          <div class="blobloader-container" data-blobidx="{{ $blob.Index }}">
+          <div class="blobloader-container" data-commitment="0x{{ printf "%x" $blob.KzgCommitment }}">
             <div class="row border-bottom p-1 mx-0">
               <div class="col text-center">
-                <a class="btn btn-primary blobloader-button" href="?blob=1#blobSidecars" role="button">Load Blob Data</a>
+                <a class="btn btn-primary blobloader-button" href="?blob=0x{{ printf "%x" $blob.KzgCommitment }}#blobSidecars" role="button">Load Blob Data</a>
               </div>
             </div>
           </div>
@@ -49,8 +49,8 @@
           evt.preventDefault();
           if(button.hasClass("disabled")) return;
           button.attr("disabled", "disabled").addClass("disabled");
-          var blobIdx = container.data("blobidx");
-          jQuery.get("/slot/0x{{ printf "%x" .Block.BlockRoot }}/blob/" + blobIdx).then(function(data, status) {
+          var commitment = container.data("commitment");
+          jQuery.get("/slot/0x{{ printf "%x" .Block.BlockRoot }}/blob/" + commitment).then(function(data, status) {
             if(status == "success")
               onSuccess(data);
             else

@@ -88,7 +88,7 @@ func (bs *BeaconService) GetGenesis() (*rpctypes.StandardV1GenesisResponse, erro
 	return bs.indexer.GetRpcClient(false, nil).GetGenesis()
 }
 
-func (bs *BeaconService) GetSlotDetailsByBlockroot(blockroot []byte, withBlobs bool) (*rpctypes.CombinedBlockResponse, error) {
+func (bs *BeaconService) GetSlotDetailsByBlockroot(blockroot []byte) (*rpctypes.CombinedBlockResponse, error) {
 	var result *rpctypes.CombinedBlockResponse
 	if blockInfo := bs.indexer.GetCachedBlock(blockroot); blockInfo != nil {
 		result = &rpctypes.CombinedBlockResponse{
@@ -146,16 +146,10 @@ func (bs *BeaconService) GetSlotDetailsByBlockroot(blockroot []byte, withBlobs b
 		}
 	}
 
-	if result.Block.Message.Body.BlobKzgCommitments != nil && withBlobs && utils.EpochOfSlot(uint64(result.Header.Message.Slot)) >= utils.Config.Chain.Config.DenebForkEpoch {
-		blobs, _ := bs.indexer.GetRpcClient(true, blockroot).GetBlobSidecarsByBlockroot(result.Root)
-		if blobs != nil {
-			result.Blobs = blobs
-		}
-	}
 	return result, nil
 }
 
-func (bs *BeaconService) GetSlotDetailsBySlot(slot uint64, withBlobs bool) (*rpctypes.CombinedBlockResponse, error) {
+func (bs *BeaconService) GetSlotDetailsBySlot(slot uint64) (*rpctypes.CombinedBlockResponse, error) {
 	var result *rpctypes.CombinedBlockResponse
 	if cachedBlocks := bs.indexer.GetCachedBlocks(slot); len(cachedBlocks) > 0 {
 		var cachedBlock *indexer.CacheBlock
@@ -224,12 +218,6 @@ func (bs *BeaconService) GetSlotDetailsBySlot(slot uint64, withBlobs bool) (*rpc
 		}
 	}
 
-	if result.Block.Message.Body.BlobKzgCommitments != nil && withBlobs && utils.EpochOfSlot(uint64(result.Header.Message.Slot)) >= utils.Config.Chain.Config.DenebForkEpoch {
-		blobs, _ := bs.indexer.GetRpcClient(true, result.Root).GetBlobSidecarsByBlockroot(result.Root)
-		if blobs != nil {
-			result.Blobs = blobs
-		}
-	}
 	return result, nil
 }
 
@@ -260,7 +248,6 @@ func (bs *BeaconService) GetOrphanedBlock(blockroot []byte) *rpctypes.CombinedBl
 		Root:     orphanedBlock.Root,
 		Header:   &header,
 		Block:    &block,
-		Blobs:    nil,
 		Orphaned: true,
 	}
 }
