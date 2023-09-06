@@ -80,7 +80,15 @@
           <div class="card block-card">
             <div style="margin-bottom: -.25rem;" class="card-body px-0 py-1">
               <div class="row p-1 mx-0">
-                <h3 class="h5 col-md-12 text-center"><b>Showing {{ .Block.AttestationsCount }} Attestations </b></h3>
+                <div class="d-none d-md-block col-md-4"></div>
+                <h3 class="h5 col-12 col-md-4 text-center">
+                  <b>Showing {{ .Block.AttestationsCount }} Attestations</b>
+                </h3>
+                <div class="col-md-4 text-center text-md-end">
+                  {{ if not .Block.DutiesLoaded -}}
+                  <a class="btn btn-primary" href="?duties=1#attestations" role="button" data-bs-toggle="tooltip" data-bs-placement="bottom" data-bs-title="This might take a few seconds">Load Validator Indexes</a>
+                  {{- end }}
+                </div>
               </div>
             </div>
           </div>

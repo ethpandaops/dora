@@ -71,6 +71,12 @@ type SlotAssignment struct {
 	Proposer uint64 `db:"proposer"`
 }
 
+type SyncAssignment struct {
+	Period    uint64 `db:"period"`
+	Index     uint32 `db:"index"`
+	Validator uint64 `db:"validator"`
+}
+
 type UnfinalizedBlock struct {
 	Root   []byte `db:"root"`
 	Slot   uint64 `db:"slot"`
