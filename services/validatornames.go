@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/pk910/light-beaconchain-explorer/config"
 	"github.com/pk910/light-beaconchain-explorer/db"
 	"github.com/pk910/light-beaconchain-explorer/dbtypes"
 	"github.com/pk910/light-beaconchain-explorer/utils"
@@ -53,7 +54,12 @@ func (vn *ValidatorNames) LoadValidatorNames() {
 		vn.namesMutex.Unlock()
 
 		// load names
-		if utils.Config.Frontend.ValidatorNamesYaml != "" {
+		if strings.HasPrefix(utils.Config.Frontend.ValidatorNamesYaml, "~internal/") {
+			err := vn.loadFromInternalYaml(utils.Config.Frontend.ValidatorNamesYaml[10:])
+			if err != nil {
+				logger_vn.WithError(err).Errorf("error while loading validator names from internal yaml")
+			}
+		} else if utils.Config.Frontend.ValidatorNamesYaml != "" {
 			err := vn.loadFromYaml(utils.Config.Frontend.ValidatorNamesYaml)
 			if err != nil {
 				logger_vn.WithError(err).Errorf("error while loading validator names from yaml")
@@ -80,6 +86,7 @@ func (vn *ValidatorNames) loadFromYaml(fileName string) error {
 	if err != nil {
 		return fmt.Errorf("error opening validator names file %v: %v", fileName, err)
 	}
+	defer f.Close()
 
 	namesYaml := map[string]string{}
 	decoder := yaml.NewDecoder(f)
@@ -88,10 +95,36 @@ func (vn *ValidatorNames) loadFromYaml(fileName string) error {
 		return fmt.Errorf("error decoding validator names file %v: %v", fileName, err)
 	}
 
+	nameCount := vn.parseNamesMap(namesYaml)
+	logger_vn.Infof("loaded %v validator names from yaml (%v)", nameCount, fileName)
+
+	return nil
+}
+
+func (vn *ValidatorNames) loadFromInternalYaml(fileName string) error {
+	f, err := config.ValidatorNamesYml.Open(fileName)
+	if err != nil {
+		return fmt.Errorf("could not find internal validator names file %v: %v", fileName, err)
+	}
+
+	namesYaml := map[string]string{}
+	decoder := yaml.NewDecoder(f)
+	err = decoder.Decode(&namesYaml)
+	if err != nil {
+		return fmt.Errorf("could not find internal validator names file %v: %v", fileName, err)
+	}
+
+	nameCount := vn.parseNamesMap(namesYaml)
+	logger_vn.Infof("loaded %v validator names from internal yaml (%v)", nameCount, fileName)
+
+	return nil
+}
+
+func (vn *ValidatorNames) parseNamesMap(names map[string]string) int {
 	vn.namesMutex.Lock()
 	defer vn.namesMutex.Unlock()
 	nameCount := 0
-	for idxStr, name := range namesYaml {
+	for idxStr, name := range names {
 		rangeParts := strings.Split(idxStr, "-")
 		minIdx, err := strconv.ParseUint(rangeParts[0], 10, 64)
 		if err != nil {
@@ -109,9 +142,7 @@ func (vn *ValidatorNames) loadFromYaml(fileName string) error {
 			nameCount++
 		}
 	}
-	logger_vn.Infof("loaded %v validator names from yaml (%v)", nameCount, fileName)
-
-	return nil
+	return nameCount
 }
 
 type validatorNamesRangesResponse struct {

@@ -39,6 +39,8 @@ func ReadConfig(cfg *types.Config, path string) error {
 			err = yaml.Unmarshal([]byte(config.PraterChainYml), &chainConfig)
 		case "sepolia":
 			err = yaml.Unmarshal([]byte(config.SepoliaChainYml), &chainConfig)
+		case "holesky":
+			err = yaml.Unmarshal([]byte(config.HoleskyChainYml), &chainConfig)
 		default:
 			return fmt.Errorf("tried to set known chain-config, but unknown chain-name")
 		}
@@ -110,6 +112,16 @@ func ReadConfig(cfg *types.Config, path string) error {
 			cfg.Chain.GenesisTimestamp = 1655733600
 		default:
 			cfg.Chain.GenesisTimestamp = uint64(cfg.Chain.Config.MinGenesisTime) + cfg.Chain.Config.GenesisDelay
+		}
+	}
+
+	// default validator names
+	if cfg.Frontend.ValidatorNamesYaml == "" && cfg.Frontend.ValidatorNamesInventory == "" {
+		switch cfg.Chain.Name {
+		case "sepolia":
+			cfg.Frontend.ValidatorNamesYaml = "~internal/sepolia.names.yml"
+		case "holesky":
+			cfg.Frontend.ValidatorNamesYaml = "~internal/holesky.names.yml"
 		}
 	}
 
