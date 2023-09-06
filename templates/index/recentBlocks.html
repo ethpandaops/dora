@@ -29,7 +29,7 @@
                   {{ else }}
                     <td><a href="/slot/{{ $block.Slot }}">{{ formatAddCommas $block.Slot }}</a></td>
                   {{ end }}
-                  <td>{{ ethBlockLink $block.EthBlock }}</td>
+                  <td>{{ if $block.WithEthBlock }}{{ ethBlockLink $block.EthBlock }}{{ else }}-{{ end }}</td>
                   <td>
                     {{ if eq $block.Slot 0 }}
                       <span class="badge rounded-pill text-bg-info">Genesis</span>

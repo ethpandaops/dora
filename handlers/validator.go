@@ -170,8 +170,11 @@ func buildValidatorPageData(validatorIndex uint64) (*models.ValidatorPageData, t
 		}
 		if blockData.Block != nil {
 			blockEntry.Graffiti = blockData.Block.Graffiti
-			blockEntry.EthBlock = blockData.Block.EthBlockNumber
 			blockEntry.BlockRoot = fmt.Sprintf("0x%x", blockData.Block.Root)
+			if blockData.Block.EthBlockNumber != nil {
+				blockEntry.WithEthBlock = true
+				blockEntry.EthBlock = *blockData.Block.EthBlockNumber
+			}
 		}
 		pageData.RecentBlocks = append(pageData.RecentBlocks, &blockEntry)
 	}

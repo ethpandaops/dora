@@ -127,9 +127,12 @@ func buildValidatorSlotsPageData(validator uint64, pageIdx uint64, pageSize uint
 			slotData.AttesterSlashingCount = dbBlock.AttesterSlashingCount
 			slotData.SyncParticipation = float64(dbBlock.SyncParticipation) * 100
 			slotData.EthTransactionCount = dbBlock.EthTransactionCount
-			slotData.EthBlockNumber = dbBlock.EthBlockNumber
 			slotData.Graffiti = dbBlock.Graffiti
 			slotData.BlockRoot = dbBlock.Root
+			if dbBlock.EthBlockNumber != nil {
+				slotData.WithEthBlock = true
+				slotData.EthBlockNumber = *dbBlock.EthBlockNumber
+			}
 		}
 		pageData.Slots = append(pageData.Slots, slotData)
 	}

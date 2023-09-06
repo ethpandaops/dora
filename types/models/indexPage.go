@@ -58,6 +58,7 @@ type IndexPageDataEpochs struct {
 type IndexPageDataBlocks struct {
 	Epoch        uint64    `json:"epoch"`
 	Slot         uint64    `json:"slot"`
+	WithEthBlock bool      `json:"with_eth_block"`
 	EthBlock     uint64    `json:"eth_block"`
 	Ts           time.Time `json:"ts"`
 	Proposer     uint64    `json:"proposer"`

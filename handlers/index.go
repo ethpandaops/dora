@@ -211,16 +211,20 @@ func buildIndexPageRecentBlocksData(pageData *models.IndexPageData, currentSlot 
 		if blockData.Orphaned == 1 {
 			blockStatus = 2
 		}
-		pageData.RecentBlocks = append(pageData.RecentBlocks, &models.IndexPageDataBlocks{
+		blockModel := &models.IndexPageDataBlocks{
 			Epoch:        utils.EpochOfSlot(blockData.Slot),
 			Slot:         blockData.Slot,
-			EthBlock:     blockData.EthBlockNumber,
 			Ts:           utils.SlotToTime(blockData.Slot),
 			Proposer:     blockData.Proposer,
 			ProposerName: services.GlobalBeaconService.GetValidatorName(blockData.Proposer),
 			Status:       uint64(blockStatus),
 			BlockRoot:    blockData.Root,
-		})
+		}
+		if blockData.EthBlockNumber != nil {
+			blockModel.WithEthBlock = true
+			blockModel.EthBlock = *blockData.EthBlockNumber
+		}
+		pageData.RecentBlocks = append(pageData.RecentBlocks, blockModel)
 	}
 	pageData.RecentBlockCount = uint64(len(pageData.RecentBlocks))
 }

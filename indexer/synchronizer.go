@@ -177,6 +177,9 @@ func (sync *synchronizerState) syncEpoch(syncEpoch uint64, lastTry bool, skipCli
 			if err != nil {
 				return false, client, fmt.Errorf("error fetching slot %v block: %v", slot, err)
 			}
+			if utils.EpochOfSlot(slot) >= utils.Config.Chain.Config.BellatrixForkEpoch && blockRsp.Data.Message.Body.ExecutionPayload == nil {
+				return false, client, fmt.Errorf("error fetching slot %v block: execution payload missing for post-bellatix block", slot)
+			}
 			sync.cachedBlocks[slot] = &CacheBlock{
 				Root:   headerRsp.Data.Root,
 				Slot:   slot,

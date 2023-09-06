@@ -121,7 +121,8 @@ func buildDbBlock(block *CacheBlock, epochStats *EpochStats) *dbtypes.Block {
 
 	if executionPayload := blockBody.Message.Body.ExecutionPayload; executionPayload != nil {
 		dbBlock.EthTransactionCount = uint64(len(executionPayload.Transactions))
-		dbBlock.EthBlockNumber = uint64(executionPayload.BlockNumber)
+		blockNumber := uint64(executionPayload.BlockNumber)
+		dbBlock.EthBlockNumber = &blockNumber
 		dbBlock.EthBlockHash = executionPayload.BlockHash
 
 		if executionPayload.Withdrawals != nil {

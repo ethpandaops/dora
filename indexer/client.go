@@ -360,6 +360,10 @@ func (client *IndexerClient) ensureBlock(block *CacheBlock, header *rpctypes.Sig
 			logger.WithField("client", client.clientName).Warnf("ensure block %v [0x%x] failed (block): %v", block.Slot, block.Root, err)
 			return err
 		}
+		if utils.EpochOfSlot(block.Slot) >= utils.Config.Chain.Config.BellatrixForkEpoch && blockRsp.Data.Message.Body.ExecutionPayload == nil {
+			logger.WithField("client", client.clientName).Warnf("ensure block %v [0x%x] failed (block): execution payload missing for post-bellatix block", block.Slot, block.Root)
+			return err
+		}
 		block.block = &blockRsp.Data
 	}
 	// set seen flag

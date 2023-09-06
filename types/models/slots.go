@@ -41,6 +41,7 @@ type SlotsPageDataSlot struct {
 	AttesterSlashingCount uint64                    `json:"attester_slashing_count"`
 	SyncParticipation     float64                   `json:"sync_participation"`
 	EthTransactionCount   uint64                    `json:"eth_transaction_count"`
+	WithEthBlock          bool                      `json:"with_eth_block"`
 	EthBlockNumber        uint64                    `json:"eth_block_number"`
 	Graffiti              []byte                    `json:"graffiti"`
 	BlockRoot             []byte                    `json:"block_root"`

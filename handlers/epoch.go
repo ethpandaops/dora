@@ -153,9 +153,12 @@ func buildEpochPageData(epoch uint64) (*models.EpochPageData, time.Duration) {
 				AttesterSlashingCount: dbSlot.AttesterSlashingCount,
 				SyncParticipation:     float64(dbSlot.SyncParticipation) * 100,
 				EthTransactionCount:   dbSlot.EthTransactionCount,
-				EthBlockNumber:        dbSlot.EthBlockNumber,
 				Graffiti:              dbSlot.Graffiti,
 				BlockRoot:             dbSlot.Root,
+			}
+			if dbSlot.EthBlockNumber != nil {
+				slotData.WithEthBlock = true
+				slotData.EthBlockNumber = *dbSlot.EthBlockNumber
 			}
 			pageData.Slots = append(pageData.Slots, slotData)
 			blockCount++

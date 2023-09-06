@@ -149,11 +149,14 @@ func buildSlotsPageData(firstSlot uint64, pageSize uint64) (*models.SlotsPageDat
 				AttesterSlashingCount: dbSlot.AttesterSlashingCount,
 				SyncParticipation:     float64(dbSlot.SyncParticipation) * 100,
 				EthTransactionCount:   dbSlot.EthTransactionCount,
-				EthBlockNumber:        dbSlot.EthBlockNumber,
 				Graffiti:              dbSlot.Graffiti,
 				BlockRoot:             dbSlot.Root,
 				ParentRoot:            dbSlot.ParentRoot,
 				ForkGraph:             make([]*models.SlotsPageDataForkGraph, 0),
+			}
+			if dbSlot.EthBlockNumber != nil {
+				slotData.WithEthBlock = true
+				slotData.EthBlockNumber = *dbSlot.EthBlockNumber
 			}
 			pageData.Slots = append(pageData.Slots, slotData)
 			blockCount++

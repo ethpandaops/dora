@@ -36,11 +36,12 @@ type ValidatorPageData struct {
 }
 
 type ValidatorPageDataBlocks struct {
-	Epoch     uint64    `json:"epoch"`
-	Slot      uint64    `json:"slot"`
-	EthBlock  uint64    `json:"eth_block"`
-	Ts        time.Time `json:"ts"`
-	Status    uint64    `json:"status"`
-	BlockRoot string    `json:"block_root"`
-	Graffiti  []byte    `json:"graffiti"`
+	Epoch        uint64    `json:"epoch"`
+	Slot         uint64    `json:"slot"`
+	WithEthBlock bool      `json:"with_eth_block"`
+	EthBlock     uint64    `json:"eth_block"`
+	Ts           time.Time `json:"ts"`
+	Status       uint64    `json:"status"`
+	BlockRoot    string    `json:"block_root"`
+	Graffiti     []byte    `json:"graffiti"`
 }
