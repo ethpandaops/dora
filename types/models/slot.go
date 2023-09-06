@@ -51,8 +51,9 @@ type SlotPageBlockData struct {
 	WithdrawalsCount       uint64                 `json:"withdrawals_count"`
 	BLSChangesCount        uint64                 `json:"bls_changes_count"`
 	VoluntaryExitsCount    uint64                 `json:"voluntaryexits_count"`
-	SlashingsCount         uint64
-	BlobsCount             uint64 `json:"blobs_count"`
+	SlashingsCount         uint64                 `json:"slashings_count"`
+	BlobsCount             uint64                 `json:"blobs_count"`
+	DutiesLoaded           bool                   `json:"duties_loaded"`
 
 	ExecutionData     *SlotPageExecutionData      `json:"execution_data"`
 	Attestations      []*SlotPageAttestation      `json:"attestations"`       // Attestations included in this block

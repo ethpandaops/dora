@@ -55,6 +55,29 @@ func persistEpochData(epoch uint64, blockMap map[uint64]*CacheBlock, epochStats 
 	return nil
 }
 
+func persistSyncAssignments(epoch uint64, epochStats *EpochStats, tx *sqlx.Tx) error {
+	if epoch < utils.Config.Chain.Config.AltairForkEpoch {
+		// no sync committees before altair
+		return nil
+	}
+	period := epoch / utils.Config.Chain.Config.EpochsPerSyncCommitteePeriod
+	isStartOfPeriod := epoch == period*utils.Config.Chain.Config.EpochsPerSyncCommitteePeriod
+	if !isStartOfPeriod && db.IsSyncCommitteeSynchronized(period) {
+		// already synchronized
+		return nil
+	}
+
+	syncAssignments := make([]*dbtypes.SyncAssignment, 0)
+	for idx, val := range epochStats.syncAssignments {
+		syncAssignments = append(syncAssignments, &dbtypes.SyncAssignment{
+			Period:    period,
+			Index:     uint32(idx),
+			Validator: val,
+		})
+	}
+	return db.InsertSyncAssignments(syncAssignments, tx)
+}
+
 func buildDbBlock(block *CacheBlock, epochStats *EpochStats) *dbtypes.Block {
 	blockBody := block.GetBlockBody()
 	if blockBody == nil {

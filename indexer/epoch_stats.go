@@ -124,6 +124,14 @@ func (epochStats *EpochStats) GetProposerAssignments() map[uint64]uint64 {
 	return epochStats.proposerAssignments
 }
 
+func (epochStats *EpochStats) TryGetProposerAssignments() map[uint64]uint64 {
+	if !epochStats.dutiesMutex.TryRLock() {
+		return nil
+	}
+	defer epochStats.dutiesMutex.RUnlock()
+	return epochStats.proposerAssignments
+}
+
 func (epochStats *EpochStats) GetAttestorAssignments() map[string][]uint64 {
 	epochStats.dutiesMutex.RLock()
 	defer epochStats.dutiesMutex.RUnlock()
@@ -132,6 +140,14 @@ func (epochStats *EpochStats) GetAttestorAssignments() map[string][]uint64 {
 
 func (epochStats *EpochStats) GetSyncAssignments() []uint64 {
 	epochStats.dutiesMutex.RLock()
+	defer epochStats.dutiesMutex.RUnlock()
+	return epochStats.syncAssignments
+}
+
+func (epochStats *EpochStats) TryGetSyncAssignments() []uint64 {
+	if !epochStats.dutiesMutex.TryRLock() {
+		return nil
+	}
 	defer epochStats.dutiesMutex.RUnlock()
 	return epochStats.syncAssignments
 }

@@ -273,6 +273,11 @@ func (sync *synchronizerState) syncEpoch(syncEpoch uint64, lastTry bool, skipCli
 		return false, client, fmt.Errorf("error persisting epoch data to db: %v", err)
 	}
 
+	err = persistSyncAssignments(syncEpoch, epochStats, tx)
+	if err != nil {
+		return false, client, fmt.Errorf("error persisting sync committee assignments to db: %v", err)
+	}
+
 	if len(blobs) > 0 {
 		for _, blob := range blobs {
 			err := sync.indexer.BlobStore.saveBlob(blob, tx)

@@ -189,6 +189,12 @@ func (cache *indexerCache) processFinalizedEpoch(epoch uint64) error {
 		return err
 	}
 
+	err = persistSyncAssignments(epoch, epochStats, tx)
+	if err != nil {
+		logger.Errorf("error persisting sync committee assignments to db: %v", err)
+		return err
+	}
+
 	if len(blobs) > 0 {
 		for _, blob := range blobs {
 			err := cache.indexer.BlobStore.saveBlob(blob, tx)
