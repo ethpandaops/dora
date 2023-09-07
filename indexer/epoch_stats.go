@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math"
 	"strconv"
-	"strings"
 	"sync"
 
 	"github.com/pk910/light-beaconchain-explorer/db"
@@ -367,12 +366,11 @@ func (epochStats *EpochStats) loadValidatorStats(client *IndexerClient, stateRef
 	for idx := 0; idx < len(epochValidators.Data); idx++ {
 		validator := epochValidators.Data[idx]
 		validatorStats.ValidatorBalances[uint64(validator.Index)] = uint64(validator.Validator.EffectiveBalance)
-		if !strings.HasPrefix(validator.Status, "active") {
-			continue
+		if uint64(validator.Validator.ActivationEpoch) <= epochStats.Epoch && epochStats.Epoch < uint64(validator.Validator.ExitEpoch) {
+			validatorStats.ValidatorCount++
+			validatorStats.ValidatorBalance += uint64(validator.Balance)
+			validatorStats.EligibleAmount += uint64(validator.Validator.EffectiveBalance)
 		}
-		validatorStats.ValidatorCount++
-		validatorStats.ValidatorBalance += uint64(validator.Balance)
-		validatorStats.EligibleAmount += uint64(validator.Validator.EffectiveBalance)
 	}
 	epochStats.validatorStats = validatorStats
 }
