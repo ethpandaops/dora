@@ -229,6 +229,10 @@ header nav .nav-item:focus-within .dropdown-menu {
   white-space: nowrap;
 }
 
+.table .template-row {
+  display: none;
+}
+
 span.validator-label {
   white-space: nowrap;
 }

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"math"
 	"net/http"
@@ -36,6 +37,16 @@ func Index(w http.ResponseWriter, r *http.Request) {
 
 	if handleTemplateError(w, r, "index.go", "Index", "", indexTemplate.ExecuteTemplate(w, "layout", data)) != nil {
 		return // an error has occurred and was processed
+	}
+}
+
+func IndexData(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	pageData := getIndexPageData()
+	err := json.NewEncoder(w).Encode(pageData)
+	if err != nil {
+		logrus.WithError(err).Error("error encoding index data")
+		http.Error(w, "Internal server error", http.StatusServiceUnavailable)
 	}
 }
 

@@ -22,7 +22,7 @@
           {{ if gt .RecentBlockCount 0 }}
             <tbody>
               {{ range $i, $block := .RecentBlocks }}
-                <tr>
+                <tr data-root="{{ printf "%x" $block.BlockRoot }}">
                   <td><a href="/epoch/{{ $block.Epoch }}">{{ formatAddCommas $block.Epoch }}</a></td>
                   {{ if eq .Status 2 }}
                   <td><a href="/slot/0x{{ printf "%x" $block.BlockRoot }}">{{ formatAddCommas $block.Slot }}</a></td>
@@ -50,7 +50,7 @@
             </tbody>
           {{ else }}
             <tbody>
-              <tr>
+              <tr data-root="none">
                 <td style="text-align: center;" colspan="6">
                   no blocks found
                 </td>
