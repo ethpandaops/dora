@@ -31,9 +31,6 @@ var SepoliaChainYml string
 //go:embed holesky.chain.yml
 var HoleskyChainYml string
 
-//go:embed testnet.chain.yml
-var TestnetChainYml string
-
 // validator names
 //
 //go:embed *.names.yml

@@ -25,14 +25,14 @@ frontend:
 
   # Name of the site, displayed in the title tag
   siteName: "Beaconchain Light"
-  siteSubtitle: "Ephemery"
+  siteSubtitle: ""
   
   # link to EL Explorer
-  ethExplorerLink: "https://explorer.ephemery.dev/"
+  ethExplorerLink: ""
 
   # file or inventory url to load validator names from
-  validatorNamesYaml: "validator_names.yaml"
-  #validatorNamesInventory: "https://config.4844-devnet-7.ethpandaops.io/api/v1/nodes/validator-ranges"
+  validatorNamesYaml: ""
+  validatorNamesInventory: ""
   
 beaconapi:
   # CL Client RPC
