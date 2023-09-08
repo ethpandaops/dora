@@ -98,7 +98,6 @@ func buildIndexPageData() (*models.IndexPageData, time.Duration) {
 		CurrentEpoch:          uint64(currentEpoch),
 		CurrentFinalizedEpoch: finalizedEpoch,
 		CurrentSlot:           currentSlot,
-		CurrentSlotIndex:      currentSlotIndex,
 		CurrentScheduledCount: utils.Config.Chain.Config.SlotsPerEpoch - currentSlotIndex,
 		CurrentEpochProgress:  float64(100) * float64(currentSlotIndex) / float64(utils.Config.Chain.Config.SlotsPerEpoch),
 	}
@@ -205,8 +204,6 @@ func buildIndexPageRecentEpochsData(pageData *models.IndexPageData, currentEpoch
 			Finalized:         finalizedEpoch >= int64(epochData.Epoch),
 			EligibleEther:     epochData.Eligible,
 			TargetVoted:       epochData.VotedTarget,
-			HeadVoted:         epochData.VotedHead,
-			TotalVoted:        epochData.VotedTotal,
 			VoteParticipation: voteParticipation,
 		})
 	}

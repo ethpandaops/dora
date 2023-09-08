@@ -20,7 +20,7 @@
             </tr>
           </thead>
           <tbody class="template-tbody">
-            {{ html "<!-- ko foreach: recent_blocks -->" }}
+            {{ html "<!-- ko foreach: blocks -->" }}
             <tr class="template-row">
               <td><a data-bind="attr: {href: '/epoch/'+epoch}, text: $root.formatAddCommas(epoch)"></a></td>
               <td>
@@ -28,7 +28,7 @@
                 <div data-bind="ifnot: (status == 2)"><a data-bind="attr: {href: '/slot/' + slot}, text: $root.formatAddCommas(slot)"></a></div>
               </td>
               <td>
-                <div data-bind="if: with_eth_block">
+                <div data-bind="if: has_block">
                   <div data-bind="if: eth_link">
                     <a data-bind="attr: {href: eth_link}, text: $root.formatAddCommas(eth_block)"></a>
                   </div>
@@ -36,7 +36,7 @@
                     <span data-bind="text: $root.formatAddCommas(eth_block)"></span>
                   </div>
                 </div>
-                <div data-bind="ifnot: with_eth_block">-</div>
+                <div data-bind="ifnot: has_block">-</div>
               </td>
               <td>
                 <span data-bind="if: slot == 0" class="badge rounded-pill text-bg-info">Genesis</span>
@@ -51,7 +51,7 @@
               <td data-bind="html: $root.formatValidator(proposer, proposer_name)"></td>
             </tr>
             {{ html "<!-- /ko -->" }}
-            {{ html "<!-- ko if: recent_blocks().length == 0 -->" }}
+            {{ html "<!-- ko if: blocks().length == 0 -->" }}
             <tr class="template-row">
               <td style="text-align: center;" colspan="6">
                 no blocks found

@@ -1,9 +1,9 @@
 {{ define "networkOverview" }}
   <div style="position:relative" class="card mt-3 index-stats">
-    <div style="position:absolute; border-bottom-left-radius: 0; border-bottom-right-radius: 0; font-size:.70rem; height:.8rem;" class="progress w-100" data-placement="bottom" title="This epoch is {{ formatFloat .CurrentEpochProgress 0 }}% complete" data-bind="attr: {title: 'This epoch is ' + $root.formatFloat(current_epoch_progress, 0) + '% complete'}">
-      <div style="width:{{ formatFloat .CurrentEpochProgress 0 }}%; padding: 0.3rem;" class="progress-bar bg-secondary" role="progressbar" :aria-valuenow="scheduledCount" aria-valuemin="0" aria-valuemax="32" data-bind="attr: {style: 'padding: 0.3rem;'}, style: {width: $root.formatFloat(current_epoch_progress(), 0)+'%'}">
+    <div style="position:absolute; border-bottom-left-radius: 0; border-bottom-right-radius: 0; font-size:.70rem; height:.8rem;" class="progress w-100" data-placement="bottom" title="This epoch is {{ formatFloat .CurrentEpochProgress 0 }}% complete" data-bind="attr: {title: 'This epoch is ' + $root.formatFloat(cur_epoch_prog(), 0) + '% complete'}">
+      <div style="width:{{ formatFloat .CurrentEpochProgress 0 }}%; padding: 0.3rem;" class="progress-bar bg-secondary" role="progressbar" :aria-valuenow="scheduledCount" aria-valuemin="0" aria-valuemax="32" data-bind="attr: {style: 'padding: 0.3rem;'}, style: {width: $root.formatFloat(cur_epoch_prog(), 0)+'%'}">
         {{- /**/ -}}
-        <span data-bind="text: current_scheduled_count() > 0 ? current_scheduled_count() + ' / ' + slots_per_epoch() + ' slots left in epoch ' + current_epoch() : 'epoch ' + current_epoch() + ' complete'">
+        <span data-bind="text: cur_scheduled() > 0 ? cur_scheduled() + ' / ' + slots_per_epoch() + ' slots left in epoch ' + cur_epoch() : 'epoch ' + cur_epoch() + ' complete'">
           {{ if gt .CurrentScheduledCount 0 -}}
             {{ .CurrentScheduledCount }} / 32 slots left in epoch {{ .CurrentEpoch }}
           {{- else -}}
@@ -20,14 +20,14 @@
             <div class="p-2">
               <div class="text-secondary mb-0">Epoch</div>
               <h5 class="font-weight-normal mb-0">
-                <span data-bs-toggle="tooltip" data-bs-placement="top" title="The most recent epoch" data-bind="text: current_epoch">{{ .CurrentEpoch }}</span> / 
-                <span data-bs-toggle="tooltip" data-bs-placement="top" title="The most recent finalized epoch" data-bind="text: current_finalized_epoch">{{ .CurrentFinalizedEpoch }}</span>
+                <span data-bs-toggle="tooltip" data-bs-placement="top" title="The most recent epoch" data-bind="text: cur_epoch">{{ .CurrentEpoch }}</span> / 
+                <span data-bs-toggle="tooltip" data-bs-placement="top" title="The most recent finalized epoch" data-bind="text: finalized_epoch">{{ .CurrentFinalizedEpoch }}</span>
               </h5>
             </div>
             <div class="text-end p-2">
               <div class="text-secondary mb-0">Current Slot</div>
               <h5 class="font-weight-normal mb-0">
-                <span data-bs-toggle="tooltip" data-bs-placement="top" title="The most recent slot" data-bind="text: current_slot">{{ .CurrentSlot }}</span>
+                <span data-bs-toggle="tooltip" data-bs-placement="top" title="The most recent slot" data-bind="text: cur_slot">{{ .CurrentSlot }}</span>
               </h5>
             </div>
           </div>
@@ -37,18 +37,18 @@
             <div class="p-2">
               <div class="text-secondary mb-0">Active Validators</div>
               <h5 class="font-weight-normal mb-0">
-                <span data-bs-toggle="tooltip" data-bs-placement="top" title="The number of currently active validators" data-bind="text: active_validator_count">{{ .ActiveValidatorCount }}</span>
+                <span data-bs-toggle="tooltip" data-bs-placement="top" title="The number of currently active validators" data-bind="text: active_val">{{ .ActiveValidatorCount }}</span>
               </h5>
             </div>
             <div class="text-end p-2">
               <div class="text-secondary mb-0">
-                <span data-bs-toggle="tooltip" data-bs-placement="top" title="{{ if eq .EnteringValidatorCount 0 }}Currently there are no pending Validators (churn limit is {{ .ValidatorsPerEpoch }} per epoch or {{ .ValidatorsPerDay }} per day with {{ .ActiveValidatorCount }} validators){{ else }}It should take at least {{ .NewDepositProcessAfter }} for a new deposit to be processed and an associated validator to be activated (churn limit is {{ .ValidatorsPerEpoch }} per epoch or {{ .ValidatorsPerDay }} per day with {{ .ActiveValidatorCount }} validators){{ end }}" data-bind="attr: {title: entering_validator_count() > 0 ? 'Currently there are no pending Validators (churn limit is ' + validators_per_epoch() + ' per epoch or ' + validators_per_day() + ' per day with ' + active_validator_count() + ' validators)' : 'It should take at least ' + deposit_queue_delay() + ' for a new deposit to be processed and an associated validator to be activated (churn limit is ' + validators_per_epoch() + ' per epoch or ' + validators_per_day() + ' per day with ' + active_validator_count() + ' validators)'}">
+                <span data-bs-toggle="tooltip" data-bs-placement="top" title="{{ if eq .EnteringValidatorCount 0 }}Currently there are no pending Validators (churn limit is {{ .ValidatorsPerEpoch }} per epoch or {{ .ValidatorsPerDay }} per day with {{ .ActiveValidatorCount }} validators){{ else }}It should take at least {{ .NewDepositProcessAfter }} for a new deposit to be processed and an associated validator to be activated (churn limit is {{ .ValidatorsPerEpoch }} per epoch or {{ .ValidatorsPerDay }} per day with {{ .ActiveValidatorCount }} validators){{ end }}" data-bind="attr: {title: entering_val() > 0 ? 'Currently there are no pending Validators (churn limit is ' + churn_epoch() + ' per epoch or ' + churn_day() + ' per day with ' + active_val() + ' validators)' : 'It should take at least ' + queue_delay() + ' for a new deposit to be processed and an associated validator to be activated (churn limit is ' + churn_epoch() + ' per epoch or ' + churn_day() + ' per day with ' + active_val() + ' validators)'}">
                   Pending Validators
                 </span>
               </div>
               <h5 class="font-weight-normal mb-0">
-                <span data-bs-toggle="tooltip" data-bs-placement="top" title="The number of validators currently waiting to enter the active validator set" data-bind="text: entering_validator_count()">{{ .EnteringValidatorCount }}</span>
-                / <span data-bs-toggle="tooltip" data-bs-placement="top" title="The number of validators currently waiting to exit the active validator set" data-bind="text: exiting_validator_count()">{{ .ExitingValidatorCount }}</span>
+                <span data-bs-toggle="tooltip" data-bs-placement="top" title="The number of validators currently waiting to enter the active validator set" data-bind="text: entering_val()">{{ .EnteringValidatorCount }}</span>
+                / <span data-bs-toggle="tooltip" data-bs-placement="top" title="The number of validators currently waiting to exit the active validator set" data-bind="text: exiting_val()">{{ .ExitingValidatorCount }}</span>
               </h5>
             </div>
           </div>
@@ -58,13 +58,13 @@
             <div class="p-2">
               <div class="text-secondary mb-0">Staked Ether</div>
               <h5 class="font-weight-normal mb-0">
-                <span data-bs-toggle="tooltip" data-bs-placement="top" title="The sum of all effective balances" data-bind="text: $root.formatEth(total_eligible_ether()) + ' ETH'">{{ formatEthAddCommasFromGwei .TotalEligibleEther }} ETH</span>
+                <span data-bs-toggle="tooltip" data-bs-placement="top" title="The sum of all effective balances" data-bind="text: $root.formatEth(eligible()) + ' ETH'">{{ formatEthAddCommasFromGwei .TotalEligibleEther }} ETH</span>
               </h5>
             </div>
             <div class="text-end p-2">
               <div class="text-secondary mb-0">Average Balance</div>
               <h5 class="font-weight-normal mb-0">
-                <span data-bs-toggle="tooltip" data-bs-placement="top" title="The average current balance of all validators staked" data-bind="text: $root.formatEth(avg_validator_balance()) + ' ETH'">{{ formatEthFromGwei .AverageValidatorBalance }}</span>
+                <span data-bs-toggle="tooltip" data-bs-placement="top" title="The average current balance of all validators staked" data-bind="text: $root.formatEth(avg_balance()) + ' ETH'">{{ formatEthFromGwei .AverageValidatorBalance }}</span>
               </h5>
             </div>
           </div>
@@ -74,7 +74,7 @@
     <div class="card-body px-0 py-1">
       <div class="row border-bottom p-2 mx-0">
         <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Name of the Network">Network Name:</span></div>
-        <div class="col-md-10" data-bind="text: network_name()">{{ .NetworkName }}</div>
+        <div class="col-md-10" data-bind="text: netname()">{{ .NetworkName }}</div>
       </div>
       <div class="row border-bottom p-2 mx-0">
         <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Name of the Network">Genesis Time:</span></div>

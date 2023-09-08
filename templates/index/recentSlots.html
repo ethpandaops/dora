@@ -20,7 +20,7 @@
             </tr>
           </thead>
           <tbody class="template-tbody">
-            {{ html "<!-- ko foreach: recent_slots -->" }}
+            {{ html "<!-- ko foreach: slots -->" }}
             <tr class="template-row">
               <td class="graph-container" data-bind="style: {width: $root.forktree_width + 'px'}">
                 {{ html "<!-- ko foreach: fork_graph -->" }}
@@ -52,7 +52,7 @@
               <td data-bind="html: $root.formatValidator(proposer, proposer_name)"></td>
             </tr>
             {{ html "<!-- /ko -->" }}
-            {{ html "<!-- ko if: recent_slots().length == 0 -->" }}
+            {{ html "<!-- ko if: slots().length == 0 -->" }}
             <tr class="template-row" style="height: 430px;">
               <td></td>
               <td style="vertical-align: middle;" colspan="4">
