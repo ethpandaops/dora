@@ -5,20 +5,51 @@
     window.setInterval(updateTimers, 1000);
     initHeaderSearch();
   });
+  var tooltipDict = {};
+  var tooltipIdx = 1;
   window.explorer = {
     initControls: initControls,
     renderRecentTime: renderRecentTime,
+    tooltipDict: tooltipDict,
   };
 
   function initControls() {
     // init tooltips
-    var tooltipEls = document.querySelectorAll('[data-bs-toggle="tooltip"]');
-    Array.prototype.forEach.call(tooltipEls, function(tooltipEl) {
-      new bootstrap.Tooltip(tooltipEl)
-    });
+    document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(initTooltip);
+    cleanupTooltips();
 
     // init clipboard buttons
-    var clipboard = new ClipboardJS("[data-clipboard-text]");
+    document.querySelectorAll("[data-clipboard-text]").forEach(initCopyBtn);
+  }
+
+  function initTooltip(el) {
+    if($(el).data("tooltip-init"))
+      return;
+    //console.log("init tooltip", el);
+    var idx = tooltipIdx++;
+    $(el).data("tooltip-init", idx).attr("data-tooltip-idx", idx.toString());
+    $(el).tooltip();
+    var tooltip = bootstrap.Tooltip.getInstance(el);
+    tooltipDict[idx] = {
+      element: el,
+      tooltip: tooltip,
+    };
+  }
+
+  function cleanupTooltips() {
+    Object.keys(explorer.tooltipDict).forEach(function(idx) {
+      var ref = explorer.tooltipDict[idx];
+      if(document.body.contains(ref.element)) return;
+      ref.tooltip.dispose();
+      delete explorer.tooltipDict[idx];
+    });
+  }
+
+  function initCopyBtn(el) {
+    if($(el).data("clipboard-init"))
+      return;
+    $(el).data("clipboard-init", true);
+    var clipboard = new ClipboardJS(el);
     clipboard.on("success", onClipboardSuccess);
     clipboard.on("error", onClipboardError);
   }
