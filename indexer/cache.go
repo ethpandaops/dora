@@ -28,6 +28,7 @@ type indexerCache struct {
 	epochStatsMap           map[uint64][]*EpochStats
 	lastValidatorsEpoch     int64
 	lastValidatorsResp      *rpctypes.StandardV1StateValidatorsResponse
+	genesisResp             *rpctypes.StandardV1GenesisResponse
 	validatorLoadingLimiter chan int
 }
 
@@ -76,6 +77,14 @@ func (cache *indexerCache) setFinalizedHead(epoch int64, root []byte) {
 
 		// trigger processing
 		cache.triggerChan <- true
+	}
+}
+
+func (cache *indexerCache) setGenesis(genesis *rpctypes.StandardV1GenesisResponse) {
+	cache.cacheMutex.Lock()
+	defer cache.cacheMutex.Unlock()
+	if cache.genesisResp == nil {
+		cache.genesisResp = genesis
 	}
 }
 

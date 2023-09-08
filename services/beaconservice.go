@@ -85,7 +85,7 @@ func (bs *BeaconService) GetCachedEpochStats(epoch uint64) *indexer.EpochStats {
 }
 
 func (bs *BeaconService) GetGenesis() (*rpctypes.StandardV1GenesisResponse, error) {
-	return bs.indexer.GetRpcClient(false, nil).GetGenesis()
+	return bs.indexer.GetCachedGenesis(), nil
 }
 
 func (bs *BeaconService) GetSlotDetailsByBlockroot(blockroot []byte) (*rpctypes.CombinedBlockResponse, error) {
