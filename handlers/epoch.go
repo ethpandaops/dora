@@ -66,7 +66,7 @@ func getEpochPageData(epoch uint64) *models.EpochPageData {
 }
 
 func buildEpochPageData(epoch uint64) (*models.EpochPageData, time.Duration) {
-	logrus.Printf("epoch page called: %v", epoch)
+	logrus.Debugf("epoch page called: %v", epoch)
 
 	now := time.Now()
 	currentSlot := utils.TimeToSlot(uint64(now.Unix()))

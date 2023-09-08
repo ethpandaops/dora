@@ -104,7 +104,7 @@ func buildFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string
 		FilterWithOrphaned: withOrphaned,
 		FilterWithMissing:  withMissing,
 	}
-	logrus.Printf("slots_filtered page called: %v:%v [%v]", pageIdx, pageSize, graffiti)
+	logrus.Debugf("slots_filtered page called: %v:%v [%v]", pageIdx, pageSize, graffiti)
 	if pageIdx == 0 {
 		pageData.IsDefaultPage = true
 	}

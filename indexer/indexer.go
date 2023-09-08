@@ -153,6 +153,10 @@ func (indexer *Indexer) GetRpcClient(archive bool, head []byte) *rpc.BeaconClien
 	return readyClient.rpcClient
 }
 
+func (indexer *Indexer) GetCachedGenesis() *rpctypes.StandardV1GenesisResponse {
+	return indexer.indexerCache.genesisResp
+}
+
 func (indexer *Indexer) GetFinalizedEpoch() (int64, []byte) {
 	return indexer.indexerCache.getFinalizedHead()
 }

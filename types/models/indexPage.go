@@ -6,34 +6,34 @@ import (
 
 // IndexPageData is a struct to hold info for the main web page
 type IndexPageData struct {
-	NetworkName             string    `json:"networkName"`
-	DepositContract         string    `json:"depositContract"`
-	ShowSyncingMessage      bool      `json:"show_sync_message"`
-	CurrentEpoch            uint64    `json:"current_epoch"`
-	CurrentFinalizedEpoch   int64     `json:"current_finalized_epoch"`
-	CurrentSlot             uint64    `json:"current_slot"`
-	CurrentSlotIndex        uint64    `json:"current_slot_index"`
-	CurrentScheduledCount   uint64    `json:"current_scheduled_count"`
-	CurrentEpochProgress    float64   `json:"current_epoch_progress"`
-	ActiveValidatorCount    uint64    `json:"active_validator_count"`
-	EnteringValidatorCount  uint64    `json:"entering_validator_count"`
-	ExitingValidatorCount   uint64    `json:"exiting_validator_count"`
-	ValidatorsPerEpoch      uint64    `json:"validators_per_epoch"`
-	ValidatorsPerDay        uint64    `json:"validators_per_day"`
-	TotalEligibleEther      uint64    `json:"total_eligible_ether"`
-	AverageValidatorBalance uint64    `json:"avg_validator_balance"`
-	NewDepositProcessAfter  string    `json:"deposit_queue_delay"`
+	NetworkName             string    `json:"netname"`
+	DepositContract         string    `json:"depaddr"`
+	ShowSyncingMessage      bool      `json:"show_sync"`
+	SlotsPerEpoch           uint64    `json:"slots_per_epoch"`
+	CurrentEpoch            uint64    `json:"cur_epoch"`
+	CurrentFinalizedEpoch   int64     `json:"finalized_epoch"`
+	CurrentSlot             uint64    `json:"cur_slot"`
+	CurrentScheduledCount   uint64    `json:"cur_scheduled"`
+	CurrentEpochProgress    float64   `json:"cur_epoch_prog"`
+	ActiveValidatorCount    uint64    `json:"active_val"`
+	EnteringValidatorCount  uint64    `json:"entering_val"`
+	ExitingValidatorCount   uint64    `json:"exiting_val"`
+	ValidatorsPerEpoch      uint64    `json:"churn_epoch"`
+	ValidatorsPerDay        uint64    `json:"churn_day"`
+	TotalEligibleEther      uint64    `json:"eligible"`
+	AverageValidatorBalance uint64    `json:"avg_balance"`
+	NewDepositProcessAfter  string    `json:"queue_delay"`
 	GenesisTime             time.Time `json:"genesis_time"`
 	GenesisForkVersion      []byte    `json:"genesis_version"`
 	GenesisValidatorsRoot   []byte    `json:"genesis_valroot"`
 
-	NetworkForks     []*IndexPageDataForks  `json:"network_forks"`
-	RecentBlocks     []*IndexPageDataBlocks `json:"recent_blocks"`
-	RecentBlockCount uint64                 `json:"recent_block_count"`
-	RecentEpochs     []*IndexPageDataEpochs `json:"recent_epochs"`
-	RecentEpochCount uint64                 `json:"recent_epoch_count"`
-	RecentSlots      []*IndexPageDataSlots  `json:"recent_slots"`
-	RecentSlotCount  uint64                 `json:"recent_slot_count"`
+	NetworkForks     []*IndexPageDataForks  `json:"forks"`
+	RecentBlocks     []*IndexPageDataBlocks `json:"blocks"`
+	RecentBlockCount uint64                 `json:"block_count"`
+	RecentEpochs     []*IndexPageDataEpochs `json:"epochs"`
+	RecentEpochCount uint64                 `json:"epoch_count"`
+	RecentSlots      []*IndexPageDataSlots  `json:"slots"`
+	RecentSlotCount  uint64                 `json:"slot_count"`
 	ForkTreeWidth    int                    `json:"forktree_width"`
 }
 
@@ -48,18 +48,17 @@ type IndexPageDataEpochs struct {
 	Epoch             uint64    `json:"epoch"`
 	Ts                time.Time `json:"ts"`
 	Finalized         bool      `json:"finalized"`
-	EligibleEther     uint64    `json:"eligibleether"`
-	TargetVoted       uint64    `json:"target_voted"`
-	HeadVoted         uint64    `json:"head_voted"`
-	TotalVoted        uint64    `json:"total_voted"`
-	VoteParticipation float64   `json:"vote_participation"`
+	EligibleEther     uint64    `json:"eligible"`
+	TargetVoted       uint64    `json:"voted"`
+	VoteParticipation float64   `json:"votep"`
 }
 
 type IndexPageDataBlocks struct {
 	Epoch        uint64    `json:"epoch"`
 	Slot         uint64    `json:"slot"`
-	WithEthBlock bool      `json:"with_eth_block"`
+	WithEthBlock bool      `json:"has_block"`
 	EthBlock     uint64    `json:"eth_block"`
+	EthBlockLink string    `json:"eth_link"`
 	Ts           time.Time `json:"ts"`
 	Proposer     uint64    `json:"proposer"`
 	ProposerName string    `json:"proposer_name"`
@@ -76,7 +75,7 @@ type IndexPageDataSlots struct {
 	ProposerName string                    `json:"proposer_name"`
 	Status       uint64                    `json:"status"`
 	BlockRoot    []byte                    `json:"block_root"`
-	ParentRoot   []byte                    `json:"parent_root"`
+	ParentRoot   []byte                    `json:"-"`
 	ForkGraph    []*IndexPageDataForkGraph `json:"fork_graph"`
 }
 

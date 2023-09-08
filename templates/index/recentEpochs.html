@@ -18,8 +18,36 @@
               <th>Voted</th>
             </tr>
           </thead>
-          {{ if gt .RecentEpochCount 0 }}
-            <tbody>
+          <tbody class="template-tbody">
+            {{ html "<!-- ko foreach: epochs -->" }}
+            <tr class="template-row">
+              <td><a data-bind="attr: {href: '/epoch/'+epoch}, text: $root.formatAddCommas(epoch)"></a></td>
+              <td data-bind="attr: {'data-timer': $root.unixtime(ts)}">
+                <span data-bs-toggle="tooltip" data-bs-placement="top" data-bind="attr: {'data-bs-title': $root.timestamp(ts)}, text: $root.formatRecentTimeShort(ts)"></span>
+              </td>
+              <td>
+                <span data-bind="if: finalized" class="badge badge-pill bg-success text-white" style="font-size: 12px; font-weight: 500;">Yes</span>
+                <span data-bind="ifnot: finalized" class="badge badge-pill bg-warning text-white" style="font-size: 12px; font-weight: 500;">No</span>
+              </td>
+              <td data-bind="text: $root.formatEth(eligible)"></td>
+              <td>
+                <div style="position:relative;width:inherit;height:inherit;">
+                  <span data-bind="text: $root.formatEth(voted)"></span> <small class="text-muted ml-3" data-bind="text: '(' + $root.formatFloat(votep, 2) + '%)'"></small>
+                  <div class="progress" style="position:absolute;bottom:-6px;width:100%;height:4px;">
+                    <div class="progress-bar" role="progressbar" data-bind="style: {width: $root.formatFloat(votep, 2)+'%'}, attr: {'aria-valuenow': $root.formatFloat(votep, 2)+'%'}" aria-valuemin="0" aria-valuemax="100"></div>
+                  </div>
+                </div>
+              </td>
+            </tr>
+            {{ html "<!-- /ko -->" }}
+            {{ html "<!-- ko if: epochs().length == 0 -->" }}
+            <tr class="template-row">
+              <td style="text-align: center;" colspan="5">
+                no epochs found
+              </td>
+            </tr>
+            {{ html "<!-- /ko -->" }}
+            {{ if gt .RecentEpochCount 0 }}
               {{ range $i, $epoch := .RecentEpochs }}
                 <tr>
                   <td><a href="/epoch/{{ $epoch.Epoch }}">{{ formatAddCommas $epoch.Epoch }}</a></td>
@@ -36,22 +64,20 @@
                     <div style="position:relative;width:inherit;height:inherit;">
                       {{ formatEthAddCommasFromGwei $epoch.TargetVoted }} <small class="text-muted ml-3">({{ formatFloat $epoch.VoteParticipation 2 }}%)</small>
                       <div class="progress" style="position:absolute;bottom:-6px;width:100%;height:4px;">
-                      <div class="progress-bar" role="progressbar" style="width: {{ formatFloat $epoch.VoteParticipation 2 }}%;" aria-valuenow="{{ formatFloat $epoch.VoteParticipation 2 }}%" aria-valuemin="0" aria-valuemax="100"></div>
+                        <div class="progress-bar" role="progressbar" style="width: {{ formatFloat $epoch.VoteParticipation 2 }}%;" aria-valuenow="{{ formatFloat $epoch.VoteParticipation 2 }}%" aria-valuemin="0" aria-valuemax="100"></div>
                       </div>
                     </div>
                   </td>
                 </tr>
               {{ end }}
-            </tbody>
-          {{ else }}
-            <tbody>
+            {{ else }}
               <tr>
                 <td style="text-align: center;" colspan="5">
                   no epochs found
                 </td>
               </tr>
-            </tbody>
-          {{ end }}
+            {{ end }}
+          </tbody>
         </table>
       </div>
     </div>

@@ -153,6 +153,7 @@ func (client *IndexerClient) checkIndexerClient() error {
 	if genesis.Data.GenesisForkVersion.String() != utils.Config.Chain.Config.GenesisForkVersion {
 		return fmt.Errorf("genesis fork version from RPC does not match the genesis fork version explorer configuration")
 	}
+	client.indexerCache.setGenesis(genesis)
 
 	// check syncronization state
 	syncStatus, err := client.rpcClient.GetNodeSyncing()

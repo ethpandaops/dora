@@ -54,7 +54,7 @@ func getEpochsPageData(firstEpoch uint64, pageSize uint64) *models.EpochsPageDat
 }
 
 func buildEpochsPageData(firstEpoch uint64, pageSize uint64) (*models.EpochsPageData, time.Duration) {
-	logrus.Printf("epochs page called: %v:%v", firstEpoch, pageSize)
+	logrus.Debugf("epochs page called: %v:%v", firstEpoch, pageSize)
 	pageData := &models.EpochsPageData{}
 
 	now := time.Now()

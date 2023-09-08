@@ -2,9 +2,12 @@ package handlers
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"math"
 	"net/http"
+	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -39,6 +42,16 @@ func Index(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func IndexData(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	pageData := getIndexPageData()
+	err := json.NewEncoder(w).Encode(pageData)
+	if err != nil {
+		logrus.WithError(err).Error("error encoding index data")
+		http.Error(w, "Internal server error", http.StatusServiceUnavailable)
+	}
+}
+
 func getIndexPageData() *models.IndexPageData {
 	pageData := &models.IndexPageData{}
 	pageCacheKey := "index"
@@ -51,7 +64,7 @@ func getIndexPageData() *models.IndexPageData {
 }
 
 func buildIndexPageData() (*models.IndexPageData, time.Duration) {
-	logrus.Printf("index page called")
+	logrus.Debugf("index page called")
 
 	recentEpochCount := 7
 	recentBlockCount := 7
@@ -81,10 +94,10 @@ func buildIndexPageData() (*models.IndexPageData, time.Duration) {
 		NetworkName:           utils.Config.Chain.Name,
 		DepositContract:       utils.Config.Chain.Config.DepositContractAddress,
 		ShowSyncingMessage:    !isSynced,
+		SlotsPerEpoch:         utils.Config.Chain.Config.SlotsPerEpoch,
 		CurrentEpoch:          uint64(currentEpoch),
 		CurrentFinalizedEpoch: finalizedEpoch,
 		CurrentSlot:           currentSlot,
-		CurrentSlotIndex:      currentSlotIndex,
 		CurrentScheduledCount: utils.Config.Chain.Config.SlotsPerEpoch - currentSlotIndex,
 		CurrentEpochProgress:  float64(100) * float64(currentSlotIndex) / float64(utils.Config.Chain.Config.SlotsPerEpoch),
 	}
@@ -191,8 +204,6 @@ func buildIndexPageRecentEpochsData(pageData *models.IndexPageData, currentEpoch
 			Finalized:         finalizedEpoch >= int64(epochData.Epoch),
 			EligibleEther:     epochData.Eligible,
 			TargetVoted:       epochData.VotedTarget,
-			HeadVoted:         epochData.VotedHead,
-			TotalVoted:        epochData.VotedTotal,
 			VoteParticipation: voteParticipation,
 		})
 	}
@@ -223,6 +234,9 @@ func buildIndexPageRecentBlocksData(pageData *models.IndexPageData, currentSlot 
 		if blockData.EthBlockNumber != nil {
 			blockModel.WithEthBlock = true
 			blockModel.EthBlock = *blockData.EthBlockNumber
+			if utils.Config.Frontend.EthExplorerLink != "" {
+				blockModel.EthBlockLink, _ = url.JoinPath(utils.Config.Frontend.EthExplorerLink, "block", strconv.FormatUint(blockModel.EthBlock, 10))
+			}
 		}
 		pageData.RecentBlocks = append(pageData.RecentBlocks, blockModel)
 	}

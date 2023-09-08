@@ -86,7 +86,7 @@ func getValidatorPageData(validatorIndex uint64) *models.ValidatorPageData {
 }
 
 func buildValidatorPageData(validatorIndex uint64) (*models.ValidatorPageData, time.Duration) {
-	logrus.Printf("validator page called: %v", validatorIndex)
+	logrus.Debugf("validator page called: %v", validatorIndex)
 
 	validatorSetRsp := services.GlobalBeaconService.GetCachedValidatorSet()
 	validator := validatorSetRsp.Data[validatorIndex]
