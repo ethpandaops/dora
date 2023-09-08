@@ -22,7 +22,7 @@
           <tbody class="template-tbody">
             {{ html "<!-- ko foreach: slots -->" }}
             <tr class="template-row">
-              <td class="graph-container" data-bind="style: {width: $root.forktree_width + 'px'}">
+              <td class="graph-container" data-bind="style: {width: $root.forktree_width() + 'px'}">
                 {{ html "<!-- ko foreach: fork_graph -->" }}
                 <div class="graph-fork" data-bind="attr: {'data-index': index}, style: {left: left + 'px'}">
                   {{ html "<!-- ko foreach: Object.keys(tiles) -->" }}
