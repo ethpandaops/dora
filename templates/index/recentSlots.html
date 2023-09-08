@@ -36,7 +36,7 @@
               </td>
               <td><a data-bind="attr: {href: '/epoch/'+epoch}, text: $root.formatAddCommas(epoch)"></a></td>
               <td>
-                <div data-bind="if: (status == 2)"><a data-bind="attr: {href: '/slot/' + $root.hexstr(blockRoot)}, text: $root.formatAddCommas(slot)"></a></div>
+                <div data-bind="if: (status == 2)"><a data-bind="attr: {href: '/slot/' + $root.hexstr(block_root)}, text: $root.formatAddCommas(slot)"></a></div>
                 <div data-bind="ifnot: (status == 2)"><a data-bind="attr: {href: '/slot/' + slot}, text: $root.formatAddCommas(slot)"></a></div>
               </td>
               <td>
