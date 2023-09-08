@@ -41,7 +41,7 @@ func getClientsPageData() *models.ClientsPageData {
 }
 
 func buildClientsPageData() (*models.ClientsPageData, time.Duration) {
-	logrus.Printf("clients page called")
+	logrus.Debugf("clients page called")
 	pageData := &models.ClientsPageData{
 		Clients: []*models.ClientsPageDataClient{},
 	}

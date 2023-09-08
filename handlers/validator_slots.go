@@ -67,7 +67,7 @@ func buildValidatorSlotsPageData(validator uint64, pageIdx uint64, pageSize uint
 		Index: validator,
 		Name:  services.GlobalBeaconService.GetValidatorName(validator),
 	}
-	logrus.Printf("validator slots page called (%v): %v:%v", validator, pageIdx, pageSize)
+	logrus.Debugf("validator slots page called (%v): %v:%v", validator, pageIdx, pageSize)
 	if pageIdx == 0 {
 		pageData.IsDefaultPage = true
 	}

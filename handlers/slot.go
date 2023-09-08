@@ -198,7 +198,7 @@ func buildSlotPageData(blockSlot int64, blockRoot []byte, loadDuties bool) (*mod
 	} else {
 		return nil, -1
 	}
-	logrus.Printf("slot page called: %v", slot)
+	logrus.Debugf("slot page called: %v", slot)
 
 	pageData := &models.SlotPageData{
 		Slot:           slot,

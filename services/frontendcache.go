@@ -58,7 +58,7 @@ func (fc *FrontendCacheService) ProcessCachedPage(pageKey string, caching bool, 
 	processingPage := fc.processingDict[pageKey]
 	if processingPage != nil {
 		fc.processingMutex.Unlock()
-		logrus.Printf("page already processing: %v", pageKey)
+		logrus.Debugf("page already processing: %v", pageKey)
 
 		processingPage.modelMutex.RLock()
 		defer processingPage.modelMutex.RUnlock()
@@ -88,7 +88,7 @@ func (fc *FrontendCacheService) completePageLoad(pageKey string, processingPage 
 func (fc *FrontendCacheService) processCachedPageData(pageKey string, caching bool, pageData interface{}, buildFn func(pageCall *FrontendCacheProcessingPage) interface{}, pageCall *FrontendCacheProcessingPage) interface{} {
 	// check cache
 	if !utils.Config.Frontend.Debug && caching && fc.GetFrontendCache(pageKey, pageData) == nil {
-		logrus.Printf("page served from cache: %v", pageKey)
+		logrus.Debugf("page served from cache: %v", pageKey)
 		return pageData
 	}
 

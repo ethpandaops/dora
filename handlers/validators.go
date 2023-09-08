@@ -81,7 +81,7 @@ func getValidatorsPageData(firstValIdx uint64, pageSize uint64, sortOrder string
 }
 
 func buildValidatorsPageData(firstValIdx uint64, pageSize uint64, sortOrder string, filterPubKey string, filterIndex string, filterName string, filterStatus string) (*models.ValidatorsPageData, time.Duration) {
-	logrus.Printf("validators page called: %v:%v:%v:%v:%v:%v:%v", firstValIdx, pageSize, sortOrder, filterPubKey, filterIndex, filterName, filterStatus)
+	logrus.Debugf("validators page called: %v:%v:%v:%v:%v:%v:%v", firstValIdx, pageSize, sortOrder, filterPubKey, filterIndex, filterName, filterStatus)
 	pageData := &models.ValidatorsPageData{}
 	cacheTime := 10 * time.Minute
 

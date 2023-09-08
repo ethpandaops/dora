@@ -64,7 +64,7 @@ func getIndexPageData() *models.IndexPageData {
 }
 
 func buildIndexPageData() (*models.IndexPageData, time.Duration) {
-	logrus.Printf("index page called")
+	logrus.Debugf("index page called")
 
 	recentEpochCount := 7
 	recentBlockCount := 7
