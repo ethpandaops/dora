@@ -102,7 +102,10 @@
       </div>
       <div class="row border-bottom p-2 mx-0">
         <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Name of the Network">Network Forks:</span></div>
-        <div class="col-md-10">
+        <div class="col-md-10 template-tbody">
+          {{ html "<!-- ko foreach: forks -->" }}
+            <span class="template-row badge rounded-pill" data-bs-toggle="tooltip" data-bs-placement="top" data-bind="css: {'text-bg-success': active, 'text-bg-secondary': !active }, attr: {title: 'Epoch: ' + epoch + ', Fork Version: ' + $root.hexstr(version)}, text: name"></span>
+          {{ html "<!-- /ko -->" }}
           {{ range $i, $fork := .NetworkForks }}
             {{ if $fork.Active }}
               <span class="badge rounded-pill text-bg-success" data-bs-toggle="tooltip" data-bs-placement="top" title="Epoch: {{ $fork.Epoch }}, Fork Version: 0x{{ printf "%x" $fork.Version }}">{{ $fork.Name }}</span>

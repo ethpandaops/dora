@@ -27,7 +27,7 @@ type IndexPageData struct {
 	GenesisForkVersion      []byte    `json:"genesis_version"`
 	GenesisValidatorsRoot   []byte    `json:"genesis_valroot"`
 
-	NetworkForks     []*IndexPageDataForks  `json:"network_forks"`
+	NetworkForks     []*IndexPageDataForks  `json:"forks"`
 	RecentBlocks     []*IndexPageDataBlocks `json:"blocks"`
 	RecentBlockCount uint64                 `json:"block_count"`
 	RecentEpochs     []*IndexPageDataEpochs `json:"epochs"`
