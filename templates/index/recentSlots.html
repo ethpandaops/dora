@@ -52,7 +52,7 @@
               <td data-bind="html: $root.formatValidator(proposer, proposer_name)"></td>
             </tr>
             {{ html "<!-- /ko -->" }}
-            {{ html "<!-- ko if: recent_blocks().length == 0 -->" }}
+            {{ html "<!-- ko if: recent_slots().length == 0 -->" }}
             <tr class="template-row" style="height: 430px;">
               <td></td>
               <td style="vertical-align: middle;" colspan="4">
