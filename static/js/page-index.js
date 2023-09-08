@@ -1,10 +1,10 @@
 
 (function() {
   window.addEventListener('DOMContentLoaded', function() {
-    window.setInterval(refreshLoop, 500);
+    window.setTimeout(refreshLoop, 500);
   });
 
-  var refreshInterval = 15;
+  var refreshInterval = 15000;
   var lastRefresh = new Date().getTime();
   var isRefreshing = false;
   var viewModel = null;
@@ -20,16 +20,22 @@
   };
 
   function refreshLoop() {
-    var refreshTimeout = Math.ceil(refreshInterval - ((new Date().getTime() - lastRefresh) / 1000));
+    var refreshTimeout = refreshInterval - ((new Date().getTime() - lastRefresh));
     if(refreshTimeout < 0)
       refreshTimeout = 0;
-    document.getElementById("update_timer").innerText = "Next update in " + refreshTimeout + "s";
+    document.getElementById("update_timer").innerText = "Next update in " + Math.ceil(refreshTimeout / 1000) + "s";
 
-    if(refreshTimeout > 0)
-      return;
+    if(refreshTimeout <= 0) {
+      lastRefresh = new Date().getTime();
+      refreshTimeout = refreshInterval;
+      refresh();
+    }
 
-    lastRefresh = new Date().getTime();
-    refresh();
+    if(refreshTimeout > 1000)
+      refreshTimeout -= Math.floor(refreshTimeout/1000)*1000;
+    if(refreshTimeout == 0)
+      refreshTimeout = 1000;
+    window.setTimeout(refreshLoop, refreshTimeout);
   }
 
   async function refresh() {
@@ -59,9 +65,12 @@
     if(!viewModel)
       return createModel(data);
     for(var prop in data) {
-      if(typeof viewModel[prop] == "function")
-        viewModel[prop](data[prop]);
-      else
+      if(typeof viewModel[prop] == "function") {
+        if(viewModel[prop] instanceof ko.observableArray)
+          viewModel[prop](data[prop]||[]);
+        else
+          viewModel[prop](data[prop]);
+      } else
         viewModel[prop] = data[prop];
     }
   }
