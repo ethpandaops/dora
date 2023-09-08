@@ -1,11 +1,12 @@
 
 (function() {
   window.addEventListener('DOMContentLoaded', function() {
-    window.setTimeout(refreshLoop, 500);
+    window.setInterval(scheduleLoop, 500);
   });
 
   var refreshInterval = 15000;
   var lastRefresh = new Date().getTime();
+  var loopTimer = null;
   var isRefreshing = false;
   var viewModel = null;
   var baseModel = {
@@ -19,7 +20,19 @@
     hexstr: function(x) { return "0x" + base64ToHex(x); },
   };
 
+  function scheduleLoop() {
+    if(loopTimer)
+      return;
+    var refreshTimeout = refreshInterval - ((new Date().getTime() - lastRefresh));
+    if(refreshTimeout < 0)
+      refreshTimeout = 0;
+    else if(refreshTimeout > 1000)
+      refreshTimeout -= Math.floor(refreshTimeout/1000)*1000;
+    loopTimer = setTimeout(refreshLoop, refreshTimeout);
+  }
+
   function refreshLoop() {
+    loopTimer = null;
     var refreshTimeout = refreshInterval - ((new Date().getTime() - lastRefresh));
     if(refreshTimeout < 0)
       refreshTimeout = 0;
@@ -30,12 +43,6 @@
       refreshTimeout = refreshInterval;
       refresh();
     }
-
-    if(refreshTimeout > 1000)
-      refreshTimeout -= Math.floor(refreshTimeout/1000)*1000;
-    if(refreshTimeout == 0)
-      refreshTimeout = 1000;
-    window.setTimeout(refreshLoop, refreshTimeout);
   }
 
   async function refresh() {
