@@ -1,11 +1,13 @@
 {{ define "page" }}
-  <div class="container mt-2">
+  <div class="container mt-2" id="frontpage_container">
     {{ template "networkOverview" . }}
+    
     <div class="row">
       <div class="col-lg-6 mt-3 pr-lg-2">
         <div class="startpage-panel">
           {{ template "recentEpochs" . }}
         </div>
+        <div style="height:30px"></div>
         <div class="startpage-panel">
           {{ template "recentBlocks" . }}
         </div>
@@ -16,9 +18,16 @@
         </div>
       </div>
     </div>
+    <div class="row">
+      <div class="col text-end">
+        <small class="mx-2 text-start" id="update_timer"></small>
+      </div>
+    </div>
   </div>
 {{ end }}
 {{ define "js" }}
+  <script src="/js/knockout.min.js"></script>
+  <script src="/js/page-index.js"></script>
 {{ end }}
 {{ define "css" }}
 <link rel="stylesheet" href="/css/forkgraph.css" />
@@ -26,8 +35,9 @@
   #recent-epochs, #recent-blocks, #recent-slots {
     margin-bottom: 0;
   }
-  .startpage-panel {
-    margin-bottom: 30px;
+  #update_timer {
+    display: inline-block;
+    min-width: 120px;
   }
   .startpage-panel .card-header {
     padding-top: 2px;

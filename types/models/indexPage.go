@@ -6,9 +6,10 @@ import (
 
 // IndexPageData is a struct to hold info for the main web page
 type IndexPageData struct {
-	NetworkName             string    `json:"networkName"`
-	DepositContract         string    `json:"depositContract"`
+	NetworkName             string    `json:"network_name"`
+	DepositContract         string    `json:"deposit_contract"`
 	ShowSyncingMessage      bool      `json:"show_sync_message"`
+	SlotsPerEpoch           uint64    `json:"slots_per_epoch"`
 	CurrentEpoch            uint64    `json:"current_epoch"`
 	CurrentFinalizedEpoch   int64     `json:"current_finalized_epoch"`
 	CurrentSlot             uint64    `json:"current_slot"`
@@ -60,6 +61,7 @@ type IndexPageDataBlocks struct {
 	Slot         uint64    `json:"slot"`
 	WithEthBlock bool      `json:"with_eth_block"`
 	EthBlock     uint64    `json:"eth_block"`
+	EthBlockLink string    `json:"eth_link"`
 	Ts           time.Time `json:"ts"`
 	Proposer     uint64    `json:"proposer"`
 	ProposerName string    `json:"proposer_name"`

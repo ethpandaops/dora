@@ -7,6 +7,7 @@
   });
   window.explorer = {
     initControls: initControls,
+    renderRecentTime: renderRecentTime,
   };
 
   function initControls() {
@@ -18,24 +19,28 @@
 
     // init clipboard buttons
     var clipboard = new ClipboardJS("[data-clipboard-text]");
-    clipboard.on("success", function (e) {
-      var title = e.trigger.getAttribute("data-bs-original-title");
-      var tooltip = bootstrap.Tooltip.getInstance(e.trigger);
-      tooltip.setContent({ '.tooltip-inner': 'Copied!' });
-      tooltip.show();
-      setTimeout(function () {
-        tooltip.setContent({ '.tooltip-inner': title });
-      }, 1000);
-    });
-    clipboard.on("error", function (e) {
-      var title = e.trigger.getAttribute("data-bs-original-title");
-      var tooltip = bootstrap.Tooltip.getInstance(e.trigger);
-      tooltip.setContent({ '.tooltip-inner': 'Failed to Copy!' });
-      tooltip.show();
-      setTimeout(function () {
-        tooltip.setContent({ '.tooltip-inner': title });
-      }, 1000);
-    });
+    clipboard.on("success", onClipboardSuccess);
+    clipboard.on("error", onClipboardError);
+  }
+
+  function onClipboardSuccess(e) {
+    var title = e.trigger.getAttribute("data-bs-original-title");
+    var tooltip = bootstrap.Tooltip.getInstance(e.trigger);
+    tooltip.setContent({ '.tooltip-inner': 'Copied!' });
+    tooltip.show();
+    setTimeout(function () {
+      tooltip.setContent({ '.tooltip-inner': title });
+    }, 1000);
+  }
+
+  function onClipboardError(e) {
+    var title = e.trigger.getAttribute("data-bs-original-title");
+    var tooltip = bootstrap.Tooltip.getInstance(e.trigger);
+    tooltip.setContent({ '.tooltip-inner': 'Failed to Copy!' });
+    tooltip.show();
+    setTimeout(function () {
+      tooltip.setContent({ '.tooltip-inner': title });
+    }, 1000);
   }
 
   function updateTimers() {

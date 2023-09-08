@@ -19,10 +19,48 @@
               <th>Proposer</th>
             </tr>
           </thead>
-          {{ if gt .RecentBlockCount 0 }}
-            <tbody>
+          <tbody class="template-tbody">
+            {{ html "<!-- ko foreach: recent_blocks -->" }}
+            <tr class="template-row">
+              <td><a data-bind="attr: {href: '/epoch/'+epoch}, text: $root.formatAddCommas(epoch)"></a></td>
+              <td>
+                <div data-bind="if: (status == 2)"><a data-bind="attr: {href: '/slot/' + $root.hexstr(blockRoot)}, text: $root.formatAddCommas(slot)"></a></div>
+                <div data-bind="ifnot: (status == 2)"><a data-bind="attr: {href: '/slot/' + slot}, text: $root.formatAddCommas(slot)"></a></div>
+              </td>
+              <td>
+                <div data-bind="if: with_eth_block">
+                  <div data-bind="if: eth_link">
+                    <a data-bind="attr: {href: eth_link}, text: $root.formatAddCommas(eth_block)"></a>
+                  </div>
+                  <div data-bind="ifnot: eth_link">
+                    <span data-bind="text: $root.formatAddCommas(eth_block)"></span>
+                  </div>
+                </div>
+                <div data-bind="ifnot: with_eth_block">-</div>
+              </td>
+              <td>
+                <span data-bind="if: slot == 0" class="badge rounded-pill text-bg-info">Genesis</span>
+                <span data-bind="if: slot > 0 && status == 0" class="badge rounded-pill text-bg-warning">Missed</span>
+                <span data-bind="if: slot > 0 && status == 1" class="badge rounded-pill text-bg-success">Proposed</span>
+                <span data-bind="if: slot > 0 && status == 2" class="badge rounded-pill text-bg-info">Missed (Orphaned)</span>
+                <span data-bind="if: slot > 0 && status > 2" class="badge rounded-pill text-bg-dark">Unknown</span>
+              </td>
+              <td data-bind="attr: {'data-timer': $root.unixtime(ts)}">
+                <span data-bs-toggle="tooltip" data-bs-placement="top" data-bind="attr: {'data-bs-title': $root.timestamp(ts)}, text: $root.formatRecentTimeShort(ts)"></span>
+              </td>
+              <td data-bind="html: $root.formatValidator(proposer, proposer_name)"></td>
+            </tr>
+            {{ html "<!-- /ko -->" }}
+            {{ html "<!-- ko if: recent_blocks().length == 0 -->" }}
+            <tr class="template-row">
+              <td style="text-align: center;" colspan="6">
+                no blocks found
+              </td>
+            </tr>
+            {{ html "<!-- /ko -->" }}
+            {{ if gt .RecentBlockCount 0 }}
               {{ range $i, $block := .RecentBlocks }}
-                <tr data-root="{{ printf "%x" $block.BlockRoot }}">
+                <tr>
                   <td><a href="/epoch/{{ $block.Epoch }}">{{ formatAddCommas $block.Epoch }}</a></td>
                   {{ if eq .Status 2 }}
                   <td><a href="/slot/0x{{ printf "%x" $block.BlockRoot }}">{{ formatAddCommas $block.Slot }}</a></td>
@@ -47,16 +85,14 @@
                   <td>{{ formatValidator $block.Proposer $block.ProposerName }}</td>
                 </tr>
               {{ end }}
-            </tbody>
-          {{ else }}
-            <tbody>
-              <tr data-root="none">
+            {{ else }}
+              <tr>
                 <td style="text-align: center;" colspan="6">
                   no blocks found
                 </td>
               </tr>
-            </tbody>
-          {{ end }}
+            {{ end }}
+          </tbody>
         </table>
       </div>
     </div>

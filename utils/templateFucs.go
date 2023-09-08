@@ -16,6 +16,7 @@ import (
 func GetTemplateFuncs() template.FuncMap {
 	return template.FuncMap{
 		"includeHTML": IncludeHTML,
+		"html":        func(x string) template.HTML { return template.HTML(x) },
 		"bigIntCmp":   func(i *big.Int, j int) int { return i.Cmp(big.NewInt(int64(j))) },
 		"mod":         func(i, j int) bool { return i%j == 0 },
 		"sub":         func(i, j int) int { return i - j },

@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -92,6 +94,7 @@ func buildIndexPageData() (*models.IndexPageData, time.Duration) {
 		NetworkName:           utils.Config.Chain.Name,
 		DepositContract:       utils.Config.Chain.Config.DepositContractAddress,
 		ShowSyncingMessage:    !isSynced,
+		SlotsPerEpoch:         utils.Config.Chain.Config.SlotsPerEpoch,
 		CurrentEpoch:          uint64(currentEpoch),
 		CurrentFinalizedEpoch: finalizedEpoch,
 		CurrentSlot:           currentSlot,
@@ -234,6 +237,9 @@ func buildIndexPageRecentBlocksData(pageData *models.IndexPageData, currentSlot 
 		if blockData.EthBlockNumber != nil {
 			blockModel.WithEthBlock = true
 			blockModel.EthBlock = *blockData.EthBlockNumber
+			if utils.Config.Frontend.EthExplorerLink != "" {
+				blockModel.EthBlockLink, _ = url.JoinPath(utils.Config.Frontend.EthExplorerLink, "block", strconv.FormatUint(blockModel.EthBlock, 10))
+			}
 		}
 		pageData.RecentBlocks = append(pageData.RecentBlocks, blockModel)
 	}
