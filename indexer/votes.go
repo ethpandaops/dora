@@ -42,7 +42,6 @@ func aggregateEpochVotes(blockMap map[uint64]*CacheBlock, epoch uint64, epochSta
 		ActivityMap: map[uint64]bool{},
 		VoteCounts:  epochStats.validatorStats == nil,
 	}
-	votedBitsets := make(map[string][]byte)
 
 	for slot := firstSlot; slot <= lastSlot; slot++ {
 		block := blockMap[slot]
@@ -64,15 +63,13 @@ func aggregateEpochVotes(blockMap map[uint64]*CacheBlock, epoch uint64, epochSta
 			attKey := fmt.Sprintf("%v-%v", uint64(att.Data.Slot), uint64(att.Data.Index))
 			voteAmount := uint64(0)
 			voteBitset := att.AggregationBits
-			votedBitset := votedBitsets[attKey]
 			if epochStats.attestorAssignments != nil {
 				voteValidators := epochStats.attestorAssignments[attKey]
 				for bitIdx, validatorIdx := range voteValidators {
-					if votedBitset != nil && utils.BitAtVector(votedBitset, bitIdx) {
-						// don't "double count" votes, if a attestation aggregation has been extended and re-included
-						continue
-					}
 					if utils.BitAtVector(voteBitset, bitIdx) {
+						if votes.ActivityMap[validatorIdx] {
+							continue
+						}
 						if epochStats.validatorStats != nil {
 							voteAmount += uint64(epochStats.validatorStats.ValidatorBalances[validatorIdx])
 						} else {
@@ -81,17 +78,6 @@ func aggregateEpochVotes(blockMap map[uint64]*CacheBlock, epoch uint64, epochSta
 						votes.ActivityMap[validatorIdx] = true
 					}
 				}
-			}
-
-			if votedBitset != nil {
-				// merge bitsets
-				for i := 0; i < len(votedBitset); i++ {
-					votedBitset[i] |= voteBitset[i]
-				}
-			} else {
-				votedBitset = make([]byte, len(voteBitset))
-				copy(votedBitset, voteBitset)
-				votedBitsets[attKey] = voteBitset
 			}
 
 			if bytes.Equal(att.Data.Target.Root, targetRoot) {
