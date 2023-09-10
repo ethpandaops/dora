@@ -132,14 +132,8 @@ func (cache *indexerCache) processFinalizedEpoch(epoch uint64) error {
 
 	// get epoch stats
 	client := cache.indexer.GetReadyClient(true, nil, nil)
-	epochStats, isNewStats := cache.createOrGetEpochStats(epoch, epochDependentRoot)
-	if isNewStats {
-		logger.Warnf("missing epoch stats during finalization processing (epoch: %v)", epoch)
-		if client != nil {
-			client.ensureEpochStats(epoch, client.lastHeadRoot)
-			time.Sleep(10 * time.Millisecond)
-		}
-	}
+	epochStats, _ := cache.createOrGetEpochStats(epoch, epochDependentRoot)
+	epochStats.ensureEpochStatsLazy(client, nil)
 
 	// get canonical blocks
 	canonicalMap := map[uint64]*CacheBlock{}
@@ -189,10 +183,12 @@ func (cache *indexerCache) processFinalizedEpoch(epoch uint64) error {
 		return err
 	}
 
-	err = persistSyncAssignments(epoch, epochStats, tx)
-	if err != nil {
-		logger.Errorf("error persisting sync committee assignments to db: %v", err)
-		return err
+	if len(epochStats.syncAssignments) > 0 {
+		err = persistSyncAssignments(epoch, epochStats, tx)
+		if err != nil {
+			logger.Errorf("error persisting sync committee assignments to db: %v", err)
+			return err
+		}
 	}
 
 	if len(blobs) > 0 {
