@@ -12,6 +12,7 @@ type IndexPageData struct {
 	SlotsPerEpoch           uint64    `json:"slots_per_epoch"`
 	CurrentEpoch            uint64    `json:"cur_epoch"`
 	CurrentFinalizedEpoch   int64     `json:"finalized_epoch"`
+	CurrentJustifiedEpoch   int64     `json:"justified_epoch"`
 	CurrentSlot             uint64    `json:"cur_slot"`
 	CurrentScheduledCount   uint64    `json:"cur_scheduled"`
 	CurrentEpochProgress    float64   `json:"cur_epoch_prog"`
@@ -48,6 +49,7 @@ type IndexPageDataEpochs struct {
 	Epoch             uint64    `json:"epoch"`
 	Ts                time.Time `json:"ts"`
 	Finalized         bool      `json:"finalized"`
+	Justified         bool      `json:"justified"`
 	EligibleEther     uint64    `json:"eligible"`
 	TargetVoted       uint64    `json:"voted"`
 	VoteParticipation float64   `json:"votep"`

@@ -77,7 +77,8 @@ func (bs *BeaconService) GetCachedValidatorSet() *rpctypes.StandardV1StateValida
 }
 
 func (bs *BeaconService) GetFinalizedEpoch() (int64, []byte) {
-	return bs.indexer.GetFinalizedEpoch()
+	finalizedEpoch, finalizedRoot, _, _ := bs.indexer.GetFinalizationCheckpoints()
+	return finalizedEpoch, finalizedRoot
 }
 
 func (bs *BeaconService) GetCachedEpochStats(epoch uint64) *indexer.EpochStats {
@@ -253,7 +254,7 @@ func (bs *BeaconService) GetOrphanedBlock(blockroot []byte) *rpctypes.CombinedBl
 }
 
 func (bs *BeaconService) GetEpochAssignments(epoch uint64) (*rpctypes.EpochAssignments, error) {
-	finalizedEpoch, _ := bs.indexer.GetFinalizedEpoch()
+	finalizedEpoch, _ := bs.GetFinalizedEpoch()
 
 	if int64(epoch) > finalizedEpoch {
 		epochStats := bs.indexer.GetCachedEpochStats(epoch)
@@ -301,7 +302,7 @@ func (bs *BeaconService) GetProposerAssignments(firstEpoch uint64, lastEpoch uin
 	proposerAssignments = make(map[uint64]uint64)
 	synchronizedEpochs = make(map[uint64]bool)
 
-	finalizedEpoch, _ := bs.indexer.GetFinalizedEpoch()
+	finalizedEpoch, _ := bs.GetFinalizedEpoch()
 	idxMinEpoch := finalizedEpoch + 1
 	idxHeadEpoch := utils.EpochOfSlot(bs.indexer.GetHighestSlot())
 	if firstEpoch > idxHeadEpoch {
@@ -349,7 +350,7 @@ func (bs *BeaconService) GetDbEpochs(firstEpoch uint64, limit uint32) []*dbtypes
 	dbIdx := 0
 	dbCnt := len(dbEpochs)
 
-	finalizedEpoch, _ := bs.indexer.GetFinalizedEpoch()
+	finalizedEpoch, _ := bs.GetFinalizedEpoch()
 	var idxMinEpoch, idxHeadEpoch uint64
 	idxMinEpoch = uint64(finalizedEpoch + 1)
 	idxHeadEpoch = utils.EpochOfSlot(bs.indexer.GetHighestSlot())
@@ -381,7 +382,7 @@ func (bs *BeaconService) GetDbBlocks(firstSlot uint64, limit int32, withOrphaned
 	resBlocks := make([]*dbtypes.Block, limit)
 	resIdx := 0
 
-	finalizedEpoch, _ := bs.indexer.GetFinalizedEpoch()
+	finalizedEpoch, _ := bs.GetFinalizedEpoch()
 	idxMinSlot := (finalizedEpoch + 1) * int64(utils.Config.Chain.Config.SlotsPerEpoch)
 	idxHeadSlot := bs.indexer.GetHighestSlot()
 	if firstSlot > idxHeadSlot {
@@ -429,7 +430,7 @@ func (bs *BeaconService) GetDbBlocks(firstSlot uint64, limit int32, withOrphaned
 func (bs *BeaconService) GetDbBlocksForSlots(firstSlot uint64, slotLimit uint32, withOrphaned bool) []*dbtypes.Block {
 	resBlocks := make([]*dbtypes.Block, 0)
 
-	finalizedEpoch, _ := bs.indexer.GetFinalizedEpoch()
+	finalizedEpoch, _ := bs.GetFinalizedEpoch()
 	idxMinSlot := (finalizedEpoch + 1) * int64(utils.Config.Chain.Config.SlotsPerEpoch)
 	idxHeadSlot := bs.indexer.GetHighestSlot()
 	if firstSlot > idxHeadSlot {
@@ -485,7 +486,7 @@ type cachedDbBlock struct {
 
 func (bs *BeaconService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageIdx uint64, pageSize uint32) []*dbtypes.AssignedBlock {
 	cachedMatches := make([]cachedDbBlock, 0)
-	finalizedEpoch, _ := bs.indexer.GetFinalizedEpoch()
+	finalizedEpoch, _ := bs.GetFinalizedEpoch()
 	idxMinSlot := (finalizedEpoch + 1) * int64(utils.Config.Chain.Config.SlotsPerEpoch)
 	idxHeadSlot := bs.indexer.GetHighestSlot()
 	proposedMap := map[uint64]bool{}
@@ -673,7 +674,7 @@ func (bs *BeaconService) GetValidatorActivity() (map[uint64]uint8, uint64) {
 		return activityMap, 0
 	}
 	idxHeadEpoch--
-	finalizedEpoch, _ := bs.indexer.GetFinalizedEpoch()
+	finalizedEpoch, _ := bs.GetFinalizedEpoch()
 	var idxMinEpoch uint64
 	if finalizedEpoch < 0 {
 		idxMinEpoch = 0

@@ -31,6 +31,8 @@ type IndexerClient struct {
 	lastEpochStats     int64
 	lastFinalizedEpoch int64
 	lastFinalizedRoot  []byte
+	lastJustifiedEpoch int64
+	lastJustifiedRoot  []byte
 }
 
 func newIndexerClient(clientIdx uint8, clientName string, rpcClient *rpc.BeaconClient, indexerCache *indexerCache, archive bool, priority int, skipValidators bool) *IndexerClient {
@@ -45,6 +47,7 @@ func newIndexerClient(clientIdx uint8, clientName string, rpcClient *rpc.BeaconC
 		lastHeadSlot:       -1,
 		lastEpochStats:     -1,
 		lastFinalizedEpoch: -1,
+		lastJustifiedEpoch: -1,
 	}
 	go client.runIndexerClientLoop()
 	return &client
@@ -189,17 +192,9 @@ func (client *IndexerClient) runIndexerClient() error {
 	}
 
 	// get finalized header
-	finalizedHeader, err := client.rpcClient.GetFinalizedBlockHead()
+	finalizedSlot, err := client.refreshFinalityCheckpoints()
 	if err != nil {
 		logger.WithField("client", client.clientName).Warnf("could not get finalized header: %v", err)
-	}
-	var finalizedSlot uint64
-	if finalizedHeader != nil {
-		client.cacheMutex.Lock()
-		finalizedSlot = uint64(finalizedHeader.Data.Header.Message.Slot)
-		client.lastFinalizedEpoch = int64(utils.EpochOfSlot(uint64(finalizedHeader.Data.Header.Message.Slot)) - 1)
-		client.lastFinalizedRoot = finalizedHeader.Data.Root
-		client.cacheMutex.Unlock()
 	}
 
 	logger.WithField("client", client.clientName).Debugf("endpoint %v ready: %v ", client.clientName, client.versionStr)
@@ -216,9 +211,7 @@ func (client *IndexerClient) runIndexerClient() error {
 	}
 
 	// set finalized head and trigger epoch processing / synchronization
-	if finalizedHeader != nil {
-		client.indexerCache.setFinalizedHead(client.lastFinalizedEpoch, client.lastFinalizedRoot)
-	}
+	client.indexerCache.setFinalizedHead(client.lastFinalizedEpoch, client.lastFinalizedRoot, client.lastJustifiedEpoch, client.lastJustifiedRoot)
 
 	// process events
 	client.lastStreamEvent = time.Now()
@@ -265,6 +258,22 @@ func (client *IndexerClient) runIndexerClient() error {
 			client.ensureEpochStats(uint64(currentEpoch), client.lastHeadRoot)
 		}
 	}
+}
+
+func (client *IndexerClient) refreshFinalityCheckpoints() (uint64, error) {
+	finalizedCheckpoints, err := client.rpcClient.GetFinalityCheckpoints()
+	if err != nil {
+		return 0, err
+	}
+	var finalizedSlot uint64
+	client.cacheMutex.Lock()
+	finalizedSlot = uint64(finalizedCheckpoints.Data.Finalized.Epoch) * utils.Config.Chain.Config.SlotsPerEpoch
+	client.lastFinalizedEpoch = int64(finalizedCheckpoints.Data.Finalized.Epoch) - 1
+	client.lastFinalizedRoot = finalizedCheckpoints.Data.Finalized.Root
+	client.lastJustifiedEpoch = int64(finalizedCheckpoints.Data.CurrentJustified.Epoch) - 1
+	client.lastJustifiedRoot = finalizedCheckpoints.Data.CurrentJustified.Root
+	client.cacheMutex.Unlock()
+	return finalizedSlot, nil
 }
 
 func (client *IndexerClient) prefillCache(finalizedSlot uint64, latestHeader *rpctypes.StandardV1BeaconHeaderResponse) error {
@@ -490,7 +499,8 @@ func (client *IndexerClient) processBlockEvent(evt *rpctypes.StandardV1StreamedB
 }
 
 func (client *IndexerClient) processFinalizedEvent(evt *rpctypes.StandardV1StreamedFinalizedCheckpointEvent) error {
-	logger.WithField("client", client.clientName).Debugf("received finalization_checkpoint event: epoch %v [%s]", evt.Epoch, evt.Block.String())
-	client.indexerCache.setFinalizedHead(int64(evt.Epoch)-1, evt.Block)
+	client.refreshFinalityCheckpoints()
+	logger.WithField("client", client.clientName).Debugf("received finalization_checkpoint event: finalized %v [0x%x], justified %v [0x%x]", client.lastFinalizedEpoch, client.lastFinalizedRoot, client.lastJustifiedEpoch, client.lastJustifiedRoot)
+	client.indexerCache.setFinalizedHead(client.lastFinalizedEpoch, client.lastFinalizedRoot, client.lastJustifiedEpoch, client.lastJustifiedRoot)
 	return nil
 }

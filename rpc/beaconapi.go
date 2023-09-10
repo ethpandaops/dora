@@ -226,22 +226,17 @@ func (bc *BeaconClient) GetLatestBlockHead() (*rpctypes.StandardV1BeaconHeaderRe
 	return &parsedHeaders, nil
 }
 
-func (bc *BeaconClient) GetFinalizedBlockHead() (*rpctypes.StandardV1BeaconHeaderResponse, error) {
-	resHeaders, err := bc.get(fmt.Sprintf("%s/eth/v1/beacon/headers/finalized", bc.endpoint))
+func (bc *BeaconClient) GetFinalityCheckpoints() (*rpctypes.StandardV1BeaconStateFinalityCheckpointsResponse, error) {
+	var parsedCheckpoints rpctypes.StandardV1BeaconStateFinalityCheckpointsResponse
+	err := bc.getJson(fmt.Sprintf("%s/eth/v1/beacon/states/head/finality_checkpoints", bc.endpoint), &parsedCheckpoints)
 	if err != nil {
 		if err == errNotFound {
 			// no block found
 			return nil, nil
 		}
-		return nil, fmt.Errorf("error retrieving finalized block header: %v", err)
+		return nil, fmt.Errorf("error retrieving finality checkpoints: %v", err)
 	}
-
-	var parsedHeaders rpctypes.StandardV1BeaconHeaderResponse
-	err = json.Unmarshal(resHeaders, &parsedHeaders)
-	if err != nil {
-		return nil, fmt.Errorf("error parsing header-response for finalized block: %v", err)
-	}
-	return &parsedHeaders, nil
+	return &parsedCheckpoints, nil
 }
 
 func (bc *BeaconClient) GetBlockHeaderByBlockroot(blockroot []byte) (*rpctypes.StandardV1BeaconHeaderResponse, error) {

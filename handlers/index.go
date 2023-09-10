@@ -79,7 +79,7 @@ func buildIndexPageData() (*models.IndexPageData, time.Duration) {
 	currentSlot := utils.TimeToSlot(uint64(now.Unix()))
 	currentSlotIndex := (currentSlot % utils.Config.Chain.Config.SlotsPerEpoch) + 1
 
-	finalizedEpoch, _ := services.GlobalBeaconService.GetFinalizedEpoch()
+	finalizedEpoch, _, justifiedEpoch, _ := services.GlobalBeaconService.GetIndexer().GetFinalizationCheckpoints()
 
 	syncState := dbtypes.IndexerSyncState{}
 	db.GetExplorerState("indexer.syncstate", &syncState)
@@ -97,6 +97,7 @@ func buildIndexPageData() (*models.IndexPageData, time.Duration) {
 		SlotsPerEpoch:         utils.Config.Chain.Config.SlotsPerEpoch,
 		CurrentEpoch:          uint64(currentEpoch),
 		CurrentFinalizedEpoch: finalizedEpoch,
+		CurrentJustifiedEpoch: justifiedEpoch,
 		CurrentSlot:           currentSlot,
 		CurrentScheduledCount: utils.Config.Chain.Config.SlotsPerEpoch - currentSlotIndex,
 		CurrentEpochProgress:  float64(100) * float64(currentSlotIndex) / float64(utils.Config.Chain.Config.SlotsPerEpoch),
@@ -175,7 +176,7 @@ func buildIndexPageData() (*models.IndexPageData, time.Duration) {
 	}
 
 	// load recent epochs
-	buildIndexPageRecentEpochsData(pageData, uint64(currentEpoch), finalizedEpoch, recentEpochCount)
+	buildIndexPageRecentEpochsData(pageData, uint64(currentEpoch), finalizedEpoch, justifiedEpoch, recentEpochCount)
 
 	// load recent blocks
 	buildIndexPageRecentBlocksData(pageData, currentSlot, recentBlockCount)
@@ -186,7 +187,7 @@ func buildIndexPageData() (*models.IndexPageData, time.Duration) {
 	return pageData, 12 * time.Second
 }
 
-func buildIndexPageRecentEpochsData(pageData *models.IndexPageData, currentEpoch uint64, finalizedEpoch int64, recentEpochCount int) {
+func buildIndexPageRecentEpochsData(pageData *models.IndexPageData, currentEpoch uint64, finalizedEpoch int64, justifiedEpoch int64, recentEpochCount int) {
 	pageData.RecentEpochs = make([]*models.IndexPageDataEpochs, 0)
 	epochsData := services.GlobalBeaconService.GetDbEpochs(currentEpoch, uint32(recentEpochCount))
 	for i := 0; i < len(epochsData); i++ {
@@ -202,6 +203,7 @@ func buildIndexPageRecentEpochsData(pageData *models.IndexPageData, currentEpoch
 			Epoch:             epochData.Epoch,
 			Ts:                utils.EpochToTime(epochData.Epoch),
 			Finalized:         finalizedEpoch >= int64(epochData.Epoch),
+			Justified:         justifiedEpoch >= int64(epochData.Epoch),
 			EligibleEther:     epochData.Eligible,
 			TargetVoted:       epochData.VotedTarget,
 			VoteParticipation: voteParticipation,

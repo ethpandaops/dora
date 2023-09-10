@@ -27,6 +27,7 @@ type EpochsPageDataEpoch struct {
 	Epoch                   uint64    `json:"epoch"`
 	Ts                      time.Time `json:"ts"`
 	Finalized               bool      `json:"finalized"`
+	Justified               bool      `json:"justified"`
 	Synchronized            bool      `json:"synchronized"`
 	CanonicalBlockCount     uint64    `json:"canonical_block_count"`
 	OrphanedBlockCount      uint64    `json:"orphaned_block_count"`

@@ -90,7 +90,7 @@ func buildEpochsPageData(firstEpoch uint64, pageSize uint64) (*models.EpochsPage
 	}
 	pageData.LastPageEpoch = pageSize - 1
 
-	finalizedEpoch, _ := services.GlobalBeaconService.GetFinalizedEpoch()
+	finalizedEpoch, _, justifiedEpoch, _ := services.GlobalBeaconService.GetIndexer().GetFinalizationCheckpoints()
 	epochLimit := pageSize
 
 	// load epochs
@@ -111,6 +111,7 @@ func buildEpochsPageData(firstEpoch uint64, pageSize uint64) (*models.EpochsPage
 			Epoch:     epoch,
 			Ts:        utils.EpochToTime(epoch),
 			Finalized: finalized,
+			Justified: justifiedEpoch >= epochIdx,
 		}
 		if dbIdx < dbCnt && dbEpochs[dbIdx] != nil && dbEpochs[dbIdx].Epoch == epoch {
 			dbEpoch := dbEpochs[dbIdx]

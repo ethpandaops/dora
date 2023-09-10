@@ -27,7 +27,8 @@
               </td>
               <td>
                 <span data-bind="if: finalized" class="badge badge-pill bg-success text-white" style="font-size: 12px; font-weight: 500;">Yes</span>
-                <span data-bind="ifnot: finalized" class="badge badge-pill bg-warning text-white" style="font-size: 12px; font-weight: 500;">No</span>
+                <span data-bind="if: !finalized && justified" class="badge badge-pill bg-warning text-white" style="font-size: 12px; font-weight: 500;" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Epoch is justified and will be finalized soon">Just.</span>
+                <span data-bind="ifnot: justified" class="badge badge-pill bg-warning text-white" style="font-size: 12px; font-weight: 500;">No</span>
               </td>
               <td data-bind="text: $root.formatEth(eligible)"></td>
               <td>
@@ -55,6 +56,8 @@
                   <td>
                     {{ if $epoch.Finalized }}
                       <span class="badge badge-pill bg-success text-white" style="font-size: 12px; font-weight: 500;">Yes</span>
+                    {{ else if $epoch.Justified }}
+                      <span class="badge badge-pill bg-warning text-white" style="font-size: 12px; font-weight: 500;" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Epoch is justified and will be finalized soon">Just</span>
                     {{ else }}
                       <span class="badge badge-pill bg-warning text-white" style="font-size: 12px; font-weight: 500;">No</span>
                     {{ end }}

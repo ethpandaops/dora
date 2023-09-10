@@ -98,7 +98,7 @@ func (sync *synchronizerState) runSync() {
 			}
 			retryCount = 0
 			skipClients = nil
-			finalizedEpoch, _ := sync.indexer.indexerCache.getFinalizedHead()
+			finalizedEpoch, _, _, _ := sync.indexer.indexerCache.getFinalizationCheckpoints()
 			sync.stateMutex.Lock()
 			syncEpoch++
 			sync.currentEpoch = syncEpoch

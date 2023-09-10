@@ -19,6 +19,8 @@ type indexerCache struct {
 	lowestSlot              int64
 	finalizedEpoch          int64
 	finalizedRoot           []byte
+	justifiedEpoch          int64
+	justifiedRoot           []byte
 	processedEpoch          int64
 	persistEpoch            int64
 	cleanupEpoch            int64
@@ -68,12 +70,17 @@ func (cache *indexerCache) startSynchronizer(startEpoch uint64) {
 	}
 }
 
-func (cache *indexerCache) setFinalizedHead(epoch int64, root []byte) {
+func (cache *indexerCache) setFinalizedHead(finalizedEpoch int64, finalizedRoot []byte, justifiedEpoch int64, justifiedRoot []byte) {
 	cache.cacheMutex.Lock()
 	defer cache.cacheMutex.Unlock()
-	if epoch > cache.finalizedEpoch {
-		cache.finalizedEpoch = epoch
-		cache.finalizedRoot = root
+
+	if justifiedEpoch > cache.justifiedEpoch {
+		cache.justifiedEpoch = justifiedEpoch
+		cache.justifiedRoot = justifiedRoot
+	}
+	if finalizedEpoch > cache.finalizedEpoch {
+		cache.finalizedEpoch = finalizedEpoch
+		cache.finalizedRoot = finalizedRoot
 
 		// trigger processing
 		cache.triggerChan <- true
@@ -88,10 +95,10 @@ func (cache *indexerCache) setGenesis(genesis *rpctypes.StandardV1GenesisRespons
 	}
 }
 
-func (cache *indexerCache) getFinalizedHead() (int64, []byte) {
+func (cache *indexerCache) getFinalizationCheckpoints() (int64, []byte, int64, []byte) {
 	cache.cacheMutex.RLock()
 	defer cache.cacheMutex.RUnlock()
-	return cache.finalizedEpoch, cache.finalizedRoot
+	return cache.finalizedEpoch, cache.finalizedRoot, cache.justifiedEpoch, cache.justifiedRoot
 }
 
 func (cache *indexerCache) setLastValidators(epoch uint64, validators *rpctypes.StandardV1StateValidatorsResponse) {
@@ -158,7 +165,7 @@ func (cache *indexerCache) isCanonicalBlock(blockRoot []byte, head []byte) bool 
 
 func (cache *indexerCache) getCanonicalDistance(blockRoot []byte, head []byte) (bool, uint64) {
 	if head == nil {
-		head = cache.finalizedRoot
+		head = cache.justifiedRoot
 	}
 	block := cache.getCachedBlock(blockRoot)
 	var blockSlot uint64
@@ -197,7 +204,7 @@ func (cache *indexerCache) getCanonicalDistance(blockRoot []byte, head []byte) (
 
 func (cache *indexerCache) getLastCanonicalBlock(epoch uint64, head []byte) *CacheBlock {
 	if head == nil {
-		head = cache.finalizedRoot
+		head = cache.justifiedRoot
 	}
 	canonicalBlock := cache.getCachedBlock(head)
 	for canonicalBlock != nil && utils.EpochOfSlot(canonicalBlock.Slot) > epoch {

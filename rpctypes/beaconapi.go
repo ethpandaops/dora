@@ -116,3 +116,12 @@ type StandardV1NodeVersionResponse struct {
 		Version string `json:"version"`
 	} `json:"data"`
 }
+
+type StandardV1BeaconStateFinalityCheckpointsResponse struct {
+	Finalized bool `json:"finalized"`
+	Data      struct {
+		PreviousJustified Checkpoint `json:"previous_justified"`
+		CurrentJustified  Checkpoint `json:"current_justified"`
+		Finalized         Checkpoint `json:"finalized"`
+	} `json:"data"`
+}

@@ -314,14 +314,16 @@ func (epochStats *EpochStats) ensureEpochStatsLazy(client *IndexerClient, propos
 		if err != nil {
 			logger.WithField("client", client.clientName).Warnf("error retrieving sync_committees for epoch %v (state: %v): %v", epochStats.Epoch, syncCommitteeState, err)
 		}
-		epochStats.syncAssignments = make([]uint64, len(parsedSyncCommittees.Data.Validators))
-		for i, valIndexStr := range parsedSyncCommittees.Data.Validators {
-			valIndexU64, err := strconv.ParseUint(valIndexStr, 10, 64)
-			if err != nil {
-				logger.WithField("client", client.clientName).Warnf("in sync_committee for epoch %d validator %d has bad validator index: %q", epochStats.Epoch, i, valIndexStr)
-				continue
+		if parsedSyncCommittees != nil {
+			epochStats.syncAssignments = make([]uint64, len(parsedSyncCommittees.Data.Validators))
+			for i, valIndexStr := range parsedSyncCommittees.Data.Validators {
+				valIndexU64, err := strconv.ParseUint(valIndexStr, 10, 64)
+				if err != nil {
+					logger.WithField("client", client.clientName).Warnf("in sync_committee for epoch %d validator %d has bad validator index: %q", epochStats.Epoch, i, valIndexStr)
+					continue
+				}
+				epochStats.syncAssignments[i] = valIndexU64
 			}
-			epochStats.syncAssignments[i] = valIndexU64
 		}
 	}
 }

@@ -157,8 +157,8 @@ func (indexer *Indexer) GetCachedGenesis() *rpctypes.StandardV1GenesisResponse {
 	return indexer.indexerCache.genesisResp
 }
 
-func (indexer *Indexer) GetFinalizedEpoch() (int64, []byte) {
-	return indexer.indexerCache.getFinalizedHead()
+func (indexer *Indexer) GetFinalizationCheckpoints() (int64, []byte, int64, []byte) {
+	return indexer.indexerCache.getFinalizationCheckpoints()
 }
 
 func (indexer *Indexer) GetHighestSlot() uint64 {
