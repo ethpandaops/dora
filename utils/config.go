@@ -35,7 +35,7 @@ func ReadConfig(cfg *types.Config, path string) error {
 		switch cfg.Chain.Name {
 		case "mainnet":
 			err = yaml.Unmarshal([]byte(config.MainnetChainYml), &chainConfig)
-		case "prater":
+		case "goerli", "prater":
 			err = yaml.Unmarshal([]byte(config.PraterChainYml), &chainConfig)
 		case "sepolia":
 			err = yaml.Unmarshal([]byte(config.SepoliaChainYml), &chainConfig)
@@ -106,7 +106,7 @@ func ReadConfig(cfg *types.Config, path string) error {
 		switch cfg.Chain.Name {
 		case "mainnet":
 			cfg.Chain.GenesisTimestamp = 1606824023
-		case "prater":
+		case "goerli", "prater":
 			cfg.Chain.GenesisTimestamp = 1616508000
 		case "sepolia":
 			cfg.Chain.GenesisTimestamp = 1655733600
