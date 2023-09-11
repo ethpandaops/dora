@@ -267,12 +267,13 @@ func (client *IndexerClient) refreshFinalityCheckpoints() (uint64, error) {
 	}
 	var finalizedSlot uint64
 	client.cacheMutex.Lock()
+	defer client.cacheMutex.Unlock()
 	finalizedSlot = uint64(finalizedCheckpoints.Data.Finalized.Epoch) * utils.Config.Chain.Config.SlotsPerEpoch
 	client.lastFinalizedEpoch = int64(finalizedCheckpoints.Data.Finalized.Epoch) - 1
 	client.lastFinalizedRoot = finalizedCheckpoints.Data.Finalized.Root
 	client.lastJustifiedEpoch = int64(finalizedCheckpoints.Data.CurrentJustified.Epoch) - 1
 	client.lastJustifiedRoot = finalizedCheckpoints.Data.CurrentJustified.Root
-	client.cacheMutex.Unlock()
+
 	return finalizedSlot, nil
 }
 
@@ -499,6 +500,7 @@ func (client *IndexerClient) processBlockEvent(evt *rpctypes.StandardV1StreamedB
 }
 
 func (client *IndexerClient) processFinalizedEvent(evt *rpctypes.StandardV1StreamedFinalizedCheckpointEvent) error {
+	time.Sleep(100 * time.Millisecond)
 	client.refreshFinalityCheckpoints()
 	logger.WithField("client", client.clientName).Debugf("received finalization_checkpoint event: finalized %v [0x%x], justified %v [0x%x]", client.lastFinalizedEpoch, client.lastFinalizedRoot, client.lastJustifiedEpoch, client.lastJustifiedRoot)
 	client.indexerCache.setFinalizedHead(client.lastFinalizedEpoch, client.lastFinalizedRoot, client.lastJustifiedEpoch, client.lastJustifiedRoot)

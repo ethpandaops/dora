@@ -53,7 +53,7 @@ func (bc *BeaconClient) get(requrl string) ([]byte, error) {
 		req.Header.Set(headerKey, headerVal)
 	}
 
-	client := &http.Client{Timeout: time.Second * 120}
+	client := &http.Client{Timeout: time.Second * 300}
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
@@ -88,7 +88,7 @@ func (bc *BeaconClient) getJson(requrl string, returnValue interface{}) error {
 		req.Header.Set(headerKey, headerVal)
 	}
 
-	client := &http.Client{Timeout: time.Second * 120}
+	client := &http.Client{Timeout: time.Second * 300}
 	resp, err := client.Do(req)
 	if err != nil {
 		return err
@@ -134,7 +134,7 @@ func (bc *BeaconClient) postJson(requrl string, postData interface{}, returnValu
 		req.Header.Set(headerKey, headerVal)
 	}
 
-	client := &http.Client{Timeout: time.Second * 120}
+	client := &http.Client{Timeout: time.Second * 300}
 	resp, err := client.Do(req)
 	if err != nil {
 		return err
