@@ -229,18 +229,19 @@ func (epochStats *EpochStats) ensureEpochStatsLazy(client *IndexerClient, propos
 				return
 			}
 		}
-		epochStats.proposerAssignments = map[uint64]uint64{}
+		proposerAssignments := map[uint64]uint64{}
 		if whiskActivated {
 			firstSlot := epochStats.Epoch * utils.Config.Chain.Config.SlotsPerEpoch
 			lastSlot := firstSlot + utils.Config.Chain.Config.SlotsPerEpoch - 1
 			for slot := firstSlot; slot <= lastSlot; slot++ {
-				epochStats.proposerAssignments[slot] = math.MaxInt64
+				proposerAssignments[slot] = math.MaxInt64
 			}
 		} else {
 			for _, duty := range proposerRsp.Data {
-				epochStats.proposerAssignments[uint64(duty.Slot)] = uint64(duty.ValidatorIndex)
+				proposerAssignments[uint64(duty.Slot)] = uint64(duty.ValidatorIndex)
 			}
 		}
+		epochStats.proposerAssignments = proposerAssignments
 	}
 
 	// get state root for dependend root
@@ -284,7 +285,8 @@ func (epochStats *EpochStats) ensureEpochStatsLazy(client *IndexerClient, propos
 			logger.WithField("client", client.clientName).Warnf("error retrieving committees data: %v", err)
 			return
 		}
-		epochStats.attestorAssignments = map[string][]uint64{}
+
+		attestorAssignments := map[string][]uint64{}
 		for _, committee := range parsedCommittees.Data {
 			for i, valIndex := range committee.Validators {
 				valIndexU64, err := strconv.ParseUint(valIndex, 10, 64)
@@ -293,12 +295,13 @@ func (epochStats *EpochStats) ensureEpochStatsLazy(client *IndexerClient, propos
 					continue
 				}
 				k := fmt.Sprintf("%v-%v", uint64(committee.Slot), uint64(committee.Index))
-				if epochStats.attestorAssignments[k] == nil {
-					epochStats.attestorAssignments[k] = make([]uint64, 0)
+				if attestorAssignments[k] == nil {
+					attestorAssignments[k] = make([]uint64, 0)
 				}
-				epochStats.attestorAssignments[k] = append(epochStats.attestorAssignments[k], valIndexU64)
+				attestorAssignments[k] = append(attestorAssignments[k], valIndexU64)
 			}
 		}
+		epochStats.attestorAssignments = attestorAssignments
 	}
 
 	// get sync committee duties
@@ -315,15 +318,16 @@ func (epochStats *EpochStats) ensureEpochStatsLazy(client *IndexerClient, propos
 			logger.WithField("client", client.clientName).Warnf("error retrieving sync_committees for epoch %v (state: %v): %v", epochStats.Epoch, syncCommitteeState, err)
 		}
 		if parsedSyncCommittees != nil {
-			epochStats.syncAssignments = make([]uint64, len(parsedSyncCommittees.Data.Validators))
+			syncAssignments := make([]uint64, len(parsedSyncCommittees.Data.Validators))
 			for i, valIndexStr := range parsedSyncCommittees.Data.Validators {
 				valIndexU64, err := strconv.ParseUint(valIndexStr, 10, 64)
 				if err != nil {
 					logger.WithField("client", client.clientName).Warnf("in sync_committee for epoch %d validator %d has bad validator index: %q", epochStats.Epoch, i, valIndexStr)
 					continue
 				}
-				epochStats.syncAssignments[i] = valIndexU64
+				syncAssignments[i] = valIndexU64
 			}
+			epochStats.syncAssignments = syncAssignments
 		}
 	}
 }
