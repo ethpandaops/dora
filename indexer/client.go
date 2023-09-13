@@ -255,7 +255,11 @@ func (client *IndexerClient) runIndexerClient() error {
 		currentEpoch := utils.TimeToEpoch(time.Now())
 		if currentEpoch > client.lastEpochStats {
 			// ensure latest epoch stats are loaded for chain of this client
-			client.ensureEpochStats(uint64(currentEpoch), client.lastHeadRoot)
+			err := client.ensureEpochStats(uint64(currentEpoch), client.lastHeadRoot)
+			if err != nil {
+				client.isConnected = false
+				return err
+			}
 		}
 	}
 }
@@ -344,7 +348,10 @@ func (client *IndexerClient) prefillCache(finalizedSlot uint64, latestHeader *rp
 	}
 	currentEpoch := utils.EpochOfSlot(currentBlock.Slot)
 	for epoch := firstEpoch; epoch <= currentEpoch; epoch++ {
-		client.ensureEpochStats(epoch, currentBlock.Root)
+		err := client.ensureEpochStats(epoch, currentBlock.Root)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil

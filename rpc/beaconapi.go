@@ -101,6 +101,7 @@ func (bc *BeaconClient) getJson(requrl string, returnValue interface{}) error {
 			return errNotFound
 		}
 		data, _ := io.ReadAll(resp.Body)
+		logger.WithField("client", bc.name).Debugf("RPC Error %v: %v", resp.StatusCode, data)
 		return fmt.Errorf("url: %v, error-response: %s", logurl, data)
 	}
 
