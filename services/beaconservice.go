@@ -314,12 +314,19 @@ func (bs *BeaconService) GetProposerAssignments(firstEpoch uint64, lastEpoch uin
 		for epochIdx := int64(firstEpoch); epochIdx >= int64(idxMinEpoch) && epochIdx >= int64(lastEpoch); epochIdx-- {
 			epoch = uint64(epochIdx)
 			epochStats := bs.indexer.GetCachedEpochStats(epoch)
+
 			if epochStats != nil {
 				synchronizedEpochs[epoch] = true
-				for slot, vidx := range epochStats.GetProposerAssignments() {
-					proposerAssignments[slot] = vidx
+				proposers := epochStats.TryGetProposerAssignments()
+				if proposers != nil {
+					for slot, vidx := range proposers {
+						proposerAssignments[slot] = vidx
+					}
+				} else {
+					epochStats = nil
 				}
-			} else {
+			}
+			if epochStats == nil {
 				for idx := uint64(0); idx < utils.Config.Chain.Config.SlotsPerEpoch; idx++ {
 					proposerAssignments[(epoch*utils.Config.Chain.Config.SlotsPerEpoch)+idx] = math.MaxInt64
 				}

@@ -415,6 +415,10 @@ func (client *IndexerClient) pollLatestBlocks() error {
 	if err != nil {
 		return err
 	}
+	err = client.ensureEpochStats(utils.EpochOfSlot(currentBlock.Slot), currentBlock.Root)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -499,6 +503,10 @@ func (client *IndexerClient) processBlockEvent(evt *rpctypes.StandardV1StreamedB
 		return err
 	}
 	err = client.ensureParentBlocks(currentBlock)
+	if err != nil {
+		return err
+	}
+	err = client.ensureEpochStats(utils.EpochOfSlot(currentBlock.Slot), currentBlock.Root)
 	if err != nil {
 		return err
 	}

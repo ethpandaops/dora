@@ -54,6 +54,8 @@ func (fc *FrontendCacheService) SetFrontendCache(pageKey string, value interface
 }
 
 func (fc *FrontendCacheService) ProcessCachedPage(pageKey string, caching bool, returnValue interface{}, buildFn func(pageCall *FrontendCacheProcessingPage) interface{}) interface{} {
+	//fmt.Printf("page call %v (goid: %v)\n", pageKey, utils.Goid())
+
 	fc.processingMutex.Lock()
 	processingPage := fc.processingDict[pageKey]
 	if processingPage != nil {

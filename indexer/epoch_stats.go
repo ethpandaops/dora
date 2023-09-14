@@ -181,6 +181,7 @@ func (client *IndexerClient) ensureEpochStats(epoch uint64, head []byte) error {
 			proposerRsp, err = client.rpcClient.GetProposerDuties(epoch)
 			if err != nil {
 				logger.WithField("client", client.clientName).Warnf("could not load proposer duties for epoch %v: %v", epoch, err)
+				return fmt.Errorf("could not find proposer duties for epoch %v: %v", epoch, err)
 			}
 			if proposerRsp == nil {
 				return fmt.Errorf("could not find proposer duties for epoch %v", epoch)

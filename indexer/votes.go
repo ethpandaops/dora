@@ -3,6 +3,7 @@ package indexer
 import (
 	"bytes"
 	"fmt"
+	"time"
 
 	"github.com/pk910/light-beaconchain-explorer/utils"
 )
@@ -23,6 +24,8 @@ type EpochVotes struct {
 }
 
 func aggregateEpochVotes(blockMap map[uint64]*CacheBlock, epoch uint64, epochStats *EpochStats, targetRoot []byte, currentOnly bool, awaitDutiesLoaded bool) *EpochVotes {
+	t1 := time.Now()
+
 	firstSlot := epoch * utils.Config.Chain.Config.SlotsPerEpoch
 	lastSlot := firstSlot + utils.Config.Chain.Config.SlotsPerEpoch - 1
 	if !currentOnly {
@@ -104,5 +107,6 @@ func aggregateEpochVotes(blockMap map[uint64]*CacheBlock, epoch uint64, epochSta
 		}
 	}
 
+	logger.Debugf("aggregated epoch %v votes in %v\n", epoch, time.Since(t1))
 	return &votes
 }
