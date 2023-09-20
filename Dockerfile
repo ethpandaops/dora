@@ -22,4 +22,4 @@ RUN update-ca-certificates
 COPY --from=build-env /bin/dora-explorer /app
 EXPOSE 8080
 ENTRYPOINT ["./dora-explorer"]
-CMD ["-config=./config/default.config.yml"]
+CMD []
