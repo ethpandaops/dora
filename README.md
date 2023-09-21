@@ -1,4 +1,4 @@
-# Lightweight Beaconchain Explorer
+# Dora the Beaconchain Explorer
 
 [![Badge](https://github.com/pk910/dora-the-explorer/actions/workflows/build-master.yml/badge.svg)](https://github.com/pk910/dora-the-explorer/actions?query=workflow%3A%22Build+master%22)
 [![Go Report Card](https://goreportcard.com/badge/github.com/pk910/dora-the-explorer)](https://goreportcard.com/report/github.com/pk910/dora-the-explorer)
