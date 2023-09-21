@@ -88,14 +88,14 @@ jobs:
           ## Latest automatically built executables. (Unstable development snapshot)
           Built from master branch (commit: ${{ github.sha }})
 
-          Please read the [wiki](https://github.com/pk910/light-beaconchain-explorer/wiki) for setup / configuration instructions.
+          Please read the [wiki](https://github.com/pk910/dora-the-explorer/wiki) for setup / configuration instructions.
 
           ### Release Artifacts
           | Release File  | Description |
           | ------------- | ------------- |
-          | [explorer_windows_amd64.exe](https://github.com/pk910/light-beaconchain-explorer/releases/download/snapshot/explorer_windows_amd64.exe) | explorer executable for windows (64bit) |
-          | [explorer_linux_amd64](https://github.com/pk910/light-beaconchain-explorer/releases/download/snapshot/explorer_linux_amd64) | explorer executable for linux (64bit) |
-          | [explorer_darwin_amd64](https://github.com/pk910/light-beaconchain-explorer/releases/download/snapshot/explorer_darwin_amd64) | explorer executable for macos (64bit) |
+          | [explorer_windows_amd64.exe](https://github.com/pk910/dora-the-explorer/releases/download/snapshot/explorer_windows_amd64.exe) | explorer executable for windows (64bit) |
+          | [explorer_linux_amd64](https://github.com/pk910/dora-the-explorer/releases/download/snapshot/explorer_linux_amd64) | explorer executable for linux (64bit) |
+          | [explorer_darwin_amd64](https://github.com/pk910/dora-the-explorer/releases/download/snapshot/explorer_darwin_amd64) | explorer executable for macos (64bit) |
       env:
         GITHUB_TOKEN: ${{ github.token }}
 
@@ -143,6 +143,6 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Build unstable docker image
-        run: docker build . --build-arg release=snapshot --file Dockerfile --tag pk910/light-beaconchain-explorer:unstable
+        run: docker build . --build-arg release=snapshot --file Dockerfile --tag pk910/dora-the-explorer:unstable
       - name: Push unstable docker image
-        run: docker push pk910/light-beaconchain-explorer:unstable
+        run: docker push pk910/dora-the-explorer:unstable

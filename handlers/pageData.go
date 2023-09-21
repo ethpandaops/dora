@@ -10,8 +10,8 @@ import (
 
 	logger "github.com/sirupsen/logrus"
 
-	"github.com/pk910/light-beaconchain-explorer/types"
-	"github.com/pk910/light-beaconchain-explorer/utils"
+	"github.com/pk910/dora-the-explorer/types"
+	"github.com/pk910/dora-the-explorer/utils"
 )
 
 var layoutTemplateFiles = []string{

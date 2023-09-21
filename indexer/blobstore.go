@@ -10,11 +10,11 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/sirupsen/logrus"
 
-	"github.com/pk910/light-beaconchain-explorer/aws"
-	"github.com/pk910/light-beaconchain-explorer/db"
-	"github.com/pk910/light-beaconchain-explorer/dbtypes"
-	"github.com/pk910/light-beaconchain-explorer/rpctypes"
-	"github.com/pk910/light-beaconchain-explorer/utils"
+	"github.com/pk910/dora-the-explorer/aws"
+	"github.com/pk910/dora-the-explorer/db"
+	"github.com/pk910/dora-the-explorer/dbtypes"
+	"github.com/pk910/dora-the-explorer/rpctypes"
+	"github.com/pk910/dora-the-explorer/utils"
 )
 
 var logger_blobs = logrus.StandardLogger().WithField("module", "blobstore")

@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"sync"
 
-	"github.com/pk910/light-beaconchain-explorer/db"
-	"github.com/pk910/light-beaconchain-explorer/rpctypes"
-	"github.com/pk910/light-beaconchain-explorer/utils"
+	"github.com/pk910/dora-the-explorer/db"
+	"github.com/pk910/dora-the-explorer/rpctypes"
+	"github.com/pk910/dora-the-explorer/utils"
 )
 
 type indexerCache struct {

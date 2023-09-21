@@ -10,9 +10,9 @@ import (
 
 	"github.com/donovanhide/eventsource"
 
-	"github.com/pk910/light-beaconchain-explorer/rpc/eventstream"
-	"github.com/pk910/light-beaconchain-explorer/rpctypes"
-	"github.com/pk910/light-beaconchain-explorer/utils"
+	"github.com/pk910/dora-the-explorer/rpc/eventstream"
+	"github.com/pk910/dora-the-explorer/rpctypes"
+	"github.com/pk910/dora-the-explorer/utils"
 )
 
 const (

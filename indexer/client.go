@@ -6,9 +6,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/pk910/light-beaconchain-explorer/rpc"
-	"github.com/pk910/light-beaconchain-explorer/rpctypes"
-	"github.com/pk910/light-beaconchain-explorer/utils"
+	"github.com/pk910/dora-the-explorer/rpc"
+	"github.com/pk910/dora-the-explorer/rpctypes"
+	"github.com/pk910/dora-the-explorer/utils"
 )
 
 type IndexerClient struct {

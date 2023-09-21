@@ -1,6 +1,6 @@
 package models
 
-import "github.com/pk910/light-beaconchain-explorer/rpctypes"
+import "github.com/pk910/dora-the-explorer/rpctypes"
 
 // SearchBlockResult is a struct to hold the search block result with a given graffiti
 type SearchBlockResult struct {

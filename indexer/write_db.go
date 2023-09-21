@@ -4,9 +4,9 @@ import (
 	"fmt"
 
 	"github.com/jmoiron/sqlx"
-	"github.com/pk910/light-beaconchain-explorer/db"
-	"github.com/pk910/light-beaconchain-explorer/dbtypes"
-	"github.com/pk910/light-beaconchain-explorer/utils"
+	"github.com/pk910/dora-the-explorer/db"
+	"github.com/pk910/dora-the-explorer/dbtypes"
+	"github.com/pk910/dora-the-explorer/utils"
 )
 
 func persistEpochData(epoch uint64, blockMap map[uint64]*CacheBlock, epochStats *EpochStats, epochVotes *EpochVotes, tx *sqlx.Tx) error {

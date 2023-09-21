@@ -11,7 +11,7 @@ RUN <<EOR
   VERSION=$(git rev-parse --short HEAD)
   BUILDTIME=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
   RELEASE=$release
-  CGO_ENABLED=1 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -o /bin/dora-explorer -ldflags="-s -w -X 'github.com/pk910/light-beaconchain-explorer/utils.BuildVersion=${VERSION}' -X 'github.com/pk910/light-beaconchain-explorer/utils.BuildRelease=${RELEASE}' -X 'github.com/pk910/light-beaconchain-explorer/utils.Buildtime=${BUILDTIME}'" ./cmd/explorer
+  CGO_ENABLED=1 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -o /bin/dora-explorer -ldflags="-s -w -X 'github.com/pk910/dora-the-explorer/utils.BuildVersion=${VERSION}' -X 'github.com/pk910/dora-the-explorer/utils.BuildRelease=${RELEASE}' -X 'github.com/pk910/dora-the-explorer/utils.Buildtime=${BUILDTIME}'" ./cmd/explorer
 EOR
 
 # final stage
