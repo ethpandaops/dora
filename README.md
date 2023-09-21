@@ -1,8 +1,8 @@
 # Lightweight Beaconchain Explorer
 
-[![Badge](https://github.com/pk910/light-beaconchain-explorer/actions/workflows/build-master.yml/badge.svg)](https://github.com/pk910/light-beaconchain-explorer/actions?query=workflow%3A%22Build+master%22)
-[![Go Report Card](https://goreportcard.com/badge/github.com/pk910/light-beaconchain-explorer)](https://goreportcard.com/report/github.com/pk910/light-beaconchain-explorer)
-[![GitHub release (latest by date)](https://img.shields.io/github/v/release/pk910/light-beaconchain-explorer?label=Latest%20Release)](https://github.com/pk910/light-beaconchain-explorer/releases/latest)
+[![Badge](https://github.com/pk910/dora-the-explorer/actions/workflows/build-master.yml/badge.svg)](https://github.com/pk910/dora-the-explorer/actions?query=workflow%3A%22Build+master%22)
+[![Go Report Card](https://goreportcard.com/badge/github.com/pk910/dora-the-explorer)](https://goreportcard.com/report/github.com/pk910/dora-the-explorer)
+[![GitHub release (latest by date)](https://img.shields.io/github/v/release/pk910/dora-the-explorer?label=Latest%20Release)](https://github.com/pk910/dora-the-explorer/releases/latest)
 
 ## What is this?
 This is a lightweight beaconchain explorer.
@@ -12,7 +12,7 @@ A Beaconchain explorer is a tool that allows users to view and interact with the
 This "lightweight" explorer loads most of the information directly from an underlying standard beacon node api, which makes it a lot easier and cheaper to run (no 3rd party proprietary database like bigtables required).
 
 # Setup & Configuration
-Read through the [wiki](https://github.com/pk910/light-beaconchain-explorer/wiki) for setup & configuration instructions.
+Read through the [wiki](https://github.com/pk910/dora-the-explorer/wiki) for setup & configuration instructions.
 
 ## Dependencies
 

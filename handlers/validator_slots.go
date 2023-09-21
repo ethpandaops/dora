@@ -9,11 +9,11 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
 
-	"github.com/pk910/light-beaconchain-explorer/dbtypes"
-	"github.com/pk910/light-beaconchain-explorer/services"
-	"github.com/pk910/light-beaconchain-explorer/templates"
-	"github.com/pk910/light-beaconchain-explorer/types/models"
-	"github.com/pk910/light-beaconchain-explorer/utils"
+	"github.com/pk910/dora-the-explorer/dbtypes"
+	"github.com/pk910/dora-the-explorer/services"
+	"github.com/pk910/dora-the-explorer/templates"
+	"github.com/pk910/dora-the-explorer/types/models"
+	"github.com/pk910/dora-the-explorer/utils"
 )
 
 // Slots will return the main "slots" page using a go template

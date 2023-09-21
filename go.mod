@@ -1,4 +1,4 @@
-module github.com/pk910/light-beaconchain-explorer
+module github.com/pk910/dora-the-explorer
 
 go 1.20
 

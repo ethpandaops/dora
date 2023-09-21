@@ -9,12 +9,12 @@ import (
 	logger "github.com/sirupsen/logrus"
 	"github.com/urfave/negroni"
 
-	"github.com/pk910/light-beaconchain-explorer/db"
-	"github.com/pk910/light-beaconchain-explorer/handlers"
-	"github.com/pk910/light-beaconchain-explorer/services"
-	"github.com/pk910/light-beaconchain-explorer/static"
-	"github.com/pk910/light-beaconchain-explorer/types"
-	"github.com/pk910/light-beaconchain-explorer/utils"
+	"github.com/pk910/dora-the-explorer/db"
+	"github.com/pk910/dora-the-explorer/handlers"
+	"github.com/pk910/dora-the-explorer/services"
+	"github.com/pk910/dora-the-explorer/static"
+	"github.com/pk910/dora-the-explorer/types"
+	"github.com/pk910/dora-the-explorer/utils"
 )
 
 func main() {

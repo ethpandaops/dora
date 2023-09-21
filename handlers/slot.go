@@ -15,14 +15,14 @@ import (
 	"github.com/juliangruber/go-intersect"
 	"github.com/sirupsen/logrus"
 
-	"github.com/pk910/light-beaconchain-explorer/db"
-	"github.com/pk910/light-beaconchain-explorer/dbtypes"
-	"github.com/pk910/light-beaconchain-explorer/rpctypes"
-	"github.com/pk910/light-beaconchain-explorer/services"
-	"github.com/pk910/light-beaconchain-explorer/templates"
-	"github.com/pk910/light-beaconchain-explorer/types"
-	"github.com/pk910/light-beaconchain-explorer/types/models"
-	"github.com/pk910/light-beaconchain-explorer/utils"
+	"github.com/pk910/dora-the-explorer/db"
+	"github.com/pk910/dora-the-explorer/dbtypes"
+	"github.com/pk910/dora-the-explorer/rpctypes"
+	"github.com/pk910/dora-the-explorer/services"
+	"github.com/pk910/dora-the-explorer/templates"
+	"github.com/pk910/dora-the-explorer/types"
+	"github.com/pk910/dora-the-explorer/types/models"
+	"github.com/pk910/dora-the-explorer/utils"
 )
 
 // Index will return the main "index" page using a go template

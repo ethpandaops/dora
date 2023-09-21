@@ -7,11 +7,11 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"github.com/pk910/light-beaconchain-explorer/dbtypes"
-	"github.com/pk910/light-beaconchain-explorer/rpc"
-	"github.com/pk910/light-beaconchain-explorer/rpctypes"
-	"github.com/pk910/light-beaconchain-explorer/types"
-	"github.com/pk910/light-beaconchain-explorer/utils"
+	"github.com/pk910/dora-the-explorer/dbtypes"
+	"github.com/pk910/dora-the-explorer/rpc"
+	"github.com/pk910/dora-the-explorer/rpctypes"
+	"github.com/pk910/dora-the-explorer/types"
+	"github.com/pk910/dora-the-explorer/utils"
 )
 
 var logger = logrus.StandardLogger().WithField("module", "indexer")

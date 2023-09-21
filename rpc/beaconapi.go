@@ -13,8 +13,8 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"github.com/pk910/light-beaconchain-explorer/rpctypes"
-	"github.com/pk910/light-beaconchain-explorer/utils"
+	"github.com/pk910/dora-the-explorer/rpctypes"
+	"github.com/pk910/dora-the-explorer/utils"
 )
 
 var logger = logrus.StandardLogger().WithField("module", "rpc")

@@ -7,7 +7,7 @@ import (
 	"path"
 	"strings"
 
-	"github.com/pk910/light-beaconchain-explorer/templates"
+	"github.com/pk910/dora-the-explorer/templates"
 	"github.com/sirupsen/logrus"
 )
 

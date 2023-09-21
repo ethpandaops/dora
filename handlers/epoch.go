@@ -9,10 +9,10 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
 
-	"github.com/pk910/light-beaconchain-explorer/services"
-	"github.com/pk910/light-beaconchain-explorer/templates"
-	"github.com/pk910/light-beaconchain-explorer/types/models"
-	"github.com/pk910/light-beaconchain-explorer/utils"
+	"github.com/pk910/dora-the-explorer/services"
+	"github.com/pk910/dora-the-explorer/templates"
+	"github.com/pk910/dora-the-explorer/types/models"
+	"github.com/pk910/dora-the-explorer/utils"
 )
 
 // Epoch will return the main "epoch" page using a go template

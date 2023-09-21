@@ -5,8 +5,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/pk910/light-beaconchain-explorer/cache"
-	"github.com/pk910/light-beaconchain-explorer/utils"
+	"github.com/pk910/dora-the-explorer/cache"
+	"github.com/pk910/dora-the-explorer/utils"
 	"github.com/sirupsen/logrus"
 )
 
