@@ -35,6 +35,10 @@ type indexerCache struct {
 }
 
 func newIndexerCache(indexer *Indexer) *indexerCache {
+	valsetConcurrencyLimit := utils.Config.Indexer.MaxParallelValidatorSetRequests
+	if valsetConcurrencyLimit < 1 {
+		valsetConcurrencyLimit = 1
+	}
 	cache := &indexerCache{
 		indexer:                 indexer,
 		triggerChan:             make(chan bool, 10),
@@ -48,7 +52,7 @@ func newIndexerCache(indexer *Indexer) *indexerCache {
 		rootMap:                 make(map[string]*CacheBlock),
 		epochStatsMap:           make(map[uint64][]*EpochStats),
 		lastValidatorsEpoch:     -1,
-		validatorLoadingLimiter: make(chan int, 2),
+		validatorLoadingLimiter: make(chan int, valsetConcurrencyLimit),
 	}
 	cache.loadStoredUnfinalizedCache()
 	go cache.runCacheLoop()

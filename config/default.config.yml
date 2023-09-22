@@ -56,6 +56,10 @@ indexer:
   # number of seconds to wait between each epoch (don't overload CL client)
   syncEpochCooldown: 2
 
+  # maximum number of parallel validator set requests (might cause high memory usage)
+  maxParallelValidatorSetRequests: 1
+
+
 # blob storage configuration
 blobstore:
   # persistence mode: none, db, fs, aws
