@@ -198,7 +198,7 @@ func (client *IndexerClient) ensureEpochStats(epoch uint64, head []byte) error {
 		defer utils.HandleSubroutinePanic("ensureEpochStatsLazy")
 		err := epochStats.ensureEpochStatsLazy(client, proposerRsp)
 		if err != nil {
-			logger.WithField("client", client.clientName).WithError(err).Warnf("error while loading epoch stats")
+			logger.WithField("client", client.clientName).WithError(err).Warnf("error while loading epoch stats for epoch %v", epoch)
 		}
 	}()
 	if int64(epoch) > client.lastEpochStats {
