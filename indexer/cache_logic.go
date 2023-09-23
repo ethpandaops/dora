@@ -88,13 +88,14 @@ func (cache *indexerCache) runCacheLogic() error {
 		cache.persistEpoch = headEpoch
 	}
 
-	if cache.cleanupEpoch < processingEpoch {
+	if cache.cleanupBlockEpoch < processingEpoch || cache.cleanupStatsEpoch < headEpoch {
 		// process cache persistence
-		err := cache.processCacheCleanup(processingEpoch)
+		err := cache.processCacheCleanup(processingEpoch, headEpoch)
 		if err != nil {
 			return err
 		}
-		cache.cleanupEpoch = processingEpoch
+		cache.cleanupBlockEpoch = processingEpoch
+		cache.cleanupStatsEpoch = headEpoch
 	}
 
 	return nil
@@ -134,7 +135,7 @@ func (cache *indexerCache) processFinalizedEpoch(epoch uint64) error {
 		if firstBlock.Slot == firstSlot {
 			epochTarget = firstBlock.Root
 		} else {
-			epochTarget = firstBlock.header.Message.BodyRoot[:]
+			epochTarget = firstBlock.header.Message.ParentRoot[:]
 		}
 		epochDependentRoot = firstBlock.header.Message.ParentRoot[:]
 	}
@@ -177,6 +178,9 @@ func (cache *indexerCache) processFinalizedEpoch(epoch uint64) error {
 
 	// calculate votes
 	epochVotes := aggregateEpochVotes(canonicalMap, epoch, epochStats, epochTarget, false, true)
+	if epochVotes.currentEpoch.targetVoteAmount == 0 {
+		logger.Infof("invalid target?")
+	}
 
 	if epochStats.validatorStats != nil {
 		logger.Infof("epoch %v stats: %v validators (%v)", epoch, epochStats.validatorStats.ValidatorCount, epochStats.validatorStats.EligibleAmount)
@@ -308,6 +312,8 @@ func (cache *indexerCache) processOrphanedBlocks(processedEpoch int64) error {
 func (cache *indexerCache) processCachePersistence() error {
 	persistBlocks := []*CacheBlock{}
 	pruneBlocks := []*CacheBlock{}
+	persistEpochs := []*EpochStats{}
+
 	cache.cacheMutex.RLock()
 	headSlot := cache.highestSlot
 	var headEpoch uint64
@@ -315,11 +321,13 @@ func (cache *indexerCache) processCachePersistence() error {
 		headEpoch = utils.EpochOfSlot(uint64(headSlot))
 	}
 	var minPersistSlot int64 = -1
+	var minPersistEpoch int64 = -1
 	var minPruneSlot int64 = -1
 	if headEpoch > uint64(cache.indexer.cachePersistenceDelay) {
 		persistEpoch := headEpoch - uint64(cache.indexer.cachePersistenceDelay)
 		if persistEpoch >= 0 {
 			minPersistSlot = int64((persistEpoch+1)*utils.Config.Chain.Config.SlotsPerEpoch) - 1
+			minPersistEpoch = int64(persistEpoch)
 		}
 	}
 	if headEpoch > uint64(cache.indexer.inMemoryEpochs) {
@@ -348,10 +356,37 @@ func (cache *indexerCache) processCachePersistence() error {
 	}
 	cache.cacheMutex.RUnlock()
 
+	cache.epochStatsMutex.RLock()
+	for epoch, epochStatsList := range cache.epochStatsMap {
+		if int64(epoch) > minPersistEpoch {
+			continue
+		}
+		maxSeen := uint64(0)
+		var persistEpochStats *EpochStats
+		for _, epochStats := range epochStatsList {
+			if persistEpochStats == nil || epochStats.seenCount > maxSeen {
+				persistEpochStats = epochStats
+				maxSeen = epochStats.seenCount
+			}
+		}
+		if persistEpochStats != nil && !persistEpochStats.isInDb {
+			persistEpochs = append(persistEpochs, persistEpochStats)
+
+			// reset isInDb for all other epochstats in this epoch
+			for _, epochStats := range epochStatsList {
+				if epochStats != persistEpochStats {
+					epochStats.isInDb = false
+				}
+			}
+		}
+	}
+	cache.epochStatsMutex.RUnlock()
+
 	persistCount := len(persistBlocks)
+	persistEpochCount := len(persistEpochs)
 	pruneCount := len(pruneBlocks)
-	logger.Infof("processing cache persistence: prune %v blocks", pruneCount)
-	if persistCount == 0 && pruneCount == 0 {
+	logger.Infof("processing cache persistence: persist %v blocks + %v epochs, prune %v blocks", persistCount, persistEpochCount, pruneCount)
+	if persistCount == 0 && pruneCount == 0 && persistEpochCount == 0 {
 		return nil
 	}
 
@@ -382,6 +417,20 @@ func (cache *indexerCache) processCachePersistence() error {
 			}
 		}
 
+		for _, epochStats := range persistEpochs {
+			if !epochStats.isInDb {
+				dbEpoch, _ := cache.indexer.buildLiveEpoch(epochStats.Epoch, epochStats)
+				if dbEpoch != nil {
+					err := db.InsertUnfinalizedEpoch(dbEpoch, tx)
+					if err != nil {
+						logger.Errorf("error inserting unfinalized epoch: %v", err)
+						return err
+					}
+					epochStats.isInDb = true
+				}
+			}
+		}
+
 		if err := tx.Commit(); err != nil {
 			logger.Errorf("error committing db transaction: %v", err)
 			return err
@@ -397,7 +446,7 @@ func (cache *indexerCache) processCachePersistence() error {
 	return nil
 }
 
-func (cache *indexerCache) processCacheCleanup(processedEpoch int64) error {
+func (cache *indexerCache) processCacheCleanup(processedEpoch int64, headEpoch int64) error {
 	cachedBlocks := map[string]*CacheBlock{}
 	clearStats := []*EpochStats{}
 	cache.cacheMutex.RLock()
@@ -411,7 +460,7 @@ func (cache *indexerCache) processCacheCleanup(processedEpoch int64) error {
 	cache.cacheMutex.RUnlock()
 	cache.epochStatsMutex.RLock()
 	for epoch, stats := range cache.epochStatsMap {
-		if int64(epoch) <= processedEpoch {
+		if int64(epoch) <= processedEpoch || int64(epoch) <= headEpoch-int64(cache.indexer.inMemoryEpochs) {
 			clearStats = append(clearStats, stats...)
 		}
 	}

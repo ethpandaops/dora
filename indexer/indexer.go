@@ -2,6 +2,7 @@ package indexer
 
 import (
 	"bytes"
+	"math"
 	"math/rand"
 	"sort"
 
@@ -403,10 +404,20 @@ func (indexer *Indexer) getCachedEpochStats(epoch uint64, headRoot []byte) *Epoc
 	indexer.indexerCache.epochStatsMutex.RLock()
 	defer indexer.indexerCache.epochStatsMutex.RUnlock()
 	var epochStats *EpochStats
+	epochStatsDistance := uint64(math.MaxUint64)
 	epochStatsList := indexer.indexerCache.epochStatsMap[epoch]
+	dependentSlot := epoch * utils.Config.Chain.Config.SlotsPerEpoch
+	if dependentSlot > 0 {
+		dependentSlot--
+	}
 	for _, stats := range epochStatsList {
-		if indexer.indexerCache.isCanonicalBlock(stats.DependentRoot, headRoot) {
-			epochStats = stats
+		dependentBlock := indexer.indexerCache.getCachedBlock(stats.DependentRoot)
+		if dependentBlock != nil && indexer.indexerCache.isCanonicalBlock(stats.DependentRoot, headRoot) {
+			dependentDist := dependentSlot - dependentBlock.Slot
+			if epochStatsDistance == uint64(math.MaxUint64) || dependentDist < epochStatsDistance {
+				epochStatsDistance = dependentDist
+				epochStats = stats
+			}
 			break
 		}
 	}
@@ -454,19 +465,26 @@ func (indexer *Indexer) getEpochVotes(epoch uint64, epochStats *EpochStats) *Epo
 }
 
 func (indexer *Indexer) BuildLiveEpoch(epoch uint64) *dbtypes.Epoch {
+	dbEpoch, _ := indexer.buildLiveEpoch(epoch, nil)
+	return dbEpoch
+}
+
+func (indexer *Indexer) buildLiveEpoch(epoch uint64, epochStats *EpochStats) (*dbtypes.Epoch, *EpochStats) {
 	headSlot, headRoot := indexer.GetCanonicalHead()
 	headEpoch := utils.EpochOfSlot(headSlot)
 
-	epochStats := indexer.getCachedEpochStats(epoch, headRoot)
+	if epochStats == nil {
+		epochStats = indexer.getCachedEpochStats(epoch, headRoot)
+	}
 	if epochStats == nil || !epochStats.IsReady() {
-		return nil
+		return nil, nil
 	}
 
 	epochStats.dbEpochMutex.Lock()
 	defer epochStats.dbEpochMutex.Unlock()
 
 	if epochStats.dbEpochCache != nil {
-		return epochStats.dbEpochCache
+		return epochStats.dbEpochCache, epochStats
 	}
 
 	logger.Debugf("Build live epoch data %v", epoch)
@@ -476,7 +494,7 @@ func (indexer *Indexer) BuildLiveEpoch(epoch uint64) *dbtypes.Epoch {
 	if headEpoch > epoch && headEpoch-epoch > 2 {
 		epochStats.dbEpochCache = dbEpoch
 	}
-	return dbEpoch
+	return dbEpoch, epochStats
 }
 
 func (indexer *Indexer) BuildLiveBlock(block *CacheBlock) *dbtypes.Block {

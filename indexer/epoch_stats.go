@@ -18,6 +18,8 @@ type EpochStats struct {
 	Epoch               uint64
 	DependentRoot       []byte
 	dependentStateRef   string
+	seenCount           uint64
+	isInDb              bool
 	dutiesMutex         sync.RWMutex
 	validatorsMutex     sync.RWMutex
 	proposerAssignments map[uint64]uint64
@@ -222,7 +224,14 @@ func (epochStats *EpochStats) ensureEpochStatsLazy(client *IndexerClient, propos
 				return fmt.Errorf("could not find proposer duties for epoch %v", epochStats.Epoch)
 			}
 			if !bytes.Equal(proposerRsp.DependentRoot[:], epochStats.DependentRoot) {
-				return fmt.Errorf("got unexpected dependend root for proposer duties %v (got: %v, expected: 0x%x)", epochStats.Epoch, proposerRsp.DependentRoot.String(), epochStats.DependentRoot)
+				logger.WithField("client", client.clientName).Warnf("got unexpected dependend root for proposer duties %v (got: %v, expected: 0x%x)", epochStats.Epoch, proposerRsp.DependentRoot.String(), epochStats.DependentRoot)
+				altEpochStats, isNewStats := client.indexerCache.createOrGetEpochStats(epochStats.Epoch, proposerRsp.DependentRoot[:])
+				if isNewStats {
+					logger.WithField("client", client.clientName).Infof("load epoch stats for epoch %v (dependend: 0x%x)", epochStats.Epoch, proposerRsp.DependentRoot[:])
+				} else {
+					logger.WithField("client", client.clientName).Debugf("ensure epoch stats for epoch %v (dependend: 0x%x)", epochStats.Epoch, proposerRsp.DependentRoot[:])
+				}
+				return altEpochStats.ensureEpochStatsLazy(client, proposerRsp)
 			}
 		}
 		proposerAssignments := map[uint64]uint64{}
@@ -313,6 +322,8 @@ func (epochStats *EpochStats) ensureEpochStatsLazy(client *IndexerClient, propos
 			epochStats.syncAssignments = syncAssignments
 		}
 	}
+
+	epochStats.seenCount++
 
 	return nil
 }
