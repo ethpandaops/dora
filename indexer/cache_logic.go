@@ -178,9 +178,6 @@ func (cache *indexerCache) processFinalizedEpoch(epoch uint64) error {
 
 	// calculate votes
 	epochVotes := aggregateEpochVotes(canonicalMap, epoch, epochStats, epochTarget, false, true)
-	if epochVotes.currentEpoch.targetVoteAmount == 0 {
-		logger.Infof("invalid target?")
-	}
 
 	if epochStats.validatorStats != nil {
 		logger.Infof("epoch %v stats: %v validators (%v)", epoch, epochStats.validatorStats.ValidatorCount, epochStats.validatorStats.EligibleAmount)

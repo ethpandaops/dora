@@ -858,7 +858,6 @@ func GetUnfinalizedEpoch(epoch uint64) *dbtypes.Epoch {
 	WHERE epoch = $1
 	`, epoch)
 	if err != nil {
-		logger.Errorf("Error while fetching unfinalized epoch %v: %v", epoch, err)
 		return nil
 	}
 	return &epochDuty
