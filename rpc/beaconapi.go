@@ -1,77 +1,73 @@
 package rpc
 
 import (
-	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"math"
-	"net/http"
-	"strconv"
+	nethttp "net/http"
 	"time"
 
+	eth2client "github.com/attestantio/go-eth2-client"
+	v1 "github.com/attestantio/go-eth2-client/api/v1"
+	"github.com/attestantio/go-eth2-client/http"
+	spec "github.com/attestantio/go-eth2-client/spec"
+	"github.com/attestantio/go-eth2-client/spec/deneb"
+	"github.com/attestantio/go-eth2-client/spec/phase0"
+	"github.com/rs/zerolog"
 	"github.com/sirupsen/logrus"
 
-	"github.com/pk910/dora-the-explorer/rpctypes"
+	"github.com/pk910/dora-the-explorer/ethtypes"
 	"github.com/pk910/dora-the-explorer/utils"
 )
 
 var logger = logrus.StandardLogger().WithField("module", "rpc")
 
 type BeaconClient struct {
-	name     string
-	endpoint string
-	headers  map[string]string
+	name      string
+	endpoint  string
+	headers   map[string]string
+	clientSvc eth2client.Service
 }
 
 // NewBeaconClient is used to create a new beacon client
 func NewBeaconClient(endpoint string, name string, headers map[string]string) (*BeaconClient, error) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	cliParams := []http.Parameter{
+		http.WithAddress(endpoint),
+	}
+
+	// set log level
+	if utils.Config.Frontend.Debug {
+		cliParams = append(cliParams, http.WithLogLevel(zerolog.InfoLevel))
+	} else {
+		cliParams = append(cliParams, http.WithLogLevel(zerolog.Disabled))
+	}
+
+	// set extra endpoint headers
+	if headers != nil && len(headers) > 0 {
+		cliParams = append(cliParams, http.WithExtraHeaders(headers))
+	}
+
+	clientSvc, err := http.New(ctx, cliParams...)
+	if err != nil {
+		return nil, err
+	}
+
 	client := &BeaconClient{
-		name:     name,
-		endpoint: endpoint,
-		headers:  headers,
+		name:      name,
+		endpoint:  endpoint,
+		headers:   headers,
+		clientSvc: clientSvc,
 	}
 
 	return client, nil
 }
 
 var errNotFound = errors.New("not found 404")
-
-func (bc *BeaconClient) get(requrl string) ([]byte, error) {
-	logurl := utils.GetRedactedUrl(requrl)
-	t0 := time.Now()
-	defer func() {
-		logger.WithField("client", bc.name).Debugf("RPC GET call (byte): %v [%v ms]", logurl, time.Since(t0).Milliseconds())
-	}()
-
-	req, err := http.NewRequest("GET", requrl, nil)
-	if err != nil {
-		return nil, err
-	}
-	for headerKey, headerVal := range bc.headers {
-		req.Header.Set(headerKey, headerVal)
-	}
-
-	client := &http.Client{Timeout: time.Second * 300}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-
-	defer resp.Body.Close()
-
-	data, err := io.ReadAll(resp.Body)
-
-	if resp.StatusCode != http.StatusOK {
-		if resp.StatusCode == http.StatusNotFound {
-			return nil, errNotFound
-		}
-		return nil, fmt.Errorf("url: %v, error-response: %s", logurl, data)
-	}
-
-	return data, err
-}
 
 func (bc *BeaconClient) getJson(requrl string, returnValue interface{}) error {
 	logurl := utils.GetRedactedUrl(requrl)
@@ -80,7 +76,7 @@ func (bc *BeaconClient) getJson(requrl string, returnValue interface{}) error {
 		logger.WithField("client", bc.name).Debugf("RPC GET call (json): %v [%v ms]", logurl, time.Since(t0).Milliseconds())
 	}()
 
-	req, err := http.NewRequest("GET", requrl, nil)
+	req, err := nethttp.NewRequest("GET", requrl, nil)
 	if err != nil {
 		return err
 	}
@@ -88,7 +84,7 @@ func (bc *BeaconClient) getJson(requrl string, returnValue interface{}) error {
 		req.Header.Set(headerKey, headerVal)
 	}
 
-	client := &http.Client{Timeout: time.Second * 300}
+	client := &nethttp.Client{Timeout: time.Second * 300}
 	resp, err := client.Do(req)
 	if err != nil {
 		return err
@@ -96,8 +92,8 @@ func (bc *BeaconClient) getJson(requrl string, returnValue interface{}) error {
 
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		if resp.StatusCode == http.StatusNotFound {
+	if resp.StatusCode != nethttp.StatusOK {
+		if resp.StatusCode == nethttp.StatusNotFound {
 			return errNotFound
 		}
 		data, _ := io.ReadAll(resp.Body)
@@ -114,347 +110,188 @@ func (bc *BeaconClient) getJson(requrl string, returnValue interface{}) error {
 	return nil
 }
 
-func (bc *BeaconClient) postJson(requrl string, postData interface{}, returnValue interface{}) error {
-	logurl := utils.GetRedactedUrl(requrl)
-	t0 := time.Now()
-	defer func() {
-		logger.WithField("client", bc.name).Debugf("RPC POST call (json): %v [%v ms]", logurl, time.Since(t0).Milliseconds())
-	}()
-
-	postDataBytes, err := json.Marshal(postData)
+func (bc *BeaconClient) GetGenesis() (*v1.Genesis, error) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	provider, isProvider := bc.clientSvc.(eth2client.GenesisProvider)
+	if !isProvider {
+		return nil, fmt.Errorf("get genesis not supported")
+	}
+	result, err := provider.Genesis(ctx)
 	if err != nil {
-		return fmt.Errorf("error encoding json request: %v", err)
+		return nil, err
 	}
-	reader := bytes.NewReader(postDataBytes)
-	req, err := http.NewRequest("POST", requrl, reader)
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	for headerKey, headerVal := range bc.headers {
-		req.Header.Set(headerKey, headerVal)
-	}
-
-	client := &http.Client{Timeout: time.Second * 300}
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		if resp.StatusCode == http.StatusNotFound {
-			return errNotFound
-		}
-		data, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("url: %v, error-response: %s", logurl, data)
-	}
-
-	dec := json.NewDecoder(resp.Body)
-	err = dec.Decode(&returnValue)
-	if err != nil {
-		return fmt.Errorf("error parsing json response: %v", err)
-	}
-
-	return nil
+	return result, nil
 }
 
-func (bc *BeaconClient) GetGenesis() (*rpctypes.StandardV1GenesisResponse, error) {
-	resGenesis, err := bc.get(fmt.Sprintf("%s/eth/v1/beacon/genesis", bc.endpoint))
-	if err != nil {
-		if err == errNotFound {
-			// no block found
-			return nil, nil
-		}
-		return nil, fmt.Errorf("error retrieving genesis: %v", err)
+func (bc *BeaconClient) GetNodeSyncing() (*v1.SyncState, error) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	provider, isProvider := bc.clientSvc.(eth2client.NodeSyncingProvider)
+	if !isProvider {
+		return nil, fmt.Errorf("get node syncing not supported")
 	}
-
-	var parsedGenesis rpctypes.StandardV1GenesisResponse
-	err = json.Unmarshal(resGenesis, &parsedGenesis)
+	result, err := provider.NodeSyncing(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("error parsing genesis response: %v", err)
+		return nil, err
 	}
-	return &parsedGenesis, nil
+	return result, nil
 }
 
-func (bc *BeaconClient) GetNodeSyncing() (*rpctypes.StandardV1NodeSyncingResponse, error) {
-	resGenesis, err := bc.get(fmt.Sprintf("%s/eth/v1/node/syncing", bc.endpoint))
-	if err != nil {
-		if err == errNotFound {
-			// no block found
-			return nil, nil
-		}
-		return nil, fmt.Errorf("error retrieving syncing status: %v", err)
+func (bc *BeaconClient) GetNodeVersion() (string, error) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	provider, isProvider := bc.clientSvc.(eth2client.NodeVersionProvider)
+	if !isProvider {
+		return "", fmt.Errorf("get node syncing not supported")
 	}
-
-	var parsedSyncingStatus rpctypes.StandardV1NodeSyncingResponse
-	err = json.Unmarshal(resGenesis, &parsedSyncingStatus)
+	result, err := provider.NodeVersion(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("error parsing syncing status response: %v", err)
+		return "", err
 	}
-	return &parsedSyncingStatus, nil
+	return result, nil
 }
 
-func (bc *BeaconClient) GetNodeVersion() (*rpctypes.StandardV1NodeVersionResponse, error) {
-	var parsedRsp rpctypes.StandardV1NodeVersionResponse
-	err := bc.getJson(fmt.Sprintf("%s/eth/v1/node/version", bc.endpoint), &parsedRsp)
-	if err != nil {
-		if err == errNotFound {
-			// no block found
-			return nil, nil
-		}
-		return nil, fmt.Errorf("error retrieving node version: %v", err)
+func (bc *BeaconClient) GetLatestBlockHead() (*v1.BeaconBlockHeader, error) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	provider, isProvider := bc.clientSvc.(eth2client.BeaconBlockHeadersProvider)
+	if !isProvider {
+		return nil, fmt.Errorf("get beacon block headers not supported")
 	}
-	return &parsedRsp, nil
+	result, err := provider.BeaconBlockHeader(ctx, "head")
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
-func (bc *BeaconClient) GetLatestBlockHead() (*rpctypes.StandardV1BeaconHeaderResponse, error) {
-	resHeaders, err := bc.get(fmt.Sprintf("%s/eth/v1/beacon/headers/head", bc.endpoint))
-	if err != nil {
-		if err == errNotFound {
-			// no block found
-			return nil, nil
-		}
-		return nil, fmt.Errorf("error retrieving latest block header: %v", err)
+func (bc *BeaconClient) GetFinalityCheckpoints() (*v1.Finality, error) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	provider, isProvider := bc.clientSvc.(eth2client.FinalityProvider)
+	if !isProvider {
+		return nil, fmt.Errorf("get finality not supported")
 	}
-
-	var parsedHeaders rpctypes.StandardV1BeaconHeaderResponse
-	err = json.Unmarshal(resHeaders, &parsedHeaders)
+	result, err := provider.Finality(ctx, "head")
 	if err != nil {
-		return nil, fmt.Errorf("error parsing response for latest block header: %v", err)
+		return nil, err
 	}
-	return &parsedHeaders, nil
+	return result, nil
 }
 
-func (bc *BeaconClient) GetFinalityCheckpoints() (*rpctypes.StandardV1BeaconStateFinalityCheckpointsResponse, error) {
-	var parsedCheckpoints rpctypes.StandardV1BeaconStateFinalityCheckpointsResponse
-	err := bc.getJson(fmt.Sprintf("%s/eth/v1/beacon/states/head/finality_checkpoints", bc.endpoint), &parsedCheckpoints)
-	if err != nil {
-		if err == errNotFound {
-			// no block found
-			return nil, nil
-		}
-		return nil, fmt.Errorf("error retrieving finality checkpoints: %v", err)
+func (bc *BeaconClient) GetBlockHeaderByBlockroot(blockroot []byte) (*v1.BeaconBlockHeader, error) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	provider, isProvider := bc.clientSvc.(eth2client.BeaconBlockHeadersProvider)
+	if !isProvider {
+		return nil, fmt.Errorf("get beacon block headers not supported")
 	}
-	return &parsedCheckpoints, nil
+	result, err := provider.BeaconBlockHeader(ctx, fmt.Sprintf("0x%x", blockroot))
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
-func (bc *BeaconClient) GetBlockHeaderByBlockroot(blockroot []byte) (*rpctypes.StandardV1BeaconHeaderResponse, error) {
-	resHeaders, err := bc.get(fmt.Sprintf("%s/eth/v1/beacon/headers/0x%x", bc.endpoint, blockroot))
-	if err != nil {
-		if err == errNotFound {
-			// no block found
-			return nil, nil
-		}
-		return nil, fmt.Errorf("error retrieving headers for blockroot 0x%x: %v", blockroot, err)
+func (bc *BeaconClient) GetBlockHeaderBySlot(slot uint64) (*v1.BeaconBlockHeader, error) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	provider, isProvider := bc.clientSvc.(eth2client.BeaconBlockHeadersProvider)
+	if !isProvider {
+		return nil, fmt.Errorf("get beacon block headers not supported")
 	}
-
-	var parsedHeaders rpctypes.StandardV1BeaconHeaderResponse
-	err = json.Unmarshal(resHeaders, &parsedHeaders)
+	result, err := provider.BeaconBlockHeader(ctx, fmt.Sprintf("%d", slot))
 	if err != nil {
-		return nil, fmt.Errorf("error parsing header-response for blockroot 0x%x: %v", blockroot, err)
+		return nil, err
 	}
-	return &parsedHeaders, nil
+	return result, nil
 }
 
-func (bc *BeaconClient) GetBlockHeaderBySlot(slot uint64) (*rpctypes.StandardV1BeaconHeaderResponse, error) {
-	resHeaders, err := bc.get(fmt.Sprintf("%s/eth/v1/beacon/headers/%d", bc.endpoint, slot))
-	if err != nil {
-		if err == errNotFound {
-			// no block found
-			return nil, nil
-		}
-		return nil, fmt.Errorf("error retrieving headers at slot %v: %v", slot, err)
+func (bc *BeaconClient) GetBlockBodyByBlockroot(blockroot []byte) (*spec.VersionedSignedBeaconBlock, error) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	provider, isProvider := bc.clientSvc.(eth2client.SignedBeaconBlockProvider)
+	if !isProvider {
+		return nil, fmt.Errorf("get signed beacon block not supported")
 	}
-
-	var parsedHeaders rpctypes.StandardV1BeaconHeaderResponse
-	err = json.Unmarshal(resHeaders, &parsedHeaders)
+	result, err := provider.SignedBeaconBlock(ctx, fmt.Sprintf("0x%x", blockroot))
 	if err != nil {
-		return nil, fmt.Errorf("error parsing header-response for slot %v: %v", slot, err)
+		return nil, err
 	}
-	return &parsedHeaders, nil
+	return result, nil
 }
 
-func (bc *BeaconClient) GetBlockBodyByBlockroot(blockroot []byte) (*rpctypes.StandardV2BeaconBlockResponse, error) {
-	resp, err := bc.get(fmt.Sprintf("%s/eth/v2/beacon/blocks/0x%x", bc.endpoint, blockroot))
-	disperr := err
-	if err != nil {
-		resp, err = bc.get(fmt.Sprintf("%s/eth/v1/beacon/blocks/0x%x", bc.endpoint, blockroot))
-	}
-	if err != nil {
-		return nil, fmt.Errorf("error retrieving block body for 0x%x: %v", blockroot, disperr)
-	}
-
-	var parsedResponse rpctypes.StandardV2BeaconBlockResponse
-	err = json.Unmarshal(resp, &parsedResponse)
-	if err != nil {
-		logger.Errorf("error parsing block body for 0x%x: %v", blockroot, err)
-		return nil, fmt.Errorf("error parsing block body for 0x%x: %v", blockroot, err)
-	}
-
-	return &parsedResponse, nil
-}
-
-func (bc *BeaconClient) GetProposerDuties(epoch uint64) (*rpctypes.StandardV1ProposerDutiesResponse, error) {
+func (bc *BeaconClient) GetProposerDuties(epoch uint64) (*ethtypes.ProposerDuties, error) {
 	if utils.Config.Chain.WhiskForkEpoch != nil && epoch >= *utils.Config.Chain.WhiskForkEpoch {
 		// whisk activated - cannot fetch proposer duties
 		return nil, nil
 	}
-	var parsedProposerResponse rpctypes.StandardV1ProposerDutiesResponse
-	proposerResp, err := bc.get(fmt.Sprintf("%s/eth/v1/validator/duties/proposer/%d", bc.endpoint, epoch))
+
+	var proposerDuties ethtypes.ProposerDuties
+	err := bc.getJson(fmt.Sprintf("%s/eth/v1/validator/duties/proposer/%d", bc.endpoint, epoch), &proposerDuties)
 	if err != nil {
 		return nil, fmt.Errorf("error retrieving proposer duties: %v", err)
 	}
-	err = json.Unmarshal(proposerResp, &parsedProposerResponse)
-	if err != nil {
-		return nil, fmt.Errorf("error parsing proposer duties: %v", err)
-	}
-	return &parsedProposerResponse, nil
+
+	return &proposerDuties, nil
 }
 
-func (bc *BeaconClient) GetCommitteeDuties(stateRef string, epoch uint64) (*rpctypes.StandardV1CommitteesResponse, error) {
-	var parsedCommittees rpctypes.StandardV1CommitteesResponse
-	err := bc.getJson(fmt.Sprintf("%s/eth/v1/beacon/states/%s/committees?epoch=%d", bc.endpoint, stateRef, epoch), &parsedCommittees)
-	if err != nil {
-		return nil, fmt.Errorf("error loading committee duties: %v", err)
+func (bc *BeaconClient) GetCommitteeDuties(stateRef string, epoch uint64) ([]*v1.BeaconCommittee, error) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	provider, isProvider := bc.clientSvc.(eth2client.BeaconCommitteesProvider)
+	if !isProvider {
+		return nil, fmt.Errorf("get beacon committees not supported")
 	}
-	return &parsedCommittees, nil
+	result, err := provider.BeaconCommitteesAtEpoch(ctx, stateRef, phase0.Epoch(epoch))
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
-func (bc *BeaconClient) GetSyncCommitteeDuties(stateRef string, epoch uint64) (*rpctypes.StandardV1SyncCommitteesResponse, error) {
+func (bc *BeaconClient) GetSyncCommitteeDuties(stateRef string, epoch uint64) (*v1.SyncCommittee, error) {
 	if epoch < utils.Config.Chain.Config.AltairForkEpoch {
 		return nil, fmt.Errorf("cannot get sync committee duties for epoch before altair: %v", epoch)
 	}
-	var parsedSyncCommittees rpctypes.StandardV1SyncCommitteesResponse
-	err := bc.getJson(fmt.Sprintf("%s/eth/v1/beacon/states/%s/sync_committees?epoch=%d", bc.endpoint, stateRef, epoch), &parsedSyncCommittees)
-	if err != nil {
-		return nil, fmt.Errorf("error loading sync committee duties: %v", err)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	provider, isProvider := bc.clientSvc.(eth2client.SyncCommitteesProvider)
+	if !isProvider {
+		return nil, fmt.Errorf("get sync committees not supported")
 	}
-	return &parsedSyncCommittees, nil
-}
-
-// GetEpochAssignments will get the epoch assignments from Lighthouse RPC api
-func (bc *BeaconClient) GetEpochAssignments(epoch uint64, dependendRoot []byte) (*rpctypes.EpochAssignments, error) {
-	parsedProposerResponse, err := bc.GetProposerDuties(epoch)
+	result, err := provider.SyncCommitteeAtEpoch(ctx, stateRef, phase0.Epoch(epoch))
 	if err != nil {
 		return nil, err
 	}
+	return result, nil
+}
 
-	if parsedProposerResponse != nil {
-		dependendRoot = parsedProposerResponse.DependentRoot
+func (bc *BeaconClient) GetStateValidators(stateRef string) (map[phase0.ValidatorIndex]*v1.Validator, error) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	provider, isProvider := bc.clientSvc.(eth2client.ValidatorsProvider)
+	if !isProvider {
+		return nil, fmt.Errorf("get validators not supported")
 	}
-	if dependendRoot == nil {
-		return nil, fmt.Errorf("couldn't find dependent root for epoch %v", epoch)
-	}
-
-	var depStateRoot string
-	// fetch the block root that the proposer data is dependent on
-	parsedHeader, err := bc.GetBlockHeaderByBlockroot(dependendRoot)
+	result, err := provider.Validators(ctx, stateRef, nil)
 	if err != nil {
 		return nil, err
 	}
-	depStateRoot = parsedHeader.Data.Header.Message.StateRoot.String()
-	if epoch == 0 {
-		depStateRoot = "genesis"
-	}
-
-	assignments := &rpctypes.EpochAssignments{
-		DependendRoot:       dependendRoot,
-		DependendStateRef:   depStateRoot,
-		ProposerAssignments: make(map[uint64]uint64),
-		AttestorAssignments: make(map[string][]uint64),
-	}
-
-	// proposer duties
-	if utils.Config.Chain.WhiskForkEpoch != nil && epoch >= *utils.Config.Chain.WhiskForkEpoch {
-		firstSlot := epoch * utils.Config.Chain.Config.SlotsPerEpoch
-		lastSlot := firstSlot + utils.Config.Chain.Config.SlotsPerEpoch - 1
-		for slot := firstSlot; slot <= lastSlot; slot++ {
-			assignments.ProposerAssignments[slot] = math.MaxInt64
-		}
-	} else if parsedProposerResponse != nil {
-		for _, duty := range parsedProposerResponse.Data {
-			assignments.ProposerAssignments[uint64(duty.Slot)] = uint64(duty.ValidatorIndex)
-		}
-	}
-
-	// Now use the state root to make a consistent committee query
-	parsedCommittees, err := bc.GetCommitteeDuties(depStateRoot, epoch)
-	if err != nil {
-		logger.Errorf("error retrieving committees data: %v", err)
-	} else {
-		// attester duties
-		for _, committee := range parsedCommittees.Data {
-			for i, valIndex := range committee.Validators {
-				valIndexU64, err := strconv.ParseUint(valIndex, 10, 64)
-				if err != nil {
-					return nil, fmt.Errorf("epoch %d committee %d index %d has bad validator index %q", epoch, committee.Index, i, valIndex)
-				}
-				k := fmt.Sprintf("%v-%v", uint64(committee.Slot), uint64(committee.Index))
-				if assignments.AttestorAssignments[k] == nil {
-					assignments.AttestorAssignments[k] = make([]uint64, 0)
-				}
-				assignments.AttestorAssignments[k] = append(assignments.AttestorAssignments[k], valIndexU64)
-			}
-		}
-	}
-
-	if epoch >= utils.Config.Chain.Config.AltairForkEpoch {
-		syncCommitteeState := depStateRoot
-		if epoch > 0 && epoch == utils.Config.Chain.Config.AltairForkEpoch {
-			syncCommitteeState = fmt.Sprintf("%d", utils.Config.Chain.Config.AltairForkEpoch*utils.Config.Chain.Config.SlotsPerEpoch)
-		}
-		parsedSyncCommittees, err := bc.GetSyncCommitteeDuties(syncCommitteeState, epoch)
-		if err != nil {
-			logger.Errorf("error retrieving sync_committees for epoch %v (state: %v): %v", epoch, syncCommitteeState, err)
-		} else {
-			assignments.SyncAssignments = make([]uint64, len(parsedSyncCommittees.Data.Validators))
-
-			// sync committee duties
-			for i, valIndexStr := range parsedSyncCommittees.Data.Validators {
-				valIndexU64, err := strconv.ParseUint(valIndexStr, 10, 64)
-				if err != nil {
-					return nil, fmt.Errorf("in sync_committee for epoch %d validator %d has bad validator index: %q", epoch, i, valIndexStr)
-				}
-				assignments.SyncAssignments[i] = valIndexU64
-			}
-		}
-	}
-
-	return assignments, nil
+	return result, nil
 }
 
-func (bc *BeaconClient) GetStateValidators(stateRef string) (*rpctypes.StandardV1StateValidatorsResponse, error) {
-	var parsedResponse rpctypes.StandardV1StateValidatorsResponse
-	err := bc.getJson(fmt.Sprintf("%s/eth/v1/beacon/states/%v/validators", bc.endpoint, stateRef), &parsedResponse)
-	if err != nil {
-		return nil, fmt.Errorf("error retrieving state validators: %v", err)
+func (bc *BeaconClient) GetBlobSidecarsByBlockroot(blockroot []byte) ([]*deneb.BlobSidecar, error) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	provider, isProvider := bc.clientSvc.(eth2client.BeaconBlockBlobsProvider)
+	if !isProvider {
+		return nil, fmt.Errorf("get beacon block blobs not supported")
 	}
-	return &parsedResponse, nil
-}
-
-func (bc *BeaconClient) GetGenesisValidators() (*rpctypes.StandardV1StateValidatorsResponse, error) {
-	var parsedResponse rpctypes.StandardV1StateValidatorsResponse
-	err := bc.getJson(fmt.Sprintf("%s/eth/v1/beacon/states/genesis/validators", bc.endpoint), &parsedResponse)
+	result, err := provider.BeaconBlockBlobs(ctx, fmt.Sprintf("0x%x", blockroot))
 	if err != nil {
-		return nil, fmt.Errorf("error retrieving state validators: %v", err)
+		return nil, err
 	}
-	return &parsedResponse, nil
-}
-
-func (bc *BeaconClient) GetBlobSidecarsByBlockroot(blockroot []byte) (*rpctypes.StandardV1BlobSidecarsResponse, error) {
-	resp, err := bc.get(fmt.Sprintf("%s/eth/v1/beacon/blob_sidecars/0x%x", bc.endpoint, blockroot))
-	if err != nil {
-		return nil, fmt.Errorf("error retrieving blob sidecars for 0x%x: %v", blockroot, err)
-	}
-
-	var parsedResponse rpctypes.StandardV1BlobSidecarsResponse
-	err = json.Unmarshal(resp, &parsedResponse)
-	if err != nil {
-		logger.Errorf("error parsing blob sidecars for 0x%x: %v", blockroot, err)
-		return nil, fmt.Errorf("error parsing blob sidecars for 0x%x: %v", blockroot, err)
-	}
-
-	return &parsedResponse, nil
+	return result, nil
 }

@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/attestantio/go-eth2-client/spec/deneb"
+
 	"github.com/pk910/dora-the-explorer/db"
 	"github.com/pk910/dora-the-explorer/dbtypes"
-	"github.com/pk910/dora-the-explorer/rpctypes"
+	"github.com/pk910/dora-the-explorer/ethtypes"
 	"github.com/pk910/dora-the-explorer/utils"
 )
 
@@ -124,9 +126,9 @@ func (cache *indexerCache) processFinalizedEpoch(epoch uint64) error {
 		if firstBlock.Slot == firstSlot {
 			epochTarget = firstBlock.Root
 		} else {
-			epochTarget = firstBlock.header.Message.ParentRoot
+			epochTarget = firstBlock.header.Message.BodyRoot[:]
 		}
-		epochDependentRoot = firstBlock.header.Message.ParentRoot
+		epochDependentRoot = firstBlock.header.Message.ParentRoot[:]
 	}
 	logger.Infof("processing finalized epoch %v:  target: 0x%x, dependent: 0x%x", epoch, epochTarget, epochDependentRoot)
 
@@ -137,12 +139,14 @@ func (cache *indexerCache) processFinalizedEpoch(epoch uint64) error {
 
 	// get canonical blocks
 	canonicalMap := map[uint64]*CacheBlock{}
-	blobs := []*rpctypes.BlobSidecar{}
+	blobs := []*deneb.BlobSidecar{}
 
 	for slot, block := range cache.getCanonicalBlockMap(epoch, nil) {
 		canonicalMap[slot] = block
-		if len(block.block.Message.Body.BlobKzgCommitments) > 0 {
-			logger.Infof("loading blobs for slot %v: %v blobs", slot, len(block.block.Message.Body.BlobKzgCommitments))
+
+		blobCommitments, _ := ethtypes.VersionedSignedBeaconBlock_BlobKzgCommitments(block.GetBlockBody())
+		if len(blobCommitments) > 0 {
+			logger.Infof("loading blobs for slot %v: %v blobs", slot, len(blobCommitments))
 			if client == nil {
 				return fmt.Errorf("cannot load blobs for block 0x%x: no client", block.Root)
 			}
@@ -151,7 +155,7 @@ func (cache *indexerCache) processFinalizedEpoch(epoch uint64) error {
 			if err != nil {
 				return fmt.Errorf("cannot load blobs for block 0x%x: %v", block.Root, err)
 			}
-			blobs = append(blobs, blobRsp.Data...)
+			blobs = append(blobs, blobRsp...)
 		}
 	}
 	// append next epoch blocks (needed for vote aggregation)
@@ -330,10 +334,12 @@ func (cache *indexerCache) processCachePersistence() error {
 			if !block.isInDb && block.IsReady() {
 				orphanedBlock := block.buildOrphanedBlock()
 				err := db.InsertUnfinalizedBlock(&dbtypes.UnfinalizedBlock{
-					Root:   block.Root,
-					Slot:   block.Slot,
-					Header: orphanedBlock.Header,
-					Block:  orphanedBlock.Block,
+					Root:      block.Root,
+					Slot:      block.Slot,
+					HeaderVer: orphanedBlock.HeaderVer,
+					HeaderSSZ: orphanedBlock.HeaderSSZ,
+					BlockVer:  orphanedBlock.BlockVer,
+					BlockSSZ:  orphanedBlock.BlockSSZ,
 				}, tx)
 				if err != nil {
 					logger.Errorf("error inserting unfinalized block: %v", err)

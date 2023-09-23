@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	v1 "github.com/attestantio/go-eth2-client/api/v1"
 	"github.com/pk910/dora-the-explorer/db"
 	"github.com/pk910/dora-the-explorer/dbtypes"
 	"github.com/pk910/dora-the-explorer/services"
@@ -108,16 +109,16 @@ func buildIndexPageData() (*models.IndexPageData, time.Duration) {
 
 	currentValidatorSet := services.GlobalBeaconService.GetCachedValidatorSet()
 	if currentValidatorSet != nil {
-		for _, validator := range currentValidatorSet.Data {
-			if strings.HasPrefix(validator.Status, "active") {
+		for _, validator := range currentValidatorSet {
+			if strings.HasPrefix(validator.Status.String(), "active") {
 				pageData.ActiveValidatorCount++
 				pageData.TotalEligibleEther += uint64(validator.Validator.EffectiveBalance)
 				pageData.AverageValidatorBalance += uint64(validator.Balance)
 			}
-			if validator.Status == "pending_queued" {
+			if validator.Status == v1.ValidatorStatePendingQueued {
 				pageData.EnteringValidatorCount++
 			}
-			if validator.Status == "active_exiting" {
+			if validator.Status == v1.ValidatorStateActiveExiting {
 				pageData.ExitingValidatorCount++
 			}
 		}
@@ -136,9 +137,9 @@ func buildIndexPageData() (*models.IndexPageData, time.Duration) {
 
 	networkGenesis, _ := services.GlobalBeaconService.GetGenesis()
 	if networkGenesis != nil {
-		pageData.GenesisTime = time.Unix(int64(networkGenesis.Data.GenesisTime), 0)
-		pageData.GenesisForkVersion = networkGenesis.Data.GenesisForkVersion
-		pageData.GenesisValidatorsRoot = networkGenesis.Data.GenesisValidatorsRoot
+		pageData.GenesisTime = networkGenesis.GenesisTime
+		pageData.GenesisForkVersion = networkGenesis.GenesisForkVersion[:]
+		pageData.GenesisValidatorsRoot = networkGenesis.GenesisValidatorsRoot[:]
 	}
 
 	pageData.NetworkForks = make([]*models.IndexPageDataForks, 0)

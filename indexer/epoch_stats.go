@@ -4,12 +4,13 @@ import (
 	"bytes"
 	"fmt"
 	"math"
-	"strconv"
 	"sync"
 
+	v1 "github.com/attestantio/go-eth2-client/api/v1"
+	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/pk910/dora-the-explorer/db"
 	"github.com/pk910/dora-the-explorer/dbtypes"
-	"github.com/pk910/dora-the-explorer/rpctypes"
+	"github.com/pk910/dora-the-explorer/ethtypes"
 	"github.com/pk910/dora-the-explorer/utils"
 )
 
@@ -153,16 +154,12 @@ func (epochStats *EpochStats) TryGetSyncAssignments() []uint64 {
 
 func (client *IndexerClient) ensureEpochStats(epoch uint64, head []byte) error {
 	var dependentRoot []byte
-	var proposerRsp *rpctypes.StandardV1ProposerDutiesResponse
+	var proposerRsp *ethtypes.ProposerDuties
 	if epoch > 0 {
 		firstBlock := client.indexerCache.getFirstCanonicalBlock(epoch, head)
 		if firstBlock != nil {
 			logger.WithField("client", client.clientName).Debugf("canonical first block for epoch %v: %v/0x%x (head: 0x%x)", epoch, firstBlock.Slot, firstBlock.Root, head)
-			firstBlock.mutex.RLock()
-			if firstBlock.header != nil {
-				dependentRoot = firstBlock.header.Message.ParentRoot
-			}
-			firstBlock.mutex.RUnlock()
+			dependentRoot = firstBlock.GetParentRoot()
 		}
 		if dependentRoot == nil {
 			lastBlock := client.indexerCache.getLastCanonicalBlock(epoch-1, head)
@@ -186,7 +183,7 @@ func (client *IndexerClient) ensureEpochStats(epoch uint64, head []byte) error {
 			if proposerRsp == nil {
 				return fmt.Errorf("could not find proposer duties for epoch %v", epoch)
 			}
-			dependentRoot = proposerRsp.DependentRoot
+			dependentRoot = proposerRsp.DependentRoot[:]
 		}
 	}
 
@@ -203,7 +200,7 @@ func (client *IndexerClient) ensureEpochStats(epoch uint64, head []byte) error {
 	return nil
 }
 
-func (epochStats *EpochStats) ensureEpochStatsLazy(client *IndexerClient, proposerRsp *rpctypes.StandardV1ProposerDutiesResponse) {
+func (epochStats *EpochStats) ensureEpochStatsLazy(client *IndexerClient, proposerRsp *ethtypes.ProposerDuties) {
 	defer utils.HandleSubroutinePanic("ensureEpochStatsLazy")
 	epochStats.dutiesMutex.Lock()
 	defer epochStats.dutiesMutex.Unlock()
@@ -225,7 +222,7 @@ func (epochStats *EpochStats) ensureEpochStatsLazy(client *IndexerClient, propos
 				logger.WithField("client", client.clientName).Warnf("could not find proposer duties for epoch %v", epochStats.Epoch)
 				return
 			}
-			if !bytes.Equal(proposerRsp.DependentRoot, epochStats.DependentRoot) {
+			if !bytes.Equal(proposerRsp.DependentRoot[:], epochStats.DependentRoot) {
 				logger.WithField("client", client.clientName).Warnf("got unexpected dependend root for proposer duties %v (got: %v, expected: 0x%x)", epochStats.Epoch, proposerRsp.DependentRoot.String(), epochStats.DependentRoot)
 				return
 			}
@@ -262,10 +259,10 @@ func (epochStats *EpochStats) ensureEpochStatsLazy(client *IndexerClient, propos
 			if err != nil || parsedHeader == nil {
 				logger.WithField("client", client.clientName).Warnf("could not get dependent block header for epoch %v (0x%x)", epochStats.Epoch, epochStats.DependentRoot)
 			} else {
-				if parsedHeader.Data.Header.Message.Slot == 0 {
+				if parsedHeader.Header.Message.Slot == 0 {
 					epochStats.dependentStateRef = "genesis"
 				} else {
-					epochStats.dependentStateRef = parsedHeader.Data.Header.Message.StateRoot.String()
+					epochStats.dependentStateRef = parsedHeader.Header.Message.StateRoot.String()
 				}
 			}
 		}
@@ -288,13 +285,9 @@ func (epochStats *EpochStats) ensureEpochStatsLazy(client *IndexerClient, propos
 		}
 
 		attestorAssignments := map[string][]uint64{}
-		for _, committee := range parsedCommittees.Data {
-			for i, valIndex := range committee.Validators {
-				valIndexU64, err := strconv.ParseUint(valIndex, 10, 64)
-				if err != nil {
-					logger.WithField("client", client.clientName).Warnf("epoch %d committee %d index %d has bad validator index %q", epochStats.Epoch, committee.Index, i, valIndex)
-					continue
-				}
+		for _, committee := range parsedCommittees {
+			for _, valIndex := range committee.Validators {
+				valIndexU64 := uint64(valIndex)
 				k := fmt.Sprintf("%v-%v", uint64(committee.Slot), uint64(committee.Index))
 				if attestorAssignments[k] == nil {
 					attestorAssignments[k] = make([]uint64, 0)
@@ -319,13 +312,9 @@ func (epochStats *EpochStats) ensureEpochStatsLazy(client *IndexerClient, propos
 			logger.WithField("client", client.clientName).Warnf("error retrieving sync_committees for epoch %v (state: %v): %v", epochStats.Epoch, syncCommitteeState, err)
 		}
 		if parsedSyncCommittees != nil {
-			syncAssignments := make([]uint64, len(parsedSyncCommittees.Data.Validators))
-			for i, valIndexStr := range parsedSyncCommittees.Data.Validators {
-				valIndexU64, err := strconv.ParseUint(valIndexStr, 10, 64)
-				if err != nil {
-					logger.WithField("client", client.clientName).Warnf("in sync_committee for epoch %d validator %d has bad validator index: %q", epochStats.Epoch, i, valIndexStr)
-					continue
-				}
+			syncAssignments := make([]uint64, len(parsedSyncCommittees.Validators))
+			for i, valIndex := range parsedSyncCommittees.Validators {
+				valIndexU64 := uint64(valIndex)
 				syncAssignments[i] = valIndexU64
 			}
 			epochStats.syncAssignments = syncAssignments
@@ -351,10 +340,10 @@ func (epochStats *EpochStats) loadValidatorStats(client *IndexerClient, stateRef
 	// `lock` concurrency limit (limit concurrent get validators calls)
 	client.indexerCache.validatorLoadingLimiter <- 1
 
-	var epochValidators *rpctypes.StandardV1StateValidatorsResponse
+	var epochValidators map[phase0.ValidatorIndex]*v1.Validator
 	var err error
 	if epochStats.Epoch == 0 {
-		epochValidators, err = client.rpcClient.GetGenesisValidators()
+		epochValidators, err = client.rpcClient.GetStateValidators("genesis")
 	} else {
 		epochValidators, err = client.rpcClient.GetStateValidators(stateRef)
 	}
@@ -370,8 +359,7 @@ func (epochStats *EpochStats) loadValidatorStats(client *IndexerClient, stateRef
 	validatorStats := &EpochValidatorStats{
 		ValidatorBalances: make(map[uint64]uint64),
 	}
-	for idx := 0; idx < len(epochValidators.Data); idx++ {
-		validator := epochValidators.Data[idx]
+	for _, validator := range epochValidators {
 		validatorStats.ValidatorBalances[uint64(validator.Index)] = uint64(validator.Validator.EffectiveBalance)
 		if uint64(validator.Validator.ActivationEpoch) <= epochStats.Epoch && epochStats.Epoch < uint64(validator.Validator.ExitEpoch) {
 			validatorStats.ValidatorCount++

@@ -5,11 +5,12 @@ import (
 	"math/rand"
 	"sort"
 
+	v1 "github.com/attestantio/go-eth2-client/api/v1"
+	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/sirupsen/logrus"
 
 	"github.com/pk910/dora-the-explorer/dbtypes"
 	"github.com/pk910/dora-the-explorer/rpc"
-	"github.com/pk910/dora-the-explorer/rpctypes"
 	"github.com/pk910/dora-the-explorer/types"
 	"github.com/pk910/dora-the-explorer/utils"
 )
@@ -44,6 +45,7 @@ func NewIndexer() (*Indexer, error) {
 }
 
 func (indexer *Indexer) AddClient(index uint8, endpoint *types.EndpointConfig) *IndexerClient {
+
 	rpcClient, err := rpc.NewBeaconClient(endpoint.Url, endpoint.Name, endpoint.Headers)
 	if err != nil {
 		logger.Errorf("error while adding client %v to indexer: %v", endpoint.Name, err)
@@ -153,7 +155,7 @@ func (indexer *Indexer) GetRpcClient(archive bool, head []byte) *rpc.BeaconClien
 	return readyClient.rpcClient
 }
 
-func (indexer *Indexer) GetCachedGenesis() *rpctypes.StandardV1GenesisResponse {
+func (indexer *Indexer) GetCachedGenesis() *v1.Genesis {
 	return indexer.indexerCache.genesisResp
 }
 
@@ -286,7 +288,7 @@ func (indexer *Indexer) GetCachedBlockByStateroot(stateroot []byte) *CacheBlock 
 		slot := uint64(slotIdx)
 		blocks := indexer.indexerCache.slotMap[slot]
 		for _, block := range blocks {
-			if bytes.Equal(block.header.Message.StateRoot, stateroot) {
+			if bytes.Equal(block.header.Message.StateRoot[:], stateroot) {
 				if !block.IsReady() {
 					return nil
 				} else {
@@ -372,7 +374,7 @@ func (indexer *Indexer) GetCachedBlocksByParentRoot(parentRoot []byte) []*CacheB
 	defer indexer.indexerCache.cacheMutex.RUnlock()
 	resBlocks := make([]*CacheBlock, 0)
 	for _, block := range indexer.indexerCache.rootMap {
-		if block.IsReady() && bytes.Equal(block.header.Message.ParentRoot, parentRoot) {
+		if block.IsReady() && bytes.Equal(block.header.Message.ParentRoot[:], parentRoot) {
 			resBlocks = append(resBlocks, block)
 		}
 	}
@@ -405,7 +407,7 @@ func (indexer *Indexer) getCachedEpochStats(epoch uint64, headRoot []byte) *Epoc
 	return epochStats
 }
 
-func (indexer *Indexer) GetCachedValidatorSet() *rpctypes.StandardV1StateValidatorsResponse {
+func (indexer *Indexer) GetCachedValidatorSet() map[phase0.ValidatorIndex]*v1.Validator {
 	return indexer.indexerCache.lastValidatorsResp
 }
 
@@ -430,7 +432,7 @@ func (indexer *Indexer) getEpochVotes(epoch uint64, epochStats *EpochStats) *Epo
 		if firstBlock.Slot == firstSlot {
 			epochTarget = firstBlock.Root
 		} else {
-			epochTarget = firstBlock.header.Message.ParentRoot
+			epochTarget = firstBlock.header.Message.ParentRoot[:]
 		}
 	}
 

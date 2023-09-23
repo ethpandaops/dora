@@ -11,7 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/pk910/dora-the-explorer/rpctypes"
+	v1 "github.com/attestantio/go-eth2-client/api/v1"
+	"golang.org/x/exp/maps"
+
 	"github.com/pk910/dora-the-explorer/services"
 	"github.com/pk910/dora-the-explorer/templates"
 	"github.com/pk910/dora-the-explorer/types/models"
@@ -86,24 +88,24 @@ func buildValidatorsPageData(firstValIdx uint64, pageSize uint64, sortOrder stri
 	cacheTime := 10 * time.Minute
 
 	// get latest validator set
-	var validatorSet []*rpctypes.ValidatorEntry
+	var validatorSet []*v1.Validator
 	validatorSetRsp := services.GlobalBeaconService.GetCachedValidatorSet()
 	if validatorSetRsp == nil {
 		cacheTime = 5 * time.Minute
-		validatorSet = []*rpctypes.ValidatorEntry{}
+		validatorSet = []*v1.Validator{}
 	} else {
-		validatorSet = validatorSetRsp.Data
+		validatorSet = maps.Values(validatorSetRsp)
 	}
 
 	// get status options
-	statusMap := map[string]uint64{}
+	statusMap := map[v1.ValidatorState]uint64{}
 	for _, val := range validatorSet {
 		statusMap[val.Status]++
 	}
 	pageData.FilterStatusOpts = make([]models.ValidatorsPageDataStatusOption, 0)
 	for status, count := range statusMap {
 		pageData.FilterStatusOpts = append(pageData.FilterStatusOpts, models.ValidatorsPageDataStatusOption{
-			Status: status,
+			Status: status.String(),
 			Count:  count,
 		})
 	}
@@ -134,9 +136,9 @@ func buildValidatorsPageData(firstValIdx uint64, pageSize uint64, sortOrder stri
 		}
 
 		// apply filter
-		filteredValidatorSet := make([]*rpctypes.ValidatorEntry, 0)
+		filteredValidatorSet := make([]*v1.Validator, 0)
 		for _, val := range validatorSet {
-			if filterPubKey != "" && !bytes.Equal(filterPubKeyVal, val.Validator.PubKey) {
+			if filterPubKey != "" && !bytes.Equal(filterPubKeyVal, val.Validator.PublicKey[:]) {
 				continue
 			}
 			if filterIndex != "" && filterIndexVal != uint64(val.Index) {
@@ -148,7 +150,7 @@ func buildValidatorsPageData(firstValIdx uint64, pageSize uint64, sortOrder stri
 					continue
 				}
 			}
-			if filterStatus != "" && !utils.SliceContains(filterStatusVal, val.Status) {
+			if filterStatus != "" && !utils.SliceContains(filterStatusVal, val.Status.String()) {
 				continue
 			}
 			filteredValidatorSet = append(filteredValidatorSet, val)
@@ -165,52 +167,54 @@ func buildValidatorsPageData(firstValIdx uint64, pageSize uint64, sortOrder stri
 	if sortOrder == "" {
 		sortOrder = "index"
 	}
-	if sortOrder != "index" {
-		sortedValidatorSet := make([]*rpctypes.ValidatorEntry, validatorSetLen)
-		copy(sortedValidatorSet, validatorSet)
 
-		switch sortOrder {
-		case "index-d":
-			sort.Slice(sortedValidatorSet, func(a, b int) bool {
-				return sortedValidatorSet[a].Index > sortedValidatorSet[b].Index
-			})
-		case "pubkey":
-			sort.Slice(sortedValidatorSet, func(a, b int) bool {
-				return bytes.Compare(sortedValidatorSet[a].Validator.PubKey, sortedValidatorSet[b].Validator.PubKey) < 0
-			})
-		case "pubkey-d":
-			sort.Slice(sortedValidatorSet, func(a, b int) bool {
-				return bytes.Compare(sortedValidatorSet[a].Validator.PubKey, sortedValidatorSet[b].Validator.PubKey) > 0
-			})
-		case "balance":
-			sort.Slice(sortedValidatorSet, func(a, b int) bool {
-				return sortedValidatorSet[a].Balance < sortedValidatorSet[b].Balance
-			})
-		case "balance-d":
-			sort.Slice(sortedValidatorSet, func(a, b int) bool {
-				return sortedValidatorSet[a].Balance > sortedValidatorSet[b].Balance
-			})
-		case "activation":
-			sort.Slice(sortedValidatorSet, func(a, b int) bool {
-				return sortedValidatorSet[a].Validator.ActivationEpoch < sortedValidatorSet[b].Validator.ActivationEpoch
-			})
-		case "activation-d":
-			sort.Slice(sortedValidatorSet, func(a, b int) bool {
-				return sortedValidatorSet[a].Validator.ActivationEpoch > sortedValidatorSet[b].Validator.ActivationEpoch
-			})
-		case "exit":
-			sort.Slice(sortedValidatorSet, func(a, b int) bool {
-				return sortedValidatorSet[a].Validator.ExitEpoch < sortedValidatorSet[b].Validator.ExitEpoch
-			})
-		case "exit-d":
-			sort.Slice(sortedValidatorSet, func(a, b int) bool {
-				return sortedValidatorSet[a].Validator.ExitEpoch > sortedValidatorSet[b].Validator.ExitEpoch
-			})
-		}
-		validatorSet = sortedValidatorSet
-	} else {
+	sortedValidatorSet := make([]*v1.Validator, validatorSetLen)
+	copy(sortedValidatorSet, validatorSet)
+
+	switch sortOrder {
+	case "index":
+		sort.Slice(sortedValidatorSet, func(a, b int) bool {
+			return sortedValidatorSet[a].Index < sortedValidatorSet[b].Index
+		})
 		pageData.IsDefaultSorting = true
+	case "index-d":
+		sort.Slice(sortedValidatorSet, func(a, b int) bool {
+			return sortedValidatorSet[a].Index > sortedValidatorSet[b].Index
+		})
+	case "pubkey":
+		sort.Slice(sortedValidatorSet, func(a, b int) bool {
+			return bytes.Compare(sortedValidatorSet[a].Validator.PublicKey[:], sortedValidatorSet[b].Validator.PublicKey[:]) < 0
+		})
+	case "pubkey-d":
+		sort.Slice(sortedValidatorSet, func(a, b int) bool {
+			return bytes.Compare(sortedValidatorSet[a].Validator.PublicKey[:], sortedValidatorSet[b].Validator.PublicKey[:]) > 0
+		})
+	case "balance":
+		sort.Slice(sortedValidatorSet, func(a, b int) bool {
+			return sortedValidatorSet[a].Balance < sortedValidatorSet[b].Balance
+		})
+	case "balance-d":
+		sort.Slice(sortedValidatorSet, func(a, b int) bool {
+			return sortedValidatorSet[a].Balance > sortedValidatorSet[b].Balance
+		})
+	case "activation":
+		sort.Slice(sortedValidatorSet, func(a, b int) bool {
+			return sortedValidatorSet[a].Validator.ActivationEpoch < sortedValidatorSet[b].Validator.ActivationEpoch
+		})
+	case "activation-d":
+		sort.Slice(sortedValidatorSet, func(a, b int) bool {
+			return sortedValidatorSet[a].Validator.ActivationEpoch > sortedValidatorSet[b].Validator.ActivationEpoch
+		})
+	case "exit":
+		sort.Slice(sortedValidatorSet, func(a, b int) bool {
+			return sortedValidatorSet[a].Validator.ExitEpoch < sortedValidatorSet[b].Validator.ExitEpoch
+		})
+	case "exit-d":
+		sort.Slice(sortedValidatorSet, func(a, b int) bool {
+			return sortedValidatorSet[a].Validator.ExitEpoch > sortedValidatorSet[b].Validator.ExitEpoch
+		})
 	}
+	validatorSet = sortedValidatorSet
 	pageData.Sorting = sortOrder
 
 	totalValidatorCount := uint64(validatorSetLen)
@@ -260,27 +264,27 @@ func buildValidatorsPageData(firstValIdx uint64, pageSize uint64, sortOrder stri
 		validatorData := &models.ValidatorsPageDataValidator{
 			Index:            uint64(validator.Index),
 			Name:             services.GlobalBeaconService.GetValidatorName(uint64(validator.Index)),
-			PublicKey:        validator.Validator.PubKey,
+			PublicKey:        validator.Validator.PublicKey[:],
 			Balance:          uint64(validator.Balance),
 			EffectiveBalance: uint64(validator.Validator.EffectiveBalance),
 		}
-		if strings.HasPrefix(validator.Status, "pending") {
+		if strings.HasPrefix(validator.Status.String(), "pending") {
 			validatorData.State = "Pending"
-		} else if validator.Status == "active_ongoing" {
+		} else if validator.Status == v1.ValidatorStateActiveOngoing {
 			validatorData.State = "Active"
 			validatorData.ShowUpcheck = true
-		} else if validator.Status == "active_exiting" {
+		} else if validator.Status == v1.ValidatorStateActiveExiting {
 			validatorData.State = "Exiting"
 			validatorData.ShowUpcheck = true
-		} else if validator.Status == "active_slashed" {
+		} else if validator.Status == v1.ValidatorStateActiveSlashed {
 			validatorData.State = "Slashed"
 			validatorData.ShowUpcheck = true
-		} else if validator.Status == "exited_unslashed" {
+		} else if validator.Status == v1.ValidatorStateExitedUnslashed {
 			validatorData.State = "Exited"
-		} else if validator.Status == "exited_slashed" {
+		} else if validator.Status == v1.ValidatorStateExitedSlashed {
 			validatorData.State = "Slashed"
 		} else {
-			validatorData.State = validator.Status
+			validatorData.State = validator.Status.String()
 		}
 
 		if validatorData.ShowUpcheck {

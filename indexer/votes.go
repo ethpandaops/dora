@@ -58,7 +58,11 @@ func aggregateEpochVotes(blockMap map[uint64]*CacheBlock, epoch uint64, epochSta
 		}
 
 		isNextEpoch := utils.EpochOfSlot(slot) > epoch
-		for _, att := range blockBody.Message.Body.Attestations {
+		attestations, err := blockBody.Attestations()
+		if err != nil {
+			continue
+		}
+		for _, att := range attestations {
 			if utils.EpochOfSlot(uint64(att.Data.Slot)) != epoch {
 				continue
 			}
@@ -83,7 +87,7 @@ func aggregateEpochVotes(blockMap map[uint64]*CacheBlock, epoch uint64, epochSta
 				}
 			}
 
-			if bytes.Equal(att.Data.Target.Root, targetRoot) {
+			if bytes.Equal(att.Data.Target.Root[:], targetRoot) {
 				if isNextEpoch {
 					votes.nextEpoch.targetVoteAmount += voteAmount
 				} else {
@@ -92,7 +96,7 @@ func aggregateEpochVotes(blockMap map[uint64]*CacheBlock, epoch uint64, epochSta
 			} /*else {
 				logger.Infof("vote target missmatch %v != 0x%x", att.Data.Target.Root, targetRoot)
 			}*/
-			if bytes.Equal(att.Data.BeaconBlockRoot, block.GetParentRoot()) {
+			if bytes.Equal(att.Data.BeaconBlockRoot[:], block.GetParentRoot()) {
 				if isNextEpoch {
 					votes.nextEpoch.headVoteAmount += voteAmount
 				} else {
