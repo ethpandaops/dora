@@ -59,6 +59,7 @@ type Config struct {
 
 	Indexer struct {
 		InMemoryEpochs                  uint16 `yaml:"inMemoryEpochs" envconfig:"INDEXER_IN_MEMORY_EPOCHS"`
+		CachePersistenceDelay           uint16 `yaml:"cachePersistenceDelay" envconfig:"INDEXER_CACHE_PERSISTENCE_DELAY"`
 		DisableIndexWriter              bool   `yaml:"disableIndexWriter" envconfig:"INDEXER_DISABLE_INDEX_WRITER"`
 		DisableSynchronizer             bool   `yaml:"disableSynchronizer" envconfig:"INDEXER_DISABLE_SYNCHRONIZER"`
 		SyncEpochCooldown               uint   `yaml:"syncEpochCooldown" envconfig:"INDEXER_SYNC_EPOCH_COOLDOWN"`

@@ -284,6 +284,7 @@ func (client *IndexerClient) refreshFinalityCheckpoints() (uint64, error) {
 
 func (client *IndexerClient) prefillCache(finalizedSlot uint64, latestHeader *v1.BeaconBlockHeader) error {
 	latestHeaderSlot := uint64(latestHeader.Header.Message.Slot)
+	currentClockEpoch := utils.TimeToEpoch(time.Now())
 	currentBlock, isNewBlock := client.indexerCache.createOrGetCachedBlock(latestHeader.Root[:], latestHeaderSlot)
 	if isNewBlock {
 		logger.WithField("client", client.clientName).Infof("received block %v:%v [0x%x] warmup, head", utils.EpochOfSlot(uint64(client.lastHeadSlot)), client.lastHeadSlot, client.lastHeadRoot)
@@ -338,6 +339,10 @@ func (client *IndexerClient) prefillCache(finalizedSlot uint64, latestHeader *v1
 			logger.WithField("client", client.clientName).Debugf("prefill cache: reached gensis slot [0x%x]", parentRoot)
 			break
 		}
+		if int64(utils.EpochOfSlot(parentSlot)) < currentClockEpoch-int64(client.indexerCache.indexer.inMemoryEpochs) {
+			logger.WithField("client", client.clientName).Debugf("prefill cache: reached end of cache period [%v]", currentClockEpoch-int64(client.indexerCache.indexer.inMemoryEpochs))
+			break
+		}
 		parentRoot = parentHead.Message.ParentRoot[:]
 	}
 
@@ -349,6 +354,9 @@ func (client *IndexerClient) prefillCache(finalizedSlot uint64, latestHeader *v1
 		firstEpoch = utils.EpochOfSlot(finalizedSlot)
 	}
 	currentEpoch := utils.EpochOfSlot(currentBlock.Slot)
+	if int64(firstEpoch) < currentClockEpoch-int64(client.indexerCache.indexer.inMemoryEpochs) {
+		firstEpoch = uint64(currentClockEpoch - int64(client.indexerCache.indexer.inMemoryEpochs))
+	}
 	for epoch := firstEpoch; epoch <= currentEpoch; epoch++ {
 		err := client.ensureEpochStats(epoch, currentBlock.Root)
 		if err != nil {

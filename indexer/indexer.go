@@ -18,12 +18,13 @@ import (
 var logger = logrus.StandardLogger().WithField("module", "indexer")
 
 type Indexer struct {
-	BlobStore      *BlobStore
-	indexerCache   *indexerCache
-	indexerClients []*IndexerClient
-	writeDb        bool
-	disableSync    bool
-	inMemoryEpochs uint16
+	BlobStore             *BlobStore
+	indexerCache          *indexerCache
+	indexerClients        []*IndexerClient
+	writeDb               bool
+	disableSync           bool
+	inMemoryEpochs        uint16
+	cachePersistenceDelay uint16
 }
 
 func NewIndexer() (*Indexer, error) {
@@ -31,13 +32,18 @@ func NewIndexer() (*Indexer, error) {
 	if inMemoryEpochs < 2 {
 		inMemoryEpochs = 2
 	}
+	cachePersistenceDelay := utils.Config.Indexer.CachePersistenceDelay
+	if cachePersistenceDelay < 2 {
+		cachePersistenceDelay = 2
+	}
 
 	indexer := &Indexer{
-		BlobStore:      newBlobStore(),
-		indexerClients: make([]*IndexerClient, 0),
-		writeDb:        !utils.Config.Indexer.DisableIndexWriter,
-		disableSync:    utils.Config.Indexer.DisableSynchronizer,
-		inMemoryEpochs: inMemoryEpochs,
+		BlobStore:             newBlobStore(),
+		indexerClients:        make([]*IndexerClient, 0),
+		writeDb:               !utils.Config.Indexer.DisableIndexWriter,
+		disableSync:           utils.Config.Indexer.DisableSynchronizer,
+		inMemoryEpochs:        inMemoryEpochs,
+		cachePersistenceDelay: cachePersistenceDelay,
 	}
 	indexer.indexerCache = newIndexerCache(indexer)
 

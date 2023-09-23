@@ -108,9 +108,17 @@ func (cache *indexerCache) processFinalizedEpochs() error {
 		processEpoch := uint64(cache.processedEpoch + 1)
 		err := cache.processFinalizedEpoch(processEpoch)
 		if err != nil {
-			return err
+			cache.processingRetry++
+			if cache.processingRetry < 6 {
+				return err
+			} else {
+				logger.Warnf("epoch %v processing error: %v", processEpoch, err)
+				logger.Warnf("epoch %v processing failed repeatedly. skipping processing & starting synchronizer", processEpoch)
+				cache.startSynchronizer(processEpoch)
+			}
 		}
 		cache.processedEpoch = int64(processEpoch)
+		cache.processingRetry = 0
 	}
 	return nil
 }
@@ -134,8 +142,12 @@ func (cache *indexerCache) processFinalizedEpoch(epoch uint64) error {
 
 	// get epoch stats
 	client := cache.indexer.GetReadyClient(true, nil, nil)
-	epochStats, _ := cache.createOrGetEpochStats(epoch, epochDependentRoot)
-	epochStats.ensureEpochStatsLazy(client, nil)
+	epochStats := cache.getEpochStats(epoch, epochDependentRoot)
+	if epochStats == nil {
+		logger.Warnf("epoch %v stats not found, starting synchronization", epoch)
+		cache.startSynchronizer(epoch)
+		return nil
+	}
 
 	// get canonical blocks
 	canonicalMap := map[uint64]*CacheBlock{}
@@ -294,6 +306,7 @@ func (cache *indexerCache) processOrphanedBlocks(processedEpoch int64) error {
 }
 
 func (cache *indexerCache) processCachePersistence() error {
+	persistBlocks := []*CacheBlock{}
 	pruneBlocks := []*CacheBlock{}
 	cache.cacheMutex.RLock()
 	headSlot := cache.highestSlot
@@ -301,24 +314,44 @@ func (cache *indexerCache) processCachePersistence() error {
 	if headSlot >= 0 {
 		headEpoch = utils.EpochOfSlot(uint64(headSlot))
 	}
+	var minPersistSlot int64 = -1
+	var minPruneSlot int64 = -1
+	if headEpoch > uint64(cache.indexer.cachePersistenceDelay) {
+		persistEpoch := headEpoch - uint64(cache.indexer.cachePersistenceDelay)
+		if persistEpoch >= 0 {
+			minPersistSlot = int64((persistEpoch+1)*utils.Config.Chain.Config.SlotsPerEpoch) - 1
+		}
+	}
 	if headEpoch > uint64(cache.indexer.inMemoryEpochs) {
 		pruneEpoch := headEpoch - uint64(cache.indexer.inMemoryEpochs)
-		for slot, blocks := range cache.slotMap {
-			if utils.EpochOfSlot(slot) <= pruneEpoch {
-				for _, block := range blocks {
-					if block.block == nil {
-						continue
-					}
-					pruneBlocks = append(pruneBlocks, block)
+		if pruneEpoch >= 0 {
+			minPruneSlot = int64((pruneEpoch+1)*utils.Config.Chain.Config.SlotsPerEpoch) - 1
+		}
+	}
+	for slot, blocks := range cache.slotMap {
+		if int64(slot) <= minPersistSlot {
+			for _, block := range blocks {
+				if block.isInDb {
+					continue
 				}
+				persistBlocks = append(persistBlocks, block)
+			}
+		}
+		if int64(slot) <= minPruneSlot {
+			for _, block := range blocks {
+				if block.block == nil {
+					continue
+				}
+				pruneBlocks = append(pruneBlocks, block)
 			}
 		}
 	}
 	cache.cacheMutex.RUnlock()
 
+	persistCount := len(persistBlocks)
 	pruneCount := len(pruneBlocks)
 	logger.Infof("processing cache persistence: prune %v blocks", pruneCount)
-	if pruneCount == 0 {
+	if persistCount == 0 && pruneCount == 0 {
 		return nil
 	}
 
@@ -330,7 +363,7 @@ func (cache *indexerCache) processCachePersistence() error {
 		}
 		defer tx.Rollback()
 
-		for _, block := range pruneBlocks {
+		for _, block := range persistBlocks {
 			if !block.isInDb && block.IsReady() {
 				orphanedBlock := block.buildOrphanedBlock()
 				err := db.InsertUnfinalizedBlock(&dbtypes.UnfinalizedBlock{
