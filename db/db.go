@@ -762,7 +762,7 @@ func InsertUnfinalizedBlock(block *dbtypes.UnfinalizedBlock, tx *sqlx.Tx) error 
 		dbtypes.DBEnginePgsql: `
 			INSERT INTO unfinalized_blocks (
 				root, slot, header_ver, header_ssz, block_ver, block_ssz
-			) VALUES ($1, $2, $3, $4)
+			) VALUES ($1, $2, $3, $4, $5, $6)
 			ON CONFLICT (root) DO NOTHING`,
 		dbtypes.DBEngineSqlite: `
 			INSERT OR IGNORE INTO unfinalized_blocks (
