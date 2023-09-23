@@ -1,13 +1,18 @@
 package rpc
 
 import (
-	"context"
+	"encoding/json"
 	"fmt"
+	"net/http"
+	"strings"
 	"sync"
 	"time"
 
-	eth2client "github.com/attestantio/go-eth2-client"
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
+	"github.com/donovanhide/eventsource"
+
+	"github.com/pk910/dora-the-explorer/rpc/eventstream"
+	"github.com/pk910/dora-the-explorer/utils"
 )
 
 const (
@@ -68,82 +73,120 @@ func (bs *BeaconStream) startStream() {
 	bs.runMutex.Lock()
 	defer bs.runMutex.Unlock()
 
-	provider, isProvider := bs.client.clientSvc.(eth2client.EventsProvider)
-	if !isProvider {
-		logger.WithField("client", bs.client.name).Warnf("beacon block stream error: event subscriptions not supported")
-		bs.running = false
-		return
+	stream := bs.subscribeStream(bs.client.endpoint, bs.events)
+	if stream != nil {
+		bs.ready = true
+		running := true
+		for running {
+			select {
+			case evt := <-stream.Events:
+				if evt.Event() == "block" {
+					bs.processBlockEvent(evt)
+				} else if evt.Event() == "head" {
+					bs.processHeadEvent(evt)
+				} else if evt.Event() == "finalized_checkpoint" {
+					bs.processFinalizedEvent(evt)
+				}
+			case <-bs.killChan:
+				running = false
+			case <-stream.Ready:
+				bs.ReadyChan <- true
+			case err := <-stream.Errors:
+				logger.WithField("client", bs.client.name).Warnf("beacon block stream error: %v", err)
+				bs.ReadyChan <- false
+			}
+		}
+	}
+	if stream != nil {
+		stream.Close()
+	}
+	bs.running = false
+}
+
+func (bs *BeaconStream) subscribeStream(endpoint string, events uint16) *eventstream.Stream {
+	var topics strings.Builder
+	topicsCount := 0
+	if events&StreamBlockEvent > 0 {
+		if topicsCount > 0 {
+			fmt.Fprintf(&topics, ",")
+		}
+		fmt.Fprintf(&topics, "block")
+		topicsCount++
+	}
+	if events&StreamHeadEvent > 0 {
+		if topicsCount > 0 {
+			fmt.Fprintf(&topics, ",")
+		}
+		fmt.Fprintf(&topics, "head")
+		topicsCount++
+	}
+	if events&StreamFinalizedEvent > 0 {
+		if topicsCount > 0 {
+			fmt.Fprintf(&topics, ",")
+		}
+		fmt.Fprintf(&topics, "finalized_checkpoint")
+		topicsCount++
 	}
 
-	topics := []string{}
-	if bs.events&StreamBlockEvent > 0 {
-		topics = append(topics, "block")
-	}
-	if bs.events&StreamHeadEvent > 0 {
-		topics = append(topics, "head")
-	}
-	if bs.events&StreamFinalizedEvent > 0 {
-		topics = append(topics, "finalized_checkpoint")
-	}
-
-	for bs.running {
-		err := bs.subscribeStream(provider, topics)
+	for {
+		url := fmt.Sprintf("%s/eth/v1/events?topics=%v", endpoint, topics.String())
+		req, err := http.NewRequest("GET", url, nil)
+		var stream *eventstream.Stream
+		if err == nil {
+			for headerKey, headerVal := range bs.client.headers {
+				req.Header.Set(headerKey, headerVal)
+			}
+			stream, err = eventstream.SubscribeWithRequest("", req)
+		}
 		if err != nil {
-			logger.WithField("client", bs.client.name).Warnf("beacon block stream error: %v", err)
-			bs.ReadyChan <- false
+			logger.WithField("client", bs.client.name).Warnf("Error while subscribing beacon event stream %v: %v", utils.GetRedactedUrl(url), err)
+			select {
+			case <-bs.killChan:
+				return nil
+			case <-time.After(10 * time.Second):
+			}
+		} else {
+			return stream
 		}
-		time.Sleep(2 * time.Second)
 	}
 }
 
-func (bs *BeaconStream) subscribeStream(provider eth2client.EventsProvider, topics []string) error {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	err := provider.Events(ctx, topics, func(evt *v1.Event) {
-		if evt.Topic == "block" {
-			bs.processBlockEvent(evt)
-		} else if evt.Topic == "head" {
-			bs.processHeadEvent(evt)
-		} else if evt.Topic == "finalized_checkpoint" {
-			bs.processFinalizedEvent(evt)
-		}
-	})
-	return err
-}
-
-func (bs *BeaconStream) processBlockEvent(evt *v1.Event) error {
-	block, valid := evt.Data.(*v1.BlockEvent)
-	if !valid {
-		return fmt.Errorf("invalid block event")
+func (bs *BeaconStream) processBlockEvent(evt eventsource.Event) {
+	var parsed v1.BlockEvent
+	err := json.Unmarshal([]byte(evt.Data()), &parsed)
+	if err != nil {
+		logger.WithField("client", bs.client.name).Warnf("beacon block stream failed to decode block event: %v", err)
+		return
 	}
 	bs.EventChan <- &BeaconStreamEvent{
 		Event: StreamBlockEvent,
-		Data:  block,
+		Data:  &parsed,
 	}
-	return nil
 }
 
-func (bs *BeaconStream) processHeadEvent(evt *v1.Event) error {
-	head, valid := evt.Data.(*v1.HeadEvent)
-	if !valid {
-		return fmt.Errorf("invalid head event")
+func (bs *BeaconStream) processHeadEvent(evt eventsource.Event) {
+	var parsed v1.HeadEvent
+	err := json.Unmarshal([]byte(evt.Data()), &parsed)
+	if err != nil {
+		logger.WithField("client", bs.client.name).Warnf("beacon block stream failed to decode block event: %v", err)
+		return
 	}
+	bs.lastHeadSeen = time.Now()
 	bs.EventChan <- &BeaconStreamEvent{
 		Event: StreamHeadEvent,
-		Data:  head,
+		Data:  &parsed,
 	}
-	return nil
 }
 
-func (bs *BeaconStream) processFinalizedEvent(evt *v1.Event) error {
-	checkpoint, valid := evt.Data.(*v1.FinalizedCheckpointEvent)
-	if !valid {
-		return fmt.Errorf("invalid finalized_checkpoint event")
+func (bs *BeaconStream) processFinalizedEvent(evt eventsource.Event) {
+	var parsed v1.FinalizedCheckpointEvent
+	err := json.Unmarshal([]byte(evt.Data()), &parsed)
+	if err != nil {
+		logger.WithField("client", bs.client.name).Warnf("beacon block stream failed to decode finalized_checkpoint event: %v", err)
+		return
 	}
 	bs.EventChan <- &BeaconStreamEvent{
 		Event: StreamFinalizedEvent,
-		Data:  checkpoint,
+		Data:  &parsed,
 	}
-	return nil
 }
