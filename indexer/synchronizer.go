@@ -84,15 +84,8 @@ func (sync *synchronizerState) runSync() {
 		// synchronize next epoch
 		syncEpoch := sync.currentEpoch
 
-		lastRetry := retryCount >= 10
-		if lastRetry {
-			synclogger.Infof("synchronizing epoch %v (retry: %v, last retry!)", syncEpoch, retryCount)
-		} else if retryCount > 0 {
-			synclogger.Infof("synchronizing epoch %v (retry: %v)", syncEpoch, retryCount)
-		} else {
-			synclogger.Infof("synchronizing epoch %v", syncEpoch)
-		}
-		done, usedClient, err := sync.syncEpoch(syncEpoch, lastRetry, skipClients)
+		lastRetry := retryCount >= 20
+		done, usedClient, err := sync.syncEpoch(syncEpoch, retryCount, lastRetry, skipClients)
 		if done || lastRetry {
 			if err != nil {
 				synclogger.Warnf("synchronization of epoch %v failed: %v - skipping epoch", syncEpoch, err)
@@ -151,12 +144,19 @@ func (sync *synchronizerState) checkKillChan(timeout time.Duration) bool {
 	}
 }
 
-func (sync *synchronizerState) syncEpoch(syncEpoch uint64, lastTry bool, skipClients []*IndexerClient) (bool, *IndexerClient, error) {
+func (sync *synchronizerState) syncEpoch(syncEpoch uint64, retryCount int, lastTry bool, skipClients []*IndexerClient) (bool, *IndexerClient, error) {
 	if db.IsEpochSynchronized(syncEpoch) {
 		return true, nil, nil
 	}
 
 	client := sync.indexer.GetReadyClient(true, nil, skipClients)
+	if lastTry {
+		synclogger.WithField("client", client.clientName).Infof("synchronizing epoch %v (retry: %v, last retry!)", syncEpoch, retryCount)
+	} else if retryCount > 0 {
+		synclogger.WithField("client", client.clientName).Infof("synchronizing epoch %v (retry: %v)", syncEpoch, retryCount)
+	} else {
+		synclogger.WithField("client", client.clientName).Infof("synchronizing epoch %v", syncEpoch)
+	}
 
 	// load headers & blocks from this & next epoch
 	firstSlot := syncEpoch * utils.Config.Chain.Config.SlotsPerEpoch
