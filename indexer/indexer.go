@@ -418,7 +418,16 @@ func (indexer *Indexer) getCachedEpochStats(epoch uint64, headRoot []byte) *Epoc
 				epochStatsDistance = dependentDist
 				epochStats = stats
 			}
-			break
+		}
+	}
+	if epochStats == nil {
+		// fallback to non-canonical epoch stats (still better than showing nothing)
+		maxSeen := uint64(0)
+		for _, stats := range epochStatsList {
+			if epochStats == nil || stats.seenCount > maxSeen {
+				maxSeen = stats.seenCount
+				epochStats = stats
+			}
 		}
 	}
 	return epochStats
@@ -501,20 +510,21 @@ func (indexer *Indexer) BuildLiveBlock(block *CacheBlock) *dbtypes.Block {
 	block.dbBlockMutex.Lock()
 	defer block.dbBlockMutex.Unlock()
 
-	if block.dbBlockCache == nil {
+	dbBlock := block.dbBlockCache
+	if dbBlock == nil {
 		logger.Debugf("Build live block data 0x%x", block.Root)
 		header := block.GetHeader()
 		epoch := utils.EpochOfSlot(uint64(header.Message.Slot))
 		epochStats := indexer.GetCachedEpochStats(epoch)
-		if epochStats == nil {
-			return nil
+		dbBlock = buildDbBlock(block, epochStats)
+		if epochStats != nil {
+			block.dbBlockCache = dbBlock
 		}
-		block.dbBlockCache = buildDbBlock(block, epochStats)
 	}
 	if block.IsCanonical(indexer, nil) {
-		block.dbBlockCache.Orphaned = 0
+		dbBlock.Orphaned = 0
 	} else {
-		block.dbBlockCache.Orphaned = 1
+		dbBlock.Orphaned = 1
 	}
-	return block.dbBlockCache
+	return dbBlock
 }
