@@ -38,6 +38,7 @@ func NewBeaconClient(endpoint string, name string, headers map[string]string) (*
 
 	cliParams := []http.Parameter{
 		http.WithAddress(endpoint),
+		http.WithTimeout(10 * time.Minute),
 	}
 
 	// set log level
