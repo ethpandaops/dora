@@ -147,7 +147,6 @@ func (cache *indexerCache) processFinalizedEpoch(epoch uint64) error {
 	if epochStats == nil {
 		logger.Warnf("epoch %v stats not found, starting synchronization", epoch)
 		cache.startSynchronizer(epoch)
-		return nil
 	}
 
 	// get canonical blocks
@@ -176,16 +175,6 @@ func (cache *indexerCache) processFinalizedEpoch(epoch uint64) error {
 		canonicalMap[slot] = block
 	}
 
-	// calculate votes
-	epochVotes := aggregateEpochVotes(canonicalMap, epoch, epochStats, epochTarget, false, true)
-
-	if epochStats.validatorStats != nil {
-		logger.Infof("epoch %v stats: %v validators (%v)", epoch, epochStats.validatorStats.ValidatorCount, epochStats.validatorStats.EligibleAmount)
-	}
-	logger.Infof("epoch %v votes: target %v + %v = %v", epoch, epochVotes.currentEpoch.targetVoteAmount, epochVotes.nextEpoch.targetVoteAmount, epochVotes.currentEpoch.targetVoteAmount+epochVotes.nextEpoch.targetVoteAmount)
-	logger.Infof("epoch %v votes: head %v + %v = %v", epoch, epochVotes.currentEpoch.headVoteAmount, epochVotes.nextEpoch.headVoteAmount, epochVotes.currentEpoch.headVoteAmount+epochVotes.nextEpoch.headVoteAmount)
-	logger.Infof("epoch %v votes: total %v + %v = %v", epoch, epochVotes.currentEpoch.totalVoteAmount, epochVotes.nextEpoch.totalVoteAmount, epochVotes.currentEpoch.totalVoteAmount+epochVotes.nextEpoch.totalVoteAmount)
-
 	// store canonical blocks to db and remove from cache
 	tx, err := db.WriterDb.Beginx()
 	if err != nil {
@@ -194,17 +183,37 @@ func (cache *indexerCache) processFinalizedEpoch(epoch uint64) error {
 	}
 	defer tx.Rollback()
 
-	err = persistEpochData(epoch, canonicalMap, epochStats, epochVotes, tx)
-	if err != nil {
-		logger.Errorf("error persisting epoch data to db: %v", err)
-		return err
-	}
+	if epochStats != nil {
+		// calculate votes
+		epochVotes := aggregateEpochVotes(canonicalMap, epoch, epochStats, epochTarget, false, true)
 
-	if len(epochStats.syncAssignments) > 0 {
-		err = persistSyncAssignments(epoch, epochStats, tx)
+		if epochStats.validatorStats != nil {
+			logger.Infof("epoch %v stats: %v validators (%v)", epoch, epochStats.validatorStats.ValidatorCount, epochStats.validatorStats.EligibleAmount)
+		}
+		logger.Infof("epoch %v votes: target %v + %v = %v", epoch, epochVotes.currentEpoch.targetVoteAmount, epochVotes.nextEpoch.targetVoteAmount, epochVotes.currentEpoch.targetVoteAmount+epochVotes.nextEpoch.targetVoteAmount)
+		logger.Infof("epoch %v votes: head %v + %v = %v", epoch, epochVotes.currentEpoch.headVoteAmount, epochVotes.nextEpoch.headVoteAmount, epochVotes.currentEpoch.headVoteAmount+epochVotes.nextEpoch.headVoteAmount)
+		logger.Infof("epoch %v votes: total %v + %v = %v", epoch, epochVotes.currentEpoch.totalVoteAmount, epochVotes.nextEpoch.totalVoteAmount, epochVotes.currentEpoch.totalVoteAmount+epochVotes.nextEpoch.totalVoteAmount)
+
+		err = persistEpochData(epoch, canonicalMap, epochStats, epochVotes, tx)
 		if err != nil {
-			logger.Errorf("error persisting sync committee assignments to db: %v", err)
+			logger.Errorf("error persisting epoch data to db: %v", err)
 			return err
+		}
+
+		if len(epochStats.syncAssignments) > 0 {
+			err = persistSyncAssignments(epoch, epochStats, tx)
+			if err != nil {
+				logger.Errorf("error persisting sync committee assignments to db: %v", err)
+				return err
+			}
+		}
+	} else {
+		for _, block := range canonicalMap {
+			if !block.IsReady() {
+				continue
+			}
+			dbBlock := buildDbBlock(block, nil)
+			db.InsertBlock(dbBlock, tx)
 		}
 	}
 

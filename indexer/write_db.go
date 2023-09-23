@@ -152,12 +152,14 @@ func buildDbEpoch(epoch uint64, blockMap map[uint64]*CacheBlock, epochStats *Epo
 	totalSyncAssigned := 0
 	totalSyncVoted := 0
 	dbEpoch := dbtypes.Epoch{
-		Epoch:       epoch,
-		VotedTarget: epochVotes.currentEpoch.targetVoteAmount + epochVotes.nextEpoch.targetVoteAmount,
-		VotedHead:   epochVotes.currentEpoch.headVoteAmount + epochVotes.nextEpoch.headVoteAmount,
-		VotedTotal:  epochVotes.currentEpoch.totalVoteAmount + epochVotes.nextEpoch.totalVoteAmount,
+		Epoch: epoch,
 	}
-	if epochStats.validatorStats != nil {
+	if epochVotes != nil {
+		dbEpoch.VotedTarget = epochVotes.currentEpoch.targetVoteAmount + epochVotes.nextEpoch.targetVoteAmount
+		dbEpoch.VotedHead = epochVotes.currentEpoch.headVoteAmount + epochVotes.nextEpoch.headVoteAmount
+		dbEpoch.VotedTotal = epochVotes.currentEpoch.totalVoteAmount + epochVotes.nextEpoch.totalVoteAmount
+	}
+	if epochStats != nil && epochStats.validatorStats != nil {
 		dbEpoch.ValidatorCount = epochStats.validatorStats.ValidatorCount
 		dbEpoch.ValidatorBalance = epochStats.validatorStats.ValidatorBalance
 		dbEpoch.Eligible = epochStats.validatorStats.EligibleAmount
@@ -195,7 +197,7 @@ func buildDbEpoch(epoch uint64, blockMap map[uint64]*CacheBlock, epochStats *Epo
 			dbEpoch.ProposerSlashingCount += uint64(len(proposerSlashings))
 			dbEpoch.BLSChangeCount += uint64(len(blsToExecChanges))
 
-			if syncAggregate != nil && epochStats.syncAssignments != nil {
+			if syncAggregate != nil && epochStats != nil && epochStats.syncAssignments != nil {
 				votedCount := 0
 				assignedCount := len(epochStats.syncAssignments)
 				for i := 0; i < assignedCount; i++ {
