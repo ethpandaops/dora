@@ -323,8 +323,15 @@ func (bs *BeaconService) GetProposerAssignments(firstEpoch uint64, lastEpoch uin
 		firstEpoch = idxHeadEpoch
 	}
 
+	var epoch uint64
+	for epochIdx := int64(firstEpoch); epochIdx >= int64(lastEpoch); epochIdx-- {
+		epoch = uint64(epochIdx)
+		for idx := uint64(0); idx < utils.Config.Chain.Config.SlotsPerEpoch; idx++ {
+			proposerAssignments[(epoch*utils.Config.Chain.Config.SlotsPerEpoch)+idx] = math.MaxInt64
+		}
+	}
+
 	if firstEpoch >= uint64(idxMinEpoch) {
-		var epoch uint64
 		for epochIdx := int64(firstEpoch); epochIdx >= int64(idxMinEpoch) && epochIdx >= int64(lastEpoch); epochIdx-- {
 			epoch = uint64(epochIdx)
 			epochStats := bs.indexer.GetCachedEpochStats(epoch)
@@ -336,13 +343,6 @@ func (bs *BeaconService) GetProposerAssignments(firstEpoch uint64, lastEpoch uin
 					for slot, vidx := range proposers {
 						proposerAssignments[slot] = vidx
 					}
-				} else {
-					epochStats = nil
-				}
-			}
-			if epochStats == nil {
-				for idx := uint64(0); idx < utils.Config.Chain.Config.SlotsPerEpoch; idx++ {
-					proposerAssignments[(epoch*utils.Config.Chain.Config.SlotsPerEpoch)+idx] = math.MaxInt64
 				}
 			}
 		}
