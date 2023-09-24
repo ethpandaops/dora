@@ -1,8 +1,12 @@
 package services
 
 import (
-	"errors"
+	"bufio"
+	"bytes"
 	"fmt"
+	"runtime"
+	"runtime/debug"
+	"strings"
 	"sync"
 	"time"
 
@@ -12,10 +16,13 @@ import (
 )
 
 type FrontendCacheService struct {
-	tieredCache *cache.TieredCache
-
-	processingMutex sync.Mutex
-	processingDict  map[string]*FrontendCacheProcessingPage
+	pageCallCounter      uint64
+	pageCallCounterMutex sync.Mutex
+	tieredCache          *cache.TieredCache
+	processingMutex      sync.Mutex
+	processingDict       map[string]*FrontendCacheProcessingPage
+	callStackMutex       sync.RWMutex
+	callStackBuffer      []byte
 }
 
 type FrontendCacheProcessingPage struct {
@@ -29,7 +36,22 @@ type FrontendCacheProcessingPage struct {
 type PageDataHandlerFn = func(pageCall *FrontendCacheProcessingPage) interface{}
 
 var GlobalFrontendCache *FrontendCacheService
-var FrontendCacheTimeoutError = errors.New("page processing timeout")
+
+type FrontendCachePageError struct {
+	err   error
+	name  string
+	stack string
+}
+
+func (e FrontendCachePageError) Error() string {
+	return e.err.Error()
+}
+func (e FrontendCachePageError) Name() string {
+	return e.name
+}
+func (e FrontendCachePageError) Stack() string {
+	return e.stack
+}
 
 // StartFrontendCache is used to start the global frontend cache service
 func StartFrontendCache() error {
@@ -44,8 +66,9 @@ func StartFrontendCache() error {
 	}
 
 	GlobalFrontendCache = &FrontendCacheService{
-		tieredCache:    tieredCache,
-		processingDict: make(map[string]*FrontendCacheProcessingPage),
+		tieredCache:     tieredCache,
+		processingDict:  make(map[string]*FrontendCacheProcessingPage),
+		callStackBuffer: make([]byte, 1024*1024*5),
 	}
 	return nil
 }
@@ -82,8 +105,25 @@ func (fc *FrontendCacheService) ProcessCachedPage(pageKey string, caching bool, 
 func (fc *FrontendCacheService) processPageCall(pageKey string, caching bool, pageData interface{}, buildFn PageDataHandlerFn, pageCall *FrontendCacheProcessingPage) (interface{}, error) {
 	// process page call with timeout
 	returnChan := make(chan interface{})
+	errorChan := make(chan error)
 	isTimedOut := false
-	go func() {
+
+	fc.pageCallCounterMutex.Lock()
+	fc.pageCallCounter++
+	callIdx := fc.pageCallCounter
+	fc.pageCallCounterMutex.Unlock()
+
+	go func(callIdx uint64) {
+		defer func() {
+			if err := recover(); err != nil {
+				errorChan <- &FrontendCachePageError{
+					name:  "page panic",
+					err:   fmt.Errorf("page call %v panic: %v", callIdx, err),
+					stack: string(debug.Stack()),
+				}
+			}
+		}()
+
 		// check cache
 		if !utils.Config.Frontend.Debug && caching && fc.getFrontendCache(pageKey, pageData) == nil {
 			logrus.Debugf("page served from cache: %v", pageKey)
@@ -105,7 +145,7 @@ func (fc *FrontendCacheService) processPageCall(pageKey string, caching bool, pa
 		if !isTimedOut {
 			returnChan <- pageData
 		}
-	}()
+	}(callIdx)
 
 	callTimeout := utils.Config.Frontend.PageCallTimeout
 	if callTimeout == 0 {
@@ -115,9 +155,15 @@ func (fc *FrontendCacheService) processPageCall(pageKey string, caching bool, pa
 	select {
 	case returnValue := <-returnChan:
 		return returnValue, nil
+	case returnError := <-errorChan:
+		return nil, returnError
 	case <-time.After(callTimeout):
 		isTimedOut = true
-		return nil, FrontendCacheTimeoutError
+		return nil, &FrontendCachePageError{
+			name:  "page timeout",
+			err:   fmt.Errorf("page call %v timeout", callIdx),
+			stack: fc.extractPageCallStack(callIdx),
+		}
 	}
 }
 
@@ -135,4 +181,37 @@ func (fc *FrontendCacheService) completePageLoad(pageKey string, processingPage 
 	fc.processingMutex.Lock()
 	delete(fc.processingDict, pageKey)
 	fc.processingMutex.Unlock()
+}
+
+func (fc *FrontendCacheService) extractPageCallStack(callIdx uint64) string {
+	if fc.callStackMutex.TryLock() {
+		runtime.Stack(fc.callStackBuffer, true)
+		fc.callStackMutex.Unlock()
+	}
+	fc.callStackMutex.RLock()
+	defer fc.callStackMutex.RUnlock()
+
+	callFnName := fmt.Sprintf("processPageCall.func1(0x%x)", callIdx)
+	scanner := bufio.NewScanner(bytes.NewReader(fc.callStackBuffer))
+	lastBlock := []string{}
+	isPageCall := false
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, "goroutine ") {
+			if isPageCall {
+				break
+			}
+			lastBlock = []string{}
+		} else {
+			lastBlock = append(lastBlock, line)
+
+			if strings.Contains(line, callFnName) {
+				isPageCall = true
+			}
+		}
+	}
+	if !isPageCall {
+		return "call stack not found"
+	}
+	return strings.Join(lastBlock, "\n")
 }

@@ -2,14 +2,13 @@ package handlers
 
 import (
 	"errors"
-	"fmt"
 	"io/fs"
 	"net/http"
 	"path"
-	"runtime"
 	"strings"
 	"time"
 
+	"github.com/pk910/dora-the-explorer/services"
 	"github.com/pk910/dora-the-explorer/templates"
 	"github.com/pk910/dora-the-explorer/types/models"
 	"github.com/sirupsen/logrus"
@@ -87,17 +86,15 @@ func handlePageError(w http.ResponseWriter, r *http.Request, pageError error) {
 	w.Header().Set("Content-Type", "text/html")
 	w.WriteHeader(http.StatusInternalServerError)
 	data := InitPageData(w, r, "blockchain", r.URL.Path, "Internal Error", templateFiles)
-	errPageData := &models.ErrorPageData{
+	errData := &models.ErrorPageData{
 		CallTime: time.Now(),
 		CallUrl:  r.URL.String(),
 		ErrorMsg: pageError.Error(),
 	}
-
-	buf := make([]byte, 1<<16)
-	runtime.Stack(buf, true)
-	errPageData.StackTrace = fmt.Sprintf("%s", buf)
-
-	data.Data = errPageData
+	if fcError, isOk := pageError.(*services.FrontendCachePageError); isOk {
+		errData.StackTrace = fcError.Stack()
+	}
+	data.Data = errData
 	err := notFoundTemplate.ExecuteTemplate(w, "layout", data)
 	if err != nil {
 		logrus.Errorf("error executing page error template for %v route: %v", r.URL.String(), err)
