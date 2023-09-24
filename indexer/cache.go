@@ -23,8 +23,10 @@ type indexerCache struct {
 	justifiedEpoch          int64
 	justifiedRoot           []byte
 	processedEpoch          int64
+	processingRetry         uint64
 	persistEpoch            int64
-	cleanupEpoch            int64
+	cleanupBlockEpoch       int64
+	cleanupStatsEpoch       int64
 	slotMap                 map[uint64][]*CacheBlock
 	rootMap                 map[string]*CacheBlock
 	epochStatsMutex         sync.RWMutex
@@ -48,7 +50,8 @@ func newIndexerCache(indexer *Indexer) *indexerCache {
 		finalizedEpoch:          -1,
 		processedEpoch:          -2,
 		persistEpoch:            -1,
-		cleanupEpoch:            -1,
+		cleanupBlockEpoch:       -1,
+		cleanupStatsEpoch:       -1,
 		slotMap:                 make(map[uint64][]*CacheBlock),
 		rootMap:                 make(map[string]*CacheBlock),
 		epochStatsMap:           make(map[uint64][]*EpochStats),
@@ -141,12 +144,6 @@ func (cache *indexerCache) loadStoredUnfinalizedCache() error {
 		cachedBlock.isInDb = true
 		cachedBlock.parseBlockRefs()
 		cachedBlock.mutex.Unlock()
-	}
-	epochDuties := db.GetUnfinalizedEpochDutyRefs()
-	for _, epochDuty := range epochDuties {
-		logger.Debugf("Restored unfinalized block duty ref from db: %v/0x%x", epochDuty.Epoch, epochDuty.DependentRoot)
-		epochStats, _ := cache.createOrGetEpochStats(epochDuty.Epoch, epochDuty.DependentRoot)
-		epochStats.dutiesInDb = true
 	}
 	return nil
 }

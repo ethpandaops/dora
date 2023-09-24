@@ -2,6 +2,7 @@ package indexer
 
 import (
 	"bytes"
+	"math"
 	"math/rand"
 	"sort"
 
@@ -18,12 +19,13 @@ import (
 var logger = logrus.StandardLogger().WithField("module", "indexer")
 
 type Indexer struct {
-	BlobStore      *BlobStore
-	indexerCache   *indexerCache
-	indexerClients []*IndexerClient
-	writeDb        bool
-	disableSync    bool
-	inMemoryEpochs uint16
+	BlobStore             *BlobStore
+	indexerCache          *indexerCache
+	indexerClients        []*IndexerClient
+	writeDb               bool
+	disableSync           bool
+	inMemoryEpochs        uint16
+	cachePersistenceDelay uint16
 }
 
 func NewIndexer() (*Indexer, error) {
@@ -31,13 +33,18 @@ func NewIndexer() (*Indexer, error) {
 	if inMemoryEpochs < 2 {
 		inMemoryEpochs = 2
 	}
+	cachePersistenceDelay := utils.Config.Indexer.CachePersistenceDelay
+	if cachePersistenceDelay < 2 {
+		cachePersistenceDelay = 2
+	}
 
 	indexer := &Indexer{
-		BlobStore:      newBlobStore(),
-		indexerClients: make([]*IndexerClient, 0),
-		writeDb:        !utils.Config.Indexer.DisableIndexWriter,
-		disableSync:    utils.Config.Indexer.DisableSynchronizer,
-		inMemoryEpochs: inMemoryEpochs,
+		BlobStore:             newBlobStore(),
+		indexerClients:        make([]*IndexerClient, 0),
+		writeDb:               !utils.Config.Indexer.DisableIndexWriter,
+		disableSync:           utils.Config.Indexer.DisableSynchronizer,
+		inMemoryEpochs:        inMemoryEpochs,
+		cachePersistenceDelay: cachePersistenceDelay,
 	}
 	indexer.indexerCache = newIndexerCache(indexer)
 
@@ -397,11 +404,30 @@ func (indexer *Indexer) getCachedEpochStats(epoch uint64, headRoot []byte) *Epoc
 	indexer.indexerCache.epochStatsMutex.RLock()
 	defer indexer.indexerCache.epochStatsMutex.RUnlock()
 	var epochStats *EpochStats
+	epochStatsDistance := uint64(math.MaxUint64)
 	epochStatsList := indexer.indexerCache.epochStatsMap[epoch]
+	dependentSlot := epoch * utils.Config.Chain.Config.SlotsPerEpoch
+	if dependentSlot > 0 {
+		dependentSlot--
+	}
 	for _, stats := range epochStatsList {
-		if indexer.indexerCache.isCanonicalBlock(stats.DependentRoot, headRoot) {
-			epochStats = stats
-			break
+		dependentBlock := indexer.indexerCache.getCachedBlock(stats.DependentRoot)
+		if dependentBlock != nil && indexer.indexerCache.isCanonicalBlock(stats.DependentRoot, headRoot) {
+			dependentDist := dependentSlot - dependentBlock.Slot
+			if epochStatsDistance == uint64(math.MaxUint64) || dependentDist < epochStatsDistance {
+				epochStatsDistance = dependentDist
+				epochStats = stats
+			}
+		}
+	}
+	if epochStats == nil {
+		// fallback to non-canonical epoch stats (still better than showing nothing)
+		maxSeen := uint64(0)
+		for _, stats := range epochStatsList {
+			if epochStats == nil || stats.seenCount > maxSeen {
+				maxSeen = stats.seenCount
+				epochStats = stats
+			}
 		}
 	}
 	return epochStats
@@ -448,19 +474,26 @@ func (indexer *Indexer) getEpochVotes(epoch uint64, epochStats *EpochStats) *Epo
 }
 
 func (indexer *Indexer) BuildLiveEpoch(epoch uint64) *dbtypes.Epoch {
+	dbEpoch, _ := indexer.buildLiveEpoch(epoch, nil)
+	return dbEpoch
+}
+
+func (indexer *Indexer) buildLiveEpoch(epoch uint64, epochStats *EpochStats) (*dbtypes.Epoch, *EpochStats) {
 	headSlot, headRoot := indexer.GetCanonicalHead()
 	headEpoch := utils.EpochOfSlot(headSlot)
 
-	epochStats := indexer.getCachedEpochStats(epoch, headRoot)
+	if epochStats == nil {
+		epochStats = indexer.getCachedEpochStats(epoch, headRoot)
+	}
 	if epochStats == nil || !epochStats.IsReady() {
-		return nil
+		return nil, nil
 	}
 
 	epochStats.dbEpochMutex.Lock()
 	defer epochStats.dbEpochMutex.Unlock()
 
 	if epochStats.dbEpochCache != nil {
-		return epochStats.dbEpochCache
+		return epochStats.dbEpochCache, epochStats
 	}
 
 	logger.Debugf("Build live epoch data %v", epoch)
@@ -470,27 +503,28 @@ func (indexer *Indexer) BuildLiveEpoch(epoch uint64) *dbtypes.Epoch {
 	if headEpoch > epoch && headEpoch-epoch > 2 {
 		epochStats.dbEpochCache = dbEpoch
 	}
-	return dbEpoch
+	return dbEpoch, epochStats
 }
 
 func (indexer *Indexer) BuildLiveBlock(block *CacheBlock) *dbtypes.Block {
 	block.dbBlockMutex.Lock()
 	defer block.dbBlockMutex.Unlock()
 
-	if block.dbBlockCache == nil {
+	dbBlock := block.dbBlockCache
+	if dbBlock == nil {
 		logger.Debugf("Build live block data 0x%x", block.Root)
 		header := block.GetHeader()
 		epoch := utils.EpochOfSlot(uint64(header.Message.Slot))
 		epochStats := indexer.GetCachedEpochStats(epoch)
-		if epochStats == nil {
-			return nil
+		dbBlock = buildDbBlock(block, epochStats)
+		if epochStats != nil {
+			block.dbBlockCache = dbBlock
 		}
-		block.dbBlockCache = buildDbBlock(block, epochStats)
 	}
 	if block.IsCanonical(indexer, nil) {
-		block.dbBlockCache.Orphaned = 0
+		dbBlock.Orphaned = 0
 	} else {
-		block.dbBlockCache.Orphaned = 1
+		dbBlock.Orphaned = 1
 	}
-	return block.dbBlockCache
+	return dbBlock
 }

@@ -87,13 +87,14 @@ func (cache *indexerCache) runCacheLogic() error {
 		cache.persistEpoch = headEpoch
 	}
 
-	if cache.cleanupEpoch < processingEpoch {
+	if cache.cleanupBlockEpoch < processingEpoch || cache.cleanupStatsEpoch < headEpoch {
 		// process cache persistence
-		err := cache.processCacheCleanup(processingEpoch)
+		err := cache.processCacheCleanup(processingEpoch, headEpoch)
 		if err != nil {
 			return err
 		}
-		cache.cleanupEpoch = processingEpoch
+		cache.cleanupBlockEpoch = processingEpoch
+		cache.cleanupStatsEpoch = headEpoch
 	}
 
 	return nil
@@ -107,9 +108,17 @@ func (cache *indexerCache) processFinalizedEpochs() error {
 		processEpoch := uint64(cache.processedEpoch + 1)
 		err := cache.processFinalizedEpoch(processEpoch)
 		if err != nil {
-			return err
+			cache.processingRetry++
+			if cache.processingRetry < 6 {
+				return err
+			} else {
+				logger.Warnf("epoch %v processing error: %v", processEpoch, err)
+				logger.Warnf("epoch %v processing failed repeatedly. skipping processing & starting synchronizer", processEpoch)
+				cache.startSynchronizer(processEpoch)
+			}
 		}
 		cache.processedEpoch = int64(processEpoch)
+		cache.processingRetry = 0
 	}
 	return nil
 }
@@ -125,7 +134,7 @@ func (cache *indexerCache) processFinalizedEpoch(epoch uint64) error {
 		if firstBlock.Slot == firstSlot {
 			epochTarget = firstBlock.Root
 		} else {
-			epochTarget = firstBlock.header.Message.BodyRoot[:]
+			epochTarget = firstBlock.header.Message.ParentRoot[:]
 		}
 		epochDependentRoot = firstBlock.header.Message.ParentRoot[:]
 	}
@@ -133,8 +142,11 @@ func (cache *indexerCache) processFinalizedEpoch(epoch uint64) error {
 
 	// get epoch stats
 	client := cache.indexer.GetReadyClient(true, nil, nil)
-	epochStats, _ := cache.createOrGetEpochStats(epoch, epochDependentRoot)
-	epochStats.ensureEpochStatsLazy(client, nil)
+	epochStats := cache.getEpochStats(epoch, epochDependentRoot)
+	if epochStats == nil {
+		logger.Warnf("epoch %v stats not found, starting synchronization", epoch)
+		cache.startSynchronizer(epoch)
+	}
 
 	// get canonical blocks
 	canonicalMap := map[uint64]*CacheBlock{}
@@ -162,16 +174,6 @@ func (cache *indexerCache) processFinalizedEpoch(epoch uint64) error {
 		canonicalMap[slot] = block
 	}
 
-	// calculate votes
-	epochVotes := aggregateEpochVotes(canonicalMap, epoch, epochStats, epochTarget, false, true)
-
-	if epochStats.validatorStats != nil {
-		logger.Infof("epoch %v stats: %v validators (%v)", epoch, epochStats.validatorStats.ValidatorCount, epochStats.validatorStats.EligibleAmount)
-	}
-	logger.Infof("epoch %v votes: target %v + %v = %v", epoch, epochVotes.currentEpoch.targetVoteAmount, epochVotes.nextEpoch.targetVoteAmount, epochVotes.currentEpoch.targetVoteAmount+epochVotes.nextEpoch.targetVoteAmount)
-	logger.Infof("epoch %v votes: head %v + %v = %v", epoch, epochVotes.currentEpoch.headVoteAmount, epochVotes.nextEpoch.headVoteAmount, epochVotes.currentEpoch.headVoteAmount+epochVotes.nextEpoch.headVoteAmount)
-	logger.Infof("epoch %v votes: total %v + %v = %v", epoch, epochVotes.currentEpoch.totalVoteAmount, epochVotes.nextEpoch.totalVoteAmount, epochVotes.currentEpoch.totalVoteAmount+epochVotes.nextEpoch.totalVoteAmount)
-
 	// store canonical blocks to db and remove from cache
 	tx, err := db.WriterDb.Beginx()
 	if err != nil {
@@ -180,17 +182,37 @@ func (cache *indexerCache) processFinalizedEpoch(epoch uint64) error {
 	}
 	defer tx.Rollback()
 
-	err = persistEpochData(epoch, canonicalMap, epochStats, epochVotes, tx)
-	if err != nil {
-		logger.Errorf("error persisting epoch data to db: %v", err)
-		return err
-	}
+	if epochStats != nil {
+		// calculate votes
+		epochVotes := aggregateEpochVotes(canonicalMap, epoch, epochStats, epochTarget, false, true)
 
-	if len(epochStats.syncAssignments) > 0 {
-		err = persistSyncAssignments(epoch, epochStats, tx)
+		if epochStats.validatorStats != nil {
+			logger.Infof("epoch %v stats: %v validators (%v)", epoch, epochStats.validatorStats.ValidatorCount, epochStats.validatorStats.EligibleAmount)
+		}
+		logger.Infof("epoch %v votes: target %v + %v = %v", epoch, epochVotes.currentEpoch.targetVoteAmount, epochVotes.nextEpoch.targetVoteAmount, epochVotes.currentEpoch.targetVoteAmount+epochVotes.nextEpoch.targetVoteAmount)
+		logger.Infof("epoch %v votes: head %v + %v = %v", epoch, epochVotes.currentEpoch.headVoteAmount, epochVotes.nextEpoch.headVoteAmount, epochVotes.currentEpoch.headVoteAmount+epochVotes.nextEpoch.headVoteAmount)
+		logger.Infof("epoch %v votes: total %v + %v = %v", epoch, epochVotes.currentEpoch.totalVoteAmount, epochVotes.nextEpoch.totalVoteAmount, epochVotes.currentEpoch.totalVoteAmount+epochVotes.nextEpoch.totalVoteAmount)
+
+		err = persistEpochData(epoch, canonicalMap, epochStats, epochVotes, tx)
 		if err != nil {
-			logger.Errorf("error persisting sync committee assignments to db: %v", err)
+			logger.Errorf("error persisting epoch data to db: %v", err)
 			return err
+		}
+
+		if len(epochStats.syncAssignments) > 0 {
+			err = persistSyncAssignments(epoch, epochStats, tx)
+			if err != nil {
+				logger.Errorf("error persisting sync committee assignments to db: %v", err)
+				return err
+			}
+		}
+	} else {
+		for _, block := range canonicalMap {
+			if !block.IsReady() {
+				continue
+			}
+			dbBlock := buildDbBlock(block, nil)
+			db.InsertBlock(dbBlock, tx)
 		}
 	}
 
@@ -293,31 +315,83 @@ func (cache *indexerCache) processOrphanedBlocks(processedEpoch int64) error {
 }
 
 func (cache *indexerCache) processCachePersistence() error {
+	persistBlocks := []*CacheBlock{}
 	pruneBlocks := []*CacheBlock{}
+	persistEpochs := []*EpochStats{}
+
 	cache.cacheMutex.RLock()
 	headSlot := cache.highestSlot
 	var headEpoch uint64
 	if headSlot >= 0 {
 		headEpoch = utils.EpochOfSlot(uint64(headSlot))
 	}
+	var minPersistSlot int64 = -1
+	var minPersistEpoch int64 = -1
+	var minPruneSlot int64 = -1
+	if headEpoch > uint64(cache.indexer.cachePersistenceDelay) {
+		persistEpoch := headEpoch - uint64(cache.indexer.cachePersistenceDelay)
+		if persistEpoch >= 0 {
+			minPersistSlot = int64((persistEpoch+1)*utils.Config.Chain.Config.SlotsPerEpoch) - 1
+			minPersistEpoch = int64(persistEpoch)
+		}
+	}
 	if headEpoch > uint64(cache.indexer.inMemoryEpochs) {
 		pruneEpoch := headEpoch - uint64(cache.indexer.inMemoryEpochs)
-		for slot, blocks := range cache.slotMap {
-			if utils.EpochOfSlot(slot) <= pruneEpoch {
-				for _, block := range blocks {
-					if block.block == nil {
-						continue
-					}
-					pruneBlocks = append(pruneBlocks, block)
+		if pruneEpoch >= 0 {
+			minPruneSlot = int64((pruneEpoch+1)*utils.Config.Chain.Config.SlotsPerEpoch) - 1
+		}
+	}
+	for slot, blocks := range cache.slotMap {
+		if int64(slot) <= minPersistSlot {
+			for _, block := range blocks {
+				if block.isInDb {
+					continue
 				}
+				persistBlocks = append(persistBlocks, block)
+			}
+		}
+		if int64(slot) <= minPruneSlot {
+			for _, block := range blocks {
+				if block.block == nil {
+					continue
+				}
+				pruneBlocks = append(pruneBlocks, block)
 			}
 		}
 	}
 	cache.cacheMutex.RUnlock()
 
+	cache.epochStatsMutex.RLock()
+	for epoch, epochStatsList := range cache.epochStatsMap {
+		if int64(epoch) > minPersistEpoch {
+			continue
+		}
+		maxSeen := uint64(0)
+		var persistEpochStats *EpochStats
+		for _, epochStats := range epochStatsList {
+			if persistEpochStats == nil || epochStats.seenCount > maxSeen {
+				persistEpochStats = epochStats
+				maxSeen = epochStats.seenCount
+			}
+		}
+		if persistEpochStats != nil && !persistEpochStats.isInDb {
+			persistEpochs = append(persistEpochs, persistEpochStats)
+
+			// reset isInDb for all other epochstats in this epoch
+			for _, epochStats := range epochStatsList {
+				if epochStats != persistEpochStats {
+					epochStats.isInDb = false
+				}
+			}
+		}
+	}
+	cache.epochStatsMutex.RUnlock()
+
+	persistCount := len(persistBlocks)
+	persistEpochCount := len(persistEpochs)
 	pruneCount := len(pruneBlocks)
-	logger.Infof("processing cache persistence: prune %v blocks", pruneCount)
-	if pruneCount == 0 {
+	logger.Infof("processing cache persistence: persist %v blocks + %v epochs, prune %v blocks", persistCount, persistEpochCount, pruneCount)
+	if persistCount == 0 && pruneCount == 0 && persistEpochCount == 0 {
 		return nil
 	}
 
@@ -329,7 +403,7 @@ func (cache *indexerCache) processCachePersistence() error {
 		}
 		defer tx.Rollback()
 
-		for _, block := range pruneBlocks {
+		for _, block := range persistBlocks {
 			if !block.isInDb && block.IsReady() {
 				orphanedBlock := block.buildOrphanedBlock()
 				err := db.InsertUnfinalizedBlock(&dbtypes.UnfinalizedBlock{
@@ -348,6 +422,20 @@ func (cache *indexerCache) processCachePersistence() error {
 			}
 		}
 
+		for _, epochStats := range persistEpochs {
+			if !epochStats.isInDb {
+				dbEpoch, _ := cache.indexer.buildLiveEpoch(epochStats.Epoch, epochStats)
+				if dbEpoch != nil {
+					err := db.InsertUnfinalizedEpoch(dbEpoch, tx)
+					if err != nil {
+						logger.Errorf("error inserting unfinalized epoch: %v", err)
+						return err
+					}
+					epochStats.isInDb = true
+				}
+			}
+		}
+
 		if err := tx.Commit(); err != nil {
 			logger.Errorf("error committing db transaction: %v", err)
 			return err
@@ -363,7 +451,7 @@ func (cache *indexerCache) processCachePersistence() error {
 	return nil
 }
 
-func (cache *indexerCache) processCacheCleanup(processedEpoch int64) error {
+func (cache *indexerCache) processCacheCleanup(processedEpoch int64, headEpoch int64) error {
 	cachedBlocks := map[string]*CacheBlock{}
 	clearStats := []*EpochStats{}
 	cache.cacheMutex.RLock()
@@ -377,7 +465,7 @@ func (cache *indexerCache) processCacheCleanup(processedEpoch int64) error {
 	cache.cacheMutex.RUnlock()
 	cache.epochStatsMutex.RLock()
 	for epoch, stats := range cache.epochStatsMap {
-		if int64(epoch) <= processedEpoch {
+		if int64(epoch) <= processedEpoch || int64(epoch) <= headEpoch-int64(cache.indexer.inMemoryEpochs) {
 			clearStats = append(clearStats, stats...)
 		}
 	}

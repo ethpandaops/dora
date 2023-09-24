@@ -88,17 +88,6 @@ type UnfinalizedBlock struct {
 	BlockSSZ  []byte `db:"block_ssz"`
 }
 
-type UnfinalizedEpochDuty struct {
-	Epoch         uint64 `db:"epoch"`
-	DependentRoot []byte `db:"dependent_root"`
-	Duties        []byte `db:"duties"`
-}
-
-type UnfinalizedEpochDutyRef struct {
-	Epoch         uint64 `db:"epoch"`
-	DependentRoot []byte `db:"dependent_root"`
-}
-
 type Blob struct {
 	Commitment []byte  `db:"commitment"`
 	Slot       uint64  `db:"slot"`
