@@ -6,7 +6,6 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/pk910/dora-the-explorer/db"
 	"github.com/pk910/dora-the-explorer/dbtypes"
-	"github.com/pk910/dora-the-explorer/ethtypes"
 	"github.com/pk910/dora-the-explorer/utils"
 )
 
@@ -86,18 +85,18 @@ func buildDbBlock(block *CacheBlock, epochStats *EpochStats) *dbtypes.Block {
 		return nil
 	}
 
-	graffiti, _ := ethtypes.VersionedSignedBeaconBlock_Graffiti(blockBody)
+	graffiti, _ := blockBody.Graffiti()
 	attestations, _ := blockBody.Attestations()
-	deposits, _ := ethtypes.VersionedSignedBeaconBlock_Deposits(blockBody)
-	voluntaryExits, _ := ethtypes.VersionedSignedBeaconBlock_VoluntaryExits(blockBody)
+	deposits, _ := blockBody.Deposits()
+	voluntaryExits, _ := blockBody.VoluntaryExits()
 	attesterSlashings, _ := blockBody.AttesterSlashings()
 	proposerSlashings, _ := blockBody.ProposerSlashings()
-	blsToExecChanges, _ := ethtypes.VersionedSignedBeaconBlock_BLSToExecutionChanges(blockBody)
-	syncAggregate, _ := ethtypes.VersionedSignedBeaconBlock_SyncAggregate(blockBody)
-	executionBlockNumber, _ := ethtypes.VersionedSignedBeaconBlock_ExecutionBlockNumber(blockBody)
-	executionBlockHash, _ := ethtypes.VersionedSignedBeaconBlock_ExecutionBlockHash(blockBody)
-	executionTransactions, _ := ethtypes.VersionedSignedBeaconBlock_ExecutionTransactions(blockBody)
-	executionWithdrawals, _ := ethtypes.VersionedSignedBeaconBlock_Withdrawals(blockBody)
+	blsToExecChanges, _ := blockBody.BLSToExecutionChanges()
+	syncAggregate, _ := blockBody.SyncAggregate()
+	executionBlockNumber, _ := blockBody.ExecutionBlockNumber()
+	executionBlockHash, _ := blockBody.ExecutionBlockHash()
+	executionTransactions, _ := blockBody.ExecutionTransactions()
+	executionWithdrawals, _ := blockBody.Withdrawals()
 
 	dbBlock := dbtypes.Block{
 		Root:                  block.Root,
@@ -105,8 +104,8 @@ func buildDbBlock(block *CacheBlock, epochStats *EpochStats) *dbtypes.Block {
 		ParentRoot:            block.header.Message.ParentRoot[:],
 		StateRoot:             block.header.Message.StateRoot[:],
 		Proposer:              uint64(block.header.Message.ProposerIndex),
-		Graffiti:              graffiti,
-		GraffitiText:          utils.GraffitiToString(graffiti),
+		Graffiti:              graffiti[:],
+		GraffitiText:          utils.GraffitiToString(graffiti[:]),
 		AttestationCount:      uint64(len(attestations)),
 		DepositCount:          uint64(len(deposits)),
 		ExitCount:             uint64(len(voluntaryExits)),
@@ -181,14 +180,14 @@ func buildDbEpoch(epoch uint64, blockMap map[uint64]*CacheBlock, epochStats *Epo
 			}
 
 			attestations, _ := blockBody.Attestations()
-			deposits, _ := ethtypes.VersionedSignedBeaconBlock_Deposits(blockBody)
-			voluntaryExits, _ := ethtypes.VersionedSignedBeaconBlock_VoluntaryExits(blockBody)
+			deposits, _ := blockBody.Deposits()
+			voluntaryExits, _ := blockBody.VoluntaryExits()
 			attesterSlashings, _ := blockBody.AttesterSlashings()
 			proposerSlashings, _ := blockBody.ProposerSlashings()
-			blsToExecChanges, _ := ethtypes.VersionedSignedBeaconBlock_BLSToExecutionChanges(blockBody)
-			syncAggregate, _ := ethtypes.VersionedSignedBeaconBlock_SyncAggregate(blockBody)
-			executionTransactions, _ := ethtypes.VersionedSignedBeaconBlock_ExecutionTransactions(blockBody)
-			executionWithdrawals, _ := ethtypes.VersionedSignedBeaconBlock_Withdrawals(blockBody)
+			blsToExecChanges, _ := blockBody.BLSToExecutionChanges()
+			syncAggregate, _ := blockBody.SyncAggregate()
+			executionTransactions, _ := blockBody.ExecutionTransactions()
+			executionWithdrawals, _ := blockBody.Withdrawals()
 
 			dbEpoch.AttestationCount += uint64(len(attestations))
 			dbEpoch.DepositCount += uint64(len(deposits))

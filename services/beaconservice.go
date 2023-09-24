@@ -15,7 +15,6 @@ import (
 
 	"github.com/pk910/dora-the-explorer/db"
 	"github.com/pk910/dora-the-explorer/dbtypes"
-	"github.com/pk910/dora-the-explorer/ethtypes"
 	"github.com/pk910/dora-the-explorer/indexer"
 	"github.com/pk910/dora-the-explorer/rpc"
 	"github.com/pk910/dora-the-explorer/utils"
@@ -254,7 +253,7 @@ func (bs *BeaconService) GetOrphanedBlock(blockroot []byte) *CombinedBlockRespon
 		logrus.Warnf("failed unmarshal orphaned block header from db: %v", err)
 		return nil
 	}
-	body, err := ethtypes.VersionedSignedBeaconBlock_UnmarshalVersionedSSZ(orphanedBlock.BlockVer, orphanedBlock.BlockSSZ)
+	body, err := indexer.UnmarshalVersionedSignedBeaconBlockSSZ(orphanedBlock.BlockVer, orphanedBlock.BlockSSZ)
 	if err != nil {
 		logrus.Warnf("Error parsing unfinalized block body from db: %v", err)
 		return nil
@@ -536,8 +535,8 @@ func (bs *BeaconService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageId
 				}
 
 				if filter.Graffiti != "" {
-					graffitiBytes, _ := ethtypes.VersionedSignedBeaconBlock_Graffiti(block.GetBlockBody())
-					blockGraffiti := string(graffitiBytes)
+					graffitiBytes, _ := block.GetBlockBody().Graffiti()
+					blockGraffiti := string(graffitiBytes[:])
 					if !strings.Contains(blockGraffiti, filter.Graffiti) {
 						continue
 					}

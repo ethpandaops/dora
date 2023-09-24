@@ -18,7 +18,6 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/sirupsen/logrus"
 
-	"github.com/pk910/dora-the-explorer/ethtypes"
 	"github.com/pk910/dora-the-explorer/utils"
 )
 
@@ -225,13 +224,18 @@ func (bc *BeaconClient) GetBlockBodyByBlockroot(blockroot []byte) (*spec.Version
 	return result, nil
 }
 
-func (bc *BeaconClient) GetProposerDuties(epoch uint64) (*ethtypes.ProposerDuties, error) {
+type ProposerDuties struct {
+	DependentRoot phase0.Root        `json:"dependent_root"`
+	Data          []*v1.ProposerDuty `json:"data"`
+}
+
+func (bc *BeaconClient) GetProposerDuties(epoch uint64) (*ProposerDuties, error) {
 	if utils.Config.Chain.WhiskForkEpoch != nil && epoch >= *utils.Config.Chain.WhiskForkEpoch {
 		// whisk activated - cannot fetch proposer duties
 		return nil, nil
 	}
 
-	var proposerDuties ethtypes.ProposerDuties
+	var proposerDuties ProposerDuties
 	err := bc.getJson(fmt.Sprintf("%s/eth/v1/validator/duties/proposer/%d", bc.endpoint, epoch), &proposerDuties)
 	if err != nil {
 		return nil, fmt.Errorf("error retrieving proposer duties: %v", err)
