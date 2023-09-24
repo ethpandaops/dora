@@ -85,23 +85,35 @@ func buildDbBlock(block *CacheBlock, epochStats *EpochStats) *dbtypes.Block {
 		return nil
 	}
 
+	graffiti, _ := blockBody.Graffiti()
+	attestations, _ := blockBody.Attestations()
+	deposits, _ := blockBody.Deposits()
+	voluntaryExits, _ := blockBody.VoluntaryExits()
+	attesterSlashings, _ := blockBody.AttesterSlashings()
+	proposerSlashings, _ := blockBody.ProposerSlashings()
+	blsToExecChanges, _ := blockBody.BLSToExecutionChanges()
+	syncAggregate, _ := blockBody.SyncAggregate()
+	executionBlockNumber, _ := blockBody.ExecutionBlockNumber()
+	executionBlockHash, _ := blockBody.ExecutionBlockHash()
+	executionTransactions, _ := blockBody.ExecutionTransactions()
+	executionWithdrawals, _ := blockBody.Withdrawals()
+
 	dbBlock := dbtypes.Block{
 		Root:                  block.Root,
 		Slot:                  uint64(block.header.Message.Slot),
-		ParentRoot:            block.header.Message.ParentRoot,
-		StateRoot:             block.header.Message.StateRoot,
-		Proposer:              uint64(blockBody.Message.ProposerIndex),
-		Graffiti:              blockBody.Message.Body.Graffiti,
-		GraffitiText:          utils.GraffitiToString(blockBody.Message.Body.Graffiti),
-		AttestationCount:      uint64(len(blockBody.Message.Body.Attestations)),
-		DepositCount:          uint64(len(blockBody.Message.Body.Deposits)),
-		ExitCount:             uint64(len(blockBody.Message.Body.VoluntaryExits)),
-		AttesterSlashingCount: uint64(len(blockBody.Message.Body.AttesterSlashings)),
-		ProposerSlashingCount: uint64(len(blockBody.Message.Body.ProposerSlashings)),
-		BLSChangeCount:        uint64(len(blockBody.Message.Body.SignedBLSToExecutionChange)),
+		ParentRoot:            block.header.Message.ParentRoot[:],
+		StateRoot:             block.header.Message.StateRoot[:],
+		Proposer:              uint64(block.header.Message.ProposerIndex),
+		Graffiti:              graffiti[:],
+		GraffitiText:          utils.GraffitiToString(graffiti[:]),
+		AttestationCount:      uint64(len(attestations)),
+		DepositCount:          uint64(len(deposits)),
+		ExitCount:             uint64(len(voluntaryExits)),
+		AttesterSlashingCount: uint64(len(attesterSlashings)),
+		ProposerSlashingCount: uint64(len(proposerSlashings)),
+		BLSChangeCount:        uint64(len(blsToExecChanges)),
 	}
 
-	syncAggregate := blockBody.Message.Body.SyncAggregate
 	if syncAggregate != nil {
 		var assignedCount int
 		if epochStats != nil && epochStats.syncAssignments != nil {
@@ -119,17 +131,13 @@ func buildDbBlock(block *CacheBlock, epochStats *EpochStats) *dbtypes.Block {
 		dbBlock.SyncParticipation = float32(votedCount) / float32(assignedCount)
 	}
 
-	if executionPayload := blockBody.Message.Body.ExecutionPayload; executionPayload != nil {
-		dbBlock.EthTransactionCount = uint64(len(executionPayload.Transactions))
-		blockNumber := uint64(executionPayload.BlockNumber)
-		dbBlock.EthBlockNumber = &blockNumber
-		dbBlock.EthBlockHash = executionPayload.BlockHash
-
-		if executionPayload.Withdrawals != nil {
-			dbBlock.WithdrawCount = uint64(len(executionPayload.Withdrawals))
-			for _, withdrawal := range executionPayload.Withdrawals {
-				dbBlock.WithdrawAmount += uint64(withdrawal.Amount)
-			}
+	if executionBlockNumber > 0 {
+		dbBlock.EthTransactionCount = uint64(len(executionTransactions))
+		dbBlock.EthBlockNumber = &executionBlockNumber
+		dbBlock.EthBlockHash = executionBlockHash[:]
+		dbBlock.WithdrawCount = uint64(len(executionWithdrawals))
+		for _, withdrawal := range executionWithdrawals {
+			dbBlock.WithdrawAmount += uint64(withdrawal.Amount)
 		}
 	}
 
@@ -169,14 +177,23 @@ func buildDbEpoch(epoch uint64, blockMap map[uint64]*CacheBlock, epochStats *Epo
 				blockFn(block)
 			}
 
-			dbEpoch.AttestationCount += uint64(len(blockBody.Message.Body.Attestations))
-			dbEpoch.DepositCount += uint64(len(blockBody.Message.Body.Deposits))
-			dbEpoch.ExitCount += uint64(len(blockBody.Message.Body.VoluntaryExits))
-			dbEpoch.AttesterSlashingCount += uint64(len(blockBody.Message.Body.AttesterSlashings))
-			dbEpoch.ProposerSlashingCount += uint64(len(blockBody.Message.Body.ProposerSlashings))
-			dbEpoch.BLSChangeCount += uint64(len(blockBody.Message.Body.SignedBLSToExecutionChange))
+			attestations, _ := blockBody.Attestations()
+			deposits, _ := blockBody.Deposits()
+			voluntaryExits, _ := blockBody.VoluntaryExits()
+			attesterSlashings, _ := blockBody.AttesterSlashings()
+			proposerSlashings, _ := blockBody.ProposerSlashings()
+			blsToExecChanges, _ := blockBody.BLSToExecutionChanges()
+			syncAggregate, _ := blockBody.SyncAggregate()
+			executionTransactions, _ := blockBody.ExecutionTransactions()
+			executionWithdrawals, _ := blockBody.Withdrawals()
 
-			syncAggregate := blockBody.Message.Body.SyncAggregate
+			dbEpoch.AttestationCount += uint64(len(attestations))
+			dbEpoch.DepositCount += uint64(len(deposits))
+			dbEpoch.ExitCount += uint64(len(voluntaryExits))
+			dbEpoch.AttesterSlashingCount += uint64(len(attesterSlashings))
+			dbEpoch.ProposerSlashingCount += uint64(len(proposerSlashings))
+			dbEpoch.BLSChangeCount += uint64(len(blsToExecChanges))
+
 			if syncAggregate != nil && epochStats.syncAssignments != nil {
 				votedCount := 0
 				assignedCount := len(epochStats.syncAssignments)
@@ -189,14 +206,10 @@ func buildDbEpoch(epoch uint64, blockMap map[uint64]*CacheBlock, epochStats *Epo
 				totalSyncVoted += votedCount
 			}
 
-			if executionPayload := blockBody.Message.Body.ExecutionPayload; executionPayload != nil {
-				dbEpoch.EthTransactionCount += uint64(len(executionPayload.Transactions))
-				if executionPayload.Withdrawals != nil {
-					dbEpoch.WithdrawCount += uint64(len(executionPayload.Withdrawals))
-					for _, withdrawal := range executionPayload.Withdrawals {
-						dbEpoch.WithdrawAmount += uint64(withdrawal.Amount)
-					}
-				}
+			dbEpoch.EthTransactionCount += uint64(len(executionTransactions))
+			dbEpoch.WithdrawCount += uint64(len(executionWithdrawals))
+			for _, withdrawal := range executionWithdrawals {
+				dbEpoch.WithdrawAmount += uint64(withdrawal.Amount)
 			}
 		}
 	}

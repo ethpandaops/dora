@@ -443,15 +443,15 @@ func InsertOrphanedBlock(block *dbtypes.OrphanedBlock, tx *sqlx.Tx) error {
 	_, err := tx.Exec(EngineQuery(map[dbtypes.DBEngineType]string{
 		dbtypes.DBEnginePgsql: `
 			INSERT INTO orphaned_blocks (
-				root, header, block
-			) VALUES ($1, $2, $3)
+				root, header_ver, header_ssz, block_ver, block_ssz
+			) VALUES ($1, $2, $3, $4, $5)
 			ON CONFLICT (root) DO NOTHING`,
 		dbtypes.DBEngineSqlite: `
 			INSERT OR IGNORE orphaned_blocks (
-				root, header, block
-			) VALUES ($1, $2, $3)`,
+				root, header_ver, header_ssz, block_ver, block_ssz
+			) VALUES ($1, $2, $3, $4, $5)`,
 	}),
-		block.Root, block.Header, block.Block)
+		block.Root, block.HeaderVer, block.HeaderSSZ, block.BlockVer, block.BlockSSZ)
 	if err != nil {
 		return err
 	}
@@ -461,7 +461,7 @@ func InsertOrphanedBlock(block *dbtypes.OrphanedBlock, tx *sqlx.Tx) error {
 func GetOrphanedBlock(root []byte) *dbtypes.OrphanedBlock {
 	block := dbtypes.OrphanedBlock{}
 	err := ReaderDb.Get(&block, `
-	SELECT root, header, block
+	SELECT root, header_ver, header_ssz, block_ver, block_ssz
 	FROM orphaned_blocks
 	WHERE root = $1
 	`, root)
@@ -761,15 +761,15 @@ func InsertUnfinalizedBlock(block *dbtypes.UnfinalizedBlock, tx *sqlx.Tx) error 
 	_, err := tx.Exec(EngineQuery(map[dbtypes.DBEngineType]string{
 		dbtypes.DBEnginePgsql: `
 			INSERT INTO unfinalized_blocks (
-				root, slot, header, block
-			) VALUES ($1, $2, $3, $4)
+				root, slot, header_ver, header_ssz, block_ver, block_ssz
+			) VALUES ($1, $2, $3, $4, $5, $6)
 			ON CONFLICT (root) DO NOTHING`,
 		dbtypes.DBEngineSqlite: `
 			INSERT OR IGNORE INTO unfinalized_blocks (
-				root, slot, header, block
-			) VALUES ($1, $2, $3, $4)`,
+				root, slot, header_ver, header_ssz, block_ver, block_ssz
+			) VALUES ($1, $2, $3, $4, $5, $6)`,
 	}),
-		block.Root, block.Slot, block.Header, block.Block)
+		block.Root, block.Slot, block.HeaderVer, block.HeaderSSZ, block.BlockVer, block.BlockSSZ)
 	if err != nil {
 		return err
 	}
@@ -780,7 +780,7 @@ func GetUnfinalizedBlocks() []*dbtypes.UnfinalizedBlock {
 	blockRefs := []*dbtypes.UnfinalizedBlock{}
 	err := ReaderDb.Select(&blockRefs, `
 	SELECT
-		root, slot, header, block
+		root, slot, header_ver, header_ssz, block_ver, block_ssz
 	FROM unfinalized_blocks
 	`)
 	if err != nil {
@@ -793,7 +793,7 @@ func GetUnfinalizedBlocks() []*dbtypes.UnfinalizedBlock {
 func GetUnfinalizedBlock(root []byte) *dbtypes.UnfinalizedBlock {
 	block := dbtypes.UnfinalizedBlock{}
 	err := ReaderDb.Get(&block, `
-	SELECT root, slot, header, block
+	SELECT root, slot, header_ver, header_ssz, block_ver, block_ssz
 	FROM unfinalized_blocks
 	WHERE root = $1
 	`, root)

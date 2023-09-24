@@ -2,11 +2,12 @@ package indexer
 
 import (
 	"bytes"
-	"encoding/json"
 	"sync"
 
+	v1 "github.com/attestantio/go-eth2-client/api/v1"
+	"github.com/attestantio/go-eth2-client/spec/phase0"
+
 	"github.com/pk910/dora-the-explorer/db"
-	"github.com/pk910/dora-the-explorer/rpctypes"
 	"github.com/pk910/dora-the-explorer/utils"
 )
 
@@ -29,8 +30,8 @@ type indexerCache struct {
 	epochStatsMutex         sync.RWMutex
 	epochStatsMap           map[uint64][]*EpochStats
 	lastValidatorsEpoch     int64
-	lastValidatorsResp      *rpctypes.StandardV1StateValidatorsResponse
-	genesisResp             *rpctypes.StandardV1GenesisResponse
+	lastValidatorsResp      map[phase0.ValidatorIndex]*v1.Validator
+	genesisResp             *v1.Genesis
 	validatorLoadingLimiter chan int
 }
 
@@ -91,7 +92,7 @@ func (cache *indexerCache) setFinalizedHead(finalizedEpoch int64, finalizedRoot 
 	}
 }
 
-func (cache *indexerCache) setGenesis(genesis *rpctypes.StandardV1GenesisResponse) {
+func (cache *indexerCache) setGenesis(genesis *v1.Genesis) {
 	cache.cacheMutex.Lock()
 	defer cache.cacheMutex.Unlock()
 	if cache.genesisResp == nil {
@@ -105,7 +106,7 @@ func (cache *indexerCache) getFinalizationCheckpoints() (int64, []byte, int64, [
 	return cache.finalizedEpoch, cache.finalizedRoot, cache.justifiedEpoch, cache.justifiedRoot
 }
 
-func (cache *indexerCache) setLastValidators(epoch uint64, validators *rpctypes.StandardV1StateValidatorsResponse) {
+func (cache *indexerCache) setLastValidators(epoch uint64, validators map[phase0.ValidatorIndex]*v1.Validator) {
 	cache.cacheMutex.Lock()
 	defer cache.cacheMutex.Unlock()
 	if int64(epoch) > cache.lastValidatorsEpoch {
@@ -117,14 +118,17 @@ func (cache *indexerCache) setLastValidators(epoch uint64, validators *rpctypes.
 func (cache *indexerCache) loadStoredUnfinalizedCache() error {
 	blocks := db.GetUnfinalizedBlocks()
 	for _, block := range blocks {
-		var header rpctypes.SignedBeaconBlockHeader
-		err := json.Unmarshal([]byte(block.Header), &header)
-		if err != nil {
-			logger.Warnf("Error parsing unfinalized block header from db: %v", err)
+		if block.HeaderVer != 1 {
+			logger.Warnf("failed unmarshal unfinalized block header from db: unsupported header version")
 			continue
 		}
-		var body rpctypes.SignedBeaconBlock
-		err = json.Unmarshal([]byte(block.Block), &body)
+		header := &phase0.SignedBeaconBlockHeader{}
+		err := header.UnmarshalSSZ(block.HeaderSSZ)
+		if err != nil {
+			logger.Warnf("failed unmarshal unfinalized block header from db: %v", err)
+			continue
+		}
+		body, err := UnmarshalVersionedSignedBeaconBlockSSZ(block.BlockVer, block.BlockSSZ)
 		if err != nil {
 			logger.Warnf("Error parsing unfinalized block body from db: %v", err)
 			continue
@@ -132,8 +136,8 @@ func (cache *indexerCache) loadStoredUnfinalizedCache() error {
 		logger.Debugf("Restored unfinalized block header from db: %v", block.Slot)
 		cachedBlock, _ := cache.createOrGetCachedBlock(block.Root, block.Slot)
 		cachedBlock.mutex.Lock()
-		cachedBlock.header = &header
-		cachedBlock.block = &body
+		cachedBlock.header = header
+		cachedBlock.block = body
 		cachedBlock.isInDb = true
 		cachedBlock.parseBlockRefs()
 		cachedBlock.mutex.Unlock()
@@ -231,12 +235,7 @@ func (cache *indexerCache) getLastCanonicalBlock(epoch uint64, head []byte) *Cac
 func (cache *indexerCache) getFirstCanonicalBlock(epoch uint64, head []byte) *CacheBlock {
 	canonicalBlock := cache.getLastCanonicalBlock(epoch, head)
 	for canonicalBlock != nil {
-		canonicalBlock.mutex.RLock()
-		var parentRoot []byte = nil
-		if canonicalBlock.header != nil {
-			parentRoot = []byte(canonicalBlock.header.Message.ParentRoot)
-		}
-		canonicalBlock.mutex.RUnlock()
+		parentRoot := canonicalBlock.GetParentRoot()
 		if parentRoot == nil {
 			return canonicalBlock
 		}
@@ -253,10 +252,8 @@ func (cache *indexerCache) getCanonicalBlockMap(epoch uint64, head []byte) map[u
 	canonicalMap := make(map[uint64]*CacheBlock)
 	canonicalBlock := cache.getLastCanonicalBlock(epoch, head)
 	for canonicalBlock != nil && utils.EpochOfSlot(canonicalBlock.Slot) == epoch {
-		canonicalBlock.mutex.RLock()
-		parentRoot := []byte(canonicalBlock.header.Message.ParentRoot)
 		canonicalMap[canonicalBlock.Slot] = canonicalBlock
-		canonicalBlock.mutex.RUnlock()
+		parentRoot := canonicalBlock.GetParentRoot()
 		canonicalBlock = cache.getCachedBlock(parentRoot)
 	}
 	return canonicalMap

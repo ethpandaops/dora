@@ -61,9 +61,11 @@ type Epoch struct {
 }
 
 type OrphanedBlock struct {
-	Root   []byte `db:"root"`
-	Header string `db:"header"`
-	Block  string `db:"block"`
+	Root      []byte `db:"root"`
+	HeaderVer uint64 `db:"header_ver"`
+	HeaderSSZ []byte `db:"header_ssz"`
+	BlockVer  uint64 `db:"block_ver"`
+	BlockSSZ  []byte `db:"block_ssz"`
 }
 
 type SlotAssignment struct {
@@ -78,10 +80,12 @@ type SyncAssignment struct {
 }
 
 type UnfinalizedBlock struct {
-	Root   []byte `db:"root"`
-	Slot   uint64 `db:"slot"`
-	Header string `db:"header"`
-	Block  string `db:"block"`
+	Root      []byte `db:"root"`
+	Slot      uint64 `db:"slot"`
+	HeaderVer uint64 `db:"header_ver"`
+	HeaderSSZ []byte `db:"header_ssz"`
+	BlockVer  uint64 `db:"block_ver"`
+	BlockSSZ  []byte `db:"block_ssz"`
 }
 
 type UnfinalizedEpochDuty struct {

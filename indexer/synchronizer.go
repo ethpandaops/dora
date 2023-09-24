@@ -5,9 +5,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/attestantio/go-eth2-client/spec/deneb"
 	"github.com/pk910/dora-the-explorer/db"
 	"github.com/pk910/dora-the-explorer/dbtypes"
-	"github.com/pk910/dora-the-explorer/rpctypes"
 	"github.com/pk910/dora-the-explorer/utils"
 	"github.com/sirupsen/logrus"
 )
@@ -173,18 +173,15 @@ func (sync *synchronizerState) syncEpoch(syncEpoch uint64, lastTry bool, skipCli
 			if sync.checkKillChan(0) {
 				return false, nil, nil
 			}
-			blockRsp, err := client.rpcClient.GetBlockBodyByBlockroot(headerRsp.Data.Root)
+			blockRsp, err := client.rpcClient.GetBlockBodyByBlockroot(headerRsp.Root[:])
 			if err != nil {
 				return false, client, fmt.Errorf("error fetching slot %v block: %v", slot, err)
 			}
-			if utils.EpochOfSlot(slot) >= utils.Config.Chain.Config.BellatrixForkEpoch && blockRsp.Data.Message.Body.ExecutionPayload == nil {
-				return false, client, fmt.Errorf("error fetching slot %v block: execution payload missing for post-bellatix block", slot)
-			}
 			sync.cachedBlocks[slot] = &CacheBlock{
-				Root:   headerRsp.Data.Root,
+				Root:   headerRsp.Root[:],
 				Slot:   slot,
-				header: &headerRsp.Data.Header,
-				block:  &blockRsp.Data,
+				header: headerRsp.Header,
+				block:  blockRsp,
 			}
 		}
 		if firstBlock == nil && sync.cachedBlocks[slot] != nil {
@@ -200,7 +197,7 @@ func (sync *synchronizerState) syncEpoch(syncEpoch uint64, lastTry bool, skipCli
 	// load epoch assignments
 	var dependentRoot []byte
 	if firstBlock != nil {
-		dependentRoot = firstBlock.header.Message.ParentRoot
+		dependentRoot = firstBlock.header.Message.ParentRoot[:]
 	} else {
 		// get from db
 		dependentRoot = db.GetHighestRootBeforeSlot(firstSlot, false)
@@ -221,7 +218,7 @@ func (sync *synchronizerState) syncEpoch(syncEpoch uint64, lastTry bool, skipCli
 	// load epoch stats
 	epochStats := &EpochStats{
 		Epoch:               syncEpoch,
-		DependentRoot:       epochAssignments.DependendRoot,
+		DependentRoot:       epochAssignments.DependendRoot[:],
 		proposerAssignments: epochAssignments.ProposerAssignments,
 		attestorAssignments: epochAssignments.AttestorAssignments,
 		syncAssignments:     epochAssignments.SyncAssignments,
@@ -241,27 +238,29 @@ func (sync *synchronizerState) syncEpoch(syncEpoch uint64, lastTry bool, skipCli
 		if uint64(firstBlock.header.Message.Slot) == firstSlot {
 			targetRoot = firstBlock.Root
 		} else {
-			targetRoot = firstBlock.header.Message.ParentRoot
+			targetRoot = firstBlock.GetParentRoot()
 		}
 	}
 	epochVotes := aggregateEpochVotes(sync.cachedBlocks, syncEpoch, epochStats, targetRoot, false, true)
 
 	// load blobs
 	lastSlot = firstSlot + utils.Config.Chain.Config.SlotsPerEpoch - 1
-	blobs := []*rpctypes.BlobSidecar{}
+	blobs := []*deneb.BlobSidecar{}
 	for slot := firstSlot; slot <= lastSlot; slot++ {
 		block := sync.cachedBlocks[slot]
 		if block == nil {
 			continue
 		}
-		if len(block.block.Message.Body.BlobKzgCommitments) == 0 {
+
+		blobKzgCommitments, _ := block.GetBlockBody().BlobKzgCommitments()
+		if len(blobKzgCommitments) == 0 {
 			continue
 		}
 		blobRsp, err := client.rpcClient.GetBlobSidecarsByBlockroot(block.Root)
 		if err != nil {
 			return false, client, fmt.Errorf("cannot load blobs for block 0x%x: %v", block.Root, err)
 		}
-		blobs = append(blobs, blobRsp.Data...)
+		blobs = append(blobs, blobRsp...)
 	}
 
 	// save blocks

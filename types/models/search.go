@@ -1,12 +1,12 @@
 package models
 
-import "github.com/pk910/dora-the-explorer/rpctypes"
+import "github.com/attestantio/go-eth2-client/spec/phase0"
 
 // SearchBlockResult is a struct to hold the search block result with a given graffiti
 type SearchBlockResult struct {
-	Slot     uint64               `json:"slot,omitempty"`
-	Root     rpctypes.BytesHexStr `json:"root,omitempty"`
-	Orphaned bool                 `json:"orphaned,omitempty"`
+	Slot     uint64      `json:"slot,omitempty"`
+	Root     phase0.Root `json:"root,omitempty"`
+	Orphaned bool        `json:"orphaned,omitempty"`
 }
 
 // SearchGraffitiResult is a struct to hold the search block result with a given graffiti
@@ -21,18 +21,18 @@ type SearchAheadEpochsResult struct {
 
 // SearchAheadSlotsResult is a struct to hold the search ahead slots results
 type SearchAheadSlotsResult struct {
-	Slot     string               `json:"slot,omitempty"`
-	Root     rpctypes.BytesHexStr `json:"root,omitempty"`
-	Orphaned bool                 `json:"orphaned,omitempty"`
+	Slot     string      `json:"slot,omitempty"`
+	Root     phase0.Root `json:"root,omitempty"`
+	Orphaned bool        `json:"orphaned,omitempty"`
 }
 
 // SearchAheadExecBlocksResult is a struct to hold the search ahead execution blocks results
 type SearchAheadExecBlocksResult struct {
-	Slot       string               `json:"slot,omitempty"`
-	Root       rpctypes.BytesHexStr `json:"root,omitempty"`
-	ExecHash   rpctypes.BytesHexStr `json:"exec_hash,omitempty"`
-	ExecNumber uint64               `json:"exec_number,omitempty"`
-	Orphaned   bool                 `json:"orphaned,omitempty"`
+	Slot       string        `json:"slot,omitempty"`
+	Root       phase0.Root   `json:"root,omitempty"`
+	ExecHash   phase0.Hash32 `json:"exec_hash,omitempty"`
+	ExecNumber uint64        `json:"exec_number,omitempty"`
+	Orphaned   bool          `json:"orphaned,omitempty"`
 }
 
 // SearchAheadGraffitiResult is a struct to hold the search ahead blocks results with a given graffiti

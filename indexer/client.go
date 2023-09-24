@@ -6,8 +6,10 @@ import (
 	"sync"
 	"time"
 
+	v1 "github.com/attestantio/go-eth2-client/api/v1"
+	"github.com/attestantio/go-eth2-client/spec/phase0"
+
 	"github.com/pk910/dora-the-explorer/rpc"
-	"github.com/pk910/dora-the-explorer/rpctypes"
 	"github.com/pk910/dora-the-explorer/utils"
 )
 
@@ -137,9 +139,7 @@ func (client *IndexerClient) checkIndexerClient() error {
 	if err != nil {
 		return fmt.Errorf("error while fetching node version: %v", err)
 	}
-	if nodeVersion != nil {
-		client.versionStr = nodeVersion.Data.Version
-	}
+	client.versionStr = nodeVersion
 
 	// check genesis
 	genesis, err := client.rpcClient.GetGenesis()
@@ -149,11 +149,11 @@ func (client *IndexerClient) checkIndexerClient() error {
 	if genesis == nil {
 		return fmt.Errorf("no genesis block found")
 	}
-	genesisTime := uint64(genesis.Data.GenesisTime)
+	genesisTime := uint64(genesis.GenesisTime.Unix())
 	if genesisTime != utils.Config.Chain.GenesisTimestamp {
 		return fmt.Errorf("genesis time from RPC does not match the genesis time from explorer configuration")
 	}
-	if genesis.Data.GenesisForkVersion.String() != utils.Config.Chain.Config.GenesisForkVersion {
+	if !bytes.Equal(genesis.GenesisForkVersion[:], utils.MustParseHex(utils.Config.Chain.Config.GenesisForkVersion)) {
 		return fmt.Errorf("genesis fork version from RPC does not match the genesis fork version explorer configuration")
 	}
 	client.indexerCache.setGenesis(genesis)
@@ -166,8 +166,8 @@ func (client *IndexerClient) checkIndexerClient() error {
 	if syncStatus == nil {
 		return fmt.Errorf("could not get synchronization status")
 	}
-	client.isSynchronizing = syncStatus.Data.IsSyncing || syncStatus.Data.IsOptimistic
-	client.syncDistance = uint64(syncStatus.Data.SyncDistance)
+	client.isSynchronizing = syncStatus.IsSyncing || syncStatus.IsOptimistic
+	client.syncDistance = uint64(syncStatus.SyncDistance)
 
 	return nil
 }
@@ -181,13 +181,14 @@ func (client *IndexerClient) runIndexerClient() error {
 	if latestHeader == nil {
 		return fmt.Errorf("could not find latest header")
 	}
-	client.setHeadBlock(latestHeader.Data.Root, uint64(latestHeader.Data.Header.Message.Slot))
+	headSlot := uint64(latestHeader.Header.Message.Slot)
+	client.setHeadBlock(latestHeader.Root[:], headSlot)
 
 	// check latest header / sync status
 	if client.isSynchronizing {
 		return fmt.Errorf("beacon node is synchronizing")
 	}
-	if client.indexerCache.finalizedEpoch >= 0 && utils.EpochOfSlot(uint64(latestHeader.Data.Header.Message.Slot)) <= uint64(client.indexerCache.finalizedEpoch) {
+	if client.indexerCache.finalizedEpoch >= 0 && utils.EpochOfSlot(headSlot) <= uint64(client.indexerCache.finalizedEpoch) {
 		return fmt.Errorf("client is far behind - head is before synchronized checkpoint")
 	}
 
@@ -227,9 +228,9 @@ func (client *IndexerClient) runIndexerClient() error {
 			now := time.Now()
 			switch evt.Event {
 			case rpc.StreamBlockEvent:
-				client.processBlockEvent(evt.Data.(*rpctypes.StandardV1StreamedBlockEvent))
+				client.processBlockEvent(evt.Data.(*v1.BlockEvent))
 			case rpc.StreamFinalizedEvent:
-				client.processFinalizedEvent(evt.Data.(*rpctypes.StandardV1StreamedFinalizedCheckpointEvent))
+				client.processFinalizedEvent(evt.Data.(*v1.FinalizedCheckpointEvent))
 			}
 			logger.WithField("client", client.clientName).Tracef("event (%v) processing time: %v ms", evt.Event, time.Since(now).Milliseconds())
 			client.lastStreamEvent = time.Now()
@@ -272,34 +273,35 @@ func (client *IndexerClient) refreshFinalityCheckpoints() (uint64, error) {
 	var finalizedSlot uint64
 	client.cacheMutex.Lock()
 	defer client.cacheMutex.Unlock()
-	finalizedSlot = uint64(finalizedCheckpoints.Data.Finalized.Epoch) * utils.Config.Chain.Config.SlotsPerEpoch
-	client.lastFinalizedEpoch = int64(finalizedCheckpoints.Data.Finalized.Epoch) - 1
-	client.lastFinalizedRoot = finalizedCheckpoints.Data.Finalized.Root
-	client.lastJustifiedEpoch = int64(finalizedCheckpoints.Data.CurrentJustified.Epoch) - 1
-	client.lastJustifiedRoot = finalizedCheckpoints.Data.CurrentJustified.Root
+	finalizedSlot = uint64(finalizedCheckpoints.Finalized.Epoch) * utils.Config.Chain.Config.SlotsPerEpoch
+	client.lastFinalizedEpoch = int64(finalizedCheckpoints.Finalized.Epoch) - 1
+	client.lastFinalizedRoot = finalizedCheckpoints.Finalized.Root[:]
+	client.lastJustifiedEpoch = int64(finalizedCheckpoints.Justified.Epoch) - 1
+	client.lastJustifiedRoot = finalizedCheckpoints.Justified.Root[:]
 
 	return finalizedSlot, nil
 }
 
-func (client *IndexerClient) prefillCache(finalizedSlot uint64, latestHeader *rpctypes.StandardV1BeaconHeaderResponse) error {
-	currentBlock, isNewBlock := client.indexerCache.createOrGetCachedBlock(latestHeader.Data.Root, uint64(latestHeader.Data.Header.Message.Slot))
+func (client *IndexerClient) prefillCache(finalizedSlot uint64, latestHeader *v1.BeaconBlockHeader) error {
+	latestHeaderSlot := uint64(latestHeader.Header.Message.Slot)
+	currentBlock, isNewBlock := client.indexerCache.createOrGetCachedBlock(latestHeader.Root[:], latestHeaderSlot)
 	if isNewBlock {
 		logger.WithField("client", client.clientName).Infof("received block %v:%v [0x%x] warmup, head", utils.EpochOfSlot(uint64(client.lastHeadSlot)), client.lastHeadSlot, client.lastHeadRoot)
 	} else {
 		logger.WithField("client", client.clientName).Debugf("received known block %v:%v [0x%x] warmup, head", utils.EpochOfSlot(uint64(client.lastHeadSlot)), client.lastHeadSlot, client.lastHeadRoot)
 	}
-	client.ensureBlock(currentBlock, &latestHeader.Data.Header)
-	client.setHeadBlock(latestHeader.Data.Root, uint64(latestHeader.Data.Header.Message.Slot))
+	client.ensureBlock(currentBlock, latestHeader.Header)
+	client.setHeadBlock(latestHeader.Root[:], latestHeaderSlot)
 
 	// walk backwards and load all blocks until we reach a finalized epoch
-	parentRoot := []byte(currentBlock.header.Message.ParentRoot)
+	parentRoot := currentBlock.GetParentRoot()
 	for {
 		finalizedCheckpoint := (client.indexerCache.finalizedEpoch + 1) * int64(utils.Config.Chain.Config.SlotsPerEpoch)
 		if finalizedCheckpoint > int64(finalizedSlot) {
 			finalizedSlot = uint64(finalizedCheckpoint)
 		}
 
-		var parentHead *rpctypes.SignedBeaconBlockHeader
+		var parentHead *phase0.SignedBeaconBlockHeader
 		parentBlock := client.indexerCache.getCachedBlock(parentRoot)
 		if parentBlock != nil {
 			parentBlock.mutex.RLock()
@@ -314,7 +316,7 @@ func (client *IndexerClient) prefillCache(finalizedSlot uint64, latestHeader *rp
 			if headerRsp == nil {
 				return fmt.Errorf("could not find parent header 0x%x", parentRoot)
 			}
-			parentHead = &headerRsp.Data.Header
+			parentHead = headerRsp.Header
 		}
 		parentSlot := uint64(parentHead.Message.Slot)
 		var isNewBlock bool
@@ -336,7 +338,7 @@ func (client *IndexerClient) prefillCache(finalizedSlot uint64, latestHeader *rp
 			logger.WithField("client", client.clientName).Debugf("prefill cache: reached gensis slot [0x%x]", parentRoot)
 			break
 		}
-		parentRoot = parentHead.Message.ParentRoot
+		parentRoot = parentHead.Message.ParentRoot[:]
 	}
 
 	// ensure epoch stats
@@ -357,7 +359,7 @@ func (client *IndexerClient) prefillCache(finalizedSlot uint64, latestHeader *rp
 	return nil
 }
 
-func (client *IndexerClient) ensureBlock(block *CacheBlock, header *rpctypes.SignedBeaconBlockHeader) error {
+func (client *IndexerClient) ensureBlock(block *CacheBlock, header *phase0.SignedBeaconBlockHeader) error {
 	// ensure the cached block is loaded (header & block body), load missing parts
 	block.mutex.Lock()
 	defer block.mutex.Unlock()
@@ -368,7 +370,7 @@ func (client *IndexerClient) ensureBlock(block *CacheBlock, header *rpctypes.Sig
 				logger.WithField("client", client.clientName).Warnf("ensure block %v [0x%x] failed (header): %v", block.Slot, block.Root, err)
 				return err
 			}
-			header = &headerRsp.Data.Header
+			header = headerRsp.Header
 		}
 		block.header = header
 	}
@@ -378,11 +380,7 @@ func (client *IndexerClient) ensureBlock(block *CacheBlock, header *rpctypes.Sig
 			logger.WithField("client", client.clientName).Warnf("ensure block %v [0x%x] failed (block): %v", block.Slot, block.Root, err)
 			return err
 		}
-		if utils.EpochOfSlot(block.Slot) >= utils.Config.Chain.Config.BellatrixForkEpoch && blockRsp.Data.Message.Body.ExecutionPayload == nil {
-			logger.WithField("client", client.clientName).Warnf("ensure block %v [0x%x] failed (block): execution payload missing for post-bellatix block", block.Slot, block.Root)
-			return err
-		}
-		block.block = &blockRsp.Data
+		block.block = blockRsp
 	}
 	// set seen flag
 	clientFlag := uint64(1) << client.clientIdx
@@ -399,15 +397,15 @@ func (client *IndexerClient) pollLatestBlocks() error {
 	if latestHeader == nil {
 		return fmt.Errorf("could not find latest header")
 	}
-	client.setHeadBlock(latestHeader.Data.Root, uint64(latestHeader.Data.Header.Message.Slot))
+	client.setHeadBlock(latestHeader.Root[:], uint64(latestHeader.Header.Message.Slot))
 
-	currentBlock, isNewBlock := client.indexerCache.createOrGetCachedBlock(latestHeader.Data.Root, uint64(latestHeader.Data.Header.Message.Slot))
+	currentBlock, isNewBlock := client.indexerCache.createOrGetCachedBlock(latestHeader.Root[:], uint64(latestHeader.Header.Message.Slot))
 	if isNewBlock {
 		logger.WithField("client", client.clientName).Infof("received block %v:%v [0x%x] polled, head", utils.EpochOfSlot(uint64(client.lastHeadSlot)), client.lastHeadSlot, client.lastHeadRoot)
 	} else {
 		logger.WithField("client", client.clientName).Debugf("received known block %v:%v [0x%x] polled, head", utils.EpochOfSlot(uint64(client.lastHeadSlot)), client.lastHeadSlot, client.lastHeadRoot)
 	}
-	err = client.ensureBlock(currentBlock, &latestHeader.Data.Header)
+	err = client.ensureBlock(currentBlock, latestHeader.Header)
 	if err != nil {
 		return err
 	}
@@ -424,9 +422,9 @@ func (client *IndexerClient) pollLatestBlocks() error {
 
 func (client *IndexerClient) ensureParentBlocks(currentBlock *CacheBlock) error {
 	// walk backwards and load all blocks until we reach a block that is marked as seen by this client or is smaller than finalized
-	parentRoot := []byte(currentBlock.header.Message.ParentRoot)
+	parentRoot := currentBlock.GetParentRoot()
 	for {
-		var parentHead *rpctypes.SignedBeaconBlockHeader
+		var parentHead *phase0.SignedBeaconBlockHeader
 		parentBlock := client.indexerCache.getCachedBlock(parentRoot)
 		if parentBlock != nil {
 			parentBlock.mutex.RLock()
@@ -447,7 +445,7 @@ func (client *IndexerClient) ensureParentBlocks(currentBlock *CacheBlock) error 
 			if headerRsp == nil {
 				return fmt.Errorf("could not find parent header [0x%x]", parentRoot)
 			}
-			parentHead = &headerRsp.Data.Header
+			parentHead = headerRsp.Header
 		}
 		parentSlot := uint64(parentHead.Message.Slot)
 		isNewBlock := false
@@ -473,7 +471,7 @@ func (client *IndexerClient) ensureParentBlocks(currentBlock *CacheBlock) error 
 			logger.WithField("client", client.clientName).Debugf("backfill cache: reached gensis slot [0x%x]", parentRoot)
 			break
 		}
-		parentRoot = parentHead.Message.ParentRoot
+		parentRoot = parentHead.Message.ParentRoot[:]
 	}
 	return nil
 }
@@ -491,8 +489,8 @@ func (client *IndexerClient) setHeadBlock(root []byte, slot uint64) error {
 	return nil
 }
 
-func (client *IndexerClient) processBlockEvent(evt *rpctypes.StandardV1StreamedBlockEvent) error {
-	currentBlock, isNewBlock := client.indexerCache.createOrGetCachedBlock(evt.Block, uint64(evt.Slot))
+func (client *IndexerClient) processBlockEvent(evt *v1.BlockEvent) error {
+	currentBlock, isNewBlock := client.indexerCache.createOrGetCachedBlock(evt.Block[:], uint64(evt.Slot))
 	if isNewBlock {
 		logger.WithField("client", client.clientName).Infof("received block %v:%v [0x%x] stream", utils.EpochOfSlot(currentBlock.Slot), currentBlock.Slot, currentBlock.Root)
 	} else {
@@ -510,11 +508,11 @@ func (client *IndexerClient) processBlockEvent(evt *rpctypes.StandardV1StreamedB
 	if err != nil {
 		return err
 	}
-	client.setHeadBlock(evt.Block, uint64(evt.Slot))
+	client.setHeadBlock(evt.Block[:], uint64(evt.Slot))
 	return nil
 }
 
-func (client *IndexerClient) processFinalizedEvent(evt *rpctypes.StandardV1StreamedFinalizedCheckpointEvent) error {
+func (client *IndexerClient) processFinalizedEvent(evt *v1.FinalizedCheckpointEvent) error {
 	time.Sleep(100 * time.Millisecond)
 	client.refreshFinalityCheckpoints()
 	logger.WithField("client", client.clientName).Debugf("received finalization_checkpoint event: finalized %v [0x%x], justified %v [0x%x]", client.lastFinalizedEpoch, client.lastFinalizedRoot, client.lastJustifiedEpoch, client.lastJustifiedRoot)

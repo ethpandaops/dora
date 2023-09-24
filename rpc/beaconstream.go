@@ -8,10 +8,10 @@ import (
 	"sync"
 	"time"
 
+	v1 "github.com/attestantio/go-eth2-client/api/v1"
 	"github.com/donovanhide/eventsource"
 
 	"github.com/pk910/dora-the-explorer/rpc/eventstream"
-	"github.com/pk910/dora-the-explorer/rpctypes"
 	"github.com/pk910/dora-the-explorer/utils"
 )
 
@@ -152,7 +152,7 @@ func (bs *BeaconStream) subscribeStream(endpoint string, events uint16) *eventst
 }
 
 func (bs *BeaconStream) processBlockEvent(evt eventsource.Event) {
-	var parsed rpctypes.StandardV1StreamedBlockEvent
+	var parsed v1.BlockEvent
 	err := json.Unmarshal([]byte(evt.Data()), &parsed)
 	if err != nil {
 		logger.WithField("client", bs.client.name).Warnf("beacon block stream failed to decode block event: %v", err)
@@ -165,7 +165,7 @@ func (bs *BeaconStream) processBlockEvent(evt eventsource.Event) {
 }
 
 func (bs *BeaconStream) processHeadEvent(evt eventsource.Event) {
-	var parsed rpctypes.StandardV1StreamedHeadEvent
+	var parsed v1.HeadEvent
 	err := json.Unmarshal([]byte(evt.Data()), &parsed)
 	if err != nil {
 		logger.WithField("client", bs.client.name).Warnf("beacon block stream failed to decode block event: %v", err)
@@ -179,7 +179,7 @@ func (bs *BeaconStream) processHeadEvent(evt eventsource.Event) {
 }
 
 func (bs *BeaconStream) processFinalizedEvent(evt eventsource.Event) {
-	var parsed rpctypes.StandardV1StreamedFinalizedCheckpointEvent
+	var parsed v1.FinalizedCheckpointEvent
 	err := json.Unmarshal([]byte(evt.Data()), &parsed)
 	if err != nil {
 		logger.WithField("client", bs.client.name).Warnf("beacon block stream failed to decode finalized_checkpoint event: %v", err)

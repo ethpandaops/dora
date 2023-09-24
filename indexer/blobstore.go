@@ -7,13 +7,13 @@ import (
 	"path"
 	"strings"
 
+	"github.com/attestantio/go-eth2-client/spec/deneb"
 	"github.com/jmoiron/sqlx"
 	"github.com/sirupsen/logrus"
 
 	"github.com/pk910/dora-the-explorer/aws"
 	"github.com/pk910/dora-the-explorer/db"
 	"github.com/pk910/dora-the-explorer/dbtypes"
-	"github.com/pk910/dora-the-explorer/rpctypes"
 	"github.com/pk910/dora-the-explorer/utils"
 )
 
@@ -66,27 +66,28 @@ func (store *BlobStore) getBlobName(blob *dbtypes.Blob) string {
 	return blobName
 }
 
-func (store *BlobStore) saveBlob(blob *rpctypes.BlobSidecar, tx *sqlx.Tx) error {
+func (store *BlobStore) saveBlob(blob *deneb.BlobSidecar, tx *sqlx.Tx) error {
 	dbBlob := &dbtypes.Blob{
-		Commitment: blob.KzgCommitment,
+		Commitment: blob.KzgCommitment[:],
 		Slot:       uint64(blob.Slot),
-		Root:       blob.BlockRoot,
-		Proof:      blob.KzgProof,
+		Root:       blob.BlockRoot[:],
+		Proof:      blob.KzgProof[:],
 		Size:       uint32(len(blob.Blob)),
 	}
 	blobName := store.getBlobName(dbBlob)
 
 	switch store.mode {
 	case blobPersistenceModeDb:
-		dbBlob.Blob = (*[]byte)(&blob.Blob)
+		blobData := blob.Blob[:]
+		dbBlob.Blob = &blobData
 	case blobPersistenceModeFs:
 		blobFile := path.Join(utils.Config.BlobStore.Fs.Path, blobName)
-		err := os.WriteFile(blobFile, blob.Blob, 0644)
+		err := os.WriteFile(blobFile, blob.Blob[:], 0644)
 		if err != nil {
 			return fmt.Errorf("could not save blob to file '%v': %w", blobFile, err)
 		}
 	case blobPersistenceModeAws:
-		err := store.s3Store.Upload(blobName, blob.Blob)
+		err := store.s3Store.Upload(blobName, blob.Blob[:])
 		if err != nil {
 			return fmt.Errorf("could not upload blob to s3 '%v': %w", blobName, err)
 		}
@@ -129,13 +130,13 @@ func (store *BlobStore) LoadBlob(commitment []byte, blockroot []byte, client *In
 
 	if (dbBlob == nil || dbBlob.Blob == nil) && client != nil && blockroot != nil {
 		// load from rpc
-		var blob *rpctypes.BlobSidecar
+		var blob *deneb.BlobSidecar
 		blobRsp, err := client.rpcClient.GetBlobSidecarsByBlockroot(blockroot)
 		if err != nil {
 			logger_blobs.Warnf("cannot load blobs from rpc (0x%x): %v", blockroot, err)
 		} else {
-			for _, cblob := range blobRsp.Data {
-				if bytes.Equal(cblob.KzgCommitment, commitment) {
+			for _, cblob := range blobRsp {
+				if bytes.Equal(cblob.KzgCommitment[:], commitment) {
 					blob = cblob
 					break
 				}
@@ -143,13 +144,13 @@ func (store *BlobStore) LoadBlob(commitment []byte, blockroot []byte, client *In
 		}
 
 		if blob != nil {
-			blobData := ([]byte)(blob.Blob)
+			blobData := blob.Blob[:]
 			if dbBlob == nil {
 				dbBlob = &dbtypes.Blob{
 					Commitment: commitment,
 					Slot:       uint64(blob.Index),
 					Root:       blockroot,
-					Proof:      blob.KzgProof,
+					Proof:      blob.KzgProof[:],
 					Size:       uint32(len(blobData)),
 				}
 			}

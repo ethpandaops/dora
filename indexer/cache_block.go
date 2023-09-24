@@ -1,12 +1,12 @@
 package indexer
 
 import (
-	"encoding/json"
 	"sync"
 
+	"github.com/attestantio/go-eth2-client/spec"
+	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/pk910/dora-the-explorer/db"
 	"github.com/pk910/dora-the-explorer/dbtypes"
-	"github.com/pk910/dora-the-explorer/rpctypes"
 )
 
 type CacheBlock struct {
@@ -15,8 +15,8 @@ type CacheBlock struct {
 	mutex  sync.RWMutex
 	seenBy uint64
 	isInDb bool
-	header *rpctypes.SignedBeaconBlockHeader
-	block  *rpctypes.SignedBeaconBlock
+	header *phase0.SignedBeaconBlockHeader
+	block  *spec.VersionedSignedBeaconBlock
 	Refs   struct {
 		ExecutionHash   []byte
 		ExecutionNumber uint64
@@ -89,18 +89,22 @@ func (cache *indexerCache) removeCachedBlock(cachedBlock *CacheBlock) {
 }
 
 func (block *CacheBlock) buildOrphanedBlock() *dbtypes.OrphanedBlock {
-	headerJson, err := json.Marshal(block.header)
+	headerSSZ, err := block.header.MarshalSSZ()
 	if err != nil {
+		logger.Debugf("marshal header ssz failed: %v", err)
 		return nil
 	}
-	blockJson, err := json.Marshal(block.GetBlockBody())
+	blockVer, blockSSZ, err := MarshalVersionedSignedBeaconBlockSSZ(block.GetBlockBody())
 	if err != nil {
+		logger.Debugf("marshal block ssz failed: %v", err)
 		return nil
 	}
 	return &dbtypes.OrphanedBlock{
-		Root:   block.Root,
-		Header: string(headerJson),
-		Block:  string(blockJson),
+		Root:      block.Root,
+		HeaderVer: 1,
+		HeaderSSZ: headerSSZ,
+		BlockVer:  blockVer,
+		BlockSSZ:  blockSSZ,
 	}
 }
 
@@ -108,10 +112,13 @@ func (block *CacheBlock) parseBlockRefs() {
 	if block.block == nil {
 		return
 	}
-	execPayload := block.block.Message.Body.ExecutionPayload
-	if execPayload != nil {
-		block.Refs.ExecutionHash = execPayload.BlockHash
-		block.Refs.ExecutionNumber = uint64(execPayload.BlockNumber)
+	blockHash, err := block.block.ExecutionBlockHash()
+	if err == nil {
+		block.Refs.ExecutionHash = blockHash[:]
+	}
+	blockNum, err := block.block.ExecutionBlockNumber()
+	if err == nil {
+		block.Refs.ExecutionNumber = blockNum
 	}
 }
 
@@ -119,18 +126,18 @@ func (block *CacheBlock) GetParentRoot() []byte {
 	block.mutex.RLock()
 	defer block.mutex.RUnlock()
 	if block.header != nil {
-		return block.header.Message.ParentRoot
+		return block.header.Message.ParentRoot[:]
 	}
 	return nil
 }
 
-func (block *CacheBlock) GetHeader() *rpctypes.SignedBeaconBlockHeader {
+func (block *CacheBlock) GetHeader() *phase0.SignedBeaconBlockHeader {
 	block.mutex.RLock()
 	defer block.mutex.RUnlock()
 	return block.header
 }
 
-func (block *CacheBlock) GetBlockBody() *rpctypes.SignedBeaconBlock {
+func (block *CacheBlock) GetBlockBody() *spec.VersionedSignedBeaconBlock {
 	block.mutex.RLock()
 	defer block.mutex.RUnlock()
 	if block.block != nil {
@@ -142,13 +149,13 @@ func (block *CacheBlock) GetBlockBody() *rpctypes.SignedBeaconBlock {
 
 	logger.Debugf("loading unfinalized block body from db: %v", block.Slot)
 	blockData := db.GetUnfinalizedBlock(block.Root)
-	var blockBody rpctypes.SignedBeaconBlock
-	err := json.Unmarshal([]byte(blockData.Block), &blockBody)
+
+	blockBody, err := UnmarshalVersionedSignedBeaconBlockSSZ(blockData.BlockVer, blockData.BlockSSZ)
 	if err != nil {
 		logger.Warnf("error parsing unfinalized block body from db: %v", err)
 		return nil
 	}
-	block.block = &blockBody
+	block.block = blockBody
 	block.parseBlockRefs()
 
 	return block.block

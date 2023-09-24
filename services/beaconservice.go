@@ -1,18 +1,22 @@
 package services
 
 import (
-	"encoding/json"
 	"math"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
+	v1 "github.com/attestantio/go-eth2-client/api/v1"
+	"github.com/attestantio/go-eth2-client/spec"
+	"github.com/attestantio/go-eth2-client/spec/deneb"
+	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethereum/go-ethereum/common/lru"
+
 	"github.com/pk910/dora-the-explorer/db"
 	"github.com/pk910/dora-the-explorer/dbtypes"
 	"github.com/pk910/dora-the-explorer/indexer"
-	"github.com/pk910/dora-the-explorer/rpctypes"
+	"github.com/pk910/dora-the-explorer/rpc"
 	"github.com/pk910/dora-the-explorer/utils"
 	"github.com/sirupsen/logrus"
 )
@@ -29,7 +33,7 @@ type BeaconService struct {
 	}
 
 	assignmentsCacheMux sync.Mutex
-	assignmentsCache    *lru.Cache[uint64, *rpctypes.EpochAssignments]
+	assignmentsCache    *lru.Cache[uint64, *rpc.EpochAssignments]
 }
 
 var GlobalBeaconService *BeaconService
@@ -55,7 +59,7 @@ func StartBeaconService() error {
 	GlobalBeaconService = &BeaconService{
 		indexer:          indexer,
 		validatorNames:   validatorNames,
-		assignmentsCache: lru.NewCache[uint64, *rpctypes.EpochAssignments](10),
+		assignmentsCache: lru.NewCache[uint64, *rpc.EpochAssignments](10),
 	}
 	return nil
 }
@@ -72,7 +76,7 @@ func (bs *BeaconService) GetValidatorName(index uint64) string {
 	return bs.validatorNames.GetValidatorName(index)
 }
 
-func (bs *BeaconService) GetCachedValidatorSet() *rpctypes.StandardV1StateValidatorsResponse {
+func (bs *BeaconService) GetCachedValidatorSet() map[phase0.ValidatorIndex]*v1.Validator {
 	return bs.indexer.GetCachedValidatorSet()
 }
 
@@ -85,14 +89,21 @@ func (bs *BeaconService) GetCachedEpochStats(epoch uint64) *indexer.EpochStats {
 	return bs.indexer.GetCachedEpochStats(epoch)
 }
 
-func (bs *BeaconService) GetGenesis() (*rpctypes.StandardV1GenesisResponse, error) {
+func (bs *BeaconService) GetGenesis() (*v1.Genesis, error) {
 	return bs.indexer.GetCachedGenesis(), nil
 }
 
-func (bs *BeaconService) GetSlotDetailsByBlockroot(blockroot []byte) (*rpctypes.CombinedBlockResponse, error) {
-	var result *rpctypes.CombinedBlockResponse
+type CombinedBlockResponse struct {
+	Root     []byte
+	Header   *phase0.SignedBeaconBlockHeader
+	Block    *spec.VersionedSignedBeaconBlock
+	Orphaned bool
+}
+
+func (bs *BeaconService) GetSlotDetailsByBlockroot(blockroot []byte) (*CombinedBlockResponse, error) {
+	var result *CombinedBlockResponse
 	if blockInfo := bs.indexer.GetCachedBlock(blockroot); blockInfo != nil {
-		result = &rpctypes.CombinedBlockResponse{
+		result = &CombinedBlockResponse{
 			Root:     blockInfo.Root,
 			Header:   blockInfo.GetHeader(),
 			Block:    blockInfo.GetBlockBody(),
@@ -101,7 +112,7 @@ func (bs *BeaconService) GetSlotDetailsByBlockroot(blockroot []byte) (*rpctypes.
 	} else {
 		var skipClients []*indexer.IndexerClient = nil
 
-		var header *rpctypes.StandardV1BeaconHeaderResponse
+		var header *v1.BeaconBlockHeader
 		var err error
 		for retry := 0; retry < 3; retry++ {
 			client := bs.indexer.GetReadyClient(false, blockroot, skipClients)
@@ -121,10 +132,10 @@ func (bs *BeaconService) GetSlotDetailsByBlockroot(blockroot []byte) (*rpctypes.
 			return nil, err
 		}
 
-		var block *rpctypes.StandardV2BeaconBlockResponse
+		var block *spec.VersionedSignedBeaconBlock
 		for retry := 0; retry < 3; retry++ {
-			client := bs.indexer.GetReadyClient(false, header.Data.Root, skipClients)
-			block, err = client.GetRpcClient().GetBlockBodyByBlockroot(header.Data.Root)
+			client := bs.indexer.GetReadyClient(false, header.Root[:], skipClients)
+			block, err = client.GetRpcClient().GetBlockBodyByBlockroot(header.Root[:])
 			if block != nil {
 				break
 			} else if err != nil {
@@ -139,19 +150,19 @@ func (bs *BeaconService) GetSlotDetailsByBlockroot(blockroot []byte) (*rpctypes.
 		if err != nil || block == nil {
 			return nil, err
 		}
-		result = &rpctypes.CombinedBlockResponse{
-			Root:     header.Data.Root,
-			Header:   &header.Data.Header,
-			Block:    &block.Data,
-			Orphaned: !header.Data.Canonical,
+		result = &CombinedBlockResponse{
+			Root:     header.Root[:],
+			Header:   header.Header,
+			Block:    block,
+			Orphaned: !header.Canonical,
 		}
 	}
 
 	return result, nil
 }
 
-func (bs *BeaconService) GetSlotDetailsBySlot(slot uint64) (*rpctypes.CombinedBlockResponse, error) {
-	var result *rpctypes.CombinedBlockResponse
+func (bs *BeaconService) GetSlotDetailsBySlot(slot uint64) (*CombinedBlockResponse, error) {
+	var result *CombinedBlockResponse
 	if cachedBlocks := bs.indexer.GetCachedBlocks(slot); len(cachedBlocks) > 0 {
 		var cachedBlock *indexer.CacheBlock
 		for _, block := range cachedBlocks {
@@ -163,7 +174,7 @@ func (bs *BeaconService) GetSlotDetailsBySlot(slot uint64) (*rpctypes.CombinedBl
 		if cachedBlock == nil {
 			cachedBlock = cachedBlocks[0]
 		}
-		result = &rpctypes.CombinedBlockResponse{
+		result = &CombinedBlockResponse{
 			Root:     cachedBlock.Root,
 			Header:   cachedBlock.GetHeader(),
 			Block:    cachedBlock.GetBlockBody(),
@@ -172,7 +183,7 @@ func (bs *BeaconService) GetSlotDetailsBySlot(slot uint64) (*rpctypes.CombinedBl
 	} else {
 		var skipClients []*indexer.IndexerClient = nil
 
-		var header *rpctypes.StandardV1BeaconHeaderResponse
+		var header *v1.BeaconBlockHeader
 		var err error
 		for retry := 0; retry < 3; retry++ {
 			client := bs.indexer.GetReadyClient(false, nil, skipClients)
@@ -192,10 +203,10 @@ func (bs *BeaconService) GetSlotDetailsBySlot(slot uint64) (*rpctypes.CombinedBl
 			return nil, err
 		}
 
-		var block *rpctypes.StandardV2BeaconBlockResponse
+		var block *spec.VersionedSignedBeaconBlock
 		for retry := 0; retry < 3; retry++ {
-			client := bs.indexer.GetReadyClient(false, header.Data.Root, skipClients)
-			block, err = client.GetRpcClient().GetBlockBodyByBlockroot(header.Data.Root)
+			client := bs.indexer.GetReadyClient(false, header.Root[:], skipClients)
+			block, err = client.GetRpcClient().GetBlockBodyByBlockroot(header.Root[:])
 			if block != nil {
 				break
 			} else if err != nil {
@@ -211,56 +222,59 @@ func (bs *BeaconService) GetSlotDetailsBySlot(slot uint64) (*rpctypes.CombinedBl
 			return nil, err
 		}
 
-		result = &rpctypes.CombinedBlockResponse{
-			Root:     header.Data.Root,
-			Header:   &header.Data.Header,
-			Block:    &block.Data,
-			Orphaned: !header.Data.Canonical,
+		result = &CombinedBlockResponse{
+			Root:     header.Root[:],
+			Header:   header.Header,
+			Block:    block,
+			Orphaned: !header.Canonical,
 		}
 	}
 
 	return result, nil
 }
 
-func (bs *BeaconService) GetBlobSidecarsByBlockRoot(blockroot []byte) (*rpctypes.StandardV1BlobSidecarsResponse, error) {
+func (bs *BeaconService) GetBlobSidecarsByBlockRoot(blockroot []byte) ([]*deneb.BlobSidecar, error) {
 	return bs.indexer.GetRpcClient(true, blockroot).GetBlobSidecarsByBlockroot(blockroot)
 }
 
-func (bs *BeaconService) GetOrphanedBlock(blockroot []byte) *rpctypes.CombinedBlockResponse {
+func (bs *BeaconService) GetOrphanedBlock(blockroot []byte) *CombinedBlockResponse {
 	orphanedBlock := db.GetOrphanedBlock(blockroot)
 	if orphanedBlock == nil {
 		return nil
 	}
 
-	var header rpctypes.SignedBeaconBlockHeader
-	err := json.Unmarshal([]byte(orphanedBlock.Header), &header)
-	if err != nil {
-		logrus.Warnf("Error parsing orphaned block header from db: %v", err)
+	header := &phase0.SignedBeaconBlockHeader{}
+	if orphanedBlock.HeaderVer != 1 {
+		logrus.Warnf("failed unmarshal orphaned block header from db: unknown version")
 		return nil
 	}
-	var block rpctypes.SignedBeaconBlock
-	err = json.Unmarshal([]byte(orphanedBlock.Block), &block)
+	err := header.UnmarshalSSZ(orphanedBlock.HeaderSSZ)
 	if err != nil {
-		logrus.Warnf("Error parsing orphaned block body from db: %v", err)
+		logrus.Warnf("failed unmarshal orphaned block header from db: %v", err)
+		return nil
+	}
+	body, err := indexer.UnmarshalVersionedSignedBeaconBlockSSZ(orphanedBlock.BlockVer, orphanedBlock.BlockSSZ)
+	if err != nil {
+		logrus.Warnf("Error parsing unfinalized block body from db: %v", err)
 		return nil
 	}
 
-	return &rpctypes.CombinedBlockResponse{
+	return &CombinedBlockResponse{
 		Root:     orphanedBlock.Root,
-		Header:   &header,
-		Block:    &block,
+		Header:   header,
+		Block:    body,
 		Orphaned: true,
 	}
 }
 
-func (bs *BeaconService) GetEpochAssignments(epoch uint64) (*rpctypes.EpochAssignments, error) {
+func (bs *BeaconService) GetEpochAssignments(epoch uint64) (*rpc.EpochAssignments, error) {
 	finalizedEpoch, _ := bs.GetFinalizedEpoch()
 
 	if int64(epoch) > finalizedEpoch {
 		epochStats := bs.indexer.GetCachedEpochStats(epoch)
 		if epochStats != nil {
-			epochAssignments := &rpctypes.EpochAssignments{
-				DependendRoot:       epochStats.DependentRoot,
+			epochAssignments := &rpc.EpochAssignments{
+				DependendRoot:       phase0.Root(epochStats.DependentRoot),
 				DependendStateRef:   epochStats.GetDependentStateRef(),
 				ProposerAssignments: epochStats.GetProposerAssignments(),
 				AttestorAssignments: epochStats.GetAttestorAssignments(),
@@ -518,12 +532,13 @@ func (bs *BeaconService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageId
 				}
 
 				if filter.Graffiti != "" {
-					blockGraffiti := string(block.GetBlockBody().Message.Body.Graffiti)
+					graffitiBytes, _ := block.GetBlockBody().Graffiti()
+					blockGraffiti := string(graffitiBytes[:])
 					if !strings.Contains(blockGraffiti, filter.Graffiti) {
 						continue
 					}
 				}
-				proposer := uint64(block.GetBlockBody().Message.ProposerIndex)
+				proposer := uint64(block.GetHeader().Message.ProposerIndex)
 				if filter.ProposerIndex != nil {
 					if proposer != *filter.ProposerIndex {
 						continue
@@ -538,7 +553,7 @@ func (bs *BeaconService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageId
 
 				cachedMatches = append(cachedMatches, cachedDbBlock{
 					slot:     block.Slot,
-					proposer: uint64(block.GetBlockBody().Message.ProposerIndex),
+					proposer: uint64(block.GetHeader().Message.ProposerIndex),
 					block:    block,
 				})
 			}

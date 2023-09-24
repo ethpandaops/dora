@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
 
@@ -171,7 +172,7 @@ func SearchAhead(w http.ResponseWriter, r *http.Request) {
 				result = &[]models.SearchAheadSlotsResult{
 					{
 						Slot:     fmt.Sprintf("%v", uint64(header.Message.Slot)),
-						Root:     cachedBlock.Root,
+						Root:     phase0.Root(cachedBlock.Root),
 						Orphaned: !cachedBlock.IsCanonical(indexer, nil),
 					},
 				}
@@ -192,7 +193,7 @@ func SearchAhead(w http.ResponseWriter, r *http.Request) {
 					result = &[]models.SearchAheadSlotsResult{
 						{
 							Slot:     fmt.Sprintf("%v", (*dbres)[0].Slot),
-							Root:     (*dbres)[0].Root,
+							Root:     phase0.Root((*dbres)[0].Root),
 							Orphaned: (*dbres)[0].Orphaned,
 						},
 					}
@@ -210,7 +211,7 @@ func SearchAhead(w http.ResponseWriter, r *http.Request) {
 					header := cachedBlock.GetHeader()
 					res = append(res, &models.SearchAheadSlotsResult{
 						Slot:     fmt.Sprintf("%v", uint64(header.Message.Slot)),
-						Root:     cachedBlock.Root,
+						Root:     phase0.Root(cachedBlock.Root),
 						Orphaned: !cachedBlock.IsCanonical(indexer, nil),
 					})
 				}
@@ -227,7 +228,7 @@ func SearchAhead(w http.ResponseWriter, r *http.Request) {
 					for idx, entry := range *dbres {
 						model[idx] = models.SearchAheadSlotsResult{
 							Slot:     fmt.Sprintf("%v", entry.Slot),
-							Root:     entry.Root,
+							Root:     phase0.Root(entry.Root),
 							Orphaned: entry.Orphaned,
 						}
 					}
@@ -260,8 +261,8 @@ func SearchAhead(w http.ResponseWriter, r *http.Request) {
 					header := cachedBlock.GetHeader()
 					res[idx] = &models.SearchAheadExecBlocksResult{
 						Slot:       fmt.Sprintf("%v", uint64(header.Message.Slot)),
-						Root:       cachedBlock.Root,
-						ExecHash:   cachedBlock.Refs.ExecutionHash,
+						Root:       phase0.Root(cachedBlock.Root),
+						ExecHash:   phase0.Hash32(cachedBlock.Refs.ExecutionHash),
 						ExecNumber: cachedBlock.Refs.ExecutionNumber,
 						Orphaned:   !cachedBlock.IsCanonical(indexer, nil),
 					}
@@ -283,8 +284,8 @@ func SearchAhead(w http.ResponseWriter, r *http.Request) {
 					result = &[]models.SearchAheadExecBlocksResult{
 						{
 							Slot:       fmt.Sprintf("%v", (*dbres)[0].Slot),
-							Root:       (*dbres)[0].Root,
-							ExecHash:   (*dbres)[0].ExecHash,
+							Root:       phase0.Root((*dbres)[0].Root),
+							ExecHash:   phase0.Hash32((*dbres)[0].ExecHash),
 							ExecNumber: (*dbres)[0].ExecNumber,
 							Orphaned:   (*dbres)[0].Orphaned,
 						},
@@ -303,8 +304,8 @@ func SearchAhead(w http.ResponseWriter, r *http.Request) {
 					header := cachedBlock.GetHeader()
 					res = append(res, &models.SearchAheadExecBlocksResult{
 						Slot:       fmt.Sprintf("%v", uint64(header.Message.Slot)),
-						Root:       cachedBlock.Root,
-						ExecHash:   cachedBlock.Refs.ExecutionHash,
+						Root:       phase0.Root(cachedBlock.Root),
+						ExecHash:   phase0.Hash32(cachedBlock.Refs.ExecutionHash),
 						ExecNumber: cachedBlock.Refs.ExecutionNumber,
 						Orphaned:   !cachedBlock.IsCanonical(indexer, nil),
 					})
@@ -322,8 +323,8 @@ func SearchAhead(w http.ResponseWriter, r *http.Request) {
 					for idx, entry := range *dbres {
 						model[idx] = models.SearchAheadExecBlocksResult{
 							Slot:       fmt.Sprintf("%v", entry.Slot),
-							Root:       entry.Root,
-							ExecHash:   entry.ExecHash,
+							Root:       phase0.Root(entry.Root),
+							ExecHash:   phase0.Hash32(entry.ExecHash),
 							ExecNumber: entry.ExecNumber,
 							Orphaned:   entry.Orphaned,
 						}

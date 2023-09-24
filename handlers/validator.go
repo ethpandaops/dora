@@ -9,11 +9,12 @@ import (
 	"strings"
 	"time"
 
+	v1 "github.com/attestantio/go-eth2-client/api/v1"
+	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
 
 	"github.com/pk910/dora-the-explorer/dbtypes"
-	"github.com/pk910/dora-the-explorer/rpctypes"
 	"github.com/pk910/dora-the-explorer/services"
 	"github.com/pk910/dora-the-explorer/templates"
 	"github.com/pk910/dora-the-explorer/types/models"
@@ -37,7 +38,7 @@ func Validator(w http.ResponseWriter, r *http.Request) {
 	data := InitPageData(w, r, "validators", "/validator", "Validator", validatorTemplateFiles)
 
 	validatorSetRsp := services.GlobalBeaconService.GetCachedValidatorSet()
-	var validator *rpctypes.ValidatorEntry
+	var validator *v1.Validator
 	if validatorSetRsp != nil {
 		vars := mux.Vars(r)
 		idxOrPubKey := strings.Replace(vars["idxOrPubKey"], "0x", "", -1)
@@ -45,13 +46,13 @@ func Validator(w http.ResponseWriter, r *http.Request) {
 		if err != nil || len(validatorPubKey) != 48 {
 			// search by index^
 			validatorIndex, err := strconv.ParseUint(vars["idxOrPubKey"], 10, 64)
-			if err == nil && validatorIndex < uint64(len(validatorSetRsp.Data)) {
-				validator = validatorSetRsp.Data[validatorIndex]
+			if err == nil && validatorIndex < uint64(len(validatorSetRsp)) {
+				validator = validatorSetRsp[phase0.ValidatorIndex(validatorIndex)]
 			}
 		} else {
 			// search by pubkey
-			for _, val := range validatorSetRsp.Data {
-				if bytes.Equal(val.Validator.PubKey, validatorPubKey) {
+			for _, val := range validatorSetRsp {
+				if bytes.Equal(val.Validator.PublicKey[:], validatorPubKey) {
 					validator = val
 					break
 				}
@@ -89,35 +90,35 @@ func buildValidatorPageData(validatorIndex uint64) (*models.ValidatorPageData, t
 	logrus.Debugf("validator page called: %v", validatorIndex)
 
 	validatorSetRsp := services.GlobalBeaconService.GetCachedValidatorSet()
-	validator := validatorSetRsp.Data[validatorIndex]
+	validator := validatorSetRsp[phase0.ValidatorIndex(validatorIndex)]
 
 	pageData := &models.ValidatorPageData{
 		CurrentEpoch:        uint64(utils.TimeToEpoch(time.Now())),
 		Index:               uint64(validator.Index),
 		Name:                services.GlobalBeaconService.GetValidatorName(uint64(validator.Index)),
-		PublicKey:           validator.Validator.PubKey,
+		PublicKey:           validator.Validator.PublicKey[:],
 		Balance:             uint64(validator.Balance),
 		EffectiveBalance:    uint64(validator.Validator.EffectiveBalance),
-		BeaconState:         validator.Status,
+		BeaconState:         validator.Status.String(),
 		WithdrawCredentials: validator.Validator.WithdrawalCredentials,
 	}
-	if strings.HasPrefix(validator.Status, "pending") {
+	if strings.HasPrefix(validator.Status.String(), "pending") {
 		pageData.State = "Pending"
-	} else if validator.Status == "active_ongoing" {
+	} else if validator.Status == v1.ValidatorStateActiveOngoing {
 		pageData.State = "Active"
 		pageData.IsActive = true
-	} else if validator.Status == "active_exiting" {
+	} else if validator.Status == v1.ValidatorStateActiveExiting {
 		pageData.State = "Exiting"
 		pageData.IsActive = true
-	} else if validator.Status == "active_slashed" {
+	} else if validator.Status == v1.ValidatorStateActiveSlashed {
 		pageData.State = "Slashed"
 		pageData.IsActive = true
-	} else if validator.Status == "exited_unslashed" {
+	} else if validator.Status == v1.ValidatorStateExitedUnslashed {
 		pageData.State = "Exited"
-	} else if validator.Status == "exited_slashed" {
+	} else if validator.Status == v1.ValidatorStateExitedSlashed {
 		pageData.State = "Slashed"
 	} else {
-		pageData.State = validator.Status
+		pageData.State = validator.Status.String()
 	}
 
 	if pageData.IsActive {
