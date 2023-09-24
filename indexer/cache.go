@@ -8,7 +8,6 @@ import (
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 
 	"github.com/pk910/dora-the-explorer/db"
-	"github.com/pk910/dora-the-explorer/ethtypes"
 	"github.com/pk910/dora-the-explorer/utils"
 )
 
@@ -129,7 +128,7 @@ func (cache *indexerCache) loadStoredUnfinalizedCache() error {
 			logger.Warnf("failed unmarshal unfinalized block header from db: %v", err)
 			continue
 		}
-		body, err := ethtypes.VersionedSignedBeaconBlock_UnmarshalVersionedSSZ(block.BlockVer, block.BlockSSZ)
+		body, err := UnmarshalVersionedSignedBeaconBlockSSZ(block.BlockVer, block.BlockSSZ)
 		if err != nil {
 			logger.Warnf("Error parsing unfinalized block body from db: %v", err)
 			continue

@@ -8,7 +8,6 @@ import (
 
 	"github.com/pk910/dora-the-explorer/db"
 	"github.com/pk910/dora-the-explorer/dbtypes"
-	"github.com/pk910/dora-the-explorer/ethtypes"
 	"github.com/pk910/dora-the-explorer/utils"
 )
 
@@ -144,7 +143,7 @@ func (cache *indexerCache) processFinalizedEpoch(epoch uint64) error {
 	for slot, block := range cache.getCanonicalBlockMap(epoch, nil) {
 		canonicalMap[slot] = block
 
-		blobCommitments, _ := ethtypes.VersionedSignedBeaconBlock_BlobKzgCommitments(block.GetBlockBody())
+		blobCommitments, _ := block.GetBlockBody().BlobKzgCommitments()
 		if len(blobCommitments) > 0 {
 			logger.Infof("loading blobs for slot %v: %v blobs", slot, len(blobCommitments))
 			if client == nil {

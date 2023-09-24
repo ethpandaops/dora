@@ -7,7 +7,6 @@ import (
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/pk910/dora-the-explorer/db"
 	"github.com/pk910/dora-the-explorer/dbtypes"
-	"github.com/pk910/dora-the-explorer/ethtypes"
 )
 
 type CacheBlock struct {
@@ -95,7 +94,7 @@ func (block *CacheBlock) buildOrphanedBlock() *dbtypes.OrphanedBlock {
 		logger.Debugf("marshal header ssz failed: %v", err)
 		return nil
 	}
-	blockVer, blockSSZ, err := ethtypes.VersionedSignedBeaconBlock_MarshalVersionedSSZ(block.GetBlockBody())
+	blockVer, blockSSZ, err := MarshalVersionedSignedBeaconBlockSSZ(block.GetBlockBody())
 	if err != nil {
 		logger.Debugf("marshal block ssz failed: %v", err)
 		return nil
@@ -113,11 +112,11 @@ func (block *CacheBlock) parseBlockRefs() {
 	if block.block == nil {
 		return
 	}
-	blockHash, err := ethtypes.VersionedSignedBeaconBlock_ExecutionBlockHash(block.block)
+	blockHash, err := block.block.ExecutionBlockHash()
 	if err == nil {
 		block.Refs.ExecutionHash = blockHash[:]
 	}
-	blockNum, err := ethtypes.VersionedSignedBeaconBlock_ExecutionBlockNumber(block.block)
+	blockNum, err := block.block.ExecutionBlockNumber()
 	if err == nil {
 		block.Refs.ExecutionNumber = blockNum
 	}
@@ -151,7 +150,7 @@ func (block *CacheBlock) GetBlockBody() *spec.VersionedSignedBeaconBlock {
 	logger.Debugf("loading unfinalized block body from db: %v", block.Slot)
 	blockData := db.GetUnfinalizedBlock(block.Root)
 
-	blockBody, err := ethtypes.VersionedSignedBeaconBlock_UnmarshalVersionedSSZ(blockData.BlockVer, blockData.BlockSSZ)
+	blockBody, err := UnmarshalVersionedSignedBeaconBlockSSZ(blockData.BlockVer, blockData.BlockSSZ)
 	if err != nil {
 		logger.Warnf("error parsing unfinalized block body from db: %v", err)
 		return nil
