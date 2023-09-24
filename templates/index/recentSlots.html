@@ -49,7 +49,11 @@
               <td data-bind="attr: {'data-timer': $root.unixtime(ts)}">
                 <span data-bs-toggle="tooltip" data-bs-placement="top" data-bind="attr: {'data-bs-title': $root.timestamp(ts)}, text: $root.formatRecentTimeShort(ts)"></span>
               </td>
-              <td data-bind="html: $root.formatValidator(proposer, proposer_name)"></td>
+              <td>
+                <span data-bind="if: slot > 0">
+                  <span data-bind="html: $root.formatValidator(proposer, proposer_name)"></span>
+                </span>
+              </td>
             </tr>
             {{ html "<!-- /ko -->" }}
             {{ html "<!-- ko if: slots().length == 0 -->" }}

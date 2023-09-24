@@ -80,9 +80,9 @@
         <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Name of the Network">Genesis Time:</span></div>
         <div class="col-md-10">
           <div>
-            <span aria-ethereum-date="{{ .GenesisTime.Unix }}" aria-ethereum-date-format="FROMNOW" data-bind="attr: {'aria-ethereum-date': $root.unixtime(genesis_time())}, text: genesis_time()">{{ .GenesisTime }}</span>
+            <span aria-ethereum-date="{{ .GenesisTime.Unix }}" aria-ethereum-date-format="FROMNOW" data-bind="attr: {'aria-ethereum-date': $root.unixtime(genesis_time())}, text: $root.timestamp(genesis_time())">{{ .GenesisTime.UTC }}</span>
             (<span id="timestamp" aria-ethereum-date="{{ .GenesisTime.Unix }}" aria-ethereum-date-format="LOCAL" data-timer="{{ .GenesisTime.Unix }}" data-bind="attr: {'aria-ethereum-date': $root.unixtime(genesis_time()), 'data-timer': $root.unixtime(genesis_time())}, text: $root.formatRecentTimeShort(genesis_time())">{{ formatRecentTimeShort .GenesisTime }}</span>)
-            <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ .GenesisTime }}" data-bind="attr: {'data-clipboard-text': genesis_time()}"></i>
+            <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ .GenesisTime.UTC }}" data-bind="attr: {'data-clipboard-text': genesis_time()}"></i>
           </div>
         </div>
       </div>
