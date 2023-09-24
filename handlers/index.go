@@ -33,19 +33,27 @@ func Index(w http.ResponseWriter, r *http.Request) {
 	)
 
 	var indexTemplate = templates.GetTemplate(indexTemplateFiles...)
-
-	w.Header().Set("Content-Type", "text/html")
 	data := InitPageData(w, r, "index", "", "", indexTemplateFiles)
-	data.Data = getIndexPageData()
 
+	var pageError error
+	data.Data, pageError = getIndexPageData()
+	if pageError != nil {
+		handlePageError(w, r, pageError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html")
 	if handleTemplateError(w, r, "index.go", "Index", "", indexTemplate.ExecuteTemplate(w, "layout", data)) != nil {
 		return // an error has occurred and was processed
 	}
 }
 
 func IndexData(w http.ResponseWriter, r *http.Request) {
+	pageData, pageError := getIndexPageData()
+	if pageError != nil {
+		handlePageError(w, r, pageError)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
-	pageData := getIndexPageData()
 	err := json.NewEncoder(w).Encode(pageData)
 	if err != nil {
 		logrus.WithError(err).Error("error encoding index data")
@@ -53,15 +61,22 @@ func IndexData(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func getIndexPageData() *models.IndexPageData {
+func getIndexPageData() (*models.IndexPageData, error) {
 	pageData := &models.IndexPageData{}
 	pageCacheKey := "index"
-	pageData = services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
+	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
 		pageData, cacheTimeout := buildIndexPageData()
 		pageCall.CacheTimeout = cacheTimeout
 		return pageData
-	}).(*models.IndexPageData)
-	return pageData
+	})
+	if pageErr == nil && pageRes != nil {
+		resData, resOk := pageRes.(*models.IndexPageData)
+		if !resOk {
+			return nil, InvalidPageModelError
+		}
+		pageData = resData
+	}
+	return pageData, pageErr
 }
 
 func buildIndexPageData() (*models.IndexPageData, time.Duration) {

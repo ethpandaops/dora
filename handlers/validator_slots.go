@@ -27,7 +27,6 @@ func ValidatorSlots(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	validator, _ := strconv.ParseUint(vars["index"], 10, 64)
 
-	w.Header().Set("Content-Type", "text/html")
 	data := InitPageData(w, r, "blockchain", fmt.Sprintf("/validators/%v/slots", validator), "Validator Slots", slotsTemplateFiles)
 
 	urlArgs := r.URL.Query()
@@ -35,31 +34,39 @@ func ValidatorSlots(w http.ResponseWriter, r *http.Request) {
 	if urlArgs.Has("c") {
 		pageSize, _ = strconv.ParseUint(urlArgs.Get("c"), 10, 64)
 	}
-
-	var pageData *models.ValidatorSlotsPageData
-
 	var pageIdx uint64 = 0
 	if urlArgs.Has("s") {
 		pageIdx, _ = strconv.ParseUint(urlArgs.Get("s"), 10, 64)
 	}
-	pageData = getValidatorSlotsPageData(validator, pageIdx, pageSize)
 
-	data.Data = pageData
-
+	var pageError error
+	data.Data, pageError = getValidatorSlotsPageData(validator, pageIdx, pageSize)
+	if pageError != nil {
+		handlePageError(w, r, pageError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html")
 	if handleTemplateError(w, r, "validator_slots.go", "ValidatorSlots", "", pageTemplate.ExecuteTemplate(w, "layout", data)) != nil {
 		return // an error has occurred and was processed
 	}
 }
 
-func getValidatorSlotsPageData(validator uint64, pageIdx uint64, pageSize uint64) *models.ValidatorSlotsPageData {
+func getValidatorSlotsPageData(validator uint64, pageIdx uint64, pageSize uint64) (*models.ValidatorSlotsPageData, error) {
 	pageData := &models.ValidatorSlotsPageData{}
 	pageCacheKey := fmt.Sprintf("valslots:%v:%v:%v", validator, pageIdx, pageSize)
-	pageData = services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
+	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
 		pageData, cacheTimeout := buildValidatorSlotsPageData(validator, pageIdx, pageSize)
 		pageCall.CacheTimeout = cacheTimeout
 		return pageData
-	}).(*models.ValidatorSlotsPageData)
-	return pageData
+	})
+	if pageErr == nil && pageRes != nil {
+		resData, resOk := pageRes.(*models.ValidatorSlotsPageData)
+		if !resOk {
+			return nil, InvalidPageModelError
+		}
+		pageData = resData
+	}
+	return pageData, pageErr
 }
 
 func buildValidatorSlotsPageData(validator uint64, pageIdx uint64, pageSize uint64) (*models.ValidatorSlotsPageData, time.Duration) {

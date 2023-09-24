@@ -18,26 +18,36 @@ func Clients(w http.ResponseWriter, r *http.Request) {
 	)
 
 	var pageTemplate = templates.GetTemplate(clientsTemplateFiles...)
-
-	w.Header().Set("Content-Type", "text/html")
 	data := InitPageData(w, r, "clients", "/clients", "Clients", clientsTemplateFiles)
 
-	data.Data = getClientsPageData()
-
+	var pageError error
+	data.Data, pageError = getClientsPageData()
+	if pageError != nil {
+		handlePageError(w, r, pageError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html")
 	if handleTemplateError(w, r, "clients.go", "Clients", "", pageTemplate.ExecuteTemplate(w, "layout", data)) != nil {
 		return // an error has occurred and was processed
 	}
 }
 
-func getClientsPageData() *models.ClientsPageData {
+func getClientsPageData() (*models.ClientsPageData, error) {
 	pageData := &models.ClientsPageData{}
 	pageCacheKey := "clients"
-	pageData = services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
+	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
 		pageData, cacheTimeout := buildClientsPageData()
 		pageCall.CacheTimeout = cacheTimeout
 		return pageData
-	}).(*models.ClientsPageData)
-	return pageData
+	})
+	if pageErr == nil && pageRes != nil {
+		resData, resOk := pageRes.(*models.ClientsPageData)
+		if !resOk {
+			return nil, InvalidPageModelError
+		}
+		pageData = resData
+	}
+	return pageData, pageErr
 }
 
 func buildClientsPageData() (*models.ClientsPageData, time.Duration) {

@@ -23,8 +23,6 @@ func SlotsFiltered(w http.ResponseWriter, r *http.Request) {
 	)
 
 	var pageTemplate = templates.GetTemplate(slotsTemplateFiles...)
-
-	w.Header().Set("Content-Type", "text/html")
 	data := InitPageData(w, r, "blockchain", "/slots/filtered", "Filtered Slots", slotsTemplateFiles)
 
 	urlArgs := r.URL.Query()
@@ -63,20 +61,32 @@ func SlotsFiltered(w http.ResponseWriter, r *http.Request) {
 		withOrphaned = 1
 		withMissing = 1
 	}
-	data.Data = getFilteredSlotsPageData(pageIdx, pageSize, graffiti, proposer, pname, uint8(withOrphaned), uint8(withMissing))
-
+	var pageError error
+	data.Data, pageError = getFilteredSlotsPageData(pageIdx, pageSize, graffiti, proposer, pname, uint8(withOrphaned), uint8(withMissing))
+	if pageError != nil {
+		handlePageError(w, r, pageError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html")
 	if handleTemplateError(w, r, "slots_filtered.go", "SlotsFiltered", "", pageTemplate.ExecuteTemplate(w, "layout", data)) != nil {
 		return // an error has occurred and was processed
 	}
 }
 
-func getFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string, proposer string, pname string, withOrphaned uint8, withMissing uint8) *models.SlotsFilteredPageData {
+func getFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string, proposer string, pname string, withOrphaned uint8, withMissing uint8) (*models.SlotsFilteredPageData, error) {
 	pageData := &models.SlotsFilteredPageData{}
 	pageCacheKey := fmt.Sprintf("slots_filtered:%v:%v:%v:%v:%v:%v:%v", pageIdx, pageSize, graffiti, proposer, pname, withOrphaned, withMissing)
-	pageData = services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(_ *services.FrontendCacheProcessingPage) interface{} {
+	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(_ *services.FrontendCacheProcessingPage) interface{} {
 		return buildFilteredSlotsPageData(pageIdx, pageSize, graffiti, proposer, pname, withOrphaned, withMissing)
-	}).(*models.SlotsFilteredPageData)
-	return pageData
+	})
+	if pageErr == nil && pageRes != nil {
+		resData, resOk := pageRes.(*models.SlotsFilteredPageData)
+		if !resOk {
+			return nil, InvalidPageModelError
+		}
+		pageData = resData
+	}
+	return pageData, pageErr
 }
 
 func buildFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string, proposer string, pname string, withOrphaned uint8, withMissing uint8) *models.SlotsFilteredPageData {

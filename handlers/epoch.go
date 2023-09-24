@@ -23,9 +23,7 @@ func Epoch(w http.ResponseWriter, r *http.Request) {
 	var notfoundTemplateFiles = append(layoutTemplateFiles,
 		"epoch/notfound.html",
 	)
-
 	var pageTemplate = templates.GetTemplate(epochTemplateFiles...)
-	w.Header().Set("Content-Type", "text/html")
 
 	var pageData *models.EpochPageData
 	var epoch uint64
@@ -37,9 +35,14 @@ func Epoch(w http.ResponseWriter, r *http.Request) {
 		epoch = uint64(utils.TimeToEpoch(time.Now()))
 	}
 
-	pageData = getEpochPageData(epoch)
+	pageData, pageError := getEpochPageData(epoch)
+	if pageError != nil {
+		handlePageError(w, r, pageError)
+		return
+	}
 	if pageData == nil {
 		data := InitPageData(w, r, "blockchain", "/epoch", fmt.Sprintf("Epoch %v", epoch), notfoundTemplateFiles)
+		w.Header().Set("Content-Type", "text/html")
 		if handleTemplateError(w, r, "slot.go", "Slot", "blockSlot", templates.GetTemplate(notfoundTemplateFiles...).ExecuteTemplate(w, "layout", data)) != nil {
 			return // an error has occurred and was processed
 		}
@@ -48,21 +51,28 @@ func Epoch(w http.ResponseWriter, r *http.Request) {
 
 	data := InitPageData(w, r, "blockchain", "/epoch", fmt.Sprintf("Epoch %v", epoch), epochTemplateFiles)
 	data.Data = pageData
-
+	w.Header().Set("Content-Type", "text/html")
 	if handleTemplateError(w, r, "epoch.go", "Epoch", "", pageTemplate.ExecuteTemplate(w, "layout", data)) != nil {
 		return // an error has occurred and was processed
 	}
 }
 
-func getEpochPageData(epoch uint64) *models.EpochPageData {
+func getEpochPageData(epoch uint64) (*models.EpochPageData, error) {
 	pageData := &models.EpochPageData{}
 	pageCacheKey := fmt.Sprintf("epoch:%v", epoch)
-	pageData = services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
+	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
 		pageData, cacheTimeout := buildEpochPageData(epoch)
 		pageCall.CacheTimeout = cacheTimeout
 		return pageData
-	}).(*models.EpochPageData)
-	return pageData
+	})
+	if pageErr == nil && pageRes != nil {
+		resData, resOk := pageRes.(*models.EpochPageData)
+		if !resOk {
+			return nil, InvalidPageModelError
+		}
+		pageData = resData
+	}
+	return pageData, pageErr
 }
 
 func buildEpochPageData(epoch uint64) (*models.EpochPageData, time.Duration) {
