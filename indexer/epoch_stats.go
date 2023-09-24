@@ -8,9 +8,10 @@ import (
 
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
+
 	"github.com/pk910/dora-the-explorer/db"
 	"github.com/pk910/dora-the-explorer/dbtypes"
-	"github.com/pk910/dora-the-explorer/ethtypes"
+	"github.com/pk910/dora-the-explorer/rpc"
 	"github.com/pk910/dora-the-explorer/utils"
 )
 
@@ -155,7 +156,7 @@ func (epochStats *EpochStats) TryGetSyncAssignments() []uint64 {
 
 func (client *IndexerClient) ensureEpochStats(epoch uint64, head []byte) error {
 	var dependentRoot []byte
-	var proposerRsp *ethtypes.ProposerDuties
+	var proposerRsp *rpc.ProposerDuties
 	if epoch > 0 {
 		firstBlock := client.indexerCache.getFirstCanonicalBlock(epoch, head)
 		if firstBlock != nil {
@@ -207,7 +208,7 @@ func (client *IndexerClient) ensureEpochStats(epoch uint64, head []byte) error {
 	return nil
 }
 
-func (epochStats *EpochStats) ensureEpochStatsLazy(client *IndexerClient, proposerRsp *ethtypes.ProposerDuties) error {
+func (epochStats *EpochStats) ensureEpochStatsLazy(client *IndexerClient, proposerRsp *rpc.ProposerDuties) error {
 	epochStats.dutiesMutex.Lock()
 	defer epochStats.dutiesMutex.Unlock()
 

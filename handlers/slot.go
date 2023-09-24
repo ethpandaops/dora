@@ -19,7 +19,6 @@ import (
 
 	"github.com/pk910/dora-the-explorer/db"
 	"github.com/pk910/dora-the-explorer/dbtypes"
-	"github.com/pk910/dora-the-explorer/ethtypes"
 	"github.com/pk910/dora-the-explorer/rpc"
 	"github.com/pk910/dora-the-explorer/services"
 	"github.com/pk910/dora-the-explorer/templates"
@@ -283,18 +282,18 @@ func buildSlotPageData(blockSlot int64, blockRoot []byte, loadDuties bool) (*mod
 }
 
 func getSlotPageBlockData(blockData *services.CombinedBlockResponse, assignments *rpc.EpochAssignments, loadDuties bool) *models.SlotPageBlockData {
-	graffiti, _ := ethtypes.VersionedSignedBeaconBlock_Graffiti(blockData.Block)
-	randaoReveal, _ := ethtypes.VersionedSignedBeaconBlock_RandaoReveal(blockData.Block)
-	eth1Data, _ := ethtypes.VersionedSignedBeaconBlock_ETH1Data(blockData.Block)
+	graffiti, _ := blockData.Block.Graffiti()
+	randaoReveal, _ := blockData.Block.RandaoReveal()
+	eth1Data, _ := blockData.Block.ETH1Data()
 	attestations, _ := blockData.Block.Attestations()
-	deposits, _ := ethtypes.VersionedSignedBeaconBlock_Deposits(blockData.Block)
-	voluntaryExits, _ := ethtypes.VersionedSignedBeaconBlock_VoluntaryExits(blockData.Block)
+	deposits, _ := blockData.Block.Deposits()
+	voluntaryExits, _ := blockData.Block.VoluntaryExits()
 	attesterSlashings, _ := blockData.Block.AttesterSlashings()
 	proposerSlashings, _ := blockData.Block.ProposerSlashings()
-	blsToExecChanges, _ := ethtypes.VersionedSignedBeaconBlock_BLSToExecutionChanges(blockData.Block)
-	syncAggregate, _ := ethtypes.VersionedSignedBeaconBlock_SyncAggregate(blockData.Block)
-	executionWithdrawals, _ := ethtypes.VersionedSignedBeaconBlock_Withdrawals(blockData.Block)
-	blobKzgCommitments, _ := ethtypes.VersionedSignedBeaconBlock_BlobKzgCommitments(blockData.Block)
+	blsToExecChanges, _ := blockData.Block.BLSToExecutionChanges()
+	syncAggregate, _ := blockData.Block.SyncAggregate()
+	executionWithdrawals, _ := blockData.Block.Withdrawals()
+	blobKzgCommitments, _ := blockData.Block.BlobKzgCommitments()
 
 	pageData := &models.SlotPageBlockData{
 		BlockRoot:              blockData.Root,

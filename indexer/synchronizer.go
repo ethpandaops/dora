@@ -8,7 +8,6 @@ import (
 	"github.com/attestantio/go-eth2-client/spec/deneb"
 	"github.com/pk910/dora-the-explorer/db"
 	"github.com/pk910/dora-the-explorer/dbtypes"
-	"github.com/pk910/dora-the-explorer/ethtypes"
 	"github.com/pk910/dora-the-explorer/utils"
 	"github.com/sirupsen/logrus"
 )
@@ -253,7 +252,7 @@ func (sync *synchronizerState) syncEpoch(syncEpoch uint64, retryCount int, lastT
 			continue
 		}
 
-		blobKzgCommitments, _ := ethtypes.VersionedSignedBeaconBlock_BlobKzgCommitments(block.GetBlockBody())
+		blobKzgCommitments, _ := block.GetBlockBody().BlobKzgCommitments()
 		if len(blobKzgCommitments) == 0 {
 			continue
 		}

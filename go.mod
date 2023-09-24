@@ -22,7 +22,7 @@ require (
 )
 
 require (
-	github.com/attestantio/go-eth2-client v0.18.3 // indirect
+	github.com/attestantio/go-eth2-client v0.18.4-0.20230923192151-813e9473d186 // indirect
 	github.com/aws/aws-sdk-go-v2 v1.21.0 // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.4.13 // indirect
 	github.com/aws/aws-sdk-go-v2/config v1.18.38 // indirect
