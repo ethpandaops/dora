@@ -6,10 +6,14 @@ import (
 	"net/http"
 	"path"
 	"strings"
+	"time"
 
 	"github.com/pk910/dora-the-explorer/templates"
+	"github.com/pk910/dora-the-explorer/types/models"
 	"github.com/sirupsen/logrus"
 )
+
+var InvalidPageModelError = errors.New("invalid page model")
 
 type customFileServer struct {
 	handler         http.Handler
@@ -71,6 +75,25 @@ func NotFound(w http.ResponseWriter, r *http.Request) {
 	err := notFoundTemplate.ExecuteTemplate(w, "layout", data)
 	if err != nil {
 		logrus.Errorf("error executing not-found template for %v route: %v", r.URL.String(), err)
+		http.Error(w, "Internal server error", http.StatusServiceUnavailable)
+	}
+}
+
+func handlePageError(w http.ResponseWriter, r *http.Request, pageError error) {
+	templateFiles := append(layoutTemplateFiles, "_layout/500.html")
+	notFoundTemplate := templates.GetTemplate(templateFiles...)
+	w.Header().Set("Content-Type", "text/html")
+	w.WriteHeader(http.StatusInternalServerError)
+	data := InitPageData(w, r, "blockchain", r.URL.Path, "Internal Error", templateFiles)
+	data.Data = &models.ErrorPageData{
+		CallTime: time.Now(),
+		CallUrl:  r.URL.String(),
+		ErrorMsg: pageError.Error(),
+	}
+
+	err := notFoundTemplate.ExecuteTemplate(w, "layout", data)
+	if err != nil {
+		logrus.Errorf("error executing page error template for %v route: %v", r.URL.String(), err)
 		http.Error(w, "Internal server error", http.StatusServiceUnavailable)
 	}
 }

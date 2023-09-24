@@ -43,7 +43,6 @@ func Slot(w http.ResponseWriter, r *http.Request) {
 	var notfoundTemplateFiles = append(layoutTemplateFiles,
 		"slot/notfound.html",
 	)
-	w.Header().Set("Content-Type", "text/html")
 
 	vars := mux.Vars(r)
 	slotOrHash := strings.Replace(vars["slotOrHash"], "0x", "", -1)
@@ -54,6 +53,7 @@ func Slot(w http.ResponseWriter, r *http.Request) {
 		blockSlot, err = strconv.ParseInt(vars["slotOrHash"], 10, 64)
 		if err != nil || blockSlot >= 2147483648 { // block slot must be lower then max int4
 			data := InitPageData(w, r, "blockchain", "/slots", fmt.Sprintf("Slot %v", slotOrHash), notfoundTemplateFiles)
+			w.Header().Set("Content-Type", "text/html")
 			if handleTemplateError(w, r, "slot.go", "Slot", "blockSlot", templates.GetTemplate(notfoundTemplateFiles...).ExecuteTemplate(w, "layout", data)) != nil {
 				return // an error has occurred and was processed
 			}
@@ -63,11 +63,15 @@ func Slot(w http.ResponseWriter, r *http.Request) {
 
 	urlArgs := r.URL.Query()
 	loadDuties := urlArgs.Has("duties")
-
-	pageData := getSlotPageData(blockSlot, blockRootHash, loadDuties)
+	pageData, pageError := getSlotPageData(blockSlot, blockRootHash, loadDuties)
+	if pageError != nil {
+		handlePageError(w, r, pageError)
+		return
+	}
 	if pageData == nil {
 		data := InitPageData(w, r, "blockchain", "/slots", fmt.Sprintf("Slot %v", slotOrHash), notfoundTemplateFiles)
 		data.Data = "slot"
+		w.Header().Set("Content-Type", "text/html")
 		if handleTemplateError(w, r, "slot.go", "Slot", "notFound", templates.GetTemplate(notfoundTemplateFiles...).ExecuteTemplate(w, "layout", data)) != nil {
 			return // an error has occurred and was processed
 		}
@@ -108,6 +112,7 @@ func Slot(w http.ResponseWriter, r *http.Request) {
 	template := templates.GetTemplate(slotTemplateFiles...)
 	data := InitPageData(w, r, "blockchain", "/slots", fmt.Sprintf("Slot %v", slotOrHash), slotTemplateFiles)
 	data.Data = pageData
+	w.Header().Set("Content-Type", "text/html")
 	if handleTemplateError(w, r, "index.go", "Slot", "", template.ExecuteTemplate(w, "layout", data)) != nil {
 		return // an error has occurred and was processed
 	}
@@ -151,15 +156,22 @@ func SlotBlob(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func getSlotPageData(blockSlot int64, blockRoot []byte, loadDuties bool) *models.SlotPageData {
+func getSlotPageData(blockSlot int64, blockRoot []byte, loadDuties bool) (*models.SlotPageData, error) {
 	pageData := &models.SlotPageData{}
 	pageCacheKey := fmt.Sprintf("slot:%v:%x:%v", blockSlot, blockRoot, loadDuties)
-	pageData = services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
+	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
 		pageData, cacheTimeout := buildSlotPageData(blockSlot, blockRoot, loadDuties)
 		pageCall.CacheTimeout = cacheTimeout
 		return pageData
-	}).(*models.SlotPageData)
-	return pageData
+	})
+	if pageErr == nil && pageRes != nil {
+		resData, resOk := pageRes.(*models.SlotPageData)
+		if !resOk {
+			return nil, InvalidPageModelError
+		}
+		pageData = resData
+	}
+	return pageData, pageErr
 }
 
 func buildSlotPageData(blockSlot int64, blockRoot []byte, loadDuties bool) (*models.SlotPageData, time.Duration) {

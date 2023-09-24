@@ -29,8 +29,6 @@ func Validators(w http.ResponseWriter, r *http.Request) {
 	)
 
 	var pageTemplate = templates.GetTemplate(validatorsTemplateFiles...)
-
-	w.Header().Set("Content-Type", "text/html")
 	data := InitPageData(w, r, "validators", "/validators", "Validators", validatorsTemplateFiles)
 
 	urlArgs := r.URL.Query()
@@ -64,22 +62,35 @@ func Validators(w http.ResponseWriter, r *http.Request) {
 	if urlArgs.Has("o") {
 		sortOrder = urlArgs.Get("o")
 	}
-	data.Data = getValidatorsPageData(firstIdx, pageSize, sortOrder, filterPubKey, filterIndex, filterName, filterStatus)
 
+	var pageError error
+	data.Data, pageError = getValidatorsPageData(firstIdx, pageSize, sortOrder, filterPubKey, filterIndex, filterName, filterStatus)
+	if pageError != nil {
+		handlePageError(w, r, pageError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html")
 	if handleTemplateError(w, r, "validators.go", "Validators", "", pageTemplate.ExecuteTemplate(w, "layout", data)) != nil {
 		return // an error has occurred and was processed
 	}
 }
 
-func getValidatorsPageData(firstValIdx uint64, pageSize uint64, sortOrder string, filterPubKey string, filterIndex string, filterName string, filterStatus string) *models.ValidatorsPageData {
+func getValidatorsPageData(firstValIdx uint64, pageSize uint64, sortOrder string, filterPubKey string, filterIndex string, filterName string, filterStatus string) (*models.ValidatorsPageData, error) {
 	pageData := &models.ValidatorsPageData{}
 	pageCacheKey := fmt.Sprintf("validators:%v:%v:%v:%v:%v:%v:%v", firstValIdx, pageSize, sortOrder, filterPubKey, filterIndex, filterName, filterStatus)
-	pageData = services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
+	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
 		pageData, cacheTimeout := buildValidatorsPageData(firstValIdx, pageSize, sortOrder, filterPubKey, filterIndex, filterName, filterStatus)
 		pageCall.CacheTimeout = cacheTimeout
 		return pageData
-	}).(*models.ValidatorsPageData)
-	return pageData
+	})
+	if pageErr == nil && pageRes != nil {
+		resData, resOk := pageRes.(*models.ValidatorsPageData)
+		if !resOk {
+			return nil, InvalidPageModelError
+		}
+		pageData = resData
+	}
+	return pageData, pageErr
 }
 
 func buildValidatorsPageData(firstValIdx uint64, pageSize uint64, sortOrder string, filterPubKey string, filterIndex string, filterName string, filterStatus string) (*models.ValidatorsPageData, time.Duration) {

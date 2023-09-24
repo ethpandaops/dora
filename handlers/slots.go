@@ -23,8 +23,6 @@ func Slots(w http.ResponseWriter, r *http.Request) {
 	)
 
 	var pageTemplate = templates.GetTemplate(slotsTemplateFiles...)
-
-	w.Header().Set("Content-Type", "text/html")
 	data := InitPageData(w, r, "blockchain", "/slots", "Slots", slotsTemplateFiles)
 
 	urlArgs := r.URL.Query()
@@ -36,22 +34,35 @@ func Slots(w http.ResponseWriter, r *http.Request) {
 	if urlArgs.Has("s") {
 		firstSlot, _ = strconv.ParseUint(urlArgs.Get("s"), 10, 64)
 	}
-	data.Data = getSlotsPageData(firstSlot, pageSize)
 
+	var pageError error
+	data.Data, pageError = getSlotsPageData(firstSlot, pageSize)
+	if pageError != nil {
+		handlePageError(w, r, pageError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html")
 	if handleTemplateError(w, r, "slots.go", "Slots", "", pageTemplate.ExecuteTemplate(w, "layout", data)) != nil {
 		return // an error has occurred and was processed
 	}
 }
 
-func getSlotsPageData(firstSlot uint64, pageSize uint64) *models.SlotsPageData {
+func getSlotsPageData(firstSlot uint64, pageSize uint64) (*models.SlotsPageData, error) {
 	pageData := &models.SlotsPageData{}
 	pageCacheKey := fmt.Sprintf("slots:%v:%v", firstSlot, pageSize)
-	pageData = services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
+	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
 		pageData, cacheTimeout := buildSlotsPageData(firstSlot, pageSize)
 		pageCall.CacheTimeout = cacheTimeout
 		return pageData
-	}).(*models.SlotsPageData)
-	return pageData
+	})
+	if pageErr == nil && pageRes != nil {
+		resData, resOk := pageRes.(*models.SlotsPageData)
+		if !resOk {
+			return nil, InvalidPageModelError
+		}
+		pageData = resData
+	}
+	return pageData, pageErr
 }
 
 func buildSlotsPageData(firstSlot uint64, pageSize uint64) (*models.SlotsPageData, time.Duration) {

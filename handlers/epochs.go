@@ -22,8 +22,6 @@ func Epochs(w http.ResponseWriter, r *http.Request) {
 	)
 
 	var pageTemplate = templates.GetTemplate(indexTemplateFiles...)
-
-	w.Header().Set("Content-Type", "text/html")
 	data := InitPageData(w, r, "blockchain", "/epochs", "Epochs", indexTemplateFiles)
 
 	urlArgs := r.URL.Query()
@@ -35,22 +33,35 @@ func Epochs(w http.ResponseWriter, r *http.Request) {
 	if urlArgs.Has("count") {
 		pageSize, _ = strconv.ParseUint(urlArgs.Get("count"), 10, 64)
 	}
-	data.Data = getEpochsPageData(firstEpoch, pageSize)
 
+	var pageError error
+	data.Data, pageError = getEpochsPageData(firstEpoch, pageSize)
+	if pageError != nil {
+		handlePageError(w, r, pageError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html")
 	if handleTemplateError(w, r, "epochs.go", "Epochs", "", pageTemplate.ExecuteTemplate(w, "layout", data)) != nil {
 		return // an error has occurred and was processed
 	}
 }
 
-func getEpochsPageData(firstEpoch uint64, pageSize uint64) *models.EpochsPageData {
+func getEpochsPageData(firstEpoch uint64, pageSize uint64) (*models.EpochsPageData, error) {
 	pageData := &models.EpochsPageData{}
 	pageCacheKey := fmt.Sprintf("epochs:%v:%v", firstEpoch, pageSize)
-	pageData = services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
+	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
 		pageData, cacheTimeout := buildEpochsPageData(firstEpoch, pageSize)
 		pageCall.CacheTimeout = cacheTimeout
 		return pageData
-	}).(*models.EpochsPageData)
-	return pageData
+	})
+	if pageErr == nil && pageRes != nil {
+		resData, resOk := pageRes.(*models.EpochsPageData)
+		if !resOk {
+			return nil, InvalidPageModelError
+		}
+		pageData = resData
+	}
+	return pageData, pageErr
 }
 
 func buildEpochsPageData(firstEpoch uint64, pageSize uint64) (*models.EpochsPageData, time.Duration) {

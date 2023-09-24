@@ -33,8 +33,6 @@ func Validator(w http.ResponseWriter, r *http.Request) {
 	)
 
 	var pageTemplate = templates.GetTemplate(validatorTemplateFiles...)
-
-	w.Header().Set("Content-Type", "text/html")
 	data := InitPageData(w, r, "validators", "/validator", "Validator", validatorTemplateFiles)
 
 	validatorSetRsp := services.GlobalBeaconService.GetCachedValidatorSet()
@@ -62,28 +60,41 @@ func Validator(w http.ResponseWriter, r *http.Request) {
 
 	if validator == nil {
 		data := InitPageData(w, r, "blockchain", "/validator", "Validator not found", notfoundTemplateFiles)
+		w.Header().Set("Content-Type", "text/html")
 		if handleTemplateError(w, r, "validator.go", "Validator", "", templates.GetTemplate(notfoundTemplateFiles...).ExecuteTemplate(w, "layout", data)) != nil {
 			return // an error has occurred and was processed
 		}
 		return
 	}
 
-	data.Data = getValidatorPageData(uint64(validator.Index))
-
+	var pageError error
+	data.Data, pageError = getValidatorPageData(uint64(validator.Index))
+	if pageError != nil {
+		handlePageError(w, r, pageError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html")
 	if handleTemplateError(w, r, "validators.go", "Validators", "", pageTemplate.ExecuteTemplate(w, "layout", data)) != nil {
 		return // an error has occurred and was processed
 	}
 }
 
-func getValidatorPageData(validatorIndex uint64) *models.ValidatorPageData {
+func getValidatorPageData(validatorIndex uint64) (*models.ValidatorPageData, error) {
 	pageData := &models.ValidatorPageData{}
 	pageCacheKey := fmt.Sprintf("validator:%v", validatorIndex)
-	pageData = services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
+	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
 		pageData, cacheTimeout := buildValidatorPageData(validatorIndex)
 		pageCall.CacheTimeout = cacheTimeout
 		return pageData
-	}).(*models.ValidatorPageData)
-	return pageData
+	})
+	if pageErr == nil && pageRes != nil {
+		resData, resOk := pageRes.(*models.ValidatorPageData)
+		if !resOk {
+			return nil, InvalidPageModelError
+		}
+		pageData = resData
+	}
+	return pageData, pageErr
 }
 
 func buildValidatorPageData(validatorIndex uint64) (*models.ValidatorPageData, time.Duration) {
