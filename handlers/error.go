@@ -11,6 +11,7 @@ import (
 	"github.com/pk910/dora-the-explorer/services"
 	"github.com/pk910/dora-the-explorer/templates"
 	"github.com/pk910/dora-the-explorer/types/models"
+	"github.com/pk910/dora-the-explorer/utils"
 	"github.com/sirupsen/logrus"
 )
 
@@ -90,6 +91,7 @@ func handlePageError(w http.ResponseWriter, r *http.Request, pageError error) {
 		CallTime: time.Now(),
 		CallUrl:  r.URL.String(),
 		ErrorMsg: pageError.Error(),
+		Version:  utils.GetExplorerVersion(),
 	}
 	if fcError, isOk := pageError.(*services.FrontendCachePageError); isOk {
 		errData.StackTrace = fcError.Stack()

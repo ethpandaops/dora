@@ -23,9 +23,12 @@
           Tech stuff for bug report: <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-target="#errormsg"></i>
           <div class="error-message p-1">
 <pre id="errormsg" class="p-2">
-Error: {{ .ErrorMsg }}
-Time: {{ .CallTime }}
 URL: {{ .CallUrl }}
+Time: {{ .CallTime }}
+Version: {{ .Version }}
+
+Error:
+{{ .ErrorMsg }}
 
 Stack Trace:
 {{ .StackTrace }}

@@ -39,7 +39,7 @@ func InitPageData(w http.ResponseWriter, r *http.Request, active, path, title st
 		},
 		Active:                active,
 		Data:                  &types.Empty{},
-		Version:               "git-" + utils.BuildVersion,
+		Version:               utils.GetExplorerVersion(),
 		BuildTime:             fmt.Sprintf("%v", buildTime.Unix()),
 		Year:                  time.Now().UTC().Year(),
 		ExplorerTitle:         utils.Config.Frontend.SiteName,
@@ -53,12 +53,6 @@ func InitPageData(w http.ResponseWriter, r *http.Request, active, path, title st
 		Lang:                  "en-US",
 		Debug:                 utils.Config.Frontend.Debug,
 		MainMenuItems:         createMenuItems(active, isMainnet),
-	}
-
-	if utils.BuildRelease == "" {
-		data.Version = fmt.Sprintf("git-%v", utils.BuildVersion)
-	} else {
-		data.Version = fmt.Sprintf("%v (git-%v)", utils.BuildRelease, utils.BuildVersion)
 	}
 
 	acceptedLangs := strings.Split(r.Header.Get("Accept-Language"), ",")

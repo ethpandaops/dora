@@ -9,4 +9,5 @@ type ErrorPageData struct {
 	CallUrl    string
 	ErrorMsg   string
 	StackTrace string
+	Version    string
 }
