@@ -2,9 +2,11 @@ package handlers
 
 import (
 	"errors"
+	"fmt"
 	"io/fs"
 	"net/http"
 	"path"
+	"runtime"
 	"strings"
 	"time"
 
@@ -85,12 +87,17 @@ func handlePageError(w http.ResponseWriter, r *http.Request, pageError error) {
 	w.Header().Set("Content-Type", "text/html")
 	w.WriteHeader(http.StatusInternalServerError)
 	data := InitPageData(w, r, "blockchain", r.URL.Path, "Internal Error", templateFiles)
-	data.Data = &models.ErrorPageData{
+	errPageData := &models.ErrorPageData{
 		CallTime: time.Now(),
 		CallUrl:  r.URL.String(),
 		ErrorMsg: pageError.Error(),
 	}
 
+	buf := make([]byte, 1<<16)
+	runtime.Stack(buf, true)
+	errPageData.StackTrace = fmt.Sprintf("%s", buf)
+
+	data.Data = errPageData
 	err := notFoundTemplate.ExecuteTemplate(w, "layout", data)
 	if err != nil {
 		logrus.Errorf("error executing page error template for %v route: %v", r.URL.String(), err)

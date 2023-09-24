@@ -20,6 +20,7 @@
 
     // init clipboard buttons
     document.querySelectorAll("[data-clipboard-text]").forEach(initCopyBtn);
+    document.querySelectorAll("[data-clipboard-target]").forEach(initCopyBtn);
   }
 
   function initTooltip(el) {

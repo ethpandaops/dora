@@ -1,7 +1,3 @@
-{{ define "js" }}
-{{ end }}
-{{ define "css" }}
-{{ end }}
 {{ define "page" }}
   <div class="container mt-2">
     <div class="my-3">
@@ -17,11 +13,42 @@
     </div>
     <div class="card">
       <div class="card-body">
-        <div class="d-1">
-          Sorry, there was an unexpected error when processing the page:<br>
-          {{ .ErrorMsg }}
+        <h5 class="card-title">Sorry, there was an unexpected error when processing the page you requested.</h5>
+        <p class="card-text">
+          This explorer is under heavy development.<br>
+          Please report this error <a href="https://github.com/pk910/dora-the-explorer/issues/new" target="_blank">on github</a> to help fixing these issues.
+        </p>
+      </div>
+      <div class="card-body">
+          Tech stuff for bug report: <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-target="#errormsg"></i>
+          <div class="error-message p-1">
+<pre id="errormsg" class="p-2">
+Error: {{ .ErrorMsg }}
+Time: {{ .CallTime }}
+URL: {{ .CallUrl }}
+
+Stack Trace:
+{{ .StackTrace }}
+</pre>
+          </div>
         </div>
       </div>
     </div>
   </div>
+{{ end }}
+{{ define "js" }}
+{{ end }}
+{{ define "css" }}
+<style>
+  .error-message {
+    width: 100%;
+  }
+  .error-message > pre {
+    height: 200px;
+    overflow-y: auto;
+    background-color: var(--bs-tertiary-bg);
+    border: var(--bs-card-border-width) solid var(--bs-card-border-color);
+    border-radius: 5px;
+  }
+</style>
 {{ end }}
