@@ -111,12 +111,21 @@ type Config struct {
 }
 
 type EndpointConfig struct {
-	Url            string            `yaml:"url"`
-	Name           string            `yaml:"name"`
-	Archive        bool              `yaml:"archive"`
-	SkipValidators bool              `yaml:"skipValidators"`
-	Priority       int               `yaml:"priority"`
-	Headers        map[string]string `yaml:"headers"`
+	Ssh            *EndpointSshConfig `yaml:"ssh"`
+	Url            string             `yaml:"url"`
+	Name           string             `yaml:"name"`
+	Archive        bool               `yaml:"archive"`
+	SkipValidators bool               `yaml:"skipValidators"`
+	Priority       int                `yaml:"priority"`
+	Headers        map[string]string  `yaml:"headers"`
+}
+
+type EndpointSshConfig struct {
+	Host     string `yaml:"host"`
+	Port     string `yaml:"port"`
+	User     string `yaml:"user"`
+	Password string `yaml:"password"`
+	Keyfile  string `yaml:"keyfile"`
 }
 
 type SqliteDatabaseConfig struct {

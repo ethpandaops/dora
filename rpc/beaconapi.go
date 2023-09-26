@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	nethttp "net/http"
+	"net/url"
+	"strconv"
 	"time"
 
 	eth2client "github.com/attestantio/go-eth2-client"
@@ -17,7 +19,10 @@ import (
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/rs/zerolog"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/crypto/ssh"
 
+	"github.com/pk910/dora-the-explorer/rpc/sshtunnel"
+	"github.com/pk910/dora-the-explorer/types"
 	"github.com/pk910/dora-the-explorer/utils"
 )
 
@@ -28,12 +33,65 @@ type BeaconClient struct {
 	endpoint  string
 	headers   map[string]string
 	clientSvc eth2client.Service
+	sshtunnel *sshtunnel.SSHTunnel
 }
 
 // NewBeaconClient is used to create a new beacon client
-func NewBeaconClient(endpoint string, name string, headers map[string]string) (*BeaconClient, error) {
+func NewBeaconClient(endpoint string, name string, headers map[string]string, sshcfg *types.EndpointSshConfig) (*BeaconClient, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	client := &BeaconClient{
+		name:     name,
+		endpoint: endpoint,
+		headers:  headers,
+	}
+
+	if sshcfg != nil {
+		// create ssh tunnel to remote host
+		sshPort := 0
+		if sshcfg.Port != "" {
+			sshPort, _ = strconv.Atoi(sshcfg.Port)
+		}
+		if sshPort == 0 {
+			sshPort = 22
+		}
+		sshEndpoint := fmt.Sprintf("%v@%v:%v", sshcfg.User, sshcfg.Host, sshPort)
+		var sshAuth ssh.AuthMethod
+		if sshcfg.Keyfile != "" {
+			var err error
+			sshAuth, err = sshtunnel.PrivateKeyFile(sshcfg.Keyfile)
+			if err != nil {
+				return nil, fmt.Errorf("could not load ssh keyfile: %w", err)
+			}
+		} else {
+			sshAuth = ssh.Password(sshcfg.Password)
+		}
+
+		// get tunnel target from endpoint url
+		endpointUrl, _ := url.Parse(endpoint)
+		tunTarget := endpointUrl.Host
+		if endpointUrl.Port() != "" {
+			tunTarget = fmt.Sprintf("%v:%v", tunTarget, endpointUrl.Port())
+		} else {
+			tunTargetPort := 80
+			if endpointUrl.Scheme == "https:" {
+				tunTargetPort = 443
+			}
+			tunTarget = fmt.Sprintf("%v:%v", tunTarget, tunTargetPort)
+		}
+
+		client.sshtunnel = sshtunnel.NewSSHTunnel(sshEndpoint, sshAuth, tunTarget)
+		client.sshtunnel.Log = logger.WithField("sshtun", sshcfg.Host)
+		err := client.sshtunnel.Start()
+		if err != nil {
+			return nil, fmt.Errorf("could not start ssh tunnel: %w", err)
+		}
+
+		// override endpoint to use local tunnel end
+		endpointUrl.Host = fmt.Sprintf("localhost:%v", client.sshtunnel.Local.Port)
+
+		endpoint = endpointUrl.String()
+	}
 
 	cliParams := []http.Parameter{
 		http.WithAddress(endpoint),
@@ -58,13 +116,7 @@ func NewBeaconClient(endpoint string, name string, headers map[string]string) (*
 	if err != nil {
 		return nil, err
 	}
-
-	client := &BeaconClient{
-		name:      name,
-		endpoint:  endpoint,
-		headers:   headers,
-		clientSvc: clientSvc,
-	}
+	client.clientSvc = clientSvc
 
 	return client, nil
 }
