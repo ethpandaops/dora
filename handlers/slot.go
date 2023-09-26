@@ -572,10 +572,10 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, assignments
 	if epoch >= utils.Config.Chain.Config.DenebForkEpoch {
 		pageData.BlobsCount = uint64(len(blobKzgCommitments))
 		pageData.Blobs = make([]*models.SlotPageBlob, pageData.BlobsCount)
-		for i, commitment := range blobKzgCommitments {
+		for i, _ := range blobKzgCommitments {
 			blobData := &models.SlotPageBlob{
 				Index:         uint64(i),
-				KzgCommitment: commitment[:],
+				KzgCommitment: blobKzgCommitments[i][:],
 			}
 			pageData.Blobs[i] = blobData
 		}
