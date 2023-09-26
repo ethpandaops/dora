@@ -38,8 +38,6 @@ type BeaconClient struct {
 
 // NewBeaconClient is used to create a new beacon client
 func NewBeaconClient(endpoint string, name string, headers map[string]string, sshcfg *types.EndpointSshConfig) (*BeaconClient, error) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 	client := &BeaconClient{
 		name:     name,
 		endpoint: endpoint,
@@ -90,33 +88,8 @@ func NewBeaconClient(endpoint string, name string, headers map[string]string, ss
 		// override endpoint to use local tunnel end
 		endpointUrl.Host = fmt.Sprintf("localhost:%v", client.sshtunnel.Local.Port)
 
-		endpoint = endpointUrl.String()
+		client.endpoint = endpointUrl.String()
 	}
-
-	cliParams := []http.Parameter{
-		http.WithAddress(endpoint),
-		http.WithTimeout(10 * time.Minute),
-		// TODO (when upstream PR is merged)
-		//http.WithConnectionCheck(false),
-	}
-
-	// set log level
-	if utils.Config.Frontend.Debug {
-		cliParams = append(cliParams, http.WithLogLevel(zerolog.InfoLevel))
-	} else {
-		cliParams = append(cliParams, http.WithLogLevel(zerolog.Disabled))
-	}
-
-	// set extra endpoint headers
-	if headers != nil && len(headers) > 0 {
-		cliParams = append(cliParams, http.WithExtraHeaders(headers))
-	}
-
-	clientSvc, err := http.New(ctx, cliParams...)
-	if err != nil {
-		return nil, err
-	}
-	client.clientSvc = clientSvc
 
 	return client, nil
 }
@@ -164,6 +137,42 @@ func (bc *BeaconClient) getJson(requrl string, returnValue interface{}) error {
 	return nil
 }
 
+func (bc *BeaconClient) Initialize() error {
+	if bc.clientSvc != nil {
+		return nil
+	}
+
+	cliParams := []http.Parameter{
+		http.WithAddress(bc.endpoint),
+		http.WithTimeout(10 * time.Minute),
+		// TODO (when upstream PR is merged)
+		//http.WithConnectionCheck(false),
+	}
+
+	// set log level
+	if utils.Config.Frontend.Debug {
+		cliParams = append(cliParams, http.WithLogLevel(zerolog.InfoLevel))
+	} else {
+		cliParams = append(cliParams, http.WithLogLevel(zerolog.Disabled))
+	}
+
+	// set extra endpoint headers
+	if bc.headers != nil && len(bc.headers) > 0 {
+		cliParams = append(cliParams, http.WithExtraHeaders(bc.headers))
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	clientSvc, err := http.New(ctx, cliParams...)
+	if err != nil {
+		return err
+	}
+
+	bc.clientSvc = clientSvc
+	return nil
+}
+
 func (bc *BeaconClient) GetGenesis() (*v1.Genesis, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -192,18 +201,19 @@ func (bc *BeaconClient) GetNodeSyncing() (*v1.SyncState, error) {
 	return result, nil
 }
 
+type apiNodeVersion struct {
+	Data struct {
+		Version string `json:"version"`
+	} `json:"data"`
+}
+
 func (bc *BeaconClient) GetNodeVersion() (string, error) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	provider, isProvider := bc.clientSvc.(eth2client.NodeVersionProvider)
-	if !isProvider {
-		return "", fmt.Errorf("get node syncing not supported")
-	}
-	result, err := provider.NodeVersion(ctx)
+	var nodeVersion apiNodeVersion
+	err := bc.getJson(fmt.Sprintf("%s/eth/v1/node/version", bc.endpoint), &nodeVersion)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("error retrieving node version: %v", err)
 	}
-	return result, nil
+	return nodeVersion.Data.Version, nil
 }
 
 func (bc *BeaconClient) GetLatestBlockHead() (*v1.BeaconBlockHeader, error) {

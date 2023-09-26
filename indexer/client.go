@@ -141,6 +141,11 @@ func (client *IndexerClient) checkIndexerClient() error {
 	}
 	client.versionStr = nodeVersion
 
+	err = client.rpcClient.Initialize()
+	if err != nil {
+		return fmt.Errorf("initialization of attestantio/go-eth2-client failed: %w", err)
+	}
+
 	// check genesis
 	genesis, err := client.rpcClient.GetGenesis()
 	if err != nil {
