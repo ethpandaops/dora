@@ -104,7 +104,7 @@ func (client *IndexerClient) runIndexerClientLoop() {
 					epochStats.loadValidatorStats(client, "genesis")
 				}
 
-				waitTime = int(time.Since(genesisTime).Abs().Seconds())
+				waitTime = int(time.Since(genesisTime).Abs().Seconds()) + 1
 				if waitTime > 600 {
 					waitTime = 600
 				}
