@@ -160,7 +160,12 @@ func (client *IndexerClient) ensureEpochStats(epoch uint64, head []byte) error {
 	firstBlock := client.indexerCache.getFirstCanonicalBlock(epoch, head)
 	if firstBlock != nil {
 		logger.WithField("client", client.clientName).Tracef("canonical first block for epoch %v: %v/0x%x (head: 0x%x)", epoch, firstBlock.Slot, firstBlock.Root, head)
-		dependentRoot = firstBlock.GetParentRoot()
+		if epoch == 0 {
+			// dependent root for epoch 0 is genesis block
+			dependentRoot = firstBlock.Root
+		} else {
+			dependentRoot = firstBlock.GetParentRoot()
+		}
 	}
 	if dependentRoot == nil && epoch > 0 {
 		lastBlock := client.indexerCache.getLastCanonicalBlock(epoch-1, head)
