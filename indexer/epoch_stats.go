@@ -159,13 +159,13 @@ func (client *IndexerClient) ensureEpochStats(epoch uint64, head []byte) error {
 	var proposerRsp *rpc.ProposerDuties
 	firstBlock := client.indexerCache.getFirstCanonicalBlock(epoch, head)
 	if firstBlock != nil {
-		logger.WithField("client", client.clientName).Debugf("canonical first block for epoch %v: %v/0x%x (head: 0x%x)", epoch, firstBlock.Slot, firstBlock.Root, head)
+		logger.WithField("client", client.clientName).Tracef("canonical first block for epoch %v: %v/0x%x (head: 0x%x)", epoch, firstBlock.Slot, firstBlock.Root, head)
 		dependentRoot = firstBlock.GetParentRoot()
 	}
 	if dependentRoot == nil && epoch > 0 {
 		lastBlock := client.indexerCache.getLastCanonicalBlock(epoch-1, head)
 		if lastBlock != nil {
-			logger.WithField("client", client.clientName).Debugf("canonical last block for epoch %v: %v/0x%x (head: 0x%x)", epoch-1, lastBlock.Slot, lastBlock.Root, head)
+			logger.WithField("client", client.clientName).Tracef("canonical last block for epoch %v: %v/0x%x (head: 0x%x)", epoch-1, lastBlock.Slot, lastBlock.Root, head)
 			dependentRoot = lastBlock.Root
 		}
 	}

@@ -211,12 +211,13 @@ func (client *IndexerClient) runIndexerClient() error {
 	defer blockStream.Close()
 
 	// prefill cache
-	err = client.prefillCache(finalizedSlot, latestHeader)
+	prefillEpoch, err := client.prefillCache(finalizedSlot, latestHeader)
 	if err != nil {
 		return err
 	}
 
-	// set finalized head and trigger epoch processing / synchronization
+	// set prefill epoch and trigger epoch processing / synchronization
+	client.indexerCache.setPrefillEpoch(int64(prefillEpoch))
 	client.indexerCache.setFinalizedHead(client.lastFinalizedEpoch, client.lastFinalizedRoot, client.lastJustifiedEpoch, client.lastJustifiedRoot)
 
 	// process events
@@ -287,7 +288,7 @@ func (client *IndexerClient) refreshFinalityCheckpoints() (uint64, error) {
 	return finalizedSlot, nil
 }
 
-func (client *IndexerClient) prefillCache(finalizedSlot uint64, latestHeader *v1.BeaconBlockHeader) error {
+func (client *IndexerClient) prefillCache(finalizedSlot uint64, latestHeader *v1.BeaconBlockHeader) (uint64, error) {
 	latestHeaderSlot := uint64(latestHeader.Header.Message.Slot)
 	currentClockEpoch := utils.TimeToEpoch(time.Now())
 	currentBlock, isNewBlock := client.indexerCache.createOrGetCachedBlock(latestHeader.Root[:], latestHeaderSlot)
@@ -301,6 +302,7 @@ func (client *IndexerClient) prefillCache(finalizedSlot uint64, latestHeader *v1
 
 	// walk backwards and load all blocks until we reach a finalized epoch
 	parentRoot := currentBlock.GetParentRoot()
+	earliestSlot := latestHeaderSlot
 	for {
 		finalizedCheckpoint := (client.indexerCache.finalizedEpoch + 1) * int64(utils.Config.Chain.Config.SlotsPerEpoch)
 		if finalizedCheckpoint > int64(finalizedSlot) {
@@ -317,10 +319,10 @@ func (client *IndexerClient) prefillCache(finalizedSlot uint64, latestHeader *v1
 		if parentHead == nil {
 			headerRsp, err := client.rpcClient.GetBlockHeaderByBlockroot(parentRoot)
 			if err != nil {
-				return fmt.Errorf("could not load parent header: %v", err)
+				return 0, fmt.Errorf("could not load parent header: %v", err)
 			}
 			if headerRsp == nil {
-				return fmt.Errorf("could not find parent header 0x%x", parentRoot)
+				return 0, fmt.Errorf("could not find parent header 0x%x", parentRoot)
 			}
 			parentHead = headerRsp.Header
 		}
@@ -335,6 +337,7 @@ func (client *IndexerClient) prefillCache(finalizedSlot uint64, latestHeader *v1
 			logger.WithField("client", client.clientName).Debugf("received known block %v:%v [0x%x] warmup", utils.EpochOfSlot(parentSlot), parentSlot, parentRoot)
 		}
 		client.ensureBlock(parentBlock, parentHead)
+		earliestSlot = parentSlot
 
 		if parentSlot <= finalizedSlot {
 			logger.WithField("client", client.clientName).Debugf("prefill cache: reached finalized slot %v:%v [0x%x]", utils.EpochOfSlot(parentSlot), parentSlot, parentRoot)
@@ -351,25 +354,17 @@ func (client *IndexerClient) prefillCache(finalizedSlot uint64, latestHeader *v1
 		parentRoot = parentHead.Message.ParentRoot[:]
 	}
 
-	// ensure epoch stats
-	var firstEpoch uint64
-	if finalizedSlot == 0 {
-		firstEpoch = 0
-	} else {
-		firstEpoch = utils.EpochOfSlot(finalizedSlot)
-	}
+	// ensure epoch stats for loaded slots
+	earliestEpoch := utils.EpochOfSlot(earliestSlot)
 	currentEpoch := utils.EpochOfSlot(currentBlock.Slot)
-	if int64(firstEpoch) < currentClockEpoch-int64(client.indexerCache.indexer.inMemoryEpochs) {
-		firstEpoch = uint64(currentClockEpoch - int64(client.indexerCache.indexer.inMemoryEpochs))
-	}
-	for epoch := firstEpoch; epoch <= currentEpoch; epoch++ {
+	for epoch := earliestEpoch; epoch <= currentEpoch; epoch++ {
 		err := client.ensureEpochStats(epoch, currentBlock.Root)
 		if err != nil {
-			return err
+			return 0, err
 		}
 	}
 
-	return nil
+	return earliestEpoch, nil
 }
 
 func (client *IndexerClient) ensureBlock(block *CacheBlock, header *phase0.SignedBeaconBlockHeader) error {

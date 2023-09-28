@@ -36,7 +36,7 @@ func (cache *indexerCache) runCacheLogic() error {
 	var processingEpoch int64
 	headEpoch := int64(utils.EpochOfSlot(uint64(cache.highestSlot)))
 	if cache.indexer.writeDb {
-		if cache.finalizedEpoch > 0 && cache.processedEpoch == -2 {
+		if cache.processedEpoch == -2 && cache.prefillEpoch >= 0 {
 			syncState := dbtypes.IndexerSyncState{}
 			_, err := db.GetExplorerState("indexer.syncstate", &syncState)
 			if err != nil {
@@ -45,7 +45,7 @@ func (cache *indexerCache) runCacheLogic() error {
 				cache.processedEpoch = int64(syncState.Epoch)
 			}
 
-			if cache.processedEpoch < cache.finalizedEpoch {
+			if cache.processedEpoch+1 < cache.prefillEpoch {
 				var syncStartEpoch uint64
 				if cache.processedEpoch < 0 {
 					syncStartEpoch = 0
@@ -182,6 +182,16 @@ func (cache *indexerCache) processFinalizedEpoch(epoch uint64) error {
 	}
 	defer tx.Rollback()
 
+	if len(blobs) > 0 {
+		for _, blob := range blobs {
+			err := cache.indexer.BlobStore.saveBlob(blob, tx)
+			if err != nil {
+				logger.Errorf("error persisting blobs: %v", err)
+				return err
+			}
+		}
+	}
+
 	if epochStats != nil {
 		// calculate votes
 		epochVotes := aggregateEpochVotes(canonicalMap, epoch, epochStats, epochTarget, false, true)
@@ -206,6 +216,15 @@ func (cache *indexerCache) processFinalizedEpoch(epoch uint64) error {
 				return err
 			}
 		}
+
+		if cache.synchronizer == nil || !cache.synchronizer.running {
+			err = db.SetExplorerState("indexer.syncstate", &dbtypes.IndexerSyncState{
+				Epoch: epoch,
+			}, tx)
+			if err != nil {
+				logger.Errorf("error while updating sync state: %v", err)
+			}
+		}
 	} else {
 		for _, block := range canonicalMap {
 			if !block.IsReady() {
@@ -213,25 +232,6 @@ func (cache *indexerCache) processFinalizedEpoch(epoch uint64) error {
 			}
 			dbBlock := buildDbBlock(block, nil)
 			db.InsertBlock(dbBlock, tx)
-		}
-	}
-
-	if len(blobs) > 0 {
-		for _, blob := range blobs {
-			err := cache.indexer.BlobStore.saveBlob(blob, tx)
-			if err != nil {
-				logger.Errorf("error persisting blobs: %v", err)
-				return err
-			}
-		}
-	}
-
-	if cache.synchronizer == nil || !cache.synchronizer.running {
-		err = db.SetExplorerState("indexer.syncstate", &dbtypes.IndexerSyncState{
-			Epoch: epoch,
-		}, tx)
-		if err != nil {
-			logger.Errorf("error while updating sync state: %v", err)
 		}
 	}
 
@@ -295,9 +295,13 @@ func (cache *indexerCache) processOrphanedBlocks(processedEpoch int64) error {
 			continue
 		}
 		dbBlock := buildDbBlock(block, cache.getEpochStats(utils.EpochOfSlot(block.Slot), nil))
-		dbBlock.Orphaned = 1
+		if block.IsCanonical(cache.indexer, cache.justifiedRoot) {
+			logger.Warnf("canonical block in orphaned block processing: %v [0x%x]", block.Slot, block.Root)
+		} else {
+			dbBlock.Orphaned = 1
+			db.InsertOrphanedBlock(block.buildOrphanedBlock(), tx)
+		}
 		db.InsertBlock(dbBlock, tx)
-		db.InsertOrphanedBlock(block.buildOrphanedBlock(), tx)
 	}
 
 	if err := tx.Commit(); err != nil {

@@ -22,6 +22,7 @@ type indexerCache struct {
 	finalizedRoot           []byte
 	justifiedEpoch          int64
 	justifiedRoot           []byte
+	prefillEpoch            int64
 	processedEpoch          int64
 	processingRetry         uint64
 	persistEpoch            int64
@@ -48,6 +49,7 @@ func newIndexerCache(indexer *Indexer) *indexerCache {
 		highestSlot:             -1,
 		lowestSlot:              -1,
 		finalizedEpoch:          -1,
+		prefillEpoch:            -1,
 		processedEpoch:          -2,
 		persistEpoch:            -1,
 		cleanupBlockEpoch:       -1,
@@ -75,6 +77,15 @@ func (cache *indexerCache) startSynchronizer(startEpoch uint64) {
 	}
 	if !cache.synchronizer.isEpochAhead(startEpoch) {
 		cache.synchronizer.startSync(startEpoch)
+	}
+}
+
+func (cache *indexerCache) setPrefillEpoch(prefillEpoch int64) {
+	cache.cacheMutex.Lock()
+	defer cache.cacheMutex.Unlock()
+
+	if prefillEpoch > cache.prefillEpoch {
+		cache.prefillEpoch = prefillEpoch
 	}
 }
 

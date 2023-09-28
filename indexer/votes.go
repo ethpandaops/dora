@@ -111,6 +111,6 @@ func aggregateEpochVotes(blockMap map[uint64]*CacheBlock, epoch uint64, epochSta
 		}
 	}
 
-	logger.Debugf("aggregated epoch %v votes in %v\n", epoch, time.Since(t1))
+	logger.Debugf("aggregated epoch %v votes in %v", epoch, time.Since(t1))
 	return &votes
 }

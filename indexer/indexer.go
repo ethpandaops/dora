@@ -496,7 +496,7 @@ func (indexer *Indexer) buildLiveEpoch(epoch uint64, epochStats *EpochStats) (*d
 		return epochStats.dbEpochCache, epochStats
 	}
 
-	logger.Debugf("Build live epoch data %v", epoch)
+	logger.Tracef("build live epoch data %v", epoch)
 	canonicalMap := indexer.indexerCache.getCanonicalBlockMap(epoch, headRoot)
 	epochVotes := indexer.getEpochVotes(epoch, epochStats)
 	dbEpoch := buildDbEpoch(epoch, canonicalMap, epochStats, epochVotes, nil)
@@ -512,7 +512,7 @@ func (indexer *Indexer) BuildLiveBlock(block *CacheBlock) *dbtypes.Block {
 
 	dbBlock := block.dbBlockCache
 	if dbBlock == nil {
-		logger.Debugf("Build live block data 0x%x", block.Root)
+		logger.Tracef("build live block data 0x%x", block.Root)
 		header := block.GetHeader()
 		epoch := utils.EpochOfSlot(uint64(header.Message.Slot))
 		epochStats := indexer.GetCachedEpochStats(epoch)
