@@ -157,18 +157,16 @@ func (epochStats *EpochStats) TryGetSyncAssignments() []uint64 {
 func (client *IndexerClient) ensureEpochStats(epoch uint64, head []byte) error {
 	var dependentRoot []byte
 	var proposerRsp *rpc.ProposerDuties
-	if epoch > 0 {
-		firstBlock := client.indexerCache.getFirstCanonicalBlock(epoch, head)
-		if firstBlock != nil {
-			logger.WithField("client", client.clientName).Debugf("canonical first block for epoch %v: %v/0x%x (head: 0x%x)", epoch, firstBlock.Slot, firstBlock.Root, head)
-			dependentRoot = firstBlock.GetParentRoot()
-		}
-		if dependentRoot == nil {
-			lastBlock := client.indexerCache.getLastCanonicalBlock(epoch-1, head)
-			if lastBlock != nil {
-				logger.WithField("client", client.clientName).Debugf("canonical last block for epoch %v: %v/0x%x (head: 0x%x)", epoch-1, lastBlock.Slot, lastBlock.Root, head)
-				dependentRoot = lastBlock.Root
-			}
+	firstBlock := client.indexerCache.getFirstCanonicalBlock(epoch, head)
+	if firstBlock != nil {
+		logger.WithField("client", client.clientName).Debugf("canonical first block for epoch %v: %v/0x%x (head: 0x%x)", epoch, firstBlock.Slot, firstBlock.Root, head)
+		dependentRoot = firstBlock.GetParentRoot()
+	}
+	if dependentRoot == nil && epoch > 0 {
+		lastBlock := client.indexerCache.getLastCanonicalBlock(epoch-1, head)
+		if lastBlock != nil {
+			logger.WithField("client", client.clientName).Debugf("canonical last block for epoch %v: %v/0x%x (head: 0x%x)", epoch-1, lastBlock.Slot, lastBlock.Root, head)
+			dependentRoot = lastBlock.Root
 		}
 	}
 	if dependentRoot == nil {
