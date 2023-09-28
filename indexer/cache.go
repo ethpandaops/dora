@@ -49,6 +49,7 @@ func newIndexerCache(indexer *Indexer) *indexerCache {
 		highestSlot:             -1,
 		lowestSlot:              -1,
 		finalizedEpoch:          -1,
+		justifiedEpoch:          -1,
 		prefillEpoch:            -1,
 		processedEpoch:          -2,
 		persistEpoch:            -1,
