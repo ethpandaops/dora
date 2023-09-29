@@ -2,7 +2,7 @@
 
 [![Badge](https://github.com/pk910/dora/actions/workflows/build-master.yml/badge.svg)](https://github.com/pk910/dora/actions?query=workflow%3A%22Build+master%22)
 [![Go Report Card](https://goreportcard.com/badge/github.com/pk910/dora)](https://goreportcard.com/report/github.com/pk910/dora)
-[![GitHub release (latest by date)](https://img.shields.io/github/v/release/pk910/dora-the-explorer?label=Latest%20Release)](https://github.com/pk910/dora/releases/latest)
+[![GitHub release (latest by date)](https://img.shields.io/github/v/release/pk910/dora?label=Latest%20Release)](https://github.com/pk910/dora/releases/latest)
 
 ## What is this?
 This is a lightweight beaconchain explorer.

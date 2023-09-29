@@ -1,4 +1,4 @@
-# dora-the-explorer
+# dora
 EXECUTABLE=explorer
 WINDOWS=$(EXECUTABLE)_windows_amd64.exe
 LINUX=$(EXECUTABLE)_linux_amd64
