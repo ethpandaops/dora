@@ -9,10 +9,10 @@ import (
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 
-	"github.com/pk910/dora-the-explorer/db"
-	"github.com/pk910/dora-the-explorer/dbtypes"
-	"github.com/pk910/dora-the-explorer/rpc"
-	"github.com/pk910/dora-the-explorer/utils"
+	"github.com/pk910/dora/db"
+	"github.com/pk910/dora/dbtypes"
+	"github.com/pk910/dora/rpc"
+	"github.com/pk910/dora/utils"
 )
 
 type EpochStats struct {

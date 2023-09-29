@@ -14,8 +14,8 @@ import (
 	log "github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v3"
 
-	"github.com/pk910/dora-the-explorer/config"
-	"github.com/pk910/dora-the-explorer/types"
+	"github.com/pk910/dora/config"
+	"github.com/pk910/dora/types"
 )
 
 // Config is the globally accessible configuration

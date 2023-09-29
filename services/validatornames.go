@@ -12,10 +12,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/pk910/dora-the-explorer/config"
-	"github.com/pk910/dora-the-explorer/db"
-	"github.com/pk910/dora-the-explorer/dbtypes"
-	"github.com/pk910/dora-the-explorer/utils"
+	"github.com/pk910/dora/config"
+	"github.com/pk910/dora/db"
+	"github.com/pk910/dora/dbtypes"
+	"github.com/pk910/dora/utils"
 	"github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v3"
 )

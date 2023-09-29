@@ -13,9 +13,9 @@ import (
 	"github.com/pressly/goose/v3"
 	"github.com/sirupsen/logrus"
 
-	"github.com/pk910/dora-the-explorer/dbtypes"
-	"github.com/pk910/dora-the-explorer/types"
-	"github.com/pk910/dora-the-explorer/utils"
+	"github.com/pk910/dora/dbtypes"
+	"github.com/pk910/dora/types"
+	"github.com/pk910/dora/utils"
 
 	"github.com/jackc/pgx/v4/pgxpool"
 	_ "github.com/jackc/pgx/v4/stdlib"

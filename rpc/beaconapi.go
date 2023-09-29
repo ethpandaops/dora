@@ -21,9 +21,9 @@ import (
 	"github.com/sirupsen/logrus"
 	"golang.org/x/crypto/ssh"
 
-	"github.com/pk910/dora-the-explorer/rpc/sshtunnel"
-	"github.com/pk910/dora-the-explorer/types"
-	"github.com/pk910/dora-the-explorer/utils"
+	"github.com/pk910/dora/rpc/sshtunnel"
+	"github.com/pk910/dora/types"
+	"github.com/pk910/dora/utils"
 )
 
 var logger = logrus.StandardLogger().WithField("module", "rpc")

@@ -13,11 +13,11 @@ import (
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethereum/go-ethereum/common/lru"
 
-	"github.com/pk910/dora-the-explorer/db"
-	"github.com/pk910/dora-the-explorer/dbtypes"
-	"github.com/pk910/dora-the-explorer/indexer"
-	"github.com/pk910/dora-the-explorer/rpc"
-	"github.com/pk910/dora-the-explorer/utils"
+	"github.com/pk910/dora/db"
+	"github.com/pk910/dora/dbtypes"
+	"github.com/pk910/dora/indexer"
+	"github.com/pk910/dora/rpc"
+	"github.com/pk910/dora/utils"
 	"github.com/sirupsen/logrus"
 )
 

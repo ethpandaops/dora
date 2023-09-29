@@ -5,8 +5,8 @@ import (
 
 	"github.com/attestantio/go-eth2-client/spec"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
-	"github.com/pk910/dora-the-explorer/db"
-	"github.com/pk910/dora-the-explorer/dbtypes"
+	"github.com/pk910/dora/db"
+	"github.com/pk910/dora/dbtypes"
 )
 
 type CacheBlock struct {

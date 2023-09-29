@@ -24,7 +24,7 @@ frontend:
   minimize: false # minimize html templates
 
   # Name of the site, displayed in the title tag
-  siteName: "Beaconchain Light"
+  siteName: "Dora the Explorer"
   siteSubtitle: ""
   
   # link to EL Explorer

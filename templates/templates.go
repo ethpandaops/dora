@@ -16,7 +16,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/tdewolff/minify"
 
-	"github.com/pk910/dora-the-explorer/utils"
+	"github.com/pk910/dora/utils"
 )
 
 var logger = logrus.New().WithField("module", "templates")

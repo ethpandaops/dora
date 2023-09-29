@@ -7,11 +7,11 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/pk910/dora-the-explorer/dbtypes"
-	"github.com/pk910/dora-the-explorer/services"
-	"github.com/pk910/dora-the-explorer/templates"
-	"github.com/pk910/dora-the-explorer/types/models"
-	"github.com/pk910/dora-the-explorer/utils"
+	"github.com/pk910/dora/dbtypes"
+	"github.com/pk910/dora/services"
+	"github.com/pk910/dora/templates"
+	"github.com/pk910/dora/types/models"
+	"github.com/pk910/dora/utils"
 	"github.com/sirupsen/logrus"
 )
 

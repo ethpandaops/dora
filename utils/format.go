@@ -13,7 +13,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/pk910/dora-the-explorer/types"
+	"github.com/pk910/dora/types"
 	"github.com/prysmaticlabs/go-bitfield"
 	"golang.org/x/text/language"
 	"golang.org/x/text/message"

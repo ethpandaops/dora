@@ -9,7 +9,7 @@ import (
 
 	"github.com/go-redis/redis/v8"
 
-	"github.com/pk910/dora-the-explorer/utils"
+	"github.com/pk910/dora/utils"
 )
 
 type RedisCache struct {

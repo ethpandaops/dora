@@ -17,14 +17,14 @@ import (
 	"github.com/juliangruber/go-intersect"
 	"github.com/sirupsen/logrus"
 
-	"github.com/pk910/dora-the-explorer/db"
-	"github.com/pk910/dora-the-explorer/dbtypes"
-	"github.com/pk910/dora-the-explorer/rpc"
-	"github.com/pk910/dora-the-explorer/services"
-	"github.com/pk910/dora-the-explorer/templates"
-	"github.com/pk910/dora-the-explorer/types"
-	"github.com/pk910/dora-the-explorer/types/models"
-	"github.com/pk910/dora-the-explorer/utils"
+	"github.com/pk910/dora/db"
+	"github.com/pk910/dora/dbtypes"
+	"github.com/pk910/dora/rpc"
+	"github.com/pk910/dora/services"
+	"github.com/pk910/dora/templates"
+	"github.com/pk910/dora/types"
+	"github.com/pk910/dora/types/models"
+	"github.com/pk910/dora/utils"
 )
 
 // Index will return the main "index" page using a go template

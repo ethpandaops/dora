@@ -11,8 +11,8 @@ import (
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
 	"github.com/donovanhide/eventsource"
 
-	"github.com/pk910/dora-the-explorer/rpc/eventstream"
-	"github.com/pk910/dora-the-explorer/utils"
+	"github.com/pk910/dora/rpc/eventstream"
+	"github.com/pk910/dora/utils"
 )
 
 const (

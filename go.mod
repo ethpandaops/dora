@@ -1,4 +1,4 @@
-module github.com/pk910/dora-the-explorer
+module github.com/pk910/dora
 
 go 1.20
 

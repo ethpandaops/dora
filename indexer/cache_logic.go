@@ -6,9 +6,9 @@ import (
 
 	"github.com/attestantio/go-eth2-client/spec/deneb"
 
-	"github.com/pk910/dora-the-explorer/db"
-	"github.com/pk910/dora-the-explorer/dbtypes"
-	"github.com/pk910/dora-the-explorer/utils"
+	"github.com/pk910/dora/db"
+	"github.com/pk910/dora/dbtypes"
+	"github.com/pk910/dora/utils"
 )
 
 func (cache *indexerCache) runCacheLoop() {

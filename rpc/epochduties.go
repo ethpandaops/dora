@@ -5,7 +5,7 @@ import (
 	"math"
 
 	"github.com/attestantio/go-eth2-client/spec/phase0"
-	"github.com/pk910/dora-the-explorer/utils"
+	"github.com/pk910/dora/utils"
 )
 
 type EpochAssignments struct {

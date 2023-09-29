@@ -3,7 +3,7 @@ package models
 import (
 	"time"
 
-	"github.com/pk910/dora-the-explorer/types"
+	"github.com/pk910/dora/types"
 )
 
 // SlotPageData is a struct to hold info for the slot details page

@@ -9,7 +9,7 @@ import (
 	"github.com/coocood/freecache"
 	"github.com/sirupsen/logrus"
 
-	"github.com/pk910/dora-the-explorer/utils"
+	"github.com/pk910/dora/utils"
 )
 
 // Tiered cache is a cache implementation combining a local & remote cache
