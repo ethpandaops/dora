@@ -41,6 +41,8 @@ func ReadConfig(cfg *types.Config, path string) error {
 			err = yaml.Unmarshal([]byte(config.SepoliaChainYml), &chainConfig)
 		case "holesky":
 			err = yaml.Unmarshal([]byte(config.HoleskyChainYml), &chainConfig)
+		case "gnosis":
+			err = yaml.Unmarshal([]byte(config.GnosisChainYml), &chainConfig)
 		default:
 			return fmt.Errorf("tried to set known chain-config, but unknown chain-name")
 		}
@@ -84,6 +86,8 @@ func ReadConfig(cfg *types.Config, path string) error {
 			err = yaml.Unmarshal([]byte(config.MainnetPresetYml), &chainPreset)
 		case "minimal":
 			err = yaml.Unmarshal([]byte(config.MinimalPresetYml), &chainPreset)
+		case "gnosis":
+			err = yaml.Unmarshal([]byte(config.GnosisPresetYml), &chainPreset)
 		default:
 			return fmt.Errorf("tried to use unknown chain-preset: %v", chainConfig.PresetBase)
 		}

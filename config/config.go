@@ -17,6 +17,9 @@ var MainnetPresetYml string
 //go:embed preset-minimal.chain.yml
 var MinimalPresetYml string
 
+//go:embed preset-gnosis.chain.yml
+var GnosisPresetYml string
+
 // chain configs
 //
 //go:embed mainnet.chain.yml
@@ -30,6 +33,9 @@ var SepoliaChainYml string
 
 //go:embed holesky.chain.yml
 var HoleskyChainYml string
+
+//go:embed gnosis.chain.yml
+var GnosisChainYml string
 
 // validator names
 //
