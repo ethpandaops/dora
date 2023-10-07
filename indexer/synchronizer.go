@@ -162,7 +162,7 @@ func (sync *synchronizerState) syncEpoch(syncEpoch uint64, retryCount int, lastT
 	lastSlot := firstSlot + (utils.Config.Chain.Config.SlotsPerEpoch * 2) - 1
 	var firstBlock *CacheBlock
 	for slot := firstSlot; slot <= lastSlot; slot++ {
-		if sync.cachedSlot < slot {
+		if sync.cachedSlot < slot || sync.cachedBlocks[slot] == nil {
 			headerRsp, err := client.rpcClient.GetBlockHeaderBySlot(slot)
 			if err != nil {
 				return false, client, fmt.Errorf("error fetching slot %v header: %v", slot, err)
