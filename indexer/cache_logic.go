@@ -151,13 +151,14 @@ func (cache *indexerCache) processFinalizedEpoch(epoch uint64) error {
 	// get canonical blocks
 	canonicalMap := map[uint64]*CacheBlock{}
 	blobs := []*deneb.BlobSidecar{}
-
+	slotsWithBlobs := 0
 	for slot, block := range cache.getCanonicalBlockMap(epoch, nil) {
 		canonicalMap[slot] = block
 
 		blobCommitments, _ := block.GetBlockBody().BlobKzgCommitments()
 		if len(blobCommitments) > 0 {
-			logger.Infof("loading blobs for slot %v: %v blobs", slot, len(blobCommitments))
+			logger.Debugf("loading blobs for slot %v: %v blobs", slot, len(blobCommitments))
+			slotsWithBlobs++
 			if client == nil {
 				return fmt.Errorf("cannot load blobs for block 0x%x: no client", block.Root)
 			}
@@ -169,6 +170,10 @@ func (cache *indexerCache) processFinalizedEpoch(epoch uint64) error {
 			blobs = append(blobs, blobRsp...)
 		}
 	}
+	if len(blobs) > 0 {
+		logger.Infof("epoch %v blobs: %v blob sidecars in %v blocks", epoch, len(blobs), slotsWithBlobs)
+	}
+
 	// append next epoch blocks (needed for vote aggregation)
 	for slot, block := range cache.getCanonicalBlockMap(epoch+1, nil) {
 		canonicalMap[slot] = block

@@ -90,9 +90,13 @@ type UnfinalizedBlock struct {
 
 type Blob struct {
 	Commitment []byte  `db:"commitment"`
-	Slot       uint64  `db:"slot"`
-	Root       []byte  `db:"root"`
 	Proof      []byte  `db:"proof"`
 	Size       uint32  `db:"size"`
 	Blob       *[]byte `db:"blob"`
+}
+
+type BlobAssignment struct {
+	Root       []byte `db:"root"`
+	Commitment []byte `db:"commitment"`
+	Slot       uint64 `db:"slot"`
 }

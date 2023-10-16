@@ -2,6 +2,7 @@ package indexer
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"fmt"
 	"os"
 	"path"
@@ -60,19 +61,24 @@ func newBlobStore() *BlobStore {
 
 func (store *BlobStore) getBlobName(blob *dbtypes.Blob) string {
 	blobName := utils.Config.BlobStore.NameTemplate
-	blobName = strings.ReplaceAll(blobName, "{slot}", fmt.Sprintf("%v", blob.Slot))
-	blobName = strings.ReplaceAll(blobName, "{root}", fmt.Sprintf("%x", blob.Root))
 	blobName = strings.ReplaceAll(blobName, "{commitment}", fmt.Sprintf("%x", blob.Commitment))
+
+	versionedHash := sha256.Sum256(blob.Commitment)
+	versionedHash[0] = 0x01
+	blobName = strings.ReplaceAll(blobName, "{hash}", fmt.Sprintf("%x", versionedHash))
 	return blobName
 }
 
 func (store *BlobStore) saveBlob(blob *deneb.BlobSidecar, tx *sqlx.Tx) error {
 	dbBlob := &dbtypes.Blob{
 		Commitment: blob.KzgCommitment[:],
-		Slot:       uint64(blob.Slot),
-		Root:       blob.BlockRoot[:],
 		Proof:      blob.KzgProof[:],
 		Size:       uint32(len(blob.Blob)),
+	}
+	dbBlobAssignment := &dbtypes.BlobAssignment{
+		Root:       blob.BlockRoot[:],
+		Commitment: blob.KzgCommitment[:],
+		Slot:       uint64(blob.Slot),
 	}
 	blobName := store.getBlobName(dbBlob)
 
@@ -96,6 +102,10 @@ func (store *BlobStore) saveBlob(blob *deneb.BlobSidecar, tx *sqlx.Tx) error {
 	err := db.InsertBlob(dbBlob, tx)
 	if err != nil {
 		return fmt.Errorf("could not add blob to db: %w", err)
+	}
+	err = db.InsertBlobAssignment(dbBlobAssignment, tx)
+	if err != nil {
+		return fmt.Errorf("could not add blob assignment to db: %w", err)
 	}
 
 	return nil
@@ -125,36 +135,42 @@ func (store *BlobStore) LoadBlob(commitment []byte, blockroot []byte, client *In
 				}
 			}
 		}
-		blockroot = dbBlob.Root
 	}
 
-	if (dbBlob == nil || dbBlob.Blob == nil) && client != nil && blockroot != nil {
-		// load from rpc
-		var blob *deneb.BlobSidecar
-		blobRsp, err := client.rpcClient.GetBlobSidecarsByBlockroot(blockroot)
-		if err != nil {
-			logger_blobs.Warnf("cannot load blobs from rpc (0x%x): %v", blockroot, err)
-		} else {
-			for _, cblob := range blobRsp {
-				if bytes.Equal(cblob.KzgCommitment[:], commitment) {
-					blob = cblob
-					break
-				}
+	if (dbBlob == nil || dbBlob.Blob == nil) && client != nil {
+		if blockroot == nil {
+			latestAssignment := db.GetLatestBlobAssignment(dbBlob.Commitment)
+			if latestAssignment != nil {
+				blockroot = latestAssignment.Root
 			}
 		}
 
-		if blob != nil {
-			blobData := blob.Blob[:]
-			if dbBlob == nil {
-				dbBlob = &dbtypes.Blob{
-					Commitment: commitment,
-					Slot:       uint64(blob.Index),
-					Root:       blockroot,
-					Proof:      blob.KzgProof[:],
-					Size:       uint32(len(blobData)),
+		if blockroot != nil {
+			// load from rpc
+			var blob *deneb.BlobSidecar
+			blobRsp, err := client.rpcClient.GetBlobSidecarsByBlockroot(blockroot)
+			if err != nil {
+				logger_blobs.Warnf("cannot load blobs from rpc (0x%x): %v", blockroot, err)
+			} else {
+				for _, cblob := range blobRsp {
+					if bytes.Equal(cblob.KzgCommitment[:], commitment) {
+						blob = cblob
+						break
+					}
 				}
 			}
-			dbBlob.Blob = &blobData
+
+			if blob != nil {
+				blobData := blob.Blob[:]
+				if dbBlob == nil {
+					dbBlob = &dbtypes.Blob{
+						Commitment: commitment,
+						Proof:      blob.KzgProof[:],
+						Size:       uint32(len(blobData)),
+					}
+				}
+				dbBlob.Blob = &blobData
+			}
 		}
 	}
 

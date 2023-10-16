@@ -6,6 +6,13 @@ type AssignedBlock struct {
 	Block    *Block `db:"block"`
 }
 
+type AssignedBlob struct {
+	Root       []byte `db:"root"`
+	Commitment []byte `db:"commitment"`
+	Slot       uint64 `db:"slot"`
+	Blob       *Blob  `db:"blob"`
+}
+
 type BlockFilter struct {
 	Graffiti      string
 	ProposerIndex *uint64

@@ -154,7 +154,7 @@ func ReadConfig(cfg *types.Config, path string) error {
 
 	// blobstore
 	if cfg.BlobStore.NameTemplate == "" {
-		cfg.BlobStore.NameTemplate = "{slot}-{commitment}.blob"
+		cfg.BlobStore.NameTemplate = "{hash}"
 	}
 
 	log.WithFields(log.Fields{
