@@ -207,7 +207,10 @@ func (sync *synchronizerState) syncEpoch(syncEpoch uint64, retryCount int, lastT
 	if err != nil || epochAssignments == nil {
 		return false, client, fmt.Errorf("error fetching epoch %v duties: %v", syncEpoch, err)
 	}
-	if epochAssignments.AttestorAssignments == nil && !lastTry {
+	if len(epochAssignments.ProposerAssignments) == 0 && !lastTry {
+		return false, client, fmt.Errorf("error fetching epoch %v duties: proposer assignments empty", syncEpoch)
+	}
+	if len(epochAssignments.AttestorAssignments) == 0 && !lastTry {
 		return false, client, fmt.Errorf("error fetching epoch %v duties: attestor assignments empty", syncEpoch)
 	}
 
