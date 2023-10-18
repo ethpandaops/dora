@@ -125,8 +125,10 @@ func (client *IndexerClient) runIndexerClientLoop() {
 
 		client.retryCounter++
 		waitTime := 10
-		if client.retryCounter > 10 {
-			waitTime = 120
+		if client.isOptimistic || client.isSynchronizing {
+			waitTime = 30
+		} else if client.retryCounter > 10 {
+			waitTime = 300
 		} else if client.retryCounter > 5 {
 			waitTime = 60
 		}
@@ -137,6 +139,13 @@ func (client *IndexerClient) runIndexerClientLoop() {
 }
 
 func (client *IndexerClient) checkIndexerClient() error {
+	isOptimistic := false
+	isSynchronizing := false
+	defer func() {
+		client.isOptimistic = isOptimistic
+		client.isSynchronizing = isSynchronizing
+	}()
+
 	// get node version
 	nodeVersion, err := client.rpcClient.GetNodeVersion()
 	if err != nil {
@@ -174,8 +183,8 @@ func (client *IndexerClient) checkIndexerClient() error {
 	if syncStatus == nil {
 		return fmt.Errorf("could not get synchronization status")
 	}
-	client.isOptimistic = syncStatus.IsOptimistic
-	client.isSynchronizing = syncStatus.IsSyncing
+	isOptimistic = syncStatus.IsOptimistic
+	isSynchronizing = syncStatus.IsSyncing
 	client.syncDistance = uint64(syncStatus.SyncDistance)
 
 	return nil
