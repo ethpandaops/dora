@@ -31,6 +31,7 @@ type Config struct {
 	Frontend struct {
 		Enabled bool `yaml:"enabled" envconfig:"FRONTEND_ENABLED"`
 		Debug   bool `yaml:"debug" envconfig:"FRONTEND_DEBUG"`
+		Pprof   bool `yaml:"pprof" envconfig:"FRONTEND_PPROF"`
 		Minify  bool `yaml:"minify" envconfig:"FRONTEND_MINIFY"`
 
 		SiteDomain   string `yaml:"siteDomain" envconfig:"FRONTEND_SITE_DOMAIN"`

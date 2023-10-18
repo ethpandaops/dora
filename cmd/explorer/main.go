@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"net/http"
+	_ "net/http/pprof"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -82,6 +83,11 @@ func startFrontend() {
 	router.HandleFunc("/validators", handlers.Validators).Methods("GET")
 	router.HandleFunc("/validator/{idxOrPubKey}", handlers.Validator).Methods("GET")
 	router.HandleFunc("/validator/{index}/slots", handlers.ValidatorSlots).Methods("GET")
+
+	if utils.Config.Frontend.Pprof {
+		// add pprof handler
+		router.PathPrefix("/debug/pprof/").Handler(http.DefaultServeMux)
+	}
 
 	if utils.Config.Frontend.Debug {
 		// serve files from local directory when debugging, instead of from go embed file
