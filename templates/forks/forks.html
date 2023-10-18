@@ -70,6 +70,8 @@
       <span class="badge rounded-pill text-bg-success">Connected</span>
     {{ else if eq .Status "synchronizing" }}
       <span class="badge rounded-pill text-bg-warning">Synchronizing</span>
+    {{ else if eq .Status "optimistic" }}
+      <span class="badge rounded-pill text-bg-info">Optimistic</span>
     {{ else if eq .Status "disconnected" }}
       <span class="badge rounded-pill text-bg-secondary">Disconnected</span>
     {{ else }}

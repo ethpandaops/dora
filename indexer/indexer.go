@@ -73,7 +73,7 @@ func (indexer *Indexer) GetReadyClient(archive bool, head []byte, skip []*Indexe
 	if candidateCount == 0 {
 		clientCandidates = make([]*IndexerClient, 0)
 		for _, client := range indexer.indexerClients {
-			if client.isConnected && !client.isSynchronizing {
+			if client.isConnected && !client.isSynchronizing && !client.isOptimistic {
 				clientCandidates = append(clientCandidates, client)
 			}
 		}
@@ -185,7 +185,7 @@ func (indexer *Indexer) GetHighestSlot() uint64 {
 func (indexer *Indexer) GetHeadForks(readyOnly bool) []*HeadFork {
 	headForks := []*HeadFork{}
 	for _, client := range indexer.indexerClients {
-		if readyOnly && (!client.isConnected || client.isSynchronizing) {
+		if readyOnly && (!client.isConnected || client.isSynchronizing || client.isOptimistic) {
 			continue
 		}
 		cHeadSlot, cHeadRoot := client.GetLastHead()

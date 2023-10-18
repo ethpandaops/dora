@@ -25,6 +25,7 @@ type IndexerClient struct {
 	cacheMutex         sync.RWMutex
 	lastStreamEvent    time.Time
 	isSynchronizing    bool
+	isOptimistic       bool
 	syncDistance       uint64
 	isConnected        bool
 	retryCounter       uint64
@@ -80,6 +81,8 @@ func (client *IndexerClient) GetLastHead() (int64, []byte) {
 func (client *IndexerClient) GetStatus() string {
 	if client.isSynchronizing {
 		return "synchronizing"
+	} else if client.isOptimistic {
+		return "optimistic"
 	} else if !client.isConnected {
 		return "disconnected"
 	} else {
@@ -171,7 +174,8 @@ func (client *IndexerClient) checkIndexerClient() error {
 	if syncStatus == nil {
 		return fmt.Errorf("could not get synchronization status")
 	}
-	client.isSynchronizing = syncStatus.IsSyncing || syncStatus.IsOptimistic
+	client.isOptimistic = syncStatus.IsOptimistic
+	client.isSynchronizing = syncStatus.IsSyncing
 	client.syncDistance = uint64(syncStatus.SyncDistance)
 
 	return nil
@@ -192,6 +196,9 @@ func (client *IndexerClient) runIndexerClient() error {
 	// check latest header / sync status
 	if client.isSynchronizing {
 		return fmt.Errorf("beacon node is synchronizing")
+	}
+	if client.isOptimistic {
+		return fmt.Errorf("beacon node is optimistic")
 	}
 	if client.indexerCache.finalizedEpoch >= 0 && utils.EpochOfSlot(headSlot) <= uint64(client.indexerCache.finalizedEpoch) {
 		return fmt.Errorf("client is far behind - head is before synchronized checkpoint")
