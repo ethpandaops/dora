@@ -126,7 +126,7 @@ func (client *IndexerClient) runIndexerClientLoop() {
 		client.retryCounter++
 		waitTime := 10
 		if client.retryCounter > 10 {
-			waitTime = 300
+			waitTime = 120
 		} else if client.retryCounter > 5 {
 			waitTime = 60
 		}
