@@ -125,15 +125,21 @@ func (client *IndexerClient) runIndexerClientLoop() {
 
 		client.retryCounter++
 		waitTime := 10
+		skipLog := false
 		if client.isOptimistic || client.isSynchronizing {
 			waitTime = 30
+			skipLog = true
 		} else if client.retryCounter > 10 {
 			waitTime = 300
 		} else if client.retryCounter > 5 {
 			waitTime = 60
 		}
 
-		logger.WithField("client", client.clientName).Warnf("indexer client error: %v, retrying in %v sec...", err, waitTime)
+		if skipLog {
+			logger.WithField("client", client.clientName).Debugf("indexer client error: %v, retrying in %v sec...", err, waitTime)
+		} else {
+			logger.WithField("client", client.clientName).Warnf("indexer client error: %v, retrying in %v sec...", err, waitTime)
+		}
 		time.Sleep(time.Duration(waitTime) * time.Second)
 	}
 }
