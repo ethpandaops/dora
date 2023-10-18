@@ -72,6 +72,10 @@ func (bs *BeaconService) GetClients() []*indexer.IndexerClient {
 	return bs.indexer.GetClients()
 }
 
+func (bs *BeaconService) GetHeadForks(readyOnly bool) []*indexer.HeadFork {
+	return bs.indexer.GetHeadForks(readyOnly)
+}
+
 func (bs *BeaconService) GetValidatorName(index uint64) string {
 	return bs.validatorNames.GetValidatorName(index)
 }

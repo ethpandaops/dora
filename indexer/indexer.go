@@ -106,12 +106,15 @@ func (indexer *Indexer) GetReadyClient(archive bool, head []byte, skip []*Indexe
 		clientCandidates = allCandidates
 		candidateCount = len(clientCandidates)
 	}
+	if candidateCount == 0 {
+		return nil
+	}
 	selectedIndex := rand.Intn(candidateCount)
 	return clientCandidates[selectedIndex]
 }
 
 func (indexer *Indexer) GetReadyClients(archive bool, head []byte) []*IndexerClient {
-	headCandidates := indexer.GetHeadForks()
+	headCandidates := indexer.GetHeadForks(true)
 	if len(headCandidates) == 0 {
 		return indexer.indexerClients
 	}
@@ -179,10 +182,10 @@ func (indexer *Indexer) GetHighestSlot() uint64 {
 	return uint64(indexer.indexerCache.highestSlot)
 }
 
-func (indexer *Indexer) GetHeadForks() []*HeadFork {
+func (indexer *Indexer) GetHeadForks(readyOnly bool) []*HeadFork {
 	headForks := []*HeadFork{}
 	for _, client := range indexer.indexerClients {
-		if !client.isConnected || client.isSynchronizing {
+		if readyOnly && (!client.isConnected || client.isSynchronizing) {
 			continue
 		}
 		cHeadSlot, cHeadRoot := client.GetLastHead()
@@ -240,7 +243,7 @@ func (indexer *Indexer) GetHeadForks() []*HeadFork {
 }
 
 func (indexer *Indexer) GetCanonicalHead() (uint64, []byte) {
-	headCandidates := indexer.GetHeadForks()
+	headCandidates := indexer.GetHeadForks(true)
 	if len(headCandidates) == 0 {
 		return 0, nil
 	}

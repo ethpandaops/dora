@@ -113,6 +113,11 @@ func createMenuItems(active string, isMain bool) []types.MainMenuItem {
 							Path:  "/clients",
 							Icon:  "fa-server",
 						},
+						{
+							Label: "Forks",
+							Path:  "/forks",
+							Icon:  "fa-code-fork",
+						},
 					},
 				},
 			},

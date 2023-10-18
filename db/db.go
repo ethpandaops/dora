@@ -553,6 +553,23 @@ func GetBlocksByParentRoot(parentRoot []byte) []*dbtypes.Block {
 	return blocks
 }
 
+func GetBlockByRoot(root []byte) *dbtypes.Block {
+	block := dbtypes.Block{}
+	err := ReaderDb.Get(&block, `
+	SELECT
+		root, slot, parent_root, state_root, orphaned, proposer, graffiti, graffiti_text,
+		attestation_count, deposit_count, exit_count, withdraw_count, withdraw_amount, attester_slashing_count, 
+		proposer_slashing_count, bls_change_count, eth_transaction_count, eth_block_number, eth_block_hash, sync_participation
+	FROM blocks
+	WHERE root = $1
+	`, root)
+	if err != nil {
+		//logger.Errorf("Error while fetching block by root 0x%x: %v", root, err)
+		return nil
+	}
+	return &block
+}
+
 func GetFilteredBlocks(filter *dbtypes.BlockFilter, firstSlot uint64, offset uint64, limit uint32) []*dbtypes.AssignedBlock {
 	blockAssignments := []*dbtypes.AssignedBlock{}
 	var sql strings.Builder

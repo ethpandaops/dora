@@ -1,0 +1,95 @@
+{{ define "page" }}
+  <div class="container mt-2">
+    <div class="d-md-flex py-2 justify-content-md-between">
+      <h1 class="h4 mb-1 mb-md-0"><i class="fas fa-code-fork mx-2"></i>Forks</h1>
+      <nav aria-label="breadcrumb">
+        <ol class="breadcrumb font-size-1 mb-0" style="padding:0; background-color:transparent;">
+          <li class="breadcrumb-item"><a href="/" title="Home">Home</a></li>
+          <li class="breadcrumb-item active" aria-current="page">Forks</li>
+        </ol>
+      </nav>
+    </div>
+
+    <div class="card mt-2">
+      <div class="card-body px-0 py-3">
+        <div class="table-responsive px-0 py-1">
+          <table class="table table-nobr" id="forks">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Head Slot</th>
+                <th>Head Root</th>
+                <th>Client</th>
+                <th>Status</th>
+                <th>Distance</th>
+                <th>Version</th>
+              </tr>
+            </thead>
+              <tbody>
+                {{ range $i, $fork := .Forks }}
+                  <tr>
+                    <td rowspan="{{ $fork.ClientCount }}">
+                      {{ if eq $i 0 }}
+                        <span class="badge rounded-pill text-bg-success">Canonical</span>
+                      {{ else }}
+                        <span class="badge rounded-pill text-bg-warning">Fork #{{ $i }}</span>
+                      {{ end }}
+                    </td>
+                    <td rowspan="{{ $fork.ClientCount }}"><a href="/slot/{{ $fork.HeadSlot }}">{{ formatAddCommas $fork.HeadSlot }}</a></td>
+                    <td rowspan="{{ $fork.ClientCount }}">
+                      <a href="/slot/0x{{ printf "%x" $fork.HeadRoot }}" class="text-truncate d-inline-block" style="max-width: 200px">0x{{ printf "%x" $fork.HeadRoot }}</a>
+                      <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $fork.HeadRoot }}"></i>
+                    </td>
+                    {{ range $i, $client := $fork.Clients }}
+                      {{- if eq $i 0 -}}
+                        {{ template "fork_client_cols" $client }}
+                      {{- end -}}
+                    {{ end }}
+                  </tr>
+                  {{ range $i, $client := $fork.Clients }}
+                    {{- if not (eq $i 0) -}}
+                      <tr>
+                        {{ template "fork_client_cols" $client }}
+                      </tr>
+                    {{- end -}}
+                  {{ end }}
+                {{ end }}
+              </tbody>
+          </table>
+        </div>
+      </div>
+      <div id="footer-placeholder" style="height:30px;"></div>
+    </div>
+  </div>
+{{ end }}
+
+{{ define "fork_client_cols" }}
+  <td>{{ .Name }}</td>
+  <td>
+    {{ if eq .Status "ready" }}
+      <span class="badge rounded-pill text-bg-success">Connected</span>
+    {{ else if eq .Status "synchronizing" }}
+      <span class="badge rounded-pill text-bg-warning">Synchronizing</span>
+    {{ else if eq .Status "disconnected" }}
+      <span class="badge rounded-pill text-bg-secondary">Disconnected</span>
+    {{ else }}
+      <span class="badge rounded-pill text-bg-dark">{{ .Status }}</span>
+    {{ end }}
+  </td>
+  <td>
+    {{ if eq .Distance 0 }}
+      <span class="badge rounded-pill text-bg-success">{{ .Distance }} blocks</span>
+    {{ else }}
+      <span class="badge rounded-pill text-bg-warning" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="head slot {{ .HeadSlot }}">{{ .Distance }} blocks</span>
+    {{ end }}
+  </td>
+  <td>
+    <span class="text-truncate d-inline-block" style="max-width: 400px">{{ .Version }}</span>
+    <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ .Version }}"></i>
+  </td>
+{{ end }}
+
+{{ define "js" }}
+{{ end }}
+{{ define "css" }}
+{{ end }}
