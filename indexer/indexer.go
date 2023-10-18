@@ -229,19 +229,11 @@ func (indexer *Indexer) GetHeadForks() []*HeadFork {
 		}
 	}
 
-	// sort by relevance (client count & head slot)
+	// sort by relevance (client count)
 	sort.Slice(headForks, func(a, b int) bool {
-		slotA := headForks[a].Slot
-		slotB := headForks[b].Slot
-		if slotA > slotB && slotA-slotB >= 16 {
-			return true
-		} else if slotB > slotA && slotB-slotA >= 16 {
-			return false
-		} else {
-			countA := len(headForks[a].ReadyClients)
-			countB := len(headForks[b].ReadyClients)
-			return countA > countB
-		}
+		countA := len(headForks[a].ReadyClients)
+		countB := len(headForks[b].ReadyClients)
+		return countA > countB
 	})
 
 	return headForks
