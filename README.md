@@ -11,6 +11,17 @@ A Beaconchain explorer is a tool that allows users to view and interact with the
 
 This "lightweight" explorer loads most of the information directly from an underlying standard beacon node api, which makes it a lot easier and cheaper to run (no 3rd party proprietary database like bigtables required).
 
+## Testnet instances
+[Holešky](https://github.com/eth-clients/holesky) Testnet: 
+* https://dora-holesky.pk910.de/
+* https://dora.holesky.ethpandaops.io/
+
+[Sepolia](https://github.com/eth-clients/sepolia) Testnet: 
+* https://dora.sepolia.ethpandaops.io/
+
+[Ephemery](https://github.com/ephemery-testnet/ephemery-resources) Testnet: 
+* https://beaconlight.ephemery.dev/
+
 # Setup & Configuration
 Read through the [wiki](https://github.com/pk910/dora/wiki) for setup & configuration instructions.
 
