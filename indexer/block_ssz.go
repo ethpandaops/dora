@@ -9,6 +9,7 @@ import (
 	"github.com/attestantio/go-eth2-client/spec/capella"
 	"github.com/attestantio/go-eth2-client/spec/deneb"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
+	"github.com/attestantio/go-eth2-client/spec/verkle"
 )
 
 func MarshalVersionedSignedBeaconBlockSSZ(block *spec.VersionedSignedBeaconBlock) (version uint64, ssz []byte, err error) {
@@ -28,6 +29,9 @@ func MarshalVersionedSignedBeaconBlockSSZ(block *spec.VersionedSignedBeaconBlock
 	case spec.DataVersionDeneb:
 		version = uint64(block.Version)
 		ssz, err = block.Deneb.MarshalSSZ()
+	case spec.DataVersionVerkle:
+		version = uint64(block.Version)
+		ssz, err = block.Verkle.MarshalSSZ()
 	default:
 		err = fmt.Errorf("unknown block version")
 	}
@@ -63,6 +67,11 @@ func UnmarshalVersionedSignedBeaconBlockSSZ(version uint64, ssz []byte) (*spec.V
 		block.Deneb = &deneb.SignedBeaconBlock{}
 		if err := block.Deneb.UnmarshalSSZ(ssz); err != nil {
 			return nil, fmt.Errorf("failed to decode deneb signed beacon block: %v", err)
+		}
+	case spec.DataVersionVerkle:
+		block.Verkle = &verkle.SignedBeaconBlock{}
+		if err := block.Verkle.UnmarshalSSZ(ssz); err != nil {
+			return nil, fmt.Errorf("failed to decode verkle signed beacon block: %v", err)
 		}
 	default:
 		return nil, fmt.Errorf("unknown block version")
