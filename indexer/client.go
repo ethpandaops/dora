@@ -14,7 +14,7 @@ import (
 )
 
 type IndexerClient struct {
-	clientIdx          uint8
+	clientIdx          uint16
 	clientName         string
 	rpcClient          *rpc.BeaconClient
 	skipValidators     bool
@@ -38,7 +38,7 @@ type IndexerClient struct {
 	lastJustifiedRoot  []byte
 }
 
-func newIndexerClient(clientIdx uint8, clientName string, rpcClient *rpc.BeaconClient, indexerCache *indexerCache, archive bool, priority int, skipValidators bool) *IndexerClient {
+func newIndexerClient(clientIdx uint16, clientName string, rpcClient *rpc.BeaconClient, indexerCache *indexerCache, archive bool, priority int, skipValidators bool) *IndexerClient {
 	client := IndexerClient{
 		clientIdx:          clientIdx,
 		clientName:         clientName,
@@ -56,7 +56,7 @@ func newIndexerClient(clientIdx uint8, clientName string, rpcClient *rpc.BeaconC
 	return &client
 }
 
-func (client *IndexerClient) GetIndex() uint8 {
+func (client *IndexerClient) GetIndex() uint16 {
 	return client.clientIdx
 }
 
@@ -412,9 +412,9 @@ func (client *IndexerClient) ensureBlock(block *CacheBlock, header *phase0.Signe
 		}
 		block.block = blockRsp
 	}
+
 	// set seen flag
-	clientFlag := uint64(1) << client.clientIdx
-	block.seenBy |= clientFlag
+	block.seenMap[client.clientIdx] = true
 	return nil
 }
 
@@ -460,8 +460,7 @@ func (client *IndexerClient) ensureParentBlocks(currentBlock *CacheBlock) error 
 			parentBlock.mutex.RLock()
 			parentHead = parentBlock.header
 			// check if already marked as seen by this client
-			clientFlag := uint64(1) << client.clientIdx
-			isSeen := parentBlock.seenBy&clientFlag > 0
+			isSeen := parentBlock.seenMap[client.clientIdx]
 			parentBlock.mutex.RUnlock()
 			if isSeen {
 				break

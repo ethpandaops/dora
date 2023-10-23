@@ -51,7 +51,7 @@ func NewIndexer() (*Indexer, error) {
 	return indexer, nil
 }
 
-func (indexer *Indexer) AddClient(index uint8, endpoint *types.EndpointConfig) *IndexerClient {
+func (indexer *Indexer) AddClient(index uint16, endpoint *types.EndpointConfig) *IndexerClient {
 
 	rpcClient, err := rpc.NewBeaconClient(endpoint.Url, endpoint.Name, endpoint.Headers, endpoint.Ssh)
 	if err != nil {

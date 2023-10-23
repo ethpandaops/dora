@@ -10,14 +10,14 @@ import (
 )
 
 type CacheBlock struct {
-	Root   []byte
-	Slot   uint64
-	mutex  sync.RWMutex
-	seenBy uint64
-	isInDb bool
-	header *phase0.SignedBeaconBlockHeader
-	block  *spec.VersionedSignedBeaconBlock
-	Refs   struct {
+	Root    []byte
+	Slot    uint64
+	mutex   sync.RWMutex
+	seenMap map[uint16]bool
+	isInDb  bool
+	header  *phase0.SignedBeaconBlockHeader
+	block   *spec.VersionedSignedBeaconBlock
+	Refs    struct {
 		ExecutionHash   []byte
 		ExecutionNumber uint64
 	}
@@ -40,8 +40,9 @@ func (cache *indexerCache) createOrGetCachedBlock(root []byte, slot uint64) (*Ca
 		return cache.rootMap[rootKey], false
 	}
 	cacheBlock := &CacheBlock{
-		Root: root,
-		Slot: slot,
+		Root:    root,
+		Slot:    slot,
+		seenMap: make(map[uint16]bool),
 	}
 	cache.rootMap[rootKey] = cacheBlock
 	if cache.slotMap[slot] == nil {
