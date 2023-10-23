@@ -58,17 +58,19 @@ func buildClientsPageData() (*models.ClientsPageData, time.Duration) {
 	cacheTime := time.Duration(utils.Config.Chain.Config.SecondsPerSlot) * time.Second
 
 	for _, client := range services.GlobalBeaconService.GetClients() {
-		lastHeadSlot, lastHeadRoot := client.GetLastHead()
+		lastHeadSlot, lastHeadRoot, clientRefresh := client.GetLastHead()
 		if lastHeadSlot < 0 {
 			lastHeadSlot = 0
 		}
 		resClient := &models.ClientsPageDataClient{
-			Index:    int(client.GetIndex()) + 1,
-			Name:     client.GetName(),
-			Version:  client.GetVersion(),
-			HeadSlot: uint64(lastHeadSlot),
-			HeadRoot: lastHeadRoot,
-			Status:   client.GetStatus(),
+			Index:       int(client.GetIndex()) + 1,
+			Name:        client.GetName(),
+			Version:     client.GetVersion(),
+			HeadSlot:    uint64(lastHeadSlot),
+			HeadRoot:    lastHeadRoot,
+			Status:      client.GetStatus(),
+			LastRefresh: clientRefresh,
+			LastError:   client.GetLastClientError(),
 		}
 		pageData.Clients = append(pageData.Clients, resClient)
 	}
