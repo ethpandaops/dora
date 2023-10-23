@@ -9,6 +9,7 @@ import (
 	nethttp "net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	eth2client "github.com/attestantio/go-eth2-client"
@@ -260,6 +261,9 @@ func (bc *BeaconClient) GetBlockHeaderByBlockroot(blockroot []byte) (*v1.BeaconB
 		Block: fmt.Sprintf("0x%x", blockroot),
 	})
 	if err != nil {
+		if strings.HasPrefix(err.Error(), "GET failed with status 404") {
+			return nil, nil
+		}
 		return nil, err
 	}
 	return result.Data, nil
@@ -276,6 +280,9 @@ func (bc *BeaconClient) GetBlockHeaderBySlot(slot uint64) (*v1.BeaconBlockHeader
 		Block: fmt.Sprintf("%d", slot),
 	})
 	if err != nil {
+		if strings.HasPrefix(err.Error(), "GET failed with status 404") {
+			return nil, nil
+		}
 		return nil, err
 	}
 	return result.Data, nil
@@ -292,6 +299,9 @@ func (bc *BeaconClient) GetBlockBodyByBlockroot(blockroot []byte) (*spec.Version
 		Block: fmt.Sprintf("0x%x", blockroot),
 	})
 	if err != nil {
+		if strings.HasPrefix(err.Error(), "GET failed with status 404") {
+			return nil, nil
+		}
 		return nil, err
 	}
 	return result.Data, nil
