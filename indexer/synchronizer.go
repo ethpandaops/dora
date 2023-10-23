@@ -83,7 +83,11 @@ func (sync *synchronizerState) runSync() {
 		// synchronize next epoch
 		syncEpoch := sync.currentEpoch
 
-		lastRetry := retryCount >= 20
+		retryLimit := len(sync.indexer.GetClients())
+		if retryLimit < 30 {
+			retryLimit = 30
+		}
+		lastRetry := retryCount >= retryLimit
 		done, usedClient, err := sync.syncEpoch(syncEpoch, retryCount, lastRetry, skipClients)
 		if done || lastRetry {
 			if err != nil {
