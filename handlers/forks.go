@@ -87,12 +87,14 @@ func buildForksPageData() (*models.ForksPageData, time.Duration) {
 		pageData.Forks = append(pageData.Forks, forkData)
 
 		for _, client := range fork.AllClients {
-			clientHeadSlot, _ := client.GetLastHead()
+			clientHeadSlot, _, clientRefresh := client.GetLastHead()
 			forkClient := &models.ForksPageDataClient{
-				Index:   int(client.GetIndex()) + 1,
-				Name:    client.GetName(),
-				Version: client.GetVersion(),
-				Status:  client.GetStatus(),
+				Index:       int(client.GetIndex()) + 1,
+				Name:        client.GetName(),
+				Version:     client.GetVersion(),
+				Status:      client.GetStatus(),
+				LastRefresh: clientRefresh,
+				LastError:   client.GetLastClientError(),
 			}
 			if clientHeadSlot >= 0 {
 				forkClient.HeadSlot = uint64(clientHeadSlot)

@@ -188,7 +188,7 @@ func (indexer *Indexer) GetHeadForks(readyOnly bool) []*HeadFork {
 		if readyOnly && (!client.isConnected || client.isSynchronizing || client.isOptimistic) {
 			continue
 		}
-		cHeadSlot, cHeadRoot := client.GetLastHead()
+		cHeadSlot, cHeadRoot, _ := client.GetLastHead()
 		var matchingFork *HeadFork
 		for _, fork := range headForks {
 			if bytes.Equal(fork.Root, cHeadRoot) || indexer.indexerCache.isCanonicalBlock(cHeadRoot, fork.Root) {
@@ -222,7 +222,7 @@ func (indexer *Indexer) GetHeadForks(readyOnly bool) []*HeadFork {
 		})
 		for _, client := range fork.AllClients {
 			var headDistance uint64 = 0
-			_, cHeadRoot := client.GetLastHead()
+			_, cHeadRoot, _ := client.GetLastHead()
 			if !bytes.Equal(fork.Root, cHeadRoot) {
 				_, headDistance = indexer.indexerCache.getCanonicalDistance(cHeadRoot, fork.Root)
 			}

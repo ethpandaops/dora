@@ -23,6 +23,8 @@ type IndexerClient struct {
 	versionStr         string
 	indexerCache       *indexerCache
 	cacheMutex         sync.RWMutex
+	lastClientError    error
+	lastHeadRefresh    time.Time
 	lastStreamEvent    time.Time
 	isSynchronizing    bool
 	isOptimistic       bool
@@ -72,10 +74,10 @@ func (client *IndexerClient) GetRpcClient() *rpc.BeaconClient {
 	return client.rpcClient
 }
 
-func (client *IndexerClient) GetLastHead() (int64, []byte) {
+func (client *IndexerClient) GetLastHead() (int64, []byte, time.Time) {
 	client.cacheMutex.RLock()
 	defer client.cacheMutex.RUnlock()
-	return client.lastHeadSlot, client.lastHeadRoot
+	return client.lastHeadSlot, client.lastHeadRoot, client.lastHeadRefresh
 }
 
 func (client *IndexerClient) GetStatus() string {
@@ -88,6 +90,15 @@ func (client *IndexerClient) GetStatus() string {
 	} else {
 		return "ready"
 	}
+}
+
+func (client *IndexerClient) GetLastClientError() string {
+	client.cacheMutex.RLock()
+	defer client.cacheMutex.RUnlock()
+	if client.lastClientError == nil {
+		return ""
+	}
+	return client.lastClientError.Error()
 }
 
 func (client *IndexerClient) runIndexerClientLoop() {
@@ -123,6 +134,7 @@ func (client *IndexerClient) runIndexerClientLoop() {
 			return
 		}
 
+		client.lastClientError = err
 		client.retryCounter++
 		waitTime := 10
 		skipLog := false
@@ -507,6 +519,7 @@ func (client *IndexerClient) ensureParentBlocks(currentBlock *CacheBlock) error 
 
 func (client *IndexerClient) setHeadBlock(root []byte, slot uint64) error {
 	client.cacheMutex.Lock()
+	client.lastHeadRefresh = time.Now()
 	if bytes.Equal(client.lastHeadRoot, root) {
 		client.cacheMutex.Unlock()
 		return nil
