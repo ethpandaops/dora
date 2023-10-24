@@ -69,11 +69,11 @@
     {{ if eq .Status "ready" }}
       <span class="badge rounded-pill text-bg-success">Connected</span>
     {{ else if eq .Status "synchronizing" }}
-      <span class="badge rounded-pill text-bg-warning" data-bs-toggle="tooltip" data-bs-placement="top" title="Updated: {{ formatRecentTimeShort $client.LastRefresh }}">Synchronizing</span>
+      <span class="badge rounded-pill text-bg-warning" data-bs-toggle="tooltip" data-bs-placement="top" title="Updated: {{ formatRecentTimeShort .LastRefresh }}">Synchronizing</span>
     {{ else if eq .Status "optimistic" }}
-      <span class="badge rounded-pill text-bg-info" data-bs-toggle="tooltip" data-bs-placement="top" title="Updated: {{ formatRecentTimeShort $client.LastRefresh }}">Optimistic</span>
+      <span class="badge rounded-pill text-bg-info" data-bs-toggle="tooltip" data-bs-placement="top" title="Updated: {{ formatRecentTimeShort .LastRefresh }}">Optimistic</span>
     {{ else if eq .Status "disconnected" }}
-      <span class="badge rounded-pill text-bg-secondary" data-bs-toggle="tooltip" data-bs-placement="top" title="Updated: {{ formatRecentTimeShort $client.LastRefresh }}, Error: {{ $client.LastError }}">Disconnected</span>
+      <span class="badge rounded-pill text-bg-secondary" data-bs-toggle="tooltip" data-bs-placement="top" title="Updated: {{ formatRecentTimeShort .LastRefresh }}, Error: {{ .LastError }}">Disconnected</span>
     {{ else }}
       <span class="badge rounded-pill text-bg-dark">{{ .Status }}</span>
     {{ end }}
