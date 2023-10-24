@@ -24,10 +24,10 @@ func Forks(w http.ResponseWriter, r *http.Request) {
 
 	var pageError error
 	pageError = services.GlobalCallRateLimiter.CheckCallLimit(r, 1)
-	if pageError != nil {
+	if pageError == nil {
 		data.Data, pageError = getForksPageData()
 	}
-	if pageError == nil {
+	if pageError != nil {
 		handlePageError(w, r, pageError)
 		return
 	}

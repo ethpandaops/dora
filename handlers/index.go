@@ -54,7 +54,7 @@ func IndexData(w http.ResponseWriter, r *http.Request) {
 	var pageData *models.IndexPageData
 	var pageError error
 	pageError = services.GlobalCallRateLimiter.CheckCallLimit(r, 1)
-	if pageError != nil {
+	if pageError == nil {
 		pageData, pageError = getIndexPageData()
 	}
 	if pageError != nil {
