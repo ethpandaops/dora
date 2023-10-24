@@ -149,7 +149,7 @@ func (fc *FrontendCacheService) processPageCall(pageKey string, caching bool, pa
 
 	callTimeout := utils.Config.Frontend.PageCallTimeout
 	if callTimeout == 0 {
-		callTimeout = 60 * time.Second
+		callTimeout = 30 * time.Second
 	}
 
 	select {

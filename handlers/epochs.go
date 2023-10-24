@@ -35,7 +35,10 @@ func Epochs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var pageError error
-	data.Data, pageError = getEpochsPageData(firstEpoch, pageSize)
+	pageError = services.GlobalCallRateLimiter.CheckCallLimit(r, 1)
+	if pageError == nil {
+		data.Data, pageError = getEpochsPageData(firstEpoch, pageSize)
+	}
 	if pageError != nil {
 		handlePageError(w, r, pageError)
 		return

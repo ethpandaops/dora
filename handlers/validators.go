@@ -64,7 +64,10 @@ func Validators(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var pageError error
-	data.Data, pageError = getValidatorsPageData(firstIdx, pageSize, sortOrder, filterPubKey, filterIndex, filterName, filterStatus)
+	pageError = services.GlobalCallRateLimiter.CheckCallLimit(r, 1)
+	if pageError == nil {
+		data.Data, pageError = getValidatorsPageData(firstIdx, pageSize, sortOrder, filterPubKey, filterIndex, filterName, filterStatus)
+	}
 	if pageError != nil {
 		handlePageError(w, r, pageError)
 		return

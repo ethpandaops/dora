@@ -23,8 +23,11 @@ func Forks(w http.ResponseWriter, r *http.Request) {
 	data := InitPageData(w, r, "forks", "/forks", "Forks", forksTemplateFiles)
 
 	var pageError error
-	data.Data, pageError = getForksPageData()
+	pageError = services.GlobalCallRateLimiter.CheckCallLimit(r, 1)
 	if pageError != nil {
+		data.Data, pageError = getForksPageData()
+	}
+	if pageError == nil {
 		handlePageError(w, r, pageError)
 		return
 	}

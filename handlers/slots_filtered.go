@@ -62,7 +62,10 @@ func SlotsFiltered(w http.ResponseWriter, r *http.Request) {
 		withMissing = 1
 	}
 	var pageError error
-	data.Data, pageError = getFilteredSlotsPageData(pageIdx, pageSize, graffiti, proposer, pname, uint8(withOrphaned), uint8(withMissing))
+	pageError = services.GlobalCallRateLimiter.CheckCallLimit(r, 2)
+	if pageError == nil {
+		data.Data, pageError = getFilteredSlotsPageData(pageIdx, pageSize, graffiti, proposer, pname, uint8(withOrphaned), uint8(withMissing))
+	}
 	if pageError != nil {
 		handlePageError(w, r, pageError)
 		return

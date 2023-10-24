@@ -62,7 +62,13 @@ func Slot(w http.ResponseWriter, r *http.Request) {
 
 	urlArgs := r.URL.Query()
 	loadDuties := urlArgs.Has("duties")
-	pageData, pageError := getSlotPageData(blockSlot, blockRootHash, loadDuties)
+
+	var pageData *models.SlotPageData
+	var pageError error
+	pageError = services.GlobalCallRateLimiter.CheckCallLimit(r, 1)
+	if pageError == nil {
+		pageData, pageError = getSlotPageData(blockSlot, blockRootHash, loadDuties)
+	}
 	if pageError != nil {
 		handlePageError(w, r, pageError)
 		return

@@ -51,6 +51,13 @@ func main() {
 		logger.Fatalf("error starting beacon service: %v", err)
 	}
 
+	if cfg.RateLimit.Enabled {
+		err = services.StartCallRateLimiter(cfg.RateLimit.ProxyCount, cfg.RateLimit.Rate, cfg.RateLimit.Burst)
+		if err != nil {
+			logger.Fatalf("error starting call rate limiter: %v", err)
+		}
+	}
+
 	if cfg.Frontend.Enabled {
 		err = services.StartFrontendCache()
 		if err != nil {

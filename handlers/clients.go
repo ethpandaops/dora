@@ -21,7 +21,10 @@ func Clients(w http.ResponseWriter, r *http.Request) {
 	data := InitPageData(w, r, "clients", "/clients", "Clients", clientsTemplateFiles)
 
 	var pageError error
-	data.Data, pageError = getClientsPageData()
+	pageError = services.GlobalCallRateLimiter.CheckCallLimit(r, 1)
+	if pageError == nil {
+		data.Data, pageError = getClientsPageData()
+	}
 	if pageError != nil {
 		handlePageError(w, r, pageError)
 		return
