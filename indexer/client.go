@@ -412,6 +412,10 @@ func (client *IndexerClient) ensureBlock(block *CacheBlock, header *phase0.Signe
 				logger.WithField("client", client.clientName).Warnf("ensure block %v [0x%x] failed (header): %v", block.Slot, block.Root, err)
 				return err
 			}
+			if headerRsp == nil {
+				logger.WithField("client", client.clientName).Warnf("ensure block %v [0x%x] failed (header): not found", block.Slot, block.Root)
+				return fmt.Errorf("ensure block %v [0x%x] failed (header): not found", block.Slot, block.Root)
+			}
 			header = headerRsp.Header
 		}
 		block.header = header
