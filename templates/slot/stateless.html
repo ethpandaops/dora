@@ -1,0 +1,34 @@
+{{ define "block_execution_witness" }}
+  <div class="table-ellipsis">
+    <table id="block_withdrawals" class="table table-sm text-left">
+      <thead>
+        <tr>
+          <th class="border-0">Stem</th>
+          <th class="border-0">Suffix</th>
+          <th class="border-0">Current Value</th>
+          <th class="border-0">New Value</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{ range $i, $statediff := .Block.ExecutionWitness.StateDiff }}
+          {{ range $j, $suffixdiff := $statediff.SuffixDiffs }}
+            <tr>
+              <td>{{ printf "%#x" $statediff.Stem }}</td>
+              <td>{{ printf "%#02x" $suffixdiff.Suffix }}</td>
+              <td>
+               {{ if $suffixdiff.CurrentValue }}
+                 {{ printf "%#x" $suffixdiff.CurrentValue }}
+               {{ end }}
+              </td>
+              <td>
+               {{ if $suffixdiff.NewValue }}
+                 {{ printf "%#x" $suffixdiff.NewValue }}
+               {{ end }}
+              </td>
+            </tr>
+          {{ end }}
+        {{ end }}
+      </tbody>
+    </table>
+  </div>
+{{ end }}
