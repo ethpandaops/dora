@@ -1,6 +1,6 @@
 {{ define "block_execution_witness" }}
-  <div class="table-ellipsis">
-    <table id="block_witness" class="table table-sm text-left">
+  <div class="table">
+    <table id="block_witness" class="table table-sm text-center">
       <thead>
         <tr>
           <th class="border-0">Stem</th>
@@ -9,7 +9,7 @@
           <th class="border-0">New Value</th>
         </tr>
       </thead>
-      <tbody>
+      <tbody style="word-break: break-all;">
         {{ range $i, $statediff := .Block.ExecutionWitness.Witness.StateDiff }}
           {{ range $j, $suffixdiff := $statediff.SuffixDiffs }}
             <tr>
@@ -18,11 +18,15 @@
               <td>
                {{ if $suffixdiff.CurrentValue }}
                  {{ printf "%#x" $suffixdiff.CurrentValue }}
+               {{ else }}
+                  absent
                {{ end }}
               </td>
               <td>
                {{ if $suffixdiff.NewValue }}
                  {{ printf "%#x" $suffixdiff.NewValue }}
+               {{ else }}
+                  unchanged
                {{ end }}
               </td>
             </tr>
