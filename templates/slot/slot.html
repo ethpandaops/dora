@@ -193,6 +193,14 @@
               </div>
               {{ template "block_execution_witness" . }}
             </div>
+            <div class="card block-card">
+              <div style="margin-bottom: -.25rem;" class="card-body px-0 py-1">
+                <div class="row p-1 mx-0">
+                  <h3 class="h5 col-md-12 text-center"><b>Reconstructed tree</b></h3>
+                </div>
+              </div>
+              {{ template "block_execution_pretree" . }}
+            </div>
           </div>
         {{ end }}
       {{ end }}
