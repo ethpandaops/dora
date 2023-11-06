@@ -88,4 +88,4 @@ require (
 	golang.org/x/sys v0.12.0 // indirect
 )
 
-replace github.com/attestantio/go-eth2-client => github.com/gballet/go-eth2-client v0.0.0-20231103161432-83419365a9d2
+replace github.com/attestantio/go-eth2-client => github.com/gballet/go-eth2-client v0.0.0-20231106105422-84cbc0dacfc0
