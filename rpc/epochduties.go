@@ -36,6 +36,9 @@ func (bc *BeaconClient) GetEpochAssignments(epoch uint64, dependendRoot []byte) 
 	if err != nil {
 		return nil, err
 	}
+	if parsedHeader == nil {
+		return nil, fmt.Errorf("could not load dependent root block header")
+	}
 	depStateRoot = parsedHeader.Header.Message.StateRoot.String()
 	if epoch == 0 {
 		depStateRoot = "genesis"
