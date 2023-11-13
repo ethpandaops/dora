@@ -55,6 +55,7 @@ type SlotPageBlockData struct {
 	BlobsCount             uint64                 `json:"blobs_count"`
 	DenyDutyLoading        bool                   `json:"deny_duties"`
 	DutiesLoaded           bool                   `json:"duties_loaded"`
+	TransactionsCount      uint64                 `json:"transactions_count"`
 
 	ExecutionData     *SlotPageExecutionData      `json:"execution_data"`
 	Attestations      []*SlotPageAttestation      `json:"attestations"`       // Attestations included in this block
@@ -65,24 +66,24 @@ type SlotPageBlockData struct {
 	BLSChanges        []*SlotPageBLSChange        `json:"bls_changes"`        // BLSChanges included in this block
 	Withdrawals       []*SlotPageWithdrawal       `json:"withdrawals"`        // Withdrawals included in this block
 	Blobs             []*SlotPageBlob             `json:"blobs"`              // Blob sidecars included in this block
+	Transactions      []*SlotPageTransaction      `json:"transactions"`       // Transactions included in this block
 }
 
 type SlotPageExecutionData struct {
-	ParentHash        []byte    `json:"parent_hash"`
-	FeeRecipient      []byte    `json:"fee_recipient"`
-	StateRoot         []byte    `json:"state_root"`
-	ReceiptsRoot      []byte    `json:"receipts_root"`
-	LogsBloom         []byte    `json:"logs_bloom"`
-	Random            []byte    `json:"random"`
-	GasLimit          uint64    `json:"gas_limit"`
-	GasUsed           uint64    `json:"gas_used"`
-	Timestamp         uint64    `json:"timestamp"`
-	Time              time.Time `json:"time"`
-	ExtraData         []byte    `json:"extra_data"`
-	BaseFeePerGas     uint64    `json:"base_fee_per_gas"`
-	BlockHash         []byte    `json:"block_hash"`
-	BlockNumber       uint64    `json:"block_number"`
-	TransactionsCount uint64    `json:"transactions_count"`
+	ParentHash    []byte    `json:"parent_hash"`
+	FeeRecipient  []byte    `json:"fee_recipient"`
+	StateRoot     []byte    `json:"state_root"`
+	ReceiptsRoot  []byte    `json:"receipts_root"`
+	LogsBloom     []byte    `json:"logs_bloom"`
+	Random        []byte    `json:"random"`
+	GasLimit      uint64    `json:"gas_limit"`
+	GasUsed       uint64    `json:"gas_used"`
+	Timestamp     uint64    `json:"timestamp"`
+	Time          time.Time `json:"time"`
+	ExtraData     []byte    `json:"extra_data"`
+	BaseFeePerGas uint64    `json:"base_fee_per_gas"`
+	BlockHash     []byte    `json:"block_hash"`
+	BlockNumber   uint64    `json:"block_number"`
 }
 
 type SlotPageAttestation struct {
@@ -185,4 +186,13 @@ type SlotPageBlobDetails struct {
 	Blob          string `json:"blob"`
 	KzgCommitment string `json:"kzg_commitment"`
 	KzgProof      string `json:"kzg_proof"`
+}
+
+type SlotPageTransaction struct {
+	Index uint64  `json:"index"`
+	Hash  []byte  `json:"hash"`
+	From  string  `json:"from"`
+	To    string  `json:"to"`
+	Value float64 `json:"value"`
+	Data  []byte  `json:"data"`
 }
