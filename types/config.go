@@ -91,6 +91,12 @@ type Config struct {
 		} `yaml:"aws"`
 	} `yaml:"blobstore"`
 
+	TxSignature struct {
+		Enable4Bytes     bool          `yaml:"enable4Bytes" envconfig:"TXSIG_ENABLE_4BYTES"`
+		RecheckTimeout   time.Duration `yaml:"recheckTimeout" envconfig:"TXSIG_RECHECK_TIMEOUT"`
+		ConcurrencyLimit uint64        `yaml:"concurrencyLimit" envconfig:"TXSIG_CONCURRENCY_LIMIT"`
+	} `yaml:"txsig"`
+
 	Database struct {
 		Engine string `yaml:"engine" envconfig:"DATABASE_ENGINE"`
 		Sqlite struct {
