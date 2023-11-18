@@ -3,15 +3,11 @@
 
 CREATE TABLE IF NOT EXISTS "tx_function_signatures"
 (
-    "signature" TEXT NOT NULL,
     "bytes" BLOB NOT NULL,
+    "signature" TEXT NOT NULL,
     "name" TEXT NOT NULL,
-    PRIMARY KEY ("signature")
+    PRIMARY KEY ("bytes")
 );
-
-CREATE INDEX IF NOT EXISTS "tx_function_signatures_bytes_idx"
-    ON "tx_function_signatures" 
-    ("bytes" ASC);
 
 CREATE TABLE IF NOT EXISTS "tx_unknown_signatures"
 (

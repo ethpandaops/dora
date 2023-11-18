@@ -189,10 +189,13 @@ type SlotPageBlobDetails struct {
 }
 
 type SlotPageTransaction struct {
-	Index uint64  `json:"index"`
-	Hash  []byte  `json:"hash"`
-	From  string  `json:"from"`
-	To    string  `json:"to"`
-	Value float64 `json:"value"`
-	Data  []byte  `json:"data"`
+	Index         uint64  `json:"index"`
+	Hash          []byte  `json:"hash"`
+	From          string  `json:"from"`
+	To            string  `json:"to"`
+	Value         float64 `json:"value"`
+	Data          []byte  `json:"data"`
+	FuncSigStatus uint64  `json:"func_sig_status"`
+	FuncName      string  `json:"func_name"`
+	FuncSig       string  `json:"func_sig"`
 }

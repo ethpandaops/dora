@@ -33,7 +33,10 @@
               </div>
               {{ $transaction.To }}
             </td>
-            <td>?</td>
+            <td>
+              {{ $transaction.FuncName }}
+
+            </td>
             <td>{{ $transaction.Value }}</td>
           </tr>
         {{ end }}

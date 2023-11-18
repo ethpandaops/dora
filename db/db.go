@@ -956,7 +956,7 @@ func GetLatestBlobAssignment(commitment []byte) *dbtypes.BlobAssignment {
 	return &blobAssignment
 }
 
-func GetTxFunctionSignaturesByBytes(sigBytes [][]byte) []*dbtypes.TxFunctionSignature {
+func GetTxFunctionSignaturesByBytes(sigBytes []types.TxSignatureBytes) []*dbtypes.TxFunctionSignature {
 	fnSigs := []*dbtypes.TxFunctionSignature{}
 
 	var sql strings.Builder
@@ -972,12 +972,12 @@ func GetTxFunctionSignaturesByBytes(sigBytes [][]byte) []*dbtypes.TxFunctionSign
 			fmt.Fprintf(&sql, ", ")
 		}
 		fmt.Fprintf(&sql, "$%v", argIdx+1)
-		args[argIdx] = b
+		args[argIdx] = b[:]
 		argIdx += 1
 	}
 	fmt.Fprintf(&sql, ")")
 
-	err := ReaderDb.Select(&fnSigs, sql.String(), sigBytes)
+	err := ReaderDb.Select(&fnSigs, sql.String(), args...)
 	if err != nil {
 		logger.Errorf("Error while fetching tx function signatures: %v", err)
 		return nil
@@ -1004,7 +1004,7 @@ func InsertTxFunctionSignature(txFuncSig *dbtypes.TxFunctionSignature, tx *sqlx.
 	return nil
 }
 
-func GetUnknownFunctionSignatures(sigBytes [][]byte) []*dbtypes.TxUnknownFunctionSignature {
+func GetUnknownFunctionSignatures(sigBytes []types.TxSignatureBytes) []*dbtypes.TxUnknownFunctionSignature {
 	unknwonFnSigs := []*dbtypes.TxUnknownFunctionSignature{}
 	if len(sigBytes) == 0 {
 		return unknwonFnSigs
@@ -1022,7 +1022,7 @@ func GetUnknownFunctionSignatures(sigBytes [][]byte) []*dbtypes.TxUnknownFunctio
 			fmt.Fprintf(&sql, ", ")
 		}
 		fmt.Fprintf(&sql, "$%v", argIdx+1)
-		args[argIdx] = b
+		args[argIdx] = b[:]
 		argIdx += 1
 	}
 	fmt.Fprintf(&sql, ")")

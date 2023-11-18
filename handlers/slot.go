@@ -15,7 +15,6 @@ import (
 	"github.com/attestantio/go-eth2-client/spec"
 	"github.com/attestantio/go-eth2-client/spec/bellatrix"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/gorilla/mux"
 	"github.com/juliangruber/go-intersect"
 	"github.com/sirupsen/logrus"
@@ -504,6 +503,7 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, assignments
 				BlockHash:     executionPayload.BlockHash[:],
 				BlockNumber:   uint64(executionPayload.BlockNumber),
 			}
+			getSlotPageTransactions(pageData, executionPayload.Transactions)
 		case spec.DataVersionCapella:
 			if blockData.Block.Capella == nil {
 				break
@@ -530,6 +530,7 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, assignments
 				BlockHash:     executionPayload.BlockHash[:],
 				BlockNumber:   uint64(executionPayload.BlockNumber),
 			}
+			getSlotPageTransactions(pageData, executionPayload.Transactions)
 		case spec.DataVersionDeneb:
 			if blockData.Block.Deneb == nil {
 				break
@@ -598,18 +599,19 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, assignments
 
 func getSlotPageTransactions(pageData *models.SlotPageBlockData, tranactions []bellatrix.Transaction) {
 	pageData.Transactions = make([]*models.SlotPageTransaction, 0)
+	sigLookupBytes := []types.TxSignatureBytes{}
+	sigLookupMap := map[types.TxSignatureBytes][]*models.SlotPageTransaction{}
+
 	for idx, txBytes := range tranactions {
 		var tx ethtypes.Transaction
-		err := rlp.DecodeBytes(txBytes, &tx)
+
+		err := tx.UnmarshalBinary(txBytes)
 		if err != nil {
 			fmt.Printf("err: %v\n", err)
 			continue
 		}
 
-		txFrom, err := ethtypes.Sender(ethtypes.NewEIP155Signer(tx.ChainId()), &tx)
-		if err != nil {
-			txFrom, err = ethtypes.Sender(ethtypes.HomesteadSigner{}, &tx)
-		}
+		txFrom, err := ethtypes.Sender(ethtypes.LatestSignerForChainID(tx.ChainId()), &tx)
 		txHash := tx.Hash()
 
 		txValue := tx.Value()
@@ -627,6 +629,38 @@ func getSlotPageTransactions(pageData *models.SlotPageBlockData, tranactions []b
 			Data:  tx.Data(),
 		}
 		pageData.Transactions = append(pageData.Transactions, txData)
+
+		// check call fn signature
+		if len(txData.Data) >= 4 {
+			sigBytes := types.TxSignatureBytes(txData.Data[0:4])
+			if sigLookupMap[sigBytes] == nil {
+				sigLookupMap[sigBytes] = []*models.SlotPageTransaction{
+					txData,
+				}
+				sigLookupBytes = append(sigLookupBytes, sigBytes)
+			} else {
+				sigLookupMap[sigBytes] = append(sigLookupMap[sigBytes], txData)
+			}
+		} else if len(txData.Data) > 0 {
+			txData.FuncName = "transfer*"
+		} else {
+			txData.FuncName = "transfer"
+		}
 	}
 	pageData.TransactionsCount = uint64(len(tranactions))
+
+	if len(sigLookupBytes) > 0 {
+		sigLookups := services.GlobalTxSignaturesService.LookupSignatures(sigLookupBytes)
+		for _, sigLookup := range sigLookups {
+			for _, txData := range sigLookupMap[sigLookup.Bytes] {
+				txData.FuncSigStatus = uint64(sigLookup.Status)
+				if sigLookup.Status == types.TxSigStatusFound {
+					txData.FuncSig = sigLookup.Signature
+					txData.FuncName = sigLookup.Name
+				} else {
+					txData.FuncName = fmt.Sprintf("0x%x", sigLookup.Bytes[:])
+				}
+			}
+		}
+	}
 }
