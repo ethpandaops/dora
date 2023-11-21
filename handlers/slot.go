@@ -62,7 +62,13 @@ func Slot(w http.ResponseWriter, r *http.Request) {
 
 	urlArgs := r.URL.Query()
 	loadDuties := urlArgs.Has("duties")
-	pageData, pageError := getSlotPageData(blockSlot, blockRootHash, loadDuties)
+
+	var pageData *models.SlotPageData
+	var pageError error
+	pageError = services.GlobalCallRateLimiter.CheckCallLimit(r, 1)
+	if pageError == nil {
+		pageData, pageError = getSlotPageData(blockSlot, blockRootHash, loadDuties)
+	}
 	if pageError != nil {
 		handlePageError(w, r, pageError)
 		return
@@ -225,6 +231,9 @@ func buildSlotPageData(blockSlot int64, blockRoot []byte, loadDuties bool) (*mod
 	}
 
 	var assignments *rpc.EpochAssignments
+	if loadDuties && !utils.Config.Frontend.AllowDutyLoading {
+		loadDuties = false
+	}
 	if loadDuties {
 		assignmentsRsp, err := services.GlobalBeaconService.GetEpochAssignments(utils.EpochOfSlot(slot))
 		if err != nil {
@@ -312,6 +321,7 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, assignments
 		VoluntaryExitsCount:    uint64(len(voluntaryExits)),
 		SlashingsCount:         uint64(len(proposerSlashings)) + uint64(len(attesterSlashings)),
 		DutiesLoaded:           loadDuties,
+		DenyDutyLoading:        !utils.Config.Frontend.AllowDutyLoading,
 	}
 
 	epoch := utils.EpochOfSlot(uint64(blockData.Header.Message.Slot))
@@ -599,7 +609,7 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, assignments
 	if epoch >= utils.Config.Chain.Config.DenebForkEpoch {
 		pageData.BlobsCount = uint64(len(blobKzgCommitments))
 		pageData.Blobs = make([]*models.SlotPageBlob, pageData.BlobsCount)
-		for i, _ := range blobKzgCommitments {
+		for i := range blobKzgCommitments {
 			blobData := &models.SlotPageBlob{
 				Index:         uint64(i),
 				KzgCommitment: blobKzgCommitments[i][:],

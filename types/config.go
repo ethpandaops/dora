@@ -46,7 +46,15 @@ type Config struct {
 		HttpReadTimeout  time.Duration `yaml:"httpReadTimeout" envconfig:"FRONTEND_HTTP_READ_TIMEOUT"`
 		HttpWriteTimeout time.Duration `yaml:"httpWriteTimeout" envconfig:"FRONTEND_HTTP_WRITE_TIMEOUT"`
 		HttpIdleTimeout  time.Duration `yaml:"httpIdleTimeout" envconfig:"FRONTEND_HTTP_IDLE_TIMEOUT"`
+		AllowDutyLoading bool          `yaml:"allowDutyLoading" envconfig:"FRONTEND_ALLOW_DUTY_LOADING"`
 	} `yaml:"frontend"`
+
+	RateLimit struct {
+		Enabled    bool `yaml:"enabled" envconfig:"RATELIMIT_ENABLED"`
+		ProxyCount uint `yaml:"proxyCount" envconfig:"RATELIMIT_PROXY_COUNT"`
+		Rate       uint `yaml:"rate" envconfig:"RATELIMIT_RATE"`
+		Burst      uint `yaml:"burst" envconfig:"RATELIMIT_BURST"`
+	} `yaml:"rateLimit"`
 
 	BeaconApi struct {
 		Endpoint  string           `yaml:"endpoint" envconfig:"BEACONAPI_ENDPOINT"`

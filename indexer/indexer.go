@@ -51,7 +51,7 @@ func NewIndexer() (*Indexer, error) {
 	return indexer, nil
 }
 
-func (indexer *Indexer) AddClient(index uint8, endpoint *types.EndpointConfig) *IndexerClient {
+func (indexer *Indexer) AddClient(index uint16, endpoint *types.EndpointConfig) *IndexerClient {
 
 	rpcClient, err := rpc.NewBeaconClient(endpoint.Url, endpoint.Name, endpoint.Headers, endpoint.Ssh)
 	if err != nil {
@@ -188,7 +188,7 @@ func (indexer *Indexer) GetHeadForks(readyOnly bool) []*HeadFork {
 		if readyOnly && (!client.isConnected || client.isSynchronizing || client.isOptimistic) {
 			continue
 		}
-		cHeadSlot, cHeadRoot := client.GetLastHead()
+		cHeadSlot, cHeadRoot, _ := client.GetLastHead()
 		var matchingFork *HeadFork
 		for _, fork := range headForks {
 			if bytes.Equal(fork.Root, cHeadRoot) || indexer.indexerCache.isCanonicalBlock(cHeadRoot, fork.Root) {
@@ -222,7 +222,7 @@ func (indexer *Indexer) GetHeadForks(readyOnly bool) []*HeadFork {
 		})
 		for _, client := range fork.AllClients {
 			var headDistance uint64 = 0
-			_, cHeadRoot := client.GetLastHead()
+			_, cHeadRoot, _ := client.GetLastHead()
 			if !bytes.Equal(fork.Root, cHeadRoot) {
 				_, headDistance = indexer.indexerCache.getCanonicalDistance(cHeadRoot, fork.Root)
 			}

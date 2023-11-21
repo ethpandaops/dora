@@ -14,7 +14,7 @@ import (
 )
 
 type IndexerClient struct {
-	clientIdx          uint8
+	clientIdx          uint16
 	clientName         string
 	rpcClient          *rpc.BeaconClient
 	skipValidators     bool
@@ -23,6 +23,8 @@ type IndexerClient struct {
 	versionStr         string
 	indexerCache       *indexerCache
 	cacheMutex         sync.RWMutex
+	lastClientError    error
+	lastHeadRefresh    time.Time
 	lastStreamEvent    time.Time
 	isSynchronizing    bool
 	isOptimistic       bool
@@ -38,7 +40,7 @@ type IndexerClient struct {
 	lastJustifiedRoot  []byte
 }
 
-func newIndexerClient(clientIdx uint8, clientName string, rpcClient *rpc.BeaconClient, indexerCache *indexerCache, archive bool, priority int, skipValidators bool) *IndexerClient {
+func newIndexerClient(clientIdx uint16, clientName string, rpcClient *rpc.BeaconClient, indexerCache *indexerCache, archive bool, priority int, skipValidators bool) *IndexerClient {
 	client := IndexerClient{
 		clientIdx:          clientIdx,
 		clientName:         clientName,
@@ -56,7 +58,7 @@ func newIndexerClient(clientIdx uint8, clientName string, rpcClient *rpc.BeaconC
 	return &client
 }
 
-func (client *IndexerClient) GetIndex() uint8 {
+func (client *IndexerClient) GetIndex() uint16 {
 	return client.clientIdx
 }
 
@@ -72,10 +74,10 @@ func (client *IndexerClient) GetRpcClient() *rpc.BeaconClient {
 	return client.rpcClient
 }
 
-func (client *IndexerClient) GetLastHead() (int64, []byte) {
+func (client *IndexerClient) GetLastHead() (int64, []byte, time.Time) {
 	client.cacheMutex.RLock()
 	defer client.cacheMutex.RUnlock()
-	return client.lastHeadSlot, client.lastHeadRoot
+	return client.lastHeadSlot, client.lastHeadRoot, client.lastHeadRefresh
 }
 
 func (client *IndexerClient) GetStatus() string {
@@ -88,6 +90,15 @@ func (client *IndexerClient) GetStatus() string {
 	} else {
 		return "ready"
 	}
+}
+
+func (client *IndexerClient) GetLastClientError() string {
+	client.cacheMutex.RLock()
+	defer client.cacheMutex.RUnlock()
+	if client.lastClientError == nil {
+		return ""
+	}
+	return client.lastClientError.Error()
 }
 
 func (client *IndexerClient) runIndexerClientLoop() {
@@ -123,6 +134,7 @@ func (client *IndexerClient) runIndexerClientLoop() {
 			return
 		}
 
+		client.lastClientError = err
 		client.retryCounter++
 		waitTime := 10
 		skipLog := false
@@ -400,6 +412,10 @@ func (client *IndexerClient) ensureBlock(block *CacheBlock, header *phase0.Signe
 				logger.WithField("client", client.clientName).Warnf("ensure block %v [0x%x] failed (header): %v", block.Slot, block.Root, err)
 				return err
 			}
+			if headerRsp == nil {
+				logger.WithField("client", client.clientName).Warnf("ensure block %v [0x%x] failed (header): not found", block.Slot, block.Root)
+				return fmt.Errorf("ensure block %v [0x%x] failed (header): not found", block.Slot, block.Root)
+			}
 			header = headerRsp.Header
 		}
 		block.header = header
@@ -412,9 +428,9 @@ func (client *IndexerClient) ensureBlock(block *CacheBlock, header *phase0.Signe
 		}
 		block.block = blockRsp
 	}
+
 	// set seen flag
-	clientFlag := uint64(1) << client.clientIdx
-	block.seenBy |= clientFlag
+	block.seenMap[client.clientIdx] = true
 	return nil
 }
 
@@ -460,8 +476,7 @@ func (client *IndexerClient) ensureParentBlocks(currentBlock *CacheBlock) error 
 			parentBlock.mutex.RLock()
 			parentHead = parentBlock.header
 			// check if already marked as seen by this client
-			clientFlag := uint64(1) << client.clientIdx
-			isSeen := parentBlock.seenBy&clientFlag > 0
+			isSeen := parentBlock.seenMap[client.clientIdx]
 			parentBlock.mutex.RUnlock()
 			if isSeen {
 				break
@@ -508,6 +523,7 @@ func (client *IndexerClient) ensureParentBlocks(currentBlock *CacheBlock) error 
 
 func (client *IndexerClient) setHeadBlock(root []byte, slot uint64) error {
 	client.cacheMutex.Lock()
+	client.lastHeadRefresh = time.Now()
 	if bytes.Equal(client.lastHeadRoot, root) {
 		client.cacheMutex.Unlock()
 		return nil

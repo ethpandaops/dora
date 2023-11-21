@@ -40,7 +40,10 @@ func ValidatorSlots(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var pageError error
-	data.Data, pageError = getValidatorSlotsPageData(validator, pageIdx, pageSize)
+	pageError = services.GlobalCallRateLimiter.CheckCallLimit(r, 1)
+	if pageError == nil {
+		data.Data, pageError = getValidatorSlotsPageData(validator, pageIdx, pageSize)
+	}
 	if pageError != nil {
 		handlePageError(w, r, pageError)
 		return

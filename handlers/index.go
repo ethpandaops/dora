@@ -36,7 +36,10 @@ func Index(w http.ResponseWriter, r *http.Request) {
 	data := InitPageData(w, r, "index", "", "", indexTemplateFiles)
 
 	var pageError error
-	data.Data, pageError = getIndexPageData()
+	pageError = services.GlobalCallRateLimiter.CheckCallLimit(r, 1)
+	if pageError == nil {
+		data.Data, pageError = getIndexPageData()
+	}
 	if pageError != nil {
 		handlePageError(w, r, pageError)
 		return
@@ -48,7 +51,12 @@ func Index(w http.ResponseWriter, r *http.Request) {
 }
 
 func IndexData(w http.ResponseWriter, r *http.Request) {
-	pageData, pageError := getIndexPageData()
+	var pageData *models.IndexPageData
+	var pageError error
+	pageError = services.GlobalCallRateLimiter.CheckCallLimit(r, 1)
+	if pageError == nil {
+		pageData, pageError = getIndexPageData()
+	}
 	if pageError != nil {
 		handlePageError(w, r, pageError)
 		return

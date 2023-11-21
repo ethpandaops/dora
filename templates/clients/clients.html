@@ -36,13 +36,13 @@
                     </td>
                     <td>
                       {{ if eq $client.Status "ready" }}
-                        <span class="badge rounded-pill text-bg-success">Connected</span>
+                        <span class="badge rounded-pill text-bg-success">Ready</span>
                       {{ else if eq $client.Status "synchronizing" }}
-                        <span class="badge rounded-pill text-bg-warning">Synchronizing</span>
+                        <span class="badge rounded-pill text-bg-warning" data-bs-toggle="tooltip" data-bs-placement="top" title="Updated: {{ formatRecentTimeShort $client.LastRefresh }}">Synchronizing</span>
                       {{ else if eq $client.Status "optimistic" }}
-                        <span class="badge rounded-pill text-bg-info">Optimistic</span>
+                        <span class="badge rounded-pill text-bg-info" data-bs-toggle="tooltip" data-bs-placement="top" title="Updated: {{ formatRecentTimeShort $client.LastRefresh }}">Optimistic</span>
                       {{ else if eq $client.Status "disconnected" }}
-                        <span class="badge rounded-pill text-bg-secondary">Disconnected</span>
+                        <span class="badge rounded-pill text-bg-secondary" data-bs-toggle="tooltip" data-bs-placement="top" title="Updated: {{ formatRecentTimeShort $client.LastRefresh }}, Error: {{ $client.LastError }}">Disconnected</span>
                       {{ else }}
                         <span class="badge rounded-pill text-bg-dark">{{ $client.Status }}</span>
                       {{ end }}

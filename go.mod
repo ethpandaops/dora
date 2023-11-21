@@ -1,10 +1,10 @@
 module github.com/pk910/dora
 
-go 1.20
+go 1.21
 
 require (
 	dario.cat/mergo v1.0.0
-	github.com/attestantio/go-eth2-client v0.18.4-0.20230923192151-813e9473d186
+	github.com/attestantio/go-eth2-client v0.18.4-0.20231021085332-f9b2dfbf648b
 	github.com/aws/aws-sdk-go-v2 v1.21.0
 	github.com/aws/aws-sdk-go-v2/config v1.18.38
 	github.com/aws/aws-sdk-go-v2/credentials v1.13.36
@@ -53,6 +53,7 @@ require (
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/goccy/go-yaml v1.9.2 // indirect
 	github.com/holiman/uint256 v1.2.2 // indirect
+	github.com/huandu/go-clone v1.6.0 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.0.9 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
@@ -66,6 +67,7 @@ require (
 	go.opentelemetry.io/otel/metric v1.16.0 // indirect
 	go.opentelemetry.io/otel/trace v1.16.0 // indirect
 	golang.org/x/net v0.10.0 // indirect
+	golang.org/x/time v0.3.0 // indirect
 	golang.org/x/xerrors v0.0.0-20220517211312-f3a8303e98df // indirect
 	gopkg.in/cenkalti/backoff.v1 v1.1.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect

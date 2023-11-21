@@ -23,7 +23,10 @@ func Forks(w http.ResponseWriter, r *http.Request) {
 	data := InitPageData(w, r, "forks", "/forks", "Forks", forksTemplateFiles)
 
 	var pageError error
-	data.Data, pageError = getForksPageData()
+	pageError = services.GlobalCallRateLimiter.CheckCallLimit(r, 1)
+	if pageError == nil {
+		data.Data, pageError = getForksPageData()
+	}
 	if pageError != nil {
 		handlePageError(w, r, pageError)
 		return
@@ -87,12 +90,14 @@ func buildForksPageData() (*models.ForksPageData, time.Duration) {
 		pageData.Forks = append(pageData.Forks, forkData)
 
 		for _, client := range fork.AllClients {
-			clientHeadSlot, _ := client.GetLastHead()
+			clientHeadSlot, _, clientRefresh := client.GetLastHead()
 			forkClient := &models.ForksPageDataClient{
-				Index:   int(client.GetIndex()) + 1,
-				Name:    client.GetName(),
-				Version: client.GetVersion(),
-				Status:  client.GetStatus(),
+				Index:       int(client.GetIndex()) + 1,
+				Name:        client.GetName(),
+				Version:     client.GetVersion(),
+				Status:      client.GetStatus(),
+				LastRefresh: clientRefresh,
+				LastError:   client.GetLastClientError(),
 			}
 			if clientHeadSlot >= 0 {
 				forkClient.HeadSlot = uint64(clientHeadSlot)

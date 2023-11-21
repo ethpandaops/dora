@@ -9,9 +9,11 @@ import (
 	nethttp "net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	eth2client "github.com/attestantio/go-eth2-client"
+	"github.com/attestantio/go-eth2-client/api"
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
 	"github.com/attestantio/go-eth2-client/http"
 	spec "github.com/attestantio/go-eth2-client/spec"
@@ -184,7 +186,7 @@ func (bc *BeaconClient) GetGenesis() (*v1.Genesis, error) {
 	if err != nil {
 		return nil, err
 	}
-	return result, nil
+	return result.Data, nil
 }
 
 func (bc *BeaconClient) GetNodeSyncing() (*v1.SyncState, error) {
@@ -198,7 +200,7 @@ func (bc *BeaconClient) GetNodeSyncing() (*v1.SyncState, error) {
 	if err != nil {
 		return nil, err
 	}
-	return result, nil
+	return result.Data, nil
 }
 
 type apiNodeVersion struct {
@@ -223,11 +225,13 @@ func (bc *BeaconClient) GetLatestBlockHead() (*v1.BeaconBlockHeader, error) {
 	if !isProvider {
 		return nil, fmt.Errorf("get beacon block headers not supported")
 	}
-	result, err := provider.BeaconBlockHeader(ctx, "head")
+	result, err := provider.BeaconBlockHeader(ctx, &api.BeaconBlockHeaderOpts{
+		Block: "head",
+	})
 	if err != nil {
 		return nil, err
 	}
-	return result, nil
+	return result.Data, nil
 }
 
 func (bc *BeaconClient) GetFinalityCheckpoints() (*v1.Finality, error) {
@@ -237,11 +241,13 @@ func (bc *BeaconClient) GetFinalityCheckpoints() (*v1.Finality, error) {
 	if !isProvider {
 		return nil, fmt.Errorf("get finality not supported")
 	}
-	result, err := provider.Finality(ctx, "head")
+	result, err := provider.Finality(ctx, &api.FinalityOpts{
+		State: "head",
+	})
 	if err != nil {
 		return nil, err
 	}
-	return result, nil
+	return result.Data, nil
 }
 
 func (bc *BeaconClient) GetBlockHeaderByBlockroot(blockroot []byte) (*v1.BeaconBlockHeader, error) {
@@ -251,11 +257,16 @@ func (bc *BeaconClient) GetBlockHeaderByBlockroot(blockroot []byte) (*v1.BeaconB
 	if !isProvider {
 		return nil, fmt.Errorf("get beacon block headers not supported")
 	}
-	result, err := provider.BeaconBlockHeader(ctx, fmt.Sprintf("0x%x", blockroot))
+	result, err := provider.BeaconBlockHeader(ctx, &api.BeaconBlockHeaderOpts{
+		Block: fmt.Sprintf("0x%x", blockroot),
+	})
 	if err != nil {
+		if strings.HasPrefix(err.Error(), "GET failed with status 404") {
+			return nil, nil
+		}
 		return nil, err
 	}
-	return result, nil
+	return result.Data, nil
 }
 
 func (bc *BeaconClient) GetBlockHeaderBySlot(slot uint64) (*v1.BeaconBlockHeader, error) {
@@ -265,11 +276,16 @@ func (bc *BeaconClient) GetBlockHeaderBySlot(slot uint64) (*v1.BeaconBlockHeader
 	if !isProvider {
 		return nil, fmt.Errorf("get beacon block headers not supported")
 	}
-	result, err := provider.BeaconBlockHeader(ctx, fmt.Sprintf("%d", slot))
+	result, err := provider.BeaconBlockHeader(ctx, &api.BeaconBlockHeaderOpts{
+		Block: fmt.Sprintf("%d", slot),
+	})
 	if err != nil {
+		if strings.HasPrefix(err.Error(), "GET failed with status 404") {
+			return nil, nil
+		}
 		return nil, err
 	}
-	return result, nil
+	return result.Data, nil
 }
 
 func (bc *BeaconClient) GetBlockBodyByBlockroot(blockroot []byte) (*spec.VersionedSignedBeaconBlock, error) {
@@ -279,11 +295,16 @@ func (bc *BeaconClient) GetBlockBodyByBlockroot(blockroot []byte) (*spec.Version
 	if !isProvider {
 		return nil, fmt.Errorf("get signed beacon block not supported")
 	}
-	result, err := provider.SignedBeaconBlock(ctx, fmt.Sprintf("0x%x", blockroot))
+	result, err := provider.SignedBeaconBlock(ctx, &api.SignedBeaconBlockOpts{
+		Block: fmt.Sprintf("0x%x", blockroot),
+	})
 	if err != nil {
+		if strings.HasPrefix(err.Error(), "GET failed with status 404") {
+			return nil, nil
+		}
 		return nil, err
 	}
-	return result, nil
+	return result.Data, nil
 }
 
 type ProposerDuties struct {
@@ -297,13 +318,22 @@ func (bc *BeaconClient) GetProposerDuties(epoch uint64) (*ProposerDuties, error)
 		return nil, nil
 	}
 
-	var proposerDuties ProposerDuties
-	err := bc.getJson(fmt.Sprintf("%s/eth/v1/validator/duties/proposer/%d", bc.endpoint, epoch), &proposerDuties)
-	if err != nil {
-		return nil, fmt.Errorf("error retrieving proposer duties: %v", err)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	provider, isProvider := bc.clientSvc.(eth2client.ProposerDutiesProvider)
+	if !isProvider {
+		return nil, fmt.Errorf("get beacon committees not supported")
 	}
-
-	return &proposerDuties, nil
+	result, err := provider.ProposerDuties(ctx, &api.ProposerDutiesOpts{
+		Epoch: phase0.Epoch(epoch),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &ProposerDuties{
+		DependentRoot: result.Metadata["dependent_root"].(phase0.Root),
+		Data:          result.Data,
+	}, nil
 }
 
 func (bc *BeaconClient) GetCommitteeDuties(stateRef string, epoch uint64) ([]*v1.BeaconCommittee, error) {
@@ -313,11 +343,15 @@ func (bc *BeaconClient) GetCommitteeDuties(stateRef string, epoch uint64) ([]*v1
 	if !isProvider {
 		return nil, fmt.Errorf("get beacon committees not supported")
 	}
-	result, err := provider.BeaconCommitteesAtEpoch(ctx, stateRef, phase0.Epoch(epoch))
+	epochRef := phase0.Epoch(epoch)
+	result, err := provider.BeaconCommittees(ctx, &api.BeaconCommitteesOpts{
+		State: stateRef,
+		Epoch: &epochRef,
+	})
 	if err != nil {
 		return nil, err
 	}
-	return result, nil
+	return result.Data, nil
 }
 
 func (bc *BeaconClient) GetSyncCommitteeDuties(stateRef string, epoch uint64) (*v1.SyncCommittee, error) {
@@ -330,11 +364,15 @@ func (bc *BeaconClient) GetSyncCommitteeDuties(stateRef string, epoch uint64) (*
 	if !isProvider {
 		return nil, fmt.Errorf("get sync committees not supported")
 	}
-	result, err := provider.SyncCommitteeAtEpoch(ctx, stateRef, phase0.Epoch(epoch))
+	epochRef := phase0.Epoch(epoch)
+	result, err := provider.SyncCommittee(ctx, &api.SyncCommitteeOpts{
+		State: stateRef,
+		Epoch: &epochRef,
+	})
 	if err != nil {
 		return nil, err
 	}
-	return result, nil
+	return result.Data, nil
 }
 
 func (bc *BeaconClient) GetStateValidators(stateRef string) (map[phase0.ValidatorIndex]*v1.Validator, error) {
@@ -344,23 +382,27 @@ func (bc *BeaconClient) GetStateValidators(stateRef string) (map[phase0.Validato
 	if !isProvider {
 		return nil, fmt.Errorf("get validators not supported")
 	}
-	result, err := provider.Validators(ctx, stateRef, nil)
+	result, err := provider.Validators(ctx, &api.ValidatorsOpts{
+		State: stateRef,
+	})
 	if err != nil {
 		return nil, err
 	}
-	return result, nil
+	return result.Data, nil
 }
 
 func (bc *BeaconClient) GetBlobSidecarsByBlockroot(blockroot []byte) ([]*deneb.BlobSidecar, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	provider, isProvider := bc.clientSvc.(eth2client.BeaconBlockBlobsProvider)
+	provider, isProvider := bc.clientSvc.(eth2client.BlobSidecarsProvider)
 	if !isProvider {
 		return nil, fmt.Errorf("get beacon block blobs not supported")
 	}
-	result, err := provider.BeaconBlockBlobs(ctx, fmt.Sprintf("0x%x", blockroot))
+	result, err := provider.BlobSidecars(ctx, &api.BlobSidecarsOpts{
+		Block: fmt.Sprintf("0x%x", blockroot),
+	})
 	if err != nil {
 		return nil, err
 	}
-	return result, nil
+	return result.Data, nil
 }

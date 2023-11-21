@@ -85,7 +85,7 @@
                   <b>Showing {{ .Block.AttestationsCount }} Attestations</b>
                 </h3>
                 <div class="col-md-4 text-center text-md-end">
-                  {{ if not .Block.DutiesLoaded -}}
+                  {{ if and (not .Block.DutiesLoaded) (not .Block.DenyDutyLoading) -}}
                   <a class="btn btn-primary" href="?duties=1#attestations" role="button" data-bs-toggle="tooltip" data-bs-placement="bottom" data-bs-title="This might take a few seconds">Load Validator Indexes</a>
                   {{- end }}
                 </div>

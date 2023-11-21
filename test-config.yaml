@@ -27,6 +27,7 @@ frontend:
   minimize: false
   siteName: "Dora the Explorer" # Name of the site, displayed in the title tag
   siteSubtitle: "Ephemery"
+  siteDomain: "dora.ephemery.dev"
   ethExplorerLink: "https://explorer.ephemery.dev/"
   validatorNamesYaml: "validator_names.yaml"
   #validatorNamesInventory: "https://config.4844-devnet-7.ethpandaops.io/api/v1/nodes/validator-ranges"

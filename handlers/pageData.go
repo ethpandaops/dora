@@ -21,19 +21,24 @@ var layoutTemplateFiles = []string{
 }
 
 func InitPageData(w http.ResponseWriter, r *http.Request, active, path, title string, mainTemplates []string) *types.PageData {
-	fullTitle := fmt.Sprintf("%v - %v - %v", title, utils.Config.Frontend.SiteName, time.Now().Year())
+	fullTitle := fmt.Sprintf("%v - %v", utils.Config.Frontend.SiteName, title)
 
 	if title == "" {
-		fullTitle = fmt.Sprintf("%v - %v", utils.Config.Frontend.SiteName, time.Now().Year())
+		fullTitle = fmt.Sprintf("%v", utils.Config.Frontend.SiteName)
 	}
 
 	isMainnet := utils.Config.Chain.Config.ConfigName == "mainnet"
 	buildTime, _ := time.Parse("2006-01-02T15:04:05Z", utils.Buildtime)
+	siteDomain := utils.Config.Frontend.SiteDomain
+	if siteDomain == "" {
+		siteDomain = r.Host
+	}
+
 	data := &types.PageData{
 		Meta: &types.Meta{
 			Title:       fullTitle,
-			Description: "beaconchain makes Ethereum accessible to non-technical end users",
-			Domain:      r.Host,
+			Description: "Dora the Explorer makes the Ethereum Beacon Chain accessible to non-technical end users",
+			Domain:      siteDomain,
 			Path:        path,
 			Templates:   strings.Join(mainTemplates, ","),
 		},

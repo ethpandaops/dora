@@ -53,6 +53,7 @@ type SlotPageBlockData struct {
 	VoluntaryExitsCount    uint64                 `json:"voluntaryexits_count"`
 	SlashingsCount         uint64                 `json:"slashings_count"`
 	BlobsCount             uint64                 `json:"blobs_count"`
+	DenyDutyLoading        bool                   `json:"deny_duties"`
 	DutiesLoaded           bool                   `json:"duties_loaded"`
 
 	ExecutionData     *SlotPageExecutionData      `json:"execution_data"`
