@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/attestantio/go-eth2-client/spec/deneb"
-
 	"github.com/pk910/dora/db"
 	"github.com/pk910/dora/dbtypes"
 	"github.com/pk910/dora/utils"
@@ -150,12 +148,12 @@ func (cache *indexerCache) processFinalizedEpoch(epoch uint64) error {
 
 	// get canonical blocks
 	canonicalMap := map[uint64]*CacheBlock{}
-	blobs := []*deneb.BlobSidecar{}
+	blobs := []*BlobAssignment{}
 	slotsWithBlobs := 0
 	for slot, block := range cache.getCanonicalBlockMap(epoch, nil) {
 		canonicalMap[slot] = block
 
-		blobCommitments, _ := block.GetBlockBody().BlobKzgCommitments()
+		blobCommitments, _ := block.GetBlockBody().BlobKZGCommitments()
 		if len(blobCommitments) > 0 {
 			logger.Debugf("loading blobs for slot %v: %v blobs", slot, len(blobCommitments))
 			slotsWithBlobs++
@@ -167,7 +165,13 @@ func (cache *indexerCache) processFinalizedEpoch(epoch uint64) error {
 			if err != nil {
 				return fmt.Errorf("cannot load blobs for block 0x%x: %v", block.Root, err)
 			}
-			blobs = append(blobs, blobRsp...)
+			for _, blob := range blobRsp {
+				blobs = append(blobs, &BlobAssignment{
+					Slot: slot,
+					Root: block.Root,
+					Blob: blob,
+				})
+			}
 		}
 	}
 	if len(blobs) > 0 {

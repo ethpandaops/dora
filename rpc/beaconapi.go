@@ -182,7 +182,11 @@ func (bc *BeaconClient) GetGenesis() (*v1.Genesis, error) {
 	if !isProvider {
 		return nil, fmt.Errorf("get genesis not supported")
 	}
-	result, err := provider.Genesis(ctx)
+	result, err := provider.Genesis(ctx, &api.GenesisOpts{
+		Common: api.CommonOpts{
+			Timeout: 0,
+		},
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -196,7 +200,11 @@ func (bc *BeaconClient) GetNodeSyncing() (*v1.SyncState, error) {
 	if !isProvider {
 		return nil, fmt.Errorf("get node syncing not supported")
 	}
-	result, err := provider.NodeSyncing(ctx)
+	result, err := provider.NodeSyncing(ctx, &api.NodeSyncingOpts{
+		Common: api.CommonOpts{
+			Timeout: 0,
+		},
+	})
 	if err != nil {
 		return nil, err
 	}

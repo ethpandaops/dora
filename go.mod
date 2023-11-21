@@ -4,7 +4,7 @@ go 1.21
 
 require (
 	dario.cat/mergo v1.0.0
-	github.com/attestantio/go-eth2-client v0.18.4-0.20231021085332-f9b2dfbf648b
+	github.com/attestantio/go-eth2-client v0.19.5-0.20231111085518-de3582f229ec
 	github.com/aws/aws-sdk-go-v2 v1.21.0
 	github.com/aws/aws-sdk-go-v2/config v1.18.38
 	github.com/aws/aws-sdk-go-v2/credentials v1.13.36
