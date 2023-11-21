@@ -38,6 +38,7 @@ func Slot(w http.ResponseWriter, r *http.Request) {
 		"slot/voluntary_exits.html",
 		"slot/slashings.html",
 		"slot/blobs.html",
+		"slot/stateless.html",
 	)
 	var notfoundTemplateFiles = append(layoutTemplateFiles,
 		"slot/notfound.html",
@@ -577,6 +578,7 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, assignments
 				BlockNumber:       uint64(executionPayload.BlockNumber),
 				TransactionsCount: uint64(len(executionPayload.Transactions)),
 			}
+			pageData.ExecutionWitness = &models.SlotPageExecutionWitness{Witness: executionPayload.ExecutionWitness}
 		}
 	}
 
