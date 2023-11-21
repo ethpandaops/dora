@@ -5,7 +5,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/attestantio/go-eth2-client/spec/deneb"
 	"github.com/pk910/dora/db"
 	"github.com/pk910/dora/dbtypes"
 	"github.com/pk910/dora/utils"
@@ -252,14 +251,14 @@ func (sync *synchronizerState) syncEpoch(syncEpoch uint64, retryCount int, lastT
 
 	// load blobs
 	lastSlot = firstSlot + utils.Config.Chain.Config.SlotsPerEpoch - 1
-	blobs := []*deneb.BlobSidecar{}
+	blobs := []*BlobAssignment{}
 	for slot := firstSlot; slot <= lastSlot; slot++ {
 		block := sync.cachedBlocks[slot]
 		if block == nil {
 			continue
 		}
 
-		blobKzgCommitments, _ := block.GetBlockBody().BlobKzgCommitments()
+		blobKzgCommitments, _ := block.GetBlockBody().BlobKZGCommitments()
 		if len(blobKzgCommitments) == 0 {
 			continue
 		}
@@ -267,7 +266,13 @@ func (sync *synchronizerState) syncEpoch(syncEpoch uint64, retryCount int, lastT
 		if err != nil {
 			return false, client, fmt.Errorf("cannot load blobs for block 0x%x: %v", block.Root, err)
 		}
-		blobs = append(blobs, blobRsp...)
+		for _, blob := range blobRsp {
+			blobs = append(blobs, &BlobAssignment{
+				Slot: slot,
+				Root: block.Root,
+				Blob: blob,
+			})
+		}
 	}
 
 	// save blocks

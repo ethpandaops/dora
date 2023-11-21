@@ -5,6 +5,8 @@ github.com/Masterminds/semver/v3 v3.1.1 h1:hLg3sBzpNErnxhQtUy/mmLR2I9foDujNK030I
 github.com/Masterminds/semver/v3 v3.1.1/go.mod h1:VPu/7SZ7ePZ3QOrcuXROw5FAcLl4a0cBrbBpGY/8hQs=
 github.com/attestantio/go-eth2-client v0.18.4-0.20231021085332-f9b2dfbf648b h1:Sp0y1zXnA4O9xvBUjz/2ETAe6IPl8EMKCTVM337giZg=
 github.com/attestantio/go-eth2-client v0.18.4-0.20231021085332-f9b2dfbf648b/go.mod h1:mZve1kV9Ctj0I1HH9gdg+MnI8lZ+Cb2EktEtOYrBlsM=
+github.com/attestantio/go-eth2-client v0.19.5-0.20231111085518-de3582f229ec h1:OX1V+EEELG481JeTUdlLKV1ZK3SE+1YAH1lAB0P20QA=
+github.com/attestantio/go-eth2-client v0.19.5-0.20231111085518-de3582f229ec/go.mod h1:mZve1kV9Ctj0I1HH9gdg+MnI8lZ+Cb2EktEtOYrBlsM=
 github.com/aws/aws-sdk-go-v2 v1.21.0 h1:gMT0IW+03wtYJhRqTVYn0wLzwdnK9sRMcxmtfGzRdJc=
 github.com/aws/aws-sdk-go-v2 v1.21.0/go.mod h1:/RfNgGmRxI+iFOB1OeJUyxiU+9s88k3pfHvDagGEp0M=
 github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.4.13 h1:OPLEkmhXf6xFPiz0bLeDArZIDx1NNS4oJyG4nv3Gct0=

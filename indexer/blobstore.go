@@ -32,6 +32,12 @@ type BlobStore struct {
 	s3Store *aws.S3Store
 }
 
+type BlobAssignment struct {
+	Root []byte
+	Slot uint64
+	Blob *deneb.BlobSidecar
+}
+
 func newBlobStore() *BlobStore {
 	store := &BlobStore{}
 
@@ -69,31 +75,31 @@ func (store *BlobStore) getBlobName(blob *dbtypes.Blob) string {
 	return blobName
 }
 
-func (store *BlobStore) saveBlob(blob *deneb.BlobSidecar, tx *sqlx.Tx) error {
+func (store *BlobStore) saveBlob(blob *BlobAssignment, tx *sqlx.Tx) error {
 	dbBlob := &dbtypes.Blob{
-		Commitment: blob.KzgCommitment[:],
-		Proof:      blob.KzgProof[:],
-		Size:       uint32(len(blob.Blob)),
+		Commitment: blob.Blob.KZGCommitment[:],
+		Proof:      blob.Blob.KZGProof[:],
+		Size:       uint32(len(blob.Blob.Blob)),
 	}
 	dbBlobAssignment := &dbtypes.BlobAssignment{
-		Root:       blob.BlockRoot[:],
-		Commitment: blob.KzgCommitment[:],
+		Root:       blob.Root[:],
+		Commitment: blob.Blob.KZGCommitment[:],
 		Slot:       uint64(blob.Slot),
 	}
 	blobName := store.getBlobName(dbBlob)
 
 	switch store.mode {
 	case blobPersistenceModeDb:
-		blobData := blob.Blob[:]
+		blobData := blob.Blob.Blob[:]
 		dbBlob.Blob = &blobData
 	case blobPersistenceModeFs:
 		blobFile := path.Join(utils.Config.BlobStore.Fs.Path, blobName)
-		err := os.WriteFile(blobFile, blob.Blob[:], 0644)
+		err := os.WriteFile(blobFile, blob.Blob.Blob[:], 0644)
 		if err != nil {
 			return fmt.Errorf("could not save blob to file '%v': %w", blobFile, err)
 		}
 	case blobPersistenceModeAws:
-		err := store.s3Store.Upload(blobName, blob.Blob[:])
+		err := store.s3Store.Upload(blobName, blob.Blob.Blob[:])
 		if err != nil {
 			return fmt.Errorf("could not upload blob to s3 '%v': %w", blobName, err)
 		}
@@ -153,7 +159,7 @@ func (store *BlobStore) LoadBlob(commitment []byte, blockroot []byte, client *In
 				logger_blobs.Warnf("cannot load blobs from rpc (0x%x): %v", blockroot, err)
 			} else {
 				for _, cblob := range blobRsp {
-					if bytes.Equal(cblob.KzgCommitment[:], commitment) {
+					if bytes.Equal(cblob.KZGCommitment[:], commitment) {
 						blob = cblob
 						break
 					}
@@ -165,7 +171,7 @@ func (store *BlobStore) LoadBlob(commitment []byte, blockroot []byte, client *In
 				if dbBlob == nil {
 					dbBlob = &dbtypes.Blob{
 						Commitment: commitment,
-						Proof:      blob.KzgProof[:],
+						Proof:      blob.KZGProof[:],
 						Size:       uint32(len(blobData)),
 					}
 				}

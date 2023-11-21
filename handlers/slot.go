@@ -302,7 +302,7 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, assignments
 	blsToExecChanges, _ := blockData.Block.BLSToExecutionChanges()
 	syncAggregate, _ := blockData.Block.SyncAggregate()
 	executionWithdrawals, _ := blockData.Block.Withdrawals()
-	blobKzgCommitments, _ := blockData.Block.BlobKzgCommitments()
+	blobKzgCommitments, _ := blockData.Block.BlobKZGCommitments()
 
 	pageData := &models.SlotPageBlockData{
 		BlockRoot:              blockData.Root,
