@@ -1061,3 +1061,73 @@ func InsertUnknownFunctionSignatures(txUnknownSigs []*dbtypes.TxUnknownFunctionS
 	}
 	return nil
 }
+
+func InsertPendingFunctionSignatures(txPendingSigs []*dbtypes.TxPendingFunctionSignature, tx *sqlx.Tx) error {
+	var sql strings.Builder
+	fmt.Fprint(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
+		dbtypes.DBEnginePgsql:  `INSERT INTO tx_pending_signatures (bytes, queuetime) VALUES `,
+		dbtypes.DBEngineSqlite: `INSERT OR IGNORE INTO tx_pending_signatures (bytes, queuetime) VALUES `,
+	}))
+	argIdx := 0
+	args := make([]any, len(txPendingSigs)*2)
+	for i, pendingSig := range txPendingSigs {
+		if i > 0 {
+			fmt.Fprintf(&sql, ", ")
+		}
+		fmt.Fprintf(&sql, "($%v, $%v)", argIdx+1, argIdx+2)
+		args[argIdx] = pendingSig.Bytes
+		args[argIdx+1] = pendingSig.QueueTime
+		argIdx += 2
+	}
+	fmt.Fprint(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
+		dbtypes.DBEnginePgsql:  ` ON CONFLICT (bytes) DO NOTHING`,
+		dbtypes.DBEngineSqlite: "",
+	}))
+	_, err := tx.Exec(sql.String(), args...)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func GetPendingFunctionSignatures(limit uint64) []*dbtypes.TxPendingFunctionSignature {
+	pendingFnSigs := []*dbtypes.TxPendingFunctionSignature{}
+	var sql strings.Builder
+	fmt.Fprintf(&sql, `
+	`)
+
+	err := ReaderDb.Select(&pendingFnSigs, `
+	SELECT
+		bytes, queuetime
+	FROM tx_pending_signatures
+	ORDER BY queuetime ASC
+	LIMIT $1`, limit)
+	if err != nil {
+		logger.Errorf("Error while fetching unknown function signatures: %v", err)
+		return nil
+	}
+	return pendingFnSigs
+}
+
+func DeletePendingFunctionSignatures(sigBytes []types.TxSignatureBytes, tx *sqlx.Tx) error {
+	if len(sigBytes) == 0 {
+		return nil
+	}
+	var sql strings.Builder
+	fmt.Fprintf(&sql, `
+	DELETE FROM tx_pending_signatures
+	WHERE bytes in (`)
+	argIdx := 0
+	args := make([]any, len(sigBytes))
+	for i, b := range sigBytes {
+		if i > 0 {
+			fmt.Fprintf(&sql, ", ")
+		}
+		fmt.Fprintf(&sql, "$%v", argIdx+1)
+		args[argIdx] = b[:]
+		argIdx += 1
+	}
+	fmt.Fprintf(&sql, ")")
+	_, err := tx.Exec(sql.String(), args...)
+	return err
+}

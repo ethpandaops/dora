@@ -111,3 +111,8 @@ type TxUnknownFunctionSignature struct {
 	Bytes     []byte `db:"bytes"`
 	LastCheck uint64 `db:"lastcheck"`
 }
+
+type TxPendingFunctionSignature struct {
+	Bytes     []byte `db:"bytes"`
+	QueueTime uint64 `db:"queuetime"`
+}

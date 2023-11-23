@@ -11,8 +11,15 @@ CREATE TABLE IF NOT EXISTS "tx_function_signatures"
 
 CREATE TABLE IF NOT EXISTS "tx_unknown_signatures"
 (
-    "bytes" bytea NOT NULL,
+    "bytes" BLOB NOT NULL,
     "lastcheck" bigint NOT NULL,
+    PRIMARY KEY ("bytes")
+);
+
+CREATE TABLE IF NOT EXISTS "tx_pending_signatures"
+(
+    "bytes" BLOB NOT NULL,
+    "queuetime" bigint NOT NULL,
     PRIMARY KEY ("bytes")
 );
 

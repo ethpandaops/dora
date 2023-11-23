@@ -16,6 +16,13 @@ CREATE TABLE IF NOT EXISTS public."tx_unknown_signatures"
     PRIMARY KEY ("bytes")
 );
 
+CREATE TABLE IF NOT EXISTS public."tx_pending_signatures"
+(
+    "bytes" bytea NOT NULL,
+    "queuetime" bigint NOT NULL,
+    PRIMARY KEY ("bytes")
+);
+
 -- +goose StatementEnd
 -- +goose Down
 -- +goose StatementBegin
