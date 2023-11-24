@@ -116,7 +116,9 @@ func (indexer *Indexer) GetReadyClient(archive bool, head []byte, skip []*Indexe
 func (indexer *Indexer) GetReadyClients(archive bool, head []byte) []*IndexerClient {
 	headCandidates := indexer.GetHeadForks(true)
 	if len(headCandidates) == 0 {
-		return indexer.indexerClients
+		allCandidates := make([]*IndexerClient, len(indexer.indexerClients))
+		copy(allCandidates, indexer.indexerClients)
+		return allCandidates
 	}
 
 	var headFork *HeadFork
