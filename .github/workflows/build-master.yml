@@ -18,7 +18,13 @@ jobs:
     uses: ./.github/workflows/_shared-build.yaml
     with:
       release: "snapshot"
-
+      docker: true
+      repository: "pk910/dora-the-explorer"
+      tag: "unstable"
+    secrets:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+  
   create_snapshot_release:
     name: Create snapshot release
     needs: [build_binaries]
@@ -93,56 +99,81 @@ jobs:
           ### Release Artifacts
           | Release File  | Description |
           | ------------- | ------------- |
-          | [explorer_windows_amd64.exe](https://github.com/pk910/dora/releases/download/snapshot/explorer_windows_amd64.exe) | explorer executable for windows (64bit) |
-          | [explorer_linux_amd64](https://github.com/pk910/dora/releases/download/snapshot/explorer_linux_amd64) | explorer executable for linux (64bit) |
-          | [explorer_darwin_amd64](https://github.com/pk910/dora/releases/download/snapshot/explorer_darwin_amd64) | explorer executable for macos (64bit) |
+          | [dora_snapshot_windows_amd64.zip](https://github.com/pk910/dora/releases/download/snapshot/dora_snapshot_windows_amd64.zip) | dora executables for windows/amd64 |
+          | [dora_snapshot_linux_amd64.tar.gz](https://github.com/pk910/dora/releases/download/snapshot/dora_snapshot_linux_amd64.tar.gz) | dora executables for linux/amd64 |
+          | [dora_snapshot_linux_arm64.tar.gz](https://github.com/pk910/dora/releases/download/snapshot/dora_snapshot_linux_arm64.tar.gz) | dora executables for linux/arm64 |
+          | [dora_snapshot_darwin_amd64.tar.gz](https://github.com/pk910/dora/releases/download/snapshot/dora_snapshot_darwin_amd64.tar.gz) | dora executable for macos/amd64 |
+          | [dora_snapshot_darwin_arm64.tar.gz](https://github.com/pk910/dora/releases/download/snapshot/dora_snapshot_darwin_arm64.tar.gz) | dora executable for macos/arm64 |
       env:
         GITHUB_TOKEN: ${{ github.token }}
 
-    # upload release artifacts
-    - name: "Upload snapshot release artifact: explorer_windows_amd64.exe"
+    # generate & upload release artifacts
+    - name: "Generate release package: dora_snapshot_windows_amd64.zip"
+      run: |
+        cd explorer_windows_amd64
+        zip -r -q ../dora_snapshot_windows_amd64.zip .
+    - name: "Upload snapshot release artifact: dora_snapshot_windows_amd64.zip"
       uses: actions/upload-release-asset@v1
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./explorer_windows_amd64.exe/explorer_windows_amd64.exe
-        asset_name: explorer_windows_amd64.exe
-        asset_content_type: application/octet-stream
-      env:
-        GITHUB_TOKEN: ${{ github.token }}
-    - name: "Upload snapshot release artifact: explorer_linux_amd64"
-      uses: actions/upload-release-asset@v1
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./explorer_linux_amd64/explorer_linux_amd64
-        asset_name: explorer_linux_amd64
-        asset_content_type: application/octet-stream
-      env:
-        GITHUB_TOKEN: ${{ github.token }}
-    - name: "Upload snapshot release artifact: explorer_darwin_amd64"
-      uses: actions/upload-release-asset@v1
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./explorer_darwin_amd64/explorer_darwin_amd64
-        asset_name: explorer_darwin_amd64
+        asset_path: ./dora_snapshot_windows_amd64.zip
+        asset_name: dora_snapshot_windows_amd64.zip
         asset_content_type: application/octet-stream
       env:
         GITHUB_TOKEN: ${{ github.token }}
     
-  build_docker:
-    name: Build Docker Image
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v2
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
-      - name: Login to Docker Hub
-        uses: docker/login-action@v2
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - name: Build unstable docker image
-        run: docker build . --build-arg release=snapshot --file Dockerfile --tag pk910/dora-the-explorer:unstable
-      - name: Push unstable docker image
-        run: docker push pk910/dora-the-explorer:unstable
+    - name: "Generate release package: dora_snapshot_linux_amd64.tar.gz"
+      run: |
+        cd explorer_linux_amd64
+        tar -czf ../dora_snapshot_linux_amd64.tar.gz .
+    - name: "Upload snapshot release artifact: dora_snapshot_linux_amd64.tar.gz"
+      uses: actions/upload-release-asset@v1
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./dora_snapshot_linux_amd64.tar.gz
+        asset_name: dora_snapshot_linux_amd64.tar.gz
+        asset_content_type: application/octet-stream
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+    
+    - name: "Generate release package: dora_snapshot_linux_arm64.tar.gz"
+      run: |
+        cd explorer_linux_arm64
+        tar -czf ../dora_snapshot_linux_arm64.tar.gz .
+    - name: "Upload snapshot release artifact: dora_snapshot_linux_arm64.tar.gz"
+      uses: actions/upload-release-asset@v1
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./dora_snapshot_linux_arm64.tar.gz
+        asset_name: dora_snapshot_linux_arm64.tar.gz
+        asset_content_type: application/octet-stream
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+    
+    - name: "Generate release package: dora_snapshot_darwin_amd64.tar.gz"
+      run: |
+        cd explorer_darwin_amd64
+        tar -czf ../dora_snapshot_darwin_amd64.tar.gz .
+    - name: "Upload snapshot release artifact: dora_snapshot_darwin_amd64.tar.gz"
+      uses: actions/upload-release-asset@v1
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./dora_snapshot_darwin_amd64.tar.gz
+        asset_name: dora_snapshot_darwin_amd64.tar.gz
+        asset_content_type: application/octet-stream
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+
+    - name: "Generate release package: dora_snapshot_darwin_arm64.tar.gz"
+      run: |
+        cd explorer_darwin_arm64
+        tar -czf ../dora_snapshot_darwin_arm64.tar.gz .
+    - name: "Upload snapshot release artifact: dora_snapshot_darwin_arm64.tar.gz"
+      uses: actions/upload-release-asset@v1
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./dora_snapshot_darwin_arm64.tar.gz
+        asset_name: dora_snapshot_darwin_arm64.tar.gz
+        asset_content_type: application/octet-stream
+      env:
+        GITHUB_TOKEN: ${{ github.token }}

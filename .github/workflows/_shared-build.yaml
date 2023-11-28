@@ -2,36 +2,58 @@
 name: Reusable build workflow
 on:
   workflow_call:
-     inputs:
-        release:
-          description: 'Release version tag for this build'
-          default: ''
-          required: false
-          type: string
+    inputs:
+      release:
+        description: 'Release version tag for this build'
+        default: ''
+        required: false
+        type: string
+      docker:
+        description: 'Build docker images'
+        default: false
+        required: true
+        type: boolean
+      repository:
+        description: 'Docker Hub Repository'
+        default: ''
+        required: false
+        type: string
+      tag:
+        description: 'Docker Image Tag'
+        default: ''
+        required: false
+        type: string
+    secrets:
+      DOCKERHUB_USERNAME:
+        description: 'Docker Hub Username'
+        required: false
+      DOCKERHUB_TOKEN:
+        description: 'Docker Hub Token'
+        required: false
 
 # shared build jobs
 jobs:
-  build_linux_binary:
-    name: Build Linux binary
+  build_linux_amd64_binary:
+    name: Build linux/amd64 binary
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
 
     # setup global dependencies
-    - name: Set up Go
+    - name: Set up go
       uses: actions/setup-go@v4
       with:
         go-version: 1.21.x
-
+    
     # setup project dependencies
     - name: Get dependencies
       run: |
         go get -v -t -d ./...
 
     # build binaries
-    - name: Build linux binary
+    - name: Build linux amd64 binary
       run: |
-        make linux
+        make build
       env:
         RELEASE: ${{ inputs.release }}
 
@@ -39,17 +61,53 @@ jobs:
     - name: "Upload artifact: explorer_linux_amd64"
       uses: actions/upload-artifact@v3
       with:
-        path: ./bin/explorer_linux_amd64
+        path: ./bin/*
         name: explorer_linux_amd64
+  
+  build_linux_arm64_binary:
+    name: Build linux/arm64 binary
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    # setup global dependencies
+    - name: Set up go
+      uses: actions/setup-go@v4
+      with:
+        go-version: 1.21.x
+
+    # setup cross build libs
+    - name: Get cross build dependencies
+      run: |
+        sudo apt-get -y install gcc-aarch64-linux-gnu
+    
+    # setup project dependencies
+    - name: Get dependencies
+      run: |
+        go get -v -t -d ./...
+
+    # build binaries
+    - name: Build linux arm64 binary
+      run: |
+        make build GOARCH=arm64 CC=/usr/bin/aarch64-linux-gnu-gcc
+      env:
+        RELEASE: ${{ inputs.release }}
+
+    # upload artifacts
+    - name: "Upload artifact: explorer_linux_arm64"
+      uses: actions/upload-artifact@v3
+      with:
+        path: ./bin/*
+        name: explorer_linux_arm64
 
   build_windows_binary:
-    name: Build Windows binary
+    name: Build windows/amd64 binary
     runs-on: windows-latest
     steps:
     - uses: actions/checkout@v3
 
     # setup global dependencies
-    - name: Set up Go
+    - name: Set up go
       uses: actions/setup-go@v4
       with:
         go-version: 1.21.x
@@ -62,25 +120,25 @@ jobs:
     # build binaries
     - name: Build windows binary
       run: |
-        make windows
+        make build
       env:
         RELEASE: ${{ inputs.release }}
 
     # upload artifacts
-    - name: "Upload artifact: explorer_windows_amd64.exe"
+    - name: "Upload artifact: explorer_windows_amd64"
       uses: actions/upload-artifact@v3
       with:
-        path: ./bin/explorer_windows_amd64.exe
-        name: explorer_windows_amd64.exe
+        path: ./bin/*
+        name: explorer_windows_amd64
 
-  build_darwin_binary:
-    name: Build MacOS binary
+  build_darwin_amd64_binary:
+    name: Build macos/amd64 binary
     runs-on: macos-latest
     steps:
     - uses: actions/checkout@v3
 
     # setup global dependencies
-    - name: Set up Go
+    - name: Set up go
       uses: actions/setup-go@v4
       with:
         go-version: 1.21.x
@@ -91,9 +149,9 @@ jobs:
         go get -v -t -d ./...
 
     # build binaries
-    - name: Build macos binary
+    - name: Build macos amd64 binary
       run: |
-        make darwin
+        make build
       env:
         RELEASE: ${{ inputs.release }}
 
@@ -101,5 +159,163 @@ jobs:
     - name: "Upload artifact: explorer_darwin_amd64"
       uses: actions/upload-artifact@v3
       with:
-        path: ./bin/explorer_darwin_amd64
+        path: ./bin/*
         name: explorer_darwin_amd64
+
+  build_darwin_arm64_binary:
+    name: Build macos/arm64 binary
+    runs-on: macos-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    # setup global dependencies
+    - name: Set up go
+      uses: actions/setup-go@v4
+      with:
+        go-version: 1.21.x
+
+    # setup project dependencies
+    - name: Get dependencies
+      run: |
+        go get -v -t -d ./...
+
+    # build binaries
+    - name: Build macos arm64 binary
+      run: |
+        make build GOARCH=arm64
+      env:
+        RELEASE: ${{ inputs.release }}
+
+    # upload artifacts
+    - name: "Upload artifact: explorer_darwin_arm64"
+      uses: actions/upload-artifact@v3
+      with:
+        path: ./bin/*
+        name: explorer_darwin_arm64
+
+  build_amd64_docker_image:
+    name: Build amd64 docker image
+    needs: [build_linux_amd64_binary]
+    if: ${{ inputs.docker }}
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Get build version
+      id: vars
+      run: echo "::set-output name=sha_short::$(git rev-parse --short HEAD)"
+
+    # prepare docker
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+    - name: Login to Docker Hub
+      uses: docker/login-action@v2
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+    # download build artifacts
+    - name: Download build artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: explorer_linux_amd64
+        path: ./bin
+
+    # prepare environment
+    - name: Prepare build environment
+      run: |
+        chmod +x ./bin/*
+        ls -lach ./bin
+    
+    # build amd64 image
+    - name: Build amd64 docker image
+      run: |
+        docker build . --file Dockerfile-stub \
+          --tag ${{ inputs.repository }}:${{ inputs.tag }}-amd64 \
+          --tag ${{ inputs.repository }}:${{ inputs.tag }}-${{ steps.vars.outputs.sha_short }}-amd64 \
+          --platform=linux/amd64
+    - name: Push amd64 docker images
+      run: |
+        docker push ${{ inputs.repository }}:${{ inputs.tag }}-amd64
+        docker push ${{ inputs.repository }}:${{ inputs.tag }}-${{ steps.vars.outputs.sha_short }}-amd64
+  
+  build_arm64_docker_image:
+    name: Build arm64 docker image
+    needs: [build_linux_arm64_binary]
+    if: ${{ inputs.docker }}
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Get build version
+      id: vars
+      run: echo "::set-output name=sha_short::$(git rev-parse --short HEAD)"
+
+    # prepare docker
+    - name: Set up Docker QEMU
+      uses: docker/setup-qemu-action@v2
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+    - name: Login to Docker Hub
+      uses: docker/login-action@v2
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+    # download build artifacts
+    - name: Download build artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: explorer_linux_arm64
+        path: ./bin
+
+    # prepare environment
+    - name: Prepare build environment
+      run: |
+        chmod +x ./bin/*
+        ls -lach ./bin
+    
+    # build arm64 image
+    - name: Build arm64 docker image
+      run: |
+        docker build . --file Dockerfile-stub \
+          --tag ${{ inputs.repository }}:${{ inputs.tag }}-arm64 \
+          --tag ${{ inputs.repository }}:${{ inputs.tag }}-${{ steps.vars.outputs.sha_short }}-arm64 \
+          --platform=linux/arm64
+    - name: Push arm64 docker image
+      run: |
+        docker push ${{ inputs.repository }}:${{ inputs.tag }}-arm64
+        docker push ${{ inputs.repository }}:${{ inputs.tag }}-${{ steps.vars.outputs.sha_short }}-arm64
+
+  build_multiarch_image:
+    name: Build multiarch docker image
+    needs: [build_amd64_docker_image, build_arm64_docker_image]
+    if: ${{ inputs.docker }}
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Get build version
+      id: vars
+      run: echo "::set-output name=sha_short::$(git rev-parse --short HEAD)"
+
+    # prepare docker
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+    - name: Login to Docker Hub
+      uses: docker/login-action@v2
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+    
+    # build multiarch image
+    - name: Build multiarch docker image
+      run: |
+        docker manifest create ${{ inputs.repository }}:${{ inputs.tag }}-${{ steps.vars.outputs.sha_short }} \
+        --amend ${{ inputs.repository }}:${{ inputs.tag }}-${{ steps.vars.outputs.sha_short }}-amd64 \
+        --amend ${{ inputs.repository }}:${{ inputs.tag }}-${{ steps.vars.outputs.sha_short }}-arm64
+
+        docker manifest create ${{ inputs.repository }}:${{ inputs.tag }} \
+        --amend ${{ inputs.repository }}:${{ inputs.tag }}-${{ steps.vars.outputs.sha_short }}-amd64 \
+        --amend ${{ inputs.repository }}:${{ inputs.tag }}-${{ steps.vars.outputs.sha_short }}-arm64
+    - name: Push multiarch docker images
+      run: |
+        docker manifest push ${{ inputs.repository }}:${{ inputs.tag }}-${{ steps.vars.outputs.sha_short }}
+        docker manifest push ${{ inputs.repository }}:${{ inputs.tag }}

@@ -10,4 +10,10 @@ jobs:
   build_binaries:
     name: "Build binaries"
     uses: ./.github/workflows/_shared-build.yaml
-
+    with:
+      docker: false
+      repository: "pk910/dora-the-explorer"
+      tag: "dev"
+    secrets:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
