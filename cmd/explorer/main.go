@@ -50,6 +50,10 @@ func main() {
 	if err != nil {
 		logger.Fatalf("error starting beacon service: %v", err)
 	}
+	err = services.StartTxSignaturesService()
+	if err != nil {
+		logger.Fatalf("error starting tx signature service: %v", err)
+	}
 
 	if cfg.RateLimit.Enabled {
 		err = services.StartCallRateLimiter(cfg.RateLimit.ProxyCount, cfg.RateLimit.Rate, cfg.RateLimit.Burst)

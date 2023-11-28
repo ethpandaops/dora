@@ -28,6 +28,11 @@
         <a class="nav-link active" id="overview-tab" data-bs-toggle="tab" href="#overview" role="tab" aria-controls="overview" aria-selected="true">Overview</a>
       </li>
       {{ if .Block }}
+        {{ if gt .Block.TransactionsCount 0 }}
+          <li class="nav-item">
+            <a class="nav-link" id="transactions-tab" data-bs-toggle="tab" href="#transactions" role="tab" aria-controls="transactions" aria-selected="false">Transactions <span class="badge bg-secondary text-white">{{ .Block.TransactionsCount }}</span></a>
+          </li>
+        {{ end }}
         <li class="nav-item">
           <a class="nav-link" id="attestations-tab" data-bs-toggle="tab" href="#attestations" role="tab" aria-controls="attestations" aria-selected="false">Attestations <span class="badge bg-secondary text-white">{{ .Block.AttestationsCount }}</span></a>
         </li>
@@ -76,6 +81,18 @@
         </div>
       </div>
       {{ if .Block }}
+        {{ if gt .Block.TransactionsCount 0 }}
+          <div class="tab-pane fade show active" id="transactions" role="tabpanel" aria-labelledby="transactions-tab">
+            <div class="card block-card">
+              <div style="margin-bottom: -.25rem;" class="card-body px-0 py-1">
+                <div class="row p-1 mx-0">
+                  <h3 class="h5 col-md-12 text-center"><b>Showing {{ .Block.TransactionsCount }} Transactions </b></h3>
+                </div>
+              </div>
+              {{ template "block_transactions" . }}
+            </div>
+          </div>
+        {{ end }}
         <div class="tab-pane fade show active" id="attestations" role="tabpanel" aria-labelledby="attestations-tab">
           <div class="card block-card">
             <div style="margin-bottom: -.25rem;" class="card-body px-0 py-1">

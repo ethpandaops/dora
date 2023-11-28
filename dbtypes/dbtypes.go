@@ -100,3 +100,19 @@ type BlobAssignment struct {
 	Commitment []byte `db:"commitment"`
 	Slot       uint64 `db:"slot"`
 }
+
+type TxFunctionSignature struct {
+	Signature string `db:"signature"`
+	Bytes     []byte `db:"bytes"`
+	Name      string `db:"name"`
+}
+
+type TxUnknownFunctionSignature struct {
+	Bytes     []byte `db:"bytes"`
+	LastCheck uint64 `db:"lastcheck"`
+}
+
+type TxPendingFunctionSignature struct {
+	Bytes     []byte `db:"bytes"`
+	QueueTime uint64 `db:"queuetime"`
+}
