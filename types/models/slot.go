@@ -195,7 +195,10 @@ type SlotPageTransaction struct {
 	To            string  `json:"to"`
 	Value         float64 `json:"value"`
 	Data          []byte  `json:"data"`
+	DataLen       uint64  `json:"datalen"`
 	FuncSigStatus uint64  `json:"func_sig_status"`
+	FuncBytes     string  `json:"func_bytes"`
 	FuncName      string  `json:"func_name"`
 	FuncSig       string  `json:"func_sig"`
+	Type          uint64  `json:"type"`
 }

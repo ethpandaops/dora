@@ -143,7 +143,7 @@ func (tss *TxSignaturesService) LookupSignatures(sigBytes []types.TxSignatureByt
 	}
 
 	// add pending signature lookups
-	if len(unresolvedLookups) > 0 {
+	if len(unresolvedLookups) > 0 && !utils.Config.TxSignature.DisableLookupLoop {
 		pendingLookups := make([]*dbtypes.TxPendingFunctionSignature, 0)
 
 		for _, l := range unresolvedLookups {

@@ -607,31 +607,36 @@ func getSlotPageTransactions(pageData *models.SlotPageBlockData, tranactions []b
 
 		err := tx.UnmarshalBinary(txBytes)
 		if err != nil {
-			fmt.Printf("err: %v\n", err)
+			logrus.Warnf("error decoding transaction 0x%x.%v: %v\n", pageData.BlockRoot, idx, err)
 			continue
 		}
 
-		txFrom, err := ethtypes.Sender(ethtypes.LatestSignerForChainID(tx.ChainId()), &tx)
 		txHash := tx.Hash()
-
-		txValue := tx.Value()
-		txHighValue, _ := txValue.Div(txValue, utils.ETH).Float64()
-		txLowValue, _ := txValue.Mod(txValue, utils.ETH).Float64()
+		txValue, _ := tx.Value().Float64()
 		ethFloat, _ := utils.ETH.Float64()
-		txFloatValue := txHighValue + (txLowValue / ethFloat)
+		txValue = txValue / ethFloat
 
 		txData := &models.SlotPageTransaction{
 			Index: uint64(idx),
 			Hash:  txHash[:],
-			From:  txFrom.String(),
 			To:    tx.To().String(),
-			Value: txFloatValue,
+			Value: txValue,
 			Data:  tx.Data(),
+			Type:  uint64(tx.Type()),
 		}
+		txData.DataLen = uint64(len(txData.Data))
+		txFrom, err := ethtypes.Sender(ethtypes.LatestSignerForChainID(tx.ChainId()), &tx)
+		if err != nil {
+			txData.From = "unknown"
+			logrus.Warnf("error decoding transaction sender 0x%x.%v: %v\n", pageData.BlockRoot, idx, err)
+		} else {
+			txData.From = txFrom.String()
+		}
+
 		pageData.Transactions = append(pageData.Transactions, txData)
 
 		// check call fn signature
-		if len(txData.Data) >= 4 {
+		if txData.DataLen >= 4 {
 			sigBytes := types.TxSignatureBytes(txData.Data[0:4])
 			if sigLookupMap[sigBytes] == nil {
 				sigLookupMap[sigBytes] = []*models.SlotPageTransaction{
@@ -641,9 +646,8 @@ func getSlotPageTransactions(pageData *models.SlotPageBlockData, tranactions []b
 			} else {
 				sigLookupMap[sigBytes] = append(sigLookupMap[sigBytes], txData)
 			}
-		} else if len(txData.Data) > 0 {
-			txData.FuncName = "transfer*"
 		} else {
+			txData.FuncSigStatus = 10
 			txData.FuncName = "transfer"
 		}
 	}
@@ -654,11 +658,12 @@ func getSlotPageTransactions(pageData *models.SlotPageBlockData, tranactions []b
 		for _, sigLookup := range sigLookups {
 			for _, txData := range sigLookupMap[sigLookup.Bytes] {
 				txData.FuncSigStatus = uint64(sigLookup.Status)
+				txData.FuncBytes = fmt.Sprintf("0x%x", sigLookup.Bytes[:])
 				if sigLookup.Status == types.TxSigStatusFound {
 					txData.FuncSig = sigLookup.Signature
 					txData.FuncName = sigLookup.Name
 				} else {
-					txData.FuncName = fmt.Sprintf("0x%x", sigLookup.Bytes[:])
+					txData.FuncName = "call?"
 				}
 			}
 		}

@@ -9,6 +9,8 @@
           <th>To</th>
           <th>Method</th>
           <th>Value</th>
+          <th>Call Data</th>
+          <th></th>
         </tr>
       </thead>
       <tbody>
@@ -34,10 +36,26 @@
               {{ $transaction.To }}
             </td>
             <td>
-              {{ $transaction.FuncName }}
-
+              {{ if eq $transaction.FuncSigStatus 10 }}
+                <span class="badge rounded-pill text-bg-secondary" style="font-size: 12px; font-weight: 500;">{{ $transaction.FuncName }}</span>
+              {{ else if eq $transaction.FuncSigStatus 1 }}
+                <span class="badge rounded-pill text-bg-secondary" style="font-size: 12px; font-weight: 500;" data-bs-toggle="tooltip" data-bs-placement="bottom" data-bs-title="call {{ $transaction.FuncBytes }}: {{ $transaction.FuncSig }}">{{ $transaction.FuncName }}</span>
+              {{ else }}
+                <span class="badge rounded-pill text-bg-secondary" style="font-size: 12px; font-weight: 500;" data-bs-toggle="tooltip" data-bs-placement="bottom" data-bs-title="call {{ $transaction.FuncBytes }}">{{ $transaction.FuncName }}</span>
+              {{ end }}
             </td>
-            <td>{{ $transaction.Value }}</td>
+            <td>{{ $transaction.Value }} ETH</td>
+            <td>
+              {{ if gt $transaction.DataLen 0 }}
+                <span class="badge rounded-pill text-bg-secondary" style="font-size: 12px; font-weight: 500;">{{ $transaction.DataLen }} B</span>
+                <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $transaction.Data }}"></i>
+              {{ end }}
+            </td>
+            <td>
+              <i class="fa fa-circle-info text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" data-bs-html="true" data-bs-title="{{ "" -}}
+                TX Type: {{ $transaction.Type }}<br>
+              {{- "" }}"></i>
+            </td>
           </tr>
         {{ end }}
       </tbody>
