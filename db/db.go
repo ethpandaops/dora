@@ -967,12 +967,12 @@ func GetTxFunctionSignaturesByBytes(sigBytes []types.TxSignatureBytes) []*dbtype
 	WHERE bytes IN (`)
 	argIdx := 0
 	args := make([]any, len(sigBytes))
-	for i, b := range sigBytes {
+	for i := range sigBytes {
 		if i > 0 {
 			fmt.Fprintf(&sql, ", ")
 		}
 		fmt.Fprintf(&sql, "$%v", argIdx+1)
-		args[argIdx] = b[:]
+		args[argIdx] = sigBytes[i][:]
 		argIdx += 1
 	}
 	fmt.Fprintf(&sql, ")")
@@ -1017,12 +1017,12 @@ func GetUnknownFunctionSignatures(sigBytes []types.TxSignatureBytes) []*dbtypes.
 	WHERE bytes in (`)
 	argIdx := 0
 	args := make([]any, len(sigBytes))
-	for i, b := range sigBytes {
+	for i := range sigBytes {
 		if i > 0 {
 			fmt.Fprintf(&sql, ", ")
 		}
 		fmt.Fprintf(&sql, "$%v", argIdx+1)
-		args[argIdx] = b[:]
+		args[argIdx] = sigBytes[i][:]
 		argIdx += 1
 	}
 	fmt.Fprintf(&sql, ")")
@@ -1042,13 +1042,13 @@ func InsertUnknownFunctionSignatures(txUnknownSigs []*dbtypes.TxUnknownFunctionS
 	}))
 	argIdx := 0
 	args := make([]any, len(txUnknownSigs)*2)
-	for i, unknownSig := range txUnknownSigs {
+	for i := range txUnknownSigs {
 		if i > 0 {
 			fmt.Fprintf(&sql, ", ")
 		}
 		fmt.Fprintf(&sql, "($%v, $%v)", argIdx+1, argIdx+2)
-		args[argIdx] = unknownSig.Bytes
-		args[argIdx+1] = unknownSig.LastCheck
+		args[argIdx] = txUnknownSigs[i].Bytes
+		args[argIdx+1] = txUnknownSigs[i].LastCheck
 		argIdx += 2
 	}
 	fmt.Fprint(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
@@ -1070,13 +1070,13 @@ func InsertPendingFunctionSignatures(txPendingSigs []*dbtypes.TxPendingFunctionS
 	}))
 	argIdx := 0
 	args := make([]any, len(txPendingSigs)*2)
-	for i, pendingSig := range txPendingSigs {
+	for i := range txPendingSigs {
 		if i > 0 {
 			fmt.Fprintf(&sql, ", ")
 		}
 		fmt.Fprintf(&sql, "($%v, $%v)", argIdx+1, argIdx+2)
-		args[argIdx] = pendingSig.Bytes
-		args[argIdx+1] = pendingSig.QueueTime
+		args[argIdx] = txPendingSigs[i].Bytes
+		args[argIdx+1] = txPendingSigs[i].QueueTime
 		argIdx += 2
 	}
 	fmt.Fprint(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
@@ -1092,10 +1092,6 @@ func InsertPendingFunctionSignatures(txPendingSigs []*dbtypes.TxPendingFunctionS
 
 func GetPendingFunctionSignatures(limit uint64) []*dbtypes.TxPendingFunctionSignature {
 	pendingFnSigs := []*dbtypes.TxPendingFunctionSignature{}
-	var sql strings.Builder
-	fmt.Fprintf(&sql, `
-	`)
-
 	err := ReaderDb.Select(&pendingFnSigs, `
 	SELECT
 		bytes, queuetime
@@ -1117,15 +1113,13 @@ func DeletePendingFunctionSignatures(sigBytes []types.TxSignatureBytes, tx *sqlx
 	fmt.Fprintf(&sql, `
 	DELETE FROM tx_pending_signatures
 	WHERE bytes in (`)
-	argIdx := 0
 	args := make([]any, len(sigBytes))
-	for i, b := range sigBytes {
+	for i := range sigBytes {
 		if i > 0 {
 			fmt.Fprintf(&sql, ", ")
 		}
-		fmt.Fprintf(&sql, "$%v", argIdx+1)
-		args[argIdx] = b[:]
-		argIdx += 1
+		fmt.Fprintf(&sql, "$%v", i+1)
+		args[i] = sigBytes[i][:]
 	}
 	fmt.Fprintf(&sql, ")")
 	_, err := tx.Exec(sql.String(), args...)

@@ -56,7 +56,7 @@ func (tss *TxSignaturesService) LookupSignatures(sigBytes []types.TxSignatureByt
 	unresolvedLookups := make([]*TxSignaturesLookup, 0)
 	unresolvedLookupBytes := make([]types.TxSignatureBytes, 0)
 
-	for _, bytes := range sigBytes {
+	for i, bytes := range sigBytes {
 		if lookups[bytes] != nil {
 			continue
 		}
@@ -64,7 +64,7 @@ func (tss *TxSignaturesService) LookupSignatures(sigBytes []types.TxSignatureByt
 			Bytes: bytes,
 		}
 		unresolvedLookups = append(unresolvedLookups, lookup)
-		unresolvedLookupBytes = append(unresolvedLookupBytes, bytes)
+		unresolvedLookupBytes = append(unresolvedLookupBytes, sigBytes[i])
 		lookups[bytes] = lookup
 	}
 
@@ -89,12 +89,11 @@ func (tss *TxSignaturesService) LookupSignatures(sigBytes []types.TxSignatureByt
 
 		nonfoundLookups := make([]*TxSignaturesLookup, 0)
 		nonfoundLookupBytes := make([]types.TxSignatureBytes, 0)
-		for _, l := range unresolvedLookups {
-			if l == nil {
-				break
+		for i, l := range unresolvedLookups {
+			if l != nil {
+				nonfoundLookups = append(nonfoundLookups, unresolvedLookups[i])
+				nonfoundLookupBytes = append(nonfoundLookupBytes, unresolvedLookups[i].Bytes)
 			}
-			nonfoundLookups = append(nonfoundLookups, l)
-			nonfoundLookupBytes = append(nonfoundLookupBytes, l.Bytes)
 		}
 		unresolvedLookups = nonfoundLookups
 		unresolvedLookupBytes = nonfoundLookupBytes
@@ -115,6 +114,9 @@ func (tss *TxSignaturesService) LookupSignatures(sigBytes []types.TxSignatureByt
 
 			var lookup *TxSignaturesLookup
 			for i, l := range unresolvedLookups {
+				if l == nil {
+					continue
+				}
 				if bytes.Equal(l.Bytes[:], unknownSigEntry.Bytes) {
 					lookup = l
 					unresolvedLookups[i] = nil
@@ -145,7 +147,6 @@ func (tss *TxSignaturesService) LookupSignatures(sigBytes []types.TxSignatureByt
 		pendingLookups := make([]*dbtypes.TxPendingFunctionSignature, 0)
 
 		for _, l := range unresolvedLookups {
-			logger_tss.Infof("add pending sigs: %v", l.Bytes)
 			pendingLookups = append(pendingLookups, &dbtypes.TxPendingFunctionSignature{
 				Bytes:     l.Bytes[:],
 				QueueTime: uint64(time.Now().Unix()),
@@ -198,7 +199,7 @@ func (tss *TxSignaturesService) runLookupLoop() {
 func (tss *TxSignaturesService) processPendingSignatures() {
 	batchLimit := utils.Config.TxSignature.LookupBatchSize
 	if batchLimit == 0 {
-		batchLimit = 20
+		batchLimit = 10
 	}
 	pendingSigs := db.GetPendingFunctionSignatures(batchLimit)
 
@@ -247,7 +248,6 @@ func (tss *TxSignaturesService) processPendingSignatures() {
 		}
 	}
 
-	logger_tss.Infof("update pending sigs: %v", pendingSigBytes)
 	if len(pendingSigBytes) > 0 {
 		tx, err := db.WriterDb.Beginx()
 		if err != nil {
@@ -283,7 +283,7 @@ func (tss *TxSignaturesService) processPendingSignatures() {
 func (tss *TxSignaturesService) lookupSignature(lookup *TxSignaturesLookup) error {
 	var resErr error
 
-	if utils.Config.TxSignature.Enable4Bytes {
+	if !utils.Config.TxSignature.Disable4Bytes {
 		err := tss.lookup4Bytes(lookup)
 		if err != nil {
 			resErr = fmt.Errorf("4bytes lookup failed: %w", err)
@@ -292,7 +292,7 @@ func (tss *TxSignaturesService) lookupSignature(lookup *TxSignaturesLookup) erro
 		}
 	}
 
-	logger_tss.Infof("lookup fn signature 0x%x (%v): %v", lookup.Bytes[:], lookup.Status, lookup.Signature)
+	logger_tss.Debugf("lookup fn signature 0x%x (%v): %v", lookup.Bytes[:], lookup.Status, lookup.Signature)
 
 	return resErr
 }

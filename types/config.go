@@ -96,7 +96,7 @@ type Config struct {
 		LookupInterval    time.Duration `yaml:"lookupInterval" envconfig:"TXSIG_LOOKUP_INTERVAL"`
 		LookupBatchSize   uint64        `yaml:"lookupBatchSize" envconfig:"TXSIG_LOOKUP_INTERVAL"`
 		ConcurrencyLimit  uint64        `yaml:"concurrencyLimit" envconfig:"TXSIG_CONCURRENCY_LIMIT"`
-		Enable4Bytes      bool          `yaml:"enable4Bytes" envconfig:"TXSIG_ENABLE_4BYTES"`
+		Disable4Bytes     bool          `yaml:"disable4Bytes" envconfig:"TXSIG_DISABLE_4BYTES"`
 		RecheckTimeout    time.Duration `yaml:"recheckTimeout" envconfig:"TXSIG_RECHECK_TIMEOUT"`
 	} `yaml:"txsig"`
 
