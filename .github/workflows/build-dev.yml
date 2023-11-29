@@ -10,5 +10,4 @@ jobs:
   build_binaries:
     name: "Build binaries"
     uses: ./.github/workflows/_shared-build.yaml
-
  
