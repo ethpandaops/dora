@@ -619,7 +619,6 @@ func getSlotPageTransactions(pageData *models.SlotPageBlockData, tranactions []b
 		txData := &models.SlotPageTransaction{
 			Index: uint64(idx),
 			Hash:  txHash[:],
-			To:    tx.To().String(),
 			Value: txValue,
 			Data:  tx.Data(),
 			Type:  uint64(tx.Type()),
@@ -631,6 +630,12 @@ func getSlotPageTransactions(pageData *models.SlotPageBlockData, tranactions []b
 			logrus.Warnf("error decoding transaction sender 0x%x.%v: %v\n", pageData.BlockRoot, idx, err)
 		} else {
 			txData.From = txFrom.String()
+		}
+		txTo := tx.To()
+		if txTo == nil {
+			txData.To = "new contract"
+		} else {
+			txData.To = txTo.String()
 		}
 
 		pageData.Transactions = append(pageData.Transactions, txData)
