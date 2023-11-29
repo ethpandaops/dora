@@ -175,7 +175,7 @@ func getSlotPageData(blockSlot int64, blockRoot []byte, loadDuties bool) (*model
 	if pageErr == nil && pageRes != nil {
 		resData, resOk := pageRes.(*models.SlotPageData)
 		if !resOk {
-			return nil, InvalidPageModelError
+			return nil, ErrInvalidPageModel
 		}
 		pageData = resData
 	}

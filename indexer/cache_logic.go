@@ -343,16 +343,12 @@ func (cache *indexerCache) processCachePersistence() error {
 	var minPruneSlot int64 = -1
 	if headEpoch >= uint64(cache.indexer.cachePersistenceDelay) {
 		persistEpoch := headEpoch - uint64(cache.indexer.cachePersistenceDelay)
-		if persistEpoch >= 0 {
-			minPersistSlot = int64((persistEpoch+1)*utils.Config.Chain.Config.SlotsPerEpoch) - 1
-			minPersistEpoch = int64(persistEpoch)
-		}
+		minPersistSlot = int64((persistEpoch+1)*utils.Config.Chain.Config.SlotsPerEpoch) - 1
+		minPersistEpoch = int64(persistEpoch)
 	}
 	if headEpoch >= uint64(cache.indexer.inMemoryEpochs) {
 		pruneEpoch := headEpoch - uint64(cache.indexer.inMemoryEpochs)
-		if pruneEpoch >= 0 {
-			minPruneSlot = int64((pruneEpoch+1)*utils.Config.Chain.Config.SlotsPerEpoch) - 1
-		}
+		minPruneSlot = int64((pruneEpoch+1)*utils.Config.Chain.Config.SlotsPerEpoch) - 1
 	}
 	for slot, blocks := range cache.slotMap {
 		if int64(slot) <= minPersistSlot {

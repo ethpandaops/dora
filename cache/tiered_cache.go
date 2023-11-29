@@ -24,7 +24,7 @@ type cachedValue struct {
 	Value   interface{} `json:"v"`
 }
 
-var CacheMissError error = errors.New("cache miss")
+var ErrCacheMiss error = errors.New("cache miss")
 
 type RemoteCache interface {
 	Set(ctx context.Context, key string, value any, expiration time.Duration) error
@@ -100,7 +100,7 @@ func (cache *TieredCache) Get(key string, returnValue interface{}) (interface{},
 	}
 
 	if cache.remoteCache == nil {
-		return nil, CacheMissError
+		return nil, ErrCacheMiss
 	}
 
 	// retrieve the key from the remote cache

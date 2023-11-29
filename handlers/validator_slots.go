@@ -65,7 +65,7 @@ func getValidatorSlotsPageData(validator uint64, pageIdx uint64, pageSize uint64
 	if pageErr == nil && pageRes != nil {
 		resData, resOk := pageRes.(*models.ValidatorSlotsPageData)
 		if !resOk {
-			return nil, InvalidPageModelError
+			return nil, ErrInvalidPageModel
 		}
 		pageData = resData
 	}

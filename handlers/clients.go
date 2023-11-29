@@ -46,7 +46,7 @@ func getClientsPageData() (*models.ClientsPageData, error) {
 	if pageErr == nil && pageRes != nil {
 		resData, resOk := pageRes.(*models.ClientsPageData)
 		if !resOk {
-			return nil, InvalidPageModelError
+			return nil, ErrInvalidPageModel
 		}
 		pageData = resData
 	}

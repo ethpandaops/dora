@@ -72,7 +72,7 @@ func getEpochPageData(epoch uint64) (*models.EpochPageData, error) {
 	if pageErr == nil && pageRes != nil {
 		resData, resOk := pageRes.(*models.EpochPageData)
 		if !resOk {
-			return nil, InvalidPageModelError
+			return nil, ErrInvalidPageModel
 		}
 		pageData = resData
 	}

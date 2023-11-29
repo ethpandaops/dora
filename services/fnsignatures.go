@@ -19,7 +19,6 @@ import (
 )
 
 type TxSignaturesService struct {
-	mutex sync.Mutex
 }
 
 var GlobalTxSignaturesService *TxSignaturesService
@@ -130,16 +129,13 @@ func (tss *TxSignaturesService) LookupSignatures(sigBytes []types.TxSignatureByt
 		}
 
 		nonfoundLookups := make([]*TxSignaturesLookup, 0)
-		nonfoundLookupBytes := make([]types.TxSignatureBytes, 0)
 		for _, l := range unresolvedLookups {
 			if l == nil {
 				break
 			}
 			nonfoundLookups = append(nonfoundLookups, l)
-			nonfoundLookupBytes = append(nonfoundLookupBytes, l.Bytes)
 		}
 		unresolvedLookups = nonfoundLookups
-		unresolvedLookupBytes = nonfoundLookupBytes
 	}
 
 	// add pending signature lookups

@@ -343,10 +343,8 @@ func (bs *BeaconService) GetProposerAssignments(firstEpoch uint64, lastEpoch uin
 			if epochStats != nil {
 				synchronizedEpochs[epoch] = true
 				proposers := epochStats.TryGetProposerAssignments()
-				if proposers != nil {
-					for slot, vidx := range proposers {
-						proposerAssignments[slot] = vidx
-					}
+				for slot, vidx := range proposers {
+					proposerAssignments[slot] = vidx
 				}
 			}
 		}

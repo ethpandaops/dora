@@ -15,7 +15,7 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-var InvalidPageModelError = errors.New("invalid page model")
+var ErrInvalidPageModel = errors.New("invalid page model")
 
 type customFileServer struct {
 	handler         http.Handler

@@ -60,7 +60,7 @@ func getEpochsPageData(firstEpoch uint64, pageSize uint64) (*models.EpochsPageDa
 	if pageErr == nil && pageRes != nil {
 		resData, resOk := pageRes.(*models.EpochsPageData)
 		if !resOk {
-			return nil, InvalidPageModelError
+			return nil, ErrInvalidPageModel
 		}
 		pageData = resData
 	}
