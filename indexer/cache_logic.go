@@ -432,6 +432,11 @@ func (cache *indexerCache) processCachePersistence() error {
 		}
 
 		for _, epochStats := range persistEpochs {
+			err := persistSlotAssignments(epochStats, tx)
+			if err != nil {
+				return err
+			}
+
 			if !epochStats.isInDb {
 				dbEpoch, _ := cache.indexer.buildLiveEpoch(epochStats.Epoch, epochStats)
 				if dbEpoch != nil {
