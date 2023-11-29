@@ -9,6 +9,26 @@ import (
 	"github.com/pk910/dora/utils"
 )
 
+func persistSlotAssignments(epochStats *EpochStats, tx *sqlx.Tx) error {
+	// insert slot assignments
+	firstSlot := epochStats.Epoch * utils.Config.Chain.Config.SlotsPerEpoch
+	if epochStats.proposerAssignments != nil {
+		slotAssignments := make([]*dbtypes.SlotAssignment, utils.Config.Chain.Config.SlotsPerEpoch)
+		for slotIdx := uint64(0); slotIdx < utils.Config.Chain.Config.SlotsPerEpoch; slotIdx++ {
+			slot := firstSlot + slotIdx
+			slotAssignments[slotIdx] = &dbtypes.SlotAssignment{
+				Slot:     slot,
+				Proposer: epochStats.proposerAssignments[slot],
+			}
+		}
+		err := db.InsertSlotAssignments(slotAssignments, tx)
+		if err != nil {
+			return fmt.Errorf("error while adding proposer assignments to db: %w", err)
+		}
+	}
+	return nil
+}
+
 func persistEpochData(epoch uint64, blockMap map[uint64]*CacheBlock, epochStats *EpochStats, epochVotes *EpochVotes, tx *sqlx.Tx) error {
 	commitTx := false
 	if tx == nil {
@@ -29,21 +49,16 @@ func persistEpochData(epoch uint64, blockMap map[uint64]*CacheBlock, epochStats 
 	})
 
 	// insert slot assignments
-	firstSlot := epoch * utils.Config.Chain.Config.SlotsPerEpoch
-	if epochStats.proposerAssignments != nil {
-		slotAssignments := make([]*dbtypes.SlotAssignment, utils.Config.Chain.Config.SlotsPerEpoch)
-		for slotIdx := uint64(0); slotIdx < utils.Config.Chain.Config.SlotsPerEpoch; slotIdx++ {
-			slot := firstSlot + slotIdx
-			slotAssignments[slotIdx] = &dbtypes.SlotAssignment{
-				Slot:     slot,
-				Proposer: epochStats.proposerAssignments[slot],
-			}
-		}
-		db.InsertSlotAssignments(slotAssignments, tx)
+	err := persistSlotAssignments(epochStats, tx)
+	if err != nil {
+		return err
 	}
 
 	// insert epoch
 	db.InsertEpoch(dbEpoch, tx)
+	if err != nil {
+		return fmt.Errorf("error while saving epoch to db: %w", err)
+	}
 
 	if commitTx {
 		logger.Infof("commit transaction")
