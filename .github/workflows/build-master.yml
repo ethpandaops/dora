@@ -26,7 +26,7 @@ jobs:
       docker: true
       repository: "ethpandaops/dora"
       tag: "master"
-      additional_tags: "['master-latest']"
+      additional_tags: "['master','master-latest']"
     secrets:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}

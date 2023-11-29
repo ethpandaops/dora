@@ -48,6 +48,7 @@ jobs:
       docker: ${{ needs.prinfo.outputs.build_docker == 'true' }}
       repository: "ethpandaops/dora"
       tag: ${{needs.prinfo.outputs.docker_tag}}
+      additional_tags: "['${{needs.prinfo.outputs.docker_tag}}','${{needs.prinfo.outputs.docker_tag}}-latest']"
     secrets:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
