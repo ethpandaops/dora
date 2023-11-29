@@ -13,14 +13,20 @@ concurrency:
 
 jobs:
 
+  check_source:
+    name: "Run code checks"
+    uses: ./.github/workflows/_shared-check.yaml
+
   build_binaries:
-    name: "Build binaries"
+    name: "Build Dora"
+    needs: [check_source]
     uses: ./.github/workflows/_shared-build.yaml
     with:
       release: "snapshot"
       docker: true
-      repository: "pk910/dora-the-explorer"
-      tag: "unstable"
+      repository: "ethpandaops/dora"
+      tag: "master"
+      additional_tags: "['master-latest']"
     secrets:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
