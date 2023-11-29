@@ -13,10 +13,11 @@ jobs:
     name: "Build Dora"
     uses: ./.github/workflows/_shared-build.yaml
     with:
+      ref: ${{ github.sha }}
       release: "v${{ inputs.version }}"
       docker: true
-      repository: "ethpandaops/dora"
-      tag: "v${{ inputs.version }}"
+      docker_repository: "ethpandaops/dora"
+      docker_tag_prefix: "v${{ inputs.version }}"
       additional_tags: "['v${{ inputs.version }}','latest']"
     secrets:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}

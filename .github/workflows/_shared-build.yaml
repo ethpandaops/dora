@@ -3,6 +3,10 @@ name: Reusable build workflow
 on:
   workflow_call:
     inputs:
+      ref:
+        description: 'The branch, tag or SHA to build'
+        required: true
+        type: string
       release:
         description: 'Release version tag for this build'
         default: ''
@@ -13,13 +17,13 @@ on:
         default: false
         required: true
         type: boolean
-      repository:
+      docker_repository:
         description: 'Docker Hub Repository'
         default: ''
         required: false
         type: string
-      tag:
-        description: 'Docker Image Tag'
+      docker_tag_prefix:
+        description: 'Docker Image Tag Prefix'
         default: ''
         required: false
         type: string
@@ -43,6 +47,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
+      with:
+        ref: ${{ inputs.ref }}
 
     # setup global dependencies
     - name: Set up go
@@ -74,6 +80,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
+      with:
+        ref: ${{ inputs.ref }}
 
     # setup global dependencies
     - name: Set up go
@@ -110,6 +118,8 @@ jobs:
     runs-on: windows-latest
     steps:
     - uses: actions/checkout@v3
+      with:
+        ref: ${{ inputs.ref }}
 
     # setup global dependencies
     - name: Set up go
@@ -141,6 +151,8 @@ jobs:
     runs-on: macos-latest
     steps:
     - uses: actions/checkout@v3
+      with:
+        ref: ${{ inputs.ref }}
 
     # setup global dependencies
     - name: Set up go
@@ -172,6 +184,8 @@ jobs:
     runs-on: macos-latest
     steps:
     - uses: actions/checkout@v3
+      with:
+        ref: ${{ inputs.ref }}
 
     # setup global dependencies
     - name: Set up go
@@ -205,6 +219,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
+      with:
+        ref: ${{ inputs.ref }}
+
     - name: Get build version
       id: vars
       run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
@@ -235,13 +252,13 @@ jobs:
     - name: Build amd64 docker image
       run: |
         docker build . --file Dockerfile-stub \
-          --tag ${{ inputs.repository }}:${{ inputs.tag }}-amd64 \
-          --tag ${{ inputs.repository }}:${{ inputs.tag }}-${{ steps.vars.outputs.sha_short }}-amd64 \
+          --tag ${{ inputs.docker_repository }}:${{ inputs.docker_tag_prefix }}-amd64 \
+          --tag ${{ inputs.docker_repository }}:${{ inputs.docker_tag_prefix }}-${{ steps.vars.outputs.sha_short }}-amd64 \
           --platform=linux/amd64
     - name: Push amd64 docker images
       run: |
-        docker push ${{ inputs.repository }}:${{ inputs.tag }}-amd64
-        docker push ${{ inputs.repository }}:${{ inputs.tag }}-${{ steps.vars.outputs.sha_short }}-amd64
+        docker push ${{ inputs.docker_repository }}:${{ inputs.docker_tag_prefix }}-amd64
+        docker push ${{ inputs.docker_repository }}:${{ inputs.docker_tag_prefix }}-${{ steps.vars.outputs.sha_short }}-amd64
   
   build_arm64_docker_image:
     name: Build arm64 docker image
@@ -250,6 +267,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
+      with:
+        ref: ${{ inputs.ref }}
     - name: Get build version
       id: vars
       run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
@@ -282,13 +301,13 @@ jobs:
     - name: Build arm64 docker image
       run: |
         docker build . --file Dockerfile-stub \
-          --tag ${{ inputs.repository }}:${{ inputs.tag }}-arm64 \
-          --tag ${{ inputs.repository }}:${{ inputs.tag }}-${{ steps.vars.outputs.sha_short }}-arm64 \
+          --tag ${{ inputs.docker_repository }}:${{ inputs.docker_tag_prefix }}-arm64 \
+          --tag ${{ inputs.docker_repository }}:${{ inputs.docker_tag_prefix }}-${{ steps.vars.outputs.sha_short }}-arm64 \
           --platform=linux/arm64
     - name: Push arm64 docker image
       run: |
-        docker push ${{ inputs.repository }}:${{ inputs.tag }}-arm64
-        docker push ${{ inputs.repository }}:${{ inputs.tag }}-${{ steps.vars.outputs.sha_short }}-arm64
+        docker push ${{ inputs.docker_repository }}:${{ inputs.docker_tag_prefix }}-arm64
+        docker push ${{ inputs.docker_repository }}:${{ inputs.docker_tag_prefix }}-${{ steps.vars.outputs.sha_short }}-arm64
 
   build_multiarch_image:
     name: Build multiarch docker image
@@ -297,6 +316,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
+      with:
+        ref: ${{ inputs.ref }}
     - name: Get build version
       id: vars
       run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
@@ -313,12 +334,12 @@ jobs:
     # build multiarch image
     - name: Build multiarch docker manifest
       run: |
-        docker manifest create ${{ inputs.repository }}:${{ inputs.tag }}-${{ steps.vars.outputs.sha_short }} \
-        --amend ${{ inputs.repository }}:${{ inputs.tag }}-${{ steps.vars.outputs.sha_short }}-amd64 \
-        --amend ${{ inputs.repository }}:${{ inputs.tag }}-${{ steps.vars.outputs.sha_short }}-arm64
+        docker manifest create ${{ inputs.docker_repository }}:${{ inputs.docker_tag_prefix }}-${{ steps.vars.outputs.sha_short }} \
+        --amend ${{ inputs.docker_repository }}:${{ inputs.docker_tag_prefix }}-${{ steps.vars.outputs.sha_short }}-amd64 \
+        --amend ${{ inputs.docker_repository }}:${{ inputs.docker_tag_prefix }}-${{ steps.vars.outputs.sha_short }}-arm64
     - name: Push multiarch docker manifest
       run: |
-        docker manifest push ${{ inputs.repository }}:${{ inputs.tag }}-${{ steps.vars.outputs.sha_short }}
+        docker manifest push ${{ inputs.docker_repository }}:${{ inputs.docker_tag_prefix }}-${{ steps.vars.outputs.sha_short }}
 
   build_extra_image:
     name: Build additional docker manifests
@@ -330,6 +351,8 @@ jobs:
         tag: ${{ fromJSON(inputs.additional_tags) }}
     steps:
     - uses: actions/checkout@v3
+      with:
+        ref: ${{ inputs.ref }}
     - name: Get build version
       id: vars
       run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
@@ -346,18 +369,18 @@ jobs:
     # build multiarch image
     - name: "Build additional docker manifest: ${{ matrix.tag }}"
       run: |
-        docker manifest create ${{ inputs.repository }}:${{ matrix.tag }}-amd64 \
-        --amend ${{ inputs.repository }}:${{ inputs.tag }}-${{ steps.vars.outputs.sha_short }}-amd64
+        docker manifest create ${{ inputs.docker_repository }}:${{ matrix.tag }}-amd64 \
+        --amend ${{ inputs.docker_repository }}:${{ inputs.docker_tag_prefix }}-${{ steps.vars.outputs.sha_short }}-amd64
 
-        docker manifest create ${{ inputs.repository }}:${{ matrix.tag }}-arm64 \
-        --amend ${{ inputs.repository }}:${{ inputs.tag }}-${{ steps.vars.outputs.sha_short }}-arm64
+        docker manifest create ${{ inputs.docker_repository }}:${{ matrix.tag }}-arm64 \
+        --amend ${{ inputs.docker_repository }}:${{ inputs.docker_tag_prefix }}-${{ steps.vars.outputs.sha_short }}-arm64
 
-        docker manifest create ${{ inputs.repository }}:${{ matrix.tag }} \
-        --amend ${{ inputs.repository }}:${{ inputs.tag }}-${{ steps.vars.outputs.sha_short }}-amd64 \
-        --amend ${{ inputs.repository }}:${{ inputs.tag }}-${{ steps.vars.outputs.sha_short }}-arm64
+        docker manifest create ${{ inputs.docker_repository }}:${{ matrix.tag }} \
+        --amend ${{ inputs.docker_repository }}:${{ inputs.docker_tag_prefix }}-${{ steps.vars.outputs.sha_short }}-amd64 \
+        --amend ${{ inputs.docker_repository }}:${{ inputs.docker_tag_prefix }}-${{ steps.vars.outputs.sha_short }}-arm64
 
     - name: "Push additional docker manifest: ${{ matrix.tag }}"
       run: |
-        docker manifest push ${{ inputs.repository }}:${{ matrix.tag }}-amd64
-        docker manifest push ${{ inputs.repository }}:${{ matrix.tag }}-arm64
-        docker manifest push ${{ inputs.repository }}:${{ matrix.tag }}
+        docker manifest push ${{ inputs.docker_repository }}:${{ matrix.tag }}-amd64
+        docker manifest push ${{ inputs.docker_repository }}:${{ matrix.tag }}-arm64
+        docker manifest push ${{ inputs.docker_repository }}:${{ matrix.tag }}

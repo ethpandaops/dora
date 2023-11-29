@@ -22,10 +22,11 @@ jobs:
     needs: [check_source]
     uses: ./.github/workflows/_shared-build.yaml
     with:
+      ref: ${{ github.sha }}
       release: "snapshot"
       docker: true
-      repository: "ethpandaops/dora"
-      tag: "master"
+      docker_repository: "ethpandaops/dora"
+      docker_tag_prefix: "master"
       additional_tags: "['master','master-latest']"
     secrets:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
