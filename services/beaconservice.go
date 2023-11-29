@@ -336,6 +336,7 @@ func (bs *BeaconService) GetProposerAssignments(firstEpoch uint64, lastEpoch uin
 	}
 
 	if firstEpoch >= uint64(idxMinEpoch) {
+		firstMissingEpoch := lastEpoch
 		for epochIdx := int64(firstEpoch); epochIdx >= int64(idxMinEpoch) && epochIdx >= int64(lastEpoch); epochIdx-- {
 			epoch = uint64(epochIdx)
 			epochStats := bs.indexer.GetCachedEpochStats(epoch)
@@ -346,12 +347,17 @@ func (bs *BeaconService) GetProposerAssignments(firstEpoch uint64, lastEpoch uin
 				for slot, vidx := range proposers {
 					proposerAssignments[slot] = vidx
 				}
+				continue
+			}
+
+			if epoch > lastEpoch {
+				firstMissingEpoch = epoch
 			}
 		}
 		if epoch <= lastEpoch {
 			return
 		}
-		firstEpoch = epoch
+		firstEpoch = firstMissingEpoch
 	}
 
 	// load from db
@@ -570,13 +576,35 @@ func (bs *BeaconService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageId
 		idxHeadSlot := bs.indexer.GetHighestSlot()
 		idxHeadEpoch := utils.EpochOfSlot(idxHeadSlot)
 		idxMinEpoch := utils.EpochOfSlot(uint64(idxMinSlot))
+		var storedProposerAssignments []*dbtypes.SlotAssignment
+
 		for epochIdx := int64(idxHeadEpoch); epochIdx >= int64(idxMinEpoch); epochIdx-- {
 			epoch := uint64(epochIdx)
+			var proposerAssignments map[uint64]uint64
 			epochStats := bs.indexer.GetCachedEpochStats(epoch)
-			if epochStats == nil {
-				continue
+			if epochStats != nil {
+				proposerAssignments = epochStats.GetProposerAssignments()
+			} else {
+				if storedProposerAssignments == nil {
+					// get all unfinalized proposer assignments from db
+					firstSlot := idxHeadEpoch * utils.Config.Chain.Config.SlotsPerEpoch
+					lastSlot := idxMinEpoch * utils.Config.Chain.Config.SlotsPerEpoch
+					storedProposerAssignments = db.GetSlotAssignmentsForSlots(firstSlot, lastSlot)
+				}
+				proposerAssignments = map[uint64]uint64{}
+				firstSlot := epoch * utils.Config.Chain.Config.SlotsPerEpoch
+				lastSlot := firstSlot + utils.Config.Chain.Config.SlotsPerEpoch - 1
+				for slot := firstSlot; slot <= lastSlot; slot++ {
+					proposerAssignments[slot] = math.MaxInt64
+				}
+				for _, dbProposerAssignment := range storedProposerAssignments {
+					if dbProposerAssignment.Slot >= firstSlot && dbProposerAssignment.Slot <= lastSlot {
+						proposerAssignments[dbProposerAssignment.Slot] = dbProposerAssignment.Proposer
+					}
+				}
 			}
-			for slot, assigned := range epochStats.GetProposerAssignments() {
+
+			for slot, assigned := range proposerAssignments {
 				if proposedMap[slot] {
 					continue
 				}
