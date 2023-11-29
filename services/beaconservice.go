@@ -580,6 +580,9 @@ func (bs *BeaconService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageId
 				if proposedMap[slot] {
 					continue
 				}
+				if filter.WithMissing == 2 && slot > idxHeadSlot {
+					continue
+				}
 
 				if filter.ProposerIndex != nil {
 					if assigned != *filter.ProposerIndex {
