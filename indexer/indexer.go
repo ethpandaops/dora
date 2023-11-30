@@ -189,6 +189,9 @@ func (indexer *Indexer) GetHeadForks(readyOnly bool) []*HeadFork {
 			continue
 		}
 		cHeadSlot, cHeadRoot, _ := client.GetLastHead()
+		if cHeadSlot < 0 {
+			cHeadSlot = 0
+		}
 		var matchingFork *HeadFork
 		for _, fork := range headForks {
 			if bytes.Equal(fork.Root, cHeadRoot) || indexer.indexerCache.isCanonicalBlock(cHeadRoot, fork.Root) {
