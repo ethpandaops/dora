@@ -336,8 +336,8 @@ func (bs *BeaconService) GetProposerAssignments(firstEpoch uint64, lastEpoch uin
 	}
 
 	if firstEpoch >= uint64(idxMinEpoch) {
-		firstMissingEpoch := lastEpoch
-		for epochIdx := int64(firstEpoch); epochIdx >= int64(idxMinEpoch) && epochIdx >= int64(lastEpoch); epochIdx-- {
+		firstMissingEpoch := int64(-1)
+		for epochIdx := int64(firstEpoch); epochIdx >= idxMinEpoch && epochIdx >= int64(lastEpoch); epochIdx-- {
 			epoch = uint64(epochIdx)
 			epochStats := bs.indexer.GetCachedEpochStats(epoch)
 
@@ -352,14 +352,18 @@ func (bs *BeaconService) GetProposerAssignments(firstEpoch uint64, lastEpoch uin
 				}
 			}
 
-			if epoch > lastEpoch {
-				firstMissingEpoch = epoch
+			if firstMissingEpoch == -1 {
+				firstMissingEpoch = int64(epoch)
 			}
 		}
-		if epoch <= lastEpoch {
+		if epoch <= lastEpoch && firstMissingEpoch == -1 {
 			return
 		}
-		firstEpoch = firstMissingEpoch
+		if firstMissingEpoch == -1 {
+			firstEpoch = uint64(idxMinEpoch)
+		} else {
+			firstEpoch = uint64(firstMissingEpoch)
+		}
 	}
 
 	// load from db
