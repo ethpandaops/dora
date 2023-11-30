@@ -80,7 +80,7 @@ func getIndexPageData() (*models.IndexPageData, error) {
 	if pageErr == nil && pageRes != nil {
 		resData, resOk := pageRes.(*models.IndexPageData)
 		if !resOk {
-			return nil, InvalidPageModelError
+			return nil, ErrInvalidPageModel
 		}
 		pageData = resData
 	}

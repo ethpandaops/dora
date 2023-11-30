@@ -68,7 +68,7 @@ func (indexer *Indexer) GetClients() []*IndexerClient {
 }
 
 func (indexer *Indexer) GetReadyClient(archive bool, head []byte, skip []*IndexerClient) *IndexerClient {
-	clientCandidates := indexer.GetReadyClients(archive, head)
+	clientCandidates := indexer.getReadyClients(archive, head)
 	candidateCount := len(clientCandidates)
 	if candidateCount == 0 {
 		clientCandidates = make([]*IndexerClient, 0)
@@ -79,41 +79,41 @@ func (indexer *Indexer) GetReadyClient(archive bool, head []byte, skip []*Indexe
 		}
 		candidateCount = len(clientCandidates)
 	}
-	allCandidates := make([]*IndexerClient, candidateCount)
-	copy(allCandidates, clientCandidates)
 
-	// remove skipped
-	for _, skipClient := range skip {
-		skipIdx := -1
-		for idx, tClient := range clientCandidates {
-			if idx >= candidateCount {
-				break
-			}
-			if tClient == skipClient {
-				skipIdx = idx
-				break
+	// sort by prio
+	sort.Slice(clientCandidates, func(a, b int) bool {
+		return clientCandidates[a].priority > clientCandidates[b].priority
+	})
+
+	// filter, remove skipped & lower priority
+	filteredCandidates := []*IndexerClient{}
+	filteredCandidateCount := 0
+clientLoop:
+	for _, tClient := range clientCandidates {
+		if filteredCandidateCount > 0 && tClient.priority < filteredCandidates[0].priority {
+			break
+		}
+		for _, skipClient := range skip {
+			if skipClient == tClient {
+				continue clientLoop
 			}
 		}
-		if skipIdx != -1 {
-			candidateCount--
-			if skipIdx < candidateCount {
-				clientCandidates[skipIdx] = clientCandidates[candidateCount]
-			}
-		}
+		filteredCandidateCount++
+		filteredCandidates = append(filteredCandidates, tClient)
 	}
 
-	if candidateCount == 0 {
-		clientCandidates = allCandidates
-		candidateCount = len(clientCandidates)
+	if filteredCandidateCount == 0 {
+		filteredCandidates = clientCandidates
+		filteredCandidateCount = candidateCount
 	}
-	if candidateCount == 0 {
+	if filteredCandidateCount == 0 {
 		return nil
 	}
-	selectedIndex := rand.Intn(candidateCount)
-	return clientCandidates[selectedIndex]
+	selectedIndex := rand.Intn(filteredCandidateCount)
+	return filteredCandidates[selectedIndex]
 }
 
-func (indexer *Indexer) GetReadyClients(archive bool, head []byte) []*IndexerClient {
+func (indexer *Indexer) getReadyClients(archive bool, head []byte) []*IndexerClient {
 	headCandidates := indexer.GetHeadForks(true)
 	if len(headCandidates) == 0 {
 		allCandidates := make([]*IndexerClient, len(indexer.indexerClients))
@@ -145,19 +145,12 @@ func (indexer *Indexer) GetReadyClients(archive bool, head []byte) []*IndexerCli
 }
 
 func (indexer *Indexer) getReadyClientCandidates(headFork *HeadFork, archive bool) []*IndexerClient {
-	var clientCandidates []*IndexerClient = nil
+	clientCandidates := []*IndexerClient{}
 	for _, client := range headFork.ReadyClients {
 		if archive && !client.archive {
 			continue
 		}
-		if clientCandidates != nil && clientCandidates[0].priority != client.priority {
-			break
-		}
-		if clientCandidates != nil {
-			clientCandidates = append(clientCandidates, client)
-		} else {
-			clientCandidates = []*IndexerClient{client}
-		}
+		clientCandidates = append(clientCandidates, client)
 	}
 	return clientCandidates
 }

@@ -61,7 +61,7 @@ func getSlotsPageData(firstSlot uint64, pageSize uint64) (*models.SlotsPageData,
 	if pageErr == nil && pageRes != nil {
 		resData, resOk := pageRes.(*models.SlotsPageData)
 		if !resOk {
-			return nil, InvalidPageModelError
+			return nil, ErrInvalidPageModel
 		}
 		pageData = resData
 	}

@@ -2,12 +2,79 @@
 name: Build DEV version
 
 on:
-  pull_request:
-    branches: [ "master" ]
+  pull_request_target:
+    types: [synchronize]
   workflow_dispatch:
+    inputs:
+      docker_tag:
+        description: "Docker Tag Prefix (leave blank for no docker build)"
+        required: false
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  build_binaries:
-    name: "Build binaries"
-    uses: ./.github/workflows/_shared-build.yaml
+  prinfo:
+    name: "Get PR info"
+    runs-on: ubuntu-latest
+    outputs:
+      run_builds: ${{ steps.loadinfo.outputs.run_builds }}
+      commit_ref: ${{ steps.loadinfo.outputs.commit_ref }}
+      build_docker: ${{ steps.loadinfo.outputs.build_docker }}
+      docker_tag: ${{ steps.loadinfo.outputs.docker_tag }}
+    steps:
+    - name: "Load PR info"
+      id: loadinfo
+      run: |
+        run_builds="true"
 
+        has_docker_image_label="${{ contains(github.event.pull_request.labels.*.name, 'build-docker-image') }}"
+        echo "docker image label: $has_docker_image_label"
+
+        branch_name="${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}"
+        echo "branch name: $branch_name"
+
+        commit_repo="$GITHUB_REPOSITORY"
+        commit_ref="${{ github.event.pull_request.head.sha }}"
+        if [[ -z "$commit_ref" ]]; then
+          commit_ref="${{ github.sha }}"
+        fi
+        
+        echo "repository: $commit_repo"
+        echo "commit: $commit_ref"
+        
+        manual_tag="${{ inputs.docker_tag }}"
+        if [[ ! -z "$manual_tag" ]]; then
+          has_docker_image_label="true"
+          branch_name="$manual_tag"
+        fi
+
+        if [[ "$branch_name" == "master" ]] || [[ "$branch_name" =~ ^v[0-9] ]]; then
+          echo "Invalid branch name! Skipping builds"
+          run_builds="false"
+        fi
+
+        echo "run_builds=$run_builds" >> $GITHUB_OUTPUT
+        echo "commit_ref=$commit_ref" >> $GITHUB_OUTPUT
+        echo "build_docker=$has_docker_image_label" >> $GITHUB_OUTPUT
+        echo "docker_tag=$branch_name" >> $GITHUB_OUTPUT
+
+  check_source:
+    name: "Run code checks"
+    uses: ./.github/workflows/_shared-check.yaml
+
+  build_binaries:
+    name: "Build Dora"
+    needs: [prinfo, check_source]
+    if: ${{ needs.prinfo.outputs.run_builds == 'true' }}
+    uses: ./.github/workflows/_shared-build.yaml
+    with:
+      ref: ${{ needs.prinfo.outputs.commit_ref }}
+      docker: ${{ needs.prinfo.outputs.build_docker == 'true' }}
+      docker_repository: "ethpandaops/dora"
+      docker_tag_prefix: ${{needs.prinfo.outputs.docker_tag}}
+      additional_tags: "['${{needs.prinfo.outputs.docker_tag}}','${{needs.prinfo.outputs.docker_tag}}-latest']"
+    secrets:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}

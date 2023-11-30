@@ -296,3 +296,7 @@ span.validator-label {
 .table-sorting thead .sort-link:hover, .table-sorting thead .sort-link.active {
   opacity: 1;
 }
+
+.ellipsis-copy-btn {
+  float: right;
+}

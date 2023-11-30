@@ -93,7 +93,7 @@ func getValidatorPageData(validatorIndex uint64) (*models.ValidatorPageData, err
 	if pageErr == nil && pageRes != nil {
 		resData, resOk := pageRes.(*models.ValidatorPageData)
 		if !resOk {
-			return nil, InvalidPageModelError
+			return nil, ErrInvalidPageModel
 		}
 		pageData = resData
 	}

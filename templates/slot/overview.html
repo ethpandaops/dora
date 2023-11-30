@@ -153,6 +153,7 @@
         {{ end }}
 
         {{ if .Block.ExecutionData }}
+          {{ $block := .Block }}
           {{ with .Block.ExecutionData }}
             <div class="row border-bottom p-2 mx-0">
               <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Received Eth Block headers and Deposit data">Execution Payload:</span></div>
@@ -200,7 +201,7 @@
 
                 <div class="row py-1">
                   <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Transactions">Transactions:</span></div>
-                  <div class="col-md-10 text-monospace text-break">{{ .TransactionsCount }}</div>
+                  <div class="col-md-10 text-monospace text-break">{{ $block.TransactionsCount }}</div>
                 </div>
 
                 <div class="row py-1">

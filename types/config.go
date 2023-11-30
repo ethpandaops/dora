@@ -91,6 +91,15 @@ type Config struct {
 		} `yaml:"aws"`
 	} `yaml:"blobstore"`
 
+	TxSignature struct {
+		DisableLookupLoop bool          `yaml:"disableLookupLoop" envconfig:"TXSIG_DISABLE_LOOKUP_LOOP"`
+		LookupInterval    time.Duration `yaml:"lookupInterval" envconfig:"TXSIG_LOOKUP_INTERVAL"`
+		LookupBatchSize   uint64        `yaml:"lookupBatchSize" envconfig:"TXSIG_LOOKUP_INTERVAL"`
+		ConcurrencyLimit  uint64        `yaml:"concurrencyLimit" envconfig:"TXSIG_CONCURRENCY_LIMIT"`
+		Disable4Bytes     bool          `yaml:"disable4Bytes" envconfig:"TXSIG_DISABLE_4BYTES"`
+		RecheckTimeout    time.Duration `yaml:"recheckTimeout" envconfig:"TXSIG_RECHECK_TIMEOUT"`
+	} `yaml:"txsig"`
+
 	Database struct {
 		Engine string `yaml:"engine" envconfig:"DATABASE_ENGINE"`
 		Sqlite struct {
