@@ -72,6 +72,9 @@ func (tss *TxSignaturesService) LookupSignatures(sigBytes []types.TxSignatureByt
 		for _, dbSigEntry := range db.GetTxFunctionSignaturesByBytes(unresolvedLookupBytes) {
 			var lookup *TxSignaturesLookup
 			for i, l := range unresolvedLookups {
+				if l == nil {
+					continue
+				}
 				if bytes.Equal(l.Bytes[:], dbSigEntry.Bytes) {
 					lookup = l
 					unresolvedLookups[i] = nil
