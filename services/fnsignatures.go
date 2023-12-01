@@ -259,7 +259,7 @@ func (tss *TxSignaturesService) processPendingSignatures() {
 			if len(unknownSigs) > 0 {
 				err := db.InsertUnknownFunctionSignatures(unknownSigs, tx)
 				if err != nil {
-					logger_tss.Warnf("error saving resolved signature: %v", err)
+					logger_tss.Warnf("error saving unknown signature: %v", err)
 				}
 			}
 			for _, fnsig := range resolvedSigs {
