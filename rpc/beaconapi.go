@@ -158,6 +158,10 @@ func (bc *BeaconClient) Initialize() error {
 		cliParams = append(cliParams, http.WithLogLevel(zerolog.Disabled))
 	}
 
+	if utils.Config.KillSwitch.DisableSSZRequests {
+		cliParams = append(cliParams, http.WithEnforceJSON(true))
+	}
+
 	// set extra endpoint headers
 	if bc.headers != nil && len(bc.headers) > 0 {
 		cliParams = append(cliParams, http.WithExtraHeaders(bc.headers))
