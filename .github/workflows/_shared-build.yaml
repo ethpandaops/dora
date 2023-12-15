@@ -92,6 +92,7 @@ jobs:
     # setup cross build libs
     - name: Get cross build dependencies
       run: |
+        sudo apt-get update
         sudo apt-get -y install gcc-aarch64-linux-gnu
     
     # setup project dependencies
