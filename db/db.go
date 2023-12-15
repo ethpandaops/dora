@@ -991,7 +991,7 @@ func InsertTxFunctionSignature(txFuncSig *dbtypes.TxFunctionSignature, tx *sqlx.
 			INSERT INTO tx_function_signatures (
 				signature, bytes, name
 			) VALUES ($1, $2, $3)
-			ON CONFLICT (signature) DO NOTHING`,
+			ON CONFLICT (bytes) DO NOTHING`,
 		dbtypes.DBEngineSqlite: `
 			INSERT OR IGNORE INTO tx_function_signatures (
 				signature, bytes, name

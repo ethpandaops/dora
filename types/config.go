@@ -126,6 +126,11 @@ type Config struct {
 			MaxIdleConns int    `yaml:"maxIdleConns" envconfig:"DATABASE_PGSQL_WRITER_MAX_IDLE_CONNS"`
 		} `yaml:"pgsqlWriter"`
 	} `yaml:"database"`
+
+	KillSwitch struct {
+		DisableSSZEncoding bool `yaml:"disableSSZEncoding" envconfig:"KILLSWITCH_DISABLE_SSZ_ENCODING"`
+		DisableSSZRequests bool `yaml:"disableSSZRequests" envconfig:"KILLSWITCH_DISABLE_SSZ_REQUESTS"`
+	} `yaml:"killSwitch"`
 }
 
 type EndpointConfig struct {

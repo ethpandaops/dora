@@ -72,6 +72,9 @@ func (tss *TxSignaturesService) LookupSignatures(sigBytes []types.TxSignatureByt
 		for _, dbSigEntry := range db.GetTxFunctionSignaturesByBytes(unresolvedLookupBytes) {
 			var lookup *TxSignaturesLookup
 			for i, l := range unresolvedLookups {
+				if l == nil {
+					continue
+				}
 				if bytes.Equal(l.Bytes[:], dbSigEntry.Bytes) {
 					lookup = l
 					unresolvedLookups[i] = nil
@@ -259,7 +262,7 @@ func (tss *TxSignaturesService) processPendingSignatures() {
 			if len(unknownSigs) > 0 {
 				err := db.InsertUnknownFunctionSignatures(unknownSigs, tx)
 				if err != nil {
-					logger_tss.Warnf("error saving resolved signature: %v", err)
+					logger_tss.Warnf("error saving unknown signature: %v", err)
 				}
 			}
 			for _, fnsig := range resolvedSigs {
