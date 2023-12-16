@@ -1,0 +1,67 @@
+
+name: Reusable docker clone workflow
+on:
+  workflow_call:
+    inputs:
+      source_repository:
+        description: 'Source Docker Hub Repository'
+        default: ''
+        required: false
+        type: string
+      target_repository:
+        description: 'Target Docker Hub Repository'
+        default: ''
+        required: false
+        type: string
+      tags:
+        description: 'Docker Image Tags (JSON)'
+        default: ''
+        required: false
+        type: string
+    secrets:
+      DOCKERHUB_USERNAME:
+        description: 'Docker Hub Username'
+        required: false
+      DOCKERHUB_TOKEN:
+        description: 'Docker Hub Token'
+        required: false
+
+# shared build jobs
+jobs:
+  clone_docker_images:
+    name: Clone docker images to ${{ inputs.target_repository }}
+    if: ${{ inputs.tags }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        tag: ${{ fromJSON(inputs.tags) }}
+    steps:
+
+    # prepare docker
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+    - name: Login to Docker Hub
+      uses: docker/login-action@v2
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+    
+    - name: Get tag names
+      id: tags
+      run: |
+        tagstr="${{ matrix.tag }}"
+        tagparts=(${tagstr//:/ })
+        echo "source_tag=${tagparts[0]}" >> $GITHUB_OUTPUT
+        if [ -z "$tagparts[1]" ]; then
+          echo "target_tag=${tagparts[0]}" >> $GITHUB_OUTPUT
+        else
+          echo "target_tag=${tagparts[1]}" >> $GITHUB_OUTPUT
+        fi
+
+    # build multiarch image
+    - name: "Copy docker image: ${{ steps.tags.outputs.target_tag }}"
+      run: |
+        docker buildx imagetools create -t ${{ inputs.target_repository }}:${{ steps.tags.outputs.target_tag }} \
+         ${{ inputs.source_repository }}:${{ steps.tags.outputs.source_tag }}-amd64 \
+         ${{ inputs.source_repository }}:${{ steps.tags.outputs.source_tag }}-arm64
+

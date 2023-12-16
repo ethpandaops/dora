@@ -22,6 +22,18 @@ jobs:
     secrets:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+
+  clone_docker_images:
+    name: "Copy docker images"
+    needs: [build_binaries]
+    uses: ./.github/workflows/_shared-docker-clone.yaml
+    with:
+      source_repository: "ethpandaops/dora"
+      target_repository: "pk910/dora-the-explorer"
+      tags: "['v${{ inputs.version }}','v${{ inputs.version }}:latest']"
+    secrets:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_PK_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_PK_TOKEN }}
   
   create_release:
     name: Create Release

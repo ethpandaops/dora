@@ -32,6 +32,18 @@ jobs:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
   
+  clone_docker_images:
+    name: "Copy docker images"
+    needs: [build_binaries]
+    uses: ./.github/workflows/_shared-docker-clone.yaml
+    with:
+      source_repository: "ethpandaops/dora"
+      target_repository: "pk910/dora-the-explorer"
+      tags: "['master:unstable']"
+    secrets:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_PK_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_PK_TOKEN }}
+  
   create_snapshot_release:
     name: Create snapshot release
     needs: [build_binaries]
