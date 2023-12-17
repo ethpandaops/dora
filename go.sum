@@ -246,6 +246,8 @@ github.com/pk910/go-eth2-client v0.0.0-20231121142646-e2ec0cfcfb1a h1:eU6vVKVtSQ
 github.com/pk910/go-eth2-client v0.0.0-20231121142646-e2ec0cfcfb1a/go.mod h1:YKTloAuspHPDCFg8+jV14H1+UFoaDLqabb/C2hHg8Q4=
 github.com/pk910/go-eth2-client v0.0.0-20231123094450-58c09fc53504 h1:6869XCTP5R0xLRnETz7kByySbbUmJugM7JzLxorgOWg=
 github.com/pk910/go-eth2-client v0.0.0-20231123094450-58c09fc53504/go.mod h1:YKTloAuspHPDCFg8+jV14H1+UFoaDLqabb/C2hHg8Q4=
+github.com/pk910/go-eth2-client v0.0.0-20231217052657-39326b2b91a7 h1:JG2FFabNp3W1bmUbJeiAV4WPFuaNnVO4y4G9WXLsXPo=
+github.com/pk910/go-eth2-client v0.0.0-20231217052657-39326b2b91a7/go.mod h1:YKTloAuspHPDCFg8+jV14H1+UFoaDLqabb/C2hHg8Q4=
 github.com/pkg/errors v0.8.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
 github.com/pkg/errors v0.9.1 h1:FEBLx1zS214owpjy7qsBeixbURkuhQAwrK5UwLGTwt4=
 github.com/pkg/errors v0.9.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
