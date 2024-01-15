@@ -278,7 +278,7 @@ func DeleteValidatorNames(validatorNames []uint64, tx *sqlx.Tx) error {
 	var sql strings.Builder
 	fmt.Fprint(&sql, `DELETE FROM validator_names WHERE "index" IN (`)
 	argIdx := 0
-	args := make([]any, len(validatorNames)*2)
+	args := make([]any, len(validatorNames))
 	for i, validatorName := range validatorNames {
 		if i > 0 {
 			fmt.Fprintf(&sql, ", ")
