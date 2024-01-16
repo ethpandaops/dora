@@ -49,6 +49,7 @@ func InitPageData(w http.ResponseWriter, r *http.Request, active, path, title st
 		Year:                  time.Now().UTC().Year(),
 		ExplorerTitle:         utils.Config.Frontend.SiteName,
 		ExplorerSubtitle:      utils.Config.Frontend.SiteSubtitle,
+		ExplorerLogo:          utils.Config.Frontend.SiteLogo,
 		ChainSlotsPerEpoch:    utils.Config.Chain.Config.SlotsPerEpoch,
 		ChainSecondsPerSlot:   utils.Config.Chain.Config.SecondsPerSlot,
 		ChainGenesisTimestamp: utils.Config.Chain.GenesisTimestamp,
@@ -58,6 +59,10 @@ func InitPageData(w http.ResponseWriter, r *http.Request, active, path, title st
 		Lang:                  "en-US",
 		Debug:                 utils.Config.Frontend.Debug,
 		MainMenuItems:         createMenuItems(active, isMainnet),
+	}
+
+	if utils.Config.Frontend.SiteDescription != "" {
+		data.Meta.Description = utils.Config.Frontend.SiteDescription
 	}
 
 	acceptedLangs := strings.Split(r.Header.Get("Accept-Language"), ",")

@@ -22,9 +22,13 @@
     <nav id="nav" class="main-navigation navbar navbar-expand-lg navbar-light">
       <div class="container d-flex">
         <a class="navbar-brand col-10 col-lg-auto me-lg-3 " href="/">
+          {{ if eq .ExplorerLogo "" }}
           <svg class="bi me-2" width="40" height="32" role="img" aria-label="Logo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
             <use href="#logo"></use>
           </svg>
+          {{ else }}
+          <img class="bi me-2" src="{{ .ExplorerLogo }}" height="32" role="img" aria-label="Logo">
+          {{ end }}
           
           <div class="explorer-brand">
             <div class="explorer-brand-container">
