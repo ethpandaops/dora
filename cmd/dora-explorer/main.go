@@ -93,6 +93,7 @@ func startFrontend() {
 	router.HandleFunc("/search", handlers.Search).Methods("GET")
 	router.HandleFunc("/search/{type}", handlers.SearchAhead).Methods("GET")
 	router.HandleFunc("/validators", handlers.Validators).Methods("GET")
+	router.HandleFunc("/validators/activity", handlers.ValidatorsActivity).Methods("GET")
 	router.HandleFunc("/validator/{idxOrPubKey}", handlers.Validator).Methods("GET")
 	router.HandleFunc("/validator/{index}/slots", handlers.ValidatorSlots).Methods("GET")
 

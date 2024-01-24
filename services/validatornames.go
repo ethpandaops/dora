@@ -17,6 +17,7 @@ import (
 	"github.com/pk910/dora/dbtypes"
 	"github.com/pk910/dora/utils"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/exp/maps"
 	"gopkg.in/yaml.v3"
 )
 
@@ -38,6 +39,17 @@ func (vn *ValidatorNames) GetValidatorName(index uint64) string {
 		return ""
 	}
 	return vn.names[index]
+}
+
+func (vn *ValidatorNames) GetValidatorNamesCount() uint64 {
+	if !vn.namesMutex.TryRLock() {
+		return 0
+	}
+	defer vn.namesMutex.RUnlock()
+	if vn.names == nil {
+		return 0
+	}
+	return uint64(len(maps.Keys(vn.names)))
 }
 
 func (vn *ValidatorNames) LoadValidatorNames() {

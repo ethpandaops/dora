@@ -114,6 +114,11 @@ func createMenuItems(active string, isMain bool) []types.MainMenuItem {
 							Path:  "/validators",
 							Icon:  "fa-table",
 						},
+						{
+							Label: "Validator Activity",
+							Path:  "/validators/activity",
+							Icon:  "fa-tachometer",
+						},
 					},
 				},
 				{

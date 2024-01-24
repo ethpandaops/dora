@@ -80,6 +80,10 @@ func (bs *BeaconService) GetValidatorName(index uint64) string {
 	return bs.validatorNames.GetValidatorName(index)
 }
 
+func (bs *BeaconService) GetValidatorNamesCount() uint64 {
+	return bs.validatorNames.GetValidatorNamesCount()
+}
+
 func (bs *BeaconService) GetCachedValidatorSet() map[phase0.ValidatorIndex]*v1.Validator {
 	return bs.indexer.GetCachedValidatorSet()
 }
