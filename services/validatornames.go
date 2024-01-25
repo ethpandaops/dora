@@ -12,6 +12,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/attestantio/go-eth2-client/spec/phase0"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/pk910/dora/config"
 	"github.com/pk910/dora/db"
 	"github.com/pk910/dora/dbtypes"
@@ -24,10 +26,11 @@ import (
 var logger_vn = logrus.StandardLogger().WithField("module", "validator_names")
 
 type ValidatorNames struct {
-	loadingMutex sync.Mutex
-	loading      bool
-	namesMutex   sync.RWMutex
-	names        map[uint64]string
+	loadingMutex      sync.Mutex
+	loading           bool
+	namesMutex        sync.RWMutex
+	namesByIndex      map[uint64]string
+	namesByWithdrawal map[common.Address]string
 }
 
 func (vn *ValidatorNames) GetValidatorName(index uint64) string {
@@ -35,10 +38,34 @@ func (vn *ValidatorNames) GetValidatorName(index uint64) string {
 		return ""
 	}
 	defer vn.namesMutex.RUnlock()
-	if vn.names == nil {
+	if vn.namesByIndex == nil {
 		return ""
 	}
-	return vn.names[index]
+
+	name := vn.namesByIndex[index]
+	if name != "" {
+		return name
+	}
+
+	validatorSet := GlobalBeaconService.GetCachedValidatorSet()
+	if validatorSet == nil {
+		return ""
+	}
+
+	validator := validatorSet[phase0.ValidatorIndex(index)]
+	if validator == nil {
+		return ""
+	}
+
+	if validator.Validator.WithdrawalCredentials[0] == 0x01 {
+		withdrawal := common.Address(validator.Validator.WithdrawalCredentials[12:])
+		name = vn.namesByWithdrawal[withdrawal]
+		if name != "" {
+			return name
+		}
+	}
+
+	return ""
 }
 
 func (vn *ValidatorNames) GetValidatorNamesCount() uint64 {
@@ -46,10 +73,10 @@ func (vn *ValidatorNames) GetValidatorNamesCount() uint64 {
 		return 0
 	}
 	defer vn.namesMutex.RUnlock()
-	if vn.names == nil {
+	if vn.namesByIndex == nil {
 		return 0
 	}
-	return uint64(len(maps.Keys(vn.names)))
+	return uint64(len(maps.Keys(vn.namesByIndex)) + len(maps.Keys(vn.namesByWithdrawal)))
 }
 
 func (vn *ValidatorNames) LoadValidatorNames() {
@@ -62,7 +89,8 @@ func (vn *ValidatorNames) LoadValidatorNames() {
 
 	go func() {
 		vn.namesMutex.Lock()
-		vn.names = make(map[uint64]string)
+		vn.namesByIndex = make(map[uint64]string)
+		vn.namesByWithdrawal = make(map[common.Address]string)
 		vn.namesMutex.Unlock()
 
 		// load names
@@ -137,21 +165,32 @@ func (vn *ValidatorNames) parseNamesMap(names map[string]string) int {
 	defer vn.namesMutex.Unlock()
 	nameCount := 0
 	for idxStr, name := range names {
-		rangeParts := strings.Split(idxStr, "-")
-		minIdx, err := strconv.ParseUint(rangeParts[0], 10, 64)
-		if err != nil {
-			continue
-		}
-		maxIdx := minIdx + 1
+		rangeParts := strings.Split(idxStr, ":")
 		if len(rangeParts) > 1 {
-			maxIdx, err = strconv.ParseUint(rangeParts[1], 10, 64)
+			switch rangeParts[0] {
+			case "withdrawal":
+				withdrawal := common.HexToAddress(rangeParts[1])
+				vn.namesByWithdrawal[withdrawal] = name
+				nameCount++
+			}
+
+		} else {
+			rangeParts = strings.Split(idxStr, "-")
+			minIdx, err := strconv.ParseUint(rangeParts[0], 10, 64)
 			if err != nil {
 				continue
 			}
-		}
-		for idx := minIdx; idx <= maxIdx; idx++ {
-			vn.names[idx] = name
-			nameCount++
+			maxIdx := minIdx + 1
+			if len(rangeParts) > 1 {
+				maxIdx, err = strconv.ParseUint(rangeParts[1], 10, 64)
+				if err != nil {
+					continue
+				}
+			}
+			for idx := minIdx; idx <= maxIdx; idx++ {
+				vn.namesByIndex[idx] = name
+				nameCount++
+			}
 		}
 	}
 	return nameCount
@@ -185,27 +224,7 @@ func (vn *ValidatorNames) loadFromRangesApi(apiUrl string) error {
 		return fmt.Errorf("error parsing validator ranges response: %v", err)
 	}
 
-	vn.namesMutex.Lock()
-	defer vn.namesMutex.Unlock()
-	nameCount := 0
-	for rangeStr, name := range rangesResponse.Ranges {
-		rangeParts := strings.Split(rangeStr, "-")
-		minIdx, err := strconv.ParseUint(rangeParts[0], 10, 64)
-		if err != nil {
-			continue
-		}
-		maxIdx := minIdx + 1
-		if len(rangeParts) > 1 {
-			maxIdx, err = strconv.ParseUint(rangeParts[1], 10, 64)
-			if err != nil {
-				continue
-			}
-		}
-		for idx := minIdx; idx <= maxIdx; idx++ {
-			vn.names[idx] = name
-			nameCount++
-		}
-	}
+	nameCount := vn.parseNamesMap(rangesResponse.Ranges)
 	logger_vn.Infof("loaded %v validator names from inventory api (%v)", nameCount, utils.GetRedactedUrl(apiUrl))
 	return nil
 }
@@ -213,7 +232,7 @@ func (vn *ValidatorNames) loadFromRangesApi(apiUrl string) error {
 func (vn *ValidatorNames) updateDb() error {
 	vn.namesMutex.RLock()
 	nameRows := make([]*dbtypes.ValidatorName, 0)
-	for index, name := range vn.names {
+	for index, name := range vn.namesByIndex {
 		nameRows = append(nameRows, &dbtypes.ValidatorName{
 			Index: index,
 			Name:  name,
