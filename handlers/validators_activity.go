@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/pk910/dora/services"
 	"github.com/pk910/dora/templates"
 	"github.com/pk910/dora/types/models"
@@ -133,11 +132,6 @@ func buildValidatorsActivityPageData(pageIdx uint64, pageSize uint64, sortOrder 
 		case 3:
 			groupName = services.GlobalBeaconService.GetValidatorName(uint64(vIdx))
 			groupKey = strings.ToLower(groupName)
-		case 4:
-			if validator.Validator.WithdrawalCredentials[0] == 0x01 {
-				groupName = common.BytesToAddress(validator.Validator.WithdrawalCredentials[12:]).Hex()
-				groupKey = strings.ToLower(groupName)
-			}
 		}
 
 		validatorGroup := validatorGroupMap[groupKey]
