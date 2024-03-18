@@ -2,7 +2,7 @@
 
 [![Badge](https://github.com/ethpandaops/dora/actions/workflows/build-master.yml/badge.svg)](https://github.com/ethpandaops/dora/actions?query=workflow%3A%22Build+master%22)
 [![Go Report Card](https://goreportcard.com/badge/github.com/ethpandaops/dora)](https://goreportcard.com/report/github.com/ethpandaops/dora)
-[![GitHub release (latest by date)](https://img.shields.io/github/v/release/pk910/dora?label=Latest%20Release)](https://github.com/ethpandaops/dora/releases/latest)
+[![GitHub release (latest by date)](https://img.shields.io/github/v/release/ethpandaops/dora?label=Latest%20Release)](https://github.com/ethpandaops/dora/releases/latest)
 
 ## What is this?
 This is a lightweight beaconchain explorer.
