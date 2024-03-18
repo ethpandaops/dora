@@ -10,12 +10,12 @@ import (
 	logger "github.com/sirupsen/logrus"
 	"github.com/urfave/negroni"
 
-	"github.com/pk910/dora/db"
-	"github.com/pk910/dora/handlers"
-	"github.com/pk910/dora/services"
-	"github.com/pk910/dora/static"
-	"github.com/pk910/dora/types"
-	"github.com/pk910/dora/utils"
+	"github.com/ethpandaops/dora/db"
+	"github.com/ethpandaops/dora/handlers"
+	"github.com/ethpandaops/dora/services"
+	"github.com/ethpandaops/dora/static"
+	"github.com/ethpandaops/dora/types"
+	"github.com/ethpandaops/dora/utils"
 )
 
 func main() {

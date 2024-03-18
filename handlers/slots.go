@@ -8,10 +8,10 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/pk910/dora/services"
-	"github.com/pk910/dora/templates"
-	"github.com/pk910/dora/types/models"
-	"github.com/pk910/dora/utils"
+	"github.com/ethpandaops/dora/services"
+	"github.com/ethpandaops/dora/templates"
+	"github.com/ethpandaops/dora/types/models"
+	"github.com/ethpandaops/dora/utils"
 	"github.com/sirupsen/logrus"
 )
 

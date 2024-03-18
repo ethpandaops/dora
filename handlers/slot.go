@@ -19,14 +19,14 @@ import (
 	"github.com/juliangruber/go-intersect"
 	"github.com/sirupsen/logrus"
 
-	"github.com/pk910/dora/db"
-	"github.com/pk910/dora/dbtypes"
-	"github.com/pk910/dora/rpc"
-	"github.com/pk910/dora/services"
-	"github.com/pk910/dora/templates"
-	"github.com/pk910/dora/types"
-	"github.com/pk910/dora/types/models"
-	"github.com/pk910/dora/utils"
+	"github.com/ethpandaops/dora/db"
+	"github.com/ethpandaops/dora/dbtypes"
+	"github.com/ethpandaops/dora/rpc"
+	"github.com/ethpandaops/dora/services"
+	"github.com/ethpandaops/dora/templates"
+	"github.com/ethpandaops/dora/types"
+	"github.com/ethpandaops/dora/types/models"
+	"github.com/ethpandaops/dora/utils"
 )
 
 // Index will return the main "index" page using a go template

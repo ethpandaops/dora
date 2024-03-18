@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/pk910/dora/services"
-	"github.com/pk910/dora/templates"
-	"github.com/pk910/dora/types/models"
+	"github.com/ethpandaops/dora/services"
+	"github.com/ethpandaops/dora/templates"
+	"github.com/ethpandaops/dora/types/models"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/exp/maps"
 )

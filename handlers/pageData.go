@@ -10,8 +10,8 @@ import (
 
 	logger "github.com/sirupsen/logrus"
 
-	"github.com/pk910/dora/types"
-	"github.com/pk910/dora/utils"
+	"github.com/ethpandaops/dora/types"
+	"github.com/ethpandaops/dora/utils"
 )
 
 var layoutTemplateFiles = []string{

@@ -4,9 +4,9 @@ import (
 	"fmt"
 
 	"github.com/jmoiron/sqlx"
-	"github.com/pk910/dora/db"
-	"github.com/pk910/dora/dbtypes"
-	"github.com/pk910/dora/utils"
+	"github.com/ethpandaops/dora/db"
+	"github.com/ethpandaops/dora/dbtypes"
+	"github.com/ethpandaops/dora/utils"
 )
 
 func persistSlotAssignments(epochStats *EpochStats, tx *sqlx.Tx) error {

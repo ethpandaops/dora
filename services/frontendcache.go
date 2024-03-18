@@ -10,8 +10,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/pk910/dora/cache"
-	"github.com/pk910/dora/utils"
+	"github.com/ethpandaops/dora/cache"
+	"github.com/ethpandaops/dora/utils"
 	"github.com/sirupsen/logrus"
 )
 

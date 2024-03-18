@@ -9,8 +9,8 @@ import (
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 
-	"github.com/pk910/dora/rpc"
-	"github.com/pk910/dora/utils"
+	"github.com/ethpandaops/dora/rpc"
+	"github.com/ethpandaops/dora/utils"
 )
 
 type IndexerClient struct {

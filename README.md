@@ -1,8 +1,8 @@
 # Dora the Beaconchain Explorer
 
-[![Badge](https://github.com/pk910/dora/actions/workflows/build-master.yml/badge.svg)](https://github.com/pk910/dora/actions?query=workflow%3A%22Build+master%22)
-[![Go Report Card](https://goreportcard.com/badge/github.com/pk910/dora)](https://goreportcard.com/report/github.com/pk910/dora)
-[![GitHub release (latest by date)](https://img.shields.io/github/v/release/pk910/dora?label=Latest%20Release)](https://github.com/pk910/dora/releases/latest)
+[![Badge](https://github.com/ethpandaops/dora/actions/workflows/build-master.yml/badge.svg)](https://github.com/ethpandaops/dora/actions?query=workflow%3A%22Build+master%22)
+[![Go Report Card](https://goreportcard.com/badge/github.com/ethpandaops/dora)](https://goreportcard.com/report/github.com/ethpandaops/dora)
+[![GitHub release (latest by date)](https://img.shields.io/github/v/release/pk910/dora?label=Latest%20Release)](https://github.com/ethpandaops/dora/releases/latest)
 
 ## What is this?
 This is a lightweight beaconchain explorer.
@@ -23,7 +23,7 @@ This "lightweight" explorer loads most of the information directly from an under
 * https://beaconlight.ephemery.dev/
 
 # Setup & Configuration
-Read through the [wiki](https://github.com/pk910/dora/wiki) for setup & configuration instructions.
+Read through the [wiki](https://github.com/ethpandaops/dora/wiki) for setup & configuration instructions.
 
 ## Dependencies
 

@@ -113,16 +113,16 @@ jobs:
           ## Latest automatically built executables. (Unstable development snapshot)
           Built from master branch (commit: ${{ github.sha }})
 
-          Please read the [wiki](https://github.com/pk910/dora/wiki) for setup / configuration instructions.
+          Please read the [wiki](https://github.com/ethpandaops/dora/wiki) for setup / configuration instructions.
 
           ### Release Artifacts
           | Release File  | Description |
           | ------------- | ------------- |
-          | [dora_snapshot_windows_amd64.zip](https://github.com/pk910/dora/releases/download/snapshot/dora_snapshot_windows_amd64.zip) | dora executables for windows/amd64 |
-          | [dora_snapshot_linux_amd64.tar.gz](https://github.com/pk910/dora/releases/download/snapshot/dora_snapshot_linux_amd64.tar.gz) | dora executables for linux/amd64 |
-          | [dora_snapshot_linux_arm64.tar.gz](https://github.com/pk910/dora/releases/download/snapshot/dora_snapshot_linux_arm64.tar.gz) | dora executables for linux/arm64 |
-          | [dora_snapshot_darwin_amd64.tar.gz](https://github.com/pk910/dora/releases/download/snapshot/dora_snapshot_darwin_amd64.tar.gz) | dora executable for macos/amd64 |
-          | [dora_snapshot_darwin_arm64.tar.gz](https://github.com/pk910/dora/releases/download/snapshot/dora_snapshot_darwin_arm64.tar.gz) | dora executable for macos/arm64 |
+          | [dora_snapshot_windows_amd64.zip](https://github.com/ethpandaops/dora/releases/download/snapshot/dora_snapshot_windows_amd64.zip) | dora executables for windows/amd64 |
+          | [dora_snapshot_linux_amd64.tar.gz](https://github.com/ethpandaops/dora/releases/download/snapshot/dora_snapshot_linux_amd64.tar.gz) | dora executables for linux/amd64 |
+          | [dora_snapshot_linux_arm64.tar.gz](https://github.com/ethpandaops/dora/releases/download/snapshot/dora_snapshot_linux_arm64.tar.gz) | dora executables for linux/arm64 |
+          | [dora_snapshot_darwin_amd64.tar.gz](https://github.com/ethpandaops/dora/releases/download/snapshot/dora_snapshot_darwin_amd64.tar.gz) | dora executable for macos/amd64 |
+          | [dora_snapshot_darwin_arm64.tar.gz](https://github.com/ethpandaops/dora/releases/download/snapshot/dora_snapshot_darwin_arm64.tar.gz) | dora executable for macos/arm64 |
       env:
         GITHUB_TOKEN: ${{ github.token }}
 

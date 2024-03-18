@@ -77,14 +77,14 @@ jobs:
           ${{ steps.changelog.outputs.changelog }}
 
           ### Release Artifacts
-          Please read through the [wiki](https://github.com/pk910/dora/wiki) for setup & configuration instructions.
+          Please read through the [wiki](https://github.com/ethpandaops/dora/wiki) for setup & configuration instructions.
           | Release File  | Description |
           | ------------- | ------------- |
-          | [dora_${{ inputs.version }}_windows_amd64.zip](https://github.com/pk910/dora/releases/download/v${{ inputs.version }}/dora_${{ inputs.version }}_windows_amd64.zip) | dora executables for windows/amd64 |
-          | [dora_${{ inputs.version }}_linux_amd64.tar.gz](https://github.com/pk910/dora/releases/download/v${{ inputs.version }}/dora_${{ inputs.version }}_linux_amd64.tar.gz) | dora executables for linux/amd64 |
-          | [dora_${{ inputs.version }}_linux_arm64.tar.gz](https://github.com/pk910/dora/releases/download/v${{ inputs.version }}/dora_${{ inputs.version }}_linux_arm64.tar.gz) | dora executables for linux/arm64 |
-          | [dora_${{ inputs.version }}_darwin_amd64.tar.gz](https://github.com/pk910/dora/releases/download/v${{ inputs.version }}/dora_${{ inputs.version }}_darwin_amd64.tar.gz) | dora executable for macos/amd64 |
-          | [dora_${{ inputs.version }}_darwin_arm64.tar.gz](https://github.com/pk910/dora/releases/download/v${{ inputs.version }}/dora_${{ inputs.version }}_darwin_arm64.tar.gz) | dora executable for macos/arm64 |
+          | [dora_${{ inputs.version }}_windows_amd64.zip](https://github.com/ethpandaops/dora/releases/download/v${{ inputs.version }}/dora_${{ inputs.version }}_windows_amd64.zip) | dora executables for windows/amd64 |
+          | [dora_${{ inputs.version }}_linux_amd64.tar.gz](https://github.com/ethpandaops/dora/releases/download/v${{ inputs.version }}/dora_${{ inputs.version }}_linux_amd64.tar.gz) | dora executables for linux/amd64 |
+          | [dora_${{ inputs.version }}_linux_arm64.tar.gz](https://github.com/ethpandaops/dora/releases/download/v${{ inputs.version }}/dora_${{ inputs.version }}_linux_arm64.tar.gz) | dora executables for linux/arm64 |
+          | [dora_${{ inputs.version }}_darwin_amd64.tar.gz](https://github.com/ethpandaops/dora/releases/download/v${{ inputs.version }}/dora_${{ inputs.version }}_darwin_amd64.tar.gz) | dora executable for macos/amd64 |
+          | [dora_${{ inputs.version }}_darwin_arm64.tar.gz](https://github.com/ethpandaops/dora/releases/download/v${{ inputs.version }}/dora_${{ inputs.version }}_darwin_arm64.tar.gz) | dora executable for macos/arm64 |
       env:
         GITHUB_TOKEN: ${{ github.token }}
 

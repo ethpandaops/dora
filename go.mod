@@ -1,4 +1,4 @@
-module github.com/pk910/dora
+module github.com/ethpandaops/dora
 
 go 1.21
 

@@ -11,10 +11,10 @@ import (
 
 	nethttp "net/http"
 
-	"github.com/pk910/dora/db"
-	"github.com/pk910/dora/dbtypes"
-	"github.com/pk910/dora/types"
-	"github.com/pk910/dora/utils"
+	"github.com/ethpandaops/dora/db"
+	"github.com/ethpandaops/dora/dbtypes"
+	"github.com/ethpandaops/dora/types"
+	"github.com/ethpandaops/dora/utils"
 	"github.com/sirupsen/logrus"
 )
 
