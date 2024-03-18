@@ -3,10 +3,10 @@ package indexer
 import (
 	"fmt"
 
-	"github.com/jmoiron/sqlx"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/utils"
+	"github.com/jmoiron/sqlx"
 )
 
 func persistSlotAssignments(epochStats *EpochStats, tx *sqlx.Tx) error {
