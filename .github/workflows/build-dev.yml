@@ -27,9 +27,8 @@ jobs:
     - name: "Load PR info"
       id: loadinfo
       run: |
-        run_builds="false"
-
         has_docker_image_label="${{ contains(github.event.pull_request.labels.*.name, 'build-docker-image') }}"
+        run_builds="$has_docker_image_label"
         echo "docker image label: $has_docker_image_label"
 
         branch_name="${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}"
