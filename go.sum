@@ -244,14 +244,10 @@ github.com/mitchellh/mapstructure v1.5.0/go.mod h1:bFUtVrKA4DC2yAKiSyO/QUcy7e+RR
 github.com/nxadm/tail v1.4.8 h1:nPr65rt6Y5JFSKQO7qToXr7pePgD6Gwiw05lkbyAQTE=
 github.com/onsi/ginkgo v1.16.5 h1:8xi0RTUf59SOSfEtZMvwTvXYMzG4gV23XVHOZiXNtnE=
 github.com/onsi/gomega v1.18.1 h1:M1GfJqGRrBrrGGsbxzV5dqM2U2ApXefZCQpkukxYRLE=
-github.com/pk910/dynamic-ssz v0.0.0-20240330223230-eced6836d885 h1:7n5NaBz3f5Zb79C3zU8OVuTM0D0XAEwmhfn/Qvi1STU=
-github.com/pk910/dynamic-ssz v0.0.0-20240330223230-eced6836d885/go.mod h1:boKvD5unVPTNvyETQV3gDNh0ga4AVCuZ+hJ+ja08QRc=
-github.com/pk910/go-eth2-client v0.0.0-20240330062621-0350168c6691 h1:1Hlz9a4b74UvTYx9guKSx7mqJJVTpeGlqGT2ptqnI6s=
-github.com/pk910/go-eth2-client v0.0.0-20240330062621-0350168c6691/go.mod h1:Tb412NpzhsC0sbtpXS4D51y5se6nDkWAi6amsJrqX9c=
-github.com/pk910/go-eth2-client v0.0.0-20240330075337-93f905e392bd h1:xUmfyl0V2t6RQ6sc+KyUcpYQ4UmBRh90ZQOgmBduI2c=
-github.com/pk910/go-eth2-client v0.0.0-20240330075337-93f905e392bd/go.mod h1:Tb412NpzhsC0sbtpXS4D51y5se6nDkWAi6amsJrqX9c=
-github.com/pk910/go-eth2-client v0.0.0-20240331015333-ece29db5ce76 h1:I8iBSF7dHL1I8S/NzUZ9GpphLIXioHxIr0zk+dZ10js=
-github.com/pk910/go-eth2-client v0.0.0-20240331015333-ece29db5ce76/go.mod h1:eu+OBo6ozf0AN4I4tVwirjeuM6A+aCKt4YhZeLZ7LDY=
+github.com/pk910/dynamic-ssz v0.0.2 h1:W8PUqjcM7WeLABtQduqthqqaCK5n4g3VzBukI21tmyk=
+github.com/pk910/dynamic-ssz v0.0.2/go.mod h1:PpHTmUfKQKTG5X8NJP9uo14eqmZ0akC9AitgrdjeJmY=
+github.com/pk910/go-eth2-client v0.0.0-20240401010249-0a11cd0943ff h1:wylI0oIT4xShYGA5mvk6buO9oyWzslP3vxmMFQFqVWY=
+github.com/pk910/go-eth2-client v0.0.0-20240401010249-0a11cd0943ff/go.mod h1:VdkMTum681ZufpSSYxCuui8KFiB7YOpXtiNJ5kTHosA=
 github.com/pkg/errors v0.8.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
 github.com/pkg/errors v0.9.1 h1:FEBLx1zS214owpjy7qsBeixbURkuhQAwrK5UwLGTwt4=
 github.com/pkg/errors v0.9.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
@@ -440,6 +436,8 @@ google.golang.org/protobuf v1.26.0-rc.1/go.mod h1:jlhhOSvTdKEhbULTjvd4ARK9grFBp0
 google.golang.org/protobuf v1.26.0/go.mod h1:9q0QmTI4eRPtz6boOQmLYwt+qCgq0jsYwAQnmE0givc=
 google.golang.org/protobuf v1.30.0 h1:kPPoIgf3TsEvrm0PFe15JQ+570QVxYzEvvHqChK+cng=
 google.golang.org/protobuf v1.30.0/go.mod h1:HV8QOd/L58Z+nl8r43ehVNZIU/HEI6OcFqwMG9pJV4I=
+gopkg.in/Knetic/govaluate.v3 v3.0.0 h1:18mUyIt4ZlRlFZAAfVetz4/rzlJs9yhN+U02F4u1AOc=
+gopkg.in/Knetic/govaluate.v3 v3.0.0/go.mod h1:csKLBORsPbafmSCGTEh3U7Ozmsuq8ZSIlKk1bcqph0E=
 gopkg.in/cenkalti/backoff.v1 v1.1.0 h1:Arh75ttbsvlpVA7WtVpH4u9h6Zl46xuptxqLxPiSo4Y=
 gopkg.in/cenkalti/backoff.v1 v1.1.0/go.mod h1:J6Vskwqd+OMVJl8C33mmtxTBs2gyzfv7UDAkHu8BrjI=
 gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
