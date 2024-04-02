@@ -104,3 +104,4 @@ require (
 )
 
 replace github.com/attestantio/go-eth2-client => github.com/pk910/go-eth2-client v0.0.0-20240401010249-0a11cd0943ff
+
