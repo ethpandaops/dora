@@ -10,7 +10,7 @@ import (
 	"github.com/attestantio/go-eth2-client/spec/deneb"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/attestantio/go-eth2-client/spec/verkle"
-	"github.com/pk910/dora/utils"
+	"github.com/ethpandaops/dora/utils"
 )
 
 var jsonVersionOffset uint64 = 0x70000000

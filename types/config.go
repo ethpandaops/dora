@@ -34,9 +34,11 @@ type Config struct {
 		Pprof   bool `yaml:"pprof" envconfig:"FRONTEND_PPROF"`
 		Minify  bool `yaml:"minify" envconfig:"FRONTEND_MINIFY"`
 
-		SiteDomain   string `yaml:"siteDomain" envconfig:"FRONTEND_SITE_DOMAIN"`
-		SiteName     string `yaml:"siteName" envconfig:"FRONTEND_SITE_NAME"`
-		SiteSubtitle string `yaml:"siteSubtitle" envconfig:"FRONTEND_SITE_SUBTITLE"`
+		SiteDomain      string `yaml:"siteDomain" envconfig:"FRONTEND_SITE_DOMAIN"`
+		SiteLogo        string `yaml:"siteLogo" envconfig:"FRONTEND_SITE_LOGO"`
+		SiteName        string `yaml:"siteName" envconfig:"FRONTEND_SITE_NAME"`
+		SiteSubtitle    string `yaml:"siteSubtitle" envconfig:"FRONTEND_SITE_SUBTITLE"`
+		SiteDescription string `yaml:"siteDescription" envconfig:"FRONTEND_SITE_DESCRIPTION"`
 
 		EthExplorerLink         string `yaml:"ethExplorerLink" envconfig:"FRONTEND_ETH_EXPLORER_LINK"`
 		ValidatorNamesYaml      string `yaml:"validatorNamesYaml" envconfig:"FRONTEND_VALIDATOR_NAMES_YAML"`

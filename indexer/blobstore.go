@@ -12,10 +12,10 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/sirupsen/logrus"
 
-	"github.com/pk910/dora/aws"
-	"github.com/pk910/dora/db"
-	"github.com/pk910/dora/dbtypes"
-	"github.com/pk910/dora/utils"
+	"github.com/ethpandaops/dora/aws"
+	"github.com/ethpandaops/dora/db"
+	"github.com/ethpandaops/dora/dbtypes"
+	"github.com/ethpandaops/dora/utils"
 )
 
 var logger_blobs = logrus.StandardLogger().WithField("module", "blobstore")

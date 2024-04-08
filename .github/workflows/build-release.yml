@@ -8,6 +8,9 @@ on:
         description: "Version Number ('0.x.y')"
         required: true
 
+permissions:
+  contents: write
+
 jobs:
   build_binaries:
     name: "Build Dora"
@@ -22,12 +25,43 @@ jobs:
     secrets:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+
+  clone_docker_images:
+    name: "Copy docker images"
+    needs: [build_binaries]
+    uses: ./.github/workflows/_shared-docker-clone.yaml
+    with:
+      source_repository: "ethpandaops/dora"
+      target_repository: "pk910/dora-the-explorer"
+      tags: "['v${{ inputs.version }}','v${{ inputs.version }}:latest']"
+    secrets:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_PK_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_PK_TOKEN }}
   
   create_release:
     name: Create Release
     needs: [build_binaries]
     runs-on: ubuntu-latest
     steps:
+    - uses: actions/checkout@v3
+      with:
+        fetch-depth: 100
+        ref: ${{ github.sha }}
+    - name: "Generate release changelog"
+      id: changelog
+      run: |
+        git fetch --tags
+        prev_tag=$(git tag --sort=-version:refname | grep -e "^v[0-9.]*$" | head -n 1)
+        echo "previous release: $prev_tag"
+        if [ "$prev_tag" ]; then
+          changelog=$(git log --oneline --no-decorate $prev_tag..HEAD)
+        else
+          changelog=$(git log --oneline --no-decorate)
+        fi
+        echo "changelog<<EOF" >> $GITHUB_OUTPUT
+        echo " - ${changelog//$'\n'/$'\n' - }" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+
     # download build artifacts
     - name: "Download build artifacts"
       uses: actions/download-artifact@v3
@@ -42,18 +76,18 @@ jobs:
         release_name: "v${{ inputs.version }}"
         tag_name: "v${{ inputs.version }}"
         body: |
-          ### Major Changes
-          ...
+          ### Changes
+          ${{ steps.changelog.outputs.changelog }}
 
           ### Release Artifacts
-          Please read through the [wiki](https://github.com/pk910/dora/wiki) for setup & configuration instructions.
+          Please read through the [wiki](https://github.com/ethpandaops/dora/wiki) for setup & configuration instructions.
           | Release File  | Description |
           | ------------- | ------------- |
-          | [dora_${{ inputs.version }}_windows_amd64.zip](https://github.com/pk910/dora/releases/download/v${{ inputs.version }}/dora_${{ inputs.version }}_windows_amd64.zip) | dora executables for windows/amd64 |
-          | [dora_${{ inputs.version }}_linux_amd64.tar.gz](https://github.com/pk910/dora/releases/download/v${{ inputs.version }}/dora_${{ inputs.version }}_linux_amd64.tar.gz) | dora executables for linux/amd64 |
-          | [dora_${{ inputs.version }}_linux_arm64.tar.gz](https://github.com/pk910/dora/releases/download/v${{ inputs.version }}/dora_${{ inputs.version }}_linux_arm64.tar.gz) | dora executables for linux/arm64 |
-          | [dora_${{ inputs.version }}_darwin_amd64.tar.gz](https://github.com/pk910/dora/releases/download/v${{ inputs.version }}/dora_${{ inputs.version }}_darwin_amd64.tar.gz) | dora executable for macos/amd64 |
-          | [dora_${{ inputs.version }}_darwin_arm64.tar.gz](https://github.com/pk910/dora/releases/download/v${{ inputs.version }}/dora_${{ inputs.version }}_darwin_arm64.tar.gz) | dora executable for macos/arm64 |
+          | [dora_${{ inputs.version }}_windows_amd64.zip](https://github.com/ethpandaops/dora/releases/download/v${{ inputs.version }}/dora_${{ inputs.version }}_windows_amd64.zip) | dora executables for windows/amd64 |
+          | [dora_${{ inputs.version }}_linux_amd64.tar.gz](https://github.com/ethpandaops/dora/releases/download/v${{ inputs.version }}/dora_${{ inputs.version }}_linux_amd64.tar.gz) | dora executables for linux/amd64 |
+          | [dora_${{ inputs.version }}_linux_arm64.tar.gz](https://github.com/ethpandaops/dora/releases/download/v${{ inputs.version }}/dora_${{ inputs.version }}_linux_arm64.tar.gz) | dora executables for linux/arm64 |
+          | [dora_${{ inputs.version }}_darwin_amd64.tar.gz](https://github.com/ethpandaops/dora/releases/download/v${{ inputs.version }}/dora_${{ inputs.version }}_darwin_amd64.tar.gz) | dora executable for macos/amd64 |
+          | [dora_${{ inputs.version }}_darwin_arm64.tar.gz](https://github.com/ethpandaops/dora/releases/download/v${{ inputs.version }}/dora_${{ inputs.version }}_darwin_arm64.tar.gz) | dora executable for macos/arm64 |
       env:
         GITHUB_TOKEN: ${{ github.token }}
 

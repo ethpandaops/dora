@@ -1,4 +1,4 @@
-﻿# From https://github.com/gnosischain/configs/tree/main/presets/gnosis
+﻿# From https://github.com/gnosischain/specs/tree/master/consensus/preset/gnosis
 # Mainnet preset - Phase0
 
 # Misc
@@ -136,3 +136,16 @@ MAX_WITHDRAWALS_PER_PAYLOAD: 8
 # ---------------------------------------------------------------
 # 2**13 (= 8192) validators
 MAX_VALIDATORS_PER_WITHDRAWALS_SWEEP: 8192
+
+# Mainnet preset - Deneb
+
+# Misc
+# ---------------------------------------------------------------
+# `uint64(4096)`
+FIELD_ELEMENTS_PER_BLOB: 4096
+# `uint64(2**12)` (= 4096)
+MAX_BLOB_COMMITMENTS_PER_BLOCK: 4096
+# `uint64(6)`
+MAX_BLOBS_PER_BLOCK: 6
+# `floorlog2(get_generalized_index(BeaconBlockBody, 'blob_kzg_commitments')) + 1 + ceillog2(MAX_BLOB_COMMITMENTS_PER_BLOCK)` = 4 + 1 + 12 = 17
+KZG_COMMITMENT_INCLUSION_PROOF_DEPTH: 17

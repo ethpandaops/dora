@@ -10,10 +10,10 @@ import (
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/sirupsen/logrus"
 
-	"github.com/pk910/dora/dbtypes"
-	"github.com/pk910/dora/rpc"
-	"github.com/pk910/dora/types"
-	"github.com/pk910/dora/utils"
+	"github.com/ethpandaops/dora/dbtypes"
+	"github.com/ethpandaops/dora/rpc"
+	"github.com/ethpandaops/dora/types"
+	"github.com/ethpandaops/dora/utils"
 )
 
 var logger = logrus.StandardLogger().WithField("module", "indexer")

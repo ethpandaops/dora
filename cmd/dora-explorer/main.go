@@ -10,12 +10,12 @@ import (
 	logger "github.com/sirupsen/logrus"
 	"github.com/urfave/negroni"
 
-	"github.com/pk910/dora/db"
-	"github.com/pk910/dora/handlers"
-	"github.com/pk910/dora/services"
-	"github.com/pk910/dora/static"
-	"github.com/pk910/dora/types"
-	"github.com/pk910/dora/utils"
+	"github.com/ethpandaops/dora/db"
+	"github.com/ethpandaops/dora/handlers"
+	"github.com/ethpandaops/dora/services"
+	"github.com/ethpandaops/dora/static"
+	"github.com/ethpandaops/dora/types"
+	"github.com/ethpandaops/dora/utils"
 )
 
 func main() {
@@ -93,6 +93,7 @@ func startFrontend() {
 	router.HandleFunc("/search", handlers.Search).Methods("GET")
 	router.HandleFunc("/search/{type}", handlers.SearchAhead).Methods("GET")
 	router.HandleFunc("/validators", handlers.Validators).Methods("GET")
+	router.HandleFunc("/validators/activity", handlers.ValidatorsActivity).Methods("GET")
 	router.HandleFunc("/validator/{idxOrPubKey}", handlers.Validator).Methods("GET")
 	router.HandleFunc("/validator/{index}/slots", handlers.ValidatorSlots).Methods("GET")
 

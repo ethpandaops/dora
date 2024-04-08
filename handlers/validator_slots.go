@@ -9,11 +9,11 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
 
-	"github.com/pk910/dora/dbtypes"
-	"github.com/pk910/dora/services"
-	"github.com/pk910/dora/templates"
-	"github.com/pk910/dora/types/models"
-	"github.com/pk910/dora/utils"
+	"github.com/ethpandaops/dora/dbtypes"
+	"github.com/ethpandaops/dora/services"
+	"github.com/ethpandaops/dora/templates"
+	"github.com/ethpandaops/dora/types/models"
+	"github.com/ethpandaops/dora/utils"
 )
 
 // Slots will return the main "slots" page using a go template

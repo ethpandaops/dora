@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/pk910/dora/utils"
+	"github.com/ethpandaops/dora/utils"
 )
 
 type EpochVotes struct {

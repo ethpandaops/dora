@@ -3,6 +3,7 @@ package handlers
 import (
 	"bytes"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -14,10 +15,10 @@ import (
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
 	"golang.org/x/exp/maps"
 
-	"github.com/pk910/dora/services"
-	"github.com/pk910/dora/templates"
-	"github.com/pk910/dora/types/models"
-	"github.com/pk910/dora/utils"
+	"github.com/ethpandaops/dora/services"
+	"github.com/ethpandaops/dora/templates"
+	"github.com/ethpandaops/dora/types/models"
+	"github.com/ethpandaops/dora/utils"
 	"github.com/sirupsen/logrus"
 )
 
@@ -40,6 +41,12 @@ func Validators(w http.ResponseWriter, r *http.Request) {
 	if urlArgs.Has("c") {
 		pageSize, _ = strconv.ParseUint(urlArgs.Get("c"), 10, 64)
 	}
+	if urlArgs.Has("json") && pageSize > 10000 {
+		pageSize = 10000
+	} else if !urlArgs.Has("json") && pageSize > 1000 {
+		pageSize = 1000
+	}
+
 	var filterPubKey string
 	var filterIndex string
 	var filterName string
@@ -72,6 +79,16 @@ func Validators(w http.ResponseWriter, r *http.Request) {
 		handlePageError(w, r, pageError)
 		return
 	}
+
+	if urlArgs.Has("json") {
+		w.Header().Set("Content-Type", "application/json")
+		err := json.NewEncoder(w).Encode(data.Data)
+		if err != nil {
+			logrus.WithError(err).Error("error encoding index data")
+			http.Error(w, "Internal server error", http.StatusServiceUnavailable)
+		}
+	}
+
 	w.Header().Set("Content-Type", "text/html")
 	if handleTemplateError(w, r, "validators.go", "Validators", "", pageTemplate.ExecuteTemplate(w, "layout", data)) != nil {
 		return // an error has occurred and was processed
@@ -236,10 +253,6 @@ func buildValidatorsPageData(firstValIdx uint64, pageSize uint64, sortOrder stri
 		pageData.IsDefaultPage = true
 	} else if firstValIdx > totalValidatorCount {
 		firstValIdx = totalValidatorCount
-	}
-
-	if pageSize > 100 {
-		pageSize = 100
 	}
 
 	pagesBefore := firstValIdx / pageSize

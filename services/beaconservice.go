@@ -13,11 +13,11 @@ import (
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethereum/go-ethereum/common/lru"
 
-	"github.com/pk910/dora/db"
-	"github.com/pk910/dora/dbtypes"
-	"github.com/pk910/dora/indexer"
-	"github.com/pk910/dora/rpc"
-	"github.com/pk910/dora/utils"
+	"github.com/ethpandaops/dora/db"
+	"github.com/ethpandaops/dora/dbtypes"
+	"github.com/ethpandaops/dora/indexer"
+	"github.com/ethpandaops/dora/rpc"
+	"github.com/ethpandaops/dora/utils"
 	"github.com/sirupsen/logrus"
 )
 
@@ -78,6 +78,10 @@ func (bs *BeaconService) GetHeadForks(readyOnly bool) []*indexer.HeadFork {
 
 func (bs *BeaconService) GetValidatorName(index uint64) string {
 	return bs.validatorNames.GetValidatorName(index)
+}
+
+func (bs *BeaconService) GetValidatorNamesCount() uint64 {
+	return bs.validatorNames.GetValidatorNamesCount()
 }
 
 func (bs *BeaconService) GetCachedValidatorSet() map[phase0.ValidatorIndex]*v1.Validator {

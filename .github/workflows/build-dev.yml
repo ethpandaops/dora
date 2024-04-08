@@ -27,9 +27,8 @@ jobs:
     - name: "Load PR info"
       id: loadinfo
       run: |
-        run_builds="true"
-
         has_docker_image_label="${{ contains(github.event.pull_request.labels.*.name, 'build-docker-image') }}"
+        run_builds="$has_docker_image_label"
         echo "docker image label: $has_docker_image_label"
 
         branch_name="${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}"
@@ -48,6 +47,7 @@ jobs:
         if [[ ! -z "$manual_tag" ]]; then
           has_docker_image_label="true"
           branch_name="$manual_tag"
+          run_builds="true"
         fi
 
         if [[ "$branch_name" == "master" ]] || [[ "$branch_name" =~ ^v[0-9] ]]; then
@@ -60,13 +60,9 @@ jobs:
         echo "build_docker=$has_docker_image_label" >> $GITHUB_OUTPUT
         echo "docker_tag=$branch_name" >> $GITHUB_OUTPUT
 
-  check_source:
-    name: "Run code checks"
-    uses: ./.github/workflows/_shared-check.yaml
-
   build_binaries:
     name: "Build Dora"
-    needs: [prinfo, check_source]
+    needs: [prinfo]
     if: ${{ needs.prinfo.outputs.run_builds == 'true' }}
     uses: ./.github/workflows/_shared-build.yaml
     with:

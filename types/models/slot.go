@@ -4,7 +4,7 @@ import (
 	"time"
 
 	"github.com/attestantio/go-eth2-client/spec/verkle"
-	"github.com/pk910/dora/types"
+	"github.com/ethpandaops/dora/types"
 )
 
 // SlotPageData is a struct to hold info for the slot details page

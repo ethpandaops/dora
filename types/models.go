@@ -10,6 +10,7 @@ type PageData struct {
 	Version               string
 	BuildTime             string
 	Year                  int
+	ExplorerLogo          string
 	ExplorerTitle         string
 	ExplorerSubtitle      string
 	ChainSlotsPerEpoch    uint64

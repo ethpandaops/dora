@@ -42,3 +42,10 @@
 1410000-1459999: "stakely"
 1460031-1460353: "reth"
 1460355-1461031: "reth"
+1552771-1562771: "ef_devops"
+
+"withdrawal:0x00000000001d2f94eB88124eEC6E1af72225c52F": "CryptoDevHub"
+"withdrawal:0x428614Fb30e3007e5d628D09e8BDB0CE9720FAdB": "Huawei"
+"withdrawal:0xF0179dEC45a37423EAD4FaD5fCb136197872EAd9": "Lido"
+"withdrawal:0x55fbd2d6643de2e436409b193812bd1ed1c70765": "Obol Network"
+"withdrawal:0x0efB35a6D6b14e7F5eEEbAD10A2145A68C99772D": "Frax Finance"

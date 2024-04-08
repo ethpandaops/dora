@@ -13,9 +13,9 @@ import (
 	"github.com/pressly/goose/v3"
 	"github.com/sirupsen/logrus"
 
-	"github.com/pk910/dora/dbtypes"
-	"github.com/pk910/dora/types"
-	"github.com/pk910/dora/utils"
+	"github.com/ethpandaops/dora/dbtypes"
+	"github.com/ethpandaops/dora/types"
+	"github.com/ethpandaops/dora/utils"
 
 	"github.com/jackc/pgx/v4/pgxpool"
 	_ "github.com/jackc/pgx/v4/stdlib"
@@ -278,7 +278,7 @@ func DeleteValidatorNames(validatorNames []uint64, tx *sqlx.Tx) error {
 	var sql strings.Builder
 	fmt.Fprint(&sql, `DELETE FROM validator_names WHERE "index" IN (`)
 	argIdx := 0
-	args := make([]any, len(validatorNames)*2)
+	args := make([]any, len(validatorNames))
 	for i, validatorName := range validatorNames {
 		if i > 0 {
 			fmt.Fprintf(&sql, ", ")

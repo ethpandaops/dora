@@ -1,0 +1,205 @@
+{{ define "page" }}
+  <div class="container mt-2">
+    <div class="d-md-flex py-2 justify-content-md-between">
+      <h1 class="h4 mb-1 mb-md-0"><i class="fas fa-tachometer mx-2"></i>Validator Activity</h1>
+      <nav aria-label="breadcrumb">
+        <ol class="breadcrumb font-size-1 mb-0" style="padding:0; background-color:transparent;">
+          <li class="breadcrumb-item"><a href="/" title="Home">Home</a></li>
+          <li class="breadcrumb-item"><a href="/validators" title="Slots">Validators</a></li>
+          <li class="breadcrumb-item active" aria-current="page">Activity</li>
+        </ol>
+      </nav>
+    </div>
+
+    <div id="header-placeholder" style="height:35px;"></div>
+    <form action="/validators/activity" method="get" id="validatorsActivityFilterForm">
+      <div class="card mt-2">
+        <div class="card-header">
+          View Options
+        </div>
+        <div class="card-body p-2">
+          <div class="row">
+            <div class="col-sm-12 col-md-6">
+              <div class="container">
+                <div class="row mt-1">
+                  <div class="col-sm-12 col-md-6 col-lg-4">
+                    Group By
+                  </div>
+                  <div class="col-sm-12 col-md-6 col-lg-8">
+                    <select name="group" aria-controls="missing" class="form-control">
+                      <option value="1" {{ if eq .ViewOptionGroupBy 1 }}selected{{ end }}>Validator Indexes (100k)</option>
+                      <option value="2" {{ if eq .ViewOptionGroupBy 2 }}selected{{ end }}>Validator Indexes (10k)</option>
+                      <option value="3" {{ if eq .ViewOptionGroupBy 3 }}selected{{ end }}>Validator Names</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+          <div class="row mt-3">
+            <div class="col-8 col-md-6 table-pagesize">
+              <label class="px-2">
+                <span>Show </span>
+                <select name="c" aria-controls="pagesize" class="custom-select custom-select-sm form-control form-control-sm">
+                  <option value="{{ .PageSize }}" selected>{{ .PageSize }}</option>
+                  <option value="10">10</option>
+                  <option value="25">25</option>
+                  <option value="50">50</option>
+                  <option value="100">100</option>
+                </select>
+                <span> groups per page</span>
+              </label>
+            </div>
+            <div class="col-4 col-md-6">
+              <div class="container text-end">
+                <button type="submit" class="btn btn-primary">Apply Settings</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </form>
+    <script type="text/javascript">
+      $('#validatorsActivityFilterForm').submit(function () {
+        $(this).find('input[type="text"],input[type="number"]').filter(function () { return !this.value; }).prop('name', '');
+      });
+    </script>
+
+    <div class="card mt-2">
+      <div class="card-body px-0 py-3">
+            
+        <div class="table-responsive table-sorting px-0 py-1">
+          <table class="table table-nobr" id="slots">
+            <thead>
+              <tr>
+                <th>
+                  Group
+                  <div class="col-sorting">
+                    <a href="{{ .ViewPageLink }}&o=group" class="sort-link {{ if eq .Sorting "group" }}active{{ end }}"><i class="fas fa-arrow-up"></i></a>
+                    <a href="{{ .ViewPageLink }}&o=group-d" class="sort-link {{ if eq .Sorting "group-d" }}active{{ end }}"><i class="fas fa-arrow-down"></i></a>
+                  </div>
+                </th>
+                <th>
+                  Validators
+                  <div class="col-sorting">
+                    <a href="{{ .ViewPageLink }}&o=count" class="sort-link {{ if eq .Sorting "count" }}active{{ end }}"><i class="fas fa-arrow-up"></i></a>
+                    <a href="{{ .ViewPageLink }}&o=count-d" class="sort-link {{ if eq .Sorting "count-d" }}active{{ end }}"><i class="fas fa-arrow-down"></i></a>
+                  </div>
+                </th>
+                <th>
+                  <nobr><span data-toggle="tooltip" data-placement="top" title="Activated">A<span class="d-none d-lg-inline">ctivated</span></span></nobr>
+                  <div class="col-sorting">
+                    <a href="{{ .ViewPageLink }}&o=active" class="sort-link {{ if eq .Sorting "active" }}active{{ end }}"><i class="fas fa-arrow-up"></i></a>
+                    <a href="{{ .ViewPageLink }}&o=active-d" class="sort-link {{ if eq .Sorting "active-d" }}active{{ end }}"><i class="fas fa-arrow-down"></i></a>
+                  </div>
+                </th>
+                <th>
+                  <nobr><span data-toggle="tooltip" data-placement="top" title="Online">On<span class="d-none d-lg-inline">line</span></span></nobr>
+                  <div class="col-sorting">
+                    <a href="{{ .ViewPageLink }}&o=online" class="sort-link {{ if eq .Sorting "online" }}active{{ end }}"><i class="fas fa-arrow-up"></i></a>
+                    <a href="{{ .ViewPageLink }}&o=online-d" class="sort-link {{ if eq .Sorting "online-d" }}active{{ end }}"><i class="fas fa-arrow-down"></i></a>
+                  </div>
+                </th>
+                <th>
+                  <nobr><span data-toggle="tooltip" data-placement="top" title="Online">Off<span class="d-none d-lg-inline">line</span></span></nobr>
+                  <div class="col-sorting">
+                    <a href="{{ .ViewPageLink }}&o=offline" class="sort-link {{ if eq .Sorting "offline" }}active{{ end }}"><i class="fas fa-arrow-up"></i></a>
+                    <a href="{{ .ViewPageLink }}&o=offline-d" class="sort-link {{ if eq .Sorting "offline-d" }}active{{ end }}"><i class="fas fa-arrow-down"></i></a>
+                  </div>
+                </th>
+                <th>
+                  <nobr><span data-toggle="tooltip" data-placement="top" title="Exited">Ex<span class="d-none d-lg-inline">ited</span></span></nobr>
+                  <div class="col-sorting">
+                    <a href="{{ .ViewPageLink }}&o=exited" class="sort-link {{ if eq .Sorting "exited" }}active{{ end }}"><i class="fas fa-arrow-up"></i></a>
+                    <a href="{{ .ViewPageLink }}&o=exited-d" class="sort-link {{ if eq .Sorting "exited-d" }}active{{ end }}"><i class="fas fa-arrow-down"></i></a>
+                  </div>
+                </th>
+                <th>
+                  <nobr><span data-toggle="tooltip" data-placement="top" title="Slashed">Sl<span class="d-none d-lg-inline">ashed</span></span></nobr>
+                  <div class="col-sorting">
+                    <a href="{{ .ViewPageLink }}&o=slashed" class="sort-link {{ if eq .Sorting "slashed" }}active{{ end }}"><i class="fas fa-arrow-up"></i></a>
+                    <a href="{{ .ViewPageLink }}&o=slashed-d" class="sort-link {{ if eq .Sorting "slashed-d" }}active{{ end }}"><i class="fas fa-arrow-down"></i></a>
+                  </div>
+                </th>
+              </tr>
+            </thead>
+            {{ if gt .GroupCount 0 }}
+              <tbody>
+                {{ $groupBy := .ViewOptionGroupBy }}
+                {{ range $i, $group := .Groups }}
+                  <tr>
+                    <td>
+                      {{ if $group.Group }}
+                        {{ $group.Group }}
+                      {{ else }}
+                        {{ if eq $groupBy 3 }}
+                          <i>unnamed</i>
+                        {{ else if eq $groupBy 4 }}
+                          <i>no address</i>
+                        {{ end }}
+                      {{ end }}
+                    </td>
+                    <td>{{ $group.Validators }}</td>
+                    <td>{{ $group.Activated }}</td>
+                    <td>{{ $group.Online }}</td>
+                    <td>{{ $group.Offline }}</td>
+                    <td>{{ $group.Exited }}</td>
+                    <td>{{ $group.Slashed }}</td>
+                  </tr>
+                {{ end }}
+              </tbody>
+            {{ else }}
+              <tbody>
+                <tr style="height: 430px;">
+                  <td class="d-none d-md-table-cell"></td>
+                  <td style="vertical-align: middle;" colspan="7">
+                    <div class="img-fluid mx-auto p-3 d-flex align-items-center" style="max-height: 400px; max-width: 400px; overflow: hidden;">
+                      {{ template "professor_svg" }}
+                    </div>
+                  </td>
+                  <td class="d-none d-md-table-cell"></td>
+                </tr>
+              </tbody>
+            {{ end }}
+          </table>
+        </div>
+        {{ if gt .TotalPages 1 }}
+          <div class="row">
+            <div class="col-sm-12 col-md-5 table-metainfo">
+              <div class="px-2">
+                <div class="table-meta" role="status" aria-live="polite">Showing group {{ .FirstGroup }} to {{ .LastGroup }}</div>
+              </div>
+            </div>
+            <div class="col-sm-12 col-md-7 table-paging">
+              <div class="d-inline-block px-2">
+                <ul class="pagination">
+                  <li class="first paginate_button page-item {{ if le .PrevPageIndex 1 }}disabled{{ end }}" id="tpg_first">
+                    <a tab-index="1" aria-controls="tpg_first" class="page-link" href="{{ .FirstPageLink }}">First</a>
+                  </li>
+                  <li class="previous paginate_button page-item {{ if eq .PrevPageIndex 0 }}disabled{{ end }}" id="tpg_previous">
+                    <a tab-index="1" aria-controls="tpg_previous" class="page-link" href="{{ .PrevPageLink }}"><i class="fas fa-chevron-left"></i></a>
+                  </li>
+                  <li class="page-item disabled">
+                    <a class="page-link" style="background-color: transparent;">{{ .CurrentPageIndex }} of {{ .TotalPages }}</a>
+                  </li>
+                  <li class="next paginate_button page-item {{ if eq .NextPageIndex 0 }}disabled{{ end }}" id="tpg_next">
+                    <a tab-index="1" aria-controls="tpg_next" class="page-link" href="{{ .NextPageLink }}"><i class="fas fa-chevron-right"></i></a>
+                  </li>
+                  <li class="last paginate_button page-item {{ if or (eq .LastPageIndex 0) (le .NextPageIndex .LastPageIndex) }}disabled{{ end }}" id="tpg_last">
+                    <a tab-index="1" aria-controls="tpg_last" class="page-link" href="{{ .LastPageLink }}">Last</a>
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        {{ end }}
+      </div>
+      <div id="footer-placeholder" style="height:71px;"></div>
+    </div>
+  </div>
+{{ end }}
+{{ define "js" }}
+{{ end }}
+{{ define "css" }}
+{{ end }}
