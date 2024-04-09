@@ -149,9 +149,7 @@ func (bc *BeaconClient) Initialize() error {
 		http.WithTimeout(10 * time.Minute),
 		// TODO (when upstream PR is merged)
 		//http.WithConnectionCheck(false),
-
-		// TODO Not good! Remove this before merging verkle-support!
-		http.WithEnforceJSON(true),
+		//http.WithDynamicSSZ(true),
 	}
 
 	// set log level
