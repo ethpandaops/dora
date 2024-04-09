@@ -45,7 +45,7 @@ func newIndexerCache(indexer *Indexer) *indexerCache {
 	}
 	cache := &indexerCache{
 		indexer:                 indexer,
-		triggerChan:             make(chan bool, 10),
+		triggerChan:             make(chan bool, 1),
 		highestSlot:             -1,
 		lowestSlot:              -1,
 		finalizedEpoch:          -1,
@@ -103,7 +103,10 @@ func (cache *indexerCache) setFinalizedHead(finalizedEpoch int64, finalizedRoot 
 		cache.finalizedRoot = finalizedRoot
 
 		// trigger processing
-		cache.triggerChan <- true
+		select {
+		case cache.triggerChan <- true:
+		default:
+		}
 	}
 }
 
