@@ -2,6 +2,7 @@ package indexer
 
 import (
 	"fmt"
+	"runtime/debug"
 	"time"
 
 	"github.com/ethpandaops/dora/db"
@@ -26,7 +27,13 @@ func (cache *indexerCache) runCacheLoop() {
 	}
 }
 
-func (cache *indexerCache) runCacheLogic() error {
+func (cache *indexerCache) runCacheLogic() (err error) {
+	defer func() {
+		if err2 := recover(); err2 != nil {
+			err = fmt.Errorf("uncaught panic in runCacheLogic subroutine: %v, stack: %v", err2, string(debug.Stack()))
+		}
+	}()
+
 	if cache.highestSlot < 0 {
 		return nil
 	}
