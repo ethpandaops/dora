@@ -69,7 +69,10 @@ func persistEpochData(epoch uint64, blockMap map[uint64]*CacheBlock, epochStats 
 	dbEpoch := buildDbEpoch(epoch, blockMap, epochStats, epochVotes, func(block *CacheBlock) {
 		// insert block
 		dbBlock := buildDbBlock(block, epochStats)
-		db.InsertSlot(dbBlock, tx)
+		err := db.InsertSlot(dbBlock, tx)
+		if err != nil {
+			logger.Errorf("error inserting slot: %v", err)
+		}
 	})
 
 	// insert slot assignments
