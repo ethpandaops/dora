@@ -22,7 +22,8 @@ CREATE TABLE IF NOT EXISTS slots
     eth_transaction_count integer NULL DEFAULT 0,
     eth_block_number bigint NULL,
     eth_block_hash BLOB NULL,
-    eth_block_extra text NULL,
+    eth_block_extra BLOB NULL,
+    eth_block_extra_text text NULL,
     sync_participation real NULL DEFAULT 0,
     CONSTRAINT slots_pkey PRIMARY KEY (slot, root)
 );
@@ -37,7 +38,7 @@ CREATE INDEX IF NOT EXISTS "slots_graffiti_idx"
 
 CREATE INDEX IF NOT EXISTS "slots_eth_block_extra_idx"
     ON "slots"  
-    ("eth_block_extra" ASC);
+    ("eth_block_extra_text" ASC);
 
 CREATE INDEX IF NOT EXISTS "slots_slot_idx"
     ON "slots" 

@@ -45,6 +45,7 @@ type Slot struct {
 	EthBlockNumber        *uint64    `db:"eth_block_number"`
 	EthBlockHash          []byte     `db:"eth_block_hash"`
 	EthBlockExtra         []byte     `db:"eth_block_extra"`
+	EthBlockExtraText     string     `db:"eth_block_extra_text"`
 	SyncParticipation     float32    `db:"sync_participation"`
 }
 

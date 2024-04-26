@@ -186,6 +186,7 @@ func buildDbBlock(block *CacheBlock, epochStats *EpochStats) *dbtypes.Slot {
 		dbBlock.EthBlockNumber = &executionBlockNumber
 		dbBlock.EthBlockHash = executionBlockHash[:]
 		dbBlock.EthBlockExtra = executionExtraData
+		dbBlock.EthBlockExtraText = utils.GraffitiToString(executionExtraData[:])
 		dbBlock.WithdrawCount = uint64(len(executionWithdrawals))
 		for _, withdrawal := range executionWithdrawals {
 			dbBlock.WithdrawAmount += uint64(withdrawal.Amount)

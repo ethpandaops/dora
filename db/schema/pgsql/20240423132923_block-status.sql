@@ -22,7 +22,8 @@ CREATE TABLE IF NOT EXISTS public.slots
     eth_transaction_count integer NULL DEFAULT 0,
     eth_block_number bigint NULL,
     eth_block_hash bytea NULL,
-    eth_block_extra text NULL COLLATE pg_catalog."default",
+    eth_block_extra bytea NULL,
+    eth_block_extra_text text NULL COLLATE pg_catalog."default",
     sync_participation real NULL DEFAULT 0,
     CONSTRAINT slots_pkey PRIMARY KEY (slot, root)
 );
@@ -37,7 +38,7 @@ CREATE INDEX IF NOT EXISTS "slots_graffiti_idx"
 
 CREATE INDEX IF NOT EXISTS "slots_eth_block_extra_idx"
     ON public."slots" USING gin 
-    ("eth_block_extra" gin_trgm_ops);
+    ("eth_block_extra_text" gin_trgm_ops);
 
 CREATE INDEX IF NOT EXISTS "slots_slot_idx"
     ON public."slots" 
