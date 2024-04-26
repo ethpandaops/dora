@@ -379,7 +379,7 @@ func InsertSlot(slot *dbtypes.Slot, tx *sqlx.Tx) error {
 				attestation_count, deposit_count, exit_count, withdraw_count, withdraw_amount, attester_slashing_count, 
 				proposer_slashing_count, bls_change_count, eth_transaction_count, eth_block_number, eth_block_hash, eth_block_extra,
 				sync_participation
-			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
 			ON CONFLICT (slot, root) DO UPDATE SET
 				status = excluded.status`,
 		dbtypes.DBEngineSqlite: `
