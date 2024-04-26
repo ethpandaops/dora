@@ -209,7 +209,8 @@ func buildSlotPageData(blockSlot int64, blockRoot []byte, loadDuties bool) (*mod
 			}
 		} else {
 			// check orphaned status
-			blockData.Orphaned = services.GlobalBeaconService.CheckBlockOrphanedStatus(blockData.Root)
+			blockStatus := services.GlobalBeaconService.CheckBlockOrphanedStatus(blockData.Root)
+			blockData.Orphaned = blockStatus == dbtypes.Orphaned
 		}
 	}
 

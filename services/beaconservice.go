@@ -879,13 +879,21 @@ func (bs *BeaconService) GetDbBlocksByParentRoot(parentRoot []byte) []*dbtypes.S
 	return resBlocks
 }
 
-func (bs *BeaconService) CheckBlockOrphanedStatus(blockRoot []byte) bool {
+func (bs *BeaconService) CheckBlockOrphanedStatus(blockRoot []byte) dbtypes.SlotStatus {
 	cachedBlock := bs.indexer.GetCachedBlock(blockRoot)
 	if cachedBlock != nil {
-		return !cachedBlock.IsCanonical(bs.indexer, nil)
+		if cachedBlock.IsCanonical(bs.indexer, nil) {
+			return dbtypes.Canonical
+		} else {
+			return dbtypes.Orphaned
+		}
 	}
 	dbRefs := db.GetBlockStatus([][]byte{blockRoot})
-	return len(dbRefs) > 0 && dbRefs[0].Status
+	if len(dbRefs) > 0 {
+		return dbRefs[0].Status
+	}
+
+	return dbtypes.Missing
 }
 
 func (bs *BeaconService) GetValidatorActivity() (map[uint64]uint8, uint64) {

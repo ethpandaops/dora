@@ -7,8 +7,8 @@ type AssignedSlot struct {
 }
 
 type BlockStatus struct {
-	Root   []byte `db:"root"`
-	Status bool   `db:"status"`
+	Root   []byte     `db:"root"`
+	Status SlotStatus `db:"status"`
 }
 
 type AssignedBlob struct {

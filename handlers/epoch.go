@@ -10,6 +10,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
 
+	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
@@ -126,6 +127,8 @@ func buildEpochPageData(epoch uint64) (*models.EpochPageData, time.Duration) {
 		pageData.ValidatorCount = dbEpoch.ValidatorCount
 		if dbEpoch.ValidatorCount > 0 {
 			pageData.AverageValidatorBalance = dbEpoch.ValidatorBalance / dbEpoch.ValidatorCount
+		} else {
+			pageData.Synchronized = false
 		}
 		if dbEpoch.Eligible > 0 {
 			pageData.TargetVoteParticipation = float64(dbEpoch.VotedTarget) * 100.0 / float64(dbEpoch.Eligible)
@@ -137,44 +140,74 @@ func buildEpochPageData(epoch uint64) (*models.EpochPageData, time.Duration) {
 	// load slots
 	pageData.Slots = make([]*models.EpochPageDataSlot, 0)
 	dbSlots := services.GlobalBeaconService.GetDbBlocksForSlots(uint64(lastSlot), uint32(utils.Config.Chain.Config.SlotsPerEpoch), true, true)
+	dbIdx := 0
+	dbCnt := len(dbSlots)
 	blockCount := uint64(0)
-	for _, dbSlot := range dbSlots {
-		slot := uint64(dbSlot.Slot)
+	for slotIdx := int64(lastSlot); slotIdx >= int64(firstSlot); slotIdx-- {
+		slot := uint64(slotIdx)
+		haveBlock := false
+		for dbIdx < dbCnt && dbSlots[dbIdx] != nil && dbSlots[dbIdx].Slot == slot {
+			dbSlot := dbSlots[dbIdx]
+			dbIdx++
 
-		if dbSlot.Status == 2 {
-			pageData.OrphanedCount++
-		} else {
-			pageData.CanonicalCount++
+			switch dbSlot.Status {
+			case dbtypes.Orphaned:
+				pageData.OrphanedCount++
+			case dbtypes.Canonical:
+				pageData.CanonicalCount++
+			case dbtypes.Missing:
+				pageData.MissedCount++
+			}
+
+			proposer := dbSlot.Proposer
+			if proposer == math.MaxInt64 {
+				proposer = slotAssignments[slot]
+			}
+
+			slotData := &models.EpochPageDataSlot{
+				Slot:                  slot,
+				Epoch:                 utils.EpochOfSlot(slot),
+				Ts:                    utils.SlotToTime(slot),
+				Status:                uint8(dbSlot.Status),
+				Proposer:              proposer,
+				ProposerName:          services.GlobalBeaconService.GetValidatorName(proposer),
+				AttestationCount:      dbSlot.AttestationCount,
+				DepositCount:          dbSlot.DepositCount,
+				ExitCount:             dbSlot.ExitCount,
+				ProposerSlashingCount: dbSlot.ProposerSlashingCount,
+				AttesterSlashingCount: dbSlot.AttesterSlashingCount,
+				SyncParticipation:     float64(dbSlot.SyncParticipation) * 100,
+				EthTransactionCount:   dbSlot.EthTransactionCount,
+				Graffiti:              dbSlot.Graffiti,
+				BlockRoot:             dbSlot.Root,
+			}
+			if dbSlot.EthBlockNumber != nil {
+				slotData.WithEthBlock = true
+				slotData.EthBlockNumber = *dbSlot.EthBlockNumber
+			}
+			pageData.Slots = append(pageData.Slots, slotData)
+			blockCount++
+			haveBlock = true
 		}
 
-		proposer := dbSlot.Proposer
-		if proposer == math.MaxInt64 {
-			proposer = slotAssignments[slot]
+		if !haveBlock {
+			slotData := &models.EpochPageDataSlot{
+				Slot:         slot,
+				Epoch:        epoch,
+				Ts:           utils.SlotToTime(slot),
+				Scheduled:    slot >= currentSlot,
+				Status:       0,
+				Proposer:     slotAssignments[slot],
+				ProposerName: services.GlobalBeaconService.GetValidatorName(slotAssignments[slot]),
+			}
+			if slotData.Scheduled {
+				pageData.ScheduledCount++
+			} else {
+				pageData.MissedCount++
+			}
+			pageData.Slots = append(pageData.Slots, slotData)
+			blockCount++
 		}
-
-		slotData := &models.EpochPageDataSlot{
-			Slot:                  slot,
-			Epoch:                 utils.EpochOfSlot(slot),
-			Ts:                    utils.SlotToTime(slot),
-			Status:                uint8(dbSlot.Status),
-			Proposer:              proposer,
-			ProposerName:          services.GlobalBeaconService.GetValidatorName(proposer),
-			AttestationCount:      dbSlot.AttestationCount,
-			DepositCount:          dbSlot.DepositCount,
-			ExitCount:             dbSlot.ExitCount,
-			ProposerSlashingCount: dbSlot.ProposerSlashingCount,
-			AttesterSlashingCount: dbSlot.AttesterSlashingCount,
-			SyncParticipation:     float64(dbSlot.SyncParticipation) * 100,
-			EthTransactionCount:   dbSlot.EthTransactionCount,
-			Graffiti:              dbSlot.Graffiti,
-			BlockRoot:             dbSlot.Root,
-		}
-		if dbSlot.EthBlockNumber != nil {
-			slotData.WithEthBlock = true
-			slotData.EthBlockNumber = *dbSlot.EthBlockNumber
-		}
-		pageData.Slots = append(pageData.Slots, slotData)
-		blockCount++
 	}
 	pageData.BlockCount = uint64(blockCount)
 

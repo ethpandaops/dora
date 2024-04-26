@@ -291,7 +291,7 @@ func (cache *indexerCache) processOrphanedBlocks(processedEpoch int64) error {
 
 	// check if blocks are already in db
 	for _, blockRef := range db.GetBlockStatus(blockRoots) {
-		if blockRef.Status {
+		if blockRef.Status == dbtypes.Orphaned {
 			logger.Debugf("processed duplicate orphaned block: 0x%x", blockRef.Root)
 		} else {
 			logger.Debugf("processed duplicate canonical block in orphaned handler: 0x%x", blockRef.Root)
