@@ -90,7 +90,6 @@ func buildEpochPageData(epoch uint64) (*models.EpochPageData, time.Duration) {
 	}
 
 	finalizedEpoch, _ := services.GlobalBeaconService.GetFinalizedEpoch()
-	slotAssignments, syncedEpochs := services.GlobalBeaconService.GetProposerAssignments(epoch, epoch)
 
 	nextEpoch := epoch + 1
 	if nextEpoch > currentEpoch {
@@ -103,13 +102,14 @@ func buildEpochPageData(epoch uint64) (*models.EpochPageData, time.Duration) {
 		PreviousEpoch: epoch - 1,
 		NextEpoch:     nextEpoch,
 		Ts:            utils.EpochToTime(epoch),
-		Synchronized:  syncedEpochs[epoch],
+		Synchronized:  true,
 		Finalized:     finalizedEpoch >= int64(epoch),
 	}
 
 	dbEpochs := services.GlobalBeaconService.GetDbEpochs(epoch, 1)
 	dbEpoch := dbEpochs[0]
 	if dbEpoch != nil {
+		pageData.Synchronized = true
 		pageData.AttestationCount = dbEpoch.AttestationCount
 		pageData.DepositCount = dbEpoch.DepositCount
 		pageData.ExitCount = dbEpoch.ExitCount
@@ -135,19 +135,16 @@ func buildEpochPageData(epoch uint64) (*models.EpochPageData, time.Duration) {
 
 	// load slots
 	pageData.Slots = make([]*models.EpochPageDataSlot, 0)
-	dbSlots := services.GlobalBeaconService.GetDbBlocksForSlots(uint64(lastSlot), uint32(utils.Config.Chain.Config.SlotsPerEpoch), true)
+	dbSlots := services.GlobalBeaconService.GetDbBlocksForSlots(uint64(lastSlot), uint32(utils.Config.Chain.Config.SlotsPerEpoch), true, true)
 	dbIdx := 0
 	dbCnt := len(dbSlots)
 	blockCount := uint64(0)
 	for slotIdx := int64(lastSlot); slotIdx >= int64(firstSlot); slotIdx-- {
 		slot := uint64(slotIdx)
-		haveBlock := false
 		for dbIdx < dbCnt && dbSlots[dbIdx] != nil && dbSlots[dbIdx].Slot == slot {
 			dbSlot := dbSlots[dbIdx]
 			dbIdx++
-			blockStatus := uint8(1)
-			if dbSlot.Orphaned == 1 {
-				blockStatus = 2
+			if dbSlot.Status == 2 {
 				pageData.OrphanedCount++
 			} else {
 				pageData.CanonicalCount++
@@ -157,7 +154,7 @@ func buildEpochPageData(epoch uint64) (*models.EpochPageData, time.Duration) {
 				Slot:                  slot,
 				Epoch:                 utils.EpochOfSlot(slot),
 				Ts:                    utils.SlotToTime(slot),
-				Status:                blockStatus,
+				Status:                uint8(dbSlot.Status),
 				Proposer:              dbSlot.Proposer,
 				ProposerName:          services.GlobalBeaconService.GetValidatorName(dbSlot.Proposer),
 				AttestationCount:      dbSlot.AttestationCount,
@@ -173,26 +170,6 @@ func buildEpochPageData(epoch uint64) (*models.EpochPageData, time.Duration) {
 			if dbSlot.EthBlockNumber != nil {
 				slotData.WithEthBlock = true
 				slotData.EthBlockNumber = *dbSlot.EthBlockNumber
-			}
-			pageData.Slots = append(pageData.Slots, slotData)
-			blockCount++
-			haveBlock = true
-		}
-
-		if !haveBlock {
-			slotData := &models.EpochPageDataSlot{
-				Slot:         slot,
-				Epoch:        epoch,
-				Ts:           utils.SlotToTime(slot),
-				Scheduled:    slot >= currentSlot,
-				Status:       0,
-				Proposer:     slotAssignments[slot],
-				ProposerName: services.GlobalBeaconService.GetValidatorName(slotAssignments[slot]),
-			}
-			if slotData.Scheduled {
-				pageData.ScheduledCount++
-			} else {
-				pageData.MissedCount++
 			}
 			pageData.Slots = append(pageData.Slots, slotData)
 			blockCount++

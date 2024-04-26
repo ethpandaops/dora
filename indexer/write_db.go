@@ -29,6 +29,30 @@ func persistSlotAssignments(epochStats *EpochStats, tx *sqlx.Tx) error {
 	return nil
 }
 
+func persistMissedSlots(epoch uint64, blockMap map[uint64]*CacheBlock, epochStats *EpochStats, tx *sqlx.Tx) error {
+	// insert slot assignments
+	firstSlot := epochStats.Epoch * utils.Config.Chain.Config.SlotsPerEpoch
+	if epochStats.proposerAssignments != nil {
+		for slotIdx := uint64(0); slotIdx < utils.Config.Chain.Config.SlotsPerEpoch; slotIdx++ {
+			slot := firstSlot + slotIdx
+			if blockMap[slot] != nil {
+				continue
+			}
+
+			missedSlot := &dbtypes.SlotHeader{
+				Slot:     slot,
+				Proposer: epochStats.proposerAssignments[slot],
+				Status:   dbtypes.Missing,
+			}
+			err := db.InsertMissingSlot(missedSlot, tx)
+			if err != nil {
+				return fmt.Errorf("error while adding missed slot to db: %w", err)
+			}
+		}
+	}
+	return nil
+}
+
 func persistEpochData(epoch uint64, blockMap map[uint64]*CacheBlock, epochStats *EpochStats, epochVotes *EpochVotes, tx *sqlx.Tx) error {
 	commitTx := false
 	if tx == nil {
@@ -45,11 +69,17 @@ func persistEpochData(epoch uint64, blockMap map[uint64]*CacheBlock, epochStats 
 	dbEpoch := buildDbEpoch(epoch, blockMap, epochStats, epochVotes, func(block *CacheBlock) {
 		// insert block
 		dbBlock := buildDbBlock(block, epochStats)
-		db.InsertBlock(dbBlock, tx)
+		db.InsertSlot(dbBlock, tx)
 	})
 
 	// insert slot assignments
 	err := persistSlotAssignments(epochStats, tx)
+	if err != nil {
+		return err
+	}
+
+	// insert missing slots
+	err = persistMissedSlots(epoch, blockMap, epochStats, tx)
 	if err != nil {
 		return err
 	}
@@ -93,7 +123,7 @@ func persistSyncAssignments(epoch uint64, epochStats *EpochStats, tx *sqlx.Tx) e
 	return db.InsertSyncAssignments(syncAssignments, tx)
 }
 
-func buildDbBlock(block *CacheBlock, epochStats *EpochStats) *dbtypes.Block {
+func buildDbBlock(block *CacheBlock, epochStats *EpochStats) *dbtypes.Slot {
 	blockBody := block.GetBlockBody()
 	if blockBody == nil {
 		logger.Errorf("Error while aggregating epoch blocks: canonical block body not found: %v", block.Slot)
@@ -113,12 +143,15 @@ func buildDbBlock(block *CacheBlock, epochStats *EpochStats) *dbtypes.Block {
 	executionTransactions, _ := blockBody.ExecutionTransactions()
 	executionWithdrawals, _ := blockBody.Withdrawals()
 
-	dbBlock := dbtypes.Block{
+	dbBlock := dbtypes.Slot{
+		SlotHeader: dbtypes.SlotHeader{
+			Slot:     uint64(block.header.Message.Slot),
+			Proposer: uint64(block.header.Message.ProposerIndex),
+			Status:   dbtypes.Canonical,
+		},
 		Root:                  block.Root,
-		Slot:                  uint64(block.header.Message.Slot),
 		ParentRoot:            block.header.Message.ParentRoot[:],
 		StateRoot:             block.header.Message.StateRoot[:],
-		Proposer:              uint64(block.header.Message.ProposerIndex),
 		Graffiti:              graffiti[:],
 		GraffitiText:          utils.GraffitiToString(graffiti[:]),
 		AttestationCount:      uint64(len(attestations)),

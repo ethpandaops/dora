@@ -18,6 +18,7 @@ import (
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/utils"
+	"github.com/jmoiron/sqlx"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/exp/maps"
 	"gopkg.in/yaml.v3"
@@ -27,7 +28,7 @@ var logger_vn = logrus.StandardLogger().WithField("module", "validator_names")
 
 type ValidatorNames struct {
 	loadingMutex      sync.Mutex
-	loading           bool
+	loading           chan bool
 	namesMutex        sync.RWMutex
 	namesByIndex      map[uint64]string
 	namesByWithdrawal map[common.Address]string
@@ -79,15 +80,22 @@ func (vn *ValidatorNames) GetValidatorNamesCount() uint64 {
 	return uint64(len(maps.Keys(vn.namesByIndex)) + len(maps.Keys(vn.namesByWithdrawal)))
 }
 
-func (vn *ValidatorNames) LoadValidatorNames() {
+func (vn *ValidatorNames) LoadValidatorNames() chan bool {
 	vn.loadingMutex.Lock()
 	defer vn.loadingMutex.Unlock()
-	if vn.loading {
-		return
+	if vn.loading != nil {
+		return vn.loading
 	}
-	vn.loading = true
+	vn.loading = make(chan bool)
 
 	go func() {
+		defer func() {
+			vn.loadingMutex.Lock()
+			defer vn.loadingMutex.Unlock()
+			close(vn.loading)
+			vn.loading = nil
+		}()
+
 		vn.namesMutex.Lock()
 		vn.namesByIndex = make(map[uint64]string)
 		vn.namesByWithdrawal = make(map[common.Address]string)
@@ -116,9 +124,9 @@ func (vn *ValidatorNames) LoadValidatorNames() {
 		if !utils.Config.Indexer.DisableIndexWriter {
 			vn.updateDb()
 		}
-
-		vn.loading = false
 	}()
+
+	return vn.loading
 }
 
 func (vn *ValidatorNames) loadFromYaml(fileName string) error {
@@ -244,11 +252,14 @@ func (vn *ValidatorNames) updateDb() error {
 		return nameRows[a].Index < nameRows[b].Index
 	})
 
-	tx, err := db.WriterDb.Beginx()
-	if err != nil {
-		return fmt.Errorf("error starting db transaction: %v", err)
-	}
-	defer tx.Rollback()
+	var tx *sqlx.Tx
+	var err error
+
+	defer func() {
+		if tx != nil {
+			tx.Rollback()
+		}
+	}()
 
 	batchSize := 10000
 
@@ -266,7 +277,7 @@ func (vn *ValidatorNames) updateDb() error {
 
 		// get existing db entries
 		dbNamesMap := map[uint64]string{}
-		for _, dbName := range db.GetValidatorNames(lastIndex, maxIndex, tx) {
+		for _, dbName := range db.GetValidatorNames(lastIndex, maxIndex) {
 			dbNamesMap[dbName.Index] = dbName.Name
 		}
 
@@ -286,6 +297,11 @@ func (vn *ValidatorNames) updateDb() error {
 			removeIndexes = append(removeIndexes, index)
 		}
 
+		tx, err = db.WriterDb.Beginx()
+		if err != nil {
+			return fmt.Errorf("error starting db transaction: %v", err)
+		}
+
 		if len(updateNames) > 0 {
 			err := db.InsertValidatorNames(updateNames, tx)
 			if err != nil {
@@ -298,14 +314,18 @@ func (vn *ValidatorNames) updateDb() error {
 				logger_vn.WithError(err).Errorf("error while deleting validator names from db")
 			}
 		}
-		logger_vn.Debugf("update validator names %v-%v: %v changed, %v removed", lastIndex, maxIdx, len(updateNames), len(removeIndexes))
+
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("error committing db transaction: %v", err)
+		}
+		tx = nil
+
+		if len(updateNames) > 0 || len(removeIndexes) > 0 {
+			logger_vn.Infof("update validator names %v-%v: %v changed, %v removed", lastIndex, maxIdx, len(updateNames), len(removeIndexes))
+		}
 
 		lastIndex = maxIndex + 1
 		nameIdx = maxIdx
-	}
-
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("error committing db transaction: %v", err)
 	}
 
 	return nil

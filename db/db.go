@@ -1,6 +1,7 @@
 package db
 
 import (
+	"database/sql"
 	"embed"
 	"encoding/json"
 	"fmt"
@@ -236,7 +237,7 @@ func SetExplorerState(key string, value interface{}, tx *sqlx.Tx) error {
 	return nil
 }
 
-func GetValidatorNames(minIdx uint64, maxIdx uint64, tx *sqlx.Tx) []*dbtypes.ValidatorName {
+func GetValidatorNames(minIdx uint64, maxIdx uint64) []*dbtypes.ValidatorName {
 	names := []*dbtypes.ValidatorName{}
 	err := ReaderDb.Select(&names, `SELECT "index", "name" FROM validator_names WHERE "index" >= $1 AND "index" <= $2`, minIdx, maxIdx)
 	if err != nil {
@@ -370,26 +371,71 @@ func InsertSyncAssignments(syncAssignments []*dbtypes.SyncAssignment, tx *sqlx.T
 	return nil
 }
 
-func InsertBlock(block *dbtypes.Block, tx *sqlx.Tx) error {
+func InsertSlot(slot *dbtypes.Slot, tx *sqlx.Tx) error {
 	_, err := tx.Exec(EngineQuery(map[dbtypes.DBEngineType]string{
 		dbtypes.DBEnginePgsql: `
-			INSERT INTO blocks (
-				root, slot, parent_root, state_root, orphaned, proposer, graffiti, graffiti_text,
+			INSERT INTO slots (
+				slot, proposer, status, root, parent_root, state_root, graffiti, graffiti_text,
 				attestation_count, deposit_count, exit_count, withdraw_count, withdraw_amount, attester_slashing_count, 
-				proposer_slashing_count, bls_change_count, eth_transaction_count, eth_block_number, eth_block_hash, sync_participation
+				proposer_slashing_count, bls_change_count, eth_transaction_count, eth_block_number, eth_block_hash, eth_block_extra,
+				sync_participation
 			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
-			ON CONFLICT (root) DO UPDATE SET
-				orphaned = excluded.orphaned`,
+			ON CONFLICT (slot, root) DO UPDATE SET
+				status = excluded.status`,
 		dbtypes.DBEngineSqlite: `
-			INSERT OR REPLACE INTO blocks (
-				root, slot, parent_root, state_root, orphaned, proposer, graffiti, graffiti_text,
+			INSERT OR REPLACE INTO slots (
+				slot, proposer, status, root, parent_root, state_root, graffiti, graffiti_text,
 				attestation_count, deposit_count, exit_count, withdraw_count, withdraw_amount, attester_slashing_count, 
-				proposer_slashing_count, bls_change_count, eth_transaction_count, eth_block_number, eth_block_hash, sync_participation
-			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)`,
+				proposer_slashing_count, bls_change_count, eth_transaction_count, eth_block_number, eth_block_hash, eth_block_extra,
+				sync_participation
+			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)`,
 	}),
-		block.Root, block.Slot, block.ParentRoot, block.StateRoot, block.Orphaned, block.Proposer, block.Graffiti, block.GraffitiText,
-		block.AttestationCount, block.DepositCount, block.ExitCount, block.WithdrawCount, block.WithdrawAmount, block.AttesterSlashingCount,
-		block.ProposerSlashingCount, block.BLSChangeCount, block.EthTransactionCount, block.EthBlockNumber, block.EthBlockHash, block.SyncParticipation)
+		slot.Slot, slot.Proposer, slot.Status, slot.Root, slot.ParentRoot, slot.StateRoot, slot.Graffiti, slot.GraffitiText,
+		slot.AttestationCount, slot.DepositCount, slot.ExitCount, slot.WithdrawCount, slot.WithdrawAmount, slot.AttesterSlashingCount,
+		slot.ProposerSlashingCount, slot.BLSChangeCount, slot.EthTransactionCount, slot.EthBlockNumber, slot.EthBlockHash, slot.EthBlockExtra,
+		slot.SyncParticipation)
+	if err != nil {
+		return err
+	}
+
+	_, err = tx.Exec("DELETE FROM slots WHERE slot = $1 AND proposer = $2 AND status = 0", slot.Slot, slot.Proposer)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func InsertMissingSlot(block *dbtypes.SlotHeader, tx *sqlx.Tx) error {
+	var blockCount int
+	err := ReaderDb.Select(&blockCount, `
+		SELECT
+			COUNT(*)
+		FROM slots
+		WHERE slot = $1 AND proposer = $2
+		ORDER BY "index" ASC
+	`, block.Slot, block.Proposer)
+	if err != nil {
+		return err
+	}
+
+	if blockCount > 0 {
+		return nil
+	}
+
+	_, err = tx.Exec(EngineQuery(map[dbtypes.DBEngineType]string{
+		dbtypes.DBEnginePgsql: `
+			INSERT INTO slots (
+				slot, proposer, status, root
+			) VALUES ($1, $2, $3, '0x')
+			ON CONFLICT (slot, root) DO UPDATE SET
+			proposer = excluded.proposer`,
+		dbtypes.DBEngineSqlite: `
+			INSERT OR REPLACE INTO slots (
+				slot, proposer, status, root
+			) VALUES ($1, $2, $3, '0x')`,
+	}),
+		block.Slot, block.Proposer, block.Status)
 	if err != nil {
 		return err
 	}
@@ -490,77 +536,96 @@ func GetEpochs(firstEpoch uint64, limit uint32) []*dbtypes.Epoch {
 	return epochs
 }
 
-func GetBlocks(firstBlock uint64, limit uint32, withOrphaned bool) []*dbtypes.Block {
-	blocks := []*dbtypes.Block{}
-	orphanedLimit := ""
-	if !withOrphaned {
-		orphanedLimit = "AND orphaned = 0"
+func GetSlots(firstSlot uint64, limit uint32, withMissing bool, withOrphaned bool) []*dbtypes.AssignedSlot {
+	var sql strings.Builder
+	fmt.Fprintf(&sql, `SELECT slots.slot, slots.proposer`)
+	blockFields := []string{
+		"state_root", "root", "slot", "proposer", "status", "parent_root", "graffiti", "graffiti_text",
+		"attestation_count", "deposit_count", "exit_count", "withdraw_count", "withdraw_amount", "attester_slashing_count",
+		"proposer_slashing_count", "bls_change_count", "eth_transaction_count", "eth_block_number", "eth_block_hash", "eth_block_extra",
+		"sync_participation",
 	}
-	err := ReaderDb.Select(&blocks, `
-	SELECT
-		root, slot, parent_root, state_root, orphaned, proposer, graffiti, graffiti_text,
-		attestation_count, deposit_count, exit_count, withdraw_count, withdraw_amount, attester_slashing_count, 
-		proposer_slashing_count, bls_change_count, eth_transaction_count, eth_block_number, eth_block_hash, sync_participation
-	FROM blocks
-	WHERE slot <= $1 `+orphanedLimit+`
-	ORDER BY slot DESC
-	LIMIT $2
-	`, firstBlock, limit)
+	for _, blockField := range blockFields {
+		fmt.Fprintf(&sql, ", slots.%v AS \"block.%v\"", blockField, blockField)
+	}
+	fmt.Fprintf(&sql, ` FROM slots `)
+	fmt.Fprintf(&sql, ` WHERE slot <= $1 `)
+
+	if !withMissing {
+		fmt.Fprintf(&sql, ` AND slots.status != 0 `)
+	}
+	if !withOrphaned {
+		fmt.Fprintf(&sql, ` AND slots.status != 2 `)
+	}
+	fmt.Fprintf(&sql, ` ORDER BY slot DESC LIMIT $2`)
+
+	rows, err := ReaderDb.Query(sql.String(), firstSlot, limit)
 	if err != nil {
-		logger.Errorf("Error while fetching blocks: %v", err)
+		logger.WithError(err).Errorf("Error while fetching slots: %v", sql.String())
 		return nil
 	}
-	return blocks
+
+	return parseAssignedSlots(rows, blockFields, 2)
 }
 
-func GetBlocksForSlots(firstSlot uint64, lastSlot uint64, withOrphaned bool) []*dbtypes.Block {
-	blocks := []*dbtypes.Block{}
-	orphanedLimit := ""
-	if !withOrphaned {
-		orphanedLimit = "AND orphaned = 0"
+func GetSlotsRange(firstSlot uint64, lastSlot uint64, withMissing bool, withOrphaned bool) []*dbtypes.AssignedSlot {
+	var sql strings.Builder
+	fmt.Fprintf(&sql, `SELECT slots.slot, slots.proposer`)
+	blockFields := []string{
+		"state_root", "root", "slot", "proposer", "status", "parent_root", "graffiti", "graffiti_text",
+		"attestation_count", "deposit_count", "exit_count", "withdraw_count", "withdraw_amount", "attester_slashing_count",
+		"proposer_slashing_count", "bls_change_count", "eth_transaction_count", "eth_block_number", "eth_block_hash", "eth_block_extra",
+		"sync_participation",
 	}
-	err := ReaderDb.Select(&blocks, `
-	SELECT
-		root, slot, parent_root, state_root, orphaned, proposer, graffiti, graffiti_text,
-		attestation_count, deposit_count, exit_count, withdraw_count, withdraw_amount, attester_slashing_count, 
-		proposer_slashing_count, bls_change_count, eth_transaction_count, eth_block_number, eth_block_hash, sync_participation
-	FROM blocks
-	WHERE slot <= $1 AND slot >= $2 `+orphanedLimit+`
-	ORDER BY slot DESC
-	`, firstSlot, lastSlot)
+	for _, blockField := range blockFields {
+		fmt.Fprintf(&sql, ", slots.%v AS \"block.%v\"", blockField, blockField)
+	}
+	fmt.Fprintf(&sql, ` FROM slots `)
+	fmt.Fprintf(&sql, ` WHERE slot <= $1 AND slot >= $2 `)
+
+	if !withMissing {
+		fmt.Fprintf(&sql, ` AND slots.status != 0 `)
+	}
+	if !withOrphaned {
+		fmt.Fprintf(&sql, ` AND slots.status != 2 `)
+	}
+	fmt.Fprintf(&sql, ` ORDER BY slot DESC `)
+
+	rows, err := ReaderDb.Query(sql.String(), firstSlot, lastSlot)
 	if err != nil {
-		logger.Errorf("Error while fetching blocks for slot: %v", err)
+		logger.WithError(err).Errorf("Error while fetching slots range: %v", sql.String())
 		return nil
 	}
-	return blocks
+
+	return parseAssignedSlots(rows, blockFields, 2)
 }
 
-func GetBlocksByParentRoot(parentRoot []byte) []*dbtypes.Block {
-	blocks := []*dbtypes.Block{}
-	err := ReaderDb.Select(&blocks, `
+func GetSlotsByParentRoot(parentRoot []byte) []*dbtypes.Slot {
+	slots := []*dbtypes.Slot{}
+	err := ReaderDb.Select(&slots, `
 	SELECT
-		root, slot, parent_root, state_root, orphaned, proposer, graffiti, graffiti_text,
+		slot, proposer, status, root, parent_root, state_root, graffiti, graffiti_text,
 		attestation_count, deposit_count, exit_count, withdraw_count, withdraw_amount, attester_slashing_count, 
 		proposer_slashing_count, bls_change_count, eth_transaction_count, eth_block_number, eth_block_hash, sync_participation
-	FROM blocks
+	FROM slots
 	WHERE parent_root = $1
 	ORDER BY slot DESC
 	`, parentRoot)
 	if err != nil {
-		logger.Errorf("Error while fetching blocks by parent root: %v", err)
+		logger.Errorf("Error while fetching slots by parent root: %v", err)
 		return nil
 	}
-	return blocks
+	return slots
 }
 
-func GetBlockByRoot(root []byte) *dbtypes.Block {
-	block := dbtypes.Block{}
+func GetSlotByRoot(root []byte) *dbtypes.Slot {
+	block := dbtypes.Slot{}
 	err := ReaderDb.Get(&block, `
 	SELECT
-		root, slot, parent_root, state_root, orphaned, proposer, graffiti, graffiti_text,
+		root, slot, parent_root, state_root, status, proposer, graffiti, graffiti_text,
 		attestation_count, deposit_count, exit_count, withdraw_count, withdraw_amount, attester_slashing_count, 
 		proposer_slashing_count, bls_change_count, eth_transaction_count, eth_block_number, eth_block_hash, sync_participation
-	FROM blocks
+	FROM slots
 	WHERE root = $1
 	`, root)
 	if err != nil {
@@ -570,83 +635,12 @@ func GetBlockByRoot(root []byte) *dbtypes.Block {
 	return &block
 }
 
-func GetFilteredBlocks(filter *dbtypes.BlockFilter, firstSlot uint64, offset uint64, limit uint32) []*dbtypes.AssignedBlock {
-	blockAssignments := []*dbtypes.AssignedBlock{}
-	var sql strings.Builder
-	fmt.Fprintf(&sql, `SELECT slot_assignments.slot, COALESCE(blocks.proposer, slot_assignments.proposer) AS proposer`)
-	blockFields := []string{
-		"root", "slot", "parent_root", "state_root", "orphaned", "proposer", "graffiti", "graffiti_text",
-		"attestation_count", "deposit_count", "exit_count", "withdraw_count", "withdraw_amount", "attester_slashing_count",
-		"proposer_slashing_count", "bls_change_count", "eth_transaction_count", "eth_block_number", "eth_block_hash", "sync_participation",
-	}
-	for _, blockField := range blockFields {
-		fmt.Fprintf(&sql, ", blocks.%v AS \"block.%v\"", blockField, blockField)
-	}
-	fmt.Fprintf(&sql, ` FROM slot_assignments `)
-	fmt.Fprintf(&sql, ` LEFT JOIN blocks ON blocks.slot = slot_assignments.slot `)
-	if filter.ProposerName != "" {
-		fmt.Fprintf(&sql, ` LEFT JOIN validator_names ON validator_names."index" = COALESCE(blocks.proposer, slot_assignments.proposer) `)
-	}
+func parseAssignedSlots(rows *sql.Rows, fields []string, fieldsOffset int) []*dbtypes.AssignedSlot {
+	blockAssignments := []*dbtypes.AssignedSlot{}
 
-	argIdx := 0
-	args := make([]any, 0)
-
-	argIdx++
-	fmt.Fprintf(&sql, ` WHERE slot_assignments.slot < $%v `, argIdx)
-	args = append(args, firstSlot)
-
-	if filter.WithMissing == 0 {
-		fmt.Fprintf(&sql, ` AND blocks.root IS NOT NULL `)
-	} else if filter.WithMissing == 2 {
-		fmt.Fprintf(&sql, ` AND blocks.root IS NULL `)
-	}
-	if filter.WithOrphaned == 0 {
-		fmt.Fprintf(&sql, ` AND (`)
-		if filter.WithMissing != 0 {
-			fmt.Fprintf(&sql, `blocks.orphaned IS NULL OR`)
-		}
-		fmt.Fprintf(&sql, ` blocks.orphaned = 0) `)
-	} else if filter.WithOrphaned == 2 {
-		fmt.Fprintf(&sql, ` AND blocks.orphaned = 1`)
-	}
-	if filter.ProposerIndex != nil {
-		argIdx++
-		fmt.Fprintf(&sql, ` AND (slot_assignments.proposer = $%v OR blocks.proposer = $%v) `, argIdx, argIdx)
-		args = append(args, *filter.ProposerIndex)
-	}
-	if filter.Graffiti != "" {
-		argIdx++
-		fmt.Fprintf(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
-			dbtypes.DBEnginePgsql:  ` AND blocks.graffiti_text ilike $%v `,
-			dbtypes.DBEngineSqlite: ` AND blocks.graffiti_text LIKE $%v `,
-		}), argIdx)
-		args = append(args, "%"+filter.Graffiti+"%")
-	}
-	if filter.ProposerName != "" {
-		argIdx++
-		fmt.Fprintf(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
-			dbtypes.DBEnginePgsql:  ` AND validator_names.name ilike $%v `,
-			dbtypes.DBEngineSqlite: ` AND validator_names.name LIKE $%v `,
-		}), argIdx)
-		args = append(args, "%"+filter.ProposerName+"%")
-	}
-
-	fmt.Fprintf(&sql, `	ORDER BY slot_assignments.slot DESC `)
-	fmt.Fprintf(&sql, ` LIMIT $%v OFFSET $%v `, argIdx+1, argIdx+2)
-	argIdx += 2
-	args = append(args, limit)
-	args = append(args, offset)
-
-	//fmt.Printf("sql: %v, args: %v\n", sql.String(), args)
-	rows, err := ReaderDb.Query(sql.String(), args...)
-	if err != nil {
-		logger.WithError(err).Errorf("Error while fetching filtered blocks: %v", sql.String())
-		return nil
-	}
-
-	scanArgs := make([]interface{}, len(blockFields)+2)
+	scanArgs := make([]interface{}, len(fields)+fieldsOffset)
 	for rows.Next() {
-		scanVals := make([]interface{}, len(blockFields)+2)
+		scanVals := make([]interface{}, len(fields)+fieldsOffset)
 		for i := range scanArgs {
 			scanArgs[i] = &scanVals[i]
 		}
@@ -656,16 +650,16 @@ func GetFilteredBlocks(filter *dbtypes.BlockFilter, firstSlot uint64, offset uin
 			continue
 		}
 
-		blockAssignment := dbtypes.AssignedBlock{}
+		blockAssignment := dbtypes.AssignedSlot{}
 		blockAssignment.Slot = uint64(scanVals[0].(int64))
 		blockAssignment.Proposer = uint64(scanVals[1].(int64))
 
 		if scanVals[2] != nil {
 			blockValMap := map[string]interface{}{}
-			for idx, fName := range blockFields {
-				blockValMap[fName] = scanVals[idx+2]
+			for idx, fName := range fields {
+				blockValMap[fName] = scanVals[idx+fieldsOffset]
 			}
-			var block dbtypes.Block
+			var block dbtypes.Slot
 			cfg := &mapstructure.DecoderConfig{
 				Metadata: nil,
 				Result:   &block,
@@ -680,6 +674,86 @@ func GetFilteredBlocks(filter *dbtypes.BlockFilter, firstSlot uint64, offset uin
 	}
 
 	return blockAssignments
+}
+
+func GetFilteredSlots(filter *dbtypes.BlockFilter, firstSlot uint64, offset uint64, limit uint32) []*dbtypes.AssignedSlot {
+	var sql strings.Builder
+	fmt.Fprintf(&sql, `SELECT slots.slot, slots.proposer`)
+	blockFields := []string{
+		"state_root", "root", "slot", "proposer", "status", "parent_root", "graffiti", "graffiti_text",
+		"attestation_count", "deposit_count", "exit_count", "withdraw_count", "withdraw_amount", "attester_slashing_count",
+		"proposer_slashing_count", "bls_change_count", "eth_transaction_count", "eth_block_number", "eth_block_hash", "eth_block_extra",
+		"sync_participation",
+	}
+	for _, blockField := range blockFields {
+		fmt.Fprintf(&sql, ", slots.%v AS \"block.%v\"", blockField, blockField)
+	}
+	fmt.Fprintf(&sql, ` FROM slots `)
+	if filter.ProposerName != "" {
+		fmt.Fprintf(&sql, ` LEFT JOIN validator_names ON validator_names."index" = slots.proposer `)
+	}
+
+	argIdx := 0
+	args := make([]any, 0)
+
+	argIdx++
+	fmt.Fprintf(&sql, ` WHERE slots.slot < $%v `, argIdx)
+	args = append(args, firstSlot)
+
+	if filter.WithMissing == 0 {
+		fmt.Fprintf(&sql, ` AND slots.status != 0 `)
+	} else if filter.WithMissing == 2 {
+		fmt.Fprintf(&sql, ` AND slots.status = 0 `)
+	}
+	if filter.WithOrphaned == 0 {
+		fmt.Fprintf(&sql, ` AND slots.status != 2 `)
+	} else if filter.WithOrphaned == 2 {
+		fmt.Fprintf(&sql, ` AND slots.status = 2 `)
+	}
+	if filter.ProposerIndex != nil {
+		argIdx++
+		fmt.Fprintf(&sql, ` AND slots.proposer = $%v `, argIdx)
+		args = append(args, *filter.ProposerIndex)
+	}
+	if filter.Graffiti != "" {
+		argIdx++
+		fmt.Fprintf(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
+			dbtypes.DBEnginePgsql:  ` AND slots.graffiti_text ilike $%v `,
+			dbtypes.DBEngineSqlite: ` AND slots.graffiti_text LIKE $%v `,
+		}), argIdx)
+		args = append(args, "%"+filter.Graffiti+"%")
+	}
+	if filter.ExtraData != "" {
+		argIdx++
+		fmt.Fprintf(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
+			dbtypes.DBEnginePgsql:  ` AND slots.eth_block_extra ilike $%v `,
+			dbtypes.DBEngineSqlite: ` AND slots.eth_block_extra LIKE $%v `,
+		}), argIdx)
+		args = append(args, "%"+filter.ExtraData+"%")
+	}
+	if filter.ProposerName != "" {
+		argIdx++
+		fmt.Fprintf(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
+			dbtypes.DBEnginePgsql:  ` AND validator_names.name ilike $%v `,
+			dbtypes.DBEngineSqlite: ` AND validator_names.name LIKE $%v `,
+		}), argIdx)
+		args = append(args, "%"+filter.ProposerName+"%")
+	}
+
+	fmt.Fprintf(&sql, `	ORDER BY slots.slot DESC `)
+	fmt.Fprintf(&sql, ` LIMIT $%v OFFSET $%v `, argIdx+1, argIdx+2)
+	argIdx += 2
+	args = append(args, limit)
+	args = append(args, offset)
+
+	//fmt.Printf("sql: %v, args: %v\n", sql.String(), args)
+	rows, err := ReaderDb.Query(sql.String(), args...)
+	if err != nil {
+		logger.WithError(err).Errorf("Error while fetching filtered slots: %v", sql.String())
+		return nil
+	}
+
+	return parseAssignedSlots(rows, blockFields, 2)
 }
 
 func GetSlotAssignmentsForSlots(firstSlot uint64, lastSlot uint64) []*dbtypes.SlotAssignment {
@@ -727,16 +801,16 @@ func GetSyncAssignmentsForPeriod(period uint64) []uint64 {
 	return assignments
 }
 
-func GetBlockOrphanedRefs(blockRoots [][]byte) []*dbtypes.BlockOrphanedRef {
-	orphanedRefs := []*dbtypes.BlockOrphanedRef{}
+func GetBlockStatus(blockRoots [][]byte) []*dbtypes.BlockStatus {
+	orphanedRefs := []*dbtypes.BlockStatus{}
 	if len(blockRoots) == 0 {
 		return orphanedRefs
 	}
 	var sql strings.Builder
 	fmt.Fprintf(&sql, `
 	SELECT
-		root, orphaned
-	FROM blocks
+		root, status
+	FROM slots
 	WHERE root in (`)
 	argIdx := 0
 	args := make([]any, len(blockRoots))
@@ -751,7 +825,7 @@ func GetBlockOrphanedRefs(blockRoots [][]byte) []*dbtypes.BlockOrphanedRef {
 	fmt.Fprintf(&sql, ")")
 	err := ReaderDb.Select(&orphanedRefs, sql.String(), args...)
 	if err != nil {
-		logger.Errorf("Error while fetching blocks: %v", err)
+		logger.Errorf("Error while fetching orphaned status: %v", err)
 		return nil
 	}
 	return orphanedRefs
@@ -759,13 +833,13 @@ func GetBlockOrphanedRefs(blockRoots [][]byte) []*dbtypes.BlockOrphanedRef {
 
 func GetHighestRootBeforeSlot(slot uint64, withOrphaned bool) []byte {
 	var result []byte
-	orphanedLimit := ""
+	statusFilter := ""
 	if !withOrphaned {
-		orphanedLimit = "AND orphaned = 0"
+		statusFilter = "AND status != 2"
 	}
 
 	err := ReaderDb.Get(&result, `
-	SELECT root FROM blocks WHERE slot < $1 `+orphanedLimit+` ORDER BY slot DESC LIMIT 1
+	SELECT root FROM slots WHERE slot < $1 `+statusFilter+` AND status != 0 ORDER BY slot DESC LIMIT 1
 	`, slot)
 	if err != nil {
 		logger.Errorf("Error while fetching highest root before %v: %v", slot, err)

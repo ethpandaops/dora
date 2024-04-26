@@ -172,10 +172,7 @@ func buildFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string
 		}
 
 		if dbBlock.Block != nil {
-			slotData.Status = 1
-			if dbBlock.Block.Orphaned == 1 {
-				slotData.Status = 2
-			}
+			slotData.Status = uint8(dbBlock.Block.Status)
 			slotData.AttestationCount = dbBlock.Block.AttestationCount
 			slotData.DepositCount = dbBlock.Block.DepositCount
 			slotData.ExitCount = dbBlock.Block.ExitCount

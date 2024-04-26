@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"math"
+	"strings"
 	"sync"
 
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
@@ -132,6 +133,19 @@ func (epochStats *EpochStats) TryGetProposerAssignments() map[uint64]uint64 {
 	}
 	defer epochStats.dutiesMutex.RUnlock()
 	return epochStats.proposerAssignments
+}
+
+func (epochStats *EpochStats) GetProposersStr() string {
+	if !epochStats.dutiesMutex.TryRLock() {
+		return ""
+	}
+	defer epochStats.dutiesMutex.RUnlock()
+
+	proposers := []string{}
+	for slot := epochStats.Epoch * utils.Config.Chain.Config.SlotsPerEpoch; slot < (epochStats.Epoch+1)*utils.Config.Chain.Config.SlotsPerEpoch; slot++ {
+		proposers = append(proposers, fmt.Sprintf("%v", epochStats.proposerAssignments[slot]))
+	}
+	return strings.Join(proposers, ",")
 }
 
 func (epochStats *EpochStats) GetAttestorAssignments() map[string][]uint64 {

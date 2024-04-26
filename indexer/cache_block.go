@@ -23,7 +23,7 @@ type CacheBlock struct {
 	}
 
 	dbBlockMutex sync.Mutex
-	dbBlockCache *dbtypes.Block
+	dbBlockCache *dbtypes.Slot
 }
 
 func (cache *indexerCache) getCachedBlock(root []byte) *CacheBlock {

@@ -499,7 +499,7 @@ func (indexer *Indexer) buildLiveEpoch(epoch uint64, epochStats *EpochStats) (*d
 	return dbEpoch, epochStats
 }
 
-func (indexer *Indexer) BuildLiveBlock(block *CacheBlock) *dbtypes.Block {
+func (indexer *Indexer) BuildLiveBlock(block *CacheBlock) *dbtypes.Slot {
 	block.dbBlockMutex.Lock()
 	defer block.dbBlockMutex.Unlock()
 
@@ -515,9 +515,9 @@ func (indexer *Indexer) BuildLiveBlock(block *CacheBlock) *dbtypes.Block {
 		}
 	}
 	if block.IsCanonical(indexer, nil) {
-		dbBlock.Orphaned = 0
+		dbBlock.Status = dbtypes.Canonical
 	} else {
-		dbBlock.Orphaned = 1
+		dbBlock.Status = dbtypes.Orphaned
 	}
 	return dbBlock
 }

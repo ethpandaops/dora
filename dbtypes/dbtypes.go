@@ -10,13 +10,25 @@ type ValidatorName struct {
 	Name  string `db:"name"`
 }
 
-type Block struct {
+type SlotStatus uint8
+
+const (
+	Missing SlotStatus = iota
+	Canonical
+	Orphaned
+)
+
+type SlotHeader struct {
+	Slot     uint64     `db:"slot"`
+	Proposer uint64     `db:"proposer"`
+	Status   SlotStatus `db:"status"`
+}
+
+type Slot struct {
+	SlotHeader
 	Root                  []byte  `db:"root"`
-	Slot                  uint64  `db:"slot"`
 	ParentRoot            []byte  `db:"parent_root"`
 	StateRoot             []byte  `db:"state_root"`
-	Orphaned              uint8   `db:"orphaned"`
-	Proposer              uint64  `db:"proposer"`
 	Graffiti              []byte  `db:"graffiti"`
 	GraffitiText          string  `db:"graffiti_text"`
 	AttestationCount      uint64  `db:"attestation_count"`
@@ -30,12 +42,8 @@ type Block struct {
 	EthTransactionCount   uint64  `db:"eth_transaction_count"`
 	EthBlockNumber        *uint64 `db:"eth_block_number"`
 	EthBlockHash          []byte  `db:"eth_block_hash"`
+	EthBlockExtra         []byte  `db:"eth_block_extra"`
 	SyncParticipation     float32 `db:"sync_participation"`
-}
-
-type BlockOrphanedRef struct {
-	Root     []byte `db:"root"`
-	Orphaned bool   `db:"orphaned"`
 }
 
 type Epoch struct {
