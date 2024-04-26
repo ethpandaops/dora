@@ -108,6 +108,7 @@ func persistSyncAssignments(epoch uint64, epochStats *EpochStats, tx *sqlx.Tx) e
 		// no sync committees before altair
 		return nil
 	}
+
 	period := epoch / utils.Config.Chain.Config.EpochsPerSyncCommitteePeriod
 	isStartOfPeriod := epoch == period*utils.Config.Chain.Config.EpochsPerSyncCommitteePeriod
 	if !isStartOfPeriod && db.IsSyncCommitteeSynchronized(period) {
@@ -172,6 +173,7 @@ func buildDbBlock(block *CacheBlock, epochStats *EpochStats) *dbtypes.Slot {
 			// this is not accurate, but best we can get without epoch assignments
 			assignedCount = len(syncAggregate.SyncCommitteeBits) * 8
 		}
+
 		votedCount := 0
 		for i := 0; i < assignedCount; i++ {
 			if utils.BitAtVector(syncAggregate.SyncCommitteeBits, i) {
