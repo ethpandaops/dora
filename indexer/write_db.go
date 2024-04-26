@@ -140,6 +140,7 @@ func buildDbBlock(block *CacheBlock, epochStats *EpochStats) *dbtypes.Slot {
 	syncAggregate, _ := blockBody.SyncAggregate()
 	executionBlockNumber, _ := blockBody.ExecutionBlockNumber()
 	executionBlockHash, _ := blockBody.ExecutionBlockHash()
+	executionExtraData, _ := GetExecutionExtraData(blockBody)
 	executionTransactions, _ := blockBody.ExecutionTransactions()
 	executionWithdrawals, _ := blockBody.Withdrawals()
 
@@ -181,6 +182,7 @@ func buildDbBlock(block *CacheBlock, epochStats *EpochStats) *dbtypes.Slot {
 		dbBlock.EthTransactionCount = uint64(len(executionTransactions))
 		dbBlock.EthBlockNumber = &executionBlockNumber
 		dbBlock.EthBlockHash = executionBlockHash[:]
+		dbBlock.EthBlockExtra = executionExtraData
 		dbBlock.WithdrawCount = uint64(len(executionWithdrawals))
 		for _, withdrawal := range executionWithdrawals {
 			dbBlock.WithdrawAmount += uint64(withdrawal.Amount)
