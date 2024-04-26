@@ -144,11 +144,9 @@ func buildDbBlock(block *CacheBlock, epochStats *EpochStats) *dbtypes.Slot {
 	executionWithdrawals, _ := blockBody.Withdrawals()
 
 	dbBlock := dbtypes.Slot{
-		SlotHeader: dbtypes.SlotHeader{
-			Slot:     uint64(block.header.Message.Slot),
-			Proposer: uint64(block.header.Message.ProposerIndex),
-			Status:   dbtypes.Canonical,
-		},
+		Slot:                  uint64(block.header.Message.Slot),
+		Proposer:              uint64(block.header.Message.ProposerIndex),
+		Status:                dbtypes.Canonical,
 		Root:                  block.Root,
 		ParentRoot:            block.header.Message.ParentRoot[:],
 		StateRoot:             block.header.Message.StateRoot[:],

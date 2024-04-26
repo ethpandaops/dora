@@ -408,12 +408,11 @@ func InsertSlot(slot *dbtypes.Slot, tx *sqlx.Tx) error {
 
 func InsertMissingSlot(block *dbtypes.SlotHeader, tx *sqlx.Tx) error {
 	var blockCount int
-	err := ReaderDb.Select(&blockCount, `
+	err := ReaderDb.Get(&blockCount, `
 		SELECT
 			COUNT(*)
 		FROM slots
 		WHERE slot = $1 AND proposer = $2
-		ORDER BY "index" ASC
 	`, block.Slot, block.Proposer)
 	if err != nil {
 		return err

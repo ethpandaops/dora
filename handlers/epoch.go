@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"fmt"
+	"math"
 	"net/http"
 	"strconv"
 	"time"
@@ -90,6 +91,7 @@ func buildEpochPageData(epoch uint64) (*models.EpochPageData, time.Duration) {
 	}
 
 	finalizedEpoch, _ := services.GlobalBeaconService.GetFinalizedEpoch()
+	slotAssignments, syncedEpochs := services.GlobalBeaconService.GetProposerAssignments(epoch, epoch)
 
 	nextEpoch := epoch + 1
 	if nextEpoch > currentEpoch {
@@ -102,14 +104,13 @@ func buildEpochPageData(epoch uint64) (*models.EpochPageData, time.Duration) {
 		PreviousEpoch: epoch - 1,
 		NextEpoch:     nextEpoch,
 		Ts:            utils.EpochToTime(epoch),
-		Synchronized:  true,
+		Synchronized:  syncedEpochs[epoch],
 		Finalized:     finalizedEpoch >= int64(epoch),
 	}
 
 	dbEpochs := services.GlobalBeaconService.GetDbEpochs(epoch, 1)
 	dbEpoch := dbEpochs[0]
 	if dbEpoch != nil {
-		pageData.Synchronized = true
 		pageData.AttestationCount = dbEpoch.AttestationCount
 		pageData.DepositCount = dbEpoch.DepositCount
 		pageData.ExitCount = dbEpoch.ExitCount
@@ -136,44 +137,44 @@ func buildEpochPageData(epoch uint64) (*models.EpochPageData, time.Duration) {
 	// load slots
 	pageData.Slots = make([]*models.EpochPageDataSlot, 0)
 	dbSlots := services.GlobalBeaconService.GetDbBlocksForSlots(uint64(lastSlot), uint32(utils.Config.Chain.Config.SlotsPerEpoch), true, true)
-	dbIdx := 0
-	dbCnt := len(dbSlots)
 	blockCount := uint64(0)
-	for slotIdx := int64(lastSlot); slotIdx >= int64(firstSlot); slotIdx-- {
-		slot := uint64(slotIdx)
-		for dbIdx < dbCnt && dbSlots[dbIdx] != nil && dbSlots[dbIdx].Slot == slot {
-			dbSlot := dbSlots[dbIdx]
-			dbIdx++
-			if dbSlot.Status == 2 {
-				pageData.OrphanedCount++
-			} else {
-				pageData.CanonicalCount++
-			}
+	for _, dbSlot := range dbSlots {
+		slot := uint64(dbSlot.Slot)
 
-			slotData := &models.EpochPageDataSlot{
-				Slot:                  slot,
-				Epoch:                 utils.EpochOfSlot(slot),
-				Ts:                    utils.SlotToTime(slot),
-				Status:                uint8(dbSlot.Status),
-				Proposer:              dbSlot.Proposer,
-				ProposerName:          services.GlobalBeaconService.GetValidatorName(dbSlot.Proposer),
-				AttestationCount:      dbSlot.AttestationCount,
-				DepositCount:          dbSlot.DepositCount,
-				ExitCount:             dbSlot.ExitCount,
-				ProposerSlashingCount: dbSlot.ProposerSlashingCount,
-				AttesterSlashingCount: dbSlot.AttesterSlashingCount,
-				SyncParticipation:     float64(dbSlot.SyncParticipation) * 100,
-				EthTransactionCount:   dbSlot.EthTransactionCount,
-				Graffiti:              dbSlot.Graffiti,
-				BlockRoot:             dbSlot.Root,
-			}
-			if dbSlot.EthBlockNumber != nil {
-				slotData.WithEthBlock = true
-				slotData.EthBlockNumber = *dbSlot.EthBlockNumber
-			}
-			pageData.Slots = append(pageData.Slots, slotData)
-			blockCount++
+		if dbSlot.Status == 2 {
+			pageData.OrphanedCount++
+		} else {
+			pageData.CanonicalCount++
 		}
+
+		proposer := dbSlot.Proposer
+		if proposer == math.MaxInt64 {
+			proposer = slotAssignments[slot]
+		}
+
+		slotData := &models.EpochPageDataSlot{
+			Slot:                  slot,
+			Epoch:                 utils.EpochOfSlot(slot),
+			Ts:                    utils.SlotToTime(slot),
+			Status:                uint8(dbSlot.Status),
+			Proposer:              proposer,
+			ProposerName:          services.GlobalBeaconService.GetValidatorName(proposer),
+			AttestationCount:      dbSlot.AttestationCount,
+			DepositCount:          dbSlot.DepositCount,
+			ExitCount:             dbSlot.ExitCount,
+			ProposerSlashingCount: dbSlot.ProposerSlashingCount,
+			AttesterSlashingCount: dbSlot.AttesterSlashingCount,
+			SyncParticipation:     float64(dbSlot.SyncParticipation) * 100,
+			EthTransactionCount:   dbSlot.EthTransactionCount,
+			Graffiti:              dbSlot.Graffiti,
+			BlockRoot:             dbSlot.Root,
+		}
+		if dbSlot.EthBlockNumber != nil {
+			slotData.WithEthBlock = true
+			slotData.EthBlockNumber = *dbSlot.EthBlockNumber
+		}
+		pageData.Slots = append(pageData.Slots, slotData)
+		blockCount++
 	}
 	pageData.BlockCount = uint64(blockCount)
 

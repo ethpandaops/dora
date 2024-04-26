@@ -488,14 +488,15 @@ func (bs *BeaconService) GetDbBlocks(firstSlot uint64, limit int32, withMissing 
 							}
 						}
 					}
+				} else if proposerAssignments != nil {
+					canonicalProposer = proposerAssignments[slot]
 				}
+
 				if !hasCanonicalProposer {
 					resBlocks[resIdx] = &dbtypes.Slot{
-						SlotHeader: dbtypes.SlotHeader{
-							Slot:     slot,
-							Proposer: canonicalProposer,
-							Status:   dbtypes.Missing,
-						},
+						Slot:     slot,
+						Proposer: canonicalProposer,
+						Status:   dbtypes.Missing,
 					}
 					resIdx++
 				}
@@ -513,11 +514,9 @@ func (bs *BeaconService) GetDbBlocks(firstSlot uint64, limit int32, withMissing 
 			if withMissing {
 				for ; slot > dbBlock.Slot+1; slot-- {
 					resBlocks[resIdx] = &dbtypes.Slot{
-						SlotHeader: dbtypes.SlotHeader{
-							Slot:     slot,
-							Proposer: uint64(math.MaxInt64),
-							Status:   dbtypes.Missing,
-						},
+						Slot:              slot,
+						Proposer:          uint64(math.MaxInt64),
+						Status:            dbtypes.Missing,
 						SyncParticipation: -1,
 					}
 					resIdx++
@@ -536,11 +535,9 @@ func (bs *BeaconService) GetDbBlocks(firstSlot uint64, limit int32, withMissing 
 				resBlocks[resIdx] = dbBlock.Block
 			} else {
 				resBlocks[resIdx] = &dbtypes.Slot{
-					SlotHeader: dbtypes.SlotHeader{
-						Slot:     dbBlock.Slot,
-						Proposer: dbBlock.Proposer,
-						Status:   dbtypes.Missing,
-					},
+					Slot:     dbBlock.Slot,
+					Proposer: dbBlock.Proposer,
+					Status:   dbtypes.Missing,
 				}
 			}
 			resIdx++
@@ -619,14 +616,15 @@ func (bs *BeaconService) GetDbBlocksForSlots(firstSlot uint64, slotLimit uint32,
 							}
 						}
 					}
+				} else if proposerAssignments != nil {
+					canonicalProposer = proposerAssignments[slot]
 				}
+
 				if !hasCanonicalProposer {
 					resBlocks = append(resBlocks, &dbtypes.Slot{
-						SlotHeader: dbtypes.SlotHeader{
-							Slot:     slot,
-							Proposer: canonicalProposer,
-							Status:   dbtypes.Missing,
-						},
+						Slot:     slot,
+						Proposer: canonicalProposer,
+						Status:   dbtypes.Missing,
 					})
 				}
 			}
@@ -643,11 +641,9 @@ func (bs *BeaconService) GetDbBlocksForSlots(firstSlot uint64, slotLimit uint32,
 			if withMissing {
 				for ; slot > dbBlock.Slot+1; slot-- {
 					resBlocks = append(resBlocks, &dbtypes.Slot{
-						SlotHeader: dbtypes.SlotHeader{
-							Slot:     slot,
-							Proposer: uint64(math.MaxInt64),
-							Status:   dbtypes.Missing,
-						},
+						Slot:              slot,
+						Proposer:          uint64(math.MaxInt64),
+						Status:            dbtypes.Missing,
 						SyncParticipation: -1,
 					})
 				}
@@ -657,24 +653,20 @@ func (bs *BeaconService) GetDbBlocksForSlots(firstSlot uint64, slotLimit uint32,
 				resBlocks = append(resBlocks, dbBlock.Block)
 			} else {
 				resBlocks = append(resBlocks, &dbtypes.Slot{
-					SlotHeader: dbtypes.SlotHeader{
-						Slot:     dbBlock.Slot,
-						Proposer: dbBlock.Proposer,
-						Status:   dbtypes.Missing,
-					},
+					Slot:     dbBlock.Slot,
+					Proposer: dbBlock.Proposer,
+					Status:   dbtypes.Missing,
 				})
 			}
 			slot = dbBlock.Slot
 		}
 
 		if withMissing {
-			for ; slot > lastSlot; slot-- {
+			for ; slot > lastSlot+1; slot-- {
 				resBlocks = append(resBlocks, &dbtypes.Slot{
-					SlotHeader: dbtypes.SlotHeader{
-						Slot:     slot,
-						Proposer: uint64(math.MaxInt64),
-						Status:   dbtypes.Missing,
-					},
+					Slot:              slot,
+					Proposer:          uint64(math.MaxInt64),
+					Status:            dbtypes.Missing,
 					SyncParticipation: -1,
 				})
 			}
