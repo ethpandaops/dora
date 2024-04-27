@@ -103,6 +103,9 @@ FROM (
 ) AS t1
 WHERE t1.block_status = 0;
 
+-- drop blocks
+
+DROP TABLE IF EXISTS public."blocks";
 
 -- +goose StatementEnd
 -- +goose Down
