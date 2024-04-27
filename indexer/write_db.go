@@ -30,7 +30,7 @@ func persistSlotAssignments(epochStats *EpochStats, tx *sqlx.Tx) error {
 }
 
 func persistMissedSlots(epoch uint64, blockMap map[uint64]*CacheBlock, epochStats *EpochStats, tx *sqlx.Tx) error {
-	// insert slot assignments
+	// insert missed slots
 	firstSlot := epochStats.Epoch * utils.Config.Chain.Config.SlotsPerEpoch
 	if epochStats.proposerAssignments != nil {
 		for slotIdx := uint64(0); slotIdx < utils.Config.Chain.Config.SlotsPerEpoch; slotIdx++ {

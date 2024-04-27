@@ -888,7 +888,7 @@ func (bs *BeaconService) CheckBlockOrphanedStatus(blockRoot []byte) dbtypes.Slot
 			return dbtypes.Orphaned
 		}
 	}
-	dbRefs := db.GetBlockStatus([][]byte{blockRoot})
+	dbRefs := db.GetSlotStatus([][]byte{blockRoot})
 	if len(dbRefs) > 0 {
 		return dbRefs[0].Status
 	}
