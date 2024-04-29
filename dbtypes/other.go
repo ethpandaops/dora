@@ -1,9 +1,14 @@
 package dbtypes
 
-type AssignedBlock struct {
+type AssignedSlot struct {
 	Slot     uint64 `db:"slot"`
 	Proposer uint64 `db:"proposer"`
-	Block    *Block `db:"block"`
+	Block    *Slot  `db:"block"`
+}
+
+type BlockStatus struct {
+	Root   []byte     `db:"root"`
+	Status SlotStatus `db:"status"`
 }
 
 type AssignedBlob struct {
@@ -15,6 +20,7 @@ type AssignedBlob struct {
 
 type BlockFilter struct {
 	Graffiti      string
+	ExtraData     string
 	ProposerIndex *uint64
 	ProposerName  string
 	WithOrphaned  uint8
