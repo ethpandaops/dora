@@ -61,17 +61,6 @@ func InsertDepositTxs(depositTxs []*dbtypes.DepositTx, tx *sqlx.Tx) error {
 	return nil
 }
 
-type Deposit struct {
-	Index                 uint64 `db:"deposit_index"`
-	SlotNumber            uint64 `db:"slot_number"`
-	SlotIndex             uint64 `db:"slot_index"`
-	SlotRoot              []byte `db:"slot_root"`
-	Orphaned              bool   `db:"orphaned"`
-	PublicKey             []byte `db:"publickey"`
-	WithdrawalCredentials []byte `db:"withdrawalcredentials"`
-	Amount                uint64 `db:"amount"`
-}
-
 func InsertDeposits(deposits []*dbtypes.Deposit, tx *sqlx.Tx) error {
 	var sql strings.Builder
 	fmt.Fprint(&sql,

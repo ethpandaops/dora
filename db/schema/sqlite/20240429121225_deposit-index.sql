@@ -21,6 +21,10 @@ CREATE INDEX IF NOT EXISTS "deposit_txs_deposit_index_idx"
     ON "deposit_txs"
     ("deposit_index" ASC);
 
+CREATE INDEX IF NOT EXISTS "deposit_txs_block_number_idx"
+    ON "deposit_txs"
+    ("block_number" ASC);
+
 CREATE INDEX IF NOT EXISTS "deposit_txs_publickey_idx"
     ON "deposit_txs"
     ("publickey" ASC);
