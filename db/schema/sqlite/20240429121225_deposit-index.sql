@@ -4,6 +4,7 @@
 CREATE TABLE IF NOT EXISTS deposit_txs (
     deposit_index INT NOT NULL,
     block_number INT NOT NULL,
+    block_time BIGINT NOT NULL,
     block_root BLOB NOT NULL,
     publickey BLOB NOT NULL,
     withdrawalcredentials BLOB NOT NULL,

@@ -131,6 +131,7 @@ type TxPendingFunctionSignature struct {
 type DepositTx struct {
 	Index                 uint64 `db:"deposit_index"`
 	BlockNumber           uint64 `db:"block_number"`
+	BlockTime             uint64 `db:"block_time"`
 	BlockRoot             []byte `db:"block_root"`
 	PublicKey             []byte `db:"publickey"`
 	WithdrawalCredentials []byte `db:"withdrawalcredentials"`
