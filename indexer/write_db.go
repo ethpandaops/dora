@@ -65,6 +65,8 @@ func persistBlockData(block *CacheBlock, epochStats *EpochStats, depositIndex *u
 		return fmt.Errorf("error inserting slot: %v", err)
 	}
 
+	block.isInFinalizedDb = true
+
 	// insert deposits
 	err = persistBlockDeposits(block, depositIndex, orphaned, tx)
 	if err != nil {

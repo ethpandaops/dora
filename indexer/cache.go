@@ -156,7 +156,7 @@ func (cache *indexerCache) loadStoredUnfinalizedCache() error {
 		cachedBlock.mutex.Lock()
 		cachedBlock.header = header
 		cachedBlock.block = body
-		cachedBlock.isInDb = true
+		cachedBlock.isInUnfinalizedDb = true
 		cachedBlock.parseBlockRefs()
 		cachedBlock.mutex.Unlock()
 	}

@@ -342,6 +342,10 @@ func (client *ConsensusClient) prefillCache(finalizedSlot uint64, latestHeader *
 		if finalizedCheckpoint > int64(finalizedSlot) {
 			finalizedSlot = uint64(finalizedCheckpoint)
 		}
+		prefillUntilSlot := finalizedSlot
+		if prefillUntilSlot >= utils.Config.Chain.Config.SlotsPerEpoch {
+			prefillUntilSlot -= utils.Config.Chain.Config.SlotsPerEpoch
+		}
 
 		var parentHead *phase0.SignedBeaconBlockHeader
 		parentBlock := client.indexerCache.getCachedBlock(parentRoot)
@@ -373,16 +377,16 @@ func (client *ConsensusClient) prefillCache(finalizedSlot uint64, latestHeader *
 		client.ensureBlock(parentBlock, parentHead)
 		earliestSlot = parentSlot
 
-		if parentSlot <= finalizedSlot {
-			logger.WithField("client", client.clientName).Debugf("prefill cache: reached finalized slot %v:%v [0x%x]", utils.EpochOfSlot(parentSlot), parentSlot, parentRoot)
+		if parentSlot <= prefillUntilSlot {
+			logger.WithField("client", client.clientName).Infof("prefill cache: reached finalized slot %v:%v [0x%x]", utils.EpochOfSlot(parentSlot), parentSlot, parentRoot)
 			break
 		}
 		if parentSlot == 0 {
-			logger.WithField("client", client.clientName).Debugf("prefill cache: reached gensis slot [0x%x]", parentRoot)
+			logger.WithField("client", client.clientName).Infof("prefill cache: reached gensis slot [0x%x]", parentRoot)
 			break
 		}
 		if int64(utils.EpochOfSlot(parentSlot)) < currentClockEpoch-int64(client.indexerCache.indexer.inMemoryEpochs) {
-			logger.WithField("client", client.clientName).Debugf("prefill cache: reached end of cache period [%v]", currentClockEpoch-int64(client.indexerCache.indexer.inMemoryEpochs))
+			logger.WithField("client", client.clientName).Infof("prefill cache: reached end of cache period [%v]", currentClockEpoch-int64(client.indexerCache.indexer.inMemoryEpochs))
 			break
 		}
 		parentRoot = parentHead.Message.ParentRoot[:]
@@ -420,7 +424,7 @@ func (client *ConsensusClient) ensureBlock(block *CacheBlock, header *phase0.Sig
 		}
 		block.header = header
 	}
-	if block.block == nil && !block.isInDb {
+	if block.block == nil && !block.isInUnfinalizedDb {
 		blockRsp, err := client.rpcClient.GetBlockBodyByBlockroot(block.Root)
 		if err != nil {
 			logger.WithField("client", client.clientName).Warnf("ensure block %v [0x%x] failed (block): %v", block.Slot, block.Root, err)

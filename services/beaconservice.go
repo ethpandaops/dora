@@ -912,10 +912,10 @@ func (bs *ChainService) GetValidatorActivity() (map[uint64]uint8, uint64) {
 	idxHeadEpoch--
 	finalizedEpoch, _ := bs.GetFinalizedEpoch()
 	var idxMinEpoch uint64
-	if finalizedEpoch < 0 {
+	if finalizedEpoch < 2 {
 		idxMinEpoch = 0
 	} else {
-		idxMinEpoch = uint64(finalizedEpoch + 1)
+		idxMinEpoch = uint64(finalizedEpoch - 1)
 	}
 
 	activityEpoch := utils.EpochOfSlot(idxHeadSlot - 1)

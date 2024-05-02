@@ -39,7 +39,7 @@ const depositContractAbi = `[{"inputs":[],"stateMutability":"nonpayable","type":
 func newDepositIndexer(indexer *Indexer) *DepositIndexer {
 	batchSize := utils.Config.ExecutionApi.DepositLogBatchSize
 	if batchSize == 0 {
-		batchSize = 10000
+		batchSize = 1000
 	}
 
 	contractAbi, err := abi.JSON(strings.NewReader(depositContractAbi))
@@ -161,6 +161,8 @@ func (ds *DepositIndexer) processFinalizedBlocks(finalizedBlockNumber uint64) er
 
 		depositTxs := []*dbtypes.DepositTx{}
 
+		logger.Infof("received deposit log for block %v - %v: %v events", ds.state.FinalBlock, toBlock, len(logs))
+
 		for _, log := range logs {
 			if !bytes.Equal(log.Topics[0][:], ds.depositEventTopic) {
 				continue
@@ -219,6 +221,11 @@ func (ds *DepositIndexer) processFinalizedBlocks(finalizedBlockNumber uint64) er
 			}
 
 			time.Sleep(1 * time.Second)
+		} else {
+			err = ds.persistFinalizedDepositTxs(toBlock, nil)
+			if err != nil {
+				return fmt.Errorf("could not persist deposit state: %v", err)
+			}
 		}
 	}
 	return nil
@@ -352,9 +359,11 @@ func (ds *DepositIndexer) persistFinalizedDepositTxs(toBlockNumber uint64, depos
 	}
 	defer tx.Rollback()
 
-	err = db.InsertDepositTxs(deposits, tx)
-	if err != nil {
-		return fmt.Errorf("error while inserting deposit txs: %v", err)
+	if len(deposits) > 0 {
+		err = db.InsertDepositTxs(deposits, tx)
+		if err != nil {
+			return fmt.Errorf("error while inserting deposit txs: %v", err)
+		}
 	}
 
 	ds.state.FinalBlock = toBlockNumber
