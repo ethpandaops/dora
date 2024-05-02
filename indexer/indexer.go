@@ -422,8 +422,13 @@ func (indexer *Indexer) GetCachedBlocksByExecutionBlockHash(hash []byte) []*Cach
 		slot := uint64(slotIdx)
 		blocks := indexer.indexerCache.slotMap[slot]
 		for _, block := range blocks {
-			if block.IsReady() && bytes.Equal(block.Refs.ExecutionHash, hash) {
-				resBlocks = append(resBlocks, block)
+			if block.IsReady() {
+				if block.Refs.ExecutionHash == nil {
+					block.GetBlockBody()
+				}
+				if bytes.Equal(block.Refs.ExecutionHash, hash) {
+					resBlocks = append(resBlocks, block)
+				}
 			}
 		}
 		if len(resBlocks) > 0 {

@@ -138,9 +138,8 @@ type DepositTx struct {
 	Signature             []byte `db:"signature"`
 	ValidSignature        bool   `db:"valid_signature"`
 	Orphaned              bool   `db:"orphaned"`
-	TxTash                []byte `db:"tx_hash"`
+	TxHash                []byte `db:"tx_hash"`
 	TxSender              []byte `db:"tx_sender"`
-	TxOrigin              []byte `db:"tx_origin"`
 	TxTarget              []byte `db:"tx_target"`
 }
 

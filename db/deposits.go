@@ -15,11 +15,11 @@ func InsertDepositTxs(depositTxs []*dbtypes.DepositTx, tx *sqlx.Tx) error {
 			dbtypes.DBEnginePgsql:  "INSERT INTO deposit_txs ",
 			dbtypes.DBEngineSqlite: "INSERT OR REPLACE INTO deposit_txs ",
 		}),
-		"(deposit_index, block_number, block_root, publickey, withdrawalcredentials, amount, signature, valid_signature, orphaned, tx_hash, tx_sender, tx_origin, tx_target)",
+		"(deposit_index, block_number, block_root, publickey, withdrawalcredentials, amount, signature, valid_signature, orphaned, tx_hash, tx_sender, tx_target)",
 		" VALUES ",
 	)
 	argIdx := 0
-	fieldCount := 13
+	fieldCount := 12
 
 	args := make([]any, len(depositTxs)*fieldCount)
 	for i, depositTx := range depositTxs {
@@ -45,10 +45,9 @@ func InsertDepositTxs(depositTxs []*dbtypes.DepositTx, tx *sqlx.Tx) error {
 		args[argIdx+6] = depositTx.Signature
 		args[argIdx+7] = depositTx.ValidSignature
 		args[argIdx+8] = depositTx.Orphaned
-		args[argIdx+9] = depositTx.TxTash
+		args[argIdx+9] = depositTx.TxHash
 		args[argIdx+10] = depositTx.TxSender
-		args[argIdx+11] = depositTx.TxOrigin
-		args[argIdx+12] = depositTx.TxTarget
+		args[argIdx+11] = depositTx.TxTarget
 		argIdx += fieldCount
 	}
 	fmt.Fprint(&sql, EngineQuery(map[dbtypes.DBEngineType]string{

@@ -13,7 +13,6 @@ CREATE TABLE IF NOT EXISTS deposit_txs (
     orphaned bool NOT NULL DEFAULT FALSE,
     tx_hash bytea NOT NULL,
     tx_sender bytea NOT NULL,
-    tx_origin bytea NOT NULL,
     tx_target bytea NOT NULL,
     CONSTRAINT deposit_txs_pkey PRIMARY KEY (deposit_index, block_root)
 );
@@ -29,10 +28,6 @@ CREATE INDEX IF NOT EXISTS "deposit_txs_publickey_idx"
 CREATE INDEX IF NOT EXISTS "deposit_txs_tx_sender_idx"
     ON public."deposit_txs"
     ("tx_sender" ASC NULLS FIRST);
-
-CREATE INDEX IF NOT EXISTS "deposit_txs_tx_origin_idx"
-    ON public."deposit_txs"
-    ("tx_origin" ASC NULLS FIRST);
 
 CREATE INDEX IF NOT EXISTS "deposit_txs_tx_target_idx"
     ON public."deposit_txs"

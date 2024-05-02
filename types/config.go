@@ -72,6 +72,8 @@ type Config struct {
 	ExecutionApi struct {
 		Endpoint  string           `yaml:"endpoint" envconfig:"EXECUTIONAPI_ENDPOINT"`
 		Endpoints []EndpointConfig `yaml:"endpoints"`
+
+		DepositLogBatchSize int `yaml:"depositLogBatchSize" envconfig:"EXECUTIONAPI_DEPOSIT_LOG_BATCH_SIZE"`
 	} `yaml:"executionapi"`
 
 	Indexer struct {

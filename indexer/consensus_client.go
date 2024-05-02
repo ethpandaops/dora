@@ -427,6 +427,7 @@ func (client *ConsensusClient) ensureBlock(block *CacheBlock, header *phase0.Sig
 			return err
 		}
 		block.block = blockRsp
+		block.parseBlockRefs()
 	}
 
 	// set seen flag
