@@ -231,7 +231,7 @@ func (sync *synchronizerState) syncEpoch(syncEpoch uint64, retryCount int, lastT
 	}
 	epochStats.loadValidatorStats(client, epochAssignments.DependendStateRef)
 
-	if epochStats.validatorStats == nil && !lastTry {
+	if epochStats.stateStats == nil && !lastTry {
 		return false, client, fmt.Errorf("error fetching validator stats for epoch %v: %v", syncEpoch, err)
 	}
 	if sync.checkKillChan(0) {

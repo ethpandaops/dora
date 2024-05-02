@@ -212,8 +212,8 @@ func (cache *indexerCache) processFinalizedEpoch(epoch uint64) error {
 		// calculate votes
 		epochVotes := aggregateEpochVotes(canonicalMap, epoch, epochStats, epochTarget, false, true)
 
-		if epochStats.validatorStats != nil {
-			logger.Infof("epoch %v stats: %v validators (%v)", epoch, epochStats.validatorStats.ValidatorCount, epochStats.validatorStats.EligibleAmount)
+		if epochStats.stateStats != nil {
+			logger.Infof("epoch %v stats: %v validators (%v)", epoch, epochStats.stateStats.ValidatorCount, epochStats.stateStats.EligibleAmount)
 		}
 		logger.Infof("epoch %v votes: target %v + %v = %v", epoch, epochVotes.currentEpoch.targetVoteAmount, epochVotes.nextEpoch.targetVoteAmount, epochVotes.currentEpoch.targetVoteAmount+epochVotes.nextEpoch.targetVoteAmount)
 		logger.Infof("epoch %v votes: head %v + %v = %v", epoch, epochVotes.currentEpoch.headVoteAmount, epochVotes.nextEpoch.headVoteAmount, epochVotes.currentEpoch.headVoteAmount+epochVotes.nextEpoch.headVoteAmount)
@@ -246,8 +246,11 @@ func (cache *indexerCache) processFinalizedEpoch(epoch uint64) error {
 			if !block.IsReady() {
 				continue
 			}
-			dbBlock := buildDbBlock(block, nil)
-			db.InsertSlot(dbBlock, tx)
+
+			err := persistBlockData(block, nil, nil, false, tx)
+			if err != nil {
+				logger.Errorf("error while persisting slot: %v", err)
+			}
 		}
 
 	}
@@ -311,17 +314,16 @@ func (cache *indexerCache) processOrphanedBlocks(processedEpoch int64) error {
 		if !block.IsReady() {
 			continue
 		}
-		dbBlock := buildDbBlock(block, cache.getEpochStats(utils.EpochOfSlot(block.Slot), nil))
-		if block.IsCanonical(cache.indexer, cache.justifiedRoot) {
+		isCanonical := block.IsCanonical(cache.indexer, cache.justifiedRoot)
+		if isCanonical {
 			logger.Warnf("canonical block in orphaned block processing: %v [0x%x]", block.Slot, block.Root)
 		} else {
-			dbBlock.Status = dbtypes.Orphaned
 			db.InsertOrphanedBlock(block.buildOrphanedBlock(), tx)
 		}
 
-		err := db.InsertSlot(dbBlock, tx)
+		err := persistBlockData(block, cache.getEpochStats(utils.EpochOfSlot(block.Slot), nil), nil, !isCanonical, tx)
 		if err != nil {
-			logger.Errorf("failed inserting orphaned block: %v", err)
+			logger.Errorf("error while persisting orphaned slot: %v", err)
 		}
 	}
 
@@ -439,6 +441,13 @@ func (cache *indexerCache) processCachePersistence() error {
 					logger.Errorf("error inserting unfinalized block: %v", err)
 					return err
 				}
+
+				err = persistBlockDeposits(block, nil, true, tx)
+				if err != nil {
+					logger.Errorf("error persisting unfinalized deposits: %v", err)
+					return err
+				}
+
 				block.isInDb = true
 			}
 		}

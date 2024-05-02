@@ -127,3 +127,30 @@ type TxPendingFunctionSignature struct {
 	Bytes     []byte `db:"bytes"`
 	QueueTime uint64 `db:"queuetime"`
 }
+
+type DepositTx struct {
+	Index                 uint64 `db:"deposit_index"`
+	BlockNumber           uint64 `db:"block_number"`
+	BlockRoot             []byte `db:"block_root"`
+	PublicKey             []byte `db:"publickey"`
+	WithdrawalCredentials []byte `db:"withdrawalcredentials"`
+	Amount                uint64 `db:"amount"`
+	Signature             []byte `db:"signature"`
+	ValidSignature        bool   `db:"valid_signature"`
+	Orphaned              bool   `db:"orphaned"`
+	TxTash                []byte `db:"tx_hash"`
+	TxSender              []byte `db:"tx_sender"`
+	TxOrigin              []byte `db:"tx_origin"`
+	TxTarget              []byte `db:"tx_target"`
+}
+
+type Deposit struct {
+	Index                 *uint64 `db:"deposit_index"`
+	SlotNumber            uint64  `db:"slot_number"`
+	SlotIndex             uint64  `db:"slot_index"`
+	SlotRoot              []byte  `db:"slot_root"`
+	Orphaned              bool    `db:"orphaned"`
+	PublicKey             []byte  `db:"publickey"`
+	WithdrawalCredentials []byte  `db:"withdrawalcredentials"`
+	Amount                uint64  `db:"amount"`
+}

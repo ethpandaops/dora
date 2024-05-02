@@ -53,6 +53,27 @@ func persistMissedSlots(epoch uint64, blockMap map[uint64]*CacheBlock, epochStat
 	return nil
 }
 
+func persistBlockData(block *CacheBlock, epochStats *EpochStats, depositIndex *uint64, orphaned bool, tx *sqlx.Tx) error {
+	// insert block
+	dbBlock := buildDbBlock(block, epochStats)
+	if orphaned {
+		dbBlock.Status = dbtypes.Orphaned
+	}
+
+	err := db.InsertSlot(dbBlock, tx)
+	if err != nil {
+		return fmt.Errorf("error inserting slot: %v", err)
+	}
+
+	// insert deposits
+	err = persistBlockDeposits(block, depositIndex, orphaned, tx)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func persistEpochData(epoch uint64, blockMap map[uint64]*CacheBlock, epochStats *EpochStats, epochVotes *EpochVotes, tx *sqlx.Tx) error {
 	commitTx := false
 	if tx == nil {
@@ -66,12 +87,10 @@ func persistEpochData(epoch uint64, blockMap map[uint64]*CacheBlock, epochStats 
 		commitTx = true
 	}
 
-	dbEpoch := buildDbEpoch(epoch, blockMap, epochStats, epochVotes, func(block *CacheBlock) {
-		// insert block
-		dbBlock := buildDbBlock(block, epochStats)
-		err := db.InsertSlot(dbBlock, tx)
+	dbEpoch := buildDbEpoch(epoch, blockMap, epochStats, epochVotes, func(block *CacheBlock, depositIndex *uint64) {
+		err := persistBlockData(block, epochStats, depositIndex, false, tx)
 		if err != nil {
-			logger.Errorf("error inserting slot: %v", err)
+			logger.Errorf("error persisting slot: %v", err)
 		}
 	})
 
@@ -198,12 +217,13 @@ func buildDbBlock(block *CacheBlock, epochStats *EpochStats) *dbtypes.Slot {
 	return &dbBlock
 }
 
-func buildDbEpoch(epoch uint64, blockMap map[uint64]*CacheBlock, epochStats *EpochStats, epochVotes *EpochVotes, blockFn func(block *CacheBlock)) *dbtypes.Epoch {
+func buildDbEpoch(epoch uint64, blockMap map[uint64]*CacheBlock, epochStats *EpochStats, epochVotes *EpochVotes, blockFn func(block *CacheBlock, depositIndex *uint64)) *dbtypes.Epoch {
 	firstSlot := epoch * utils.Config.Chain.Config.SlotsPerEpoch
 	lastSlot := firstSlot + (utils.Config.Chain.Config.SlotsPerEpoch) - 1
 
 	totalSyncAssigned := 0
 	totalSyncVoted := 0
+	var depositIndex *uint64
 	dbEpoch := dbtypes.Epoch{
 		Epoch: epoch,
 	}
@@ -212,10 +232,12 @@ func buildDbEpoch(epoch uint64, blockMap map[uint64]*CacheBlock, epochStats *Epo
 		dbEpoch.VotedHead = epochVotes.currentEpoch.headVoteAmount + epochVotes.nextEpoch.headVoteAmount
 		dbEpoch.VotedTotal = epochVotes.currentEpoch.totalVoteAmount + epochVotes.nextEpoch.totalVoteAmount
 	}
-	if epochStats != nil && epochStats.validatorStats != nil {
-		dbEpoch.ValidatorCount = epochStats.validatorStats.ValidatorCount
-		dbEpoch.ValidatorBalance = epochStats.validatorStats.ValidatorBalance
-		dbEpoch.Eligible = epochStats.validatorStats.EligibleAmount
+	if epochStats != nil && epochStats.stateStats != nil {
+		dbEpoch.ValidatorCount = epochStats.stateStats.ValidatorCount
+		dbEpoch.ValidatorBalance = epochStats.stateStats.ValidatorBalance
+		dbEpoch.Eligible = epochStats.stateStats.EligibleAmount
+		depositIndexField := epochStats.stateStats.DepositIndex
+		depositIndex = &depositIndexField
 	}
 
 	// aggregate blocks
@@ -230,7 +252,7 @@ func buildDbEpoch(epoch uint64, blockMap map[uint64]*CacheBlock, epochStats *Epo
 				continue
 			}
 			if blockFn != nil {
-				blockFn(block)
+				blockFn(block, depositIndex)
 			}
 
 			attestations, _ := blockBody.Attestations()
@@ -275,4 +297,57 @@ func buildDbEpoch(epoch uint64, blockMap map[uint64]*CacheBlock, epochStats *Epo
 	}
 
 	return &dbEpoch
+}
+
+func persistBlockDeposits(block *CacheBlock, depositIndex *uint64, orphaned bool, tx *sqlx.Tx) error {
+	// insert deposits
+	dbDeposits := buildDbDeposits(block, depositIndex)
+	if orphaned {
+		for idx := range dbDeposits {
+			dbDeposits[idx].Orphaned = true
+		}
+	}
+
+	if len(dbDeposits) > 0 {
+		err := db.InsertDeposits(dbDeposits, tx)
+		if err != nil {
+			return fmt.Errorf("error inserting deposits: %v", err)
+		}
+	}
+
+	return nil
+}
+
+func buildDbDeposits(block *CacheBlock, depositIndex *uint64) []*dbtypes.Deposit {
+	blockBody := block.GetBlockBody()
+	if blockBody == nil {
+		return nil
+	}
+
+	deposits, err := blockBody.Deposits()
+	if err != nil {
+		return nil
+	}
+
+	dbDeposits := make([]*dbtypes.Deposit, len(deposits))
+	for idx, deposit := range deposits {
+		dbDeposit := &dbtypes.Deposit{
+			SlotNumber:            block.Slot,
+			SlotIndex:             uint64(idx),
+			SlotRoot:              block.Root,
+			Orphaned:              false,
+			PublicKey:             deposit.Data.PublicKey[:],
+			WithdrawalCredentials: deposit.Data.WithdrawalCredentials,
+			Amount:                uint64(deposit.Data.Amount),
+		}
+		if depositIndex != nil {
+			cDepIdx := *depositIndex
+			dbDeposit.Index = &cDepIdx
+			*depositIndex++
+		}
+
+		dbDeposits[idx] = dbDeposit
+	}
+
+	return nil
 }
