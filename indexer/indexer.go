@@ -21,7 +21,9 @@ var logger = logrus.StandardLogger().WithField("module", "indexer")
 type Indexer struct {
 	BlobStore             *BlobStore
 	indexerCache          *indexerCache
-	indexerClients        []*IndexerClient
+	depositIndexer        *DepositIndexer
+	consensusClients      []*ConsensusClient
+	executionClients      []*ExecutionClient
 	writeDb               bool
 	disableSync           bool
 	inMemoryEpochs        uint16
@@ -40,39 +42,58 @@ func NewIndexer() (*Indexer, error) {
 
 	indexer := &Indexer{
 		BlobStore:             newBlobStore(),
-		indexerClients:        make([]*IndexerClient, 0),
+		consensusClients:      make([]*ConsensusClient, 0),
+		executionClients:      make([]*ExecutionClient, 0),
 		writeDb:               !utils.Config.Indexer.DisableIndexWriter,
 		disableSync:           utils.Config.Indexer.DisableSynchronizer,
 		inMemoryEpochs:        inMemoryEpochs,
 		cachePersistenceDelay: cachePersistenceDelay,
 	}
 	indexer.indexerCache = newIndexerCache(indexer)
+	indexer.depositIndexer = newDepositIndexer(indexer)
 
 	return indexer, nil
 }
 
-func (indexer *Indexer) AddClient(index uint16, endpoint *types.EndpointConfig) *IndexerClient {
+func (indexer *Indexer) AddConsensusClient(index uint16, endpoint *types.EndpointConfig) *ConsensusClient {
 
 	rpcClient, err := rpc.NewBeaconClient(endpoint.Url, endpoint.Name, endpoint.Headers, endpoint.Ssh)
 	if err != nil {
-		logger.Errorf("error while adding client %v to indexer: %v", endpoint.Name, err)
+		logger.Errorf("error while adding consensus client %v to indexer: %v", endpoint.Name, err)
 		return nil
 	}
-	client := newIndexerClient(index, endpoint.Name, rpcClient, indexer.indexerCache, endpoint.Archive, endpoint.Priority, endpoint.SkipValidators)
-	indexer.indexerClients = append(indexer.indexerClients, client)
+	client := newConsensusClient(index, endpoint.Name, rpcClient, indexer.indexerCache, endpoint.Archive, endpoint.Priority, endpoint.SkipValidators)
+	indexer.consensusClients = append(indexer.consensusClients, client)
 	return client
 }
 
-func (indexer *Indexer) GetClients() []*IndexerClient {
-	return indexer.indexerClients
+func (indexer *Indexer) AddExecutionClient(index uint16, endpoint *types.EndpointConfig) *ExecutionClient {
+
+	rpcClient, err := rpc.NewExecutionClient(endpoint.Name, endpoint.Url, endpoint.Headers, endpoint.Ssh)
+	if err != nil {
+		logger.Errorf("error while adding execution client %v to indexer: %v", endpoint.Name, err)
+		return nil
+	}
+	client := newExecutionClient(index, endpoint.Name, rpcClient, indexer.indexerCache, endpoint.Archive, endpoint.Priority)
+	indexer.executionClients = append(indexer.executionClients, client)
+	return client
 }
 
-func (indexer *Indexer) GetReadyClient(archive bool, head []byte, skip []*IndexerClient) *IndexerClient {
-	clientCandidates := indexer.getReadyClients(archive, head)
+func (indexer *Indexer) GetConsensusClients() []*ConsensusClient {
+	return indexer.consensusClients
+}
+
+func (indexer *Indexer) GetExecutionClients() []*ExecutionClient {
+	return indexer.executionClients
+}
+
+func (indexer *Indexer) GetReadyClClient(archive bool, head []byte, skip []*ConsensusClient) *ConsensusClient {
+	headFork := indexer.getCanonicalHeadFork(head)
+	clientCandidates := indexer.getReadyClClients(headFork, archive)
 	candidateCount := len(clientCandidates)
 	if candidateCount == 0 {
-		clientCandidates = make([]*IndexerClient, 0)
-		for _, client := range indexer.indexerClients {
+		clientCandidates = make([]*ConsensusClient, 0)
+		for _, client := range indexer.consensusClients {
 			if client.isConnected && !client.isSynchronizing && !client.isOptimistic {
 				clientCandidates = append(clientCandidates, client)
 			}
@@ -86,7 +107,7 @@ func (indexer *Indexer) GetReadyClient(archive bool, head []byte, skip []*Indexe
 	})
 
 	// filter, remove skipped & lower priority
-	filteredCandidates := []*IndexerClient{}
+	filteredCandidates := []*ConsensusClient{}
 	filteredCandidateCount := 0
 clientLoop:
 	for _, tClient := range clientCandidates {
@@ -113,12 +134,113 @@ clientLoop:
 	return filteredCandidates[selectedIndex]
 }
 
-func (indexer *Indexer) getReadyClients(archive bool, head []byte) []*IndexerClient {
+func (indexer *Indexer) getReadyClClients(headFork *HeadFork, archive bool) []*ConsensusClient {
+	var clientCandidates []*ConsensusClient
+
+	if headFork == nil {
+		clientCandidates = make([]*ConsensusClient, len(indexer.consensusClients))
+		copy(clientCandidates, indexer.consensusClients)
+	} else {
+		clientCandidates = []*ConsensusClient{}
+		for _, client := range headFork.ReadyClients {
+			if archive && !client.archive {
+				continue
+			}
+			clientCandidates = append(clientCandidates, client)
+		}
+		if len(clientCandidates) == 0 && archive {
+			return indexer.getReadyClClients(headFork, false)
+		}
+	}
+
+	return clientCandidates
+}
+
+func (indexer *Indexer) GetReadyElClient(archive bool, head []byte, skip []*ExecutionClient) *ExecutionClient {
+	headFork := indexer.getCanonicalHeadFork(head)
+	clientCandidates := indexer.getReadyElClients(headFork, archive)
+	candidateCount := len(clientCandidates)
+	if candidateCount == 0 {
+		clientCandidates = make([]*ExecutionClient, 0)
+		for _, client := range indexer.executionClients {
+			if client.isConnected && !client.isSynchronizing {
+				clientCandidates = append(clientCandidates, client)
+			}
+		}
+		candidateCount = len(clientCandidates)
+	}
+
+	// sort by prio
+	sort.Slice(clientCandidates, func(a, b int) bool {
+		return clientCandidates[a].priority > clientCandidates[b].priority
+	})
+
+	// filter, remove skipped & lower priority
+	filteredCandidates := []*ExecutionClient{}
+	filteredCandidateCount := 0
+clientLoop:
+	for _, tClient := range clientCandidates {
+		if filteredCandidateCount > 0 && tClient.priority < filteredCandidates[0].priority {
+			break
+		}
+		for _, skipClient := range skip {
+			if skipClient == tClient {
+				continue clientLoop
+			}
+		}
+		filteredCandidateCount++
+		filteredCandidates = append(filteredCandidates, tClient)
+	}
+
+	if filteredCandidateCount == 0 {
+		filteredCandidates = clientCandidates
+		filteredCandidateCount = candidateCount
+	}
+	if filteredCandidateCount == 0 {
+		return nil
+	}
+	selectedIndex := rand.Intn(filteredCandidateCount)
+	return filteredCandidates[selectedIndex]
+}
+
+func (indexer *Indexer) getReadyElClients(headFork *HeadFork, archive bool) []*ExecutionClient {
+	clientCandidates := []*ExecutionClient{}
+
+	if headFork == nil {
+		for _, client := range indexer.executionClients {
+			if archive && !client.archive {
+				continue
+			}
+			clientCandidates = append(clientCandidates, client)
+		}
+	} else {
+		for _, client := range indexer.executionClients {
+			if archive && !client.archive {
+				continue
+			}
+
+			isCanonical := false
+			for _, elHeadBlock := range indexer.GetCachedBlocksByExecutionBlockHash(client.lastHeadRoot) {
+				if elHeadBlock.IsCanonical(indexer, headFork.Root) {
+					isCanonical = true
+				}
+			}
+			if isCanonical {
+				clientCandidates = append(clientCandidates, client)
+			}
+		}
+		if len(clientCandidates) == 0 && archive {
+			return indexer.getReadyElClients(headFork, false)
+		}
+	}
+
+	return clientCandidates
+}
+
+func (indexer *Indexer) getCanonicalHeadFork(head []byte) *HeadFork {
 	headCandidates := indexer.GetHeadForks(true)
 	if len(headCandidates) == 0 {
-		allCandidates := make([]*IndexerClient, len(indexer.indexerClients))
-		copy(allCandidates, indexer.indexerClients)
-		return allCandidates
+		return nil
 	}
 
 	var headFork *HeadFork
@@ -137,26 +259,11 @@ func (indexer *Indexer) getReadyClients(archive bool, head []byte) []*IndexerCli
 		headFork = headCandidates[0]
 	}
 
-	clientCandidates := indexer.getReadyClientCandidates(headFork, archive)
-	if len(clientCandidates) == 0 && archive {
-		clientCandidates = indexer.getReadyClientCandidates(headFork, false)
-	}
-	return clientCandidates
+	return headFork
 }
 
-func (indexer *Indexer) getReadyClientCandidates(headFork *HeadFork, archive bool) []*IndexerClient {
-	clientCandidates := []*IndexerClient{}
-	for _, client := range headFork.ReadyClients {
-		if archive && !client.archive {
-			continue
-		}
-		clientCandidates = append(clientCandidates, client)
-	}
-	return clientCandidates
-}
-
-func (indexer *Indexer) GetRpcClient(archive bool, head []byte) *rpc.BeaconClient {
-	readyClient := indexer.GetReadyClient(archive, head, nil)
+func (indexer *Indexer) GetConsensusRpc(archive bool, head []byte) *rpc.BeaconClient {
+	readyClient := indexer.GetReadyClClient(archive, head, nil)
 	return readyClient.rpcClient
 }
 
@@ -179,7 +286,7 @@ func (indexer *Indexer) GetHighestSlot() uint64 {
 
 func (indexer *Indexer) GetHeadForks(readyOnly bool) []*HeadFork {
 	headForks := []*HeadFork{}
-	for _, client := range indexer.indexerClients {
+	for _, client := range indexer.consensusClients {
 		if readyOnly && (!client.isConnected || client.isSynchronizing || client.isOptimistic) {
 			continue
 		}
@@ -204,7 +311,7 @@ func (indexer *Indexer) GetHeadForks(readyOnly bool) []*HeadFork {
 			matchingFork = &HeadFork{
 				Root:       cHeadRoot,
 				Slot:       uint64(cHeadSlot),
-				AllClients: []*IndexerClient{client},
+				AllClients: []*ConsensusClient{client},
 			}
 			headForks = append(headForks, matchingFork)
 		} else {
@@ -212,7 +319,7 @@ func (indexer *Indexer) GetHeadForks(readyOnly bool) []*HeadFork {
 		}
 	}
 	for _, fork := range headForks {
-		fork.ReadyClients = make([]*IndexerClient, 0)
+		fork.ReadyClients = make([]*ConsensusClient, 0)
 		sort.Slice(fork.AllClients, func(a, b int) bool {
 			prioA := fork.AllClients[a].priority
 			prioB := fork.AllClients[b].priority
@@ -318,6 +425,9 @@ func (indexer *Indexer) GetCachedBlocksByExecutionBlockHash(hash []byte) []*Cach
 			if block.IsReady() && bytes.Equal(block.Refs.ExecutionHash, hash) {
 				resBlocks = append(resBlocks, block)
 			}
+		}
+		if len(resBlocks) > 0 {
+			break
 		}
 	}
 	return resBlocks

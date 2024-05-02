@@ -154,7 +154,7 @@ func (epochStats *EpochStats) TryGetSyncAssignments() []uint64 {
 	return epochStats.syncAssignments
 }
 
-func (client *IndexerClient) ensureEpochStats(epoch uint64, head []byte) error {
+func (client *ConsensusClient) ensureEpochStats(epoch uint64, head []byte) error {
 	var dependentRoot []byte
 	var proposerRsp *rpc.ProposerDuties
 	firstBlock := client.indexerCache.getFirstCanonicalBlock(epoch, head)
@@ -211,7 +211,7 @@ func (client *IndexerClient) ensureEpochStats(epoch uint64, head []byte) error {
 	return nil
 }
 
-func (epochStats *EpochStats) ensureEpochStatsLazy(client *IndexerClient, proposerRsp *rpc.ProposerDuties) error {
+func (epochStats *EpochStats) ensureEpochStatsLazy(client *ConsensusClient, proposerRsp *rpc.ProposerDuties) error {
 	epochStats.dutiesMutex.Lock()
 	defer epochStats.dutiesMutex.Unlock()
 
@@ -332,7 +332,7 @@ func (epochStats *EpochStats) ensureEpochStatsLazy(client *IndexerClient, propos
 	return nil
 }
 
-func (epochStats *EpochStats) ensureValidatorStatsLazy(client *IndexerClient, stateRef string) {
+func (epochStats *EpochStats) ensureValidatorStatsLazy(client *ConsensusClient, stateRef string) {
 	defer utils.HandleSubroutinePanic("ensureValidatorStatsLazy")
 	if client.skipValidators {
 		return
@@ -340,7 +340,7 @@ func (epochStats *EpochStats) ensureValidatorStatsLazy(client *IndexerClient, st
 	epochStats.loadValidatorStats(client, stateRef)
 }
 
-func (epochStats *EpochStats) loadValidatorStats(client *IndexerClient, stateRef string) {
+func (epochStats *EpochStats) loadValidatorStats(client *ConsensusClient, stateRef string) {
 	epochStats.validatorsMutex.Lock()
 	defer epochStats.validatorsMutex.Unlock()
 	if epochStats.validatorStats != nil {

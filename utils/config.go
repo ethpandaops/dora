@@ -152,6 +152,26 @@ func ReadConfig(cfg *types.Config, path string) error {
 		return fmt.Errorf("missing beacon node endpoints (need at least 1 endpoint to run the explorer)")
 	}
 
+	// execution endpoints
+	if cfg.ExecutionApi.Endpoints == nil && cfg.ExecutionApi.Endpoint != "" {
+		cfg.ExecutionApi.Endpoints = []types.EndpointConfig{
+			{
+				Url:  cfg.ExecutionApi.Endpoint,
+				Name: "default",
+			},
+		}
+	}
+	for idx, endpoint := range cfg.ExecutionApi.Endpoints {
+		if endpoint.Name == "" {
+			url, _ := url.Parse(endpoint.Url)
+			if url != nil {
+				cfg.ExecutionApi.Endpoints[idx].Name = url.Hostname()
+			} else {
+				cfg.ExecutionApi.Endpoints[idx].Name = fmt.Sprintf("endpoint-%v", idx+1)
+			}
+		}
+	}
+
 	// blobstore
 	if cfg.BlobStore.NameTemplate == "" {
 		cfg.BlobStore.NameTemplate = "{hash}"

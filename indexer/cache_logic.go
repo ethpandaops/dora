@@ -146,7 +146,7 @@ func (cache *indexerCache) processFinalizedEpoch(epoch uint64) error {
 	logger.Infof("processing finalized epoch %v:  target: 0x%x, dependent: 0x%x", epoch, epochTarget, epochDependentRoot)
 
 	// get epoch stats
-	client := cache.indexer.GetReadyClient(true, nil, nil)
+	client := cache.indexer.GetReadyClClient(true, nil, nil)
 	epochStats := cache.getEpochStats(epoch, epochDependentRoot)
 	if epochStats == nil {
 		logger.Warnf("epoch %v stats not found, starting synchronization", epoch)

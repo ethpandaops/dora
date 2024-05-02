@@ -90,7 +90,7 @@ func Slot(w http.ResponseWriter, r *http.Request) {
 		commitment, err := hex.DecodeString(strings.Replace(urlArgs.Get("blob"), "0x", "", -1))
 		var blobData *dbtypes.Blob
 		if err == nil {
-			client := services.GlobalBeaconService.GetIndexer().GetReadyClient(false, nil, nil)
+			client := services.GlobalBeaconService.GetIndexer().GetReadyClClient(false, nil, nil)
 			blobData, err = services.GlobalBeaconService.GetIndexer().BlobStore.LoadBlob(commitment, pageData.Block.BlockRoot, client)
 		}
 		if err == nil && blobData != nil {
@@ -143,7 +143,7 @@ func SlotBlob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client := services.GlobalBeaconService.GetIndexer().GetReadyClient(false, nil, nil)
+	client := services.GlobalBeaconService.GetIndexer().GetReadyClClient(false, nil, nil)
 	blobData, err := services.GlobalBeaconService.GetIndexer().BlobStore.LoadBlob(commitment, blockRoot, client)
 	if err != nil {
 		logrus.WithError(err).Error("error loading blob data")

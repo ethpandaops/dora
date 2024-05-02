@@ -46,7 +46,7 @@ func main() {
 	if err != nil {
 		logger.Fatalf("error initializing db schema: %v", err)
 	}
-	err = services.StartBeaconService()
+	err = services.StartChainService()
 	if err != nil {
 		logger.Fatalf("error starting beacon service: %v", err)
 	}
