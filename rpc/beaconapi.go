@@ -149,7 +149,7 @@ func (bc *BeaconClient) Initialize() error {
 		http.WithTimeout(10 * time.Minute),
 		// TODO (when upstream PR is merged)
 		//http.WithConnectionCheck(false),
-		http.WithDynamicSSZ(true),
+		http.WithCustomSpecSupport(true),
 	}
 
 	// set log level
