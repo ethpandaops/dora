@@ -29,6 +29,30 @@ func persistSlotAssignments(epochStats *EpochStats, tx *sqlx.Tx) error {
 	return nil
 }
 
+func persistMissedSlots(epoch uint64, blockMap map[uint64]*CacheBlock, epochStats *EpochStats, tx *sqlx.Tx) error {
+	// insert missed slots
+	firstSlot := epochStats.Epoch * utils.Config.Chain.Config.SlotsPerEpoch
+	if epochStats.proposerAssignments != nil {
+		for slotIdx := uint64(0); slotIdx < utils.Config.Chain.Config.SlotsPerEpoch; slotIdx++ {
+			slot := firstSlot + slotIdx
+			if blockMap[slot] != nil {
+				continue
+			}
+
+			missedSlot := &dbtypes.SlotHeader{
+				Slot:     slot,
+				Proposer: epochStats.proposerAssignments[slot],
+				Status:   dbtypes.Missing,
+			}
+			err := db.InsertMissingSlot(missedSlot, tx)
+			if err != nil {
+				return fmt.Errorf("error while adding missed slot to db: %w", err)
+			}
+		}
+	}
+	return nil
+}
+
 func persistEpochData(epoch uint64, blockMap map[uint64]*CacheBlock, epochStats *EpochStats, epochVotes *EpochVotes, tx *sqlx.Tx) error {
 	commitTx := false
 	if tx == nil {
@@ -45,11 +69,20 @@ func persistEpochData(epoch uint64, blockMap map[uint64]*CacheBlock, epochStats 
 	dbEpoch := buildDbEpoch(epoch, blockMap, epochStats, epochVotes, func(block *CacheBlock) {
 		// insert block
 		dbBlock := buildDbBlock(block, epochStats)
-		db.InsertBlock(dbBlock, tx)
+		err := db.InsertSlot(dbBlock, tx)
+		if err != nil {
+			logger.Errorf("error inserting slot: %v", err)
+		}
 	})
 
 	// insert slot assignments
 	err := persistSlotAssignments(epochStats, tx)
+	if err != nil {
+		return err
+	}
+
+	// insert missing slots
+	err = persistMissedSlots(epoch, blockMap, epochStats, tx)
 	if err != nil {
 		return err
 	}
@@ -75,6 +108,7 @@ func persistSyncAssignments(epoch uint64, epochStats *EpochStats, tx *sqlx.Tx) e
 		// no sync committees before altair
 		return nil
 	}
+
 	period := epoch / utils.Config.Chain.Config.EpochsPerSyncCommitteePeriod
 	isStartOfPeriod := epoch == period*utils.Config.Chain.Config.EpochsPerSyncCommitteePeriod
 	if !isStartOfPeriod && db.IsSyncCommitteeSynchronized(period) {
@@ -93,7 +127,7 @@ func persistSyncAssignments(epoch uint64, epochStats *EpochStats, tx *sqlx.Tx) e
 	return db.InsertSyncAssignments(syncAssignments, tx)
 }
 
-func buildDbBlock(block *CacheBlock, epochStats *EpochStats) *dbtypes.Block {
+func buildDbBlock(block *CacheBlock, epochStats *EpochStats) *dbtypes.Slot {
 	blockBody := block.GetBlockBody()
 	if blockBody == nil {
 		logger.Errorf("Error while aggregating epoch blocks: canonical block body not found: %v", block.Slot)
@@ -110,15 +144,17 @@ func buildDbBlock(block *CacheBlock, epochStats *EpochStats) *dbtypes.Block {
 	syncAggregate, _ := blockBody.SyncAggregate()
 	executionBlockNumber, _ := blockBody.ExecutionBlockNumber()
 	executionBlockHash, _ := blockBody.ExecutionBlockHash()
+	executionExtraData, _ := GetExecutionExtraData(blockBody)
 	executionTransactions, _ := blockBody.ExecutionTransactions()
 	executionWithdrawals, _ := blockBody.Withdrawals()
 
-	dbBlock := dbtypes.Block{
-		Root:                  block.Root,
+	dbBlock := dbtypes.Slot{
 		Slot:                  uint64(block.header.Message.Slot),
+		Proposer:              uint64(block.header.Message.ProposerIndex),
+		Status:                dbtypes.Canonical,
+		Root:                  block.Root,
 		ParentRoot:            block.header.Message.ParentRoot[:],
 		StateRoot:             block.header.Message.StateRoot[:],
-		Proposer:              uint64(block.header.Message.ProposerIndex),
 		Graffiti:              graffiti[:],
 		GraffitiText:          utils.GraffitiToString(graffiti[:]),
 		AttestationCount:      uint64(len(attestations)),
@@ -137,6 +173,7 @@ func buildDbBlock(block *CacheBlock, epochStats *EpochStats) *dbtypes.Block {
 			// this is not accurate, but best we can get without epoch assignments
 			assignedCount = len(syncAggregate.SyncCommitteeBits) * 8
 		}
+
 		votedCount := 0
 		for i := 0; i < assignedCount; i++ {
 			if utils.BitAtVector(syncAggregate.SyncCommitteeBits, i) {
@@ -150,6 +187,8 @@ func buildDbBlock(block *CacheBlock, epochStats *EpochStats) *dbtypes.Block {
 		dbBlock.EthTransactionCount = uint64(len(executionTransactions))
 		dbBlock.EthBlockNumber = &executionBlockNumber
 		dbBlock.EthBlockHash = executionBlockHash[:]
+		dbBlock.EthBlockExtra = executionExtraData
+		dbBlock.EthBlockExtraText = utils.GraffitiToString(executionExtraData[:])
 		dbBlock.WithdrawCount = uint64(len(executionWithdrawals))
 		for _, withdrawal := range executionWithdrawals {
 			dbBlock.WithdrawAmount += uint64(withdrawal.Amount)

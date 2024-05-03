@@ -565,9 +565,21 @@ func (client *IndexerClient) processBlockEvent(evt *v1.BlockEvent) error {
 }
 
 func (client *IndexerClient) processFinalizedEvent(evt *v1.FinalizedCheckpointEvent) error {
-	time.Sleep(100 * time.Millisecond)
-	client.refreshFinalityCheckpoints()
-	logger.WithField("client", client.clientName).Debugf("received finalization_checkpoint event: finalized %v [0x%x], justified %v [0x%x]", client.lastFinalizedEpoch, client.lastFinalizedRoot, client.lastJustifiedEpoch, client.lastJustifiedRoot)
-	client.indexerCache.setFinalizedHead(client.lastFinalizedEpoch, client.lastFinalizedRoot, client.lastJustifiedEpoch, client.lastJustifiedRoot)
+	go func() {
+		retry := 0
+		for ; retry < 20; retry++ {
+			client.refreshFinalityCheckpoints()
+
+			if bytes.Equal(client.lastFinalizedRoot, evt.Block[:]) {
+				break
+			}
+
+			time.Sleep(3 * time.Second)
+		}
+
+		logger.WithField("client", client.clientName).Infof("received finalization_checkpoint event: finalized %v [0x%x], justified %v [0x%x], retry: %v", client.lastFinalizedEpoch, client.lastFinalizedRoot, client.lastJustifiedEpoch, client.lastJustifiedRoot, retry)
+		client.indexerCache.setFinalizedHead(client.lastFinalizedEpoch, client.lastFinalizedRoot, client.lastJustifiedEpoch, client.lastJustifiedRoot)
+	}()
+
 	return nil
 }

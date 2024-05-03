@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/ethpandaops/dora/db"
+	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
@@ -70,8 +71,8 @@ func buildForksPageData() (*models.ForksPageData, time.Duration) {
 		}
 		if int64(fork.Slot) < finalizedEpoch*int64(utils.Config.Chain.Config.SlotsPerEpoch) {
 			// check block
-			dbBlock := db.GetBlockByRoot(fork.Root)
-			if dbBlock != nil && dbBlock.Orphaned == 0 {
+			dbBlock := db.GetSlotByRoot(fork.Root)
+			if dbBlock != nil && dbBlock.Status == dbtypes.Canonical {
 				headForks[0].AllClients = append(headForks[0].AllClients, fork.AllClients...)
 				headForks[idx] = nil
 			}

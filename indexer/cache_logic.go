@@ -2,6 +2,7 @@ package indexer
 
 import (
 	"fmt"
+	"runtime/debug"
 	"time"
 
 	"github.com/ethpandaops/dora/db"
@@ -26,7 +27,13 @@ func (cache *indexerCache) runCacheLoop() {
 	}
 }
 
-func (cache *indexerCache) runCacheLogic() error {
+func (cache *indexerCache) runCacheLogic() (err error) {
+	defer func() {
+		if err2 := recover(); err2 != nil {
+			err = fmt.Errorf("uncaught panic in runCacheLogic subroutine: %v, stack: %v", err2, string(debug.Stack()))
+		}
+	}()
+
 	if cache.highestSlot < 0 {
 		return nil
 	}
@@ -240,8 +247,9 @@ func (cache *indexerCache) processFinalizedEpoch(epoch uint64) error {
 				continue
 			}
 			dbBlock := buildDbBlock(block, nil)
-			db.InsertBlock(dbBlock, tx)
+			db.InsertSlot(dbBlock, tx)
 		}
+
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -282,8 +290,8 @@ func (cache *indexerCache) processOrphanedBlocks(processedEpoch int64) error {
 	}
 
 	// check if blocks are already in db
-	for _, blockRef := range db.GetBlockOrphanedRefs(blockRoots) {
-		if blockRef.Orphaned {
+	for _, blockRef := range db.GetSlotStatus(blockRoots) {
+		if blockRef.Status == dbtypes.Orphaned {
 			logger.Debugf("processed duplicate orphaned block: 0x%x", blockRef.Root)
 		} else {
 			logger.Debugf("processed duplicate canonical block in orphaned handler: 0x%x", blockRef.Root)
@@ -307,10 +315,14 @@ func (cache *indexerCache) processOrphanedBlocks(processedEpoch int64) error {
 		if block.IsCanonical(cache.indexer, cache.justifiedRoot) {
 			logger.Warnf("canonical block in orphaned block processing: %v [0x%x]", block.Slot, block.Root)
 		} else {
-			dbBlock.Orphaned = 1
+			dbBlock.Status = dbtypes.Orphaned
 			db.InsertOrphanedBlock(block.buildOrphanedBlock(), tx)
 		}
-		db.InsertBlock(dbBlock, tx)
+
+		err := db.InsertSlot(dbBlock, tx)
+		if err != nil {
+			logger.Errorf("failed inserting orphaned block: %v", err)
+		}
 	}
 
 	if err := tx.Commit(); err != nil {

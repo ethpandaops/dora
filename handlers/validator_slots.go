@@ -111,25 +111,20 @@ func buildValidatorSlotsPageData(validator uint64, pageIdx uint64, pageSize uint
 			break
 		}
 		slot := blockAssignment.Slot
-		blockStatus := uint8(0)
 
 		slotData := &models.ValidatorSlotsPageDataSlot{
 			Slot:         slot,
 			Epoch:        utils.EpochOfSlot(slot),
 			Ts:           utils.SlotToTime(slot),
 			Finalized:    finalizedEpoch >= int64(utils.EpochOfSlot(slot)),
-			Status:       blockStatus,
+			Status:       uint8(0),
 			Proposer:     validator,
 			ProposerName: pageData.Name,
 		}
 
 		if blockAssignment.Block != nil {
 			dbBlock := blockAssignment.Block
-			if dbBlock.Orphaned == 1 {
-				slotData.Status = 2
-			} else {
-				slotData.Status = 1
-			}
+			slotData.Status = uint8(dbBlock.Status)
 			slotData.AttestationCount = dbBlock.AttestationCount
 			slotData.DepositCount = dbBlock.DepositCount
 			slotData.ExitCount = dbBlock.ExitCount
