@@ -25,13 +25,14 @@ import (
 )
 
 type DepositIndexer struct {
-	indexer            *Indexer
-	state              *dbtypes.DepositIndexerState
-	batchSize          int
-	depositContract    common.Address
-	depositContractAbi *abi.ABI
-	depositEventTopic  []byte
-	depositSigDomain   zrnt_common.BLSDomain
+	indexer             *Indexer
+	state               *dbtypes.DepositIndexerState
+	batchSize           int
+	depositContract     common.Address
+	depositContractAbi  *abi.ABI
+	depositEventTopic   []byte
+	depositSigDomain    zrnt_common.BLSDomain
+	unfinalizedDeposits map[uint64]map[common.Hash]bool
 }
 
 const depositContractAbi = `[{"inputs":[],"stateMutability":"nonpayable","type":"constructor"},{"anonymous":false,"inputs":[{"indexed":false,"internalType":"bytes","name":"pubkey","type":"bytes"},{"indexed":false,"internalType":"bytes","name":"withdrawal_credentials","type":"bytes"},{"indexed":false,"internalType":"bytes","name":"amount","type":"bytes"},{"indexed":false,"internalType":"bytes","name":"signature","type":"bytes"},{"indexed":false,"internalType":"bytes","name":"index","type":"bytes"}],"name":"DepositEvent","type":"event"},{"inputs":[{"internalType":"bytes","name":"pubkey","type":"bytes"},{"internalType":"bytes","name":"withdrawal_credentials","type":"bytes"},{"internalType":"bytes","name":"signature","type":"bytes"},{"internalType":"bytes32","name":"deposit_data_root","type":"bytes32"}],"name":"deposit","outputs":[],"stateMutability":"payable","type":"function"},{"inputs":[],"name":"get_deposit_count","outputs":[{"internalType":"bytes","name":"","type":"bytes"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"get_deposit_root","outputs":[{"internalType":"bytes32","name":"","type":"bytes32"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"bytes4","name":"interfaceId","type":"bytes4"}],"name":"supportsInterface","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"pure","type":"function"}]`
@@ -53,12 +54,13 @@ func newDepositIndexer(indexer *Indexer) *DepositIndexer {
 	depositSigDomain := zrnt_common.ComputeDomain(zrnt_common.DOMAIN_DEPOSIT, zrnt_common.Version(genesisForkVersion), zrnt_common.Root{})
 
 	ds := &DepositIndexer{
-		indexer:            indexer,
-		batchSize:          batchSize,
-		depositContract:    common.HexToAddress(utils.Config.Chain.Config.DepositContractAddress),
-		depositContractAbi: &contractAbi,
-		depositEventTopic:  depositEventTopic[:],
-		depositSigDomain:   depositSigDomain,
+		indexer:             indexer,
+		batchSize:           batchSize,
+		depositContract:     common.HexToAddress(utils.Config.Chain.Config.DepositContractAddress),
+		depositContractAbi:  &contractAbi,
+		depositEventTopic:   depositEventTopic[:],
+		depositSigDomain:    depositSigDomain,
+		unfinalizedDeposits: map[uint64]map[common.Hash]bool{},
 	}
 
 	go ds.runDepositIndexerLoop()
@@ -227,6 +229,12 @@ func (ds *DepositIndexer) processFinalizedBlocks(finalizedBlockNumber uint64) er
 				}
 			}
 
+			for _, depositTx := range depositTxs {
+				if ds.unfinalizedDeposits[depositTx.Index] != nil {
+					delete(ds.unfinalizedDeposits, depositTx.Index)
+				}
+			}
+
 			time.Sleep(1 * time.Second)
 		} else {
 			err = ds.persistFinalizedDepositTxs(toBlock, nil)
@@ -239,8 +247,6 @@ func (ds *DepositIndexer) processFinalizedBlocks(finalizedBlockNumber uint64) er
 }
 
 func (ds *DepositIndexer) processRecentBlocks() error {
-	insertMap := map[string]bool{}
-
 	headForks := ds.indexer.GetHeadForks(true)
 	for _, headFork := range headForks {
 		client := ds.indexer.GetReadyElClient(false, headFork.Root, nil)
@@ -248,11 +254,33 @@ func (ds *DepositIndexer) processRecentBlocks() error {
 			return fmt.Errorf("no ready execution client found")
 		}
 
+		var elHeadBlock uint64
+		clHeadRoot := headFork.Root
+		for {
+			headBlock := ds.indexer.GetCachedBlock(clHeadRoot)
+			if headBlock == nil {
+				return fmt.Errorf("could not get head block")
+			}
+
+			headBlockBody := headBlock.GetBlockBody()
+			if headBlockBody == nil {
+				clHeadRoot = headBlock.GetParentRoot()
+				continue
+			}
+
+			elHeadBlock = headBlock.Refs.ExecutionNumber
+			break
+		}
+		if elHeadBlock == 0 {
+			return fmt.Errorf("could not get el head block number")
+		}
+
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
 		query := ethereum.FilterQuery{
 			FromBlock: big.NewInt(0).SetUint64(ds.state.FinalBlock),
+			ToBlock:   big.NewInt(0).SetUint64(elHeadBlock),
 			Addresses: []common.Address{
 				ds.depositContract,
 			},
@@ -280,6 +308,11 @@ func (ds *DepositIndexer) processRecentBlocks() error {
 
 			}
 
+			depositIndex := binary.LittleEndian.Uint64(event[4].([]byte))
+			if ds.unfinalizedDeposits[depositIndex] != nil && ds.unfinalizedDeposits[depositIndex][log.BlockHash] {
+				continue
+			}
+
 			if txHash == nil || !bytes.Equal(txHash, log.TxHash[:]) {
 				txDetails, _, err = client.GetRpcClient().GetEthClient().TransactionByHash(ctx, log.TxHash)
 				if err != nil {
@@ -299,7 +332,7 @@ func (ds *DepositIndexer) processRecentBlocks() error {
 			txTo := *txDetails.To()
 
 			depositTx := &dbtypes.DepositTx{
-				Index:                 binary.LittleEndian.Uint64(event[4].([]byte)),
+				Index:                 depositIndex,
 				BlockNumber:           log.BlockNumber,
 				BlockTime:             txBlockHeader.Time,
 				BlockRoot:             log.BlockHash[:],
@@ -312,12 +345,6 @@ func (ds *DepositIndexer) processRecentBlocks() error {
 				TxSender:              txFrom[:],
 				TxTarget:              txTo[:],
 			}
-
-			depositKey := fmt.Sprintf("%v-%x", depositTx.Index, depositTx.BlockRoot)
-			if insertMap[depositKey] {
-				break
-			}
-			insertMap[depositKey] = true
 
 			ds.checkDepositValidity(depositTx)
 			depositTxs = append(depositTxs, depositTx)
@@ -337,6 +364,13 @@ func (ds *DepositIndexer) processRecentBlocks() error {
 				if err != nil {
 					return fmt.Errorf("could not persist deposit txs: %v", err)
 				}
+			}
+
+			for _, depositTx := range depositTxs {
+				if ds.unfinalizedDeposits[depositTx.Index] == nil {
+					ds.unfinalizedDeposits[depositTx.Index] = map[common.Hash]bool{}
+				}
+				ds.unfinalizedDeposits[depositTx.Index][common.Hash(depositTx.BlockRoot)] = true
 			}
 
 			time.Sleep(1 * time.Second)
