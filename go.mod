@@ -4,7 +4,7 @@ go 1.21
 
 require (
 	dario.cat/mergo v1.0.0
-	github.com/attestantio/go-eth2-client v0.21.3
+	github.com/attestantio/go-eth2-client v1.15.2
 	github.com/aws/aws-sdk-go-v2 v1.26.1
 	github.com/aws/aws-sdk-go-v2/config v1.27.11
 	github.com/aws/aws-sdk-go-v2/credentials v1.17.11
@@ -21,6 +21,7 @@ require (
 	github.com/lib/pq v1.10.9
 	github.com/mattn/go-sqlite3 v1.14.22
 	github.com/mitchellh/mapstructure v1.5.0
+	github.com/pk910/dynamic-ssz v0.0.3
 	github.com/pressly/goose/v3 v3.20.0
 	github.com/prysmaticlabs/go-bitfield v0.0.0-20240328144219-a1caa50c3a1e
 	github.com/rs/zerolog v1.32.0
@@ -33,11 +34,6 @@ require (
 	golang.org/x/text v0.14.0
 	golang.org/x/time v0.5.0
 	gopkg.in/yaml.v3 v3.0.1
-)
-
-require (
-	github.com/pk910/dynamic-ssz v0.0.2 // indirect
-	gopkg.in/Knetic/govaluate.v3 v3.0.0 // indirect
 )
 
 require (
@@ -107,9 +103,10 @@ require (
 	golang.org/x/sys v0.19.0 // indirect
 	golang.org/x/xerrors v0.0.0-20231012003039-104605ab7028 // indirect
 	google.golang.org/protobuf v1.33.0 // indirect
+	gopkg.in/Knetic/govaluate.v3 v3.0.0 // indirect
 	gopkg.in/cenkalti/backoff.v1 v1.1.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	rsc.io/tmplfunc v0.0.3 // indirect
 )
 
-replace github.com/attestantio/go-eth2-client => github.com/pk910/go-eth2-client v0.0.0-20240401010249-0a11cd0943ff
+replace github.com/attestantio/go-eth2-client => github.com/pk910/go-eth2-client v0.0.0-20240503111248-b7b883e07eca
