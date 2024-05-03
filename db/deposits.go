@@ -110,3 +110,58 @@ func InsertDeposits(deposits []*dbtypes.Deposit, tx *sqlx.Tx) error {
 	}
 	return nil
 }
+
+func GetDepositTxs(firstIndex uint64, limit uint32) []*dbtypes.DepositTx {
+	var sql strings.Builder
+	args := []any{}
+	fmt.Fprint(&sql, `
+	SELECT
+		deposit_index, block_number, block_time, block_root, publickey, withdrawalcredentials, amount, signature, valid_signature, orphaned, tx_hash, tx_sender, tx_target
+	FROM deposit_txs
+	`)
+	if firstIndex > 0 {
+		args = append(args, firstIndex)
+		fmt.Fprintf(&sql, " WHERE deposit_index <= $%v ", len(args))
+	}
+
+	args = append(args, limit)
+	fmt.Fprintf(&sql, `
+	ORDER BY deposit_index DESC
+	LIMIT $%v
+	`, len(args))
+
+	depositTxs := []*dbtypes.DepositTx{}
+	err := ReaderDb.Select(&depositTxs, sql.String(), args...)
+	if err != nil {
+		logger.Errorf("Error while fetching deposit txs: %v", err)
+		return nil
+	}
+	return depositTxs
+}
+
+func GetDeposits(offset uint64, limit uint32) []*dbtypes.Deposit {
+	var sql strings.Builder
+	args := []any{}
+	fmt.Fprint(&sql, `
+	SELECT
+		deposit_index, slot_number, slot_index, slot_root, orphaned, publickey, withdrawalcredentials, amount
+	FROM deposits
+	`)
+	args = append(args, limit)
+	fmt.Fprintf(&sql, `
+	ORDER BY slot_number DESC, slot_index DESC
+	LIMIT $%v
+	`, len(args))
+	if offset > 0 {
+		args = append(args, offset)
+		fmt.Fprintf(&sql, " OFFSET $%v ", len(args))
+	}
+
+	deposits := []*dbtypes.Deposit{}
+	err := ReaderDb.Select(&deposits, sql.String(), args...)
+	if err != nil {
+		logger.Errorf("Error while fetching deposit txs: %v", err)
+		return nil
+	}
+	return deposits
+}
