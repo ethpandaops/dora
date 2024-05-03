@@ -275,6 +275,43 @@ func (indexer *Indexer) GetFinalizationCheckpoints() (int64, []byte, int64, []by
 	return indexer.indexerCache.getFinalizationCheckpoints()
 }
 
+func (indexer *Indexer) GetHighestElBlockNumber(head []byte) uint64 {
+	var elHeadBlock uint64
+	clHeadRoot := head
+	for {
+		headBlock := indexer.GetCachedBlock(clHeadRoot)
+		if headBlock == nil {
+			return 0
+		}
+
+		headBlockBody := headBlock.GetBlockBody()
+		if headBlockBody == nil {
+			clHeadRoot = headBlock.GetParentRoot()
+			continue
+		}
+
+		elHeadBlock = headBlock.Refs.ExecutionNumber
+		break
+	}
+	return elHeadBlock
+}
+
+func (indexer *Indexer) GetFinalizedElBlockNumber() uint64 {
+	_, clHeadRoot, _, _ := indexer.GetFinalizationCheckpoints()
+
+	headBlock := indexer.GetCachedBlock(clHeadRoot)
+	if headBlock == nil {
+		return 0
+	}
+
+	headBlockBody := headBlock.GetBlockBody()
+	if headBlockBody == nil {
+		return 0
+	}
+
+	return headBlock.Refs.ExecutionNumber
+}
+
 func (indexer *Indexer) GetHighestSlot() uint64 {
 	indexer.indexerCache.cacheMutex.RLock()
 	defer indexer.indexerCache.cacheMutex.RUnlock()

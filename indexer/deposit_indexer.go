@@ -146,7 +146,7 @@ func (ds *DepositIndexer) processFinalizedBlocks(finalizedBlockNumber uint64) er
 		}
 
 		query := ethereum.FilterQuery{
-			FromBlock: big.NewInt(0).SetUint64(ds.state.FinalBlock),
+			FromBlock: big.NewInt(0).SetUint64(ds.state.FinalBlock + 1),
 			ToBlock:   big.NewInt(0).SetUint64(toBlock),
 			Addresses: []common.Address{
 				ds.depositContract,
@@ -166,7 +166,8 @@ func (ds *DepositIndexer) processFinalizedBlocks(finalizedBlockNumber uint64) er
 
 		logger.Infof("received deposit log for block %v - %v: %v events", ds.state.FinalBlock, toBlock, len(logs))
 
-		for _, log := range logs {
+		for idx := range logs {
+			log := &logs[idx]
 			if !bytes.Equal(log.Topics[0][:], ds.depositEventTopic) {
 				continue
 			}
@@ -254,23 +255,7 @@ func (ds *DepositIndexer) processRecentBlocks() error {
 			return fmt.Errorf("no ready execution client found")
 		}
 
-		var elHeadBlock uint64
-		clHeadRoot := headFork.Root
-		for {
-			headBlock := ds.indexer.GetCachedBlock(clHeadRoot)
-			if headBlock == nil {
-				return fmt.Errorf("could not get head block")
-			}
-
-			headBlockBody := headBlock.GetBlockBody()
-			if headBlockBody == nil {
-				clHeadRoot = headBlock.GetParentRoot()
-				continue
-			}
-
-			elHeadBlock = headBlock.Refs.ExecutionNumber
-			break
-		}
+		elHeadBlock := ds.indexer.GetHighestElBlockNumber(headFork.Root)
 		if elHeadBlock == 0 {
 			return fmt.Errorf("could not get el head block number")
 		}
@@ -279,8 +264,8 @@ func (ds *DepositIndexer) processRecentBlocks() error {
 		defer cancel()
 
 		query := ethereum.FilterQuery{
-			FromBlock: big.NewInt(0).SetUint64(ds.state.FinalBlock),
-			ToBlock:   big.NewInt(0).SetUint64(elHeadBlock),
+			FromBlock: big.NewInt(0).SetUint64(ds.state.FinalBlock + 1),
+			ToBlock:   big.NewInt(0).SetUint64(elHeadBlock - 1),
 			Addresses: []common.Address{
 				ds.depositContract,
 			},
@@ -297,7 +282,8 @@ func (ds *DepositIndexer) processRecentBlocks() error {
 
 		depositTxs := []*dbtypes.DepositTx{}
 
-		for _, log := range logs {
+		for idx := range logs {
+			log := &logs[idx]
 			if !bytes.Equal(log.Topics[0][:], ds.depositEventTopic) {
 				continue
 			}
@@ -314,6 +300,8 @@ func (ds *DepositIndexer) processRecentBlocks() error {
 			}
 
 			if txHash == nil || !bytes.Equal(txHash, log.TxHash[:]) {
+				txHash = log.TxHash[:]
+
 				txDetails, _, err = client.GetRpcClient().GetEthClient().TransactionByHash(ctx, log.TxHash)
 				if err != nil {
 					return fmt.Errorf("could not load tx details (%v): %v", log.TxHash, err)

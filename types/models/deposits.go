@@ -21,6 +21,7 @@ type DepositsPageDataInitiatedDeposit struct {
 	TxHash                []byte    `json:"txhash"`
 	Time                  time.Time `json:"time"`
 	Block                 uint64    `json:"block"`
+	BlockHash             []byte    `json:"block_hash"`
 	Orphaned              bool      `json:"orphaned"`
 	Valid                 bool      `json:"valid"`
 }

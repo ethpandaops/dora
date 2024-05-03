@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/services"
@@ -153,8 +154,8 @@ func buildFilteredInitiatedDepositsPageData(pageIdx uint64, pageSize uint64, add
 
 	// load initiated deposits
 	depositFilter := &dbtypes.DepositTxFilter{
-		Address:       address,
-		PublicKey:     publickey,
+		Address:       common.FromHex(address),
+		PublicKey:     common.FromHex(publickey),
 		ValidatorName: vname,
 		MinAmount:     minAmount,
 		MaxAmount:     maxAmount,
@@ -163,11 +164,12 @@ func buildFilteredInitiatedDepositsPageData(pageIdx uint64, pageSize uint64, add
 	}
 
 	offset := (pageIdx - 1) * pageSize
-	dbDepositTxs := db.GetDepositTxsFiltered(offset, uint32(pageSize)+1, depositFilter)
-	haveMore := false
-	if uint64(len(dbDepositTxs)) > pageSize {
-		haveMore = true
-		dbDepositTxs = dbDepositTxs[:pageSize]
+	depositSyncState := dbtypes.DepositIndexerState{}
+	db.GetExplorerState("indexer.depositstate", &depositSyncState)
+
+	dbDepositTxs, totalRows, err := db.GetDepositTxsFiltered(offset, uint32(pageSize), depositSyncState.FinalBlock, depositFilter)
+	if err != nil {
+		panic(err)
 	}
 
 	for _, depositTx := range dbDepositTxs {
@@ -180,6 +182,7 @@ func buildFilteredInitiatedDepositsPageData(pageIdx uint64, pageSize uint64, add
 			TxHash:                depositTx.TxHash,
 			Time:                  time.Unix(int64(depositTx.BlockTime), 0),
 			Block:                 depositTx.BlockNumber,
+			BlockHash:             depositTx.BlockRoot,
 			Orphaned:              depositTx.Orphaned,
 			Valid:                 depositTx.ValidSignature,
 		}
@@ -191,9 +194,14 @@ func buildFilteredInitiatedDepositsPageData(pageIdx uint64, pageSize uint64, add
 		pageData.FirstIndex = pageData.Deposits[0].Index
 		pageData.LastIndex = pageData.Deposits[pageData.DepositCount-1].Index
 	}
-	if haveMore {
-		pageData.NextPageIndex = pageIdx + 1
+
+	pageData.TotalPages = totalRows / pageSize
+	if totalRows%pageSize > 0 {
 		pageData.TotalPages++
+	}
+	pageData.LastPageIndex = pageData.TotalPages
+	if pageIdx < pageData.TotalPages {
+		pageData.NextPageIndex = pageIdx + 1
 	}
 
 	pageData.FirstPageLink = fmt.Sprintf("/validators/initiated_deposits?f&%v&c=%v", filterArgs.Encode(), pageData.PageSize)
