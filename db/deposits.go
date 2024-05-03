@@ -165,3 +165,30 @@ func GetDeposits(offset uint64, limit uint32) []*dbtypes.Deposit {
 	}
 	return deposits
 }
+
+func GetDepositTxsFiltered(offset uint64, limit uint32, filter *dbtypes.DepositTxFilter) []*dbtypes.DepositTx {
+	var sql strings.Builder
+	args := []any{}
+	fmt.Fprint(&sql, `
+	SELECT
+		deposit_index, block_number, block_time, block_root, publickey, withdrawalcredentials, amount, signature, valid_signature, orphaned, tx_hash, tx_sender, tx_target
+	FROM deposit_txs
+	`)
+	args = append(args, limit)
+	fmt.Fprintf(&sql, `
+	ORDER BY deposit_index DESC
+	LIMIT $%v
+	`, len(args))
+	if offset > 0 {
+		args = append(args, offset)
+		fmt.Fprintf(&sql, " OFFSET $%v ", len(args))
+	}
+
+	depositTxs := []*dbtypes.DepositTx{}
+	err := ReaderDb.Select(&depositTxs, sql.String(), args...)
+	if err != nil {
+		logger.Errorf("Error while fetching deposit txs: %v", err)
+		return nil
+	}
+	return depositTxs
+}

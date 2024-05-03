@@ -26,3 +26,13 @@ type BlockFilter struct {
 	WithOrphaned  uint8
 	WithMissing   uint8
 }
+
+type DepositTxFilter struct {
+	Address       string
+	PublicKey     string
+	ValidatorName string
+	MinAmount     uint64
+	MaxAmount     uint64
+	WithOrphaned  uint8
+	WithValid     uint8
+}

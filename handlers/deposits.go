@@ -17,13 +17,13 @@ import (
 
 // Deposits will return the main "deposits" page using a go template
 func Deposits(w http.ResponseWriter, r *http.Request) {
-	var indexTemplateFiles = append(layoutTemplateFiles,
+	var templateFiles = append(layoutTemplateFiles,
 		"deposits/deposits.html",
 		"_svg/professor.html",
 	)
 
-	var pageTemplate = templates.GetTemplate(indexTemplateFiles...)
-	data := InitPageData(w, r, "validators", "/validators/deposits", "Deposits", indexTemplateFiles)
+	var pageTemplate = templates.GetTemplate(templateFiles...)
+	data := InitPageData(w, r, "validators", "/validators/deposits", "Deposits", templateFiles)
 
 	urlArgs := r.URL.Query()
 	var firstEpoch uint64 = math.MaxUint64

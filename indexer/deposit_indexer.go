@@ -265,6 +265,7 @@ func (ds *DepositIndexer) processRecentBlocks() error {
 
 		var txHash []byte
 		var txDetails *types.Transaction
+		var txBlockHeader *types.Header
 
 		depositTxs := []*dbtypes.DepositTx{}
 
@@ -285,6 +286,10 @@ func (ds *DepositIndexer) processRecentBlocks() error {
 					return fmt.Errorf("could not load tx details (%v): %v", log.TxHash, err)
 				}
 
+				txBlockHeader, err = client.GetRpcClient().GetBlockHeaderByNumber(ctx, log.BlockNumber)
+				if err != nil {
+					return fmt.Errorf("could not load block details (%v): %v", log.TxHash, err)
+				}
 			}
 
 			txFrom, err := types.Sender(types.LatestSignerForChainID(txDetails.ChainId()), txDetails)
@@ -296,6 +301,7 @@ func (ds *DepositIndexer) processRecentBlocks() error {
 			depositTx := &dbtypes.DepositTx{
 				Index:                 binary.LittleEndian.Uint64(event[4].([]byte)),
 				BlockNumber:           log.BlockNumber,
+				BlockTime:             txBlockHeader.Time,
 				BlockRoot:             log.BlockHash[:],
 				PublicKey:             event[0].([]byte),
 				WithdrawalCredentials: event[1].([]byte),
