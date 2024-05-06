@@ -200,7 +200,7 @@ func buildIndexPageData() (*models.IndexPageData, time.Duration) {
 	}
 	if utils.Config.Chain.Config.Eip7594ForkEpoch < uint64(18446744073709551615) && utils.Config.Chain.Config.Eip7594ForkVersion != "" {
 		pageData.NetworkForks = append(pageData.NetworkForks, &models.IndexPageDataForks{
-			Name:    "PeerDAS",
+			Name:    "eip7594",
 			Epoch:   utils.Config.Chain.Config.Eip7594ForkEpoch,
 			Version: utils.MustParseHex(utils.Config.Chain.Config.Eip7594ForkVersion),
 			Active:  uint64(currentEpoch) >= utils.Config.Chain.Config.Eip7594ForkEpoch,
