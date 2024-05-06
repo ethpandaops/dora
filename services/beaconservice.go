@@ -21,7 +21,7 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-type BeaconService struct {
+type ChainService struct {
 	indexer        *indexer.Indexer
 	validatorNames *ValidatorNames
 
@@ -36,10 +36,10 @@ type BeaconService struct {
 	assignmentsCache    *lru.Cache[uint64, *rpc.EpochAssignments]
 }
 
-var GlobalBeaconService *BeaconService
+var GlobalBeaconService *ChainService
 
-// StartBeaconService is used to start the global beaconchain service
-func StartBeaconService() error {
+// StartChainService is used to start the global beaconchain service
+func StartChainService() error {
 	if GlobalBeaconService != nil {
 		return nil
 	}
@@ -54,10 +54,14 @@ func StartBeaconService() error {
 	}
 
 	for idx, endpoint := range utils.Config.BeaconApi.Endpoints {
-		indexer.AddClient(uint16(idx), &endpoint)
+		indexer.AddConsensusClient(uint16(idx), &endpoint)
 	}
 
-	GlobalBeaconService = &BeaconService{
+	for idx, endpoint := range utils.Config.ExecutionApi.Endpoints {
+		indexer.AddExecutionClient(uint16(idx), &endpoint)
+	}
+
+	GlobalBeaconService = &ChainService{
 		indexer:          indexer,
 		validatorNames:   validatorNames,
 		assignmentsCache: lru.NewCache[uint64, *rpc.EpochAssignments](10),
@@ -65,40 +69,44 @@ func StartBeaconService() error {
 	return nil
 }
 
-func (bs *BeaconService) GetIndexer() *indexer.Indexer {
+func (bs *ChainService) GetIndexer() *indexer.Indexer {
 	return bs.indexer
 }
 
-func (bs *BeaconService) GetClients() []*indexer.IndexerClient {
-	return bs.indexer.GetClients()
+func (bs *ChainService) GetClients() []*indexer.ConsensusClient {
+	return bs.indexer.GetConsensusClients()
 }
 
-func (bs *BeaconService) GetHeadForks(readyOnly bool) []*indexer.HeadFork {
+func (bs *ChainService) GetHeadForks(readyOnly bool) []*indexer.HeadFork {
 	return bs.indexer.GetHeadForks(readyOnly)
 }
 
-func (bs *BeaconService) GetValidatorName(index uint64) string {
+func (bs *ChainService) GetValidatorName(index uint64) string {
 	return bs.validatorNames.GetValidatorName(index)
 }
 
-func (bs *BeaconService) GetValidatorNamesCount() uint64 {
+func (bs *ChainService) GetValidatorNamesCount() uint64 {
 	return bs.validatorNames.GetValidatorNamesCount()
 }
 
-func (bs *BeaconService) GetCachedValidatorSet() map[phase0.ValidatorIndex]*v1.Validator {
+func (bs *ChainService) GetCachedValidatorSet() map[phase0.ValidatorIndex]*v1.Validator {
 	return bs.indexer.GetCachedValidatorSet()
 }
 
-func (bs *BeaconService) GetFinalizedEpoch() (int64, []byte) {
+func (bs *ChainService) GetCachedValidatorPubkeyMap() map[phase0.BLSPubKey]*v1.Validator {
+	return bs.indexer.GetCachedValidatorPubkeyMap()
+}
+
+func (bs *ChainService) GetFinalizedEpoch() (int64, []byte) {
 	finalizedEpoch, finalizedRoot, _, _ := bs.indexer.GetFinalizationCheckpoints()
 	return finalizedEpoch, finalizedRoot
 }
 
-func (bs *BeaconService) GetCachedEpochStats(epoch uint64) *indexer.EpochStats {
+func (bs *ChainService) GetCachedEpochStats(epoch uint64) *indexer.EpochStats {
 	return bs.indexer.GetCachedEpochStats(epoch)
 }
 
-func (bs *BeaconService) GetGenesis() (*v1.Genesis, error) {
+func (bs *ChainService) GetGenesis() (*v1.Genesis, error) {
 	return bs.indexer.GetCachedGenesis(), nil
 }
 
@@ -109,7 +117,7 @@ type CombinedBlockResponse struct {
 	Orphaned bool
 }
 
-func (bs *BeaconService) GetSlotDetailsByBlockroot(blockroot []byte) (*CombinedBlockResponse, error) {
+func (bs *ChainService) GetSlotDetailsByBlockroot(blockroot []byte) (*CombinedBlockResponse, error) {
 	var result *CombinedBlockResponse
 	if blockInfo := bs.indexer.GetCachedBlock(blockroot); blockInfo != nil {
 		result = &CombinedBlockResponse{
@@ -119,12 +127,12 @@ func (bs *BeaconService) GetSlotDetailsByBlockroot(blockroot []byte) (*CombinedB
 			Orphaned: !blockInfo.IsCanonical(bs.indexer, nil),
 		}
 	} else {
-		var skipClients []*indexer.IndexerClient = nil
+		var skipClients []*indexer.ConsensusClient = nil
 
 		var header *v1.BeaconBlockHeader
 		var err error
 		for retry := 0; retry < 3; retry++ {
-			client := bs.indexer.GetReadyClient(false, blockroot, skipClients)
+			client := bs.indexer.GetReadyClClient(false, blockroot, skipClients)
 			header, err = client.GetRpcClient().GetBlockHeaderByBlockroot(blockroot)
 			if header != nil {
 				break
@@ -143,7 +151,7 @@ func (bs *BeaconService) GetSlotDetailsByBlockroot(blockroot []byte) (*CombinedB
 
 		var block *spec.VersionedSignedBeaconBlock
 		for retry := 0; retry < 3; retry++ {
-			client := bs.indexer.GetReadyClient(false, header.Root[:], skipClients)
+			client := bs.indexer.GetReadyClClient(false, header.Root[:], skipClients)
 			block, err = client.GetRpcClient().GetBlockBodyByBlockroot(header.Root[:])
 			if block != nil {
 				break
@@ -170,7 +178,7 @@ func (bs *BeaconService) GetSlotDetailsByBlockroot(blockroot []byte) (*CombinedB
 	return result, nil
 }
 
-func (bs *BeaconService) GetSlotDetailsBySlot(slot uint64) (*CombinedBlockResponse, error) {
+func (bs *ChainService) GetSlotDetailsBySlot(slot uint64) (*CombinedBlockResponse, error) {
 	var result *CombinedBlockResponse
 	if cachedBlocks := bs.indexer.GetCachedBlocks(slot); len(cachedBlocks) > 0 {
 		var cachedBlock *indexer.CacheBlock
@@ -190,12 +198,12 @@ func (bs *BeaconService) GetSlotDetailsBySlot(slot uint64) (*CombinedBlockRespon
 			Orphaned: !cachedBlock.IsCanonical(bs.indexer, nil),
 		}
 	} else {
-		var skipClients []*indexer.IndexerClient = nil
+		var skipClients []*indexer.ConsensusClient = nil
 
 		var header *v1.BeaconBlockHeader
 		var err error
 		for retry := 0; retry < 3; retry++ {
-			client := bs.indexer.GetReadyClient(false, nil, skipClients)
+			client := bs.indexer.GetReadyClClient(false, nil, skipClients)
 			header, err = client.GetRpcClient().GetBlockHeaderBySlot(slot)
 			if header != nil {
 				break
@@ -214,7 +222,7 @@ func (bs *BeaconService) GetSlotDetailsBySlot(slot uint64) (*CombinedBlockRespon
 
 		var block *spec.VersionedSignedBeaconBlock
 		for retry := 0; retry < 3; retry++ {
-			client := bs.indexer.GetReadyClient(false, header.Root[:], skipClients)
+			client := bs.indexer.GetReadyClClient(false, header.Root[:], skipClients)
 			block, err = client.GetRpcClient().GetBlockBodyByBlockroot(header.Root[:])
 			if block != nil {
 				break
@@ -242,11 +250,11 @@ func (bs *BeaconService) GetSlotDetailsBySlot(slot uint64) (*CombinedBlockRespon
 	return result, nil
 }
 
-func (bs *BeaconService) GetBlobSidecarsByBlockRoot(blockroot []byte) ([]*deneb.BlobSidecar, error) {
-	return bs.indexer.GetRpcClient(true, blockroot).GetBlobSidecarsByBlockroot(blockroot)
+func (bs *ChainService) GetBlobSidecarsByBlockRoot(blockroot []byte) ([]*deneb.BlobSidecar, error) {
+	return bs.indexer.GetConsensusRpc(true, blockroot).GetBlobSidecarsByBlockroot(blockroot)
 }
 
-func (bs *BeaconService) GetOrphanedBlock(blockroot []byte) *CombinedBlockResponse {
+func (bs *ChainService) GetOrphanedBlock(blockroot []byte) *CombinedBlockResponse {
 	orphanedBlock := db.GetOrphanedBlock(blockroot)
 	if orphanedBlock == nil {
 		return nil
@@ -276,7 +284,7 @@ func (bs *BeaconService) GetOrphanedBlock(blockroot []byte) *CombinedBlockRespon
 	}
 }
 
-func (bs *BeaconService) GetEpochAssignments(epoch uint64) (*rpc.EpochAssignments, error) {
+func (bs *ChainService) GetEpochAssignments(epoch uint64) (*rpc.EpochAssignments, error) {
 	finalizedEpoch, _ := bs.GetFinalizedEpoch()
 
 	if int64(epoch) > finalizedEpoch {
@@ -309,7 +317,7 @@ func (bs *BeaconService) GetEpochAssignments(epoch uint64) (*rpc.EpochAssignment
 	firstSlot := epoch * utils.Config.Chain.Config.SlotsPerEpoch
 	dependentRoot := db.GetHighestRootBeforeSlot(firstSlot, false)
 	var err error
-	epochAssignments, err = bs.indexer.GetRpcClient(true, nil).GetEpochAssignments(epoch, dependentRoot)
+	epochAssignments, err = bs.indexer.GetConsensusRpc(true, nil).GetEpochAssignments(epoch, dependentRoot)
 	if err != nil {
 		return nil, err
 	}
@@ -321,7 +329,7 @@ func (bs *BeaconService) GetEpochAssignments(epoch uint64) (*rpc.EpochAssignment
 	return epochAssignments, nil
 }
 
-func (bs *BeaconService) GetProposerAssignments(firstEpoch uint64, lastEpoch uint64) (proposerAssignments map[uint64]uint64, synchronizedEpochs map[uint64]bool) {
+func (bs *ChainService) GetProposerAssignments(firstEpoch uint64, lastEpoch uint64) (proposerAssignments map[uint64]uint64, synchronizedEpochs map[uint64]bool) {
 	proposerAssignments = make(map[uint64]uint64)
 	synchronizedEpochs = make(map[uint64]bool)
 
@@ -380,7 +388,7 @@ func (bs *BeaconService) GetProposerAssignments(firstEpoch uint64, lastEpoch uin
 	return
 }
 
-func (bs *BeaconService) GetDbEpochs(firstEpoch uint64, limit uint32) []*dbtypes.Epoch {
+func (bs *ChainService) GetDbEpochs(firstEpoch uint64, limit uint32) []*dbtypes.Epoch {
 	resEpochs := make([]*dbtypes.Epoch, limit)
 	resIdx := 0
 
@@ -423,7 +431,7 @@ func (bs *BeaconService) GetDbEpochs(firstEpoch uint64, limit uint32) []*dbtypes
 	return resEpochs
 }
 
-func (bs *BeaconService) GetDbBlocks(firstSlot uint64, limit int32, withMissing bool, withOrphaned bool) []*dbtypes.Slot {
+func (bs *ChainService) GetDbBlocks(firstSlot uint64, limit int32, withMissing bool, withOrphaned bool) []*dbtypes.Slot {
 	resBlocks := make([]*dbtypes.Slot, limit)
 	resIdx := 0
 
@@ -548,7 +556,7 @@ func (bs *BeaconService) GetDbBlocks(firstSlot uint64, limit int32, withMissing 
 	return resBlocks
 }
 
-func (bs *BeaconService) GetDbBlocksForSlots(firstSlot uint64, slotLimit uint32, withMissing bool, withOrphaned bool) []*dbtypes.Slot {
+func (bs *ChainService) GetDbBlocksForSlots(firstSlot uint64, slotLimit uint32, withMissing bool, withOrphaned bool) []*dbtypes.Slot {
 	resBlocks := make([]*dbtypes.Slot, 0)
 
 	finalizedEpoch, _ := bs.GetFinalizedEpoch()
@@ -682,7 +690,7 @@ type cachedDbBlock struct {
 	block    *indexer.CacheBlock
 }
 
-func (bs *BeaconService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageIdx uint64, pageSize uint32) []*dbtypes.AssignedSlot {
+func (bs *ChainService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageIdx uint64, pageSize uint32) []*dbtypes.AssignedSlot {
 	cachedMatches := make([]cachedDbBlock, 0)
 	finalizedEpoch, _ := bs.GetFinalizedEpoch()
 	idxMinSlot := (finalizedEpoch + 1) * int64(utils.Config.Chain.Config.SlotsPerEpoch)
@@ -866,7 +874,7 @@ func (bs *BeaconService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageId
 	return resBlocks
 }
 
-func (bs *BeaconService) GetDbBlocksByParentRoot(parentRoot []byte) []*dbtypes.Slot {
+func (bs *ChainService) GetDbBlocksByParentRoot(parentRoot []byte) []*dbtypes.Slot {
 	parentBlock := bs.indexer.GetCachedBlock(parentRoot)
 	cachedMatches := bs.indexer.GetCachedBlocksByParentRoot(parentRoot)
 	resBlocks := make([]*dbtypes.Slot, len(cachedMatches))
@@ -879,7 +887,7 @@ func (bs *BeaconService) GetDbBlocksByParentRoot(parentRoot []byte) []*dbtypes.S
 	return resBlocks
 }
 
-func (bs *BeaconService) CheckBlockOrphanedStatus(blockRoot []byte) dbtypes.SlotStatus {
+func (bs *ChainService) CheckBlockOrphanedStatus(blockRoot []byte) dbtypes.SlotStatus {
 	cachedBlock := bs.indexer.GetCachedBlock(blockRoot)
 	if cachedBlock != nil {
 		if cachedBlock.IsCanonical(bs.indexer, nil) {
@@ -896,7 +904,7 @@ func (bs *BeaconService) CheckBlockOrphanedStatus(blockRoot []byte) dbtypes.Slot
 	return dbtypes.Missing
 }
 
-func (bs *BeaconService) GetValidatorActivity() (map[uint64]uint8, uint64) {
+func (bs *ChainService) GetValidatorActivity() (map[uint64]uint8, uint64) {
 	activityMap := map[uint64]uint8{}
 	epochLimit := uint64(3)
 
@@ -908,10 +916,10 @@ func (bs *BeaconService) GetValidatorActivity() (map[uint64]uint8, uint64) {
 	idxHeadEpoch--
 	finalizedEpoch, _ := bs.GetFinalizedEpoch()
 	var idxMinEpoch uint64
-	if finalizedEpoch < 0 {
+	if finalizedEpoch < 2 {
 		idxMinEpoch = 0
 	} else {
-		idxMinEpoch = uint64(finalizedEpoch + 1)
+		idxMinEpoch = uint64(finalizedEpoch - 1)
 	}
 
 	activityEpoch := utils.EpochOfSlot(idxHeadSlot - 1)

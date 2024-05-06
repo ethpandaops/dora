@@ -387,6 +387,22 @@ func (bc *BeaconClient) GetSyncCommitteeDuties(stateRef string, epoch uint64) (*
 	return result.Data, nil
 }
 
+func (bc *BeaconClient) GetState(stateRef string) (*spec.VersionedBeaconState, error) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	provider, isProvider := bc.clientSvc.(eth2client.BeaconStateProvider)
+	if !isProvider {
+		return nil, fmt.Errorf("get validators not supported")
+	}
+	result, err := provider.BeaconState(ctx, &api.BeaconStateOpts{
+		State: stateRef,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result.Data, nil
+}
+
 func (bc *BeaconClient) GetStateValidators(stateRef string) (map[phase0.ValidatorIndex]*v1.Validator, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

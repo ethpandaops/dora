@@ -308,6 +308,27 @@ func FormatEthAddressLink(address []byte) template.HTML {
 	return template.HTML(caption)
 }
 
+func FormatEthTransactionLink(hash []byte, width uint64) template.HTML {
+	txhash := common.Hash(hash).String()
+	caption := txhash
+	if width > 0 {
+		caption = caption[:width] + "…"
+	}
+
+	if Config.Frontend.EthExplorerLink != "" {
+		link, err := url.JoinPath(Config.Frontend.EthExplorerLink, "tx", txhash)
+		if err == nil {
+			return template.HTML(fmt.Sprintf(`<a href="%v">%v</a>`, link, caption))
+		}
+	}
+	return template.HTML(caption)
+}
+
+func FormatEthAddress(address []byte) template.HTML {
+	caption := common.BytesToAddress(address).String()
+	return template.HTML(caption)
+}
+
 func FormatValidator(index uint64, name string) template.HTML {
 	return formatValidator(index, name, "fa-male mr-2")
 }
@@ -356,4 +377,30 @@ func FormatRecentTimeShort(ts time.Time) template.HTML {
 
 func FormatGraffiti(graffiti []byte) template.HTML {
 	return template.HTML(fmt.Sprintf("<span class=\"graffiti-label\" data-graffiti=\"%#x\">%s</span>", graffiti, html.EscapeString(string(graffiti))))
+}
+
+func formatWithdrawalHash(hash []byte) template.HTML {
+	var colorClass string
+	if hash[0] == 0x01 {
+		colorClass = "text-success"
+	} else {
+		colorClass = "text-warning"
+	}
+
+	return template.HTML(fmt.Sprintf("<span class=\"text-monospace %s\">%#x</span><span class=\"text-monospace\">%x…%x</span>", colorClass, hash[:1], hash[1:2], hash[len(hash)-2:]))
+}
+
+func FormatWithdawalCredentials(hash []byte) template.HTML {
+	if len(hash) != 32 {
+		return "INVALID CREDENTIALS"
+	}
+
+	if hash[0] == 0x01 && Config.Frontend.EthExplorerLink != "" {
+		link, err := url.JoinPath(Config.Frontend.EthExplorerLink, "address", fmt.Sprintf("0x%x", hash[12:]))
+		if err == nil {
+			return template.HTML(fmt.Sprintf(`<a href="%v">%v</a>`, link, formatWithdrawalHash(hash)))
+		}
+	}
+
+	return formatWithdrawalHash(hash)
 }

@@ -96,6 +96,15 @@ func createMenuItems(active string, isMain bool) []types.MainMenuItem {
 				{
 					Links: []types.NavigationLink{
 						{
+							Label: "Overview",
+							Path:  "/",
+							Icon:  "fa-home",
+						},
+					},
+				},
+				{
+					Links: []types.NavigationLink{
+						{
 							Label: "Epochs",
 							Path:  "/epochs",
 							Icon:  "fa-history",
@@ -107,6 +116,26 @@ func createMenuItems(active string, isMain bool) []types.MainMenuItem {
 						},
 					},
 				},
+				{
+					Links: []types.NavigationLink{
+						{
+							Label: "Clients",
+							Path:  "/clients",
+							Icon:  "fa-server",
+						},
+						{
+							Label: "Forks",
+							Path:  "/forks",
+							Icon:  "fa-code-fork",
+						},
+					},
+				},
+			},
+		},
+		{
+			Label:    "Validators",
+			IsActive: active == "validators",
+			Groups: []types.NavigationGroup{
 				{
 					Links: []types.NavigationLink{
 						{
@@ -124,14 +153,9 @@ func createMenuItems(active string, isMain bool) []types.MainMenuItem {
 				{
 					Links: []types.NavigationLink{
 						{
-							Label: "Clients",
-							Path:  "/clients",
-							Icon:  "fa-server",
-						},
-						{
-							Label: "Forks",
-							Path:  "/forks",
-							Icon:  "fa-code-fork",
+							Label: "Deposits",
+							Path:  "/validators/deposits",
+							Icon:  "fa-file-signature",
 						},
 					},
 				},

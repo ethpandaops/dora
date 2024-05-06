@@ -37,13 +37,13 @@ func aggregateEpochVotes(blockMap map[uint64]*CacheBlock, epoch uint64, epochSta
 	if awaitDutiesLoaded {
 		epochStats.dutiesMutex.RLock()
 		defer epochStats.dutiesMutex.RUnlock()
-		epochStats.validatorsMutex.RLock()
-		defer epochStats.validatorsMutex.RUnlock()
+		epochStats.stateStatsMutex.RLock()
+		defer epochStats.stateStatsMutex.RUnlock()
 	}
 
 	votes := EpochVotes{
 		ActivityMap: map[uint64]bool{},
-		VoteCounts:  epochStats.validatorStats == nil,
+		VoteCounts:  epochStats.stateStats == nil,
 	}
 
 	for slot := firstSlot; slot <= lastSlot; slot++ {
@@ -77,8 +77,8 @@ func aggregateEpochVotes(blockMap map[uint64]*CacheBlock, epoch uint64, epochSta
 						if votes.ActivityMap[validatorIdx] {
 							continue
 						}
-						if epochStats.validatorStats != nil {
-							voteAmount += uint64(epochStats.validatorStats.ValidatorBalances[validatorIdx])
+						if epochStats.stateStats != nil {
+							voteAmount += uint64(epochStats.stateStats.ValidatorBalances[validatorIdx])
 						} else {
 							voteAmount += 1
 						}
