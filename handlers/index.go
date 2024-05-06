@@ -198,6 +198,14 @@ func buildIndexPageData() (*models.IndexPageData, time.Duration) {
 			Active:  uint64(currentEpoch) >= utils.Config.Chain.Config.DenebForkEpoch,
 		})
 	}
+	if utils.Config.Chain.Config.Eip7594ForkEpoch < uint64(18446744073709551615) && utils.Config.Chain.Config.Eip7594ForkVersion != "" {
+		pageData.NetworkForks = append(pageData.NetworkForks, &models.IndexPageDataForks{
+			Name:    "PeerDAS",
+			Epoch:   utils.Config.Chain.Config.Eip7594ForkEpoch,
+			Version: utils.MustParseHex(utils.Config.Chain.Config.Eip7594ForkVersion),
+			Active:  uint64(currentEpoch) >= utils.Config.Chain.Config.Eip7594ForkEpoch,
+		})
+	}
 
 	// load recent epochs
 	buildIndexPageRecentEpochsData(pageData, uint64(currentEpoch), finalizedEpoch, justifiedEpoch, recentEpochCount)
