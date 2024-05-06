@@ -47,3 +47,4 @@ This explorer is heavily based on the code from [gobitfly/eth2-beaconchain-explo
 # License
 
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+
