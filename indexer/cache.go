@@ -34,6 +34,7 @@ type indexerCache struct {
 	epochStatsMap           map[uint64][]*EpochStats
 	lastValidatorsEpoch     int64
 	lastValidatorsResp      map[phase0.ValidatorIndex]*v1.Validator
+	lastValidatorsPubKeyMap map[phase0.BLSPubKey]*v1.Validator
 	genesisResp             *v1.Genesis
 	validatorLoadingLimiter chan int
 }
@@ -130,6 +131,12 @@ func (cache *indexerCache) setLastValidators(epoch uint64, validators map[phase0
 	if int64(epoch) > cache.lastValidatorsEpoch {
 		cache.lastValidatorsEpoch = int64(epoch)
 		cache.lastValidatorsResp = validators
+
+		cache.lastValidatorsPubKeyMap = map[phase0.BLSPubKey]*v1.Validator{}
+		for idx := range validators {
+			validator := validators[idx]
+			cache.lastValidatorsPubKeyMap[validator.Validator.PublicKey] = validator
+		}
 	}
 }
 

@@ -41,12 +41,33 @@
                     <input name="f.pubkey" type="text" class="form-control" placeholder="Public Key" aria-label="Public Key" aria-describedby="basic-addon1" value="{{ .FilterPubKey }}">
                   </div>
                 </div>
+                <!--
                 <div class="row mt-1">
                   <div class="col-sm-12 col-md-6 col-lg-4">
                     Validator Name
                   </div>
                   <div class="col-sm-12 col-md-6 col-lg-8">
                     <input name="f.vname" type="text" class="form-control" placeholder="Validator Name" aria-label="Validator Name" aria-describedby="basic-addon1" value="{{ .FilterValidatorName }}">
+                  </div>
+                </div>
+                -->
+                <div class="row mt-1">
+                  <div class="col-sm-12 col-md-6 col-lg-4">
+                    Deposit Amount
+                  </div>
+                  <div class="col-sm-12 col-md-6 col-lg-8 d-flex">
+                    <div class="flex-grow-1">
+                      <input name="f.mina" type="number" class="form-control" placeholder="Min Amount" aria-label="Min Amount" aria-describedby="basic-addon1" value="{{ if gt .FilterMinAmount 0 }}{{ .FilterMinAmount }}{{ end }}">
+                    </div>
+                    <div class="text-center filter-amount-separator">
+                      -
+                    </div>
+                    <div class="flex-grow-1">
+                      <input name="f.maxa" type="number" class="form-control" placeholder="Max Amount" aria-label="Max Amount" aria-describedby="basic-addon1" value="{{ if gt .FilterMaxAmount 0 }}{{ .FilterMaxAmount }}{{ end }}">
+                    </div>
+                    <div class="text-center filter-amount-separator">
+                      ETH
+                    </div>
                   </div>
                 </div>
               </div>
@@ -164,8 +185,25 @@
                     </td>
                     <td data-timer="{{ $deposit.Time.Unix }}"><span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $deposit.Time }}">{{ formatRecentTimeShort $deposit.Time }}</span></td>
                     <td>{{ ethBlockLink $deposit.Block }}</td>
-                    <td>0x{{ printf "%x" $deposit.BlockHash }}</td>
-                    <td></td>
+                    <td>
+                      {{- $deposit.ValidatorStatus -}}
+                      {{- if $deposit.ShowUpcheck -}}
+                        {{- if eq $deposit.UpcheckActivity $deposit.UpcheckMaximum }}
+                          <i class="fas fa-power-off fa-sm text-success" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $deposit.UpcheckActivity }}/{{ $deposit.UpcheckMaximum }}"></i>
+                        {{- else if gt $deposit.UpcheckActivity 0 }}
+                          <i class="fas fa-power-off fa-sm text-warning" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $deposit.UpcheckActivity }}/{{ $deposit.UpcheckMaximum }}"></i>
+                        {{- else }}
+                          <i class="fas fa-power-off fa-sm text-danger" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $deposit.UpcheckActivity }}/{{ $deposit.UpcheckMaximum }}"></i>
+                        {{- end -}}
+                      {{- end -}}
+                    </td>
+                    <td>
+                      {{ if $deposit.Valid }}
+                        ✅
+                      {{ else }}
+                        ❌
+                      {{ end }}
+                    </td>
                   </tr>
                 {{ end }}
               </tbody>
@@ -222,4 +260,13 @@
 {{ define "js" }}
 {{ end }}
 {{ define "css" }}
+<style>
+
+.filter-amount-separator {
+  padding-top: 6px;
+  padding-left: 10px;
+  padding-right: 10px;
+}
+
+</style>
 {{ end }}

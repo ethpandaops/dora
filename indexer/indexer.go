@@ -582,6 +582,10 @@ func (indexer *Indexer) GetCachedValidatorSet() map[phase0.ValidatorIndex]*v1.Va
 	return indexer.indexerCache.lastValidatorsResp
 }
 
+func (indexer *Indexer) GetCachedValidatorPubkeyMap() map[phase0.BLSPubKey]*v1.Validator {
+	return indexer.indexerCache.lastValidatorsPubKeyMap
+}
+
 func (indexer *Indexer) GetEpochVotes(epoch uint64) (*EpochStats, *EpochVotes) {
 	epochStats := indexer.GetCachedEpochStats(epoch)
 	if epochStats == nil {

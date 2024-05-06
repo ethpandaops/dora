@@ -14,7 +14,7 @@ type InitiatedDepositsPageData struct {
 	FilterWithOrphaned  uint8  `json:"filter_orphaned"`
 	FilterWithValid     uint8  `json:"filter_valid"`
 
-	Deposits     []*DepositsPageDataInitiatedDeposit `json:"deposits"`
+	Deposits     []*InitiatedDepositsPageDataDeposit `json:"deposits"`
 	DepositCount uint64                              `json:"deposit_count"`
 	FirstIndex   uint64                              `json:"first_index"`
 	LastIndex    uint64                              `json:"last_index"`
@@ -44,4 +44,8 @@ type InitiatedDepositsPageDataDeposit struct {
 	Block                 uint64    `json:"block"`
 	Orphaned              bool      `json:"orphaned"`
 	Valid                 bool      `json:"valid"`
+	ValidatorStatus       string    `json:"vstatus"`
+	ShowUpcheck           bool      `json:"show_upcheck"`
+	UpcheckActivity       uint8     `json:"upcheck_act"`
+	UpcheckMaximum        uint8     `json:"upcheck_max"`
 }

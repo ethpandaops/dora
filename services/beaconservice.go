@@ -93,6 +93,10 @@ func (bs *ChainService) GetCachedValidatorSet() map[phase0.ValidatorIndex]*v1.Va
 	return bs.indexer.GetCachedValidatorSet()
 }
 
+func (bs *ChainService) GetCachedValidatorPubkeyMap() map[phase0.BLSPubKey]*v1.Validator {
+	return bs.indexer.GetCachedValidatorPubkeyMap()
+}
+
 func (bs *ChainService) GetFinalizedEpoch() (int64, []byte) {
 	finalizedEpoch, finalizedRoot, _, _ := bs.indexer.GetFinalizationCheckpoints()
 	return finalizedEpoch, finalizedRoot

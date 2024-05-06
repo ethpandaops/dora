@@ -24,6 +24,10 @@ type DepositsPageDataInitiatedDeposit struct {
 	BlockHash             []byte    `json:"block_hash"`
 	Orphaned              bool      `json:"orphaned"`
 	Valid                 bool      `json:"valid"`
+	ValidatorStatus       string    `json:"vstatus"`
+	ShowUpcheck           bool      `json:"show_upcheck"`
+	UpcheckActivity       uint8     `json:"upcheck_act"`
+	UpcheckMaximum        uint8     `json:"upcheck_max"`
 }
 
 type DepositsPageDataIncludedDeposit struct {

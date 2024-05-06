@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/ethpandaops/dora/dbtypes"
+	"github.com/ethpandaops/dora/utils"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -189,12 +190,12 @@ func GetDepositTxsFiltered(offset uint64, limit uint32, finalizedBlock uint64, f
 		filterOp = "AND"
 	}
 	if filter.MinAmount > 0 {
-		args = append(args, filter.MinAmount)
+		args = append(args, filter.MinAmount*utils.GWEI.Uint64())
 		fmt.Fprintf(&sql, " %v amount >= $%v", filterOp, len(args))
 		filterOp = "AND"
 	}
 	if filter.MaxAmount > 0 {
-		args = append(args, filter.MaxAmount)
+		args = append(args, filter.MaxAmount*utils.GWEI.Uint64())
 		fmt.Fprintf(&sql, " %v amount <= $%v", filterOp, len(args))
 		filterOp = "AND"
 	}
@@ -205,6 +206,13 @@ func GetDepositTxsFiltered(offset uint64, limit uint32, finalizedBlock uint64, f
 	} else if filter.WithOrphaned == 2 {
 		args = append(args, finalizedBlock)
 		fmt.Fprintf(&sql, " %v (block_number < $%v AND orphaned = 1)", filterOp, len(args))
+		filterOp = "AND"
+	}
+	if filter.WithValid == 0 {
+		fmt.Fprintf(&sql, " %v valid_signature = 1", filterOp)
+		filterOp = "AND"
+	} else if filter.WithValid == 2 {
+		fmt.Fprintf(&sql, " %v valid_signature = 0", filterOp)
 		filterOp = "AND"
 	}
 

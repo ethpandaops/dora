@@ -5,8 +5,11 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
+	v1 "github.com/attestantio/go-eth2-client/api/v1"
+	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
@@ -172,8 +175,11 @@ func buildFilteredInitiatedDepositsPageData(pageIdx uint64, pageSize uint64, add
 		panic(err)
 	}
 
+	validatorSetRsp := services.GlobalBeaconService.GetCachedValidatorPubkeyMap()
+	validatorActivityMap, validatorActivityMax := services.GlobalBeaconService.GetValidatorActivity()
+
 	for _, depositTx := range dbDepositTxs {
-		depositTxData := &models.DepositsPageDataInitiatedDeposit{
+		depositTxData := &models.InitiatedDepositsPageDataDeposit{
 			Index:                 depositTx.Index,
 			Address:               depositTx.TxSender,
 			PublicKey:             depositTx.PublicKey,
@@ -182,10 +188,40 @@ func buildFilteredInitiatedDepositsPageData(pageIdx uint64, pageSize uint64, add
 			TxHash:                depositTx.TxHash,
 			Time:                  time.Unix(int64(depositTx.BlockTime), 0),
 			Block:                 depositTx.BlockNumber,
-			BlockHash:             depositTx.BlockRoot,
 			Orphaned:              depositTx.Orphaned,
 			Valid:                 depositTx.ValidSignature,
+			ValidatorStatus:       "",
 		}
+
+		validator := validatorSetRsp[phase0.BLSPubKey(depositTx.PublicKey)]
+		if validator == nil {
+			depositTxData.ValidatorStatus = "Deposited"
+		} else {
+			if strings.HasPrefix(validator.Status.String(), "pending") {
+				depositTxData.ValidatorStatus = "Pending"
+			} else if validator.Status == v1.ValidatorStateActiveOngoing {
+				depositTxData.ValidatorStatus = "Active"
+				depositTxData.ShowUpcheck = true
+			} else if validator.Status == v1.ValidatorStateActiveExiting {
+				depositTxData.ValidatorStatus = "Exiting"
+				depositTxData.ShowUpcheck = true
+			} else if validator.Status == v1.ValidatorStateActiveSlashed {
+				depositTxData.ValidatorStatus = "Slashed"
+				depositTxData.ShowUpcheck = true
+			} else if validator.Status == v1.ValidatorStateExitedUnslashed {
+				depositTxData.ValidatorStatus = "Exited"
+			} else if validator.Status == v1.ValidatorStateExitedSlashed {
+				depositTxData.ValidatorStatus = "Slashed"
+			} else {
+				depositTxData.ValidatorStatus = validator.Status.String()
+			}
+
+			if depositTxData.ShowUpcheck {
+				depositTxData.UpcheckActivity = validatorActivityMap[uint64(validator.Index)]
+				depositTxData.UpcheckMaximum = uint8(validatorActivityMax)
+			}
+		}
+
 		pageData.Deposits = append(pageData.Deposits, depositTxData)
 	}
 	pageData.DepositCount = uint64(len(pageData.Deposits))
