@@ -757,7 +757,7 @@ func (bs *ChainService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageIdx
 			var proposerAssignments map[uint64]uint64
 			epochStats := bs.indexer.GetCachedEpochStats(epoch)
 			if epochStats != nil {
-				proposerAssignments = epochStats.GetProposerAssignments()
+				proposerAssignments = epochStats.TryGetProposerAssignments()
 			} else {
 				if storedProposerAssignments == nil {
 					// get all unfinalized proposer assignments from db
