@@ -201,18 +201,18 @@ func GetDepositTxsFiltered(offset uint64, limit uint32, finalizedBlock uint64, f
 	}
 	if filter.WithOrphaned == 0 {
 		args = append(args, finalizedBlock)
-		fmt.Fprintf(&sql, " %v (block_number > $%v OR orphaned = 0)", filterOp, len(args))
+		fmt.Fprintf(&sql, " %v (block_number > $%v OR orphaned = false)", filterOp, len(args))
 		filterOp = "AND"
 	} else if filter.WithOrphaned == 2 {
 		args = append(args, finalizedBlock)
-		fmt.Fprintf(&sql, " %v (block_number < $%v AND orphaned = 1)", filterOp, len(args))
+		fmt.Fprintf(&sql, " %v (block_number < $%v AND orphaned = true)", filterOp, len(args))
 		filterOp = "AND"
 	}
 	if filter.WithValid == 0 {
-		fmt.Fprintf(&sql, " %v valid_signature = 1", filterOp)
+		fmt.Fprintf(&sql, " %v valid_signature = true", filterOp)
 		filterOp = "AND"
 	} else if filter.WithValid == 2 {
-		fmt.Fprintf(&sql, " %v valid_signature = 0", filterOp)
+		fmt.Fprintf(&sql, " %v valid_signature = false", filterOp)
 		filterOp = "AND"
 	}
 
@@ -227,7 +227,7 @@ func GetDepositTxsFiltered(offset uint64, limit uint32, finalizedBlock uint64, f
 		null AS withdrawalcredentials,
 		0 AS amount, 
 		null AS signature, 
-		0 AS valid_signature, 
+		false AS valid_signature, 
 		false AS orphaned, 
 		null AS tx_hash, 
 		null AS tx_sender, 
@@ -292,10 +292,10 @@ func GetDepositsFiltered(offset uint64, limit uint32, filter *dbtypes.DepositFil
 		filterOp = "AND"
 	}
 	if filter.WithOrphaned == 0 {
-		fmt.Fprintf(&sql, " %v orphaned = 0", filterOp)
+		fmt.Fprintf(&sql, " %v orphaned = false", filterOp)
 		filterOp = "AND"
 	} else if filter.WithOrphaned == 2 {
-		fmt.Fprintf(&sql, " %v orphaned = 1", filterOp)
+		fmt.Fprintf(&sql, " %v orphaned = true", filterOp)
 		filterOp = "AND"
 	}
 
