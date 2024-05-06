@@ -254,3 +254,81 @@ func GetDepositTxsFiltered(offset uint64, limit uint32, finalizedBlock uint64, f
 
 	return depositTxs[1:], depositTxs[0].Index, nil
 }
+
+func GetDepositsFiltered(offset uint64, limit uint32, filter *dbtypes.DepositFilter) ([]*dbtypes.Deposit, uint64, error) {
+	var sql strings.Builder
+	args := []any{}
+	fmt.Fprint(&sql, `
+	WITH cte AS (
+		SELECT
+			deposit_index, slot_number, slot_index, slot_root, orphaned, publickey, withdrawalcredentials, amount
+		FROM deposits
+	`)
+
+	filterOp := "WHERE"
+	if filter.MinIndex > 0 {
+		args = append(args, filter.MinIndex)
+		fmt.Fprintf(&sql, " %v deposit_index >= $%v", filterOp, len(args))
+		filterOp = "AND"
+	}
+	if filter.MaxIndex > 0 {
+		args = append(args, filter.MaxIndex)
+		fmt.Fprintf(&sql, " %v deposit_index <= $%v", filterOp, len(args))
+		filterOp = "AND"
+	}
+	if len(filter.PublicKey) > 0 {
+		args = append(args, filter.PublicKey)
+		fmt.Fprintf(&sql, " %v publickey = $%v", filterOp, len(args))
+		filterOp = "AND"
+	}
+	if filter.MinAmount > 0 {
+		args = append(args, filter.MinAmount*utils.GWEI.Uint64())
+		fmt.Fprintf(&sql, " %v amount >= $%v", filterOp, len(args))
+		filterOp = "AND"
+	}
+	if filter.MaxAmount > 0 {
+		args = append(args, filter.MaxAmount*utils.GWEI.Uint64())
+		fmt.Fprintf(&sql, " %v amount <= $%v", filterOp, len(args))
+		filterOp = "AND"
+	}
+	if filter.WithOrphaned == 0 {
+		fmt.Fprintf(&sql, " %v orphaned = 0", filterOp)
+		filterOp = "AND"
+	} else if filter.WithOrphaned == 2 {
+		fmt.Fprintf(&sql, " %v orphaned = 1", filterOp)
+		filterOp = "AND"
+	}
+
+	args = append(args, limit)
+	fmt.Fprintf(&sql, `) 
+	SELECT 
+		0 AS deposit_index, 
+		count(*) AS slot_number, 
+		0 AS slot_index, 
+		null AS slot_root,
+		0 AS orphaned,
+		null AS publickey, 
+		null AS withdrawalcredentials,
+		0 AS amount
+	FROM cte
+	UNION ALL SELECT * FROM (
+	SELECT * FROM cte
+	ORDER BY deposit_index DESC 
+	LIMIT $%v 
+	`, len(args))
+
+	if offset > 0 {
+		args = append(args, offset)
+		fmt.Fprintf(&sql, " OFFSET $%v ", len(args))
+	}
+	fmt.Fprintf(&sql, ") AS t1")
+
+	deposits := []*dbtypes.Deposit{}
+	err := ReaderDb.Select(&deposits, sql.String(), args...)
+	if err != nil {
+		logger.Errorf("Error while fetching deposit txs: %v", err)
+		return nil, 0, err
+	}
+
+	return deposits[1:], deposits[0].SlotNumber, nil
+}

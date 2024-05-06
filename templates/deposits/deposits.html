@@ -14,8 +14,19 @@
     </div>
     
     <div class="card mt-2">
-      <div class="card-body px-0 py-2">
-        <h5 class="mx-2">Initiated Deposits</h6>
+      <div class="card-body px-0 py-2 container">
+        <div class="row">
+          <div class="col-sm-12 col-md-6">
+            <h5 class="mx-2">Initiated Deposits</h6>
+          </div>
+          <div class="col-sm-12 col-md-6 table-search">
+            <div class="px-2" style="text-align: right;">
+              <a href="/validators/initiated_deposits">
+                <i class="fas fa-filter mx-2"></i>Filter Initial Deposits
+              </a>
+            </div>
+          </div>
+        </div>
         <h6 class="m-2 text-muted">This table displays the deposits made for validators who wish to join the Beacon Chain.</h6>
         <div class="table-responsive px-0 py-1 pt-2">
           <table class="table table-nobr mb-0" id="initiated_deposits">
@@ -113,8 +124,19 @@
     </div>
 
     <div class="card mt-4">
-      <div class="card-body px-0 py-2">
-        <h5 class="mx-2">Included Deposits</h6>
+      <div class="card-body px-0 py-2 container">
+        <div class="row">
+          <div class="col-sm-12 col-md-6">
+            <h5 class="mx-2">Included Deposits</h6>
+          </div>
+          <div class="col-sm-12 col-md-6 table-search">
+            <div class="px-2" style="text-align: right;">
+              <a href="/validators/included_deposits">
+                <i class="fas fa-filter mx-2"></i>Filter Included Deposits
+              </a>
+            </div>
+          </div>
+        </div>
         <h6 class="m-2 text-muted">This table displays the deposits received by the Beacon Chain.</h6>
         <div class="table-responsive px-0 py-1 pt-2">
           <table class="table table-nobr mb-0" id="included_deposits">
@@ -177,6 +199,9 @@
               </tbody>
             {{ end }}
           </table>
+        </div>
+        <div class="text-center">
+          <a class="text-white" href="/validators/included_deposits">View more</a>
         </div>
       </div>
     </div>
