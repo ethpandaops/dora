@@ -162,7 +162,7 @@ func GetDeposits(offset uint64, limit uint32) []*dbtypes.Deposit {
 	deposits := []*dbtypes.Deposit{}
 	err := ReaderDb.Select(&deposits, sql.String(), args...)
 	if err != nil {
-		logger.Errorf("Error while fetching deposit txs: %v", err)
+		logger.Errorf("Error while fetching deposits: %v", err)
 		return nil
 	}
 	return deposits
@@ -228,7 +228,7 @@ func GetDepositTxsFiltered(offset uint64, limit uint32, finalizedBlock uint64, f
 		0 AS amount, 
 		null AS signature, 
 		0 AS valid_signature, 
-		0 AS orphaned, 
+		false AS orphaned, 
 		null AS tx_hash, 
 		null AS tx_sender, 
 		null AS tx_target
@@ -248,7 +248,7 @@ func GetDepositTxsFiltered(offset uint64, limit uint32, finalizedBlock uint64, f
 	depositTxs := []*dbtypes.DepositTx{}
 	err := ReaderDb.Select(&depositTxs, sql.String(), args...)
 	if err != nil {
-		logger.Errorf("Error while fetching deposit txs: %v", err)
+		logger.Errorf("Error while fetching filtered deposit txs: %v", err)
 		return nil, 0, err
 	}
 
@@ -306,7 +306,7 @@ func GetDepositsFiltered(offset uint64, limit uint32, filter *dbtypes.DepositFil
 		count(*) AS slot_number, 
 		0 AS slot_index, 
 		null AS slot_root,
-		0 AS orphaned,
+		false AS orphaned,
 		null AS publickey, 
 		null AS withdrawalcredentials,
 		0 AS amount
@@ -326,7 +326,7 @@ func GetDepositsFiltered(offset uint64, limit uint32, filter *dbtypes.DepositFil
 	deposits := []*dbtypes.Deposit{}
 	err := ReaderDb.Select(&deposits, sql.String(), args...)
 	if err != nil {
-		logger.Errorf("Error while fetching deposit txs: %v", err)
+		logger.Errorf("Error while fetching filtered deposits: %v", err)
 		return nil, 0, err
 	}
 
