@@ -46,7 +46,7 @@ func main() {
 	if err != nil {
 		logger.Fatalf("error initializing db schema: %v", err)
 	}
-	err = services.StartBeaconService()
+	err = services.StartChainService()
 	if err != nil {
 		logger.Fatalf("error starting beacon service: %v", err)
 	}
@@ -94,6 +94,9 @@ func startFrontend() {
 	router.HandleFunc("/search/{type}", handlers.SearchAhead).Methods("GET")
 	router.HandleFunc("/validators", handlers.Validators).Methods("GET")
 	router.HandleFunc("/validators/activity", handlers.ValidatorsActivity).Methods("GET")
+	router.HandleFunc("/validators/deposits", handlers.Deposits).Methods("GET")
+	router.HandleFunc("/validators/initiated_deposits", handlers.InitiatedDeposits).Methods("GET")
+	router.HandleFunc("/validators/included_deposits", handlers.IncludedDeposits).Methods("GET")
 	router.HandleFunc("/validator/{idxOrPubKey}", handlers.Validator).Methods("GET")
 	router.HandleFunc("/validator/{index}/slots", handlers.ValidatorSlots).Methods("GET")
 

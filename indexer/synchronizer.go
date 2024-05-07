@@ -75,14 +75,14 @@ func (sync *synchronizerState) runSync() {
 	sync.cachedSlot = 0
 	isComplete := false
 	retryCount := 0
-	var skipClients []*IndexerClient = nil
+	var skipClients []*ConsensusClient = nil
 	synclogger.Infof("synchronization started. Head epoch: %v", sync.currentEpoch)
 
 	for {
 		// synchronize next epoch
 		syncEpoch := sync.currentEpoch
 
-		retryLimit := len(sync.indexer.GetClients())
+		retryLimit := len(sync.indexer.GetConsensusClients())
 		if retryLimit < 30 {
 			retryLimit = 30
 		}
@@ -146,12 +146,12 @@ func (sync *synchronizerState) checkKillChan(timeout time.Duration) bool {
 	}
 }
 
-func (sync *synchronizerState) syncEpoch(syncEpoch uint64, retryCount int, lastTry bool, skipClients []*IndexerClient) (bool, *IndexerClient, error) {
+func (sync *synchronizerState) syncEpoch(syncEpoch uint64, retryCount int, lastTry bool, skipClients []*ConsensusClient) (bool, *ConsensusClient, error) {
 	if db.IsEpochSynchronized(syncEpoch) {
 		return true, nil, nil
 	}
 
-	client := sync.indexer.GetReadyClient(true, nil, skipClients)
+	client := sync.indexer.GetReadyClClient(true, nil, skipClients)
 	if lastTry {
 		synclogger.WithField("client", client.clientName).Infof("synchronizing epoch %v (retry: %v, last retry!)", syncEpoch, retryCount)
 	} else if retryCount > 0 {
@@ -231,7 +231,7 @@ func (sync *synchronizerState) syncEpoch(syncEpoch uint64, retryCount int, lastT
 	}
 	epochStats.loadValidatorStats(client, epochAssignments.DependendStateRef)
 
-	if epochStats.validatorStats == nil && !lastTry {
+	if epochStats.stateStats == nil && !lastTry {
 		return false, client, fmt.Errorf("error fetching validator stats for epoch %v: %v", syncEpoch, err)
 	}
 	if sync.checkKillChan(0) {

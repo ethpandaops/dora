@@ -117,7 +117,7 @@ func (store *BlobStore) saveBlob(blob *BlobAssignment, tx *sqlx.Tx) error {
 	return nil
 }
 
-func (store *BlobStore) LoadBlob(commitment []byte, blockroot []byte, client *IndexerClient) (*dbtypes.Blob, error) {
+func (store *BlobStore) LoadBlob(commitment []byte, blockroot []byte, client *ConsensusClient) (*dbtypes.Blob, error) {
 	dbBlob := db.GetBlob(commitment, true)
 	if dbBlob != nil {
 		blobName := store.getBlobName(dbBlob)

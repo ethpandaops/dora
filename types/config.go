@@ -69,6 +69,13 @@ type Config struct {
 		RedisCachePrefix     string `yaml:"redisCachePrefix" envconfig:"BEACONAPI_REDIS_CACHE_PREFIX"`
 	} `yaml:"beaconapi"`
 
+	ExecutionApi struct {
+		Endpoint  string           `yaml:"endpoint" envconfig:"EXECUTIONAPI_ENDPOINT"`
+		Endpoints []EndpointConfig `yaml:"endpoints"`
+
+		DepositLogBatchSize int `yaml:"depositLogBatchSize" envconfig:"EXECUTIONAPI_DEPOSIT_LOG_BATCH_SIZE"`
+	} `yaml:"executionapi"`
+
 	Indexer struct {
 		InMemoryEpochs                  uint16 `yaml:"inMemoryEpochs" envconfig:"INDEXER_IN_MEMORY_EPOCHS"`
 		CachePersistenceDelay           uint16 `yaml:"cachePersistenceDelay" envconfig:"INDEXER_CACHE_PERSISTENCE_DELAY"`
