@@ -439,35 +439,59 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, assignments
 
 	pageData.AttesterSlashings = make([]*models.SlotPageAttesterSlashing, pageData.AttesterSlashingsCount)
 	for i, slashing := range attesterSlashings {
+		att1, _ := slashing.Attestation1()
+		att2, _ := slashing.Attestation1()
+		if att1 == nil || att2 == nil {
+			continue
+		}
+
+		att1AttestingIndices, _ := att1.AttestingIndices()
+		att2AttestingIndices, _ := att2.AttestingIndices()
+		if att1AttestingIndices == nil || att2AttestingIndices == nil {
+			continue
+		}
+
+		att1Signature, err1 := att1.Signature()
+		att2Signature, err2 := att2.Signature()
+		if err1 != nil || err2 != nil {
+			continue
+		}
+
+		att1Data, err1 := att1.Data()
+		att2Data, err2 := att2.Data()
+		if err1 != nil || err2 != nil {
+			continue
+		}
+
 		slashingData := &models.SlotPageAttesterSlashing{
-			Attestation1Indices:         make([]uint64, len(slashing.Attestation1.AttestingIndices)),
-			Attestation1Signature:       slashing.Attestation1.Signature[:],
-			Attestation1Slot:            uint64(slashing.Attestation1.Data.Slot),
-			Attestation1Index:           uint64(slashing.Attestation1.Data.Index),
-			Attestation1BeaconBlockRoot: slashing.Attestation1.Data.BeaconBlockRoot[:],
-			Attestation1SourceEpoch:     uint64(slashing.Attestation1.Data.Source.Epoch),
-			Attestation1SourceRoot:      slashing.Attestation1.Data.Source.Root[:],
-			Attestation1TargetEpoch:     uint64(slashing.Attestation1.Data.Target.Epoch),
-			Attestation1TargetRoot:      slashing.Attestation1.Data.Target.Root[:],
-			Attestation2Indices:         make([]uint64, len(slashing.Attestation2.AttestingIndices)),
-			Attestation2Signature:       slashing.Attestation2.Signature[:],
-			Attestation2Slot:            uint64(slashing.Attestation2.Data.Slot),
-			Attestation2Index:           uint64(slashing.Attestation2.Data.Index),
-			Attestation2BeaconBlockRoot: slashing.Attestation2.Data.BeaconBlockRoot[:],
-			Attestation2SourceEpoch:     uint64(slashing.Attestation2.Data.Source.Epoch),
-			Attestation2SourceRoot:      slashing.Attestation2.Data.Source.Root[:],
-			Attestation2TargetEpoch:     uint64(slashing.Attestation2.Data.Target.Epoch),
-			Attestation2TargetRoot:      slashing.Attestation2.Data.Target.Root[:],
+			Attestation1Indices:         make([]uint64, len(att1AttestingIndices)),
+			Attestation1Signature:       att1Signature[:],
+			Attestation1Slot:            uint64(att1Data.Slot),
+			Attestation1Index:           uint64(att1Data.Index),
+			Attestation1BeaconBlockRoot: att1Data.BeaconBlockRoot[:],
+			Attestation1SourceEpoch:     uint64(att1Data.Source.Epoch),
+			Attestation1SourceRoot:      att1Data.Source.Root[:],
+			Attestation1TargetEpoch:     uint64(att1Data.Target.Epoch),
+			Attestation1TargetRoot:      att1Data.Target.Root[:],
+			Attestation2Indices:         make([]uint64, len(att2AttestingIndices)),
+			Attestation2Signature:       att2Signature[:],
+			Attestation2Slot:            uint64(att2Data.Slot),
+			Attestation2Index:           uint64(att2Data.Index),
+			Attestation2BeaconBlockRoot: att2Data.BeaconBlockRoot[:],
+			Attestation2SourceEpoch:     uint64(att2Data.Source.Epoch),
+			Attestation2SourceRoot:      att2Data.Source.Root[:],
+			Attestation2TargetEpoch:     uint64(att2Data.Target.Epoch),
+			Attestation2TargetRoot:      att2Data.Target.Root[:],
 			SlashedValidators:           make([]types.NamedValidator, 0),
 		}
 		pageData.AttesterSlashings[i] = slashingData
-		for j := range slashing.Attestation1.AttestingIndices {
-			slashingData.Attestation1Indices[j] = uint64(slashing.Attestation1.AttestingIndices[j])
+		for j := range att1AttestingIndices {
+			slashingData.Attestation1Indices[j] = uint64(att1AttestingIndices[j])
 		}
-		for j := range slashing.Attestation2.AttestingIndices {
-			slashingData.Attestation2Indices[j] = uint64(slashing.Attestation2.AttestingIndices[j])
+		for j := range att2AttestingIndices {
+			slashingData.Attestation2Indices[j] = uint64(att2AttestingIndices[j])
 		}
-		inter := intersect.Simple(slashing.Attestation1.AttestingIndices, slashing.Attestation2.AttestingIndices)
+		inter := intersect.Simple(att1AttestingIndices, att2AttestingIndices)
 		for _, j := range inter {
 			valIdx := j.(uint64)
 			slashingData.SlashedValidators = append(slashingData.SlashedValidators, types.NamedValidator{
