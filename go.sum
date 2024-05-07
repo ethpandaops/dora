@@ -13,6 +13,8 @@ github.com/StackExchange/wmi v1.2.1 h1:VIkavFPXSjcnS+O8yTq7NI32k0R5Aj+v39y29VYDO
 github.com/StackExchange/wmi v1.2.1/go.mod h1:rcmrprowKIVzvc+NUiLncP2uuArMWLCbu9SBzvHz7e8=
 github.com/VictoriaMetrics/fastcache v1.12.1 h1:i0mICQuojGDL3KblA7wUNlY5lOK6a4bwt3uRKnkZU40=
 github.com/VictoriaMetrics/fastcache v1.12.1/go.mod h1:tX04vaqcNoQeGLD+ra5pU5sWkuxnzWhEzLwhP9w653o=
+github.com/attestantio/go-eth2-client v0.0.0-20240506195511-4654a8b8bc37 h1:UewTMakXTQVuGb7Ku1lXy933tnfKQBj5XrQY1hpoblQ=
+github.com/attestantio/go-eth2-client v0.0.0-20240506195511-4654a8b8bc37/go.mod h1:yzMl6JKut8ngKCRyv+6H9j2nNjS/+SMm3N+duf8iix8=
 github.com/attestantio/go-eth2-client v0.0.0-20240507092336-27309754c54f h1:k4axih4fc/7Atb9eTsPsPFxlGGb501o+ryUt9q0stR8=
 github.com/attestantio/go-eth2-client v0.0.0-20240507092336-27309754c54f/go.mod h1:Ht9tN0WlhpgIWWO7Hqfi3/nq2rUGQv/zCd/BMI93a84=
 github.com/aws/aws-sdk-go-v2 v1.26.1 h1:5554eUqIYVWpU0YmeeYZ0wU64H2VLBs8TlhRB2L+EkA=

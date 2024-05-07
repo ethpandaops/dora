@@ -87,8 +87,8 @@ type SlotPageExecutionData struct {
 }
 
 type SlotPageAttestation struct {
-	Slot           uint64 `json:"slot"`
-	CommitteeIndex uint64 `json:"committeeindex"`
+	Slot           uint64   `json:"slot"`
+	CommitteeIndex []uint64 `json:"committeeindex"`
 
 	AggregationBits []byte                 `json:"aggregationbits"`
 	Validators      []types.NamedValidator `json:"validators"`

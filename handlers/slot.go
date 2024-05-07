@@ -335,38 +335,85 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, assignments
 	assignmentsLoaded[epoch] = true
 
 	pageData.Attestations = make([]*models.SlotPageAttestation, pageData.AttestationsCount)
-	for i, attestation := range attestations {
-		var attAssignments []uint64
-		attEpoch := utils.EpochOfSlot(uint64(attestation.Data.Slot))
+	for i, attVersioned := range attestations {
+		attData, _ := attVersioned.Data()
+		if attData == nil {
+			continue
+		}
+
+		attSignature, err := attVersioned.Signature()
+		if err != nil {
+			continue
+		}
+
+		attAggregationBits, err := attVersioned.AggregationBits()
+		if err != nil {
+			continue
+		}
+
+		attEpoch := utils.EpochOfSlot(uint64(attData.Slot))
 		if !assignmentsLoaded[attEpoch] && loadDuties { // load epoch duties if needed
 			attEpochAssignments, _ := services.GlobalBeaconService.GetEpochAssignments(attEpoch)
 			assignmentsMap[attEpoch] = attEpochAssignments
 			assignmentsLoaded[attEpoch] = true
 		}
 
-		if assignmentsMap[attEpoch] != nil {
-			attAssignments = assignmentsMap[attEpoch].AttestorAssignments[fmt.Sprintf("%v-%v", uint64(attestation.Data.Slot), uint64(attestation.Data.Index))]
-		} else {
-			attAssignments = []uint64{}
-		}
 		attPageData := models.SlotPageAttestation{
-			Slot:            uint64(attestation.Data.Slot),
-			CommitteeIndex:  uint64(attestation.Data.Index),
-			AggregationBits: attestation.AggregationBits,
-			Validators:      make([]types.NamedValidator, len(attAssignments)),
-			Signature:       attestation.Signature[:],
-			BeaconBlockRoot: attestation.Data.BeaconBlockRoot[:],
-			SourceEpoch:     uint64(attestation.Data.Source.Epoch),
-			SourceRoot:      attestation.Data.Source.Root[:],
-			TargetEpoch:     uint64(attestation.Data.Target.Epoch),
-			TargetRoot:      attestation.Data.Target.Root[:],
+			Slot:            uint64(attData.Slot),
+			AggregationBits: attAggregationBits,
+			Signature:       attSignature[:],
+			BeaconBlockRoot: attData.BeaconBlockRoot[:],
+			SourceEpoch:     uint64(attData.Source.Epoch),
+			SourceRoot:      attData.Source.Root[:],
+			TargetEpoch:     uint64(attData.Target.Epoch),
+			TargetRoot:      attData.Target.Root[:],
 		}
+
+		var attAssignments []uint64
+		if attVersioned.Version >= spec.DataVersionElectra {
+			// EIP-7549 attestation
+			attAssignments = []uint64{}
+			attPageData.CommitteeIndex = []uint64{}
+
+			committeeBits, err := attVersioned.CommitteeBits()
+			if err != nil {
+				continue
+			}
+
+			for committee := uint64(0); committee < utils.Config.Chain.Config.MaxCommitteesPerSlot; committee++ {
+				if !committeeBits.BitAt(committee) {
+					continue
+				}
+
+				attPageData.CommitteeIndex = append(attPageData.CommitteeIndex, committee)
+				if assignmentsMap[attEpoch] != nil {
+					committeeAssignments := assignmentsMap[attEpoch].AttestorAssignments[fmt.Sprintf("%v-%v", uint64(attData.Slot), committee)]
+					if len(committeeAssignments) == 0 {
+						break
+					}
+
+					attAssignments = append(attAssignments, committeeAssignments...)
+				}
+			}
+		} else {
+			// pre-electra attestation
+			if assignmentsMap[attEpoch] != nil {
+				attAssignments = assignmentsMap[attEpoch].AttestorAssignments[fmt.Sprintf("%v-%v", uint64(attData.Slot), uint64(attData.Index))]
+			} else {
+				attAssignments = []uint64{}
+			}
+
+			attPageData.CommitteeIndex = []uint64{uint64(attData.Index)}
+		}
+
+		attPageData.Validators = make([]types.NamedValidator, len(attAssignments))
 		for j := 0; j < len(attAssignments); j++ {
 			attPageData.Validators[j] = types.NamedValidator{
 				Index: attAssignments[j],
 				Name:  services.GlobalBeaconService.GetValidatorName(attAssignments[j]),
 			}
 		}
+
 		pageData.Attestations[i] = &attPageData
 	}
 

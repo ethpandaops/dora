@@ -122,3 +122,5 @@ require (
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	rsc.io/tmplfunc v0.0.3 // indirect
 )
+
+replace github.com/attestantio/go-eth2-client => github.com/attestantio/go-eth2-client v0.0.0-20240506195511-4654a8b8bc37
