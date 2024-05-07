@@ -351,5 +351,5 @@ func buildDbDeposits(block *CacheBlock, depositIndex *uint64) []*dbtypes.Deposit
 		dbDeposits[idx] = dbDeposit
 	}
 
-	return nil
+	return dbDeposits
 }
