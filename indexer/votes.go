@@ -100,7 +100,6 @@ func aggregateEpochVotes(blockMap map[uint64]*CacheBlock, epoch uint64, epochSta
 						voteAmount += voteAmt
 						aggregationBitsOffset += committeeSize
 					}
-
 				} else {
 					// pre electra attestation aggregation
 					voteAmt, _ := aggregateAttestationVotes(&votes, epochStats, uint64(attData.Slot), uint64(attData.Index), attAggregationBits, 0)
