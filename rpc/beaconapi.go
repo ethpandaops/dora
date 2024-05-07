@@ -149,6 +149,7 @@ func (bc *BeaconClient) Initialize() error {
 		http.WithTimeout(10 * time.Minute),
 		// TODO (when upstream PR is merged)
 		//http.WithConnectionCheck(false),
+		http.WithCustomSpecSupport(true),
 	}
 
 	// set log level
@@ -177,6 +178,24 @@ func (bc *BeaconClient) Initialize() error {
 
 	bc.clientSvc = clientSvc
 	return nil
+}
+
+func (bc *BeaconClient) GetSpecs() (map[string]any, error) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	provider, isProvider := bc.clientSvc.(eth2client.SpecProvider)
+	if !isProvider {
+		return nil, fmt.Errorf("get spec not supported")
+	}
+	result, err := provider.Spec(ctx, &api.SpecOpts{
+		Common: api.CommonOpts{
+			Timeout: 0,
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result.Data, nil
 }
 
 func (bc *BeaconClient) GetGenesis() (*v1.Genesis, error) {
