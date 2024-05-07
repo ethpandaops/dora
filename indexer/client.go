@@ -209,12 +209,6 @@ func (client *IndexerClient) checkIndexerClient() error {
 }
 
 func (client *IndexerClient) runIndexerClient() error {
-	// get specs
-	_, err := client.rpcClient.GetSpecs()
-	if err != nil {
-		return fmt.Errorf("could not get specs: %v", err)
-	}
-
 	// get latest header
 	latestHeader, err := client.rpcClient.GetLatestBlockHead()
 	if err != nil {
