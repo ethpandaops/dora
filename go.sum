@@ -13,8 +13,6 @@ github.com/StackExchange/wmi v1.2.1 h1:VIkavFPXSjcnS+O8yTq7NI32k0R5Aj+v39y29VYDO
 github.com/StackExchange/wmi v1.2.1/go.mod h1:rcmrprowKIVzvc+NUiLncP2uuArMWLCbu9SBzvHz7e8=
 github.com/VictoriaMetrics/fastcache v1.12.1 h1:i0mICQuojGDL3KblA7wUNlY5lOK6a4bwt3uRKnkZU40=
 github.com/VictoriaMetrics/fastcache v1.12.1/go.mod h1:tX04vaqcNoQeGLD+ra5pU5sWkuxnzWhEzLwhP9w653o=
-github.com/attestantio/go-eth2-client v0.21.3 h1:m4Tzgb5AZkcjvtpmeZSiFireIhdZVK/fSAntJKAH8qM=
-github.com/attestantio/go-eth2-client v0.21.3/go.mod h1:vhb0ZoQ6bz0kkoyxVbHDRrZTOJbwlY6udFkwfwrJZTE=
 github.com/aws/aws-sdk-go-v2 v1.26.1 h1:5554eUqIYVWpU0YmeeYZ0wU64H2VLBs8TlhRB2L+EkA=
 github.com/aws/aws-sdk-go-v2 v1.26.1/go.mod h1:ffIFB97e2yNsv4aTSGkqtHnppsIJzw7G7BReUZ3jCXM=
 github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.6.2 h1:x6xsQXGSmW6frevwDA+vi/wqhp1ct18mVXYN08/93to=
@@ -324,8 +322,6 @@ github.com/onsi/gomega v1.18.1 h1:M1GfJqGRrBrrGGsbxzV5dqM2U2ApXefZCQpkukxYRLE=
 github.com/onsi/gomega v1.18.1/go.mod h1:0q+aL8jAiMXy9hbwj2mr5GziHiwhAIQpFmmtT5hitRs=
 github.com/pk910/dynamic-ssz v0.0.3 h1:fCWzFowq9P6SYCc7NtJMkZcIHk+r5hSVD+32zVi6Aio=
 github.com/pk910/dynamic-ssz v0.0.3/go.mod h1:b6CrLaB2X7pYA+OSEEbkgXDEcRnjLOZIxZTsMuO/Y9c=
-github.com/pk910/go-eth2-client v0.0.0-20240506115829-c6fafe3ee362 h1:qieL2StoAe3NsDcv+W3VIQ4QBnO50QLG68fD37G1O9k=
-github.com/pk910/go-eth2-client v0.0.0-20240506115829-c6fafe3ee362/go.mod h1:vhb0ZoQ6bz0kkoyxVbHDRrZTOJbwlY6udFkwfwrJZTE=
 github.com/pk910/go-eth2-client v0.0.0-20240507094306-c18359522d85 h1:x5G1mttllfYwE9IYDP5a+cL8MgogD5VzbJ1h9zlab00=
 github.com/pk910/go-eth2-client v0.0.0-20240507094306-c18359522d85/go.mod h1:Ht9tN0WlhpgIWWO7Hqfi3/nq2rUGQv/zCd/BMI93a84=
 github.com/pkg/errors v0.8.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=

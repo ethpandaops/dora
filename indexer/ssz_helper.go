@@ -10,9 +10,25 @@ import (
 	"github.com/attestantio/go-eth2-client/spec/deneb"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/utils"
+	dynssz "github.com/pk910/dynamic-ssz"
+	"gopkg.in/yaml.v3"
 )
 
+var staticConfigSpec map[string]any
 var jsonVersionOffset uint64 = 0x70000000
+
+func getConfigSpec() map[string]any {
+	if staticConfigSpec != nil {
+		return staticConfigSpec
+	}
+
+	staticConfigSpec = map[string]any{}
+	specYaml, err := yaml.Marshal(utils.Config.Chain.Config)
+	if err != nil {
+		yaml.Unmarshal(specYaml, staticConfigSpec)
+	}
+	return staticConfigSpec
+}
 
 func MarshalVersionedSignedBeaconBlockSSZ(block *spec.VersionedSignedBeaconBlock) (version uint64, ssz []byte, err error) {
 	if utils.Config.KillSwitch.DisableSSZEncoding {
@@ -20,22 +36,24 @@ func MarshalVersionedSignedBeaconBlockSSZ(block *spec.VersionedSignedBeaconBlock
 		return marshalVersionedSignedBeaconBlockJson(block)
 	}
 
+	dynSsz := dynssz.NewDynSsz(getConfigSpec())
+
 	switch block.Version {
 	case spec.DataVersionPhase0:
 		version = uint64(block.Version)
-		ssz, err = block.Phase0.MarshalSSZ()
+		ssz, err = dynSsz.MarshalSSZ(block.Phase0)
 	case spec.DataVersionAltair:
 		version = uint64(block.Version)
-		ssz, err = block.Altair.MarshalSSZ()
+		ssz, err = dynSsz.MarshalSSZ(block.Altair)
 	case spec.DataVersionBellatrix:
 		version = uint64(block.Version)
-		ssz, err = block.Bellatrix.MarshalSSZ()
+		ssz, err = dynSsz.MarshalSSZ(block.Bellatrix)
 	case spec.DataVersionCapella:
 		version = uint64(block.Version)
-		ssz, err = block.Capella.MarshalSSZ()
+		ssz, err = dynSsz.MarshalSSZ(block.Capella)
 	case spec.DataVersionDeneb:
 		version = uint64(block.Version)
-		ssz, err = block.Deneb.MarshalSSZ()
+		ssz, err = dynSsz.MarshalSSZ(block.Deneb)
 	default:
 		err = fmt.Errorf("unknown block version")
 	}
@@ -49,30 +67,32 @@ func UnmarshalVersionedSignedBeaconBlockSSZ(version uint64, ssz []byte) (*spec.V
 	block := &spec.VersionedSignedBeaconBlock{
 		Version: spec.DataVersion(version),
 	}
+	dynSsz := dynssz.NewDynSsz(getConfigSpec())
+
 	switch block.Version {
 	case spec.DataVersionPhase0:
 		block.Phase0 = &phase0.SignedBeaconBlock{}
-		if err := block.Phase0.UnmarshalSSZ(ssz); err != nil {
+		if err := dynSsz.UnmarshalSSZ(block.Phase0, ssz); err != nil {
 			return nil, fmt.Errorf("failed to decode phase0 signed beacon block: %v", err)
 		}
 	case spec.DataVersionAltair:
 		block.Altair = &altair.SignedBeaconBlock{}
-		if err := block.Altair.UnmarshalSSZ(ssz); err != nil {
+		if err := dynSsz.UnmarshalSSZ(block.Altair, ssz); err != nil {
 			return nil, fmt.Errorf("failed to decode altair signed beacon block: %v", err)
 		}
 	case spec.DataVersionBellatrix:
 		block.Bellatrix = &bellatrix.SignedBeaconBlock{}
-		if err := block.Bellatrix.UnmarshalSSZ(ssz); err != nil {
+		if err := dynSsz.UnmarshalSSZ(block.Bellatrix, ssz); err != nil {
 			return nil, fmt.Errorf("failed to decode bellatrix signed beacon block: %v", err)
 		}
 	case spec.DataVersionCapella:
 		block.Capella = &capella.SignedBeaconBlock{}
-		if err := block.Capella.UnmarshalSSZ(ssz); err != nil {
+		if err := dynSsz.UnmarshalSSZ(block.Capella, ssz); err != nil {
 			return nil, fmt.Errorf("failed to decode capella signed beacon block: %v", err)
 		}
 	case spec.DataVersionDeneb:
 		block.Deneb = &deneb.SignedBeaconBlock{}
-		if err := block.Deneb.UnmarshalSSZ(ssz); err != nil {
+		if err := dynSsz.UnmarshalSSZ(block.Deneb, ssz); err != nil {
 			return nil, fmt.Errorf("failed to decode deneb signed beacon block: %v", err)
 		}
 	default:
