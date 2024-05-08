@@ -160,7 +160,7 @@
                     {{ if $deposit.Orphaned }}
                     <td><a href="/slot/0x{{ printf "%x" $deposit.SlotRoot }}">{{ formatAddCommas $deposit.SlotNumber }}</a></td>
                     {{ else }}
-                    <td><a href="/slot/{{ $deposit.BlockNumber }}">{{ formatAddCommas $deposit.SlotNumber }}</a></td>
+                    <td><a href="/slot/{{ $deposit.SlotNumber }}">{{ formatAddCommas $deposit.SlotNumber }}</a></td>
                     {{ end }}
                     <td data-timer="{{ $deposit.Time.Unix }}"><span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $deposit.Time }}">{{ formatRecentTimeShort $deposit.Time }}</span></td>
                     <td>
