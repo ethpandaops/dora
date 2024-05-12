@@ -71,6 +71,11 @@
             <a class="nav-link" id="blobSidecars-tab" data-bs-toggle="tab" href="#blobSidecars" role="tab" aria-controls="blobSidecars" aria-selected="false">Blob Sidecars <span class="badge bg-secondary text-white">{{ .Block.BlobsCount }}</span></a>
           </li>
         {{ end }}
+        {{ if gt .Block.ConsolidationsCount 0 }}
+          <li class="nav-item">
+            <a class="nav-link" id="consolidations-tab" data-bs-toggle="tab" href="#consolidations" role="tab" aria-controls="consolidations" aria-selected="false">Consolidations <span class="badge bg-secondary text-white">{{ .Block.ConsolidationsCount }}</span></a>
+          </li>
+        {{ end }}
       {{ end }}
     </ul>
 
@@ -193,6 +198,18 @@
               </div>
             </div>
             {{ template "block_blobSidecar" . }}
+          </div>
+        {{ end }}
+        {{ if gt .Block.ConsolidationsCount 0 }}
+          <div class="tab-pane fade show active" id="consolidations" role="tabpanel" aria-labelledby="consolidations-tab">
+            <div class="card block-card">
+              <div style="margin-bottom: -.25rem;" class="card-body px-0 py-1">
+                <div class="row p-1 mx-0">
+                  <h3 class="h5 col-md-12 text-center"><b>Showing {{ .Block.ConsolidationsCount }} Consolidations </b></h3>
+                </div>
+              </div>
+            </div>
+            {{ template "block_consolidation" . }}
           </div>
         {{ end }}
 

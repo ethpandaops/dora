@@ -154,3 +154,13 @@ type Deposit struct {
 	WithdrawalCredentials []byte  `db:"withdrawalcredentials"`
 	Amount                uint64  `db:"amount"`
 }
+
+type Consolidation struct {
+	SlotNumber  uint64 `db:"slot_number"`
+	SlotIndex   uint64 `db:"slot_index"`
+	SlotRoot    []byte `db:"slot_root"`
+	Orphaned    bool   `db:"orphaned"`
+	SourceIndex uint64 `db:"source_index"`
+	TargetIndex uint64 `db:"target_index"`
+	Epoch       uint64 `db:"epoch"`
+}

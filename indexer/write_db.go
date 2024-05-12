@@ -353,3 +353,51 @@ func buildDbDeposits(block *CacheBlock, depositIndex *uint64) []*dbtypes.Deposit
 
 	return dbDeposits
 }
+
+func buildDbConsolidations(block *CacheBlock) []*dbtypes.Consolidation {
+	blockBody := block.GetBlockBody()
+	if blockBody == nil {
+		return nil
+	}
+
+	consolidations, err := blockBody.Consolidations()
+	if err != nil {
+		return nil
+	}
+
+	dbConsolidations := make([]*dbtypes.Consolidation, len(consolidations))
+	for idx, consolidation := range consolidations {
+		dbConsolidation := &dbtypes.Consolidation{
+			SlotNumber:  block.Slot,
+			SlotIndex:   uint64(idx),
+			SlotRoot:    block.Root,
+			Orphaned:    false,
+			SourceIndex: uint64(consolidation.Message.SourceIndex),
+			TargetIndex: uint64(consolidation.Message.TargetIndex),
+			Epoch:       uint64(consolidation.Message.Epoch),
+		}
+
+		dbConsolidations[idx] = dbConsolidation
+	}
+
+	return dbConsolidations
+}
+
+func persistBlockConsolidations(block *CacheBlock, orphaned bool, tx *sqlx.Tx) error {
+	// insert deposits
+	dbConsolidations := buildDbConsolidations(block)
+	if orphaned {
+		for idx := range dbConsolidations {
+			dbConsolidations[idx].Orphaned = true
+		}
+	}
+
+	if len(dbConsolidations) > 0 {
+		err := db.InsertConsolidations(dbConsolidations, tx)
+		if err != nil {
+			return fmt.Errorf("error inserting consolidations: %v", err)
+		}
+	}
+
+	return nil
+}

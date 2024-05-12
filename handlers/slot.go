@@ -307,6 +307,7 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, assignments
 	syncAggregate, _ := blockData.Block.SyncAggregate()
 	executionWithdrawals, _ := blockData.Block.Withdrawals()
 	blobKzgCommitments, _ := blockData.Block.BlobKZGCommitments()
+	consolidations, _ := blockData.Block.Consolidations()
 
 	pageData := &models.SlotPageBlockData{
 		BlockRoot:              blockData.Root,
@@ -663,6 +664,21 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, assignments
 				KzgCommitment: blobKzgCommitments[i][:],
 			}
 			pageData.Blobs[i] = blobData
+		}
+	}
+
+	if epoch >= utils.Config.Chain.Config.ElectraForkEpoch {
+		pageData.ConsolidationsCount = uint64(len(consolidations))
+		pageData.Blobs = make([]*models.SlotPageBlob, pageData.ConsolidationsCount)
+		for i := range consolidations {
+			consolidationData := &models.SlotPageConsolidation{
+				SourceIndex: uint64(consolidations[i].Message.SourceIndex),
+				SourceName:  services.GlobalBeaconService.GetValidatorName(uint64(consolidations[i].Message.SourceIndex)),
+				TargetIndex: uint64(consolidations[i].Message.TargetIndex),
+				TargetName:  services.GlobalBeaconService.GetValidatorName(uint64(consolidations[i].Message.TargetIndex)),
+				Epoch:       uint64(consolidations[i].Message.Epoch),
+			}
+			pageData.Consolidations[i] = consolidationData
 		}
 	}
 

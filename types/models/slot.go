@@ -56,6 +56,7 @@ type SlotPageBlockData struct {
 	DenyDutyLoading        bool                   `json:"deny_duties"`
 	DutiesLoaded           bool                   `json:"duties_loaded"`
 	TransactionsCount      uint64                 `json:"transactions_count"`
+	ConsolidationsCount    uint64                 `json:"consolidations_count"`
 
 	ExecutionData     *SlotPageExecutionData      `json:"execution_data"`
 	Attestations      []*SlotPageAttestation      `json:"attestations"`       // Attestations included in this block
@@ -67,6 +68,7 @@ type SlotPageBlockData struct {
 	Withdrawals       []*SlotPageWithdrawal       `json:"withdrawals"`        // Withdrawals included in this block
 	Blobs             []*SlotPageBlob             `json:"blobs"`              // Blob sidecars included in this block
 	Transactions      []*SlotPageTransaction      `json:"transactions"`       // Transactions included in this block
+	Consolidations    []*SlotPageConsolidation    `json:"consolidations"`     // Consolidations included in this block
 }
 
 type SlotPageExecutionData struct {
@@ -201,4 +203,12 @@ type SlotPageTransaction struct {
 	FuncName      string  `json:"func_name"`
 	FuncSig       string  `json:"func_sig"`
 	Type          uint64  `json:"type"`
+}
+
+type SlotPageConsolidation struct {
+	SourceIndex uint64 `db:"source_index"`
+	SourceName  string `db:"source_name"`
+	TargetIndex uint64 `db:"target_index"`
+	TargetName  string `db:"target_name"`
+	Epoch       uint64 `db:"epoch"`
 }
