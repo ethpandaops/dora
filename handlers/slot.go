@@ -41,6 +41,7 @@ func Slot(w http.ResponseWriter, r *http.Request) {
 		"slot/voluntary_exits.html",
 		"slot/slashings.html",
 		"slot/blobs.html",
+		"slot/consolidations.html",
 	)
 	var notfoundTemplateFiles = append(layoutTemplateFiles,
 		"slot/notfound.html",
