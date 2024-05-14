@@ -21,7 +21,7 @@ require (
 	github.com/lib/pq v1.10.9
 	github.com/mattn/go-sqlite3 v1.14.22
 	github.com/mitchellh/mapstructure v1.5.0
-	github.com/pk910/dynamic-ssz v0.0.3
+	github.com/pk910/dynamic-ssz v0.0.4
 	github.com/pressly/goose/v3 v3.20.0
 	github.com/protolambda/bls12-381-util v0.1.0
 	github.com/protolambda/zrnt v0.32.3
@@ -123,4 +123,4 @@ require (
 	rsc.io/tmplfunc v0.0.3 // indirect
 )
 
-replace github.com/attestantio/go-eth2-client => github.com/pk910/go-eth2-client v0.0.0-20240514125820-4d9677b8b858
+replace github.com/attestantio/go-eth2-client => github.com/pk910/go-eth2-client v0.0.0-20240514141134-f1be0a774431
