@@ -1,0 +1,41 @@
+{{ define "block_deposit_receipts" }}
+  <div class="table-ellipsis px-0">
+    <table class="table" id="block_deposit_receipts">
+      <thead>
+        <tr>
+          <th>Index</th>
+          <th>Public Key</th>
+          <th>Validator</th>
+          <th>Amount</th>
+          <th>Withdrawal Credentials</th>
+          <th>Signature</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{ range $i, $deposit := .Block.DepositReceipts }}
+          <tr>
+            <td>{{ $deposit.Index }}</td>
+            <td>
+              <i class="fas fa-male mr-2"></i>
+              0x{{ printf "%x" $deposit.PublicKey }}
+              <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $deposit.PublicKey }}"></i>
+            </td>
+            <td>
+              {{- if $deposit.Exists }}
+                {{ formatValidator $withdrawal.ValidatorIndex $withdrawal.ValidatorName }}
+              {{- else }}
+                ?
+              {{- end }}
+            </td>
+            <td>{{ formatFullEthFromGwei $deposit.Amount }}</td>
+            <td>0x{{ printf "%x" $deposit.Withdrawalcredentials }}</td>
+            <td>
+              0x{{ printf "%x" $deposit.Signature }}
+              <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $deposit.Signature }}"></i>
+            </td>
+          </tr>
+        {{ end }}
+      </tbody>
+    </table>
+  </div>
+{{ end }}

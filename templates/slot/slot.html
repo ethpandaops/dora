@@ -71,6 +71,16 @@
             <a class="nav-link" id="blobSidecars-tab" data-bs-toggle="tab" href="#blobSidecars" role="tab" aria-controls="blobSidecars" aria-selected="false">Blob Sidecars <span class="badge bg-secondary text-white">{{ .Block.BlobsCount }}</span></a>
           </li>
         {{ end }}
+        {{ if gt .Block.DepositReceiptsCount 0 }}
+          <li class="nav-item">
+            <a class="nav-link" id="depositReceipts-tab" data-bs-toggle="tab" href="#depositReceipts" role="tab" aria-controls="depositReceipts" aria-selected="false">Deposit Receipts <span class="badge bg-secondary text-white">{{ .Block.DepositReceiptsCount }}</span></a>
+          </li>
+        {{ end }}
+        {{ if gt .Block.WithdrawalRequestsCount 0 }}
+          <li class="nav-item">
+            <a class="nav-link" id="withdrawalRequests" data-bs-toggle="tab" href="#withdrawalRequests" role="tab" aria-controls="withdrawalRequests" aria-selected="false">Withdrawal Requests <span class="badge bg-secondary text-white">{{ .Block.WithdrawalRequestsCount }}</span></a>
+          </li>
+        {{ end }}
         {{ if gt .Block.ConsolidationsCount 0 }}
           <li class="nav-item">
             <a class="nav-link" id="consolidations-tab" data-bs-toggle="tab" href="#consolidations" role="tab" aria-controls="consolidations" aria-selected="false">Consolidations <span class="badge bg-secondary text-white">{{ .Block.ConsolidationsCount }}</span></a>
@@ -198,6 +208,30 @@
               </div>
             </div>
             {{ template "block_blobSidecar" . }}
+          </div>
+        {{ end }}
+        {{ if gt .Block.DepositReceiptsCount 0 }}
+          <div class="tab-pane fade show active" id="depositReceipts" role="tabpanel" aria-labelledby="depositReceipts-tab">
+            <div class="card block-card">
+              <div style="margin-bottom: -.25rem;" class="card-body px-0 py-1">
+                <div class="row p-1 mx-0">
+                  <h3 class="h5 col-md-12 text-center"><b>Showing {{ .Block.DepositReceiptsCount }} Deposit Receipts</b></h3>
+                </div>
+              </div>
+            </div>
+            {{ template "block_deposit_receipts" . }}
+          </div>
+        {{ end }}
+        {{ if gt .Block.WithdrawalRequestsCount 0 }}
+          <div class="tab-pane fade show active" id="withdrawalRequests" role="tabpanel" aria-labelledby="withdrawalRequests-tab">
+            <div class="card block-card">
+              <div style="margin-bottom: -.25rem;" class="card-body px-0 py-1">
+                <div class="row p-1 mx-0">
+                  <h3 class="h5 col-md-12 text-center"><b>Showing {{ .Block.WithdrawalRequestsCount }} Withdrawal Requests</b></h3>
+                </div>
+              </div>
+            </div>
+            {{ template "block_withdrawal_requests" . }}
           </div>
         {{ end }}
         {{ if gt .Block.ConsolidationsCount 0 }}

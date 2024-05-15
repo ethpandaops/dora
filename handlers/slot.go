@@ -14,6 +14,7 @@ import (
 
 	"github.com/attestantio/go-eth2-client/spec"
 	"github.com/attestantio/go-eth2-client/spec/bellatrix"
+	"github.com/attestantio/go-eth2-client/spec/electra"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/gorilla/mux"
 	"github.com/juliangruber/go-intersect"
@@ -41,6 +42,8 @@ func Slot(w http.ResponseWriter, r *http.Request) {
 		"slot/voluntary_exits.html",
 		"slot/slashings.html",
 		"slot/blobs.html",
+		"slot/deposit_receipts.html",
+		"slot/withdrawal_requests.html",
 		"slot/consolidations.html",
 	)
 	var notfoundTemplateFiles = append(layoutTemplateFiles,
@@ -627,6 +630,30 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, assignments
 				BlockNumber:   uint64(executionPayload.BlockNumber),
 			}
 			getSlotPageTransactions(pageData, executionPayload.Transactions)
+		case spec.DataVersionElectra:
+			if blockData.Block.Electra == nil {
+				break
+			}
+			executionPayload := blockData.Block.Electra.Message.Body.ExecutionPayload
+			pageData.ExecutionData = &models.SlotPageExecutionData{
+				ParentHash:    executionPayload.ParentHash[:],
+				FeeRecipient:  executionPayload.FeeRecipient[:],
+				StateRoot:     executionPayload.StateRoot[:],
+				ReceiptsRoot:  executionPayload.ReceiptsRoot[:],
+				LogsBloom:     executionPayload.LogsBloom[:],
+				Random:        executionPayload.PrevRandao[:],
+				GasLimit:      uint64(executionPayload.GasLimit),
+				GasUsed:       uint64(executionPayload.GasUsed),
+				Timestamp:     uint64(executionPayload.Timestamp),
+				Time:          time.Unix(int64(executionPayload.Timestamp), 0),
+				ExtraData:     executionPayload.ExtraData,
+				BaseFeePerGas: executionPayload.BaseFeePerGas.Uint64(),
+				BlockHash:     executionPayload.BlockHash[:],
+				BlockNumber:   uint64(executionPayload.BlockNumber),
+			}
+			getSlotPageTransactions(pageData, executionPayload.Transactions)
+			getSlotPageDepositReceipts(pageData, executionPayload.DepositReceipts)
+			getSlotPageWithdrawalRequests(pageData, executionPayload.WithdrawalRequests)
 		}
 	}
 
@@ -670,7 +697,7 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, assignments
 
 	if epoch >= utils.Config.Chain.Config.ElectraForkEpoch {
 		pageData.ConsolidationsCount = uint64(len(consolidations))
-		pageData.Blobs = make([]*models.SlotPageBlob, pageData.ConsolidationsCount)
+		pageData.Consolidations = make([]*models.SlotPageConsolidation, pageData.ConsolidationsCount)
 		for i := range consolidations {
 			consolidationData := &models.SlotPageConsolidation{
 				SourceIndex: uint64(consolidations[i].Message.SourceIndex),
@@ -762,4 +789,59 @@ func getSlotPageTransactions(pageData *models.SlotPageBlockData, tranactions []b
 			}
 		}
 	}
+}
+
+func getSlotPageDepositReceipts(pageData *models.SlotPageBlockData, depositReceipts []*electra.DepositReceipt) {
+	pageData.DepositReceipts = make([]*models.SlotPageDepositReceipt, 0)
+	validatorsMap := services.GlobalBeaconService.GetCachedValidatorPubkeyMap()
+
+	for _, depositReceipt := range depositReceipts {
+		receiptData := &models.SlotPageDepositReceipt{
+			PublicKey:       depositReceipt.Pubkey[:],
+			WithdrawalCreds: depositReceipt.WithdrawalCredentials[:],
+			Amount:          uint64(depositReceipt.Amount),
+			Signature:       depositReceipt.Signature[:],
+			Index:           depositReceipt.Index,
+		}
+
+		if validatorsMap != nil {
+			validator := validatorsMap[depositReceipt.Pubkey]
+			if validator != nil {
+				receiptData.Exists = true
+				receiptData.ValidatorIndex = uint64(validator.Index)
+				receiptData.ValidatorName = services.GlobalBeaconService.GetValidatorName(receiptData.ValidatorIndex)
+			}
+		}
+
+		pageData.DepositReceipts = append(pageData.DepositReceipts, receiptData)
+	}
+
+	pageData.DepositReceiptsCount = uint64(len(pageData.DepositReceipts))
+}
+
+func getSlotPageWithdrawalRequests(pageData *models.SlotPageBlockData, withdrawalRequests []*electra.ExecutionLayerWithdrawalRequest) {
+	pageData.WithdrawalRequests = make([]*models.SlotPageWithdrawalRequest, 0)
+
+	validatorsMap := services.GlobalBeaconService.GetCachedValidatorPubkeyMap()
+
+	for _, withdrawalRequest := range withdrawalRequests {
+		requestData := &models.SlotPageWithdrawalRequest{
+			Address:   withdrawalRequest.SourceAddress[:],
+			PublicKey: withdrawalRequest.ValidatorPubkey[:],
+			Amount:    uint64(withdrawalRequest.Amount),
+		}
+
+		if validatorsMap != nil {
+			validator := validatorsMap[withdrawalRequest.ValidatorPubkey]
+			if validator != nil {
+				requestData.Exists = true
+				requestData.ValidatorIndex = uint64(validator.Index)
+				requestData.ValidatorName = services.GlobalBeaconService.GetValidatorName(requestData.ValidatorIndex)
+			}
+		}
+
+		pageData.WithdrawalRequests = append(pageData.WithdrawalRequests, requestData)
+	}
+
+	pageData.WithdrawalRequestsCount = uint64(len(pageData.WithdrawalRequests))
 }
