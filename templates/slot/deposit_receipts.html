@@ -22,7 +22,7 @@
             </td>
             <td>
               {{- if $deposit.Exists }}
-                {{ formatValidator $withdrawal.ValidatorIndex $withdrawal.ValidatorName }}
+                {{ formatValidator $deposit.ValidatorIndex $deposit.ValidatorName }}
               {{- else }}
                 ?
               {{- end }}
