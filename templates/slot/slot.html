@@ -78,7 +78,7 @@
         {{ end }}
         {{ if gt .Block.WithdrawalRequestsCount 0 }}
           <li class="nav-item">
-            <a class="nav-link" id="withdrawalRequests" data-bs-toggle="tab" href="#withdrawalRequests" role="tab" aria-controls="withdrawalRequests" aria-selected="false">Withdrawal Requests <span class="badge bg-secondary text-white">{{ .Block.WithdrawalRequestsCount }}</span></a>
+            <a class="nav-link" id="withdrawalRequests-tab" data-bs-toggle="tab" href="#withdrawalRequests" role="tab" aria-controls="withdrawalRequests" aria-selected="false">Withdrawal Requests <span class="badge bg-secondary text-white">{{ .Block.WithdrawalRequestsCount }}</span></a>
           </li>
         {{ end }}
         {{ if gt .Block.ConsolidationsCount 0 }}
