@@ -6,9 +6,9 @@ import (
 	"sync"
 	"time"
 
+	_ "github.com/glebarez/go-sqlite"
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
-	_ "github.com/mattn/go-sqlite3"
 	"github.com/pressly/goose/v3"
 	"github.com/sirupsen/logrus"
 
@@ -66,7 +66,7 @@ func mustInitSqlite(config *types.SqliteDatabaseConfig) (*sqlx.DB, *sqlx.DB) {
 	}
 
 	logger.Infof("initializing sqlite connection to %v with %v/%v conn limit", config.File, config.MaxIdleConns, config.MaxOpenConns)
-	dbConn, err := sqlx.Open("sqlite3", fmt.Sprintf("%s?cache=shared", config.File))
+	dbConn, err := sqlx.Open("sqlite", fmt.Sprintf("%s?_pragma=journal_mode(WAL)", config.File))
 	if err != nil {
 		utils.LogFatal(err, "error opening sqlite database", 0)
 	}
