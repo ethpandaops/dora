@@ -561,10 +561,7 @@ func (bs *ChainService) GetDbBlocksForSlots(firstSlot uint64, slotLimit uint32, 
 
 	finalizedEpoch, _ := bs.GetFinalizedEpoch()
 	idxMinSlot := (finalizedEpoch + 1) * int64(utils.Config.Chain.Config.SlotsPerEpoch)
-	idxHeadSlot := bs.indexer.GetHighestSlot()
-	if firstSlot > idxHeadSlot {
-		firstSlot = idxHeadSlot
-	}
+
 	var lastSlot uint64
 	if firstSlot > uint64(slotLimit) {
 		lastSlot = firstSlot - uint64(slotLimit)
