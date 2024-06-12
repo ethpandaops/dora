@@ -18,18 +18,6 @@ CREATE INDEX IF NOT EXISTS "voluntary_exits_slot_number_idx"
     ON public."voluntary_exits"
     ("slot_number" ASC NULLS FIRST);
 
-CREATE INDEX IF NOT EXISTS "deposit_txs_publickey_idx"
-    ON public."deposit_txs"
-    ("publickey" ASC NULLS FIRST);
-
-CREATE INDEX IF NOT EXISTS "deposit_txs_tx_sender_idx"
-    ON public."deposit_txs"
-    ("tx_sender" ASC NULLS FIRST);
-
-CREATE INDEX IF NOT EXISTS "deposit_txs_tx_target_idx"
-    ON public."deposit_txs"
-    ("tx_target" ASC NULLS FIRST);
-
 CREATE TABLE IF NOT EXISTS slashings (
     slot_number INT NOT NULL,
     slot_index INT NOT NULL,
@@ -38,7 +26,7 @@ CREATE TABLE IF NOT EXISTS slashings (
     validator BIGINT NOT NULL,
     slasher BIGINT NOT NULL,
     reason INT NOT NULL,
-    CONSTRAINT deposit_pkey PRIMARY KEY (slot_root, validator)
+    CONSTRAINT slashings_pkey PRIMARY KEY (slot_root, slot_index, validator)
 );
 
 CREATE INDEX IF NOT EXISTS "slashings_slot_number_idx"

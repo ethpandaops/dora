@@ -7,6 +7,7 @@ import (
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/utils"
 	"github.com/jmoiron/sqlx"
+	"github.com/juliangruber/go-intersect"
 )
 
 func persistSlotAssignments(epochStats *EpochStats, tx *sqlx.Tx) error {
@@ -69,6 +70,18 @@ func persistBlockData(block *CacheBlock, epochStats *EpochStats, depositIndex *u
 
 	// insert deposits
 	err = persistBlockDeposits(block, depositIndex, orphaned, tx)
+	if err != nil {
+		return err
+	}
+
+	// insert voluntary exits
+	err = persistBlockVoluntaryExits(block, orphaned, tx)
+	if err != nil {
+		return err
+	}
+
+	// insert slashings
+	err = persistBlockSlashings(block, orphaned, tx)
 	if err != nil {
 		return err
 	}
@@ -339,4 +352,130 @@ func buildDbDeposits(block *CacheBlock, depositIndex *uint64) []*dbtypes.Deposit
 	}
 
 	return dbDeposits
+}
+
+func persistBlockVoluntaryExits(block *CacheBlock, orphaned bool, tx *sqlx.Tx) error {
+	// insert voluntary exits
+	dbVoluntaryExits := buildDbVoluntaryExits(block)
+	if orphaned {
+		for idx := range dbVoluntaryExits {
+			dbVoluntaryExits[idx].Orphaned = true
+		}
+	}
+
+	if len(dbVoluntaryExits) > 0 {
+		err := db.InsertVoluntaryExits(dbVoluntaryExits, tx)
+		if err != nil {
+			return fmt.Errorf("error inserting voluntary exits: %v", err)
+		}
+	}
+
+	return nil
+}
+
+func buildDbVoluntaryExits(block *CacheBlock) []*dbtypes.VoluntaryExit {
+	blockBody := block.GetBlockBody()
+	if blockBody == nil {
+		return nil
+	}
+
+	voluntaryExits, err := blockBody.VoluntaryExits()
+	if err != nil {
+		return nil
+	}
+
+	dbVoluntaryExits := make([]*dbtypes.VoluntaryExit, len(voluntaryExits))
+	for idx, voluntaryExit := range voluntaryExits {
+		dbVoluntaryExit := &dbtypes.VoluntaryExit{
+			SlotNumber:     block.Slot,
+			SlotIndex:      uint64(idx),
+			SlotRoot:       block.Root,
+			Orphaned:       false,
+			ValidatorIndex: uint64(voluntaryExit.Message.ValidatorIndex),
+		}
+
+		dbVoluntaryExits[idx] = dbVoluntaryExit
+	}
+
+	return dbVoluntaryExits
+}
+
+func persistBlockSlashings(block *CacheBlock, orphaned bool, tx *sqlx.Tx) error {
+	// insert slashings
+	dbSlashings := buildDbSlashings(block)
+	if orphaned {
+		for idx := range dbSlashings {
+			dbSlashings[idx].Orphaned = true
+		}
+	}
+
+	if len(dbSlashings) > 0 {
+		err := db.InsertSlashings(dbSlashings, tx)
+		if err != nil {
+			return fmt.Errorf("error inserting slashings: %v", err)
+		}
+	}
+
+	return nil
+}
+
+func buildDbSlashings(block *CacheBlock) []*dbtypes.Slashing {
+	blockBody := block.GetBlockBody()
+	if blockBody == nil {
+		return nil
+	}
+
+	proposerSlashings, err := blockBody.ProposerSlashings()
+	if err != nil {
+		return nil
+	}
+
+	attesterSlashings, err := blockBody.AttesterSlashings()
+	if err != nil {
+		return nil
+	}
+
+	proposerIndex, err := blockBody.ProposerIndex()
+	if err != nil {
+		return nil
+	}
+
+	dbSlashings := []*dbtypes.Slashing{}
+	slashingIndex := 0
+
+	for _, proposerSlashing := range proposerSlashings {
+		dbSlashing := &dbtypes.Slashing{
+			SlotNumber:     block.Slot,
+			SlotIndex:      uint64(slashingIndex),
+			SlotRoot:       block.Root,
+			Orphaned:       false,
+			ValidatorIndex: uint64(proposerSlashing.SignedHeader1.Message.ProposerIndex),
+			SlasherIndex:   uint64(proposerIndex),
+			Reason:         dbtypes.ProposerSlashing,
+		}
+		slashingIndex++
+		dbSlashings = append(dbSlashings, dbSlashing)
+	}
+
+	for _, attesterSlashing := range attesterSlashings {
+		inter := intersect.Simple(attesterSlashing.Attestation1.AttestingIndices, attesterSlashing.Attestation2.AttestingIndices)
+		for _, j := range inter {
+			valIdx := j.(uint64)
+
+			dbSlashing := &dbtypes.Slashing{
+				SlotNumber:     block.Slot,
+				SlotIndex:      uint64(slashingIndex),
+				SlotRoot:       block.Root,
+				Orphaned:       false,
+				ValidatorIndex: uint64(valIdx),
+				SlasherIndex:   uint64(proposerIndex),
+				Reason:         dbtypes.AttesterSlashing,
+			}
+			dbSlashings = append(dbSlashings, dbSlashing)
+		}
+
+		slashingIndex++
+	}
+
+	return dbSlashings
 }
