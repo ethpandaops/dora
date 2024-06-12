@@ -142,6 +142,11 @@ func buildDepositsPageData(firstEpoch uint64, pageSize uint64) (*models.Deposits
 			Orphaned:              deposit.Orphaned,
 		}
 
+		if deposit.Index != nil {
+			depositData.HasIndex = true
+			depositData.Index = *deposit.Index
+		}
+
 		validator := validatorSetRsp[phase0.BLSPubKey(deposit.PublicKey)]
 		if validator == nil {
 			depositData.ValidatorStatus = "Deposited"
