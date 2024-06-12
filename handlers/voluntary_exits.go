@@ -80,7 +80,7 @@ func VoluntaryExits(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/html")
-	if handleTemplateError(w, r, "slots_filtered.go", "SlotsFiltered", "", pageTemplate.ExecuteTemplate(w, "layout", data)) != nil {
+	if handleTemplateError(w, r, "voluntary_exits.go", "VoluntaryExits", "", pageTemplate.ExecuteTemplate(w, "layout", data)) != nil {
 		return // an error has occurred and was processed
 	}
 }
@@ -177,6 +177,7 @@ func buildFilteredVoluntaryExitsPageData(pageIdx uint64, pageSize uint64, minSlo
 			Time:            utils.SlotToTime(voluntaryExit.SlotNumber),
 			Orphaned:        voluntaryExit.Orphaned,
 			ValidatorIndex:  voluntaryExit.ValidatorIndex,
+			ValidatorName:   services.GlobalBeaconService.GetValidatorName(voluntaryExit.ValidatorIndex),
 			ValidatorStatus: "",
 		}
 

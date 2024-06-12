@@ -159,6 +159,20 @@ func createMenuItems(active string, isMain bool) []types.MainMenuItem {
 						},
 					},
 				},
+				{
+					Links: []types.NavigationLink{
+						{
+							Label: "Voluntary Exits",
+							Path:  "/validators/voluntary_exits",
+							Icon:  "fa-user-slash",
+						},
+						{
+							Label: "Slashings",
+							Path:  "/validators/slashings",
+							Icon:  "fa-user-slash",
+						},
+					},
+				},
 			},
 		},
 	}
