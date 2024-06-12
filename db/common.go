@@ -3,6 +3,7 @@ package db
 import (
 	"embed"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -29,8 +30,9 @@ var DBPGX *pgxpool.Conn
 
 // DB is a pointer to the explorer-database
 var DbEngine dbtypes.DBEngineType
-var WriterDb *sqlx.DB
 var ReaderDb *sqlx.DB
+var writerDb *sqlx.DB
+var writerMutex sync.Mutex
 
 var logger = logrus.StandardLogger().WithField("module", "db")
 
@@ -131,7 +133,7 @@ func MustInitDB() {
 	if utils.Config.Database.Engine == "sqlite" {
 		sqliteConfig := (*types.SqliteDatabaseConfig)(&utils.Config.Database.Sqlite)
 		DbEngine = dbtypes.DBEngineSqlite
-		WriterDb, ReaderDb = mustInitSqlite(sqliteConfig)
+		writerDb, ReaderDb = mustInitSqlite(sqliteConfig)
 	} else if utils.Config.Database.Engine == "pgsql" {
 		readerConfig := (*types.PgsqlDatabaseConfig)(&utils.Config.Database.Pgsql)
 		writerConfig := (*types.PgsqlDatabaseConfig)(&utils.Config.Database.PgsqlWriter)
@@ -139,14 +141,14 @@ func MustInitDB() {
 			writerConfig = readerConfig
 		}
 		DbEngine = dbtypes.DBEnginePgsql
-		WriterDb, ReaderDb = mustInitPgsql(writerConfig, readerConfig)
+		writerDb, ReaderDb = mustInitPgsql(writerConfig, readerConfig)
 	} else {
 		logger.Fatalf("unknown database engine type: %s", utils.Config.Database.Engine)
 	}
 }
 
 func MustCloseDB() {
-	err := WriterDb.Close()
+	err := writerDb.Close()
 	if err != nil {
 		logger.Errorf("Error closing writer db connection: %v", err)
 	}
@@ -154,6 +156,32 @@ func MustCloseDB() {
 	if err != nil {
 		logger.Errorf("Error closing reader db connection: %v", err)
 	}
+}
+
+func RunDBTransaction(handler func(tx *sqlx.Tx) error) error {
+	if DbEngine == dbtypes.DBEngineSqlite {
+		writerMutex.Lock()
+		defer writerMutex.Unlock()
+	}
+
+	tx, err := writerDb.Beginx()
+	if err != nil {
+		return fmt.Errorf("error starting db transactions: %v", err)
+	}
+
+	defer tx.Rollback()
+
+	err = handler(tx)
+	if err != nil {
+		return err
+	}
+
+	err = tx.Commit()
+	if err != nil {
+		return fmt.Errorf("error committing db transaction: %v", err)
+	}
+
+	return nil
 }
 
 func ApplyEmbeddedDbSchema(version int64) error {
@@ -176,15 +204,15 @@ func ApplyEmbeddedDbSchema(version int64) error {
 	}
 
 	if version == -2 {
-		if err := goose.Up(WriterDb.DB, schemaDirectory); err != nil {
+		if err := goose.Up(writerDb.DB, schemaDirectory); err != nil {
 			return err
 		}
 	} else if version == -1 {
-		if err := goose.UpByOne(WriterDb.DB, schemaDirectory); err != nil {
+		if err := goose.UpByOne(writerDb.DB, schemaDirectory); err != nil {
 			return err
 		}
 	} else {
-		if err := goose.UpTo(WriterDb.DB, schemaDirectory, version); err != nil {
+		if err := goose.UpTo(writerDb.DB, schemaDirectory, version); err != nil {
 			return err
 		}
 	}

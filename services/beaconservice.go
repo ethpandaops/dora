@@ -561,10 +561,7 @@ func (bs *ChainService) GetDbBlocksForSlots(firstSlot uint64, slotLimit uint32, 
 
 	finalizedEpoch, _ := bs.GetFinalizedEpoch()
 	idxMinSlot := (finalizedEpoch + 1) * int64(utils.Config.Chain.Config.SlotsPerEpoch)
-	idxHeadSlot := bs.indexer.GetHighestSlot()
-	if firstSlot > idxHeadSlot {
-		firstSlot = idxHeadSlot
-	}
+
 	var lastSlot uint64
 	if firstSlot > uint64(slotLimit) {
 		lastSlot = firstSlot - uint64(slotLimit)
@@ -757,7 +754,7 @@ func (bs *ChainService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageIdx
 			var proposerAssignments map[uint64]uint64
 			epochStats := bs.indexer.GetCachedEpochStats(epoch)
 			if epochStats != nil {
-				proposerAssignments = epochStats.GetProposerAssignments()
+				proposerAssignments = epochStats.TryGetProposerAssignments()
 			} else {
 				if storedProposerAssignments == nil {
 					// get all unfinalized proposer assignments from db

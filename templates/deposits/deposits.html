@@ -148,8 +148,8 @@
                 <th class="d-none d-md-table-cell">Val<span class="d-none d-lg-inline">idator </span>Key</th>
                 <th>Amount</th>
                 <th class="d-none d-md-table-cell">W<span class="d-none d-lg-inline">ithdrawal</span> Cred</th>
-                <th><span class="d-none d-lg-inline">Validator </span>State</th>
-                <th><span class="d-none d-lg-inline">Is </span>Valid</th>
+                <th><span class="d-none d-lg-inline">Incl. </span>Status</th>
+                <th>Val<span class="d-none d-lg-inline">idator</span> State</th>
               </tr>
             </thead>
             {{ if gt .IncludedDepositCount 0 }}
@@ -160,7 +160,7 @@
                     {{ if $deposit.Orphaned }}
                     <td><a href="/slot/0x{{ printf "%x" $deposit.SlotRoot }}">{{ formatAddCommas $deposit.SlotNumber }}</a></td>
                     {{ else }}
-                    <td><a href="/slot/{{ $deposit.BlockNumber }}">{{ formatAddCommas $deposit.SlotNumber }}</a></td>
+                    <td><a href="/slot/{{ $deposit.SlotNumber }}">{{ formatAddCommas $deposit.SlotNumber }}</a></td>
                     {{ end }}
                     <td data-timer="{{ $deposit.Time.Unix }}"><span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $deposit.Time }}">{{ formatRecentTimeShort $deposit.Time }}</span></td>
                     <td>
@@ -180,8 +180,25 @@
                       </span>
                       <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $deposit.Withdrawalcredentials }}"></i>
                     </td>
-                    <td></td>
-                    <td></td>
+                    <td>
+                      {{ if $deposit.Orphaned }}
+                        <span class="badge rounded-pill text-bg-info">Orphaned</span>
+                      {{ else }}
+                        <span class="badge rounded-pill text-bg-success">Included</span>
+                      {{ end }}
+                    </td>
+                    <td>
+                      {{- $deposit.ValidatorStatus -}}
+                      {{- if $deposit.ShowUpcheck -}}
+                        {{- if eq $deposit.UpcheckActivity $deposit.UpcheckMaximum }}
+                          <i class="fas fa-power-off fa-sm text-success" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $deposit.UpcheckActivity }}/{{ $deposit.UpcheckMaximum }}"></i>
+                        {{- else if gt $deposit.UpcheckActivity 0 }}
+                          <i class="fas fa-power-off fa-sm text-warning" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $deposit.UpcheckActivity }}/{{ $deposit.UpcheckMaximum }}"></i>
+                        {{- else }}
+                          <i class="fas fa-power-off fa-sm text-danger" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $deposit.UpcheckActivity }}/{{ $deposit.UpcheckMaximum }}"></i>
+                        {{- end -}}
+                      {{- end -}}
+                    </td>
                   </tr>
                 {{ end }}
               </tbody>

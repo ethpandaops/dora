@@ -8,6 +8,7 @@ import (
 
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
+	"github.com/ethereum/go-ethereum/common"
 
 	"github.com/ethpandaops/dora/rpc"
 	"github.com/ethpandaops/dora/utils"
@@ -390,6 +391,10 @@ func (client *ConsensusClient) prefillCache(finalizedSlot uint64, latestHeader *
 			break
 		}
 		parentRoot = parentHead.Message.ParentRoot[:]
+		if bytes.Equal(parentRoot, common.FromHex("0x0000000000000000000000000000000000000000000000000000000000000000")) {
+			logger.WithField("client", client.clientName).Infof("prefill cache: reached null root (genesis)")
+			break
+		}
 	}
 
 	// ensure epoch stats for loaded slots
@@ -522,6 +527,10 @@ func (client *ConsensusClient) ensureParentBlocks(currentBlock *CacheBlock) erro
 			break
 		}
 		parentRoot = parentHead.Message.ParentRoot[:]
+		if bytes.Equal(parentRoot, common.FromHex("0x0000000000000000000000000000000000000000000000000000000000000000")) {
+			logger.WithField("client", client.clientName).Infof("backfill cache: reached null root (genesis)")
+			break
+		}
 	}
 	return nil
 }

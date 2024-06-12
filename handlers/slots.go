@@ -147,6 +147,7 @@ func buildSlotsPageData(firstSlot uint64, pageSize uint64) (*models.SlotsPageDat
 				Ts:                    utils.SlotToTime(slot),
 				Finalized:             finalized,
 				Status:                uint8(dbSlot.Status),
+				Scheduled:             slot >= currentSlot,
 				Synchronized:          dbSlot.SyncParticipation != -1,
 				Proposer:              dbSlot.Proposer,
 				ProposerName:          services.GlobalBeaconService.GetValidatorName(dbSlot.Proposer),
@@ -166,6 +167,7 @@ func buildSlotsPageData(firstSlot uint64, pageSize uint64) (*models.SlotsPageDat
 				slotData.WithEthBlock = true
 				slotData.EthBlockNumber = *dbSlot.EthBlockNumber
 			}
+
 			pageData.Slots = append(pageData.Slots, slotData)
 			blockCount++
 			buildSlotsPageSlotGraph(pageData, slotData, &maxOpenFork, openForks, isFirstPage)
