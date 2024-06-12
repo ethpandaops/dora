@@ -411,6 +411,18 @@ func (cache *indexerCache) processCachePersistence() error {
 						return err
 					}
 
+					err = persistBlockVoluntaryExits(block, true, tx)
+					if err != nil {
+						logger.Errorf("error persisting unfinalized voluntary exits: %v", err)
+						return err
+					}
+
+					err = persistBlockSlashings(block, true, tx)
+					if err != nil {
+						logger.Errorf("error persisting unfinalized slashings: %v", err)
+						return err
+					}
+
 					block.isInUnfinalizedDb = true
 				}
 			}
