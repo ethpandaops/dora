@@ -252,15 +252,6 @@ func (vn *ValidatorNames) updateDb() error {
 		return nameRows[a].Index < nameRows[b].Index
 	})
 
-	var tx *sqlx.Tx
-	var err error
-
-	defer func() {
-		if tx != nil {
-			tx.Rollback()
-		}
-	}()
-
 	batchSize := 10000
 
 	lastIndex := uint64(0)
@@ -297,28 +288,26 @@ func (vn *ValidatorNames) updateDb() error {
 			removeIndexes = append(removeIndexes, index)
 		}
 
-		tx, err = db.WriterDb.Beginx()
+		err := db.RunDBTransaction(func(tx *sqlx.Tx) error {
+			if len(updateNames) > 0 {
+				err := db.InsertValidatorNames(updateNames, tx)
+				if err != nil {
+					logger_vn.WithError(err).Errorf("error while adding validator names to db")
+				}
+			}
+
+			if len(removeIndexes) > 0 {
+				err := db.DeleteValidatorNames(removeIndexes, tx)
+				if err != nil {
+					logger_vn.WithError(err).Errorf("error while deleting validator names from db")
+				}
+			}
+
+			return nil
+		})
 		if err != nil {
-			return fmt.Errorf("error starting db transaction: %v", err)
+			return err
 		}
-
-		if len(updateNames) > 0 {
-			err := db.InsertValidatorNames(updateNames, tx)
-			if err != nil {
-				logger_vn.WithError(err).Errorf("error while adding validator names to db")
-			}
-		}
-		if len(removeIndexes) > 0 {
-			err := db.DeleteValidatorNames(removeIndexes, tx)
-			if err != nil {
-				logger_vn.WithError(err).Errorf("error while deleting validator names from db")
-			}
-		}
-
-		if err := tx.Commit(); err != nil {
-			return fmt.Errorf("error committing db transaction: %v", err)
-		}
-		tx = nil
 
 		if len(updateNames) > 0 || len(removeIndexes) > 0 {
 			logger_vn.Infof("update validator names %v-%v: %v changed, %v removed", lastIndex, maxIdx, len(updateNames), len(removeIndexes))

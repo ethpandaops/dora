@@ -77,16 +77,10 @@ func persistBlockData(block *CacheBlock, epochStats *EpochStats, depositIndex *u
 }
 
 func persistEpochData(epoch uint64, blockMap map[uint64]*CacheBlock, epochStats *EpochStats, epochVotes *EpochVotes, tx *sqlx.Tx) error {
-	commitTx := false
 	if tx == nil {
-		var err error
-		tx, err = db.WriterDb.Beginx()
-		if err != nil {
-			logger.Errorf("error starting db transactions: %v", err)
-			return err
-		}
-		defer tx.Rollback()
-		commitTx = true
+		return db.RunDBTransaction(func(tx *sqlx.Tx) error {
+			return persistEpochData(epoch, blockMap, epochStats, epochVotes, tx)
+		})
 	}
 
 	dbEpoch := buildDbEpoch(epoch, blockMap, epochStats, epochVotes, func(block *CacheBlock, depositIndex *uint64) {
@@ -114,13 +108,6 @@ func persistEpochData(epoch uint64, blockMap map[uint64]*CacheBlock, epochStats 
 		return fmt.Errorf("error while saving epoch to db: %w", err)
 	}
 
-	if commitTx {
-		logger.Infof("commit transaction")
-		if err := tx.Commit(); err != nil {
-			logger.Errorf("error committing db transaction: %v", err)
-			return fmt.Errorf("error committing db transaction: %w", err)
-		}
-	}
 	return nil
 }
 
