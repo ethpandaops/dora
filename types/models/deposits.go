@@ -40,4 +40,8 @@ type DepositsPageDataIncludedDeposit struct {
 	SlotRoot              []byte    `json:"slot_root"`
 	Time                  time.Time `json:"time"`
 	Orphaned              bool      `json:"orphaned"`
+	ValidatorStatus       string    `json:"vstatus"`
+	ShowUpcheck           bool      `json:"show_upcheck"`
+	UpcheckActivity       uint8     `json:"upcheck_act"`
+	UpcheckMaximum        uint8     `json:"upcheck_max"`
 }

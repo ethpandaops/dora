@@ -141,6 +141,36 @@ func buildDepositsPageData(firstEpoch uint64, pageSize uint64) (*models.Deposits
 			Time:                  utils.SlotToTime(deposit.SlotNumber),
 			Orphaned:              deposit.Orphaned,
 		}
+
+		validator := validatorSetRsp[phase0.BLSPubKey(deposit.PublicKey)]
+		if validator == nil {
+			depositData.ValidatorStatus = "Deposited"
+		} else {
+			if strings.HasPrefix(validator.Status.String(), "pending") {
+				depositData.ValidatorStatus = "Pending"
+			} else if validator.Status == v1.ValidatorStateActiveOngoing {
+				depositData.ValidatorStatus = "Active"
+				depositData.ShowUpcheck = true
+			} else if validator.Status == v1.ValidatorStateActiveExiting {
+				depositData.ValidatorStatus = "Exiting"
+				depositData.ShowUpcheck = true
+			} else if validator.Status == v1.ValidatorStateActiveSlashed {
+				depositData.ValidatorStatus = "Slashed"
+				depositData.ShowUpcheck = true
+			} else if validator.Status == v1.ValidatorStateExitedUnslashed {
+				depositData.ValidatorStatus = "Exited"
+			} else if validator.Status == v1.ValidatorStateExitedSlashed {
+				depositData.ValidatorStatus = "Slashed"
+			} else {
+				depositData.ValidatorStatus = validator.Status.String()
+			}
+
+			if depositData.ShowUpcheck {
+				depositData.UpcheckActivity = validatorActivityMap[uint64(validator.Index)]
+				depositData.UpcheckMaximum = uint8(validatorActivityMax)
+			}
+		}
+
 		pageData.IncludedDeposits = append(pageData.IncludedDeposits, depositData)
 	}
 	pageData.IncludedDepositCount = uint64(len(pageData.IncludedDeposits))
