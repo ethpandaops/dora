@@ -155,6 +155,32 @@ type Deposit struct {
 	Amount                uint64  `db:"amount"`
 }
 
+type VoluntaryExit struct {
+	SlotNumber     uint64 `db:"slot_number"`
+	SlotIndex      uint64 `db:"slot_index"`
+	SlotRoot       []byte `db:"slot_root"`
+	Orphaned       bool   `db:"orphaned"`
+	ValidatorIndex uint64 `db:"validator"`
+}
+
+type SlashingReason uint8
+
+const (
+	UnspecifiedSlashing SlashingReason = iota
+	ProposerSlashing
+	AttesterSlashing
+)
+
+type Slashing struct {
+	SlotNumber     uint64         `db:"slot_number"`
+	SlotIndex      uint64         `db:"slot_index"`
+	SlotRoot       []byte         `db:"slot_root"`
+	Orphaned       bool           `db:"orphaned"`
+	ValidatorIndex uint64         `db:"validator"`
+	SlasherIndex   uint64         `db:"slasher"`
+	Reason         SlashingReason `db:"reason"`
+}
+
 type Consolidation struct {
 	SlotNumber  uint64 `db:"slot_number"`
 	SlotIndex   uint64 `db:"slot_index"`

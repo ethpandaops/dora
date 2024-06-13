@@ -313,7 +313,7 @@ func GetDepositsFiltered(offset uint64, limit uint32, filter *dbtypes.DepositFil
 	FROM cte
 	UNION ALL SELECT * FROM (
 	SELECT * FROM cte
-	ORDER BY deposit_index DESC 
+	ORDER BY slot_number DESC, deposit_index DESC 
 	LIMIT $%v 
 	`, len(args))
 

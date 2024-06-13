@@ -47,3 +47,23 @@ type DepositFilter struct {
 	MaxAmount     uint64
 	WithOrphaned  uint8
 }
+
+type VoluntaryExitFilter struct {
+	MinSlot       uint64
+	MaxSlot       uint64
+	MinIndex      uint64
+	MaxIndex      uint64
+	ValidatorName string
+	WithOrphaned  uint8
+}
+
+type SlashingFilter struct {
+	MinSlot       uint64
+	MaxSlot       uint64
+	MinIndex      uint64
+	MaxIndex      uint64
+	ValidatorName string
+	SlasherName   string
+	WithOrphaned  uint8
+	WithReason    SlashingReason
+}

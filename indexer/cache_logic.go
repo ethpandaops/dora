@@ -8,6 +8,7 @@ import (
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/utils"
+	"github.com/jmoiron/sqlx"
 )
 
 func (cache *indexerCache) runCacheLoop() {
@@ -191,76 +192,66 @@ func (cache *indexerCache) processFinalizedEpoch(epoch uint64) error {
 	}
 
 	// store canonical blocks to db and remove from cache
-	tx, err := db.WriterDb.Beginx()
-	if err != nil {
-		logger.Errorf("error starting db transactions: %v", err)
-		return err
-	}
-	defer tx.Rollback()
+	return db.RunDBTransaction(func(tx *sqlx.Tx) error {
+		if len(blobs) > 0 {
+			for _, blob := range blobs {
+				err := cache.indexer.BlobStore.saveBlob(blob, tx)
+				if err != nil {
+					logger.Errorf("error persisting blobs: %v", err)
+					return err
+				}
+			}
+		}
 
-	if len(blobs) > 0 {
-		for _, blob := range blobs {
-			err := cache.indexer.BlobStore.saveBlob(blob, tx)
+		if epochStats != nil {
+			// calculate votes
+			epochVotes := aggregateEpochVotes(canonicalMap, epoch, epochStats, epochTarget, false, true)
+
+			if epochStats.stateStats != nil {
+				logger.Infof("epoch %v stats: %v validators (%v)", epoch, epochStats.stateStats.ValidatorCount, epochStats.stateStats.EligibleAmount)
+			}
+			logger.Infof("epoch %v votes: target %v + %v = %v", epoch, epochVotes.currentEpoch.targetVoteAmount, epochVotes.nextEpoch.targetVoteAmount, epochVotes.currentEpoch.targetVoteAmount+epochVotes.nextEpoch.targetVoteAmount)
+			logger.Infof("epoch %v votes: head %v + %v = %v", epoch, epochVotes.currentEpoch.headVoteAmount, epochVotes.nextEpoch.headVoteAmount, epochVotes.currentEpoch.headVoteAmount+epochVotes.nextEpoch.headVoteAmount)
+			logger.Infof("epoch %v votes: total %v + %v = %v", epoch, epochVotes.currentEpoch.totalVoteAmount, epochVotes.nextEpoch.totalVoteAmount, epochVotes.currentEpoch.totalVoteAmount+epochVotes.nextEpoch.totalVoteAmount)
+
+			err := persistEpochData(epoch, canonicalMap, epochStats, epochVotes, tx)
 			if err != nil {
-				logger.Errorf("error persisting blobs: %v", err)
+				logger.Errorf("error persisting epoch data to db: %v", err)
 				return err
 			}
-		}
-	}
 
-	if epochStats != nil {
-		// calculate votes
-		epochVotes := aggregateEpochVotes(canonicalMap, epoch, epochStats, epochTarget, false, true)
-
-		if epochStats.stateStats != nil {
-			logger.Infof("epoch %v stats: %v validators (%v)", epoch, epochStats.stateStats.ValidatorCount, epochStats.stateStats.EligibleAmount)
-		}
-		logger.Infof("epoch %v votes: target %v + %v = %v", epoch, epochVotes.currentEpoch.targetVoteAmount, epochVotes.nextEpoch.targetVoteAmount, epochVotes.currentEpoch.targetVoteAmount+epochVotes.nextEpoch.targetVoteAmount)
-		logger.Infof("epoch %v votes: head %v + %v = %v", epoch, epochVotes.currentEpoch.headVoteAmount, epochVotes.nextEpoch.headVoteAmount, epochVotes.currentEpoch.headVoteAmount+epochVotes.nextEpoch.headVoteAmount)
-		logger.Infof("epoch %v votes: total %v + %v = %v", epoch, epochVotes.currentEpoch.totalVoteAmount, epochVotes.nextEpoch.totalVoteAmount, epochVotes.currentEpoch.totalVoteAmount+epochVotes.nextEpoch.totalVoteAmount)
-
-		err = persistEpochData(epoch, canonicalMap, epochStats, epochVotes, tx)
-		if err != nil {
-			logger.Errorf("error persisting epoch data to db: %v", err)
-			return err
-		}
-
-		if len(epochStats.syncAssignments) > 0 {
-			err = persistSyncAssignments(epoch, epochStats, tx)
-			if err != nil {
-				logger.Errorf("error persisting sync committee assignments to db: %v", err)
-				return err
-			}
-		}
-
-		if cache.synchronizer == nil || !cache.synchronizer.running {
-			err = db.SetExplorerState("indexer.syncstate", &dbtypes.IndexerSyncState{
-				Epoch: epoch,
-			}, tx)
-			if err != nil {
-				logger.Errorf("error while updating sync state: %v", err)
-			}
-		}
-	} else {
-		for _, block := range canonicalMap {
-			if !block.IsReady() {
-				continue
+			if len(epochStats.syncAssignments) > 0 {
+				err = persistSyncAssignments(epoch, epochStats, tx)
+				if err != nil {
+					logger.Errorf("error persisting sync committee assignments to db: %v", err)
+					return err
+				}
 			}
 
-			err := persistBlockData(block, nil, nil, false, tx)
-			if err != nil {
-				logger.Errorf("error while persisting slot: %v", err)
+			if cache.synchronizer == nil || !cache.synchronizer.running {
+				err = db.SetExplorerState("indexer.syncstate", &dbtypes.IndexerSyncState{
+					Epoch: epoch,
+				}, tx)
+				if err != nil {
+					logger.Errorf("error while updating sync state: %v", err)
+				}
 			}
+		} else {
+			for _, block := range canonicalMap {
+				if !block.IsReady() {
+					continue
+				}
+
+				err := persistBlockData(block, nil, nil, false, tx)
+				if err != nil {
+					logger.Errorf("error while persisting slot: %v", err)
+				}
+			}
+
 		}
 
-	}
-
-	if err := tx.Commit(); err != nil {
-		logger.Errorf("error committing db transaction: %v", err)
-		return err
-	}
-
-	return nil
+		return nil
+	})
 }
 
 func (cache *indexerCache) processOrphanedBlocks(processedEpoch int64) error {
@@ -296,36 +287,27 @@ func (cache *indexerCache) processOrphanedBlocks(processedEpoch int64) error {
 	logger.Infof("processing %v non-canonical blocks (epoch <= %v, lowest slot: %v)", len(orphanedBlocks), processedEpoch, cache.lowestSlot)
 
 	// save orphaned blocks to db
-	tx, err := db.WriterDb.Beginx()
-	if err != nil {
-		logger.Errorf("error starting db transactions: %v", err)
-		return err
-	}
-	defer tx.Rollback()
+	return db.RunDBTransaction(func(tx *sqlx.Tx) error {
+		for _, block := range orphanedBlocks {
+			if !block.IsReady() {
+				continue
+			}
 
-	for _, block := range orphanedBlocks {
-		if !block.IsReady() {
-			continue
+			isCanonical := block.IsCanonical(cache.indexer, cache.justifiedRoot)
+			if !isCanonical {
+				logger.Debugf("canonical block in orphaned block processing: %v [0x%x]", block.Slot, block.Root)
+			} else {
+				db.InsertOrphanedBlock(block.buildOrphanedBlock(), tx)
+			}
+
+			err := persistBlockData(block, cache.getEpochStats(utils.EpochOfSlot(block.Slot), nil), nil, !isCanonical, tx)
+			if err != nil {
+				logger.Errorf("error while persisting orphaned slot: %v", err)
+			}
 		}
-		isCanonical := block.IsCanonical(cache.indexer, cache.justifiedRoot)
-		if !isCanonical {
-			logger.Debugf("canonical block in orphaned block processing: %v [0x%x]", block.Slot, block.Root)
-		} else {
-			db.InsertOrphanedBlock(block.buildOrphanedBlock(), tx)
-		}
 
-		err := persistBlockData(block, cache.getEpochStats(utils.EpochOfSlot(block.Slot), nil), nil, !isCanonical, tx)
-		if err != nil {
-			logger.Errorf("error while persisting orphaned slot: %v", err)
-		}
-	}
-
-	if err := tx.Commit(); err != nil {
-		logger.Errorf("error committing db transaction: %v", err)
-		return err
-	}
-
-	return nil
+		return nil
+	})
 }
 
 func (cache *indexerCache) processCachePersistence() error {
@@ -406,60 +388,73 @@ func (cache *indexerCache) processCachePersistence() error {
 	}
 
 	if cache.indexer.writeDb {
-		tx, err := db.WriterDb.Beginx()
-		if err != nil {
-			logger.Errorf("error starting db transactions: %v", err)
-			return err
-		}
-		defer tx.Rollback()
-
-		for _, block := range persistBlocks {
-			if !block.isInUnfinalizedDb && block.IsReady() {
-				orphanedBlock := block.buildOrphanedBlock()
-				err := db.InsertUnfinalizedBlock(&dbtypes.UnfinalizedBlock{
-					Root:      block.Root,
-					Slot:      block.Slot,
-					HeaderVer: orphanedBlock.HeaderVer,
-					HeaderSSZ: orphanedBlock.HeaderSSZ,
-					BlockVer:  orphanedBlock.BlockVer,
-					BlockSSZ:  orphanedBlock.BlockSSZ,
-				}, tx)
-				if err != nil {
-					logger.Errorf("error inserting unfinalized block: %v", err)
-					return err
-				}
-
-				err = persistBlockDeposits(block, nil, true, tx)
-				if err != nil {
-					logger.Errorf("error persisting unfinalized deposits: %v", err)
-					return err
-				}
-
-				block.isInUnfinalizedDb = true
-			}
-		}
-
-		for _, epochStats := range persistEpochs {
-			err := persistSlotAssignments(epochStats, tx)
-			if err != nil {
-				return err
-			}
-
-			if !epochStats.isInDb {
-				dbEpoch, _ := cache.indexer.buildLiveEpoch(epochStats.Epoch, epochStats)
-				if dbEpoch != nil {
-					err := db.InsertUnfinalizedEpoch(dbEpoch, tx)
+		err := db.RunDBTransaction(func(tx *sqlx.Tx) error {
+			for _, block := range persistBlocks {
+				if !block.isInUnfinalizedDb && block.IsReady() {
+					orphanedBlock := block.buildOrphanedBlock()
+					err := db.InsertUnfinalizedBlock(&dbtypes.UnfinalizedBlock{
+						Root:      block.Root,
+						Slot:      block.Slot,
+						HeaderVer: orphanedBlock.HeaderVer,
+						HeaderSSZ: orphanedBlock.HeaderSSZ,
+						BlockVer:  orphanedBlock.BlockVer,
+						BlockSSZ:  orphanedBlock.BlockSSZ,
+					}, tx)
 					if err != nil {
-						logger.Errorf("error inserting unfinalized epoch: %v", err)
+						logger.Errorf("error inserting unfinalized block: %v", err)
 						return err
 					}
-					epochStats.isInDb = true
+
+					err = persistBlockDeposits(block, nil, true, tx)
+					if err != nil {
+						logger.Errorf("error persisting unfinalized deposits: %v", err)
+						return err
+					}
+
+					err = persistBlockVoluntaryExits(block, true, tx)
+					if err != nil {
+						logger.Errorf("error persisting unfinalized voluntary exits: %v", err)
+						return err
+					}
+
+					err = persistBlockSlashings(block, true, tx)
+					if err != nil {
+						logger.Errorf("error persisting unfinalized slashings: %v", err)
+						return err
+					}
+
+					err = persistBlockConsolidations(block, true, tx)
+					if err != nil {
+						logger.Errorf("error persisting unfinalized consolidations: %v", err)
+						return err
+					}
+
+					block.isInUnfinalizedDb = true
 				}
 			}
-		}
 
-		if err := tx.Commit(); err != nil {
-			logger.Errorf("error committing db transaction: %v", err)
+			for _, epochStats := range persistEpochs {
+				err := persistSlotAssignments(epochStats, tx)
+				if err != nil {
+					return err
+				}
+
+				if !epochStats.isInDb {
+					dbEpoch, _ := cache.indexer.buildLiveEpoch(epochStats.Epoch, epochStats)
+					if dbEpoch != nil {
+						err := db.InsertUnfinalizedEpoch(dbEpoch, tx)
+						if err != nil {
+							logger.Errorf("error inserting unfinalized epoch: %v", err)
+							return err
+						}
+						epochStats.isInDb = true
+					}
+				}
+			}
+
+			return nil
+		})
+		if err != nil {
 			return err
 		}
 	}
@@ -510,21 +505,11 @@ func (cache *indexerCache) processCacheCleanup(processedEpoch int64, headEpoch i
 	}
 
 	if cache.indexer.writeDb {
-		tx, err := db.WriterDb.Beginx()
-		if err != nil {
-			logger.Errorf("error starting db transactions: %v", err)
-			return err
-		}
-		defer tx.Rollback()
-
-		deleteBefore := uint64(processedEpoch+1) * utils.Config.Chain.Config.SlotsPerEpoch
-		logger.Debugf("delete persisted unfinalized cache before slot %v", deleteBefore)
-		db.DeleteUnfinalizedBefore(deleteBefore, tx)
-
-		if err := tx.Commit(); err != nil {
-			logger.Errorf("error committing db transaction: %v", err)
-			return err
-		}
+		return db.RunDBTransaction(func(tx *sqlx.Tx) error {
+			deleteBefore := uint64(processedEpoch+1) * utils.Config.Chain.Config.SlotsPerEpoch
+			logger.Debugf("delete persisted unfinalized cache before slot %v", deleteBefore)
+			return db.DeleteUnfinalizedBefore(deleteBefore, tx)
+		})
 	}
 
 	return nil

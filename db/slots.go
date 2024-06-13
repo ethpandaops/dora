@@ -20,7 +20,9 @@ func InsertSlot(slot *dbtypes.Slot, tx *sqlx.Tx) error {
 				eth_block_extra, eth_block_extra_text, sync_participation
 			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
 			ON CONFLICT (slot, root) DO UPDATE SET
-				status = excluded.status`,
+				status = excluded.status,
+				eth_block_extra = excluded.eth_block_extra,
+				eth_block_extra_text = excluded.eth_block_extra_text`,
 		dbtypes.DBEngineSqlite: `
 			INSERT OR REPLACE INTO slots (
 				slot, proposer, status, root, parent_root, state_root, graffiti, graffiti_text,
