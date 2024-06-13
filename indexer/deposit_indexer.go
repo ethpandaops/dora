@@ -190,6 +190,7 @@ func (ds *DepositIndexer) processFinalizedBlocks(finalizedBlockNumber uint64) er
 					return fmt.Errorf("could not load block details (%v): %v", log.TxHash, err)
 				}
 
+				txHash = log.TxHash[:]
 			}
 
 			txFrom, err := types.Sender(types.LatestSignerForChainID(txDetails.ChainId()), txDetails)
