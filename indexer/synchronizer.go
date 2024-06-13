@@ -148,7 +148,7 @@ func (sync *synchronizerState) checkKillChan(timeout time.Duration) bool {
 }
 
 func (sync *synchronizerState) syncEpoch(syncEpoch uint64, retryCount int, lastTry bool, skipClients []*ConsensusClient) (bool, *ConsensusClient, error) {
-	if db.IsEpochSynchronized(syncEpoch) {
+	if !utils.Config.Indexer.ResyncForceUpdate && db.IsEpochSynchronized(syncEpoch) {
 		return true, nil, nil
 	}
 

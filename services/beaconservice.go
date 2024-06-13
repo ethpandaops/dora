@@ -1,6 +1,7 @@
 package services
 
 import (
+	"fmt"
 	"math"
 	"sort"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	"github.com/attestantio/go-eth2-client/spec/deneb"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethereum/go-ethereum/common/lru"
+	"github.com/jmoiron/sqlx"
 
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
@@ -47,6 +49,20 @@ func StartChainService() error {
 	validatorNames := &ValidatorNames{}
 	loadingChan := validatorNames.LoadValidatorNames()
 	<-loadingChan
+
+	if utils.Config.Indexer.ResyncFromEpoch != nil {
+		err := db.RunDBTransaction(func(tx *sqlx.Tx) error {
+			// reset sync state
+			syncState := &dbtypes.IndexerSyncState{
+				Epoch: *utils.Config.Indexer.ResyncFromEpoch,
+			}
+			return db.SetExplorerState("indexer.syncstate", syncState, tx)
+		})
+		if err != nil {
+			return fmt.Errorf("failed resetting sync state: %v", err)
+		}
+		logrus.Warnf("Reset explorer synchronization status to epoch %v as configured! Please remove this setting again.", *utils.Config.Indexer.ResyncFromEpoch)
+	}
 
 	indexer, err := indexer.NewIndexer()
 	if err != nil {

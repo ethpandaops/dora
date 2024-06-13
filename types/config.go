@@ -77,6 +77,9 @@ type Config struct {
 	} `yaml:"executionapi"`
 
 	Indexer struct {
+		ResyncFromEpoch   *uint64 `yaml:"resyncFromEpoch" envconfig:"INDEXER_RESYNC_FROM_EPOCH"`
+		ResyncForceUpdate bool    `yaml:"resyncForceUpdate" envconfig:"INDEXER_RESYNC_FORCE_UPDATE"`
+
 		InMemoryEpochs                  uint16 `yaml:"inMemoryEpochs" envconfig:"INDEXER_IN_MEMORY_EPOCHS"`
 		CachePersistenceDelay           uint16 `yaml:"cachePersistenceDelay" envconfig:"INDEXER_CACHE_PERSISTENCE_DELAY"`
 		DisableIndexWriter              bool   `yaml:"disableIndexWriter" envconfig:"INDEXER_DISABLE_INDEX_WRITER"`
