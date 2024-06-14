@@ -414,7 +414,7 @@ func BuildDbVoluntaryExits(block *CacheBlock) []*dbtypes.VoluntaryExit {
 
 func persistBlockSlashings(block *CacheBlock, orphaned bool, tx *sqlx.Tx) error {
 	// insert slashings
-	dbSlashings := buildDbSlashings(block)
+	dbSlashings := BuildDbSlashings(block)
 	if orphaned {
 		for idx := range dbSlashings {
 			dbSlashings[idx].Orphaned = true
@@ -431,7 +431,7 @@ func persistBlockSlashings(block *CacheBlock, orphaned bool, tx *sqlx.Tx) error 
 	return nil
 }
 
-func buildDbSlashings(block *CacheBlock) []*dbtypes.Slashing {
+func BuildDbSlashings(block *CacheBlock) []*dbtypes.Slashing {
 	blockBody := block.GetBlockBody()
 	if blockBody == nil {
 		return nil

@@ -9,7 +9,6 @@ import (
 
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
-	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
@@ -178,12 +177,7 @@ func buildFilteredSlashingsPageData(pageIdx uint64, pageSize uint64, minSlot uin
 		WithOrphaned:  withOrphaned,
 	}
 
-	offset := (pageIdx - 1) * pageSize
-
-	dbSlashings, totalRows, err := db.GetSlashingsFiltered(offset, uint32(pageSize), uint64(finalizedEpoch), slashingFilter)
-	if err != nil {
-		panic(err)
-	}
+	dbSlashings, totalRows := services.GlobalBeaconService.GetSlashingsByFilter(slashingFilter, pageIdx-1, uint32(pageSize))
 
 	validatorSetRsp := services.GlobalBeaconService.GetCachedValidatorSet()
 	validatorActivityMap, validatorActivityMax := services.GlobalBeaconService.GetValidatorActivity()
