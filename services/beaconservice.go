@@ -736,6 +736,13 @@ func (bs *ChainService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageIdx
 						continue
 					}
 				}
+				if filter.ExtraData != "" {
+					executionExtraData, _ := indexer.GetExecutionExtraData(block.GetBlockBody())
+					blockExtraData := string(executionExtraData[:])
+					if !strings.Contains(blockExtraData, filter.ExtraData) {
+						continue
+					}
+				}
 				proposer := uint64(block.GetHeader().Message.ProposerIndex)
 				if filter.ProposerIndex != nil {
 					if proposer != *filter.ProposerIndex {
@@ -758,7 +765,7 @@ func (bs *ChainService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageIdx
 		}
 	}
 
-	if filter.WithMissing != 0 && filter.Graffiti == "" && filter.WithOrphaned != 2 {
+	if filter.WithMissing != 0 && filter.Graffiti == "" && filter.ExtraData == "" && filter.WithOrphaned != 2 {
 		// add missed blocks
 		idxHeadSlot := bs.indexer.GetHighestSlot()
 		idxHeadEpoch := utils.EpochOfSlot(idxHeadSlot)
