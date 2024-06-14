@@ -58,7 +58,7 @@ func InitPageData(w http.ResponseWriter, r *http.Request, active, path, title st
 		ChainConfig:           utils.Config.Chain.Config,
 		Lang:                  "en-US",
 		Debug:                 utils.Config.Frontend.Debug,
-		MainMenuItems:         createMenuItems(active, isMainnet),
+		MainMenuItems:         createMenuItems(active),
 	}
 
 	if utils.Config.Frontend.SiteDescription != "" {
@@ -82,7 +82,7 @@ func InitPageData(w http.ResponseWriter, r *http.Request, active, path, title st
 	return data
 }
 
-func createMenuItems(active string, isMain bool) []types.MainMenuItem {
+func createMenuItems(active string) []types.MainMenuItem {
 	hiddenFor := []string{"confirmation", "login", "register"}
 
 	if utils.SliceContains(hiddenFor, active) {

@@ -321,6 +321,18 @@ func (indexer *Indexer) GetHighestSlot() uint64 {
 	return uint64(indexer.indexerCache.highestSlot)
 }
 
+func (indexer *Indexer) GetCacheState() (highestSlot int64, finalizedEpoch int64, persistedEpoch int64, processedEpoch int64) {
+	indexer.indexerCache.cacheMutex.RLock()
+	defer indexer.indexerCache.cacheMutex.RUnlock()
+
+	highestSlot = indexer.indexerCache.highestSlot
+	finalizedEpoch = indexer.indexerCache.finalizedEpoch
+	persistedEpoch = indexer.indexerCache.lastPersistedEpoch
+	processedEpoch = indexer.indexerCache.processedEpoch
+
+	return
+}
+
 func (indexer *Indexer) GetHeadForks(readyOnly bool) []*HeadFork {
 	headForks := []*HeadFork{}
 	for _, client := range indexer.consensusClients {

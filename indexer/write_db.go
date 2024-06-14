@@ -68,6 +68,18 @@ func persistBlockData(block *CacheBlock, epochStats *EpochStats, depositIndex *u
 
 	block.isInFinalizedDb = true
 
+	// insert child objects
+	err = persistBlockChildObjects(block, depositIndex, orphaned, tx)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func persistBlockChildObjects(block *CacheBlock, depositIndex *uint64, orphaned bool, tx *sqlx.Tx) error {
+	var err error
+
 	// insert deposits
 	err = persistBlockDeposits(block, depositIndex, orphaned, tx)
 	if err != nil {
@@ -356,7 +368,7 @@ func buildDbDeposits(block *CacheBlock, depositIndex *uint64) []*dbtypes.Deposit
 
 func persistBlockVoluntaryExits(block *CacheBlock, orphaned bool, tx *sqlx.Tx) error {
 	// insert voluntary exits
-	dbVoluntaryExits := buildDbVoluntaryExits(block)
+	dbVoluntaryExits := BuildDbVoluntaryExits(block)
 	if orphaned {
 		for idx := range dbVoluntaryExits {
 			dbVoluntaryExits[idx].Orphaned = true
@@ -373,7 +385,7 @@ func persistBlockVoluntaryExits(block *CacheBlock, orphaned bool, tx *sqlx.Tx) e
 	return nil
 }
 
-func buildDbVoluntaryExits(block *CacheBlock) []*dbtypes.VoluntaryExit {
+func BuildDbVoluntaryExits(block *CacheBlock) []*dbtypes.VoluntaryExit {
 	blockBody := block.GetBlockBody()
 	if blockBody == nil {
 		return nil

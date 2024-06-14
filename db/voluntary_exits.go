@@ -55,34 +55,6 @@ func InsertVoluntaryExits(voluntaryExits []*dbtypes.VoluntaryExit, tx *sqlx.Tx) 
 	return nil
 }
 
-func GetVoluntaryExits(firstSlot uint64, limit uint32) []*dbtypes.VoluntaryExit {
-	var sql strings.Builder
-	args := []any{}
-	fmt.Fprint(&sql, `
-	SELECT
-		slot_number, slot_index, slot_root, orphaned, validator
-	FROM voluntary_exits
-	`)
-	if firstSlot > 0 {
-		args = append(args, firstSlot)
-		fmt.Fprintf(&sql, " WHERE slot_number <= $%v ", len(args))
-	}
-
-	args = append(args, limit)
-	fmt.Fprintf(&sql, `
-	ORDER BY slot_number DESC, slot_index DESC
-	LIMIT $%v
-	`, len(args))
-
-	voluntaryExits := []*dbtypes.VoluntaryExit{}
-	err := ReaderDb.Select(&voluntaryExits, sql.String(), args...)
-	if err != nil {
-		logger.Errorf("Error while fetching voluntary exits: %v", err)
-		return nil
-	}
-	return voluntaryExits
-}
-
 func GetVoluntaryExitForValidator(validator uint64) *dbtypes.VoluntaryExit {
 	var sql strings.Builder
 	args := []any{
