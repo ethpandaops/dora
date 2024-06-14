@@ -164,7 +164,7 @@ func createMenuItems(active string, isMain bool) []types.MainMenuItem {
 						{
 							Label: "Voluntary Exits",
 							Path:  "/validators/voluntary_exits",
-							Icon:  "fa-user-slash",
+							Icon:  "fa-door-open",
 						},
 						{
 							Label: "Slashings",
