@@ -109,7 +109,7 @@ func (vn *ValidatorNames) runUpdater(indexer *indexer.Indexer) error {
 func (vn *ValidatorNames) resolveNames(indexer *indexer.Indexer) (bool, error) {
 	validatorSet := indexer.GetCachedValidatorPubkeyMap()
 	if validatorSet == nil {
-		return false, nil
+		return false, fmt.Errorf("validator set not ready")
 	}
 
 	logger_vn.Debugf("resolve validator names")
