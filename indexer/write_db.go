@@ -68,6 +68,18 @@ func persistBlockData(block *CacheBlock, epochStats *EpochStats, depositIndex *u
 
 	block.isInFinalizedDb = true
 
+	// insert child objects
+	err = persistBlockChildObjects(block, depositIndex, orphaned, tx)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func persistBlockChildObjects(block *CacheBlock, depositIndex *uint64, orphaned bool, tx *sqlx.Tx) error {
+	var err error
+
 	// insert deposits
 	err = persistBlockDeposits(block, depositIndex, orphaned, tx)
 	if err != nil {
@@ -309,7 +321,7 @@ func buildDbEpoch(epoch uint64, blockMap map[uint64]*CacheBlock, epochStats *Epo
 
 func persistBlockDeposits(block *CacheBlock, depositIndex *uint64, orphaned bool, tx *sqlx.Tx) error {
 	// insert deposits
-	dbDeposits := buildDbDeposits(block, depositIndex)
+	dbDeposits := BuildDbDeposits(block, depositIndex)
 	if orphaned {
 		for idx := range dbDeposits {
 			dbDeposits[idx].Orphaned = true
@@ -326,7 +338,7 @@ func persistBlockDeposits(block *CacheBlock, depositIndex *uint64, orphaned bool
 	return nil
 }
 
-func buildDbDeposits(block *CacheBlock, depositIndex *uint64) []*dbtypes.Deposit {
+func BuildDbDeposits(block *CacheBlock, depositIndex *uint64) []*dbtypes.Deposit {
 	blockBody := block.GetBlockBody()
 	if blockBody == nil {
 		return nil
@@ -362,7 +374,7 @@ func buildDbDeposits(block *CacheBlock, depositIndex *uint64) []*dbtypes.Deposit
 
 func persistBlockVoluntaryExits(block *CacheBlock, orphaned bool, tx *sqlx.Tx) error {
 	// insert voluntary exits
-	dbVoluntaryExits := buildDbVoluntaryExits(block)
+	dbVoluntaryExits := BuildDbVoluntaryExits(block)
 	if orphaned {
 		for idx := range dbVoluntaryExits {
 			dbVoluntaryExits[idx].Orphaned = true
@@ -379,7 +391,7 @@ func persistBlockVoluntaryExits(block *CacheBlock, orphaned bool, tx *sqlx.Tx) e
 	return nil
 }
 
-func buildDbVoluntaryExits(block *CacheBlock) []*dbtypes.VoluntaryExit {
+func BuildDbVoluntaryExits(block *CacheBlock) []*dbtypes.VoluntaryExit {
 	blockBody := block.GetBlockBody()
 	if blockBody == nil {
 		return nil
@@ -408,7 +420,7 @@ func buildDbVoluntaryExits(block *CacheBlock) []*dbtypes.VoluntaryExit {
 
 func persistBlockSlashings(block *CacheBlock, orphaned bool, tx *sqlx.Tx) error {
 	// insert slashings
-	dbSlashings := buildDbSlashings(block)
+	dbSlashings := BuildDbSlashings(block)
 	if orphaned {
 		for idx := range dbSlashings {
 			dbSlashings[idx].Orphaned = true
@@ -425,7 +437,7 @@ func persistBlockSlashings(block *CacheBlock, orphaned bool, tx *sqlx.Tx) error 
 	return nil
 }
 
-func buildDbSlashings(block *CacheBlock) []*dbtypes.Slashing {
+func BuildDbSlashings(block *CacheBlock) []*dbtypes.Slashing {
 	blockBody := block.GetBlockBody()
 	if blockBody == nil {
 		return nil

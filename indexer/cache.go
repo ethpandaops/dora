@@ -28,6 +28,7 @@ type indexerCache struct {
 	persistEpoch            int64
 	cleanupBlockEpoch       int64
 	cleanupStatsEpoch       int64
+	lastPersistedEpoch      int64
 	slotMap                 map[uint64][]*CacheBlock
 	rootMap                 map[string]*CacheBlock
 	epochStatsMutex         sync.RWMutex
@@ -56,6 +57,7 @@ func newIndexerCache(indexer *Indexer) *indexerCache {
 		persistEpoch:            -1,
 		cleanupBlockEpoch:       -1,
 		cleanupStatsEpoch:       -1,
+		lastPersistedEpoch:      -1,
 		slotMap:                 make(map[uint64][]*CacheBlock),
 		rootMap:                 make(map[string]*CacheBlock),
 		epochStatsMap:           make(map[uint64][]*EpochStats),

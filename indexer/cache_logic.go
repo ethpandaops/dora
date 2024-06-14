@@ -405,21 +405,9 @@ func (cache *indexerCache) processCachePersistence() error {
 						return err
 					}
 
-					err = persistBlockDeposits(block, nil, true, tx)
+					// insert child objects as orphaned (we don't know if they're canonical yet)
+					err = persistBlockChildObjects(block, nil, true, tx)
 					if err != nil {
-						logger.Errorf("error persisting unfinalized deposits: %v", err)
-						return err
-					}
-
-					err = persistBlockVoluntaryExits(block, true, tx)
-					if err != nil {
-						logger.Errorf("error persisting unfinalized voluntary exits: %v", err)
-						return err
-					}
-
-					err = persistBlockSlashings(block, true, tx)
-					if err != nil {
-						logger.Errorf("error persisting unfinalized slashings: %v", err)
 						return err
 					}
 
@@ -457,6 +445,10 @@ func (cache *indexerCache) processCachePersistence() error {
 		if err != nil {
 			return err
 		}
+	}
+
+	if cache.lastPersistedEpoch < minPersistEpoch {
+		cache.lastPersistedEpoch = minPersistEpoch
 	}
 
 	for _, block := range pruneBlocks {

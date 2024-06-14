@@ -29,6 +29,7 @@ type BlockFilter struct {
 
 type DepositTxFilter struct {
 	Address       []byte
+	TargetAddress []byte
 	PublicKey     []byte
 	ValidatorName string
 	MinAmount     uint64
@@ -40,7 +41,6 @@ type DepositTxFilter struct {
 type DepositFilter struct {
 	MinIndex      uint64
 	MaxIndex      uint64
-	Address       []byte
 	PublicKey     []byte
 	ValidatorName string
 	MinAmount     uint64

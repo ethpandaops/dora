@@ -57,41 +57,6 @@ func InsertSlashings(slashings []*dbtypes.Slashing, tx *sqlx.Tx) error {
 	return nil
 }
 
-func GetSlashings(firstSlot uint64, limit uint32, reason dbtypes.SlashingReason) []*dbtypes.Slashing {
-	var sql strings.Builder
-	args := []any{}
-	fmt.Fprint(&sql, `
-	SELECT
-		slot_number, slot_index, slot_root, orphaned, validator, slasher, reason
-	FROM slashings
-	`)
-	filterOp := "WHERE"
-	if firstSlot > 0 {
-		args = append(args, firstSlot)
-		fmt.Fprintf(&sql, " %v slot_number <= $%v ", filterOp, len(args))
-		filterOp = "AND"
-	}
-	if reason > 0 {
-		args = append(args, reason)
-		fmt.Fprintf(&sql, " %v reason <= $%v ", filterOp, len(args))
-		filterOp = "AND"
-	}
-
-	args = append(args, limit)
-	fmt.Fprintf(&sql, `
-	ORDER BY slot_number DESC, slot_index DESC
-	LIMIT $%v
-	`, len(args))
-
-	slashings := []*dbtypes.Slashing{}
-	err := ReaderDb.Select(&slashings, sql.String(), args...)
-	if err != nil {
-		logger.Errorf("Error while fetching slashings: %v", err)
-		return nil
-	}
-	return slashings
-}
-
 func GetSlashingForValidator(validator uint64) *dbtypes.Slashing {
 	var sql strings.Builder
 	args := []any{
@@ -165,7 +130,7 @@ func GetSlashingsFiltered(offset uint64, limit uint32, finalizedBlock uint64, fi
 		filterOp = "AND"
 	} else if filter.WithOrphaned == 2 {
 		args = append(args, finalizedBlock)
-		fmt.Fprintf(&sql, " %v (slot_number < $%v AND orphaned = true)", filterOp, len(args))
+		fmt.Fprintf(&sql, " %v (slot_number > $%v OR orphaned = true)", filterOp, len(args))
 		filterOp = "AND"
 	}
 	if filter.ValidatorName != "" {
