@@ -69,6 +69,20 @@ func (vn *ValidatorNames) GetValidatorName(index uint64) string {
 	return ""
 }
 
+func (vn *ValidatorNames) GetValidatorNameByPubkey(pubkey []byte) string {
+	validatorSet := GlobalBeaconService.GetCachedValidatorPubkeyMap()
+	if validatorSet == nil {
+		return ""
+	}
+
+	validator := validatorSet[phase0.BLSPubKey(pubkey)]
+	if validator == nil {
+		return ""
+	}
+
+	return vn.GetValidatorName(uint64(validator.Index))
+}
+
 func (vn *ValidatorNames) GetValidatorNamesCount() uint64 {
 	if !vn.namesMutex.TryRLock() {
 		return 0

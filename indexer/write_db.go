@@ -315,7 +315,7 @@ func buildDbEpoch(epoch uint64, blockMap map[uint64]*CacheBlock, epochStats *Epo
 
 func persistBlockDeposits(block *CacheBlock, depositIndex *uint64, orphaned bool, tx *sqlx.Tx) error {
 	// insert deposits
-	dbDeposits := buildDbDeposits(block, depositIndex)
+	dbDeposits := BuildDbDeposits(block, depositIndex)
 	if orphaned {
 		for idx := range dbDeposits {
 			dbDeposits[idx].Orphaned = true
@@ -332,7 +332,7 @@ func persistBlockDeposits(block *CacheBlock, depositIndex *uint64, orphaned bool
 	return nil
 }
 
-func buildDbDeposits(block *CacheBlock, depositIndex *uint64) []*dbtypes.Deposit {
+func BuildDbDeposits(block *CacheBlock, depositIndex *uint64) []*dbtypes.Deposit {
 	blockBody := block.GetBlockBody()
 	if blockBody == nil {
 		return nil

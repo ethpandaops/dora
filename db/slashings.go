@@ -130,7 +130,7 @@ func GetSlashingsFiltered(offset uint64, limit uint32, finalizedBlock uint64, fi
 		filterOp = "AND"
 	} else if filter.WithOrphaned == 2 {
 		args = append(args, finalizedBlock)
-		fmt.Fprintf(&sql, " %v (slot_number < $%v AND orphaned = true)", filterOp, len(args))
+		fmt.Fprintf(&sql, " %v (slot_number > $%v OR orphaned = true)", filterOp, len(args))
 		filterOp = "AND"
 	}
 	if filter.ValidatorName != "" {

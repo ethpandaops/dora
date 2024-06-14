@@ -141,33 +141,6 @@ func GetDepositTxs(firstIndex uint64, limit uint32) []*dbtypes.DepositTx {
 	return depositTxs
 }
 
-func GetDeposits(offset uint64, limit uint32) []*dbtypes.Deposit {
-	var sql strings.Builder
-	args := []any{}
-	fmt.Fprint(&sql, `
-	SELECT
-		deposit_index, slot_number, slot_index, slot_root, orphaned, publickey, withdrawalcredentials, amount
-	FROM deposits
-	`)
-	args = append(args, limit)
-	fmt.Fprintf(&sql, `
-	ORDER BY slot_number DESC, slot_index DESC
-	LIMIT $%v
-	`, len(args))
-	if offset > 0 {
-		args = append(args, offset)
-		fmt.Fprintf(&sql, " OFFSET $%v ", len(args))
-	}
-
-	deposits := []*dbtypes.Deposit{}
-	err := ReaderDb.Select(&deposits, sql.String(), args...)
-	if err != nil {
-		logger.Errorf("Error while fetching deposits: %v", err)
-		return nil
-	}
-	return deposits
-}
-
 func GetDepositTxsFiltered(offset uint64, limit uint32, finalizedBlock uint64, filter *dbtypes.DepositTxFilter) ([]*dbtypes.DepositTx, uint64, error) {
 	var sql strings.Builder
 	args := []any{}
@@ -255,7 +228,7 @@ func GetDepositTxsFiltered(offset uint64, limit uint32, finalizedBlock uint64, f
 	return depositTxs[1:], depositTxs[0].Index, nil
 }
 
-func GetDepositsFiltered(offset uint64, limit uint32, filter *dbtypes.DepositFilter) ([]*dbtypes.Deposit, uint64, error) {
+func GetDepositsFiltered(offset uint64, limit uint32, finalizedBlock uint64, filter *dbtypes.DepositFilter) ([]*dbtypes.Deposit, uint64, error) {
 	var sql strings.Builder
 	args := []any{}
 	fmt.Fprint(&sql, `
@@ -292,10 +265,12 @@ func GetDepositsFiltered(offset uint64, limit uint32, filter *dbtypes.DepositFil
 		filterOp = "AND"
 	}
 	if filter.WithOrphaned == 0 {
-		fmt.Fprintf(&sql, " %v orphaned = false", filterOp)
+		args = append(args, finalizedBlock)
+		fmt.Fprintf(&sql, " %v (slot_number > $%v OR orphaned = false)", filterOp, len(args))
 		filterOp = "AND"
 	} else if filter.WithOrphaned == 2 {
-		fmt.Fprintf(&sql, " %v orphaned = true", filterOp)
+		args = append(args, finalizedBlock)
+		fmt.Fprintf(&sql, " %v (slot_number > $%v OR orphaned = true)", filterOp, len(args))
 		filterOp = "AND"
 	}
 

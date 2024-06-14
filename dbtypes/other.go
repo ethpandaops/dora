@@ -40,7 +40,6 @@ type DepositTxFilter struct {
 type DepositFilter struct {
 	MinIndex      uint64
 	MaxIndex      uint64
-	Address       []byte
 	PublicKey     []byte
 	ValidatorName string
 	MinAmount     uint64
