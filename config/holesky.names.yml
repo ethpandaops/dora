@@ -19,7 +19,7 @@
 795000-894999: "nethermind"
 895000-994999: "nimbus"
 995000-1094999: "p2p.org"
-1095000-1104999: "protolambda"
+#1095000-1104999: "protolambda" # exited
 1105000-1204999: "prysm"
 1205000-1209999: "ralexstokes"
 1210000-1309999: "rockawayx"
@@ -45,7 +45,12 @@
 1552771-1562771: "ef_devops"
 
 "withdrawal:0x00000000001d2f94eB88124eEC6E1af72225c52F": "CryptoDevHub"
+"withdrawal:0xfaB9DEFD76285c4ED83cbFf9bc880E367a358319": "Cubist"
 "withdrawal:0x428614Fb30e3007e5d628D09e8BDB0CE9720FAdB": "Huawei"
 "withdrawal:0xF0179dEC45a37423EAD4FaD5fCb136197872EAd9": "Lido"
-"withdrawal:0x55fbd2d6643de2e436409b193812bd1ed1c70765": "Obol Network"
 "withdrawal:0x0efB35a6D6b14e7F5eEEbAD10A2145A68C99772D": "Frax Finance"
+
+"depositor:0x42a53EB005A09131c0E54125B0d8Ee0DF77c694E": "Cosmostation"
+"depositor:0x548CA64e4B0aA42ea59ADbdD84495a4A16c2a234": "Northstake.dk"
+"depositor:0x462f0560e473e1545Fd4d0680C02c499aaf01711": "H20Nodes"
+"depositor:0x90403bcc417F6bC1F064C7Fc18439fD7421CFD4B": "Linkriver"
