@@ -40,7 +40,7 @@ func StartChainService() error {
 		return nil
 	}
 
-	validatorNames := &ValidatorNames{}
+	validatorNames := NewValidatorNames()
 	loadingChan := validatorNames.LoadValidatorNames()
 	<-loadingChan
 
@@ -70,6 +70,8 @@ func StartChainService() error {
 	for idx, endpoint := range utils.Config.ExecutionApi.Endpoints {
 		indexer.AddExecutionClient(uint16(idx), &endpoint)
 	}
+
+	validatorNames.StartUpdater(indexer)
 
 	GlobalBeaconService = &ChainService{
 		indexer:          indexer,

@@ -157,6 +157,11 @@ func GetDepositTxsFiltered(offset uint64, limit uint32, finalizedBlock uint64, f
 		fmt.Fprintf(&sql, " %v tx_sender = $%v", filterOp, len(args))
 		filterOp = "AND"
 	}
+	if len(filter.TargetAddress) > 0 {
+		args = append(args, filter.TargetAddress)
+		fmt.Fprintf(&sql, " %v tx_target = $%v", filterOp, len(args))
+		filterOp = "AND"
+	}
 	if len(filter.PublicKey) > 0 {
 		args = append(args, filter.PublicKey)
 		fmt.Fprintf(&sql, " %v publickey = $%v", filterOp, len(args))
