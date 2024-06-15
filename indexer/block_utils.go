@@ -23,10 +23,16 @@ func GetExecutionExtraData(v *spec.VersionedSignedBeaconBlock) ([]byte, error) {
 		return v.Capella.Message.Body.ExecutionPayload.ExtraData, nil
 	case spec.DataVersionDeneb:
 		if v.Deneb == nil || v.Deneb.Message == nil || v.Deneb.Message.Body == nil || v.Deneb.Message.Body.ExecutionPayload == nil {
-			return nil, errors.New("no denb block")
+			return nil, errors.New("no deneb block")
 		}
 
 		return v.Deneb.Message.Body.ExecutionPayload.ExtraData, nil
+	case spec.DataVersionElectra:
+		if v.Electra == nil || v.Electra.Message == nil || v.Electra.Message.Body == nil || v.Electra.Message.Body.ExecutionPayload == nil {
+			return nil, errors.New("no electra block")
+		}
+
+		return v.Electra.Message.Body.ExecutionPayload.ExtraData, nil
 	default:
 		return nil, errors.New("unknown version")
 	}
