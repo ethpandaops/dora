@@ -371,3 +371,125 @@ func (bs *ChainService) GetSlashingsByFilter(filter *dbtypes.SlashingFilter, pag
 
 	return resObjs, cachedMatchesLen + dbCount
 }
+
+func (bs *ChainService) GetElRequestsByFilter(filter *dbtypes.ElRequestFilter, pageIdx uint64, pageSize uint32) ([]*dbtypes.ElRequest, uint64) {
+	idxHeadSlot, finalizedEpoch, persistedEpoch, _ := bs.indexer.GetCacheState()
+	finalizedBlock := uint64(0)
+	if finalizedEpoch > 0 {
+		finalizedBlock = (uint64(finalizedEpoch)+1)*utils.Config.Chain.Config.SlotsPerEpoch - 1
+	}
+
+	// load most recent objects from indexer cache
+	idxMinSlot := (persistedEpoch + 1) * int64(utils.Config.Chain.Config.SlotsPerEpoch)
+	cachedMatches := make([]*dbtypes.ElRequest, 0)
+	for slotIdx := int64(idxHeadSlot); slotIdx >= int64(idxMinSlot); slotIdx-- {
+		slot := uint64(slotIdx)
+		blocks := bs.indexer.GetCachedBlocks(slot)
+		if blocks != nil {
+			for bidx := 0; bidx < len(blocks); bidx++ {
+				block := blocks[bidx]
+				if filter.WithOrphaned != 1 {
+					isOrphaned := !block.IsCanonical(bs.indexer, nil)
+					if filter.WithOrphaned == 0 && isOrphaned {
+						continue
+					}
+					if filter.WithOrphaned == 2 && !isOrphaned {
+						continue
+					}
+				}
+				if filter.MinSlot > 0 && slot < filter.MinSlot {
+					continue
+				}
+				if filter.MaxSlot > 0 && slot > filter.MaxSlot {
+					continue
+				}
+
+				elRequests := indexer.BuildDbElRequests(block)
+				for idx, elRequest := range elRequests {
+					if filter.RequestType > 0 && filter.RequestType != elRequest.RequestType {
+						continue
+					}
+					if len(filter.SourceAddress) > 0 && !bytes.Equal(filter.SourceAddress, elRequest.SourceAddress) {
+						continue
+					}
+					if filter.MinSourceIndex > 0 && (elRequest.SourceIndex == nil || *elRequest.SourceIndex < filter.MinSourceIndex) {
+						continue
+					}
+					if filter.MaxSourceIndex > 0 && (elRequest.SourceIndex == nil || *elRequest.SourceIndex > filter.MaxSourceIndex) {
+						continue
+					}
+					if filter.SourceValidatorName != "" {
+						if elRequest.SourceIndex == nil {
+							continue
+						}
+
+						validatorName := bs.validatorNames.GetValidatorName(*elRequest.SourceIndex)
+						if !strings.Contains(validatorName, filter.SourceValidatorName) {
+							continue
+						}
+					}
+
+					cachedMatches = append(cachedMatches, elRequests[idx])
+				}
+			}
+		}
+	}
+
+	cachedMatchesLen := uint64(len(cachedMatches))
+	cachedPages := cachedMatchesLen / uint64(pageSize)
+	resObjs := make([]*dbtypes.ElRequest, 0)
+	resIdx := 0
+
+	cachedStart := pageIdx * uint64(pageSize)
+	cachedEnd := cachedStart + uint64(pageSize)
+
+	if cachedPages > 0 && pageIdx < cachedPages {
+		resObjs = append(resObjs, cachedMatches[cachedStart:cachedEnd]...)
+		resIdx += int(cachedEnd - cachedStart)
+	} else if pageIdx == cachedPages {
+		resObjs = append(resObjs, cachedMatches[cachedStart:]...)
+		resIdx += len(cachedMatches) - int(cachedStart)
+	}
+
+	// load older objects from db
+	dbPage := pageIdx - cachedPages
+	dbCacheOffset := uint64(pageSize) - (cachedMatchesLen % uint64(pageSize))
+
+	var dbObjects []*dbtypes.ElRequest
+	var dbCount uint64
+	var err error
+
+	if resIdx > int(pageSize) {
+		// all results from cache, just get result count from db
+		_, dbCount, err = db.GetElRequestsFiltered(0, 1, finalizedBlock, filter)
+	} else if dbPage == 0 {
+		// first page, load first `pagesize-cachedResults` items from db
+		dbObjects, dbCount, err = db.GetElRequestsFiltered(0, uint32(dbCacheOffset), finalizedBlock, filter)
+	} else {
+		dbObjects, dbCount, err = db.GetElRequestsFiltered((dbPage-1)*uint64(pageSize)+dbCacheOffset, pageSize, finalizedBlock, filter)
+	}
+
+	if err != nil {
+		logrus.Warnf("ChainService.GetElRequestsByFilter error: %v", err)
+	} else {
+		for idx, dbObject := range dbObjects {
+			if dbObject.SlotNumber > finalizedBlock {
+				blockStatus := bs.CheckBlockOrphanedStatus(dbObject.SlotRoot)
+				dbObjects[idx].Orphaned = blockStatus == dbtypes.Orphaned
+			}
+
+			if filter.WithOrphaned != 1 {
+				if filter.WithOrphaned == 0 && dbObjects[idx].Orphaned {
+					continue
+				}
+				if filter.WithOrphaned == 2 && !dbObjects[idx].Orphaned {
+					continue
+				}
+			}
+
+			resObjs = append(resObjs, dbObjects[idx])
+		}
+	}
+
+	return resObjs, cachedMatchesLen + dbCount
+}

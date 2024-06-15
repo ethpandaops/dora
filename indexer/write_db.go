@@ -104,6 +104,12 @@ func persistBlockChildObjects(block *CacheBlock, depositIndex *uint64, orphaned 
 		return err
 	}
 
+	// insert el requests
+	err = persistBlockElRequests(block, orphaned, tx)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -556,4 +562,53 @@ func buildDbConsolidations(block *CacheBlock) []*dbtypes.Consolidation {
 	}
 
 	return dbConsolidations
+}
+
+func persistBlockElRequests(block *CacheBlock, orphaned bool, tx *sqlx.Tx) error {
+	// insert deposits
+	dbElRequests := BuildDbElRequests(block)
+	if orphaned {
+		for idx := range dbElRequests {
+			dbElRequests[idx].Orphaned = true
+		}
+	}
+
+	if len(dbElRequests) > 0 {
+		err := db.InsertElRequests(dbElRequests, tx)
+		if err != nil {
+			return fmt.Errorf("error inserting el requests: %v", err)
+		}
+	}
+
+	return nil
+}
+
+func BuildDbElRequests(block *CacheBlock) []*dbtypes.ElRequest {
+	blockBody := block.GetBlockBody()
+	if blockBody == nil {
+		return nil
+	}
+
+	/*
+		elRequests, err := blockBody.ExecutionRequests()
+		if err != nil {
+			return nil
+		}
+
+		dbElRequests := make([]*dbtypes.ElRequest, len(elRequests))
+		for idx, elRequest := range elRequests {
+			dbElRequest := &dbtypes.ElRequest{
+				SlotNumber:  block.Slot,
+				SlotIndex:   uint64(idx),
+				SlotRoot:    block.Root,
+				Orphaned:    false,
+			}
+
+			dbElRequests[idx] = dbElRequest
+		}
+
+		return dbElRequests
+	*/
+
+	return []*dbtypes.ElRequest{}
 }
