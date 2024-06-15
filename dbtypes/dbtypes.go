@@ -190,3 +190,17 @@ type Consolidation struct {
 	TargetIndex uint64 `db:"target_index"`
 	Epoch       uint64 `db:"epoch"`
 }
+
+type ElRequest struct {
+	SlotNumber    uint64  `db:"slot_number"`
+	SlotIndex     uint64  `db:"slot_index"`
+	SlotRoot      []byte  `db:"slot_root"`
+	Orphaned      bool    `db:"orphaned"`
+	RequestType   uint8   `db:"request_type"`
+	SourceAddress []byte  `db:"source_address"`
+	SourceIndex   *uint64 `db:"source_index"`
+	SourcePubkey  []byte  `db:"source_pubkey"`
+	TargetIndex   *uint64 `db:"target_index"`
+	TargetPubkey  []byte  `db:"target_pubkey"`
+	Amount        *uint64 `db:"amount"`
+}

@@ -67,3 +67,18 @@ type SlashingFilter struct {
 	WithOrphaned  uint8
 	WithReason    SlashingReason
 }
+
+type ElRequestFilter struct {
+	MinSlot             uint64
+	MaxSlot             uint64
+	RequestType         uint8
+	SourceAddress       []byte
+	MinSourceIndex      uint64
+	MaxSourceIndex      uint64
+	SourceValidatorName string
+	MinTargetIndex      uint64
+	MaxTargetIndex      uint64
+	TargetValidatorName string
+	Amount              *uint64
+	WithOrphaned        uint8
+}
