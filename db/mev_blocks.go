@@ -171,9 +171,16 @@ func GetMevBlocksFiltered(offset uint64, limit uint32, filter *dbtypes.MevBlockF
 		fmt.Fprintf(&sql, " %v proposer_index <= $%v", filterOp, len(args))
 		filterOp = "AND"
 	}
-	if filter.Proposed > 0 {
-		args = append(args, filter.Proposed)
-		fmt.Fprintf(&sql, " %v proposed = $%v", filterOp, len(args))
+	if len(filter.Proposed) > 0 {
+		fmt.Fprintf(&sql, " %v (", filterOp)
+		for i, v := range filter.Proposed {
+			if i > 0 {
+				fmt.Fprintf(&sql, " OR ")
+			}
+			args = append(args, v)
+			fmt.Fprintf(&sql, " proposed = $%v", len(args))
+		}
+		fmt.Fprintf(&sql, " )")
 		filterOp = "AND"
 	}
 	if len(filter.BuilderPubkey) > 0 {

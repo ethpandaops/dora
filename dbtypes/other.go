@@ -34,8 +34,8 @@ type MevBlockFilter struct {
 	MaxIndex      uint64
 	ProposerName  string
 	BuilderPubkey []byte
-	Proposed      uint8
-	MevRelay      []uint64
+	Proposed      []uint8
+	MevRelay      []uint8
 }
 
 type DepositTxFilter struct {
