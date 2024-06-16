@@ -51,7 +51,7 @@ func InsertMevBlocks(mevBlocks []*dbtypes.MevBlock, tx *sqlx.Tx) error {
 		argIdx += fieldCount
 	}
 	fmt.Fprint(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
-		dbtypes.DBEnginePgsql:  " ON CONFLICT (block_hash) DO UPDATE SET proposed = excluded.proposed",
+		dbtypes.DBEnginePgsql:  " ON CONFLICT (block_hash) DO UPDATE SET proposed = excluded.proposed, seenby_relays = excluded.seenby_relays",
 		dbtypes.DBEngineSqlite: "",
 	}))
 
@@ -62,7 +62,21 @@ func InsertMevBlocks(mevBlocks []*dbtypes.MevBlock, tx *sqlx.Tx) error {
 	return nil
 }
 
-func GetMevBlocksFiltered(offset uint64, limit uint32, finalizedBlock uint64, filter *dbtypes.MevBlockFilter) ([]*dbtypes.MevBlock, uint64, error) {
+func GetHighestMevBlockSlotByRelay(relayId uint8) (uint64, error) {
+	highestSlot := uint64(0)
+	err := ReaderDb.Get(&highestSlot, `
+	SELECT
+		MAX(slot_number)
+	FROM mev_blocks
+	WHERE (seenby_relays & $1) != 0
+	`, uint64(1)<<relayId)
+	if err != nil {
+		return 0, err
+	}
+	return highestSlot, nil
+}
+
+func GetMevBlocksFiltered(offset uint64, limit uint32, filter *dbtypes.MevBlockFilter) ([]*dbtypes.MevBlock, uint64, error) {
 	var sql strings.Builder
 	args := []any{}
 	fmt.Fprint(&sql, `

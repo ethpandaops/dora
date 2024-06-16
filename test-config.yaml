@@ -66,6 +66,14 @@ indexer:
   disableIndexWriter: false
   syncEpochCooldown: 1
 
+mevIndexer:
+  # list of mev relays to crawl mev blocks from
+  relays:
+    - index: 0  # identifier for this relay in db (0-63)
+      name: Flashbots
+      url: https://boost-relay.flashbots.net/
+  refreshInterval: 10m
+
 database:
   engine: "sqlite"
   sqlite:
