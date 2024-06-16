@@ -264,10 +264,6 @@ func (mev *MevIndexer) loadMevBlocksFromRelay(indexer *indexer.Indexer, relay *t
 				continue
 			}
 
-			if slot == 1884222 {
-				fmt.Printf("x\n")
-			}
-
 			if int64(slot) > highestSlot {
 				// skip for now, process in next refresh
 				continue

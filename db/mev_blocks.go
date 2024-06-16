@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/ethpandaops/dora/dbtypes"
+	"github.com/ethpandaops/dora/utils"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -54,6 +55,49 @@ func InsertMevBlocks(mevBlocks []*dbtypes.MevBlock, tx *sqlx.Tx) error {
 		dbtypes.DBEnginePgsql:  " ON CONFLICT (block_hash) DO UPDATE SET proposed = excluded.proposed, seenby_relays = excluded.seenby_relays",
 		dbtypes.DBEngineSqlite: "",
 	}))
+
+	_, err := tx.Exec(sql.String(), args...)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func UpdateMevBlockByEpoch(epoch uint64, canonicalHashes [][]byte, tx *sqlx.Tx) error {
+	var sql strings.Builder
+	var sqlArgs strings.Builder
+
+	args := []any{
+		epoch * utils.Config.Chain.Config.SlotsPerEpoch,
+		((epoch + 1) * utils.Config.Chain.Config.SlotsPerEpoch) - 1,
+	}
+
+	for i, hash := range canonicalHashes {
+		if sqlArgs.Len() > 0 {
+			fmt.Fprint(&sqlArgs, ",")
+		}
+		fmt.Fprintf(&sqlArgs, "$%v", (i + 3))
+		args = append(args, hash)
+	}
+
+	fmt.Fprint(&sql,
+		"UPDATE mev_blocks SET proposed = (",
+		"CASE ",
+	)
+	if len(canonicalHashes) > 0 {
+		fmt.Fprint(&sql,
+			"WHEN block_hash IN (",
+			sqlArgs.String(),
+			") THEN 1 ",
+		)
+	}
+	fmt.Fprint(&sql,
+		"WHEN proposed = 0 THEN 0 ",
+		"ELSE 2 ",
+		"END",
+		") ",
+		"WHERE slot_number >= $1 AND slot_number <= $2",
+	)
 
 	_, err := tx.Exec(sql.String(), args...)
 	if err != nil {
