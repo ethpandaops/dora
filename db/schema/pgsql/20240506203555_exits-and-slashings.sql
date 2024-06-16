@@ -2,7 +2,7 @@
 -- +goose StatementBegin
 
 CREATE TABLE IF NOT EXISTS voluntary_exits (
-    slot_number INT NOT NULL,
+    slot_number BIGINT NOT NULL,
     slot_index INT NOT NULL,
     slot_root bytea NOT NULL,
     orphaned bool NOT NULL DEFAULT FALSE,
@@ -19,7 +19,7 @@ CREATE INDEX IF NOT EXISTS "voluntary_exits_slot_number_idx"
     ("slot_number" ASC NULLS FIRST);
 
 CREATE TABLE IF NOT EXISTS slashings (
-    slot_number INT NOT NULL,
+    slot_number BIGINT NOT NULL,
     slot_index INT NOT NULL,
     slot_root bytea NOT NULL,
     orphaned bool NOT NULL DEFAULT FALSE,
