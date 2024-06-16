@@ -171,9 +171,10 @@ type EndpointSshConfig struct {
 }
 
 type MevRelayConfig struct {
-	Index uint8  `yaml:"index"`
-	Name  string `yaml:"name"`
-	Url   string `yaml:"url"`
+	Index      uint8  `yaml:"index"`
+	Name       string `yaml:"name"`
+	Url        string `yaml:"url"`
+	BlockLimit int    `yaml:"blockLimit"`
 }
 
 type SqliteDatabaseConfig struct {

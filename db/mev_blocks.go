@@ -76,6 +76,20 @@ func GetHighestMevBlockSlotByRelay(relayId uint8) (uint64, error) {
 	return highestSlot, nil
 }
 
+func GetMevBlockByBlockHash(blockHash []byte) *dbtypes.MevBlock {
+	mevBlock := &dbtypes.MevBlock{}
+	err := ReaderDb.Get(&mevBlock, `
+	SELECT
+		slot_number, block_hash, block_number, builder_pubkey, proposer_index, proposed, seenby_relays, fee_recipient, tx_count, gas_used, block_value, block_value_gwei
+	FROM mev_blocks
+	WHERE block_hash = $1
+	`, blockHash)
+	if err != nil {
+		return nil
+	}
+	return mevBlock
+}
+
 func GetMevBlocksFiltered(offset uint64, limit uint32, filter *dbtypes.MevBlockFilter) ([]*dbtypes.MevBlock, uint64, error) {
 	var sql strings.Builder
 	args := []any{}

@@ -14,6 +14,7 @@ import (
 
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/jmoiron/sqlx"
 	"github.com/sirupsen/logrus"
 
 	"github.com/ethpandaops/dora/db"
@@ -136,6 +137,49 @@ func (mev *MevIndexer) runUpdater(indexer *indexer.Indexer) error {
 	}
 	wg.Wait()
 
+	// save updated MevBlocks
+	updatedMevBlocks := []*dbtypes.MevBlock{}
+	for _, cachedMevBlock := range mev.mevBlockCache {
+		if cachedMevBlock.updated {
+			updatedMevBlocks = append(updatedMevBlocks, cachedMevBlock.block)
+		}
+	}
+	err := mev.updateMevBlocks(updatedMevBlocks)
+	if err != nil {
+		return err
+	}
+
+	// reset updated flag
+	for _, mevBlock := range updatedMevBlocks {
+		mev.mevBlockCache[common.Hash(mevBlock.BlockHash)].updated = false
+	}
+
+	// cleanup cache (remove finalized mevBlocks)
+	_, finalizedEpoch, _, processedEpoch := indexer.GetCacheState()
+	finalizedSlot := uint64(0)
+	if processedEpoch >= 0 {
+		finalizedSlot = (uint64(processedEpoch+1) * utils.Config.Chain.Config.SlotsPerEpoch) - 1
+	} else if finalizedEpoch >= 0 {
+		finalizedSlot = (uint64(finalizedEpoch+1) * utils.Config.Chain.Config.SlotsPerEpoch) - 1
+	}
+
+	updatedMevBlocks = []*dbtypes.MevBlock{}
+	for hash, cachedMevBlock := range mev.mevBlockCache {
+		if cachedMevBlock.block.SlotNumber < finalizedSlot {
+			proposed := mev.getMevBlockProposedStatus(indexer, cachedMevBlock.block, finalizedSlot)
+			if cachedMevBlock.block.Proposed != proposed {
+				cachedMevBlock.block.Proposed = proposed
+				updatedMevBlocks = append(updatedMevBlocks, cachedMevBlock.block)
+			}
+
+			delete(mev.mevBlockCache, hash)
+		}
+	}
+	err = mev.updateMevBlocks(updatedMevBlocks)
+	if err != nil {
+		return err
+	}
+
 	mev.lastRefresh = time.Now()
 	return nil
 }
@@ -160,8 +204,12 @@ func (mev *MevIndexer) loadMevBlocksFromRelay(indexer *indexer.Indexer, relay *t
 		return fmt.Errorf("invalid relay url: %v", err)
 	}
 
-	relayUrl.Path = path.Join(relayUrl.Path, "/relay/v1/data/bidtraces/proposer_payload_delivered?limit=1000")
-	apiUrl := relayUrl.String()
+	relayUrl.Path = path.Join(relayUrl.Path, "/relay/v1/data/bidtraces/proposer_payload_delivered")
+	blockLimit := relay.BlockLimit
+	if blockLimit == 0 {
+		blockLimit = 200
+	}
+	apiUrl := fmt.Sprintf("%v?limit=%v", relayUrl.String(), blockLimit)
 
 	logger_mev.Debugf("Loading mev blocks from relay %v: %v", relay.Name, utils.GetRedactedUrl(apiUrl))
 
@@ -185,6 +233,10 @@ func (mev *MevIndexer) loadMevBlocksFromRelay(indexer *indexer.Indexer, relay *t
 		return fmt.Errorf("error parsing mev blocks response: %v", err)
 	}
 
+	if len(blocksResponse) == 0 {
+		return nil
+	}
+
 	// parse blocks
 	mev.mevBlockCacheMutex.Lock()
 	defer mev.mevBlockCacheMutex.Unlock()
@@ -197,15 +249,23 @@ func (mev *MevIndexer) loadMevBlocksFromRelay(indexer *indexer.Indexer, relay *t
 		finalizedSlot = (uint64(finalizedEpoch+1) * utils.Config.Chain.Config.SlotsPerEpoch) - 1
 	}
 	relayFlag := uint64(1) << relay.Index
+	latestLoadedBlock := uint64(0)
 
 	for idx, blockData := range blocksResponse {
 		blockHash := common.HexToHash(blockData.BlockHash)
+		cachedBlock := mev.mevBlockCache[blockHash]
 
-		if mev.mevBlockCache[blockHash] == nil {
-			slot, err := strconv.ParseUint(blockData.Slot, 10, 64)
+		var slot uint64
+
+		if cachedBlock == nil {
+			slot, err = strconv.ParseUint(blockData.Slot, 10, 64)
 			if err != nil {
 				logger_mev.Warnf("failed parsing mev block %v.Slot: %v", idx, err)
 				continue
+			}
+
+			if slot == 1884222 {
+				fmt.Printf("x\n")
 			}
 
 			if int64(slot) > highestSlot {
@@ -217,6 +277,18 @@ func (mev *MevIndexer) loadMevBlocksFromRelay(indexer *indexer.Indexer, relay *t
 				continue
 			}
 
+			if slot < finalizedSlot {
+				// try load from db
+				mevBlock := db.GetMevBlockByBlockHash(blockHash[:])
+				if mevBlock != nil {
+					cachedBlock = &mevIndexerBlockCache{
+						block: mevBlock,
+					}
+				}
+			}
+		}
+
+		if cachedBlock == nil {
 			blockNumber, err := strconv.ParseUint(blockData.BlockNumber, 10, 64)
 			if err != nil {
 				logger_mev.Warnf("failed parsing mev block %v.BlockNumber: %v", idx, err)
@@ -266,10 +338,11 @@ func (mev *MevIndexer) loadMevBlocksFromRelay(indexer *indexer.Indexer, relay *t
 			}
 			mevBlock.Proposed = mev.getMevBlockProposedStatus(indexer, mevBlock, finalizedSlot)
 
-			mev.mevBlockCache[blockHash] = &mevIndexerBlockCache{
+			cachedBlock = &mevIndexerBlockCache{
 				updated: true,
 				block:   mevBlock,
 			}
+			mev.mevBlockCache[blockHash] = cachedBlock
 		} else {
 			cachedBlock := mev.mevBlockCache[blockHash]
 			if cachedBlock.block.SeenbyRelays&relayFlag > 0 {
@@ -278,7 +351,16 @@ func (mev *MevIndexer) loadMevBlocksFromRelay(indexer *indexer.Indexer, relay *t
 
 			cachedBlock.block.SeenbyRelays |= relayFlag
 			cachedBlock.updated = true
+			mev.mevBlockCache[blockHash] = cachedBlock
 		}
+
+		if mev.mevBlockCache[blockHash].block.SlotNumber > latestLoadedBlock {
+			latestLoadedBlock = mev.mevBlockCache[blockHash].block.SlotNumber
+		}
+	}
+
+	if latestLoadedBlock > mev.lastLoadedSlot[relay.Index] {
+		mev.lastLoadedSlot[relay.Index] = latestLoadedBlock
 	}
 
 	return nil
@@ -305,4 +387,19 @@ func (mev *MevIndexer) getMevBlockProposedStatus(indexer *indexer.Indexer, mevBl
 	}
 
 	return proposed
+}
+
+func (mev *MevIndexer) updateMevBlocks(updatedMevBlocks []*dbtypes.MevBlock) error {
+	if len(updatedMevBlocks) == 0 {
+		return nil
+	}
+
+	err := db.RunDBTransaction(func(tx *sqlx.Tx) error {
+		return db.InsertMevBlocks(updatedMevBlocks, tx)
+	})
+	if err != nil {
+		return fmt.Errorf("error saving mev blocks to db: %v", err)
+	}
+
+	return nil
 }
