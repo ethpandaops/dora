@@ -27,6 +27,17 @@ type BlockFilter struct {
 	WithMissing   uint8
 }
 
+type MevBlockFilter struct {
+	MinSlot       uint64
+	MaxSlot       uint64
+	MinIndex      uint64
+	MaxIndex      uint64
+	ProposerName  string
+	BuilderPubkey []byte
+	Proposed      []uint8
+	MevRelay      []uint8
+}
+
 type DepositTxFilter struct {
 	Address       []byte
 	TargetAddress []byte

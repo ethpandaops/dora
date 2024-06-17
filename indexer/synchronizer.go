@@ -252,12 +252,16 @@ func (sync *synchronizerState) syncEpoch(syncEpoch uint64, retryCount int, lastT
 
 	// load blobs
 	lastSlot = firstSlot + utils.Config.Chain.Config.SlotsPerEpoch - 1
+	canonicalBlockHashes := [][]byte{}
 	blobs := []*BlobAssignment{}
 	for slot := firstSlot; slot <= lastSlot; slot++ {
 		block := sync.cachedBlocks[slot]
 		if block == nil {
 			continue
 		}
+
+		block.parseBlockRefs()
+		canonicalBlockHashes = append(canonicalBlockHashes, block.Refs.ExecutionHash)
 
 		blobKzgCommitments, _ := block.GetBlockBody().BlobKZGCommitments()
 		if len(blobKzgCommitments) == 0 {
@@ -295,6 +299,11 @@ func (sync *synchronizerState) syncEpoch(syncEpoch uint64, retryCount int, lastT
 					return fmt.Errorf("error persisting blobs: %v", err)
 				}
 			}
+		}
+
+		err = db.UpdateMevBlockByEpoch(syncEpoch, canonicalBlockHashes, tx)
+		if err != nil {
+			return fmt.Errorf("error while updating mev block proposal state: %v", err)
 		}
 
 		err = db.SetExplorerState("indexer.syncstate", &dbtypes.IndexerSyncState{

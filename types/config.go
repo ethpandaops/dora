@@ -114,6 +114,11 @@ type Config struct {
 		RecheckTimeout    time.Duration `yaml:"recheckTimeout" envconfig:"TXSIG_RECHECK_TIMEOUT"`
 	} `yaml:"txsig"`
 
+	MevIndexer struct {
+		Relays          []MevRelayConfig `yaml:"relays"`
+		RefreshInterval time.Duration    `yaml:"refreshInterval" envconfig:"MEVINDEXER_REFRESH_INTERVAL"`
+	} `yaml:"mevIndexer"`
+
 	Database struct {
 		Engine string `yaml:"engine" envconfig:"DATABASE_ENGINE"`
 		Sqlite struct {
@@ -163,6 +168,13 @@ type EndpointSshConfig struct {
 	User     string `yaml:"user"`
 	Password string `yaml:"password"`
 	Keyfile  string `yaml:"keyfile"`
+}
+
+type MevRelayConfig struct {
+	Index      uint8  `yaml:"index"`
+	Name       string `yaml:"name"`
+	Url        string `yaml:"url"`
+	BlockLimit int    `yaml:"blockLimit"`
 }
 
 type SqliteDatabaseConfig struct {

@@ -40,13 +40,14 @@ func StartChainService() error {
 		return nil
 	}
 
+	// init validator names & load inventory
 	validatorNames := NewValidatorNames()
 	loadingChan := validatorNames.LoadValidatorNames()
 	<-loadingChan
 
+	// reset sync state if configured
 	if utils.Config.Indexer.ResyncFromEpoch != nil {
 		err := db.RunDBTransaction(func(tx *sqlx.Tx) error {
-			// reset sync state
 			syncState := &dbtypes.IndexerSyncState{
 				Epoch: *utils.Config.Indexer.ResyncFromEpoch,
 			}
@@ -58,6 +59,7 @@ func StartChainService() error {
 		logrus.Warnf("Reset explorer synchronization status to epoch %v as configured! Please remove this setting again.", *utils.Config.Indexer.ResyncFromEpoch)
 	}
 
+	// configure and start beaconchain indexer
 	indexer, err := indexer.NewIndexer()
 	if err != nil {
 		return err
@@ -71,7 +73,12 @@ func StartChainService() error {
 		indexer.AddExecutionClient(uint16(idx), &endpoint)
 	}
 
+	// start validator names updater
 	validatorNames.StartUpdater(indexer)
+
+	// start mev index updater
+	mevIndexer := NewMevIndexer()
+	mevIndexer.StartUpdater(indexer)
 
 	GlobalBeaconService = &ChainService{
 		indexer:          indexer,

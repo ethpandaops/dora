@@ -128,6 +128,26 @@ type TxPendingFunctionSignature struct {
 	QueueTime uint64 `db:"queuetime"`
 }
 
+type MevBlock struct {
+	SlotNumber     uint64 `db:"slot_number"`
+	BlockHash      []byte `db:"block_hash"`
+	BlockNumber    uint64 `db:"block_number"`
+	BuilderPubkey  []byte `db:"builder_pubkey"`
+	ProposerIndex  uint64 `db:"proposer_index"`
+	Proposed       uint8  `db:"proposed"`
+	SeenbyRelays   uint64 `db:"seenby_relays"`
+	FeeRecipient   []byte `db:"fee_recipient"`
+	TxCount        uint64 `db:"tx_count"`
+	GasUsed        uint64 `db:"gas_used"`
+	BlockValue     []byte `db:"block_value"`
+	BlockValueGwei uint64 `db:"block_value_gwei"`
+}
+
+type MevBlockSeenby struct {
+	BlockHash []byte `db:"block_hash"`
+	MevRelay  uint64 `db:"mev_relay"`
+}
+
 type DepositTx struct {
 	Index                 uint64 `db:"deposit_index"`
 	BlockNumber           uint64 `db:"block_number"`
