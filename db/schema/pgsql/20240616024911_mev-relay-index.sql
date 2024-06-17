@@ -45,17 +45,6 @@ CREATE INDEX IF NOT EXISTS "mev_blocks_block_value_gwei_idx"
     ON public."mev_blocks"
     ("block_value_gwei" ASC NULLS FIRST);
 
-
-CREATE TABLE IF NOT EXISTS mev_blocks_seenby (
-    block_hash bytea NOT NULL,
-    mev_relay INT NOT NULL,
-    CONSTRAINT mev_blocks_pkey PRIMARY KEY (block_hash)
-);
-
-CREATE INDEX IF NOT EXISTS "mev_blocks_seenby_mev_relay_idx"
-    ON public."mev_blocks_seenby"
-    ("mev_relay" ASC NULLS FIRST);
-
 -- +goose StatementEnd
 -- +goose Down
 -- +goose StatementBegin

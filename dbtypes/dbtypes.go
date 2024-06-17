@@ -143,11 +143,6 @@ type MevBlock struct {
 	BlockValueGwei uint64 `db:"block_value_gwei"`
 }
 
-type MevBlockSeenby struct {
-	BlockHash []byte `db:"block_hash"`
-	MevRelay  uint64 `db:"mev_relay"`
-}
-
 type DepositTx struct {
 	Index                 uint64 `db:"deposit_index"`
 	BlockNumber           uint64 `db:"block_number"`
