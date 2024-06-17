@@ -236,6 +236,7 @@ func buildSlotPageData(blockSlot int64, blockRoot []byte, loadDuties bool) (*mod
 		PreviousSlot:   slot - 1,
 		Future:         slot >= currentSlot,
 		EpochFinalized: finalizedEpoch >= int64(utils.EpochOfSlot(slot)),
+		Badges:         []*models.SlotPageBlockBadge{},
 	}
 
 	var assignments *rpc.EpochAssignments
@@ -293,6 +294,27 @@ func buildSlotPageData(blockSlot int64, blockRoot []byte, loadDuties bool) (*mod
 		pageData.Proposer = uint64(blockData.Header.Message.ProposerIndex)
 		pageData.ProposerName = services.GlobalBeaconService.GetValidatorName(pageData.Proposer)
 		pageData.Block = getSlotPageBlockData(blockData, assignments, loadDuties)
+
+		// check mev block
+		if pageData.Block.ExecutionData != nil {
+			mevBlock := db.GetMevBlockByBlockHash(pageData.Block.ExecutionData.BlockHash)
+			if mevBlock != nil {
+				relays := []string{}
+				for _, relay := range utils.Config.MevIndexer.Relays {
+					relayFlag := uint64(1) << uint64(relay.Index)
+					if mevBlock.SeenbyRelays&relayFlag > 0 {
+						relays = append(relays, relay.Name)
+					}
+				}
+
+				pageData.Badges = append(pageData.Badges, &models.SlotPageBlockBadge{
+					Title:       "MEV Block",
+					Icon:        "fa-money-bill",
+					Description: fmt.Sprintf("Block proposed via Relay: %v", strings.Join(relays, ", ")),
+					ClassName:   "text-bg-warning",
+				})
+			}
+		}
 	}
 
 	return pageData, cacheTimeout
