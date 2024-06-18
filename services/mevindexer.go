@@ -340,7 +340,6 @@ func (mev *MevIndexer) loadMevBlocksFromRelay(indexer *indexer.Indexer, relay *t
 			}
 			mev.mevBlockCache[blockHash] = cachedBlock
 		} else {
-			cachedBlock := mev.mevBlockCache[blockHash]
 			if cachedBlock.block.SeenbyRelays&relayFlag > 0 {
 				continue
 			}

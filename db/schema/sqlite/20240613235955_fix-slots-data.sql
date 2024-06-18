@@ -2,7 +2,7 @@
 -- +goose StatementBegin
 
 UPDATE slots
-SET eth_block_extra = '0x', eth_block_extra_text = ''
+SET eth_block_extra = '', eth_block_extra_text = ''
 WHERE state_root IS NOT NULL AND eth_block_extra IS NULL;
 
 -- +goose StatementEnd
