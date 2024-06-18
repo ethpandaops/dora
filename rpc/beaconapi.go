@@ -150,6 +150,7 @@ func (bc *BeaconClient) Initialize() error {
 		// TODO (when upstream PR is merged)
 		//http.WithConnectionCheck(false),
 		http.WithCustomSpecSupport(true),
+		http.WithEnforceJSON(true),
 	}
 
 	// set log level
