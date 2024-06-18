@@ -7,6 +7,7 @@ import (
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/utils"
 	"github.com/jmoiron/sqlx"
+	"github.com/juliangruber/go-intersect"
 )
 
 func persistSlotAssignments(epochStats *EpochStats, tx *sqlx.Tx) error {
@@ -29,23 +30,89 @@ func persistSlotAssignments(epochStats *EpochStats, tx *sqlx.Tx) error {
 	return nil
 }
 
-func persistEpochData(epoch uint64, blockMap map[uint64]*CacheBlock, epochStats *EpochStats, epochVotes *EpochVotes, tx *sqlx.Tx) error {
-	commitTx := false
-	if tx == nil {
-		var err error
-		tx, err = db.WriterDb.Beginx()
-		if err != nil {
-			logger.Errorf("error starting db transactions: %v", err)
-			return err
+func persistMissedSlots(epoch uint64, blockMap map[uint64]*CacheBlock, epochStats *EpochStats, tx *sqlx.Tx) error {
+	// insert missed slots
+	firstSlot := epoch * utils.Config.Chain.Config.SlotsPerEpoch
+	if epochStats.proposerAssignments != nil {
+		for slotIdx := uint64(0); slotIdx < utils.Config.Chain.Config.SlotsPerEpoch; slotIdx++ {
+			slot := firstSlot + slotIdx
+			if blockMap[slot] != nil {
+				continue
+			}
+
+			missedSlot := &dbtypes.SlotHeader{
+				Slot:     slot,
+				Proposer: epochStats.proposerAssignments[slot],
+				Status:   dbtypes.Missing,
+			}
+			err := db.InsertMissingSlot(missedSlot, tx)
+			if err != nil {
+				return fmt.Errorf("error while adding missed slot to db: %w", err)
+			}
 		}
-		defer tx.Rollback()
-		commitTx = true
+	}
+	return nil
+}
+
+func persistBlockData(block *CacheBlock, epochStats *EpochStats, depositIndex *uint64, orphaned bool, tx *sqlx.Tx) error {
+	// insert block
+	dbBlock := buildDbBlock(block, epochStats)
+	if orphaned {
+		dbBlock.Status = dbtypes.Orphaned
 	}
 
-	dbEpoch := buildDbEpoch(epoch, blockMap, epochStats, epochVotes, func(block *CacheBlock) {
-		// insert block
-		dbBlock := buildDbBlock(block, epochStats)
-		db.InsertBlock(dbBlock, tx)
+	err := db.InsertSlot(dbBlock, tx)
+	if err != nil {
+		return fmt.Errorf("error inserting slot: %v", err)
+	}
+
+	block.isInFinalizedDb = true
+
+	// insert child objects
+	err = persistBlockChildObjects(block, depositIndex, orphaned, tx)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func persistBlockChildObjects(block *CacheBlock, depositIndex *uint64, orphaned bool, tx *sqlx.Tx) error {
+	var err error
+
+	// insert deposits
+	err = persistBlockDeposits(block, depositIndex, orphaned, tx)
+	if err != nil {
+		return err
+	}
+
+	// insert voluntary exits
+	err = persistBlockVoluntaryExits(block, orphaned, tx)
+	if err != nil {
+		return err
+	}
+
+	// insert slashings
+	err = persistBlockSlashings(block, orphaned, tx)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func persistEpochData(epoch uint64, blockMap map[uint64]*CacheBlock, epochStats *EpochStats, epochVotes *EpochVotes, tx *sqlx.Tx) error {
+	if tx == nil {
+		return db.RunDBTransaction(func(tx *sqlx.Tx) error {
+			return persistEpochData(epoch, blockMap, epochStats, epochVotes, tx)
+		})
+	}
+
+	dbEpoch := buildDbEpoch(epoch, blockMap, epochStats, epochVotes, func(block *CacheBlock, depositIndex *uint64) {
+		err := persistBlockData(block, epochStats, depositIndex, false, tx)
+		if err != nil {
+			logger.Errorf("error persisting slot: %v", err)
+		}
 	})
 
 	// insert slot assignments
@@ -54,19 +121,18 @@ func persistEpochData(epoch uint64, blockMap map[uint64]*CacheBlock, epochStats 
 		return err
 	}
 
+	// insert missing slots
+	err = persistMissedSlots(epoch, blockMap, epochStats, tx)
+	if err != nil {
+		return err
+	}
+
 	// insert epoch
-	db.InsertEpoch(dbEpoch, tx)
+	err = db.InsertEpoch(dbEpoch, tx)
 	if err != nil {
 		return fmt.Errorf("error while saving epoch to db: %w", err)
 	}
 
-	if commitTx {
-		logger.Infof("commit transaction")
-		if err := tx.Commit(); err != nil {
-			logger.Errorf("error committing db transaction: %v", err)
-			return fmt.Errorf("error committing db transaction: %w", err)
-		}
-	}
 	return nil
 }
 
@@ -75,6 +141,7 @@ func persistSyncAssignments(epoch uint64, epochStats *EpochStats, tx *sqlx.Tx) e
 		// no sync committees before altair
 		return nil
 	}
+
 	period := epoch / utils.Config.Chain.Config.EpochsPerSyncCommitteePeriod
 	isStartOfPeriod := epoch == period*utils.Config.Chain.Config.EpochsPerSyncCommitteePeriod
 	if !isStartOfPeriod && db.IsSyncCommitteeSynchronized(period) {
@@ -93,7 +160,7 @@ func persistSyncAssignments(epoch uint64, epochStats *EpochStats, tx *sqlx.Tx) e
 	return db.InsertSyncAssignments(syncAssignments, tx)
 }
 
-func buildDbBlock(block *CacheBlock, epochStats *EpochStats) *dbtypes.Block {
+func buildDbBlock(block *CacheBlock, epochStats *EpochStats) *dbtypes.Slot {
 	blockBody := block.GetBlockBody()
 	if blockBody == nil {
 		logger.Errorf("Error while aggregating epoch blocks: canonical block body not found: %v", block.Slot)
@@ -110,15 +177,17 @@ func buildDbBlock(block *CacheBlock, epochStats *EpochStats) *dbtypes.Block {
 	syncAggregate, _ := blockBody.SyncAggregate()
 	executionBlockNumber, _ := blockBody.ExecutionBlockNumber()
 	executionBlockHash, _ := blockBody.ExecutionBlockHash()
+	executionExtraData, _ := GetExecutionExtraData(blockBody)
 	executionTransactions, _ := blockBody.ExecutionTransactions()
 	executionWithdrawals, _ := blockBody.Withdrawals()
 
-	dbBlock := dbtypes.Block{
-		Root:                  block.Root,
+	dbBlock := dbtypes.Slot{
 		Slot:                  uint64(block.header.Message.Slot),
+		Proposer:              uint64(block.header.Message.ProposerIndex),
+		Status:                dbtypes.Canonical,
+		Root:                  block.Root,
 		ParentRoot:            block.header.Message.ParentRoot[:],
 		StateRoot:             block.header.Message.StateRoot[:],
-		Proposer:              uint64(block.header.Message.ProposerIndex),
 		Graffiti:              graffiti[:],
 		GraffitiText:          utils.GraffitiToString(graffiti[:]),
 		AttestationCount:      uint64(len(attestations)),
@@ -137,6 +206,7 @@ func buildDbBlock(block *CacheBlock, epochStats *EpochStats) *dbtypes.Block {
 			// this is not accurate, but best we can get without epoch assignments
 			assignedCount = len(syncAggregate.SyncCommitteeBits) * 8
 		}
+
 		votedCount := 0
 		for i := 0; i < assignedCount; i++ {
 			if utils.BitAtVector(syncAggregate.SyncCommitteeBits, i) {
@@ -150,6 +220,8 @@ func buildDbBlock(block *CacheBlock, epochStats *EpochStats) *dbtypes.Block {
 		dbBlock.EthTransactionCount = uint64(len(executionTransactions))
 		dbBlock.EthBlockNumber = &executionBlockNumber
 		dbBlock.EthBlockHash = executionBlockHash[:]
+		dbBlock.EthBlockExtra = executionExtraData
+		dbBlock.EthBlockExtraText = utils.GraffitiToString(executionExtraData[:])
 		dbBlock.WithdrawCount = uint64(len(executionWithdrawals))
 		for _, withdrawal := range executionWithdrawals {
 			dbBlock.WithdrawAmount += uint64(withdrawal.Amount)
@@ -159,12 +231,13 @@ func buildDbBlock(block *CacheBlock, epochStats *EpochStats) *dbtypes.Block {
 	return &dbBlock
 }
 
-func buildDbEpoch(epoch uint64, blockMap map[uint64]*CacheBlock, epochStats *EpochStats, epochVotes *EpochVotes, blockFn func(block *CacheBlock)) *dbtypes.Epoch {
+func buildDbEpoch(epoch uint64, blockMap map[uint64]*CacheBlock, epochStats *EpochStats, epochVotes *EpochVotes, blockFn func(block *CacheBlock, depositIndex *uint64)) *dbtypes.Epoch {
 	firstSlot := epoch * utils.Config.Chain.Config.SlotsPerEpoch
 	lastSlot := firstSlot + (utils.Config.Chain.Config.SlotsPerEpoch) - 1
 
 	totalSyncAssigned := 0
 	totalSyncVoted := 0
+	var depositIndex *uint64
 	dbEpoch := dbtypes.Epoch{
 		Epoch: epoch,
 	}
@@ -173,10 +246,12 @@ func buildDbEpoch(epoch uint64, blockMap map[uint64]*CacheBlock, epochStats *Epo
 		dbEpoch.VotedHead = epochVotes.currentEpoch.headVoteAmount + epochVotes.nextEpoch.headVoteAmount
 		dbEpoch.VotedTotal = epochVotes.currentEpoch.totalVoteAmount + epochVotes.nextEpoch.totalVoteAmount
 	}
-	if epochStats != nil && epochStats.validatorStats != nil {
-		dbEpoch.ValidatorCount = epochStats.validatorStats.ValidatorCount
-		dbEpoch.ValidatorBalance = epochStats.validatorStats.ValidatorBalance
-		dbEpoch.Eligible = epochStats.validatorStats.EligibleAmount
+	if epochStats != nil && epochStats.stateStats != nil {
+		dbEpoch.ValidatorCount = epochStats.stateStats.ValidatorCount
+		dbEpoch.ValidatorBalance = epochStats.stateStats.ValidatorBalance
+		dbEpoch.Eligible = epochStats.stateStats.EligibleAmount
+		depositIndexField := epochStats.stateStats.DepositIndex
+		depositIndex = &depositIndexField
 	}
 
 	// aggregate blocks
@@ -191,7 +266,7 @@ func buildDbEpoch(epoch uint64, blockMap map[uint64]*CacheBlock, epochStats *Epo
 				continue
 			}
 			if blockFn != nil {
-				blockFn(block)
+				blockFn(block, depositIndex)
 			}
 
 			attestations, _ := blockBody.Attestations()
@@ -236,4 +311,183 @@ func buildDbEpoch(epoch uint64, blockMap map[uint64]*CacheBlock, epochStats *Epo
 	}
 
 	return &dbEpoch
+}
+
+func persistBlockDeposits(block *CacheBlock, depositIndex *uint64, orphaned bool, tx *sqlx.Tx) error {
+	// insert deposits
+	dbDeposits := BuildDbDeposits(block, depositIndex)
+	if orphaned {
+		for idx := range dbDeposits {
+			dbDeposits[idx].Orphaned = true
+		}
+	}
+
+	if len(dbDeposits) > 0 {
+		err := db.InsertDeposits(dbDeposits, tx)
+		if err != nil {
+			return fmt.Errorf("error inserting deposits: %v", err)
+		}
+	}
+
+	return nil
+}
+
+func BuildDbDeposits(block *CacheBlock, depositIndex *uint64) []*dbtypes.Deposit {
+	blockBody := block.GetBlockBody()
+	if blockBody == nil {
+		return nil
+	}
+
+	deposits, err := blockBody.Deposits()
+	if err != nil {
+		return nil
+	}
+
+	dbDeposits := make([]*dbtypes.Deposit, len(deposits))
+	for idx, deposit := range deposits {
+		dbDeposit := &dbtypes.Deposit{
+			SlotNumber:            block.Slot,
+			SlotIndex:             uint64(idx),
+			SlotRoot:              block.Root,
+			Orphaned:              false,
+			PublicKey:             deposit.Data.PublicKey[:],
+			WithdrawalCredentials: deposit.Data.WithdrawalCredentials,
+			Amount:                uint64(deposit.Data.Amount),
+		}
+		if depositIndex != nil {
+			cDepIdx := *depositIndex
+			dbDeposit.Index = &cDepIdx
+			*depositIndex++
+		}
+
+		dbDeposits[idx] = dbDeposit
+	}
+
+	return dbDeposits
+}
+
+func persistBlockVoluntaryExits(block *CacheBlock, orphaned bool, tx *sqlx.Tx) error {
+	// insert voluntary exits
+	dbVoluntaryExits := BuildDbVoluntaryExits(block)
+	if orphaned {
+		for idx := range dbVoluntaryExits {
+			dbVoluntaryExits[idx].Orphaned = true
+		}
+	}
+
+	if len(dbVoluntaryExits) > 0 {
+		err := db.InsertVoluntaryExits(dbVoluntaryExits, tx)
+		if err != nil {
+			return fmt.Errorf("error inserting voluntary exits: %v", err)
+		}
+	}
+
+	return nil
+}
+
+func BuildDbVoluntaryExits(block *CacheBlock) []*dbtypes.VoluntaryExit {
+	blockBody := block.GetBlockBody()
+	if blockBody == nil {
+		return nil
+	}
+
+	voluntaryExits, err := blockBody.VoluntaryExits()
+	if err != nil {
+		return nil
+	}
+
+	dbVoluntaryExits := make([]*dbtypes.VoluntaryExit, len(voluntaryExits))
+	for idx, voluntaryExit := range voluntaryExits {
+		dbVoluntaryExit := &dbtypes.VoluntaryExit{
+			SlotNumber:     block.Slot,
+			SlotIndex:      uint64(idx),
+			SlotRoot:       block.Root,
+			Orphaned:       false,
+			ValidatorIndex: uint64(voluntaryExit.Message.ValidatorIndex),
+		}
+
+		dbVoluntaryExits[idx] = dbVoluntaryExit
+	}
+
+	return dbVoluntaryExits
+}
+
+func persistBlockSlashings(block *CacheBlock, orphaned bool, tx *sqlx.Tx) error {
+	// insert slashings
+	dbSlashings := BuildDbSlashings(block)
+	if orphaned {
+		for idx := range dbSlashings {
+			dbSlashings[idx].Orphaned = true
+		}
+	}
+
+	if len(dbSlashings) > 0 {
+		err := db.InsertSlashings(dbSlashings, tx)
+		if err != nil {
+			return fmt.Errorf("error inserting slashings: %v", err)
+		}
+	}
+
+	return nil
+}
+
+func BuildDbSlashings(block *CacheBlock) []*dbtypes.Slashing {
+	blockBody := block.GetBlockBody()
+	if blockBody == nil {
+		return nil
+	}
+
+	proposerSlashings, err := blockBody.ProposerSlashings()
+	if err != nil {
+		return nil
+	}
+
+	attesterSlashings, err := blockBody.AttesterSlashings()
+	if err != nil {
+		return nil
+	}
+
+	proposerIndex, err := blockBody.ProposerIndex()
+	if err != nil {
+		return nil
+	}
+
+	dbSlashings := []*dbtypes.Slashing{}
+	slashingIndex := 0
+
+	for _, proposerSlashing := range proposerSlashings {
+		dbSlashing := &dbtypes.Slashing{
+			SlotNumber:     block.Slot,
+			SlotIndex:      uint64(slashingIndex),
+			SlotRoot:       block.Root,
+			Orphaned:       false,
+			ValidatorIndex: uint64(proposerSlashing.SignedHeader1.Message.ProposerIndex),
+			SlasherIndex:   uint64(proposerIndex),
+			Reason:         dbtypes.ProposerSlashing,
+		}
+		slashingIndex++
+		dbSlashings = append(dbSlashings, dbSlashing)
+	}
+
+	for _, attesterSlashing := range attesterSlashings {
+		inter := intersect.Simple(attesterSlashing.Attestation1.AttestingIndices, attesterSlashing.Attestation2.AttestingIndices)
+		for _, j := range inter {
+			valIdx := j.(uint64)
+
+			dbSlashing := &dbtypes.Slashing{
+				SlotNumber:     block.Slot,
+				SlotIndex:      uint64(slashingIndex),
+				SlotRoot:       block.Root,
+				Orphaned:       false,
+				ValidatorIndex: uint64(valIdx),
+				SlasherIndex:   uint64(proposerIndex),
+				Reason:         dbtypes.AttesterSlashing,
+			}
+			dbSlashings = append(dbSlashings, dbSlashing)
+		}
+
+		slashingIndex++
+	}
+
+	return dbSlashings
 }

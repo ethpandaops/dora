@@ -28,12 +28,14 @@ type indexerCache struct {
 	persistEpoch            int64
 	cleanupBlockEpoch       int64
 	cleanupStatsEpoch       int64
+	lastPersistedEpoch      int64
 	slotMap                 map[uint64][]*CacheBlock
 	rootMap                 map[string]*CacheBlock
 	epochStatsMutex         sync.RWMutex
 	epochStatsMap           map[uint64][]*EpochStats
 	lastValidatorsEpoch     int64
 	lastValidatorsResp      map[phase0.ValidatorIndex]*v1.Validator
+	lastValidatorsPubKeyMap map[phase0.BLSPubKey]*v1.Validator
 	genesisResp             *v1.Genesis
 	validatorLoadingLimiter chan int
 }
@@ -45,7 +47,7 @@ func newIndexerCache(indexer *Indexer) *indexerCache {
 	}
 	cache := &indexerCache{
 		indexer:                 indexer,
-		triggerChan:             make(chan bool, 10),
+		triggerChan:             make(chan bool, 1),
 		highestSlot:             -1,
 		lowestSlot:              -1,
 		finalizedEpoch:          -1,
@@ -55,6 +57,7 @@ func newIndexerCache(indexer *Indexer) *indexerCache {
 		persistEpoch:            -1,
 		cleanupBlockEpoch:       -1,
 		cleanupStatsEpoch:       -1,
+		lastPersistedEpoch:      -1,
 		slotMap:                 make(map[uint64][]*CacheBlock),
 		rootMap:                 make(map[string]*CacheBlock),
 		epochStatsMap:           make(map[uint64][]*EpochStats),
@@ -103,7 +106,10 @@ func (cache *indexerCache) setFinalizedHead(finalizedEpoch int64, finalizedRoot 
 		cache.finalizedRoot = finalizedRoot
 
 		// trigger processing
-		cache.triggerChan <- true
+		select {
+		case cache.triggerChan <- true:
+		default:
+		}
 	}
 }
 
@@ -127,6 +133,12 @@ func (cache *indexerCache) setLastValidators(epoch uint64, validators map[phase0
 	if int64(epoch) > cache.lastValidatorsEpoch {
 		cache.lastValidatorsEpoch = int64(epoch)
 		cache.lastValidatorsResp = validators
+
+		cache.lastValidatorsPubKeyMap = map[phase0.BLSPubKey]*v1.Validator{}
+		for idx := range validators {
+			validator := validators[idx]
+			cache.lastValidatorsPubKeyMap[validator.Validator.PublicKey] = validator
+		}
 	}
 }
 
@@ -153,7 +165,7 @@ func (cache *indexerCache) loadStoredUnfinalizedCache() error {
 		cachedBlock.mutex.Lock()
 		cachedBlock.header = header
 		cachedBlock.block = body
-		cachedBlock.isInDb = true
+		cachedBlock.isInUnfinalizedDb = true
 		cachedBlock.parseBlockRefs()
 		cachedBlock.mutex.Unlock()
 	}

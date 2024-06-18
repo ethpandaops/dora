@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"fmt"
+	"math"
 	"net/http"
 	"strconv"
 	"time"
@@ -9,6 +10,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
 
+	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
@@ -125,6 +127,8 @@ func buildEpochPageData(epoch uint64) (*models.EpochPageData, time.Duration) {
 		pageData.ValidatorCount = dbEpoch.ValidatorCount
 		if dbEpoch.ValidatorCount > 0 {
 			pageData.AverageValidatorBalance = dbEpoch.ValidatorBalance / dbEpoch.ValidatorCount
+		} else {
+			pageData.Synchronized = false
 		}
 		if dbEpoch.Eligible > 0 {
 			pageData.TargetVoteParticipation = float64(dbEpoch.VotedTarget) * 100.0 / float64(dbEpoch.Eligible)
@@ -135,7 +139,7 @@ func buildEpochPageData(epoch uint64) (*models.EpochPageData, time.Duration) {
 
 	// load slots
 	pageData.Slots = make([]*models.EpochPageDataSlot, 0)
-	dbSlots := services.GlobalBeaconService.GetDbBlocksForSlots(uint64(lastSlot), uint32(utils.Config.Chain.Config.SlotsPerEpoch), true)
+	dbSlots := services.GlobalBeaconService.GetDbBlocksForSlots(uint64(lastSlot), uint32(utils.Config.Chain.Config.SlotsPerEpoch), true, true)
 	dbIdx := 0
 	dbCnt := len(dbSlots)
 	blockCount := uint64(0)
@@ -145,21 +149,28 @@ func buildEpochPageData(epoch uint64) (*models.EpochPageData, time.Duration) {
 		for dbIdx < dbCnt && dbSlots[dbIdx] != nil && dbSlots[dbIdx].Slot == slot {
 			dbSlot := dbSlots[dbIdx]
 			dbIdx++
-			blockStatus := uint8(1)
-			if dbSlot.Orphaned == 1 {
-				blockStatus = 2
+
+			switch dbSlot.Status {
+			case dbtypes.Orphaned:
 				pageData.OrphanedCount++
-			} else {
+			case dbtypes.Canonical:
 				pageData.CanonicalCount++
+			case dbtypes.Missing:
+				pageData.MissedCount++
+			}
+
+			proposer := dbSlot.Proposer
+			if proposer == math.MaxInt64 {
+				proposer = slotAssignments[slot]
 			}
 
 			slotData := &models.EpochPageDataSlot{
 				Slot:                  slot,
 				Epoch:                 utils.EpochOfSlot(slot),
 				Ts:                    utils.SlotToTime(slot),
-				Status:                blockStatus,
-				Proposer:              dbSlot.Proposer,
-				ProposerName:          services.GlobalBeaconService.GetValidatorName(dbSlot.Proposer),
+				Status:                uint8(dbSlot.Status),
+				Proposer:              proposer,
+				ProposerName:          services.GlobalBeaconService.GetValidatorName(proposer),
 				AttestationCount:      dbSlot.AttestationCount,
 				DepositCount:          dbSlot.DepositCount,
 				ExitCount:             dbSlot.ExitCount,

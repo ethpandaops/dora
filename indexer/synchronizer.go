@@ -8,6 +8,7 @@ import (
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/utils"
+	"github.com/jmoiron/sqlx"
 	"github.com/sirupsen/logrus"
 )
 
@@ -75,14 +76,14 @@ func (sync *synchronizerState) runSync() {
 	sync.cachedSlot = 0
 	isComplete := false
 	retryCount := 0
-	var skipClients []*IndexerClient = nil
+	var skipClients []*ConsensusClient = nil
 	synclogger.Infof("synchronization started. Head epoch: %v", sync.currentEpoch)
 
 	for {
 		// synchronize next epoch
 		syncEpoch := sync.currentEpoch
 
-		retryLimit := len(sync.indexer.GetClients())
+		retryLimit := len(sync.indexer.GetConsensusClients())
 		if retryLimit < 30 {
 			retryLimit = 30
 		}
@@ -146,12 +147,12 @@ func (sync *synchronizerState) checkKillChan(timeout time.Duration) bool {
 	}
 }
 
-func (sync *synchronizerState) syncEpoch(syncEpoch uint64, retryCount int, lastTry bool, skipClients []*IndexerClient) (bool, *IndexerClient, error) {
-	if db.IsEpochSynchronized(syncEpoch) {
+func (sync *synchronizerState) syncEpoch(syncEpoch uint64, retryCount int, lastTry bool, skipClients []*ConsensusClient) (bool, *ConsensusClient, error) {
+	if !utils.Config.Indexer.ResyncForceUpdate && db.IsEpochSynchronized(syncEpoch) {
 		return true, nil, nil
 	}
 
-	client := sync.indexer.GetReadyClient(true, nil, skipClients)
+	client := sync.indexer.GetReadyClClient(true, nil, skipClients)
 	if lastTry {
 		synclogger.WithField("client", client.clientName).Infof("synchronizing epoch %v (retry: %v, last retry!)", syncEpoch, retryCount)
 	} else if retryCount > 0 {
@@ -231,7 +232,7 @@ func (sync *synchronizerState) syncEpoch(syncEpoch uint64, retryCount int, lastT
 	}
 	epochStats.loadValidatorStats(client, epochAssignments.DependendStateRef)
 
-	if epochStats.validatorStats == nil && !lastTry {
+	if epochStats.stateStats == nil && !lastTry {
 		return false, client, fmt.Errorf("error fetching validator stats for epoch %v: %v", syncEpoch, err)
 	}
 	if sync.checkKillChan(0) {
@@ -251,12 +252,16 @@ func (sync *synchronizerState) syncEpoch(syncEpoch uint64, retryCount int, lastT
 
 	// load blobs
 	lastSlot = firstSlot + utils.Config.Chain.Config.SlotsPerEpoch - 1
+	canonicalBlockHashes := [][]byte{}
 	blobs := []*BlobAssignment{}
 	for slot := firstSlot; slot <= lastSlot; slot++ {
 		block := sync.cachedBlocks[slot]
 		if block == nil {
 			continue
 		}
+
+		block.parseBlockRefs()
+		canonicalBlockHashes = append(canonicalBlockHashes, block.Refs.ExecutionHash)
 
 		blobKzgCommitments, _ := block.GetBlockBody().BlobKZGCommitments()
 		if len(blobKzgCommitments) == 0 {
@@ -276,40 +281,42 @@ func (sync *synchronizerState) syncEpoch(syncEpoch uint64, retryCount int, lastT
 	}
 
 	// save blocks
-	tx, err := db.WriterDb.Beginx()
-	if err != nil {
-		return false, nil, fmt.Errorf("error starting db transactions: %v", err)
-	}
-	defer tx.Rollback()
+	err = db.RunDBTransaction(func(tx *sqlx.Tx) error {
+		err = persistEpochData(syncEpoch, sync.cachedBlocks, epochStats, epochVotes, tx)
+		if err != nil {
+			return fmt.Errorf("error persisting epoch data to db: %v", err)
+		}
 
-	err = persistEpochData(syncEpoch, sync.cachedBlocks, epochStats, epochVotes, tx)
-	if err != nil {
-		return false, client, fmt.Errorf("error persisting epoch data to db: %v", err)
-	}
+		err = persistSyncAssignments(syncEpoch, epochStats, tx)
+		if err != nil {
+			return fmt.Errorf("error persisting sync committee assignments to db: %v", err)
+		}
 
-	err = persistSyncAssignments(syncEpoch, epochStats, tx)
-	if err != nil {
-		return false, client, fmt.Errorf("error persisting sync committee assignments to db: %v", err)
-	}
-
-	if len(blobs) > 0 {
-		for _, blob := range blobs {
-			err := sync.indexer.BlobStore.saveBlob(blob, tx)
-			if err != nil {
-				return false, client, fmt.Errorf("error persisting blobs: %v", err)
+		if len(blobs) > 0 {
+			for _, blob := range blobs {
+				err := sync.indexer.BlobStore.saveBlob(blob, tx)
+				if err != nil {
+					return fmt.Errorf("error persisting blobs: %v", err)
+				}
 			}
 		}
-	}
 
-	err = db.SetExplorerState("indexer.syncstate", &dbtypes.IndexerSyncState{
-		Epoch: syncEpoch,
-	}, tx)
+		err = db.UpdateMevBlockByEpoch(syncEpoch, canonicalBlockHashes, tx)
+		if err != nil {
+			return fmt.Errorf("error while updating mev block proposal state: %v", err)
+		}
+
+		err = db.SetExplorerState("indexer.syncstate", &dbtypes.IndexerSyncState{
+			Epoch: syncEpoch,
+		}, tx)
+		if err != nil {
+			return fmt.Errorf("error while updating sync state: %v", err)
+		}
+
+		return nil
+	})
 	if err != nil {
-		return false, nil, fmt.Errorf("error while updating sync state: %v", err)
-	}
-
-	if err := tx.Commit(); err != nil {
-		return false, nil, fmt.Errorf("error committing db transaction: %v", err)
+		return false, client, err
 	}
 
 	// cleanup cache (remove blocks from this epoch)

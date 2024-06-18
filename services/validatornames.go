@@ -17,7 +17,9 @@ import (
 	"github.com/ethpandaops/dora/config"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
+	"github.com/ethpandaops/dora/indexer"
 	"github.com/ethpandaops/dora/utils"
+	"github.com/jmoiron/sqlx"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/exp/maps"
 	"gopkg.in/yaml.v3"
@@ -26,11 +28,174 @@ import (
 var logger_vn = logrus.StandardLogger().WithField("module", "validator_names")
 
 type ValidatorNames struct {
-	loadingMutex      sync.Mutex
-	loading           bool
-	namesMutex        sync.RWMutex
-	namesByIndex      map[uint64]string
-	namesByWithdrawal map[common.Address]string
+	loadingMutex          sync.Mutex
+	loading               chan bool
+	lastResolvedMapUpdate time.Time
+	lastInventoryRefresh  time.Time
+	updaterRunning        bool
+	namesMutex            sync.RWMutex
+	namesByIndex          map[uint64]*validatorNameEntry
+	namesByWithdrawal     map[common.Address]*validatorNameEntry
+	namesByDepositOrigin  map[common.Address]*validatorNameEntry
+	namesByDepositTarget  map[common.Address]*validatorNameEntry
+	resolvedNamesByIndex  map[uint64]*validatorNameEntry
+}
+
+type validatorNameEntry struct {
+	name string
+}
+
+func NewValidatorNames() *ValidatorNames {
+	validatorNames := &ValidatorNames{}
+	return validatorNames
+}
+
+func (vn *ValidatorNames) StartUpdater(indexer *indexer.Indexer) {
+	if utils.Config.Indexer.DisableIndexWriter || vn.updaterRunning {
+		return
+	}
+	if utils.Config.Frontend.ValidatorNamesResolveInterval == 0 {
+		utils.Config.Frontend.ValidatorNamesResolveInterval = 6 * time.Hour
+	}
+
+	vn.updaterRunning = true
+	go vn.runUpdaterLoop(indexer)
+}
+
+func (vn *ValidatorNames) runUpdaterLoop(indexer *indexer.Indexer) {
+	defer utils.HandleSubroutinePanic("ValidatorNames.runUpdaterLoop")
+
+	for {
+		time.Sleep(30 * time.Second)
+
+		err := vn.runUpdater(indexer)
+		if err != nil {
+			logger_vn.Errorf("validator names update error: %v, retrying in 30 sec...", err)
+		}
+	}
+}
+
+func (vn *ValidatorNames) runUpdater(indexer *indexer.Indexer) error {
+	needUpdate := false
+
+	if utils.Config.Frontend.ValidatorNamesRefreshInterval > 0 && time.Since(vn.lastInventoryRefresh) > utils.Config.Frontend.ValidatorNamesRefreshInterval {
+		logger_vn.Infof("refreshing validator inventory")
+		loadingChan := vn.LoadValidatorNames()
+		<-loadingChan
+	}
+
+	if time.Since(vn.lastResolvedMapUpdate) > utils.Config.Frontend.ValidatorNamesResolveInterval {
+		changes, err := vn.resolveNames(indexer)
+		if err != nil {
+			return err
+		}
+
+		vn.lastResolvedMapUpdate = time.Now()
+		if changes {
+			needUpdate = true
+		}
+	}
+
+	if needUpdate {
+		err := vn.updateDb()
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (vn *ValidatorNames) resolveNames(indexer *indexer.Indexer) (bool, error) {
+	validatorSet := indexer.GetCachedValidatorPubkeyMap()
+	if validatorSet == nil {
+		return false, fmt.Errorf("validator set not ready")
+	}
+
+	logger_vn.Debugf("resolve validator names")
+
+	newResolvedNames := map[uint64]*validatorNameEntry{}
+	hasUpdates := false
+	addResolved := func(index uint64, name *validatorNameEntry) {
+		newResolvedNames[index] = name
+		if vn.resolvedNamesByIndex[index] != name {
+			hasUpdates = true
+		}
+	}
+
+	// resolve names by withdrawal address
+	for _, validator := range validatorSet {
+		if validator.Validator.WithdrawalCredentials[0] == 0x00 {
+			continue
+		}
+
+		validatorWithdrawalAddr := common.Address(validator.Validator.WithdrawalCredentials[12:])
+		name := vn.namesByWithdrawal[validatorWithdrawalAddr]
+		if name != nil {
+			addResolved(uint64(validator.Index), name)
+		}
+	}
+
+	// resolve names by depositor address
+	for address := range vn.namesByDepositOrigin {
+		offset := uint64(0)
+		pageSize := uint64(5000)
+
+		for {
+			deposits, depositCount, _ := db.GetDepositTxsFiltered(offset, uint32(pageSize), 0, &dbtypes.DepositTxFilter{
+				Address: address[:],
+			})
+			for _, deposit := range deposits {
+				validator := validatorSet[phase0.BLSPubKey(deposit.PublicKey)]
+				if validator != nil {
+					addResolved(uint64(validator.Index), vn.namesByDepositOrigin[address])
+				}
+			}
+
+			offset += pageSize
+			if offset > depositCount {
+				break
+			}
+		}
+	}
+
+	// resolve names by deposit target address
+	for address := range vn.namesByDepositTarget {
+		offset := uint64(0)
+		pageSize := uint64(5000)
+
+		for {
+			deposits, depositCount, _ := db.GetDepositTxsFiltered(offset, uint32(pageSize), 0, &dbtypes.DepositTxFilter{
+				TargetAddress: address[:],
+			})
+			for _, deposit := range deposits {
+				validator := validatorSet[phase0.BLSPubKey(deposit.PublicKey)]
+				if validator != nil {
+					addResolved(uint64(validator.Index), vn.namesByDepositTarget[address])
+				}
+			}
+
+			offset += pageSize
+			if offset > depositCount {
+				break
+			}
+		}
+	}
+
+	if !hasUpdates {
+		// check for removed names
+		for index := range vn.resolvedNamesByIndex {
+			if newResolvedNames[index] == nil {
+				hasUpdates = true
+			}
+		}
+	}
+
+	if hasUpdates {
+		vn.resolvedNamesByIndex = newResolvedNames
+	}
+
+	return hasUpdates, nil
 }
 
 func (vn *ValidatorNames) GetValidatorName(index uint64) string {
@@ -43,29 +208,30 @@ func (vn *ValidatorNames) GetValidatorName(index uint64) string {
 	}
 
 	name := vn.namesByIndex[index]
-	if name != "" {
-		return name
+	if name != nil {
+		return name.name
 	}
 
-	validatorSet := GlobalBeaconService.GetCachedValidatorSet()
+	name = vn.resolvedNamesByIndex[index]
+	if name != nil {
+		return name.name
+	}
+
+	return ""
+}
+
+func (vn *ValidatorNames) GetValidatorNameByPubkey(pubkey []byte) string {
+	validatorSet := GlobalBeaconService.GetCachedValidatorPubkeyMap()
 	if validatorSet == nil {
 		return ""
 	}
 
-	validator := validatorSet[phase0.ValidatorIndex(index)]
+	validator := validatorSet[phase0.BLSPubKey(pubkey)]
 	if validator == nil {
 		return ""
 	}
 
-	if validator.Validator.WithdrawalCredentials[0] == 0x01 {
-		withdrawal := common.Address(validator.Validator.WithdrawalCredentials[12:])
-		name = vn.namesByWithdrawal[withdrawal]
-		if name != "" {
-			return name
-		}
-	}
-
-	return ""
+	return vn.GetValidatorName(uint64(validator.Index))
 }
 
 func (vn *ValidatorNames) GetValidatorNamesCount() uint64 {
@@ -79,18 +245,28 @@ func (vn *ValidatorNames) GetValidatorNamesCount() uint64 {
 	return uint64(len(maps.Keys(vn.namesByIndex)) + len(maps.Keys(vn.namesByWithdrawal)))
 }
 
-func (vn *ValidatorNames) LoadValidatorNames() {
+func (vn *ValidatorNames) LoadValidatorNames() chan bool {
 	vn.loadingMutex.Lock()
 	defer vn.loadingMutex.Unlock()
-	if vn.loading {
-		return
+	if vn.loading != nil {
+		return vn.loading
 	}
-	vn.loading = true
+	vn.loading = make(chan bool)
 
 	go func() {
+		defer func() {
+			vn.loadingMutex.Lock()
+			defer vn.loadingMutex.Unlock()
+			close(vn.loading)
+			vn.loading = nil
+			vn.lastInventoryRefresh = time.Now()
+		}()
+
 		vn.namesMutex.Lock()
-		vn.namesByIndex = make(map[uint64]string)
-		vn.namesByWithdrawal = make(map[common.Address]string)
+		vn.namesByIndex = make(map[uint64]*validatorNameEntry)
+		vn.namesByWithdrawal = make(map[common.Address]*validatorNameEntry)
+		vn.namesByDepositOrigin = make(map[common.Address]*validatorNameEntry)
+		vn.namesByDepositTarget = make(map[common.Address]*validatorNameEntry)
 		vn.namesMutex.Unlock()
 
 		// load names
@@ -111,14 +287,9 @@ func (vn *ValidatorNames) LoadValidatorNames() {
 				logger_vn.WithError(err).Errorf("error while loading validator names inventory")
 			}
 		}
-
-		// update db
-		if !utils.Config.Indexer.DisableIndexWriter {
-			vn.updateDb()
-		}
-
-		vn.loading = false
 	}()
+
+	return vn.loading
 }
 
 func (vn *ValidatorNames) loadFromYaml(fileName string) error {
@@ -166,11 +337,23 @@ func (vn *ValidatorNames) parseNamesMap(names map[string]string) int {
 	nameCount := 0
 	for idxStr, name := range names {
 		rangeParts := strings.Split(idxStr, ":")
+		nameEntry := &validatorNameEntry{
+			name: name,
+		}
+
 		if len(rangeParts) > 1 {
 			switch rangeParts[0] {
 			case "withdrawal":
 				withdrawal := common.HexToAddress(rangeParts[1])
-				vn.namesByWithdrawal[withdrawal] = name
+				vn.namesByWithdrawal[withdrawal] = nameEntry
+				nameCount++
+			case "depositor", "deposit_origin":
+				depositor := common.HexToAddress(rangeParts[1])
+				vn.namesByDepositOrigin[depositor] = nameEntry
+				nameCount++
+			case "deposit_target":
+				target := common.HexToAddress(rangeParts[1])
+				vn.namesByDepositTarget[target] = nameEntry
 				nameCount++
 			}
 
@@ -188,7 +371,7 @@ func (vn *ValidatorNames) parseNamesMap(names map[string]string) int {
 				}
 			}
 			for idx := minIdx; idx <= maxIdx; idx++ {
-				vn.namesByIndex[idx] = name
+				vn.namesByIndex[idx] = nameEntry
 				nameCount++
 			}
 		}
@@ -232,10 +415,21 @@ func (vn *ValidatorNames) loadFromRangesApi(apiUrl string) error {
 func (vn *ValidatorNames) updateDb() error {
 	vn.namesMutex.RLock()
 	nameRows := make([]*dbtypes.ValidatorName, 0)
+	hasName := map[uint64]bool{}
 	for index, name := range vn.namesByIndex {
+		hasName[index] = true
 		nameRows = append(nameRows, &dbtypes.ValidatorName{
 			Index: index,
-			Name:  name,
+			Name:  name.name,
+		})
+	}
+	for index, name := range vn.resolvedNamesByIndex {
+		if hasName[index] {
+			continue
+		}
+		nameRows = append(nameRows, &dbtypes.ValidatorName{
+			Index: index,
+			Name:  name.name,
 		})
 	}
 	vn.namesMutex.RUnlock()
@@ -243,12 +437,6 @@ func (vn *ValidatorNames) updateDb() error {
 	sort.Slice(nameRows, func(a, b int) bool {
 		return nameRows[a].Index < nameRows[b].Index
 	})
-
-	tx, err := db.WriterDb.Beginx()
-	if err != nil {
-		return fmt.Errorf("error starting db transaction: %v", err)
-	}
-	defer tx.Rollback()
 
 	batchSize := 10000
 
@@ -266,7 +454,7 @@ func (vn *ValidatorNames) updateDb() error {
 
 		// get existing db entries
 		dbNamesMap := map[uint64]string{}
-		for _, dbName := range db.GetValidatorNames(lastIndex, maxIndex, tx) {
+		for _, dbName := range db.GetValidatorNames(lastIndex, maxIndex) {
 			dbNamesMap[dbName.Index] = dbName.Name
 		}
 
@@ -286,26 +474,36 @@ func (vn *ValidatorNames) updateDb() error {
 			removeIndexes = append(removeIndexes, index)
 		}
 
-		if len(updateNames) > 0 {
-			err := db.InsertValidatorNames(updateNames, tx)
-			if err != nil {
-				logger_vn.WithError(err).Errorf("error while adding validator names to db")
+		err := db.RunDBTransaction(func(tx *sqlx.Tx) error {
+			if len(updateNames) > 0 {
+				err := db.InsertValidatorNames(updateNames, tx)
+				if err != nil {
+					logger_vn.WithError(err).Errorf("error while adding validator names to db")
+				}
 			}
-		}
-		if len(removeIndexes) > 0 {
-			err := db.DeleteValidatorNames(removeIndexes, tx)
-			if err != nil {
-				logger_vn.WithError(err).Errorf("error while deleting validator names from db")
+
+			if len(removeIndexes) > 0 {
+				err := db.DeleteValidatorNames(removeIndexes, tx)
+				if err != nil {
+					logger_vn.WithError(err).Errorf("error while deleting validator names from db")
+				}
 			}
+
+			return nil
+		})
+		if err != nil {
+			return err
 		}
-		logger_vn.Debugf("update validator names %v-%v: %v changed, %v removed", lastIndex, maxIdx, len(updateNames), len(removeIndexes))
+
+		if len(updateNames) > 0 || len(removeIndexes) > 0 {
+			logger_vn.Infof("update validator names %v-%v: %v changed, %v removed", lastIndex, maxIdx, len(updateNames), len(removeIndexes))
+			time.Sleep(2 * time.Second)
+		} else {
+			time.Sleep(100 * time.Millisecond)
+		}
 
 		lastIndex = maxIndex + 1
 		nameIdx = maxIdx
-	}
-
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("error committing db transaction: %v", err)
 	}
 
 	return nil

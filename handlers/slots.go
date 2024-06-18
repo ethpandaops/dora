@@ -118,12 +118,10 @@ func buildSlotsPageData(firstSlot uint64, pageSize uint64) (*models.SlotsPageDat
 
 	// get slot assignments
 	firstEpoch := utils.EpochOfSlot(firstSlot)
-	lastEpoch := utils.EpochOfSlot(lastSlot)
-	slotAssignments, syncedEpochs := services.GlobalBeaconService.GetProposerAssignments(firstEpoch, lastEpoch)
 
 	// load slots
 	pageData.Slots = make([]*models.SlotsPageDataSlot, 0)
-	dbSlots := services.GlobalBeaconService.GetDbBlocksForSlots(uint64(firstSlot), uint32(pageSize), true)
+	dbSlots := services.GlobalBeaconService.GetDbBlocksForSlots(uint64(firstSlot), uint32(pageSize), true, true)
 	dbIdx := 0
 	dbCnt := len(dbSlots)
 	blockCount := uint64(0)
@@ -138,22 +136,19 @@ func buildSlotsPageData(firstSlot uint64, pageSize uint64) (*models.SlotsPageDat
 		if !finalized {
 			allFinalized = false
 		}
-		haveBlock := false
+
 		for dbIdx < dbCnt && dbSlots[dbIdx] != nil && dbSlots[dbIdx].Slot == slot {
 			dbSlot := dbSlots[dbIdx]
 			dbIdx++
-			blockStatus := uint8(1)
-			if dbSlot.Orphaned == 1 {
-				blockStatus = 2
-			}
 
 			slotData := &models.SlotsPageDataSlot{
 				Slot:                  slot,
 				Epoch:                 utils.EpochOfSlot(slot),
 				Ts:                    utils.SlotToTime(slot),
 				Finalized:             finalized,
-				Status:                blockStatus,
-				Synchronized:          true,
+				Status:                uint8(dbSlot.Status),
+				Scheduled:             slot >= currentSlot,
+				Synchronized:          dbSlot.SyncParticipation != -1,
 				Proposer:              dbSlot.Proposer,
 				ProposerName:          services.GlobalBeaconService.GetValidatorName(dbSlot.Proposer),
 				AttestationCount:      dbSlot.AttestationCount,
@@ -172,28 +167,7 @@ func buildSlotsPageData(firstSlot uint64, pageSize uint64) (*models.SlotsPageDat
 				slotData.WithEthBlock = true
 				slotData.EthBlockNumber = *dbSlot.EthBlockNumber
 			}
-			pageData.Slots = append(pageData.Slots, slotData)
-			blockCount++
-			haveBlock = true
-			buildSlotsPageSlotGraph(pageData, slotData, &maxOpenFork, openForks, isFirstPage)
-		}
 
-		if !haveBlock {
-			epoch := utils.EpochOfSlot(slot)
-			slotData := &models.SlotsPageDataSlot{
-				Slot:         slot,
-				Epoch:        epoch,
-				Ts:           utils.SlotToTime(slot),
-				Finalized:    finalized,
-				Scheduled:    epoch >= currentEpoch,
-				Status:       0,
-				Synchronized: syncedEpochs[epoch],
-				Proposer:     slotAssignments[slot],
-				ProposerName: services.GlobalBeaconService.GetValidatorName(slotAssignments[slot]),
-			}
-			if !slotData.Synchronized {
-				allSynchronized = false
-			}
 			pageData.Slots = append(pageData.Slots, slotData)
 			blockCount++
 			buildSlotsPageSlotGraph(pageData, slotData, &maxOpenFork, openForks, isFirstPage)

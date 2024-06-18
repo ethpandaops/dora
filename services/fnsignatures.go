@@ -15,6 +15,7 @@ import (
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/types"
 	"github.com/ethpandaops/dora/utils"
+	"github.com/jmoiron/sqlx"
 	"github.com/sirupsen/logrus"
 )
 
@@ -153,23 +154,14 @@ func (tss *TxSignaturesService) LookupSignatures(sigBytes []types.TxSignatureByt
 		}
 
 		//logger_tss.Infof("starting db transaction (pending sig)")
-		tx, err := db.WriterDb.Beginx()
-		if err != nil {
-			logger_tss.Warnf("error starting db transaction: %v", err)
-		} else {
-			defer tx.Rollback()
-
+		db.RunDBTransaction(func(tx *sqlx.Tx) error {
 			err := db.InsertPendingFunctionSignatures(pendingLookups, tx)
 			if err != nil {
 				logger_tss.Warnf("error saving pending signature: %v", err)
 			}
 
-			//logger_tss.Infof("stopping db transaction (pending sig)")
-			if err := tx.Commit(); err != nil {
-				logger_tss.Warnf("error committing db transaction: %v", err)
-			}
-		}
-
+			return nil
+		})
 	}
 
 	return lookups
@@ -248,12 +240,7 @@ func (tss *TxSignaturesService) processPendingSignatures() {
 	}
 
 	if len(pendingSigBytes) > 0 {
-		tx, err := db.WriterDb.Beginx()
-		if err != nil {
-			logger_tss.Warnf("error starting db transaction: %v", err)
-		} else {
-			defer tx.Rollback()
-
+		err := db.RunDBTransaction(func(tx *sqlx.Tx) error {
 			err := db.DeletePendingFunctionSignatures(pendingSigBytes, tx)
 			if err != nil {
 				logger_tss.Warnf("error deleting pending signature: %v", err)
@@ -272,9 +259,10 @@ func (tss *TxSignaturesService) processPendingSignatures() {
 				}
 			}
 
-			if err := tx.Commit(); err != nil {
-				logger_tss.Warnf("error committing db transaction: %v", err)
-			}
+			return nil
+		})
+		if err != nil {
+			logger_tss.Warnf("db transaction failed: %v", err)
 		}
 	}
 }

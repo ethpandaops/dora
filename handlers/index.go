@@ -246,15 +246,11 @@ func buildIndexPageRecentEpochsData(pageData *models.IndexPageData, currentEpoch
 
 func buildIndexPageRecentBlocksData(pageData *models.IndexPageData, currentSlot uint64, recentBlockCount int) {
 	pageData.RecentBlocks = make([]*models.IndexPageDataBlocks, 0)
-	blocksData := services.GlobalBeaconService.GetDbBlocks(uint64(currentSlot), int32(recentBlockCount), false)
+	blocksData := services.GlobalBeaconService.GetDbBlocks(uint64(currentSlot), int32(recentBlockCount), false, false)
 	for i := 0; i < len(blocksData); i++ {
 		blockData := blocksData[i]
 		if blockData == nil {
 			continue
-		}
-		blockStatus := 1
-		if blockData.Orphaned == 1 {
-			blockStatus = 2
 		}
 		blockModel := &models.IndexPageDataBlocks{
 			Epoch:        utils.EpochOfSlot(blockData.Slot),
@@ -262,7 +258,7 @@ func buildIndexPageRecentBlocksData(pageData *models.IndexPageData, currentSlot 
 			Ts:           utils.SlotToTime(blockData.Slot),
 			Proposer:     blockData.Proposer,
 			ProposerName: services.GlobalBeaconService.GetValidatorName(blockData.Proposer),
-			Status:       uint64(blockStatus),
+			Status:       uint64(blockData.Status),
 			BlockRoot:    blockData.Root,
 		}
 		if blockData.EthBlockNumber != nil {
@@ -285,14 +281,9 @@ func buildIndexPageRecentSlotsData(pageData *models.IndexPageData, firstSlot uin
 		lastSlot = 0
 	}
 
-	// get slot assignments
-	firstEpoch := utils.EpochOfSlot(firstSlot)
-	lastEpoch := utils.EpochOfSlot(lastSlot)
-	slotAssignments, _ := services.GlobalBeaconService.GetProposerAssignments(firstEpoch, lastEpoch)
-
 	// load slots
 	pageData.RecentSlots = make([]*models.IndexPageDataSlots, 0)
-	dbSlots := services.GlobalBeaconService.GetDbBlocksForSlots(uint64(firstSlot), uint32(slotLimit), true)
+	dbSlots := services.GlobalBeaconService.GetDbBlocksForSlots(uint64(firstSlot), uint32(slotLimit), true, true)
 	dbIdx := 0
 	dbCnt := len(dbSlots)
 	blockCount := uint64(0)
@@ -300,20 +291,15 @@ func buildIndexPageRecentSlotsData(pageData *models.IndexPageData, firstSlot uin
 	maxOpenFork := 0
 	for slotIdx := int64(firstSlot); slotIdx >= int64(lastSlot); slotIdx-- {
 		slot := uint64(slotIdx)
-		haveBlock := false
 		for dbIdx < dbCnt && dbSlots[dbIdx] != nil && dbSlots[dbIdx].Slot == slot {
 			dbSlot := dbSlots[dbIdx]
 			dbIdx++
-			blockStatus := uint64(1)
-			if dbSlot.Orphaned == 1 {
-				blockStatus = 2
-			}
 
 			slotData := &models.IndexPageDataSlots{
 				Slot:         slot,
 				Epoch:        utils.EpochOfSlot(slot),
 				Ts:           utils.SlotToTime(slot),
-				Status:       blockStatus,
+				Status:       uint64(dbSlot.Status),
 				Proposer:     dbSlot.Proposer,
 				ProposerName: services.GlobalBeaconService.GetValidatorName(dbSlot.Proposer),
 				BlockRoot:    dbSlot.Root,
@@ -322,31 +308,14 @@ func buildIndexPageRecentSlotsData(pageData *models.IndexPageData, firstSlot uin
 			}
 			pageData.RecentSlots = append(pageData.RecentSlots, slotData)
 			blockCount++
-			haveBlock = true
-			buildIndexPageSlotGraph(pageData, slotData, &maxOpenFork, openForks)
-		}
-
-		if !haveBlock {
-			epoch := utils.EpochOfSlot(slot)
-			slotData := &models.IndexPageDataSlots{
-				Slot:         slot,
-				Epoch:        epoch,
-				Ts:           utils.SlotToTime(slot),
-				Status:       0,
-				Proposer:     slotAssignments[slot],
-				ProposerName: services.GlobalBeaconService.GetValidatorName(slotAssignments[slot]),
-				ForkGraph:    make([]*models.IndexPageDataForkGraph, 0),
-			}
-			pageData.RecentSlots = append(pageData.RecentSlots, slotData)
-			blockCount++
-			buildIndexPageSlotGraph(pageData, slotData, &maxOpenFork, openForks)
+			buildIndexPageSlotGraph(slotData, &maxOpenFork, openForks)
 		}
 	}
 	pageData.RecentSlotCount = uint64(blockCount)
 	pageData.ForkTreeWidth = (maxOpenFork * 20) + 20
 }
 
-func buildIndexPageSlotGraph(pageData *models.IndexPageData, slotData *models.IndexPageDataSlots, maxOpenFork *int, openForks map[int][]byte) {
+func buildIndexPageSlotGraph(slotData *models.IndexPageDataSlots, maxOpenFork *int, openForks map[int][]byte) {
 	// fork tree
 	var forkGraphIdx int = -1
 	var freeForkIdx int = -1

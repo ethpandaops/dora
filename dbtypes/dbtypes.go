@@ -10,32 +10,43 @@ type ValidatorName struct {
 	Name  string `db:"name"`
 }
 
-type Block struct {
-	Root                  []byte  `db:"root"`
-	Slot                  uint64  `db:"slot"`
-	ParentRoot            []byte  `db:"parent_root"`
-	StateRoot             []byte  `db:"state_root"`
-	Orphaned              uint8   `db:"orphaned"`
-	Proposer              uint64  `db:"proposer"`
-	Graffiti              []byte  `db:"graffiti"`
-	GraffitiText          string  `db:"graffiti_text"`
-	AttestationCount      uint64  `db:"attestation_count"`
-	DepositCount          uint64  `db:"deposit_count"`
-	ExitCount             uint64  `db:"exit_count"`
-	WithdrawCount         uint64  `db:"withdraw_count"`
-	WithdrawAmount        uint64  `db:"withdraw_amount"`
-	AttesterSlashingCount uint64  `db:"attester_slashing_count"`
-	ProposerSlashingCount uint64  `db:"proposer_slashing_count"`
-	BLSChangeCount        uint64  `db:"bls_change_count"`
-	EthTransactionCount   uint64  `db:"eth_transaction_count"`
-	EthBlockNumber        *uint64 `db:"eth_block_number"`
-	EthBlockHash          []byte  `db:"eth_block_hash"`
-	SyncParticipation     float32 `db:"sync_participation"`
+type SlotStatus uint8
+
+const (
+	Missing SlotStatus = iota
+	Canonical
+	Orphaned
+)
+
+type SlotHeader struct {
+	Slot     uint64     `db:"slot"`
+	Proposer uint64     `db:"proposer"`
+	Status   SlotStatus `db:"status"`
 }
 
-type BlockOrphanedRef struct {
-	Root     []byte `db:"root"`
-	Orphaned bool   `db:"orphaned"`
+type Slot struct {
+	Slot                  uint64     `db:"slot"`
+	Proposer              uint64     `db:"proposer"`
+	Status                SlotStatus `db:"status"`
+	Root                  []byte     `db:"root"`
+	ParentRoot            []byte     `db:"parent_root"`
+	StateRoot             []byte     `db:"state_root"`
+	Graffiti              []byte     `db:"graffiti"`
+	GraffitiText          string     `db:"graffiti_text"`
+	AttestationCount      uint64     `db:"attestation_count"`
+	DepositCount          uint64     `db:"deposit_count"`
+	ExitCount             uint64     `db:"exit_count"`
+	WithdrawCount         uint64     `db:"withdraw_count"`
+	WithdrawAmount        uint64     `db:"withdraw_amount"`
+	AttesterSlashingCount uint64     `db:"attester_slashing_count"`
+	ProposerSlashingCount uint64     `db:"proposer_slashing_count"`
+	BLSChangeCount        uint64     `db:"bls_change_count"`
+	EthTransactionCount   uint64     `db:"eth_transaction_count"`
+	EthBlockNumber        *uint64    `db:"eth_block_number"`
+	EthBlockHash          []byte     `db:"eth_block_hash"`
+	EthBlockExtra         []byte     `db:"eth_block_extra"`
+	EthBlockExtraText     string     `db:"eth_block_extra_text"`
+	SyncParticipation     float32    `db:"sync_participation"`
 }
 
 type Epoch struct {
@@ -115,4 +126,72 @@ type TxUnknownFunctionSignature struct {
 type TxPendingFunctionSignature struct {
 	Bytes     []byte `db:"bytes"`
 	QueueTime uint64 `db:"queuetime"`
+}
+
+type MevBlock struct {
+	SlotNumber     uint64 `db:"slot_number"`
+	BlockHash      []byte `db:"block_hash"`
+	BlockNumber    uint64 `db:"block_number"`
+	BuilderPubkey  []byte `db:"builder_pubkey"`
+	ProposerIndex  uint64 `db:"proposer_index"`
+	Proposed       uint8  `db:"proposed"`
+	SeenbyRelays   uint64 `db:"seenby_relays"`
+	FeeRecipient   []byte `db:"fee_recipient"`
+	TxCount        uint64 `db:"tx_count"`
+	GasUsed        uint64 `db:"gas_used"`
+	BlockValue     []byte `db:"block_value"`
+	BlockValueGwei uint64 `db:"block_value_gwei"`
+}
+
+type DepositTx struct {
+	Index                 uint64 `db:"deposit_index"`
+	BlockNumber           uint64 `db:"block_number"`
+	BlockTime             uint64 `db:"block_time"`
+	BlockRoot             []byte `db:"block_root"`
+	PublicKey             []byte `db:"publickey"`
+	WithdrawalCredentials []byte `db:"withdrawalcredentials"`
+	Amount                uint64 `db:"amount"`
+	Signature             []byte `db:"signature"`
+	ValidSignature        bool   `db:"valid_signature"`
+	Orphaned              bool   `db:"orphaned"`
+	TxHash                []byte `db:"tx_hash"`
+	TxSender              []byte `db:"tx_sender"`
+	TxTarget              []byte `db:"tx_target"`
+}
+
+type Deposit struct {
+	Index                 *uint64 `db:"deposit_index"`
+	SlotNumber            uint64  `db:"slot_number"`
+	SlotIndex             uint64  `db:"slot_index"`
+	SlotRoot              []byte  `db:"slot_root"`
+	Orphaned              bool    `db:"orphaned"`
+	PublicKey             []byte  `db:"publickey"`
+	WithdrawalCredentials []byte  `db:"withdrawalcredentials"`
+	Amount                uint64  `db:"amount"`
+}
+
+type VoluntaryExit struct {
+	SlotNumber     uint64 `db:"slot_number"`
+	SlotIndex      uint64 `db:"slot_index"`
+	SlotRoot       []byte `db:"slot_root"`
+	Orphaned       bool   `db:"orphaned"`
+	ValidatorIndex uint64 `db:"validator"`
+}
+
+type SlashingReason uint8
+
+const (
+	UnspecifiedSlashing SlashingReason = iota
+	ProposerSlashing
+	AttesterSlashing
+)
+
+type Slashing struct {
+	SlotNumber     uint64         `db:"slot_number"`
+	SlotIndex      uint64         `db:"slot_index"`
+	SlotRoot       []byte         `db:"slot_root"`
+	Orphaned       bool           `db:"orphaned"`
+	ValidatorIndex uint64         `db:"validator"`
+	SlasherIndex   uint64         `db:"slasher"`
+	Reason         SlashingReason `db:"reason"`
 }

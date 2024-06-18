@@ -10,20 +10,21 @@ import (
 )
 
 type CacheBlock struct {
-	Root    []byte
-	Slot    uint64
-	mutex   sync.RWMutex
-	seenMap map[uint16]bool
-	isInDb  bool
-	header  *phase0.SignedBeaconBlockHeader
-	block   *spec.VersionedSignedBeaconBlock
-	Refs    struct {
+	Root              []byte
+	Slot              uint64
+	mutex             sync.RWMutex
+	seenMap           map[uint16]bool
+	isInUnfinalizedDb bool
+	isInFinalizedDb   bool
+	header            *phase0.SignedBeaconBlockHeader
+	block             *spec.VersionedSignedBeaconBlock
+	Refs              struct {
 		ExecutionHash   []byte
 		ExecutionNumber uint64
 	}
 
 	dbBlockMutex sync.Mutex
-	dbBlockCache *dbtypes.Block
+	dbBlockCache *dbtypes.Slot
 }
 
 func (cache *indexerCache) getCachedBlock(root []byte) *CacheBlock {
@@ -144,7 +145,7 @@ func (block *CacheBlock) GetBlockBody() *spec.VersionedSignedBeaconBlock {
 	if block.block != nil {
 		return block.block
 	}
-	if !block.isInDb {
+	if !block.isInUnfinalizedDb {
 		return nil
 	}
 
@@ -170,5 +171,5 @@ func (block *CacheBlock) IsCanonical(indexer *Indexer, head []byte) bool {
 }
 
 func (block *CacheBlock) IsReady() bool {
-	return block.header != nil && (block.block != nil || block.isInDb)
+	return block.header != nil && (block.block != nil || block.isInUnfinalizedDb)
 }

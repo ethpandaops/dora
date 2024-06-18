@@ -46,7 +46,7 @@ func main() {
 	if err != nil {
 		logger.Fatalf("error initializing db schema: %v", err)
 	}
-	err = services.StartBeaconService()
+	err = services.StartChainService()
 	if err != nil {
 		logger.Fatalf("error starting beacon service: %v", err)
 	}
@@ -90,10 +90,17 @@ func startFrontend() {
 	router.HandleFunc("/slots/filtered", handlers.SlotsFiltered).Methods("GET")
 	router.HandleFunc("/slot/{slotOrHash}", handlers.Slot).Methods("GET")
 	router.HandleFunc("/slot/{root}/blob/{commitment}", handlers.SlotBlob).Methods("GET")
+	router.HandleFunc("/mev/blocks", handlers.MevBlocks).Methods("GET")
+
 	router.HandleFunc("/search", handlers.Search).Methods("GET")
 	router.HandleFunc("/search/{type}", handlers.SearchAhead).Methods("GET")
 	router.HandleFunc("/validators", handlers.Validators).Methods("GET")
 	router.HandleFunc("/validators/activity", handlers.ValidatorsActivity).Methods("GET")
+	router.HandleFunc("/validators/deposits", handlers.Deposits).Methods("GET")
+	router.HandleFunc("/validators/initiated_deposits", handlers.InitiatedDeposits).Methods("GET")
+	router.HandleFunc("/validators/included_deposits", handlers.IncludedDeposits).Methods("GET")
+	router.HandleFunc("/validators/voluntary_exits", handlers.VoluntaryExits).Methods("GET")
+	router.HandleFunc("/validators/slashings", handlers.Slashings).Methods("GET")
 	router.HandleFunc("/validator/{idxOrPubKey}", handlers.Validator).Methods("GET")
 	router.HandleFunc("/validator/{index}/slots", handlers.ValidatorSlots).Methods("GET")
 

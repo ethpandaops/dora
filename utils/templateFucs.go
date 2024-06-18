@@ -50,9 +50,12 @@ func GetTemplateFuncs() template.FuncMap {
 		"ethBlockLink":               FormatEthBlockLink,
 		"ethBlockHashLink":           FormatEthBlockHashLink,
 		"ethAddressLink":             FormatEthAddressLink,
+		"ethTransactionLink":         FormatEthTransactionLink,
+		"formatEthAddress":           FormatEthAddress,
 		"formatValidator":            FormatValidator,
 		"formatValidatorWithIndex":   FormatValidatorWithIndex,
 		"formatSlashedValidator":     FormatSlashedValidator,
+		"formatWithdawalCredentials": FormatWithdawalCredentials,
 		"formatRecentTimeShort":      FormatRecentTimeShort,
 		"formatGraffiti":             FormatGraffiti,
 	}

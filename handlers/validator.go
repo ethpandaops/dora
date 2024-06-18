@@ -171,11 +171,11 @@ func buildValidatorPageData(validatorIndex uint64) (*models.ValidatorPageData, t
 		WithMissing:   1,
 	}, 0, 10)
 	for _, blockData := range blocksData {
-		blockStatus := 1
+		var blockStatus dbtypes.SlotStatus
 		if blockData.Block == nil {
-			blockStatus = 0
-		} else if blockData.Block.Orphaned == 1 {
-			blockStatus = 2
+			blockStatus = dbtypes.Missing
+		} else {
+			blockStatus = blockData.Block.Status
 		}
 		blockEntry := models.ValidatorPageDataBlocks{
 			Epoch:  utils.EpochOfSlot(blockData.Slot),

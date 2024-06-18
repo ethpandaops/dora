@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
+	"github.com/attestantio/go-eth2-client/spec"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 
 	"github.com/ethpandaops/dora/db"
@@ -22,20 +23,21 @@ type EpochStats struct {
 	seenCount           uint64
 	isInDb              bool
 	dutiesMutex         sync.RWMutex
-	validatorsMutex     sync.RWMutex
 	proposerAssignments map[uint64]uint64
 	attestorAssignments map[string][]uint64
 	syncAssignments     []uint64
-	validatorStats      *EpochValidatorStats
+	stateStatsMutex     sync.RWMutex
+	stateStats          *EpochStateStats
 	dbEpochMutex        sync.Mutex
 	dbEpochCache        *dbtypes.Epoch
 }
 
-type EpochValidatorStats struct {
+type EpochStateStats struct {
 	ValidatorCount    uint64
 	ValidatorBalance  uint64
 	EligibleAmount    uint64
 	ValidatorBalances map[uint64]uint64
+	DepositIndex      uint64
 }
 
 func (cache *indexerCache) getEpochStats(epoch uint64, dependendRoot []byte) *EpochStats {
@@ -106,11 +108,11 @@ func (epochStats *EpochStats) IsReady() bool {
 	return true
 }
 
-func (epochStats *EpochStats) IsValidatorsReady() bool {
-	if !epochStats.validatorsMutex.TryRLock() {
+func (epochStats *EpochStats) IsStateStatsReady() bool {
+	if !epochStats.stateStatsMutex.TryRLock() {
 		return false
 	}
-	epochStats.validatorsMutex.RUnlock()
+	epochStats.stateStatsMutex.RUnlock()
 	return true
 }
 
@@ -154,7 +156,7 @@ func (epochStats *EpochStats) TryGetSyncAssignments() []uint64 {
 	return epochStats.syncAssignments
 }
 
-func (client *IndexerClient) ensureEpochStats(epoch uint64, head []byte) error {
+func (client *ConsensusClient) ensureEpochStats(epoch uint64, head []byte) error {
 	var dependentRoot []byte
 	var proposerRsp *rpc.ProposerDuties
 	firstBlock := client.indexerCache.getFirstCanonicalBlock(epoch, head)
@@ -211,7 +213,7 @@ func (client *IndexerClient) ensureEpochStats(epoch uint64, head []byte) error {
 	return nil
 }
 
-func (epochStats *EpochStats) ensureEpochStatsLazy(client *IndexerClient, proposerRsp *rpc.ProposerDuties) error {
+func (epochStats *EpochStats) ensureEpochStatsLazy(client *ConsensusClient, proposerRsp *rpc.ProposerDuties) error {
 	epochStats.dutiesMutex.Lock()
 	defer epochStats.dutiesMutex.Unlock()
 
@@ -282,7 +284,7 @@ func (epochStats *EpochStats) ensureEpochStatsLazy(client *IndexerClient, propos
 	}
 
 	// load validators
-	if epochStats.validatorStats == nil {
+	if epochStats.stateStats == nil {
 		go epochStats.ensureValidatorStatsLazy(client, epochStats.dependentStateRef)
 	}
 
@@ -332,7 +334,7 @@ func (epochStats *EpochStats) ensureEpochStatsLazy(client *IndexerClient, propos
 	return nil
 }
 
-func (epochStats *EpochStats) ensureValidatorStatsLazy(client *IndexerClient, stateRef string) {
+func (epochStats *EpochStats) ensureValidatorStatsLazy(client *ConsensusClient, stateRef string) {
 	defer utils.HandleSubroutinePanic("ensureValidatorStatsLazy")
 	if client.skipValidators {
 		return
@@ -340,34 +342,58 @@ func (epochStats *EpochStats) ensureValidatorStatsLazy(client *IndexerClient, st
 	epochStats.loadValidatorStats(client, stateRef)
 }
 
-func (epochStats *EpochStats) loadValidatorStats(client *IndexerClient, stateRef string) {
-	epochStats.validatorsMutex.Lock()
-	defer epochStats.validatorsMutex.Unlock()
-	if epochStats.validatorStats != nil {
+func (epochStats *EpochStats) loadValidatorStats(client *ConsensusClient, stateRef string) {
+	epochStats.stateStatsMutex.Lock()
+	defer epochStats.stateStatsMutex.Unlock()
+	if epochStats.stateStats != nil {
 		return
 	}
 
 	// `lock` concurrency limit (limit concurrent get validators calls)
 	client.indexerCache.validatorLoadingLimiter <- 1
 
-	var epochValidators map[phase0.ValidatorIndex]*v1.Validator
+	var epochState *spec.VersionedBeaconState
 	var err error
 	if epochStats.Epoch == 0 {
-		epochValidators, err = client.rpcClient.GetStateValidators("genesis")
+		epochState, err = client.rpcClient.GetState("genesis")
 	} else {
-		epochValidators, err = client.rpcClient.GetStateValidators(stateRef)
+		epochState, err = client.rpcClient.GetState(stateRef)
 	}
 
 	// `unlock` concurrency limit
 	<-client.indexerCache.validatorLoadingLimiter
 
 	if err != nil {
-		logger.Warnf("error fetching epoch %v validators: %v", epochStats.Epoch, err)
+		logger.Warnf("error fetching epoch %v state: %v", epochStats.Epoch, err)
 		return
 	}
+
+	validatorList, err := epochState.Validators()
+	if err != nil {
+		logger.Warnf("error getting validators from epoch %v state: %v", epochStats.Epoch, err)
+		return
+	}
+	validatorBalances, err := epochState.ValidatorBalances()
+	if err != nil {
+		logger.Warnf("error getting validator balances from epoch %v state: %v", epochStats.Epoch, err)
+		return
+	}
+
+	epochValidators := map[phase0.ValidatorIndex]*v1.Validator{}
+	for idx := range validatorList {
+		state := v1.ValidatorToState(validatorList[idx], &validatorBalances[idx], phase0.Epoch(epochStats.Epoch), 18446744073709551615)
+		epochValidators[phase0.ValidatorIndex(idx)] = &v1.Validator{
+			Index:     phase0.ValidatorIndex(idx),
+			Balance:   validatorBalances[idx],
+			Validator: validatorList[idx],
+			Status:    state,
+		}
+	}
+
 	client.indexerCache.setLastValidators(epochStats.Epoch, epochValidators)
-	validatorStats := &EpochValidatorStats{
+	validatorStats := &EpochStateStats{
 		ValidatorBalances: make(map[uint64]uint64),
+		DepositIndex:      getDepositIndexFromState(epochState),
 	}
 	for _, validator := range epochValidators {
 		validatorStats.ValidatorBalances[uint64(validator.Index)] = uint64(validator.Validator.EffectiveBalance)
@@ -377,5 +403,13 @@ func (epochStats *EpochStats) loadValidatorStats(client *IndexerClient, stateRef
 			validatorStats.EligibleAmount += uint64(validator.Validator.EffectiveBalance)
 		}
 	}
-	epochStats.validatorStats = validatorStats
+	epochStats.stateStats = validatorStats
+}
+
+func (epochStats *EpochStats) GetInitialDepositIndex() *uint64 {
+	if epochStats.stateStats == nil {
+		return nil
+	}
+	depositIndex := epochStats.stateStats.DepositIndex
+	return &depositIndex
 }

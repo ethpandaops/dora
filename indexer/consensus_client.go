@@ -8,12 +8,13 @@ import (
 
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
+	"github.com/ethereum/go-ethereum/common"
 
 	"github.com/ethpandaops/dora/rpc"
 	"github.com/ethpandaops/dora/utils"
 )
 
-type IndexerClient struct {
+type ConsensusClient struct {
 	clientIdx          uint16
 	clientName         string
 	rpcClient          *rpc.BeaconClient
@@ -40,8 +41,8 @@ type IndexerClient struct {
 	lastJustifiedRoot  []byte
 }
 
-func newIndexerClient(clientIdx uint16, clientName string, rpcClient *rpc.BeaconClient, indexerCache *indexerCache, archive bool, priority int, skipValidators bool) *IndexerClient {
-	client := IndexerClient{
+func newConsensusClient(clientIdx uint16, clientName string, rpcClient *rpc.BeaconClient, indexerCache *indexerCache, archive bool, priority int, skipValidators bool) *ConsensusClient {
+	client := ConsensusClient{
 		clientIdx:          clientIdx,
 		clientName:         clientName,
 		rpcClient:          rpcClient,
@@ -54,33 +55,33 @@ func newIndexerClient(clientIdx uint16, clientName string, rpcClient *rpc.Beacon
 		lastFinalizedEpoch: -1,
 		lastJustifiedEpoch: -1,
 	}
-	go client.runIndexerClientLoop()
+	go client.runConsensusClientLoop()
 	return &client
 }
 
-func (client *IndexerClient) GetIndex() uint16 {
+func (client *ConsensusClient) GetIndex() uint16 {
 	return client.clientIdx
 }
 
-func (client *IndexerClient) GetName() string {
+func (client *ConsensusClient) GetName() string {
 	return client.clientName
 }
 
-func (client *IndexerClient) GetVersion() string {
+func (client *ConsensusClient) GetVersion() string {
 	return client.versionStr
 }
 
-func (client *IndexerClient) GetRpcClient() *rpc.BeaconClient {
+func (client *ConsensusClient) GetRpcClient() *rpc.BeaconClient {
 	return client.rpcClient
 }
 
-func (client *IndexerClient) GetLastHead() (int64, []byte, time.Time) {
+func (client *ConsensusClient) GetLastHead() (int64, []byte, time.Time) {
 	client.cacheMutex.RLock()
 	defer client.cacheMutex.RUnlock()
 	return client.lastHeadSlot, client.lastHeadRoot, client.lastHeadRefresh
 }
 
-func (client *IndexerClient) GetStatus() string {
+func (client *ConsensusClient) GetStatus() string {
 	if client.isSynchronizing {
 		return "synchronizing"
 	} else if client.isOptimistic {
@@ -92,7 +93,7 @@ func (client *IndexerClient) GetStatus() string {
 	}
 }
 
-func (client *IndexerClient) GetLastClientError() string {
+func (client *ConsensusClient) GetLastClientError() string {
 	client.cacheMutex.RLock()
 	defer client.cacheMutex.RUnlock()
 	if client.lastClientError == nil {
@@ -101,11 +102,11 @@ func (client *IndexerClient) GetLastClientError() string {
 	return client.lastClientError.Error()
 }
 
-func (client *IndexerClient) runIndexerClientLoop() {
-	defer utils.HandleSubroutinePanic("runIndexerClientLoop")
+func (client *ConsensusClient) runConsensusClientLoop() {
+	defer utils.HandleSubroutinePanic("runConsensusClientLoop")
 
 	for {
-		err := client.checkIndexerClient()
+		err := client.checkClient()
 
 		if err == nil {
 			genesisTime := time.Unix(int64(utils.Config.Chain.GenesisTimestamp), 0)
@@ -128,7 +129,7 @@ func (client *IndexerClient) runIndexerClientLoop() {
 				continue
 			}
 
-			err = client.runIndexerClient()
+			err = client.processClientEvents()
 		}
 		if err == nil {
 			return
@@ -148,15 +149,15 @@ func (client *IndexerClient) runIndexerClientLoop() {
 		}
 
 		if skipLog {
-			logger.WithField("client", client.clientName).Debugf("indexer client error: %v, retrying in %v sec...", err, waitTime)
+			logger.WithField("client", client.clientName).Debugf("consensus client error: %v, retrying in %v sec...", err, waitTime)
 		} else {
-			logger.WithField("client", client.clientName).Warnf("indexer client error: %v, retrying in %v sec...", err, waitTime)
+			logger.WithField("client", client.clientName).Warnf("consensus client error: %v, retrying in %v sec...", err, waitTime)
 		}
 		time.Sleep(time.Duration(waitTime) * time.Second)
 	}
 }
 
-func (client *IndexerClient) checkIndexerClient() error {
+func (client *ConsensusClient) checkClient() error {
 	isOptimistic := false
 	isSynchronizing := false
 	defer func() {
@@ -208,7 +209,7 @@ func (client *IndexerClient) checkIndexerClient() error {
 	return nil
 }
 
-func (client *IndexerClient) runIndexerClient() error {
+func (client *ConsensusClient) processClientEvents() error {
 	// get latest header
 	latestHeader, err := client.rpcClient.GetLatestBlockHead()
 	if err != nil {
@@ -305,7 +306,7 @@ func (client *IndexerClient) runIndexerClient() error {
 	}
 }
 
-func (client *IndexerClient) refreshFinalityCheckpoints() (uint64, error) {
+func (client *ConsensusClient) refreshFinalityCheckpoints() (uint64, error) {
 	finalizedCheckpoints, err := client.rpcClient.GetFinalityCheckpoints()
 	if err != nil {
 		return 0, err
@@ -322,7 +323,7 @@ func (client *IndexerClient) refreshFinalityCheckpoints() (uint64, error) {
 	return finalizedSlot, nil
 }
 
-func (client *IndexerClient) prefillCache(finalizedSlot uint64, latestHeader *v1.BeaconBlockHeader) (uint64, error) {
+func (client *ConsensusClient) prefillCache(finalizedSlot uint64, latestHeader *v1.BeaconBlockHeader) (uint64, error) {
 	latestHeaderSlot := uint64(latestHeader.Header.Message.Slot)
 	currentClockEpoch := utils.TimeToEpoch(time.Now())
 	currentBlock, isNewBlock := client.indexerCache.createOrGetCachedBlock(latestHeader.Root[:], latestHeaderSlot)
@@ -341,6 +342,10 @@ func (client *IndexerClient) prefillCache(finalizedSlot uint64, latestHeader *v1
 		finalizedCheckpoint := (client.indexerCache.finalizedEpoch + 1) * int64(utils.Config.Chain.Config.SlotsPerEpoch)
 		if finalizedCheckpoint > int64(finalizedSlot) {
 			finalizedSlot = uint64(finalizedCheckpoint)
+		}
+		prefillUntilSlot := finalizedSlot
+		if prefillUntilSlot >= utils.Config.Chain.Config.SlotsPerEpoch {
+			prefillUntilSlot -= utils.Config.Chain.Config.SlotsPerEpoch
 		}
 
 		var parentHead *phase0.SignedBeaconBlockHeader
@@ -373,19 +378,23 @@ func (client *IndexerClient) prefillCache(finalizedSlot uint64, latestHeader *v1
 		client.ensureBlock(parentBlock, parentHead)
 		earliestSlot = parentSlot
 
-		if parentSlot <= finalizedSlot {
-			logger.WithField("client", client.clientName).Debugf("prefill cache: reached finalized slot %v:%v [0x%x]", utils.EpochOfSlot(parentSlot), parentSlot, parentRoot)
+		if parentSlot <= prefillUntilSlot {
+			logger.WithField("client", client.clientName).Infof("prefill cache: reached finalized slot %v:%v [0x%x]", utils.EpochOfSlot(parentSlot), parentSlot, parentRoot)
 			break
 		}
 		if parentSlot == 0 {
-			logger.WithField("client", client.clientName).Debugf("prefill cache: reached gensis slot [0x%x]", parentRoot)
+			logger.WithField("client", client.clientName).Infof("prefill cache: reached gensis slot [0x%x]", parentRoot)
 			break
 		}
 		if int64(utils.EpochOfSlot(parentSlot)) < currentClockEpoch-int64(client.indexerCache.indexer.inMemoryEpochs) {
-			logger.WithField("client", client.clientName).Debugf("prefill cache: reached end of cache period [%v]", currentClockEpoch-int64(client.indexerCache.indexer.inMemoryEpochs))
+			logger.WithField("client", client.clientName).Infof("prefill cache: reached end of cache period [%v]", currentClockEpoch-int64(client.indexerCache.indexer.inMemoryEpochs))
 			break
 		}
 		parentRoot = parentHead.Message.ParentRoot[:]
+		if bytes.Equal(parentRoot, common.FromHex("0x0000000000000000000000000000000000000000000000000000000000000000")) {
+			logger.WithField("client", client.clientName).Infof("prefill cache: reached null root (genesis)")
+			break
+		}
 	}
 
 	// ensure epoch stats for loaded slots
@@ -401,7 +410,7 @@ func (client *IndexerClient) prefillCache(finalizedSlot uint64, latestHeader *v1
 	return earliestEpoch, nil
 }
 
-func (client *IndexerClient) ensureBlock(block *CacheBlock, header *phase0.SignedBeaconBlockHeader) error {
+func (client *ConsensusClient) ensureBlock(block *CacheBlock, header *phase0.SignedBeaconBlockHeader) error {
 	// ensure the cached block is loaded (header & block body), load missing parts
 	block.mutex.Lock()
 	defer block.mutex.Unlock()
@@ -420,13 +429,14 @@ func (client *IndexerClient) ensureBlock(block *CacheBlock, header *phase0.Signe
 		}
 		block.header = header
 	}
-	if block.block == nil && !block.isInDb {
+	if block.block == nil && !block.isInUnfinalizedDb {
 		blockRsp, err := client.rpcClient.GetBlockBodyByBlockroot(block.Root)
 		if err != nil {
 			logger.WithField("client", client.clientName).Warnf("ensure block %v [0x%x] failed (block): %v", block.Slot, block.Root, err)
 			return err
 		}
 		block.block = blockRsp
+		block.parseBlockRefs()
 	}
 
 	// set seen flag
@@ -434,7 +444,7 @@ func (client *IndexerClient) ensureBlock(block *CacheBlock, header *phase0.Signe
 	return nil
 }
 
-func (client *IndexerClient) pollLatestBlocks() error {
+func (client *ConsensusClient) pollLatestBlocks() error {
 	// get latest header
 	latestHeader, err := client.rpcClient.GetLatestBlockHead()
 	if err != nil {
@@ -466,7 +476,7 @@ func (client *IndexerClient) pollLatestBlocks() error {
 	return nil
 }
 
-func (client *IndexerClient) ensureParentBlocks(currentBlock *CacheBlock) error {
+func (client *ConsensusClient) ensureParentBlocks(currentBlock *CacheBlock) error {
 	// walk backwards and load all blocks until we reach a block that is marked as seen by this client or is smaller than finalized
 	parentRoot := currentBlock.GetParentRoot()
 	for {
@@ -517,11 +527,15 @@ func (client *IndexerClient) ensureParentBlocks(currentBlock *CacheBlock) error 
 			break
 		}
 		parentRoot = parentHead.Message.ParentRoot[:]
+		if bytes.Equal(parentRoot, common.FromHex("0x0000000000000000000000000000000000000000000000000000000000000000")) {
+			logger.WithField("client", client.clientName).Infof("backfill cache: reached null root (genesis)")
+			break
+		}
 	}
 	return nil
 }
 
-func (client *IndexerClient) setHeadBlock(root []byte, slot uint64) error {
+func (client *ConsensusClient) setHeadBlock(root []byte, slot uint64) error {
 	client.cacheMutex.Lock()
 	client.lastHeadRefresh = time.Now()
 	if bytes.Equal(client.lastHeadRoot, root) {
@@ -535,7 +549,7 @@ func (client *IndexerClient) setHeadBlock(root []byte, slot uint64) error {
 	return nil
 }
 
-func (client *IndexerClient) processBlockEvent(evt *v1.BlockEvent) error {
+func (client *ConsensusClient) processBlockEvent(evt *v1.BlockEvent) error {
 	currentBlock, isNewBlock := client.indexerCache.createOrGetCachedBlock(evt.Block[:], uint64(evt.Slot))
 	if isNewBlock {
 		logger.WithField("client", client.clientName).Infof("received block %v:%v [0x%x] stream", utils.EpochOfSlot(currentBlock.Slot), currentBlock.Slot, currentBlock.Root)
@@ -558,10 +572,22 @@ func (client *IndexerClient) processBlockEvent(evt *v1.BlockEvent) error {
 	return nil
 }
 
-func (client *IndexerClient) processFinalizedEvent(evt *v1.FinalizedCheckpointEvent) error {
-	time.Sleep(100 * time.Millisecond)
-	client.refreshFinalityCheckpoints()
-	logger.WithField("client", client.clientName).Debugf("received finalization_checkpoint event: finalized %v [0x%x], justified %v [0x%x]", client.lastFinalizedEpoch, client.lastFinalizedRoot, client.lastJustifiedEpoch, client.lastJustifiedRoot)
-	client.indexerCache.setFinalizedHead(client.lastFinalizedEpoch, client.lastFinalizedRoot, client.lastJustifiedEpoch, client.lastJustifiedRoot)
+func (client *ConsensusClient) processFinalizedEvent(evt *v1.FinalizedCheckpointEvent) error {
+	go func() {
+		retry := 0
+		for ; retry < 20; retry++ {
+			client.refreshFinalityCheckpoints()
+
+			if bytes.Equal(client.lastFinalizedRoot, evt.Block[:]) {
+				break
+			}
+
+			time.Sleep(3 * time.Second)
+		}
+
+		logger.WithField("client", client.clientName).Infof("received finalization_checkpoint event: finalized %v [0x%x], justified %v [0x%x], retry: %v", client.lastFinalizedEpoch, client.lastFinalizedRoot, client.lastJustifiedEpoch, client.lastJustifiedRoot, retry)
+		client.indexerCache.setFinalizedHead(client.lastFinalizedEpoch, client.lastFinalizedRoot, client.lastJustifiedEpoch, client.lastJustifiedRoot)
+	}()
+
 	return nil
 }

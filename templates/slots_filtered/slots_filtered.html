@@ -32,6 +32,14 @@
                 </div>
                 <div class="row mt-1">
                   <div class="col-sm-12 col-md-6 col-lg-4">
+                    EL Extra Data
+                  </div>
+                  <div class="col-sm-12 col-md-6 col-lg-8">
+                    <input name="f.extra" type="text" class="form-control" placeholder="EL Extra Data" aria-label="EL Extra Data" aria-describedby="basic-addon1" value="{{ .FilterExtraData }}">
+                  </div>
+                </div>
+                <div class="row mt-1">
+                  <div class="col-sm-12 col-md-6 col-lg-4">
                     Proposer Index
                   </div>
                   <div class="col-sm-12 col-md-6 col-lg-8">
@@ -79,7 +87,7 @@
 
           </div>
           <div class="row mt-3">
-            <div class="col-8 col-md-6 table-pagesize">
+            <div class="col-6 col-md-6 table-pagesize">
               <label class="px-2">
                 <span>Show </span>
                 <select name="c" aria-controls="slots" class="custom-select custom-select-sm form-control form-control-sm">
@@ -92,7 +100,24 @@
                 <span> entries per page</span>
               </label>
             </div>
-            <div class="col-4 col-md-6">
+            <div class="col-4 col-md-4">
+              <input type="hidden" id="displayColumnsField" />
+              <select name="d" multiple="multiple" class="filter-multiselect">
+                <option value="1" {{ if .DisplayEpoch }}selected{{ end }}>Epoch</option>
+                <option value="2" {{ if .DisplaySlot }}selected{{ end }}>Slot</option>
+                <option value="3" {{ if .DisplayStatus }}selected{{ end }}>Status</option>
+                <option value="4" {{ if .DisplayTime }}selected{{ end }}>Time</option>
+                <option value="5" {{ if .DisplayProposer }}selected{{ end }}>Proposer</option>
+                <option value="6" {{ if .DisplayAttestations }}selected{{ end }}>Attestations</option>
+                <option value="7" {{ if .DisplayDeposits }}selected{{ end }}>Deposits/Exits</option>
+                <option value="8" {{ if .DisplaySlashings }}selected{{ end }}>Slashings</option>
+                <option value="9" {{ if .DisplayTxCount }}selected{{ end }}>Tx Count</option>
+                <option value="10" {{ if .DisplaySyncAgg }}selected{{ end }}>Sync Agg</option>
+                <option value="11" {{ if .DisplayGraffiti }}selected{{ end }}>Graffiti</option>
+                <option value="12" {{ if .DisplayElExtraData }}selected{{ end }}>Extra Data</option>
+              </select>
+            </div>
+            <div class="col-2 col-md-2">
               <div class="container text-end">
                 <button type="submit" class="btn btn-primary">Apply Filter</button>
               </div>
@@ -114,65 +139,91 @@
           <table class="table table-nobr" id="slots">
             <thead>
               <tr>
-                <th>Epoch</th>
-                <th>Slot</th>
-                <th>Status</th>
-                <th style="min-width: 125px">Time</th>
-                <th>Prop<span class="d-none d-lg-inline">oser</span></th>
-                <th class="d-none d-md-table-cell">Att<span class="d-none d-lg-inline">estations</span></th>
+                {{ if .DisplayEpoch }}<th>Epoch</th>{{ end }}
+                {{ if .DisplaySlot }}<th>Slot</th>{{ end }}
+                {{ if .DisplayStatus }}<th>Status</th>{{ end }}
+                {{ if .DisplayTime }}<th style="min-width: 125px">Time</th>{{ end }}
+                {{ if .DisplayProposer }}<th>Prop<span class="d-none d-lg-inline">oser</span></th>{{ end }}
+                {{ if .DisplayAttestations }}<th class="d-none d-md-table-cell">Att<span class="d-none d-lg-inline">estations</span></th>{{ end }}
+                {{ if .DisplayDeposits }}
                 <th>
                   <nobr><span data-toggle="tooltip" data-placement="top" title="Deposits">D<span class="d-none d-lg-inline">eposits</span> </span> / 
                   <span data-toggle="tooltip" data-placement="top" title="Exits">E<span class="d-none d-lg-inline">xits</span> </span></nobr>
                 </th>
+                {{ end }}
+                {{ if .DisplaySlashings }}
                 <th><span class="d-none d-lg-inline">Slashings</span>
                   <nobr><span data-toggle="tooltip" data-placement="top" title="Proposer Slashings">P</span> / 
                   <span data-toggle="tooltip" data-placement="top" title="Attester Slashings">A</span></nobr>
                 </th>
-                <th>Tx<span class="d-none d-lg-inline"> Count</span></th>
-                <th>Sync<span class="d-none d-lg-inline"> Agg</span> %</th>
-                <th>Graffiti</th>
+                {{ end }}
+                {{ if .DisplayTxCount }}<th>Tx<span class="d-none d-lg-inline"> Count</span></th>{{ end }}
+                {{ if .DisplaySyncAgg }}<th>Sync<span class="d-none d-lg-inline"> Agg</span> %</th>{{ end }}
+                {{ if .DisplayGraffiti }}<th>Graffiti</th>{{ end }}
+                {{ if .DisplayElExtraData }}<th>Extra Data</th>{{ end }}
               </tr>
             </thead>
-            {{ if gt .SlotCount 0 }}
+            {{- if gt .SlotCount 0 }}
               <tbody>
-                {{ range $i, $slot := .Slots }}
+                {{ $g := . }}
+                {{- range $i, $slot := .Slots }}
                   <tr>
+                    {{- if $g.DisplayEpoch }}
                     <td><a href="/epoch/{{ $slot.Epoch }}">{{ formatAddCommas $slot.Epoch }}</a></td>
-                    {{ if eq $slot.Status 2 }}
-                      <td><a href="/slot/0x{{ printf "%x" $slot.BlockRoot }}">{{ formatAddCommas $slot.Slot }}</a></td>
-                    {{ else }}
-                      <td><a href="/slot/{{ $slot.Slot }}">{{ formatAddCommas $slot.Slot }}</a></td>
-                    {{ end }}
+                    {{- end }}
+                    {{- if $g.DisplaySlot }}
+                      {{- if eq $slot.Status 2 }}
+                        <td><a href="/slot/0x{{ printf "%x" $slot.BlockRoot }}">{{ formatAddCommas $slot.Slot }}</a></td>
+                      {{- else }}
+                        <td><a href="/slot/{{ $slot.Slot }}">{{ formatAddCommas $slot.Slot }}</a></td>
+                      {{- end }}
+                    {{- end }}
+                    {{- if $g.DisplayStatus }}
                     <td>
-                      {{ if eq $slot.Slot 0 }}
+                      {{- if eq $slot.Slot 0 }}
                         <span class="badge rounded-pill text-bg-info">Genesis</span>
-                      {{ else if eq $slot.Status 1 }}
+                      {{- else if eq $slot.Status 1 }}
                         <span class="badge rounded-pill text-bg-success">Proposed</span>
-                      {{ else if eq $slot.Status 2 }}
+                      {{- else if eq $slot.Status 2 }}
                         <span class="badge rounded-pill text-bg-info">Orphaned</span>
-                      {{ else if $slot.Scheduled }}
+                      {{- else if $slot.Scheduled }}
                         <span class="badge rounded-pill text-bg-secondary">Scheduled</span>
-                      {{ else if not $slot.Synchronized }}
+                      {{- else if not $slot.Synchronized }}
                         <span class="badge rounded-pill text-bg-secondary">?</span>
-                      {{ else if eq $slot.Status 0 }}
+                      {{- else if eq $slot.Status 0 }}
                         <span class="badge rounded-pill text-bg-warning">Missed</span>
-                      {{ else }}
+                      {{- else }}
                         <span class="badge rounded-pill text-bg-dark">Unknown</span>
-                      {{ end }}
+                      {{- end }}
                     </td>
-                    <td data-timer="{{ $slot.Ts.Unix }}"><span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $slot.Ts }}">{{ formatRecentTimeShort $slot.Ts }}</span></td>
-                    {{ if $slot.Synchronized }}
+                    {{- end }}
+                    {{- if $g.DisplayTime }}
+                      <td data-timer="{{ $slot.Ts.Unix }}"><span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $slot.Ts }}">{{ formatRecentTimeShort $slot.Ts }}</span></td>
+                    {{- end }}
+                    {{- if $g.DisplayProposer }}
                       <td>{{ formatValidator $slot.Proposer $slot.ProposerName }}</td>
+                    {{- end }}
+                    {{- if $g.DisplayAttestations }}
                       <td class="d-none d-md-table-cell">{{ if not (eq $slot.Status 0) }}{{ $slot.AttestationCount }}{{ end }}</td>
+                    {{- end }}
+                    {{- if $g.DisplayDeposits }}
                       <td>{{ if not (eq $slot.Status 0) }}{{ $slot.DepositCount }} / {{ $slot.ExitCount }}{{ end }}</td>
+                    {{- end }}
+                    {{- if $g.DisplaySlashings }}
                       <td>{{ if not (eq $slot.Status 0) }}{{ $slot.ProposerSlashingCount }} / {{ $slot.AttesterSlashingCount }}{{ end }}</td>
+                    {{- end }}
+                    {{- if $g.DisplayTxCount }}
                       <td>{{ if not (eq $slot.Status 0) }}{{ $slot.EthTransactionCount }}{{ end }}</td>
+                    {{- end }}
+                    {{- if $g.DisplaySyncAgg }}
                       <td>{{ if not (eq $slot.Status 0) }}{{ formatFloat $slot.SyncParticipation 2 }}%{{ end }}</td>
+                    {{- end }}
+                    {{- if $g.DisplayGraffiti }}
                       <td>{{ if not (eq $slot.Status 0) }}{{ formatGraffiti $slot.Graffiti }}{{ end }}</td>
-                    {{ else }}
-                      <td colspan="7">Not indexed yet</td>
-                    {{ end }}
-                    
+                    {{- end }}
+                    {{- if $g.DisplayElExtraData }}
+                      <td>{{ if not (eq $slot.Status 0) }}{{ formatGraffiti $slot.ElExtraData }}{{ end }}</td>
+                    {{- end }}
                   </tr>
                 {{ end }}
               </tbody>
@@ -180,7 +231,7 @@
               <tbody>
                 <tr style="height: 430px;">
                   <td class="d-none d-md-table-cell"></td>
-                  <td style="vertical-align: middle;" colspan="9">
+                  <td style="vertical-align: middle;" colspan="{{ .DisplayColCount }}">
                     <div class="img-fluid mx-auto p-3 d-flex align-items-center" style="max-height: 400px; max-width: 400px; overflow: hidden;">
                       {{ template "professor_svg" }}
                     </div>
@@ -227,6 +278,51 @@
   </div>
 {{ end }}
 {{ define "js" }}
+<script src="/js/bootstrap-multiselect.js"></script>
+<script type="text/javascript">
+$('#slotsFilterForm').submit(function () { 
+  $(this).find('input[type="text"],input[type="number"]').filter(function () { return !this.value; }).prop('name', ''); 
+  var displayColumns = Array.prototype.filter.call($(this).find('select[name="d"]').prop('name', '').find("option"), function(el) {
+    return el.selected;
+  }).map(function(el) {
+    return el.value;
+  }).join(" ");
+  if(displayColumns.length > 0) {
+    $(this).find("#displayColumnsField").prop('name', 'd').val(displayColumns);
+  }
+});
+$(function() { 
+  $('#slotsFilterForm .filter-multiselect').each(function() { 
+    $(this).multiselect({
+      onInitialized: function() {
+        this.$button.attr("data-bs-toggle", "dropdown");
+        this.$container.addClass("filter-multiselect-container");
+      }
+    });
+  });
+});
+</script>
 {{ end }}
 {{ define "css" }}
+<link rel="stylesheet" href="/css/bootstrap-multiselect.css">
+<style>
+  .filter-multiselect-container {
+    width: 100%;
+  }
+  .filter-multiselect-container.btn-group>.btn {
+    text-align: left;
+  }
+  .filter-multiselect-container .multiselect-container {
+    width: 100%;
+  }
+  .filter-multiselect-container .multiselect-container>li>a>label {
+    padding: 4px 8px;
+    width: 100%;
+    white-space: nowrap;
+  }
+  .filter-multiselect-container .multiselect-container>li>a>label>input {
+    margin: 0 4px;
+  }
+  
+</style>
 {{ end }}
