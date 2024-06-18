@@ -15,6 +15,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/jmoiron/sqlx"
 	blsu "github.com/protolambda/bls12-381-util"
 	zrnt_common "github.com/protolambda/zrnt/eth2/beacon/common"
 	"github.com/protolambda/ztyp/tree"
@@ -189,6 +190,7 @@ func (ds *DepositIndexer) processFinalizedBlocks(finalizedBlockNumber uint64) er
 					return fmt.Errorf("could not load block details (%v): %v", log.TxHash, err)
 				}
 
+				txHash = log.TxHash[:]
 			}
 
 			txFrom, err := types.Sender(types.LatestSignerForChainID(txDetails.ChainId()), txDetails)
@@ -388,48 +390,35 @@ func (ds *DepositIndexer) checkDepositValidity(depositTx *dbtypes.DepositTx) {
 }
 
 func (ds *DepositIndexer) persistFinalizedDepositTxs(toBlockNumber uint64, deposits []*dbtypes.DepositTx) error {
-	tx, err := db.WriterDb.Beginx()
-	if err != nil {
-		return fmt.Errorf("error starting db transactions: %v", err)
-	}
-	defer tx.Rollback()
-
-	if len(deposits) > 0 {
-		err = db.InsertDepositTxs(deposits, tx)
-		if err != nil {
-			return fmt.Errorf("error while inserting deposit txs: %v", err)
+	return db.RunDBTransaction(func(tx *sqlx.Tx) error {
+		if len(deposits) > 0 {
+			err := db.InsertDepositTxs(deposits, tx)
+			if err != nil {
+				return fmt.Errorf("error while inserting deposit txs: %v", err)
+			}
 		}
-	}
 
-	ds.state.FinalBlock = toBlockNumber
-	if toBlockNumber > ds.state.HeadBlock {
-		ds.state.HeadBlock = toBlockNumber
-	}
-	err = db.SetExplorerState("indexer.depositstate", ds.state, tx)
-	if err != nil {
-		return fmt.Errorf("error while updating deposit state: %v", err)
-	}
+		ds.state.FinalBlock = toBlockNumber
+		if toBlockNumber > ds.state.HeadBlock {
+			ds.state.HeadBlock = toBlockNumber
+		}
 
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("error committing db transaction: %v", err)
-	}
-	return nil
+		err := db.SetExplorerState("indexer.depositstate", ds.state, tx)
+		if err != nil {
+			return fmt.Errorf("error while updating deposit state: %v", err)
+		}
+
+		return nil
+	})
 }
 
 func (ds *DepositIndexer) persistRecentDepositTxs(deposits []*dbtypes.DepositTx) error {
-	tx, err := db.WriterDb.Beginx()
-	if err != nil {
-		return fmt.Errorf("error starting db transactions: %v", err)
-	}
-	defer tx.Rollback()
+	return db.RunDBTransaction(func(tx *sqlx.Tx) error {
+		err := db.InsertDepositTxs(deposits, tx)
+		if err != nil {
+			return fmt.Errorf("error while inserting deposit txs: %v", err)
+		}
 
-	err = db.InsertDepositTxs(deposits, tx)
-	if err != nil {
-		return fmt.Errorf("error while inserting deposit txs: %v", err)
-	}
-
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("error committing db transaction: %v", err)
-	}
-	return nil
+		return nil
+	})
 }

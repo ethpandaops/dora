@@ -128,6 +128,21 @@ type TxPendingFunctionSignature struct {
 	QueueTime uint64 `db:"queuetime"`
 }
 
+type MevBlock struct {
+	SlotNumber     uint64 `db:"slot_number"`
+	BlockHash      []byte `db:"block_hash"`
+	BlockNumber    uint64 `db:"block_number"`
+	BuilderPubkey  []byte `db:"builder_pubkey"`
+	ProposerIndex  uint64 `db:"proposer_index"`
+	Proposed       uint8  `db:"proposed"`
+	SeenbyRelays   uint64 `db:"seenby_relays"`
+	FeeRecipient   []byte `db:"fee_recipient"`
+	TxCount        uint64 `db:"tx_count"`
+	GasUsed        uint64 `db:"gas_used"`
+	BlockValue     []byte `db:"block_value"`
+	BlockValueGwei uint64 `db:"block_value_gwei"`
+}
+
 type DepositTx struct {
 	Index                 uint64 `db:"deposit_index"`
 	BlockNumber           uint64 `db:"block_number"`
@@ -153,4 +168,30 @@ type Deposit struct {
 	PublicKey             []byte  `db:"publickey"`
 	WithdrawalCredentials []byte  `db:"withdrawalcredentials"`
 	Amount                uint64  `db:"amount"`
+}
+
+type VoluntaryExit struct {
+	SlotNumber     uint64 `db:"slot_number"`
+	SlotIndex      uint64 `db:"slot_index"`
+	SlotRoot       []byte `db:"slot_root"`
+	Orphaned       bool   `db:"orphaned"`
+	ValidatorIndex uint64 `db:"validator"`
+}
+
+type SlashingReason uint8
+
+const (
+	UnspecifiedSlashing SlashingReason = iota
+	ProposerSlashing
+	AttesterSlashing
+)
+
+type Slashing struct {
+	SlotNumber     uint64         `db:"slot_number"`
+	SlotIndex      uint64         `db:"slot_index"`
+	SlotRoot       []byte         `db:"slot_root"`
+	Orphaned       bool           `db:"orphaned"`
+	ValidatorIndex uint64         `db:"validator"`
+	SlasherIndex   uint64         `db:"slasher"`
+	Reason         SlashingReason `db:"reason"`
 }

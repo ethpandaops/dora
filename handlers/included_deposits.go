@@ -10,7 +10,6 @@ import (
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
@@ -165,12 +164,7 @@ func buildFilteredIncludedDepositsPageData(pageIdx uint64, pageSize uint64, minI
 		WithOrphaned:  withOrphaned,
 	}
 
-	offset := (pageIdx - 1) * pageSize
-
-	dbDeposits, totalRows, err := db.GetDepositsFiltered(offset, uint32(pageSize), depositFilter)
-	if err != nil {
-		panic(err)
-	}
+	dbDeposits, totalRows := services.GlobalBeaconService.GetIncludedDepositsByFilter(depositFilter, pageIdx-1, uint32(pageSize))
 
 	validatorSetRsp := services.GlobalBeaconService.GetCachedValidatorPubkeyMap()
 	validatorActivityMap, validatorActivityMax := services.GlobalBeaconService.GetValidatorActivity()

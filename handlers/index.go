@@ -308,14 +308,14 @@ func buildIndexPageRecentSlotsData(pageData *models.IndexPageData, firstSlot uin
 			}
 			pageData.RecentSlots = append(pageData.RecentSlots, slotData)
 			blockCount++
-			buildIndexPageSlotGraph(pageData, slotData, &maxOpenFork, openForks)
+			buildIndexPageSlotGraph(slotData, &maxOpenFork, openForks)
 		}
 	}
 	pageData.RecentSlotCount = uint64(blockCount)
 	pageData.ForkTreeWidth = (maxOpenFork * 20) + 20
 }
 
-func buildIndexPageSlotGraph(pageData *models.IndexPageData, slotData *models.IndexPageDataSlots, maxOpenFork *int, openForks map[int][]byte) {
+func buildIndexPageSlotGraph(slotData *models.IndexPageDataSlots, maxOpenFork *int, openForks map[int][]byte) {
 	// fork tree
 	var forkGraphIdx int = -1
 	var freeForkIdx int = -1

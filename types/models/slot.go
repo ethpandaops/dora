@@ -8,18 +8,26 @@ import (
 
 // SlotPageData is a struct to hold info for the slot details page
 type SlotPageData struct {
-	Slot                   uint64             `json:"slot"`
-	Epoch                  uint64             `json:"epoch"`
-	EpochFinalized         bool               `json:"epoch_finalized"`
-	EpochParticipationRate float64            `json:"epoch_participation_rate"`
-	Ts                     time.Time          `json:"time"`
-	NextSlot               uint64             `json:"next_slot"`
-	PreviousSlot           uint64             `json:"prev_slot"`
-	Status                 uint16             `json:"status"`
-	Future                 bool               `json:"future"`
-	Proposer               uint64             `json:"proposer"`
-	ProposerName           string             `json:"proposer_name"`
-	Block                  *SlotPageBlockData `json:"block"`
+	Slot                   uint64                `json:"slot"`
+	Epoch                  uint64                `json:"epoch"`
+	EpochFinalized         bool                  `json:"epoch_finalized"`
+	EpochParticipationRate float64               `json:"epoch_participation_rate"`
+	Ts                     time.Time             `json:"time"`
+	NextSlot               uint64                `json:"next_slot"`
+	PreviousSlot           uint64                `json:"prev_slot"`
+	Status                 uint16                `json:"status"`
+	Future                 bool                  `json:"future"`
+	Proposer               uint64                `json:"proposer"`
+	ProposerName           string                `json:"proposer_name"`
+	Block                  *SlotPageBlockData    `json:"block"`
+	Badges                 []*SlotPageBlockBadge `json:"badges"`
+}
+
+type SlotPageBlockBadge struct {
+	Title       string `json:"title"`
+	Icon        string `json:"icon"`
+	Description string `json:"descr"`
+	ClassName   string `json:"class"`
 }
 
 type SlotStatus uint16

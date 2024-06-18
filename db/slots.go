@@ -20,7 +20,9 @@ func InsertSlot(slot *dbtypes.Slot, tx *sqlx.Tx) error {
 				eth_block_extra, eth_block_extra_text, sync_participation
 			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
 			ON CONFLICT (slot, root) DO UPDATE SET
-				status = excluded.status`,
+				status = excluded.status,
+				eth_block_extra = excluded.eth_block_extra,
+				eth_block_extra_text = excluded.eth_block_extra_text`,
 		dbtypes.DBEngineSqlite: `
 			INSERT OR REPLACE INTO slots (
 				slot, proposer, status, root, parent_root, state_root, graffiti, graffiti_text,
@@ -179,6 +181,25 @@ func GetSlotByRoot(root []byte) *dbtypes.Slot {
 		return nil
 	}
 	return &block
+}
+
+func GetSlotsByBlockHash(blockHash []byte) []*dbtypes.Slot {
+	slots := []*dbtypes.Slot{}
+	err := ReaderDb.Select(&slots, `
+	SELECT
+		slot, proposer, status, root, parent_root, state_root, graffiti, graffiti_text,
+		attestation_count, deposit_count, exit_count, withdraw_count, withdraw_amount, attester_slashing_count, 
+		proposer_slashing_count, bls_change_count, eth_transaction_count, eth_block_number, eth_block_hash, 
+		eth_block_extra, eth_block_extra_text, sync_participation
+	FROM slots
+	WHERE eth_block_hash = $1
+	ORDER BY slot DESC
+	`, blockHash)
+	if err != nil {
+		logger.Errorf("Error while fetching slots by block hash: %v", err)
+		return nil
+	}
+	return slots
 }
 
 func parseAssignedSlots(rows *sql.Rows, fields []string, fieldsOffset int) []*dbtypes.AssignedSlot {

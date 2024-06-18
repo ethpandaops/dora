@@ -23,7 +23,7 @@ server:
 
 frontend:
   enabled: true # Enable or disable to web frontend
-  debug: true
+  debug: false
   minimize: false
   siteName: "Dora the Explorer" # Name of the site, displayed in the title tag
   siteSubtitle: "Ephemery"
@@ -33,6 +33,7 @@ frontend:
   #validatorNamesInventory: "https://config.4844-devnet-7.ethpandaops.io/api/v1/nodes/validator-ranges"
   
 beaconapi:
+  # beacon node rpc endpoints
   endpoints:
     - name: "pk01"
       url: "http://10.16.71.108:5052"
@@ -44,15 +45,34 @@ beaconapi:
     - name: "teku"
       url: "http://10.16.97.3:5051"
       priority: 5
-  #endpoint: "http://10.16.71.102:5052"
+  
   localCacheSize: 100 # 100MB
   redisCacheAddr: ""
   redisCachePrefix: ""
 
+executionapi:
+  # execution node rpc endpoints
+  endpoints:
+    - name: "pk01"
+      url: "http://10.16.71.108:8545"
+  
+  depositLogBatchSize: 1000
+
 indexer:
+  #resyncFromEpoch: 0  # reset synchronization state to this epoch on startup - only use to resync database, comment out afterwards
+  #resyncForceUpdate: true # force re-synchronization of epochs that are already present in DB - only use to fix missing data after schema upgrades
+
   inMemoryEpochs: 2
   disableIndexWriter: false
   syncEpochCooldown: 1
+
+mevIndexer:
+  # list of mev relays to crawl mev blocks from
+  relays:
+    - index: 0  # identifier for this relay in db (0-63)
+      name: Flashbots
+      url: https://boost-relay.flashbots.net/
+  refreshInterval: 10m
 
 database:
   engine: "sqlite"

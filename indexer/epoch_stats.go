@@ -405,3 +405,11 @@ func (epochStats *EpochStats) loadValidatorStats(client *ConsensusClient, stateR
 	}
 	epochStats.stateStats = validatorStats
 }
+
+func (epochStats *EpochStats) GetInitialDepositIndex() *uint64 {
+	if epochStats.stateStats == nil {
+		return nil
+	}
+	depositIndex := epochStats.stateStats.DepositIndex
+	return &depositIndex
+}

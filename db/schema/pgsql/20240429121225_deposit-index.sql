@@ -2,8 +2,8 @@
 -- +goose StatementBegin
 
 CREATE TABLE IF NOT EXISTS deposit_txs (
-    deposit_index INT NOT NULL,
-    block_number INT NOT NULL,
+    deposit_index BIGINT NOT NULL,
+    block_number BIGINT NOT NULL,
     block_time BIGINT NOT NULL,
     block_root bytea NOT NULL,
     publickey bytea NOT NULL,
@@ -39,8 +39,8 @@ CREATE INDEX IF NOT EXISTS "deposit_txs_tx_target_idx"
     ("tx_target" ASC NULLS FIRST);
 
 CREATE TABLE IF NOT EXISTS deposits (
-    deposit_index INT NULL,
-    slot_number INT NOT NULL,
+    deposit_index BIGINT NULL,
+    slot_number BIGINT NOT NULL,
     slot_index INT NOT NULL,
     slot_root bytea NOT NULL,
     orphaned bool NOT NULL DEFAULT FALSE,

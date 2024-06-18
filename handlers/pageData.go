@@ -58,7 +58,7 @@ func InitPageData(w http.ResponseWriter, r *http.Request, active, path, title st
 		ChainConfig:           utils.Config.Chain.Config,
 		Lang:                  "en-US",
 		Debug:                 utils.Config.Frontend.Debug,
-		MainMenuItems:         createMenuItems(active, isMainnet),
+		MainMenuItems:         createMenuItems(active),
 	}
 
 	if utils.Config.Frontend.SiteDescription != "" {
@@ -82,84 +82,113 @@ func InitPageData(w http.ResponseWriter, r *http.Request, active, path, title st
 	return data
 }
 
-func createMenuItems(active string, isMain bool) []types.MainMenuItem {
+func createMenuItems(active string) []types.MainMenuItem {
 	hiddenFor := []string{"confirmation", "login", "register"}
 
 	if utils.SliceContains(hiddenFor, active) {
 		return []types.MainMenuItem{}
 	}
+
+	blockchainMenu := []types.NavigationGroup{}
+	validatorMenu := []types.NavigationGroup{}
+
+	blockchainMenu = append(blockchainMenu, types.NavigationGroup{
+		Links: []types.NavigationLink{
+			{
+				Label: "Overview",
+				Path:  "/",
+				Icon:  "fa-home",
+			},
+		},
+	})
+	blockchainMenu = append(blockchainMenu, types.NavigationGroup{
+		Links: []types.NavigationLink{
+			{
+				Label: "Epochs",
+				Path:  "/epochs",
+				Icon:  "fa-history",
+			},
+			{
+				Label: "Slots",
+				Path:  "/slots",
+				Icon:  "fa-cube",
+			},
+		},
+	})
+	if len(utils.Config.MevIndexer.Relays) > 0 {
+		blockchainMenu = append(blockchainMenu, types.NavigationGroup{
+			Links: []types.NavigationLink{
+				{
+					Label: "MEV Blocks",
+					Path:  "/mev/blocks",
+					Icon:  "fa-money-bill",
+				},
+			},
+		})
+	}
+	blockchainMenu = append(blockchainMenu, types.NavigationGroup{
+		Links: []types.NavigationLink{
+			{
+				Label: "Clients",
+				Path:  "/clients",
+				Icon:  "fa-server",
+			},
+			{
+				Label: "Forks",
+				Path:  "/forks",
+				Icon:  "fa-code-fork",
+			},
+		},
+	})
+
+	validatorMenu = append(validatorMenu, types.NavigationGroup{
+		Links: []types.NavigationLink{
+			{
+				Label: "Validators",
+				Path:  "/validators",
+				Icon:  "fa-table",
+			},
+			{
+				Label: "Validator Activity",
+				Path:  "/validators/activity",
+				Icon:  "fa-tachometer",
+			},
+		},
+	})
+	validatorMenu = append(validatorMenu, types.NavigationGroup{
+		Links: []types.NavigationLink{
+			{
+				Label: "Deposits",
+				Path:  "/validators/deposits",
+				Icon:  "fa-file-signature",
+			},
+		},
+	})
+	validatorMenu = append(validatorMenu, types.NavigationGroup{
+		Links: []types.NavigationLink{
+			{
+				Label: "Voluntary Exits",
+				Path:  "/validators/voluntary_exits",
+				Icon:  "fa-door-open",
+			},
+			{
+				Label: "Slashings",
+				Path:  "/validators/slashings",
+				Icon:  "fa-user-slash",
+			},
+		},
+	})
+
 	return []types.MainMenuItem{
 		{
 			Label:    "Blockchain",
 			IsActive: active == "blockchain",
-			Groups: []types.NavigationGroup{
-				{
-					Links: []types.NavigationLink{
-						{
-							Label: "Overview",
-							Path:  "/",
-							Icon:  "fa-home",
-						},
-					},
-				},
-				{
-					Links: []types.NavigationLink{
-						{
-							Label: "Epochs",
-							Path:  "/epochs",
-							Icon:  "fa-history",
-						},
-						{
-							Label: "Slots",
-							Path:  "/slots",
-							Icon:  "fa-cube",
-						},
-					},
-				},
-				{
-					Links: []types.NavigationLink{
-						{
-							Label: "Clients",
-							Path:  "/clients",
-							Icon:  "fa-server",
-						},
-						{
-							Label: "Forks",
-							Path:  "/forks",
-							Icon:  "fa-code-fork",
-						},
-					},
-				},
-			},
+			Groups:   blockchainMenu,
 		},
 		{
 			Label:    "Validators",
 			IsActive: active == "validators",
-			Groups: []types.NavigationGroup{
-				{
-					Links: []types.NavigationLink{
-						{
-							Label: "Validators",
-							Path:  "/validators",
-							Icon:  "fa-table",
-						},
-						{
-							Label: "Validator Activity",
-							Path:  "/validators/activity",
-							Icon:  "fa-tachometer",
-						},
-					},
-				},
-				{
-					Links: []types.NavigationLink{
-						{
-							Label: "Deposits",
-							Path:  "/validators/deposits",
-							Icon:  "fa-file-signature",
-						},
-					},
-				},
-			},
+			Groups:   validatorMenu,
 		},
 	}
 }

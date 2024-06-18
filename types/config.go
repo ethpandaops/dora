@@ -40,9 +40,11 @@ type Config struct {
 		SiteSubtitle    string `yaml:"siteSubtitle" envconfig:"FRONTEND_SITE_SUBTITLE"`
 		SiteDescription string `yaml:"siteDescription" envconfig:"FRONTEND_SITE_DESCRIPTION"`
 
-		EthExplorerLink         string `yaml:"ethExplorerLink" envconfig:"FRONTEND_ETH_EXPLORER_LINK"`
-		ValidatorNamesYaml      string `yaml:"validatorNamesYaml" envconfig:"FRONTEND_VALIDATOR_NAMES_YAML"`
-		ValidatorNamesInventory string `yaml:"validatorNamesInventory" envconfig:"FRONTEND_VALIDATOR_NAMES_INVENTORY"`
+		EthExplorerLink               string        `yaml:"ethExplorerLink" envconfig:"FRONTEND_ETH_EXPLORER_LINK"`
+		ValidatorNamesYaml            string        `yaml:"validatorNamesYaml" envconfig:"FRONTEND_VALIDATOR_NAMES_YAML"`
+		ValidatorNamesInventory       string        `yaml:"validatorNamesInventory" envconfig:"FRONTEND_VALIDATOR_NAMES_INVENTORY"`
+		ValidatorNamesRefreshInterval time.Duration `yaml:"validatorNamesRefreshInterval" envconfig:"FRONTEND_VALIDATOR_REFRESH_INTERVAL"`
+		ValidatorNamesResolveInterval time.Duration `yaml:"validatorNamesResolveInterval" envconfig:"FRONTEND_VALIDATOR_RESOLVE_INTERVAL"`
 
 		PageCallTimeout  time.Duration `yaml:"pageCallTimeout" envconfig:"FRONTEND_PAGE_CALL_TIMEOUT"`
 		HttpReadTimeout  time.Duration `yaml:"httpReadTimeout" envconfig:"FRONTEND_HTTP_READ_TIMEOUT"`
@@ -77,6 +79,9 @@ type Config struct {
 	} `yaml:"executionapi"`
 
 	Indexer struct {
+		ResyncFromEpoch   *uint64 `yaml:"resyncFromEpoch" envconfig:"INDEXER_RESYNC_FROM_EPOCH"`
+		ResyncForceUpdate bool    `yaml:"resyncForceUpdate" envconfig:"INDEXER_RESYNC_FORCE_UPDATE"`
+
 		InMemoryEpochs                  uint16 `yaml:"inMemoryEpochs" envconfig:"INDEXER_IN_MEMORY_EPOCHS"`
 		CachePersistenceDelay           uint16 `yaml:"cachePersistenceDelay" envconfig:"INDEXER_CACHE_PERSISTENCE_DELAY"`
 		DisableIndexWriter              bool   `yaml:"disableIndexWriter" envconfig:"INDEXER_DISABLE_INDEX_WRITER"`
@@ -108,6 +113,11 @@ type Config struct {
 		Disable4Bytes     bool          `yaml:"disable4Bytes" envconfig:"TXSIG_DISABLE_4BYTES"`
 		RecheckTimeout    time.Duration `yaml:"recheckTimeout" envconfig:"TXSIG_RECHECK_TIMEOUT"`
 	} `yaml:"txsig"`
+
+	MevIndexer struct {
+		Relays          []MevRelayConfig `yaml:"relays"`
+		RefreshInterval time.Duration    `yaml:"refreshInterval" envconfig:"MEVINDEXER_REFRESH_INTERVAL"`
+	} `yaml:"mevIndexer"`
 
 	Database struct {
 		Engine string `yaml:"engine" envconfig:"DATABASE_ENGINE"`
@@ -158,6 +168,13 @@ type EndpointSshConfig struct {
 	User     string `yaml:"user"`
 	Password string `yaml:"password"`
 	Keyfile  string `yaml:"keyfile"`
+}
+
+type MevRelayConfig struct {
+	Index      uint8  `yaml:"index"`
+	Name       string `yaml:"name"`
+	Url        string `yaml:"url"`
+	BlockLimit int    `yaml:"blockLimit"`
 }
 
 type SqliteDatabaseConfig struct {

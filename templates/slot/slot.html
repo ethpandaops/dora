@@ -1,7 +1,7 @@
 {{ define "page" }}
   <div class="container mt-2">
     <div class="d-md-flex py-2 justify-content-md-between">
-      <h1 class="h4 my-3 mb-md-0 h1-pager">
+      <h1 class="h4 my-2 mb-md-0 h1-pager">
         {{- if not (eq .Slot 0) -}}
           <a href="/slot/{{ .PreviousSlot }}"><i class="fa fa-chevron-left"></i></a>
         {{- else -}}
@@ -14,6 +14,16 @@
           <a></a>
         {{- end -}}
       </h1>
+      <div class="flex-grow-1 px-3">
+        {{- range $i, $badge := .Badges }}
+          <span class="badge rounded-pill block-badge mx-2 mt-3 {{ $badge.ClassName }}" {{ if not (eq $badge.Description "") }}data-bs-toggle="tooltip" data-bs-placement="bottom" data-bs-title="{{ $badge.Description }}" {{ end }}>
+            {{- if not (eq $badge.Icon "") }}
+              <i class="fa {{ $badge.Icon }} px-1"></i>
+            {{- end }}
+            {{ $badge.Title }}
+          </span>
+        {{- end }}
+      </div>
       <nav aria-label="breadcrumb">
         <ol class="breadcrumb font-size-1 mb-0" style="padding: 0; background-color: transparent;">
           <li class="breadcrumb-item"><a href="/" title="Home">Home</a></li>
