@@ -85,7 +85,10 @@ func (mev *MevIndexer) runUpdater(indexer *indexer.Indexer) error {
 	if !mev.mevBlockCacheLoaded {
 		// prefill cache
 		_, finalizedEpoch, _, _ := indexer.GetCacheState()
-		finalizedSlot := (uint64(finalizedEpoch+1) * utils.Config.Chain.Config.SlotsPerEpoch) - 1
+		finalizedSlot := uint64(0)
+		if finalizedEpoch > 0 {
+			finalizedSlot = (uint64(finalizedEpoch+1) * utils.Config.Chain.Config.SlotsPerEpoch) - 1
+		}
 		loadedCount := uint64(0)
 		for {
 			mevBlocks, totalCount, err := db.GetMevBlocksFiltered(0, 1000, &dbtypes.MevBlockFilter{
