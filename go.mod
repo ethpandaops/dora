@@ -130,3 +130,5 @@ require (
 	modernc.org/sqlite v1.29.6 // indirect
 	rsc.io/tmplfunc v0.0.3 // indirect
 )
+
+replace github.com/attestantio/go-eth2-client => github.com/pk910/go-eth2-client v0.0.0-20240409144128-488c38e7a327

@@ -9,6 +9,7 @@ import (
 	"github.com/attestantio/go-eth2-client/spec/capella"
 	"github.com/attestantio/go-eth2-client/spec/deneb"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
+	"github.com/attestantio/go-eth2-client/spec/verkle"
 	"github.com/ethpandaops/dora/utils"
 	dynssz "github.com/pk910/dynamic-ssz"
 	"gopkg.in/yaml.v3"
@@ -54,6 +55,9 @@ func MarshalVersionedSignedBeaconBlockSSZ(block *spec.VersionedSignedBeaconBlock
 	case spec.DataVersionDeneb:
 		version = uint64(block.Version)
 		ssz, err = dynSsz.MarshalSSZ(block.Deneb)
+	case spec.DataVersionVerkle:
+		version = uint64(block.Version)
+		ssz, err = dynSsz.MarshalSSZ(block.Verkle)
 	default:
 		err = fmt.Errorf("unknown block version")
 	}
@@ -95,6 +99,11 @@ func UnmarshalVersionedSignedBeaconBlockSSZ(version uint64, ssz []byte) (*spec.V
 		if err := dynSsz.UnmarshalSSZ(block.Deneb, ssz); err != nil {
 			return nil, fmt.Errorf("failed to decode deneb signed beacon block: %v", err)
 		}
+	case spec.DataVersionVerkle:
+		block.Verkle = &verkle.SignedBeaconBlock{}
+		if err := block.Verkle.UnmarshalSSZ(ssz); err != nil {
+			return nil, fmt.Errorf("failed to decode verkle signed beacon block: %v", err)
+		}
 	default:
 		return nil, fmt.Errorf("unknown block version")
 	}
@@ -118,6 +127,9 @@ func marshalVersionedSignedBeaconBlockJson(block *spec.VersionedSignedBeaconBloc
 	case spec.DataVersionDeneb:
 		version = uint64(block.Version) + jsonVersionOffset
 		jsonRes, err = block.Deneb.MarshalJSON()
+	case spec.DataVersionVerkle:
+		version = uint64(block.Version) + jsonVersionOffset
+		jsonRes, err = block.Verkle.MarshalJSON()
 	default:
 		err = fmt.Errorf("unknown block version")
 	}
@@ -156,6 +168,11 @@ func unmarshalVersionedSignedBeaconBlockJson(version uint64, ssz []byte) (*spec.
 		block.Deneb = &deneb.SignedBeaconBlock{}
 		if err := block.Deneb.UnmarshalJSON(ssz); err != nil {
 			return nil, fmt.Errorf("failed to decode deneb signed beacon block: %v", err)
+		}
+	case spec.DataVersionVerkle:
+		block.Verkle = &verkle.SignedBeaconBlock{}
+		if err := block.Verkle.UnmarshalJSON(ssz); err != nil {
+			return nil, fmt.Errorf("failed to decode verkle signed beacon block: %v", err)
 		}
 	default:
 		return nil, fmt.Errorf("unknown block version")
