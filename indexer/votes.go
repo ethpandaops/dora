@@ -91,12 +91,12 @@ func aggregateEpochVotes(blockMap map[uint64]*CacheBlock, epoch uint64, epochSta
 					}
 
 					aggregationBitsOffset := uint64(0)
-					for committee := uint64(0); committee < utils.Config.Chain.Config.MaxCommitteesPerSlot; committee++ {
-						if !committeeBits.BitAt(committee) {
+
+					for _, committee := range committeeBits.BitIndices() {
+						if uint64(committee) >= utils.Config.Chain.Config.MaxCommitteesPerSlot {
 							continue
 						}
-
-						voteAmt, committeeSize := aggregateAttestationVotes(&votes, epochStats, uint64(attData.Slot), committee, attAggregationBits, 0)
+						voteAmt, committeeSize := aggregateAttestationVotes(&votes, epochStats, uint64(attData.Slot), uint64(committee), attAggregationBits, aggregationBitsOffset)
 						voteAmount += voteAmt
 						aggregationBitsOffset += committeeSize
 					}

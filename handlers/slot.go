@@ -407,12 +407,12 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, assignments
 				continue
 			}
 
-			for committee := uint64(0); committee < utils.Config.Chain.Config.MaxCommitteesPerSlot; committee++ {
-				if !committeeBits.BitAt(committee) {
+			for _, committee := range committeeBits.BitIndices() {
+				if uint64(committee) >= utils.Config.Chain.Config.MaxCommitteesPerSlot {
 					continue
 				}
 
-				attPageData.CommitteeIndex = append(attPageData.CommitteeIndex, committee)
+				attPageData.CommitteeIndex = append(attPageData.CommitteeIndex, uint64(committee))
 				if assignmentsMap[attEpoch] != nil {
 					committeeAssignments := assignmentsMap[attEpoch].AttestorAssignments[fmt.Sprintf("%v-%v", uint64(attData.Slot), committee)]
 					if len(committeeAssignments) == 0 {
