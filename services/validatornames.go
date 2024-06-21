@@ -496,7 +496,7 @@ func (vn *ValidatorNames) updateDb() error {
 		}
 
 		if len(updateNames) > 0 || len(removeIndexes) > 0 {
-			logger_vn.Infof("update validator names %v-%v: %v changed, %v removed", lastIndex, maxIdx, len(updateNames), len(removeIndexes))
+			logger_vn.Infof("update validator names %v-%v: %v changed, %v removed", lastIndex, maxIndex, len(updateNames), len(removeIndexes))
 			time.Sleep(2 * time.Second)
 		} else {
 			time.Sleep(100 * time.Millisecond)
