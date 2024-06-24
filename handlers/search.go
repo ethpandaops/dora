@@ -37,7 +37,7 @@ func Search(w http.ResponseWriter, r *http.Request) {
 		blockResult := &dbtypes.SearchBlockResult{}
 		err = db.ReaderDb.Get(blockResult, `
 			SELECT slot, root, orphaned 
-			FROM blocks 
+			FROM slots 
 			WHERE slot = $1
 			LIMIT 1`, searchQuery)
 		if err == nil {
@@ -57,7 +57,7 @@ func Search(w http.ResponseWriter, r *http.Request) {
 			blockResult := &dbtypes.SearchBlockResult{}
 			err = db.ReaderDb.Get(blockResult, `
 			SELECT slot, root, orphaned 
-			FROM blocks 
+			FROM slots 
 			WHERE root = $1 OR
 				state_root = $1
 			LIMIT 1`, blockHash)
@@ -94,12 +94,12 @@ func Search(w http.ResponseWriter, r *http.Request) {
 	err = db.ReaderDb.Get(graffiti, db.EngineQuery(map[dbtypes.DBEngineType]string{
 		dbtypes.DBEnginePgsql: `
 			SELECT graffiti
-			FROM blocks
+			FROM slots
 			WHERE graffiti_text ILIKE LOWER($1)
 			LIMIT 1`,
 		dbtypes.DBEngineSqlite: `
 			SELECT graffiti
-			FROM blocks
+			FROM slots
 			WHERE graffiti_text LIKE LOWER($1)
 			LIMIT 1`,
 	}), "%"+searchQuery+"%")
@@ -180,7 +180,7 @@ func SearchAhead(w http.ResponseWriter, r *http.Request) {
 				dbres := &dbtypes.SearchAheadSlotsResult{}
 				err = db.ReaderDb.Select(dbres, `
 				SELECT slot, root, orphaned 
-				FROM blocks 
+				FROM slots 
 				WHERE root = $1 OR
 					state_root = $1
 				ORDER BY slot LIMIT 1`, blockHash)
@@ -220,7 +220,7 @@ func SearchAhead(w http.ResponseWriter, r *http.Request) {
 				dbres := &dbtypes.SearchAheadSlotsResult{}
 				err = db.ReaderDb.Select(dbres, `
 				SELECT slot, root, orphaned 
-				FROM blocks 
+				FROM slots 
 				WHERE slot = $1
 				ORDER BY slot LIMIT 10`, blockNumber)
 				if err == nil {
@@ -272,7 +272,7 @@ func SearchAhead(w http.ResponseWriter, r *http.Request) {
 				dbres := &dbtypes.SearchAheadExecBlocksResult{}
 				err = db.ReaderDb.Select(dbres, `
 				SELECT slot, root, eth_block_hash, eth_block_number, orphaned 
-				FROM blocks 
+				FROM slots 
 				WHERE eth_block_hash = $1 
 				ORDER BY slot LIMIT 10`, blockHash)
 				if err != nil {
@@ -315,7 +315,7 @@ func SearchAhead(w http.ResponseWriter, r *http.Request) {
 				dbres := &dbtypes.SearchAheadExecBlocksResult{}
 				err = db.ReaderDb.Select(dbres, `
 				SELECT slot, root, eth_block_hash, eth_block_number, orphaned 
-				FROM blocks 
+				FROM slots 
 				WHERE eth_block_number = $1
 				ORDER BY slot LIMIT 10`, blockNumber)
 				if err == nil {
@@ -338,14 +338,14 @@ func SearchAhead(w http.ResponseWriter, r *http.Request) {
 		err = db.ReaderDb.Select(graffiti, db.EngineQuery(map[dbtypes.DBEngineType]string{
 			dbtypes.DBEnginePgsql: `
 				SELECT graffiti, count(*) as count
-				FROM blocks
+				FROM slots
 				WHERE graffiti_text ILIKE LOWER($1)
 				GROUP BY graffiti
 				ORDER BY count desc
 				LIMIT 10`,
 			dbtypes.DBEngineSqlite: `
 				SELECT graffiti, count(*) as count
-				FROM blocks
+				FROM slots
 				WHERE graffiti_text LIKE LOWER($1)
 				GROUP BY graffiti
 				ORDER BY count desc

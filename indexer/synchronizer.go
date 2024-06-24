@@ -208,7 +208,10 @@ func (sync *synchronizerState) syncEpoch(syncEpoch uint64, retryCount int, lastT
 	}
 
 	epochAssignments, err := client.rpcClient.GetEpochAssignments(syncEpoch, dependentRoot)
-	if err != nil || epochAssignments == nil {
+	if (err != nil || epochAssignments == nil) && !lastTry {
+		return false, client, fmt.Errorf("error fetching epoch %v duties: %v", syncEpoch, err)
+	}
+	if epochAssignments == nil {
 		return false, client, fmt.Errorf("error fetching epoch %v duties: %v", syncEpoch, err)
 	}
 	if len(epochAssignments.ProposerAssignments) == 0 && !lastTry {
