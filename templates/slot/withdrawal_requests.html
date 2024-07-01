@@ -1,0 +1,34 @@
+{{ define "block_withdrawal_requests" }}
+  <div class="table-ellipsis">
+    <table id="block_withdrawals" class="table table-sm text-left">
+      <thead>
+        <tr>
+          <th class="border-0">Sender Address</th>
+          <th class="border-0">Valudator PubKey</th>
+          <th class="border-0">Validator Index</th>
+          <th class="border-0">Amount</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{ range $i, $withdrawalreq := .Block.WithdrawalRequests }}
+          <tr>
+            <td>{{ ethAddressLink $withdrawalreq.Address }}</td>
+            <td>
+              <i class="fas fa-male mr-2"></i>
+              0x{{ printf "%x" $withdrawalreq.PublicKey }}
+              <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $withdrawalreq.PublicKey }}"></i>
+            </td>
+            <td>
+              {{- if $withdrawalreq.Exists }}
+                {{ formatValidator $withdrawalreq.ValidatorIndex $withdrawalreq.ValidatorName }}
+              {{- else }}
+                ?
+              {{- end }}
+            </td>
+            <td>{{ formatEthFromGwei $withdrawalreq.Amount }}</td>
+          </tr>
+        {{ end }}
+      </tbody>
+    </table>
+  </div>
+{{ end }}

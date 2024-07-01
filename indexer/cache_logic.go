@@ -411,6 +411,12 @@ func (cache *indexerCache) processCachePersistence() error {
 						return err
 					}
 
+					err = persistBlockConsolidations(block, true, tx)
+					if err != nil {
+						logger.Errorf("error persisting unfinalized consolidations: %v", err)
+						return err
+					}
+
 					block.isInUnfinalizedDb = true
 				}
 			}

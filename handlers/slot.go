@@ -14,6 +14,7 @@ import (
 
 	"github.com/attestantio/go-eth2-client/spec"
 	"github.com/attestantio/go-eth2-client/spec/bellatrix"
+	"github.com/attestantio/go-eth2-client/spec/electra"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/gorilla/mux"
 	"github.com/juliangruber/go-intersect"
@@ -41,6 +42,9 @@ func Slot(w http.ResponseWriter, r *http.Request) {
 		"slot/voluntary_exits.html",
 		"slot/slashings.html",
 		"slot/blobs.html",
+		"slot/deposit_receipts.html",
+		"slot/withdrawal_requests.html",
+		"slot/consolidations.html",
 	)
 	var notfoundTemplateFiles = append(layoutTemplateFiles,
 		"slot/notfound.html",
@@ -329,6 +333,7 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, assignments
 	syncAggregate, _ := blockData.Block.SyncAggregate()
 	executionWithdrawals, _ := blockData.Block.Withdrawals()
 	blobKzgCommitments, _ := blockData.Block.BlobKZGCommitments()
+	//consolidations, _ := blockData.Block.Consolidations()
 
 	pageData := &models.SlotPageBlockData{
 		BlockRoot:              blockData.Root,
@@ -357,38 +362,85 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, assignments
 	assignmentsLoaded[epoch] = true
 
 	pageData.Attestations = make([]*models.SlotPageAttestation, pageData.AttestationsCount)
-	for i, attestation := range attestations {
-		var attAssignments []uint64
-		attEpoch := utils.EpochOfSlot(uint64(attestation.Data.Slot))
+	for i, attVersioned := range attestations {
+		attData, _ := attVersioned.Data()
+		if attData == nil {
+			continue
+		}
+
+		attSignature, err := attVersioned.Signature()
+		if err != nil {
+			continue
+		}
+
+		attAggregationBits, err := attVersioned.AggregationBits()
+		if err != nil {
+			continue
+		}
+
+		attEpoch := utils.EpochOfSlot(uint64(attData.Slot))
 		if !assignmentsLoaded[attEpoch] && loadDuties { // load epoch duties if needed
 			attEpochAssignments, _ := services.GlobalBeaconService.GetEpochAssignments(attEpoch)
 			assignmentsMap[attEpoch] = attEpochAssignments
 			assignmentsLoaded[attEpoch] = true
 		}
 
-		if assignmentsMap[attEpoch] != nil {
-			attAssignments = assignmentsMap[attEpoch].AttestorAssignments[fmt.Sprintf("%v-%v", uint64(attestation.Data.Slot), uint64(attestation.Data.Index))]
-		} else {
-			attAssignments = []uint64{}
-		}
 		attPageData := models.SlotPageAttestation{
-			Slot:            uint64(attestation.Data.Slot),
-			CommitteeIndex:  uint64(attestation.Data.Index),
-			AggregationBits: attestation.AggregationBits,
-			Validators:      make([]types.NamedValidator, len(attAssignments)),
-			Signature:       attestation.Signature[:],
-			BeaconBlockRoot: attestation.Data.BeaconBlockRoot[:],
-			SourceEpoch:     uint64(attestation.Data.Source.Epoch),
-			SourceRoot:      attestation.Data.Source.Root[:],
-			TargetEpoch:     uint64(attestation.Data.Target.Epoch),
-			TargetRoot:      attestation.Data.Target.Root[:],
+			Slot:            uint64(attData.Slot),
+			AggregationBits: attAggregationBits,
+			Signature:       attSignature[:],
+			BeaconBlockRoot: attData.BeaconBlockRoot[:],
+			SourceEpoch:     uint64(attData.Source.Epoch),
+			SourceRoot:      attData.Source.Root[:],
+			TargetEpoch:     uint64(attData.Target.Epoch),
+			TargetRoot:      attData.Target.Root[:],
 		}
+
+		var attAssignments []uint64
+		if attVersioned.Version >= spec.DataVersionElectra {
+			// EIP-7549 attestation
+			attAssignments = []uint64{}
+			attPageData.CommitteeIndex = []uint64{}
+
+			committeeBits, err := attVersioned.CommitteeBits()
+			if err != nil {
+				continue
+			}
+
+			for _, committee := range committeeBits.BitIndices() {
+				if uint64(committee) >= utils.Config.Chain.Config.MaxCommitteesPerSlot {
+					continue
+				}
+
+				attPageData.CommitteeIndex = append(attPageData.CommitteeIndex, uint64(committee))
+				if assignmentsMap[attEpoch] != nil {
+					committeeAssignments := assignmentsMap[attEpoch].AttestorAssignments[fmt.Sprintf("%v-%v", uint64(attData.Slot), committee)]
+					if len(committeeAssignments) == 0 {
+						break
+					}
+
+					attAssignments = append(attAssignments, committeeAssignments...)
+				}
+			}
+		} else {
+			// pre-electra attestation
+			if assignmentsMap[attEpoch] != nil {
+				attAssignments = assignmentsMap[attEpoch].AttestorAssignments[fmt.Sprintf("%v-%v", uint64(attData.Slot), uint64(attData.Index))]
+			} else {
+				attAssignments = []uint64{}
+			}
+
+			attPageData.CommitteeIndex = []uint64{uint64(attData.Index)}
+		}
+
+		attPageData.Validators = make([]types.NamedValidator, len(attAssignments))
 		for j := 0; j < len(attAssignments); j++ {
 			attPageData.Validators[j] = types.NamedValidator{
 				Index: attAssignments[j],
 				Name:  services.GlobalBeaconService.GetValidatorName(attAssignments[j]),
 			}
 		}
+
 		pageData.Attestations[i] = &attPageData
 	}
 
@@ -414,35 +466,59 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, assignments
 
 	pageData.AttesterSlashings = make([]*models.SlotPageAttesterSlashing, pageData.AttesterSlashingsCount)
 	for i, slashing := range attesterSlashings {
+		att1, _ := slashing.Attestation1()
+		att2, _ := slashing.Attestation1()
+		if att1 == nil || att2 == nil {
+			continue
+		}
+
+		att1AttestingIndices, _ := att1.AttestingIndices()
+		att2AttestingIndices, _ := att2.AttestingIndices()
+		if att1AttestingIndices == nil || att2AttestingIndices == nil {
+			continue
+		}
+
+		att1Signature, err1 := att1.Signature()
+		att2Signature, err2 := att2.Signature()
+		if err1 != nil || err2 != nil {
+			continue
+		}
+
+		att1Data, err1 := att1.Data()
+		att2Data, err2 := att2.Data()
+		if err1 != nil || err2 != nil {
+			continue
+		}
+
 		slashingData := &models.SlotPageAttesterSlashing{
-			Attestation1Indices:         make([]uint64, len(slashing.Attestation1.AttestingIndices)),
-			Attestation1Signature:       slashing.Attestation1.Signature[:],
-			Attestation1Slot:            uint64(slashing.Attestation1.Data.Slot),
-			Attestation1Index:           uint64(slashing.Attestation1.Data.Index),
-			Attestation1BeaconBlockRoot: slashing.Attestation1.Data.BeaconBlockRoot[:],
-			Attestation1SourceEpoch:     uint64(slashing.Attestation1.Data.Source.Epoch),
-			Attestation1SourceRoot:      slashing.Attestation1.Data.Source.Root[:],
-			Attestation1TargetEpoch:     uint64(slashing.Attestation1.Data.Target.Epoch),
-			Attestation1TargetRoot:      slashing.Attestation1.Data.Target.Root[:],
-			Attestation2Indices:         make([]uint64, len(slashing.Attestation2.AttestingIndices)),
-			Attestation2Signature:       slashing.Attestation2.Signature[:],
-			Attestation2Slot:            uint64(slashing.Attestation2.Data.Slot),
-			Attestation2Index:           uint64(slashing.Attestation2.Data.Index),
-			Attestation2BeaconBlockRoot: slashing.Attestation2.Data.BeaconBlockRoot[:],
-			Attestation2SourceEpoch:     uint64(slashing.Attestation2.Data.Source.Epoch),
-			Attestation2SourceRoot:      slashing.Attestation2.Data.Source.Root[:],
-			Attestation2TargetEpoch:     uint64(slashing.Attestation2.Data.Target.Epoch),
-			Attestation2TargetRoot:      slashing.Attestation2.Data.Target.Root[:],
+			Attestation1Indices:         make([]uint64, len(att1AttestingIndices)),
+			Attestation1Signature:       att1Signature[:],
+			Attestation1Slot:            uint64(att1Data.Slot),
+			Attestation1Index:           uint64(att1Data.Index),
+			Attestation1BeaconBlockRoot: att1Data.BeaconBlockRoot[:],
+			Attestation1SourceEpoch:     uint64(att1Data.Source.Epoch),
+			Attestation1SourceRoot:      att1Data.Source.Root[:],
+			Attestation1TargetEpoch:     uint64(att1Data.Target.Epoch),
+			Attestation1TargetRoot:      att1Data.Target.Root[:],
+			Attestation2Indices:         make([]uint64, len(att2AttestingIndices)),
+			Attestation2Signature:       att2Signature[:],
+			Attestation2Slot:            uint64(att2Data.Slot),
+			Attestation2Index:           uint64(att2Data.Index),
+			Attestation2BeaconBlockRoot: att2Data.BeaconBlockRoot[:],
+			Attestation2SourceEpoch:     uint64(att2Data.Source.Epoch),
+			Attestation2SourceRoot:      att2Data.Source.Root[:],
+			Attestation2TargetEpoch:     uint64(att2Data.Target.Epoch),
+			Attestation2TargetRoot:      att2Data.Target.Root[:],
 			SlashedValidators:           make([]types.NamedValidator, 0),
 		}
 		pageData.AttesterSlashings[i] = slashingData
-		for j := range slashing.Attestation1.AttestingIndices {
-			slashingData.Attestation1Indices[j] = uint64(slashing.Attestation1.AttestingIndices[j])
+		for j := range att1AttestingIndices {
+			slashingData.Attestation1Indices[j] = uint64(att1AttestingIndices[j])
 		}
-		for j := range slashing.Attestation2.AttestingIndices {
-			slashingData.Attestation2Indices[j] = uint64(slashing.Attestation2.AttestingIndices[j])
+		for j := range att2AttestingIndices {
+			slashingData.Attestation2Indices[j] = uint64(att2AttestingIndices[j])
 		}
-		inter := intersect.Simple(slashing.Attestation1.AttestingIndices, slashing.Attestation2.AttestingIndices)
+		inter := intersect.Simple(att1AttestingIndices, att2AttestingIndices)
 		for _, j := range inter {
 			valIdx := j.(uint64)
 			slashingData.SlashedValidators = append(slashingData.SlashedValidators, types.NamedValidator{
@@ -576,6 +652,30 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, assignments
 				BlockNumber:   uint64(executionPayload.BlockNumber),
 			}
 			getSlotPageTransactions(pageData, executionPayload.Transactions)
+		case spec.DataVersionElectra:
+			if blockData.Block.Electra == nil {
+				break
+			}
+			executionPayload := blockData.Block.Electra.Message.Body.ExecutionPayload
+			pageData.ExecutionData = &models.SlotPageExecutionData{
+				ParentHash:    executionPayload.ParentHash[:],
+				FeeRecipient:  executionPayload.FeeRecipient[:],
+				StateRoot:     executionPayload.StateRoot[:],
+				ReceiptsRoot:  executionPayload.ReceiptsRoot[:],
+				LogsBloom:     executionPayload.LogsBloom[:],
+				Random:        executionPayload.PrevRandao[:],
+				GasLimit:      uint64(executionPayload.GasLimit),
+				GasUsed:       uint64(executionPayload.GasUsed),
+				Timestamp:     uint64(executionPayload.Timestamp),
+				Time:          time.Unix(int64(executionPayload.Timestamp), 0),
+				ExtraData:     executionPayload.ExtraData,
+				BaseFeePerGas: executionPayload.BaseFeePerGas.Uint64(),
+				BlockHash:     executionPayload.BlockHash[:],
+				BlockNumber:   uint64(executionPayload.BlockNumber),
+			}
+			getSlotPageTransactions(pageData, executionPayload.Transactions)
+			getSlotPageDepositReceipts(pageData, executionPayload.DepositRequests)
+			getSlotPageWithdrawalRequests(pageData, executionPayload.WithdrawalRequests)
 		}
 	}
 
@@ -615,6 +715,23 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, assignments
 			}
 			pageData.Blobs[i] = blobData
 		}
+	}
+
+	if epoch >= utils.Config.Chain.Config.ElectraForkEpoch {
+		/*
+			pageData.ConsolidationsCount = uint64(len(consolidations))
+			pageData.Consolidations = make([]*models.SlotPageConsolidation, pageData.ConsolidationsCount)
+			for i := range consolidations {
+				consolidationData := &models.SlotPageConsolidation{
+					SourceIndex: uint64(consolidations[i].Message.SourceIndex),
+					SourceName:  services.GlobalBeaconService.GetValidatorName(uint64(consolidations[i].Message.SourceIndex)),
+					TargetIndex: uint64(consolidations[i].Message.TargetIndex),
+					TargetName:  services.GlobalBeaconService.GetValidatorName(uint64(consolidations[i].Message.TargetIndex)),
+					Epoch:       uint64(consolidations[i].Message.Epoch),
+				}
+				pageData.Consolidations[i] = consolidationData
+			}
+		*/
 	}
 
 	return pageData
@@ -696,4 +813,59 @@ func getSlotPageTransactions(pageData *models.SlotPageBlockData, tranactions []b
 			}
 		}
 	}
+}
+
+func getSlotPageDepositReceipts(pageData *models.SlotPageBlockData, depositReceipts []*electra.DepositRequest) {
+	pageData.DepositReceipts = make([]*models.SlotPageDepositReceipt, 0)
+	validatorsMap := services.GlobalBeaconService.GetCachedValidatorPubkeyMap()
+
+	for _, depositReceipt := range depositReceipts {
+		receiptData := &models.SlotPageDepositReceipt{
+			PublicKey:       depositReceipt.Pubkey[:],
+			WithdrawalCreds: depositReceipt.WithdrawalCredentials[:],
+			Amount:          uint64(depositReceipt.Amount),
+			Signature:       depositReceipt.Signature[:],
+			Index:           depositReceipt.Index,
+		}
+
+		if validatorsMap != nil {
+			validator := validatorsMap[depositReceipt.Pubkey]
+			if validator != nil {
+				receiptData.Exists = true
+				receiptData.ValidatorIndex = uint64(validator.Index)
+				receiptData.ValidatorName = services.GlobalBeaconService.GetValidatorName(receiptData.ValidatorIndex)
+			}
+		}
+
+		pageData.DepositReceipts = append(pageData.DepositReceipts, receiptData)
+	}
+
+	pageData.DepositReceiptsCount = uint64(len(pageData.DepositReceipts))
+}
+
+func getSlotPageWithdrawalRequests(pageData *models.SlotPageBlockData, withdrawalRequests []*electra.WithdrawalRequest) {
+	pageData.WithdrawalRequests = make([]*models.SlotPageWithdrawalRequest, 0)
+
+	validatorsMap := services.GlobalBeaconService.GetCachedValidatorPubkeyMap()
+
+	for _, withdrawalRequest := range withdrawalRequests {
+		requestData := &models.SlotPageWithdrawalRequest{
+			Address:   withdrawalRequest.SourceAddress[:],
+			PublicKey: withdrawalRequest.ValidatorPubkey[:],
+			Amount:    uint64(withdrawalRequest.Amount),
+		}
+
+		if validatorsMap != nil {
+			validator := validatorsMap[withdrawalRequest.ValidatorPubkey]
+			if validator != nil {
+				requestData.Exists = true
+				requestData.ValidatorIndex = uint64(validator.Index)
+				requestData.ValidatorName = services.GlobalBeaconService.GetValidatorName(requestData.ValidatorIndex)
+			}
+		}
+
+		pageData.WithdrawalRequests = append(pageData.WithdrawalRequests, requestData)
+	}
+
+	pageData.WithdrawalRequestsCount = uint64(len(pageData.WithdrawalRequests))
 }
