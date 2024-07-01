@@ -4,7 +4,6 @@ import (
 	"errors"
 
 	"github.com/attestantio/go-eth2-client/spec"
-	"github.com/attestantio/go-eth2-client/spec/electra"
 )
 
 func GetExecutionExtraData(v *spec.VersionedSignedBeaconBlock) ([]byte, error) {
@@ -33,30 +32,6 @@ func GetExecutionExtraData(v *spec.VersionedSignedBeaconBlock) ([]byte, error) {
 		}
 
 		return v.Electra.Message.Body.ExecutionPayload.ExtraData, nil
-	default:
-		return nil, errors.New("unknown version")
-	}
-}
-
-// Consolidations returns the consolidations of the beacon block.
-func GetBlockConsolidations(v *spec.VersionedSignedBeaconBlock) ([]*electra.SignedConsolidation, error) {
-	switch v.Version {
-	case spec.DataVersionPhase0:
-		return nil, errors.New("consolidations not available in phase0 block")
-	case spec.DataVersionAltair:
-		return nil, errors.New("consolidations not available in altair block")
-	case spec.DataVersionBellatrix:
-		return nil, errors.New("consolidations not available in bellatrix block")
-	case spec.DataVersionCapella:
-		return nil, errors.New("consolidations not available in capella block")
-	case spec.DataVersionDeneb:
-		return nil, errors.New("consolidations not available in deneb block")
-	case spec.DataVersionElectra:
-		if v.Electra == nil || v.Electra.Message == nil || v.Electra.Message.Body == nil {
-			return nil, errors.New("no electra block")
-		}
-
-		return v.Electra.Message.Body.Consolidations, nil
 	default:
 		return nil, errors.New("unknown version")
 	}

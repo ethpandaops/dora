@@ -541,27 +541,31 @@ func buildDbConsolidations(block *CacheBlock) []*dbtypes.Consolidation {
 		return nil
 	}
 
-	consolidations, err := blockBody.Consolidations()
-	if err != nil {
-		return nil
-	}
-
-	dbConsolidations := make([]*dbtypes.Consolidation, len(consolidations))
-	for idx, consolidation := range consolidations {
-		dbConsolidation := &dbtypes.Consolidation{
-			SlotNumber:  block.Slot,
-			SlotIndex:   uint64(idx),
-			SlotRoot:    block.Root,
-			Orphaned:    false,
-			SourceIndex: uint64(consolidation.Message.SourceIndex),
-			TargetIndex: uint64(consolidation.Message.TargetIndex),
-			Epoch:       uint64(consolidation.Message.Epoch),
+	/*
+		consolidations, err := blockBody.Consolidations()
+		if err != nil {
+			return nil
 		}
 
-		dbConsolidations[idx] = dbConsolidation
-	}
+		dbConsolidations := make([]*dbtypes.Consolidation, len(consolidations))
+		for idx, consolidation := range consolidations {
+			dbConsolidation := &dbtypes.Consolidation{
+				SlotNumber:  block.Slot,
+				SlotIndex:   uint64(idx),
+				SlotRoot:    block.Root,
+				Orphaned:    false,
+				SourceIndex: uint64(consolidation.Message.SourceIndex),
+				TargetIndex: uint64(consolidation.Message.TargetIndex),
+				Epoch:       uint64(consolidation.Message.Epoch),
+			}
 
-	return dbConsolidations
+			dbConsolidations[idx] = dbConsolidation
+		}
+
+		return dbConsolidations
+	*/
+
+	return []*dbtypes.Consolidation{}
 }
 
 func persistBlockElRequests(block *CacheBlock, orphaned bool, tx *sqlx.Tx) error {

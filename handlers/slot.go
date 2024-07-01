@@ -333,7 +333,7 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, assignments
 	syncAggregate, _ := blockData.Block.SyncAggregate()
 	executionWithdrawals, _ := blockData.Block.Withdrawals()
 	blobKzgCommitments, _ := blockData.Block.BlobKZGCommitments()
-	consolidations, _ := blockData.Block.Consolidations()
+	//consolidations, _ := blockData.Block.Consolidations()
 
 	pageData := &models.SlotPageBlockData{
 		BlockRoot:              blockData.Root,
@@ -674,7 +674,7 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, assignments
 				BlockNumber:   uint64(executionPayload.BlockNumber),
 			}
 			getSlotPageTransactions(pageData, executionPayload.Transactions)
-			getSlotPageDepositReceipts(pageData, executionPayload.DepositReceipts)
+			getSlotPageDepositReceipts(pageData, executionPayload.DepositRequests)
 			getSlotPageWithdrawalRequests(pageData, executionPayload.WithdrawalRequests)
 		}
 	}
@@ -718,18 +718,20 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, assignments
 	}
 
 	if epoch >= utils.Config.Chain.Config.ElectraForkEpoch {
-		pageData.ConsolidationsCount = uint64(len(consolidations))
-		pageData.Consolidations = make([]*models.SlotPageConsolidation, pageData.ConsolidationsCount)
-		for i := range consolidations {
-			consolidationData := &models.SlotPageConsolidation{
-				SourceIndex: uint64(consolidations[i].Message.SourceIndex),
-				SourceName:  services.GlobalBeaconService.GetValidatorName(uint64(consolidations[i].Message.SourceIndex)),
-				TargetIndex: uint64(consolidations[i].Message.TargetIndex),
-				TargetName:  services.GlobalBeaconService.GetValidatorName(uint64(consolidations[i].Message.TargetIndex)),
-				Epoch:       uint64(consolidations[i].Message.Epoch),
+		/*
+			pageData.ConsolidationsCount = uint64(len(consolidations))
+			pageData.Consolidations = make([]*models.SlotPageConsolidation, pageData.ConsolidationsCount)
+			for i := range consolidations {
+				consolidationData := &models.SlotPageConsolidation{
+					SourceIndex: uint64(consolidations[i].Message.SourceIndex),
+					SourceName:  services.GlobalBeaconService.GetValidatorName(uint64(consolidations[i].Message.SourceIndex)),
+					TargetIndex: uint64(consolidations[i].Message.TargetIndex),
+					TargetName:  services.GlobalBeaconService.GetValidatorName(uint64(consolidations[i].Message.TargetIndex)),
+					Epoch:       uint64(consolidations[i].Message.Epoch),
+				}
+				pageData.Consolidations[i] = consolidationData
 			}
-			pageData.Consolidations[i] = consolidationData
-		}
+		*/
 	}
 
 	return pageData
@@ -813,7 +815,7 @@ func getSlotPageTransactions(pageData *models.SlotPageBlockData, tranactions []b
 	}
 }
 
-func getSlotPageDepositReceipts(pageData *models.SlotPageBlockData, depositReceipts []*electra.DepositReceipt) {
+func getSlotPageDepositReceipts(pageData *models.SlotPageBlockData, depositReceipts []*electra.DepositRequest) {
 	pageData.DepositReceipts = make([]*models.SlotPageDepositReceipt, 0)
 	validatorsMap := services.GlobalBeaconService.GetCachedValidatorPubkeyMap()
 
@@ -841,7 +843,7 @@ func getSlotPageDepositReceipts(pageData *models.SlotPageBlockData, depositRecei
 	pageData.DepositReceiptsCount = uint64(len(pageData.DepositReceipts))
 }
 
-func getSlotPageWithdrawalRequests(pageData *models.SlotPageBlockData, withdrawalRequests []*electra.ExecutionLayerWithdrawalRequest) {
+func getSlotPageWithdrawalRequests(pageData *models.SlotPageBlockData, withdrawalRequests []*electra.WithdrawalRequest) {
 	pageData.WithdrawalRequests = make([]*models.SlotPageWithdrawalRequest, 0)
 
 	validatorsMap := services.GlobalBeaconService.GetCachedValidatorPubkeyMap()
