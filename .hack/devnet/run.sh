@@ -57,7 +57,7 @@ indexer:
 database:
   engine: "sqlite"
   sqlite:
-    file: "./tmp-database.sqlite"
+    file: "${__dir}/generated-database.sqlite"
 EOF
 
 
@@ -65,5 +65,6 @@ cat <<EOF
 ============================================================================================================
 Dora config at ${__dir}/generated-dora-config.yaml
 Chain config at ${__dir}/generated-chain-config.yaml
+Database at ${__dir}/generated-database.sqlite
 ============================================================================================================
 EOF
