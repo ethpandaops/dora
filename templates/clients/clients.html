@@ -9,15 +9,52 @@
         </ol>
       </nav>
     </div>
-
-    <div class="card mt-2">
+    <div style="
+        position: absolute;
+        left: 0px;
+        right: 0px;
+        width: 100%;
+        height: 80%;;
+        background: #4b79a1;
+        background: -webkit-linear-gradient(
+          to top,
+          #283e51,
+          #0a2342
+        );
+        background: linear-gradient(
+          to top,
+          #283e51,
+          #0a2342
+        );
+        background: -olinear-gradient(to top, #283e51, #0a2342);"
+      >
+      <div style="
+        position:absolute;
+        left: 0px;
+        right: 0px;
+        width: 100%;
+        height: 100%;
+        background: #0f0f0f9f url(http://www.script-tutorials.com/demos/360/images/stars.png) repeat top center;"
+      >
+        <div id="nodemap" style="height:1150px"></div>
+      </div>
+    </div>
+    <div class="card mt-2" style="margin-top:80% !important">
       <div class="card-body px-0 py-3">
         <div class="table-responsive px-0 py-1">
+          <div style="text-align: right; margin-right: 15px;">
+            Peer infos:
+            <div class="btn-group btn-group-sm" role="group" aria-label="Peer info controls">
+              <button type="button" class="btn btn-outline-secondary" onclick='$(".collapse.peerInfo").collapse("hide");'>Hide all</button>
+              <button type="button" class="btn btn-outline-secondary" onclick='$(".collapse.peerInfo").collapse("show");'>Show all</button>
+            </div>
+          </div>
           <table class="table table-nobr" id="clients">
             <thead>
               <tr>
                 <th>#</th>
                 <th>Name</th>
+                <th>Peers</th>
                 <th>Head Slot</th>
                 <th>Head Root</th>
                 <th>Status</th>
@@ -28,7 +65,17 @@
                 {{ range $i, $client := .Clients }}
                   <tr>
                     <td>{{ $client.Index }}</td>
-                    <td>{{ $client.Name }}</td>
+                    <td style="max-width: 200px;">
+                      <img src="https://api.dicebear.com/9.x/identicon/svg?seed={{ $client.PeerId }}"
+                        alt="{{ $client.PeerId }}"
+                        class="client-node-icon"/>
+                        {{ $client.Name }}<br>
+                    </td>
+                    <td>
+                      <button onclick="$('#peerInfo-{{ $client.PeerId }}').collapse('toggle')" class="btn btn-sm btn-secondary" type="button">
+                        {{ len $client.Peers }}
+                      </button>
+                    </td>
                     <td><a href="/slot/{{ $client.HeadSlot }}">{{ formatAddCommas $client.HeadSlot }}</a></td>
                     <td>
                       <a href="/slot/0x{{ printf "%x" $client.HeadRoot }}" class="text-truncate d-inline-block" style="max-width: 200px">0x{{ printf "%x" $client.HeadRoot }}</a>
@@ -52,6 +99,37 @@
                       <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $client.Version }}"></i>
                     </td>
                   </tr>
+                  <tr class="collapse peerInfo" id="peerInfo-{{ $client.PeerId }}">
+                    <td colspan="7">
+                      <div class="client-node-peerinfo">
+                        Peer ID: <code>{{ $client.PeerId }}</code>
+                      </div>
+                      <div>
+                        <div class="peer-table-column" style="border-right: 1px dashed;">
+                            <div>Inbound</div>
+                          {{ range $j, $peer := $client.Peers }}
+                            {{if eq "inbound" $peer.Direction}}
+                            <div style="padding-left: 20px;">
+                              <img src="https://api.dicebear.com/9.x/identicon/svg?seed={{ $peer.PeerID }}" class="peer-table-icon {{ $peer.State }}" alt="{{ $peer.State }}"/>
+                              <code>{{ $peer.PeerID }}</code>
+                            </div>
+                            {{end}}
+                          {{ end }}
+                        </div>
+                        <div class="peer-table-column">
+                          <div>Outbound</div>
+                          {{ range $j, $peer := $client.Peers }}
+                            {{if eq "outbound" $peer.Direction}}
+                            <div style="padding-left: 20px;">
+                              <img src="https://api.dicebear.com/9.x/identicon/svg?seed={{ $peer.PeerID }}" class="peer-table-icon {{ $peer.State }}" alt="{{ $peer.State }}"/>
+                              <code>{{ $peer.PeerID }}</code>
+                            </div>
+                            {{end}}
+                          {{ end }}
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
                 {{ end }}
               </tbody>
           </table>
@@ -60,7 +138,135 @@
       <div id="footer-placeholder" style="height:30px;"></div>
     </div>
   </div>
+
+  <script type="text/javascript">
+    var container = document.getElementById("nodemap");
+    var data = {{ .PeerMap }}
+    var options = {
+      interaction: {
+        hover: true
+      },
+      manipulation: {
+        enabled: false,
+      },
+      groups: {
+        internal: {
+          shape: "dot",
+          size: 30,
+          font: {
+            size: 16,
+            face: "Tahoma",
+            color: "#ffffff",
+          },
+          borderWidth: 3,
+          shadow: true,
+          color:{
+            border: "#0077B6",
+            background: "#fafafa",
+            highlight: {
+              border: "#E77D22",
+              background: "#fafafa",
+            },
+            hover: {
+              border: "#0077B6",
+              background: "#fefefe",
+            },
+          }
+        },
+        external: {
+          shape: "dot",
+          shapeProperties: {
+            borderDashes: [5, 5],
+          },
+          size: 20,
+          font: {
+            size: 14,
+            face: "Tahoma",
+            color: "#ffffff",
+          },
+          borderWidth: 2,
+          shadow: true,
+          color:{
+            border: "#809FFF",
+            background: "#fafafa",
+            highlight: {
+              border: "#E77D22",
+              background: "#fafafa",
+            },
+            hover: {
+              border: "#809FFF",
+              background: "#fefefe",
+            },
+          }
+        },
+      },
+      nodes: {
+        shape: "dot",
+        size: 30,
+        font: {
+          size: 16,
+          face: "Tahoma",
+          color: "#ffffff",
+        },
+        borderWidth: 2,
+        shadow: true,
+        color:{
+          border: "#222222",
+          background: "#666666",
+          highlight: {
+            border: "#E77D22",
+            background: "#E77D22",
+          },
+          hover: {
+            border: "#222222",
+            background: "#666666",
+          },
+        }
+      },
+      edges: {
+        arrows: {
+          to: { enabled: true, scaleFactor: 1, type: "arrow" },
+        },
+        width: 2,
+        shadow: true,
+        color: {
+          color: "#0077B6",
+          highlight: "#E77D22",
+          hover: "#0077B6",
+          opacity: 0.7,
+        },
+        smooth: {
+          type: "dynamic", // might need to change to "continuous" when there are too many nodes
+        },
+      },
+      physics: {
+        stabilization: false,
+        barnesHut: {
+          gravitationalConstant: -8000,
+          springConstant: 0.001,
+          springLength: 200,
+        },
+      },
+    };
+    var network = new vis.Network(container, data, options);
+
+    // Handle events
+    network.on("hoverNode", function (params) {
+      console.log("hoverNode Event:", params);
+    });
+    network.on("selectNode", function (params) {
+      console.log("selectNode Event:", params);
+      $(".collapse.peerInfo").collapse("hide");
+      $("#peerInfo-" + params.nodes[0]).collapse("show");
+    });
+
+    $( document ).ready(function() {
+
+    });
+  </script>
+
 {{ end }}
+
 {{ define "js" }}
 {{ end }}
 {{ define "css" }}

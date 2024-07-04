@@ -22,6 +22,7 @@ type ConsensusClient struct {
 	archive            bool
 	priority           int
 	versionStr         string
+	peerId             string
 	indexerCache       *indexerCache
 	cacheMutex         sync.RWMutex
 	lastClientError    error
@@ -39,6 +40,7 @@ type ConsensusClient struct {
 	lastFinalizedRoot  []byte
 	lastJustifiedEpoch int64
 	lastJustifiedRoot  []byte
+	peers              []*v1.Peer
 }
 
 func newConsensusClient(clientIdx uint16, clientName string, rpcClient *rpc.BeaconClient, indexerCache *indexerCache, archive bool, priority int, skipValidators bool) *ConsensusClient {
@@ -71,6 +73,10 @@ func (client *ConsensusClient) GetVersion() string {
 	return client.versionStr
 }
 
+func (client *ConsensusClient) GetPeerId() string {
+	return client.peerId
+}
+
 func (client *ConsensusClient) GetRpcClient() *rpc.BeaconClient {
 	return client.rpcClient
 }
@@ -100,6 +106,12 @@ func (client *ConsensusClient) GetLastClientError() string {
 		return ""
 	}
 	return client.lastClientError.Error()
+}
+
+func (client *ConsensusClient) GetNodePeers() []*v1.Peer {
+	client.cacheMutex.RLock()
+	defer client.cacheMutex.RUnlock()
+	return client.peers
 }
 
 func (client *ConsensusClient) runConsensusClientLoop() {
@@ -176,6 +188,19 @@ func (client *ConsensusClient) checkClient() error {
 	if err != nil {
 		return fmt.Errorf("initialization of attestantio/go-eth2-client failed: %w", err)
 	}
+
+	// get peerId
+	client.peerId, err = client.rpcClient.GetNodePeerId()
+	if err != nil {
+		return fmt.Errorf("could not get node peer id: %v", err)
+	}
+
+	// get peers
+	peers, err := client.rpcClient.GetNodePeers()
+	if err != nil {
+		return fmt.Errorf("could not get peers: %v", err)
+	}
+	client.peers = peers
 
 	// check genesis
 	genesis, err := client.rpcClient.GetGenesis()

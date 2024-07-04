@@ -308,3 +308,38 @@ span.validator-label {
 .ellipsis-copy-btn {
   float: right;
 }
+
+
+.client-node-peerinfo {
+  text-align: center;
+  padding-bottom: 10px;
+  border-bottom: 1px dashed;
+  margin-bottom: 5px;
+}
+.client-node-icon {
+  border-radius:50%;
+  border:1px solid #0f0f0f;
+  background-color: #fafafa;
+  margin-right: 10px;
+  height: 25px;
+  width: 25px;
+}
+.peer-table-icon {
+  width: 25px;
+  height: 25px;
+  border-radius: 50%;
+  border: 2px solid #0f0f0f;
+  background-color: #fafafa;
+  margin-right: 10px;
+}
+
+.peer-table-column{
+  display: inline-block;
+  width: 50%;
+  vertical-align: top;
+  text-align: center;
+}
+
+.peer-table-icon.connected {
+  border-color: #03C03C;
+}
