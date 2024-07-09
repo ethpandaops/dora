@@ -7,12 +7,12 @@ require (
 	github.com/Masterminds/sprig/v3 v3.2.3
 	github.com/attestantio/go-eth2-client v0.21.6
 	github.com/aws/aws-sdk-go-v2 v1.30.1
-	github.com/aws/aws-sdk-go-v2/config v1.27.23
-	github.com/aws/aws-sdk-go-v2/credentials v1.17.23
-	github.com/aws/aws-sdk-go-v2/feature/s3/manager v1.17.3
-	github.com/aws/aws-sdk-go-v2/service/s3 v1.57.1
+	github.com/aws/aws-sdk-go-v2/config v1.27.24
+	github.com/aws/aws-sdk-go-v2/credentials v1.17.24
+	github.com/aws/aws-sdk-go-v2/feature/s3/manager v1.17.5
+	github.com/aws/aws-sdk-go-v2/service/s3 v1.58.0
 	github.com/coocood/freecache v1.2.4
-	github.com/ethereum/go-ethereum v1.14.5
+	github.com/ethereum/go-ethereum v1.14.6
 	github.com/glebarez/go-sqlite v1.22.0
 	github.com/go-redis/redis/v8 v8.11.5
 	github.com/gorilla/mux v1.8.1
@@ -34,7 +34,7 @@ require (
 	github.com/stdatiks/jdenticon-go v0.1.0
 	github.com/tdewolff/minify v2.3.6+incompatible
 	github.com/urfave/negroni v1.0.0
-	golang.org/x/crypto v0.24.0
+	golang.org/x/crypto v0.25.0
 	golang.org/x/exp v0.0.0-20240613232115-7f521ea00fb8
 	golang.org/x/text v0.16.0
 	golang.org/x/time v0.5.0
@@ -65,7 +65,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.11.15 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.17.13 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sso v1.22.1 // indirect
-	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.26.1 // indirect
+	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.26.2 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.30.1 // indirect
 	github.com/aws/smithy-go v1.20.3 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
@@ -129,7 +129,7 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/net v0.26.0 // indirect
 	golang.org/x/sync v0.7.0 // indirect
-	golang.org/x/sys v0.21.0 // indirect
+	golang.org/x/sys v0.22.0 // indirect
 	golang.org/x/xerrors v0.0.0-20231012003039-104605ab7028 // indirect
 	google.golang.org/protobuf v1.34.2 // indirect
 	gopkg.in/Knetic/govaluate.v3 v3.0.0 // indirect

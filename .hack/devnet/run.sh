@@ -10,7 +10,7 @@ else
 fi
 
 # Get chain config
-kurtosis files inspect dora el_cl_genesis_data ./config.yaml | tail -n +2 > "${__dir}/generated-chain-config.yaml"
+kurtosis files inspect "$ENCLAVE_NAME" el_cl_genesis_data ./config.yaml | tail -n +2 > "${__dir}/generated-chain-config.yaml"
 
 ## Generate Dora config
 ENCLAVE_UUID=$(kurtosis enclave inspect "$ENCLAVE_NAME" --full-uuids | grep 'UUID:' | awk '{print $2}')
