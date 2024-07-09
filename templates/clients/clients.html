@@ -9,33 +9,8 @@
         </ol>
       </nav>
     </div>
-    <div style="
-        position: absolute;
-        left: 0px;
-        right: 0px;
-        width: 100%;
-        height: 80%;;
-        background: #4b79a1;
-        background: -webkit-linear-gradient(
-          to top,
-          #283e51,
-          #0a2342
-        );
-        background: linear-gradient(
-          to top,
-          #283e51,
-          #0a2342
-        );
-        background: -olinear-gradient(to top, #283e51, #0a2342);"
-      >
-      <div style="
-        position:absolute;
-        left: 0px;
-        right: 0px;
-        width: 100%;
-        height: 100%;
-        background: #0f0f0f9f url(http://www.script-tutorials.com/demos/360/images/stars.png) repeat top center;"
-      >
+    <div class="clients-bg-wrapper">
+      <div class="clients-bg">
         <div id="nodemap" style="height:1150px"></div>
       </div>
     </div>
@@ -72,7 +47,7 @@
                         {{ $client.Name }}<br>
                     </td>
                     <td>
-                      <button onclick="$('#peerInfo-{{ $client.PeerId }}').collapse('toggle')" class="btn btn-sm btn-secondary" type="button">
+                      <button onclick="$('#peerInfo-{{ $client.PeerId }}').collapse('toggle')" class="btn btn-sm btn-secondary dropdown-toggle" type="button">
                         {{ len $client.Peers }}
                       </button>
                     </td>
@@ -99,7 +74,7 @@
                       <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $client.Version }}"></i>
                     </td>
                   </tr>
-                  <tr class="collapse peerInfo" id="peerInfo-{{ $client.PeerId }}">
+                  <tr class="collapse peerInfo" style="transition:0s" id="peerInfo-{{ $client.PeerId }}">
                     <td colspan="7">
                       <div class="client-node-peerinfo">
                         Peer ID: <code>{{ $client.PeerId }}</code>
@@ -237,6 +212,7 @@
         },
         smooth: {
           type: "dynamic", // might need to change to "continuous" when there are too many nodes
+          //type: "continuous",
         },
       },
       physics: {
