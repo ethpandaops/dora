@@ -41,7 +41,7 @@
                   <tr>
                     <td>{{ $client.Index }}</td>
                     <td style="max-width: 200px;">
-                      <img src="https://api.dicebear.com/9.x/identicon/svg?seed={{ $client.PeerId }}"
+                      <img src="/identicon?key={{ $client.PeerId }}"
                         alt="{{ $client.PeerId }}"
                         class="client-node-icon"/>
                         {{ $client.Name }}<br>
@@ -85,7 +85,7 @@
                           {{ range $j, $peer := $client.Peers }}
                             {{if eq "inbound" $peer.Direction}}
                             <div style="padding-left: 20px;">
-                              <img src="https://api.dicebear.com/9.x/identicon/svg?seed={{ $peer.PeerID }}" class="peer-table-icon {{ $peer.State }}" alt="{{ $peer.State }}"/>
+                              <img src="/identicon?key={{ $peer.PeerID }}" class="peer-table-icon {{ $peer.State }}" alt="{{ $peer.State }}"/>
                               <code>{{ $peer.PeerID }}</code>
                             </div>
                             {{end}}
@@ -96,7 +96,7 @@
                           {{ range $j, $peer := $client.Peers }}
                             {{if eq "outbound" $peer.Direction}}
                             <div style="padding-left: 20px;">
-                              <img src="https://api.dicebear.com/9.x/identicon/svg?seed={{ $peer.PeerID }}" class="peer-table-icon {{ $peer.State }}" alt="{{ $peer.State }}"/>
+                              <img src="/identicon?key={{ $peer.PeerID }}" class="peer-table-icon {{ $peer.State }}" alt="{{ $peer.State }}"/>
                               <code>{{ $peer.PeerID }}</code>
                             </div>
                             {{end}}

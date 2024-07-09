@@ -72,7 +72,7 @@ func buildPeerMapData() *models.ClientPageDataPeerMap {
 				Id:    peerId,
 				Label: client.GetName(),
 				Group: "internal",
-				Image: fmt.Sprintf("https://api.dicebear.com/9.x/identicon/svg?seed=%s", peerId),
+				Image: fmt.Sprintf("/identicon?key=%s", peerId),
 				Shape: "circularImage",
 			}
 			nodes[peerId] = &node
@@ -91,7 +91,7 @@ func buildPeerMapData() *models.ClientPageDataPeerMap {
 					Id:    peer.PeerID,
 					Label: fmt.Sprintf("%s...%s", peer.PeerID[0:5], peer.PeerID[len(peer.PeerID)-5:]),
 					Group: "external",
-					Image: fmt.Sprintf("https://api.dicebear.com/9.x/identicon/svg?seed=%s", peer.PeerID),
+					Image: fmt.Sprintf("/identicon?key=%s", peer.PeerID),
 					Shape: "circularImage",
 				}
 				nodes[peer.PeerID] = &node

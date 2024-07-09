@@ -4,6 +4,7 @@ go 1.21
 
 require (
 	dario.cat/mergo v1.0.0
+	github.com/Masterminds/sprig/v3 v3.2.3
 	github.com/attestantio/go-eth2-client v0.21.6
 	github.com/aws/aws-sdk-go-v2 v1.30.1
 	github.com/aws/aws-sdk-go-v2/config v1.27.23
@@ -11,7 +12,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/feature/s3/manager v1.17.3
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.57.1
 	github.com/coocood/freecache v1.2.4
-	github.com/davecgh/go-spew v1.1.1
 	github.com/ethereum/go-ethereum v1.14.5
 	github.com/glebarez/go-sqlite v1.22.0
 	github.com/go-redis/redis/v8 v8.11.5
@@ -31,6 +31,7 @@ require (
 	github.com/rs/zerolog v1.33.0
 	github.com/shopspring/decimal v1.4.0
 	github.com/sirupsen/logrus v1.9.3
+	github.com/stdatiks/jdenticon-go v0.1.0
 	github.com/tdewolff/minify v2.3.6+incompatible
 	github.com/urfave/negroni v1.0.0
 	golang.org/x/crypto v0.24.0
@@ -43,9 +44,9 @@ require (
 require (
 	github.com/Masterminds/goutils v1.1.1 // indirect
 	github.com/Masterminds/semver/v3 v3.2.0 // indirect
-	github.com/Masterminds/sprig/v3 v3.2.3 // indirect
 	github.com/huandu/xstrings v1.3.3 // indirect
 	github.com/imdario/mergo v0.3.11 // indirect
+	github.com/lucasb-eyer/go-colorful v1.0.2 // indirect
 	github.com/mitchellh/copystructure v1.0.0 // indirect
 	github.com/mitchellh/reflectwalk v1.0.0 // indirect
 	github.com/spf13/cast v1.3.1 // indirect
