@@ -1,0 +1,10 @@
+participants:
+  - el_type: geth
+    el_image: ethereum/client-go:stable
+    cl_type: lighthouse
+    cl_image: sigp/lighthouse:latest
+    count: 4
+network_params:
+  seconds_per_slot: 12
+additional_services: []
+snooper_enabled: false
