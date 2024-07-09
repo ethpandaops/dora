@@ -360,11 +360,7 @@ Client peers table
 }
 
 .clients-bg-wrapper {
-  position: absolute;
-  left: 0px;
-  right: 0px;
-  width: 100%;
-  height: 80%;;
+  border-radius: var(--bs-card-border-radius);
   background: #4b79a1;
   background: -webkit-linear-gradient(
     to top,
@@ -380,10 +376,6 @@ Client peers table
 }
 
 .clients-bg {
-  position:absolute;
-  left: 0px;
-  right: 0px;
-  width: 100%;
-  height: 100%;
+  border-radius: var(--bs-card-border-radius);
   background: #0f0f0f9f url(/images/stars.png) repeat top center;
 }
