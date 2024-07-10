@@ -26,6 +26,8 @@ type ClientsPageDataClient struct {
 
 type ClientPageDataClientPeers struct {
 	PeerID    string `json:"peer_id"`
+	Alias     string `json:"alias"`
+	PeerType  string `json"type"`
 	State     string `json:"state"`
 	Direction string `json:"direction"`
 }

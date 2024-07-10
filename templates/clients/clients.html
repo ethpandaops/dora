@@ -251,14 +251,7 @@
                             <div style="padding-left: 20px;">
                               <img src="/identicon?key={{ $peer.PeerID }}" class="peer-table-icon {{ $peer.State }}" alt="{{ $peer.State }}"/>
                               <code data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $peer.PeerID }}">
-                                <script type="text/javascript">
-                                  if ("{{ $peer.PeerID }}" in nodeStats){
-                                    node = nodeStats["{{ $peer.PeerID }}"];
-                                    document.write(node.alias);
-                                  } else {
-                                    document.write("{{ $peer.PeerID }}");
-                                  }
-                                </script>
+                                {{ $peer.Alias }}
                               </code>
                             </div>
                             {{end}}
@@ -272,14 +265,7 @@
                               <img src="/identicon?key={{ $peer.PeerID }}" class="peer-table-icon {{ $peer.State }}" alt="{{ $peer.State }}"/>
 
                               <code data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $peer.PeerID }}">
-                                <script type="text/javascript">
-                                  if ("{{ $peer.PeerID }}" in nodeStats){
-                                    node = nodeStats["{{ $peer.PeerID }}"];
-                                    document.write(node.alias);
-                                  } else {
-                                    document.write("{{ $peer.PeerID }}");
-                                  }
-                                </script>
+                                {{ $peer.Alias }}
                               </code>
 
                             </div>

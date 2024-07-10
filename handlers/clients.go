@@ -139,6 +139,11 @@ func buildClientsPageData() (*models.ClientsPageData, time.Duration) {
 	}
 	cacheTime := time.Duration(utils.Config.Chain.Config.SecondsPerSlot) * time.Second
 
+	aliases := map[string]string{}
+	for _, client := range services.GlobalBeaconService.GetClients() {
+		aliases[client.GetPeerId()] = client.GetName()
+	}
+
 	for _, client := range services.GlobalBeaconService.GetClients() {
 		lastHeadSlot, lastHeadRoot, clientRefresh := client.GetLastHead()
 		if lastHeadSlot < 0 {
@@ -148,12 +153,29 @@ func buildClientsPageData() (*models.ClientsPageData, time.Duration) {
 		peers := client.GetNodePeers()
 		resPeers := []*models.ClientPageDataClientPeers{}
 		for _, peer := range peers {
+
+			peerAlias := peer.PeerID
+			peerType := "external"
+			if alias, ok := aliases[peer.PeerID]; ok {
+				peerAlias = alias
+				peerType = "internal"
+			}
 			resPeers = append(resPeers, &models.ClientPageDataClientPeers{
 				PeerID:    peer.PeerID,
 				State:     peer.State,
 				Direction: peer.Direction,
+				Alias:     peerAlias,
+				PeerType:  peerType,
 			})
 		}
+		sort.Slice(resPeers, func(i, j int) bool {
+			if resPeers[i].PeerType == resPeers[j].PeerType {
+				return resPeers[i].Alias < resPeers[j].Alias
+			}
+
+			return resPeers[i].PeerType > resPeers[j].PeerType
+		})
+
 		resClient := &models.ClientsPageDataClient{
 			Index:       int(client.GetIndex()) + 1,
 			Name:        client.GetName(),
