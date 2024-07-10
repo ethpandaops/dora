@@ -109,6 +109,9 @@ func (client *ConsensusClient) GetLastClientError() string {
 }
 
 func (client *ConsensusClient) GetNodePeers() []*v1.Peer {
+	if client.peers == nil {
+		return []*v1.Peer{}
+	}
 	return client.peers
 }
 
