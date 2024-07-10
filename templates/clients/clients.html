@@ -138,29 +138,6 @@
         $(".collapse.peerInfo").collapse("hide");
         $("#peerInfo-" + params.nodes[0]).collapse("show");
       });
-
-      var nodeStats = {};
-
-      data.nodes.forEach(element => {
-        if (element.group == "internal") {
-          nodeStats[element.id] = { alias: element.label };
-        }
-      });
-
-      clients.forEach(client => {
-        inboundPeerCount = 0;
-        outboundPeerCount = 0;
-        for (var i = 0; i < client.peers.length; i++) {
-          if (client.peers[i].direction == "inbound") {
-            inboundPeerCount++;
-          } else {
-            outboundPeerCount++;
-          }
-        }
-        nodeStats[client.peer_id].InboundPeerCount = inboundPeerCount
-        nodeStats[client.peer_id].OutboundPeerCount = outboundPeerCount
-      });
-
     </script>
     <div class="card mt-2">
       <div class="card-body px-0 py-3">
@@ -204,11 +181,11 @@
                     </td>
                     <td style="font-size: 0.8rem; vertical-align: middle;">
                       <span style="width:30px;display: inline-block;" class="text-success" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Inbound Peers">
-                        <script type="text/javascript">document.write(nodeStats["{{ $client.PeerId }}"].InboundPeerCount);</script>
+                        {{ $client.PeersInboundCounter}}
                         <i class="fa-solid fa-arrow-down"></i>
                       </span>
                       <span style="width:30px;display: inline-block;" class="text-danger" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Outbound Peers">
-                        <script type="text/javascript">document.write(nodeStats["{{ $client.PeerId }}"].OutboundPeerCount);</script>
+                        {{ $client.PeersOutboundCounter}}
                         <i class="fa-solid fa-arrow-up"></i>
                       </span>
                       <span style="width:30px;display: inline-block;" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Total Peers">

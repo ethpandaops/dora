@@ -152,8 +152,9 @@ func buildClientsPageData() (*models.ClientsPageData, time.Duration) {
 
 		peers := client.GetNodePeers()
 		resPeers := []*models.ClientPageDataClientPeers{}
-		for _, peer := range peers {
 
+		var inPeerCount, outPeerCount uint32
+		for _, peer := range peers {
 			peerAlias := peer.PeerID
 			peerType := "external"
 			if alias, ok := aliases[peer.PeerID]; ok {
@@ -167,26 +168,33 @@ func buildClientsPageData() (*models.ClientsPageData, time.Duration) {
 				Alias:     peerAlias,
 				PeerType:  peerType,
 			})
+
+			if peer.Direction == "inbound" {
+				inPeerCount++
+			} else {
+				outPeerCount++
+			}
 		}
 		sort.Slice(resPeers, func(i, j int) bool {
 			if resPeers[i].PeerType == resPeers[j].PeerType {
 				return resPeers[i].Alias < resPeers[j].Alias
 			}
-
 			return resPeers[i].PeerType > resPeers[j].PeerType
 		})
 
 		resClient := &models.ClientsPageDataClient{
-			Index:       int(client.GetIndex()) + 1,
-			Name:        client.GetName(),
-			Version:     client.GetVersion(),
-			Peers:       resPeers,
-			PeerId:      client.GetPeerId(),
-			HeadSlot:    uint64(lastHeadSlot),
-			HeadRoot:    lastHeadRoot,
-			Status:      client.GetStatus(),
-			LastRefresh: clientRefresh,
-			LastError:   client.GetLastClientError(),
+			Index:                int(client.GetIndex()) + 1,
+			Name:                 client.GetName(),
+			Version:              client.GetVersion(),
+			Peers:                resPeers,
+			PeerId:               client.GetPeerId(),
+			PeersInboundCounter:  inPeerCount,
+			PeersOutboundCounter: outPeerCount,
+			HeadSlot:             uint64(lastHeadSlot),
+			HeadRoot:             lastHeadRoot,
+			Status:               client.GetStatus(),
+			LastRefresh:          clientRefresh,
+			LastError:            client.GetLastClientError(),
 		}
 		pageData.Clients = append(pageData.Clients, resClient)
 
