@@ -14,10 +14,11 @@
     </div>
     <script type="text/javascript">
       var container = document.getElementById("nodemap");
+
+      var clients = {{ .Clients }};
       var data = {{ .PeerMap }}
-      console.log(data)
       for (var i = 0; i < data.nodes.length; i++) {
-        data.nodes[i].title = $('#peerInfo-' + data.nodes[i].id).first();
+        data.nodes[i].title = data.nodes[i].id;
       }
       var options = {
         interaction: {
@@ -138,15 +139,28 @@
         $("#peerInfo-" + params.nodes[0]).collapse("show");
       });
 
-      var nodesAliasesMap = {};
-
-      console.log(data.nodes);
+      var nodeStats = {};
 
       data.nodes.forEach(element => {
         if (element.group == "internal") {
-          nodesAliasesMap[element.id] = element.label;
+          nodeStats[element.id] = { alias: element.label };
         }
       });
+
+      clients.forEach(client => {
+        inboundPeerCount = 0;
+        outboundPeerCount = 0;
+        for (var i = 0; i < client.peers.length; i++) {
+          if (client.peers[i].direction == "inbound") {
+            inboundPeerCount++;
+          } else {
+            outboundPeerCount++;
+          }
+        }
+        nodeStats[client.peer_id].InboundPeerCount = inboundPeerCount
+        nodeStats[client.peer_id].OutboundPeerCount = outboundPeerCount
+      });
+
     </script>
     <div class="card mt-2">
       <div class="card-body px-0 py-3">
@@ -178,15 +192,28 @@
                       <img src="/identicon?key={{ $client.PeerId }}"
                         alt="{{ $client.PeerId }}"
                         class="client-node-icon"/>
-                        {{ $client.Name }}<br>
+                        <span
+                          id="clientRow-{{ $client.Name }}"
+                          style="cursor:pointer;"
+                          onclick="network.setSelection({nodes: [ '{{ $client.PeerId}}' ]}, { highlightEdges: true });
+                                   $('.collapse.peerInfo').collapse('hide');
+                                   $('#peerInfo-{{ $client.PeerId }}').collapse('show');
+                          ">
+                          <a href="#name={{ $client.Name }}" onclick="event.preventDefault()">{{ $client.Name }}</a>
+                        </span>
                     </td>
-                    <td>
-                      <span class="text-success">5 <i class="fa-solid fa-arrow-down"></i></span>
-                      <span class="text-danger">5 <i class="fa-solid fa-arrow-up"></i></span>
-                      <button onclick="$('#peerInfo-{{ $client.PeerId }}').collapse('toggle')" class="badge rounded-pill dropdown-toggle" style="border:none" type="button">
-                        {{ len $client.Peers }}
-
-                      </button>
+                    <td style="font-size: 0.8rem; vertical-align: middle;">
+                      <span style="width:30px;display: inline-block;" class="text-success" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Inbound Peers">
+                        <script type="text/javascript">document.write(nodeStats["{{ $client.PeerId }}"].InboundPeerCount);</script>
+                        <i class="fa-solid fa-arrow-down"></i>
+                      </span>
+                      <span style="width:30px;display: inline-block;" class="text-danger" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Outbound Peers">
+                        <script type="text/javascript">document.write(nodeStats["{{ $client.PeerId }}"].OutboundPeerCount);</script>
+                        <i class="fa-solid fa-arrow-up"></i>
+                      </span>
+                      <span style="width:30px;display: inline-block;" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Total Peers">
+                        ({{ len $client.Peers }})
+                      </span>
                     </td>
                     <td><a href="/slot/{{ $client.HeadSlot }}">{{ formatAddCommas $client.HeadSlot }}</a></td>
                     <td>
@@ -225,9 +252,9 @@
                               <img src="/identicon?key={{ $peer.PeerID }}" class="peer-table-icon {{ $peer.State }}" alt="{{ $peer.State }}"/>
                               <code data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $peer.PeerID }}">
                                 <script type="text/javascript">
-                                  if ("{{ $peer.PeerID }}" in nodesAliasesMap){
-                                    nodeAlias = nodesAliasesMap["{{ $peer.PeerID }}"];
-                                    document.write(nodeAlias);
+                                  if ("{{ $peer.PeerID }}" in nodeStats){
+                                    node = nodeStats["{{ $peer.PeerID }}"];
+                                    document.write(node.alias);
                                   } else {
                                     document.write("{{ $peer.PeerID }}");
                                   }
@@ -246,9 +273,9 @@
 
                               <code data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $peer.PeerID }}">
                                 <script type="text/javascript">
-                                  if ("{{ $peer.PeerID }}" in nodesAliasesMap){
-                                    nodeAlias = nodesAliasesMap["{{ $peer.PeerID }}"];
-                                    document.write(nodeAlias);
+                                  if ("{{ $peer.PeerID }}" in nodeStats){
+                                    node = nodeStats["{{ $peer.PeerID }}"];
+                                    document.write(node.alias);
                                   } else {
                                     document.write("{{ $peer.PeerID }}");
                                   }
@@ -271,7 +298,18 @@
     </div>
   </div>
 
-
+  <script type="text/javascript">
+    $(document).ready(function() {
+      hashParams = new URLSearchParams(window.location.hash.substring(1))
+      if (hashParams.has("name")) {
+        name = hashParams.get("name")
+        clientRow = $("#clientRow-" + name)
+        if (clientRow) {
+          clientRow.click()
+        }
+      }
+    });
+  </script>
 
 {{ end }}
 
