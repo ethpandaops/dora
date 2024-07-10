@@ -114,6 +114,21 @@ func (client *ConsensusClient) GetNodePeers() []*v1.Peer {
 	return client.peers
 }
 
+func (client *ConsensusClient) updateNodePeers() error {
+	var err error
+	client.peerId, err = client.rpcClient.GetNodePeerId()
+	if err != nil {
+		return fmt.Errorf("could not get node peer id: %v", err)
+	}
+
+	peers, err := client.rpcClient.GetNodePeers()
+	if err != nil {
+		return fmt.Errorf("could not get peers: %v", err)
+	}
+	client.peers = peers
+	return nil
+}
+
 func (client *ConsensusClient) runConsensusClientLoop() {
 	defer utils.HandleSubroutinePanic("runConsensusClientLoop")
 
@@ -189,18 +204,10 @@ func (client *ConsensusClient) checkClient() error {
 		return fmt.Errorf("initialization of attestantio/go-eth2-client failed: %w", err)
 	}
 
-	// get peerId
-	client.peerId, err = client.rpcClient.GetNodePeerId()
-	if err != nil {
-		return fmt.Errorf("could not get node peer id: %v", err)
+	// update node peers
+	if err = client.updateNodePeers(); err != nil {
+		return fmt.Errorf("could not get node peers for %s: %v", client.clientName, err)
 	}
-
-	// get peers
-	peers, err := client.rpcClient.GetNodePeers()
-	if err != nil {
-		return fmt.Errorf("could not get peers: %v", err)
-	}
-	client.peers = peers
 
 	// check genesis
 	genesis, err := client.rpcClient.GetGenesis()
@@ -317,6 +324,11 @@ func (client *ConsensusClient) processClientEvents() error {
 				return err
 			}
 			client.lastStreamEvent = time.Now()
+		}
+
+		// update node peers
+		if err = client.updateNodePeers(); err != nil {
+			return fmt.Errorf("could not get node peers for %s: %v", client.clientName, err)
 		}
 
 		currentEpoch := utils.TimeToEpoch(time.Now())
