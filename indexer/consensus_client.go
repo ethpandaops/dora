@@ -109,8 +109,6 @@ func (client *ConsensusClient) GetLastClientError() string {
 }
 
 func (client *ConsensusClient) GetNodePeers() []*v1.Peer {
-	client.cacheMutex.RLock()
-	defer client.cacheMutex.RUnlock()
 	return client.peers
 }
 
