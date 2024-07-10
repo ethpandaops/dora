@@ -120,7 +120,7 @@
         physics: {
           stabilization: false,
           barnesHut: {
-            gravitationalConstant: -8000,
+            gravitationalConstant: -5000,
             springConstant: 0.001,
             springLength: 200,
           },
@@ -140,8 +140,12 @@
 
       var nodesAliasesMap = {};
 
+      console.log(data.nodes);
+
       data.nodes.forEach(element => {
-        nodesAliasesMap[element.id] = element.label;
+        if (element.group == "internal") {
+          nodesAliasesMap[element.id] = element.label;
+        }
       });
     </script>
     <div class="card mt-2">
@@ -177,8 +181,11 @@
                         {{ $client.Name }}<br>
                     </td>
                     <td>
-                      <button onclick="$('#peerInfo-{{ $client.PeerId }}').collapse('toggle')" class="btn btn-sm btn-secondary dropdown-toggle" type="button">
+                      <span class="text-success">5 <i class="fa-solid fa-arrow-down"></i></span>
+                      <span class="text-danger">5 <i class="fa-solid fa-arrow-up"></i></span>
+                      <button onclick="$('#peerInfo-{{ $client.PeerId }}').collapse('toggle')" class="badge rounded-pill dropdown-toggle" style="border:none" type="button">
                         {{ len $client.Peers }}
+
                       </button>
                     </td>
                     <td><a href="/slot/{{ $client.HeadSlot }}">{{ formatAddCommas $client.HeadSlot }}</a></td>
@@ -216,7 +223,16 @@
                             {{if eq "inbound" $peer.Direction}}
                             <div style="padding-left: 20px;">
                               <img src="/identicon?key={{ $peer.PeerID }}" class="peer-table-icon {{ $peer.State }}" alt="{{ $peer.State }}"/>
-                              <code>{{ $peer.PeerID }}</code>
+                              <code data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $peer.PeerID }}">
+                                <script type="text/javascript">
+                                  if ("{{ $peer.PeerID }}" in nodesAliasesMap){
+                                    nodeAlias = nodesAliasesMap["{{ $peer.PeerID }}"];
+                                    document.write(nodeAlias);
+                                  } else {
+                                    document.write("{{ $peer.PeerID }}");
+                                  }
+                                </script>
+                              </code>
                             </div>
                             {{end}}
                           {{ end }}
@@ -227,7 +243,18 @@
                             {{if eq "outbound" $peer.Direction}}
                             <div style="padding-left: 20px;">
                               <img src="/identicon?key={{ $peer.PeerID }}" class="peer-table-icon {{ $peer.State }}" alt="{{ $peer.State }}"/>
-                              <code>{{ $peer.PeerID }}</code>
+
+                              <code data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $peer.PeerID }}">
+                                <script type="text/javascript">
+                                  if ("{{ $peer.PeerID }}" in nodesAliasesMap){
+                                    nodeAlias = nodesAliasesMap["{{ $peer.PeerID }}"];
+                                    document.write(nodeAlias);
+                                  } else {
+                                    document.write("{{ $peer.PeerID }}");
+                                  }
+                                </script>
+                              </code>
+
                             </div>
                             {{end}}
                           {{ end }}
