@@ -9,38 +9,40 @@ import (
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/sirupsen/logrus"
 
 	"github.com/ethpandaops/dora/rpc"
 	"github.com/ethpandaops/dora/utils"
 )
 
 type ConsensusClient struct {
-	clientIdx          uint16
-	clientName         string
-	rpcClient          *rpc.BeaconClient
-	skipValidators     bool
-	archive            bool
-	priority           int
-	versionStr         string
-	peerId             string
-	indexerCache       *indexerCache
-	cacheMutex         sync.RWMutex
-	lastClientError    error
-	lastHeadRefresh    time.Time
-	lastStreamEvent    time.Time
-	isSynchronizing    bool
-	isOptimistic       bool
-	syncDistance       uint64
-	isConnected        bool
-	retryCounter       uint64
-	lastHeadSlot       int64
-	lastHeadRoot       []byte
-	lastEpochStats     int64
-	lastFinalizedEpoch int64
-	lastFinalizedRoot  []byte
-	lastJustifiedEpoch int64
-	lastJustifiedRoot  []byte
-	peers              []*v1.Peer
+	clientIdx           uint16
+	clientName          string
+	rpcClient           *rpc.BeaconClient
+	skipValidators      bool
+	archive             bool
+	priority            int
+	versionStr          string
+	peerId              string
+	indexerCache        *indexerCache
+	cacheMutex          sync.RWMutex
+	lastClientError     error
+	lastHeadRefresh     time.Time
+	lastStreamEvent     time.Time
+	isSynchronizing     bool
+	isOptimistic        bool
+	syncDistance        uint64
+	isConnected         bool
+	retryCounter        uint64
+	lastHeadSlot        int64
+	lastHeadRoot        []byte
+	lastEpochStats      int64
+	lastFinalizedEpoch  int64
+	lastFinalizedRoot   []byte
+	lastJustifiedEpoch  int64
+	lastJustifiedRoot   []byte
+	lastPeerUpdateEpoch int64
+	peers               []*v1.Peer
 }
 
 func newConsensusClient(clientIdx uint16, clientName string, rpcClient *rpc.BeaconClient, indexerCache *indexerCache, archive bool, priority int, skipValidators bool) *ConsensusClient {
@@ -335,11 +337,16 @@ func (client *ConsensusClient) processClientEvents() error {
 				client.isConnected = false
 				return err
 			}
+		}
+
+		if currentEpoch > client.lastPeerUpdateEpoch {
 			// update node peers
 			if err = client.updateNodePeers(); err != nil {
 				return fmt.Errorf("could not get node peers for %s: %v", client.clientName, err)
 			}
-			fmt.Println("updated node peers")
+			client.lastPeerUpdateEpoch = currentEpoch
+			logger.WithField("client", client.clientName).Debug("updated peer list")
+			logger.WithFields(logrus.Fields{"client": client.clientName, "epoch": currentEpoch, "peers": len(client.peers)}).Debug("updated node peers")
 		}
 	}
 }
