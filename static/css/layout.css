@@ -379,3 +379,11 @@ Client peers table
   );
   background: -olinear-gradient(to top, #283e51, #0a2342);
 }
+
+.peer-text {
+  max-width: 447px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: inline-block;
+  vertical-align: middle;
+}

@@ -218,19 +218,21 @@
                     <td colspan="7">
                       <div class="client-node-peerinfo">
                         Peer ID: <code>{{ $client.PeerID }}</code>
+                        <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $client.PeerID }}"></i>
                       </div>
                       <div>
                         <div class="peer-table-column" style="border-right: 1px dashed;">
                             <div>Inbound</div>
                           {{ range $j, $peer := $client.Peers }}
                             {{if eq "inbound" $peer.Direction}}
-                            <div style="padding-left: 20px;">
+                            <div style="padding-left: 20px; padding-top:3px">
                               <img src="/identicon?key={{ $peer.ID }}" class="peer-table-icon {{ $peer.State }}" alt="{{ $peer.State }}"/>
                               <code data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $peer.ID }}">
                                 {{ $peer.Alias }}
                                 {{ if eq $peer.Type "internal" }}
-                                <span style="max-width:200px"> {{ trunc 5 $peer.ID }}...{{ trunc -10 $peer.ID }}</span>
+                                <span style="max-width:200px"> {{ trunc (sub (len $peer.ID) (add (len $peer.Alias) 4) ) $peer.ID }}...</span>
                                 {{ end }}
+                                <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $peer.ID }}"></i>
                               </code>
                             </div>
                             {{end}}
@@ -240,16 +242,15 @@
                           <div>Outbound</div>
                           {{ range $j, $peer := $client.Peers }}
                             {{if eq "outbound" $peer.Direction}}
-                            <div style="padding-left: 20px;">
+                            <div style="padding-left: 20px; padding-top:3px">
                               <img src="/identicon?key={{ $peer.ID }}" class="peer-table-icon {{ $peer.State }}" alt="{{ $peer.State }}"/>
-
                               <code data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $peer.ID }}">
                                 {{ $peer.Alias }}
                                 {{ if eq $peer.Type "internal" }}
-                                <span style="max-width:200px"> {{ trunc 5 $peer.ID }}...{{ trunc -10 $peer.ID }}</span>
+                                <span style="max-width:200px"> {{ trunc (sub (len $peer.ID) (add (len $peer.Alias) 4) ) $peer.ID }}...</span>
                                 {{ end }}
+                                <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $peer.ID }}"></i>
                               </code>
-
                             </div>
                             {{end}}
                           {{ end }}
