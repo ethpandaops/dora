@@ -66,29 +66,29 @@ func buildPeerMapData() *models.ClientPageDataPeerMap {
 	edges := make(map[string]*models.ClientDataMapPeerMapEdge)
 
 	for _, client := range services.GlobalBeaconService.GetClients() {
-		peerId := client.GetPeerId()
-		if _, ok := nodes[peerId]; !ok {
+		peerID := client.GetPeerID()
+		if _, ok := nodes[peerID]; !ok {
 			node := models.ClientPageDataPeerMapNode{
-				Id:    peerId,
+				ID:    peerID,
 				Label: client.GetName(),
 				Group: "internal",
-				Image: fmt.Sprintf("/identicon?key=%s", peerId),
+				Image: fmt.Sprintf("/identicon?key=%s", peerID),
 				Shape: "circularImage",
 			}
-			nodes[peerId] = &node
+			nodes[peerID] = &node
 			peerMap.ClientPageDataMapNode = append(peerMap.ClientPageDataMapNode, &node)
 		}
 	}
 
 	for _, client := range services.GlobalBeaconService.GetClients() {
-		peerId := client.GetPeerId()
+		peerId := client.GetPeerID()
 		peers := client.GetNodePeers()
 		for _, peer := range peers {
 			peerId := peerId
 			// Check if the PeerId is already in the nodes map, if not add it as an "external" node
 			if _, ok := nodes[peer.PeerID]; !ok {
 				node := models.ClientPageDataPeerMapNode{
-					Id:    peer.PeerID,
+					ID:    peer.PeerID,
 					Label: fmt.Sprintf("%s...%s", peer.PeerID[0:5], peer.PeerID[len(peer.PeerID)-5:]),
 					Group: "external",
 					Image: fmt.Sprintf("/identicon?key=%s", peer.PeerID),
@@ -141,7 +141,7 @@ func buildClientsPageData() (*models.ClientsPageData, time.Duration) {
 
 	aliases := map[string]string{}
 	for _, client := range services.GlobalBeaconService.GetClients() {
-		aliases[client.GetPeerId()] = client.GetName()
+		aliases[client.GetPeerID()] = client.GetName()
 	}
 
 	for _, client := range services.GlobalBeaconService.GetClients() {
@@ -162,11 +162,11 @@ func buildClientsPageData() (*models.ClientsPageData, time.Duration) {
 				peerType = "internal"
 			}
 			resPeers = append(resPeers, &models.ClientPageDataClientPeers{
-				PeerID:    peer.PeerID,
+				ID:        peer.PeerID,
 				State:     peer.State,
 				Direction: peer.Direction,
 				Alias:     peerAlias,
-				PeerType:  peerType,
+				Type:      peerType,
 			})
 
 			if peer.Direction == "inbound" {
@@ -176,10 +176,10 @@ func buildClientsPageData() (*models.ClientsPageData, time.Duration) {
 			}
 		}
 		sort.Slice(resPeers, func(i, j int) bool {
-			if resPeers[i].PeerType == resPeers[j].PeerType {
+			if resPeers[i].Type == resPeers[j].Type {
 				return resPeers[i].Alias < resPeers[j].Alias
 			}
-			return resPeers[i].PeerType > resPeers[j].PeerType
+			return resPeers[i].Type > resPeers[j].Type
 		})
 
 		resClient := &models.ClientsPageDataClient{
@@ -187,7 +187,7 @@ func buildClientsPageData() (*models.ClientsPageData, time.Duration) {
 			Name:                 client.GetName(),
 			Version:              client.GetVersion(),
 			Peers:                resPeers,
-			PeerId:               client.GetPeerId(),
+			PeerID:               client.GetPeerID(),
 			PeersInboundCounter:  inPeerCount,
 			PeersOutboundCounter: outPeerCount,
 			HeadSlot:             uint64(lastHeadSlot),
