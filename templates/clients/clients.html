@@ -15,7 +15,6 @@
     <script type="text/javascript">
       var container = document.getElementById("nodemap");
 
-      var clients = {{ .Clients }};
       var data = {{ .PeerMap }}
       for (var i = 0; i < data.nodes.length; i++) {
         data.nodes[i].title = data.nodes[i].id;
@@ -166,15 +165,15 @@
                   <tr>
                     <td>{{ $client.Index }}</td>
                     <td style="max-width: 200px;">
-                      <img src="/identicon?key={{ $client.PeerId }}"
-                        alt="{{ $client.PeerId }}"
+                      <img src="/identicon?key={{ $client.PeerID }}"
+                        alt="{{ $client.PeerID }}"
                         class="client-node-icon"/>
                         <span
                           id="clientRow-{{ $client.Name }}"
                           style="cursor:pointer;"
-                          onclick="network.setSelection({nodes: [ '{{ $client.PeerId}}' ]}, { highlightEdges: true });
+                          onclick="network.setSelection({nodes: [ '{{ $client.PeerID}}' ]}, { highlightEdges: true });
                                    $('.collapse.peerInfo').collapse('hide');
-                                   $('#peerInfo-{{ $client.PeerId }}').collapse('show');
+                                   $('#peerInfo-{{ $client.PeerID }}').collapse('show');
                           ">
                           <a href="#name={{ $client.Name }}">{{ $client.Name }}</a>
                         </span>
@@ -215,10 +214,10 @@
                       <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $client.Version }}"></i>
                     </td>
                   </tr>
-                  <tr class="collapse peerInfo" style="transition:0s" id="peerInfo-{{ $client.PeerId }}">
+                  <tr class="collapse peerInfo" style="transition:0s" id="peerInfo-{{ $client.PeerID }}">
                     <td colspan="7">
                       <div class="client-node-peerinfo">
-                        Peer ID: <code>{{ $client.PeerId }}</code>
+                        Peer ID: <code>{{ $client.PeerID }}</code>
                       </div>
                       <div>
                         <div class="peer-table-column" style="border-right: 1px dashed;">
@@ -226,9 +225,12 @@
                           {{ range $j, $peer := $client.Peers }}
                             {{if eq "inbound" $peer.Direction}}
                             <div style="padding-left: 20px;">
-                              <img src="/identicon?key={{ $peer.PeerID }}" class="peer-table-icon {{ $peer.State }}" alt="{{ $peer.State }}"/>
-                              <code data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $peer.PeerID }}">
+                              <img src="/identicon?key={{ $peer.ID }}" class="peer-table-icon {{ $peer.State }}" alt="{{ $peer.State }}"/>
+                              <code data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $peer.ID }}">
                                 {{ $peer.Alias }}
+                                {{ if eq $peer.Type "internal" }}
+                                <span style="max-width:200px"> {{ trunc 5 $peer.ID }}...{{ trunc -10 $peer.ID }}</span>
+                                {{ end }}
                               </code>
                             </div>
                             {{end}}
@@ -239,10 +241,13 @@
                           {{ range $j, $peer := $client.Peers }}
                             {{if eq "outbound" $peer.Direction}}
                             <div style="padding-left: 20px;">
-                              <img src="/identicon?key={{ $peer.PeerID }}" class="peer-table-icon {{ $peer.State }}" alt="{{ $peer.State }}"/>
+                              <img src="/identicon?key={{ $peer.ID }}" class="peer-table-icon {{ $peer.State }}" alt="{{ $peer.State }}"/>
 
-                              <code data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $peer.PeerID }}">
+                              <code data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $peer.ID }}">
                                 {{ $peer.Alias }}
+                                {{ if eq $peer.Type "internal" }}
+                                <span style="max-width:200px"> {{ trunc 5 $peer.ID }}...{{ trunc -10 $peer.ID }}</span>
+                                {{ end }}
                               </code>
 
                             </div>

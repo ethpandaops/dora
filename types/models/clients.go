@@ -20,16 +20,16 @@ type ClientsPageDataClient struct {
 	Status               string                       `json:"status"`
 	LastRefresh          time.Time                    `json:"refresh"`
 	LastError            string                       `json:"error"`
-	PeerId               string                       `json:"peer_id"`
+	PeerID               string                       `json:"peer_id"`
 	Peers                []*ClientPageDataClientPeers `json:"peers"`
 	PeersInboundCounter  uint32                       `json:"peers_inbound_counter"`
 	PeersOutboundCounter uint32                       `json:"peers_outbound_counter"`
 }
 
 type ClientPageDataClientPeers struct {
-	PeerID    string `json:"peer_id"`
+	ID        string `json:"id"`
 	Alias     string `json:"alias"`
-	PeerType  string `json:"type"`
+	Type      string `json:"type"`
 	State     string `json:"state"`
 	Direction string `json:"direction"`
 }
@@ -39,7 +39,7 @@ type ClientPageDataPeerMap struct {
 }
 
 type ClientPageDataPeerMapNode struct {
-	Id    string `json:"id"`
+	ID    string `json:"id"`
 	Label string `json:"label"`
 	Group string `json:"group"`
 	Image string `json:"image"`

@@ -73,7 +73,7 @@ func (client *ConsensusClient) GetVersion() string {
 	return client.versionStr
 }
 
-func (client *ConsensusClient) GetPeerId() string {
+func (client *ConsensusClient) GetPeerID() string {
 	return client.peerId
 }
 
