@@ -2,8 +2,6 @@ package models
 
 import (
 	"time"
-
-	v1 "github.com/attestantio/go-eth2-client/api/v1"
 )
 
 // ClientsPageData is a struct to hold info for the clients page
@@ -14,18 +12,23 @@ type ClientsPageData struct {
 }
 
 type ClientsPageDataClient struct {
-	Index       int        `json:"index"`
-	Name        string     `json:"name"`
-	Version     string     `json:"version"`
-	HeadSlot    uint64     `json:"head_slot"`
-	HeadRoot    []byte     `json:"head_root"`
-	Status      string     `json:"status"`
-	LastRefresh time.Time  `json:"refresh"`
-	LastError   string     `json:"error"`
-	PeerId      string     `json:"peer_id"`
-	Peers       []*v1.Peer `json:"peers"`
+	Index       int                          `json:"index"`
+	Name        string                       `json:"name"`
+	Version     string                       `json:"version"`
+	HeadSlot    uint64                       `json:"head_slot"`
+	HeadRoot    []byte                       `json:"head_root"`
+	Status      string                       `json:"status"`
+	LastRefresh time.Time                    `json:"refresh"`
+	LastError   string                       `json:"error"`
+	PeerId      string                       `json:"peer_id"`
+	Peers       []*ClientPageDataClientPeers `json:"peers"`
 }
 
+type ClientPageDataClientPeers struct {
+	PeerID    string `json:"peer_id"`
+	State     string `json:"state"`
+	Direction string `json:"direction"`
+}
 type ClientPageDataPeerMap struct {
 	ClientPageDataMapNode []*ClientPageDataPeerMapNode `json:"nodes"`
 	ClientDataMapEdges    []*ClientDataMapPeerMapEdge  `json:"edges"`

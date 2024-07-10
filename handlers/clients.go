@@ -144,11 +144,21 @@ func buildClientsPageData() (*models.ClientsPageData, time.Duration) {
 		if lastHeadSlot < 0 {
 			lastHeadSlot = 0
 		}
+
+		peers := client.GetNodePeers()
+		resPeers := []*models.ClientPageDataClientPeers{}
+		for _, peer := range peers {
+			resPeers = append(resPeers, &models.ClientPageDataClientPeers{
+				PeerID:    peer.PeerID,
+				State:     peer.State,
+				Direction: peer.Direction,
+			})
+		}
 		resClient := &models.ClientsPageDataClient{
 			Index:       int(client.GetIndex()) + 1,
 			Name:        client.GetName(),
 			Version:     client.GetVersion(),
-			Peers:       client.GetNodePeers(),
+			Peers:       resPeers,
 			PeerId:      client.GetPeerId(),
 			HeadSlot:    uint64(lastHeadSlot),
 			HeadRoot:    lastHeadRoot,
