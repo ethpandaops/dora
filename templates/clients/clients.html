@@ -232,8 +232,8 @@
                                 {{ if eq $peer.Type "internal" }}
                                 <span style="max-width:200px"> {{ trunc (sub (len $peer.ID) (add (len $peer.Alias) 4) ) $peer.ID }}...</span>
                                 {{ end }}
-                                <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $peer.ID }}"></i>
                               </code>
+                              <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $peer.ID }}"></i>
                             </div>
                             {{end}}
                           {{ end }}
@@ -249,8 +249,8 @@
                                 {{ if eq $peer.Type "internal" }}
                                 <span style="max-width:200px"> {{ trunc (sub (len $peer.ID) (add (len $peer.Alias) 4) ) $peer.ID }}...</span>
                                 {{ end }}
-                                <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $peer.ID }}"></i>
                               </code>
+                              <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $peer.ID }}"></i>
                             </div>
                             {{end}}
                           {{ end }}
