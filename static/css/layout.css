@@ -359,12 +359,13 @@ Client peers table
   transition-timing-function: ease;
 }
 
-.clients-bg-wrapper {
-  position: absolute;
-  left: 0px;
-  right: 0px;
-  width: 100%;
-  height: 80%;;
+.peer-nodemap {
+  background: #0f0f0f9f url(/images/stars.png) repeat top center;
+  height: 850px;
+  padding: 0;
+}
+
+.peer-nodemap-wrapper {
   background: #4b79a1;
   background: -webkit-linear-gradient(
     to top,
@@ -377,13 +378,4 @@ Client peers table
     #0a2342
   );
   background: -olinear-gradient(to top, #283e51, #0a2342);
-}
-
-.clients-bg {
-  position:absolute;
-  left: 0px;
-  right: 0px;
-  width: 100%;
-  height: 100%;
-  background: #0f0f0f9f url(/images/stars.png) repeat top center;
 }
