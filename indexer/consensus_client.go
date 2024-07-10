@@ -327,11 +327,6 @@ func (client *ConsensusClient) processClientEvents() error {
 			client.lastStreamEvent = time.Now()
 		}
 
-		// update node peers
-		if err = client.updateNodePeers(); err != nil {
-			return fmt.Errorf("could not get node peers for %s: %v", client.clientName, err)
-		}
-
 		currentEpoch := utils.TimeToEpoch(time.Now())
 		if currentEpoch > client.lastEpochStats {
 			// ensure latest epoch stats are loaded for chain of this client
@@ -340,6 +335,11 @@ func (client *ConsensusClient) processClientEvents() error {
 				client.isConnected = false
 				return err
 			}
+			// update node peers
+			if err = client.updateNodePeers(); err != nil {
+				return fmt.Errorf("could not get node peers for %s: %v", client.clientName, err)
+			}
+			fmt.Println("updated node peers")
 		}
 	}
 }
