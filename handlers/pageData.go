@@ -129,8 +129,8 @@ func createMenuItems(active string) []types.MainMenuItem {
 	blockchainMenu = append(blockchainMenu, types.NavigationGroup{
 		Links: []types.NavigationLink{
 			{
-				Label: "Clients",
-				Path:  "/clients",
+				Label: "Consensus Clients",
+				Path:  "/clients/consensus",
 				Icon:  "fa-server",
 			},
 			{

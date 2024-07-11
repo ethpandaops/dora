@@ -14,14 +14,14 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// Clients will return the main "clients" page using a go template
-func Clients(w http.ResponseWriter, r *http.Request) {
+// ClientsCL will return the main "clients" page using a go template
+func ClientsCL(w http.ResponseWriter, r *http.Request) {
 	var clientsTemplateFiles = append(layoutTemplateFiles,
-		"clients/clients.html",
+		"clients/clients_cl.html",
 	)
 
 	var pageTemplate = templates.GetTemplate(clientsTemplateFiles...)
-	data := InitPageData(w, r, "clients", "/clients", "Clients", clientsTemplateFiles)
+	data := InitPageData(w, r, "clients/consensus", "/clients/consensus", "Clients", clientsTemplateFiles)
 
 	var pageError error
 	pageError = services.GlobalCallRateLimiter.CheckCallLimit(r, 1)
@@ -33,13 +33,13 @@ func Clients(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/html")
-	if handleTemplateError(w, r, "clients.go", "Clients", "", pageTemplate.ExecuteTemplate(w, "layout", data)) != nil {
+	if handleTemplateError(w, r, "clients_cl.go", "Clients", "", pageTemplate.ExecuteTemplate(w, "layout", data)) != nil {
 		return // an error has occurred and was processed
 	}
 }
 
-func getClientsPageData() (*models.ClientsPageData, error) {
-	pageData := &models.ClientsPageData{}
+func getClientsPageData() (*models.ClientsCLPageData, error) {
+	pageData := &models.ClientsCLPageData{}
 	pageCacheKey := "clients"
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
 		pageData, cacheTimeout := buildClientsPageData()
@@ -47,7 +47,7 @@ func getClientsPageData() (*models.ClientsPageData, error) {
 		return pageData
 	})
 	if pageErr == nil && pageRes != nil {
-		resData, resOk := pageRes.(*models.ClientsPageData)
+		resData, resOk := pageRes.(*models.ClientsCLPageData)
 		if !resOk {
 			return nil, ErrInvalidPageModel
 		}
@@ -56,19 +56,19 @@ func getClientsPageData() (*models.ClientsPageData, error) {
 	return pageData, pageErr
 }
 
-func buildPeerMapData() *models.ClientPageDataPeerMap {
-	peerMap := &models.ClientPageDataPeerMap{
-		ClientPageDataMapNode: []*models.ClientPageDataPeerMapNode{},
-		ClientDataMapEdges:    []*models.ClientDataMapPeerMapEdge{},
+func buildPeerMapData() *models.ClientCLPageDataPeerMap {
+	peerMap := &models.ClientCLPageDataPeerMap{
+		ClientPageDataMapNode: []*models.ClientCLPageDataPeerMapNode{},
+		ClientDataMapEdges:    []*models.ClientCLDataMapPeerMapEdge{},
 	}
 
-	nodes := make(map[string]*models.ClientPageDataPeerMapNode)
-	edges := make(map[string]*models.ClientDataMapPeerMapEdge)
+	nodes := make(map[string]*models.ClientCLPageDataPeerMapNode)
+	edges := make(map[string]*models.ClientCLDataMapPeerMapEdge)
 
 	for _, client := range services.GlobalBeaconService.GetClients() {
 		peerID := client.GetPeerID()
 		if _, ok := nodes[peerID]; !ok {
-			node := models.ClientPageDataPeerMapNode{
+			node := models.ClientCLPageDataPeerMapNode{
 				ID:    peerID,
 				Label: client.GetName(),
 				Group: "internal",
@@ -87,7 +87,7 @@ func buildPeerMapData() *models.ClientPageDataPeerMap {
 			peerId := peerId
 			// Check if the PeerId is already in the nodes map, if not add it as an "external" node
 			if _, ok := nodes[peer.PeerID]; !ok {
-				node := models.ClientPageDataPeerMapNode{
+				node := models.ClientCLPageDataPeerMapNode{
 					ID:    peer.PeerID,
 					Label: fmt.Sprintf("%s...%s", peer.PeerID[0:5], peer.PeerID[len(peer.PeerID)-5:]),
 					Group: "external",
@@ -111,7 +111,7 @@ func buildPeerMapData() *models.ClientPageDataPeerMap {
 			p2.Value++
 
 			if _, ok := edges[idx]; !ok {
-				edge := models.ClientDataMapPeerMapEdge{}
+				edge := models.ClientCLDataMapPeerMapEdge{}
 				if nodes[peer.PeerID].Group == "external" {
 					edge.Dashes = true
 				}
@@ -131,10 +131,10 @@ func buildPeerMapData() *models.ClientPageDataPeerMap {
 	return peerMap
 }
 
-func buildClientsPageData() (*models.ClientsPageData, time.Duration) {
+func buildClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 	logrus.Debugf("clients page called")
-	pageData := &models.ClientsPageData{
-		Clients: []*models.ClientsPageDataClient{},
+	pageData := &models.ClientsCLPageData{
+		Clients: []*models.ClientsCLPageDataClient{},
 		PeerMap: buildPeerMapData(),
 	}
 	cacheTime := time.Duration(utils.Config.Chain.Config.SecondsPerSlot) * time.Second
@@ -151,7 +151,7 @@ func buildClientsPageData() (*models.ClientsPageData, time.Duration) {
 		}
 
 		peers := client.GetNodePeers()
-		resPeers := []*models.ClientPageDataClientPeers{}
+		resPeers := []*models.ClientCLPageDataClientPeers{}
 
 		var inPeerCount, outPeerCount uint32
 		for _, peer := range peers {
@@ -161,7 +161,7 @@ func buildClientsPageData() (*models.ClientsPageData, time.Duration) {
 				peerAlias = alias
 				peerType = "internal"
 			}
-			resPeers = append(resPeers, &models.ClientPageDataClientPeers{
+			resPeers = append(resPeers, &models.ClientCLPageDataClientPeers{
 				ID:        peer.PeerID,
 				State:     peer.State,
 				Direction: peer.Direction,
@@ -182,7 +182,7 @@ func buildClientsPageData() (*models.ClientsPageData, time.Duration) {
 			return resPeers[i].Type > resPeers[j].Type
 		})
 
-		resClient := &models.ClientsPageDataClient{
+		resClient := &models.ClientsCLPageDataClient{
 			Index:                int(client.GetIndex()) + 1,
 			Name:                 client.GetName(),
 			Version:              client.GetVersion(),
