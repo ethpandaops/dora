@@ -9,36 +9,40 @@ import (
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/sirupsen/logrus"
 
 	"github.com/ethpandaops/dora/rpc"
 	"github.com/ethpandaops/dora/utils"
 )
 
 type ConsensusClient struct {
-	clientIdx          uint16
-	clientName         string
-	rpcClient          *rpc.BeaconClient
-	skipValidators     bool
-	archive            bool
-	priority           int
-	versionStr         string
-	indexerCache       *indexerCache
-	cacheMutex         sync.RWMutex
-	lastClientError    error
-	lastHeadRefresh    time.Time
-	lastStreamEvent    time.Time
-	isSynchronizing    bool
-	isOptimistic       bool
-	syncDistance       uint64
-	isConnected        bool
-	retryCounter       uint64
-	lastHeadSlot       int64
-	lastHeadRoot       []byte
-	lastEpochStats     int64
-	lastFinalizedEpoch int64
-	lastFinalizedRoot  []byte
-	lastJustifiedEpoch int64
-	lastJustifiedRoot  []byte
+	clientIdx           uint16
+	clientName          string
+	rpcClient           *rpc.BeaconClient
+	skipValidators      bool
+	archive             bool
+	priority            int
+	versionStr          string
+	peerId              string
+	indexerCache        *indexerCache
+	cacheMutex          sync.RWMutex
+	lastClientError     error
+	lastHeadRefresh     time.Time
+	lastStreamEvent     time.Time
+	isSynchronizing     bool
+	isOptimistic        bool
+	syncDistance        uint64
+	isConnected         bool
+	retryCounter        uint64
+	lastHeadSlot        int64
+	lastHeadRoot        []byte
+	lastEpochStats      int64
+	lastFinalizedEpoch  int64
+	lastFinalizedRoot   []byte
+	lastJustifiedEpoch  int64
+	lastJustifiedRoot   []byte
+	lastPeerUpdateEpoch int64
+	peers               []*v1.Peer
 }
 
 func newConsensusClient(clientIdx uint16, clientName string, rpcClient *rpc.BeaconClient, indexerCache *indexerCache, archive bool, priority int, skipValidators bool) *ConsensusClient {
@@ -71,6 +75,10 @@ func (client *ConsensusClient) GetVersion() string {
 	return client.versionStr
 }
 
+func (client *ConsensusClient) GetPeerID() string {
+	return client.peerId
+}
+
 func (client *ConsensusClient) GetRpcClient() *rpc.BeaconClient {
 	return client.rpcClient
 }
@@ -100,6 +108,28 @@ func (client *ConsensusClient) GetLastClientError() string {
 		return ""
 	}
 	return client.lastClientError.Error()
+}
+
+func (client *ConsensusClient) GetNodePeers() []*v1.Peer {
+	if client.peers == nil {
+		return []*v1.Peer{}
+	}
+	return client.peers
+}
+
+func (client *ConsensusClient) updateNodePeers() error {
+	var err error
+	client.peerId, err = client.rpcClient.GetNodePeerId()
+	if err != nil {
+		return fmt.Errorf("could not get node peer id: %v", err)
+	}
+
+	peers, err := client.rpcClient.GetNodePeers()
+	if err != nil {
+		return fmt.Errorf("could not get peers: %v", err)
+	}
+	client.peers = peers
+	return nil
 }
 
 func (client *ConsensusClient) runConsensusClientLoop() {
@@ -175,6 +205,11 @@ func (client *ConsensusClient) checkClient() error {
 	err = client.rpcClient.Initialize()
 	if err != nil {
 		return fmt.Errorf("initialization of attestantio/go-eth2-client failed: %w", err)
+	}
+
+	// update node peers
+	if err = client.updateNodePeers(); err != nil {
+		return fmt.Errorf("could not get node peers for %s: %v", client.clientName, err)
 	}
 
 	// check genesis
@@ -302,6 +337,15 @@ func (client *ConsensusClient) processClientEvents() error {
 				client.isConnected = false
 				return err
 			}
+		}
+
+		if currentEpoch > client.lastPeerUpdateEpoch {
+			// update node peers
+			if err = client.updateNodePeers(); err != nil {
+				return fmt.Errorf("could not get node peers for %s: %v", client.clientName, err)
+			}
+			client.lastPeerUpdateEpoch = currentEpoch
+			logger.WithFields(logrus.Fields{"client": client.clientName, "epoch": currentEpoch, "peers": len(client.peers)}).Debug("updated node peers")
 		}
 	}
 }

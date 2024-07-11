@@ -35,6 +35,7 @@ server:
 frontend:
   enabled: true
   debug: false
+  pprof: true
   minimize: false
   siteName: "Dora the Explorer"
   siteSubtitle: "$ENCLAVE_NAME - Kurtosis"
