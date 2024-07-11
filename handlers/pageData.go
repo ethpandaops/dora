@@ -89,6 +89,7 @@ func createMenuItems(active string) []types.MainMenuItem {
 		return []types.MainMenuItem{}
 	}
 
+	clientsMenu := []types.NavigationGroup{}
 	blockchainMenu := []types.NavigationGroup{}
 	validatorMenu := []types.NavigationGroup{}
 
@@ -126,15 +127,15 @@ func createMenuItems(active string) []types.MainMenuItem {
 			},
 		})
 	}
-	blockchainMenu = append(blockchainMenu, types.NavigationGroup{
+	clientsMenu = append(clientsMenu, types.NavigationGroup{
 		Links: []types.NavigationLink{
 			{
-				Label: "Consensus clients",
+				Label: "Consensus",
 				Path:  "/clients/consensus",
 				Icon:  "fa-server",
 			},
 			{
-				Label: "Execution clients",
+				Label: "Execution",
 				Path:  "/clients/execution",
 				Icon:  "fa-circle-nodes",
 			},
@@ -194,6 +195,11 @@ func createMenuItems(active string) []types.MainMenuItem {
 			Label:    "Validators",
 			IsActive: active == "validators",
 			Groups:   validatorMenu,
+		},
+		{
+			Label:    "Clients",
+			IsActive: active == "clients",
+			Groups:   clientsMenu,
 		},
 	}
 }
