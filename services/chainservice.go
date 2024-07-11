@@ -92,8 +92,12 @@ func (bs *ChainService) GetIndexer() *indexer.Indexer {
 	return bs.indexer
 }
 
-func (bs *ChainService) GetClients() []*indexer.ConsensusClient {
+func (bs *ChainService) GetConsensusClients() []*indexer.ConsensusClient {
 	return bs.indexer.GetConsensusClients()
+}
+
+func (bs *ChainService) GetExecutionClients() []*indexer.ExecutionClient {
+	return bs.indexer.GetExecutionClients()
 }
 
 func (bs *ChainService) GetHeadForks(readyOnly bool) []*indexer.HeadFork {

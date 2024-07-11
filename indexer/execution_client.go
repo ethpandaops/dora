@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethpandaops/dora/rpc"
 	"github.com/ethpandaops/dora/utils"
 )
@@ -19,6 +20,8 @@ type ExecutionClient struct {
 	archive         bool
 	priority        int
 	versionStr      string
+	nodeInfo        *p2p.NodeInfo
+	peers           []*p2p.PeerInfo
 	indexerCache    *indexerCache
 	cacheMutex      sync.RWMutex
 	lastClientError error
@@ -57,6 +60,10 @@ func (client *ExecutionClient) GetVersion() string {
 	return client.versionStr
 }
 
+func (client *ExecutionClient) GetNodeInfo() *p2p.NodeInfo {
+	return client.nodeInfo
+}
+
 func (client *ExecutionClient) GetRpcClient() *rpc.ExecutionClient {
 	return client.rpcClient
 }
@@ -84,6 +91,28 @@ func (client *ExecutionClient) GetLastClientError() string {
 		return ""
 	}
 	return client.lastClientError.Error()
+}
+
+func (client *ExecutionClient) GetNodePeers() []*p2p.PeerInfo {
+	if client.peers == nil {
+		return []*p2p.PeerInfo{}
+	}
+	return client.peers
+}
+
+func (client *ExecutionClient) updateNodePeers(ctx context.Context) error {
+	var err error
+	client.nodeInfo, err = client.rpcClient.GetAdminNodeInfo(ctx)
+	if err != nil {
+		return fmt.Errorf("could not get node info: %v", err)
+	}
+
+	peers, err := client.rpcClient.GetAdminPeers(ctx)
+	if err != nil {
+		return fmt.Errorf("could not get peers: %v", err)
+	}
+	client.peers = peers
+	return nil
 }
 
 func (client *ExecutionClient) runExecutionClientLoop() {
@@ -181,6 +210,11 @@ func (client *ExecutionClient) checkClient() error {
 	isSynchronizing = syncStatus.IsSyncing
 	client.syncDistance = uint64(syncStatus.HighestBlock - syncStatus.CurrentBlock)
 
+	// update node peers
+	if err = client.updateNodePeers(ctx); err != nil {
+		return fmt.Errorf("could not get node peers for %s: %v", client.clientName, err)
+	}
+
 	return nil
 }
 
@@ -205,6 +239,12 @@ func (client *ExecutionClient) processClientEvents() error {
 				return err
 			}
 			client.lastHeadRefresh = time.Now()
+
+			// update node peers
+			if err = client.updateNodePeers(ctx); err != nil {
+				return fmt.Errorf("could not get node peers for %s: %v", client.clientName, err)
+			}
+
 		}
 	}
 }

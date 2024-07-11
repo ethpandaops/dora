@@ -21,6 +21,7 @@ require (
 	github.com/juliangruber/go-intersect v1.1.0
 	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/lib/pq v1.10.9
+	github.com/lucasb-eyer/go-colorful v1.0.2
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/pk910/dynamic-ssz v0.0.4
 	github.com/pressly/goose/v3 v3.21.1
@@ -44,12 +45,15 @@ require (
 require (
 	github.com/Masterminds/goutils v1.1.1 // indirect
 	github.com/Masterminds/semver/v3 v3.2.0 // indirect
+	github.com/golang/snappy v0.0.5-0.20220116011046-fa5810519dcb // indirect
 	github.com/huandu/xstrings v1.3.3 // indirect
+	github.com/huin/goupnp v1.3.0 // indirect
 	github.com/imdario/mergo v0.3.11 // indirect
-	github.com/lucasb-eyer/go-colorful v1.0.2 // indirect
+	github.com/jackpal/go-nat-pmp v1.0.2 // indirect
 	github.com/mitchellh/copystructure v1.0.0 // indirect
 	github.com/mitchellh/reflectwalk v1.0.0 // indirect
 	github.com/spf13/cast v1.3.1 // indirect
+	github.com/syndtr/goleveldb v1.0.1-0.20210819022825-2ae1ddf74ef7 // indirect
 )
 
 require (

@@ -83,6 +83,7 @@ func startFrontend() {
 	router.HandleFunc("/index", handlers.Index).Methods("GET")
 	router.HandleFunc("/index/data", handlers.IndexData).Methods("GET")
 	router.HandleFunc("/clients/consensus", handlers.ClientsCL).Methods("GET")
+	router.HandleFunc("/clients/execution", handlers.ClientsEl).Methods("GET")
 	router.HandleFunc("/forks", handlers.Forks).Methods("GET")
 	router.HandleFunc("/epochs", handlers.Epochs).Methods("GET")
 	router.HandleFunc("/epoch/{epoch}", handlers.Epoch).Methods("GET")

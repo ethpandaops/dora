@@ -14,40 +14,40 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// ClientsCL will return the main "clients" page using a go template
-func ClientsCL(w http.ResponseWriter, r *http.Request) {
+// ClientsEl will return the main "clients" page using a go template
+func ClientsEl(w http.ResponseWriter, r *http.Request) {
 	var clientsTemplateFiles = append(layoutTemplateFiles,
-		"clients/clients_cl.html",
+		"clients/clients_el.html",
 	)
 
 	var pageTemplate = templates.GetTemplate(clientsTemplateFiles...)
-	data := InitPageData(w, r, "clients/consensus", "/clients/consensus", "Consensus clients", clientsTemplateFiles)
+	data := InitPageData(w, r, "clients/execution", "/clients/execution", "Execution clients", clientsTemplateFiles)
 
 	var pageError error
 	pageError = services.GlobalCallRateLimiter.CheckCallLimit(r, 1)
 	if pageError == nil {
-		data.Data, pageError = getCLClientsPageData()
+		data.Data, pageError = getELClientsPageData()
 	}
 	if pageError != nil {
 		handlePageError(w, r, pageError)
 		return
 	}
 	w.Header().Set("Content-Type", "text/html")
-	if handleTemplateError(w, r, "clients_cl.go", "Consensus clients", "", pageTemplate.ExecuteTemplate(w, "layout", data)) != nil {
+	if handleTemplateError(w, r, "clients_el.go", "Execution clients", "", pageTemplate.ExecuteTemplate(w, "layout", data)) != nil {
 		return // an error has occurred and was processed
 	}
 }
 
-func getCLClientsPageData() (*models.ClientsCLPageData, error) {
-	pageData := &models.ClientsCLPageData{}
-	pageCacheKey := "clients/consensus"
+func getELClientsPageData() (*models.ClientsELPageData, error) {
+	pageData := &models.ClientsELPageData{}
+	pageCacheKey := "clients/execution"
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
-		pageData, cacheTimeout := buildCLClientsPageData()
+		pageData, cacheTimeout := buildELClientsPageData()
 		pageCall.CacheTimeout = cacheTimeout
 		return pageData
 	})
 	if pageErr == nil && pageRes != nil {
-		resData, resOk := pageRes.(*models.ClientsCLPageData)
+		resData, resOk := pageRes.(*models.ClientsELPageData)
 		if !resOk {
 			return nil, ErrInvalidPageModel
 		}
@@ -56,19 +56,20 @@ func getCLClientsPageData() (*models.ClientsCLPageData, error) {
 	return pageData, pageErr
 }
 
-func buildCLPeerMapData() *models.ClientCLPageDataPeerMap {
-	peerMap := &models.ClientCLPageDataPeerMap{
-		ClientPageDataMapNode: []*models.ClientCLPageDataPeerMapNode{},
-		ClientDataMapEdges:    []*models.ClientCLDataMapPeerMapEdge{},
+func buildELPeerMapData() *models.ClientELPageDataPeerMap {
+	peerMap := &models.ClientELPageDataPeerMap{
+		ClientPageDataMapNode: []*models.ClientELPageDataPeerMapNode{},
+		ClientDataMapEdges:    []*models.ClientELDataMapPeerMapEdge{},
 	}
 
-	nodes := make(map[string]*models.ClientCLPageDataPeerMapNode)
-	edges := make(map[string]*models.ClientCLDataMapPeerMapEdge)
+	nodes := make(map[string]*models.ClientELPageDataPeerMapNode)
+	edges := make(map[string]*models.ClientELDataMapPeerMapEdge)
 
-	for _, client := range services.GlobalBeaconService.GetConsensusClients() {
-		peerID := client.GetPeerID()
+	for _, client := range services.GlobalBeaconService.GetExecutionClients() {
+		nodeInfo := client.GetNodeInfo()
+		peerID := nodeInfo.ID
 		if _, ok := nodes[peerID]; !ok {
-			node := models.ClientCLPageDataPeerMapNode{
+			node := models.ClientELPageDataPeerMapNode{
 				ID:    peerID,
 				Label: client.GetName(),
 				Group: "internal",
@@ -80,47 +81,48 @@ func buildCLPeerMapData() *models.ClientCLPageDataPeerMap {
 		}
 	}
 
-	for _, client := range services.GlobalBeaconService.GetConsensusClients() {
-		peerId := client.GetPeerID()
+	for _, client := range services.GlobalBeaconService.GetExecutionClients() {
+		nodeInfo := client.GetNodeInfo()
+		peerId := nodeInfo.ID
 		peers := client.GetNodePeers()
 		for _, peer := range peers {
 			peerId := peerId
 			// Check if the PeerId is already in the nodes map, if not add it as an "external" node
-			if _, ok := nodes[peer.PeerID]; !ok {
-				node := models.ClientCLPageDataPeerMapNode{
-					ID:    peer.PeerID,
-					Label: fmt.Sprintf("%s...%s", peer.PeerID[0:5], peer.PeerID[len(peer.PeerID)-5:]),
+			if _, ok := nodes[peer.ID]; !ok {
+				node := models.ClientELPageDataPeerMapNode{
+					ID:    peer.ID,
+					Label: fmt.Sprintf("%s...%s", peer.ID[0:5], peer.ID[len(peer.ID)-5:]),
 					Group: "external",
-					Image: fmt.Sprintf("/identicon?key=%s", peer.PeerID),
+					Image: fmt.Sprintf("/identicon?key=%s", peer.ID),
 					Shape: "circularImage",
 				}
-				nodes[peer.PeerID] = &node
+				nodes[peer.ID] = &node
 				peerMap.ClientPageDataMapNode = append(peerMap.ClientPageDataMapNode, &node)
 			}
 
 			// Deduplicate edges. When adding an edge, we index by sorted peer IDs.
-			sortedPeerIds := []string{peerId, peer.PeerID}
+			sortedPeerIds := []string{peerId, peer.ID}
 			sort.Strings(sortedPeerIds)
 			idx := strings.Join(sortedPeerIds, "-")
 
 			// Increase value based on peer count
-			p1 := nodes[peer.PeerID]
+			p1 := nodes[peer.ID]
 			p1.Value++
-			nodes[peer.PeerID] = p1
+			nodes[peer.ID] = p1
 			p2 := nodes[peerId]
 			p2.Value++
 
 			if _, ok := edges[idx]; !ok {
-				edge := models.ClientCLDataMapPeerMapEdge{}
-				if nodes[peer.PeerID].Group == "external" {
+				edge := models.ClientELDataMapPeerMapEdge{}
+				if nodes[peer.ID].Group == "external" {
 					edge.Dashes = true
 				}
-				if peer.Direction == "inbound" {
-					edge.From = peer.PeerID
+				if peer.Network.Inbound {
+					edge.From = peer.ID
 					edge.To = peerId
 				} else {
 					edge.From = peerId
-					edge.To = peer.PeerID
+					edge.To = peer.ID
 				}
 				edges[idx] = &edge
 				peerMap.ClientDataMapEdges = append(peerMap.ClientDataMapEdges, &edge)
@@ -131,45 +133,50 @@ func buildCLPeerMapData() *models.ClientCLPageDataPeerMap {
 	return peerMap
 }
 
-func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
+func buildELClientsPageData() (*models.ClientsELPageData, time.Duration) {
 	logrus.Debugf("clients page called")
-	pageData := &models.ClientsCLPageData{
-		Clients: []*models.ClientsCLPageDataClient{},
-		PeerMap: buildCLPeerMapData(),
+	pageData := &models.ClientsELPageData{
+		Clients: []*models.ClientsELPageDataClient{},
+		PeerMap: buildELPeerMapData(),
 	}
 	cacheTime := time.Duration(utils.Config.Chain.Config.SecondsPerSlot) * time.Second
 
 	aliases := map[string]string{}
-	for _, client := range services.GlobalBeaconService.GetConsensusClients() {
-		aliases[client.GetPeerID()] = client.GetName()
+	for _, client := range services.GlobalBeaconService.GetExecutionClients() {
+
+		aliases[client.GetNodeInfo().ID] = client.GetName()
 	}
 
-	for _, client := range services.GlobalBeaconService.GetConsensusClients() {
+	for _, client := range services.GlobalBeaconService.GetExecutionClients() {
 		lastHeadSlot, lastHeadRoot, clientRefresh := client.GetLastHead()
 		if lastHeadSlot < 0 {
 			lastHeadSlot = 0
 		}
 
 		peers := client.GetNodePeers()
-		resPeers := []*models.ClientCLPageDataClientPeers{}
+		resPeers := []*models.ClientELPageDataClientPeers{}
 
 		var inPeerCount, outPeerCount uint32
 		for _, peer := range peers {
-			peerAlias := peer.PeerID
+			peerAlias := peer.ID
 			peerType := "external"
-			if alias, ok := aliases[peer.PeerID]; ok {
+			if alias, ok := aliases[peer.ID]; ok {
 				peerAlias = alias
 				peerType = "internal"
 			}
-			resPeers = append(resPeers, &models.ClientCLPageDataClientPeers{
-				ID:        peer.PeerID,
-				State:     peer.State,
-				Direction: peer.Direction,
+			direction := "outbound"
+			if peer.Network.Inbound {
+				direction = "inbound"
+			}
+			resPeers = append(resPeers, &models.ClientELPageDataClientPeers{
+				ID:        peer.ID,
+				State:     peer.Name,
+				Direction: direction,
 				Alias:     peerAlias,
 				Type:      peerType,
 			})
 
-			if peer.Direction == "inbound" {
+			if direction == "inbound" {
 				inPeerCount++
 			} else {
 				outPeerCount++
@@ -182,12 +189,14 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 			return resPeers[i].Type > resPeers[j].Type
 		})
 
-		resClient := &models.ClientsCLPageDataClient{
+		nodeInfo := client.GetNodeInfo()
+
+		resClient := &models.ClientsELPageDataClient{
 			Index:                int(client.GetIndex()) + 1,
 			Name:                 client.GetName(),
 			Version:              client.GetVersion(),
 			Peers:                resPeers,
-			PeerID:               client.GetPeerID(),
+			PeerID:               nodeInfo.ID,
 			PeersInboundCounter:  inPeerCount,
 			PeersOutboundCounter: outPeerCount,
 			HeadSlot:             uint64(lastHeadSlot),

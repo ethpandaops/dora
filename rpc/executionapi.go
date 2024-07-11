@@ -10,6 +10,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/rpc"
 	"golang.org/x/crypto/ssh"
 
@@ -112,6 +113,18 @@ func (ec *ExecutionClient) GetClientVersion(ctx context.Context) (string, error)
 	var result string
 	err := ec.rpcClient.CallContext(ctx, &result, "web3_clientVersion")
 
+	return result, err
+}
+
+func (ec *ExecutionClient) GetAdminPeers(ctx context.Context) ([]*p2p.PeerInfo, error) {
+	var result []*p2p.PeerInfo
+	err := ec.rpcClient.CallContext(ctx, &result, "admin_peers")
+	return result, err
+}
+
+func (ec *ExecutionClient) GetAdminNodeInfo(ctx context.Context) (*p2p.NodeInfo, error) {
+	var result *p2p.NodeInfo
+	err := ec.rpcClient.CallContext(ctx, &result, "admin_nodeInfo")
 	return result, err
 }
 
