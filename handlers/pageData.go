@@ -127,24 +127,31 @@ func createMenuItems(active string) []types.MainMenuItem {
 			},
 		})
 	}
-	clientsMenu = append(clientsMenu, types.NavigationGroup{
-		Links: []types.NavigationLink{
-			{
-				Label: "Consensus",
-				Path:  "/clients/consensus",
-				Icon:  "fa-server",
-			},
-			{
-				Label: "Execution",
-				Path:  "/clients/execution",
-				Icon:  "fa-circle-nodes",
-			},
-			{
-				Label: "Forks",
-				Path:  "/forks",
-				Icon:  "fa-code-fork",
-			},
+
+	clientLinks := []types.NavigationLink{
+		{
+			Label: "Consensus",
+			Path:  "/clients/consensus",
+			Icon:  "fa-server",
 		},
+	}
+
+	if utils.Config.ExecutionApi.Endpoint != "" || len(utils.Config.ExecutionApi.Endpoints) > 0 {
+		clientLinks = append(clientLinks, types.NavigationLink{
+			Label: "Execution",
+			Path:  "/clients/execution",
+			Icon:  "fa-circle-nodes",
+		})
+	}
+
+	clientLinks = append(clientLinks, types.NavigationLink{
+		Label: "Forks",
+		Path:  "/forks",
+		Icon:  "fa-code-fork",
+	})
+
+	clientsMenu = append(clientsMenu, types.NavigationGroup{
+		Links: clientLinks,
 	})
 
 	validatorMenu = append(validatorMenu, types.NavigationGroup{
