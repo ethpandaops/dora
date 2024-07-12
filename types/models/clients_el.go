@@ -21,7 +21,9 @@ type ClientsELPageDataClient struct {
 	LastRefresh          time.Time                      `json:"refresh"`
 	LastError            string                         `json:"error"`
 	PeerID               string                         `json:"peer_id"`
+	PeerName             string                         `json:"peer_name"`
 	Peers                []*ClientELPageDataClientPeers `json:"peers"`
+	DidFetchPeers        bool                           `json:"peers_fetched"`
 	PeersInboundCounter  uint32                         `json:"peers_inbound_counter"`
 	PeersOutboundCounter uint32                         `json:"peers_outbound_counter"`
 }

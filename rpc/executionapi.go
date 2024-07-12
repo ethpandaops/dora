@@ -119,6 +119,11 @@ func (ec *ExecutionClient) GetClientVersion(ctx context.Context) (string, error)
 func (ec *ExecutionClient) GetAdminPeers(ctx context.Context) ([]*p2p.PeerInfo, error) {
 	var result []*p2p.PeerInfo
 	err := ec.rpcClient.CallContext(ctx, &result, "admin_peers")
+	// Workaround for Nethermind that expects an additional boolean
+	if err != nil && err.Error() == "Invalid params" {
+		result = nil
+		err = ec.rpcClient.CallContext(ctx, &result, "admin_peers", false)
+	}
 	return result, err
 }
 

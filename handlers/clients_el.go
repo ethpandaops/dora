@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
@@ -67,7 +68,19 @@ func buildELPeerMapData() *models.ClientELPageDataPeerMap {
 
 	for _, client := range services.GlobalBeaconService.GetExecutionClients() {
 		nodeInfo := client.GetNodeInfo()
-		peerID := nodeInfo.ID
+		peerID := "unknown"
+		var en *enode.Node
+		var err error
+		if nodeInfo != nil && nodeInfo.Enode != "" {
+			en, err = enode.ParseV4(nodeInfo.Enode)
+			if err != nil {
+				logrus.WithFields(logrus.Fields{"client": client.GetName(), "enode": nodeInfo.Enode}).Error("failed to parse enode")
+			} else {
+				peerID = en.ID().String()
+			}
+
+		}
+
 		if _, ok := nodes[peerID]; !ok {
 			node := models.ClientELPageDataPeerMapNode{
 				ID:    peerID,
@@ -83,46 +96,62 @@ func buildELPeerMapData() *models.ClientELPageDataPeerMap {
 
 	for _, client := range services.GlobalBeaconService.GetExecutionClients() {
 		nodeInfo := client.GetNodeInfo()
-		peerId := nodeInfo.ID
+		nodeID := "unknown"
+		if nodeInfo != nil {
+			en, err := enode.ParseV4(nodeInfo.Enode)
+			if err != nil {
+				logrus.WithFields(logrus.Fields{"client": client.GetName(), "enode": nodeInfo.Enode}).Error("failed to parse enode")
+			} else {
+				nodeID = en.ID().String()
+			}
+		}
 		peers := client.GetNodePeers()
 		for _, peer := range peers {
-			peerId := peerId
+			nodeID := nodeID
+			en, err := enode.ParseV4(peer.Enode)
+			peerID := "unknown"
+			if err != nil {
+				logrus.WithFields(logrus.Fields{"client": client.GetName(), "enode": peer.Enode}).Error("failed to parse peer enode")
+			} else {
+				peerID = en.ID().String()
+			}
+
 			// Check if the PeerId is already in the nodes map, if not add it as an "external" node
-			if _, ok := nodes[peer.ID]; !ok {
+			if _, ok := nodes[peerID]; !ok {
 				node := models.ClientELPageDataPeerMapNode{
-					ID:    peer.ID,
-					Label: fmt.Sprintf("%s...%s", peer.ID[0:5], peer.ID[len(peer.ID)-5:]),
+					ID:    peerID,
+					Label: fmt.Sprintf("%s...%s", peerID[0:5], peerID[len(peerID)-5:]),
 					Group: "external",
-					Image: fmt.Sprintf("/identicon?key=%s", peer.ID),
+					Image: fmt.Sprintf("/identicon?key=%s", peerID),
 					Shape: "circularImage",
 				}
-				nodes[peer.ID] = &node
+				nodes[peerID] = &node
 				peerMap.ClientPageDataMapNode = append(peerMap.ClientPageDataMapNode, &node)
 			}
 
 			// Deduplicate edges. When adding an edge, we index by sorted peer IDs.
-			sortedPeerIds := []string{peerId, peer.ID}
+			sortedPeerIds := []string{nodeID, peerID}
 			sort.Strings(sortedPeerIds)
 			idx := strings.Join(sortedPeerIds, "-")
 
 			// Increase value based on peer count
-			p1 := nodes[peer.ID]
+			p1 := nodes[peerID]
 			p1.Value++
-			nodes[peer.ID] = p1
-			p2 := nodes[peerId]
+			nodes[peerID] = p1
+			p2 := nodes[nodeID]
 			p2.Value++
 
 			if _, ok := edges[idx]; !ok {
 				edge := models.ClientELDataMapPeerMapEdge{}
-				if nodes[peer.ID].Group == "external" {
+				if nodes[peerID].Group == "external" {
 					edge.Dashes = true
 				}
 				if peer.Network.Inbound {
-					edge.From = peer.ID
-					edge.To = peerId
+					edge.From = peerID
+					edge.To = nodeID
 				} else {
-					edge.From = peerId
-					edge.To = peer.ID
+					edge.From = nodeID
+					edge.To = peerID
 				}
 				edges[idx] = &edge
 				peerMap.ClientDataMapEdges = append(peerMap.ClientDataMapEdges, &edge)
@@ -144,7 +173,18 @@ func buildELClientsPageData() (*models.ClientsELPageData, time.Duration) {
 	aliases := map[string]string{}
 	for _, client := range services.GlobalBeaconService.GetExecutionClients() {
 
-		aliases[client.GetNodeInfo().ID] = client.GetName()
+		nodeInfo := client.GetNodeInfo()
+		if nodeInfo != nil && nodeInfo.Enode != "" {
+			en, err := enode.ParseV4(nodeInfo.Enode)
+			nodeID := "unknown"
+			if err != nil {
+				logrus.WithFields(logrus.Fields{"client": client.GetName(), "enode": nodeInfo.Enode}).Error("failed to parse enode")
+			} else {
+				nodeID = en.ID().String()
+			}
+
+			aliases[nodeID] = client.GetName()
+		}
 	}
 
 	for _, client := range services.GlobalBeaconService.GetExecutionClients() {
@@ -158,9 +198,16 @@ func buildELClientsPageData() (*models.ClientsELPageData, time.Duration) {
 
 		var inPeerCount, outPeerCount uint32
 		for _, peer := range peers {
-			peerAlias := peer.ID
+			en, err := enode.ParseV4(peer.Enode)
+			peerID := "unknown"
+			if err != nil {
+				logrus.WithFields(logrus.Fields{"client": client.GetName(), "enode": peer.Enode}).Error("failed to parse peer enode")
+			} else {
+				peerID = en.ID().String()
+			}
+			peerAlias := peerID
 			peerType := "external"
-			if alias, ok := aliases[peer.ID]; ok {
+			if alias, ok := aliases[peerID]; ok {
 				peerAlias = alias
 				peerType = "internal"
 			}
@@ -169,7 +216,7 @@ func buildELClientsPageData() (*models.ClientsELPageData, time.Duration) {
 				direction = "inbound"
 			}
 			resPeers = append(resPeers, &models.ClientELPageDataClientPeers{
-				ID:        peer.ID,
+				ID:        peerID,
 				State:     peer.Name,
 				Direction: direction,
 				Alias:     peerAlias,
@@ -178,7 +225,7 @@ func buildELClientsPageData() (*models.ClientsELPageData, time.Duration) {
 
 			if direction == "inbound" {
 				inPeerCount++
-			} else {
+			} else if direction == "outbound" {
 				outPeerCount++
 			}
 		}
@@ -191,12 +238,26 @@ func buildELClientsPageData() (*models.ClientsELPageData, time.Duration) {
 
 		nodeInfo := client.GetNodeInfo()
 
+		peerID := "unknown"
+		peerName := "unknown"
+		if nodeInfo != nil {
+			en, err := enode.ParseV4(nodeInfo.Enode)
+			if err != nil {
+				logrus.WithFields(logrus.Fields{"client": client.GetName(), "enode": nodeInfo.Enode}).Error("failed to parse peer enode")
+			} else {
+				peerID = en.ID().String()
+			}
+			peerName = nodeInfo.Name
+		}
+
 		resClient := &models.ClientsELPageDataClient{
 			Index:                int(client.GetIndex()) + 1,
 			Name:                 client.GetName(),
 			Version:              client.GetVersion(),
+			DidFetchPeers:        client.DidFetchPeers(),
 			Peers:                resPeers,
-			PeerID:               nodeInfo.ID,
+			PeerID:               peerID,
+			PeerName:             peerName,
 			PeersInboundCounter:  inPeerCount,
 			PeersOutboundCounter: outPeerCount,
 			HeadSlot:             uint64(lastHeadSlot),

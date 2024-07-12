@@ -11,6 +11,7 @@ import (
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethpandaops/dora/rpc"
 	"github.com/ethpandaops/dora/utils"
+	"github.com/sirupsen/logrus"
 )
 
 type ExecutionClient struct {
@@ -22,6 +23,7 @@ type ExecutionClient struct {
 	versionStr      string
 	nodeInfo        *p2p.NodeInfo
 	peers           []*p2p.PeerInfo
+	didFetchPeers   bool
 	indexerCache    *indexerCache
 	cacheMutex      sync.RWMutex
 	lastClientError error
@@ -39,6 +41,7 @@ func newExecutionClient(clientIdx uint16, clientName string, rpcClient *rpc.Exec
 		clientIdx:    clientIdx,
 		clientName:   clientName,
 		rpcClient:    rpcClient,
+		peers:        []*p2p.PeerInfo{},
 		archive:      archive,
 		priority:     priority,
 		indexerCache: indexerCache,
@@ -100,18 +103,25 @@ func (client *ExecutionClient) GetNodePeers() []*p2p.PeerInfo {
 	return client.peers
 }
 
+func (client *ExecutionClient) DidFetchPeers() bool {
+	return client.didFetchPeers
+}
+
 func (client *ExecutionClient) updateNodePeers(ctx context.Context) error {
 	var err error
 	client.nodeInfo, err = client.rpcClient.GetAdminNodeInfo(ctx)
 	if err != nil {
+		client.didFetchPeers = false
 		return fmt.Errorf("could not get node info: %v", err)
 	}
 
 	peers, err := client.rpcClient.GetAdminPeers(ctx)
 	if err != nil {
+		client.didFetchPeers = false
 		return fmt.Errorf("could not get peers: %v", err)
 	}
 	client.peers = peers
+	client.didFetchPeers = true
 	return nil
 }
 
@@ -212,7 +222,7 @@ func (client *ExecutionClient) checkClient() error {
 
 	// update node peers
 	if err = client.updateNodePeers(ctx); err != nil {
-		return fmt.Errorf("could not get node peers for %s: %v", client.clientName, err)
+		logger.WithFields(logrus.Fields{"client": client.clientName, "error": err}).Error("could not get execution node peers")
 	}
 
 	return nil
@@ -242,7 +252,7 @@ func (client *ExecutionClient) processClientEvents() error {
 
 			// update node peers
 			if err = client.updateNodePeers(ctx); err != nil {
-				return fmt.Errorf("could not get node peers for %s: %v", client.clientName, err)
+				logger.WithFields(logrus.Fields{"client": client.clientName, "error": err}).Error("could not get execution node peers")
 			}
 
 		}

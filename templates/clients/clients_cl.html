@@ -38,7 +38,7 @@
                 {{ range $i, $client := .Clients }}
                   <tr>
                     <td>{{ $client.Index }}</td>
-                    <td style="max-width: 200px;">
+                    <td style="max-width: 270px;">
                       <img src="/identicon?key={{ $client.PeerID }}"
                         alt="{{ $client.PeerID }}"
                         class="client-node-icon"/>
@@ -54,7 +54,7 @@
                     </td>
                     <td style="font-size: 0.8rem; vertical-align: middle;">
                       <span style="width:30px;display: inline-block;" class="text-success" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Inbound Peers">
-                        {{ $client.PeersInboundCounter}}
+                        {{ $client.PeersInboundCounter }}
                         <i class="fa-solid fa-arrow-down"></i>
                       </span>
                       <span style="width:30px;display: inline-block;" class="text-danger" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Outbound Peers">
