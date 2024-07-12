@@ -1,6 +1,6 @@
-{{ define "block_deposit_receipts" }}
+{{ define "block_deposit_requests" }}
   <div class="table-ellipsis px-0">
-    <table class="table" id="block_deposit_receipts">
+    <table class="table" id="block_deposit_requests">
       <thead>
         <tr>
           <th>Index</th>
@@ -12,7 +12,7 @@
         </tr>
       </thead>
       <tbody>
-        {{ range $i, $deposit := .Block.DepositReceipts }}
+        {{ range $i, $deposit := .Block.DepositRequests }}
           <tr>
             <td>{{ $deposit.Index }}</td>
             <td>
