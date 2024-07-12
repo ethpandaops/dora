@@ -128,7 +128,15 @@ func (client *ConsensusClient) updateNodePeers() error {
 	if err != nil {
 		return fmt.Errorf("could not get peers: %v", err)
 	}
-	client.peers = peers
+
+	// Only keep connected peers
+	connectedPeers := []*v1.Peer{}
+	for _, peer := range peers {
+		if peer.State == "connected" {
+			connectedPeers = append(connectedPeers, peer)
+		}
+	}
+	client.peers = connectedPeers
 	return nil
 }
 
