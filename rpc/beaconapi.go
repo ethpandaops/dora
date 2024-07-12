@@ -461,7 +461,7 @@ func (bc *BeaconClient) GetNodePeers() ([]*v1.Peer, error) {
 	if !isProvider {
 		return nil, fmt.Errorf("get peers not supported")
 	}
-	result, err := provider.NodePeers(ctx, &api.NodePeersOpts{})
+	result, err := provider.NodePeers(ctx, &api.NodePeersOpts{State: []string{"connected"}})
 	if err != nil {
 		return nil, err
 	}
