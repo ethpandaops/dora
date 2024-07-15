@@ -15,25 +15,26 @@ import (
 )
 
 type ExecutionClient struct {
-	clientIdx       uint16
-	clientName      string
-	rpcClient       *rpc.ExecutionClient
-	archive         bool
-	priority        int
-	versionStr      string
-	nodeInfo        *p2p.NodeInfo
-	peers           []*p2p.PeerInfo
-	didFetchPeers   bool
-	indexerCache    *indexerCache
-	cacheMutex      sync.RWMutex
-	lastClientError error
-	lastHeadRefresh time.Time
-	isSynchronizing bool
-	syncDistance    uint64
-	isConnected     bool
-	retryCounter    uint64
-	lastHeadSlot    int64
-	lastHeadRoot    []byte
+	clientIdx           uint16
+	clientName          string
+	rpcClient           *rpc.ExecutionClient
+	archive             bool
+	priority            int
+	versionStr          string
+	nodeInfo            *p2p.NodeInfo
+	peers               []*p2p.PeerInfo
+	didFetchPeers       bool
+	indexerCache        *indexerCache
+	cacheMutex          sync.RWMutex
+	lastClientError     error
+	lastHeadRefresh     time.Time
+	isSynchronizing     bool
+	syncDistance        uint64
+	isConnected         bool
+	retryCounter        uint64
+	lastHeadSlot        int64
+	lastHeadRoot        []byte
+	lastPeerUpdateEpoch int64
 }
 
 func newExecutionClient(clientIdx uint16, clientName string, rpcClient *rpc.ExecutionClient, indexerCache *indexerCache, archive bool, priority int) *ExecutionClient {
@@ -220,9 +221,14 @@ func (client *ExecutionClient) checkClient() error {
 	isSynchronizing = syncStatus.IsSyncing
 	client.syncDistance = uint64(syncStatus.HighestBlock - syncStatus.CurrentBlock)
 
-	// update node peers
-	if err = client.updateNodePeers(ctx); err != nil {
-		logger.WithFields(logrus.Fields{"client": client.clientName, "error": err}).Error("could not get execution node peers")
+	currentEpoch := utils.TimeToEpoch(time.Now())
+	if currentEpoch > client.lastPeerUpdateEpoch {
+		// update node peers
+		if err = client.updateNodePeers(ctx); err != nil {
+			logger.WithFields(logrus.Fields{"client": client.clientName, "error": err}).Error("could not get execution node peers")
+		}
+		client.lastPeerUpdateEpoch = currentEpoch
+		logger.WithFields(logrus.Fields{"client": client.clientName, "epoch": currentEpoch, "peers": len(client.peers)}).Debug("updated execution node peers")
 	}
 
 	return nil

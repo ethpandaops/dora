@@ -345,7 +345,7 @@ func (client *ConsensusClient) processClientEvents() error {
 				return fmt.Errorf("could not get node peers for %s: %v", client.clientName, err)
 			}
 			client.lastPeerUpdateEpoch = currentEpoch
-			logger.WithFields(logrus.Fields{"client": client.clientName, "epoch": currentEpoch, "peers": len(client.peers)}).Debug("updated node peers")
+			logger.WithFields(logrus.Fields{"client": client.clientName, "epoch": currentEpoch, "peers": len(client.peers)}).Debug("updated consensus node peers")
 		}
 	}
 }
