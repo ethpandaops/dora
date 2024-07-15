@@ -9,12 +9,19 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/Masterminds/sprig/v3"
 	logger "github.com/sirupsen/logrus"
 )
 
 // GetTemplateFuncs will get the template functions
 func GetTemplateFuncs() template.FuncMap {
-	return template.FuncMap{
+	fm := template.FuncMap{}
+
+	for k, v := range sprig.FuncMap() {
+		fm[k] = v
+	}
+
+	customFuncs := template.FuncMap{
 		"includeHTML": IncludeHTML,
 		"html":        func(x string) template.HTML { return template.HTML(x) },
 		"bigIntCmp":   func(i *big.Int, j int) int { return i.Cmp(big.NewInt(int64(j))) },
@@ -59,6 +66,12 @@ func GetTemplateFuncs() template.FuncMap {
 		"formatRecentTimeShort":      FormatRecentTimeShort,
 		"formatGraffiti":             FormatGraffiti,
 	}
+
+	for k, v := range customFuncs {
+		fm[k] = v
+	}
+
+	return fm
 }
 
 func checkInList(item, list string) bool {

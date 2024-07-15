@@ -453,3 +453,31 @@ func (bc *BeaconClient) GetBlobSidecarsByBlockroot(blockroot []byte) ([]*deneb.B
 	}
 	return result.Data, nil
 }
+
+func (bc *BeaconClient) GetNodePeers() ([]*v1.Peer, error) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	provider, isProvider := bc.clientSvc.(eth2client.NodePeersProvider)
+	if !isProvider {
+		return nil, fmt.Errorf("get peers not supported")
+	}
+	result, err := provider.NodePeers(ctx, &api.NodePeersOpts{State: []string{"connected"}})
+	if err != nil {
+		return nil, err
+	}
+	return result.Data, nil
+}
+
+func (bc *BeaconClient) GetNodePeerId() (string, error) {
+	nodeIdentity := struct {
+		Data struct {
+			PeerId string `json:"peer_id"`
+		} `json:"data"`
+	}{}
+
+	err := bc.getJson(fmt.Sprintf("%s/eth/v1/node/identity", bc.endpoint), &nodeIdentity)
+	if err != nil {
+		return "", fmt.Errorf("error retrieving node identity: %v", err)
+	}
+	return nodeIdentity.Data.PeerId, nil
+}

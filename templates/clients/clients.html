@@ -9,15 +9,25 @@
         </ol>
       </nav>
     </div>
-
+    <div class="card mt-2 peer-nodemap-wrapper">
+      <div class="card-body px-0 peer-nodemap" id="nodemap"></div>
+    </div>
     <div class="card mt-2">
       <div class="card-body px-0 py-3">
         <div class="table-responsive px-0 py-1">
+          <div style="text-align: right; margin-right: 15px;">
+            Peer infos:
+            <div class="btn-group btn-group-sm" role="group" aria-label="Peer info controls">
+              <button type="button" class="btn btn-outline-secondary" onclick='$(".collapse.peerInfo").collapse("hide");'>Hide all</button>
+              <button type="button" class="btn btn-outline-secondary" onclick='$(".collapse.peerInfo").collapse("show");'>Show all</button>
+            </div>
+          </div>
           <table class="table table-nobr" id="clients">
             <thead>
               <tr>
                 <th>#</th>
                 <th>Name</th>
+                <th>Peers</th>
                 <th>Head Slot</th>
                 <th>Head Root</th>
                 <th>Status</th>
@@ -28,7 +38,33 @@
                 {{ range $i, $client := .Clients }}
                   <tr>
                     <td>{{ $client.Index }}</td>
-                    <td>{{ $client.Name }}</td>
+                    <td style="max-width: 200px;">
+                      <img src="/identicon?key={{ $client.PeerID }}"
+                        alt="{{ $client.PeerID }}"
+                        class="client-node-icon"/>
+                        <span
+                          id="clientRow-{{ $client.Name }}"
+                          style="cursor:pointer;"
+                          onclick="network.setSelection({nodes: [ '{{ $client.PeerID}}' ]}, { highlightEdges: true });
+                                   $('.collapse.peerInfo').collapse('hide');
+                                   $('#peerInfo-{{ $client.PeerID }}').collapse('show');
+                          ">
+                          <a href="#name={{ $client.Name }}">{{ $client.Name }}</a>
+                        </span>
+                    </td>
+                    <td style="font-size: 0.8rem; vertical-align: middle;">
+                      <span style="width:30px;display: inline-block;" class="text-success" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Inbound Peers">
+                        {{ $client.PeersInboundCounter}}
+                        <i class="fa-solid fa-arrow-down"></i>
+                      </span>
+                      <span style="width:30px;display: inline-block;" class="text-danger" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Outbound Peers">
+                        {{ $client.PeersOutboundCounter}}
+                        <i class="fa-solid fa-arrow-up"></i>
+                      </span>
+                      <span style="width:30px;display: inline-block;" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Total Peers">
+                        ({{ len $client.Peers }})
+                      </span>
+                    </td>
                     <td><a href="/slot/{{ $client.HeadSlot }}">{{ formatAddCommas $client.HeadSlot }}</a></td>
                     <td>
                       <a href="/slot/0x{{ printf "%x" $client.HeadRoot }}" class="text-truncate d-inline-block" style="max-width: 200px">0x{{ printf "%x" $client.HeadRoot }}</a>
@@ -52,6 +88,50 @@
                       <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $client.Version }}"></i>
                     </td>
                   </tr>
+                  <tr class="collapse peerInfo" style="transition:0s" id="peerInfo-{{ $client.PeerID }}">
+                    <td colspan="7">
+                      <div class="client-node-peerinfo">
+                        Peer ID: <code>{{ $client.PeerID }}</code>
+                        <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $client.PeerID }}"></i>
+                      </div>
+                      <div>
+                        <div class="peer-table-column" style="border-right: 1px dashed;">
+                            <div>Inbound</div>
+                          {{ range $j, $peer := $client.Peers }}
+                            {{if eq "inbound" $peer.Direction}}
+                            <div style="padding-left: 20px; padding-top:3px">
+                              <img src="/identicon?key={{ $peer.ID }}" class="peer-table-icon {{ $peer.State }}" alt="{{ $peer.State }}"/>
+                              <code data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $peer.ID }}">
+                                {{ $peer.Alias }}
+                                {{ if eq $peer.Type "internal" }}
+                                <span style="max-width:200px"> {{ trunc (sub (len $peer.ID) (add (len $peer.Alias) 4) ) $peer.ID }}...</span>
+                                {{ end }}
+                              </code>
+                              <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $peer.ID }}"></i>
+                            </div>
+                            {{end}}
+                          {{ end }}
+                        </div>
+                        <div class="peer-table-column">
+                          <div>Outbound</div>
+                          {{ range $j, $peer := $client.Peers }}
+                            {{if eq "outbound" $peer.Direction}}
+                            <div style="padding-left: 20px; padding-top:3px">
+                              <img src="/identicon?key={{ $peer.ID }}" class="peer-table-icon {{ $peer.State }}" alt="{{ $peer.State }}"/>
+                              <code data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $peer.ID }}">
+                                {{ $peer.Alias }}
+                                {{ if eq $peer.Type "internal" }}
+                                <span style="max-width:200px"> {{ trunc (sub (len $peer.ID) (add (len $peer.Alias) 4) ) $peer.ID }}...</span>
+                                {{ end }}
+                              </code>
+                              <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $peer.ID }}"></i>
+                            </div>
+                            {{end}}
+                          {{ end }}
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
                 {{ end }}
               </tbody>
           </table>
@@ -60,8 +140,154 @@
       <div id="footer-placeholder" style="height:30px;"></div>
     </div>
   </div>
+
+  <script type="text/javascript">
+    $(document).ready(function() {
+      hashParams = new URLSearchParams(window.location.hash.substring(1))
+      if (hashParams.has("name")) {
+        name = hashParams.get("name")
+        clientRow = $("#clientRow-" + name)
+        if (clientRow) {
+          clientRow.click()
+        }
+      }
+    });
+  </script>
+
 {{ end }}
+
 {{ define "js" }}
+<script src="/js/vis-network.min.js"></script>
+<script type="text/javascript">
+  var container = document.getElementById("nodemap");
+
+  var data = {{ .PeerMap }}
+  for (var i = 0; i < data.nodes.length; i++) {
+    data.nodes[i].title = data.nodes[i].id;
+  }
+  var options = {
+    layout: {
+      randomSeed: 1
+    },
+    interaction: {
+      hover: true
+    },
+    manipulation: {
+      enabled: false,
+    },
+    groups: {
+      internal: {
+        shape: "dot",
+        size: 30,
+        font: {
+          size: 16,
+          face: "Tahoma",
+          color: "#ffffff",
+        },
+        borderWidth: 3,
+        shadow: true,
+        color:{
+          border: "#0077B6",
+          background: "#fafafa",
+          highlight: {
+            border: "#E77D22",
+            background: "#fafafa",
+          },
+          hover: {
+            border: "#0077B6",
+            background: "#fefefe",
+          },
+        }
+      },
+      external: {
+        shape: "dot",
+        shapeProperties: {
+          borderDashes: [5, 5],
+        },
+        size: 20,
+        font: {
+          size: 14,
+          face: "Tahoma",
+          color: "#ffffff",
+        },
+        borderWidth: 2,
+        shadow: true,
+        color:{
+          border: "#809FFF",
+          background: "#fafafa",
+          highlight: {
+            border: "#E77D22",
+            background: "#fafafa",
+          },
+          hover: {
+            border: "#809FFF",
+            background: "#fefefe",
+          },
+        }
+      },
+    },
+    nodes: {
+      shape: "dot",
+      size: 30,
+      font: {
+        size: 16,
+        face: "Tahoma",
+        color: "#ffffff",
+      },
+      borderWidth: 2,
+      shadow: true,
+      color:{
+        border: "#222222",
+        background: "#666666",
+        highlight: {
+          border: "#E77D22",
+          background: "#E77D22",
+        },
+        hover: {
+          border: "#222222",
+          background: "#666666",
+        },
+      }
+    },
+    edges: {
+      arrows: {
+        to: { enabled: true, scaleFactor: 1, type: "arrow" },
+      },
+      width: 2,
+      shadow: true,
+      color: {
+        color: "#0077B6",
+        highlight: "#E77D22",
+        hover: "#0077B6",
+        opacity: 0.7,
+      },
+      smooth: {
+        type: "dynamic", // might need to change to "continuous" when there are too many nodes
+        //type: "continuous",
+      },
+    },
+    physics: {
+      stabilization: false,
+      barnesHut: {
+        gravitationalConstant: -5000,
+        springConstant: 0.001,
+        springLength: 200,
+      },
+    },
+  };
+  var network = new vis.Network(container, data, options);
+
+  // Handle events
+  network.on("hoverNode", function (params) {
+    console.log("hoverNode Event:", params);
+  });
+  network.on("selectNode", function (params) {
+    console.log("selectNode Event:", params);
+    $(".collapse.peerInfo").collapse("hide");
+    $("#peerInfo-" + params.nodes[0]).collapse("show");
+  });
+</script>
 {{ end }}
 {{ define "css" }}
+<link rel="stylesheet" href="/css/clients.css" />
 {{ end }}
