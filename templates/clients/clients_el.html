@@ -54,7 +54,7 @@
                     </td>
                     <td style="font-size: 0.8rem; vertical-align: middle;">
                       <span style="width:30px;display: inline-block;" class="text-success" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Inbound Peers">
-                        {{ if $client.DidFetchPeers }}
+                        {{ if and ($client.DidFetchPeers) (not (or (contains $client.Version "besu") (contains $client.Version "Nethermind"))) }}
                           {{ $client.PeersInboundCounter }}
                         {{ else }}
                           ?
@@ -62,7 +62,7 @@
                         <i class="fa-solid fa-arrow-down"></i>
                       </span>
                       <span style="width:30px;display: inline-block;" class="text-danger" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Outbound Peers">
-                        {{ if $client.DidFetchPeers }}
+                        {{ if and ($client.DidFetchPeers) (not (or (contains $client.Version "besu") (contains $client.Version "Nethermind"))) }}
                           {{ $client.PeersOutboundCounter }}
                         {{ else }}
                           ?
@@ -106,15 +106,15 @@
                         <table style="margin:0 auto; text-align: left;">
                           <tbody>
                             <tr>
-                              <td style="margin-right: 10px;">ID</td>
-                              <td>
+                              <td>ID</td>
+                              <td style="padding-left: 10px;">
                                 <code>{{ $client.PeerID }}</code>
                                 <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $client.PeerID }}"></i>
                               </td>
                             </tr>
                             <tr>
                               <td>Name</td>
-                              <td>
+                              <td style="padding-left: 10px;">
                                 <code>{{ $client.PeerName }}</code>
                                 <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $client.PeerName }}"></i>
                               </td>
