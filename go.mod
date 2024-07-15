@@ -12,7 +12,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/feature/s3/manager v1.17.5
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.58.0
 	github.com/coocood/freecache v1.2.4
-	github.com/davecgh/go-spew v1.1.1
 	github.com/ethereum/go-ethereum v1.14.6
 	github.com/glebarez/go-sqlite v1.22.0
 	github.com/go-redis/redis/v8 v8.11.5
