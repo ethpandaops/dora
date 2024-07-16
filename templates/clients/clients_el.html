@@ -9,8 +9,21 @@
         </ol>
       </nav>
     </div>
-    <div class="card mt-2 peer-nodemap-wrapper">
-      <div class="card-body px-0 peer-nodemap" id="nodemap"></div>
+    <div class="card mt-2">
+      <div class="accordion" id="network-accordion">
+        <div class="accordion-item">
+          <h2 class="accordion-header">
+            <button class="accordion-button btn-secondary" style="box-shadow: none;" type="button" data-bs-toggle="collapse" data-bs-target="#collapseOne" aria-expanded="true" aria-controls="collapseOne">
+              <i class="fa-solid fa-circle-nodes" style="margin-right:5px"></i> Client graph
+            </button>
+          </h2>
+          <div id="collapseOne" class="accordion-collapse collapse show" data-bs-parent="#network-accordion">
+            <div class="accordion-body peer-nodemap-wrapper">
+              <div class="card-body px-0 peer-nodemap" id="nodemap"></div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
     <div class="card mt-2">
       <div class="card-body px-0 py-3">

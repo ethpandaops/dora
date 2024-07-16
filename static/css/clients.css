@@ -54,6 +54,7 @@ Client peers table
 }
 
 .peer-nodemap-wrapper {
+  padding: 0;
   background: #4b79a1;
   background: -webkit-linear-gradient(
     to top,
