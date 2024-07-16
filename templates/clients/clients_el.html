@@ -51,7 +51,7 @@
                 {{ range $i, $client := .Clients }}
                   <tr>
                     <td>{{ $client.Index }}</td>
-                    <td style="max-width: 270px;">
+                    <td>
                       <img src="/identicon?key={{ $client.PeerID }}"
                         alt="{{ $client.PeerID }}"
                         class="client-node-icon"/>

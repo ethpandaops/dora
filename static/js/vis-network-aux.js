@@ -77,6 +77,9 @@ $_network.defaultOptions = {
     },
   },
   nodes: {
+    shapeProperties: {
+      interpolation: false    // 'true' for intensive zooming
+    },
     shape: "dot",
     size: 30,
     font: {
