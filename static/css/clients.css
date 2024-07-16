@@ -53,6 +53,12 @@ Client peers table
   padding: 0;
 }
 
+@media only screen and (max-width: 768px) {
+  .peer-nodemap {
+    height: 50vh;
+  }
+}
+
 .peer-nodemap-wrapper {
   padding: 0;
   background: #4b79a1;
