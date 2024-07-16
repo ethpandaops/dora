@@ -22,7 +22,6 @@ require (
 	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/lib/pq v1.10.9
 	github.com/lucasb-eyer/go-colorful v1.0.2
-	github.com/lucasb-eyer/go-colorful v1.0.2
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/pk910/dynamic-ssz v0.0.4
 	github.com/pressly/goose/v3 v3.21.1
