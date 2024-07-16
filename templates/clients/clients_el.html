@@ -1,11 +1,11 @@
 {{ define "page" }}
   <div class="container mt-2">
     <div class="d-md-flex py-2 justify-content-md-between">
-      <h1 class="h4 mb-1 mb-md-0"><i class="fas fa-server mx-2"></i>Clients</h1>
+      <h1 class="h4 mb-1 mb-md-0"><i class="fas fa-server mx-2"></i>Execution clients</h1>
       <nav aria-label="breadcrumb">
         <ol class="breadcrumb font-size-1 mb-0" style="padding:0; background-color:transparent;">
           <li class="breadcrumb-item"><a href="/" title="Home">Home</a></li>
-          <li class="breadcrumb-item active" aria-current="page">Clients</li>
+          <li class="breadcrumb-item active" aria-current="page">Execution clients</li>
         </ol>
       </nav>
     </div>
@@ -28,8 +28,8 @@
                 <th>#</th>
                 <th>Name</th>
                 <th>Peers</th>
-                <th>Head Slot</th>
-                <th>Head Root</th>
+                <th>Block</th>
+                <th>Block hash</th>
                 <th>Status</th>
                 <th>Version</th>
               </tr>
@@ -38,7 +38,7 @@
                 {{ range $i, $client := .Clients }}
                   <tr>
                     <td>{{ $client.Index }}</td>
-                    <td style="max-width: 200px;">
+                    <td style="max-width: 270px;">
                       <img src="/identicon?key={{ $client.PeerID }}"
                         alt="{{ $client.PeerID }}"
                         class="client-node-icon"/>
@@ -54,20 +54,32 @@
                     </td>
                     <td style="font-size: 0.8rem; vertical-align: middle;">
                       <span style="width:30px;display: inline-block;" class="text-success" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Inbound Peers">
-                        {{ $client.PeersInboundCounter}}
+                        {{ if and ($client.DidFetchPeers) (not (or (contains $client.Version "besu") (contains $client.Version "Nethermind"))) }}
+                          {{ $client.PeersInboundCounter }}
+                        {{ else }}
+                          ?
+                        {{ end }}
                         <i class="fa-solid fa-arrow-down"></i>
                       </span>
                       <span style="width:30px;display: inline-block;" class="text-danger" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Outbound Peers">
-                        {{ $client.PeersOutboundCounter}}
+                        {{ if and ($client.DidFetchPeers) (not (or (contains $client.Version "besu") (contains $client.Version "Nethermind"))) }}
+                          {{ $client.PeersOutboundCounter }}
+                        {{ else }}
+                          ?
+                        {{ end }}
                         <i class="fa-solid fa-arrow-up"></i>
                       </span>
                       <span style="width:30px;display: inline-block;" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Total Peers">
-                        ({{ len $client.Peers }})
+                        {{ if $client.DidFetchPeers }}
+                          ({{ len $client.Peers }})
+                        {{ else }}
+                          (?)
+                        {{ end }}
                       </span>
                     </td>
-                    <td><a href="/slot/{{ $client.HeadSlot }}">{{ formatAddCommas $client.HeadSlot }}</a></td>
+                    <td>{{ formatAddCommas $client.HeadSlot }}</td>
                     <td>
-                      <a href="/slot/0x{{ printf "%x" $client.HeadRoot }}" class="text-truncate d-inline-block" style="max-width: 200px">0x{{ printf "%x" $client.HeadRoot }}</a>
+                      <span class="text-truncate d-inline-block" style="max-width: 200px">0x{{ printf "%x" $client.HeadRoot }}</span>
                       <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $client.HeadRoot }}"></i>
                     </td>
                     <td>
@@ -91,8 +103,26 @@
                   <tr class="collapse peerInfo" style="transition:0s" id="peerInfo-{{ $client.PeerID }}">
                     <td colspan="7">
                       <div class="client-node-peerinfo">
-                        Peer ID: <code>{{ $client.PeerID }}</code>
-                        <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $client.PeerID }}"></i>
+                        <table style="margin:0 auto; text-align: left;">
+                          <tbody>
+                            <tr>
+                              <td>ID</td>
+                              <td style="padding-left: 10px;">
+                                <code>{{ $client.PeerID }}</code>
+                                <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $client.PeerID }}"></i>
+                              </td>
+                            </tr>
+                            <tr>
+                              <td>Name</td>
+                              <td style="padding-left: 10px;">
+                                <code>{{ $client.PeerName }}</code>
+                                <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $client.PeerName }}"></i>
+                              </td>
+                          </tbody>
+
+                        </table>
+
+
                       </div>
                       <div>
                         <div class="peer-table-column" style="border-right: 1px dashed;">
@@ -100,7 +130,7 @@
                           {{ range $j, $peer := $client.Peers }}
                             {{if eq "inbound" $peer.Direction}}
                             <div style="padding-left: 20px; padding-top:3px">
-                              <img src="/identicon?key={{ $peer.ID }}" class="peer-table-icon {{ $peer.State }}" alt="{{ $peer.State }}"/>
+                              <img src="/identicon?key={{ $peer.ID }}" class="peer-table-icon" title="{{ $peer.State }}"/>
                               <code data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $peer.ID }}">
                                 {{ $peer.Alias }}
                                 {{ if eq $peer.Type "internal" }}
@@ -162,6 +192,9 @@
   var container = document.getElementById("nodemap");
 
   var data = {{ .PeerMap }}
+  console.log(data)
+  var clients = {{ .Clients}}
+  console.log(clients)
   for (var i = 0; i < data.nodes.length; i++) {
     data.nodes[i].title = data.nodes[i].id;
   }
