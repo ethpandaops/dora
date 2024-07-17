@@ -9,8 +9,21 @@
         </ol>
       </nav>
     </div>
-    <div class="card mt-2 peer-nodemap-wrapper">
-      <div class="card-body px-0 peer-nodemap" id="nodemap"></div>
+    <div class="card mt-2">
+      <div class="accordion" id="network-accordion">
+        <div class="accordion-item">
+          <h2 class="accordion-header">
+            <button class="accordion-button btn-secondary" style="box-shadow: none;" type="button" data-bs-toggle="collapse" data-bs-target="#collapseOne" aria-expanded="true" aria-controls="collapseOne">
+              <i class="fa-solid fa-circle-nodes" style="margin-right:5px"></i> Client graph
+            </button>
+          </h2>
+          <div id="collapseOne" class="accordion-collapse collapse show" data-bs-parent="#network-accordion">
+            <div class="accordion-body peer-nodemap-wrapper">
+              <div class="card-body px-0 peer-nodemap" id="nodemap"></div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
     <div class="card mt-2">
       <div class="card-body px-0 py-3">
@@ -38,7 +51,7 @@
                 {{ range $i, $client := .Clients }}
                   <tr>
                     <td>{{ $client.Index }}</td>
-                    <td style="max-width: 270px;">
+                    <td>
                       <img src="/identicon?key={{ $client.PeerID }}"
                         alt="{{ $client.PeerID }}"
                         class="client-node-icon"/>
@@ -188,132 +201,26 @@
 
 {{ define "js" }}
 <script src="/js/vis-network.min.js"></script>
+<script src="/js/vis-network-aux.js"></script>
 <script type="text/javascript">
   var container = document.getElementById("nodemap");
 
   var data = {{ .PeerMap }}
-  console.log(data)
-  var clients = {{ .Clients}}
-  console.log(clients)
   for (var i = 0; i < data.nodes.length; i++) {
     data.nodes[i].title = data.nodes[i].id;
   }
-  var options = {
-    layout: {
-      randomSeed: 1
-    },
-    interaction: {
-      hover: true
-    },
-    manipulation: {
-      enabled: false,
-    },
-    groups: {
-      internal: {
-        shape: "dot",
-        size: 30,
-        font: {
-          size: 16,
-          face: "Tahoma",
-          color: "#ffffff",
-        },
-        borderWidth: 3,
-        shadow: true,
-        color:{
-          border: "#0077B6",
-          background: "#fafafa",
-          highlight: {
-            border: "#E77D22",
-            background: "#fafafa",
-          },
-          hover: {
-            border: "#0077B6",
-            background: "#fefefe",
-          },
-        }
-      },
-      external: {
-        shape: "dot",
-        shapeProperties: {
-          borderDashes: [5, 5],
-        },
-        size: 20,
-        font: {
-          size: 14,
-          face: "Tahoma",
-          color: "#ffffff",
-        },
-        borderWidth: 2,
-        shadow: true,
-        color:{
-          border: "#809FFF",
-          background: "#fafafa",
-          highlight: {
-            border: "#E77D22",
-            background: "#fafafa",
-          },
-          hover: {
-            border: "#809FFF",
-            background: "#fefefe",
-          },
-        }
-      },
-    },
-    nodes: {
-      shape: "dot",
-      size: 30,
-      font: {
-        size: 16,
-        face: "Tahoma",
-        color: "#ffffff",
-      },
-      borderWidth: 2,
-      shadow: true,
-      color:{
-        border: "#222222",
-        background: "#666666",
-        highlight: {
-          border: "#E77D22",
-          background: "#E77D22",
-        },
-        hover: {
-          border: "#222222",
-          background: "#666666",
-        },
-      }
-    },
-    edges: {
-      arrows: {
-        to: { enabled: true, scaleFactor: 1, type: "arrow" },
-      },
-      width: 2,
-      shadow: true,
-      color: {
-        color: "#0077B6",
-        highlight: "#E77D22",
-        hover: "#0077B6",
-        opacity: 0.7,
-      },
-      smooth: {
-        type: "dynamic", // might need to change to "continuous" when there are too many nodes
-        //type: "continuous",
-      },
-    },
-    physics: {
-      stabilization: false,
-      barnesHut: {
-        gravitationalConstant: -5000,
-        springConstant: 0.001,
-        springLength: 200,
-      },
-    },
-  };
+  var options = $_network.defaultOptions;
   var network = new vis.Network(container, data, options);
+
+  sleep(1000).then(() => {
+    $_network.fitToScreen(network);
+  });
 
   // Handle events
   network.on("hoverNode", function (params) {
     console.log("hoverNode Event:", params);
   });
+
   network.on("selectNode", function (params) {
     console.log("selectNode Event:", params);
     $(".collapse.peerInfo").collapse("hide");

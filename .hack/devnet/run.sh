@@ -6,7 +6,10 @@ ENCLAVE_NAME="${ENCLAVE_NAME:-dora}"
 if kurtosis enclave inspect "$ENCLAVE_NAME" > /dev/null; then
   echo "Kurtosis enclave '$ENCLAVE_NAME' is already up."
 else
-  kurtosis run github.com/ethpandaops/ethereum-package --enclave "$ENCLAVE_NAME" --args-file "${__dir}/kurtosis.devnet.config.yaml"
+  kurtosis run github.com/ethpandaops/ethereum-package \
+  --image-download always \
+  --enclave "$ENCLAVE_NAME" \
+  --args-file "${__dir}/kurtosis.devnet.config.yaml"
 fi
 
 # Get chain config
@@ -15,7 +18,7 @@ kurtosis files inspect "$ENCLAVE_NAME" el_cl_genesis_data ./config.yaml | tail -
 ## Generate Dora config
 ENCLAVE_UUID=$(kurtosis enclave inspect "$ENCLAVE_NAME" --full-uuids | grep 'UUID:' | awk '{print $2}')
 
-BEACON_NODDES=$(docker ps -aq -f "label=enclave_uuid=$ENCLAVE_UUID" \
+BEACON_NODES=$(docker ps -aq -f "label=enclave_uuid=$ENCLAVE_UUID" \
               -f "label=com.kurtosistech.app-id=kurtosis" \
               -f "label=com.kurtosistech.custom.ethereum-package.client-type=beacon" | tac)
 
@@ -45,7 +48,7 @@ beaconapi:
   redisCacheAddr: ""
   redisCachePrefix: ""
   endpoints:
-$(docker inspect -f "    - { name: {{ with index .Config.Labels \"com.kurtosistech.id\"}}{{.}}{{end}}, url: http://{{ with index .NetworkSettings.Networks \"kt-$ENCLAVE_NAME\"}}{{.IPAddress }}:4000{{end}} }" $BEACON_NODDES)
+$(docker inspect -f "    - { name: {{ with index .Config.Labels \"com.kurtosistech.id\"}}{{.}}{{end}}, url: http://{{ with index .NetworkSettings.Networks \"kt-$ENCLAVE_NAME\"}}{{.IPAddress }}:4000{{end}} }" $BEACON_NODES)
 executionapi:
   depositLogBatchSize: 1000
   endpoints:
