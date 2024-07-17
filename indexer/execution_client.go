@@ -8,27 +8,33 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethpandaops/dora/rpc"
 	"github.com/ethpandaops/dora/utils"
+	"github.com/sirupsen/logrus"
 )
 
 type ExecutionClient struct {
-	clientIdx       uint16
-	clientName      string
-	rpcClient       *rpc.ExecutionClient
-	archive         bool
-	priority        int
-	versionStr      string
-	indexerCache    *indexerCache
-	cacheMutex      sync.RWMutex
-	lastClientError error
-	lastHeadRefresh time.Time
-	isSynchronizing bool
-	syncDistance    uint64
-	isConnected     bool
-	retryCounter    uint64
-	lastHeadSlot    int64
-	lastHeadRoot    []byte
+	clientIdx           uint16
+	clientName          string
+	rpcClient           *rpc.ExecutionClient
+	archive             bool
+	priority            int
+	versionStr          string
+	nodeInfo            *p2p.NodeInfo
+	peers               []*p2p.PeerInfo
+	didFetchPeers       bool
+	indexerCache        *indexerCache
+	cacheMutex          sync.RWMutex
+	lastClientError     error
+	lastHeadRefresh     time.Time
+	isSynchronizing     bool
+	syncDistance        uint64
+	isConnected         bool
+	retryCounter        uint64
+	lastHeadSlot        int64
+	lastHeadRoot        []byte
+	lastPeerUpdateEpoch int64
 }
 
 func newExecutionClient(clientIdx uint16, clientName string, rpcClient *rpc.ExecutionClient, indexerCache *indexerCache, archive bool, priority int) *ExecutionClient {
@@ -36,6 +42,7 @@ func newExecutionClient(clientIdx uint16, clientName string, rpcClient *rpc.Exec
 		clientIdx:    clientIdx,
 		clientName:   clientName,
 		rpcClient:    rpcClient,
+		peers:        []*p2p.PeerInfo{},
 		archive:      archive,
 		priority:     priority,
 		indexerCache: indexerCache,
@@ -55,6 +62,10 @@ func (client *ExecutionClient) GetName() string {
 
 func (client *ExecutionClient) GetVersion() string {
 	return client.versionStr
+}
+
+func (client *ExecutionClient) GetNodeInfo() *p2p.NodeInfo {
+	return client.nodeInfo
 }
 
 func (client *ExecutionClient) GetRpcClient() *rpc.ExecutionClient {
@@ -84,6 +95,35 @@ func (client *ExecutionClient) GetLastClientError() string {
 		return ""
 	}
 	return client.lastClientError.Error()
+}
+
+func (client *ExecutionClient) GetNodePeers() []*p2p.PeerInfo {
+	if client.peers == nil {
+		return []*p2p.PeerInfo{}
+	}
+	return client.peers
+}
+
+func (client *ExecutionClient) DidFetchPeers() bool {
+	return client.didFetchPeers
+}
+
+func (client *ExecutionClient) updateNodePeers(ctx context.Context) error {
+	var err error
+	client.nodeInfo, err = client.rpcClient.GetAdminNodeInfo(ctx)
+	if err != nil {
+		client.didFetchPeers = false
+		return fmt.Errorf("could not get node info: %v", err)
+	}
+
+	peers, err := client.rpcClient.GetAdminPeers(ctx)
+	if err != nil {
+		client.didFetchPeers = false
+		return fmt.Errorf("could not get peers: %v", err)
+	}
+	client.peers = peers
+	client.didFetchPeers = true
+	return nil
 }
 
 func (client *ExecutionClient) runExecutionClientLoop() {
@@ -181,6 +221,16 @@ func (client *ExecutionClient) checkClient() error {
 	isSynchronizing = syncStatus.IsSyncing
 	client.syncDistance = uint64(syncStatus.HighestBlock - syncStatus.CurrentBlock)
 
+	currentEpoch := utils.TimeToEpoch(time.Now())
+	if currentEpoch > client.lastPeerUpdateEpoch {
+		// update node peers
+		if err = client.updateNodePeers(ctx); err != nil {
+			logger.WithFields(logrus.Fields{"client": client.clientName, "error": err}).Error("could not get execution node peers")
+		}
+		client.lastPeerUpdateEpoch = currentEpoch
+		logger.WithFields(logrus.Fields{"client": client.clientName, "epoch": currentEpoch, "peers": len(client.peers)}).Debug("updated execution node peers")
+	}
+
 	return nil
 }
 
@@ -205,6 +255,12 @@ func (client *ExecutionClient) processClientEvents() error {
 				return err
 			}
 			client.lastHeadRefresh = time.Now()
+
+			// update node peers
+			if err = client.updateNodePeers(ctx); err != nil {
+				logger.WithFields(logrus.Fields{"client": client.clientName, "error": err}).Error("could not get execution node peers")
+			}
+
 		}
 	}
 }

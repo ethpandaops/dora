@@ -89,6 +89,7 @@ func createMenuItems(active string) []types.MainMenuItem {
 		return []types.MainMenuItem{}
 	}
 
+	clientsMenu := []types.NavigationGroup{}
 	blockchainMenu := []types.NavigationGroup{}
 	validatorMenu := []types.NavigationGroup{}
 
@@ -126,19 +127,31 @@ func createMenuItems(active string) []types.MainMenuItem {
 			},
 		})
 	}
-	blockchainMenu = append(blockchainMenu, types.NavigationGroup{
-		Links: []types.NavigationLink{
-			{
-				Label: "Clients",
-				Path:  "/clients",
-				Icon:  "fa-server",
-			},
-			{
-				Label: "Forks",
-				Path:  "/forks",
-				Icon:  "fa-code-fork",
-			},
+
+	clientLinks := []types.NavigationLink{
+		{
+			Label: "Consensus",
+			Path:  "/clients/consensus",
+			Icon:  "fa-server",
 		},
+	}
+
+	if utils.Config.ExecutionApi.Endpoint != "" || len(utils.Config.ExecutionApi.Endpoints) > 0 {
+		clientLinks = append(clientLinks, types.NavigationLink{
+			Label: "Execution",
+			Path:  "/clients/execution",
+			Icon:  "fa-circle-nodes",
+		})
+	}
+
+	clientLinks = append(clientLinks, types.NavigationLink{
+		Label: "Forks",
+		Path:  "/forks",
+		Icon:  "fa-code-fork",
+	})
+
+	clientsMenu = append(clientsMenu, types.NavigationGroup{
+		Links: clientLinks,
 	})
 
 	validatorMenu = append(validatorMenu, types.NavigationGroup{
@@ -189,6 +202,11 @@ func createMenuItems(active string) []types.MainMenuItem {
 			Label:    "Validators",
 			IsActive: active == "validators",
 			Groups:   validatorMenu,
+		},
+		{
+			Label:    "Clients",
+			IsActive: active == "clients",
+			Groups:   clientsMenu,
 		},
 	}
 }
