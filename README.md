@@ -30,15 +30,17 @@ Read through the [wiki](https://github.com/ethpandaops/dora/wiki) for setup & co
 The explorer has no mandatory external dependencies. It can even run completely in memory only.\
 However, for best performance I recommend using a PostgreSQL database.
 
-## Background
-https://github.com/ethpandaops/tooling-wishlist/blob/master/tools/lightweight-beaconchain-explorer.md
+# Development Setup
 
-## Open Points / Ideas
+The repository contains a script that simplifies spinning up a development environment for the explorer.
 
-Things that might be worth adding at some time
+Follow these steps to spin up a full ethereum testnet with the locally build dora instance:
 
-* [ ] Show Sync Committees
-* [ ] Show Deposits
+1. Ensure docker & (kurtosis)[https://docs.kurtosis.com/install] are installed on your machine.
+2. Clone the repository
+3. Run `make devnet-run`
+
+The `make devnet-run` command spins up a kurtosis testnet with multiple client pairs. To stop the testnet after development work, run `make devnet-clean`
 
 # Thanks To
 
