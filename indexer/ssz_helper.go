@@ -101,7 +101,7 @@ func UnmarshalVersionedSignedBeaconBlockSSZ(version uint64, ssz []byte) (*spec.V
 		}
 	case spec.DataVersionElectra:
 		block.Electra = &electra.SignedBeaconBlock{}
-		if err := dynSsz.UnmarshalSSZ(block.Deneb, ssz); err != nil {
+		if err := dynSsz.UnmarshalSSZ(block.Electra, ssz); err != nil {
 			return nil, fmt.Errorf("failed to decode electra signed beacon block: %v", err)
 		}
 	default:
