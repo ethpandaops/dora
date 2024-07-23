@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS el_requests (
     target_index BIGINT NULL,
     target_pubkey BLOB NULL,
     amount BIGINT NULL,
-    CONSTRAINT consolidation_pkey PRIMARY KEY (slot_index, slot_root)
+    CONSTRAINT el_requests_pkey PRIMARY KEY (slot_index, slot_root)
 );
 
 CREATE INDEX IF NOT EXISTS "el_requests_slot_idx"
