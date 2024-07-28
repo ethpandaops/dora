@@ -26,57 +26,45 @@ type Pool struct {
 	logger        logrus.FieldLogger
 	clientCounter uint16
 	clients       []*Client
-	blockCache    *cache
+	chainState    *chainState
 }
 
-func NewPool(ctx context.Context, config *PoolConfig, logger logrus.FieldLogger) (*Pool, error) {
-	var err error
-
-	pool := Pool{
-		config:  config,
-		ctx:     ctx,
-		logger:  logger,
-		clients: make([]*Client, 0),
+func NewPool(ctx context.Context, config *PoolConfig, logger logrus.FieldLogger) *Pool {
+	return &Pool{
+		config:     config,
+		ctx:        ctx,
+		logger:     logger,
+		clients:    make([]*Client, 0),
+		chainState: newChainState(),
 	}
-
-	pool.blockCache, err = newCache(ctx, logger)
-	if err != nil {
-		return nil, err
-	}
-
-	return &pool, nil
-}
-
-func (pool *Pool) SubscribeBlockEvent(capacity int) *Subscription[*Block] {
-	return pool.blockCache.blockDispatcher.Subscribe(capacity)
 }
 
 func (pool *Pool) SubscribeFinalizedEvent(capacity int) *Subscription[*FinalizedCheckpoint] {
-	return pool.blockCache.checkpointDispatcher.Subscribe(capacity)
+	return pool.chainState.checkpointDispatcher.Subscribe(capacity, false)
 }
 
 func (pool *Pool) SubscribeWallclockEpochEvent(capacity int) *Subscription[*ethwallclock.Epoch] {
-	return pool.blockCache.wallclockEpochDispatcher.Subscribe(capacity)
+	return pool.chainState.wallclockEpochDispatcher.Subscribe(capacity, false)
 }
 
 func (pool *Pool) SubscribeWallclockSlotEvent(capacity int) *Subscription[*ethwallclock.Slot] {
-	return pool.blockCache.wallclockSlotDispatcher.Subscribe(capacity)
+	return pool.chainState.wallclockSlotDispatcher.Subscribe(capacity, false)
 }
 
 func (pool *Pool) GetGenesis() *v1.Genesis {
-	return pool.blockCache.genesis
+	return pool.chainState.genesis
 }
 
 func (pool *Pool) GetSpecs() *ChainSpec {
-	return pool.blockCache.getSpecs()
+	return pool.chainState.getSpecs()
 }
 
 func (pool *Pool) GetWallclock() *ethwallclock.EthereumBeaconChain {
-	return pool.blockCache.wallclock
+	return pool.chainState.wallclock
 }
 
-func (pool *Pool) GetBlockCache() *cache {
-	return pool.blockCache
+func (pool *Pool) GetBlockCache() *chainState {
+	return pool.chainState
 }
 
 func (pool *Pool) AddEndpoint(endpoint *ClientConfig) (*Client, error) {

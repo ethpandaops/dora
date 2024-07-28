@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	v1 "github.com/attestantio/go-eth2-client/api/v1"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/sirupsen/logrus"
 
@@ -47,7 +48,7 @@ type Client struct {
 	headSlot             phase0.Slot
 	finalizedRoot        phase0.Root
 	finalizedEpoch       phase0.Epoch
-	blockDispatcher      Dispatcher[*Block]
+	blockDispatcher      Dispatcher[*v1.BlockEvent]
 	checkpointDispatcher Dispatcher[*FinalizedCheckpoint]
 }
 
@@ -79,20 +80,12 @@ func (client *Client) resetContext() {
 	client.clientCtx, client.clientCtxCancel = context.WithCancel(client.pool.ctx)
 }
 
-func (client *Client) SubscribeBlockEvent(capacity int) *Subscription[*Block] {
-	return client.blockDispatcher.Subscribe(capacity)
-}
-
-func (client *Client) UnsubscribeBlockEvent(subscription *Subscription[*Block]) {
-	client.blockDispatcher.Unsubscribe(subscription)
+func (client *Client) SubscribeBlockEvent(capacity int, blocking bool) *Subscription[*v1.BlockEvent] {
+	return client.blockDispatcher.Subscribe(capacity, blocking)
 }
 
 func (client *Client) SubscribeFinalizedEvent(capacity int) *Subscription[*FinalizedCheckpoint] {
-	return client.checkpointDispatcher.Subscribe(capacity)
-}
-
-func (client *Client) UnsubscribeFinalizedEvent(subscription *Subscription[*FinalizedCheckpoint]) {
-	client.checkpointDispatcher.Unsubscribe(subscription)
+	return client.checkpointDispatcher.Subscribe(capacity, false)
 }
 
 func (client *Client) GetIndex() uint16 {
