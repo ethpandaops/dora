@@ -107,6 +107,12 @@ func (client *Client) checkClient() error {
 		return err
 	}
 
+	// check finalization status
+	_, err = client.updateFinalityCheckpoints(ctx)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -187,8 +193,9 @@ func (client *Client) runClientLogic() error {
 		}
 
 		currentEpoch := client.pool.chainState.CurrentEpoch()
+		currentSlot := client.pool.chainState.CurrentSlot()
 
-		if currentEpoch > client.lastSyncUpdateEpoch {
+		if currentEpoch-client.lastSyncUpdateEpoch >= 1 {
 			// update sync status
 			if err = client.updateSynchronizationStatus(client.clientCtx); err != nil {
 				client.isOnline = false
@@ -200,13 +207,26 @@ func (client *Client) runClientLogic() error {
 			}
 		}
 
-		if currentEpoch > client.lastPeerUpdateEpoch {
-			// update node peers
-			if err = client.updateNodePeers(client.clientCtx); err != nil {
-				client.logger.Errorf("could not get node peers for %s: %v", client.endpointConfig.Name, err)
-			} else {
-				client.logger.WithFields(logrus.Fields{"epoch": currentEpoch, "peers": len(client.peers)}).Debug("updated consensus node peers")
-			}
+		if currentEpoch-client.lastFinalityUpdateEpoch >= 1 && client.pool.chainState.SlotToSlotIndex(currentSlot) > 1 {
+			client.lastFinalityUpdateEpoch = currentEpoch
+			go func() {
+				// update finality status
+				if _, err = client.updateFinalityCheckpoints(client.clientCtx); err != nil {
+					client.logger.Errorf("could not get finality checkpoint for %s: %v", client.endpointConfig.Name, err)
+				}
+			}()
+		}
+
+		if currentEpoch-client.lastPeerUpdateEpoch >= 1 {
+			client.lastPeerUpdateEpoch = currentEpoch
+			go func() {
+				// update node peers
+				if err = client.updateNodePeers(client.clientCtx); err != nil {
+					client.logger.Errorf("could not get node peers for %s: %v", client.endpointConfig.Name, err)
+				} else {
+					client.logger.WithFields(logrus.Fields{"epoch": currentEpoch, "peers": len(client.peers)}).Debug("updated consensus node peers")
+				}
+			}()
 		}
 	}
 }
@@ -253,6 +273,36 @@ func (client *Client) updateNodePeers(ctx context.Context) error {
 	return nil
 }
 
+func (client *Client) updateFinalityCheckpoints(ctx context.Context) (phase0.Root, error) {
+	var cancel context.CancelFunc
+	ctx, cancel = context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	finalizedCheckpoints, err := client.rpcClient.GetFinalityCheckpoints(ctx)
+	if err != nil {
+		return NullRoot, err
+	}
+
+	client.lastFinalityUpdateEpoch = client.pool.chainState.CurrentEpoch()
+
+	client.headMutex.Lock()
+	if bytes.Equal(client.justifiedRoot[:], finalizedCheckpoints.Justified.Root[:]) {
+		client.headMutex.Unlock()
+		return finalizedCheckpoints.Finalized.Root, nil
+	}
+
+	client.justifiedEpoch = finalizedCheckpoints.Justified.Epoch
+	client.justifiedRoot = finalizedCheckpoints.Justified.Root
+	client.finalizedEpoch = finalizedCheckpoints.Finalized.Epoch
+	client.finalizedRoot = finalizedCheckpoints.Finalized.Root
+	client.headMutex.Unlock()
+
+	client.pool.chainState.setFinalizedCheckpoint(finalizedCheckpoints)
+	client.checkpointDispatcher.Fire(finalizedCheckpoints)
+
+	return finalizedCheckpoints.Finalized.Root, nil
+}
+
 func (client *Client) processBlockEvent(evt *v1.BlockEvent) error {
 	client.blockDispatcher.Fire(evt)
 
@@ -275,8 +325,23 @@ func (client *Client) processHeadEvent(evt *v1.HeadEvent) error {
 }
 
 func (client *Client) processFinalizedEvent(evt *v1.FinalizedCheckpointEvent) error {
-	client.logger.Debugf("received finalization_checkpoint event: finalized %v [0x%x]", evt.Epoch, evt.Block)
-	return client.setFinalizedHead(evt.Epoch, evt.Block)
+	go func() {
+		retry := 0
+		for ; retry < 20; retry++ {
+			finalizedRoot, err := client.updateFinalityCheckpoints(client.clientCtx)
+			if err != nil {
+				client.logger.Warnf("error requesting finality checkpoints: %v", err)
+			} else if bytes.Equal(finalizedRoot[:], evt.Block[:]) {
+				break
+			}
+
+			time.Sleep(3 * time.Second)
+		}
+
+		client.logger.Infof("received finalization_checkpoint event: finalized %v [0x%x], justified %v [0x%x], retry: %v", client.finalizedEpoch, client.finalizedRoot, client.justifiedEpoch, client.justifiedRoot, retry)
+	}()
+
+	return nil
 }
 
 func (client *Client) pollClientHead() error {
@@ -314,30 +379,10 @@ func (client *Client) pollClientHead() error {
 	})
 
 	// update finality checkpoint
-	finalityCheckpoint, err := client.rpcClient.GetFinalityCheckpoints(ctx)
+	_, err = client.updateFinalityCheckpoints(ctx)
 	if err != nil {
 		return fmt.Errorf("could not get finality checkpoint: %v", err)
 	}
-
-	return client.setFinalizedHead(finalityCheckpoint.Finalized.Epoch, finalityCheckpoint.Finalized.Root)
-}
-
-func (client *Client) setFinalizedHead(epoch phase0.Epoch, root phase0.Root) error {
-	client.headMutex.Lock()
-	if bytes.Equal(client.finalizedRoot[:], root[:]) {
-		client.headMutex.Unlock()
-		return nil
-	}
-
-	client.finalizedEpoch = epoch
-	client.finalizedRoot = root
-	client.headMutex.Unlock()
-
-	client.pool.chainState.setFinalizedCheckpoint(epoch, root)
-	client.checkpointDispatcher.Fire(&FinalizedCheckpoint{
-		Epoch: epoch,
-		Root:  root,
-	})
 
 	return nil
 }

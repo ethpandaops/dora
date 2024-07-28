@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	v1 "github.com/attestantio/go-eth2-client/api/v1"
 	"github.com/ethpandaops/ethwallclock"
 	"github.com/sirupsen/logrus"
 )
@@ -25,7 +26,7 @@ func NewPool(ctx context.Context, logger logrus.FieldLogger) *Pool {
 	}
 }
 
-func (pool *Pool) SubscribeFinalizedEvent(capacity int) *Subscription[*FinalizedCheckpoint] {
+func (pool *Pool) SubscribeFinalizedEvent(capacity int) *Subscription[*v1.Finality] {
 	return pool.chainState.checkpointDispatcher.Subscribe(capacity, false)
 }
 

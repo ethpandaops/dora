@@ -29,6 +29,9 @@ type Client struct {
 	skipValidators bool
 
 	blockSubscription *consensus.Subscription[*v1.BlockEvent]
+	headSubscription  *consensus.Subscription[*v1.HeadEvent]
+
+	headRoot phase0.Root
 }
 
 func newClient(index uint16, client *consensus.Client, priority int, archive bool, skipValidators bool, indexer *Indexer, logger logrus.FieldLogger, blockCache *blockCache) *Client {
@@ -55,6 +58,7 @@ func (c *Client) startIndexing() {
 
 	// blocking block subscription with a buffer to ensure no blocks are missed
 	c.blockSubscription = c.client.SubscribeBlockEvent(100, true)
+	c.headSubscription = c.client.SubscribeHeadEvent(100, true)
 
 	go c.startClientLoop()
 }
@@ -84,10 +88,12 @@ func (c *Client) startClientLoop() {
 func (c *Client) runClientLoop() error {
 	// 1 - load & process head block
 	headSlot, headRoot := c.client.GetLastHead()
-	if bytes.Equal(headRoot[:], nullRoot[:]) {
+	if bytes.Equal(headRoot[:], consensus.NullRoot[:]) {
 		c.logger.Debugf("no chain head from client, retrying later")
 		return nil
 	}
+
+	c.headRoot = headRoot
 
 	headBlock, isNew, err := c.processBlock(headSlot, headRoot, nil)
 	if err != nil {
@@ -110,15 +116,24 @@ func (c *Client) runClientLoop() error {
 		c.logger.Errorf("failed backfilling slots: %v", err)
 	}
 
-	// 3 - listen to block events
-	for blockEvent := range c.blockSubscription.Channel() {
-		err := c.processBlockEvent(blockEvent)
-		if err != nil {
-			c.logger.Errorf("failed processing block %v (%v): %v", blockEvent.Slot, blockEvent.Block.String(), err)
+	// 3 - listen to block / head events
+	for {
+		select {
+		case <-c.client.GetContext().Done():
+			return nil
+		case blockEvent := <-c.blockSubscription.Channel():
+			err := c.processBlockEvent(blockEvent)
+			if err != nil {
+				c.logger.Errorf("failed processing block %v (%v): %v", blockEvent.Slot, blockEvent.Block.String(), err)
+			}
+		case headEvent := <-c.headSubscription.Channel():
+			err := c.processHeadEvent(headEvent)
+			if err != nil {
+				c.logger.Errorf("failed processing head %v (%v): %v", headEvent.Slot, headEvent.Block.String(), err)
+			}
 		}
 	}
 
-	return nil
 }
 
 func (c *Client) processBlockEvent(blockEvent *v1.BlockEvent) error {
@@ -134,6 +149,83 @@ func (c *Client) processBlockEvent(blockEvent *v1.BlockEvent) error {
 	} else {
 		c.logger.Debugf("received known block %v:%v [0x%x] stream", chainState.EpochOfSlot(block.Slot), block.Slot, block.Root[:])
 	}
+
+	return nil
+}
+
+func (c *Client) processHeadEvent(headEvent *v1.HeadEvent) error {
+	block, isNew, err := c.processBlock(headEvent.Slot, headEvent.Block, nil)
+	if err != nil {
+		return err
+	}
+
+	chainState := c.client.GetPool().GetChainState()
+
+	if isNew {
+		c.logger.Infof("received block %v:%v [0x%x] stream", chainState.EpochOfSlot(block.Slot), block.Slot, block.Root[:])
+	} else {
+		c.logger.Debugf("received known block %v:%v [0x%x] stream", chainState.EpochOfSlot(block.Slot), block.Slot, block.Root[:])
+	}
+
+	if bytes.Equal(c.headRoot[:], headEvent.Block[:]) {
+		// no progress?
+		return nil
+	}
+
+	parentRoot := block.GetParentRoot()
+	if parentRoot != nil && !bytes.Equal(c.headRoot[:], (*parentRoot)[:]) {
+		// chain reorg!
+
+		// ensure parents of new head
+		err := c.backfillParentBlocks(block)
+		if err != nil {
+			c.logger.Errorf("failed backfilling slots after reorg: %v", err)
+		}
+
+		// find parent of both heads
+		oldBlock := c.blockCache.getBlockByRoot(c.headRoot)
+		if oldBlock == nil {
+			c.logger.Warnf("can't find old block after reorg.")
+		} else if err := c.processReorg(oldBlock, block); err != nil {
+			c.logger.Errorf("failed processing reorg: %v", err)
+		}
+	}
+
+	c.logger.Infof("head %v -> %v", c.headRoot.String(), block.Root.String())
+	c.headRoot = block.Root
+
+	return nil
+}
+
+func (c *Client) processReorg(oldHead *Block, newHead *Block) error {
+	// find parent of both heads
+	reorgBase := oldHead
+	forwardDistance := uint64(0)
+	rewindDistance := uint64(0)
+
+	for {
+		if res, dist := c.blockCache.getCanonicalDistance(reorgBase.Root, newHead.Root); res {
+			forwardDistance = dist
+			break
+		}
+
+		parentRoot := reorgBase.GetParentRoot()
+		if parentRoot == nil {
+			reorgBase = nil
+			break
+		}
+
+		reorgBase = c.blockCache.getBlockByRoot(*parentRoot)
+		if reorgBase == nil {
+			break
+		}
+
+		rewindDistance++
+	}
+
+	c.logger.Infof("chain reorg! depth: -%v / +%v (old: %v, new: %v)", rewindDistance, forwardDistance, oldHead.Root.String(), newHead.Root.String())
+
+	// TODO: do something with reorgs?
 
 	return nil
 }
@@ -297,7 +389,7 @@ func (c *Client) backfillParentBlocks(headBlock *Block) error {
 			parentRoot = parentHead.Message.ParentRoot
 		}
 
-		if bytes.Equal(parentRoot[:], nullRoot[:]) {
+		if bytes.Equal(parentRoot[:], consensus.NullRoot[:]) {
 			c.logger.Infof("backfill cache: reached null root (genesis)")
 			break
 		}

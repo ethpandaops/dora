@@ -14,11 +14,6 @@ import (
 	"github.com/mashingan/smapping"
 )
 
-type FinalizedCheckpoint struct {
-	Epoch phase0.Epoch
-	Root  phase0.Root
-}
-
 type ChainState struct {
 	specMutex sync.RWMutex
 	specs     *ChainSpec
@@ -29,11 +24,10 @@ type ChainState struct {
 	wallclockMutex sync.Mutex
 	wallclock      *ethwallclock.EthereumBeaconChain
 
-	finalizedMutex sync.RWMutex
-	finalizedEpoch phase0.Epoch
-	finalizedRoot  phase0.Root
+	finalityMutex sync.RWMutex
+	finality      *v1.Finality
 
-	checkpointDispatcher     Dispatcher[*FinalizedCheckpoint]
+	checkpointDispatcher     Dispatcher[*v1.Finality]
 	wallclockEpochDispatcher Dispatcher[*ethwallclock.Epoch]
 	wallclockSlotDispatcher  Dispatcher[*ethwallclock.Slot]
 }
@@ -105,21 +99,17 @@ func (cs *ChainState) initWallclock() {
 	})
 }
 
-func (cs *ChainState) setFinalizedCheckpoint(finalizedEpoch phase0.Epoch, finalizedRoot phase0.Root) {
-	cs.finalizedMutex.Lock()
-	if finalizedEpoch <= cs.finalizedEpoch {
-		cs.finalizedMutex.Unlock()
+func (cs *ChainState) setFinalizedCheckpoint(finality *v1.Finality) {
+	cs.finalityMutex.Lock()
+	if cs.finality != nil && finality.Justified.Epoch <= cs.finality.Justified.Epoch && finality.Finalized.Epoch <= cs.finality.Finalized.Epoch {
+		cs.finalityMutex.Unlock()
 		return
 	}
 
-	cs.finalizedEpoch = finalizedEpoch
-	cs.finalizedRoot = finalizedRoot
-	cs.finalizedMutex.Unlock()
+	cs.finality = finality
+	cs.finalityMutex.Unlock()
 
-	cs.checkpointDispatcher.Fire(&FinalizedCheckpoint{
-		Epoch: finalizedEpoch,
-		Root:  finalizedRoot,
-	})
+	cs.checkpointDispatcher.Fire(finality)
 }
 
 func (cs *ChainState) GetSpecs() *ChainSpec {
@@ -131,10 +121,14 @@ func (cs *ChainState) GetGenesis() *v1.Genesis {
 }
 
 func (cs *ChainState) GetFinalizedCheckpoint() (phase0.Epoch, phase0.Root) {
-	cs.finalizedMutex.RLock()
-	defer cs.finalizedMutex.RUnlock()
+	cs.finalityMutex.RLock()
+	defer cs.finalityMutex.RUnlock()
 
-	return cs.finalizedEpoch, cs.finalizedRoot
+	if cs.finality == nil {
+		return 0, NullRoot
+	}
+
+	return cs.finality.Finalized.Epoch, cs.finality.Finalized.Root
 }
 
 func (cs *ChainState) GetFinalizedSlot() phase0.Slot {
@@ -142,10 +136,14 @@ func (cs *ChainState) GetFinalizedSlot() phase0.Slot {
 		return 0
 	}
 
-	cs.finalizedMutex.RLock()
-	defer cs.finalizedMutex.RUnlock()
+	cs.finalityMutex.RLock()
+	defer cs.finalityMutex.RUnlock()
 
-	return phase0.Slot(cs.finalizedEpoch) * phase0.Slot(cs.specs.SlotsPerEpoch)
+	if cs.finality == nil {
+		return 0
+	}
+
+	return phase0.Slot(cs.finality.Finalized.Epoch) * phase0.Slot(cs.specs.SlotsPerEpoch)
 }
 
 func (cs *ChainState) CurrentSlot() phase0.Slot {
@@ -216,4 +214,12 @@ func (cs *ChainState) TimeToSlot(timestamp time.Time) phase0.Slot {
 	}
 
 	return phase0.Slot(uint64((timestamp.Sub(cs.genesis.GenesisTime)).Seconds()) / uint64(cs.specs.SecondsPerSlot.Seconds()))
+}
+
+func (cs *ChainState) SlotToSlotIndex(slot phase0.Slot) phase0.Slot {
+	if cs.specs == nil {
+		return 0
+	}
+
+	return slot % phase0.Slot(cs.specs.SlotsPerEpoch)
 }
