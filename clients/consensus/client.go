@@ -10,21 +10,14 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/ethpandaops/dora/clients/consensus/rpc"
-)
-
-type ClientStatus uint8
-
-var (
-	ClientStatusOnline        ClientStatus = 1
-	ClientStatusOffline       ClientStatus = 2
-	ClientStatusSynchronizing ClientStatus = 3
-	ClientStatusOptimistic    ClientStatus = 4
+	"github.com/ethpandaops/dora/clients/consensus/rpc/sshtunnel"
 )
 
 type ClientConfig struct {
-	URL     string
-	Name    string
-	Headers map[string]string
+	URL       string
+	Name      string
+	Headers   map[string]string
+	SshConfig *sshtunnel.SshConfig
 }
 
 type Client struct {
@@ -39,6 +32,7 @@ type Client struct {
 	isSyncing            bool
 	isOptimistic         bool
 	versionStr           string
+	peerId               string
 	clientType           ClientType
 	lastEvent            time.Time
 	retryCounter         uint64
@@ -48,12 +42,18 @@ type Client struct {
 	headSlot             phase0.Slot
 	finalizedRoot        phase0.Root
 	finalizedEpoch       phase0.Epoch
+	lastPeerUpdateEpoch  phase0.Epoch
+	lastSyncUpdateEpoch  phase0.Epoch
+	peers                []*v1.Peer
 	blockDispatcher      Dispatcher[*v1.BlockEvent]
+	headDispatcher       Dispatcher[*v1.HeadEvent]
 	checkpointDispatcher Dispatcher[*FinalizedCheckpoint]
 }
 
 func (pool *Pool) newPoolClient(clientIdx uint16, endpoint *ClientConfig) (*Client, error) {
-	rpcClient, err := rpc.NewBeaconClient(endpoint.Name, endpoint.URL, endpoint.Headers)
+	logger := pool.logger.WithField("client", endpoint.Name)
+
+	rpcClient, err := rpc.NewBeaconClient(endpoint.Name, endpoint.URL, endpoint.Headers, endpoint.SshConfig, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -63,7 +63,7 @@ func (pool *Pool) newPoolClient(clientIdx uint16, endpoint *ClientConfig) (*Clie
 		clientIdx:      clientIdx,
 		endpointConfig: endpoint,
 		rpcClient:      rpcClient,
-		logger:         pool.logger.WithField("client", endpoint.Name),
+		logger:         logger,
 	}
 	client.resetContext()
 
@@ -84,8 +84,16 @@ func (client *Client) SubscribeBlockEvent(capacity int, blocking bool) *Subscrip
 	return client.blockDispatcher.Subscribe(capacity, blocking)
 }
 
+func (client *Client) SubscribeHeadEvent(capacity int, blocking bool) *Subscription[*v1.HeadEvent] {
+	return client.headDispatcher.Subscribe(capacity, blocking)
+}
+
 func (client *Client) SubscribeFinalizedEvent(capacity int) *Subscription[*FinalizedCheckpoint] {
 	return client.checkpointDispatcher.Subscribe(capacity, false)
+}
+
+func (client *Client) GetPool() *Pool {
+	return client.pool
 }
 
 func (client *Client) GetIndex() uint16 {
@@ -100,12 +108,20 @@ func (client *Client) GetVersion() string {
 	return client.versionStr
 }
 
+func (client *Client) GetPeerID() string {
+	return client.peerId
+}
+
 func (client *Client) GetEndpointConfig() *ClientConfig {
 	return client.endpointConfig
 }
 
 func (client *Client) GetRPCClient() *rpc.BeaconClient {
 	return client.rpcClient
+}
+
+func (client *Client) GetContext() context.Context {
+	return client.clientCtx
 }
 
 func (client *Client) GetLastHead() (phase0.Slot, phase0.Root) {
@@ -123,6 +139,10 @@ func (client *Client) GetLastEventTime() time.Time {
 	return client.lastEvent
 }
 
+func (client *Client) GetLastClientError() error {
+	return client.lastError
+}
+
 func (client *Client) GetStatus() ClientStatus {
 	switch {
 	case client.isSyncing:
@@ -134,4 +154,11 @@ func (client *Client) GetStatus() ClientStatus {
 	default:
 		return ClientStatusOffline
 	}
+}
+
+func (client *Client) GetNodePeers() []*v1.Peer {
+	if client.peers == nil {
+		return []*v1.Peer{}
+	}
+	return client.peers
 }

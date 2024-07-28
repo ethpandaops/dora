@@ -11,11 +11,23 @@ type BlockStatus struct {
 	Status SlotStatus `db:"status"`
 }
 
+type BlockHead struct {
+	Slot       uint64 `db:"slot"`
+	Root       []byte `db:"root"`
+	ParentRoot []byte `db:"parent_root"`
+}
+
 type AssignedBlob struct {
 	Root       []byte `db:"root"`
 	Commitment []byte `db:"commitment"`
 	Slot       uint64 `db:"slot"`
 	Blob       *Blob  `db:"blob"`
+}
+
+type UnfinalizedBlockFilter struct {
+	MinSlot  uint64
+	MaxSlot  uint64
+	WithBody bool
 }
 
 type BlockFilter struct {

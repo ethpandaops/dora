@@ -84,13 +84,13 @@
                       <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $client.HeadRoot }}"></i>
                     </td>
                     <td>
-                      {{ if eq $client.Status "ready" }}
+                      {{ if eq $client.Status "online" }}
                         <span class="badge rounded-pill text-bg-success">Ready</span>
                       {{ else if eq $client.Status "synchronizing" }}
                         <span class="badge rounded-pill text-bg-warning" data-bs-toggle="tooltip" data-bs-placement="top" title="Updated: {{ formatRecentTimeShort $client.LastRefresh }}">Synchronizing</span>
                       {{ else if eq $client.Status "optimistic" }}
                         <span class="badge rounded-pill text-bg-info" data-bs-toggle="tooltip" data-bs-placement="top" title="Updated: {{ formatRecentTimeShort $client.LastRefresh }}">Optimistic</span>
-                      {{ else if eq $client.Status "disconnected" }}
+                      {{ else if eq $client.Status "offline" }}
                         <span class="badge rounded-pill text-bg-secondary" data-bs-toggle="tooltip" data-bs-placement="top" title="Updated: {{ formatRecentTimeShort $client.LastRefresh }}, Error: {{ $client.LastError }}">Disconnected</span>
                       {{ else }}
                         <span class="badge rounded-pill text-bg-dark">{{ $client.Status }}</span>

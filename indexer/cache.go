@@ -143,7 +143,7 @@ func (cache *indexerCache) setLastValidators(epoch uint64, validators map[phase0
 }
 
 func (cache *indexerCache) loadStoredUnfinalizedCache() error {
-	blocks := db.GetUnfinalizedBlocks()
+	blocks := db.GetUnfinalizedBlocks(nil)
 	for _, block := range blocks {
 		if block.HeaderVer != 1 {
 			logger.Warnf("failed unmarshal unfinalized block header from db: unsupported header version")

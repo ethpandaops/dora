@@ -11,6 +11,7 @@ import (
 
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
 	"github.com/donovanhide/eventsource"
+	"github.com/sirupsen/logrus"
 
 	"github.com/ethpandaops/dora/clients/consensus/rpc/eventstream"
 )
@@ -29,6 +30,7 @@ type BeaconStreamEvent struct {
 type BeaconStream struct {
 	ctx          context.Context
 	ctxCancel    context.CancelFunc
+	logger       logrus.FieldLogger
 	running      bool
 	events       uint16
 	client       *BeaconClient
@@ -37,12 +39,13 @@ type BeaconStream struct {
 	lastHeadSeen time.Time
 }
 
-func (bc *BeaconClient) NewBlockStream(ctx context.Context, events uint16) *BeaconStream {
+func (bc *BeaconClient) NewBlockStream(ctx context.Context, logger logrus.FieldLogger, events uint16) *BeaconStream {
 	streamCtx, ctxCancel := context.WithCancel(ctx)
 
 	blockStream := BeaconStream{
 		ctx:       streamCtx,
 		ctxCancel: ctxCancel,
+		logger:    logger,
 		running:   true,
 		events:    events,
 		client:    bc,
@@ -83,7 +86,7 @@ func (bs *BeaconStream) startStream() {
 			case <-stream.Ready:
 				bs.ReadyChan <- true
 			case err := <-stream.Errors:
-				logger.WithField("client", bs.client.name).Warnf("beacon block stream error: %v", err)
+				bs.logger.Warnf("beacon block stream error: %v", err)
 				select {
 				case bs.ReadyChan <- false:
 				case <-bs.ctx.Done():
@@ -147,7 +150,7 @@ func (bs *BeaconStream) subscribeStream(endpoint string, events uint16) *eventst
 		}
 
 		if err != nil {
-			logger.WithField("client", bs.client.name).Warnf("Error while subscribing beacon event stream %v: %v", getRedactedURL(streamURL), err)
+			bs.logger.Warnf("Error while subscribing beacon event stream %v: %v", getRedactedURL(streamURL), err)
 			select {
 			case <-bs.ctx.Done():
 				return nil
@@ -165,7 +168,7 @@ func (bs *BeaconStream) processBlockEvent(evt eventsource.Event) {
 	err := json.Unmarshal([]byte(evt.Data()), &parsed)
 
 	if err != nil {
-		logger.WithField("client", bs.client.name).Warnf("beacon block stream failed to decode block event: %v", err)
+		bs.logger.Warnf("beacon block stream failed to decode block event: %v", err)
 		return
 	}
 	bs.EventChan <- &BeaconStreamEvent{
@@ -179,7 +182,7 @@ func (bs *BeaconStream) processHeadEvent(evt eventsource.Event) {
 
 	err := json.Unmarshal([]byte(evt.Data()), &parsed)
 	if err != nil {
-		logger.WithField("client", bs.client.name).Warnf("beacon block stream failed to decode head event: %v", err)
+		bs.logger.Warnf("beacon block stream failed to decode head event: %v", err)
 		return
 	}
 
@@ -195,7 +198,7 @@ func (bs *BeaconStream) processFinalizedEvent(evt eventsource.Event) {
 
 	err := json.Unmarshal([]byte(evt.Data()), &parsed)
 	if err != nil {
-		logger.WithField("client", bs.client.name).Warnf("beacon block stream failed to decode finalized_checkpoint event: %v", err)
+		bs.logger.Warnf("beacon block stream failed to decode finalized_checkpoint event: %v", err)
 		return
 	}
 

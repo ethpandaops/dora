@@ -4,34 +4,20 @@ import (
 	"context"
 	"time"
 
-	v1 "github.com/attestantio/go-eth2-client/api/v1"
 	"github.com/ethpandaops/ethwallclock"
 	"github.com/sirupsen/logrus"
 )
 
-type SchedulerMode uint8
-
-var (
-	RoundRobinScheduler SchedulerMode = 1
-)
-
-type PoolConfig struct {
-	ForkDistance  uint64 `yaml:"forkDistance" envconfig:"CONSENSUS_POOL_FORK_DISTANCE"`
-	SchedulerMode string `yaml:"schedulerMode" envconfig:"CONSENSUS_POOL_SCHEDULER_MODE"`
-}
-
 type Pool struct {
-	config        *PoolConfig
 	ctx           context.Context
 	logger        logrus.FieldLogger
 	clientCounter uint16
 	clients       []*Client
-	chainState    *chainState
+	chainState    *ChainState
 }
 
-func NewPool(ctx context.Context, config *PoolConfig, logger logrus.FieldLogger) *Pool {
+func NewPool(ctx context.Context, logger logrus.FieldLogger) *Pool {
 	return &Pool{
-		config:     config,
 		ctx:        ctx,
 		logger:     logger,
 		clients:    make([]*Client, 0),
@@ -51,19 +37,7 @@ func (pool *Pool) SubscribeWallclockSlotEvent(capacity int) *Subscription[*ethwa
 	return pool.chainState.wallclockSlotDispatcher.Subscribe(capacity, false)
 }
 
-func (pool *Pool) GetGenesis() *v1.Genesis {
-	return pool.chainState.genesis
-}
-
-func (pool *Pool) GetSpecs() *ChainSpec {
-	return pool.chainState.getSpecs()
-}
-
-func (pool *Pool) GetWallclock() *ethwallclock.EthereumBeaconChain {
-	return pool.chainState.wallclock
-}
-
-func (pool *Pool) GetBlockCache() *chainState {
+func (pool *Pool) GetChainState() *ChainState {
 	return pool.chainState
 }
 

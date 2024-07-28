@@ -9,6 +9,7 @@ import (
 
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
+	"github.com/sirupsen/logrus"
 
 	"github.com/ethpandaops/dora/clients/consensus/rpc"
 )
@@ -16,8 +17,8 @@ import (
 func (client *Client) runClientLoop() {
 	defer func() {
 		if err := recover(); err != nil {
-			client.logger.WithError(err.(error)).Errorf("uncaught panic in PoolClient.runPoolClientLoop subroutine: %v, stack: %v", err, string(debug.Stack()))
-			time.Sleep(5 * time.Second)
+			client.logger.WithError(err.(error)).Errorf("uncaught panic in clients.consensus.Client.runClientLoop subroutine: %v, stack: %v", err, string(debug.Stack()))
+			time.Sleep(10 * time.Second)
 
 			go client.runClientLoop()
 		}
@@ -47,7 +48,7 @@ func (client *Client) runClientLoop() {
 			waitTime = 60
 		}
 
-		client.logger.Warnf("upstream client error: %v, retrying in %v sec...", err, waitTime)
+		client.logger.Warnf("client error: %v, retrying in %v sec...", err, waitTime)
 		time.Sleep(time.Duration(waitTime) * time.Second)
 	}
 }
@@ -69,6 +70,11 @@ func (client *Client) checkClient() error {
 
 	client.versionStr = nodeVersion
 	client.parseClientVersion(nodeVersion)
+
+	// update node peers
+	if err = client.updateNodePeers(ctx); err != nil {
+		return fmt.Errorf("could not get node peers for %s: %v", client.endpointConfig.Name, err)
+	}
 
 	// get & compare genesis
 	genesis, err := client.rpcClient.GetGenesis(ctx)
@@ -96,17 +102,10 @@ func (client *Client) checkClient() error {
 	client.pool.chainState.initWallclock()
 
 	// check synchronization state
-	syncStatus, err := client.rpcClient.GetNodeSyncing(ctx)
+	err = client.updateSynchronizationStatus(ctx)
 	if err != nil {
-		return fmt.Errorf("error while fetching synchronization status: %v", err)
+		return err
 	}
-
-	if syncStatus == nil {
-		return fmt.Errorf("could not get synchronization status")
-	}
-
-	client.isSyncing = syncStatus.IsSyncing
-	client.isOptimistic = syncStatus.IsOptimistic
 
 	return nil
 }
@@ -123,19 +122,8 @@ func (client *Client) runClientLogic() error {
 		return fmt.Errorf("beacon node is synchronizing")
 	}
 
-	if client.isOptimistic {
-		return fmt.Errorf("beacon node is optimistic")
-	}
-
-	specs := client.pool.chainState.getSpecs()
-
-	finalizedEpoch, _ := client.pool.chainState.getFinalizedCheckpoint()
-	if client.headSlot < phase0.Slot(finalizedEpoch)*phase0.Slot(specs.SlotsPerEpoch) {
-		return fmt.Errorf("beacon node is behind finalized checkpoint (node head: %v, finalized: %v)", client.headSlot, phase0.Slot(finalizedEpoch)*phase0.Slot(specs.SlotsPerEpoch))
-	}
-
 	// start event stream
-	blockStream := client.rpcClient.NewBlockStream(client.clientCtx, rpc.StreamBlockEvent|rpc.StreamHeadEvent|rpc.StreamFinalizedEvent)
+	blockStream := client.rpcClient.NewBlockStream(client.clientCtx, client.logger, rpc.StreamBlockEvent|rpc.StreamHeadEvent|rpc.StreamFinalizedEvent)
 	defer blockStream.Close()
 
 	// process events
@@ -197,11 +185,78 @@ func (client *Client) runClientLogic() error {
 
 			client.lastEvent = time.Now()
 		}
+
+		currentEpoch := client.pool.chainState.CurrentEpoch()
+
+		if currentEpoch > client.lastSyncUpdateEpoch {
+			// update sync status
+			if err = client.updateSynchronizationStatus(client.clientCtx); err != nil {
+				client.isOnline = false
+				return fmt.Errorf("could not get synchronization status for %s: %v", client.endpointConfig.Name, err)
+			}
+
+			if client.isSyncing {
+				return fmt.Errorf("beacon node is synchronizing")
+			}
+		}
+
+		if currentEpoch > client.lastPeerUpdateEpoch {
+			// update node peers
+			if err = client.updateNodePeers(client.clientCtx); err != nil {
+				client.logger.Errorf("could not get node peers for %s: %v", client.endpointConfig.Name, err)
+			} else {
+				client.logger.WithFields(logrus.Fields{"epoch": currentEpoch, "peers": len(client.peers)}).Debug("updated consensus node peers")
+			}
+		}
 	}
+}
+
+func (client *Client) updateSynchronizationStatus(ctx context.Context) error {
+	var cancel context.CancelFunc
+	ctx, cancel = context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	syncStatus, err := client.rpcClient.GetNodeSyncing(ctx)
+	if err != nil {
+		return fmt.Errorf("error while fetching synchronization status: %v", err)
+	}
+
+	if syncStatus == nil {
+		return fmt.Errorf("could not get synchronization status")
+	}
+
+	client.isSyncing = syncStatus.IsSyncing
+	client.isOptimistic = syncStatus.IsOptimistic
+	client.lastSyncUpdateEpoch = client.pool.chainState.CurrentEpoch()
+
+	return nil
+}
+
+func (client *Client) updateNodePeers(ctx context.Context) error {
+	var cancel context.CancelFunc
+	ctx, cancel = context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	var err error
+	client.peerId, err = client.rpcClient.GetNodePeerId(ctx)
+	if err != nil {
+		return fmt.Errorf("could not get node peer id: %v", err)
+	}
+
+	peers, err := client.rpcClient.GetNodePeers(ctx)
+	if err != nil {
+		return fmt.Errorf("could not get peers: %v", err)
+	}
+	client.peers = peers
+	client.lastPeerUpdateEpoch = client.pool.chainState.CurrentEpoch()
+
+	return nil
 }
 
 func (client *Client) processBlockEvent(evt *v1.BlockEvent) error {
 	client.blockDispatcher.Fire(evt)
+
+	//client.logger.Infof("BLOCK: %v %v", evt.Slot, evt.Block.String())
 
 	return nil
 }
@@ -211,6 +266,10 @@ func (client *Client) processHeadEvent(evt *v1.HeadEvent) error {
 	client.headSlot = evt.Slot
 	client.headRoot = evt.Block
 	client.headMutex.Unlock()
+
+	client.headDispatcher.Fire(evt)
+
+	//client.logger.Infof("HEAD: %v %v %v", evt.Slot, evt.Block.String(), evt.EpochTransition)
 
 	return nil
 }
@@ -246,6 +305,12 @@ func (client *Client) pollClientHead() error {
 	client.blockDispatcher.Fire(&v1.BlockEvent{
 		Slot:  latestHeader.Header.Message.Slot,
 		Block: latestHeader.Root,
+	})
+
+	client.headDispatcher.Fire(&v1.HeadEvent{
+		Slot:  latestHeader.Header.Message.Slot,
+		Block: latestHeader.Root,
+		State: latestHeader.Header.Message.StateRoot,
 	})
 
 	// update finality checkpoint

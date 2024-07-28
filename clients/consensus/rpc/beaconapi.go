@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	nethttp "net/http"
+	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -17,25 +19,75 @@ import (
 	"github.com/attestantio/go-eth2-client/spec"
 	"github.com/attestantio/go-eth2-client/spec/capella"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
+	"github.com/ethpandaops/dora/clients/consensus/rpc/sshtunnel"
 	"github.com/rs/zerolog"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/crypto/ssh"
 )
-
-var logger = logrus.StandardLogger().WithField("module", "rpc")
 
 type BeaconClient struct {
 	name      string
 	endpoint  string
 	headers   map[string]string
+	sshtunnel *sshtunnel.SSHTunnel
 	clientSvc eth2client.Service
+	logger    logrus.FieldLogger
 }
 
 // NewBeaconClient is used to create a new beacon client
-func NewBeaconClient(name, url string, headers map[string]string) (*BeaconClient, error) {
+func NewBeaconClient(name, endpoint string, headers map[string]string, sshcfg *sshtunnel.SshConfig, logger logrus.FieldLogger) (*BeaconClient, error) {
 	client := &BeaconClient{
 		name:     name,
-		endpoint: url,
+		endpoint: endpoint,
 		headers:  headers,
+		logger:   logger,
+	}
+
+	if sshcfg != nil {
+		// create ssh tunnel to remote host
+		sshPort := 0
+		if sshcfg.Port != "" {
+			sshPort, _ = strconv.Atoi(sshcfg.Port)
+		}
+		if sshPort == 0 {
+			sshPort = 22
+		}
+		sshEndpoint := fmt.Sprintf("%v@%v:%v", sshcfg.User, sshcfg.Host, sshPort)
+		var sshAuth ssh.AuthMethod
+		if sshcfg.Keyfile != "" {
+			var err error
+			sshAuth, err = sshtunnel.PrivateKeyFile(sshcfg.Keyfile)
+			if err != nil {
+				return nil, fmt.Errorf("could not load ssh keyfile: %w", err)
+			}
+		} else {
+			sshAuth = ssh.Password(sshcfg.Password)
+		}
+
+		// get tunnel target from endpoint url
+		endpointUrl, _ := url.Parse(endpoint)
+		tunTarget := endpointUrl.Host
+		if endpointUrl.Port() != "" {
+			tunTarget = fmt.Sprintf("%v:%v", tunTarget, endpointUrl.Port())
+		} else {
+			tunTargetPort := 80
+			if endpointUrl.Scheme == "https:" {
+				tunTargetPort = 443
+			}
+			tunTarget = fmt.Sprintf("%v:%v", tunTarget, tunTargetPort)
+		}
+
+		client.sshtunnel = sshtunnel.NewSSHTunnel(sshEndpoint, sshAuth, tunTarget)
+		client.sshtunnel.Log = logger.WithField("sshtun", sshcfg.Host)
+		err := client.sshtunnel.Start()
+		if err != nil {
+			return nil, fmt.Errorf("could not start ssh tunnel: %w", err)
+		}
+
+		// override endpoint to use local tunnel end
+		endpointUrl.Host = fmt.Sprintf("localhost:%v", client.sshtunnel.Local.Port)
+
+		client.endpoint = endpointUrl.String()
 	}
 
 	return client, nil
@@ -97,7 +149,7 @@ func (bc *BeaconClient) getJSON(ctx context.Context, requrl string, returnValue 
 		}
 
 		data, _ := io.ReadAll(resp.Body)
-		logger.WithField("client", bc.name).Debugf("RPC Error %v: %v", resp.StatusCode, data)
+		bc.logger.Debugf("RPC Error %v: %v", resp.StatusCode, data)
 
 		return fmt.Errorf("url: %v, error-response: %s", logurl, data)
 	}
@@ -441,6 +493,32 @@ func (bc *BeaconClient) GetForkState(ctx context.Context, stateRef string) (*pha
 	}
 
 	return result.Data, nil
+}
+
+func (bc *BeaconClient) GetNodePeers(ctx context.Context) ([]*v1.Peer, error) {
+	provider, isProvider := bc.clientSvc.(eth2client.NodePeersProvider)
+	if !isProvider {
+		return nil, fmt.Errorf("get peers not supported")
+	}
+	result, err := provider.NodePeers(ctx, &api.NodePeersOpts{State: []string{"connected"}})
+	if err != nil {
+		return nil, err
+	}
+	return result.Data, nil
+}
+
+func (bc *BeaconClient) GetNodePeerId(ctx context.Context) (string, error) {
+	nodeIdentity := struct {
+		Data struct {
+			PeerId string `json:"peer_id"`
+		} `json:"data"`
+	}{}
+
+	err := bc.getJSON(ctx, fmt.Sprintf("%s/eth/v1/node/identity", bc.endpoint), &nodeIdentity)
+	if err != nil {
+		return "", fmt.Errorf("error retrieving node identity: %v", err)
+	}
+	return nodeIdentity.Data.PeerId, nil
 }
 
 func (bc *BeaconClient) SubmitBLSToExecutionChanges(ctx context.Context, blsChanges []*capella.SignedBLSToExecutionChange) error {
