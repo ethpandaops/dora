@@ -55,27 +55,45 @@ func (cs *ChainState) setGenesis(genesis *v1.Genesis) error {
 	return nil
 }
 
-func (cs *ChainState) setClientSpecs(specValues map[string]interface{}) error {
+func (cs *ChainState) setClientSpecs(specValues map[string]interface{}) (error, error) {
 	cs.specMutex.Lock()
 	defer cs.specMutex.Unlock()
 
-	specs := ChainSpec{}
-
-	err := smapping.FillStructByTags(&specs, specValues, "yaml")
-	if err != nil {
-		return err
+	specs := cs.specs
+	if specs == nil {
+		specs = &ChainSpec{}
+	} else {
+		specs = specs.Clone()
 	}
 
+	err := smapping.FillStructByTags(specs, specValues, "yaml")
+	if err != nil {
+		return nil, err
+	}
+
+	var warning error
+
 	if cs.specs != nil {
-		mismatches := cs.specs.CheckMismatch(&specs)
+		mismatches := cs.specs.CheckMismatch(specs)
 		if len(mismatches) > 0 {
-			return fmt.Errorf("spec mismatch: %v", strings.Join(mismatches, ", "))
+			return nil, fmt.Errorf("spec mismatch: %v", strings.Join(mismatches, ", "))
+		}
+
+		newSpecs := &ChainSpec{}
+		err = smapping.FillStructByTags(newSpecs, specValues, "yaml")
+		if err != nil {
+			return nil, err
+		}
+
+		mismatches = cs.specs.CheckMismatch(newSpecs)
+		if len(mismatches) > 0 {
+			warning = fmt.Errorf("spec missing: %v", strings.Join(mismatches, ", "))
 		}
 	}
 
-	cs.specs = &specs
+	cs.specs = specs
 
-	return nil
+	return warning, nil
 }
 
 func (cs *ChainState) initWallclock() {

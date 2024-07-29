@@ -150,7 +150,10 @@ func (block *Block) EnsureHeader(loadHeader func() (*phase0.SignedBeaconBlockHea
 
 func (block *Block) SetBlock(body *spec.VersionedSignedBeaconBlock) {
 	block.block = body
-	close(block.blockChan)
+	if block.blockChan != nil {
+		close(block.blockChan)
+		block.blockChan = nil
+	}
 }
 
 func (block *Block) EnsureBlock(loadBlock func() (*spec.VersionedSignedBeaconBlock, error)) (bool, error) {
@@ -175,7 +178,10 @@ func (block *Block) EnsureBlock(loadBlock func() (*spec.VersionedSignedBeaconBlo
 	}
 
 	block.block = blockBody
-	close(block.blockChan)
+	if block.blockChan != nil {
+		close(block.blockChan)
+		block.blockChan = nil
+	}
 
 	return true, nil
 }

@@ -5,6 +5,8 @@ import (
 	"sync"
 
 	"github.com/attestantio/go-eth2-client/spec/phase0"
+	"github.com/ethpandaops/dora/clients/consensus"
+	"github.com/ethpandaops/dora/db"
 )
 
 type blockCache struct {
@@ -100,4 +102,36 @@ func (cache *blockCache) getCanonicalDistance(blockRoot phase0.Root, head phase0
 	}
 
 	return false, 0
+}
+
+func (cache *blockCache) getDependentBlock(chainState *consensus.ChainState, block *Block) *Block {
+	parentRoot := block.GetParentRoot()
+	blockEpoch := chainState.EpochOfSlot(block.Slot)
+
+	for {
+		if parentRoot == nil {
+			break
+		}
+
+		parentBlock := cache.getBlockByRoot(*parentRoot)
+		if parentBlock == nil {
+			blockHead := db.GetBlockHeadByRoot((*parentRoot)[:])
+			if blockHead == nil {
+				break
+			}
+
+			parentBlock = newBlock(phase0.Root(blockHead.Root), phase0.Slot(blockHead.Slot))
+			parentBlock.isInFinalizedDb = true
+			parentRootVal := phase0.Root(blockHead.ParentRoot)
+			parentBlock.parentRoot = &parentRootVal
+		}
+
+		if chainState.EpochOfSlot(parentBlock.Slot) < blockEpoch {
+			return parentBlock
+		}
+
+		parentRoot = parentBlock.GetParentRoot()
+	}
+
+	return nil
 }

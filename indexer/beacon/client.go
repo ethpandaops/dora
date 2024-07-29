@@ -17,12 +17,11 @@ import (
 )
 
 type Client struct {
-	indexer    *Indexer
-	index      uint16
-	client     *consensus.Client
-	logger     logrus.FieldLogger
-	blockCache *blockCache
-	indexing   bool
+	indexer  *Indexer
+	index    uint16
+	client   *consensus.Client
+	logger   logrus.FieldLogger
+	indexing bool
 
 	priority       int
 	archive        bool
@@ -34,14 +33,13 @@ type Client struct {
 	headRoot phase0.Root
 }
 
-func newClient(index uint16, client *consensus.Client, priority int, archive bool, skipValidators bool, indexer *Indexer, logger logrus.FieldLogger, blockCache *blockCache) *Client {
+func newClient(index uint16, client *consensus.Client, priority int, archive bool, skipValidators bool, indexer *Indexer, logger logrus.FieldLogger) *Client {
 	return &Client{
-		indexer:    indexer,
-		index:      index,
-		client:     client,
-		logger:     logger,
-		blockCache: blockCache,
-		indexing:   false,
+		indexer:  indexer,
+		index:    index,
+		client:   client,
+		logger:   logger,
+		indexing: false,
 
 		priority:       priority,
 		archive:        archive,
@@ -137,40 +135,22 @@ func (c *Client) runClientLoop() error {
 }
 
 func (c *Client) processBlockEvent(blockEvent *v1.BlockEvent) error {
-	block, isNew, err := c.processBlock(blockEvent.Slot, blockEvent.Block, nil)
-	if err != nil {
-		return err
-	}
-
-	chainState := c.client.GetPool().GetChainState()
-
-	if isNew {
-		c.logger.Infof("received block %v:%v [0x%x] stream", chainState.EpochOfSlot(block.Slot), block.Slot, block.Root[:])
-	} else {
-		c.logger.Debugf("received known block %v:%v [0x%x] stream", chainState.EpochOfSlot(block.Slot), block.Slot, block.Root[:])
-	}
-
-	return nil
+	_, err := c.processStreamBlock(blockEvent.Slot, blockEvent.Block)
+	return err
 }
 
 func (c *Client) processHeadEvent(headEvent *v1.HeadEvent) error {
-	block, isNew, err := c.processBlock(headEvent.Slot, headEvent.Block, nil)
+	block, err := c.processStreamBlock(headEvent.Slot, headEvent.Block)
 	if err != nil {
 		return err
 	}
 
-	chainState := c.client.GetPool().GetChainState()
-
-	if isNew {
-		c.logger.Infof("received block %v:%v [0x%x] stream", chainState.EpochOfSlot(block.Slot), block.Slot, block.Root[:])
-	} else {
-		c.logger.Debugf("received known block %v:%v [0x%x] stream", chainState.EpochOfSlot(block.Slot), block.Slot, block.Root[:])
-	}
-
 	if bytes.Equal(c.headRoot[:], headEvent.Block[:]) {
-		// no progress?
+		// no head progress?
 		return nil
 	}
+
+	c.logger.Debugf("head %v -> %v", c.headRoot.String(), block.Root.String())
 
 	parentRoot := block.GetParentRoot()
 	if parentRoot != nil && !bytes.Equal(c.headRoot[:], (*parentRoot)[:]) {
@@ -183,7 +163,7 @@ func (c *Client) processHeadEvent(headEvent *v1.HeadEvent) error {
 		}
 
 		// find parent of both heads
-		oldBlock := c.blockCache.getBlockByRoot(c.headRoot)
+		oldBlock := c.indexer.blockCache.getBlockByRoot(c.headRoot)
 		if oldBlock == nil {
 			c.logger.Warnf("can't find old block after reorg.")
 		} else if err := c.processReorg(oldBlock, block); err != nil {
@@ -191,10 +171,40 @@ func (c *Client) processHeadEvent(headEvent *v1.HeadEvent) error {
 		}
 	}
 
-	c.logger.Infof("head %v -> %v", c.headRoot.String(), block.Root.String())
-	c.headRoot = block.Root
+	chainState := c.client.GetPool().GetChainState()
+	dependentRoot := headEvent.CurrentDutyDependentRoot
+	if bytes.Equal(dependentRoot[:], consensus.NullRoot[:]) {
+		dependentBlock := c.indexer.blockCache.getDependentBlock(chainState, block)
+		if dependentBlock != nil {
+			dependentRoot = dependentBlock.Root
+		}
+	}
 
+	if !bytes.Equal(dependentRoot[:], consensus.NullRoot[:]) && block.Slot >= c.indexer.getMinInEpochSlot() {
+		// ensure epoch stats are in loading queue
+		epochStats, _ := c.indexer.epochCache.createOrGetEpochStats(chainState.EpochOfSlot(block.Slot), dependentRoot)
+		epochStats.addRequestedBy(c)
+	}
+
+	c.headRoot = block.Root
 	return nil
+}
+
+func (c *Client) processStreamBlock(slot phase0.Slot, root phase0.Root) (*Block, error) {
+	block, isNew, err := c.processBlock(slot, root, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	chainState := c.client.GetPool().GetChainState()
+
+	if isNew {
+		c.logger.Infof("received block %v:%v [0x%x] stream", chainState.EpochOfSlot(block.Slot), block.Slot, block.Root[:])
+	} else {
+		c.logger.Debugf("received known block %v:%v [0x%x] stream", chainState.EpochOfSlot(block.Slot), block.Slot, block.Root[:])
+	}
+
+	return block, nil
 }
 
 func (c *Client) processReorg(oldHead *Block, newHead *Block) error {
@@ -204,7 +214,7 @@ func (c *Client) processReorg(oldHead *Block, newHead *Block) error {
 	rewindDistance := uint64(0)
 
 	for {
-		if res, dist := c.blockCache.getCanonicalDistance(reorgBase.Root, newHead.Root); res {
+		if res, dist := c.indexer.blockCache.getCanonicalDistance(reorgBase.Root, newHead.Root); res {
 			forwardDistance = dist
 			break
 		}
@@ -215,7 +225,7 @@ func (c *Client) processReorg(oldHead *Block, newHead *Block) error {
 			break
 		}
 
-		reorgBase = c.blockCache.getBlockByRoot(*parentRoot)
+		reorgBase = c.indexer.blockCache.getBlockByRoot(*parentRoot)
 		if reorgBase == nil {
 			break
 		}
@@ -248,7 +258,7 @@ func (c *Client) processBlock(slot phase0.Slot, root phase0.Root, header *phase0
 		}
 
 	} else {
-		block, _ = c.blockCache.createOrGetBlock(root, slot)
+		block, _ = c.indexer.blockCache.createOrGetBlock(root, slot)
 	}
 
 	err = block.EnsureHeader(func() (*phase0.SignedBeaconBlockHeader, error) {
@@ -285,7 +295,7 @@ func (c *Client) processBlock(slot phase0.Slot, root phase0.Root, header *phase0
 
 		block.isInUnfinalizedDb = true
 
-		if block.Slot < chainState.EpochToSlot(c.indexer.getMinInEpochSlot()) {
+		if block.Slot < c.indexer.getMinInEpochSlot() {
 			// prune block body from memory
 			block.block = nil
 		}
@@ -324,12 +334,13 @@ func (c *Client) loadBlock(root phase0.Root) (*spec.VersionedSignedBeaconBlock, 
 
 func (c *Client) backfillParentBlocks(headBlock *Block) error {
 	chainState := c.client.GetPool().GetChainState()
+	minInMemorySlot := c.indexer.getMinInEpochSlot()
 
 	// walk backwards and load all blocks until we reach a block that is marked as seen by this client or is smaller than finalized
 	parentRoot := *headBlock.GetParentRoot()
 	for {
 		var parentHead *phase0.SignedBeaconBlockHeader
-		parentBlock := c.blockCache.getBlockByRoot(parentRoot)
+		parentBlock := c.indexer.blockCache.getBlockByRoot(parentRoot)
 		if parentBlock != nil {
 			parentBlock.seenMutex.RLock()
 			isSeen := parentBlock.seenMap[c.index] != nil
@@ -370,6 +381,14 @@ func (c *Client) backfillParentBlocks(headBlock *Block) error {
 			c.logger.Infof("received block %v:%v [0x%x] backfill", chainState.EpochOfSlot(parentSlot), parentSlot, parentRoot)
 		} else {
 			c.logger.Debugf("received known block %v:%v [0x%x] backfill", chainState.EpochOfSlot(parentSlot), parentSlot, parentRoot)
+		}
+
+		if parentSlot >= minInMemorySlot {
+			dependentBlock := c.indexer.blockCache.getDependentBlock(chainState, parentBlock)
+			if dependentBlock != nil {
+				epochStats, _ := c.indexer.epochCache.createOrGetEpochStats(chainState.EpochOfSlot(parentBlock.Slot), dependentBlock.Root)
+				epochStats.addRequestedBy(c)
+			}
 		}
 
 		if parentSlot <= chainState.GetFinalizedSlot() {

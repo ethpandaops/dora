@@ -17,10 +17,12 @@ type Indexer struct {
 	writeDb               bool
 	disableSync           bool
 	inMemoryEpochs        uint16
+	maxParallelStateCalls uint16
 	cachePersistenceDelay uint16
 
 	clients    []*Client
 	blockCache *blockCache
+	epochCache *epochCache
 }
 
 func NewIndexer(logger logrus.FieldLogger, consensusPool *consensus.Pool) *Indexer {
@@ -32,22 +34,31 @@ func NewIndexer(logger logrus.FieldLogger, consensusPool *consensus.Pool) *Index
 	if cachePersistenceDelay < 2 {
 		cachePersistenceDelay = 2
 	}
+	maxParallelStateCalls := uint16(utils.Config.Indexer.MaxParallelValidatorSetRequests)
+	if maxParallelStateCalls < 2 {
+		maxParallelStateCalls = 2
+	}
 
-	return &Indexer{
+	indexer := &Indexer{
 		logger:        logger,
 		consensusPool: consensusPool,
 
 		writeDb:               !utils.Config.Indexer.DisableIndexWriter,
 		disableSync:           utils.Config.Indexer.DisableSynchronizer,
 		inMemoryEpochs:        inMemoryEpochs,
+		maxParallelStateCalls: maxParallelStateCalls,
 		cachePersistenceDelay: cachePersistenceDelay,
 
-		clients:    make([]*Client, 0),
-		blockCache: newBlockCache(),
+		clients: make([]*Client, 0),
 	}
+
+	indexer.blockCache = newBlockCache()
+	indexer.epochCache = newEpochCache(indexer)
+
+	return indexer
 }
 
-func (indexer *Indexer) getMinInEpochSlot() phase0.Epoch {
+func (indexer *Indexer) getMinInEpochSlot() phase0.Slot {
 	chainState := indexer.consensusPool.GetChainState()
 	minInMemoryEpoch := chainState.CurrentEpoch()
 	if minInMemoryEpoch > phase0.Epoch(indexer.inMemoryEpochs) {
@@ -56,12 +67,12 @@ func (indexer *Indexer) getMinInEpochSlot() phase0.Epoch {
 		minInMemoryEpoch = 0
 	}
 
-	return minInMemoryEpoch
+	return chainState.EpochToSlot(minInMemoryEpoch)
 }
 
 func (indexer *Indexer) AddClient(index uint16, client *consensus.Client, priority int, archive bool, skipValidators bool) *Client {
 	logger := indexer.logger.WithField("client", client.GetName())
-	indexerClient := newClient(index, client, priority, archive, skipValidators, indexer, logger, indexer.blockCache)
+	indexerClient := newClient(index, client, priority, archive, skipValidators, indexer, logger)
 	indexer.clients = append(indexer.clients, indexerClient)
 
 	return indexerClient
@@ -75,7 +86,7 @@ func (indexer *Indexer) StartIndexer() {
 	restoredBlockCount := 0
 	restoredBodyCount := 0
 
-	loadMinSlot := chainState.EpochToSlot(indexer.getMinInEpochSlot())
+	loadMinSlot := indexer.getMinInEpochSlot()
 	if loadMinSlot < finalizedSlot {
 		loadMinSlot = finalizedSlot
 	}

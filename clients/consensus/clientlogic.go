@@ -93,9 +93,13 @@ func (client *Client) checkClient() error {
 		return fmt.Errorf("error while fetching specs: %v", err)
 	}
 
-	err = client.pool.chainState.setClientSpecs(specs)
+	warning, err := client.pool.chainState.setClientSpecs(specs)
 	if err != nil {
-		return fmt.Errorf("invalid node specs: %v", err)
+		return fmt.Errorf("invalid chain specs: %v", err)
+	}
+
+	if warning != nil {
+		client.logger.Warnf("incomplete chain specs: %v", warning)
 	}
 
 	// init wallclock
