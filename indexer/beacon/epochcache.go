@@ -30,6 +30,8 @@ type epochCache struct {
 	statsMap    map[epochStatsKey]*EpochStats
 	stateMap    map[phase0.Root]*EpochState
 	loadingChan chan bool
+	valsetMutex sync.Mutex
+	valsetCache map[phase0.ValidatorIndex]*phase0.Validator
 }
 
 func newEpochCache(indexer *Indexer) *epochCache {
@@ -38,6 +40,7 @@ func newEpochCache(indexer *Indexer) *epochCache {
 		statsMap:    map[epochStatsKey]*EpochStats{},
 		stateMap:    map[phase0.Root]*EpochState{},
 		loadingChan: make(chan bool, indexer.maxParallelStateCalls),
+		valsetCache: map[phase0.ValidatorIndex]*phase0.Validator{},
 	}
 	go cache.startLoaderLoop()
 
@@ -80,9 +83,12 @@ func (cache *epochCache) getPendingEpochStats() []*EpochStats {
 	}
 
 	sort.Slice(pendingStats, func(a, b int) bool {
+		if pendingStats[a].dependentState.retryCount != pendingStats[b].dependentState.retryCount {
+			return pendingStats[a].dependentState.retryCount < pendingStats[b].dependentState.retryCount
+		}
+
 		reqCountA := len(pendingStats[a].requestedBy)
 		reqCountB := len(pendingStats[b].requestedBy)
-
 		if reqCountA != reqCountB {
 			return reqCountA > reqCountB
 		}
@@ -117,6 +123,26 @@ func (cache *epochCache) removeEpochStats(epochStats *EpochStats) {
 		epochStats.dependentState.dispose()
 		delete(cache.stateMap, epochStats.dependentRoot)
 	}
+}
+
+func (cache *epochCache) getOrCreateValidator(index phase0.ValidatorIndex, validator *phase0.Validator) *phase0.Validator {
+	cache.valsetMutex.Lock()
+	defer cache.valsetMutex.Unlock()
+
+	existingValidator := cache.valsetCache[index]
+	if existingValidator != nil &&
+		bytes.Equal(existingValidator.WithdrawalCredentials[:], validator.WithdrawalCredentials[:]) &&
+		existingValidator.EffectiveBalance == validator.EffectiveBalance &&
+		existingValidator.Slashed == validator.Slashed &&
+		existingValidator.ActivationEligibilityEpoch == validator.ActivationEligibilityEpoch &&
+		existingValidator.ActivationEpoch == validator.ActivationEpoch &&
+		existingValidator.ExitEpoch == validator.ExitEpoch &&
+		existingValidator.WithdrawableEpoch == validator.WithdrawableEpoch {
+		return existingValidator
+	}
+
+	cache.valsetCache[index] = validator
+	return validator
 }
 
 func (cache *epochCache) startLoaderLoop() {
@@ -208,7 +234,7 @@ func (cache *epochCache) loadEpochStats(epochStats *EpochStats) {
 	})
 
 	for _, client := range clients {
-		err := epochStats.dependentState.loadState(client)
+		err := epochStats.dependentState.loadState(client, cache)
 		if err != nil {
 			client.logger.Warnf("failed loading epoch %v stats (dep: %v): %v", epochStats.epoch, epochStats.dependentRoot.String(), err)
 		} else {

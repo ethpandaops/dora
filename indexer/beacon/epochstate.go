@@ -14,6 +14,7 @@ type EpochState struct {
 
 	loadingCancel context.CancelFunc
 	loadingStatus uint8
+	retryCount    uint64
 
 	validatorList     []*phase0.Validator
 	validatorBalances []phase0.Gwei
@@ -32,7 +33,7 @@ func (s *EpochState) dispose() {
 	}
 }
 
-func (s *EpochState) loadState(client *Client) error {
+func (s *EpochState) loadState(client *Client, cache *epochCache) error {
 	if s.loadingStatus > 0 {
 		return fmt.Errorf("already loading")
 	}
@@ -48,6 +49,7 @@ func (s *EpochState) loadState(client *Client) error {
 
 		if s.loadingStatus == 1 {
 			s.loadingStatus = 0
+			s.retryCount++
 		}
 	}()
 
@@ -73,7 +75,7 @@ func (s *EpochState) loadState(client *Client) error {
 		return err
 	}
 
-	err = s.processState(resState)
+	err = s.processState(resState, cache)
 	if err != nil {
 		return err
 	}
@@ -82,13 +84,18 @@ func (s *EpochState) loadState(client *Client) error {
 	return nil
 }
 
-func (s *EpochState) processState(state *spec.VersionedBeaconState) error {
+func (s *EpochState) processState(state *spec.VersionedBeaconState, cache *epochCache) error {
 	validatorList, err := state.Validators()
 	if err != nil {
 		return fmt.Errorf("error getting validators from state %v: %v", s.slotRoot.String(), err)
 	}
 
-	s.validatorList = validatorList
+	unifiedValidatorList := make([]*phase0.Validator, len(validatorList))
+	for i, v := range validatorList {
+		unifiedValidatorList[i] = cache.getOrCreateValidator(phase0.ValidatorIndex(i), v)
+	}
+
+	s.validatorList = unifiedValidatorList
 
 	validatorBalances, err := state.ValidatorBalances()
 	if err != nil {
