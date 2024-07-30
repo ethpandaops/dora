@@ -103,7 +103,10 @@ func (cache *forkCache) checkForkDistance(block1 *Block, block2 *Block, parentsM
 			break
 		}
 
-		if block1.Slot <= block2.Slot && !block2IsFinalized {
+		block1Slot := block1.Slot
+		block2Slot := block2.Slot
+
+		if block1Slot <= block2Slot && !block2IsFinalized {
 			leafBlock2 = block2
 			parentRoot := block2.GetParentRoot()
 			if parentRoot == nil {
@@ -125,7 +128,7 @@ func (cache *forkCache) checkForkDistance(block1 *Block, block2 *Block, parentsM
 			block2Distance++
 		}
 
-		if block2.Slot <= block1.Slot && !block1IsFinalized {
+		if block2Slot <= block1Slot && !block1IsFinalized {
 			leafBlock1 = block1
 			parentRoot := block1.GetParentRoot()
 			if parentRoot == nil {

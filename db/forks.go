@@ -19,8 +19,8 @@ func InsertFork(fork *dbtypes.Fork, tx *sqlx.Tx) error {
 				leaf_root = excluded.leaf_root,
 				parent_fork = excluded.parent_fork;`,
 		dbtypes.DBEngineSqlite: `
-			INSERT OR REPLACE INTO unfinalized_blocks (
-				fork_id, root, slot, header_ver, header_ssz, block_ver, block_ssz, status, fork_id
+			INSERT OR REPLACE INTO forks (
+				fork_id, base_slot, base_root, leaf_slot, leaf_root, parent_fork
 			) VALUES ($1, $2, $3, $4, $5, $6)`,
 	}),
 		fork.ForkId, fork.BaseSlot, fork.BaseRoot, fork.LeafSlot, fork.LeafRoot, fork.ParentFork)
