@@ -50,7 +50,7 @@ func GetUnfinalizedBlocks(filter *dbtypes.UnfinalizedBlockFilter) []*dbtypes.Unf
 	var sql strings.Builder
 	args := []any{}
 
-	fmt.Fprint(&sql, `SELECT root, slot, status, header_ver, header_ssz`)
+	fmt.Fprint(&sql, `SELECT root, slot, status, fork_id, header_ver, header_ssz`)
 
 	if filter == nil || filter.WithBody {
 		fmt.Fprint(&sql, `, block_ver, block_ssz`)
@@ -87,7 +87,7 @@ func StreamUnfinalizedBlocks(cb func(block *dbtypes.UnfinalizedBlock)) error {
 	var sql strings.Builder
 	args := []any{}
 
-	fmt.Fprint(&sql, `SELECT root, slot, header_ver, header_ssz, block_ver, block_ssz, status FROM unfinalized_blocks`)
+	fmt.Fprint(&sql, `SELECT root, slot, header_ver, header_ssz, block_ver, block_ssz, status, fork_id FROM unfinalized_blocks`)
 
 	rows, err := ReaderDb.Query(sql.String(), args...)
 	if err != nil {
@@ -97,7 +97,7 @@ func StreamUnfinalizedBlocks(cb func(block *dbtypes.UnfinalizedBlock)) error {
 
 	for rows.Next() {
 		block := dbtypes.UnfinalizedBlock{}
-		err := rows.Scan(&block.Root, &block.Slot, &block.HeaderVer, &block.HeaderSSZ, &block.BlockVer, &block.BlockSSZ)
+		err := rows.Scan(&block.Root, &block.Slot, &block.HeaderVer, &block.HeaderSSZ, &block.BlockVer, &block.BlockSSZ, &block.Status, &block.ForkId)
 		if err != nil {
 			logger.Errorf("Error while scanning unfinalized block: %v", err)
 			return err
@@ -111,7 +111,7 @@ func StreamUnfinalizedBlocks(cb func(block *dbtypes.UnfinalizedBlock)) error {
 func GetUnfinalizedBlock(root []byte) *dbtypes.UnfinalizedBlock {
 	block := dbtypes.UnfinalizedBlock{}
 	err := ReaderDb.Get(&block, `
-	SELECT root, slot, header_ver, header_ssz, block_ver, block_ssz, status
+	SELECT root, slot, header_ver, header_ssz, block_ver, block_ssz, status, fork_id
 	FROM unfinalized_blocks
 	WHERE root = $1
 	`, root)

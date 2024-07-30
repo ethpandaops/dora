@@ -244,6 +244,10 @@ func (c *Client) processReorg(oldHead *Block, newHead *Block) error {
 		rewindDistance++
 	}
 
+	if rewindDistance == 0 {
+		return nil // just a fast forward
+	}
+
 	c.logger.Infof("chain reorg! depth: -%v / +%v (old: %v, new: %v)", rewindDistance, forwardDistance, oldHead.Root.String(), newHead.Root.String())
 
 	// TODO: do something with reorgs?

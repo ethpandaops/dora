@@ -61,12 +61,17 @@ func newForkFromDb(dbFork *dbtypes.Fork, cache *forkCache) *Fork {
 }
 
 func (fork *Fork) toDbFork() *dbtypes.Fork {
-	return &dbtypes.Fork{
-		ForkId:     uint64(fork.forkId),
-		BaseSlot:   uint64(fork.baseSlot),
-		BaseRoot:   fork.baseRoot[:],
-		LeafSlot:   uint64(fork.leafSlot),
-		LeafRoot:   fork.leafRoot[:],
-		ParentFork: uint64(fork.parentFork.forkId),
+	dbFork := &dbtypes.Fork{
+		ForkId:   uint64(fork.forkId),
+		BaseSlot: uint64(fork.baseSlot),
+		BaseRoot: fork.baseRoot[:],
+		LeafSlot: uint64(fork.leafSlot),
+		LeafRoot: fork.leafRoot[:],
 	}
+
+	if fork.parentFork != nil {
+		dbFork.ParentFork = uint64(fork.parentFork.forkId)
+	}
+
+	return dbFork
 }
