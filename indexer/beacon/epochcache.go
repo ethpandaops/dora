@@ -3,7 +3,6 @@ package beacon
 import (
 	"bytes"
 	"encoding/binary"
-	"fmt"
 	"runtime/debug"
 	"sort"
 	"sync"
@@ -13,8 +12,11 @@ import (
 	"github.com/ethpandaops/dora/clients/consensus"
 )
 
+// epochStatsKey is the primary key for EpochStats entries in cache.
+// consists of dependendRoot (32 byte) and epoch (8 byte).
 type epochStatsKey [32 + 8]byte
 
+// generate epochStatsKey from epoch and dependentRoot
 func getEpochStatsKey(epoch phase0.Epoch, dependentRoot phase0.Root) epochStatsKey {
 	var key epochStatsKey
 
@@ -24,29 +26,35 @@ func getEpochStatsKey(epoch phase0.Epoch, dependentRoot phase0.Root) epochStatsK
 	return key
 }
 
+// epochCache is the cache for EpochStats (epoch status) and epochState (beacon state) structures.
 type epochCache struct {
 	indexer     *Indexer
-	cacheMutex  sync.RWMutex
-	statsMap    map[epochStatsKey]*EpochStats
-	stateMap    map[phase0.Root]*EpochState
-	loadingChan chan bool
-	valsetMutex sync.Mutex
-	valsetCache map[phase0.ValidatorIndex]*phase0.Validator
+	cacheMutex  sync.RWMutex                                // mutex to protect statsMap & stateMap for concurrent read/write
+	statsMap    map[epochStatsKey]*EpochStats               // epoch status cache by epochStatsKey
+	stateMap    map[phase0.Root]*epochState                 // beacon state cache by dependentRoot
+	loadingChan chan bool                                   // limits concurrent state calls by channel capacity
+	valsetMutex sync.Mutex                                  // mutex to protect valsetCache for concurrent access
+	valsetCache map[phase0.ValidatorIndex]*phase0.Validator // global validator set cache for reuse of matching validator entries
 }
 
+// newEpochCache creates & returns a new instance of epochCache.
+// initializes the cache & starts the beacon state loader subroutine.
 func newEpochCache(indexer *Indexer) *epochCache {
 	cache := &epochCache{
 		indexer:     indexer,
 		statsMap:    map[epochStatsKey]*EpochStats{},
-		stateMap:    map[phase0.Root]*EpochState{},
+		stateMap:    map[phase0.Root]*epochState{},
 		loadingChan: make(chan bool, indexer.maxParallelStateCalls),
 		valsetCache: map[phase0.ValidatorIndex]*phase0.Validator{},
 	}
+
+	// start beacon state loader subroutine
 	go cache.startLoaderLoop()
 
 	return cache
 }
 
+// createOrGetEpochStats gets an existing EpochStats entry for the given epoch and dependentRoot or creates a new instance if not found.
 func (cache *epochCache) createOrGetEpochStats(epoch phase0.Epoch, dependentRoot phase0.Root) (*EpochStats, bool) {
 	cache.cacheMutex.Lock()
 	defer cache.cacheMutex.Unlock()
@@ -54,11 +62,13 @@ func (cache *epochCache) createOrGetEpochStats(epoch phase0.Epoch, dependentRoot
 	statsKey := getEpochStatsKey(epoch, dependentRoot)
 
 	if cache.statsMap[statsKey] != nil {
+		// found in cache
 		return cache.statsMap[statsKey], false
 	}
 
-	fmt.Printf("request stats %v %v\n", epoch, dependentRoot.String())
+	cache.indexer.logger.Debugf("created epoch stats for epoch %v (%v)", epoch, dependentRoot.String())
 
+	// get or create beacon state which the epoch status depends on (dependentRoot beacon state)
 	epochState := cache.stateMap[dependentRoot]
 	if epochState == nil {
 		epochState = newEpochState(dependentRoot)
@@ -71,6 +81,8 @@ func (cache *epochCache) createOrGetEpochStats(epoch phase0.Epoch, dependentRoot
 	return epochStats, true
 }
 
+// getPendingEpochStats gets all EpochStats with unloaded epochStates.
+// the returned list of EpochStats is sorted by priority.
 func (cache *epochCache) getPendingEpochStats() []*EpochStats {
 	cache.cacheMutex.Lock()
 	defer cache.cacheMutex.Unlock()
@@ -82,6 +94,10 @@ func (cache *epochCache) getPendingEpochStats() []*EpochStats {
 		}
 	}
 
+	// sort by loading priority
+	// 1. retry count (prefer lower)
+	// 2. requested by clients count (prefer higher)
+	// 3. epoch number (prefer higher)
 	sort.Slice(pendingStats, func(a, b int) bool {
 		if pendingStats[a].dependentState.retryCount != pendingStats[b].dependentState.retryCount {
 			return pendingStats[a].dependentState.retryCount < pendingStats[b].dependentState.retryCount
@@ -99,6 +115,8 @@ func (cache *epochCache) getPendingEpochStats() []*EpochStats {
 	return pendingStats
 }
 
+// removeEpochStats removes an EpochStats struct from cache.
+// stops loading state call if not referenced by another epoch status.
 func (cache *epochCache) removeEpochStats(epochStats *EpochStats) {
 	cache.cacheMutex.Lock()
 	defer cache.cacheMutex.Unlock()
@@ -120,11 +138,14 @@ func (cache *epochCache) removeEpochStats(epochStats *EpochStats) {
 	}
 
 	if !foundOtherStats {
+		// no other epoch status depends on this beacon state
 		epochStats.dependentState.dispose()
 		delete(cache.stateMap, epochStats.dependentRoot)
 	}
 }
 
+// getOrCreateValidator replaces the supplied validator with an older Validator object from cache if all properties match.
+// heavily reduces memory consumption as validator objects are not duplicated for each validator set request.
 func (cache *epochCache) getOrCreateValidator(index phase0.ValidatorIndex, validator *phase0.Validator) *phase0.Validator {
 	cache.valsetMutex.Lock()
 	defer cache.valsetMutex.Unlock()
@@ -138,6 +159,7 @@ func (cache *epochCache) getOrCreateValidator(index phase0.ValidatorIndex, valid
 		existingValidator.ActivationEpoch == validator.ActivationEpoch &&
 		existingValidator.ExitEpoch == validator.ExitEpoch &&
 		existingValidator.WithdrawableEpoch == validator.WithdrawableEpoch {
+		// all properties match, return reference to old cached entry
 		return existingValidator
 	}
 
@@ -145,6 +167,8 @@ func (cache *epochCache) getOrCreateValidator(index phase0.ValidatorIndex, valid
 	return validator
 }
 
+// startLoaderLoop is the entrypoint for the beacon state loader subroutine.
+// contains the main loop & crash handler of the subroutine.
 func (cache *epochCache) startLoaderLoop() {
 	defer func() {
 		if err := recover(); err != nil {
@@ -161,6 +185,9 @@ func (cache *epochCache) startLoaderLoop() {
 	}
 }
 
+// runLoaderLoop checks the cache for unloaded epoch states.
+// loads the next unloaded state in a subroutine if needed.
+// blocks if too many loader subroutines are already running.
 func (cache *epochCache) runLoaderLoop() {
 	// load next epoch stats
 	pendingStats := cache.getPendingEpochStats()
@@ -175,6 +202,8 @@ func (cache *epochCache) runLoaderLoop() {
 	go cache.loadEpochStats(pendingStats[0])
 }
 
+// loadEpochStats loads the supplied unloaded epoch status (the dependent epoch state).
+// retires loading from multiple clients, ordered by priority.
 func (cache *epochCache) loadEpochStats(epochStats *EpochStats) {
 	defer func() {
 		if cache.indexer.maxParallelStateCalls > 0 {
@@ -234,6 +263,10 @@ func (cache *epochCache) loadEpochStats(epochStats *EpochStats) {
 	})
 
 	for _, client := range clients {
+		if client.skipValidators {
+			continue
+		}
+
 		err := epochStats.dependentState.loadState(client, cache)
 		if err != nil {
 			client.logger.Warnf("failed loading epoch %v stats (dep: %v): %v", epochStats.epoch, epochStats.dependentRoot.String(), err)
@@ -243,15 +276,20 @@ func (cache *epochCache) loadEpochStats(epochStats *EpochStats) {
 	}
 
 	if epochStats.dependentState.loadingStatus != 2 {
+		// epoch state could not be loaded
 		return
 	}
 
+	dependentStats := []*EpochStats{}
 	cache.cacheMutex.Lock()
-	defer cache.cacheMutex.Unlock()
-
 	for _, stats := range cache.statsMap {
 		if stats.dependentState == epochStats.dependentState {
-			stats.processState(cache.indexer)
+			dependentStats = append(dependentStats, stats)
 		}
+	}
+	cache.cacheMutex.Unlock()
+
+	for _, stats := range dependentStats {
+		stats.processState(cache.indexer)
 	}
 }

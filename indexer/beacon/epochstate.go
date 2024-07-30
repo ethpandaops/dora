@@ -8,7 +8,8 @@ import (
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 )
 
-type EpochState struct {
+// epochState represents a beacon state which a epoch status depends on.
+type epochState struct {
 	slotRoot  phase0.Root
 	stateRoot phase0.Root
 
@@ -19,21 +20,25 @@ type EpochState struct {
 	validatorList     []*phase0.Validator
 	validatorBalances []phase0.Gwei
 	randaoMixes       []phase0.Root
+	depositIndex      uint64
 }
 
-func newEpochState(slotRoot phase0.Root) *EpochState {
-	return &EpochState{
+// newEpochState creates a new epochState instance with the root of the state to be loaded.
+func newEpochState(slotRoot phase0.Root) *epochState {
+	return &epochState{
 		slotRoot: slotRoot,
 	}
 }
 
-func (s *EpochState) dispose() {
+// dispose cancels the loading process if it is in progress.
+func (s *epochState) dispose() {
 	if s.loadingCancel != nil {
 		s.loadingCancel()
 	}
 }
 
-func (s *EpochState) loadState(client *Client, cache *epochCache) error {
+// loadState loads the state for the epoch from the client.
+func (s *epochState) loadState(client *Client, cache *epochCache) error {
 	if s.loadingStatus > 0 {
 		return fmt.Errorf("already loading")
 	}
@@ -84,7 +89,9 @@ func (s *EpochState) loadState(client *Client, cache *epochCache) error {
 	return nil
 }
 
-func (s *EpochState) processState(state *spec.VersionedBeaconState, cache *epochCache) error {
+// processState processes the state and updates the epochState instance.
+// the function extracts and unifies all relevant information from the beacon state, so the full beacon state can be dropped from memory afterwards.
+func (s *epochState) processState(state *spec.VersionedBeaconState, cache *epochCache) error {
 	validatorList, err := state.Validators()
 	if err != nil {
 		return fmt.Errorf("error getting validators from state %v: %v", s.slotRoot.String(), err)
@@ -110,6 +117,7 @@ func (s *EpochState) processState(state *spec.VersionedBeaconState, cache *epoch
 	}
 
 	s.randaoMixes = randaoMixes
+	s.depositIndex = getStateDepositIndex(state)
 
 	return nil
 }

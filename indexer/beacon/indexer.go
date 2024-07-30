@@ -10,6 +10,7 @@ import (
 	"github.com/ethpandaops/dora/utils"
 )
 
+// Indexer is responsible for indexing the ethereum beacon chain.
 type Indexer struct {
 	logger        logrus.FieldLogger
 	consensusPool *consensus.Pool
@@ -20,12 +21,16 @@ type Indexer struct {
 	maxParallelStateCalls uint16
 	cachePersistenceDelay uint16
 
-	clients    []*Client
-	blockCache *blockCache
-	epochCache *epochCache
+	running            bool
+	clients            []*Client
+	blockCache         *blockCache
+	epochCache         *epochCache
+	finalizationWorker *finalizationWorker
 }
 
+// NewIndexer creates a new instance of the Indexer.
 func NewIndexer(logger logrus.FieldLogger, consensusPool *consensus.Pool) *Indexer {
+	// Initialize the indexer with default values from the configuration.
 	inMemoryEpochs := utils.Config.Indexer.InMemoryEpochs
 	if inMemoryEpochs < 2 {
 		inMemoryEpochs = 2
@@ -39,6 +44,7 @@ func NewIndexer(logger logrus.FieldLogger, consensusPool *consensus.Pool) *Index
 		maxParallelStateCalls = 2
 	}
 
+	// Create the indexer instance.
 	indexer := &Indexer{
 		logger:        logger,
 		consensusPool: consensusPool,
@@ -54,11 +60,13 @@ func NewIndexer(logger logrus.FieldLogger, consensusPool *consensus.Pool) *Index
 
 	indexer.blockCache = newBlockCache()
 	indexer.epochCache = newEpochCache(indexer)
+	indexer.finalizationWorker = newFinalizationWorker(indexer)
 
 	return indexer
 }
 
-func (indexer *Indexer) getMinInEpochSlot() phase0.Slot {
+// getMinInMemorySlot returns the minimum in-memory slot based on the indexer's configuration.
+func (indexer *Indexer) getMinInMemorySlot() phase0.Slot {
 	chainState := indexer.consensusPool.GetChainState()
 	minInMemoryEpoch := chainState.CurrentEpoch()
 	if minInMemoryEpoch > phase0.Epoch(indexer.inMemoryEpochs) {
@@ -70,6 +78,7 @@ func (indexer *Indexer) getMinInEpochSlot() phase0.Slot {
 	return chainState.EpochToSlot(minInMemoryEpoch)
 }
 
+// AddClient adds a new consensus pool client to the indexer.
 func (indexer *Indexer) AddClient(index uint16, client *consensus.Client, priority int, archive bool, skipValidators bool) *Client {
 	logger := indexer.logger.WithField("client", client.GetName())
 	indexerClient := newClient(index, client, priority, archive, skipValidators, indexer, logger)
@@ -78,15 +87,21 @@ func (indexer *Indexer) AddClient(index uint16, client *consensus.Client, priori
 	return indexerClient
 }
 
+// StartIndexer starts the indexing process.
 func (indexer *Indexer) StartIndexer() {
-	// prefill block cache with all unfinalized blocks from db
+	if indexer.running {
+		return
+	}
 
+	indexer.running = true
+
+	// prefill block cache with all unfinalized blocks from db
 	chainState := indexer.consensusPool.GetChainState()
 	finalizedSlot := chainState.GetFinalizedSlot()
 	restoredBlockCount := 0
 	restoredBodyCount := 0
 
-	loadMinSlot := indexer.getMinInEpochSlot()
+	loadMinSlot := indexer.getMinInMemorySlot()
 	if loadMinSlot < finalizedSlot {
 		loadMinSlot = finalizedSlot
 	}
@@ -141,6 +156,7 @@ func (indexer *Indexer) StartIndexer() {
 
 	indexer.logger.Infof("restored %v unfinalized blocks from DB (%v with bodies)", restoredBlockCount, restoredBodyCount)
 
+	// start indexing for all clients
 	for _, client := range indexer.clients {
 		client.startIndexing()
 	}

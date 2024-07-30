@@ -9,6 +9,7 @@ import (
 	"github.com/ethpandaops/dora/db"
 )
 
+// blockCache is a cache for storing blocks.
 type blockCache struct {
 	cacheMutex  sync.RWMutex
 	highestSlot int64
@@ -17,6 +18,7 @@ type blockCache struct {
 	rootMap     map[phase0.Root]*Block
 }
 
+// newBlockCache creates a new instance of blockCache.
 func newBlockCache() *blockCache {
 	return &blockCache{
 		slotMap: map[phase0.Slot][]*Block{},
@@ -24,6 +26,8 @@ func newBlockCache() *blockCache {
 	}
 }
 
+// createOrGetBlock creates a new block with the given root and slot, or returns an existing block if it already exists.
+// It returns the created block and a boolean indicating whether the block was newly created or not.
 func (cache *blockCache) createOrGetBlock(root phase0.Root, slot phase0.Slot) (*Block, bool) {
 	cache.cacheMutex.Lock()
 	defer cache.cacheMutex.Unlock()
@@ -52,6 +56,7 @@ func (cache *blockCache) createOrGetBlock(root phase0.Root, slot phase0.Slot) (*
 	return cacheBlock, true
 }
 
+// getBlockByRoot returns the cached block with the given root.
 func (cache *blockCache) getBlockByRoot(root phase0.Root) *Block {
 	cache.cacheMutex.RLock()
 	defer cache.cacheMutex.RUnlock()
@@ -59,11 +64,14 @@ func (cache *blockCache) getBlockByRoot(root phase0.Root) *Block {
 	return cache.rootMap[root]
 }
 
+// isCanonicalBlock checks if the block with the given blockRoot is a canonical block with respect to the block with the given head.
 func (cache *blockCache) isCanonicalBlock(blockRoot phase0.Root, head phase0.Root) bool {
 	res, _ := cache.getCanonicalDistance(blockRoot, head)
 	return res
 }
 
+// getCanonicalDistance returns the canonical distance between the block with the given blockRoot and the block with the given head.
+// It returns a boolean indicating whether the block with blockRoot is a canonical block, and the distance between the two blocks.
 func (cache *blockCache) getCanonicalDistance(blockRoot phase0.Root, head phase0.Root) (bool, uint64) {
 	block := cache.getBlockByRoot(blockRoot)
 	if block == nil {
@@ -104,6 +112,7 @@ func (cache *blockCache) getCanonicalDistance(blockRoot phase0.Root, head phase0
 	return false, 0
 }
 
+// getDependentBlock returns the dependent block of the given block based on the chain state.
 func (cache *blockCache) getDependentBlock(chainState *consensus.ChainState, block *Block) *Block {
 	parentRoot := block.GetParentRoot()
 	blockEpoch := chainState.EpochOfSlot(block.Slot)

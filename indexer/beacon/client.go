@@ -16,6 +16,7 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+// Client represents a consensus pool client that should be used for indexing beacon blocks.
 type Client struct {
 	indexer  *Indexer
 	index    uint16
@@ -33,6 +34,7 @@ type Client struct {
 	headRoot phase0.Root
 }
 
+// newClient creates a new indexer client for a given consensus pool client.
 func newClient(index uint16, client *consensus.Client, priority int, archive bool, skipValidators bool, indexer *Indexer, logger logrus.FieldLogger) *Client {
 	return &Client{
 		indexer:  indexer,
@@ -47,6 +49,8 @@ func newClient(index uint16, client *consensus.Client, priority int, archive boo
 	}
 }
 
+// startIndexing starts the indexing process for this client.
+// attaches block & head event handlers and starts the event processing subroutine.
 func (c *Client) startIndexing() {
 	if c.indexing {
 		return
@@ -61,6 +65,7 @@ func (c *Client) startIndexing() {
 	go c.startClientLoop()
 }
 
+// startClientLoop starts the client event processing subroutine.
 func (c *Client) startClientLoop() {
 	defer func() {
 		if err := recover(); err != nil {
@@ -83,6 +88,7 @@ func (c *Client) startClientLoop() {
 	}
 }
 
+// runClientLoop runs the client event processing subroutine.
 func (c *Client) runClientLoop() error {
 	// 1 - load & process head block
 	headSlot, headRoot := c.client.GetLastHead()
@@ -134,11 +140,13 @@ func (c *Client) runClientLoop() error {
 
 }
 
+// processBlockEvent processes a block event from the event stream.
 func (c *Client) processBlockEvent(blockEvent *v1.BlockEvent) error {
 	_, err := c.processStreamBlock(blockEvent.Slot, blockEvent.Block)
 	return err
 }
 
+// processHeadEvent processes a head event from the event stream.
 func (c *Client) processHeadEvent(headEvent *v1.HeadEvent) error {
 	block, err := c.processStreamBlock(headEvent.Slot, headEvent.Block)
 	if err != nil {
@@ -180,7 +188,7 @@ func (c *Client) processHeadEvent(headEvent *v1.HeadEvent) error {
 		}
 	}
 
-	if !bytes.Equal(dependentRoot[:], consensus.NullRoot[:]) && block.Slot >= c.indexer.getMinInEpochSlot() {
+	if !bytes.Equal(dependentRoot[:], consensus.NullRoot[:]) && block.Slot >= c.indexer.getMinInMemorySlot() {
 		// ensure epoch stats are in loading queue
 		epochStats, _ := c.indexer.epochCache.createOrGetEpochStats(chainState.EpochOfSlot(block.Slot), dependentRoot)
 		epochStats.addRequestedBy(c)
@@ -190,6 +198,7 @@ func (c *Client) processHeadEvent(headEvent *v1.HeadEvent) error {
 	return nil
 }
 
+// processStreamBlock processes a block received from the stream (either via block or head events).
 func (c *Client) processStreamBlock(slot phase0.Slot, root phase0.Root) (*Block, error) {
 	block, isNew, err := c.processBlock(slot, root, nil)
 	if err != nil {
@@ -207,6 +216,7 @@ func (c *Client) processStreamBlock(slot phase0.Slot, root phase0.Root) (*Block,
 	return block, nil
 }
 
+// processReorg processes a chain reorganization.
 func (c *Client) processReorg(oldHead *Block, newHead *Block) error {
 	// find parent of both heads
 	reorgBase := oldHead
@@ -240,6 +250,7 @@ func (c *Client) processReorg(oldHead *Block, newHead *Block) error {
 	return nil
 }
 
+// processBlock processes a block (from stream & polling).
 func (c *Client) processBlock(slot phase0.Slot, root phase0.Root, header *phase0.SignedBeaconBlockHeader) (block *Block, isNew bool, err error) {
 	chainState := c.client.GetPool().GetChainState()
 	finalizedSlot := chainState.GetFinalizedSlot()
@@ -295,7 +306,7 @@ func (c *Client) processBlock(slot phase0.Slot, root phase0.Root, header *phase0
 
 		block.isInUnfinalizedDb = true
 
-		if block.Slot < c.indexer.getMinInEpochSlot() {
+		if block.Slot < c.indexer.getMinInMemorySlot() {
 			// prune block body from memory
 			block.block = nil
 		}
@@ -308,6 +319,7 @@ func (c *Client) processBlock(slot phase0.Slot, root phase0.Root, header *phase0
 	return
 }
 
+// loadHeader loads the block header from the RPC client.
 func (c *Client) loadHeader(root phase0.Root) (*phase0.SignedBeaconBlockHeader, error) {
 	ctx, cancel := context.WithTimeout(c.client.GetContext(), BeaconHeaderRequestTimeout)
 	defer cancel()
@@ -320,6 +332,7 @@ func (c *Client) loadHeader(root phase0.Root) (*phase0.SignedBeaconBlockHeader, 
 	return header.Header, nil
 }
 
+// loadBlock loads the block body from the RPC client.
 func (c *Client) loadBlock(root phase0.Root) (*spec.VersionedSignedBeaconBlock, error) {
 	ctx, cancel := context.WithTimeout(c.client.GetContext(), BeaconBodyRequestTimeout)
 	defer cancel()
@@ -332,9 +345,10 @@ func (c *Client) loadBlock(root phase0.Root) (*spec.VersionedSignedBeaconBlock, 
 	return body, nil
 }
 
+// backfillParentBlocks backfills parent blocks up to the finalization checkpoint or known in cache.
 func (c *Client) backfillParentBlocks(headBlock *Block) error {
 	chainState := c.client.GetPool().GetChainState()
-	minInMemorySlot := c.indexer.getMinInEpochSlot()
+	minInMemorySlot := c.indexer.getMinInMemorySlot()
 
 	// walk backwards and load all blocks until we reach a block that is marked as seen by this client or is smaller than finalized
 	parentRoot := *headBlock.GetParentRoot()

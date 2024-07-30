@@ -1,4 +1,4 @@
-package beaconsim
+package duties
 
 import (
 	"crypto/sha256"

@@ -243,3 +243,21 @@ func getStateRandaoMixes(v *spec.VersionedBeaconState) ([]phase0.Root, error) {
 		return nil, errors.New("unknown version")
 	}
 }
+
+func getStateDepositIndex(state *spec.VersionedBeaconState) uint64 {
+	switch state.Version {
+	case spec.DataVersionPhase0:
+		return state.Phase0.ETH1DepositIndex
+	case spec.DataVersionAltair:
+		return state.Altair.ETH1DepositIndex
+	case spec.DataVersionBellatrix:
+		return state.Bellatrix.ETH1DepositIndex
+	case spec.DataVersionCapella:
+		return state.Capella.ETH1DepositIndex
+	case spec.DataVersionDeneb:
+		return state.Deneb.ETH1DepositIndex
+	case spec.DataVersionElectra:
+		return state.Electra.ETH1DepositIndex
+	}
+	return 0
+}

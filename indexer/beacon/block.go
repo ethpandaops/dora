@@ -13,6 +13,7 @@ import (
 	"github.com/ethpandaops/dora/dbtypes"
 )
 
+// Block represents a beacon block.
 type Block struct {
 	Root              phase0.Root
 	Slot              phase0.Slot
@@ -23,12 +24,13 @@ type Block struct {
 	blockMutex        sync.Mutex
 	blockChan         chan bool
 	block             *spec.VersionedSignedBeaconBlock
-	isInFinalizedDb   bool
-	isInUnfinalizedDb bool
+	isInFinalizedDb   bool // block is in finalized table (slots)
+	isInUnfinalizedDb bool // block is in unfinalized table (unfinalized_blocks)
 	seenMutex         sync.RWMutex
 	seenMap           map[uint16]*Client
 }
 
+// newBlock creates a new Block instance.
 func newBlock(root phase0.Root, slot phase0.Slot) *Block {
 	return &Block{
 		Root:       root,
@@ -39,6 +41,7 @@ func newBlock(root phase0.Root, slot phase0.Slot) *Block {
 	}
 }
 
+// GetSeenBy returns a list of clients that have seen this block.
 func (block *Block) GetSeenBy() []*Client {
 	block.seenMutex.RLock()
 	defer block.seenMutex.RUnlock()
@@ -56,12 +59,14 @@ func (block *Block) GetSeenBy() []*Client {
 	return clients
 }
 
+// SetSeenBy sets the client that has seen this block.
 func (block *Block) SetSeenBy(client *Client) {
 	block.seenMutex.Lock()
 	defer block.seenMutex.Unlock()
 	block.seenMap[client.index] = client
 }
 
+// GetHeader returns the signed beacon block header of this block.
 func (block *Block) GetHeader() *phase0.SignedBeaconBlockHeader {
 	if block.header != nil {
 		return block.header
@@ -70,6 +75,7 @@ func (block *Block) GetHeader() *phase0.SignedBeaconBlockHeader {
 	return block.header
 }
 
+// AwaitHeader waits for the signed beacon block header of this block to be available.
 func (block *Block) AwaitHeader(ctx context.Context, timeout time.Duration) *phase0.SignedBeaconBlockHeader {
 	if ctx == nil {
 		ctx = context.Background()
@@ -84,10 +90,12 @@ func (block *Block) AwaitHeader(ctx context.Context, timeout time.Duration) *pha
 	return block.header
 }
 
+// GetBlock returns the versioned signed beacon block of this block.
 func (block *Block) GetBlock() *spec.VersionedSignedBeaconBlock {
 	return block.block
 }
 
+// AwaitBlock waits for the versioned signed beacon block of this block to be available.
 func (block *Block) AwaitBlock(ctx context.Context, timeout time.Duration) *spec.VersionedSignedBeaconBlock {
 	if ctx == nil {
 		ctx = context.Background()
@@ -102,6 +110,7 @@ func (block *Block) AwaitBlock(ctx context.Context, timeout time.Duration) *spec
 	return block.block
 }
 
+// GetParentRoot returns the parent root of this block.
 func (block *Block) GetParentRoot() *phase0.Root {
 	if block.parentRoot != nil {
 		return block.parentRoot
@@ -114,6 +123,7 @@ func (block *Block) GetParentRoot() *phase0.Root {
 	return &block.header.Message.ParentRoot
 }
 
+// SetHeader sets the signed beacon block header of this block.
 func (block *Block) SetHeader(header *phase0.SignedBeaconBlockHeader) {
 	block.header = header
 	if header != nil {
@@ -121,6 +131,7 @@ func (block *Block) SetHeader(header *phase0.SignedBeaconBlockHeader) {
 	}
 }
 
+// EnsureHeader ensures that the signed beacon block header of this block is available.
 func (block *Block) EnsureHeader(loadHeader func() (*phase0.SignedBeaconBlockHeader, error)) error {
 	if block.header != nil {
 		return nil
@@ -148,6 +159,7 @@ func (block *Block) EnsureHeader(loadHeader func() (*phase0.SignedBeaconBlockHea
 	return nil
 }
 
+// SetBlock sets the versioned signed beacon block of this block.
 func (block *Block) SetBlock(body *spec.VersionedSignedBeaconBlock) {
 	block.block = body
 	if block.blockChan != nil {
@@ -156,6 +168,7 @@ func (block *Block) SetBlock(body *spec.VersionedSignedBeaconBlock) {
 	}
 }
 
+// EnsureBlock ensures that the versioned signed beacon block of this block is available.
 func (block *Block) EnsureBlock(loadBlock func() (*spec.VersionedSignedBeaconBlock, error)) (bool, error) {
 	if block.block != nil {
 		return false, nil
@@ -186,6 +199,7 @@ func (block *Block) EnsureBlock(loadBlock func() (*spec.VersionedSignedBeaconBlo
 	return true, nil
 }
 
+// buildUnfinalizedBlock builds an unfinalized block from the block data.
 func (block *Block) buildUnfinalizedBlock(specs *consensus.ChainSpec) (*dbtypes.UnfinalizedBlock, error) {
 	headerSSZ, err := block.header.MarshalSSZ()
 	if err != nil {
