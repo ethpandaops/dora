@@ -78,7 +78,21 @@ func (cache *epochCache) createOrGetEpochStats(epoch phase0.Epoch, dependentRoot
 	epochStats := newEpochStats(epoch, dependentRoot, epochState)
 	cache.statsMap[statsKey] = epochStats
 
+	if epochState.loadingStatus == 2 {
+		// dependent state is already loaded, process it
+		epochStats.processState(cache.indexer)
+	}
+
 	return epochStats, true
+}
+
+func (cache *epochCache) getEpochStats(epoch phase0.Epoch, dependentRoot phase0.Root) *EpochStats {
+	cache.cacheMutex.RLock()
+	defer cache.cacheMutex.RUnlock()
+
+	statsKey := getEpochStatsKey(epoch, dependentRoot)
+
+	return cache.statsMap[statsKey]
 }
 
 // getPendingEpochStats gets all EpochStats with unloaded epochStates.
@@ -89,7 +103,7 @@ func (cache *epochCache) getPendingEpochStats() []*EpochStats {
 
 	pendingStats := make([]*EpochStats, 0)
 	for _, stats := range cache.statsMap {
-		if stats.dependentState.loadingStatus == 0 {
+		if stats.dependentState != nil && stats.dependentState.loadingStatus == 0 {
 			pendingStats = append(pendingStats, stats)
 		}
 	}
@@ -129,18 +143,20 @@ func (cache *epochCache) removeEpochStats(epochStats *EpochStats) {
 
 	delete(cache.statsMap, statsKey)
 
-	foundOtherStats := false
-	for _, stats := range cache.statsMap {
-		if bytes.Equal(stats.dependentRoot[:], epochStats.dependentRoot[:]) {
-			foundOtherStats = true
-			break
+	if epochStats.dependentState != nil {
+		foundOtherStats := false
+		for _, stats := range cache.statsMap {
+			if bytes.Equal(stats.dependentRoot[:], epochStats.dependentRoot[:]) {
+				foundOtherStats = true
+				break
+			}
 		}
-	}
 
-	if !foundOtherStats {
-		// no other epoch status depends on this beacon state
-		epochStats.dependentState.dispose()
-		delete(cache.stateMap, epochStats.dependentRoot)
+		if !foundOtherStats {
+			// no other epoch status depends on this beacon state
+			epochStats.dependentState.dispose()
+			delete(cache.stateMap, epochStats.dependentRoot)
+		}
 	}
 }
 

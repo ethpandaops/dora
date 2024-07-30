@@ -12,6 +12,7 @@ import (
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/dora/db"
+	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/jmoiron/sqlx"
 	"github.com/sirupsen/logrus"
 )
@@ -260,7 +261,7 @@ func (c *Client) processBlock(slot phase0.Slot, root phase0.Root, header *phase0
 		// known block or a new orphaned block
 
 		// don't add to cache, process this block right after loading the details
-		block = newBlock(root, slot)
+		block = newBlock(c.indexer.dynSsz, root, slot)
 
 		dbBlockHead := db.GetBlockHeadByRoot(root[:])
 		if dbBlockHead != nil {
@@ -292,12 +293,13 @@ func (c *Client) processBlock(slot phase0.Slot, root phase0.Root, header *phase0
 
 	if slot >= finalizedSlot && isNew {
 		// insert into unfinalized blocks
-		err = db.RunDBTransaction(func(tx *sqlx.Tx) error {
-			dbBlock, err := block.buildUnfinalizedBlock(chainState.GetSpecs())
-			if err != nil {
-				return err
-			}
+		var dbBlock *dbtypes.UnfinalizedBlock
+		dbBlock, err = block.buildUnfinalizedBlock()
+		if err != nil {
+			return
+		}
 
+		err = db.RunDBTransaction(func(tx *sqlx.Tx) error {
 			return db.InsertUnfinalizedBlock(dbBlock, tx)
 		})
 		if err != nil {
@@ -305,11 +307,6 @@ func (c *Client) processBlock(slot phase0.Slot, root phase0.Root, header *phase0
 		}
 
 		block.isInUnfinalizedDb = true
-
-		if block.Slot < c.indexer.getMinInMemorySlot() {
-			// prune block body from memory
-			block.block = nil
-		}
 	}
 	if slot < finalizedSlot && !block.isInFinalizedDb {
 		// process new orphaned block in finalized epoch
@@ -382,6 +379,11 @@ func (c *Client) backfillParentBlocks(headBlock *Block) error {
 		parentSlot := parentHead.Message.Slot
 		isNewBlock := false
 
+		if parentSlot < chainState.GetFinalizedSlot() {
+			c.logger.Debugf("backfill cache: reached finalized slot %v:%v [0x%x]", chainState.EpochOfSlot(parentSlot), parentSlot, parentRoot)
+			break
+		}
+
 		if parentBlock == nil {
 			var err error
 
@@ -403,11 +405,6 @@ func (c *Client) backfillParentBlocks(headBlock *Block) error {
 				epochStats, _ := c.indexer.epochCache.createOrGetEpochStats(chainState.EpochOfSlot(parentBlock.Slot), dependentBlock.Root)
 				epochStats.addRequestedBy(c)
 			}
-		}
-
-		if parentSlot <= chainState.GetFinalizedSlot() {
-			c.logger.Debugf("backfill cache: reached finalized slot %v:%v [0x%x]", chainState.EpochOfSlot(parentSlot), parentSlot, parentRoot)
-			break
 		}
 
 		if parentSlot == 0 {

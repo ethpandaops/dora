@@ -5,10 +5,10 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-func InsertEpoch(epoch *dbtypes.Epoch, tx *sqlx.Tx) error {
+func InsertUnfinalizedEpoch(epoch *dbtypes.Epoch, tx *sqlx.Tx) error {
 	_, err := tx.Exec(EngineQuery(map[dbtypes.DBEngineType]string{
 		dbtypes.DBEnginePgsql: `
-			INSERT INTO epochs (
+			INSERT INTO unfinalized_epochs (
 				epoch, validator_count, validator_balance, eligible, voted_target, voted_head, voted_total, block_count, orphaned_count,
 				attestation_count, deposit_count, exit_count, withdraw_count, withdraw_amount, attester_slashing_count, 
 				proposer_slashing_count, bls_change_count, eth_transaction_count, sync_participation
@@ -33,7 +33,7 @@ func InsertEpoch(epoch *dbtypes.Epoch, tx *sqlx.Tx) error {
 				eth_transaction_count = excluded.eth_transaction_count, 
 				sync_participation = excluded.sync_participation`,
 		dbtypes.DBEngineSqlite: `
-			INSERT OR REPLACE INTO epochs (
+			INSERT OR REPLACE INTO unfinalized_epochs (
 				epoch, validator_count, validator_balance, eligible, voted_target, voted_head, voted_total, block_count, orphaned_count,
 				attestation_count, deposit_count, exit_count, withdraw_count, withdraw_amount, attester_slashing_count, 
 				proposer_slashing_count, bls_change_count, eth_transaction_count, sync_participation
@@ -48,30 +48,18 @@ func InsertEpoch(epoch *dbtypes.Epoch, tx *sqlx.Tx) error {
 	return nil
 }
 
-func IsEpochSynchronized(epoch uint64) bool {
-	var count uint64
-	err := ReaderDb.Get(&count, `SELECT COUNT(*) FROM epochs WHERE epoch = $1`, epoch)
-	if err != nil {
-		return false
-	}
-	return count > 0
-}
-
-func GetEpochs(firstEpoch uint64, limit uint32) []*dbtypes.Epoch {
-	epochs := []*dbtypes.Epoch{}
-	err := ReaderDb.Select(&epochs, `
+func GetUnfinalizedEpoch(epoch uint64) *dbtypes.Epoch {
+	epochDuty := dbtypes.Epoch{}
+	err := ReaderDb.Get(&epochDuty, `
 	SELECT
 		epoch, validator_count, validator_balance, eligible, voted_target, voted_head, voted_total, block_count, orphaned_count,
 		attestation_count, deposit_count, exit_count, withdraw_count, withdraw_amount, attester_slashing_count,
 		proposer_slashing_count, bls_change_count, eth_transaction_count, sync_participation
-	FROM epochs
-	WHERE epoch <= $1
-	ORDER BY epoch DESC
-	LIMIT $2
-	`, firstEpoch, limit)
+	FROM unfinalized_epochs
+	WHERE epoch = $1
+	`, epoch)
 	if err != nil {
-		logger.Errorf("Error while fetching epochs: %v", err)
 		return nil
 	}
-	return epochs
+	return &epochDuty
 }

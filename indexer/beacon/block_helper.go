@@ -11,35 +11,17 @@ import (
 	"github.com/attestantio/go-eth2-client/spec/deneb"
 	"github.com/attestantio/go-eth2-client/spec/electra"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
-	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/dora/utils"
 	dynssz "github.com/pk910/dynamic-ssz"
-	"gopkg.in/yaml.v3"
 )
 
-var staticConfigSpec map[string]any
 var jsonVersionOffset uint64 = 0x70000000
 
-func getConfigSpec(specs *consensus.ChainSpec) map[string]any {
-	if staticConfigSpec != nil {
-		return staticConfigSpec
-	}
-
-	staticConfigSpec = map[string]any{}
-	specYaml, err := yaml.Marshal(specs)
-	if err != nil {
-		yaml.Unmarshal(specYaml, staticConfigSpec)
-	}
-	return staticConfigSpec
-}
-
-func MarshalVersionedSignedBeaconBlockSSZ(specs *consensus.ChainSpec, block *spec.VersionedSignedBeaconBlock) (version uint64, ssz []byte, err error) {
+func marshalVersionedSignedBeaconBlockSSZ(dynSsz *dynssz.DynSsz, block *spec.VersionedSignedBeaconBlock) (version uint64, ssz []byte, err error) {
 	if utils.Config.KillSwitch.DisableSSZEncoding {
 		// SSZ encoding disabled, use json instead
 		return marshalVersionedSignedBeaconBlockJson(block)
 	}
-
-	dynSsz := dynssz.NewDynSsz(getConfigSpec(specs))
 
 	switch block.Version {
 	case spec.DataVersionPhase0:
@@ -66,14 +48,13 @@ func MarshalVersionedSignedBeaconBlockSSZ(specs *consensus.ChainSpec, block *spe
 	return
 }
 
-func UnmarshalVersionedSignedBeaconBlockSSZ(specs *consensus.ChainSpec, version uint64, ssz []byte) (*spec.VersionedSignedBeaconBlock, error) {
+func unmarshalVersionedSignedBeaconBlockSSZ(dynSsz *dynssz.DynSsz, version uint64, ssz []byte) (*spec.VersionedSignedBeaconBlock, error) {
 	if version >= jsonVersionOffset {
 		return unmarshalVersionedSignedBeaconBlockJson(version, ssz)
 	}
 	block := &spec.VersionedSignedBeaconBlock{
 		Version: spec.DataVersion(version),
 	}
-	dynSsz := dynssz.NewDynSsz(getConfigSpec(specs))
 
 	switch block.Version {
 	case spec.DataVersionPhase0:

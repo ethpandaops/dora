@@ -97,6 +97,7 @@ type UnfinalizedBlock struct {
 	HeaderSSZ []byte `db:"header_ssz"`
 	BlockVer  uint64 `db:"block_ver"`
 	BlockSSZ  []byte `db:"block_ssz"`
+	Status    uint32 `db:"status"`
 }
 
 type Blob struct {

@@ -11,6 +11,7 @@ import (
 
 // blockCache is a cache for storing blocks.
 type blockCache struct {
+	indexer     *Indexer
 	cacheMutex  sync.RWMutex
 	highestSlot int64
 	lowestSlot  int64
@@ -19,8 +20,9 @@ type blockCache struct {
 }
 
 // newBlockCache creates a new instance of blockCache.
-func newBlockCache() *blockCache {
+func newBlockCache(indexer *Indexer) *blockCache {
 	return &blockCache{
+		indexer: indexer,
 		slotMap: map[phase0.Slot][]*Block{},
 		rootMap: map[phase0.Root]*Block{},
 	}
@@ -36,7 +38,7 @@ func (cache *blockCache) createOrGetBlock(root phase0.Root, slot phase0.Slot) (*
 		return cache.rootMap[root], false
 	}
 
-	cacheBlock := newBlock(root, slot)
+	cacheBlock := newBlock(cache.indexer.dynSsz, root, slot)
 	cache.rootMap[root] = cacheBlock
 
 	if cache.slotMap[slot] == nil {
@@ -62,6 +64,29 @@ func (cache *blockCache) getBlockByRoot(root phase0.Root) *Block {
 	defer cache.cacheMutex.RUnlock()
 
 	return cache.rootMap[root]
+}
+
+// getPruningBlocks returns the blocks that can be pruned based on the given finalized slot.
+func (cache *blockCache) getPruningBlocks(minInMemorySlot phase0.Slot) []*Block {
+	cache.cacheMutex.RLock()
+	defer cache.cacheMutex.RUnlock()
+
+	blocks := []*Block{}
+	for slot, slotBlocks := range cache.slotMap {
+		if slot >= minInMemorySlot {
+			continue
+		}
+
+		for _, block := range slotBlocks {
+			if block.block == nil {
+				continue
+			}
+
+			blocks = append(blocks, block)
+		}
+	}
+
+	return blocks
 }
 
 // isCanonicalBlock checks if the block with the given blockRoot is a canonical block with respect to the block with the given head.
@@ -114,6 +139,10 @@ func (cache *blockCache) getCanonicalDistance(blockRoot phase0.Root, head phase0
 
 // getDependentBlock returns the dependent block of the given block based on the chain state.
 func (cache *blockCache) getDependentBlock(chainState *consensus.ChainState, block *Block) *Block {
+	if block.dependentRoot != nil {
+		return cache.getBlockByRoot(*block.dependentRoot)
+	}
+
 	parentRoot := block.GetParentRoot()
 	blockEpoch := chainState.EpochOfSlot(block.Slot)
 
@@ -129,13 +158,14 @@ func (cache *blockCache) getDependentBlock(chainState *consensus.ChainState, blo
 				break
 			}
 
-			parentBlock = newBlock(phase0.Root(blockHead.Root), phase0.Slot(blockHead.Slot))
+			parentBlock = newBlock(cache.indexer.dynSsz, phase0.Root(blockHead.Root), phase0.Slot(blockHead.Slot))
 			parentBlock.isInFinalizedDb = true
 			parentRootVal := phase0.Root(blockHead.ParentRoot)
 			parentBlock.parentRoot = &parentRootVal
 		}
 
 		if chainState.EpochOfSlot(parentBlock.Slot) < blockEpoch {
+			block.dependentRoot = &parentBlock.Root
 			return parentBlock
 		}
 

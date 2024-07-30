@@ -9,32 +9,45 @@ import (
 
 	"github.com/attestantio/go-eth2-client/spec"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
-	"github.com/ethpandaops/dora/clients/consensus"
+	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
+	dynssz "github.com/pk910/dynamic-ssz"
 )
 
 // Block represents a beacon block.
 type Block struct {
 	Root              phase0.Root
 	Slot              phase0.Slot
+	dynSsz            *dynssz.DynSsz
 	parentRoot        *phase0.Root
+	dependentRoot     *phase0.Root
 	headerMutex       sync.Mutex
 	headerChan        chan bool
 	header            *phase0.SignedBeaconBlockHeader
 	blockMutex        sync.Mutex
 	blockChan         chan bool
 	block             *spec.VersionedSignedBeaconBlock
+	blockIndex        *blockBodyIndex
 	isInFinalizedDb   bool // block is in finalized table (slots)
 	isInUnfinalizedDb bool // block is in unfinalized table (unfinalized_blocks)
+	processingStatus  uint32
 	seenMutex         sync.RWMutex
 	seenMap           map[uint16]*Client
 }
 
+type blockBodyIndex struct {
+	Graffiti           [32]byte
+	ExecutionExtraData []byte
+	ExecutionHash      phase0.Hash32
+	ExecutionNumber    uint64
+}
+
 // newBlock creates a new Block instance.
-func newBlock(root phase0.Root, slot phase0.Slot) *Block {
+func newBlock(dynSsz *dynssz.DynSsz, root phase0.Root, slot phase0.Slot) *Block {
 	return &Block{
 		Root:       root,
 		Slot:       slot,
+		dynSsz:     dynSsz,
 		seenMap:    make(map[uint16]*Client),
 		headerChan: make(chan bool),
 		blockChan:  make(chan bool),
@@ -92,6 +105,20 @@ func (block *Block) AwaitHeader(ctx context.Context, timeout time.Duration) *pha
 
 // GetBlock returns the versioned signed beacon block of this block.
 func (block *Block) GetBlock() *spec.VersionedSignedBeaconBlock {
+	if block.block != nil {
+		return block.block
+	}
+
+	if block.isInUnfinalizedDb {
+		dbBlock := db.GetUnfinalizedBlock(block.Root[:])
+		if dbBlock != nil {
+			blockBody, err := unmarshalVersionedSignedBeaconBlockSSZ(block.dynSsz, dbBlock.BlockVer, dbBlock.BlockSSZ)
+			if err == nil {
+				return blockBody
+			}
+		}
+	}
+
 	return block.block
 }
 
@@ -161,7 +188,9 @@ func (block *Block) EnsureHeader(loadHeader func() (*phase0.SignedBeaconBlockHea
 
 // SetBlock sets the versioned signed beacon block of this block.
 func (block *Block) SetBlock(body *spec.VersionedSignedBeaconBlock) {
+	block.setBlockIndex(body)
 	block.block = body
+
 	if block.blockChan != nil {
 		close(block.blockChan)
 		block.blockChan = nil
@@ -190,6 +219,7 @@ func (block *Block) EnsureBlock(loadBlock func() (*spec.VersionedSignedBeaconBlo
 		return false, err
 	}
 
+	block.setBlockIndex(blockBody)
 	block.block = blockBody
 	if block.blockChan != nil {
 		close(block.blockChan)
@@ -199,14 +229,24 @@ func (block *Block) EnsureBlock(loadBlock func() (*spec.VersionedSignedBeaconBlo
 	return true, nil
 }
 
+func (block *Block) setBlockIndex(body *spec.VersionedSignedBeaconBlock) {
+	blockIndex := &blockBodyIndex{}
+	blockIndex.Graffiti, _ = body.Graffiti()
+	blockIndex.ExecutionExtraData, _ = getBlockExecutionExtraData(body)
+	blockIndex.ExecutionHash, _ = body.ExecutionBlockHash()
+	blockIndex.ExecutionNumber, _ = body.ExecutionBlockNumber()
+
+	block.blockIndex = blockIndex
+}
+
 // buildUnfinalizedBlock builds an unfinalized block from the block data.
-func (block *Block) buildUnfinalizedBlock(specs *consensus.ChainSpec) (*dbtypes.UnfinalizedBlock, error) {
+func (block *Block) buildUnfinalizedBlock() (*dbtypes.UnfinalizedBlock, error) {
 	headerSSZ, err := block.header.MarshalSSZ()
 	if err != nil {
 		return nil, fmt.Errorf("marshal header ssz failed: %v", err)
 	}
 
-	blockVer, blockSSZ, err := MarshalVersionedSignedBeaconBlockSSZ(specs, block.GetBlock())
+	blockVer, blockSSZ, err := marshalVersionedSignedBeaconBlockSSZ(block.dynSsz, block.GetBlock())
 	if err != nil {
 		return nil, fmt.Errorf("marshal block ssz failed: %v", err)
 	}

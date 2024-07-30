@@ -342,7 +342,7 @@ func (client *Client) processFinalizedEvent(evt *v1.FinalizedCheckpointEvent) er
 			time.Sleep(3 * time.Second)
 		}
 
-		client.logger.Infof("received finalization_checkpoint event: finalized %v [0x%x], justified %v [0x%x], retry: %v", client.finalizedEpoch, client.finalizedRoot, client.justifiedEpoch, client.justifiedRoot, retry)
+		client.logger.Debugf("processed finalization_checkpoint event: finalized %v [0x%x], justified %v [0x%x], retry: %v", client.finalizedEpoch, client.finalizedRoot, client.justifiedEpoch, client.justifiedRoot, retry)
 	}()
 
 	return nil

@@ -6,6 +6,7 @@ import (
 
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/indexer/beacon/duties"
+	dynssz "github.com/pk910/dynamic-ssz"
 )
 
 // EpochStats holds the epoch-specific information based on the underlying dependent beacon state.
@@ -17,13 +18,21 @@ type EpochStats struct {
 	requestedMutex sync.Mutex
 	requestedBy    []*Client
 	ready          bool
+	values         *EpochStatsValues
+}
 
-	proposerDuties   []phase0.ValidatorIndex
-	attesterDuties   [][][]phase0.ValidatorIndex
-	activeValidators uint64
-	totalBalance     phase0.Gwei
-	activeBalance    phase0.Gwei
-	effectiveBalance phase0.Gwei
+type EpochStatsValues struct {
+	ProposerDuties   []phase0.ValidatorIndex
+	AttesterDuties   [][][]EpochStatsAttesterDuty
+	ActiveValidators uint64
+	TotalBalance     phase0.Gwei
+	ActiveBalance    phase0.Gwei
+	EffectiveBalance phase0.Gwei
+}
+
+type EpochStatsAttesterDuty struct {
+	ValidatorIndex      phase0.ValidatorIndex
+	EffectiveBalanceEth uint16
 }
 
 // newEpochStats creates a new EpochStats instance.
@@ -63,37 +72,78 @@ func (es *EpochStats) getRequestedBy() []*Client {
 	return clients
 }
 
+func (es *EpochStats) marshalSSZ(dynSsz *dynssz.DynSsz) ([]byte, error) {
+	if dynSsz == nil {
+		dynSsz = dynssz.NewDynSsz(nil)
+	}
+	if es.values == nil {
+		return []byte{}, nil
+	}
+	return dynSsz.MarshalSSZ(es.values)
+}
+
+func (es *EpochStats) unmarshalSSZ(dynSsz *dynssz.DynSsz, ssz []byte) error {
+	if dynSsz == nil {
+		dynSsz = dynssz.NewDynSsz(nil)
+	}
+
+	if len(ssz) == 0 {
+		es.values = nil
+	} else {
+		values := &EpochStatsValues{}
+		if err := dynSsz.UnmarshalSSZ(values, ssz); err != nil {
+			return err
+		}
+
+		es.values = values
+	}
+
+	return nil
+}
+
 // processState processes the epoch state and computes proposer and attester duties.
 func (es *EpochStats) processState(indexer *Indexer) {
-	if es.dependentState.loadingStatus != 2 {
+	if es.dependentState == nil || es.dependentState.loadingStatus != 2 {
 		return
 	}
 
 	chainState := indexer.consensusPool.GetChainState()
+	values := &EpochStatsValues{
+		TotalBalance:     0,
+		ActiveBalance:    0,
+		EffectiveBalance: 0,
+	}
 
 	// get active validator indices & aggregate balances
-	es.totalBalance = 0
-	es.activeBalance = 0
-	es.effectiveBalance = 0
-
 	activeIndices := []phase0.ValidatorIndex{}
 	for index, validator := range es.dependentState.validatorList {
-		es.totalBalance += es.dependentState.validatorBalances[index]
+		values.TotalBalance += es.dependentState.validatorBalances[index]
 		if es.epoch >= validator.ActivationEpoch && es.epoch < validator.ExitEpoch {
 			activeIndices = append(activeIndices, phase0.ValidatorIndex(index))
-			es.effectiveBalance += validator.EffectiveBalance
-			es.activeBalance += es.dependentState.validatorBalances[index]
+			values.EffectiveBalance += validator.EffectiveBalance
+			values.ActiveBalance += es.dependentState.validatorBalances[index]
 		}
 	}
 
-	es.activeValidators = uint64(len(activeIndices))
+	values.ActiveValidators = uint64(len(activeIndices))
+	beaconState := &duties.BeaconState{
+		GetRandaoMixes: func() []phase0.Root {
+			return es.dependentState.randaoMixes
+		},
+		GetActiveIndices: func() []phase0.ValidatorIndex {
+			return activeIndices
+		},
+		GetEffectiveBalance: func(index phase0.ValidatorIndex) phase0.Gwei {
+			return es.dependentState.validatorList[index].EffectiveBalance
+		},
+	}
 
-	indexer.logger.Infof("processing epoch %v stats (%v / %v), validators: %v/%v", es.epoch, es.dependentRoot.String(), es.dependentState.stateRoot.String(), es.activeValidators, len(es.dependentState.validatorList))
+	indexer.logger.Infof("processing epoch %v stats (%v / %v), validators: %v/%v", es.epoch, es.dependentRoot.String(), es.dependentState.stateRoot.String(), values.ActiveValidators, len(es.dependentState.validatorList))
 
 	// compute proposers
 	proposerDuties := []phase0.ValidatorIndex{}
 	for slot := chainState.EpochToSlot(es.epoch); slot < chainState.EpochToSlot(es.epoch+1); slot++ {
-		proposer, err := duties.GetProposerIndex(chainState.GetSpecs(), es, activeIndices, slot)
+		proposer, err := duties.GetProposerIndex(chainState.GetSpecs(), beaconState, slot)
 		if err != nil {
 			indexer.logger.Warnf("failed computing proposer for slot %v: %v", slot, err)
 			proposer = math.MaxInt64
@@ -102,31 +152,52 @@ func (es *EpochStats) processState(indexer *Indexer) {
 		proposerDuties = append(proposerDuties, proposer)
 	}
 
-	es.proposerDuties = proposerDuties
+	values.ProposerDuties = proposerDuties
 
 	// compute committees
-	attesterDuties := [][][]phase0.ValidatorIndex{}
+	attesterDuties := [][][]EpochStatsAttesterDuty{}
 	for slot := chainState.EpochToSlot(es.epoch); slot < chainState.EpochToSlot(es.epoch+1); slot++ {
-		committees, err := duties.GetBeaconCommittees(chainState.GetSpecs(), es, activeIndices, slot)
+		committees, err := duties.GetBeaconCommittees(chainState.GetSpecs(), beaconState, slot)
 		if err != nil {
 			indexer.logger.Warnf("failed computing committees for slot %v: %v", slot, err)
 			committees = [][]phase0.ValidatorIndex{}
 		}
 
-		attesterDuties = append(attesterDuties, committees)
+		committeeDuties := [][]EpochStatsAttesterDuty{}
+		for i, committee := range committees {
+			committeeDuty := []EpochStatsAttesterDuty{}
+			for j, validatorIndex := range committee {
+				validator := es.dependentState.validatorList[validatorIndex]
+				effectiveBalance := uint16(0)
+				if validator == nil {
+					indexer.logger.Warnf("validator %v not found for committee duty %v:%v:%v", validatorIndex, slot, i, j)
+				} else {
+					effectiveBalance = uint16(validator.EffectiveBalance / 1000000000)
+				}
+
+				committeeDuty = append(committeeDuty, EpochStatsAttesterDuty{
+					ValidatorIndex:      validatorIndex,
+					EffectiveBalanceEth: effectiveBalance,
+				})
+			}
+			committeeDuties = append(committeeDuties, committeeDuty)
+		}
+		attesterDuties = append(attesterDuties, committeeDuties)
 	}
 
-	es.attesterDuties = attesterDuties
+	values.AttesterDuties = attesterDuties
 
 	es.ready = true
+	es.values = values
+
+	ssz, _ := es.marshalSSZ(indexer.dynSsz)
+	indexer.logger.Infof("epoch %v stats (%v / %v) ready, %v bytes", es.epoch, es.dependentRoot.String(), es.dependentState.stateRoot.String(), len(ssz))
 }
 
-// GetRandaoMixes returns the RandaoMixes from the dependent epoch state.
-func (es *EpochStats) GetRandaoMixes() []phase0.Root {
-	return es.dependentState.randaoMixes
-}
+func (es *EpochStats) GetValues() *EpochStatsValues {
+	if es == nil {
+		return nil
+	}
 
-// GetEffectiveBalance returns the effective balance of the validator at the given index.
-func (es *EpochStats) GetEffectiveBalance(index phase0.ValidatorIndex) phase0.Gwei {
-	return es.dependentState.validatorList[index].EffectiveBalance
+	return es.values
 }

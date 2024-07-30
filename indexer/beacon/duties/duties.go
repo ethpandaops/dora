@@ -18,9 +18,10 @@ const totalSize = seedSize + roundSize + positionWindowSize
 
 var maxShuffleListSize uint64 = 1 << 40
 
-type BeaconState interface {
-	GetRandaoMixes() []phase0.Root
-	GetEffectiveBalance(index phase0.ValidatorIndex) phase0.Gwei
+type BeaconState struct {
+	GetRandaoMixes      func() []phase0.Root
+	GetActiveIndices    func() []phase0.ValidatorIndex
+	GetEffectiveBalance func(index phase0.ValidatorIndex) phase0.Gwei
 }
 
 func Hash(data []byte) phase0.Hash32 {
@@ -54,13 +55,13 @@ func SplitOffset(listSize, chunks, index uint64) uint64 {
 	return (listSize * index) / chunks
 }
 
-func GetRandaoMix(spec *consensus.ChainSpec, state BeaconState, epoch phase0.Epoch) phase0.Hash32 {
+func GetRandaoMix(spec *consensus.ChainSpec, state *BeaconState, epoch phase0.Epoch) phase0.Hash32 {
 	randaoMixes := state.GetRandaoMixes()
 	index := int(epoch % phase0.Epoch(spec.EpochsPerHistoricalVector))
 	return phase0.Hash32(randaoMixes[index])
 }
 
-func GetSeed(spec *consensus.ChainSpec, state BeaconState, epoch phase0.Epoch, domainType phase0.DomainType) phase0.Hash32 {
+func GetSeed(spec *consensus.ChainSpec, state *BeaconState, epoch phase0.Epoch, domainType phase0.DomainType) phase0.Hash32 {
 	mix := GetRandaoMix(spec, state, epoch+phase0.Epoch(spec.EpochsPerHistoricalVector-spec.MinSeedLookahead-1))
 
 	data := []byte{}
@@ -136,7 +137,7 @@ func ComputeShuffledIndex(spec *consensus.ChainSpec, index uint64, indexCount ui
 	return index, nil
 }
 
-func GetProposerIndex(spec *consensus.ChainSpec, state BeaconState, activeIndices []phase0.ValidatorIndex, slot phase0.Slot) (phase0.ValidatorIndex, error) {
+func GetProposerIndex(spec *consensus.ChainSpec, state *BeaconState, slot phase0.Slot) (phase0.ValidatorIndex, error) {
 	epoch := phase0.Epoch(slot / phase0.Slot(spec.SlotsPerEpoch))
 
 	seedData := []byte{}
@@ -151,6 +152,7 @@ func GetProposerIndex(spec *consensus.ChainSpec, state BeaconState, activeIndice
 		maxEffectiveBalance = spec.MaxEffectiveBalanceElectra
 	}
 
+	activeIndices := state.GetActiveIndices()
 	length := uint64(len(activeIndices))
 	if length == 0 {
 		return 0, fmt.Errorf("empty active indices list")
@@ -174,10 +176,11 @@ func GetProposerIndex(spec *consensus.ChainSpec, state BeaconState, activeIndice
 	}
 }
 
-func GetBeaconCommittees(spec *consensus.ChainSpec, state BeaconState, activeIndices []phase0.ValidatorIndex, slot phase0.Slot) ([][]phase0.ValidatorIndex, error) {
+func GetBeaconCommittees(spec *consensus.ChainSpec, state *BeaconState, slot phase0.Slot) ([][]phase0.ValidatorIndex, error) {
 	epoch := phase0.Epoch(slot / phase0.Slot(spec.SlotsPerEpoch))
 	seed := GetSeed(spec, state, epoch, spec.DomainBeaconAttester)
 
+	activeIndices := state.GetActiveIndices()
 	committeesPerSlot := SlotCommitteeCount(spec, uint64(len(activeIndices)))
 	committeesCount := committeesPerSlot * spec.SlotsPerEpoch
 	committees := [][]phase0.ValidatorIndex{}
