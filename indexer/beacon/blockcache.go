@@ -89,15 +89,34 @@ func (cache *blockCache) getPruningBlocks(minInMemorySlot phase0.Slot) []*Block 
 	return blocks
 }
 
+func (cache *blockCache) getForkBlocks(forkId ForkKey) []*Block {
+	cache.cacheMutex.RLock()
+	defer cache.cacheMutex.RUnlock()
+
+	blocks := []*Block{}
+
+	for _, slotBlocks := range cache.slotMap {
+		for _, block := range slotBlocks {
+			if block.forkId != forkId {
+				continue
+			}
+
+			blocks = append(blocks, block)
+		}
+	}
+
+	return blocks
+}
+
 // isCanonicalBlock checks if the block with the given blockRoot is a canonical block with respect to the block with the given head.
 func (cache *blockCache) isCanonicalBlock(blockRoot phase0.Root, head phase0.Root) bool {
-	res, _ := cache.getCanonicalDistance(blockRoot, head)
+	res, _ := cache.getCanonicalDistance(blockRoot, head, 0)
 	return res
 }
 
 // getCanonicalDistance returns the canonical distance between the block with the given blockRoot and the block with the given head.
 // It returns a boolean indicating whether the block with blockRoot is a canonical block, and the distance between the two blocks.
-func (cache *blockCache) getCanonicalDistance(blockRoot phase0.Root, head phase0.Root) (bool, uint64) {
+func (cache *blockCache) getCanonicalDistance(blockRoot phase0.Root, head phase0.Root, maxDistance uint64) (bool, uint64) {
 	block := cache.getBlockByRoot(blockRoot)
 	if block == nil {
 		return false, 0
@@ -124,6 +143,10 @@ func (cache *blockCache) getCanonicalDistance(blockRoot phase0.Root, head phase0
 		}
 
 		distance++
+		if maxDistance > 0 && distance > maxDistance {
+			return false, 0
+		}
+
 		if bytes.Equal(parentRoot[:], blockRoot[:]) {
 			return true, distance
 		}

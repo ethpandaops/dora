@@ -13,15 +13,15 @@ func InsertUnfinalizedBlock(block *dbtypes.UnfinalizedBlock, tx *sqlx.Tx) error 
 	_, err := tx.Exec(EngineQuery(map[dbtypes.DBEngineType]string{
 		dbtypes.DBEnginePgsql: `
 			INSERT INTO unfinalized_blocks (
-				root, slot, header_ver, header_ssz, block_ver, block_ssz, status
-			) VALUES ($1, $2, $3, $4, $5, $6, $7)
+				root, slot, header_ver, header_ssz, block_ver, block_ssz, status, fork_id
+			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 			ON CONFLICT (root) DO NOTHING`,
 		dbtypes.DBEngineSqlite: `
 			INSERT OR IGNORE INTO unfinalized_blocks (
-				root, slot, header_ver, header_ssz, block_ver, block_ssz, status
-			) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+				root, slot, header_ver, header_ssz, block_ver, block_ssz, status, fork_id
+			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
 	}),
-		block.Root, block.Slot, block.HeaderVer, block.HeaderSSZ, block.BlockVer, block.BlockSSZ, block.Status)
+		block.Root, block.Slot, block.HeaderVer, block.HeaderSSZ, block.BlockVer, block.BlockSSZ, block.Status, block.ForkId)
 	if err != nil {
 		return err
 	}
@@ -30,6 +30,14 @@ func InsertUnfinalizedBlock(block *dbtypes.UnfinalizedBlock, tx *sqlx.Tx) error 
 
 func UpdateUnfinalizedBlockStatus(root []byte, status uint32, tx *sqlx.Tx) error {
 	_, err := tx.Exec(`UPDATE unfinalized_blocks SET status = $1 WHERE root = $2`, status, root)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func UpdateUnfinalizedBlockForkId(roots [][]byte, forkId uint64, tx *sqlx.Tx) error {
+	_, err := tx.Exec(`UPDATE unfinalized_blocks SET fork_id = $1 WHERE root IN ($2)`, forkId, roots)
 	if err != nil {
 		return err
 	}

@@ -27,6 +27,7 @@ type Indexer struct {
 	disableSync           bool
 	inMemoryEpochs        uint16
 	maxParallelStateCalls uint16
+	minForkDistance       uint16
 	cachePersistenceDelay uint16
 
 	// state
@@ -35,6 +36,7 @@ type Indexer struct {
 	clients    []*Client
 	blockCache *blockCache
 	epochCache *epochCache
+	forkCache  *forkCache
 
 	// worker state
 	lastFinalizedEpoch    phase0.Epoch
@@ -76,6 +78,7 @@ func NewIndexer(logger logrus.FieldLogger, consensusPool *consensus.Pool) *Index
 		disableSync:           utils.Config.Indexer.DisableSynchronizer,
 		inMemoryEpochs:        inMemoryEpochs,
 		maxParallelStateCalls: maxParallelStateCalls,
+		minForkDistance:       3,
 		cachePersistenceDelay: cachePersistenceDelay,
 
 		dynSsz:  dynssz.NewDynSsz(staticSpec),
@@ -84,6 +87,7 @@ func NewIndexer(logger logrus.FieldLogger, consensusPool *consensus.Pool) *Index
 
 	indexer.blockCache = newBlockCache(indexer)
 	indexer.epochCache = newEpochCache(indexer)
+	indexer.forkCache = newForkCache(indexer)
 
 	return indexer
 }
@@ -117,10 +121,16 @@ func (indexer *Indexer) StartIndexer() {
 	}
 
 	indexer.running = true
-
-	// prefill block cache with all unfinalized blocks from db
 	chainState := indexer.consensusPool.GetChainState()
 	finalizedSlot := chainState.GetFinalizedSlot()
+
+	// restore unfinalized forks from db
+	for _, dbFork := range db.GetUnfinalizedForks(uint64(finalizedSlot)) {
+		fork := newForkFromDb(dbFork, indexer.forkCache)
+		indexer.forkCache.addFork(fork)
+	}
+
+	// prefill block cache with all unfinalized blocks from db
 	restoredBlockCount := 0
 	restoredBodyCount := 0
 
@@ -135,6 +145,7 @@ func (indexer *Indexer) StartIndexer() {
 		}
 
 		block, _ := indexer.blockCache.createOrGetBlock(phase0.Root(dbBlock.Root), phase0.Slot(dbBlock.Slot))
+		block.forkId = ForkKey(dbBlock.ForkId)
 		block.isInUnfinalizedDb = true
 
 		if dbBlock.HeaderVer != 1 {

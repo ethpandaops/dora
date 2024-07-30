@@ -21,6 +21,7 @@ type Block struct {
 	dynSsz            *dynssz.DynSsz
 	parentRoot        *phase0.Root
 	dependentRoot     *phase0.Root
+	forkId            ForkKey
 	headerMutex       sync.Mutex
 	headerChan        chan bool
 	header            *phase0.SignedBeaconBlockHeader

@@ -225,7 +225,7 @@ func (c *Client) processReorg(oldHead *Block, newHead *Block) error {
 	rewindDistance := uint64(0)
 
 	for {
-		if res, dist := c.indexer.blockCache.getCanonicalDistance(reorgBase.Root, newHead.Root); res {
+		if res, dist := c.indexer.blockCache.getCanonicalDistance(reorgBase.Root, newHead.Root, 0); res {
 			forwardDistance = dist
 			break
 		}
@@ -292,6 +292,14 @@ func (c *Client) processBlock(slot phase0.Slot, root phase0.Root, header *phase0
 	}
 
 	if slot >= finalizedSlot && isNew {
+		// fork detection
+		forkId, err2 := c.indexer.forkCache.processBlock(block)
+		block.forkId = forkId
+
+		if err2 != nil {
+			c.logger.Warnf("failed processing new fork: %v", err2)
+		}
+
 		// insert into unfinalized blocks
 		var dbBlock *dbtypes.UnfinalizedBlock
 		dbBlock, err = block.buildUnfinalizedBlock()
@@ -299,8 +307,14 @@ func (c *Client) processBlock(slot phase0.Slot, root phase0.Root, header *phase0
 			return
 		}
 
+		// write to db
 		err = db.RunDBTransaction(func(tx *sqlx.Tx) error {
-			return db.InsertUnfinalizedBlock(dbBlock, tx)
+			err := db.InsertUnfinalizedBlock(dbBlock, tx)
+			if err != nil {
+				return err
+			}
+
+			return nil
 		})
 		if err != nil {
 			return

@@ -98,6 +98,16 @@ type UnfinalizedBlock struct {
 	BlockVer  uint64 `db:"block_ver"`
 	BlockSSZ  []byte `db:"block_ssz"`
 	Status    uint32 `db:"status"`
+	ForkId    uint64 `db:"fork_id"`
+}
+
+type Fork struct {
+	ForkId     uint64 `db:"fork_id"`
+	BaseSlot   uint64 `db:"base_slot"`
+	BaseRoot   []byte `db:"base_root"`
+	LeafSlot   uint64 `db:"leaf_slot"`
+	LeafRoot   []byte `db:"leaf_root"`
+	ParentFork uint64 `db:"parent_fork"`
 }
 
 type Blob struct {
