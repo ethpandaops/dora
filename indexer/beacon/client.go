@@ -187,36 +187,29 @@ func (c *Client) processHeadEvent(headEvent *v1.HeadEvent) error {
 	if !bytes.Equal(dependentRoot[:], consensus.NullRoot[:]) {
 		block.dependentRoot = &dependentRoot
 
-		dependentBlock := c.indexer.blockCache.getBlockByRoot(dependentRoot)
+		dependentBlock = c.indexer.blockCache.getBlockByRoot(dependentRoot)
 		if dependentBlock == nil {
 			c.logger.Warnf("dependent block (%v) not found after backfilling", dependentRoot.String())
 		}
+	} else {
+		dependentBlock = c.indexer.blockCache.getDependentBlock(chainState, block, c)
 	}
 
 	currentBlock := block
 	minInMemorySlot := c.indexer.getMinInMemorySlot()
 	for {
-		if bytes.Equal(dependentRoot[:], consensus.NullRoot[:]) || dependentBlock == nil {
-			dependentBlock = c.indexer.blockCache.getDependentBlock(chainState, currentBlock, c)
-			if dependentBlock != nil {
-				dependentRoot = dependentBlock.Root
-			} else {
-				dependentRoot = consensus.NullRoot
-			}
-		}
-
-		if !bytes.Equal(dependentRoot[:], consensus.NullRoot[:]) && currentBlock.Slot >= minInMemorySlot {
+		if dependentBlock != nil && currentBlock.Slot >= minInMemorySlot {
 			// ensure epoch stats are in loading queue
-			epochStats, _ := c.indexer.epochCache.createOrGetEpochStats(chainState.EpochOfSlot(currentBlock.Slot), dependentRoot)
+			epochStats, _ := c.indexer.epochCache.createOrGetEpochStats(chainState.EpochOfSlot(currentBlock.Slot), dependentBlock.Root)
 			if !epochStats.addRequestedBy(c) {
 				break
 			}
-
-			currentBlock = dependentBlock
-			dependentBlock = nil
 		} else {
 			break
 		}
+
+		currentBlock = dependentBlock
+		dependentBlock = c.indexer.blockCache.getDependentBlock(chainState, currentBlock, c)
 	}
 
 	c.headRoot = block.Root

@@ -24,7 +24,7 @@ func newDbWriter(indexer *Indexer) *dbWriter {
 
 func (dbw *dbWriter) persistMissedSlots(tx *sqlx.Tx, epoch phase0.Epoch, blocks []*Block, epochStats *EpochStats) error {
 	chainState := dbw.indexer.consensusPool.GetChainState()
-	epochStatsValues := epochStats.GetValues()
+	epochStatsValues := epochStats.GetValues(chainState)
 
 	// insert missed slots
 	firstSlot := chainState.EpochStartSlot(epoch)
@@ -255,7 +255,7 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 
 func (dbw *dbWriter) buildDbEpoch(epoch phase0.Epoch, blocks []*Block, epochStats *EpochStats, epochVotes *EpochVotes, blockFn func(block *Block, depositIndex *uint64)) *dbtypes.Epoch {
 	chainState := dbw.indexer.consensusPool.GetChainState()
-	epochStatsValues := epochStats.GetValues()
+	epochStatsValues := epochStats.GetValues(chainState)
 
 	// insert missed slots
 	firstSlot := chainState.EpochStartSlot(epoch)

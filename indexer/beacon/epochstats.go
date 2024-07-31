@@ -369,10 +369,18 @@ func (es *EpochStats) processState(indexer *Indexer) {
 }
 
 // GetValues returns the EpochStats values.
-func (es *EpochStats) GetValues() *EpochStatsValues {
+func (es *EpochStats) GetValues(chainState *consensus.ChainState) *EpochStatsValues {
 	if es == nil {
 		return nil
 	}
 
-	return es.values
+	if es.values != nil {
+		return es.values
+	}
+
+	if es.packedValues != nil {
+		return es.getUnpackedValues(chainState)
+	}
+
+	return nil
 }

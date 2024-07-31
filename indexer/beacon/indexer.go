@@ -161,10 +161,15 @@ func (indexer *Indexer) StartIndexer() {
 		}
 
 		restoredEpochStats++
-		if dbDuty.Epoch < uint64(indexer.lastPrunedEpoch) {
-			epochStats.packValues()
+		if dbDuty.Epoch >= uint64(indexer.lastPrunedEpoch) {
+			epochStats.unpackValues(chainState)
 		}
 	})
+	if err != nil {
+		indexer.logger.WithError(err).Errorf("failed restoring unfinalized epoch stats from DB")
+	} else {
+		indexer.logger.Infof("restored %v unfinalized epoch stats from DB", restoredEpochStats)
+	}
 
 	// prefill block cache with all unfinalized blocks from db
 	restoredBlockCount := 0

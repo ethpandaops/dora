@@ -243,7 +243,7 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 		return fmt.Errorf("missing epoch stats for epoch %v", epoch)
 	}
 
-	epochStatsValues := epochStats.GetValues()
+	epochStatsValues := epochStats.GetValues(chainState)
 	if epochStatsValues == nil {
 		return fmt.Errorf("missing epoch stats values for epoch %v", epoch)
 	}
