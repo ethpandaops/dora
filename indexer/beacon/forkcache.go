@@ -14,9 +14,10 @@ import (
 
 // forkCache is a struct that represents the fork cache in the indexer.
 type forkCache struct {
-	indexer    *Indexer
-	cacheMutex sync.RWMutex
-	forkMap    map[ForkKey]*Fork
+	indexer         *Indexer
+	cacheMutex      sync.RWMutex
+	forkMap         map[ForkKey]*Fork
+	finalizedForkId ForkKey
 
 	forkProcessLock sync.Mutex
 }
@@ -66,6 +67,30 @@ func (cache *forkCache) getForksBefore(slot phase0.Slot) []*Fork {
 	}
 
 	return forks
+}
+
+func (cache *forkCache) setFinalizedEpoch(finalizedSlot phase0.Slot, justifiedRoot phase0.Root) {
+	cache.cacheMutex.Lock()
+	defer cache.cacheMutex.Unlock()
+
+	closestForkId := ForkKey(0)
+	closestDistance := uint64(0)
+
+	for _, fork := range cache.forkMap {
+		if fork.baseSlot >= finalizedSlot {
+			continue
+		}
+
+		isInFork, distance := cache.indexer.blockCache.getCanonicalDistance(fork.leafRoot, justifiedRoot, 0)
+		if isInFork && (closestForkId == 0 || distance < closestDistance) {
+			closestForkId = fork.forkId
+			closestDistance = distance
+		}
+
+		delete(cache.forkMap, fork.forkId)
+	}
+
+	cache.finalizedForkId = closestForkId
 }
 
 // getClosestFork finds the closest fork that a given block is part of.
@@ -191,9 +216,17 @@ func (cache *forkCache) processBlock(block *Block) (ForkKey, error) {
 
 	parentFork := cache.getClosestFork(block)
 
-	var parentForkId ForkKey
+	parentForkId := cache.finalizedForkId
 	if parentFork != nil {
 		parentForkId = parentFork.forkId
+	} else {
+		parentRoot := block.GetParentRoot()
+		if parentRoot != nil {
+			parentBlock := cache.indexer.blockCache.getBlockByRoot(*parentRoot)
+			if parentBlock != nil {
+				parentForkId = parentBlock.forkId
+			}
+		}
 	}
 
 	forkBlocks := cache.indexer.blockCache.getForkBlocks(parentForkId)

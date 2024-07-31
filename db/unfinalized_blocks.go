@@ -36,7 +36,24 @@ func UpdateUnfinalizedBlockStatus(root []byte, status uint32, tx *sqlx.Tx) error
 }
 
 func UpdateUnfinalizedBlockForkId(roots [][]byte, forkId uint64, tx *sqlx.Tx) error {
-	_, err := tx.Exec(`UPDATE unfinalized_blocks SET fork_id = $1 WHERE root IN ($2)`, forkId, roots)
+	var sql strings.Builder
+	args := []any{}
+
+	fmt.Fprint(&sql, `UPDATE unfinalized_blocks SET fork_id = $1 WHERE root IN (`)
+	args = append(args, forkId)
+
+	for i, root := range roots {
+		if i > 0 {
+			fmt.Fprint(&sql, ",")
+		}
+
+		args = append(args, root)
+		fmt.Fprintf(&sql, "$%v", len(args))
+	}
+
+	fmt.Fprint(&sql, ")")
+
+	_, err := tx.Exec(sql.String(), args...)
 	if err != nil {
 		return err
 	}

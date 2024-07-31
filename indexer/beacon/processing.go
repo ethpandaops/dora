@@ -129,10 +129,12 @@ func (indexer *Indexer) processFinalityEvent(finalityEvent *v1.Finality) error {
 
 func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.Root, client *Client) error {
 	epochBlocks := indexer.blockCache.getEpochBlocks(epoch)
+	nextEpochBlocks := indexer.blockCache.getEpochBlocks(epoch + 1)
 	chainState := indexer.consensusPool.GetChainState()
 
 	canonicalBlocks := []*Block{}
 	orphanedBlocks := []*Block{}
+	nextEpochCanonicalBlocks := []*Block{}
 
 	var dependentRoot phase0.Root
 
@@ -158,12 +160,21 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 
 			orphanedBlocks = append(orphanedBlocks, block)
 		}
+	}
 
+	for _, block := range nextEpochBlocks {
+		if indexer.blockCache.isCanonicalBlock(block.Root, justifiedRoot) {
+			block.unpruneBlockBody()
+			nextEpochCanonicalBlocks = append(nextEpochCanonicalBlocks, block)
+		}
 	}
 
 	// sort by slot, all aggregations expect blocks in ascending order
 	sort.Slice(canonicalBlocks, func(i, j int) bool {
 		return canonicalBlocks[i].Slot < canonicalBlocks[j].Slot
+	})
+	sort.Slice(nextEpochCanonicalBlocks, func(i, j int) bool {
+		return nextEpochCanonicalBlocks[i].Slot < nextEpochCanonicalBlocks[j].Slot
 	})
 
 	// check if first canonical block is really the first block of the epoch
@@ -249,7 +260,10 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 	}
 
 	// compute votes for canonical blocks
-	epochVotes := indexer.aggregateEpochVotes(chainState, canonicalBlocks, epochStats)
+	votingBlocks := make([]*Block, len(canonicalBlocks)+len(nextEpochCanonicalBlocks))
+	copy(votingBlocks, canonicalBlocks)
+	copy(votingBlocks[len(canonicalBlocks):], nextEpochCanonicalBlocks)
+	epochVotes := indexer.aggregateEpochVotes(chainState, votingBlocks, epochStats)
 	if epochVotes == nil {
 		return fmt.Errorf("failed computing votes for epoch %v", epoch)
 	}
@@ -323,6 +337,7 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 	}
 
 	// clean fork cache
+	indexer.forkCache.setFinalizedEpoch(deleteBeforeSlot, justifiedRoot)
 	for _, fork := range indexer.forkCache.getForksBefore(deleteBeforeSlot) {
 		indexer.forkCache.removeFork(fork.forkId)
 	}

@@ -248,6 +248,7 @@ func (indexer *Indexer) runIndexerLoop() {
 			if err != nil {
 				indexer.logger.WithError(err).Errorf("error processing finality event (epoch: %v, root: %v)", finalityEvent.Finalized.Epoch, finalityEvent.Finalized.Root.String())
 			}
+
 		case slotEvent := <-indexer.wallclockSubscription.Channel():
 			epoch := chainState.EpochOfSlot(phase0.Slot(slotEvent.Number()))
 			slotIndex := chainState.SlotToSlotIndex(phase0.Slot(slotEvent.Number()))
