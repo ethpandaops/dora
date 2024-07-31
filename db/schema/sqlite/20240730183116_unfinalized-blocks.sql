@@ -26,6 +26,53 @@ CREATE INDEX IF NOT EXISTS "forks_base_root_idx"
     ON "forks" 
     ("base_root" ASC);
 
+CREATE TABLE IF NOT EXISTS "unfinalized_duties"
+(
+    "epoch" bigint NOT NULL,
+    "dependent_root" BLOB NOT NULL,
+    "duties" BLOB NOT NULL,
+    CONSTRAINT "unfinalized_duties_pkey" PRIMARY KEY ("epoch", "dependent_root")
+);
+
+-- add fork_id to slots
+ALTER TABLE "slots"
+ADD "fork_id" BIGINT NOT NULL DEFAULT 0;
+
+UPDATE "slots" SET "fork_id" = 1 WHERE "status" = 2;
+
+CREATE INDEX IF NOT EXISTS "slots_fork_id_idx"
+    ON "slots" 
+    ("fork_id" ASC);
+
+-- add fork_id to deposits
+ALTER TABLE "deposits"
+ADD "fork_id" BIGINT NOT NULL DEFAULT 0;
+
+UPDATE "deposits" SET "fork_id" = 1 WHERE "orphaned" = TRUE;
+
+CREATE INDEX IF NOT EXISTS "deposits_fork_id_idx"
+    ON "deposits" 
+    ("fork_id" ASC);
+
+-- add fork_id to voluntary_exits
+ALTER TABLE "voluntary_exits"
+ADD "fork_id" BIGINT NOT NULL DEFAULT 0;
+
+UPDATE "voluntary_exits" SET "fork_id" = 1 WHERE "orphaned" = TRUE;
+
+CREATE INDEX IF NOT EXISTS "voluntary_exits_fork_id_idx"
+    ON "voluntary_exits" 
+    ("fork_id" ASC);
+
+-- add fork_id to slashings
+ALTER TABLE "slashings"
+ADD "fork_id" BIGINT NOT NULL DEFAULT 0;
+
+UPDATE "slashings" SET "fork_id" = 1 WHERE "orphaned" = TRUE;
+
+CREATE INDEX IF NOT EXISTS "slashings_fork_id_idx"
+    ON "slashings" 
+    ("fork_id" ASC);
 
 -- +goose StatementEnd
 -- +goose Down

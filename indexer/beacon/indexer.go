@@ -1,6 +1,8 @@
 package beacon
 
 import (
+	"bytes"
+	"math/rand/v2"
 	"runtime/debug"
 	"time"
 
@@ -28,7 +30,6 @@ type Indexer struct {
 	disableSync           bool
 	inMemoryEpochs        uint16
 	maxParallelStateCalls uint16
-	minForkDistance       uint16
 	cachePersistenceDelay uint16
 
 	// caches
@@ -38,10 +39,11 @@ type Indexer struct {
 
 	// indexer state
 	clients               []*Client
+	dbWriter              *dbWriter
 	running               bool
 	lastFinalizedEpoch    phase0.Epoch
 	lastFinalizedRoot     phase0.Root
-	lastPruningEpoch      phase0.Epoch
+	lastPrunedEpoch       phase0.Epoch
 	finalitySubscription  *consensus.Subscription[*v1.Finality]
 	wallclockSubscription *consensus.Subscription[*ethwallclock.Slot]
 }
@@ -79,7 +81,6 @@ func NewIndexer(logger logrus.FieldLogger, consensusPool *consensus.Pool) *Index
 		disableSync:           utils.Config.Indexer.DisableSynchronizer,
 		inMemoryEpochs:        inMemoryEpochs,
 		maxParallelStateCalls: maxParallelStateCalls,
-		minForkDistance:       3,
 		cachePersistenceDelay: cachePersistenceDelay,
 
 		clients: make([]*Client, 0),
@@ -88,21 +89,27 @@ func NewIndexer(logger logrus.FieldLogger, consensusPool *consensus.Pool) *Index
 	indexer.blockCache = newBlockCache(indexer)
 	indexer.epochCache = newEpochCache(indexer)
 	indexer.forkCache = newForkCache(indexer)
+	indexer.dbWriter = newDbWriter(indexer)
 
 	return indexer
+}
+
+func (indexer *Indexer) getMinInMemoryEpoch() phase0.Epoch {
+	minInMemoryEpoch := phase0.Epoch(0)
+	if indexer.lastFinalizedEpoch > 0 {
+		minInMemoryEpoch = indexer.lastFinalizedEpoch - 1
+	}
+	if indexer.lastPrunedEpoch > 0 && indexer.lastPrunedEpoch > minInMemoryEpoch {
+		minInMemoryEpoch = indexer.lastPrunedEpoch - 1
+	}
+
+	return minInMemoryEpoch
 }
 
 // getMinInMemorySlot returns the minimum in-memory slot based on the indexer's configuration.
 func (indexer *Indexer) getMinInMemorySlot() phase0.Slot {
 	chainState := indexer.consensusPool.GetChainState()
-	minInMemoryEpoch := chainState.CurrentEpoch()
-	if minInMemoryEpoch > phase0.Epoch(indexer.inMemoryEpochs) {
-		minInMemoryEpoch -= phase0.Epoch(indexer.inMemoryEpochs)
-	} else {
-		minInMemoryEpoch = 0
-	}
-
-	return chainState.EpochToSlot(minInMemoryEpoch)
+	return chainState.EpochToSlot(indexer.getMinInMemoryEpoch() + 1)
 }
 
 // AddClient adds a new consensus pool client to the indexer.
@@ -123,6 +130,16 @@ func (indexer *Indexer) StartIndexer() {
 	indexer.running = true
 	chainState := indexer.consensusPool.GetChainState()
 	finalizedSlot := chainState.GetFinalizedSlot()
+	finalizedEpoch, _ := chainState.GetFinalizedCheckpoint()
+	indexer.lastFinalizedEpoch = finalizedEpoch
+
+	pruneState := dbtypes.IndexerPruneState{}
+	db.GetExplorerState("indexer.prunestate", &pruneState)
+	indexer.lastPrunedEpoch = phase0.Epoch(pruneState.Epoch)
+
+	if indexer.lastPrunedEpoch < finalizedEpoch {
+		indexer.lastPrunedEpoch = finalizedEpoch
+	}
 
 	// restore unfinalized forks from db
 	for _, dbFork := range db.GetUnfinalizedForks(uint64(finalizedSlot)) {
@@ -130,16 +147,30 @@ func (indexer *Indexer) StartIndexer() {
 		indexer.forkCache.addFork(fork)
 	}
 
+	// restore unfinalized epoch stats from db
+	restoredEpochStats := 0
+	err := db.StreamUnfinalizedDuties(func(dbDuty *dbtypes.UnfinalizedDuty) {
+		if dbDuty.Epoch < uint64(finalizedEpoch) {
+			return
+		}
+
+		epochStats, err := indexer.epochCache.restoreEpochStats(dbDuty)
+		if err != nil {
+			indexer.logger.WithError(err).Errorf("failed restoring epoch stats for epoch %v (%x) from db", dbDuty.Epoch, dbDuty.DependentRoot)
+			return
+		}
+
+		restoredEpochStats++
+		if dbDuty.Epoch < uint64(indexer.lastPrunedEpoch) {
+			epochStats.packValues()
+		}
+	})
+
 	// prefill block cache with all unfinalized blocks from db
 	restoredBlockCount := 0
 	restoredBodyCount := 0
 
-	loadMinSlot := indexer.getMinInMemorySlot()
-	if loadMinSlot < finalizedSlot {
-		loadMinSlot = finalizedSlot
-	}
-
-	err := db.StreamUnfinalizedBlocks(func(dbBlock *dbtypes.UnfinalizedBlock) {
+	err = db.StreamUnfinalizedBlocks(func(dbBlock *dbtypes.UnfinalizedBlock) {
 		if dbBlock.Slot < uint64(finalizedSlot) {
 			return
 		}
@@ -189,10 +220,6 @@ func (indexer *Indexer) StartIndexer() {
 	// add indexer event handlers
 	indexer.finalitySubscription = indexer.consensusPool.SubscribeFinalizedEvent(10)
 	indexer.wallclockSubscription = indexer.consensusPool.SubscribeWallclockSlotEvent(1)
-	finalizedEpoch, finalizedRoot := chainState.GetFinalizedCheckpoint()
-	indexer.lastFinalizedEpoch = finalizedEpoch
-	indexer.lastFinalizedRoot = finalizedRoot
-	indexer.lastPruningEpoch = chainState.CurrentEpoch()
 
 	go indexer.runIndexerLoop()
 }
@@ -222,15 +249,38 @@ func (indexer *Indexer) runIndexerLoop() {
 			slotProgress := uint8(100 / chainState.GetSpecs().SlotsPerEpoch * uint64(slotIndex))
 
 			// prune cache if last pruning epoch is outdated and we are at least 50% into the current
-			if epoch > indexer.lastPruningEpoch && slotProgress >= 50 {
+			if epoch > indexer.lastPrunedEpoch && slotProgress >= 50 {
 				err := indexer.processCachePruning()
 				if err != nil {
 					indexer.logger.WithError(err).Errorf("failed pruning cache")
 				}
 
-				indexer.lastPruningEpoch = epoch
+				indexer.lastPrunedEpoch = epoch
 			}
 
 		}
 	}
+}
+
+func (indexer *Indexer) GetReadyClientsByCheckpoint(finalizedRoot phase0.Root) []*Client {
+	clients := make([]*Client, 0)
+
+	for _, client := range indexer.clients {
+		if client.client.GetStatus() != consensus.ClientStatusOnline {
+			continue
+		}
+
+		_, root, _, _ := client.client.GetFinalityCheckpoint()
+		if !bytes.Equal(root[:], finalizedRoot[:]) {
+			continue
+		}
+
+		clients = append(clients, client)
+	}
+
+	rand.Shuffle(len(clients), func(i, j int) {
+		clients[i], clients[j] = clients[j], clients[i]
+	})
+
+	return clients
 }

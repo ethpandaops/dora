@@ -45,6 +45,29 @@ func (cache *forkCache) addFork(fork *Fork) {
 	cache.forkMap[fork.forkId] = fork
 }
 
+// removeFork removes a fork from the cache.
+func (cache *forkCache) removeFork(forkId ForkKey) {
+	cache.cacheMutex.Lock()
+	defer cache.cacheMutex.Unlock()
+
+	delete(cache.forkMap, forkId)
+}
+
+// getForksBefore retrieves all forks that happened before the given slot.
+func (cache *forkCache) getForksBefore(slot phase0.Slot) []*Fork {
+	cache.cacheMutex.RLock()
+	defer cache.cacheMutex.RUnlock()
+
+	var forks []*Fork
+	for _, fork := range cache.forkMap {
+		if fork.baseSlot < slot {
+			forks = append(forks, fork)
+		}
+	}
+
+	return forks
+}
+
 // getClosestFork finds the closest fork that a given block is part of.
 func (cache *forkCache) getClosestFork(block *Block) *Fork {
 	cache.cacheMutex.RLock()
@@ -185,7 +208,7 @@ func (cache *forkCache) processBlock(block *Block) (ForkKey, error) {
 		}
 
 		baseBlock, distance1, leaf1, distance2, leaf2 := cache.checkForkDistance(block, forkBlock, parentsMap)
-		if baseBlock != nil && distance1 > uint64(cache.indexer.minForkDistance) && distance2 > uint64(cache.indexer.minForkDistance) {
+		if baseBlock != nil && distance1 > 0 && distance2 > 0 {
 			// new fork detected
 			var fork1, fork2 *Fork
 			var fork1Roots, fork2Roots [][]byte

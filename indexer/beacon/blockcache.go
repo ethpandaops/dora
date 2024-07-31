@@ -108,6 +108,42 @@ func (cache *blockCache) getForkBlocks(forkId ForkKey) []*Block {
 	return blocks
 }
 
+func (cache *blockCache) removeBlock(block *Block) {
+	cache.cacheMutex.Lock()
+	defer cache.cacheMutex.Unlock()
+
+	delete(cache.rootMap, block.Root)
+
+	slotBlocks := cache.slotMap[block.Slot]
+	if len(slotBlocks) == 1 && slotBlocks[0] == block {
+		delete(cache.slotMap, block.Slot)
+	} else if len(slotBlocks) > 1 {
+		for i, slotBlock := range slotBlocks {
+			if slotBlock == block {
+				cache.slotMap[block.Slot] = append(slotBlocks[:i], slotBlocks[i+1:]...)
+				break
+			}
+		}
+	}
+}
+
+func (cache *blockCache) getEpochBlocks(epoch phase0.Epoch) []*Block {
+	cache.cacheMutex.RLock()
+	defer cache.cacheMutex.RUnlock()
+
+	blocks := []*Block{}
+
+	for slot, slotBlocks := range cache.slotMap {
+		if cache.indexer.consensusPool.GetChainState().EpochOfSlot(slot) != epoch {
+			continue
+		}
+
+		blocks = append(blocks, slotBlocks...)
+	}
+
+	return blocks
+}
+
 // isCanonicalBlock checks if the block with the given blockRoot is a canonical block with respect to the block with the given head.
 func (cache *blockCache) isCanonicalBlock(blockRoot phase0.Root, head phase0.Root) bool {
 	res, _ := cache.getCanonicalDistance(blockRoot, head, 0)
@@ -161,9 +197,29 @@ func (cache *blockCache) getCanonicalDistance(blockRoot phase0.Root, head phase0
 }
 
 // getDependentBlock returns the dependent block of the given block based on the chain state.
-func (cache *blockCache) getDependentBlock(chainState *consensus.ChainState, block *Block) *Block {
+func (cache *blockCache) getDependentBlock(chainState *consensus.ChainState, block *Block, client *Client) *Block {
 	if block.dependentRoot != nil {
-		return cache.getBlockByRoot(*block.dependentRoot)
+		dependentBlock := cache.getBlockByRoot(*block.dependentRoot)
+		if dependentBlock == nil {
+			blockHead := db.GetBlockHeadByRoot((*block.dependentRoot)[:])
+			if blockHead != nil {
+				dependentBlock = newBlock(cache.indexer.dynSsz, phase0.Root(blockHead.Root), phase0.Slot(blockHead.Slot))
+				dependentBlock.isInFinalizedDb = true
+				parentRootVal := phase0.Root(blockHead.ParentRoot)
+				dependentBlock.parentRoot = &parentRootVal
+			}
+		}
+
+		if dependentBlock == nil && client != nil {
+			blockHead, _ := client.loadHeader(*block.dependentRoot)
+			if blockHead != nil {
+				dependentBlock = newBlock(cache.indexer.dynSsz, *block.dependentRoot, phase0.Slot(blockHead.Message.Slot))
+				parentRootVal := phase0.Root(blockHead.Message.ParentRoot)
+				dependentBlock.parentRoot = &parentRootVal
+			}
+		}
+
+		return dependentBlock
 	}
 
 	parentRoot := block.GetParentRoot()
@@ -177,14 +233,26 @@ func (cache *blockCache) getDependentBlock(chainState *consensus.ChainState, blo
 		parentBlock := cache.getBlockByRoot(*parentRoot)
 		if parentBlock == nil {
 			blockHead := db.GetBlockHeadByRoot((*parentRoot)[:])
-			if blockHead == nil {
-				break
+			if blockHead != nil {
+				parentBlock = newBlock(cache.indexer.dynSsz, phase0.Root(blockHead.Root), phase0.Slot(blockHead.Slot))
+				parentBlock.isInFinalizedDb = true
+				parentRootVal := phase0.Root(blockHead.ParentRoot)
+				parentBlock.parentRoot = &parentRootVal
 			}
+		}
 
-			parentBlock = newBlock(cache.indexer.dynSsz, phase0.Root(blockHead.Root), phase0.Slot(blockHead.Slot))
-			parentBlock.isInFinalizedDb = true
-			parentRootVal := phase0.Root(blockHead.ParentRoot)
-			parentBlock.parentRoot = &parentRootVal
+		if parentBlock == nil && client != nil {
+			blockHead, _ := client.loadHeader(*parentRoot)
+			client = nil // only load one header, that's probably the dependent root block (last block of previous epoch)
+			if blockHead != nil {
+				parentBlock = newBlock(cache.indexer.dynSsz, *parentRoot, phase0.Slot(blockHead.Message.Slot))
+				parentRootVal := phase0.Root(blockHead.Message.ParentRoot)
+				parentBlock.parentRoot = &parentRootVal
+			}
+		}
+
+		if parentBlock == nil {
+			break
 		}
 
 		if chainState.EpochOfSlot(parentBlock.Slot) < blockEpoch {

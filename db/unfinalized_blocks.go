@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/ethpandaops/dora/dbtypes"
-	"github.com/ethpandaops/dora/utils"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -122,12 +121,8 @@ func GetUnfinalizedBlock(root []byte) *dbtypes.UnfinalizedBlock {
 	return &block
 }
 
-func DeleteUnfinalizedBefore(slot uint64, tx *sqlx.Tx) error {
+func DeleteUnfinalizedBlocksBefore(slot uint64, tx *sqlx.Tx) error {
 	_, err := tx.Exec(`DELETE FROM unfinalized_blocks WHERE slot < $1`, slot)
-	if err != nil {
-		return err
-	}
-	_, err = tx.Exec(`DELETE FROM unfinalized_epochs WHERE epoch < $1`, utils.EpochOfSlot(slot))
 	if err != nil {
 		return err
 	}

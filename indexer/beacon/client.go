@@ -182,17 +182,41 @@ func (c *Client) processHeadEvent(headEvent *v1.HeadEvent) error {
 
 	chainState := c.client.GetPool().GetChainState()
 	dependentRoot := headEvent.CurrentDutyDependentRoot
-	if bytes.Equal(dependentRoot[:], consensus.NullRoot[:]) {
-		dependentBlock := c.indexer.blockCache.getDependentBlock(chainState, block)
-		if dependentBlock != nil {
-			dependentRoot = dependentBlock.Root
+
+	var dependentBlock *Block
+	if !bytes.Equal(dependentRoot[:], consensus.NullRoot[:]) {
+		block.dependentRoot = &dependentRoot
+
+		dependentBlock := c.indexer.blockCache.getBlockByRoot(dependentRoot)
+		if dependentBlock == nil {
+			c.logger.Warnf("dependent block (%v) not found after backfilling", dependentRoot.String())
 		}
 	}
 
-	if !bytes.Equal(dependentRoot[:], consensus.NullRoot[:]) && block.Slot >= c.indexer.getMinInMemorySlot() {
-		// ensure epoch stats are in loading queue
-		epochStats, _ := c.indexer.epochCache.createOrGetEpochStats(chainState.EpochOfSlot(block.Slot), dependentRoot)
-		epochStats.addRequestedBy(c)
+	currentBlock := block
+	minInMemorySlot := c.indexer.getMinInMemorySlot()
+	for {
+		if bytes.Equal(dependentRoot[:], consensus.NullRoot[:]) || dependentBlock == nil {
+			dependentBlock = c.indexer.blockCache.getDependentBlock(chainState, currentBlock, c)
+			if dependentBlock != nil {
+				dependentRoot = dependentBlock.Root
+			} else {
+				dependentRoot = consensus.NullRoot
+			}
+		}
+
+		if !bytes.Equal(dependentRoot[:], consensus.NullRoot[:]) && currentBlock.Slot >= minInMemorySlot {
+			// ensure epoch stats are in loading queue
+			epochStats, _ := c.indexer.epochCache.createOrGetEpochStats(chainState.EpochOfSlot(currentBlock.Slot), dependentRoot)
+			if !epochStats.addRequestedBy(c) {
+				break
+			}
+
+			currentBlock = dependentBlock
+			dependentBlock = nil
+		} else {
+			break
+		}
 	}
 
 	c.headRoot = block.Root
@@ -363,7 +387,6 @@ func (c *Client) loadBlock(root phase0.Root) (*spec.VersionedSignedBeaconBlock, 
 // backfillParentBlocks backfills parent blocks up to the finalization checkpoint or known in cache.
 func (c *Client) backfillParentBlocks(headBlock *Block) error {
 	chainState := c.client.GetPool().GetChainState()
-	minInMemorySlot := c.indexer.getMinInMemorySlot()
 
 	// walk backwards and load all blocks until we reach a block that is marked as seen by this client or is smaller than finalized
 	parentRoot := *headBlock.GetParentRoot()
@@ -415,14 +438,6 @@ func (c *Client) backfillParentBlocks(headBlock *Block) error {
 			c.logger.Infof("received block %v:%v [0x%x] backfill", chainState.EpochOfSlot(parentSlot), parentSlot, parentRoot)
 		} else {
 			c.logger.Debugf("received known block %v:%v [0x%x] backfill", chainState.EpochOfSlot(parentSlot), parentSlot, parentRoot)
-		}
-
-		if parentSlot >= minInMemorySlot {
-			dependentBlock := c.indexer.blockCache.getDependentBlock(chainState, parentBlock)
-			if dependentBlock != nil {
-				epochStats, _ := c.indexer.epochCache.createOrGetEpochStats(chainState.EpochOfSlot(parentBlock.Slot), dependentBlock.Root)
-				epochStats.addRequestedBy(c)
-			}
 		}
 
 		if parentSlot == 0 {

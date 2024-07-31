@@ -14,14 +14,6 @@ CREATE INDEX IF NOT EXISTS "unfinalized_blocks_slot_idx"
     ON public."unfinalized_blocks" 
     ("slot" ASC NULLS LAST);
 
-CREATE TABLE IF NOT EXISTS public."unfinalized_duties"
-(
-    "epoch" bigint NOT NULL,
-    "dependent_root" bytea NOT NULL,
-    "duties" bytea NOT NULL,
-    CONSTRAINT "unfinalized_duties_pkey" PRIMARY KEY ("epoch", "dependent_root")
-);
-
 -- +goose StatementEnd
 -- +goose Down
 -- +goose StatementBegin

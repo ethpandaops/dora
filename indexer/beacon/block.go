@@ -120,7 +120,7 @@ func (block *Block) GetBlock() *spec.VersionedSignedBeaconBlock {
 		}
 	}
 
-	return block.block
+	return nil
 }
 
 // AwaitBlock waits for the versioned signed beacon block of this block to be available.
@@ -259,5 +259,38 @@ func (block *Block) buildUnfinalizedBlock() (*dbtypes.UnfinalizedBlock, error) {
 		HeaderSSZ: headerSSZ,
 		BlockVer:  blockVer,
 		BlockSSZ:  blockSSZ,
+		Status:    0,
+		ForkId:    uint64(block.forkId),
 	}, nil
+}
+
+func (block *Block) buildOrphanedBlock() (*dbtypes.OrphanedBlock, error) {
+	headerSSZ, err := block.header.MarshalSSZ()
+	if err != nil {
+		return nil, fmt.Errorf("marshal header ssz failed: %v", err)
+	}
+
+	blockVer, blockSSZ, err := marshalVersionedSignedBeaconBlockSSZ(block.dynSsz, block.GetBlock())
+	if err != nil {
+		return nil, fmt.Errorf("marshal block ssz failed: %v", err)
+	}
+
+	return &dbtypes.OrphanedBlock{
+		Root:      block.Root[:],
+		HeaderVer: 1,
+		HeaderSSZ: headerSSZ,
+		BlockVer:  blockVer,
+		BlockSSZ:  blockSSZ,
+	}, nil
+}
+
+func (block *Block) unpruneBlockBody() {
+	if block.block != nil || !block.isInUnfinalizedDb {
+		return
+	}
+
+	dbBlock := db.GetUnfinalizedBlock(block.Root[:])
+	if dbBlock != nil {
+		block.block, _ = unmarshalVersionedSignedBeaconBlockSSZ(block.dynSsz, dbBlock.BlockVer, dbBlock.BlockSSZ)
+	}
 }

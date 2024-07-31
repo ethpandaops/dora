@@ -19,6 +19,7 @@ const totalSize = seedSize + roundSize + positionWindowSize
 var maxShuffleListSize uint64 = 1 << 40
 
 type BeaconState struct {
+	RandaoMix           *phase0.Hash32
 	GetRandaoMixes      func() []phase0.Root
 	GetActiveIndices    func() []phase0.ValidatorIndex
 	GetEffectiveBalance func(index phase0.ValidatorIndex) phase0.Gwei
@@ -62,7 +63,13 @@ func GetRandaoMix(spec *consensus.ChainSpec, state *BeaconState, epoch phase0.Ep
 }
 
 func GetSeed(spec *consensus.ChainSpec, state *BeaconState, epoch phase0.Epoch, domainType phase0.DomainType) phase0.Hash32 {
-	mix := GetRandaoMix(spec, state, epoch+phase0.Epoch(spec.EpochsPerHistoricalVector-spec.MinSeedLookahead-1))
+	var mix phase0.Hash32
+	if state.RandaoMix == nil {
+		mix = GetRandaoMix(spec, state, epoch+phase0.Epoch(spec.EpochsPerHistoricalVector-spec.MinSeedLookahead-1))
+		state.RandaoMix = &mix
+	} else {
+		mix = *state.RandaoMix
+	}
 
 	data := []byte{}
 	data = append(data, domainType[:]...)

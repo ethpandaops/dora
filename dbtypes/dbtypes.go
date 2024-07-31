@@ -47,6 +47,7 @@ type Slot struct {
 	EthBlockExtra         []byte     `db:"eth_block_extra"`
 	EthBlockExtraText     string     `db:"eth_block_extra_text"`
 	SyncParticipation     float32    `db:"sync_participation"`
+	ForkId                uint64     `db:"fork_id"`
 }
 
 type Epoch struct {
@@ -108,6 +109,12 @@ type Fork struct {
 	LeafSlot   uint64 `db:"leaf_slot"`
 	LeafRoot   []byte `db:"leaf_root"`
 	ParentFork uint64 `db:"parent_fork"`
+}
+
+type UnfinalizedDuty struct {
+	Epoch         uint64 `db:"epoch"`
+	DependentRoot []byte `db:"dependent_root"`
+	DutiesSSZ     []byte `db:"duties"`
 }
 
 type Blob struct {
@@ -179,6 +186,7 @@ type Deposit struct {
 	PublicKey             []byte  `db:"publickey"`
 	WithdrawalCredentials []byte  `db:"withdrawalcredentials"`
 	Amount                uint64  `db:"amount"`
+	ForkId                uint64  `db:"fork_id"`
 }
 
 type VoluntaryExit struct {
@@ -187,6 +195,7 @@ type VoluntaryExit struct {
 	SlotRoot       []byte `db:"slot_root"`
 	Orphaned       bool   `db:"orphaned"`
 	ValidatorIndex uint64 `db:"validator"`
+	ForkId         uint64 `db:"fork_id"`
 }
 
 type SlashingReason uint8
@@ -205,6 +214,7 @@ type Slashing struct {
 	ValidatorIndex uint64         `db:"validator"`
 	SlasherIndex   uint64         `db:"slasher"`
 	Reason         SlashingReason `db:"reason"`
+	ForkId         uint64         `db:"fork_id"`
 }
 
 type Consolidation struct {

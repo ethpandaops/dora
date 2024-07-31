@@ -10,6 +10,7 @@ import (
 
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/clients/consensus"
+	"github.com/ethpandaops/dora/dbtypes"
 )
 
 // epochStatsKey is the primary key for EpochStats entries in cache.
@@ -66,7 +67,7 @@ func (cache *epochCache) createOrGetEpochStats(epoch phase0.Epoch, dependentRoot
 		return cache.statsMap[statsKey], false
 	}
 
-	cache.indexer.logger.Debugf("created epoch stats for epoch %v (%v)", epoch, dependentRoot.String())
+	cache.indexer.logger.Infof("created epoch stats for epoch %v (%v)", epoch, dependentRoot.String())
 
 	// get or create beacon state which the epoch status depends on (dependentRoot beacon state)
 	epochState := cache.stateMap[dependentRoot]
@@ -84,6 +85,30 @@ func (cache *epochCache) createOrGetEpochStats(epoch phase0.Epoch, dependentRoot
 	}
 
 	return epochStats, true
+}
+
+func (cache *epochCache) restoreEpochStats(dbDuty *dbtypes.UnfinalizedDuty) (*EpochStats, error) {
+	cache.cacheMutex.Lock()
+	defer cache.cacheMutex.Unlock()
+
+	statsKey := getEpochStatsKey(phase0.Epoch(dbDuty.Epoch), phase0.Root(dbDuty.DependentRoot))
+
+	epochStats := cache.statsMap[statsKey]
+	isNew := false
+	if epochStats == nil {
+		epochStats = newEpochStats(phase0.Epoch(dbDuty.Epoch), phase0.Root(dbDuty.DependentRoot), nil)
+		isNew = true
+	}
+
+	if err := epochStats.unmarshalSSZ(cache.indexer.dynSsz, dbDuty.DutiesSSZ); err != nil {
+		return nil, err
+	}
+
+	if isNew {
+		cache.statsMap[statsKey] = epochStats
+	}
+
+	return epochStats, nil
 }
 
 func (cache *epochCache) getEpochStats(epoch phase0.Epoch, dependentRoot phase0.Root) *EpochStats {
@@ -129,6 +154,20 @@ func (cache *epochCache) getPendingEpochStats() []*EpochStats {
 	return pendingStats
 }
 
+func (cache *epochCache) getEpochStatsByEpoch(epoch phase0.Epoch) []*EpochStats {
+	cache.cacheMutex.RLock()
+	defer cache.cacheMutex.RUnlock()
+
+	statsList := []*EpochStats{}
+	for _, stats := range cache.statsMap {
+		if stats.epoch == epoch {
+			statsList = append(statsList, stats)
+		}
+	}
+
+	return statsList
+}
+
 // removeEpochStats removes an EpochStats struct from cache.
 // stops loading state call if not referenced by another epoch status.
 func (cache *epochCache) removeEpochStats(epochStats *EpochStats) {
@@ -157,6 +196,12 @@ func (cache *epochCache) removeEpochStats(epochStats *EpochStats) {
 			epochStats.dependentState.dispose()
 			delete(cache.stateMap, epochStats.dependentRoot)
 		}
+	}
+}
+
+func (cache *epochCache) removeEpochStatsByEpoch(epoch phase0.Epoch) {
+	for _, stats := range cache.getEpochStatsByEpoch(epoch) {
+		cache.removeEpochStats(stats)
 	}
 }
 

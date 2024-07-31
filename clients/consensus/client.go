@@ -146,6 +146,13 @@ func (client *Client) GetLastClientError() error {
 	return client.lastError
 }
 
+func (client *Client) GetFinalityCheckpoint() (finalitedEpoch phase0.Epoch, finalizedRoot phase0.Root, justifiedEpoch phase0.Epoch, justifiedRoot phase0.Root) {
+	client.headMutex.RLock()
+	defer client.headMutex.RUnlock()
+
+	return client.finalizedEpoch, client.finalizedRoot, client.justifiedEpoch, client.justifiedRoot
+}
+
 func (client *Client) GetStatus() ClientStatus {
 	switch {
 	case client.isSyncing:

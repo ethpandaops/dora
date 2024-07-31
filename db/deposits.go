@@ -71,11 +71,11 @@ func InsertDeposits(deposits []*dbtypes.Deposit, tx *sqlx.Tx) error {
 			dbtypes.DBEnginePgsql:  "INSERT INTO deposits ",
 			dbtypes.DBEngineSqlite: "INSERT OR REPLACE INTO deposits ",
 		}),
-		"(deposit_index, slot_number, slot_index, slot_root, orphaned, publickey, withdrawalcredentials, amount)",
+		"(deposit_index, slot_number, slot_index, slot_root, orphaned, publickey, withdrawalcredentials, amount, fork_id)",
 		" VALUES ",
 	)
 	argIdx := 0
-	fieldCount := 8
+	fieldCount := 9
 
 	args := make([]any, len(deposits)*fieldCount)
 	for i, deposit := range deposits {
@@ -100,10 +100,11 @@ func InsertDeposits(deposits []*dbtypes.Deposit, tx *sqlx.Tx) error {
 		args[argIdx+5] = deposit.PublicKey[:]
 		args[argIdx+6] = deposit.WithdrawalCredentials[:]
 		args[argIdx+7] = deposit.Amount
+		args[argIdx+8] = deposit.ForkId
 		argIdx += fieldCount
 	}
 	fmt.Fprint(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
-		dbtypes.DBEnginePgsql:  " ON CONFLICT (slot_index, slot_root) DO UPDATE SET deposit_index = excluded.deposit_index, orphaned = excluded.orphaned",
+		dbtypes.DBEnginePgsql:  " ON CONFLICT (slot_index, slot_root) DO UPDATE SET deposit_index = excluded.deposit_index, orphaned = excluded.orphaned, fork_id = excluded.fork_id",
 		dbtypes.DBEngineSqlite: "",
 	}))
 	_, err := tx.Exec(sql.String(), args...)
@@ -239,7 +240,7 @@ func GetDepositsFiltered(offset uint64, limit uint32, finalizedBlock uint64, fil
 	fmt.Fprint(&sql, `
 	WITH cte AS (
 		SELECT
-			deposit_index, slot_number, slot_index, slot_root, orphaned, publickey, withdrawalcredentials, amount
+			deposit_index, slot_number, slot_index, slot_root, orphaned, publickey, withdrawalcredentials, amount, fork_id
 		FROM deposits
 	`)
 
@@ -289,7 +290,8 @@ func GetDepositsFiltered(offset uint64, limit uint32, finalizedBlock uint64, fil
 		false AS orphaned,
 		null AS publickey, 
 		null AS withdrawalcredentials,
-		0 AS amount
+		0 AS amount,
+		0 AS fork_id
 	FROM cte
 	UNION ALL SELECT * FROM (
 	SELECT * FROM cte

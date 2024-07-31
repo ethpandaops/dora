@@ -7,6 +7,7 @@ import (
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
 	"github.com/ethpandaops/ethwallclock"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/exp/rand"
 )
 
 type Pool struct {
@@ -74,6 +75,10 @@ func (pool *Pool) GetReadyEndpoint(clientType ClientType) *Client {
 
 		readyClients = append(readyClients, client)
 	}
+
+	rand.Shuffle(len(readyClients), func(i, j int) {
+		readyClients[i], readyClients[j] = readyClients[j], readyClients[i]
+	})
 
 	return readyClients[0]
 }

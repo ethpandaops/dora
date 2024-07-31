@@ -500,7 +500,7 @@ func (cache *indexerCache) processCacheCleanup(processedEpoch int64, headEpoch i
 		return db.RunDBTransaction(func(tx *sqlx.Tx) error {
 			deleteBefore := uint64(processedEpoch+1) * utils.Config.Chain.Config.SlotsPerEpoch
 			logger.Debugf("delete persisted unfinalized cache before slot %v", deleteBefore)
-			return db.DeleteUnfinalizedBefore(deleteBefore, tx)
+			return db.DeleteUnfinalizedBlocksBefore(deleteBefore, tx)
 		})
 	}
 

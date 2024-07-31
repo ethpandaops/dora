@@ -138,14 +138,15 @@ func (votes *EpochVotes) aggregateVotes(epochStats *EpochStats, slot phase0.Slot
 	voteAmount := phase0.Gwei(0)
 
 	voteDuties := epochStats.values.AttesterDuties[slot][committee]
-	for bitIdx, voteDuty := range voteDuties {
+	for bitIdx, validatorIndex := range voteDuties {
 		if aggregationBits.BitAt(uint64(bitIdx) + aggregationBitsOffset) {
-			if votes.ActivityMap[voteDuty.ValidatorIndex] {
+			if votes.ActivityMap[validatorIndex] {
 				continue
 			}
 
-			voteAmount += phase0.Gwei(uint64(voteDuty.EffectiveBalanceEth) * 1000000000)
-			votes.ActivityMap[voteDuty.ValidatorIndex] = true
+			effectiveBalance := epochStats.values.EffectiveBalances[validatorIndex]
+			voteAmount += effectiveBalance
+			votes.ActivityMap[validatorIndex] = true
 		}
 	}
 	return voteAmount, uint64(len(voteDuties))

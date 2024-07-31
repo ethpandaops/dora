@@ -241,3 +241,11 @@ func (cs *ChainState) SlotToSlotIndex(slot phase0.Slot) phase0.Slot {
 
 	return slot % phase0.Slot(cs.specs.SlotsPerEpoch)
 }
+
+func (cs *ChainState) EpochStartSlot(epoch phase0.Epoch) phase0.Slot {
+	if cs.specs == nil {
+		return 0
+	}
+
+	return phase0.Slot(epoch) * phase0.Slot(cs.specs.SlotsPerEpoch)
+}
