@@ -268,6 +268,11 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 		return fmt.Errorf("failed computing votes for epoch %v", epoch)
 	}
 
+	indexer.logger.Infof("epoch %v stats: %v validators (%v)", epoch, epochStatsValues.ActiveValidators, epochStatsValues.EffectiveBalance)
+	indexer.logger.Infof("epoch %v votes: target %v + %v = %v", epoch, epochVotes.CurrentEpoch.TargetVoteAmount, epochVotes.NextEpoch.TargetVoteAmount, epochVotes.CurrentEpoch.TargetVoteAmount+epochVotes.NextEpoch.TargetVoteAmount)
+	indexer.logger.Infof("epoch %v votes: head %v + %v = %v", epoch, epochVotes.CurrentEpoch.HeadVoteAmount, epochVotes.NextEpoch.HeadVoteAmount, epochVotes.CurrentEpoch.HeadVoteAmount+epochVotes.NextEpoch.HeadVoteAmount)
+	indexer.logger.Infof("epoch %v votes: total %v + %v = %v", epoch, epochVotes.CurrentEpoch.TotalVoteAmount, epochVotes.NextEpoch.TotalVoteAmount, epochVotes.CurrentEpoch.TotalVoteAmount+epochVotes.NextEpoch.TotalVoteAmount)
+
 	// persist to db
 	deleteBeforeSlot := chainState.EpochToSlot(epoch + 1)
 	db.RunDBTransaction(func(tx *sqlx.Tx) error {
