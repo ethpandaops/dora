@@ -17,6 +17,7 @@ import (
 
 var jsonVersionOffset uint64 = 0x70000000
 
+// marshalVersionedSignedBeaconBlockSSZ marshals a versioned signed beacon block using SSZ encoding.
 func marshalVersionedSignedBeaconBlockSSZ(dynSsz *dynssz.DynSsz, block *spec.VersionedSignedBeaconBlock) (version uint64, ssz []byte, err error) {
 	if utils.Config.KillSwitch.DisableSSZEncoding {
 		// SSZ encoding disabled, use json instead
@@ -48,6 +49,7 @@ func marshalVersionedSignedBeaconBlockSSZ(dynSsz *dynssz.DynSsz, block *spec.Ver
 	return
 }
 
+// unmarshalVersionedSignedBeaconBlockSSZ unmarshals a versioned signed beacon block using SSZ encoding.
 func unmarshalVersionedSignedBeaconBlockSSZ(dynSsz *dynssz.DynSsz, version uint64, ssz []byte) (*spec.VersionedSignedBeaconBlock, error) {
 	if version >= jsonVersionOffset {
 		return unmarshalVersionedSignedBeaconBlockJson(version, ssz)
@@ -93,6 +95,7 @@ func unmarshalVersionedSignedBeaconBlockSSZ(dynSsz *dynssz.DynSsz, version uint6
 	return block, nil
 }
 
+// marshalVersionedSignedBeaconBlockJson marshals a versioned signed beacon block using JSON encoding.
 func marshalVersionedSignedBeaconBlockJson(block *spec.VersionedSignedBeaconBlock) (version uint64, jsonRes []byte, err error) {
 	switch block.Version {
 	case spec.DataVersionPhase0:
@@ -119,6 +122,7 @@ func marshalVersionedSignedBeaconBlockJson(block *spec.VersionedSignedBeaconBloc
 	return
 }
 
+// unmarshalVersionedSignedBeaconBlockJson unmarshals a versioned signed beacon block using JSON encoding.
 func unmarshalVersionedSignedBeaconBlockJson(version uint64, ssz []byte) (*spec.VersionedSignedBeaconBlock, error) {
 	if version < jsonVersionOffset {
 		return nil, fmt.Errorf("no json encoding")
@@ -163,6 +167,7 @@ func unmarshalVersionedSignedBeaconBlockJson(version uint64, ssz []byte) (*spec.
 	return block, nil
 }
 
+// getBlockExecutionExtraData returns the extra data from the execution payload of a versioned signed beacon block.
 func getBlockExecutionExtraData(v *spec.VersionedSignedBeaconBlock) ([]byte, error) {
 	switch v.Version {
 	case spec.DataVersionBellatrix:
@@ -194,6 +199,7 @@ func getBlockExecutionExtraData(v *spec.VersionedSignedBeaconBlock) ([]byte, err
 	}
 }
 
+// getStateRandaoMixes returns the RANDAO mixes from a versioned beacon state.
 func getStateRandaoMixes(v *spec.VersionedBeaconState) ([]phase0.Root, error) {
 	switch v.Version {
 	case spec.DataVersionBellatrix:
@@ -225,6 +231,7 @@ func getStateRandaoMixes(v *spec.VersionedBeaconState) ([]phase0.Root, error) {
 	}
 }
 
+// getStateDepositIndex returns the deposit index from a versioned beacon state.
 func getStateDepositIndex(state *spec.VersionedBeaconState) uint64 {
 	switch state.Version {
 	case spec.DataVersionPhase0:

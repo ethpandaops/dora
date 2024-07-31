@@ -3,6 +3,7 @@ package beacon
 import (
 	"sort"
 
+	v1 "github.com/attestantio/go-eth2-client/api/v1"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 )
 
@@ -76,4 +77,9 @@ func (indexer *Indexer) pruneEpoch(epoch phase0.Epoch, pruneBlocks []*Block) err
 	*/
 	return nil
 
+}
+
+func (indexer *Indexer) processFinalityEvent(finalityEvent *v1.Finality) error {
+	indexer.logger.Infof("finality event! %v %v", finalityEvent.Finalized.Epoch, finalityEvent.Finalized.Root.String())
+	return nil
 }

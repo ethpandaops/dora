@@ -21,6 +21,7 @@ import (
 type Indexer struct {
 	logger        logrus.FieldLogger
 	consensusPool *consensus.Pool
+	dynSsz        *dynssz.DynSsz
 
 	// configuration
 	writeDb               bool
@@ -30,15 +31,14 @@ type Indexer struct {
 	minForkDistance       uint16
 	cachePersistenceDelay uint16
 
-	// state
-	running    bool
-	dynSsz     *dynssz.DynSsz
-	clients    []*Client
+	// caches
 	blockCache *blockCache
 	epochCache *epochCache
 	forkCache  *forkCache
 
-	// worker state
+	// indexer state
+	clients               []*Client
+	running               bool
 	lastFinalizedEpoch    phase0.Epoch
 	lastFinalizedRoot     phase0.Root
 	lastPruningEpoch      phase0.Epoch
@@ -73,6 +73,7 @@ func NewIndexer(logger logrus.FieldLogger, consensusPool *consensus.Pool) *Index
 	indexer := &Indexer{
 		logger:        logger,
 		consensusPool: consensusPool,
+		dynSsz:        dynssz.NewDynSsz(staticSpec),
 
 		writeDb:               !utils.Config.Indexer.DisableIndexWriter,
 		disableSync:           utils.Config.Indexer.DisableSynchronizer,
@@ -81,7 +82,6 @@ func NewIndexer(logger logrus.FieldLogger, consensusPool *consensus.Pool) *Index
 		minForkDistance:       3,
 		cachePersistenceDelay: cachePersistenceDelay,
 
-		dynSsz:  dynssz.NewDynSsz(staticSpec),
 		clients: make([]*Client, 0),
 	}
 

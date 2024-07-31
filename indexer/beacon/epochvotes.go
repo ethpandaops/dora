@@ -10,32 +10,34 @@ import (
 	"github.com/prysmaticlabs/go-bitfield"
 )
 
+// EpochVotes represents the aggregated votes for an epoch.
 type EpochVotes struct {
-	currentEpoch struct {
-		targetVoteAmount phase0.Gwei
-		headVoteAmount   phase0.Gwei
-		totalVoteAmount  phase0.Gwei
+	CurrentEpoch struct {
+		TargetVoteAmount phase0.Gwei
+		HeadVoteAmount   phase0.Gwei
+		TotalVoteAmount  phase0.Gwei
 	}
-	nextEpoch struct {
-		targetVoteAmount phase0.Gwei
-		headVoteAmount   phase0.Gwei
-		totalVoteAmount  phase0.Gwei
+	NextEpoch struct {
+		TargetVoteAmount phase0.Gwei
+		HeadVoteAmount   phase0.Gwei
+		TotalVoteAmount  phase0.Gwei
 	}
 	ActivityMap map[phase0.ValidatorIndex]bool
 }
 
+// aggregateEpochVotes aggregates the votes for an epoch based on the provided chain state, blocks, and epoch stats.
 func (indexer *Indexer) aggregateEpochVotes(chainState *consensus.ChainState, blocks []*Block, epochStats *EpochStats) *EpochVotes {
 	t1 := time.Now()
 
 	epochStatsValues := epochStats.values
 	specs := chainState.GetSpecs()
 
-	votes := EpochVotes{
+	votes := &EpochVotes{
 		ActivityMap: map[phase0.ValidatorIndex]bool{},
 	}
 
 	if len(blocks) == 0 || epochStatsValues == nil {
-		return &votes
+		return votes
 	}
 
 	var targetRoot phase0.Root
@@ -91,21 +93,21 @@ func (indexer *Indexer) aggregateEpochVotes(chainState *consensus.ChainState, bl
 					if uint64(committee) >= specs.MaxCommitteesPerSlot {
 						continue
 					}
-					voteAmt, committeeSize := aggregateAttestationVotes(&votes, epochStats, slotIndex, uint64(committee), attAggregationBits, aggregationBitsOffset)
+					voteAmt, committeeSize := votes.aggregateVotes(epochStats, slotIndex, uint64(committee), attAggregationBits, aggregationBitsOffset)
 					voteAmount += voteAmt
 					aggregationBitsOffset += committeeSize
 				}
 			} else {
 				// pre electra attestation aggregation
-				voteAmt, _ := aggregateAttestationVotes(&votes, epochStats, slotIndex, uint64(attData.Index), attAggregationBits, 0)
+				voteAmt, _ := votes.aggregateVotes(epochStats, slotIndex, uint64(attData.Index), attAggregationBits, 0)
 				voteAmount += voteAmt
 			}
 
 			if bytes.Equal(attData.Target.Root[:], targetRoot[:]) {
 				if isNextEpoch {
-					votes.nextEpoch.targetVoteAmount += voteAmount
+					votes.NextEpoch.TargetVoteAmount += voteAmount
 				} else {
-					votes.currentEpoch.targetVoteAmount += voteAmount
+					votes.CurrentEpoch.TargetVoteAmount += voteAmount
 				}
 			} /*else {
 				indexer.logger.Infof("vote target missmatch %v != 0x%x", attData.Target.Root, targetRoot)
@@ -114,24 +116,25 @@ func (indexer *Indexer) aggregateEpochVotes(chainState *consensus.ChainState, bl
 
 			if parentRoot != nil && bytes.Equal(attData.BeaconBlockRoot[:], parentRoot[:]) {
 				if isNextEpoch {
-					votes.nextEpoch.headVoteAmount += voteAmount
+					votes.NextEpoch.HeadVoteAmount += voteAmount
 				} else {
-					votes.currentEpoch.headVoteAmount += voteAmount
+					votes.CurrentEpoch.HeadVoteAmount += voteAmount
 				}
 			}
 			if isNextEpoch {
-				votes.nextEpoch.totalVoteAmount += voteAmount
+				votes.NextEpoch.TotalVoteAmount += voteAmount
 			} else {
-				votes.currentEpoch.totalVoteAmount += voteAmount
+				votes.CurrentEpoch.TotalVoteAmount += voteAmount
 			}
 		}
 	}
 
 	indexer.logger.Debugf("aggregated epoch %v votes in %v (blocks: %v, dependent: %v)", epochStats.epoch, time.Since(t1), len(blocks), epochStats.dependentRoot)
-	return &votes
+	return votes
 }
 
-func aggregateAttestationVotes(votes *EpochVotes, epochStats *EpochStats, slot phase0.Slot, committee uint64, aggregationBits bitfield.Bitfield, aggregationBitsOffset uint64) (phase0.Gwei, uint64) {
+// aggregateVotes aggregates the votes for a specific slot and committee based on the provided epoch statistics, aggregation bits, and offset.
+func (votes *EpochVotes) aggregateVotes(epochStats *EpochStats, slot phase0.Slot, committee uint64, aggregationBits bitfield.Bitfield, aggregationBitsOffset uint64) (phase0.Gwei, uint64) {
 	voteAmount := phase0.Gwei(0)
 
 	voteDuties := epochStats.values.AttesterDuties[slot][committee]

@@ -21,6 +21,7 @@ type EpochStats struct {
 	values         *EpochStatsValues
 }
 
+// EpochStatsValues holds the values for the epoch-specific information.
 type EpochStatsValues struct {
 	ProposerDuties   []phase0.ValidatorIndex
 	AttesterDuties   [][][]EpochStatsAttesterDuty
@@ -30,6 +31,7 @@ type EpochStatsValues struct {
 	EffectiveBalance phase0.Gwei
 }
 
+// EpochStatsAttesterDuty holds the attester duty information for a validator.
 type EpochStatsAttesterDuty struct {
 	ValidatorIndex      phase0.ValidatorIndex
 	EffectiveBalanceEth uint16
@@ -72,6 +74,7 @@ func (es *EpochStats) getRequestedBy() []*Client {
 	return clients
 }
 
+// marshalSSZ marshals the EpochStats values using SSZ.
 func (es *EpochStats) marshalSSZ(dynSsz *dynssz.DynSsz) ([]byte, error) {
 	if dynSsz == nil {
 		dynSsz = dynssz.NewDynSsz(nil)
@@ -82,6 +85,7 @@ func (es *EpochStats) marshalSSZ(dynSsz *dynssz.DynSsz) ([]byte, error) {
 	return dynSsz.MarshalSSZ(es.values)
 }
 
+// unmarshalSSZ unmarshals the EpochStats values using the provided SSZ bytes.
 func (es *EpochStats) unmarshalSSZ(dynSsz *dynssz.DynSsz, ssz []byte) error {
 	if dynSsz == nil {
 		dynSsz = dynssz.NewDynSsz(nil)
@@ -194,6 +198,7 @@ func (es *EpochStats) processState(indexer *Indexer) {
 	indexer.logger.Infof("epoch %v stats (%v / %v) ready, %v bytes", es.epoch, es.dependentRoot.String(), es.dependentState.stateRoot.String(), len(ssz))
 }
 
+// GetValues returns the EpochStats values.
 func (es *EpochStats) GetValues() *EpochStatsValues {
 	if es == nil {
 		return nil

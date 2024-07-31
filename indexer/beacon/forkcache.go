@@ -12,6 +12,7 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
+// forkCache is a struct that represents the fork cache in the indexer.
 type forkCache struct {
 	indexer    *Indexer
 	cacheMutex sync.RWMutex
@@ -20,6 +21,7 @@ type forkCache struct {
 	forkProcessLock sync.Mutex
 }
 
+// newForkCache creates a new instance of the forkCache struct.
 func newForkCache(indexer *Indexer) *forkCache {
 	return &forkCache{
 		indexer: indexer,
@@ -27,6 +29,7 @@ func newForkCache(indexer *Indexer) *forkCache {
 	}
 }
 
+// getForkById retrieves a fork from the cache by its ID.
 func (cache *forkCache) getForkById(forkId ForkKey) *Fork {
 	cache.cacheMutex.RLock()
 	defer cache.cacheMutex.RUnlock()
@@ -34,6 +37,7 @@ func (cache *forkCache) getForkById(forkId ForkKey) *Fork {
 	return cache.forkMap[forkId]
 }
 
+// addFork adds a fork to the cache.
 func (cache *forkCache) addFork(fork *Fork) {
 	cache.cacheMutex.Lock()
 	defer cache.cacheMutex.Unlock()
@@ -41,6 +45,7 @@ func (cache *forkCache) addFork(fork *Fork) {
 	cache.forkMap[fork.forkId] = fork
 }
 
+// getClosestFork finds the closest fork that a given block is part of.
 func (cache *forkCache) getClosestFork(block *Block) *Fork {
 	cache.cacheMutex.RLock()
 	defer cache.cacheMutex.RUnlock()
@@ -63,6 +68,8 @@ func (cache *forkCache) getClosestFork(block *Block) *Fork {
 	return closestFork
 }
 
+// checkForkDistance checks the distance between two blocks in a fork and returns the base block and distances.
+// if the fork happened before the latest finalized slot, only the side of the fork that does not include the finalized block gets returned.
 func (cache *forkCache) checkForkDistance(block1 *Block, block2 *Block, parentsMap map[phase0.Root]bool) (baseBlock *Block, block1Distance uint64, leafBlock1 *Block, block2Distance uint64, leafBlock2 *Block) {
 	finalizedSlot := cache.indexer.consensusPool.GetChainState().GetFinalizedSlot()
 	_, finalizedRoot := cache.indexer.consensusPool.GetChainState().GetFinalizedCheckpoint()
@@ -154,6 +161,7 @@ func (cache *forkCache) checkForkDistance(block1 *Block, block2 *Block, parentsM
 	return nil, 0, nil, 0, nil
 }
 
+// processBlock processes a block and detects new forks if any. persists the new forks to the database and returns the fork ID.
 func (cache *forkCache) processBlock(block *Block) (ForkKey, error) {
 	cache.forkProcessLock.Lock()
 	defer cache.forkProcessLock.Unlock()
@@ -236,6 +244,7 @@ func (cache *forkCache) processBlock(block *Block) (ForkKey, error) {
 	return parentForkId, nil
 }
 
+// updateNewForkBlocks updates the fork blocks with the given fork. returns the roots of the updated blocks.
 func (cache *forkCache) updateNewForkBlocks(fork *Fork, blocks []*Block) [][]byte {
 	updatedRoots := [][]byte{}
 
