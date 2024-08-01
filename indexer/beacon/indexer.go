@@ -42,7 +42,6 @@ type Indexer struct {
 	dbWriter              *dbWriter
 	running               bool
 	lastFinalizedEpoch    phase0.Epoch
-	lastFinalizedRoot     phase0.Root
 	lastPrunedEpoch       phase0.Epoch
 	finalitySubscription  *consensus.Subscription[*v1.Finality]
 	wallclockSubscription *consensus.Subscription[*ethwallclock.Slot]
@@ -171,7 +170,7 @@ func (indexer *Indexer) StartIndexer() {
 		indexer.logger.Infof("restored %v unfinalized epoch stats from DB", restoredEpochStats)
 	}
 
-	// prefill block cache with all unfinalized blocks from db
+	// restore unfinalized blocks from db
 	restoredBlockCount := 0
 	restoredBodyCount := 0
 
@@ -182,6 +181,7 @@ func (indexer *Indexer) StartIndexer() {
 
 		block, _ := indexer.blockCache.createOrGetBlock(phase0.Root(dbBlock.Root), phase0.Slot(dbBlock.Slot))
 		block.forkId = ForkKey(dbBlock.ForkId)
+		block.processingStatus = dbBlock.Status
 		block.isInUnfinalizedDb = true
 
 		if dbBlock.HeaderVer != 1 {
@@ -201,7 +201,7 @@ func (indexer *Indexer) StartIndexer() {
 		blockBody, err := unmarshalVersionedSignedBeaconBlockSSZ(indexer.dynSsz, dbBlock.BlockVer, dbBlock.BlockSSZ)
 		if err != nil {
 			indexer.logger.Warnf("could not restore unfinalized block body %v [%x] from db: %v", dbBlock.Slot, dbBlock.Root, err)
-		} else if dbBlock.Status == 0 {
+		} else if block.processingStatus == 0 {
 			block.SetBlock(blockBody)
 			restoredBodyCount++
 		} else {

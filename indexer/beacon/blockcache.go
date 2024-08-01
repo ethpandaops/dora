@@ -66,6 +66,33 @@ func (cache *blockCache) getBlockByRoot(root phase0.Root) *Block {
 	return cache.rootMap[root]
 }
 
+func (cache *blockCache) getBlocksByParentRoot(parentRoot phase0.Root) []*Block {
+	cache.cacheMutex.RLock()
+	defer cache.cacheMutex.RUnlock()
+
+	parentBlock := cache.rootMap[parentRoot]
+
+	resBlocks := []*Block{}
+	for slot, blocks := range cache.slotMap {
+		if parentBlock != nil && slot <= parentBlock.Slot {
+			continue
+		}
+
+		for _, block := range blocks {
+			blockParentRoot := block.GetParentRoot()
+			if blockParentRoot == nil {
+				continue
+			}
+
+			if bytes.Equal((*blockParentRoot)[:], parentRoot[:]) {
+				resBlocks = append(resBlocks, block)
+			}
+		}
+	}
+
+	return resBlocks
+}
+
 // getPruningBlocks returns the blocks that can be pruned based on the given finalized slot.
 func (cache *blockCache) getPruningBlocks(minInMemorySlot phase0.Slot) []*Block {
 	cache.cacheMutex.RLock()

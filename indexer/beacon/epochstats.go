@@ -189,7 +189,7 @@ func (es *EpochStats) getPackedValues() *EpochStatsPacked {
 	lastValidatorIndex := phase0.ValidatorIndex(0)
 	for i, validatorIndex := range activeIndices {
 		effectiveBalance := es.values.EffectiveBalances[validatorIndex]
-		packedBalance := uint16(effectiveBalance / 1000000000)
+		packedBalance := uint16(effectiveBalance / EtherGweiFactor)
 
 		validatorOffset := uint32(validatorIndex - lastValidatorIndex)
 		lastValidatorIndex = validatorIndex
@@ -224,7 +224,7 @@ func (es *EpochStats) getUnpackedValues(chainState *consensus.ChainState) *Epoch
 		validatorIndex := lastValidatorIndex + phase0.ValidatorIndex(packedValidator.ValidatorIndexOffset)
 		lastValidatorIndex = validatorIndex
 
-		effectiveBalance := phase0.Gwei(packedValidator.EffectiveBalanceEth) * 1000000000
+		effectiveBalance := phase0.Gwei(packedValidator.EffectiveBalanceEth) * EtherGweiFactor
 		values.EffectiveBalances[validatorIndex] = effectiveBalance
 		values.EffectiveBalance += effectiveBalance
 		values.ActiveBalance += effectiveBalance

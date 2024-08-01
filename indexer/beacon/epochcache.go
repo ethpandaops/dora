@@ -121,7 +121,6 @@ func (cache *epochCache) getEpochStats(epoch phase0.Epoch, dependentRoot phase0.
 }
 
 // getPendingEpochStats gets all EpochStats with unloaded epochStates.
-// the returned list of EpochStats is sorted by priority.
 func (cache *epochCache) getPendingEpochStats() []*EpochStats {
 	cache.cacheMutex.Lock()
 	defer cache.cacheMutex.Unlock()
@@ -132,24 +131,6 @@ func (cache *epochCache) getPendingEpochStats() []*EpochStats {
 			pendingStats = append(pendingStats, stats)
 		}
 	}
-
-	// sort by loading priority
-	// 1. retry count (prefer lower)
-	// 2. requested by clients count (prefer higher)
-	// 3. epoch number (prefer higher)
-	sort.Slice(pendingStats, func(a, b int) bool {
-		if pendingStats[a].dependentState.retryCount != pendingStats[b].dependentState.retryCount {
-			return pendingStats[a].dependentState.retryCount < pendingStats[b].dependentState.retryCount
-		}
-
-		reqCountA := len(pendingStats[a].requestedBy)
-		reqCountB := len(pendingStats[b].requestedBy)
-		if reqCountA != reqCountB {
-			return reqCountA > reqCountB
-		}
-
-		return pendingStats[a].epoch > pendingStats[b].epoch
-	})
 
 	return pendingStats
 }
@@ -255,6 +236,24 @@ func (cache *epochCache) runLoaderLoop() {
 	if len(pendingStats) == 0 {
 		return
 	}
+
+	// sort by loading priority
+	// 1. retry count (prefer lower)
+	// 2. requested by clients count (prefer higher)
+	// 3. epoch number (prefer higher)
+	sort.Slice(pendingStats, func(a, b int) bool {
+		if pendingStats[a].dependentState.retryCount != pendingStats[b].dependentState.retryCount {
+			return pendingStats[a].dependentState.retryCount < pendingStats[b].dependentState.retryCount
+		}
+
+		reqCountA := len(pendingStats[a].requestedBy)
+		reqCountB := len(pendingStats[b].requestedBy)
+		if reqCountA != reqCountB {
+			return reqCountA > reqCountB
+		}
+
+		return pendingStats[a].epoch > pendingStats[b].epoch
+	})
 
 	if cache.indexer.maxParallelStateCalls > 0 {
 		cache.loadingChan <- true
