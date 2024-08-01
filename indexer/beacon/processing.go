@@ -136,7 +136,11 @@ func (indexer *Indexer) processFinalityEvent(finalityEvent *v1.Finality) error {
 					indexer.logger.WithError(finalizationError).Errorf("failed finalizing epoch %v", finalizeEpoch)
 				}
 
-				continue
+				if canRetry {
+					continue
+				} else {
+					break
+				}
 			} else if canRetry {
 				// finalization processing is not complete, still needs resync
 				indexer.logger.Infof("need synchronization! epoch %v, reason: incomplete", finalizeEpoch)
@@ -336,6 +340,11 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 			if err := db.InsertOrphanedBlock(orphanedBlock, tx); err != nil {
 				return fmt.Errorf("failed persisting orphaned slot %v (%v): %v", block.Slot, block.Root.String(), err)
 			}
+		}
+
+		// persist sync committee assignments
+		if err := indexer.dbWriter.persistSyncAssignments(tx, epoch, epochStats); err != nil {
+			return fmt.Errorf("error persisting sync committee assignments to db: %v", err)
 		}
 
 		// delete unfinalized duties before epoch

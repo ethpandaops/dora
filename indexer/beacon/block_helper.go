@@ -202,6 +202,18 @@ func getBlockExecutionExtraData(v *spec.VersionedSignedBeaconBlock) ([]byte, err
 // getStateRandaoMixes returns the RANDAO mixes from a versioned beacon state.
 func getStateRandaoMixes(v *spec.VersionedBeaconState) ([]phase0.Root, error) {
 	switch v.Version {
+	case spec.DataVersionPhase0:
+		if v.Phase0 == nil || v.Phase0.RANDAOMixes == nil {
+			return nil, errors.New("no phase0 block")
+		}
+
+		return v.Phase0.RANDAOMixes, nil
+	case spec.DataVersionAltair:
+		if v.Altair == nil || v.Altair.RANDAOMixes == nil {
+			return nil, errors.New("no altair block")
+		}
+
+		return v.Altair.RANDAOMixes, nil
 	case spec.DataVersionBellatrix:
 		if v.Bellatrix == nil || v.Bellatrix.RANDAOMixes == nil {
 			return nil, errors.New("no bellatrix block")
@@ -248,4 +260,44 @@ func getStateDepositIndex(state *spec.VersionedBeaconState) uint64 {
 		return state.Electra.ETH1DepositIndex
 	}
 	return 0
+}
+
+// getStateRandaoMixes returns the RANDAO mixes from a versioned beacon state.
+func getStateCurrentSyncCommittee(v *spec.VersionedBeaconState) ([]phase0.BLSPubKey, error) {
+	switch v.Version {
+	case spec.DataVersionPhase0:
+		return nil, errors.New("no sync committee in phase0")
+	case spec.DataVersionAltair:
+		if v.Altair == nil || v.Altair.CurrentSyncCommittee == nil {
+			return nil, errors.New("no altair block")
+		}
+
+		return v.Altair.CurrentSyncCommittee.Pubkeys, nil
+	case spec.DataVersionBellatrix:
+		if v.Bellatrix == nil || v.Bellatrix.CurrentSyncCommittee == nil {
+			return nil, errors.New("no bellatrix block")
+		}
+
+		return v.Bellatrix.CurrentSyncCommittee.Pubkeys, nil
+	case spec.DataVersionCapella:
+		if v.Capella == nil || v.Capella.CurrentSyncCommittee == nil {
+			return nil, errors.New("no capella block")
+		}
+
+		return v.Capella.CurrentSyncCommittee.Pubkeys, nil
+	case spec.DataVersionDeneb:
+		if v.Deneb == nil || v.Deneb.CurrentSyncCommittee == nil {
+			return nil, errors.New("no deneb block")
+		}
+
+		return v.Deneb.CurrentSyncCommittee.Pubkeys, nil
+	case spec.DataVersionElectra:
+		if v.Electra == nil || v.Electra.CurrentSyncCommittee == nil {
+			return nil, errors.New("no electra block")
+		}
+
+		return v.Electra.CurrentSyncCommittee.Pubkeys, nil
+	default:
+		return nil, errors.New("unknown version")
+	}
 }

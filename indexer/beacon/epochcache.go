@@ -36,6 +36,8 @@ type epochCache struct {
 	loadingChan chan bool                                   // limits concurrent state calls by channel capacity
 	valsetMutex sync.Mutex                                  // mutex to protect valsetCache for concurrent access
 	valsetCache map[phase0.ValidatorIndex]*phase0.Validator // global validator set cache for reuse of matching validator entries
+	syncMutex   sync.Mutex                                  // mutex to protect syncCache for concurrent access
+	syncCache   []phase0.ValidatorIndex                     // global sync committee cache for reuse if matching
 }
 
 // newEpochCache creates & returns a new instance of epochCache.
@@ -209,6 +211,32 @@ func (cache *epochCache) getOrCreateValidator(index phase0.ValidatorIndex, valid
 	return validator
 }
 
+// getOrUpdateSyncCommittee replaces the supplied sync committee with an older sync committee from cache if all properties match.
+// heavily reduces memory consumption as sync committee objects are not duplicated for each sync committee request.
+func (cache *epochCache) getOrUpdateSyncCommittee(syncCommittee []phase0.ValidatorIndex) []phase0.ValidatorIndex {
+	cache.syncMutex.Lock()
+	defer cache.syncMutex.Unlock()
+
+	isEqual := false
+	if len(syncCommittee) == len(cache.syncCache) {
+		isEqual = true
+		for i, index := range syncCommittee {
+			if cache.syncCache[i] != index {
+				isEqual = false
+				break
+			}
+		}
+	}
+
+	if isEqual {
+		// all properties match, return reference to old cached entry
+		return cache.syncCache
+	}
+
+	cache.syncCache = syncCommittee
+	return syncCommittee
+}
+
 // startLoaderLoop is the entrypoint for the beacon state loader subroutine.
 // contains the main loop & crash handler of the subroutine.
 func (cache *epochCache) startLoaderLoop() {
@@ -271,37 +299,40 @@ func (cache *epochCache) loadEpochStats(epochStats *EpochStats) {
 		}
 	}()
 
-	clients := epochStats.getRequestedBy()
+	clients := []*Client{}
+	for _, client := range cache.indexer.GetReadyClientsByBlockRoot(epochStats.dependentRoot) {
+		if client.skipValidators {
+			continue
+		}
+
+		if client.client.GetStatus() != consensus.ClientStatusOnline && client.client.GetStatus() != consensus.ClientStatusOptimistic {
+			continue
+		}
+
+		if !cache.indexer.blockCache.isCanonicalBlock(epochStats.dependentRoot, client.headRoot) {
+			continue
+		}
+
+		clients = append(clients, client)
+	}
+
+	if len(clients) == 0 {
+		for _, client := range epochStats.getRequestedBy() {
+			if client.skipValidators {
+				continue
+			}
+
+			if client.client.GetStatus() != consensus.ClientStatusOnline && client.client.GetStatus() != consensus.ClientStatusOptimistic {
+				continue
+			}
+
+			clients = append(clients, client)
+		}
+	}
+
 	sort.Slice(clients, func(a, b int) bool {
 		cliA := clients[a]
 		cliB := clients[b]
-		if cliA.skipValidators != cliB.skipValidators {
-			if cliA.skipValidators {
-				return true
-			} else {
-				return false
-			}
-		}
-
-		onlineA := cliA.client.GetStatus() == consensus.ClientStatusOnline || cliA.client.GetStatus() == consensus.ClientStatusOptimistic
-		onlineB := cliB.client.GetStatus() == consensus.ClientStatusOnline || cliB.client.GetStatus() == consensus.ClientStatusOptimistic
-		if onlineA != onlineB {
-			if onlineA {
-				return false
-			} else {
-				return true
-			}
-		}
-
-		hasBlockA := cache.indexer.blockCache.isCanonicalBlock(epochStats.dependentRoot, cliA.headRoot)
-		hasBlockB := cache.indexer.blockCache.isCanonicalBlock(epochStats.dependentRoot, cliB.headRoot)
-		if hasBlockA != hasBlockB {
-			if hasBlockA {
-				return false
-			} else {
-				return true
-			}
-		}
 
 		if cliA.archive != cliB.archive {
 			if cliA.archive {
@@ -323,10 +354,6 @@ func (cache *epochCache) loadEpochStats(epochStats *EpochStats) {
 	})
 
 	for _, client := range clients {
-		if client.skipValidators {
-			continue
-		}
-
 		err := epochStats.dependentState.loadState(client, cache)
 		if err != nil {
 			client.logger.Warnf("failed loading epoch %v stats (dep: %v): %v", epochStats.epoch, epochStats.dependentRoot.String(), err)

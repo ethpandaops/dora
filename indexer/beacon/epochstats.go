@@ -1,6 +1,8 @@
 package beacon
 
 import (
+	"bytes"
+	"compress/zlib"
 	"math"
 	"sort"
 	"sync"
@@ -10,7 +12,6 @@ import (
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/indexer/beacon/duties"
-	"github.com/golang/snappy"
 	"github.com/jmoiron/sqlx"
 	dynssz "github.com/pk910/dynamic-ssz"
 )
@@ -31,24 +32,26 @@ type EpochStats struct {
 
 // EpochStatsValues holds the values for the epoch-specific information.
 type EpochStatsValues struct {
-	RandaoMix         phase0.Hash32
-	EffectiveBalances map[phase0.ValidatorIndex]phase0.Gwei
-	ProposerDuties    []phase0.ValidatorIndex
-	AttesterDuties    [][][]phase0.ValidatorIndex
-	ActiveValidators  uint64
-	TotalBalance      phase0.Gwei
-	ActiveBalance     phase0.Gwei
-	EffectiveBalance  phase0.Gwei
-	FirstDepositIndex uint64
+	RandaoMix           phase0.Hash32
+	EffectiveBalances   map[phase0.ValidatorIndex]phase0.Gwei
+	ProposerDuties      []phase0.ValidatorIndex
+	AttesterDuties      [][][]phase0.ValidatorIndex
+	SyncCommitteeDuties []phase0.ValidatorIndex
+	ActiveValidators    uint64
+	TotalBalance        phase0.Gwei
+	ActiveBalance       phase0.Gwei
+	EffectiveBalance    phase0.Gwei
+	FirstDepositIndex   uint64
 }
 
 // EpochStatsPacked holds the packed values for the epoch-specific information.
 type EpochStatsPacked struct {
-	ActiveValidators  []EpochStatsPackedValidator
-	RandaoMix         phase0.Hash32
-	TotalBalance      phase0.Gwei
-	ActiveBalance     phase0.Gwei
-	FirstDepositIndex uint64
+	ActiveValidators    []EpochStatsPackedValidator
+	SyncCommitteeDuties []phase0.ValidatorIndex
+	RandaoMix           phase0.Hash32
+	TotalBalance        phase0.Gwei
+	ActiveBalance       phase0.Gwei
+	FirstDepositIndex   uint64
 }
 
 // EpochStatsPackedValidator holds the packed values for an active validator.
@@ -111,7 +114,12 @@ func (es *EpochStats) marshalSSZ(dynSsz *dynssz.DynSsz) ([]byte, error) {
 		return nil, err
 	}
 
-	return snappy.Encode([]byte{}, rawSsz), nil
+	var b bytes.Buffer
+	w := zlib.NewWriter(&b)
+	w.Write(rawSsz)
+	w.Close()
+
+	return b.Bytes(), nil
 }
 
 // unmarshalSSZ unmarshals the EpochStats values using the provided SSZ bytes.
@@ -123,13 +131,18 @@ func (es *EpochStats) unmarshalSSZ(dynSsz *dynssz.DynSsz, ssz []byte) error {
 	if len(ssz) == 0 {
 		es.values = nil
 	} else {
-		rawSsz, err := snappy.Decode([]byte{}, ssz)
+		r, err := zlib.NewReader(bytes.NewReader(ssz))
 		if err != nil {
+			r.Close()
 			return err
 		}
 
+		buf := &bytes.Buffer{}
+		buf.ReadFrom(r)
+		r.Close()
+
 		packedValues := &EpochStatsPacked{}
-		if err := dynSsz.UnmarshalSSZ(packedValues, rawSsz); err != nil {
+		if err := dynSsz.UnmarshalSSZ(packedValues, buf.Bytes()); err != nil {
 			return err
 		}
 
@@ -168,11 +181,12 @@ func (es *EpochStats) getPackedValues() *EpochStatsPacked {
 	}
 
 	packed := &EpochStatsPacked{
-		ActiveValidators:  make([]EpochStatsPackedValidator, es.values.ActiveValidators),
-		RandaoMix:         es.values.RandaoMix,
-		TotalBalance:      es.values.TotalBalance,
-		ActiveBalance:     es.values.ActiveBalance,
-		FirstDepositIndex: es.values.FirstDepositIndex,
+		ActiveValidators:    make([]EpochStatsPackedValidator, es.values.ActiveValidators),
+		SyncCommitteeDuties: es.values.SyncCommitteeDuties,
+		RandaoMix:           es.values.RandaoMix,
+		TotalBalance:        es.values.TotalBalance,
+		ActiveBalance:       es.values.ActiveBalance,
+		FirstDepositIndex:   es.values.FirstDepositIndex,
 	}
 
 	activeIndices := make([]phase0.ValidatorIndex, len(es.values.EffectiveBalances))
@@ -210,12 +224,13 @@ func (es *EpochStats) getUnpackedValues(chainState *consensus.ChainState) *Epoch
 	}
 
 	values := &EpochStatsValues{
-		RandaoMix:         es.packedValues.RandaoMix,
-		EffectiveBalances: map[phase0.ValidatorIndex]phase0.Gwei{},
-		TotalBalance:      es.packedValues.TotalBalance,
-		ActiveBalance:     es.packedValues.ActiveBalance,
-		EffectiveBalance:  0,
-		FirstDepositIndex: es.packedValues.FirstDepositIndex,
+		RandaoMix:           es.packedValues.RandaoMix,
+		EffectiveBalances:   map[phase0.ValidatorIndex]phase0.Gwei{},
+		SyncCommitteeDuties: es.packedValues.SyncCommitteeDuties,
+		TotalBalance:        es.packedValues.TotalBalance,
+		ActiveBalance:       es.packedValues.ActiveBalance,
+		EffectiveBalance:    0,
+		FirstDepositIndex:   es.packedValues.FirstDepositIndex,
 	}
 
 	activeIndices := make([]phase0.ValidatorIndex, len(es.packedValues.ActiveValidators))
@@ -284,11 +299,12 @@ func (es *EpochStats) processState(indexer *Indexer) {
 
 	chainState := indexer.consensusPool.GetChainState()
 	values := &EpochStatsValues{
-		EffectiveBalances: map[phase0.ValidatorIndex]phase0.Gwei{},
-		TotalBalance:      0,
-		ActiveBalance:     0,
-		EffectiveBalance:  0,
-		FirstDepositIndex: es.dependentState.depositIndex,
+		EffectiveBalances:   map[phase0.ValidatorIndex]phase0.Gwei{},
+		SyncCommitteeDuties: es.dependentState.syncCommittee,
+		TotalBalance:        0,
+		ActiveBalance:       0,
+		EffectiveBalance:    0,
+		FirstDepositIndex:   es.dependentState.depositIndex,
 	}
 
 	// get active validator indices & aggregate balances
@@ -316,7 +332,7 @@ func (es *EpochStats) processState(indexer *Indexer) {
 		},
 	}
 
-	indexer.logger.Infof("processing epoch %v stats (%v / %v), validators: %v/%v", es.epoch, es.dependentRoot.String(), es.dependentState.stateRoot.String(), values.ActiveValidators, len(es.dependentState.validatorList))
+	indexer.logger.Debugf("processing epoch %v stats (root: %v / state: %v), validators: %v/%v", es.epoch, es.dependentRoot.String(), es.dependentState.stateRoot.String(), values.ActiveValidators, len(es.dependentState.validatorList))
 
 	// compute proposers
 	proposerDuties := []phase0.ValidatorIndex{}
@@ -365,7 +381,15 @@ func (es *EpochStats) processState(indexer *Indexer) {
 		indexer.logger.WithError(err).Errorf("failed storing epoch %v stats (%v / %v) to unfinalized duties", es.epoch, es.dependentRoot.String(), es.dependentState.stateRoot.String())
 	}
 
-	indexer.logger.Infof("epoch %v stats (%v / %v) ready, %v bytes", es.epoch, es.dependentRoot.String(), es.dependentState.stateRoot.String(), len(ssz))
+	indexer.logger.Infof(
+		"processed epoch %v stats (root: %v / state: %v, validators: %v/%v), %v bytes",
+		es.epoch,
+		es.dependentRoot.String(),
+		es.dependentState.stateRoot.String(),
+		values.ActiveValidators,
+		len(es.dependentState.validatorList),
+		len(ssz),
+	)
 }
 
 // GetValues returns the EpochStats values.

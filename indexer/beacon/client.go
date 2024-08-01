@@ -262,7 +262,12 @@ func (c *Client) processReorg(oldHead *Block, newHead *Block) error {
 	}
 
 	if rewindDistance == 0 {
+		c.logger.Debugf("chain fast forward! +%v slots (old: %v, new: %v)", forwardDistance, oldHead.Root.String(), newHead.Root.String())
 		return nil // just a fast forward
+	}
+	if forwardDistance == 0 {
+		c.logger.Debugf("chain rewind! -%v slots (old: %v, new: %v)", rewindDistance, oldHead.Root.String(), newHead.Root.String())
+		return nil // just a rewind
 	}
 
 	c.logger.Infof("chain reorg! depth: -%v / +%v (old: %v, new: %v)", rewindDistance, forwardDistance, oldHead.Root.String(), newHead.Root.String())

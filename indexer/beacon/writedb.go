@@ -146,40 +146,51 @@ func (dbw *dbWriter) persistEpochData(tx *sqlx.Tx, epoch phase0.Epoch, blocks []
 }
 
 func (dbw *dbWriter) persistSyncAssignments(tx *sqlx.Tx, epoch phase0.Epoch, epochStats *EpochStats) error {
-	specs := dbw.indexer.consensusPool.GetChainState().GetSpecs()
+	chainState := dbw.indexer.consensusPool.GetChainState()
+	specs := chainState.GetSpecs()
 
 	if epoch < phase0.Epoch(specs.AltairForkEpoch) {
 		// no sync committees before altair
 		return nil
 	}
 
-	/*
-		period := epoch / utils.Config.Chain.Config.EpochsPerSyncCommitteePeriod
-		isStartOfPeriod := epoch == period*utils.Config.Chain.Config.EpochsPerSyncCommitteePeriod
-		if !isStartOfPeriod && db.IsSyncCommitteeSynchronized(period) {
-			// already synchronized
-			return nil
-		}
+	var epochStatsValues *EpochStatsValues
+	if epochStats != nil {
+		epochStatsValues = epochStats.GetValues(chainState)
+	}
+	if epochStatsValues == nil {
+		return nil
+	}
 
-		syncAssignments := make([]*dbtypes.SyncAssignment, 0)
-		for idx, val := range epochStats.syncAssignments {
-			syncAssignments = append(syncAssignments, &dbtypes.SyncAssignment{
-				Period:    period,
-				Index:     uint32(idx),
-				Validator: val,
-			})
-		}
-		return db.InsertSyncAssignments(syncAssignments, tx)
-	*/
+	period := epoch / phase0.Epoch(specs.EpochsPerSyncCommitteePeriod)
+	isStartOfPeriod := epoch == period*phase0.Epoch(specs.EpochsPerSyncCommitteePeriod)
+	if !isStartOfPeriod && db.IsSyncCommitteeSynchronized(uint64(period)) {
+		// already synchronized
+		return nil
+	}
 
-	return nil
+	syncAssignments := make([]*dbtypes.SyncAssignment, 0)
+	for idx, val := range epochStatsValues.SyncCommitteeDuties {
+		syncAssignments = append(syncAssignments, &dbtypes.SyncAssignment{
+			Period:    uint64(period),
+			Index:     uint32(idx),
+			Validator: uint64(val),
+		})
+	}
+	return db.InsertSyncAssignments(syncAssignments, tx)
 }
 
 func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, overrideForkId *ForkKey) *dbtypes.Slot {
+	chainState := dbw.indexer.consensusPool.GetChainState()
 	blockBody := block.GetBlock()
 	if blockBody == nil {
 		dbw.indexer.logger.Errorf("error while building db blocks: block body not found: %v", block.Slot)
 		return nil
+	}
+
+	var epochStatsValues *EpochStatsValues
+	if epochStats != nil {
+		epochStatsValues = epochStats.GetValues(chainState)
 	}
 
 	graffiti, _ := blockBody.Graffiti()
@@ -189,7 +200,7 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 	attesterSlashings, _ := blockBody.AttesterSlashings()
 	proposerSlashings, _ := blockBody.ProposerSlashings()
 	blsToExecChanges, _ := blockBody.BLSToExecutionChanges()
-	//syncAggregate, _ := blockBody.SyncAggregate()
+	syncAggregate, _ := blockBody.SyncAggregate()
 	executionBlockNumber, _ := blockBody.ExecutionBlockNumber()
 	executionBlockHash, _ := blockBody.ExecutionBlockHash()
 	executionExtraData, _ := getBlockExecutionExtraData(blockBody)
@@ -218,25 +229,23 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 		dbBlock.ForkId = uint64(*overrideForkId)
 	}
 
-	/*
-		if syncAggregate != nil {
-			var assignedCount int
-			if epochStats != nil && epochStats.syncAssignments != nil {
-				assignedCount = len(epochStats.syncAssignments)
-			} else {
-				// this is not accurate, but best we can get without epoch assignments
-				assignedCount = len(syncAggregate.SyncCommitteeBits) * 8
-			}
-
-			votedCount := 0
-			for i := 0; i < assignedCount; i++ {
-				if utils.BitAtVector(syncAggregate.SyncCommitteeBits, i) {
-					votedCount++
-				}
-			}
-			dbBlock.SyncParticipation = float32(votedCount) / float32(assignedCount)
+	if syncAggregate != nil {
+		var assignedCount int
+		if epochStatsValues != nil {
+			assignedCount = len(epochStatsValues.SyncCommitteeDuties)
+		} else {
+			// this is not accurate, but best we can get without epoch assignments
+			assignedCount = len(syncAggregate.SyncCommitteeBits) * 8
 		}
-	*/
+
+		votedCount := 0
+		for i := 0; i < assignedCount; i++ {
+			if utils.BitAtVector(syncAggregate.SyncCommitteeBits, i) {
+				votedCount++
+			}
+		}
+		dbBlock.SyncParticipation = float32(votedCount) / float32(assignedCount)
+	}
 
 	if executionBlockNumber > 0 {
 		dbBlock.EthTransactionCount = uint64(len(executionTransactions))
@@ -255,7 +264,11 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 
 func (dbw *dbWriter) buildDbEpoch(epoch phase0.Epoch, blocks []*Block, epochStats *EpochStats, epochVotes *EpochVotes, blockFn func(block *Block, depositIndex *uint64)) *dbtypes.Epoch {
 	chainState := dbw.indexer.consensusPool.GetChainState()
-	epochStatsValues := epochStats.GetValues(chainState)
+
+	var epochStatsValues *EpochStatsValues
+	if epochStats != nil {
+		epochStatsValues = epochStats.GetValues(chainState)
+	}
 
 	// insert missed slots
 	firstSlot := chainState.EpochStartSlot(epoch)
@@ -307,7 +320,7 @@ func (dbw *dbWriter) buildDbEpoch(epoch phase0.Epoch, blocks []*Block, epochStat
 			attesterSlashings, _ := blockBody.AttesterSlashings()
 			proposerSlashings, _ := blockBody.ProposerSlashings()
 			blsToExecChanges, _ := blockBody.BLSToExecutionChanges()
-			//syncAggregate, _ := blockBody.SyncAggregate()
+			syncAggregate, _ := blockBody.SyncAggregate()
 			executionTransactions, _ := blockBody.ExecutionTransactions()
 			executionWithdrawals, _ := blockBody.Withdrawals()
 
@@ -318,19 +331,17 @@ func (dbw *dbWriter) buildDbEpoch(epoch phase0.Epoch, blocks []*Block, epochStat
 			dbEpoch.ProposerSlashingCount += uint64(len(proposerSlashings))
 			dbEpoch.BLSChangeCount += uint64(len(blsToExecChanges))
 
-			/*
-				if syncAggregate != nil && epochStats != nil && epochStats.syncAssignments != nil {
-					votedCount := 0
-					assignedCount := len(epochStats.syncAssignments)
-					for i := 0; i < assignedCount; i++ {
-						if utils.BitAtVector(syncAggregate.SyncCommitteeBits, i) {
-							votedCount++
-						}
+			if syncAggregate != nil && epochStatsValues != nil {
+				votedCount := 0
+				assignedCount := len(epochStatsValues.SyncCommitteeDuties)
+				for i := 0; i < assignedCount; i++ {
+					if utils.BitAtVector(syncAggregate.SyncCommitteeBits, i) {
+						votedCount++
 					}
-					totalSyncAssigned += assignedCount
-					totalSyncVoted += votedCount
 				}
-			*/
+				totalSyncAssigned += assignedCount
+				totalSyncVoted += votedCount
+			}
 
 			dbEpoch.EthTransactionCount += uint64(len(executionTransactions))
 			dbEpoch.WithdrawCount += uint64(len(executionWithdrawals))

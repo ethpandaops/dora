@@ -21,6 +21,7 @@ type epochState struct {
 	validatorBalances []phase0.Gwei
 	randaoMixes       []phase0.Root
 	depositIndex      uint64
+	syncCommittee     []phase0.ValidatorIndex
 }
 
 // newEpochState creates a new epochState instance with the root of the state to be loaded.
@@ -98,8 +99,10 @@ func (s *epochState) processState(state *spec.VersionedBeaconState, cache *epoch
 	}
 
 	unifiedValidatorList := make([]*phase0.Validator, len(validatorList))
+	validatorPubkeyMap := map[phase0.BLSPubKey]phase0.ValidatorIndex{}
 	for i, v := range validatorList {
 		unifiedValidatorList[i] = cache.getOrCreateValidator(phase0.ValidatorIndex(i), v)
+		validatorPubkeyMap[v.PublicKey] = phase0.ValidatorIndex(i)
 	}
 
 	s.validatorList = unifiedValidatorList
@@ -118,6 +121,17 @@ func (s *epochState) processState(state *spec.VersionedBeaconState, cache *epoch
 
 	s.randaoMixes = randaoMixes
 	s.depositIndex = getStateDepositIndex(state)
+
+	currentSyncCommittee, err := getStateCurrentSyncCommittee(state)
+	if err != nil {
+		return fmt.Errorf("error getting current sync committee from state %v: %v", s.slotRoot.String(), err)
+	}
+
+	syncCommittee := make([]phase0.ValidatorIndex, len(currentSyncCommittee))
+	for i, v := range currentSyncCommittee {
+		syncCommittee[i] = validatorPubkeyMap[v]
+	}
+	s.syncCommittee = cache.getOrUpdateSyncCommittee(syncCommittee)
 
 	return nil
 }
