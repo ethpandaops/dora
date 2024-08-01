@@ -24,7 +24,7 @@ func newDbWriter(indexer *Indexer) *dbWriter {
 
 func (dbw *dbWriter) persistMissedSlots(tx *sqlx.Tx, epoch phase0.Epoch, blocks []*Block, epochStats *EpochStats) error {
 	chainState := dbw.indexer.consensusPool.GetChainState()
-	epochStatsValues := epochStats.GetValues(chainState)
+	epochStatsValues := epochStats.GetValues(chainState, true)
 
 	// insert missed slots
 	firstSlot := chainState.EpochStartSlot(epoch)
@@ -156,7 +156,7 @@ func (dbw *dbWriter) persistSyncAssignments(tx *sqlx.Tx, epoch phase0.Epoch, epo
 
 	var epochStatsValues *EpochStatsValues
 	if epochStats != nil {
-		epochStatsValues = epochStats.GetValues(chainState)
+		epochStatsValues = epochStats.GetValues(chainState, true)
 	}
 	if epochStatsValues == nil {
 		return nil
@@ -190,7 +190,7 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 
 	var epochStatsValues *EpochStatsValues
 	if epochStats != nil {
-		epochStatsValues = epochStats.GetValues(chainState)
+		epochStatsValues = epochStats.GetValues(chainState, true)
 	}
 
 	graffiti, _ := blockBody.Graffiti()
@@ -267,7 +267,7 @@ func (dbw *dbWriter) buildDbEpoch(epoch phase0.Epoch, blocks []*Block, epochStat
 
 	var epochStatsValues *EpochStatsValues
 	if epochStats != nil {
-		epochStatsValues = epochStats.GetValues(chainState)
+		epochStatsValues = epochStats.GetValues(chainState, true)
 	}
 
 	// insert missed slots

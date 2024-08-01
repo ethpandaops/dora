@@ -56,6 +56,11 @@ func (chain *ChainSpec) CheckMismatch(chain2 *ChainSpec) []string {
 
 	for i := 0; i < chainT.NumField(); i++ {
 		if chainT.Field(i).Interface() != chain2T.Field(i).Interface() {
+			// 0 value on chain side are allowed
+			if chainT.Field(i).Interface() == reflect.Zero(chainT.Field(i).Type()).Interface() {
+				continue
+			}
+
 			mismatches = append(mismatches, chainT.Type().Field(i).Name)
 		}
 	}

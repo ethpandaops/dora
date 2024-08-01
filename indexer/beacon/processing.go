@@ -296,7 +296,7 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 
 	epochStats := indexer.epochCache.getEpochStats(epoch, dependentRoot)
 	if epochStats != nil {
-		epochStatsValues = epochStats.GetValues(chainState)
+		epochStatsValues = epochStats.GetValues(chainState, false)
 	}
 
 	if epochStatsValues == nil {

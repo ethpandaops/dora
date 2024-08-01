@@ -3,6 +3,7 @@ package beacon
 import (
 	"bytes"
 	"compress/zlib"
+	"fmt"
 	"math"
 	"sort"
 	"sync"
@@ -28,11 +29,15 @@ type EpochStats struct {
 
 	values       *EpochStatsValues
 	packedValues *EpochStatsPacked
+
+	precalcBaseRoot phase0.Root
+	precalcValues   *EpochStatsValues
 }
 
 // EpochStatsValues holds the values for the epoch-specific information.
 type EpochStatsValues struct {
 	RandaoMix           phase0.Hash32
+	NextRandaoMix       phase0.Hash32
 	EffectiveBalances   map[phase0.ValidatorIndex]phase0.Gwei
 	ProposerDuties      []phase0.ValidatorIndex
 	AttesterDuties      [][][]phase0.ValidatorIndex
@@ -49,6 +54,7 @@ type EpochStatsPacked struct {
 	ActiveValidators    []EpochStatsPackedValidator
 	SyncCommitteeDuties []phase0.ValidatorIndex
 	RandaoMix           phase0.Hash32
+	NextRandaoMix       phase0.Hash32
 	TotalBalance        phase0.Gwei
 	ActiveBalance       phase0.Gwei
 	FirstDepositIndex   uint64
@@ -61,12 +67,11 @@ type EpochStatsPackedValidator struct {
 }
 
 // newEpochStats creates a new EpochStats instance.
-func newEpochStats(epoch phase0.Epoch, dependentRoot phase0.Root, dependentState *epochState) *EpochStats {
+func newEpochStats(epoch phase0.Epoch, dependentRoot phase0.Root) *EpochStats {
 	stats := &EpochStats{
-		epoch:          epoch,
-		dependentRoot:  dependentRoot,
-		dependentState: dependentState,
-		requestedBy:    make([]*Client, 0),
+		epoch:         epoch,
+		dependentRoot: dependentRoot,
+		requestedBy:   make([]*Client, 0),
 	}
 
 	return stats
@@ -184,6 +189,7 @@ func (es *EpochStats) getPackedValues() *EpochStatsPacked {
 		ActiveValidators:    make([]EpochStatsPackedValidator, es.values.ActiveValidators),
 		SyncCommitteeDuties: es.values.SyncCommitteeDuties,
 		RandaoMix:           es.values.RandaoMix,
+		NextRandaoMix:       es.values.NextRandaoMix,
 		TotalBalance:        es.values.TotalBalance,
 		ActiveBalance:       es.values.ActiveBalance,
 		FirstDepositIndex:   es.values.FirstDepositIndex,
@@ -225,6 +231,7 @@ func (es *EpochStats) getUnpackedValues(chainState *consensus.ChainState) *Epoch
 
 	values := &EpochStatsValues{
 		RandaoMix:           es.packedValues.RandaoMix,
+		NextRandaoMix:       es.packedValues.NextRandaoMix,
 		EffectiveBalances:   map[phase0.ValidatorIndex]phase0.Gwei{},
 		SyncCommitteeDuties: es.packedValues.SyncCommitteeDuties,
 		TotalBalance:        es.packedValues.TotalBalance,
@@ -242,7 +249,6 @@ func (es *EpochStats) getUnpackedValues(chainState *consensus.ChainState) *Epoch
 		effectiveBalance := phase0.Gwei(packedValidator.EffectiveBalanceEth) * EtherGweiFactor
 		values.EffectiveBalances[validatorIndex] = effectiveBalance
 		values.EffectiveBalance += effectiveBalance
-		values.ActiveBalance += effectiveBalance
 
 		activeIndices[i] = validatorIndex
 	}
@@ -349,6 +355,7 @@ func (es *EpochStats) processState(indexer *Indexer) {
 	values.ProposerDuties = proposerDuties
 	if beaconState.RandaoMix != nil {
 		values.RandaoMix = *beaconState.RandaoMix
+		values.NextRandaoMix = *beaconState.NextRandaoMix
 	}
 
 	// compute committees
@@ -366,6 +373,7 @@ func (es *EpochStats) processState(indexer *Indexer) {
 
 	es.ready = true
 	es.values = values
+	es.precalcValues = nil
 
 	ssz, _ := es.marshalSSZ(indexer.dynSsz)
 	dbDuty := &dbtypes.UnfinalizedDuty{
@@ -392,8 +400,106 @@ func (es *EpochStats) processState(indexer *Indexer) {
 	)
 }
 
+func (es *EpochStats) precomputeFromParentState(indexer *Indexer, parentState *EpochStats) error {
+	es.precalcBaseRoot = parentState.dependentRoot
+
+	return indexer.epochCache.withPrecomputeLock(func() error {
+		if es.precalcValues != nil {
+			return nil
+		}
+
+		otherEpochStats := indexer.epochCache.getEpochStatsByEpoch(es.epoch)
+		for _, other := range otherEpochStats {
+			if other == es {
+				continue
+			}
+
+			if other.precalcValues != nil && bytes.Equal(other.precalcBaseRoot[:], parentState.dependentRoot[:]) {
+				es.precalcValues = other.precalcValues
+				return nil
+			}
+		}
+
+		chainState := indexer.consensusPool.GetChainState()
+		parentStatsValues := parentState.GetValues(chainState, false)
+		if parentStatsValues == nil {
+			return fmt.Errorf("parent stats values not available")
+		}
+
+		values := &EpochStatsValues{
+			RandaoMix:           parentStatsValues.NextRandaoMix,
+			EffectiveBalances:   parentStatsValues.EffectiveBalances,
+			SyncCommitteeDuties: parentStatsValues.SyncCommitteeDuties,
+			TotalBalance:        parentStatsValues.TotalBalance,
+			ActiveBalance:       parentStatsValues.ActiveBalance,
+			EffectiveBalance:    parentStatsValues.EffectiveBalance,
+		}
+
+		activeIndices := make([]phase0.ValidatorIndex, len(parentStatsValues.EffectiveBalances))
+		i := 0
+		for index := range parentStatsValues.EffectiveBalances {
+			activeIndices[i] = index
+			i++
+		}
+
+		sort.Slice(activeIndices, func(i, j int) bool {
+			return activeIndices[i] < activeIndices[j]
+		})
+
+		values.ActiveValidators = uint64(len(activeIndices))
+
+		beaconState := &duties.BeaconState{
+			RandaoMix: &values.RandaoMix,
+			GetActiveIndices: func() []phase0.ValidatorIndex {
+				return activeIndices
+			},
+			GetEffectiveBalance: func(index phase0.ValidatorIndex) phase0.Gwei {
+				return values.EffectiveBalances[index]
+			},
+		}
+
+		// compute proposers
+		proposerDuties := []phase0.ValidatorIndex{}
+		for slot := chainState.EpochToSlot(es.epoch); slot < chainState.EpochToSlot(es.epoch+1); slot++ {
+			proposer, err := duties.GetProposerIndex(chainState.GetSpecs(), beaconState, slot)
+			if err != nil {
+				proposer = math.MaxInt64
+			}
+
+			proposerDuties = append(proposerDuties, proposer)
+		}
+
+		values.ProposerDuties = proposerDuties
+
+		// compute committees
+		attesterDuties := [][][]phase0.ValidatorIndex{}
+		for slot := chainState.EpochToSlot(es.epoch); slot < chainState.EpochToSlot(es.epoch+1); slot++ {
+			committees, err := duties.GetBeaconCommittees(chainState.GetSpecs(), beaconState, slot)
+			if err != nil {
+				committees = [][]phase0.ValidatorIndex{}
+			}
+
+			attesterDuties = append(attesterDuties, committees)
+		}
+
+		values.AttesterDuties = attesterDuties
+
+		es.precalcValues = values
+
+		indexer.logger.Infof(
+			"precomputed epoch %v stats (root: %v), validators: %v/%v",
+			es.epoch,
+			es.dependentRoot.String(),
+			values.ActiveValidators,
+			len(parentStatsValues.EffectiveBalances),
+		)
+
+		return nil
+	})
+}
+
 // GetValues returns the EpochStats values.
-func (es *EpochStats) GetValues(chainState *consensus.ChainState) *EpochStatsValues {
+func (es *EpochStats) GetValues(chainState *consensus.ChainState, withPrecalc bool) *EpochStatsValues {
 	if es == nil {
 		return nil
 	}
@@ -404,6 +510,10 @@ func (es *EpochStats) GetValues(chainState *consensus.ChainState) *EpochStatsVal
 
 	if es.packedValues != nil {
 		return es.getUnpackedValues(chainState)
+	}
+
+	if es.precalcValues != nil && withPrecalc {
+		return es.precalcValues
 	}
 
 	return nil

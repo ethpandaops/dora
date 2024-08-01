@@ -29,15 +29,16 @@ func getEpochStatsKey(epoch phase0.Epoch, dependentRoot phase0.Root) epochStatsK
 
 // epochCache is the cache for EpochStats (epoch status) and epochState (beacon state) structures.
 type epochCache struct {
-	indexer     *Indexer
-	cacheMutex  sync.RWMutex                                // mutex to protect statsMap & stateMap for concurrent read/write
-	statsMap    map[epochStatsKey]*EpochStats               // epoch status cache by epochStatsKey
-	stateMap    map[phase0.Root]*epochState                 // beacon state cache by dependentRoot
-	loadingChan chan bool                                   // limits concurrent state calls by channel capacity
-	valsetMutex sync.Mutex                                  // mutex to protect valsetCache for concurrent access
-	valsetCache map[phase0.ValidatorIndex]*phase0.Validator // global validator set cache for reuse of matching validator entries
-	syncMutex   sync.Mutex                                  // mutex to protect syncCache for concurrent access
-	syncCache   []phase0.ValidatorIndex                     // global sync committee cache for reuse if matching
+	indexer        *Indexer
+	cacheMutex     sync.RWMutex                                // mutex to protect statsMap & stateMap for concurrent read/write
+	statsMap       map[epochStatsKey]*EpochStats               // epoch status cache by epochStatsKey
+	stateMap       map[phase0.Root]*epochState                 // beacon state cache by dependentRoot
+	loadingChan    chan bool                                   // limits concurrent state calls by channel capacity
+	valsetMutex    sync.Mutex                                  // mutex to protect valsetCache for concurrent access
+	valsetCache    map[phase0.ValidatorIndex]*phase0.Validator // global validator set cache for reuse of matching validator entries
+	syncMutex      sync.Mutex                                  // mutex to protect syncCache for concurrent access
+	syncCache      []phase0.ValidatorIndex                     // global sync committee cache for reuse if matching
+	precomputeLock sync.Mutex                                  // mutex to prevent concurrent precomputing of epoch stats
 }
 
 // newEpochCache creates & returns a new instance of epochCache.
@@ -58,35 +59,37 @@ func newEpochCache(indexer *Indexer) *epochCache {
 }
 
 // createOrGetEpochStats gets an existing EpochStats entry for the given epoch and dependentRoot or creates a new instance if not found.
-func (cache *epochCache) createOrGetEpochStats(epoch phase0.Epoch, dependentRoot phase0.Root) (*EpochStats, bool) {
+func (cache *epochCache) createOrGetEpochStats(epoch phase0.Epoch, dependentRoot phase0.Root, createStateRequest bool) *EpochStats {
 	cache.cacheMutex.Lock()
 	defer cache.cacheMutex.Unlock()
 
 	statsKey := getEpochStatsKey(epoch, dependentRoot)
 
-	if cache.statsMap[statsKey] != nil {
-		// found in cache
-		return cache.statsMap[statsKey], false
+	epochStats := cache.statsMap[statsKey]
+	if epochStats == nil {
+		epochStats = newEpochStats(epoch, dependentRoot)
+		cache.statsMap[statsKey] = epochStats
 	}
-
-	cache.indexer.logger.Infof("created epoch stats for epoch %v (%v)", epoch, dependentRoot.String())
 
 	// get or create beacon state which the epoch status depends on (dependentRoot beacon state)
 	epochState := cache.stateMap[dependentRoot]
-	if epochState == nil {
+	if epochState == nil && !epochStats.ready && createStateRequest {
 		epochState = newEpochState(dependentRoot)
 		cache.stateMap[dependentRoot] = epochState
+
+		cache.indexer.logger.Infof("added epoch state request for epoch %v (%v) to queue", epoch, dependentRoot.String())
 	}
 
-	epochStats := newEpochStats(epoch, dependentRoot, epochState)
-	cache.statsMap[statsKey] = epochStats
+	if epochState != nil {
+		epochStats.dependentState = epochState
 
-	if epochState.loadingStatus == 2 {
-		// dependent state is already loaded, process it
-		epochStats.processState(cache.indexer)
+		if epochState.loadingStatus == 2 && !epochStats.ready {
+			// dependent state is already loaded, process it
+			epochStats.processState(cache.indexer)
+		}
 	}
 
-	return epochStats, true
+	return epochStats
 }
 
 func (cache *epochCache) restoreEpochStats(dbDuty *dbtypes.UnfinalizedDuty) (*EpochStats, error) {
@@ -98,7 +101,7 @@ func (cache *epochCache) restoreEpochStats(dbDuty *dbtypes.UnfinalizedDuty) (*Ep
 	epochStats := cache.statsMap[statsKey]
 	isNew := false
 	if epochStats == nil {
-		epochStats = newEpochStats(phase0.Epoch(dbDuty.Epoch), phase0.Root(dbDuty.DependentRoot), nil)
+		epochStats = newEpochStats(phase0.Epoch(dbDuty.Epoch), phase0.Root(dbDuty.DependentRoot))
 		isNew = true
 	}
 
@@ -237,6 +240,13 @@ func (cache *epochCache) getOrUpdateSyncCommittee(syncCommittee []phase0.Validat
 	return syncCommittee
 }
 
+func (cache *epochCache) withPrecomputeLock(f func() error) error {
+	cache.precomputeLock.Lock()
+	defer cache.precomputeLock.Unlock()
+
+	return f()
+}
+
 // startLoaderLoop is the entrypoint for the beacon state loader subroutine.
 // contains the main loop & crash handler of the subroutine.
 func (cache *epochCache) startLoaderLoop() {
@@ -355,7 +365,7 @@ func (cache *epochCache) loadEpochStats(epochStats *EpochStats) {
 
 	for _, client := range clients {
 		err := epochStats.dependentState.loadState(client, cache)
-		if err != nil {
+		if err != nil && epochStats.dependentState.loadingStatus == 0 {
 			client.logger.Warnf("failed loading epoch %v stats (dep: %v): %v", epochStats.epoch, epochStats.dependentRoot.String(), err)
 		} else {
 			break
