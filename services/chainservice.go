@@ -24,12 +24,13 @@ import (
 )
 
 type ChainService struct {
-	logger        logrus.FieldLogger
-	consensusPool *consensus.Pool
-	executionPool *execution.Pool
-
-	indexer        *indexer.Indexer
+	logger         logrus.FieldLogger
+	consensusPool  *consensus.Pool
+	executionPool  *execution.Pool
+	beaconIndexer  *beacon.Indexer
 	validatorNames *ValidatorNames
+
+	indexer *indexer.Indexer
 
 	validatorActivityMutex sync.Mutex
 	validatorActivityStats struct {
@@ -172,10 +173,10 @@ func StartChainService(ctx context.Context, logger logrus.FieldLogger) error {
 	*/
 
 	GlobalBeaconService = &ChainService{
-		logger:        logger,
-		consensusPool: consensusPool,
-		executionPool: executionPool,
-		//indexer:          indexer,
+		logger:           logger,
+		consensusPool:    consensusPool,
+		executionPool:    executionPool,
+		beaconIndexer:    beaconIndexer,
 		validatorNames:   validatorNames,
 		assignmentsCache: lru.NewCache[uint64, *rpc.EpochAssignments](10),
 	}
@@ -184,6 +185,10 @@ func StartChainService(ctx context.Context, logger logrus.FieldLogger) error {
 
 func (bs *ChainService) GetIndexer() *indexer.Indexer {
 	return bs.indexer
+}
+
+func (bs *ChainService) GetBeaconIndexer() *beacon.Indexer {
+	return bs.beaconIndexer
 }
 
 func (bs *ChainService) GetConsensusClients() []*consensus.Client {

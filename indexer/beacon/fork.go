@@ -15,11 +15,11 @@ type Fork struct {
 	baseRoot   phase0.Root // Root of the base block.
 	leafSlot   phase0.Slot // Slot of the leaf block.
 	leafRoot   phase0.Root // Root of the leaf block.
-	parentFork *Fork       // Parent fork.
+	parentFork ForkKey     // Parent fork.
 }
 
 // newFork creates a new Fork instance.
-func newFork(forkId ForkKey, baseBlock *Block, leafBlock *Block, parentFork *Fork) *Fork {
+func newFork(forkId ForkKey, baseBlock *Block, leafBlock *Block, parentFork ForkKey) *Fork {
 	fork := &Fork{
 		forkId:     forkId,
 		baseSlot:   baseBlock.Slot,
@@ -33,7 +33,7 @@ func newFork(forkId ForkKey, baseBlock *Block, leafBlock *Block, parentFork *For
 }
 
 // newForkFromDb creates a new Fork instance from a database record.
-func newForkFromDb(dbFork *dbtypes.Fork, cache *forkCache) *Fork {
+func newForkFromDb(dbFork *dbtypes.Fork) *Fork {
 	fork := &Fork{
 		forkId:   ForkKey(dbFork.ForkId),
 		baseSlot: phase0.Slot(dbFork.BaseSlot),
@@ -43,7 +43,7 @@ func newForkFromDb(dbFork *dbtypes.Fork, cache *forkCache) *Fork {
 	}
 
 	if dbFork.ParentFork != 0 {
-		fork.parentFork = cache.getForkById(ForkKey(dbFork.ParentFork))
+		fork.parentFork = ForkKey(dbFork.ParentFork)
 	}
 
 	return fork
@@ -52,15 +52,12 @@ func newForkFromDb(dbFork *dbtypes.Fork, cache *forkCache) *Fork {
 // toDbFork converts the Fork instance to a database record.
 func (fork *Fork) toDbFork() *dbtypes.Fork {
 	dbFork := &dbtypes.Fork{
-		ForkId:   uint64(fork.forkId),
-		BaseSlot: uint64(fork.baseSlot),
-		BaseRoot: fork.baseRoot[:],
-		LeafSlot: uint64(fork.leafSlot),
-		LeafRoot: fork.leafRoot[:],
-	}
-
-	if fork.parentFork != nil {
-		dbFork.ParentFork = uint64(fork.parentFork.forkId)
+		ForkId:     uint64(fork.forkId),
+		BaseSlot:   uint64(fork.baseSlot),
+		BaseRoot:   fork.baseRoot[:],
+		LeafSlot:   uint64(fork.leafSlot),
+		LeafRoot:   fork.leafRoot[:],
+		ParentFork: uint64(fork.parentFork),
 	}
 
 	return dbFork

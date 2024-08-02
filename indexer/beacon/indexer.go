@@ -1,9 +1,8 @@
 package beacon
 
 import (
-	"bytes"
-	"math/rand/v2"
 	"runtime/debug"
+	"sync"
 	"time"
 
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
@@ -20,11 +19,14 @@ import (
 	"github.com/ethpandaops/ethwallclock"
 )
 
+const EtherGweiFactor = 1_000_000_000
+
 // Indexer is responsible for indexing the ethereum beacon chain.
 type Indexer struct {
 	logger        logrus.FieldLogger
 	consensusPool *consensus.Pool
 	dynSsz        *dynssz.DynSsz
+	synchronizer  *synchronizer
 
 	// configuration
 	writeDb               bool
@@ -135,6 +137,7 @@ func (indexer *Indexer) StartIndexer() {
 	}
 
 	indexer.running = true
+	indexer.synchronizer = newSynchronizer(indexer, indexer.logger.WithField("service", "synchronizer"))
 	chainState := indexer.consensusPool.GetChainState()
 	finalizedSlot := chainState.GetFinalizedSlot()
 	finalizedEpoch, _ := chainState.GetFinalizedCheckpoint()
@@ -158,7 +161,7 @@ func (indexer *Indexer) StartIndexer() {
 
 	// restore unfinalized forks from db
 	for _, dbFork := range db.GetUnfinalizedForks(uint64(finalizedSlot)) {
-		fork := newForkFromDb(dbFork, indexer.forkCache)
+		fork := newForkFromDb(dbFork)
 		indexer.forkCache.addFork(fork)
 	}
 
@@ -168,36 +171,55 @@ func (indexer *Indexer) StartIndexer() {
 
 	// restore unfinalized epoch stats from db
 	restoredEpochStats := 0
+	t1 := time.Now()
+	processingLimiter := make(chan bool, 10)
+	processingWaitGroup := sync.WaitGroup{}
 	err := db.StreamUnfinalizedDuties(func(dbDuty *dbtypes.UnfinalizedDuty) {
 		if dbDuty.Epoch < uint64(finalizedEpoch) {
 			return
 		}
 
-		epochStats, err := indexer.epochCache.restoreEpochStats(dbDuty)
-		if err != nil {
-			indexer.logger.WithError(err).Errorf("failed restoring epoch stats for epoch %v (%x) from db", dbDuty.Epoch, dbDuty.DependentRoot)
-			return
-		}
+		// restoring epoch stats can be slow as all duties are recomputed
+		// parallelize the processing to speed up the restore
+		processingWaitGroup.Add(1)
+		processingLimiter <- true
 
-		epochStats.isInDb = true
+		go func() {
+			defer func() {
+				<-processingLimiter
+				processingWaitGroup.Done()
+			}()
 
-		restoredEpochStats++
-		if dbDuty.Epoch < uint64(indexer.lastPrunedEpoch) {
-			epochStats.pruneValues()
-		}
+			epochStats := indexer.epochCache.createOrGetEpochStats(phase0.Epoch(dbDuty.Epoch), phase0.Root(dbDuty.DependentRoot), false)
+
+			err := epochStats.restoreFromDb(dbDuty, indexer.dynSsz, chainState)
+			if err != nil {
+				indexer.logger.WithError(err).Errorf("failed restoring epoch stats for epoch %v (%x) from db", dbDuty.Epoch, dbDuty.DependentRoot)
+				return
+			}
+
+			epochStats.isInDb = true
+
+			restoredEpochStats++
+			if dbDuty.Epoch < uint64(indexer.lastPrunedEpoch) {
+				epochStats.pruneValues()
+			}
+		}()
 	})
+	processingWaitGroup.Wait()
 	if err != nil {
 		indexer.logger.WithError(err).Errorf("failed restoring unfinalized epoch stats from DB")
 	} else {
-		indexer.logger.Infof("restored %v unfinalized epoch stats from DB", restoredEpochStats)
+		indexer.logger.Infof("restored %v unfinalized epoch stats from DB (%.3f sec)", restoredEpochStats, time.Since(t1).Seconds())
 	}
 
 	// restore unfinalized epoch aggregations from db
 	restoredEpochAggregations := 0
+	t1 = time.Now()
 	err = db.StreamUnfinalizedEpochs(func(unfinalizedEpoch *dbtypes.UnfinalizedEpoch) {
 		epochStats := indexer.epochCache.getEpochStats(phase0.Epoch(unfinalizedEpoch.Epoch), phase0.Root(unfinalizedEpoch.DependentRoot))
 		if epochStats == nil {
-			indexer.logger.Warnf("failed restoring epoch stats for epoch %v [%x] from db: epoch stats not found", unfinalizedEpoch.Epoch, unfinalizedEpoch.DependentRoot)
+			indexer.logger.Warnf("failed restoring epoch aggregations for epoch %v [%x] from db: epoch stats not found", unfinalizedEpoch.Epoch, unfinalizedEpoch.DependentRoot)
 			return
 		}
 
@@ -209,13 +231,13 @@ func (indexer *Indexer) StartIndexer() {
 	if err != nil {
 		indexer.logger.WithError(err).Errorf("failed restoring unfinalized epoch aggregations from DB")
 	} else {
-		indexer.logger.Infof("restored %v unfinalized epoch aggregations from DB", restoredEpochAggregations)
+		indexer.logger.Infof("restored %v unfinalized epoch aggregations from DB (%.3f sec)", restoredEpochAggregations, time.Since(t1).Seconds())
 	}
 
 	// restore unfinalized blocks from db
 	restoredBlockCount := 0
 	restoredBodyCount := 0
-
+	t1 = time.Now()
 	err = db.StreamUnfinalizedBlocks(func(dbBlock *dbtypes.UnfinalizedBlock) {
 		if dbBlock.Slot < uint64(finalizedSlot) {
 			return
@@ -252,11 +274,16 @@ func (indexer *Indexer) StartIndexer() {
 		}
 
 		restoredBlockCount++
+
+		if time.Since(t1) > 5*time.Second {
+			indexer.logger.Infof("restoring unfinalized blocks from DB... (%v done)", restoredBlockCount)
+			t1 = time.Now()
+		}
 	})
 	if err != nil {
 		indexer.logger.WithError(err).Errorf("failed restoring unfinalized blocks from DB")
 	} else {
-		indexer.logger.Infof("restored %v unfinalized blocks from DB (%v with bodies)", restoredBlockCount, restoredBodyCount)
+		indexer.logger.Infof("restored %v unfinalized blocks from DB (%v with bodies, %.3f sec)", restoredBlockCount, restoredBodyCount, time.Since(t1).Seconds())
 	}
 
 	// start indexing for all clients
@@ -269,6 +296,9 @@ func (indexer *Indexer) StartIndexer() {
 	indexer.wallclockSubscription = indexer.consensusPool.SubscribeWallclockSlotEvent(1)
 
 	go indexer.runIndexerLoop()
+
+	// start synchronizer
+	indexer.startSynchronizer(indexer.lastFinalizedEpoch)
 }
 
 func (indexer *Indexer) runIndexerLoop() {
@@ -325,57 +355,4 @@ func (indexer *Indexer) runIndexerLoop() {
 
 		}
 	}
-}
-
-func (indexer *Indexer) GetReadyClientsByCheckpoint(finalizedRoot phase0.Root) []*Client {
-	clients := make([]*Client, 0)
-
-	for _, client := range indexer.clients {
-		if client.client.GetStatus() != consensus.ClientStatusOnline {
-			continue
-		}
-
-		_, root, _, _ := client.client.GetFinalityCheckpoint()
-		if !bytes.Equal(root[:], finalizedRoot[:]) {
-			continue
-		}
-
-		clients = append(clients, client)
-	}
-
-	rand.Shuffle(len(clients), func(i, j int) {
-		clients[i], clients[j] = clients[j], clients[i]
-	})
-
-	return clients
-}
-
-func (indexer *Indexer) GetReadyClientsByBlockRoot(blockRoot phase0.Root) []*Client {
-	clients := make([]*Client, 0)
-
-	for _, client := range indexer.clients {
-		if client.client.GetStatus() != consensus.ClientStatusOnline {
-			continue
-		}
-
-		_, root := client.client.GetLastHead()
-		if indexer.blockCache.isCanonicalBlock(blockRoot, root) {
-			clients = append(clients, client)
-		}
-	}
-
-	rand.Shuffle(len(clients), func(i, j int) {
-		clients[i], clients[j] = clients[j], clients[i]
-	})
-
-	return clients
-}
-
-func (indexer *Indexer) GetReadyClientByBlockRoot(blockRoot phase0.Root) *Client {
-	clients := indexer.GetReadyClientsByBlockRoot(blockRoot)
-	if len(clients) > 0 {
-		return clients[0]
-	}
-
-	return nil
 }

@@ -9,6 +9,7 @@ import (
 	"github.com/attestantio/go-eth2-client/spec"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/db"
+	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -18,6 +19,8 @@ func (indexer *Indexer) processFinalityEvent(finalityEvent *v1.Finality) error {
 
 	indexer.logger.Infof("process finality event (epoch: %v, root: %v)", finalityEvent.Finalized.Epoch, finalityEvent.Finalized.Root.String())
 	startSynchronizer := false
+	synchronizeFromEpoch := phase0.Epoch(0)
+	oldLastFinalizedEpoch := indexer.lastFinalizedEpoch
 
 	for finalizeEpoch := indexer.lastFinalizedEpoch; finalizeEpoch < finalityEvent.Finalized.Epoch; finalizeEpoch++ {
 		readyClients := indexer.GetReadyClientsByCheckpoint(finalityEvent.Finalized.Root)
@@ -41,7 +44,10 @@ func (indexer *Indexer) processFinalityEvent(finalityEvent *v1.Finality) error {
 		retryCount = len(readyClients)
 		if retryCount == 0 {
 			indexer.logger.Infof("need synchronization! epoch %v, reason: no clients", finalizeEpoch)
-			startSynchronizer = true
+			if !startSynchronizer {
+				synchronizeFromEpoch = finalizeEpoch
+				startSynchronizer = true
+			}
 			indexer.lastFinalizedEpoch = finalizeEpoch + 1
 			break
 		}
@@ -72,7 +78,10 @@ func (indexer *Indexer) processFinalityEvent(finalityEvent *v1.Finality) error {
 			} else if canRetry {
 				// finalization processing is not complete, still needs resync
 				indexer.logger.Infof("need synchronization! epoch %v, reason: incomplete", finalizeEpoch)
-				startSynchronizer = true
+				if !startSynchronizer {
+					synchronizeFromEpoch = finalizeEpoch
+					startSynchronizer = true
+				}
 			}
 
 			break
@@ -80,12 +89,25 @@ func (indexer *Indexer) processFinalityEvent(finalityEvent *v1.Finality) error {
 
 		if finalizationError != nil {
 			indexer.logger.Infof("need synchronization! epoch %v, reason: error", finalizeEpoch)
-			startSynchronizer = true
+			if !startSynchronizer {
+				synchronizeFromEpoch = finalizeEpoch
+				startSynchronizer = true
+			}
 		}
 	}
 
 	if startSynchronizer {
-		indexer.logger.Infof("need synchronization!")
+		indexer.startSynchronizer(synchronizeFromEpoch)
+	} else if !indexer.synchronizer.running && indexer.synchronizer.currentEpoch >= oldLastFinalizedEpoch && indexer.lastFinalizedEpoch > oldLastFinalizedEpoch {
+		indexer.synchronizer.currentEpoch = indexer.lastFinalizedEpoch
+		err := db.RunDBTransaction(func(tx *sqlx.Tx) error {
+			return db.SetExplorerState("indexer.syncstate", &dbtypes.IndexerSyncState{
+				Epoch: uint64(indexer.lastFinalizedEpoch),
+			}, tx)
+		})
+		if err != nil {
+			indexer.logger.WithError(err).Errorf("failed updating sync state")
+		}
 	}
 
 	return nil
@@ -109,7 +131,7 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 
 		if indexer.blockCache.isCanonicalBlock(block.Root, justifiedRoot) {
 			if _, err := block.EnsureBlock(func() (*spec.VersionedSignedBeaconBlock, error) {
-				return client.loadBlock(block.Root)
+				return loadBlock(client.getContext(), client, block.Root)
 			}); err != nil {
 				client.logger.Warnf("failed loading finalized block body %v (%v): %v", block.Slot, block.Root.String(), err)
 			}
@@ -162,7 +184,7 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 			depRoot := firstBlock.GetParentRoot()
 			if depRoot != nil {
 				dependentRoot = *depRoot
-				dependentHead, _ := client.loadHeader(*depRoot)
+				dependentHead, _ := loadHeader(client.getContext(), client, *depRoot)
 				isValid = dependentHead != nil && chainState.EpochOfSlot(dependentHead.Message.Slot) < chainState.EpochOfSlot(firstBlock.Slot)
 			}
 		}
@@ -206,7 +228,7 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 				}
 			}
 			if canonicalBlock == nil {
-				dependentHead, _ := client.loadHeader(*parentRoot)
+				dependentHead, _ := loadHeader(client.getContext(), client, *parentRoot)
 
 				if dependentHead != nil {
 					canonicalBlock = newBlock(indexer.dynSsz, phase0.Root(*parentRoot), phase0.Slot(dependentHead.Message.Slot))
@@ -242,6 +264,11 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 		}
 	}
 
+	canonicalRoots := make([][]byte, len(canonicalBlocks))
+	for i, block := range canonicalBlocks {
+		canonicalRoots[i] = block.Root[:]
+	}
+
 	// persist to db
 	deleteBeforeSlot := chainState.EpochToSlot(epoch + 1)
 	err := db.RunDBTransaction(func(tx *sqlx.Tx) error {
@@ -274,27 +301,26 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 			return fmt.Errorf("error persisting sync committee assignments to db: %v", err)
 		}
 
+		if err := db.UpdateMevBlockByEpoch(uint64(epoch), canonicalRoots, tx); err != nil {
+			return fmt.Errorf("error while updating mev block proposal state: %v", err)
+		}
+
 		// delete unfinalized duties before epoch
 		if err := db.DeleteUnfinalizedDutiesBefore(uint64(epoch+1), tx); err != nil {
 			return fmt.Errorf("failed deleting unfinalized duties <= epoch %v: %v", epoch, err)
 		}
 
-		// delete unfinalized duties before epoch
+		// delete unfinalized blocks before epoch
 		if err := db.DeleteUnfinalizedBlocksBefore(uint64(deleteBeforeSlot), tx); err != nil {
 			return fmt.Errorf("failed deleting unfinalized duties < slot %v: %v", deleteBeforeSlot, err)
 		}
 
-		// delete unfinalized duties before epoch
-		if err := db.DeleteUnfinalizedEpochsBefore(uint64(epoch+1), tx); err != nil {
-			return fmt.Errorf("failed deleting unfinalized duties <= epoch %v: %v", epoch, err)
+		// delete unfinalized epoch aggregations in epoch
+		if err := db.DeleteUnfinalizedEpochsIn(uint64(epoch), tx); err != nil {
+			return fmt.Errorf("failed deleting unfinalized epoch aggregations of epoch %v: %v", epoch, err)
 		}
 
-		// delete unfinalized forks before epoch
-		canonicalRoots := make([][]byte, len(canonicalBlocks))
-		for i, block := range canonicalBlocks {
-			canonicalRoots[i] = block.Root[:]
-		}
-
+		// delete unfinalized forks for canonical roots
 		if err := db.DeleteFinalizedForks(canonicalRoots, tx); err != nil {
 			return fmt.Errorf("failed deleting finalized forks: %v", err)
 		}

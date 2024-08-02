@@ -52,6 +52,10 @@ func newClient(index uint16, client *consensus.Client, priority int, archive boo
 	}
 }
 
+func (c *Client) getContext() context.Context {
+	return c.client.GetContext()
+}
+
 // startIndexing starts the indexing process for this client.
 // attaches block & head event handlers and starts the event processing subroutine.
 func (c *Client) startIndexing() {
@@ -383,14 +387,14 @@ func (c *Client) processBlock(slot phase0.Slot, root phase0.Root, header *phase0
 			return header, nil
 		}
 
-		return c.loadHeader(root)
+		return loadHeader(c.getContext(), c, root)
 	})
 	if err != nil {
 		return
 	}
 
 	isNew, err = block.EnsureBlock(func() (*spec.VersionedSignedBeaconBlock, error) {
-		return c.loadBlock(root)
+		return loadBlock(c.getContext(), c, root)
 	})
 	if err != nil {
 		return
@@ -437,32 +441,6 @@ func (c *Client) processBlock(slot phase0.Slot, root phase0.Root, header *phase0
 	return
 }
 
-// loadHeader loads the block header from the RPC client.
-func (c *Client) loadHeader(root phase0.Root) (*phase0.SignedBeaconBlockHeader, error) {
-	ctx, cancel := context.WithTimeout(c.client.GetContext(), BeaconHeaderRequestTimeout)
-	defer cancel()
-
-	header, err := c.client.GetRPCClient().GetBlockHeaderByBlockroot(ctx, root)
-	if err != nil {
-		return nil, err
-	}
-
-	return header.Header, nil
-}
-
-// loadBlock loads the block body from the RPC client.
-func (c *Client) loadBlock(root phase0.Root) (*spec.VersionedSignedBeaconBlock, error) {
-	ctx, cancel := context.WithTimeout(c.client.GetContext(), BeaconBodyRequestTimeout)
-	defer cancel()
-
-	body, err := c.client.GetRPCClient().GetBlockBodyByBlockroot(ctx, root)
-	if err != nil {
-		return nil, err
-	}
-
-	return body, nil
-}
-
 // backfillParentBlocks backfills parent blocks up to the finalization checkpoint or known in cache.
 func (c *Client) backfillParentBlocks(headBlock *Block) error {
 	chainState := c.client.GetPool().GetChainState()
@@ -485,7 +463,7 @@ func (c *Client) backfillParentBlocks(headBlock *Block) error {
 		}
 
 		if parentHead == nil {
-			headerRsp, err := c.loadHeader(parentRoot)
+			headerRsp, err := loadHeader(c.getContext(), c, parentRoot)
 			if err != nil {
 				return fmt.Errorf("could not load parent header [0x%x]: %v", parentRoot, err)
 			}

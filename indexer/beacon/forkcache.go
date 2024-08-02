@@ -228,8 +228,6 @@ func (cache *forkCache) processBlock(block *Block) (ForkKey, error) {
 	cache.forkProcessLock.Lock()
 	defer cache.forkProcessLock.Unlock()
 
-	var parentFork *Fork
-
 	parentForkId := ForkKey(1)
 	// get fork id from parent block
 	parentRoot := block.GetParentRoot()
@@ -239,11 +237,9 @@ func (cache *forkCache) processBlock(block *Block) (ForkKey, error) {
 			blockHead := db.GetBlockHeadByRoot((*parentRoot)[:])
 			if blockHead != nil {
 				parentForkId = ForkKey(blockHead.ForkId)
-				parentFork = cache.getForkById(parentForkId)
 			}
 		} else {
 			parentForkId = parentBlock.forkId
-			parentFork = cache.getForkById(parentForkId)
 		}
 	}
 
@@ -268,14 +264,14 @@ func (cache *forkCache) processBlock(block *Block) (ForkKey, error) {
 
 			if leaf1 != nil {
 				cache.lastForkId++
-				fork1 = newFork(cache.lastForkId, baseBlock, leaf1, parentFork)
+				fork1 = newFork(cache.lastForkId, baseBlock, leaf1, parentForkId)
 				cache.addFork(fork1)
 				fork1Roots = cache.updateNewForkBlocks(fork1, forkBlocks, block)
 			}
 
 			if leaf2 != nil {
 				cache.lastForkId++
-				fork2 = newFork(cache.lastForkId, baseBlock, leaf2, parentFork)
+				fork2 = newFork(cache.lastForkId, baseBlock, leaf2, parentForkId)
 				cache.addFork(fork2)
 				fork2Roots = cache.updateNewForkBlocks(fork2, forkBlocks, nil)
 			}

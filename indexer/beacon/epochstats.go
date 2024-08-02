@@ -104,6 +104,22 @@ func (es *EpochStats) getRequestedBy() []*Client {
 	return clients
 }
 
+func (es *EpochStats) restoreFromDb(dbDuty *dbtypes.UnfinalizedDuty, dynSsz *dynssz.DynSsz, chainState *consensus.ChainState) error {
+	if es.ready {
+		return nil
+	}
+
+	values, err := es.parsePackedSSZ(dynSsz, chainState, dbDuty.DutiesSSZ)
+	if err != nil {
+		return err
+	}
+
+	es.values = values
+	es.ready = true
+
+	return nil
+}
+
 // marshalSSZ marshals the EpochStats values using SSZ.
 func (es *EpochStats) buildPackedSSZ(dynSsz *dynssz.DynSsz) ([]byte, error) {
 	if es.values == nil {

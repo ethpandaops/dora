@@ -10,7 +10,6 @@ import (
 
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/clients/consensus"
-	"github.com/ethpandaops/dora/dbtypes"
 )
 
 // epochStatsKey is the primary key for EpochStats entries in cache.
@@ -90,36 +89,6 @@ func (cache *epochCache) createOrGetEpochStats(epoch phase0.Epoch, dependentRoot
 	}
 
 	return epochStats
-}
-
-func (cache *epochCache) restoreEpochStats(dbDuty *dbtypes.UnfinalizedDuty) (*EpochStats, error) {
-	cache.cacheMutex.Lock()
-	defer cache.cacheMutex.Unlock()
-
-	statsKey := getEpochStatsKey(phase0.Epoch(dbDuty.Epoch), phase0.Root(dbDuty.DependentRoot))
-
-	epochStats := cache.statsMap[statsKey]
-	isNew := false
-	if epochStats == nil {
-		epochStats = newEpochStats(phase0.Epoch(dbDuty.Epoch), phase0.Root(dbDuty.DependentRoot))
-		isNew = true
-	}
-
-	if !epochStats.ready {
-		values, err := epochStats.parsePackedSSZ(cache.indexer.dynSsz, cache.indexer.consensusPool.GetChainState(), dbDuty.DutiesSSZ)
-		if err != nil {
-			return nil, err
-		}
-
-		epochStats.values = values
-		epochStats.ready = true
-	}
-
-	if isNew {
-		cache.statsMap[statsKey] = epochStats
-	}
-
-	return epochStats, nil
 }
 
 func (cache *epochCache) getEpochStats(epoch phase0.Epoch, dependentRoot phase0.Root) *EpochStats {
@@ -408,7 +377,7 @@ func (cache *epochCache) loadEpochStats(epochStats *EpochStats) {
 	})
 
 	for _, client := range clients {
-		err := epochStats.dependentState.loadState(client, cache)
+		err := epochStats.dependentState.loadState(client.getContext(), client, cache)
 		if err != nil && epochStats.dependentState.loadingStatus == 0 {
 			client.logger.Warnf("failed loading epoch %v stats (dep: %v): %v", epochStats.epoch, epochStats.dependentRoot.String(), err)
 		} else {

@@ -238,7 +238,7 @@ func (cache *blockCache) getDependentBlock(chainState *consensus.ChainState, blo
 		}
 
 		if dependentBlock == nil && client != nil {
-			blockHead, _ := client.loadHeader(*block.dependentRoot)
+			blockHead, _ := loadHeader(client.getContext(), client, *block.dependentRoot)
 			if blockHead != nil {
 				dependentBlock = newBlock(cache.indexer.dynSsz, *block.dependentRoot, phase0.Slot(blockHead.Message.Slot))
 				parentRootVal := phase0.Root(blockHead.Message.ParentRoot)
@@ -269,7 +269,7 @@ func (cache *blockCache) getDependentBlock(chainState *consensus.ChainState, blo
 		}
 
 		if parentBlock == nil && client != nil {
-			blockHead, _ := client.loadHeader(*parentRoot)
+			blockHead, _ := loadHeader(client.getContext(), client, *parentRoot)
 			client = nil // only load one header, that's probably the dependent root block (last block of previous epoch)
 			if blockHead != nil {
 				parentBlock = newBlock(cache.indexer.dynSsz, *parentRoot, phase0.Slot(blockHead.Message.Slot))

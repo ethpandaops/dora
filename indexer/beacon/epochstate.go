@@ -39,7 +39,7 @@ func (s *epochState) dispose() {
 }
 
 // loadState loads the state for the epoch from the client.
-func (s *epochState) loadState(client *Client, cache *epochCache) error {
+func (s *epochState) loadState(ctx context.Context, client *Client, cache *epochCache) error {
 	if s.loadingStatus > 0 {
 		return fmt.Errorf("already loading")
 	}
@@ -47,7 +47,7 @@ func (s *epochState) loadState(client *Client, cache *epochCache) error {
 	s.loadingStatus = 1
 	client.logger.Debugf("loading state for slot %v", s.slotRoot.String())
 
-	ctx, cancel := context.WithTimeout(client.client.GetContext(), BeaconStateRequestTimeout)
+	ctx, cancel := context.WithTimeout(ctx, beaconStateRequestTimeout+(beaconHeaderRequestTimeout*2))
 	s.loadingCancel = cancel
 	defer func() {
 		s.loadingCancel = nil
@@ -63,12 +63,12 @@ func (s *epochState) loadState(client *Client, cache *epochCache) error {
 
 	block := client.indexer.blockCache.getBlockByRoot(s.slotRoot)
 	if block != nil {
-		blockHeader = block.AwaitHeader(ctx, BeaconHeaderRequestTimeout)
+		blockHeader = block.AwaitHeader(ctx, beaconHeaderRequestTimeout)
 	}
 
 	if blockHeader == nil {
 		var err error
-		blockHeader, err = client.loadHeader(s.slotRoot)
+		blockHeader, err = loadHeader(ctx, client, s.slotRoot)
 		if err != nil {
 			return err
 		}
@@ -76,7 +76,7 @@ func (s *epochState) loadState(client *Client, cache *epochCache) error {
 
 	s.stateRoot = blockHeader.Message.StateRoot
 
-	resState, err := client.client.GetRPCClient().GetState(ctx, fmt.Sprintf("0x%x", blockHeader.Message.StateRoot[:]))
+	resState, err := loadState(ctx, client, blockHeader.Message.StateRoot)
 	if err != nil {
 		return err
 	}
@@ -101,7 +101,11 @@ func (s *epochState) processState(state *spec.VersionedBeaconState, cache *epoch
 	unifiedValidatorList := make([]*phase0.Validator, len(validatorList))
 	validatorPubkeyMap := map[phase0.BLSPubKey]phase0.ValidatorIndex{}
 	for i, v := range validatorList {
-		unifiedValidatorList[i] = cache.getOrCreateValidator(phase0.ValidatorIndex(i), v)
+		if cache != nil {
+			unifiedValidatorList[i] = cache.getOrCreateValidator(phase0.ValidatorIndex(i), v)
+		} else {
+			unifiedValidatorList[i] = v
+		}
 		validatorPubkeyMap[v.PublicKey] = phase0.ValidatorIndex(i)
 	}
 
@@ -131,7 +135,10 @@ func (s *epochState) processState(state *spec.VersionedBeaconState, cache *epoch
 	for i, v := range currentSyncCommittee {
 		syncCommittee[i] = validatorPubkeyMap[v]
 	}
-	s.syncCommittee = cache.getOrUpdateSyncCommittee(syncCommittee)
+	if cache != nil {
+		syncCommittee = cache.getOrUpdateSyncCommittee(syncCommittee)
+	}
+	s.syncCommittee = syncCommittee
 
 	return nil
 }
