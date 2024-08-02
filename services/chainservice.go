@@ -12,7 +12,8 @@ import (
 	"github.com/jmoiron/sqlx"
 
 	"github.com/ethpandaops/dora/clients/consensus"
-	"github.com/ethpandaops/dora/clients/consensus/rpc/sshtunnel"
+	"github.com/ethpandaops/dora/clients/execution"
+	"github.com/ethpandaops/dora/clients/sshtunnel"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/indexer"
@@ -25,6 +26,7 @@ import (
 type ChainService struct {
 	logger        logrus.FieldLogger
 	consensusPool *consensus.Pool
+	executionPool *execution.Pool
 
 	indexer        *indexer.Indexer
 	validatorNames *ValidatorNames
@@ -48,10 +50,12 @@ func StartChainService(ctx context.Context, logger logrus.FieldLogger) error {
 		return nil
 	}
 
-	// initialize consensus client pool & beacon indexer
+	// initialize client pools & indexers
 	consensusPool := consensus.NewPool(ctx, logger)
+	executionPool := execution.NewPool(ctx, logger)
 	beaconIndexer := beacon.NewIndexer(logger, consensusPool)
 
+	// add consensus clients
 	for index, endpoint := range utils.Config.BeaconApi.Endpoints {
 		endpointConfig := &consensus.ClientConfig{
 			URL:     endpoint.Url,
@@ -80,6 +84,31 @@ func StartChainService(ctx context.Context, logger logrus.FieldLogger) error {
 
 	if len(consensusPool.GetAllEndpoints()) == 0 {
 		return fmt.Errorf("no beacon clients configured")
+	}
+
+	// add execution clients
+	for _, endpoint := range utils.Config.ExecutionApi.Endpoints {
+		endpointConfig := &execution.ClientConfig{
+			URL:     endpoint.Url,
+			Name:    endpoint.Name,
+			Headers: endpoint.Headers,
+		}
+
+		if endpoint.Ssh != nil {
+			endpointConfig.SshConfig = &sshtunnel.SshConfig{
+				Host:     endpoint.Ssh.Host,
+				Port:     endpoint.Ssh.Port,
+				User:     endpoint.Ssh.User,
+				Password: endpoint.Ssh.Password,
+				Keyfile:  endpoint.Ssh.Keyfile,
+			}
+		}
+
+		_, err := executionPool.AddEndpoint(endpointConfig)
+		if err != nil {
+			logger.Errorf("could not add execution client '%v' to pool: %v", endpoint.Name, err)
+			continue
+		}
 	}
 
 	// init validator names & load inventory
@@ -145,6 +174,7 @@ func StartChainService(ctx context.Context, logger logrus.FieldLogger) error {
 	GlobalBeaconService = &ChainService{
 		logger:        logger,
 		consensusPool: consensusPool,
+		executionPool: executionPool,
 		//indexer:          indexer,
 		validatorNames:   validatorNames,
 		assignmentsCache: lru.NewCache[uint64, *rpc.EpochAssignments](10),
@@ -160,8 +190,8 @@ func (bs *ChainService) GetConsensusClients() []*consensus.Client {
 	return bs.consensusPool.GetAllEndpoints()
 }
 
-func (bs *ChainService) GetExecutionClients() []*indexer.ExecutionClient {
-	return bs.indexer.GetExecutionClients()
+func (bs *ChainService) GetExecutionClients() []*execution.Client {
+	return bs.executionPool.GetAllEndpoints()
 }
 
 func (bs *ChainService) GetHeadForks(readyOnly bool) []*indexer.HeadFork {

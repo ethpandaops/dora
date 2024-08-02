@@ -10,7 +10,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/ethpandaops/dora/clients/consensus/rpc"
-	"github.com/ethpandaops/dora/clients/consensus/rpc/sshtunnel"
+	"github.com/ethpandaops/dora/clients/sshtunnel"
 )
 
 type ClientConfig struct {

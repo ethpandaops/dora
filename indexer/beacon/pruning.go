@@ -32,8 +32,6 @@ func (indexer *Indexer) runCachePruning() error {
 		if err := indexer.processEpochPruning(pruneEpoch); err != nil {
 			return fmt.Errorf("failed pruning epoch %d: %v", pruneEpoch, err)
 		}
-
-		indexer.lastPrunedEpoch = pruneEpoch + 1
 	}
 
 	// process all remaining blocks in cache
@@ -41,6 +39,16 @@ func (indexer *Indexer) runCachePruning() error {
 		return fmt.Errorf("failed pruning cache: %v", err)
 	}
 
+	return nil
+}
+
+func (cache *forkCache) updatePruningState(tx *sqlx.Tx, epoch phase0.Epoch) error {
+	err := db.SetExplorerState("indexer.prunestate", &dbtypes.IndexerPruneState{
+		Epoch: uint64(epoch),
+	}, tx)
+	if err != nil {
+		return fmt.Errorf("error while updating pruning state: %v", err)
+	}
 	return nil
 }
 
@@ -200,9 +208,7 @@ func (indexer *Indexer) processEpochPruning(pruneEpoch phase0.Epoch) error {
 			indexer.logger.Errorf("error updating block status to pruned: %v", err)
 		}
 
-		err = db.SetExplorerState("indexer.prunestate", &dbtypes.IndexerPruneState{
-			Epoch: uint64(pruneEpoch) + 1,
-		}, tx)
+		err = indexer.forkCache.updatePruningState(tx, pruneEpoch+1)
 		if err != nil {
 			return fmt.Errorf("error while updating prune state: %v", err)
 		}
@@ -210,6 +216,7 @@ func (indexer *Indexer) processEpochPruning(pruneEpoch phase0.Epoch) error {
 		return nil
 	})
 
+	indexer.lastPrunedEpoch = pruneEpoch + 1
 	indexer.logger.Infof("pruned epoch %d with %v blocks", pruneEpoch, len(pruningBlocks))
 
 	// sleep 500 ms to give running UI threads time to fetch data from cache

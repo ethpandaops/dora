@@ -8,6 +8,7 @@ import (
 
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
+	"github.com/jmoiron/sqlx"
 	dynssz "github.com/pk910/dynamic-ssz"
 	"github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v3"
@@ -145,6 +146,12 @@ func (indexer *Indexer) StartIndexer() {
 
 	if indexer.lastPrunedEpoch < finalizedEpoch {
 		indexer.lastPrunedEpoch = finalizedEpoch
+		err := db.RunDBTransaction(func(tx *sqlx.Tx) error {
+			return indexer.forkCache.updatePruningState(tx, indexer.lastPrunedEpoch)
+		})
+		if err != nil {
+			indexer.logger.WithError(err).Errorf("error while updating prune state")
+		}
 	}
 
 	indexer.lastPruneRunEpoch = chainState.CurrentEpoch()
@@ -155,9 +162,9 @@ func (indexer *Indexer) StartIndexer() {
 		indexer.forkCache.addFork(fork)
 	}
 
-	// restore fork state
-	forkState := dbtypes.IndexerForkState{}
-	db.GetExplorerState("indexer.forkstate", &forkState)
+	if err := indexer.forkCache.loadForkState(); err != nil {
+		indexer.logger.WithError(err).Errorf("failed loading fork state")
+	}
 
 	// restore unfinalized epoch stats from db
 	restoredEpochStats := 0
@@ -286,6 +293,12 @@ func (indexer *Indexer) runIndexerLoop() {
 
 			if indexer.lastFinalizedEpoch > indexer.lastPrunedEpoch {
 				indexer.lastPrunedEpoch = indexer.lastFinalizedEpoch
+				err := db.RunDBTransaction(func(tx *sqlx.Tx) error {
+					return indexer.forkCache.updatePruningState(tx, indexer.lastPrunedEpoch)
+				})
+				if err != nil {
+					indexer.logger.WithError(err).Errorf("error while updating prune state")
+				}
 			}
 
 			err = indexer.runCachePruning()

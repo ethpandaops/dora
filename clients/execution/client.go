@@ -6,23 +6,18 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/sirupsen/logrus"
 
 	"github.com/ethpandaops/dora/clients/execution/rpc"
-)
-
-type ClientStatus uint8
-
-var (
-	ClientStatusOnline        ClientStatus = 1
-	ClientStatusOffline       ClientStatus = 2
-	ClientStatusSynchronizing ClientStatus = 3
+	"github.com/ethpandaops/dora/clients/sshtunnel"
 )
 
 type ClientConfig struct {
-	URL     string
-	Name    string
-	Headers map[string]string
+	URL       string
+	Name      string
+	Headers   map[string]string
+	SshConfig *sshtunnel.SshConfig
 }
 
 type Client struct {
@@ -32,27 +27,29 @@ type Client struct {
 	clientCtx       context.Context
 	clientCtxCancel context.CancelFunc
 	rpcClient       *rpc.ExecutionClient
-	updateChan      chan *clientBlockNotification
 	logger          *logrus.Entry
 	isOnline        bool
 	isSyncing       bool
 	versionStr      string
 	clientType      ClientType
 	lastEvent       time.Time
+	lastFilterPoll  time.Time
+	lastPeersUpdate time.Time
+	blockFilterId   rpc.BlockFilterId
 	retryCounter    uint64
 	lastError       error
 	headMutex       sync.RWMutex
 	headHash        common.Hash
 	headNumber      uint64
-}
-
-type clientBlockNotification struct {
-	hash   common.Hash
-	number uint64
+	nodeInfo        *p2p.NodeInfo
+	peers           []*p2p.PeerInfo
+	didFetchPeers   bool
 }
 
 func (pool *Pool) newPoolClient(clientIdx uint16, endpoint *ClientConfig) (*Client, error) {
-	rpcClient, err := rpc.NewExecutionClient(endpoint.Name, endpoint.URL, endpoint.Headers)
+	logger := pool.logger.WithField("client", endpoint.Name)
+
+	rpcClient, err := rpc.NewExecutionClient(endpoint.Name, endpoint.URL, endpoint.Headers, endpoint.SshConfig, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -62,8 +59,7 @@ func (pool *Pool) newPoolClient(clientIdx uint16, endpoint *ClientConfig) (*Clie
 		clientIdx:      clientIdx,
 		endpointConfig: endpoint,
 		rpcClient:      rpcClient,
-		updateChan:     make(chan *clientBlockNotification, 10),
-		logger:         pool.logger.WithField("client", endpoint.Name),
+		logger:         logger,
 	}
 	client.resetContext()
 
@@ -92,6 +88,10 @@ func (client *Client) GetVersion() string {
 	return client.versionStr
 }
 
+func (client *Client) GetNodeInfo() *p2p.NodeInfo {
+	return client.nodeInfo
+}
+
 func (client *Client) GetEndpointConfig() *ClientConfig {
 	return client.endpointConfig
 }
@@ -103,7 +103,7 @@ func (client *Client) GetLastHead() (uint64, common.Hash) {
 	return client.headNumber, client.headHash
 }
 
-func (client *Client) GetLastError() error {
+func (client *Client) GetLastClientError() error {
 	return client.lastError
 }
 
@@ -126,11 +126,13 @@ func (client *Client) GetStatus() ClientStatus {
 	}
 }
 
-func (client *Client) NotifyNewBlock(hash common.Hash, number uint64) {
-	if client.isOnline {
-		client.updateChan <- &clientBlockNotification{
-			hash:   hash,
-			number: number,
-		}
+func (client *Client) GetNodePeers() []*p2p.PeerInfo {
+	if client.peers == nil {
+		return []*p2p.PeerInfo{}
 	}
+	return client.peers
+}
+
+func (client *Client) DidFetchPeers() bool {
+	return client.didFetchPeers
 }

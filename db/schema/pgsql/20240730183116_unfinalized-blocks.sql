@@ -32,6 +32,10 @@ CREATE INDEX IF NOT EXISTS "forks_base_root_idx"
     ON public."forks" 
     ("base_root" ASC NULLS LAST);
 
+CREATE INDEX IF NOT EXISTS "forks_leaf_root_idx"
+    ON public."forks" 
+    ("leaf_root" ASC NULLS LAST);
+
 CREATE TABLE IF NOT EXISTS public."unfinalized_duties"
 (
     "epoch" bigint NOT NULL,

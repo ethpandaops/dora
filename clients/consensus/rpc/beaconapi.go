@@ -19,10 +19,11 @@ import (
 	"github.com/attestantio/go-eth2-client/spec"
 	"github.com/attestantio/go-eth2-client/spec/capella"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
-	"github.com/ethpandaops/dora/clients/consensus/rpc/sshtunnel"
 	"github.com/rs/zerolog"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/crypto/ssh"
+
+	"github.com/ethpandaops/dora/clients/sshtunnel"
 )
 
 type BeaconClient struct {

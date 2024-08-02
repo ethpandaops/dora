@@ -15,7 +15,7 @@ type BlockHead struct {
 	Slot       uint64 `db:"slot"`
 	Root       []byte `db:"root"`
 	ParentRoot []byte `db:"parent_root"`
-	ForkId     []byte `db:"fork_id"`
+	ForkId     uint64 `db:"fork_id"`
 }
 
 type AssignedBlob struct {

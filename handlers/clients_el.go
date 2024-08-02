@@ -188,7 +188,7 @@ func buildELClientsPageData() (*models.ClientsELPageData, time.Duration) {
 	}
 
 	for _, client := range services.GlobalBeaconService.GetExecutionClients() {
-		lastHeadSlot, lastHeadRoot, clientRefresh := client.GetLastHead()
+		lastHeadSlot, lastHeadRoot := client.GetLastHead()
 		if lastHeadSlot < 0 {
 			lastHeadSlot = 0
 		}
@@ -261,11 +261,16 @@ func buildELClientsPageData() (*models.ClientsELPageData, time.Duration) {
 			PeersInboundCounter:  inPeerCount,
 			PeersOutboundCounter: outPeerCount,
 			HeadSlot:             uint64(lastHeadSlot),
-			HeadRoot:             lastHeadRoot,
-			Status:               client.GetStatus(),
-			LastRefresh:          clientRefresh,
-			LastError:            client.GetLastClientError(),
+			HeadRoot:             lastHeadRoot[:],
+			Status:               client.GetStatus().String(),
+			LastRefresh:          client.GetLastEventTime(),
 		}
+
+		lastError := client.GetLastClientError()
+		if lastError != nil {
+			resClient.LastError = lastError.Error()
+		}
+
 		pageData.Clients = append(pageData.Clients, resClient)
 
 	}

@@ -1,20 +1,22 @@
 package execution
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"runtime/debug"
+	"strings"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
 )
 
 func (client *Client) runClientLoop() {
 	defer func() {
 		if err := recover(); err != nil {
-			client.logger.WithError(err.(error)).Errorf("uncaught panic in executionClient.runClientLoop subroutine: %v, stack: %v", err, string(debug.Stack()))
+			client.logger.WithError(err.(error)).Errorf("uncaught panic in clients.execution.Client.runClientLoop subroutine: %v, stack: %v", err, string(debug.Stack()))
+			time.Sleep(10 * time.Second)
+
+			go client.runClientLoop()
 		}
 	}()
 
@@ -65,13 +67,19 @@ func (client *Client) checkClient() error {
 	client.versionStr = nodeVersion
 	client.parseClientVersion(nodeVersion)
 
+	// get peers
+	err = client.updateNodePeers(ctx)
+	if err != nil {
+		client.logger.Warnf("error updating node peers: %v", err)
+	}
+
 	// get & comare chain specs
 	specs, err := client.rpcClient.GetChainSpec(ctx)
 	if err != nil {
 		return fmt.Errorf("error while fetching specs: %v", err)
 	}
 
-	err = client.pool.blockCache.SetClientSpecs(specs)
+	err = client.pool.chainState.SetClientSpecs(specs)
 	if err != nil {
 		return fmt.Errorf("invalid node specs: %v", err)
 	}
@@ -91,6 +99,30 @@ func (client *Client) checkClient() error {
 	return nil
 }
 
+func (client *Client) updateNodePeers(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	client.lastPeersUpdate = time.Now()
+
+	var err error
+	client.nodeInfo, err = client.rpcClient.GetAdminNodeInfo(ctx)
+	if err != nil {
+		client.didFetchPeers = false
+		return fmt.Errorf("could not get node info: %v", err)
+	}
+
+	peers, err := client.rpcClient.GetAdminPeers(ctx)
+	if err != nil {
+		client.didFetchPeers = false
+		return fmt.Errorf("could not get peers: %v", err)
+	}
+
+	client.peers = peers
+	client.didFetchPeers = true
+	return nil
+}
+
 func (client *Client) runClientLogic() error {
 	// get latest header
 	err := client.pollClientHead()
@@ -98,15 +130,28 @@ func (client *Client) runClientLogic() error {
 		return err
 	}
 
-	// check latest header / sync status
+	// check sync status
 	if client.isSyncing {
-		return fmt.Errorf("beacon node is synchronizing")
+		return fmt.Errorf("execution client is synchronizing")
+	}
+
+	// register new block filter
+	blockFilter, err := client.rpcClient.NewBlockFilter(client.clientCtx)
+	if err != nil {
+		client.logger.Warnf("could not create block filter: %v", err)
+	} else {
+		client.blockFilterId = blockFilter
+
+		defer func() {
+			ctx, cancel := context.WithTimeout(client.clientCtx, 10*time.Second)
+			defer cancel()
+			client.rpcClient.UninstallBlockFilter(ctx, client.blockFilterId)
+		}()
 	}
 
 	// process events
 	client.lastEvent = time.Now()
 	client.isOnline = true
-	client.updateChan = make(chan *clientBlockNotification, 10)
 
 	for {
 		eventTimeout := time.Since(client.lastEvent)
@@ -116,27 +161,50 @@ func (client *Client) runClientLogic() error {
 			eventTimeout = 30*time.Second - eventTimeout
 		}
 
+		pollTimeout := time.Since(client.lastFilterPoll)
+		if pollTimeout > 12*time.Second {
+			pollTimeout = 0
+		} else {
+			pollTimeout = 12*time.Second - pollTimeout
+		}
+
+		peerRefreshTimeout := time.Since(client.lastPeersUpdate)
+		if peerRefreshTimeout > 5*time.Minute {
+			peerRefreshTimeout = 0
+		} else {
+			peerRefreshTimeout = 5*time.Minute - peerRefreshTimeout
+		}
+
 		select {
 		case <-client.clientCtx.Done():
 			return nil
-		case updateNotification := <-client.updateChan:
-			var err error
+		case <-time.After(pollTimeout):
+			client.lastFilterPoll = time.Now()
 
-			retryCount := 0
-
-			for retryCount < 3 {
-				err = client.processBlock(updateNotification.hash, updateNotification.number, nil, "notified")
-				if err == nil {
-					break
-				}
-
-				retryCount++
-
-				time.Sleep(1 * time.Second)
+			if blockFilter == "" {
+				continue
 			}
 
+			// get filter changes
+			latestHash, err := client.pollBlockFilter()
 			if err != nil {
-				client.logger.Warnf("error processing execution block update: %v", err)
+				if strings.Contains(err.Error(), "filter not found") {
+					client.logger.Warnf("error polling block filter changes: filter not found, creating new filter...")
+					blockFilter, err = client.rpcClient.NewBlockFilter(client.clientCtx)
+					if err != nil {
+						client.logger.Warnf("could not create block filter: %v", err)
+					} else {
+						client.blockFilterId = blockFilter
+					}
+
+					continue
+				} else {
+					client.logger.Warnf("error polling block filter changes: %v", err)
+				}
+			} else if latestHash == nil {
+				continue
+			} else if err = client.loadBlockFilterHeader(*latestHash); err != nil {
+				client.logger.Warnf("error loading block: %v", err)
 			} else {
 				client.lastEvent = time.Now()
 			}
@@ -148,6 +216,12 @@ func (client *Client) runClientLogic() error {
 			}
 
 			client.lastEvent = time.Now()
+		case <-time.After(peerRefreshTimeout):
+			err := client.updateNodePeers(client.clientCtx)
+			if err != nil {
+				client.logger.Warnf("error updating node peers: %v", err)
+			}
+
 		}
 	}
 }
@@ -156,71 +230,60 @@ func (client *Client) pollClientHead() error {
 	ctx, cancel := context.WithTimeout(client.clientCtx, 10*time.Second)
 	defer cancel()
 
-	latestBlock, err := client.rpcClient.GetLatestBlock(ctx)
+	latestHeader, err := client.rpcClient.GetLatestHeader(ctx)
 	if err != nil {
-		return fmt.Errorf("could not get latest block: %v", err)
+		return fmt.Errorf("could not get latest header: %v", err)
 	}
 
-	if latestBlock == nil {
-		return fmt.Errorf("could not find latest block")
+	if latestHeader == nil {
+		return fmt.Errorf("could not find latest header")
 	}
 
-	err = client.processBlock(latestBlock.Hash(), latestBlock.Number().Uint64(), latestBlock, "polled")
-	if err != nil {
-		client.logger.Warnf("error processing execution block: %v", err)
-	}
+	client.headMutex.Lock()
+	defer client.headMutex.Unlock()
+
+	client.headNumber = latestHeader.Number.Uint64()
+	client.headHash = latestHeader.Hash()
 
 	return nil
 }
 
-func (client *Client) processBlock(hash common.Hash, number uint64, block *types.Block, source string) error {
-	cachedBlock, isNewBlock := client.pool.blockCache.AddBlock(hash, number)
-	if cachedBlock == nil {
-		return fmt.Errorf("could not add block to cache")
-	}
+func (client *Client) pollBlockFilter() (*common.Hash, error) {
+	ctx, cancel := context.WithTimeout(client.clientCtx, 10*time.Second)
+	defer cancel()
 
-	cachedBlock.SetSeenBy(client)
-
-	if isNewBlock {
-		client.logger.Infof("received el block %v [0x%x] %v", number, hash, source)
-	} else {
-		client.logger.Debugf("received known el block %v [0x%x] %v", number, hash, source)
-	}
-
-	loaded, err := cachedBlock.EnsureBlock(func() (*types.Block, error) {
-		if block != nil {
-			return block, nil
-		}
-
-		ctx, cancel := context.WithTimeout(client.clientCtx, 10*time.Second)
-		defer cancel()
-
-		block, err := client.rpcClient.GetBlockByHash(ctx, cachedBlock.Hash)
-		if err != nil {
-			return nil, err
-		}
-
-		return block, nil
-	})
+	blockHashes, err := client.rpcClient.GetFilterChanges(ctx, client.blockFilterId)
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("could not get filter changes: %v", err)
 	}
 
-	if loaded {
-		client.pool.blockCache.notifyBlockReady(cachedBlock)
+	if len(blockHashes) == 0 {
+		return nil, nil
+	}
+
+	lastHash := common.HexToHash(blockHashes[len(blockHashes)-1])
+
+	return &lastHash, nil
+}
+
+func (client *Client) loadBlockFilterHeader(hash common.Hash) error {
+	ctx, cancel := context.WithTimeout(client.clientCtx, 10*time.Second)
+	defer cancel()
+
+	header, err := client.rpcClient.GetHeaderByHash(ctx, hash)
+	if err != nil {
+		return fmt.Errorf("could not get header by hash %v: %v", hash.String(), err)
+	}
+
+	if header == nil {
+		return fmt.Errorf("could not find header %v", hash.String())
 	}
 
 	client.headMutex.Lock()
-	if bytes.Equal(client.headHash[:], hash[:]) {
-		client.headMutex.Unlock()
-		return nil
-	}
+	defer client.headMutex.Unlock()
 
-	client.headNumber = number
-	client.headHash = hash
-	client.headMutex.Unlock()
-
-	client.pool.resetHeadForkCache()
+	client.headNumber = header.Number.Uint64()
+	client.headHash = header.Hash()
 
 	return nil
 }

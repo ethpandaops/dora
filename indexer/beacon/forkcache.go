@@ -32,8 +32,25 @@ func newForkCache(indexer *Indexer) *forkCache {
 	}
 }
 
+func (cache *forkCache) loadForkState() error {
+	forkState := dbtypes.IndexerForkState{}
+	db.GetExplorerState("indexer.forkstate", &forkState)
+
+	if forkState.ForkId == 0 {
+		forkState.ForkId = 1
+	}
+	if forkState.Finalized == 0 {
+		forkState.ForkId = 1
+	}
+
+	cache.lastForkId = ForkKey(forkState.ForkId)
+	cache.finalizedForkId = ForkKey(forkState.Finalized)
+
+	return nil
+}
+
 func (cache *forkCache) updateForkState(tx *sqlx.Tx) error {
-	err := db.SetExplorerState("indexer.prunestate", &dbtypes.IndexerForkState{
+	err := db.SetExplorerState("indexer.forkstate", &dbtypes.IndexerForkState{
 		ForkId:    uint64(cache.lastForkId),
 		Finalized: uint64(cache.finalizedForkId),
 	}, tx)
@@ -213,12 +230,18 @@ func (cache *forkCache) processBlock(block *Block) (ForkKey, error) {
 
 	var parentFork *Fork
 
-	parentForkId := ForkKey(0)
+	parentForkId := ForkKey(1)
 	// get fork id from parent block
 	parentRoot := block.GetParentRoot()
 	if parentRoot != nil {
 		parentBlock := cache.indexer.blockCache.getBlockByRoot(*parentRoot)
-		if parentBlock != nil {
+		if parentBlock == nil {
+			blockHead := db.GetBlockHeadByRoot((*parentRoot)[:])
+			if blockHead != nil {
+				parentForkId = ForkKey(blockHead.ForkId)
+				parentFork = cache.getForkById(parentForkId)
+			}
+		} else {
 			parentForkId = parentBlock.forkId
 			parentFork = cache.getForkById(parentForkId)
 		}
