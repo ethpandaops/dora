@@ -15,45 +15,66 @@ import (
 	dynssz "github.com/pk910/dynamic-ssz"
 )
 
-var jsonVersionOffset uint64 = 0x70000000
+var jsonVersionFlag uint64 = 0x40000000
+var compressionFlag uint64 = 0x20000000
 
 // marshalVersionedSignedBeaconBlockSSZ marshals a versioned signed beacon block using SSZ encoding.
-func marshalVersionedSignedBeaconBlockSSZ(dynSsz *dynssz.DynSsz, block *spec.VersionedSignedBeaconBlock) (version uint64, ssz []byte, err error) {
+func marshalVersionedSignedBeaconBlockSSZ(dynSsz *dynssz.DynSsz, block *spec.VersionedSignedBeaconBlock, compress bool) (version uint64, ssz []byte, err error) {
 	if utils.Config.KillSwitch.DisableSSZEncoding {
 		// SSZ encoding disabled, use json instead
-		return marshalVersionedSignedBeaconBlockJson(block)
+		version, ssz, err = marshalVersionedSignedBeaconBlockJson(block)
+	} else {
+		// SSZ encoding
+		switch block.Version {
+		case spec.DataVersionPhase0:
+			version = uint64(block.Version)
+			ssz, err = dynSsz.MarshalSSZ(block.Phase0)
+		case spec.DataVersionAltair:
+			version = uint64(block.Version)
+			ssz, err = dynSsz.MarshalSSZ(block.Altair)
+		case spec.DataVersionBellatrix:
+			version = uint64(block.Version)
+			ssz, err = dynSsz.MarshalSSZ(block.Bellatrix)
+		case spec.DataVersionCapella:
+			version = uint64(block.Version)
+			ssz, err = dynSsz.MarshalSSZ(block.Capella)
+		case spec.DataVersionDeneb:
+			version = uint64(block.Version)
+			ssz, err = dynSsz.MarshalSSZ(block.Deneb)
+		case spec.DataVersionElectra:
+			version = uint64(block.Version)
+			ssz, err = dynSsz.MarshalSSZ(block.Electra)
+		default:
+			err = fmt.Errorf("unknown block version")
+		}
 	}
 
-	switch block.Version {
-	case spec.DataVersionPhase0:
-		version = uint64(block.Version)
-		ssz, err = dynSsz.MarshalSSZ(block.Phase0)
-	case spec.DataVersionAltair:
-		version = uint64(block.Version)
-		ssz, err = dynSsz.MarshalSSZ(block.Altair)
-	case spec.DataVersionBellatrix:
-		version = uint64(block.Version)
-		ssz, err = dynSsz.MarshalSSZ(block.Bellatrix)
-	case spec.DataVersionCapella:
-		version = uint64(block.Version)
-		ssz, err = dynSsz.MarshalSSZ(block.Capella)
-	case spec.DataVersionDeneb:
-		version = uint64(block.Version)
-		ssz, err = dynSsz.MarshalSSZ(block.Deneb)
-	case spec.DataVersionElectra:
-		version = uint64(block.Version)
-		ssz, err = dynSsz.MarshalSSZ(block.Electra)
-	default:
-		err = fmt.Errorf("unknown block version")
+	if compress {
+		ssz = compressBytes(ssz)
+		version |= compressionFlag
 	}
+
 	return
 }
 
 // unmarshalVersionedSignedBeaconBlockSSZ unmarshals a versioned signed beacon block using SSZ encoding.
 func unmarshalVersionedSignedBeaconBlockSSZ(dynSsz *dynssz.DynSsz, version uint64, ssz []byte) (*spec.VersionedSignedBeaconBlock, error) {
-	if version >= jsonVersionOffset {
+	if (version & compressionFlag) != 0 {
+		// decompress
+		if d, err := decompressBytes(ssz); err != nil {
+			return nil, fmt.Errorf("failed to decompress: %v", err)
+		} else {
+			ssz = d
+			version &= ^compressionFlag
+		}
+	}
+
+	if (version & jsonVersionFlag) != 0 {
+		// JSON encoding
 		return unmarshalVersionedSignedBeaconBlockJson(version, ssz)
 	}
+
+	// SSZ encoding
 	block := &spec.VersionedSignedBeaconBlock{
 		Version: spec.DataVersion(version),
 	}
@@ -99,36 +120,39 @@ func unmarshalVersionedSignedBeaconBlockSSZ(dynSsz *dynssz.DynSsz, version uint6
 func marshalVersionedSignedBeaconBlockJson(block *spec.VersionedSignedBeaconBlock) (version uint64, jsonRes []byte, err error) {
 	switch block.Version {
 	case spec.DataVersionPhase0:
-		version = uint64(block.Version) + jsonVersionOffset
+		version = uint64(block.Version)
 		jsonRes, err = block.Phase0.MarshalJSON()
 	case spec.DataVersionAltair:
-		version = uint64(block.Version) + jsonVersionOffset
+		version = uint64(block.Version)
 		jsonRes, err = block.Altair.MarshalJSON()
 	case spec.DataVersionBellatrix:
-		version = uint64(block.Version) + jsonVersionOffset
+		version = uint64(block.Version)
 		jsonRes, err = block.Bellatrix.MarshalJSON()
 	case spec.DataVersionCapella:
-		version = uint64(block.Version) + jsonVersionOffset
+		version = uint64(block.Version)
 		jsonRes, err = block.Capella.MarshalJSON()
 	case spec.DataVersionDeneb:
-		version = uint64(block.Version) + jsonVersionOffset
+		version = uint64(block.Version)
 		jsonRes, err = block.Deneb.MarshalJSON()
 	case spec.DataVersionElectra:
-		version = uint64(block.Version) + jsonVersionOffset
+		version = uint64(block.Version)
 		jsonRes, err = block.Electra.MarshalJSON()
 	default:
 		err = fmt.Errorf("unknown block version")
 	}
+
+	version |= jsonVersionFlag
+
 	return
 }
 
 // unmarshalVersionedSignedBeaconBlockJson unmarshals a versioned signed beacon block using JSON encoding.
 func unmarshalVersionedSignedBeaconBlockJson(version uint64, ssz []byte) (*spec.VersionedSignedBeaconBlock, error) {
-	if version < jsonVersionOffset {
+	if version&jsonVersionFlag == 0 {
 		return nil, fmt.Errorf("no json encoding")
 	}
 	block := &spec.VersionedSignedBeaconBlock{
-		Version: spec.DataVersion(version - jsonVersionOffset),
+		Version: spec.DataVersion(version - jsonVersionFlag),
 	}
 	switch block.Version {
 	case spec.DataVersionPhase0:

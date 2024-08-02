@@ -1,6 +1,9 @@
 package db
 
 import (
+	"fmt"
+	"strings"
+
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/jmoiron/sqlx"
 )
@@ -46,8 +49,24 @@ func GetUnfinalizedForks(finalizedSlot uint64) []*dbtypes.Fork {
 	return forks
 }
 
-func DeleteUnfinalizedForks(finalizedSlot uint64, tx *sqlx.Tx) error {
-	_, err := tx.Exec(`DELETE FROM forks WHERE base_slot < $1`, finalizedSlot)
+func DeleteFinalizedForks(finalizedRoots [][]byte, tx *sqlx.Tx) error {
+	var sql strings.Builder
+	args := []any{}
+
+	fmt.Fprint(&sql, `DELETE FROM forks WHERE leaf_root IN (`)
+
+	for i, root := range finalizedRoots {
+		if i > 0 {
+			fmt.Fprint(&sql, ",")
+		}
+
+		args = append(args, root)
+		fmt.Fprintf(&sql, "$%v", len(args))
+	}
+
+	fmt.Fprint(&sql, ")")
+
+	_, err := tx.Exec(sql.String(), args...)
 	if err != nil {
 		return err
 	}

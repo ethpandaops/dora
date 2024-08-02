@@ -407,7 +407,7 @@ func (c *Client) processBlock(slot phase0.Slot, root phase0.Root, header *phase0
 
 		// insert into unfinalized blocks
 		var dbBlock *dbtypes.UnfinalizedBlock
-		dbBlock, err = block.buildUnfinalizedBlock()
+		dbBlock, err = block.buildUnfinalizedBlock(c.indexer.blockCompression)
 		if err != nil {
 			return
 		}

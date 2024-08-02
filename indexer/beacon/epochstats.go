@@ -2,7 +2,6 @@ package beacon
 
 import (
 	"bytes"
-	"compress/zlib"
 	"fmt"
 	"math"
 	"sort"
@@ -155,12 +154,7 @@ func (es *EpochStats) buildPackedSSZ(dynSsz *dynssz.DynSsz) ([]byte, error) {
 		return nil, err
 	}
 
-	var b bytes.Buffer
-	w := zlib.NewWriter(&b)
-	w.Write(rawSsz)
-	w.Close()
-
-	return b.Bytes(), nil
+	return compressBytes(rawSsz), nil
 }
 
 // unmarshalSSZ unmarshals the EpochStats values using the provided SSZ bytes.
@@ -173,18 +167,14 @@ func (es *EpochStats) parsePackedSSZ(dynSsz *dynssz.DynSsz, chainState *consensu
 		return nil, nil
 	}
 
-	r, err := zlib.NewReader(bytes.NewReader(ssz))
-	if err != nil {
-		r.Close()
+	if d, err := decompressBytes(ssz); err != nil {
 		return nil, err
+	} else {
+		ssz = d
 	}
 
-	buf := &bytes.Buffer{}
-	buf.ReadFrom(r)
-	r.Close()
-
 	packedValues := &EpochStatsPacked{}
-	if err := dynSsz.UnmarshalSSZ(packedValues, buf.Bytes()); err != nil {
+	if err := dynSsz.UnmarshalSSZ(packedValues, ssz); err != nil {
 		return nil, err
 	}
 

@@ -7,6 +7,12 @@ ADD "status" integer NOT NULL DEFAULT 0;
 ALTER TABLE public."unfinalized_blocks"
 ADD "fork_id" BIGINT NOT NULL DEFAULT 0;
 
+-- fix version (remove 0x30000000 bits from header_ver & block_ver)
+-- 0x30000000 = 0b00110000000000000000000000000000 = 805306368
+-- 0x4fffffff = 0b01001111111111111111111111111111 = 1342177279
+UPDATE "unfinalized_blocks" SET "header_ver" = "header_ver" & 1342177279, "block_ver" = "block_ver" & 1342177279;
+UPDATE "orphaned_blocks" SET "header_ver" = "header_ver" & 1342177279, "block_ver" = "block_ver" & 1342177279;
+
 CREATE TABLE IF NOT EXISTS public."forks"
 (
     "fork_id" bigint NOT NULL,

@@ -1,28 +1,12 @@
 package beacon
 
 import (
-	"crypto/sha256"
-	"encoding/binary"
-
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/dbtypes"
 )
 
 // ForkKey represents a key used for indexing forks.
 type ForkKey uint64
-
-// getForkKey calculates the ForkKey based on the base and leaf roots.
-func getForkKey(baseRoot phase0.Root, leafRoot phase0.Root) ForkKey {
-	hashData := make([]byte, 64)
-	copy(hashData[:32], baseRoot[:])
-	copy(hashData[32:], leafRoot[:])
-	hash := sha256.Sum256(hashData)
-
-	keyBytes := hash[:8]
-	keyBytes[0] &= 0x7F
-
-	return ForkKey(binary.BigEndian.Uint64(keyBytes))
-}
 
 // Fork represents a fork in the beacon chain.
 type Fork struct {
@@ -35,9 +19,9 @@ type Fork struct {
 }
 
 // newFork creates a new Fork instance.
-func newFork(baseBlock *Block, leafBlock *Block, parentFork *Fork) *Fork {
+func newFork(forkId ForkKey, baseBlock *Block, leafBlock *Block, parentFork *Fork) *Fork {
 	fork := &Fork{
-		forkId:     getForkKey(baseBlock.Root, leafBlock.Root),
+		forkId:     forkId,
 		baseSlot:   baseBlock.Slot,
 		baseRoot:   baseBlock.Root,
 		leafSlot:   leafBlock.Slot,

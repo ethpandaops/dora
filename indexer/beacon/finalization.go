@@ -251,16 +251,15 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 		}
 
 		// persist orphaned blocks
-		orphanedForkId := ForkKey(1)
 		for _, block := range orphanedBlocks {
 			dependentBlock := indexer.blockCache.getDependentBlock(chainState, block, client)
 			epochStats := indexer.epochCache.getEpochStats(epoch, dependentBlock.Root)
 
-			if _, err := indexer.dbWriter.persistBlockData(tx, block, epochStats, nil, true, &orphanedForkId); err != nil {
+			if _, err := indexer.dbWriter.persistBlockData(tx, block, epochStats, nil, true, nil); err != nil {
 				return fmt.Errorf("failed persisting orphaned slot %v (%v): %v", block.Slot, block.Root.String(), err)
 			}
 
-			orphanedBlock, err := block.buildOrphanedBlock()
+			orphanedBlock, err := block.buildOrphanedBlock(indexer.blockCompression)
 			if err != nil {
 				return fmt.Errorf("failed building orphaned block %v (%v): %v", block.Slot, block.Root.String(), err)
 			}
@@ -291,8 +290,13 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 		}
 
 		// delete unfinalized forks before epoch
-		if err := db.DeleteUnfinalizedForks(uint64(deleteBeforeSlot), tx); err != nil {
-			return fmt.Errorf("failed deleting unfinalized forks < slot %v: %v", deleteBeforeSlot, err)
+		canonicalRoots := make([][]byte, len(canonicalBlocks))
+		for i, block := range canonicalBlocks {
+			canonicalRoots[i] = block.Root[:]
+		}
+
+		if err := db.DeleteFinalizedForks(canonicalRoots, tx); err != nil {
+			return fmt.Errorf("failed deleting finalized forks: %v", err)
 		}
 
 		return nil

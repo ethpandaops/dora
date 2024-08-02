@@ -27,8 +27,6 @@ func (indexer *Indexer) runCachePruning() error {
 		pruneToEpoch = indexer.lastFinalizedEpoch
 	}
 
-	indexer.logger.Infof("process pruning! current pruned epoch: %d, prune to epoch: %d", indexer.lastPrunedEpoch, pruneToEpoch)
-
 	// process all epochs that are not yet pruned and can be pruned
 	for pruneEpoch := indexer.lastPrunedEpoch; pruneEpoch < pruneToEpoch; pruneEpoch++ {
 		if err := indexer.processEpochPruning(pruneEpoch); err != nil {
@@ -212,6 +210,8 @@ func (indexer *Indexer) processEpochPruning(pruneEpoch phase0.Epoch) error {
 		return nil
 	})
 
+	indexer.logger.Infof("pruned epoch %d with %v blocks", pruneEpoch, len(pruningBlocks))
+
 	// sleep 500 ms to give running UI threads time to fetch data from cache
 	time.Sleep(500 * time.Millisecond)
 
@@ -297,6 +297,7 @@ func (indexer *Indexer) processCachePruning() error {
 	}
 
 	// clean up epoch stats cache
+	prunedEpochStats := 0
 	for _, epochStats := range indexer.epochCache.getEpochStatsBeforeEpoch(minInMemoryEpoch) {
 		if epochStats.dependentState != nil {
 			epochStats.dependentState = nil
@@ -307,7 +308,9 @@ func (indexer *Indexer) processCachePruning() error {
 		}
 	}
 
-	indexer.epochCache.removeUnreferencedEpochStates()
+	prunedEpochStates := indexer.epochCache.removeUnreferencedEpochStates()
+
+	indexer.logger.Infof("cache pruning complete! pruned %v blocks, %v epoch stats and %v epoch states", len(pruningData), prunedEpochStats, prunedEpochStates)
 
 	return nil
 }

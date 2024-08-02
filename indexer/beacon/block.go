@@ -242,13 +242,13 @@ func (block *Block) setBlockIndex(body *spec.VersionedSignedBeaconBlock) {
 }
 
 // buildUnfinalizedBlock builds an unfinalized block from the block data.
-func (block *Block) buildUnfinalizedBlock() (*dbtypes.UnfinalizedBlock, error) {
+func (block *Block) buildUnfinalizedBlock(compress bool) (*dbtypes.UnfinalizedBlock, error) {
 	headerSSZ, err := block.header.MarshalSSZ()
 	if err != nil {
 		return nil, fmt.Errorf("marshal header ssz failed: %v", err)
 	}
 
-	blockVer, blockSSZ, err := marshalVersionedSignedBeaconBlockSSZ(block.dynSsz, block.GetBlock())
+	blockVer, blockSSZ, err := marshalVersionedSignedBeaconBlockSSZ(block.dynSsz, block.GetBlock(), compress)
 	if err != nil {
 		return nil, fmt.Errorf("marshal block ssz failed: %v", err)
 	}
@@ -265,13 +265,13 @@ func (block *Block) buildUnfinalizedBlock() (*dbtypes.UnfinalizedBlock, error) {
 	}, nil
 }
 
-func (block *Block) buildOrphanedBlock() (*dbtypes.OrphanedBlock, error) {
+func (block *Block) buildOrphanedBlock(compress bool) (*dbtypes.OrphanedBlock, error) {
 	headerSSZ, err := block.header.MarshalSSZ()
 	if err != nil {
 		return nil, fmt.Errorf("marshal header ssz failed: %v", err)
 	}
 
-	blockVer, blockSSZ, err := marshalVersionedSignedBeaconBlockSSZ(block.dynSsz, block.GetBlock())
+	blockVer, blockSSZ, err := marshalVersionedSignedBeaconBlockSSZ(block.dynSsz, block.GetBlock(), compress)
 	if err != nil {
 		return nil, fmt.Errorf("marshal block ssz failed: %v", err)
 	}

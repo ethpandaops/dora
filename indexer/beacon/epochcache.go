@@ -211,10 +211,11 @@ func (cache *epochCache) removeEpochStatsByEpoch(epoch phase0.Epoch) {
 	}
 }
 
-func (cache *epochCache) removeUnreferencedEpochStates() {
+func (cache *epochCache) removeUnreferencedEpochStates() uint64 {
 	cache.cacheMutex.Lock()
 	defer cache.cacheMutex.Unlock()
 
+	removed := uint64(0)
 	for _, state := range cache.stateMap {
 		found := false
 		for _, stats := range cache.statsMap {
@@ -227,8 +228,11 @@ func (cache *epochCache) removeUnreferencedEpochStates() {
 		if !found {
 			state.dispose()
 			delete(cache.stateMap, state.slotRoot)
+			removed++
 		}
 	}
+
+	return removed
 }
 
 // getOrCreateValidator replaces the supplied validator with an older Validator object from cache if all properties match.

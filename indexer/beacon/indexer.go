@@ -28,6 +28,7 @@ type Indexer struct {
 	// configuration
 	writeDb               bool
 	disableSync           bool
+	blockCompression      bool
 	inMemoryEpochs        uint16
 	maxParallelStateCalls uint16
 	cachePersistenceDelay uint16
@@ -63,6 +64,10 @@ func NewIndexer(logger logrus.FieldLogger, consensusPool *consensus.Pool) *Index
 	if maxParallelStateCalls < 2 {
 		maxParallelStateCalls = 2
 	}
+	blockCompression := true
+	if utils.Config.KillSwitch.DisableBlockCompression {
+		blockCompression = false
+	}
 
 	// initialize dynamic SSZ encoder
 	staticSpec := map[string]any{}
@@ -79,6 +84,7 @@ func NewIndexer(logger logrus.FieldLogger, consensusPool *consensus.Pool) *Index
 
 		writeDb:               !utils.Config.Indexer.DisableIndexWriter,
 		disableSync:           utils.Config.Indexer.DisableSynchronizer,
+		blockCompression:      blockCompression,
 		inMemoryEpochs:        inMemoryEpochs,
 		maxParallelStateCalls: maxParallelStateCalls,
 		cachePersistenceDelay: cachePersistenceDelay,
@@ -148,6 +154,10 @@ func (indexer *Indexer) StartIndexer() {
 		fork := newForkFromDb(dbFork, indexer.forkCache)
 		indexer.forkCache.addFork(fork)
 	}
+
+	// restore fork state
+	forkState := dbtypes.IndexerForkState{}
+	db.GetExplorerState("indexer.forkstate", &forkState)
 
 	// restore unfinalized epoch stats from db
 	restoredEpochStats := 0

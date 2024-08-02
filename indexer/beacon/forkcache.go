@@ -9,6 +9,7 @@ import (
 
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/db"
+	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -18,6 +19,7 @@ type forkCache struct {
 	cacheMutex      sync.RWMutex
 	forkMap         map[ForkKey]*Fork
 	finalizedForkId ForkKey
+	lastForkId      ForkKey
 
 	forkProcessLock sync.Mutex
 }
@@ -28,6 +30,17 @@ func newForkCache(indexer *Indexer) *forkCache {
 		indexer: indexer,
 		forkMap: make(map[ForkKey]*Fork),
 	}
+}
+
+func (cache *forkCache) updateForkState(tx *sqlx.Tx) error {
+	err := db.SetExplorerState("indexer.prunestate", &dbtypes.IndexerForkState{
+		ForkId:    uint64(cache.lastForkId),
+		Finalized: uint64(cache.finalizedForkId),
+	}, tx)
+	if err != nil {
+		return fmt.Errorf("error while updating fork state: %v", err)
+	}
+	return nil
 }
 
 // getForkById retrieves a fork from the cache by its ID.
@@ -91,29 +104,13 @@ func (cache *forkCache) setFinalizedEpoch(finalizedSlot phase0.Slot, justifiedRo
 	}
 
 	cache.finalizedForkId = closestForkId
-}
 
-// getClosestFork finds the closest fork that a given block is part of.
-func (cache *forkCache) getClosestFork(block *Block) *Fork {
-	cache.cacheMutex.RLock()
-	defer cache.cacheMutex.RUnlock()
-
-	var closestFork *Fork
-	var closestDistance uint64
-
-	for _, fork := range cache.forkMap {
-		isInFork, distance := cache.indexer.blockCache.getCanonicalDistance(fork.leafRoot, block.Root, closestDistance)
-		if !isInFork {
-			continue
-		}
-
-		if closestFork == nil || distance < closestDistance {
-			closestFork = fork
-			closestDistance = distance
-		}
+	err := db.RunDBTransaction(func(tx *sqlx.Tx) error {
+		return cache.updateForkState(tx)
+	})
+	if err != nil {
+		cache.indexer.logger.Errorf("error while updating fork state: %v", err)
 	}
-
-	return closestFork
 }
 
 // checkForkDistance checks the distance between two blocks in a fork and returns the base block and distances.
@@ -247,13 +244,15 @@ func (cache *forkCache) processBlock(block *Block) (ForkKey, error) {
 			// new fork detected
 
 			if leaf1 != nil {
-				fork1 = newFork(baseBlock, leaf1, parentFork)
+				cache.lastForkId++
+				fork1 = newFork(cache.lastForkId, baseBlock, leaf1, parentFork)
 				cache.addFork(fork1)
 				fork1Roots = cache.updateNewForkBlocks(fork1, forkBlocks, block)
 			}
 
 			if leaf2 != nil {
-				fork2 = newFork(baseBlock, leaf2, parentFork)
+				cache.lastForkId++
+				fork2 = newFork(cache.lastForkId, baseBlock, leaf2, parentFork)
 				cache.addFork(fork2)
 				fork2Roots = cache.updateNewForkBlocks(fork2, forkBlocks, nil)
 			}
@@ -342,6 +341,11 @@ func (cache *forkCache) processBlock(block *Block) (ForkKey, error) {
 				}
 
 				cache.indexer.logger.Infof("updated %v blocks to fork %v", len(updatedBlocks), currentForkId)
+			}
+
+			err := cache.updateForkState(tx)
+			if err != nil {
+				return fmt.Errorf("error while updating fork state: %v", err)
 			}
 
 			return nil
