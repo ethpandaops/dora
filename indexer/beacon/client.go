@@ -151,12 +151,22 @@ func (c *Client) runClientLoop() error {
 
 // processBlockEvent processes a block event from the event stream.
 func (c *Client) processBlockEvent(blockEvent *v1.BlockEvent) error {
+	if c.client.GetStatus() != consensus.ClientStatusOnline && c.client.GetStatus() != consensus.ClientStatusOptimistic {
+		// client is not ready, skip
+		return nil
+	}
+
 	_, err := c.processStreamBlock(blockEvent.Slot, blockEvent.Block)
 	return err
 }
 
 // processHeadEvent processes a head event from the event stream.
 func (c *Client) processHeadEvent(headEvent *v1.HeadEvent) error {
+	if c.client.GetStatus() != consensus.ClientStatusOnline && c.client.GetStatus() != consensus.ClientStatusOptimistic {
+		// client is not ready, skip
+		return nil
+	}
+
 	block, err := c.processStreamBlock(headEvent.Slot, headEvent.Block)
 	if err != nil {
 		return err
@@ -214,7 +224,7 @@ func (c *Client) processHeadEvent(headEvent *v1.HeadEvent) error {
 			}
 		} else {
 			if dependentBlock == nil {
-				c.logger.Warnf("epoch stats check failed: dependent block for %v:%v (%v) not found", currentBlock.Slot, chainState.EpochOfSlot(currentBlock.Slot), currentBlock.Root.String())
+				c.logger.Debugf("epoch stats check failed: dependent block for %v:%v (%v) not found", currentBlock.Slot, chainState.EpochOfSlot(currentBlock.Slot), currentBlock.Root.String())
 			}
 			break
 		}

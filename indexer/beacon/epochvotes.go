@@ -29,7 +29,7 @@ type EpochVotes struct {
 func (indexer *Indexer) aggregateEpochVotes(chainState *consensus.ChainState, blocks []*Block, epochStats *EpochStats) *EpochVotes {
 	t1 := time.Now()
 
-	epochStatsValues := epochStats.GetValues(chainState, true)
+	epochStatsValues := epochStats.GetOrLoadValues(indexer, true)
 	specs := chainState.GetSpecs()
 
 	votes := &EpochVotes{

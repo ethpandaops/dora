@@ -43,6 +43,7 @@ type Indexer struct {
 	running               bool
 	lastFinalizedEpoch    phase0.Epoch
 	lastPrunedEpoch       phase0.Epoch
+	lastPruneRunEpoch     phase0.Epoch
 	finalitySubscription  *consensus.Subscription[*v1.Finality]
 	wallclockSubscription *consensus.Subscription[*ethwallclock.Slot]
 }
@@ -140,6 +141,8 @@ func (indexer *Indexer) StartIndexer() {
 		indexer.lastPrunedEpoch = finalizedEpoch
 	}
 
+	indexer.lastPruneRunEpoch = chainState.CurrentEpoch()
+
 	// restore unfinalized forks from db
 	for _, dbFork := range db.GetUnfinalizedForks(uint64(finalizedSlot)) {
 		fork := newForkFromDb(dbFork, indexer.forkCache)
@@ -159,15 +162,37 @@ func (indexer *Indexer) StartIndexer() {
 			return
 		}
 
+		epochStats.isInDb = true
+
 		restoredEpochStats++
-		if dbDuty.Epoch >= uint64(indexer.lastPrunedEpoch) {
-			epochStats.unpackValues(chainState)
+		if dbDuty.Epoch < uint64(indexer.lastPrunedEpoch) {
+			epochStats.pruneValues()
 		}
 	})
 	if err != nil {
 		indexer.logger.WithError(err).Errorf("failed restoring unfinalized epoch stats from DB")
 	} else {
 		indexer.logger.Infof("restored %v unfinalized epoch stats from DB", restoredEpochStats)
+	}
+
+	// restore unfinalized epoch aggregations from db
+	restoredEpochAggregations := 0
+	err = db.StreamUnfinalizedEpochs(func(unfinalizedEpoch *dbtypes.UnfinalizedEpoch) {
+		epochStats := indexer.epochCache.getEpochStats(phase0.Epoch(unfinalizedEpoch.Epoch), phase0.Root(unfinalizedEpoch.DependentRoot))
+		if epochStats == nil {
+			indexer.logger.Warnf("failed restoring epoch stats for epoch %v [%x] from db: epoch stats not found", unfinalizedEpoch.Epoch, unfinalizedEpoch.DependentRoot)
+			return
+		}
+
+		if epochStats.prunedEpochAggregations == nil {
+			epochStats.prunedEpochAggregations = []*dbtypes.UnfinalizedEpoch{}
+		}
+		epochStats.prunedEpochAggregations = append(epochStats.prunedEpochAggregations, unfinalizedEpoch)
+	})
+	if err != nil {
+		indexer.logger.WithError(err).Errorf("failed restoring unfinalized epoch aggregations from DB")
+	} else {
+		indexer.logger.Infof("restored %v unfinalized epoch aggregations from DB", restoredEpochAggregations)
 	}
 
 	// restore unfinalized blocks from db
@@ -249,19 +274,30 @@ func (indexer *Indexer) runIndexerLoop() {
 				indexer.logger.WithError(err).Errorf("error processing finality event (epoch: %v, root: %v)", finalityEvent.Finalized.Epoch, finalityEvent.Finalized.Root.String())
 			}
 
+			if indexer.lastFinalizedEpoch > indexer.lastPrunedEpoch {
+				indexer.lastPrunedEpoch = indexer.lastFinalizedEpoch
+			}
+
+			err = indexer.runCachePruning()
+			if err != nil {
+				indexer.logger.WithError(err).Errorf("failed pruning cache")
+			}
+
+			indexer.lastPruneRunEpoch = chainState.CurrentEpoch()
+
 		case slotEvent := <-indexer.wallclockSubscription.Channel():
 			epoch := chainState.EpochOfSlot(phase0.Slot(slotEvent.Number()))
 			slotIndex := chainState.SlotToSlotIndex(phase0.Slot(slotEvent.Number()))
 			slotProgress := uint8(100 / chainState.GetSpecs().SlotsPerEpoch * uint64(slotIndex))
 
 			// prune cache if last pruning epoch is outdated and we are at least 50% into the current
-			if epoch > indexer.lastPrunedEpoch && slotProgress >= 50 {
-				err := indexer.processCachePruning()
+			if epoch > indexer.lastPruneRunEpoch && slotProgress >= 50 {
+				err := indexer.runCachePruning()
 				if err != nil {
 					indexer.logger.WithError(err).Errorf("failed pruning cache")
 				}
 
-				indexer.lastPrunedEpoch = epoch
+				indexer.lastPruneRunEpoch = epoch
 			}
 
 		}
@@ -310,4 +346,13 @@ func (indexer *Indexer) GetReadyClientsByBlockRoot(blockRoot phase0.Root) []*Cli
 	})
 
 	return clients
+}
+
+func (indexer *Indexer) GetReadyClientByBlockRoot(blockRoot phase0.Root) *Client {
+	clients := indexer.GetReadyClientsByBlockRoot(blockRoot)
+	if len(clients) > 0 {
+		return clients[0]
+	}
+
+	return nil
 }

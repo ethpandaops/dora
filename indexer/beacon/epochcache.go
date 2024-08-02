@@ -105,8 +105,14 @@ func (cache *epochCache) restoreEpochStats(dbDuty *dbtypes.UnfinalizedDuty) (*Ep
 		isNew = true
 	}
 
-	if err := epochStats.unmarshalSSZ(cache.indexer.dynSsz, dbDuty.DutiesSSZ); err != nil {
-		return nil, err
+	if !epochStats.ready {
+		values, err := epochStats.parsePackedSSZ(cache.indexer.dynSsz, cache.indexer.consensusPool.GetChainState(), dbDuty.DutiesSSZ)
+		if err != nil {
+			return nil, err
+		}
+
+		epochStats.values = values
+		epochStats.ready = true
 	}
 
 	if isNew {
@@ -154,6 +160,20 @@ func (cache *epochCache) getEpochStatsByEpoch(epoch phase0.Epoch) []*EpochStats 
 	return statsList
 }
 
+func (cache *epochCache) getEpochStatsBeforeEpoch(epoch phase0.Epoch) []*EpochStats {
+	cache.cacheMutex.RLock()
+	defer cache.cacheMutex.RUnlock()
+
+	statsList := []*EpochStats{}
+	for _, stats := range cache.statsMap {
+		if stats.epoch < epoch {
+			statsList = append(statsList, stats)
+		}
+	}
+
+	return statsList
+}
+
 // removeEpochStats removes an EpochStats struct from cache.
 // stops loading state call if not referenced by another epoch status.
 func (cache *epochCache) removeEpochStats(epochStats *EpochStats) {
@@ -188,6 +208,26 @@ func (cache *epochCache) removeEpochStats(epochStats *EpochStats) {
 func (cache *epochCache) removeEpochStatsByEpoch(epoch phase0.Epoch) {
 	for _, stats := range cache.getEpochStatsByEpoch(epoch) {
 		cache.removeEpochStats(stats)
+	}
+}
+
+func (cache *epochCache) removeUnreferencedEpochStates() {
+	cache.cacheMutex.Lock()
+	defer cache.cacheMutex.Unlock()
+
+	for _, state := range cache.stateMap {
+		found := false
+		for _, stats := range cache.statsMap {
+			if stats.dependentState == state {
+				found = true
+				break
+			}
+		}
+
+		if !found {
+			state.dispose()
+			delete(cache.stateMap, state.slotRoot)
+		}
 	}
 }
 

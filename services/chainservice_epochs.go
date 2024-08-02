@@ -142,7 +142,7 @@ func (bs *ChainService) GetDbEpochs(firstEpoch uint64, limit uint32) []*dbtypes.
 		if epoch >= idxMinEpoch && epoch <= idxHeadEpoch {
 			resEpoch = bs.indexer.BuildLiveEpoch(epoch)
 			if resEpoch == nil {
-				resEpoch = db.GetUnfinalizedEpoch(epoch)
+				//resEpoch = db.GetUnfinalizedEpoch(epoch)
 			}
 		}
 		if resEpoch == nil {

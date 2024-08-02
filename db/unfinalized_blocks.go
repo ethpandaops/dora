@@ -27,8 +27,25 @@ func InsertUnfinalizedBlock(block *dbtypes.UnfinalizedBlock, tx *sqlx.Tx) error 
 	return nil
 }
 
-func UpdateUnfinalizedBlockStatus(root []byte, status uint32, tx *sqlx.Tx) error {
-	_, err := tx.Exec(`UPDATE unfinalized_blocks SET status = $1 WHERE root = $2`, status, root)
+func UpdateUnfinalizedBlockStatus(roots [][]byte, blockStatus dbtypes.UnfinalizedBlockStatus, tx *sqlx.Tx) error {
+	var sql strings.Builder
+	args := []any{}
+
+	fmt.Fprint(&sql, `UPDATE unfinalized_blocks SET status = $1 WHERE root IN (`)
+	args = append(args, blockStatus)
+
+	for i, root := range roots {
+		if i > 0 {
+			fmt.Fprint(&sql, ",")
+		}
+
+		args = append(args, root)
+		fmt.Fprintf(&sql, "$%v", len(args))
+	}
+
+	fmt.Fprint(&sql, ")")
+
+	_, err := tx.Exec(sql.String(), args...)
 	if err != nil {
 		return err
 	}

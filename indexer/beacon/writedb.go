@@ -24,7 +24,7 @@ func newDbWriter(indexer *Indexer) *dbWriter {
 
 func (dbw *dbWriter) persistMissedSlots(tx *sqlx.Tx, epoch phase0.Epoch, blocks []*Block, epochStats *EpochStats) error {
 	chainState := dbw.indexer.consensusPool.GetChainState()
-	epochStatsValues := epochStats.GetValues(chainState, true)
+	epochStatsValues := epochStats.GetValues(true)
 
 	// insert missed slots
 	firstSlot := chainState.EpochStartSlot(epoch)
@@ -56,7 +56,7 @@ func (dbw *dbWriter) persistMissedSlots(tx *sqlx.Tx, epoch phase0.Epoch, blocks 
 	return nil
 }
 
-func (dbw *dbWriter) persistBlockData(tx *sqlx.Tx, block *Block, epochStats *EpochStats, depositIndex *uint64, orphaned bool, overrideForkId *ForkKey) error {
+func (dbw *dbWriter) persistBlockData(tx *sqlx.Tx, block *Block, epochStats *EpochStats, depositIndex *uint64, orphaned bool, overrideForkId *ForkKey) (*dbtypes.Slot, error) {
 	// insert block
 	dbBlock := dbw.buildDbBlock(block, epochStats, overrideForkId)
 	if orphaned {
@@ -65,7 +65,7 @@ func (dbw *dbWriter) persistBlockData(tx *sqlx.Tx, block *Block, epochStats *Epo
 
 	err := db.InsertSlot(dbBlock, tx)
 	if err != nil {
-		return fmt.Errorf("error inserting slot: %v", err)
+		return nil, fmt.Errorf("error inserting slot: %v", err)
 	}
 
 	block.isInFinalizedDb = true
@@ -73,10 +73,10 @@ func (dbw *dbWriter) persistBlockData(tx *sqlx.Tx, block *Block, epochStats *Epo
 	// insert child objects
 	err = dbw.persistBlockChildObjects(tx, block, depositIndex, orphaned, overrideForkId)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	return nil
+	return dbBlock, nil
 }
 
 func (dbw *dbWriter) persistBlockChildObjects(tx *sqlx.Tx, block *Block, depositIndex *uint64, orphaned bool, overrideForkId *ForkKey) error {
@@ -124,7 +124,7 @@ func (dbw *dbWriter) persistEpochData(tx *sqlx.Tx, epoch phase0.Epoch, blocks []
 	canonicalForkId := ForkKey(0)
 
 	dbEpoch := dbw.buildDbEpoch(epoch, blocks, epochStats, epochVotes, func(block *Block, depositIndex *uint64) {
-		err := dbw.persistBlockData(tx, block, epochStats, depositIndex, false, &canonicalForkId)
+		_, err := dbw.persistBlockData(tx, block, epochStats, depositIndex, false, &canonicalForkId)
 		if err != nil {
 			dbw.indexer.logger.Errorf("error persisting slot: %v", err)
 		}
@@ -156,7 +156,7 @@ func (dbw *dbWriter) persistSyncAssignments(tx *sqlx.Tx, epoch phase0.Epoch, epo
 
 	var epochStatsValues *EpochStatsValues
 	if epochStats != nil {
-		epochStatsValues = epochStats.GetValues(chainState, true)
+		epochStatsValues = epochStats.GetValues(true)
 	}
 	if epochStatsValues == nil {
 		return nil
@@ -181,7 +181,6 @@ func (dbw *dbWriter) persistSyncAssignments(tx *sqlx.Tx, epoch phase0.Epoch, epo
 }
 
 func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, overrideForkId *ForkKey) *dbtypes.Slot {
-	chainState := dbw.indexer.consensusPool.GetChainState()
 	blockBody := block.GetBlock()
 	if blockBody == nil {
 		dbw.indexer.logger.Errorf("error while building db blocks: block body not found: %v", block.Slot)
@@ -190,7 +189,7 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 
 	var epochStatsValues *EpochStatsValues
 	if epochStats != nil {
-		epochStatsValues = epochStats.GetValues(chainState, true)
+		epochStatsValues = epochStats.GetValues(true)
 	}
 
 	graffiti, _ := blockBody.Graffiti()
@@ -267,7 +266,7 @@ func (dbw *dbWriter) buildDbEpoch(epoch phase0.Epoch, blocks []*Block, epochStat
 
 	var epochStatsValues *EpochStatsValues
 	if epochStats != nil {
-		epochStatsValues = epochStats.GetValues(chainState, true)
+		epochStatsValues = epochStats.GetValues(true)
 	}
 
 	// insert missed slots

@@ -430,11 +430,13 @@ func (cache *indexerCache) processCachePersistence() error {
 				if !epochStats.isInDb {
 					dbEpoch, _ := cache.indexer.buildLiveEpoch(epochStats.Epoch, epochStats)
 					if dbEpoch != nil {
-						err := db.InsertUnfinalizedEpoch(dbEpoch, tx)
-						if err != nil {
-							logger.Errorf("error inserting unfinalized epoch: %v", err)
-							return err
-						}
+						/*
+							err := db.InsertUnfinalizedEpoch(dbEpoch, tx)
+							if err != nil {
+								logger.Errorf("error inserting unfinalized epoch: %v", err)
+								return err
+							}
+						*/
 						epochStats.isInDb = true
 					}
 				}

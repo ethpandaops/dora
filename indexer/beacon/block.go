@@ -3,7 +3,7 @@ package beacon
 import (
 	"context"
 	"fmt"
-	"sort"
+	"math/rand/v2"
 	"sync"
 	"time"
 
@@ -31,9 +31,10 @@ type Block struct {
 	blockIndex        *blockBodyIndex
 	isInFinalizedDb   bool // block is in finalized table (slots)
 	isInUnfinalizedDb bool // block is in unfinalized table (unfinalized_blocks)
-	processingStatus  uint32
+	processingStatus  dbtypes.UnfinalizedBlockStatus
 	seenMutex         sync.RWMutex
 	seenMap           map[uint16]*Client
+	cachedDbBlock     *dbtypes.Slot
 }
 
 type blockBodyIndex struct {
@@ -66,8 +67,8 @@ func (block *Block) GetSeenBy() []*Client {
 		clients = append(clients, client)
 	}
 
-	sort.Slice(clients, func(a, b int) bool {
-		return clients[a].index < clients[b].index
+	rand.Shuffle(len(clients), func(i, j int) {
+		clients[i], clients[j] = clients[j], clients[i]
 	})
 
 	return clients

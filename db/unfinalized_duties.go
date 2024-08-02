@@ -51,7 +51,7 @@ func StreamUnfinalizedDuties(cb func(duty *dbtypes.UnfinalizedDuty)) error {
 	return nil
 }
 
-func GetUnfinalizedDuty(epoch, dependentRoot []byte) *dbtypes.UnfinalizedDuty {
+func GetUnfinalizedDuty(epoch uint64, dependentRoot []byte) *dbtypes.UnfinalizedDuty {
 	duty := dbtypes.UnfinalizedDuty{}
 	err := ReaderDb.Get(&duty, `
 	SELECT epoch, dependent_root, duties

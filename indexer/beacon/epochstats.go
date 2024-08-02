@@ -26,12 +26,14 @@ type EpochStats struct {
 	requestedMutex sync.Mutex
 	requestedBy    []*Client
 	ready          bool
-
-	values       *EpochStatsValues
-	packedValues *EpochStatsPacked
+	isInDb         bool
 
 	precalcBaseRoot phase0.Root
 	precalcValues   *EpochStatsValues
+	values          *EpochStatsValues
+	prunedValues    *EpochStatsValues
+
+	prunedEpochAggregations []*dbtypes.UnfinalizedEpoch
 }
 
 // EpochStatsValues holds the values for the epoch-specific information.
@@ -104,88 +106,16 @@ func (es *EpochStats) getRequestedBy() []*Client {
 }
 
 // marshalSSZ marshals the EpochStats values using SSZ.
-func (es *EpochStats) marshalSSZ(dynSsz *dynssz.DynSsz) ([]byte, error) {
+func (es *EpochStats) buildPackedSSZ(dynSsz *dynssz.DynSsz) ([]byte, error) {
+	if es.values == nil {
+		return nil, fmt.Errorf("no values to marshal")
+	}
+
 	if dynSsz == nil {
 		dynSsz = dynssz.NewDynSsz(nil)
 	}
 
-	packedValues := es.getPackedValues()
-	if packedValues == nil {
-		return []byte{}, nil
-	}
-
-	rawSsz, err := dynSsz.MarshalSSZ(packedValues)
-	if err != nil {
-		return nil, err
-	}
-
-	var b bytes.Buffer
-	w := zlib.NewWriter(&b)
-	w.Write(rawSsz)
-	w.Close()
-
-	return b.Bytes(), nil
-}
-
-// unmarshalSSZ unmarshals the EpochStats values using the provided SSZ bytes.
-func (es *EpochStats) unmarshalSSZ(dynSsz *dynssz.DynSsz, ssz []byte) error {
-	if dynSsz == nil {
-		dynSsz = dynssz.NewDynSsz(nil)
-	}
-
-	if len(ssz) == 0 {
-		es.values = nil
-	} else {
-		r, err := zlib.NewReader(bytes.NewReader(ssz))
-		if err != nil {
-			r.Close()
-			return err
-		}
-
-		buf := &bytes.Buffer{}
-		buf.ReadFrom(r)
-		r.Close()
-
-		packedValues := &EpochStatsPacked{}
-		if err := dynSsz.UnmarshalSSZ(packedValues, buf.Bytes()); err != nil {
-			return err
-		}
-
-		es.ready = true
-		es.values = nil
-		es.packedValues = packedValues
-	}
-
-	return nil
-}
-
-// packValues packs the EpochStats values.
-func (es *EpochStats) packValues() {
-	if es.values == nil {
-		return
-	}
-
-	es.packedValues = es.getPackedValues()
-	es.values = nil
-}
-
-// unpackValues unpacks the EpochStats values.
-func (es *EpochStats) unpackValues(chainState *consensus.ChainState) {
-	if es.packedValues == nil {
-		return
-	}
-
-	es.values = es.getUnpackedValues(chainState)
-	es.packedValues = nil
-}
-
-// getPackedValues returns the packed values for the EpochStats.
-func (es *EpochStats) getPackedValues() *EpochStatsPacked {
-	if es.values == nil {
-		return es.packedValues
-	}
-
-	packed := &EpochStatsPacked{
+	packedValues := &EpochStatsPacked{
 		ActiveValidators:    make([]EpochStatsPackedValidator, es.values.ActiveValidators),
 		SyncCommitteeDuties: es.values.SyncCommitteeDuties,
 		RandaoMix:           es.values.RandaoMix,
@@ -214,35 +144,64 @@ func (es *EpochStats) getPackedValues() *EpochStatsPacked {
 		validatorOffset := uint32(validatorIndex - lastValidatorIndex)
 		lastValidatorIndex = validatorIndex
 
-		packed.ActiveValidators[i] = EpochStatsPackedValidator{
+		packedValues.ActiveValidators[i] = EpochStatsPackedValidator{
 			ValidatorIndexOffset: validatorOffset,
 			EffectiveBalanceEth:  packedBalance,
 		}
 	}
 
-	return packed
+	rawSsz, err := dynSsz.MarshalSSZ(packedValues)
+	if err != nil {
+		return nil, err
+	}
+
+	var b bytes.Buffer
+	w := zlib.NewWriter(&b)
+	w.Write(rawSsz)
+	w.Close()
+
+	return b.Bytes(), nil
 }
 
-// getUnpackedValues returns the unpacked values for the EpochStats.
-func (es *EpochStats) getUnpackedValues(chainState *consensus.ChainState) *EpochStatsValues {
-	if es.packedValues == nil {
-		return es.values
+// unmarshalSSZ unmarshals the EpochStats values using the provided SSZ bytes.
+func (es *EpochStats) parsePackedSSZ(dynSsz *dynssz.DynSsz, chainState *consensus.ChainState, ssz []byte) (*EpochStatsValues, error) {
+	if dynSsz == nil {
+		dynSsz = dynssz.NewDynSsz(nil)
+	}
+
+	if len(ssz) == 0 {
+		return nil, nil
+	}
+
+	r, err := zlib.NewReader(bytes.NewReader(ssz))
+	if err != nil {
+		r.Close()
+		return nil, err
+	}
+
+	buf := &bytes.Buffer{}
+	buf.ReadFrom(r)
+	r.Close()
+
+	packedValues := &EpochStatsPacked{}
+	if err := dynSsz.UnmarshalSSZ(packedValues, buf.Bytes()); err != nil {
+		return nil, err
 	}
 
 	values := &EpochStatsValues{
-		RandaoMix:           es.packedValues.RandaoMix,
-		NextRandaoMix:       es.packedValues.NextRandaoMix,
+		RandaoMix:           packedValues.RandaoMix,
+		NextRandaoMix:       packedValues.NextRandaoMix,
 		EffectiveBalances:   map[phase0.ValidatorIndex]phase0.Gwei{},
-		SyncCommitteeDuties: es.packedValues.SyncCommitteeDuties,
-		TotalBalance:        es.packedValues.TotalBalance,
-		ActiveBalance:       es.packedValues.ActiveBalance,
+		SyncCommitteeDuties: packedValues.SyncCommitteeDuties,
+		TotalBalance:        packedValues.TotalBalance,
+		ActiveBalance:       packedValues.ActiveBalance,
 		EffectiveBalance:    0,
-		FirstDepositIndex:   es.packedValues.FirstDepositIndex,
+		FirstDepositIndex:   packedValues.FirstDepositIndex,
 	}
 
-	activeIndices := make([]phase0.ValidatorIndex, len(es.packedValues.ActiveValidators))
+	activeIndices := make([]phase0.ValidatorIndex, len(packedValues.ActiveValidators))
 	lastValidatorIndex := phase0.ValidatorIndex(0)
-	for i, packedValidator := range es.packedValues.ActiveValidators {
+	for i, packedValidator := range packedValues.ActiveValidators {
 		validatorIndex := lastValidatorIndex + phase0.ValidatorIndex(packedValidator.ValidatorIndexOffset)
 		lastValidatorIndex = validatorIndex
 
@@ -293,6 +252,47 @@ func (es *EpochStats) getUnpackedValues(chainState *consensus.ChainState) *Epoch
 	}
 
 	values.AttesterDuties = attesterDuties
+
+	return values, nil
+}
+
+// packValues packs the EpochStats values.
+func (es *EpochStats) pruneValues() {
+	if es.values == nil {
+		return
+	}
+
+	es.prunedValues = &EpochStatsValues{
+		RandaoMix:           es.values.RandaoMix,
+		NextRandaoMix:       es.values.NextRandaoMix,
+		EffectiveBalances:   nil, // prune
+		ProposerDuties:      es.values.ProposerDuties,
+		AttesterDuties:      nil, // prune
+		SyncCommitteeDuties: es.values.SyncCommitteeDuties,
+		ActiveValidators:    es.values.ActiveValidators,
+		TotalBalance:        es.values.TotalBalance,
+		ActiveBalance:       es.values.ActiveBalance,
+		EffectiveBalance:    es.values.EffectiveBalance,
+		FirstDepositIndex:   es.values.FirstDepositIndex,
+	}
+
+	es.values = nil
+}
+
+func (es *EpochStats) loadValuesFromDb(dynSsz *dynssz.DynSsz, chainState *consensus.ChainState) *EpochStatsValues {
+	if !es.isInDb {
+		return nil
+	}
+
+	dbDuty := db.GetUnfinalizedDuty(uint64(es.epoch), es.dependentRoot[:])
+	if dbDuty == nil {
+		return nil
+	}
+
+	values, err := es.parsePackedSSZ(dynSsz, chainState, dbDuty.DutiesSSZ)
+	if err != nil {
+		return nil
+	}
 
 	return values
 }
@@ -375,11 +375,11 @@ func (es *EpochStats) processState(indexer *Indexer) {
 	es.values = values
 	es.precalcValues = nil
 
-	ssz, _ := es.marshalSSZ(indexer.dynSsz)
+	packedSsz, _ := es.buildPackedSSZ(indexer.dynSsz)
 	dbDuty := &dbtypes.UnfinalizedDuty{
 		Epoch:         uint64(es.epoch),
 		DependentRoot: es.dependentRoot[:],
-		DutiesSSZ:     ssz,
+		DutiesSSZ:     packedSsz,
 	}
 
 	err := db.RunDBTransaction(func(tx *sqlx.Tx) error {
@@ -389,6 +389,8 @@ func (es *EpochStats) processState(indexer *Indexer) {
 		indexer.logger.WithError(err).Errorf("failed storing epoch %v stats (%v / %v) to unfinalized duties", es.epoch, es.dependentRoot.String(), es.dependentState.stateRoot.String())
 	}
 
+	es.isInDb = true
+
 	indexer.logger.Infof(
 		"processed epoch %v stats (root: %v / state: %v, validators: %v/%v), %v bytes",
 		es.epoch,
@@ -396,7 +398,7 @@ func (es *EpochStats) processState(indexer *Indexer) {
 		es.dependentState.stateRoot.String(),
 		values.ActiveValidators,
 		len(es.dependentState.validatorList),
-		len(ssz),
+		len(packedSsz),
 	)
 }
 
@@ -420,8 +422,7 @@ func (es *EpochStats) precomputeFromParentState(indexer *Indexer, parentState *E
 			}
 		}
 
-		chainState := indexer.consensusPool.GetChainState()
-		parentStatsValues := parentState.GetValues(chainState, false)
+		parentStatsValues := parentState.GetValues(false)
 		if parentStatsValues == nil {
 			return fmt.Errorf("parent stats values not available")
 		}
@@ -457,6 +458,7 @@ func (es *EpochStats) precomputeFromParentState(indexer *Indexer, parentState *E
 				return values.EffectiveBalances[index]
 			},
 		}
+		chainState := indexer.consensusPool.GetChainState()
 
 		// compute proposers
 		proposerDuties := []phase0.ValidatorIndex{}
@@ -499,7 +501,7 @@ func (es *EpochStats) precomputeFromParentState(indexer *Indexer, parentState *E
 }
 
 // GetValues returns the EpochStats values.
-func (es *EpochStats) GetValues(chainState *consensus.ChainState, withPrecalc bool) *EpochStatsValues {
+func (es *EpochStats) GetValues(withPrecalc bool) *EpochStatsValues {
 	if es == nil {
 		return nil
 	}
@@ -508,8 +510,32 @@ func (es *EpochStats) GetValues(chainState *consensus.ChainState, withPrecalc bo
 		return es.values
 	}
 
-	if es.packedValues != nil {
-		return es.getUnpackedValues(chainState)
+	if es.prunedValues != nil {
+		return es.prunedValues
+	}
+
+	if es.precalcValues != nil && withPrecalc {
+		return es.precalcValues
+	}
+
+	return nil
+}
+
+func (es *EpochStats) GetOrLoadValues(indexer *Indexer, withPrecalc bool) *EpochStatsValues {
+	if es == nil {
+		return nil
+	}
+
+	if es.values != nil {
+		return es.values
+	}
+
+	if es.isInDb {
+		values := es.loadValuesFromDb(indexer.dynSsz, indexer.consensusPool.GetChainState())
+		if values != nil {
+			es.values = values
+			return values
+		}
 	}
 
 	if es.precalcValues != nil && withPrecalc {

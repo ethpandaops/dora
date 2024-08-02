@@ -91,15 +91,48 @@ type SyncAssignment struct {
 	Validator uint64 `db:"validator"`
 }
 
+type UnfinalizedBlockStatus uint32
+
+const (
+	UnfinalizedBlockStatusUnprocessed UnfinalizedBlockStatus = iota
+	UnfinalizedBlockStatusPruned
+	UnfinalizedBlockStatusProcessed
+)
+
 type UnfinalizedBlock struct {
-	Root      []byte `db:"root"`
-	Slot      uint64 `db:"slot"`
-	HeaderVer uint64 `db:"header_ver"`
-	HeaderSSZ []byte `db:"header_ssz"`
-	BlockVer  uint64 `db:"block_ver"`
-	BlockSSZ  []byte `db:"block_ssz"`
-	Status    uint32 `db:"status"`
-	ForkId    uint64 `db:"fork_id"`
+	Root      []byte                 `db:"root"`
+	Slot      uint64                 `db:"slot"`
+	HeaderVer uint64                 `db:"header_ver"`
+	HeaderSSZ []byte                 `db:"header_ssz"`
+	BlockVer  uint64                 `db:"block_ver"`
+	BlockSSZ  []byte                 `db:"block_ssz"`
+	Status    UnfinalizedBlockStatus `db:"status"`
+	ForkId    uint64                 `db:"fork_id"`
+}
+
+type UnfinalizedEpoch struct {
+	Epoch                 uint64  `db:"epoch"`
+	DependentRoot         []byte  `db:"dependent_root"`
+	EpochHeadRoot         []byte  `db:"epoch_head_root"`
+	EpochHeadForkId       uint64  `db:"epoch_head_fork_id"`
+	ValidatorCount        uint64  `db:"validator_count"`
+	ValidatorBalance      uint64  `db:"validator_balance"`
+	Eligible              uint64  `db:"eligible"`
+	VotedTarget           uint64  `db:"voted_target"`
+	VotedHead             uint64  `db:"voted_head"`
+	VotedTotal            uint64  `db:"voted_total"`
+	BlockCount            uint16  `db:"block_count"`
+	OrphanedCount         uint16  `db:"orphaned_count"`
+	AttestationCount      uint64  `db:"attestation_count"`
+	DepositCount          uint64  `db:"deposit_count"`
+	ExitCount             uint64  `db:"exit_count"`
+	WithdrawCount         uint64  `db:"withdraw_count"`
+	WithdrawAmount        uint64  `db:"withdraw_amount"`
+	AttesterSlashingCount uint64  `db:"attester_slashing_count"`
+	ProposerSlashingCount uint64  `db:"proposer_slashing_count"`
+	BLSChangeCount        uint64  `db:"bls_change_count"`
+	EthTransactionCount   uint64  `db:"eth_transaction_count"`
+	SyncParticipation     float32 `db:"sync_participation"`
 }
 
 type Fork struct {
