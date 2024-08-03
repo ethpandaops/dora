@@ -2,6 +2,7 @@ package beacon
 
 import (
 	"bytes"
+	"encoding/binary"
 	"time"
 
 	"github.com/attestantio/go-eth2-client/spec"
@@ -22,21 +23,29 @@ type EpochVotes struct {
 		HeadVoteAmount   phase0.Gwei
 		TotalVoteAmount  phase0.Gwei
 	}
-	ActivityMap map[phase0.ValidatorIndex]bool
+	TargetVotePercent float64
+	HeadVotePercent   float64
+	TotalVotePercent  float64
+	AmountIsCount     bool
+	ActivityMap       map[phase0.ValidatorIndex]bool
 }
 
 // aggregateEpochVotes aggregates the votes for an epoch based on the provided chain state, blocks, and epoch stats.
 func (indexer *Indexer) aggregateEpochVotes(chainState *consensus.ChainState, blocks []*Block, epochStats *EpochStats) *EpochVotes {
 	t1 := time.Now()
 
-	epochStatsValues := epochStats.GetOrLoadValues(indexer, true)
+	var epochStatsValues *EpochStatsValues
+	if epochStats != nil {
+		epochStatsValues = epochStats.GetOrLoadValues(indexer, true)
+	}
 	specs := chainState.GetSpecs()
 
 	votes := &EpochVotes{
-		ActivityMap: map[phase0.ValidatorIndex]bool{},
+		ActivityMap:   map[phase0.ValidatorIndex]bool{},
+		AmountIsCount: epochStatsValues == nil,
 	}
 
-	if len(blocks) == 0 || epochStatsValues == nil {
+	if len(blocks) == 0 {
 		return votes
 	}
 
@@ -46,6 +55,8 @@ func (indexer *Indexer) aggregateEpochVotes(chainState *consensus.ChainState, bl
 	} else if parentRoot := blocks[0].GetParentRoot(); parentRoot != nil {
 		targetRoot = *parentRoot
 	}
+
+	deduplicationMap := map[voteDeduplicationKey]bool{}
 
 	for _, block := range blocks {
 		blockBody := block.GetBlock()
@@ -89,19 +100,32 @@ func (indexer *Indexer) aggregateEpochVotes(chainState *consensus.ChainState, bl
 				}
 
 				aggregationBitsOffset := uint64(0)
+				aggregationBitsIndex := uint64(0)
 
 				for _, committee := range committeeBits.BitIndices() {
 					if uint64(committee) >= specs.MaxCommitteesPerSlot {
 						continue
 					}
-					voteAmt, committeeSize := votes.aggregateVotes(epochStatsValues, slotIndex, uint64(committee), attAggregationBits, aggregationBitsOffset)
-					voteAmount += voteAmt
-					aggregationBitsOffset += committeeSize
+
+					if epochStatsValues != nil {
+						voteAmt, committeeSize := votes.aggregateVotes(epochStatsValues, slotIndex, uint64(committee), attAggregationBits, aggregationBitsOffset)
+						voteAmount += voteAmt
+						aggregationBitsOffset += committeeSize
+					} else {
+						voteAmt := votes.aggregateVotesWithoutDuties(deduplicationMap, slotIndex, uint64(committee), attAggregationBits, committeeBits.Count(), aggregationBitsIndex)
+						aggregationBitsIndex++
+						voteAmount += voteAmt
+					}
 				}
 			} else {
 				// pre electra attestation aggregation
-				voteAmt, _ := votes.aggregateVotes(epochStatsValues, slotIndex, uint64(attData.Index), attAggregationBits, 0)
-				voteAmount += voteAmt
+				if epochStatsValues != nil {
+					voteAmt, _ := votes.aggregateVotes(epochStatsValues, slotIndex, uint64(attData.Index), attAggregationBits, 0)
+					voteAmount += voteAmt
+				} else {
+					voteAmt := votes.aggregateVotesWithoutDuties(deduplicationMap, slotIndex, uint64(attData.Index), attAggregationBits, 1, 0)
+					voteAmount += voteAmt
+				}
 			}
 
 			if bytes.Equal(attData.Target.Root[:], targetRoot[:]) {
@@ -130,6 +154,12 @@ func (indexer *Indexer) aggregateEpochVotes(chainState *consensus.ChainState, bl
 		}
 	}
 
+	if epochStatsValues != nil {
+		votes.TargetVotePercent = float64(votes.CurrentEpoch.TargetVoteAmount+votes.NextEpoch.TargetVoteAmount) * 100 / float64(epochStatsValues.EffectiveBalance)
+		votes.HeadVotePercent = float64(votes.CurrentEpoch.HeadVoteAmount+votes.NextEpoch.HeadVoteAmount) * 100 / float64(epochStatsValues.EffectiveBalance)
+		votes.TotalVotePercent = float64(votes.CurrentEpoch.TotalVoteAmount+votes.NextEpoch.TotalVoteAmount) * 100 / float64(epochStatsValues.EffectiveBalance)
+	}
+
 	indexer.logger.Debugf("aggregated epoch %v votes in %v (blocks: %v, dependent: %v)", epochStats.epoch, time.Since(t1), len(blocks), epochStats.dependentRoot)
 	return votes
 }
@@ -151,4 +181,37 @@ func (votes *EpochVotes) aggregateVotes(epochStatsValues *EpochStatsValues, slot
 		}
 	}
 	return voteAmount, uint64(len(voteDuties))
+}
+
+type voteDeduplicationKey [14]byte // slotIndex (8) + committee (2) + index (4) = 14 bytes
+
+func getVoteDeduplicationKey(slotIndex phase0.Slot, committee uint16, index uint32) voteDeduplicationKey {
+	key := voteDeduplicationKey{}
+	binary.LittleEndian.PutUint64(key[:], uint64(slotIndex))
+	binary.LittleEndian.PutUint16(key[8:], committee)
+	binary.LittleEndian.PutUint32(key[10:], index)
+	return key
+}
+
+func (votes *EpochVotes) aggregateVotesWithoutDuties(deduplicationMap map[voteDeduplicationKey]bool, slotIndex phase0.Slot, committee uint64, aggregationBits bitfield.Bitfield, splitAggregationBits uint64, splitAggregationIndex uint64) phase0.Gwei {
+	voteAmount := phase0.Gwei(0)
+
+	bitsLen := aggregationBits.Len() / splitAggregationBits
+	aggregationBitsOffset := splitAggregationIndex * bitsLen
+	if splitAggregationBits == splitAggregationIndex+1 {
+		bitsLen = aggregationBits.Len() - (splitAggregationIndex * splitAggregationBits)
+	}
+
+	for bitIdx := uint64(0); bitIdx < bitsLen; bitIdx++ {
+		if aggregationBits.BitAt(bitIdx + aggregationBitsOffset) {
+			voteKey := getVoteDeduplicationKey(slotIndex, uint16(committee), uint32(bitIdx))
+			if deduplicationMap[voteKey] {
+				continue
+			}
+
+			voteAmount++
+			deduplicationMap[voteKey] = true
+		}
+	}
+	return voteAmount
 }

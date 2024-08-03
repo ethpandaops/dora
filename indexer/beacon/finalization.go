@@ -342,7 +342,7 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 			epochVotes.CurrentEpoch.TargetVoteAmount/EtherGweiFactor,
 			epochVotes.NextEpoch.TargetVoteAmount/EtherGweiFactor,
 			(epochVotes.CurrentEpoch.TargetVoteAmount+epochVotes.NextEpoch.TargetVoteAmount)/EtherGweiFactor,
-			float64(epochVotes.CurrentEpoch.TargetVoteAmount)*100/float64(epochVotes.CurrentEpoch.TargetVoteAmount+epochVotes.NextEpoch.TargetVoteAmount),
+			epochVotes.TargetVotePercent,
 		)
 		indexer.logger.Infof(
 			"epoch %v votes: head %v + %v = %v ETH (%.2f%%)",
@@ -350,7 +350,7 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 			epochVotes.CurrentEpoch.HeadVoteAmount/EtherGweiFactor,
 			epochVotes.NextEpoch.HeadVoteAmount/EtherGweiFactor,
 			(epochVotes.CurrentEpoch.HeadVoteAmount+epochVotes.NextEpoch.HeadVoteAmount)/EtherGweiFactor,
-			float64(epochVotes.CurrentEpoch.HeadVoteAmount)*100/float64(epochVotes.CurrentEpoch.HeadVoteAmount+epochVotes.NextEpoch.HeadVoteAmount),
+			epochVotes.HeadVotePercent,
 		)
 		indexer.logger.Infof(
 			"epoch %v votes: total %v + %v = %v ETH (%.2f%%)",
@@ -358,7 +358,7 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 			epochVotes.CurrentEpoch.TotalVoteAmount/EtherGweiFactor,
 			epochVotes.NextEpoch.TotalVoteAmount/EtherGweiFactor,
 			(epochVotes.CurrentEpoch.TotalVoteAmount+epochVotes.NextEpoch.TotalVoteAmount)/EtherGweiFactor,
-			float64(epochVotes.CurrentEpoch.TotalVoteAmount)*100/float64(epochVotes.CurrentEpoch.TotalVoteAmount+epochVotes.NextEpoch.TotalVoteAmount),
+			epochVotes.TotalVotePercent,
 		)
 	}
 

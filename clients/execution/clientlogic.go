@@ -188,7 +188,7 @@ func (client *Client) runClientLogic() error {
 			// get filter changes
 			latestHash, err := client.pollBlockFilter()
 			if err != nil {
-				if strings.Contains(err.Error(), "filter not found") {
+				if strings.Contains(err.Error(), "not found") {
 					client.logger.Warnf("error polling block filter changes: filter not found, creating new filter...")
 					blockFilter, err = client.rpcClient.NewBlockFilter(client.clientCtx)
 					if err != nil {

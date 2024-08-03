@@ -2,6 +2,7 @@ package beacon
 
 import (
 	"bytes"
+	"sort"
 	"sync"
 
 	"github.com/attestantio/go-eth2-client/spec/phase0"
@@ -17,6 +18,7 @@ type blockCache struct {
 	lowestSlot  int64
 	slotMap     map[phase0.Slot][]*Block
 	rootMap     map[phase0.Root]*Block
+	latestBlock *Block // latest added block (might not be the head block, just a marker for cache changes)
 }
 
 // newBlockCache creates a new instance of blockCache.
@@ -129,6 +131,36 @@ func (cache *blockCache) getForkBlocks(forkId ForkKey) []*Block {
 			}
 
 			blocks = append(blocks, block)
+		}
+	}
+
+	return blocks
+}
+
+func (cache *blockCache) getLatestBlocks(limit uint64, forkId *ForkKey) []*Block {
+	cache.cacheMutex.RLock()
+	defer cache.cacheMutex.RUnlock()
+
+	blocks := []*Block{}
+
+	slots := make([]phase0.Slot, 0, len(cache.slotMap))
+	for slot := range cache.slotMap {
+		slots = append(slots, slot)
+	}
+	sort.Slice(slots, func(i, j int) bool {
+		return slots[i] > slots[j]
+	})
+
+	for _, slot := range slots {
+		for _, block := range cache.slotMap[slot] {
+			if forkId != nil && block.forkId != *forkId {
+				continue
+			}
+
+			blocks = append(blocks, block)
+			if limit > 0 && uint64(len(blocks)) >= limit {
+				return blocks
+			}
 		}
 	}
 

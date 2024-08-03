@@ -48,7 +48,7 @@ func (client *Client) runClientLoop() {
 			waitTime = 60
 		}
 
-		client.logger.Warnf("client error: %v, retrying in %v sec...", err, waitTime)
+		client.logger.Warnf("consensus client error: %v, retrying in %v sec...", err, waitTime)
 		time.Sleep(time.Duration(waitTime) * time.Second)
 	}
 }

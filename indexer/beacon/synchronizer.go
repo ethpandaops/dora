@@ -159,7 +159,7 @@ func (sync *synchronizer) runSync() {
 		done, err := sync.syncEpoch(syncEpoch, syncClient, lastRetry)
 		if done || lastRetry {
 			if err != nil {
-				sync.logger.Warnf("synchronization of epoch %v failed: %v - skipping epoch", syncEpoch, err)
+				sync.logger.Errorf("synchronization of epoch %v failed: %v - skipping epoch", syncEpoch, err)
 			}
 			retryCount = 0
 			sync.stateMutex.Lock()

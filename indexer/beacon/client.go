@@ -284,7 +284,7 @@ func (c *Client) processEpochEvent(epochEvent *ethwallclock.Epoch) error {
 		if parentDependentBlock == nil {
 			c.logger.Warnf("failed precomputing epoch %v stats: parent epoch dependent block not found for head block %v", epoch, dependentBlock.Root.String())
 		} else if parentEpochStats := c.indexer.epochCache.getEpochStats(epoch-1, parentDependentBlock.Root); parentEpochStats == nil {
-			c.logger.Warnf("failed precomputing epoch %v stats: parent epoch stats not found", epoch, dependentBlock.Root.String())
+			c.logger.Warnf("failed precomputing epoch %v stats: parent epoch stats (%v) not found", epoch, parentDependentBlock.Root.String())
 		} else if err := epochStats.precomputeFromParentState(c.indexer, parentEpochStats); err != nil {
 			c.logger.Warnf("failed precomputing epoch %v stats: %v", epoch, err)
 		}
@@ -424,6 +424,10 @@ func (c *Client) processBlock(slot phase0.Slot, root phase0.Root, header *phase0
 		}
 
 		block.isInUnfinalizedDb = true
+		c.indexer.blockCache.latestBlock = block
+
+		c.indexer.GetCanonicalHead() // TODO: remove, just for debugging
+
 	}
 	if slot < finalizedSlot && !block.isInFinalizedDb {
 		// process new orphaned block in finalized epoch

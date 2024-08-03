@@ -50,6 +50,11 @@ type Indexer struct {
 	lastPruneRunEpoch     phase0.Epoch
 	finalitySubscription  *consensus.Subscription[*v1.Finality]
 	wallclockSubscription *consensus.Subscription[*ethwallclock.Slot]
+
+	// canonical head state
+	canonicalHeadMutex   sync.Mutex
+	canonicalHead        *Block
+	canonicalComputation phase0.Root
 }
 
 // NewIndexer creates a new instance of the Indexer.
@@ -271,6 +276,13 @@ func (indexer *Indexer) StartIndexer() {
 		} else {
 			block.setBlockIndex(blockBody)
 			block.isInFinalizedDb = true
+		}
+
+		blockFork := indexer.forkCache.getForkById(block.forkId)
+		if blockFork != nil {
+			if blockFork.headBlock == nil || blockFork.headBlock.Slot < block.Slot {
+				blockFork.headBlock = block
+			}
 		}
 
 		restoredBlockCount++
