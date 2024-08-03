@@ -3,6 +3,8 @@ package beacon
 import (
 	"context"
 	"fmt"
+	"sync"
+	"time"
 
 	"github.com/attestantio/go-eth2-client/spec"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
@@ -13,9 +15,12 @@ type epochState struct {
 	slotRoot  phase0.Root
 	stateRoot phase0.Root
 
-	loadingCancel context.CancelFunc
-	loadingStatus uint8
-	retryCount    uint64
+	loadingCancel  context.CancelFunc
+	loadingStatus  uint8
+	retryCount     uint64
+	readyChanMutex sync.Mutex
+	readyChan      chan bool
+	highPriority   bool
 
 	validatorList     []*phase0.Validator
 	validatorBalances []phase0.Gwei
@@ -35,6 +40,28 @@ func newEpochState(slotRoot phase0.Root) *epochState {
 func (s *epochState) dispose() {
 	if s.loadingCancel != nil {
 		s.loadingCancel()
+	}
+}
+
+func (s *epochState) awaitStateLoaded(ctx context.Context, timeout time.Duration) bool {
+	s.readyChanMutex.Lock()
+	status := s.loadingStatus
+	if s.readyChan == nil && status != 2 {
+		s.readyChan = make(chan bool)
+	}
+	s.readyChanMutex.Unlock()
+
+	if status == 2 {
+		return true
+	}
+
+	select {
+	case <-s.readyChan:
+		return true
+	case <-time.After(timeout):
+		return false
+	case <-ctx.Done():
+		return false
 	}
 }
 
@@ -84,6 +111,12 @@ func (s *epochState) loadState(ctx context.Context, client *Client, cache *epoch
 	err = s.processState(resState, cache)
 	if err != nil {
 		return err
+	}
+
+	s.readyChanMutex.Lock()
+	defer s.readyChanMutex.Unlock()
+	if s.readyChan != nil {
+		close(s.readyChan)
 	}
 
 	s.loadingStatus = 2

@@ -289,10 +289,29 @@ func (cache *epochCache) runLoaderLoop() {
 	}
 
 	// sort by loading priority
-	// 1. retry count (prefer lower)
-	// 2. requested by clients count (prefer higher)
-	// 3. epoch number (prefer higher)
+	// 1. bad states (prefer <= 10 retries)
+	// 2. high priority states (most recent 2 epochs are always high priority)
+	// 3. retry count (prefer lower)
+	// 4. requested by clients count (prefer higher)
+	// 5. epoch number (prefer higher)
+	currentEpoch := cache.indexer.consensusPool.GetChainState().CurrentEpoch()
 	sort.Slice(pendingStats, func(a, b int) bool {
+		probablyBadA := pendingStats[a].dependentState.retryCount > 10
+		probablyBadB := pendingStats[b].dependentState.retryCount > 10
+		if probablyBadA != probablyBadB {
+			return probablyBadB
+		}
+
+		highPriorityA := pendingStats[a].dependentState.highPriority || currentEpoch < 2 || pendingStats[a].epoch >= currentEpoch-2
+		highPriorityB := pendingStats[b].dependentState.highPriority || currentEpoch < 2 || pendingStats[b].epoch >= currentEpoch-2
+		if highPriorityA != highPriorityB {
+			return highPriorityA
+		}
+
+		if pendingStats[a].dependentState.retryCount != pendingStats[b].dependentState.retryCount {
+			return pendingStats[a].dependentState.retryCount < pendingStats[b].dependentState.retryCount
+		}
+
 		if pendingStats[a].dependentState.retryCount != pendingStats[b].dependentState.retryCount {
 			return pendingStats[a].dependentState.retryCount < pendingStats[b].dependentState.retryCount
 		}

@@ -32,6 +32,7 @@ func newForkCache(indexer *Indexer) *forkCache {
 	}
 }
 
+// loadForkState loads the fork state from the database.
 func (cache *forkCache) loadForkState() error {
 	forkState := dbtypes.IndexerForkState{}
 	db.GetExplorerState("indexer.forkstate", &forkState)
@@ -49,6 +50,7 @@ func (cache *forkCache) loadForkState() error {
 	return nil
 }
 
+// updateForkState updates the fork state in the database.
 func (cache *forkCache) updateForkState(tx *sqlx.Tx) error {
 	err := db.SetExplorerState("indexer.forkstate", &dbtypes.IndexerForkState{
 		ForkId:    uint64(cache.lastForkId),
@@ -84,6 +86,53 @@ func (cache *forkCache) removeFork(forkId ForkKey) {
 	delete(cache.forkMap, forkId)
 }
 
+// ForkHead represents a fork head with its ID, fork, and block.
+type ForkHead struct {
+	ForkId ForkKey
+	Fork   *Fork
+	Block  *Block
+}
+
+// getForkHeads returns the fork heads in the cache.
+// A head fork is a fork that no other fork is building on top of, so it contains the head of the fork chain.
+func (cache *forkCache) getForkHeads() []*ForkHead {
+	cache.cacheMutex.RLock()
+	defer cache.cacheMutex.RUnlock()
+
+	forkParents := map[ForkKey]bool{}
+	for _, fork := range cache.forkMap {
+		if fork.parentFork != 0 {
+			forkParents[fork.parentFork] = true
+		}
+	}
+
+	forkHeads := []*ForkHead{}
+	if !forkParents[cache.finalizedForkId] {
+		canonicalBlocks := cache.indexer.blockCache.getForkBlocks(cache.finalizedForkId)
+		sort.Slice(canonicalBlocks, func(i, j int) bool {
+			return canonicalBlocks[i].Slot > canonicalBlocks[j].Slot
+		})
+		if len(canonicalBlocks) > 0 {
+			forkHeads = append(forkHeads, &ForkHead{
+				ForkId: cache.finalizedForkId,
+				Block:  canonicalBlocks[0],
+			})
+		}
+	}
+
+	for forkId, fork := range cache.forkMap {
+		if !forkParents[forkId] {
+			forkHeads = append(forkHeads, &ForkHead{
+				ForkId: forkId,
+				Fork:   cache.forkMap[forkId],
+				Block:  fork.headBlock,
+			})
+		}
+	}
+
+	return forkHeads
+}
+
 // getForksBefore retrieves all forks that happened before the given slot.
 func (cache *forkCache) getForksBefore(slot phase0.Slot) []*Fork {
 	cache.cacheMutex.RLock()
@@ -99,6 +148,8 @@ func (cache *forkCache) getForksBefore(slot phase0.Slot) []*Fork {
 	return forks
 }
 
+// setFinalizedEpoch sets the finalized epoch in the fork cache.
+// It removes all forks that happened before the finalized epoch and updates the finalized fork ID.
 func (cache *forkCache) setFinalizedEpoch(finalizedSlot phase0.Slot, justifiedRoot phase0.Root) {
 	cache.cacheMutex.Lock()
 	defer cache.cacheMutex.Unlock()
@@ -131,7 +182,7 @@ func (cache *forkCache) setFinalizedEpoch(finalizedSlot phase0.Slot, justifiedRo
 }
 
 // checkForkDistance checks the distance between two blocks in a fork and returns the base block and distances.
-// if the fork happened before the latest finalized slot, only the side of the fork that does not include the finalized block gets returned.
+// If the fork happened before the latest finalized slot, only the side of the fork that does not include the finalized block gets returned.
 func (cache *forkCache) checkForkDistance(block1 *Block, block2 *Block, parentsMap map[phase0.Root]bool) (baseBlock *Block, block1Distance uint64, leafBlock1 *Block, block2Distance uint64, leafBlock2 *Block) {
 	finalizedSlot := cache.indexer.consensusPool.GetChainState().GetFinalizedSlot()
 	_, finalizedRoot := cache.indexer.consensusPool.GetChainState().GetFinalizedCheckpoint()
@@ -223,7 +274,8 @@ func (cache *forkCache) checkForkDistance(block1 *Block, block2 *Block, parentsM
 	return nil, 0, nil, 0, nil
 }
 
-// processBlock processes a block and detects new forks if any. persists the new forks to the database and returns the fork ID.
+// processBlock processes a block and detects new forks if any.
+// It persists the new forks to the database, updates any subsequent blocks building on top of the given block and returns the fork ID.
 func (cache *forkCache) processBlock(block *Block) (ForkKey, error) {
 	cache.forkProcessLock.Lock()
 	defer cache.forkProcessLock.Unlock()
@@ -276,6 +328,13 @@ func (cache *forkCache) processBlock(block *Block) (ForkKey, error) {
 				fork2Roots = cache.updateNewForkBlocks(fork2, forkBlocks, nil)
 			}
 
+			if parentForkId > 0 {
+				parentFork := cache.getForkById(parentForkId)
+				if parentFork != nil {
+					parentFork.headBlock = baseBlock
+				}
+			}
+
 			logbuf := strings.Builder{}
 			fmt.Fprintf(&logbuf, "new fork detected (base %v [%v]", baseBlock.Slot, baseBlock.Root.String())
 			if leaf1 != nil {
@@ -320,6 +379,11 @@ func (cache *forkCache) processBlock(block *Block) (ForkKey, error) {
 
 			nextBlock.forkId = currentForkId
 			updatedBlocks = append(updatedBlocks, nextBlock.Root[:])
+		}
+
+		fork := cache.getForkById(currentForkId)
+		if fork != nil && (fork.headBlock == nil || fork.headBlock.Slot < nextBlock.Slot) {
+			fork.headBlock = nextBlock
 		}
 	}
 

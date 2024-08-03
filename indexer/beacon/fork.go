@@ -16,6 +16,8 @@ type Fork struct {
 	leafSlot   phase0.Slot // Slot of the leaf block.
 	leafRoot   phase0.Root // Root of the leaf block.
 	parentFork ForkKey     // Parent fork.
+
+	headBlock *Block // Block at the head of the fork (in case it's known).
 }
 
 // newFork creates a new Fork instance.

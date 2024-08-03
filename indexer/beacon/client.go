@@ -282,17 +282,11 @@ func (c *Client) processEpochEvent(epochEvent *ethwallclock.Epoch) error {
 		}
 
 		if parentDependentBlock == nil {
-			return fmt.Errorf("parent epoch %v dependent block not found for head block %v", epoch-1, dependentBlock.Root.String())
-		}
-
-		parentEpochStats := c.indexer.epochCache.getEpochStats(epoch-1, parentDependentBlock.Root)
-		if parentEpochStats == nil {
-			return fmt.Errorf("parent epoch %v (%v) stats not found", epoch-1, dependentBlock.Root.String())
-		}
-
-		err := epochStats.precomputeFromParentState(c.indexer, parentEpochStats)
-		if err != nil {
-			return fmt.Errorf("failed precomputing epoch %v stats: %v", epoch, err)
+			c.logger.Warnf("failed precomputing epoch %v stats: parent epoch dependent block not found for head block %v", epoch, dependentBlock.Root.String())
+		} else if parentEpochStats := c.indexer.epochCache.getEpochStats(epoch-1, parentDependentBlock.Root); parentEpochStats == nil {
+			c.logger.Warnf("failed precomputing epoch %v stats: parent epoch stats not found", epoch, dependentBlock.Root.String())
+		} else if err := epochStats.precomputeFromParentState(c.indexer, parentEpochStats); err != nil {
+			c.logger.Warnf("failed precomputing epoch %v stats: %v", epoch, err)
 		}
 	}
 

@@ -6,6 +6,7 @@ import (
 	"math"
 	"sort"
 	"sync"
+	"time"
 
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/clients/consensus"
@@ -308,6 +309,7 @@ func (es *EpochStats) processState(indexer *Indexer) {
 	if es.dependentState == nil || es.dependentState.loadingStatus != 2 {
 		return
 	}
+	t1 := time.Now()
 
 	chainState := indexer.consensusPool.GetChainState()
 	values := &EpochStatsValues{
@@ -398,12 +400,13 @@ func (es *EpochStats) processState(indexer *Indexer) {
 	es.isInDb = true
 
 	indexer.logger.Infof(
-		"processed epoch %v stats (root: %v / state: %v, validators: %v/%v), %v bytes",
+		"processed epoch %v stats (root: %v / state: %v, validators: %v/%v, %v ms), %v bytes",
 		es.epoch,
 		es.dependentRoot.String(),
 		es.dependentState.stateRoot.String(),
 		values.ActiveValidators,
 		len(es.dependentState.validatorList),
+		time.Since(t1).Milliseconds(),
 		len(packedSsz),
 	)
 }
@@ -415,6 +418,7 @@ func (es *EpochStats) precomputeFromParentState(indexer *Indexer, parentState *E
 		if es.precalcValues != nil {
 			return nil
 		}
+		t1 := time.Now()
 
 		otherEpochStats := indexer.epochCache.getEpochStatsByEpoch(es.epoch)
 		for _, other := range otherEpochStats {
@@ -495,11 +499,12 @@ func (es *EpochStats) precomputeFromParentState(indexer *Indexer, parentState *E
 		es.precalcValues = values
 
 		indexer.logger.Infof(
-			"precomputed epoch %v stats (root: %v), validators: %v/%v",
+			"precomputed epoch %v stats (root: %v), validators: %v/%v (%v ms)",
 			es.epoch,
 			es.dependentRoot.String(),
 			values.ActiveValidators,
 			len(parentStatsValues.EffectiveBalances),
+			time.Since(t1).Milliseconds(),
 		)
 
 		return nil

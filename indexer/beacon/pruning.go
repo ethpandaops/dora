@@ -2,6 +2,7 @@ package beacon
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"sort"
 	"time"
@@ -104,6 +105,18 @@ func (indexer *Indexer) processEpochPruning(pruneEpoch phase0.Epoch) error {
 	epochData := []*pruningEpochData{}
 	for dependentRoot, blocks := range dependentGroups {
 		epochStats := indexer.epochCache.getEpochStats(pruneEpoch, dependentRoot)
+
+		// ensure epoch stats are loaded
+		// if the state is not yet loaded, we set it to high priority and wait for it to be loaded
+		if !epochStats.ready && epochStats.dependentState != nil && epochStats.dependentState.loadingStatus != 2 && epochStats.dependentState.retryCount < 10 {
+			indexer.logger.Infof("epoch %d state (%v) not yet loaded, waiting for state to be loaded", pruneEpoch, dependentRoot.String())
+			epochStats.dependentState.highPriority = true
+			loaded := epochStats.dependentState.awaitStateLoaded(context.Background(), beaconStateRequestTimeout)
+			if loaded {
+				// wait for async duty computation to be completed
+				time.Sleep(500 * time.Millisecond)
+			}
+		}
 
 		// get all chain heads from the list of blocks
 		chainHeads := map[phase0.Root]*Block{}
