@@ -2,27 +2,112 @@ package beacon
 
 import (
 	"bytes"
+	"math"
 	"slices"
+	"sort"
 	"time"
 
+	v1 "github.com/attestantio/go-eth2-client/api/v1"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 )
 
-// GetCanonicalHead returns the canonical head block of the beacon chain.
-func (indexer *Indexer) GetCanonicalHead() *Block {
+const FarFutureEpoch = phase0.Epoch(math.MaxUint64)
+
+// ChainHead represents a head block of the chain.
+type ChainHead struct {
+	HeadBlock              *Block      // The head block of the chain.
+	AggregatedHeadVotes    phase0.Gwei // The aggregated votes of the last 2 epochs for the head block.
+	LastEpochVotingPercent float64     // The voting percentage in the last epoch.
+	ThisEpochVotingPercent float64     // The voting percentage in the current epoch.
+}
+
+// GetCanonicalHead returns the canonical head block of the chain.
+func (indexer *Indexer) GetCanonicalHead(overrideForkId *ForkKey) *Block {
+	indexer.computeCanonicalChain()
+
+	if overrideForkId != nil && indexer.canonicalHead != nil && indexer.canonicalHead.forkId != *overrideForkId {
+		chainHeads := indexer.cachedChainHeads
+		chainHeadCandidates := []*ChainHead{}
+
+		for _, chainHead := range chainHeads {
+			parentForkIds := indexer.forkCache.getParentForkIds(chainHead.HeadBlock.forkId)
+			isInParentIds := false
+			for _, parentForkId := range parentForkIds {
+				if parentForkId == *overrideForkId {
+					isInParentIds = true
+					break
+				}
+			}
+			if !isInParentIds {
+				continue
+			}
+
+			chainHeadCandidates = append(chainHeadCandidates, chainHead)
+		}
+
+		if len(chainHeadCandidates) > 0 {
+			sort.Slice(chainHeadCandidates, func(i, j int) bool {
+				if chainHeadCandidates[i].LastEpochVotingPercent != chainHeadCandidates[j].LastEpochVotingPercent {
+					return chainHeadCandidates[i].LastEpochVotingPercent > chainHeadCandidates[j].LastEpochVotingPercent
+				}
+				if chainHeadCandidates[i].ThisEpochVotingPercent != chainHeadCandidates[j].ThisEpochVotingPercent {
+					return chainHeadCandidates[i].ThisEpochVotingPercent > chainHeadCandidates[j].ThisEpochVotingPercent
+				}
+				return chainHeadCandidates[i].HeadBlock.Slot > chainHeadCandidates[j].HeadBlock.Slot
+			})
+
+			return chainHeadCandidates[0].HeadBlock
+		}
+	}
+
+	return indexer.canonicalHead
+}
+
+// GetChainHeads returns the chain heads sorted by voting percentages.
+func (indexer *Indexer) GetChainHeads() []*ChainHead {
+	indexer.computeCanonicalChain()
+
+	heads := make([]*ChainHead, len(indexer.cachedChainHeads))
+	copy(heads, indexer.cachedChainHeads)
+	sort.Slice(heads, func(i, j int) bool {
+		if heads[i].LastEpochVotingPercent != heads[j].LastEpochVotingPercent {
+			return heads[i].LastEpochVotingPercent > heads[j].LastEpochVotingPercent
+		}
+		if heads[i].ThisEpochVotingPercent != heads[j].ThisEpochVotingPercent {
+			return heads[i].ThisEpochVotingPercent > heads[j].ThisEpochVotingPercent
+		}
+		return heads[i].HeadBlock.Slot > heads[j].HeadBlock.Slot
+	})
+
+	return heads
+}
+
+func (indexer *Indexer) IsCanonicalBlock(block *Block, overrideForkId *ForkKey) bool {
+	canonicalHead := indexer.GetCanonicalHead(overrideForkId)
+	return canonicalHead != nil && indexer.blockCache.isCanonicalBlock(block.Root, canonicalHead.Root)
+}
+
+// computeCanonicalChain computes the canonical chain and updates the indexer's state.
+func (indexer *Indexer) computeCanonicalChain() bool {
 	indexer.canonicalHeadMutex.Lock()
 	defer indexer.canonicalHeadMutex.Unlock()
 
+	if indexer.blockCache.latestBlock == nil {
+		return false
+	}
+
 	latestBlockRoot := indexer.blockCache.latestBlock.Root
-	if indexer.blockCache.latestBlock == nil || bytes.Equal(latestBlockRoot[:], indexer.canonicalComputation[:]) {
-		return indexer.canonicalHead
+	if bytes.Equal(latestBlockRoot[:], indexer.canonicalComputation[:]) {
+		return false
 	}
 
 	var headBlock *Block = nil
+	var chainHeads []*ChainHead = nil
 	t1 := time.Now()
 
 	defer func() {
 		indexer.canonicalHead = headBlock
+		indexer.cachedChainHeads = chainHeads
 		indexer.canonicalComputation = latestBlockRoot
 
 		if headBlock == nil {
@@ -38,10 +123,19 @@ func (indexer *Indexer) GetCanonicalHead() *Block {
 		latestBlocks := indexer.blockCache.getLatestBlocks(1, nil)
 		if len(latestBlocks) > 0 {
 			headBlock = latestBlocks[0]
+
+			forkVotes, thisEpochPercent, lastEpochPercent := indexer.aggregateForkVotes(headBlock.forkId)
+			chainHeads = []*ChainHead{{
+				HeadBlock:              headBlock,
+				AggregatedHeadVotes:    forkVotes,
+				LastEpochVotingPercent: lastEpochPercent,
+				ThisEpochVotingPercent: thisEpochPercent,
+			}}
 		}
 	} else {
 		// multiple forks, compare forks
 		headForkVotes := map[ForkKey]phase0.Gwei{}
+		chainHeads = make([]*ChainHead, 0, len(headForks))
 		var bestForkVotes phase0.Gwei = 0
 
 		for _, fork := range headForks {
@@ -51,6 +145,12 @@ func (indexer *Indexer) GetCanonicalHead() *Block {
 
 			forkVotes, thisEpochPercent, lastEpochPercent := indexer.aggregateForkVotes(fork.ForkId)
 			headForkVotes[fork.ForkId] = forkVotes
+			chainHeads = append(chainHeads, &ChainHead{
+				HeadBlock:              fork.Block,
+				AggregatedHeadVotes:    forkVotes,
+				LastEpochVotingPercent: lastEpochPercent,
+				ThisEpochVotingPercent: thisEpochPercent,
+			})
 
 			if forkVotes > 0 {
 				indexer.logger.Infof(
@@ -73,7 +173,7 @@ func (indexer *Indexer) GetCanonicalHead() *Block {
 		}
 	}
 
-	return headBlock
+	return true
 }
 
 // aggregateForkVotes aggregates the votes for a given fork.
@@ -175,4 +275,46 @@ func (indexer *Indexer) aggregateForkVotes(forkId ForkKey) (totalVotes phase0.Gw
 	}
 
 	return
+}
+
+func (indexer *Indexer) GetCanonicalValidatorSet(overrideForkId *ForkKey) map[phase0.ValidatorIndex]*v1.Validator {
+	validatorSet := map[phase0.ValidatorIndex]*v1.Validator{}
+	chainState := indexer.consensusPool.GetChainState()
+
+	canonicalHead := indexer.GetCanonicalHead(overrideForkId)
+	if canonicalHead == nil {
+		return validatorSet
+	}
+
+	headEpoch := chainState.EpochOfSlot(canonicalHead.Slot)
+
+	for {
+		epoch := chainState.EpochOfSlot(canonicalHead.Slot)
+		if headEpoch-epoch > 2 {
+			return validatorSet
+		}
+
+		dependentBlock := indexer.blockCache.getDependentBlock(chainState, canonicalHead, nil)
+		if dependentBlock == nil {
+			return validatorSet
+		}
+		canonicalHead = dependentBlock
+
+		epochStats := indexer.epochCache.getEpochStats(epoch, dependentBlock.Root)
+		if epochStats == nil || epochStats.dependentState == nil || epochStats.dependentState.loadingStatus != 2 {
+			continue // retry previous state
+		}
+
+		for index, validator := range epochStats.dependentState.validatorList {
+			state := v1.ValidatorToState(validator, &epochStats.dependentState.validatorBalances[index], epoch, FarFutureEpoch)
+
+			validatorSet[phase0.ValidatorIndex(index)] = &v1.Validator{
+				Index:     phase0.ValidatorIndex(index),
+				Balance:   epochStats.dependentState.validatorBalances[index],
+				Status:    state,
+				Validator: validator,
+			}
+		}
+	}
+
 }

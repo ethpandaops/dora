@@ -232,16 +232,22 @@ func (sync *synchronizer) getSyncClients(epoch phase0.Epoch) []*Client {
 	return append(archiveClients, normalClients...)
 }
 
-func (sync *synchronizer) loadBlockHeader(client *Client, slot phase0.Slot) (*phase0.SignedBeaconBlockHeader, error) {
+func (sync *synchronizer) loadBlockHeader(client *Client, slot phase0.Slot) (*phase0.SignedBeaconBlockHeader, phase0.Root, error) {
 	ctx, cancel := context.WithTimeout(sync.syncCtx, beaconHeaderRequestTimeout)
 	defer cancel()
-	return loadHeaderBySlot(ctx, client, slot)
+
+	header, root, orphaned, err := LoadBeaconHeaderBySlot(ctx, client, slot)
+	if orphaned {
+		return nil, root, nil
+	}
+
+	return header, root, err
 }
 
 func (sync *synchronizer) loadBlockBody(client *Client, root phase0.Root) (*spec.VersionedSignedBeaconBlock, error) {
 	ctx, cancel := context.WithTimeout(sync.syncCtx, beaconHeaderRequestTimeout)
 	defer cancel()
-	return loadBlock(ctx, client, root)
+	return LoadBeaconBlock(ctx, client, root)
 }
 
 func (sync *synchronizer) syncEpoch(syncEpoch phase0.Epoch, client *Client, lastTry bool) (bool, error) {
@@ -261,7 +267,7 @@ func (sync *synchronizer) syncEpoch(syncEpoch phase0.Epoch, client *Client, last
 	var firstBlock *Block
 	for slot := firstSlot; slot <= lastSlot; slot++ {
 		if sync.cachedSlot < slot || sync.cachedBlocks[slot] == nil {
-			blockHeader, err := sync.loadBlockHeader(client, slot)
+			blockHeader, blockRoot, err := sync.loadBlockHeader(client, slot)
 			if err != nil {
 				return false, fmt.Errorf("error fetching slot %v header: %v", slot, err)
 			}
@@ -270,11 +276,6 @@ func (sync *synchronizer) syncEpoch(syncEpoch phase0.Epoch, client *Client, last
 			}
 			if sync.syncCtx.Err() != nil {
 				return false, nil
-			}
-
-			blockRoot, err := blockHeader.HashTreeRoot()
-			if err != nil {
-				return false, fmt.Errorf("error hashing block header: %v", err)
 			}
 
 			block := newBlock(sync.indexer.dynSsz, blockRoot, slot)

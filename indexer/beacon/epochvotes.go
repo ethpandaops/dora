@@ -36,7 +36,7 @@ func (indexer *Indexer) aggregateEpochVotes(chainState *consensus.ChainState, bl
 
 	var epochStatsValues *EpochStatsValues
 	if epochStats != nil {
-		epochStatsValues = epochStats.GetOrLoadValues(indexer, true)
+		epochStatsValues = epochStats.GetOrLoadValues(indexer, true, false)
 	}
 	specs := chainState.GetSpecs()
 

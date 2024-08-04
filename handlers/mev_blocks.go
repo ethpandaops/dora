@@ -192,12 +192,7 @@ func buildFilteredMevBlocksPageData(pageIdx uint64, pageSize uint64, minSlot uin
 		pageData.PrevPageIndex = pageIdx - 1
 	}
 
-	// load voluntary exits
-	finalizedEpoch, _ := services.GlobalBeaconService.GetFinalizedEpoch()
-	if finalizedEpoch < 0 {
-		finalizedEpoch = 0
-	}
-
+	// load mev blocks
 	mevBlockFilter := &dbtypes.MevBlockFilter{
 		MinSlot:      minSlot,
 		MaxSlot:      maxSlot,

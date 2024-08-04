@@ -86,6 +86,18 @@ func (cache *forkCache) removeFork(forkId ForkKey) {
 	delete(cache.forkMap, forkId)
 }
 
+func (cache *forkCache) getParentForkIds(forkId ForkKey) []ForkKey {
+	parentForks := []ForkKey{forkId}
+
+	thisFork := cache.getForkById(forkId)
+	for thisFork != nil && thisFork.parentFork != 0 {
+		parentForks = append(parentForks, thisFork.parentFork)
+		thisFork = cache.getForkById(thisFork.parentFork)
+	}
+
+	return parentForks
+}
+
 // ForkHead represents a fork head with its ID, fork, and block.
 type ForkHead struct {
 	ForkId ForkKey

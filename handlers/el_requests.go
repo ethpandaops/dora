@@ -158,13 +158,8 @@ func buildFilteredElRequestsPageData(pageIdx uint64, pageSize uint64, minSlot ui
 		pageData.PrevPageIndex = pageIdx - 1
 	}
 
-	// load voluntary exits
-	finalizedEpoch, _ := services.GlobalBeaconService.GetFinalizedEpoch()
-	if finalizedEpoch < 0 {
-		finalizedEpoch = 0
-	}
-
-	voluntaryExitFilter := &dbtypes.ElRequestFilter{
+	// load el requests
+	elRequestFilter := &dbtypes.ElRequestFilter{
 		MinSlot:             minSlot,
 		MaxSlot:             maxSlot,
 		SourceAddress:       common.FromHex(address),
@@ -175,7 +170,7 @@ func buildFilteredElRequestsPageData(pageIdx uint64, pageSize uint64, minSlot ui
 		WithOrphaned:        withOrphaned,
 	}
 
-	dbElRequests, totalRows := services.GlobalBeaconService.GetElRequestsByFilter(voluntaryExitFilter, pageIdx-1, uint32(pageSize))
+	dbElRequests, totalRows := services.GlobalBeaconService.GetElRequestsByFilter(elRequestFilter, pageIdx-1, uint32(pageSize))
 
 	for _, elRequest := range dbElRequests {
 		elRequestData := &models.ElRequestsPageDataRequest{

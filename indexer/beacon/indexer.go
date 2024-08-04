@@ -55,6 +55,7 @@ type Indexer struct {
 	canonicalHeadMutex   sync.Mutex
 	canonicalHead        *Block
 	canonicalComputation phase0.Root
+	cachedChainHeads     []*ChainHead
 }
 
 // NewIndexer creates a new instance of the Indexer.
@@ -117,6 +118,17 @@ func (indexer *Indexer) getMinInMemoryEpoch() phase0.Epoch {
 		minInMemoryEpoch = indexer.lastPrunedEpoch - 1
 	}
 
+	return minInMemoryEpoch
+}
+
+func (indexer *Indexer) getAbsoluteMinInMemoryEpoch() phase0.Epoch {
+	minInMemoryEpoch := phase0.Epoch(0)
+	currentEpoch := indexer.consensusPool.GetChainState().CurrentEpoch()
+	if currentEpoch > phase0.Epoch(indexer.inMemoryEpochs) {
+		minInMemoryEpoch = currentEpoch - phase0.Epoch(indexer.inMemoryEpochs)
+	} else {
+		minInMemoryEpoch = 0
+	}
 	return minInMemoryEpoch
 }
 
@@ -307,10 +319,17 @@ func (indexer *Indexer) StartIndexer() {
 	indexer.finalitySubscription = indexer.consensusPool.SubscribeFinalizedEvent(10)
 	indexer.wallclockSubscription = indexer.consensusPool.SubscribeWallclockSlotEvent(1)
 
-	go indexer.runIndexerLoop()
+	go func() {
+		// start processing a bit delayed to allow clients to complete initial block backfill
+		time.Sleep(5 * time.Minute)
 
-	// start synchronizer
-	indexer.startSynchronizer(indexer.lastFinalizedEpoch)
+		indexer.logger.Infof("starting indexer processing (finalization, pruning & synchronization)")
+
+		go indexer.runIndexerLoop()
+
+		// start synchronizer
+		indexer.startSynchronizer(indexer.lastFinalizedEpoch)
+	}()
 }
 
 func (indexer *Indexer) runIndexerLoop() {

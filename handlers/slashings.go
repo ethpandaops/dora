@@ -161,11 +161,6 @@ func buildFilteredSlashingsPageData(pageIdx uint64, pageSize uint64, minSlot uin
 	}
 
 	// load slashings
-	finalizedEpoch, _ := services.GlobalBeaconService.GetFinalizedEpoch()
-	if finalizedEpoch < 0 {
-		finalizedEpoch = 0
-	}
-
 	slashingFilter := &dbtypes.SlashingFilter{
 		MinSlot:       minSlot,
 		MaxSlot:       maxSlot,

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"strings"
 
+	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/sirupsen/logrus"
 
 	"github.com/ethpandaops/dora/db"
@@ -122,7 +123,7 @@ func (bs *ChainService) GetIncludedDepositsByFilter(filter *dbtypes.DepositFilte
 	} else {
 		for idx, dbObject := range dbObjects {
 			if dbObject.SlotNumber > finalizedBlock {
-				blockStatus := bs.CheckBlockOrphanedStatus(dbObject.SlotRoot)
+				blockStatus := bs.CheckBlockOrphanedStatus(phase0.Root(dbObject.SlotRoot))
 				dbObjects[idx].Orphaned = blockStatus == dbtypes.Orphaned
 			}
 
@@ -234,7 +235,7 @@ func (bs *ChainService) GetVoluntaryExitsByFilter(filter *dbtypes.VoluntaryExitF
 	} else {
 		for idx, dbObject := range dbObjects {
 			if dbObject.SlotNumber > finalizedBlock {
-				blockStatus := bs.CheckBlockOrphanedStatus(dbObject.SlotRoot)
+				blockStatus := bs.CheckBlockOrphanedStatus(phase0.Root(dbObject.SlotRoot))
 				dbObjects[idx].Orphaned = blockStatus == dbtypes.Orphaned
 			}
 
@@ -352,7 +353,7 @@ func (bs *ChainService) GetSlashingsByFilter(filter *dbtypes.SlashingFilter, pag
 	} else {
 		for idx, dbObject := range dbObjects {
 			if dbObject.SlotNumber > finalizedBlock {
-				blockStatus := bs.CheckBlockOrphanedStatus(dbObject.SlotRoot)
+				blockStatus := bs.CheckBlockOrphanedStatus(phase0.Root(dbObject.SlotRoot))
 				dbObjects[idx].Orphaned = blockStatus == dbtypes.Orphaned
 			}
 
@@ -474,7 +475,7 @@ func (bs *ChainService) GetElRequestsByFilter(filter *dbtypes.ElRequestFilter, p
 	} else {
 		for idx, dbObject := range dbObjects {
 			if dbObject.SlotNumber > finalizedBlock {
-				blockStatus := bs.CheckBlockOrphanedStatus(dbObject.SlotRoot)
+				blockStatus := bs.CheckBlockOrphanedStatus(phase0.Root(dbObject.SlotRoot))
 				dbObjects[idx].Orphaned = blockStatus == dbtypes.Orphaned
 			}
 

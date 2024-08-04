@@ -41,27 +41,39 @@ func (s *epochState) dispose() {
 	if s.loadingCancel != nil {
 		s.loadingCancel()
 	}
+	s.readyChanMutex.Lock()
+	if s.readyChan != nil {
+		close(s.readyChan)
+		s.readyChan = nil
+	}
+	s.readyChanMutex.Unlock()
 }
 
 func (s *epochState) awaitStateLoaded(ctx context.Context, timeout time.Duration) bool {
 	s.readyChanMutex.Lock()
-	status := s.loadingStatus
-	if s.readyChan == nil && status != 2 {
+	if s.readyChan == nil && s.loadingStatus != 2 {
 		s.readyChan = make(chan bool)
 	}
 	s.readyChanMutex.Unlock()
 
-	if status == 2 {
-		return true
-	}
+	timeoutTime := time.Now().Add(timeout)
+	for {
+		if s.loadingStatus == 2 {
+			return true
+		}
+		if s.retryCount > 10 {
+			return false
+		}
 
-	select {
-	case <-s.readyChan:
-		return true
-	case <-time.After(timeout):
-		return false
-	case <-ctx.Done():
-		return false
+		select {
+		case <-s.readyChan:
+			return true
+		case <-time.After(time.Until(timeoutTime)):
+			return false
+		case <-ctx.Done():
+			return false
+		case <-time.After(5 * time.Second):
+		}
 	}
 }
 
@@ -95,7 +107,7 @@ func (s *epochState) loadState(ctx context.Context, client *Client, cache *epoch
 
 	if blockHeader == nil {
 		var err error
-		blockHeader, err = loadHeader(ctx, client, s.slotRoot)
+		blockHeader, err = LoadBeaconHeader(ctx, client, s.slotRoot)
 		if err != nil {
 			return err
 		}
@@ -103,7 +115,7 @@ func (s *epochState) loadState(ctx context.Context, client *Client, cache *epoch
 
 	s.stateRoot = blockHeader.Message.StateRoot
 
-	resState, err := loadState(ctx, client, blockHeader.Message.StateRoot)
+	resState, err := LoadBeaconState(ctx, client, blockHeader.Message.StateRoot)
 	if err != nil {
 		return err
 	}

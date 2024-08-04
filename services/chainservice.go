@@ -1,14 +1,15 @@
 package services
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"sort"
 	"sync"
 	"time"
 
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
-	"github.com/ethereum/go-ethereum/common/lru"
 	"github.com/jmoiron/sqlx"
 
 	"github.com/ethpandaops/dora/clients/consensus"
@@ -18,7 +19,6 @@ import (
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/indexer"
 	"github.com/ethpandaops/dora/indexer/beacon"
-	"github.com/ethpandaops/dora/rpc"
 	"github.com/ethpandaops/dora/utils"
 	"github.com/sirupsen/logrus"
 )
@@ -38,9 +38,6 @@ type ChainService struct {
 		epochLimit uint64
 		activity   map[uint64]uint8
 	}
-
-	assignmentsCacheMux sync.Mutex
-	assignmentsCache    *lru.Cache[uint64, *rpc.EpochAssignments]
 }
 
 var GlobalBeaconService *ChainService
@@ -173,12 +170,11 @@ func StartChainService(ctx context.Context, logger logrus.FieldLogger) error {
 	*/
 
 	GlobalBeaconService = &ChainService{
-		logger:           logger,
-		consensusPool:    consensusPool,
-		executionPool:    executionPool,
-		beaconIndexer:    beaconIndexer,
-		validatorNames:   validatorNames,
-		assignmentsCache: lru.NewCache[uint64, *rpc.EpochAssignments](10),
+		logger:         logger,
+		consensusPool:  consensusPool,
+		executionPool:  executionPool,
+		beaconIndexer:  beaconIndexer,
+		validatorNames: validatorNames,
 	}
 	return nil
 }
@@ -199,8 +195,12 @@ func (bs *ChainService) GetExecutionClients() []*execution.Client {
 	return bs.executionPool.GetAllEndpoints()
 }
 
-func (bs *ChainService) GetHeadForks(readyOnly bool) []*indexer.HeadFork {
-	return bs.indexer.GetHeadForks(readyOnly)
+func (bs *ChainService) GetChainState() *consensus.ChainState {
+	return bs.consensusPool.GetChainState()
+}
+
+func (bs *ChainService) GetHeadForks(readyOnly bool) []*beacon.ForkHead {
+	return bs.beaconIndexer.GetForkHeads()
 }
 
 func (bs *ChainService) GetValidatorName(index uint64) string {
@@ -212,24 +212,93 @@ func (bs *ChainService) GetValidatorNamesCount() uint64 {
 }
 
 func (bs *ChainService) GetCachedValidatorSet() map[phase0.ValidatorIndex]*v1.Validator {
-	return bs.indexer.GetCachedValidatorSet()
+	return bs.beaconIndexer.GetCanonicalValidatorSet(nil)
 }
 
 func (bs *ChainService) GetCachedValidatorPubkeyMap() map[phase0.BLSPubKey]*v1.Validator {
-	return bs.indexer.GetCachedValidatorPubkeyMap()
+	pubkeyMap := map[phase0.BLSPubKey]*v1.Validator{}
+	for _, val := range bs.GetCachedValidatorSet() {
+		pubkeyMap[val.Validator.PublicKey] = val
+	}
+	return pubkeyMap
 }
 
-func (bs *ChainService) GetFinalizedEpoch() (int64, []byte) {
-	finalizedEpoch, finalizedRoot, _, _ := bs.indexer.GetFinalizationCheckpoints()
-	return finalizedEpoch, finalizedRoot
-}
-
-func (bs *ChainService) GetCachedEpochStats(epoch uint64) *indexer.EpochStats {
-	return bs.indexer.GetCachedEpochStats(epoch)
+func (bs *ChainService) GetFinalizedEpoch() (phase0.Epoch, phase0.Root) {
+	chainState := bs.consensusPool.GetChainState()
+	return chainState.GetFinalizedCheckpoint()
 }
 
 func (bs *ChainService) GetGenesis() (*v1.Genesis, error) {
-	return bs.indexer.GetCachedGenesis(), nil
+	chainState := bs.consensusPool.GetChainState()
+	return chainState.GetGenesis(), nil
+}
+
+type ConsensusClientFork struct {
+	Slot phase0.Slot
+	Root phase0.Root
+
+	ReadyClients []*beacon.Client
+	AllClients   []*beacon.Client
+}
+
+func (bs *ChainService) GetConsensusClientForks() []*ConsensusClientFork {
+	headForks := []*ConsensusClientFork{}
+	for _, client := range bs.beaconIndexer.GetAllClients() {
+		cHeadSlot, cHeadRoot := client.GetClient().GetLastHead()
+		var matchingFork *ConsensusClientFork
+		for _, fork := range headForks {
+			isInChain, _ := bs.beaconIndexer.GetBlockDistance(cHeadRoot, fork.Root)
+			if isInChain {
+				matchingFork = fork
+				break
+			}
+
+			isInChain, _ = bs.beaconIndexer.GetBlockDistance(fork.Root, cHeadRoot)
+			if isInChain {
+				fork.Root = cHeadRoot
+				fork.Slot = cHeadSlot
+				matchingFork = fork
+				break
+			}
+		}
+		if matchingFork == nil {
+			matchingFork = &ConsensusClientFork{
+				Root:       cHeadRoot,
+				Slot:       cHeadSlot,
+				AllClients: []*beacon.Client{client},
+			}
+			headForks = append(headForks, matchingFork)
+		} else {
+			matchingFork.AllClients = append(matchingFork.AllClients, client)
+		}
+	}
+	for _, fork := range headForks {
+		fork.ReadyClients = make([]*beacon.Client, 0)
+		sort.Slice(fork.AllClients, func(a, b int) bool {
+			prioA := fork.AllClients[a].GetPriority()
+			prioB := fork.AllClients[b].GetPriority()
+			return prioA > prioB
+		})
+		for _, client := range fork.AllClients {
+			var headDistance uint64 = 0
+			_, cHeadRoot := client.GetClient().GetLastHead()
+			if !bytes.Equal(fork.Root[:], cHeadRoot[:]) {
+				_, headDistance = bs.beaconIndexer.GetBlockDistance(cHeadRoot, fork.Root)
+			}
+			if headDistance < 2 {
+				fork.ReadyClients = append(fork.ReadyClients, client)
+			}
+		}
+	}
+
+	// sort by relevance (client count)
+	sort.Slice(headForks, func(a, b int) bool {
+		countA := len(headForks[a].ReadyClients)
+		countB := len(headForks[b].ReadyClients)
+		return countA > countB
+	})
+
+	return headForks
 }
 
 func (bs *ChainService) GetValidatorActivity() (map[uint64]uint8, uint64) {

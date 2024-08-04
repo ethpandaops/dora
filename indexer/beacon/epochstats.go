@@ -2,6 +2,7 @@ package beacon
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"math"
 	"sort"
@@ -14,6 +15,7 @@ import (
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/indexer/beacon/duties"
 	"github.com/jmoiron/sqlx"
+	"github.com/mashingan/smapping"
 	dynssz "github.com/pk910/dynamic-ssz"
 )
 
@@ -26,6 +28,8 @@ type EpochStats struct {
 	requestedMutex sync.Mutex
 	requestedBy    []*Client
 	ready          bool
+	readyChanMutex sync.Mutex
+	readyChan      chan bool
 	isInDb         bool
 
 	precalcBaseRoot phase0.Root
@@ -116,9 +120,19 @@ func (es *EpochStats) restoreFromDb(dbDuty *dbtypes.UnfinalizedDuty, dynSsz *dyn
 	}
 
 	es.values = values
-	es.ready = true
+	es.setStatsReady()
 
 	return nil
+}
+
+func (es *EpochStats) setStatsReady() {
+	es.readyChanMutex.Lock()
+	defer es.readyChanMutex.Unlock()
+
+	es.ready = true
+	if es.readyChan != nil {
+		close(es.readyChan)
+	}
 }
 
 // marshalSSZ marshals the EpochStats values using SSZ.
@@ -379,7 +393,6 @@ func (es *EpochStats) processState(indexer *Indexer) {
 
 	values.AttesterDuties = attesterDuties
 
-	es.ready = true
 	es.values = values
 	es.precalcValues = nil
 
@@ -409,6 +422,8 @@ func (es *EpochStats) processState(indexer *Indexer) {
 		time.Since(t1).Milliseconds(),
 		len(packedSsz),
 	)
+
+	es.setStatsReady()
 }
 
 func (es *EpochStats) precomputeFromParentState(indexer *Indexer, parentState *EpochStats) error {
@@ -511,6 +526,30 @@ func (es *EpochStats) precomputeFromParentState(indexer *Indexer, parentState *E
 	})
 }
 
+func (s *EpochStats) awaitStatsReady(ctx context.Context, timeout time.Duration) bool {
+	s.readyChanMutex.Lock()
+	if s.readyChan == nil && !s.ready {
+		s.readyChan = make(chan bool)
+	}
+	s.readyChanMutex.Unlock()
+
+	timeoutTime := time.Now().Add(timeout)
+	for {
+		if s.ready {
+			return true
+		}
+
+		select {
+		case <-s.readyChan:
+			return true
+		case <-time.After(time.Until(timeoutTime)):
+			return false
+		case <-ctx.Done():
+			return false
+		}
+	}
+}
+
 // GetValues returns the EpochStats values.
 func (es *EpochStats) GetValues(withPrecalc bool) *EpochStatsValues {
 	if es == nil {
@@ -532,7 +571,7 @@ func (es *EpochStats) GetValues(withPrecalc bool) *EpochStatsValues {
 	return nil
 }
 
-func (es *EpochStats) GetOrLoadValues(indexer *Indexer, withPrecalc bool) *EpochStatsValues {
+func (es *EpochStats) GetOrLoadValues(indexer *Indexer, withPrecalc bool, keepInCache bool) *EpochStatsValues {
 	if es == nil {
 		return nil
 	}
@@ -544,7 +583,9 @@ func (es *EpochStats) GetOrLoadValues(indexer *Indexer, withPrecalc bool) *Epoch
 	if es.isInDb {
 		values := es.loadValuesFromDb(indexer.dynSsz, indexer.consensusPool.GetChainState())
 		if values != nil {
-			es.values = values
+			if keepInCache {
+				es.values = values
+			}
 			return values
 		}
 	}
@@ -554,4 +595,72 @@ func (es *EpochStats) GetOrLoadValues(indexer *Indexer, withPrecalc bool) *Epoch
 	}
 
 	return nil
+}
+
+func (es *EpochStats) GetDbEpoch(indexer *Indexer, headBlock *Block) *dbtypes.Epoch {
+	chainState := indexer.consensusPool.GetChainState()
+	if headBlock == nil {
+		headBlock = indexer.GetCanonicalHead(nil)
+	}
+
+	// collect all blocks for this & next epoch in chain defined by headBlock
+	thisEpochBlockMap := map[phase0.Root]bool{}
+	thisEpochBlocks := []*Block{}
+	nextEpochBlocks := []*Block{}
+	currentBlock := headBlock
+	for {
+		if currentBlock == nil || chainState.EpochOfSlot(currentBlock.Slot) < es.epoch {
+			break
+		}
+
+		if chainState.EpochOfSlot(currentBlock.Slot) == es.epoch {
+			thisEpochBlockMap[currentBlock.Root] = true
+			thisEpochBlocks = append(thisEpochBlocks, currentBlock)
+		} else if chainState.EpochOfSlot(currentBlock.Slot) == es.epoch+1 {
+			nextEpochBlocks = append(nextEpochBlocks, currentBlock)
+		}
+
+		parentRoot := currentBlock.GetParentRoot()
+		if parentRoot == nil {
+			break
+		}
+
+		currentBlock = indexer.blockCache.getBlockByRoot(*parentRoot)
+	}
+
+	if es.prunedEpochAggregations != nil {
+		// select from the pruned epoch aggregations
+		for _, epochAgg := range es.prunedEpochAggregations {
+			if !thisEpochBlockMap[phase0.Root(epochAgg.EpochHeadRoot)] {
+				continue
+			}
+
+			mapped := smapping.MapTags(epochAgg, "db")
+
+			dbEpoch := &dbtypes.Epoch{}
+			err := smapping.FillStructByTags(dbEpoch, mapped, "db")
+			if err != nil {
+				indexer.logger.Errorf("mapper failed copying unfinalized epoch to epoch: %v", err)
+				continue
+			}
+
+			return dbEpoch
+		}
+	}
+
+	// sort blocks ascending
+	sort.Slice(thisEpochBlocks, func(i, j int) bool {
+		return thisEpochBlocks[i].Slot < thisEpochBlocks[j].Slot
+	})
+	sort.Slice(nextEpochBlocks, func(i, j int) bool {
+		return nextEpochBlocks[i].Slot < nextEpochBlocks[j].Slot
+	})
+
+	// compute epoch votes
+	votingBlocks := make([]*Block, len(thisEpochBlocks)+len(nextEpochBlocks))
+	copy(votingBlocks, thisEpochBlocks)
+	copy(votingBlocks[len(thisEpochBlocks):], nextEpochBlocks)
+	epochVotes := indexer.aggregateEpochVotes(chainState, votingBlocks, es)
+
+	return indexer.dbWriter.buildDbEpoch(es.epoch, thisEpochBlocks, es, epochVotes, nil)
 }

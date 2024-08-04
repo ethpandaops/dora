@@ -1,6 +1,7 @@
 package beacon
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"time"
@@ -23,7 +24,7 @@ func (indexer *Indexer) processFinalityEvent(finalityEvent *v1.Finality) error {
 	oldLastFinalizedEpoch := indexer.lastFinalizedEpoch
 
 	for finalizeEpoch := indexer.lastFinalizedEpoch; finalizeEpoch < finalityEvent.Finalized.Epoch; finalizeEpoch++ {
-		readyClients := indexer.GetReadyClientsByCheckpoint(finalityEvent.Finalized.Root)
+		readyClients := indexer.GetReadyClientsByCheckpoint(finalityEvent.Finalized.Root, true)
 		retryCount := 5
 
 		for {
@@ -114,6 +115,8 @@ func (indexer *Indexer) processFinalityEvent(finalityEvent *v1.Finality) error {
 }
 
 func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.Root, client *Client, lastTry bool) (bool, error) {
+	t1 := time.Now()
+	t1loading := time.Duration(0)
 	epochBlocks := indexer.blockCache.getEpochBlocks(epoch)
 	nextEpochBlocks := indexer.blockCache.getEpochBlocks(epoch + 1)
 	chainState := indexer.consensusPool.GetChainState()
@@ -131,7 +134,7 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 
 		if indexer.blockCache.isCanonicalBlock(block.Root, justifiedRoot) {
 			if _, err := block.EnsureBlock(func() (*spec.VersionedSignedBeaconBlock, error) {
-				return loadBlock(client.getContext(), client, block.Root)
+				return LoadBeaconBlock(client.getContext(), client, block.Root)
 			}); err != nil {
 				client.logger.Warnf("failed loading finalized block body %v (%v): %v", block.Slot, block.Root.String(), err)
 			}
@@ -184,7 +187,7 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 			depRoot := firstBlock.GetParentRoot()
 			if depRoot != nil {
 				dependentRoot = *depRoot
-				dependentHead, _ := loadHeader(client.getContext(), client, *depRoot)
+				dependentHead, _ := LoadBeaconHeader(client.getContext(), client, *depRoot)
 				isValid = dependentHead != nil && chainState.EpochOfSlot(dependentHead.Message.Slot) < chainState.EpochOfSlot(firstBlock.Slot)
 			}
 		}
@@ -228,7 +231,7 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 				}
 			}
 			if canonicalBlock == nil {
-				dependentHead, _ := loadHeader(client.getContext(), client, *parentRoot)
+				dependentHead, _ := LoadBeaconHeader(client.getContext(), client, *parentRoot)
 
 				if dependentHead != nil {
 					canonicalBlock = newBlock(indexer.dynSsz, phase0.Root(*parentRoot), phase0.Slot(dependentHead.Message.Slot))
@@ -245,8 +248,28 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 	var epochVotes *EpochVotes
 
 	epochStats := indexer.epochCache.getEpochStats(epoch, dependentRoot)
+
 	if epochStats != nil {
-		epochStatsValues = epochStats.GetOrLoadValues(indexer, false)
+		// ensure epoch stats are loaded
+		// if the state is not yet loaded, we set it to high priority and wait for it to be loaded
+		if !epochStats.ready {
+			if epochStats.dependentState == nil {
+				indexer.epochCache.addEpochStateRequest(epochStats)
+			}
+			if epochStats.dependentState != nil && epochStats.dependentState.loadingStatus != 2 && epochStats.dependentState.retryCount < 10 {
+				indexer.logger.Infof("epoch %d state (%v) not yet loaded, waiting for state to be loaded", epoch, dependentRoot.String())
+				t1 := time.Now()
+				epochStats.dependentState.highPriority = true
+				loaded := epochStats.dependentState.awaitStateLoaded(context.Background(), beaconStateRequestTimeout)
+				if loaded {
+					// wait for async duty computation to be completed
+					epochStats.awaitStatsReady(context.Background(), 30*time.Second)
+				}
+				t1loading += time.Since(t1)
+			}
+		}
+
+		epochStatsValues = epochStats.GetOrLoadValues(indexer, false, true)
 	}
 
 	if epochStatsValues == nil {
@@ -268,6 +291,9 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 	for i, block := range canonicalBlocks {
 		canonicalRoots[i] = block.Root[:]
 	}
+
+	t1dur := time.Since(t1) - t1loading
+	t1 = time.Now()
 
 	// persist to db
 	deleteBeforeSlot := chainState.EpochToSlot(epoch + 1)
@@ -331,8 +357,34 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 		return false, fmt.Errorf("failed persisting epoch %v data: %v", epoch, err)
 	}
 
+	t2dur := time.Since(t1)
+
 	indexer.lastFinalizedEpoch = epoch + 1
-	indexer.logger.Infof("completed epoch %v finalization", epoch)
+
+	// sleep 500 ms to give running UI threads time to fetch data from cache
+	time.Sleep(500 * time.Millisecond)
+
+	t1 = time.Now()
+
+	// clean epoch stats
+	indexer.epochCache.removeEpochStatsByEpoch(epoch)
+
+	// clean block cache
+	for _, block := range canonicalBlocks {
+		indexer.blockCache.removeBlock(block)
+	}
+	for _, block := range orphanedBlocks {
+		indexer.blockCache.removeBlock(block)
+	}
+
+	// clean fork cache
+	indexer.forkCache.setFinalizedEpoch(deleteBeforeSlot, justifiedRoot)
+	for _, fork := range indexer.forkCache.getForksBefore(deleteBeforeSlot) {
+		indexer.forkCache.removeFork(fork.forkId)
+	}
+
+	// log summary
+	indexer.logger.Infof("completed epoch %v finalization (process: %v ms, load: %v s, write: %v ms, clean: %v ms)", epoch, t1dur.Milliseconds(), t1loading.Seconds(), t2dur.Milliseconds(), time.Since(t1).Milliseconds())
 	indexer.logger.Infof("epoch %v blocks: %v canonical, %v orphaned", epoch, len(canonicalBlocks), len(orphanedBlocks))
 	if epochStatsValues != nil {
 		indexer.logger.Infof("epoch %v stats: %v validators (%v ETH)", epoch, epochStatsValues.ActiveValidators, epochStatsValues.EffectiveBalance/EtherGweiFactor)
@@ -360,26 +412,6 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 			(epochVotes.CurrentEpoch.TotalVoteAmount+epochVotes.NextEpoch.TotalVoteAmount)/EtherGweiFactor,
 			epochVotes.TotalVotePercent,
 		)
-	}
-
-	// sleep 500 ms to give running UI threads time to fetch data from cache
-	time.Sleep(500 * time.Millisecond)
-
-	// clean epoch stats
-	indexer.epochCache.removeEpochStatsByEpoch(epoch)
-
-	// clean block cache
-	for _, block := range canonicalBlocks {
-		indexer.blockCache.removeBlock(block)
-	}
-	for _, block := range orphanedBlocks {
-		indexer.blockCache.removeBlock(block)
-	}
-
-	// clean fork cache
-	indexer.forkCache.setFinalizedEpoch(deleteBeforeSlot, justifiedRoot)
-	for _, fork := range indexer.forkCache.getForksBefore(deleteBeforeSlot) {
-		indexer.forkCache.removeFork(fork.forkId)
 	}
 
 	return (epochStatsValues == nil || epochVotes == nil), nil

@@ -18,6 +18,7 @@ import (
 	"github.com/attestantio/go-eth2-client/http"
 	"github.com/attestantio/go-eth2-client/spec"
 	"github.com/attestantio/go-eth2-client/spec/capella"
+	"github.com/attestantio/go-eth2-client/spec/deneb"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/rs/zerolog"
 	"github.com/sirupsen/logrus"
@@ -417,63 +418,17 @@ func (bc *BeaconClient) GetState(ctx context.Context, stateRef string) (*spec.Ve
 	return result.Data, nil
 }
 
-func (bc *BeaconClient) GetStateValidators(ctx context.Context, stateRef string) (map[phase0.ValidatorIndex]*v1.Validator, error) {
-	provider, isProvider := bc.clientSvc.(eth2client.ValidatorsProvider)
+func (bc *BeaconClient) GetBlobSidecarsByBlockroot(ctx context.Context, blockroot []byte) ([]*deneb.BlobSidecar, error) {
+	provider, isProvider := bc.clientSvc.(eth2client.BlobSidecarsProvider)
 	if !isProvider {
-		return nil, fmt.Errorf("get validators not supported")
+		return nil, fmt.Errorf("get beacon block blobs not supported")
 	}
-
-	result, err := provider.Validators(ctx, &api.ValidatorsOpts{
-		State: stateRef,
-		Common: api.CommonOpts{
-			Timeout: 0,
-		},
+	result, err := provider.BlobSidecars(ctx, &api.BlobSidecarsOpts{
+		Block: fmt.Sprintf("0x%x", blockroot),
 	})
 	if err != nil {
 		return nil, err
 	}
-
-	return result.Data, nil
-}
-
-func (bc *BeaconClient) GetProposerDuties(ctx context.Context, epoch uint64) ([]*v1.ProposerDuty, error) {
-	provider, isProvider := bc.clientSvc.(eth2client.ProposerDutiesProvider)
-	if !isProvider {
-		return nil, fmt.Errorf("get beacon committees not supported")
-	}
-
-	result, err := provider.ProposerDuties(ctx, &api.ProposerDutiesOpts{
-		Epoch: phase0.Epoch(epoch),
-		Common: api.CommonOpts{
-			Timeout: 0,
-		},
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	return result.Data, nil
-}
-
-func (bc *BeaconClient) GetCommitteeDuties(ctx context.Context, stateRef string, epoch uint64) ([]*v1.BeaconCommittee, error) {
-	provider, isProvider := bc.clientSvc.(eth2client.BeaconCommitteesProvider)
-	if !isProvider {
-		return nil, fmt.Errorf("get beacon committees not supported")
-	}
-
-	epochRef := phase0.Epoch(epoch)
-
-	result, err := provider.BeaconCommittees(ctx, &api.BeaconCommitteesOpts{
-		State: stateRef,
-		Epoch: &epochRef,
-		Common: api.CommonOpts{
-			Timeout: 0,
-		},
-	})
-	if err != nil {
-		return nil, err
-	}
-
 	return result.Data, nil
 }
 

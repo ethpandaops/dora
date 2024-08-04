@@ -68,6 +68,17 @@ func (cache *blockCache) getBlockByRoot(root phase0.Root) *Block {
 	return cache.rootMap[root]
 }
 
+// getBlockBySlot returns the cached blocks with the given slot.
+func (cache *blockCache) getBlocksBySlot(slot phase0.Slot) []*Block {
+	cache.cacheMutex.RLock()
+	defer cache.cacheMutex.RUnlock()
+
+	blocks := make([]*Block, len(cache.slotMap[slot]))
+	copy(blocks, cache.slotMap[slot])
+
+	return blocks
+}
+
 func (cache *blockCache) getBlocksByParentRoot(parentRoot phase0.Root) []*Block {
 	cache.cacheMutex.RLock()
 	defer cache.cacheMutex.RUnlock()
@@ -270,7 +281,7 @@ func (cache *blockCache) getDependentBlock(chainState *consensus.ChainState, blo
 		}
 
 		if dependentBlock == nil && client != nil {
-			blockHead, _ := loadHeader(client.getContext(), client, *block.dependentRoot)
+			blockHead, _ := LoadBeaconHeader(client.getContext(), client, *block.dependentRoot)
 			if blockHead != nil {
 				dependentBlock = newBlock(cache.indexer.dynSsz, *block.dependentRoot, phase0.Slot(blockHead.Message.Slot))
 				parentRootVal := phase0.Root(blockHead.Message.ParentRoot)
@@ -301,7 +312,7 @@ func (cache *blockCache) getDependentBlock(chainState *consensus.ChainState, blo
 		}
 
 		if parentBlock == nil && client != nil {
-			blockHead, _ := loadHeader(client.getContext(), client, *parentRoot)
+			blockHead, _ := LoadBeaconHeader(client.getContext(), client, *parentRoot)
 			client = nil // only load one header, that's probably the dependent root block (last block of previous epoch)
 			if blockHead != nil {
 				parentBlock = newBlock(cache.indexer.dynSsz, *parentRoot, phase0.Slot(blockHead.Message.Slot))

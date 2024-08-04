@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
@@ -103,6 +104,7 @@ func getFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string, 
 }
 
 func buildFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string, extradata string, proposer string, pname string, withOrphaned uint8, withMissing uint8, displayColumns string) *models.SlotsFilteredPageData {
+	chainState := services.GlobalBeaconService.GetChainState()
 	filterArgs := url.Values{}
 	if graffiti != "" {
 		filterArgs.Add("f.graffiti", graffiti)
@@ -234,7 +236,7 @@ func buildFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string
 			Slot:         slot,
 			Epoch:        utils.EpochOfSlot(slot),
 			Ts:           utils.SlotToTime(slot),
-			Finalized:    finalizedEpoch >= int64(utils.EpochOfSlot(slot)),
+			Finalized:    finalizedEpoch >= chainState.EpochOfSlot(phase0.Slot(slot)),
 			Synchronized: true,
 			Scheduled:    slot >= currentSlot,
 			Proposer:     dbBlock.Proposer,
@@ -242,6 +244,9 @@ func buildFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string
 		}
 
 		if dbBlock.Block != nil {
+			if dbBlock.Block.Status != dbtypes.Missing {
+				slotData.Scheduled = false
+			}
 			slotData.Status = uint8(dbBlock.Block.Status)
 			slotData.AttestationCount = dbBlock.Block.AttestationCount
 			slotData.DepositCount = dbBlock.Block.DepositCount

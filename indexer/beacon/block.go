@@ -34,7 +34,6 @@ type Block struct {
 	processingStatus  dbtypes.UnfinalizedBlockStatus
 	seenMutex         sync.RWMutex
 	seenMap           map[uint16]*Client
-	cachedDbBlock     *dbtypes.Slot
 }
 
 type blockBodyIndex struct {
@@ -294,4 +293,33 @@ func (block *Block) unpruneBlockBody() {
 	if dbBlock != nil {
 		block.block, _ = unmarshalVersionedSignedBeaconBlockSSZ(block.dynSsz, dbBlock.BlockVer, dbBlock.BlockSSZ)
 	}
+}
+
+func (block *Block) GetDbBlock(indexer *Indexer) *dbtypes.Slot {
+	var epochStats *EpochStats
+	chainState := indexer.consensusPool.GetChainState()
+	if dependentBlock := indexer.blockCache.getDependentBlock(chainState, block, nil); dependentBlock != nil {
+		epochStats = indexer.epochCache.getEpochStats(chainState.EpochOfSlot(block.Slot), dependentBlock.Root)
+	}
+
+	dbBlock := indexer.dbWriter.buildDbBlock(block, epochStats, nil)
+	if dbBlock == nil {
+		return nil
+	}
+
+	if !indexer.IsCanonicalBlock(block, nil) {
+		dbBlock.Status = dbtypes.Orphaned
+	}
+
+	return dbBlock
+}
+
+func (block *Block) GetExecutionExtraData() []byte {
+	blockBody := block.GetBlock()
+	if blockBody == nil {
+		return []byte{}
+	}
+
+	data, _ := getBlockExecutionExtraData(blockBody)
+	return data
 }

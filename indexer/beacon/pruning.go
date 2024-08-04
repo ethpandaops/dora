@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"runtime"
 	"sort"
 	"time"
 
@@ -28,15 +29,20 @@ func (indexer *Indexer) runCachePruning() error {
 		pruneToEpoch = indexer.lastFinalizedEpoch
 	}
 
+	var totalPrunedEpochStats, totalPrunedEpochStates uint64
+
 	// process all epochs that are not yet pruned and can be pruned
 	for pruneEpoch := indexer.lastPrunedEpoch; pruneEpoch < pruneToEpoch; pruneEpoch++ {
-		if err := indexer.processEpochPruning(pruneEpoch); err != nil {
+		if prunedEpochStats, prunedEpochStates, err := indexer.processEpochPruning(pruneEpoch); err != nil {
 			return fmt.Errorf("failed pruning epoch %d: %v", pruneEpoch, err)
+		} else {
+			totalPrunedEpochStats += prunedEpochStats
+			totalPrunedEpochStates += prunedEpochStates
 		}
 	}
 
 	// process all remaining blocks in cache
-	if err := indexer.processCachePruning(); err != nil {
+	if err := indexer.processCachePruning(totalPrunedEpochStats, totalPrunedEpochStates); err != nil {
 		return fmt.Errorf("failed pruning cache: %v", err)
 	}
 
@@ -61,9 +67,11 @@ type pruningEpochData struct {
 	epochVotes    *EpochVotes
 }
 
-func (indexer *Indexer) processEpochPruning(pruneEpoch phase0.Epoch) error {
+func (indexer *Indexer) processEpochPruning(pruneEpoch phase0.Epoch) (uint64, uint64, error) {
+	t1 := time.Now()
+	t1loading := time.Duration(0)
 	chainState := indexer.consensusPool.GetChainState()
-	indexer.logger.Infof("process epoch %d pruning", pruneEpoch)
+	indexer.logger.Debugf("process epoch %d pruning", pruneEpoch)
 
 	// get all blocks from this epoch and sort by slot (aggregations expect blocks in ascending order)
 	pruningBlocks := indexer.blockCache.getEpochBlocks(pruneEpoch)
@@ -83,7 +91,7 @@ func (indexer *Indexer) processEpochPruning(pruneEpoch phase0.Epoch) error {
 		pruningBlockRoots = append(pruningBlockRoots, block.Root[:])
 
 		var dependentRoot phase0.Root
-		client := indexer.GetReadyClientByBlockRoot(block.Root)
+		client := indexer.GetReadyClientByBlockRoot(block.Root, false)
 		if client == nil {
 			seenBy := block.GetSeenBy()
 			if len(seenBy) > 0 {
@@ -108,13 +116,20 @@ func (indexer *Indexer) processEpochPruning(pruneEpoch phase0.Epoch) error {
 
 		// ensure epoch stats are loaded
 		// if the state is not yet loaded, we set it to high priority and wait for it to be loaded
-		if !epochStats.ready && epochStats.dependentState != nil && epochStats.dependentState.loadingStatus != 2 && epochStats.dependentState.retryCount < 10 {
-			indexer.logger.Infof("epoch %d state (%v) not yet loaded, waiting for state to be loaded", pruneEpoch, dependentRoot.String())
-			epochStats.dependentState.highPriority = true
-			loaded := epochStats.dependentState.awaitStateLoaded(context.Background(), beaconStateRequestTimeout)
-			if loaded {
-				// wait for async duty computation to be completed
-				time.Sleep(500 * time.Millisecond)
+		if !epochStats.ready {
+			if epochStats.dependentState == nil {
+				indexer.epochCache.addEpochStateRequest(epochStats)
+			}
+			if epochStats.dependentState != nil && epochStats.dependentState.loadingStatus != 2 && epochStats.dependentState.retryCount < 10 {
+				indexer.logger.Infof("epoch %d state (%v) not yet loaded, waiting for state to be loaded", pruneEpoch, dependentRoot.String())
+				t2 := time.Now()
+				epochStats.dependentState.highPriority = true
+				loaded := epochStats.dependentState.awaitStateLoaded(context.Background(), beaconStateRequestTimeout)
+				if loaded {
+					// wait for async duty computation to be completed
+					epochStats.awaitStatsReady(context.Background(), 30*time.Second)
+				}
+				t1loading += time.Since(t2)
 			}
 		}
 
@@ -171,6 +186,9 @@ func (indexer *Indexer) processEpochPruning(pruneEpoch phase0.Epoch) error {
 		}
 	}
 
+	t1dur := time.Since(t1) - t1loading
+	t1 = time.Now()
+
 	// persist data in db
 	db.RunDBTransaction(func(tx *sqlx.Tx) error {
 		persistedBlocks := map[phase0.Root]bool{}
@@ -181,12 +199,10 @@ func (indexer *Indexer) processEpochPruning(pruneEpoch phase0.Epoch) error {
 					return
 				}
 
-				dbBlock, err := indexer.dbWriter.persistBlockData(tx, block, epochData.epochStats, depositIndex, false, nil)
+				_, err := indexer.dbWriter.persistBlockData(tx, block, epochData.epochStats, depositIndex, false, nil)
 				if err != nil {
 					indexer.logger.Errorf("error persisting pruned slot %v: %v", block.Root.String(), err)
 				}
-
-				block.cachedDbBlock = dbBlock
 			})
 
 			mapped := smapping.MapTags(dbEpoch, "db")
@@ -230,11 +246,12 @@ func (indexer *Indexer) processEpochPruning(pruneEpoch phase0.Epoch) error {
 	})
 
 	indexer.lastPrunedEpoch = pruneEpoch + 1
-	indexer.logger.Infof("pruned epoch %d with %v blocks", pruneEpoch, len(pruningBlocks))
+	t2dur := time.Since(t1)
 
 	// sleep 500 ms to give running UI threads time to fetch data from cache
 	time.Sleep(500 * time.Millisecond)
 
+	t2 := time.Now()
 	// remove bodies from all pruned blocks in cache
 	for _, block := range pruningBlocks {
 		block.isInFinalizedDb = true
@@ -242,7 +259,37 @@ func (indexer *Indexer) processEpochPruning(pruneEpoch phase0.Epoch) error {
 		block.block = nil
 	}
 
-	return nil
+	// clean up epoch stats cache
+	prunedEpochStats := uint64(0)
+	for _, epochStats := range indexer.epochCache.getEpochStatsByEpoch(pruneEpoch) {
+		if epochStats.dependentState != nil {
+			epochStats.dependentState = nil
+		}
+
+		if epochStats.ready && epochStats.prunedValues == nil {
+			epochStats.pruneValues()
+			prunedEpochStats++
+		}
+	}
+
+	prunedEpochStates := indexer.epochCache.removeUnreferencedEpochStates()
+
+	// run gc to clean up memory
+	runtime.GC()
+
+	indexer.logger.Infof(
+		"pruned epoch %d with %v blocks, %v epoch stats, %v epoch states (prune: %v ms, load: %.2f s, write: %v ms, clean: %v ms)",
+		pruneEpoch,
+		len(pruningBlocks),
+		prunedEpochStats,
+		prunedEpochStates,
+		t1dur.Milliseconds(),
+		t1loading.Seconds(),
+		t2dur.Milliseconds(),
+		time.Since(t2).Milliseconds(),
+	)
+
+	return prunedEpochStats, prunedEpochStates, nil
 }
 
 type pruningBlockData struct {
@@ -250,7 +297,7 @@ type pruningBlockData struct {
 	epochStats *EpochStats
 }
 
-func (indexer *Indexer) processCachePruning() error {
+func (indexer *Indexer) processCachePruning(prunedEpochStats, prunedEpochStates uint64) error {
 	// process all remaining old blocks in cache (additional orphaned blocks from earlier pruned epochs)
 	// we simply add those blocks as orphaned to the database. don't recalculate pruned epoch stats with them.
 	chainState := indexer.consensusPool.GetChainState()
@@ -269,7 +316,7 @@ func (indexer *Indexer) processCachePruning() error {
 		}
 
 		var dependentRoot phase0.Root
-		client := indexer.GetReadyClientByBlockRoot(block.Root)
+		client := indexer.GetReadyClientByBlockRoot(block.Root, false)
 		if client == nil {
 			seenBy := block.GetSeenBy()
 			if len(seenBy) > 0 {
@@ -291,12 +338,10 @@ func (indexer *Indexer) processCachePruning() error {
 	if len(pruningData) > 0 {
 		err := db.RunDBTransaction(func(tx *sqlx.Tx) error {
 			for _, pruneBlock := range pruningData {
-				dbBlock, err := indexer.dbWriter.persistBlockData(tx, pruneBlock.block, pruneBlock.epochStats, nil, true, nil)
+				_, err := indexer.dbWriter.persistBlockData(tx, pruneBlock.block, pruneBlock.epochStats, nil, true, nil)
 				if err != nil {
 					indexer.logger.Errorf("error persisting old pruned slot %v: %v", pruneBlock.block.Root.String(), err)
 				}
-
-				pruneBlock.block.cachedDbBlock = dbBlock
 			}
 
 			return nil
@@ -317,7 +362,6 @@ func (indexer *Indexer) processCachePruning() error {
 	}
 
 	// clean up epoch stats cache
-	prunedEpochStats := 0
 	for _, epochStats := range indexer.epochCache.getEpochStatsBeforeEpoch(minInMemoryEpoch) {
 		if epochStats.dependentState != nil {
 			epochStats.dependentState = nil
@@ -325,10 +369,14 @@ func (indexer *Indexer) processCachePruning() error {
 
 		if epochStats.ready && epochStats.prunedValues == nil {
 			epochStats.pruneValues()
+			prunedEpochStats++
 		}
 	}
 
-	prunedEpochStates := indexer.epochCache.removeUnreferencedEpochStates()
+	prunedEpochStates += indexer.epochCache.removeUnreferencedEpochStates()
+
+	// run gc to clean up memory
+	runtime.GC()
 
 	indexer.logger.Infof("cache pruning complete! pruned %v blocks, %v epoch stats and %v epoch states", len(pruningData), prunedEpochStats, prunedEpochStates)
 

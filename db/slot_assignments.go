@@ -50,17 +50,3 @@ func GetSlotAssignmentsForSlots(firstSlot uint64, lastSlot uint64) []*dbtypes.Sl
 	}
 	return assignments
 }
-
-func GetSlotAssignment(slot uint64) *dbtypes.SlotAssignment {
-	assignment := dbtypes.SlotAssignment{}
-	err := ReaderDb.Get(&assignment, `
-	SELECT
-		slot, proposer
-	FROM slot_assignments
-	WHERE slot = $1 
-	`, slot)
-	if err != nil {
-		return nil
-	}
-	return &assignment
-}

@@ -3,6 +3,7 @@ package db
 import (
 	"database/sql"
 	"fmt"
+	"math"
 	"strings"
 
 	"github.com/ethpandaops/dora/dbtypes"
@@ -382,4 +383,18 @@ func GetHighestRootBeforeSlot(slot uint64, withOrphaned bool) []byte {
 		return nil
 	}
 	return result
+}
+
+func GetSlotAssignment(slot uint64) uint64 {
+	proposer := uint64(math.MaxInt64)
+	err := ReaderDb.Get(&proposer, `
+	SELECT
+		proposer
+	FROM slots
+	WHERE slot = $1 AND status IN (0, 1)
+	`, slot)
+	if err != nil {
+		return math.MaxInt64
+	}
+	return proposer
 }

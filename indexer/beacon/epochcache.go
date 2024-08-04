@@ -91,6 +91,24 @@ func (cache *epochCache) createOrGetEpochStats(epoch phase0.Epoch, dependentRoot
 	return epochStats
 }
 
+func (cache *epochCache) addEpochStateRequest(epochStats *EpochStats) {
+	if epochStats.dependentState != nil {
+		return
+	}
+
+	cache.cacheMutex.Lock()
+	defer cache.cacheMutex.Unlock()
+
+	epochState := cache.stateMap[epochStats.dependentRoot]
+	if epochState == nil {
+		epochState = newEpochState(epochStats.dependentRoot)
+		cache.stateMap[epochStats.dependentRoot] = epochState
+
+		cache.indexer.logger.Infof("added epoch state request for epoch %v (%v) to queue", epochStats.epoch, epochStats.dependentRoot.String())
+	}
+	epochStats.dependentState = epochState
+}
+
 func (cache *epochCache) getEpochStats(epoch phase0.Epoch, dependentRoot phase0.Root) *EpochStats {
 	cache.cacheMutex.RLock()
 	defer cache.cacheMutex.RUnlock()
@@ -296,8 +314,8 @@ func (cache *epochCache) runLoaderLoop() {
 	// 5. epoch number (prefer higher)
 	currentEpoch := cache.indexer.consensusPool.GetChainState().CurrentEpoch()
 	sort.Slice(pendingStats, func(a, b int) bool {
-		probablyBadA := pendingStats[a].dependentState.retryCount > 10
-		probablyBadB := pendingStats[b].dependentState.retryCount > 10
+		probablyBadA := pendingStats[a].dependentState.retryCount > beaconStateRetryCount
+		probablyBadB := pendingStats[b].dependentState.retryCount > beaconStateRetryCount
 		if probablyBadA != probablyBadB {
 			return probablyBadB
 		}
@@ -342,7 +360,8 @@ func (cache *epochCache) loadEpochStats(epochStats *EpochStats) {
 	}()
 
 	clients := []*Client{}
-	for _, client := range cache.indexer.GetReadyClientsByBlockRoot(epochStats.dependentRoot) {
+	preferArchive := epochStats.epoch < cache.indexer.lastFinalizedEpoch
+	for _, client := range cache.indexer.GetReadyClientsByBlockRoot(epochStats.dependentRoot, preferArchive) {
 		if client.skipValidators {
 			continue
 		}
@@ -392,16 +411,13 @@ func (cache *epochCache) loadEpochStats(epochStats *EpochStats) {
 			}
 		}
 
-		return false
+		return cliA.index < cliB.index
 	})
 
-	for _, client := range clients {
-		err := epochStats.dependentState.loadState(client.getContext(), client, cache)
-		if err != nil && epochStats.dependentState.loadingStatus == 0 {
-			client.logger.Warnf("failed loading epoch %v stats (dep: %v): %v", epochStats.epoch, epochStats.dependentRoot.String(), err)
-		} else {
-			break
-		}
+	client := clients[int(epochStats.dependentState.retryCount)%len(clients)]
+	err := epochStats.dependentState.loadState(client.getContext(), client, cache)
+	if err != nil && epochStats.dependentState.loadingStatus == 0 {
+		client.logger.Warnf("failed loading epoch %v stats (dep: %v): %v", epochStats.epoch, epochStats.dependentRoot.String(), err)
 	}
 
 	if epochStats.dependentState.loadingStatus != 2 {

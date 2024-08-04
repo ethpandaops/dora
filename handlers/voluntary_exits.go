@@ -145,11 +145,6 @@ func buildFilteredVoluntaryExitsPageData(pageIdx uint64, pageSize uint64, minSlo
 	}
 
 	// load voluntary exits
-	finalizedEpoch, _ := services.GlobalBeaconService.GetFinalizedEpoch()
-	if finalizedEpoch < 0 {
-		finalizedEpoch = 0
-	}
-
 	voluntaryExitFilter := &dbtypes.VoluntaryExitFilter{
 		MinSlot:       minSlot,
 		MaxSlot:       maxSlot,

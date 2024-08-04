@@ -61,8 +61,6 @@ type SlotPageBlockData struct {
 	VoluntaryExitsCount        uint64                 `json:"voluntaryexits_count"`
 	SlashingsCount             uint64                 `json:"slashings_count"`
 	BlobsCount                 uint64                 `json:"blobs_count"`
-	DenyDutyLoading            bool                   `json:"deny_duties"`
-	DutiesLoaded               bool                   `json:"duties_loaded"`
 	TransactionsCount          uint64                 `json:"transactions_count"`
 	DepositRequestsCount       uint64                 `json:"deposit_receipts_count"`
 	WithdrawalRequestsCount    uint64                 `json:"withdrawal_requests_count"`

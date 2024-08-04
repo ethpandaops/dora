@@ -189,9 +189,6 @@ func buildELClientsPageData() (*models.ClientsELPageData, time.Duration) {
 
 	for _, client := range services.GlobalBeaconService.GetExecutionClients() {
 		lastHeadSlot, lastHeadRoot := client.GetLastHead()
-		if lastHeadSlot < 0 {
-			lastHeadSlot = 0
-		}
 
 		peers := client.GetNodePeers()
 		resPeers := []*models.ClientELPageDataClientPeers{}

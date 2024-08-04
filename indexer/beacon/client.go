@@ -56,6 +56,18 @@ func (c *Client) getContext() context.Context {
 	return c.client.GetContext()
 }
 
+func (c *Client) GetClient() *consensus.Client {
+	return c.client
+}
+
+func (c *Client) GetPriority() int {
+	return c.priority
+}
+
+func (c *Client) GetIndex() uint16 {
+	return c.index
+}
+
 // startIndexing starts the indexing process for this client.
 // attaches block & head event handlers and starts the event processing subroutine.
 func (c *Client) startIndexing() {
@@ -183,6 +195,7 @@ func (c *Client) processHeadEvent(headEvent *v1.HeadEvent) error {
 
 	c.logger.Debugf("head %v -> %v", c.headRoot.String(), block.Root.String())
 
+	// check for chain reorgs
 	parentRoot := block.GetParentRoot()
 	if parentRoot != nil && !bytes.Equal(c.headRoot[:], (*parentRoot)[:]) {
 		// chain reorg!
@@ -217,14 +230,27 @@ func (c *Client) processHeadEvent(headEvent *v1.HeadEvent) error {
 		dependentBlock = c.indexer.blockCache.getDependentBlock(chainState, block, c)
 	}
 
+	// walk back the chain of epoch stats to ensure we have all duties & epoch specific data for the clients chain
 	currentBlock := block
+	currentEpoch := chainState.EpochOfSlot(currentBlock.Slot)
 	minInMemorySlot := c.indexer.getMinInMemorySlot()
+	absoluteMinInMemoryEpoch := c.indexer.getAbsoluteMinInMemoryEpoch()
 	for {
 		if dependentBlock != nil && currentBlock.Slot >= minInMemorySlot {
-			// ensure epoch stats are in loading queue
-			epochStats := c.indexer.epochCache.createOrGetEpochStats(chainState.EpochOfSlot(currentBlock.Slot), dependentBlock.Root, true)
+			epoch := chainState.EpochOfSlot(currentBlock.Slot)
+
+			// only request state for epochs that are allowed in memory by configuration
+			// we accept some gaps here, these will be fixed by the pruning/finalization process
+			requestState := epoch >= absoluteMinInMemoryEpoch
+
+			// ensure epoch stats for the epoch
+			epochStats := c.indexer.epochCache.createOrGetEpochStats(epoch, dependentBlock.Root, requestState)
 			if !epochStats.addRequestedBy(c) {
 				break
+			}
+			if epochStats.dependentState == nil && epoch == currentEpoch {
+				// always load most recent dependent state to ensure we have the latest validator set
+				c.indexer.epochCache.addEpochStateRequest(epochStats)
 			}
 		} else {
 			if dependentBlock == nil {
@@ -381,14 +407,14 @@ func (c *Client) processBlock(slot phase0.Slot, root phase0.Root, header *phase0
 			return header, nil
 		}
 
-		return loadHeader(c.getContext(), c, root)
+		return LoadBeaconHeader(c.getContext(), c, root)
 	})
 	if err != nil {
 		return
 	}
 
 	isNew, err = block.EnsureBlock(func() (*spec.VersionedSignedBeaconBlock, error) {
-		return loadBlock(c.getContext(), c, root)
+		return LoadBeaconBlock(c.getContext(), c, root)
 	})
 	if err != nil {
 		return
@@ -426,7 +452,7 @@ func (c *Client) processBlock(slot phase0.Slot, root phase0.Root, header *phase0
 		block.isInUnfinalizedDb = true
 		c.indexer.blockCache.latestBlock = block
 
-		c.indexer.GetCanonicalHead() // TODO: remove, just for debugging
+		c.indexer.GetCanonicalHead(nil) // TODO: remove, just for debugging
 
 	}
 	if slot < finalizedSlot && !block.isInFinalizedDb {
@@ -461,7 +487,7 @@ func (c *Client) backfillParentBlocks(headBlock *Block) error {
 		}
 
 		if parentHead == nil {
-			headerRsp, err := loadHeader(c.getContext(), c, parentRoot)
+			headerRsp, err := LoadBeaconHeader(c.getContext(), c, parentRoot)
 			if err != nil {
 				return fmt.Errorf("could not load parent header [0x%x]: %v", parentRoot, err)
 			}

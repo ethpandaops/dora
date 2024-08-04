@@ -2,14 +2,15 @@ package handlers
 
 import (
 	"fmt"
-	"math"
 	"net/http"
 	"strconv"
 	"time"
 
+	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
 
+	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
@@ -34,7 +35,8 @@ func Epoch(w http.ResponseWriter, r *http.Request) {
 	if vars["epoch"] != "" {
 		epoch, _ = strconv.ParseUint(vars["epoch"], 10, 64)
 	} else {
-		epoch = uint64(utils.TimeToEpoch(time.Now()))
+		chainState := services.GlobalBeaconService.GetChainState()
+		epoch = uint64(chainState.CurrentEpoch())
 	}
 
 	var pageError error
@@ -84,29 +86,37 @@ func getEpochPageData(epoch uint64) (*models.EpochPageData, error) {
 func buildEpochPageData(epoch uint64) (*models.EpochPageData, time.Duration) {
 	logrus.Debugf("epoch page called: %v", epoch)
 
-	now := time.Now()
-	currentSlot := utils.TimeToSlot(uint64(now.Unix()))
-	currentEpoch := utils.EpochOfSlot(currentSlot)
-	if epoch > currentEpoch {
+	beaconIndexer := services.GlobalBeaconService.GetBeaconIndexer()
+	chainState := services.GlobalBeaconService.GetChainState()
+	specs := chainState.GetSpecs()
+	currentSlot := chainState.CurrentSlot()
+	currentEpoch := chainState.EpochOfSlot(currentSlot)
+	if epoch > uint64(currentEpoch) {
 		return nil, -1
 	}
 
+	processedEpoch, _ := beaconIndexer.GetBlockCacheState()
 	finalizedEpoch, _ := services.GlobalBeaconService.GetFinalizedEpoch()
-	slotAssignments, syncedEpochs := services.GlobalBeaconService.GetProposerAssignments(epoch, epoch)
+	epochStats := beaconIndexer.GetEpochStats(phase0.Epoch(epoch), nil)
+
+	syncedEpoch := epochStats != nil
+	if !syncedEpoch && epoch < uint64(processedEpoch) {
+		syncedEpoch = db.IsEpochSynchronized(epoch)
+	}
 
 	nextEpoch := epoch + 1
-	if nextEpoch > currentEpoch {
+	if nextEpoch > uint64(currentEpoch) {
 		nextEpoch = 0
 	}
-	firstSlot := epoch * utils.Config.Chain.Config.SlotsPerEpoch
-	lastSlot := firstSlot + utils.Config.Chain.Config.SlotsPerEpoch - 1
+	firstSlot := chainState.EpochToSlot(phase0.Epoch(epoch))
+	lastSlot := chainState.EpochToSlot(phase0.Epoch(epoch+1)) - 1
 	pageData := &models.EpochPageData{
 		Epoch:         epoch,
 		PreviousEpoch: epoch - 1,
 		NextEpoch:     nextEpoch,
-		Ts:            utils.EpochToTime(epoch),
-		Synchronized:  syncedEpochs[epoch],
-		Finalized:     finalizedEpoch >= int64(epoch),
+		Ts:            chainState.SlotToTime(chainState.EpochToSlot(phase0.Epoch(epoch))),
+		Synchronized:  syncedEpoch,
+		Finalized:     finalizedEpoch >= phase0.Epoch(epoch),
 	}
 
 	dbEpochs := services.GlobalBeaconService.GetDbEpochs(epoch, 1)
@@ -139,13 +149,12 @@ func buildEpochPageData(epoch uint64) (*models.EpochPageData, time.Duration) {
 
 	// load slots
 	pageData.Slots = make([]*models.EpochPageDataSlot, 0)
-	dbSlots := services.GlobalBeaconService.GetDbBlocksForSlots(uint64(lastSlot), uint32(utils.Config.Chain.Config.SlotsPerEpoch), true, true)
+	dbSlots := services.GlobalBeaconService.GetDbBlocksForSlots(uint64(lastSlot), uint32(specs.SlotsPerEpoch), true, true)
 	dbIdx := 0
 	dbCnt := len(dbSlots)
 	blockCount := uint64(0)
 	for slotIdx := int64(lastSlot); slotIdx >= int64(firstSlot); slotIdx-- {
 		slot := uint64(slotIdx)
-		haveBlock := false
 		for dbIdx < dbCnt && dbSlots[dbIdx] != nil && dbSlots[dbIdx].Slot == slot {
 			dbSlot := dbSlots[dbIdx]
 			dbIdx++
@@ -159,18 +168,14 @@ func buildEpochPageData(epoch uint64) (*models.EpochPageData, time.Duration) {
 				pageData.MissedCount++
 			}
 
-			proposer := dbSlot.Proposer
-			if proposer == math.MaxInt64 {
-				proposer = slotAssignments[slot]
-			}
-
 			slotData := &models.EpochPageDataSlot{
 				Slot:                  slot,
 				Epoch:                 utils.EpochOfSlot(slot),
 				Ts:                    utils.SlotToTime(slot),
+				Scheduled:             slot >= uint64(currentSlot) && dbSlot.Status == dbtypes.Missing,
 				Status:                uint8(dbSlot.Status),
-				Proposer:              proposer,
-				ProposerName:          services.GlobalBeaconService.GetValidatorName(proposer),
+				Proposer:              dbSlot.Proposer,
+				ProposerName:          services.GlobalBeaconService.GetValidatorName(dbSlot.Proposer),
 				AttestationCount:      dbSlot.AttestationCount,
 				DepositCount:          dbSlot.DepositCount,
 				ExitCount:             dbSlot.ExitCount,
@@ -185,25 +190,9 @@ func buildEpochPageData(epoch uint64) (*models.EpochPageData, time.Duration) {
 				slotData.WithEthBlock = true
 				slotData.EthBlockNumber = *dbSlot.EthBlockNumber
 			}
-			pageData.Slots = append(pageData.Slots, slotData)
-			blockCount++
-			haveBlock = true
-		}
-
-		if !haveBlock {
-			slotData := &models.EpochPageDataSlot{
-				Slot:         slot,
-				Epoch:        epoch,
-				Ts:           utils.SlotToTime(slot),
-				Scheduled:    slot >= currentSlot,
-				Status:       0,
-				Proposer:     slotAssignments[slot],
-				ProposerName: services.GlobalBeaconService.GetValidatorName(slotAssignments[slot]),
-			}
 			if slotData.Scheduled {
 				pageData.ScheduledCount++
-			} else {
-				pageData.MissedCount++
+				pageData.MissedCount--
 			}
 			pageData.Slots = append(pageData.Slots, slotData)
 			blockCount++

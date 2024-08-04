@@ -43,6 +43,7 @@ type ChainSpec struct {
 	DomainBeaconProposer         phase0.DomainType `yaml:"DOMAIN_BEACON_PROPOSER"`
 	DomainBeaconAttester         phase0.DomainType `yaml:"DOMAIN_BEACON_ATTESTER"`
 	DomainSyncCommittee          phase0.DomainType `yaml:"DOMAIN_SYNC_COMMITTEE"`
+	SyncCommitteeSize            uint64            `yaml:"SYNC_COMMITTEE_SIZE"`
 
 	// additional dora specific specs
 	WhiskForkEpoch *uint64

@@ -149,6 +149,17 @@ func (cs *ChainState) GetFinalizedCheckpoint() (phase0.Epoch, phase0.Root) {
 	return cs.finality.Finalized.Epoch, cs.finality.Finalized.Root
 }
 
+func (cs *ChainState) GetJustifiedCheckpoint() (phase0.Epoch, phase0.Root) {
+	cs.finalityMutex.RLock()
+	defer cs.finalityMutex.RUnlock()
+
+	if cs.finality == nil {
+		return 0, NullRoot
+	}
+
+	return cs.finality.Finalized.Epoch, cs.finality.Finalized.Root
+}
+
 func (cs *ChainState) GetFinalizedSlot() phase0.Slot {
 	if cs.specs == nil {
 		return 0
