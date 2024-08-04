@@ -115,6 +115,18 @@ func (indexer *Indexer) GetBlockByParentRoot(blockRoot phase0.Root) []*Block {
 	return indexer.blockCache.getBlocksByParentRoot(blockRoot)
 }
 
+func (indexer *Indexer) GetBlockByStateRoot(stateRoot phase0.Root) *Block {
+	return indexer.blockCache.getBlockByStateRoot(stateRoot)
+}
+
+func (indexer *Indexer) GetBlocksByExecutionBlockHash(blockHash phase0.Hash32) []*Block {
+	return indexer.blockCache.getBlocksByExecutionBlockHash(blockHash)
+}
+
+func (indexer *Indexer) GetBlocksByExecutionBlockNumber(blockNumber uint64) []*Block {
+	return indexer.blockCache.getBlocksByExecutionBlockNumber(blockNumber)
+}
+
 func (indexer *Indexer) GetBlockDistance(baseRoot phase0.Root, headRoot phase0.Root) (bool, uint64) {
 	return indexer.blockCache.getCanonicalDistance(baseRoot, headRoot, 0)
 }

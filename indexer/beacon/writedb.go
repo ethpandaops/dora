@@ -82,8 +82,14 @@ func (dbw *dbWriter) persistBlockData(tx *sqlx.Tx, block *Block, epochStats *Epo
 func (dbw *dbWriter) persistBlockChildObjects(tx *sqlx.Tx, block *Block, depositIndex *uint64, orphaned bool, overrideForkId *ForkKey) error {
 	var err error
 
-	// insert deposits
+	// insert deposits (pre/early electra)
 	err = dbw.persistBlockDeposits(tx, block, depositIndex, orphaned, overrideForkId)
+	if err != nil {
+		return err
+	}
+
+	// insert deposit requests (post electra)
+	err = dbw.persistBlockDepositRequests(tx, block, orphaned, overrideForkId)
 	if err != nil {
 		return err
 	}
@@ -403,6 +409,59 @@ func (dbw *dbWriter) buildDbDeposits(block *Block, depositIndex *uint64, orphane
 			cDepIdx := *depositIndex
 			dbDeposit.Index = &cDepIdx
 			*depositIndex++
+		}
+		if overrideForkId != nil {
+			dbDeposit.ForkId = uint64(*overrideForkId)
+		}
+
+		dbDeposits[idx] = dbDeposit
+	}
+
+	return dbDeposits
+}
+
+func (dbw *dbWriter) persistBlockDepositRequests(tx *sqlx.Tx, block *Block, orphaned bool, overrideForkId *ForkKey) error {
+	// insert deposits
+	dbDeposits := dbw.buildDbDepositRequests(block, orphaned, overrideForkId)
+	if orphaned {
+		for idx := range dbDeposits {
+			dbDeposits[idx].Orphaned = true
+		}
+	}
+
+	if len(dbDeposits) > 0 {
+		err := db.InsertDeposits(dbDeposits, tx)
+		if err != nil {
+			return fmt.Errorf("error inserting deposit requests: %v", err)
+		}
+	}
+
+	return nil
+}
+
+func (dbw *dbWriter) buildDbDepositRequests(block *Block, orphaned bool, overrideForkId *ForkKey) []*dbtypes.Deposit {
+	blockBody := block.GetBlock()
+	if blockBody == nil {
+		return nil
+	}
+
+	deposits, err := getBlockExecutionDepositRequests(blockBody)
+	if err != nil {
+		return nil
+	}
+
+	dbDeposits := make([]*dbtypes.Deposit, len(deposits))
+	for idx, deposit := range deposits {
+		dbDeposit := &dbtypes.Deposit{
+			Index:                 &deposit.Index,
+			SlotNumber:            uint64(block.Slot),
+			SlotIndex:             uint64(idx),
+			SlotRoot:              block.Root[:],
+			Orphaned:              orphaned,
+			ForkId:                uint64(block.forkId),
+			PublicKey:             deposit.Pubkey[:],
+			WithdrawalCredentials: deposit.WithdrawalCredentials,
+			Amount:                uint64(deposit.Amount),
 		}
 		if overrideForkId != nil {
 			dbDeposit.ForkId = uint64(*overrideForkId)

@@ -83,6 +83,10 @@ func newEpochStats(epoch phase0.Epoch, dependentRoot phase0.Root) *EpochStats {
 	return stats
 }
 
+func (es *EpochStats) GetEpoch() phase0.Epoch {
+	return es.epoch
+}
+
 // addRequestedBy adds a client to the list of clients that have requested this EpochStats.
 func (es *EpochStats) addRequestedBy(client *Client) bool {
 	es.requestedMutex.Lock()
@@ -604,9 +608,8 @@ func (es *EpochStats) GetDbEpoch(indexer *Indexer, headBlock *Block) *dbtypes.Ep
 	}
 
 	// collect all blocks for this & next epoch in chain defined by headBlock
-	thisEpochBlockMap := map[phase0.Root]bool{}
-	thisEpochBlocks := []*Block{}
-	nextEpochBlocks := []*Block{}
+	epochBlockMap := map[phase0.Root]bool{}
+	epochBlocks := []*Block{}
 	currentBlock := headBlock
 	for {
 		if currentBlock == nil || chainState.EpochOfSlot(currentBlock.Slot) < es.epoch {
@@ -614,10 +617,8 @@ func (es *EpochStats) GetDbEpoch(indexer *Indexer, headBlock *Block) *dbtypes.Ep
 		}
 
 		if chainState.EpochOfSlot(currentBlock.Slot) == es.epoch {
-			thisEpochBlockMap[currentBlock.Root] = true
-			thisEpochBlocks = append(thisEpochBlocks, currentBlock)
-		} else if chainState.EpochOfSlot(currentBlock.Slot) == es.epoch+1 {
-			nextEpochBlocks = append(nextEpochBlocks, currentBlock)
+			epochBlockMap[currentBlock.Root] = true
+			epochBlocks = append(epochBlocks, currentBlock)
 		}
 
 		parentRoot := currentBlock.GetParentRoot()
@@ -631,7 +632,7 @@ func (es *EpochStats) GetDbEpoch(indexer *Indexer, headBlock *Block) *dbtypes.Ep
 	if es.prunedEpochAggregations != nil {
 		// select from the pruned epoch aggregations
 		for _, epochAgg := range es.prunedEpochAggregations {
-			if !thisEpochBlockMap[phase0.Root(epochAgg.EpochHeadRoot)] {
+			if !epochBlockMap[phase0.Root(epochAgg.EpochHeadRoot)] {
 				continue
 			}
 
@@ -649,18 +650,47 @@ func (es *EpochStats) GetDbEpoch(indexer *Indexer, headBlock *Block) *dbtypes.Ep
 	}
 
 	// sort blocks ascending
-	sort.Slice(thisEpochBlocks, func(i, j int) bool {
-		return thisEpochBlocks[i].Slot < thisEpochBlocks[j].Slot
-	})
-	sort.Slice(nextEpochBlocks, func(i, j int) bool {
-		return nextEpochBlocks[i].Slot < nextEpochBlocks[j].Slot
+	sort.Slice(epochBlocks, func(i, j int) bool {
+		return epochBlocks[i].Slot < epochBlocks[j].Slot
 	})
 
 	// compute epoch votes
-	votingBlocks := make([]*Block, len(thisEpochBlocks)+len(nextEpochBlocks))
-	copy(votingBlocks, thisEpochBlocks)
-	copy(votingBlocks[len(thisEpochBlocks):], nextEpochBlocks)
-	epochVotes := indexer.aggregateEpochVotes(chainState, votingBlocks, es)
+	epochVotes := es.GetEpochVotes(indexer, headBlock)
 
-	return indexer.dbWriter.buildDbEpoch(es.epoch, thisEpochBlocks, es, epochVotes, nil)
+	return indexer.dbWriter.buildDbEpoch(es.epoch, epochBlocks, es, epochVotes, nil)
+}
+
+func (es *EpochStats) GetEpochVotes(indexer *Indexer, headBlock *Block) *EpochVotes {
+	chainState := indexer.consensusPool.GetChainState()
+	if headBlock == nil {
+		headBlock = indexer.GetCanonicalHead(nil)
+	}
+
+	// collect all blocks for this & next epoch in chain defined by headBlock
+	votingBlocks := []*Block{}
+	currentBlock := headBlock
+	for {
+		if currentBlock == nil || chainState.EpochOfSlot(currentBlock.Slot) < es.epoch {
+			break
+		}
+
+		if chainState.EpochOfSlot(currentBlock.Slot) == es.epoch || chainState.EpochOfSlot(currentBlock.Slot) == es.epoch+1 {
+			votingBlocks = append(votingBlocks, currentBlock)
+		}
+
+		parentRoot := currentBlock.GetParentRoot()
+		if parentRoot == nil {
+			break
+		}
+
+		currentBlock = indexer.blockCache.getBlockByRoot(*parentRoot)
+	}
+
+	// sort blocks ascending
+	sort.Slice(votingBlocks, func(i, j int) bool {
+		return votingBlocks[i].Slot < votingBlocks[j].Slot
+	})
+
+	// compute epoch votes
+	return indexer.aggregateEpochVotes(es.epoch, chainState, votingBlocks, es)
 }

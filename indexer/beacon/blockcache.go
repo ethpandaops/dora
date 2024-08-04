@@ -74,7 +74,9 @@ func (cache *blockCache) getBlocksBySlot(slot phase0.Slot) []*Block {
 	defer cache.cacheMutex.RUnlock()
 
 	blocks := make([]*Block, len(cache.slotMap[slot]))
-	copy(blocks, cache.slotMap[slot])
+	if len(blocks) > 0 {
+		copy(blocks, cache.slotMap[slot])
+	}
 
 	return blocks
 }
@@ -100,6 +102,77 @@ func (cache *blockCache) getBlocksByParentRoot(parentRoot phase0.Root) []*Block 
 			if bytes.Equal((*blockParentRoot)[:], parentRoot[:]) {
 				resBlocks = append(resBlocks, block)
 			}
+		}
+	}
+
+	return resBlocks
+}
+
+func (cache *blockCache) getBlockByStateRoot(stateRoot phase0.Root) *Block {
+	cache.cacheMutex.RLock()
+	defer cache.cacheMutex.RUnlock()
+
+	for _, block := range cache.rootMap {
+		blockHeader := block.GetHeader()
+		if blockHeader == nil {
+			continue
+		}
+
+		if bytes.Equal(blockHeader.Message.StateRoot[:], stateRoot[:]) {
+			return block
+		}
+	}
+
+	return nil
+}
+
+func (cache *blockCache) getBlocksByExecutionBlockHash(blockHash phase0.Hash32) []*Block {
+	cache.cacheMutex.RLock()
+	defer cache.cacheMutex.RUnlock()
+
+	resBlocks := []*Block{}
+	for _, block := range cache.rootMap {
+		if block.blockIndex != nil {
+			if bytes.Equal(block.blockIndex.ExecutionHash[:], blockHash[:]) {
+				resBlocks = append(resBlocks, block)
+			}
+		}
+
+		blockBody := block.GetBlock()
+		if blockBody == nil {
+			continue
+		}
+
+		executionHash, _ := blockBody.ExecutionBlockHash()
+		if bytes.Equal(executionHash[:], blockHash[:]) {
+			resBlocks = append(resBlocks, block)
+		}
+	}
+
+	return resBlocks
+}
+
+func (cache *blockCache) getBlocksByExecutionBlockNumber(blockNumber uint64) []*Block {
+	cache.cacheMutex.RLock()
+	defer cache.cacheMutex.RUnlock()
+
+	resBlocks := []*Block{}
+	for _, block := range cache.rootMap {
+		if block.blockIndex != nil {
+			if block.blockIndex.ExecutionNumber == blockNumber {
+				resBlocks = append(resBlocks, block)
+				continue
+			}
+		}
+
+		if block.block == nil {
+			continue
+		}
+		blockBody := block.block
+
+		executionNumber, err := blockBody.ExecutionBlockNumber()
+		if err == nil && executionNumber == blockNumber {
+			resBlocks = append(resBlocks, block)
 		}
 	}
 

@@ -84,7 +84,7 @@ func (cache *epochCache) createOrGetEpochStats(epoch phase0.Epoch, dependentRoot
 
 		if epochState.loadingStatus == 2 && !epochStats.ready {
 			// dependent state is already loaded, process it
-			epochStats.processState(cache.indexer)
+			go epochStats.processState(cache.indexer)
 		}
 	}
 
@@ -435,6 +435,6 @@ func (cache *epochCache) loadEpochStats(epochStats *EpochStats) {
 	cache.cacheMutex.Unlock()
 
 	for _, stats := range dependentStats {
-		stats.processState(cache.indexer)
+		go stats.processState(cache.indexer)
 	}
 }

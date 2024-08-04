@@ -451,10 +451,8 @@ func (c *Client) processBlock(slot phase0.Slot, root phase0.Root, header *phase0
 
 		block.isInUnfinalizedDb = true
 		c.indexer.blockCache.latestBlock = block
-
-		c.indexer.GetCanonicalHead(nil) // TODO: remove, just for debugging
-
 	}
+
 	if slot < finalizedSlot && !block.isInFinalizedDb {
 		// process new orphaned block in finalized epoch
 		// TODO: insert new orphaned block to db

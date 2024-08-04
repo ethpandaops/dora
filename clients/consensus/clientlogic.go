@@ -175,13 +175,15 @@ func (client *Client) runClientLogic() error {
 
 			client.logger.Tracef("event (%v) processing time: %v ms", evt.Event, time.Since(now).Milliseconds())
 			client.lastEvent = time.Now()
-		case ready := <-blockStream.ReadyChan:
-			if client.isOnline != ready {
-				client.isOnline = ready
-				if ready {
+		case streamStatus := <-blockStream.ReadyChan:
+			if client.isOnline != streamStatus.Ready {
+				client.isOnline = streamStatus.Ready
+				if streamStatus.Ready {
 					client.logger.Debug("RPC event stream connected")
+					client.lastError = nil
 				} else {
 					client.logger.Debug("RPC event stream disconnected")
+					client.lastError = streamStatus.Error
 				}
 			}
 		case <-time.After(eventTimeout):

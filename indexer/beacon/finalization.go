@@ -281,7 +281,7 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 		votingBlocks := make([]*Block, len(canonicalBlocks)+len(nextEpochCanonicalBlocks))
 		copy(votingBlocks, canonicalBlocks)
 		copy(votingBlocks[len(canonicalBlocks):], nextEpochCanonicalBlocks)
-		epochVotes = indexer.aggregateEpochVotes(chainState, votingBlocks, epochStats)
+		epochVotes = indexer.aggregateEpochVotes(epoch, chainState, votingBlocks, epochStats)
 		if epochVotes == nil && !lastTry {
 			return false, fmt.Errorf("failed computing votes for epoch %v", epoch)
 		}

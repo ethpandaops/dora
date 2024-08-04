@@ -246,7 +246,7 @@ func (indexer *Indexer) aggregateForkVotes(forkId ForkKey) (totalVotes phase0.Gw
 				}
 			}
 
-			epochVotes := indexer.aggregateEpochVotes(chainState, thisBlocks, thisEpochStats)
+			epochVotes := indexer.aggregateEpochVotes(currentEpoch, chainState, thisBlocks, thisEpochStats)
 			if epochVotes.AmountIsCount {
 				totalVotes += epochVotes.CurrentEpoch.TargetVoteAmount * 32 * EtherGweiFactor
 			} else {
@@ -264,7 +264,7 @@ func (indexer *Indexer) aggregateForkVotes(forkId ForkKey) (totalVotes phase0.Gw
 
 		lastEpochStats := indexer.epochCache.getEpochStats(currentEpoch-1, lastEpochDependent.Root)
 		if lastEpochStats != nil {
-			epochVotes := indexer.aggregateEpochVotes(chainState, lastBlocks, lastEpochStats)
+			epochVotes := indexer.aggregateEpochVotes(currentEpoch-1, chainState, lastBlocks, lastEpochStats)
 			if epochVotes.AmountIsCount {
 				totalVotes += (epochVotes.CurrentEpoch.TargetVoteAmount + epochVotes.NextEpoch.TargetVoteAmount) * 32 * EtherGweiFactor
 			} else {

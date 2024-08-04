@@ -116,7 +116,7 @@ func (indexer *Indexer) processEpochPruning(pruneEpoch phase0.Epoch) (uint64, ui
 
 		// ensure epoch stats are loaded
 		// if the state is not yet loaded, we set it to high priority and wait for it to be loaded
-		if !epochStats.ready {
+		if epochStats != nil && !epochStats.ready {
 			if epochStats.dependentState == nil {
 				indexer.epochCache.addEpochStateRequest(epochStats)
 			}
@@ -174,7 +174,7 @@ func (indexer *Indexer) processEpochPruning(pruneEpoch phase0.Epoch) (uint64, ui
 			votingBlocks := make([]*Block, len(chain)+len(nextBlocks))
 			copy(votingBlocks, chain)
 			copy(votingBlocks[len(chain):], nextBlocks)
-			epochVotes := indexer.aggregateEpochVotes(chainState, votingBlocks, epochStats)
+			epochVotes := indexer.aggregateEpochVotes(pruneEpoch, chainState, votingBlocks, epochStats)
 
 			epochData = append(epochData, &pruningEpochData{
 				dependentRoot: dependentRoot,
@@ -256,6 +256,7 @@ func (indexer *Indexer) processEpochPruning(pruneEpoch phase0.Epoch) (uint64, ui
 	for _, block := range pruningBlocks {
 		block.isInFinalizedDb = true
 		block.processingStatus = dbtypes.UnfinalizedBlockStatusPruned
+		block.setBlockIndex(block.block)
 		block.block = nil
 	}
 

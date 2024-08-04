@@ -32,7 +32,7 @@ func (bs *ChainService) GetSlotDetailsByBlockroot(ctx context.Context, blockroot
 			Root:     blockInfo.Root,
 			Header:   blockInfo.GetHeader(),
 			Block:    blockInfo.GetBlock(),
-			Orphaned: bs.beaconIndexer.IsCanonicalBlock(blockInfo, nil),
+			Orphaned: !bs.beaconIndexer.IsCanonicalBlock(blockInfo, nil),
 		}
 	} else if blockInfo, err := bs.beaconIndexer.GetOrphanedBlockByRoot(blockroot); blockInfo != nil || err != nil {
 		if err != nil {

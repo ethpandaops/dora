@@ -28,7 +28,7 @@ type Block struct {
 	blockMutex        sync.Mutex
 	blockChan         chan bool
 	block             *spec.VersionedSignedBeaconBlock
-	blockIndex        *blockBodyIndex
+	blockIndex        *BlockBodyIndex
 	isInFinalizedDb   bool // block is in finalized table (slots)
 	isInUnfinalizedDb bool // block is in unfinalized table (unfinalized_blocks)
 	processingStatus  dbtypes.UnfinalizedBlockStatus
@@ -36,7 +36,7 @@ type Block struct {
 	seenMap           map[uint16]*Client
 }
 
-type blockBodyIndex struct {
+type BlockBodyIndex struct {
 	Graffiti           [32]byte
 	ExecutionExtraData []byte
 	ExecutionHash      phase0.Hash32
@@ -231,13 +231,26 @@ func (block *Block) EnsureBlock(loadBlock func() (*spec.VersionedSignedBeaconBlo
 }
 
 func (block *Block) setBlockIndex(body *spec.VersionedSignedBeaconBlock) {
-	blockIndex := &blockBodyIndex{}
+	blockIndex := &BlockBodyIndex{}
 	blockIndex.Graffiti, _ = body.Graffiti()
 	blockIndex.ExecutionExtraData, _ = getBlockExecutionExtraData(body)
 	blockIndex.ExecutionHash, _ = body.ExecutionBlockHash()
 	blockIndex.ExecutionNumber, _ = body.ExecutionBlockNumber()
 
 	block.blockIndex = blockIndex
+}
+
+func (block *Block) GetBlockIndex() *BlockBodyIndex {
+	if block.blockIndex != nil {
+		return block.blockIndex
+	}
+
+	blockBody := block.GetBlock()
+	if blockBody != nil {
+		block.setBlockIndex(blockBody)
+	}
+
+	return block.blockIndex
 }
 
 // buildUnfinalizedBlock builds an unfinalized block from the block data.
@@ -312,6 +325,24 @@ func (block *Block) GetDbBlock(indexer *Indexer) *dbtypes.Slot {
 	}
 
 	return dbBlock
+}
+
+func (block *Block) GetDbDeposits(indexer *Indexer, depositIndex *uint64) []*dbtypes.Deposit {
+	orphaned := !indexer.IsCanonicalBlock(block, nil)
+	dbDeposits := indexer.dbWriter.buildDbDeposits(block, depositIndex, orphaned, nil)
+	dbDeposits = append(dbDeposits, indexer.dbWriter.buildDbDepositRequests(block, orphaned, nil)...)
+
+	return dbDeposits
+}
+
+func (block *Block) GetDbVoluntaryExits(indexer *Indexer) []*dbtypes.VoluntaryExit {
+	orphaned := !indexer.IsCanonicalBlock(block, nil)
+	return indexer.dbWriter.buildDbVoluntaryExits(block, orphaned, nil)
+}
+
+func (block *Block) GetDbSlashings(indexer *Indexer) []*dbtypes.Slashing {
+	orphaned := !indexer.IsCanonicalBlock(block, nil)
+	return indexer.dbWriter.buildDbSlashings(block, orphaned, nil)
 }
 
 func (block *Block) GetExecutionExtraData() []byte {

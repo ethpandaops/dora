@@ -31,7 +31,7 @@ type EpochVotes struct {
 }
 
 // aggregateEpochVotes aggregates the votes for an epoch based on the provided chain state, blocks, and epoch stats.
-func (indexer *Indexer) aggregateEpochVotes(chainState *consensus.ChainState, blocks []*Block, epochStats *EpochStats) *EpochVotes {
+func (indexer *Indexer) aggregateEpochVotes(epoch phase0.Epoch, chainState *consensus.ChainState, blocks []*Block, epochStats *EpochStats) *EpochVotes {
 	t1 := time.Now()
 
 	var epochStatsValues *EpochStatsValues
@@ -66,7 +66,7 @@ func (indexer *Indexer) aggregateEpochVotes(chainState *consensus.ChainState, bl
 
 		slot := block.Slot
 
-		isNextEpoch := chainState.EpochOfSlot(slot) > epochStats.epoch
+		isNextEpoch := chainState.EpochOfSlot(slot) > epoch
 		attestations, err := blockBody.Attestations()
 		if err != nil {
 			continue
@@ -77,7 +77,7 @@ func (indexer *Indexer) aggregateEpochVotes(chainState *consensus.ChainState, bl
 				indexer.logger.Debugf("aggregateEpochVotes slot %v failed, can't get data for attestation %v: %v", slot, attIdx, err)
 				continue
 			}
-			if chainState.EpochOfSlot(attData.Slot) != epochStats.epoch {
+			if chainState.EpochOfSlot(attData.Slot) != epoch {
 				continue
 			}
 
@@ -160,7 +160,7 @@ func (indexer *Indexer) aggregateEpochVotes(chainState *consensus.ChainState, bl
 		votes.TotalVotePercent = float64(votes.CurrentEpoch.TotalVoteAmount+votes.NextEpoch.TotalVoteAmount) * 100 / float64(epochStatsValues.EffectiveBalance)
 	}
 
-	indexer.logger.Debugf("aggregated epoch %v votes in %v (blocks: %v, dependent: %v)", epochStats.epoch, time.Since(t1), len(blocks), epochStats.dependentRoot)
+	indexer.logger.Debugf("aggregated epoch %v votes in %v (blocks: %v)", epoch, time.Since(t1), len(blocks))
 	return votes
 }
 

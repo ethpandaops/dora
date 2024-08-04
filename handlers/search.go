@@ -36,12 +36,12 @@ func Search(w http.ResponseWriter, r *http.Request) {
 	if err == nil {
 		blockResult := &dbtypes.SearchBlockResult{}
 		err = db.ReaderDb.Get(blockResult, `
-			SELECT slot, root, orphaned 
+			SELECT slot, root, status 
 			FROM slots 
-			WHERE slot = $1
+			WHERE slot = $1 AND status != 0
 			LIMIT 1`, searchQuery)
 		if err == nil {
-			if blockResult.Orphaned {
+			if blockResult.Status == dbtypes.Orphaned {
 				http.Redirect(w, r, fmt.Sprintf("/slot/0x%x", blockResult.Root), http.StatusMovedPermanently)
 			} else {
 				http.Redirect(w, r, fmt.Sprintf("/slot/%v", blockResult.Slot), http.StatusMovedPermanently)
@@ -62,7 +62,7 @@ func Search(w http.ResponseWriter, r *http.Request) {
 				state_root = $1
 			LIMIT 1`, blockHash)
 			if err == nil {
-				if blockResult.Orphaned {
+				if blockResult.Status == dbtypes.Orphaned {
 					http.Redirect(w, r, fmt.Sprintf("/slot/0x%x", blockResult.Root), http.StatusMovedPermanently)
 				} else {
 					http.Redirect(w, r, fmt.Sprintf("/slot/%v", blockResult.Slot), http.StatusMovedPermanently)
@@ -130,7 +130,10 @@ func SearchAhead(w http.ResponseWriter, r *http.Request) {
 	logger := logrus.WithField("searchType", searchType)
 	var result interface{}
 
-	indexer := services.GlobalBeaconService.GetIndexer()
+	indexer := services.GlobalBeaconService.GetBeaconIndexer()
+	_, pruneEpoch := indexer.GetBlockCacheState()
+	chainState := services.GlobalBeaconService.GetChainState()
+	minSlotIdx := chainState.EpochStartSlot(pruneEpoch)
 
 	switch searchType {
 	case "epochs":
@@ -160,12 +163,9 @@ func SearchAhead(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
-			cachedBlock := indexer.GetCachedBlock(blockHash)
+			cachedBlock := indexer.GetBlockByRoot(phase0.Root(blockHash))
 			if cachedBlock == nil {
-				cachedBlock = indexer.GetCachedBlockByStateroot(blockHash)
-			}
-			if cachedBlock != nil && !cachedBlock.IsReady() {
-				cachedBlock = nil
+				cachedBlock = indexer.GetBlockByStateRoot(phase0.Root(blockHash))
 			}
 			if cachedBlock != nil {
 				header := cachedBlock.GetHeader()
@@ -173,7 +173,7 @@ func SearchAhead(w http.ResponseWriter, r *http.Request) {
 					{
 						Slot:     fmt.Sprintf("%v", uint64(header.Message.Slot)),
 						Root:     phase0.Root(cachedBlock.Root),
-						Orphaned: !cachedBlock.IsCanonical(indexer, nil),
+						Orphaned: !indexer.IsCanonicalBlock(cachedBlock, nil),
 					},
 				}
 			} else {
@@ -181,9 +181,8 @@ func SearchAhead(w http.ResponseWriter, r *http.Request) {
 				err = db.ReaderDb.Select(dbres, `
 				SELECT slot, root, orphaned 
 				FROM slots 
-				WHERE root = $1 OR
-					state_root = $1
-				ORDER BY slot LIMIT 1`, blockHash)
+				WHERE slot < $1 AND (root = $2 OR state_root = $2)
+				ORDER BY slot LIMIT 1`, minSlotIdx, blockHash)
 				if err != nil {
 					logger.Errorf("error reading block root: %v", err)
 					http.Error(w, "Internal server error", http.StatusServiceUnavailable)
@@ -194,34 +193,34 @@ func SearchAhead(w http.ResponseWriter, r *http.Request) {
 						{
 							Slot:     fmt.Sprintf("%v", (*dbres)[0].Slot),
 							Root:     phase0.Root((*dbres)[0].Root),
-							Orphaned: (*dbres)[0].Orphaned,
+							Orphaned: (*dbres)[0].Status == dbtypes.Orphaned,
 						},
 					}
 				}
 
 			}
 		} else if blockNumber, convertErr := strconv.ParseUint(search, 10, 32); convertErr == nil {
-			cachedBlocks := indexer.GetCachedBlocks(blockNumber)
+			cachedBlocks := indexer.GetBlocksBySlot(phase0.Slot(blockNumber))
 			if len(cachedBlocks) > 0 {
 				res := make([]*models.SearchAheadSlotsResult, 0)
 				for _, cachedBlock := range cachedBlocks {
-					if !cachedBlock.IsReady() {
+					header := cachedBlock.GetHeader()
+					if header == nil {
 						continue
 					}
-					header := cachedBlock.GetHeader()
 					res = append(res, &models.SearchAheadSlotsResult{
 						Slot:     fmt.Sprintf("%v", uint64(header.Message.Slot)),
 						Root:     phase0.Root(cachedBlock.Root),
-						Orphaned: !cachedBlock.IsCanonical(indexer, nil),
+						Orphaned: !indexer.IsCanonicalBlock(cachedBlock, nil),
 					})
 				}
 				result = res
 			} else {
 				dbres := &dbtypes.SearchAheadSlotsResult{}
 				err = db.ReaderDb.Select(dbres, `
-				SELECT slot, root, orphaned 
+				SELECT slot, root, status 
 				FROM slots 
-				WHERE slot = $1
+				WHERE slot = $1 AND status != 0
 				ORDER BY slot LIMIT 10`, blockNumber)
 				if err == nil {
 					model := make([]models.SearchAheadSlotsResult, len(*dbres))
@@ -229,7 +228,7 @@ func SearchAhead(w http.ResponseWriter, r *http.Request) {
 						model[idx] = models.SearchAheadSlotsResult{
 							Slot:     fmt.Sprintf("%v", entry.Slot),
 							Root:     phase0.Root(entry.Root),
-							Orphaned: entry.Orphaned,
+							Orphaned: entry.Status == dbtypes.Orphaned,
 						}
 					}
 					result = model
@@ -251,30 +250,28 @@ func SearchAhead(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
-			cachedBlocks := indexer.GetCachedBlocksByExecutionBlockHash(blockHash)
+			cachedBlocks := indexer.GetBlocksByExecutionBlockHash(phase0.Hash32(blockHash))
 			if len(cachedBlocks) > 0 {
 				res := make([]*models.SearchAheadExecBlocksResult, 0)
 				for idx, cachedBlock := range cachedBlocks {
-					if !cachedBlock.IsReady() {
-						continue
-					}
 					header := cachedBlock.GetHeader()
+					index := cachedBlock.GetBlockIndex()
 					res[idx] = &models.SearchAheadExecBlocksResult{
 						Slot:       fmt.Sprintf("%v", uint64(header.Message.Slot)),
 						Root:       phase0.Root(cachedBlock.Root),
-						ExecHash:   phase0.Hash32(cachedBlock.Refs.ExecutionHash),
-						ExecNumber: cachedBlock.Refs.ExecutionNumber,
-						Orphaned:   !cachedBlock.IsCanonical(indexer, nil),
+						ExecHash:   phase0.Hash32(index.ExecutionHash),
+						ExecNumber: index.ExecutionNumber,
+						Orphaned:   !indexer.IsCanonicalBlock(cachedBlock, nil),
 					}
 				}
 				result = res
 			} else {
 				dbres := &dbtypes.SearchAheadExecBlocksResult{}
 				err = db.ReaderDb.Select(dbres, `
-				SELECT slot, root, eth_block_hash, eth_block_number, orphaned 
+				SELECT slot, root, eth_block_hash, eth_block_number, status 
 				FROM slots 
-				WHERE eth_block_hash = $1 
-				ORDER BY slot LIMIT 10`, blockHash)
+				WHERE slot < $1 AND eth_block_hash = $2
+				ORDER BY slot LIMIT 10`, minSlotIdx, blockHash)
 				if err != nil {
 					logger.Errorf("error reading block: %v", err)
 					http.Error(w, "Internal server error", http.StatusServiceUnavailable)
@@ -287,37 +284,35 @@ func SearchAhead(w http.ResponseWriter, r *http.Request) {
 							Root:       phase0.Root((*dbres)[0].Root),
 							ExecHash:   phase0.Hash32((*dbres)[0].ExecHash),
 							ExecNumber: (*dbres)[0].ExecNumber,
-							Orphaned:   (*dbres)[0].Orphaned,
+							Orphaned:   (*dbres)[0].Status == dbtypes.Orphaned,
 						},
 					}
 				}
 
 			}
 		} else if blockNumber, convertErr := strconv.ParseUint(search, 10, 32); convertErr == nil {
-			cachedBlocks := indexer.GetCachedBlocksByExecutionBlockNumber(blockNumber)
+			cachedBlocks := indexer.GetBlocksByExecutionBlockNumber(blockNumber)
 			if len(cachedBlocks) > 0 {
 				res := make([]*models.SearchAheadExecBlocksResult, 0)
 				for _, cachedBlock := range cachedBlocks {
-					if !cachedBlock.IsReady() {
-						continue
-					}
 					header := cachedBlock.GetHeader()
+					index := cachedBlock.GetBlockIndex()
 					res = append(res, &models.SearchAheadExecBlocksResult{
 						Slot:       fmt.Sprintf("%v", uint64(header.Message.Slot)),
 						Root:       phase0.Root(cachedBlock.Root),
-						ExecHash:   phase0.Hash32(cachedBlock.Refs.ExecutionHash),
-						ExecNumber: cachedBlock.Refs.ExecutionNumber,
-						Orphaned:   !cachedBlock.IsCanonical(indexer, nil),
+						ExecHash:   phase0.Hash32(index.ExecutionHash),
+						ExecNumber: index.ExecutionNumber,
+						Orphaned:   !indexer.IsCanonicalBlock(cachedBlock, nil),
 					})
 				}
 				result = res
 			} else {
 				dbres := &dbtypes.SearchAheadExecBlocksResult{}
 				err = db.ReaderDb.Select(dbres, `
-				SELECT slot, root, eth_block_hash, eth_block_number, orphaned 
+				SELECT slot, root, eth_block_hash, eth_block_number, status 
 				FROM slots 
-				WHERE eth_block_number = $1
-				ORDER BY slot LIMIT 10`, blockNumber)
+				WHERE slot < $1 AND eth_block_number = $2
+				ORDER BY slot LIMIT 10`, minSlotIdx, blockNumber)
 				if err == nil {
 					model := make([]models.SearchAheadExecBlocksResult, len(*dbres))
 					for idx, entry := range *dbres {
@@ -326,7 +321,7 @@ func SearchAhead(w http.ResponseWriter, r *http.Request) {
 							Root:       phase0.Root(entry.Root),
 							ExecHash:   phase0.Hash32(entry.ExecHash),
 							ExecNumber: entry.ExecNumber,
-							Orphaned:   entry.Orphaned,
+							Orphaned:   entry.Status == dbtypes.Orphaned,
 						}
 					}
 					result = model

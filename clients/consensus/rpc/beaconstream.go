@@ -27,6 +27,11 @@ type BeaconStreamEvent struct {
 	Data  interface{}
 }
 
+type BeaconStreamStatus struct {
+	Ready bool
+	Error error
+}
+
 type BeaconStream struct {
 	ctx          context.Context
 	ctxCancel    context.CancelFunc
@@ -34,7 +39,7 @@ type BeaconStream struct {
 	running      bool
 	events       uint16
 	client       *BeaconClient
-	ReadyChan    chan bool
+	ReadyChan    chan *BeaconStreamStatus
 	EventChan    chan *BeaconStreamEvent
 	lastHeadSeen time.Time
 }
@@ -49,7 +54,7 @@ func (bc *BeaconClient) NewBlockStream(ctx context.Context, logger logrus.FieldL
 		running:   true,
 		events:    events,
 		client:    bc,
-		ReadyChan: make(chan bool, 10),
+		ReadyChan: make(chan *BeaconStreamStatus, 10),
 		EventChan: make(chan *BeaconStreamEvent, 10),
 	}
 	go blockStream.startStream()
@@ -84,11 +89,16 @@ func (bs *BeaconStream) startStream() {
 					bs.processFinalizedEvent(evt)
 				}
 			case <-stream.Ready:
-				bs.ReadyChan <- true
+				bs.ReadyChan <- &BeaconStreamStatus{
+					Ready: true,
+				}
 			case err := <-stream.Errors:
 				bs.logger.Warnf("beacon block stream error: %v", err)
 				select {
-				case bs.ReadyChan <- false:
+				case bs.ReadyChan <- &BeaconStreamStatus{
+					Ready: false,
+					Error: err,
+				}:
 				case <-bs.ctx.Done():
 				}
 			}

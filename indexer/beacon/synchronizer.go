@@ -348,7 +348,7 @@ func (sync *synchronizer) syncEpoch(syncEpoch phase0.Epoch, client *Client, last
 		votingBlocks := make([]*Block, len(canonicalBlocks)+len(nextEpochCanonicalBlocks))
 		copy(votingBlocks, canonicalBlocks)
 		copy(votingBlocks[len(canonicalBlocks):], nextEpochCanonicalBlocks)
-		epochVotes = sync.indexer.aggregateEpochVotes(chainState, votingBlocks, epochStats)
+		epochVotes = sync.indexer.aggregateEpochVotes(syncEpoch, chainState, votingBlocks, epochStats)
 		if epochVotes == nil && !lastTry {
 			return false, fmt.Errorf("failed computing votes for epoch %v", syncEpoch)
 		}

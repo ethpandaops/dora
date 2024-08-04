@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"sort"
-	"sync"
 	"time"
 
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
@@ -31,13 +30,6 @@ type ChainService struct {
 	validatorNames *ValidatorNames
 
 	indexer *indexer.Indexer
-
-	validatorActivityMutex sync.Mutex
-	validatorActivityStats struct {
-		cacheEpoch uint64
-		epochLimit uint64
-		activity   map[uint64]uint8
-	}
 }
 
 var GlobalBeaconService *ChainService
@@ -301,52 +293,37 @@ func (bs *ChainService) GetConsensusClientForks() []*ConsensusClientFork {
 	return headForks
 }
 
-func (bs *ChainService) GetValidatorActivity() (map[uint64]uint8, uint64) {
-	activityMap := map[uint64]uint8{}
-	epochLimit := uint64(3)
-
-	idxHeadSlot := bs.indexer.GetHighestSlot()
-	idxHeadEpoch := utils.EpochOfSlot(idxHeadSlot)
-	if idxHeadEpoch < 1 {
-		return activityMap, 0
-	}
-	idxHeadEpoch--
-	finalizedEpoch, _ := bs.GetFinalizedEpoch()
-	var idxMinEpoch uint64
-	if finalizedEpoch < 2 {
-		idxMinEpoch = 0
-	} else {
-		idxMinEpoch = uint64(finalizedEpoch - 1)
-	}
-
-	activityEpoch := utils.EpochOfSlot(idxHeadSlot - 1)
-	bs.validatorActivityMutex.Lock()
-	defer bs.validatorActivityMutex.Unlock()
-	if bs.validatorActivityStats.activity != nil && bs.validatorActivityStats.cacheEpoch == activityEpoch {
-		return bs.validatorActivityStats.activity, bs.validatorActivityStats.epochLimit
-	}
-
-	actualEpochCount := idxHeadEpoch - idxMinEpoch + 1
-	if actualEpochCount > epochLimit {
-		idxMinEpoch = idxHeadEpoch - epochLimit + 1
-	} else if actualEpochCount < epochLimit {
-		epochLimit = actualEpochCount
-	}
-
-	for epochIdx := int64(idxHeadEpoch); epochIdx >= int64(idxMinEpoch); epochIdx-- {
-		epoch := uint64(epochIdx)
-		_, epochVotes := bs.indexer.GetEpochVotes(epoch)
-		if epochVotes == nil {
-			epochLimit--
-		} else {
-			for valIdx := range epochVotes.ActivityMap {
-				activityMap[valIdx]++
-			}
+func (bs *ChainService) GetValidatorActivity(epochLimit uint64, withCurrentEpoch bool) (map[phase0.ValidatorIndex]uint8, uint64) {
+	chainState := bs.consensusPool.GetChainState()
+	_, prunedEpoch := bs.beaconIndexer.GetBlockCacheState()
+	currentEpoch := chainState.CurrentEpoch()
+	if !withCurrentEpoch {
+		if currentEpoch == 0 {
+			return map[phase0.ValidatorIndex]uint8{}, 0
 		}
+
+		currentEpoch--
 	}
 
-	bs.validatorActivityStats.cacheEpoch = activityEpoch
-	bs.validatorActivityStats.epochLimit = epochLimit
-	bs.validatorActivityStats.activity = activityMap
-	return activityMap, epochLimit
+	activityMap := map[phase0.ValidatorIndex]uint8{}
+	aggregationCount := uint64(0)
+
+	for epochIdx := int64(currentEpoch); epochIdx >= int64(prunedEpoch) && epochLimit > 0; epochIdx-- {
+		epoch := phase0.Epoch(epochIdx)
+		epochLimit--
+
+		epochStats := bs.beaconIndexer.GetEpochStats(epoch, nil)
+		if epochStats == nil {
+			continue
+		}
+
+		epochVotes := epochStats.GetEpochVotes(bs.beaconIndexer, nil)
+		for valIdx := range epochVotes.ActivityMap {
+			activityMap[valIdx]++
+		}
+
+		aggregationCount++
+	}
+
+	return activityMap, aggregationCount
 }
