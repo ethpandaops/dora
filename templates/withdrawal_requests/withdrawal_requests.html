@@ -2,23 +2,23 @@
   <div class="container mt-2">
     <div class="d-md-flex py-2 justify-content-md-between">
       <h1 class="h4 mb-1 mb-md-0">
-        <i class="fas fa-file-contract mx-2"></i>Execution Layer Requests
+        <i class="fas fa-money-bill-transfer mx-2"></i> Withdrawal Requests
       </h1>
       <nav aria-label="breadcrumb">
         <ol class="breadcrumb font-size-1 mb-0" style="padding:0; background-color:transparent;">
           <li class="breadcrumb-item"><a href="/" title="Home">Home</a></li>
           <li class="breadcrumb-item"><a href="/validators" title="Validators">Validators</a></li>
-          <li class="breadcrumb-item active" aria-current="page">EL Requests</li>
+          <li class="breadcrumb-item active" aria-current="page">Withdrawal Requests</li>
         </ol>
       </nav>
     </div>
 
     <div id="header-placeholder" style="height:35px;"></div>
-    <form action="/validators/requests" method="get" id="elRequestsFilterForm">
+    <form action="/validators/withdrawal_requests" method="get" id="elRequestsFilterForm">
       <input type="hidden" name="f">
       <div class="card mt-2">
         <div class="card-header">
-          EL Request Filters
+          Withdrawal Request Filters
         </div>
         <div class="card-body p-2">
           <div class="row">
@@ -83,14 +83,14 @@
                   <div class="col-sm-12 col-md-6 col-lg-4">
                     <select name="f.type" aria-controls="type" class="form-control">
                       <option value="0" {{ if eq .FilterWithRequest 0 }}selected{{ end }}>Any request</option>
-                      <option value="1" {{ if eq .FilterWithRequest 1 }}selected{{ end }}>Withdrawals / Exits</option>
-                      <option value="2" {{ if eq .FilterWithRequest 2 }}selected{{ end }}>Consolidations</option>
+                      <option value="1" {{ if eq .FilterWithRequest 1 }}selected{{ end }}>Withdrawals</option>
+                      <option value="2" {{ if eq .FilterWithRequest 2 }}selected{{ end }}>Exits</option>
                     </select>
                   </div>
                 </div>
                 <div class="row mt-1">
                   <div class="col-sm-12 col-md-6 col-lg-4">
-                    <nobr>Orphaned Exits</nobr>
+                    <nobr>Orphaned</nobr>
                   </div>
                   <div class="col-sm-12 col-md-6 col-lg-4">
                     <select name="f.orphaned" aria-controls="orphaned" class="form-control">
@@ -141,67 +141,74 @@
               <tr>
                 <th>Slot</th>
                 <th>Time</th>
-                <th><span class="d-none d-lg-inline">Request </span>Type</th>
                 <th><span class="d-none d-lg-inline">Source </span>Address</th>
+                <th><span class="d-none d-lg-inline">Request </span>Type</th>
                 <th>Validator</th>
-                <th>Request</th>
+                <th>Amount</th>
+                <th>Transaction</th>
                 <th><span class="d-none d-lg-inline">Incl. </span>Status</th>
                 <th>Valid<span class="d-none d-lg-inline">ity</span></th>
               </tr>
             </thead>
             {{ if gt .RequestCount 0 }}
               <tbody>
-                {{ range $i, $elRequest := .ElRequests }}
+                {{ range $i, $request := .ElRequests }}
                   <tr>
-                    {{- if $elRequest.Orphaned }}
-                    <td><a href="/slot/0x{{ printf "%x" $elRequest.SlotRoot }}">{{ formatAddCommas $elRequest.SlotNumber }}</a></td>
+                    {{- if $request.Orphaned }}
+                    <td><a href="/slot/0x{{ printf "%x" $request.SlotRoot }}">{{ formatAddCommas $request.SlotNumber }}</a></td>
                     {{- else }}
-                    <td><a href="/slot/{{ $elRequest.SlotNumber }}">{{ formatAddCommas $elRequest.SlotNumber }}</a></td>
+                    <td><a href="/slot/{{ $request.SlotNumber }}">{{ formatAddCommas $request.SlotNumber }}</a></td>
                     {{- end }}
-                    <td data-timer="{{ $elRequest.Time.Unix }}"><span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $elRequest.Time }}">{{ formatRecentTimeShort $elRequest.Time }}</span></td>
-                    <td>
-                      {{- if eq $elRequest.RequestType 1 }}
-                        {{- if eq $elRequest.Amount 0 }}
-                          Exit
-                        {{- else }}
-                          Withdrawal
-                        {{- end }}
-                      {{- else if eq $elRequest.RequestType 2 }}
-                        Consolidation
-                      {{- end }}
-                    </td>
+                    <td data-timer="{{ $request.Time.Unix }}"><span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $request.Time }}">{{ formatRecentTimeShort $request.Time }}</span></td>
                     <td>
                       <div class="d-flex">
-                        <span class="flex-grow-1 text-truncate" style="max-width: 150px;">{{ ethAddressLink $elRequest.SourceAddress }}</span>
+                        <span class="flex-grow-1 text-truncate" style="max-width: 150px;">{{ ethAddressLink $request.SourceAddress }}</span>
                         <div>
-                          <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ formatEthAddress $elRequest.SourceAddress }}"></i>
+                          <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ formatEthAddress $request.SourceAddress }}"></i>
                         </div>
                       </div>
                     </td>
                     <td>
-                      {{- if $elRequest.SourceIndexValid }}
-                        {{ formatValidator $elRequest.SourceIndex $elRequest.SourceName }}
+                      {{- if eq $request.Amount 0 }}
+                        Exit
+                      {{- else }}
+                        Withdrawal
+                      {{- end }}
+                    </td>
+                    <td>
+                      {{- if $request.SourceIndexValid }}
+                        {{ formatValidator $request.SourceIndex $request.SourceName }}
                       {{- else }}
                         <div class="d-flex">
-                          <span class="flex-grow-1 text-truncate" style="max-width: 150px;" data-bs-toggle="tooltip" title="pubkey not in validator set">0x{{ printf "%x" $elRequest.SourcePubkey }}</span>
+                          <span class="flex-grow-1 text-truncate" style="max-width: 150px;" data-bs-toggle="tooltip" title="pubkey not in validator set">0x{{ printf "%x" $request.SourcePubkey }}</span>
                           <div>
-                            <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $elRequest.SourcePubkey }}"></i>
+                            <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $request.SourcePubkey }}"></i>
                           </div>
                         </div>
                       {{- end }}
                     </td>
+                    <td>{{ formatEthFromGwei $request.Amount }}</td>
                     <td>
-                      
+                      {{- if $request.LinkedTransaction }}
+                      <div class="d-flex">
+                        <span class="flex-grow-1 text-truncate" style="max-width: 150px;">{{ ethTransactionLink $request.TransactionHash }}</span>
+                        <div>
+                          <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ formatEthAddress $request.SourceAddress }}"></i>
+                        </div>
+                      </div>
+                      {{- else }}
+                      <span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Corresponding withdrawal transaction has not been indexed yet.">?</span>
+                      {{- end }}
                     </td>
                     <td>
-                      {{- if $elRequest.Orphaned }}
+                      {{- if $request.Orphaned }}
                         <span class="badge rounded-pill text-bg-info">Orphaned</span>
                       {{- else }}
                         <span class="badge rounded-pill text-bg-success">Included</span>
                       {{- end }}
                     </td>
                     <td>
-                      {{- if $elRequest.Valid }}
+                      {{- if $request.Valid }}
                         ✅
                       {{- else }}
                         ❌
@@ -229,7 +236,7 @@
           <div class="row">
             <div class="col-sm-12 col-md-5 table-metainfo">
               <div class="px-2">
-                <div class="table-meta" role="status" aria-live="polite">Showing requests from slot {{ .FirstIndex }} to {{ .LastIndex }}</div>
+                <div class="table-meta" role="status" aria-live="polite">Showing withdrawal requests from slot {{ .FirstIndex }} to {{ .LastIndex }}</div>
               </div>
             </div>
             <div class="col-sm-12 col-md-7 table-paging">
