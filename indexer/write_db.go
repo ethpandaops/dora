@@ -22,10 +22,12 @@ func persistSlotAssignments(epochStats *EpochStats, tx *sqlx.Tx) error {
 				Proposer: epochStats.proposerAssignments[slot],
 			}
 		}
-		err := db.InsertSlotAssignments(slotAssignments, tx)
-		if err != nil {
-			return fmt.Errorf("error while adding proposer assignments to db: %w", err)
-		}
+		/*
+			err := db.InsertSlotAssignments(slotAssignments, tx)
+			if err != nil {
+				return fmt.Errorf("error while adding proposer assignments to db: %w", err)
+			}
+		*/
 	}
 	return nil
 }

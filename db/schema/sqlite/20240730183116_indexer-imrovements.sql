@@ -118,6 +118,9 @@ CREATE INDEX IF NOT EXISTS "slashings_fork_id_idx"
     ON "slashings" 
     ("fork_id" ASC);
 
+-- drop slot assignments
+DROP TABLE IF EXISTS "slot_assignments";
+
 -- +goose StatementEnd
 -- +goose Down
 -- +goose StatementBegin

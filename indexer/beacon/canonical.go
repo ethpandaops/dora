@@ -125,6 +125,16 @@ func (indexer *Indexer) computeCanonicalChain() bool {
 			headBlock = latestBlocks[0]
 
 			forkVotes, thisEpochPercent, lastEpochPercent := indexer.aggregateForkVotes(headBlock.forkId)
+			indexer.logger.Infof(
+				"fork %v votes in last 2 epochs: %v ETH (%.2f%%, %.2f%%), head: %v (%v)",
+				headBlock.forkId,
+				forkVotes/EtherGweiFactor,
+				lastEpochPercent,
+				thisEpochPercent,
+				headBlock.Slot,
+				headBlock.Root.String(),
+			)
+
 			chainHeads = []*ChainHead{{
 				HeadBlock:              headBlock,
 				AggregatedHeadVotes:    forkVotes,
