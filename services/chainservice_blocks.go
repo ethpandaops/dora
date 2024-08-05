@@ -422,7 +422,7 @@ func (bs *ChainService) GetDbBlocksForSlots(firstSlot uint64, slotLimit uint32, 
 					canonicalProposer = proposerAssignments[slot]
 				}
 
-				if !hasCanonicalProposer {
+				if !hasCanonicalProposer && slot > 0 {
 					resBlocks = append(resBlocks, &dbtypes.Slot{
 						Slot:     uint64(slot),
 						Proposer: uint64(canonicalProposer),

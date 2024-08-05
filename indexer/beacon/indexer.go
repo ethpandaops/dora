@@ -143,6 +143,10 @@ func (indexer *Indexer) getAbsoluteMinInMemoryEpoch() phase0.Epoch {
 // getMinInMemorySlot returns the minimum in-memory slot based on the indexer's configuration.
 func (indexer *Indexer) getMinInMemorySlot() phase0.Slot {
 	chainState := indexer.consensusPool.GetChainState()
+	minInMemoryEpoch := indexer.getMinInMemoryEpoch()
+	if minInMemoryEpoch == 0 {
+		return 0
+	}
 	return chainState.EpochToSlot(indexer.getMinInMemoryEpoch() + 1)
 }
 
@@ -364,8 +368,18 @@ func (indexer *Indexer) StartIndexer() {
 
 	go func() {
 		// start processing a bit delayed to allow clients to complete initial block backfill
-		indexer.awaitBackfillComplete(context.Background(), 5*time.Minute)
-		time.Sleep(10 * time.Second)
+		if chainState.CurrentEpoch() > 0 {
+			indexer.awaitBackfillComplete(context.Background(), 5*time.Minute)
+			time.Sleep(10 * time.Second)
+		} else {
+			// load initial state if launched in/pre epoch 0
+			genesisBlock := indexer.blockCache.getBlocksBySlot(0)
+			if len(genesisBlock) == 0 {
+				indexer.logger.Warnf("genesis block not found in cache")
+			} else {
+				indexer.epochCache.createOrGetEpochStats(0, genesisBlock[0].Root, true)
+			}
+		}
 
 		indexer.logger.Infof("starting indexer processing (finalization, pruning & synchronization)")
 
