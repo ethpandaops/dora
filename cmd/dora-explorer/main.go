@@ -108,7 +108,6 @@ func startFrontend(logger logrus.FieldLogger) {
 	router.HandleFunc("/validators/included_deposits", handlers.IncludedDeposits).Methods("GET")
 	router.HandleFunc("/validators/voluntary_exits", handlers.VoluntaryExits).Methods("GET")
 	router.HandleFunc("/validators/slashings", handlers.Slashings).Methods("GET")
-	router.HandleFunc("/validators/requests", handlers.ElRequests).Methods("GET")
 	router.HandleFunc("/validator/{idxOrPubKey}", handlers.Validator).Methods("GET")
 	router.HandleFunc("/validator/{index}/slots", handlers.ValidatorSlots).Methods("GET")
 

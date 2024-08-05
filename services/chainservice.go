@@ -16,7 +16,6 @@ import (
 	"github.com/ethpandaops/dora/clients/sshtunnel"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
-	"github.com/ethpandaops/dora/indexer"
 	"github.com/ethpandaops/dora/indexer/beacon"
 	execindexer "github.com/ethpandaops/dora/indexer/execution"
 	"github.com/ethpandaops/dora/utils"
@@ -29,8 +28,6 @@ type ChainService struct {
 	executionPool  *execution.Pool
 	beaconIndexer  *beacon.Indexer
 	validatorNames *ValidatorNames
-
-	indexer *indexer.Indexer
 }
 
 var GlobalBeaconService *ChainService
@@ -106,7 +103,7 @@ func StartChainService(ctx context.Context, logger logrus.FieldLogger) error {
 	}
 
 	// init validator names & load inventory
-	validatorNames := NewValidatorNames()
+	validatorNames := NewValidatorNames(beaconIndexer)
 	validatorNamesLoading := validatorNames.LoadValidatorNames()
 
 	// reset sync state if configured
@@ -153,10 +150,6 @@ func StartChainService(ctx context.Context, logger logrus.FieldLogger) error {
 		validatorNames: validatorNames,
 	}
 	return nil
-}
-
-func (bs *ChainService) GetIndexer() *indexer.Indexer {
-	return bs.indexer
 }
 
 func (bs *ChainService) GetBeaconIndexer() *beacon.Indexer {
