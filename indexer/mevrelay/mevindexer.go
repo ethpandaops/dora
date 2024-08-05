@@ -1,4 +1,4 @@
-package services
+package mevrelay
 
 import (
 	"encoding/json"
@@ -12,21 +12,24 @@ import (
 	"sync"
 	"time"
 
+	v1 "github.com/attestantio/go-eth2-client/api/v1"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/jmoiron/sqlx"
 	"github.com/sirupsen/logrus"
 
+	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
-	"github.com/ethpandaops/dora/indexer"
+	"github.com/ethpandaops/dora/indexer/beacon"
 	"github.com/ethpandaops/dora/types"
 	"github.com/ethpandaops/dora/utils"
 )
 
-var logger_mev = logrus.StandardLogger().WithField("module", "mev_indexer")
-
 type MevIndexer struct {
+	beaconIndexer       *beacon.Indexer
+	chainState          *consensus.ChainState
+	logger              logrus.FieldLogger
 	updaterRunning      bool
 	lastRefresh         time.Time
 	mevBlockCacheMutex  sync.Mutex
@@ -40,14 +43,17 @@ type mevIndexerBlockCache struct {
 	block   *dbtypes.MevBlock
 }
 
-func NewMevIndexer() *MevIndexer {
+func NewMevIndexer(logger logrus.FieldLogger, beaconIndexer *beacon.Indexer, chainState *consensus.ChainState) *MevIndexer {
 	return &MevIndexer{
+		logger:         logger,
+		beaconIndexer:  beaconIndexer,
+		chainState:     chainState,
 		mevBlockCache:  map[common.Hash]*mevIndexerBlockCache{},
 		lastLoadedSlot: map[uint8]uint64{},
 	}
 }
 
-func (mev *MevIndexer) StartUpdater(indexer *indexer.Indexer) {
+func (mev *MevIndexer) StartUpdater() {
 	if utils.Config.Indexer.DisableIndexWriter || mev.updaterRunning {
 		return
 	}
@@ -56,43 +62,43 @@ func (mev *MevIndexer) StartUpdater(indexer *indexer.Indexer) {
 	}
 
 	mev.updaterRunning = true
-	go mev.runUpdaterLoop(indexer)
+	go mev.runUpdaterLoop()
 }
 
-func (mev *MevIndexer) runUpdaterLoop(indexer *indexer.Indexer) {
+func (mev *MevIndexer) runUpdaterLoop() {
 	defer utils.HandleSubroutinePanic("MevIndexer.runUpdaterLoop")
 
 	for {
 		time.Sleep(15 * time.Second)
 
-		err := mev.runUpdater(indexer)
+		err := mev.runUpdater()
 		if err != nil {
-			logger_mev.Errorf("mev indexer update error: %v, retrying in 15 sec...", err)
+			mev.logger.Errorf("mev indexer update error: %v, retrying in 15 sec...", err)
 		}
 	}
 }
 
-func (mev *MevIndexer) runUpdater(indexer *indexer.Indexer) error {
+func (mev *MevIndexer) runUpdater() error {
 	if time.Since(mev.lastRefresh) < utils.Config.MevIndexer.RefreshInterval {
 		return nil
 	}
 
-	validatorSet := indexer.GetCachedValidatorPubkeyMap()
+	validatorSet := mev.beaconIndexer.GetCanonicalValidatorSet(nil)
 	if validatorSet == nil {
 		return nil
 	}
 
 	if !mev.mevBlockCacheLoaded {
 		// prefill cache
-		_, finalizedEpoch, _, _ := indexer.GetCacheState()
-		finalizedSlot := uint64(0)
+		_, finalizedEpoch := mev.beaconIndexer.GetBlockCacheState()
+		finalizedSlot := phase0.Slot(0)
 		if finalizedEpoch > 0 {
-			finalizedSlot = (uint64(finalizedEpoch+1) * utils.Config.Chain.Config.SlotsPerEpoch) - 1
+			finalizedSlot = mev.chainState.EpochToSlot(finalizedEpoch) - 1
 		}
 		loadedCount := uint64(0)
 		for {
 			mevBlocks, totalCount, err := db.GetMevBlocksFiltered(0, 1000, &dbtypes.MevBlockFilter{
-				MinSlot: finalizedSlot,
+				MinSlot: uint64(finalizedSlot),
 			})
 			if err != nil {
 				return fmt.Errorf("failed prefill mev blocks cache from db: %v", err)
@@ -132,9 +138,9 @@ func (mev *MevIndexer) runUpdater(indexer *indexer.Indexer) error {
 				wg.Done()
 			}()
 
-			err := mev.loadMevBlocksFromRelay(indexer, relay)
+			err := mev.loadMevBlocksFromRelay(relay)
 			if err != nil {
-				logger_mev.Errorf("error loading mev blocks from relay %v (%v): %v", idx, relay.Name, err)
+				mev.logger.Errorf("error loading mev blocks from relay %v (%v): %v", idx, relay.Name, err)
 			}
 		}(idx, &utils.Config.MevIndexer.Relays[idx])
 	}
@@ -158,18 +164,16 @@ func (mev *MevIndexer) runUpdater(indexer *indexer.Indexer) error {
 	}
 
 	// cleanup cache (remove finalized mevBlocks)
-	_, finalizedEpoch, _, processedEpoch := indexer.GetCacheState()
-	finalizedSlot := uint64(0)
-	if processedEpoch >= 0 {
-		finalizedSlot = (uint64(processedEpoch+1) * utils.Config.Chain.Config.SlotsPerEpoch) - 1
-	} else if finalizedEpoch >= 0 {
-		finalizedSlot = (uint64(finalizedEpoch+1) * utils.Config.Chain.Config.SlotsPerEpoch) - 1
+	finalizedEpoch, _ := mev.beaconIndexer.GetBlockCacheState()
+	finalizedSlot := phase0.Slot(0)
+	if finalizedEpoch > 0 {
+		finalizedSlot = mev.chainState.EpochToSlot(finalizedEpoch) - 1
 	}
 
 	updatedMevBlocks = []*dbtypes.MevBlock{}
 	for hash, cachedMevBlock := range mev.mevBlockCache {
-		if cachedMevBlock.block.SlotNumber < finalizedSlot {
-			proposed := mev.getMevBlockProposedStatus(indexer, cachedMevBlock.block, finalizedSlot)
+		if cachedMevBlock.block.SlotNumber < uint64(finalizedSlot) {
+			proposed := mev.getMevBlockProposedStatus(cachedMevBlock.block, finalizedSlot)
 			if cachedMevBlock.block.Proposed != proposed {
 				cachedMevBlock.block.Proposed = proposed
 				updatedMevBlocks = append(updatedMevBlocks, cachedMevBlock.block)
@@ -201,7 +205,7 @@ type mevIndexerRelayBlockResponse struct {
 	BlockNumber          string `json:"block_number"`
 }
 
-func (mev *MevIndexer) loadMevBlocksFromRelay(indexer *indexer.Indexer, relay *types.MevRelayConfig) error {
+func (mev *MevIndexer) loadMevBlocksFromRelay(relay *types.MevRelayConfig) error {
 	relayUrl, err := url.Parse(relay.Url)
 	if err != nil {
 		return fmt.Errorf("invalid relay url: %v", err)
@@ -214,7 +218,7 @@ func (mev *MevIndexer) loadMevBlocksFromRelay(indexer *indexer.Indexer, relay *t
 	}
 	apiUrl := fmt.Sprintf("%v?limit=%v", relayUrl.String(), blockLimit)
 
-	logger_mev.Debugf("Loading mev blocks from relay %v: %v", relay.Name, utils.GetRedactedUrl(apiUrl))
+	mev.logger.Debugf("Loading mev blocks from relay %v: %v", relay.Name, utils.GetRedactedUrl(apiUrl))
 
 	client := &http.Client{Timeout: time.Second * 120}
 	resp, err := client.Get(apiUrl)
@@ -243,14 +247,20 @@ func (mev *MevIndexer) loadMevBlocksFromRelay(indexer *indexer.Indexer, relay *t
 	// parse blocks
 	mev.mevBlockCacheMutex.Lock()
 	defer mev.mevBlockCacheMutex.Unlock()
-	validatorSet := indexer.GetCachedValidatorPubkeyMap()
-	highestSlot, finalizedEpoch, _, processedEpoch := indexer.GetCacheState()
-	finalizedSlot := uint64(0)
-	if processedEpoch >= 0 {
-		finalizedSlot = (uint64(processedEpoch+1) * utils.Config.Chain.Config.SlotsPerEpoch) - 1
-	} else if finalizedEpoch >= 0 {
-		finalizedSlot = (uint64(finalizedEpoch+1) * utils.Config.Chain.Config.SlotsPerEpoch) - 1
+	validatorSet := mev.beaconIndexer.GetCanonicalValidatorSet(nil)
+	validatorMap := map[phase0.BLSPubKey]*v1.Validator{}
+	for _, validator := range validatorSet {
+		validatorMap[validator.Validator.PublicKey] = validator
 	}
+
+	finalizedEpoch, _ := mev.beaconIndexer.GetBlockCacheState()
+	finalizedSlot := phase0.Slot(0)
+	if finalizedEpoch > 0 {
+		finalizedSlot = mev.chainState.EpochToSlot(finalizedEpoch) - 1
+	}
+
+	currentSlot := mev.chainState.CurrentSlot()
+
 	relayFlag := uint64(1) << relay.Index
 	latestLoadedBlock := uint64(0)
 
@@ -263,11 +273,11 @@ func (mev *MevIndexer) loadMevBlocksFromRelay(indexer *indexer.Indexer, relay *t
 		if cachedBlock == nil {
 			slot, err = strconv.ParseUint(blockData.Slot, 10, 64)
 			if err != nil {
-				logger_mev.Warnf("failed parsing mev block %v.Slot: %v", idx, err)
+				mev.logger.Warnf("failed parsing mev block %v.Slot: %v", idx, err)
 				continue
 			}
 
-			if int64(slot) > highestSlot {
+			if slot > uint64(currentSlot) {
 				// skip for now, process in next refresh
 				continue
 			}
@@ -276,7 +286,7 @@ func (mev *MevIndexer) loadMevBlocksFromRelay(indexer *indexer.Indexer, relay *t
 				continue
 			}
 
-			if slot < finalizedSlot {
+			if slot < uint64(finalizedSlot) {
 				// try load from db
 				mevBlock := db.GetMevBlockByBlockHash(blockHash[:])
 				if mevBlock != nil {
@@ -290,35 +300,35 @@ func (mev *MevIndexer) loadMevBlocksFromRelay(indexer *indexer.Indexer, relay *t
 		if cachedBlock == nil {
 			blockNumber, err := strconv.ParseUint(blockData.BlockNumber, 10, 64)
 			if err != nil {
-				logger_mev.Warnf("failed parsing mev block %v.BlockNumber: %v", idx, err)
+				mev.logger.Warnf("failed parsing mev block %v.BlockNumber: %v", idx, err)
 				continue
 			}
 
 			txCount, err := strconv.ParseUint(blockData.NumTx, 10, 64)
 			if err != nil {
-				logger_mev.Warnf("failed parsing mev block %v.NumTx: %v", idx, err)
+				mev.logger.Warnf("failed parsing mev block %v.NumTx: %v", idx, err)
 				continue
 			}
 
 			gasUsed, err := strconv.ParseUint(blockData.GasUsed, 10, 64)
 			if err != nil {
-				logger_mev.Warnf("failed parsing mev block %v.GasUsed: %v", idx, err)
+				mev.logger.Warnf("failed parsing mev block %v.GasUsed: %v", idx, err)
 				continue
 			}
 
 			blockValue := big.NewInt(0)
 			blockValue, ok := blockValue.SetString(blockData.Value, 10)
 			if !ok {
-				logger_mev.Warnf("failed parsing mev block %v.Value: big.Int.SetString failed", idx)
+				mev.logger.Warnf("failed parsing mev block %v.Value: big.Int.SetString failed", idx)
 				continue
 			}
 			blockValueBytes := blockValue.Bytes()
 			blockValueGwei := big.NewInt(0).Div(blockValue, utils.GWEI)
 
 			validatorPubkey := phase0.BLSPubKey(common.FromHex(blockData.ProposerPubkey))
-			validator := validatorSet[validatorPubkey]
+			validator := validatorMap[validatorPubkey]
 			if validator == nil {
-				logger_mev.Warnf("failed parsing mev block %v: ProposerPubkey (%v) not found in validator set", idx, validatorPubkey.String())
+				mev.logger.Warnf("failed parsing mev block %v: ProposerPubkey (%v) not found in validator set", idx, validatorPubkey.String())
 				continue
 			}
 
@@ -335,7 +345,7 @@ func (mev *MevIndexer) loadMevBlocksFromRelay(indexer *indexer.Indexer, relay *t
 				BlockValue:     blockValueBytes,
 				BlockValueGwei: blockValueGwei.Uint64(),
 			}
-			mevBlock.Proposed = mev.getMevBlockProposedStatus(indexer, mevBlock, finalizedSlot)
+			mevBlock.Proposed = mev.getMevBlockProposedStatus(mevBlock, finalizedSlot)
 
 			cachedBlock = &mevIndexerBlockCache{
 				updated: true,
@@ -364,11 +374,11 @@ func (mev *MevIndexer) loadMevBlocksFromRelay(indexer *indexer.Indexer, relay *t
 	return nil
 }
 
-func (mev *MevIndexer) getMevBlockProposedStatus(indexer *indexer.Indexer, mevBlock *dbtypes.MevBlock, finalizedSlot uint64) uint8 {
+func (mev *MevIndexer) getMevBlockProposedStatus(mevBlock *dbtypes.MevBlock, finalizedSlot phase0.Slot) uint8 {
 	proposed := uint8(0)
-	if mevBlock.SlotNumber > finalizedSlot {
-		for _, block := range indexer.GetCachedBlocksByExecutionBlockHash(mevBlock.BlockHash) {
-			if proposed != 1 && block.IsCanonical(indexer, nil) {
+	if mevBlock.SlotNumber > uint64(finalizedSlot) {
+		for _, block := range mev.beaconIndexer.GetBlocksByExecutionBlockHash(phase0.Hash32(mevBlock.BlockHash)) {
+			if proposed != 1 && mev.beaconIndexer.IsCanonicalBlock(block, nil) {
 				proposed = 1
 			} else {
 				proposed = 2
