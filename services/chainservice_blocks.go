@@ -1,6 +1,7 @@
 package services
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"math"
@@ -23,6 +24,30 @@ type CombinedBlockResponse struct {
 	Header   *phase0.SignedBeaconBlockHeader
 	Block    *spec.VersionedSignedBeaconBlock
 	Orphaned bool
+}
+
+func (bs *ChainService) GetBlockBlob(ctx context.Context, blockroot phase0.Root, commitment deneb.KZGCommitment) (*deneb.BlobSidecar, error) {
+	client := bs.beaconIndexer.GetReadyClientByBlockRoot(blockroot, true)
+	if client == nil {
+		client = bs.beaconIndexer.GetReadyClient(true)
+	}
+
+	if client == nil {
+		return nil, fmt.Errorf("no clients available")
+	}
+
+	blobs, err := client.GetClient().GetRPCClient().GetBlobSidecarsByBlockroot(ctx, blockroot[:])
+	if err != nil {
+		return nil, err
+	}
+
+	for _, blob := range blobs {
+		if bytes.Equal(blob.KZGCommitment[:], commitment[:]) {
+			return blob, nil
+		}
+	}
+
+	return nil, nil
 }
 
 func (bs *ChainService) GetSlotDetailsByBlockroot(ctx context.Context, blockroot phase0.Root) (*CombinedBlockResponse, error) {

@@ -15,6 +15,7 @@ import (
 
 	"github.com/attestantio/go-eth2-client/spec"
 	"github.com/attestantio/go-eth2-client/spec/bellatrix"
+	"github.com/attestantio/go-eth2-client/spec/deneb"
 	"github.com/attestantio/go-eth2-client/spec/electra"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
@@ -23,7 +24,6 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/ethpandaops/dora/db"
-	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/indexer/beacon"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
@@ -92,13 +92,9 @@ func Slot(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if urlArgs.Has("blob") && pageData.Block != nil {
-		commitment, err := hex.DecodeString(strings.Replace(urlArgs.Get("blob"), "0x", "", -1))
-		var blobData *dbtypes.Blob
-		if err == nil {
-			client := services.GlobalBeaconService.GetIndexer().GetReadyClClient(false, nil, nil)
-			blobData, err = services.GlobalBeaconService.GetIndexer().BlobStore.LoadBlob(commitment, pageData.Block.BlockRoot, client)
-		}
-		if err == nil && blobData != nil {
+		commitment, err1 := hex.DecodeString(strings.Replace(urlArgs.Get("blob"), "0x", "", -1))
+		blobData, err2 := services.GlobalBeaconService.GetBlockBlob(r.Context(), phase0.Root(pageData.Block.BlockRoot), deneb.KZGCommitment(commitment))
+		if err1 == nil && err2 == nil && blobData != nil {
 			var blobModel *models.SlotPageBlob
 			for _, blob := range pageData.Block.Blobs {
 				if bytes.Equal(blob.KzgCommitment, commitment) {
@@ -107,16 +103,14 @@ func Slot(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			if blobModel != nil {
-				blobModel.KzgProof = blobData.Proof
-				if blobData.Blob != nil {
-					blobModel.HaveData = true
-					blobModel.Blob = *blobData.Blob
-					if len(blobModel.Blob) > 512 {
-						blobModel.BlobShort = blobModel.Blob[0:512]
-						blobModel.IsShort = true
-					} else {
-						blobModel.BlobShort = blobModel.Blob
-					}
+				blobModel.KzgProof = blobData.KZGProof[:]
+				blobModel.HaveData = true
+				blobModel.Blob = blobData.Blob[:]
+				if len(blobModel.Blob) > 512 {
+					blobModel.BlobShort = blobModel.Blob[0:512]
+					blobModel.IsShort = true
+				} else {
+					blobModel.BlobShort = blobModel.Blob
 				}
 			}
 		}
@@ -148,19 +142,16 @@ func SlotBlob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client := services.GlobalBeaconService.GetIndexer().GetReadyClClient(false, nil, nil)
-	blobData, err := services.GlobalBeaconService.GetIndexer().BlobStore.LoadBlob(commitment, blockRoot, client)
+	blobData, err := services.GlobalBeaconService.GetBlockBlob(r.Context(), phase0.Root(blockRoot), deneb.KZGCommitment(commitment))
 	if err != nil {
 		logrus.WithError(err).Error("error loading blob data")
 		http.Error(w, "Internal server error", http.StatusServiceUnavailable)
 		return
 	}
 	result := &models.SlotPageBlobDetails{
-		KzgCommitment: fmt.Sprintf("%x", blobData.Commitment),
-		KzgProof:      fmt.Sprintf("%x", blobData.Proof),
-	}
-	if blobData.Blob != nil {
-		result.Blob = fmt.Sprintf("%x", *blobData.Blob)
+		KzgCommitment: fmt.Sprintf("%x", blobData.KZGCommitment),
+		KzgProof:      fmt.Sprintf("%x", blobData.KZGProof),
+		Blob:          fmt.Sprintf("%x", blobData.Blob),
 	}
 	err = json.NewEncoder(w).Encode(result)
 	if err != nil {

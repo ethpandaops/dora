@@ -95,6 +95,15 @@ func (indexer *Indexer) GetReadyClients(preferArchive bool) []*Client {
 	return clients
 }
 
+func (indexer *Indexer) GetReadyClient(preferArchive bool) *Client {
+	clients := indexer.GetReadyClients(preferArchive)
+	if len(clients) > 0 {
+		return clients[0]
+	}
+
+	return nil
+}
+
 func (indexer *Indexer) GetBlockCacheState() (finalizedEpoch phase0.Epoch, prunedEpoch phase0.Epoch) {
 	return indexer.lastFinalizedEpoch, indexer.lastPrunedEpoch
 }
