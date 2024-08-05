@@ -19,9 +19,9 @@ import (
 var logger = logrus.StandardLogger().WithField("module", "indexer")
 
 type Indexer struct {
-	BlobStore             *BlobStore
-	indexerCache          *indexerCache
-	depositIndexer        *DepositIndexer
+	BlobStore    *BlobStore
+	indexerCache *indexerCache
+	//depositIndexer        *DepositIndexer
 	consensusClients      []*ConsensusClient
 	executionClients      []*ExecutionClient
 	writeDb               bool
@@ -50,7 +50,7 @@ func NewIndexer() (*Indexer, error) {
 		cachePersistenceDelay: cachePersistenceDelay,
 	}
 	indexer.indexerCache = newIndexerCache(indexer)
-	indexer.depositIndexer = newDepositIndexer(indexer)
+	//indexer.depositIndexer = newDepositIndexer(indexer)
 
 	return indexer, nil
 }

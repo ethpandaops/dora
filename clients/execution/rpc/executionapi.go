@@ -213,6 +213,15 @@ func (ec *ExecutionClient) GetHeaderByHash(ctx context.Context, hash common.Hash
 	return header, nil
 }
 
+func (ec *ExecutionClient) GetHeaderByNumber(ctx context.Context, number uint64) (*types.Header, error) {
+	block, err := ec.ethClient.HeaderByNumber(ctx, big.NewInt(0).SetUint64(number))
+	if err != nil {
+		return nil, err
+	}
+
+	return block, nil
+}
+
 func (ec *ExecutionClient) GetBlockByHash(ctx context.Context, hash common.Hash) (*types.Block, error) {
 	block, err := ec.ethClient.BlockByHash(ctx, hash)
 	if err != nil {

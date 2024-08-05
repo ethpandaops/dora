@@ -64,3 +64,15 @@ func (fork *Fork) toDbFork() *dbtypes.Fork {
 
 	return dbFork
 }
+
+func (fork *Fork) GetBase() (phase0.Slot, phase0.Root) {
+	return fork.baseSlot, fork.baseRoot
+}
+
+func (fork *Fork) GetLeaf() (phase0.Slot, phase0.Root) {
+	return fork.leafSlot, fork.leafRoot
+}
+
+func (fork *Fork) GetParent() ForkKey {
+	return fork.parentFork
+}

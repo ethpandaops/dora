@@ -1,6 +1,8 @@
 package beacon
 
 import (
+	"context"
+	"fmt"
 	"runtime/debug"
 	"sync"
 	"time"
@@ -45,6 +47,10 @@ type Indexer struct {
 	clients               []*Client
 	dbWriter              *dbWriter
 	running               bool
+	backfillCompleteMutex sync.Mutex
+	backfillingCount      int
+	backfillComplete      bool
+	backfillCompleteChan  chan bool
 	lastFinalizedEpoch    phase0.Epoch
 	lastPrunedEpoch       phase0.Epoch
 	lastPruneRunEpoch     phase0.Epoch
@@ -98,7 +104,8 @@ func NewIndexer(logger logrus.FieldLogger, consensusPool *consensus.Pool) *Index
 		maxParallelStateCalls: maxParallelStateCalls,
 		cachePersistenceDelay: cachePersistenceDelay,
 
-		clients: make([]*Client, 0),
+		clients:              make([]*Client, 0),
+		backfillCompleteChan: make(chan bool),
 	}
 
 	indexer.blockCache = newBlockCache(indexer)
@@ -136,6 +143,39 @@ func (indexer *Indexer) getAbsoluteMinInMemoryEpoch() phase0.Epoch {
 func (indexer *Indexer) getMinInMemorySlot() phase0.Slot {
 	chainState := indexer.consensusPool.GetChainState()
 	return chainState.EpochToSlot(indexer.getMinInMemoryEpoch() + 1)
+}
+
+func (indexer *Indexer) withBackfillTracker(backfillCb func() error) error {
+	indexer.backfillCompleteMutex.Lock()
+	indexer.backfillingCount++
+	indexer.backfillCompleteMutex.Unlock()
+
+	var resError error
+
+	defer func() {
+		indexer.backfillCompleteMutex.Lock()
+		indexer.backfillingCount--
+		if indexer.backfillingCount == 0 && !indexer.backfillComplete && resError == nil {
+			indexer.backfillComplete = true
+			close(indexer.backfillCompleteChan)
+		}
+		indexer.backfillCompleteMutex.Unlock()
+	}()
+
+	resError = backfillCb()
+	return resError
+}
+
+func (indexer *Indexer) awaitBackfillComplete(ctx context.Context, timeout time.Duration) error {
+	select {
+	case <-indexer.backfillCompleteChan:
+	case <-time.After(timeout):
+		return fmt.Errorf("timeout waiting for backfill to complete")
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+
+	return nil
 }
 
 // AddClient adds a new consensus pool client to the indexer.
@@ -321,7 +361,8 @@ func (indexer *Indexer) StartIndexer() {
 
 	go func() {
 		// start processing a bit delayed to allow clients to complete initial block backfill
-		time.Sleep(5 * time.Minute)
+		indexer.awaitBackfillComplete(context.Background(), 5*time.Minute)
+		time.Sleep(10 * time.Second)
 
 		indexer.logger.Infof("starting indexer processing (finalization, pruning & synchronization)")
 

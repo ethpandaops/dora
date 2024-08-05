@@ -179,7 +179,7 @@ func SearchAhead(w http.ResponseWriter, r *http.Request) {
 			} else {
 				dbres := &dbtypes.SearchAheadSlotsResult{}
 				err = db.ReaderDb.Select(dbres, `
-				SELECT slot, root, orphaned 
+				SELECT slot, root, status 
 				FROM slots 
 				WHERE slot < $1 AND (root = $2 OR state_root = $2)
 				ORDER BY slot LIMIT 1`, minSlotIdx, blockHash)

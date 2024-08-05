@@ -354,3 +354,7 @@ func (block *Block) GetExecutionExtraData() []byte {
 	data, _ := getBlockExecutionExtraData(blockBody)
 	return data
 }
+
+func (block *Block) GetForkId() ForkKey {
+	return block.forkId
+}

@@ -47,7 +47,7 @@ func (pool *Pool) GetAllEndpoints() []*Client {
 	return pool.clients
 }
 
-func (pool *Pool) GetReadyEndpoint(clientType ClientType) *Client {
+func (pool *Pool) GetReadyEndpoints(clientType ClientType) []*Client {
 	readyClients := []*Client{}
 
 	for _, client := range pool.clients {
@@ -65,6 +65,15 @@ func (pool *Pool) GetReadyEndpoint(clientType ClientType) *Client {
 	rand.Shuffle(len(readyClients), func(i, j int) {
 		readyClients[i], readyClients[j] = readyClients[j], readyClients[i]
 	})
+
+	return readyClients
+}
+
+func (pool *Pool) GetReadyEndpoint(clientType ClientType) *Client {
+	readyClients := pool.GetReadyEndpoints(clientType)
+	if len(readyClients) == 0 {
+		return nil
+	}
 
 	return readyClients[0]
 }

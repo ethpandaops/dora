@@ -208,6 +208,7 @@ type DepositTx struct {
 	TxHash                []byte `db:"tx_hash"`
 	TxSender              []byte `db:"tx_sender"`
 	TxTarget              []byte `db:"tx_target"`
+	ForkId                uint64 `db:"fork_id"`
 }
 
 type Deposit struct {

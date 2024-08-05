@@ -135,7 +135,9 @@ func (c *Client) runClientLoop() error {
 	}
 
 	// 2 - backfill old blocks up to the finalization checkpoint or known in cache
-	err = c.backfillParentBlocks(headBlock)
+	err = c.indexer.withBackfillTracker(func() error {
+		return c.backfillParentBlocks(headBlock)
+	})
 	if err != nil {
 		c.logger.Errorf("failed backfilling slots: %v", err)
 	}

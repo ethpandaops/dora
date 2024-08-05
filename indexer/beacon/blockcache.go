@@ -136,6 +136,7 @@ func (cache *blockCache) getBlocksByExecutionBlockHash(blockHash phase0.Hash32) 
 			if bytes.Equal(block.blockIndex.ExecutionHash[:], blockHash[:]) {
 				resBlocks = append(resBlocks, block)
 			}
+			continue
 		}
 
 		blockBody := block.GetBlock()

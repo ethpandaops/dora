@@ -18,6 +18,7 @@ import (
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/indexer"
 	"github.com/ethpandaops/dora/indexer/beacon"
+	execindexer "github.com/ethpandaops/dora/indexer/execution"
 	"github.com/ethpandaops/dora/utils"
 	"github.com/sirupsen/logrus"
 )
@@ -41,9 +42,10 @@ func StartChainService(ctx context.Context, logger logrus.FieldLogger) error {
 	}
 
 	// initialize client pools & indexers
-	consensusPool := consensus.NewPool(ctx, logger)
-	executionPool := execution.NewPool(ctx, logger)
-	beaconIndexer := beacon.NewIndexer(logger, consensusPool)
+	consensusPool := consensus.NewPool(ctx, logger.WithField("service", "cl-pool"))
+	executionPool := execution.NewPool(ctx, logger.WithField("service", "el-pool"))
+	beaconIndexer := beacon.NewIndexer(logger.WithField("service", "cl-indexer"), consensusPool)
+	executionIndexerCtx := execindexer.NewIndexerCtx(logger.WithField("service", "el-indexer"), executionPool, consensusPool, beaconIndexer)
 
 	// add consensus clients
 	for index, endpoint := range utils.Config.BeaconApi.Endpoints {
@@ -94,11 +96,13 @@ func StartChainService(ctx context.Context, logger logrus.FieldLogger) error {
 			}
 		}
 
-		_, err := executionPool.AddEndpoint(endpointConfig)
+		client, err := executionPool.AddEndpoint(endpointConfig)
 		if err != nil {
 			logger.Errorf("could not add execution client '%v' to pool: %v", endpoint.Name, err)
 			continue
 		}
+
+		executionIndexerCtx.AddClientInfo(client, endpoint.Priority, endpoint.Archive)
 	}
 
 	// init validator names & load inventory
@@ -138,28 +142,8 @@ func StartChainService(ctx context.Context, logger logrus.FieldLogger) error {
 	// start chain indexer
 	beaconIndexer.StartIndexer()
 
-	// legacy indexer
-	/*
-		indexer, err := indexer.NewIndexer()
-		if err != nil {
-			return err
-		}
-
-		for idx, endpoint := range utils.Config.BeaconApi.Endpoints {
-			indexer.AddConsensusClient(uint16(idx), &endpoint)
-		}
-
-		for idx, endpoint := range utils.Config.ExecutionApi.Endpoints {
-			indexer.AddExecutionClient(uint16(idx), &endpoint)
-		}
-
-		// start validator names updater
-		validatorNames.StartUpdater(indexer)
-
-		// start mev index updater
-		mevIndexer := NewMevIndexer()
-		mevIndexer.StartUpdater(indexer)
-	*/
+	// add execution indexers
+	execindexer.NewDepositIndexer(executionIndexerCtx)
 
 	GlobalBeaconService = &ChainService{
 		logger:         logger,

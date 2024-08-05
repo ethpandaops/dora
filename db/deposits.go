@@ -16,11 +16,11 @@ func InsertDepositTxs(depositTxs []*dbtypes.DepositTx, tx *sqlx.Tx) error {
 			dbtypes.DBEnginePgsql:  "INSERT INTO deposit_txs ",
 			dbtypes.DBEngineSqlite: "INSERT OR REPLACE INTO deposit_txs ",
 		}),
-		"(deposit_index, block_number, block_time, block_root, publickey, withdrawalcredentials, amount, signature, valid_signature, orphaned, tx_hash, tx_sender, tx_target)",
+		"(deposit_index, block_number, block_time, block_root, publickey, withdrawalcredentials, amount, signature, valid_signature, orphaned, tx_hash, tx_sender, tx_target, fork_id)",
 		" VALUES ",
 	)
 	argIdx := 0
-	fieldCount := 13
+	fieldCount := 14
 
 	args := make([]any, len(depositTxs)*fieldCount)
 	for i, depositTx := range depositTxs {
@@ -50,6 +50,7 @@ func InsertDepositTxs(depositTxs []*dbtypes.DepositTx, tx *sqlx.Tx) error {
 		args[argIdx+10] = depositTx.TxHash
 		args[argIdx+11] = depositTx.TxSender
 		args[argIdx+12] = depositTx.TxTarget
+		args[argIdx+13] = depositTx.ForkId
 		argIdx += fieldCount
 	}
 	fmt.Fprint(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
@@ -119,7 +120,7 @@ func GetDepositTxs(firstIndex uint64, limit uint32) []*dbtypes.DepositTx {
 	args := []any{}
 	fmt.Fprint(&sql, `
 	SELECT
-		deposit_index, block_number, block_time, block_root, publickey, withdrawalcredentials, amount, signature, valid_signature, orphaned, tx_hash, tx_sender, tx_target
+		deposit_index, block_number, block_time, block_root, publickey, withdrawalcredentials, amount, signature, valid_signature, orphaned, tx_hash, tx_sender, tx_target, fork_id
 	FROM deposit_txs
 	`)
 	if firstIndex > 0 {
@@ -148,7 +149,7 @@ func GetDepositTxsFiltered(offset uint64, limit uint32, finalizedBlock uint64, f
 	fmt.Fprint(&sql, `
 	WITH cte AS (
 		SELECT
-			deposit_index, block_number, block_time, block_root, publickey, withdrawalcredentials, amount, signature, valid_signature, orphaned, tx_hash, tx_sender, tx_target
+			deposit_index, block_number, block_time, block_root, publickey, withdrawalcredentials, amount, signature, valid_signature, orphaned, tx_hash, tx_sender, tx_target, fork_id
 		FROM deposit_txs
 	`)
 
@@ -210,7 +211,8 @@ func GetDepositTxsFiltered(offset uint64, limit uint32, finalizedBlock uint64, f
 		false AS orphaned, 
 		null AS tx_hash, 
 		null AS tx_sender, 
-		null AS tx_target
+		null AS tx_target,
+		0 AS fork_id
 	FROM cte
 	UNION ALL SELECT * FROM (
 	SELECT * FROM cte

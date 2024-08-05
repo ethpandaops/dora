@@ -136,6 +136,11 @@ func (sync *synchronizer) runSync() {
 		syncEpoch := sync.currentEpoch
 		syncClients := sync.getSyncClients(syncEpoch)
 
+		if syncEpoch >= sync.indexer.lastFinalizedEpoch {
+			isComplete = true
+			break
+		}
+
 		retryLimit := len(syncClients)
 		if retryLimit < 30 {
 			retryLimit = 30

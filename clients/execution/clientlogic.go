@@ -283,7 +283,7 @@ func (client *Client) loadBlockFilterHeader(hash common.Hash) error {
 	defer client.headMutex.Unlock()
 
 	client.headNumber = header.Number.Uint64()
-	client.headHash = header.Hash()
+	client.headHash = hash
 
 	return nil
 }

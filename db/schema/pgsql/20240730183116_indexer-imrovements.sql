@@ -7,6 +7,9 @@ ADD "status" integer NOT NULL DEFAULT 0;
 ALTER TABLE public."unfinalized_blocks"
 ADD "fork_id" BIGINT NOT NULL DEFAULT 0;
 
+ALTER TABLE public."deposit_txs"
+ADD "fork_id" BIGINT NOT NULL DEFAULT 0;
+
 -- fix version (remove 0x30000000 bits from header_ver & block_ver)
 -- 0x30000000 = 0b00110000000000000000000000000000 = 805306368
 -- 0x4fffffff = 0b01001111111111111111111111111111 = 1342177279
