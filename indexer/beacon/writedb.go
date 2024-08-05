@@ -155,7 +155,7 @@ func (dbw *dbWriter) persistSyncAssignments(tx *sqlx.Tx, epoch phase0.Epoch, epo
 	chainState := dbw.indexer.consensusPool.GetChainState()
 	specs := chainState.GetSpecs()
 
-	if epoch < phase0.Epoch(specs.AltairForkEpoch) {
+	if specs.AltairForkEpoch == nil || epoch < phase0.Epoch(*specs.AltairForkEpoch) {
 		// no sync committees before altair
 		return nil
 	}

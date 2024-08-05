@@ -159,7 +159,7 @@ func GetProposerIndex(spec *consensus.ChainSpec, state *BeaconState, slot phase0
 	seed := Hash(seedData)
 
 	maxEffectiveBalance := spec.MaxEffectiveBalance
-	if phase0.Epoch(slot/phase0.Slot(spec.SlotsPerEpoch)) >= phase0.Epoch(spec.ElectraForkEpoch) {
+	if spec.ElectraForkEpoch != nil && phase0.Epoch(slot/phase0.Slot(spec.SlotsPerEpoch)) >= phase0.Epoch(*spec.ElectraForkEpoch) {
 		maxEffectiveBalance = spec.MaxEffectiveBalanceElectra
 	}
 
@@ -187,27 +187,47 @@ func GetProposerIndex(spec *consensus.ChainSpec, state *BeaconState, slot phase0
 	}
 }
 
-func GetBeaconCommittees(spec *consensus.ChainSpec, state *BeaconState, slot phase0.Slot) ([][]phase0.ValidatorIndex, error) {
-	epoch := phase0.Epoch(slot / phase0.Slot(spec.SlotsPerEpoch))
+func GetAttesterDuties(spec *consensus.ChainSpec, state *BeaconState, epoch phase0.Epoch) ([][][]phase0.ValidatorIndex, error) {
 	seed := GetSeed(spec, state, epoch, spec.DomainBeaconAttester)
 
 	activeIndices := state.GetActiveIndices()
-	committeesPerSlot := SlotCommitteeCount(spec, uint64(len(activeIndices)))
+	validatorCount := uint64(len(activeIndices))
+	committeesPerSlot := SlotCommitteeCount(spec, validatorCount)
 	committeesCount := committeesPerSlot * spec.SlotsPerEpoch
-	committees := [][]phase0.ValidatorIndex{}
 
-	for committeeIndex := uint64(0); committeeIndex < committeesPerSlot; committeeIndex++ {
-		indexOffset := committeeIndex + ((uint64(slot) % spec.SlotsPerEpoch) * committeesPerSlot)
+	// Save the shuffled indices in cache, this is only needed once per epoch or once per new committee index.
+	shuffledIndices := make([]phase0.ValidatorIndex, len(activeIndices))
+	copy(shuffledIndices, activeIndices)
 
-		committee, err := computeCommittee(spec, activeIndices, seed, indexOffset, committeesCount)
-		if err != nil {
-			return nil, fmt.Errorf("failed computing committee %v:%v: %v", slot, committeeIndex, err)
-		}
-
-		committees = append(committees, committee)
+	// UnshuffleList is used here as it is an optimized implementation created
+	// for fast computation of committees.
+	// Reference implementation: https://github.com/protolambda/eth2-shuffle
+	_, err := UnshuffleList(spec, shuffledIndices, seed)
+	if err != nil {
+		return nil, err
 	}
 
-	return committees, nil
+	attesterDuties := make([][][]phase0.ValidatorIndex, spec.SlotsPerEpoch)
+	for slotIndex := uint64(0); slotIndex < spec.SlotsPerEpoch; slotIndex++ {
+		committees := [][]phase0.ValidatorIndex{}
+
+		for committeeIndex := uint64(0); committeeIndex < committeesPerSlot; committeeIndex++ {
+			indexOffset := committeeIndex + (slotIndex * committeesPerSlot)
+
+			start := SplitOffset(validatorCount, committeesCount, indexOffset)
+			end := SplitOffset(validatorCount, committeesCount, indexOffset+1)
+
+			if start > validatorCount || end > validatorCount {
+				return nil, errors.New("index out of range")
+			}
+
+			committees = append(committees, shuffledIndices[start:end])
+		}
+
+		attesterDuties[slotIndex] = committees
+	}
+
+	return attesterDuties, nil
 }
 
 func SlotCommitteeCount(spec *consensus.ChainSpec, activeValidatorCount uint64) uint64 {
@@ -221,34 +241,6 @@ func SlotCommitteeCount(spec *consensus.ChainSpec, activeValidatorCount uint64) 
 	}
 
 	return committeesPerSlot
-}
-
-func computeCommittee(
-	spec *consensus.ChainSpec,
-	indices []phase0.ValidatorIndex,
-	seed [32]byte,
-	index, count uint64,
-) ([]phase0.ValidatorIndex, error) {
-	validatorCount := uint64(len(indices))
-	start := SplitOffset(validatorCount, count, index)
-	end := SplitOffset(validatorCount, count, index+1)
-
-	if start > validatorCount || end > validatorCount {
-		return nil, errors.New("index out of range")
-	}
-
-	// Save the shuffled indices in cache, this is only needed once per epoch or once per new committee index.
-	shuffledIndices := make([]phase0.ValidatorIndex, len(indices))
-	copy(shuffledIndices, indices)
-	// UnshuffleList is used here as it is an optimized implementation created
-	// for fast computation of committees.
-	// Reference implementation: https://github.com/protolambda/eth2-shuffle
-	shuffledList, err := UnshuffleList(spec, shuffledIndices, seed)
-	if err != nil {
-		return nil, err
-	}
-
-	return shuffledList[start:end], nil
 }
 
 func ShuffleList(spec *consensus.ChainSpec, input []phase0.ValidatorIndex, seed [32]byte) ([]phase0.ValidatorIndex, error) {

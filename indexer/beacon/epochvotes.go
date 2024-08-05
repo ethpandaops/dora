@@ -176,7 +176,7 @@ func (votes *EpochVotes) aggregateVotes(epochStatsValues *EpochStatsValues, slot
 			}
 
 			effectiveBalance := epochStatsValues.EffectiveBalances[validatorIndex]
-			voteAmount += effectiveBalance
+			voteAmount += phase0.Gwei(effectiveBalance) * EtherGweiFactor
 			votes.ActivityMap[validatorIndex] = true
 		}
 	}

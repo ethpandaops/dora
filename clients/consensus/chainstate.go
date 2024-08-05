@@ -157,7 +157,7 @@ func (cs *ChainState) GetJustifiedCheckpoint() (phase0.Epoch, phase0.Root) {
 		return 0, NullRoot
 	}
 
-	return cs.finality.Finalized.Epoch, cs.finality.Finalized.Root
+	return cs.finality.Justified.Epoch, cs.finality.Justified.Root
 }
 
 func (cs *ChainState) GetFinalizedSlot() phase0.Slot {

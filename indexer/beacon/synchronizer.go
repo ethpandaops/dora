@@ -183,6 +183,11 @@ func (sync *synchronizer) runSync() {
 
 	if isComplete {
 		sync.logger.Infof("synchronization complete. Head epoch: %v", sync.currentEpoch)
+		db.RunDBTransaction(func(tx *sqlx.Tx) error {
+			return db.SetExplorerState("indexer.syncstate", &dbtypes.IndexerSyncState{
+				Epoch: uint64(sync.currentEpoch),
+			}, tx)
+		})
 	} else {
 		sync.logger.Infof("synchronization aborted. Head epoch: %v", sync.currentEpoch)
 	}

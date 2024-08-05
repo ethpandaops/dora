@@ -129,6 +129,7 @@ func (s *epochState) loadState(ctx context.Context, client *Client, cache *epoch
 	defer s.readyChanMutex.Unlock()
 	if s.readyChan != nil {
 		close(s.readyChan)
+		s.readyChan = nil
 	}
 
 	s.loadingStatus = 2

@@ -116,7 +116,7 @@ func buildEpochPageData(epoch uint64) (*models.EpochPageData, time.Duration) {
 		NextEpoch:     nextEpoch,
 		Ts:            chainState.SlotToTime(chainState.EpochToSlot(phase0.Epoch(epoch))),
 		Synchronized:  syncedEpoch,
-		Finalized:     finalizedEpoch >= phase0.Epoch(epoch),
+		Finalized:     finalizedEpoch > phase0.Epoch(epoch),
 	}
 
 	dbEpochs := services.GlobalBeaconService.GetDbEpochs(epoch, 1)

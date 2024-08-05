@@ -25,7 +25,7 @@ require (
 	github.com/lucasb-eyer/go-colorful v1.2.0
 	github.com/mashingan/smapping v0.1.19
 	github.com/mitchellh/mapstructure v1.5.0
-	github.com/pk910/dynamic-ssz v0.0.4
+	github.com/pk910/dynamic-ssz v0.0.5
 	github.com/pressly/goose/v3 v3.21.1
 	github.com/protolambda/bls12-381-util v0.1.0
 	github.com/protolambda/zrnt v0.32.3

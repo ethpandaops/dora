@@ -20,15 +20,15 @@ type ChainSpec struct {
 	MinGenesisTime               time.Time         `yaml:"MIN_GENESIS_TIME"`
 	GenesisForkVersion           phase0.Version    `yaml:"GENESIS_FORK_VERSION"`
 	AltairForkVersion            phase0.Version    `yaml:"ALTAIR_FORK_VERSION"`
-	AltairForkEpoch              uint64            `yaml:"ALTAIR_FORK_EPOCH"`
+	AltairForkEpoch              *uint64           `yaml:"ALTAIR_FORK_EPOCH"`
 	BellatrixForkVersion         phase0.Version    `yaml:"BELLATRIX_FORK_VERSION"`
-	BellatrixForkEpoch           uint64            `yaml:"BELLATRIX_FORK_EPOCH"`
+	BellatrixForkEpoch           *uint64           `yaml:"BELLATRIX_FORK_EPOCH"`
 	CappellaForkVersion          phase0.Version    `yaml:"CAPELLA_FORK_VERSION"`
-	CappellaForkEpoch            uint64            `yaml:"CAPELLA_FORK_EPOCH"`
+	CappellaForkEpoch            *uint64           `yaml:"CAPELLA_FORK_EPOCH"`
 	DenebForkVersion             phase0.Version    `yaml:"DENEB_FORK_VERSION"`
-	DenebForkEpoch               uint64            `yaml:"DENEB_FORK_EPOCH"`
+	DenebForkEpoch               *uint64           `yaml:"DENEB_FORK_EPOCH"`
 	ElectraForkVersion           phase0.Version    `yaml:"ELECTRA_FORK_VERSION"`
-	ElectraForkEpoch             uint64            `yaml:"ELECTRA_FORK_EPOCH"`
+	ElectraForkEpoch             *uint64           `yaml:"ELECTRA_FORK_EPOCH"`
 	SecondsPerSlot               time.Duration     `yaml:"SECONDS_PER_SLOT"`
 	SlotsPerEpoch                uint64            `yaml:"SLOTS_PER_EPOCH"`
 	EpochsPerHistoricalVector    uint64            `yaml:"EPOCHS_PER_HISTORICAL_VECTOR"`
@@ -56,7 +56,19 @@ func (chain *ChainSpec) CheckMismatch(chain2 *ChainSpec) []string {
 	chain2T := reflect.ValueOf(chain2).Elem()
 
 	for i := 0; i < chainT.NumField(); i++ {
-		if chainT.Field(i).Interface() != chain2T.Field(i).Interface() {
+		fieldV := chainT.Field(i)
+		field2V := chain2T.Field(i)
+
+		if fieldV.Type().Kind() == reflect.Ptr {
+			if !fieldV.IsNil() {
+				fieldV = fieldV.Elem()
+			}
+			if !field2V.IsNil() {
+				field2V = field2V.Elem()
+			}
+		}
+
+		if fieldV.Interface() != field2V.Interface() {
 			// 0 value on chain side are allowed
 			if chainT.Field(i).Interface() == reflect.Zero(chainT.Field(i).Type()).Interface() {
 				continue

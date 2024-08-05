@@ -105,6 +105,8 @@ type SlotPageAttestation struct {
 	AggregationBits []byte                 `json:"aggregationbits"`
 	Validators      []types.NamedValidator `json:"validators"`
 
+	IncludedValidators []types.NamedValidator `json:"included_validators"`
+
 	Signature []byte `json:"signature"`
 
 	BeaconBlockRoot []byte `json:"beaconblockroot"`

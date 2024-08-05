@@ -224,12 +224,12 @@ func buildSlotPageData(ctx context.Context, blockSlot int64, blockRoot []byte) (
 		NextSlot:       uint64(slot + 1),
 		PreviousSlot:   uint64(slot - 1),
 		Future:         slot >= currentSlot,
-		EpochFinalized: finalizedEpoch >= chainState.EpochOfSlot(slot),
+		EpochFinalized: finalizedEpoch > chainState.EpochOfSlot(slot),
 		Badges:         []*models.SlotPageBlockBadge{},
 	}
 
 	var epochStatsValues *beacon.EpochStatsValues
-	if chainState.EpochOfSlot(slot) > finalizedEpoch {
+	if chainState.EpochOfSlot(slot) >= finalizedEpoch {
 		beaconIndexer := services.GlobalBeaconService.GetBeaconIndexer()
 		if epochStats := beaconIndexer.GetEpochStats(epoch, nil); epochStats != nil {
 			epochStatsValues = epochStats.GetOrLoadValues(beaconIndexer, true, false)
@@ -380,6 +380,8 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 		}
 
 		var attAssignments []uint64
+		includedValidators := []uint64{}
+
 		if attVersioned.Version >= spec.DataVersionElectra {
 			// EIP-7549 attestation
 			attAssignments = []uint64{}
@@ -390,6 +392,7 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 				continue
 			}
 
+			attBitsOffset := uint64(0)
 			for _, committee := range committeeBits.BitIndices() {
 				if uint64(committee) >= specs.MaxCommitteesPerSlot {
 					continue
@@ -403,10 +406,15 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 						break
 					}
 
-					committeeAssignmentsInt := make([]uint64, len(committeeAssignments))
+					committeeAssignmentsInt := make([]uint64, 0)
 					for j := 0; j < len(committeeAssignments); j++ {
-						committeeAssignmentsInt[j] = uint64(committeeAssignments[j])
+						if attAggregationBits.BitAt(attBitsOffset + uint64(j)) {
+							includedValidators = append(includedValidators, uint64(committeeAssignments[j]))
+						}
+						committeeAssignmentsInt = append(committeeAssignmentsInt, uint64(committeeAssignments[j]))
 					}
+
+					attBitsOffset += uint64(len(committeeAssignments))
 					attAssignments = append(attAssignments, committeeAssignmentsInt...)
 				}
 			}
@@ -415,9 +423,12 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 			if assignmentsMap[attEpoch] != nil {
 				slotIndex := int(chainState.SlotToSlotIndex(attData.Slot))
 				committeeAssignments := assignmentsMap[attEpoch].AttesterDuties[slotIndex][uint64(attData.Index)]
-				committeeAssignmentsInt := make([]uint64, len(committeeAssignments))
+				committeeAssignmentsInt := make([]uint64, 0)
 				for j := 0; j < len(committeeAssignments); j++ {
-					committeeAssignmentsInt[j] = uint64(committeeAssignments[j])
+					if attAggregationBits.BitAt(uint64(j)) {
+						includedValidators = append(includedValidators, uint64(committeeAssignments[j]))
+					}
+					committeeAssignmentsInt = append(committeeAssignmentsInt, uint64(committeeAssignments[j]))
 				}
 
 				attAssignments = committeeAssignmentsInt
@@ -433,6 +444,14 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 			attPageData.Validators[j] = types.NamedValidator{
 				Index: attAssignments[j],
 				Name:  services.GlobalBeaconService.GetValidatorName(attAssignments[j]),
+			}
+		}
+
+		attPageData.IncludedValidators = make([]types.NamedValidator, len(includedValidators))
+		for j := 0; j < len(includedValidators); j++ {
+			attPageData.IncludedValidators[j] = types.NamedValidator{
+				Index: includedValidators[j],
+				Name:  services.GlobalBeaconService.GetValidatorName(includedValidators[j]),
 			}
 		}
 
@@ -541,7 +560,7 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 		}
 	}
 
-	if uint64(epoch) >= specs.AltairForkEpoch && syncAggregate != nil {
+	if specs.AltairForkEpoch != nil && uint64(epoch) >= *specs.AltairForkEpoch && syncAggregate != nil {
 		pageData.SyncAggregateBits = syncAggregate.SyncCommitteeBits
 		pageData.SyncAggregateSignature = syncAggregate.SyncCommitteeSignature[:]
 		var syncAssignments []uint64
@@ -571,7 +590,7 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 		pageData.SyncAggParticipation = utils.SyncCommitteeParticipation(pageData.SyncAggregateBits, specs.SyncCommitteeSize)
 	}
 
-	if uint64(epoch) >= specs.BellatrixForkEpoch {
+	if specs.BellatrixForkEpoch != nil && uint64(epoch) >= *specs.BellatrixForkEpoch {
 		switch blockData.Block.Version {
 		case spec.DataVersionBellatrix:
 			if blockData.Block.Bellatrix == nil {
@@ -677,7 +696,7 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 		}
 	}
 
-	if uint64(epoch) >= specs.CappellaForkEpoch {
+	if specs.CappellaForkEpoch != nil && uint64(epoch) >= *specs.CappellaForkEpoch {
 		pageData.BLSChangesCount = uint64(len(blsToExecChanges))
 		pageData.BLSChanges = make([]*models.SlotPageBLSChange, pageData.BLSChangesCount)
 		for i, blschange := range blsToExecChanges {
@@ -703,7 +722,7 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 		}
 	}
 
-	if uint64(epoch) >= specs.DenebForkEpoch {
+	if specs.DenebForkEpoch != nil && uint64(epoch) >= *specs.DenebForkEpoch {
 		pageData.BlobsCount = uint64(len(blobKzgCommitments))
 		pageData.Blobs = make([]*models.SlotPageBlob, pageData.BlobsCount)
 		for i := range blobKzgCommitments {
