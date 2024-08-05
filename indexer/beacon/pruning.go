@@ -49,7 +49,7 @@ func (indexer *Indexer) runCachePruning() error {
 	return nil
 }
 
-func (cache *forkCache) updatePruningState(tx *sqlx.Tx, epoch phase0.Epoch) error {
+func (indexer *Indexer) updatePruningState(tx *sqlx.Tx, epoch phase0.Epoch) error {
 	err := db.SetExplorerState("indexer.prunestate", &dbtypes.IndexerPruneState{
 		Epoch: uint64(epoch),
 	}, tx)
@@ -237,7 +237,7 @@ func (indexer *Indexer) processEpochPruning(pruneEpoch phase0.Epoch) (uint64, ui
 			indexer.logger.Errorf("error updating block status to pruned: %v", err)
 		}
 
-		err = indexer.forkCache.updatePruningState(tx, pruneEpoch+1)
+		err = indexer.updatePruningState(tx, pruneEpoch+1)
 		if err != nil {
 			return fmt.Errorf("error while updating prune state: %v", err)
 		}
@@ -311,6 +311,7 @@ func (indexer *Indexer) processCachePruning(prunedEpochStats, prunedEpochStates 
 	})
 
 	pruningData := []*pruningBlockData{}
+	pruningBlockRoots := [][]byte{}
 	for _, block := range pruningBlocks {
 		if block.isInFinalizedDb {
 			continue
@@ -334,6 +335,7 @@ func (indexer *Indexer) processCachePruning(prunedEpochStats, prunedEpochStates 
 			block:      block,
 			epochStats: epochStats,
 		})
+		pruningBlockRoots = append(pruningBlockRoots, block.Root[:])
 	}
 
 	if len(pruningData) > 0 {
@@ -343,6 +345,11 @@ func (indexer *Indexer) processCachePruning(prunedEpochStats, prunedEpochStates 
 				if err != nil {
 					indexer.logger.Errorf("error persisting old pruned slot %v: %v", pruneBlock.block.Root.String(), err)
 				}
+			}
+
+			err := db.UpdateUnfinalizedBlockStatus(pruningBlockRoots, dbtypes.UnfinalizedBlockStatusPruned, tx)
+			if err != nil {
+				indexer.logger.Errorf("error updating block status to pruned: %v", err)
 			}
 
 			return nil

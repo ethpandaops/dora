@@ -54,6 +54,7 @@ type Indexer struct {
 	lastFinalizedEpoch    phase0.Epoch
 	lastPrunedEpoch       phase0.Epoch
 	lastPruneRunEpoch     phase0.Epoch
+	lastPrecalcRunEpoch   phase0.Epoch
 	finalitySubscription  *consensus.Subscription[*v1.Finality]
 	wallclockSubscription *consensus.Subscription[*ethwallclock.Slot]
 
@@ -199,6 +200,7 @@ func (indexer *Indexer) StartIndexer() {
 	finalizedSlot := chainState.GetFinalizedSlot()
 	finalizedEpoch, _ := chainState.GetFinalizedCheckpoint()
 	indexer.lastFinalizedEpoch = finalizedEpoch
+	indexer.lastPrecalcRunEpoch = chainState.CurrentEpoch()
 
 	pruneState := dbtypes.IndexerPruneState{}
 	db.GetExplorerState("indexer.prunestate", &pruneState)
@@ -207,7 +209,7 @@ func (indexer *Indexer) StartIndexer() {
 	if indexer.lastPrunedEpoch < finalizedEpoch {
 		indexer.lastPrunedEpoch = finalizedEpoch
 		err := db.RunDBTransaction(func(tx *sqlx.Tx) error {
-			return indexer.forkCache.updatePruningState(tx, indexer.lastPrunedEpoch)
+			return indexer.updatePruningState(tx, indexer.lastPrunedEpoch)
 		})
 		if err != nil {
 			indexer.logger.WithError(err).Errorf("error while updating prune state")
@@ -302,6 +304,7 @@ func (indexer *Indexer) StartIndexer() {
 
 		block, _ := indexer.blockCache.createOrGetBlock(phase0.Root(dbBlock.Root), phase0.Slot(dbBlock.Slot))
 		block.forkId = ForkKey(dbBlock.ForkId)
+		block.fokChecked = true
 		block.processingStatus = dbBlock.Status
 		block.isInUnfinalizedDb = true
 
@@ -396,7 +399,7 @@ func (indexer *Indexer) runIndexerLoop() {
 			if indexer.lastFinalizedEpoch > indexer.lastPrunedEpoch {
 				indexer.lastPrunedEpoch = indexer.lastFinalizedEpoch
 				err := db.RunDBTransaction(func(tx *sqlx.Tx) error {
-					return indexer.forkCache.updatePruningState(tx, indexer.lastPrunedEpoch)
+					return indexer.updatePruningState(tx, indexer.lastPrunedEpoch)
 				})
 				if err != nil {
 					indexer.logger.WithError(err).Errorf("error while updating prune state")
@@ -414,6 +417,16 @@ func (indexer *Indexer) runIndexerLoop() {
 			epoch := chainState.EpochOfSlot(phase0.Slot(slotEvent.Number()))
 			slotIndex := chainState.SlotToSlotIndex(phase0.Slot(slotEvent.Number()))
 			slotProgress := uint8(100 / chainState.GetSpecs().SlotsPerEpoch * uint64(slotIndex))
+
+			// precalc next canonical duties on epoch start
+			if epoch >= indexer.lastPrecalcRunEpoch {
+				err := indexer.precalcNextEpochStats(epoch)
+				if err != nil {
+					indexer.logger.WithError(err).Errorf("failed precalculating epoch %v stats", epoch)
+				}
+
+				indexer.lastPrecalcRunEpoch = epoch + 1
+			}
 
 			// prune cache if last pruning epoch is outdated and we are at least 50% into the current
 			if epoch > indexer.lastPruneRunEpoch && slotProgress >= 50 {

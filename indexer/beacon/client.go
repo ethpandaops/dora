@@ -13,7 +13,6 @@ import (
 	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
-	"github.com/ethpandaops/ethwallclock"
 	"github.com/jmoiron/sqlx"
 	"github.com/sirupsen/logrus"
 )
@@ -32,7 +31,6 @@ type Client struct {
 
 	blockSubscription *consensus.Subscription[*v1.BlockEvent]
 	headSubscription  *consensus.Subscription[*v1.HeadEvent]
-	epochSubscription *consensus.Subscription[*ethwallclock.Epoch]
 
 	headRoot phase0.Root
 }
@@ -80,7 +78,6 @@ func (c *Client) startIndexing() {
 	// blocking block subscription with a buffer to ensure no blocks are missed
 	c.blockSubscription = c.client.SubscribeBlockEvent(100, true)
 	c.headSubscription = c.client.SubscribeHeadEvent(100, true)
-	c.epochSubscription = c.indexer.consensusPool.SubscribeWallclockEpochEvent(1)
 
 	go c.startClientLoop()
 }
@@ -156,11 +153,6 @@ func (c *Client) runClientLoop() error {
 			err := c.processHeadEvent(headEvent)
 			if err != nil {
 				c.logger.Errorf("failed processing head %v (%v): %v", headEvent.Slot, headEvent.Block.String(), err)
-			}
-		case epochEvent := <-c.epochSubscription.Channel():
-			err := c.processEpochEvent(epochEvent)
-			if err != nil {
-				c.logger.Errorf("failed processing epoch %v event: %v", epochEvent.Number(), err)
 			}
 		}
 	}
@@ -269,58 +261,6 @@ func (c *Client) processHeadEvent(headEvent *v1.HeadEvent) error {
 	return nil
 }
 
-func (c *Client) processEpochEvent(epochEvent *ethwallclock.Epoch) error {
-	if c.client.GetStatus() != consensus.ClientStatusOnline && c.client.GetStatus() != consensus.ClientStatusOptimistic {
-		// client is not ready, skip
-		return nil
-	}
-
-	epoch := phase0.Epoch(epochEvent.Number())
-	chainState := c.client.GetPool().GetChainState()
-
-	dependentBlock := c.indexer.blockCache.getBlockByRoot(c.headRoot)
-	if dependentBlock == nil {
-		return fmt.Errorf("head block %v not found", c.headRoot.String())
-	}
-
-	for {
-		if chainState.EpochOfSlot(dependentBlock.Slot) < epoch {
-			break
-		}
-
-		parentRoot := dependentBlock.GetParentRoot()
-		if parentRoot == nil {
-			return fmt.Errorf("parent block not found for head block %v", dependentBlock.Root.String())
-		}
-
-		dependentBlock = c.indexer.blockCache.getBlockByRoot(*parentRoot)
-		if dependentBlock == nil {
-			return fmt.Errorf("parent block %v not found", parentRoot.String())
-		}
-	}
-
-	// precompute epoch stats for the epoch if we have the parent epoch stats ready
-	epochStats := c.indexer.epochCache.createOrGetEpochStats(epoch, dependentBlock.Root, false)
-	if !epochStats.ready {
-		var parentDependentBlock *Block
-		if chainState.EpochOfSlot(dependentBlock.Slot) == epoch-1 {
-			parentDependentBlock = c.indexer.blockCache.getDependentBlock(chainState, dependentBlock, c)
-		} else {
-			parentDependentBlock = dependentBlock
-		}
-
-		if parentDependentBlock == nil {
-			c.logger.Warnf("failed precomputing epoch %v stats: parent epoch dependent block not found for head block %v", epoch, dependentBlock.Root.String())
-		} else if parentEpochStats := c.indexer.epochCache.getEpochStats(epoch-1, parentDependentBlock.Root); parentEpochStats == nil {
-			c.logger.Warnf("failed precomputing epoch %v stats: parent epoch stats (%v) not found", epoch, parentDependentBlock.Root.String())
-		} else if err := epochStats.precomputeFromParentState(c.indexer, parentEpochStats); err != nil {
-			c.logger.Warnf("failed precomputing epoch %v stats: %v", epoch, err)
-		}
-	}
-
-	return nil
-}
-
 // processStreamBlock processes a block received from the stream (either via block or head events).
 func (c *Client) processStreamBlock(slot phase0.Slot, root phase0.Root) (*Block, error) {
 	block, isNew, err := c.processBlock(slot, root, nil)
@@ -426,6 +366,7 @@ func (c *Client) processBlock(slot phase0.Slot, root phase0.Root, header *phase0
 		// fork detection
 		forkId, err2 := c.indexer.forkCache.processBlock(block)
 		block.forkId = forkId
+		block.fokChecked = true
 
 		if err2 != nil {
 			c.logger.Warnf("failed processing new fork: %v", err2)
