@@ -18,12 +18,14 @@ const totalSize = seedSize + roundSize + positionWindowSize
 
 var maxShuffleListSize uint64 = 1 << 40
 
+type ActiveIndiceIndex uint64
+
 type BeaconState struct {
 	RandaoMix           *phase0.Hash32
 	NextRandaoMix       *phase0.Hash32
 	GetRandaoMixes      func() []phase0.Root
-	GetActiveIndices    func() []phase0.ValidatorIndex
-	GetEffectiveBalance func(index phase0.ValidatorIndex) phase0.Gwei
+	GetActiveCount      func() uint64
+	GetEffectiveBalance func(index ActiveIndiceIndex) phase0.Gwei
 }
 
 func Hash(data []byte) phase0.Hash32 {
@@ -148,7 +150,7 @@ func ComputeShuffledIndex(spec *consensus.ChainSpec, index uint64, indexCount ui
 	return index, nil
 }
 
-func GetProposerIndex(spec *consensus.ChainSpec, state *BeaconState, slot phase0.Slot) (phase0.ValidatorIndex, error) {
+func GetProposerIndex(spec *consensus.ChainSpec, state *BeaconState, slot phase0.Slot) (ActiveIndiceIndex, error) {
 	epoch := phase0.Epoch(slot / phase0.Slot(spec.SlotsPerEpoch))
 
 	seedData := []byte{}
@@ -163,41 +165,40 @@ func GetProposerIndex(spec *consensus.ChainSpec, state *BeaconState, slot phase0
 		maxEffectiveBalance = spec.MaxEffectiveBalanceElectra
 	}
 
-	activeIndices := state.GetActiveIndices()
-	length := uint64(len(activeIndices))
-	if length == 0 {
+	activeIndicesCount := state.GetActiveCount()
+	if activeIndicesCount == 0 {
 		return 0, fmt.Errorf("empty active indices list")
 	}
 	maxRandomByte := uint64(1<<8 - 1)
 
 	for i := uint64(0); ; i++ {
-		candidateIndex, err := ComputeShuffledIndex(spec, i%length, length, seed, true)
+		candidateIndex, err := ComputeShuffledIndex(spec, i%activeIndicesCount, activeIndicesCount, seed, true)
 		if err != nil {
 			return 0, err
 		}
-		candidateIndex = uint64(activeIndices[candidateIndex])
 		b := append(seed[:], UintToBytes(i/32)...)
 		randomByte := Hash(b)[i%32]
 
-		effectiveBal := uint64(state.GetEffectiveBalance(phase0.ValidatorIndex(candidateIndex)))
+		effectiveBal := uint64(state.GetEffectiveBalance(ActiveIndiceIndex(candidateIndex)))
 
 		if effectiveBal*maxRandomByte >= maxEffectiveBalance*uint64(randomByte) {
-			return phase0.ValidatorIndex(candidateIndex), nil
+			return ActiveIndiceIndex(candidateIndex), nil
 		}
 	}
 }
 
-func GetAttesterDuties(spec *consensus.ChainSpec, state *BeaconState, epoch phase0.Epoch) ([][][]phase0.ValidatorIndex, error) {
+func GetAttesterDuties(spec *consensus.ChainSpec, state *BeaconState, epoch phase0.Epoch) ([][][]ActiveIndiceIndex, error) {
 	seed := GetSeed(spec, state, epoch, spec.DomainBeaconAttester)
 
-	activeIndices := state.GetActiveIndices()
-	validatorCount := uint64(len(activeIndices))
+	validatorCount := state.GetActiveCount()
 	committeesPerSlot := SlotCommitteeCount(spec, validatorCount)
 	committeesCount := committeesPerSlot * spec.SlotsPerEpoch
 
 	// Save the shuffled indices in cache, this is only needed once per epoch or once per new committee index.
-	shuffledIndices := make([]phase0.ValidatorIndex, len(activeIndices))
-	copy(shuffledIndices, activeIndices)
+	shuffledIndices := make([]ActiveIndiceIndex, validatorCount)
+	for i := uint64(0); i < validatorCount; i++ {
+		shuffledIndices[i] = ActiveIndiceIndex(i)
+	}
 
 	// UnshuffleList is used here as it is an optimized implementation created
 	// for fast computation of committees.
@@ -207,9 +208,9 @@ func GetAttesterDuties(spec *consensus.ChainSpec, state *BeaconState, epoch phas
 		return nil, err
 	}
 
-	attesterDuties := make([][][]phase0.ValidatorIndex, spec.SlotsPerEpoch)
+	attesterDuties := make([][][]ActiveIndiceIndex, spec.SlotsPerEpoch)
 	for slotIndex := uint64(0); slotIndex < spec.SlotsPerEpoch; slotIndex++ {
-		committees := [][]phase0.ValidatorIndex{}
+		committees := [][]ActiveIndiceIndex{}
 
 		for committeeIndex := uint64(0); committeeIndex < committeesPerSlot; committeeIndex++ {
 			indexOffset := committeeIndex + (slotIndex * committeesPerSlot)
@@ -243,17 +244,17 @@ func SlotCommitteeCount(spec *consensus.ChainSpec, activeValidatorCount uint64) 
 	return committeesPerSlot
 }
 
-func ShuffleList(spec *consensus.ChainSpec, input []phase0.ValidatorIndex, seed [32]byte) ([]phase0.ValidatorIndex, error) {
+func ShuffleList(spec *consensus.ChainSpec, input []ActiveIndiceIndex, seed [32]byte) ([]ActiveIndiceIndex, error) {
 	return innerShuffleList(spec, input, seed, true /* shuffle */)
 }
 
 // UnshuffleList un-shuffles the list by running backwards through the round count.
-func UnshuffleList(spec *consensus.ChainSpec, input []phase0.ValidatorIndex, seed [32]byte) ([]phase0.ValidatorIndex, error) {
+func UnshuffleList(spec *consensus.ChainSpec, input []ActiveIndiceIndex, seed [32]byte) ([]ActiveIndiceIndex, error) {
 	return innerShuffleList(spec, input, seed, false /* un-shuffle */)
 }
 
 // shuffles or unshuffles, shuffle=false to un-shuffle.
-func innerShuffleList(spec *consensus.ChainSpec, input []phase0.ValidatorIndex, seed [32]byte, shuffle bool) ([]phase0.ValidatorIndex, error) {
+func innerShuffleList(spec *consensus.ChainSpec, input []ActiveIndiceIndex, seed [32]byte, shuffle bool) ([]ActiveIndiceIndex, error) {
 	if len(input) <= 1 {
 		return input, nil
 	}
@@ -281,7 +282,7 @@ func innerShuffleList(spec *consensus.ChainSpec, input []phase0.ValidatorIndex, 
 		source := Hash(buf)
 		byteV := source[(pivot&0xff)>>3]
 		for i, j := uint64(0), pivot; i < mirror; i, j = i+1, j-1 {
-			byteV, source = swapOrNot(buf, byteV, phase0.ValidatorIndex(i), input, phase0.ValidatorIndex(j), source)
+			byteV, source = swapOrNot(buf, byteV, ActiveIndiceIndex(i), input, ActiveIndiceIndex(j), source)
 		}
 		// Now repeat, but for the part after the pivot.
 		mirror = (pivot + listSize + 1) >> 1
@@ -290,7 +291,7 @@ func innerShuffleList(spec *consensus.ChainSpec, input []phase0.ValidatorIndex, 
 		source = Hash(buf)
 		byteV = source[(end&0xff)>>3]
 		for i, j := pivot+1, end; i < mirror; i, j = i+1, j-1 {
-			byteV, source = swapOrNot(buf, byteV, phase0.ValidatorIndex(i), input, phase0.ValidatorIndex(j), source)
+			byteV, source = swapOrNot(buf, byteV, ActiveIndiceIndex(i), input, ActiveIndiceIndex(j), source)
 		}
 		if shuffle {
 			r++
@@ -309,7 +310,7 @@ func innerShuffleList(spec *consensus.ChainSpec, input []phase0.ValidatorIndex, 
 
 // swapOrNot describes the main algorithm behind the shuffle where we swap bytes in the inputted value
 // depending on if the conditions are met.
-func swapOrNot(buf []byte, byteV byte, i phase0.ValidatorIndex, input []phase0.ValidatorIndex, j phase0.ValidatorIndex, source [32]byte) (byte, [32]byte) {
+func swapOrNot(buf []byte, byteV byte, i ActiveIndiceIndex, input []ActiveIndiceIndex, j ActiveIndiceIndex, source [32]byte) (byte, [32]byte) {
 	if j&0xff == 0xff {
 		// just overwrite the last part of the buffer, reuse the start (seed, round)
 		binary.LittleEndian.PutUint32(buf[pivotViewSize:], uint32(j>>8))

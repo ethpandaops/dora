@@ -44,9 +44,10 @@ type EpochStats struct {
 type EpochStatsValues struct {
 	RandaoMix           phase0.Hash32
 	NextRandaoMix       phase0.Hash32
-	EffectiveBalances   map[phase0.ValidatorIndex]uint16
+	ActiveIndices       []phase0.ValidatorIndex
+	EffectiveBalances   []uint16
 	ProposerDuties      []phase0.ValidatorIndex
-	AttesterDuties      [][][]phase0.ValidatorIndex
+	AttesterDuties      [][][]duties.ActiveIndiceIndex
 	SyncCommitteeDuties []phase0.ValidatorIndex
 	ActiveValidators    uint64
 	TotalBalance        phase0.Gwei
@@ -160,25 +161,14 @@ func (es *EpochStats) buildPackedSSZ(dynSsz *dynssz.DynSsz) ([]byte, error) {
 		FirstDepositIndex:   es.values.FirstDepositIndex,
 	}
 
-	activeIndices := make([]phase0.ValidatorIndex, len(es.values.EffectiveBalances))
-	i := 0
-	for index := range es.values.EffectiveBalances {
-		activeIndices[i] = index
-		i++
-	}
-
-	sort.Slice(activeIndices, func(i, j int) bool {
-		return activeIndices[i] < activeIndices[j]
-	})
-
 	lastValidatorIndex := phase0.ValidatorIndex(0)
-	for i, validatorIndex := range activeIndices {
+	for i, validatorIndex := range es.values.ActiveIndices {
 		validatorOffset := uint32(validatorIndex - lastValidatorIndex)
 		lastValidatorIndex = validatorIndex
 
 		packedValues.ActiveValidators[i] = EpochStatsPackedValidator{
 			ValidatorIndexOffset: validatorOffset,
-			EffectiveBalanceEth:  es.values.EffectiveBalances[validatorIndex],
+			EffectiveBalanceEth:  es.values.EffectiveBalances[i],
 		}
 	}
 
@@ -214,7 +204,8 @@ func (es *EpochStats) parsePackedSSZ(dynSsz *dynssz.DynSsz, chainState *consensu
 	values := &EpochStatsValues{
 		RandaoMix:           packedValues.RandaoMix,
 		NextRandaoMix:       packedValues.NextRandaoMix,
-		EffectiveBalances:   map[phase0.ValidatorIndex]uint16{},
+		ActiveIndices:       make([]phase0.ValidatorIndex, len(packedValues.ActiveValidators)),
+		EffectiveBalances:   make([]uint16, len(packedValues.ActiveValidators)),
 		SyncCommitteeDuties: packedValues.SyncCommitteeDuties,
 		TotalBalance:        packedValues.TotalBalance,
 		ActiveBalance:       packedValues.ActiveBalance,
@@ -222,26 +213,23 @@ func (es *EpochStats) parsePackedSSZ(dynSsz *dynssz.DynSsz, chainState *consensu
 		FirstDepositIndex:   packedValues.FirstDepositIndex,
 	}
 
-	activeIndices := make([]phase0.ValidatorIndex, len(packedValues.ActiveValidators))
 	lastValidatorIndex := phase0.ValidatorIndex(0)
 	for i, packedValidator := range packedValues.ActiveValidators {
 		validatorIndex := lastValidatorIndex + phase0.ValidatorIndex(packedValidator.ValidatorIndexOffset)
 		lastValidatorIndex = validatorIndex
 
-		values.EffectiveBalances[validatorIndex] = packedValidator.EffectiveBalanceEth
+		values.EffectiveBalances[i] = packedValidator.EffectiveBalanceEth
 		values.EffectiveBalance += phase0.Gwei(packedValidator.EffectiveBalanceEth) * EtherGweiFactor
-
-		activeIndices[i] = validatorIndex
 	}
 
-	values.ActiveValidators = uint64(len(activeIndices))
+	values.ActiveValidators = uint64(len(packedValues.ActiveValidators))
 
 	beaconState := &duties.BeaconState{
 		RandaoMix: &values.RandaoMix,
-		GetActiveIndices: func() []phase0.ValidatorIndex {
-			return activeIndices
+		GetActiveCount: func() uint64 {
+			return values.ActiveValidators
 		},
-		GetEffectiveBalance: func(index phase0.ValidatorIndex) phase0.Gwei {
+		GetEffectiveBalance: func(index duties.ActiveIndiceIndex) phase0.Gwei {
 			return phase0.Gwei(values.EffectiveBalances[index]) * EtherGweiFactor
 		},
 	}
@@ -250,11 +238,12 @@ func (es *EpochStats) parsePackedSSZ(dynSsz *dynssz.DynSsz, chainState *consensu
 	proposerDuties := []phase0.ValidatorIndex{}
 	for slot := chainState.EpochToSlot(es.epoch); slot < chainState.EpochToSlot(es.epoch+1); slot++ {
 		proposer, err := duties.GetProposerIndex(chainState.GetSpecs(), beaconState, slot)
-		if err != nil {
-			proposer = math.MaxInt64
+		proposerIndex := phase0.ValidatorIndex(math.MaxInt64)
+		if err == nil {
+			proposerIndex = values.ActiveIndices[proposer]
 		}
 
-		proposerDuties = append(proposerDuties, proposer)
+		proposerDuties = append(proposerDuties, proposerIndex)
 	}
 
 	values.ProposerDuties = proposerDuties
@@ -319,7 +308,8 @@ func (es *EpochStats) processState(indexer *Indexer) {
 
 	chainState := indexer.consensusPool.GetChainState()
 	values := &EpochStatsValues{
-		EffectiveBalances:   map[phase0.ValidatorIndex]uint16{},
+		ActiveIndices:       make([]phase0.ValidatorIndex, 0),
+		EffectiveBalances:   make([]uint16, 0),
 		SyncCommitteeDuties: es.dependentState.syncCommittee,
 		TotalBalance:        0,
 		ActiveBalance:       0,
@@ -328,27 +318,26 @@ func (es *EpochStats) processState(indexer *Indexer) {
 	}
 
 	// get active validator indices & aggregate balances
-	activeIndices := []phase0.ValidatorIndex{}
 	for index, validator := range es.dependentState.validatorList {
 		values.TotalBalance += es.dependentState.validatorBalances[index]
 		if es.epoch >= validator.ActivationEpoch && es.epoch < validator.ExitEpoch {
-			activeIndices = append(activeIndices, phase0.ValidatorIndex(index))
-			values.EffectiveBalances[phase0.ValidatorIndex(index)] = uint16(validator.EffectiveBalance / EtherGweiFactor)
+			values.ActiveIndices = append(values.ActiveIndices, phase0.ValidatorIndex(index))
+			values.EffectiveBalances = append(values.EffectiveBalances, uint16(validator.EffectiveBalance/EtherGweiFactor))
 			values.EffectiveBalance += validator.EffectiveBalance
 			values.ActiveBalance += es.dependentState.validatorBalances[index]
 		}
 	}
 
-	values.ActiveValidators = uint64(len(activeIndices))
+	values.ActiveValidators = uint64(len(values.ActiveIndices))
 	beaconState := &duties.BeaconState{
 		GetRandaoMixes: func() []phase0.Root {
 			return es.dependentState.randaoMixes
 		},
-		GetActiveIndices: func() []phase0.ValidatorIndex {
-			return activeIndices
+		GetActiveCount: func() uint64 {
+			return values.ActiveValidators
 		},
-		GetEffectiveBalance: func(index phase0.ValidatorIndex) phase0.Gwei {
-			return es.dependentState.validatorList[index].EffectiveBalance
+		GetEffectiveBalance: func(index duties.ActiveIndiceIndex) phase0.Gwei {
+			return phase0.Gwei(values.EffectiveBalances[index]) * EtherGweiFactor
 		},
 	}
 
@@ -358,12 +347,15 @@ func (es *EpochStats) processState(indexer *Indexer) {
 	proposerDuties := []phase0.ValidatorIndex{}
 	for slot := chainState.EpochToSlot(es.epoch); slot < chainState.EpochToSlot(es.epoch+1); slot++ {
 		proposer, err := duties.GetProposerIndex(chainState.GetSpecs(), beaconState, slot)
+		proposerIndex := phase0.ValidatorIndex(math.MaxInt64)
 		if err != nil {
 			indexer.logger.Warnf("failed computing proposer for slot %v: %v", slot, err)
 			proposer = math.MaxInt64
+		} else {
+			proposerIndex = values.ActiveIndices[proposer]
 		}
 
-		proposerDuties = append(proposerDuties, proposer)
+		proposerDuties = append(proposerDuties, proposerIndex)
 	}
 
 	values.ProposerDuties = proposerDuties
@@ -439,6 +431,7 @@ func (es *EpochStats) precomputeFromParentState(indexer *Indexer, parentState *E
 		}
 
 		values := &EpochStatsValues{
+			ActiveIndices:       parentStatsValues.ActiveIndices,
 			RandaoMix:           parentStatsValues.NextRandaoMix,
 			EffectiveBalances:   parentStatsValues.EffectiveBalances,
 			SyncCommitteeDuties: parentStatsValues.SyncCommitteeDuties,
@@ -447,26 +440,15 @@ func (es *EpochStats) precomputeFromParentState(indexer *Indexer, parentState *E
 			EffectiveBalance:    parentStatsValues.EffectiveBalance,
 		}
 
-		activeIndices := make([]phase0.ValidatorIndex, len(parentStatsValues.EffectiveBalances))
-		i := 0
-		for index := range parentStatsValues.EffectiveBalances {
-			activeIndices[i] = index
-			i++
-		}
-
-		sort.Slice(activeIndices, func(i, j int) bool {
-			return activeIndices[i] < activeIndices[j]
-		})
-
-		values.ActiveValidators = uint64(len(activeIndices))
+		values.ActiveValidators = uint64(len(values.ActiveIndices))
 
 		beaconState := &duties.BeaconState{
 			RandaoMix: &values.RandaoMix,
-			GetActiveIndices: func() []phase0.ValidatorIndex {
-				return activeIndices
+			GetActiveCount: func() uint64 {
+				return values.ActiveValidators
 			},
-			GetEffectiveBalance: func(index phase0.ValidatorIndex) phase0.Gwei {
-				return values.GetEffectiveBalance(index)
+			GetEffectiveBalance: func(index duties.ActiveIndiceIndex) phase0.Gwei {
+				return phase0.Gwei(values.EffectiveBalances[index]) * EtherGweiFactor
 			},
 		}
 		chainState := indexer.consensusPool.GetChainState()
@@ -475,11 +457,12 @@ func (es *EpochStats) precomputeFromParentState(indexer *Indexer, parentState *E
 		proposerDuties := []phase0.ValidatorIndex{}
 		for slot := chainState.EpochToSlot(es.epoch); slot < chainState.EpochToSlot(es.epoch+1); slot++ {
 			proposer, err := duties.GetProposerIndex(chainState.GetSpecs(), beaconState, slot)
-			if err != nil {
-				proposer = math.MaxInt64
+			proposerIndex := phase0.ValidatorIndex(math.MaxInt64)
+			if err == nil {
+				proposerIndex = values.ActiveIndices[proposer]
 			}
 
-			proposerDuties = append(proposerDuties, proposer)
+			proposerDuties = append(proposerDuties, proposerIndex)
 		}
 
 		values.ProposerDuties = proposerDuties
@@ -574,7 +557,7 @@ func (es *EpochStats) GetOrLoadValues(indexer *Indexer, withPrecalc bool, keepIn
 	return nil
 }
 
-func (v *EpochStatsValues) GetEffectiveBalance(index phase0.ValidatorIndex) phase0.Gwei {
+func (v *EpochStatsValues) GetEffectiveBalance(index duties.ActiveIndiceIndex) phase0.Gwei {
 	if v == nil {
 		return 0
 	}

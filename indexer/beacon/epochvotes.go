@@ -27,7 +27,7 @@ type EpochVotes struct {
 	HeadVotePercent   float64
 	TotalVotePercent  float64
 	AmountIsCount     bool
-	ActivityMap       map[phase0.ValidatorIndex]bool
+	ActivityBitfield  bitfield.Bitfield
 }
 
 // aggregateEpochVotes aggregates the votes for an epoch based on the provided chain state, blocks, and epoch stats.
@@ -41,8 +41,11 @@ func (indexer *Indexer) aggregateEpochVotes(epoch phase0.Epoch, chainState *cons
 	specs := chainState.GetSpecs()
 
 	votes := &EpochVotes{
-		ActivityMap:   map[phase0.ValidatorIndex]bool{},
 		AmountIsCount: epochStatsValues == nil,
+	}
+
+	if epochStatsValues != nil {
+		votes.ActivityBitfield = bitfield.NewBitlist(epochStatsValues.ActiveValidators)
 	}
 
 	if len(blocks) == 0 {
@@ -171,13 +174,15 @@ func (votes *EpochVotes) aggregateVotes(epochStatsValues *EpochStatsValues, slot
 	voteDuties := epochStatsValues.AttesterDuties[slotIndex][committee]
 	for bitIdx, validatorIndex := range voteDuties {
 		if aggregationBits.BitAt(uint64(bitIdx) + aggregationBitsOffset) {
-			if votes.ActivityMap[validatorIndex] {
+
+			if votes.ActivityBitfield.BitAt(uint64(validatorIndex)) {
 				continue
 			}
 
 			effectiveBalance := epochStatsValues.EffectiveBalances[validatorIndex]
 			voteAmount += phase0.Gwei(effectiveBalance) * EtherGweiFactor
-			votes.ActivityMap[validatorIndex] = true
+
+			votes.ActivityBitfield.SetBitAt(uint64(validatorIndex), true)
 		}
 	}
 	return voteAmount, uint64(len(voteDuties))

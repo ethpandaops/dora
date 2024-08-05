@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
@@ -155,7 +156,7 @@ func buildValidatorsActivityPageData(pageIdx uint64, pageSize uint64, sortOrder 
 		if strings.HasPrefix(statusStr, "active_") {
 			validatorGroup.Activated++
 
-			if activityMap[vIdx] > 0 {
+			if activityMap[phase0.ValidatorIndex(vIdx)] > 0 {
 				validatorGroup.Online++
 			} else {
 				validatorGroup.Offline++

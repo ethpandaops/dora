@@ -203,7 +203,7 @@ func (bs *ChainService) GetValidatorNamesCount() uint64 {
 	return bs.validatorNames.GetValidatorNamesCount()
 }
 
-func (bs *ChainService) GetCachedValidatorSet() map[phase0.ValidatorIndex]*v1.Validator {
+func (bs *ChainService) GetCachedValidatorSet() []*v1.Validator {
 	return bs.beaconIndexer.GetCanonicalValidatorSet(nil)
 }
 
@@ -317,9 +317,17 @@ func (bs *ChainService) GetValidatorActivity(epochLimit uint64, withCurrentEpoch
 			continue
 		}
 
+		epochStatsValues := epochStats.GetValues(true)
+		if epochStatsValues == nil {
+			continue
+		}
+
 		epochVotes := epochStats.GetEpochVotes(bs.beaconIndexer, nil)
-		for valIdx := range epochVotes.ActivityMap {
-			activityMap[valIdx]++
+
+		for valIdx, validatorIndex := range epochStatsValues.ActiveIndices {
+			if epochVotes.ActivityBitfield.BitAt(uint64(valIdx)) {
+				activityMap[validatorIndex]++
+			}
 		}
 
 		aggregationCount++

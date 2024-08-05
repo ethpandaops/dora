@@ -277,16 +277,16 @@ func (indexer *Indexer) aggregateForkVotes(forkId ForkKey) (totalVotes phase0.Gw
 	return
 }
 
-func (indexer *Indexer) GetCanonicalValidatorSet(overrideForkId *ForkKey) map[phase0.ValidatorIndex]*v1.Validator {
-	validatorSet := map[phase0.ValidatorIndex]*v1.Validator{}
+func (indexer *Indexer) GetCanonicalValidatorSet(overrideForkId *ForkKey) []*v1.Validator {
 	chainState := indexer.consensusPool.GetChainState()
 
 	canonicalHead := indexer.GetCanonicalHead(overrideForkId)
 	if canonicalHead == nil {
-		return validatorSet
+		return []*v1.Validator{}
 	}
 
 	headEpoch := chainState.EpochOfSlot(canonicalHead.Slot)
+	validatorSet := []*v1.Validator{}
 
 	for {
 		epoch := chainState.EpochOfSlot(canonicalHead.Slot)
@@ -305,10 +305,11 @@ func (indexer *Indexer) GetCanonicalValidatorSet(overrideForkId *ForkKey) map[ph
 			continue // retry previous state
 		}
 
+		validatorSet = make([]*v1.Validator, len(epochStats.dependentState.validatorList))
 		for index, validator := range epochStats.dependentState.validatorList {
 			state := v1.ValidatorToState(validator, &epochStats.dependentState.validatorBalances[index], epoch, FarFutureEpoch)
 
-			validatorSet[phase0.ValidatorIndex(index)] = &v1.Validator{
+			validatorSet[index] = &v1.Validator{
 				Index:     phase0.ValidatorIndex(index),
 				Balance:   epochStats.dependentState.validatorBalances[index],
 				Status:    state,

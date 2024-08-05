@@ -13,7 +13,6 @@ import (
 	"time"
 
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
-	"golang.org/x/exp/maps"
 
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
@@ -125,7 +124,7 @@ func buildValidatorsPageData(firstValIdx uint64, pageSize uint64, sortOrder stri
 		cacheTime = 5 * time.Minute
 		validatorSet = []*v1.Validator{}
 	} else {
-		validatorSet = maps.Values(validatorSetRsp)
+		validatorSet = validatorSetRsp
 	}
 
 	// get status options

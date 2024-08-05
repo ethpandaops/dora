@@ -29,15 +29,15 @@ func getEpochStatsKey(epoch phase0.Epoch, dependentRoot phase0.Root) epochStatsK
 // epochCache is the cache for EpochStats (epoch status) and epochState (beacon state) structures.
 type epochCache struct {
 	indexer        *Indexer
-	cacheMutex     sync.RWMutex                                // mutex to protect statsMap & stateMap for concurrent read/write
-	statsMap       map[epochStatsKey]*EpochStats               // epoch status cache by epochStatsKey
-	stateMap       map[phase0.Root]*epochState                 // beacon state cache by dependentRoot
-	loadingChan    chan bool                                   // limits concurrent state calls by channel capacity
-	valsetMutex    sync.Mutex                                  // mutex to protect valsetCache for concurrent access
-	valsetCache    map[phase0.ValidatorIndex]*phase0.Validator // global validator set cache for reuse of matching validator entries
-	syncMutex      sync.Mutex                                  // mutex to protect syncCache for concurrent access
-	syncCache      []phase0.ValidatorIndex                     // global sync committee cache for reuse if matching
-	precomputeLock sync.Mutex                                  // mutex to prevent concurrent precomputing of epoch stats
+	cacheMutex     sync.RWMutex                  // mutex to protect statsMap & stateMap for concurrent read/write
+	statsMap       map[epochStatsKey]*EpochStats // epoch status cache by epochStatsKey
+	stateMap       map[phase0.Root]*epochState   // beacon state cache by dependentRoot
+	loadingChan    chan bool                     // limits concurrent state calls by channel capacity
+	valsetMutex    sync.Mutex                    // mutex to protect valsetCache for concurrent access
+	valsetCache    []*phase0.Validator           // global validator set cache for reuse of matching validator entries
+	syncMutex      sync.Mutex                    // mutex to protect syncCache for concurrent access
+	syncCache      []phase0.ValidatorIndex       // global sync committee cache for reuse if matching
+	precomputeLock sync.Mutex                    // mutex to prevent concurrent precomputing of epoch stats
 }
 
 // newEpochCache creates & returns a new instance of epochCache.
@@ -48,7 +48,7 @@ func newEpochCache(indexer *Indexer) *epochCache {
 		statsMap:    map[epochStatsKey]*EpochStats{},
 		stateMap:    map[phase0.Root]*epochState{},
 		loadingChan: make(chan bool, indexer.maxParallelStateCalls),
-		valsetCache: map[phase0.ValidatorIndex]*phase0.Validator{},
+		valsetCache: []*phase0.Validator{},
 	}
 
 	// start beacon state loader subroutine
@@ -228,17 +228,23 @@ func (cache *epochCache) getOrCreateValidator(index phase0.ValidatorIndex, valid
 	cache.valsetMutex.Lock()
 	defer cache.valsetMutex.Unlock()
 
-	existingValidator := cache.valsetCache[index]
-	if existingValidator != nil &&
-		bytes.Equal(existingValidator.WithdrawalCredentials[:], validator.WithdrawalCredentials[:]) &&
-		existingValidator.EffectiveBalance == validator.EffectiveBalance &&
-		existingValidator.Slashed == validator.Slashed &&
-		existingValidator.ActivationEligibilityEpoch == validator.ActivationEligibilityEpoch &&
-		existingValidator.ActivationEpoch == validator.ActivationEpoch &&
-		existingValidator.ExitEpoch == validator.ExitEpoch &&
-		existingValidator.WithdrawableEpoch == validator.WithdrawableEpoch {
-		// all properties match, return reference to old cached entry
-		return existingValidator
+	cacheLen := len(cache.valsetCache)
+
+	if index < phase0.ValidatorIndex(cacheLen) {
+		if existingValidator := cache.valsetCache[index]; existingValidator != nil &&
+			bytes.Equal(existingValidator.WithdrawalCredentials[:], validator.WithdrawalCredentials[:]) &&
+			existingValidator.EffectiveBalance == validator.EffectiveBalance &&
+			existingValidator.Slashed == validator.Slashed &&
+			existingValidator.ActivationEligibilityEpoch == validator.ActivationEligibilityEpoch &&
+			existingValidator.ActivationEpoch == validator.ActivationEpoch &&
+			existingValidator.ExitEpoch == validator.ExitEpoch &&
+			existingValidator.WithdrawableEpoch == validator.WithdrawableEpoch {
+			// all properties match, return reference to old cached entry
+			return existingValidator
+		}
+	} else {
+		appendItems := make([]*phase0.Validator, len(cache.valsetCache)-int(index)+100)
+		cache.valsetCache = append(cache.valsetCache, appendItems...)
 	}
 
 	cache.valsetCache[index] = validator
