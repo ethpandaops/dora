@@ -70,5 +70,22 @@ func DeleteFinalizedForks(finalizedRoots [][]byte, tx *sqlx.Tx) error {
 	if err != nil {
 		return err
 	}
+
+	sql = strings.Builder{}
+	args = []any{}
+
+	fmt.Fprint(&sql, `UPDATE forks SET parent_fork = 0 WHERE base_root IN (`)
+
+	for i, root := range finalizedRoots {
+		if i > 0 {
+			fmt.Fprint(&sql, ",")
+		}
+
+		args = append(args, root)
+		fmt.Fprintf(&sql, "$%v", len(args))
+	}
+
+	fmt.Fprint(&sql, ")")
+
 	return nil
 }
