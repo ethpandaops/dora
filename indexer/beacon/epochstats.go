@@ -350,7 +350,7 @@ func (es *EpochStats) processState(indexer *Indexer) {
 		proposerIndex := phase0.ValidatorIndex(math.MaxInt64)
 		if err != nil {
 			indexer.logger.Warnf("failed computing proposer for slot %v: %v", slot, err)
-			proposer = math.MaxInt64
+			proposerIndex = math.MaxInt64
 		} else {
 			proposerIndex = values.ActiveIndices[proposer]
 		}
@@ -404,6 +404,7 @@ func (es *EpochStats) processState(indexer *Indexer) {
 	es.setStatsReady()
 }
 
+// precomputeFromParentState precomputes the EpochStats values based on the parent state.
 func (es *EpochStats) precomputeFromParentState(indexer *Indexer, parentState *EpochStats) error {
 	es.precalcBaseRoot = parentState.dependentRoot
 
@@ -486,6 +487,7 @@ func (es *EpochStats) precomputeFromParentState(indexer *Indexer, parentState *E
 	})
 }
 
+// awaitStatsReady waits for the EpochStats values to be ready.
 func (s *EpochStats) awaitStatsReady(ctx context.Context, timeout time.Duration) bool {
 	s.readyChanMutex.Lock()
 	if s.readyChan == nil && !s.ready {
@@ -531,6 +533,7 @@ func (es *EpochStats) GetValues(withPrecalc bool) *EpochStatsValues {
 	return nil
 }
 
+// GetOrLoadValues returns the EpochStats values, loading them from the database if necessary.
 func (es *EpochStats) GetOrLoadValues(indexer *Indexer, withPrecalc bool, keepInCache bool) *EpochStatsValues {
 	if es == nil {
 		return nil
@@ -557,6 +560,7 @@ func (es *EpochStats) GetOrLoadValues(indexer *Indexer, withPrecalc bool, keepIn
 	return nil
 }
 
+// GetEffectiveBalance returns the effective balance for the given active validator indice.
 func (v *EpochStatsValues) GetEffectiveBalance(index duties.ActiveIndiceIndex) phase0.Gwei {
 	if v == nil {
 		return 0
@@ -565,6 +569,7 @@ func (v *EpochStatsValues) GetEffectiveBalance(index duties.ActiveIndiceIndex) p
 	return phase0.Gwei(v.EffectiveBalances[index]) * EtherGweiFactor
 }
 
+// GetDbEpoch returns the database Epoch representaion for the EpochStats.
 func (es *EpochStats) GetDbEpoch(indexer *Indexer, headBlock *Block) *dbtypes.Epoch {
 	chainState := indexer.consensusPool.GetChainState()
 	if headBlock == nil {
@@ -624,6 +629,7 @@ func (es *EpochStats) GetDbEpoch(indexer *Indexer, headBlock *Block) *dbtypes.Ep
 	return indexer.dbWriter.buildDbEpoch(es.epoch, epochBlocks, es, epochVotes, nil)
 }
 
+// GetEpochVotes aggregates & returns the EpochVotes for the EpochStats.
 func (es *EpochStats) GetEpochVotes(indexer *Indexer, headBlock *Block) *EpochVotes {
 	chainState := indexer.consensusPool.GetChainState()
 	if headBlock == nil {

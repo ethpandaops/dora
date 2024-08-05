@@ -37,6 +37,8 @@ type Block struct {
 	seenMap           map[uint16]*Client
 }
 
+// BlockBodyIndex holds important block propoerties that are used as index for cache lookups.
+// this structure should be preserved after pruning, so the block is still identifiable.
 type BlockBodyIndex struct {
 	Graffiti           [32]byte
 	ExecutionExtraData []byte
@@ -231,6 +233,7 @@ func (block *Block) EnsureBlock(loadBlock func() (*spec.VersionedSignedBeaconBlo
 	return true, nil
 }
 
+// setBlockIndex sets the block index of this block.
 func (block *Block) setBlockIndex(body *spec.VersionedSignedBeaconBlock) {
 	blockIndex := &BlockBodyIndex{}
 	blockIndex.Graffiti, _ = body.Graffiti()
@@ -241,6 +244,7 @@ func (block *Block) setBlockIndex(body *spec.VersionedSignedBeaconBlock) {
 	block.blockIndex = blockIndex
 }
 
+// GetBlockIndex returns the block index of this block.
 func (block *Block) GetBlockIndex() *BlockBodyIndex {
 	if block.blockIndex != nil {
 		return block.blockIndex
@@ -278,6 +282,7 @@ func (block *Block) buildUnfinalizedBlock(compress bool) (*dbtypes.UnfinalizedBl
 	}, nil
 }
 
+// buildOrphanedBlock builds an orphaned block from the block data.
 func (block *Block) buildOrphanedBlock(compress bool) (*dbtypes.OrphanedBlock, error) {
 	headerSSZ, err := block.header.MarshalSSZ()
 	if err != nil {
@@ -298,6 +303,7 @@ func (block *Block) buildOrphanedBlock(compress bool) (*dbtypes.OrphanedBlock, e
 	}, nil
 }
 
+// unpruneBlockBody retrieves the block body from the database if it is not already present.
 func (block *Block) unpruneBlockBody() {
 	if block.block != nil || !block.isInUnfinalizedDb {
 		return
@@ -309,6 +315,7 @@ func (block *Block) unpruneBlockBody() {
 	}
 }
 
+// GetDbBlock returns the database representation of this block.
 func (block *Block) GetDbBlock(indexer *Indexer) *dbtypes.Slot {
 	var epochStats *EpochStats
 	chainState := indexer.consensusPool.GetChainState()
@@ -328,6 +335,7 @@ func (block *Block) GetDbBlock(indexer *Indexer) *dbtypes.Slot {
 	return dbBlock
 }
 
+// GetDbDeposits returns the database representation of the deposits in this block.
 func (block *Block) GetDbDeposits(indexer *Indexer, depositIndex *uint64) []*dbtypes.Deposit {
 	orphaned := !indexer.IsCanonicalBlock(block, nil)
 	dbDeposits := indexer.dbWriter.buildDbDeposits(block, depositIndex, orphaned, nil)
@@ -336,16 +344,19 @@ func (block *Block) GetDbDeposits(indexer *Indexer, depositIndex *uint64) []*dbt
 	return dbDeposits
 }
 
+// GetDbVoluntaryExits returns the database representation of the voluntary exits in this block.
 func (block *Block) GetDbVoluntaryExits(indexer *Indexer) []*dbtypes.VoluntaryExit {
 	orphaned := !indexer.IsCanonicalBlock(block, nil)
 	return indexer.dbWriter.buildDbVoluntaryExits(block, orphaned, nil)
 }
 
+// GetDbSlashings returns the database representation of the slashings in this block.
 func (block *Block) GetDbSlashings(indexer *Indexer) []*dbtypes.Slashing {
 	orphaned := !indexer.IsCanonicalBlock(block, nil)
 	return indexer.dbWriter.buildDbSlashings(block, orphaned, nil)
 }
 
+// GetExecutionExtraData returns the execution extra data of this block.
 func (block *Block) GetExecutionExtraData() []byte {
 	blockBody := block.GetBlock()
 	if blockBody == nil {
@@ -356,6 +367,7 @@ func (block *Block) GetExecutionExtraData() []byte {
 	return data
 }
 
+// GetForkId returns the fork ID of this block.
 func (block *Block) GetForkId() ForkKey {
 	return block.forkId
 }

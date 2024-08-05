@@ -81,6 +81,7 @@ func (cache *blockCache) getBlocksBySlot(slot phase0.Slot) []*Block {
 	return blocks
 }
 
+// getBlocksByParentRoot returns a slice of blocks that have the given parent root.
 func (cache *blockCache) getBlocksByParentRoot(parentRoot phase0.Root) []*Block {
 	cache.cacheMutex.RLock()
 	defer cache.cacheMutex.RUnlock()
@@ -108,6 +109,7 @@ func (cache *blockCache) getBlocksByParentRoot(parentRoot phase0.Root) []*Block 
 	return resBlocks
 }
 
+// getBlockByStateRoot returns the block with the given state root.
 func (cache *blockCache) getBlockByStateRoot(stateRoot phase0.Root) *Block {
 	cache.cacheMutex.RLock()
 	defer cache.cacheMutex.RUnlock()
@@ -203,6 +205,7 @@ func (cache *blockCache) getPruningBlocks(minInMemorySlot phase0.Slot) []*Block 
 	return blocks
 }
 
+// getForkBlocks returns a slice of blocks that belong to the specified forkId.
 func (cache *blockCache) getForkBlocks(forkId ForkKey) []*Block {
 	cache.cacheMutex.RLock()
 	defer cache.cacheMutex.RUnlock()
@@ -222,6 +225,8 @@ func (cache *blockCache) getForkBlocks(forkId ForkKey) []*Block {
 	return blocks
 }
 
+// getLatestBlocks returns the latest blocks from the block cache, up to the specified limit.
+// If a forkId is provided, only blocks with matching forkId will be returned.
 func (cache *blockCache) getLatestBlocks(limit uint64, forkId *ForkKey) []*Block {
 	cache.cacheMutex.RLock()
 	defer cache.cacheMutex.RUnlock()
@@ -252,6 +257,7 @@ func (cache *blockCache) getLatestBlocks(limit uint64, forkId *ForkKey) []*Block
 	return blocks
 }
 
+// removeBlock removes the given block from the block cache.
 func (cache *blockCache) removeBlock(block *Block) {
 	cache.cacheMutex.Lock()
 	defer cache.cacheMutex.Unlock()
@@ -271,6 +277,7 @@ func (cache *blockCache) removeBlock(block *Block) {
 	}
 }
 
+// getEpochBlocks returns the blocks that belong to the specified epoch.
 func (cache *blockCache) getEpochBlocks(epoch phase0.Epoch) []*Block {
 	cache.cacheMutex.RLock()
 	defer cache.cacheMutex.RUnlock()

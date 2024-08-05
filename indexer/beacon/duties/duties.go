@@ -18,7 +18,7 @@ const totalSize = seedSize + roundSize + positionWindowSize
 
 var maxShuffleListSize uint64 = 1 << 40
 
-type ActiveIndiceIndex uint64
+type ActiveIndiceIndex uint32
 
 type BeaconState struct {
 	RandaoMix           *phase0.Hash32

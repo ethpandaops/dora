@@ -287,6 +287,8 @@ func (indexer *Indexer) aggregateForkVotes(forkId ForkKey) (totalVotes phase0.Gw
 	return
 }
 
+// GetCanonicalValidatorSet returns the latest canonical validator set.
+// If an overrideForkId is provided, the latest validator set for the fork is returned.
 func (indexer *Indexer) GetCanonicalValidatorSet(overrideForkId *ForkKey) []*v1.Validator {
 	chainState := indexer.consensusPool.GetChainState()
 
@@ -327,5 +329,4 @@ func (indexer *Indexer) GetCanonicalValidatorSet(overrideForkId *ForkKey) []*v1.
 			}
 		}
 	}
-
 }
