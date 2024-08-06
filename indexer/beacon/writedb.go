@@ -311,7 +311,7 @@ func (dbw *dbWriter) buildDbEpoch(epoch phase0.Epoch, blocks []*Block, epochStat
 		if block != nil {
 			dbEpoch.BlockCount++
 			blockBody := block.GetBlock()
-			if blockBody == nil {
+			if blockBody == nil && block.Slot > 0 {
 				dbw.indexer.logger.Errorf("error while building db epoch: block body not found for aggregation: %v", block.Slot)
 				continue
 			}

@@ -328,5 +328,7 @@ func (indexer *Indexer) GetCanonicalValidatorSet(overrideForkId *ForkKey) []*v1.
 				Validator: validator,
 			}
 		}
+
+		return validatorSet
 	}
 }

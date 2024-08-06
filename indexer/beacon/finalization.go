@@ -182,7 +182,7 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 		dependentBlock := indexer.blockCache.getDependentBlock(chainState, firstBlock, client)
 		if dependentBlock != nil {
 			dependentRoot = dependentBlock.Root
-			isValid = chainState.EpochOfSlot(dependentBlock.Slot) < chainState.EpochOfSlot(firstBlock.Slot)
+			isValid = chainState.EpochOfSlot(dependentBlock.Slot) < chainState.EpochOfSlot(firstBlock.Slot) || dependentBlock.Slot == 0
 		} else {
 			depRoot := firstBlock.GetParentRoot()
 			if depRoot != nil {

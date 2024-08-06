@@ -373,6 +373,10 @@ func (cache *blockCache) getDependentBlock(chainState *consensus.ChainState, blo
 		return dependentBlock
 	}
 
+	if block.Slot == 0 {
+		return block
+	}
+
 	parentRoot := block.GetParentRoot()
 	blockEpoch := chainState.EpochOfSlot(block.Slot)
 
@@ -406,7 +410,7 @@ func (cache *blockCache) getDependentBlock(chainState *consensus.ChainState, blo
 			break
 		}
 
-		if chainState.EpochOfSlot(parentBlock.Slot) < blockEpoch {
+		if chainState.EpochOfSlot(parentBlock.Slot) < blockEpoch || parentBlock.Slot == 0 {
 			block.dependentRoot = &parentBlock.Root
 			return parentBlock
 		}

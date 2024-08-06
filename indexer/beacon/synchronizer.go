@@ -326,7 +326,11 @@ func (sync *synchronizer) syncEpoch(syncEpoch phase0.Epoch, client *Client, last
 	// load epoch state
 	var dependentRoot phase0.Root
 	if firstBlock != nil {
-		dependentRoot = firstBlock.header.Message.ParentRoot
+		if firstBlock.Slot == 0 { // epoch 0 dependent root is the genesis block
+			dependentRoot = firstBlock.Root
+		} else {
+			dependentRoot = firstBlock.header.Message.ParentRoot
+		}
 	} else {
 		// get from db
 		depRoot := db.GetHighestRootBeforeSlot(uint64(firstSlot), false)

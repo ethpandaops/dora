@@ -370,6 +370,9 @@ func (bc *BeaconClient) GetBlockHeaderBySlot(ctx context.Context, slot phase0.Sl
 		},
 	})
 	if err != nil {
+		if strings.HasPrefix(err.Error(), "GET failed with status 404") {
+			return nil, nil
+		}
 		return nil, err
 	}
 

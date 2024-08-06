@@ -42,6 +42,10 @@ func LoadBeaconHeaderBySlot(ctx context.Context, client *Client, slot phase0.Slo
 		return nil, phase0.Root{}, false, err
 	}
 
+	if header == nil {
+		return nil, phase0.Root{}, false, nil
+	}
+
 	return header.Header, header.Root, !header.Canonical, nil
 }
 

@@ -85,18 +85,10 @@ func NewIndexer(logger logrus.FieldLogger, consensusPool *consensus.Pool) *Index
 		blockCompression = false
 	}
 
-	// initialize dynamic SSZ encoder
-	staticSpec := map[string]any{}
-	specYaml, err := yaml.Marshal(consensusPool.GetChainState().GetSpecs())
-	if err != nil {
-		yaml.Unmarshal(specYaml, staticSpec)
-	}
-
 	// Create the indexer instance.
 	indexer := &Indexer{
 		logger:        logger,
 		consensusPool: consensusPool,
-		dynSsz:        dynssz.NewDynSsz(staticSpec),
 
 		writeDb:               !utils.Config.Indexer.DisableIndexWriter,
 		disableSync:           utils.Config.Indexer.DisableSynchronizer,
@@ -199,8 +191,18 @@ func (indexer *Indexer) StartIndexer() {
 	}
 
 	indexer.running = true
-	indexer.synchronizer = newSynchronizer(indexer, indexer.logger.WithField("service", "synchronizer"))
 	chainState := indexer.consensusPool.GetChainState()
+
+	// initialize dynamic SSZ encoder
+	staticSpec := map[string]any{}
+	specYaml, err := yaml.Marshal(chainState.GetSpecs())
+	if err == nil {
+		yaml.Unmarshal(specYaml, &staticSpec)
+	}
+	indexer.dynSsz = dynssz.NewDynSsz(staticSpec)
+
+	// initialize synchronizer & restore state
+	indexer.synchronizer = newSynchronizer(indexer, indexer.logger.WithField("service", "synchronizer"))
 	finalizedSlot := chainState.GetFinalizedSlot()
 	finalizedEpoch, _ := chainState.GetFinalizedCheckpoint()
 	indexer.lastFinalizedEpoch = finalizedEpoch
@@ -237,7 +239,7 @@ func (indexer *Indexer) StartIndexer() {
 	t1 := time.Now()
 	processingLimiter := make(chan bool, 10)
 	processingWaitGroup := sync.WaitGroup{}
-	err := db.StreamUnfinalizedDuties(func(dbDuty *dbtypes.UnfinalizedDuty) {
+	err = db.StreamUnfinalizedDuties(func(dbDuty *dbtypes.UnfinalizedDuty) {
 		if dbDuty.Epoch < uint64(finalizedEpoch) {
 			return
 		}
