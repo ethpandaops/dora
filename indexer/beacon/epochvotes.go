@@ -11,6 +11,25 @@ import (
 	"github.com/prysmaticlabs/go-bitfield"
 )
 
+// epochVotesKey is the primary key for EpochVotes entries in cache.
+// consists of dependendRoot (32 byte), epoch (8 byte), highestRoot (32 byte) and blockCount/hasValues (1 byte).
+type epochVotesKey [32 + 8 + 32 + 1]byte
+
+// generate epochStatsKey from epoch and dependentRoot
+func getEpochVotesKey(epoch phase0.Epoch, dependentRoot phase0.Root, highestRoot phase0.Root, blockCount uint8, hasValues bool) epochVotesKey {
+	var key epochVotesKey
+
+	copy(key[0:], dependentRoot[:])
+	binary.LittleEndian.PutUint64(key[32:], uint64(epoch))
+	copy(key[40:], highestRoot[:])
+	key[72] = blockCount
+	if hasValues {
+		key[72] |= 0x80
+	}
+
+	return key
+}
+
 // EpochVotes represents the aggregated votes for an epoch.
 type EpochVotes struct {
 	CurrentEpoch struct {
@@ -32,6 +51,24 @@ type EpochVotes struct {
 
 // aggregateEpochVotes aggregates the votes for an epoch based on the provided chain state, blocks, and epoch stats.
 func (indexer *Indexer) aggregateEpochVotes(epoch phase0.Epoch, chainState *consensus.ChainState, blocks []*Block, epochStats *EpochStats) *EpochVotes {
+	if len(blocks) == 0 {
+		return &EpochVotes{}
+	}
+
+	var targetRoot phase0.Root
+	if chainState.SlotToSlotIndex(blocks[0].Slot) == 0 {
+		targetRoot = blocks[0].Root
+	} else if parentRoot := blocks[0].GetParentRoot(); parentRoot != nil {
+		targetRoot = *parentRoot
+	}
+
+	votesWithValues := epochStats != nil && epochStats.ready
+
+	votesKey := getEpochVotesKey(epoch, targetRoot, blocks[len(blocks)-1].Root, uint8(len(blocks)), votesWithValues)
+	if cachedVotes, isOk := indexer.epochCache.votesCache.Get(votesKey); isOk {
+		return cachedVotes
+	}
+
 	t1 := time.Now()
 
 	var epochStatsValues *EpochStatsValues
@@ -46,17 +83,6 @@ func (indexer *Indexer) aggregateEpochVotes(epoch phase0.Epoch, chainState *cons
 
 	if epochStatsValues != nil {
 		votes.ActivityBitfield = bitfield.NewBitlist(epochStatsValues.ActiveValidators)
-	}
-
-	if len(blocks) == 0 {
-		return votes
-	}
-
-	var targetRoot phase0.Root
-	if chainState.SlotToSlotIndex(blocks[0].Slot) == 0 {
-		targetRoot = blocks[0].Root
-	} else if parentRoot := blocks[0].GetParentRoot(); parentRoot != nil {
-		targetRoot = *parentRoot
 	}
 
 	deduplicationMap := map[voteDeduplicationKey]bool{}
@@ -162,6 +188,8 @@ func (indexer *Indexer) aggregateEpochVotes(epoch phase0.Epoch, chainState *cons
 		votes.HeadVotePercent = float64(votes.CurrentEpoch.HeadVoteAmount+votes.NextEpoch.HeadVoteAmount) * 100 / float64(epochStatsValues.EffectiveBalance)
 		votes.TotalVotePercent = float64(votes.CurrentEpoch.TotalVoteAmount+votes.NextEpoch.TotalVoteAmount) * 100 / float64(epochStatsValues.EffectiveBalance)
 	}
+
+	indexer.epochCache.votesCache.Add(votesKey, votes)
 
 	indexer.logger.Debugf("aggregated epoch %v votes in %v (blocks: %v)", epoch, time.Since(t1), len(blocks))
 	return votes

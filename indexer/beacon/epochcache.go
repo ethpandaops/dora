@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/attestantio/go-eth2-client/spec/phase0"
+	"github.com/ethereum/go-ethereum/common/lru"
+
 	"github.com/ethpandaops/dora/clients/consensus"
 )
 
@@ -38,17 +40,28 @@ type epochCache struct {
 	syncMutex      sync.Mutex                    // mutex to protect syncCache for concurrent access
 	syncCache      []phase0.ValidatorIndex       // global sync committee cache for reuse if matching
 	precomputeLock sync.Mutex                    // mutex to prevent concurrent precomputing of epoch stats
+
+	votesCache *lru.Cache[epochVotesKey, *EpochVotes] // cache for epoch vote aggregations
 }
 
 // newEpochCache creates & returns a new instance of epochCache.
 // initializes the cache & starts the beacon state loader subroutine.
 func newEpochCache(indexer *Indexer) *epochCache {
+	votesCacheSize := int(indexer.inMemoryEpochs) * 3
+	if votesCacheSize < 10 {
+		votesCacheSize = 10
+	} else if votesCacheSize > 200 {
+		votesCacheSize = 200
+	}
+
 	cache := &epochCache{
 		indexer:     indexer,
 		statsMap:    map[epochStatsKey]*EpochStats{},
 		stateMap:    map[phase0.Root]*epochState{},
 		loadingChan: make(chan bool, indexer.maxParallelStateCalls),
 		valsetCache: []*phase0.Validator{},
+
+		votesCache: lru.NewCache[epochVotesKey, *EpochVotes](votesCacheSize),
 	}
 
 	// start beacon state loader subroutine
