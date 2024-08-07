@@ -48,11 +48,21 @@ beaconapi:
   redisCacheAddr: ""
   redisCachePrefix: ""
   endpoints:
-$(docker inspect -f "    - { name: {{ with index .Config.Labels \"com.kurtosistech.id\"}}{{.}}{{end}}, url: http://{{ with index .NetworkSettings.Networks \"kt-$ENCLAVE_NAME\"}}{{.IPAddress }}:4000{{end}} }" $BEACON_NODES)
+$(for node in $BEACON_NODES; do
+    name=$(docker inspect -f "{{ with index .Config.Labels \"com.kurtosistech.id\"}}{{.}}{{end}}" $node)
+    ip=$(echo '127.0.0.1')
+    port=$(docker inspect --format='{{ (index (index .NetworkSettings.Ports "4000/tcp") 0).HostPort }}' $node)
+    echo "    - { name: $name, url: http://$ip:$port }"
+done)
 executionapi:
   depositLogBatchSize: 1000
   endpoints:
-$(docker inspect -f "    - { name: {{ with index .Config.Labels \"com.kurtosistech.id\"}}{{.}}{{end}}, url: http://{{ with index .NetworkSettings.Networks \"kt-$ENCLAVE_NAME\"}}{{.IPAddress }}:8545{{end}} }"  $EXECUTION_NODES)
+$(for node in $EXECUTION_NODES; do
+    name=$(docker inspect -f "{{ with index .Config.Labels \"com.kurtosistech.id\"}}{{.}}{{end}}" $node)
+    ip=$(echo '127.0.0.1')
+    port=$(docker inspect --format='{{ (index (index .NetworkSettings.Ports "8545/tcp") 0).HostPort }}' $node)
+    echo "    - { name: $name, url: http://$ip:$port }"
+done)
 indexer:
   inMemoryEpochs: 8
   cachePersistenceDelay: 8

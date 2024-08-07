@@ -23,8 +23,15 @@ clean:
 devnet:
 	.hack/devnet/run.sh
 
+devnetdd:
+	.hack/devnet/run_dd.sh
+
 devnet-run: devnet
 	go run cmd/dora-explorer/main.go --config .hack/devnet/generated-dora-config.yaml
+
+devnetdd-run: devnetdd
+	go run cmd/dora-explorer/main.go --config .hack/devnet/generated-dora-config.yaml
+
 
 devnet-clean:
 	.hack/devnet/cleanup.sh
