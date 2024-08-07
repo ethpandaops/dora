@@ -1,0 +1,55 @@
+{{ define "block_consolidation_requests" }}
+  <div class="table-ellipsis">
+    <table id="block_consolidations" class="table table-sm text-left">
+      <thead>
+        <tr>
+          <th class="border-0">Sender Address</th>
+          <th class="border-0">Source Pubkey</th>
+          <th class="border-0">Source</th>
+          <th class="border-0">Target Pubkey</th>
+          <th class="border-0">Target</th>
+          <th class="border-0">Epoch</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{ range $i, $consolidationreq := .Block.ConsolidationRequests }}
+          <tr>
+            <td>
+              <div class="ellipsis-copy-btn">
+                <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ formatEthAddress $consolidationreq.Address }}"></i>
+              </div>
+              {{ ethAddressLink $consolidationreq.Address }}
+            </td>
+            <td>
+              <div class="ellipsis-copy-btn">
+                <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $consolidationreq.SourcePubkey }}"></i>
+              </div>
+              0x{{ printf "%x" $consolidationreq.SourcePubkey }}
+            </td>
+            <td>
+              {{- if $consolidationreq.SourceFound }}
+                {{ formatValidator $consolidationreq.SourceIndex $consolidationreq.SourceName }}
+              {{- else }}
+                ?
+              {{- end }}
+            </td>
+            <td>
+              <div class="ellipsis-copy-btn">
+                <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $consolidationreq.TargetPubkey }}"></i>
+              </div>
+              0x{{ printf "%x" $consolidationreq.TargetPubkey }}
+            </td>
+            <td>
+              {{- if $consolidationreq.TargetFound }}
+                {{ formatValidator $consolidationreq.TargetIndex $consolidationreq.TargetName }}
+              {{- else }}
+                ?
+              {{- end }}
+            </td>
+            <td>{{ $consolidationreq.Epoch }}</td>
+          </tr>
+        {{ end }}
+      </tbody>
+    </table>
+  </div>
+{{ end }}

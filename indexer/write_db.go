@@ -98,6 +98,18 @@ func persistBlockChildObjects(block *CacheBlock, depositIndex *uint64, orphaned 
 		return err
 	}
 
+	// insert consolidations
+	err = persistBlockConsolidations(block, orphaned, tx)
+	if err != nil {
+		return err
+	}
+
+	// insert el requests
+	err = persistBlockElRequests(block, orphaned, tx)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -470,7 +482,19 @@ func BuildDbSlashings(block *CacheBlock) []*dbtypes.Slashing {
 	}
 
 	for _, attesterSlashing := range attesterSlashings {
-		inter := intersect.Simple(attesterSlashing.Attestation1.AttestingIndices, attesterSlashing.Attestation2.AttestingIndices)
+		att1, _ := attesterSlashing.Attestation1()
+		att2, _ := attesterSlashing.Attestation2()
+		if att1 == nil || att2 == nil {
+			continue
+		}
+
+		att1AttestingIndices, _ := att1.AttestingIndices()
+		att2AttestingIndices, _ := att2.AttestingIndices()
+		if att1AttestingIndices == nil || att2AttestingIndices == nil {
+			continue
+		}
+
+		inter := intersect.Simple(att1AttestingIndices, att2AttestingIndices)
 		for _, j := range inter {
 			valIdx := j.(uint64)
 
@@ -490,4 +514,105 @@ func BuildDbSlashings(block *CacheBlock) []*dbtypes.Slashing {
 	}
 
 	return dbSlashings
+}
+
+func persistBlockConsolidations(block *CacheBlock, orphaned bool, tx *sqlx.Tx) error {
+	// insert deposits
+	dbConsolidations := buildDbConsolidations(block)
+	if orphaned {
+		for idx := range dbConsolidations {
+			dbConsolidations[idx].Orphaned = true
+		}
+	}
+
+	if len(dbConsolidations) > 0 {
+		err := db.InsertConsolidations(dbConsolidations, tx)
+		if err != nil {
+			return fmt.Errorf("error inserting consolidations: %v", err)
+		}
+	}
+
+	return nil
+}
+
+func buildDbConsolidations(block *CacheBlock) []*dbtypes.Consolidation {
+	blockBody := block.GetBlockBody()
+	if blockBody == nil {
+		return nil
+	}
+
+	/*
+		consolidations, err := blockBody.Consolidations()
+		if err != nil {
+			return nil
+		}
+
+		dbConsolidations := make([]*dbtypes.Consolidation, len(consolidations))
+		for idx, consolidation := range consolidations {
+			dbConsolidation := &dbtypes.Consolidation{
+				SlotNumber:  block.Slot,
+				SlotIndex:   uint64(idx),
+				SlotRoot:    block.Root,
+				Orphaned:    false,
+				SourceIndex: uint64(consolidation.Message.SourceIndex),
+				TargetIndex: uint64(consolidation.Message.TargetIndex),
+				Epoch:       uint64(consolidation.Message.Epoch),
+			}
+
+			dbConsolidations[idx] = dbConsolidation
+		}
+
+		return dbConsolidations
+	*/
+
+	return []*dbtypes.Consolidation{}
+}
+
+func persistBlockElRequests(block *CacheBlock, orphaned bool, tx *sqlx.Tx) error {
+	// insert deposits
+	dbElRequests := BuildDbElRequests(block)
+	if orphaned {
+		for idx := range dbElRequests {
+			dbElRequests[idx].Orphaned = true
+		}
+	}
+
+	if len(dbElRequests) > 0 {
+		err := db.InsertElRequests(dbElRequests, tx)
+		if err != nil {
+			return fmt.Errorf("error inserting el requests: %v", err)
+		}
+	}
+
+	return nil
+}
+
+func BuildDbElRequests(block *CacheBlock) []*dbtypes.ElRequest {
+	blockBody := block.GetBlockBody()
+	if blockBody == nil {
+		return nil
+	}
+
+	/*
+		elRequests, err := blockBody.ExecutionRequests()
+		if err != nil {
+			return nil
+		}
+
+		dbElRequests := make([]*dbtypes.ElRequest, len(elRequests))
+		for idx, elRequest := range elRequests {
+			dbElRequest := &dbtypes.ElRequest{
+				SlotNumber:  block.Slot,
+				SlotIndex:   uint64(idx),
+				SlotRoot:    block.Root,
+				Orphaned:    false,
+			}
+
+			dbElRequests[idx] = dbElRequest
+		}
+
+		return dbElRequests
+	*/
+
+	return []*dbtypes.ElRequest{}
 }

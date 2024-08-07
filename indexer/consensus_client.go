@@ -277,7 +277,7 @@ func (client *ConsensusClient) processClientEvents() error {
 	client.retryCounter = 0
 
 	// start event stream
-	blockStream := client.rpcClient.NewBlockStream(rpc.StreamBlockEvent | rpc.StreamFinalizedEvent)
+	blockStream := client.rpcClient.NewBlockStream(rpc.StreamBlockEvent | rpc.StreamHeadEvent | rpc.StreamFinalizedEvent)
 	defer blockStream.Close()
 
 	// prefill cache
@@ -305,6 +305,8 @@ func (client *ConsensusClient) processClientEvents() error {
 			switch evt.Event {
 			case rpc.StreamBlockEvent:
 				client.processBlockEvent(evt.Data.(*v1.BlockEvent))
+			case rpc.StreamHeadEvent:
+				client.processHeadEvent(evt.Data.(*v1.HeadEvent))
 			case rpc.StreamFinalizedEvent:
 				client.processFinalizedEvent(evt.Data.(*v1.FinalizedCheckpointEvent))
 			}
@@ -612,6 +614,10 @@ func (client *ConsensusClient) processBlockEvent(evt *v1.BlockEvent) error {
 	if err != nil {
 		return err
 	}
+	return nil
+}
+
+func (client *ConsensusClient) processHeadEvent(evt *v1.HeadEvent) error {
 	client.setHeadBlock(evt.Block[:], uint64(evt.Slot))
 	return nil
 }
