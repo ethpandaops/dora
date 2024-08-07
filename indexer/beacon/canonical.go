@@ -300,6 +300,8 @@ func (indexer *Indexer) GetCanonicalValidatorSet(overrideForkId *ForkKey) []*v1.
 	headEpoch := chainState.EpochOfSlot(canonicalHead.Slot)
 	validatorSet := []*v1.Validator{}
 
+	var epochStats *EpochStats
+
 	for {
 		epoch := chainState.EpochOfSlot(canonicalHead.Slot)
 		if headEpoch-epoch > 2 {
@@ -312,23 +314,31 @@ func (indexer *Indexer) GetCanonicalValidatorSet(overrideForkId *ForkKey) []*v1.
 		}
 		canonicalHead = dependentBlock
 
-		epochStats := indexer.epochCache.getEpochStats(epoch, dependentBlock.Root)
+		epochStats = indexer.epochCache.getEpochStats(epoch, dependentBlock.Root)
 		if epochStats == nil || epochStats.dependentState == nil || epochStats.dependentState.loadingStatus != 2 {
 			continue // retry previous state
 		}
 
-		validatorSet = make([]*v1.Validator, len(epochStats.dependentState.validatorList))
-		for index, validator := range epochStats.dependentState.validatorList {
-			state := v1.ValidatorToState(validator, &epochStats.dependentState.validatorBalances[index], epoch, FarFutureEpoch)
-
-			validatorSet[index] = &v1.Validator{
-				Index:     phase0.ValidatorIndex(index),
-				Balance:   epochStats.dependentState.validatorBalances[index],
-				Status:    state,
-				Validator: validator,
-			}
-		}
-
-		return validatorSet
+		break
 	}
+
+	if cachedValSet, found := indexer.validatorSetCache.Get(epochStats.dependentRoot); found {
+		return cachedValSet
+	}
+
+	validatorSet = make([]*v1.Validator, len(epochStats.dependentState.validatorList))
+	for index, validator := range epochStats.dependentState.validatorList {
+		state := v1.ValidatorToState(validator, &epochStats.dependentState.validatorBalances[index], epochStats.epoch, FarFutureEpoch)
+
+		validatorSet[index] = &v1.Validator{
+			Index:     phase0.ValidatorIndex(index),
+			Balance:   epochStats.dependentState.validatorBalances[index],
+			Status:    state,
+			Validator: validator,
+		}
+	}
+
+	indexer.validatorSetCache.Add(epochStats.dependentRoot, validatorSet)
+
+	return validatorSet
 }

@@ -220,6 +220,7 @@ func (es *EpochStats) parsePackedSSZ(dynSsz *dynssz.DynSsz, chainState *consensu
 
 		values.EffectiveBalances[i] = packedValidator.EffectiveBalanceEth
 		values.EffectiveBalance += phase0.Gwei(packedValidator.EffectiveBalanceEth) * EtherGweiFactor
+		values.ActiveIndices[i] = validatorIndex
 	}
 
 	values.ActiveValidators = uint64(len(packedValues.ActiveValidators))
