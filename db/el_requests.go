@@ -8,20 +8,18 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-// slot_number, slot_index, slot_root, orphaned, request_type, source_address, source_index, source_pubkey, target_index, target_pubkey, amount
-
-func InsertElRequests(elRequests []*dbtypes.ElRequest, tx *sqlx.Tx) error {
+func InsertWithdrawalRequests(elRequests []*dbtypes.WithdrawalRequest, tx *sqlx.Tx) error {
 	var sql strings.Builder
 	fmt.Fprint(&sql,
 		EngineQuery(map[dbtypes.DBEngineType]string{
-			dbtypes.DBEnginePgsql:  "INSERT INTO el_requests ",
-			dbtypes.DBEngineSqlite: "INSERT OR REPLACE INTO el_requests ",
+			dbtypes.DBEnginePgsql:  "INSERT INTO withdrawal_requests ",
+			dbtypes.DBEngineSqlite: "INSERT OR REPLACE INTO withdrawal_requests ",
 		}),
-		"(slot_number, slot_index, slot_root, orphaned, request_type, source_address, source_index, source_pubkey, target_index, target_pubkey, amount)",
+		"(slot_number, slot_root, slot_index, orphaned, fork_id, source_address, validator_index, validator_pubkey, amount, tx_hash)",
 		" VALUES ",
 	)
 	argIdx := 0
-	fieldCount := 11
+	fieldCount := 10
 
 	args := make([]any, len(elRequests)*fieldCount)
 	for i, elRequest := range elRequests {
@@ -39,20 +37,19 @@ func InsertElRequests(elRequests []*dbtypes.ElRequest, tx *sqlx.Tx) error {
 		fmt.Fprintf(&sql, ")")
 
 		args[argIdx+0] = elRequest.SlotNumber
-		args[argIdx+1] = elRequest.SlotIndex
-		args[argIdx+2] = elRequest.SlotRoot
+		args[argIdx+1] = elRequest.SlotRoot
+		args[argIdx+2] = elRequest.SlotIndex
 		args[argIdx+3] = elRequest.Orphaned
-		args[argIdx+4] = elRequest.RequestType
+		args[argIdx+4] = elRequest.ForkId
 		args[argIdx+5] = elRequest.SourceAddress
-		args[argIdx+6] = elRequest.SourceIndex
-		args[argIdx+7] = elRequest.SourcePubkey
-		args[argIdx+8] = elRequest.TargetIndex
-		args[argIdx+9] = elRequest.TargetPubkey
-		args[argIdx+10] = elRequest.Amount
+		args[argIdx+6] = elRequest.ValidatorIndex
+		args[argIdx+7] = elRequest.ValidatorPubkey
+		args[argIdx+8] = elRequest.Amount
+		args[argIdx+9] = elRequest.TxHash
 		argIdx += fieldCount
 	}
 	fmt.Fprint(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
-		dbtypes.DBEnginePgsql:  " ON CONFLICT (slot_root, slot_index) DO UPDATE SET orphaned = excluded.orphaned",
+		dbtypes.DBEnginePgsql:  " ON CONFLICT (slot_root, slot_index) DO UPDATE SET orphaned = excluded.orphaned, tx_hash = excluded.tx_hash",
 		dbtypes.DBEngineSqlite: "",
 	}))
 
@@ -63,45 +60,19 @@ func InsertElRequests(elRequests []*dbtypes.ElRequest, tx *sqlx.Tx) error {
 	return nil
 }
 
-func GetElRequestsForValidator(validator uint64) []*dbtypes.ElRequest {
+func GetWithdrawalRequestsFiltered(offset uint64, limit uint32, finalizedBlock uint64, filter *dbtypes.WithdrawalRequestFilter) ([]*dbtypes.WithdrawalRequest, uint64, error) {
 	var sql strings.Builder
-	args := []any{
-		validator,
-		validator,
-	}
-	fmt.Fprint(&sql, `
-	SELECT
-		slot_number, slot_index, slot_root, orphaned, request_type, source_address, source_index, source_pubkey, target_index, target_pubkey, amount
-	FROM el_requests
-	WHERE source_index = $1 OR target_index = $2
-	`)
-
-	elRequests := []*dbtypes.ElRequest{}
-	err := ReaderDb.Select(&elRequests, sql.String(), args...)
-	if err != nil {
-		return nil
-	}
-	return elRequests
-}
-
-func GetElRequestsFiltered(offset uint64, limit uint32, finalizedBlock uint64, filter *dbtypes.ElRequestFilter) ([]*dbtypes.ElRequest, uint64, error) {
-	var sql strings.Builder
-	args := []any{}
+	args := []interface{}{}
 	fmt.Fprint(&sql, `
 	WITH cte AS (
 		SELECT
-			slot_number, slot_index, slot_root, orphaned, request_type, source_address, source_index, source_pubkey, target_index, target_pubkey, amount
-		FROM el_requests
+			slot_number, slot_index, slot_root, orphaned, fork_id, source_address, validator_index, validator_pubkey, amount
+		FROM withdrawal_requests
 	`)
 
 	if filter.SourceValidatorName != "" {
 		fmt.Fprint(&sql, `
-		LEFT JOIN validator_names AS source_names ON source_names."index" = el_requests.source_index 
-		`)
-	}
-	if filter.TargetValidatorName != "" {
-		fmt.Fprint(&sql, `
-		LEFT JOIN validator_names AS target_names ON target_names."index" = el_requests.target_index 
+		LEFT JOIN validator_names AS source_names ON source_names."index" = withdrawal_requests.validator_index 
 		`)
 	}
 
@@ -116,11 +87,6 @@ func GetElRequestsFiltered(offset uint64, limit uint32, finalizedBlock uint64, f
 		fmt.Fprintf(&sql, " %v slot_number <= $%v", filterOp, len(args))
 		filterOp = "AND"
 	}
-	if filter.RequestType > 0 {
-		args = append(args, filter.RequestType)
-		fmt.Fprintf(&sql, " %v request_type = $%v", filterOp, len(args))
-		filterOp = "AND"
-	}
 	if len(filter.SourceAddress) > 0 {
 		args = append(args, filter.SourceAddress)
 		fmt.Fprintf(&sql, " %v source_address = $%v", filterOp, len(args))
@@ -128,12 +94,12 @@ func GetElRequestsFiltered(offset uint64, limit uint32, finalizedBlock uint64, f
 	}
 	if filter.MinSourceIndex > 0 {
 		args = append(args, filter.MinSourceIndex)
-		fmt.Fprintf(&sql, " %v source_index >= $%v", filterOp, len(args))
+		fmt.Fprintf(&sql, " %v validator_index >= $%v", filterOp, len(args))
 		filterOp = "AND"
 	}
 	if filter.MaxSourceIndex > 0 {
 		args = append(args, filter.MaxSourceIndex)
-		fmt.Fprintf(&sql, " %v source_index <= $%v", filterOp, len(args))
+		fmt.Fprintf(&sql, " %v validator_index <= $%v", filterOp, len(args))
 		filterOp = "AND"
 	}
 	if filter.SourceValidatorName != "" {
@@ -145,23 +111,9 @@ func GetElRequestsFiltered(offset uint64, limit uint32, finalizedBlock uint64, f
 		}), len(args))
 		filterOp = "AND"
 	}
-	if filter.MinTargetIndex > 0 {
-		args = append(args, filter.MinTargetIndex)
-		fmt.Fprintf(&sql, " %v target_index >= $%v", filterOp, len(args))
-		filterOp = "AND"
-	}
-	if filter.MaxTargetIndex > 0 {
-		args = append(args, filter.MaxTargetIndex)
-		fmt.Fprintf(&sql, " %v target_index <= $%v", filterOp, len(args))
-		filterOp = "AND"
-	}
-	if filter.TargetValidatorName != "" {
-		args = append(args, "%"+filter.TargetValidatorName+"%")
-		fmt.Fprintf(&sql, " %v ", filterOp)
-		fmt.Fprintf(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
-			dbtypes.DBEnginePgsql:  ` target_names.name ilike $%v `,
-			dbtypes.DBEngineSqlite: ` target_names.name LIKE $%v `,
-		}), len(args))
+	if filter.Amount != nil {
+		args = append(args, *filter.Amount)
+		fmt.Fprintf(&sql, " %v amount = $%v", filterOp, len(args))
 		filterOp = "AND"
 	}
 
@@ -182,12 +134,10 @@ func GetElRequestsFiltered(offset uint64, limit uint32, finalizedBlock uint64, f
 		0 AS slot_index,
 		null AS slot_root,
 		false AS orphaned, 
-		0 AS request_type,
+		0 AS fork_id,
 		null AS source_address,
-		0 AS source_index,
-		null AS source_pubkey,
-		0 AS target_index,
-		null AS target_pubkey,
+		0 AS validator_index,
+		null AS validator_pubkey,
 		0 AS amount
 	FROM cte
 	UNION ALL SELECT * FROM (
@@ -202,12 +152,12 @@ func GetElRequestsFiltered(offset uint64, limit uint32, finalizedBlock uint64, f
 	}
 	fmt.Fprintf(&sql, ") AS t1")
 
-	elRequests := []*dbtypes.ElRequest{}
-	err := ReaderDb.Select(&elRequests, sql.String(), args...)
+	withdrawalRequests := []*dbtypes.WithdrawalRequest{}
+	err := ReaderDb.Select(&withdrawalRequests, sql.String(), args...)
 	if err != nil {
-		logger.Errorf("Error while fetching filtered voluntary exits: %v", err)
+		logger.Errorf("Error while fetching filtered withdrawal requests: %v", err)
 		return nil, 0, err
 	}
 
-	return elRequests[1:], elRequests[0].SlotNumber, nil
+	return withdrawalRequests[1:], withdrawalRequests[0].SlotNumber, nil
 }

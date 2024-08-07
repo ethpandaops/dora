@@ -252,25 +252,28 @@ type Slashing struct {
 }
 
 type Consolidation struct {
-	SlotNumber  uint64 `db:"slot_number"`
-	SlotIndex   uint64 `db:"slot_index"`
-	SlotRoot    []byte `db:"slot_root"`
-	Orphaned    bool   `db:"orphaned"`
-	SourceIndex uint64 `db:"source_index"`
-	TargetIndex uint64 `db:"target_index"`
-	Epoch       uint64 `db:"epoch"`
+	SlotNumber    uint64 `db:"slot_number"`
+	SlotRoot      []byte `db:"slot_root"`
+	SlotIndex     uint64 `db:"slot_index"`
+	Orphaned      bool   `db:"orphaned"`
+	ForkId        uint64 `db:"fork_id"`
+	SourceAddress []byte `db:"source_address"`
+	SourceIndex   uint64 `db:"source_index"`
+	SourcePubkey  []byte `db:"source_pubkey"`
+	TargetIndex   uint64 `db:"target_index"`
+	TargetPubkey  []byte `db:"target_pubkey"`
+	TxHash        []byte `db:"tx_hash"`
 }
 
-type ElRequest struct {
-	SlotNumber    uint64  `db:"slot_number"`
-	SlotIndex     uint64  `db:"slot_index"`
-	SlotRoot      []byte  `db:"slot_root"`
-	Orphaned      bool    `db:"orphaned"`
-	RequestType   uint8   `db:"request_type"`
-	SourceAddress []byte  `db:"source_address"`
-	SourceIndex   *uint64 `db:"source_index"`
-	SourcePubkey  []byte  `db:"source_pubkey"`
-	TargetIndex   *uint64 `db:"target_index"`
-	TargetPubkey  []byte  `db:"target_pubkey"`
-	Amount        *uint64 `db:"amount"`
+type WithdrawalRequest struct {
+	SlotNumber      uint64  `db:"slot_number"`
+	SlotRoot        []byte  `db:"slot_root"`
+	SlotIndex       uint64  `db:"slot_index"`
+	Orphaned        bool    `db:"orphaned"`
+	ForkId          uint64  `db:"fork_id"`
+	SourceAddress   []byte  `db:"source_address"`
+	ValidatorIndex  *uint64 `db:"validator_index"`
+	ValidatorPubkey []byte  `db:"validator_pubkey"`
+	Amount          uint64  `db:"amount"`
+	TxHash          []byte  `db:"tx_hash"`
 }

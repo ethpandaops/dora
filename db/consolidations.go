@@ -8,15 +8,21 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
+/*
 type Consolidation struct {
-	SlotNumber  uint64 `db:"slot_number"`
-	SlotIndex   uint64 `db:"slot_index"`
-	SlotRoot    []byte `db:"slot_root"`
-	Orphaned    bool   `db:"orphaned"`
-	SourceIndex uint64 `db:"source_index"`
-	TargetIndex uint64 `db:"target_index"`
-	Epoch       uint64 `db:"epoch"`
+	SlotNumber    uint64 `db:"slot_number"`
+	SlotRoot      []byte `db:"slot_root"`
+	SlotIndex     uint64 `db:"slot_index"`
+	Orphaned      bool   `db:"orphaned"`
+	ForkId        uint64 `db:"fork_id"`
+	SourceAddress []byte `db:"source_address"`
+	SourceIndex   uint64 `db:"source_index"`
+	SourcePubkey  []byte `db:"source_pubkey"`
+	TargetIndex   uint64 `db:"target_index"`
+	TargetPubkey  []byte `db:"target_pubkey"`
+	TxHash        []byte `db:"tx_hash"`
 }
+*/
 
 func InsertConsolidations(consolidations []*dbtypes.Consolidation, tx *sqlx.Tx) error {
 	var sql strings.Builder
@@ -25,13 +31,13 @@ func InsertConsolidations(consolidations []*dbtypes.Consolidation, tx *sqlx.Tx) 
 			dbtypes.DBEnginePgsql:  "INSERT INTO consolidations ",
 			dbtypes.DBEngineSqlite: "INSERT OR REPLACE INTO consolidations ",
 		}),
-		"(slot_number, slot_index, slot_root, orphaned, source_index, target_index, epoch)",
+		"(slot_number, slot_root, slot_index, orphaned, fork_id, source_address, source_index, source_pubkey, target_index, target_pubkey, tx_hash)",
 		" VALUES ",
 	)
 	argIdx := 0
-	fieldCount := 7
+	fieldCount := 11
 
-	args := make([]any, len(consolidations)*fieldCount)
+	args := make([]interface{}, len(consolidations)*fieldCount)
 	for i, consolidation := range consolidations {
 		if i > 0 {
 			fmt.Fprintf(&sql, ", ")
@@ -42,21 +48,24 @@ func InsertConsolidations(consolidations []*dbtypes.Consolidation, tx *sqlx.Tx) 
 				fmt.Fprintf(&sql, ", ")
 			}
 			fmt.Fprintf(&sql, "$%v", argIdx+f+1)
-
 		}
 		fmt.Fprintf(&sql, ")")
 
 		args[argIdx+0] = consolidation.SlotNumber
-		args[argIdx+1] = consolidation.SlotIndex
-		args[argIdx+2] = consolidation.SlotRoot[:]
+		args[argIdx+1] = consolidation.SlotRoot[:]
+		args[argIdx+2] = consolidation.SlotIndex
 		args[argIdx+3] = consolidation.Orphaned
-		args[argIdx+4] = consolidation.SourceIndex
-		args[argIdx+5] = consolidation.TargetIndex
-		args[argIdx+6] = consolidation.Epoch
+		args[argIdx+4] = consolidation.ForkId
+		args[argIdx+5] = consolidation.SourceAddress[:]
+		args[argIdx+6] = consolidation.SourceIndex
+		args[argIdx+7] = consolidation.SourcePubkey[:]
+		args[argIdx+8] = consolidation.TargetIndex
+		args[argIdx+9] = consolidation.TargetPubkey[:]
+		args[argIdx+10] = consolidation.TxHash[:]
 		argIdx += fieldCount
 	}
 	fmt.Fprint(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
-		dbtypes.DBEnginePgsql:  " ON CONFLICT (slot_index, slot_root) DO UPDATE SET orphaned = excluded.orphaned",
+		dbtypes.DBEnginePgsql:  " ON CONFLICT (slot_index, slot_root) DO UPDATE SET orphaned = excluded.orphaned, fork_id = excluded.fork_id",
 		dbtypes.DBEngineSqlite: "",
 	}))
 	_, err := tx.Exec(sql.String(), args...)

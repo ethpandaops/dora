@@ -92,10 +92,9 @@ type SlashingFilter struct {
 	WithReason    SlashingReason
 }
 
-type ElRequestFilter struct {
+type WithdrawalRequestFilter struct {
 	MinSlot             uint64
 	MaxSlot             uint64
-	RequestType         uint8
 	SourceAddress       []byte
 	MinSourceIndex      uint64
 	MaxSourceIndex      uint64

@@ -1,0 +1,282 @@
+{{ define "page" }}
+  <div class="container mt-2">
+    <div class="d-md-flex py-2 justify-content-md-between">
+      <h1 class="h4 mb-1 mb-md-0">
+        <i class="fas fa-money-bill-transfer mx-2"></i> Withdrawal Requests
+      </h1>
+      <nav aria-label="breadcrumb">
+        <ol class="breadcrumb font-size-1 mb-0" style="padding:0; background-color:transparent;">
+          <li class="breadcrumb-item"><a href="/" title="Home">Home</a></li>
+          <li class="breadcrumb-item"><a href="/validators" title="Validators">Validators</a></li>
+          <li class="breadcrumb-item active" aria-current="page">Withdrawal Requests</li>
+        </ol>
+      </nav>
+    </div>
+
+    <div id="header-placeholder" style="height:35px;"></div>
+    <form action="/validators/withdrawal_requests" method="get" id="elRequestsFilterForm">
+      <input type="hidden" name="f">
+      <div class="card mt-2">
+        <div class="card-header">
+          Withdrawal Request Filters
+        </div>
+        <div class="card-body p-2">
+          <div class="row">
+            <div class="col-sm-12 col-md-6">
+              <div class="container">
+                <div class="row mt-1">
+                  <div class="col-sm-12 col-md-6 col-lg-4">
+                    Address
+                  </div>
+                  <div class="col-sm-12 col-md-6 col-lg-8">
+                    <input name="f.address" type="text" class="form-control" placeholder="Address" aria-label="Address" aria-describedby="basic-addon1" value="{{ .FilterSourceAddress }}">
+                  </div>
+                </div>
+                <div class="row mt-1">
+                  <div class="col-sm-12 col-md-6 col-lg-4">
+                    Slot Number
+                  </div>
+                  <div class="col-sm-12 col-md-6 col-lg-8 d-flex">
+                    <div class="flex-grow-1">
+                      <input name="f.mins" type="number" class="form-control" placeholder="Min Slot" aria-label="Min Slot" aria-describedby="basic-addon1" value="{{ if gt .FilterMinSlot 0 }}{{ .FilterMinSlot }}{{ end }}">
+                    </div>
+                    <div class="text-center filter-amount-separator">
+                      -
+                    </div>
+                    <div class="flex-grow-1">
+                      <input name="f.maxs" type="number" class="form-control" placeholder="Max Slot" aria-label="Max Slot" aria-describedby="basic-addon1" value="{{ if gt .FilterMaxSlot 0 }}{{ .FilterMaxSlot }}{{ end }}">
+                    </div>
+                  </div>
+                </div>
+                <div class="row mt-1">
+                  <div class="col-sm-12 col-md-6 col-lg-4">
+                    Validator Index
+                  </div>
+                  <div class="col-sm-12 col-md-6 col-lg-8 d-flex">
+                    <div class="flex-grow-1">
+                      <input name="f.srcmin" type="number" class="form-control" placeholder="Min Index" aria-label="Min Index" aria-describedby="basic-addon1" value="{{ if gt .FilterMinSourceIndex 0 }}{{ .FilterMinSourceIndex }}{{ end }}">
+                    </div>
+                    <div class="text-center filter-amount-separator">
+                      -
+                    </div>
+                    <div class="flex-grow-1">
+                      <input name="f.srcmax" type="number" class="form-control" placeholder="Max Index" aria-label="Max Index" aria-describedby="basic-addon1" value="{{ if gt .FilterMaxSourceIndex 0 }}{{ .FilterMaxSourceIndex }}{{ end }}">
+                    </div>
+                  </div>
+                </div>
+                <div class="row mt-1">
+                  <div class="col-sm-12 col-md-6 col-lg-4">
+                    Validator Name
+                  </div>
+                  <div class="col-sm-12 col-md-6 col-lg-8">
+                    <input name="f.srcname" type="text" class="form-control" placeholder="Validator Name" aria-label="Validator Name" aria-describedby="basic-addon1" value="{{ .FilterSourceName }}">
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="col-sm-12 col-md-6">
+              <div class="container">
+                <div class="row mt-1">
+                  <div class="col-sm-12 col-md-6 col-lg-4">
+                    <nobr>Request Type</nobr>
+                  </div>
+                  <div class="col-sm-12 col-md-6 col-lg-4">
+                    <select name="f.type" aria-controls="type" class="form-control">
+                      <option value="0" {{ if eq .FilterWithRequest 0 }}selected{{ end }}>Any request</option>
+                      <option value="1" {{ if eq .FilterWithRequest 1 }}selected{{ end }}>Withdrawals</option>
+                      <option value="2" {{ if eq .FilterWithRequest 2 }}selected{{ end }}>Exits</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="row mt-1">
+                  <div class="col-sm-12 col-md-6 col-lg-4">
+                    <nobr>Orphaned</nobr>
+                  </div>
+                  <div class="col-sm-12 col-md-6 col-lg-4">
+                    <select name="f.orphaned" aria-controls="orphaned" class="form-control">
+                      <option value="0" {{ if eq .FilterWithOrphaned 0 }}selected{{ end }}>Hide orphaned</option>
+                      <option value="1" {{ if eq .FilterWithOrphaned 1 }}selected{{ end }}>Show all</option>
+                      <option value="2" {{ if eq .FilterWithOrphaned 2 }}selected{{ end }}>Orphaned only</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+          <div class="row mt-3">
+            <div class="col-8 col-md-6 table-pagesize">
+              <label class="px-2">
+                <span>Show </span>
+                <select name="c" aria-controls="slots" class="custom-select custom-select-sm form-control form-control-sm">
+                  <option value="{{ .PageSize }}" selected>{{ .PageSize }}</option>
+                  <option value="10">10</option>
+                  <option value="25">25</option>
+                  <option value="50">50</option>
+                  <option value="100">100</option>
+                </select>
+                <span> entries per page</span>
+              </label>
+            </div>
+            <div class="col-4 col-md-6">
+              <div class="container text-end">
+                <button type="submit" class="btn btn-primary">Apply Filter</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </form>
+    <script type="text/javascript">
+      $('#elRequestsFilterForm').submit(function () {
+        $(this).find('input[type="text"],input[type="number"]').filter(function () { return !this.value; }).prop('name', '');
+      });
+    </script>
+
+    <div class="card mt-2">
+      <div class="card-body px-0 py-3">
+        <div class="table-responsive px-0 py-1">
+          <table class="table table-nobr" id="elRequests">
+            <thead>
+              <tr>
+                <th>Slot</th>
+                <th>Time</th>
+                <th><span class="d-none d-lg-inline">Source </span>Address</th>
+                <th><span class="d-none d-lg-inline">Request </span>Type</th>
+                <th>Validator</th>
+                <th>Amount</th>
+                <th>Transaction</th>
+                <th><span class="d-none d-lg-inline">Incl. </span>Status</th>
+                <th>Valid<span class="d-none d-lg-inline">ity</span></th>
+              </tr>
+            </thead>
+            {{ if gt .RequestCount 0 }}
+              <tbody>
+                {{ range $i, $request := .ElRequests }}
+                  <tr>
+                    {{- if $request.Orphaned }}
+                    <td><a href="/slot/0x{{ printf "%x" $request.SlotRoot }}">{{ formatAddCommas $request.SlotNumber }}</a></td>
+                    {{- else }}
+                    <td><a href="/slot/{{ $request.SlotNumber }}">{{ formatAddCommas $request.SlotNumber }}</a></td>
+                    {{- end }}
+                    <td data-timer="{{ $request.Time.Unix }}"><span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $request.Time }}">{{ formatRecentTimeShort $request.Time }}</span></td>
+                    <td>
+                      <div class="d-flex">
+                        <span class="flex-grow-1 text-truncate" style="max-width: 150px;">{{ ethAddressLink $request.SourceAddress }}</span>
+                        <div>
+                          <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ formatEthAddress $request.SourceAddress }}"></i>
+                        </div>
+                      </div>
+                    </td>
+                    <td>
+                      {{- if eq $request.Amount 0 }}
+                        Exit
+                      {{- else }}
+                        Withdrawal
+                      {{- end }}
+                    </td>
+                    <td>
+                      {{- if $request.SourceIndexValid }}
+                        {{ formatValidator $request.SourceIndex $request.SourceName }}
+                      {{- else }}
+                        <div class="d-flex">
+                          <span class="flex-grow-1 text-truncate" style="max-width: 150px;" data-bs-toggle="tooltip" title="pubkey not in validator set">0x{{ printf "%x" $request.SourcePubkey }}</span>
+                          <div>
+                            <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $request.SourcePubkey }}"></i>
+                          </div>
+                        </div>
+                      {{- end }}
+                    </td>
+                    <td>{{ formatEthFromGwei $request.Amount }}</td>
+                    <td>
+                      {{- if $request.LinkedTransaction }}
+                      <div class="d-flex">
+                        <span class="flex-grow-1 text-truncate" style="max-width: 150px;">{{ ethTransactionLink $request.TransactionHash }}</span>
+                        <div>
+                          <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ formatEthAddress $request.SourceAddress }}"></i>
+                        </div>
+                      </div>
+                      {{- else }}
+                      <span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Corresponding withdrawal transaction has not been indexed yet.">?</span>
+                      {{- end }}
+                    </td>
+                    <td>
+                      {{- if $request.Orphaned }}
+                        <span class="badge rounded-pill text-bg-info">Orphaned</span>
+                      {{- else }}
+                        <span class="badge rounded-pill text-bg-success">Included</span>
+                      {{- end }}
+                    </td>
+                    <td>
+                      {{- if $request.Valid }}
+                        ✅
+                      {{- else }}
+                        ❌
+                      {{- end }}
+                    </td>
+                  </tr>
+                {{ end }}
+              </tbody>
+            {{ else }}
+              <tbody>
+                <tr style="height: 430px;">
+                  <td class="d-none d-md-table-cell"></td>
+                  <td style="vertical-align: middle;" colspan="8">
+                    <div class="img-fluid mx-auto p-3 d-flex align-items-center" style="max-height: 400px; max-width: 400px; overflow: hidden;">
+                      {{ template "professor_svg" }}
+                    </div>
+                  </td>
+                  <td class="d-none d-md-table-cell"></td>
+                </tr>
+              </tbody>
+            {{ end }}
+          </table>
+        </div>
+        {{ if gt .TotalPages 1 }}
+          <div class="row">
+            <div class="col-sm-12 col-md-5 table-metainfo">
+              <div class="px-2">
+                <div class="table-meta" role="status" aria-live="polite">Showing withdrawal requests from slot {{ .FirstIndex }} to {{ .LastIndex }}</div>
+              </div>
+            </div>
+            <div class="col-sm-12 col-md-7 table-paging">
+              <div class="d-inline-block px-2">
+                <ul class="pagination">
+                  <li class="first paginate_button page-item {{ if lt .PrevPageIndex 1 }}disabled{{ end }}" id="tpg_first">
+                    <a tab-index="1" aria-controls="tpg_first" class="page-link" href="{{ .FirstPageLink }}">First</a>
+                  </li>
+                  <li class="previous paginate_button page-item {{ if eq .PrevPageIndex 0 }}disabled{{ end }}" id="tpg_previous">
+                    <a tab-index="1" aria-controls="tpg_previous" class="page-link" href="{{ .PrevPageLink }}"><i class="fas fa-chevron-left"></i></a>
+                  </li>
+                  <li class="page-item disabled">
+                    <a class="page-link" style="background-color: transparent;">{{ .CurrentPageIndex }} of {{ .TotalPages }}</a>
+                  </li>
+                  <li class="next paginate_button page-item {{ if eq .NextPageIndex 0 }}disabled{{ end }}" id="tpg_next">
+                    <a tab-index="1" aria-controls="tpg_next" class="page-link" href="{{ .NextPageLink }}"><i class="fas fa-chevron-right"></i></a>
+                  </li>
+                  <li class="last paginate_button page-item {{ if or (eq .LastPageIndex 0) (ge .CurrentPageIndex .LastPageIndex) }}disabled{{ end }}" id="tpg_last">
+                    <a tab-index="1" aria-controls="tpg_last" class="page-link" href="{{ .LastPageLink }}">Last</a>
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        {{ end }}
+      </div>
+      <div id="footer-placeholder" style="height:71px;"></div>
+    </div>
+  </div>
+{{ end }}
+{{ define "js" }}
+{{ end }}
+{{ define "css" }}
+<style>
+
+.filter-amount-separator {
+  padding-top: 6px;
+  padding-left: 10px;
+  padding-right: 10px;
+}
+
+</style>
+{{ end }}
