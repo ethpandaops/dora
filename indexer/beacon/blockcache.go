@@ -243,6 +243,9 @@ func (cache *blockCache) getLatestBlocks(limit uint64, forkId *ForkKey) []*Block
 
 	for _, slot := range slots {
 		for _, block := range cache.slotMap[slot] {
+			if block.block == nil && !block.isInFinalizedDb && !block.isInUnfinalizedDb {
+				continue
+			}
 			if forkId != nil && block.forkId != *forkId {
 				continue
 			}
