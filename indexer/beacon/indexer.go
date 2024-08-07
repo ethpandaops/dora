@@ -66,7 +66,7 @@ type Indexer struct {
 	cachedChainHeads     []*ChainHead
 
 	// canonical validator set cache
-	validatorSetCache *lru.Cache[phase0.Root, []*v1.Validator]
+	validatorSetCache *lru.Cache[epochStatsKey, []*v1.Validator]
 }
 
 // NewIndexer creates a new instance of the Indexer.
@@ -104,7 +104,7 @@ func NewIndexer(logger logrus.FieldLogger, consensusPool *consensus.Pool) *Index
 		clients:              make([]*Client, 0),
 		backfillCompleteChan: make(chan bool),
 
-		validatorSetCache: lru.NewCache[phase0.Root, []*v1.Validator](2),
+		validatorSetCache: lru.NewCache[epochStatsKey, []*v1.Validator](2),
 	}
 
 	indexer.blockCache = newBlockCache(indexer)

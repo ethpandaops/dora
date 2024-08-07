@@ -322,7 +322,8 @@ func (indexer *Indexer) GetCanonicalValidatorSet(overrideForkId *ForkKey) []*v1.
 		break
 	}
 
-	if cachedValSet, found := indexer.validatorSetCache.Get(epochStats.dependentRoot); found {
+	epochStatsKey := getEpochStatsKey(epochStats.epoch, epochStats.dependentRoot)
+	if cachedValSet, found := indexer.validatorSetCache.Get(epochStatsKey); found {
 		return cachedValSet
 	}
 
@@ -338,7 +339,7 @@ func (indexer *Indexer) GetCanonicalValidatorSet(overrideForkId *ForkKey) []*v1.
 		}
 	}
 
-	indexer.validatorSetCache.Add(epochStats.dependentRoot, validatorSet)
+	indexer.validatorSetCache.Add(epochStatsKey, validatorSet)
 
 	return validatorSet
 }
