@@ -356,6 +356,12 @@ func (block *Block) GetDbSlashings(indexer *Indexer) []*dbtypes.Slashing {
 	return indexer.dbWriter.buildDbSlashings(block, orphaned, nil)
 }
 
+// GetDbConsolidationRequests returns the database representation of the consolidation requests in this block.
+func (block *Block) GetDbConsolidationRequests(indexer *Indexer) []*dbtypes.ConsolidationRequest {
+	orphaned := !indexer.IsCanonicalBlock(block, nil)
+	return indexer.dbWriter.buildDbConsolidationRequests(block, orphaned, nil)
+}
+
 // GetExecutionExtraData returns the execution extra data of this block.
 func (block *Block) GetExecutionExtraData() []byte {
 	blockBody := block.GetBlock()

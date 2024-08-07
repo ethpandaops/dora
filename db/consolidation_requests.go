@@ -8,28 +8,12 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-/*
-type Consolidation struct {
-	SlotNumber    uint64 `db:"slot_number"`
-	SlotRoot      []byte `db:"slot_root"`
-	SlotIndex     uint64 `db:"slot_index"`
-	Orphaned      bool   `db:"orphaned"`
-	ForkId        uint64 `db:"fork_id"`
-	SourceAddress []byte `db:"source_address"`
-	SourceIndex   uint64 `db:"source_index"`
-	SourcePubkey  []byte `db:"source_pubkey"`
-	TargetIndex   uint64 `db:"target_index"`
-	TargetPubkey  []byte `db:"target_pubkey"`
-	TxHash        []byte `db:"tx_hash"`
-}
-*/
-
-func InsertConsolidations(consolidations []*dbtypes.Consolidation, tx *sqlx.Tx) error {
+func InsertConsolidationRequests(consolidations []*dbtypes.ConsolidationRequest, tx *sqlx.Tx) error {
 	var sql strings.Builder
 	fmt.Fprint(&sql,
 		EngineQuery(map[dbtypes.DBEngineType]string{
-			dbtypes.DBEnginePgsql:  "INSERT INTO consolidations ",
-			dbtypes.DBEngineSqlite: "INSERT OR REPLACE INTO consolidations ",
+			dbtypes.DBEnginePgsql:  "INSERT INTO consolidation_requests ",
+			dbtypes.DBEngineSqlite: "INSERT OR REPLACE INTO consolidation_requests ",
 		}),
 		"(slot_number, slot_root, slot_index, orphaned, fork_id, source_address, source_index, source_pubkey, target_index, target_pubkey, tx_hash)",
 		" VALUES ",

@@ -106,14 +106,14 @@ func (dbw *dbWriter) persistBlockChildObjects(tx *sqlx.Tx, block *Block, deposit
 		return err
 	}
 
-	// insert consolidations
-	err = dbw.persistBlockConsolidations(tx, block, orphaned)
+	// insert consolidation requests
+	err = dbw.persistBlockConsolidationRequests(tx, block, orphaned, overrideForkId)
 	if err != nil {
 		return err
 	}
 
-	// insert el requests
-	err = dbw.persistBlockElRequests(tx, block, orphaned)
+	// insert withdrawal requests
+	err = dbw.persistBlockWithdrawalRequests(tx, block, orphaned, overrideForkId)
 	if err != nil {
 		return err
 	}
@@ -189,7 +189,7 @@ func (dbw *dbWriter) persistSyncAssignments(tx *sqlx.Tx, epoch phase0.Epoch, epo
 func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, overrideForkId *ForkKey) *dbtypes.Slot {
 	blockBody := block.GetBlock()
 	if blockBody == nil {
-		dbw.indexer.logger.Errorf("error while building db blocks: block body not found: %v", block.Slot)
+		dbw.indexer.logger.Warnf("error while building db blocks: block body not found: %v", block.Slot)
 		return nil
 	}
 
@@ -312,7 +312,7 @@ func (dbw *dbWriter) buildDbEpoch(epoch phase0.Epoch, blocks []*Block, epochStat
 			dbEpoch.BlockCount++
 			blockBody := block.GetBlock()
 			if blockBody == nil && block.Slot > 0 {
-				dbw.indexer.logger.Errorf("error while building db epoch: block body not found for aggregation: %v", block.Slot)
+				dbw.indexer.logger.Warnf("error while building db epoch: block body not found for aggregation: %v", block.Slot)
 				continue
 			}
 			if blockFn != nil {
@@ -594,7 +594,7 @@ func (dbw *dbWriter) buildDbSlashings(block *Block, orphaned bool, overrideForkI
 				SlotNumber:     uint64(block.Slot),
 				SlotIndex:      uint64(slashingIndex),
 				SlotRoot:       block.Root[:],
-				Orphaned:       false,
+				Orphaned:       orphaned,
 				ValidatorIndex: uint64(valIdx),
 				SlasherIndex:   uint64(proposerIndex),
 				Reason:         dbtypes.AttesterSlashing,
@@ -608,9 +608,9 @@ func (dbw *dbWriter) buildDbSlashings(block *Block, orphaned bool, overrideForkI
 	return dbSlashings
 }
 
-func (dbw *dbWriter) persistBlockConsolidations(tx *sqlx.Tx, block *Block, orphaned bool) error {
-	// insert deposits
-	dbConsolidations := dbw.buildDbConsolidations(block)
+func (dbw *dbWriter) persistBlockConsolidationRequests(tx *sqlx.Tx, block *Block, orphaned bool, overrideForkId *ForkKey) error {
+	// insert consolidation requests
+	dbConsolidations := dbw.buildDbConsolidationRequests(block, orphaned, overrideForkId)
 	if orphaned {
 		for idx := range dbConsolidations {
 			dbConsolidations[idx].Orphaned = true
@@ -618,93 +618,120 @@ func (dbw *dbWriter) persistBlockConsolidations(tx *sqlx.Tx, block *Block, orpha
 	}
 
 	if len(dbConsolidations) > 0 {
-		err := db.InsertConsolidations(dbConsolidations, tx)
+		err := db.InsertConsolidationRequests(dbConsolidations, tx)
 		if err != nil {
-			return fmt.Errorf("error inserting consolidations: %v", err)
+			return fmt.Errorf("error inserting consolidation requests: %v", err)
 		}
 	}
 
 	return nil
 }
 
-func (dbw *dbWriter) buildDbConsolidations(block *Block) []*dbtypes.Consolidation {
+func (dbw *dbWriter) buildDbConsolidationRequests(block *Block, orphaned bool, overrideForkId *ForkKey) []*dbtypes.ConsolidationRequest {
 	blockBody := block.GetBlock()
 	if blockBody == nil {
 		return nil
 	}
 
-	/*
-		consolidations, err := blockBody.Consolidations()
-		if err != nil {
-			return nil
+	consolidations, err := getBlockExecutionConsolidationRequests(blockBody)
+	if err != nil {
+		return nil
+	}
+
+	if len(consolidations) == 0 {
+		return []*dbtypes.ConsolidationRequest{}
+	}
+
+	validatorSet := dbw.indexer.GetCanonicalValidatorSet(nil)
+	validatorSetMap := make(map[phase0.BLSPubKey]uint64, len(validatorSet))
+	for idx, validator := range validatorSet {
+		validatorSetMap[validator.Validator.PublicKey] = uint64(idx)
+	}
+
+	dbConsolidations := make([]*dbtypes.ConsolidationRequest, len(consolidations))
+	for idx, consolidation := range consolidations {
+		dbConsolidation := &dbtypes.ConsolidationRequest{
+			SlotNumber:    uint64(block.Slot),
+			SlotRoot:      block.Root[:],
+			SlotIndex:     uint64(idx),
+			Orphaned:      orphaned,
+			ForkId:        uint64(block.forkId),
+			SourceAddress: consolidation.SourceAddress[:],
+			SourcePubkey:  consolidation.SourcePubkey[:],
+			TargetPubkey:  consolidation.TargetPubkey[:],
+		}
+		if overrideForkId != nil {
+			dbConsolidation.ForkId = uint64(*overrideForkId)
+		}
+		if sourceIdx, found := validatorSetMap[consolidation.SourcePubkey]; found {
+			dbConsolidation.SourceIndex = &sourceIdx
+		}
+		if targetIdx, found := validatorSetMap[consolidation.TargetPubkey]; found {
+			dbConsolidation.TargetIndex = &targetIdx
 		}
 
-		dbConsolidations := make([]*dbtypes.Consolidation, len(consolidations))
-		for idx, consolidation := range consolidations {
-			dbConsolidation := &dbtypes.Consolidation{
-				SlotNumber:  block.Slot,
-				SlotIndex:   uint64(idx),
-				SlotRoot:    block.Root,
-				Orphaned:    false,
-				SourceIndex: uint64(consolidation.Message.SourceIndex),
-				TargetIndex: uint64(consolidation.Message.TargetIndex),
-				Epoch:       uint64(consolidation.Message.Epoch),
-			}
+		dbConsolidations[idx] = dbConsolidation
+	}
 
-			dbConsolidations[idx] = dbConsolidation
-		}
-
-		return dbConsolidations
-	*/
-
-	return []*dbtypes.Consolidation{}
+	return dbConsolidations
 }
 
-func (dbw *dbWriter) persistBlockElRequests(tx *sqlx.Tx, block *Block, orphaned bool) error {
+func (dbw *dbWriter) persistBlockWithdrawalRequests(tx *sqlx.Tx, block *Block, orphaned bool, overrideForkId *ForkKey) error {
 	// insert deposits
-	dbElRequests := dbw.buildDbElRequests(block)
-	if orphaned {
-		for idx := range dbElRequests {
-			dbElRequests[idx].Orphaned = true
-		}
-	}
+	dbWithdrawalRequests := dbw.buildDbWithdrawalRequests(block, orphaned, overrideForkId)
 
-	if len(dbElRequests) > 0 {
-		err := db.InsertElRequests(dbElRequests, tx)
+	if len(dbWithdrawalRequests) > 0 {
+		err := db.InsertWithdrawalRequests(dbWithdrawalRequests, tx)
 		if err != nil {
-			return fmt.Errorf("error inserting el requests: %v", err)
+			return fmt.Errorf("error inserting withdrawal requests: %v", err)
 		}
 	}
 
 	return nil
 }
 
-func (dbw *dbWriter) buildDbElRequests(block *Block) []*dbtypes.ElRequest {
+func (dbw *dbWriter) buildDbWithdrawalRequests(block *Block, orphaned bool, overrideForkId *ForkKey) []*dbtypes.WithdrawalRequest {
 	blockBody := block.GetBlock()
 	if blockBody == nil {
 		return nil
 	}
 
-	/*
-		elRequests, err := blockBody.ExecutionRequests()
-		if err != nil {
-			return nil
+	withdrawalRequests, err := getBlockExecutionWithdrawalRequests(blockBody)
+	if err != nil {
+		return nil
+	}
+
+	if len(withdrawalRequests) == 0 {
+		return []*dbtypes.WithdrawalRequest{}
+	}
+
+	validatorSet := dbw.indexer.GetCanonicalValidatorSet(nil)
+	validatorSetMap := make(map[phase0.BLSPubKey]uint64, len(validatorSet))
+	for idx, validator := range validatorSet {
+		validatorSetMap[validator.Validator.PublicKey] = uint64(idx)
+	}
+
+	dbWithdrawalRequests := make([]*dbtypes.WithdrawalRequest, len(withdrawalRequests))
+	for idx, withdrawalRequest := range withdrawalRequests {
+		dbWithdrawalRequest := &dbtypes.WithdrawalRequest{
+			SlotNumber:      uint64(block.Slot),
+			SlotRoot:        block.Root[:],
+			SlotIndex:       uint64(idx),
+			Orphaned:        orphaned,
+			ForkId:          uint64(block.forkId),
+			SourceAddress:   withdrawalRequest.SourceAddress[:],
+			ValidatorPubkey: withdrawalRequest.ValidatorPubkey[:],
+			Amount:          uint64(withdrawalRequest.Amount),
+		}
+		if overrideForkId != nil {
+			dbWithdrawalRequest.ForkId = uint64(*overrideForkId)
+		}
+		if validatorIdx, found := validatorSetMap[withdrawalRequest.ValidatorPubkey]; found {
+			dbWithdrawalRequest.ValidatorIndex = &validatorIdx
 		}
 
-		dbElRequests := make([]*dbtypes.ElRequest, len(elRequests))
-		for idx, elRequest := range elRequests {
-			dbElRequest := &dbtypes.ElRequest{
-				SlotNumber:  block.Slot,
-				SlotIndex:   uint64(idx),
-				SlotRoot:    block.Root,
-				Orphaned:    false,
-			}
+		dbWithdrawalRequests[idx] = dbWithdrawalRequest
+	}
 
-			dbElRequests[idx] = dbElRequest
-		}
-
-		return dbElRequests
-	*/
-
-	return []*dbtypes.ElRequest{}
+	return dbWithdrawalRequests
 }

@@ -3,7 +3,7 @@
 
 DROP TABLE IF EXISTS "consolidations";
 
-CREATE TABLE IF NOT EXISTS "consolidations" (
+CREATE TABLE IF NOT EXISTS "consolidation_requests" (
     slot_number INT NOT NULL,
     slot_root BLOB NOT NULL,
     slot_index INT NOT NULL,
@@ -18,24 +18,24 @@ CREATE TABLE IF NOT EXISTS "consolidations" (
     CONSTRAINT consolidation_pkey PRIMARY KEY (slot_root, slot_index)
 );
 
-CREATE INDEX IF NOT EXISTS "consolidations_slot_idx"
-    ON "consolidations"
+CREATE INDEX IF NOT EXISTS "consolidation_requests_slot_idx"
+    ON "consolidation_requests"
     ("slot_number" ASC);
 
-CREATE INDEX IF NOT EXISTS "consolidations_source_idx"
-    ON "consolidations"
+CREATE INDEX IF NOT EXISTS "consolidation_requests_source_idx"
+    ON "consolidation_requests"
     ("source_index" ASC);
 
-CREATE INDEX IF NOT EXISTS "consolidations_target_idx"
-    ON "consolidations"
+CREATE INDEX IF NOT EXISTS "consolidation_requests_target_idx"
+    ON "consolidation_requests"
     ("target_index" ASC);
 
-CREATE INDEX IF NOT EXISTS "consolidations_source_addr_idx"
-    ON "consolidations"
+CREATE INDEX IF NOT EXISTS "consolidation_requests_source_addr_idx"
+    ON "consolidation_requests"
     ("source_address" ASC);
 
-CREATE INDEX IF NOT EXISTS "consolidations_fork_idx"
-    ON "consolidations"
+CREATE INDEX IF NOT EXISTS "consolidation_requests_fork_idx"
+    ON "consolidation_requests"
     ("fork_idx" ASC);
 
 

@@ -246,6 +246,52 @@ func getBlockExecutionDepositRequests(v *spec.VersionedSignedBeaconBlock) ([]*el
 	}
 }
 
+func getBlockExecutionConsolidationRequests(v *spec.VersionedSignedBeaconBlock) ([]*electra.ConsolidationRequest, error) {
+	switch v.Version {
+	case spec.DataVersionPhase0:
+		return nil, errors.New("no deposit requests in phase0")
+	case spec.DataVersionAltair:
+		return nil, errors.New("no deposit requests in altair")
+	case spec.DataVersionBellatrix:
+		return nil, errors.New("no deposit requests in bellatrix")
+	case spec.DataVersionCapella:
+		return nil, errors.New("no deposit requests in capella")
+	case spec.DataVersionDeneb:
+		return nil, errors.New("no deposit requests in deneb")
+	case spec.DataVersionElectra:
+		if v.Electra == nil || v.Electra.Message == nil || v.Electra.Message.Body == nil || v.Electra.Message.Body.ExecutionPayload == nil {
+			return nil, errors.New("no electra block")
+		}
+
+		return v.Electra.Message.Body.ExecutionPayload.ConsolidationRequests, nil
+	default:
+		return nil, errors.New("unknown version")
+	}
+}
+
+func getBlockExecutionWithdrawalRequests(v *spec.VersionedSignedBeaconBlock) ([]*electra.WithdrawalRequest, error) {
+	switch v.Version {
+	case spec.DataVersionPhase0:
+		return nil, errors.New("no deposit requests in phase0")
+	case spec.DataVersionAltair:
+		return nil, errors.New("no deposit requests in altair")
+	case spec.DataVersionBellatrix:
+		return nil, errors.New("no deposit requests in bellatrix")
+	case spec.DataVersionCapella:
+		return nil, errors.New("no deposit requests in capella")
+	case spec.DataVersionDeneb:
+		return nil, errors.New("no deposit requests in deneb")
+	case spec.DataVersionElectra:
+		if v.Electra == nil || v.Electra.Message == nil || v.Electra.Message.Body == nil || v.Electra.Message.Body.ExecutionPayload == nil {
+			return nil, errors.New("no electra block")
+		}
+
+		return v.Electra.Message.Body.ExecutionPayload.WithdrawalRequests, nil
+	default:
+		return nil, errors.New("unknown version")
+	}
+}
+
 // getStateRandaoMixes returns the RANDAO mixes from a versioned beacon state.
 func getStateRandaoMixes(v *spec.VersionedBeaconState) ([]phase0.Root, error) {
 	switch v.Version {

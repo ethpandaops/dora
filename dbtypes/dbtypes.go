@@ -251,18 +251,18 @@ type Slashing struct {
 	ForkId         uint64         `db:"fork_id"`
 }
 
-type Consolidation struct {
-	SlotNumber    uint64 `db:"slot_number"`
-	SlotRoot      []byte `db:"slot_root"`
-	SlotIndex     uint64 `db:"slot_index"`
-	Orphaned      bool   `db:"orphaned"`
-	ForkId        uint64 `db:"fork_id"`
-	SourceAddress []byte `db:"source_address"`
-	SourceIndex   uint64 `db:"source_index"`
-	SourcePubkey  []byte `db:"source_pubkey"`
-	TargetIndex   uint64 `db:"target_index"`
-	TargetPubkey  []byte `db:"target_pubkey"`
-	TxHash        []byte `db:"tx_hash"`
+type ConsolidationRequest struct {
+	SlotNumber    uint64  `db:"slot_number"`
+	SlotRoot      []byte  `db:"slot_root"`
+	SlotIndex     uint64  `db:"slot_index"`
+	Orphaned      bool    `db:"orphaned"`
+	ForkId        uint64  `db:"fork_id"`
+	SourceAddress []byte  `db:"source_address"`
+	SourceIndex   *uint64 `db:"source_index"`
+	SourcePubkey  []byte  `db:"source_pubkey"`
+	TargetIndex   *uint64 `db:"target_index"`
+	TargetPubkey  []byte  `db:"target_pubkey"`
+	TxHash        []byte  `db:"tx_hash"`
 }
 
 type WithdrawalRequest struct {
