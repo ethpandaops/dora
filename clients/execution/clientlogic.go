@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethpandaops/dora/clients/execution/rpc"
 )
 
 func (client *Client) runClientLoop() {
@@ -138,17 +139,20 @@ func (client *Client) runClientLogic() error {
 	}
 
 	// register new block filter
-	blockFilter, err := client.rpcClient.NewBlockFilter(client.clientCtx)
-	if err != nil {
-		client.logger.Warnf("could not create block filter: %v", err)
-	} else {
-		client.blockFilterId = blockFilter
+	var blockFilter rpc.BlockFilterId
+	if client.clientType != EthjsClient {
+		blockFilter, err = client.rpcClient.NewBlockFilter(client.clientCtx)
+		if err != nil {
+			client.logger.Warnf("could not create block filter: %v", err)
+		} else {
+			client.blockFilterId = blockFilter
 
-		defer func() {
-			ctx, cancel := context.WithTimeout(client.clientCtx, 10*time.Second)
-			defer cancel()
-			client.rpcClient.UninstallBlockFilter(ctx, client.blockFilterId)
-		}()
+			defer func() {
+				ctx, cancel := context.WithTimeout(client.clientCtx, 10*time.Second)
+				defer cancel()
+				client.rpcClient.UninstallBlockFilter(ctx, client.blockFilterId)
+			}()
+		}
 	}
 
 	// process events
