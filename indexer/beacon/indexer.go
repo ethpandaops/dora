@@ -239,11 +239,7 @@ func (indexer *Indexer) StartIndexer() {
 	t1 := time.Now()
 	processingLimiter := make(chan bool, 10)
 	processingWaitGroup := sync.WaitGroup{}
-	err = db.StreamUnfinalizedDuties(func(dbDuty *dbtypes.UnfinalizedDuty) {
-		if dbDuty.Epoch < uint64(finalizedEpoch) {
-			return
-		}
-
+	err = db.StreamUnfinalizedDuties(uint64(finalizedEpoch), func(dbDuty *dbtypes.UnfinalizedDuty) {
 		// restoring epoch stats can be slow as all duties are recomputed
 		// parallelize the processing to speed up the restore
 		processingWaitGroup.Add(1)
@@ -281,7 +277,7 @@ func (indexer *Indexer) StartIndexer() {
 	// restore unfinalized epoch aggregations from db
 	restoredEpochAggregations := 0
 	t1 = time.Now()
-	err = db.StreamUnfinalizedEpochs(func(unfinalizedEpoch *dbtypes.UnfinalizedEpoch) {
+	err = db.StreamUnfinalizedEpochs(uint64(finalizedEpoch), func(unfinalizedEpoch *dbtypes.UnfinalizedEpoch) {
 		epochStats := indexer.epochCache.getEpochStats(phase0.Epoch(unfinalizedEpoch.Epoch), phase0.Root(unfinalizedEpoch.DependentRoot))
 		if epochStats == nil {
 			indexer.logger.Warnf("failed restoring epoch aggregations for epoch %v [%x] from db: epoch stats not found", unfinalizedEpoch.Epoch, unfinalizedEpoch.DependentRoot)
@@ -303,10 +299,7 @@ func (indexer *Indexer) StartIndexer() {
 	restoredBlockCount := 0
 	restoredBodyCount := 0
 	t1 = time.Now()
-	err = db.StreamUnfinalizedBlocks(func(dbBlock *dbtypes.UnfinalizedBlock) {
-		if dbBlock.Slot < uint64(finalizedSlot) {
-			return
-		}
+	err = db.StreamUnfinalizedBlocks(uint64(finalizedSlot), func(dbBlock *dbtypes.UnfinalizedBlock) {
 
 		block, _ := indexer.blockCache.createOrGetBlock(phase0.Root(dbBlock.Root), phase0.Slot(dbBlock.Slot))
 		block.forkId = ForkKey(dbBlock.ForkId)

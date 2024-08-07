@@ -163,14 +163,14 @@ func (bs *ChainService) GetSlotDetailsBySlot(ctx context.Context, slot phase0.Sl
 		for ; headRetry < 3; headRetry++ {
 			client := clients[headRetry%len(clients)]
 			header, blockRoot, orphaned, err = beacon.LoadBeaconHeaderBySlot(ctx, client, slot)
-			if header != nil {
-				break
-			} else if err != nil {
+			if err != nil {
 				log := logrus.WithError(err)
 				if client != nil {
 					log = log.WithField("client", client.GetClient().GetName())
 				}
 				log.Warnf("Error loading block header for slot %v", slot)
+			} else {
+				break
 			}
 		}
 		if err != nil || header == nil {

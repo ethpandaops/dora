@@ -116,11 +116,11 @@ func GetUnfinalizedBlocks(filter *dbtypes.UnfinalizedBlockFilter) []*dbtypes.Unf
 	return blockRefs
 }
 
-func StreamUnfinalizedBlocks(cb func(block *dbtypes.UnfinalizedBlock)) error {
+func StreamUnfinalizedBlocks(slot uint64, cb func(block *dbtypes.UnfinalizedBlock)) error {
 	var sql strings.Builder
-	args := []any{}
+	args := []any{slot}
 
-	fmt.Fprint(&sql, `SELECT root, slot, header_ver, header_ssz, block_ver, block_ssz, status, fork_id FROM unfinalized_blocks`)
+	fmt.Fprint(&sql, `SELECT root, slot, header_ver, header_ssz, block_ver, block_ssz, status, fork_id FROM unfinalized_blocks WHERE slot >= $1`)
 
 	rows, err := ReaderDb.Query(sql.String(), args...)
 	if err != nil {

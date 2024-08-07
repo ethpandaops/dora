@@ -50,14 +50,14 @@ func InsertUnfinalizedEpoch(epoch *dbtypes.UnfinalizedEpoch, tx *sqlx.Tx) error 
 	return nil
 }
 
-func StreamUnfinalizedEpochs(cb func(duty *dbtypes.UnfinalizedEpoch)) error {
+func StreamUnfinalizedEpochs(epoch uint64, cb func(duty *dbtypes.UnfinalizedEpoch)) error {
 	rows, err := ReaderDb.Query(`
 	SELECT
 		epoch, dependent_root, epoch_head_root, epoch_head_fork_id, validator_count, validator_balance, eligible, voted_target,
 		voted_head, voted_total, block_count, orphaned_count, attestation_count, deposit_count, exit_count, withdraw_count,
 		withdraw_amount, attester_slashing_count, proposer_slashing_count, bls_change_count, eth_transaction_count, sync_participation
 	FROM unfinalized_epochs
-	`)
+	WHERE epoch >= $1`, epoch)
 	if err != nil {
 		logger.Errorf("Error while fetching unfinalized epochs: %v", err)
 		return nil

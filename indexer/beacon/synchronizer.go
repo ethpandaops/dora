@@ -346,7 +346,7 @@ func (sync *synchronizer) syncEpoch(syncEpoch phase0.Epoch, client *Client, last
 	var epochStats *EpochStats
 	var epochStatsValues *EpochStatsValues
 	if epochState != nil && epochState.loadingStatus == 2 {
-		epochStats := newEpochStats(syncEpoch, dependentRoot)
+		epochStats = newEpochStats(syncEpoch, dependentRoot)
 		epochStats.dependentState = epochState
 		epochStats.processState(sync.indexer)
 		epochStatsValues = epochStats.GetValues(false)

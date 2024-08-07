@@ -111,9 +111,9 @@ func (indexer *Indexer) computeCanonicalChain() bool {
 		indexer.canonicalComputation = latestBlockRoot
 
 		if headBlock == nil {
-			indexer.logger.Warnf("canonical head computation failed. latest block: %v, time: %v ms", latestBlockRoot.String(), time.Since(t1).Milliseconds())
+			indexer.logger.Warnf("canonical head computation failed. forks: %v, latest block: %v, time: %v ms", len(chainHeads), latestBlockRoot.String(), time.Since(t1).Milliseconds())
 		} else {
-			indexer.logger.Infof("canonical head computation complete. block: %v (%v), time: %v ms", headBlock.Slot, headBlock.Root.String(), time.Since(t1).Milliseconds())
+			indexer.logger.Infof("canonical head computation complete. forks: %v, head: %v (%v), time: %v ms", len(chainHeads), headBlock.Slot, headBlock.Root.String(), time.Since(t1).Milliseconds())
 		}
 	}()
 
@@ -125,7 +125,7 @@ func (indexer *Indexer) computeCanonicalChain() bool {
 			headBlock = latestBlocks[0]
 
 			forkVotes, thisEpochPercent, lastEpochPercent := indexer.aggregateForkVotes(headBlock.forkId)
-			indexer.logger.Infof(
+			indexer.logger.Debugf(
 				"fork %v votes in last 2 epochs: %v ETH (%.2f%%, %.2f%%), head: %v (%v)",
 				headBlock.forkId,
 				forkVotes/EtherGweiFactor,

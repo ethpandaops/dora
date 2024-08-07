@@ -26,11 +26,11 @@ func InsertUnfinalizedDuty(duty *dbtypes.UnfinalizedDuty, tx *sqlx.Tx) error {
 	return nil
 }
 
-func StreamUnfinalizedDuties(cb func(duty *dbtypes.UnfinalizedDuty)) error {
+func StreamUnfinalizedDuties(epoch uint64, cb func(duty *dbtypes.UnfinalizedDuty)) error {
 	var sql strings.Builder
-	args := []any{}
+	args := []any{epoch}
 
-	fmt.Fprint(&sql, `SELECT epoch, dependent_root, duties FROM unfinalized_duties`)
+	fmt.Fprint(&sql, `SELECT epoch, dependent_root, duties FROM unfinalized_duties WHERE epoch >= $1`)
 
 	rows, err := ReaderDb.Query(sql.String(), args...)
 	if err != nil {
