@@ -210,6 +210,12 @@
     data.nodes[i].title = data.nodes[i].id;
   }
   var options = $_network.defaultOptions;
+
+  // Performance improvements. Less animations
+  if (data.nodes.length >= 20) {
+    options.physics.stabilization = true
+  }
+
   var network = new vis.Network(container, data, options);
 
   sleep(1000).then(() => {
