@@ -124,6 +124,10 @@ CREATE INDEX IF NOT EXISTS "slashings_fork_id_idx"
 -- drop slot assignments
 DROP TABLE IF EXISTS "slot_assignments";
 
+-- drop blob index
+DROP TABLE IF EXISTS "blob_assignments";
+DROP TABLE IF EXISTS "blobs";
+
 -- +goose StatementEnd
 -- +goose Down
 -- +goose StatementBegin

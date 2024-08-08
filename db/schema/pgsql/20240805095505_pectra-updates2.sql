@@ -36,7 +36,7 @@ CREATE INDEX IF NOT EXISTS "consolidation_requests_source_addr_idx"
 
 CREATE INDEX IF NOT EXISTS "consolidation_requests_fork_idx"
     ON public."consolidation_requests"
-    ("fork_idx" ASC NULLS FIRST);
+    ("fork_id" ASC NULLS FIRST);
 
 
 DROP TABLE IF EXISTS public."el_requests";
@@ -69,7 +69,7 @@ CREATE INDEX IF NOT EXISTS "withdrawal_requests_source_addr_idx"
 
 CREATE INDEX IF NOT EXISTS "withdrawal_requests_fork_idx"
     ON public."withdrawal_requests"
-    ("fork_idx" ASC NULLS FIRST);
+    ("fork_id" ASC NULLS FIRST);
 
 CREATE INDEX IF NOT EXISTS "withdrawal_requests_amount_idx"
     ON public."withdrawal_requests"

@@ -59,6 +59,10 @@ func (dbw *dbWriter) persistMissedSlots(tx *sqlx.Tx, epoch phase0.Epoch, blocks 
 func (dbw *dbWriter) persistBlockData(tx *sqlx.Tx, block *Block, epochStats *EpochStats, depositIndex *uint64, orphaned bool, overrideForkId *ForkKey) (*dbtypes.Slot, error) {
 	// insert block
 	dbBlock := dbw.buildDbBlock(block, epochStats, overrideForkId)
+	if dbBlock == nil {
+		return nil, fmt.Errorf("error while building db block: %v", block.Slot)
+	}
+
 	if orphaned {
 		dbBlock.Status = dbtypes.Orphaned
 	}
@@ -71,9 +75,11 @@ func (dbw *dbWriter) persistBlockData(tx *sqlx.Tx, block *Block, epochStats *Epo
 	block.isInFinalizedDb = true
 
 	// insert child objects
-	err = dbw.persistBlockChildObjects(tx, block, depositIndex, orphaned, overrideForkId)
-	if err != nil {
-		return nil, err
+	if block.Slot > 0 {
+		err = dbw.persistBlockChildObjects(tx, block, depositIndex, orphaned, overrideForkId)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return dbBlock, nil
@@ -187,6 +193,16 @@ func (dbw *dbWriter) persistSyncAssignments(tx *sqlx.Tx, epoch phase0.Epoch, epo
 }
 
 func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, overrideForkId *ForkKey) *dbtypes.Slot {
+	if block.Slot == 0 {
+		// genesis block
+		return &dbtypes.Slot{
+			Slot:     0,
+			Proposer: math.MaxInt64,
+			Status:   dbtypes.Canonical,
+			Root:     block.Root[:],
+		}
+	}
+
 	blockBody := block.GetBlock()
 	if blockBody == nil {
 		dbw.indexer.logger.Warnf("error while building db blocks: block body not found: %v", block.Slot)
@@ -310,8 +326,16 @@ func (dbw *dbWriter) buildDbEpoch(epoch phase0.Epoch, blocks []*Block, epochStat
 
 		if block != nil {
 			dbEpoch.BlockCount++
+			if block.Slot == 0 {
+				if blockFn != nil {
+					blockFn(block, depositIndex)
+				}
+
+				continue
+			}
+
 			blockBody := block.GetBlock()
-			if blockBody == nil && block.Slot > 0 {
+			if blockBody == nil {
 				dbw.indexer.logger.Warnf("error while building db epoch: block body not found for aggregation: %v", block.Slot)
 				continue
 			}
