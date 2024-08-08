@@ -82,3 +82,14 @@ Client peers table
   display: inline-block;
   vertical-align: middle;
 }
+
+#nodemap-loading {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 1000;
+  width: 100px;
+  height: 100px;
+  margin-left: -50px;
+  margin-top: -50px;
+}
