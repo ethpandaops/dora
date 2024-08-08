@@ -113,16 +113,15 @@ func (client *Client) updateNodePeers(ctx context.Context) error {
 		return fmt.Errorf("could not get node info: %v", err)
 	}
 
-	if client.clientType != EthjsClient {
-		peers, err := client.rpcClient.GetAdminPeers(ctx)
-		if err != nil {
-			client.didFetchPeers = false
-			return fmt.Errorf("could not get peers: %v", err)
-		}
-
-		client.peers = peers
-		client.didFetchPeers = true
+	peers, err := client.rpcClient.GetAdminPeers(ctx)
+	if err != nil {
+		client.didFetchPeers = false
+		return fmt.Errorf("could not get peers: %v", err)
 	}
+
+	client.peers = peers
+	client.didFetchPeers = true
+
 	return nil
 }
 
