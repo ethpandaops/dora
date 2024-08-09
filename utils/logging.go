@@ -10,23 +10,25 @@ import (
 	"runtime"
 	"strings"
 
-	logger "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 )
 
 type LogWriter struct {
 	logFile *os.File
 }
 
-func InitLogger() *LogWriter {
+func InitLogger() (*LogWriter, logrus.FieldLogger) {
+	logger := logrus.StandardLogger()
+
 	logger.SetOutput(io.Discard) // Send all logs to nowhere by default
-	logger.SetLevel(logger.TraceLevel)
+	logger.SetLevel(logrus.TraceLevel)
 	logWriter := &LogWriter{}
 
-	outputLevel := getLogLevels(logger.InfoLevel)
+	outputLevel := getLogLevels(logrus.InfoLevel)
 	if Config.Logging.OutputLevel != "" {
 		levelParts := strings.Split(Config.Logging.OutputLevel, "|")
 		if len(levelParts) > 1 {
-			outputLevel = []logger.Level{}
+			outputLevel = []logrus.Level{}
 			for _, level := range levelParts {
 				logLevel := parseLogLevel(level)
 				if logLevel != 9999 {
@@ -38,7 +40,7 @@ func InitLogger() *LogWriter {
 			if logLevel != 9999 {
 				outputLevel = getLogLevels(logLevel)
 			} else {
-				outputLevel = []logger.Level{}
+				outputLevel = []logrus.Level{}
 			}
 		}
 	}
@@ -56,11 +58,11 @@ func InitLogger() *LogWriter {
 	}
 
 	if Config.Logging.FilePath != "" {
-		fileLevel := getLogLevels(logger.InfoLevel)
+		fileLevel := getLogLevels(logrus.InfoLevel)
 		if Config.Logging.FileLevel != "" {
 			levelParts := strings.Split(Config.Logging.FileLevel, "|")
 			if len(levelParts) > 1 {
-				fileLevel = []logger.Level{}
+				fileLevel = []logrus.Level{}
 				for _, level := range levelParts {
 					logLevel := parseLogLevel(level)
 					if logLevel != 9999 {
@@ -72,7 +74,7 @@ func InitLogger() *LogWriter {
 				if logLevel != 9999 {
 					fileLevel = getLogLevels(logLevel)
 				} else {
-					fileLevel = []logger.Level{}
+					fileLevel = []logrus.Level{}
 				}
 			}
 		}
@@ -90,7 +92,7 @@ func InitLogger() *LogWriter {
 		})
 	}
 
-	return logWriter
+	return logWriter, logger
 }
 
 func (logWriter *LogWriter) Dispose() {
@@ -100,77 +102,77 @@ func (logWriter *LogWriter) Dispose() {
 	}
 }
 
-func getLogLevels(level logger.Level) []logger.Level {
-	if level == logger.TraceLevel {
-		return []logger.Level{
-			logger.PanicLevel,
-			logger.FatalLevel,
-			logger.ErrorLevel,
-			logger.WarnLevel,
-			logger.InfoLevel,
-			logger.DebugLevel,
-			logger.TraceLevel,
+func getLogLevels(level logrus.Level) []logrus.Level {
+	if level == logrus.TraceLevel {
+		return []logrus.Level{
+			logrus.PanicLevel,
+			logrus.FatalLevel,
+			logrus.ErrorLevel,
+			logrus.WarnLevel,
+			logrus.InfoLevel,
+			logrus.DebugLevel,
+			logrus.TraceLevel,
 		}
-	} else if level == logger.DebugLevel {
-		return []logger.Level{
-			logger.PanicLevel,
-			logger.FatalLevel,
-			logger.ErrorLevel,
-			logger.WarnLevel,
-			logger.InfoLevel,
-			logger.DebugLevel,
+	} else if level == logrus.DebugLevel {
+		return []logrus.Level{
+			logrus.PanicLevel,
+			logrus.FatalLevel,
+			logrus.ErrorLevel,
+			logrus.WarnLevel,
+			logrus.InfoLevel,
+			logrus.DebugLevel,
 		}
-	} else if level == logger.InfoLevel {
-		return []logger.Level{
-			logger.PanicLevel,
-			logger.FatalLevel,
-			logger.ErrorLevel,
-			logger.WarnLevel,
-			logger.InfoLevel,
+	} else if level == logrus.InfoLevel {
+		return []logrus.Level{
+			logrus.PanicLevel,
+			logrus.FatalLevel,
+			logrus.ErrorLevel,
+			logrus.WarnLevel,
+			logrus.InfoLevel,
 		}
-	} else if level == logger.WarnLevel {
-		return []logger.Level{
-			logger.PanicLevel,
-			logger.FatalLevel,
-			logger.ErrorLevel,
-			logger.WarnLevel,
+	} else if level == logrus.WarnLevel {
+		return []logrus.Level{
+			logrus.PanicLevel,
+			logrus.FatalLevel,
+			logrus.ErrorLevel,
+			logrus.WarnLevel,
 		}
-	} else if level == logger.ErrorLevel {
-		return []logger.Level{
-			logger.PanicLevel,
-			logger.FatalLevel,
-			logger.ErrorLevel,
+	} else if level == logrus.ErrorLevel {
+		return []logrus.Level{
+			logrus.PanicLevel,
+			logrus.FatalLevel,
+			logrus.ErrorLevel,
 		}
-	} else if level == logger.FatalLevel {
-		return []logger.Level{
-			logger.PanicLevel,
-			logger.FatalLevel,
+	} else if level == logrus.FatalLevel {
+		return []logrus.Level{
+			logrus.PanicLevel,
+			logrus.FatalLevel,
 		}
-	} else if level == logger.PanicLevel {
-		return []logger.Level{
-			logger.PanicLevel,
+	} else if level == logrus.PanicLevel {
+		return []logrus.Level{
+			logrus.PanicLevel,
 		}
 	} else {
-		return []logger.Level{}
+		return []logrus.Level{}
 	}
 }
 
-func parseLogLevel(level string) logger.Level {
+func parseLogLevel(level string) logrus.Level {
 	switch level {
 	case "trace":
-		return logger.TraceLevel
+		return logrus.TraceLevel
 	case "debug":
-		return logger.DebugLevel
+		return logrus.DebugLevel
 	case "info":
-		return logger.InfoLevel
+		return logrus.InfoLevel
 	case "warn":
-		return logger.WarnLevel
+		return logrus.WarnLevel
 	case "error":
-		return logger.ErrorLevel
+		return logrus.ErrorLevel
 	case "fatal":
-		return logger.FatalLevel
+		return logrus.FatalLevel
 	case "panic":
-		return logger.PanicLevel
+		return logrus.PanicLevel
 	case "none":
 		return 9999
 	}
@@ -180,12 +182,12 @@ func parseLogLevel(level string) logger.Level {
 // WriterHook is a hook that writes logs of specified LogLevels to specified Writer
 type LogWriterHook struct {
 	Writer    io.Writer
-	LogLevels []logger.Level
+	LogLevels []logrus.Level
 }
 
 // Fire will be called when some logging function is called with current hook
 // It will format log entry to string and write it to appropriate writer
-func (hook *LogWriterHook) Fire(entry *logger.Entry) error {
+func (hook *LogWriterHook) Fire(entry *logrus.Entry) error {
 	line, err := entry.String()
 	if err != nil {
 		return err
@@ -194,7 +196,7 @@ func (hook *LogWriterHook) Fire(entry *logger.Entry) error {
 	return err
 }
 
-func (hook *LogWriterHook) Levels() []logger.Level {
+func (hook *LogWriterHook) Levels() []logrus.Level {
 	return hook.LogLevels
 }
 
@@ -210,12 +212,12 @@ func LogError(err error, errorMsg interface{}, callerSkip int, additionalInfos .
 	logErrorInfo(err, callerSkip, additionalInfos...).Error(errorMsg)
 }
 
-func logErrorInfo(err error, callerSkip int, additionalInfos ...map[string]interface{}) *logger.Entry {
-	logFields := logger.NewEntry(logger.New())
+func logErrorInfo(err error, callerSkip int, additionalInfos ...map[string]interface{}) *logrus.Entry {
+	logFields := logrus.NewEntry(logrus.New())
 
 	pc, fullFilePath, line, ok := runtime.Caller(callerSkip + 2)
 	if ok {
-		logFields = logFields.WithFields(logger.Fields{
+		logFields = logFields.WithFields(logrus.Fields{
 			"_file":     filepath.Base(fullFilePath),
 			"_function": runtime.FuncForPC(pc).Name(),
 			"_line":     line,

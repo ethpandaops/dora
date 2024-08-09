@@ -15,11 +15,11 @@ func InsertSlashings(slashings []*dbtypes.Slashing, tx *sqlx.Tx) error {
 			dbtypes.DBEnginePgsql:  "INSERT INTO slashings ",
 			dbtypes.DBEngineSqlite: "INSERT OR REPLACE INTO slashings ",
 		}),
-		"(slot_number, slot_index, slot_root, orphaned, validator, slasher, reason)",
+		"(slot_number, slot_index, slot_root, orphaned, validator, slasher, reason, fork_id)",
 		" VALUES ",
 	)
 	argIdx := 0
-	fieldCount := 7
+	fieldCount := 8
 
 	args := make([]any, len(slashings)*fieldCount)
 	for i, slashing := range slashings {
@@ -43,10 +43,11 @@ func InsertSlashings(slashings []*dbtypes.Slashing, tx *sqlx.Tx) error {
 		args[argIdx+4] = slashing.ValidatorIndex
 		args[argIdx+5] = slashing.SlasherIndex
 		args[argIdx+6] = slashing.Reason
+		args[argIdx+7] = slashing.ForkId
 		argIdx += fieldCount
 	}
 	fmt.Fprint(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
-		dbtypes.DBEnginePgsql:  " ON CONFLICT (slot_root, slot_index, validator) DO UPDATE SET orphaned = excluded.orphaned",
+		dbtypes.DBEnginePgsql:  " ON CONFLICT (slot_root, slot_index, validator) DO UPDATE SET orphaned = excluded.orphaned, fork_id = excluded.fork_id",
 		dbtypes.DBEngineSqlite: "",
 	}))
 
@@ -64,7 +65,7 @@ func GetSlashingForValidator(validator uint64) *dbtypes.Slashing {
 	}
 	fmt.Fprint(&sql, `
 	SELECT
-		slot_number, slot_index, slot_root, orphaned, validator, slasher, reason
+		slot_number, slot_index, slot_root, orphaned, validator, slasher, reason, fork_id
 	FROM slashings
 	WHERE validator = $1
 	`)
@@ -83,7 +84,7 @@ func GetSlashingsFiltered(offset uint64, limit uint32, finalizedBlock uint64, fi
 	fmt.Fprint(&sql, `
 	WITH cte AS (
 		SELECT
-			slot_number, slot_index, slot_root, orphaned, validator, slasher, reason
+			slot_number, slot_index, slot_root, orphaned, validator, slasher, reason, fork_id
 		FROM slashings
 	`)
 
@@ -163,7 +164,8 @@ func GetSlashingsFiltered(offset uint64, limit uint32, finalizedBlock uint64, fi
 		false AS orphaned, 
 		0 AS validator,
 		0 AS slasher,
-		0 AS reason
+		0 AS reason,
+		0 AS fork_id
 	FROM cte
 	UNION ALL SELECT * FROM (
 	SELECT * FROM cte

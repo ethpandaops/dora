@@ -137,8 +137,8 @@ func buildValidatorPageData(validatorIndex uint64) (*models.ValidatorPageData, t
 
 	if pageData.IsActive {
 		// load activity map
-		activityMap, maxActivity := services.GlobalBeaconService.GetValidatorActivity()
-		pageData.UpcheckActivity = activityMap[uint64(validator.Index)]
+		activityMap, maxActivity := services.GlobalBeaconService.GetValidatorActivity(3, false)
+		pageData.UpcheckActivity = activityMap[validator.Index]
 		pageData.UpcheckMaximum = uint8(maxActivity)
 	}
 

@@ -3,6 +3,7 @@ package services
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"fmt"
 	"runtime"
 	"runtime/debug"
@@ -26,6 +27,7 @@ type FrontendCacheService struct {
 }
 
 type FrontendCacheProcessingPage struct {
+	CallCtx      context.Context
 	modelMutex   sync.RWMutex
 	pageModel    interface{}
 	pageError    error
@@ -108,6 +110,10 @@ func (fc *FrontendCacheService) processPageCall(pageKey string, caching bool, pa
 	errorChan := make(chan error)
 	isTimedOut := false
 
+	callCtx, callCtxCancel := context.WithCancel(context.Background())
+	defer callCtxCancel()
+	pageCall.CallCtx = callCtx
+
 	fc.pageCallCounterMutex.Lock()
 	fc.pageCallCounter++
 	callIdx := fc.pageCallCounter
@@ -159,6 +165,7 @@ func (fc *FrontendCacheService) processPageCall(pageKey string, caching bool, pa
 		return nil, returnError
 	case <-time.After(callTimeout):
 		isTimedOut = true
+		callCtxCancel()
 		return nil, &FrontendCachePageError{
 			name:  "page timeout",
 			err:   fmt.Errorf("page call %v timeout", callIdx),

@@ -13,7 +13,7 @@ func InsertOrphanedBlock(block *dbtypes.OrphanedBlock, tx *sqlx.Tx) error {
 			) VALUES ($1, $2, $3, $4, $5)
 			ON CONFLICT (root) DO NOTHING`,
 		dbtypes.DBEngineSqlite: `
-			INSERT OR IGNORE orphaned_blocks (
+			INSERT OR IGNORE INTO orphaned_blocks (
 				root, header_ver, header_ssz, block_ver, block_ssz
 			) VALUES ($1, $2, $3, $4, $5)`,
 	}),

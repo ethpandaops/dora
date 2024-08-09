@@ -36,14 +36,14 @@ func BitAtVectorReversed(b []byte, i int) bool {
 	return (bb & (1 << uint(7-(i%8)))) > 0
 }
 
-func SyncCommitteeParticipation(bits []byte) float64 {
+func SyncCommitteeParticipation(bits []byte, syncCommitteeSize uint64) float64 {
 	participating := 0
-	for i := 0; i < int(Config.Chain.Config.SyncCommitteeSize); i++ {
+	for i := 0; i < int(syncCommitteeSize); i++ {
 		if BitAtVector(bits, i) {
 			participating++
 		}
 	}
-	return float64(participating) / float64(Config.Chain.Config.SyncCommitteeSize)
+	return float64(participating) / float64(syncCommitteeSize)
 }
 
 func GetValidatorChurnLimit(validatorCount uint64) uint64 {
