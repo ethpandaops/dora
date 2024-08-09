@@ -135,6 +135,13 @@ func (sync *synchronizer) runSync() {
 		// synchronize next epoch
 		syncEpoch := sync.currentEpoch
 		syncClients := sync.getSyncClients(syncEpoch)
+		if len(syncClients) == 0 {
+			sync.logger.Warnf("no clients available for synchronization of epoch %v", syncEpoch)
+
+			// wait for 10 seconds before retrying
+			time.Sleep(10 * time.Second)
+			continue
+		}
 
 		if syncEpoch >= sync.indexer.lastFinalizedEpoch {
 			isComplete = true
