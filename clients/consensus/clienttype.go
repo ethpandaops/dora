@@ -16,6 +16,7 @@ var (
 	PrysmClient      ClientType = 4
 	TekuClient       ClientType = 5
 	GrandineClient   ClientType = 6
+	CaplinClient     ClientType = 7
 )
 var clientTypePatterns = map[ClientType]*regexp.Regexp{
 	LighthouseClient: regexp.MustCompile("(?i)^Lighthouse/.*"),
@@ -24,6 +25,7 @@ var clientTypePatterns = map[ClientType]*regexp.Regexp{
 	PrysmClient:      regexp.MustCompile("(?i)^Prysm/.*"),
 	TekuClient:       regexp.MustCompile("(?i)^teku/.*"),
 	GrandineClient:   regexp.MustCompile("(?i)^Grandine/.*"),
+	CaplinClient:     regexp.MustCompile("(?i)^Caplin/.*"),
 }
 
 func (client *Client) parseClientVersion(version string) {
@@ -51,6 +53,8 @@ func ParseClientType(name string) ClientType {
 		return TekuClient
 	case "grandine":
 		return GrandineClient
+	case "caplin":
+		return CaplinClient
 	default:
 		return UnknownClient
 	}
@@ -74,6 +78,8 @@ func (clientType ClientType) String() string {
 		return "teku"
 	case GrandineClient:
 		return "grandine"
+	case CaplinClient:
+		return "caplin"
 	default:
 		return fmt.Sprintf("unknown: %d", clientType)
 	}
