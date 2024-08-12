@@ -139,6 +139,12 @@ func StartChainService(ctx context.Context, logger logrus.FieldLogger) error {
 	// start chain indexer
 	beaconIndexer.StartIndexer()
 
+	// start validator names updater
+	go func() {
+		validatorNames.UpdateDb()
+		validatorNames.StartUpdater()
+	}()
+
 	// add execution indexers
 	execindexer.NewDepositIndexer(executionIndexerCtx)
 

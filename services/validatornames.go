@@ -86,6 +86,7 @@ func (vn *ValidatorNames) runUpdater() error {
 		logger_vn.Infof("refreshing validator inventory")
 		loadingChan := vn.LoadValidatorNames()
 		<-loadingChan
+		needUpdate = true
 	}
 
 	if time.Since(vn.lastResolvedMapUpdate) > utils.Config.Frontend.ValidatorNamesResolveInterval {
@@ -101,7 +102,7 @@ func (vn *ValidatorNames) runUpdater() error {
 	}
 
 	if needUpdate {
-		err := vn.updateDb()
+		err := vn.UpdateDb()
 		if err != nil {
 			return err
 		}
@@ -419,7 +420,7 @@ func (vn *ValidatorNames) loadFromRangesApi(apiUrl string) error {
 	return nil
 }
 
-func (vn *ValidatorNames) updateDb() error {
+func (vn *ValidatorNames) UpdateDb() error {
 	vn.namesMutex.RLock()
 	nameRows := make([]*dbtypes.ValidatorName, 0)
 	hasName := map[uint64]bool{}
