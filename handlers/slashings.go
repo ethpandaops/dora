@@ -161,11 +161,6 @@ func buildFilteredSlashingsPageData(pageIdx uint64, pageSize uint64, minSlot uin
 	}
 
 	// load slashings
-	finalizedEpoch, _ := services.GlobalBeaconService.GetFinalizedEpoch()
-	if finalizedEpoch < 0 {
-		finalizedEpoch = 0
-	}
-
 	slashingFilter := &dbtypes.SlashingFilter{
 		MinSlot:       minSlot,
 		MaxSlot:       maxSlot,
@@ -180,7 +175,7 @@ func buildFilteredSlashingsPageData(pageIdx uint64, pageSize uint64, minSlot uin
 	dbSlashings, totalRows := services.GlobalBeaconService.GetSlashingsByFilter(slashingFilter, pageIdx-1, uint32(pageSize))
 
 	validatorSetRsp := services.GlobalBeaconService.GetCachedValidatorSet()
-	validatorActivityMap, validatorActivityMax := services.GlobalBeaconService.GetValidatorActivity()
+	validatorActivityMap, validatorActivityMax := services.GlobalBeaconService.GetValidatorActivity(3, false)
 
 	for _, slashing := range dbSlashings {
 		slashingData := &models.SlashingsPageDataSlashing{
@@ -222,7 +217,7 @@ func buildFilteredSlashingsPageData(pageIdx uint64, pageSize uint64, minSlot uin
 			}
 
 			if slashingData.ShowUpcheck {
-				slashingData.UpcheckActivity = validatorActivityMap[uint64(validator.Index)]
+				slashingData.UpcheckActivity = validatorActivityMap[validator.Index]
 				slashingData.UpcheckMaximum = uint8(validatorActivityMax)
 			}
 		}

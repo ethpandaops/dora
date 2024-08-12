@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/attestantio/go-eth2-client/spec/phase0"
+	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
@@ -72,12 +74,12 @@ func buildSlotsPageData(firstSlot uint64, pageSize uint64) (*models.SlotsPageDat
 	logrus.Debugf("slots page called: %v:%v", firstSlot, pageSize)
 	pageData := &models.SlotsPageData{}
 
-	now := time.Now()
-	currentSlot := utils.TimeToSlot(uint64(now.Unix()))
-	currentEpoch := utils.EpochOfSlot(currentSlot)
+	chainState := services.GlobalBeaconService.GetChainState()
+	currentSlot := chainState.CurrentSlot()
+	currentEpoch := chainState.EpochOfSlot(currentSlot)
 	maxSlot := currentSlot + 8
-	if maxSlot >= (currentEpoch+1)*utils.Config.Chain.Config.SlotsPerEpoch {
-		maxSlot = ((currentEpoch + 1) * utils.Config.Chain.Config.SlotsPerEpoch) - 1
+	if maxSlot >= chainState.EpochToSlot(currentEpoch+1) {
+		maxSlot = chainState.EpochToSlot(currentEpoch+1) - 1
 	}
 	if firstSlot > uint64(maxSlot) {
 		pageData.IsDefaultPage = true
@@ -91,8 +93,8 @@ func buildSlotsPageData(firstSlot uint64, pageSize uint64) (*models.SlotsPageDat
 	if ((firstSlot + 1) % pageSize) > 0 {
 		pagesBefore++
 	}
-	pagesAfter := (maxSlot - firstSlot) / pageSize
-	if ((maxSlot - firstSlot) % pageSize) > 0 {
+	pagesAfter := (uint64(maxSlot) - firstSlot) / pageSize
+	if ((uint64(maxSlot) - firstSlot) % pageSize) > 0 {
 		pagesAfter++
 	}
 	pageData.PageSize = pageSize
@@ -127,12 +129,12 @@ func buildSlotsPageData(firstSlot uint64, pageSize uint64) (*models.SlotsPageDat
 	blockCount := uint64(0)
 	allFinalized := true
 	allSynchronized := true
-	isFirstPage := firstSlot >= currentSlot
+	isFirstPage := firstSlot >= uint64(currentSlot)
 	openForks := map[int][]byte{}
 	maxOpenFork := 0
 	for slotIdx := int64(firstSlot); slotIdx >= int64(lastSlot); slotIdx-- {
 		slot := uint64(slotIdx)
-		finalized := finalizedEpoch >= int64(utils.EpochOfSlot(slot))
+		finalized := finalizedEpoch >= chainState.EpochOfSlot(phase0.Slot(slot))
 		if !finalized {
 			allFinalized = false
 		}
@@ -147,7 +149,7 @@ func buildSlotsPageData(firstSlot uint64, pageSize uint64) (*models.SlotsPageDat
 				Ts:                    utils.SlotToTime(slot),
 				Finalized:             finalized,
 				Status:                uint8(dbSlot.Status),
-				Scheduled:             slot >= currentSlot,
+				Scheduled:             slot >= uint64(currentSlot) && dbSlot.Status == dbtypes.Missing,
 				Synchronized:          dbSlot.SyncParticipation != -1,
 				Proposer:              dbSlot.Proposer,
 				ProposerName:          services.GlobalBeaconService.GetValidatorName(dbSlot.Proposer),
@@ -257,7 +259,7 @@ func buildSlotsPageSlotGraph(pageData *models.SlotsPageData, slotData *models.Sl
 		hasForks := false
 		if !isFirstPage {
 			// get blocks that build on top of this
-			refBlocks := services.GlobalBeaconService.GetDbBlocksByParentRoot(slotData.BlockRoot)
+			refBlocks := services.GlobalBeaconService.GetDbBlocksByParentRoot(phase0.Root(slotData.BlockRoot))
 			refBlockCount := len(refBlocks)
 			if refBlockCount > 0 {
 				freeForkIdx = *maxOpenFork

@@ -4,36 +4,34 @@ import (
 	"bytes"
 	"strings"
 
+	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/sirupsen/logrus"
 
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
-	"github.com/ethpandaops/dora/indexer"
+	"github.com/ethpandaops/dora/indexer/beacon"
 	"github.com/ethpandaops/dora/utils"
 )
 
 func (bs *ChainService) GetIncludedDepositsByFilter(filter *dbtypes.DepositFilter, pageIdx uint64, pageSize uint32) ([]*dbtypes.Deposit, uint64) {
-	idxHeadSlot, finalizedEpoch, persistedEpoch, _ := bs.indexer.GetCacheState()
-	finalizedBlock := uint64(0)
-	if finalizedEpoch > 0 {
-		finalizedBlock = (uint64(finalizedEpoch)+1)*utils.Config.Chain.Config.SlotsPerEpoch - 1
-	}
+	chainState := bs.consensusPool.GetChainState()
+	finalizedBlock, prunedEpoch := bs.beaconIndexer.GetBlockCacheState()
+	idxMinSlot := chainState.EpochToSlot(prunedEpoch)
+	currentSlot := chainState.CurrentSlot()
 
 	// load most recent objects from indexer cache
-	idxMinSlot := (persistedEpoch + 1) * int64(utils.Config.Chain.Config.SlotsPerEpoch)
 	cachedMatches := make([]*dbtypes.Deposit, 0)
 
-	var epochStats *indexer.EpochStats
+	var epochStats *beacon.EpochStats
 	var depositIndex *uint64
 
-	for slotIdx := idxMinSlot; slotIdx < int64(idxHeadSlot); slotIdx++ {
-		slot := uint64(slotIdx)
-		blocks := bs.indexer.GetCachedBlocks(slot)
+	for slot := idxMinSlot; slot < currentSlot; slot++ {
+		blocks := bs.beaconIndexer.GetBlocksBySlot(slot)
 		if blocks != nil {
 			for bidx := 0; bidx < len(blocks); bidx++ {
 				block := blocks[bidx]
 				if filter.WithOrphaned != 1 {
-					isOrphaned := !block.IsCanonical(bs.indexer, nil)
+					isOrphaned := !bs.beaconIndexer.IsCanonicalBlock(block, nil)
 					if filter.WithOrphaned == 0 && isOrphaned {
 						continue
 					}
@@ -42,18 +40,23 @@ func (bs *ChainService) GetIncludedDepositsByFilter(filter *dbtypes.DepositFilte
 					}
 				}
 
-				epoch := utils.EpochOfSlot(slot)
-				if epochStats == nil || epochStats.Epoch != epoch {
-					epochStats = bs.indexer.GetCachedEpochStats(epoch)
+				epoch := chainState.EpochOfSlot(slot)
+				if epochStats == nil || epochStats.GetEpoch() != epoch {
+					epochStats = bs.beaconIndexer.GetEpochStats(epoch, nil)
 
 					if epochStats != nil {
-						depositIndex = epochStats.GetInitialDepositIndex()
+						if epochStatsValues := epochStats.GetValues(false); epochStatsValues != nil {
+							depositIndexVal := epochStatsValues.FirstDepositIndex
+							depositIndex = &depositIndexVal
+						} else {
+							depositIndex = nil
+						}
 					} else {
 						depositIndex = nil
 					}
 				}
 
-				deposits := indexer.BuildDbDeposits(block, depositIndex)
+				deposits := block.GetDbDeposits(bs.beaconIndexer, depositIndex)
 				for idx, deposit := range deposits {
 					if filter.MinIndex > 0 && (deposit.Index == nil || *deposit.Index < filter.MinIndex) {
 						continue
@@ -109,20 +112,20 @@ func (bs *ChainService) GetIncludedDepositsByFilter(filter *dbtypes.DepositFilte
 
 	if resIdx > int(pageSize) {
 		// all results from cache, just get result count from db
-		_, dbCount, err = db.GetDepositsFiltered(0, 1, finalizedBlock, filter)
+		_, dbCount, err = db.GetDepositsFiltered(0, 1, uint64(finalizedBlock), filter)
 	} else if dbPage == 0 {
 		// first page, load first `pagesize-cachedResults` items from db
-		dbObjects, dbCount, err = db.GetDepositsFiltered(0, uint32(dbCacheOffset), finalizedBlock, filter)
+		dbObjects, dbCount, err = db.GetDepositsFiltered(0, uint32(dbCacheOffset), uint64(finalizedBlock), filter)
 	} else {
-		dbObjects, dbCount, err = db.GetDepositsFiltered((dbPage-1)*uint64(pageSize)+dbCacheOffset, pageSize, finalizedBlock, filter)
+		dbObjects, dbCount, err = db.GetDepositsFiltered((dbPage-1)*uint64(pageSize)+dbCacheOffset, pageSize, uint64(finalizedBlock), filter)
 	}
 
 	if err != nil {
 		logrus.Warnf("ChainService.GetIncludedDepositsByFilter error: %v", err)
 	} else {
 		for idx, dbObject := range dbObjects {
-			if dbObject.SlotNumber > finalizedBlock {
-				blockStatus := bs.CheckBlockOrphanedStatus(dbObject.SlotRoot)
+			if dbObject.SlotNumber > uint64(finalizedBlock) {
+				blockStatus := bs.CheckBlockOrphanedStatus(phase0.Root(dbObject.SlotRoot))
 				dbObjects[idx].Orphaned = blockStatus == dbtypes.Orphaned
 			}
 
@@ -143,23 +146,21 @@ func (bs *ChainService) GetIncludedDepositsByFilter(filter *dbtypes.DepositFilte
 }
 
 func (bs *ChainService) GetVoluntaryExitsByFilter(filter *dbtypes.VoluntaryExitFilter, pageIdx uint64, pageSize uint32) ([]*dbtypes.VoluntaryExit, uint64) {
-	idxHeadSlot, finalizedEpoch, persistedEpoch, _ := bs.indexer.GetCacheState()
-	finalizedBlock := uint64(0)
-	if finalizedEpoch > 0 {
-		finalizedBlock = (uint64(finalizedEpoch)+1)*utils.Config.Chain.Config.SlotsPerEpoch - 1
-	}
+	chainState := bs.consensusPool.GetChainState()
+	finalizedBlock, prunedEpoch := bs.beaconIndexer.GetBlockCacheState()
+	idxMinSlot := chainState.EpochToSlot(prunedEpoch)
+	currentSlot := chainState.CurrentSlot()
 
 	// load most recent objects from indexer cache
-	idxMinSlot := (persistedEpoch + 1) * int64(utils.Config.Chain.Config.SlotsPerEpoch)
 	cachedMatches := make([]*dbtypes.VoluntaryExit, 0)
-	for slotIdx := int64(idxHeadSlot); slotIdx >= int64(idxMinSlot); slotIdx-- {
+	for slotIdx := int64(currentSlot); slotIdx >= int64(idxMinSlot); slotIdx-- {
 		slot := uint64(slotIdx)
-		blocks := bs.indexer.GetCachedBlocks(slot)
+		blocks := bs.beaconIndexer.GetBlocksBySlot(phase0.Slot(slot))
 		if blocks != nil {
 			for bidx := 0; bidx < len(blocks); bidx++ {
 				block := blocks[bidx]
 				if filter.WithOrphaned != 1 {
-					isOrphaned := !block.IsCanonical(bs.indexer, nil)
+					isOrphaned := !bs.beaconIndexer.IsCanonicalBlock(block, nil)
 					if filter.WithOrphaned == 0 && isOrphaned {
 						continue
 					}
@@ -174,7 +175,7 @@ func (bs *ChainService) GetVoluntaryExitsByFilter(filter *dbtypes.VoluntaryExitF
 					continue
 				}
 
-				voluntaryExits := indexer.BuildDbVoluntaryExits(block)
+				voluntaryExits := block.GetDbVoluntaryExits(bs.beaconIndexer)
 				for idx, voluntaryExit := range voluntaryExits {
 					if filter.MinIndex > 0 && voluntaryExit.ValidatorIndex < filter.MinIndex {
 						continue
@@ -221,20 +222,20 @@ func (bs *ChainService) GetVoluntaryExitsByFilter(filter *dbtypes.VoluntaryExitF
 
 	if resIdx > int(pageSize) {
 		// all results from cache, just get result count from db
-		_, dbCount, err = db.GetVoluntaryExitsFiltered(0, 1, finalizedBlock, filter)
+		_, dbCount, err = db.GetVoluntaryExitsFiltered(0, 1, uint64(finalizedBlock), filter)
 	} else if dbPage == 0 {
 		// first page, load first `pagesize-cachedResults` items from db
-		dbObjects, dbCount, err = db.GetVoluntaryExitsFiltered(0, uint32(dbCacheOffset), finalizedBlock, filter)
+		dbObjects, dbCount, err = db.GetVoluntaryExitsFiltered(0, uint32(dbCacheOffset), uint64(finalizedBlock), filter)
 	} else {
-		dbObjects, dbCount, err = db.GetVoluntaryExitsFiltered((dbPage-1)*uint64(pageSize)+dbCacheOffset, pageSize, finalizedBlock, filter)
+		dbObjects, dbCount, err = db.GetVoluntaryExitsFiltered((dbPage-1)*uint64(pageSize)+dbCacheOffset, pageSize, uint64(finalizedBlock), filter)
 	}
 
 	if err != nil {
 		logrus.Warnf("ChainService.GetVoluntaryExitsByFilter error: %v", err)
 	} else {
 		for idx, dbObject := range dbObjects {
-			if dbObject.SlotNumber > finalizedBlock {
-				blockStatus := bs.CheckBlockOrphanedStatus(dbObject.SlotRoot)
+			if dbObject.SlotNumber > uint64(finalizedBlock) {
+				blockStatus := bs.CheckBlockOrphanedStatus(phase0.Root(dbObject.SlotRoot))
 				dbObjects[idx].Orphaned = blockStatus == dbtypes.Orphaned
 			}
 
@@ -255,23 +256,21 @@ func (bs *ChainService) GetVoluntaryExitsByFilter(filter *dbtypes.VoluntaryExitF
 }
 
 func (bs *ChainService) GetSlashingsByFilter(filter *dbtypes.SlashingFilter, pageIdx uint64, pageSize uint32) ([]*dbtypes.Slashing, uint64) {
-	idxHeadSlot, finalizedEpoch, persistedEpoch, _ := bs.indexer.GetCacheState()
-	finalizedBlock := uint64(0)
-	if finalizedEpoch > 0 {
-		finalizedBlock = (uint64(finalizedEpoch)+1)*utils.Config.Chain.Config.SlotsPerEpoch - 1
-	}
+	chainState := bs.consensusPool.GetChainState()
+	finalizedBlock, prunedEpoch := bs.beaconIndexer.GetBlockCacheState()
+	idxMinSlot := chainState.EpochToSlot(prunedEpoch)
+	currentSlot := chainState.CurrentSlot()
 
 	// load most recent objects from indexer cache
-	idxMinSlot := (persistedEpoch + 1) * int64(utils.Config.Chain.Config.SlotsPerEpoch)
 	cachedMatches := make([]*dbtypes.Slashing, 0)
-	for slotIdx := int64(idxHeadSlot); slotIdx >= int64(idxMinSlot); slotIdx-- {
+	for slotIdx := int64(currentSlot); slotIdx >= int64(idxMinSlot); slotIdx-- {
 		slot := uint64(slotIdx)
-		blocks := bs.indexer.GetCachedBlocks(slot)
+		blocks := bs.beaconIndexer.GetBlocksBySlot(phase0.Slot(slot))
 		if blocks != nil {
 			for bidx := 0; bidx < len(blocks); bidx++ {
 				block := blocks[bidx]
 				if filter.WithOrphaned != 1 {
-					isOrphaned := !block.IsCanonical(bs.indexer, nil)
+					isOrphaned := !bs.beaconIndexer.IsCanonicalBlock(block, nil)
 					if filter.WithOrphaned == 0 && isOrphaned {
 						continue
 					}
@@ -286,7 +285,7 @@ func (bs *ChainService) GetSlashingsByFilter(filter *dbtypes.SlashingFilter, pag
 					continue
 				}
 
-				slashings := indexer.BuildDbSlashings(block)
+				slashings := block.GetDbSlashings(bs.beaconIndexer)
 				for idx, slashing := range slashings {
 					if filter.MinIndex > 0 && slashing.ValidatorIndex < filter.MinIndex {
 						continue
@@ -339,142 +338,20 @@ func (bs *ChainService) GetSlashingsByFilter(filter *dbtypes.SlashingFilter, pag
 
 	if resIdx > int(pageSize) {
 		// all results from cache, just get result count from db
-		_, dbCount, err = db.GetSlashingsFiltered(0, 1, finalizedBlock, filter)
+		_, dbCount, err = db.GetSlashingsFiltered(0, 1, uint64(finalizedBlock), filter)
 	} else if dbPage == 0 {
 		// first page, load first `pagesize-cachedResults` items from db
-		dbObjects, dbCount, err = db.GetSlashingsFiltered(0, uint32(dbCacheOffset), finalizedBlock, filter)
+		dbObjects, dbCount, err = db.GetSlashingsFiltered(0, uint32(dbCacheOffset), uint64(finalizedBlock), filter)
 	} else {
-		dbObjects, dbCount, err = db.GetSlashingsFiltered((dbPage-1)*uint64(pageSize)+dbCacheOffset, pageSize, finalizedBlock, filter)
+		dbObjects, dbCount, err = db.GetSlashingsFiltered((dbPage-1)*uint64(pageSize)+dbCacheOffset, pageSize, uint64(finalizedBlock), filter)
 	}
 
 	if err != nil {
 		logrus.Warnf("ChainService.GetSlashingsByFilter error: %v", err)
 	} else {
 		for idx, dbObject := range dbObjects {
-			if dbObject.SlotNumber > finalizedBlock {
-				blockStatus := bs.CheckBlockOrphanedStatus(dbObject.SlotRoot)
-				dbObjects[idx].Orphaned = blockStatus == dbtypes.Orphaned
-			}
-
-			if filter.WithOrphaned != 1 {
-				if filter.WithOrphaned == 0 && dbObjects[idx].Orphaned {
-					continue
-				}
-				if filter.WithOrphaned == 2 && !dbObjects[idx].Orphaned {
-					continue
-				}
-			}
-
-			resObjs = append(resObjs, dbObjects[idx])
-		}
-	}
-
-	return resObjs, cachedMatchesLen + dbCount
-}
-
-func (bs *ChainService) GetElRequestsByFilter(filter *dbtypes.ElRequestFilter, pageIdx uint64, pageSize uint32) ([]*dbtypes.ElRequest, uint64) {
-	idxHeadSlot, finalizedEpoch, persistedEpoch, _ := bs.indexer.GetCacheState()
-	finalizedBlock := uint64(0)
-	if finalizedEpoch > 0 {
-		finalizedBlock = (uint64(finalizedEpoch)+1)*utils.Config.Chain.Config.SlotsPerEpoch - 1
-	}
-
-	// load most recent objects from indexer cache
-	idxMinSlot := (persistedEpoch + 1) * int64(utils.Config.Chain.Config.SlotsPerEpoch)
-	cachedMatches := make([]*dbtypes.ElRequest, 0)
-	for slotIdx := int64(idxHeadSlot); slotIdx >= int64(idxMinSlot); slotIdx-- {
-		slot := uint64(slotIdx)
-		blocks := bs.indexer.GetCachedBlocks(slot)
-		if blocks != nil {
-			for bidx := 0; bidx < len(blocks); bidx++ {
-				block := blocks[bidx]
-				if filter.WithOrphaned != 1 {
-					isOrphaned := !block.IsCanonical(bs.indexer, nil)
-					if filter.WithOrphaned == 0 && isOrphaned {
-						continue
-					}
-					if filter.WithOrphaned == 2 && !isOrphaned {
-						continue
-					}
-				}
-				if filter.MinSlot > 0 && slot < filter.MinSlot {
-					continue
-				}
-				if filter.MaxSlot > 0 && slot > filter.MaxSlot {
-					continue
-				}
-
-				elRequests := indexer.BuildDbElRequests(block)
-				for idx, elRequest := range elRequests {
-					if filter.RequestType > 0 && filter.RequestType != elRequest.RequestType {
-						continue
-					}
-					if len(filter.SourceAddress) > 0 && !bytes.Equal(filter.SourceAddress, elRequest.SourceAddress) {
-						continue
-					}
-					if filter.MinSourceIndex > 0 && (elRequest.SourceIndex == nil || *elRequest.SourceIndex < filter.MinSourceIndex) {
-						continue
-					}
-					if filter.MaxSourceIndex > 0 && (elRequest.SourceIndex == nil || *elRequest.SourceIndex > filter.MaxSourceIndex) {
-						continue
-					}
-					if filter.SourceValidatorName != "" {
-						if elRequest.SourceIndex == nil {
-							continue
-						}
-
-						validatorName := bs.validatorNames.GetValidatorName(*elRequest.SourceIndex)
-						if !strings.Contains(validatorName, filter.SourceValidatorName) {
-							continue
-						}
-					}
-
-					cachedMatches = append(cachedMatches, elRequests[idx])
-				}
-			}
-		}
-	}
-
-	cachedMatchesLen := uint64(len(cachedMatches))
-	cachedPages := cachedMatchesLen / uint64(pageSize)
-	resObjs := make([]*dbtypes.ElRequest, 0)
-	resIdx := 0
-
-	cachedStart := pageIdx * uint64(pageSize)
-	cachedEnd := cachedStart + uint64(pageSize)
-
-	if cachedPages > 0 && pageIdx < cachedPages {
-		resObjs = append(resObjs, cachedMatches[cachedStart:cachedEnd]...)
-		resIdx += int(cachedEnd - cachedStart)
-	} else if pageIdx == cachedPages {
-		resObjs = append(resObjs, cachedMatches[cachedStart:]...)
-		resIdx += len(cachedMatches) - int(cachedStart)
-	}
-
-	// load older objects from db
-	dbPage := pageIdx - cachedPages
-	dbCacheOffset := uint64(pageSize) - (cachedMatchesLen % uint64(pageSize))
-
-	var dbObjects []*dbtypes.ElRequest
-	var dbCount uint64
-	var err error
-
-	if resIdx > int(pageSize) {
-		// all results from cache, just get result count from db
-		_, dbCount, err = db.GetElRequestsFiltered(0, 1, finalizedBlock, filter)
-	} else if dbPage == 0 {
-		// first page, load first `pagesize-cachedResults` items from db
-		dbObjects, dbCount, err = db.GetElRequestsFiltered(0, uint32(dbCacheOffset), finalizedBlock, filter)
-	} else {
-		dbObjects, dbCount, err = db.GetElRequestsFiltered((dbPage-1)*uint64(pageSize)+dbCacheOffset, pageSize, finalizedBlock, filter)
-	}
-
-	if err != nil {
-		logrus.Warnf("ChainService.GetElRequestsByFilter error: %v", err)
-	} else {
-		for idx, dbObject := range dbObjects {
-			if dbObject.SlotNumber > finalizedBlock {
-				blockStatus := bs.CheckBlockOrphanedStatus(dbObject.SlotRoot)
+			if dbObject.SlotNumber > uint64(finalizedBlock) {
+				blockStatus := bs.CheckBlockOrphanedStatus(phase0.Root(dbObject.SlotRoot))
 				dbObjects[idx].Orphaned = blockStatus == dbtypes.Orphaned
 			}
 

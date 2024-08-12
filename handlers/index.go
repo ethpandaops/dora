@@ -12,6 +12,7 @@ import (
 	"time"
 
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
+	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/services"
@@ -95,15 +96,14 @@ func buildIndexPageData() (*models.IndexPageData, time.Duration) {
 	recentSlotsCount := 16
 
 	// network overview
-	now := time.Now()
-	currentEpoch := utils.TimeToEpoch(now)
-	if currentEpoch < 0 {
-		currentEpoch = 0
-	}
-	currentSlot := utils.TimeToSlot(uint64(now.Unix()))
-	currentSlotIndex := (currentSlot % utils.Config.Chain.Config.SlotsPerEpoch) + 1
+	chainState := services.GlobalBeaconService.GetChainState()
+	specs := chainState.GetSpecs()
+	currentEpoch := chainState.CurrentEpoch()
+	currentSlot := chainState.CurrentSlot()
+	currentSlotIndex := chainState.SlotToSlotIndex(currentSlot) + 1
 
-	finalizedEpoch, _, justifiedEpoch, _ := services.GlobalBeaconService.GetIndexer().GetFinalizationCheckpoints()
+	finalizedEpoch, _ := chainState.GetFinalizedCheckpoint()
+	justifiedEpoch, _ := chainState.GetJustifiedCheckpoint()
 
 	syncState := dbtypes.IndexerSyncState{}
 	db.GetExplorerState("indexer.syncstate", &syncState)
@@ -120,10 +120,10 @@ func buildIndexPageData() (*models.IndexPageData, time.Duration) {
 		ShowSyncingMessage:    !isSynced,
 		SlotsPerEpoch:         utils.Config.Chain.Config.SlotsPerEpoch,
 		CurrentEpoch:          uint64(currentEpoch),
-		CurrentFinalizedEpoch: finalizedEpoch,
-		CurrentJustifiedEpoch: justifiedEpoch,
-		CurrentSlot:           currentSlot,
-		CurrentScheduledCount: utils.Config.Chain.Config.SlotsPerEpoch - currentSlotIndex,
+		CurrentFinalizedEpoch: int64(finalizedEpoch) - 1,
+		CurrentJustifiedEpoch: int64(justifiedEpoch) - 1,
+		CurrentSlot:           uint64(currentSlot),
+		CurrentScheduledCount: specs.SlotsPerEpoch - uint64(currentSlotIndex),
 		CurrentEpochProgress:  float64(100) * float64(currentSlotIndex) / float64(utils.Config.Chain.Config.SlotsPerEpoch),
 	}
 	if utils.Config.Chain.DisplayName != "" {
@@ -208,7 +208,7 @@ func buildIndexPageData() (*models.IndexPageData, time.Duration) {
 	}
 
 	// load recent epochs
-	buildIndexPageRecentEpochsData(pageData, uint64(currentEpoch), finalizedEpoch, justifiedEpoch, recentEpochCount)
+	buildIndexPageRecentEpochsData(pageData, currentEpoch, finalizedEpoch, justifiedEpoch, recentEpochCount)
 
 	// load recent blocks
 	buildIndexPageRecentBlocksData(pageData, currentSlot, recentBlockCount)
@@ -219,9 +219,9 @@ func buildIndexPageData() (*models.IndexPageData, time.Duration) {
 	return pageData, 12 * time.Second
 }
 
-func buildIndexPageRecentEpochsData(pageData *models.IndexPageData, currentEpoch uint64, finalizedEpoch int64, justifiedEpoch int64, recentEpochCount int) {
+func buildIndexPageRecentEpochsData(pageData *models.IndexPageData, currentEpoch phase0.Epoch, finalizedEpoch phase0.Epoch, justifiedEpoch phase0.Epoch, recentEpochCount int) {
 	pageData.RecentEpochs = make([]*models.IndexPageDataEpochs, 0)
-	epochsData := services.GlobalBeaconService.GetDbEpochs(currentEpoch, uint32(recentEpochCount))
+	epochsData := services.GlobalBeaconService.GetDbEpochs(uint64(currentEpoch), uint32(recentEpochCount))
 	for i := 0; i < len(epochsData); i++ {
 		epochData := epochsData[i]
 		if epochData == nil {
@@ -234,8 +234,8 @@ func buildIndexPageRecentEpochsData(pageData *models.IndexPageData, currentEpoch
 		pageData.RecentEpochs = append(pageData.RecentEpochs, &models.IndexPageDataEpochs{
 			Epoch:             epochData.Epoch,
 			Ts:                utils.EpochToTime(epochData.Epoch),
-			Finalized:         finalizedEpoch >= int64(epochData.Epoch),
-			Justified:         justifiedEpoch >= int64(epochData.Epoch),
+			Finalized:         uint64(finalizedEpoch) > epochData.Epoch,
+			Justified:         uint64(justifiedEpoch) > epochData.Epoch,
 			EligibleEther:     epochData.Eligible,
 			TargetVoted:       epochData.VotedTarget,
 			VoteParticipation: voteParticipation,
@@ -244,7 +244,7 @@ func buildIndexPageRecentEpochsData(pageData *models.IndexPageData, currentEpoch
 	pageData.RecentEpochCount = uint64(len(pageData.RecentEpochs))
 }
 
-func buildIndexPageRecentBlocksData(pageData *models.IndexPageData, currentSlot uint64, recentBlockCount int) {
+func buildIndexPageRecentBlocksData(pageData *models.IndexPageData, currentSlot phase0.Slot, recentBlockCount int) {
 	pageData.RecentBlocks = make([]*models.IndexPageDataBlocks, 0)
 	blocksData := services.GlobalBeaconService.GetDbBlocks(uint64(currentSlot), int32(recentBlockCount), false, false)
 	for i := 0; i < len(blocksData); i++ {
@@ -273,10 +273,10 @@ func buildIndexPageRecentBlocksData(pageData *models.IndexPageData, currentSlot 
 	pageData.RecentBlockCount = uint64(len(pageData.RecentBlocks))
 }
 
-func buildIndexPageRecentSlotsData(pageData *models.IndexPageData, firstSlot uint64, slotLimit int) {
+func buildIndexPageRecentSlotsData(pageData *models.IndexPageData, firstSlot phase0.Slot, slotLimit int) {
 	var lastSlot uint64
-	if firstSlot >= uint64(slotLimit) {
-		lastSlot = firstSlot - uint64(slotLimit)
+	if uint64(firstSlot) >= uint64(slotLimit) {
+		lastSlot = uint64(firstSlot) - uint64(slotLimit)
 	} else {
 		lastSlot = 0
 	}

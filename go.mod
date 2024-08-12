@@ -1,6 +1,6 @@
 module github.com/ethpandaops/dora
 
-go 1.21
+go 1.22
 
 require (
 	dario.cat/mergo v1.0.0
@@ -13,6 +13,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.58.3
 	github.com/coocood/freecache v1.2.4
 	github.com/ethereum/go-ethereum v1.14.7
+	github.com/ethpandaops/ethwallclock v0.3.0
 	github.com/glebarez/go-sqlite v1.22.0
 	github.com/go-redis/redis/v8 v8.11.5
 	github.com/gorilla/mux v1.8.1
@@ -22,6 +23,7 @@ require (
 	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/lib/pq v1.10.9
 	github.com/lucasb-eyer/go-colorful v1.2.0
+	github.com/mashingan/smapping v0.1.19
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/pk910/dynamic-ssz v0.0.5
 	github.com/pressly/goose/v3 v3.21.1

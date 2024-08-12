@@ -79,7 +79,7 @@ func buildDepositsPageData(firstEpoch uint64, pageSize uint64) (*models.Deposits
 	}
 
 	validatorSetRsp := services.GlobalBeaconService.GetCachedValidatorPubkeyMap()
-	validatorActivityMap, validatorActivityMax := services.GlobalBeaconService.GetValidatorActivity()
+	validatorActivityMap, validatorActivityMax := services.GlobalBeaconService.GetValidatorActivity(3, false)
 
 	// load initiated deposits
 	dbDepositTxs := db.GetDepositTxs(0, 20)
@@ -121,7 +121,7 @@ func buildDepositsPageData(firstEpoch uint64, pageSize uint64) (*models.Deposits
 			}
 
 			if depositTxData.ShowUpcheck {
-				depositTxData.UpcheckActivity = validatorActivityMap[uint64(validator.Index)]
+				depositTxData.UpcheckActivity = validatorActivityMap[validator.Index]
 				depositTxData.UpcheckMaximum = uint8(validatorActivityMax)
 			}
 		}
@@ -172,7 +172,7 @@ func buildDepositsPageData(firstEpoch uint64, pageSize uint64) (*models.Deposits
 			}
 
 			if depositData.ShowUpcheck {
-				depositData.UpcheckActivity = validatorActivityMap[uint64(validator.Index)]
+				depositData.UpcheckActivity = validatorActivityMap[validator.Index]
 				depositData.UpcheckMaximum = uint8(validatorActivityMax)
 			}
 		}
