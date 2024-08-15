@@ -268,3 +268,21 @@ func (cs *ChainState) EpochStartSlot(epoch phase0.Epoch) phase0.Slot {
 
 	return phase0.Slot(epoch) * phase0.Slot(cs.specs.SlotsPerEpoch)
 }
+
+func (cs *ChainState) GetValidatorChurnLimit(validatorCount uint64) uint64 {
+	if cs.specs == nil {
+		return 0
+	}
+
+	adaptable := uint64(0)
+	if validatorCount > 0 {
+		adaptable = validatorCount / cs.specs.ChurnLimitQuotient
+	}
+
+	min := cs.specs.MinPerEpochChurnLimit
+	if min > adaptable {
+		return min
+	}
+
+	return adaptable
+}

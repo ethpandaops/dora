@@ -45,15 +45,3 @@ func SyncCommitteeParticipation(bits []byte, syncCommitteeSize uint64) float64 {
 	}
 	return float64(participating) / float64(syncCommitteeSize)
 }
-
-func GetValidatorChurnLimit(validatorCount uint64) uint64 {
-	min := Config.Chain.Config.MinPerEpochChurnLimit
-	adaptable := uint64(0)
-	if validatorCount > 0 {
-		adaptable = validatorCount / Config.Chain.Config.ChurnLimitQuotient
-	}
-	if min > adaptable {
-		return min
-	}
-	return adaptable
-}

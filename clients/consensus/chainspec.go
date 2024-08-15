@@ -43,6 +43,8 @@ type ChainSpec struct {
 	MaxEffectiveBalanceElectra   uint64            `yaml:"MAX_EFFECTIVE_BALANCE_ELECTRA"`
 	TargetCommitteeSize          uint64            `yaml:"TARGET_COMMITTEE_SIZE"`
 	MaxCommitteesPerSlot         uint64            `yaml:"MAX_COMMITTEES_PER_SLOT"`
+	MinPerEpochChurnLimit        uint64            `yaml:"MIN_PER_EPOCH_CHURN_LIMIT"`
+	ChurnLimitQuotient           uint64            `yaml:"CHURN_LIMIT_QUOTIENT"`
 	DomainBeaconProposer         phase0.DomainType `yaml:"DOMAIN_BEACON_PROPOSER"`
 	DomainBeaconAttester         phase0.DomainType `yaml:"DOMAIN_BEACON_ATTESTER"`
 	DomainSyncCommittee          phase0.DomainType `yaml:"DOMAIN_SYNC_COMMITTEE"`

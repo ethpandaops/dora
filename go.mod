@@ -3,7 +3,6 @@ module github.com/ethpandaops/dora
 go 1.22
 
 require (
-	dario.cat/mergo v1.0.0
 	github.com/Masterminds/sprig/v3 v3.2.3
 	github.com/attestantio/go-eth2-client v0.21.10
 	github.com/coocood/freecache v1.2.4

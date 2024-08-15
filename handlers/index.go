@@ -150,7 +150,8 @@ func buildIndexPageData() (*models.IndexPageData, time.Duration) {
 			pageData.AverageValidatorBalance = pageData.AverageValidatorBalance / pageData.ActiveValidatorCount
 		}
 	}
-	pageData.ValidatorsPerEpoch = utils.GetValidatorChurnLimit(pageData.ActiveValidatorCount)
+
+	pageData.ValidatorsPerEpoch = chainState.GetValidatorChurnLimit(pageData.ActiveValidatorCount)
 	pageData.ValidatorsPerDay = pageData.ValidatorsPerEpoch * 225
 	depositQueueTime := float64(pageData.EnteringValidatorCount) / float64(pageData.ValidatorsPerDay)
 	if depositQueueTime > 0 {

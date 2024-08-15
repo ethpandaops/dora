@@ -36,14 +36,10 @@ func main() {
 	defer logWriter.Dispose()
 
 	logger.WithFields(logrus.Fields{
-		"config":    *configPath,
-		"version":   utils.BuildVersion,
-		"release":   utils.BuildRelease,
-		"chainName": utils.Config.Chain.Config.ConfigName}).Printf("starting")
-
-	if utils.Config.Chain.Config.SlotsPerEpoch == 0 || utils.Config.Chain.Config.SecondsPerSlot == 0 {
-		utils.LogFatal(err, "invalid chain configuration specified, you must specify the slots per epoch, seconds per slot and genesis timestamp in the config file", 0)
-	}
+		"config":  *configPath,
+		"version": utils.BuildVersion,
+		"release": utils.BuildRelease,
+	}).Printf("starting")
 
 	db.MustInitDB()
 	err = db.ApplyEmbeddedDbSchema(-2)

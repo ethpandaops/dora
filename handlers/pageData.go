@@ -57,7 +57,7 @@ func InitPageData(w http.ResponseWriter, r *http.Request, active, path, title st
 		ExplorerLogo:          utils.Config.Frontend.SiteLogo,
 		ChainSlotsPerEpoch:    specs.SlotsPerEpoch,
 		ChainSecondsPerSlot:   uint64(specs.SecondsPerSlot.Seconds()),
-		ChainGenesisTimestamp: utils.Config.Chain.GenesisTimestamp,
+		ChainGenesisTimestamp: uint64(chainState.GetGenesis().GenesisTime.Unix()),
 		Mainnet:               isMainnet,
 		DepositContract:       common.BytesToAddress(specs.DepositContractAddress).String(),
 		Lang:                  "en-US",

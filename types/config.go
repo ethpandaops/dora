@@ -18,11 +18,8 @@ type Config struct {
 	} `yaml:"server"`
 
 	Chain struct {
-		Name             string `yaml:"name" envconfig:"CHAIN_NAME"`
-		DisplayName      string `yaml:"displayName" envconfig:"CHAIN_DISPLAY_NAME"`
-		GenesisTimestamp uint64 `yaml:"genesisTimestamp" envconfig:"CHAIN_GENESIS_TIMESTAMP"`
-		ConfigPath       string `yaml:"configPath" envconfig:"CHAIN_CONFIG_PATH"`
-		Config           ChainConfig
+		Name        string `yaml:"name" envconfig:"CHAIN_NAME"`
+		DisplayName string `yaml:"displayName" envconfig:"CHAIN_DISPLAY_NAME"`
 
 		// optional features
 		WhiskForkEpoch *uint64 `yaml:"whiskForkEpoch" envconfig:"WHISK_FORK_EPOCH"`
@@ -89,21 +86,6 @@ type Config struct {
 		SyncEpochCooldown               uint   `yaml:"syncEpochCooldown" envconfig:"INDEXER_SYNC_EPOCH_COOLDOWN"`
 		MaxParallelValidatorSetRequests uint   `yaml:"maxParallelValidatorSetRequests" envconfig:"INDEXER_MAX_PARALLEL_VALIDATOR_SET_REQUESTS"`
 	} `yaml:"indexer"`
-
-	BlobStore struct {
-		PersistenceMode string `yaml:"persistenceMode" envconfig:"BLOBSTORE_PERSISTENCE_MODE"`
-		NameTemplate    string `yaml:"nameTemplate" envconfig:"BLOBSTORE_NAME_TEMPLATE"`
-
-		Fs struct {
-			Path string `yaml:"path" envconfig:"BLOBSTORE_FS_PATH"`
-		} `yaml:"fs"`
-		Aws struct {
-			AccessKey string `yaml:"accessKey" envconfig:"BLOBSTORE_AWS_ACCESSKEY"`
-			SecretKey string `yaml:"secretKey" envconfig:"BLOBSTORE_AWS_SECRETKEY"`
-			S3Region  string `yaml:"s3Region" envconfig:"BLOBSTORE_AWS_S3REGION"`
-			S3Bucket  string `yaml:"s3Bucket" envconfig:"BLOBSTORE_AWS_S3BUCKET"`
-		} `yaml:"aws"`
-	} `yaml:"blobstore"`
 
 	TxSignature struct {
 		DisableLookupLoop bool          `yaml:"disableLookupLoop" envconfig:"TXSIG_DISABLE_LOOKUP_LOOP"`
