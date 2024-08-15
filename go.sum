@@ -17,6 +17,8 @@ github.com/Microsoft/go-winio v0.6.2 h1:F2VQgta7ecxGYO8k3ZZz3RS8fVIXVxONVUPlNERo
 github.com/Microsoft/go-winio v0.6.2/go.mod h1:yd8OoFMLzJbo9gZq8j5qaps8bJ9aShtEA8Ipt1oGCvU=
 github.com/VictoriaMetrics/fastcache v1.12.2 h1:N0y9ASrJ0F6h0QaC3o6uJb3NIZ9VKLjCM7NQbSmF7WI=
 github.com/VictoriaMetrics/fastcache v1.12.2/go.mod h1:AmC+Nzz1+3G2eCPapF6UcsnkThDcMsQicp4xDukwJYI=
+github.com/attestantio/go-eth2-client v0.21.10 h1:1DWn42WKjk8mR8jKkjbaDCGNMVnh2IfAWRUmt7iemRo=
+github.com/attestantio/go-eth2-client v0.21.10/go.mod h1:d7ZPNrMX8jLfIgML5u7QZxFo2AukLM+5m08iMaLdqb8=
 github.com/aws/aws-sdk-go-v2 v1.30.3 h1:jUeBtG0Ih+ZIFH0F4UkmL9w3cSpaMv9tYYDbzILP8dY=
 github.com/aws/aws-sdk-go-v2 v1.30.3/go.mod h1:nIQjQVp5sfpQcTc9mPSr1B0PaWK5ByX9MOoDadSN4lc=
 github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.6.3 h1:tW1/Rkad38LA15X4UQtjXZXNKsCgkshC3EbmcUmghTg=
@@ -360,8 +362,6 @@ github.com/onsi/gomega v1.18.1 h1:M1GfJqGRrBrrGGsbxzV5dqM2U2ApXefZCQpkukxYRLE=
 github.com/onsi/gomega v1.18.1/go.mod h1:0q+aL8jAiMXy9hbwj2mr5GziHiwhAIQpFmmtT5hitRs=
 github.com/pk910/dynamic-ssz v0.0.5 h1:VP9heGYUwzlpyhk28P2nCAzhvGsePJOOOO5vQMDh2qQ=
 github.com/pk910/dynamic-ssz v0.0.5/go.mod h1:b6CrLaB2X7pYA+OSEEbkgXDEcRnjLOZIxZTsMuO/Y9c=
-github.com/pk910/go-eth2-client v0.0.0-20240715091951-3613ae531033 h1:B+9G8ZW54Vix9xIevn8/f4a1nXwnL5H/UI8/XQlBtqM=
-github.com/pk910/go-eth2-client v0.0.0-20240715091951-3613ae531033/go.mod h1:d7ZPNrMX8jLfIgML5u7QZxFo2AukLM+5m08iMaLdqb8=
 github.com/pkg/errors v0.8.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
 github.com/pkg/errors v0.9.1 h1:FEBLx1zS214owpjy7qsBeixbURkuhQAwrK5UwLGTwt4=
 github.com/pkg/errors v0.9.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
