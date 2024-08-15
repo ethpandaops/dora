@@ -1,6 +1,7 @@
 package consensus
 
 import (
+	"bytes"
 	"reflect"
 	"time"
 
@@ -52,6 +53,8 @@ type ChainSpec struct {
 	WhiskForkEpoch *uint64
 }
 
+var byteType = reflect.TypeOf(byte(0))
+
 func (chain *ChainSpec) CheckMismatch(chain2 *ChainSpec) []string {
 	mismatches := []string{}
 
@@ -71,12 +74,19 @@ func (chain *ChainSpec) CheckMismatch(chain2 *ChainSpec) []string {
 			}
 		}
 
-		if fieldV.Interface() != field2V.Interface() {
-			// 0 value on chain side are allowed
+		if fieldV.Type().Kind() == reflect.Slice && fieldV.Type().Elem() == byteType {
+			// compare byte slices
+			bytesA := fieldV.Interface().([]byte)
+			bytesB := field2V.Interface().([]byte)
+
+			if !bytes.Equal(bytesA, bytesB) {
+				mismatches = append(mismatches, chainT.Type().Field(i).Name)
+			}
+		} else if fieldV.Interface() != field2V.Interface() {
 			if chainT.Field(i).Interface() == reflect.Zero(chainT.Field(i).Type()).Interface() {
+				// 0 value on chain side are allowed
 				continue
 			}
-
 			mismatches = append(mismatches, chainT.Type().Field(i).Name)
 		}
 	}
