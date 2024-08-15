@@ -29,6 +29,8 @@ type ChainSpec struct {
 	DenebForkEpoch               *uint64           `yaml:"DENEB_FORK_EPOCH"`
 	ElectraForkVersion           phase0.Version    `yaml:"ELECTRA_FORK_VERSION"`
 	ElectraForkEpoch             *uint64           `yaml:"ELECTRA_FORK_EPOCH"`
+	Eip7594ForkVersion           phase0.Version    `yaml:"EIP7594_FORK_VERSION"`
+	Eip7594ForkEpoch             *uint64           `yaml:"EIP7594_FORK_EPOCH"`
 	SecondsPerSlot               time.Duration     `yaml:"SECONDS_PER_SLOT"`
 	SlotsPerEpoch                uint64            `yaml:"SLOTS_PER_EPOCH"`
 	EpochsPerHistoricalVector    uint64            `yaml:"EPOCHS_PER_HISTORICAL_VECTOR"`
@@ -44,6 +46,7 @@ type ChainSpec struct {
 	DomainBeaconAttester         phase0.DomainType `yaml:"DOMAIN_BEACON_ATTESTER"`
 	DomainSyncCommittee          phase0.DomainType `yaml:"DOMAIN_SYNC_COMMITTEE"`
 	SyncCommitteeSize            uint64            `yaml:"SYNC_COMMITTEE_SIZE"`
+	DepositContractAddress       []byte            `yaml:"DEPOSIT_CONTRACT_ADDRESS"`
 
 	// additional dora specific specs
 	WhiskForkEpoch *uint64

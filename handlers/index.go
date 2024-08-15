@@ -13,6 +13,7 @@ import (
 
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/services"
@@ -115,16 +116,16 @@ func buildIndexPageData() (*models.IndexPageData, time.Duration) {
 	}
 
 	pageData := &models.IndexPageData{
-		NetworkName:           utils.Config.Chain.Name,
-		DepositContract:       utils.Config.Chain.Config.DepositContractAddress,
+		NetworkName:           specs.ConfigName,
+		DepositContract:       common.Address(specs.DepositContractAddress).String(),
 		ShowSyncingMessage:    !isSynced,
-		SlotsPerEpoch:         utils.Config.Chain.Config.SlotsPerEpoch,
+		SlotsPerEpoch:         specs.SlotsPerEpoch,
 		CurrentEpoch:          uint64(currentEpoch),
 		CurrentFinalizedEpoch: int64(finalizedEpoch) - 1,
 		CurrentJustifiedEpoch: int64(justifiedEpoch) - 1,
 		CurrentSlot:           uint64(currentSlot),
 		CurrentScheduledCount: specs.SlotsPerEpoch - uint64(currentSlotIndex),
-		CurrentEpochProgress:  float64(100) * float64(currentSlotIndex) / float64(utils.Config.Chain.Config.SlotsPerEpoch),
+		CurrentEpochProgress:  float64(100) * float64(currentSlotIndex) / float64(specs.SlotsPerEpoch),
 	}
 	if utils.Config.Chain.DisplayName != "" {
 		pageData.NetworkName = utils.Config.Chain.DisplayName
@@ -166,44 +167,52 @@ func buildIndexPageData() (*models.IndexPageData, time.Duration) {
 	}
 
 	pageData.NetworkForks = make([]*models.IndexPageDataForks, 0)
-	if utils.Config.Chain.Config.AltairForkEpoch < uint64(18446744073709551615) && utils.Config.Chain.Config.AltairForkVersion != "" {
+	if specs.AltairForkEpoch != nil && *specs.AltairForkEpoch < uint64(18446744073709551615) {
 		pageData.NetworkForks = append(pageData.NetworkForks, &models.IndexPageDataForks{
 			Name:    "Altair",
-			Epoch:   utils.Config.Chain.Config.AltairForkEpoch,
-			Version: utils.MustParseHex(utils.Config.Chain.Config.AltairForkVersion),
-			Active:  uint64(currentEpoch) >= utils.Config.Chain.Config.AltairForkEpoch,
+			Epoch:   *specs.AltairForkEpoch,
+			Version: specs.AltairForkVersion[:],
+			Active:  uint64(currentEpoch) >= *specs.AltairForkEpoch,
 		})
 	}
-	if utils.Config.Chain.Config.BellatrixForkEpoch < uint64(18446744073709551615) && utils.Config.Chain.Config.BellatrixForkVersion != "" {
+	if specs.BellatrixForkEpoch != nil && *specs.BellatrixForkEpoch < uint64(18446744073709551615) {
 		pageData.NetworkForks = append(pageData.NetworkForks, &models.IndexPageDataForks{
 			Name:    "Bellatrix",
-			Epoch:   utils.Config.Chain.Config.BellatrixForkEpoch,
-			Version: utils.MustParseHex(utils.Config.Chain.Config.BellatrixForkVersion),
-			Active:  uint64(currentEpoch) >= utils.Config.Chain.Config.BellatrixForkEpoch,
+			Epoch:   *specs.BellatrixForkEpoch,
+			Version: specs.BellatrixForkVersion[:],
+			Active:  uint64(currentEpoch) >= *specs.BellatrixForkEpoch,
 		})
 	}
-	if utils.Config.Chain.Config.CappellaForkEpoch < uint64(18446744073709551615) && utils.Config.Chain.Config.CappellaForkVersion != "" {
+	if specs.CappellaForkEpoch != nil && *specs.CappellaForkEpoch < uint64(18446744073709551615) {
 		pageData.NetworkForks = append(pageData.NetworkForks, &models.IndexPageDataForks{
 			Name:    "Cappella",
-			Epoch:   utils.Config.Chain.Config.CappellaForkEpoch,
-			Version: utils.MustParseHex(utils.Config.Chain.Config.CappellaForkVersion),
-			Active:  uint64(currentEpoch) >= utils.Config.Chain.Config.CappellaForkEpoch,
+			Epoch:   *specs.CappellaForkEpoch,
+			Version: specs.CappellaForkVersion[:],
+			Active:  uint64(currentEpoch) >= *specs.CappellaForkEpoch,
 		})
 	}
-	if utils.Config.Chain.Config.DenebForkEpoch < uint64(18446744073709551615) && utils.Config.Chain.Config.DenebForkVersion != "" {
+	if specs.DenebForkEpoch != nil && *specs.DenebForkEpoch < uint64(18446744073709551615) {
 		pageData.NetworkForks = append(pageData.NetworkForks, &models.IndexPageDataForks{
 			Name:    "Deneb",
-			Epoch:   utils.Config.Chain.Config.DenebForkEpoch,
-			Version: utils.MustParseHex(utils.Config.Chain.Config.DenebForkVersion),
-			Active:  uint64(currentEpoch) >= utils.Config.Chain.Config.DenebForkEpoch,
+			Epoch:   *specs.DenebForkEpoch,
+			Version: specs.DenebForkVersion[:],
+			Active:  uint64(currentEpoch) >= *specs.DenebForkEpoch,
 		})
 	}
-	if utils.Config.Chain.Config.ElectraForkEpoch < uint64(18446744073709551615) && utils.Config.Chain.Config.ElectraForkVersion != "" {
+	if specs.ElectraForkEpoch != nil && *specs.ElectraForkEpoch < uint64(18446744073709551615) {
 		pageData.NetworkForks = append(pageData.NetworkForks, &models.IndexPageDataForks{
 			Name:    "Electra",
-			Epoch:   utils.Config.Chain.Config.ElectraForkEpoch,
-			Version: utils.MustParseHex(utils.Config.Chain.Config.ElectraForkVersion),
-			Active:  uint64(currentEpoch) >= utils.Config.Chain.Config.ElectraForkEpoch,
+			Epoch:   *specs.ElectraForkEpoch,
+			Version: specs.ElectraForkVersion[:],
+			Active:  uint64(currentEpoch) >= *specs.ElectraForkEpoch,
+		})
+	}
+	if specs.Eip7594ForkEpoch != nil && *specs.Eip7594ForkEpoch < uint64(18446744073709551615) {
+		pageData.NetworkForks = append(pageData.NetworkForks, &models.IndexPageDataForks{
+			Name:    "eip7594",
+			Epoch:   *specs.Eip7594ForkEpoch,
+			Version: specs.Eip7594ForkVersion[:],
+			Active:  uint64(currentEpoch) >= *specs.Eip7594ForkEpoch,
 		})
 	}
 
