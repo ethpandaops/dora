@@ -122,6 +122,7 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 	epochBlocks := indexer.blockCache.getEpochBlocks(epoch)
 	nextEpochBlocks := indexer.blockCache.getEpochBlocks(epoch + 1)
 	chainState := indexer.consensusPool.GetChainState()
+	specs := chainState.GetSpecs()
 
 	canonicalBlocks := []*Block{}
 	orphanedBlocks := []*Block{}
@@ -329,7 +330,7 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 			return fmt.Errorf("error persisting sync committee assignments to db: %v", err)
 		}
 
-		if err := db.UpdateMevBlockByEpoch(uint64(epoch), canonicalRoots, tx); err != nil {
+		if err := db.UpdateMevBlockByEpoch(uint64(epoch), specs.SlotsPerEpoch, canonicalRoots, tx); err != nil {
 			return fmt.Errorf("error while updating mev block proposal state: %v", err)
 		}
 

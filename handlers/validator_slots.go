@@ -14,7 +14,6 @@ import (
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
-	"github.com/ethpandaops/dora/utils"
 )
 
 // Slots will return the main "slots" page using a go template
@@ -116,8 +115,8 @@ func buildValidatorSlotsPageData(validator uint64, pageIdx uint64, pageSize uint
 
 		slotData := &models.ValidatorSlotsPageDataSlot{
 			Slot:         slot,
-			Epoch:        utils.EpochOfSlot(slot),
-			Ts:           utils.SlotToTime(slot),
+			Epoch:        uint64(chainState.EpochOfSlot(phase0.Slot(slot))),
+			Ts:           chainState.SlotToTime(phase0.Slot(slot)),
 			Finalized:    finalizedEpoch >= chainState.EpochOfSlot(phase0.Slot(slot)),
 			Status:       uint8(0),
 			Proposer:     validator,

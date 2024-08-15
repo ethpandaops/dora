@@ -15,7 +15,6 @@ import (
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
-	"github.com/ethpandaops/dora/utils"
 	"github.com/sirupsen/logrus"
 )
 
@@ -78,6 +77,7 @@ func buildDepositsPageData(firstEpoch uint64, pageSize uint64) (*models.Deposits
 		InitiatedDeposits: []*models.DepositsPageDataInitiatedDeposit{},
 	}
 
+	chainState := services.GlobalBeaconService.GetChainState()
 	validatorSetRsp := services.GlobalBeaconService.GetCachedValidatorPubkeyMap()
 	validatorActivityMap, validatorActivityMax := services.GlobalBeaconService.GetValidatorActivity(3, false)
 
@@ -139,7 +139,7 @@ func buildDepositsPageData(firstEpoch uint64, pageSize uint64) (*models.Deposits
 			Amount:                deposit.Amount,
 			SlotNumber:            deposit.SlotNumber,
 			SlotRoot:              deposit.SlotRoot,
-			Time:                  utils.SlotToTime(deposit.SlotNumber),
+			Time:                  chainState.SlotToTime(phase0.Slot(deposit.SlotNumber)),
 			Orphaned:              deposit.Orphaned,
 		}
 

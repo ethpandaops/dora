@@ -13,7 +13,6 @@ import (
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
-	"github.com/ethpandaops/dora/utils"
 	"github.com/sirupsen/logrus"
 )
 
@@ -119,11 +118,11 @@ func buildSlotsPageData(firstSlot uint64, pageSize uint64) (*models.SlotsPageDat
 	}
 
 	// get slot assignments
-	firstEpoch := utils.EpochOfSlot(firstSlot)
+	firstEpoch := chainState.EpochOfSlot(phase0.Slot(firstSlot))
 
 	// load slots
 	pageData.Slots = make([]*models.SlotsPageDataSlot, 0)
-	dbSlots := services.GlobalBeaconService.GetDbBlocksForSlots(uint64(firstSlot), uint32(pageSize), true, true)
+	dbSlots := services.GlobalBeaconService.GetDbBlocksForSlots(firstSlot, uint32(pageSize), true, true)
 	dbIdx := 0
 	dbCnt := len(dbSlots)
 	blockCount := uint64(0)
@@ -145,8 +144,8 @@ func buildSlotsPageData(firstSlot uint64, pageSize uint64) (*models.SlotsPageDat
 
 			slotData := &models.SlotsPageDataSlot{
 				Slot:                  slot,
-				Epoch:                 utils.EpochOfSlot(slot),
-				Ts:                    utils.SlotToTime(slot),
+				Epoch:                 uint64(chainState.EpochOfSlot(phase0.Slot(slot))),
+				Ts:                    chainState.SlotToTime(phase0.Slot(slot)),
 				Finalized:             finalized,
 				Status:                uint8(dbSlot.Status),
 				Scheduled:             slot >= uint64(currentSlot) && dbSlot.Status == dbtypes.Missing,
@@ -186,7 +185,7 @@ func buildSlotsPageData(firstSlot uint64, pageSize uint64) (*models.SlotsPageDat
 		cacheTimeout = 30 * time.Second
 	} else if allFinalized {
 		cacheTimeout = 30 * time.Minute
-	} else if firstEpoch < uint64(currentEpoch) {
+	} else if firstEpoch < currentEpoch {
 		cacheTimeout = 10 * time.Minute
 	} else {
 		cacheTimeout = 12 * time.Second

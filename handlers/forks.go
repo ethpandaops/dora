@@ -10,7 +10,6 @@ import (
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
-	"github.com/ethpandaops/dora/utils"
 	"github.com/sirupsen/logrus"
 )
 
@@ -59,10 +58,11 @@ func getForksPageData() (*models.ForksPageData, error) {
 func buildForksPageData() (*models.ForksPageData, time.Duration) {
 	logrus.Debugf("forks page called")
 	pageData := &models.ForksPageData{}
-	cacheTime := time.Duration(utils.Config.Chain.Config.SecondsPerSlot) * time.Second
 
 	headForks := services.GlobalBeaconService.GetConsensusClientForks()
 	chainState := services.GlobalBeaconService.GetChainState()
+	specs := chainState.GetSpecs()
+	cacheTime := specs.SecondsPerSlot
 
 	// check each fork if it's really a fork and not just a syncing/stuck client
 	finalizedEpoch, _ := services.GlobalBeaconService.GetBeaconIndexer().GetBlockCacheState()

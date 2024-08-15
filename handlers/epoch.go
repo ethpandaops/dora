@@ -15,7 +15,6 @@ import (
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
-	"github.com/ethpandaops/dora/utils"
 )
 
 // Epoch will return the main "epoch" page using a go template
@@ -170,8 +169,8 @@ func buildEpochPageData(epoch uint64) (*models.EpochPageData, time.Duration) {
 
 			slotData := &models.EpochPageDataSlot{
 				Slot:                  slot,
-				Epoch:                 utils.EpochOfSlot(slot),
-				Ts:                    utils.SlotToTime(slot),
+				Epoch:                 uint64(chainState.EpochOfSlot(phase0.Slot(slot))),
+				Ts:                    chainState.SlotToTime(phase0.Slot(slot)),
 				Scheduled:             slot >= uint64(currentSlot) && dbSlot.Status == dbtypes.Missing,
 				Status:                uint8(dbSlot.Status),
 				Proposer:              dbSlot.Proposer,

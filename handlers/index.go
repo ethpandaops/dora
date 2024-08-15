@@ -230,6 +230,9 @@ func buildIndexPageData() (*models.IndexPageData, time.Duration) {
 
 func buildIndexPageRecentEpochsData(pageData *models.IndexPageData, currentEpoch phase0.Epoch, finalizedEpoch phase0.Epoch, justifiedEpoch phase0.Epoch, recentEpochCount int) {
 	pageData.RecentEpochs = make([]*models.IndexPageDataEpochs, 0)
+
+	chainState := services.GlobalBeaconService.GetChainState()
+
 	epochsData := services.GlobalBeaconService.GetDbEpochs(uint64(currentEpoch), uint32(recentEpochCount))
 	for i := 0; i < len(epochsData); i++ {
 		epochData := epochsData[i]
@@ -242,7 +245,7 @@ func buildIndexPageRecentEpochsData(pageData *models.IndexPageData, currentEpoch
 		}
 		pageData.RecentEpochs = append(pageData.RecentEpochs, &models.IndexPageDataEpochs{
 			Epoch:             epochData.Epoch,
-			Ts:                utils.EpochToTime(epochData.Epoch),
+			Ts:                chainState.EpochToTime(phase0.Epoch(epochData.Epoch)),
 			Finalized:         uint64(finalizedEpoch) > epochData.Epoch,
 			Justified:         uint64(justifiedEpoch) > epochData.Epoch,
 			EligibleEther:     epochData.Eligible,
@@ -255,6 +258,9 @@ func buildIndexPageRecentEpochsData(pageData *models.IndexPageData, currentEpoch
 
 func buildIndexPageRecentBlocksData(pageData *models.IndexPageData, currentSlot phase0.Slot, recentBlockCount int) {
 	pageData.RecentBlocks = make([]*models.IndexPageDataBlocks, 0)
+
+	chainState := services.GlobalBeaconService.GetChainState()
+
 	blocksData := services.GlobalBeaconService.GetDbBlocks(uint64(currentSlot), int32(recentBlockCount), false, false)
 	for i := 0; i < len(blocksData); i++ {
 		blockData := blocksData[i]
@@ -262,9 +268,9 @@ func buildIndexPageRecentBlocksData(pageData *models.IndexPageData, currentSlot 
 			continue
 		}
 		blockModel := &models.IndexPageDataBlocks{
-			Epoch:        utils.EpochOfSlot(blockData.Slot),
+			Epoch:        uint64(chainState.EpochOfSlot(phase0.Slot(blockData.Slot))),
 			Slot:         blockData.Slot,
-			Ts:           utils.SlotToTime(blockData.Slot),
+			Ts:           chainState.SlotToTime(phase0.Slot(blockData.Slot)),
 			Proposer:     blockData.Proposer,
 			ProposerName: services.GlobalBeaconService.GetValidatorName(blockData.Proposer),
 			Status:       uint64(blockData.Status),
@@ -290,6 +296,8 @@ func buildIndexPageRecentSlotsData(pageData *models.IndexPageData, firstSlot pha
 		lastSlot = 0
 	}
 
+	chainState := services.GlobalBeaconService.GetChainState()
+
 	// load slots
 	pageData.RecentSlots = make([]*models.IndexPageDataSlots, 0)
 	dbSlots := services.GlobalBeaconService.GetDbBlocksForSlots(uint64(firstSlot), uint32(slotLimit), true, true)
@@ -306,8 +314,8 @@ func buildIndexPageRecentSlotsData(pageData *models.IndexPageData, firstSlot pha
 
 			slotData := &models.IndexPageDataSlots{
 				Slot:         slot,
-				Epoch:        utils.EpochOfSlot(slot),
-				Ts:           utils.SlotToTime(slot),
+				Epoch:        uint64(chainState.EpochOfSlot(phase0.Slot(dbSlot.Slot))),
+				Ts:           chainState.SlotToTime(phase0.Slot(slot)),
 				Status:       uint64(dbSlot.Status),
 				Proposer:     dbSlot.Proposer,
 				ProposerName: services.GlobalBeaconService.GetValidatorName(dbSlot.Proposer),

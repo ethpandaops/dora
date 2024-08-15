@@ -10,7 +10,6 @@ import (
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
-	"github.com/ethpandaops/dora/utils"
 	"github.com/sirupsen/logrus"
 )
 
@@ -137,7 +136,9 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 		Clients: []*models.ClientsCLPageDataClient{},
 		PeerMap: buildCLPeerMapData(),
 	}
-	cacheTime := time.Duration(utils.Config.Chain.Config.SecondsPerSlot) * time.Second
+	chainState := services.GlobalBeaconService.GetChainState()
+	specs := chainState.GetSpecs()
+	cacheTime := specs.SecondsPerSlot
 
 	aliases := map[string]string{}
 	for _, client := range services.GlobalBeaconService.GetConsensusClients() {

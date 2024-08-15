@@ -273,6 +273,7 @@ func (sync *synchronizer) syncEpoch(syncEpoch phase0.Epoch, client *Client, last
 	}
 
 	chainState := sync.indexer.consensusPool.GetChainState()
+	specs := chainState.GetSpecs()
 
 	// load headers & blocks from this & next epoch
 	firstSlot := chainState.EpochStartSlot(syncEpoch)
@@ -387,7 +388,7 @@ func (sync *synchronizer) syncEpoch(syncEpoch phase0.Epoch, client *Client, last
 			return fmt.Errorf("error persisting sync committee assignments to db: %v", err)
 		}
 
-		if err := db.UpdateMevBlockByEpoch(uint64(syncEpoch), canonicalBlockRoots, tx); err != nil {
+		if err := db.UpdateMevBlockByEpoch(uint64(syncEpoch), specs.SlotsPerEpoch, canonicalBlockRoots, tx); err != nil {
 			return fmt.Errorf("error while updating mev block proposal state: %v", err)
 		}
 

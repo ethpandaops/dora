@@ -14,7 +14,6 @@ import (
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
-	"github.com/ethpandaops/dora/utils"
 	"github.com/sirupsen/logrus"
 )
 
@@ -166,6 +165,7 @@ func buildFilteredIncludedDepositsPageData(pageIdx uint64, pageSize uint64, minI
 
 	dbDeposits, totalRows := services.GlobalBeaconService.GetIncludedDepositsByFilter(depositFilter, pageIdx-1, uint32(pageSize))
 
+	chainState := services.GlobalBeaconService.GetChainState()
 	validatorSetRsp := services.GlobalBeaconService.GetCachedValidatorPubkeyMap()
 	validatorActivityMap, validatorActivityMax := services.GlobalBeaconService.GetValidatorActivity(3, false)
 
@@ -174,7 +174,7 @@ func buildFilteredIncludedDepositsPageData(pageIdx uint64, pageSize uint64, minI
 			PublicKey:             deposit.PublicKey,
 			Withdrawalcredentials: deposit.WithdrawalCredentials,
 			Amount:                deposit.Amount,
-			Time:                  utils.SlotToTime(deposit.SlotNumber),
+			Time:                  chainState.SlotToTime(phase0.Slot(deposit.SlotNumber)),
 			SlotNumber:            deposit.SlotNumber,
 			SlotRoot:              deposit.SlotRoot,
 			Orphaned:              deposit.Orphaned,

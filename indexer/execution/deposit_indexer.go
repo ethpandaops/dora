@@ -55,14 +55,15 @@ func NewDepositIndexer(indexer *IndexerCtx) *DepositIndexer {
 
 	depositEventTopic := crypto.Keccak256Hash([]byte(contractAbi.Events["DepositEvent"].Sig))
 
-	genesisForkVersion := common.FromHex(utils.Config.Chain.Config.GenesisForkVersion)
+	specs := indexer.chainState.GetSpecs()
+	genesisForkVersion := specs.GenesisForkVersion
 	depositSigDomain := zrnt_common.ComputeDomain(zrnt_common.DOMAIN_DEPOSIT, zrnt_common.Version(genesisForkVersion), zrnt_common.Root{})
 
 	ds := &DepositIndexer{
 		indexer:             indexer,
 		logger:              indexer.logger.WithField("indexer", "deposit"),
 		batchSize:           batchSize,
-		depositContract:     common.HexToAddress(utils.Config.Chain.Config.DepositContractAddress),
+		depositContract:     common.Address(specs.DepositContractAddress),
 		depositContractAbi:  &contractAbi,
 		depositEventTopic:   depositEventTopic[:],
 		depositSigDomain:    depositSigDomain,

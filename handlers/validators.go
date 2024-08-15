@@ -117,6 +117,8 @@ func buildValidatorsPageData(firstValIdx uint64, pageSize uint64, sortOrder stri
 	pageData := &models.ValidatorsPageData{}
 	cacheTime := 10 * time.Minute
 
+	chainState := services.GlobalBeaconService.GetChainState()
+
 	// get latest validator set
 	var validatorSet []*v1.Validator
 	validatorSetRsp := services.GlobalBeaconService.GetCachedValidatorSet()
@@ -321,12 +323,12 @@ func buildValidatorsPageData(firstValIdx uint64, pageSize uint64, sortOrder stri
 		if validator.Validator.ActivationEpoch < 18446744073709551615 {
 			validatorData.ShowActivation = true
 			validatorData.ActivationEpoch = uint64(validator.Validator.ActivationEpoch)
-			validatorData.ActivationTs = utils.EpochToTime(uint64(validator.Validator.ActivationEpoch))
+			validatorData.ActivationTs = chainState.EpochToTime(validator.Validator.ActivationEpoch)
 		}
 		if validator.Validator.ExitEpoch < 18446744073709551615 {
 			validatorData.ShowExit = true
 			validatorData.ExitEpoch = uint64(validator.Validator.ExitEpoch)
-			validatorData.ExitTs = utils.EpochToTime(uint64(validator.Validator.ExitEpoch))
+			validatorData.ExitTs = chainState.EpochToTime(validator.Validator.ExitEpoch)
 		}
 		if validator.Validator.WithdrawalCredentials[0] == 0x01 {
 			validatorData.ShowWithdrawAddress = true

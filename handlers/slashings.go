@@ -13,7 +13,6 @@ import (
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
-	"github.com/ethpandaops/dora/utils"
 	"github.com/sirupsen/logrus"
 )
 
@@ -174,6 +173,7 @@ func buildFilteredSlashingsPageData(pageIdx uint64, pageSize uint64, minSlot uin
 
 	dbSlashings, totalRows := services.GlobalBeaconService.GetSlashingsByFilter(slashingFilter, pageIdx-1, uint32(pageSize))
 
+	chainState := services.GlobalBeaconService.GetChainState()
 	validatorSetRsp := services.GlobalBeaconService.GetCachedValidatorSet()
 	validatorActivityMap, validatorActivityMax := services.GlobalBeaconService.GetValidatorActivity(3, false)
 
@@ -181,7 +181,7 @@ func buildFilteredSlashingsPageData(pageIdx uint64, pageSize uint64, minSlot uin
 		slashingData := &models.SlashingsPageDataSlashing{
 			SlotNumber:      slashing.SlotNumber,
 			SlotRoot:        slashing.SlotRoot,
-			Time:            utils.SlotToTime(slashing.SlotNumber),
+			Time:            chainState.SlotToTime(phase0.Slot(slashing.SlotNumber)),
 			Orphaned:        slashing.Orphaned,
 			Reason:          uint8(slashing.Reason),
 			ValidatorIndex:  slashing.ValidatorIndex,

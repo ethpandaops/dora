@@ -7,14 +7,12 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
-	"github.com/ethpandaops/dora/utils"
 	"github.com/sirupsen/logrus"
 )
 
@@ -207,7 +205,7 @@ func buildFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string
 	pageData.LastPageSlot = 0
 
 	finalizedEpoch, _ := services.GlobalBeaconService.GetFinalizedEpoch()
-	currentSlot := utils.TimeToSlot(uint64(time.Now().Unix()))
+	currentSlot := chainState.CurrentSlot()
 
 	// load slots
 	pageData.Slots = make([]*models.SlotsFilteredPageDataSlot, 0)
@@ -230,13 +228,13 @@ func buildFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string
 			haveMore = true
 			break
 		}
-		slot := dbBlock.Slot
+		slot := phase0.Slot(dbBlock.Slot)
 
 		slotData := &models.SlotsFilteredPageDataSlot{
-			Slot:         slot,
-			Epoch:        utils.EpochOfSlot(slot),
-			Ts:           utils.SlotToTime(slot),
-			Finalized:    finalizedEpoch >= chainState.EpochOfSlot(phase0.Slot(slot)),
+			Slot:         uint64(slot),
+			Epoch:        uint64(chainState.EpochOfSlot(slot)),
+			Ts:           chainState.SlotToTime(slot),
+			Finalized:    finalizedEpoch >= chainState.EpochOfSlot(slot),
 			Synchronized: true,
 			Scheduled:    slot >= currentSlot,
 			Proposer:     dbBlock.Proposer,

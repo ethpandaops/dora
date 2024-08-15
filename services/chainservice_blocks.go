@@ -15,7 +15,6 @@ import (
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/indexer/beacon"
-	"github.com/ethpandaops/dora/utils"
 	"github.com/sirupsen/logrus"
 )
 
@@ -561,7 +560,7 @@ func (bs *ChainService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageIdx
 	if filter.WithMissing != 0 && filter.Graffiti == "" && filter.ExtraData == "" && filter.WithOrphaned != 2 {
 		// add missed blocks
 		idxHeadEpoch := chainState.EpochOfSlot(idxHeadSlot)
-		idxMinEpoch := utils.EpochOfSlot(uint64(idxMinSlot))
+		idxMinEpoch := chainState.EpochOfSlot(idxMinSlot)
 
 		for epochIdx := int64(idxHeadEpoch); epochIdx >= int64(idxMinEpoch); epochIdx-- {
 			epoch := phase0.Epoch(epochIdx)

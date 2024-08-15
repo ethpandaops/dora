@@ -7,10 +7,10 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
-	"github.com/ethpandaops/dora/utils"
 	"github.com/sirupsen/logrus"
 )
 
@@ -71,11 +71,8 @@ func buildEpochsPageData(firstEpoch uint64, pageSize uint64) (*models.EpochsPage
 	logrus.Debugf("epochs page called: %v:%v", firstEpoch, pageSize)
 	pageData := &models.EpochsPageData{}
 
-	now := time.Now()
-	currentEpoch := utils.TimeToEpoch(now)
-	if currentEpoch < 0 {
-		currentEpoch = 0
-	}
+	chainState := services.GlobalBeaconService.GetChainState()
+	currentEpoch := chainState.CurrentEpoch()
 	if firstEpoch > uint64(currentEpoch) {
 		pageData.IsDefaultPage = true
 		firstEpoch = uint64(currentEpoch)
@@ -104,7 +101,6 @@ func buildEpochsPageData(firstEpoch uint64, pageSize uint64) (*models.EpochsPage
 	}
 	pageData.LastPageEpoch = pageSize - 1
 
-	chainState := services.GlobalBeaconService.GetChainState()
 	finalizedEpoch, _ := chainState.GetFinalizedCheckpoint()
 	justifiedEpoch, _ := chainState.GetJustifiedCheckpoint()
 	epochLimit := pageSize
@@ -125,7 +121,7 @@ func buildEpochsPageData(firstEpoch uint64, pageSize uint64) (*models.EpochsPage
 		}
 		epochData := &models.EpochsPageDataEpoch{
 			Epoch:     epoch,
-			Ts:        utils.EpochToTime(epoch),
+			Ts:        chainState.EpochToTime(phase0.Epoch(epoch)),
 			Finalized: finalized,
 			Justified: int64(justifiedEpoch) > epochIdx,
 		}

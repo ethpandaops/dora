@@ -233,6 +233,14 @@ func (cs *ChainState) SlotToTime(slot phase0.Slot) time.Time {
 	return cs.genesis.GenesisTime.Add(time.Duration(slot) * cs.specs.SecondsPerSlot)
 }
 
+func (cs *ChainState) EpochToTime(epoch phase0.Epoch) time.Time {
+	if cs.specs == nil || cs.genesis == nil {
+		return time.Time{}
+	}
+
+	return cs.genesis.GenesisTime.Add(time.Duration(cs.EpochToSlot(epoch)) * cs.specs.SecondsPerSlot)
+}
+
 func (cs *ChainState) TimeToSlot(timestamp time.Time) phase0.Slot {
 	if cs.specs == nil || cs.genesis == nil {
 		return 0
