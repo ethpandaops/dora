@@ -755,7 +755,7 @@ func getSlotPageTransactions(pageData *models.SlotPageBlockData, tranactions []b
 			Type:  uint64(tx.Type()),
 		}
 		txData.DataLen = uint64(len(txData.Data))
-		txFrom, err := ethtypes.Sender(ethtypes.LatestSignerForChainID(tx.ChainId()), &tx)
+		txFrom, err := ethtypes.Sender(ethtypes.NewPragueSigner(tx.ChainId()), &tx)
 		if err != nil {
 			txData.From = "unknown"
 			logrus.Warnf("error decoding transaction sender 0x%x.%v: %v\n", pageData.BlockRoot, idx, err)
