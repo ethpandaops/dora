@@ -110,7 +110,7 @@ func (bc *BeaconClient) Initialize(ctx context.Context) error {
 	}
 
 	// set extra endpoint headers
-	if bc.headers != nil && len(bc.headers) > 0 {
+	if len(bc.headers) > 0 {
 		cliParams = append(cliParams, http.WithExtraHeaders(bc.headers))
 	}
 
