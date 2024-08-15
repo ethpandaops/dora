@@ -148,7 +148,7 @@ func ReadConfig(cfg *types.Config, path string) error {
 			}
 		}
 	}
-	if cfg.BeaconApi.Endpoints == nil || len(cfg.BeaconApi.Endpoints) == 0 {
+	if len(cfg.BeaconApi.Endpoints) == 0 {
 		return fmt.Errorf("missing beacon node endpoints (need at least 1 endpoint to run the explorer)")
 	}
 
