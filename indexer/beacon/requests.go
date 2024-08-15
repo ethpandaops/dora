@@ -33,6 +33,7 @@ func LoadBeaconHeader(ctx context.Context, client *Client, root phase0.Root) (*p
 	return header.Header, nil
 }
 
+// LoadBeaconHeaderBySlot loads the block header with given slot number from the client.
 func LoadBeaconHeaderBySlot(ctx context.Context, client *Client, slot phase0.Slot) (*phase0.SignedBeaconBlockHeader, phase0.Root, bool, error) {
 	ctx, cancel := context.WithTimeout(ctx, beaconHeaderRequestTimeout)
 	defer cancel()
@@ -62,6 +63,7 @@ func LoadBeaconBlock(ctx context.Context, client *Client, root phase0.Root) (*sp
 	return body, nil
 }
 
+// LoadBeaconState loads the beacon state from the client.
 func LoadBeaconState(ctx context.Context, client *Client, root phase0.Root) (*spec.VersionedBeaconState, error) {
 	ctx, cancel := context.WithTimeout(ctx, beaconStateRequestTimeout)
 	defer cancel()

@@ -11,12 +11,14 @@ import (
 	"github.com/ethpandaops/dora/db"
 )
 
+// GetAllClients returns a slice of all clients in the indexer.
 func (indexer *Indexer) GetAllClients() []*Client {
 	clients := make([]*Client, len(indexer.clients))
 	copy(clients, indexer.clients)
 	return clients
 }
 
+// GetReadyClientsByCheckpoint returns a slice of clients that are ready for processing based on the finalized root and preference for archive clients.
 func (indexer *Indexer) GetReadyClientsByCheckpoint(finalizedRoot phase0.Root, preferArchive bool) []*Client {
 	clients := make([]*Client, 0)
 
@@ -48,6 +50,7 @@ func (indexer *Indexer) GetReadyClientsByCheckpoint(finalizedRoot phase0.Root, p
 	return clients
 }
 
+// GetReadyClientsByBlockRoot returns a slice of clients that are ready for requests for the chain including the block root and preference for archive clients.
 func (indexer *Indexer) GetReadyClientsByBlockRoot(blockRoot phase0.Root, preferArchive bool) []*Client {
 	clients := make([]*Client, 0)
 
@@ -77,6 +80,7 @@ func (indexer *Indexer) GetReadyClientsByBlockRoot(blockRoot phase0.Root, prefer
 	return clients
 }
 
+// GetReadyClientByBlockRoot returns a single client that is ready for requests for the chain including the block root and preference for archive clients.
 func (indexer *Indexer) GetReadyClientByBlockRoot(blockRoot phase0.Root, preferArchive bool) *Client {
 	clients := indexer.GetReadyClientsByBlockRoot(blockRoot, preferArchive)
 	if len(clients) > 0 {
@@ -86,6 +90,7 @@ func (indexer *Indexer) GetReadyClientByBlockRoot(blockRoot phase0.Root, preferA
 	return nil
 }
 
+// GetReadyClients returns a slice of clients that are on the finalized chain and preference for archive clients.
 func (indexer *Indexer) GetReadyClients(preferArchive bool) []*Client {
 	_, finalizedRoot := indexer.consensusPool.GetChainState().GetFinalizedCheckpoint()
 	clients := indexer.GetReadyClientsByCheckpoint(finalizedRoot, preferArchive)
@@ -95,6 +100,7 @@ func (indexer *Indexer) GetReadyClients(preferArchive bool) []*Client {
 	return clients
 }
 
+// GetReadyClient returns a single client that is on the finalized chain and preference for archive clients.
 func (indexer *Indexer) GetReadyClient(preferArchive bool) *Client {
 	clients := indexer.GetReadyClients(preferArchive)
 	if len(clients) > 0 {
@@ -104,42 +110,53 @@ func (indexer *Indexer) GetReadyClient(preferArchive bool) *Client {
 	return nil
 }
 
+// GetBlockCacheState returns the state of the block cache, including the last finalized epoch and the last pruned epoch.
+// this represents the internal cache state and might be behind the actual finalization checkpoint.
 func (indexer *Indexer) GetBlockCacheState() (finalizedEpoch phase0.Epoch, prunedEpoch phase0.Epoch) {
 	return indexer.lastFinalizedEpoch, indexer.lastPrunedEpoch
 }
 
+// GetForkHeads returns a slice of fork heads in the indexer.
 func (indexer *Indexer) GetForkHeads() []*ForkHead {
 	return indexer.forkCache.getForkHeads()
 }
 
+// GetBlockByRoot returns the block with the given block root.
 func (indexer *Indexer) GetBlockByRoot(blockRoot phase0.Root) *Block {
 	return indexer.blockCache.getBlockByRoot(blockRoot)
 }
 
+// GetBlocksBySlot returns a slice of blocks with the given slot.
 func (indexer *Indexer) GetBlocksBySlot(slot phase0.Slot) []*Block {
 	return indexer.blockCache.getBlocksBySlot(slot)
 }
 
+// GetBlockByParentRoot returns a slice of blocks with the given parent root.
 func (indexer *Indexer) GetBlockByParentRoot(blockRoot phase0.Root) []*Block {
 	return indexer.blockCache.getBlocksByParentRoot(blockRoot)
 }
 
+// GetBlockByStateRoot returns the block with the given state root.
 func (indexer *Indexer) GetBlockByStateRoot(stateRoot phase0.Root) *Block {
 	return indexer.blockCache.getBlockByStateRoot(stateRoot)
 }
 
+// GetBlocksByExecutionBlockHash returns a slice of blocks with the given execution block hash.
 func (indexer *Indexer) GetBlocksByExecutionBlockHash(blockHash phase0.Hash32) []*Block {
 	return indexer.blockCache.getBlocksByExecutionBlockHash(blockHash)
 }
 
+// GetBlocksByExecutionBlockNumber returns a slice of blocks with the given execution block number.
 func (indexer *Indexer) GetBlocksByExecutionBlockNumber(blockNumber uint64) []*Block {
 	return indexer.blockCache.getBlocksByExecutionBlockNumber(blockNumber)
 }
 
+// GetBlockDistance returns whether the base root is in the canonical chain defined by the head root and the distance between both blocks.
 func (indexer *Indexer) GetBlockDistance(baseRoot phase0.Root, headRoot phase0.Root) (bool, uint64) {
 	return indexer.blockCache.getCanonicalDistance(baseRoot, headRoot, 0)
 }
 
+// GetOrphanedBlockByRoot returns the orphaned block with the given block root.
 func (indexer *Indexer) GetOrphanedBlockByRoot(blockRoot phase0.Root) (*Block, error) {
 	orphanedBlock := db.GetOrphanedBlock(blockRoot[:])
 	if orphanedBlock == nil {
@@ -168,6 +185,7 @@ func (indexer *Indexer) GetOrphanedBlockByRoot(blockRoot phase0.Root) (*Block, e
 	return block, nil
 }
 
+// GetEpochStats returns the epoch stats for the given epoch and optional fork ID override.
 func (indexer *Indexer) GetEpochStats(epoch phase0.Epoch, overrideForkId *ForkKey) *EpochStats {
 	epochStats := indexer.epochCache.getEpochStatsByEpoch(epoch)
 	if len(epochStats) == 0 {

@@ -14,6 +14,7 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
+// processFinalityEvent processes a finality event.
 func (indexer *Indexer) processFinalityEvent(finalityEvent *v1.Finality) error {
 	// first wait 5 seconds for other clients to process the finality checkpoint
 	time.Sleep(5 * time.Second)
@@ -114,6 +115,7 @@ func (indexer *Indexer) processFinalityEvent(finalityEvent *v1.Finality) error {
 	return nil
 }
 
+// finalizeEpoch finalizes the epoch by persisting the epoch data (incl. blocks & aggregations) to the database.
 func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.Root, client *Client, lastTry bool) (bool, error) {
 	t1 := time.Now()
 	t1loading := time.Duration(0)
