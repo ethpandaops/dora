@@ -27,6 +27,8 @@ type ChainConfig struct {
 	DenebForkEpoch                   uint64 `yaml:"DENEB_FORK_EPOCH"`
 	ShardingForkVersion              string `yaml:"SHARDING_FORK_VERSION"`
 	ShardingForkEpoch                uint64 `yaml:"SHARDING_FORK_EPOCH"`
+	Eip7594ForkVersion               string `yaml:"EIP7594_FORK_VERSION"`
+	Eip7594ForkEpoch                 uint64 `yaml:"EIP7594_FORK_EPOCH"`
 	SecondsPerSlot                   uint64 `yaml:"SECONDS_PER_SLOT"`
 	SecondsPerEth1Block              uint64 `yaml:"SECONDS_PER_ETH1_BLOCK"`
 	MinValidatorWithdrawabilityDelay uint64 `yaml:"MIN_VALIDATOR_WITHDRAWABILITY_DELAY"`
