@@ -51,11 +51,13 @@
 
         <div class="collapse navbar-collapse" id="navbarSupportedContent">
           <div class="flex-grow-1 main-search" role="search">
+            {{ if .IsReady }}
             <form action="/search">
               <div class="main-search-wrapper">
                 <input id="explorer-search" name="q" type="search" class="form-control form-control-dark search-input" placeholder="Slots / Epochs / Roots / EL-Blocks / Graffitis" aria-label="Search" autocomplete="off">
               </div>
             </form>
+            {{ end }}
           </div>
 
           {{ template "mainNavigation" . }}
@@ -67,6 +69,7 @@
 
 {{ define "mainNavigation" }}
   <ul class="navbar-nav ml-auto">
+    {{ if .IsReady }}
     {{ range .MainMenuItems }}
       {{ $numberOfGroups := (len .Groups) }}
       <li class="nav-item {{ if .IsActive }}active{{ end }} {{ if $numberOfGroups }}dropdown{{ end }}">
@@ -91,6 +94,7 @@
           </a>
         {{ end }}
       </li>
+    {{ end }}
     {{ end }}
     <li class="nav-item dropdown theme-selector">
       <a class="nav-link dropdown-toggle" href="#" id="bd-theme-text" role="button" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">

@@ -20,6 +20,7 @@ type PageData struct {
 	LatestFinalizedEpoch  uint64
 	CurrentSlot           uint64
 	FinalizationDelay     uint64
+	IsReady               bool
 	Mainnet               bool
 	DepositContract       string
 	InfoBanner            *template.HTML
