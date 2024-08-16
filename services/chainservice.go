@@ -103,8 +103,7 @@ func StartChainService(ctx context.Context, logger logrus.FieldLogger) error {
 	}
 
 	// init validator names & load inventory
-	validatorNames := NewValidatorNames(beaconIndexer)
-	validatorNamesLoading := validatorNames.LoadValidatorNames()
+	validatorNames := NewValidatorNames(beaconIndexer, consensusPool.GetChainState())
 
 	// reset sync state if configured
 	if utils.Config.Indexer.ResyncFromEpoch != nil {
@@ -120,8 +119,7 @@ func StartChainService(ctx context.Context, logger logrus.FieldLogger) error {
 		logger.Warnf("Reset explorer synchronization status to epoch %v as configured! Please remove this setting again.", *utils.Config.Indexer.ResyncFromEpoch)
 	}
 
-	// await validator names & beacon pool readiness
-	<-validatorNamesLoading
+	// await beacon pool readiness
 	lastLog := time.Now()
 	for {
 		specs := consensusPool.GetChainState().GetSpecs()
@@ -136,14 +134,17 @@ func StartChainService(ctx context.Context, logger logrus.FieldLogger) error {
 		time.Sleep(1 * time.Second)
 	}
 
-	// start chain indexer
-	beaconIndexer.StartIndexer()
-
 	// start validator names updater
+	validatorNamesLoading := validatorNames.LoadValidatorNames()
+	<-validatorNamesLoading
+
 	go func() {
 		validatorNames.UpdateDb()
 		validatorNames.StartUpdater()
 	}()
+
+	// start chain indexer
+	beaconIndexer.StartIndexer()
 
 	// add execution indexers
 	execindexer.NewDepositIndexer(executionIndexerCtx)

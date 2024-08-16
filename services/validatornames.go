@@ -15,6 +15,7 @@ import (
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/dora/config"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
@@ -30,6 +31,7 @@ var logger_vn = logrus.StandardLogger().WithField("module", "validator_names")
 
 type ValidatorNames struct {
 	beaconIndexer         *beacon.Indexer
+	chainState            *consensus.ChainState
 	loadingMutex          sync.Mutex
 	loading               chan bool
 	lastResolvedMapUpdate time.Time
@@ -47,9 +49,10 @@ type validatorNameEntry struct {
 	name string
 }
 
-func NewValidatorNames(beaconIndexer *beacon.Indexer) *ValidatorNames {
+func NewValidatorNames(beaconIndexer *beacon.Indexer, chainState *consensus.ChainState) *ValidatorNames {
 	validatorNames := &ValidatorNames{
 		beaconIndexer: beaconIndexer,
+		chainState:    chainState,
 	}
 	return validatorNames
 }
@@ -109,6 +112,24 @@ func (vn *ValidatorNames) runUpdater() error {
 	}
 
 	return nil
+}
+
+func (vn *ValidatorNames) getDefaultValidatorNames() string {
+	specs := vn.chainState.GetSpecs()
+	chainName := ""
+	if specs != nil {
+		chainName = specs.ConfigName
+	}
+
+	// default validator names
+	switch chainName {
+	case "sepolia":
+		return "~internal/sepolia.names.yml"
+	case "holesky":
+		return "~internal/holesky.names.yml"
+	}
+
+	return ""
 }
 
 func (vn *ValidatorNames) resolveNames() (bool, error) {
@@ -277,14 +298,19 @@ func (vn *ValidatorNames) LoadValidatorNames() chan bool {
 		vn.namesByDepositTarget = make(map[common.Address]*validatorNameEntry)
 		vn.namesMutex.Unlock()
 
+		validatorNamesYaml := utils.Config.Frontend.ValidatorNamesYaml
+		if validatorNamesYaml == "" {
+			validatorNamesYaml = vn.getDefaultValidatorNames()
+		}
+
 		// load names
-		if strings.HasPrefix(utils.Config.Frontend.ValidatorNamesYaml, "~internal/") {
-			err := vn.loadFromInternalYaml(utils.Config.Frontend.ValidatorNamesYaml[10:])
+		if strings.HasPrefix(validatorNamesYaml, "~internal/") {
+			err := vn.loadFromInternalYaml(validatorNamesYaml[10:])
 			if err != nil {
 				logger_vn.WithError(err).Errorf("error while loading validator names from internal yaml")
 			}
-		} else if utils.Config.Frontend.ValidatorNamesYaml != "" {
-			err := vn.loadFromYaml(utils.Config.Frontend.ValidatorNamesYaml)
+		} else if validatorNamesYaml != "" {
+			err := vn.loadFromYaml(validatorNamesYaml)
 			if err != nil {
 				logger_vn.WithError(err).Errorf("error while loading validator names from yaml")
 			}
