@@ -58,7 +58,7 @@ func NewValidatorNames(beaconIndexer *beacon.Indexer, chainState *consensus.Chai
 }
 
 func (vn *ValidatorNames) StartUpdater() {
-	if utils.Config.Indexer.DisableIndexWriter || vn.updaterRunning {
+	if vn.updaterRunning {
 		return
 	}
 	if utils.Config.Frontend.ValidatorNamesResolveInterval == 0 {

@@ -54,7 +54,7 @@ func NewMevIndexer(logger logrus.FieldLogger, beaconIndexer *beacon.Indexer, cha
 }
 
 func (mev *MevIndexer) StartUpdater() {
-	if utils.Config.Indexer.DisableIndexWriter || mev.updaterRunning {
+	if mev.updaterRunning {
 		return
 	}
 	if utils.Config.MevIndexer.RefreshInterval == 0 {
