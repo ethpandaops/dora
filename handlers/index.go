@@ -184,12 +184,12 @@ func buildIndexPageData() (*models.IndexPageData, time.Duration) {
 			Active:  uint64(currentEpoch) >= *specs.BellatrixForkEpoch,
 		})
 	}
-	if specs.CappellaForkEpoch != nil && *specs.CappellaForkEpoch < uint64(18446744073709551615) {
+	if specs.CapellaForkEpoch != nil && *specs.CapellaForkEpoch < uint64(18446744073709551615) {
 		pageData.NetworkForks = append(pageData.NetworkForks, &models.IndexPageDataForks{
-			Name:    "Cappella",
-			Epoch:   *specs.CappellaForkEpoch,
-			Version: specs.CappellaForkVersion[:],
-			Active:  uint64(currentEpoch) >= *specs.CappellaForkEpoch,
+			Name:    "Capella",
+			Epoch:   *specs.CapellaForkEpoch,
+			Version: specs.CapellaForkVersion[:],
+			Active:  uint64(currentEpoch) >= *specs.CapellaForkEpoch,
 		})
 	}
 	if specs.DenebForkEpoch != nil && *specs.DenebForkEpoch < uint64(18446744073709551615) {
