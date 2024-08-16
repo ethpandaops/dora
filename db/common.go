@@ -204,15 +204,15 @@ func ApplyEmbeddedDbSchema(version int64) error {
 	}
 
 	if version == -2 {
-		if err := goose.Up(writerDb.DB, schemaDirectory); err != nil {
+		if err := goose.Up(writerDb.DB, schemaDirectory, goose.WithAllowMissing()); err != nil {
 			return err
 		}
 	} else if version == -1 {
-		if err := goose.UpByOne(writerDb.DB, schemaDirectory); err != nil {
+		if err := goose.UpByOne(writerDb.DB, schemaDirectory, goose.WithAllowMissing()); err != nil {
 			return err
 		}
 	} else {
-		if err := goose.UpTo(writerDb.DB, schemaDirectory, version); err != nil {
+		if err := goose.UpTo(writerDb.DB, schemaDirectory, version, goose.WithAllowMissing()); err != nil {
 			return err
 		}
 	}
