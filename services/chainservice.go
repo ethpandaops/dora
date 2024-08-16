@@ -146,6 +146,7 @@ func (cs *ChainService) StartService() error {
 
 		if time.Since(lastLog) > 10*time.Second {
 			cs.logger.Warnf("still waiting for chain specs... need at least 1 consensus client to load chain specs from.")
+			lastLog = time.Now()
 		}
 
 		time.Sleep(1 * time.Second)
