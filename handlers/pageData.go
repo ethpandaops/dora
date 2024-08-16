@@ -29,10 +29,6 @@ func InitPageData(w http.ResponseWriter, r *http.Request, active, path, title st
 		fullTitle = fmt.Sprintf("%v", utils.Config.Frontend.SiteName)
 	}
 
-	chainState := services.GlobalBeaconService.GetChainState()
-	specs := chainState.GetSpecs()
-
-	isMainnet := specs.ConfigName == "mainnet"
 	buildTime, _ := time.Parse("2006-01-02T15:04:05Z", utils.Buildtime)
 	siteDomain := utils.Config.Frontend.SiteDomain
 	if siteDomain == "" {
@@ -47,22 +43,27 @@ func InitPageData(w http.ResponseWriter, r *http.Request, active, path, title st
 			Path:        path,
 			Templates:   strings.Join(mainTemplates, ","),
 		},
-		Active:                active,
-		Data:                  &types.Empty{},
-		Version:               utils.GetExplorerVersion(),
-		BuildTime:             fmt.Sprintf("%v", buildTime.Unix()),
-		Year:                  time.Now().UTC().Year(),
-		ExplorerTitle:         utils.Config.Frontend.SiteName,
-		ExplorerSubtitle:      utils.Config.Frontend.SiteSubtitle,
-		ExplorerLogo:          utils.Config.Frontend.SiteLogo,
-		ChainSlotsPerEpoch:    specs.SlotsPerEpoch,
-		ChainSecondsPerSlot:   uint64(specs.SecondsPerSlot.Seconds()),
-		ChainGenesisTimestamp: uint64(chainState.GetGenesis().GenesisTime.Unix()),
-		Mainnet:               isMainnet,
-		DepositContract:       common.BytesToAddress(specs.DepositContractAddress).String(),
-		Lang:                  "en-US",
-		Debug:                 utils.Config.Frontend.Debug,
-		MainMenuItems:         createMenuItems(active),
+		Active:           active,
+		Data:             &types.Empty{},
+		Version:          utils.GetExplorerVersion(),
+		BuildTime:        fmt.Sprintf("%v", buildTime.Unix()),
+		Year:             time.Now().UTC().Year(),
+		ExplorerTitle:    utils.Config.Frontend.SiteName,
+		ExplorerSubtitle: utils.Config.Frontend.SiteSubtitle,
+		ExplorerLogo:     utils.Config.Frontend.SiteLogo,
+		Lang:             "en-US",
+		Debug:            utils.Config.Frontend.Debug,
+		MainMenuItems:    createMenuItems(active),
+	}
+
+	chainState := services.GlobalBeaconService.GetChainState()
+	if specs := chainState.GetSpecs(); specs != nil {
+		data.IsReady = true
+		data.ChainSlotsPerEpoch = specs.SlotsPerEpoch
+		data.ChainSecondsPerSlot = uint64(specs.SecondsPerSlot.Seconds())
+		data.ChainGenesisTimestamp = uint64(chainState.GetGenesis().GenesisTime.Unix())
+		data.DepositContract = common.BytesToAddress(specs.DepositContractAddress).String()
+		data.Mainnet = specs.ConfigName == "mainnet"
 	}
 
 	if utils.Config.Frontend.SiteDescription != "" {

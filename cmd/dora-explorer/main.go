@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"flag"
+	"net"
 	"net/http"
 	_ "net/http/pprof"
 	"time"
@@ -47,7 +48,23 @@ func main() {
 		logger.Fatalf("error initializing db schema: %v", err)
 	}
 
-	err = services.StartChainService(ctx, logger)
+	services.InitChainService(ctx, logger)
+
+	var webserver *http.Server
+	if cfg.Frontend.Enabled {
+		websrv, err := startWebserver(logger)
+		if err != nil {
+			logger.Fatalf("error starting webserver: %v", err)
+		}
+		webserver = websrv
+
+		err = services.StartFrontendCache()
+		if err != nil {
+			logger.Fatalf("error starting frontend cache service: %v", err)
+		}
+	}
+
+	err = services.GlobalBeaconService.StartService()
 	if err != nil {
 		logger.Fatalf("error starting beacon service: %v", err)
 	}
@@ -64,13 +81,8 @@ func main() {
 		}
 	}
 
-	if cfg.Frontend.Enabled {
-		err = services.StartFrontendCache()
-		if err != nil {
-			logger.Fatalf("error starting frontend cache service: %v", err)
-		}
-
-		startFrontend(logger)
+	if webserver != nil {
+		startFrontend(webserver)
 	}
 
 	utils.WaitForCtrlC()
@@ -78,7 +90,53 @@ func main() {
 	db.MustCloseDB()
 }
 
-func startFrontend(logger logrus.FieldLogger) {
+func startWebserver(logger logrus.FieldLogger) (*http.Server, error) {
+	// build a early router that serves the cl clients page only
+	// the frontend relies on a properly initialized chain service and will be served by the main router later
+	router := mux.NewRouter()
+
+	router.HandleFunc("/", handlers.ClientsCL).Methods("GET")
+
+	fileSys := http.FS(static.Files)
+	router.PathPrefix("/").Handler(handlers.CustomFileServer(http.FileServer(fileSys), fileSys, handlers.NotFound))
+
+	n := negroni.New()
+	n.Use(negroni.NewRecovery())
+	n.UseHandler(router)
+
+	if utils.Config.Frontend.HttpWriteTimeout == 0 {
+		utils.Config.Frontend.HttpWriteTimeout = time.Second * 15
+	}
+	if utils.Config.Frontend.HttpReadTimeout == 0 {
+		utils.Config.Frontend.HttpReadTimeout = time.Second * 15
+	}
+	if utils.Config.Frontend.HttpIdleTimeout == 0 {
+		utils.Config.Frontend.HttpIdleTimeout = time.Second * 60
+	}
+	srv := &http.Server{
+		Addr:         utils.Config.Server.Host + ":" + utils.Config.Server.Port,
+		WriteTimeout: utils.Config.Frontend.HttpWriteTimeout,
+		ReadTimeout:  utils.Config.Frontend.HttpReadTimeout,
+		IdleTimeout:  utils.Config.Frontend.HttpIdleTimeout,
+		Handler:      n,
+	}
+
+	listener, err := net.Listen("tcp", srv.Addr)
+	if err != nil {
+		return nil, err
+	}
+
+	logger.Printf("http server listening on %v", srv.Addr)
+	go func() {
+		if err := srv.Serve(listener); err != nil {
+			logger.WithError(err).Fatal("Error serving frontend")
+		}
+	}()
+
+	return srv, nil
+}
+
+func startFrontend(webserver *http.Server) {
 	router := mux.NewRouter()
 
 	router.HandleFunc("/", handlers.Index).Methods("GET")
@@ -134,27 +192,5 @@ func startFrontend(logger logrus.FieldLogger) {
 	//n.Use(gzip.Gzip(gzip.DefaultCompression))
 	n.UseHandler(router)
 
-	if utils.Config.Frontend.HttpWriteTimeout == 0 {
-		utils.Config.Frontend.HttpWriteTimeout = time.Second * 15
-	}
-	if utils.Config.Frontend.HttpReadTimeout == 0 {
-		utils.Config.Frontend.HttpReadTimeout = time.Second * 15
-	}
-	if utils.Config.Frontend.HttpIdleTimeout == 0 {
-		utils.Config.Frontend.HttpIdleTimeout = time.Second * 60
-	}
-	srv := &http.Server{
-		Addr:         utils.Config.Server.Host + ":" + utils.Config.Server.Port,
-		WriteTimeout: utils.Config.Frontend.HttpWriteTimeout,
-		ReadTimeout:  utils.Config.Frontend.HttpReadTimeout,
-		IdleTimeout:  utils.Config.Frontend.HttpIdleTimeout,
-		Handler:      n,
-	}
-
-	logger.Printf("http server listening on %v", srv.Addr)
-	go func() {
-		if err := srv.ListenAndServe(); err != nil {
-			logger.WithError(err).Fatal("Error serving frontend")
-		}
-	}()
+	webserver.Handler = n
 }
