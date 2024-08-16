@@ -18,7 +18,6 @@ type Config struct {
 	} `yaml:"server"`
 
 	Chain struct {
-		Name        string `yaml:"name" envconfig:"CHAIN_NAME"`
 		DisplayName string `yaml:"displayName" envconfig:"CHAIN_DISPLAY_NAME"`
 
 		// optional features

@@ -24,16 +24,6 @@ func ReadConfig(cfg *types.Config, path string) error {
 
 	readConfigEnv(cfg)
 
-	// default validator names
-	if cfg.Frontend.ValidatorNamesYaml == "" && cfg.Frontend.ValidatorNamesInventory == "" {
-		switch cfg.Chain.Name {
-		case "sepolia":
-			cfg.Frontend.ValidatorNamesYaml = "~internal/sepolia.names.yml"
-		case "holesky":
-			cfg.Frontend.ValidatorNamesYaml = "~internal/holesky.names.yml"
-		}
-	}
-
 	// endpoints
 	if cfg.BeaconApi.Endpoints == nil && cfg.BeaconApi.Endpoint != "" {
 		cfg.BeaconApi.Endpoints = []types.EndpointConfig{
