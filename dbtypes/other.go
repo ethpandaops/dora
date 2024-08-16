@@ -11,11 +11,24 @@ type BlockStatus struct {
 	Status SlotStatus `db:"status"`
 }
 
+type BlockHead struct {
+	Slot       uint64 `db:"slot"`
+	Root       []byte `db:"root"`
+	ParentRoot []byte `db:"parent_root"`
+	ForkId     uint64 `db:"fork_id"`
+}
+
 type AssignedBlob struct {
 	Root       []byte `db:"root"`
 	Commitment []byte `db:"commitment"`
 	Slot       uint64 `db:"slot"`
 	Blob       *Blob  `db:"blob"`
+}
+
+type UnfinalizedBlockFilter struct {
+	MinSlot  uint64
+	MaxSlot  uint64
+	WithBody bool
 }
 
 type BlockFilter struct {
@@ -77,4 +90,18 @@ type SlashingFilter struct {
 	SlasherName   string
 	WithOrphaned  uint8
 	WithReason    SlashingReason
+}
+
+type WithdrawalRequestFilter struct {
+	MinSlot             uint64
+	MaxSlot             uint64
+	SourceAddress       []byte
+	MinSourceIndex      uint64
+	MaxSourceIndex      uint64
+	SourceValidatorName string
+	MinTargetIndex      uint64
+	MaxTargetIndex      uint64
+	TargetValidatorName string
+	Amount              *uint64
+	WithOrphaned        uint8
 }

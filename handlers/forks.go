@@ -10,7 +10,6 @@ import (
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
-	"github.com/ethpandaops/dora/utils"
 	"github.com/sirupsen/logrus"
 )
 
@@ -59,19 +58,21 @@ func getForksPageData() (*models.ForksPageData, error) {
 func buildForksPageData() (*models.ForksPageData, time.Duration) {
 	logrus.Debugf("forks page called")
 	pageData := &models.ForksPageData{}
-	cacheTime := time.Duration(utils.Config.Chain.Config.SecondsPerSlot) * time.Second
 
-	headForks := services.GlobalBeaconService.GetHeadForks(false)
+	headForks := services.GlobalBeaconService.GetConsensusClientForks()
+	chainState := services.GlobalBeaconService.GetChainState()
+	specs := chainState.GetSpecs()
+	cacheTime := specs.SecondsPerSlot
 
 	// check each fork if it's really a fork and not just a syncing/stuck client
-	finalizedEpoch, _, _, _ := services.GlobalBeaconService.GetIndexer().GetFinalizationCheckpoints()
+	finalizedEpoch, _ := services.GlobalBeaconService.GetBeaconIndexer().GetBlockCacheState()
 	for idx, fork := range headForks {
 		if idx == 0 {
 			continue
 		}
-		if int64(fork.Slot) < finalizedEpoch*int64(utils.Config.Chain.Config.SlotsPerEpoch) {
+		if fork.Slot < chainState.EpochToSlot(finalizedEpoch) {
 			// check block
-			dbBlock := db.GetSlotByRoot(fork.Root)
+			dbBlock := db.GetSlotByRoot(fork.Root[:])
 			if dbBlock != nil && dbBlock.Status == dbtypes.Canonical {
 				headForks[0].AllClients = append(headForks[0].AllClients, fork.AllClients...)
 				headForks[idx] = nil
@@ -84,25 +85,26 @@ func buildForksPageData() (*models.ForksPageData, time.Duration) {
 			continue
 		}
 		forkData := &models.ForksPageDataFork{
-			HeadSlot: fork.Slot,
-			HeadRoot: fork.Root,
+			HeadSlot: uint64(fork.Slot),
+			HeadRoot: fork.Root[:],
 			Clients:  []*models.ForksPageDataClient{},
 		}
 		pageData.Forks = append(pageData.Forks, forkData)
 
 		for _, client := range fork.AllClients {
-			clientHeadSlot, _, clientRefresh := client.GetLastHead()
+			consensusClient := client.GetClient()
+			clientHeadSlot, _ := consensusClient.GetLastHead()
 			forkClient := &models.ForksPageDataClient{
 				Index:       int(client.GetIndex()) + 1,
-				Name:        client.GetName(),
-				Version:     client.GetVersion(),
-				Status:      client.GetStatus(),
-				LastRefresh: clientRefresh,
-				LastError:   client.GetLastClientError(),
+				Name:        consensusClient.GetName(),
+				Version:     consensusClient.GetVersion(),
+				Status:      consensusClient.GetStatus().String(),
+				LastRefresh: consensusClient.GetLastEventTime(),
+				HeadSlot:    uint64(clientHeadSlot),
+				Distance:    uint64(fork.Slot - clientHeadSlot),
 			}
-			if clientHeadSlot >= 0 {
-				forkClient.HeadSlot = uint64(clientHeadSlot)
-				forkClient.Distance = fork.Slot - uint64(clientHeadSlot)
+			if lastErr := consensusClient.GetLastClientError(); lastErr != nil {
+				forkClient.LastError = lastErr.Error()
 			}
 			forkData.Clients = append(forkData.Clients, forkClient)
 		}

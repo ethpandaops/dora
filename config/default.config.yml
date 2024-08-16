@@ -35,8 +35,10 @@ frontend:
   validatorNamesInventory: ""
   
 beaconapi:
-  # CL Client RPC
-  endpoint: "http://127.0.0.1:5052"
+  # beacon node rpc endpoints
+  endpoints:
+    - name: "local"
+      url: "http://127.0.0.1:8545"
 
   # local cache for page models
   localCacheSize: 100 # 100MB
@@ -44,6 +46,14 @@ beaconapi:
   # remote cache for page models
   redisCacheAddr: ""
   redisCachePrefix: ""
+
+executionapi:
+  # execution node rpc endpoints
+  endpoints:
+    - name: "local"
+      url: "http://127.0.0.1:8545"
+  
+  depositLogBatchSize: 1000
 
 # indexer keeps track of the latest epochs in memory.
 indexer:
@@ -58,20 +68,6 @@ indexer:
 
   # maximum number of parallel validator set requests (might cause high memory usage)
   maxParallelValidatorSetRequests: 1
-
-
-# blob storage configuration
-blobstore:
-  # persistence mode: none, db, fs, aws
-  persistenceMode: "none"
-  nameTemplate: ""
-  fs:
-    path: ""
-  aws:
-    accessKey: ""
-    secretKey: ""
-    s3Region: "eu-central-1"
-    s3Bucket: ""
 
 # database configuration
 database:

@@ -11,16 +11,20 @@
         </div>
         <div class="row border-bottom p-1 mx-0">
           <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="An identifier for a specific committee during a slot">Committee Index:</span></div>
-          <div class="col-md-10">{{ $attestation.CommitteeIndex }}</div>
+          <div class="col-md-10">
+            {{ range $index := $attestation.CommitteeIndex }}
+              <span class="badge bg-secondary mx-2">{{ $index }}</span>
+            {{ end }}
+          </div>
         </div>
         <div class="row border-bottom p-1 mx-0">
           <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Represents the aggregated attestation of all participating validators in this attestation">Aggregation Bits:</span></div>
           <div class="col-md-10">{{ formatBitlist $attestation.AggregationBits $attestation.Validators }}</div>
         </div>
         <div class="row border-bottom p-1 mx-0">
-          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Validators who have submitted their attestation and have been included by the block proposer">Validators:</span></div>
+          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Validators who have submitted their attestation and have been included by the block proposer">Included Validators:</span></div>
           <div class="col-md-10">
-            {{ range $validator := $attestation.Validators }}
+            {{ range $validator := $attestation.IncludedValidators }}
               {{ formatValidator $validator.Index $validator.Name }}
             {{ end }}
           </div>

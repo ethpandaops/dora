@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
 
@@ -13,7 +14,6 @@ import (
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
-	"github.com/ethpandaops/dora/utils"
 )
 
 // Slots will return the main "slots" page using a go template
@@ -95,6 +95,7 @@ func buildValidatorSlotsPageData(validator uint64, pageIdx uint64, pageSize uint
 	}
 	pageData.LastPageSlot = 0
 
+	chainState := services.GlobalBeaconService.GetChainState()
 	finalizedEpoch, _ := services.GlobalBeaconService.GetFinalizedEpoch()
 
 	// load slots
@@ -114,9 +115,9 @@ func buildValidatorSlotsPageData(validator uint64, pageIdx uint64, pageSize uint
 
 		slotData := &models.ValidatorSlotsPageDataSlot{
 			Slot:         slot,
-			Epoch:        utils.EpochOfSlot(slot),
-			Ts:           utils.SlotToTime(slot),
-			Finalized:    finalizedEpoch >= int64(utils.EpochOfSlot(slot)),
+			Epoch:        uint64(chainState.EpochOfSlot(phase0.Slot(slot))),
+			Ts:           chainState.SlotToTime(phase0.Slot(slot)),
+			Finalized:    finalizedEpoch >= chainState.EpochOfSlot(phase0.Slot(slot)),
 			Status:       uint8(0),
 			Proposer:     validator,
 			ProposerName: pageData.Name,

@@ -24,13 +24,11 @@ type PageData struct {
 	DepositContract       string
 	InfoBanner            *template.HTML
 	ClientsUpdated        bool
-	// IsUserClientUpdated   func(uint64) bool
-	ChainConfig    ChainConfig
-	Lang           string
-	NoAds          bool
-	Debug          bool
-	DebugTemplates []string
-	MainMenuItems  []MainMenuItem
+	Lang                  string
+	NoAds                 bool
+	Debug                 bool
+	DebugTemplates        []string
+	MainMenuItems         []MainMenuItem
 }
 
 type MainMenuItem struct {

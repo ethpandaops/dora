@@ -13,7 +13,6 @@ import (
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
-	"github.com/ethpandaops/dora/utils"
 	"github.com/sirupsen/logrus"
 )
 
@@ -145,11 +144,6 @@ func buildFilteredVoluntaryExitsPageData(pageIdx uint64, pageSize uint64, minSlo
 	}
 
 	// load voluntary exits
-	finalizedEpoch, _ := services.GlobalBeaconService.GetFinalizedEpoch()
-	if finalizedEpoch < 0 {
-		finalizedEpoch = 0
-	}
-
 	voluntaryExitFilter := &dbtypes.VoluntaryExitFilter{
 		MinSlot:       minSlot,
 		MaxSlot:       maxSlot,
@@ -161,14 +155,15 @@ func buildFilteredVoluntaryExitsPageData(pageIdx uint64, pageSize uint64, minSlo
 
 	dbVoluntaryExits, totalRows := services.GlobalBeaconService.GetVoluntaryExitsByFilter(voluntaryExitFilter, pageIdx-1, uint32(pageSize))
 
+	chainState := services.GlobalBeaconService.GetChainState()
 	validatorSetRsp := services.GlobalBeaconService.GetCachedValidatorSet()
-	validatorActivityMap, validatorActivityMax := services.GlobalBeaconService.GetValidatorActivity()
+	validatorActivityMap, validatorActivityMax := services.GlobalBeaconService.GetValidatorActivity(3, false)
 
 	for _, voluntaryExit := range dbVoluntaryExits {
 		voluntaryExitData := &models.VoluntaryExitsPageDataExit{
 			SlotNumber:      voluntaryExit.SlotNumber,
 			SlotRoot:        voluntaryExit.SlotRoot,
-			Time:            utils.SlotToTime(voluntaryExit.SlotNumber),
+			Time:            chainState.SlotToTime(phase0.Slot(voluntaryExit.SlotNumber)),
 			Orphaned:        voluntaryExit.Orphaned,
 			ValidatorIndex:  voluntaryExit.ValidatorIndex,
 			ValidatorName:   services.GlobalBeaconService.GetValidatorName(voluntaryExit.ValidatorIndex),
@@ -202,7 +197,7 @@ func buildFilteredVoluntaryExitsPageData(pageIdx uint64, pageSize uint64, minSlo
 			}
 
 			if voluntaryExitData.ShowUpcheck {
-				voluntaryExitData.UpcheckActivity = validatorActivityMap[uint64(validator.Index)]
+				voluntaryExitData.UpcheckActivity = validatorActivityMap[validator.Index]
 				voluntaryExitData.UpcheckMaximum = uint8(validatorActivityMax)
 			}
 		}

@@ -1,13 +1,14 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"net/http"
 	_ "net/http/pprof"
 	"time"
 
 	"github.com/gorilla/mux"
-	logger "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 	"github.com/urfave/negroni"
 
 	"github.com/ethpandaops/dora/db"
@@ -22,34 +23,35 @@ func main() {
 	configPath := flag.String("config", "", "Path to the config file, if empty string defaults will be used")
 	flag.Parse()
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	cfg := &types.Config{}
 	err := utils.ReadConfig(cfg, *configPath)
 	if err != nil {
-		logger.Fatalf("error reading config file: %v", err)
+		logrus.Fatalf("error reading config file: %v", err)
 	}
 	utils.Config = cfg
-	logWriter := utils.InitLogger()
+	logWriter, logger := utils.InitLogger()
 	defer logWriter.Dispose()
 
-	logger.WithFields(logger.Fields{
-		"config":    *configPath,
-		"version":   utils.BuildVersion,
-		"release":   utils.BuildRelease,
-		"chainName": utils.Config.Chain.Config.ConfigName}).Printf("starting")
-
-	if utils.Config.Chain.Config.SlotsPerEpoch == 0 || utils.Config.Chain.Config.SecondsPerSlot == 0 {
-		utils.LogFatal(err, "invalid chain configuration specified, you must specify the slots per epoch, seconds per slot and genesis timestamp in the config file", 0)
-	}
+	logger.WithFields(logrus.Fields{
+		"config":  *configPath,
+		"version": utils.BuildVersion,
+		"release": utils.BuildRelease,
+	}).Printf("starting")
 
 	db.MustInitDB()
 	err = db.ApplyEmbeddedDbSchema(-2)
 	if err != nil {
 		logger.Fatalf("error initializing db schema: %v", err)
 	}
-	err = services.StartChainService()
+
+	err = services.StartChainService(ctx, logger)
 	if err != nil {
 		logger.Fatalf("error starting beacon service: %v", err)
 	}
+
 	err = services.StartTxSignaturesService()
 	if err != nil {
 		logger.Fatalf("error starting tx signature service: %v", err)
@@ -68,7 +70,7 @@ func main() {
 			logger.Fatalf("error starting frontend cache service: %v", err)
 		}
 
-		startFrontend()
+		startFrontend(logger)
 	}
 
 	utils.WaitForCtrlC()
@@ -76,7 +78,7 @@ func main() {
 	db.MustCloseDB()
 }
 
-func startFrontend() {
+func startFrontend(logger logrus.FieldLogger) {
 	router := mux.NewRouter()
 
 	router.HandleFunc("/", handlers.Index).Methods("GET")

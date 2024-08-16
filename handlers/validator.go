@@ -18,7 +18,6 @@ import (
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
-	"github.com/ethpandaops/dora/utils"
 )
 
 // Validator will return the main "validator" page using a go template
@@ -103,11 +102,12 @@ func getValidatorPageData(validatorIndex uint64) (*models.ValidatorPageData, err
 func buildValidatorPageData(validatorIndex uint64) (*models.ValidatorPageData, time.Duration) {
 	logrus.Debugf("validator page called: %v", validatorIndex)
 
+	chainState := services.GlobalBeaconService.GetChainState()
 	validatorSetRsp := services.GlobalBeaconService.GetCachedValidatorSet()
 	validator := validatorSetRsp[phase0.ValidatorIndex(validatorIndex)]
 
 	pageData := &models.ValidatorPageData{
-		CurrentEpoch:        uint64(utils.TimeToEpoch(time.Now())),
+		CurrentEpoch:        uint64(chainState.CurrentEpoch()),
 		Index:               uint64(validator.Index),
 		Name:                services.GlobalBeaconService.GetValidatorName(uint64(validator.Index)),
 		PublicKey:           validator.Validator.PublicKey[:],
@@ -137,26 +137,26 @@ func buildValidatorPageData(validatorIndex uint64) (*models.ValidatorPageData, t
 
 	if pageData.IsActive {
 		// load activity map
-		activityMap, maxActivity := services.GlobalBeaconService.GetValidatorActivity()
-		pageData.UpcheckActivity = activityMap[uint64(validator.Index)]
+		activityMap, maxActivity := services.GlobalBeaconService.GetValidatorActivity(3, false)
+		pageData.UpcheckActivity = activityMap[validator.Index]
 		pageData.UpcheckMaximum = uint8(maxActivity)
 	}
 
 	if validator.Validator.ActivationEligibilityEpoch < 18446744073709551615 {
 		pageData.ShowEligible = true
 		pageData.EligibleEpoch = uint64(validator.Validator.ActivationEligibilityEpoch)
-		pageData.EligibleTs = utils.EpochToTime(uint64(validator.Validator.ActivationEligibilityEpoch))
+		pageData.EligibleTs = chainState.EpochToTime(validator.Validator.ActivationEligibilityEpoch)
 	}
 	if validator.Validator.ActivationEpoch < 18446744073709551615 {
 		pageData.ShowActivation = true
 		pageData.ActivationEpoch = uint64(validator.Validator.ActivationEpoch)
-		pageData.ActivationTs = utils.EpochToTime(uint64(validator.Validator.ActivationEpoch))
+		pageData.ActivationTs = chainState.EpochToTime(validator.Validator.ActivationEpoch)
 	}
 	if validator.Validator.ExitEpoch < 18446744073709551615 {
 		pageData.ShowExit = true
 		pageData.WasActive = true
 		pageData.ExitEpoch = uint64(validator.Validator.ExitEpoch)
-		pageData.ExitTs = utils.EpochToTime(uint64(validator.Validator.ExitEpoch))
+		pageData.ExitTs = chainState.EpochToTime(validator.Validator.ExitEpoch)
 	}
 	if validator.Validator.WithdrawalCredentials[0] == 0x01 {
 		pageData.ShowWithdrawAddress = true
@@ -178,9 +178,9 @@ func buildValidatorPageData(validatorIndex uint64) (*models.ValidatorPageData, t
 			blockStatus = blockData.Block.Status
 		}
 		blockEntry := models.ValidatorPageDataBlocks{
-			Epoch:  utils.EpochOfSlot(blockData.Slot),
+			Epoch:  uint64(chainState.EpochOfSlot(phase0.Slot(blockData.Slot))),
 			Slot:   blockData.Slot,
-			Ts:     utils.SlotToTime(blockData.Slot),
+			Ts:     chainState.SlotToTime(phase0.Slot(blockData.Slot)),
 			Status: uint64(blockStatus),
 		}
 		if blockData.Block != nil {

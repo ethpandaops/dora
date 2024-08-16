@@ -10,7 +10,6 @@ import (
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
-	"github.com/ethpandaops/dora/utils"
 	"github.com/sirupsen/logrus"
 )
 
@@ -137,7 +136,9 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 		Clients: []*models.ClientsCLPageDataClient{},
 		PeerMap: buildCLPeerMapData(),
 	}
-	cacheTime := time.Duration(utils.Config.Chain.Config.SecondsPerSlot) * time.Second
+	chainState := services.GlobalBeaconService.GetChainState()
+	specs := chainState.GetSpecs()
+	cacheTime := specs.SecondsPerSlot
 
 	aliases := map[string]string{}
 	for _, client := range services.GlobalBeaconService.GetConsensusClients() {
@@ -145,10 +146,7 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 	}
 
 	for _, client := range services.GlobalBeaconService.GetConsensusClients() {
-		lastHeadSlot, lastHeadRoot, clientRefresh := client.GetLastHead()
-		if lastHeadSlot < 0 {
-			lastHeadSlot = 0
-		}
+		lastHeadSlot, lastHeadRoot := client.GetLastHead()
 
 		peers := client.GetNodePeers()
 		resPeers := []*models.ClientCLPageDataClientPeers{}
@@ -191,11 +189,16 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 			PeersInboundCounter:  inPeerCount,
 			PeersOutboundCounter: outPeerCount,
 			HeadSlot:             uint64(lastHeadSlot),
-			HeadRoot:             lastHeadRoot,
-			Status:               client.GetStatus(),
-			LastRefresh:          clientRefresh,
-			LastError:            client.GetLastClientError(),
+			HeadRoot:             lastHeadRoot[:],
+			Status:               client.GetStatus().String(),
+			LastRefresh:          client.GetLastEventTime(),
 		}
+
+		lastError := client.GetLastClientError()
+		if lastError != nil {
+			resClient.LastError = lastError.Error()
+		}
+
 		pageData.Clients = append(pageData.Clients, resClient)
 
 	}

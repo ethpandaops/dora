@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/ethpandaops/dora/dbtypes"
-	"github.com/ethpandaops/dora/utils"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -63,13 +62,13 @@ func InsertMevBlocks(mevBlocks []*dbtypes.MevBlock, tx *sqlx.Tx) error {
 	return nil
 }
 
-func UpdateMevBlockByEpoch(epoch uint64, canonicalHashes [][]byte, tx *sqlx.Tx) error {
+func UpdateMevBlockByEpoch(epoch uint64, slotsPerEpoch uint64, canonicalHashes [][]byte, tx *sqlx.Tx) error {
 	var sql strings.Builder
 	var sqlArgs strings.Builder
 
 	args := []any{
-		epoch * utils.Config.Chain.Config.SlotsPerEpoch,
-		((epoch + 1) * utils.Config.Chain.Config.SlotsPerEpoch) - 1,
+		epoch * slotsPerEpoch,
+		((epoch + 1) * slotsPerEpoch) - 1,
 	}
 
 	for i, hash := range canonicalHashes {

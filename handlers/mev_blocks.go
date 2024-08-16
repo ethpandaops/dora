@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/services"
@@ -192,12 +193,7 @@ func buildFilteredMevBlocksPageData(pageIdx uint64, pageSize uint64, minSlot uin
 		pageData.PrevPageIndex = pageIdx - 1
 	}
 
-	// load voluntary exits
-	finalizedEpoch, _ := services.GlobalBeaconService.GetFinalizedEpoch()
-	if finalizedEpoch < 0 {
-		finalizedEpoch = 0
-	}
-
+	// load mev blocks
 	mevBlockFilter := &dbtypes.MevBlockFilter{
 		MinSlot:      minSlot,
 		MaxSlot:      maxSlot,
@@ -214,12 +210,14 @@ func buildFilteredMevBlocksPageData(pageIdx uint64, pageSize uint64, minSlot uin
 		panic(err)
 	}
 
+	chainState := services.GlobalBeaconService.GetChainState()
+
 	for _, mevBlock := range dbMevBlocks {
 		mevBlockData := &models.MevBlocksPageDataBlock{
 			SlotNumber:     mevBlock.SlotNumber,
 			BlockHash:      mevBlock.BlockHash,
 			BlockNumber:    mevBlock.BlockNumber,
-			Time:           utils.SlotToTime(mevBlock.SlotNumber),
+			Time:           chainState.SlotToTime(phase0.Slot(mevBlock.SlotNumber)),
 			ValidatorIndex: mevBlock.ProposerIndex,
 			ValidatorName:  services.GlobalBeaconService.GetValidatorName(mevBlock.ProposerIndex),
 			BuilderPubkey:  mevBlock.BuilderPubkey,

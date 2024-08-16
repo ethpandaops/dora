@@ -1,8 +1,6 @@
 -- +goose Up
 -- +goose StatementBegin
 
-DROP TABLE IF EXISTS "unfinalized_duties";
-
 CREATE TABLE IF NOT EXISTS "unfinalized_epochs"
 (
     "epoch" BIGINT NOT NULL,

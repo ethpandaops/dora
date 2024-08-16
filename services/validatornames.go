@@ -12,12 +12,13 @@ import (
 	"sync"
 	"time"
 
+	v1 "github.com/attestantio/go-eth2-client/api/v1"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethpandaops/dora/config"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
-	"github.com/ethpandaops/dora/indexer"
+	"github.com/ethpandaops/dora/indexer/beacon"
 	"github.com/ethpandaops/dora/utils"
 	"github.com/jmoiron/sqlx"
 	"github.com/sirupsen/logrus"
@@ -28,6 +29,7 @@ import (
 var logger_vn = logrus.StandardLogger().WithField("module", "validator_names")
 
 type ValidatorNames struct {
+	beaconIndexer         *beacon.Indexer
 	loadingMutex          sync.Mutex
 	loading               chan bool
 	lastResolvedMapUpdate time.Time
@@ -45,12 +47,14 @@ type validatorNameEntry struct {
 	name string
 }
 
-func NewValidatorNames() *ValidatorNames {
-	validatorNames := &ValidatorNames{}
+func NewValidatorNames(beaconIndexer *beacon.Indexer) *ValidatorNames {
+	validatorNames := &ValidatorNames{
+		beaconIndexer: beaconIndexer,
+	}
 	return validatorNames
 }
 
-func (vn *ValidatorNames) StartUpdater(indexer *indexer.Indexer) {
+func (vn *ValidatorNames) StartUpdater() {
 	if utils.Config.Indexer.DisableIndexWriter || vn.updaterRunning {
 		return
 	}
@@ -59,33 +63,34 @@ func (vn *ValidatorNames) StartUpdater(indexer *indexer.Indexer) {
 	}
 
 	vn.updaterRunning = true
-	go vn.runUpdaterLoop(indexer)
+	go vn.runUpdaterLoop()
 }
 
-func (vn *ValidatorNames) runUpdaterLoop(indexer *indexer.Indexer) {
+func (vn *ValidatorNames) runUpdaterLoop() {
 	defer utils.HandleSubroutinePanic("ValidatorNames.runUpdaterLoop")
 
 	for {
 		time.Sleep(30 * time.Second)
 
-		err := vn.runUpdater(indexer)
+		err := vn.runUpdater()
 		if err != nil {
 			logger_vn.Errorf("validator names update error: %v, retrying in 30 sec...", err)
 		}
 	}
 }
 
-func (vn *ValidatorNames) runUpdater(indexer *indexer.Indexer) error {
+func (vn *ValidatorNames) runUpdater() error {
 	needUpdate := false
 
 	if utils.Config.Frontend.ValidatorNamesRefreshInterval > 0 && time.Since(vn.lastInventoryRefresh) > utils.Config.Frontend.ValidatorNamesRefreshInterval {
 		logger_vn.Infof("refreshing validator inventory")
 		loadingChan := vn.LoadValidatorNames()
 		<-loadingChan
+		needUpdate = true
 	}
 
 	if time.Since(vn.lastResolvedMapUpdate) > utils.Config.Frontend.ValidatorNamesResolveInterval {
-		changes, err := vn.resolveNames(indexer)
+		changes, err := vn.resolveNames()
 		if err != nil {
 			return err
 		}
@@ -97,7 +102,7 @@ func (vn *ValidatorNames) runUpdater(indexer *indexer.Indexer) error {
 	}
 
 	if needUpdate {
-		err := vn.updateDb()
+		err := vn.UpdateDb()
 		if err != nil {
 			return err
 		}
@@ -106,8 +111,8 @@ func (vn *ValidatorNames) runUpdater(indexer *indexer.Indexer) error {
 	return nil
 }
 
-func (vn *ValidatorNames) resolveNames(indexer *indexer.Indexer) (bool, error) {
-	validatorSet := indexer.GetCachedValidatorPubkeyMap()
+func (vn *ValidatorNames) resolveNames() (bool, error) {
+	validatorSet := vn.beaconIndexer.GetCanonicalValidatorSet(nil)
 	if validatorSet == nil {
 		return false, fmt.Errorf("validator set not ready")
 	}
@@ -124,7 +129,10 @@ func (vn *ValidatorNames) resolveNames(indexer *indexer.Indexer) (bool, error) {
 	}
 
 	// resolve names by withdrawal address
+	validatorSetMap := map[phase0.BLSPubKey]*v1.Validator{}
 	for _, validator := range validatorSet {
+		validatorSetMap[validator.Validator.PublicKey] = validator
+
 		if validator.Validator.WithdrawalCredentials[0] == 0x00 {
 			continue
 		}
@@ -146,7 +154,7 @@ func (vn *ValidatorNames) resolveNames(indexer *indexer.Indexer) (bool, error) {
 				Address: address[:],
 			})
 			for _, deposit := range deposits {
-				validator := validatorSet[phase0.BLSPubKey(deposit.PublicKey)]
+				validator := validatorSetMap[phase0.BLSPubKey(deposit.PublicKey)]
 				if validator != nil {
 					addResolved(uint64(validator.Index), vn.namesByDepositOrigin[address])
 				}
@@ -169,7 +177,7 @@ func (vn *ValidatorNames) resolveNames(indexer *indexer.Indexer) (bool, error) {
 				TargetAddress: address[:],
 			})
 			for _, deposit := range deposits {
-				validator := validatorSet[phase0.BLSPubKey(deposit.PublicKey)]
+				validator := validatorSetMap[phase0.BLSPubKey(deposit.PublicKey)]
 				if validator != nil {
 					addResolved(uint64(validator.Index), vn.namesByDepositTarget[address])
 				}
@@ -412,7 +420,7 @@ func (vn *ValidatorNames) loadFromRangesApi(apiUrl string) error {
 	return nil
 }
 
-func (vn *ValidatorNames) updateDb() error {
+func (vn *ValidatorNames) UpdateDb() error {
 	vn.namesMutex.RLock()
 	nameRows := make([]*dbtypes.ValidatorName, 0)
 	hasName := map[uint64]bool{}

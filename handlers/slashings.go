@@ -13,7 +13,6 @@ import (
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
-	"github.com/ethpandaops/dora/utils"
 	"github.com/sirupsen/logrus"
 )
 
@@ -161,11 +160,6 @@ func buildFilteredSlashingsPageData(pageIdx uint64, pageSize uint64, minSlot uin
 	}
 
 	// load slashings
-	finalizedEpoch, _ := services.GlobalBeaconService.GetFinalizedEpoch()
-	if finalizedEpoch < 0 {
-		finalizedEpoch = 0
-	}
-
 	slashingFilter := &dbtypes.SlashingFilter{
 		MinSlot:       minSlot,
 		MaxSlot:       maxSlot,
@@ -179,14 +173,15 @@ func buildFilteredSlashingsPageData(pageIdx uint64, pageSize uint64, minSlot uin
 
 	dbSlashings, totalRows := services.GlobalBeaconService.GetSlashingsByFilter(slashingFilter, pageIdx-1, uint32(pageSize))
 
+	chainState := services.GlobalBeaconService.GetChainState()
 	validatorSetRsp := services.GlobalBeaconService.GetCachedValidatorSet()
-	validatorActivityMap, validatorActivityMax := services.GlobalBeaconService.GetValidatorActivity()
+	validatorActivityMap, validatorActivityMax := services.GlobalBeaconService.GetValidatorActivity(3, false)
 
 	for _, slashing := range dbSlashings {
 		slashingData := &models.SlashingsPageDataSlashing{
 			SlotNumber:      slashing.SlotNumber,
 			SlotRoot:        slashing.SlotRoot,
-			Time:            utils.SlotToTime(slashing.SlotNumber),
+			Time:            chainState.SlotToTime(phase0.Slot(slashing.SlotNumber)),
 			Orphaned:        slashing.Orphaned,
 			Reason:          uint8(slashing.Reason),
 			ValidatorIndex:  slashing.ValidatorIndex,
@@ -222,7 +217,7 @@ func buildFilteredSlashingsPageData(pageIdx uint64, pageSize uint64, minSlot uin
 			}
 
 			if slashingData.ShowUpcheck {
-				slashingData.UpcheckActivity = validatorActivityMap[uint64(validator.Index)]
+				slashingData.UpcheckActivity = validatorActivityMap[validator.Index]
 				slashingData.UpcheckMaximum = uint8(validatorActivityMax)
 			}
 		}

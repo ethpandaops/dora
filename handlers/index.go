@@ -12,6 +12,8 @@ import (
 	"time"
 
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
+	"github.com/attestantio/go-eth2-client/spec/phase0"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/services"
@@ -95,15 +97,14 @@ func buildIndexPageData() (*models.IndexPageData, time.Duration) {
 	recentSlotsCount := 16
 
 	// network overview
-	now := time.Now()
-	currentEpoch := utils.TimeToEpoch(now)
-	if currentEpoch < 0 {
-		currentEpoch = 0
-	}
-	currentSlot := utils.TimeToSlot(uint64(now.Unix()))
-	currentSlotIndex := (currentSlot % utils.Config.Chain.Config.SlotsPerEpoch) + 1
+	chainState := services.GlobalBeaconService.GetChainState()
+	specs := chainState.GetSpecs()
+	currentEpoch := chainState.CurrentEpoch()
+	currentSlot := chainState.CurrentSlot()
+	currentSlotIndex := chainState.SlotToSlotIndex(currentSlot) + 1
 
-	finalizedEpoch, _, justifiedEpoch, _ := services.GlobalBeaconService.GetIndexer().GetFinalizationCheckpoints()
+	finalizedEpoch, _ := chainState.GetFinalizedCheckpoint()
+	justifiedEpoch, _ := chainState.GetJustifiedCheckpoint()
 
 	syncState := dbtypes.IndexerSyncState{}
 	db.GetExplorerState("indexer.syncstate", &syncState)
@@ -115,16 +116,16 @@ func buildIndexPageData() (*models.IndexPageData, time.Duration) {
 	}
 
 	pageData := &models.IndexPageData{
-		NetworkName:           utils.Config.Chain.Name,
-		DepositContract:       utils.Config.Chain.Config.DepositContractAddress,
+		NetworkName:           specs.ConfigName,
+		DepositContract:       common.Address(specs.DepositContractAddress).String(),
 		ShowSyncingMessage:    !isSynced,
-		SlotsPerEpoch:         utils.Config.Chain.Config.SlotsPerEpoch,
+		SlotsPerEpoch:         specs.SlotsPerEpoch,
 		CurrentEpoch:          uint64(currentEpoch),
-		CurrentFinalizedEpoch: finalizedEpoch,
-		CurrentJustifiedEpoch: justifiedEpoch,
-		CurrentSlot:           currentSlot,
-		CurrentScheduledCount: utils.Config.Chain.Config.SlotsPerEpoch - currentSlotIndex,
-		CurrentEpochProgress:  float64(100) * float64(currentSlotIndex) / float64(utils.Config.Chain.Config.SlotsPerEpoch),
+		CurrentFinalizedEpoch: int64(finalizedEpoch) - 1,
+		CurrentJustifiedEpoch: int64(justifiedEpoch) - 1,
+		CurrentSlot:           uint64(currentSlot),
+		CurrentScheduledCount: specs.SlotsPerEpoch - uint64(currentSlotIndex),
+		CurrentEpochProgress:  float64(100) * float64(currentSlotIndex) / float64(specs.SlotsPerEpoch),
 	}
 	if utils.Config.Chain.DisplayName != "" {
 		pageData.NetworkName = utils.Config.Chain.DisplayName
@@ -149,7 +150,8 @@ func buildIndexPageData() (*models.IndexPageData, time.Duration) {
 			pageData.AverageValidatorBalance = pageData.AverageValidatorBalance / pageData.ActiveValidatorCount
 		}
 	}
-	pageData.ValidatorsPerEpoch = utils.GetValidatorChurnLimit(pageData.ActiveValidatorCount)
+
+	pageData.ValidatorsPerEpoch = chainState.GetValidatorChurnLimit(pageData.ActiveValidatorCount)
 	pageData.ValidatorsPerDay = pageData.ValidatorsPerEpoch * 225
 	depositQueueTime := float64(pageData.EnteringValidatorCount) / float64(pageData.ValidatorsPerDay)
 	if depositQueueTime > 0 {
@@ -166,49 +168,57 @@ func buildIndexPageData() (*models.IndexPageData, time.Duration) {
 	}
 
 	pageData.NetworkForks = make([]*models.IndexPageDataForks, 0)
-	if utils.Config.Chain.Config.AltairForkEpoch < uint64(18446744073709551615) && utils.Config.Chain.Config.AltairForkVersion != "" {
+	if specs.AltairForkEpoch != nil && *specs.AltairForkEpoch < uint64(18446744073709551615) {
 		pageData.NetworkForks = append(pageData.NetworkForks, &models.IndexPageDataForks{
 			Name:    "Altair",
-			Epoch:   utils.Config.Chain.Config.AltairForkEpoch,
-			Version: utils.MustParseHex(utils.Config.Chain.Config.AltairForkVersion),
-			Active:  uint64(currentEpoch) >= utils.Config.Chain.Config.AltairForkEpoch,
+			Epoch:   *specs.AltairForkEpoch,
+			Version: specs.AltairForkVersion[:],
+			Active:  uint64(currentEpoch) >= *specs.AltairForkEpoch,
 		})
 	}
-	if utils.Config.Chain.Config.BellatrixForkEpoch < uint64(18446744073709551615) && utils.Config.Chain.Config.BellatrixForkVersion != "" {
+	if specs.BellatrixForkEpoch != nil && *specs.BellatrixForkEpoch < uint64(18446744073709551615) {
 		pageData.NetworkForks = append(pageData.NetworkForks, &models.IndexPageDataForks{
 			Name:    "Bellatrix",
-			Epoch:   utils.Config.Chain.Config.BellatrixForkEpoch,
-			Version: utils.MustParseHex(utils.Config.Chain.Config.BellatrixForkVersion),
-			Active:  uint64(currentEpoch) >= utils.Config.Chain.Config.BellatrixForkEpoch,
+			Epoch:   *specs.BellatrixForkEpoch,
+			Version: specs.BellatrixForkVersion[:],
+			Active:  uint64(currentEpoch) >= *specs.BellatrixForkEpoch,
 		})
 	}
-	if utils.Config.Chain.Config.CappellaForkEpoch < uint64(18446744073709551615) && utils.Config.Chain.Config.CappellaForkVersion != "" {
+	if specs.CappellaForkEpoch != nil && *specs.CappellaForkEpoch < uint64(18446744073709551615) {
 		pageData.NetworkForks = append(pageData.NetworkForks, &models.IndexPageDataForks{
 			Name:    "Cappella",
-			Epoch:   utils.Config.Chain.Config.CappellaForkEpoch,
-			Version: utils.MustParseHex(utils.Config.Chain.Config.CappellaForkVersion),
-			Active:  uint64(currentEpoch) >= utils.Config.Chain.Config.CappellaForkEpoch,
+			Epoch:   *specs.CappellaForkEpoch,
+			Version: specs.CappellaForkVersion[:],
+			Active:  uint64(currentEpoch) >= *specs.CappellaForkEpoch,
 		})
 	}
-	if utils.Config.Chain.Config.DenebForkEpoch < uint64(18446744073709551615) && utils.Config.Chain.Config.DenebForkVersion != "" {
+	if specs.DenebForkEpoch != nil && *specs.DenebForkEpoch < uint64(18446744073709551615) {
 		pageData.NetworkForks = append(pageData.NetworkForks, &models.IndexPageDataForks{
 			Name:    "Deneb",
-			Epoch:   utils.Config.Chain.Config.DenebForkEpoch,
-			Version: utils.MustParseHex(utils.Config.Chain.Config.DenebForkVersion),
-			Active:  uint64(currentEpoch) >= utils.Config.Chain.Config.DenebForkEpoch,
+			Epoch:   *specs.DenebForkEpoch,
+			Version: specs.DenebForkVersion[:],
+			Active:  uint64(currentEpoch) >= *specs.DenebForkEpoch,
 		})
 	}
-	if utils.Config.Chain.Config.Eip7594ForkEpoch < uint64(18446744073709551615) && utils.Config.Chain.Config.Eip7594ForkVersion != "" {
+	if specs.ElectraForkEpoch != nil && *specs.ElectraForkEpoch < uint64(18446744073709551615) {
+		pageData.NetworkForks = append(pageData.NetworkForks, &models.IndexPageDataForks{
+			Name:    "Electra",
+			Epoch:   *specs.ElectraForkEpoch,
+			Version: specs.ElectraForkVersion[:],
+			Active:  uint64(currentEpoch) >= *specs.ElectraForkEpoch,
+		})
+	}
+	if specs.Eip7594ForkEpoch != nil && *specs.Eip7594ForkEpoch < uint64(18446744073709551615) {
 		pageData.NetworkForks = append(pageData.NetworkForks, &models.IndexPageDataForks{
 			Name:    "eip7594",
-			Epoch:   utils.Config.Chain.Config.Eip7594ForkEpoch,
-			Version: utils.MustParseHex(utils.Config.Chain.Config.Eip7594ForkVersion),
-			Active:  uint64(currentEpoch) >= utils.Config.Chain.Config.Eip7594ForkEpoch,
+			Epoch:   *specs.Eip7594ForkEpoch,
+			Version: specs.Eip7594ForkVersion[:],
+			Active:  uint64(currentEpoch) >= *specs.Eip7594ForkEpoch,
 		})
 	}
 
 	// load recent epochs
-	buildIndexPageRecentEpochsData(pageData, uint64(currentEpoch), finalizedEpoch, justifiedEpoch, recentEpochCount)
+	buildIndexPageRecentEpochsData(pageData, currentEpoch, finalizedEpoch, justifiedEpoch, recentEpochCount)
 
 	// load recent blocks
 	buildIndexPageRecentBlocksData(pageData, currentSlot, recentBlockCount)
@@ -219,9 +229,12 @@ func buildIndexPageData() (*models.IndexPageData, time.Duration) {
 	return pageData, 12 * time.Second
 }
 
-func buildIndexPageRecentEpochsData(pageData *models.IndexPageData, currentEpoch uint64, finalizedEpoch int64, justifiedEpoch int64, recentEpochCount int) {
+func buildIndexPageRecentEpochsData(pageData *models.IndexPageData, currentEpoch phase0.Epoch, finalizedEpoch phase0.Epoch, justifiedEpoch phase0.Epoch, recentEpochCount int) {
 	pageData.RecentEpochs = make([]*models.IndexPageDataEpochs, 0)
-	epochsData := services.GlobalBeaconService.GetDbEpochs(currentEpoch, uint32(recentEpochCount))
+
+	chainState := services.GlobalBeaconService.GetChainState()
+
+	epochsData := services.GlobalBeaconService.GetDbEpochs(uint64(currentEpoch), uint32(recentEpochCount))
 	for i := 0; i < len(epochsData); i++ {
 		epochData := epochsData[i]
 		if epochData == nil {
@@ -233,9 +246,9 @@ func buildIndexPageRecentEpochsData(pageData *models.IndexPageData, currentEpoch
 		}
 		pageData.RecentEpochs = append(pageData.RecentEpochs, &models.IndexPageDataEpochs{
 			Epoch:             epochData.Epoch,
-			Ts:                utils.EpochToTime(epochData.Epoch),
-			Finalized:         finalizedEpoch >= int64(epochData.Epoch),
-			Justified:         justifiedEpoch >= int64(epochData.Epoch),
+			Ts:                chainState.EpochToTime(phase0.Epoch(epochData.Epoch)),
+			Finalized:         uint64(finalizedEpoch) > epochData.Epoch,
+			Justified:         uint64(justifiedEpoch) > epochData.Epoch,
 			EligibleEther:     epochData.Eligible,
 			TargetVoted:       epochData.VotedTarget,
 			VoteParticipation: voteParticipation,
@@ -244,8 +257,11 @@ func buildIndexPageRecentEpochsData(pageData *models.IndexPageData, currentEpoch
 	pageData.RecentEpochCount = uint64(len(pageData.RecentEpochs))
 }
 
-func buildIndexPageRecentBlocksData(pageData *models.IndexPageData, currentSlot uint64, recentBlockCount int) {
+func buildIndexPageRecentBlocksData(pageData *models.IndexPageData, currentSlot phase0.Slot, recentBlockCount int) {
 	pageData.RecentBlocks = make([]*models.IndexPageDataBlocks, 0)
+
+	chainState := services.GlobalBeaconService.GetChainState()
+
 	blocksData := services.GlobalBeaconService.GetDbBlocks(uint64(currentSlot), int32(recentBlockCount), false, false)
 	for i := 0; i < len(blocksData); i++ {
 		blockData := blocksData[i]
@@ -253,9 +269,9 @@ func buildIndexPageRecentBlocksData(pageData *models.IndexPageData, currentSlot 
 			continue
 		}
 		blockModel := &models.IndexPageDataBlocks{
-			Epoch:        utils.EpochOfSlot(blockData.Slot),
+			Epoch:        uint64(chainState.EpochOfSlot(phase0.Slot(blockData.Slot))),
 			Slot:         blockData.Slot,
-			Ts:           utils.SlotToTime(blockData.Slot),
+			Ts:           chainState.SlotToTime(phase0.Slot(blockData.Slot)),
 			Proposer:     blockData.Proposer,
 			ProposerName: services.GlobalBeaconService.GetValidatorName(blockData.Proposer),
 			Status:       uint64(blockData.Status),
@@ -273,13 +289,15 @@ func buildIndexPageRecentBlocksData(pageData *models.IndexPageData, currentSlot 
 	pageData.RecentBlockCount = uint64(len(pageData.RecentBlocks))
 }
 
-func buildIndexPageRecentSlotsData(pageData *models.IndexPageData, firstSlot uint64, slotLimit int) {
+func buildIndexPageRecentSlotsData(pageData *models.IndexPageData, firstSlot phase0.Slot, slotLimit int) {
 	var lastSlot uint64
-	if firstSlot >= uint64(slotLimit) {
-		lastSlot = firstSlot - uint64(slotLimit)
+	if uint64(firstSlot) >= uint64(slotLimit) {
+		lastSlot = uint64(firstSlot) - uint64(slotLimit)
 	} else {
 		lastSlot = 0
 	}
+
+	chainState := services.GlobalBeaconService.GetChainState()
 
 	// load slots
 	pageData.RecentSlots = make([]*models.IndexPageDataSlots, 0)
@@ -297,8 +315,8 @@ func buildIndexPageRecentSlotsData(pageData *models.IndexPageData, firstSlot uin
 
 			slotData := &models.IndexPageDataSlots{
 				Slot:         slot,
-				Epoch:        utils.EpochOfSlot(slot),
-				Ts:           utils.SlotToTime(slot),
+				Epoch:        uint64(chainState.EpochOfSlot(phase0.Slot(dbSlot.Slot))),
+				Ts:           chainState.SlotToTime(phase0.Slot(slot)),
 				Status:       uint64(dbSlot.Status),
 				Proposer:     dbSlot.Proposer,
 				ProposerName: services.GlobalBeaconService.GetValidatorName(dbSlot.Proposer),

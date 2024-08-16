@@ -18,11 +18,8 @@ type Config struct {
 	} `yaml:"server"`
 
 	Chain struct {
-		Name             string `yaml:"name" envconfig:"CHAIN_NAME"`
-		DisplayName      string `yaml:"displayName" envconfig:"CHAIN_DISPLAY_NAME"`
-		GenesisTimestamp uint64 `yaml:"genesisTimestamp" envconfig:"CHAIN_GENESIS_TIMESTAMP"`
-		ConfigPath       string `yaml:"configPath" envconfig:"CHAIN_CONFIG_PATH"`
-		Config           ChainConfig
+		Name        string `yaml:"name" envconfig:"CHAIN_NAME"`
+		DisplayName string `yaml:"displayName" envconfig:"CHAIN_DISPLAY_NAME"`
 
 		// optional features
 		WhiskForkEpoch *uint64 `yaml:"whiskForkEpoch" envconfig:"WHISK_FORK_EPOCH"`
@@ -90,21 +87,6 @@ type Config struct {
 		MaxParallelValidatorSetRequests uint   `yaml:"maxParallelValidatorSetRequests" envconfig:"INDEXER_MAX_PARALLEL_VALIDATOR_SET_REQUESTS"`
 	} `yaml:"indexer"`
 
-	BlobStore struct {
-		PersistenceMode string `yaml:"persistenceMode" envconfig:"BLOBSTORE_PERSISTENCE_MODE"`
-		NameTemplate    string `yaml:"nameTemplate" envconfig:"BLOBSTORE_NAME_TEMPLATE"`
-
-		Fs struct {
-			Path string `yaml:"path" envconfig:"BLOBSTORE_FS_PATH"`
-		} `yaml:"fs"`
-		Aws struct {
-			AccessKey string `yaml:"accessKey" envconfig:"BLOBSTORE_AWS_ACCESSKEY"`
-			SecretKey string `yaml:"secretKey" envconfig:"BLOBSTORE_AWS_SECRETKEY"`
-			S3Region  string `yaml:"s3Region" envconfig:"BLOBSTORE_AWS_S3REGION"`
-			S3Bucket  string `yaml:"s3Bucket" envconfig:"BLOBSTORE_AWS_S3BUCKET"`
-		} `yaml:"aws"`
-	} `yaml:"blobstore"`
-
 	TxSignature struct {
 		DisableLookupLoop bool          `yaml:"disableLookupLoop" envconfig:"TXSIG_DISABLE_LOOKUP_LOOP"`
 		LookupInterval    time.Duration `yaml:"lookupInterval" envconfig:"TXSIG_LOOKUP_INTERVAL"`
@@ -147,8 +129,9 @@ type Config struct {
 	} `yaml:"database"`
 
 	KillSwitch struct {
-		DisableSSZEncoding bool `yaml:"disableSSZEncoding" envconfig:"KILLSWITCH_DISABLE_SSZ_ENCODING"`
-		DisableSSZRequests bool `yaml:"disableSSZRequests" envconfig:"KILLSWITCH_DISABLE_SSZ_REQUESTS"`
+		DisableSSZEncoding      bool `yaml:"disableSSZEncoding" envconfig:"KILLSWITCH_DISABLE_SSZ_ENCODING"`
+		DisableSSZRequests      bool `yaml:"disableSSZRequests" envconfig:"KILLSWITCH_DISABLE_SSZ_REQUESTS"`
+		DisableBlockCompression bool `yaml:"disableBlockCompression" envconfig:"KILLSWITCH_DISABLE_BLOCK_COMPRESSION"`
 	} `yaml:"killSwitch"`
 }
 

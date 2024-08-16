@@ -8,8 +8,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	logger "github.com/sirupsen/logrus"
 
+	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/types"
 	"github.com/ethpandaops/dora/utils"
 )
@@ -27,7 +29,10 @@ func InitPageData(w http.ResponseWriter, r *http.Request, active, path, title st
 		fullTitle = fmt.Sprintf("%v", utils.Config.Frontend.SiteName)
 	}
 
-	isMainnet := utils.Config.Chain.Config.ConfigName == "mainnet"
+	chainState := services.GlobalBeaconService.GetChainState()
+	specs := chainState.GetSpecs()
+
+	isMainnet := specs.ConfigName == "mainnet"
 	buildTime, _ := time.Parse("2006-01-02T15:04:05Z", utils.Buildtime)
 	siteDomain := utils.Config.Frontend.SiteDomain
 	if siteDomain == "" {
@@ -50,12 +55,11 @@ func InitPageData(w http.ResponseWriter, r *http.Request, active, path, title st
 		ExplorerTitle:         utils.Config.Frontend.SiteName,
 		ExplorerSubtitle:      utils.Config.Frontend.SiteSubtitle,
 		ExplorerLogo:          utils.Config.Frontend.SiteLogo,
-		ChainSlotsPerEpoch:    utils.Config.Chain.Config.SlotsPerEpoch,
-		ChainSecondsPerSlot:   utils.Config.Chain.Config.SecondsPerSlot,
-		ChainGenesisTimestamp: utils.Config.Chain.GenesisTimestamp,
+		ChainSlotsPerEpoch:    specs.SlotsPerEpoch,
+		ChainSecondsPerSlot:   uint64(specs.SecondsPerSlot.Seconds()),
+		ChainGenesisTimestamp: uint64(chainState.GetGenesis().GenesisTime.Unix()),
 		Mainnet:               isMainnet,
-		DepositContract:       utils.Config.Chain.Config.DepositContractAddress,
-		ChainConfig:           utils.Config.Chain.Config,
+		DepositContract:       common.BytesToAddress(specs.DepositContractAddress).String(),
 		Lang:                  "en-US",
 		Debug:                 utils.Config.Frontend.Debug,
 		MainMenuItems:         createMenuItems(active),
