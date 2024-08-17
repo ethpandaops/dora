@@ -432,9 +432,11 @@ func (cache *forkCache) processBlock(block *Block) (ForkKey, error) {
 					return err
 				}
 
-				err = db.UpdateUnfinalizedBlockForkId(fork1Roots, uint64(fork1.forkId), tx)
-				if err != nil {
-					return err
+				if len(fork1Roots) > 0 {
+					err = db.UpdateUnfinalizedBlockForkId(fork1Roots, uint64(fork1.forkId), tx)
+					if err != nil {
+						return err
+					}
 				}
 
 				cache.indexer.logger.Infof("fork %v created (base %v [%v], head %v [%v], updated blocks: %v)", fork1.forkId, fork1.baseSlot, fork1.baseRoot.String(), fork1.leafSlot, fork1.leafRoot.String(), len(fork1Roots))
@@ -446,9 +448,11 @@ func (cache *forkCache) processBlock(block *Block) (ForkKey, error) {
 					return err
 				}
 
-				err = db.UpdateUnfinalizedBlockForkId(fork2Roots, uint64(fork2.forkId), tx)
-				if err != nil {
-					return err
+				if len(fork2Roots) > 0 {
+					err = db.UpdateUnfinalizedBlockForkId(fork2Roots, uint64(fork2.forkId), tx)
+					if err != nil {
+						return err
+					}
 				}
 
 				cache.indexer.logger.Infof("fork %v created (base %v [%v], head %v [%v], updated blocks: %v)", fork2.forkId, fork2.baseSlot, fork2.baseRoot.String(), fork2.leafSlot, fork2.leafRoot.String(), len(fork2Roots))
