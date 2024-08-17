@@ -369,6 +369,12 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 
 	t1 = time.Now()
 
+	// clean fork cache
+	indexer.forkCache.setFinalizedEpoch(deleteBeforeSlot, justifiedRoot)
+	for _, fork := range indexer.forkCache.getForksBefore(deleteBeforeSlot) {
+		indexer.forkCache.removeFork(fork.forkId)
+	}
+
 	// clean epoch stats
 	indexer.epochCache.removeEpochStatsByEpoch(epoch)
 
@@ -378,12 +384,6 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 	}
 	for _, block := range orphanedBlocks {
 		indexer.blockCache.removeBlock(block)
-	}
-
-	// clean fork cache
-	indexer.forkCache.setFinalizedEpoch(deleteBeforeSlot, justifiedRoot)
-	for _, fork := range indexer.forkCache.getForksBefore(deleteBeforeSlot) {
-		indexer.forkCache.removeFork(fork.forkId)
 	}
 
 	// log summary
