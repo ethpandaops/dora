@@ -25,12 +25,14 @@ type EpochStats struct {
 	dependentRoot  phase0.Root
 	dependentState *epochState
 
-	requestedMutex sync.Mutex
-	requestedBy    []*Client
-	ready          bool
-	readyChanMutex sync.Mutex
-	readyChan      chan bool
-	isInDb         bool
+	requestedMutex  sync.Mutex
+	requestedBy     []*Client
+	ready           bool
+	readyChanMutex  sync.Mutex
+	readyChan       chan bool
+	processingMutex sync.Mutex
+	processing      bool
+	isInDb          bool
 
 	precalcBaseRoot phase0.Root
 	precalcValues   *EpochStatsValues
@@ -305,6 +307,20 @@ func (es *EpochStats) processState(indexer *Indexer) {
 	if es.dependentState == nil || es.dependentState.loadingStatus != 2 {
 		return
 	}
+
+	es.processingMutex.Lock()
+	if es.processing {
+		es.processingMutex.Unlock()
+		return
+	}
+
+	es.processing = true
+	es.processingMutex.Unlock()
+
+	defer func() {
+		es.processing = false
+	}()
+
 	t1 := time.Now()
 
 	chainState := indexer.consensusPool.GetChainState()
