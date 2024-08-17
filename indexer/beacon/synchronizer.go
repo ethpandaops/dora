@@ -398,6 +398,9 @@ func (sync *synchronizer) syncEpoch(syncEpoch phase0.Epoch, client *Client, last
 		}
 
 		// delete unfinalized forks for canonical roots
+		if err := db.UpdateFinalizedForkParents(canonicalBlockRoots, tx); err != nil {
+			return fmt.Errorf("failed updating finalized fork parents: %v", err)
+		}
 		if err := db.DeleteFinalizedForks(canonicalBlockRoots, tx); err != nil {
 			return fmt.Errorf("failed deleting finalized forks: %v", err)
 		}

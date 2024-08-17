@@ -183,7 +183,7 @@ func (cache *forkCache) setFinalizedEpoch(finalizedSlot phase0.Slot, justifiedRo
 	closestDistance := uint64(0)
 
 	for _, fork := range cache.forkMap {
-		if fork.baseSlot >= finalizedSlot {
+		if fork.leafSlot >= finalizedSlot {
 			continue
 		}
 
