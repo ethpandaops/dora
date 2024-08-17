@@ -66,13 +66,30 @@ type ChainSpec struct {
 	EffectiveBalanceIncrement             uint64            `yaml:"EFFECTIVE_BALANCE_INCREMENT"`
 	ShardCommitteePeriod                  uint64            `yaml:"SHARD_COMMITTEE_PERIOD"`
 
+	MaxProposerSlashings         uint64 `yaml:"MAX_PROPOSER_SLASHINGS"`
+	MaxAttesterSlashings         uint64 `yaml:"MAX_ATTESTER_SLASHINGS"`
+	MaxAttestations              uint64 `yaml:"MAX_ATTESTATIONS"`
+	MaxDeposits                  uint64 `yaml:"MAX_DEPOSITS"`
+	MaxVoluntaryExits            uint64 `yaml:"MAX_VOLUNTARY_EXITS"`
+	HistoricalRootsLimit         uint64 `yaml:"HISTORICAL_ROOTS_LIMIT"`
+	EpochsPerEth1VotingPeriod    uint64 `yaml:"EPOCHS_PER_ETH1_VOTING_PERIOD"`
+	ValidatorRegistryLimit       uint64 `yaml:"VALIDATOR_REGISTRY_LIMIT"`
+	MaxTransactionsPerPayload    uint64 `yaml:"MAX_TRANSACTIONS_PER_PAYLOAD"`
+	MaxBytesPerTransaction       uint64 `yaml:"MAX_BYTES_PER_TRANSACTION"`
+	MaxExtraDataBytes            uint64 `yaml:"MAX_EXTRA_DATA_BYTES"`
+	MaxBlsToExecutionChanges     uint64 `yaml:"MAX_BLS_TO_EXECUTION_CHANGES"`
+	MaxWithdrawalsPerPayload     uint64 `yaml:"MAX_WITHDRAWALS_PER_PAYLOAD"`
+	MaxBlobCommitmentsPerBlock   uint64 `yaml:"MAX_BLOB_COMMITMENTS_PER_BLOCK"`
+	MaxValidatorsPerCommittee    uint64 `yaml:"MAX_VALIDATORS_PER_COMMITTEE"`
+	MaxDepositRequestsPerPayload uint64 `yaml:"MAX_DEPOSIT_REQUESTS_PER_PAYLOAD"`
+	PendingDepositsLimit         uint64 `yaml:"PENDING_DEPOSITS_LIMIT"`
+
 	// EIP7594: PeerDAS
 	NumberOfColumns              *uint64 `yaml:"NUMBER_OF_COLUMNS"                check-if-fork:"Eip7594ForkEpoch"`
 	DataColumnSidecarSubnetCount *uint64 `yaml:"DATA_COLUMN_SIDECAR_SUBNET_COUNT" check-if-fork:"Eip7594ForkEpoch"`
 	CustodyRequirement           *uint64 `yaml:"CUSTODY_REQUIREMENT"              check-if-fork:"Eip7594ForkEpoch"`
 
-	// additional dora specific specs
-	WhiskForkEpoch *uint64
+	WhiskForkEpoch *uint64 `yaml:"WHISK_FORK_EPOCH"`
 }
 
 var byteType = reflect.TypeOf(byte(0))

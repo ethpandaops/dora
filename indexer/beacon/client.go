@@ -379,13 +379,28 @@ func (c *Client) processBlock(slot phase0.Slot, root phase0.Root, header *phase0
 	}
 
 	isNew, err = block.EnsureBlock(func() (*spec.VersionedSignedBeaconBlock, error) {
-
 		t1 := time.Now()
 		defer func() {
 			processingTimes[0] += time.Since(t1)
 		}()
 
-		return LoadBeaconBlock(c.getContext(), c, root)
+		block, err := LoadBeaconBlock(c.getContext(), c, root)
+		if err != nil {
+			return nil, err
+		}
+
+		dynRoot, err := GetDynamicBlockRoot(c.indexer, block)
+		if err != nil {
+			c.logger.Warnf("failed calculating dynamic root for block %v: %v", root.String(), err)
+		}
+
+		if !bytes.Equal(dynRoot[:], root[:]) {
+			c.logger.Warnf("dynamic root mismatch for block %v: %v != %v", root.String(), dynRoot.String(), root.String())
+		} else {
+			c.logger.Infof("dynamic root match for block %v: %v", root.String(), dynRoot.String())
+		}
+
+		return block, nil
 	})
 	if err != nil {
 		return
