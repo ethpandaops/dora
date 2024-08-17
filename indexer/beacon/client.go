@@ -364,10 +364,7 @@ func (c *Client) processBlock(slot phase0.Slot, root phase0.Root, header *phase0
 
 	if slot >= finalizedSlot && isNew {
 		// fork detection
-		forkId, err2 := c.indexer.forkCache.processBlock(block)
-		block.forkId = forkId
-		block.fokChecked = true
-
+		err2 := c.indexer.forkCache.processBlock(block)
 		if err2 != nil {
 			c.logger.Warnf("failed processing new fork: %v", err2)
 		}

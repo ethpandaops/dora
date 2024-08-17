@@ -29,6 +29,7 @@ func newFork(forkId ForkKey, baseBlock *Block, leafBlock *Block, parentFork Fork
 		leafSlot:   leafBlock.Slot,
 		leafRoot:   leafBlock.Root,
 		parentFork: parentFork,
+		headBlock:  leafBlock,
 	}
 
 	return fork
