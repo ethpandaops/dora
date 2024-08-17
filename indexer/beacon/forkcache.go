@@ -301,7 +301,7 @@ func (cache *forkCache) checkForkDistance(block1 *Block, block2 *Block, parentsM
 
 // processBlock processes a block and detects new forks if any.
 // It persists the new forks to the database, updates any subsequent blocks building on top of the given block and returns the fork ID.
-func (cache *forkCache) processBlock(block *Block) (ForkKey, error) {
+func (cache *forkCache) processBlock(block *Block) error {
 	cache.forkProcessLock.Lock()
 	defer cache.forkProcessLock.Unlock()
 
@@ -424,6 +424,9 @@ func (cache *forkCache) processBlock(block *Block) (ForkKey, error) {
 		}
 	}
 
+	block.forkId = currentForkId
+	block.fokChecked = true
+
 	if fork1 != nil || fork2 != nil || len(updatedBlocks) > 0 {
 		err := db.RunDBTransaction(func(tx *sqlx.Tx) error {
 			if fork1 != nil {
@@ -475,11 +478,11 @@ func (cache *forkCache) processBlock(block *Block) (ForkKey, error) {
 			return nil
 		})
 		if err != nil {
-			return currentForkId, err
+			return err
 		}
 	}
 
-	return currentForkId, nil
+	return nil
 }
 
 // updateNewForkBlocks updates the fork blocks with the given fork. returns the roots of the updated blocks.
