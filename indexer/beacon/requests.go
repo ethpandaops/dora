@@ -60,6 +60,8 @@ func LoadBeaconBlock(ctx context.Context, client *Client, root phase0.Root) (*sp
 		return nil, err
 	}
 
+	body.Root()
+
 	return body, nil
 }
 
@@ -74,4 +76,98 @@ func LoadBeaconState(ctx context.Context, client *Client, root phase0.Root) (*sp
 	}
 
 	return resState, nil
+}
+
+func GetDynamicBlockRoot(indexer *Indexer, v *spec.VersionedSignedBeaconBlock) (phase0.Root, error) {
+	var blockObj any
+
+	switch v.Version {
+	case spec.DataVersionPhase0:
+		if v.Phase0 == nil {
+			return phase0.Root{}, fmt.Errorf("no phase0 block")
+		}
+
+		blockObj = v.Phase0.Message
+	case spec.DataVersionAltair:
+		if v.Altair == nil {
+			return phase0.Root{}, fmt.Errorf("no altair block")
+		}
+
+		blockObj = v.Altair.Message
+	case spec.DataVersionBellatrix:
+		if v.Bellatrix == nil {
+			return phase0.Root{}, fmt.Errorf("no bellatrix block")
+		}
+
+		blockObj = v.Bellatrix.Message
+	case spec.DataVersionCapella:
+		if v.Capella == nil {
+			return phase0.Root{}, fmt.Errorf("no capella block")
+		}
+
+		blockObj = v.Capella.Message
+	case spec.DataVersionDeneb:
+		if v.Deneb == nil {
+			return phase0.Root{}, fmt.Errorf("no deneb block")
+		}
+
+		blockObj = v.Deneb.Message
+	case spec.DataVersionElectra:
+		if v.Electra == nil {
+			return phase0.Root{}, fmt.Errorf("no electra block")
+		}
+
+		blockObj = v.Electra.Message
+	default:
+		return phase0.Root{}, fmt.Errorf("unknown version")
+	}
+
+	return indexer.dynSsz.HashTreeRoot(blockObj)
+}
+
+func GetDynamicStateRoot(indexer *Indexer, v *spec.VersionedBeaconState) (phase0.Root, error) {
+	var stateObj any
+
+	switch v.Version {
+	case spec.DataVersionPhase0:
+		if v.Phase0 == nil {
+			return phase0.Root{}, fmt.Errorf("no phase0 state")
+		}
+
+		stateObj = v.Phase0
+	case spec.DataVersionAltair:
+		if v.Altair == nil {
+			return phase0.Root{}, fmt.Errorf("no altair state")
+		}
+
+		stateObj = v.Altair
+	case spec.DataVersionBellatrix:
+		if v.Bellatrix == nil {
+			return phase0.Root{}, fmt.Errorf("no bellatrix state")
+		}
+
+		stateObj = v.Bellatrix
+	case spec.DataVersionCapella:
+		if v.Capella == nil {
+			return phase0.Root{}, fmt.Errorf("no capella state")
+		}
+
+		stateObj = v.Capella
+	case spec.DataVersionDeneb:
+		if v.Deneb == nil {
+			return phase0.Root{}, fmt.Errorf("no deneb state")
+		}
+
+		stateObj = v.Deneb
+	case spec.DataVersionElectra:
+		if v.Electra == nil {
+			return phase0.Root{}, fmt.Errorf("no electra state")
+		}
+
+		stateObj = v.Electra
+	default:
+		return phase0.Root{}, fmt.Errorf("unknown version")
+	}
+
+	return indexer.dynSsz.HashTreeRoot(stateObj)
 }

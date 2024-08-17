@@ -1,6 +1,7 @@
 package beacon
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"sync"
@@ -118,6 +119,17 @@ func (s *epochState) loadState(ctx context.Context, client *Client, cache *epoch
 	resState, err := LoadBeaconState(ctx, client, blockHeader.Message.StateRoot)
 	if err != nil {
 		return err
+	}
+
+	dynRoot, err := GetDynamicStateRoot(client.indexer, resState)
+	if err != nil {
+		client.logger.Warnf("failed calculating dynamic root for block %v: %v", blockHeader.Message.StateRoot.String(), err)
+	}
+
+	if !bytes.Equal(dynRoot[:], blockHeader.Message.StateRoot[:]) {
+		client.logger.Warnf("dynamic state root mismatch: %v != %v", dynRoot.String(), blockHeader.Message.StateRoot.String())
+	} else {
+		client.logger.Infof("dynamic state root match: %v", dynRoot.String())
 	}
 
 	err = s.processState(resState, cache)
