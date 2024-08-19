@@ -472,7 +472,7 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 	pageData.AttesterSlashings = make([]*models.SlotPageAttesterSlashing, pageData.AttesterSlashingsCount)
 	for i, slashing := range attesterSlashings {
 		att1, _ := slashing.Attestation1()
-		att2, _ := slashing.Attestation1()
+		att2, _ := slashing.Attestation2()
 		if att1 == nil || att2 == nil {
 			continue
 		}
