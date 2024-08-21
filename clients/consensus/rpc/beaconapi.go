@@ -28,21 +28,23 @@ import (
 )
 
 type BeaconClient struct {
-	name      string
-	endpoint  string
-	headers   map[string]string
-	sshtunnel *sshtunnel.SSHTunnel
-	clientSvc eth2client.Service
-	logger    logrus.FieldLogger
+	name       string
+	endpoint   string
+	headers    map[string]string
+	sshtunnel  *sshtunnel.SSHTunnel
+	disableSSZ bool
+	clientSvc  eth2client.Service
+	logger     logrus.FieldLogger
 }
 
 // NewBeaconClient is used to create a new beacon client
-func NewBeaconClient(name, endpoint string, headers map[string]string, sshcfg *sshtunnel.SshConfig, logger logrus.FieldLogger) (*BeaconClient, error) {
+func NewBeaconClient(name, endpoint string, headers map[string]string, sshcfg *sshtunnel.SshConfig, disableSSZ bool, logger logrus.FieldLogger) (*BeaconClient, error) {
 	client := &BeaconClient{
-		name:     name,
-		endpoint: endpoint,
-		headers:  headers,
-		logger:   logger,
+		name:       name,
+		endpoint:   endpoint,
+		headers:    headers,
+		disableSSZ: disableSSZ,
+		logger:     logger,
 	}
 
 	if sshcfg != nil {
@@ -104,14 +106,16 @@ func (bc *BeaconClient) Initialize(ctx context.Context) error {
 		http.WithAddress(bc.endpoint),
 		http.WithTimeout(10 * time.Minute),
 		http.WithLogLevel(zerolog.Disabled),
-		// TODO (when upstream PR is merged)
-		// http.WithConnectionCheck(false),
 		http.WithCustomSpecSupport(true),
 	}
 
 	// set extra endpoint headers
 	if len(bc.headers) > 0 {
 		cliParams = append(cliParams, http.WithExtraHeaders(bc.headers))
+	}
+
+	if bc.disableSSZ {
+		cliParams = append(cliParams, http.WithEnforceJSON(true))
 	}
 
 	clientSvc, err := http.New(ctx, cliParams...)
