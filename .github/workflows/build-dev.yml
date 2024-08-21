@@ -32,6 +32,7 @@ jobs:
         echo "docker image label: $has_docker_image_label"
 
         branch_name="${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}"
+        branch_name="$(echo "$branch_name" | sed 's/\//-/g')"
         echo "branch name: $branch_name"
 
         commit_repo="$GITHUB_REPOSITORY"

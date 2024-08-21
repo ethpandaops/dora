@@ -10,12 +10,10 @@ import (
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
-	"github.com/ethpandaops/dora/utils"
 	"github.com/sirupsen/logrus"
 )
 
@@ -165,22 +163,18 @@ func buildFilteredIncludedDepositsPageData(pageIdx uint64, pageSize uint64, minI
 		WithOrphaned:  withOrphaned,
 	}
 
-	offset := (pageIdx - 1) * pageSize
+	dbDeposits, totalRows := services.GlobalBeaconService.GetIncludedDepositsByFilter(depositFilter, pageIdx-1, uint32(pageSize))
 
-	dbDeposits, totalRows, err := db.GetDepositsFiltered(offset, uint32(pageSize), depositFilter)
-	if err != nil {
-		panic(err)
-	}
-
+	chainState := services.GlobalBeaconService.GetChainState()
 	validatorSetRsp := services.GlobalBeaconService.GetCachedValidatorPubkeyMap()
-	validatorActivityMap, validatorActivityMax := services.GlobalBeaconService.GetValidatorActivity()
+	validatorActivityMap, validatorActivityMax := services.GlobalBeaconService.GetValidatorActivity(3, false)
 
 	for _, deposit := range dbDeposits {
 		depositData := &models.IncludedDepositsPageDataDeposit{
 			PublicKey:             deposit.PublicKey,
 			Withdrawalcredentials: deposit.WithdrawalCredentials,
 			Amount:                deposit.Amount,
-			Time:                  utils.SlotToTime(deposit.SlotNumber),
+			Time:                  chainState.SlotToTime(phase0.Slot(deposit.SlotNumber)),
 			SlotNumber:            deposit.SlotNumber,
 			SlotRoot:              deposit.SlotRoot,
 			Orphaned:              deposit.Orphaned,
@@ -216,7 +210,7 @@ func buildFilteredIncludedDepositsPageData(pageIdx uint64, pageSize uint64, minI
 			}
 
 			if depositData.ShowUpcheck {
-				depositData.UpcheckActivity = validatorActivityMap[uint64(validator.Index)]
+				depositData.UpcheckActivity = validatorActivityMap[validator.Index]
 				depositData.UpcheckMaximum = uint8(validatorActivityMax)
 			}
 		}

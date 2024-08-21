@@ -3,6 +3,7 @@ package db
 import (
 	"database/sql"
 	"fmt"
+	"math"
 	"strings"
 
 	"github.com/ethpandaops/dora/dbtypes"
@@ -17,22 +18,24 @@ func InsertSlot(slot *dbtypes.Slot, tx *sqlx.Tx) error {
 				slot, proposer, status, root, parent_root, state_root, graffiti, graffiti_text,
 				attestation_count, deposit_count, exit_count, withdraw_count, withdraw_amount, attester_slashing_count, 
 				proposer_slashing_count, bls_change_count, eth_transaction_count, eth_block_number, eth_block_hash, 
-				eth_block_extra, eth_block_extra_text, sync_participation
-			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
+				eth_block_extra, eth_block_extra_text, sync_participation, fork_id
+			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
 			ON CONFLICT (slot, root) DO UPDATE SET
-				status = excluded.status`,
+				status = excluded.status,
+				eth_block_extra = excluded.eth_block_extra,
+				eth_block_extra_text = excluded.eth_block_extra_text`,
 		dbtypes.DBEngineSqlite: `
 			INSERT OR REPLACE INTO slots (
 				slot, proposer, status, root, parent_root, state_root, graffiti, graffiti_text,
 				attestation_count, deposit_count, exit_count, withdraw_count, withdraw_amount, attester_slashing_count, 
 				proposer_slashing_count, bls_change_count, eth_transaction_count, eth_block_number, eth_block_hash, 
-				eth_block_extra, eth_block_extra_text, sync_participation
-			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)`,
+				eth_block_extra, eth_block_extra_text, sync_participation, fork_id
+			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)`,
 	}),
 		slot.Slot, slot.Proposer, slot.Status, slot.Root, slot.ParentRoot, slot.StateRoot, slot.Graffiti, slot.GraffitiText,
 		slot.AttestationCount, slot.DepositCount, slot.ExitCount, slot.WithdrawCount, slot.WithdrawAmount, slot.AttesterSlashingCount,
 		slot.ProposerSlashingCount, slot.BLSChangeCount, slot.EthTransactionCount, slot.EthBlockNumber, slot.EthBlockHash,
-		slot.EthBlockExtra, slot.EthBlockExtraText, slot.SyncParticipation)
+		slot.EthBlockExtra, slot.EthBlockExtraText, slot.SyncParticipation, slot.ForkId)
 	if err != nil {
 		return err
 	}
@@ -87,7 +90,7 @@ func GetSlots(firstSlot uint64, limit uint32, withMissing bool, withOrphaned boo
 		"state_root", "root", "slot", "proposer", "status", "parent_root", "graffiti", "graffiti_text",
 		"attestation_count", "deposit_count", "exit_count", "withdraw_count", "withdraw_amount", "attester_slashing_count",
 		"proposer_slashing_count", "bls_change_count", "eth_transaction_count", "eth_block_number", "eth_block_hash",
-		"eth_block_extra", "eth_block_extra_text", "sync_participation",
+		"eth_block_extra", "eth_block_extra_text", "sync_participation", "fork_id",
 	}
 	for _, blockField := range blockFields {
 		fmt.Fprintf(&sql, ", slots.%v AS \"block.%v\"", blockField, blockField)
@@ -119,7 +122,7 @@ func GetSlotsRange(firstSlot uint64, lastSlot uint64, withMissing bool, withOrph
 		"state_root", "root", "slot", "proposer", "status", "parent_root", "graffiti", "graffiti_text",
 		"attestation_count", "deposit_count", "exit_count", "withdraw_count", "withdraw_amount", "attester_slashing_count",
 		"proposer_slashing_count", "bls_change_count", "eth_transaction_count", "eth_block_number", "eth_block_hash",
-		"eth_block_extra", "eth_block_extra_text", "sync_participation",
+		"eth_block_extra", "eth_block_extra_text", "sync_participation", "fork_id",
 	}
 	for _, blockField := range blockFields {
 		fmt.Fprintf(&sql, ", slots.%v AS \"block.%v\"", blockField, blockField)
@@ -151,7 +154,7 @@ func GetSlotsByParentRoot(parentRoot []byte) []*dbtypes.Slot {
 		slot, proposer, status, root, parent_root, state_root, graffiti, graffiti_text,
 		attestation_count, deposit_count, exit_count, withdraw_count, withdraw_amount, attester_slashing_count, 
 		proposer_slashing_count, bls_change_count, eth_transaction_count, eth_block_number, eth_block_hash, 
-		eth_block_extra, eth_block_extra_text, sync_participation
+		eth_block_extra, eth_block_extra_text, sync_participation, fork_id
 	FROM slots
 	WHERE parent_root = $1
 	ORDER BY slot DESC
@@ -170,7 +173,7 @@ func GetSlotByRoot(root []byte) *dbtypes.Slot {
 		root, slot, parent_root, state_root, status, proposer, graffiti, graffiti_text,
 		attestation_count, deposit_count, exit_count, withdraw_count, withdraw_amount, attester_slashing_count, 
 		proposer_slashing_count, bls_change_count, eth_transaction_count, eth_block_number, eth_block_hash,
-		eth_block_extra, eth_block_extra_text, sync_participation
+		eth_block_extra, eth_block_extra_text, sync_participation, fork_id
 	FROM slots
 	WHERE root = $1
 	`, root)
@@ -179,6 +182,39 @@ func GetSlotByRoot(root []byte) *dbtypes.Slot {
 		return nil
 	}
 	return &block
+}
+
+func GetBlockHeadByRoot(root []byte) *dbtypes.BlockHead {
+	blockHead := dbtypes.BlockHead{}
+	err := ReaderDb.Get(&blockHead, `
+	SELECT
+		root, slot, parent_root, fork_id
+	FROM slots
+	WHERE root = $1
+	`, root)
+	if err != nil {
+		return nil
+	}
+	return &blockHead
+}
+
+func GetSlotsByBlockHash(blockHash []byte) []*dbtypes.Slot {
+	slots := []*dbtypes.Slot{}
+	err := ReaderDb.Select(&slots, `
+	SELECT
+		slot, proposer, status, root, parent_root, state_root, graffiti, graffiti_text,
+		attestation_count, deposit_count, exit_count, withdraw_count, withdraw_amount, attester_slashing_count, 
+		proposer_slashing_count, bls_change_count, eth_transaction_count, eth_block_number, eth_block_hash, 
+		eth_block_extra, eth_block_extra_text, sync_participation, fork_id
+	FROM slots
+	WHERE eth_block_hash = $1
+	ORDER BY slot DESC
+	`, blockHash)
+	if err != nil {
+		logger.Errorf("Error while fetching slots by block hash: %v", err)
+		return nil
+	}
+	return slots
 }
 
 func parseAssignedSlots(rows *sql.Rows, fields []string, fieldsOffset int) []*dbtypes.AssignedSlot {
@@ -229,7 +265,7 @@ func GetFilteredSlots(filter *dbtypes.BlockFilter, firstSlot uint64, offset uint
 		"state_root", "root", "slot", "proposer", "status", "parent_root", "graffiti", "graffiti_text",
 		"attestation_count", "deposit_count", "exit_count", "withdraw_count", "withdraw_amount", "attester_slashing_count",
 		"proposer_slashing_count", "bls_change_count", "eth_transaction_count", "eth_block_number", "eth_block_hash",
-		"eth_block_extra", "eth_block_extra_text", "sync_participation",
+		"eth_block_extra", "eth_block_extra_text", "sync_participation", "fork_id",
 	}
 	for _, blockField := range blockFields {
 		fmt.Fprintf(&sql, ", slots.%v AS \"block.%v\"", blockField, blockField)
@@ -347,4 +383,18 @@ func GetHighestRootBeforeSlot(slot uint64, withOrphaned bool) []byte {
 		return nil
 	}
 	return result
+}
+
+func GetSlotAssignment(slot uint64) uint64 {
+	proposer := uint64(math.MaxInt64)
+	err := ReaderDb.Get(&proposer, `
+	SELECT
+		proposer
+	FROM slots
+	WHERE slot = $1 AND status IN (0, 1)
+	`, slot)
+	if err != nil {
+		return math.MaxInt64
+	}
+	return proposer
 }

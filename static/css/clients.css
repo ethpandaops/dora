@@ -1,0 +1,95 @@
+/*---------------------------------------------
+Client peers table
+---------------------------------------------*/
+.client-node-peerinfo {
+  text-align: center;
+  padding-bottom: 10px;
+  border-bottom: 1px dashed;
+  margin-bottom: 5px;
+}
+.client-node-icon {
+  border-radius:50%;
+  border:1px solid #0f0f0f;
+  background-color: #fafafa;
+  margin-right: 10px;
+  height: 25px;
+  width: 25px;
+}
+.peer-table-icon {
+  width: 25px;
+  height: 25px;
+  border-radius: 50%;
+  border: 2px solid #0f0f0f;
+  background-color: #fafafa;
+  margin-right: 10px;
+}
+
+.peer-table-column{
+  display: inline-block;
+  width: 50%;
+  vertical-align: top;
+  text-align: center;
+}
+
+.peer-table-icon.connected {
+  border-color: #03C03C;
+}
+
+.peerInfo.collapsing {
+  position: relative;
+  height: 0;
+  overflow: hidden;
+  -webkit-transition-property: height, visibility;
+  transition-property: height, visibility;
+  -webkit-transition-duration: 0.35s;
+  transition-duration: 0.35s;
+  -webkit-transition-timing-function: ease;
+  transition-timing-function: ease;
+}
+
+.peer-nodemap {
+  background: #0f0f0f9f url(/images/stars.png) repeat top center;
+  height: 850px;
+  padding: 0;
+}
+
+@media only screen and (max-width: 768px) {
+  .peer-nodemap {
+    height: 50vh;
+  }
+}
+
+.peer-nodemap-wrapper {
+  padding: 0;
+  background: #4b79a1;
+  background: -webkit-linear-gradient(
+    to top,
+    #283e51,
+    #0a2342
+  );
+  background: linear-gradient(
+    to top,
+    #283e51,
+    #0a2342
+  );
+  background: -olinear-gradient(to top, #283e51, #0a2342);
+}
+
+.peer-text {
+  max-width: 447px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: inline-block;
+  vertical-align: middle;
+}
+
+#nodemap-loading {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 1000;
+  width: 100px;
+  height: 100px;
+  margin-left: -50px;
+  margin-top: -50px;
+}

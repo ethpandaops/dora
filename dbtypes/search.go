@@ -1,9 +1,9 @@
 package dbtypes
 
 type SearchBlockResult struct {
-	Slot     uint64 `db:"slot"`
-	Root     []byte `db:"root"`
-	Orphaned bool   `db:"orphaned"`
+	Slot   uint64     `db:"slot"`
+	Root   []byte     `db:"root"`
+	Status SlotStatus `db:"status"`
 }
 
 type SearchGraffitiResult struct {
@@ -19,17 +19,17 @@ type SearchAheadEpochsResult []struct {
 }
 
 type SearchAheadSlotsResult []struct {
-	Slot     uint64 `db:"slot"`
-	Root     []byte `db:"root"`
-	Orphaned bool   `db:"orphaned"`
+	Slot   uint64     `db:"slot"`
+	Root   []byte     `db:"root"`
+	Status SlotStatus `db:"status"`
 }
 
 type SearchAheadExecBlocksResult []struct {
-	Slot       uint64 `db:"slot"`
-	Root       []byte `db:"root"`
-	ExecHash   []byte `db:"eth_block_hash"`
-	ExecNumber uint64 `db:"eth_block_number"`
-	Orphaned   bool   `db:"orphaned"`
+	Slot       uint64     `db:"slot"`
+	Root       []byte     `db:"root"`
+	ExecHash   []byte     `db:"eth_block_hash"`
+	ExecNumber uint64     `db:"eth_block_number"`
+	Status     SlotStatus `db:"status"`
 }
 
 type SearchAheadGraffitiResult []struct {

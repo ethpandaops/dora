@@ -8,18 +8,26 @@ import (
 
 // SlotPageData is a struct to hold info for the slot details page
 type SlotPageData struct {
-	Slot                   uint64             `json:"slot"`
-	Epoch                  uint64             `json:"epoch"`
-	EpochFinalized         bool               `json:"epoch_finalized"`
-	EpochParticipationRate float64            `json:"epoch_participation_rate"`
-	Ts                     time.Time          `json:"time"`
-	NextSlot               uint64             `json:"next_slot"`
-	PreviousSlot           uint64             `json:"prev_slot"`
-	Status                 uint16             `json:"status"`
-	Future                 bool               `json:"future"`
-	Proposer               uint64             `json:"proposer"`
-	ProposerName           string             `json:"proposer_name"`
-	Block                  *SlotPageBlockData `json:"block"`
+	Slot                   uint64                `json:"slot"`
+	Epoch                  uint64                `json:"epoch"`
+	EpochFinalized         bool                  `json:"epoch_finalized"`
+	EpochParticipationRate float64               `json:"epoch_participation_rate"`
+	Ts                     time.Time             `json:"time"`
+	NextSlot               uint64                `json:"next_slot"`
+	PreviousSlot           uint64                `json:"prev_slot"`
+	Status                 uint16                `json:"status"`
+	Future                 bool                  `json:"future"`
+	Proposer               uint64                `json:"proposer"`
+	ProposerName           string                `json:"proposer_name"`
+	Block                  *SlotPageBlockData    `json:"block"`
+	Badges                 []*SlotPageBlockBadge `json:"badges"`
+}
+
+type SlotPageBlockBadge struct {
+	Title       string `json:"title"`
+	Icon        string `json:"icon"`
+	Description string `json:"descr"`
+	ClassName   string `json:"class"`
 }
 
 type SlotStatus uint16
@@ -31,48 +39,46 @@ const (
 )
 
 type SlotPageBlockData struct {
-	BlockRoot               []byte                 `json:"blockroot"`
-	ParentRoot              []byte                 `json:"parentroot"`
-	StateRoot               []byte                 `json:"stateroot"`
-	Signature               []byte                 `json:"signature"`
-	RandaoReveal            []byte                 `json:"randaoreveal"`
-	Graffiti                []byte                 `json:"graffiti"`
-	Eth1dataDepositroot     []byte                 `json:"eth1data_depositroot"`
-	Eth1dataDepositcount    uint64                 `json:"eth1data_depositcount"`
-	Eth1dataBlockhash       []byte                 `json:"eth1data_blockhash"`
-	SyncAggregateBits       []byte                 `json:"syncaggregate_bits"`
-	SyncAggregateSignature  []byte                 `json:"syncaggregate_signature"`
-	SyncAggParticipation    float64                `json:"syncaggregate_participation"`
-	SyncAggCommittee        []types.NamedValidator `json:"syncaggregate_committee"`
-	ProposerSlashingsCount  uint64                 `json:"proposer_slashings_count"`
-	AttesterSlashingsCount  uint64                 `json:"attester_slashings_count"`
-	AttestationsCount       uint64                 `json:"attestations_count"`
-	DepositsCount           uint64                 `json:"deposits_count"`
-	WithdrawalsCount        uint64                 `json:"withdrawals_count"`
-	BLSChangesCount         uint64                 `json:"bls_changes_count"`
-	VoluntaryExitsCount     uint64                 `json:"voluntaryexits_count"`
-	SlashingsCount          uint64                 `json:"slashings_count"`
-	BlobsCount              uint64                 `json:"blobs_count"`
-	DenyDutyLoading         bool                   `json:"deny_duties"`
-	DutiesLoaded            bool                   `json:"duties_loaded"`
-	TransactionsCount       uint64                 `json:"transactions_count"`
-	DepositReceiptsCount    uint64                 `json:"deposit_receipts_count"`
-	WithdrawalRequestsCount uint64                 `json:"withdrawal_requests_count"`
-	ConsolidationsCount     uint64                 `json:"consolidations_count"`
+	BlockRoot                  []byte                 `json:"blockroot"`
+	ParentRoot                 []byte                 `json:"parentroot"`
+	StateRoot                  []byte                 `json:"stateroot"`
+	Signature                  []byte                 `json:"signature"`
+	RandaoReveal               []byte                 `json:"randaoreveal"`
+	Graffiti                   []byte                 `json:"graffiti"`
+	Eth1dataDepositroot        []byte                 `json:"eth1data_depositroot"`
+	Eth1dataDepositcount       uint64                 `json:"eth1data_depositcount"`
+	Eth1dataBlockhash          []byte                 `json:"eth1data_blockhash"`
+	SyncAggregateBits          []byte                 `json:"syncaggregate_bits"`
+	SyncAggregateSignature     []byte                 `json:"syncaggregate_signature"`
+	SyncAggParticipation       float64                `json:"syncaggregate_participation"`
+	SyncAggCommittee           []types.NamedValidator `json:"syncaggregate_committee"`
+	ProposerSlashingsCount     uint64                 `json:"proposer_slashings_count"`
+	AttesterSlashingsCount     uint64                 `json:"attester_slashings_count"`
+	AttestationsCount          uint64                 `json:"attestations_count"`
+	DepositsCount              uint64                 `json:"deposits_count"`
+	WithdrawalsCount           uint64                 `json:"withdrawals_count"`
+	BLSChangesCount            uint64                 `json:"bls_changes_count"`
+	VoluntaryExitsCount        uint64                 `json:"voluntaryexits_count"`
+	SlashingsCount             uint64                 `json:"slashings_count"`
+	BlobsCount                 uint64                 `json:"blobs_count"`
+	TransactionsCount          uint64                 `json:"transactions_count"`
+	DepositRequestsCount       uint64                 `json:"deposit_receipts_count"`
+	WithdrawalRequestsCount    uint64                 `json:"withdrawal_requests_count"`
+	ConsolidationRequestsCount uint64                 `json:"consolidation_requests_count"`
 
-	ExecutionData      *SlotPageExecutionData       `json:"execution_data"`
-	Attestations       []*SlotPageAttestation       `json:"attestations"`        // Attestations included in this block
-	Deposits           []*SlotPageDeposit           `json:"deposits"`            // Deposits included in this block
-	VoluntaryExits     []*SlotPageVoluntaryExit     `json:"voluntary_exits"`     // Voluntary Exits included in this block
-	AttesterSlashings  []*SlotPageAttesterSlashing  `json:"attester_slashings"`  // Attester Slashings included in this block
-	ProposerSlashings  []*SlotPageProposerSlashing  `json:"proposer_slashings"`  // Proposer Slashings included in this block
-	BLSChanges         []*SlotPageBLSChange         `json:"bls_changes"`         // BLSChanges included in this block
-	Withdrawals        []*SlotPageWithdrawal        `json:"withdrawals"`         // Withdrawals included in this block
-	Blobs              []*SlotPageBlob              `json:"blobs"`               // Blob sidecars included in this block
-	Transactions       []*SlotPageTransaction       `json:"transactions"`        // Transactions included in this block
-	DepositReceipts    []*SlotPageDepositReceipt    `json:"deposit_receipts"`    // DepositReceipts included in this block
-	WithdrawalRequests []*SlotPageWithdrawalRequest `json:"withdrawal_requests"` // WithdrawalRequests included in this block
-	Consolidations     []*SlotPageConsolidation     `json:"consolidations"`      // Consolidations included in this block
+	ExecutionData         *SlotPageExecutionData          `json:"execution_data"`
+	Attestations          []*SlotPageAttestation          `json:"attestations"`           // Attestations included in this block
+	Deposits              []*SlotPageDeposit              `json:"deposits"`               // Deposits included in this block
+	VoluntaryExits        []*SlotPageVoluntaryExit        `json:"voluntary_exits"`        // Voluntary Exits included in this block
+	AttesterSlashings     []*SlotPageAttesterSlashing     `json:"attester_slashings"`     // Attester Slashings included in this block
+	ProposerSlashings     []*SlotPageProposerSlashing     `json:"proposer_slashings"`     // Proposer Slashings included in this block
+	BLSChanges            []*SlotPageBLSChange            `json:"bls_changes"`            // BLSChanges included in this block
+	Withdrawals           []*SlotPageWithdrawal           `json:"withdrawals"`            // Withdrawals included in this block
+	Blobs                 []*SlotPageBlob                 `json:"blobs"`                  // Blob sidecars included in this block
+	Transactions          []*SlotPageTransaction          `json:"transactions"`           // Transactions included in this block
+	DepositRequests       []*SlotPageDepositRequest       `json:"deposit_receipts"`       // DepositRequests included in this block
+	WithdrawalRequests    []*SlotPageWithdrawalRequest    `json:"withdrawal_requests"`    // WithdrawalRequests included in this block
+	ConsolidationRequests []*SlotPageConsolidationRequest `json:"consolidation_requests"` // ConsolidationRequests included in this block
 }
 
 type SlotPageExecutionData struct {
@@ -98,6 +104,8 @@ type SlotPageAttestation struct {
 
 	AggregationBits []byte                 `json:"aggregationbits"`
 	Validators      []types.NamedValidator `json:"validators"`
+
+	IncludedValidators []types.NamedValidator `json:"included_validators"`
 
 	Signature []byte `json:"signature"`
 
@@ -209,15 +217,7 @@ type SlotPageTransaction struct {
 	Type          uint64  `json:"type"`
 }
 
-type SlotPageConsolidation struct {
-	SourceIndex uint64 `db:"source_index"`
-	SourceName  string `db:"source_name"`
-	TargetIndex uint64 `db:"target_index"`
-	TargetName  string `db:"target_name"`
-	Epoch       uint64 `db:"epoch"`
-}
-
-type SlotPageDepositReceipt struct {
+type SlotPageDepositRequest struct {
 	PublicKey       []byte `db:"pubkey"`
 	Exists          bool   `db:"exists"`
 	ValidatorIndex  uint64 `db:"valindex"`
@@ -235,4 +235,17 @@ type SlotPageWithdrawalRequest struct {
 	ValidatorIndex uint64 `db:"valindex"`
 	ValidatorName  string `db:"valname"`
 	Amount         uint64 `db:"amount"`
+}
+
+type SlotPageConsolidationRequest struct {
+	Address      []byte `db:"address"`
+	SourcePubkey []byte `db:"source_pubkey"`
+	SourceFound  bool   `db:"source_bool"`
+	SourceIndex  uint64 `db:"source_index"`
+	SourceName   string `db:"source_name"`
+	TargetPubkey []byte `db:"target_pubkey"`
+	TargetFound  bool   `db:"target_bool"`
+	TargetIndex  uint64 `db:"target_index"`
+	TargetName   string `db:"target_name"`
+	Epoch        uint64 `db:"epoch"`
 }

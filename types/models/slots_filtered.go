@@ -7,10 +7,25 @@ import (
 // SlotsPageData is a struct to hold info for the slots page
 type SlotsFilteredPageData struct {
 	FilterGraffiti     string `json:"filter_graffiti"`
+	FilterExtraData    string `json:"filter_extra_data"`
 	FilterProposer     string `json:"filter_proposer"`
 	FilterProposerName string `json:"filter_pname"`
 	FilterWithOrphaned uint8  `json:"filter_orphaned"`
 	FilterWithMissing  uint8  `json:"filter_missing"`
+
+	DisplayEpoch        bool   `json:"dp_epoch"`
+	DisplaySlot         bool   `json:"dp_slot"`
+	DisplayStatus       bool   `json:"dp_status"`
+	DisplayTime         bool   `json:"dp_time"`
+	DisplayProposer     bool   `json:"dp_proposer"`
+	DisplayAttestations bool   `json:"dp_attestations"`
+	DisplayDeposits     bool   `json:"dp_deposits"`
+	DisplaySlashings    bool   `json:"dp_slashings"`
+	DisplayTxCount      bool   `json:"dp_txcount"`
+	DisplaySyncAgg      bool   `json:"dp_syncagg"`
+	DisplayGraffiti     bool   `json:"dp_graffiti"`
+	DisplayElExtraData  bool   `json:"dp_elextra"`
+	DisplayColCount     uint64 `json:"display_col_count"`
 
 	Slots     []*SlotsFilteredPageDataSlot `json:"slots"`
 	SlotCount uint64                       `json:"slot_count"`
@@ -54,6 +69,7 @@ type SlotsFilteredPageDataSlot struct {
 	WithEthBlock          bool      `json:"with_eth_block"`
 	EthBlockNumber        uint64    `json:"eth_block_number"`
 	Graffiti              []byte    `json:"graffiti"`
+	ElExtraData           []byte    `json:"el_extra_data"`
 	BlockRoot             []byte    `json:"block_root"`
 	ParentRoot            []byte    `json:"parent_root"`
 }

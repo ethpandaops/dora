@@ -1,5 +1,5 @@
 # build env
-FROM golang:1.21 AS build-env
+FROM golang:1.22 AS build-env
 COPY go.mod go.sum /src/
 WORKDIR /src
 RUN go mod download

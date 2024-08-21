@@ -16,11 +16,11 @@ func InsertDepositTxs(depositTxs []*dbtypes.DepositTx, tx *sqlx.Tx) error {
 			dbtypes.DBEnginePgsql:  "INSERT INTO deposit_txs ",
 			dbtypes.DBEngineSqlite: "INSERT OR REPLACE INTO deposit_txs ",
 		}),
-		"(deposit_index, block_number, block_time, block_root, publickey, withdrawalcredentials, amount, signature, valid_signature, orphaned, tx_hash, tx_sender, tx_target)",
+		"(deposit_index, block_number, block_time, block_root, publickey, withdrawalcredentials, amount, signature, valid_signature, orphaned, tx_hash, tx_sender, tx_target, fork_id)",
 		" VALUES ",
 	)
 	argIdx := 0
-	fieldCount := 13
+	fieldCount := 14
 
 	args := make([]any, len(depositTxs)*fieldCount)
 	for i, depositTx := range depositTxs {
@@ -50,6 +50,7 @@ func InsertDepositTxs(depositTxs []*dbtypes.DepositTx, tx *sqlx.Tx) error {
 		args[argIdx+10] = depositTx.TxHash
 		args[argIdx+11] = depositTx.TxSender
 		args[argIdx+12] = depositTx.TxTarget
+		args[argIdx+13] = depositTx.ForkId
 		argIdx += fieldCount
 	}
 	fmt.Fprint(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
@@ -71,11 +72,11 @@ func InsertDeposits(deposits []*dbtypes.Deposit, tx *sqlx.Tx) error {
 			dbtypes.DBEnginePgsql:  "INSERT INTO deposits ",
 			dbtypes.DBEngineSqlite: "INSERT OR REPLACE INTO deposits ",
 		}),
-		"(deposit_index, slot_number, slot_index, slot_root, orphaned, publickey, withdrawalcredentials, amount)",
+		"(deposit_index, slot_number, slot_index, slot_root, orphaned, publickey, withdrawalcredentials, amount, fork_id)",
 		" VALUES ",
 	)
 	argIdx := 0
-	fieldCount := 8
+	fieldCount := 9
 
 	args := make([]any, len(deposits)*fieldCount)
 	for i, deposit := range deposits {
@@ -100,10 +101,11 @@ func InsertDeposits(deposits []*dbtypes.Deposit, tx *sqlx.Tx) error {
 		args[argIdx+5] = deposit.PublicKey[:]
 		args[argIdx+6] = deposit.WithdrawalCredentials[:]
 		args[argIdx+7] = deposit.Amount
+		args[argIdx+8] = deposit.ForkId
 		argIdx += fieldCount
 	}
 	fmt.Fprint(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
-		dbtypes.DBEnginePgsql:  " ON CONFLICT (slot_index, slot_root) DO UPDATE SET deposit_index = excluded.deposit_index, orphaned = excluded.orphaned",
+		dbtypes.DBEnginePgsql:  " ON CONFLICT (slot_index, slot_root) DO UPDATE SET deposit_index = excluded.deposit_index, orphaned = excluded.orphaned, fork_id = excluded.fork_id",
 		dbtypes.DBEngineSqlite: "",
 	}))
 	_, err := tx.Exec(sql.String(), args...)
@@ -118,7 +120,7 @@ func GetDepositTxs(firstIndex uint64, limit uint32) []*dbtypes.DepositTx {
 	args := []any{}
 	fmt.Fprint(&sql, `
 	SELECT
-		deposit_index, block_number, block_time, block_root, publickey, withdrawalcredentials, amount, signature, valid_signature, orphaned, tx_hash, tx_sender, tx_target
+		deposit_index, block_number, block_time, block_root, publickey, withdrawalcredentials, amount, signature, valid_signature, orphaned, tx_hash, tx_sender, tx_target, fork_id
 	FROM deposit_txs
 	`)
 	if firstIndex > 0 {
@@ -141,40 +143,13 @@ func GetDepositTxs(firstIndex uint64, limit uint32) []*dbtypes.DepositTx {
 	return depositTxs
 }
 
-func GetDeposits(offset uint64, limit uint32) []*dbtypes.Deposit {
-	var sql strings.Builder
-	args := []any{}
-	fmt.Fprint(&sql, `
-	SELECT
-		deposit_index, slot_number, slot_index, slot_root, orphaned, publickey, withdrawalcredentials, amount
-	FROM deposits
-	`)
-	args = append(args, limit)
-	fmt.Fprintf(&sql, `
-	ORDER BY slot_number DESC, slot_index DESC
-	LIMIT $%v
-	`, len(args))
-	if offset > 0 {
-		args = append(args, offset)
-		fmt.Fprintf(&sql, " OFFSET $%v ", len(args))
-	}
-
-	deposits := []*dbtypes.Deposit{}
-	err := ReaderDb.Select(&deposits, sql.String(), args...)
-	if err != nil {
-		logger.Errorf("Error while fetching deposits: %v", err)
-		return nil
-	}
-	return deposits
-}
-
 func GetDepositTxsFiltered(offset uint64, limit uint32, finalizedBlock uint64, filter *dbtypes.DepositTxFilter) ([]*dbtypes.DepositTx, uint64, error) {
 	var sql strings.Builder
 	args := []any{}
 	fmt.Fprint(&sql, `
 	WITH cte AS (
 		SELECT
-			deposit_index, block_number, block_time, block_root, publickey, withdrawalcredentials, amount, signature, valid_signature, orphaned, tx_hash, tx_sender, tx_target
+			deposit_index, block_number, block_time, block_root, publickey, withdrawalcredentials, amount, signature, valid_signature, orphaned, tx_hash, tx_sender, tx_target, fork_id
 		FROM deposit_txs
 	`)
 
@@ -182,6 +157,11 @@ func GetDepositTxsFiltered(offset uint64, limit uint32, finalizedBlock uint64, f
 	if len(filter.Address) > 0 {
 		args = append(args, filter.Address)
 		fmt.Fprintf(&sql, " %v tx_sender = $%v", filterOp, len(args))
+		filterOp = "AND"
+	}
+	if len(filter.TargetAddress) > 0 {
+		args = append(args, filter.TargetAddress)
+		fmt.Fprintf(&sql, " %v tx_target = $%v", filterOp, len(args))
 		filterOp = "AND"
 	}
 	if len(filter.PublicKey) > 0 {
@@ -231,7 +211,8 @@ func GetDepositTxsFiltered(offset uint64, limit uint32, finalizedBlock uint64, f
 		false AS orphaned, 
 		null AS tx_hash, 
 		null AS tx_sender, 
-		null AS tx_target
+		null AS tx_target,
+		0 AS fork_id
 	FROM cte
 	UNION ALL SELECT * FROM (
 	SELECT * FROM cte
@@ -255,13 +236,13 @@ func GetDepositTxsFiltered(offset uint64, limit uint32, finalizedBlock uint64, f
 	return depositTxs[1:], depositTxs[0].Index, nil
 }
 
-func GetDepositsFiltered(offset uint64, limit uint32, filter *dbtypes.DepositFilter) ([]*dbtypes.Deposit, uint64, error) {
+func GetDepositsFiltered(offset uint64, limit uint32, finalizedBlock uint64, filter *dbtypes.DepositFilter) ([]*dbtypes.Deposit, uint64, error) {
 	var sql strings.Builder
 	args := []any{}
 	fmt.Fprint(&sql, `
 	WITH cte AS (
 		SELECT
-			deposit_index, slot_number, slot_index, slot_root, orphaned, publickey, withdrawalcredentials, amount
+			deposit_index, slot_number, slot_index, slot_root, orphaned, publickey, withdrawalcredentials, amount, fork_id
 		FROM deposits
 	`)
 
@@ -292,10 +273,12 @@ func GetDepositsFiltered(offset uint64, limit uint32, filter *dbtypes.DepositFil
 		filterOp = "AND"
 	}
 	if filter.WithOrphaned == 0 {
-		fmt.Fprintf(&sql, " %v orphaned = false", filterOp)
+		args = append(args, finalizedBlock)
+		fmt.Fprintf(&sql, " %v (slot_number > $%v OR orphaned = false)", filterOp, len(args))
 		filterOp = "AND"
 	} else if filter.WithOrphaned == 2 {
-		fmt.Fprintf(&sql, " %v orphaned = true", filterOp)
+		args = append(args, finalizedBlock)
+		fmt.Fprintf(&sql, " %v (slot_number > $%v OR orphaned = true)", filterOp, len(args))
 		filterOp = "AND"
 	}
 
@@ -309,11 +292,12 @@ func GetDepositsFiltered(offset uint64, limit uint32, filter *dbtypes.DepositFil
 		false AS orphaned,
 		null AS publickey, 
 		null AS withdrawalcredentials,
-		0 AS amount
+		0 AS amount,
+		0 AS fork_id
 	FROM cte
 	UNION ALL SELECT * FROM (
 	SELECT * FROM cte
-	ORDER BY deposit_index DESC 
+	ORDER BY slot_number DESC, deposit_index DESC 
 	LIMIT $%v 
 	`, len(args))
 

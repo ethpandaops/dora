@@ -20,17 +20,16 @@ type PageData struct {
 	LatestFinalizedEpoch  uint64
 	CurrentSlot           uint64
 	FinalizationDelay     uint64
+	IsReady               bool
 	Mainnet               bool
 	DepositContract       string
 	InfoBanner            *template.HTML
 	ClientsUpdated        bool
-	// IsUserClientUpdated   func(uint64) bool
-	ChainConfig    ChainConfig
-	Lang           string
-	NoAds          bool
-	Debug          bool
-	DebugTemplates []string
-	MainMenuItems  []MainMenuItem
+	Lang                  string
+	NoAds                 bool
+	Debug                 bool
+	DebugTemplates        []string
+	MainMenuItems         []MainMenuItem
 }
 
 type MainMenuItem struct {

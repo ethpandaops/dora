@@ -1,0 +1,195 @@
+{{ define "page" }}
+  <div class="container mt-2">
+    <div class="d-md-flex py-2 justify-content-md-between">
+      <h1 class="h4 mb-1 mb-md-0"><i class="fas fa-server mx-2"></i>Consensus clients</h1>
+      <nav aria-label="breadcrumb">
+        <ol class="breadcrumb font-size-1 mb-0" style="padding:0; background-color:transparent;">
+          <li class="breadcrumb-item"><a href="/" title="Home">Home</a></li>
+          <li class="breadcrumb-item active" aria-current="page">Consensus clients</li>
+        </ol>
+      </nav>
+    </div>
+    <div class="card mt-2">
+      <div class="accordion" id="network-accordion">
+        <div class="accordion-item">
+          <h2 class="accordion-header">
+            <button class="accordion-button btn-secondary" style="box-shadow: none;" type="button" data-bs-toggle="collapse" data-bs-target="#collapseOne" aria-expanded="true" aria-controls="collapseOne">
+              <i class="fa-solid fa-circle-nodes" style="margin-right:5px"></i> Client graph
+            </button>
+          </h2>
+          <div id="collapseOne" class="accordion-collapse collapse show" data-bs-parent="#network-accordion">
+            <div class="accordion-body peer-nodemap-wrapper">
+              <div class="card-body px-0 peer-nodemap" id="nodemap">
+                <div id="nodemap-loading" class="spinner-border" role="status">
+                  <span class="sr-only">Loading...</span>
+                </div>
+                <div class="btn-group btn-group-sm" role="group" aria-label="Network layouts" style="position: absolute; bottom: 10px; right: 10px; z-index: 10000;">
+                  <button type="button" class="btn btn-outline-secondary" onclick='event.stopPropagation(); $_network.fitAnimated(cy,$_network.layouts.fcose(data.nodes.length))'><i class="fa-solid fa-share-alt"></i></button>
+                  <button type="button" class="btn btn-outline-secondary" onclick='event.stopPropagation(); $_network.fitAnimated(cy,$_network.layouts.circle())'><i class="fa-solid fa-circle"></i></button>
+                  <button type="button" class="btn btn-outline-secondary" onclick='event.stopPropagation(); $_network.fitAnimated(cy,$_network.layouts.grid())'><i class="fa-solid fa-th"></i></button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card mt-2">
+      <div class="card-body px-0 py-3">
+        <div class="table-responsive px-0 py-1">
+          <div style="text-align: right; margin-right: 15px;">
+            Peer infos:
+            <div class="btn-group btn-group-sm" role="group" aria-label="Peer info controls">
+              <button type="button" class="btn btn-outline-secondary" onclick='$(".collapse.peerInfo").collapse("hide");'>Hide all</button>
+              <button type="button" class="btn btn-outline-secondary" onclick='$(".collapse.peerInfo").collapse("show");'>Show all</button>
+            </div>
+          </div>
+          <table class="table table-nobr" id="clients">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Name</th>
+                <th>Peers</th>
+                <th>Head Slot</th>
+                <th>Head Root</th>
+                <th>Status</th>
+                <th>Version</th>
+              </tr>
+            </thead>
+              <tbody>
+                {{ range $i, $client := .Clients }}
+                  <tr>
+                    <td>{{ $client.Index }}</td>
+                    <td>
+                      <img src="/identicon?key={{ $client.PeerID }}"
+                        alt="{{ $client.PeerID }}"
+                        class="client-node-icon"/>
+                        <span
+                          id="clientRow-{{ $client.Name }}"
+                          style="cursor:pointer;"
+                          onclick="$_network.isolateNode(cy, '{{ $client.PeerID}}');
+                                   $('.collapse.peerInfo').collapse('hide');
+                                   $('#peerInfo-{{ $client.PeerID }}').collapse('show');
+                          ">
+                          <a href="#name={{ $client.Name }}">{{ $client.Name }}</a>
+                        </span>
+                    </td>
+                    <td style="font-size: 0.8rem; vertical-align: middle;">
+                      <span style="width:30px;display: inline-block;" class="text-success" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Inbound Peers">
+                        {{ $client.PeersInboundCounter }}
+                        <i class="fa-solid fa-arrow-down"></i>
+                      </span>
+                      <span style="width:30px;display: inline-block;" class="text-danger" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Outbound Peers">
+                        {{ $client.PeersOutboundCounter}}
+                        <i class="fa-solid fa-arrow-up"></i>
+                      </span>
+                      <span style="width:30px;display: inline-block;" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Total Peers">
+                        ({{ len $client.Peers }})
+                      </span>
+                    </td>
+                    <td><a href="/slot/{{ $client.HeadSlot }}">{{ formatAddCommas $client.HeadSlot }}</a></td>
+                    <td>
+                      <a href="/slot/0x{{ printf "%x" $client.HeadRoot }}" class="text-truncate d-inline-block" style="max-width: 200px">0x{{ printf "%x" $client.HeadRoot }}</a>
+                      <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $client.HeadRoot }}"></i>
+                    </td>
+                    <td>
+                      {{ if eq $client.Status "online" }}
+                        <span class="badge rounded-pill text-bg-success">Ready</span>
+                      {{ else if eq $client.Status "synchronizing" }}
+                        <span class="badge rounded-pill text-bg-warning" data-bs-toggle="tooltip" data-bs-placement="top" title="Updated: {{ formatRecentTimeShort $client.LastRefresh }}">Synchronizing</span>
+                      {{ else if eq $client.Status "optimistic" }}
+                        <span class="badge rounded-pill text-bg-info" data-bs-toggle="tooltip" data-bs-placement="top" title="Updated: {{ formatRecentTimeShort $client.LastRefresh }}">Optimistic</span>
+                      {{ else if eq $client.Status "offline" }}
+                        <span class="badge rounded-pill text-bg-secondary" data-bs-toggle="tooltip" data-bs-placement="top" title="Updated: {{ formatRecentTimeShort $client.LastRefresh }}, Error: {{ $client.LastError }}">Disconnected</span>
+                      {{ else }}
+                        <span class="badge rounded-pill text-bg-dark">{{ $client.Status }}</span>
+                      {{ end }}
+                    </td>
+                    <td>
+                      <span class="text-truncate d-inline-block" style="max-width: 400px">{{ $client.Version }}</span>
+                      <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $client.Version }}"></i>
+                    </td>
+                  </tr>
+                  <tr class="collapse peerInfo" style="transition:0s" id="peerInfo-{{ $client.PeerID }}">
+                    <td colspan="7">
+                      <div class="client-node-peerinfo">
+                        Peer ID: <code>{{ $client.PeerID }}</code>
+                        <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $client.PeerID }}"></i>
+                      </div>
+                      <div>
+                        <div class="peer-table-column" style="border-right: 1px dashed;">
+                            <div>Inbound</div>
+                          {{ range $j, $peer := $client.Peers }}
+                            {{if eq "inbound" $peer.Direction}}
+                            <div style="padding-left: 20px; padding-top:3px">
+                              <img src="/identicon?key={{ $peer.ID }}" class="peer-table-icon {{ $peer.State }}" alt="{{ $peer.State }}"/>
+                              <code data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $peer.ID }}">
+                                {{ $peer.Alias }}
+                                {{ if eq $peer.Type "internal" }}
+                                <span style="max-width:200px"> {{ trunc (sub (len $peer.ID) (add (len $peer.Alias) 4) ) $peer.ID }}...</span>
+                                {{ end }}
+                              </code>
+                              <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $peer.ID }}"></i>
+                            </div>
+                            {{end}}
+                          {{ end }}
+                        </div>
+                        <div class="peer-table-column">
+                          <div>Outbound</div>
+                          {{ range $j, $peer := $client.Peers }}
+                            {{if eq "outbound" $peer.Direction}}
+                            <div style="padding-left: 20px; padding-top:3px">
+                              <img src="/identicon?key={{ $peer.ID }}" class="peer-table-icon {{ $peer.State }}" alt="{{ $peer.State }}"/>
+                              <code data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $peer.ID }}">
+                                {{ $peer.Alias }}
+                                {{ if eq $peer.Type "internal" }}
+                                <span style="max-width:200px"> {{ trunc (sub (len $peer.ID) (add (len $peer.Alias) 4) ) $peer.ID }}...</span>
+                                {{ end }}
+                              </code>
+                              <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $peer.ID }}"></i>
+                            </div>
+                            {{end}}
+                          {{ end }}
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                {{ end }}
+              </tbody>
+          </table>
+        </div>
+      </div>
+      <div id="footer-placeholder" style="height:30px;"></div>
+    </div>
+  </div>
+
+  <script type="text/javascript">
+    $(document).ready(function() {
+      hashParams = new URLSearchParams(window.location.hash.substring(1))
+      if (hashParams.has("name")) {
+        name = hashParams.get("name")
+        clientRow = $("#clientRow-" + name)
+        if (clientRow) {
+          clientRow.click()
+        }
+      }
+    });
+  </script>
+
+{{ end }}
+
+{{ define "js" }}
+<script src="/js/vendor/cytoscape.min.js"></script>
+<script src="/js/vendor/cytoscape-layout-base.js"></script>
+<script src="/js/vendor/cytoscape-cose-base.js"></script>
+<script src="/js/vendor/cytoscape-fcose.js"></script>
+<script src="/js/cytoscape-network-aux.js"></script>
+<script type="text/javascript">
+  var container = document.getElementById("nodemap");
+  var data = {{ .PeerMap }};
+  var cy = $_network.create(container, data);
+</script>
+{{ end }}
+{{ define "css" }}
+<link rel="stylesheet" href="/css/clients.css" />
+{{ end }}

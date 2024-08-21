@@ -19,3 +19,12 @@ build:
 
 clean:
 	rm -f bin/*
+
+devnet:
+	.hack/devnet/run.sh
+
+devnet-run: devnet
+	go run cmd/dora-explorer/main.go --config .hack/devnet/generated-dora-config.yaml
+
+devnet-clean:
+	.hack/devnet/cleanup.sh

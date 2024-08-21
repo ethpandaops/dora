@@ -8,8 +8,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	logger "github.com/sirupsen/logrus"
 
+	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/types"
 	"github.com/ethpandaops/dora/utils"
 )
@@ -27,7 +29,6 @@ func InitPageData(w http.ResponseWriter, r *http.Request, active, path, title st
 		fullTitle = fmt.Sprintf("%v", utils.Config.Frontend.SiteName)
 	}
 
-	isMainnet := utils.Config.Chain.Config.ConfigName == "mainnet"
 	buildTime, _ := time.Parse("2006-01-02T15:04:05Z", utils.Buildtime)
 	siteDomain := utils.Config.Frontend.SiteDomain
 	if siteDomain == "" {
@@ -42,23 +43,27 @@ func InitPageData(w http.ResponseWriter, r *http.Request, active, path, title st
 			Path:        path,
 			Templates:   strings.Join(mainTemplates, ","),
 		},
-		Active:                active,
-		Data:                  &types.Empty{},
-		Version:               utils.GetExplorerVersion(),
-		BuildTime:             fmt.Sprintf("%v", buildTime.Unix()),
-		Year:                  time.Now().UTC().Year(),
-		ExplorerTitle:         utils.Config.Frontend.SiteName,
-		ExplorerSubtitle:      utils.Config.Frontend.SiteSubtitle,
-		ExplorerLogo:          utils.Config.Frontend.SiteLogo,
-		ChainSlotsPerEpoch:    utils.Config.Chain.Config.SlotsPerEpoch,
-		ChainSecondsPerSlot:   utils.Config.Chain.Config.SecondsPerSlot,
-		ChainGenesisTimestamp: utils.Config.Chain.GenesisTimestamp,
-		Mainnet:               isMainnet,
-		DepositContract:       utils.Config.Chain.Config.DepositContractAddress,
-		ChainConfig:           utils.Config.Chain.Config,
-		Lang:                  "en-US",
-		Debug:                 utils.Config.Frontend.Debug,
-		MainMenuItems:         createMenuItems(active, isMainnet),
+		Active:           active,
+		Data:             &types.Empty{},
+		Version:          utils.GetExplorerVersion(),
+		BuildTime:        fmt.Sprintf("%v", buildTime.Unix()),
+		Year:             time.Now().UTC().Year(),
+		ExplorerTitle:    utils.Config.Frontend.SiteName,
+		ExplorerSubtitle: utils.Config.Frontend.SiteSubtitle,
+		ExplorerLogo:     utils.Config.Frontend.SiteLogo,
+		Lang:             "en-US",
+		Debug:            utils.Config.Frontend.Debug,
+		MainMenuItems:    createMenuItems(active),
+	}
+
+	chainState := services.GlobalBeaconService.GetChainState()
+	if specs := chainState.GetSpecs(); specs != nil {
+		data.IsReady = true
+		data.ChainSlotsPerEpoch = specs.SlotsPerEpoch
+		data.ChainSecondsPerSlot = uint64(specs.SecondsPerSlot.Seconds())
+		data.ChainGenesisTimestamp = uint64(chainState.GetGenesis().GenesisTime.Unix())
+		data.DepositContract = common.BytesToAddress(specs.DepositContractAddress).String()
+		data.Mainnet = specs.ConfigName == "mainnet"
 	}
 
 	if utils.Config.Frontend.SiteDescription != "" {
@@ -82,84 +87,131 @@ func InitPageData(w http.ResponseWriter, r *http.Request, active, path, title st
 	return data
 }
 
-func createMenuItems(active string, isMain bool) []types.MainMenuItem {
+func createMenuItems(active string) []types.MainMenuItem {
 	hiddenFor := []string{"confirmation", "login", "register"}
 
 	if utils.SliceContains(hiddenFor, active) {
 		return []types.MainMenuItem{}
 	}
+
+	clientsMenu := []types.NavigationGroup{}
+	blockchainMenu := []types.NavigationGroup{}
+	validatorMenu := []types.NavigationGroup{}
+
+	blockchainMenu = append(blockchainMenu, types.NavigationGroup{
+		Links: []types.NavigationLink{
+			{
+				Label: "Overview",
+				Path:  "/",
+				Icon:  "fa-home",
+			},
+		},
+	})
+	blockchainMenu = append(blockchainMenu, types.NavigationGroup{
+		Links: []types.NavigationLink{
+			{
+				Label: "Epochs",
+				Path:  "/epochs",
+				Icon:  "fa-history",
+			},
+			{
+				Label: "Slots",
+				Path:  "/slots",
+				Icon:  "fa-cube",
+			},
+		},
+	})
+	if len(utils.Config.MevIndexer.Relays) > 0 {
+		blockchainMenu = append(blockchainMenu, types.NavigationGroup{
+			Links: []types.NavigationLink{
+				{
+					Label: "MEV Blocks",
+					Path:  "/mev/blocks",
+					Icon:  "fa-money-bill",
+				},
+			},
+		})
+	}
+
+	clientLinks := []types.NavigationLink{
+		{
+			Label: "Consensus",
+			Path:  "/clients/consensus",
+			Icon:  "fa-server",
+		},
+	}
+
+	if utils.Config.ExecutionApi.Endpoint != "" || len(utils.Config.ExecutionApi.Endpoints) > 0 {
+		clientLinks = append(clientLinks, types.NavigationLink{
+			Label: "Execution",
+			Path:  "/clients/execution",
+			Icon:  "fa-circle-nodes",
+		})
+	}
+
+	clientLinks = append(clientLinks, types.NavigationLink{
+		Label: "Forks",
+		Path:  "/forks",
+		Icon:  "fa-code-fork",
+	})
+
+	clientsMenu = append(clientsMenu, types.NavigationGroup{
+		Links: clientLinks,
+	})
+
+	validatorMenu = append(validatorMenu, types.NavigationGroup{
+		Links: []types.NavigationLink{
+			{
+				Label: "Validators",
+				Path:  "/validators",
+				Icon:  "fa-table",
+			},
+			{
+				Label: "Validator Activity",
+				Path:  "/validators/activity",
+				Icon:  "fa-tachometer",
+			},
+		},
+	})
+	validatorMenu = append(validatorMenu, types.NavigationGroup{
+		Links: []types.NavigationLink{
+			{
+				Label: "Deposits",
+				Path:  "/validators/deposits",
+				Icon:  "fa-file-signature",
+			},
+		},
+	})
+	validatorMenu = append(validatorMenu, types.NavigationGroup{
+		Links: []types.NavigationLink{
+			{
+				Label: "Voluntary Exits",
+				Path:  "/validators/voluntary_exits",
+				Icon:  "fa-door-open",
+			},
+			{
+				Label: "Slashings",
+				Path:  "/validators/slashings",
+				Icon:  "fa-user-slash",
+			},
+		},
+	})
+
 	return []types.MainMenuItem{
 		{
 			Label:    "Blockchain",
 			IsActive: active == "blockchain",
-			Groups: []types.NavigationGroup{
-				{
-					Links: []types.NavigationLink{
-						{
-							Label: "Overview",
-							Path:  "/",
-							Icon:  "fa-home",
-						},
-					},
-				},
-				{
-					Links: []types.NavigationLink{
-						{
-							Label: "Epochs",
-							Path:  "/epochs",
-							Icon:  "fa-history",
-						},
-						{
-							Label: "Slots",
-							Path:  "/slots",
-							Icon:  "fa-cube",
-						},
-					},
-				},
-				{
-					Links: []types.NavigationLink{
-						{
-							Label: "Clients",
-							Path:  "/clients",
-							Icon:  "fa-server",
-						},
-						{
-							Label: "Forks",
-							Path:  "/forks",
-							Icon:  "fa-code-fork",
-						},
-					},
-				},
-			},
+			Groups:   blockchainMenu,
 		},
 		{
 			Label:    "Validators",
 			IsActive: active == "validators",
-			Groups: []types.NavigationGroup{
-				{
-					Links: []types.NavigationLink{
-						{
-							Label: "Validators",
-							Path:  "/validators",
-							Icon:  "fa-table",
-						},
-						{
-							Label: "Validator Activity",
-							Path:  "/validators/activity",
-							Icon:  "fa-tachometer",
-						},
-					},
-				},
-				{
-					Links: []types.NavigationLink{
-						{
-							Label: "Deposits",
-							Path:  "/validators/deposits",
-							Icon:  "fa-file-signature",
-						},
-					},
-				},
-			},
+			Groups:   validatorMenu,
+		},
+		{
+			Label:    "Clients",
+			IsActive: active == "clients",
+			Groups:   clientsMenu,
 		},
 	}
 }

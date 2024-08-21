@@ -1,7 +1,7 @@
 {{ define "page" }}
   <div class="container mt-2">
     <div class="d-md-flex py-2 justify-content-md-between">
-      <h1 class="h4 my-3 mb-md-0 h1-pager">
+      <h1 class="h4 my-2 mb-md-0 h1-pager">
         {{- if not (eq .Slot 0) -}}
           <a href="/slot/{{ .PreviousSlot }}"><i class="fa fa-chevron-left"></i></a>
         {{- else -}}
@@ -14,6 +14,16 @@
           <a></a>
         {{- end -}}
       </h1>
+      <div class="flex-grow-1 px-3">
+        {{- range $i, $badge := .Badges }}
+          <span class="badge rounded-pill block-badge mx-2 mt-3 {{ $badge.ClassName }}" {{ if not (eq $badge.Description "") }}data-bs-toggle="tooltip" data-bs-placement="bottom" data-bs-title="{{ $badge.Description }}" {{ end }}>
+            {{- if not (eq $badge.Icon "") }}
+              <i class="fa {{ $badge.Icon }} px-1"></i>
+            {{- end }}
+            {{ $badge.Title }}
+          </span>
+        {{- end }}
+      </div>
       <nav aria-label="breadcrumb">
         <ol class="breadcrumb font-size-1 mb-0" style="padding: 0; background-color: transparent;">
           <li class="breadcrumb-item"><a href="/" title="Home">Home</a></li>
@@ -71,9 +81,9 @@
             <a class="nav-link" id="blobSidecars-tab" data-bs-toggle="tab" href="#blobSidecars" role="tab" aria-controls="blobSidecars" aria-selected="false">Blob Sidecars <span class="badge bg-secondary text-white">{{ .Block.BlobsCount }}</span></a>
           </li>
         {{ end }}
-        {{ if gt .Block.DepositReceiptsCount 0 }}
+        {{ if gt .Block.DepositRequestsCount 0 }}
           <li class="nav-item">
-            <a class="nav-link" id="depositReceipts-tab" data-bs-toggle="tab" href="#depositReceipts" role="tab" aria-controls="depositReceipts" aria-selected="false">Deposit Receipts <span class="badge bg-secondary text-white">{{ .Block.DepositReceiptsCount }}</span></a>
+            <a class="nav-link" id="depositRequests-tab" data-bs-toggle="tab" href="#depositRequests" role="tab" aria-controls="depositRequests" aria-selected="false">Deposit Requests <span class="badge bg-secondary text-white">{{ .Block.DepositRequestsCount }}</span></a>
           </li>
         {{ end }}
         {{ if gt .Block.WithdrawalRequestsCount 0 }}
@@ -81,9 +91,9 @@
             <a class="nav-link" id="withdrawalRequests-tab" data-bs-toggle="tab" href="#withdrawalRequests" role="tab" aria-controls="withdrawalRequests" aria-selected="false">Withdrawal Requests <span class="badge bg-secondary text-white">{{ .Block.WithdrawalRequestsCount }}</span></a>
           </li>
         {{ end }}
-        {{ if gt .Block.ConsolidationsCount 0 }}
+        {{ if gt .Block.ConsolidationRequestsCount 0 }}
           <li class="nav-item">
-            <a class="nav-link" id="consolidations-tab" data-bs-toggle="tab" href="#consolidations" role="tab" aria-controls="consolidations" aria-selected="false">Consolidations <span class="badge bg-secondary text-white">{{ .Block.ConsolidationsCount }}</span></a>
+            <a class="nav-link" id="consolidationRequests-tab" data-bs-toggle="tab" href="#consolidationRequests" role="tab" aria-controls="consolidationRequests" aria-selected="false">Consolidation Requests <span class="badge bg-secondary text-white">{{ .Block.ConsolidationRequestsCount }}</span></a>
           </li>
         {{ end }}
       {{ end }}
@@ -116,11 +126,6 @@
                 <h3 class="h5 col-12 col-md-4 text-center">
                   <b>Showing {{ .Block.AttestationsCount }} Attestations</b>
                 </h3>
-                <div class="col-md-4 text-center text-md-end">
-                  {{ if and (not .Block.DutiesLoaded) (not .Block.DenyDutyLoading) -}}
-                  <a class="btn btn-primary" href="?duties=1#attestations" role="button" data-bs-toggle="tooltip" data-bs-placement="bottom" data-bs-title="This might take a few seconds">Load Validator Indexes</a>
-                  {{- end }}
-                </div>
               </div>
             </div>
           </div>
@@ -210,16 +215,16 @@
             {{ template "block_blobSidecar" . }}
           </div>
         {{ end }}
-        {{ if gt .Block.DepositReceiptsCount 0 }}
-          <div class="tab-pane fade show active" id="depositReceipts" role="tabpanel" aria-labelledby="depositReceipts-tab">
+        {{ if gt .Block.DepositRequestsCount 0 }}
+          <div class="tab-pane fade show active" id="depositRequests" role="tabpanel" aria-labelledby="depositRequests-tab">
             <div class="card block-card">
               <div style="margin-bottom: -.25rem;" class="card-body px-0 py-1">
                 <div class="row p-1 mx-0">
-                  <h3 class="h5 col-md-12 text-center"><b>Showing {{ .Block.DepositReceiptsCount }} Deposit Receipts</b></h3>
+                  <h3 class="h5 col-md-12 text-center"><b>Showing {{ .Block.DepositRequestsCount }} Deposit Requests</b></h3>
                 </div>
               </div>
             </div>
-            {{ template "block_deposit_receipts" . }}
+            {{ template "block_deposit_requests" . }}
           </div>
         {{ end }}
         {{ if gt .Block.WithdrawalRequestsCount 0 }}
@@ -234,16 +239,16 @@
             {{ template "block_withdrawal_requests" . }}
           </div>
         {{ end }}
-        {{ if gt .Block.ConsolidationsCount 0 }}
-          <div class="tab-pane fade show active" id="consolidations" role="tabpanel" aria-labelledby="consolidations-tab">
+        {{ if gt .Block.ConsolidationRequestsCount 0 }}
+          <div class="tab-pane fade show active" id="consolidationRequests" role="tabpanel" aria-labelledby="consolidationRequests-tab">
             <div class="card block-card">
               <div style="margin-bottom: -.25rem;" class="card-body px-0 py-1">
                 <div class="row p-1 mx-0">
-                  <h3 class="h5 col-md-12 text-center"><b>Showing {{ .Block.ConsolidationsCount }} Consolidations </b></h3>
+                  <h3 class="h5 col-md-12 text-center"><b>Showing {{ .Block.ConsolidationRequestsCount }} Consolidation Requests </b></h3>
                 </div>
               </div>
             </div>
-            {{ template "block_consolidation" . }}
+            {{ template "block_consolidation_requests" . }}
           </div>
         {{ end }}
 

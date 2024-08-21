@@ -188,6 +188,14 @@ header nav .nav-item:focus-within .dropdown-menu {
   display: block;
 }
 
+header nav .dropdown-menu hr {
+  margin: 6px 0;
+}
+
+header nav .dropdown-item .nav-icon {
+  padding-right: 6px;
+}
+
 @media (max-width: 992px) {
   header .navbar-brand {
     margin-right: 0;

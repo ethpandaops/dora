@@ -6,3 +6,5 @@ test-config.yaml
 config-*.yaml
 log-*
 tmp-*
+
+.hack/devnet/generated-**

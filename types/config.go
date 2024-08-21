@@ -18,11 +18,7 @@ type Config struct {
 	} `yaml:"server"`
 
 	Chain struct {
-		Name             string `yaml:"name" envconfig:"CHAIN_NAME"`
-		DisplayName      string `yaml:"displayName" envconfig:"CHAIN_DISPLAY_NAME"`
-		GenesisTimestamp uint64 `yaml:"genesisTimestamp" envconfig:"CHAIN_GENESIS_TIMESTAMP"`
-		ConfigPath       string `yaml:"configPath" envconfig:"CHAIN_CONFIG_PATH"`
-		Config           ChainConfig
+		DisplayName string `yaml:"displayName" envconfig:"CHAIN_DISPLAY_NAME"`
 
 		// optional features
 		WhiskForkEpoch *uint64 `yaml:"whiskForkEpoch" envconfig:"WHISK_FORK_EPOCH"`
@@ -40,9 +36,11 @@ type Config struct {
 		SiteSubtitle    string `yaml:"siteSubtitle" envconfig:"FRONTEND_SITE_SUBTITLE"`
 		SiteDescription string `yaml:"siteDescription" envconfig:"FRONTEND_SITE_DESCRIPTION"`
 
-		EthExplorerLink         string `yaml:"ethExplorerLink" envconfig:"FRONTEND_ETH_EXPLORER_LINK"`
-		ValidatorNamesYaml      string `yaml:"validatorNamesYaml" envconfig:"FRONTEND_VALIDATOR_NAMES_YAML"`
-		ValidatorNamesInventory string `yaml:"validatorNamesInventory" envconfig:"FRONTEND_VALIDATOR_NAMES_INVENTORY"`
+		EthExplorerLink               string        `yaml:"ethExplorerLink" envconfig:"FRONTEND_ETH_EXPLORER_LINK"`
+		ValidatorNamesYaml            string        `yaml:"validatorNamesYaml" envconfig:"FRONTEND_VALIDATOR_NAMES_YAML"`
+		ValidatorNamesInventory       string        `yaml:"validatorNamesInventory" envconfig:"FRONTEND_VALIDATOR_NAMES_INVENTORY"`
+		ValidatorNamesRefreshInterval time.Duration `yaml:"validatorNamesRefreshInterval" envconfig:"FRONTEND_VALIDATOR_REFRESH_INTERVAL"`
+		ValidatorNamesResolveInterval time.Duration `yaml:"validatorNamesResolveInterval" envconfig:"FRONTEND_VALIDATOR_RESOLVE_INTERVAL"`
 
 		PageCallTimeout  time.Duration `yaml:"pageCallTimeout" envconfig:"FRONTEND_PAGE_CALL_TIMEOUT"`
 		HttpReadTimeout  time.Duration `yaml:"httpReadTimeout" envconfig:"FRONTEND_HTTP_READ_TIMEOUT"`
@@ -77,28 +75,14 @@ type Config struct {
 	} `yaml:"executionapi"`
 
 	Indexer struct {
+		ResyncFromEpoch   *uint64 `yaml:"resyncFromEpoch" envconfig:"INDEXER_RESYNC_FROM_EPOCH"`
+		ResyncForceUpdate bool    `yaml:"resyncForceUpdate" envconfig:"INDEXER_RESYNC_FORCE_UPDATE"`
+
 		InMemoryEpochs                  uint16 `yaml:"inMemoryEpochs" envconfig:"INDEXER_IN_MEMORY_EPOCHS"`
-		CachePersistenceDelay           uint16 `yaml:"cachePersistenceDelay" envconfig:"INDEXER_CACHE_PERSISTENCE_DELAY"`
-		DisableIndexWriter              bool   `yaml:"disableIndexWriter" envconfig:"INDEXER_DISABLE_INDEX_WRITER"`
 		DisableSynchronizer             bool   `yaml:"disableSynchronizer" envconfig:"INDEXER_DISABLE_SYNCHRONIZER"`
 		SyncEpochCooldown               uint   `yaml:"syncEpochCooldown" envconfig:"INDEXER_SYNC_EPOCH_COOLDOWN"`
 		MaxParallelValidatorSetRequests uint   `yaml:"maxParallelValidatorSetRequests" envconfig:"INDEXER_MAX_PARALLEL_VALIDATOR_SET_REQUESTS"`
 	} `yaml:"indexer"`
-
-	BlobStore struct {
-		PersistenceMode string `yaml:"persistenceMode" envconfig:"BLOBSTORE_PERSISTENCE_MODE"`
-		NameTemplate    string `yaml:"nameTemplate" envconfig:"BLOBSTORE_NAME_TEMPLATE"`
-
-		Fs struct {
-			Path string `yaml:"path" envconfig:"BLOBSTORE_FS_PATH"`
-		} `yaml:"fs"`
-		Aws struct {
-			AccessKey string `yaml:"accessKey" envconfig:"BLOBSTORE_AWS_ACCESSKEY"`
-			SecretKey string `yaml:"secretKey" envconfig:"BLOBSTORE_AWS_SECRETKEY"`
-			S3Region  string `yaml:"s3Region" envconfig:"BLOBSTORE_AWS_S3REGION"`
-			S3Bucket  string `yaml:"s3Bucket" envconfig:"BLOBSTORE_AWS_S3BUCKET"`
-		} `yaml:"aws"`
-	} `yaml:"blobstore"`
 
 	TxSignature struct {
 		DisableLookupLoop bool          `yaml:"disableLookupLoop" envconfig:"TXSIG_DISABLE_LOOKUP_LOOP"`
@@ -108,6 +92,11 @@ type Config struct {
 		Disable4Bytes     bool          `yaml:"disable4Bytes" envconfig:"TXSIG_DISABLE_4BYTES"`
 		RecheckTimeout    time.Duration `yaml:"recheckTimeout" envconfig:"TXSIG_RECHECK_TIMEOUT"`
 	} `yaml:"txsig"`
+
+	MevIndexer struct {
+		Relays          []MevRelayConfig `yaml:"relays"`
+		RefreshInterval time.Duration    `yaml:"refreshInterval" envconfig:"MEVINDEXER_REFRESH_INTERVAL"`
+	} `yaml:"mevIndexer"`
 
 	Database struct {
 		Engine string `yaml:"engine" envconfig:"DATABASE_ENGINE"`
@@ -137,8 +126,9 @@ type Config struct {
 	} `yaml:"database"`
 
 	KillSwitch struct {
-		DisableSSZEncoding bool `yaml:"disableSSZEncoding" envconfig:"KILLSWITCH_DISABLE_SSZ_ENCODING"`
-		DisableSSZRequests bool `yaml:"disableSSZRequests" envconfig:"KILLSWITCH_DISABLE_SSZ_REQUESTS"`
+		DisableSSZEncoding      bool `yaml:"disableSSZEncoding" envconfig:"KILLSWITCH_DISABLE_SSZ_ENCODING"`
+		DisableSSZRequests      bool `yaml:"disableSSZRequests" envconfig:"KILLSWITCH_DISABLE_SSZ_REQUESTS"`
+		DisableBlockCompression bool `yaml:"disableBlockCompression" envconfig:"KILLSWITCH_DISABLE_BLOCK_COMPRESSION"`
 	} `yaml:"killSwitch"`
 }
 
@@ -158,6 +148,13 @@ type EndpointSshConfig struct {
 	User     string `yaml:"user"`
 	Password string `yaml:"password"`
 	Keyfile  string `yaml:"keyfile"`
+}
+
+type MevRelayConfig struct {
+	Index      uint8  `yaml:"index"`
+	Name       string `yaml:"name"`
+	Url        string `yaml:"url"`
+	BlockLimit int    `yaml:"blockLimit"`
 }
 
 type SqliteDatabaseConfig struct {

@@ -8,9 +8,6 @@ logging:
 
 # Chain network configuration
 chain:
-  name: "mainnet"
-  #genesisTimestamp: 1688126460
-  #configPath: "../ephemery/config.yaml"
   #displayName: "Ephemery Iteration xy"
 
 # HTTP Server configuration
@@ -35,8 +32,10 @@ frontend:
   validatorNamesInventory: ""
   
 beaconapi:
-  # CL Client RPC
-  endpoint: "http://127.0.0.1:5052"
+  # beacon node rpc endpoints
+  endpoints:
+    - name: "local"
+      url: "http://127.0.0.1:8545"
 
   # local cache for page models
   localCacheSize: 100 # 100MB
@@ -45,43 +44,43 @@ beaconapi:
   redisCacheAddr: ""
   redisCachePrefix: ""
 
+executionapi:
+  # execution node rpc endpoints
+  endpoints:
+    - name: "local"
+      url: "http://127.0.0.1:8545"
+  
+  depositLogBatchSize: 1000
+
 # indexer keeps track of the latest epochs in memory.
 indexer:
   # max number of epochs to keep in memory
   inMemoryEpochs: 3
 
-  # disable synchronizing and everything that writes to the db (indexer just maintains local cache)
-  disableIndexWriter: false
+  # disable synchronizing historic data
+  disableSynchronizer: false
 
-  # number of seconds to wait between each epoch (don't overload CL client)
+  # reset synchronization state to this epoch on startup - only use to resync database, comment out afterwards
+  #resyncFromEpoch: 0
+
+  # force re-synchronization of epochs that are already present in DB - only use to fix missing data after schema upgrades
+  #resyncForceUpdate: true
+
+  # number of seconds to pause the synchronization between each epoch (don't overload CL client)
   syncEpochCooldown: 2
 
-  # maximum number of parallel validator set requests (might cause high memory usage)
+  # maximum number of parallel beacon state requests (might cause high memory usage)
   maxParallelValidatorSetRequests: 1
-
-
-# blob storage configuration
-blobstore:
-  # persistence mode: none, db, fs, aws
-  persistenceMode: "none"
-  nameTemplate: ""
-  fs:
-    path: ""
-  aws:
-    accessKey: ""
-    secretKey: ""
-    s3Region: "eu-central-1"
-    s3Bucket: ""
 
 # database configuration
 database:
   engine: "sqlite" # sqlite / pgsql
 
-  # sqlite settings
+  # sqlite settings (only used if engine is sqlite)
   sqlite:
     file: "./explorer-db.sqlite"
 
-  # pgsql settings
+  # pgsql settings (only used if engine is pgsql)
   pgsql:
     host: "127.0.0.1"
     port: 5432

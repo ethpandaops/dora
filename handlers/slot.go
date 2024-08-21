@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -14,15 +15,16 @@ import (
 
 	"github.com/attestantio/go-eth2-client/spec"
 	"github.com/attestantio/go-eth2-client/spec/bellatrix"
+	"github.com/attestantio/go-eth2-client/spec/deneb"
 	"github.com/attestantio/go-eth2-client/spec/electra"
+	"github.com/attestantio/go-eth2-client/spec/phase0"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/gorilla/mux"
 	"github.com/juliangruber/go-intersect"
 	"github.com/sirupsen/logrus"
 
 	"github.com/ethpandaops/dora/db"
-	"github.com/ethpandaops/dora/dbtypes"
-	"github.com/ethpandaops/dora/rpc"
+	"github.com/ethpandaops/dora/indexer/beacon"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types"
@@ -42,9 +44,9 @@ func Slot(w http.ResponseWriter, r *http.Request) {
 		"slot/voluntary_exits.html",
 		"slot/slashings.html",
 		"slot/blobs.html",
-		"slot/deposit_receipts.html",
+		"slot/deposit_requests.html",
 		"slot/withdrawal_requests.html",
-		"slot/consolidations.html",
+		"slot/consolidation_requests.html",
 	)
 	var notfoundTemplateFiles = append(layoutTemplateFiles,
 		"slot/notfound.html",
@@ -68,13 +70,12 @@ func Slot(w http.ResponseWriter, r *http.Request) {
 	}
 
 	urlArgs := r.URL.Query()
-	loadDuties := urlArgs.Has("duties")
 
 	var pageData *models.SlotPageData
 	var pageError error
 	pageError = services.GlobalCallRateLimiter.CheckCallLimit(r, 1)
 	if pageError == nil {
-		pageData, pageError = getSlotPageData(blockSlot, blockRootHash, loadDuties)
+		pageData, pageError = getSlotPageData(blockSlot, blockRootHash)
 	}
 	if pageError != nil {
 		handlePageError(w, r, pageError)
@@ -91,13 +92,9 @@ func Slot(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if urlArgs.Has("blob") && pageData.Block != nil {
-		commitment, err := hex.DecodeString(strings.Replace(urlArgs.Get("blob"), "0x", "", -1))
-		var blobData *dbtypes.Blob
-		if err == nil {
-			client := services.GlobalBeaconService.GetIndexer().GetReadyClClient(false, nil, nil)
-			blobData, err = services.GlobalBeaconService.GetIndexer().BlobStore.LoadBlob(commitment, pageData.Block.BlockRoot, client)
-		}
-		if err == nil && blobData != nil {
+		commitment, err1 := hex.DecodeString(strings.Replace(urlArgs.Get("blob"), "0x", "", -1))
+		blobData, err2 := services.GlobalBeaconService.GetBlockBlob(r.Context(), phase0.Root(pageData.Block.BlockRoot), deneb.KZGCommitment(commitment))
+		if err1 == nil && err2 == nil && blobData != nil {
 			var blobModel *models.SlotPageBlob
 			for _, blob := range pageData.Block.Blobs {
 				if bytes.Equal(blob.KzgCommitment, commitment) {
@@ -106,16 +103,14 @@ func Slot(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			if blobModel != nil {
-				blobModel.KzgProof = blobData.Proof
-				if blobData.Blob != nil {
-					blobModel.HaveData = true
-					blobModel.Blob = *blobData.Blob
-					if len(blobModel.Blob) > 512 {
-						blobModel.BlobShort = blobModel.Blob[0:512]
-						blobModel.IsShort = true
-					} else {
-						blobModel.BlobShort = blobModel.Blob
-					}
+				blobModel.KzgProof = blobData.KZGProof[:]
+				blobModel.HaveData = true
+				blobModel.Blob = blobData.Blob[:]
+				if len(blobModel.Blob) > 512 {
+					blobModel.BlobShort = blobModel.Blob[0:512]
+					blobModel.IsShort = true
+				} else {
+					blobModel.BlobShort = blobModel.Blob
 				}
 			}
 		}
@@ -147,19 +142,16 @@ func SlotBlob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client := services.GlobalBeaconService.GetIndexer().GetReadyClClient(false, nil, nil)
-	blobData, err := services.GlobalBeaconService.GetIndexer().BlobStore.LoadBlob(commitment, blockRoot, client)
+	blobData, err := services.GlobalBeaconService.GetBlockBlob(r.Context(), phase0.Root(blockRoot), deneb.KZGCommitment(commitment))
 	if err != nil {
 		logrus.WithError(err).Error("error loading blob data")
 		http.Error(w, "Internal server error", http.StatusServiceUnavailable)
 		return
 	}
 	result := &models.SlotPageBlobDetails{
-		KzgCommitment: fmt.Sprintf("%x", blobData.Commitment),
-		KzgProof:      fmt.Sprintf("%x", blobData.Proof),
-	}
-	if blobData.Blob != nil {
-		result.Blob = fmt.Sprintf("%x", *blobData.Blob)
+		KzgCommitment: fmt.Sprintf("%x", blobData.KZGCommitment),
+		KzgProof:      fmt.Sprintf("%x", blobData.KZGProof),
+		Blob:          fmt.Sprintf("%x", blobData.Blob),
 	}
 	err = json.NewEncoder(w).Encode(result)
 	if err != nil {
@@ -168,11 +160,11 @@ func SlotBlob(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func getSlotPageData(blockSlot int64, blockRoot []byte, loadDuties bool) (*models.SlotPageData, error) {
+func getSlotPageData(blockSlot int64, blockRoot []byte) (*models.SlotPageData, error) {
 	pageData := &models.SlotPageData{}
-	pageCacheKey := fmt.Sprintf("slot:%v:%x:%v", blockSlot, blockRoot, loadDuties)
+	pageCacheKey := fmt.Sprintf("slot:%v:%x", blockSlot, blockRoot)
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
-		pageData, cacheTimeout := buildSlotPageData(blockSlot, blockRoot, loadDuties)
+		pageData, cacheTimeout := buildSlotPageData(pageCall.CallCtx, blockSlot, blockRoot)
 		pageCall.CacheTimeout = cacheTimeout
 		return pageData
 	})
@@ -186,69 +178,52 @@ func getSlotPageData(blockSlot int64, blockRoot []byte, loadDuties bool) (*model
 	return pageData, pageErr
 }
 
-func buildSlotPageData(blockSlot int64, blockRoot []byte, loadDuties bool) (*models.SlotPageData, time.Duration) {
-	currentSlot := utils.TimeToSlot(uint64(time.Now().Unix()))
+func buildSlotPageData(ctx context.Context, blockSlot int64, blockRoot []byte) (*models.SlotPageData, time.Duration) {
+	chainState := services.GlobalBeaconService.GetChainState()
+	currentSlot := chainState.CurrentSlot()
 	finalizedEpoch, _ := services.GlobalBeaconService.GetFinalizedEpoch()
 	var blockData *services.CombinedBlockResponse
 	var err error
 	if blockSlot > -1 {
-		if uint64(blockSlot) <= currentSlot {
-			blockData, err = services.GlobalBeaconService.GetSlotDetailsBySlot(uint64(blockSlot))
+		if phase0.Slot(blockSlot) <= currentSlot {
+			blockData, err = services.GlobalBeaconService.GetSlotDetailsBySlot(ctx, phase0.Slot(blockSlot))
 		}
 	} else {
-		blockData, err = services.GlobalBeaconService.GetSlotDetailsByBlockroot(blockRoot)
+		blockData, err = services.GlobalBeaconService.GetSlotDetailsByBlockroot(ctx, phase0.Root(blockRoot))
 	}
 
-	if err == nil {
-		if blockData == nil {
-			// check for orphaned block
-			if blockSlot > -1 {
-				dbBlocks := services.GlobalBeaconService.GetDbBlocksForSlots(uint64(blockSlot), 0, false, true)
-				if len(dbBlocks) > 0 {
-					blockRoot = dbBlocks[0].Root
-				}
-			}
-			if blockRoot != nil {
-				blockData = services.GlobalBeaconService.GetOrphanedBlock(blockRoot)
-			}
-		} else {
-			// check orphaned status
-			blockStatus := services.GlobalBeaconService.CheckBlockOrphanedStatus(blockData.Root)
-			blockData.Orphaned = blockStatus == dbtypes.Orphaned
-		}
+	if err != nil {
+		return nil, -1
 	}
 
-	var slot uint64
+	var slot phase0.Slot
 	if blockData != nil {
-		slot = uint64(blockData.Header.Message.Slot)
+		slot = blockData.Header.Message.Slot
 	} else if blockSlot > -1 {
-		slot = uint64(blockSlot)
+		slot = phase0.Slot(blockSlot)
 	} else {
 		return nil, -1
 	}
 	logrus.Debugf("slot page called: %v", slot)
 
+	epoch := chainState.EpochOfSlot(slot)
+
 	pageData := &models.SlotPageData{
-		Slot:           slot,
-		Epoch:          utils.EpochOfSlot(slot),
-		Ts:             utils.SlotToTime(slot),
-		NextSlot:       slot + 1,
-		PreviousSlot:   slot - 1,
+		Slot:           uint64(slot),
+		Epoch:          uint64(chainState.EpochOfSlot(slot)),
+		Ts:             chainState.SlotToTime(slot),
+		NextSlot:       uint64(slot + 1),
+		PreviousSlot:   uint64(slot - 1),
 		Future:         slot >= currentSlot,
-		EpochFinalized: finalizedEpoch >= int64(utils.EpochOfSlot(slot)),
+		EpochFinalized: finalizedEpoch > chainState.EpochOfSlot(slot),
+		Badges:         []*models.SlotPageBlockBadge{},
 	}
 
-	var assignments *rpc.EpochAssignments
-	if loadDuties && !utils.Config.Frontend.AllowDutyLoading {
-		loadDuties = false
-	}
-	if loadDuties {
-		assignmentsRsp, err := services.GlobalBeaconService.GetEpochAssignments(utils.EpochOfSlot(slot))
-		if err != nil {
-			logrus.Printf("assignments error: %v", err)
-			// we can safely continue here. the UI is prepared to work without epoch duties, but fields related to the duties are not shown
-		} else {
-			assignments = assignmentsRsp
+	var epochStatsValues *beacon.EpochStatsValues
+	if chainState.EpochOfSlot(slot) >= finalizedEpoch {
+		beaconIndexer := services.GlobalBeaconService.GetBeaconIndexer()
+		if epochStats := beaconIndexer.GetEpochStats(epoch, nil); epochStats != nil {
+			epochStatsValues = epochStats.GetOrLoadValues(beaconIndexer, true, false)
 		}
 	}
 
@@ -271,17 +246,13 @@ func buildSlotPageData(blockSlot int64, blockRoot []byte, loadDuties bool) (*mod
 	if blockData == nil {
 		pageData.Status = uint16(models.SlotStatusMissed)
 		pageData.Proposer = math.MaxInt64
-		if assignments != nil {
-			pageData.Proposer = assignments.ProposerAssignments[slot]
-		} else if epochStats := services.GlobalBeaconService.GetIndexer().GetCachedEpochStats(utils.EpochOfSlot(slot)); epochStats != nil {
-			if proposers := epochStats.TryGetProposerAssignments(); proposers != nil {
-				pageData.Proposer = proposers[slot]
+		if epochStatsValues != nil {
+			if slotIndex := int(chainState.SlotToSlotIndex(slot)); slotIndex < len(epochStatsValues.ProposerDuties) {
+				pageData.Proposer = uint64(epochStatsValues.ProposerDuties[slotIndex])
 			}
 		}
 		if pageData.Proposer == math.MaxInt64 {
-			if assignment := db.GetSlotAssignment(slot); assignment != nil {
-				pageData.Proposer = assignment.Proposer
-			}
+			pageData.Proposer = db.GetSlotAssignment(uint64(slot))
 		}
 		pageData.ProposerName = services.GlobalBeaconService.GetValidatorName(pageData.Proposer)
 	} else {
@@ -292,13 +263,36 @@ func buildSlotPageData(blockSlot int64, blockRoot []byte, loadDuties bool) (*mod
 		}
 		pageData.Proposer = uint64(blockData.Header.Message.ProposerIndex)
 		pageData.ProposerName = services.GlobalBeaconService.GetValidatorName(pageData.Proposer)
-		pageData.Block = getSlotPageBlockData(blockData, assignments, loadDuties)
+		pageData.Block = getSlotPageBlockData(blockData, epochStatsValues)
+
+		// check mev block
+		if pageData.Block.ExecutionData != nil {
+			mevBlock := db.GetMevBlockByBlockHash(pageData.Block.ExecutionData.BlockHash)
+			if mevBlock != nil {
+				relays := []string{}
+				for _, relay := range utils.Config.MevIndexer.Relays {
+					relayFlag := uint64(1) << uint64(relay.Index)
+					if mevBlock.SeenbyRelays&relayFlag > 0 {
+						relays = append(relays, relay.Name)
+					}
+				}
+
+				pageData.Badges = append(pageData.Badges, &models.SlotPageBlockBadge{
+					Title:       "MEV Block",
+					Icon:        "fa-money-bill",
+					Description: fmt.Sprintf("Block proposed via Relay: %v", strings.Join(relays, ", ")),
+					ClassName:   "text-bg-warning",
+				})
+			}
+		}
 	}
 
 	return pageData, cacheTimeout
 }
 
-func getSlotPageBlockData(blockData *services.CombinedBlockResponse, assignments *rpc.EpochAssignments, loadDuties bool) *models.SlotPageBlockData {
+func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsValues *beacon.EpochStatsValues) *models.SlotPageBlockData {
+	chainState := services.GlobalBeaconService.GetChainState()
+	specs := chainState.GetSpecs()
 	graffiti, _ := blockData.Block.Graffiti()
 	randaoReveal, _ := blockData.Block.RandaoReveal()
 	eth1Data, _ := blockData.Block.ETH1Data()
@@ -311,10 +305,10 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, assignments
 	syncAggregate, _ := blockData.Block.SyncAggregate()
 	executionWithdrawals, _ := blockData.Block.Withdrawals()
 	blobKzgCommitments, _ := blockData.Block.BlobKZGCommitments()
-	consolidations, _ := blockData.Block.Consolidations()
+	//consolidations, _ := blockData.Block.Consolidations()
 
 	pageData := &models.SlotPageBlockData{
-		BlockRoot:              blockData.Root,
+		BlockRoot:              blockData.Root[:],
 		ParentRoot:             blockData.Header.Message.ParentRoot[:],
 		StateRoot:              blockData.Header.Message.StateRoot[:],
 		Signature:              blockData.Header.Signature[:],
@@ -329,14 +323,12 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, assignments
 		DepositsCount:          uint64(len(deposits)),
 		VoluntaryExitsCount:    uint64(len(voluntaryExits)),
 		SlashingsCount:         uint64(len(proposerSlashings)) + uint64(len(attesterSlashings)),
-		DutiesLoaded:           loadDuties,
-		DenyDutyLoading:        !utils.Config.Frontend.AllowDutyLoading,
 	}
 
-	epoch := utils.EpochOfSlot(uint64(blockData.Header.Message.Slot))
-	assignmentsMap := make(map[uint64]*rpc.EpochAssignments)
-	assignmentsLoaded := make(map[uint64]bool)
-	assignmentsMap[epoch] = assignments
+	epoch := chainState.EpochOfSlot(blockData.Header.Message.Slot)
+	assignmentsMap := make(map[phase0.Epoch]*beacon.EpochStatsValues)
+	assignmentsLoaded := make(map[phase0.Epoch]bool)
+	assignmentsMap[epoch] = epochStatsValues
 	assignmentsLoaded[epoch] = true
 
 	pageData.Attestations = make([]*models.SlotPageAttestation, pageData.AttestationsCount)
@@ -356,11 +348,15 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, assignments
 			continue
 		}
 
-		attEpoch := utils.EpochOfSlot(uint64(attData.Slot))
-		if !assignmentsLoaded[attEpoch] && loadDuties { // load epoch duties if needed
-			attEpochAssignments, _ := services.GlobalBeaconService.GetEpochAssignments(attEpoch)
-			assignmentsMap[attEpoch] = attEpochAssignments
-			assignmentsLoaded[attEpoch] = true
+		attEpoch := chainState.EpochOfSlot(attData.Slot)
+		if !assignmentsLoaded[attEpoch] { // get epoch duties from cache
+			beaconIndexer := services.GlobalBeaconService.GetBeaconIndexer()
+			if epochStats := beaconIndexer.GetEpochStats(epoch, nil); epochStats != nil {
+				epochStatsValues := epochStats.GetOrLoadValues(beaconIndexer, true, false)
+
+				assignmentsMap[attEpoch] = epochStatsValues
+				assignmentsLoaded[attEpoch] = true
+			}
 		}
 
 		attPageData := models.SlotPageAttestation{
@@ -375,6 +371,8 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, assignments
 		}
 
 		var attAssignments []uint64
+		includedValidators := []uint64{}
+
 		if attVersioned.Version >= spec.DataVersionElectra {
 			// EIP-7549 attestation
 			attAssignments = []uint64{}
@@ -385,25 +383,46 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, assignments
 				continue
 			}
 
-			for committee := uint64(0); committee < utils.Config.Chain.Config.MaxCommitteesPerSlot; committee++ {
-				if !committeeBits.BitAt(committee) {
+			attBitsOffset := uint64(0)
+			for _, committee := range committeeBits.BitIndices() {
+				if uint64(committee) >= specs.MaxCommitteesPerSlot {
 					continue
 				}
 
-				attPageData.CommitteeIndex = append(attPageData.CommitteeIndex, committee)
+				attPageData.CommitteeIndex = append(attPageData.CommitteeIndex, uint64(committee))
 				if assignmentsMap[attEpoch] != nil {
-					committeeAssignments := assignmentsMap[attEpoch].AttestorAssignments[fmt.Sprintf("%v-%v", uint64(attData.Slot), committee)]
+					slotIndex := int(chainState.SlotToSlotIndex(attData.Slot))
+					committeeAssignments := assignmentsMap[attEpoch].AttesterDuties[slotIndex][uint64(committee)]
 					if len(committeeAssignments) == 0 {
 						break
 					}
 
-					attAssignments = append(attAssignments, committeeAssignments...)
+					committeeAssignmentsInt := make([]uint64, 0)
+					for j := 0; j < len(committeeAssignments); j++ {
+						if attAggregationBits.BitAt(attBitsOffset + uint64(j)) {
+							includedValidators = append(includedValidators, uint64(committeeAssignments[j]))
+						}
+						committeeAssignmentsInt = append(committeeAssignmentsInt, uint64(committeeAssignments[j]))
+					}
+
+					attBitsOffset += uint64(len(committeeAssignments))
+					attAssignments = append(attAssignments, committeeAssignmentsInt...)
 				}
 			}
 		} else {
 			// pre-electra attestation
 			if assignmentsMap[attEpoch] != nil {
-				attAssignments = assignmentsMap[attEpoch].AttestorAssignments[fmt.Sprintf("%v-%v", uint64(attData.Slot), uint64(attData.Index))]
+				slotIndex := int(chainState.SlotToSlotIndex(attData.Slot))
+				committeeAssignments := assignmentsMap[attEpoch].AttesterDuties[slotIndex][uint64(attData.Index)]
+				committeeAssignmentsInt := make([]uint64, 0)
+				for j := 0; j < len(committeeAssignments); j++ {
+					if attAggregationBits.BitAt(uint64(j)) {
+						includedValidators = append(includedValidators, uint64(committeeAssignments[j]))
+					}
+					committeeAssignmentsInt = append(committeeAssignmentsInt, uint64(committeeAssignments[j]))
+				}
+
+				attAssignments = committeeAssignmentsInt
 			} else {
 				attAssignments = []uint64{}
 			}
@@ -416,6 +435,14 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, assignments
 			attPageData.Validators[j] = types.NamedValidator{
 				Index: attAssignments[j],
 				Name:  services.GlobalBeaconService.GetValidatorName(attAssignments[j]),
+			}
+		}
+
+		attPageData.IncludedValidators = make([]types.NamedValidator, len(includedValidators))
+		for j := 0; j < len(includedValidators); j++ {
+			attPageData.IncludedValidators[j] = types.NamedValidator{
+				Index: includedValidators[j],
+				Name:  services.GlobalBeaconService.GetValidatorName(includedValidators[j]),
 			}
 		}
 
@@ -445,7 +472,7 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, assignments
 	pageData.AttesterSlashings = make([]*models.SlotPageAttesterSlashing, pageData.AttesterSlashingsCount)
 	for i, slashing := range attesterSlashings {
 		att1, _ := slashing.Attestation1()
-		att2, _ := slashing.Attestation1()
+		att2, _ := slashing.Attestation2()
 		if att1 == nil || att2 == nil {
 			continue
 		}
@@ -524,17 +551,19 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, assignments
 		}
 	}
 
-	if epoch >= utils.Config.Chain.Config.AltairForkEpoch && syncAggregate != nil {
+	if specs.AltairForkEpoch != nil && uint64(epoch) >= *specs.AltairForkEpoch && syncAggregate != nil {
 		pageData.SyncAggregateBits = syncAggregate.SyncCommitteeBits
 		pageData.SyncAggregateSignature = syncAggregate.SyncCommitteeSignature[:]
 		var syncAssignments []uint64
-		if assignments != nil {
-			syncAssignments = assignments.SyncAssignments
-		} else if epochStats := services.GlobalBeaconService.GetIndexer().GetCachedEpochStats(epoch); epochStats != nil {
-			syncAssignments = epochStats.TryGetSyncAssignments()
+		if epochStatsValues != nil {
+			syncAssignmentsInt := make([]uint64, len(epochStatsValues.SyncCommitteeDuties))
+			for j := 0; j < len(epochStatsValues.SyncCommitteeDuties); j++ {
+				syncAssignmentsInt[j] = uint64(epochStatsValues.SyncCommitteeDuties[j])
+			}
+			syncAssignments = syncAssignmentsInt
 		}
-		if syncAssignments == nil {
-			syncPeriod := epoch / utils.Config.Chain.Config.EpochsPerSyncCommitteePeriod
+		if len(syncAssignments) == 0 {
+			syncPeriod := uint64(epoch) / specs.EpochsPerSyncCommitteePeriod
 			syncAssignments = db.GetSyncAssignmentsForPeriod(syncPeriod)
 		}
 
@@ -549,10 +578,10 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, assignments
 		} else {
 			pageData.SyncAggCommittee = []types.NamedValidator{}
 		}
-		pageData.SyncAggParticipation = utils.SyncCommitteeParticipation(pageData.SyncAggregateBits)
+		pageData.SyncAggParticipation = utils.SyncCommitteeParticipation(pageData.SyncAggregateBits, specs.SyncCommitteeSize)
 	}
 
-	if epoch >= utils.Config.Chain.Config.BellatrixForkEpoch {
+	if specs.BellatrixForkEpoch != nil && uint64(epoch) >= *specs.BellatrixForkEpoch {
 		switch blockData.Block.Version {
 		case spec.DataVersionBellatrix:
 			if blockData.Block.Bellatrix == nil {
@@ -652,12 +681,13 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, assignments
 				BlockNumber:   uint64(executionPayload.BlockNumber),
 			}
 			getSlotPageTransactions(pageData, executionPayload.Transactions)
-			getSlotPageDepositReceipts(pageData, executionPayload.DepositReceipts)
+			getSlotPageDepositRequests(pageData, executionPayload.DepositRequests)
 			getSlotPageWithdrawalRequests(pageData, executionPayload.WithdrawalRequests)
+			getSlotPageConsolidationRequests(pageData, executionPayload.ConsolidationRequests)
 		}
 	}
 
-	if epoch >= utils.Config.Chain.Config.CappellaForkEpoch {
+	if specs.CapellaForkEpoch != nil && uint64(epoch) >= *specs.CapellaForkEpoch {
 		pageData.BLSChangesCount = uint64(len(blsToExecChanges))
 		pageData.BLSChanges = make([]*models.SlotPageBLSChange, pageData.BLSChangesCount)
 		for i, blschange := range blsToExecChanges {
@@ -683,7 +713,7 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, assignments
 		}
 	}
 
-	if epoch >= utils.Config.Chain.Config.DenebForkEpoch {
+	if specs.DenebForkEpoch != nil && uint64(epoch) >= *specs.DenebForkEpoch {
 		pageData.BlobsCount = uint64(len(blobKzgCommitments))
 		pageData.Blobs = make([]*models.SlotPageBlob, pageData.BlobsCount)
 		for i := range blobKzgCommitments {
@@ -692,21 +722,6 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, assignments
 				KzgCommitment: blobKzgCommitments[i][:],
 			}
 			pageData.Blobs[i] = blobData
-		}
-	}
-
-	if epoch >= utils.Config.Chain.Config.ElectraForkEpoch {
-		pageData.ConsolidationsCount = uint64(len(consolidations))
-		pageData.Consolidations = make([]*models.SlotPageConsolidation, pageData.ConsolidationsCount)
-		for i := range consolidations {
-			consolidationData := &models.SlotPageConsolidation{
-				SourceIndex: uint64(consolidations[i].Message.SourceIndex),
-				SourceName:  services.GlobalBeaconService.GetValidatorName(uint64(consolidations[i].Message.SourceIndex)),
-				TargetIndex: uint64(consolidations[i].Message.TargetIndex),
-				TargetName:  services.GlobalBeaconService.GetValidatorName(uint64(consolidations[i].Message.TargetIndex)),
-				Epoch:       uint64(consolidations[i].Message.Epoch),
-			}
-			pageData.Consolidations[i] = consolidationData
 		}
 	}
 
@@ -740,7 +755,7 @@ func getSlotPageTransactions(pageData *models.SlotPageBlockData, tranactions []b
 			Type:  uint64(tx.Type()),
 		}
 		txData.DataLen = uint64(len(txData.Data))
-		txFrom, err := ethtypes.Sender(ethtypes.LatestSignerForChainID(tx.ChainId()), &tx)
+		txFrom, err := ethtypes.Sender(ethtypes.NewPragueSigner(tx.ChainId()), &tx)
 		if err != nil {
 			txData.From = "unknown"
 			logrus.Warnf("error decoding transaction sender 0x%x.%v: %v\n", pageData.BlockRoot, idx, err)
@@ -791,21 +806,21 @@ func getSlotPageTransactions(pageData *models.SlotPageBlockData, tranactions []b
 	}
 }
 
-func getSlotPageDepositReceipts(pageData *models.SlotPageBlockData, depositReceipts []*electra.DepositReceipt) {
-	pageData.DepositReceipts = make([]*models.SlotPageDepositReceipt, 0)
+func getSlotPageDepositRequests(pageData *models.SlotPageBlockData, depositRequests []*electra.DepositRequest) {
+	pageData.DepositRequests = make([]*models.SlotPageDepositRequest, 0)
 	validatorsMap := services.GlobalBeaconService.GetCachedValidatorPubkeyMap()
 
-	for _, depositReceipt := range depositReceipts {
-		receiptData := &models.SlotPageDepositReceipt{
-			PublicKey:       depositReceipt.Pubkey[:],
-			WithdrawalCreds: depositReceipt.WithdrawalCredentials[:],
-			Amount:          uint64(depositReceipt.Amount),
-			Signature:       depositReceipt.Signature[:],
-			Index:           depositReceipt.Index,
+	for _, depositRequest := range depositRequests {
+		receiptData := &models.SlotPageDepositRequest{
+			PublicKey:       depositRequest.Pubkey[:],
+			WithdrawalCreds: depositRequest.WithdrawalCredentials[:],
+			Amount:          uint64(depositRequest.Amount),
+			Signature:       depositRequest.Signature[:],
+			Index:           depositRequest.Index,
 		}
 
 		if validatorsMap != nil {
-			validator := validatorsMap[depositReceipt.Pubkey]
+			validator := validatorsMap[depositRequest.Pubkey]
 			if validator != nil {
 				receiptData.Exists = true
 				receiptData.ValidatorIndex = uint64(validator.Index)
@@ -813,13 +828,13 @@ func getSlotPageDepositReceipts(pageData *models.SlotPageBlockData, depositRecei
 			}
 		}
 
-		pageData.DepositReceipts = append(pageData.DepositReceipts, receiptData)
+		pageData.DepositRequests = append(pageData.DepositRequests, receiptData)
 	}
 
-	pageData.DepositReceiptsCount = uint64(len(pageData.DepositReceipts))
+	pageData.DepositRequestsCount = uint64(len(pageData.DepositRequests))
 }
 
-func getSlotPageWithdrawalRequests(pageData *models.SlotPageBlockData, withdrawalRequests []*electra.ExecutionLayerWithdrawalRequest) {
+func getSlotPageWithdrawalRequests(pageData *models.SlotPageBlockData, withdrawalRequests []*electra.WithdrawalRequest) {
 	pageData.WithdrawalRequests = make([]*models.SlotPageWithdrawalRequest, 0)
 
 	validatorsMap := services.GlobalBeaconService.GetCachedValidatorPubkeyMap()
@@ -844,4 +859,38 @@ func getSlotPageWithdrawalRequests(pageData *models.SlotPageBlockData, withdrawa
 	}
 
 	pageData.WithdrawalRequestsCount = uint64(len(pageData.WithdrawalRequests))
+}
+
+func getSlotPageConsolidationRequests(pageData *models.SlotPageBlockData, consolidationRequests []*electra.ConsolidationRequest) {
+	pageData.ConsolidationRequests = make([]*models.SlotPageConsolidationRequest, 0)
+
+	validatorsMap := services.GlobalBeaconService.GetCachedValidatorPubkeyMap()
+
+	for _, consolidationRequest := range consolidationRequests {
+		requestData := &models.SlotPageConsolidationRequest{
+			Address:      consolidationRequest.SourceAddress[:],
+			SourcePubkey: consolidationRequest.SourcePubkey[:],
+			TargetPubkey: consolidationRequest.TargetPubkey[:],
+		}
+
+		if validatorsMap != nil {
+			sourceValidator := validatorsMap[consolidationRequest.SourcePubkey]
+			if sourceValidator != nil {
+				requestData.SourceFound = true
+				requestData.SourceIndex = uint64(sourceValidator.Index)
+				requestData.SourceName = services.GlobalBeaconService.GetValidatorName(requestData.SourceIndex)
+			}
+
+			targetValidator := validatorsMap[consolidationRequest.TargetPubkey]
+			if targetValidator != nil {
+				requestData.TargetFound = true
+				requestData.TargetIndex = uint64(targetValidator.Index)
+				requestData.TargetName = services.GlobalBeaconService.GetValidatorName(requestData.TargetIndex)
+			}
+		}
+
+		pageData.ConsolidationRequests = append(pageData.ConsolidationRequests, requestData)
+	}
+
+	pageData.ConsolidationRequestsCount = uint64(len(pageData.ConsolidationRequests))
 }
