@@ -636,7 +636,7 @@ func (bs *ChainService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageIdx
 			}
 		}
 
-		if uint64(len(cachedMatches)) >= uint64(pageIdx+1)*uint64(pageSize) {
+		if uint64(len(cachedMatches)) > uint64(pageIdx+1)*uint64(pageSize) {
 			break
 		}
 	}
@@ -649,7 +649,7 @@ func (bs *ChainService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageIdx
 
 	cachedStart := pageIdx * uint64(pageSize)
 	cachedEnd := cachedStart + uint64(pageSize)
-	if cachedEnd+1 < cachedMatchesLen {
+	if cachedEnd+1 <= cachedMatchesLen {
 		cachedEnd++
 	}
 
@@ -702,12 +702,15 @@ func (bs *ChainService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageIdx
 		}
 	}
 
-	if resIdx >= int(pageSize) {
+	if resIdx > int(pageSize) {
 		return resBlocks
 	}
 
 	// load finalized slots from db
-	dbPage := pageIdx - cachedPages
+	dbPage := uint64(0)
+	if pageIdx > cachedPages {
+		dbPage = pageIdx - cachedPages
+	}
 	dbCacheOffset := uint64(pageSize) - (cachedMatchesLen % uint64(pageSize))
 	var dbBlocks []*dbtypes.AssignedSlot
 	if dbPage == 0 {

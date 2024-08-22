@@ -266,7 +266,12 @@ func buildIndexPageRecentBlocksData(pageData *models.IndexPageData, recentBlockC
 		WithOrphaned: 0,
 		WithMissing:  0,
 	}, 0, uint32(recentBlockCount), 0)
-	for i := 0; i < len(blocksData); i++ {
+	limit := len(blocksData)
+	if limit > recentBlockCount {
+		limit = recentBlockCount
+	}
+
+	for i := 0; i < limit; i++ {
 		blockData := blocksData[i].Block
 		if blockData == nil {
 			continue
@@ -330,6 +335,10 @@ func buildIndexPageRecentSlotsData(pageData *models.IndexPageData, firstSlot pha
 			pageData.RecentSlots = append(pageData.RecentSlots, slotData)
 			blockCount++
 			buildIndexPageSlotGraph(slotData, &maxOpenFork, openForks)
+
+			if blockCount >= uint64(slotLimit) {
+				break
+			}
 		}
 	}
 	pageData.RecentSlotCount = uint64(blockCount)
