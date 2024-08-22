@@ -221,7 +221,7 @@ func buildIndexPageData() (*models.IndexPageData, time.Duration) {
 	buildIndexPageRecentEpochsData(pageData, currentEpoch, finalizedEpoch, justifiedEpoch, recentEpochCount)
 
 	// load recent blocks
-	buildIndexPageRecentBlocksData(pageData, currentSlot, recentBlockCount)
+	buildIndexPageRecentBlocksData(pageData, recentBlockCount)
 
 	// load recent slots
 	buildIndexPageRecentSlotsData(pageData, currentSlot, recentSlotsCount)
@@ -257,14 +257,17 @@ func buildIndexPageRecentEpochsData(pageData *models.IndexPageData, currentEpoch
 	pageData.RecentEpochCount = uint64(len(pageData.RecentEpochs))
 }
 
-func buildIndexPageRecentBlocksData(pageData *models.IndexPageData, currentSlot phase0.Slot, recentBlockCount int) {
+func buildIndexPageRecentBlocksData(pageData *models.IndexPageData, recentBlockCount int) {
 	pageData.RecentBlocks = make([]*models.IndexPageDataBlocks, 0)
 
 	chainState := services.GlobalBeaconService.GetChainState()
 
-	blocksData := services.GlobalBeaconService.GetDbBlocks(uint64(currentSlot), int32(recentBlockCount), false, false)
+	blocksData := services.GlobalBeaconService.GetDbBlocksByFilter(&dbtypes.BlockFilter{
+		WithOrphaned: 0,
+		WithMissing:  0,
+	}, 0, uint32(recentBlockCount), 0)
 	for i := 0; i < len(blocksData); i++ {
-		blockData := blocksData[i]
+		blockData := blocksData[i].Block
 		if blockData == nil {
 			continue
 		}

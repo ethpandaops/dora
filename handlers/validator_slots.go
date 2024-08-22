@@ -104,7 +104,7 @@ func buildValidatorSlotsPageData(validator uint64, pageIdx uint64, pageSize uint
 		ProposerIndex: &validator,
 		WithOrphaned:  1,
 		WithMissing:   1,
-	}, pageIdx, uint32(pageSize))
+	}, pageIdx, uint32(pageSize), chainState.GetSpecs().SlotsPerEpoch)
 	haveMore := false
 	for idx, blockAssignment := range dbBlocks {
 		if idx >= int(pageSize) {

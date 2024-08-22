@@ -362,17 +362,6 @@ func (block *Block) GetDbConsolidationRequests(indexer *Indexer) []*dbtypes.Cons
 	return indexer.dbWriter.buildDbConsolidationRequests(block, orphaned, nil)
 }
 
-// GetExecutionExtraData returns the execution extra data of this block.
-func (block *Block) GetExecutionExtraData() []byte {
-	blockBody := block.GetBlock()
-	if blockBody == nil {
-		return []byte{}
-	}
-
-	data, _ := getBlockExecutionExtraData(blockBody)
-	return data
-}
-
 // GetForkId returns the fork ID of this block.
 func (block *Block) GetForkId() ForkKey {
 	return block.forkId
