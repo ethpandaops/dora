@@ -66,9 +66,10 @@ func (cs *ChainService) StartService() error {
 	// add consensus clients
 	for index, endpoint := range utils.Config.BeaconApi.Endpoints {
 		endpointConfig := &consensus.ClientConfig{
-			URL:     endpoint.Url,
-			Name:    endpoint.Name,
-			Headers: endpoint.Headers,
+			URL:        endpoint.Url,
+			Name:       endpoint.Name,
+			Headers:    endpoint.Headers,
+			DisableSSZ: utils.Config.KillSwitch.DisableSSZRequests,
 		}
 
 		if endpoint.Ssh != nil {
