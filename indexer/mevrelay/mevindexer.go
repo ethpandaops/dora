@@ -246,13 +246,18 @@ func (mev *MevIndexer) loadMevBlocksFromRelay(relay *types.MevRelayConfig) error
 	}
 
 	// parse blocks
-	mev.mevBlockCacheMutex.Lock()
-	defer mev.mevBlockCacheMutex.Unlock()
 	validatorSet := mev.beaconIndexer.GetCanonicalValidatorSet(nil)
+	if len(validatorSet) == 0 {
+		return fmt.Errorf("validator set is empty")
+	}
+
 	validatorMap := map[phase0.BLSPubKey]*v1.Validator{}
 	for _, validator := range validatorSet {
 		validatorMap[validator.Validator.PublicKey] = validator
 	}
+
+	mev.mevBlockCacheMutex.Lock()
+	defer mev.mevBlockCacheMutex.Unlock()
 
 	finalizedEpoch, _ := mev.beaconIndexer.GetBlockCacheState()
 	finalizedSlot := phase0.Slot(0)
