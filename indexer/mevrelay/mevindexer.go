@@ -57,6 +57,7 @@ func (mev *MevIndexer) StartUpdater() {
 	if mev.updaterRunning {
 		return
 	}
+
 	if utils.Config.MevIndexer.RefreshInterval == 0 {
 		utils.Config.MevIndexer.RefreshInterval = 10 * time.Minute
 	}
