@@ -163,8 +163,7 @@ func GetSlotsByRoots(roots [][]byte) map[phase0.Root]*dbtypes.Slot {
 		argIdx += 1
 	}
 
-	var sql strings.Builder
-	fmt.Fprintf(&sql,
+	sql := fmt.Sprintf(
 		`SELECT
 			root, slot, parent_root, state_root, status, proposer, graffiti, graffiti_text,
 			attestation_count, deposit_count, exit_count, withdraw_count, withdraw_amount, attester_slashing_count, 
@@ -177,7 +176,7 @@ func GetSlotsByRoots(roots [][]byte) map[phase0.Root]*dbtypes.Slot {
 	)
 
 	slots := []*dbtypes.Slot{}
-	err := ReaderDb.Select(&slots, sql.String(), args...)
+	err := ReaderDb.Select(&slots, sql, args...)
 	if err != nil {
 		logger.Errorf("Error while fetching block by roots: %v", err)
 		return nil
