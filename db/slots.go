@@ -6,6 +6,7 @@ import (
 	"math"
 	"strings"
 
+	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/jmoiron/sqlx"
 	"github.com/mitchellh/mapstructure"
@@ -83,38 +84,6 @@ func InsertMissingSlot(block *dbtypes.SlotHeader, tx *sqlx.Tx) error {
 	return nil
 }
 
-func GetSlots(firstSlot uint64, limit uint32, withMissing bool, withOrphaned bool) []*dbtypes.AssignedSlot {
-	var sql strings.Builder
-	fmt.Fprintf(&sql, `SELECT slots.slot, slots.proposer`)
-	blockFields := []string{
-		"state_root", "root", "slot", "proposer", "status", "parent_root", "graffiti", "graffiti_text",
-		"attestation_count", "deposit_count", "exit_count", "withdraw_count", "withdraw_amount", "attester_slashing_count",
-		"proposer_slashing_count", "bls_change_count", "eth_transaction_count", "eth_block_number", "eth_block_hash",
-		"eth_block_extra", "eth_block_extra_text", "sync_participation", "fork_id",
-	}
-	for _, blockField := range blockFields {
-		fmt.Fprintf(&sql, ", slots.%v AS \"block.%v\"", blockField, blockField)
-	}
-	fmt.Fprintf(&sql, ` FROM slots `)
-	fmt.Fprintf(&sql, ` WHERE slot <= $1 `)
-
-	if !withMissing {
-		fmt.Fprintf(&sql, ` AND slots.status != 0 `)
-	}
-	if !withOrphaned {
-		fmt.Fprintf(&sql, ` AND slots.status != 2 `)
-	}
-	fmt.Fprintf(&sql, ` ORDER BY slot DESC LIMIT $2`)
-
-	rows, err := ReaderDb.Query(sql.String(), firstSlot, limit)
-	if err != nil {
-		logger.WithError(err).Errorf("Error while fetching slots: %v", sql.String())
-		return nil
-	}
-
-	return parseAssignedSlots(rows, blockFields, 2)
-}
-
 func GetSlotsRange(firstSlot uint64, lastSlot uint64, withMissing bool, withOrphaned bool) []*dbtypes.AssignedSlot {
 	var sql strings.Builder
 	fmt.Fprintf(&sql, `SELECT slots.slot, slots.proposer`)
@@ -182,6 +151,43 @@ func GetSlotByRoot(root []byte) *dbtypes.Slot {
 		return nil
 	}
 	return &block
+}
+
+func GetSlotsByRoots(roots [][]byte) map[phase0.Root]*dbtypes.Slot {
+	argIdx := 0
+	args := make([]any, len(roots))
+	plcList := make([]string, len(roots))
+	for i, root := range roots {
+		plcList[i] = fmt.Sprintf("$%v", argIdx+1)
+		args[argIdx] = root
+		argIdx += 1
+	}
+
+	sql := fmt.Sprintf(
+		`SELECT
+			root, slot, parent_root, state_root, status, proposer, graffiti, graffiti_text,
+			attestation_count, deposit_count, exit_count, withdraw_count, withdraw_amount, attester_slashing_count, 
+			proposer_slashing_count, bls_change_count, eth_transaction_count, eth_block_number, eth_block_hash,
+			eth_block_extra, eth_block_extra_text, sync_participation, fork_id
+		FROM slots
+		WHERE root IN (%v)
+		ORDER BY slot DESC`,
+		strings.Join(plcList, ", "),
+	)
+
+	slots := []*dbtypes.Slot{}
+	err := ReaderDb.Select(&slots, sql, args...)
+	if err != nil {
+		logger.Errorf("Error while fetching block by roots: %v", err)
+		return nil
+	}
+
+	slotMap := make(map[phase0.Root]*dbtypes.Slot)
+	for _, slot := range slots {
+		slotMap[phase0.Root(slot.Root)] = slot
+	}
+
+	return slotMap
 }
 
 func GetBlockHeadByRoot(root []byte) *dbtypes.BlockHead {
