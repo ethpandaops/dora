@@ -94,7 +94,7 @@ func (mev *MevIndexer) runUpdater() error {
 		_, finalizedEpoch := mev.beaconIndexer.GetBlockCacheState()
 		finalizedSlot := phase0.Slot(0)
 		if finalizedEpoch > 0 {
-			finalizedSlot = mev.chainState.EpochToSlot(finalizedEpoch) - 1
+			finalizedSlot = mev.chainState.EpochToSlot(finalizedEpoch)
 		}
 		loadedCount := uint64(0)
 		for {
@@ -168,24 +168,13 @@ func (mev *MevIndexer) runUpdater() error {
 	finalizedEpoch, _ := mev.beaconIndexer.GetBlockCacheState()
 	finalizedSlot := phase0.Slot(0)
 	if finalizedEpoch > 0 {
-		finalizedSlot = mev.chainState.EpochToSlot(finalizedEpoch) - 1
+		finalizedSlot = mev.chainState.EpochToSlot(finalizedEpoch)
 	}
 
-	updatedMevBlocks = []*dbtypes.MevBlock{}
 	for hash, cachedMevBlock := range mev.mevBlockCache {
 		if cachedMevBlock.block.SlotNumber < uint64(finalizedSlot) {
-			proposed := mev.getMevBlockProposedStatus(cachedMevBlock.block, finalizedSlot)
-			if cachedMevBlock.block.Proposed != proposed {
-				cachedMevBlock.block.Proposed = proposed
-				updatedMevBlocks = append(updatedMevBlocks, cachedMevBlock.block)
-			}
-
 			delete(mev.mevBlockCache, hash)
 		}
-	}
-	err = mev.updateMevBlocks(updatedMevBlocks)
-	if err != nil {
-		return err
 	}
 
 	mev.lastRefresh = time.Now()
@@ -382,19 +371,19 @@ func (mev *MevIndexer) loadMevBlocksFromRelay(relay *types.MevRelayConfig) error
 
 func (mev *MevIndexer) getMevBlockProposedStatus(mevBlock *dbtypes.MevBlock, finalizedSlot phase0.Slot) uint8 {
 	proposed := uint8(0)
-	if mevBlock.SlotNumber > uint64(finalizedSlot) {
+	if mevBlock.SlotNumber >= uint64(finalizedSlot) {
 		for _, block := range mev.beaconIndexer.GetBlocksByExecutionBlockHash(phase0.Hash32(mevBlock.BlockHash)) {
-			if proposed != 1 && mev.beaconIndexer.IsCanonicalBlock(block, nil) {
+			if mev.beaconIndexer.IsCanonicalBlock(block, nil) {
 				proposed = 1
-			} else {
+			} else if proposed != 1 {
 				proposed = 2
 			}
 		}
 	} else {
 		for _, block := range db.GetSlotsByBlockHash(mevBlock.BlockHash) {
-			if proposed != 1 && block.Status == dbtypes.Canonical {
+			if block.Status == dbtypes.Canonical {
 				proposed = 1
-			} else {
+			} else if proposed != 1 {
 				proposed = 2
 			}
 		}
