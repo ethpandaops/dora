@@ -154,15 +154,6 @@ func GetSlotByRoot(root []byte) *dbtypes.Slot {
 }
 
 func GetSlotsByRoots(roots [][]byte) map[phase0.Root]*dbtypes.Slot {
-	var sql strings.Builder
-	fmt.Fprintf(&sql, `SELECT
-		root, slot, parent_root, state_root, status, proposer, graffiti, graffiti_text,
-		attestation_count, deposit_count, exit_count, withdraw_count, withdraw_amount, attester_slashing_count, 
-		proposer_slashing_count, bls_change_count, eth_transaction_count, eth_block_number, eth_block_hash,
-		eth_block_extra, eth_block_extra_text, sync_participation, fork_id
-	FROM slots
-	WHERE root IN `)
-
 	argIdx := 0
 	args := make([]any, len(roots))
 	plcList := make([]string, len(roots))
@@ -171,14 +162,24 @@ func GetSlotsByRoots(roots [][]byte) map[phase0.Root]*dbtypes.Slot {
 		args[argIdx] = root
 		argIdx += 1
 	}
-	fmt.Fprintf(&sql, "(%v)", strings.Join(plcList, ", "))
 
-	fmt.Fprintf(&sql, " ORDER BY slot DESC")
+	var sql strings.Builder
+	fmt.Fprintf(&sql,
+		`SELECT
+			root, slot, parent_root, state_root, status, proposer, graffiti, graffiti_text,
+			attestation_count, deposit_count, exit_count, withdraw_count, withdraw_amount, attester_slashing_count, 
+			proposer_slashing_count, bls_change_count, eth_transaction_count, eth_block_number, eth_block_hash,
+			eth_block_extra, eth_block_extra_text, sync_participation, fork_id
+		FROM slots
+		WHERE root IN (%v)
+		ORDER BY slot DESC`,
+		strings.Join(plcList, ", "),
+	)
 
 	slots := []*dbtypes.Slot{}
 	err := ReaderDb.Select(&slots, sql.String(), args...)
 	if err != nil {
-		//logger.Errorf("Error while fetching block by root 0x%x: %v", root, err)
+		logger.Errorf("Error while fetching block by roots: %v", err)
 		return nil
 	}
 

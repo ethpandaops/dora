@@ -407,11 +407,12 @@ func (bs *ChainService) GetDbBlocksForSlots(firstSlot uint64, slotLimit uint32, 
 		// load selected blocks from db
 		if len(blockRoots) > 0 {
 			blockMap := db.GetSlotsByRoots(blockRoots)
-
-			for idx, blockRoot := range blockRoots {
-				if dbBlock, ok := blockMap[phase0.Root(blockRoot)]; ok {
-					dbBlock.Status = resBlocks[blockRootsIdx[idx]].Status
-					resBlocks[blockRootsIdx[idx]] = dbBlock
+			if blockMap != nil {
+				for idx, blockRoot := range blockRoots {
+					if dbBlock, ok := blockMap[phase0.Root(blockRoot)]; ok {
+						dbBlock.Status = resBlocks[blockRootsIdx[idx]].Status
+						resBlocks[blockRootsIdx[idx]] = dbBlock
+					}
 				}
 			}
 		}
@@ -688,16 +689,17 @@ func (bs *ChainService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageIdx
 	// load pruned blocks from database
 	if len(blockRoots) > 0 {
 		blockMap := db.GetSlotsByRoots(blockRoots)
+		if blockMap != nil {
+			for idx, blockRoot := range blockRoots {
+				if dbBlock, ok := blockMap[phase0.Root(blockRoot)]; ok {
 
-		for idx, blockRoot := range blockRoots {
-			if dbBlock, ok := blockMap[phase0.Root(blockRoot)]; ok {
+					dbBlock.Status = dbtypes.Canonical
+					if cachedMatches[blockRootsCachedId[idx]].orphaned {
+						dbBlock.Status = dbtypes.Orphaned
+					}
 
-				dbBlock.Status = dbtypes.Canonical
-				if cachedMatches[blockRootsCachedId[idx]].orphaned {
-					dbBlock.Status = dbtypes.Orphaned
+					resBlocks[blockRootsIdx[idx]].Block = dbBlock
 				}
-
-				resBlocks[blockRootsIdx[idx]].Block = dbBlock
 			}
 		}
 	}
