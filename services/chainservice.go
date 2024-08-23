@@ -247,10 +247,18 @@ type ConsensusClientFork struct {
 
 func (bs *ChainService) GetConsensusClientForks() []*ConsensusClientFork {
 	headForks := []*ConsensusClientFork{}
+	chainState := bs.consensusPool.GetChainState()
 	for _, client := range bs.beaconIndexer.GetAllClients() {
 		cHeadSlot, cHeadRoot := client.GetClient().GetLastHead()
 		var matchingFork *ConsensusClientFork
 		for _, fork := range headForks {
+
+			if cHeadSlot < chainState.GetFinalizedSlot() && bytes.Equal(fork.Root[:], cHeadRoot[:]) {
+				// TODO: find a more elgant way to group forks for finalized blocks
+				matchingFork = fork
+				break
+			}
+
 			isInChain, _ := bs.beaconIndexer.GetBlockDistance(cHeadRoot, fork.Root)
 			if isInChain {
 				matchingFork = fork
