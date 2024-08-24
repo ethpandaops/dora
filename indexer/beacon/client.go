@@ -363,6 +363,8 @@ func (c *Client) processBlock(slot phase0.Slot, root phase0.Root, header *phase0
 	}
 
 	if slot >= finalizedSlot && isNew {
+		c.indexer.blockCache.addBlockToParentMap(block)
+
 		// fork detection
 		err2 := c.indexer.forkCache.processBlock(block)
 		if err2 != nil {

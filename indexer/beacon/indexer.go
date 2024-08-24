@@ -318,6 +318,7 @@ func (indexer *Indexer) StartIndexer() {
 		}
 
 		block.SetHeader(header)
+		indexer.blockCache.addBlockToParentMap(block)
 
 		blockBody, err := unmarshalVersionedSignedBeaconBlockSSZ(indexer.dynSsz, dbBlock.BlockVer, dbBlock.BlockSSZ)
 		if err != nil {
