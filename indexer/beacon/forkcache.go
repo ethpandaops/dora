@@ -206,97 +206,9 @@ func (cache *forkCache) setFinalizedEpoch(finalizedSlot phase0.Slot, justifiedRo
 	}
 }
 
-// checkForkDistance checks the distance between two blocks in a fork and returns the base block and distances.
-// If the fork happened before the latest finalized slot, only the side of the fork that does not include the finalized block gets returned.
-func (cache *forkCache) checkForkDistance(block1 *Block, block2 *Block, parentsMap map[phase0.Root]bool) (baseBlock *Block, block1Distance uint64, leafBlock1 *Block, block2Distance uint64, leafBlock2 *Block) {
-	finalizedSlot := cache.indexer.consensusPool.GetChainState().GetFinalizedSlot()
-	_, finalizedRoot := cache.indexer.consensusPool.GetChainState().GetFinalizedCheckpoint()
-	leafBlock1 = block1
-	leafBlock2 = block2
-
-	var block1IsFinalized, block2IsFinalized bool
-
-	for {
-		parentsMap[block1.Root] = true
-		parentsMap[block2.Root] = true
-
-		if bytes.Equal(block1.Root[:], block2.Root[:]) {
-			baseBlock = block1
-			return
-		}
-
-		if !block1IsFinalized && bytes.Equal(block1.Root[:], finalizedRoot[:]) {
-			block1IsFinalized = true
-		}
-
-		if !block2IsFinalized && bytes.Equal(block2.Root[:], finalizedRoot[:]) {
-			block2IsFinalized = true
-		}
-
-		if block1.Slot <= finalizedSlot && block2.Slot <= finalizedSlot {
-			if block1IsFinalized {
-				baseBlock = block2
-				leafBlock1 = nil
-				return
-			}
-			if block2IsFinalized {
-				baseBlock = block1
-				leafBlock2 = nil
-				return
-			}
-
-			break
-		}
-
-		block1Slot := block1.Slot
-		block2Slot := block2.Slot
-
-		if block1Slot <= block2Slot && !block2IsFinalized {
-			leafBlock2 = block2
-			parentRoot := block2.GetParentRoot()
-			if parentRoot == nil {
-				break
-			}
-
-			block2 = cache.indexer.blockCache.getBlockByRoot(*parentRoot)
-			if block2 == nil {
-				dbBlockHead := db.GetBlockHeadByRoot(parentRoot[:])
-				if dbBlockHead != nil {
-					block2 = newBlock(cache.indexer.dynSsz, phase0.Root(dbBlockHead.Root), phase0.Slot(dbBlockHead.Slot))
-					block2.isInFinalizedDb = true
-					block2.parentRoot = (*phase0.Root)(dbBlockHead.ParentRoot)
-				} else {
-					break
-				}
-			}
-
-			block2Distance++
-		}
-
-		if block2Slot <= block1Slot && !block1IsFinalized {
-			leafBlock1 = block1
-			parentRoot := block1.GetParentRoot()
-			if parentRoot == nil {
-				break
-			}
-
-			block1 = cache.indexer.blockCache.getBlockByRoot(*parentRoot)
-			if block1 == nil {
-				dbBlockHead := db.GetBlockHeadByRoot(parentRoot[:])
-				if dbBlockHead != nil {
-					block1 = newBlock(cache.indexer.dynSsz, phase0.Root(dbBlockHead.Root), phase0.Slot(dbBlockHead.Slot))
-					block1.isInFinalizedDb = true
-					block1.parentRoot = (*phase0.Root)(dbBlockHead.ParentRoot)
-				} else {
-					break
-				}
-			}
-
-			block1Distance++
-		}
-	}
-
-	return nil, 0, nil, 0, nil
+type newForkInfo struct {
+	fork        *Fork
+	updateRoots [][]byte
 }
 
 // processBlock processes a block and detects new forks if any.
@@ -305,160 +217,170 @@ func (cache *forkCache) processBlock(block *Block) error {
 	cache.forkProcessLock.Lock()
 	defer cache.forkProcessLock.Unlock()
 
-	parentForkId := ForkKey(1)
-	// get fork id from parent block
 	parentRoot := block.GetParentRoot()
-	if parentRoot != nil {
-		parentBlock := cache.indexer.blockCache.getBlockByRoot(*parentRoot)
-		if parentBlock == nil {
-			blockHead := db.GetBlockHeadByRoot((*parentRoot)[:])
-			if blockHead != nil {
-				parentForkId = ForkKey(blockHead.ForkId)
+	if parentRoot == nil {
+		return fmt.Errorf("parent root not found for block %v", block.Slot)
+	}
+
+	chainState := cache.indexer.consensusPool.GetChainState()
+
+	// get fork id from parent block
+	parentForkId := ForkKey(1)
+	parentSlot := phase0.Slot(0)
+	parentIsProcessed := false
+	parentIsFinalized := false
+
+	parentBlock := cache.indexer.blockCache.getBlockByRoot(*parentRoot)
+	if parentBlock == nil {
+		blockHead := db.GetBlockHeadByRoot((*parentRoot)[:])
+		if blockHead != nil {
+			parentForkId = ForkKey(blockHead.ForkId)
+			parentSlot = phase0.Slot(blockHead.Slot)
+			parentIsProcessed = true
+			parentIsFinalized = parentSlot < chainState.GetFinalizedSlot()
+		}
+	} else if parentBlock.fokChecked {
+		parentForkId = parentBlock.forkId
+		parentSlot = parentBlock.Slot
+		parentIsProcessed = true
+		parentIsFinalized = parentBlock.Slot < chainState.GetFinalizedSlot()
+	}
+
+	// check if this block introduces a new fork, it does so if:
+	// 1. the parent is known & processed and has 1 more child block besides this one
+	// 2. the current block has 2 or more child blocks (multiple forks possible)
+	newForks := []*newForkInfo{}
+	currentForkId := parentForkId
+
+	// check scenario 1
+	if parentIsProcessed {
+		otherChildren := []*Block{}
+		for _, child := range cache.indexer.blockCache.getBlocksByParentRoot(*parentRoot) {
+			if child == block {
+				continue
 			}
-		} else if parentBlock.fokChecked {
-			parentForkId = parentBlock.forkId
+
+			otherChildren = append(otherChildren, child)
+		}
+
+		if len(otherChildren) > 0 {
+			logbuf := strings.Builder{}
+
+			// parent already has a children, so this block introduces a new fork
+			if cache.getForkByLeaf(block.Root) != nil {
+				cache.indexer.logger.Warnf("fork already exists for leaf %v [%v] (processing %v, scenario 1)", block.Slot, block.Root.String(), block.Slot)
+			} else {
+				cache.lastForkId++
+				fork := newFork(cache.lastForkId, parentSlot, *parentRoot, block, parentForkId)
+				cache.addFork(fork)
+
+				currentForkId = fork.forkId
+				newFork := &newForkInfo{
+					fork: fork,
+				}
+				newForks = append(newForks, newFork)
+
+				fmt.Fprintf(&logbuf, ", head1: %v [%v, ? upd]", block.Slot, block.Root.String())
+			}
+
+			if !parentIsFinalized && len(otherChildren) == 1 {
+				// parent is not finalized and it's the first fork based on this parent
+				// so we need to create another fork for the other chain and update the fork ids of the blocks
+
+				if cache.getForkByLeaf(block.Root) != nil {
+					cache.indexer.logger.Warnf("fork already exists for leaf %v [%v] (processing %v, scenario 1)", block.Slot, block.Root.String(), block.Slot)
+				} else {
+
+					cache.lastForkId++
+					otherFork := newFork(cache.lastForkId, parentSlot, *parentRoot, otherChildren[0], parentForkId)
+					cache.addFork(otherFork)
+
+					newFork := &newForkInfo{
+						fork:        otherFork,
+						updateRoots: cache.updateForkBlocks(otherChildren[0], otherFork.forkId, false),
+					}
+					newForks = append(newForks, newFork)
+
+					fmt.Fprintf(&logbuf, ", head2: %v [%v, %v upd]", newFork.fork.leafSlot, newFork.fork.leafRoot.String(), len(newFork.updateRoots))
+				}
+			}
+
+			if logbuf.Len() > 0 {
+				cache.indexer.logger.Infof("new fork leaf detected (base %v [%v]%v)", parentSlot, parentRoot.String(), logbuf.String())
+			}
 		}
 	}
 
-	forkBlocks := cache.indexer.blockCache.getForkBlocks(parentForkId)
-	sort.Slice(forkBlocks, func(i, j int) bool {
-		return forkBlocks[i].Slot > forkBlocks[j].Slot
-	})
-
-	var fork1, fork2 *Fork
-	var fork1Roots, fork2Roots [][]byte
-	currentForkId := parentForkId
-
-	parentsMap := map[phase0.Root]bool{}
-	for _, forkBlock := range forkBlocks {
-		if forkBlock == block || parentsMap[forkBlock.Root] {
+	// check scenario 2
+	childBlocks := make([]*Block, 0)
+	for _, child := range cache.indexer.blockCache.getBlocksByParentRoot(block.Root) {
+		if !child.fokChecked {
 			continue
 		}
 
-		baseBlock, distance1, leaf1, distance2, leaf2 := cache.checkForkDistance(block, forkBlock, parentsMap)
-		if baseBlock != nil && distance1 > 0 && distance2 > 0 {
-			// new fork detected
+		childBlocks = append(childBlocks, child)
+	}
 
-			if leaf1 != nil {
-				if cache.getForkByLeaf(leaf1.Root) != nil {
-					cache.indexer.logger.Warnf("fork already exists for leaf %v [%v] (processing %v)", leaf1.Slot, leaf1.Root.String(), block.Slot)
-				} else {
-					cache.lastForkId++
-					fork1 = newFork(cache.lastForkId, baseBlock, leaf1, parentForkId)
-					cache.addFork(fork1)
-					fork1Roots = cache.updateNewForkBlocks(fork1, forkBlocks, block)
+	if len(childBlocks) > 1 {
+		// one or more forks detected
+		logbuf := strings.Builder{}
+		for idx, child := range childBlocks {
+			if cache.getForkByLeaf(child.Root) != nil {
+				cache.indexer.logger.Warnf("fork already exists for leaf %v [%v] (processing %v, scenario 2)", child.Slot, child.Root.String(), block.Slot)
+			} else {
+				cache.lastForkId++
+				fork := newFork(cache.lastForkId, block.Slot, block.Root, child, currentForkId)
+				cache.addFork(fork)
+
+				newFork := &newForkInfo{
+					fork:        fork,
+					updateRoots: cache.updateForkBlocks(child, fork.forkId, false),
 				}
-			}
+				newForks = append(newForks, newFork)
 
-			if leaf2 != nil {
-				if cache.getForkByLeaf(leaf2.Root) != nil {
-					cache.indexer.logger.Warnf("fork already exists for leaf %v [%v] (processing %v)", leaf2.Slot, leaf2.Root.String(), block.Slot)
-				} else {
-					cache.lastForkId++
-					fork2 = newFork(cache.lastForkId, baseBlock, leaf2, parentForkId)
-					cache.addFork(fork2)
-					fork2Roots = cache.updateNewForkBlocks(fork2, forkBlocks, nil)
-				}
+				fmt.Fprintf(&logbuf, ", head%v: %v [%v, %v upd]", idx+1, newFork.fork.leafSlot, newFork.fork.leafRoot.String(), len(newFork.updateRoots))
 			}
+		}
 
-			if parentForkId > 0 {
-				parentFork := cache.getForkById(parentForkId)
-				if parentFork != nil {
-					parentFork.headBlock = baseBlock
-				}
-			}
-
-			logbuf := strings.Builder{}
-			fmt.Fprintf(&logbuf, "new fork detected (base %v [%v]", baseBlock.Slot, baseBlock.Root.String())
-			if leaf1 != nil {
-				fmt.Fprintf(&logbuf, ", head1: %v [%v]", leaf1.Slot, leaf1.Root.String())
-			}
-			if leaf2 != nil {
-				fmt.Fprintf(&logbuf, ", head2: %v [%v]", leaf2.Slot, leaf2.Root.String())
-			}
-			fmt.Fprintf(&logbuf, ")")
-			cache.indexer.logger.Infof(logbuf.String())
-
-			if fork1 != nil {
-				currentForkId = fork1.forkId
-			}
-
-			break
+		if logbuf.Len() > 0 {
+			cache.indexer.logger.Infof("new child forks detected (base %v [%v]%v)", block.Slot, block.Root.String(), logbuf.String())
 		}
 	}
 
-	updatedBlocks := [][]byte{}
-	if currentForkId != 0 {
-		// apply fork id to all blocks building on top of this block
-		nextBlock := block
+	// update fork ids of all blocks building on top of this block
+	updatedBlocks := cache.updateForkBlocks(block, currentForkId, true)
 
-		for {
-			nextBlocks := cache.indexer.blockCache.getBlocksByParentRoot(nextBlock.Root)
-			if len(nextBlocks) > 1 {
-				// sub-fork detected, but that's probably already handled
-				// TODO (low prio): check if the sub-fork really exists?
-				break
-			}
-
-			if len(nextBlocks) == 0 {
-				break
-			}
-
-			nextBlock = nextBlocks[0]
-
-			if !nextBlock.fokChecked {
-				break
-			}
-
-			if nextBlock.forkId == currentForkId {
-				break
-			}
-
-			nextBlock.forkId = currentForkId
-			updatedBlocks = append(updatedBlocks, nextBlock.Root[:])
-		}
-
-		fork := cache.getForkById(currentForkId)
-		if fork != nil && (fork.headBlock == nil || fork.headBlock.Slot < nextBlock.Slot) {
-			fork.headBlock = nextBlock
-		}
-	}
-
+	// set detected fork id to the block
 	block.forkId = currentForkId
 	block.fokChecked = true
 
-	if fork1 != nil || fork2 != nil || len(updatedBlocks) > 0 {
+	// update fork head block if needed
+	fork := cache.getForkById(currentForkId)
+	if fork != nil {
+		lastBlock := block
+		if len(updatedBlocks) > 0 {
+			lastBlock = cache.indexer.blockCache.getBlockByRoot(phase0.Root(updatedBlocks[len(updatedBlocks)-1]))
+		}
+		if lastBlock != nil && (fork.headBlock == nil || lastBlock.Slot > fork.headBlock.Slot) {
+			fork.headBlock = lastBlock
+		}
+	}
+
+	// persist new forks and updated blocks to the database
+	if len(newForks) > 0 || len(updatedBlocks) > 0 {
 		err := db.RunDBTransaction(func(tx *sqlx.Tx) error {
-			if fork1 != nil {
-				err := db.InsertFork(fork1.toDbFork(), tx)
+			for _, newFork := range newForks {
+				err := db.InsertFork(newFork.fork.toDbFork(), tx)
 				if err != nil {
 					return err
 				}
 
-				if len(fork1Roots) > 0 {
-					err = db.UpdateUnfinalizedBlockForkId(fork1Roots, uint64(fork1.forkId), tx)
+				if len(newFork.updateRoots) > 0 {
+					err = db.UpdateUnfinalizedBlockForkId(newFork.updateRoots, uint64(newFork.fork.forkId), tx)
 					if err != nil {
 						return err
 					}
 				}
-
-				cache.indexer.logger.Infof("fork %v created (base %v [%v], head %v [%v], updated blocks: %v)", fork1.forkId, fork1.baseSlot, fork1.baseRoot.String(), fork1.leafSlot, fork1.leafRoot.String(), len(fork1Roots))
-			}
-
-			if fork2 != nil {
-				err := db.InsertFork(fork2.toDbFork(), tx)
-				if err != nil {
-					return err
-				}
-
-				if len(fork2Roots) > 0 {
-					err = db.UpdateUnfinalizedBlockForkId(fork2Roots, uint64(fork2.forkId), tx)
-					if err != nil {
-						return err
-					}
-				}
-
-				cache.indexer.logger.Infof("fork %v created (base %v [%v], head %v [%v], updated blocks: %v)", fork2.forkId, fork2.baseSlot, fork2.baseRoot.String(), fork2.leafSlot, fork2.leafRoot.String(), len(fork2Roots))
 			}
 
 			if len(updatedBlocks) > 0 {
@@ -485,27 +407,34 @@ func (cache *forkCache) processBlock(block *Block) error {
 	return nil
 }
 
-// updateNewForkBlocks updates the fork blocks with the given fork. returns the roots of the updated blocks.
-func (cache *forkCache) updateNewForkBlocks(fork *Fork, blocks []*Block, ignoreBlock *Block) [][]byte {
-	updatedRoots := [][]byte{}
+// updateForkBlocks updates the blocks building on top of the given block in the fork and returns the updated block roots.
+func (cache *forkCache) updateForkBlocks(startBlock *Block, forkId ForkKey, skipStartBlock bool) [][]byte {
+	blockRoots := [][]byte{}
 
-	for _, block := range blocks {
-		if block.Slot <= fork.baseSlot {
-			return updatedRoots
-		}
-
-		if block == ignoreBlock {
-			continue
-		}
-
-		isInFork, _ := cache.indexer.blockCache.getCanonicalDistance(fork.leafRoot, block.Root, 0)
-		if !isInFork {
-			continue
-		}
-
-		block.forkId = fork.forkId
-		updatedRoots = append(updatedRoots, block.Root[:])
+	if !skipStartBlock {
+		blockRoots = append(blockRoots, startBlock.Root[:])
 	}
 
-	return updatedRoots
+	for {
+		nextBlocks := cache.indexer.blockCache.getBlocksByParentRoot(startBlock.Root)
+		if len(nextBlocks) != 1 {
+			break
+		}
+
+		nextBlock := nextBlocks[0]
+		if !nextBlock.fokChecked {
+			break
+		}
+
+		if nextBlock.forkId == forkId {
+			break
+		}
+
+		nextBlock.forkId = forkId
+		blockRoots = append(blockRoots, nextBlock.Root[:])
+
+		startBlock = nextBlock
+	}
+
+	return blockRoots
 }
