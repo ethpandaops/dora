@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"runtime/debug"
+	"strings"
 	"time"
 
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
@@ -105,6 +106,25 @@ func (c *Client) startClientLoop() {
 	}
 }
 
+func (c *Client) formatProcessingTimes(processingTimes []time.Duration) string {
+	if len(processingTimes) == 0 {
+		return ""
+	}
+
+	str := strings.Builder{}
+	str.WriteString(" (")
+	for i, pt := range processingTimes {
+		if i > 0 {
+			str.WriteString(", ")
+		}
+
+		str.WriteString(fmt.Sprintf("%v ms", pt.Milliseconds()))
+	}
+	str.WriteString(")")
+
+	return str.String()
+}
+
 // runClientLoop runs the client event processing subroutine.
 func (c *Client) runClientLoop() error {
 	// 1 - load & process head block
@@ -116,7 +136,7 @@ func (c *Client) runClientLoop() error {
 
 	c.headRoot = headRoot
 
-	headBlock, isNew, err := c.processBlock(headSlot, headRoot, nil)
+	headBlock, isNew, processingTimes, err := c.processBlock(headSlot, headRoot, nil)
 	if err != nil {
 		return fmt.Errorf("failed processing head block: %v", err)
 	}
@@ -126,9 +146,9 @@ func (c *Client) runClientLoop() error {
 	}
 
 	if isNew {
-		c.logger.Infof("received block %v:%v [0x%x] head", c.client.GetPool().GetChainState().EpochOfSlot(headSlot), headSlot, headRoot)
+		c.logger.Infof("received block %v:%v [0x%x] head %v", c.client.GetPool().GetChainState().EpochOfSlot(headSlot), headSlot, headRoot, c.formatProcessingTimes(processingTimes))
 	} else {
-		c.logger.Debugf("received known block %v:%v [0x%x] head", c.client.GetPool().GetChainState().EpochOfSlot(headSlot), headSlot, headRoot)
+		c.logger.Debugf("received known block %v:%v [0x%x] head %v", c.client.GetPool().GetChainState().EpochOfSlot(headSlot), headSlot, headRoot, c.formatProcessingTimes(processingTimes))
 	}
 
 	// 2 - backfill old blocks up to the finalization checkpoint or known in cache
@@ -263,7 +283,7 @@ func (c *Client) processHeadEvent(headEvent *v1.HeadEvent) error {
 
 // processStreamBlock processes a block received from the stream (either via block or head events).
 func (c *Client) processStreamBlock(slot phase0.Slot, root phase0.Root) (*Block, error) {
-	block, isNew, err := c.processBlock(slot, root, nil)
+	block, isNew, processingTimes, err := c.processBlock(slot, root, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -271,9 +291,9 @@ func (c *Client) processStreamBlock(slot phase0.Slot, root phase0.Root) (*Block,
 	chainState := c.client.GetPool().GetChainState()
 
 	if isNew {
-		c.logger.Infof("received block %v:%v [0x%x] stream", chainState.EpochOfSlot(block.Slot), block.Slot, block.Root[:])
+		c.logger.Infof("received block %v:%v [0x%x] stream %v", chainState.EpochOfSlot(block.Slot), block.Slot, block.Root[:], c.formatProcessingTimes(processingTimes))
 	} else {
-		c.logger.Debugf("received known block %v:%v [0x%x] stream", chainState.EpochOfSlot(block.Slot), block.Slot, block.Root[:])
+		c.logger.Debugf("received known block %v:%v [0x%x] stream %v", chainState.EpochOfSlot(block.Slot), block.Slot, block.Root[:], c.formatProcessingTimes(processingTimes))
 	}
 
 	return block, nil
@@ -323,9 +343,10 @@ func (c *Client) processReorg(oldHead *Block, newHead *Block) error {
 }
 
 // processBlock processes a block (from stream & polling).
-func (c *Client) processBlock(slot phase0.Slot, root phase0.Root, header *phase0.SignedBeaconBlockHeader) (block *Block, isNew bool, err error) {
+func (c *Client) processBlock(slot phase0.Slot, root phase0.Root, header *phase0.SignedBeaconBlockHeader) (block *Block, isNew bool, processingTimes []time.Duration, err error) {
 	chainState := c.client.GetPool().GetChainState()
 	finalizedSlot := chainState.GetFinalizedSlot()
+	processingTimes = make([]time.Duration, 3)
 
 	if slot < finalizedSlot {
 		// block is in finalized epoch
@@ -349,6 +370,11 @@ func (c *Client) processBlock(slot phase0.Slot, root phase0.Root, header *phase0
 			return header, nil
 		}
 
+		t1 := time.Now()
+		defer func() {
+			processingTimes[0] += time.Since(t1)
+		}()
+
 		return LoadBeaconHeader(c.getContext(), c, root)
 	})
 	if err != nil {
@@ -356,6 +382,12 @@ func (c *Client) processBlock(slot phase0.Slot, root phase0.Root, header *phase0
 	}
 
 	isNew, err = block.EnsureBlock(func() (*spec.VersionedSignedBeaconBlock, error) {
+
+		t1 := time.Now()
+		defer func() {
+			processingTimes[0] += time.Since(t1)
+		}()
+
 		return LoadBeaconBlock(c.getContext(), c, root)
 	})
 	if err != nil {
@@ -364,6 +396,7 @@ func (c *Client) processBlock(slot phase0.Slot, root phase0.Root, header *phase0
 
 	if slot >= finalizedSlot && isNew {
 		c.indexer.blockCache.addBlockToParentMap(block)
+		t1 := time.Now()
 
 		// fork detection
 		err2 := c.indexer.forkCache.processBlock(block)
@@ -378,6 +411,9 @@ func (c *Client) processBlock(slot phase0.Slot, root phase0.Root, header *phase0
 			return
 		}
 
+		processingTimes[1] = time.Since(t1)
+		t1 = time.Now()
+
 		// write to db
 		err = db.RunDBTransaction(func(tx *sqlx.Tx) error {
 			err := db.InsertUnfinalizedBlock(dbBlock, tx)
@@ -390,6 +426,8 @@ func (c *Client) processBlock(slot phase0.Slot, root phase0.Root, header *phase0
 		if err != nil {
 			return
 		}
+
+		processingTimes[2] = time.Since(t1)
 
 		block.isInUnfinalizedDb = true
 		c.indexer.blockCache.latestBlock = block
@@ -446,19 +484,20 @@ func (c *Client) backfillParentBlocks(headBlock *Block) error {
 			break
 		}
 
+		var processingTimes []time.Duration
 		if parentBlock == nil {
 			var err error
 
-			parentBlock, isNewBlock, err = c.processBlock(parentSlot, parentRoot, parentHead)
+			parentBlock, isNewBlock, processingTimes, err = c.processBlock(parentSlot, parentRoot, parentHead)
 			if err != nil {
 				return fmt.Errorf("could not process block [0x%x]: %v", parentRoot, err)
 			}
 		}
 
 		if isNewBlock {
-			c.logger.Infof("received block %v:%v [0x%x] backfill", chainState.EpochOfSlot(parentSlot), parentSlot, parentRoot)
+			c.logger.Infof("received block %v:%v [0x%x] backfill %v", chainState.EpochOfSlot(parentSlot), parentSlot, parentRoot, c.formatProcessingTimes(processingTimes))
 		} else {
-			c.logger.Debugf("received known block %v:%v [0x%x] backfill", chainState.EpochOfSlot(parentSlot), parentSlot, parentRoot)
+			c.logger.Debugf("received known block %v:%v [0x%x] backfill %v", chainState.EpochOfSlot(parentSlot), parentSlot, parentRoot, c.formatProcessingTimes(processingTimes))
 		}
 
 		if parentSlot == 0 {
