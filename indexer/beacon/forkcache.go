@@ -251,12 +251,19 @@ func (cache *forkCache) processBlock(block *Block) error {
 		parentIsFinalized = parentBlock.Slot < chainState.GetFinalizedSlot()
 	}
 
-	// check if this block introduces a new fork, it does so if:
-	// 1. the parent is known & processed and has 1 more child block besides this one
-	// 2. the current block has 2 or more child blocks (multiple forks possible)
+	// check if this block (c) introduces a new fork, it does so if:
+	// 1. the parent (p) is known & processed and has 1 or more child blocks besides this one (c1, c2, ...)
+	//  c  c1 c2
+	//   \ | /
+	//     p
+	// 2. the current block (c) has 2 or more child blocks, multiple forks possible (c1, c2, ...)
+	//  c1 c2 c3
+	//   \ | /
+	//     c
+
 	newForks := []*newForkInfo{}
 	updateForks := []*updateForkInfo{}
-	currentForkId := parentForkId
+	currentForkId := parentForkId // default to parent fork id
 
 	// check scenario 1
 	if parentIsProcessed {
@@ -290,13 +297,18 @@ func (cache *forkCache) processBlock(block *Block) error {
 			}
 
 			if !parentIsFinalized && len(otherChildren) == 1 {
-				// parent is not finalized and it's the first fork based on this parent
-				// so we need to create another fork for the other chain and update the fork ids of the blocks
+				// parent (a) is not finalized and our new detected fork the first fork based on this parent (c)
+				// we need to create another fork for the other chain that starts from our fork base (b1, b2, )
+				// and update the blocks building on top of it
+				//   b2
+				//   |
+				//   b1  c
+				//   | /
+				//   a
 
 				if cache.getForkByLeaf(block.Root) != nil {
 					cache.indexer.logger.Warnf("fork already exists for leaf %v [%v] (processing %v, scenario 1)", block.Slot, block.Root.String(), block.Slot)
 				} else {
-
 					cache.lastForkId++
 					otherFork := newFork(cache.lastForkId, parentSlot, *parentRoot, otherChildren[0], parentForkId)
 					cache.addFork(otherFork)
@@ -388,6 +400,7 @@ func (cache *forkCache) processBlock(block *Block) error {
 	// persist new forks and updated blocks to the database
 	if len(newForks) > 0 || len(updatedBlocks) > 0 {
 		err := db.RunDBTransaction(func(tx *sqlx.Tx) error {
+			// add new forks
 			for _, newFork := range newForks {
 				err := db.InsertFork(newFork.fork.toDbFork(), tx)
 				if err != nil {
@@ -402,6 +415,7 @@ func (cache *forkCache) processBlock(block *Block) error {
 				}
 			}
 
+			// update blocks building on top of current block
 			if len(updatedBlocks) > 0 {
 				err := db.UpdateUnfinalizedBlockForkId(updatedBlocks, uint64(currentForkId), tx)
 				if err != nil {
@@ -411,6 +425,7 @@ func (cache *forkCache) processBlock(block *Block) error {
 				cache.indexer.logger.Infof("updated %v blocks to fork %v", len(updatedBlocks), currentForkId)
 			}
 
+			// update parents of forks building on top of current blocks chain segment
 			if len(updateForks) > 0 {
 				for _, updatedFork := range updateForks {
 					err := db.UpdateForkParent(updatedFork.baseRoot, uint64(updatedFork.parent), tx)
