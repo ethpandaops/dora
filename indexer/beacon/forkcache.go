@@ -91,6 +91,20 @@ func (cache *forkCache) getForkByLeaf(leafRoot phase0.Root) *Fork {
 	return nil
 }
 
+func (cache *forkCache) getForkByBase(baseRoot phase0.Root) []*Fork {
+	cache.cacheMutex.Lock()
+	defer cache.cacheMutex.Unlock()
+
+	forks := []*Fork{}
+	for _, fork := range cache.forkMap {
+		if bytes.Equal(fork.baseRoot[:], baseRoot[:]) {
+			forks = append(forks, fork)
+		}
+	}
+
+	return forks
+}
+
 // removeFork removes a fork from the cache.
 func (cache *forkCache) removeFork(forkId ForkKey) {
 	cache.cacheMutex.Lock()
@@ -306,8 +320,8 @@ func (cache *forkCache) processBlock(block *Block) error {
 				//   | /
 				//   a
 
-				if cache.getForkByLeaf(block.Root) != nil {
-					cache.indexer.logger.Warnf("fork already exists for leaf %v [%v] (processing %v, scenario 1)", block.Slot, block.Root.String(), block.Slot)
+				if cache.getForkByLeaf(otherChildren[0].Root) != nil {
+					cache.indexer.logger.Warnf("fork already exists for leaf %v [%v] (processing %v, scenario 1)", otherChildren[0].Slot, otherChildren[0].Root.String(), block.Slot)
 				} else {
 					cache.lastForkId++
 					otherFork := newFork(cache.lastForkId, parentSlot, *parentRoot, otherChildren[0], parentForkId)
@@ -468,8 +482,10 @@ func (cache *forkCache) updateForkBlocks(startBlock *Block, forkId ForkKey, skip
 
 		if len(nextBlocks) > 1 {
 			// potential fork ahead, check if the fork is already processed and has correct parent fork id
-			if fork := cache.getForkByLeaf(startBlock.Root); fork != nil && fork.parentFork != forkId {
-				fork.parentFork = forkId
+			if forks := cache.getForkByBase(startBlock.Root); len(forks) > 0 && forks[0].parentFork != forkId {
+				for _, fork := range forks {
+					fork.parentFork = forkId
+				}
 
 				updatedFork = &updateForkInfo{
 					baseRoot: startBlock.Root[:],
