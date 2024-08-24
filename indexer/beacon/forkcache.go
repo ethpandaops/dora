@@ -211,6 +211,11 @@ type newForkInfo struct {
 	updateRoots [][]byte
 }
 
+type updateForkInfo struct {
+	baseRoot []byte
+	parent   ForkKey
+}
+
 // processBlock processes a block and detects new forks if any.
 // It persists the new forks to the database, updates any subsequent blocks building on top of the given block and returns the fork ID.
 func (cache *forkCache) processBlock(block *Block) error {
@@ -250,6 +255,7 @@ func (cache *forkCache) processBlock(block *Block) error {
 	// 1. the parent is known & processed and has 1 more child block besides this one
 	// 2. the current block has 2 or more child blocks (multiple forks possible)
 	newForks := []*newForkInfo{}
+	updateForks := []*updateForkInfo{}
 	currentForkId := parentForkId
 
 	// check scenario 1
@@ -295,11 +301,16 @@ func (cache *forkCache) processBlock(block *Block) error {
 					otherFork := newFork(cache.lastForkId, parentSlot, *parentRoot, otherChildren[0], parentForkId)
 					cache.addFork(otherFork)
 
+					updatedRoots, updatedFork := cache.updateForkBlocks(otherChildren[0], otherFork.forkId, false)
 					newFork := &newForkInfo{
 						fork:        otherFork,
-						updateRoots: cache.updateForkBlocks(otherChildren[0], otherFork.forkId, false),
+						updateRoots: updatedRoots,
 					}
 					newForks = append(newForks, newFork)
+
+					if updatedFork != nil {
+						updateForks = append(updateForks, updatedFork)
+					}
 
 					fmt.Fprintf(&logbuf, ", head2: %v [%v, %v upd]", newFork.fork.leafSlot, newFork.fork.leafRoot.String(), len(newFork.updateRoots))
 				}
@@ -332,11 +343,16 @@ func (cache *forkCache) processBlock(block *Block) error {
 				fork := newFork(cache.lastForkId, block.Slot, block.Root, child, currentForkId)
 				cache.addFork(fork)
 
+				updatedRoots, updatedFork := cache.updateForkBlocks(child, fork.forkId, false)
 				newFork := &newForkInfo{
 					fork:        fork,
-					updateRoots: cache.updateForkBlocks(child, fork.forkId, false),
+					updateRoots: updatedRoots,
 				}
 				newForks = append(newForks, newFork)
+
+				if updatedFork != nil {
+					updateForks = append(updateForks, updatedFork)
+				}
 
 				fmt.Fprintf(&logbuf, ", head%v: %v [%v, %v upd]", idx+1, newFork.fork.leafSlot, newFork.fork.leafRoot.String(), len(newFork.updateRoots))
 			}
@@ -348,7 +364,10 @@ func (cache *forkCache) processBlock(block *Block) error {
 	}
 
 	// update fork ids of all blocks building on top of this block
-	updatedBlocks := cache.updateForkBlocks(block, currentForkId, true)
+	updatedBlocks, updatedFork := cache.updateForkBlocks(block, currentForkId, true)
+	if updatedFork != nil {
+		updateForks = append(updateForks, updatedFork)
+	}
 
 	// set detected fork id to the block
 	block.forkId = currentForkId
@@ -392,6 +411,17 @@ func (cache *forkCache) processBlock(block *Block) error {
 				cache.indexer.logger.Infof("updated %v blocks to fork %v", len(updatedBlocks), currentForkId)
 			}
 
+			if len(updateForks) > 0 {
+				for _, updatedFork := range updateForks {
+					err := db.UpdateForkParent(updatedFork.baseRoot, uint64(updatedFork.parent), tx)
+					if err != nil {
+						return err
+					}
+				}
+
+				cache.indexer.logger.Infof("updated %v fork parents", len(updateForks))
+			}
+
 			err := cache.updateForkState(tx)
 			if err != nil {
 				return fmt.Errorf("error while updating fork state: %v", err)
@@ -408,8 +438,8 @@ func (cache *forkCache) processBlock(block *Block) error {
 }
 
 // updateForkBlocks updates the blocks building on top of the given block in the fork and returns the updated block roots.
-func (cache *forkCache) updateForkBlocks(startBlock *Block, forkId ForkKey, skipStartBlock bool) [][]byte {
-	blockRoots := [][]byte{}
+func (cache *forkCache) updateForkBlocks(startBlock *Block, forkId ForkKey, skipStartBlock bool) (blockRoots [][]byte, updatedFork *updateForkInfo) {
+	blockRoots = [][]byte{}
 
 	if !skipStartBlock {
 		blockRoots = append(blockRoots, startBlock.Root[:])
@@ -417,7 +447,20 @@ func (cache *forkCache) updateForkBlocks(startBlock *Block, forkId ForkKey, skip
 
 	for {
 		nextBlocks := cache.indexer.blockCache.getBlocksByParentRoot(startBlock.Root)
-		if len(nextBlocks) != 1 {
+		if len(nextBlocks) == 0 {
+			break
+		}
+
+		if len(nextBlocks) > 1 {
+			// potential fork ahead, check if the fork is already processed and has correct parent fork id
+			if fork := cache.getForkByLeaf(startBlock.Root); fork != nil && fork.parentFork != forkId {
+				fork.parentFork = forkId
+
+				updatedFork = &updateForkInfo{
+					baseRoot: startBlock.Root[:],
+					parent:   forkId,
+				}
+			}
 			break
 		}
 
@@ -436,5 +479,5 @@ func (cache *forkCache) updateForkBlocks(startBlock *Block, forkId ForkKey, skip
 		startBlock = nextBlock
 	}
 
-	return blockRoots
+	return
 }

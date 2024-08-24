@@ -124,3 +124,16 @@ func UpdateFinalizedForkParents(finalizedRoots [][]byte, tx *sqlx.Tx) error {
 
 	return nil
 }
+
+func UpdateForkParent(parentRoot []byte, parentForkId uint64, tx *sqlx.Tx) error {
+	_, err := tx.Exec(`
+		UPDATE forks 
+		SET parent_fork = $1 
+		WHERE base_root = $2
+	`, parentForkId, parentRoot)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
