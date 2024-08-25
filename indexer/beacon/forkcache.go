@@ -77,6 +77,7 @@ func (cache *forkCache) addFork(fork *Fork) {
 	cache.forkMap[fork.forkId] = fork
 }
 
+// getForkByLeaf retrieves a fork from the cache by its leaf root.
 func (cache *forkCache) getForkByLeaf(leafRoot phase0.Root) *Fork {
 	cache.cacheMutex.Lock()
 	defer cache.cacheMutex.Unlock()
@@ -90,6 +91,7 @@ func (cache *forkCache) getForkByLeaf(leafRoot phase0.Root) *Fork {
 	return nil
 }
 
+// getForkByBase retrieves forks from the cache by their base root.
 func (cache *forkCache) getForkByBase(baseRoot phase0.Root) []*Fork {
 	cache.cacheMutex.Lock()
 	defer cache.cacheMutex.Unlock()
@@ -112,6 +114,7 @@ func (cache *forkCache) removeFork(forkId ForkKey) {
 	delete(cache.forkMap, forkId)
 }
 
+// getParentForkIds returns the parent fork ids of the given fork.
 func (cache *forkCache) getParentForkIds(forkId ForkKey) []ForkKey {
 	parentForks := []ForkKey{forkId}
 

@@ -40,8 +40,8 @@ func (cache *forkCache) processBlock(block *Block) error {
 	parentIsProcessed := false
 	parentIsFinalized := false
 
-	parentBlock := cache.indexer.blockCache.getBlockByRoot(*parentRoot)
-	if parentBlock == nil {
+	if parentBlock := cache.indexer.blockCache.getBlockByRoot(*parentRoot); parentBlock == nil {
+		// parent block might already be finalized, check if it's in the database
 		blockHead := db.GetBlockHeadByRoot((*parentRoot)[:])
 		if blockHead != nil {
 			parentForkId = ForkKey(blockHead.ForkId)
@@ -102,9 +102,10 @@ func (cache *forkCache) processBlock(block *Block) error {
 			}
 
 			if !parentIsFinalized && len(otherChildren) == 1 {
-				// parent (a) is not finalized and our new detected fork the first fork based on this parent (c)
+				// parent (a) is not finalized and our new detected fork is the first fork based on this parent (c)
 				// we need to create another fork for the other chain that starts from our fork base (b1, b2, )
 				// and update the blocks building on top of it
+				// we don't need to care about this if there are other forks already based on the parent
 				//   b2
 				//   |
 				//   b1  c
