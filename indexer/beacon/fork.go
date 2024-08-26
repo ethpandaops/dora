@@ -21,11 +21,11 @@ type Fork struct {
 }
 
 // newFork creates a new Fork instance.
-func newFork(forkId ForkKey, baseBlock *Block, leafBlock *Block, parentFork ForkKey) *Fork {
+func newFork(forkId ForkKey, baseSlot phase0.Slot, baseRoot phase0.Root, leafBlock *Block, parentFork ForkKey) *Fork {
 	fork := &Fork{
 		forkId:     forkId,
-		baseSlot:   baseBlock.Slot,
-		baseRoot:   baseBlock.Root,
+		baseSlot:   baseSlot,
+		baseRoot:   baseRoot,
 		leafSlot:   leafBlock.Slot,
 		leafRoot:   leafBlock.Root,
 		parentFork: parentFork,
