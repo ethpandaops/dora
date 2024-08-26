@@ -1,6 +1,7 @@
 package eventstream
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -34,6 +35,8 @@ type Stream struct {
 	isClosed bool
 	// isClosedMutex is a mutex protecting concurrent read/write access of isClosed
 	closeMutex sync.Mutex
+	// retrySleepCancel is a function that can be called to cancel the retry sleep
+	retrySleepCancel context.CancelFunc
 }
 
 type StreamEvent interface {
@@ -112,6 +115,13 @@ func (stream *Stream) Close() {
 		close(stream.Errors)
 		close(stream.Events)
 	}()
+}
+
+// RetryNow will force the stream to reconnect a disconnected stream immediately.
+func (stream *Stream) RetryNow() {
+	if cancelFn := stream.retrySleepCancel; cancelFn != nil {
+		cancelFn()
+	}
 }
 
 // Go's http package doesn't copy headers across when it encounters
@@ -215,7 +225,11 @@ func (stream *Stream) retryRestartStream() {
 			stream.Logger.Printf("Reconnecting in %0.4f secs\n", backoff.Seconds())
 		}
 
-		time.Sleep(backoff)
+		ctx, cancel := context.WithTimeout(context.Background(), backoff)
+		stream.retrySleepCancel = cancel
+		<-ctx.Done()
+
+		stream.retrySleepCancel = nil
 
 		if stream.isClosed {
 			return
