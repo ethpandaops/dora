@@ -71,7 +71,6 @@ func buildCLPeerMapData() *models.ClientCLPageDataPeerMap {
 				ID:    peerID,
 				Label: client.GetName(),
 				Group: "internal",
-				Image: fmt.Sprintf("/identicon?key=%s", peerID),
 				Shape: "circularImage",
 			}
 			nodes[peerID] = &node
@@ -90,7 +89,6 @@ func buildCLPeerMapData() *models.ClientCLPageDataPeerMap {
 					ID:    peer.PeerID,
 					Label: fmt.Sprintf("%s...%s", peer.PeerID[0:5], peer.PeerID[len(peer.PeerID)-5:]),
 					Group: "external",
-					Image: fmt.Sprintf("/identicon?key=%s", peer.PeerID),
 					Shape: "circularImage",
 				}
 				nodes[peer.PeerID] = &node

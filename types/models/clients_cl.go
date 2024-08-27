@@ -42,7 +42,6 @@ type ClientCLPageDataPeerMapNode struct {
 	ID    string `json:"id"`
 	Label string `json:"label"`
 	Group string `json:"group"`
-	Image string `json:"image"`
 	Shape string `json:"shape"`
 	Value int    `json:"value"`
 }

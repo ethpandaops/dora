@@ -129,9 +129,14 @@ $_network.create = function (container, data){
           classes: "bottom-center",
         }
       );
+      svgIdenticon = jdenticon.toSvg(data.nodes[i].id, 80);
       // Add style to nodes
       stylesheet.selector('#' + data.nodes[i].id).css({
-          'background-image': '/identicon?key=' + data.nodes[i].id
+          'shape': 'circle',
+          'background-image': 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgIdenticon),
+          'background-fit': 'cover',
+          'background-opacity': 1,
+          'background-color': '#111111',
       });
     }
   }

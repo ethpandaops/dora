@@ -10,7 +10,7 @@ Client peers table
 .client-node-icon {
   border-radius:50%;
   border:1px solid #0f0f0f;
-  background-color: #fafafa;
+  background-color: #111111;
   margin-right: 10px;
   height: 25px;
   width: 25px;
@@ -20,7 +20,7 @@ Client peers table
   height: 25px;
   border-radius: 50%;
   border: 2px solid #0f0f0f;
-  background-color: #fafafa;
+  background-color: #111111;
   margin-right: 10px;
 }
 

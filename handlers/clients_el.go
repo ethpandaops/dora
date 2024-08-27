@@ -85,7 +85,6 @@ func buildELPeerMapData() *models.ClientELPageDataPeerMap {
 				ID:    peerID,
 				Label: client.GetName(),
 				Group: "internal",
-				Image: fmt.Sprintf("/identicon?key=%s", peerID),
 				Shape: "circularImage",
 			}
 			nodes[peerID] = &node
@@ -121,7 +120,6 @@ func buildELPeerMapData() *models.ClientELPageDataPeerMap {
 					ID:    peerID,
 					Label: fmt.Sprintf("%s...%s", peerID[0:5], peerID[len(peerID)-5:]),
 					Group: "external",
-					Image: fmt.Sprintf("/identicon?key=%s", peerID),
 					Shape: "circularImage",
 				}
 				nodes[peerID] = &node
