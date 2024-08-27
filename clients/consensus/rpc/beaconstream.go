@@ -93,7 +93,14 @@ func (bs *BeaconStream) startStream() {
 					Ready: true,
 				}
 			case err := <-stream.Errors:
-				bs.logger.Warnf("beacon block stream error: %v", err)
+				if strings.Contains(err.Error(), "INTERNAL_ERROR; received from peer") {
+					// this seems to be a go bug, silently reconnect to the stream
+					time.Sleep(10 * time.Millisecond)
+					stream.RetryNow()
+				} else {
+					bs.logger.Warnf("beacon block stream error: %v", err)
+				}
+
 				select {
 				case bs.ReadyChan <- &BeaconStreamStatus{
 					Ready: false,
