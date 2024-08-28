@@ -18,38 +18,63 @@ import (
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/indexer/beacon"
 	execindexer "github.com/ethpandaops/dora/indexer/execution"
+	"github.com/ethpandaops/dora/indexer/mevrelay"
 	"github.com/ethpandaops/dora/utils"
 	"github.com/sirupsen/logrus"
 )
 
 type ChainService struct {
-	logger         logrus.FieldLogger
-	consensusPool  *consensus.Pool
-	executionPool  *execution.Pool
-	beaconIndexer  *beacon.Indexer
-	validatorNames *ValidatorNames
+	logger          logrus.FieldLogger
+	consensusPool   *consensus.Pool
+	executionPool   *execution.Pool
+	beaconIndexer   *beacon.Indexer
+	validatorNames  *ValidatorNames
+	mevRelayIndexer *mevrelay.MevIndexer
+	started         bool
 }
 
 var GlobalBeaconService *ChainService
 
-// StartChainService is used to start the global beaconchain service
-func StartChainService(ctx context.Context, logger logrus.FieldLogger) error {
+// InitChainService is used to initialize the global beaconchain service
+func InitChainService(ctx context.Context, logger logrus.FieldLogger) {
 	if GlobalBeaconService != nil {
-		return nil
+		return
 	}
 
 	// initialize client pools & indexers
 	consensusPool := consensus.NewPool(ctx, logger.WithField("service", "cl-pool"))
 	executionPool := execution.NewPool(ctx, logger.WithField("service", "el-pool"))
 	beaconIndexer := beacon.NewIndexer(logger.WithField("service", "cl-indexer"), consensusPool)
-	executionIndexerCtx := execindexer.NewIndexerCtx(logger.WithField("service", "el-indexer"), executionPool, consensusPool, beaconIndexer)
+	chainState := consensusPool.GetChainState()
+	validatorNames := NewValidatorNames(beaconIndexer, chainState)
+	mevRelayIndexer := mevrelay.NewMevIndexer(logger.WithField("service", "mev-relay"), beaconIndexer, chainState)
+
+	GlobalBeaconService = &ChainService{
+		logger:          logger,
+		consensusPool:   consensusPool,
+		executionPool:   executionPool,
+		beaconIndexer:   beaconIndexer,
+		validatorNames:  validatorNames,
+		mevRelayIndexer: mevRelayIndexer,
+	}
+}
+
+// StartService is used to start the beaconchain service
+func (cs *ChainService) StartService() error {
+	if cs.started {
+		return fmt.Errorf("service already started")
+	}
+	cs.started = true
+
+	executionIndexerCtx := execindexer.NewIndexerCtx(cs.logger.WithField("service", "el-indexer"), cs.executionPool, cs.consensusPool, cs.beaconIndexer)
 
 	// add consensus clients
 	for index, endpoint := range utils.Config.BeaconApi.Endpoints {
 		endpointConfig := &consensus.ClientConfig{
-			URL:     endpoint.Url,
-			Name:    endpoint.Name,
-			Headers: endpoint.Headers,
+			URL:        endpoint.Url,
+			Name:       endpoint.Name,
+			Headers:    endpoint.Headers,
+			DisableSSZ: utils.Config.KillSwitch.DisableSSZRequests,
 		}
 
 		if endpoint.Ssh != nil {
@@ -62,16 +87,16 @@ func StartChainService(ctx context.Context, logger logrus.FieldLogger) error {
 			}
 		}
 
-		client, err := consensusPool.AddEndpoint(endpointConfig)
+		client, err := cs.consensusPool.AddEndpoint(endpointConfig)
 		if err != nil {
-			logger.Errorf("could not add beacon client '%v' to pool: %v", endpoint.Name, err)
+			cs.logger.Errorf("could not add beacon client '%v' to pool: %v", endpoint.Name, err)
 			continue
 		}
 
-		beaconIndexer.AddClient(uint16(index), client, endpoint.Priority, endpoint.Archive, endpoint.SkipValidators)
+		cs.beaconIndexer.AddClient(uint16(index), client, endpoint.Priority, endpoint.Archive, endpoint.SkipValidators)
 	}
 
-	if len(consensusPool.GetAllEndpoints()) == 0 {
+	if len(cs.consensusPool.GetAllEndpoints()) == 0 {
 		return fmt.Errorf("no beacon clients configured")
 	}
 
@@ -93,18 +118,14 @@ func StartChainService(ctx context.Context, logger logrus.FieldLogger) error {
 			}
 		}
 
-		client, err := executionPool.AddEndpoint(endpointConfig)
+		client, err := cs.executionPool.AddEndpoint(endpointConfig)
 		if err != nil {
-			logger.Errorf("could not add execution client '%v' to pool: %v", endpoint.Name, err)
+			cs.logger.Errorf("could not add execution client '%v' to pool: %v", endpoint.Name, err)
 			continue
 		}
 
 		executionIndexerCtx.AddClientInfo(client, endpoint.Priority, endpoint.Archive)
 	}
-
-	// init validator names & load inventory
-	validatorNames := NewValidatorNames(beaconIndexer)
-	validatorNamesLoading := validatorNames.LoadValidatorNames()
 
 	// reset sync state if configured
 	if utils.Config.Indexer.ResyncFromEpoch != nil {
@@ -117,44 +138,52 @@ func StartChainService(ctx context.Context, logger logrus.FieldLogger) error {
 		if err != nil {
 			return fmt.Errorf("failed resetting sync state: %v", err)
 		}
-		logger.Warnf("Reset explorer synchronization status to epoch %v as configured! Please remove this setting again.", *utils.Config.Indexer.ResyncFromEpoch)
+		cs.logger.Warnf("Reset explorer synchronization status to epoch %v as configured! Please remove this setting again.", *utils.Config.Indexer.ResyncFromEpoch)
 	}
 
-	// await validator names & beacon pool readiness
-	<-validatorNamesLoading
+	// await beacon pool readiness
 	lastLog := time.Now()
+	chainState := cs.consensusPool.GetChainState()
 	for {
-		specs := consensusPool.GetChainState().GetSpecs()
+		specs := chainState.GetSpecs()
 		if specs != nil {
 			break
 		}
 
 		if time.Since(lastLog) > 10*time.Second {
-			logger.Warnf("still waiting for chain specs... need at least 1 consensus client to load chain specs from.")
+			cs.logger.Warnf("still waiting for chain specs... need at least 1 consensus client to load chain specs from.")
+			lastLog = time.Now()
 		}
 
 		time.Sleep(1 * time.Second)
 	}
 
-	// start chain indexer
-	beaconIndexer.StartIndexer()
+	specs := chainState.GetSpecs()
+	genesis := chainState.GetGenesis()
+	cs.logger.WithFields(logrus.Fields{
+		"name":         specs.ConfigName,
+		"genesis_time": genesis.GenesisTime,
+		"genesis_fork": fmt.Sprintf("%x", genesis.GenesisForkVersion),
+	}).Infof("beacon client pool ready")
 
 	// start validator names updater
+	validatorNamesLoading := cs.validatorNames.LoadValidatorNames()
+	<-validatorNamesLoading
+
 	go func() {
-		validatorNames.UpdateDb()
-		validatorNames.StartUpdater()
+		cs.validatorNames.UpdateDb()
+		cs.validatorNames.StartUpdater()
 	}()
+
+	// start chain indexer
+	cs.beaconIndexer.StartIndexer()
 
 	// add execution indexers
 	execindexer.NewDepositIndexer(executionIndexerCtx)
 
-	GlobalBeaconService = &ChainService{
-		logger:         logger,
-		consensusPool:  consensusPool,
-		executionPool:  executionPool,
-		beaconIndexer:  beaconIndexer,
-		validatorNames: validatorNames,
-	}
+	// start MEV relay indexer
+	cs.mevRelayIndexer.StartUpdater()
+
 	return nil
 }
 
@@ -163,6 +192,10 @@ func (bs *ChainService) GetBeaconIndexer() *beacon.Indexer {
 }
 
 func (bs *ChainService) GetConsensusClients() []*consensus.Client {
+	if bs == nil || bs.consensusPool == nil {
+		return nil
+	}
+
 	return bs.consensusPool.GetAllEndpoints()
 }
 
@@ -171,6 +204,10 @@ func (bs *ChainService) GetExecutionClients() []*execution.Client {
 }
 
 func (bs *ChainService) GetChainState() *consensus.ChainState {
+	if bs == nil || bs.consensusPool == nil {
+		return nil
+	}
+
 	return bs.consensusPool.GetChainState()
 }
 
@@ -218,10 +255,18 @@ type ConsensusClientFork struct {
 
 func (bs *ChainService) GetConsensusClientForks() []*ConsensusClientFork {
 	headForks := []*ConsensusClientFork{}
+	chainState := bs.consensusPool.GetChainState()
 	for _, client := range bs.beaconIndexer.GetAllClients() {
 		cHeadSlot, cHeadRoot := client.GetClient().GetLastHead()
 		var matchingFork *ConsensusClientFork
 		for _, fork := range headForks {
+
+			if cHeadSlot < chainState.GetFinalizedSlot() && bytes.Equal(fork.Root[:], cHeadRoot[:]) {
+				// TODO: find a more elgant way to group forks for finalized blocks
+				matchingFork = fork
+				break
+			}
+
 			isInChain, _ := bs.beaconIndexer.GetBlockDistance(cHeadRoot, fork.Root)
 			if isInChain {
 				matchingFork = fork

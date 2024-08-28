@@ -87,5 +87,53 @@ func DeleteFinalizedForks(finalizedRoots [][]byte, tx *sqlx.Tx) error {
 
 	fmt.Fprint(&sql, ")")
 
+	_, err = tx.Exec(sql.String(), args...)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func UpdateFinalizedForkParents(finalizedRoots [][]byte, tx *sqlx.Tx) error {
+	var sql strings.Builder
+	args := []any{}
+
+	fmt.Fprint(&sql, `
+		UPDATE forks 
+		SET parent_fork = 0 
+		WHERE fork_id IN (
+			SELECT fork_id FROM forks WHERE leaf_root IN (
+	`)
+
+	for i, root := range finalizedRoots {
+		if i > 0 {
+			fmt.Fprint(&sql, ",")
+		}
+
+		args = append(args, root)
+		fmt.Fprintf(&sql, "$%v", len(args))
+	}
+
+	fmt.Fprint(&sql, "))")
+
+	_, err := tx.Exec(sql.String(), args...)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func UpdateForkParent(parentRoot []byte, parentForkId uint64, tx *sqlx.Tx) error {
+	_, err := tx.Exec(`
+		UPDATE forks 
+		SET parent_fork = $1 
+		WHERE base_root = $2
+	`, parentForkId, parentRoot)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }

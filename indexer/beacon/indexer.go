@@ -32,12 +32,10 @@ type Indexer struct {
 	synchronizer  *synchronizer
 
 	// configuration
-	writeDb               bool
 	disableSync           bool
 	blockCompression      bool
 	inMemoryEpochs        uint16
 	maxParallelStateCalls uint16
-	cachePersistenceDelay uint16
 
 	// caches
 	blockCache *blockCache
@@ -76,10 +74,6 @@ func NewIndexer(logger logrus.FieldLogger, consensusPool *consensus.Pool) *Index
 	if inMemoryEpochs < 2 {
 		inMemoryEpochs = 2
 	}
-	cachePersistenceDelay := utils.Config.Indexer.CachePersistenceDelay
-	if cachePersistenceDelay < 2 {
-		cachePersistenceDelay = 2
-	}
 	maxParallelStateCalls := uint16(utils.Config.Indexer.MaxParallelValidatorSetRequests)
 	if maxParallelStateCalls < 2 {
 		maxParallelStateCalls = 2
@@ -94,12 +88,10 @@ func NewIndexer(logger logrus.FieldLogger, consensusPool *consensus.Pool) *Index
 		logger:        logger,
 		consensusPool: consensusPool,
 
-		writeDb:               !utils.Config.Indexer.DisableIndexWriter,
 		disableSync:           utils.Config.Indexer.DisableSynchronizer,
 		blockCompression:      blockCompression,
 		inMemoryEpochs:        inMemoryEpochs,
 		maxParallelStateCalls: maxParallelStateCalls,
-		cachePersistenceDelay: cachePersistenceDelay,
 
 		clients:              make([]*Client, 0),
 		backfillCompleteChan: make(chan bool),
@@ -326,6 +318,7 @@ func (indexer *Indexer) StartIndexer() {
 		}
 
 		block.SetHeader(header)
+		indexer.blockCache.addBlockToParentMap(block)
 
 		blockBody, err := unmarshalVersionedSignedBeaconBlockSSZ(indexer.dynSsz, dbBlock.BlockVer, dbBlock.BlockSSZ)
 		if err != nil {

@@ -137,8 +137,13 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 		PeerMap: buildCLPeerMapData(),
 	}
 	chainState := services.GlobalBeaconService.GetChainState()
-	specs := chainState.GetSpecs()
-	cacheTime := specs.SecondsPerSlot
+
+	var cacheTime time.Duration
+	if specs := chainState.GetSpecs(); specs != nil {
+		cacheTime = specs.SecondsPerSlot
+	} else {
+		cacheTime = 1 * time.Second
+	}
 
 	aliases := map[string]string{}
 	for _, client := range services.GlobalBeaconService.GetConsensusClients() {

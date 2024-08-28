@@ -362,7 +362,7 @@ func SearchAhead(w http.ResponseWriter, r *http.Request) {
 			dbtypes.DBEnginePgsql: `
 				SELECT name, count(*) as count
 				FROM validator_names
-				LEFT JOIN slot_assignments ON validator_names."index" = slot_assignments.proposer
+				LEFT JOIN slots ON validator_names."index" = slots.proposer
 				WHERE name ILIKE LOWER($1)
 				GROUP BY name
 				ORDER BY count desc
@@ -370,7 +370,7 @@ func SearchAhead(w http.ResponseWriter, r *http.Request) {
 			dbtypes.DBEngineSqlite: `
 				SELECT name, count(*) as count
 				FROM validator_names
-				LEFT JOIN slot_assignments ON validator_names."index" = slot_assignments.proposer
+				LEFT JOIN slots ON validator_names."index" = slots.proposer
 				WHERE name LIKE LOWER($1)
 				GROUP BY name
 				ORDER BY count desc

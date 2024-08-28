@@ -280,6 +280,7 @@ func (sync *synchronizer) syncEpoch(syncEpoch phase0.Epoch, client *Client, last
 	lastSlot := chainState.EpochStartSlot(syncEpoch+2) - 1
 	canonicalBlocks := []*Block{}
 	canonicalBlockRoots := [][]byte{}
+	canonicalBlockHashes := [][]byte{}
 	nextEpochCanonicalBlocks := []*Block{}
 
 	var firstBlock *Block
@@ -321,6 +322,9 @@ func (sync *synchronizer) syncEpoch(syncEpoch phase0.Epoch, client *Client, last
 		if chainState.EpochOfSlot(slot) == syncEpoch {
 			canonicalBlocks = append(canonicalBlocks, sync.cachedBlocks[slot])
 			canonicalBlockRoots = append(canonicalBlockRoots, sync.cachedBlocks[slot].Root[:])
+			if blockIndex := sync.cachedBlocks[slot].GetBlockIndex(); blockIndex != nil {
+				canonicalBlockHashes = append(canonicalBlockHashes, blockIndex.ExecutionHash[:])
+			}
 		} else {
 			nextEpochCanonicalBlocks = append(nextEpochCanonicalBlocks, sync.cachedBlocks[slot])
 		}
@@ -388,7 +392,7 @@ func (sync *synchronizer) syncEpoch(syncEpoch phase0.Epoch, client *Client, last
 			return fmt.Errorf("error persisting sync committee assignments to db: %v", err)
 		}
 
-		if err := db.UpdateMevBlockByEpoch(uint64(syncEpoch), specs.SlotsPerEpoch, canonicalBlockRoots, tx); err != nil {
+		if err := db.UpdateMevBlockByEpoch(uint64(syncEpoch), specs.SlotsPerEpoch, canonicalBlockHashes, tx); err != nil {
 			return fmt.Errorf("error while updating mev block proposal state: %v", err)
 		}
 
@@ -398,6 +402,9 @@ func (sync *synchronizer) syncEpoch(syncEpoch phase0.Epoch, client *Client, last
 		}
 
 		// delete unfinalized forks for canonical roots
+		if err := db.UpdateFinalizedForkParents(canonicalBlockRoots, tx); err != nil {
+			return fmt.Errorf("failed updating finalized fork parents: %v", err)
+		}
 		if err := db.DeleteFinalizedForks(canonicalBlockRoots, tx); err != nil {
 			return fmt.Errorf("failed deleting finalized forks: %v", err)
 		}

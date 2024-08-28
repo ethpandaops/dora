@@ -291,8 +291,12 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 	}
 
 	canonicalRoots := make([][]byte, len(canonicalBlocks))
+	canonicalBlockHashes := make([][]byte, len(canonicalBlocks))
 	for i, block := range canonicalBlocks {
 		canonicalRoots[i] = block.Root[:]
+		if blockIndex := block.GetBlockIndex(); blockIndex != nil {
+			canonicalBlockHashes[i] = blockIndex.ExecutionHash[:]
+		}
 	}
 
 	t1dur := time.Since(t1) - t1loading
@@ -330,7 +334,7 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 			return fmt.Errorf("error persisting sync committee assignments to db: %v", err)
 		}
 
-		if err := db.UpdateMevBlockByEpoch(uint64(epoch), specs.SlotsPerEpoch, canonicalRoots, tx); err != nil {
+		if err := db.UpdateMevBlockByEpoch(uint64(epoch), specs.SlotsPerEpoch, canonicalBlockHashes, tx); err != nil {
 			return fmt.Errorf("error while updating mev block proposal state: %v", err)
 		}
 
@@ -350,6 +354,9 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 		}
 
 		// delete unfinalized forks for canonical roots
+		if err := db.UpdateFinalizedForkParents(canonicalRoots, tx); err != nil {
+			return fmt.Errorf("failed updating finalized fork parents: %v", err)
+		}
 		if err := db.DeleteFinalizedForks(canonicalRoots, tx); err != nil {
 			return fmt.Errorf("failed deleting finalized forks: %v", err)
 		}
@@ -369,6 +376,12 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 
 	t1 = time.Now()
 
+	// clean fork cache
+	indexer.forkCache.setFinalizedEpoch(deleteBeforeSlot, justifiedRoot)
+	for _, fork := range indexer.forkCache.getForksBefore(deleteBeforeSlot) {
+		indexer.forkCache.removeFork(fork.forkId)
+	}
+
 	// clean epoch stats
 	indexer.epochCache.removeEpochStatsByEpoch(epoch)
 
@@ -378,12 +391,6 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 	}
 	for _, block := range orphanedBlocks {
 		indexer.blockCache.removeBlock(block)
-	}
-
-	// clean fork cache
-	indexer.forkCache.setFinalizedEpoch(deleteBeforeSlot, justifiedRoot)
-	for _, fork := range indexer.forkCache.getForksBefore(deleteBeforeSlot) {
-		indexer.forkCache.removeFork(fork.forkId)
 	}
 
 	// log summary

@@ -18,15 +18,17 @@ type blockCache struct {
 	lowestSlot  int64
 	slotMap     map[phase0.Slot][]*Block
 	rootMap     map[phase0.Root]*Block
+	parentMap   map[phase0.Root][]*Block
 	latestBlock *Block // latest added block (might not be the head block, just a marker for cache changes)
 }
 
 // newBlockCache creates a new instance of blockCache.
 func newBlockCache(indexer *Indexer) *blockCache {
 	return &blockCache{
-		indexer: indexer,
-		slotMap: map[phase0.Slot][]*Block{},
-		rootMap: map[phase0.Root]*Block{},
+		indexer:   indexer,
+		slotMap:   map[phase0.Slot][]*Block{},
+		rootMap:   map[phase0.Root]*Block{},
+		parentMap: map[phase0.Root][]*Block{},
 	}
 }
 
@@ -60,6 +62,25 @@ func (cache *blockCache) createOrGetBlock(root phase0.Root, slot phase0.Slot) (*
 	return cacheBlock, true
 }
 
+// addBlockToParentMap adds the given block to the parent map.
+func (cache *blockCache) addBlockToParentMap(block *Block) {
+	cache.cacheMutex.Lock()
+	defer cache.cacheMutex.Unlock()
+
+	parentRoot := block.GetParentRoot()
+	if parentRoot == nil {
+		return
+	}
+
+	for _, parentBlock := range cache.parentMap[*parentRoot] {
+		if parentBlock == block {
+			return
+		}
+	}
+
+	cache.parentMap[*parentRoot] = append(cache.parentMap[*parentRoot], block)
+}
+
 // getBlockByRoot returns the cached block with the given root.
 func (cache *blockCache) getBlockByRoot(root phase0.Root) *Block {
 	cache.cacheMutex.RLock()
@@ -86,27 +107,13 @@ func (cache *blockCache) getBlocksByParentRoot(parentRoot phase0.Root) []*Block 
 	cache.cacheMutex.RLock()
 	defer cache.cacheMutex.RUnlock()
 
-	parentBlock := cache.rootMap[parentRoot]
-
-	resBlocks := []*Block{}
-	for slot, blocks := range cache.slotMap {
-		if parentBlock != nil && slot <= parentBlock.Slot {
-			continue
-		}
-
-		for _, block := range blocks {
-			blockParentRoot := block.GetParentRoot()
-			if blockParentRoot == nil {
-				continue
-			}
-
-			if bytes.Equal((*blockParentRoot)[:], parentRoot[:]) {
-				resBlocks = append(resBlocks, block)
-			}
-		}
+	cachedBlocks := cache.parentMap[parentRoot]
+	blocks := make([]*Block, len(cachedBlocks))
+	if len(blocks) > 0 {
+		copy(blocks, cachedBlocks)
 	}
 
-	return resBlocks
+	return blocks
 }
 
 // getBlockByStateRoot returns the block with the given state root.
@@ -265,8 +272,10 @@ func (cache *blockCache) removeBlock(block *Block) {
 	cache.cacheMutex.Lock()
 	defer cache.cacheMutex.Unlock()
 
+	// remove the block from the root map.
 	delete(cache.rootMap, block.Root)
 
+	// remove the block from the slot map.
 	slotBlocks := cache.slotMap[block.Slot]
 	if len(slotBlocks) == 1 && slotBlocks[0] == block {
 		delete(cache.slotMap, block.Slot)
@@ -278,6 +287,22 @@ func (cache *blockCache) removeBlock(block *Block) {
 			}
 		}
 	}
+
+	// remove the block from the parent map.
+	if parentRoot := block.GetParentRoot(); parentRoot != nil {
+		parentBlocks := cache.parentMap[*parentRoot]
+		if len(parentBlocks) == 1 && parentBlocks[0] == block {
+			delete(cache.parentMap, *parentRoot)
+		} else if len(parentBlocks) > 1 {
+			for i, parentBlock := range parentBlocks {
+				if parentBlock == block {
+					cache.parentMap[*parentRoot] = append(parentBlocks[:i], parentBlocks[i+1:]...)
+					break
+				}
+			}
+		}
+	}
+
 }
 
 // getEpochBlocks returns the blocks that belong to the specified epoch.
