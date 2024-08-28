@@ -126,7 +126,8 @@ func (cache *forkCache) processBlock(block *Block) error {
 					otherFork := newFork(cache.lastForkId, parentSlot, *parentRoot, otherChildren[0], parentForkId)
 					cache.addFork(otherFork)
 
-					updatedRoots, updatedFork, _ := cache.updateForkBlocks(otherChildren[0], otherFork.forkId, false)
+					updatedRoots, updatedFork, headBlock := cache.updateForkBlocks(otherChildren[0], otherFork.forkId, false)
+					otherFork.headBlock = headBlock
 					newFork := &newForkInfo{
 						fork:        otherFork,
 						updateRoots: updatedRoots,
@@ -295,6 +296,7 @@ func (cache *forkCache) updateForkBlocks(startBlock *Block, forkId ForkKey, skip
 
 	if !skipStartBlock {
 		blockRoots = append(blockRoots, startBlock.Root[:])
+		startBlock.forkId = forkId
 		headBlock = startBlock
 	}
 
