@@ -366,15 +366,28 @@ func (cache *epochCache) runLoaderLoop() {
 		cache.loadingChan <- true
 	}
 
-	go cache.loadEpochStats(pendingStats[0])
+	go func() {
+		defer func() {
+			if cache.indexer.maxParallelStateCalls > 0 {
+				<-cache.loadingChan
+			}
+		}()
+
+		for _, pendingStats := range pendingStats {
+			if cache.loadEpochStats(pendingStats) {
+				break
+			}
+		}
+	}()
 }
 
 // loadEpochStats loads the supplied unloaded epoch status (the dependent epoch state).
 // retires loading from multiple clients, ordered by priority.
-func (cache *epochCache) loadEpochStats(epochStats *EpochStats) {
+// returns true if a epoch state request was done (either successful or failed).
+func (cache *epochCache) loadEpochStats(epochStats *EpochStats) bool {
 	defer func() {
-		if cache.indexer.maxParallelStateCalls > 0 {
-			<-cache.loadingChan
+		if err := recover(); err != nil {
+			cache.indexer.logger.WithError(err.(error)).Errorf("uncaught panic in indexer.beacon.epochCache.loadEpochStats subroutine: %v, stack: %v", err, string(debug.Stack()))
 		}
 	}()
 
@@ -410,6 +423,12 @@ func (cache *epochCache) loadEpochStats(epochStats *EpochStats) {
 		}
 	}
 
+	if len(clients) == 0 {
+		cache.indexer.logger.Debugf("no clients available to load epoch %v stats (dep: %v)", epochStats.epoch, epochStats.dependentRoot.String())
+		epochStats.dependentState.retryCount++
+		return false
+	}
+
 	sort.Slice(clients, func(a, b int) bool {
 		cliA := clients[a]
 		cliB := clients[b]
@@ -441,7 +460,7 @@ func (cache *epochCache) loadEpochStats(epochStats *EpochStats) {
 
 	if epochStats.dependentState.loadingStatus != 2 {
 		// epoch state could not be loaded
-		return
+		return true
 	}
 
 	dependentStats := []*EpochStats{}
@@ -456,4 +475,6 @@ func (cache *epochCache) loadEpochStats(epochStats *EpochStats) {
 	for _, stats := range dependentStats {
 		go stats.processState(cache.indexer)
 	}
+
+	return true
 }
