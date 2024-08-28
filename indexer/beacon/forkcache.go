@@ -195,24 +195,36 @@ func (cache *forkCache) setFinalizedEpoch(finalizedSlot phase0.Slot, justifiedRo
 	cache.cacheMutex.Lock()
 	defer cache.cacheMutex.Unlock()
 
-	closestForkId := ForkKey(0)
-	closestDistance := uint64(0)
-
 	for _, fork := range cache.forkMap {
 		if fork.leafSlot >= finalizedSlot {
 			continue
 		}
 
-		isInFork, distance := cache.indexer.blockCache.getCanonicalDistance(fork.leafRoot, justifiedRoot, 0)
-		if isInFork && (closestForkId == 0 || distance < closestDistance) {
-			closestForkId = fork.forkId
-			closestDistance = distance
-		}
-
 		delete(cache.forkMap, fork.forkId)
 	}
 
-	cache.finalizedForkId = closestForkId
+	latestFinalizedBlock := cache.indexer.blockCache.getBlockByRoot(justifiedRoot)
+	finalizedForkId := ForkKey(0)
+	for {
+		if latestFinalizedBlock == nil {
+			break
+		}
+
+		finalizedForkId = latestFinalizedBlock.forkId
+
+		if latestFinalizedBlock.Slot <= finalizedSlot {
+			break
+		}
+
+		parentRoot := latestFinalizedBlock.GetParentRoot()
+		if parentRoot == nil {
+			break
+		}
+
+		latestFinalizedBlock = cache.indexer.blockCache.getBlockByRoot(*parentRoot)
+	}
+
+	cache.finalizedForkId = finalizedForkId
 
 	err := db.RunDBTransaction(func(tx *sqlx.Tx) error {
 		return cache.updateForkState(tx)

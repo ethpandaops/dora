@@ -106,23 +106,30 @@ func (c *Client) startClientLoop() {
 	}
 }
 
-func (c *Client) formatProcessingTimes(processingTimes []time.Duration) string {
-	if len(processingTimes) == 0 {
-		return ""
-	}
+func (c *Client) emitBlockLogEntry(slot phase0.Slot, root phase0.Root, source string, isNew bool, forkId ForkKey, processingTimes []time.Duration) {
+	chainState := c.client.GetPool().GetChainState()
 
-	str := strings.Builder{}
-	str.WriteString(" (")
-	for i, pt := range processingTimes {
-		if i > 0 {
-			str.WriteString(", ")
+	processingTimesStr := ""
+	if len(processingTimes) > 0 {
+		str := strings.Builder{}
+		str.WriteString(" (")
+		for i, pt := range processingTimes {
+			if i > 0 {
+				str.WriteString(", ")
+			}
+
+			str.WriteString(fmt.Sprintf("%v ms", pt.Milliseconds()))
 		}
+		str.WriteString(")")
 
-		str.WriteString(fmt.Sprintf("%v ms", pt.Milliseconds()))
+		processingTimesStr = str.String()
 	}
-	str.WriteString(")")
 
-	return str.String()
+	if isNew {
+		c.logger.Infof("received block %v:%v [0x%x] %v %v fork: %v", chainState.EpochOfSlot(slot), slot, root[:], source, processingTimesStr, forkId)
+	} else {
+		c.logger.Debugf("received known block %v:%v [0x%x] %v %v fork: %v", chainState.EpochOfSlot(slot), slot, root[:], source, processingTimesStr, forkId)
+	}
 }
 
 // runClientLoop runs the client event processing subroutine.
@@ -145,11 +152,7 @@ func (c *Client) runClientLoop() error {
 		return fmt.Errorf("failed loading head block: %v", err)
 	}
 
-	if isNew {
-		c.logger.Infof("received block %v:%v [0x%x] head %v", c.client.GetPool().GetChainState().EpochOfSlot(headSlot), headSlot, headRoot, c.formatProcessingTimes(processingTimes))
-	} else {
-		c.logger.Debugf("received known block %v:%v [0x%x] head %v", c.client.GetPool().GetChainState().EpochOfSlot(headSlot), headSlot, headRoot, c.formatProcessingTimes(processingTimes))
-	}
+	c.emitBlockLogEntry(headSlot, headRoot, "head", isNew, headBlock.forkId, processingTimes)
 
 	// 2 - backfill old blocks up to the finalization checkpoint or known in cache
 	err = c.indexer.withBackfillTracker(func() error {
@@ -288,13 +291,7 @@ func (c *Client) processStreamBlock(slot phase0.Slot, root phase0.Root) (*Block,
 		return nil, err
 	}
 
-	chainState := c.client.GetPool().GetChainState()
-
-	if isNew {
-		c.logger.Infof("received block %v:%v [0x%x] stream %v", chainState.EpochOfSlot(block.Slot), block.Slot, block.Root[:], c.formatProcessingTimes(processingTimes))
-	} else {
-		c.logger.Debugf("received known block %v:%v [0x%x] stream %v", chainState.EpochOfSlot(block.Slot), block.Slot, block.Root[:], c.formatProcessingTimes(processingTimes))
-	}
+	c.emitBlockLogEntry(slot, root, "stream", isNew, block.forkId, processingTimes)
 
 	return block, nil
 }
@@ -494,11 +491,7 @@ func (c *Client) backfillParentBlocks(headBlock *Block) error {
 			}
 		}
 
-		if isNewBlock {
-			c.logger.Infof("received block %v:%v [0x%x] backfill %v", chainState.EpochOfSlot(parentSlot), parentSlot, parentRoot, c.formatProcessingTimes(processingTimes))
-		} else {
-			c.logger.Debugf("received known block %v:%v [0x%x] backfill %v", chainState.EpochOfSlot(parentSlot), parentSlot, parentRoot, c.formatProcessingTimes(processingTimes))
-		}
+		c.emitBlockLogEntry(parentSlot, parentRoot, "backfill", isNewBlock, parentBlock.forkId, processingTimes)
 
 		if parentSlot == 0 {
 			c.logger.Debugf("backfill cache: reached gensis slot [0x%x]", parentRoot)
