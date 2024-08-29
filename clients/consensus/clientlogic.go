@@ -264,7 +264,7 @@ func (client *Client) updateNodePeers(ctx context.Context) error {
 	defer cancel()
 
 	var err error
-	client.peerId, err = client.rpcClient.GetNodePeerId(ctx)
+	client.nodeIdentity, err = client.rpcClient.GetNodeIdentity(ctx)
 	if err != nil {
 		return fmt.Errorf("could not get node peer id: %v", err)
 	}

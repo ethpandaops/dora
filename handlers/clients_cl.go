@@ -7,9 +7,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ethereum/go-ethereum/p2p/enr"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
+	"github.com/ethpandaops/dora/utils"
 	"github.com/sirupsen/logrus"
 )
 
@@ -65,13 +67,16 @@ func buildCLPeerMapData() *models.ClientCLPageDataPeerMap {
 	edges := make(map[string]*models.ClientCLDataMapPeerMapEdge)
 
 	for _, client := range services.GlobalBeaconService.GetConsensusClients() {
-		peerID := client.GetPeerID()
+		id := client.GetNodeIdentity()
+		if id == nil {
+			continue
+		}
+		peerID := id.PeerID
 		if _, ok := nodes[peerID]; !ok {
 			node := models.ClientCLPageDataPeerMapNode{
 				ID:    peerID,
 				Label: client.GetName(),
 				Group: "internal",
-				Shape: "circularImage",
 			}
 			nodes[peerID] = &node
 			peerMap.ClientPageDataMapNode = append(peerMap.ClientPageDataMapNode, &node)
@@ -79,7 +84,11 @@ func buildCLPeerMapData() *models.ClientCLPageDataPeerMap {
 	}
 
 	for _, client := range services.GlobalBeaconService.GetConsensusClients() {
-		peerId := client.GetPeerID()
+		id := client.GetNodeIdentity()
+		if id == nil {
+			continue
+		}
+		peerId := id.PeerID
 		peers := client.GetNodePeers()
 		for _, peer := range peers {
 			peerId := peerId
@@ -89,7 +98,6 @@ func buildCLPeerMapData() *models.ClientCLPageDataPeerMap {
 					ID:    peer.PeerID,
 					Label: fmt.Sprintf("%s...%s", peer.PeerID[0:5], peer.PeerID[len(peer.PeerID)-5:]),
 					Group: "external",
-					Shape: "circularImage",
 				}
 				nodes[peer.PeerID] = &node
 				peerMap.ClientPageDataMapNode = append(peerMap.ClientPageDataMapNode, &node)
@@ -131,8 +139,9 @@ func buildCLPeerMapData() *models.ClientCLPageDataPeerMap {
 func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 	logrus.Debugf("clients page called")
 	pageData := &models.ClientsCLPageData{
-		Clients: []*models.ClientsCLPageDataClient{},
-		PeerMap: buildCLPeerMapData(),
+		Clients:                []*models.ClientsCLPageDataClient{},
+		PeerMap:                buildCLPeerMapData(),
+		ShowSensitivePeerInfos: utils.Config.Frontend.ShowSensitivePeerInfos,
 	}
 	chainState := services.GlobalBeaconService.GetChainState()
 
@@ -145,7 +154,11 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 
 	aliases := map[string]string{}
 	for _, client := range services.GlobalBeaconService.GetConsensusClients() {
-		aliases[client.GetPeerID()] = client.GetName()
+		id := client.GetNodeIdentity()
+		if id == nil {
+			continue
+		}
+		aliases[id.PeerID] = client.GetName()
 	}
 
 	for _, client := range services.GlobalBeaconService.GetConsensusClients() {
@@ -162,12 +175,30 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 				peerAlias = alias
 				peerType = "internal"
 			}
+
+			enrKeyValues := map[string]interface{}{}
+			var nodeID string
+
+			if peer.Enr != "" { // Some clients might not announce the ENR of their peers
+				parsedEnr, err := utils.DecodeENR(peer.Enr)
+				if err != nil {
+					logrus.WithFields(logrus.Fields{"client": client.GetName(), "peer_enr": peer.Enr}).Error("failed to decode peer enr. ", err)
+					parsedEnr = &enr.Record{}
+				}
+				enrKeyValues = utils.GetKeyValuesFromENR(parsedEnr)
+				nodeID = utils.GetNodeIDFromENR(parsedEnr)
+			}
+
 			resPeers = append(resPeers, &models.ClientCLPageDataClientPeers{
-				ID:        peer.PeerID,
-				State:     peer.State,
-				Direction: peer.Direction,
-				Alias:     peerAlias,
-				Type:      peerType,
+				ID:                 peer.PeerID,
+				State:              peer.State,
+				Direction:          peer.Direction,
+				Alias:              peerAlias,
+				Type:               peerType,
+				ENR:                peer.Enr,
+				ENRKeyValues:       enrKeyValues,
+				NodeID:             nodeID,
+				LastSeenP2PAddress: peer.LastSeenP2PAddress,
 			})
 
 			if peer.Direction == "inbound" {
@@ -183,18 +214,39 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 			return resPeers[i].Type > resPeers[j].Type
 		})
 
+		id := client.GetNodeIdentity()
+		if id == nil {
+			continue
+		}
+
+		rec, err := utils.DecodeENR(id.Enr)
+		if err != nil {
+			logrus.WithFields(logrus.Fields{"client": client.GetName(), "enr": id.Enr}).Error("failed to decode enr. ", err)
+			rec = &enr.Record{}
+		}
+
+		enrkv := utils.GetKeyValuesFromENR(rec)
+
+		nodeID := utils.GetNodeIDFromENR(rec)
+
 		resClient := &models.ClientsCLPageDataClient{
-			Index:                int(client.GetIndex()) + 1,
-			Name:                 client.GetName(),
-			Version:              client.GetVersion(),
-			Peers:                resPeers,
-			PeerID:               client.GetPeerID(),
-			PeersInboundCounter:  inPeerCount,
-			PeersOutboundCounter: outPeerCount,
-			HeadSlot:             uint64(lastHeadSlot),
-			HeadRoot:             lastHeadRoot[:],
-			Status:               client.GetStatus().String(),
-			LastRefresh:          client.GetLastEventTime(),
+			Index:                 int(client.GetIndex()) + 1,
+			Name:                  client.GetName(),
+			Version:               client.GetVersion(),
+			Peers:                 resPeers,
+			PeerID:                id.PeerID,
+			ENR:                   id.Enr,
+			ENRKeyValues:          enrkv,
+			NodeID:                nodeID,
+			P2PAddresses:          id.P2PAddresses,
+			DisoveryAddresses:     id.DiscoveryAddresses,
+			AttestationSubnetSubs: id.Metadata.Attnets,
+			PeersInboundCounter:   inPeerCount,
+			PeersOutboundCounter:  outPeerCount,
+			HeadSlot:              uint64(lastHeadSlot),
+			HeadRoot:              lastHeadRoot[:],
+			Status:                client.GetStatus().String(),
+			LastRefresh:           client.GetLastEventTime(),
 		}
 
 		lastError := client.GetLastClientError()
