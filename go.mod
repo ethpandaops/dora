@@ -29,6 +29,7 @@ require (
 	github.com/sirupsen/logrus v1.9.3
 	github.com/stdatiks/jdenticon-go v0.1.0
 	github.com/tdewolff/minify v2.3.6+incompatible
+	github.com/timandy/routine v1.1.4
 	github.com/urfave/negroni v1.0.0
 	golang.org/x/crypto v0.26.0
 	golang.org/x/exp v0.0.0-20240613232115-7f521ea00fb8
