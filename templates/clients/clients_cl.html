@@ -74,15 +74,15 @@
                       </span>
                     </td>
                     <td style="font-size: 0.8rem; vertical-align: middle;">
-                      <span style="width:30px;display: inline-block;" class="text-success" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Inbound Peers">
+                      <span class="client-node-peer-count text-success" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Inbound Peers">
                         {{ $client.PeersInboundCounter }}
                         <i class="fa-solid fa-arrow-down"></i>
                       </span>
-                      <span style="width:30px;display: inline-block;" class="text-danger" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Outbound Peers">
+                      <span class="client-node-peer-count text-danger" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Outbound Peers">
                         {{ $client.PeersOutboundCounter}}
                         <i class="fa-solid fa-arrow-up"></i>
                       </span>
-                      <span style="width:30px;display: inline-block;" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Total Peers">
+                      <span class="client-node-peer-count" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Total Peers">
                         ({{ len $client.Peers }})
                       </span>
                     </td>
@@ -179,8 +179,7 @@
                               {{ end }}
                             </div>
                             {{ if $root.ShowSensitivePeerInfos }}
-
-                              <div style="margin-left: 46px; padding-top:3px; margin-bottom: 10px;border-left: 1px dotted; border-bottom: 1px dotted;">
+                              <div class="client-node-peer-details">
                                 <table class="table table-borderless table-sm client-table-info" style="padding-left:0; margin-top:10px;margin-bottom: 10px; margin-left: 10px;">
                                   <tbody>
                                     <tr>
@@ -190,7 +189,7 @@
                                         <i class="fa fa-copy text-muted p-1" role="button" data-bs-placement="right" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $peer.LastSeenP2PAddress }}"></i>
                                       </td>
                                     </tr>
-                                    <tr style="vertical-align: top;">
+                                    <tr>
                                       <td>ENR</td>
                                       <td>
                                         <div style="word-break: break-all; text-wrap: pretty;">

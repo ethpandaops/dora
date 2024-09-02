@@ -30,6 +30,23 @@ Client peers table
 .client-node-enr-infos{
   text-align: left;
 }
+
+.client-node-peer-details {
+  margin-left: 46px;
+  padding-top:3px;
+  margin-bottom: 10px;
+  border-left: 1px dotted;
+  border-bottom: 1px dotted;
+}
+
+.client-node-peer-details > tr {
+  vertical-align: top;
+}
+
+.client-node-peer-count {
+  width:30px;
+  display: inline-block;
+}
 .client-node-icon {
   border-radius:50%;
   border:1px solid #0f0f0f;
