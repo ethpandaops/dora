@@ -116,6 +116,13 @@
                         <table class="table table-borderless table-sm client-table-info ">
                           <tbody>
                             <tr>
+                              <td>Name</td>
+                              <td>
+                                <code>{{ $client.Name }}</code>
+                                <i class="fa fa-copy text-muted p-1" role="button" data-bs-placement="right" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $client.Name }}"></i>
+                              </td>
+                            </tr>
+                            <tr>
                               <td>Peer ID</td>
                               <td>
                                 <code>{{ $client.PeerID }}</code>
@@ -170,7 +177,7 @@
                               <i class="fa-solid fa-up-long text-danger" data-bs-toggle="tooltip" data-bs-placement="left" data-bs-title="Outbound"></i>
                               {{ end}}
                               <svg class="peer-table-icon {{ $peer.State }}" data-jdenticon-value="{{ $peer.ID }}"></svg>
-                              <code data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $peer.ID }}">
+                              <code>
                                 {{ $peer.ID }}
                               </code>
                               <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $peer.ID }}"></i>

@@ -43,6 +43,7 @@ frontend:
   siteName: "Dora the Explorer"
   siteSubtitle: "$ENCLAVE_NAME - Kurtosis"
   ethExplorerLink: ""
+  showSensitivePeerInfos: true
 beaconapi:
   localCacheSize: 10
   redisCacheAddr: ""

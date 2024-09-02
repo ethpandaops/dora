@@ -6,9 +6,10 @@ import (
 
 // ClientsELPageData is a struct to hold info for the clients page
 type ClientsELPageData struct {
-	Clients     []*ClientsELPageDataClient `json:"clients"`
-	ClientCount uint64                     `json:"client_count"`
-	PeerMap     *ClientELPageDataPeerMap   `json:"peer_map"`
+	Clients                []*ClientsELPageDataClient `json:"clients"`
+	ClientCount            uint64                     `json:"client_count"`
+	PeerMap                *ClientELPageDataPeerMap   `json:"peer_map"`
+	ShowSensitivePeerInfos bool                       `json:"show_sensitive_peer_infos"`
 }
 
 type ClientsELPageDataClient struct {
@@ -22,6 +23,9 @@ type ClientsELPageDataClient struct {
 	LastError            string                         `json:"error"`
 	PeerID               string                         `json:"peer_id"`
 	PeerName             string                         `json:"peer_name"`
+	Enode                string                         `json:"enode"`
+	IPAddr               string                         `json:"ip_addr"`
+	ListenAddr           string                         `json:"listen_addr"`
 	Peers                []*ClientELPageDataClientPeers `json:"peers"`
 	DidFetchPeers        bool                           `json:"peers_fetched"`
 	PeersInboundCounter  uint32                         `json:"peers_inbound_counter"`
@@ -29,11 +33,15 @@ type ClientsELPageDataClient struct {
 }
 
 type ClientELPageDataClientPeers struct {
-	ID        string `json:"id"`
-	Alias     string `json:"alias"`
-	Type      string `json:"type"`
-	State     string `json:"state"`
-	Direction string `json:"direction"`
+	ID        string                 `json:"id"`
+	Alias     string                 `json:"alias"`
+	Enode     string                 `json:"enode"`
+	Name      string                 `json:"name"`
+	Type      string                 `json:"type"`
+	State     string                 `json:"state"`
+	Direction string                 `json:"direction"`
+	Caps      []string               `json:"caps"`
+	Protocols map[string]interface{} `json:"protocols"`
 }
 type ClientELPageDataPeerMap struct {
 	ClientPageDataMapNode []*ClientELPageDataPeerMapNode `json:"nodes"`
