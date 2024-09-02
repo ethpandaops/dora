@@ -34,7 +34,6 @@ type Client struct {
 	isSyncing               bool
 	isOptimistic            bool
 	versionStr              string
-	enr                     string
 	nodeIdentity            *types.NodeIdentity
 	clientType              ClientType
 	lastEvent               time.Time
