@@ -116,9 +116,8 @@ func buildCLPeerMapData() *models.ClientCLPageDataPeerMap {
 			p2.Value++
 
 			if _, ok := edges[idx]; !ok {
-				edge := models.ClientCLDataMapPeerMapEdge{}
-				if nodes[peer.PeerID].Group == "external" {
-					edge.Dashes = true
+				edge := models.ClientCLDataMapPeerMapEdge{
+					Interaction: nodes[peer.PeerID].Group,
 				}
 				if peer.Direction == "inbound" {
 					edge.From = peer.PeerID

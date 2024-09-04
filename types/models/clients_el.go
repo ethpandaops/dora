@@ -57,7 +57,7 @@ type ClientELPageDataPeerMapNode struct {
 }
 
 type ClientELDataMapPeerMapEdge struct {
-	From   string `json:"from"`
-	To     string `json:"to"`
-	Dashes bool   `json:"dashes"`
+	From        string `json:"from"`
+	To          string `json:"to"`
+	Interaction string `json:"interaction"`
 }

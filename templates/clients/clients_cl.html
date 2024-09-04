@@ -23,10 +23,14 @@
                 <div id="nodemap-loading" class="spinner-border" role="status">
                   <span class="sr-only">Loading...</span>
                 </div>
-                <div class="btn-group btn-group-sm" role="group" aria-label="Network layouts" style="position: absolute; bottom: 10px; right: 10px; z-index: 10000;">
-                  <button type="button" class="btn btn-outline-secondary" onclick='event.stopPropagation(); $_network.fitAnimated(cy,$_network.layouts.fcose(data.nodes.length))'><i class="fa-solid fa-share-alt"></i></button>
-                  <button type="button" class="btn btn-outline-secondary" onclick='event.stopPropagation(); $_network.fitAnimated(cy,$_network.layouts.circle())'><i class="fa-solid fa-circle"></i></button>
-                  <button type="button" class="btn btn-outline-secondary" onclick='event.stopPropagation(); $_network.fitAnimated(cy,$_network.layouts.grid())'><i class="fa-solid fa-th"></i></button>
+              </div>
+              <div class="card-body px-0 peer-nodemap-menu">
+                <div class="btn-group btn-group-sm" role="group" aria-label="Network layouts" style="position: absolute; bottom: 5px; right: 10px; z-index: 10000;">
+                  <button type="button" class="btn btn-secondary" disabled>Layouts</button>
+                  <button type="button" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="CoSE" class="btn btn-secondary" onclick='$_network.fitAnimated(cy,$_network.layouts.fcose(data.nodes.length))'><i class="fa-solid fa-share-alt"></i></button>
+                  <button type="button" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Circle" class="btn btn-secondary" onclick='$_network.fitAnimated(cy,$_network.layouts.circle())'><i class="fa-solid fa-circle"></i></button>
+                  <button type="button" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Grid" class="btn btn-secondary" onclick='$_network.fitAnimated(cy,$_network.layouts.grid())'><i class="fa-solid fa-th"></i></button>
+                  <button type="button" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Concentric" class="btn btn-secondary" onclick='$_network.fitAnimated(cy,$_network.layouts.concentric())'><i class="fa-solid fa-sun"></i></button>
                 </div>
               </div>
             </div>
@@ -261,6 +265,7 @@
 <script src="/js/vendor/cytoscape-layout-base.js"></script>
 <script src="/js/vendor/cytoscape-cose-base.js"></script>
 <script src="/js/vendor/cytoscape-fcose.js"></script>
+<script src="https://cytoscape.org/cytoscape.js-cxtmenu/cytoscape-cxtmenu.js"></script>
 <script src="/js/cytoscape-network-aux.js"></script>
 <script type="text/javascript">
   var container = document.getElementById("nodemap");

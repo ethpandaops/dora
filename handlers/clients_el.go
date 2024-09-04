@@ -140,9 +140,8 @@ func buildELPeerMapData() *models.ClientELPageDataPeerMap {
 			p2.Value++
 
 			if _, ok := edges[idx]; !ok {
-				edge := models.ClientELDataMapPeerMapEdge{}
-				if nodes[peerID].Group == "external" {
-					edge.Dashes = true
+				edge := models.ClientELDataMapPeerMapEdge{
+					Interaction: nodes[peerID].Group,
 				}
 				if peer.Network.Inbound {
 					edge.From = peerID

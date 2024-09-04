@@ -89,8 +89,13 @@ Client peers table
 
 .peer-nodemap {
   background: #0f0f0f9f url(/images/stars.png) repeat top center;
+  background-blend-mode: multiply;
   height: 850px;
   padding: 0;
+}
+
+.peer-nodemap-menu{
+  height: 40px;
 }
 
 @media only screen and (max-width: 768px) {
