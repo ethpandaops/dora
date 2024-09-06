@@ -52,7 +52,6 @@ type ClientELPageDataPeerMapNode struct {
 	ID    string `json:"id"`
 	Label string `json:"label"`
 	Group string `json:"group"`
-	Shape string `json:"shape"`
 	Value int    `json:"value"`
 }
 

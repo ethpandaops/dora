@@ -55,7 +55,6 @@ $_network.layouts = {
       name: 'concentric',
       animate: false,
       concentric: function( node ){
-        //return node.degree();
         return node.data('group') == 'internal' ? 2 : 1;
       },
       levelWidth: function( nodes ){

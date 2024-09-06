@@ -86,7 +86,6 @@ func buildELPeerMapData() *models.ClientELPageDataPeerMap {
 				ID:    peerID,
 				Label: client.GetName(),
 				Group: "internal",
-				Shape: "circularImage",
 			}
 			nodes[peerID] = &node
 			peerMap.ClientPageDataMapNode = append(peerMap.ClientPageDataMapNode, &node)
@@ -121,7 +120,6 @@ func buildELPeerMapData() *models.ClientELPageDataPeerMap {
 					ID:    peerID,
 					Label: fmt.Sprintf("%s...%s", peerID[0:5], peerID[len(peerID)-5:]),
 					Group: "external",
-					Shape: "circularImage",
 				}
 				nodes[peerID] = &node
 				peerMap.ClientPageDataMapNode = append(peerMap.ClientPageDataMapNode, &node)
