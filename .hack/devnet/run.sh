@@ -37,7 +37,7 @@ server:
   port: "8080"
 frontend:
   enabled: true
-  debug: false
+  debug: true
   pprof: true
   minimize: false
   siteName: "Dora the Explorer"
