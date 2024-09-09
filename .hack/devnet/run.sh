@@ -58,6 +58,9 @@ $(for node in $BEACON_NODES; do
     name=$(docker inspect -f "{{ with index .Config.Labels \"com.kurtosistech.id\"}}{{.}}{{end}}" $node)
     ip=$(echo '127.0.0.1')
     port=$(docker inspect --format='{{ (index (index .NetworkSettings.Ports "4000/tcp") 0).HostPort }}' $node)
+    if [ -z "$port" ]; then
+      port="65535"
+    fi
     echo "    - { name: $name, url: http://$ip:$port }"
 done)
 executionapi:
@@ -67,6 +70,9 @@ $(for node in $EXECUTION_NODES; do
     name=$(docker inspect -f "{{ with index .Config.Labels \"com.kurtosistech.id\"}}{{.}}{{end}}" $node)
     ip=$(echo '127.0.0.1')
     port=$(docker inspect --format='{{ (index (index .NetworkSettings.Ports "8545/tcp") 0).HostPort }}' $node)
+    if [ -z "$port" ]; then
+      port="65535"
+    fi
     echo "    - { name: $name, url: http://$ip:$port }"
 done)
 indexer:
