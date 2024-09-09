@@ -1,4 +1,4 @@
-package types
+package rpc
 
 type NodeIdentity struct {
 	PeerID             string   `json:"peer_id"`

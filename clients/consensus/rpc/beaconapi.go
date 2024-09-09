@@ -25,7 +25,6 @@ import (
 	"golang.org/x/crypto/ssh"
 
 	"github.com/ethpandaops/dora/clients/sshtunnel"
-	"github.com/ethpandaops/dora/types"
 )
 
 type BeaconClient struct {
@@ -471,9 +470,9 @@ func (bc *BeaconClient) GetNodePeers(ctx context.Context) ([]*v1.Peer, error) {
 	return result.Data, nil
 }
 
-func (bc *BeaconClient) GetNodeIdentity(ctx context.Context) (*types.NodeIdentity, error) {
+func (bc *BeaconClient) GetNodeIdentity(ctx context.Context) (*NodeIdentity, error) {
 	response := struct {
-		Data *types.NodeIdentity `json:"data"`
+		Data *NodeIdentity `json:"data"`
 	}{}
 
 	err := bc.getJSON(ctx, fmt.Sprintf("%s/eth/v1/node/identity", bc.endpoint), &response)

@@ -11,7 +11,6 @@ import (
 
 	"github.com/ethpandaops/dora/clients/consensus/rpc"
 	"github.com/ethpandaops/dora/clients/sshtunnel"
-	"github.com/ethpandaops/dora/types"
 )
 
 type ClientConfig struct {
@@ -34,7 +33,7 @@ type Client struct {
 	isSyncing               bool
 	isOptimistic            bool
 	versionStr              string
-	nodeIdentity            *types.NodeIdentity
+	nodeIdentity            *rpc.NodeIdentity
 	clientType              ClientType
 	lastEvent               time.Time
 	retryCounter            uint64
@@ -113,7 +112,7 @@ func (client *Client) GetVersion() string {
 	return client.versionStr
 }
 
-func (client *Client) GetNodeIdentity() *types.NodeIdentity {
+func (client *Client) GetNodeIdentity() *rpc.NodeIdentity {
 	return client.nodeIdentity
 }
 
