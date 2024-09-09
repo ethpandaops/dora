@@ -23,10 +23,14 @@
                 <div id="nodemap-loading" class="spinner-border" role="status">
                   <span class="sr-only">Loading...</span>
                 </div>
-                <div class="btn-group btn-group-sm" role="group" aria-label="Network layouts" style="position: absolute; bottom: 10px; right: 10px; z-index: 10000;">
-                  <button type="button" class="btn btn-outline-secondary" onclick='event.stopPropagation(); $_network.fitAnimated(cy,$_network.layouts.fcose(data.nodes.length))'><i class="fa-solid fa-share-alt"></i></button>
-                  <button type="button" class="btn btn-outline-secondary" onclick='event.stopPropagation(); $_network.fitAnimated(cy,$_network.layouts.circle())'><i class="fa-solid fa-circle"></i></button>
-                  <button type="button" class="btn btn-outline-secondary" onclick='event.stopPropagation(); $_network.fitAnimated(cy,$_network.layouts.grid())'><i class="fa-solid fa-th"></i></button>
+              </div>
+              <div class="card-body px-0 peer-nodemap-menu">
+                <div class="btn-group btn-group-sm" role="group" aria-label="Network layouts" style="position: absolute; bottom: 5px; right: 10px; z-index: 10000;">
+                  <button type="button" class="btn btn-secondary" disabled>Layouts</button>
+                  <button type="button" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Cose" class="btn btn-secondary" onclick='$_network.fitAnimated(cy,$_network.layouts.fcose(data.nodes.length))'><i class="fa-solid fa-share-alt"></i></button>
+                  <button type="button" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Circle" class="btn btn-secondary" onclick='$_network.fitAnimated(cy,$_network.layouts.circle())'><i class="fa-solid fa-circle"></i></button>
+                  <button type="button" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Grid" class="btn btn-secondary" onclick='$_network.fitAnimated(cy,$_network.layouts.grid())'><i class="fa-solid fa-th"></i></button>
+                  <button type="button" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Concentric" class="btn btn-secondary" onclick='$_network.fitAnimated(cy,$_network.layouts.concentric(data.nodes.length))'><i class="fa-solid fa-sun"></i></button>
                 </div>
               </div>
             </div>
@@ -57,22 +61,21 @@
               </tr>
             </thead>
               <tbody>
+                {{ $root := . }}
                 {{ range $i, $client := .Clients }}
                   <tr>
                     <td>{{ $client.Index }}</td>
                     <td>
-                      <img src="/identicon?key={{ $client.PeerID }}"
-                        alt="{{ $client.PeerID }}"
-                        class="client-node-icon"/>
-                        <span
-                          id="clientRow-{{ $client.Name }}"
-                          style="cursor:pointer;"
-                          onclick="$_network.isolateNode(cy, '{{ $client.PeerID}}');
-                                   $('.collapse.peerInfo').collapse('hide');
-                                   $('#peerInfo-{{ $client.PeerID }}').collapse('show');
-                          ">
-                          <a href="#name={{ $client.Name }}">{{ $client.Name }}</a>
-                        </span>
+                      <svg class="client-node-icon" data-jdenticon-value="{{ $client.PeerID }}"></svg>
+                      <span
+                        id="clientRow-{{ $client.Name }}"
+                        style="cursor:pointer;"
+                        onclick="$_network.isolateNode(cy, '{{ $client.PeerID}}');
+                                  $('.collapse.peerInfo').collapse('hide');
+                                  $('#peerInfo-{{ $client.PeerID }}').collapse('show');
+                        ">
+                        <a href="#name={{ $client.Name }}">{{ $client.Name }}</a>
+                      </span>
                     </td>
                     <td style="font-size: 0.8rem; vertical-align: middle;">
                       <span style="width:30px;display: inline-block;" class="text-success" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Inbound Peers">
@@ -121,62 +124,124 @@
                     </td>
                   </tr>
                   <tr class="collapse peerInfo" style="transition:0s" id="peerInfo-{{ $client.PeerID }}">
-                    <td colspan="7">
+                    <td colspan="7" style="padding: 10px 0;">
+                      <div class="client-row-divider">Node identity</div>
                       <div class="client-node-peerinfo">
-                        <table style="margin:0 auto; text-align: left;">
+                        <table class="table table-borderless table-sm client-table-info ">
                           <tbody>
                             <tr>
-                              <td>ID</td>
-                              <td style="padding-left: 10px;">
-                                <code>{{ $client.PeerID }}</code>
-                                <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $client.PeerID }}"></i>
+                              <td>Name</td>
+                              <td>
+                                <code>{{ $client.Name }}</code>
+                                <i class="fa fa-copy text-muted p-1" role="button" data-bs-placement="right" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $client.Name }}"></i>
                               </td>
                             </tr>
                             <tr>
-                              <td>Name</td>
-                              <td style="padding-left: 10px;">
-                                <code>{{ $client.PeerName }}</code>
-                                <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $client.PeerName }}"></i>
+                              <td>Peer ID</td>
+                              <td>
+                                <code>{{ $client.PeerID }}</code>
+                                <i class="fa fa-copy text-muted p-1" role="button" data-bs-placement="right" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $client.PeerID }}"></i>
                               </td>
+                            </tr>
+                            {{ if $root.ShowSensitivePeerInfos }}
+                            <tr style="vertical-align: top;">
+                              <td>Enode</td>
+                              <td>
+                                <div style="word-break: break-all; text-wrap: pretty;">
+                                  <code>{{ $client.Enode }}</code>
+                                  <i class="fa fa-copy text-muted p-1" role="button" data-bs-placement="right" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $client.Enode }}"></i>
+                                </div>
+                              </td>
+                            </tr>
+                            <tr style="vertical-align: top;">
+                              <td>IP Address</td>
+                              <td>
+                                <div style="word-break: break-all; text-wrap: pretty;">
+                                  <code>{{ $client.IPAddr }}</code>
+                                  <i class="fa fa-copy text-muted p-1" role="button" data-bs-placement="right" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $client.IPAddr }}"></i>
+                                </div>
+                              </td>
+                            </tr>
+                            <tr style="vertical-align: top;">
+                              <td>Listen Address</td>
+                              <td>
+                                <div style="word-break: break-all; text-wrap: pretty;">
+                                  <code>{{ $client.ListenAddr }}</code>
+                                  <i class="fa fa-copy text-muted p-1" role="button" data-bs-placement="right" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $client.ListenAddr }}"></i>
+                                </div>
+                              </td>
+                            </tr>
+                            {{ end }}
                           </tbody>
-
                         </table>
 
 
                       </div>
+                      <div class="client-row-divider">Peers</div>
                       <div>
-                        <div class="peer-table-column" style="border-right: 1px dashed;">
-                            <div>Inbound</div>
-                          {{ range $j, $peer := $client.Peers }}
-                            {{if eq "inbound" $peer.Direction}}
-                            <div style="padding-left: 20px; padding-top:3px">
-                              <img src="/identicon?key={{ $peer.ID }}" class="peer-table-icon" title="{{ $peer.State }}"/>
-                              <code data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $peer.ID }}">
-                                {{ $peer.Alias }}
-                                {{ if eq $peer.Type "internal" }}
-                                <span style="max-width:200px"> {{ trunc (sub (len $peer.ID) (add (len $peer.Alias) 4) ) $peer.ID }}...</span>
-                                {{ end }}
-                              </code>
-                              <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $peer.ID }}"></i>
-                            </div>
-                            {{end}}
-                          {{ end }}
-                        </div>
                         <div class="peer-table-column">
-                          <div>Outbound</div>
                           {{ range $j, $peer := $client.Peers }}
-                            {{if eq "outbound" $peer.Direction}}
                             <div style="padding-left: 20px; padding-top:3px">
-                              <img src="/identicon?key={{ $peer.ID }}" class="peer-table-icon {{ $peer.State }}" alt="{{ $peer.State }}"/>
-                              <code data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $peer.ID }}">
-                                {{ $peer.Alias }}
-                                {{ if eq $peer.Type "internal" }}
-                                <span style="max-width:200px"> {{ trunc (sub (len $peer.ID) (add (len $peer.Alias) 4) ) $peer.ID }}...</span>
-                                {{ end }}
+                              {{ if contains $client.Version "Nethermind"}}
+                              <i class="fa-solid fa-question text-warning" data-bs-toggle="tooltip" data-bs-placement="left" data-bs-title="Unknown peer direction"></i>
+                              {{ else if eq $peer.Direction "inbound" }}
+                              <i class="fa-solid fa-down-long text-success" data-bs-toggle="tooltip" data-bs-placement="left" data-bs-title="Inbound"></i>
+                              {{ else }}
+                              <i class="fa-solid fa-up-long text-danger" data-bs-toggle="tooltip" data-bs-placement="left" data-bs-title="Outbound"></i>
+                              {{ end}}
+                              <svg class="peer-table-icon {{ $peer.State }}" data-jdenticon-value="{{ $peer.ID }}"></svg>
+                              <code>
+                                {{ $peer.ID }}
                               </code>
                               <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $peer.ID }}"></i>
+                              {{ if eq $peer.Type "internal" }}
+                              <span class="badge text-bg-secondary">{{ $peer.Alias }}</span>
+                              {{ end }}
                             </div>
-                            {{end}}
+                            {{ if $root.ShowSensitivePeerInfos }}
+                              <div class="client-node-peer-details">
+                                <table class="table table-borderless table-sm client-table-info" style="padding-left:0; margin-top:10px;margin-bottom: 10px; margin-left: 10px;">
+                                  <tbody>
+                                    <tr>
+                                      <td>Enode</td>
+                                      <td>
+                                        <div style="word-break: break-all; text-wrap: pretty;">
+                                          <code>{{ $peer.Enode }}</code>
+                                          <i class="fa fa-copy text-muted p-1" role="button" data-bs-placement="right" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $peer.Enode }}"></i>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                    <tr>
+                                      <td>Name</td>
+                                      <td>
+                                        <div style="word-break: break-all; text-wrap: pretty;">
+                                          <code>{{ $peer.Name }}</code>
+                                          <i class="fa fa-copy text-muted p-1" role="button" data-bs-placement="right" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $peer.Name }}"></i>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                    <tr>
+                                      <td>Capabilities</td>
+                                      <td>
+                                        <div style="word-break: break-all; text-wrap: pretty;">
+                                          <code>{{ toJson $peer.Caps }}</code>
+                                          <i class="fa fa-copy text-muted p-1" role="button" data-bs-placement="right" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ toJson $peer.Caps }}"></i>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                    <tr>
+                                      <td>Protocols</td>
+                                      <td>
+                                        <div style="word-break: break-all; text-wrap: pretty;">
+                                          <code style="white-space: pre;">{{ toPrettyJson $peer.Protocols }}</code>
+                                          <i class="fa fa-copy text-muted p-1" role="button" data-bs-placement="right" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ toJson $peer.Protocols }}"></i>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  </tbody>
+                                </table>
+                              </div>
+                            {{ end}}
                           {{ end }}
                         </div>
                       </div>
@@ -207,6 +272,7 @@
 {{ end }}
 
 {{ define "js" }}
+<script src="/js/vendor/jdenticon-3.3.0.min.js"></script>
 <script src="/js/vendor/cytoscape.min.js"></script>
 <script src="/js/vendor/cytoscape-layout-base.js"></script>
 <script src="/js/vendor/cytoscape-cose-base.js"></script>

@@ -470,18 +470,16 @@ func (bc *BeaconClient) GetNodePeers(ctx context.Context) ([]*v1.Peer, error) {
 	return result.Data, nil
 }
 
-func (bc *BeaconClient) GetNodePeerId(ctx context.Context) (string, error) {
-	nodeIdentity := struct {
-		Data struct {
-			PeerId string `json:"peer_id"`
-		} `json:"data"`
+func (bc *BeaconClient) GetNodeIdentity(ctx context.Context) (*NodeIdentity, error) {
+	response := struct {
+		Data *NodeIdentity `json:"data"`
 	}{}
 
-	err := bc.getJSON(ctx, fmt.Sprintf("%s/eth/v1/node/identity", bc.endpoint), &nodeIdentity)
+	err := bc.getJSON(ctx, fmt.Sprintf("%s/eth/v1/node/identity", bc.endpoint), &response)
 	if err != nil {
-		return "", fmt.Errorf("error retrieving node identity: %v", err)
+		return nil, fmt.Errorf("error retrieving node identity: %v", err)
 	}
-	return nodeIdentity.Data.PeerId, nil
+	return response.Data, nil
 }
 
 func (bc *BeaconClient) SubmitBLSToExecutionChanges(ctx context.Context, blsChanges []*capella.SignedBLSToExecutionChange) error {
