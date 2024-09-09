@@ -35,7 +35,8 @@ $_network.layouts = {
       animate: false,
       stop: function() {
         $("#nodemap-loading").hide();
-      }
+      },
+      padding: nodeCount < 20 ? 200 : 0,
     }
   },
   circle : function() {
@@ -50,10 +51,11 @@ $_network.layouts = {
       animate: false,
     }
   },
-  concentric : function() {
+  concentric : function(nodeCount) {
     return {
       name: 'concentric',
       animate: false,
+      padding: nodeCount < 20 ? 200 : 0,
       concentric: function( node ){
         return node.data('group') == 'internal' ? 2 : 1;
       },
