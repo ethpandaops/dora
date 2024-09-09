@@ -28,21 +28,23 @@ import (
 )
 
 type BeaconClient struct {
-	name      string
-	endpoint  string
-	headers   map[string]string
-	sshtunnel *sshtunnel.SSHTunnel
-	clientSvc eth2client.Service
-	logger    logrus.FieldLogger
+	name       string
+	endpoint   string
+	headers    map[string]string
+	sshtunnel  *sshtunnel.SSHTunnel
+	disableSSZ bool
+	clientSvc  eth2client.Service
+	logger     logrus.FieldLogger
 }
 
 // NewBeaconClient is used to create a new beacon client
-func NewBeaconClient(name, endpoint string, headers map[string]string, sshcfg *sshtunnel.SshConfig, logger logrus.FieldLogger) (*BeaconClient, error) {
+func NewBeaconClient(name, endpoint string, headers map[string]string, sshcfg *sshtunnel.SshConfig, disableSSZ bool, logger logrus.FieldLogger) (*BeaconClient, error) {
 	client := &BeaconClient{
-		name:     name,
-		endpoint: endpoint,
-		headers:  headers,
-		logger:   logger,
+		name:       name,
+		endpoint:   endpoint,
+		headers:    headers,
+		disableSSZ: disableSSZ,
+		logger:     logger,
 	}
 
 	if sshcfg != nil {
@@ -104,8 +106,6 @@ func (bc *BeaconClient) Initialize(ctx context.Context) error {
 		http.WithAddress(bc.endpoint),
 		http.WithTimeout(10 * time.Minute),
 		http.WithLogLevel(zerolog.Disabled),
-		// TODO (when upstream PR is merged)
-		// http.WithConnectionCheck(false),
 		http.WithCustomSpecSupport(true),
 		http.WithEnforceJSON(true),
 	}
@@ -113,6 +113,10 @@ func (bc *BeaconClient) Initialize(ctx context.Context) error {
 	// set extra endpoint headers
 	if len(bc.headers) > 0 {
 		cliParams = append(cliParams, http.WithExtraHeaders(bc.headers))
+	}
+
+	if bc.disableSSZ {
+		cliParams = append(cliParams, http.WithEnforceJSON(true))
 	}
 
 	clientSvc, err := http.New(ctx, cliParams...)
@@ -467,18 +471,16 @@ func (bc *BeaconClient) GetNodePeers(ctx context.Context) ([]*v1.Peer, error) {
 	return result.Data, nil
 }
 
-func (bc *BeaconClient) GetNodePeerId(ctx context.Context) (string, error) {
-	nodeIdentity := struct {
-		Data struct {
-			PeerId string `json:"peer_id"`
-		} `json:"data"`
+func (bc *BeaconClient) GetNodeIdentity(ctx context.Context) (*NodeIdentity, error) {
+	response := struct {
+		Data *NodeIdentity `json:"data"`
 	}{}
 
-	err := bc.getJSON(ctx, fmt.Sprintf("%s/eth/v1/node/identity", bc.endpoint), &nodeIdentity)
+	err := bc.getJSON(ctx, fmt.Sprintf("%s/eth/v1/node/identity", bc.endpoint), &response)
 	if err != nil {
-		return "", fmt.Errorf("error retrieving node identity: %v", err)
+		return nil, fmt.Errorf("error retrieving node identity: %v", err)
 	}
-	return nodeIdentity.Data.PeerId, nil
+	return response.Data, nil
 }
 
 func (bc *BeaconClient) SubmitBLSToExecutionChanges(ctx context.Context, blsChanges []*capella.SignedBLSToExecutionChange) error {

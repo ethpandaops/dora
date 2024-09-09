@@ -14,10 +14,11 @@ import (
 )
 
 type ClientConfig struct {
-	URL       string
-	Name      string
-	Headers   map[string]string
-	SshConfig *sshtunnel.SshConfig
+	URL        string
+	Name       string
+	Headers    map[string]string
+	SshConfig  *sshtunnel.SshConfig
+	DisableSSZ bool
 }
 
 type Client struct {
@@ -32,7 +33,7 @@ type Client struct {
 	isSyncing               bool
 	isOptimistic            bool
 	versionStr              string
-	peerId                  string
+	nodeIdentity            *rpc.NodeIdentity
 	clientType              ClientType
 	lastEvent               time.Time
 	retryCounter            uint64
@@ -56,7 +57,7 @@ type Client struct {
 func (pool *Pool) newPoolClient(clientIdx uint16, endpoint *ClientConfig) (*Client, error) {
 	logger := pool.logger.WithField("client", endpoint.Name)
 
-	rpcClient, err := rpc.NewBeaconClient(endpoint.Name, endpoint.URL, endpoint.Headers, endpoint.SshConfig, logger)
+	rpcClient, err := rpc.NewBeaconClient(endpoint.Name, endpoint.URL, endpoint.Headers, endpoint.SshConfig, endpoint.DisableSSZ, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -111,8 +112,8 @@ func (client *Client) GetVersion() string {
 	return client.versionStr
 }
 
-func (client *Client) GetPeerID() string {
-	return client.peerId
+func (client *Client) GetNodeIdentity() *rpc.NodeIdentity {
+	return client.nodeIdentity
 }
 
 func (client *Client) GetEndpointConfig() *ClientConfig {

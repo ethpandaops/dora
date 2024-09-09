@@ -291,8 +291,12 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 	}
 
 	canonicalRoots := make([][]byte, len(canonicalBlocks))
+	canonicalBlockHashes := make([][]byte, len(canonicalBlocks))
 	for i, block := range canonicalBlocks {
 		canonicalRoots[i] = block.Root[:]
+		if blockIndex := block.GetBlockIndex(); blockIndex != nil {
+			canonicalBlockHashes[i] = blockIndex.ExecutionHash[:]
+		}
 	}
 
 	t1dur := time.Since(t1) - t1loading
@@ -330,7 +334,7 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 			return fmt.Errorf("error persisting sync committee assignments to db: %v", err)
 		}
 
-		if err := db.UpdateMevBlockByEpoch(uint64(epoch), specs.SlotsPerEpoch, canonicalRoots, tx); err != nil {
+		if err := db.UpdateMevBlockByEpoch(uint64(epoch), specs.SlotsPerEpoch, canonicalBlockHashes, tx); err != nil {
 			return fmt.Errorf("error while updating mev block proposal state: %v", err)
 		}
 

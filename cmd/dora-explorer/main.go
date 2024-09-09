@@ -165,8 +165,6 @@ func startFrontend(webserver *http.Server) {
 	router.HandleFunc("/validator/{idxOrPubKey}", handlers.Validator).Methods("GET")
 	router.HandleFunc("/validator/{index}/slots", handlers.ValidatorSlots).Methods("GET")
 
-	router.HandleFunc("/identicon", handlers.Identicon).Methods("GET")
-
 	if utils.Config.Frontend.Pprof {
 		// add pprof handler
 		router.PathPrefix("/debug/pprof/").Handler(http.DefaultServeMux)

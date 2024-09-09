@@ -14,6 +14,7 @@ import (
 	"github.com/ethpandaops/dora/cache"
 	"github.com/ethpandaops/dora/utils"
 	"github.com/sirupsen/logrus"
+	"github.com/timandy/routine"
 )
 
 type FrontendCacheService struct {
@@ -119,6 +120,8 @@ func (fc *FrontendCacheService) processPageCall(pageKey string, caching bool, pa
 	callIdx := fc.pageCallCounter
 	fc.pageCallCounterMutex.Unlock()
 
+	callGoId := int64(0)
+
 	go func(callIdx uint64) {
 		defer func() {
 			if err := recover(); err != nil {
@@ -129,6 +132,8 @@ func (fc *FrontendCacheService) processPageCall(pageKey string, caching bool, pa
 				}
 			}
 		}()
+
+		callGoId = routine.Goid()
 
 		// check cache
 		if !utils.Config.Frontend.Debug && caching && fc.getFrontendCache(pageKey, pageData) == nil {
@@ -169,7 +174,7 @@ func (fc *FrontendCacheService) processPageCall(pageKey string, caching bool, pa
 		return nil, &FrontendCachePageError{
 			name:  "page timeout",
 			err:   fmt.Errorf("page call %v timeout", callIdx),
-			stack: fc.extractPageCallStack(callIdx),
+			stack: fc.extractPageCallStack(callGoId),
 		}
 	}
 }
@@ -190,7 +195,7 @@ func (fc *FrontendCacheService) completePageLoad(pageKey string, processingPage 
 	fc.processingMutex.Unlock()
 }
 
-func (fc *FrontendCacheService) extractPageCallStack(callIdx uint64) string {
+func (fc *FrontendCacheService) extractPageCallStack(callGoid int64) string {
 	if fc.callStackMutex.TryLock() {
 		runtime.Stack(fc.callStackBuffer, true)
 		fc.callStackMutex.Unlock()
@@ -198,27 +203,27 @@ func (fc *FrontendCacheService) extractPageCallStack(callIdx uint64) string {
 	fc.callStackMutex.RLock()
 	defer fc.callStackMutex.RUnlock()
 
-	callFnName := fmt.Sprintf("processPageCall.func1(0x%x)", callIdx)
 	scanner := bufio.NewScanner(bytes.NewReader(fc.callStackBuffer))
-	lastBlock := []string{}
-	isPageCall := false
+	stackTrace := []string{}
+	isRelevantCall := false
 	for scanner.Scan() {
 		line := scanner.Text()
 		if strings.HasPrefix(line, "goroutine ") {
-			if isPageCall {
+			if isRelevantCall {
 				break
 			}
-			lastBlock = []string{}
-		} else {
-			lastBlock = append(lastBlock, line)
 
-			if strings.Contains(line, callFnName) {
-				isPageCall = true
-			}
+			isRelevantCall = strings.HasPrefix(line, fmt.Sprintf("goroutine %v ", callGoid))
+		}
+
+		if isRelevantCall {
+			stackTrace = append(stackTrace, line)
 		}
 	}
-	if !isPageCall {
+
+	if !isRelevantCall {
 		return "call stack not found"
 	}
-	return strings.Join(lastBlock, "\n")
+
+	return strings.Join(stackTrace, "\n")
 }

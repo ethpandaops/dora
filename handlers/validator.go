@@ -169,7 +169,7 @@ func buildValidatorPageData(validatorIndex uint64) (*models.ValidatorPageData, t
 		ProposerIndex: &validatorIndex,
 		WithOrphaned:  1,
 		WithMissing:   1,
-	}, 0, 10)
+	}, 0, 10, chainState.GetSpecs().SlotsPerEpoch)
 	for _, blockData := range blocksData {
 		var blockStatus dbtypes.SlotStatus
 		if blockData.Block == nil {

@@ -308,3 +308,17 @@ span.validator-label {
 .ellipsis-copy-btn {
   float: right;
 }
+
+
+.table-borderless > tbody > tr > td,
+.table-borderless > tbody > tr > th,
+.table-borderless > tfoot > tr > td,
+.table-borderless > tfoot > tr > th,
+.table-borderless > thead > tr > td,
+.table-borderless > thead > tr > th {
+    border: none;
+}
+
+.table-sm>:not(caption)>*>* {
+  padding: 1px .25rem;
+}

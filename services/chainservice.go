@@ -18,17 +18,19 @@ import (
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/indexer/beacon"
 	execindexer "github.com/ethpandaops/dora/indexer/execution"
+	"github.com/ethpandaops/dora/indexer/mevrelay"
 	"github.com/ethpandaops/dora/utils"
 	"github.com/sirupsen/logrus"
 )
 
 type ChainService struct {
-	logger         logrus.FieldLogger
-	consensusPool  *consensus.Pool
-	executionPool  *execution.Pool
-	beaconIndexer  *beacon.Indexer
-	validatorNames *ValidatorNames
-	started        bool
+	logger          logrus.FieldLogger
+	consensusPool   *consensus.Pool
+	executionPool   *execution.Pool
+	beaconIndexer   *beacon.Indexer
+	validatorNames  *ValidatorNames
+	mevRelayIndexer *mevrelay.MevIndexer
+	started         bool
 }
 
 var GlobalBeaconService *ChainService
@@ -43,14 +45,17 @@ func InitChainService(ctx context.Context, logger logrus.FieldLogger) {
 	consensusPool := consensus.NewPool(ctx, logger.WithField("service", "cl-pool"))
 	executionPool := execution.NewPool(ctx, logger.WithField("service", "el-pool"))
 	beaconIndexer := beacon.NewIndexer(logger.WithField("service", "cl-indexer"), consensusPool)
-	validatorNames := NewValidatorNames(beaconIndexer, consensusPool.GetChainState())
+	chainState := consensusPool.GetChainState()
+	validatorNames := NewValidatorNames(beaconIndexer, chainState)
+	mevRelayIndexer := mevrelay.NewMevIndexer(logger.WithField("service", "mev-relay"), beaconIndexer, chainState)
 
 	GlobalBeaconService = &ChainService{
-		logger:         logger,
-		consensusPool:  consensusPool,
-		executionPool:  executionPool,
-		beaconIndexer:  beaconIndexer,
-		validatorNames: validatorNames,
+		logger:          logger,
+		consensusPool:   consensusPool,
+		executionPool:   executionPool,
+		beaconIndexer:   beaconIndexer,
+		validatorNames:  validatorNames,
+		mevRelayIndexer: mevRelayIndexer,
 	}
 }
 
@@ -66,9 +71,10 @@ func (cs *ChainService) StartService() error {
 	// add consensus clients
 	for index, endpoint := range utils.Config.BeaconApi.Endpoints {
 		endpointConfig := &consensus.ClientConfig{
-			URL:     endpoint.Url,
-			Name:    endpoint.Name,
-			Headers: endpoint.Headers,
+			URL:        endpoint.Url,
+			Name:       endpoint.Name,
+			Headers:    endpoint.Headers,
+			DisableSSZ: utils.Config.KillSwitch.DisableSSZRequests,
 		}
 
 		if endpoint.Ssh != nil {
@@ -175,6 +181,9 @@ func (cs *ChainService) StartService() error {
 	// add execution indexers
 	execindexer.NewDepositIndexer(executionIndexerCtx)
 
+	// start MEV relay indexer
+	cs.mevRelayIndexer.StartUpdater()
+
 	return nil
 }
 
@@ -246,10 +255,18 @@ type ConsensusClientFork struct {
 
 func (bs *ChainService) GetConsensusClientForks() []*ConsensusClientFork {
 	headForks := []*ConsensusClientFork{}
+	chainState := bs.consensusPool.GetChainState()
 	for _, client := range bs.beaconIndexer.GetAllClients() {
 		cHeadSlot, cHeadRoot := client.GetClient().GetLastHead()
 		var matchingFork *ConsensusClientFork
 		for _, fork := range headForks {
+
+			if cHeadSlot < chainState.GetFinalizedSlot() && bytes.Equal(fork.Root[:], cHeadRoot[:]) {
+				// TODO: find a more elgant way to group forks for finalized blocks
+				matchingFork = fork
+				break
+			}
+
 			isInChain, _ := bs.beaconIndexer.GetBlockDistance(cHeadRoot, fork.Root)
 			if isInChain {
 				matchingFork = fork

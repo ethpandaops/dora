@@ -11,6 +11,7 @@ import (
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
+	"github.com/ethpandaops/dora/utils"
 	"github.com/sirupsen/logrus"
 )
 
@@ -85,8 +86,6 @@ func buildELPeerMapData() *models.ClientELPageDataPeerMap {
 				ID:    peerID,
 				Label: client.GetName(),
 				Group: "internal",
-				Image: fmt.Sprintf("/identicon?key=%s", peerID),
-				Shape: "circularImage",
 			}
 			nodes[peerID] = &node
 			peerMap.ClientPageDataMapNode = append(peerMap.ClientPageDataMapNode, &node)
@@ -121,8 +120,6 @@ func buildELPeerMapData() *models.ClientELPageDataPeerMap {
 					ID:    peerID,
 					Label: fmt.Sprintf("%s...%s", peerID[0:5], peerID[len(peerID)-5:]),
 					Group: "external",
-					Image: fmt.Sprintf("/identicon?key=%s", peerID),
-					Shape: "circularImage",
 				}
 				nodes[peerID] = &node
 				peerMap.ClientPageDataMapNode = append(peerMap.ClientPageDataMapNode, &node)
@@ -141,9 +138,8 @@ func buildELPeerMapData() *models.ClientELPageDataPeerMap {
 			p2.Value++
 
 			if _, ok := edges[idx]; !ok {
-				edge := models.ClientELDataMapPeerMapEdge{}
-				if nodes[peerID].Group == "external" {
-					edge.Dashes = true
+				edge := models.ClientELDataMapPeerMapEdge{
+					Interaction: nodes[peerID].Group,
 				}
 				if peer.Network.Inbound {
 					edge.From = peerID
@@ -164,8 +160,9 @@ func buildELPeerMapData() *models.ClientELPageDataPeerMap {
 func buildELClientsPageData() (*models.ClientsELPageData, time.Duration) {
 	logrus.Debugf("clients page called")
 	pageData := &models.ClientsELPageData{
-		Clients: []*models.ClientsELPageDataClient{},
-		PeerMap: buildELPeerMapData(),
+		Clients:                []*models.ClientsELPageDataClient{},
+		PeerMap:                buildELPeerMapData(),
+		ShowSensitivePeerInfos: utils.Config.Frontend.ShowSensitivePeerInfos,
 	}
 	chainState := services.GlobalBeaconService.GetChainState()
 	specs := chainState.GetSpecs()
@@ -198,10 +195,12 @@ func buildELClientsPageData() (*models.ClientsELPageData, time.Duration) {
 		for _, peer := range peers {
 			en, err := enode.ParseV4(peer.Enode)
 			peerID := "unknown"
+			enoderaw := "unknown"
 			if err != nil {
 				logrus.WithFields(logrus.Fields{"client": client.GetName(), "enode": peer.Enode}).Error("failed to parse peer enode")
 			} else {
 				peerID = en.ID().String()
+				enoderaw = en.String()
 			}
 			peerAlias := peerID
 			peerType := "external"
@@ -213,11 +212,16 @@ func buildELClientsPageData() (*models.ClientsELPageData, time.Duration) {
 			if peer.Network.Inbound {
 				direction = "inbound"
 			}
+
 			resPeers = append(resPeers, &models.ClientELPageDataClientPeers{
 				ID:        peerID,
 				State:     peer.Name,
 				Direction: direction,
 				Alias:     peerAlias,
+				Name:      peer.Name,
+				Enode:     enoderaw,
+				Caps:      peer.Caps,
+				Protocols: peer.Protocols,
 				Type:      peerType,
 			})
 
@@ -238,14 +242,20 @@ func buildELClientsPageData() (*models.ClientsELPageData, time.Duration) {
 
 		peerID := "unknown"
 		peerName := "unknown"
+		enoderaw := "unknown"
+		ipAddr := "unknown"
+		listenAddr := "unknown"
 		if nodeInfo != nil {
 			en, err := enode.ParseV4(nodeInfo.Enode)
 			if err != nil {
 				logrus.WithFields(logrus.Fields{"client": client.GetName(), "enode": nodeInfo.Enode}).Error("failed to parse peer enode")
 			} else {
 				peerID = en.ID().String()
+				enoderaw = en.String()
 			}
 			peerName = nodeInfo.Name
+			ipAddr = nodeInfo.IP
+			listenAddr = nodeInfo.ListenAddr
 		}
 
 		resClient := &models.ClientsELPageDataClient{
@@ -256,6 +266,9 @@ func buildELClientsPageData() (*models.ClientsELPageData, time.Duration) {
 			Peers:                resPeers,
 			PeerID:               peerID,
 			PeerName:             peerName,
+			Enode:                enoderaw,
+			IPAddr:               ipAddr,
+			ListenAddr:           listenAddr,
 			PeersInboundCounter:  inPeerCount,
 			PeersOutboundCounter: outPeerCount,
 			HeadSlot:             uint64(lastHeadSlot),
