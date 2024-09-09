@@ -1,6 +1,12 @@
 #!/bin/bash
 __dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+if [ -f "${__dir}/custom-kurtosis.devnet.config.yaml" ]; then
+  config_file="${__dir}/custom-kurtosis.devnet.config.yaml"
+else
+  config_file="${__dir}/kurtosis.devnet.config.yaml"
+fi
+
 ## Run devnet using kurtosis
 ENCLAVE_NAME="${ENCLAVE_NAME:-dora}"
 if kurtosis enclave inspect "$ENCLAVE_NAME" > /dev/null; then
@@ -9,7 +15,7 @@ else
   kurtosis run github.com/ethpandaops/ethereum-package \
   --image-download always \
   --enclave "$ENCLAVE_NAME" \
-  --args-file "${__dir}/kurtosis.devnet.config.yaml"
+  --args-file "${config_file}"
 fi
 
 # Get chain config
