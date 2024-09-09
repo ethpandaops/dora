@@ -5,6 +5,7 @@ import (
 	"math"
 
 	"github.com/attestantio/go-eth2-client/spec/phase0"
+	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/utils"
@@ -195,11 +196,26 @@ func (dbw *dbWriter) persistSyncAssignments(tx *sqlx.Tx, epoch phase0.Epoch, epo
 func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, overrideForkId *ForkKey) *dbtypes.Slot {
 	if block.Slot == 0 {
 		// genesis block
+		header := block.GetHeader()
+		if header == nil {
+			// some clients do not serve the genesis block header, so add a fallback here
+			header = &phase0.SignedBeaconBlockHeader{
+				Message: &phase0.BeaconBlockHeader{
+					Slot:          0,
+					ProposerIndex: math.MaxInt64,
+					ParentRoot:    consensus.NullRoot,
+					StateRoot:     consensus.NullRoot,
+				},
+			}
+		}
+
 		return &dbtypes.Slot{
-			Slot:     0,
-			Proposer: math.MaxInt64,
-			Status:   dbtypes.Canonical,
-			Root:     block.Root[:],
+			Slot:       0,
+			Proposer:   math.MaxInt64,
+			Status:     dbtypes.Canonical,
+			Root:       block.Root[:],
+			ParentRoot: header.Message.ParentRoot[:],
+			StateRoot:  header.Message.StateRoot[:],
 		}
 	}
 
