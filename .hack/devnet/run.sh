@@ -1,6 +1,12 @@
 #!/bin/bash
 __dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+if [ -f "${__dir}/custom-kurtosis.devnet.config.yaml" ]; then
+  config_file="${__dir}/custom-kurtosis.devnet.config.yaml"
+else
+  config_file="${__dir}/kurtosis.devnet.config.yaml"
+fi
+
 ## Run devnet using kurtosis
 ENCLAVE_NAME="${ENCLAVE_NAME:-dora}"
 if kurtosis enclave inspect "$ENCLAVE_NAME" > /dev/null; then
@@ -9,7 +15,7 @@ else
   kurtosis run github.com/ethpandaops/ethereum-package \
   --image-download always \
   --enclave "$ENCLAVE_NAME" \
-  --args-file "${__dir}/kurtosis.devnet.config.yaml"
+  --args-file "${config_file}"
 fi
 
 # Get chain config
@@ -52,6 +58,9 @@ $(for node in $BEACON_NODES; do
     name=$(docker inspect -f "{{ with index .Config.Labels \"com.kurtosistech.id\"}}{{.}}{{end}}" $node)
     ip=$(echo '127.0.0.1')
     port=$(docker inspect --format='{{ (index (index .NetworkSettings.Ports "4000/tcp") 0).HostPort }}' $node)
+    if [ -z "$port" ]; then
+      port="65535"
+    fi
     echo "    - { name: $name, url: http://$ip:$port }"
 done)
 executionapi:
@@ -61,6 +70,9 @@ $(for node in $EXECUTION_NODES; do
     name=$(docker inspect -f "{{ with index .Config.Labels \"com.kurtosistech.id\"}}{{.}}{{end}}" $node)
     ip=$(echo '127.0.0.1')
     port=$(docker inspect --format='{{ (index (index .NetworkSettings.Ports "8545/tcp") 0).HostPort }}' $node)
+    if [ -z "$port" ]; then
+      port="65535"
+    fi
     echo "    - { name: $name, url: http://$ip:$port }"
 done)
 indexer:
