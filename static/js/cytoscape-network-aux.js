@@ -30,12 +30,13 @@ $_network.layouts = {
   fcose : function(nodeCount){
     return {
       name: 'fcose',
-      idealEdgeLength: 5 * nodeCount,
+      idealEdgeLength: 3 * nodeCount,
       nestingFactor: 1.2,
       animate: false,
       stop: function() {
         $("#nodemap-loading").hide();
-      }
+      },
+      padding: nodeCount < 20 ? 200 : 0,
     }
   },
   circle : function() {
@@ -48,6 +49,19 @@ $_network.layouts = {
     return {
       name: 'grid',
       animate: false,
+    }
+  },
+  concentric : function(nodeCount) {
+    return {
+      name: 'concentric',
+      animate: false,
+      padding: nodeCount < 20 ? 200 : 0,
+      concentric: function( node ){
+        return node.data('group') == 'internal' ? 2 : 1;
+      },
+      levelWidth: function( nodes ){
+        return 1;
+      }
     }
   },
 }
@@ -66,6 +80,7 @@ $_network.defaultStylesheet = cytoscape.stylesheet()
       'border-color': '#0077B6',
       'border-width': 1,
       'border-opacity': 1,
+      'shape': 'ellipse',
     })
   .selector('edge')
     .css({
@@ -87,6 +102,29 @@ $_network.defaultStylesheet = cytoscape.stylesheet()
       "color": "#ffffff",
       "font-size": 4,
     })
+  .selector('edge[interaction = "external"]')
+    .css({
+      'line-style': 'dashed',
+      'line-color': '#075e4d',
+      'target-arrow-color': '#075e4d',
+      'source-arrow-color': '#075e4d',
+    })
+  .selector('node[group = "internal"]')
+    .css({
+      'border-color': '#FFA500',
+      'background-color': '#FFA500',
+      'opacity': 1
+    })
+  .selector('node[group = "external"]')
+    .css({
+      'border-color': '#075e4d',
+      'background-color': '#075e4d',
+      'opacity': 0.5,
+      'height': 15,
+      'width': 15,
+      'border-style:': 'dashed',
+      'shape': 'round-octagon',
+    })
   .selector('node:selected, edge:selected')
     .css({
       'border-color': '#FFA500',
@@ -100,7 +138,7 @@ $_network.defaultStylesheet = cytoscape.stylesheet()
 
 $_network.fitAnimated = function (cy, layout) {
   cy.animate({
-    fit: { eles: cy.$() },
+    fit: { padding: 20 },
     duration: 500,
     complete: function () {
       setTimeout(function () {
@@ -129,9 +167,13 @@ $_network.create = function (container, data){
           classes: "bottom-center",
         }
       );
+      svgIdenticon = jdenticon.toSvg(data.nodes[i].id, 80);
       // Add style to nodes
       stylesheet.selector('#' + data.nodes[i].id).css({
-          'background-image': '/identicon?key=' + data.nodes[i].id
+          'background-image': 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgIdenticon),
+          'background-fit': 'cover',
+          'background-opacity': 1,
+          'background-color': '#111111',
       });
     }
   }
@@ -141,7 +183,8 @@ $_network.create = function (container, data){
       data: {
         id: data.edges[i].from + "-" + data.edges[i].to,
         source: data.edges[i].from,
-        target: data.edges[i].to
+        target: data.edges[i].to,
+        interaction: data.edges[i].interaction,
       }
     });
   }
@@ -151,7 +194,6 @@ $_network.create = function (container, data){
       style: stylesheet,
       layout: $_network.defaultLayout(data.nodes.length),
       elements: cytoElements,
-      wheelSensitivity: 0.1,
     });
 
   cy.on('tap', 'node', function(evt){

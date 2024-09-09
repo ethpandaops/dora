@@ -1,16 +1,56 @@
 /*---------------------------------------------
 Client peers table
 ---------------------------------------------*/
-.client-node-peerinfo {
-  text-align: center;
-  padding-bottom: 10px;
+.client-row-divider {
+  margin: 0 auto;
+  padding: 0;
+  padding-top: 3px;
+  padding-bottom: 5px;
+  font-weight: 600;
   border-bottom: 1px dashed;
+  text-align: center;
+}
+
+.client-row-divider:not(:first-child) {
+  border-top: 1px dashed;
+}
+
+.client-table-info {
+  padding-left: 30px;
+  padding-right: 30px;
+  display: inline-block;
+}
+
+.client-node-peerinfo {
+  text-align: left;
+  padding-top: 20px;
   margin-bottom: 5px;
+  text-wrap: pretty;
+}
+.client-node-enr-infos{
+  text-align: left;
+}
+
+.client-node-peer-details {
+  margin-left: 46px;
+  padding-top:3px;
+  margin-bottom: 10px;
+  border-left: 1px dotted;
+  border-bottom: 1px dotted;
+}
+
+.client-node-peer-details > tr {
+  vertical-align: top;
+}
+
+.client-node-peer-count {
+  width:30px;
+  display: inline-block;
 }
 .client-node-icon {
   border-radius:50%;
   border:1px solid #0f0f0f;
-  background-color: #fafafa;
+  background-color: #111111;
   margin-right: 10px;
   height: 25px;
   width: 25px;
@@ -20,15 +60,15 @@ Client peers table
   height: 25px;
   border-radius: 50%;
   border: 2px solid #0f0f0f;
-  background-color: #fafafa;
+  background-color: #111111;
   margin-right: 10px;
 }
 
 .peer-table-column{
   display: inline-block;
-  width: 50%;
   vertical-align: top;
-  text-align: center;
+  text-align: left;
+  width: 100%;
 }
 
 .peer-table-icon.connected {
@@ -49,8 +89,13 @@ Client peers table
 
 .peer-nodemap {
   background: #0f0f0f9f url(/images/stars.png) repeat top center;
+  background-blend-mode: multiply;
   height: 850px;
   padding: 0;
+}
+
+.peer-nodemap-menu{
+  height: 40px;
 }
 
 @media only screen and (max-width: 768px) {

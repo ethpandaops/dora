@@ -33,7 +33,7 @@ type Client struct {
 	isSyncing               bool
 	isOptimistic            bool
 	versionStr              string
-	peerId                  string
+	nodeIdentity            *rpc.NodeIdentity
 	clientType              ClientType
 	lastEvent               time.Time
 	retryCounter            uint64
@@ -112,8 +112,8 @@ func (client *Client) GetVersion() string {
 	return client.versionStr
 }
 
-func (client *Client) GetPeerID() string {
-	return client.peerId
+func (client *Client) GetNodeIdentity() *rpc.NodeIdentity {
+	return client.nodeIdentity
 }
 
 func (client *Client) GetEndpointConfig() *ClientConfig {
