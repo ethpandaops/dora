@@ -659,7 +659,7 @@ func (bs *ChainService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageIdx
 	blockRootsIdx := make([]int, 0)
 	blockRootsCachedId := make([]uint64, 0)
 
-	if cachedPages > 0 && pageIdx <= cachedPages {
+	if pageIdx <= cachedPages {
 		var cachedMatchesRange []cachedDbBlock
 		if pageIdx == cachedPages {
 			cachedMatchesRange = cachedMatches[cachedStart:]
