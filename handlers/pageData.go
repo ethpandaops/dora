@@ -180,10 +180,6 @@ func createMenuItems(active string) []types.MainMenuItem {
 				Path:  "/validators/deposits",
 				Icon:  "fa-file-signature",
 			},
-		},
-	})
-	validatorMenu = append(validatorMenu, types.NavigationGroup{
-		Links: []types.NavigationLink{
 			{
 				Label: "Voluntary Exits",
 				Path:  "/validators/voluntary_exits",
@@ -194,10 +190,19 @@ func createMenuItems(active string) []types.MainMenuItem {
 				Path:  "/validators/slashings",
 				Icon:  "fa-user-slash",
 			},
+		},
+	})
+	validatorMenu = append(validatorMenu, types.NavigationGroup{
+		Links: []types.NavigationLink{
 			{
 				Label: "Withdrawal Requests",
 				Path:  "/validators/el_withdrawals",
 				Icon:  "fa-money-bill-transfer",
+			},
+			{
+				Label: "Consolidation Requests",
+				Path:  "/validators/el_consolidations",
+				Icon:  "fa-square-plus",
 			},
 		},
 	})

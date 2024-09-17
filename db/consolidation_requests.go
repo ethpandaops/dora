@@ -58,3 +58,126 @@ func InsertConsolidationRequests(consolidations []*dbtypes.ConsolidationRequest,
 	}
 	return nil
 }
+
+func GetConsolidationRequestsFiltered(offset uint64, limit uint32, finalizedBlock uint64, filter *dbtypes.ConsolidationRequestFilter) ([]*dbtypes.ConsolidationRequest, uint64, error) {
+	var sql strings.Builder
+	args := []interface{}{}
+	fmt.Fprint(&sql, `
+	WITH cte AS (
+		SELECT
+			slot_number, slot_root, slot_index, orphaned, fork_id, source_address, source_index, source_pubkey, target_index, target_pubkey, tx_hash
+		FROM consolidation_requests
+	`)
+
+	if filter.SrcValidatorName != "" {
+		fmt.Fprint(&sql, `
+		LEFT JOIN validator_names AS source_names ON source_names."index" = consolidation_requests.source_index 
+		`)
+	}
+	if filter.TgtValidatorName != "" {
+		fmt.Fprint(&sql, `
+		LEFT JOIN validator_names AS target_names ON target_names."index" = consolidation_requests.target_index 
+		`)
+	}
+
+	filterOp := "WHERE"
+	if filter.MinSlot > 0 {
+		args = append(args, filter.MinSlot)
+		fmt.Fprintf(&sql, " %v slot_number >= $%v", filterOp, len(args))
+		filterOp = "AND"
+	}
+	if filter.MaxSlot > 0 {
+		args = append(args, filter.MaxSlot)
+		fmt.Fprintf(&sql, " %v slot_number <= $%v", filterOp, len(args))
+		filterOp = "AND"
+	}
+	if len(filter.SourceAddress) > 0 {
+		args = append(args, filter.SourceAddress)
+		fmt.Fprintf(&sql, " %v source_address = $%v", filterOp, len(args))
+		filterOp = "AND"
+	}
+	if filter.MinSrcIndex > 0 {
+		args = append(args, filter.MinSrcIndex)
+		fmt.Fprintf(&sql, " %v source_index >= $%v", filterOp, len(args))
+		filterOp = "AND"
+	}
+	if filter.MaxSrcIndex > 0 {
+		args = append(args, filter.MaxSrcIndex)
+		fmt.Fprintf(&sql, " %v source_index <= $%v", filterOp, len(args))
+		filterOp = "AND"
+	}
+	if filter.MinTgtIndex > 0 {
+		args = append(args, filter.MinTgtIndex)
+		fmt.Fprintf(&sql, " %v target_index >= $%v", filterOp, len(args))
+		filterOp = "AND"
+	}
+	if filter.MaxTgtIndex > 0 {
+		args = append(args, filter.MaxTgtIndex)
+		fmt.Fprintf(&sql, " %v target_index <= $%v", filterOp, len(args))
+		filterOp = "AND"
+	}
+	if filter.SrcValidatorName != "" {
+		args = append(args, "%"+filter.SrcValidatorName+"%")
+		fmt.Fprintf(&sql, " %v ", filterOp)
+		fmt.Fprintf(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
+			dbtypes.DBEnginePgsql:  ` source_names.name ilike $%v `,
+			dbtypes.DBEngineSqlite: ` source_names.name LIKE $%v `,
+		}), len(args))
+		filterOp = "AND"
+	}
+	if filter.TgtValidatorName != "" {
+		args = append(args, "%"+filter.TgtValidatorName+"%")
+		fmt.Fprintf(&sql, " %v ", filterOp)
+		fmt.Fprintf(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
+			dbtypes.DBEnginePgsql:  ` target_names.name ilike $%v `,
+			dbtypes.DBEngineSqlite: ` target_names.name LIKE $%v `,
+		}), len(args))
+		filterOp = "AND"
+	}
+
+	if filter.WithOrphaned == 0 {
+		args = append(args, finalizedBlock)
+		fmt.Fprintf(&sql, " %v (slot_number > $%v OR orphaned = false)", filterOp, len(args))
+		filterOp = "AND"
+	} else if filter.WithOrphaned == 2 {
+		args = append(args, finalizedBlock)
+		fmt.Fprintf(&sql, " %v (slot_number > $%v OR orphaned = true)", filterOp, len(args))
+		filterOp = "AND"
+	}
+
+	args = append(args, limit)
+	fmt.Fprintf(&sql, `) 
+	SELECT 
+		count(*) AS slot_number,
+		null AS slot_root,
+		0 AS slot_index,
+		false AS orphaned, 
+		0 AS fork_id,
+		null AS source_address,
+		0 AS source_index,
+		null AS source_pubkey,
+		0 AS target_index,
+		null AS target_pubkey,
+		null AS tx_hash
+	FROM cte
+	UNION ALL SELECT * FROM (
+	SELECT * FROM cte
+	ORDER BY slot_number DESC, slot_index DESC
+	LIMIT $%v 
+	`, len(args))
+
+	if offset > 0 {
+		args = append(args, offset)
+		fmt.Fprintf(&sql, " OFFSET $%v ", len(args))
+	}
+	fmt.Fprintf(&sql, ") AS t1")
+
+	consolidationRequests := []*dbtypes.ConsolidationRequest{}
+	err := ReaderDb.Select(&consolidationRequests, sql.String(), args...)
+	if err != nil {
+		logger.Errorf("Error while fetching filtered consolidation requests: %v", err)
+		return nil, 0, err
+	}
+
+	return consolidationRequests[1:], consolidationRequests[0].SlotNumber, nil
+}
