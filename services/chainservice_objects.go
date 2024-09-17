@@ -370,3 +370,116 @@ func (bs *ChainService) GetSlashingsByFilter(filter *dbtypes.SlashingFilter, pag
 
 	return resObjs, cachedMatchesLen + dbCount
 }
+
+func (bs *ChainService) GetWithdrawalRequestsByFilter(filter *dbtypes.WithdrawalRequestFilter, pageIdx uint64, pageSize uint32) ([]*dbtypes.WithdrawalRequest, uint64) {
+	chainState := bs.consensusPool.GetChainState()
+	finalizedBlock, prunedEpoch := bs.beaconIndexer.GetBlockCacheState()
+	idxMinSlot := chainState.EpochToSlot(prunedEpoch)
+	currentSlot := chainState.CurrentSlot()
+
+	// load most recent objects from indexer cache
+	cachedMatches := make([]*dbtypes.WithdrawalRequest, 0)
+	for slotIdx := int64(currentSlot); slotIdx >= int64(idxMinSlot); slotIdx-- {
+		slot := uint64(slotIdx)
+		blocks := bs.beaconIndexer.GetBlocksBySlot(phase0.Slot(slot))
+		if blocks != nil {
+			for bidx := 0; bidx < len(blocks); bidx++ {
+				block := blocks[bidx]
+				if filter.WithOrphaned != 1 {
+					isOrphaned := !bs.beaconIndexer.IsCanonicalBlock(block, nil)
+					if filter.WithOrphaned == 0 && isOrphaned {
+						continue
+					}
+					if filter.WithOrphaned == 2 && !isOrphaned {
+						continue
+					}
+				}
+				if filter.MinSlot > 0 && slot < filter.MinSlot {
+					continue
+				}
+				if filter.MaxSlot > 0 && slot > filter.MaxSlot {
+					continue
+				}
+
+				withdrawalRequests := block.GetDbWithdrawalRequests(bs.beaconIndexer)
+				for idx, withdrawalRequest := range withdrawalRequests {
+					if filter.MinIndex > 0 && (withdrawalRequest.ValidatorIndex == nil || *withdrawalRequest.ValidatorIndex < filter.MinIndex) {
+						continue
+					}
+					if filter.MaxIndex > 0 && (withdrawalRequest.ValidatorIndex == nil || *withdrawalRequest.ValidatorIndex > filter.MaxIndex) {
+						continue
+					}
+					if filter.ValidatorName != "" {
+						if withdrawalRequest.ValidatorIndex == nil {
+							continue
+						}
+						validatorName := bs.validatorNames.GetValidatorName(*withdrawalRequest.ValidatorIndex)
+						if !strings.Contains(validatorName, filter.ValidatorName) {
+							continue
+						}
+					}
+
+					cachedMatches = append(cachedMatches, withdrawalRequests[idx])
+				}
+			}
+		}
+	}
+
+	cachedMatchesLen := uint64(len(cachedMatches))
+	cachedPages := cachedMatchesLen / uint64(pageSize)
+	resObjs := make([]*dbtypes.WithdrawalRequest, 0)
+	resIdx := 0
+
+	cachedStart := pageIdx * uint64(pageSize)
+	cachedEnd := cachedStart + uint64(pageSize)
+
+	if cachedPages > 0 && pageIdx < cachedPages {
+		resObjs = append(resObjs, cachedMatches[cachedStart:cachedEnd]...)
+		resIdx += int(cachedEnd - cachedStart)
+	} else if pageIdx == cachedPages {
+		resObjs = append(resObjs, cachedMatches[cachedStart:]...)
+		resIdx += len(cachedMatches) - int(cachedStart)
+	}
+
+	// load older objects from db
+	dbPage := pageIdx - cachedPages
+	dbCacheOffset := uint64(pageSize) - (cachedMatchesLen % uint64(pageSize))
+
+	var dbObjects []*dbtypes.WithdrawalRequest
+	var dbCount uint64
+	var err error
+
+	if resIdx > int(pageSize) {
+		// all results from cache, just get result count from db
+		_, dbCount, err = db.GetWithdrawalRequestsFiltered(0, 1, uint64(finalizedBlock), filter)
+	} else if dbPage == 0 {
+		// first page, load first `pagesize-cachedResults` items from db
+		dbObjects, dbCount, err = db.GetWithdrawalRequestsFiltered(0, uint32(dbCacheOffset), uint64(finalizedBlock), filter)
+	} else {
+		dbObjects, dbCount, err = db.GetWithdrawalRequestsFiltered((dbPage-1)*uint64(pageSize)+dbCacheOffset, pageSize, uint64(finalizedBlock), filter)
+	}
+
+	if err != nil {
+		logrus.Warnf("ChainService.GetWithdrawalRequestsByFilter error: %v", err)
+	} else {
+		for idx, dbObject := range dbObjects {
+			if dbObject.SlotNumber > uint64(finalizedBlock) {
+				blockStatus := bs.CheckBlockOrphanedStatus(phase0.Root(dbObject.SlotRoot))
+				dbObjects[idx].Orphaned = blockStatus == dbtypes.Orphaned
+			}
+
+			if filter.WithOrphaned != 1 {
+				if filter.WithOrphaned == 0 && dbObjects[idx].Orphaned {
+					continue
+				}
+				if filter.WithOrphaned == 2 && !dbObjects[idx].Orphaned {
+					continue
+				}
+			}
+
+			resObjs = append(resObjs, dbObjects[idx])
+		}
+	}
+
+	return resObjs, cachedMatchesLen + dbCount
+}

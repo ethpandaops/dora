@@ -70,7 +70,7 @@ func GetWithdrawalRequestsFiltered(offset uint64, limit uint32, finalizedBlock u
 		FROM withdrawal_requests
 	`)
 
-	if filter.SourceValidatorName != "" {
+	if filter.ValidatorName != "" {
 		fmt.Fprint(&sql, `
 		LEFT JOIN validator_names AS source_names ON source_names."index" = withdrawal_requests.validator_index 
 		`)
@@ -92,18 +92,18 @@ func GetWithdrawalRequestsFiltered(offset uint64, limit uint32, finalizedBlock u
 		fmt.Fprintf(&sql, " %v source_address = $%v", filterOp, len(args))
 		filterOp = "AND"
 	}
-	if filter.MinSourceIndex > 0 {
-		args = append(args, filter.MinSourceIndex)
+	if filter.MinIndex > 0 {
+		args = append(args, filter.MinIndex)
 		fmt.Fprintf(&sql, " %v validator_index >= $%v", filterOp, len(args))
 		filterOp = "AND"
 	}
-	if filter.MaxSourceIndex > 0 {
-		args = append(args, filter.MaxSourceIndex)
+	if filter.MaxIndex > 0 {
+		args = append(args, filter.MaxIndex)
 		fmt.Fprintf(&sql, " %v validator_index <= $%v", filterOp, len(args))
 		filterOp = "AND"
 	}
-	if filter.SourceValidatorName != "" {
-		args = append(args, "%"+filter.SourceValidatorName+"%")
+	if filter.ValidatorName != "" {
+		args = append(args, "%"+filter.ValidatorName+"%")
 		fmt.Fprintf(&sql, " %v ", filterOp)
 		fmt.Fprintf(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
 			dbtypes.DBEnginePgsql:  ` source_names.name ilike $%v `,
@@ -111,9 +111,14 @@ func GetWithdrawalRequestsFiltered(offset uint64, limit uint32, finalizedBlock u
 		}), len(args))
 		filterOp = "AND"
 	}
-	if filter.Amount != nil {
-		args = append(args, *filter.Amount)
-		fmt.Fprintf(&sql, " %v amount = $%v", filterOp, len(args))
+	if filter.MinAmount != nil {
+		args = append(args, *filter.MinAmount)
+		fmt.Fprintf(&sql, " %v amount >= $%v", filterOp, len(args))
+		filterOp = "AND"
+	}
+	if filter.MaxAmount != nil {
+		args = append(args, *filter.MaxAmount)
+		fmt.Fprintf(&sql, " %v amount <= $%v", filterOp, len(args))
 		filterOp = "AND"
 	}
 

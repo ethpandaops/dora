@@ -93,15 +93,13 @@ type SlashingFilter struct {
 }
 
 type WithdrawalRequestFilter struct {
-	MinSlot             uint64
-	MaxSlot             uint64
-	SourceAddress       []byte
-	MinSourceIndex      uint64
-	MaxSourceIndex      uint64
-	SourceValidatorName string
-	MinTargetIndex      uint64
-	MaxTargetIndex      uint64
-	TargetValidatorName string
-	Amount              *uint64
-	WithOrphaned        uint8
+	MinSlot       uint64
+	MaxSlot       uint64
+	SourceAddress []byte
+	MinIndex      uint64
+	MaxIndex      uint64
+	ValidatorName string
+	MinAmount     *uint64
+	MaxAmount     *uint64
+	WithOrphaned  uint8
 }

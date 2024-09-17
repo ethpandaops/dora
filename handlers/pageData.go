@@ -194,6 +194,11 @@ func createMenuItems(active string) []types.MainMenuItem {
 				Path:  "/validators/slashings",
 				Icon:  "fa-user-slash",
 			},
+			{
+				Label: "Withdrawal Requests",
+				Path:  "/validators/el_withdrawals",
+				Icon:  "fa-money-bill-transfer",
+			},
 		},
 	})
 
