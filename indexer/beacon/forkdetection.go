@@ -1,6 +1,7 @@
 package beacon
 
 import (
+	"bytes"
 	"fmt"
 	"strings"
 
@@ -33,6 +34,7 @@ func (cache *forkCache) processBlock(block *Block) error {
 	}
 
 	chainState := cache.indexer.consensusPool.GetChainState()
+	_, finalizedRoot := chainState.GetFinalizedCheckpoint()
 
 	// get fork id from parent block
 	parentForkId := ForkKey(1)
@@ -46,7 +48,6 @@ func (cache *forkCache) processBlock(block *Block) error {
 		parentSlot = 0
 		parentIsProcessed = false
 		parentIsFinalized = true
-
 	} else if parentBlock := cache.indexer.blockCache.getBlockByRoot(*parentRoot); parentBlock == nil {
 		// parent block might already be finalized, check if it's in the database
 		blockHead := db.GetBlockHeadByRoot((*parentRoot)[:])
@@ -61,6 +62,15 @@ func (cache *forkCache) processBlock(block *Block) error {
 		parentSlot = parentBlock.Slot
 		parentIsProcessed = true
 		parentIsFinalized = parentBlock.Slot < chainState.GetFinalizedSlot()
+	}
+
+	if bytes.Equal(block.Root[:], finalizedRoot[:]) && parentForkId == 1 {
+		// this is the finalization checkpoint, but we don't have a fork id for it. Just use the finalized forkId 0
+		parentForkId = 0
+		parentSlot = 0
+		parentIsProcessed = false
+		parentIsFinalized = true
+		cache.finalizedForkId = parentForkId
 	}
 
 	// check if this block (c) introduces a new fork, it does so if:
