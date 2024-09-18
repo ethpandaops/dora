@@ -14,7 +14,7 @@
     </div>
 
     <div id="header-placeholder" style="height:35px;"></div>
-    <form action="/validators/withdrawal_requests" method="get" id="elRequestsFilterForm">
+    <form action="/validators/el_withdrawals" method="get" id="elWithdrawalsFilterForm">
       <input type="hidden" name="f">
       <div class="card mt-2">
         <div class="card-header">
@@ -29,7 +29,7 @@
                     Address
                   </div>
                   <div class="col-sm-12 col-md-6 col-lg-8">
-                    <input name="f.address" type="text" class="form-control" placeholder="Address" aria-label="Address" aria-describedby="basic-addon1" value="{{ .FilterSourceAddress }}">
+                    <input name="f.address" type="text" class="form-control" placeholder="Address" aria-label="Address" aria-describedby="basic-addon1" value="{{ .FilterAddress }}">
                   </div>
                 </div>
                 <div class="row mt-1">
@@ -54,13 +54,13 @@
                   </div>
                   <div class="col-sm-12 col-md-6 col-lg-8 d-flex">
                     <div class="flex-grow-1">
-                      <input name="f.srcmin" type="number" class="form-control" placeholder="Min Index" aria-label="Min Index" aria-describedby="basic-addon1" value="{{ if gt .FilterMinSourceIndex 0 }}{{ .FilterMinSourceIndex }}{{ end }}">
+                      <input name="f.mini" type="number" class="form-control" placeholder="Min Index" aria-label="Min Index" aria-describedby="basic-addon1" value="{{ if gt .FilterMinIndex 0 }}{{ .FilterMinIndex }}{{ end }}">
                     </div>
                     <div class="text-center filter-amount-separator">
                       -
                     </div>
                     <div class="flex-grow-1">
-                      <input name="f.srcmax" type="number" class="form-control" placeholder="Max Index" aria-label="Max Index" aria-describedby="basic-addon1" value="{{ if gt .FilterMaxSourceIndex 0 }}{{ .FilterMaxSourceIndex }}{{ end }}">
+                      <input name="f.maxi" type="number" class="form-control" placeholder="Max Index" aria-label="Max Index" aria-describedby="basic-addon1" value="{{ if gt .FilterMaxIndex 0 }}{{ .FilterMaxIndex }}{{ end }}">
                     </div>
                   </div>
                 </div>
@@ -69,7 +69,7 @@
                     Validator Name
                   </div>
                   <div class="col-sm-12 col-md-6 col-lg-8">
-                    <input name="f.srcname" type="text" class="form-control" placeholder="Validator Name" aria-label="Validator Name" aria-describedby="basic-addon1" value="{{ .FilterSourceName }}">
+                    <input name="f.vname" type="text" class="form-control" placeholder="Validator Name" aria-label="Validator Name" aria-describedby="basic-addon1" value="{{ .FilterValidatorName }}">
                   </div>
                 </div>
               </div>
@@ -82,9 +82,9 @@
                   </div>
                   <div class="col-sm-12 col-md-6 col-lg-4">
                     <select name="f.type" aria-controls="type" class="form-control">
-                      <option value="0" {{ if eq .FilterWithRequest 0 }}selected{{ end }}>Any request</option>
-                      <option value="1" {{ if eq .FilterWithRequest 1 }}selected{{ end }}>Withdrawals</option>
-                      <option value="2" {{ if eq .FilterWithRequest 2 }}selected{{ end }}>Exits</option>
+                      <option value="0" {{ if eq .FilterWithType 0 }}selected{{ end }}>Any request</option>
+                      <option value="1" {{ if eq .FilterWithType 1 }}selected{{ end }}>Withdrawals</option>
+                      <option value="2" {{ if eq .FilterWithType 2 }}selected{{ end }}>Exits</option>
                     </select>
                   </div>
                 </div>
@@ -128,7 +128,7 @@
       </div>
     </form>
     <script type="text/javascript">
-      $('#elRequestsFilterForm').submit(function () {
+      $('#elWithdrawalsFilterForm').submit(function () {
         $(this).find('input[type="text"],input[type="number"]').filter(function () { return !this.value; }).prop('name', '');
       });
     </script>
@@ -145,9 +145,10 @@
                 <th><span class="d-none d-lg-inline">Request </span>Type</th>
                 <th>Validator</th>
                 <th>Amount</th>
+                <!--
                 <th>Transaction</th>
+                -->
                 <th><span class="d-none d-lg-inline">Incl. </span>Status</th>
-                <th>Valid<span class="d-none d-lg-inline">ity</span></th>
               </tr>
             </thead>
             {{ if gt .RequestCount 0 }}
@@ -162,9 +163,9 @@
                     <td data-timer="{{ $request.Time.Unix }}"><span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $request.Time }}">{{ formatRecentTimeShort $request.Time }}</span></td>
                     <td>
                       <div class="d-flex">
-                        <span class="flex-grow-1 text-truncate" style="max-width: 150px;">{{ ethAddressLink $request.SourceAddress }}</span>
+                        <span class="flex-grow-1 text-truncate" style="max-width: 400px;">{{ ethAddressLink $request.SourceAddr }}</span>
                         <div>
-                          <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ formatEthAddress $request.SourceAddress }}"></i>
+                          <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ formatEthAddress $request.SourceAddr }}"></i>
                         </div>
                       </div>
                     </td>
@@ -176,18 +177,19 @@
                       {{- end }}
                     </td>
                     <td>
-                      {{- if $request.SourceIndexValid }}
-                        {{ formatValidator $request.SourceIndex $request.SourceName }}
+                      {{- if $request.ValidatorValid }}
+                        {{ formatValidator $request.ValidatorIndex $request.ValidatorName }}
                       {{- else }}
                         <div class="d-flex">
-                          <span class="flex-grow-1 text-truncate" style="max-width: 150px;" data-bs-toggle="tooltip" title="pubkey not in validator set">0x{{ printf "%x" $request.SourcePubkey }}</span>
+                          <span class="flex-grow-1 text-truncate" style="max-width: 150px;" data-bs-toggle="tooltip" title="pubkey not in validator set">0x{{ printf "%x" $request.PublicKey }}</span>
                           <div>
-                            <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $request.SourcePubkey }}"></i>
+                            <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $request.PublicKey }}"></i>
                           </div>
                         </div>
                       {{- end }}
                     </td>
                     <td>{{ formatEthFromGwei $request.Amount }}</td>
+                    <!--
                     <td>
                       {{- if $request.LinkedTransaction }}
                       <div class="d-flex">
@@ -200,18 +202,12 @@
                       <span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Corresponding withdrawal transaction has not been indexed yet.">?</span>
                       {{- end }}
                     </td>
+                    -->
                     <td>
                       {{- if $request.Orphaned }}
                         <span class="badge rounded-pill text-bg-info">Orphaned</span>
                       {{- else }}
                         <span class="badge rounded-pill text-bg-success">Included</span>
-                      {{- end }}
-                    </td>
-                    <td>
-                      {{- if $request.Valid }}
-                        ✅
-                      {{- else }}
-                        ❌
                       {{- end }}
                     </td>
                   </tr>
