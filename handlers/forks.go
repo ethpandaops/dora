@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"sort"
 	"time"
@@ -31,6 +33,21 @@ func Forks(w http.ResponseWriter, r *http.Request) {
 		handlePageError(w, r, pageError)
 		return
 	}
+
+	if r.Header.Get("Content-Type") == "application/json" {
+		w.Header().Set("Content-Type", "application/json")
+		forksDataBytes, err := json.Marshal(data.Data)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		_, err = w.Write(forksDataBytes)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Error writing response: %v", err), http.StatusInternalServerError)
+		}
+		return
+	}
+
 	w.Header().Set("Content-Type", "text/html")
 	if handleTemplateError(w, r, "forks.go", "Forks", "", pageTemplate.ExecuteTemplate(w, "layout", data)) != nil {
 		return // an error has occurred and was processed
