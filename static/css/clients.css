@@ -138,3 +138,33 @@ Client peers table
   margin-left: -50px;
   margin-top: -50px;
 }
+
+.dastablenode:hover {
+  cursor: pointer;
+}
+
+.dastablenode {
+  max-width: 25px;
+  border: 1px solid #cacaca;
+  -webkit-transition: opacity 0.5s ease;
+  -moz-transition: opacity 0.5s ease;
+  -o-transition: opacity 0.5s ease;
+  transition: opacity 0.5s ease;
+}
+
+.dastablenode.internal {
+  border-color: #FFA500
+}
+
+.dastablenode.external {
+  border-color: #075e4d
+}
+
+.dastablenode.highlight {
+  opacity: 1 !important;
+  border: 3px solid yellow !important;
+}
+
+.dastablenode.blur {
+  opacity: 0.2;
+}
