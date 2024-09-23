@@ -42,6 +42,7 @@ type ClientCLPageDataPeerDAS struct {
 	CustodyColumns       []uint64 `json:"custody_columns"`
 	CustodyColumnSubnets []uint64 `json:"custody_column_subnets"`
 	CustodySubnetCount   uint64   `json:"custody_subnet_count"`
+	IsSuperNode          bool     `json:"is_super_node"`
 }
 
 type ClientCLPageDataPeerDASWarnings struct {

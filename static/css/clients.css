@@ -141,10 +141,12 @@ Client peers table
 
 .dastablenode:hover {
   cursor: pointer;
+  margin: 0 auto;
 }
 
 .dastablenode {
   max-width: 25px;
+  margin: 0 auto;
   border: 1px solid #cacaca;
   -webkit-transition: opacity 0.5s ease;
   -moz-transition: opacity 0.5s ease;
@@ -158,6 +160,19 @@ Client peers table
 
 .dastablenode.external {
   border-color: #075e4d
+}
+
+.dastablenode.supernode {
+  width: 13px;
+  height: 13px;
+  padding: 0;
+  position: relative;
+  border-width: 1px;
+  border-radius: 0;
+}
+
+.dastablenode:not(.supernode) {
+  margin-bottom: 2px;
 }
 
 .dastablenode.highlight {

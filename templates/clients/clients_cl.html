@@ -7,13 +7,13 @@
     <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
       <div class="modal-content">
         <div class="modal-header">
-          <h5 class="modal-title" id="peerDetailsModalLongTitle">Peer {peer}</h5>
+          <h5 class="modal-title" id="peerDetailsModalTitle">Peer {peer}</h5>
           <button type="button" class="close" data-dismiss="modal" aria-label="Close"  onclick="$('#peerDetailsModal').modal('hide')">
             <span aria-hidden="true">&times;</span>
           </button>
         </div>
         <div class="modal-body">
-          Some {peer} info table
+          <pre><code id="peerDetailsModalBody"></code></pre>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-dismiss="modal" onclick="$('#peerDetailsModal').modal('hide')">Close</button>
@@ -83,9 +83,17 @@
                   <code>DATA_COLUMN_SIDECAR_SUBNET_COUNT={{ $root.PeerDASInfos.DataColumnSidecarSubnetCount}}</code>
                   <code>CUSTODY_REQUIREMENT={{ $root.PeerDASInfos.CustodyRequirement}}</code>
                   Node count: <code>{{ len $root.Nodes }}</code>
-                  <div class="form-check form-switch">
+                  <div class="form-check form-switch" style="display: inline-block">
                     <input class="form-check-input" type="checkbox" role="switch" id="showExternalPeersDAS" checked>
                     <label class="form-check-label" for="showExternalPeersDAS">External peers</label>
+                  </div>
+                  <div class="form-check form-switch" style="display: inline-block">
+                    <input class="form-check-input" type="checkbox" role="switch" id="showInternalPeersDAS" checked>
+                    <label class="form-check-label" for="showInternalPeersDAS">Internal peers</label>
+                  </div>
+                  <div class="form-check form-switch" style="display: inline-block">
+                    <input class="form-check-input" type="checkbox" role="switch" id="showSupernodePeersDAS" checked>
+                    <label class="form-check-label" for="showSupernodePeersDAS">Supernode peers</label>
                   </div>
                   <input class="form-control" list="datalistOptions" id="searchDASTablePeers" placeholder="Type to search...">
                   <datalist id="datalistOptions">
@@ -189,17 +197,15 @@
                       {{ $idx := add ($j) (int (mul (float64 $i) (float64 32))) }}
                       {{ $peersPerColumn := index $root.PeerDASInfos.ColumnDistribution (int64 $idx) }}
                       {{ $peerCount := len $peersPerColumn }}
-                      <td style="border-right: 1px solid; padding: 0 5px; vertical-align: top; min-width: 39px;">
+                      <td style="border-right: 1px solid; vertical-align: top; min-width: 39px;">
                         {{ with $peers := $peersPerColumn }}
                           {{ range $i, $p := $peers}}
-                          <div>
                             {{ $peerData := index $root.Nodes $p }}
-                            <svg class="peer-table-icon dastablenode node-{{ $p }} {{ $peerData.Type}}"
-                                 style="margin: 0 auto;" data-jdenticon-value="{{ $p }}"
+                            <svg class="peer-table-icon dastablenode node-{{ $p }} {{ $peerData.Type}} {{ if $peerData.PeerDAS.IsSuperNode }}supernode{{end}}"
+                                 data-jdenticon-value="{{ $p }}"
                                  data-peerid="{{ $p }}" data-alias="{{ $peerData.Alias }}"
                                  data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $peerData.Alias }}">
                             </svg>
-                          </div>
                           {{ end }}
                         {{ end }}
                       </td>
@@ -491,6 +497,7 @@
   var data = {{ .PeerMap }};
   var cy = $_network.create(container, data);
 
+  var nodes = {{ .Nodes }};
 
   var lastClickedNode = null;
   // PeerDASTable toggle external peers button
@@ -499,6 +506,24 @@
       $('.dastablenode.external').show();
     } else {
       $('.dastablenode.external').hide();
+    }
+  });
+
+  // PeerDASTable toggle internal peers button
+  $('#showInternalPeersDAS').change(function() {
+    if (this.checked) {
+      $('.dastablenode.internal').show();
+    } else {
+      $('.dastablenode.internal').hide();
+    }
+  });
+
+  // PeerDASTable toggle internal peers button
+    $('#showSupernodePeersDAS').change(function() {
+    if (this.checked) {
+      $('.dastablenode.supernode').show();
+    } else {
+      $('.dastablenode.supernode').hide();
     }
   });
 
@@ -533,7 +558,11 @@
     const $target = $(this);
     const selector = $target.attr('class').split(/\s+/).map(cls => '.' + cls).join('');
 
-    const peerID = $target.data('peerid').toString().toLowerCase();
+    const peerID = $target.data('peerid').toString();
+
+
+    $('#peerDetailsModalTitle').html("Peer: " + nodes[peerID].alias);
+    $('#peerDetailsModalBody').html(JSON.stringify(nodes[peerID], null, 2));
     $('#peerDetailsModal').modal('show');
 
     // Remove highlight/blur from the last clicked node

@@ -329,6 +329,11 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 
 		custodySubnetCount := pageData.PeerDASInfos.CustodyRequirement
 
+		// TODO: This is a temporary hack to simulate different custody subnet counts
+		//if rand.IntN(20-1)+1 == 5 {
+		//	custodySubnetCount = 128
+		//}
+
 		if cscHex, ok := v.ENRKeyValues["csc"]; ok {
 			val, err := strconv.ParseUint(cscHex.(string), 0, 64)
 			if err != nil {
@@ -363,6 +368,7 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 			CustodyColumns:       resColumns,
 			CustodyColumnSubnets: resSubnets,
 			CustodySubnetCount:   custodySubnetCount,
+			IsSuperNode:          uint64(len(resColumns)) == pageData.PeerDASInfos.NumberOfColumns,
 		}
 		v.PeerDAS = &peerDASInfo
 	}
@@ -380,10 +386,27 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 		sort.Slice(resultColumnDistribution[k], func(i, j int) bool {
 			pA := resultColumnDistribution[k][i]
 			pB := resultColumnDistribution[k][j]
-			if pageData.Nodes[pA].Type == pageData.Nodes[pB].Type {
-				return pageData.Nodes[pA].Alias < pageData.Nodes[pB].Alias
+			nodeA := pageData.Nodes[pA]
+			nodeB := pageData.Nodes[pB]
+
+			// Compare supernodes
+			if nodeA.PeerDAS.IsSuperNode != nodeB.PeerDAS.IsSuperNode {
+				return nodeA.PeerDAS.IsSuperNode
 			}
-			return pageData.Nodes[pA].Type > pageData.Nodes[pB].Type
+			// Compare node types
+			if nodeA.Type != nodeB.Type {
+				return nodeA.Type > nodeB.Type
+			}
+
+			// If types are the same, compare CustodyColumns length
+			lenA := len(nodeA.PeerDAS.CustodyColumns)
+			lenB := len(nodeB.PeerDAS.CustodyColumns)
+			if lenA != lenB {
+				return lenA > lenB
+			}
+
+			// If both types and CustodyColumns lengths are the same, compare aliases
+			return nodeA.Alias < nodeB.Alias
 		})
 	}
 
