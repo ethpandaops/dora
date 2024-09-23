@@ -352,13 +352,11 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 		}
 
 		// Transform the custody columns to a map for easier access
-		if resColumns != nil {
-			for _, idx := range resColumns {
-				if _, ok := columnDistribution[idx]; !ok {
-					columnDistribution[idx] = make(map[string]bool)
-				}
-				columnDistribution[idx][v.PeerID] = true
+		for _, idx := range resColumns {
+			if _, ok := columnDistribution[idx]; !ok {
+				columnDistribution[idx] = make(map[string]bool)
 			}
+			columnDistribution[idx][v.PeerID] = true
 		}
 
 		peerDASInfo := models.ClientCLPageDataPeerDAS{
