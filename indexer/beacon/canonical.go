@@ -145,8 +145,51 @@ func (indexer *Indexer) computeCanonicalChain() bool {
 	}()
 
 	headForks := indexer.forkCache.getForkHeads()
-	if len(headForks) <= 1 {
-		// no forks, just get latest block
+
+	// compare forks, select the one with the most votes
+	headForkVotes := map[ForkKey]phase0.Gwei{}
+	chainHeads = make([]*ChainHead, 0, len(headForks))
+	var bestForkVotes phase0.Gwei = 0
+
+	for _, fork := range headForks {
+		if fork.Block == nil {
+			continue
+		}
+
+		forkVotes, epochParticipation := indexer.aggregateForkVotes(fork.ForkId, aggregateEpochs)
+		headForkVotes[fork.ForkId] = forkVotes
+		chainHeads = append(chainHeads, &ChainHead{
+			HeadBlock:             fork.Block,
+			AggregatedHeadVotes:   forkVotes,
+			PerEpochVotingPercent: epochParticipation,
+		})
+
+		if forkVotes > 0 {
+			participationStr := make([]string, len(epochParticipation))
+			for i, p := range epochParticipation {
+				participationStr[i] = fmt.Sprintf("%.2f%%", p)
+			}
+
+			indexer.logger.Infof(
+				"fork %v: votes in last 2 epochs: %v ETH (%v), head: %v (%v)",
+				fork.ForkId,
+				forkVotes/EtherGweiFactor,
+				strings.Join(participationStr, ", "),
+				fork.Block.Slot,
+				fork.Block.Root.String(),
+			)
+		}
+
+		if forkVotes > bestForkVotes || headBlock == nil {
+			bestForkVotes = forkVotes
+			headBlock = fork.Block
+		} else if forkVotes == bestForkVotes && headBlock.Slot < fork.Block.Slot {
+			headBlock = fork.Block
+		}
+	}
+
+	if headBlock == nil {
+		// just get latest block
 		latestBlocks := indexer.blockCache.getLatestBlocks(1, nil)
 		if len(latestBlocks) > 0 {
 			headBlock = latestBlocks[0]
@@ -157,8 +200,8 @@ func (indexer *Indexer) computeCanonicalChain() bool {
 				participationStr[i] = fmt.Sprintf("%.2f%%", p)
 			}
 
-			indexer.logger.Debugf(
-				"fork %v votes in last %v epochs: %v ETH (%v), head: %v (%v)",
+			indexer.logger.Infof(
+				"fallback fork %v votes in last %v epochs: %v ETH (%v), head: %v (%v)",
 				headBlock.forkId,
 				aggregateEpochs,
 				forkVotes/EtherGweiFactor,
@@ -172,48 +215,6 @@ func (indexer *Indexer) computeCanonicalChain() bool {
 				AggregatedHeadVotes:   forkVotes,
 				PerEpochVotingPercent: epochParticipation,
 			}}
-		}
-	} else {
-		// multiple forks, compare forks
-		headForkVotes := map[ForkKey]phase0.Gwei{}
-		chainHeads = make([]*ChainHead, 0, len(headForks))
-		var bestForkVotes phase0.Gwei = 0
-
-		for _, fork := range headForks {
-			if fork.Block == nil {
-				continue
-			}
-
-			forkVotes, epochParticipation := indexer.aggregateForkVotes(fork.ForkId, aggregateEpochs)
-			headForkVotes[fork.ForkId] = forkVotes
-			chainHeads = append(chainHeads, &ChainHead{
-				HeadBlock:             fork.Block,
-				AggregatedHeadVotes:   forkVotes,
-				PerEpochVotingPercent: epochParticipation,
-			})
-
-			if forkVotes > 0 {
-				participationStr := make([]string, len(epochParticipation))
-				for i, p := range epochParticipation {
-					participationStr[i] = fmt.Sprintf("%.2f%%", p)
-				}
-
-				indexer.logger.Infof(
-					"fork %v: votes in last 2 epochs: %v ETH (%v), head: %v (%v)",
-					fork.ForkId,
-					forkVotes/EtherGweiFactor,
-					strings.Join(participationStr, ", "),
-					fork.Block.Slot,
-					fork.Block.Root.String(),
-				)
-			}
-
-			if forkVotes > bestForkVotes || headBlock == nil {
-				bestForkVotes = forkVotes
-				headBlock = fork.Block
-			} else if forkVotes == bestForkVotes && headBlock.Slot < fork.Block.Slot {
-				headBlock = fork.Block
-			}
 		}
 	}
 

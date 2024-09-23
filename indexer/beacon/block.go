@@ -356,6 +356,12 @@ func (block *Block) GetDbSlashings(indexer *Indexer) []*dbtypes.Slashing {
 	return indexer.dbWriter.buildDbSlashings(block, orphaned, nil)
 }
 
+// GetDbWithdrawalRequests returns the database representation of the withdrawal requests in this block.
+func (block *Block) GetDbWithdrawalRequests(indexer *Indexer) []*dbtypes.WithdrawalRequest {
+	orphaned := !indexer.IsCanonicalBlock(block, nil)
+	return indexer.dbWriter.buildDbWithdrawalRequests(block, orphaned, nil)
+}
+
 // GetDbConsolidationRequests returns the database representation of the consolidation requests in this block.
 func (block *Block) GetDbConsolidationRequests(indexer *Indexer) []*dbtypes.ConsolidationRequest {
 	orphaned := !indexer.IsCanonicalBlock(block, nil)
