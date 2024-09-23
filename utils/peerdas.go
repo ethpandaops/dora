@@ -16,11 +16,7 @@ import (
 
 var (
 	// Custom errors
-	errCustodySubnetCountTooLarge   = errors.New("custody subnet count larger than data column sidecar subnet count")
-	errIndexTooLarge                = errors.New("column index is larger than the specified columns count")
-	errMismatchLength               = errors.New("mismatch in the length of the commitments and proofs")
-	errRecordNil                    = errors.New("record is nil")
-	errCannotLoadCustodySubnetCount = errors.New("cannot load the custody subnet count from peer")
+	errCustodySubnetCountTooLarge = errors.New("custody subnet count larger than data column sidecar subnet count")
 
 	// maxUint256 is the maximum value of a uint256.
 	maxUint256 = &uint256.Int{math.MaxUint64, math.MaxUint64, math.MaxUint64, math.MaxUint64}
