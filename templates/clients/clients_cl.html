@@ -3,7 +3,7 @@
 {{ $root := . }}
 
   <!-- Peer details modal -->
-  <div class="modal fade" id="peerDetailsModal" tabindex="-1" role="dialog" aria-labelledby="peerDetailsModalTitle" aria-hidden="true">
+  <div class="modal" id="peerDetailsModal" tabindex="-1" role="dialog" aria-labelledby="peerDetailsModalTitle" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
       <div class="modal-content">
         <div class="modal-header">
@@ -95,7 +95,10 @@
                     <input class="form-check-input" type="checkbox" role="switch" id="showSupernodePeersDAS" checked>
                     <label class="form-check-label" for="showSupernodePeersDAS">Supernode peers</label>
                   </div>
-                  <input style="margin-top:10px" class="form-control" list="datalistOptions" id="searchDASTablePeers" placeholder="Type to search...">
+                  <div class="input-group" style="margin-top:10px;">
+                    <input class="form-control" list="datalistOptions" id="searchDASTablePeers" placeholder="Type to search...">
+                    <button class="btn btn-outline-secondary" type="button" id="clearSearchButton">Clear</button>
+                  </div>
                   <datalist id="datalistOptions">
                     {{ range $k, $p := $root.Nodes }}
                       <option value="{{ $p.PeerID }}">
@@ -209,7 +212,10 @@
                             <svg class="peer-table-icon dastablenode node-{{ $p }} {{ $peerData.Type}} {{ if $peerData.PeerDAS.IsSuperNode }}supernode{{end}}"
                                  data-jdenticon-value="{{ $p }}"
                                  data-peerid="{{ $p }}" data-alias="{{ $peerData.Alias }}"
-                                 data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $peerData.Alias }}">
+                                 data-bs-toggle="tooltip"
+                                 data-bs-placement="top"
+                                 data-bs-title="{{ $peerData.Alias }}"
+                                 data-bs-animation=false>
                             </svg>
                           {{ end }}
                         {{ end }}
@@ -535,23 +541,27 @@
   });
 
   // PeerDASTable Hover
+  let hoverTimeout;
   $('.dastablenode').hover(
     function() {
-      const searchText = $('#searchDASTablePeers').val().trim().toLowerCase();
+      hoverTimeout = setTimeout(() => {
+        const searchText = $('#searchDASTablePeers').val().trim().toLowerCase();
 
-      if (!searchText && lastClickedNode == null) {
-        const $target = $(this);
-        const selector = $target.attr('class').split(/\s+/).map(cls => '.' + cls).join('');
-        $(selector).addClass('highlight');
-        $('.dastablenode').addClass('blur');
-      }
+        if (!searchText && lastClickedNode == null) {
+          const $target = $(this);
+          const selector = $target.attr('class').split(/\s+/).map(cls => cls!=""?'.' + cls:"").join('');
+          $(selector).addClass('highlight');
+          $('.dastablenode').addClass('blur');
+        }
+      }, 500); //500ms delay before highlighting
     },
     function() {
+      clearTimeout(hoverTimeout); // Clear the timeout if the mouse leaves before 2 seconds
       const searchText = $('#searchDASTablePeers').val().trim().toLowerCase();
 
       if (!searchText && lastClickedNode == null) {
         const $target = $(this);
-        const selector = $target.attr('class').split(/\s+/).map(cls => '.' + cls).join('');
+        const selector = $target.attr('class').split(/\s+/).map(cls => cls!=""?'.' + cls:"").join('');
         $(selector).removeClass('highlight');
         $('.dastablenode').removeClass('blur');
       }
@@ -585,8 +595,8 @@
     // Store the clicked node
     lastClickedNode = selector;
 
-    // Remove searchtext
-    $('#searchDASTablePeers').val('');
+    // Add node to searchtext
+    $('#searchDASTablePeers').val(nodes[peerID].alias).trigger("input");
 
   });
 
@@ -618,6 +628,11 @@
     } else {
       $('.dastablenode').removeClass('blur highlight');  // Remove both classes if search text is cleared
     }
+  });
+
+  // Clear search input
+  $('#clearSearchButton').click(function(){
+    $('#searchDASTablePeers').val(''); // Clear the input
   });
 
 </script>
