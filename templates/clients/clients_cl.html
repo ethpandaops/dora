@@ -7,7 +7,7 @@
     <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
       <div class="modal-content">
         <div class="modal-header">
-          <h5 class="modal-title" id="peerDetailsModalTitle">Peer {peer}</h5>
+          <h5 class="modal-title" id="peerDetailsModalTitle" style="overflow-wrap: anywhere;">Peer {peer}</h5>
           <button type="button" class="close" data-dismiss="modal" aria-label="Close"  onclick="$('#peerDetailsModal').modal('hide')">
             <span aria-hidden="true">&times;</span>
           </button>
@@ -95,7 +95,7 @@
                     <input class="form-check-input" type="checkbox" role="switch" id="showSupernodePeersDAS" checked>
                     <label class="form-check-label" for="showSupernodePeersDAS">Supernode peers</label>
                   </div>
-                  <input class="form-control" list="datalistOptions" id="searchDASTablePeers" placeholder="Type to search...">
+                  <input style="margin-top:10px" class="form-control" list="datalistOptions" id="searchDASTablePeers" placeholder="Type to search...">
                   <datalist id="datalistOptions">
                     {{ range $k, $p := $root.Nodes }}
                       <option value="{{ $p.PeerID }}">
@@ -172,7 +172,8 @@
             </div>
 
             {{ range $i := until $root.PeerDASInfos.TotalRows }}
-              <table class="bg-dark text-white-50" style="margin: 0 auto; text-align: center; margin-bottom: 10px; border: 1px solid">
+            <div class="table-responsive">
+              <table class="bg-dark text-white-50" style="margin: 0 auto; text-align: center; border: 1px solid">
                 <thead>
                   <tr style="border-bottom: 1px dashed;">
                     {{ range $j := until 32 }}
@@ -187,7 +188,10 @@
                         {{ else if lt $peerCount 2 }}
                           bg-warning
                           text-dark
-                        {{ end }}"><span class="text-light">{{ $idx }}</span></th>
+                        {{ end }}">
+                        <span class="text-light">{{ $idx }}</span>
+                        <div class="dastablepeercount">({{ $peerCount }})</div>
+                      </th>
                     {{ end }}
                   </tr>
                 </thead>
@@ -198,6 +202,7 @@
                       {{ $peersPerColumn := index $root.PeerDASInfos.ColumnDistribution (int64 $idx) }}
                       {{ $peerCount := len $peersPerColumn }}
                       <td style="border-right: 1px solid; vertical-align: top; min-width: 39px;">
+                        <div style="display: flex; flex-flow: wrap; margin: 0 auto;">
                         {{ with $peers := $peersPerColumn }}
                           {{ range $i, $p := $peers}}
                             {{ $peerData := index $root.Nodes $p }}
@@ -208,10 +213,12 @@
                             </svg>
                           {{ end }}
                         {{ end }}
+                        </div>
                       </td>
                     {{ end }}
                   </tr>
               </table>
+            </div>
             {{ end }}
             </div>
           </div>
