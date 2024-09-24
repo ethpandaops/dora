@@ -144,6 +144,13 @@ Client peers table
   margin: 0 auto;
 }
 
+.dastablepeercount {
+  font-weight:300;
+  font-size: 0.6rem;
+  line-height: 0.5rem;
+  margin-bottom: 2px;
+}
+
 .dastablenode {
   max-width: 25px;
   margin: 0 auto;
@@ -152,6 +159,10 @@ Client peers table
   -moz-transition: opacity 0.5s ease;
   -o-transition: opacity 0.5s ease;
   transition: opacity 0.5s ease;
+  margin-top: 1px;
+  margin-bottom: 1px;
+  width: 17px;
+  height: 17px;
 }
 
 .dastablenode.internal {
@@ -163,12 +174,13 @@ Client peers table
 }
 
 .dastablenode.supernode {
-  width: 13px;
-  height: 13px;
-  padding: 0;
-  position: relative;
-  border-width: 1px;
+  /*border-width: 1px;*/
+  background-color: rgb(0 246 255 / 20%);
   border-radius: 0;
+}
+
+.dastablenode.supernode.highlight {
+  border-width: 1px !important;
 }
 
 .dastablenode:not(.supernode) {
@@ -177,7 +189,7 @@ Client peers table
 
 .dastablenode.highlight {
   opacity: 1 !important;
-  border: 3px solid yellow !important;
+  border: 1px solid yellow !important;
 }
 
 .dastablenode.blur {
