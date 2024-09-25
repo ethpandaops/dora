@@ -370,15 +370,19 @@
                               <tr>
                                 <td>Custody columns</td>
                                 <td>
-                                  <code>{{ (index $root.Nodes $client.PeerID).PeerDAS.CustodyColumns }}</code>
-                                  <i class="fa fa-copy text-muted p-1" role="button" data-bs-placement="right" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $client.PeerDAS.CustodyColumns }}" ></i>
+                                  <div style="word-break: break-all; text-wrap: pretty;">
+                                    <code>{{ (index $root.Nodes $client.PeerID).PeerDAS.CustodyColumns }}</code>
+                                    <i class="fa fa-copy text-muted p-1" role="button" data-bs-placement="right" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $client.PeerDAS.CustodyColumns }}" ></i>
+                                  </div>
                                 </td>
                               </tr>
                               <tr>
                                 <td>Custody subnets</td>
                                 <td>
-                                  <code>{{ (index $root.Nodes $client.PeerID).PeerDAS.CustodyColumnSubnets }}</code>
-                                  <i class="fa fa-copy text-muted p-1" role="button" data-bs-placement="right" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $client.PeerDAS.CustodyColumnSubnets }}" ></i>
+                                  <div style="word-break: break-all; text-wrap: pretty;">
+                                    <code>{{ (index $root.Nodes $client.PeerID).PeerDAS.CustodyColumnSubnets }}</code>
+                                    <i class="fa fa-copy text-muted p-1" role="button" data-bs-placement="right" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $client.PeerDAS.CustodyColumnSubnets }}" ></i>
+                                  </div>
                                 </td>
                               </tr>
                           </tbody>
@@ -453,15 +457,19 @@
                                       <tr>
                                         <td>Custody columns</td>
                                         <td>
-                                          <code>{{ (index $root.Nodes $peer.ID).PeerDAS.CustodyColumns }}</code>
-                                          <i class="fa fa-copy text-muted p-1" role="button" data-bs-placement="right" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $client.PeerDAS.CustodyColumns }}" ></i>
+                                          <div style="word-break: break-all; text-wrap: pretty;">
+                                            <code>{{ (index $root.Nodes $peer.ID).PeerDAS.CustodyColumns }}</code>
+                                            <i class="fa fa-copy text-muted p-1" role="button" data-bs-placement="right" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $client.PeerDAS.CustodyColumns }}" ></i>
+                                          </div>
                                         </td>
                                       </tr>
                                       <tr>
                                         <td>Custody subnets</td>
                                         <td>
-                                          <code>{{ (index $root.Nodes $peer.ID).PeerDAS.CustodyColumnSubnets }}</code>
-                                          <i class="fa fa-copy text-muted p-1" role="button" data-bs-placement="right" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $client.PeerDAS.CustodyColumnSubnets }}" ></i>
+                                          <div style="word-break: break-all; text-wrap: pretty;">
+                                            <code>{{ (index $root.Nodes $peer.ID).PeerDAS.CustodyColumnSubnets }}</code>
+                                            <i class="fa fa-copy text-muted p-1" role="button" data-bs-placement="right" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $client.PeerDAS.CustodyColumnSubnets }}" ></i>
+                                          </div>
                                         </td>
                                       </tr>
                                   </tbody>

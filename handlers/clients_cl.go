@@ -174,6 +174,21 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 	for _, client := range services.GlobalBeaconService.GetConsensusClients() {
 		lastHeadSlot, lastHeadRoot := client.GetLastHead()
 
+		id := client.GetNodeIdentity()
+		if id == nil {
+			continue
+		}
+
+		// Add client to global nodes map
+		if _, ok := pageData.Nodes[id.PeerID]; !ok {
+			pageData.Nodes[id.PeerID] = &models.ClientCLNode{
+				PeerID: id.PeerID,
+				Alias:  client.GetName(),
+				Type:   "internal",
+				ENR:    id.Enr,
+			}
+		}
+
 		peers := client.GetNodePeers()
 		resPeers := []*models.ClientCLPageDataClientPeers{}
 
@@ -208,7 +223,21 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 			} else {
 				if node.ENR == "" && peer.Enr != "" {
 					node.ENR = peer.Enr
+				} else if node.ENR != "" && peer.Enr != "" {
+					// Need to compare `seq` field from ENRs and only store highest
+					nodeENR, errA := utils.DecodeENR(node.ENR)
+					if errA != nil {
+						logrus.WithFields(logrus.Fields{"node": node.Alias, "enr": node.ENR}).Error("failed to decode enr of a node ", errA)
+					}
+					peerENR, errB := utils.DecodeENR(peer.Enr)
+					if errB != nil {
+						logrus.WithFields(logrus.Fields{"node": node.Alias, "peer": peer.PeerID, "enr": peer.Enr}).Error("failed to decode enr of a peer ", errB)
+					}
+					if errA != nil && errB != nil && peerENR.Seq() > nodeENR.Seq() {
+						node.ENR = peer.Enr // Store the peer's ENR
+					}
 				}
+
 			}
 
 			// Increase peer direction counter
@@ -227,11 +256,6 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 			return resPeers[i].Type > resPeers[j].Type
 		})
 
-		id := client.GetNodeIdentity()
-		if id == nil {
-			continue
-		}
-
 		resClient := &models.ClientsCLPageDataClient{
 			Index:                 int(client.GetIndex()) + 1,
 			Name:                  client.GetName(),
@@ -248,21 +272,6 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 			HeadRoot:              lastHeadRoot[:],
 			Status:                client.GetStatus().String(),
 			LastRefresh:           client.GetLastEventTime(),
-		}
-
-		// Add client to global nodes map
-		node, ok := pageData.Nodes[id.PeerID]
-		if !ok {
-			pageData.Nodes[id.PeerID] = &models.ClientCLNode{
-				PeerID: id.PeerID,
-				Alias:  client.GetName(),
-				Type:   "internal",
-				ENR:    id.Enr,
-			}
-		} else {
-			if node.ENR == "" && id.Enr != "" {
-				node.ENR = id.Enr
-			}
 		}
 
 		lastError := client.GetLastClientError()
@@ -330,8 +339,14 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 		custodySubnetCount := pageData.PeerDASInfos.CustodyRequirement
 
 		// TODO: This is a temporary hack to simulate different custody subnet counts
-		//if rand.IntN(20-1)+1 == 5 {
+		//if rand.IntN(30-1)+1 == 1 {
 		//	custodySubnetCount = 128
+		//} else if rand.IntN(5-1)+1 == 4 {
+		//	custodySubnetCount = 64
+		//} else if rand.IntN(5-1)+1 == 3 {
+		//	custodySubnetCount = 32
+		//} else if rand.IntN(5-1)+1 == 2 {
+		//	custodySubnetCount = 8
 		//}
 
 		if cscHex, ok := v.ENRKeyValues["csc"]; ok {
