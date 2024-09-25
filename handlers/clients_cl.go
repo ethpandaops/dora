@@ -212,7 +212,7 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 			})
 
 			// Add peer to global nodes map
-			node, ok := pageData.Nodes[peer.PeerID]
+			_, ok := pageData.Nodes[peer.PeerID]
 			if !ok {
 				pageData.Nodes[peer.PeerID] = &models.ClientCLNode{
 					PeerID: peer.PeerID,
@@ -220,24 +220,28 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 					Type:   peerType,
 					ENR:    peer.Enr,
 				}
-			} else {
-				if node.ENR == "" && peer.Enr != "" {
-					node.ENR = peer.Enr
-				} else if node.ENR != "" && peer.Enr != "" {
-					// Need to compare `seq` field from ENRs and only store highest
-					nodeENR, errA := utils.DecodeENR(node.ENR)
-					if errA != nil {
-						logrus.WithFields(logrus.Fields{"node": node.Alias, "enr": node.ENR}).Error("failed to decode enr of a node ", errA)
-					}
-					peerENR, errB := utils.DecodeENR(peer.Enr)
-					if errB != nil {
-						logrus.WithFields(logrus.Fields{"node": node.Alias, "peer": peer.PeerID, "enr": peer.Enr}).Error("failed to decode enr of a peer ", errB)
-					}
-					if errA != nil && errB != nil && peerENR.Seq() > nodeENR.Seq() {
-						node.ENR = peer.Enr // Store the peer's ENR
-					}
-				}
+			}
 
+			node := pageData.Nodes[peer.PeerID]
+			if node.PeerID == "16Uiu2HAkuZ7rsexPNUWaCd2W7koKedKytgKgUUihP6WbszDXqKMs" || peer.PeerID == "16Uiu2HAkuZ7rsexPNUWaCd2W7koKedKytgKgUUihP6WbszDXqKMs" {
+				fmt.Println("n:" + node.ENR)
+				fmt.Println("p:" + peer.Enr)
+			}
+			if node.ENR == "" && peer.Enr != "" {
+				node.ENR = peer.Enr
+			} else if node.ENR != "" && peer.Enr != "" {
+				// Need to compare `seq` field from ENRs and only store highest
+				nodeENR, errA := utils.DecodeENR(node.ENR)
+				if errA != nil {
+					logrus.WithFields(logrus.Fields{"node": node.Alias, "enr": node.ENR}).Error("failed to decode enr of a node ", errA)
+				}
+				peerENR, errB := utils.DecodeENR(peer.Enr)
+				if errB != nil {
+					logrus.WithFields(logrus.Fields{"node": node.Alias, "peer": peer.PeerID, "enr": peer.Enr}).Error("failed to decode enr of a peer ", errB)
+				}
+				if errA == nil && errB == nil && peerENR.Seq() > nodeENR.Seq() {
+					node.ENR = peer.Enr // peerENR has higher sequence number, so override.
+				}
 			}
 
 			// Increase peer direction counter
