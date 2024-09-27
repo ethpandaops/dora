@@ -201,6 +201,16 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 				peerType = "internal"
 			}
 
+			peerENRKeyValues := map[string]interface{}{}
+			if peer.Enr != "" {
+				rec, err := utils.DecodeENR(peer.Enr)
+				if err != nil {
+					logrus.WithFields(logrus.Fields{"node": client.GetName(), "peer": peer.PeerID, "enr": peer.Enr}).Error("failed to decode peer enr. ", err)
+					rec = &enr.Record{}
+				}
+				peerENRKeyValues = utils.GetKeyValuesFromENR(rec)
+			}
+
 			resPeers = append(resPeers, &models.ClientCLPageDataClientPeers{
 				ID:                 peer.PeerID,
 				State:              peer.State,
@@ -208,6 +218,7 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 				Alias:              peerAlias,
 				Type:               peerType,
 				ENR:                peer.Enr,
+				ENRKeyValues:       peerENRKeyValues,
 				LastSeenP2PAddress: peer.LastSeenP2PAddress,
 			})
 
@@ -223,10 +234,6 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 			}
 
 			node := pageData.Nodes[peer.PeerID]
-			if node.PeerID == "16Uiu2HAkuZ7rsexPNUWaCd2W7koKedKytgKgUUihP6WbszDXqKMs" || peer.PeerID == "16Uiu2HAkuZ7rsexPNUWaCd2W7koKedKytgKgUUihP6WbszDXqKMs" {
-				fmt.Println("n:" + node.ENR)
-				fmt.Println("p:" + peer.Enr)
-			}
 			if node.ENR == "" && peer.Enr != "" {
 				node.ENR = peer.Enr
 			} else if node.ENR != "" && peer.Enr != "" {
@@ -345,17 +352,6 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 		v.NodeID = nodeID.String()
 
 		custodySubnetCount := pageData.PeerDASInfos.CustodyRequirement
-
-		// TODO: This is a temporary hack to simulate different custody subnet counts
-		//if rand.IntN(30-1)+1 == 1 {
-		//	custodySubnetCount = 128
-		//} else if rand.IntN(5-1)+1 == 4 {
-		//	custodySubnetCount = 64
-		//} else if rand.IntN(5-1)+1 == 3 {
-		//	custodySubnetCount = 32
-		//} else if rand.IntN(5-1)+1 == 2 {
-		//	custodySubnetCount = 8
-		//}
 
 		if cscHex, ok := v.ENRKeyValues["csc"]; ok {
 			val, err := strconv.ParseUint(cscHex.(string), 0, 64)

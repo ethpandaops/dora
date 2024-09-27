@@ -3,17 +3,20 @@
 {{ $root := . }}
 
   <!-- Peer details modal -->
-  <div class="modal" id="peerDetailsModal" tabindex="-1" role="dialog" aria-labelledby="peerDetailsModalTitle" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+  <div class="modal modal-xl" id="peerDetailsModal" tabindex="-1" role="dialog" aria-labelledby="peerDetailsModalTitle" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-xl" role="document">
       <div class="modal-content">
         <div class="modal-header">
-          <h5 class="modal-title" id="peerDetailsModalTitle" style="overflow-wrap: anywhere;">Peer {peer}</h5>
+          <h5 class="modal-title" style="overflow-wrap: anywhere;">
+            <svg id="peerDetailsModalTitleImage" class="peer-table-icon" style="width:50px;height:50px;" data-jdenticon-value="user127"></svg>
+            <span id="peerDetailsModalTitle"></span>
+          </h5>
           <button type="button" class="close" data-dismiss="modal" aria-label="Close"  onclick="$('#peerDetailsModal').modal('hide')">
             <span aria-hidden="true">&times;</span>
           </button>
         </div>
         <div class="modal-body">
-          <pre><code id="peerDetailsModalBody"></code></pre>
+          <div id="peerDetailsModalBody"></div>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-dismiss="modal" onclick="$('#peerDetailsModal').modal('hide')">Close</button>
@@ -414,6 +417,19 @@
                             </div>
                             {{ if $root.ShowSensitivePeerInfos }}
                               <div class="client-node-peer-details">
+                                {{ $peerENR := (index $root.Nodes $peer.ID).ENR}}
+                                {{ $reportedPeerENR := $peer.ENR}}
+                                {{ if ne $peerENR $reportedPeerENR }}
+                                <div style="padding:10px; margin: 0; margin-left:10px; margin-right: 25px; word-break: break-all; text-wrap: pretty;" class="alert alert-warning" role="alert">
+                                  <p><i class="fa-solid fa-circle-exclamation" style="margin-right: 10px;"></i>The ENR information was obtained from another node.</p>
+                                  The node <code>{{ $client.Name }}</code> did not have the most up-to-date ENR for this peer.
+                                  {{ if ne $reportedPeerENR "" }}
+                                  The reported ENR was: <code>{{ $reportedPeerENR }}</code>. Decoded ENR fields <code>{{ toJson $peer.ENRKeyValues }}</code>.
+                                  {{ else }}
+                                  The reported ENR was empty (nil).
+                                  {{ end }}
+                                </div>
+                                {{ end }}
                                 <table class="table table-borderless table-sm client-table-info" style="padding-left:0; margin-top:10px;margin-bottom: 10px; margin-left: 10px;">
                                   <tbody>
                                     <tr>
@@ -431,7 +447,6 @@
                                       </td>
                                     </tr>
                                     <tr>
-                                      {{ $peerENR := (index $root.Nodes $peer.ID).ENR}}
                                       <td>ENR</td>
                                       <td>
                                         <div style="word-break: break-all; text-wrap: pretty;">
@@ -523,6 +538,68 @@
 
   var nodes = {{ .Nodes }};
 
+  var showPeerDetailsModal = function(peerID){
+    jdenticon.update("#peerDetailsModalTitleImage", peerID);
+    $('#peerDetailsModalTitle').html(`${nodes[peerID].alias}`);
+
+    let peerDetailsTemplate = `
+    <table class="table table-borderless table-sm">
+      <tr>
+        <td style="min-width:90px;">Peer ID</td>
+        <td><code>${peerID}</code></td>
+      </tr>
+      <tr>
+        <td>Node ID</td>
+        <td><code>${nodes[peerID].node_id}</code></td>
+      </tr>
+      <tr>
+        <td>ENR</td>
+        <td><code style="word-break: break-all; text-wrap: pretty;">${nodes[peerID].enr?nodes[peerID].enr:"Unknown"}</code></td>
+      </tr>
+    `;
+
+    if (nodes[peerID].enr_kv) {
+      peerDetailsTemplate += `
+      <tr>
+        <td colspan="2" style="font-weight: 700;padding-top: 5px;padding-bottom: 5px; text-align: center;border-top:1px dashed; border-bottom:1px dashed">ENR Fields</td>
+      </tr>
+      ${Object.entries(nodes[peerID].enr_kv).map(([key, value]) => `
+        <tr>
+          <td style="padding-right:15px; vertical-align:top">${key}</td>
+          <td><code style="word-break: break-all; text-wrap: pretty;">${value}</code></td>
+        </tr>
+      `).join('')}
+      `;
+    }
+
+    peerDetailsTemplate += `
+      <tr>
+        <td colspan="2" style="font-weight: 700;padding-top: 5px;padding-bottom: 5px; text-align: center;border-top:1px dashed; border-bottom:1px dashed">Peer DAS</td>
+      </tr>
+      <tr>
+        <td>Supernode</td>
+        <td><code>${nodes[peerID].peer_das.is_super_node}</code></td>
+      </tr>
+      <tr>
+        <td>CSC</td>
+        <td><code>${nodes[peerID].peer_das.custody_subnet_count}</code></td>
+      </tr>
+      <tr>
+        <td>Columns</td>
+        <td><code style="word-break: break-all; text-wrap: pretty;">${nodes[peerID].peer_das.custody_columns}</code></td>
+      </tr>
+      <tr>
+        <td>Subnets</td>
+        <td><code style="word-break: break-all; text-wrap: pretty;">${nodes[peerID].peer_das.custody_column_subnets}</code></td>
+      </tr>
+    </table>
+    `;
+
+    //peerDetailsTemplate += `<pre><code>${JSON.stringify(nodes[peerID], null, 2)}</code></pre>`;
+    $('#peerDetailsModalBody').html(peerDetailsTemplate)
+    $('#peerDetailsModal').modal('show');
+  }
+
   var lastClickedNode = null;
   // PeerDASTable toggle external peers button
   $('#showExternalPeersDAS').change(function() {
@@ -589,9 +666,7 @@
     const peerID = $target.data('peerid').toString();
 
 
-    $('#peerDetailsModalTitle').html("Peer: " + nodes[peerID].alias);
-    $('#peerDetailsModalBody').html(JSON.stringify(nodes[peerID], null, 2));
-    $('#peerDetailsModal').modal('show');
+    showPeerDetailsModal(peerID);
 
     // Remove highlight/blur from the last clicked node
     if (lastClickedNode != null) {
