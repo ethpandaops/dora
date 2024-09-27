@@ -146,7 +146,7 @@
                       <ul>
                         {{ range $i, $p := $root.PeerDASInfos.Warnings.MissingENRsPeers }}
                           <li>
-                            <code>{{ $p }}</code>
+                            <code class="peerdetails-modal-peer" onclick="showPeerDetailsModal('{{ $p }}')">{{ $p }}</code>
                           </li>
                         {{ end }}
                       </ul>
@@ -161,7 +161,7 @@
                       <ul>
                         {{ range $i, $p := $root.PeerDASInfos.Warnings.MissingCSCFromENRPeers }}
                           <li>
-                            <code>{{ $p }}</code>
+                            <code class="peerdetails-modal-peer" onclick="showPeerDetailsModal('{{ $p }}')">{{ $p }}</code>
                             {{ $peer := index $root.Nodes $p}}
                             {{ if ne $peer.Alias $peer.PeerID }}
                             ( <code>{{ $peer.Alias }}</code> )
@@ -592,11 +592,45 @@
         <td>Subnets</td>
         <td><code style="word-break: break-all; text-wrap: pretty;">${nodes[peerID].peer_das.custody_column_subnets}</code></td>
       </tr>
-    </table>
+      <tr>
+        <td colspan="2" style="font-weight: 700;padding-top: 5px;padding-bottom: 5px; text-align: center;border-top:1px dashed; border-bottom:1px dashed">Peers</td>
+      </tr>
     `;
+
+    if (nodes[peerID].peers_in != null){
+      nodes[peerID].peers_in.forEach(element => {
+      peerDetailsTemplate += `
+        <tr>
+          <td colspan="2">
+            <i class="fa-solid fa-down-long text-success" data-bs-toggle="tooltip" data-bs-placement="left" data-bs-title="Inbound""></i>
+            <svg class="peer-table-icon peer-details-jdenticon" data-jdenticon-value="${element}"></svg>
+            <span class="peerdetails-modal-peer" onclick="showPeerDetailsModal('${element}')">
+              <code>${element}</code> ${nodes[element].alias!=element?"<span class='badge text-bg-secondary'>"+nodes[element].alias+"</span>":""}
+            </span>
+          </td>
+        `;
+      });
+    }
+
+    if (nodes[peerID].peers_out != null){
+      nodes[peerID].peers_out.forEach(element => {
+      peerDetailsTemplate += `
+        <tr>
+          <td colspan="2">
+            <i class="fa-solid fa-up-long text-danger" data-bs-toggle="tooltip" data-bs-placement="left" data-bs-title="Outbound""></i>
+            <svg class="peer-table-icon peer-details-jdenticon" data-jdenticon-value="${element}"></svg>
+            <span class="peerdetails-modal-peer" onclick="showPeerDetailsModal('${element}')">
+              <code>${element}</code> ${nodes[element].alias!=element?"<span class='badge text-bg-secondary'>"+nodes[element].alias+"</span>":""}
+            </span>
+          </td>
+        `;
+      });
+    }
+    peerDetailsTemplate += `</table>`;
 
     //peerDetailsTemplate += `<pre><code>${JSON.stringify(nodes[peerID], null, 2)}</code></pre>`;
     $('#peerDetailsModalBody').html(peerDetailsTemplate)
+    jdenticon.update(".peer-details-jdenticon",null)
     $('#peerDetailsModal').modal('show');
   }
 
@@ -658,8 +692,6 @@
 
   // PeerDASTable Click
   $('.dastablenode').on('click', function() {
-
-
     const $target = $(this);
     const selector = $target.attr('class').split(/\s+/).map(cls => '.' + cls).join('');
 

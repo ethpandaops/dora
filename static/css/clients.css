@@ -186,3 +186,11 @@ Client peers table
 .dastablenode.blur {
   opacity: 0.2;
 }
+
+.peerdetails-modal-peer{
+  cursor: pointer;
+}
+
+.peerdetails-modal-peer:hover{
+  font-weight: 600;
+}
