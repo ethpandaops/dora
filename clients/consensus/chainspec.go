@@ -51,6 +51,11 @@ type ChainSpec struct {
 	SyncCommitteeSize            uint64            `yaml:"SYNC_COMMITTEE_SIZE"`
 	DepositContractAddress       []byte            `yaml:"DEPOSIT_CONTRACT_ADDRESS"`
 
+	// EIP7594: PeerDAS
+	NumberOfColumns              *uint64 `yaml:"NUMBER_OF_COLUMNS"`
+	DataColumnSidecarSubnetCount *uint64 `yaml:"DATA_COLUMN_SIDECAR_SUBNET_COUNT"`
+	CustodyRequirement           *uint64 `yaml:"CUSTODY_REQUIREMENT"`
+
 	// additional dora specific specs
 	WhiskForkEpoch *uint64
 }

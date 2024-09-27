@@ -467,7 +467,16 @@ func (bc *BeaconClient) GetNodePeers(ctx context.Context) ([]*v1.Peer, error) {
 	if err != nil {
 		return nil, err
 	}
-	return result.Data, nil
+
+	// Temporary workaround to filter out peers that are not connected (https://github.com/grandinetech/grandine/issues/46)
+	filteredPeers := make([]*v1.Peer, 0)
+	for _, peer := range result.Data {
+		if peer.State == "connected" {
+			filteredPeers = append(filteredPeers, peer)
+		}
+	}
+
+	return filteredPeers, nil
 }
 
 func (bc *BeaconClient) GetNodeIdentity(ctx context.Context) (*NodeIdentity, error) {
