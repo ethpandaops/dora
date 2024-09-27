@@ -201,6 +201,16 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 				peerType = "internal"
 			}
 
+			peerENRKeyValues := map[string]interface{}{}
+			if peer.Enr != "" {
+				rec, err := utils.DecodeENR(peer.Enr)
+				if err != nil {
+					logrus.WithFields(logrus.Fields{"node": client.GetName(), "peer": peer.PeerID, "enr": peer.Enr}).Error("failed to decode peer enr. ", err)
+					rec = &enr.Record{}
+				}
+				peerENRKeyValues = utils.GetKeyValuesFromENR(rec)
+			}
+
 			resPeers = append(resPeers, &models.ClientCLPageDataClientPeers{
 				ID:                 peer.PeerID,
 				State:              peer.State,
@@ -208,6 +218,7 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 				Alias:              peerAlias,
 				Type:               peerType,
 				ENR:                peer.Enr,
+				ENRKeyValues:       peerENRKeyValues,
 				LastSeenP2PAddress: peer.LastSeenP2PAddress,
 			})
 
@@ -223,10 +234,6 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 			}
 
 			node := pageData.Nodes[peer.PeerID]
-			if node.PeerID == "16Uiu2HAkuZ7rsexPNUWaCd2W7koKedKytgKgUUihP6WbszDXqKMs" || peer.PeerID == "16Uiu2HAkuZ7rsexPNUWaCd2W7koKedKytgKgUUihP6WbszDXqKMs" {
-				fmt.Println("n:" + node.ENR)
-				fmt.Println("p:" + peer.Enr)
-			}
 			if node.ENR == "" && peer.Enr != "" {
 				node.ENR = peer.Enr
 			} else if node.ENR != "" && peer.Enr != "" {
@@ -299,6 +306,7 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 			pageData.PeerDASInfos.NumberOfColumns = 128
 			logrus.Warnf("NUMBER_OF_COLUMNS is not defined in spec, defaulting to %d", pageData.PeerDASInfos.NumberOfColumns)
 			pageData.PeerDASInfos.Warnings.MissingSpecValues = true
+			pageData.PeerDASInfos.Warnings.HasWarnings = true
 		}
 
 		if specs.DataColumnSidecarSubnetCount != nil {
@@ -307,6 +315,7 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 			pageData.PeerDASInfos.DataColumnSidecarSubnetCount = 128
 			logrus.Warnf("DATA_COLUMN_SIDECAR_SUBNET_COUNT is not defined in spec, defaulting to %d", pageData.PeerDASInfos.DataColumnSidecarSubnetCount)
 			pageData.PeerDASInfos.Warnings.MissingSpecValues = true
+			pageData.PeerDASInfos.Warnings.HasWarnings = true
 		}
 
 		if specs.CustodyRequirement != nil {
@@ -315,6 +324,7 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 			pageData.PeerDASInfos.CustodyRequirement = 4
 			logrus.Warnf("CUSTODY_REQUIREMENT is not defined in spec, defaulting to %d", pageData.PeerDASInfos.CustodyRequirement)
 			pageData.PeerDASInfos.Warnings.MissingSpecValues = true
+			pageData.PeerDASInfos.Warnings.HasWarnings = true
 		}
 	}
 
@@ -331,6 +341,7 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 			v.ENRKeyValues = utils.GetKeyValuesFromENR(rec)
 		} else {
 			pageData.PeerDASInfos.Warnings.MissingENRsPeers = append(pageData.PeerDASInfos.Warnings.MissingENRsPeers, v.PeerID)
+			pageData.PeerDASInfos.Warnings.HasWarnings = true
 		}
 
 		// Calculate node ID
@@ -342,17 +353,6 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 
 		custodySubnetCount := pageData.PeerDASInfos.CustodyRequirement
 
-		// TODO: This is a temporary hack to simulate different custody subnet counts
-		//if rand.IntN(30-1)+1 == 1 {
-		//	custodySubnetCount = 128
-		//} else if rand.IntN(5-1)+1 == 4 {
-		//	custodySubnetCount = 64
-		//} else if rand.IntN(5-1)+1 == 3 {
-		//	custodySubnetCount = 32
-		//} else if rand.IntN(5-1)+1 == 2 {
-		//	custodySubnetCount = 8
-		//}
-
 		if cscHex, ok := v.ENRKeyValues["csc"]; ok {
 			val, err := strconv.ParseUint(cscHex.(string), 0, 64)
 			if err != nil {
@@ -362,6 +362,7 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 			}
 		} else {
 			pageData.PeerDASInfos.Warnings.MissingCSCFromENRPeers = append(pageData.PeerDASInfos.Warnings.MissingCSCFromENRPeers, v.PeerID)
+			pageData.PeerDASInfos.Warnings.HasWarnings = true
 		}
 
 		// Calculate custody columns and subnets for peer DAS
@@ -433,6 +434,7 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 	for i := uint64(0); i < pageData.PeerDASInfos.NumberOfColumns; i++ {
 		if _, ok := resultColumnDistribution[i]; !ok {
 			pageData.PeerDASInfos.Warnings.EmptyColumns = append(pageData.PeerDASInfos.Warnings.EmptyColumns, i)
+			pageData.PeerDASInfos.Warnings.HasWarnings = true
 		}
 	}
 
