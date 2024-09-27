@@ -124,4 +124,6 @@ type ClientCLNode struct {
 	ENR          string                   `json:"enr"`
 	ENRKeyValues map[string]interface{}   `json:"enr_kv"`
 	PeerDAS      *ClientCLPageDataPeerDAS `json:"peer_das"`
+	PeersIn      []string                 `json:"peers_in"`
+	PeersOut     []string                 `json:"peers_out"`
 }

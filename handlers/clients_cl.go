@@ -295,6 +295,12 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 	}
 	pageData.ClientCount = uint64(len(pageData.Clients))
 
+	// Add peer in/out infos to global nodes map
+	for _, edge := range pageData.PeerMap.ClientDataMapEdges {
+		pageData.Nodes[edge.From].PeersOut = append(pageData.Nodes[edge.From].PeersOut, edge.To)
+		pageData.Nodes[edge.To].PeersIn = append(pageData.Nodes[edge.To].PeersIn, edge.From)
+	}
+
 	columnDistribution := make(map[uint64]map[string]bool)
 	resultColumnDistribution := make(map[uint64][]string)
 
