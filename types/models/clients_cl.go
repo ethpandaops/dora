@@ -46,6 +46,7 @@ type ClientCLPageDataPeerDAS struct {
 }
 
 type ClientCLPageDataPeerDASWarnings struct {
+	HasWarnings bool `json:"has_warnings"`
 	// MissingENRs indicates that the client is missing ENRs for some peers
 	MissingENRs      bool     `json:"missing_enrs"`
 	MissingENRsPeers []string `json:"missing_enrs_peers"`

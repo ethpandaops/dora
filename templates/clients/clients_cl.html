@@ -68,15 +68,18 @@
         <div class="accordion-item">
           <h2 class="accordion-header">
             <button class="accordion-button btn-secondary" style="box-shadow: none;" type="button" data-bs-toggle="collapse" data-bs-target="#collapseColumnInfos" aria-expanded="true" aria-controls="collapseColumnInfos">
-              <i class="fa-solid fa-circle-nodes" style="margin-right:5px"></i> PeerDAS column custody distribution
+              <i class="fa-solid fa-table-columns" style="margin-right:5px"></i> PeerDAS column custody
+              <span class="badge badge-pill badge-secondary">Total peers: {{ len $root.Nodes }}</span>
             </button>
           </h2>
           <div id="collapseColumnInfos" class="accordion-collapse collapse show" data-bs-parent="#peerdas-columns-accordion">
             <div class="accordion-body">
               <div>
+                {{ if $root.PeerDASInfos.Warnings.HasWarnings }}
                 <button style="float: right" type="button" class="btn btn-warning btn-sm font-weight-bold" data-toggle="modal" data-target="#peerDasWarningsModal" onclick="$('#peerDasWarningsModal').modal('show')">
                   ⚠️ Show warnings
                 </button>
+                {{ end}}
                 <p>
                   Spec configuration:
                   <code>NUMBER_OF_COLUMNS={{ $root.PeerDASInfos.NumberOfColumns}}</code>,

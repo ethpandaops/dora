@@ -299,6 +299,7 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 			pageData.PeerDASInfos.NumberOfColumns = 128
 			logrus.Warnf("NUMBER_OF_COLUMNS is not defined in spec, defaulting to %d", pageData.PeerDASInfos.NumberOfColumns)
 			pageData.PeerDASInfos.Warnings.MissingSpecValues = true
+			pageData.PeerDASInfos.Warnings.HasWarnings = true
 		}
 
 		if specs.DataColumnSidecarSubnetCount != nil {
@@ -307,6 +308,7 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 			pageData.PeerDASInfos.DataColumnSidecarSubnetCount = 128
 			logrus.Warnf("DATA_COLUMN_SIDECAR_SUBNET_COUNT is not defined in spec, defaulting to %d", pageData.PeerDASInfos.DataColumnSidecarSubnetCount)
 			pageData.PeerDASInfos.Warnings.MissingSpecValues = true
+			pageData.PeerDASInfos.Warnings.HasWarnings = true
 		}
 
 		if specs.CustodyRequirement != nil {
@@ -315,6 +317,7 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 			pageData.PeerDASInfos.CustodyRequirement = 4
 			logrus.Warnf("CUSTODY_REQUIREMENT is not defined in spec, defaulting to %d", pageData.PeerDASInfos.CustodyRequirement)
 			pageData.PeerDASInfos.Warnings.MissingSpecValues = true
+			pageData.PeerDASInfos.Warnings.HasWarnings = true
 		}
 	}
 
@@ -331,6 +334,7 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 			v.ENRKeyValues = utils.GetKeyValuesFromENR(rec)
 		} else {
 			pageData.PeerDASInfos.Warnings.MissingENRsPeers = append(pageData.PeerDASInfos.Warnings.MissingENRsPeers, v.PeerID)
+			pageData.PeerDASInfos.Warnings.HasWarnings = true
 		}
 
 		// Calculate node ID
@@ -362,6 +366,7 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 			}
 		} else {
 			pageData.PeerDASInfos.Warnings.MissingCSCFromENRPeers = append(pageData.PeerDASInfos.Warnings.MissingCSCFromENRPeers, v.PeerID)
+			pageData.PeerDASInfos.Warnings.HasWarnings = true
 		}
 
 		// Calculate custody columns and subnets for peer DAS
@@ -433,6 +438,7 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 	for i := uint64(0); i < pageData.PeerDASInfos.NumberOfColumns; i++ {
 		if _, ok := resultColumnDistribution[i]; !ok {
 			pageData.PeerDASInfos.Warnings.EmptyColumns = append(pageData.PeerDASInfos.Warnings.EmptyColumns, i)
+			pageData.PeerDASInfos.Warnings.HasWarnings = true
 		}
 	}
 
