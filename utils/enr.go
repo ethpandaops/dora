@@ -4,12 +4,16 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"net"
 	"strconv"
 
+	ethcrypto "github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/p2p/enr"
 	"github.com/ethereum/go-ethereum/rlp"
+	libp2pCrypto "github.com/libp2p/go-libp2p/core/crypto"
+	libp2pPeer "github.com/libp2p/go-libp2p/core/peer"
 )
 
 func DecodeENR(raw string) (*enr.Record, error) {
@@ -60,12 +64,12 @@ func GetKeyValuesFromENR(r *enr.Record) map[string]interface{} {
 	return fields
 }
 
-func GetNodeIDFromENR(r *enr.Record) string {
+func GetNodeIDFromENR(r *enr.Record) enode.ID {
 	n, err := enode.New(enode.ValidSchemes, r)
 	if err != nil {
-		return ""
+		return enode.ID{}
 	}
-	return n.ID().String()
+	return n.ID()
 }
 
 // attrFormatters contains formatting functions for well-known ENR keys.
@@ -103,4 +107,41 @@ func formatAttrUint(v rlp.RawValue) (string, bool) {
 		return "", false
 	}
 	return strconv.FormatUint(x, 10), true
+}
+
+// ConvertPeerIDStringToEnodeID converts a libp2p peer ID string to an enode.ID.
+func ConvertPeerIDStringToEnodeID(pidStr string) (enode.ID, error) {
+	// Decode the string into a peer.ID.
+	pid, err := libp2pPeer.Decode(pidStr)
+	if err != nil {
+		return enode.ID{}, err
+	}
+
+	// Extract the public key from the peer ID.
+	pubKey, err := pid.ExtractPublicKey()
+	if err != nil {
+		return enode.ID{}, err
+	}
+
+	// Ensure the public key is of type secp256k1.
+	if pubKey.Type() != libp2pCrypto.Secp256k1 {
+		return enode.ID{}, errors.New("public key is not secp256k1")
+	}
+
+	// Get the raw bytes of the public key (compressed format).
+	pubKeyBytes, err := pubKey.Raw()
+	if err != nil {
+		return enode.ID{}, err
+	}
+
+	// Decompress the public key using Ethereum's crypto library.
+	ecdsaPubKey, err := ethcrypto.DecompressPubkey(pubKeyBytes)
+	if err != nil {
+		return enode.ID{}, err
+	}
+
+	// Compute the enode.ID from the ECDSA public key.
+	id := enode.PubkeyToIDV4(ecdsaPubKey)
+
+	return id, nil
 }
