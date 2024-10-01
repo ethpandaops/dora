@@ -21,11 +21,11 @@ import (
 
 func FormatETH(num string) string {
 	floatNum, _ := strconv.ParseFloat(num, 64)
-	return fmt.Sprintf("%.4f", floatNum/math.Pow10(18)) + " ETH"
+	return fmt.Sprintf("%.4f", floatNum/math.Pow10(18)) + " ETHPAR"
 }
 
 func FormatETHFromGwei(gwei uint64) string {
-	return fmt.Sprintf("%.4f", float64(gwei)/math.Pow10(9)) + " ETH"
+	return fmt.Sprintf("%.4f", float64(gwei)/math.Pow10(9)) + " ETHPAR"
 }
 
 func FormatETHFromGweiShort(gwei uint64) string {
@@ -33,7 +33,7 @@ func FormatETHFromGweiShort(gwei uint64) string {
 }
 
 func FormatFullETHFromGwei(gwei uint64) string {
-	return fmt.Sprintf("%v ETH", uint64(float64(gwei)/math.Pow10(9)))
+	return fmt.Sprintf("%v ETHPAR", uint64(float64(gwei)/math.Pow10(9)))
 }
 
 func FormatETHAddCommasFromGwei(gwei uint64) template.HTML {
@@ -172,7 +172,7 @@ func formatAmount(amount *big.Int, unit string, digits int, maxPreCommaDigitsBef
 	// define display unit & digits used per unit max
 	displayUnit := " " + unit
 	var unitDigits int
-	if unit == "ETH" || unit == "Ether" {
+	if unit == "ETH" || unit == "Ether" || unit == "ETHPAR" {
 		unitDigits = 18
 	} else if unit == "GWei" {
 		unitDigits = 9
