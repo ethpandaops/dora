@@ -725,9 +725,9 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 	if specs.ElectraForkEpoch != nil && uint64(epoch) >= *specs.ElectraForkEpoch {
 		requests, err := blockData.Block.ExecutionRequests()
 		if err == nil && requests != nil {
-			getSlotPageDepositRequests(pageData, requests.DepositRequests)
-			getSlotPageWithdrawalRequests(pageData, requests.WithdrawalRequests)
-			getSlotPageConsolidationRequests(pageData, requests.ConsolidationRequests)
+			getSlotPageDepositRequests(pageData, requests.Deposits)
+			getSlotPageWithdrawalRequests(pageData, requests.Withdrawals)
+			getSlotPageConsolidationRequests(pageData, requests.Consolidations)
 		}
 	}
 
