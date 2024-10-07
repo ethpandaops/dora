@@ -34,7 +34,7 @@ func Forks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if r.Header.Get("Content-Type") == "application/json" {
+	if r.Header.Get("Accept") == "application/json" {
 		w.Header().Set("Content-Type", "application/json")
 		forksDataBytes, err := json.Marshal(data.Data)
 		if err != nil {
