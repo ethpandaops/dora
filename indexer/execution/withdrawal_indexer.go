@@ -68,7 +68,7 @@ func (ds *WithdrawalIndexer) runWithdrawalIndexerLoop() {
 	defer utils.HandleSubroutinePanic("WithdrawalIndexer.runWithdrawalIndexerLoop")
 
 	for {
-		time.Sleep(60 * time.Second)
+		time.Sleep(30 * time.Second)
 		ds.logger.Debugf("run withdrawal indexer logic")
 
 		err := ds.runWithdrawalIndexer()
@@ -82,6 +82,22 @@ func (ds *WithdrawalIndexer) runWithdrawalIndexer() error {
 	// get indexer state
 	if ds.state == nil {
 		ds.loadState()
+	}
+
+	specs := ds.indexer.chainState.GetSpecs()
+	if ds.indexer.chainState.CurrentEpoch() < phase0.Epoch(*specs.ElectraForkEpoch) {
+		// skip consolidation indexer before Electra fork
+		return nil
+	}
+
+	if ds.state.FinalBlock == 0 {
+		// start from electra fork block
+		electraSlot := ds.indexer.chainState.EpochToSlot(phase0.Epoch(*specs.ElectraForkEpoch))
+		dbSlotRoot := db.GetFirstRootAfterSlot(uint64(electraSlot), false)
+		if dbSlotRoot == nil {
+			dbSlot := db.GetSlotByRoot(dbSlotRoot)
+			ds.state.FinalBlock = *dbSlot.EthBlockNumber
+		}
 	}
 
 	finalizedEpoch, _ := ds.indexer.chainState.GetFinalizedCheckpoint()

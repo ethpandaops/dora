@@ -180,6 +180,8 @@ func (cs *ChainService) StartService() error {
 
 	// add execution indexers
 	execindexer.NewDepositIndexer(executionIndexerCtx)
+	execindexer.NewConsolidationIndexer(executionIndexerCtx)
+	execindexer.NewWithdrawalIndexer(executionIndexerCtx)
 
 	// start MEV relay indexer
 	cs.mevRelayIndexer.StartUpdater()
