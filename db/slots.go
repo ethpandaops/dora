@@ -391,22 +391,6 @@ func GetHighestRootBeforeSlot(slot uint64, withOrphaned bool) []byte {
 	return result
 }
 
-func GetFirstRootAfterSlot(slot uint64, withOrphaned bool) []byte {
-	var result []byte
-	statusFilter := ""
-	if !withOrphaned {
-		statusFilter = "AND status != 2"
-	}
-
-	err := ReaderDb.Get(&result, `
-	SELECT root FROM slots WHERE slot >= $1 `+statusFilter+` AND status != 0 ORDER BY slot ASC LIMIT 1
-	`, slot)
-	if err != nil {
-		return nil
-	}
-	return result
-}
-
 func GetSlotAssignment(slot uint64) uint64 {
 	proposer := uint64(math.MaxInt64)
 	err := ReaderDb.Get(&proposer, `
