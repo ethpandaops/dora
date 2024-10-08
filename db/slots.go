@@ -402,7 +402,6 @@ func GetFirstRootAfterSlot(slot uint64, withOrphaned bool) []byte {
 	SELECT root FROM slots WHERE slot >= $1 `+statusFilter+` AND status != 0 ORDER BY slot ASC LIMIT 1
 	`, slot)
 	if err != nil {
-		logger.Errorf("Error while fetching first root after %v: %v", slot, err)
 		return nil
 	}
 	return result

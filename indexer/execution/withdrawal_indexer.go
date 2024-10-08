@@ -22,8 +22,8 @@ import (
 	"github.com/ethpandaops/dora/utils"
 )
 
-const withdrawalContractAddr = "0x"
-const withdrawalDequeueRate = 1
+const withdrawalContractAddr = "0x00A3ca265EBcb825B45F985A16CEFB49958cE017"
+const withdrawalDequeueRate = 2
 
 type WithdrawalIndexer struct {
 	indexer         *IndexerCtx
@@ -32,6 +32,7 @@ type WithdrawalIndexer struct {
 	batchSize       int
 	contractAddress common.Address
 	forkStates      map[beacon.ForkKey]*withdrawalIndexerForkState
+	matcher         *WithdrawalMatcher
 }
 
 type withdrawalIndexerState struct {
@@ -59,6 +60,8 @@ func NewWithdrawalIndexer(indexer *IndexerCtx) *WithdrawalIndexer {
 		forkStates:      map[beacon.ForkKey]*withdrawalIndexerForkState{},
 	}
 
+	ci.matcher = NewWithdrawalMatcher(indexer, ci)
+
 	go ci.runWithdrawalIndexerLoop()
 
 	return ci
@@ -75,6 +78,11 @@ func (ds *WithdrawalIndexer) runWithdrawalIndexerLoop() {
 		if err != nil {
 			ds.logger.Errorf("withdrawal indexer error: %v", err)
 		}
+
+		err = ds.matcher.runWithdrawalMatcher()
+		if err != nil {
+			ds.logger.Errorf("withdrawal matcher error: %v", err)
+		}
 	}
 }
 
@@ -86,18 +94,8 @@ func (ds *WithdrawalIndexer) runWithdrawalIndexer() error {
 
 	specs := ds.indexer.chainState.GetSpecs()
 	if ds.indexer.chainState.CurrentEpoch() < phase0.Epoch(*specs.ElectraForkEpoch) {
-		// skip consolidation indexer before Electra fork
+		// skip withdrawal indexer before Electra fork
 		return nil
-	}
-
-	if ds.state.FinalBlock == 0 {
-		// start from electra fork block
-		electraSlot := ds.indexer.chainState.EpochToSlot(phase0.Epoch(*specs.ElectraForkEpoch))
-		dbSlotRoot := db.GetFirstRootAfterSlot(uint64(electraSlot), false)
-		if dbSlotRoot == nil {
-			dbSlot := db.GetSlotByRoot(dbSlotRoot)
-			ds.state.FinalBlock = *dbSlot.EthBlockNumber
-		}
 	}
 
 	finalizedEpoch, _ := ds.indexer.chainState.GetFinalizedCheckpoint()
@@ -127,8 +125,16 @@ func (ds *WithdrawalIndexer) runWithdrawalIndexer() error {
 
 func (ds *WithdrawalIndexer) loadState() {
 	syncState := withdrawalIndexerState{}
-	db.GetExplorerState("indexer.withdrawalstate", &syncState)
+	db.GetExplorerState("indexer.withdrawalindexer", &syncState)
 	ds.state = &syncState
+
+	if ds.state.ForkStates != nil {
+		ds.forkStates = ds.state.ForkStates
+	}
+
+	if ds.state.FinalBlock == 0 {
+		ds.state.FinalBlock = uint64(utils.Config.ExecutionApi.ElectraDeployBlock)
+	}
 }
 
 func (ds *WithdrawalIndexer) getFinalizedBlockNumber() uint64 {
@@ -590,7 +596,7 @@ func (ds *WithdrawalIndexer) persistState(tx *sqlx.Tx) error {
 
 	ds.state.ForkStates = ds.forkStates
 
-	err := db.SetExplorerState("indexer.withdrawalstate", ds.state, tx)
+	err := db.SetExplorerState("indexer.withdrawalindexer", ds.state, tx)
 	if err != nil {
 		return fmt.Errorf("error while updating withdrawal tx indexer state: %v", err)
 	}

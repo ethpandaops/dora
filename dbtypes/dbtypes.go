@@ -263,6 +263,7 @@ type ConsolidationRequest struct {
 	TargetIndex   *uint64 `db:"target_index"`
 	TargetPubkey  []byte  `db:"target_pubkey"`
 	TxHash        []byte  `db:"tx_hash"`
+	BlockNumber   uint64  `db:"block_number"`
 }
 
 type ConsolidationRequestTx struct {
@@ -291,6 +292,7 @@ type WithdrawalRequest struct {
 	ValidatorPubkey []byte  `db:"validator_pubkey"`
 	Amount          uint64  `db:"amount"`
 	TxHash          []byte  `db:"tx_hash"`
+	BlockNumber     uint64  `db:"block_number"`
 }
 
 type WithdrawalRequestTx struct {

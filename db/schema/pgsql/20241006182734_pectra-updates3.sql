@@ -33,6 +33,21 @@ CREATE INDEX IF NOT EXISTS "consolidation_request_txs_dequeue_block_idx"
     ON public."consolidation_request_txs"
     ("dequeue_block" ASC NULLS FIRST);
 
+-- add block_number to consolidation_requests
+ALTER TABLE public."consolidation_requests"
+    ADD "block_number" BIGINT NOT NULL DEFAULT 0;
+
+UPDATE public."consolidation_requests"
+    SET "block_number" = (
+        SELECT eth_block_number 
+        FROM public."slots" 
+        WHERE public."slots".root = public."consolidation_requests".slot_root
+    );
+
+CREATE INDEX IF NOT EXISTS "consolidation_requests_block_number_idx"
+    ON public."consolidation_requests"
+    ("block_number" ASC NULLS FIRST);
+
 CREATE TABLE IF NOT EXISTS public."withdrawal_request_txs" (
     block_number BIGINT NOT NULL,
     block_index INT NOT NULL,
@@ -64,6 +79,22 @@ CREATE INDEX IF NOT EXISTS "withdrawal_request_txs_fork_idx"
 CREATE INDEX IF NOT EXISTS "withdrawal_request_txs_dequeue_block_idx"
     ON public."withdrawal_request_txs"
     ("dequeue_block" ASC NULLS FIRST);
+
+-- add block_number to withdrawal_requests
+ALTER TABLE public."withdrawal_requests"
+    ADD "block_number" BIGINT NOT NULL DEFAULT 0;
+
+UPDATE public."withdrawal_requests"
+    SET "block_number" = (
+        SELECT eth_block_number 
+        FROM public."slots" 
+        WHERE public."slots".root = public."withdrawal_requests".slot_root
+    );
+
+CREATE INDEX IF NOT EXISTS "withdrawal_requests_block_number_idx"
+    ON public."withdrawal_requests"
+    ("block_number" ASC NULLS FIRST);
+
 
 -- +goose StatementEnd
 -- +goose Down

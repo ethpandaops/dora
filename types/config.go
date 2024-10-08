@@ -74,6 +74,7 @@ type Config struct {
 		Endpoints []EndpointConfig `yaml:"endpoints"`
 
 		DepositLogBatchSize int `yaml:"depositLogBatchSize" envconfig:"EXECUTIONAPI_DEPOSIT_LOG_BATCH_SIZE"`
+		ElectraDeployBlock  int `yaml:"electraDeployBlock" envconfig:"EXECUTIONAPI_ELECTRA_DEPLOY_BLOCK"` // el block number from where to crawl the electra system contracts (should be <=, but close to electra fork activation block)
 	} `yaml:"executionapi"`
 
 	Indexer struct {

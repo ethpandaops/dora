@@ -22,7 +22,7 @@ import (
 	"github.com/ethpandaops/dora/utils"
 )
 
-const consolidationContractAddr = "0x"
+const consolidationContractAddr = "0x00b42dbF2194e931E80326D950320f7d9Dbeac02"
 const consolidationDequeueRate = 1
 
 type ConsolidationIndexer struct {
@@ -32,6 +32,7 @@ type ConsolidationIndexer struct {
 	batchSize       int
 	contractAddress common.Address
 	forkStates      map[beacon.ForkKey]*consolidationIndexerForkState
+	matcher         *ConsolidationMatcher
 }
 
 type consolidationIndexerState struct {
@@ -59,6 +60,8 @@ func NewConsolidationIndexer(indexer *IndexerCtx) *ConsolidationIndexer {
 		forkStates:      map[beacon.ForkKey]*consolidationIndexerForkState{},
 	}
 
+	ci.matcher = NewConsolidationMatcher(indexer, ci)
+
 	go ci.runConsolidationIndexerLoop()
 
 	return ci
@@ -75,9 +78,16 @@ func (ds *ConsolidationIndexer) runConsolidationIndexerLoop() {
 		if err != nil {
 			ds.logger.Errorf("consolidation indexer error: %v", err)
 		}
+
+		err = ds.matcher.runConsolidationMatcher()
+		if err != nil {
+			ds.logger.Errorf("consolidation matcher error: %v", err)
+		}
 	}
 }
 
+// runConsolidationIndexer runs the consolidation indexer logic.
+// It fetches consolidation logs from finalized and recent blocks.
 func (ds *ConsolidationIndexer) runConsolidationIndexer() error {
 	// get indexer state
 	if ds.state == nil {
@@ -88,16 +98,6 @@ func (ds *ConsolidationIndexer) runConsolidationIndexer() error {
 	if ds.indexer.chainState.CurrentEpoch() < phase0.Epoch(*specs.ElectraForkEpoch) {
 		// skip consolidation indexer before Electra fork
 		return nil
-	}
-
-	if ds.state.FinalBlock == 0 {
-		// start from electra fork block
-		electraSlot := ds.indexer.chainState.EpochToSlot(phase0.Epoch(*specs.ElectraForkEpoch))
-		dbSlotRoot := db.GetFirstRootAfterSlot(uint64(electraSlot), false)
-		if dbSlotRoot == nil {
-			dbSlot := db.GetSlotByRoot(dbSlotRoot)
-			ds.state.FinalBlock = *dbSlot.EthBlockNumber
-		}
 	}
 
 	finalizedEpoch, _ := ds.indexer.chainState.GetFinalizedCheckpoint()
@@ -127,8 +127,16 @@ func (ds *ConsolidationIndexer) runConsolidationIndexer() error {
 
 func (ds *ConsolidationIndexer) loadState() {
 	syncState := consolidationIndexerState{}
-	db.GetExplorerState("indexer.consolidationstate", &syncState)
+	db.GetExplorerState("indexer.consolidationindexer", &syncState)
 	ds.state = &syncState
+
+	if ds.state.ForkStates != nil {
+		ds.forkStates = ds.state.ForkStates
+	}
+
+	if ds.state.FinalBlock == 0 {
+		ds.state.FinalBlock = uint64(utils.Config.ExecutionApi.ElectraDeployBlock)
+	}
 }
 
 func (ds *ConsolidationIndexer) getFinalizedBlockNumber() uint64 {
@@ -590,7 +598,7 @@ func (ds *ConsolidationIndexer) persistState(tx *sqlx.Tx) error {
 
 	ds.state.ForkStates = ds.forkStates
 
-	err := db.SetExplorerState("indexer.consolidationstate", ds.state, tx)
+	err := db.SetExplorerState("indexer.consolidationindexer", ds.state, tx)
 	if err != nil {
 		return fmt.Errorf("error while updating consolidation tx indexer state: %v", err)
 	}
