@@ -113,6 +113,7 @@ func (cache *forkCache) processBlock(block *Block) error {
 				newFork := &newForkInfo{
 					fork: fork,
 				}
+				cache.parentIdCache.Add(fork.forkId, fork.parentFork)
 				newForks = append(newForks, newFork)
 
 				fmt.Fprintf(&logbuf, ", head1(%v): %v [%v]", fork.forkId, block.Slot, block.Root.String())
@@ -142,6 +143,7 @@ func (cache *forkCache) processBlock(block *Block) error {
 						fork:        otherFork,
 						updateRoots: updatedRoots,
 					}
+					cache.parentIdCache.Add(otherFork.forkId, otherFork.parentFork)
 					newForks = append(newForks, newFork)
 
 					if updatedFork != nil {
@@ -185,6 +187,7 @@ func (cache *forkCache) processBlock(block *Block) error {
 					fork:        fork,
 					updateRoots: updatedRoots,
 				}
+				cache.parentIdCache.Add(fork.forkId, fork.parentFork)
 				newForks = append(newForks, newFork)
 
 				if updatedFork != nil {
@@ -321,6 +324,7 @@ func (cache *forkCache) updateForkBlocks(startBlock *Block, forkId ForkKey, skip
 			if forks := cache.getForkByBase(startBlock.Root); len(forks) > 0 && forks[0].parentFork != forkId {
 				for _, fork := range forks {
 					fork.parentFork = forkId
+					cache.parentIdCache.Add(fork.forkId, fork.parentFork)
 				}
 
 				updatedFork = &updateForkInfo{

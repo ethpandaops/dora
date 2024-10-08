@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/attestantio/go-eth2-client/spec/phase0"
+	"github.com/ethereum/go-ethereum/common/lru"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/jmoiron/sqlx"
@@ -19,6 +20,7 @@ type forkCache struct {
 	forkMap         map[ForkKey]*Fork
 	finalizedForkId ForkKey
 	lastForkId      ForkKey
+	parentIdCache   *lru.Cache[ForkKey, ForkKey]
 
 	forkProcessLock sync.Mutex
 }
@@ -26,8 +28,9 @@ type forkCache struct {
 // newForkCache creates a new instance of the forkCache struct.
 func newForkCache(indexer *Indexer) *forkCache {
 	return &forkCache{
-		indexer: indexer,
-		forkMap: make(map[ForkKey]*Fork),
+		indexer:       indexer,
+		forkMap:       make(map[ForkKey]*Fork),
+		parentIdCache: lru.NewCache[ForkKey, ForkKey](1000),
 	}
 }
 
@@ -117,11 +120,23 @@ func (cache *forkCache) removeFork(forkId ForkKey) {
 // getParentForkIds returns the parent fork ids of the given fork.
 func (cache *forkCache) getParentForkIds(forkId ForkKey) []ForkKey {
 	parentForks := []ForkKey{forkId}
-
+	parentForkId := forkId
 	thisFork := cache.getForkById(forkId)
-	for thisFork != nil && thisFork.parentFork != 0 {
-		parentForks = append(parentForks, thisFork.parentFork)
-		thisFork = cache.getForkById(thisFork.parentFork)
+
+	for parentForkId > 1 {
+		if thisFork != nil {
+			parentForkId = thisFork.parentFork
+		} else if cachedParent, isCached := cache.parentIdCache.Get(parentForkId); isCached {
+			parentForkId = cachedParent
+		} else if dbFork := db.GetForkById(uint64(parentForkId)); dbFork != nil {
+			parentForkId = ForkKey(dbFork.ParentFork)
+			cache.parentIdCache.Add(ForkKey(dbFork.ForkId), ForkKey(dbFork.ParentFork))
+		} else {
+			break
+		}
+
+		thisFork = cache.getForkById(parentForkId)
+		parentForks = append(parentForks, parentForkId)
 	}
 
 	return parentForks
@@ -199,6 +214,8 @@ func (cache *forkCache) setFinalizedEpoch(finalizedSlot phase0.Slot, justifiedRo
 		if fork.leafSlot >= finalizedSlot {
 			continue
 		}
+
+		cache.parentIdCache.Add(fork.forkId, fork.parentFork)
 
 		delete(cache.forkMap, fork.forkId)
 	}

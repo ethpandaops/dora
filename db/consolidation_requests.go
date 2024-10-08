@@ -8,6 +8,60 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
+func InsertConsolidationRequestTxs(consolidationTxs []*dbtypes.ConsolidationRequestTx, tx *sqlx.Tx) error {
+	var sql strings.Builder
+	fmt.Fprint(&sql,
+		EngineQuery(map[dbtypes.DBEngineType]string{
+			dbtypes.DBEnginePgsql:  "INSERT INTO consolidation_request_txs ",
+			dbtypes.DBEngineSqlite: "INSERT OR REPLACE INTO consolidation_request_txs ",
+		}),
+		"(block_number, block_index, block_time, block_root, fork_id, source_address, source_pubkey, target_pubkey, tx_hash, tx_sender, tx_target, dequeue_block)",
+		" VALUES ",
+	)
+	argIdx := 0
+	fieldCount := 12
+
+	args := make([]any, len(consolidationTxs)*fieldCount)
+	for i, consolidationTx := range consolidationTxs {
+		if i > 0 {
+			fmt.Fprintf(&sql, ", ")
+		}
+		fmt.Fprintf(&sql, "(")
+		for f := 0; f < fieldCount; f++ {
+			if f > 0 {
+				fmt.Fprintf(&sql, ", ")
+			}
+			fmt.Fprintf(&sql, "$%v", argIdx+f+1)
+
+		}
+		fmt.Fprintf(&sql, ")")
+
+		args[argIdx+0] = consolidationTx.BlockNumber
+		args[argIdx+1] = consolidationTx.BlockIndex
+		args[argIdx+2] = consolidationTx.BlockTime
+		args[argIdx+3] = consolidationTx.BlockRoot
+		args[argIdx+4] = consolidationTx.ForkId
+		args[argIdx+5] = consolidationTx.SourceAddress
+		args[argIdx+6] = consolidationTx.SourcePubkey
+		args[argIdx+7] = consolidationTx.TargetPubkey
+		args[argIdx+8] = consolidationTx.TxHash
+		args[argIdx+9] = consolidationTx.TxSender
+		args[argIdx+10] = consolidationTx.TxTarget
+		args[argIdx+11] = consolidationTx.DequeueBlock
+		argIdx += fieldCount
+	}
+	fmt.Fprint(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
+		dbtypes.DBEnginePgsql:  " ON CONFLICT (block_number, block_index) DO UPDATE SET fork_id = excluded.fork_id",
+		dbtypes.DBEngineSqlite: "",
+	}))
+
+	_, err := tx.Exec(sql.String(), args...)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func InsertConsolidationRequests(consolidations []*dbtypes.ConsolidationRequest, tx *sqlx.Tx) error {
 	var sql strings.Builder
 	fmt.Fprint(&sql,

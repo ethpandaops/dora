@@ -236,3 +236,8 @@ func (indexer *Indexer) GetEpochStats(epoch phase0.Epoch, overrideForkId *ForkKe
 
 	return bestEpochStats
 }
+
+// GetParentForkIds returns the parent fork ids of the given fork.
+func (indexer *Indexer) GetParentForkIds(forkId ForkKey) []ForkKey {
+	return indexer.forkCache.getParentForkIds(forkId)
+}

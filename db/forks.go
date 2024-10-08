@@ -137,3 +137,17 @@ func UpdateForkParent(parentRoot []byte, parentForkId uint64, tx *sqlx.Tx) error
 
 	return nil
 }
+
+func GetForkById(forkId uint64) *dbtypes.Fork {
+	var fork dbtypes.Fork
+
+	err := ReaderDb.Get(&fork, `SELECT fork_id, base_slot, base_root, leaf_slot, leaf_root, parent_fork
+		FROM forks
+		WHERE fork_id = $1
+	`, forkId)
+	if err != nil {
+		return nil
+	}
+
+	return &fork
+}

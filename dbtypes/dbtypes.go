@@ -265,6 +265,21 @@ type ConsolidationRequest struct {
 	TxHash        []byte  `db:"tx_hash"`
 }
 
+type ConsolidationRequestTx struct {
+	BlockNumber   uint64 `db:"block_number"`
+	BlockIndex    uint64 `db:"block_index"`
+	BlockTime     uint64 `db:"block_time"`
+	BlockRoot     []byte `db:"block_root"`
+	ForkId        uint64 `db:"fork_id"`
+	SourceAddress []byte `db:"source_address"`
+	SourcePubkey  []byte `db:"source_pubkey"`
+	TargetPubkey  []byte `db:"target_pubkey"`
+	TxHash        []byte `db:"tx_hash"`
+	TxSender      []byte `db:"tx_sender"`
+	TxTarget      []byte `db:"tx_target"`
+	DequeueBlock  uint64 `db:"dequeue_block"`
+}
+
 type WithdrawalRequest struct {
 	SlotNumber      uint64  `db:"slot_number"`
 	SlotRoot        []byte  `db:"slot_root"`
@@ -276,4 +291,19 @@ type WithdrawalRequest struct {
 	ValidatorPubkey []byte  `db:"validator_pubkey"`
 	Amount          uint64  `db:"amount"`
 	TxHash          []byte  `db:"tx_hash"`
+}
+
+type WithdrawalRequestTx struct {
+	BlockNumber     uint64 `db:"block_number"`
+	BlockIndex      uint64 `db:"block_index"`
+	BlockTime       uint64 `db:"block_time"`
+	BlockRoot       []byte `db:"block_root"`
+	ForkId          uint64 `db:"fork_id"`
+	SourceAddress   []byte `db:"source_address"`
+	ValidatorPubkey []byte `db:"validator_pubkey"`
+	Amount          uint64 `db:"amount"`
+	TxHash          []byte `db:"tx_hash"`
+	TxSender        []byte `db:"tx_sender"`
+	TxTarget        []byte `db:"tx_target"`
+	DequeueBlock    uint64 `db:"dequeue_block"`
 }
