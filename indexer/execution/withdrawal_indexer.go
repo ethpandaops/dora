@@ -22,63 +22,63 @@ import (
 	"github.com/ethpandaops/dora/utils"
 )
 
-const consolidationContractAddr = "0x"
-const consolidationDequeueRate = 1
+const withdrawalContractAddr = "0x"
+const withdrawalDequeueRate = 1
 
-type ConsolidationIndexer struct {
+type WithdrawalIndexer struct {
 	indexer         *IndexerCtx
 	logger          logrus.FieldLogger
-	state           *consolidationIndexerState
+	state           *withdrawalIndexerState
 	batchSize       int
 	contractAddress common.Address
-	forkStates      map[beacon.ForkKey]*consolidationIndexerForkState
+	forkStates      map[beacon.ForkKey]*withdrawalIndexerForkState
 }
 
-type consolidationIndexerState struct {
-	FinalBlock    uint64                                            `json:"final_block"`
-	FinalQueueLen uint64                                            `json:"final_queue"`
-	ForkStates    map[beacon.ForkKey]*consolidationIndexerForkState `json:"fork_states"`
+type withdrawalIndexerState struct {
+	FinalBlock    uint64                                         `json:"final_block"`
+	FinalQueueLen uint64                                         `json:"final_queue"`
+	ForkStates    map[beacon.ForkKey]*withdrawalIndexerForkState `json:"fork_states"`
 }
 
-type consolidationIndexerForkState struct {
+type withdrawalIndexerForkState struct {
 	Block    uint64 `json:"b"`
 	QueueLen uint64 `json:"q"`
 }
 
-func NewConsolidationIndexer(indexer *IndexerCtx) *ConsolidationIndexer {
+func NewWithdrawalIndexer(indexer *IndexerCtx) *WithdrawalIndexer {
 	batchSize := utils.Config.ExecutionApi.DepositLogBatchSize
 	if batchSize == 0 {
 		batchSize = 1000
 	}
 
-	ci := &ConsolidationIndexer{
+	ci := &WithdrawalIndexer{
 		indexer:         indexer,
-		logger:          indexer.logger.WithField("indexer", "consolidation"),
+		logger:          indexer.logger.WithField("indexer", "withdrawals"),
 		batchSize:       batchSize,
-		contractAddress: common.HexToAddress(consolidationContractAddr),
-		forkStates:      map[beacon.ForkKey]*consolidationIndexerForkState{},
+		contractAddress: common.HexToAddress(withdrawalContractAddr),
+		forkStates:      map[beacon.ForkKey]*withdrawalIndexerForkState{},
 	}
 
-	go ci.runConsolidationIndexerLoop()
+	go ci.runWithdrawalIndexerLoop()
 
 	return ci
 }
 
-func (ds *ConsolidationIndexer) runConsolidationIndexerLoop() {
-	defer utils.HandleSubroutinePanic("ConsolidationIndexer.runConsolidationIndexerLoop")
+func (ds *WithdrawalIndexer) runWithdrawalIndexerLoop() {
+	defer utils.HandleSubroutinePanic("WithdrawalIndexer.runWithdrawalIndexerLoop")
 
 	for {
 		time.Sleep(60 * time.Second)
-		ds.logger.Debugf("run consolidation indexer logic")
+		ds.logger.Debugf("run withdrawal indexer logic")
 
-		err := ds.runConsolidationIndexer()
+		err := ds.runWithdrawalIndexer()
 		if err != nil {
-			ds.logger.Errorf("consolidation indexer error: %v", err)
+			ds.logger.Errorf("withdrawal indexer error: %v", err)
 		}
 	}
 }
 
-func (ds *ConsolidationIndexer) runConsolidationIndexer() error {
+func (ds *WithdrawalIndexer) runWithdrawalIndexer() error {
 	// get indexer state
 	if ds.state == nil {
 		ds.loadState()
@@ -109,13 +109,13 @@ func (ds *ConsolidationIndexer) runConsolidationIndexer() error {
 	return nil
 }
 
-func (ds *ConsolidationIndexer) loadState() {
-	syncState := consolidationIndexerState{}
-	db.GetExplorerState("indexer.consolidationstate", &syncState)
+func (ds *WithdrawalIndexer) loadState() {
+	syncState := withdrawalIndexerState{}
+	db.GetExplorerState("indexer.withdrawalstate", &syncState)
 	ds.state = &syncState
 }
 
-func (ds *ConsolidationIndexer) getFinalizedBlockNumber() uint64 {
+func (ds *WithdrawalIndexer) getFinalizedBlockNumber() uint64 {
 	var finalizedBlockNumber uint64
 
 	_, finalizedRoot := ds.indexer.chainState.GetFinalizedCheckpoint()
@@ -135,14 +135,14 @@ func (ds *ConsolidationIndexer) getFinalizedBlockNumber() uint64 {
 	return finalizedBlockNumber
 }
 
-func (ds *ConsolidationIndexer) loadFilteredLogs(ctx context.Context, client *execution.Client, query ethereum.FilterQuery) ([]types.Log, error) {
+func (ds *WithdrawalIndexer) loadFilteredLogs(ctx context.Context, client *execution.Client, query ethereum.FilterQuery) ([]types.Log, error) {
 	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 
 	return client.GetRPCClient().GetEthClient().FilterLogs(ctx, query)
 }
 
-func (ds *ConsolidationIndexer) loadTransactionByHash(ctx context.Context, client *execution.Client, hash common.Hash) (*types.Transaction, error) {
+func (ds *WithdrawalIndexer) loadTransactionByHash(ctx context.Context, client *execution.Client, hash common.Hash) (*types.Transaction, error) {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
@@ -150,14 +150,14 @@ func (ds *ConsolidationIndexer) loadTransactionByHash(ctx context.Context, clien
 	return tx, err
 }
 
-func (ds *ConsolidationIndexer) loadHeaderByHash(ctx context.Context, client *execution.Client, hash common.Hash) (*types.Header, error) {
+func (ds *WithdrawalIndexer) loadHeaderByHash(ctx context.Context, client *execution.Client, hash common.Hash) (*types.Header, error) {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
 	return client.GetRPCClient().GetHeaderByHash(ctx, hash)
 }
 
-func (ds *ConsolidationIndexer) processFinalizedBlocks(finalizedBlockNumber uint64) error {
+func (ds *WithdrawalIndexer) processFinalizedBlocks(finalizedBlockNumber uint64) error {
 	clients := ds.indexer.getFinalizedClients(execution.AnyClient)
 	if len(clients) == 0 {
 		return fmt.Errorf("no ready execution client found")
@@ -199,7 +199,7 @@ func (ds *ConsolidationIndexer) processFinalizedBlocks(finalizedBlockNumber uint
 				continue
 			}
 
-			return fmt.Errorf("error fetching consolidation contract logs: %v", err)
+			return fmt.Errorf("error fetching withdrawal contract logs: %v", err)
 		}
 
 		retryCount = 0
@@ -208,11 +208,11 @@ func (ds *ConsolidationIndexer) processFinalizedBlocks(finalizedBlockNumber uint
 		var txDetails *types.Transaction
 		var txBlockHeader *types.Header
 
-		requestTxs := []*dbtypes.ConsolidationRequestTx{}
+		requestTxs := []*dbtypes.WithdrawalRequestTx{}
 		queueBlock := ds.state.FinalBlock
 		queueLength := ds.state.FinalQueueLen
 
-		ds.logger.Infof("received consolidation log for block %v - %v: %v events", ds.state.FinalBlock, toBlock, len(logs))
+		ds.logger.Infof("received withdrawal log for block %v - %v: %v events", ds.state.FinalBlock, toBlock, len(logs))
 
 		for idx := range logs {
 			log := &logs[idx]
@@ -250,7 +250,7 @@ func (ds *ConsolidationIndexer) processFinalizedBlocks(finalizedBlockNumber uint
 		}
 
 		if queueBlock < toBlock {
-			dequeuedRequests := (toBlock - queueBlock) * consolidationDequeueRate
+			dequeuedRequests := (toBlock - queueBlock) * withdrawalDequeueRate
 			if dequeuedRequests > queueLength {
 				queueLength = 0
 			} else {
@@ -261,12 +261,12 @@ func (ds *ConsolidationIndexer) processFinalizedBlocks(finalizedBlockNumber uint
 		}
 
 		if len(requestTxs) > 0 {
-			ds.logger.Infof("crawled consolidation transactions for block %v - %v: %v consolidations", ds.state.FinalBlock, toBlock, len(requestTxs))
+			ds.logger.Infof("crawled withdrawal transactions for block %v - %v: %v withdrawals", ds.state.FinalBlock, toBlock, len(requestTxs))
 		}
 
 		err = ds.persistFinalizedRequestTxs(toBlock, queueLength, requestTxs)
 		if err != nil {
-			return fmt.Errorf("could not persist consolidation txs: %v", err)
+			return fmt.Errorf("could not persist withdrawal txs: %v", err)
 		}
 
 		// cooldown to avoid rate limiting from external archive nodes
@@ -275,26 +275,26 @@ func (ds *ConsolidationIndexer) processFinalizedBlocks(finalizedBlockNumber uint
 	return nil
 }
 
-func (ds *ConsolidationIndexer) parseRequestLog(log *types.Log, queueBlock, queueLength *uint64) *dbtypes.ConsolidationRequestTx {
+func (ds *WithdrawalIndexer) parseRequestLog(log *types.Log, queueBlock, queueLength *uint64) *dbtypes.WithdrawalRequestTx {
 	// data layout:
 	// 0-20: sender address (20 bytes)
-	// 20-68: source pubkey (48 bytes)
-	// 68-116: target pubkey (48 bytes)
+	// 20-68: validator pubkey (48 bytes)
+	// 68-76: amount (8 bytes)
 
-	if len(log.Data) < 116 {
-		ds.logger.Warnf("invalid consolidation log data length: %v", len(log.Data))
+	if len(log.Data) < 76 {
+		ds.logger.Warnf("invalid withdrawal log data length: %v", len(log.Data))
 		return nil
 	}
 
 	senderAddr := log.Data[:20]
 	sourcePubkey := log.Data[20:68]
-	targetPubkey := log.Data[68:116]
+	amount := big.NewInt(0).SetBytes(log.Data[68:76]).Uint64()
 
 	if *queueBlock > log.BlockNumber {
-		ds.logger.Warnf("consolidation request for block %v received after block %v", log.BlockNumber, queueBlock)
+		ds.logger.Warnf("withdrawal request for block %v received after block %v", log.BlockNumber, queueBlock)
 		return nil
 	} else if *queueBlock < log.BlockNumber {
-		dequeuedRequests := (log.BlockNumber - *queueBlock) * consolidationDequeueRate
+		dequeuedRequests := (log.BlockNumber - *queueBlock) * withdrawalDequeueRate
 		if dequeuedRequests > *queueLength {
 			*queueLength = 0
 		} else {
@@ -304,24 +304,24 @@ func (ds *ConsolidationIndexer) parseRequestLog(log *types.Log, queueBlock, queu
 		*queueBlock = log.BlockNumber
 	}
 
-	dequeueBlock := log.BlockNumber + (*queueLength / consolidationDequeueRate)
+	dequeueBlock := log.BlockNumber + (*queueLength / withdrawalDequeueRate)
 	*queueLength++
 
-	requestTx := &dbtypes.ConsolidationRequestTx{
-		BlockNumber:   log.BlockNumber,
-		BlockIndex:    uint64(log.Index),
-		BlockRoot:     log.BlockHash[:],
-		SourceAddress: senderAddr,
-		SourcePubkey:  sourcePubkey,
-		TargetPubkey:  targetPubkey,
-		TxHash:        log.TxHash[:],
-		DequeueBlock:  dequeueBlock,
+	requestTx := &dbtypes.WithdrawalRequestTx{
+		BlockNumber:     log.BlockNumber,
+		BlockIndex:      uint64(log.Index),
+		BlockRoot:       log.BlockHash[:],
+		SourceAddress:   senderAddr,
+		ValidatorPubkey: sourcePubkey,
+		Amount:          amount,
+		TxHash:          log.TxHash[:],
+		DequeueBlock:    dequeueBlock,
 	}
 
 	return requestTx
 }
 
-func (ds *ConsolidationIndexer) processRecentBlocks() error {
+func (ds *WithdrawalIndexer) processRecentBlocks() error {
 	headForks := ds.indexer.getForksWithClients(execution.AnyClient)
 	for _, headFork := range headForks {
 		err := ds.processRecentBlocksForFork(headFork)
@@ -336,7 +336,7 @@ func (ds *ConsolidationIndexer) processRecentBlocks() error {
 	return nil
 }
 
-func (ds *ConsolidationIndexer) processRecentBlocksForFork(headFork *forkWithClients) error {
+func (ds *WithdrawalIndexer) processRecentBlocksForFork(headFork *forkWithClients) error {
 	elHeadBlock := ds.indexer.beaconIndexer.GetCanonicalHead(&headFork.forkId)
 	if elHeadBlock == nil {
 		return fmt.Errorf("head block not found")
@@ -391,7 +391,7 @@ func (ds *ConsolidationIndexer) processRecentBlocksForFork(headFork *forkWithCli
 		var txBlockHeader *types.Header
 		var clBlock []*beacon.Block
 
-		requestTxs := []*dbtypes.ConsolidationRequestTx{}
+		requestTxs := []*dbtypes.WithdrawalRequestTx{}
 
 		for retryCount := 0; retryCount < 3; retryCount++ {
 			client := headFork.clients[retryCount%len(headFork.clients)]
@@ -425,7 +425,7 @@ func (ds *ConsolidationIndexer) processRecentBlocksForFork(headFork *forkWithCli
 
 			logs, reqError = ds.loadFilteredLogs(ctx, client, query)
 			if reqError != nil {
-				ds.logger.Warnf("error fetching consolidation contract logs for fork %v (%v-%v): %v", headFork.forkId, startBlockNumber, toBlock, reqError)
+				ds.logger.Warnf("error fetching withdrawal contract logs for fork %v (%v-%v): %v", headFork.forkId, startBlockNumber, toBlock, reqError)
 				continue
 			}
 
@@ -484,7 +484,7 @@ func (ds *ConsolidationIndexer) processRecentBlocksForFork(headFork *forkWithCli
 			}
 
 			if queueBlock < toBlock {
-				dequeuedRequests := (toBlock - queueBlock) * consolidationDequeueRate
+				dequeuedRequests := (toBlock - queueBlock) * withdrawalDequeueRate
 				if dequeuedRequests > startQueueLen {
 					startQueueLen = 0
 				} else {
@@ -495,11 +495,11 @@ func (ds *ConsolidationIndexer) processRecentBlocksForFork(headFork *forkWithCli
 			}
 
 			if len(requestTxs) > 0 {
-				ds.logger.Infof("crawled recent consolidations for fork %v (%v-%v): %v consolidations", headFork.forkId, startBlockNumber, toBlock, len(requestTxs))
+				ds.logger.Infof("crawled recent withdrawals for fork %v (%v-%v): %v withdrawals", headFork.forkId, startBlockNumber, toBlock, len(requestTxs))
 
 				err := ds.persistRecentRequestTxs(headFork.forkId, queueBlock, startQueueLen, requestTxs)
 				if err != nil {
-					return fmt.Errorf("could not persist consolidation txs: %v", err)
+					return fmt.Errorf("could not persist withdrawal tx: %v", err)
 				}
 
 				time.Sleep(1 * time.Second)
@@ -509,7 +509,7 @@ func (ds *ConsolidationIndexer) processRecentBlocksForFork(headFork *forkWithCli
 		}
 
 		if reqError != nil {
-			return fmt.Errorf("error fetching consolidation contract logs for fork %v (%v-%v): %v", headFork.forkId, startBlockNumber, toBlock, reqError)
+			return fmt.Errorf("error fetching withdrawal contract logs for fork %v (%v-%v): %v", headFork.forkId, startBlockNumber, toBlock, reqError)
 		}
 
 		startBlockNumber = toBlock + 1
@@ -518,7 +518,7 @@ func (ds *ConsolidationIndexer) processRecentBlocksForFork(headFork *forkWithCli
 	return resError
 }
 
-func (ds *ConsolidationIndexer) persistFinalizedRequestTxs(finalBlockNumber, finalQueueLen uint64, requests []*dbtypes.ConsolidationRequestTx) error {
+func (ds *WithdrawalIndexer) persistFinalizedRequestTxs(finalBlockNumber, finalQueueLen uint64, requests []*dbtypes.WithdrawalRequestTx) error {
 	return db.RunDBTransaction(func(tx *sqlx.Tx) error {
 		requestCount := len(requests)
 		for requestIdx := 0; requestIdx < requestCount; requestIdx += 500 {
@@ -527,9 +527,9 @@ func (ds *ConsolidationIndexer) persistFinalizedRequestTxs(finalBlockNumber, fin
 				endIdx = requestCount
 			}
 
-			err := db.InsertConsolidationRequestTxs(requests[requestIdx:endIdx], tx)
+			err := db.InsertWithdrawalRequestTxs(requests[requestIdx:endIdx], tx)
 			if err != nil {
-				return fmt.Errorf("error while inserting consolidation txs: %v", err)
+				return fmt.Errorf("error while inserting withdrawal txs: %v", err)
 			}
 		}
 
@@ -540,7 +540,7 @@ func (ds *ConsolidationIndexer) persistFinalizedRequestTxs(finalBlockNumber, fin
 	})
 }
 
-func (ds *ConsolidationIndexer) persistRecentRequestTxs(forkId beacon.ForkKey, finalBlockNumber, finalQueueLen uint64, requests []*dbtypes.ConsolidationRequestTx) error {
+func (ds *WithdrawalIndexer) persistRecentRequestTxs(forkId beacon.ForkKey, finalBlockNumber, finalQueueLen uint64, requests []*dbtypes.WithdrawalRequestTx) error {
 	return db.RunDBTransaction(func(tx *sqlx.Tx) error {
 		requestCount := len(requests)
 		for requestIdx := 0; requestIdx < requestCount; requestIdx += 500 {
@@ -549,13 +549,13 @@ func (ds *ConsolidationIndexer) persistRecentRequestTxs(forkId beacon.ForkKey, f
 				endIdx = requestCount
 			}
 
-			err := db.InsertConsolidationRequestTxs(requests[requestIdx:endIdx], tx)
+			err := db.InsertWithdrawalRequestTxs(requests[requestIdx:endIdx], tx)
 			if err != nil {
-				return fmt.Errorf("error while inserting consolidation txs: %v", err)
+				return fmt.Errorf("error while inserting withdrawal txs: %v", err)
 			}
 		}
 
-		ds.forkStates[forkId] = &consolidationIndexerForkState{
+		ds.forkStates[forkId] = &withdrawalIndexerForkState{
 			Block:    finalBlockNumber,
 			QueueLen: finalQueueLen,
 		}
@@ -564,7 +564,7 @@ func (ds *ConsolidationIndexer) persistRecentRequestTxs(forkId beacon.ForkKey, f
 	})
 }
 
-func (ds *ConsolidationIndexer) persistState(tx *sqlx.Tx) error {
+func (ds *WithdrawalIndexer) persistState(tx *sqlx.Tx) error {
 	finalizedBlockNumber := ds.getFinalizedBlockNumber()
 	for forkId, forkState := range ds.forkStates {
 		if forkState.Block < finalizedBlockNumber {
@@ -574,9 +574,9 @@ func (ds *ConsolidationIndexer) persistState(tx *sqlx.Tx) error {
 
 	ds.state.ForkStates = ds.forkStates
 
-	err := db.SetExplorerState("indexer.consolidationstate", ds.state, tx)
+	err := db.SetExplorerState("indexer.withdrawalstate", ds.state, tx)
 	if err != nil {
-		return fmt.Errorf("error while updating consolidation tx indexer state: %v", err)
+		return fmt.Errorf("error while updating withdrawal tx indexer state: %v", err)
 	}
 
 	return nil
