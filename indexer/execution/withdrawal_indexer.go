@@ -1,6 +1,7 @@
 package execution
 
 import (
+	"bytes"
 	"fmt"
 	"math/big"
 	"time"
@@ -78,6 +79,10 @@ func NewWithdrawalIndexer(indexer *IndexerCtx) *WithdrawalIndexer {
 	return wi
 }
 
+func (wi *WithdrawalIndexer) GetMatcherHeight() uint64 {
+	return wi.matcher.state.MatchHeight
+}
+
 func (wi *WithdrawalIndexer) runWithdrawalIndexerLoop() {
 	defer utils.HandleSubroutinePanic("WithdrawalIndexer.runWithdrawalIndexerLoop")
 
@@ -98,7 +103,7 @@ func (wi *WithdrawalIndexer) runWithdrawalIndexerLoop() {
 }
 
 func (wi *WithdrawalIndexer) processFinalTx(log *types.Log, tx *types.Transaction, header *types.Header, txFrom common.Address, dequeueBlock uint64) (*dbtypes.WithdrawalRequestTx, error) {
-	requestTx := wi.parseRequestLog(log)
+	requestTx := wi.parseRequestLog(log, nil)
 	if requestTx == nil {
 		return nil, fmt.Errorf("invalid withdrawal log")
 	}
@@ -114,7 +119,7 @@ func (wi *WithdrawalIndexer) processFinalTx(log *types.Log, tx *types.Transactio
 }
 
 func (wi *WithdrawalIndexer) processRecentTx(log *types.Log, tx *types.Transaction, header *types.Header, txFrom common.Address, dequeueBlock uint64, fork *forkWithClients) (*dbtypes.WithdrawalRequestTx, error) {
-	requestTx := wi.parseRequestLog(log)
+	requestTx := wi.parseRequestLog(log, &fork.forkId)
 	if requestTx == nil {
 		return nil, fmt.Errorf("invalid withdrawal log")
 	}
@@ -136,7 +141,7 @@ func (wi *WithdrawalIndexer) processRecentTx(log *types.Log, tx *types.Transacti
 	return requestTx, nil
 }
 
-func (wi *WithdrawalIndexer) parseRequestLog(log *types.Log) *dbtypes.WithdrawalRequestTx {
+func (wi *WithdrawalIndexer) parseRequestLog(log *types.Log, forkId *beacon.ForkKey) *dbtypes.WithdrawalRequestTx {
 	// data layout:
 	// 0-20: sender address (20 bytes)
 	// 20-68: validator pubkey (48 bytes)
@@ -151,12 +156,24 @@ func (wi *WithdrawalIndexer) parseRequestLog(log *types.Log) *dbtypes.Withdrawal
 	validatorPubkey := log.Data[20:68]
 	amount := big.NewInt(0).SetBytes(log.Data[68:76]).Uint64()
 
+	validatorSet := wi.indexerCtx.beaconIndexer.GetCanonicalValidatorSet(forkId)
+
+	var validatorIndex *uint64
+	for _, validator := range validatorSet {
+		if bytes.Equal(validator.Validator.PublicKey[:], validatorPubkey) {
+			index := uint64(validator.Index)
+			validatorIndex = &index
+			break
+		}
+	}
+
 	requestTx := &dbtypes.WithdrawalRequestTx{
 		BlockNumber:     log.BlockNumber,
 		BlockIndex:      uint64(log.Index),
 		BlockRoot:       log.BlockHash[:],
 		SourceAddress:   senderAddr,
 		ValidatorPubkey: validatorPubkey,
+		ValidatorIndex:  validatorIndex,
 		Amount:          amount,
 		TxHash:          log.TxHash[:],
 	}

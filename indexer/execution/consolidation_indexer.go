@@ -1,6 +1,7 @@
 package execution
 
 import (
+	"bytes"
 	"fmt"
 	"time"
 
@@ -97,7 +98,7 @@ func (ci *ConsolidationIndexer) runConsolidationIndexerLoop() {
 }
 
 func (ci *ConsolidationIndexer) processFinalTx(log *types.Log, tx *types.Transaction, header *types.Header, txFrom common.Address, dequeueBlock uint64) (*dbtypes.ConsolidationRequestTx, error) {
-	requestTx := ci.parseRequestLog(log)
+	requestTx := ci.parseRequestLog(log, nil)
 	if requestTx == nil {
 		return nil, fmt.Errorf("invalid consolidation log")
 	}
@@ -113,7 +114,7 @@ func (ci *ConsolidationIndexer) processFinalTx(log *types.Log, tx *types.Transac
 }
 
 func (ci *ConsolidationIndexer) processRecentTx(log *types.Log, tx *types.Transaction, header *types.Header, txFrom common.Address, dequeueBlock uint64, fork *forkWithClients) (*dbtypes.ConsolidationRequestTx, error) {
-	requestTx := ci.parseRequestLog(log)
+	requestTx := ci.parseRequestLog(log, &fork.forkId)
 	if requestTx == nil {
 		return nil, fmt.Errorf("invalid consolidation log")
 	}
@@ -135,7 +136,7 @@ func (ci *ConsolidationIndexer) processRecentTx(log *types.Log, tx *types.Transa
 	return requestTx, nil
 }
 
-func (ci *ConsolidationIndexer) parseRequestLog(log *types.Log) *dbtypes.ConsolidationRequestTx {
+func (ci *ConsolidationIndexer) parseRequestLog(log *types.Log, forkId *beacon.ForkKey) *dbtypes.ConsolidationRequestTx {
 	// data layout:
 	// 0-20: sender address (20 bytes)
 	// 20-68: source pubkey (48 bytes)
@@ -150,13 +151,35 @@ func (ci *ConsolidationIndexer) parseRequestLog(log *types.Log) *dbtypes.Consoli
 	sourcePubkey := log.Data[20:68]
 	targetPubkey := log.Data[68:116]
 
+	validatorSet := ci.indexerCtx.beaconIndexer.GetCanonicalValidatorSet(forkId)
+
+	var sourceIndex, targetIndex *uint64
+	for _, validator := range validatorSet {
+		if sourceIndex == nil && bytes.Equal(validator.Validator.PublicKey[:], sourcePubkey) {
+			index := uint64(validator.Index)
+			sourceIndex = &index
+			if targetIndex != nil {
+				break
+			}
+		}
+		if targetIndex == nil && bytes.Equal(validator.Validator.PublicKey[:], targetPubkey) {
+			index := uint64(validator.Index)
+			targetIndex = &index
+			if sourceIndex != nil {
+				break
+			}
+		}
+	}
+
 	requestTx := &dbtypes.ConsolidationRequestTx{
 		BlockNumber:   log.BlockNumber,
 		BlockIndex:    uint64(log.Index),
 		BlockRoot:     log.BlockHash[:],
 		SourceAddress: senderAddr,
 		SourcePubkey:  sourcePubkey,
+		SourceIndex:   sourceIndex,
 		TargetPubkey:  targetPubkey,
+		TargetIndex:   targetIndex,
 		TxHash:        log.TxHash[:],
 	}
 

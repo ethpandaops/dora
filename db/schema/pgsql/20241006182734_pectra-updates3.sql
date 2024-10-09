@@ -9,7 +9,9 @@ CREATE TABLE IF NOT EXISTS public."consolidation_request_txs" (
     fork_id BIGINT NOT NULL DEFAULT 0,
     source_address bytea NOT NULL,
     source_pubkey bytea NULL,
+    source_index BIGINT NULL,
     target_pubkey bytea NULL,
+    target_index BIGINT NULL,
     tx_hash bytea NULL,
     tx_sender bytea NOT NULL,
     tx_target bytea NOT NULL,
@@ -24,6 +26,14 @@ CREATE INDEX IF NOT EXISTS "consolidation_request_txs_block_number_idx"
 CREATE INDEX IF NOT EXISTS "consolidation_request_txs_source_addr_idx"
     ON public."consolidation_request_txs"
     ("source_address" ASC NULLS FIRST);
+
+CREATE INDEX IF NOT EXISTS "consolidation_request_txs_source_idx"
+    ON public."consolidation_request_txs"
+    ("source_index" ASC NULLS FIRST);
+
+CREATE INDEX IF NOT EXISTS "consolidation_request_txs_target_idx"
+    ON public."consolidation_request_txs"
+    ("target_index" ASC NULLS FIRST);
 
 CREATE INDEX IF NOT EXISTS "consolidation_request_txs_fork_idx"
     ON public."consolidation_request_txs"
@@ -56,6 +66,7 @@ CREATE TABLE IF NOT EXISTS public."withdrawal_request_txs" (
     fork_id BIGINT NOT NULL DEFAULT 0,
     source_address bytea NOT NULL,
     validator_pubkey bytea NOT NULL,
+    validator_index BIGINT NULL,
     amount BIGINT NOT NULL,
     tx_hash bytea NULL,
     tx_sender bytea NOT NULL,
@@ -71,6 +82,14 @@ CREATE INDEX IF NOT EXISTS "withdrawal_request_txs_block_number_idx"
 CREATE INDEX IF NOT EXISTS "withdrawal_request_txs_source_addr_idx"
     ON public."withdrawal_request_txs"
     ("source_address" ASC NULLS FIRST);
+
+CREATE INDEX IF NOT EXISTS "withdrawal_request_txs_validator_index_idx"
+    ON public."withdrawal_request_txs"
+    ("validator_index" ASC NULLS FIRST);
+
+CREATE INDEX IF NOT EXISTS "withdrawal_request_txs_amount_idx"
+    ON public."withdrawal_request_txs"
+    ("amount" ASC NULLS FIRST);
 
 CREATE INDEX IF NOT EXISTS "withdrawal_request_txs_fork_idx"
     ON public."withdrawal_request_txs"
