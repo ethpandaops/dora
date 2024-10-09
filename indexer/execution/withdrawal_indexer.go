@@ -13,6 +13,7 @@ import (
 
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
+	"github.com/ethpandaops/dora/indexer/beacon"
 	"github.com/ethpandaops/dora/utils"
 )
 
@@ -23,7 +24,13 @@ type WithdrawalIndexer struct {
 	indexerCtx *IndexerCtx
 	logger     logrus.FieldLogger
 	indexer    *contractIndexer[dbtypes.WithdrawalRequestTx]
-	matcher    *WithdrawalMatcher
+	matcher    *transactionMatcher[withdrawalRequestMatch]
+}
+
+type withdrawalRequestMatch struct {
+	slotRoot  []byte
+	slotIndex uint64
+	txHash    []byte
 }
 
 func NewWithdrawalIndexer(indexer *IndexerCtx) *WithdrawalIndexer {
@@ -37,7 +44,7 @@ func NewWithdrawalIndexer(indexer *IndexerCtx) *WithdrawalIndexer {
 		logger:     indexer.logger.WithField("indexer", "withdrawal"),
 	}
 
-	wi.indexer = newContractIndexer[dbtypes.WithdrawalRequestTx](
+	wi.indexer = newContractIndexer(
 		indexer,
 		wi.logger.WithField("routine", "crawler"),
 		&contractIndexerOptions[dbtypes.WithdrawalRequestTx]{
@@ -53,7 +60,18 @@ func NewWithdrawalIndexer(indexer *IndexerCtx) *WithdrawalIndexer {
 		},
 	)
 
-	wi.matcher = NewWithdrawalMatcher(indexer, wi)
+	wi.matcher = newTransactionMatcher(
+		indexer,
+		wi.logger.WithField("routine", "matcher"),
+		&transactionMatcherOptions[withdrawalRequestMatch]{
+			stateKey:    "indexer.withdrawalmatcher",
+			deployBlock: uint64(utils.Config.ExecutionApi.ElectraDeployBlock),
+			timeLimit:   2 * time.Second,
+
+			matchBlockRange: wi.matchBlockRange,
+			persistMatches:  wi.persistMatches,
+		},
+	)
 
 	go wi.runWithdrawalIndexerLoop()
 
@@ -72,7 +90,7 @@ func (wi *WithdrawalIndexer) runWithdrawalIndexerLoop() {
 			wi.logger.Errorf("indexer error: %v", err)
 		}
 
-		err = wi.matcher.runWithdrawalMatcher()
+		err = wi.matcher.runTransactionMatcher(wi.indexer.state.FinalBlock)
 		if err != nil {
 			wi.logger.Errorf("matcher error: %v", err)
 		}
@@ -157,6 +175,76 @@ func (wi *WithdrawalIndexer) persistWithdrawalTxs(tx *sqlx.Tx, requests []*dbtyp
 		err := db.InsertWithdrawalRequestTxs(requests[requestIdx:endIdx], tx)
 		if err != nil {
 			return fmt.Errorf("error while inserting withdrawal txs: %v", err)
+		}
+	}
+
+	return nil
+}
+
+func (ds *WithdrawalIndexer) matchBlockRange(fromBlock uint64, toBlock uint64) ([]*withdrawalRequestMatch, error) {
+	requestMatches := []*withdrawalRequestMatch{}
+
+	dequeueWithdrawalTxs := db.GetWithdrawalRequestTxsByDequeueRange(fromBlock, toBlock)
+	if len(dequeueWithdrawalTxs) > 0 {
+		firstBlock := dequeueWithdrawalTxs[0].DequeueBlock
+		lastBlock := dequeueWithdrawalTxs[len(dequeueWithdrawalTxs)-1].DequeueBlock
+
+		for _, withdrawalRequest := range db.GetWithdrawalRequestsByElBlockRange(firstBlock, lastBlock) {
+			if len(withdrawalRequest.TxHash) > 0 {
+				continue
+			}
+
+			parentForkIds := ds.indexerCtx.beaconIndexer.GetParentForkIds(beacon.ForkKey(withdrawalRequest.ForkId))
+			isParentFork := func(forkId uint64) bool {
+				if forkId == withdrawalRequest.ForkId {
+					return true
+				}
+				for _, parentForkId := range parentForkIds {
+					if uint64(parentForkId) == forkId {
+						return true
+					}
+				}
+				return false
+			}
+
+			matchingTxs := []*dbtypes.WithdrawalRequestTx{}
+			for _, tx := range dequeueWithdrawalTxs {
+				if tx.DequeueBlock == withdrawalRequest.BlockNumber && isParentFork(tx.ForkId) {
+					matchingTxs = append(matchingTxs, tx)
+				}
+			}
+
+			if len(matchingTxs) == 0 {
+				for _, tx := range dequeueWithdrawalTxs {
+					if tx.DequeueBlock == withdrawalRequest.BlockNumber {
+						matchingTxs = append(matchingTxs, tx)
+					}
+				}
+			}
+
+			if len(matchingTxs) < int(withdrawalRequest.SlotIndex)+1 {
+				continue
+			}
+
+			txHash := matchingTxs[withdrawalRequest.SlotIndex].TxHash
+			ds.logger.Debugf("Matched withdrawal request %d:%v with tx 0x%x", withdrawalRequest.SlotNumber, withdrawalRequest.SlotIndex, txHash)
+
+			requestMatches = append(requestMatches, &withdrawalRequestMatch{
+				slotRoot:  withdrawalRequest.SlotRoot,
+				slotIndex: withdrawalRequest.SlotIndex,
+				txHash:    txHash,
+			})
+		}
+	}
+
+	return requestMatches, nil
+}
+
+func (ds *WithdrawalIndexer) persistMatches(tx *sqlx.Tx, matches []*withdrawalRequestMatch) error {
+	for _, match := range matches {
+		err := db.UpdateWithdrawalRequestTxHash(match.slotRoot, match.slotIndex, match.txHash, tx)
+		if err != nil {
+			return err
 		}
 	}
 

@@ -12,6 +12,7 @@ import (
 
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
+	"github.com/ethpandaops/dora/indexer/beacon"
 	"github.com/ethpandaops/dora/utils"
 )
 
@@ -22,7 +23,13 @@ type ConsolidationIndexer struct {
 	indexerCtx *IndexerCtx
 	logger     logrus.FieldLogger
 	indexer    *contractIndexer[dbtypes.ConsolidationRequestTx]
-	matcher    *ConsolidationMatcher
+	matcher    *transactionMatcher[consolidationRequestMatch]
+}
+
+type consolidationRequestMatch struct {
+	slotRoot  []byte
+	slotIndex uint64
+	txHash    []byte
 }
 
 func NewConsolidationIndexer(indexer *IndexerCtx) *ConsolidationIndexer {
@@ -36,7 +43,7 @@ func NewConsolidationIndexer(indexer *IndexerCtx) *ConsolidationIndexer {
 		logger:     indexer.logger.WithField("indexer", "consolidation"),
 	}
 
-	ci.indexer = newContractIndexer[dbtypes.ConsolidationRequestTx](
+	ci.indexer = newContractIndexer(
 		indexer,
 		ci.logger.WithField("routine", "crawler"),
 		&contractIndexerOptions[dbtypes.ConsolidationRequestTx]{
@@ -52,7 +59,18 @@ func NewConsolidationIndexer(indexer *IndexerCtx) *ConsolidationIndexer {
 		},
 	)
 
-	ci.matcher = NewConsolidationMatcher(indexer, ci)
+	ci.matcher = newTransactionMatcher(
+		indexer,
+		ci.logger.WithField("routine", "matcher"),
+		&transactionMatcherOptions[consolidationRequestMatch]{
+			stateKey:    "indexer.consolidationmatcher",
+			deployBlock: uint64(utils.Config.ExecutionApi.ElectraDeployBlock),
+			timeLimit:   2 * time.Second,
+
+			matchBlockRange: ci.matchBlockRange,
+			persistMatches:  ci.persistMatches,
+		},
+	)
 
 	go ci.runConsolidationIndexerLoop()
 
@@ -71,7 +89,7 @@ func (ci *ConsolidationIndexer) runConsolidationIndexerLoop() {
 			ci.logger.Errorf("indexer error: %v", err)
 		}
 
-		err = ci.matcher.runConsolidationMatcher()
+		err = ci.matcher.runTransactionMatcher(ci.indexer.state.FinalBlock)
 		if err != nil {
 			ci.logger.Errorf("matcher error: %v", err)
 		}
@@ -156,6 +174,76 @@ func (ci *ConsolidationIndexer) persistConsolidationTxs(tx *sqlx.Tx, requests []
 		err := db.InsertConsolidationRequestTxs(requests[requestIdx:endIdx], tx)
 		if err != nil {
 			return fmt.Errorf("error while inserting consolidation txs: %v", err)
+		}
+	}
+
+	return nil
+}
+
+func (ds *ConsolidationIndexer) matchBlockRange(fromBlock uint64, toBlock uint64) ([]*consolidationRequestMatch, error) {
+	requestMatches := []*consolidationRequestMatch{}
+
+	dequeueConsolidationTxs := db.GetConsolidationRequestTxsByDequeueRange(fromBlock, toBlock)
+	if len(dequeueConsolidationTxs) > 0 {
+		firstBlock := dequeueConsolidationTxs[0].DequeueBlock
+		lastBlock := dequeueConsolidationTxs[len(dequeueConsolidationTxs)-1].DequeueBlock
+
+		for _, consolidationRequest := range db.GetConsolidationRequestsByElBlockRange(firstBlock, lastBlock) {
+			if len(consolidationRequest.TxHash) > 0 {
+				continue
+			}
+
+			parentForkIds := ds.indexerCtx.beaconIndexer.GetParentForkIds(beacon.ForkKey(consolidationRequest.ForkId))
+			isParentFork := func(forkId uint64) bool {
+				if forkId == consolidationRequest.ForkId {
+					return true
+				}
+				for _, parentForkId := range parentForkIds {
+					if uint64(parentForkId) == forkId {
+						return true
+					}
+				}
+				return false
+			}
+
+			matchingTxs := []*dbtypes.ConsolidationRequestTx{}
+			for _, tx := range dequeueConsolidationTxs {
+				if tx.DequeueBlock == consolidationRequest.BlockNumber && isParentFork(tx.ForkId) {
+					matchingTxs = append(matchingTxs, tx)
+				}
+			}
+
+			if len(matchingTxs) == 0 {
+				for _, tx := range dequeueConsolidationTxs {
+					if tx.DequeueBlock == consolidationRequest.BlockNumber {
+						matchingTxs = append(matchingTxs, tx)
+					}
+				}
+			}
+
+			if len(matchingTxs) < int(consolidationRequest.SlotIndex)+1 {
+				continue
+			}
+
+			txHash := matchingTxs[consolidationRequest.SlotIndex].TxHash
+			ds.logger.Debugf("Matched consolidation request %d:%v with tx 0x%x", consolidationRequest.SlotNumber, consolidationRequest.SlotIndex, txHash)
+
+			requestMatches = append(requestMatches, &consolidationRequestMatch{
+				slotRoot:  consolidationRequest.SlotRoot,
+				slotIndex: consolidationRequest.SlotIndex,
+				txHash:    txHash,
+			})
+		}
+	}
+
+	return requestMatches, nil
+}
+
+func (ds *ConsolidationIndexer) persistMatches(tx *sqlx.Tx, matches []*consolidationRequestMatch) error {
+	for _, match := range matches {
+		err := db.UpdateConsolidationRequestTxHash(match.slotRoot, match.slotIndex, match.txHash, tx)
+		if err != nil {
+			return err
 		}
 	}
 

@@ -255,7 +255,7 @@ func (ci *contractIndexer[TxType]) processFinalizedBlocks(finalizedBlockNumber u
 			if queueBlock > log.BlockNumber {
 				ci.logger.Warnf("contract log for block %v received after block %v", log.BlockNumber, queueBlock)
 				return nil
-			} else if queueBlock < log.BlockNumber {
+			} else if ci.options.dequeueRate > 0 && queueBlock < log.BlockNumber {
 				dequeuedRequests := (log.BlockNumber - queueBlock) * ci.options.dequeueRate
 				if dequeuedRequests > queueLength {
 					queueLength = 0
@@ -266,8 +266,13 @@ func (ci *contractIndexer[TxType]) processFinalizedBlocks(finalizedBlockNumber u
 				queueBlock = log.BlockNumber
 			}
 
-			dequeueBlock := log.BlockNumber + (queueLength / ci.options.dequeueRate)
-			queueLength++
+			var dequeueBlock uint64
+			if ci.options.dequeueRate > 0 {
+				dequeueBlock = log.BlockNumber + (queueLength / ci.options.dequeueRate)
+				queueLength++
+			} else {
+				dequeueBlock = log.BlockNumber
+			}
 
 			requestTx, err := ci.options.processFinalTx(log, txDetails, txBlockHeader, txFrom, dequeueBlock)
 			if err != nil {
@@ -281,7 +286,7 @@ func (ci *contractIndexer[TxType]) processFinalizedBlocks(finalizedBlockNumber u
 			requestTxs = append(requestTxs, requestTx)
 		}
 
-		if queueBlock < toBlock {
+		if ci.options.dequeueRate > 0 && queueBlock < toBlock {
 			dequeuedRequests := (toBlock - queueBlock) * ci.options.dequeueRate
 			if dequeuedRequests > queueLength {
 				queueLength = 0
@@ -445,7 +450,7 @@ func (ci *contractIndexer[TxType]) processRecentBlocksForFork(headFork *forkWith
 				if queueBlock > log.BlockNumber {
 					ci.logger.Warnf("contract log for block %v received after block %v", log.BlockNumber, queueBlock)
 					return nil
-				} else if queueBlock < log.BlockNumber {
+				} else if ci.options.dequeueRate > 0 && queueBlock < log.BlockNumber {
 					dequeuedRequests := (log.BlockNumber - queueBlock) * ci.options.dequeueRate
 					if dequeuedRequests > startQueueLen {
 						startQueueLen = 0
@@ -456,8 +461,13 @@ func (ci *contractIndexer[TxType]) processRecentBlocksForFork(headFork *forkWith
 					queueBlock = log.BlockNumber
 				}
 
-				dequeueBlock := log.BlockNumber + (startQueueLen / ci.options.dequeueRate)
-				startQueueLen++
+				var dequeueBlock uint64
+				if ci.options.dequeueRate > 0 {
+					dequeueBlock = log.BlockNumber + (startQueueLen / ci.options.dequeueRate)
+					startQueueLen++
+				} else {
+					dequeueBlock = log.BlockNumber
+				}
 
 				requestTx, err := ci.options.processRecentTx(log, txDetails, txBlockHeader, txFrom, dequeueBlock, headFork)
 				if err != nil {
@@ -484,14 +494,15 @@ func (ci *contractIndexer[TxType]) processRecentBlocksForFork(headFork *forkWith
 
 			if len(requestTxs) > 0 {
 				ci.logger.Infof("crawled recent contract logs for fork %v (%v-%v): %v events", headFork.forkId, startBlockNumber, toBlock, len(requestTxs))
-
-				err := ci.persistRecentRequestTxs(headFork.forkId, queueBlock, startQueueLen, requestTxs)
-				if err != nil {
-					return fmt.Errorf("could not persist contract logs: %v", err)
-				}
-
-				time.Sleep(1 * time.Second)
 			}
+
+			err := ci.persistRecentRequestTxs(headFork.forkId, queueBlock, startQueueLen, requestTxs)
+			if err != nil {
+				return fmt.Errorf("could not persist contract logs: %v", err)
+			}
+
+			// cooldown to avoid rate limiting from external archive nodes
+			time.Sleep(1 * time.Second)
 
 			break
 		}
@@ -508,9 +519,11 @@ func (ci *contractIndexer[TxType]) processRecentBlocksForFork(headFork *forkWith
 
 func (ci *contractIndexer[TxType]) persistFinalizedRequestTxs(finalBlockNumber, finalQueueLen uint64, requests []*TxType) error {
 	return db.RunDBTransaction(func(tx *sqlx.Tx) error {
-		err := ci.options.persistTxs(tx, requests)
-		if err != nil {
-			return fmt.Errorf("error while persisting contract logs: %v", err)
+		if len(requests) > 0 {
+			err := ci.options.persistTxs(tx, requests)
+			if err != nil {
+				return fmt.Errorf("error while persisting contract logs: %v", err)
+			}
 		}
 
 		ci.state.FinalBlock = finalBlockNumber
@@ -522,9 +535,11 @@ func (ci *contractIndexer[TxType]) persistFinalizedRequestTxs(finalBlockNumber, 
 
 func (ci *contractIndexer[TxType]) persistRecentRequestTxs(forkId beacon.ForkKey, finalBlockNumber, finalQueueLen uint64, requests []*TxType) error {
 	return db.RunDBTransaction(func(tx *sqlx.Tx) error {
-		err := ci.options.persistTxs(tx, requests)
-		if err != nil {
-			return fmt.Errorf("error while persisting contract logs: %v", err)
+		if len(requests) > 0 {
+			err := ci.options.persistTxs(tx, requests)
+			if err != nil {
+				return fmt.Errorf("error while persisting contract logs: %v", err)
+			}
 		}
 
 		ci.state.ForkStates[forkId] = &contractIndexerForkState{
