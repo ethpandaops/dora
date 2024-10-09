@@ -58,7 +58,10 @@ beaconapi:
 $(for node in $BEACON_NODES; do
     name=$(docker inspect -f "{{ with index .Config.Labels \"com.kurtosistech.id\"}}{{.}}{{end}}" $node)
     ip=$(echo '127.0.0.1')
-    port=$(docker inspect --format='{{ (index (index .NetworkSettings.Ports "4000/tcp") 0).HostPort }}' $node)
+    port=$(docker inspect --format='{{ (index (index .NetworkSettings.Ports "3500/tcp") 0).HostPort }}' $node 2>/dev/null)
+    if [ -z "$port" ]; then
+      port=$(docker inspect --format='{{ (index (index .NetworkSettings.Ports "4000/tcp") 0).HostPort }}' $node 2>/dev/null)
+    fi
     if [ -z "$port" ]; then
       port="65535"
     fi
