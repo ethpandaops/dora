@@ -59,27 +59,27 @@ func NewConsolidationIndexer(indexer *IndexerCtx) *ConsolidationIndexer {
 	return ci
 }
 
-func (ds *ConsolidationIndexer) runConsolidationIndexerLoop() {
+func (ci *ConsolidationIndexer) runConsolidationIndexerLoop() {
 	defer utils.HandleSubroutinePanic("ConsolidationIndexer.runConsolidationIndexerLoop")
 
 	for {
 		time.Sleep(30 * time.Second)
-		ds.logger.Debugf("run consolidation indexer logic")
+		ci.logger.Debugf("run consolidation indexer logic")
 
-		err := ds.indexer.runContractIndexer()
+		err := ci.indexer.runContractIndexer()
 		if err != nil {
-			ds.logger.Errorf("indexer error: %v", err)
+			ci.logger.Errorf("indexer error: %v", err)
 		}
 
-		err = ds.matcher.runConsolidationMatcher()
+		err = ci.matcher.runConsolidationMatcher()
 		if err != nil {
-			ds.logger.Errorf("matcher error: %v", err)
+			ci.logger.Errorf("matcher error: %v", err)
 		}
 	}
 }
 
-func (ds *ConsolidationIndexer) processFinalTx(log *types.Log, tx *types.Transaction, header *types.Header, txFrom common.Address, dequeueBlock uint64) (*dbtypes.ConsolidationRequestTx, error) {
-	requestTx := ds.parseRequestLog(log)
+func (ci *ConsolidationIndexer) processFinalTx(log *types.Log, tx *types.Transaction, header *types.Header, txFrom common.Address, dequeueBlock uint64) (*dbtypes.ConsolidationRequestTx, error) {
+	requestTx := ci.parseRequestLog(log)
 	if requestTx == nil {
 		return nil, fmt.Errorf("invalid consolidation log")
 	}
@@ -94,8 +94,8 @@ func (ds *ConsolidationIndexer) processFinalTx(log *types.Log, tx *types.Transac
 	return requestTx, nil
 }
 
-func (ds *ConsolidationIndexer) processRecentTx(log *types.Log, tx *types.Transaction, header *types.Header, txFrom common.Address, dequeueBlock uint64, fork *forkWithClients) (*dbtypes.ConsolidationRequestTx, error) {
-	requestTx := ds.parseRequestLog(log)
+func (ci *ConsolidationIndexer) processRecentTx(log *types.Log, tx *types.Transaction, header *types.Header, txFrom common.Address, dequeueBlock uint64, fork *forkWithClients) (*dbtypes.ConsolidationRequestTx, error) {
+	requestTx := ci.parseRequestLog(log)
 	if requestTx == nil {
 		return nil, fmt.Errorf("invalid consolidation log")
 	}
@@ -107,7 +107,7 @@ func (ds *ConsolidationIndexer) processRecentTx(log *types.Log, tx *types.Transa
 	requestTx.TxTarget = txTo[:]
 	requestTx.DequeueBlock = dequeueBlock
 
-	clBlock := ds.indexerCtx.beaconIndexer.GetBlocksByExecutionBlockHash(phase0.Hash32(log.BlockHash))
+	clBlock := ci.indexerCtx.beaconIndexer.GetBlocksByExecutionBlockHash(phase0.Hash32(log.BlockHash))
 	if len(clBlock) > 0 {
 		requestTx.ForkId = uint64(clBlock[0].GetForkId())
 	} else {
@@ -117,14 +117,14 @@ func (ds *ConsolidationIndexer) processRecentTx(log *types.Log, tx *types.Transa
 	return requestTx, nil
 }
 
-func (ds *ConsolidationIndexer) parseRequestLog(log *types.Log) *dbtypes.ConsolidationRequestTx {
+func (ci *ConsolidationIndexer) parseRequestLog(log *types.Log) *dbtypes.ConsolidationRequestTx {
 	// data layout:
 	// 0-20: sender address (20 bytes)
 	// 20-68: source pubkey (48 bytes)
 	// 68-116: target pubkey (48 bytes)
 
 	if len(log.Data) < 116 {
-		ds.logger.Warnf("invalid consolidation log data length: %v", len(log.Data))
+		ci.logger.Warnf("invalid consolidation log data length: %v", len(log.Data))
 		return nil
 	}
 
@@ -145,7 +145,7 @@ func (ds *ConsolidationIndexer) parseRequestLog(log *types.Log) *dbtypes.Consoli
 	return requestTx
 }
 
-func (ds *ConsolidationIndexer) persistConsolidationTxs(tx *sqlx.Tx, requests []*dbtypes.ConsolidationRequestTx) error {
+func (ci *ConsolidationIndexer) persistConsolidationTxs(tx *sqlx.Tx, requests []*dbtypes.ConsolidationRequestTx) error {
 	requestCount := len(requests)
 	for requestIdx := 0; requestIdx < requestCount; requestIdx += 500 {
 		endIdx := requestIdx + 500

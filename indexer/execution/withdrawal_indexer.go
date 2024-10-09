@@ -32,14 +32,14 @@ func NewWithdrawalIndexer(indexer *IndexerCtx) *WithdrawalIndexer {
 		batchSize = 1000
 	}
 
-	ci := &WithdrawalIndexer{
+	wi := &WithdrawalIndexer{
 		indexerCtx: indexer,
 		logger:     indexer.logger.WithField("indexer", "withdrawal"),
 	}
 
-	ci.indexer = newContractIndexer[dbtypes.WithdrawalRequestTx](
+	wi.indexer = newContractIndexer[dbtypes.WithdrawalRequestTx](
 		indexer,
-		ci.logger.WithField("routine", "crawler"),
+		wi.logger.WithField("routine", "crawler"),
 		&contractIndexerOptions[dbtypes.WithdrawalRequestTx]{
 			indexerKey:      "indexer.withdrawalindexer",
 			batchSize:       batchSize,
@@ -47,40 +47,40 @@ func NewWithdrawalIndexer(indexer *IndexerCtx) *WithdrawalIndexer {
 			deployBlock:     uint64(utils.Config.ExecutionApi.ElectraDeployBlock),
 			dequeueRate:     withdrawalDequeueRate,
 
-			processFinalTx:  ci.processFinalTx,
-			processRecentTx: ci.processRecentTx,
-			persistTxs:      ci.persistWithdrawalTxs,
+			processFinalTx:  wi.processFinalTx,
+			processRecentTx: wi.processRecentTx,
+			persistTxs:      wi.persistWithdrawalTxs,
 		},
 	)
 
-	ci.matcher = NewWithdrawalMatcher(indexer, ci)
+	wi.matcher = NewWithdrawalMatcher(indexer, wi)
 
-	go ci.runWithdrawalIndexerLoop()
+	go wi.runWithdrawalIndexerLoop()
 
-	return ci
+	return wi
 }
 
-func (ds *WithdrawalIndexer) runWithdrawalIndexerLoop() {
+func (wi *WithdrawalIndexer) runWithdrawalIndexerLoop() {
 	defer utils.HandleSubroutinePanic("WithdrawalIndexer.runWithdrawalIndexerLoop")
 
 	for {
 		time.Sleep(30 * time.Second)
-		ds.logger.Debugf("run withdrawal indexer logic")
+		wi.logger.Debugf("run withdrawal indexer logic")
 
-		err := ds.indexer.runContractIndexer()
+		err := wi.indexer.runContractIndexer()
 		if err != nil {
-			ds.logger.Errorf("indexer error: %v", err)
+			wi.logger.Errorf("indexer error: %v", err)
 		}
 
-		err = ds.matcher.runWithdrawalMatcher()
+		err = wi.matcher.runWithdrawalMatcher()
 		if err != nil {
-			ds.logger.Errorf("matcher error: %v", err)
+			wi.logger.Errorf("matcher error: %v", err)
 		}
 	}
 }
 
-func (ds *WithdrawalIndexer) processFinalTx(log *types.Log, tx *types.Transaction, header *types.Header, txFrom common.Address, dequeueBlock uint64) (*dbtypes.WithdrawalRequestTx, error) {
-	requestTx := ds.parseRequestLog(log)
+func (wi *WithdrawalIndexer) processFinalTx(log *types.Log, tx *types.Transaction, header *types.Header, txFrom common.Address, dequeueBlock uint64) (*dbtypes.WithdrawalRequestTx, error) {
+	requestTx := wi.parseRequestLog(log)
 	if requestTx == nil {
 		return nil, fmt.Errorf("invalid withdrawal log")
 	}
@@ -95,8 +95,8 @@ func (ds *WithdrawalIndexer) processFinalTx(log *types.Log, tx *types.Transactio
 	return requestTx, nil
 }
 
-func (ds *WithdrawalIndexer) processRecentTx(log *types.Log, tx *types.Transaction, header *types.Header, txFrom common.Address, dequeueBlock uint64, fork *forkWithClients) (*dbtypes.WithdrawalRequestTx, error) {
-	requestTx := ds.parseRequestLog(log)
+func (wi *WithdrawalIndexer) processRecentTx(log *types.Log, tx *types.Transaction, header *types.Header, txFrom common.Address, dequeueBlock uint64, fork *forkWithClients) (*dbtypes.WithdrawalRequestTx, error) {
+	requestTx := wi.parseRequestLog(log)
 	if requestTx == nil {
 		return nil, fmt.Errorf("invalid withdrawal log")
 	}
@@ -108,7 +108,7 @@ func (ds *WithdrawalIndexer) processRecentTx(log *types.Log, tx *types.Transacti
 	requestTx.TxTarget = txTo[:]
 	requestTx.DequeueBlock = dequeueBlock
 
-	clBlock := ds.indexerCtx.beaconIndexer.GetBlocksByExecutionBlockHash(phase0.Hash32(log.BlockHash))
+	clBlock := wi.indexerCtx.beaconIndexer.GetBlocksByExecutionBlockHash(phase0.Hash32(log.BlockHash))
 	if len(clBlock) > 0 {
 		requestTx.ForkId = uint64(clBlock[0].GetForkId())
 	} else {
@@ -118,14 +118,14 @@ func (ds *WithdrawalIndexer) processRecentTx(log *types.Log, tx *types.Transacti
 	return requestTx, nil
 }
 
-func (ds *WithdrawalIndexer) parseRequestLog(log *types.Log) *dbtypes.WithdrawalRequestTx {
+func (wi *WithdrawalIndexer) parseRequestLog(log *types.Log) *dbtypes.WithdrawalRequestTx {
 	// data layout:
 	// 0-20: sender address (20 bytes)
 	// 20-68: validator pubkey (48 bytes)
 	// 68-76: amount (8 bytes)
 
 	if len(log.Data) < 76 {
-		ds.logger.Warnf("invalid withdrawal log data length: %v", len(log.Data))
+		wi.logger.Warnf("invalid withdrawal log data length: %v", len(log.Data))
 		return nil
 	}
 
@@ -146,7 +146,7 @@ func (ds *WithdrawalIndexer) parseRequestLog(log *types.Log) *dbtypes.Withdrawal
 	return requestTx
 }
 
-func (ds *WithdrawalIndexer) persistWithdrawalTxs(tx *sqlx.Tx, requests []*dbtypes.WithdrawalRequestTx) error {
+func (wi *WithdrawalIndexer) persistWithdrawalTxs(tx *sqlx.Tx, requests []*dbtypes.WithdrawalRequestTx) error {
 	requestCount := len(requests)
 	for requestIdx := 0; requestIdx < requestCount; requestIdx += 500 {
 		endIdx := requestIdx + 500
