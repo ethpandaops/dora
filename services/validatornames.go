@@ -61,6 +61,9 @@ func (vn *ValidatorNames) StartUpdater() {
 	if vn.updaterRunning {
 		return
 	}
+	if utils.Config.Frontend.ValidatorNamesRefreshInterval == 0 {
+		utils.Config.Frontend.ValidatorNamesRefreshInterval = 2 * time.Hour
+	}
 	if utils.Config.Frontend.ValidatorNamesResolveInterval == 0 {
 		utils.Config.Frontend.ValidatorNamesResolveInterval = 6 * time.Hour
 	}
