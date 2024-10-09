@@ -42,7 +42,7 @@ func (ds *ConsolidationMatcher) runConsolidationMatcher() error {
 	}
 
 	finalizedBlock := ds.getFinalizedBlockNumber()
-	indexerBlock := ds.consolidationIndexer.state.FinalBlock
+	indexerBlock := ds.consolidationIndexer.indexer.state.FinalBlock
 
 	matchTargetHeight := finalizedBlock
 	if indexerBlock < matchTargetHeight {

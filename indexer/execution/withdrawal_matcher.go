@@ -42,7 +42,7 @@ func (ds *WithdrawalMatcher) runWithdrawalMatcher() error {
 	}
 
 	finalizedBlock := ds.getFinalizedBlockNumber()
-	indexerBlock := ds.withdrawalIndexer.state.FinalBlock
+	indexerBlock := ds.withdrawalIndexer.indexer.state.FinalBlock
 
 	matchTargetHeight := finalizedBlock
 	if indexerBlock < matchTargetHeight {
