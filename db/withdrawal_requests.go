@@ -67,7 +67,7 @@ func GetWithdrawalRequestsFiltered(offset uint64, limit uint32, finalizedBlock u
 	fmt.Fprint(&sql, `
 	WITH cte AS (
 		SELECT
-			slot_number, slot_index, slot_root, orphaned, fork_id, source_address, validator_index, validator_pubkey, amount, block_number
+			slot_number, slot_index, slot_root, orphaned, fork_id, source_address, validator_index, validator_pubkey, amount, tx_hash, block_number
 		FROM withdrawal_requests
 	`)
 
@@ -145,6 +145,7 @@ func GetWithdrawalRequestsFiltered(offset uint64, limit uint32, finalizedBlock u
 		0 AS validator_index,
 		null AS validator_pubkey,
 		0 AS amount,
+		null AS tx_hash,
 		0 AS block_number
 	FROM cte
 	UNION ALL SELECT * FROM (

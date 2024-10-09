@@ -78,6 +78,10 @@ func NewConsolidationIndexer(indexer *IndexerCtx) *ConsolidationIndexer {
 	return ci
 }
 
+func (ci *ConsolidationIndexer) GetMatcherHeight() uint64 {
+	return ci.matcher.GetMatcherHeight()
+}
+
 func (ci *ConsolidationIndexer) runConsolidationIndexerLoop() {
 	defer utils.HandleSubroutinePanic("ConsolidationIndexer.runConsolidationIndexerLoop")
 

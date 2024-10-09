@@ -80,7 +80,7 @@ func NewWithdrawalIndexer(indexer *IndexerCtx) *WithdrawalIndexer {
 }
 
 func (wi *WithdrawalIndexer) GetMatcherHeight() uint64 {
-	return wi.matcher.state.MatchHeight
+	return wi.matcher.GetMatcherHeight()
 }
 
 func (wi *WithdrawalIndexer) runWithdrawalIndexerLoop() {

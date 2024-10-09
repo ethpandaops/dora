@@ -157,9 +157,7 @@
                 <th><span class="d-none d-lg-inline">Source </span>Address</th>
                 <th>Source Validator</th>
                 <th>Target Validator</th>
-                <!--
                 <th>Transaction</th>
-                -->
                 <th><span class="d-none d-lg-inline">Incl. </span>Status</th>
               </tr>
             </thead>
@@ -205,20 +203,18 @@
                         </div>
                       {{- end }}
                     </td>
-                    <!--
                     <td>
                       {{- if $request.LinkedTransaction }}
                       <div class="d-flex">
-                        <span class="flex-grow-1 text-truncate" style="max-width: 150px;">{{ ethTransactionLink $request.TransactionHash }}</span>
+                        <span class="flex-grow-1 text-truncate" style="max-width: 150px;">{{ ethTransactionLink $request.TransactionHash 0 }}</span>
                         <div>
-                          <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ formatEthAddress $request.SourceAddress }}"></i>
+                          <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $request.TransactionHash }}"></i>
                         </div>
                       </div>
                       {{- else }}
                       <span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Corresponding consolidation transaction has not been indexed yet.">?</span>
                       {{- end }}
                     </td>
-                    -->
                     <td>
                       {{- if $request.Orphaned }}
                         <span class="badge rounded-pill text-bg-info">Orphaned</span>

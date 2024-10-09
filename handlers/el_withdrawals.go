@@ -8,7 +8,9 @@ import (
 
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
+	"github.com/ethpandaops/dora/indexer/beacon"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
@@ -182,16 +184,18 @@ func buildFilteredElWithdrawalsPageData(pageIdx uint64, pageSize uint64, minSlot
 
 	chainState := services.GlobalBeaconService.GetChainState()
 	validatorSetRsp := services.GlobalBeaconService.GetCachedValidatorSet()
+	matcherHeight := services.GlobalBeaconService.GetWithdrawalIndexer().GetMatcherHeight()
 
 	for _, elWithdrawal := range dbElWithdrawals {
 		elWithdrawalData := &models.ElWithdrawalsPageDataWithdrawal{
-			SlotNumber: elWithdrawal.SlotNumber,
-			SlotRoot:   elWithdrawal.SlotRoot,
-			Time:       chainState.SlotToTime(phase0.Slot(elWithdrawal.SlotNumber)),
-			Orphaned:   elWithdrawal.Orphaned,
-			SourceAddr: elWithdrawal.SourceAddress,
-			Amount:     elWithdrawal.Amount,
-			PublicKey:  elWithdrawal.ValidatorPubkey,
+			SlotNumber:      elWithdrawal.SlotNumber,
+			SlotRoot:        elWithdrawal.SlotRoot,
+			Time:            chainState.SlotToTime(phase0.Slot(elWithdrawal.SlotNumber)),
+			Orphaned:        elWithdrawal.Orphaned,
+			SourceAddr:      elWithdrawal.SourceAddress,
+			Amount:          elWithdrawal.Amount,
+			PublicKey:       elWithdrawal.ValidatorPubkey,
+			TransactionHash: elWithdrawal.TxHash,
 		}
 
 		if elWithdrawal.ValidatorIndex != nil {
@@ -201,6 +205,39 @@ func buildFilteredElWithdrawalsPageData(pageIdx uint64, pageSize uint64, minSlot
 			if uint64(len(validatorSetRsp)) > elWithdrawalData.ValidatorIndex && validatorSetRsp[elWithdrawalData.ValidatorIndex] != nil {
 				elWithdrawalData.ValidatorValid = true
 			}
+		}
+
+		if elWithdrawal.BlockNumber > matcherHeight && len(elWithdrawalData.TransactionHash) == 0 {
+			// withdrawal request has been matched with a tx yet, try to find the tx on the fly
+			withdrawalRequestTx := db.GetWithdrawalRequestTxsByDequeueRange(elWithdrawal.BlockNumber, elWithdrawal.BlockNumber)
+			if len(withdrawalRequestTx) > 1 {
+				forkIds := services.GlobalBeaconService.GetParentForkIds(beacon.ForkKey(elWithdrawal.ForkId))
+				isParentFork := func(forkId uint64) bool {
+					for _, parentForkId := range forkIds {
+						if uint64(parentForkId) == forkId {
+							return true
+						}
+					}
+					return false
+				}
+
+				matchingTxs := []*dbtypes.WithdrawalRequestTx{}
+				for _, tx := range withdrawalRequestTx {
+					if isParentFork(tx.ForkId) {
+						matchingTxs = append(matchingTxs, tx)
+					}
+				}
+
+				if len(matchingTxs) >= int(elWithdrawal.SlotIndex)+1 {
+					elWithdrawalData.TransactionHash = matchingTxs[elWithdrawal.SlotIndex].TxHash
+				}
+			} else if len(withdrawalRequestTx) == 1 {
+				elWithdrawalData.TransactionHash = withdrawalRequestTx[0].TxHash
+			}
+		}
+
+		if len(elWithdrawalData.TransactionHash) > 0 {
+			elWithdrawalData.LinkedTransaction = true
 		}
 
 		pageData.ElRequests = append(pageData.ElRequests, elWithdrawalData)

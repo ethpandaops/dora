@@ -196,6 +196,14 @@ func (bs *ChainService) GetBeaconIndexer() *beacon.Indexer {
 	return bs.beaconIndexer
 }
 
+func (bs *ChainService) GetConsolidationIndexer() *execindexer.ConsolidationIndexer {
+	return bs.consolidationIndexer
+}
+
+func (bs *ChainService) GetWithdrawalIndexer() *execindexer.WithdrawalIndexer {
+	return bs.withdrawalIndexer
+}
+
 func (bs *ChainService) GetConsensusClients() []*consensus.Client {
 	if bs == nil || bs.consensusPool == nil {
 		return nil
@@ -248,6 +256,10 @@ func (bs *ChainService) GetFinalizedEpoch() (phase0.Epoch, phase0.Root) {
 func (bs *ChainService) GetGenesis() (*v1.Genesis, error) {
 	chainState := bs.consensusPool.GetChainState()
 	return chainState.GetGenesis(), nil
+}
+
+func (bs *ChainService) GetParentForkIds(forkId beacon.ForkKey) []beacon.ForkKey {
+	return bs.beaconIndexer.GetParentForkIds(forkId)
 }
 
 type ConsensusClientFork struct {

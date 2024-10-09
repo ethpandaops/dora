@@ -8,7 +8,9 @@ import (
 
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
+	"github.com/ethpandaops/dora/indexer/beacon"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
@@ -192,9 +194,10 @@ func buildFilteredElConsolidationsPageData(pageIdx uint64, pageSize uint64, minS
 
 	chainState := services.GlobalBeaconService.GetChainState()
 	validatorSetRsp := services.GlobalBeaconService.GetCachedValidatorSet()
+	matcherHeight := services.GlobalBeaconService.GetConsolidationIndexer().GetMatcherHeight()
 
 	for _, elConsolidation := range dbElConsolidations {
-		elWithdrawalData := &models.ElConsolidationsPageDataConsolidation{
+		elConsolidationData := &models.ElConsolidationsPageDataConsolidation{
 			SlotNumber:      elConsolidation.SlotNumber,
 			SlotRoot:        elConsolidation.SlotRoot,
 			Time:            chainState.SlotToTime(phase0.Slot(elConsolidation.SlotNumber)),
@@ -202,27 +205,62 @@ func buildFilteredElConsolidationsPageData(pageIdx uint64, pageSize uint64, minS
 			SourceAddr:      elConsolidation.SourceAddress,
 			SourcePublicKey: elConsolidation.SourcePubkey,
 			TargetPublicKey: elConsolidation.TargetPubkey,
+			TransactionHash: elConsolidation.TxHash,
 		}
 
 		if elConsolidation.SourceIndex != nil {
-			elWithdrawalData.SourceValidatorIndex = *elConsolidation.SourceIndex
-			elWithdrawalData.SourceValidatorName = services.GlobalBeaconService.GetValidatorName(*elConsolidation.SourceIndex)
+			elConsolidationData.SourceValidatorIndex = *elConsolidation.SourceIndex
+			elConsolidationData.SourceValidatorName = services.GlobalBeaconService.GetValidatorName(*elConsolidation.SourceIndex)
 
-			if uint64(len(validatorSetRsp)) > elWithdrawalData.SourceValidatorIndex && validatorSetRsp[elWithdrawalData.SourceValidatorIndex] != nil {
-				elWithdrawalData.SourceValidatorValid = true
+			if uint64(len(validatorSetRsp)) > elConsolidationData.SourceValidatorIndex && validatorSetRsp[elConsolidationData.SourceValidatorIndex] != nil {
+				elConsolidationData.SourceValidatorValid = true
 			}
 		}
 
 		if elConsolidation.TargetIndex != nil {
-			elWithdrawalData.TargetValidatorIndex = *elConsolidation.TargetIndex
-			elWithdrawalData.TargetValidatorName = services.GlobalBeaconService.GetValidatorName(*elConsolidation.TargetIndex)
+			elConsolidationData.TargetValidatorIndex = *elConsolidation.TargetIndex
+			elConsolidationData.TargetValidatorName = services.GlobalBeaconService.GetValidatorName(*elConsolidation.TargetIndex)
 
-			if uint64(len(validatorSetRsp)) > elWithdrawalData.TargetValidatorIndex && validatorSetRsp[elWithdrawalData.TargetValidatorIndex] != nil {
-				elWithdrawalData.TargetValidatorValid = true
+			if uint64(len(validatorSetRsp)) > elConsolidationData.TargetValidatorIndex && validatorSetRsp[elConsolidationData.TargetValidatorIndex] != nil {
+				elConsolidationData.TargetValidatorValid = true
 			}
 		}
 
-		pageData.ElRequests = append(pageData.ElRequests, elWithdrawalData)
+		if elConsolidation.BlockNumber > matcherHeight && len(elConsolidationData.TransactionHash) == 0 {
+			// consolidation request has been matched with a tx yet, try to find the tx on the fly
+			consolidationRequestTx := db.GetConsolidationRequestTxsByDequeueRange(elConsolidation.BlockNumber, elConsolidation.BlockNumber)
+			if len(consolidationRequestTx) > 1 {
+				forkIds := services.GlobalBeaconService.GetParentForkIds(beacon.ForkKey(elConsolidation.ForkId))
+				isParentFork := func(forkId uint64) bool {
+					for _, parentForkId := range forkIds {
+						if uint64(parentForkId) == forkId {
+							return true
+						}
+					}
+					return false
+				}
+
+				matchingTxs := []*dbtypes.ConsolidationRequestTx{}
+				for _, tx := range consolidationRequestTx {
+					if isParentFork(tx.ForkId) {
+						matchingTxs = append(matchingTxs, tx)
+					}
+				}
+
+				if len(matchingTxs) >= int(elConsolidation.SlotIndex)+1 {
+					elConsolidationData.TransactionHash = matchingTxs[elConsolidation.SlotIndex].TxHash
+				}
+
+			} else if len(consolidationRequestTx) == 1 {
+				elConsolidationData.TransactionHash = consolidationRequestTx[0].TxHash
+			}
+		}
+
+		if len(elConsolidationData.TransactionHash) > 0 {
+			elConsolidationData.LinkedTransaction = true
+		}
+
+		pageData.ElRequests = append(pageData.ElRequests, elConsolidationData)
 	}
 	pageData.RequestCount = uint64(len(pageData.ElRequests))
 

@@ -40,6 +40,14 @@ func newTransactionMatcher[MatchType any](indexer *IndexerCtx, logger logrus.Fie
 	return ci
 }
 
+func (ds *transactionMatcher[MatchType]) GetMatcherHeight() uint64 {
+	if ds.state == nil {
+		ds.loadState()
+	}
+
+	return ds.state.MatchHeight
+}
+
 // runTransactionMatcher runs the transaction matcher logic for the next block ranges if its fully loaded and ready to be matched.
 func (ds *transactionMatcher[MatchType]) runTransactionMatcher(indexerBlock uint64) error {
 	// get matcher state
