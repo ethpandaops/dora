@@ -369,6 +369,13 @@ func (indexer *Indexer) processCachePruning(prunedEpochStats, prunedEpochStates 
 		pruneBlock.block.block = nil
 	}
 
+	// remove all blocks in the finalized block range from the cache
+	finalizedSlot := chainState.EpochToSlot(indexer.lastFinalizedEpoch)
+	cleanupBlocks := indexer.blockCache.getCleanupBlocks(finalizedSlot)
+	for _, block := range cleanupBlocks {
+		indexer.blockCache.removeBlock(block)
+	}
+
 	// clean up epoch stats cache
 	for _, epochStats := range indexer.epochCache.getEpochStatsBeforeEpoch(minInMemoryEpoch) {
 		if epochStats.dependentState != nil {
@@ -378,6 +385,11 @@ func (indexer *Indexer) processCachePruning(prunedEpochStats, prunedEpochStates 
 		if epochStats.ready && epochStats.prunedValues == nil {
 			epochStats.pruneValues()
 			prunedEpochStats++
+		}
+
+		if epochStats.epoch < indexer.lastFinalizedEpoch {
+			// remove from epoch stats cache
+			indexer.epochCache.removeEpochStats(epochStats)
 		}
 	}
 

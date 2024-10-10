@@ -212,6 +212,23 @@ func (cache *blockCache) getPruningBlocks(minInMemorySlot phase0.Slot) []*Block 
 	return blocks
 }
 
+// getCleanupBlocks returns the blocks that can be cleaned up based on the given finalized slot.
+func (cache *blockCache) getCleanupBlocks(finalizedSlot phase0.Slot) []*Block {
+	cache.cacheMutex.RLock()
+	defer cache.cacheMutex.RUnlock()
+
+	blocks := []*Block{}
+	for slot, slotBlocks := range cache.slotMap {
+		if slot >= finalizedSlot {
+			continue
+		}
+
+		blocks = append(blocks, slotBlocks...)
+	}
+
+	return blocks
+}
+
 // getForkBlocks returns a slice of blocks that belong to the specified forkId.
 func (cache *blockCache) getForkBlocks(forkId ForkKey) []*Block {
 	cache.cacheMutex.RLock()
