@@ -52,4 +52,15 @@ type ElConsolidationsPageDataConsolidation struct {
 	TargetPublicKey      []byte    `json:"tgt_pubkey"`
 	LinkedTransaction    bool      `json:"linked_tx"`
 	TransactionHash      []byte    `json:"tx_hash"`
+
+	TransactionDetails *ElConsolidationsPageDataConsolidationTxDetails `json:"tx_details"`
+}
+
+type ElConsolidationsPageDataConsolidationTxDetails struct {
+	BlockNumber uint64 `json:"block"`
+	BlockHash   string `json:"block_hash"`
+	BlockTime   uint64 `json:"block_time"`
+	TxOrigin    string `json:"tx_origin"`
+	TxTarget    string `json:"tx_target"`
+	TxHash      string `json:"tx_hash"`
 }

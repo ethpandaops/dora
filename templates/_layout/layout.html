@@ -46,6 +46,9 @@
       <main>
         <noscript class="container d-block my-4">
           <strong>We're sorry but this explorer doesn't work properly without JavaScript enabled. Please enable it to continue.</strong>
+          <style>
+            .nojs-hide, i[data-clipboard-text] { display: none; }
+          </style>
         </noscript>
         {{ template "page" .Data }}
       </main>
