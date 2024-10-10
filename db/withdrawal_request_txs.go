@@ -79,6 +79,34 @@ func GetWithdrawalRequestTxsByDequeueRange(dequeueFirst uint64, dequeueLast uint
 	return withdrawalTxs
 }
 
+func GetWithdrawalRequestTxsByTxHashes(txHashes [][]byte) []*dbtypes.WithdrawalRequestTx {
+	var sql strings.Builder
+	args := []interface{}{}
+
+	fmt.Fprint(&sql, `SELECT withdrawal_request_txs.*
+		FROM withdrawal_request_txs
+		WHERE tx_hash IN (
+	`)
+
+	for idx, txHash := range txHashes {
+		if idx > 0 {
+			fmt.Fprintf(&sql, ", ")
+		}
+		args = append(args, txHash)
+		fmt.Fprintf(&sql, "$%v", len(args))
+	}
+	fmt.Fprintf(&sql, ")")
+
+	withdrawalTxs := []*dbtypes.WithdrawalRequestTx{}
+	err := ReaderDb.Select(&withdrawalTxs, sql.String(), args...)
+	if err != nil {
+		logger.Errorf("Error while fetching withdrawal request txs: %v", err)
+		return nil
+	}
+
+	return withdrawalTxs
+}
+
 func GetWithdrawalRequestTxsFiltered(offset uint64, limit uint32, canonicalForkIds []uint64, filter *dbtypes.WithdrawalRequestTxFilter) ([]*dbtypes.WithdrawalRequestTx, uint64, error) {
 	var sql strings.Builder
 	args := []interface{}{}

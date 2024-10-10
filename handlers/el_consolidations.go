@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bytes"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -176,7 +177,7 @@ func buildFilteredElConsolidationsPageData(pageIdx uint64, pageSize uint64, minS
 		pageData.PrevPageIndex = pageIdx - 1
 	}
 
-	// load voluntary exits
+	// load consolidation requests
 	consolidationRequestFilter := &dbtypes.ConsolidationRequestFilter{
 		MinSlot:          minSlot,
 		MaxSlot:          maxSlot,
@@ -192,9 +193,25 @@ func buildFilteredElConsolidationsPageData(pageIdx uint64, pageSize uint64, minS
 
 	dbElConsolidations, totalRows := services.GlobalBeaconService.GetConsolidationRequestsByFilter(consolidationRequestFilter, pageIdx-1, uint32(pageSize))
 
+	// helper to load tx details for consolidation requests
+	buildTxDetails := func(consolidationTx *dbtypes.ConsolidationRequestTx) *models.ElConsolidationsPageDataConsolidationTxDetails {
+		txDetails := &models.ElConsolidationsPageDataConsolidationTxDetails{
+			BlockNumber: consolidationTx.BlockNumber,
+			BlockHash:   fmt.Sprintf("%#x", consolidationTx.BlockRoot),
+			BlockTime:   consolidationTx.BlockTime,
+			TxOrigin:    common.Address(consolidationTx.TxSender).Hex(),
+			TxTarget:    common.Address(consolidationTx.TxTarget).Hex(),
+			TxHash:      fmt.Sprintf("%#x", consolidationTx.TxHash),
+		}
+
+		return txDetails
+	}
+
 	chainState := services.GlobalBeaconService.GetChainState()
 	validatorSetRsp := services.GlobalBeaconService.GetCachedValidatorSet()
 	matcherHeight := services.GlobalBeaconService.GetConsolidationIndexer().GetMatcherHeight()
+
+	requestTxDetailsFor := [][]byte{}
 
 	for _, elConsolidation := range dbElConsolidations {
 		elConsolidationData := &models.ElConsolidationsPageDataConsolidation{
@@ -226,7 +243,10 @@ func buildFilteredElConsolidationsPageData(pageIdx uint64, pageSize uint64, minS
 			}
 		}
 
-		if elConsolidation.BlockNumber > matcherHeight && len(elConsolidationData.TransactionHash) == 0 {
+		if len(elConsolidationData.TransactionHash) > 0 {
+			elConsolidationData.LinkedTransaction = true
+			requestTxDetailsFor = append(requestTxDetailsFor, elConsolidationData.TransactionHash)
+		} else if elConsolidation.BlockNumber > matcherHeight {
 			// consolidation request has been matched with a tx yet, try to find the tx on the fly
 			consolidationRequestTx := db.GetConsolidationRequestTxsByDequeueRange(elConsolidation.BlockNumber, elConsolidation.BlockNumber)
 			if len(consolidationRequestTx) > 1 {
@@ -249,20 +269,31 @@ func buildFilteredElConsolidationsPageData(pageIdx uint64, pageSize uint64, minS
 
 				if len(matchingTxs) >= int(elConsolidation.SlotIndex)+1 {
 					elConsolidationData.TransactionHash = matchingTxs[elConsolidation.SlotIndex].TxHash
+					elConsolidationData.LinkedTransaction = true
+					elConsolidationData.TransactionDetails = buildTxDetails(matchingTxs[elConsolidation.SlotIndex])
 				}
 
 			} else if len(consolidationRequestTx) == 1 {
 				elConsolidationData.TransactionHash = consolidationRequestTx[0].TxHash
+				elConsolidationData.LinkedTransaction = true
+				elConsolidationData.TransactionDetails = buildTxDetails(consolidationRequestTx[0])
 			}
-		}
-
-		if len(elConsolidationData.TransactionHash) > 0 {
-			elConsolidationData.LinkedTransaction = true
 		}
 
 		pageData.ElRequests = append(pageData.ElRequests, elConsolidationData)
 	}
 	pageData.RequestCount = uint64(len(pageData.ElRequests))
+
+	// load tx details for consolidation requests
+	if len(requestTxDetailsFor) > 0 {
+		for _, txDetails := range db.GetConsolidationRequestTxsByTxHashes(requestTxDetailsFor) {
+			for _, elConsolidation := range pageData.ElRequests {
+				if elConsolidation.TransactionHash != nil && bytes.Equal(elConsolidation.TransactionHash, txDetails.TxHash) {
+					elConsolidation.TransactionDetails = buildTxDetails(txDetails)
+				}
+			}
+		}
+	}
 
 	if pageData.RequestCount > 0 {
 		pageData.FirstIndex = pageData.ElRequests[0].SlotNumber

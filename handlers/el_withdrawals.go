@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bytes"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -182,9 +183,25 @@ func buildFilteredElWithdrawalsPageData(pageIdx uint64, pageSize uint64, minSlot
 
 	dbElWithdrawals, totalRows := services.GlobalBeaconService.GetWithdrawalRequestsByFilter(withdrawalRequestFilter, pageIdx-1, uint32(pageSize))
 
+	// helper to load tx details for withdrawal requests
+	buildTxDetails := func(withdrawalTx *dbtypes.WithdrawalRequestTx) *models.ElWithdrawalsPageDataWithdrawalTxDetails {
+		txDetails := &models.ElWithdrawalsPageDataWithdrawalTxDetails{
+			BlockNumber: withdrawalTx.BlockNumber,
+			BlockHash:   fmt.Sprintf("%#x", withdrawalTx.BlockRoot),
+			BlockTime:   withdrawalTx.BlockTime,
+			TxOrigin:    common.Address(withdrawalTx.TxSender).Hex(),
+			TxTarget:    common.Address(withdrawalTx.TxTarget).Hex(),
+			TxHash:      fmt.Sprintf("%#x", withdrawalTx.TxHash),
+		}
+
+		return txDetails
+	}
+
 	chainState := services.GlobalBeaconService.GetChainState()
 	validatorSetRsp := services.GlobalBeaconService.GetCachedValidatorSet()
 	matcherHeight := services.GlobalBeaconService.GetWithdrawalIndexer().GetMatcherHeight()
+
+	requestTxDetailsFor := [][]byte{}
 
 	for _, elWithdrawal := range dbElWithdrawals {
 		elWithdrawalData := &models.ElWithdrawalsPageDataWithdrawal{
@@ -207,7 +224,10 @@ func buildFilteredElWithdrawalsPageData(pageIdx uint64, pageSize uint64, minSlot
 			}
 		}
 
-		if elWithdrawal.BlockNumber > matcherHeight && len(elWithdrawalData.TransactionHash) == 0 {
+		if len(elWithdrawalData.TransactionHash) > 0 {
+			elWithdrawalData.LinkedTransaction = true
+			requestTxDetailsFor = append(requestTxDetailsFor, elWithdrawalData.TransactionHash)
+		} else if elWithdrawal.BlockNumber > matcherHeight {
 			// withdrawal request has been matched with a tx yet, try to find the tx on the fly
 			withdrawalRequestTx := db.GetWithdrawalRequestTxsByDequeueRange(elWithdrawal.BlockNumber, elWithdrawal.BlockNumber)
 			if len(withdrawalRequestTx) > 1 {
@@ -230,19 +250,30 @@ func buildFilteredElWithdrawalsPageData(pageIdx uint64, pageSize uint64, minSlot
 
 				if len(matchingTxs) >= int(elWithdrawal.SlotIndex)+1 {
 					elWithdrawalData.TransactionHash = matchingTxs[elWithdrawal.SlotIndex].TxHash
+					elWithdrawalData.LinkedTransaction = true
+					elWithdrawalData.TransactionDetails = buildTxDetails(matchingTxs[elWithdrawal.SlotIndex])
 				}
 			} else if len(withdrawalRequestTx) == 1 {
 				elWithdrawalData.TransactionHash = withdrawalRequestTx[0].TxHash
+				elWithdrawalData.LinkedTransaction = true
+				elWithdrawalData.TransactionDetails = buildTxDetails(withdrawalRequestTx[0])
 			}
-		}
-
-		if len(elWithdrawalData.TransactionHash) > 0 {
-			elWithdrawalData.LinkedTransaction = true
 		}
 
 		pageData.ElRequests = append(pageData.ElRequests, elWithdrawalData)
 	}
 	pageData.RequestCount = uint64(len(pageData.ElRequests))
+
+	// load tx details for withdrawal requests
+	if len(requestTxDetailsFor) > 0 {
+		for _, txDetails := range db.GetWithdrawalRequestTxsByTxHashes(requestTxDetailsFor) {
+			for _, elWithdrawal := range pageData.ElRequests {
+				if elWithdrawal.TransactionHash != nil && bytes.Equal(elWithdrawal.TransactionHash, txDetails.TxHash) {
+					elWithdrawal.TransactionDetails = buildTxDetails(txDetails)
+				}
+			}
+		}
+	}
 
 	if pageData.RequestCount > 0 {
 		pageData.FirstIndex = pageData.ElRequests[0].SlotNumber

@@ -35,6 +35,10 @@ CREATE INDEX IF NOT EXISTS "consolidation_request_txs_target_idx"
     ON "consolidation_request_txs"
     ("target_index" ASC);
 
+CREATE INDEX IF NOT EXISTS "consolidation_request_txs_tx_hash_idx"
+    ON "consolidation_request_txs"
+    ("tx_hash" ASC);
+
 CREATE INDEX IF NOT EXISTS "consolidation_request_txs_fork_idx"
     ON "consolidation_request_txs"
     ("fork_id" ASC);
@@ -90,6 +94,10 @@ CREATE INDEX IF NOT EXISTS "withdrawal_request_txs_validator_index_idx"
 CREATE INDEX IF NOT EXISTS "withdrawal_request_txs_amount_idx"
     ON "withdrawal_request_txs"
     ("amount" ASC);
+
+CREATE INDEX IF NOT EXISTS "withdrawal_request_txs_tx_hash_idx"
+    ON "withdrawal_request_txs"
+    ("tx_hash" ASC);
 
 CREATE INDEX IF NOT EXISTS "withdrawal_request_txs_fork_idx"
     ON "withdrawal_request_txs"

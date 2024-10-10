@@ -128,3 +128,16 @@ type ConsolidationRequestFilter struct {
 	TgtValidatorName string
 	WithOrphaned     uint8
 }
+
+type ConsolidationRequestTxFilter struct {
+	MinDequeue       uint64
+	MaxDequeue       uint64
+	SourceAddress    []byte
+	MinSrcIndex      uint64
+	MaxSrcIndex      uint64
+	SrcValidatorName string
+	MinTgtIndex      uint64
+	MaxTgtIndex      uint64
+	TgtValidatorName string
+	WithOrphaned     uint8
+}
