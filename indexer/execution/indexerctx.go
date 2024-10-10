@@ -11,6 +11,7 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+// IndexerCtx is the context for the execution indexer
 type IndexerCtx struct {
 	logger           logrus.FieldLogger
 	beaconIndexer    *beacon.Indexer
@@ -20,6 +21,7 @@ type IndexerCtx struct {
 	executionClients map[*execution.Client]*indexerElClientInfo
 }
 
+// indexerElClientInfo holds information about a client and its priority
 type indexerElClientInfo struct {
 	priority int
 	archive  bool
@@ -37,6 +39,7 @@ func NewIndexerCtx(logger logrus.FieldLogger, executionPool *execution.Pool, con
 	}
 }
 
+// AddClientInfo adds client info to the indexer context
 func (ictx *IndexerCtx) AddClientInfo(client *execution.Client, priority int, archive bool) {
 	ictx.executionClients[client] = &indexerElClientInfo{
 		priority: priority,
@@ -44,6 +47,7 @@ func (ictx *IndexerCtx) AddClientInfo(client *execution.Client, priority int, ar
 	}
 }
 
+// getFinalizedClients returns a list of clients that have reached the finalized el block
 func (ictx *IndexerCtx) getFinalizedClients(clientType execution.ClientType) []*execution.Client {
 	_, finalizedRoot := ictx.consensusPool.GetChainState().GetJustifiedCheckpoint()
 
@@ -62,6 +66,7 @@ func (ictx *IndexerCtx) getFinalizedClients(clientType execution.ClientType) []*
 	return finalizedClients
 }
 
+// sortClients sorts clients by priority, but randomizes the order for equal priority
 func (ictx *IndexerCtx) sortClients(clientA *execution.Client, clientB *execution.Client, preferArchive bool) bool {
 	clientAInfo := ictx.executionClients[clientA]
 	clientBInfo := ictx.executionClients[clientB]
@@ -77,6 +82,7 @@ func (ictx *IndexerCtx) sortClients(clientA *execution.Client, clientB *executio
 	return rand.IntN(2) == 0
 }
 
+// forkWithClients holds information about a fork and the clients following it
 type forkWithClients struct {
 	canonical bool
 	forkId    beacon.ForkKey
@@ -84,6 +90,8 @@ type forkWithClients struct {
 	clients   []*execution.Client
 }
 
+// getForksWithClients returns a list of forks with their clients
+// the list is sorted by the canonical head and the number of clients
 func (ictx *IndexerCtx) getForksWithClients(clientType execution.ClientType) []*forkWithClients {
 	forksWithClients := make([]*forkWithClients, 0)
 	forkHeadMap := map[beacon.ForkKey]*beacon.ForkHead{}

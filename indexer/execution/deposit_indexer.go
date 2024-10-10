@@ -24,6 +24,9 @@ import (
 	"github.com/ethpandaops/dora/utils"
 )
 
+const depositContractAbi = `[{"inputs":[],"stateMutability":"nonpayable","type":"constructor"},{"anonymous":false,"inputs":[{"indexed":false,"internalType":"bytes","name":"pubkey","type":"bytes"},{"indexed":false,"internalType":"bytes","name":"withdrawal_credentials","type":"bytes"},{"indexed":false,"internalType":"bytes","name":"amount","type":"bytes"},{"indexed":false,"internalType":"bytes","name":"signature","type":"bytes"},{"indexed":false,"internalType":"bytes","name":"index","type":"bytes"}],"name":"DepositEvent","type":"event"},{"inputs":[{"internalType":"bytes","name":"pubkey","type":"bytes"},{"internalType":"bytes","name":"withdrawal_credentials","type":"bytes"},{"internalType":"bytes","name":"signature","type":"bytes"},{"internalType":"bytes32","name":"deposit_data_root","type":"bytes32"}],"name":"deposit","outputs":[],"stateMutability":"payable","type":"function"},{"inputs":[],"name":"get_deposit_count","outputs":[{"internalType":"bytes","name":"","type":"bytes"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"get_deposit_root","outputs":[{"internalType":"bytes32","name":"","type":"bytes32"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"bytes4","name":"interfaceId","type":"bytes4"}],"name":"supportsInterface","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"pure","type":"function"}]`
+
+// DepositIndexer is the indexer for the deposit contract
 type DepositIndexer struct {
 	indexerCtx *IndexerCtx
 	logger     logrus.FieldLogger
@@ -34,8 +37,7 @@ type DepositIndexer struct {
 	depositSigDomain   zrnt_common.BLSDomain
 }
 
-const depositContractAbi = `[{"inputs":[],"stateMutability":"nonpayable","type":"constructor"},{"anonymous":false,"inputs":[{"indexed":false,"internalType":"bytes","name":"pubkey","type":"bytes"},{"indexed":false,"internalType":"bytes","name":"withdrawal_credentials","type":"bytes"},{"indexed":false,"internalType":"bytes","name":"amount","type":"bytes"},{"indexed":false,"internalType":"bytes","name":"signature","type":"bytes"},{"indexed":false,"internalType":"bytes","name":"index","type":"bytes"}],"name":"DepositEvent","type":"event"},{"inputs":[{"internalType":"bytes","name":"pubkey","type":"bytes"},{"internalType":"bytes","name":"withdrawal_credentials","type":"bytes"},{"internalType":"bytes","name":"signature","type":"bytes"},{"internalType":"bytes32","name":"deposit_data_root","type":"bytes32"}],"name":"deposit","outputs":[],"stateMutability":"payable","type":"function"},{"inputs":[],"name":"get_deposit_count","outputs":[{"internalType":"bytes","name":"","type":"bytes"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"get_deposit_root","outputs":[{"internalType":"bytes32","name":"","type":"bytes32"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"bytes4","name":"interfaceId","type":"bytes4"}],"name":"supportsInterface","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"pure","type":"function"}]`
-
+// NewDepositIndexer creates a new deposit contract indexer
 func NewDepositIndexer(indexer *IndexerCtx) *DepositIndexer {
 	batchSize := utils.Config.ExecutionApi.DepositLogBatchSize
 	if batchSize == 0 {
@@ -61,11 +63,12 @@ func NewDepositIndexer(indexer *IndexerCtx) *DepositIndexer {
 		depositSigDomain:   depositSigDomain,
 	}
 
-	ds.indexer = newContractIndexer[dbtypes.DepositTx](
+	// create contract indexer for the deposit contract
+	ds.indexer = newContractIndexer(
 		indexer,
 		ds.logger.WithField("routine", "crawler"),
 		&contractIndexerOptions[dbtypes.DepositTx]{
-			indexerKey:      "indexer.depositstate",
+			stateKey:        "indexer.depositstate",
 			batchSize:       batchSize,
 			contractAddress: common.Address(specs.DepositContractAddress),
 			deployBlock:     uint64(utils.Config.ExecutionApi.DepositDeployBlock),
@@ -82,6 +85,7 @@ func NewDepositIndexer(indexer *IndexerCtx) *DepositIndexer {
 	return ds
 }
 
+// runDepositIndexerLoop is the main loop for the deposit indexer
 func (ds *DepositIndexer) runDepositIndexerLoop() {
 	defer utils.HandleSubroutinePanic("DepositIndexer.runDepositIndexerLoop")
 
@@ -96,6 +100,8 @@ func (ds *DepositIndexer) runDepositIndexerLoop() {
 	}
 }
 
+// processFinalTx is the callback for the contract indexer to process final transactions
+// it parses the transaction and returns the corresponding deposit transaction
 func (ci *DepositIndexer) processFinalTx(log *types.Log, tx *types.Transaction, header *types.Header, txFrom common.Address, dequeueBlock uint64) (*dbtypes.DepositTx, error) {
 	requestTx := ci.parseDepositLog(log)
 	if requestTx == nil {
@@ -111,6 +117,8 @@ func (ci *DepositIndexer) processFinalTx(log *types.Log, tx *types.Transaction, 
 	return requestTx, nil
 }
 
+// processRecentTx is the callback for the contract indexer to process recent transactions
+// it parses the transaction and returns the corresponding deposit transaction
 func (ci *DepositIndexer) processRecentTx(log *types.Log, tx *types.Transaction, header *types.Header, txFrom common.Address, dequeueBlock uint64, fork *forkWithClients) (*dbtypes.DepositTx, error) {
 	requestTx := ci.parseDepositLog(log)
 	if requestTx == nil {
@@ -133,6 +141,7 @@ func (ci *DepositIndexer) processRecentTx(log *types.Log, tx *types.Transaction,
 	return requestTx, nil
 }
 
+// parseDepositLog parses a deposit log and returns the corresponding deposit transaction
 func (ci *DepositIndexer) parseDepositLog(log *types.Log) *dbtypes.DepositTx {
 	if !bytes.Equal(log.Topics[0][:], ci.depositEventTopic) {
 		return nil
@@ -159,6 +168,7 @@ func (ci *DepositIndexer) parseDepositLog(log *types.Log) *dbtypes.DepositTx {
 	return requestTx
 }
 
+// persistDepositTxs is the callback for the contract indexer to persist deposit transactions to the database
 func (ci *DepositIndexer) persistDepositTxs(tx *sqlx.Tx, requests []*dbtypes.DepositTx) error {
 	requestCount := len(requests)
 	for requestIdx := 0; requestIdx < requestCount; requestIdx += 500 {
@@ -176,6 +186,7 @@ func (ci *DepositIndexer) persistDepositTxs(tx *sqlx.Tx, requests []*dbtypes.Dep
 	return nil
 }
 
+// checkDepositValidity checks if a deposit transaction has a valid signature
 func (ds *DepositIndexer) checkDepositValidity(depositTx *dbtypes.DepositTx) {
 	depositMsg := &zrnt_common.DepositMessage{
 		Pubkey:                zrnt_common.BLSPubkey(depositTx.PublicKey),

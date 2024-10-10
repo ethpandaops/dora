@@ -21,6 +21,7 @@ import (
 const withdrawalContractAddr = "0x00A3ca265EBcb825B45F985A16CEFB49958cE017"
 const withdrawalDequeueRate = 2
 
+// WithdrawalIndexer is the indexer for the eip-7002 consolidation system contract
 type WithdrawalIndexer struct {
 	indexerCtx *IndexerCtx
 	logger     logrus.FieldLogger
@@ -34,6 +35,7 @@ type withdrawalRequestMatch struct {
 	txHash    []byte
 }
 
+// NewWithdrawalIndexer creates a new withdrawal contract indexer
 func NewWithdrawalIndexer(indexer *IndexerCtx) *WithdrawalIndexer {
 	batchSize := utils.Config.ExecutionApi.DepositLogBatchSize
 	if batchSize == 0 {
@@ -45,11 +47,12 @@ func NewWithdrawalIndexer(indexer *IndexerCtx) *WithdrawalIndexer {
 		logger:     indexer.logger.WithField("indexer", "withdrawal"),
 	}
 
+	// create contract indexer for the withdrawal contract
 	wi.indexer = newContractIndexer(
 		indexer,
 		wi.logger.WithField("routine", "crawler"),
 		&contractIndexerOptions[dbtypes.WithdrawalRequestTx]{
-			indexerKey:      "indexer.withdrawalindexer",
+			stateKey:        "indexer.withdrawalindexer",
 			batchSize:       batchSize,
 			contractAddress: common.HexToAddress(withdrawalContractAddr),
 			deployBlock:     uint64(utils.Config.ExecutionApi.ElectraDeployBlock),
@@ -61,6 +64,7 @@ func NewWithdrawalIndexer(indexer *IndexerCtx) *WithdrawalIndexer {
 		},
 	)
 
+	// create transaction matcher for the withdrawal contract
 	wi.matcher = newTransactionMatcher(
 		indexer,
 		wi.logger.WithField("routine", "matcher"),
@@ -79,10 +83,12 @@ func NewWithdrawalIndexer(indexer *IndexerCtx) *WithdrawalIndexer {
 	return wi
 }
 
+// GetMatcherHeight returns the last processed el block number from the transaction matcher
 func (wi *WithdrawalIndexer) GetMatcherHeight() uint64 {
 	return wi.matcher.GetMatcherHeight()
 }
 
+// runWithdrawalIndexerLoop is the main loop for the withdrawal indexer
 func (wi *WithdrawalIndexer) runWithdrawalIndexerLoop() {
 	defer utils.HandleSubroutinePanic("WithdrawalIndexer.runWithdrawalIndexerLoop")
 
@@ -102,6 +108,8 @@ func (wi *WithdrawalIndexer) runWithdrawalIndexerLoop() {
 	}
 }
 
+// processFinalTx is the callback for the contract indexer to process final transactions
+// it parses the transaction and returns the corresponding withdrawal transaction
 func (wi *WithdrawalIndexer) processFinalTx(log *types.Log, tx *types.Transaction, header *types.Header, txFrom common.Address, dequeueBlock uint64) (*dbtypes.WithdrawalRequestTx, error) {
 	requestTx := wi.parseRequestLog(log, nil)
 	if requestTx == nil {
@@ -118,6 +126,8 @@ func (wi *WithdrawalIndexer) processFinalTx(log *types.Log, tx *types.Transactio
 	return requestTx, nil
 }
 
+// processRecentTx is the callback for the contract indexer to process recent transactions
+// it parses the transaction and returns the corresponding withdrawal transaction
 func (wi *WithdrawalIndexer) processRecentTx(log *types.Log, tx *types.Transaction, header *types.Header, txFrom common.Address, dequeueBlock uint64, fork *forkWithClients) (*dbtypes.WithdrawalRequestTx, error) {
 	requestTx := wi.parseRequestLog(log, &fork.forkId)
 	if requestTx == nil {
@@ -141,6 +151,7 @@ func (wi *WithdrawalIndexer) processRecentTx(log *types.Log, tx *types.Transacti
 	return requestTx, nil
 }
 
+// parseRequestLog parses a withdrawal log and returns the corresponding withdrawal transaction
 func (wi *WithdrawalIndexer) parseRequestLog(log *types.Log, forkId *beacon.ForkKey) *dbtypes.WithdrawalRequestTx {
 	// data layout:
 	// 0-20: sender address (20 bytes)
@@ -181,6 +192,7 @@ func (wi *WithdrawalIndexer) parseRequestLog(log *types.Log, forkId *beacon.Fork
 	return requestTx
 }
 
+// persistWithdrawalTxs is the callback for the contract indexer to persist withdrawal transactions to the database
 func (wi *WithdrawalIndexer) persistWithdrawalTxs(tx *sqlx.Tx, requests []*dbtypes.WithdrawalRequestTx) error {
 	requestCount := len(requests)
 	for requestIdx := 0; requestIdx < requestCount; requestIdx += 500 {
@@ -198,7 +210,8 @@ func (wi *WithdrawalIndexer) persistWithdrawalTxs(tx *sqlx.Tx, requests []*dbtyp
 	return nil
 }
 
-func (ds *WithdrawalIndexer) matchBlockRange(fromBlock uint64, toBlock uint64) ([]*withdrawalRequestMatch, error) {
+// matchBlockRange is the callback for the transaction matcher to match withdrawal requests with their corresponding transactions
+func (wi *WithdrawalIndexer) matchBlockRange(fromBlock uint64, toBlock uint64) ([]*withdrawalRequestMatch, error) {
 	requestMatches := []*withdrawalRequestMatch{}
 
 	dequeueWithdrawalTxs := db.GetWithdrawalRequestTxsByDequeueRange(fromBlock, toBlock)
@@ -211,7 +224,7 @@ func (ds *WithdrawalIndexer) matchBlockRange(fromBlock uint64, toBlock uint64) (
 				continue
 			}
 
-			parentForkIds := ds.indexerCtx.beaconIndexer.GetParentForkIds(beacon.ForkKey(withdrawalRequest.ForkId))
+			parentForkIds := wi.indexerCtx.beaconIndexer.GetParentForkIds(beacon.ForkKey(withdrawalRequest.ForkId))
 			isParentFork := func(forkId uint64) bool {
 				if forkId == withdrawalRequest.ForkId {
 					return true
@@ -244,7 +257,7 @@ func (ds *WithdrawalIndexer) matchBlockRange(fromBlock uint64, toBlock uint64) (
 			}
 
 			txHash := matchingTxs[withdrawalRequest.SlotIndex].TxHash
-			ds.logger.Debugf("Matched withdrawal request %d:%v with tx 0x%x", withdrawalRequest.SlotNumber, withdrawalRequest.SlotIndex, txHash)
+			wi.logger.Debugf("Matched withdrawal request %d:%v with tx 0x%x", withdrawalRequest.SlotNumber, withdrawalRequest.SlotIndex, txHash)
 
 			requestMatches = append(requestMatches, &withdrawalRequestMatch{
 				slotRoot:  withdrawalRequest.SlotRoot,
@@ -257,7 +270,8 @@ func (ds *WithdrawalIndexer) matchBlockRange(fromBlock uint64, toBlock uint64) (
 	return requestMatches, nil
 }
 
-func (ds *WithdrawalIndexer) persistMatches(tx *sqlx.Tx, matches []*withdrawalRequestMatch) error {
+// persistMatches is the callback for the transaction matcher to persist matches to the database
+func (wi *WithdrawalIndexer) persistMatches(tx *sqlx.Tx, matches []*withdrawalRequestMatch) error {
 	for _, match := range matches {
 		err := db.UpdateWithdrawalRequestTxHash(match.slotRoot, match.slotIndex, match.txHash, tx)
 		if err != nil {

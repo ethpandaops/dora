@@ -20,6 +20,7 @@ import (
 const consolidationContractAddr = "0x00b42dbF2194e931E80326D950320f7d9Dbeac02"
 const consolidationDequeueRate = 1
 
+// ConsolidationIndexer is the indexer for the eip-7251 consolidation system contract
 type ConsolidationIndexer struct {
 	indexerCtx *IndexerCtx
 	logger     logrus.FieldLogger
@@ -33,6 +34,7 @@ type consolidationRequestMatch struct {
 	txHash    []byte
 }
 
+// NewConsolidationIndexer creates a new consolidation system contract indexer
 func NewConsolidationIndexer(indexer *IndexerCtx) *ConsolidationIndexer {
 	batchSize := utils.Config.ExecutionApi.DepositLogBatchSize
 	if batchSize == 0 {
@@ -44,11 +46,12 @@ func NewConsolidationIndexer(indexer *IndexerCtx) *ConsolidationIndexer {
 		logger:     indexer.logger.WithField("indexer", "consolidation"),
 	}
 
+	// create contract indexer for the consolidation contract
 	ci.indexer = newContractIndexer(
 		indexer,
 		ci.logger.WithField("routine", "crawler"),
 		&contractIndexerOptions[dbtypes.ConsolidationRequestTx]{
-			indexerKey:      "indexer.consolidationindexer",
+			stateKey:        "indexer.consolidationindexer",
 			batchSize:       batchSize,
 			contractAddress: common.HexToAddress(consolidationContractAddr),
 			deployBlock:     uint64(utils.Config.ExecutionApi.ElectraDeployBlock),
@@ -60,6 +63,7 @@ func NewConsolidationIndexer(indexer *IndexerCtx) *ConsolidationIndexer {
 		},
 	)
 
+	// create transaction matcher for the consolidation contract
 	ci.matcher = newTransactionMatcher(
 		indexer,
 		ci.logger.WithField("routine", "matcher"),
@@ -78,10 +82,12 @@ func NewConsolidationIndexer(indexer *IndexerCtx) *ConsolidationIndexer {
 	return ci
 }
 
+// GetMatcherHeight returns the last processed el block number from the transaction matcher
 func (ci *ConsolidationIndexer) GetMatcherHeight() uint64 {
 	return ci.matcher.GetMatcherHeight()
 }
 
+// runConsolidationIndexerLoop is the main loop for the consolidation indexer
 func (ci *ConsolidationIndexer) runConsolidationIndexerLoop() {
 	defer utils.HandleSubroutinePanic("ConsolidationIndexer.runConsolidationIndexerLoop")
 
@@ -101,6 +107,8 @@ func (ci *ConsolidationIndexer) runConsolidationIndexerLoop() {
 	}
 }
 
+// processFinalTx is the callback for the contract indexer for finalized transactions
+// it parses the transaction and returns the corresponding consolidation request transaction
 func (ci *ConsolidationIndexer) processFinalTx(log *types.Log, tx *types.Transaction, header *types.Header, txFrom common.Address, dequeueBlock uint64) (*dbtypes.ConsolidationRequestTx, error) {
 	requestTx := ci.parseRequestLog(log, nil)
 	if requestTx == nil {
@@ -117,6 +125,8 @@ func (ci *ConsolidationIndexer) processFinalTx(log *types.Log, tx *types.Transac
 	return requestTx, nil
 }
 
+// processRecentTx is the callback for the contract indexer for recent transactions
+// it parses the transaction and returns the corresponding consolidation request transaction
 func (ci *ConsolidationIndexer) processRecentTx(log *types.Log, tx *types.Transaction, header *types.Header, txFrom common.Address, dequeueBlock uint64, fork *forkWithClients) (*dbtypes.ConsolidationRequestTx, error) {
 	requestTx := ci.parseRequestLog(log, &fork.forkId)
 	if requestTx == nil {
@@ -140,6 +150,7 @@ func (ci *ConsolidationIndexer) processRecentTx(log *types.Log, tx *types.Transa
 	return requestTx, nil
 }
 
+// parseRequestLog parses a consolidation request log and returns the corresponding consolidation request transaction
 func (ci *ConsolidationIndexer) parseRequestLog(log *types.Log, forkId *beacon.ForkKey) *dbtypes.ConsolidationRequestTx {
 	// data layout:
 	// 0-20: sender address (20 bytes)
@@ -155,10 +166,9 @@ func (ci *ConsolidationIndexer) parseRequestLog(log *types.Log, forkId *beacon.F
 	sourcePubkey := log.Data[20:68]
 	targetPubkey := log.Data[68:116]
 
-	validatorSet := ci.indexerCtx.beaconIndexer.GetCanonicalValidatorSet(forkId)
-
+	// get the validator indices for the source and target pubkeys
 	var sourceIndex, targetIndex *uint64
-	for _, validator := range validatorSet {
+	for _, validator := range ci.indexerCtx.beaconIndexer.GetCanonicalValidatorSet(forkId) {
 		if sourceIndex == nil && bytes.Equal(validator.Validator.PublicKey[:], sourcePubkey) {
 			index := uint64(validator.Index)
 			sourceIndex = &index
@@ -190,6 +200,7 @@ func (ci *ConsolidationIndexer) parseRequestLog(log *types.Log, forkId *beacon.F
 	return requestTx
 }
 
+// persistConsolidationTxs is the callback for the contract indexer to persist consolidation request transactions to the database
 func (ci *ConsolidationIndexer) persistConsolidationTxs(tx *sqlx.Tx, requests []*dbtypes.ConsolidationRequestTx) error {
 	requestCount := len(requests)
 	for requestIdx := 0; requestIdx < requestCount; requestIdx += 500 {
@@ -207,19 +218,23 @@ func (ci *ConsolidationIndexer) persistConsolidationTxs(tx *sqlx.Tx, requests []
 	return nil
 }
 
+// matchBlockRange is the callback for the transaction matcher to match consolidation request transactions to transactions in the database
 func (ds *ConsolidationIndexer) matchBlockRange(fromBlock uint64, toBlock uint64) ([]*consolidationRequestMatch, error) {
 	requestMatches := []*consolidationRequestMatch{}
 
+	// get all consolidation request transactions that are dequeued in the block range
 	dequeueConsolidationTxs := db.GetConsolidationRequestTxsByDequeueRange(fromBlock, toBlock)
 	if len(dequeueConsolidationTxs) > 0 {
 		firstBlock := dequeueConsolidationTxs[0].DequeueBlock
 		lastBlock := dequeueConsolidationTxs[len(dequeueConsolidationTxs)-1].DequeueBlock
 
+		// get all consolidation requests that are in the block range
 		for _, consolidationRequest := range db.GetConsolidationRequestsByElBlockRange(firstBlock, lastBlock) {
 			if len(consolidationRequest.TxHash) > 0 {
 				continue
 			}
 
+			// check if the consolidation request is from a parent fork
 			parentForkIds := ds.indexerCtx.beaconIndexer.GetParentForkIds(beacon.ForkKey(consolidationRequest.ForkId))
 			isParentFork := func(forkId uint64) bool {
 				if forkId == consolidationRequest.ForkId {
@@ -233,6 +248,7 @@ func (ds *ConsolidationIndexer) matchBlockRange(fromBlock uint64, toBlock uint64
 				return false
 			}
 
+			// get all consolidation request transactions that are from the current fork
 			matchingTxs := []*dbtypes.ConsolidationRequestTx{}
 			for _, tx := range dequeueConsolidationTxs {
 				if tx.DequeueBlock == consolidationRequest.BlockNumber && isParentFork(tx.ForkId) {
@@ -240,6 +256,7 @@ func (ds *ConsolidationIndexer) matchBlockRange(fromBlock uint64, toBlock uint64
 				}
 			}
 
+			// if no consolidation request transactions are from the current fork, get all transactions that dequeued in the requests block number
 			if len(matchingTxs) == 0 {
 				for _, tx := range dequeueConsolidationTxs {
 					if tx.DequeueBlock == consolidationRequest.BlockNumber {
@@ -249,7 +266,7 @@ func (ds *ConsolidationIndexer) matchBlockRange(fromBlock uint64, toBlock uint64
 			}
 
 			if len(matchingTxs) < int(consolidationRequest.SlotIndex)+1 {
-				continue
+				continue // no transaction found for this consolidation request
 			}
 
 			txHash := matchingTxs[consolidationRequest.SlotIndex].TxHash
@@ -266,6 +283,7 @@ func (ds *ConsolidationIndexer) matchBlockRange(fromBlock uint64, toBlock uint64
 	return requestMatches, nil
 }
 
+// persistMatches is the callback for the transaction matcher to persist matches to the database
 func (ds *ConsolidationIndexer) persistMatches(tx *sqlx.Tx, matches []*consolidationRequestMatch) error {
 	for _, match := range matches {
 		err := db.UpdateConsolidationRequestTxHash(match.slotRoot, match.slotIndex, match.txHash, tx)

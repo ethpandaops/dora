@@ -10,6 +10,7 @@ import (
 	"github.com/ethpandaops/dora/db"
 )
 
+// transactionMatcher is used to match transactions to requests in the database
 type transactionMatcher[MatchType any] struct {
 	indexer *IndexerCtx
 	logger  logrus.FieldLogger
@@ -17,6 +18,7 @@ type transactionMatcher[MatchType any] struct {
 	state   *transactionMatcherState
 }
 
+// transactionMatcherOptions are the options for the transaction matcher
 type transactionMatcherOptions[MatchType any] struct {
 	stateKey    string
 	deployBlock uint64
@@ -26,10 +28,12 @@ type transactionMatcherOptions[MatchType any] struct {
 	persistMatches  func(tx *sqlx.Tx, matches []*MatchType) error
 }
 
+// transactionMatcherState is the state of the transaction matcher
 type transactionMatcherState struct {
 	MatchHeight uint64 `json:"match_height"`
 }
 
+// newTransactionMatcher creates a new transaction matcher
 func newTransactionMatcher[MatchType any](indexer *IndexerCtx, logger logrus.FieldLogger, options *transactionMatcherOptions[MatchType]) *transactionMatcher[MatchType] {
 	ci := &transactionMatcher[MatchType]{
 		indexer: indexer,
@@ -40,6 +44,7 @@ func newTransactionMatcher[MatchType any](indexer *IndexerCtx, logger logrus.Fie
 	return ci
 }
 
+// GetMatcherHeight returns the current match height of the transaction matcher
 func (ds *transactionMatcher[MatchType]) GetMatcherHeight() uint64 {
 	if ds.state == nil {
 		ds.loadState()
@@ -109,6 +114,7 @@ func (ds *transactionMatcher[MatchType]) runTransactionMatcher(indexerBlock uint
 		ds.state.MatchHeight = matchTarget
 
 		if len(matches) > 0 {
+			// persist matches to the database
 			err := db.RunDBTransaction(func(tx *sqlx.Tx) error {
 				ds.options.persistMatches(tx, matches)
 
@@ -135,6 +141,7 @@ func (ds *transactionMatcher[MatchType]) runTransactionMatcher(indexerBlock uint
 	return nil
 }
 
+// loadState loads the state of the transaction matcher from the database
 func (ds *transactionMatcher[_]) loadState() {
 	syncState := transactionMatcherState{}
 	db.GetExplorerState(ds.options.stateKey, &syncState)
@@ -145,6 +152,7 @@ func (ds *transactionMatcher[_]) loadState() {
 	}
 }
 
+// persistState persists the state of the transaction matcher to the database
 func (ds *transactionMatcher[_]) persistState(tx *sqlx.Tx) error {
 	err := db.SetExplorerState(ds.options.stateKey, ds.state, tx)
 	if err != nil {
@@ -154,6 +162,8 @@ func (ds *transactionMatcher[_]) persistState(tx *sqlx.Tx) error {
 	return nil
 }
 
+// getFinalizedBlockNumber gets highest available finalized el block number
+// available means that the block is processed by the finalization routine, so all request operations are available in the db
 func (ds *transactionMatcher[_]) getFinalizedBlockNumber() uint64 {
 	var finalizedBlockNumber uint64
 
