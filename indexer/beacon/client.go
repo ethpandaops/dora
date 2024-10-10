@@ -393,6 +393,7 @@ func (c *Client) processBlock(slot phase0.Slot, root phase0.Root, header *phase0
 
 	if slot >= finalizedSlot && isNew {
 		c.indexer.blockCache.addBlockToParentMap(block)
+		c.indexer.blockCache.addBlockToExecBlockMap(block)
 		t1 := time.Now()
 
 		// fork detection
