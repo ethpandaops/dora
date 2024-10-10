@@ -51,6 +51,7 @@ executionapi:
       url: "http://127.0.0.1:8545"
   
   depositLogBatchSize: 1000
+  depositDeployBlock: 0 # el block number from where to crawl the deposit contract (should be <=, but close to the deposit contract deployment block)
   electraDeployBlock: 0 # el block number from where to crawl the electra system contracts (should be <=, but close to electra fork activation block)
 
 # indexer keeps track of the latest epochs in memory.
