@@ -227,7 +227,6 @@
             {{ end }}
           </table>
         </div>
-        <div id="tx-details-popover-positioner"></div>
         <div class="tx-details-content d-none">
           <div>
             <div class="d-flex">
@@ -372,13 +371,6 @@
         lastPopover.hide();
       }
       lastPopover = popover;
-
-      var cardBodyRect = $(this).closest('.card-body').get(0).getBoundingClientRect();
-      var popoverElRect = $(this).get(0).getBoundingClientRect();
-      popoverEl.css({
-        'left': (popoverElRect.left - cardBodyRect.left) + 'px',
-        'top': (popoverElRect.top - cardBodyRect.top) + 'px'
-      });
       
       popover.show();
 
