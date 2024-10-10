@@ -249,6 +249,13 @@ func (ci *contractIndexer[TxType]) processFinalizedBlocks(finalizedBlockNumber u
 		queueBlock := ci.state.FinalBlock
 		queueLength := ci.state.FinalQueueLen
 
+		// we start crawling from the next block, so we need to decrease the queue length for the current block
+		if queueLength > ci.options.dequeueRate {
+			queueLength -= ci.options.dequeueRate
+		} else {
+			queueLength = 0
+		}
+
 		for idx := range logs {
 			log := &logs[idx]
 
@@ -379,7 +386,7 @@ func (ci *contractIndexer[TxType]) processRecentBlocksForFork(headFork *forkWith
 	}
 
 	startBlockNumber := ci.state.FinalBlock + 1
-	startQueueLen := ci.state.FinalQueueLen
+	queueLength := ci.state.FinalQueueLen
 
 	// get last processed block for this fork
 	if forkState := ci.state.ForkStates[headFork.forkId]; forkState != nil && forkState.Block <= elHeadBlockNumber {
@@ -388,13 +395,13 @@ func (ci *contractIndexer[TxType]) processRecentBlocksForFork(headFork *forkWith
 		}
 
 		startBlockNumber = forkState.Block + 1
-		startQueueLen = forkState.QueueLen
+		queueLength = forkState.QueueLen
 	} else {
 		// seems we haven't seen this fork before, check if we can continue from a parent fork
 		for parentForkId := range ci.indexer.beaconIndexer.GetParentForkIds(headFork.forkId) {
 			if parentForkState := ci.state.ForkStates[beacon.ForkKey(parentForkId)]; parentForkState != nil && parentForkState.Block <= elHeadBlockNumber {
 				startBlockNumber = parentForkState.Block + 1
-				startQueueLen = parentForkState.QueueLen
+				queueLength = parentForkState.QueueLen
 			}
 		}
 	}
@@ -408,6 +415,12 @@ func (ci *contractIndexer[TxType]) processRecentBlocksForFork(headFork *forkWith
 	}()
 
 	queueBlock := startBlockNumber
+	// we start crawling from the next block, so we need to decrease the queue length for the current block
+	if queueLength > ci.options.dequeueRate {
+		queueLength -= ci.options.dequeueRate
+	} else {
+		queueLength = 0
+	}
 
 	// process blocks in range until the head el block is reached
 	for startBlockNumber <= elHeadBlockNumber {
@@ -495,10 +508,10 @@ func (ci *contractIndexer[TxType]) processRecentBlocksForFork(headFork *forkWith
 					return nil
 				} else if ci.options.dequeueRate > 0 && queueBlock < log.BlockNumber {
 					dequeuedRequests := (log.BlockNumber - queueBlock) * ci.options.dequeueRate
-					if dequeuedRequests > startQueueLen {
-						startQueueLen = 0
+					if dequeuedRequests > queueLength {
+						queueLength = 0
 					} else {
-						startQueueLen -= dequeuedRequests
+						queueLength -= dequeuedRequests
 					}
 
 					queueBlock = log.BlockNumber
@@ -507,8 +520,8 @@ func (ci *contractIndexer[TxType]) processRecentBlocksForFork(headFork *forkWith
 				// calculate the dequeue block number for the current log
 				var dequeueBlock uint64
 				if ci.options.dequeueRate > 0 {
-					dequeueBlock = log.BlockNumber + (startQueueLen / ci.options.dequeueRate)
-					startQueueLen++
+					dequeueBlock = log.BlockNumber + (queueLength / ci.options.dequeueRate)
+					queueLength++
 				} else {
 					dequeueBlock = log.BlockNumber
 				}
@@ -529,10 +542,10 @@ func (ci *contractIndexer[TxType]) processRecentBlocksForFork(headFork *forkWith
 			// calculate how many requests were dequeued at the end of the current block range
 			if queueBlock < toBlock {
 				dequeuedRequests := (toBlock - queueBlock) * ci.options.dequeueRate
-				if dequeuedRequests > startQueueLen {
-					startQueueLen = 0
+				if dequeuedRequests > queueLength {
+					queueLength = 0
 				} else {
-					startQueueLen -= dequeuedRequests
+					queueLength -= dequeuedRequests
 				}
 
 				queueBlock = toBlock
@@ -543,7 +556,7 @@ func (ci *contractIndexer[TxType]) processRecentBlocksForFork(headFork *forkWith
 			}
 
 			// persist the processed transactions and update the indexer state
-			err := ci.persistRecentRequestTxs(headFork.forkId, queueBlock, startQueueLen, requestTxs)
+			err := ci.persistRecentRequestTxs(headFork.forkId, queueBlock, queueLength, requestTxs)
 			if err != nil {
 				return fmt.Errorf("could not persist contract logs: %v", err)
 			}
