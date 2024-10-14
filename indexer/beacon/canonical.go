@@ -365,7 +365,7 @@ func (indexer *Indexer) GetCanonicalValidatorSet(overrideForkId *ForkKey) []*v1.
 
 	for {
 		epoch := chainState.EpochOfSlot(canonicalHead.Slot)
-		if headEpoch-epoch > 2 {
+		if headEpoch-epoch > 2 || epoch == 0 {
 			return validatorSet
 		}
 
