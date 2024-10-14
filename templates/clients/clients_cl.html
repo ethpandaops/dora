@@ -659,14 +659,26 @@
 
       console.log(isExternal, isInternal, isSupernode);
 
-      // Show the node if it matches any of the active filters
+      // Show supernodes if the checkbox is checked
+      if (isSupernode && showSupernode) {
+        $(this).show();
+        return;
+      } else if (isSupernode && !showSupernode) {
+        $(this).hide();
+        return;
+      }
+
+      // Show the node if it matches any of the active types
       if ((showExternal && isExternal) ||
-          (showInternal && isInternal) &&
-          (showSupernode && isSupernode)) {
+          (showInternal && isInternal)) {
         $(this).show();
       } else {
         $(this).hide();
       }
+
+
+
+
     });
 
   }
