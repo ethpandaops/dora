@@ -90,15 +90,15 @@
                   <code>CUSTODY_REQUIREMENT={{ $root.PeerDASInfos.CustodyRequirement}}</code>
                   Node count: <code>{{ len $root.Nodes }}</code>
                   <div class="form-check form-switch" style="display: inline-block">
-                    <input class="form-check-input" type="checkbox" role="switch" id="showExternalPeersDAS" checked>
+                    <input class="form-check-input" type="checkbox" role="switch" id="showExternalPeersDAS" onChange="filterDASTablePeers();" checked>
                     <label class="form-check-label" for="showExternalPeersDAS">External peers</label>
                   </div>
                   <div class="form-check form-switch" style="display: inline-block">
-                    <input class="form-check-input" type="checkbox" role="switch" id="showInternalPeersDAS" checked>
+                    <input class="form-check-input" type="checkbox" role="switch" id="showInternalPeersDAS" onChange="filterDASTablePeers();" checked>
                     <label class="form-check-label" for="showInternalPeersDAS">Internal peers</label>
                   </div>
                   <div class="form-check form-switch" style="display: inline-block">
-                    <input class="form-check-input" type="checkbox" role="switch" id="showSupernodePeersDAS" checked>
+                    <input class="form-check-input" type="checkbox" role="switch" id="showSupernodePeersDAS" onChange="filterDASTablePeers();" checked>
                     <label class="form-check-label" for="showSupernodePeersDAS">Supernode peers</label>
                   </div>
                   <div class="input-group" style="margin-top:10px;">
@@ -640,32 +640,36 @@
   }
 
   var lastClickedNode = null;
-  // PeerDASTable toggle external peers button
-  $('#showExternalPeersDAS').change(function() {
-    if (this.checked) {
-      $('.dastablenode.external').show();
-    } else {
-      $('.dastablenode.external').hide();
-    }
-  });
 
-  // PeerDASTable toggle internal peers button
-  $('#showInternalPeersDAS').change(function() {
-    if (this.checked) {
-      $('.dastablenode.internal').show();
-    } else {
-      $('.dastablenode.internal').hide();
-    }
-  });
+  // PeerDASTable Filter
+  function filterDASTablePeers() {
+    // Get the status of each checkbox
+    var showExternal = $('#showExternalPeersDAS').is(':checked');
+    var showInternal = $('#showInternalPeersDAS').is(':checked');
+    var showSupernode = $('#showSupernodePeersDAS').is(':checked');
 
-  // PeerDASTable toggle internal peers button
-    $('#showSupernodePeersDAS').change(function() {
-    if (this.checked) {
-      $('.dastablenode.supernode').show();
-    } else {
-      $('.dastablenode.supernode').hide();
-    }
-  });
+    console.log(showExternal, showInternal, showSupernode);
+
+    // For each node, show or hide based on the filter status
+    $('.dastablenode').each(function() {
+      var isExternal = $(this).hasClass('external');
+      var isInternal = $(this).hasClass('internal');
+      var isSupernode = $(this).hasClass('supernode');
+
+
+      console.log(isExternal, isInternal, isSupernode);
+
+      // Show the node if it matches any of the active filters
+      if ((showExternal && isExternal) ||
+          (showInternal && isInternal) &&
+          (showSupernode && isSupernode)) {
+        $(this).show();
+      } else {
+        $(this).hide();
+      }
+    });
+
+  }
 
   // PeerDASTable Hover
   let hoverTimeout;
