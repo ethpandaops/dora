@@ -424,7 +424,11 @@
                                   <p><i class="fa-solid fa-circle-exclamation" style="margin-right: 10px;"></i>The ENR information was obtained from another node.</p>
                                   The node <code>{{ $client.Name }}</code> did not have the most up-to-date ENR for this peer.
                                   {{ if ne $reportedPeerENR "" }}
-                                  The reported ENR was: <code>{{ $reportedPeerENR }}</code>. Decoded ENR fields <code>{{ toJson $peer.ENRKeyValues }}</code>.
+                                  <p>Some other node reported a higher sequence number than this one.
+                                    <code>seq={{ index $peer.ENRKeyValues "seq" }}</code> vs <code>seq={{ index (index $root.Nodes $peer.ID).ENRKeyValues "seq" }}</code>
+                                  </p>
+                                  <p>ENR: <code>{{ $reportedPeerENR }}</code></p>
+                                  <p>Decoded ENR: <code>{{ toJson $peer.ENRKeyValues }}</code></p>
                                   {{ else }}
                                   The reported ENR was empty (nil).
                                   {{ end }}
