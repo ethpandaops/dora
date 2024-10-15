@@ -17,9 +17,10 @@
   function modalFixes() {
     // Fix bootstrap backdrop stacking when having multiple modals
     $(document).on('show.bs.modal', '.modal', function() {
-      const zIndex = 2000;
+      const offset = (10 * $('.modal:visible').length);
+      const zIndex = 2000 + offset;
       $(this).css('z-index', zIndex);
-      setTimeout(() => $('.modal-backdrop').not('.modal-stack').css('z-index', zIndex - 1).addClass('modal-stack'));
+      setTimeout(() => $('.modal-backdrop').not('.modal-stack').css('z-index', zIndex - offset - 1).addClass('modal-stack'));
     });
     // Fix bootstrap scrolling stacking when having multiple modals
     $(document).on('hidden.bs.modal', '.modal', function(){
