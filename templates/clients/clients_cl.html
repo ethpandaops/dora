@@ -333,7 +333,7 @@
                               <td>Node ID</td>
                               <td>
                                 <code>{{ (index $root.Nodes $client.PeerID).NodeID }}</code>
-                                <i class="fa fa-copy text-muted p-1" role="button" data-placement="right" data-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $client.NodeID }}"></i>
+                                <i class="fa fa-copy text-muted p-1" role="button" data-placement="right" data-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ (index $root.Nodes $client.PeerID).NodeID }}"></i>
                               </td>
                             </tr>
                             {{ if $root.ShowSensitivePeerInfos }}
@@ -374,7 +374,7 @@
                                 <td>
                                   <div style="word-break: break-all; text-wrap: pretty;">
                                     <code>{{ (index $root.Nodes $client.PeerID).PeerDAS.CustodyColumns }}</code>
-                                    <i class="fa fa-copy text-muted p-1" role="button" data-placement="right" data-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $client.PeerDAS.CustodyColumns }}" ></i>
+                                    <i class="fa fa-copy text-muted p-1" role="button" data-placement="right" data-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ (index $root.Nodes $client.PeerID).PeerDAS.CustodyColumns }}" ></i>
                                   </div>
                                 </td>
                               </tr>
@@ -383,7 +383,7 @@
                                 <td>
                                   <div style="word-break: break-all; text-wrap: pretty;">
                                     <code>{{ (index $root.Nodes $client.PeerID).PeerDAS.CustodyColumnSubnets }}</code>
-                                    <i class="fa fa-copy text-muted p-1" role="button" data-placement="right" data-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $client.PeerDAS.CustodyColumnSubnets }}" ></i>
+                                    <i class="fa fa-copy text-muted p-1" role="button" data-placement="right" data-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ (index $root.Nodes $client.PeerID).PeerDAS.CustodyColumnSubnets }}" ></i>
                                   </div>
                                 </td>
                               </tr>
@@ -436,7 +436,7 @@
                                       <td>Node ID</td>
                                       <td>
                                         <code>{{ (index $root.Nodes $peer.ID).NodeID }}</code>
-                                        <i class="fa fa-copy text-muted p-1" role="button" data-placement="right" data-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $peer.NodeID }}"></i>
+                                        <i class="fa fa-copy text-muted p-1" role="button" data-placement="right" data-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ (index $root.Nodes $peer.ID).NodeID }}"></i>
                                       </td>
                                     </tr>
                                     <tr>
@@ -477,7 +477,7 @@
                                         <td>
                                           <div style="word-break: break-all; text-wrap: pretty;">
                                             <code>{{ (index $root.Nodes $peer.ID).PeerDAS.CustodyColumns }}</code>
-                                            <i class="fa fa-copy text-muted p-1" role="button" data-placement="right" data-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $client.PeerDAS.CustodyColumns }}" ></i>
+                                            <i class="fa fa-copy text-muted p-1" role="button" data-placement="right" data-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ (index $root.Nodes $peer.ID).PeerDAS.CustodyColumns }}" ></i>
                                           </div>
                                         </td>
                                       </tr>
@@ -486,7 +486,7 @@
                                         <td>
                                           <div style="word-break: break-all; text-wrap: pretty;">
                                             <code>{{ (index $root.Nodes $peer.ID).PeerDAS.CustodyColumnSubnets }}</code>
-                                            <i class="fa fa-copy text-muted p-1" role="button" data-placement="right" data-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $client.PeerDAS.CustodyColumnSubnets }}" ></i>
+                                            <i class="fa fa-copy text-muted p-1" role="button" data-placement="right" data-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ (index $root.Nodes $peer.ID).PeerDAS.CustodyColumnSubnets }}" ></i>
                                           </div>
                                         </td>
                                       </tr>
