@@ -17,7 +17,7 @@ import (
 	"github.com/ethpandaops/dora/utils"
 )
 
-const consolidationContractAddr = "0x01aBEa29659e5e97C95107F20bb753cD3e09bBBb"
+const consolidationContractAddr = "0x00b42dbF2194e931E80326D950320f7d9Dbeac02" // TODO: devnet 4: 0x01aBEa29659e5e97C95107F20bb753cD3e09bBBb
 const consolidationDequeueRate = 1
 
 // ConsolidationIndexer is the indexer for the eip-7251 consolidation system contract

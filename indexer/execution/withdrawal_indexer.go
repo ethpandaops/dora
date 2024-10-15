@@ -18,7 +18,7 @@ import (
 	"github.com/ethpandaops/dora/utils"
 )
 
-const withdrawalContractAddr = "0x09Fc772D0857550724b07B850a4323f39112aAaA"
+const withdrawalContractAddr = "0x00A3ca265EBcb825B45F985A16CEFB49958cE017" // TODO: devnet4: 0x09Fc772D0857550724b07B850a4323f39112aAaA
 const withdrawalDequeueRate = 2
 
 // WithdrawalIndexer is the indexer for the eip-7002 consolidation system contract
