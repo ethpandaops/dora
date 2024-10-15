@@ -1,4 +1,28 @@
 {{ define "page" }}
+
+{{ $root := . }}
+
+  <!-- Peer details modal -->
+  <div class="modal modal-xl" id="peerDetailsModal" tabindex="-1" role="dialog" aria-labelledby="peerDetailsModalTitle" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-xl" role="document">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" style="overflow-wrap: anywhere;">
+            <svg id="peerDetailsModalTitleImage" class="peer-table-icon" style="width:50px;height:50px;" data-jdenticon-value="user127"></svg>
+            <span id="peerDetailsModalTitle"></span>
+          </h5>
+          <button type="button" class="btn-close" data-dismiss="modal" aria-label="Close"  onclick="$('#peerDetailsModal').modal('hide')"></button>
+        </div>
+        <div class="modal-body">
+          <div id="peerDetailsModalBody"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-dismiss="modal" onclick="$('#peerDetailsModal').modal('hide')">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="container mt-2">
     <div class="d-md-flex py-2 justify-content-md-between">
       <h1 class="h4 mb-1 mb-md-0"><i class="fas fa-server mx-2"></i>Consensus clients</h1>
@@ -13,7 +37,7 @@
       <div class="accordion" id="network-accordion">
         <div class="accordion-item">
           <h2 class="accordion-header">
-            <button class="accordion-button btn-secondary" style="box-shadow: none;" type="button" data-bs-toggle="collapse" data-bs-target="#collapseOne" aria-expanded="true" aria-controls="collapseOne">
+            <button class="accordion-button btn-secondary" style="box-shadow: none;" type="button" data-toggle="collapse" data-bs-target="#collapseOne" aria-expanded="true" aria-controls="collapseOne">
               <i class="fa-solid fa-circle-nodes" style="margin-right:5px"></i> Client graph
             </button>
           </h2>
@@ -25,12 +49,12 @@
                 </div>
               </div>
               <div class="card-body px-0 peer-nodemap-menu">
-                <div class="btn-group btn-group-sm" role="group" aria-label="Network layouts" style="position: absolute; bottom: 5px; right: 10px; z-index: 10000;">
+                <div class="btn-group btn-group-sm" role="group" aria-label="Network layouts" style="position: absolute; bottom: 5px; right: 10px;">
                   <button type="button" class="btn btn-secondary" disabled>Layouts</button>
-                  <button type="button" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="CoSE" class="btn btn-secondary" onclick='$_network.fitAnimated(cy,$_network.layouts.fcose(data.nodes.length))'><i class="fa-solid fa-share-alt"></i></button>
-                  <button type="button" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Circle" class="btn btn-secondary" onclick='$_network.fitAnimated(cy,$_network.layouts.circle())'><i class="fa-solid fa-circle"></i></button>
-                  <button type="button" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Grid" class="btn btn-secondary" onclick='$_network.fitAnimated(cy,$_network.layouts.grid())'><i class="fa-solid fa-th"></i></button>
-                  <button type="button" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Concentric" class="btn btn-secondary" onclick='$_network.fitAnimated(cy,$_network.layouts.concentric(data.nodes.length))'><i class="fa-solid fa-sun"></i></button>
+                  <button type="button" data-toggle="tooltip" data-placement="top" title="CoSE" class="btn btn-secondary" onclick='$_network.fitAnimated(cy,$_network.layouts.fcose(data.nodes.length))'><i class="fa-solid fa-share-alt"></i></button>
+                  <button type="button" data-toggle="tooltip" data-placement="top" title="Circle" class="btn btn-secondary" onclick='$_network.fitAnimated(cy,$_network.layouts.circle())'><i class="fa-solid fa-circle"></i></button>
+                  <button type="button" data-toggle="tooltip" data-placement="top" title="Grid" class="btn btn-secondary" onclick='$_network.fitAnimated(cy,$_network.layouts.grid())'><i class="fa-solid fa-th"></i></button>
+                  <button type="button" data-toggle="tooltip" data-placement="top" title="Concentric" class="btn btn-secondary" onclick='$_network.fitAnimated(cy,$_network.layouts.concentric(data.nodes.length))'><i class="fa-solid fa-sun"></i></button>
                 </div>
               </div>
             </div>
@@ -38,6 +62,179 @@
         </div>
       </div>
     </div>
+
+    {{ if $root.ShowPeerDASInfos }}
+    <div class="card mt-2">
+      <div class="accordion" id="peerdas-columns-accordion">
+        <div class="accordion-item">
+          <h2 class="accordion-header">
+            <button class="accordion-button btn-secondary" style="box-shadow: none;" type="button" data-toggle="collapse" data-bs-target="#collapseColumnInfos" aria-expanded="true" aria-controls="collapseColumnInfos">
+              <i class="fa-solid fa-table-columns" style="margin-right:5px"></i> PeerDAS column custody
+              <span class="badge badge-pill badge-secondary">Total peers: {{ len $root.Nodes }}</span>
+            </button>
+          </h2>
+          <div id="collapseColumnInfos" class="accordion-collapse collapse show" data-bs-parent="#peerdas-columns-accordion">
+            <div class="accordion-body">
+              <div>
+                {{ if $root.PeerDASInfos.Warnings.HasWarnings }}
+                <button style="float: right" type="button" class="btn btn-warning btn-sm font-weight-bold" data-toggle="modal" data-target="#peerDasWarningsModal" onclick="$('#peerDasWarningsModal').modal('show')">
+                  ⚠️ Show warnings
+                </button>
+                {{ end}}
+                <p>
+                  Spec configuration:
+                  <code>NUMBER_OF_COLUMNS={{ $root.PeerDASInfos.NumberOfColumns}}</code>,
+                  <code>DATA_COLUMN_SIDECAR_SUBNET_COUNT={{ $root.PeerDASInfos.DataColumnSidecarSubnetCount}}</code>
+                  <code>CUSTODY_REQUIREMENT={{ $root.PeerDASInfos.CustodyRequirement}}</code>
+                  Node count: <code>{{ len $root.Nodes }}</code>
+                  <div class="form-check form-switch" style="display: inline-block">
+                    <input class="form-check-input" type="checkbox" role="switch" id="showExternalPeersDAS" onChange="filterDASTablePeers();" checked>
+                    <label class="form-check-label" for="showExternalPeersDAS">External peers</label>
+                  </div>
+                  <div class="form-check form-switch" style="display: inline-block">
+                    <input class="form-check-input" type="checkbox" role="switch" id="showInternalPeersDAS" onChange="filterDASTablePeers();" checked>
+                    <label class="form-check-label" for="showInternalPeersDAS">Internal peers</label>
+                  </div>
+                  <div class="form-check form-switch" style="display: inline-block">
+                    <input class="form-check-input" type="checkbox" role="switch" id="showSupernodePeersDAS" onChange="filterDASTablePeers();" checked>
+                    <label class="form-check-label" for="showSupernodePeersDAS">Supernode peers</label>
+                  </div>
+                  <div class="input-group" style="margin-top:10px;">
+                    <input class="form-control" list="datalistOptions" id="searchDASTablePeers" placeholder="Type to search...">
+                    <button class="btn btn-outline-secondary" type="button" id="clearSearchButton">Clear</button>
+                  </div>
+                  <datalist id="datalistOptions">
+                    {{ range $k, $p := $root.Nodes }}
+                      <option value="{{ $p.PeerID }}">
+                      {{ if ne $p.Alias $p.PeerID }}
+                      <option value="{{ $p.Alias }}">
+                      {{ end }}
+                    {{ end }}
+                  </datalist>
+                </p>
+              </div>
+
+              <!--- Peer DAS Warnings modal -->
+             <div class="modal fade" id="peerDasWarningsModal" tabindex="-1" role="dialog" aria-labelledby="peerDasWarningsModal" aria-hidden="true">
+              <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+                <div class="modal-content">
+                  <div class="modal-header">
+                    <h5 class="modal-title" id="peerDasWarningsModal">👀 PeerDAS: Some problems were detected</h5>
+                    <button type="button" class="btn-close" data-dismiss="modal" aria-label="Close" onclick="$('#peerDasWarningsModal').modal('hide')"></button>
+                  </div>
+                  <div class="modal-body">
+                    <div>
+                      {{ if $root.PeerDASInfos.Warnings.MissingSpecValues }}
+                        <p><b><i class="fa-solid fa-triangle-exclamation text-warning"></i> Missing spec config:</b></p>
+                        <p>Some spec configuration values are missing in the network configuration. Settings have been set to use defaults.</p>
+                        <hr/>
+                      {{ end }}
+                      {{ if gt (len $root.PeerDASInfos.Warnings.EmptyColumns) 0 }}
+                        <p><b><i class="fa-solid fa-triangle-exclamation text-warning"></i> There are {{ len $root.PeerDASInfos.Warnings.EmptyColumns }} empty columns:</b></p>
+                        <p>The following columns are empty and have no peers assigned to them: <code>{{ $root.PeerDASInfos.Warnings.EmptyColumns }}</code></p>
+                        <hr/>
+                      {{ end }}
+                      {{ if gt (len $root.PeerDASInfos.Warnings.MissingENRsPeers) 0 }}
+                      <p><b><i class="fa-solid fa-triangle-exclamation text-warning"></i> Missing ENR on {{ len $root.PeerDASInfos.Warnings.MissingENRsPeers }} nodes:</b></p>
+                      <p>Calculating the right columns for these peers might not be be possible due to the missing ENR.
+                        The default custody requirement of <code>{{ $root.PeerDASInfos.CustodyRequirement}}</code> will be used for these nodes.
+                      </p>
+                      <ul>
+                        {{ range $i, $p := $root.PeerDASInfos.Warnings.MissingENRsPeers }}
+                          <li>
+                            <code class="peerdetails-modal-peer" onclick="showPeerDetailsModal('{{ $p }}')">{{ $p }}</code>
+                          </li>
+                        {{ end }}
+                      </ul>
+                      <hr/>
+                      {{ end }}
+                      {{ if gt (len $root.PeerDASInfos.Warnings.MissingCSCFromENRPeers) 0 }}
+                      <p><b><i class="fa-solid fa-triangle-exclamation text-warning"></i> Missing <code>csc</code> field in ENR on {{ len $root.PeerDASInfos.Warnings.MissingCSCFromENRPeers}} nodes:</b></p>
+                      <p>
+                        Calculating the right columns for these peers might not be be possible due to the missing `csc` field.
+                        The default custody requirement of <code>{{ $root.PeerDASInfos.CustodyRequirement}}</code> will be used for these nodes.
+                      </p>
+                      <ul>
+                        {{ range $i, $p := $root.PeerDASInfos.Warnings.MissingCSCFromENRPeers }}
+                          <li>
+                            <code class="peerdetails-modal-peer" onclick="showPeerDetailsModal('{{ $p }}')">{{ $p }}</code>
+                            {{ $peer := index $root.Nodes $p}}
+                            {{ if ne $peer.Alias $peer.PeerID }}
+                            ( <code>{{ $peer.Alias }}</code> )
+                            {{ end }}
+                          </li>
+                        {{ end }}
+                      </ul>
+                      <hr/>
+                      {{ end }}
+                     </div>
+                  </div>
+                  <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal" onclick="$('#peerDasWarningsModal').modal('hide')">Close</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {{ range $i := until $root.PeerDASInfos.TotalRows }}
+            <div class="table-responsive">
+              <table class="bg-dark text-white-50" style="margin: 0 auto; text-align: center; border: 1px solid">
+                <thead>
+                  <tr style="border-bottom: 1px dashed;">
+                    {{ range $j := until 32 }}
+                      {{ $idx := add ($j) (int (mul (float64 $i) (float64 32))) }}
+                      {{ $peersPerColumn := index $root.PeerDASInfos.ColumnDistribution (int64 $idx) }}
+                      {{ $peerCount := len $peersPerColumn }}
+                      <th style="border-right: 1px solid; font-size: 0.8rem;"
+                        class="
+                        {{ if eq $peerCount 0 }}
+                          bg-danger
+                          text-light
+                        {{ else if lt $peerCount 2 }}
+                          bg-warning
+                          text-dark
+                        {{ end }}">
+                        <span class="text-light">{{ $idx }}</span>
+                        <div class="dastablepeercount">({{ $peerCount }})</div>
+                      </th>
+                    {{ end }}
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    {{ range $j := until 32 }}
+                      {{ $idx := add ($j) (int (mul (float64 $i) (float64 32))) }}
+                      {{ $peersPerColumn := index $root.PeerDASInfos.ColumnDistribution (int64 $idx) }}
+                      {{ $peerCount := len $peersPerColumn }}
+                      <td style="border-right: 1px solid; vertical-align: top; min-width: 39px;">
+                        <div style="display: flex; flex-flow: wrap; margin: 0 auto;">
+                        {{ with $peers := $peersPerColumn }}
+                          {{ range $i, $p := $peers}}
+                            {{ $peerData := index $root.Nodes $p }}
+                            <svg class="peer-table-icon dastablenode node-{{ $p }} {{ $peerData.Type}} {{ if $peerData.PeerDAS.IsSuperNode }}supernode{{end}}"
+                                 data-jdenticon-value="{{ $p }}"
+                                 data-peerid="{{ $p }}" data-alias="{{ $peerData.Alias }}"
+                                 data-toggle="tooltip"
+                                 data-placement="top"
+                                 title="{{ $peerData.Alias }}"
+                                 data-animation=false>
+                            </svg>
+                          {{ end }}
+                        {{ end }}
+                        </div>
+                      </td>
+                    {{ end }}
+                  </tr>
+              </table>
+            </div>
+            {{ end }}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    {{ end }}
+
     <div class="card mt-2">
       <div class="card-body px-0 py-3">
         <div class="table-responsive px-0 py-1">
@@ -61,7 +258,6 @@
               </tr>
             </thead>
               <tbody>
-                {{ $root := . }}
                 {{ range $i, $client := .Clients }}
                   <tr>
                     <td>{{ $client.Index }}</td>
@@ -78,39 +274,39 @@
                       </span>
                     </td>
                     <td style="font-size: 0.8rem; vertical-align: middle;">
-                      <span class="client-node-peer-count text-success" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Inbound Peers">
+                      <span class="client-node-peer-count text-success" data-toggle="tooltip" data-placement="top" title="Inbound Peers">
                         {{ $client.PeersInboundCounter }}
                         <i class="fa-solid fa-arrow-down"></i>
                       </span>
-                      <span class="client-node-peer-count text-danger" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Outbound Peers">
+                      <span class="client-node-peer-count text-danger" data-toggle="tooltip" data-placement="top" title="Outbound Peers">
                         {{ $client.PeersOutboundCounter}}
                         <i class="fa-solid fa-arrow-up"></i>
                       </span>
-                      <span class="client-node-peer-count" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Total Peers">
+                      <span class="client-node-peer-count" data-toggle="tooltip" data-placement="top" title="Total Peers">
                         ({{ len $client.Peers }})
                       </span>
                     </td>
                     <td><a href="/slot/{{ $client.HeadSlot }}">{{ formatAddCommas $client.HeadSlot }}</a></td>
                     <td>
                       <a href="/slot/0x{{ printf "%x" $client.HeadRoot }}" class="text-truncate d-inline-block" style="max-width: 200px">0x{{ printf "%x" $client.HeadRoot }}</a>
-                      <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $client.HeadRoot }}"></i>
+                      <i class="fa fa-copy text-muted p-1" role="button" data-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $client.HeadRoot }}"></i>
                     </td>
                     <td>
                       {{ if eq $client.Status "online" }}
                         <span class="badge rounded-pill text-bg-success">Ready</span>
                       {{ else if eq $client.Status "synchronizing" }}
-                        <span class="badge rounded-pill text-bg-warning" data-bs-toggle="tooltip" data-bs-placement="top" title="Updated: {{ formatRecentTimeShort $client.LastRefresh }}">Synchronizing</span>
+                        <span class="badge rounded-pill text-bg-warning" data-toggle="tooltip" data-placement="top" title="Updated: {{ formatRecentTimeShort $client.LastRefresh }}">Synchronizing</span>
                       {{ else if eq $client.Status "optimistic" }}
-                        <span class="badge rounded-pill text-bg-info" data-bs-toggle="tooltip" data-bs-placement="top" title="Updated: {{ formatRecentTimeShort $client.LastRefresh }}">Optimistic</span>
+                        <span class="badge rounded-pill text-bg-info" data-toggle="tooltip" data-placement="top" title="Updated: {{ formatRecentTimeShort $client.LastRefresh }}">Optimistic</span>
                       {{ else if eq $client.Status "offline" }}
-                        <span class="badge rounded-pill text-bg-secondary" data-bs-toggle="tooltip" data-bs-placement="top" title="Updated: {{ formatRecentTimeShort $client.LastRefresh }}, Error: {{ $client.LastError }}">Disconnected</span>
+                        <span class="badge rounded-pill text-bg-secondary" data-toggle="tooltip" data-placement="top" title="Updated: {{ formatRecentTimeShort $client.LastRefresh }}, Error: {{ $client.LastError }}">Disconnected</span>
                       {{ else }}
                         <span class="badge rounded-pill text-bg-dark">{{ $client.Status }}</span>
                       {{ end }}
                     </td>
                     <td>
                       <span class="text-truncate d-inline-block" style="max-width: 300px">{{ $client.Version }}</span>
-                      <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $client.Version }}"></i>
+                      <i class="fa fa-copy text-muted p-1" role="button" data-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $client.Version }}"></i>
                     </td>
                   </tr>
                   <tr class="collapse peerInfo" style="transition:0s" id="peerInfo-{{ $client.PeerID }}">
@@ -123,112 +319,180 @@
                               <td>Name</td>
                               <td>
                                 <code>{{ $client.Name }}</code>
-                                <i class="fa fa-copy text-muted p-1" role="button" data-bs-placement="right" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $client.Name }}"></i>
+                                <i class="fa fa-copy text-muted p-1" role="button" data-placement="right" data-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $client.Name }}"></i>
                               </td>
                             </tr>
                             <tr>
                               <td>Peer ID</td>
                               <td>
                                 <code>{{ $client.PeerID }}</code>
-                                <i class="fa fa-copy text-muted p-1" role="button" data-bs-placement="right" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $client.PeerID }}"></i>
+                                <i class="fa fa-copy text-muted p-1" role="button" data-placement="right" data-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $client.PeerID }}"></i>
                               </td>
                             </tr>
-                            {{ if $root.ShowSensitivePeerInfos }}
                             <tr>
                               <td>Node ID</td>
                               <td>
-                                <code>{{ $client.NodeID }}</code>
-                                <i class="fa fa-copy text-muted p-1" role="button" data-bs-placement="right" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $client.NodeID }}"></i>
+                                <code>{{ (index $root.Nodes $client.PeerID).NodeID }}</code>
+                                <i class="fa fa-copy text-muted p-1" role="button" data-placement="right" data-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ (index $root.Nodes $client.PeerID).NodeID }}"></i>
                               </td>
                             </tr>
+                            {{ if $root.ShowSensitivePeerInfos }}
                             <tr style="vertical-align: top;">
                               <td>ENR</td>
                               <td>
                                 <div style="word-break: break-all; text-wrap: pretty;">
                                   <code>{{ $client.ENR }}</code>
-                                  <i class="fa fa-copy text-muted p-1" role="button" data-bs-placement="right" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $client.ENR }}"></i>
+                                  <i class="fa fa-copy text-muted p-1" role="button" data-placement="right" data-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $client.ENR }}"></i>
                                 </div>
                               </td>
                             </tr>
                             {{ end }}
                           </tbody>
                         </table>
-                        {{ if $root.ShowSensitivePeerInfos }}
+                      {{ if $root.ShowSensitivePeerInfos }}
                         <div class="client-row-divider">ENR fields</div>
-                          <table class="table table-borderless table-sm client-table-info" style="margin-top:10px">
-                            <tbody>
-                              {{ range $k, $v := $client.ENRKeyValues }}
-                                <tr>
-                                  <td>{{ $k }}</td>
-                                  <td>
-                                    <code>{{ $v }}</code>
-                                    <i class="fa fa-copy text-muted p-1" role="button" data-bs-placement="right" data-bs-toggle="tooltip" title="Copy {{ $k }} to clipboard" data-clipboard-text="{{ $v }}" ></i>
-                                  </td>
-                                </tr>
-                              {{ end }}
-                            </tbody>
-                          </table>
-                        </div>
+                        <table class="table table-borderless table-sm client-table-info" style="margin-top:10px">
+                          <tbody>
+                            {{ range $k, $v := (index $root.Nodes $client.PeerID).ENRKeyValues }}
+                              <tr>
+                                <td>{{ $k }}</td>
+                                <td>
+                                  <code>{{ $v }}</code>
+                                  <i class="fa fa-copy text-muted p-1" role="button" data-placement="right" data-toggle="tooltip" title="Copy {{ $k }} to clipboard" data-clipboard-text="{{ $v }}" ></i>
+                                </td>
+                              </tr>
+                            {{ end }}
+                          </tbody>
+                        </table>
+
+                        {{ if $root.ShowPeerDASInfos }}
+                        <div class="client-row-divider">Peer DAS</div>
+                        <table class="table table-borderless table-sm client-table-info" style="margin-top:10px">
+                          <tbody>
+                              <tr>
+                                <td>Custody columns</td>
+                                <td>
+                                  <div style="word-break: break-all; text-wrap: pretty;">
+                                    <code>{{ (index $root.Nodes $client.PeerID).PeerDAS.CustodyColumns }}</code>
+                                    <i class="fa fa-copy text-muted p-1" role="button" data-placement="right" data-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ (index $root.Nodes $client.PeerID).PeerDAS.CustodyColumns }}" ></i>
+                                  </div>
+                                </td>
+                              </tr>
+                              <tr>
+                                <td>Custody subnets</td>
+                                <td>
+                                  <div style="word-break: break-all; text-wrap: pretty;">
+                                    <code>{{ (index $root.Nodes $client.PeerID).PeerDAS.CustodyColumnSubnets }}</code>
+                                    <i class="fa fa-copy text-muted p-1" role="button" data-placement="right" data-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ (index $root.Nodes $client.PeerID).PeerDAS.CustodyColumnSubnets }}" ></i>
+                                  </div>
+                                </td>
+                              </tr>
+                          </tbody>
+                        </table>
                         {{ end }}
+                      {{ end }}
+                      </div>
                       <div class="client-row-divider">Peers</div>
                       <div>
                         <div class="peer-table-column">
                           {{ range $j, $peer := $client.Peers }}
                             <div style="padding-left: 20px; padding-top:3px">
                               {{ if eq $peer.Direction "inbound" }}
-                              <i class="fa-solid fa-down-long text-success" data-bs-toggle="tooltip" data-bs-placement="left" data-bs-title="Inbound"></i>
+                              <i class="fa-solid fa-down-long text-success" data-toggle="tooltip" data-placement="left" title="Inbound"></i>
                               {{ else }}
-                              <i class="fa-solid fa-up-long text-danger" data-bs-toggle="tooltip" data-bs-placement="left" data-bs-title="Outbound"></i>
+                              <i class="fa-solid fa-up-long text-danger" data-toggle="tooltip" data-placement="left" title="Outbound"></i>
                               {{ end}}
                               <svg class="peer-table-icon {{ $peer.State }}" data-jdenticon-value="{{ $peer.ID }}"></svg>
                               <code>
                                 {{ $peer.ID }}
                               </code>
-                              <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $peer.ID }}"></i>
+                              <i class="fa fa-copy text-muted p-1" role="button" data-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $peer.ID }}"></i>
                               {{ if eq $peer.Type "internal" }}
                               <span class="badge text-bg-secondary">{{ $peer.Alias }}</span>
                               {{ end }}
                             </div>
                             {{ if $root.ShowSensitivePeerInfos }}
                               <div class="client-node-peer-details">
+                                {{ $peerENR := (index $root.Nodes $peer.ID).ENR}}
+                                {{ $reportedPeerENR := $peer.ENR}}
+                                {{ if ne $peerENR $reportedPeerENR }}
+                                <div style="padding:10px; margin: 0; margin-left:10px; margin-right: 25px; word-break: break-all; text-wrap: pretty;" class="alert alert-warning" role="alert">
+                                  <p><i class="fa-solid fa-circle-exclamation" style="margin-right: 10px;"></i>The ENR information was obtained from another node.</p>
+                                  The node <code>{{ $client.Name }}</code> did not have the most up-to-date ENR for this peer.
+                                  {{ if ne $reportedPeerENR "" }}
+                                  <p>Some other node reported a higher sequence number than this one.
+                                    <code>seq={{ index $peer.ENRKeyValues "seq" }}</code> vs <code>seq={{ index (index $root.Nodes $peer.ID).ENRKeyValues "seq" }}</code>
+                                  </p>
+                                  <p>ENR: <code>{{ $reportedPeerENR }}</code></p>
+                                  <p>Decoded ENR: <code>{{ toJson $peer.ENRKeyValues }}</code></p>
+                                  {{ else }}
+                                  The reported ENR was empty (nil).
+                                  {{ end }}
+                                </div>
+                                {{ end }}
                                 <table class="table table-borderless table-sm client-table-info" style="padding-left:0; margin-top:10px;margin-bottom: 10px; margin-left: 10px;">
                                   <tbody>
+                                    <tr>
+                                      <td>Node ID</td>
+                                      <td>
+                                        <code>{{ (index $root.Nodes $peer.ID).NodeID }}</code>
+                                        <i class="fa fa-copy text-muted p-1" role="button" data-placement="right" data-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ (index $root.Nodes $peer.ID).NodeID }}"></i>
+                                      </td>
+                                    </tr>
                                     <tr>
                                       <td>P2P Addr</td>
                                       <td>
                                         <code>{{ $peer.LastSeenP2PAddress }}</code>
-                                        <i class="fa fa-copy text-muted p-1" role="button" data-bs-placement="right" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $peer.LastSeenP2PAddress }}"></i>
+                                        <i class="fa fa-copy text-muted p-1" role="button" data-placement="right" data-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $peer.LastSeenP2PAddress }}"></i>
                                       </td>
                                     </tr>
                                     <tr>
                                       <td>ENR</td>
                                       <td>
                                         <div style="word-break: break-all; text-wrap: pretty;">
-                                          <code>{{ if eq $peer.ENR "" }}Unknown{{ else }}{{ $peer.ENR }}{{ end }}</code>
-                                          <i class="fa fa-copy text-muted p-1" role="button" data-bs-placement="right" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $peer.ENR }}"></i>
+                                          <code>{{ if eq $peerENR "" }}Unknown{{ else }}{{ $peerENR }}{{ end }}</code>
+                                          <i class="fa fa-copy text-muted p-1" role="button" data-placement="right" data-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $peerENR }}"></i>
                                         </div>
                                       </td>
                                     </tr>
-                                    {{ if ne $peer.ENR "" }}
-                                      <tr>
-                                        <td>Node ID</td>
-                                        <td>
-                                          <code>{{ $peer.NodeID }}</code>
-                                          <i class="fa fa-copy text-muted p-1" role="button" data-bs-placement="right" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $peer.NodeID }}"></i>
-                                        </td>
-                                      </tr>
-                                      {{ range $k, $v := $peer.ENRKeyValues }}
+                                    {{ if ne $peerENR "" }}
+                                      {{ range $k, $v := (index $root.Nodes $peer.ID).ENRKeyValues }}
                                       <tr>
                                         <td>{{ $k }}</td>
                                         <td>
                                           <code>{{ $v }}</code>
-                                          <i class="fa fa-copy text-muted p-1" role="button" data-bs-placement="right" data-bs-toggle="tooltip" title="Copy {{ $k }} to clipboard" data-clipboard-text="{{ $v }}"></i>
+                                          <i class="fa fa-copy text-muted p-1" role="button" data-placement="right" data-toggle="tooltip" title="Copy {{ $k }} to clipboard" data-clipboard-text="{{ $v }}"></i>
                                         </td>
                                       </tr>
                                       {{ end }}
                                     {{ end }}
                                   </tbody>
                                 </table>
+                              {{ if $root.ShowPeerDASInfos }}
+                                <div class="client-row-divider">Peer DAS</div>
+                                <table class="table table-borderless table-sm client-table-info" style="padding-left:0; margin-top:10px;margin-bottom: 10px; margin-left: 10px;">
+                                  <tbody>
+                                      <tr>
+                                        <td>Custody columns</td>
+                                        <td>
+                                          <div style="word-break: break-all; text-wrap: pretty;">
+                                            <code>{{ (index $root.Nodes $peer.ID).PeerDAS.CustodyColumns }}</code>
+                                            <i class="fa fa-copy text-muted p-1" role="button" data-placement="right" data-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ (index $root.Nodes $peer.ID).PeerDAS.CustodyColumns }}" ></i>
+                                          </div>
+                                        </td>
+                                      </tr>
+                                      <tr>
+                                        <td>Custody subnets</td>
+                                        <td>
+                                          <div style="word-break: break-all; text-wrap: pretty;">
+                                            <code>{{ (index $root.Nodes $peer.ID).PeerDAS.CustodyColumnSubnets }}</code>
+                                            <i class="fa fa-copy text-muted p-1" role="button" data-placement="right" data-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ (index $root.Nodes $peer.ID).PeerDAS.CustodyColumnSubnets }}" ></i>
+                                          </div>
+                                        </td>
+                                      </tr>
+                                  </tbody>
+                                </table>
+                              {{ end }}
                               </div>
                             {{ end}}
                           {{ end }}
@@ -271,6 +535,240 @@
   var container = document.getElementById("nodemap");
   var data = {{ .PeerMap }};
   var cy = $_network.create(container, data);
+
+  var nodes = {{ .Nodes }};
+
+  var showPeerDetailsModal = function(peerID){
+    jdenticon.update("#peerDetailsModalTitleImage", peerID);
+    $('#peerDetailsModalTitle').html(`${nodes[peerID].alias}`);
+
+    let peerDetailsTemplate = `
+    <table class="table table-borderless table-sm">
+      <tr>
+        <td style="min-width:90px;">Peer ID</td>
+        <td><code>${peerID}</code></td>
+      </tr>
+      <tr>
+        <td>Node ID</td>
+        <td><code>${nodes[peerID].node_id}</code></td>
+      </tr>
+      <tr>
+        <td>ENR</td>
+        <td><code style="word-break: break-all; text-wrap: pretty;">${nodes[peerID].enr?nodes[peerID].enr:"Unknown"}</code></td>
+      </tr>
+    `;
+
+    if (nodes[peerID].enr_kv) {
+      peerDetailsTemplate += `
+      <tr>
+        <td colspan="2" style="font-weight: 700;padding-top: 5px;padding-bottom: 5px; text-align: center;border-top:1px dashed; border-bottom:1px dashed">ENR Fields</td>
+      </tr>
+      ${Object.entries(nodes[peerID].enr_kv).map(([key, value]) => `
+        <tr>
+          <td style="padding-right:15px; vertical-align:top">${key}</td>
+          <td><code style="word-break: break-all; text-wrap: pretty;">${value}</code></td>
+        </tr>
+      `).join('')}
+      `;
+    }
+
+    peerDetailsTemplate += `
+      <tr>
+        <td colspan="2" style="font-weight: 700;padding-top: 5px;padding-bottom: 5px; text-align: center;border-top:1px dashed; border-bottom:1px dashed">Peer DAS</td>
+      </tr>
+      <tr>
+        <td>Supernode</td>
+        <td><code>${nodes[peerID].peer_das.is_super_node}</code></td>
+      </tr>
+      <tr>
+        <td>CSC</td>
+        <td><code>${nodes[peerID].peer_das.custody_subnet_count}</code></td>
+      </tr>
+      <tr>
+        <td>Columns</td>
+        <td><code style="word-break: break-all; text-wrap: pretty;">${nodes[peerID].peer_das.custody_columns}</code></td>
+      </tr>
+      <tr>
+        <td>Subnets</td>
+        <td><code style="word-break: break-all; text-wrap: pretty;">${nodes[peerID].peer_das.custody_column_subnets}</code></td>
+      </tr>
+      <tr>
+        <td colspan="2" style="font-weight: 700;padding-top: 5px;padding-bottom: 5px; text-align: center;border-top:1px dashed; border-bottom:1px dashed">Peers</td>
+      </tr>
+    `;
+
+    if (nodes[peerID].peers_in != null){
+      nodes[peerID].peers_in.forEach(element => {
+      peerDetailsTemplate += `
+        <tr>
+          <td colspan="2">
+            <i class="fa-solid fa-down-long text-success" data-toggle="tooltip" data-placement="left" title="Inbound""></i>
+            <svg class="peer-table-icon peer-details-jdenticon" data-jdenticon-value="${element}"></svg>
+            <span class="peerdetails-modal-peer" onclick="showPeerDetailsModal('${element}')">
+              <code>${element}</code> ${nodes[element].alias!=element?"<span class='badge text-bg-secondary'>"+nodes[element].alias+"</span>":""}
+            </span>
+          </td>
+        `;
+      });
+    }
+
+    if (nodes[peerID].peers_out != null){
+      nodes[peerID].peers_out.forEach(element => {
+      peerDetailsTemplate += `
+        <tr>
+          <td colspan="2">
+            <i class="fa-solid fa-up-long text-danger" data-toggle="tooltip" data-placement="left" title="Outbound""></i>
+            <svg class="peer-table-icon peer-details-jdenticon" data-jdenticon-value="${element}"></svg>
+            <span class="peerdetails-modal-peer" onclick="showPeerDetailsModal('${element}')">
+              <code>${element}</code> ${nodes[element].alias!=element?"<span class='badge text-bg-secondary'>"+nodes[element].alias+"</span>":""}
+            </span>
+          </td>
+        `;
+      });
+    }
+    peerDetailsTemplate += `</table>`;
+
+    //peerDetailsTemplate += `<pre><code>${JSON.stringify(nodes[peerID], null, 2)}</code></pre>`;
+    $('#peerDetailsModalBody').html(peerDetailsTemplate)
+    jdenticon.update(".peer-details-jdenticon",null)
+    $('#peerDetailsModal').modal('show');
+  }
+
+  var lastClickedNode = null;
+
+  // PeerDASTable Filter
+  function filterDASTablePeers() {
+    // Get the status of each checkbox
+    var showExternal = $('#showExternalPeersDAS').is(':checked');
+    var showInternal = $('#showInternalPeersDAS').is(':checked');
+    var showSupernode = $('#showSupernodePeersDAS').is(':checked');
+
+    console.log(showExternal, showInternal, showSupernode);
+
+    // For each node, show or hide based on the filter status
+    $('.dastablenode').each(function() {
+      var isExternal = $(this).hasClass('external');
+      var isInternal = $(this).hasClass('internal');
+      var isSupernode = $(this).hasClass('supernode');
+
+
+      console.log(isExternal, isInternal, isSupernode);
+
+      // Show supernodes if the checkbox is checked
+      if (isSupernode && showSupernode) {
+        $(this).show();
+        return;
+      } else if (isSupernode && !showSupernode) {
+        $(this).hide();
+        return;
+      }
+
+      // Show the node if it matches any of the active types
+      if ((showExternal && isExternal) ||
+          (showInternal && isInternal)) {
+        $(this).show();
+      } else {
+        $(this).hide();
+      }
+
+
+
+
+    });
+
+  }
+
+  // PeerDASTable Hover
+  let hoverTimeout;
+  $('.dastablenode').hover(
+    function() {
+      hoverTimeout = setTimeout(() => {
+        const searchText = $('#searchDASTablePeers').val().trim().toLowerCase();
+
+        if (!searchText && lastClickedNode == null) {
+          const $target = $(this);
+          const selector = $target.attr('class').split(/\s+/).map(cls => cls!=""?'.' + cls:"").join('');
+          $(selector).addClass('highlight');
+          $('.dastablenode').addClass('blur');
+        }
+      }, 500); //500ms delay before highlighting
+    },
+    function() {
+      clearTimeout(hoverTimeout); // Clear the timeout if the mouse leaves before 2 seconds
+      const searchText = $('#searchDASTablePeers').val().trim().toLowerCase();
+
+      if (!searchText && lastClickedNode == null) {
+        const $target = $(this);
+        const selector = $target.attr('class').split(/\s+/).map(cls => cls!=""?'.' + cls:"").join('');
+        $(selector).removeClass('highlight');
+        $('.dastablenode').removeClass('blur');
+      }
+    }
+  );
+
+  // PeerDASTable Click
+  $('.dastablenode').on('click', function() {
+    const $target = $(this);
+    const selector = $target.attr('class').split(/\s+/).map(cls => '.' + cls).join('');
+
+    const peerID = $target.data('peerid').toString();
+
+
+    showPeerDetailsModal(peerID);
+
+    // Remove highlight/blur from the last clicked node
+    if (lastClickedNode != null) {
+      $(lastClickedNode).removeClass('highlight');
+      $('.dastablenode').removeClass('blur');
+    }
+
+    // Highlight clicked node and blur others
+    $(selector).addClass('highlight');
+    $('.dastablenode').not(selector).addClass('blur');
+
+    // Store the clicked node
+    lastClickedNode = selector;
+
+    // Add node to searchtext
+    $('#searchDASTablePeers').val(nodes[peerID].alias).trigger("input");
+
+  });
+
+  // Event listener to remove highlight when clicking outside
+  $(document).on('click', function(event) {
+    const searchText = $('#searchDASTablePeers').val().trim().toLowerCase();
+
+    if (!searchText && !$(event.target).closest('.dastablenode').length) {
+      // Remove highlight and blur when clicking outside a .dastablenode element
+      $('.dastablenode').removeClass('highlight blur');
+      lastClickedNode = null;
+    }
+  });
+
+  // PeerDASTable search
+  $('#searchDASTablePeers').on('input', function() {
+    const searchText = $(this).val().trim().toLowerCase();
+
+    if (searchText) {
+      $('.dastablenode').each(function() {
+        const peerId = $(this).data('peerid').toString().toLowerCase();
+        const alias = $(this).data('alias').toString().toLowerCase();
+        if (peerId.includes(searchText) || alias.includes(searchText)) {
+          $(this).addClass('highlight').removeClass('blur');  // Add 'highlight' if matches, remove 'blur'
+        } else {
+          $(this).addClass('blur').removeClass('highlight');  // Add 'blur' if doesn't match, remove 'highlight'
+        }
+      });
+    } else {
+      $('.dastablenode').removeClass('blur highlight');  // Remove both classes if search text is cleared
+    }
+  });
+
+  // Clear search input
+  $('#clearSearchButton').click(function(){
+    $('#searchDASTablePeers').val(''); // Clear the input
+  });
+
 </script>
 {{ end }}
 {{ define "css" }}
