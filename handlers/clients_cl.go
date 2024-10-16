@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -141,11 +142,21 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 		Clients:                []*models.ClientsCLPageDataClient{},
 		PeerMap:                buildCLPeerMapData(),
 		ShowSensitivePeerInfos: utils.Config.Frontend.ShowSensitivePeerInfos,
+		ShowPeerDASInfos:       utils.Config.Frontend.ShowPeerDASInfos,
+		PeerDASInfos: &models.ClientCLPagePeerDAS{
+			Warnings: models.ClientCLPageDataPeerDASWarnings{
+				MissingENRsPeers:       []string{},
+				MissingCSCFromENRPeers: []string{},
+				EmptyColumns:           []uint64{},
+			},
+		},
+		Nodes: make(map[string]*models.ClientCLNode),
 	}
 	chainState := services.GlobalBeaconService.GetChainState()
 
 	var cacheTime time.Duration
-	if specs := chainState.GetSpecs(); specs != nil {
+	specs := chainState.GetSpecs()
+	if specs != nil {
 		cacheTime = specs.SecondsPerSlot
 	} else {
 		cacheTime = 1 * time.Second
@@ -163,6 +174,21 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 	for _, client := range services.GlobalBeaconService.GetConsensusClients() {
 		lastHeadSlot, lastHeadRoot := client.GetLastHead()
 
+		id := client.GetNodeIdentity()
+		if id == nil {
+			continue
+		}
+
+		// Add client to global nodes map
+		if _, ok := pageData.Nodes[id.PeerID]; !ok {
+			pageData.Nodes[id.PeerID] = &models.ClientCLNode{
+				PeerID: id.PeerID,
+				Alias:  client.GetName(),
+				Type:   "internal",
+				ENR:    id.Enr,
+			}
+		}
+
 		peers := client.GetNodePeers()
 		resPeers := []*models.ClientCLPageDataClientPeers{}
 
@@ -175,17 +201,14 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 				peerType = "internal"
 			}
 
-			enrKeyValues := map[string]interface{}{}
-			var nodeID string
-
-			if peer.Enr != "" { // Some clients might not announce the ENR of their peers
-				parsedEnr, err := utils.DecodeENR(peer.Enr)
+			peerENRKeyValues := map[string]interface{}{}
+			if peer.Enr != "" {
+				rec, err := utils.DecodeENR(peer.Enr)
 				if err != nil {
-					logrus.WithFields(logrus.Fields{"client": client.GetName(), "peer_enr": peer.Enr}).Error("failed to decode peer enr. ", err)
-					parsedEnr = &enr.Record{}
+					logrus.WithFields(logrus.Fields{"node": client.GetName(), "peer": peer.PeerID, "enr": peer.Enr}).Error("failed to decode peer enr. ", err)
+					rec = &enr.Record{}
 				}
-				enrKeyValues = utils.GetKeyValuesFromENR(parsedEnr)
-				nodeID = utils.GetNodeIDFromENR(parsedEnr)
+				peerENRKeyValues = utils.GetKeyValuesFromENR(rec)
 			}
 
 			resPeers = append(resPeers, &models.ClientCLPageDataClientPeers{
@@ -195,38 +218,54 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 				Alias:              peerAlias,
 				Type:               peerType,
 				ENR:                peer.Enr,
-				ENRKeyValues:       enrKeyValues,
-				NodeID:             nodeID,
+				ENRKeyValues:       peerENRKeyValues,
 				LastSeenP2PAddress: peer.LastSeenP2PAddress,
 			})
 
+			// Add peer to global nodes map
+			_, ok := pageData.Nodes[peer.PeerID]
+			if !ok {
+				pageData.Nodes[peer.PeerID] = &models.ClientCLNode{
+					PeerID: peer.PeerID,
+					Alias:  peerAlias,
+					Type:   peerType,
+					ENR:    peer.Enr,
+				}
+			}
+
+			node := pageData.Nodes[peer.PeerID]
+			if node.ENR == "" && peer.Enr != "" {
+				node.ENR = peer.Enr
+			} else if node.ENR != "" && peer.Enr != "" {
+				// Need to compare `seq` field from ENRs and only store highest
+				nodeENR, errA := utils.DecodeENR(node.ENR)
+				if errA != nil {
+					logrus.WithFields(logrus.Fields{"node": node.Alias, "enr": node.ENR}).Error("failed to decode enr of a node ", errA)
+				}
+				peerENR, errB := utils.DecodeENR(peer.Enr)
+				if errB != nil {
+					logrus.WithFields(logrus.Fields{"node": node.Alias, "peer": peer.PeerID, "enr": peer.Enr}).Error("failed to decode enr of a peer ", errB)
+				}
+				if errA == nil && errB == nil && peerENR.Seq() > nodeENR.Seq() {
+					node.ENR = peer.Enr // peerENR has higher sequence number, so override.
+				}
+			}
+
+			// Increase peer direction counter
 			if peer.Direction == "inbound" {
 				inPeerCount++
 			} else {
 				outPeerCount++
 			}
 		}
+
+		// Sort peers by type and alias
 		sort.Slice(resPeers, func(i, j int) bool {
 			if resPeers[i].Type == resPeers[j].Type {
 				return resPeers[i].Alias < resPeers[j].Alias
 			}
 			return resPeers[i].Type > resPeers[j].Type
 		})
-
-		id := client.GetNodeIdentity()
-		if id == nil {
-			continue
-		}
-
-		rec, err := utils.DecodeENR(id.Enr)
-		if err != nil {
-			logrus.WithFields(logrus.Fields{"client": client.GetName(), "enr": id.Enr}).Error("failed to decode enr. ", err)
-			rec = &enr.Record{}
-		}
-
-		enrkv := utils.GetKeyValuesFromENR(rec)
-
-		nodeID := utils.GetNodeIDFromENR(rec)
 
 		resClient := &models.ClientsCLPageDataClient{
 			Index:                 int(client.GetIndex()) + 1,
@@ -235,8 +274,6 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 			Peers:                 resPeers,
 			PeerID:                id.PeerID,
 			ENR:                   id.Enr,
-			ENRKeyValues:          enrkv,
-			NodeID:                nodeID,
 			P2PAddresses:          id.P2PAddresses,
 			DisoveryAddresses:     id.DiscoveryAddresses,
 			AttestationSubnetSubs: id.Metadata.Attnets,
@@ -257,6 +294,158 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 
 	}
 	pageData.ClientCount = uint64(len(pageData.Clients))
+
+	// Add peer in/out infos to global nodes map
+	for _, edge := range pageData.PeerMap.ClientDataMapEdges {
+		pageData.Nodes[edge.From].PeersOut = append(pageData.Nodes[edge.From].PeersOut, edge.To)
+		pageData.Nodes[edge.To].PeersIn = append(pageData.Nodes[edge.To].PeersIn, edge.From)
+	}
+
+	columnDistribution := make(map[uint64]map[string]bool)
+	resultColumnDistribution := make(map[uint64][]string)
+
+	// Verify and parse PeerDAS spec config
+	if specs != nil {
+		if specs.NumberOfColumns != nil {
+			pageData.PeerDASInfos.NumberOfColumns = *specs.NumberOfColumns
+		} else {
+			pageData.PeerDASInfos.NumberOfColumns = 128
+			logrus.Warnf("NUMBER_OF_COLUMNS is not defined in spec, defaulting to %d", pageData.PeerDASInfos.NumberOfColumns)
+			pageData.PeerDASInfos.Warnings.MissingSpecValues = true
+			pageData.PeerDASInfos.Warnings.HasWarnings = true
+		}
+
+		if specs.DataColumnSidecarSubnetCount != nil {
+			pageData.PeerDASInfos.DataColumnSidecarSubnetCount = *specs.DataColumnSidecarSubnetCount
+		} else {
+			pageData.PeerDASInfos.DataColumnSidecarSubnetCount = 128
+			logrus.Warnf("DATA_COLUMN_SIDECAR_SUBNET_COUNT is not defined in spec, defaulting to %d", pageData.PeerDASInfos.DataColumnSidecarSubnetCount)
+			pageData.PeerDASInfos.Warnings.MissingSpecValues = true
+			pageData.PeerDASInfos.Warnings.HasWarnings = true
+		}
+
+		if specs.CustodyRequirement != nil {
+			pageData.PeerDASInfos.CustodyRequirement = *specs.CustodyRequirement
+		} else {
+			pageData.PeerDASInfos.CustodyRequirement = 4
+			logrus.Warnf("CUSTODY_REQUIREMENT is not defined in spec, defaulting to %d", pageData.PeerDASInfos.CustodyRequirement)
+			pageData.PeerDASInfos.Warnings.MissingSpecValues = true
+			pageData.PeerDASInfos.Warnings.HasWarnings = true
+		}
+	}
+
+	// Calculate additional fields for nodes: ENR key values, Node ID, Custody Columns, Custody Column Subnets
+	for _, v := range pageData.Nodes {
+
+		// Calculate K:V pairs for ENR
+		if v.ENR != "" {
+			rec, err := utils.DecodeENR(v.ENR)
+			if err != nil {
+				logrus.WithFields(logrus.Fields{"node": v.Alias, "enr": v.ENR}).Error("failed to decode enr. ", err)
+				rec = &enr.Record{}
+			}
+			v.ENRKeyValues = utils.GetKeyValuesFromENR(rec)
+		} else {
+			pageData.PeerDASInfos.Warnings.MissingENRsPeers = append(pageData.PeerDASInfos.Warnings.MissingENRsPeers, v.PeerID)
+			pageData.PeerDASInfos.Warnings.HasWarnings = true
+		}
+
+		// Calculate node ID
+		nodeID, err := utils.ConvertPeerIDStringToEnodeID(v.PeerID)
+		if err != nil {
+			logrus.WithFields(logrus.Fields{"node": v.Alias, "peer_id": v.PeerID}).Error("failed to convert peer id to enode id. ", err)
+		}
+		v.NodeID = nodeID.String()
+
+		custodySubnetCount := pageData.PeerDASInfos.CustodyRequirement
+
+		if cscHex, ok := v.ENRKeyValues["csc"]; ok {
+			val, err := strconv.ParseUint(cscHex.(string), 0, 64)
+			if err != nil {
+				logrus.WithFields(logrus.Fields{"node": v.Alias, "peer_id": v.PeerID, "csc": cscHex.(string)}).Error("failed to decode csc. ", err)
+			} else {
+				custodySubnetCount = val
+			}
+		} else {
+			pageData.PeerDASInfos.Warnings.MissingCSCFromENRPeers = append(pageData.PeerDASInfos.Warnings.MissingCSCFromENRPeers, v.PeerID)
+			pageData.PeerDASInfos.Warnings.HasWarnings = true
+		}
+
+		// Calculate custody columns and subnets for peer DAS
+		resColumns, err := utils.CustodyColumnsSlice(nodeID, custodySubnetCount, pageData.PeerDASInfos.NumberOfColumns, pageData.PeerDASInfos.DataColumnSidecarSubnetCount)
+		if err != nil {
+			logrus.WithFields(logrus.Fields{"node": v.Alias, "node_id": nodeID}).Error("failed to get custody columns. ", err)
+		}
+
+		resSubnets, err := utils.CustodyColumnSubnetsSlice(nodeID, custodySubnetCount, pageData.PeerDASInfos.DataColumnSidecarSubnetCount)
+		if err != nil {
+			logrus.WithFields(logrus.Fields{"client": v.Alias, "node_id": nodeID}).Error("failed to get custody column subnets. ", err)
+		}
+
+		// Transform the custody columns to a map for easier access
+		for _, idx := range resColumns {
+			if _, ok := columnDistribution[idx]; !ok {
+				columnDistribution[idx] = make(map[string]bool)
+			}
+			columnDistribution[idx][v.PeerID] = true
+		}
+
+		peerDASInfo := models.ClientCLPageDataPeerDAS{
+			CustodyColumns:       resColumns,
+			CustodyColumnSubnets: resSubnets,
+			CustodySubnetCount:   custodySubnetCount,
+			IsSuperNode:          uint64(len(resColumns)) == pageData.PeerDASInfos.NumberOfColumns,
+		}
+		v.PeerDAS = &peerDASInfo
+	}
+
+	// Transform the column distribution to a slice
+	for k, v := range columnDistribution {
+		for key := range v {
+			if _, ok := resultColumnDistribution[k]; !ok {
+				resultColumnDistribution[k] = []string{}
+			}
+			resultColumnDistribution[k] = append(resultColumnDistribution[k], key)
+		}
+
+		// Sort the peer IDs by type and alias
+		sort.Slice(resultColumnDistribution[k], func(i, j int) bool {
+			pA := resultColumnDistribution[k][i]
+			pB := resultColumnDistribution[k][j]
+			nodeA := pageData.Nodes[pA]
+			nodeB := pageData.Nodes[pB]
+
+			// Compare supernodes
+			if nodeA.PeerDAS.IsSuperNode != nodeB.PeerDAS.IsSuperNode {
+				return nodeA.PeerDAS.IsSuperNode
+			}
+			// Compare node types
+			if nodeA.Type != nodeB.Type {
+				return nodeA.Type > nodeB.Type
+			}
+
+			// If types are the same, compare CustodyColumns length
+			lenA := len(nodeA.PeerDAS.CustodyColumns)
+			lenB := len(nodeB.PeerDAS.CustodyColumns)
+			if lenA != lenB {
+				return lenA > lenB
+			}
+
+			// If both types and CustodyColumns lengths are the same, compare aliases
+			return nodeA.Alias < nodeB.Alias
+		})
+	}
+
+	// Check for empty columns
+	for i := uint64(0); i < pageData.PeerDASInfos.NumberOfColumns; i++ {
+		if _, ok := resultColumnDistribution[i]; !ok {
+			pageData.PeerDASInfos.Warnings.EmptyColumns = append(pageData.PeerDASInfos.Warnings.EmptyColumns, i)
+			pageData.PeerDASInfos.Warnings.HasWarnings = true
+		}
+	}
+
+	pageData.PeerDASInfos.TotalRows = int(pageData.PeerDASInfos.NumberOfColumns) / 32
+	pageData.PeerDASInfos.ColumnDistribution = resultColumnDistribution
 
 	return pageData, cacheTime
 }

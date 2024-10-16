@@ -138,3 +138,59 @@ Client peers table
   margin-left: -50px;
   margin-top: -50px;
 }
+
+.dastablepeercount {
+  font-weight:300;
+  font-size: 0.6rem;
+  line-height: 0.5rem;
+  margin-bottom: 2px;
+}
+
+.dastablenode {
+  cursor: pointer;
+  max-width: 25px;
+  margin: 0 auto;
+  border: 1px solid #cacaca;
+  -webkit-transition: opacity 0.3s ease;
+  -moz-transition: opacity 0.3s ease;
+  -o-transition: opacity 0.3s ease;
+  transition: opacity 0.3s ease;
+  width: 17px;
+  height: 17px;
+
+  border-radius: 0;
+}
+
+.dastablenode.internal {
+  border-color: #ffa500ab
+}
+
+.dastablenode.external {
+  border-color: #075e4d
+}
+
+.dastablenode.supernode {
+  background-color: rgb(0 246 255 / 20%);
+  border-radius: 0;
+}
+
+.dastablenode.supernode.highlight {
+  border-width: 1px !important;
+}
+
+.dastablenode.highlight {
+  opacity: 1 !important;
+  border: 1px solid yellow !important;
+}
+
+.dastablenode.blur {
+  opacity: 0.2;
+}
+
+.peerdetails-modal-peer{
+  cursor: pointer;
+}
+
+.peerdetails-modal-peer:hover{
+  font-weight: 600;
+}

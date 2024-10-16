@@ -331,6 +331,8 @@ func (indexer *Indexer) StartIndexer() {
 			block.isInFinalizedDb = true
 		}
 
+		indexer.blockCache.addBlockToExecBlockMap(block)
+
 		blockFork := indexer.forkCache.getForkById(block.forkId)
 		if blockFork != nil {
 			if blockFork.headBlock == nil || blockFork.headBlock.Slot < block.Slot {

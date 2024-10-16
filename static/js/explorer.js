@@ -2,6 +2,7 @@
 (function() {
   window.addEventListener('DOMContentLoaded', function() {
     initControls();
+    modalFixes();
     window.setInterval(updateTimers, 1000);
     initHeaderSearch();
   });
@@ -13,14 +14,32 @@
     tooltipDict: tooltipDict,
   };
 
+  function modalFixes() {
+    // Fix bootstrap backdrop stacking when having multiple modals
+    $(document).on('show.bs.modal', '.modal', function() {
+      const offset = (10 * $('.modal:visible').length);
+      const zIndex = 2000 + offset;
+      $(this).css('z-index', zIndex);
+      setTimeout(() => $('.modal-backdrop').not('.modal-stack').css('z-index', zIndex - offset - 1).addClass('modal-stack'));
+    });
+    // Fix bootstrap scrolling stacking when having multiple modals
+    $(document).on('hidden.bs.modal', '.modal', function(){
+      $('.modal:visible').length && $(document.body).addClass('modal-open')
+    });
+  }
+
   function initControls() {
-    // init tooltips
+    // init tooltips:
+    // NOTE: `data-bs-toogle="tooltip"`` tooltips will also get cleaned up if their relevant element is removed from the DOM
     document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(initTooltip);
     cleanupTooltips();
+    // NOTE: `data-toogle="tooltip"` tooltips will not get cleaned up if they are removed from the DOM
+    $('[data-toggle="tooltip"]').tooltip()
 
     // init clipboard buttons
-    document.querySelectorAll("[data-clipboard-text]").forEach(initCopyBtn);
-    document.querySelectorAll("[data-clipboard-target]").forEach(initCopyBtn);
+    var clipboard = new ClipboardJS('[data-clipboard-text], [data-clipboard-target]');
+    clipboard.on("success", onClipboardSuccess);
+    clipboard.on("error", onClipboardError);
   }
 
   function initTooltip(el) {
@@ -44,15 +63,6 @@
       ref.tooltip.dispose();
       delete explorer.tooltipDict[idx];
     });
-  }
-
-  function initCopyBtn(el) {
-    if($(el).data("clipboard-init"))
-      return;
-    $(el).data("clipboard-init", true);
-    var clipboard = new ClipboardJS(el);
-    clipboard.on("success", onClipboardSuccess);
-    clipboard.on("error", onClipboardError);
   }
 
   function onClipboardSuccess(e) {
@@ -81,7 +91,7 @@
       var time = timerEl.getAttribute("data-timer");
       var textEls = Array.prototype.filter.call(timerEl.querySelectorAll("*"), function(el) { return el.firstChild && el.firstChild.nodeType === 3 });
       var textEl = textEls.length ? textEls[0] : timerEl;
-      
+
       textEl.innerText = renderRecentTime(time);
     });
   }
@@ -256,19 +266,19 @@
         },
       }
     )
-  
+
     searchEl.on("input", function (input) {
       $(".tt-suggestion").first().addClass("tt-cursor")
     })
-  
+
     jQuery(".tt-menu").on("mouseenter", function () {
       $(".tt-suggestion").first().removeClass("tt-cursor")
     })
-  
+
     jQuery(".tt-menu").on("mouseleave", function () {
       $(".tt-suggestion").first().addClass("tt-cursor")
     })
-  
+
     searchEl.on("typeahead:select", function (ev, sug) {
       if (sug.root !== undefined) {
         if (sug.orphaned) {
@@ -294,5 +304,5 @@
     })
   }
 
-  
+
 })()
