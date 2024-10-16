@@ -147,6 +147,6 @@ require (
 	rsc.io/tmplfunc v0.0.3 // indirect
 )
 
-replace github.com/attestantio/go-eth2-client => github.com/attestantio/go-eth2-client v0.0.0-20240701211822-0a60485fce68
+replace github.com/attestantio/go-eth2-client => github.com/attestantio/go-eth2-client v0.0.0-20241006200801-8fa702e3a895
 
 replace github.com/ethereum/go-ethereum => github.com/lightclient/go-ethereum v0.0.0-20240907155054-183e7b702a00
