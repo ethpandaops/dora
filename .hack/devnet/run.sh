@@ -22,6 +22,9 @@ fi
 # Get chain config
 kurtosis files inspect "$ENCLAVE_NAME" el_cl_genesis_data ./config.yaml | tail -n +2 > "${__dir}/generated-chain-config.yaml"
 
+# Get validator ranges
+kurtosis files inspect "$ENCLAVE_NAME" validator-ranges validator-ranges.yaml | tail -n +2 > "${__dir}/generated-validator-ranges.yaml"
+
 ## Generate Dora config
 ENCLAVE_UUID=$(kurtosis enclave inspect "$ENCLAVE_NAME" --full-uuids | grep 'UUID:' | awk '{print $2}')
 
@@ -36,9 +39,6 @@ EXECUTION_NODES=$(docker ps -aq -f "label=enclave_uuid=$ENCLAVE_UUID" \
 cat <<EOF > "${__dir}/generated-dora-config.yaml"
 logging:
   outputLevel: "info"
-chain:
-  name: $ENCLAVE_NAME
-  configPath: "${__dir}/generated-chain-config.yaml"
 server:
   host: "0.0.0.0"
   port: "8080"
@@ -50,6 +50,7 @@ frontend:
   siteName: "Dora the Explorer"
   siteSubtitle: "$ENCLAVE_NAME - Kurtosis"
   ethExplorerLink: ""
+  validatorNamesYaml: "${__dir}/generated-validator-ranges.yaml"
   showSensitivePeerInfos: true
 beaconapi:
   localCacheSize: 10

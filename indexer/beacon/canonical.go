@@ -376,7 +376,7 @@ func (indexer *Indexer) GetCanonicalValidatorSet(overrideForkId *ForkKey) []*v1.
 		canonicalHead = dependentBlock
 
 		epochStats = indexer.epochCache.getEpochStats(epoch, dependentBlock.Root)
-		if epochStats == nil || epochStats.dependentState == nil || epochStats.dependentState.loadingStatus != 2 {
+		if epoch > 0 && (epochStats == nil || epochStats.dependentState == nil || epochStats.dependentState.loadingStatus != 2) {
 			continue // retry previous state
 		}
 
