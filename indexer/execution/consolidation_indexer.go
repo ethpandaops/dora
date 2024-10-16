@@ -18,7 +18,6 @@ import (
 )
 
 const consolidationContractAddr = "0x00b42dbF2194e931E80326D950320f7d9Dbeac02" // TODO: devnet 4: 0x01aBEa29659e5e97C95107F20bb753cD3e09bBBb
-const consolidationDequeueRate = 1
 
 // ConsolidationIndexer is the indexer for the eip-7251 consolidation system contract
 type ConsolidationIndexer struct {
@@ -46,6 +45,8 @@ func NewConsolidationIndexer(indexer *IndexerCtx) *ConsolidationIndexer {
 		logger:     indexer.logger.WithField("indexer", "consolidation"),
 	}
 
+	specs := indexer.chainState.GetSpecs()
+
 	// create contract indexer for the consolidation contract
 	ci.indexer = newContractIndexer(
 		indexer,
@@ -55,7 +56,7 @@ func NewConsolidationIndexer(indexer *IndexerCtx) *ConsolidationIndexer {
 			batchSize:       batchSize,
 			contractAddress: common.HexToAddress(consolidationContractAddr),
 			deployBlock:     uint64(utils.Config.ExecutionApi.ElectraDeployBlock),
-			dequeueRate:     consolidationDequeueRate,
+			dequeueRate:     specs.MaxConsolidationRequestsPerPayload,
 
 			processFinalTx:  ci.processFinalTx,
 			processRecentTx: ci.processRecentTx,

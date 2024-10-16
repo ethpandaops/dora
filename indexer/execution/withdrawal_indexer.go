@@ -19,7 +19,6 @@ import (
 )
 
 const withdrawalContractAddr = "0x00A3ca265EBcb825B45F985A16CEFB49958cE017" // TODO: devnet4: 0x09Fc772D0857550724b07B850a4323f39112aAaA
-const withdrawalDequeueRate = 16
 
 // WithdrawalIndexer is the indexer for the eip-7002 consolidation system contract
 type WithdrawalIndexer struct {
@@ -47,6 +46,8 @@ func NewWithdrawalIndexer(indexer *IndexerCtx) *WithdrawalIndexer {
 		logger:     indexer.logger.WithField("indexer", "withdrawal"),
 	}
 
+	specs := indexer.chainState.GetSpecs()
+
 	// create contract indexer for the withdrawal contract
 	wi.indexer = newContractIndexer(
 		indexer,
@@ -56,7 +57,7 @@ func NewWithdrawalIndexer(indexer *IndexerCtx) *WithdrawalIndexer {
 			batchSize:       batchSize,
 			contractAddress: common.HexToAddress(withdrawalContractAddr),
 			deployBlock:     uint64(utils.Config.ExecutionApi.ElectraDeployBlock),
-			dequeueRate:     withdrawalDequeueRate,
+			dequeueRate:     specs.MaxWithdrawalRequestsPerPayload,
 
 			processFinalTx:  wi.processFinalTx,
 			processRecentTx: wi.processRecentTx,
