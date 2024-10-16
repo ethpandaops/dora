@@ -37,7 +37,7 @@ type withdrawalRequestMatch struct {
 
 // NewWithdrawalIndexer creates a new withdrawal contract indexer
 func NewWithdrawalIndexer(indexer *IndexerCtx) *WithdrawalIndexer {
-	batchSize := utils.Config.ExecutionApi.DepositLogBatchSize
+	batchSize := utils.Config.ExecutionApi.LogBatchSize
 	if batchSize == 0 {
 		batchSize = 1000
 	}

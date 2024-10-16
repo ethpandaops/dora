@@ -17,7 +17,6 @@ import (
 	"github.com/ethpandaops/dora/clients/execution"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/indexer/beacon"
-	"github.com/ethpandaops/dora/utils"
 )
 
 // contractIndexer handles the indexing of contract events for a specific system contract
@@ -62,11 +61,6 @@ type contractIndexerForkState struct {
 
 // newContractIndexer creates a new contract indexer with the given options
 func newContractIndexer[TxType any](indexer *IndexerCtx, logger logrus.FieldLogger, options *contractIndexerOptions[TxType]) *contractIndexer[TxType] {
-	batchSize := utils.Config.ExecutionApi.DepositLogBatchSize
-	if batchSize == 0 {
-		batchSize = 1000
-	}
-
 	ci := &contractIndexer[TxType]{
 		indexer: indexer,
 		logger:  logger,

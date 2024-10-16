@@ -39,7 +39,7 @@ type DepositIndexer struct {
 
 // NewDepositIndexer creates a new deposit contract indexer
 func NewDepositIndexer(indexer *IndexerCtx) *DepositIndexer {
-	batchSize := utils.Config.ExecutionApi.DepositLogBatchSize
+	batchSize := utils.Config.ExecutionApi.LogBatchSize
 	if batchSize == 0 {
 		batchSize = 1000
 	}

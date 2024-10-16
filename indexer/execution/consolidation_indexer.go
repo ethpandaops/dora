@@ -36,7 +36,7 @@ type consolidationRequestMatch struct {
 
 // NewConsolidationIndexer creates a new consolidation system contract indexer
 func NewConsolidationIndexer(indexer *IndexerCtx) *ConsolidationIndexer {
-	batchSize := utils.Config.ExecutionApi.DepositLogBatchSize
+	batchSize := utils.Config.ExecutionApi.LogBatchSize
 	if batchSize == 0 {
 		batchSize = 1000
 	}
