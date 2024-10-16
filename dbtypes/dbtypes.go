@@ -263,6 +263,24 @@ type ConsolidationRequest struct {
 	TargetIndex   *uint64 `db:"target_index"`
 	TargetPubkey  []byte  `db:"target_pubkey"`
 	TxHash        []byte  `db:"tx_hash"`
+	BlockNumber   uint64  `db:"block_number"`
+}
+
+type ConsolidationRequestTx struct {
+	BlockNumber   uint64  `db:"block_number"`
+	BlockIndex    uint64  `db:"block_index"`
+	BlockTime     uint64  `db:"block_time"`
+	BlockRoot     []byte  `db:"block_root"`
+	ForkId        uint64  `db:"fork_id"`
+	SourceAddress []byte  `db:"source_address"`
+	SourcePubkey  []byte  `db:"source_pubkey"`
+	SourceIndex   *uint64 `db:"source_index"`
+	TargetPubkey  []byte  `db:"target_pubkey"`
+	TargetIndex   *uint64 `db:"target_index"`
+	TxHash        []byte  `db:"tx_hash"`
+	TxSender      []byte  `db:"tx_sender"`
+	TxTarget      []byte  `db:"tx_target"`
+	DequeueBlock  uint64  `db:"dequeue_block"`
 }
 
 type WithdrawalRequest struct {
@@ -276,4 +294,21 @@ type WithdrawalRequest struct {
 	ValidatorPubkey []byte  `db:"validator_pubkey"`
 	Amount          uint64  `db:"amount"`
 	TxHash          []byte  `db:"tx_hash"`
+	BlockNumber     uint64  `db:"block_number"`
+}
+
+type WithdrawalRequestTx struct {
+	BlockNumber     uint64  `db:"block_number"`
+	BlockIndex      uint64  `db:"block_index"`
+	BlockTime       uint64  `db:"block_time"`
+	BlockRoot       []byte  `db:"block_root"`
+	ForkId          uint64  `db:"fork_id"`
+	SourceAddress   []byte  `db:"source_address"`
+	ValidatorPubkey []byte  `db:"validator_pubkey"`
+	ValidatorIndex  *uint64 `db:"validator_index"`
+	Amount          uint64  `db:"amount"`
+	TxHash          []byte  `db:"tx_hash"`
+	TxSender        []byte  `db:"tx_sender"`
+	TxTarget        []byte  `db:"tx_target"`
+	DequeueBlock    uint64  `db:"dequeue_block"`
 }

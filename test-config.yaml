@@ -56,7 +56,9 @@ executionapi:
     - name: "pk01"
       url: "http://10.16.71.108:8545"
   
-  depositLogBatchSize: 1000
+  logBatchSize: 1000
+  depositDeployBlock: 0 # el block number from where to crawl the deposit contract (should be <=, but close to the deposit contract deployment block)
+  electraDeployBlock: 0 # el block number from where to crawl the electra system contracts (should be <=, but close to electra fork activation block)
 
 indexer:
   # max number of epochs to keep in memory

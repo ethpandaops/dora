@@ -157,9 +157,7 @@
                 <th><span class="d-none d-lg-inline">Source </span>Address</th>
                 <th>Source Validator</th>
                 <th>Target Validator</th>
-                <!--
                 <th>Transaction</th>
-                -->
                 <th><span class="d-none d-lg-inline">Incl. </span>Status</th>
               </tr>
             </thead>
@@ -205,20 +203,21 @@
                         </div>
                       {{- end }}
                     </td>
-                    <!--
                     <td>
                       {{- if $request.LinkedTransaction }}
                       <div class="d-flex">
-                        <span class="flex-grow-1 text-truncate" style="max-width: 150px;">{{ ethTransactionLink $request.TransactionHash }}</span>
+                        <span class="flex-grow-1 text-truncate" style="max-width: 150px;">{{ ethTransactionLink $request.TransactionHash 0 }}</span>
                         <div>
-                          <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ formatEthAddress $request.SourceAddress }}"></i>
+                          <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $request.TransactionHash }}"></i>
+                        </div>
+                        <div>
+                          <i class="fa fa-info-circle text-muted ml-2 p-1 nojs-hide tx-details-btn" role="button" data-txdetails="{{ includeJSON $request.TransactionDetails true }}"></i>
                         </div>
                       </div>
                       {{- else }}
                       <span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Corresponding consolidation transaction has not been indexed yet.">?</span>
                       {{- end }}
                     </td>
-                    -->
                     <td>
                       {{- if $request.Orphaned }}
                         <span class="badge rounded-pill text-bg-info">Orphaned</span>
@@ -244,6 +243,76 @@
             {{ end }}
           </table>
         </div>
+        <div class="tx-details-content d-none">
+          <div>
+            <div class="d-flex">
+              <div class="tx-details-label">
+                Tx Hash:
+              </div>
+              <div class="flex-grow-1 tx-details-value">
+                <div class="d-flex">
+                  <span class="flex-grow-1 text-truncate txdetails-txhash"></span>
+                  <div>
+                    <i class="fa fa-copy text-muted ml-2 p-1 txdetails-txhash-copy" role="button" data-bs-toggle="tooltip" title="Copy to clipboard"></i>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="d-flex">
+              <div class="tx-details-label">
+                Block:
+              </div>
+              <div class="flex-grow-1 tx-details-value">
+                <div class="d-flex">
+                  <span class="flex-grow-1 text-truncate txdetails-block"></span>
+                  <div>
+                    <i class="fa fa-copy text-muted ml-2 p-1 txdetails-block-copy" role="button" data-bs-toggle="tooltip" title="Copy to clipboard"></i>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="d-flex">
+              <div class="tx-details-label">
+                Block Time:
+              </div>
+              <div class="flex-grow-1 tx-details-value">
+                <div class="d-flex">
+                  <span class="flex-grow-1 text-truncate txdetails-time"></span>
+                  <div>
+                    <i class="fa fa-copy text-muted ml-2 p-1 txdetails-time-copy" role="button" data-bs-toggle="tooltip" title="Copy to clipboard"></i>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="d-flex">
+              <div class="tx-details-label">
+                TX Origin:
+              </div>
+              <div class="flex-grow-1 tx-details-value">
+                <div class="d-flex">
+                  <span class="flex-grow-1 text-truncate txdetails-txorigin"></span>
+                  <div>
+                    <i class="fa fa-copy text-muted ml-2 p-1 txdetails-txorigin-copy" role="button" data-bs-toggle="tooltip" title="Copy to clipboard"></i>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="d-flex">
+              <div class="tx-details-label">
+                TX Target:  
+              </div>
+              <div class="flex-grow-1 tx-details-value">
+                <div class="d-flex">
+                  <span class="flex-grow-1 text-truncate txdetails-txtarget"></span>
+                  <div>
+                    <i class="fa fa-copy text-muted ml-2 p-1 txdetails-txtarget-copy" role="button" data-bs-toggle="tooltip" title="Copy to clipboard"></i>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {{ if gt .TotalPages 1 }}
           <div class="row">
             <div class="col-sm-12 col-md-5 table-metainfo">
@@ -280,6 +349,66 @@
   </div>
 {{ end }}
 {{ define "js" }}
+<script>
+  $(document).ready(function() {
+    var popoverEl = $('#tx-details-popover-positioner');
+    var lastPopover = null;
+
+    $('.tx-details-btn').click(function() {
+      var txdetails = $(this).data('txdetails');
+      var container = $(".tx-details-content");
+      container.find(".txdetails-txhash").text(txdetails.tx_hash);
+      container.find(".txdetails-txhash-copy").attr("data-clipboard-text", txdetails.tx_hash);
+      container.find(".txdetails-block").text(txdetails.block);
+      container.find(".txdetails-block-copy").attr("data-clipboard-text", txdetails.block);
+
+      var blockTimeRelative = window.explorer.renderRecentTime(txdetails.block_time);
+      var blockTimeAbsolute = new Date(txdetails.block_time * 1000).toISOString();
+      container.find(".txdetails-time").text(blockTimeRelative);
+      container.find(".txdetails-time-copy").attr("data-clipboard-text", blockTimeAbsolute);
+      container.find(".txdetails-txorigin").text(txdetails.tx_origin);
+      container.find(".txdetails-txorigin-copy").attr("data-clipboard-text", txdetails.tx_origin);
+      container.find(".txdetails-txtarget").text(txdetails.tx_target);
+      container.find(".txdetails-txtarget-copy").attr("data-clipboard-text", txdetails.tx_target);
+
+      var txDetailsContent = container.html();
+
+      var popover = bootstrap.Popover.getOrCreateInstance(this, {
+        html: true,
+        title: 'Transaction Details',
+        content: 'loading...',
+        trigger: 'manual',
+        customClass: 'tx-details-popover'
+      });
+
+      if (lastPopover === popover) {
+        return;
+      }
+      if(lastPopover) {
+        lastPopover.hide();
+      }
+      lastPopover = popover;
+      
+      popover.show();
+
+      $(".tx-details-popover .popover-body").html(txDetailsContent);
+      window.explorer.initControls();
+  
+    });
+
+    $(window).on('click', function(evt) {
+      if($(evt.target).closest('.tx-details-btn').length > 0 || $(evt.target).closest('.tx-details-popover').length > 0) {
+        return;
+      }
+
+      if(lastPopover) {
+        lastPopover.hide();
+        lastPopover = null;
+      }
+    });
+
+  });
+</script>
 {{ end }}
 {{ define "css" }}
 <style>
@@ -288,6 +417,30 @@
   padding-top: 6px;
   padding-left: 10px;
   padding-right: 10px;
+}
+
+.tx-details-popover-positioner {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  left: 0;
+  top: 0;
+}
+
+.tx-details-label {
+  min-width: 90px;
+}
+
+.tx-details-value {
+  max-width: calc(100% - 90px);
+}
+
+.tx-details-popover {
+  max-width: 470px;
+}
+
+.tx-details-popover .popover-body {
+  padding: 8px;
 }
 
 </style>

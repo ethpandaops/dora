@@ -15,11 +15,11 @@ func InsertConsolidationRequests(consolidations []*dbtypes.ConsolidationRequest,
 			dbtypes.DBEnginePgsql:  "INSERT INTO consolidation_requests ",
 			dbtypes.DBEngineSqlite: "INSERT OR REPLACE INTO consolidation_requests ",
 		}),
-		"(slot_number, slot_root, slot_index, orphaned, fork_id, source_address, source_index, source_pubkey, target_index, target_pubkey, tx_hash)",
+		"(slot_number, slot_root, slot_index, orphaned, fork_id, source_address, source_index, source_pubkey, target_index, target_pubkey, tx_hash, block_number)",
 		" VALUES ",
 	)
 	argIdx := 0
-	fieldCount := 11
+	fieldCount := 12
 
 	args := make([]interface{}, len(consolidations)*fieldCount)
 	for i, consolidation := range consolidations {
@@ -46,6 +46,7 @@ func InsertConsolidationRequests(consolidations []*dbtypes.ConsolidationRequest,
 		args[argIdx+8] = consolidation.TargetIndex
 		args[argIdx+9] = consolidation.TargetPubkey[:]
 		args[argIdx+10] = consolidation.TxHash[:]
+		args[argIdx+11] = consolidation.BlockNumber
 		argIdx += fieldCount
 	}
 	fmt.Fprint(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
@@ -65,7 +66,7 @@ func GetConsolidationRequestsFiltered(offset uint64, limit uint32, finalizedBloc
 	fmt.Fprint(&sql, `
 	WITH cte AS (
 		SELECT
-			slot_number, slot_root, slot_index, orphaned, fork_id, source_address, source_index, source_pubkey, target_index, target_pubkey, tx_hash
+			slot_number, slot_root, slot_index, orphaned, fork_id, source_address, source_index, source_pubkey, target_index, target_pubkey, tx_hash, block_number
 		FROM consolidation_requests
 	`)
 
@@ -158,7 +159,8 @@ func GetConsolidationRequestsFiltered(offset uint64, limit uint32, finalizedBloc
 		null AS source_pubkey,
 		0 AS target_index,
 		null AS target_pubkey,
-		null AS tx_hash
+		null AS tx_hash,
+		0 AS block_number
 	FROM cte
 	UNION ALL SELECT * FROM (
 	SELECT * FROM cte
@@ -180,4 +182,29 @@ func GetConsolidationRequestsFiltered(offset uint64, limit uint32, finalizedBloc
 	}
 
 	return consolidationRequests[1:], consolidationRequests[0].SlotNumber, nil
+}
+
+func GetConsolidationRequestsByElBlockRange(firstSlot uint64, lastSlot uint64) []*dbtypes.ConsolidationRequest {
+	consolidationRequests := []*dbtypes.ConsolidationRequest{}
+
+	err := ReaderDb.Select(&consolidationRequests, `
+		SELECT consolidation_requests.*
+		FROM consolidation_requests
+		WHERE block_number >= $1 AND block_number <= $2
+		ORDER BY block_number ASC, slot_index ASC
+	`, firstSlot, lastSlot)
+	if err != nil {
+		logger.Errorf("Error while fetching consolidation requests: %v", err)
+		return nil
+	}
+
+	return consolidationRequests
+}
+
+func UpdateConsolidationRequestTxHash(slotRoot []byte, slotIndex uint64, txHash []byte, tx *sqlx.Tx) error {
+	_, err := tx.Exec(`UPDATE consolidation_requests SET tx_hash = $1 WHERE slot_root = $2 AND slot_index = $3`, txHash, slotRoot, slotIndex)
+	if err != nil {
+		return err
+	}
+	return nil
 }

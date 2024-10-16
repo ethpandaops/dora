@@ -9,10 +9,11 @@ fi
 
 ## Run devnet using kurtosis
 ENCLAVE_NAME="${ENCLAVE_NAME:-dora}"
+ETHEREUM_PACKAGE="${ETHEREUM_PACKAGE:-github.com/ethpandaops/ethereum-package}"
 if kurtosis enclave inspect "$ENCLAVE_NAME" > /dev/null; then
   echo "Kurtosis enclave '$ENCLAVE_NAME' is already up."
 else
-  kurtosis run github.com/ethpandaops/ethereum-package \
+  kurtosis run "$ETHEREUM_PACKAGE" \
   --image-download always \
   --enclave "$ENCLAVE_NAME" \
   --args-file "${config_file}"

@@ -2,6 +2,8 @@ package utils
 
 import (
 	"bytes"
+	"encoding/json"
+	"html"
 	"html/template"
 	"math"
 	"math/big"
@@ -23,6 +25,7 @@ func GetTemplateFuncs() template.FuncMap {
 
 	customFuncs := template.FuncMap{
 		"includeHTML": IncludeHTML,
+		"includeJSON": IncludeJSON,
 		"html":        func(x string) template.HTML { return template.HTML(x) },
 		"bigIntCmp":   func(i *big.Int, j int) int { return i.Cmp(big.NewInt(int64(j))) },
 		"mod":         func(i, j int) bool { return i%j == 0 },
@@ -92,6 +95,21 @@ func IncludeHTML(path string) template.HTML {
 		return ""
 	}
 	return template.HTML(string(b))
+}
+
+// IncludeJSON adds json to the page
+func IncludeJSON(obj any, escapeHTML bool) template.HTML {
+	b, err := json.Marshal(obj)
+	if err != nil {
+		logger.Printf("includeJSON - error marshalling json: %v", err)
+		return ""
+	}
+
+	s := string(b)
+	if escapeHTML {
+		s = html.EscapeString(s)
+	}
+	return template.HTML(s)
 }
 
 func GraffitiToString(graffiti []byte) string {
