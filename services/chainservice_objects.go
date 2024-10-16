@@ -442,7 +442,12 @@ func (bs *ChainService) GetWithdrawalRequestsByFilter(filter *dbtypes.Withdrawal
 	}
 
 	// load older objects from db
-	dbPage := pageIdx - cachedPages
+	var dbPage uint64
+	if pageIdx > cachedPages {
+		dbPage = pageIdx - cachedPages
+	} else {
+		dbPage = 0
+	}
 	dbCacheOffset := uint64(pageSize) - (cachedMatchesLen % uint64(pageSize))
 
 	var dbObjects []*dbtypes.WithdrawalRequest
@@ -571,7 +576,12 @@ func (bs *ChainService) GetConsolidationRequestsByFilter(filter *dbtypes.Consoli
 	}
 
 	// load older objects from db
-	dbPage := pageIdx - cachedPages
+	var dbPage uint64
+	if pageIdx > cachedPages {
+		dbPage = pageIdx - cachedPages
+	} else {
+		dbPage = 0
+	}
 	dbCacheOffset := uint64(pageSize) - (cachedMatchesLen % uint64(pageSize))
 
 	var dbObjects []*dbtypes.ConsolidationRequest
