@@ -228,7 +228,7 @@ func buildFilteredElWithdrawalsPageData(pageIdx uint64, pageSize uint64, minSlot
 			elWithdrawalData.LinkedTransaction = true
 			requestTxDetailsFor = append(requestTxDetailsFor, elWithdrawalData.TransactionHash)
 		} else if elWithdrawal.BlockNumber > matcherHeight {
-			// withdrawal request has been matched with a tx yet, try to find the tx on the fly
+			// withdrawal request has not been matched with a tx yet, try to find the tx on the fly
 			withdrawalRequestTx := db.GetWithdrawalRequestTxsByDequeueRange(elWithdrawal.BlockNumber, elWithdrawal.BlockNumber)
 			if len(withdrawalRequestTx) > 1 {
 				forkIds := services.GlobalBeaconService.GetParentForkIds(beacon.ForkKey(elWithdrawal.ForkId))

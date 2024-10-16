@@ -247,7 +247,7 @@ func buildFilteredElConsolidationsPageData(pageIdx uint64, pageSize uint64, minS
 			elConsolidationData.LinkedTransaction = true
 			requestTxDetailsFor = append(requestTxDetailsFor, elConsolidationData.TransactionHash)
 		} else if elConsolidation.BlockNumber > matcherHeight {
-			// consolidation request has been matched with a tx yet, try to find the tx on the fly
+			// consolidation request has not been matched with a tx yet, try to find the tx on the fly
 			consolidationRequestTx := db.GetConsolidationRequestTxsByDequeueRange(elConsolidation.BlockNumber, elConsolidation.BlockNumber)
 			if len(consolidationRequestTx) > 1 {
 				forkIds := services.GlobalBeaconService.GetParentForkIds(beacon.ForkKey(elConsolidation.ForkId))
