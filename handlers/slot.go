@@ -681,9 +681,6 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 				BlockNumber:   uint64(executionPayload.BlockNumber),
 			}
 			getSlotPageTransactions(pageData, executionPayload.Transactions)
-			getSlotPageDepositRequests(pageData, executionPayload.DepositRequests)
-			getSlotPageWithdrawalRequests(pageData, executionPayload.WithdrawalRequests)
-			getSlotPageConsolidationRequests(pageData, executionPayload.ConsolidationRequests)
 		}
 	}
 
@@ -722,6 +719,15 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 				KzgCommitment: blobKzgCommitments[i][:],
 			}
 			pageData.Blobs[i] = blobData
+		}
+	}
+
+	if specs.ElectraForkEpoch != nil && uint64(epoch) >= *specs.ElectraForkEpoch {
+		requests, err := blockData.Block.ExecutionRequests()
+		if err == nil && requests != nil {
+			getSlotPageDepositRequests(pageData, requests.Deposits)
+			getSlotPageWithdrawalRequests(pageData, requests.Withdrawals)
+			getSlotPageConsolidationRequests(pageData, requests.Consolidations)
 		}
 	}
 
