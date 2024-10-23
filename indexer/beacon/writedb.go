@@ -233,6 +233,7 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 	graffiti, _ := blockBody.Graffiti()
 	attestations, _ := blockBody.Attestations()
 	deposits, _ := blockBody.Deposits()
+	depositRequests, _ := getBlockExecutionDepositRequests(blockBody)
 	voluntaryExits, _ := blockBody.VoluntaryExits()
 	attesterSlashings, _ := blockBody.AttesterSlashings()
 	proposerSlashings, _ := blockBody.ProposerSlashings()
@@ -255,7 +256,7 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 		Graffiti:              graffiti[:],
 		GraffitiText:          utils.GraffitiToString(graffiti[:]),
 		AttestationCount:      uint64(len(attestations)),
-		DepositCount:          uint64(len(deposits)),
+		DepositCount:          uint64(len(deposits) + len(depositRequests)),
 		ExitCount:             uint64(len(voluntaryExits)),
 		AttesterSlashingCount: uint64(len(attesterSlashings)),
 		ProposerSlashingCount: uint64(len(proposerSlashings)),
@@ -361,6 +362,7 @@ func (dbw *dbWriter) buildDbEpoch(epoch phase0.Epoch, blocks []*Block, epochStat
 
 			attestations, _ := blockBody.Attestations()
 			deposits, _ := blockBody.Deposits()
+			depositRequests, _ := getBlockExecutionDepositRequests(blockBody)
 			voluntaryExits, _ := blockBody.VoluntaryExits()
 			attesterSlashings, _ := blockBody.AttesterSlashings()
 			proposerSlashings, _ := blockBody.ProposerSlashings()
@@ -370,7 +372,7 @@ func (dbw *dbWriter) buildDbEpoch(epoch phase0.Epoch, blocks []*Block, epochStat
 			executionWithdrawals, _ := blockBody.Withdrawals()
 
 			dbEpoch.AttestationCount += uint64(len(attestations))
-			dbEpoch.DepositCount += uint64(len(deposits))
+			dbEpoch.DepositCount += uint64(len(deposits) + len(depositRequests))
 			dbEpoch.ExitCount += uint64(len(voluntaryExits))
 			dbEpoch.AttesterSlashingCount += uint64(len(attesterSlashings))
 			dbEpoch.ProposerSlashingCount += uint64(len(proposerSlashings))
