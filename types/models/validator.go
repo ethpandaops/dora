@@ -31,11 +31,15 @@ type ValidatorPageData struct {
 	ShowWithdrawAddress bool      `json:"show_withdraw_address"`
 	WithdrawAddress     []byte    `json:"withdraw_address"`
 
-	RecentBlocks     []*ValidatorPageDataBlocks `json:"recent_blocks"`
-	RecentBlockCount uint64                     `json:"recent_block_count"`
+	TabView string `json:"tab_view"`
+
+	RecentBlocks       []*ValidatorPageDataBlock   `json:"recent_blocks"`
+	RecentBlockCount   uint64                      `json:"recent_block_count"`
+	RecentDeposits     []*ValidatorPageDataDeposit `json:"recent_deposits"`
+	RecentDepositCount uint64                      `json:"recent_deposit_count"`
 }
 
-type ValidatorPageDataBlocks struct {
+type ValidatorPageDataBlock struct {
 	Epoch        uint64    `json:"epoch"`
 	Slot         uint64    `json:"slot"`
 	WithEthBlock bool      `json:"with_eth_block"`
@@ -44,4 +48,22 @@ type ValidatorPageDataBlocks struct {
 	Status       uint64    `json:"status"`
 	BlockRoot    string    `json:"block_root"`
 	Graffiti     []byte    `json:"graffiti"`
+}
+
+type ValidatorPageDataDeposit struct {
+	SlotRoot  string                             `json:"slot_root"`
+	Slot      uint64                             `json:"slot"`
+	Amount    uint64                             `json:"amount"`
+	Time      time.Time                          `json:"time"`
+	Status    uint64                             `json:"status"`
+	TxDetails *ValidatorPageDataDepositTxDetails `json:"tx_details"`
+}
+
+type ValidatorPageDataDepositTxDetails struct {
+	BlockNumber uint64 `json:"block"`
+	BlockHash   string `json:"block_hash"`
+	BlockTime   uint64 `json:"block_time"`
+	TxOrigin    string `json:"tx_origin"`
+	TxTarget    string `json:"tx_target"`
+	TxHash      string `json:"tx_hash"`
 }

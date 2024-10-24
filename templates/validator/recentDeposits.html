@@ -1,0 +1,63 @@
+{{ define "recentDeposits" }}
+<div class="card block-card">
+  <div class="table-responsive">
+    <table class="table table-nobr" id="recent-deposits">
+      <thead>
+        <tr>
+          <th>Slot</th>
+          <th data-timecol="duration">Time</th>
+          <th>Amount</th>
+          <th>Withdrawal Cred</th>
+          <th>Incl. Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{ if gt .RecentDepositCount 0 }}
+          {{ range $i, $deposit := .RecentDeposits }}
+            <tr>
+              {{ if $deposit.Orphaned }}
+                <td><a href="/slot/0x{{ printf "%x" $deposit.SlotRoot }}">{{ formatAddCommas $deposit.Slot }}</a></td>
+              {{ else }}
+                <td><a href="/slot/{{ $deposit.Slot }}">{{ formatAddCommas $deposit.Slot }}</a></td>
+              {{ end }}
+              <td data-timer="{{ $deposit.Time.Unix }}"><span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $deposit.Time }}">{{ formatRecentTimeShort $deposit.Time }}</span></td>
+              <td>{{ formatFullEthFromGwei $deposit.Amount }}</td>
+              <td>
+                <span>
+                  {{ formatWithdawalCredentials $deposit.Withdrawalcredentials }}
+                </span>
+                <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $deposit.Withdrawalcredentials }}"></i>
+              </td>
+              
+              <td>
+                {{ if $deposit.Queued }}
+                  <span class="badge rounded-pill text-bg-warning">Queued</span>
+                {{ else if $deposit.Orphaned }}
+                  <span class="badge rounded-pill text-bg-info">Orphaned</span>
+                {{ else }}
+                  <span class="badge rounded-pill text-bg-success">Included</span>
+                {{ end }}
+              </td>
+            </tr>
+          {{ end }}
+          <tr>
+            <td colspan="6" class="text-center">
+              <a class="text-white" href="/validators/included_deposits?f&f.pubkey=0x{{ printf "%x" .PublicKey }}">View more</a>
+            </td>
+          </tr>
+        {{ else }}
+          <tr style="height: 430px;">
+            <td></td>
+            <td style="vertical-align: middle;" colspan="4">
+              <div class="img-fluid mx-auto p-3 d-flex align-items-center" style="max-height: 400px; max-width: 400px; overflow: hidden;">
+                {{ template "timeline_svg" }}
+              </div>
+            </td>
+            <td></td>
+          </tr>
+        {{ end }}
+      </tbody>
+    </table>
+  </div>
+</div>
+{{ end }}

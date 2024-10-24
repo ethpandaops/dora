@@ -25,6 +25,9 @@ func Validator(w http.ResponseWriter, r *http.Request) {
 	var validatorTemplateFiles = append(layoutTemplateFiles,
 		"validator/validator.html",
 		"validator/recentBlocks.html",
+		"validator/recentAttestations.html",
+		"validator/recentDeposits.html",
+		"validator/txDetails.html",
 		"_svg/timeline.html",
 	)
 	var notfoundTemplateFiles = append(layoutTemplateFiles,
@@ -60,32 +63,39 @@ func Validator(w http.ResponseWriter, r *http.Request) {
 	if validator == nil {
 		data := InitPageData(w, r, "blockchain", "/validator", "Validator not found", notfoundTemplateFiles)
 		w.Header().Set("Content-Type", "text/html")
-		if handleTemplateError(w, r, "validator.go", "Validator", "", templates.GetTemplate(notfoundTemplateFiles...).ExecuteTemplate(w, "layout", data)) != nil {
-			return // an error has occurred and was processed
-		}
+		handleTemplateError(w, r, "validator.go", "Validator", "", templates.GetTemplate(notfoundTemplateFiles...).ExecuteTemplate(w, "layout", data))
 		return
+	}
+
+	tabView := "blocks"
+	if r.URL.Query().Has("v") {
+		tabView = r.URL.Query().Get("v")
 	}
 
 	var pageError error
 	pageError = services.GlobalCallRateLimiter.CheckCallLimit(r, 1)
 	if pageError == nil {
-		data.Data, pageError = getValidatorPageData(uint64(validator.Index))
+		data.Data, pageError = getValidatorPageData(uint64(validator.Index), tabView)
 	}
 	if pageError != nil {
 		handlePageError(w, r, pageError)
 		return
 	}
 	w.Header().Set("Content-Type", "text/html")
-	if handleTemplateError(w, r, "validators.go", "Validators", "", pageTemplate.ExecuteTemplate(w, "layout", data)) != nil {
-		return // an error has occurred and was processed
+
+	if r.URL.Query().Has("lazy") {
+		// return the selected tab content only (lazy loaded)
+		handleTemplateError(w, r, "validators.go", "Validators", "", pageTemplate.ExecuteTemplate(w, "lazyPage", data.Data))
+	} else {
+		handleTemplateError(w, r, "validators.go", "Validators", "", pageTemplate.ExecuteTemplate(w, "layout", data))
 	}
 }
 
-func getValidatorPageData(validatorIndex uint64) (*models.ValidatorPageData, error) {
+func getValidatorPageData(validatorIndex uint64, tabView string) (*models.ValidatorPageData, error) {
 	pageData := &models.ValidatorPageData{}
-	pageCacheKey := fmt.Sprintf("validator:%v", validatorIndex)
+	pageCacheKey := fmt.Sprintf("validator:%v:%v", validatorIndex, tabView)
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
-		pageData, cacheTimeout := buildValidatorPageData(validatorIndex)
+		pageData, cacheTimeout := buildValidatorPageData(validatorIndex, tabView)
 		pageCall.CacheTimeout = cacheTimeout
 		return pageData
 	})
@@ -99,7 +109,7 @@ func getValidatorPageData(validatorIndex uint64) (*models.ValidatorPageData, err
 	return pageData, pageErr
 }
 
-func buildValidatorPageData(validatorIndex uint64) (*models.ValidatorPageData, time.Duration) {
+func buildValidatorPageData(validatorIndex uint64, tabView string) (*models.ValidatorPageData, time.Duration) {
 	logrus.Debugf("validator page called: %v", validatorIndex)
 
 	chainState := services.GlobalBeaconService.GetChainState()
@@ -115,6 +125,7 @@ func buildValidatorPageData(validatorIndex uint64) (*models.ValidatorPageData, t
 		EffectiveBalance:    uint64(validator.Validator.EffectiveBalance),
 		BeaconState:         validator.Status.String(),
 		WithdrawCredentials: validator.Validator.WithdrawalCredentials,
+		TabView:             tabView,
 	}
 	if strings.HasPrefix(validator.Status.String(), "pending") {
 		pageData.State = "Pending"
@@ -164,36 +175,45 @@ func buildValidatorPageData(validatorIndex uint64) (*models.ValidatorPageData, t
 	}
 
 	// load latest blocks
-	pageData.RecentBlocks = make([]*models.ValidatorPageDataBlocks, 0)
-	blocksData := services.GlobalBeaconService.GetDbBlocksByFilter(&dbtypes.BlockFilter{
-		ProposerIndex: &validatorIndex,
-		WithOrphaned:  1,
-		WithMissing:   1,
-	}, 0, 10, chainState.GetSpecs().SlotsPerEpoch)
-	for _, blockData := range blocksData {
-		var blockStatus dbtypes.SlotStatus
-		if blockData.Block == nil {
-			blockStatus = dbtypes.Missing
-		} else {
-			blockStatus = blockData.Block.Status
-		}
-		blockEntry := models.ValidatorPageDataBlocks{
-			Epoch:  uint64(chainState.EpochOfSlot(phase0.Slot(blockData.Slot))),
-			Slot:   blockData.Slot,
-			Ts:     chainState.SlotToTime(phase0.Slot(blockData.Slot)),
-			Status: uint64(blockStatus),
-		}
-		if blockData.Block != nil {
-			blockEntry.Graffiti = blockData.Block.Graffiti
-			blockEntry.BlockRoot = fmt.Sprintf("0x%x", blockData.Block.Root)
-			if blockData.Block.EthBlockNumber != nil {
-				blockEntry.WithEthBlock = true
-				blockEntry.EthBlock = *blockData.Block.EthBlockNumber
+	if pageData.TabView == "blocks" {
+		pageData.RecentBlocks = make([]*models.ValidatorPageDataBlock, 0)
+		blocksData := services.GlobalBeaconService.GetDbBlocksByFilter(&dbtypes.BlockFilter{
+			ProposerIndex: &validatorIndex,
+			WithOrphaned:  1,
+			WithMissing:   1,
+		}, 0, 10, chainState.GetSpecs().SlotsPerEpoch)
+		for _, blockData := range blocksData {
+			var blockStatus dbtypes.SlotStatus
+			if blockData.Block == nil {
+				blockStatus = dbtypes.Missing
+			} else {
+				blockStatus = blockData.Block.Status
 			}
+			blockEntry := models.ValidatorPageDataBlock{
+				Epoch:  uint64(chainState.EpochOfSlot(phase0.Slot(blockData.Slot))),
+				Slot:   blockData.Slot,
+				Ts:     chainState.SlotToTime(phase0.Slot(blockData.Slot)),
+				Status: uint64(blockStatus),
+			}
+			if blockData.Block != nil {
+				blockEntry.Graffiti = blockData.Block.Graffiti
+				blockEntry.BlockRoot = fmt.Sprintf("0x%x", blockData.Block.Root)
+				if blockData.Block.EthBlockNumber != nil {
+					blockEntry.WithEthBlock = true
+					blockEntry.EthBlock = *blockData.Block.EthBlockNumber
+				}
+			}
+			pageData.RecentBlocks = append(pageData.RecentBlocks, &blockEntry)
 		}
-		pageData.RecentBlocks = append(pageData.RecentBlocks, &blockEntry)
+		pageData.RecentBlockCount = uint64(len(pageData.RecentBlocks))
 	}
-	pageData.RecentBlockCount = uint64(len(pageData.RecentBlocks))
+
+	// load recent deposits
+	if pageData.TabView == "deposits" {
+		// first get recent included deposits
+		pageData.RecentDeposits = make([]*models.ValidatorPageDataDeposit, 0)
+
+	}
 
 	return pageData, 10 * time.Minute
 }

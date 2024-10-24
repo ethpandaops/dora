@@ -351,7 +351,6 @@
 {{ define "js" }}
 <script>
   $(document).ready(function() {
-    var popoverEl = $('#tx-details-popover-positioner');
     var lastPopover = null;
 
     $('.tx-details-btn').click(function() {
@@ -417,14 +416,6 @@
   padding-top: 6px;
   padding-left: 10px;
   padding-right: 10px;
-}
-
-.tx-details-popover-positioner {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  left: 0;
-  top: 0;
 }
 
 .tx-details-label {

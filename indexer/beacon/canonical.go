@@ -388,6 +388,10 @@ func (indexer *Indexer) GetCanonicalValidatorSet(overrideForkId *ForkKey) []*v1.
 		return cachedValSet
 	}
 
+	if epochStats.dependentState == nil {
+		return []*v1.Validator{}
+	}
+
 	validatorSet = make([]*v1.Validator, len(epochStats.dependentState.validatorList))
 	for index, validator := range epochStats.dependentState.validatorList {
 		state := v1.ValidatorToState(validator, &epochStats.dependentState.validatorBalances[index], epochStats.epoch, FarFutureEpoch)

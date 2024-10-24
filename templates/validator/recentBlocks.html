@@ -1,100 +1,65 @@
 {{ define "recentBlocks" }}
-  <div class="table-responsive">
-    <table class="table table-nobr" id="recent-blocks">
-      <thead>
-        <tr>
-          <th>Epoch</th>
-          <th>Slot</th>
-          <th data-toggle="tooltip" title="Execution Layer Block Number">Block</th>
-          <th>Status</th>
-          <th data-timecol="duration">Time</th>
-          <th>Graffiti</th>
-        </tr>
-      </thead>
-      <tbody class="template-tbody">
-        {{ html "<!-- ko foreach: blocks -->" }}
-        <tr class="template-row">
-          <td><a data-bind="attr: {href: '/epoch/'+epoch}, text: $root.formatAddCommas(epoch)"></a></td>
-          <td>
-            <div data-bind="if: (status == 2)"><a data-bind="attr: {href: '/slot/' + $root.hexstr(blockRoot)}, text: $root.formatAddCommas(slot)"></a></div>
-            <div data-bind="ifnot: (status == 2)"><a data-bind="attr: {href: '/slot/' + slot}, text: $root.formatAddCommas(slot)"></a></div>
-          </td>
-          <td>
-            <div data-bind="if: has_block">
-              <div data-bind="if: eth_link">
-                <a data-bind="attr: {href: eth_link}, text: $root.formatAddCommas(eth_block)"></a>
-              </div>
-              <div data-bind="ifnot: eth_link">
-                <span data-bind="text: $root.formatAddCommas(eth_block)"></span>
-              </div>
-            </div>
-            <div data-bind="ifnot: has_block">-</div>
-          </td>
-          <td>
-            <span data-bind="if: slot == 0" class="badge rounded-pill text-bg-info">Genesis</span>
-            <span data-bind="if: slot > 0 && status == 0" class="badge rounded-pill text-bg-warning">Missed</span>
-            <span data-bind="if: slot > 0 && status == 1" class="badge rounded-pill text-bg-success">Proposed</span>
-            <span data-bind="if: slot > 0 && status == 2" class="badge rounded-pill text-bg-info">Missed (Orphaned)</span>
-            <span data-bind="if: slot > 0 && status > 2" class="badge rounded-pill text-bg-dark">Unknown</span>
-          </td>
-          <td data-bind="attr: {'data-timer': $root.unixtime(ts)}">
-            <span data-bs-toggle="tooltip" data-bs-placement="top" data-bind="attr: {'data-bs-title': $root.timestamp(ts)}, text: $root.formatRecentTimeShort(ts)"></span>
-          </td>
-          <td data-bind="html: $root.formatValidator(proposer, proposer_name)"></td>
-        </tr>
-        {{ html "<!-- /ko -->" }}
-        {{ html "<!-- ko if: blocks().length == 0 -->" }}
-        <tr class="template-row">
-          <td style="text-align: center;" colspan="6">
-            no blocks found
-          </td>
-        </tr>
-        {{ html "<!-- /ko -->" }}
-        {{ if gt .RecentBlockCount 0 }}
-          {{ range $i, $block := .RecentBlocks }}
-            <tr>
-              <td><a href="/epoch/{{ $block.Epoch }}">{{ formatAddCommas $block.Epoch }}</a></td>
-              {{ if eq .Status 2 }}
-              <td><a href="/slot/{{ $block.BlockRoot }}">{{ formatAddCommas $block.Slot }}</a></td>
-              {{ else }}
-                <td><a href="/slot/{{ $block.Slot }}">{{ formatAddCommas $block.Slot }}</a></td>
-              {{ end }}
-              <td>{{ ethBlockLink $block.EthBlock }}</td>
-              <td>
-                {{ if eq $block.Slot 0 }}
-                  <span class="badge rounded-pill text-bg-info">Genesis</span>
-                {{ else if eq .Status 0 }}
-                  <span class="badge rounded-pill text-bg-warning">Missed</span>
-                {{ else if eq .Status 1 }}
-                  <span class="badge rounded-pill text-bg-success">Proposed</span>
-                {{ else if eq .Status 2 }}
-                  <span class="badge rounded-pill text-bg-info">Missed (Orphaned)</span>
+<div class="card block-card">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-nobr" id="recent-blocks">
+        <thead>
+          <tr>
+            <th>Epoch</th>
+            <th>Slot</th>
+            <th data-toggle="tooltip" title="Execution Layer Block Number">Block</th>
+            <th>Status</th>
+            <th data-timecol="duration">Time</th>
+            <th>Graffiti</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{ if gt .RecentBlockCount 0 }}
+            {{ range $i, $block := .RecentBlocks }}
+              <tr>
+                <td><a href="/epoch/{{ $block.Epoch }}">{{ formatAddCommas $block.Epoch }}</a></td>
+                {{ if eq .Status 2 }}
+                <td><a href="/slot/{{ $block.BlockRoot }}">{{ formatAddCommas $block.Slot }}</a></td>
                 {{ else }}
-                  <span class="badge rounded-pill text-bg-dark">Unknown</span>
+                  <td><a href="/slot/{{ $block.Slot }}">{{ formatAddCommas $block.Slot }}</a></td>
                 {{ end }}
+                <td>{{ ethBlockLink $block.EthBlock }}</td>
+                <td>
+                  {{ if eq $block.Slot 0 }}
+                    <span class="badge rounded-pill text-bg-info">Genesis</span>
+                  {{ else if eq .Status 0 }}
+                    <span class="badge rounded-pill text-bg-warning">Missed</span>
+                  {{ else if eq .Status 1 }}
+                    <span class="badge rounded-pill text-bg-success">Proposed</span>
+                  {{ else if eq .Status 2 }}
+                    <span class="badge rounded-pill text-bg-info">Missed (Orphaned)</span>
+                  {{ else }}
+                    <span class="badge rounded-pill text-bg-dark">Unknown</span>
+                  {{ end }}
+                </td>
+                <td data-timer="{{ $block.Ts.Unix }}"><span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $block.Ts }}">{{ formatRecentTimeShort $block.Ts }}</span></td>
+                <td>{{ formatGraffiti $block.Graffiti }}</td>
+              </tr>
+            {{ end }}
+            <tr>
+              <td colspan="6" class="text-center">
+                <a class="text-white" href="/validator/{{ .Index }}/slots">View more</a>
               </td>
-              <td data-timer="{{ $block.Ts.Unix }}"><span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $block.Ts }}">{{ formatRecentTimeShort $block.Ts }}</span></td>
-              <td>{{ formatGraffiti $block.Graffiti }}</td>
+            </tr>
+          {{ else }}
+            <tr style="height: 430px;">
+              <td></td>
+              <td style="vertical-align: middle;" colspan="4">
+                <div class="img-fluid mx-auto p-3 d-flex align-items-center" style="max-height: 400px; max-width: 400px; overflow: hidden;">
+                  {{ template "timeline_svg" }}
+                </div>
+              </td>
+              <td></td>
             </tr>
           {{ end }}
-          <tr>
-            <td colspan="6" class="text-center">
-              <a class="text-white" href="/validator/{{ .Index }}/slots">View more</a>
-            </td>
-          </tr>
-          
-        {{ else }}
-          <tr style="height: 430px;">
-            <td></td>
-            <td style="vertical-align: middle;" colspan="4">
-              <div class="img-fluid mx-auto p-3 d-flex align-items-center" style="max-height: 400px; max-width: 400px; overflow: hidden;">
-                {{ template "timeline_svg" }}
-              </div>
-            </td>
-            <td></td>
-          </tr>
-        {{ end }}
-      </tbody>
-    </table>
+        </tbody>
+      </table>
+    </div>
   </div>
+</div>
 {{ end }}
