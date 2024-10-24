@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 
+	"github.com/attestantio/go-eth2-client/spec/electra"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/dora/db"
@@ -233,7 +234,6 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 	graffiti, _ := blockBody.Graffiti()
 	attestations, _ := blockBody.Attestations()
 	deposits, _ := blockBody.Deposits()
-	depositRequests, _ := getBlockExecutionDepositRequests(blockBody)
 	voluntaryExits, _ := blockBody.VoluntaryExits()
 	attesterSlashings, _ := blockBody.AttesterSlashings()
 	proposerSlashings, _ := blockBody.ProposerSlashings()
@@ -244,6 +244,13 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 	executionExtraData, _ := getBlockExecutionExtraData(blockBody)
 	executionTransactions, _ := blockBody.ExecutionTransactions()
 	executionWithdrawals, _ := blockBody.Withdrawals()
+
+	var depositRequests []*electra.DepositRequest
+
+	executionRequests, _ := blockBody.ExecutionRequests()
+	if executionRequests != nil {
+		depositRequests = executionRequests.Deposits
+	}
 
 	dbBlock := dbtypes.Slot{
 		Slot:                  uint64(block.header.Message.Slot),
@@ -362,7 +369,6 @@ func (dbw *dbWriter) buildDbEpoch(epoch phase0.Epoch, blocks []*Block, epochStat
 
 			attestations, _ := blockBody.Attestations()
 			deposits, _ := blockBody.Deposits()
-			depositRequests, _ := getBlockExecutionDepositRequests(blockBody)
 			voluntaryExits, _ := blockBody.VoluntaryExits()
 			attesterSlashings, _ := blockBody.AttesterSlashings()
 			proposerSlashings, _ := blockBody.ProposerSlashings()
@@ -370,6 +376,13 @@ func (dbw *dbWriter) buildDbEpoch(epoch phase0.Epoch, blocks []*Block, epochStat
 			syncAggregate, _ := blockBody.SyncAggregate()
 			executionTransactions, _ := blockBody.ExecutionTransactions()
 			executionWithdrawals, _ := blockBody.Withdrawals()
+
+			var depositRequests []*electra.DepositRequest
+
+			executionRequests, _ := blockBody.ExecutionRequests()
+			if executionRequests != nil {
+				depositRequests = executionRequests.Deposits
+			}
 
 			dbEpoch.AttestationCount += uint64(len(attestations))
 			dbEpoch.DepositCount += uint64(len(deposits) + len(depositRequests))
