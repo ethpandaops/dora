@@ -43,7 +43,7 @@ func NewWithdrawalIndexer(indexer *IndexerCtx) *WithdrawalIndexer {
 
 	wi := &WithdrawalIndexer{
 		indexerCtx: indexer,
-		logger:     indexer.logger.WithField("indexer", "withdrawal"),
+		logger:     indexer.logger.WithField("indexer", "withdrawals"),
 	}
 
 	specs := indexer.chainState.GetSpecs()
@@ -51,7 +51,7 @@ func NewWithdrawalIndexer(indexer *IndexerCtx) *WithdrawalIndexer {
 	// create contract indexer for the withdrawal contract
 	wi.indexer = newContractIndexer(
 		indexer,
-		wi.logger.WithField("routine", "crawler"),
+		indexer.logger.WithField("contract-indexer", "withdrawals"),
 		&contractIndexerOptions[dbtypes.WithdrawalRequestTx]{
 			stateKey:        "indexer.withdrawalindexer",
 			batchSize:       batchSize,
@@ -68,7 +68,7 @@ func NewWithdrawalIndexer(indexer *IndexerCtx) *WithdrawalIndexer {
 	// create transaction matcher for the withdrawal contract
 	wi.matcher = newTransactionMatcher(
 		indexer,
-		wi.logger.WithField("routine", "matcher"),
+		indexer.logger.WithField("contract-matcher", "withdrawals"),
 		&transactionMatcherOptions[withdrawalRequestMatch]{
 			stateKey:    "indexer.withdrawalmatcher",
 			deployBlock: uint64(utils.Config.ExecutionApi.ElectraDeployBlock),

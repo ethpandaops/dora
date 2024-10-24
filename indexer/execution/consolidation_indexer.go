@@ -42,7 +42,7 @@ func NewConsolidationIndexer(indexer *IndexerCtx) *ConsolidationIndexer {
 
 	ci := &ConsolidationIndexer{
 		indexerCtx: indexer,
-		logger:     indexer.logger.WithField("indexer", "consolidation"),
+		logger:     indexer.logger.WithField("indexer", "consolidations"),
 	}
 
 	specs := indexer.chainState.GetSpecs()
@@ -50,7 +50,7 @@ func NewConsolidationIndexer(indexer *IndexerCtx) *ConsolidationIndexer {
 	// create contract indexer for the consolidation contract
 	ci.indexer = newContractIndexer(
 		indexer,
-		ci.logger.WithField("routine", "crawler"),
+		indexer.logger.WithField("contract-indexer", "consolidations"),
 		&contractIndexerOptions[dbtypes.ConsolidationRequestTx]{
 			stateKey:        "indexer.consolidationindexer",
 			batchSize:       batchSize,
@@ -67,7 +67,7 @@ func NewConsolidationIndexer(indexer *IndexerCtx) *ConsolidationIndexer {
 	// create transaction matcher for the consolidation contract
 	ci.matcher = newTransactionMatcher(
 		indexer,
-		ci.logger.WithField("routine", "matcher"),
+		indexer.logger.WithField("contract-matcher", "consolidations"),
 		&transactionMatcherOptions[consolidationRequestMatch]{
 			stateKey:    "indexer.consolidationmatcher",
 			deployBlock: uint64(utils.Config.ExecutionApi.ElectraDeployBlock),
