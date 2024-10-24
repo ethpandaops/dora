@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bytes"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -8,7 +9,9 @@ import (
 
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
+	"github.com/ethpandaops/dora/indexer/beacon"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
@@ -180,18 +183,36 @@ func buildFilteredElWithdrawalsPageData(pageIdx uint64, pageSize uint64, minSlot
 
 	dbElWithdrawals, totalRows := services.GlobalBeaconService.GetWithdrawalRequestsByFilter(withdrawalRequestFilter, pageIdx-1, uint32(pageSize))
 
+	// helper to load tx details for withdrawal requests
+	buildTxDetails := func(withdrawalTx *dbtypes.WithdrawalRequestTx) *models.ElWithdrawalsPageDataWithdrawalTxDetails {
+		txDetails := &models.ElWithdrawalsPageDataWithdrawalTxDetails{
+			BlockNumber: withdrawalTx.BlockNumber,
+			BlockHash:   fmt.Sprintf("%#x", withdrawalTx.BlockRoot),
+			BlockTime:   withdrawalTx.BlockTime,
+			TxOrigin:    common.Address(withdrawalTx.TxSender).Hex(),
+			TxTarget:    common.Address(withdrawalTx.TxTarget).Hex(),
+			TxHash:      fmt.Sprintf("%#x", withdrawalTx.TxHash),
+		}
+
+		return txDetails
+	}
+
 	chainState := services.GlobalBeaconService.GetChainState()
 	validatorSetRsp := services.GlobalBeaconService.GetCachedValidatorSet()
+	matcherHeight := services.GlobalBeaconService.GetWithdrawalIndexer().GetMatcherHeight()
+
+	requestTxDetailsFor := [][]byte{}
 
 	for _, elWithdrawal := range dbElWithdrawals {
 		elWithdrawalData := &models.ElWithdrawalsPageDataWithdrawal{
-			SlotNumber: elWithdrawal.SlotNumber,
-			SlotRoot:   elWithdrawal.SlotRoot,
-			Time:       chainState.SlotToTime(phase0.Slot(elWithdrawal.SlotNumber)),
-			Orphaned:   elWithdrawal.Orphaned,
-			SourceAddr: elWithdrawal.SourceAddress,
-			Amount:     elWithdrawal.Amount,
-			PublicKey:  elWithdrawal.ValidatorPubkey,
+			SlotNumber:      elWithdrawal.SlotNumber,
+			SlotRoot:        elWithdrawal.SlotRoot,
+			Time:            chainState.SlotToTime(phase0.Slot(elWithdrawal.SlotNumber)),
+			Orphaned:        elWithdrawal.Orphaned,
+			SourceAddr:      elWithdrawal.SourceAddress,
+			Amount:          elWithdrawal.Amount,
+			PublicKey:       elWithdrawal.ValidatorPubkey,
+			TransactionHash: elWithdrawal.TxHash,
 		}
 
 		if elWithdrawal.ValidatorIndex != nil {
@@ -203,9 +224,56 @@ func buildFilteredElWithdrawalsPageData(pageIdx uint64, pageSize uint64, minSlot
 			}
 		}
 
+		if len(elWithdrawalData.TransactionHash) > 0 {
+			elWithdrawalData.LinkedTransaction = true
+			requestTxDetailsFor = append(requestTxDetailsFor, elWithdrawalData.TransactionHash)
+		} else if elWithdrawal.BlockNumber > matcherHeight {
+			// withdrawal request has not been matched with a tx yet, try to find the tx on the fly
+			withdrawalRequestTx := db.GetWithdrawalRequestTxsByDequeueRange(elWithdrawal.BlockNumber, elWithdrawal.BlockNumber)
+			if len(withdrawalRequestTx) > 1 {
+				forkIds := services.GlobalBeaconService.GetParentForkIds(beacon.ForkKey(elWithdrawal.ForkId))
+				isParentFork := func(forkId uint64) bool {
+					for _, parentForkId := range forkIds {
+						if uint64(parentForkId) == forkId {
+							return true
+						}
+					}
+					return false
+				}
+
+				matchingTxs := []*dbtypes.WithdrawalRequestTx{}
+				for _, tx := range withdrawalRequestTx {
+					if isParentFork(tx.ForkId) {
+						matchingTxs = append(matchingTxs, tx)
+					}
+				}
+
+				if len(matchingTxs) >= int(elWithdrawal.SlotIndex)+1 {
+					elWithdrawalData.TransactionHash = matchingTxs[elWithdrawal.SlotIndex].TxHash
+					elWithdrawalData.LinkedTransaction = true
+					elWithdrawalData.TransactionDetails = buildTxDetails(matchingTxs[elWithdrawal.SlotIndex])
+				}
+			} else if len(withdrawalRequestTx) == 1 {
+				elWithdrawalData.TransactionHash = withdrawalRequestTx[0].TxHash
+				elWithdrawalData.LinkedTransaction = true
+				elWithdrawalData.TransactionDetails = buildTxDetails(withdrawalRequestTx[0])
+			}
+		}
+
 		pageData.ElRequests = append(pageData.ElRequests, elWithdrawalData)
 	}
 	pageData.RequestCount = uint64(len(pageData.ElRequests))
+
+	// load tx details for withdrawal requests
+	if len(requestTxDetailsFor) > 0 {
+		for _, txDetails := range db.GetWithdrawalRequestTxsByTxHashes(requestTxDetailsFor) {
+			for _, elWithdrawal := range pageData.ElRequests {
+				if elWithdrawal.TransactionHash != nil && bytes.Equal(elWithdrawal.TransactionHash, txDetails.TxHash) {
+					elWithdrawal.TransactionDetails = buildTxDetails(txDetails)
+				}
+			}
+		}
+	}
 
 	if pageData.RequestCount > 0 {
 		pageData.FirstIndex = pageData.ElRequests[0].SlotNumber

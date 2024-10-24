@@ -707,6 +707,8 @@ func (dbw *dbWriter) buildDbConsolidationRequests(block *Block, orphaned bool, o
 		validatorSetMap[validator.Validator.PublicKey] = uint64(idx)
 	}
 
+	blockNumber, _ := blockBody.ExecutionBlockNumber()
+
 	dbConsolidations := make([]*dbtypes.ConsolidationRequest, len(consolidations))
 	for idx, consolidation := range consolidations {
 		dbConsolidation := &dbtypes.ConsolidationRequest{
@@ -718,6 +720,7 @@ func (dbw *dbWriter) buildDbConsolidationRequests(block *Block, orphaned bool, o
 			SourceAddress: consolidation.SourceAddress[:],
 			SourcePubkey:  consolidation.SourcePubkey[:],
 			TargetPubkey:  consolidation.TargetPubkey[:],
+			BlockNumber:   blockNumber,
 		}
 		if overrideForkId != nil {
 			dbConsolidation.ForkId = uint64(*overrideForkId)
@@ -772,6 +775,8 @@ func (dbw *dbWriter) buildDbWithdrawalRequests(block *Block, orphaned bool, over
 		validatorSetMap[validator.Validator.PublicKey] = uint64(idx)
 	}
 
+	blockNumber, _ := blockBody.ExecutionBlockNumber()
+
 	dbWithdrawalRequests := make([]*dbtypes.WithdrawalRequest, len(withdrawalRequests))
 	for idx, withdrawalRequest := range withdrawalRequests {
 		dbWithdrawalRequest := &dbtypes.WithdrawalRequest{
@@ -783,6 +788,7 @@ func (dbw *dbWriter) buildDbWithdrawalRequests(block *Block, orphaned bool, over
 			SourceAddress:   withdrawalRequest.SourceAddress[:],
 			ValidatorPubkey: withdrawalRequest.ValidatorPubkey[:],
 			Amount:          uint64(withdrawalRequest.Amount),
+			BlockNumber:     blockNumber,
 		}
 		if overrideForkId != nil {
 			dbWithdrawalRequest.ForkId = uint64(*overrideForkId)
