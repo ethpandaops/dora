@@ -156,9 +156,20 @@
       </div>
     </div>
 
-    <div class="row">
-      <div class="mt-3 pr-lg-2"><!-- col-lg-6 -->
-        {{ template "recentBlocks" . }}
+
+    <ul class="nav nav-tabs justify-content-start mt-3" id="tab" role="tablist">
+      <li class="nav-item">
+        <a class="nav-link active" id="recentBlocks-tab" data-bs-toggle="tab" href="#recentBlocks" role="tab" aria-controls="recentBlocks" aria-selected="true">
+          <i class="fa fa-cubes me-2"></i> Recent Blocks
+        </a>
+      </li>
+    </ul>
+
+    <div class="tab-content" id="tabContent">
+      <div class="tab-pane fade show active" id="recentBlocks" role="tabpanel" aria-labelledby="recentBlocks-tab">
+        <div class="card block-card">
+          {{ template "recentBlocks" . }}
+        </div>
       </div>
     </div>
   </div>
