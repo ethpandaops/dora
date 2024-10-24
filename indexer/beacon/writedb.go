@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 
+	"github.com/attestantio/go-eth2-client/spec/electra"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/dora/db"
@@ -244,6 +245,13 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 	executionTransactions, _ := blockBody.ExecutionTransactions()
 	executionWithdrawals, _ := blockBody.Withdrawals()
 
+	var depositRequests []*electra.DepositRequest
+
+	executionRequests, _ := blockBody.ExecutionRequests()
+	if executionRequests != nil {
+		depositRequests = executionRequests.Deposits
+	}
+
 	dbBlock := dbtypes.Slot{
 		Slot:                  uint64(block.header.Message.Slot),
 		Proposer:              uint64(block.header.Message.ProposerIndex),
@@ -255,7 +263,7 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 		Graffiti:              graffiti[:],
 		GraffitiText:          utils.GraffitiToString(graffiti[:]),
 		AttestationCount:      uint64(len(attestations)),
-		DepositCount:          uint64(len(deposits)),
+		DepositCount:          uint64(len(deposits) + len(depositRequests)),
 		ExitCount:             uint64(len(voluntaryExits)),
 		AttesterSlashingCount: uint64(len(attesterSlashings)),
 		ProposerSlashingCount: uint64(len(proposerSlashings)),
@@ -369,8 +377,15 @@ func (dbw *dbWriter) buildDbEpoch(epoch phase0.Epoch, blocks []*Block, epochStat
 			executionTransactions, _ := blockBody.ExecutionTransactions()
 			executionWithdrawals, _ := blockBody.Withdrawals()
 
+			var depositRequests []*electra.DepositRequest
+
+			executionRequests, _ := blockBody.ExecutionRequests()
+			if executionRequests != nil {
+				depositRequests = executionRequests.Deposits
+			}
+
 			dbEpoch.AttestationCount += uint64(len(attestations))
-			dbEpoch.DepositCount += uint64(len(deposits))
+			dbEpoch.DepositCount += uint64(len(deposits) + len(depositRequests))
 			dbEpoch.ExitCount += uint64(len(voluntaryExits))
 			dbEpoch.AttesterSlashingCount += uint64(len(attesterSlashings))
 			dbEpoch.ProposerSlashingCount += uint64(len(proposerSlashings))
