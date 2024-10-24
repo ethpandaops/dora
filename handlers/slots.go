@@ -133,7 +133,7 @@ func buildSlotsPageData(firstSlot uint64, pageSize uint64) (*models.SlotsPageDat
 	maxOpenFork := 0
 	for slotIdx := int64(firstSlot); slotIdx >= int64(lastSlot); slotIdx-- {
 		slot := uint64(slotIdx)
-		finalized := finalizedEpoch >= chainState.EpochOfSlot(phase0.Slot(slot))
+		finalized := finalizedEpoch > 0 && finalizedEpoch >= chainState.EpochOfSlot(phase0.Slot(slot))
 		if !finalized {
 			allFinalized = false
 		}
