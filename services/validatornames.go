@@ -400,7 +400,7 @@ func (vn *ValidatorNames) parseNamesMap(names map[string]string) int {
 			if err != nil {
 				continue
 			}
-			maxIdx := minIdx + 1
+			maxIdx := minIdx
 			if len(rangeParts) > 1 {
 				maxIdx, err = strconv.ParseUint(rangeParts[1], 10, 64)
 				if err != nil {
