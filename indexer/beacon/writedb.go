@@ -485,10 +485,12 @@ func (dbw *dbWriter) buildDbDepositRequests(block *Block, orphaned bool, overrid
 		return nil
 	}
 
-	deposits, err := getBlockExecutionDepositRequests(blockBody)
+	requests, err := blockBody.ExecutionRequests()
 	if err != nil {
 		return nil
 	}
+
+	deposits := requests.Deposits
 
 	dbDeposits := make([]*dbtypes.Deposit, len(deposits))
 	for idx, deposit := range deposits {
@@ -673,10 +675,12 @@ func (dbw *dbWriter) buildDbConsolidationRequests(block *Block, orphaned bool, o
 		return nil
 	}
 
-	consolidations, err := getBlockExecutionConsolidationRequests(blockBody)
+	requests, err := blockBody.ExecutionRequests()
 	if err != nil {
 		return nil
 	}
+
+	consolidations := requests.Consolidations
 
 	if len(consolidations) == 0 {
 		return []*dbtypes.ConsolidationRequest{}
@@ -739,10 +743,12 @@ func (dbw *dbWriter) buildDbWithdrawalRequests(block *Block, orphaned bool, over
 		return nil
 	}
 
-	withdrawalRequests, err := getBlockExecutionWithdrawalRequests(blockBody)
+	requests, err := blockBody.ExecutionRequests()
 	if err != nil {
 		return nil
 	}
+
+	withdrawalRequests := requests.Withdrawals
 
 	if len(withdrawalRequests) == 0 {
 		return []*dbtypes.WithdrawalRequest{}
