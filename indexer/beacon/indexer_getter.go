@@ -116,6 +116,15 @@ func (indexer *Indexer) GetBlockCacheState() (finalizedEpoch phase0.Epoch, prune
 	return indexer.lastFinalizedEpoch, indexer.lastPrunedEpoch
 }
 
+// GetSynchronizerState returns the state of the synchronizer, including whether it is running and the current epoch.
+func (indexer *Indexer) GetSynchronizerState() (running bool, syncHead phase0.Epoch) {
+	if indexer.synchronizer == nil {
+		return false, 0
+	}
+
+	return indexer.synchronizer.running, indexer.synchronizer.currentEpoch
+}
+
 // GetForkHeads returns a slice of fork heads in the indexer.
 func (indexer *Indexer) GetForkHeads() []*ForkHead {
 	return indexer.forkCache.getForkHeads()
@@ -235,4 +244,9 @@ func (indexer *Indexer) GetEpochStats(epoch phase0.Epoch, overrideForkId *ForkKe
 	}
 
 	return bestEpochStats
+}
+
+// GetParentForkIds returns the parent fork ids of the given fork.
+func (indexer *Indexer) GetParentForkIds(forkId ForkKey) []ForkKey {
+	return indexer.forkCache.getParentForkIds(forkId)
 }

@@ -104,9 +104,34 @@ type WithdrawalRequestFilter struct {
 	WithOrphaned  uint8
 }
 
+type WithdrawalRequestTxFilter struct {
+	MinDequeue    uint64
+	MaxDequeue    uint64
+	SourceAddress []byte
+	MinIndex      uint64
+	MaxIndex      uint64
+	ValidatorName string
+	MinAmount     *uint64
+	MaxAmount     *uint64
+	WithOrphaned  uint8
+}
+
 type ConsolidationRequestFilter struct {
 	MinSlot          uint64
 	MaxSlot          uint64
+	SourceAddress    []byte
+	MinSrcIndex      uint64
+	MaxSrcIndex      uint64
+	SrcValidatorName string
+	MinTgtIndex      uint64
+	MaxTgtIndex      uint64
+	TgtValidatorName string
+	WithOrphaned     uint8
+}
+
+type ConsolidationRequestTxFilter struct {
+	MinDequeue       uint64
+	MaxDequeue       uint64
 	SourceAddress    []byte
 	MinSrcIndex      uint64
 	MaxSrcIndex      uint64

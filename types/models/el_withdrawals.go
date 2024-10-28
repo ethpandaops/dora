@@ -47,4 +47,15 @@ type ElWithdrawalsPageDataWithdrawal struct {
 	PublicKey         []byte    `json:"pubkey"`
 	LinkedTransaction bool      `json:"linked_tx"`
 	TransactionHash   []byte    `json:"tx_hash"`
+
+	TransactionDetails *ElWithdrawalsPageDataWithdrawalTxDetails `json:"tx_details"`
+}
+
+type ElWithdrawalsPageDataWithdrawalTxDetails struct {
+	BlockNumber uint64 `json:"block"`
+	BlockHash   string `json:"block_hash"`
+	BlockTime   uint64 `json:"block_time"`
+	TxOrigin    string `json:"tx_origin"`
+	TxTarget    string `json:"tx_target"`
+	TxHash      string `json:"tx_hash"`
 }

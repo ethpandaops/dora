@@ -15,11 +15,11 @@ func InsertWithdrawalRequests(elRequests []*dbtypes.WithdrawalRequest, tx *sqlx.
 			dbtypes.DBEnginePgsql:  "INSERT INTO withdrawal_requests ",
 			dbtypes.DBEngineSqlite: "INSERT OR REPLACE INTO withdrawal_requests ",
 		}),
-		"(slot_number, slot_root, slot_index, orphaned, fork_id, source_address, validator_index, validator_pubkey, amount, tx_hash)",
+		"(slot_number, slot_root, slot_index, orphaned, fork_id, source_address, validator_index, validator_pubkey, amount, tx_hash, block_number)",
 		" VALUES ",
 	)
 	argIdx := 0
-	fieldCount := 10
+	fieldCount := 11
 
 	args := make([]any, len(elRequests)*fieldCount)
 	for i, elRequest := range elRequests {
@@ -46,6 +46,7 @@ func InsertWithdrawalRequests(elRequests []*dbtypes.WithdrawalRequest, tx *sqlx.
 		args[argIdx+7] = elRequest.ValidatorPubkey
 		args[argIdx+8] = elRequest.Amount
 		args[argIdx+9] = elRequest.TxHash
+		args[argIdx+10] = elRequest.BlockNumber
 		argIdx += fieldCount
 	}
 	fmt.Fprint(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
@@ -66,7 +67,7 @@ func GetWithdrawalRequestsFiltered(offset uint64, limit uint32, finalizedBlock u
 	fmt.Fprint(&sql, `
 	WITH cte AS (
 		SELECT
-			slot_number, slot_index, slot_root, orphaned, fork_id, source_address, validator_index, validator_pubkey, amount
+			slot_number, slot_index, slot_root, orphaned, fork_id, source_address, validator_index, validator_pubkey, amount, tx_hash, block_number
 		FROM withdrawal_requests
 	`)
 
@@ -143,7 +144,9 @@ func GetWithdrawalRequestsFiltered(offset uint64, limit uint32, finalizedBlock u
 		null AS source_address,
 		0 AS validator_index,
 		null AS validator_pubkey,
-		0 AS amount
+		0 AS amount,
+		null AS tx_hash,
+		0 AS block_number
 	FROM cte
 	UNION ALL SELECT * FROM (
 	SELECT * FROM cte
@@ -165,4 +168,29 @@ func GetWithdrawalRequestsFiltered(offset uint64, limit uint32, finalizedBlock u
 	}
 
 	return withdrawalRequests[1:], withdrawalRequests[0].SlotNumber, nil
+}
+
+func GetWithdrawalRequestsByElBlockRange(firstSlot uint64, lastSlot uint64) []*dbtypes.WithdrawalRequest {
+	withdrawalRequests := []*dbtypes.WithdrawalRequest{}
+
+	err := ReaderDb.Select(&withdrawalRequests, `
+		SELECT withdrawal_requests.*
+		FROM withdrawal_requests
+		WHERE block_number >= $1 AND block_number <= $2
+		ORDER BY block_number ASC, slot_index ASC
+	`, firstSlot, lastSlot)
+	if err != nil {
+		logger.Errorf("Error while fetching withdrawal requests: %v", err)
+		return nil
+	}
+
+	return withdrawalRequests
+}
+
+func UpdateWithdrawalRequestTxHash(slotRoot []byte, slotIndex uint64, txHash []byte, tx *sqlx.Tx) error {
+	_, err := tx.Exec(`UPDATE withdrawal_requests SET tx_hash = $1 WHERE slot_root = $2 AND slot_index = $3`, txHash, slotRoot, slotIndex)
+	if err != nil {
+		return err
+	}
+	return nil
 }

@@ -24,13 +24,16 @@ import (
 )
 
 type ChainService struct {
-	logger          logrus.FieldLogger
-	consensusPool   *consensus.Pool
-	executionPool   *execution.Pool
-	beaconIndexer   *beacon.Indexer
-	validatorNames  *ValidatorNames
-	mevRelayIndexer *mevrelay.MevIndexer
-	started         bool
+	logger               logrus.FieldLogger
+	consensusPool        *consensus.Pool
+	executionPool        *execution.Pool
+	beaconIndexer        *beacon.Indexer
+	validatorNames       *ValidatorNames
+	depositIndexer       *execindexer.DepositIndexer
+	consolidationIndexer *execindexer.ConsolidationIndexer
+	withdrawalIndexer    *execindexer.WithdrawalIndexer
+	mevRelayIndexer      *mevrelay.MevIndexer
+	started              bool
 }
 
 var GlobalBeaconService *ChainService
@@ -179,7 +182,9 @@ func (cs *ChainService) StartService() error {
 	cs.beaconIndexer.StartIndexer()
 
 	// add execution indexers
-	execindexer.NewDepositIndexer(executionIndexerCtx)
+	cs.depositIndexer = execindexer.NewDepositIndexer(executionIndexerCtx)
+	cs.consolidationIndexer = execindexer.NewConsolidationIndexer(executionIndexerCtx)
+	cs.withdrawalIndexer = execindexer.NewWithdrawalIndexer(executionIndexerCtx)
 
 	// start MEV relay indexer
 	cs.mevRelayIndexer.StartUpdater()
@@ -189,6 +194,14 @@ func (cs *ChainService) StartService() error {
 
 func (bs *ChainService) GetBeaconIndexer() *beacon.Indexer {
 	return bs.beaconIndexer
+}
+
+func (bs *ChainService) GetConsolidationIndexer() *execindexer.ConsolidationIndexer {
+	return bs.consolidationIndexer
+}
+
+func (bs *ChainService) GetWithdrawalIndexer() *execindexer.WithdrawalIndexer {
+	return bs.withdrawalIndexer
 }
 
 func (bs *ChainService) GetConsensusClients() []*consensus.Client {
@@ -243,6 +256,10 @@ func (bs *ChainService) GetFinalizedEpoch() (phase0.Epoch, phase0.Root) {
 func (bs *ChainService) GetGenesis() (*v1.Genesis, error) {
 	chainState := bs.consensusPool.GetChainState()
 	return chainState.GetGenesis(), nil
+}
+
+func (bs *ChainService) GetParentForkIds(forkId beacon.ForkKey) []beacon.ForkKey {
+	return bs.beaconIndexer.GetParentForkIds(forkId)
 }
 
 type ConsensusClientFork struct {
