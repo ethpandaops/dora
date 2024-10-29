@@ -5,20 +5,16 @@ import { Chain } from 'wagmi/chains';
 import { QueryClientProvider, QueryClient } from "@tanstack/react-query";
 import { ChainFormatters, defineChain } from "viem";
 
-import { IWagmiComponentConfig } from './WagmiComponentProps';
-import './WagmiComponent.scss';
+import { IWagmiRainbowProviderProps } from './WagmiRainbowProviderProps';
+import './WagmiRainbowProvider.scss';
 
-export interface IWagmiComponentProps extends IWagmiComponentConfig {
-    children: React.ReactNode;
-}
-  
-export interface IWagmiComponentState {
+export interface IWagmiRainbowProviderState {
   wagmiConfig: Config;
   queryClient: QueryClient;
 }
 
-export default class WagmiComponent extends React.PureComponent<IWagmiComponentProps, IWagmiComponentState> {
-  constructor(props: IWagmiComponentProps, state: IWagmiComponentState) {
+export default class WagmiRainbowProvider extends React.PureComponent<IWagmiRainbowProviderProps, IWagmiRainbowProviderState> {
+  constructor(props: IWagmiRainbowProviderProps, state: IWagmiRainbowProviderState) {
     super(props);
 
     let chains = props.chains.map((chain) => {
@@ -57,7 +53,7 @@ export default class WagmiComponent extends React.PureComponent<IWagmiComponentP
     };
   }
 
-  public render(): React.ReactElement<IWagmiComponentProps> {
+  public render(): React.ReactElement<IWagmiRainbowProviderProps> {
     return (
       <WagmiProvider config={this.state.wagmiConfig}>
         <QueryClientProvider client={this.state.queryClient}>

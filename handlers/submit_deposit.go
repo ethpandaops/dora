@@ -4,11 +4,13 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/sirupsen/logrus"
 
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
+	"github.com/ethpandaops/dora/utils"
 )
 
 // SubmitDeposit will submit a deposit to the beacon node
@@ -61,5 +63,16 @@ func getSubmitDepositPageData() (*models.SubmitDepositPageData, error) {
 func buildSubmitDepositPageData() (*models.SubmitDepositPageData, time.Duration) {
 	logrus.Debugf("submit deposit page called")
 
-	return &models.SubmitDepositPageData{}, 1 * time.Hour
+	chainState := services.GlobalBeaconService.GetChainState()
+	specs := chainState.GetSpecs()
+
+	pageData := &models.SubmitDepositPageData{
+		NetworkName:         specs.ConfigName,
+		DepositContract:     common.Address(specs.DepositContractAddress).String(),
+		PublicRPCUrl:        utils.Config.Frontend.PublicRPCUrl,
+		RainbowkitProjectId: utils.Config.Frontend.RainbowkitProjectId,
+		ChainId:             specs.DepositChainId,
+	}
+
+	return pageData, 1 * time.Hour
 }

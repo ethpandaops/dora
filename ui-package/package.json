@@ -1,7 +1,7 @@
 {
-  "name": "@dora-ui/submit-deposit",
+  "name": "@ethpandaops/dora-ui-components",
   "version": "0.0.1",
-  "description": "Static web frontend for Dora Submit Deposit Page",
+  "description": "Advanced UI components for Dora",
   "author": "pk910",
   "license": "MIT",
   "devDependencies": {

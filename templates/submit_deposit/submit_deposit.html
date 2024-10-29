@@ -24,19 +24,19 @@
 
 {{ end }}
 {{ define "js" }}
-<script src="/js/dora-ui/dora-ui.js"></script>
+<script src="/ui-package/react-ui.js"></script>
 <script type="text/javascript">
   $(function() {
-    window.doraUiComponents.SubmitDeposit(
+    window.doraUiComponents.SubmitDepositsForm(
       document.getElementById("submit-deposit-container"),
       {
         wagmiConfig: {
-          projectId: "vx",
+          projectId: "{{ .RainbowkitProjectId }}",
           chains: [
             {
-              chainId: 1,
-              name: "Ethereum",
-              rpcUrl: "",
+              chainId: {{ .ChainId }},
+              name: "{{ .NetworkName }}",
+              rpcUrl: "{{ .PublicRPCUrl }}",
               tokenName: "Ethereum",
               tokenSymbol: "ETH",
             }

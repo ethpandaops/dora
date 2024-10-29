@@ -1,9 +1,8 @@
 
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { IWagmiComponentConfig } from './components/WagmiComponentProps';
-import { ISubmitDepositProps } from './components/SubmitDepositProps';
-import { IWagmiComponentProps } from './components/WagmiComponent';
+import { IWagmiRainbowProviderProps, IWagmiRainbowProviderConfig } from './components/WagmiRainbowProvider/WagmiRainbowProviderProps';
+import { ISubmitDepositsFormProps } from './components/SubmitDepositsForm/SubmitDepositsFormProps';
 
 export interface IComponentExports {
   [component: string]: (container: HTMLElement, cfg: any) => IComponentControls
@@ -15,16 +14,16 @@ export interface IComponentControls {
 
 function exportComponents(uiPackages: IComponentExports) {
   // provider components
-  const WagmiComponent = React.lazy<React.ComponentType<IWagmiComponentProps>>(() => import(/* webpackChunkName: "wagmi-component" */ './components/WagmiComponent'));
+  const WagmiRainbowProvider = React.lazy<React.ComponentType<IWagmiRainbowProviderProps>>(() => import(/* webpackChunkName: "wagmi-component" */ './components/WagmiRainbowProvider/WagmiRainbowProvider'));
   
-  // SubmitDeposit component
-  const SubmitDeposit = React.lazy<React.ComponentType<ISubmitDepositProps>>(() => import(/* webpackChunkName: "submit-deposit" */ './components/SubmitDeposit'));
-  uiPackages.SubmitDeposit = buildComponentLoader<{wagmiConfig: IWagmiComponentConfig, submitDepositConfig: ISubmitDepositProps}>(
+  // SubmitDepositsForm component
+  const SubmitDepositsForm = React.lazy<React.ComponentType<ISubmitDepositsFormProps>>(() => import(/* webpackChunkName: "submit-deposit" */ './components/SubmitDepositsForm/SubmitDepositsForm'));
+  uiPackages.SubmitDepositsForm = buildComponentLoader<{wagmiConfig: IWagmiRainbowProviderConfig, submitDepositConfig: ISubmitDepositsFormProps}>(
     (config) => {
       return (
-        <WagmiComponent {...config.wagmiConfig}>
-          <SubmitDeposit {...config.submitDepositConfig} />
-        </WagmiComponent>
+        <WagmiRainbowProvider {...config.wagmiConfig}>
+          <SubmitDepositsForm {...config.submitDepositConfig} />
+        </WagmiRainbowProvider>
       )
     }
   );

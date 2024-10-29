@@ -1,5 +1,5 @@
 
-export interface ISubmitDepositProps {
+export interface ISubmitDepositsFormProps {
   chainId: number;
   name: string;
   rpcUrl: string;

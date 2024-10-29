@@ -1,3 +1,4 @@
+import React from 'react';
 
 export interface IWagmiChainConfig {
   chainId: number;
@@ -8,7 +9,11 @@ export interface IWagmiChainConfig {
   explorerLink?: string;
 }
 
-export interface IWagmiComponentConfig {
+export interface IWagmiRainbowProviderConfig {
     projectId: string;
     chains: IWagmiChainConfig[];
+}
+
+export interface IWagmiRainbowProviderProps extends IWagmiRainbowProviderConfig {
+  children: React.ReactNode;
 }
