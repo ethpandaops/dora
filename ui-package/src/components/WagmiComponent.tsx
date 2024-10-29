@@ -6,8 +6,7 @@ import { QueryClientProvider, QueryClient } from "@tanstack/react-query";
 import { ChainFormatters, defineChain } from "viem";
 
 import { IWagmiComponentConfig } from './WagmiComponentProps';
-
-import '@rainbow-me/rainbowkit/styles.css';
+import './WagmiComponent.scss';
 
 export interface IWagmiComponentProps extends IWagmiComponentConfig {
     children: React.ReactNode;

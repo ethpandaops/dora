@@ -14,9 +14,9 @@ var webpackModuleConfigs = [
     entry: './src/main',
     output: {
       path: path.join(__dirname, '/dist'),
-      filename: 'dora-ui.js',
-      chunkFilename: 'dora-ui-[name].js',
-      publicPath: "/js/dora-ui/",
+      filename: 'react-ui.js',
+      chunkFilename: 'react-ui-[name].js',
+      publicPath: "/ui-package/",
     },
   },
 ];
@@ -26,7 +26,7 @@ var webpackBaseConfig = {
   devtool: "source-map",
 
   resolve: {
-    extensions: ['.ts', '.tsx', '.js']
+    extensions: [".tsx", ".ts", ".js", ".css", ".scss"],
   },
   target: ['web', 'es5'],
 
@@ -54,8 +54,13 @@ var webpackBaseConfig = {
         },
       },
       {
-        test: /\.s?css$/,
-        use: [MiniCssExtractPlugin.loader, 'css-loader', 'sass-loader']
+        test: /\.(sa|sc|c)ss$/,
+        use: [
+          debug ? "style-loader" : MiniCssExtractPlugin.loader,
+          "css-loader",
+          "postcss-loader",
+          "sass-loader",
+        ],
       },
     ]
   },

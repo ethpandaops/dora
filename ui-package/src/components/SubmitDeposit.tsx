@@ -2,9 +2,7 @@ import React from 'react';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 
 import { ISubmitDepositProps } from './SubmitDepositProps';
-
-import '@rainbow-me/rainbowkit/styles.css';
-import './SubmitDeposit.css';
+import './SubmitDeposit.scss';
 
 export interface ISubmitDepositState {
 }

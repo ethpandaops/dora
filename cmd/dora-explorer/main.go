@@ -183,14 +183,14 @@ func startFrontend(webserver *http.Server) {
 		router.PathPrefix("/css").Handler(http.StripPrefix("/css/", cssHandler))
 
 		doraUiHandler := http.FileServer(http.Dir("ui-package/dist"))
-		router.PathPrefix("/js/dora-ui").Handler(http.StripPrefix("/js/dora-ui/", doraUiHandler))
+		router.PathPrefix("/ui-package").Handler(http.StripPrefix("/ui-package/", doraUiHandler))
 
 		jsHandler := http.FileServer(http.Dir("static/js"))
 		router.PathPrefix("/js").Handler(http.StripPrefix("/js/", jsHandler))
 	} else {
 		// serve dora ui package from go embed
 		uiFileSys := http.FS(uipackage.Files)
-		router.PathPrefix("/js/dora-ui").Handler(handlers.CustomFileServer(http.FileServer(uiFileSys), uiFileSys, handlers.NotFound))
+		router.PathPrefix("/ui-package").Handler(handlers.CustomFileServer(http.FileServer(uiFileSys), uiFileSys, handlers.NotFound))
 	}
 
 	// serve static files from go embed
