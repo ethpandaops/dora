@@ -17,6 +17,7 @@ import (
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/static"
 	"github.com/ethpandaops/dora/types"
+	uipackage "github.com/ethpandaops/dora/ui-package"
 	"github.com/ethpandaops/dora/utils"
 )
 
@@ -158,6 +159,7 @@ func startFrontend(webserver *http.Server) {
 	router.HandleFunc("/validators", handlers.Validators).Methods("GET")
 	router.HandleFunc("/validators/activity", handlers.ValidatorsActivity).Methods("GET")
 	router.HandleFunc("/validators/deposits", handlers.Deposits).Methods("GET")
+	router.HandleFunc("/validators/deposits/submit", handlers.SubmitDeposit).Methods("GET")
 	router.HandleFunc("/validators/initiated_deposits", handlers.InitiatedDeposits).Methods("GET")
 	router.HandleFunc("/validators/included_deposits", handlers.IncludedDeposits).Methods("GET")
 	router.HandleFunc("/validators/voluntary_exits", handlers.VoluntaryExits).Methods("GET")
@@ -180,10 +182,18 @@ func startFrontend(webserver *http.Server) {
 		cssHandler := http.FileServer(http.Dir("static/css"))
 		router.PathPrefix("/css").Handler(http.StripPrefix("/css/", cssHandler))
 
+		doraUiHandler := http.FileServer(http.Dir("ui-package/dist"))
+		router.PathPrefix("/js/dora-ui").Handler(http.StripPrefix("/js/dora-ui/", doraUiHandler))
+
 		jsHandler := http.FileServer(http.Dir("static/js"))
 		router.PathPrefix("/js").Handler(http.StripPrefix("/js/", jsHandler))
+	} else {
+		// serve dora ui package from go embed
+		uiFileSys := http.FS(uipackage.Files)
+		router.PathPrefix("/js/dora-ui").Handler(handlers.CustomFileServer(http.FileServer(uiFileSys), uiFileSys, handlers.NotFound))
 	}
 
+	// serve static files from go embed
 	fileSys := http.FS(static.Files)
 	router.PathPrefix("/").Handler(handlers.CustomFileServer(http.FileServer(fileSys), fileSys, handlers.NotFound))
 

@@ -11,14 +11,21 @@ GOLDFLAGS += -X 'github.com/ethpandaops/dora/utils.BuildRelease="$(RELEASE)"'
 all: test build
 
 test:
+	$(MAKE) -C ui-package test
+	if [ ! -f ui-package/dist/dora-ui.js ]; then $(MAKE) build-ui; fi
 	go test ./...
 
 build:
 	@echo version: $(VERSION)
+	if [ ! -f ui-package/dist/dora-ui.js ]; then $(MAKE) build-ui; fi
 	env CGO_ENABLED=1 go build -v -o bin/ -ldflags="-s -w $(GOLDFLAGS)" ./cmd/*
+
+build-ui:
+	$(MAKE) -C ui-package build
 
 clean:
 	rm -f bin/*
+	$(MAKE) -C ui-package clean
 
 devnet:
 	.hack/devnet/run.sh

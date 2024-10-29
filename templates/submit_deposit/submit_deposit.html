@@ -17,16 +17,35 @@
 
   <div class="card mt-2">
     <div class="card-body">
-
-
-
-      
+      <div id="submit-deposit-container"></div>
     </div>
   </div>
 </div>
 
 {{ end }}
 {{ define "js" }}
+<script src="/js/dora-ui/dora-ui.js"></script>
+<script type="text/javascript">
+  $(function() {
+    window.doraUiComponents.SubmitDeposit(
+      document.getElementById("submit-deposit-container"),
+      {
+        wagmiConfig: {
+          projectId: "vx",
+          chains: [
+            {
+              chainId: 1,
+              name: "Ethereum",
+              rpcUrl: "",
+              tokenName: "Ethereum",
+              tokenSymbol: "ETH",
+            }
+          ]
+        }
+      }
+    );
+  });
+</script>
 {{ end }}
 {{ define "css" }}
 {{ end }}
