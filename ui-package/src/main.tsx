@@ -29,7 +29,7 @@ function exportComponents(uiPackages: IComponentExports) {
   );
 }
 
-function buildComponentLoader<TCfg>(loader: (wagmiConfig: TCfg) => React.ReactNode): (container: HTMLElement, cfg: TCfg) => IComponentControls {
+function buildComponentLoader<TCfg>(loader: (cfg: TCfg) => React.ReactNode) {
   return (container: HTMLElement, cfg: TCfg) => {
     const root = ReactDOM.createRoot(container);
     root.render(

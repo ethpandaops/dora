@@ -4,7 +4,6 @@ const wpmerge = require('webpack-merge');
 const MiniCssExtractPlugin = require("mini-css-extract-plugin");
 const TerserPlugin = require("terser-webpack-plugin");
 const Visualizer = require('webpack-visualizer-plugin2');
-var cliArgs = require('./utils/CliArgs');
 var pkgJson = require('./package.json');
 
 var debug = !!process.env.DEBUG;
