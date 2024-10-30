@@ -21,6 +21,7 @@ build:
 	env CGO_ENABLED=1 go build -v -o bin/ -ldflags="-s -w $(GOLDFLAGS)" ./cmd/*
 
 build-ui:
+	$(MAKE) -C ui-package install
 	$(MAKE) -C ui-package build
 
 clean:
