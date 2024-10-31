@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 	"time"
 
@@ -18,6 +19,11 @@ func SubmitDeposit(w http.ResponseWriter, r *http.Request) {
 		"submit_deposit/submit_deposit.html",
 	)
 	var pageTemplate = templates.GetTemplate(submitDepositTemplateFiles...)
+
+	if !utils.Config.Frontend.ShowSubmitDeposit {
+		handlePageError(w, r, errors.New("submit deposit is not enabled"))
+		return
+	}
 
 	pageData, pageError := getSubmitDepositPageData()
 	if pageError != nil {
