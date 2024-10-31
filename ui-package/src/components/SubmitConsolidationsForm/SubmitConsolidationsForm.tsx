@@ -192,6 +192,7 @@ const SubmitConsolidationsForm = (props: ISubmitConsolidationsFormProps): React.
                 </div>
               </div>
               <ConsolidationReview
+                key={`${sourceValidator.index}-${targetValidator.index}`}
                 sourceValidator={sourceValidator}
                 targetValidator={targetValidator}
                 consolidationContract={props.consolidationContract}
