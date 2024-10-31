@@ -6,5 +6,7 @@ export interface ISubmitDepositsFormProps {
   tokenName: string;
   tokenSymbol: string;
   explorerLink?: string;
+  genesisForkVersion: string;
+  depositContract: string;
 }
   

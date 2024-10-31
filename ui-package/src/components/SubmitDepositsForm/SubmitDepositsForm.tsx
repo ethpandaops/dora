@@ -1,24 +1,25 @@
 import React from 'react';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
+import { useAccount } from 'wagmi';
+import { useState } from 'react';
 
 import { ISubmitDepositsFormProps } from './SubmitDepositsFormProps';
+import DepositsTable from './DepositsTable';
 import './SubmitDepositsForm.scss';
-import { useAccount } from 'wagmi';
 
-export interface ISubmitDepositsFormState {
-}
-
-const VaultPage = (props: ISubmitDepositsFormProps): React.ReactElement => {
+const SubmitDepositsForm = (props: ISubmitDepositsFormProps): React.ReactElement => {
   const { address: walletAddress, isConnected, chain } = useAccount();
+  
+  const [file, setFile] = useState<File | null>(null);
 
   return (
-    <div className="container submit-deposits">
+    <div className="submit-deposits">
       <div className="row">
         <div className="col-12">
-          <h1>Submit validator deposits</h1>
+          <h3>Submit validator deposits</h3>
           <p>This tool can be used to submit validator deposits to the deposit contract.</p>
           <p>You can find instructions on how to generate deposits at the <a href="https://launchpad.ethereum.org/en/overview" target="_blank" rel="noreferrer">Staking Launchpad</a>.</p>
-          <div className="alert alert-danger">
+          <div className="alert alert-warning">
             <b>Don't provide your keystore or mnemonic to us or any other website</b>
           </div>
         </div>
@@ -41,14 +42,26 @@ const VaultPage = (props: ISubmitDepositsFormProps): React.ReactElement => {
             <label htmlFor="formFile" className="form-label">
               <b>Step 2: Upload deposit data file</b>
             </label>
-            <input type="file" className="form-control" id="formFile" />
-            The deposit_data-[timestamp].json is located in your /staking-deposit-cli/validator_keys directory.
+            <input 
+              type="file" 
+              className="form-control" 
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                if (e.target.files) {
+                  setFile(e.target.files[0]);
+                }
+              }} 
+            />
+            <p className="text-secondary-emphasis mt-2">The deposit data file is usually called <code>deposit_data-[timestamp].json</code> and is located in your <code>/staking-deposit-cli/validator_keys</code> directory.</p>
           </div>
         </div>
+      : null}
+
+      {file ?
+        <DepositsTable file={file} genesisForkVersion={props.genesisForkVersion} depositContract={props.depositContract} />
       : null}
 
     </div>
   );
 }
 
-export default VaultPage;
+export default SubmitDepositsForm;

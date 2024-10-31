@@ -207,6 +207,18 @@ func createMenuItems(active string) []types.MainMenuItem {
 		},
 	})
 
+	if utils.Config.Frontend.ShowSubmitDeposit {
+		validatorMenu = append(validatorMenu, types.NavigationGroup{
+			Links: []types.NavigationLink{
+				{
+					Label: "Submit Deposits",
+					Path:  "/validators/deposits/submit",
+					Icon:  "fa-file-import",
+				},
+			},
+		})
+	}
+
 	return []types.MainMenuItem{
 		{
 			Label:    "Blockchain",

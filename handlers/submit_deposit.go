@@ -4,7 +4,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/sirupsen/logrus"
 
 	"github.com/ethpandaops/dora/services"
@@ -68,10 +67,11 @@ func buildSubmitDepositPageData() (*models.SubmitDepositPageData, time.Duration)
 
 	pageData := &models.SubmitDepositPageData{
 		NetworkName:         specs.ConfigName,
-		DepositContract:     common.Address(specs.DepositContractAddress).String(),
+		DepositContract:     specs.DepositContractAddress,
 		PublicRPCUrl:        utils.Config.Frontend.PublicRPCUrl,
 		RainbowkitProjectId: utils.Config.Frontend.RainbowkitProjectId,
 		ChainId:             specs.DepositChainId,
+		GenesisForkVersion:  specs.GenesisForkVersion[:],
 	}
 
 	return pageData, 1 * time.Hour
