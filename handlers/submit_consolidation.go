@@ -111,11 +111,11 @@ func handleSubmitConsolidationPageDataAjax(w http.ResponseWriter, r *http.Reques
 		validators := services.GlobalBeaconService.GetCachedValidatorSet()
 		result := []models.SubmitConsolidationPageDataValidator{}
 		for _, validator := range validators {
-			if validator.Validator.WithdrawalCredentials[0] == 0x00 && false {
+			if validator.Validator.WithdrawalCredentials[0] == 0x00 {
 				continue
 			}
 
-			if !bytes.Equal(validator.Validator.WithdrawalCredentials[12:], addressBytes[:]) && false {
+			if !bytes.Equal(validator.Validator.WithdrawalCredentials[12:], addressBytes[:]) {
 				continue
 			}
 
