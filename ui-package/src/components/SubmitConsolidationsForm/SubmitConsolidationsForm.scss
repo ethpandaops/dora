@@ -49,12 +49,12 @@
     background-color: rgba(var(--bs-primary-rgb), 0.3);
   }
 
-  .validator-selector-option:hover {
+  .validator-selector-option:hover, .validator-selector-option.focused {
     color: var(--bs-body-color);
     background-color: var(--bs-tertiary-bg);
   }
 
-  .validator-selector-option.selected:hover {
+  .validator-selector-option.selected:hover, .validator-selector-option.selected.focused {
     color: var(--bs-body-color);
     background-color: rgba(var(--bs-primary-rgb), 0.4);
   }

@@ -4,9 +4,10 @@ import { useAccount } from 'wagmi';
 import { useState } from 'react';
 
 import { ISubmitConsolidationsFormProps, IValidator } from './SubmitConsolidationsFormProps';
-import './SubmitConsolidationsForm.scss';
 import ValidatorSelector, { formatBalance, formatStatus } from './ValidatorSelector';
 import ConsolidationReview from './ConsolidationReview';
+
+import './SubmitConsolidationsForm.scss';
 
 const SubmitConsolidationsForm = (props: ISubmitConsolidationsFormProps): React.ReactElement => {
   const { address: walletAddress, isConnected, chain } = useAccount();

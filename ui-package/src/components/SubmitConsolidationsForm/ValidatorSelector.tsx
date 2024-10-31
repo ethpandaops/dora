@@ -1,6 +1,4 @@
-import React, { CSSProperties } from 'react';
-import { useAccount, useWriteContract } from 'wagmi';
-import { useState } from 'react';
+import React from 'react';
 import Select, { createFilter, OptionProps } from 'react-select'
 import { IValidator } from './SubmitConsolidationsFormProps';
 import { FilterOptionOption } from 'react-select/dist/declarations/src/filters';
@@ -12,12 +10,16 @@ interface IValidatorSelectorProps {
 }
 
 const ValidatorSelector = (props: IValidatorSelectorProps): React.ReactElement => {
-  const filterConfig = {
-    ignoreCase: true,
-    ignoreAccents: true,
-    trim: true,
-    matchFrom: "any" as const,
-    stringify: (option: FilterOptionOption<IValidator>) => option.data.index + ": " + option.data.pubkey
+  const filterOptions = (option: FilterOptionOption<IValidator>, inputValue: string) => {
+    inputValue = inputValue.trim();
+    if (inputValue) {
+      if(inputValue.startsWith("0x") || !/^[0-9]+$/.test(inputValue)) {
+        return option.data.pubkey.toLowerCase().includes(inputValue.toLowerCase());
+      } else {
+        return option.data.index.toString().startsWith(inputValue);
+      }
+    }
+    return true;
   };
 
   return (
@@ -35,7 +37,7 @@ const ValidatorSelector = (props: IValidatorSelectorProps): React.ReactElement =
       onChange={(e) => {
         props.onChange(e);
       }}
-      filterOption={createFilter<IValidator>(filterConfig)}
+      filterOption={filterOptions}
       isMulti={false}
       isOptionSelected={(o, v) => v.some((i) => i.index === o.index)}
       getOptionLabel={(o) => "Selected validator: [" + o.index + "] " + o.pubkey}
@@ -55,10 +57,18 @@ const ValidatorSelector = (props: IValidatorSelectorProps): React.ReactElement =
 }
 
 const ValidatorOption = (props: OptionProps<IValidator, false>) => {
-  const { data, innerRef, innerProps, isSelected } = props;
+  const { data, innerRef, innerProps, isSelected, isFocused } = props;
   
+  let classNames = ["validator-selector-option"];
+  if (isSelected) {
+    classNames.push("selected");
+  }
+  if (isFocused) {
+    classNames.push("focused");
+  }
+
   return (
-    <span {...innerProps} className={isSelected ? "validator-selector-option selected" : "validator-selector-option"} ref={innerRef}>
+    <span {...innerProps} className={classNames.join(" ")} ref={innerRef}>
       <span className="validator-item">
         <span className="validator-index">{data.index}</span>
         <span className="validator-pubkey">{data.pubkey}</span>

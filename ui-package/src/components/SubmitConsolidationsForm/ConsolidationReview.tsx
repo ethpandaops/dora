@@ -1,10 +1,11 @@
-import React, { CSSProperties, useEffect } from 'react';
-import { useAccount, useReadContract, useSendTransaction, useWriteContract, usePrepareTransactionRequest } from 'wagmi';
+import React, { useEffect } from 'react';
+import { useAccount, useSendTransaction, usePrepareTransactionRequest } from 'wagmi';
 import { useCall } from 'wagmi'
 import { useState } from 'react';
 import { IValidator } from './SubmitConsolidationsFormProps';
 import { toReadableAmount } from '../../utils/ReadableAmount';
 import { Modal } from 'react-bootstrap';
+
 interface IConsolidationReviewProps {
   sourceValidator: IValidator;
   targetValidator: IValidator;
@@ -173,6 +174,7 @@ const ConsolidationReview = (props: IConsolidationReviewProps) => {
   );
 
   function getRequiredFee(numerator: bigint): bigint {
+    // https://eips.ethereum.org/EIPS/eip-7251#fee-calculation
     let i = 1n;
     let output = 0n;
     let numeratorAccum = 1n * 17n; // factor * denominator
@@ -192,6 +194,8 @@ const ConsolidationReview = (props: IConsolidationReviewProps) => {
       account: address,
       chainId: chain?.id,
       value: requestFee,
+      // https://eips.ethereum.org/EIPS/eip-7251#add-consolidation-request
+      // calldata (96 bytes): sourceValidator.pubkey (48 bytes) + targetValidator.pubkey (48 bytes)
       data: "0x" + props.sourceValidator.pubkey.substring(2) + props.targetValidator.pubkey.substring(2),
     }).then(tx => {
       console.log(tx);
