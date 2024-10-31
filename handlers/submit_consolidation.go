@@ -93,6 +93,7 @@ func buildSubmitConsolidationPageData() (*models.SubmitConsolidationPageData, ti
 		RainbowkitProjectId:   utils.Config.Frontend.RainbowkitProjectId,
 		ChainId:               specs.DepositChainId,
 		ConsolidationContract: execution.ConsolidationContractAddr,
+		ExplorerUrl:           utils.Config.Frontend.EthExplorerLink,
 	}
 
 	return pageData, 1 * time.Hour

@@ -6,6 +6,7 @@ type SubmitConsolidationPageData struct {
 	RainbowkitProjectId   string `json:"rainbowkit"`
 	ChainId               uint64 `json:"chainid"`
 	ConsolidationContract string `json:"consolidationcontract"`
+	ExplorerUrl           string `json:"explorerurl"`
 }
 
 type SubmitConsolidationPageDataValidator struct {

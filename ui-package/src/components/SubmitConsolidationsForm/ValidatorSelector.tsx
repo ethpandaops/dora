@@ -41,17 +41,24 @@ const ValidatorSelector = (props: IValidatorSelectorProps): React.ReactElement =
       getOptionLabel={(o) => "Selected validator: [" + o.index + "] " + o.pubkey}
       getOptionValue={(o) => o.pubkey}
       value={props.value}
+      classNames={{
+        control: () => "validator-selector-control",
+        container: () => "validator-selector-container",
+        menu: () => "validator-selector-menu",
+        option: () => "validator-selector-option",
+        singleValue: () => "validator-selector-single-value",
+        input: () => "validator-selector-input"
+      }}
     />
   );
 
 }
 
 const ValidatorOption = (props: OptionProps<IValidator, false>) => {
-  const { data, getStyles, innerRef, innerProps } = props;
-  const styles = getStyles('option', props);
+  const { data, innerRef, innerProps, isSelected } = props;
   
   return (
-    <span {...innerProps} style={styles as CSSProperties} ref={innerRef}>
+    <span {...innerProps} className={isSelected ? "validator-selector-option selected" : "validator-selector-option"} ref={innerRef}>
       <span className="validator-item">
         <span className="validator-index">{data.index}</span>
         <span className="validator-pubkey">{data.pubkey}</span>

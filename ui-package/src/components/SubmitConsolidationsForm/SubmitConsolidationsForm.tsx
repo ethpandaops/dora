@@ -96,7 +96,9 @@ const SubmitConsolidationsForm = (props: ISubmitConsolidationsFormProps): React.
                   <b>Pubkey:</b>
                 </div>
                 <div className="col-9 col-lg-10">
-                  {sourceValidator.pubkey}
+                  <a href={`/validator/${sourceValidator.pubkey}`} target="_blank" rel="noreferrer">
+                    {sourceValidator.pubkey}
+                  </a>
                 </div>
               </div>
               <div className="row">
@@ -155,7 +157,9 @@ const SubmitConsolidationsForm = (props: ISubmitConsolidationsFormProps): React.
                   <b>Pubkey:</b>
                 </div>
                 <div className="col-9 col-lg-10">
-                  {targetValidator.pubkey}
+                  <a href={`/validator/${targetValidator.pubkey}`} target="_blank" rel="noreferrer">
+                    {targetValidator.pubkey}
+                  </a>
                 </div>
               </div>
               <div className="row">
@@ -191,6 +195,7 @@ const SubmitConsolidationsForm = (props: ISubmitConsolidationsFormProps): React.
                 sourceValidator={sourceValidator}
                 targetValidator={targetValidator}
                 consolidationContract={props.consolidationContract}
+                explorerUrl={props.explorerUrl}
               />
             </>
           : null}

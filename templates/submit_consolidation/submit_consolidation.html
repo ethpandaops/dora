@@ -50,6 +50,7 @@
         },
         submitConsolidationsConfig: {
           consolidationContract: "{{ .ConsolidationContract }}",
+          explorerUrl: "{{ .ExplorerUrl }}",
           loadValidatorsCallback: function(address) {
             return fetch(`?ajax=load_validators&address=${address}`)
               .then(response => response.json())

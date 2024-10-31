@@ -1,6 +1,7 @@
 
 export interface ISubmitConsolidationsFormProps {
   consolidationContract: string;
+  explorerUrl: string;
   loadValidatorsCallback: (address: string) => Promise<IValidator[]>;
 }
 
