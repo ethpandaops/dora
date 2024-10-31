@@ -104,7 +104,7 @@ var webpackBaseConfig = {
 
   plugins: [
     new Visualizer({
-      filename: 'webpack-stats.html',
+      filename: '../webpack-stats.html',
       throwOnError: true
     }),
     new MiniCssExtractPlugin({
