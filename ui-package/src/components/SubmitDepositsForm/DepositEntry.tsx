@@ -99,12 +99,6 @@ const DepositEntry = (props: IDepositEntryProps): React.ReactElement => {
     return amountEth.toFixed(0) + " " + ethSymbol;
   }
 
-  function buf2hex(buffer) { // buffer is an ArrayBuffer
-    return [...new Uint8Array(buffer)]
-        .map(x => x.toString(16).padStart(2, '0'))
-        .join('');
-  }
-
   async function submitDeposit() {
     let args = [ "0x" + props.deposit.pubkey, "0x" + props.deposit.withdrawal_credentials, "0x" + props.deposit.signature, "0x" + props.deposit.deposit_data_root ];
     depositRequest.writeContractAsync({

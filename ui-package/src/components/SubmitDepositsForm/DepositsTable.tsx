@@ -1,5 +1,4 @@
 import React, { useEffect } from 'react';
-import { useAccount } from 'wagmi';
 import { useState } from 'react';
 import {ContainerType, ByteVectorType, UintNumberType, ValueOf} from "@chainsafe/ssz";
 import bls from "@chainsafe/bls/herumi";
@@ -48,7 +47,6 @@ type SigningData = ValueOf<typeof SigningData>;
 
 
 const DepositsTable = (props: IDepositsTableProps): React.ReactElement => {
-  const { address: walletAddress, chain } = useAccount();
   const [deposits, setDeposits] = useState<IDeposit[] | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
 
