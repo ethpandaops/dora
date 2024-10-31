@@ -3,6 +3,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { IWagmiRainbowProviderProps, IWagmiRainbowProviderConfig } from './components/WagmiRainbowProvider/WagmiRainbowProviderProps';
 import { ISubmitDepositsFormProps } from './components/SubmitDepositsForm/SubmitDepositsFormProps';
+import { ISubmitConsolidationsFormProps } from './components/SubmitConsolidationsForm/SubmitConsolidationsFormProps';
 
 export interface IComponentExports {
   [component: string]: (container: HTMLElement, cfg: any) => IComponentControls
@@ -23,6 +24,18 @@ function exportComponents(uiPackages: IComponentExports) {
       return (
         <WagmiRainbowProvider {...config.wagmiConfig}>
           <SubmitDepositsForm {...config.submitDepositConfig} />
+        </WagmiRainbowProvider>
+      )
+    }
+  );
+
+  // SubmitConsolidationsForm component
+  const SubmitConsolidationsForm = React.lazy<React.ComponentType<ISubmitConsolidationsFormProps>>(() => import(/* webpackChunkName: "submit-consolidation" */ './components/SubmitConsolidationsForm/SubmitConsolidationsForm'));
+  uiPackages.SubmitConsolidationsForm = buildComponentLoader<{wagmiConfig: IWagmiRainbowProviderConfig, submitConsolidationsConfig: ISubmitConsolidationsFormProps}>(
+    (config) => {
+      return (
+        <WagmiRainbowProvider {...config.wagmiConfig}>
+          <SubmitConsolidationsForm {...config.submitConsolidationsConfig} />
         </WagmiRainbowProvider>
       )
     }

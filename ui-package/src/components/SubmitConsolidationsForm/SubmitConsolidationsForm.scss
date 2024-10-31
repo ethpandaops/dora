@@ -1,0 +1,24 @@
+
+.validator-selector {
+  .validator-item {
+    display: flex;
+  }
+
+  .validator-index {
+    width: 80px;
+  }
+
+  .validator-pubkey {
+    width: 200px;
+    flex-grow: 1;
+  }
+
+  .validator-balance {
+    padding-left: 10px;
+    width: 100px;
+  }
+
+  .validator-status {
+    width: 60px;
+  }
+}
