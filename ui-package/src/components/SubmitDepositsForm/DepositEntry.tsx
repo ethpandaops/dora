@@ -59,7 +59,7 @@ const DepositEntry = (props: IDepositEntryProps): React.ReactElement => {
               <span className="text-nowrap"><div className="spinner-border spinner-border-sm me-1" role="status"></div>Pending...</span>
               ) : (
                 depositRequest.isError ? (
-                  <span className="text-nowrap"><i className="fa-solid fa-triangle-exclamation me-1"></i> Retry</span>
+                  <span className="text-nowrap"><i className="fa-solid fa-repeat me-1"></i> Retry</span>
                 ) : (
                   "Submit"
                 )

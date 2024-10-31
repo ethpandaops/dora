@@ -10,7 +10,7 @@ install: dep_npm
 test: dep_npm
 	npm run test
 
-build: dep_npm
+build: dep_npm clean
 	npm run build
 
 clean:
