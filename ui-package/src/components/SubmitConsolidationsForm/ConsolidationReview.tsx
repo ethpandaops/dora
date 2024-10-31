@@ -113,7 +113,8 @@ const ConsolidationReview = (props: IConsolidationReviewProps) => {
               Add extra fee:
             </div>
             <div className="col-9 col-lg-10">
-              <input type="checkbox" className="form-check-input" checked={addExtraFee} onChange={(e) => setAddExtraFee(e.target.checked)} /> Add extra fee to avoid rejection due to other submissions
+              <input type="checkbox" className="form-check-input" id="addExtraFee" checked={addExtraFee} onChange={(e) => setAddExtraFee(e.target.checked)} />
+              <label htmlFor="addExtraFee" className="ms-1">Add extra fee to avoid rejection due to other submissions</label>
             </div>
           </div>
           <div className="row">
