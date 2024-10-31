@@ -32,9 +32,9 @@ frontend:
   validatorNamesInventory: ""
 
   # frontend features
-  showSensitivePeerInfos: true
-  showPeerDASInfos: true
-  showSubmitDeposit: true
+  showSensitivePeerInfos: false
+  showPeerDASInfos: false
+  showSubmitDeposit: false
   
 beaconapi:
   # beacon node rpc endpoints
