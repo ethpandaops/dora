@@ -1,14 +1,14 @@
 
 
 export function toDecimalUnit(amount: number, decimals?: number): number {
-  let factor = Math.pow(10, decimals || 18);
+  let factor = Math.pow(10, typeof decimals === "number" ? decimals : 18);
   return amount / factor;
 }
 
 export function toReadableAmount(amount: number | bigint, decimals?: number, unit?: string, precision?: number): string {
-  if(!decimals)
+  if(typeof decimals !== "number")
     decimals = 18;
-  if(!precision) 
+  if(typeof precision !== "number")
     precision = 3;
   if(!amount)
     return "0"+ (unit ? " " + unit : "");
