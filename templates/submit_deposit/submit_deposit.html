@@ -44,7 +44,7 @@
           ]
         },
         submitDepositConfig: {
-          genesisForkVersion: "0x1000101b", // TODO: "0x{{ printf "%x" .GenesisForkVersion }}",
+          genesisForkVersion: "0x{{ printf "%x" .GenesisForkVersion }}",
           depositContract: "0x{{ printf "%x" .DepositContract }}",
         }
       }
