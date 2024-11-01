@@ -2,25 +2,25 @@ import React, { useEffect } from 'react';
 import { useAccount, useSendTransaction } from 'wagmi';
 import { useCall } from 'wagmi'
 import { useState } from 'react';
-import { IValidator } from './SubmitConsolidationsFormProps';
+import { IValidator } from './SubmitWithdrawalsFormProps';
 import { toReadableAmount } from '../../utils/ReadableAmount';
 import { Modal } from 'react-bootstrap';
 
-interface IConsolidationReviewProps {
+interface IWithdrawalReviewProps {
   sourceValidator: IValidator;
-  targetValidator: IValidator;
-  consolidationContract: string;
+  withdrawalAmount: number;
+  withdrawalContract: string;
   explorerUrl: string;
 }
 
-const ConsolidationReview = (props: IConsolidationReviewProps) => {
+const WithdrawalReview = (props: IWithdrawalReviewProps) => {
   const { address, chain } = useAccount();
   const [addExtraFee, setAddExtraFee] = useState(true);
   const [errorModal, setErrorModal] = useState<string | null>(null);
 
-  const consolidationQueueLengthCall = useCall({
+  const withdrawalQueueLengthCall = useCall({
     account: address,
-    to: props.consolidationContract,
+    to: props.withdrawalContract,
     data: "0x",
 		chain: chain,
 	});
@@ -28,20 +28,20 @@ const ConsolidationReview = (props: IConsolidationReviewProps) => {
 
   useEffect(() => {
     const interval = setInterval(() => {
-      consolidationQueueLengthCall.refetch();
+      withdrawalQueueLengthCall.refetch();
     }, 15000);
     return () => {
       clearInterval(interval);
     };
-  }, [consolidationQueueLengthCall]);
+  }, [withdrawalQueueLengthCall]);
 
   let queueLength = 0n;
   let isPreElectra = false;
   let requiredFee = 0n;
   let requestFee = 0n;
   let failedQueueLength = false;
-  if (consolidationQueueLengthCall.isFetched && consolidationQueueLengthCall.data) {
-    var queueLenHex = consolidationQueueLengthCall.data.data as string;
+  if (withdrawalQueueLengthCall.isFetched && withdrawalQueueLengthCall.data) {
+    var queueLenHex = withdrawalQueueLengthCall.data.data as string;
     if (!queueLenHex) {
       failedQueueLength = true;
     } else if (queueLenHex == "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff") {
@@ -51,7 +51,7 @@ const ConsolidationReview = (props: IConsolidationReviewProps) => {
       requiredFee = getRequiredFee(queueLength);
 
       if(addExtraFee) {
-        requestFee = getRequiredFee(queueLength + 10n); // add extra fee for 10 consolidations submitted before this
+        requestFee = getRequiredFee(queueLength + 10n); // add extra fee for 10 withdrawals submitted before this
       } else {
         requestFee = requiredFee;
       }
@@ -71,39 +71,39 @@ const ConsolidationReview = (props: IConsolidationReviewProps) => {
 
   return (
     <div>
-      {consolidationQueueLengthCall.isError ?
+      {withdrawalQueueLengthCall.isError ?
         <div className="alert alert-danger" role="alert">
-          Error loading queue length from consolidation contract. <br />
-          {consolidationQueueLengthCall.error?.message} <br />
-          <button className="btn btn-primary mt-2" onClick={() => consolidationQueueLengthCall.refetch()}>
+          Error loading queue length from withdrawal contract. <br />
+          {withdrawalQueueLengthCall.error?.message} <br />
+          <button className="btn btn-primary mt-2" onClick={() => withdrawalQueueLengthCall.refetch()}>
             Retry
           </button>
         </div>
+      : !withdrawalQueueLengthCall.isFetched ?
+        <p>Loading...</p>
       : failedQueueLength ?
         <div className="alert alert-danger" role="alert">
-          Error loading queue length from consolidation contract. (check contract address: {props.consolidationContract})
+          Error loading queue length from withdrawal contract. (check contract address: {props.withdrawalContract})
         </div>
-      : !consolidationQueueLengthCall.isFetched ?
-        <p>Loading...</p>
       : isPreElectra ?
         <div className="alert alert-danger" role="alert">
-          The network is not on Electra yet, so consolidation requests can not be submitted.
+          The network is not on Electra yet, so withdrawal requests can not be submitted.
         </div>
       : <div>
           <div className="row">
             <div className="col-3 col-lg-2">
-              Consolidation Contract:
+              Withdrawal Contract:
             </div>
             <div className="col-9 col-lg-10">
-              {props.consolidationContract}
+              {props.withdrawalContract}
             </div>
           </div>
           <div className="row">
             <div className="col-3 col-lg-2">
-              Consolidation Queue:
+              Withdrawal Queue:
             </div>
             <div className="col-9 col-lg-10">
-              {queueLength.toString()} Consolidations
+              {queueLength.toString()} Withdrawals
             </div>
           </div>
           <div className="row">
@@ -133,16 +133,16 @@ const ConsolidationReview = (props: IConsolidationReviewProps) => {
           </div>
           <div className="row mt-3">
             <div className="col-12">
-              <button className="btn btn-primary" disabled={submitRequest.isPending || submitRequest.isSuccess} onClick={() => submitConsolidation()}>
+              <button className="btn btn-primary" disabled={submitRequest.isPending || submitRequest.isSuccess} onClick={() => submitWithdrawal()}>
                 {submitRequest.isSuccess ?
                   <span>Submitted</span> :
                   submitRequest.isPending ? (
                     <span className="text-nowrap"><div className="spinner-border spinner-border-sm me-1" role="status"></div>Pending...</span>
                     ) : (
                       submitRequest.isError ? (
-                        <span className="text-nowrap"><i className="fa-solid fa-repeat me-1"></i> Retry consolidation</span>
+                        <span className="text-nowrap"><i className="fa-solid fa-repeat me-1"></i> Retry withdrawal</span>
                       ) : (
-                        "Submit consolidation"
+                        "Submit withdrawal"
                       )
                     )
                 }
@@ -153,7 +153,7 @@ const ConsolidationReview = (props: IConsolidationReviewProps) => {
             <div className="row mt-3">
               <div className="col-12">
                 <div className="alert alert-success">
-                  Consolidation TX: 
+                  Withdrawal TX: 
                   {props.explorerUrl ?
                     <a className="ms-1" href={props.explorerUrl + "tx/" + submitRequest.data} target="_blank" rel="noreferrer">{submitRequest.data}</a>
                   : <span className="ms-1">{submitRequest.data}</span>
@@ -167,7 +167,7 @@ const ConsolidationReview = (props: IConsolidationReviewProps) => {
         {errorModal && (
           <Modal show={true} onHide={() => setErrorModal(null)} size="lg">
             <Modal.Header closeButton>
-              <Modal.Title>Consolidation Transaction Failed</Modal.Title>
+              <Modal.Title>Withdrawal Transaction Failed</Modal.Title>
             </Modal.Header>
             <Modal.Body>
               <pre className="m-0">{errorModal}</pre>
@@ -181,7 +181,7 @@ const ConsolidationReview = (props: IConsolidationReviewProps) => {
   );
 
   function getRequiredFee(numerator: bigint): bigint {
-    // https://eips.ethereum.org/EIPS/eip-7251#fee-calculation
+    // https://eips.ethereum.org/EIPS/eip-7002#fee-calculation
     let i = 1n;
     let output = 0n;
     let numeratorAccum = 1n * 17n; // factor * denominator
@@ -195,15 +195,15 @@ const ConsolidationReview = (props: IConsolidationReviewProps) => {
     return output / 17n;
   }
 
-  function submitConsolidation() {
+  function submitWithdrawal() {
     submitRequest.sendTransactionAsync({
-      to: props.consolidationContract,
+      to: props.withdrawalContract,
       account: address,
       chainId: chain?.id,
       value: requestFee,
-      // https://eips.ethereum.org/EIPS/eip-7251#add-consolidation-request
-      // calldata (96 bytes): sourceValidator.pubkey (48 bytes) + targetValidator.pubkey (48 bytes)
-      data: "0x" + props.sourceValidator.pubkey.substring(2) + props.targetValidator.pubkey.substring(2),
+      // https://eips.ethereum.org/EIPS/eip-7002#add-withdrawal-request
+      // calldata (56 bytes): sourceValidator.pubkey (48 bytes) + amount (8 bytes)
+      data: "0x" + props.sourceValidator.pubkey.substring(2) + props.withdrawalAmount.toString(16).padStart(16, "0"),
     }).then(tx => {
       console.log(tx);
     }).catch(error => {
@@ -214,4 +214,4 @@ const ConsolidationReview = (props: IConsolidationReviewProps) => {
 
 };
 
-export default ConsolidationReview;
+export default WithdrawalReview;

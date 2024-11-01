@@ -65,7 +65,7 @@ frontend:
   validatorNamesYaml: "${__dir}/generated-validator-ranges.yaml"
   showSensitivePeerInfos: true
   showSubmitDeposit: true
-  showSubmitConsolidation: true
+  showSubmitElRequests: true
 beaconapi:
   localCacheSize: 10
   redisCacheAddr: ""

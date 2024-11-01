@@ -51,10 +51,10 @@ type Config struct {
 		HttpIdleTimeout  time.Duration `yaml:"httpIdleTimeout" envconfig:"FRONTEND_HTTP_IDLE_TIMEOUT"`
 		AllowDutyLoading bool          `yaml:"allowDutyLoading" envconfig:"FRONTEND_ALLOW_DUTY_LOADING"`
 
-		ShowSensitivePeerInfos  bool `yaml:"showSensitivePeerInfos" envconfig:"FRONTEND_SHOW_SENSITIVE_PEER_INFOS"`
-		ShowPeerDASInfos        bool `yaml:"showPeerDASInfos" envconfig:"FRONTEND_SHOW_PEER_DAS_INFOS"`
-		ShowSubmitDeposit       bool `yaml:"showSubmitDeposit" envconfig:"FRONTEND_SHOW_SUBMIT_DEPOSIT"`
-		ShowSubmitConsolidation bool `yaml:"showSubmitConsolidation" envconfig:"FRONTEND_SHOW_SUBMIT_CONSOLIDATION"`
+		ShowSensitivePeerInfos bool `yaml:"showSensitivePeerInfos" envconfig:"FRONTEND_SHOW_SENSITIVE_PEER_INFOS"`
+		ShowPeerDASInfos       bool `yaml:"showPeerDASInfos" envconfig:"FRONTEND_SHOW_PEER_DAS_INFOS"`
+		ShowSubmitDeposit      bool `yaml:"showSubmitDeposit" envconfig:"FRONTEND_SHOW_SUBMIT_DEPOSIT"`
+		ShowSubmitElRequests   bool `yaml:"showSubmitElRequests" envconfig:"FRONTEND_SHOW_SUBMIT_EL_REQUESTS"`
 	} `yaml:"frontend"`
 
 	RateLimit struct {

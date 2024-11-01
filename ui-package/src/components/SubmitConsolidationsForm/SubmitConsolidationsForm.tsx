@@ -40,7 +40,11 @@ const SubmitConsolidationsForm = (props: ISubmitConsolidationsFormProps): React.
       </div>
       <div className="row">
         <div className="col-12 p-2">
-          <ConnectButton showBalance={true} accountStatus={{ smallScreen: 'avatar', largeScreen: 'full' }} chainStatus={{ smallScreen: 'icon', largeScreen: 'full' }} />
+          <ConnectButton 
+            showBalance={true} 
+            accountStatus={{ smallScreen: 'avatar', largeScreen: 'full' }} 
+            chainStatus={{ smallScreen: 'icon', largeScreen: 'full' }} 
+          />
         </div>
       </div>
 

@@ -34,7 +34,7 @@ frontend:
   showSensitivePeerInfos: true
   showPeerDASInfos: true
   showSubmitDeposit: true
-  showSubmitConsolidation: true
+  showSubmitElRequests: true
 
   
 beaconapi:

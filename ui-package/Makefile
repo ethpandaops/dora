@@ -13,5 +13,8 @@ test: dep_npm
 build: dep_npm clean
 	npm run build
 
+debug-build: dep_npm clean
+	DEBUG=1 npm run build
+
 clean:
 	rm -rf dist/*

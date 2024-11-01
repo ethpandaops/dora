@@ -20,12 +20,12 @@ import (
 	"github.com/ethpandaops/dora/utils"
 )
 
-// SubmitConsolidation will submit a consolidation request
-func SubmitConsolidation(w http.ResponseWriter, r *http.Request) {
-	var submitConsolidationTemplateFiles = append(layoutTemplateFiles,
-		"submit_consolidation/submit_consolidation.html",
+// SubmitWithdrawal will submit a withdrawal request
+func SubmitWithdrawal(w http.ResponseWriter, r *http.Request) {
+	var submitWithdrawalTemplateFiles = append(layoutTemplateFiles,
+		"submit_withdrawal/submit_withdrawal.html",
 	)
-	var pageTemplate = templates.GetTemplate(submitConsolidationTemplateFiles...)
+	var pageTemplate = templates.GetTemplate(submitWithdrawalTemplateFiles...)
 
 	if !utils.Config.Frontend.ShowSubmitElRequests {
 		handlePageError(w, r, errors.New("submit el requests is not enabled"))
@@ -34,45 +34,45 @@ func SubmitConsolidation(w http.ResponseWriter, r *http.Request) {
 
 	query := r.URL.Query()
 	if query.Has("ajax") {
-		err := handleSubmitConsolidationPageDataAjax(w, r)
+		err := handleSubmitWithdrawalPageDataAjax(w, r)
 		if err != nil {
 			handlePageError(w, r, err)
 		}
 		return
 	}
 
-	pageData, pageError := getSubmitConsolidationPageData()
+	pageData, pageError := getSubmitWithdrawalPageData()
 	if pageError != nil {
 		handlePageError(w, r, pageError)
 		return
 	}
 	if pageData == nil {
-		data := InitPageData(w, r, "blockchain", "/submit_consolidation", "Submit Consolidation", submitConsolidationTemplateFiles)
+		data := InitPageData(w, r, "blockchain", "/submit_withdrawal", "Submit Withdrawals & Exits", submitWithdrawalTemplateFiles)
 		w.Header().Set("Content-Type", "text/html")
-		if handleTemplateError(w, r, "submit_consolidation.go", "Submit Consolidation", "", pageTemplate.ExecuteTemplate(w, "layout", data)) != nil {
+		if handleTemplateError(w, r, "submit_withdrawal.go", "Submit Withdrawals & Exits", "", pageTemplate.ExecuteTemplate(w, "layout", data)) != nil {
 			return // an error has occurred and was processed
 		}
 		return
 	}
 
-	data := InitPageData(w, r, "blockchain", "/submit_consolidation", "Submit Consolidation", submitConsolidationTemplateFiles)
+	data := InitPageData(w, r, "blockchain", "/submit_withdrawal", "Submit Withdrawals & Exits", submitWithdrawalTemplateFiles)
 	data.Data = pageData
 	w.Header().Set("Content-Type", "text/html")
-	if handleTemplateError(w, r, "submit_consolidation.go", "Submit Consolidation", "", pageTemplate.ExecuteTemplate(w, "layout", data)) != nil {
+	if handleTemplateError(w, r, "submit_withdrawal.go", "Submit Withdrawals & Exits", "", pageTemplate.ExecuteTemplate(w, "layout", data)) != nil {
 		return // an error has occurred and was processed
 	}
 }
 
-func getSubmitConsolidationPageData() (*models.SubmitConsolidationPageData, error) {
-	pageData := &models.SubmitConsolidationPageData{}
-	pageCacheKey := "submit_consolidation"
+func getSubmitWithdrawalPageData() (*models.SubmitWithdrawalPageData, error) {
+	pageData := &models.SubmitWithdrawalPageData{}
+	pageCacheKey := "submit_withdrawal"
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
-		pageData, cacheTimeout := buildSubmitConsolidationPageData()
+		pageData, cacheTimeout := buildSubmitWithdrawalPageData()
 		pageCall.CacheTimeout = cacheTimeout
 		return pageData
 	})
 	if pageErr == nil && pageRes != nil {
-		resData, resOk := pageRes.(*models.SubmitConsolidationPageData)
+		resData, resOk := pageRes.(*models.SubmitWithdrawalPageData)
 		if !resOk {
 			return nil, ErrInvalidPageModel
 		}
@@ -81,25 +81,26 @@ func getSubmitConsolidationPageData() (*models.SubmitConsolidationPageData, erro
 	return pageData, pageErr
 }
 
-func buildSubmitConsolidationPageData() (*models.SubmitConsolidationPageData, time.Duration) {
-	logrus.Debugf("submit consolidation page called")
+func buildSubmitWithdrawalPageData() (*models.SubmitWithdrawalPageData, time.Duration) {
+	logrus.Debugf("submit withdrawal page called")
 
 	chainState := services.GlobalBeaconService.GetChainState()
 	specs := chainState.GetSpecs()
 
-	pageData := &models.SubmitConsolidationPageData{
-		NetworkName:           specs.ConfigName,
-		PublicRPCUrl:          utils.Config.Frontend.PublicRPCUrl,
-		RainbowkitProjectId:   utils.Config.Frontend.RainbowkitProjectId,
-		ChainId:               specs.DepositChainId,
-		ConsolidationContract: execution.ConsolidationContractAddr,
-		ExplorerUrl:           utils.Config.Frontend.EthExplorerLink,
+	pageData := &models.SubmitWithdrawalPageData{
+		NetworkName:         specs.ConfigName,
+		PublicRPCUrl:        utils.Config.Frontend.PublicRPCUrl,
+		RainbowkitProjectId: utils.Config.Frontend.RainbowkitProjectId,
+		ChainId:             specs.DepositChainId,
+		WithdrawalContract:  execution.WithdrawalContractAddr,
+		ExplorerUrl:         utils.Config.Frontend.EthExplorerLink,
+		MinValidatorBalance: specs.MinActivationBalance,
 	}
 
 	return pageData, 1 * time.Hour
 }
 
-func handleSubmitConsolidationPageDataAjax(w http.ResponseWriter, r *http.Request) error {
+func handleSubmitWithdrawalPageDataAjax(w http.ResponseWriter, r *http.Request) error {
 	query := r.URL.Query()
 	var pageData interface{}
 
@@ -109,7 +110,7 @@ func handleSubmitConsolidationPageDataAjax(w http.ResponseWriter, r *http.Reques
 		addressBytes := common.HexToAddress(address)
 
 		validators := services.GlobalBeaconService.GetCachedValidatorSet()
-		result := []models.SubmitConsolidationPageDataValidator{}
+		result := []models.SubmitWithdrawalPageDataValidator{}
 		for _, validator := range validators {
 			if validator.Validator.WithdrawalCredentials[0] == 0x00 {
 				continue
@@ -136,7 +137,7 @@ func handleSubmitConsolidationPageDataAjax(w http.ResponseWriter, r *http.Reques
 				status = validator.Status.String()
 			}
 
-			result = append(result, models.SubmitConsolidationPageDataValidator{
+			result = append(result, models.SubmitWithdrawalPageDataValidator{
 				Index:    uint64(validator.Index),
 				Pubkey:   validator.Validator.PublicKey.String(),
 				Balance:  uint64(validator.Balance),

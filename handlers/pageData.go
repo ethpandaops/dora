@@ -216,11 +216,16 @@ func createMenuItems(active string) []types.MainMenuItem {
 		})
 	}
 
-	if utils.Config.Frontend.ShowSubmitConsolidation {
+	if utils.Config.Frontend.ShowSubmitElRequests {
 		submitLinks = append(submitLinks, types.NavigationLink{
 			Label: "Submit Consolidations",
 			Path:  "/validators/submit_consolidations",
 			Icon:  "fa-square-plus",
+		})
+		submitLinks = append(submitLinks, types.NavigationLink{
+			Label: "Submit Withdrawals & Exits",
+			Path:  "/validators/submit_withdrawals",
+			Icon:  "fa-money-bill-transfer",
 		})
 	}
 

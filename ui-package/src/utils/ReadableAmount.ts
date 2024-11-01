@@ -17,7 +17,12 @@ export function toReadableAmount(amount: number | bigint, decimals?: number, uni
 
   let decimalAmount = toDecimalUnit(amount, decimals);
   let precisionFactor = Math.pow(10, precision);
-  let amountStr = (Math.round(decimalAmount * precisionFactor) / precisionFactor).toString();
+  let amountStr = (Math.round(decimalAmount * precisionFactor) / precisionFactor).toFixed(precision);
+  while (amountStr.endsWith("0")) {
+    amountStr = amountStr.slice(0, -1);
+  }
+  if(amountStr.endsWith("."))
+    amountStr = amountStr.slice(0, -1);
 
   return amountStr + (unit ? " " + unit : "");
 }
