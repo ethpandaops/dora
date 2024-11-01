@@ -142,7 +142,7 @@ const ConsolidationReview = (props: IConsolidationReviewProps) => {
                       submitRequest.isError ? (
                         <span className="text-nowrap"><i className="fa-solid fa-repeat me-1"></i> Retry consolidation</span>
                       ) : (
-                        "Submit consolidation"
+                        "Submit consolidation request"
                       )
                     )
                 }

@@ -142,7 +142,7 @@ const WithdrawalReview = (props: IWithdrawalReviewProps) => {
                       submitRequest.isError ? (
                         <span className="text-nowrap"><i className="fa-solid fa-repeat me-1"></i> Retry withdrawal</span>
                       ) : (
-                        "Submit " + (props.withdrawalAmount > 0 ? "withdrawal" : "exit")
+                        "Submit " + (props.withdrawalAmount > 0 ? "withdrawal" : "exit") + " request"
                       )
                     )
                 }
