@@ -7,7 +7,7 @@ import { toReadableAmount } from '../../utils/ReadableAmount';
 import { Modal } from 'react-bootstrap';
 
 interface IWithdrawalReviewProps {
-  sourceValidator: IValidator;
+  validator: IValidator;
   withdrawalAmount: number;
   withdrawalContract: string;
   explorerUrl: string;
@@ -203,7 +203,7 @@ const WithdrawalReview = (props: IWithdrawalReviewProps) => {
       value: requestFee,
       // https://eips.ethereum.org/EIPS/eip-7002#add-withdrawal-request
       // calldata (56 bytes): sourceValidator.pubkey (48 bytes) + amount (8 bytes)
-      data: "0x" + props.sourceValidator.pubkey.substring(2) + props.withdrawalAmount.toString(16).padStart(16, "0"),
+      data: "0x" + props.validator.pubkey.substring(2) + props.withdrawalAmount.toString(16).padStart(16, "0"),
     }).then(tx => {
       console.log(tx);
     }).catch(error => {

@@ -14,7 +14,7 @@ const SubmitWithdrawalsForm = (props: ISubmitWithdrawalsFormProps): React.ReactE
   const { address: walletAddress, isConnected, chain } = useAccount();
   const [validators, setValidators] = useState<IValidator[] | null>(null);
   const [loadingError, setLoadingError] = useState<string | null>(null);
-  const [sourceValidator, setSourceValidator] = useState<IValidator | null>(null);
+  const [validator, setValidator] = useState<IValidator | null>(null);
   const [withdrawalType, setWithdrawalType] = useState<number>(0);
   const [withdrawalAmount, setWithdrawalAmount] = useState<number>(0);
   useEffect(() => {
@@ -71,20 +71,19 @@ const SubmitWithdrawalsForm = (props: ISubmitWithdrawalsFormProps): React.ReactE
           <div className="row mt-3">
             <div className="col-12">
               <label className="form-label">
-                <b>Step 2: Select source validator</b>
+                <b>Step 2: Select validator</b>
               </label>
             </div>
             <div className="col-12">
               <div className="form-text">
-                Select the validator you want to withdraw funds from or exit completely.
+                Select the validator you want to exit or withdraw funds from.
               </div>
             </div>
             <div className="col-12 col-lg-11">
               <ValidatorSelector
                 validators={validators}
                 onChange={(validator) => {
-                  console.log("source validator", validator);
-                  setSourceValidator(validator);
+                  setValidator(validator);
                   if(validator.credtype == "02") {
                     setWithdrawalType(0);
                     if(validator.balance > props.minValidatorBalance) {
@@ -97,19 +96,19 @@ const SubmitWithdrawalsForm = (props: ISubmitWithdrawalsFormProps): React.ReactE
                     setWithdrawalAmount(1);
                   }
                 }}
-                value={sourceValidator}
+                value={validator}
               />
             </div>
           </div>
 
-          {sourceValidator ?
+          {validator ?
             <div className="ms-2 mt-1">
               <div className="row">
                 <div className="col-3 col-lg-2">
                   <b>Index:</b>
                 </div>
                 <div className="col-9 col-lg-10">
-                  {sourceValidator.index}
+                  {validator.index}
                 </div>
               </div>
               <div className="row">
@@ -117,8 +116,8 @@ const SubmitWithdrawalsForm = (props: ISubmitWithdrawalsFormProps): React.ReactE
                   <b>Pubkey:</b>
                 </div>
                 <div className="col-9 col-lg-10">
-                  <a href={`/validator/${sourceValidator.pubkey}`} target="_blank" rel="noreferrer">
-                    {sourceValidator.pubkey}
+                  <a href={`/validator/${validator.pubkey}`} target="_blank" rel="noreferrer">
+                    {validator.pubkey}
                   </a>
                 </div>
               </div>
@@ -127,7 +126,7 @@ const SubmitWithdrawalsForm = (props: ISubmitWithdrawalsFormProps): React.ReactE
                   <b>Status:</b>
                 </div>
                 <div className="col-9 col-lg-10">
-                  {formatStatus(sourceValidator.status)}
+                  {formatStatus(validator.status)}
                 </div>
               </div>
               <div className="row">
@@ -135,13 +134,13 @@ const SubmitWithdrawalsForm = (props: ISubmitWithdrawalsFormProps): React.ReactE
                   <b>Balance:</b>
                 </div>
                 <div className="col-9 col-lg-10">
-                  {toReadableAmount(sourceValidator.balance, 9, "ETH", 9)}
+                  {toReadableAmount(validator.balance, 9, "ETH", 9)}
                 </div>
               </div>
             </div>
           : null}
 
-          {sourceValidator ?
+          {validator ?
             <>
               <div className="row mt-3">
                 <div className="col-12">
@@ -167,7 +166,7 @@ const SubmitWithdrawalsForm = (props: ISubmitWithdrawalsFormProps): React.ReactE
                     <label className="form-check-label" htmlFor="withdrawalAmountPartial">
                       Partial withdrawal
                     </label>
-                    {sourceValidator.credtype !== "02" ? 
+                    {validator.credtype !== "02" ? 
                       <span 
                         className="text-warning ms-2" 
                         style={{fontSize: "0.9em"}} 
@@ -203,7 +202,7 @@ const SubmitWithdrawalsForm = (props: ISubmitWithdrawalsFormProps): React.ReactE
                       Validator Balance:
                     </div>
                     <div className="col-7 col-md-6 col-lg-4">
-                      {toReadableAmount(sourceValidator.balance, 9, "ETH", 9)}
+                      {toReadableAmount(validator.balance, 9, "ETH", 9)}
                     </div>
                   </div>
                   <div className="row mt-1 withdrawal-details">
@@ -211,7 +210,7 @@ const SubmitWithdrawalsForm = (props: ISubmitWithdrawalsFormProps): React.ReactE
                       Withdrawable Balance:
                     </div>
                     <div className="col-6 col-md-6 col-lg-4">
-                      {toReadableAmount(sourceValidator.balance - props.minValidatorBalance, 9, "ETH", 9)}
+                      {toReadableAmount(validator.balance - props.minValidatorBalance, 9, "ETH", 9)}
                     </div>
                   </div>
                   <div className="row mt-1 withdrawal-details">
@@ -237,7 +236,7 @@ const SubmitWithdrawalsForm = (props: ISubmitWithdrawalsFormProps): React.ReactE
                         type="range" 
                         className="form-range"
                         min={1}
-                        max={sourceValidator.balance - props.minValidatorBalance}
+                        max={validator.balance - props.minValidatorBalance}
                         onChange={(evt) => setWithdrawalAmount(parseInt(evt.target.value))}
                         value={withdrawalAmount}
                       />
@@ -248,7 +247,7 @@ const SubmitWithdrawalsForm = (props: ISubmitWithdrawalsFormProps): React.ReactE
             </>
           : null}
 
-          {sourceValidator && ((withdrawalType == 0 && withdrawalAmount > 0) || withdrawalType == 1) ?
+          {validator && ((withdrawalType == 0 && withdrawalAmount > 0) || withdrawalType == 1) ?
             <>
               <div className="row mt-3">
                 <div className="col-12">
@@ -258,8 +257,8 @@ const SubmitWithdrawalsForm = (props: ISubmitWithdrawalsFormProps): React.ReactE
                 </div>
               </div>
               <WithdrawalReview
-                key={`${sourceValidator.index}-${withdrawalType}-${withdrawalAmount}`}
-                sourceValidator={sourceValidator}
+                key={`${validator.index}-${withdrawalType}-${withdrawalAmount}`}
+                validator={validator}
                 withdrawalAmount={withdrawalType == 0 ? withdrawalAmount : 0}
                 withdrawalContract={props.withdrawalContract}
                 explorerUrl={props.explorerUrl}
