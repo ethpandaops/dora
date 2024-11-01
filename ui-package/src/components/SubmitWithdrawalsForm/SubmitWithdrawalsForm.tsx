@@ -76,7 +76,7 @@ const SubmitWithdrawalsForm = (props: ISubmitWithdrawalsFormProps): React.ReactE
             </div>
             <div className="col-12">
               <div className="form-text">
-                Select the validator you want to consolidate your funds from. This validator will be exited and its funds will be sent to the target validator.
+                Select the validator you want to withdraw funds from or exit completely.
               </div>
             </div>
             <div className="col-12 col-lg-11">
