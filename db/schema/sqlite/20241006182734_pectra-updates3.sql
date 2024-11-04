@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS "consolidation_request_txs" (
     tx_sender BLOB NOT NULL,
     tx_target BLOB NOT NULL,
     dequeue_block BIGINT NOT NULL,
-    CONSTRAINT consolidation_pkey PRIMARY KEY (block_root, block_index)
+    CONSTRAINT consolidation_request_txs_pkey PRIMARY KEY (block_root, block_index)
 );
 
 CREATE INDEX IF NOT EXISTS "consolidation_request_txs_block_number_idx"
