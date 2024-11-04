@@ -4,17 +4,20 @@ import { useState } from 'react';
 import { Modal } from 'react-bootstrap';
 
 import { IDeposit } from './DepositsTable';
+import { toReadableAmount } from '../../utils/ReadableAmount';
 
 interface IDepositEntryProps {
   deposit: IDeposit;
   depositContract: string;
+  explorerUrl?: string;
 }
 
 const DepositContractAbi = [{"inputs":[],"stateMutability":"nonpayable","type":"constructor"},{"anonymous":false,"inputs":[{"indexed":false,"internalType":"bytes","name":"pubkey","type":"bytes"},{"indexed":false,"internalType":"bytes","name":"withdrawal_credentials","type":"bytes"},{"indexed":false,"internalType":"bytes","name":"amount","type":"bytes"},{"indexed":false,"internalType":"bytes","name":"signature","type":"bytes"},{"indexed":false,"internalType":"bytes","name":"index","type":"bytes"}],"name":"DepositEvent","type":"event"},{"inputs":[{"internalType":"bytes","name":"pubkey","type":"bytes"},{"internalType":"bytes","name":"withdrawal_credentials","type":"bytes"},{"internalType":"bytes","name":"signature","type":"bytes"},{"internalType":"bytes32","name":"deposit_data_root","type":"bytes32"}],"name":"deposit","outputs":[],"stateMutability":"payable","type":"function"},{"inputs":[],"name":"get_deposit_count","outputs":[{"internalType":"bytes","name":"","type":"bytes"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"get_deposit_root","outputs":[{"internalType":"bytes32","name":"","type":"bytes32"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"bytes4","name":"interfaceId","type":"bytes4"}],"name":"supportsInterface","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"pure","type":"function"}];
 
 const DepositEntry = (props: IDepositEntryProps): React.ReactElement => {
-  const { address: walletAddress, chain } = useAccount();
+  const { address: walletAddress, chain, isConnected } = useAccount();
   const [errorModal, setErrorModal] = useState<string | null>(null);
+  const [showTxDetails, setShowTxDetails] = useState<boolean>(false);
 
   const depositRequest = useWriteContract();
   window.setTimeout(() => {
@@ -50,9 +53,14 @@ const DepositEntry = (props: IDepositEntryProps): React.ReactElement => {
             <span className="text-danger">❌</span>
           }
         </span>
+        {props.deposit.depositTxs.length > 0 ? 
+          <a className="text-warning ms-2" href="#" data-bs-toggle="tooltip" data-bs-placement="top" title="This pubkey has already been submitted to the deposit contract. Click to see more." onClick={() => setShowTxDetails(true)}>
+            <i className="fa fa-exclamation-triangle"></i>
+          </a>
+        : null}
       </td>
       <td className="p-0">
-        <button className="btn btn-primary" disabled={!props.deposit.validity || depositRequest.isPending || depositRequest.isSuccess} onClick={() => submitDeposit()}>
+        <button className="btn btn-primary" disabled={!isConnected || !props.deposit.validity || depositRequest.isPending || depositRequest.isSuccess} onClick={() => submitDeposit()}>
           {depositRequest.isSuccess ?
             <span>Submitted</span> :
             depositRequest.isPending ? (
@@ -79,6 +87,109 @@ const DepositEntry = (props: IDepositEntryProps): React.ReactElement => {
             </Modal.Footer>
           </Modal>
         )}
+        {showTxDetails && (
+          <Modal show={true} onHide={() => setShowTxDetails(false)} size="lg" className="deposit-txs-modal">
+            <Modal.Header closeButton>
+              <Modal.Title>Initiated Deposits</Modal.Title>
+            </Modal.Header>
+            <Modal.Body>
+              <p>Some deposits have already been submitted for this validator:</p>
+              {props.deposit.depositTxs.map((tx, index) => (
+                <div key={index + "-" + tx.tx_hash} className="mt-2">
+                  {index > 0 && <hr />}
+                  <div className="d-flex">
+                    <div className="tx-details-label">
+                      Tx Hash:
+                    </div>
+                    <div className="tx-details-value">
+                      <div className="d-flex">
+                        {props.explorerUrl ?
+                          <a className="flex-grow-1 text-truncate" href={props.explorerUrl + "tx/" + tx.tx_hash} target="_blank" rel="noreferrer">{tx.tx_hash}</a>
+                        : <span className="flex-grow-1 text-truncate">{tx.tx_hash}</span>
+                        }
+                        <div className="ms-2">
+                          <i className="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" data-clipboard-text={tx.tx_hash} title="Copy to clipboard"></i>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="d-flex">
+                    <div className="tx-details-label">
+                      Block:
+                    </div>
+                    <div className="tx-details-value">
+                      <div className="d-flex">
+                        <span className="flex-grow-1 text-truncate">{tx.block}</span>
+                        <div className="ms-2">
+                          <i className="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" data-clipboard-text={tx.block} title="Copy to clipboard"></i>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="d-flex">
+                    <div className="tx-details-label">
+                      Block Time:
+                    </div>
+                    <div className="tx-details-value">
+                      <div className="d-flex">
+                        <span className="flex-grow-1 text-truncate">{(window as any).explorer.renderRecentTime(tx.block_time)}</span>
+                        <div className="ms-2">
+                          <i className="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" data-clipboard-text={new Date(tx.block_time * 1000).toISOString()} title="Copy to clipboard"></i>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="d-flex">
+                    <div className="tx-details-label">
+                      TX Origin:
+                    </div>
+                    <div className="tx-details-value">
+                      <div className="d-flex">
+                        {props.explorerUrl ?
+                          <a className="flex-grow-1 text-truncate" href={props.explorerUrl + "address/" + tx.tx_origin} target="_blank" rel="noreferrer">{tx.tx_origin}</a>
+                        : <span className="flex-grow-1 text-truncate">{tx.tx_origin}</span>
+                        }
+                        <div className="ms-2">
+                          <i className="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" data-clipboard-text={tx.tx_origin} title="Copy to clipboard"></i>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="d-flex">
+                    <div className="tx-details-label">
+                      TX Target:  
+                    </div>
+                    <div className="tx-details-value">
+                      <div className="d-flex">
+                        {props.explorerUrl ?
+                          <a className="flex-grow-1 text-truncate" href={props.explorerUrl + "address/" + tx.tx_target} target="_blank" rel="noreferrer">{tx.tx_target}</a>
+                        : <span className="flex-grow-1 text-truncate">{tx.tx_target}</span>
+                        }
+                        <div className="ms-2">
+                          <i className="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" data-clipboard-text={tx.tx_target} title="Copy to clipboard"></i>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="d-flex">
+                    <div className="tx-details-label">
+                      Amount:  
+                    </div>
+                    <div className="tx-details-value">
+                      <div className="d-flex">
+                        <span className="flex-grow-1 text-truncate">{toReadableAmount(tx.amount, 9, "ETH", 0)}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </Modal.Body>
+            <Modal.Footer>
+              <button className="btn btn-primary" onClick={() => setErrorModal(null)}>Close</button>
+            </Modal.Footer>
+          </Modal>
+        )}
+
       </td>
     </tr>
   );

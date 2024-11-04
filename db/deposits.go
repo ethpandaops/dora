@@ -169,6 +169,18 @@ func GetDepositTxsFiltered(offset uint64, limit uint32, finalizedBlock uint64, f
 		fmt.Fprintf(&sql, " %v publickey = $%v", filterOp, len(args))
 		filterOp = "AND"
 	}
+	if len(filter.PublicKeys) > 0 {
+		fmt.Fprintf(&sql, " %v publickey IN (", filterOp)
+		for i, pubKey := range filter.PublicKeys {
+			if i > 0 {
+				fmt.Fprintf(&sql, ", ")
+			}
+			args = append(args, pubKey)
+			fmt.Fprintf(&sql, "$%v", len(args))
+		}
+		fmt.Fprintf(&sql, ")")
+		filterOp = "AND"
+	}
 	if filter.MinAmount > 0 {
 		args = append(args, filter.MinAmount*utils.GWEI.Uint64())
 		fmt.Fprintf(&sql, " %v amount >= $%v", filterOp, len(args))
