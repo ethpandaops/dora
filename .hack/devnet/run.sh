@@ -50,8 +50,21 @@ frontend:
   siteName: "Dora the Explorer"
   siteSubtitle: "$ENCLAVE_NAME - Kurtosis"
   ethExplorerLink: ""
+  publicRpcUrl: "$(
+  for node in $EXECUTION_NODES; do
+    ip=$(echo '127.0.0.1')
+    port=$(docker inspect --format='{{ (index (index .NetworkSettings.Ports "8545/tcp") 0).HostPort }}' $node)
+    if [ -z "$port" ]; then
+      continue
+    fi
+    echo "http://$ip:$port"
+    break
+  done
+  )"
+  rainbowkitProjectId: "15fe4ab4d5c0bcb6f0dc7c398301ff0e"
   validatorNamesYaml: "${__dir}/generated-validator-ranges.yaml"
   showSensitivePeerInfos: true
+  showSubmitDeposit: true
 beaconapi:
   localCacheSize: 10
   redisCacheAddr: ""

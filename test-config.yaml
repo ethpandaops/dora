@@ -31,6 +31,10 @@ frontend:
   ethExplorerLink: "https://explorer.ephemery.dev/"
   validatorNamesYaml: "validator_names.yaml"
   #validatorNamesInventory: "https://config.4844-devnet-7.ethpandaops.io/api/v1/nodes/validator-ranges"
+  showSensitivePeerInfos: true
+  showPeerDASInfos: true
+  showSubmitDeposit: true
+
   
 beaconapi:
   # beacon node rpc endpoints

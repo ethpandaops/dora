@@ -30,6 +30,11 @@ frontend:
   # file or inventory url to load validator names from
   validatorNamesYaml: ""
   validatorNamesInventory: ""
+
+  # frontend features
+  showSensitivePeerInfos: false
+  showPeerDASInfos: false
+  showSubmitDeposit: false
   
 beaconapi:
   # beacon node rpc endpoints
