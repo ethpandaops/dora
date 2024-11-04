@@ -50,7 +50,7 @@ func InsertConsolidationRequests(consolidations []*dbtypes.ConsolidationRequest,
 		argIdx += fieldCount
 	}
 	fmt.Fprint(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
-		dbtypes.DBEnginePgsql:  " ON CONFLICT (slot_index, slot_root) DO UPDATE SET orphaned = excluded.orphaned, fork_id = excluded.fork_id",
+		dbtypes.DBEnginePgsql:  " ON CONFLICT (slot_root, slot_index) DO UPDATE SET orphaned = excluded.orphaned, fork_id = excluded.fork_id",
 		dbtypes.DBEngineSqlite: "",
 	}))
 	_, err := tx.Exec(sql.String(), args...)

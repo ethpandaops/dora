@@ -67,12 +67,12 @@ const DepositEntry = (props: IDepositEntryProps): React.ReactElement => {
           }
         </button>
         {errorModal && (
-          <Modal show={true} onHide={() => setErrorModal(null)} size="lg">
+          <Modal show={true} onHide={() => setErrorModal(null)} size="lg" className="submit-deposit-modal">
             <Modal.Header closeButton>
               <Modal.Title>Deposit Transaction Failed</Modal.Title>
             </Modal.Header>
             <Modal.Body>
-              <pre className="m-0">{errorModal}</pre>
+              <pre className="m-0 deposit-error">{errorModal}</pre>
             </Modal.Body>
             <Modal.Footer>
               <button className="btn btn-primary" onClick={() => setErrorModal(null)}>Close</button>
