@@ -172,7 +172,7 @@ const DepositsTable = (props: IDepositsTableProps): React.ReactElement => {
       return {
         deposits: json.map((deposit: IDeposit) => {
           deposit.validity = verifyDeposit(deposit, signingDomain);
-          deposit.depositTxs = depositTxs.filter((tx: IDepositTx) => tx.pubkey === deposit.pubkey);
+          deposit.depositTxs = depositTxs.filter((tx: IDepositTx) => tx.pubkey === "0x" + deposit.pubkey);
           return deposit;
         }),
         loadDepositsErr: loadDepositsErr,
