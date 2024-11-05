@@ -4,11 +4,13 @@ import {ContainerType, ByteVectorType, UintNumberType, ValueOf} from "@chainsafe
 import bls from "@chainsafe/bls/herumi";
 
 import DepositEntry from './DepositEntry';
+import { IDepositTx } from './SubmitDepositsFormProps';
 
 interface IDepositsTableProps {
   file: File;
   genesisForkVersion: string;
   depositContract: string;
+  loadDepositTxs(pubkeys: string[]): Promise<{deposits: IDepositTx[], count: number, havemore: boolean}>;
 }
 
 export interface IDeposit {
@@ -23,6 +25,12 @@ export interface IDeposit {
   deposit_cli_version: string;
 
   validity: boolean;
+  depositTxs?: IDepositTx[];
+}
+
+export interface IDepositTxStats {
+  count: number;
+  havemore: boolean;
 }
 
 const DepositMessage = new ContainerType({
@@ -49,14 +57,20 @@ type SigningData = ValueOf<typeof SigningData>;
 const DepositsTable = (props: IDepositsTableProps): React.ReactElement => {
   const [deposits, setDeposits] = useState<IDeposit[] | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
+  const [loadDepositsError, setLoadDepositsError] = useState<string | null>(null);
+  const [depositTxStats, setDepositTxStats] = useState<IDepositTxStats | null>(null);
 
   useEffect(() => {
-    parseDeposits().then((deposits) => {
-      setDeposits(deposits);
+    parseDeposits().then((res) => {
+      setDeposits(res.deposits);
       setParseError(null);
+      setLoadDepositsError(res.loadDepositsErr);
+      setDepositTxStats(res.depositStats);
     }).catch((error) => {
       setParseError(error.message);
       setDeposits(null);
+      setLoadDepositsError(null);
+      setDepositTxStats(null);
     });
   }, [props.file]);
 
@@ -86,6 +100,20 @@ const DepositsTable = (props: IDepositsTableProps): React.ReactElement => {
             </div>
           </div>
 
+          {loadDepositsError ? 
+            <div className="alert alert-danger mt-2">
+              Failed to load deposit transactions: <br />
+              {loadDepositsError}<br />
+              Duplicate deposits may not be displayed correctly!
+            </div> 
+          : null}
+
+          {depositTxStats && depositTxStats.count > 0 ? 
+            <div className="alert alert-warning mt-2">
+              We've found {depositTxStats.havemore ? "more than " : ""}{depositTxStats.count} deposit transactions matching your validator pubkeys. Double check each deposit to avoid double deposits.
+            </div> 
+          : null}
+
           {!deposits ? <p>Loading...</p> : deposits.length === 0 ? <p>No deposits found</p> : (
             <div className="table-ellipsis mt-1">
               <table className="table" style={{width: "100%"}}>
@@ -111,10 +139,25 @@ const DepositsTable = (props: IDepositsTableProps): React.ReactElement => {
     </div>
   );
 
-  async function parseDeposits(): Promise<IDeposit[]> {
+  async function parseDeposits(): Promise<{deposits: IDeposit[], loadDepositsErr: string, depositStats: IDepositTxStats}> {
     try {
       const text = await props.file.text();
-      const json = JSON.parse(text);
+      const json: IDeposit[] = JSON.parse(text);
+
+      let pubkeys = json.map((deposit: IDeposit) => deposit.pubkey);
+      let depositTxs = [];
+      let loadDepositsErr = null;
+      let depositStats: IDepositTxStats = null;
+      try {
+        let depositsRes = await props.loadDepositTxs(pubkeys);
+        depositTxs = depositsRes.deposits;
+        depositStats = {
+          count: depositsRes.count,
+          havemore: depositsRes.havemore
+        };
+      } catch (error) {
+        loadDepositsErr = error.toString();
+      }
 
       // compute signing domain
       const forkData: ForkData = ForkData.fromJson({
@@ -126,10 +169,15 @@ const DepositsTable = (props: IDepositsTableProps): React.ReactElement => {
       signingDomain.set([0x03, 0x00, 0x00, 0x00]);
       signingDomain.set(forkDataRoot.slice(0, 28), 4);
       
-      return json.map((deposit: IDeposit) => {
-        deposit.validity = verifyDeposit(deposit, signingDomain);
-        return deposit;
-      });
+      return {
+        deposits: json.map((deposit: IDeposit) => {
+          deposit.validity = verifyDeposit(deposit, signingDomain);
+          deposit.depositTxs = depositTxs.filter((tx: IDepositTx) => tx.pubkey === deposit.pubkey);
+          return deposit;
+        }),
+        loadDepositsErr: loadDepositsErr,
+        depositStats: depositStats
+      };
     } catch (error) {
       console.error(error);
       throw error;
@@ -155,6 +203,7 @@ const DepositsTable = (props: IDepositsTableProps): React.ReactElement => {
 
     return signature.verify(pubkey, signingDataRoot);
   }
+
 }
 
 export default DepositsTable;

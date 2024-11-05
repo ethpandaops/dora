@@ -160,7 +160,7 @@ func startFrontend(webserver *http.Server) {
 	router.HandleFunc("/validators", handlers.Validators).Methods("GET")
 	router.HandleFunc("/validators/activity", handlers.ValidatorsActivity).Methods("GET")
 	router.HandleFunc("/validators/deposits", handlers.Deposits).Methods("GET")
-	router.HandleFunc("/validators/deposits/submit", handlers.SubmitDeposit).Methods("GET")
+	router.HandleFunc("/validators/deposits/submit", handlers.SubmitDeposit).Methods("GET", "POST")
 	router.HandleFunc("/validators/initiated_deposits", handlers.InitiatedDeposits).Methods("GET")
 	router.HandleFunc("/validators/included_deposits", handlers.IncludedDeposits).Methods("GET")
 	router.HandleFunc("/validators/voluntary_exits", handlers.VoluntaryExits).Methods("GET")

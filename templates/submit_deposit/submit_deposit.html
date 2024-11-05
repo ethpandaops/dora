@@ -51,6 +51,22 @@
         submitDepositConfig: {
           genesisForkVersion: "0x{{ printf "%x" .GenesisForkVersion }}",
           depositContract: "0x{{ printf "%x" .DepositContract }}",
+          loadDepositTxs: function(pubkeys) {
+            return fetch("?ajax=load_deposits", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json"
+              },
+              body: JSON.stringify(pubkeys)
+            }).then((response) => {
+              if (!response.ok) {
+                throw new Error("Failed to load deposits: " + response.statusText);
+              }
+              return response;
+            }).then((response) => {
+              return response.json();
+            });
+          }
         }
       }
     );
