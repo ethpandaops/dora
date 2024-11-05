@@ -14,7 +14,7 @@ var webpackModuleConfigs = [
     output: {
       path: path.join(__dirname, '/dist'),
       filename: 'react-ui.js',
-      chunkFilename: 'react-ui-[name].js',
+      chunkFilename: 'react-ui-[name]-[contenthash].js',
       publicPath: "/ui-package/",
     },
   },
@@ -70,7 +70,7 @@ var webpackBaseConfig = {
       new TerserPlugin({
         parallel: true,
         extractComments: {
-          banner: '@dora-ui/submit-deposit: ' + JSON.stringify({
+          banner: '@ethpandaops/dora-ui-components: ' + JSON.stringify({
             version: pkgJson.version,
           }) + "\n",
         },
