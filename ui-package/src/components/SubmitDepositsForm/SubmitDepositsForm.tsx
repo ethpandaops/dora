@@ -11,6 +11,8 @@ const SubmitDepositsForm = (props: ISubmitDepositsFormProps): React.ReactElement
   const { address: walletAddress, isConnected, chain } = useAccount();
   
   const [file, setFile] = useState<File | null>(null);
+  const [refreshIdx, setRefreshIdx] = useState<number>(0);
+
 
   return (
     <div className="submit-deposits">
@@ -36,28 +38,33 @@ const SubmitDepositsForm = (props: ISubmitDepositsFormProps): React.ReactElement
         </div>
       </div>
 
-      {isConnected && chain ?
-        <div className="row mt-3">
-          <div className="col-12">
-            <label htmlFor="formFile" className="form-label">
-              <b>Step 2: Upload deposit data file</b>
-            </label>
-            <input 
-              type="file" 
-              className="form-control" 
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                if (e.target.files) {
-                  setFile(e.target.files[0]);
-                }
-              }} 
-            />
-            <p className="text-secondary-emphasis mt-2">The deposit data file is usually called <code>deposit_data-[timestamp].json</code> and is located in your <code>/staking-deposit-cli/validator_keys</code> directory.</p>
-          </div>
+      <div className="row mt-3">
+        <div className="col-12">
+          <label htmlFor="formFile" className="form-label">
+            <b>Step 2: Upload deposit data file</b>
+          </label>
+          <input 
+            type="file" 
+            className="form-control" 
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+              if (e.target.files) {
+                setFile(e.target.files[0]);
+                setRefreshIdx(refreshIdx + 1);
+              }
+            }} 
+          />
+          <p className="text-secondary-emphasis mt-2">The deposit data file is usually called <code>deposit_data-[timestamp].json</code> and is located in your <code>/staking-deposit-cli/validator_keys</code> directory.</p>
         </div>
-      : null}
+      </div>
 
       {file ?
-        <DepositsTable file={file} genesisForkVersion={props.genesisForkVersion} depositContract={props.depositContract} />
+        <DepositsTable
+          key={refreshIdx}
+          file={file}
+          genesisForkVersion={props.genesisForkVersion}
+          depositContract={props.depositContract}
+          loadDepositTxs={props.loadDepositTxs}
+        />
       : null}
 
     </div>
