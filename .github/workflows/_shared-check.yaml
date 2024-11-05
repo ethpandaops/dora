@@ -16,7 +16,10 @@ jobs:
       uses: actions/setup-go@v4
       with:
         go-version: 1.22.x
-    
+
+    - name: Prepare test environment
+      run: mkdir -p ui-package/dist && touch ui-package/dist/dummy
+
     - name: Verify dependencies
       run: go mod verify
 

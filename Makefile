@@ -10,20 +10,29 @@ GOLDFLAGS += -X 'github.com/ethpandaops/dora/utils.BuildRelease="$(RELEASE)"'
 
 all: test build
 
-test:
+test: ensure-ui
+	$(MAKE) -C ui-package test
 	go test ./...
 
-build:
+build: ensure-ui
 	@echo version: $(VERSION)
 	env CGO_ENABLED=1 go build -v -o bin/ -ldflags="-s -w $(GOLDFLAGS)" ./cmd/*
 
+ensure-ui:
+	if [ ! -f ui-package/dist/react-ui.js ]; then $(MAKE) build-ui; fi
+
+build-ui:
+	$(MAKE) -C ui-package install
+	$(MAKE) -C ui-package build
+
 clean:
 	rm -f bin/*
+	$(MAKE) -C ui-package clean
 
 devnet:
 	.hack/devnet/run.sh
 
-devnet-run: devnet
+devnet-run: devnet ensure-ui
 	go run cmd/dora-explorer/main.go --config .hack/devnet/generated-dora-config.yaml
 
 devnet-clean:

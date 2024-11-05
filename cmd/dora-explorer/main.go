@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"flag"
+	"io/fs"
 	"net"
 	"net/http"
 	_ "net/http/pprof"
@@ -17,6 +18,7 @@ import (
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/static"
 	"github.com/ethpandaops/dora/types"
+	uipackage "github.com/ethpandaops/dora/ui-package"
 	"github.com/ethpandaops/dora/utils"
 )
 
@@ -158,6 +160,7 @@ func startFrontend(webserver *http.Server) {
 	router.HandleFunc("/validators", handlers.Validators).Methods("GET")
 	router.HandleFunc("/validators/activity", handlers.ValidatorsActivity).Methods("GET")
 	router.HandleFunc("/validators/deposits", handlers.Deposits).Methods("GET")
+	router.HandleFunc("/validators/deposits/submit", handlers.SubmitDeposit).Methods("GET", "POST")
 	router.HandleFunc("/validators/initiated_deposits", handlers.InitiatedDeposits).Methods("GET")
 	router.HandleFunc("/validators/included_deposits", handlers.IncludedDeposits).Methods("GET")
 	router.HandleFunc("/validators/voluntary_exits", handlers.VoluntaryExits).Methods("GET")
@@ -180,10 +183,20 @@ func startFrontend(webserver *http.Server) {
 		cssHandler := http.FileServer(http.Dir("static/css"))
 		router.PathPrefix("/css").Handler(http.StripPrefix("/css/", cssHandler))
 
+		doraUiHandler := http.FileServer(http.Dir("ui-package/dist"))
+		router.PathPrefix("/ui-package").Handler(http.StripPrefix("/ui-package/", doraUiHandler))
+
 		jsHandler := http.FileServer(http.Dir("static/js"))
 		router.PathPrefix("/js").Handler(http.StripPrefix("/js/", jsHandler))
+	} else {
+		// serve dora ui package from go embed
+		uiEmbedFS, _ := fs.Sub(uipackage.Files, "dist")
+		uiFileSys := http.FS(uiEmbedFS)
+		uiHandler := handlers.CustomFileServer(http.FileServer(uiFileSys), uiFileSys, handlers.NotFound)
+		router.PathPrefix("/ui-package").Handler(http.StripPrefix("/ui-package/", uiHandler))
 	}
 
+	// serve static files from go embed
 	fileSys := http.FS(static.Files)
 	router.PathPrefix("/").Handler(handlers.CustomFileServer(http.FileServer(fileSys), fileSys, handlers.NotFound))
 

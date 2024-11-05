@@ -42,8 +42,37 @@ on:
 
 # shared build jobs
 jobs:
+  build_ui_package:
+    name: Build UI package
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        ref: ${{ inputs.ref }}
+
+    # setup node & npm
+    - name: Set up node
+      uses: actions/setup-node@v4
+      with:
+        node-version: 20.x
+        cache: 'npm'
+        cache-dependency-path: ./ui-package/package-lock.json
+    
+    # build UI package
+    - name: Build UI package
+      run: |
+        make build-ui
+
+    # upload artifacts
+    - name: "Upload artifact: ui-package"
+      uses: actions/upload-artifact@v3
+      with:
+        path: ./ui-package/dist/*
+        name: ui-package
+
   build_linux_amd64_binary:
     name: Build linux/amd64 binary
+    needs: [build_ui_package]
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
@@ -61,6 +90,13 @@ jobs:
       run: |
         go get -v -t -d ./...
 
+    # download UI build artifacts
+    - name: Download UI build artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: ui-package
+        path: ./ui-package/dist
+
     # build binaries
     - name: Build linux amd64 binary
       run: |
@@ -77,6 +113,7 @@ jobs:
   
   build_linux_arm64_binary:
     name: Build linux/arm64 binary
+    needs: [build_ui_package]
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
@@ -100,6 +137,13 @@ jobs:
       run: |
         go get -v -t -d ./...
 
+    # download UI build artifacts
+    - name: Download UI build artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: ui-package
+        path: ./ui-package/dist
+
     # build binaries
     - name: Build linux arm64 binary
       run: |
@@ -116,6 +160,7 @@ jobs:
 
   build_windows_binary:
     name: Build windows/amd64 binary
+    needs: [build_ui_package]
     runs-on: windows-latest
     steps:
     - uses: actions/checkout@v3
@@ -133,6 +178,13 @@ jobs:
       run: |
         go get -v -t -d ./...
 
+    # download UI build artifacts
+    - name: Download UI build artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: ui-package
+        path: ./ui-package/dist
+
     # build binaries
     - name: Build windows binary
       run: |
@@ -149,6 +201,7 @@ jobs:
 
   build_darwin_amd64_binary:
     name: Build macos/amd64 binary
+    needs: [build_ui_package]
     runs-on: macos-latest
     steps:
     - uses: actions/checkout@v3
@@ -165,6 +218,13 @@ jobs:
     - name: Get dependencies
       run: |
         go get -v -t -d ./...
+
+    # download UI build artifacts
+    - name: Download UI build artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: ui-package
+        path: ./ui-package/dist
 
     # build binaries
     - name: Build macos amd64 binary
@@ -182,6 +242,7 @@ jobs:
 
   build_darwin_arm64_binary:
     name: Build macos/arm64 binary
+    needs: [build_ui_package]
     runs-on: macos-latest
     steps:
     - uses: actions/checkout@v3
@@ -198,6 +259,13 @@ jobs:
     - name: Get dependencies
       run: |
         go get -v -t -d ./...
+
+    # download UI build artifacts
+    - name: Download UI build artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: ui-package
+        path: ./ui-package/dist
 
     # build binaries
     - name: Build macos arm64 binary
@@ -237,6 +305,11 @@ jobs:
         password: ${{ secrets.DOCKERHUB_TOKEN }}
 
     # download build artifacts
+    - name: Download UI build artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: ui-package
+        path: ./ui-package/dist
     - name: Download build artifacts
       uses: actions/download-artifact@v3
       with:
@@ -286,6 +359,11 @@ jobs:
         password: ${{ secrets.DOCKERHUB_TOKEN }}
 
     # download build artifacts
+    - name: Download UI build artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: ui-package
+        path: ./ui-package/dist
     - name: Download build artifacts
       uses: actions/download-artifact@v3
       with:
