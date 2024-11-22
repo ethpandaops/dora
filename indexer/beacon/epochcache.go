@@ -453,6 +453,13 @@ func (cache *epochCache) loadEpochStats(epochStats *EpochStats) bool {
 	})
 
 	client := clients[int(epochStats.dependentState.retryCount)%len(clients)]
+	log := cache.indexer.logger.WithField("client", client.client.GetName())
+	if epochStats.dependentState.retryCount > 0 {
+		log = log.WithField("retry", epochStats.dependentState.retryCount)
+	}
+
+	log.Infof("loading epoch %v stats (dep: %v, req: %v)", epochStats.epoch, epochStats.dependentRoot.String(), len(epochStats.requestedBy))
+
 	err := epochStats.dependentState.loadState(client.getContext(), client, cache)
 	if err != nil && epochStats.dependentState.loadingStatus == 0 {
 		client.logger.Warnf("failed loading epoch %v stats (dep: %v): %v", epochStats.epoch, epochStats.dependentRoot.String(), err)
