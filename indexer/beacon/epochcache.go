@@ -3,6 +3,7 @@ package beacon
 import (
 	"bytes"
 	"encoding/binary"
+	"math/rand"
 	"runtime/debug"
 	"sort"
 	"sync"
@@ -449,7 +450,7 @@ func (cache *epochCache) loadEpochStats(epochStats *EpochStats) bool {
 			}
 		}
 
-		return cliA.index < cliB.index
+		return rand.Intn(2) == 0
 	})
 
 	client := clients[int(epochStats.dependentState.retryCount)%len(clients)]
