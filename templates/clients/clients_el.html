@@ -13,11 +13,11 @@
       <div class="accordion" id="network-accordion">
         <div class="accordion-item">
           <h2 class="accordion-header">
-            <button class="accordion-button btn-secondary" style="box-shadow: none;" type="button" data-bs-toggle="collapse" data-bs-target="#collapseOne" aria-expanded="true" aria-controls="collapseOne">
+            <button id="peerGraphToggler" class="accordion-button btn-secondary collapsed" style="box-shadow: none;" type="button" data-bs-toggle="collapse" data-bs-target="#peerGraph" aria-expanded="true" aria-controls="peerGraph">
               <i class="fa-solid fa-circle-nodes" style="margin-right:5px"></i> Client graph
             </button>
           </h2>
-          <div id="collapseOne" class="accordion-collapse collapse show" data-bs-parent="#network-accordion">
+          <div id="peerGraph" class="accordion-collapse collapse" data-bs-parent="#network-accordion">
             <div class="accordion-body peer-nodemap-wrapper">
               <div class="card-body px-0 peer-nodemap" id="nodemap">
                 <div id="nodemap-loading" class="spinner-border" role="status">
@@ -27,10 +27,10 @@
               <div class="card-body px-0 peer-nodemap-menu">
                 <div class="btn-group btn-group-sm" role="group" aria-label="Network layouts" style="position: absolute; bottom: 5px; right: 10px;">
                   <button type="button" class="btn btn-secondary" disabled>Layouts</button>
-                  <button type="button" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Cose" class="btn btn-secondary" onclick='$_network.fitAnimated(cy,$_network.layouts.fcose(data.nodes.length))'><i class="fa-solid fa-share-alt"></i></button>
-                  <button type="button" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Circle" class="btn btn-secondary" onclick='$_network.fitAnimated(cy,$_network.layouts.circle())'><i class="fa-solid fa-circle"></i></button>
-                  <button type="button" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Grid" class="btn btn-secondary" onclick='$_network.fitAnimated(cy,$_network.layouts.grid())'><i class="fa-solid fa-th"></i></button>
-                  <button type="button" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Concentric" class="btn btn-secondary" onclick='$_network.fitAnimated(cy,$_network.layouts.concentric(data.nodes.length))'><i class="fa-solid fa-sun"></i></button>
+                  <button type="button" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Cose" class="btn btn-secondary" onclick='$_network.fitAnimated(peerGraph,$_network.layouts.fcose(data.nodes.length))'><i class="fa-solid fa-share-alt"></i></button>
+                  <button type="button" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Circle" class="btn btn-secondary" onclick='$_network.fitAnimated(peerGraph,$_network.layouts.circle())'><i class="fa-solid fa-circle"></i></button>
+                  <button type="button" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Grid" class="btn btn-secondary" onclick='$_network.fitAnimated(peerGraph,$_network.layouts.grid())'><i class="fa-solid fa-th"></i></button>
+                  <button type="button" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Concentric" class="btn btn-secondary" onclick='$_network.fitAnimated(peerGraph,$_network.layouts.concentric(data.nodes.length))'><i class="fa-solid fa-sun"></i></button>
                 </div>
               </div>
             </div>
@@ -67,13 +67,7 @@
                     <td>{{ $client.Index }}</td>
                     <td>
                       <svg class="client-node-icon" data-jdenticon-value="{{ $client.PeerID }}"></svg>
-                      <span
-                        id="clientRow-{{ $client.Name }}"
-                        style="cursor:pointer;"
-                        onclick="$_network.isolateNode(cy, '{{ $client.PeerID}}');
-                                  $('.collapse.peerInfo').collapse('hide');
-                                  $('#peerInfo-{{ $client.PeerID }}').collapse('show');
-                        ">
+                      <span id="clientRow-{{ $client.Name }}" style="cursor:pointer;" class="client-row" data-peerid="{{ $client.PeerID}}">
                         <a href="#name={{ $client.Name }}">{{ $client.Name }}</a>
                       </span>
                     </td>
@@ -279,9 +273,35 @@
 <script src="/js/vendor/cytoscape-fcose.js"></script>
 <script src="/js/cytoscape-network-aux.js"></script>
 <script type="text/javascript">
-  var container = document.getElementById("nodemap");
-  var data = {{ .PeerMap }};
-  var cy = $_network.create(container, data);
+  var peerGraphData = {{ .PeerMap }};
+  var peerGraph, peerGraphRendered = false;
+
+  function renderPeerGraph() {
+    var container = document.getElementById("nodemap");
+    peerGraph = $_network.create(container, peerGraphData);
+  }
+
+  if(peerGraphData.nodes.filter(function(node) { return node.group == "internal" }).length <= 100) {
+    $('#peerGraph').addClass('show');
+    $('#peerGraphToggler').removeClass('collapsed');
+    renderPeerGraph();
+  } else {
+    $('#peerGraph').on('shown.bs.collapse', function () {
+      if(peerGraphRendered) return;
+      renderPeerGraph();
+      peerGraphRendered = true;
+    });
+  }
+
+  $('.client-row').on('click', function() {
+    var peerId = $(this).data('peerid');
+    if(peerGraph) {
+      $_network.isolateNode(peerGraph, peerId);
+    }
+    $('.collapse.peerInfo').collapse('hide');
+    $('#peerInfo-' + peerId).collapse('show');
+  });
+
 </script>
 {{ end }}
 {{ define "css" }}
