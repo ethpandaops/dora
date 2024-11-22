@@ -649,7 +649,6 @@ func (es *EpochStats) GetDbEpoch(indexer *Indexer, headBlock *Block) *dbtypes.Ep
 	})
 
 	// compute epoch votes
-	indexer.logger.Warnf("compute epoch aggregation for epoch %v (head: %v)", es.epoch, headBlock.Root.String()) // TODO: remove log
 	epochVotes := es.GetEpochVotes(indexer, headBlock)
 
 	return indexer.dbWriter.buildDbEpoch(es.epoch, epochBlocks, es, epochVotes, nil)

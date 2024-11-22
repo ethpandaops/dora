@@ -191,7 +191,7 @@ func (indexer *Indexer) aggregateEpochVotes(epoch phase0.Epoch, chainState *cons
 
 	indexer.epochCache.votesCache.Add(votesKey, votes)
 
-	indexer.logger.Infof("aggregated epoch %v votes in %v (blocks: %v) [0x%x]", epoch, time.Since(t1), len(blocks), votesKey[:]) //TODO: reduce to debug
+	indexer.logger.Debugf("aggregated epoch %v votes in %v (blocks: %v) [0x%x]", epoch, time.Since(t1), len(blocks), votesKey[:])
 	return votes
 }
 
