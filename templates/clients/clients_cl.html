@@ -425,8 +425,8 @@
                           <td>ENR</td>
                           <td>
                             <div style="word-break: break-all; text-wrap: pretty;">
-                              <code data-bind="text: enr"></code>
-                              <i class="fa fa-copy text-muted p-1" role="button" data-placement="right" data-toggle="tooltip" title="Copy to clipboard" data-bind="attr: {'data-clipboard-text': enr}"></i>
+                              <code data-bind="text: enr || $node.enr"></code>
+                              <i class="fa fa-copy text-muted p-1" role="button" data-placement="right" data-toggle="tooltip" title="Copy to clipboard" data-bind="attr: {'data-clipboard-text': enr || $node.enr}"></i>
                             </div>
                           </td>
                         </tr>
