@@ -49,7 +49,7 @@ type epochCache struct {
 // newEpochCache creates & returns a new instance of epochCache.
 // initializes the cache & starts the beacon state loader subroutine.
 func newEpochCache(indexer *Indexer) *epochCache {
-	votesCacheSize := int(indexer.inMemoryEpochs) * 10
+	votesCacheSize := int(indexer.inMemoryEpochs) * 4
 	if votesCacheSize < 10 {
 		votesCacheSize = 10
 	} else if votesCacheSize > 200 {
