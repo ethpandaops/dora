@@ -234,20 +234,23 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 		lastHeadSlot, lastHeadRoot := client.GetLastHead()
 
 		id := client.GetNodeIdentity()
+		var peerId string
 		if id == nil {
-			continue
+			peerId = fmt.Sprintf("unknown-%d", client.GetIndex())
+		} else {
+			peerId = id.PeerID
 		}
 
 		// Add client to global nodes map
-		node, ok := pageData.Nodes[id.PeerID]
+		node, ok := pageData.Nodes[peerId]
 		if !ok {
 			node = &models.ClientCLPageDataNode{
-				PeerID: id.PeerID,
+				PeerID: peerId,
 				Alias:  client.GetName(),
 				Type:   "internal",
 				ENR:    id.Enr,
 			}
-			pageData.Nodes[id.PeerID] = node
+			pageData.Nodes[peerId] = node
 		}
 
 		peers := client.GetNodePeers()
@@ -258,7 +261,7 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 			addPeerNode(peer)
 
 			peerNode := &models.ClientCLPageDataNodePeers{
-				PeerID:             peer.PeerID,
+				PeerID:             peerId,
 				State:              peer.State,
 				Direction:          peer.Direction,
 				LastSeenP2PAddress: peer.LastSeenP2PAddress,
@@ -269,7 +272,7 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 				if peer.Enr != "" {
 					rec, err := utils.DecodeENR(peer.Enr)
 					if err != nil {
-						logrus.WithFields(logrus.Fields{"node": client.GetName(), "peer": peer.PeerID, "enr": peer.Enr}).Error("failed to decode peer enr. ", err)
+						logrus.WithFields(logrus.Fields{"node": client.GetName(), "peer": peerId, "enr": peer.Enr}).Error("failed to decode peer enr. ", err)
 						rec = &enr.Record{}
 					}
 					peerENRKeyValues = utils.GetKeyValuesFromENR(rec)
