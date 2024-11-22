@@ -248,7 +248,9 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 				PeerID: peerId,
 				Alias:  client.GetName(),
 				Type:   "internal",
-				ENR:    id.Enr,
+			}
+			if id != nil {
+				node.ENR = id.Enr
 			}
 			pageData.Nodes[peerId] = node
 		}
@@ -308,7 +310,7 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 			Index:                int(client.GetIndex()) + 1,
 			Name:                 client.GetName(),
 			Version:              client.GetVersion(),
-			PeerID:               id.PeerID,
+			PeerID:               peerId,
 			PeerCount:            inPeerCount + outPeerCount,
 			PeersInboundCounter:  inPeerCount,
 			PeersOutboundCounter: outPeerCount,
