@@ -2,8 +2,9 @@ package beacon
 
 import (
 	"bytes"
+	"crypto/md5"
 	"encoding/binary"
-	"math/rand"
+	"fmt"
 	"runtime/debug"
 	"sort"
 	"sync"
@@ -450,7 +451,9 @@ func (cache *epochCache) loadEpochStats(epochStats *EpochStats) bool {
 			}
 		}
 
-		return rand.Intn(2) == 0
+		hashA := md5.Sum([]byte(fmt.Sprintf("%v-%v", cliA.client.GetIndex(), epochStats.epoch)))
+		hashB := md5.Sum([]byte(fmt.Sprintf("%v-%v", cliB.client.GetIndex(), epochStats.epoch)))
+		return bytes.Compare(hashA[:], hashB[:]) < 0
 	})
 
 	client := clients[int(epochStats.dependentState.retryCount)%len(clients)]
