@@ -90,6 +90,10 @@ func (es *EpochStats) GetEpoch() phase0.Epoch {
 	return es.epoch
 }
 
+func (es *EpochStats) GetDependentRoot() phase0.Root {
+	return es.dependentRoot
+}
+
 // addRequestedBy adds a client to the list of clients that have requested this EpochStats.
 func (es *EpochStats) addRequestedBy(client *Client) bool {
 	es.requestedMutex.Lock()
@@ -632,6 +636,10 @@ func (es *EpochStats) GetDbEpoch(indexer *Indexer, headBlock *Block) *dbtypes.Ep
 			}
 
 			return dbEpoch
+		}
+
+		if len(epochBlocks) > 0 {
+			indexer.logger.Warnf("no pruned epoch aggregation found for epoch %v (head: %v)", es.epoch, epochBlocks[0].Root.String())
 		}
 	}
 
