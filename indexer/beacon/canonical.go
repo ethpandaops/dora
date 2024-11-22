@@ -56,7 +56,9 @@ func (indexer *Indexer) GetCanonicalHead(overrideForkId *ForkKey) *Block {
 						factor = 0.5
 					}
 					percentagesI += chainHeadCandidates[i].PerEpochVotingPercent[k] * factor
-					percentagesJ += chainHeadCandidates[j].PerEpochVotingPercent[k] * factor
+					if len(chainHeadCandidates[j].PerEpochVotingPercent) > k {
+						percentagesJ += chainHeadCandidates[j].PerEpochVotingPercent[k] * factor
+					}
 				}
 
 				if percentagesI != percentagesJ {
