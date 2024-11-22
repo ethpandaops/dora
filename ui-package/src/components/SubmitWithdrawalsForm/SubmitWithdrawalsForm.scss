@@ -1,0 +1,70 @@
+
+.validator-selector {
+  .validator-item {
+    display: flex;
+  }
+
+  .validator-index {
+    width: 80px;
+  }
+
+  .validator-pubkey {
+    width: 200px;
+    flex-grow: 1;
+  }
+
+  .validator-balance {
+    padding-left: 10px;
+    width: 100px;
+  }
+
+  .validator-status {
+    width: 60px;
+  }
+
+
+  .validator-selector-control {
+    background-color: transparent;
+  }
+
+  .validator-selector-menu {
+    background-color: var(--bs-body-bg);
+  }
+
+  .validator-selector-option {
+    cursor: default;
+    display: block;
+    font-size: inherit;
+    width: 100%;
+    user-select: none;
+    -webkit-tap-highlight-color: rgba(128, 128, 128, 0.1);
+    background-color: transparent;
+    color: inherit;
+    padding: 8px 12px;
+    box-sizing: border-box;
+  }
+
+  .validator-selector-option.selected {
+    color: var(--bs-body-color);
+    background-color: rgba(var(--bs-primary-rgb), 0.3);
+  }
+
+  .validator-selector-option:hover, .validator-selector-option.focused {
+    color: var(--bs-body-color);
+    background-color: var(--bs-tertiary-bg);
+  }
+
+  .validator-selector-option.selected:hover, .validator-selector-option.selected.focused {
+    color: var(--bs-body-color);
+    background-color: rgba(var(--bs-primary-rgb), 0.4);
+  }
+
+  .validator-selector-single-value {
+    color: var(--bs-body-color);
+  }
+
+  .validator-selector-input {
+    color: var(--bs-body-color);
+  }
+ 
+}

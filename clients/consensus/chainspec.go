@@ -53,6 +53,7 @@ type ChainSpec struct {
 	MaxConsolidationRequestsPerPayload uint64            `yaml:"MAX_CONSOLIDATION_REQUESTS_PER_PAYLOAD"`
 	MaxWithdrawalRequestsPerPayload    uint64            `yaml:"MAX_WITHDRAWAL_REQUESTS_PER_PAYLOAD"`
 	DepositChainId                     uint64            `yaml:"DEPOSIT_CHAIN_ID"`
+	MinActivationBalance               uint64            `yaml:"MIN_ACTIVATION_BALANCE"`
 
 	// EIP7594: PeerDAS
 	NumberOfColumns              *uint64 `yaml:"NUMBER_OF_COLUMNS"`

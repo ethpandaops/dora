@@ -35,6 +35,7 @@ frontend:
   showSensitivePeerInfos: false
   showPeerDASInfos: false
   showSubmitDeposit: false
+  showSubmitElRequests: false
   
 beaconapi:
   # beacon node rpc endpoints
