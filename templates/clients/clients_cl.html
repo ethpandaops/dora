@@ -400,7 +400,7 @@
                           <p>Some other node reported a higher sequence number than this one.
                             <code data-bind="text: 'seq=' + $root.getEnrValue(enr_kv, 'seq')"></code> vs <code data-bind="text: 'seq=' + $root.getEnrValue($node.enr_kv, 'seq')"></code>
                           </p>
-                          <p>ENR: <code data-bind="text: enr"></code></p>
+                          <p>ENR: <code data-bind="text: $node.enr"></code></p>
                         {{ html "<!-- /ko -->" }}
                       </div>
                     {{ html "<!-- /ko -->" }}
