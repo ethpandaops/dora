@@ -70,30 +70,37 @@ func buildCLPeerMapData() *models.ClientCLPageDataPeerMap {
 
 	for _, client := range services.GlobalBeaconService.GetConsensusClients() {
 		id := client.GetNodeIdentity()
+
+		var peerId string
 		if id == nil {
-			continue
+			peerId = fmt.Sprintf("unknown-%d", client.GetIndex())
+		} else {
+			peerId = id.PeerID
 		}
-		peerID := id.PeerID
-		if _, ok := nodes[peerID]; !ok {
+
+		if _, ok := nodes[peerId]; !ok {
 			node := models.ClientCLPageDataPeerMapNode{
-				ID:    peerID,
+				ID:    peerId,
 				Label: client.GetName(),
 				Group: "internal",
 			}
-			nodes[peerID] = &node
+			nodes[peerId] = &node
 			peerMap.ClientPageDataMapNode = append(peerMap.ClientPageDataMapNode, &node)
 		}
 	}
 
 	for _, client := range services.GlobalBeaconService.GetConsensusClients() {
 		id := client.GetNodeIdentity()
+
+		var peerId string
 		if id == nil {
-			continue
+			peerId = fmt.Sprintf("unknown-%d", client.GetIndex())
+		} else {
+			peerId = id.PeerID
 		}
-		peerId := id.PeerID
+
 		peers := client.GetNodePeers()
 		for _, peer := range peers {
-			peerId := peerId
 			// Check if the PeerId is already in the nodes map, if not add it as an "external" node
 			if _, ok := nodes[peer.PeerID]; !ok {
 				node := models.ClientCLPageDataPeerMapNode{

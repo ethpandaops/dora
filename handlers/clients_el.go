@@ -68,7 +68,7 @@ func buildELPeerMapData() *models.ClientELPageDataPeerMap {
 
 	for _, client := range services.GlobalBeaconService.GetExecutionClients() {
 		nodeInfo := client.GetNodeInfo()
-		peerID := "unknown"
+		peerID := fmt.Sprintf("unknown-%v", client.GetIndex())
 		var en *enode.Node
 		var err error
 		if nodeInfo != nil && nodeInfo.Enode != "" {
@@ -104,10 +104,9 @@ func buildELPeerMapData() *models.ClientELPageDataPeerMap {
 			}
 		}
 		peers := client.GetNodePeers()
-		for _, peer := range peers {
-			nodeID := nodeID
+		for idx, peer := range peers {
 			en, err := enode.ParseV4(peer.Enode)
-			peerID := "unknown"
+			peerID := fmt.Sprintf("unknown-peer-%v-%v", client.GetIndex(), idx)
 			if err != nil {
 				logrus.WithFields(logrus.Fields{"client": client.GetName(), "enode": peer.Enode}).Error("failed to parse peer enode")
 			} else {
