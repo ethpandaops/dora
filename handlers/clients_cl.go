@@ -179,6 +179,21 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 		aliases[id.PeerID] = client.GetName()
 	}
 
+	enrMap := map[string]*enr.Record{}
+
+	parseEnrRecord := func(enrStr string) *enr.Record {
+		if enr, ok := enrMap[enrStr]; ok {
+			return enr
+		}
+		rec, err := utils.DecodeENR(enrStr)
+		enrMap[enrStr] = rec
+		if err != nil {
+			logrus.WithFields(logrus.Fields{"enr": enrStr}).Warn("failed to decode enr. ", err)
+			return nil
+		}
+		return rec
+	}
+
 	getEnrValues := func(values map[string]interface{}) []*models.ClientCLPageDataNodeENRValue {
 		enrValues := []*models.ClientCLPageDataNodeENRValue{}
 		for k, v := range values {
@@ -216,15 +231,9 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 			node.ENR = peer.Enr
 		} else if node.ENR != "" && peer.Enr != "" {
 			// Need to compare `seq` field from ENRs and only store highest
-			nodeENR, errA := utils.DecodeENR(node.ENR)
-			if errA != nil {
-				logrus.WithFields(logrus.Fields{"node": node.Alias, "enr": node.ENR}).Error("failed to decode enr of a node ", errA)
-			}
-			peerENR, errB := utils.DecodeENR(peer.Enr)
-			if errB != nil {
-				logrus.WithFields(logrus.Fields{"node": node.Alias, "peer": peer.PeerID, "enr": peer.Enr}).Error("failed to decode enr of a peer ", errB)
-			}
-			if errA == nil && errB == nil && peerENR.Seq() > nodeENR.Seq() {
+			nodeENR := parseEnrRecord(node.ENR)
+			peerENR := parseEnrRecord(peer.Enr)
+			if nodeENR != nil && peerENR != nil && peerENR.Seq() > nodeENR.Seq() {
 				node.ENR = peer.Enr // peerENR has higher sequence number, so override.
 			}
 		}
@@ -272,12 +281,10 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 			if pageData.ShowSensitivePeerInfos {
 				peerENRKeyValues := map[string]interface{}{}
 				if peer.Enr != "" {
-					rec, err := utils.DecodeENR(peer.Enr)
-					if err != nil {
-						logrus.WithFields(logrus.Fields{"node": client.GetName(), "peer": peerId, "enr": peer.Enr}).Error("failed to decode peer enr. ", err)
-						rec = &enr.Record{}
+					rec := parseEnrRecord(peer.Enr)
+					if rec != nil {
+						peerENRKeyValues = utils.GetKeyValuesFromENR(rec)
 					}
-					peerENRKeyValues = utils.GetKeyValuesFromENR(rec)
 				}
 
 				peerNode.ENR = peer.Enr
@@ -376,12 +383,10 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 
 		// Calculate K:V pairs for ENR
 		if v.ENR != "" {
-			rec, err := utils.DecodeENR(v.ENR)
-			if err != nil {
-				logrus.WithFields(logrus.Fields{"node": v.Alias, "enr": v.ENR}).Error("failed to decode enr. ", err)
-				rec = &enr.Record{}
+			rec := parseEnrRecord(v.ENR)
+			if rec != nil {
+				enrValues = utils.GetKeyValuesFromENR(rec)
 			}
-			enrValues = utils.GetKeyValuesFromENR(rec)
 		} else {
 			pageData.PeerDASInfos.Warnings.MissingENRsPeers = append(pageData.PeerDASInfos.Warnings.MissingENRsPeers, v.PeerID)
 			pageData.PeerDASInfos.Warnings.HasWarnings = true
