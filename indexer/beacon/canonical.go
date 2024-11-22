@@ -385,6 +385,10 @@ func (indexer *Indexer) GetCanonicalValidatorSet(overrideForkId *ForkKey) []*v1.
 		break
 	}
 
+	if epochStats == nil || epochStats.dependentState == nil || epochStats.dependentState.loadingStatus != 2 {
+		return validatorSet
+	}
+
 	epochStatsKey := getEpochStatsKey(epochStats.epoch, epochStats.dependentRoot)
 	if cachedValSet, found := indexer.validatorSetCache.Get(epochStatsKey); found {
 		return cachedValSet
