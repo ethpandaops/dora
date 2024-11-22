@@ -460,7 +460,8 @@ func (cache *epochCache) loadEpochStats(epochStats *EpochStats) bool {
 
 	if epochStats.dependentState.loadingStatus != 2 {
 		// epoch state could not be loaded
-		return true
+		epochStats.dependentState.retryCount++
+		return false
 	}
 
 	dependentStats := []*EpochStats{}
