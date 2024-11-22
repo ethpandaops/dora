@@ -163,6 +163,7 @@ func buildELClientsPageData() (*models.ClientsELPageData, time.Duration) {
 		Clients:                []*models.ClientsELPageDataClient{},
 		PeerMap:                buildELPeerMapData(),
 		ShowSensitivePeerInfos: utils.Config.Frontend.ShowSensitivePeerInfos,
+		Nodes:                  map[string]*models.ClientsELPageDataNode{},
 	}
 	chainState := services.GlobalBeaconService.GetChainState()
 	specs := chainState.GetSpecs()
@@ -189,7 +190,7 @@ func buildELClientsPageData() (*models.ClientsELPageData, time.Duration) {
 		lastHeadSlot, lastHeadRoot := client.GetLastHead()
 
 		peers := client.GetNodePeers()
-		resPeers := []*models.ClientELPageDataClientPeers{}
+		resPeers := []*models.ClientELPageDataNodePeers{}
 
 		var inPeerCount, outPeerCount uint32
 		for _, peer := range peers {
@@ -213,7 +214,7 @@ func buildELClientsPageData() (*models.ClientsELPageData, time.Duration) {
 				direction = "inbound"
 			}
 
-			resPeers = append(resPeers, &models.ClientELPageDataClientPeers{
+			resPeers = append(resPeers, &models.ClientELPageDataNodePeers{
 				ID:        peerID,
 				State:     peer.Name,
 				Direction: direction,
@@ -263,18 +264,30 @@ func buildELClientsPageData() (*models.ClientsELPageData, time.Duration) {
 			Name:                 client.GetName(),
 			Version:              client.GetVersion(),
 			DidFetchPeers:        client.DidFetchPeers(),
-			Peers:                resPeers,
-			PeerID:               peerID,
-			PeerName:             peerName,
-			Enode:                enoderaw,
-			IPAddr:               ipAddr,
-			ListenAddr:           listenAddr,
+			PeerCount:            uint32(len(peers)),
 			PeersInboundCounter:  inPeerCount,
 			PeersOutboundCounter: outPeerCount,
 			HeadSlot:             uint64(lastHeadSlot),
 			HeadRoot:             lastHeadRoot[:],
 			Status:               client.GetStatus().String(),
 			LastRefresh:          client.GetLastEventTime(),
+			PeerID:               peerID,
+		}
+
+		resNode := &models.ClientsELPageDataNode{
+			Name:          client.GetName(),
+			Version:       client.GetVersion(),
+			Status:        client.GetStatus().String(),
+			Peers:         resPeers,
+			PeerID:        peerID,
+			PeerName:      peerName,
+			DidFetchPeers: client.DidFetchPeers(),
+		}
+
+		if pageData.ShowSensitivePeerInfos {
+			resNode.Enode = enoderaw
+			resNode.IPAddr = ipAddr
+			resNode.ListenAddr = listenAddr
 		}
 
 		lastError := client.GetLastClientError()
@@ -283,7 +296,7 @@ func buildELClientsPageData() (*models.ClientsELPageData, time.Duration) {
 		}
 
 		pageData.Clients = append(pageData.Clients, resClient)
-
+		pageData.Nodes[peerID] = resNode
 	}
 	pageData.ClientCount = uint64(len(pageData.Clients))
 
