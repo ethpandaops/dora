@@ -1,0 +1,70 @@
+{{ define "page" }}
+<div class="container mt-2">
+  <div class="d-md-flex py-2 justify-content-md-between">
+    <h1 class="h4 mb-1 mb-md-0">
+      <i class="fas fa-square-plus mx-2"></i> Submit Withdrawal/Exit Requests
+    </h1>
+    <nav aria-label="breadcrumb">
+      <ol class="breadcrumb font-size-1 mb-0" style="padding:0; background-color:transparent;">
+        <li class="breadcrumb-item"><a href="/" title="Home">Home</a></li>
+        <li class="breadcrumb-item"><a href="/validators" title="Validators">Validators</a></li>
+        <li class="breadcrumb-item active" aria-current="page">Submit Withdrawals & Exits</li>
+      </ol>
+    </nav>
+  </div>
+
+  <div id="header-placeholder" style="height:35px;"></div>
+
+  <div class="card mt-2">
+    <div class="card-body">
+      <noscript>
+        <div class="alert alert-warning">
+          <i class="fa fa-exclamation-triangle"></i>
+          This page requires JavaScript to be enabled.
+        </div>
+      </noscript>
+      <div id="submit-withdrawal-container"></div>
+    </div>
+  </div>
+</div>
+
+{{ end }}
+{{ define "js" }}
+<script src="/ui-package/react-ui.js"></script>
+<script type="text/javascript">
+  $(function() {
+    window.doraUiComponents.SubmitWithdrawalsForm(
+      document.getElementById("submit-withdrawal-container"),
+      {
+        wagmiConfig: {
+          projectId: "{{ .RainbowkitProjectId }}",
+          chains: [
+            {
+              chainId: {{ .ChainId }},
+              name: "{{ .NetworkName }}",
+              rpcUrl: "{{ .PublicRPCUrl }}",
+              tokenName: "Ethereum",
+              tokenSymbol: "ETH",
+            }
+          ]
+        },
+        submitWithdrawalsConfig: {
+          withdrawalContract: "{{ .WithdrawalContract }}",
+          explorerUrl: "{{ .ExplorerUrl }}",
+          minValidatorBalance: "{{ .MinValidatorBalance }}",
+          loadValidatorsCallback: function(address) {
+            return fetch(`?ajax=load_validators&address=${address}`)
+              .then(response => response.json())
+              .then(data => {
+                console.log(data);
+                return data;
+              });
+          }
+        }
+      }
+    );
+  });
+</script>
+{{ end }}
+{{ define "css" }}
+{{ end }}

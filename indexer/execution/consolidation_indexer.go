@@ -17,7 +17,7 @@ import (
 	"github.com/ethpandaops/dora/utils"
 )
 
-const consolidationContractAddr = "0x01aBEa29659e5e97C95107F20bb753cD3e09bBBb"
+const ConsolidationContractAddr = "0x01aBEa29659e5e97C95107F20bb753cD3e09bBBb"
 
 // ConsolidationIndexer is the indexer for the eip-7251 consolidation system contract
 type ConsolidationIndexer struct {
@@ -54,7 +54,7 @@ func NewConsolidationIndexer(indexer *IndexerCtx) *ConsolidationIndexer {
 		&contractIndexerOptions[dbtypes.ConsolidationRequestTx]{
 			stateKey:        "indexer.consolidationindexer",
 			batchSize:       batchSize,
-			contractAddress: common.HexToAddress(consolidationContractAddr),
+			contractAddress: common.HexToAddress(ConsolidationContractAddr),
 			deployBlock:     uint64(utils.Config.ExecutionApi.ElectraDeployBlock),
 			dequeueRate:     specs.MaxConsolidationRequestsPerPayload,
 

@@ -207,15 +207,31 @@ func createMenuItems(active string) []types.MainMenuItem {
 		},
 	})
 
+	submitLinks := []types.NavigationLink{}
 	if utils.Config.Frontend.ShowSubmitDeposit {
+		submitLinks = append(submitLinks, types.NavigationLink{
+			Label: "Submit Deposits",
+			Path:  "/validators/deposits/submit",
+			Icon:  "fa-file-import",
+		})
+	}
+
+	if utils.Config.Frontend.ShowSubmitElRequests {
+		submitLinks = append(submitLinks, types.NavigationLink{
+			Label: "Submit Consolidations",
+			Path:  "/validators/submit_consolidations",
+			Icon:  "fa-square-plus",
+		})
+		submitLinks = append(submitLinks, types.NavigationLink{
+			Label: "Submit Withdrawals & Exits",
+			Path:  "/validators/submit_withdrawals",
+			Icon:  "fa-money-bill-transfer",
+		})
+	}
+
+	if len(submitLinks) > 0 {
 		validatorMenu = append(validatorMenu, types.NavigationGroup{
-			Links: []types.NavigationLink{
-				{
-					Label: "Submit Deposits",
-					Path:  "/validators/deposits/submit",
-					Icon:  "fa-file-import",
-				},
-			},
+			Links: submitLinks,
 		})
 	}
 
