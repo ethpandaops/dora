@@ -56,7 +56,9 @@ func (indexer *Indexer) GetCanonicalHead(overrideForkId *ForkKey) *Block {
 						factor = 0.5
 					}
 					percentagesI += chainHeadCandidates[i].PerEpochVotingPercent[k] * factor
-					percentagesJ += chainHeadCandidates[j].PerEpochVotingPercent[k] * factor
+					if len(chainHeadCandidates[j].PerEpochVotingPercent) > k {
+						percentagesJ += chainHeadCandidates[j].PerEpochVotingPercent[k] * factor
+					}
 				}
 
 				if percentagesI != percentagesJ {
@@ -381,6 +383,10 @@ func (indexer *Indexer) GetCanonicalValidatorSet(overrideForkId *ForkKey) []*v1.
 		}
 
 		break
+	}
+
+	if epochStats == nil || epochStats.dependentState == nil || epochStats.dependentState.loadingStatus != 2 {
+		return validatorSet
 	}
 
 	epochStatsKey := getEpochStatsKey(epochStats.epoch, epochStats.dependentRoot)

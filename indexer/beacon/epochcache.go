@@ -2,7 +2,9 @@ package beacon
 
 import (
 	"bytes"
+	"crypto/md5"
 	"encoding/binary"
+	"fmt"
 	"runtime/debug"
 	"sort"
 	"sync"
@@ -47,7 +49,7 @@ type epochCache struct {
 // newEpochCache creates & returns a new instance of epochCache.
 // initializes the cache & starts the beacon state loader subroutine.
 func newEpochCache(indexer *Indexer) *epochCache {
-	votesCacheSize := int(indexer.inMemoryEpochs) * 3
+	votesCacheSize := int(indexer.inMemoryEpochs) * 4
 	if votesCacheSize < 10 {
 		votesCacheSize = 10
 	} else if votesCacheSize > 200 {
@@ -449,10 +451,19 @@ func (cache *epochCache) loadEpochStats(epochStats *EpochStats) bool {
 			}
 		}
 
-		return cliA.index < cliB.index
+		hashA := md5.Sum([]byte(fmt.Sprintf("%v-%v", cliA.client.GetIndex(), epochStats.epoch)))
+		hashB := md5.Sum([]byte(fmt.Sprintf("%v-%v", cliB.client.GetIndex(), epochStats.epoch)))
+		return bytes.Compare(hashA[:], hashB[:]) < 0
 	})
 
 	client := clients[int(epochStats.dependentState.retryCount)%len(clients)]
+	log := cache.indexer.logger.WithField("client", client.client.GetName())
+	if epochStats.dependentState.retryCount > 0 {
+		log = log.WithField("retry", epochStats.dependentState.retryCount)
+	}
+
+	log.Infof("loading epoch %v stats (dep: %v, req: %v)", epochStats.epoch, epochStats.dependentRoot.String(), len(epochStats.requestedBy))
+
 	err := epochStats.dependentState.loadState(client.getContext(), client, cache)
 	if err != nil && epochStats.dependentState.loadingStatus == 0 {
 		client.logger.Warnf("failed loading epoch %v stats (dep: %v): %v", epochStats.epoch, epochStats.dependentRoot.String(), err)
@@ -460,7 +471,8 @@ func (cache *epochCache) loadEpochStats(epochStats *EpochStats) bool {
 
 	if epochStats.dependentState.loadingStatus != 2 {
 		// epoch state could not be loaded
-		return true
+		epochStats.dependentState.retryCount++
+		return false
 	}
 
 	dependentStats := []*EpochStats{}

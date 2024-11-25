@@ -80,7 +80,7 @@ func StreamUnfinalizedEpochs(epoch uint64, cb func(duty *dbtypes.UnfinalizedEpoc
 	return nil
 }
 
-func GetUnfinalizedEpochs(epoch uint64) *dbtypes.UnfinalizedEpoch {
+func GetUnfinalizedEpoch(epoch uint64, headRoot []byte) *dbtypes.UnfinalizedEpoch {
 	unfinalizedEpoch := dbtypes.UnfinalizedEpoch{}
 	err := ReaderDb.Get(&unfinalizedEpoch, `
 	SELECT
@@ -88,24 +88,8 @@ func GetUnfinalizedEpochs(epoch uint64) *dbtypes.UnfinalizedEpoch {
 		voted_head, voted_total, block_count, orphaned_count, attestation_count, deposit_count, exit_count, withdraw_count,
 		withdraw_amount, attester_slashing_count, proposer_slashing_count, bls_change_count, eth_transaction_count, sync_participation
 	FROM unfinalized_epochs
-	WHERE epoch = $1
-	`, epoch)
-	if err != nil {
-		return nil
-	}
-	return &unfinalizedEpoch
-}
-
-func GetUnfinalizedEpoch(epoch uint64) *dbtypes.UnfinalizedEpoch {
-	unfinalizedEpoch := dbtypes.UnfinalizedEpoch{}
-	err := ReaderDb.Get(&unfinalizedEpoch, `
-	SELECT
-		epoch, dependent_root, epoch_head_root, epoch_head_fork_id, validator_count, validator_balance, eligible, voted_target,
-		voted_head, voted_total, block_count, orphaned_count, attestation_count, deposit_count, exit_count, withdraw_count,
-		withdraw_amount, attester_slashing_count, proposer_slashing_count, bls_change_count, eth_transaction_count, sync_participation
-	FROM unfinalized_epochs
-	WHERE epoch = $1
-	`, epoch)
+	WHERE epoch = $1 AND epoch_head_root = $2
+	`, epoch, headRoot)
 	if err != nil {
 		return nil
 	}
