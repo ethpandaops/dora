@@ -439,8 +439,8 @@
                             </div>
                           </td>
                         </tr>
-                        {{ html "<!-- ko if: enr != '' -->" }}
-                        {{ html "<!-- ko foreach: enr_kv -->" }}
+                        {{ html "<!-- ko if: enr || $node.enr != '' -->" }}
+                        {{ html "<!-- ko foreach: enr ? enr_kv : $node.enr_kv -->" }}
                           <tr>
                             <td data-bind="text: key"></td>
                             <td>
