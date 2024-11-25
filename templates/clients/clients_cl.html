@@ -394,14 +394,23 @@
                   <div class="client-node-peer-details" data-bind="let: {$node: $root.getNode(peer_id)}">
                     {{ html "<!-- ko if: $node.enr != enr -->" }}
                       <div style="padding:10px; margin: 0; margin-left:10px; margin-right: 25px; word-break: break-all; text-wrap: pretty;" class="alert alert-warning" role="alert">
-                        <p><i class="fa-solid fa-circle-exclamation" style="margin-right: 10px;"></i>The ENR information was obtained from another node.</p>
-                        The node <code data-bind="text: $root.getNodeName($parent.peer_id)"></code> did not have the most up-to-date ENR for this peer.
+                        <p>
+                          <i class="fa-solid fa-circle-exclamation" style="margin-right: 10px;"></i>The ENR information was obtained from another node.
+                        </p>
+                        <p>
+                          The node <code data-bind="text: $root.getNodeName($parent.peer_id)"></code> did not have the most up-to-date ENR for this peer.
+                          {{ html "<!-- ko if: enr == '' -->" }}
+                            The reported ENR was empty (nil).
+                          {{ html "<!-- /ko -->" }}
+                        </p>
                         {{ html "<!-- ko if: enr != '' -->" }}
                           <p>Some other node reported a higher sequence number than this one.
                             <code data-bind="text: 'seq=' + $root.getEnrValue(enr_kv, 'seq')"></code> vs <code data-bind="text: 'seq=' + $root.getEnrValue($node.enr_kv, 'seq')"></code>
                           </p>
                           <p>ENR: <code data-bind="text: $node.enr"></code></p>
                         {{ html "<!-- /ko -->" }}
+
+
                       </div>
                     {{ html "<!-- /ko -->" }}
 
