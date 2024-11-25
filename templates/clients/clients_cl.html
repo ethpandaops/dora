@@ -357,8 +357,8 @@
                     <td>Custody columns</td>
                     <td>
                       <div style="word-break: break-all; text-wrap: pretty;">
-                        <code data-bind="text: peer_das.csc"></code>
-                        <i class="fa fa-copy text-muted p-1" role="button" data-placement="right" data-toggle="tooltip" data-bind="attr: {'data-clipboard-text': peer_das.csc}" title="Copy custody columns to clipboard"></i>
+                        <code data-bind="text: peer_das().columns.join(', ')"></code>
+                        <i class="fa fa-copy text-muted p-1" role="button" data-placement="right" data-toggle="tooltip" data-bind="attr: {'data-clipboard-text': peer_das().columns.join(', ')}" title="Copy custody columns to clipboard"></i>
                       </div>
                     </td>
                   </tr>
@@ -366,8 +366,8 @@
                     <td>Custody subnets</td>
                     <td>
                       <div style="word-break: break-all; text-wrap: pretty;">
-                        <code data-bind="text: peer_das.subnets"></code>
-                        <i class="fa fa-copy text-muted p-1" role="button" data-placement="right" data-toggle="tooltip" data-bind="attr: {'data-clipboard-text': peer_das.subnets}" title="Copy custody subnets to clipboard"></i>
+                        <code data-bind="text: peer_das().subnets.join(', ')"></code>
+                        <i class="fa fa-copy text-muted p-1" role="button" data-placement="right" data-toggle="tooltip" data-bind="attr: {'data-clipboard-text': peer_das().subnets.join(', ')}" title="Copy custody subnets to clipboard"></i>
                       </div>
                     </td>
                   </tr>
@@ -451,8 +451,8 @@
                               <td>Custody columns</td>
                               <td>
                                 <div style="word-break: break-all; text-wrap: pretty;">
-                                  <code data-bind="text: $node.peer_das().columns"></code>
-                                  <i class="fa fa-copy text-muted p-1" role="button" data-placement="right" data-toggle="tooltip" title="Copy to clipboard" data-bind="attr: {'data-clipboard-text': $node.peer_das().columns}" ></i>
+                                  <code data-bind="text: $node.peer_das.columns.join(', ')"></code>
+                                  <i class="fa fa-copy text-muted p-1" role="button" data-placement="right" data-toggle="tooltip" title="Copy to clipboard" data-bind="attr: {'data-clipboard-text': $node.peer_das.columns.join(', ')}" ></i>
                                 </div>
                               </td>
                             </tr>
@@ -460,8 +460,8 @@
                               <td>Custody subnets</td>
                               <td>
                                 <div style="word-break: break-all; text-wrap: pretty;">
-                                  <code data-bind="text: $node.peer_das().subnets"></code>
-                                  <i class="fa fa-copy text-muted p-1" role="button" data-placement="right" data-toggle="tooltip" title="Copy to clipboard" data-bind="attr: {'data-clipboard-text': $node.peer_das().subnets}" ></i>
+                                  <code data-bind="text: $node.peer_das.subnets.join(', ')"></code>
+                                  <i class="fa fa-copy text-muted p-1" role="button" data-placement="right" data-toggle="tooltip" title="Copy to clipboard" data-bind="attr: {'data-clipboard-text': $node.peer_das.subnets.join(', ')}" ></i>
                                 </div>
                               </td>
                             </tr>
@@ -520,19 +520,19 @@
                       </tr>
                       <tr>
                         <td>Supernode</td>
-                        <td><code data-bind="text: peer_das.is_super_node"></code></td>
+                        <td><code data-bind="text: peer_das().is_super_node"></code></td>
                       </tr>
                       <tr>
                         <td>CSC</td>
-                        <td><code data-bind="text: peer_das.csc"></code></td>
+                        <td><code data-bind="text: peer_das().csc"></code></td>
                       </tr>
                       <tr>
                         <td>Columns</td>
-                        <td><code style="word-break: break-all; text-wrap: pretty;" data-bind="text: peer_das.columns"></code></td>
+                        <td><code style="word-break: break-all; text-wrap: pretty;" data-bind="text: peer_das().columns.join(', ')"></code></td>
                       </tr>
                       <tr>
                         <td>Subnets</td>
-                        <td><code style="word-break: break-all; text-wrap: pretty;" data-bind="text: peer_das.subnets"></code></td>
+                        <td><code style="word-break: break-all; text-wrap: pretty;" data-bind="text: peer_das().subnets.join(', ')"></code></td>
                       </tr>
                     {{ html "<!-- /ko -->" }}
                     <tr>
