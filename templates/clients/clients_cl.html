@@ -407,7 +407,8 @@
                           <p>Some other node reported a higher sequence number than this one.
                             <code data-bind="text: 'seq=' + $root.getEnrValue(enr_kv, 'seq')"></code> vs <code data-bind="text: 'seq=' + $root.getEnrValue($node.enr_kv, 'seq')"></code>
                           </p>
-                          <p>ENR: <code data-bind="text: $node.enr"></code></p>
+                          <p>ENR: <code data-bind="text: enr"></code></p>
+                          <p>Decoded ENR: <code data-bind="text: $root.getEnrJson(enr_kv)"></code></p>
                         {{ html "<!-- /ko -->" }}
 
 
@@ -434,13 +435,13 @@
                           <td>ENR</td>
                           <td>
                             <div style="word-break: break-all; text-wrap: pretty;">
-                              <code data-bind="text: enr || $node.enr"></code>
+                              <code data-bind="text: $node.enr"></code>
                               <i class="fa fa-copy text-muted p-1" role="button" data-placement="right" data-toggle="tooltip" title="Copy to clipboard" data-bind="attr: {'data-clipboard-text': enr || $node.enr}"></i>
                             </div>
                           </td>
                         </tr>
-                        {{ html "<!-- ko if: enr || $node.enr != '' -->" }}
-                        {{ html "<!-- ko foreach: enr ? enr_kv : $node.enr_kv -->" }}
+                        {{ html "<!-- ko if: $node.enr != '' -->" }}
+                        {{ html "<!-- ko foreach: $node.enr_kv -->" }}
                           <tr>
                             <td data-bind="text: key"></td>
                             <td>
@@ -806,6 +807,13 @@
         }
         return "";
       },
+      getEnrJson: function(enr_kv) {
+        var obj = {};
+        for(var i = 0; i < enr_kv.length; i++) {
+          obj[enr_kv[i].key] = enr_kv[i].value;
+        }
+        return JSON.stringify(obj);
+      }
     };
 
     // Peer details view model
