@@ -17,7 +17,7 @@ type ForkVersion struct {
 // https://github.com/ethereum/consensus-specs/blob/dev/configs/mainnet.yaml
 type ChainSpec struct {
 	PresetBase                         string            `yaml:"PRESET_BASE"`
-	ConfigName                         string            `yaml:"CONFIG_NAME"`
+	ConfigName                         string            `yaml:"CONFIG_NAME" nocheck:"true"`
 	MinGenesisTime                     time.Time         `yaml:"MIN_GENESIS_TIME"`
 	GenesisForkVersion                 phase0.Version    `yaml:"GENESIS_FORK_VERSION"`
 	AltairForkVersion                  phase0.Version    `yaml:"ALTAIR_FORK_VERSION"`
@@ -73,6 +73,11 @@ func (chain *ChainSpec) CheckMismatch(chain2 *ChainSpec) []string {
 	chain2T := reflect.ValueOf(chain2).Elem()
 
 	for i := 0; i < chainT.NumField(); i++ {
+		fieldT := chainT.Type().Field(i)
+		if fieldT.Tag.Get("nocheck") == "true" {
+			continue
+		}
+
 		fieldV := chainT.Field(i)
 		field2V := chain2T.Field(i)
 
