@@ -30,8 +30,8 @@ type ChainSpec struct {
 	DenebForkEpoch                     *uint64           `yaml:"DENEB_FORK_EPOCH"`
 	ElectraForkVersion                 phase0.Version    `yaml:"ELECTRA_FORK_VERSION"`
 	ElectraForkEpoch                   *uint64           `yaml:"ELECTRA_FORK_EPOCH"`
-	Eip7594ForkVersion                 phase0.Version    `yaml:"EIP7594_FORK_VERSION"`
-	Eip7594ForkEpoch                   *uint64           `yaml:"EIP7594_FORK_EPOCH"`
+	Eip7594ForkVersion                 phase0.Version    `yaml:"EIP7594_FORK_VERSION" nocheck:"true"`
+	Eip7594ForkEpoch                   *uint64           `yaml:"EIP7594_FORK_EPOCH"   nocheck:"true"`
 	SecondsPerSlot                     time.Duration     `yaml:"SECONDS_PER_SLOT"`
 	SlotsPerEpoch                      uint64            `yaml:"SLOTS_PER_EPOCH"`
 	EpochsPerHistoricalVector          uint64            `yaml:"EPOCHS_PER_HISTORICAL_VECTOR"`
@@ -56,9 +56,9 @@ type ChainSpec struct {
 	MinActivationBalance               uint64            `yaml:"MIN_ACTIVATION_BALANCE"`
 
 	// EIP7594: PeerDAS
-	NumberOfColumns              *uint64 `yaml:"NUMBER_OF_COLUMNS"`
-	DataColumnSidecarSubnetCount *uint64 `yaml:"DATA_COLUMN_SIDECAR_SUBNET_COUNT"`
-	CustodyRequirement           *uint64 `yaml:"CUSTODY_REQUIREMENT"`
+	NumberOfColumns              *uint64 `yaml:"NUMBER_OF_COLUMNS"                nocheck:"true"`
+	DataColumnSidecarSubnetCount *uint64 `yaml:"DATA_COLUMN_SIDECAR_SUBNET_COUNT" nocheck:"true"`
+	CustodyRequirement           *uint64 `yaml:"CUSTODY_REQUIREMENT"              nocheck:"true"`
 
 	// additional dora specific specs
 	WhiskForkEpoch *uint64
