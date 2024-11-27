@@ -64,7 +64,6 @@ frontend:
   rainbowkitProjectId: "15fe4ab4d5c0bcb6f0dc7c398301ff0e"
   validatorNamesYaml: "${__dir}/generated-validator-ranges.yaml"
   showSensitivePeerInfos: true
-  showPeerDASInfos: true
   showSubmitDeposit: true
   showSubmitElRequests: true
 beaconapi:
