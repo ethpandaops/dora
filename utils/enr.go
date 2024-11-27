@@ -37,13 +37,7 @@ func GetKeyValuesFromENR(r *enr.Record) map[string]interface{} {
 	fields["seq"] = r.Seq()
 
 	// Get signature
-	n, err := enode.New(enode.ValidSchemes, r)
-	if err == nil {
-		record := n.Record()
-		if record != nil {
-			fields["signature"] = "0x" + hex.EncodeToString(record.Signature())
-		}
-	}
+	fields["signature"] = "0x" + hex.EncodeToString(r.Signature())
 
 	// Get all key value pairs
 	kv := r.AppendElements(nil)[1:]

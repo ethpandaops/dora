@@ -17,7 +17,7 @@ type ForkVersion struct {
 // https://github.com/ethereum/consensus-specs/blob/dev/configs/mainnet.yaml
 type ChainSpec struct {
 	PresetBase                         string            `yaml:"PRESET_BASE"`
-	ConfigName                         string            `yaml:"CONFIG_NAME"`
+	ConfigName                         string            `yaml:"CONFIG_NAME" nocheck:"true"`
 	MinGenesisTime                     time.Time         `yaml:"MIN_GENESIS_TIME"`
 	GenesisForkVersion                 phase0.Version    `yaml:"GENESIS_FORK_VERSION"`
 	AltairForkVersion                  phase0.Version    `yaml:"ALTAIR_FORK_VERSION"`
@@ -30,8 +30,8 @@ type ChainSpec struct {
 	DenebForkEpoch                     *uint64           `yaml:"DENEB_FORK_EPOCH"`
 	ElectraForkVersion                 phase0.Version    `yaml:"ELECTRA_FORK_VERSION"`
 	ElectraForkEpoch                   *uint64           `yaml:"ELECTRA_FORK_EPOCH"`
-	Eip7594ForkVersion                 phase0.Version    `yaml:"EIP7594_FORK_VERSION"`
-	Eip7594ForkEpoch                   *uint64           `yaml:"EIP7594_FORK_EPOCH"`
+	Eip7594ForkVersion                 phase0.Version    `yaml:"EIP7594_FORK_VERSION" nocheck:"true"`
+	Eip7594ForkEpoch                   *uint64           `yaml:"EIP7594_FORK_EPOCH"   nocheck:"true"`
 	SecondsPerSlot                     time.Duration     `yaml:"SECONDS_PER_SLOT"`
 	SlotsPerEpoch                      uint64            `yaml:"SLOTS_PER_EPOCH"`
 	EpochsPerHistoricalVector          uint64            `yaml:"EPOCHS_PER_HISTORICAL_VECTOR"`
@@ -52,11 +52,13 @@ type ChainSpec struct {
 	DepositContractAddress             []byte            `yaml:"DEPOSIT_CONTRACT_ADDRESS"`
 	MaxConsolidationRequestsPerPayload uint64            `yaml:"MAX_CONSOLIDATION_REQUESTS_PER_PAYLOAD"`
 	MaxWithdrawalRequestsPerPayload    uint64            `yaml:"MAX_WITHDRAWAL_REQUESTS_PER_PAYLOAD"`
+	DepositChainId                     uint64            `yaml:"DEPOSIT_CHAIN_ID"`
+	MinActivationBalance               uint64            `yaml:"MIN_ACTIVATION_BALANCE"`
 
 	// EIP7594: PeerDAS
-	NumberOfColumns              *uint64 `yaml:"NUMBER_OF_COLUMNS"`
-	DataColumnSidecarSubnetCount *uint64 `yaml:"DATA_COLUMN_SIDECAR_SUBNET_COUNT"`
-	CustodyRequirement           *uint64 `yaml:"CUSTODY_REQUIREMENT"`
+	NumberOfColumns              *uint64 `yaml:"NUMBER_OF_COLUMNS"                nocheck:"true"`
+	DataColumnSidecarSubnetCount *uint64 `yaml:"DATA_COLUMN_SIDECAR_SUBNET_COUNT" nocheck:"true"`
+	CustodyRequirement           *uint64 `yaml:"CUSTODY_REQUIREMENT"              nocheck:"true"`
 
 	// additional dora specific specs
 	WhiskForkEpoch *uint64
@@ -71,6 +73,11 @@ func (chain *ChainSpec) CheckMismatch(chain2 *ChainSpec) []string {
 	chain2T := reflect.ValueOf(chain2).Elem()
 
 	for i := 0; i < chainT.NumField(); i++ {
+		fieldT := chainT.Type().Field(i)
+		if fieldT.Tag.Get("nocheck") == "true" {
+			continue
+		}
+
 		fieldV := chainT.Field(i)
 		field2V := chain2T.Field(i)
 

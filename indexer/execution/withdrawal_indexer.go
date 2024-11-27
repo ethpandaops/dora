@@ -18,7 +18,7 @@ import (
 	"github.com/ethpandaops/dora/utils"
 )
 
-const withdrawalContractAddr = "0x09Fc772D0857550724b07B850a4323f39112aAaA"
+const WithdrawalContractAddr = "0x09Fc772D0857550724b07B850a4323f39112aAaA"
 
 // WithdrawalIndexer is the indexer for the eip-7002 consolidation system contract
 type WithdrawalIndexer struct {
@@ -55,7 +55,7 @@ func NewWithdrawalIndexer(indexer *IndexerCtx) *WithdrawalIndexer {
 		&contractIndexerOptions[dbtypes.WithdrawalRequestTx]{
 			stateKey:        "indexer.withdrawalindexer",
 			batchSize:       batchSize,
-			contractAddress: common.HexToAddress(withdrawalContractAddr),
+			contractAddress: common.HexToAddress(WithdrawalContractAddr),
 			deployBlock:     uint64(utils.Config.ExecutionApi.ElectraDeployBlock),
 			dequeueRate:     specs.MaxWithdrawalRequestsPerPayload,
 

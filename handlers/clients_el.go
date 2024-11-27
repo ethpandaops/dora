@@ -57,7 +57,7 @@ func getELClientsPageData() (*models.ClientsELPageData, error) {
 	return pageData, pageErr
 }
 
-func buildELPeerMapData() *models.ClientELPageDataPeerMap {
+func buildELPeerMapData(parseEnodeRecord func(enrStr string) *enode.Node) *models.ClientELPageDataPeerMap {
 	peerMap := &models.ClientELPageDataPeerMap{
 		ClientPageDataMapNode: []*models.ClientELPageDataPeerMapNode{},
 		ClientDataMapEdges:    []*models.ClientELDataMapPeerMapEdge{},
@@ -68,14 +68,11 @@ func buildELPeerMapData() *models.ClientELPageDataPeerMap {
 
 	for _, client := range services.GlobalBeaconService.GetExecutionClients() {
 		nodeInfo := client.GetNodeInfo()
-		peerID := "unknown"
+		peerID := fmt.Sprintf("unknown-%v", client.GetIndex())
 		var en *enode.Node
-		var err error
 		if nodeInfo != nil && nodeInfo.Enode != "" {
-			en, err = enode.ParseV4(nodeInfo.Enode)
-			if err != nil {
-				logrus.WithFields(logrus.Fields{"client": client.GetName(), "enode": nodeInfo.Enode}).Error("failed to parse enode")
-			} else {
+			en = parseEnodeRecord(nodeInfo.Enode)
+			if en != nil {
 				peerID = en.ID().String()
 			}
 
@@ -96,21 +93,16 @@ func buildELPeerMapData() *models.ClientELPageDataPeerMap {
 		nodeInfo := client.GetNodeInfo()
 		nodeID := "unknown"
 		if nodeInfo != nil {
-			en, err := enode.ParseV4(nodeInfo.Enode)
-			if err != nil {
-				logrus.WithFields(logrus.Fields{"client": client.GetName(), "enode": nodeInfo.Enode}).Error("failed to parse enode")
-			} else {
+			en := parseEnodeRecord(nodeInfo.Enode)
+			if en != nil {
 				nodeID = en.ID().String()
 			}
 		}
 		peers := client.GetNodePeers()
-		for _, peer := range peers {
-			nodeID := nodeID
-			en, err := enode.ParseV4(peer.Enode)
-			peerID := "unknown"
-			if err != nil {
-				logrus.WithFields(logrus.Fields{"client": client.GetName(), "enode": peer.Enode}).Error("failed to parse peer enode")
-			} else {
+		for idx, peer := range peers {
+			en := parseEnodeRecord(peer.Enode)
+			peerID := fmt.Sprintf("unknown-peer-%v-%v", client.GetIndex(), idx)
+			if en != nil {
 				peerID = en.ID().String()
 			}
 
@@ -159,10 +151,27 @@ func buildELPeerMapData() *models.ClientELPageDataPeerMap {
 
 func buildELClientsPageData() (*models.ClientsELPageData, time.Duration) {
 	logrus.Debugf("clients page called")
+
+	enodeMap := map[string]*enode.Node{}
+
+	parseEnodeRecord := func(enodeStr string) *enode.Node {
+		if enr, ok := enodeMap[enodeStr]; ok {
+			return enr
+		}
+		rec, err := enode.ParseV4(enodeStr)
+		enodeMap[enodeStr] = rec
+		if err != nil {
+			logrus.WithFields(logrus.Fields{"enr": enodeStr}).Warn("failed to decode enode. ", err)
+			return nil
+		}
+		return rec
+	}
+
 	pageData := &models.ClientsELPageData{
 		Clients:                []*models.ClientsELPageDataClient{},
-		PeerMap:                buildELPeerMapData(),
+		PeerMap:                buildELPeerMapData(parseEnodeRecord),
 		ShowSensitivePeerInfos: utils.Config.Frontend.ShowSensitivePeerInfos,
+		Nodes:                  map[string]*models.ClientsELPageDataNode{},
 	}
 	chainState := services.GlobalBeaconService.GetChainState()
 	specs := chainState.GetSpecs()
@@ -173,11 +182,9 @@ func buildELClientsPageData() (*models.ClientsELPageData, time.Duration) {
 
 		nodeInfo := client.GetNodeInfo()
 		if nodeInfo != nil && nodeInfo.Enode != "" {
-			en, err := enode.ParseV4(nodeInfo.Enode)
+			en := parseEnodeRecord(nodeInfo.Enode)
 			nodeID := "unknown"
-			if err != nil {
-				logrus.WithFields(logrus.Fields{"client": client.GetName(), "enode": nodeInfo.Enode}).Error("failed to parse enode")
-			} else {
+			if en != nil {
 				nodeID = en.ID().String()
 			}
 
@@ -189,16 +196,14 @@ func buildELClientsPageData() (*models.ClientsELPageData, time.Duration) {
 		lastHeadSlot, lastHeadRoot := client.GetLastHead()
 
 		peers := client.GetNodePeers()
-		resPeers := []*models.ClientELPageDataClientPeers{}
+		resPeers := []*models.ClientELPageDataNodePeers{}
 
 		var inPeerCount, outPeerCount uint32
 		for _, peer := range peers {
-			en, err := enode.ParseV4(peer.Enode)
+			en := parseEnodeRecord(peer.Enode)
 			peerID := "unknown"
 			enoderaw := "unknown"
-			if err != nil {
-				logrus.WithFields(logrus.Fields{"client": client.GetName(), "enode": peer.Enode}).Error("failed to parse peer enode")
-			} else {
+			if en != nil {
 				peerID = en.ID().String()
 				enoderaw = en.String()
 			}
@@ -213,7 +218,7 @@ func buildELClientsPageData() (*models.ClientsELPageData, time.Duration) {
 				direction = "inbound"
 			}
 
-			resPeers = append(resPeers, &models.ClientELPageDataClientPeers{
+			resPeers = append(resPeers, &models.ClientELPageDataNodePeers{
 				ID:        peerID,
 				State:     peer.Name,
 				Direction: direction,
@@ -246,10 +251,8 @@ func buildELClientsPageData() (*models.ClientsELPageData, time.Duration) {
 		ipAddr := "unknown"
 		listenAddr := "unknown"
 		if nodeInfo != nil {
-			en, err := enode.ParseV4(nodeInfo.Enode)
-			if err != nil {
-				logrus.WithFields(logrus.Fields{"client": client.GetName(), "enode": nodeInfo.Enode}).Error("failed to parse peer enode")
-			} else {
+			en := parseEnodeRecord(nodeInfo.Enode)
+			if en != nil {
 				peerID = en.ID().String()
 				enoderaw = en.String()
 			}
@@ -263,18 +266,30 @@ func buildELClientsPageData() (*models.ClientsELPageData, time.Duration) {
 			Name:                 client.GetName(),
 			Version:              client.GetVersion(),
 			DidFetchPeers:        client.DidFetchPeers(),
-			Peers:                resPeers,
-			PeerID:               peerID,
-			PeerName:             peerName,
-			Enode:                enoderaw,
-			IPAddr:               ipAddr,
-			ListenAddr:           listenAddr,
+			PeerCount:            uint32(len(peers)),
 			PeersInboundCounter:  inPeerCount,
 			PeersOutboundCounter: outPeerCount,
 			HeadSlot:             uint64(lastHeadSlot),
 			HeadRoot:             lastHeadRoot[:],
 			Status:               client.GetStatus().String(),
 			LastRefresh:          client.GetLastEventTime(),
+			PeerID:               peerID,
+		}
+
+		resNode := &models.ClientsELPageDataNode{
+			Name:          client.GetName(),
+			Version:       client.GetVersion(),
+			Status:        client.GetStatus().String(),
+			Peers:         resPeers,
+			PeerID:        peerID,
+			PeerName:      peerName,
+			DidFetchPeers: client.DidFetchPeers(),
+		}
+
+		if pageData.ShowSensitivePeerInfos {
+			resNode.Enode = enoderaw
+			resNode.IPAddr = ipAddr
+			resNode.ListenAddr = listenAddr
 		}
 
 		lastError := client.GetLastClientError()
@@ -283,7 +298,7 @@ func buildELClientsPageData() (*models.ClientsELPageData, time.Duration) {
 		}
 
 		pageData.Clients = append(pageData.Clients, resClient)
-
+		pageData.Nodes[peerID] = resNode
 	}
 	pageData.ClientCount = uint64(len(pageData.Clients))
 

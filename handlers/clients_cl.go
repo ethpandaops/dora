@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	v1 "github.com/attestantio/go-eth2-client/api/v1"
 	"github.com/ethereum/go-ethereum/p2p/enr"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
@@ -69,30 +70,37 @@ func buildCLPeerMapData() *models.ClientCLPageDataPeerMap {
 
 	for _, client := range services.GlobalBeaconService.GetConsensusClients() {
 		id := client.GetNodeIdentity()
+
+		var peerId string
 		if id == nil {
-			continue
+			peerId = fmt.Sprintf("unknown-%d", client.GetIndex())
+		} else {
+			peerId = id.PeerID
 		}
-		peerID := id.PeerID
-		if _, ok := nodes[peerID]; !ok {
+
+		if _, ok := nodes[peerId]; !ok {
 			node := models.ClientCLPageDataPeerMapNode{
-				ID:    peerID,
+				ID:    peerId,
 				Label: client.GetName(),
 				Group: "internal",
 			}
-			nodes[peerID] = &node
+			nodes[peerId] = &node
 			peerMap.ClientPageDataMapNode = append(peerMap.ClientPageDataMapNode, &node)
 		}
 	}
 
 	for _, client := range services.GlobalBeaconService.GetConsensusClients() {
 		id := client.GetNodeIdentity()
+
+		var peerId string
 		if id == nil {
-			continue
+			peerId = fmt.Sprintf("unknown-%d", client.GetIndex())
+		} else {
+			peerId = id.PeerID
 		}
-		peerId := id.PeerID
+
 		peers := client.GetNodePeers()
 		for _, peer := range peers {
-			peerId := peerId
 			// Check if the PeerId is already in the nodes map, if not add it as an "external" node
 			if _, ok := nodes[peer.PeerID]; !ok {
 				node := models.ClientCLPageDataPeerMapNode{
@@ -150,7 +158,7 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 				EmptyColumns:           []uint64{},
 			},
 		},
-		Nodes: make(map[string]*models.ClientCLNode),
+		Nodes: make(map[string]*models.ClientCLPageDataNode),
 	}
 	chainState := services.GlobalBeaconService.GetChainState()
 
@@ -171,29 +179,39 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 		aliases[id.PeerID] = client.GetName()
 	}
 
-	for _, client := range services.GlobalBeaconService.GetConsensusClients() {
-		lastHeadSlot, lastHeadRoot := client.GetLastHead()
+	enrMap := map[string]*enr.Record{}
 
-		id := client.GetNodeIdentity()
-		if id == nil {
-			continue
+	parseEnrRecord := func(enrStr string) *enr.Record {
+		if enr, ok := enrMap[enrStr]; ok {
+			return enr
 		}
-
-		// Add client to global nodes map
-		if _, ok := pageData.Nodes[id.PeerID]; !ok {
-			pageData.Nodes[id.PeerID] = &models.ClientCLNode{
-				PeerID: id.PeerID,
-				Alias:  client.GetName(),
-				Type:   "internal",
-				ENR:    id.Enr,
-			}
+		rec, err := utils.DecodeENR(enrStr)
+		enrMap[enrStr] = rec
+		if err != nil {
+			logrus.WithFields(logrus.Fields{"enr": enrStr}).Warn("failed to decode enr. ", err)
+			return nil
 		}
+		return rec
+	}
 
-		peers := client.GetNodePeers()
-		resPeers := []*models.ClientCLPageDataClientPeers{}
+	getEnrValues := func(values map[string]interface{}) []*models.ClientCLPageDataNodeENRValue {
+		enrValues := []*models.ClientCLPageDataNodeENRValue{}
+		for k, v := range values {
+			enrValues = append(enrValues, &models.ClientCLPageDataNodeENRValue{
+				Key:   k,
+				Value: v,
+			})
+		}
+		sort.Slice(enrValues, func(i, j int) bool {
+			return enrValues[i].Key < enrValues[j].Key
+		})
+		return enrValues
+	}
 
-		var inPeerCount, outPeerCount uint32
-		for _, peer := range peers {
+	// Add peer node to global nodes map
+	addPeerNode := func(peer *v1.Peer) {
+		node, ok := pageData.Nodes[peer.PeerID]
+		if !ok {
 			peerAlias := peer.PeerID
 			peerType := "external"
 			if alias, ok := aliases[peer.PeerID]; ok {
@@ -201,55 +219,90 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 				peerType = "internal"
 			}
 
-			peerENRKeyValues := map[string]interface{}{}
-			if peer.Enr != "" {
-				rec, err := utils.DecodeENR(peer.Enr)
-				if err != nil {
-					logrus.WithFields(logrus.Fields{"node": client.GetName(), "peer": peer.PeerID, "enr": peer.Enr}).Error("failed to decode peer enr. ", err)
-					rec = &enr.Record{}
-				}
-				peerENRKeyValues = utils.GetKeyValuesFromENR(rec)
+			node = &models.ClientCLPageDataNode{
+				PeerID: peer.PeerID,
+				Alias:  peerAlias,
+				Type:   peerType,
 			}
+			pageData.Nodes[peer.PeerID] = node
+		}
 
-			resPeers = append(resPeers, &models.ClientCLPageDataClientPeers{
-				ID:                 peer.PeerID,
+		if node.ENR == "" && peer.Enr != "" {
+			node.ENR = peer.Enr
+		} else if node.ENR != "" && peer.Enr != "" {
+			// Need to compare `seq` field from ENRs and only store highest
+			nodeENR := parseEnrRecord(node.ENR)
+			peerENR := parseEnrRecord(peer.Enr)
+			if nodeENR != nil && peerENR != nil && peerENR.Seq() > nodeENR.Seq() {
+				node.ENR = peer.Enr // peerENR has higher sequence number, so override.
+			}
+		}
+	}
+
+	for _, client := range services.GlobalBeaconService.GetConsensusClients() {
+		lastHeadSlot, lastHeadRoot := client.GetLastHead()
+
+		id := client.GetNodeIdentity()
+		var peerId string
+		if id == nil {
+			peerId = fmt.Sprintf("unknown-%d", client.GetIndex())
+		} else {
+			peerId = id.PeerID
+		}
+
+		// Add client to global nodes map
+		node, ok := pageData.Nodes[peerId]
+		if !ok {
+			node = &models.ClientCLPageDataNode{
+				PeerID: peerId,
+				Alias:  client.GetName(),
+				Type:   "internal",
+			}
+			if id != nil {
+				if node.ENR == "" {
+					node.ENR = id.Enr
+				} else if node.ENR != "" {
+					// Need to compare `seq` field from ENRs and only store highest
+					nodeENR := parseEnrRecord(node.ENR)
+					idENR := parseEnrRecord(id.Enr)
+					if nodeENR != nil && idENR != nil && idENR.Seq() > nodeENR.Seq() {
+						node.ENR = id.Enr // idENR has higher sequence number, so override.
+					}
+				}
+
+				node.ENR = id.Enr
+			}
+			pageData.Nodes[peerId] = node
+		}
+
+		peers := client.GetNodePeers()
+		resPeers := []*models.ClientCLPageDataNodePeers{}
+
+		var inPeerCount, outPeerCount uint32
+		for _, peer := range peers {
+			addPeerNode(peer)
+
+			peerNode := &models.ClientCLPageDataNodePeers{
+				PeerID:             peer.PeerID,
 				State:              peer.State,
 				Direction:          peer.Direction,
-				Alias:              peerAlias,
-				Type:               peerType,
-				ENR:                peer.Enr,
-				ENRKeyValues:       peerENRKeyValues,
 				LastSeenP2PAddress: peer.LastSeenP2PAddress,
-			})
-
-			// Add peer to global nodes map
-			_, ok := pageData.Nodes[peer.PeerID]
-			if !ok {
-				pageData.Nodes[peer.PeerID] = &models.ClientCLNode{
-					PeerID: peer.PeerID,
-					Alias:  peerAlias,
-					Type:   peerType,
-					ENR:    peer.Enr,
-				}
 			}
 
-			node := pageData.Nodes[peer.PeerID]
-			if node.ENR == "" && peer.Enr != "" {
-				node.ENR = peer.Enr
-			} else if node.ENR != "" && peer.Enr != "" {
-				// Need to compare `seq` field from ENRs and only store highest
-				nodeENR, errA := utils.DecodeENR(node.ENR)
-				if errA != nil {
-					logrus.WithFields(logrus.Fields{"node": node.Alias, "enr": node.ENR}).Error("failed to decode enr of a node ", errA)
+			if pageData.ShowSensitivePeerInfos {
+				peerENRKeyValues := map[string]interface{}{}
+				if peer.Enr != "" {
+					rec := parseEnrRecord(peer.Enr)
+					if rec != nil {
+						peerENRKeyValues = utils.GetKeyValuesFromENR(rec)
+					}
 				}
-				peerENR, errB := utils.DecodeENR(peer.Enr)
-				if errB != nil {
-					logrus.WithFields(logrus.Fields{"node": node.Alias, "peer": peer.PeerID, "enr": peer.Enr}).Error("failed to decode enr of a peer ", errB)
-				}
-				if errA == nil && errB == nil && peerENR.Seq() > nodeENR.Seq() {
-					node.ENR = peer.Enr // peerENR has higher sequence number, so override.
-				}
+
+				peerNode.ENR = peer.Enr
+				peerNode.ENRKeyValues = getEnrValues(peerENRKeyValues)
 			}
+
+			resPeers = append(resPeers, peerNode)
 
 			// Increase peer direction counter
 			if peer.Direction == "inbound" {
@@ -261,28 +314,28 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 
 		// Sort peers by type and alias
 		sort.Slice(resPeers, func(i, j int) bool {
-			if resPeers[i].Type == resPeers[j].Type {
-				return resPeers[i].Alias < resPeers[j].Alias
+			peerA := pageData.Nodes[resPeers[i].PeerID]
+			peerB := pageData.Nodes[resPeers[j].PeerID]
+			if peerA.Type == peerB.Type {
+				return peerA.Alias < peerB.Alias
 			}
-			return resPeers[i].Type > resPeers[j].Type
+			return peerA.Type > peerB.Type
 		})
 
+		node.Peers = resPeers
+
 		resClient := &models.ClientsCLPageDataClient{
-			Index:                 int(client.GetIndex()) + 1,
-			Name:                  client.GetName(),
-			Version:               client.GetVersion(),
-			Peers:                 resPeers,
-			PeerID:                id.PeerID,
-			ENR:                   id.Enr,
-			P2PAddresses:          id.P2PAddresses,
-			DisoveryAddresses:     id.DiscoveryAddresses,
-			AttestationSubnetSubs: id.Metadata.Attnets,
-			PeersInboundCounter:   inPeerCount,
-			PeersOutboundCounter:  outPeerCount,
-			HeadSlot:              uint64(lastHeadSlot),
-			HeadRoot:              lastHeadRoot[:],
-			Status:                client.GetStatus().String(),
-			LastRefresh:           client.GetLastEventTime(),
+			Index:                int(client.GetIndex()) + 1,
+			Name:                 client.GetName(),
+			Version:              client.GetVersion(),
+			PeerID:               peerId,
+			PeerCount:            inPeerCount + outPeerCount,
+			PeersInboundCounter:  inPeerCount,
+			PeersOutboundCounter: outPeerCount,
+			HeadSlot:             uint64(lastHeadSlot),
+			HeadRoot:             lastHeadRoot[:],
+			Status:               client.GetStatus().String(),
+			LastRefresh:          client.GetLastEventTime(),
 		}
 
 		lastError := client.GetLastClientError()
@@ -337,17 +390,21 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 	// Calculate additional fields for nodes: ENR key values, Node ID, Custody Columns, Custody Column Subnets
 	for _, v := range pageData.Nodes {
 
+		enrValues := map[string]interface{}{}
+
 		// Calculate K:V pairs for ENR
 		if v.ENR != "" {
-			rec, err := utils.DecodeENR(v.ENR)
-			if err != nil {
-				logrus.WithFields(logrus.Fields{"node": v.Alias, "enr": v.ENR}).Error("failed to decode enr. ", err)
-				rec = &enr.Record{}
+			rec := parseEnrRecord(v.ENR)
+			if rec != nil {
+				enrValues = utils.GetKeyValuesFromENR(rec)
 			}
-			v.ENRKeyValues = utils.GetKeyValuesFromENR(rec)
 		} else {
 			pageData.PeerDASInfos.Warnings.MissingENRsPeers = append(pageData.PeerDASInfos.Warnings.MissingENRsPeers, v.PeerID)
 			pageData.PeerDASInfos.Warnings.HasWarnings = true
+		}
+
+		if pageData.ShowSensitivePeerInfos {
+			v.ENRKeyValues = getEnrValues(enrValues)
 		}
 
 		// Calculate node ID
@@ -359,7 +416,7 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 
 		custodySubnetCount := pageData.PeerDASInfos.CustodyRequirement
 
-		if cscHex, ok := v.ENRKeyValues["csc"]; ok {
+		if cscHex, ok := enrValues["csc"]; ok {
 			val, err := strconv.ParseUint(cscHex.(string), 0, 64)
 			if err != nil {
 				logrus.WithFields(logrus.Fields{"node": v.Alias, "peer_id": v.PeerID, "csc": cscHex.(string)}).Error("failed to decode csc. ", err)
@@ -390,11 +447,11 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 			columnDistribution[idx][v.PeerID] = true
 		}
 
-		peerDASInfo := models.ClientCLPageDataPeerDAS{
-			CustodyColumns:       resColumns,
-			CustodyColumnSubnets: resSubnets,
-			CustodySubnetCount:   custodySubnetCount,
-			IsSuperNode:          uint64(len(resColumns)) == pageData.PeerDASInfos.NumberOfColumns,
+		peerDASInfo := models.ClientCLPageDataNodePeerDAS{
+			Columns:     resColumns,
+			Subnets:     resSubnets,
+			CSC:         custodySubnetCount,
+			IsSuperNode: uint64(len(resColumns)) == pageData.PeerDASInfos.NumberOfColumns,
 		}
 		v.PeerDAS = &peerDASInfo
 	}
@@ -425,8 +482,8 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 			}
 
 			// If types are the same, compare CustodyColumns length
-			lenA := len(nodeA.PeerDAS.CustodyColumns)
-			lenB := len(nodeB.PeerDAS.CustodyColumns)
+			lenA := len(nodeA.PeerDAS.Columns)
+			lenB := len(nodeB.PeerDAS.Columns)
 			if lenA != lenB {
 				return lenA > lenB
 			}
@@ -446,6 +503,13 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 
 	pageData.PeerDASInfos.TotalRows = int(pageData.PeerDASInfos.NumberOfColumns) / 32
 	pageData.PeerDASInfos.ColumnDistribution = resultColumnDistribution
+
+	if !pageData.ShowSensitivePeerInfos {
+		for _, node := range pageData.Nodes {
+			node.ENR = ""
+			node.ENRKeyValues = nil
+		}
+	}
 
 	return pageData, cacheTime
 }

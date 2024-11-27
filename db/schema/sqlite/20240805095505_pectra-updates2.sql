@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS "consolidation_requests" (
     target_index BIGINT NULL,
     target_pubkey BLOB NULL,
     tx_hash BLOB NULL,
-    CONSTRAINT consolidation_pkey PRIMARY KEY (slot_root, slot_index)
+    CONSTRAINT consolidation_requests_pkey PRIMARY KEY (slot_root, slot_index)
 );
 
 CREATE INDEX IF NOT EXISTS "consolidation_requests_slot_idx"
