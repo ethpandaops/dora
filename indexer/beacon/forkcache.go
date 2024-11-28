@@ -15,14 +15,15 @@ import (
 
 // forkCache is a struct that represents the fork cache in the indexer.
 type forkCache struct {
-	indexer         *Indexer
-	cacheMutex      sync.RWMutex
-	forkMap         map[ForkKey]*Fork
-	finalizedForkId ForkKey
-	lastForkId      ForkKey
-	parentIdCache   *lru.Cache[ForkKey, ForkKey]
-
-	forkProcessLock sync.Mutex
+	indexer           *Indexer
+	cacheMutex        sync.RWMutex
+	forkMap           map[ForkKey]*Fork
+	finalizedForkId   ForkKey
+	lastForkId        ForkKey
+	parentIdCache     *lru.Cache[ForkKey, ForkKey]
+	parentIdCacheHit  uint64
+	parentIdCacheMiss uint64
+	forkProcessLock   sync.Mutex
 }
 
 // newForkCache creates a new instance of the forkCache struct.
@@ -127,10 +128,12 @@ func (cache *forkCache) getParentForkIds(forkId ForkKey) []ForkKey {
 		if thisFork != nil {
 			parentForkId = thisFork.parentFork
 		} else if cachedParent, isCached := cache.parentIdCache.Get(parentForkId); isCached {
+			cache.parentIdCacheHit++
 			parentForkId = cachedParent
 		} else if dbFork := db.GetForkById(uint64(parentForkId)); dbFork != nil {
 			parentForkId = ForkKey(dbFork.ParentFork)
 			cache.parentIdCache.Add(ForkKey(dbFork.ForkId), ForkKey(dbFork.ParentFork))
+			cache.parentIdCacheMiss++
 		} else {
 			break
 		}

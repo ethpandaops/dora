@@ -175,6 +175,7 @@ func startFrontend(webserver *http.Server) {
 	if utils.Config.Frontend.Pprof {
 		// add pprof handler
 		router.PathPrefix("/debug/pprof/").Handler(http.DefaultServeMux)
+		router.HandleFunc("/debug/cache", handlers.DebugCache).Methods("GET")
 	}
 
 	if utils.Config.Frontend.Debug {

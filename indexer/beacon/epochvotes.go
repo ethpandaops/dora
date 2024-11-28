@@ -72,12 +72,14 @@ func (indexer *Indexer) aggregateEpochVotes(epoch phase0.Epoch, chainState *cons
 
 	votesKey := getEpochVotesKey(epoch, targetRoot, blocks[len(blocks)-1].Root, uint8(len(blocks)), votesWithValues)
 	if cachedVotes, isOk := indexer.epochCache.votesCache.Get(votesKey); isOk {
+		indexer.epochCache.votesCacheHit++
 		return cachedVotes
 	}
 
 	votes, _ := indexer.aggregateEpochVotesAndActivity(epoch, chainState, blocks, epochStats, targetRoot, votesKey)
 
 	indexer.epochCache.votesCache.Add(votesKey, votes)
+	indexer.epochCache.votesCacheMiss++
 
 	return votes
 }
