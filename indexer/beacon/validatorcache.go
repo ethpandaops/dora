@@ -38,6 +38,13 @@ type validatorEntry struct {
 	index          phase0.ValidatorIndex
 	finalValidator *phase0.Validator
 	validatorDiffs map[validatorDiffKey]*validatorDiff
+	recentActivity []validatorActivity
+}
+
+type validatorActivity struct {
+	dutySlot phase0.Slot
+	voteSlot phase0.Slot
+	forkId   ForkKey
 }
 
 type validatorDiff struct {
@@ -166,6 +173,39 @@ func (cache *validatorCache) updateValidatorSet(epoch phase0.Epoch, dependentRoo
 	}
 }
 
+// updateValidatorActivity updates the validator activity cache.
+func (cache *validatorCache) updateValidatorActivity(validatorIndex phase0.ValidatorIndex, epoch phase0.Epoch, dutySlot phase0.Slot, voteSlot phase0.Slot, forkId ForkKey) {
+	currentEpoch := cache.indexer.consensusPool.GetChainState().CurrentEpoch()
+	if epoch+phase0.Epoch(cache.indexer.inMemoryEpochs) < currentEpoch {
+		// ignore old activity
+		return
+	}
+
+	cache.cacheMutex.RLock()
+	defer cache.cacheMutex.RUnlock()
+
+	if validatorIndex >= phase0.ValidatorIndex(len(cache.valsetCache)) {
+		return
+	}
+
+	cachedValidator := cache.valsetCache[validatorIndex]
+	if cachedValidator == nil {
+		return
+	}
+
+	if cachedValidator.recentActivity == nil {
+		cachedValidator.recentActivity = make([]validatorActivity, cache.indexer.inMemoryEpochs)
+	}
+
+	activityIndex := epoch % phase0.Epoch(cache.indexer.inMemoryEpochs)
+
+	cachedValidator.recentActivity[activityIndex] = validatorActivity{
+		dutySlot: dutySlot,
+		voteSlot: voteSlot,
+		forkId:   forkId,
+	}
+}
+
 // setFinalizedEpoch sets the last finalized epoch.
 func (cache *validatorCache) setFinalizedEpoch(epochStats *EpochStats) {
 	cache.cacheMutex.Lock()
@@ -251,9 +291,6 @@ func (cache *validatorCache) getValidatorSetForRoot(blockRoot phase0.Root) []*ph
 
 // getValidatorByIndex returns the validator by index for a given forkId.
 func (cache *validatorCache) getValidatorByIndex(index phase0.ValidatorIndex, overrideForkId *ForkKey) *phase0.Validator {
-	cache.cacheMutex.RLock()
-	defer cache.cacheMutex.RUnlock()
-
 	canonicalHead := cache.indexer.GetCanonicalHead(overrideForkId)
 	if canonicalHead == nil {
 		return nil

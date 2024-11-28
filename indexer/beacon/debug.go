@@ -36,10 +36,11 @@ type CacheDebugStats struct {
 		ParentIdCacheMiss uint64
 	}
 	ValidatorCache struct {
-		Validators     uint64
-		ValidatorDiffs uint64
-		ValidatorData  uint64
-		PubkeyMap      CacheDebugMapSize
+		Validators        uint64
+		ValidatorDiffs    uint64
+		ValidatorData     uint64
+		ValidatorActivity uint64
+		PubkeyMap         CacheDebugMapSize
 	}
 }
 
@@ -161,6 +162,10 @@ func (indexer *Indexer) getValidatorCacheDebugStats(cacheStats *CacheDebugStats)
 			refs++
 		}
 		cacheStats.ValidatorCache.ValidatorDiffs += uint64(refs)
+
+		if validator.recentActivity != nil {
+			cacheStats.ValidatorCache.ValidatorActivity++
+		}
 	}
 
 	cacheStats.ValidatorCache.ValidatorData = uint64(len(validatorsMap))
