@@ -215,11 +215,11 @@ func (cache *validatorCache) setFinalizedEpoch(epochStats *EpochStats) {
 
 	for _, cachedValidator := range cache.valsetCache {
 		for diffKey, diff := range cachedValidator.validatorDiffs {
-			if diff.epoch == epochStats.epoch && diff.dependentRoot == epochStats.dependentRoot {
+			if diff.dependentRoot == epochStats.dependentRoot {
 				cachedValidator.finalValidator = diff.validator
 			}
 
-			if diff.epoch <= epochStats.epoch {
+			if diff.epoch < epochStats.epoch {
 				delete(cachedValidator.validatorDiffs, diffKey)
 			}
 		}
@@ -305,6 +305,10 @@ func (cache *validatorCache) getValidatorByIndexAndRoot(index phase0.ValidatorIn
 	defer cache.cacheMutex.RUnlock()
 
 	isParentMap := map[phase0.Root]bool{}
+
+	if index >= phase0.ValidatorIndex(len(cache.valsetCache)) {
+		return nil
+	}
 
 	cachedValidator := cache.valsetCache[index]
 	if cachedValidator == nil {

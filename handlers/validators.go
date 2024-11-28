@@ -289,6 +289,10 @@ func buildValidatorsPageData(firstValIdx uint64, pageSize uint64, sortOrder stri
 	pageData.Validators = make([]*models.ValidatorsPageDataValidator, 0)
 
 	for _, validator := range validatorSet[firstValIdx:lastValIdx] {
+		if validator == nil {
+			continue
+		}
+
 		validatorData := &models.ValidatorsPageDataValidator{
 			Index:            uint64(validator.Index),
 			Name:             services.GlobalBeaconService.GetValidatorName(uint64(validator.Index)),
