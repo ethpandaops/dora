@@ -169,16 +169,16 @@ func (ci *ConsolidationIndexer) parseRequestLog(log *types.Log, forkId *beacon.F
 
 	// get the validator indices for the source and target pubkeys
 	var sourceIndex, targetIndex *uint64
-	for _, validator := range ci.indexerCtx.beaconIndexer.GetCanonicalValidatorSet(forkId) {
-		if sourceIndex == nil && bytes.Equal(validator.Validator.PublicKey[:], sourcePubkey) {
-			index := uint64(validator.Index)
+	for index, validator := range ci.indexerCtx.beaconIndexer.GetValidatorSet(forkId) {
+		if sourceIndex == nil && bytes.Equal(validator.PublicKey[:], sourcePubkey) {
+			index := uint64(index)
 			sourceIndex = &index
 			if targetIndex != nil {
 				break
 			}
 		}
-		if targetIndex == nil && bytes.Equal(validator.Validator.PublicKey[:], targetPubkey) {
-			index := uint64(validator.Index)
+		if targetIndex == nil && bytes.Equal(validator.PublicKey[:], targetPubkey) {
+			index := uint64(index)
 			targetIndex = &index
 			if sourceIndex != nil {
 				break

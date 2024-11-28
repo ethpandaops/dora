@@ -78,7 +78,6 @@ func buildDepositsPageData(firstEpoch uint64, pageSize uint64) (*models.Deposits
 	}
 
 	chainState := services.GlobalBeaconService.GetChainState()
-	validatorSetRsp := services.GlobalBeaconService.GetCachedValidatorPubkeyMap()
 	validatorActivityMap, validatorActivityMax := services.GlobalBeaconService.GetValidatorActivity(3, false)
 
 	// load initiated deposits
@@ -97,14 +96,14 @@ func buildDepositsPageData(firstEpoch uint64, pageSize uint64) (*models.Deposits
 			Valid:                 depositTx.ValidSignature,
 		}
 
-		validator := validatorSetRsp[phase0.BLSPubKey(depositTx.PublicKey)]
-		if validator == nil {
+		validatorIndex, found := services.GlobalBeaconService.GetValidatorIndexByPubkey(phase0.BLSPubKey(depositTx.PublicKey))
+		if !found {
 			depositTxData.ValidatorStatus = "Deposited"
 		} else {
+			validator := services.GlobalBeaconService.GetValidatorByIndex(validatorIndex, false)
 			if strings.HasPrefix(validator.Status.String(), "pending") {
 				depositTxData.ValidatorStatus = "Pending"
 			} else if validator.Status == v1.ValidatorStateActiveOngoing {
-				depositTxData.ValidatorStatus = "Active"
 				depositTxData.ShowUpcheck = true
 			} else if validator.Status == v1.ValidatorStateActiveExiting {
 				depositTxData.ValidatorStatus = "Exiting"
@@ -148,10 +147,11 @@ func buildDepositsPageData(firstEpoch uint64, pageSize uint64) (*models.Deposits
 			depositData.Index = *deposit.Index
 		}
 
-		validator := validatorSetRsp[phase0.BLSPubKey(deposit.PublicKey)]
-		if validator == nil {
+		validatorIndex, found := services.GlobalBeaconService.GetValidatorIndexByPubkey(phase0.BLSPubKey(deposit.PublicKey))
+		if !found {
 			depositData.ValidatorStatus = "Deposited"
 		} else {
+			validator := services.GlobalBeaconService.GetValidatorByIndex(validatorIndex, false)
 			if strings.HasPrefix(validator.Status.String(), "pending") {
 				depositData.ValidatorStatus = "Pending"
 			} else if validator.Status == v1.ValidatorStateActiveOngoing {

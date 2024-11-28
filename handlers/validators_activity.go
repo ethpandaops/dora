@@ -114,7 +114,7 @@ func buildValidatorsActivityPageData(pageIdx uint64, pageSize uint64, sortOrder 
 
 	// group validators
 	validatorGroupMap := map[string]*models.ValidatorsActiviyPageDataGroup{}
-	validatorSet := services.GlobalBeaconService.GetCachedValidatorSet()
+	validatorSet := services.GlobalBeaconService.GetCachedValidatorSet(false)
 	activityMap, _ := services.GlobalBeaconService.GetValidatorActivity(4, true)
 
 	for vIdx, validator := range validatorSet {

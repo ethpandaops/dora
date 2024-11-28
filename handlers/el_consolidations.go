@@ -208,7 +208,6 @@ func buildFilteredElConsolidationsPageData(pageIdx uint64, pageSize uint64, minS
 	}
 
 	chainState := services.GlobalBeaconService.GetChainState()
-	validatorSetRsp := services.GlobalBeaconService.GetCachedValidatorSet()
 	matcherHeight := services.GlobalBeaconService.GetConsolidationIndexer().GetMatcherHeight()
 
 	requestTxDetailsFor := [][]byte{}
@@ -228,19 +227,13 @@ func buildFilteredElConsolidationsPageData(pageIdx uint64, pageSize uint64, minS
 		if elConsolidation.SourceIndex != nil {
 			elConsolidationData.SourceValidatorIndex = *elConsolidation.SourceIndex
 			elConsolidationData.SourceValidatorName = services.GlobalBeaconService.GetValidatorName(*elConsolidation.SourceIndex)
-
-			if uint64(len(validatorSetRsp)) > elConsolidationData.SourceValidatorIndex && validatorSetRsp[elConsolidationData.SourceValidatorIndex] != nil {
-				elConsolidationData.SourceValidatorValid = true
-			}
+			elConsolidationData.SourceValidatorValid = true
 		}
 
 		if elConsolidation.TargetIndex != nil {
 			elConsolidationData.TargetValidatorIndex = *elConsolidation.TargetIndex
 			elConsolidationData.TargetValidatorName = services.GlobalBeaconService.GetValidatorName(*elConsolidation.TargetIndex)
-
-			if uint64(len(validatorSetRsp)) > elConsolidationData.TargetValidatorIndex && validatorSetRsp[elConsolidationData.TargetValidatorIndex] != nil {
-				elConsolidationData.TargetValidatorValid = true
-			}
+			elConsolidationData.TargetValidatorValid = true
 		}
 
 		if len(elConsolidationData.TransactionHash) > 0 {

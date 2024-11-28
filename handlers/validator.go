@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"bytes"
 	"encoding/hex"
 	"fmt"
 	"net/http"
@@ -37,26 +36,22 @@ func Validator(w http.ResponseWriter, r *http.Request) {
 	var pageTemplate = templates.GetTemplate(validatorTemplateFiles...)
 	data := InitPageData(w, r, "validators", "/validator", "Validator", validatorTemplateFiles)
 
-	validatorSetRsp := services.GlobalBeaconService.GetCachedValidatorSet()
 	var validator *v1.Validator
-	if validatorSetRsp != nil {
-		vars := mux.Vars(r)
-		idxOrPubKey := strings.Replace(vars["idxOrPubKey"], "0x", "", -1)
-		validatorPubKey, err := hex.DecodeString(idxOrPubKey)
-		if err != nil || len(validatorPubKey) != 48 {
-			// search by index^
-			validatorIndex, err := strconv.ParseUint(vars["idxOrPubKey"], 10, 64)
-			if err == nil && validatorIndex < uint64(len(validatorSetRsp)) {
-				validator = validatorSetRsp[phase0.ValidatorIndex(validatorIndex)]
-			}
-		} else {
-			// search by pubkey
-			for _, val := range validatorSetRsp {
-				if bytes.Equal(val.Validator.PublicKey[:], validatorPubKey) {
-					validator = val
-					break
-				}
-			}
+
+	vars := mux.Vars(r)
+	idxOrPubKey := strings.Replace(vars["idxOrPubKey"], "0x", "", -1)
+	validatorPubKey, err := hex.DecodeString(idxOrPubKey)
+	if err != nil || len(validatorPubKey) != 48 {
+		// search by index^
+		validatorIndex, err := strconv.ParseUint(vars["idxOrPubKey"], 10, 64)
+		if err == nil {
+			validator = services.GlobalBeaconService.GetValidatorByIndex(phase0.ValidatorIndex(validatorIndex), false)
+		}
+	} else {
+		// search by pubkey
+		validatorIndex, found := services.GlobalBeaconService.GetValidatorIndexByPubkey(phase0.BLSPubKey(validatorPubKey))
+		if found {
+			validator = services.GlobalBeaconService.GetValidatorByIndex(validatorIndex, false)
 		}
 	}
 
@@ -113,8 +108,7 @@ func buildValidatorPageData(validatorIndex uint64, tabView string) (*models.Vali
 	logrus.Debugf("validator page called: %v", validatorIndex)
 
 	chainState := services.GlobalBeaconService.GetChainState()
-	validatorSetRsp := services.GlobalBeaconService.GetCachedValidatorSet()
-	validator := validatorSetRsp[phase0.ValidatorIndex(validatorIndex)]
+	validator := services.GlobalBeaconService.GetValidatorByIndex(phase0.ValidatorIndex(validatorIndex), true)
 
 	pageData := &models.ValidatorPageData{
 		CurrentEpoch:        uint64(chainState.CurrentEpoch()),

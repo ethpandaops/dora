@@ -198,7 +198,6 @@ func buildFilteredElWithdrawalsPageData(pageIdx uint64, pageSize uint64, minSlot
 	}
 
 	chainState := services.GlobalBeaconService.GetChainState()
-	validatorSetRsp := services.GlobalBeaconService.GetCachedValidatorSet()
 	matcherHeight := services.GlobalBeaconService.GetWithdrawalIndexer().GetMatcherHeight()
 
 	requestTxDetailsFor := [][]byte{}
@@ -218,10 +217,7 @@ func buildFilteredElWithdrawalsPageData(pageIdx uint64, pageSize uint64, minSlot
 		if elWithdrawal.ValidatorIndex != nil {
 			elWithdrawalData.ValidatorIndex = *elWithdrawal.ValidatorIndex
 			elWithdrawalData.ValidatorName = services.GlobalBeaconService.GetValidatorName(*elWithdrawal.ValidatorIndex)
-
-			if uint64(len(validatorSetRsp)) > elWithdrawalData.ValidatorIndex && validatorSetRsp[elWithdrawalData.ValidatorIndex] != nil {
-				elWithdrawalData.ValidatorValid = true
-			}
+			elWithdrawalData.ValidatorValid = true
 		}
 
 		if len(elWithdrawalData.TransactionHash) > 0 {

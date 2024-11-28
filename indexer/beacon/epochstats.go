@@ -307,7 +307,7 @@ func (es *EpochStats) loadValuesFromDb(dynSsz *dynssz.DynSsz, chainState *consen
 }
 
 // processState processes the epoch state and computes proposer and attester duties.
-func (es *EpochStats) processState(indexer *Indexer) {
+func (es *EpochStats) processState(indexer *Indexer, validatorSet []*phase0.Validator) {
 	if es.dependentState == nil || es.dependentState.loadingStatus != 2 {
 		return
 	}
@@ -338,8 +338,12 @@ func (es *EpochStats) processState(indexer *Indexer) {
 		FirstDepositIndex:   es.dependentState.depositIndex,
 	}
 
+	if validatorSet == nil {
+		validatorSet = indexer.validatorCache.getValidatorSetForRoot(es.dependentRoot)
+	}
+
 	// get active validator indices & aggregate balances
-	for index, validator := range es.dependentState.validatorList {
+	for index, validator := range validatorSet {
 		values.TotalBalance += es.dependentState.validatorBalances[index]
 		if es.epoch >= validator.ActivationEpoch && es.epoch < validator.ExitEpoch {
 			values.ActiveIndices = append(values.ActiveIndices, phase0.ValidatorIndex(index))
@@ -362,7 +366,7 @@ func (es *EpochStats) processState(indexer *Indexer) {
 		},
 	}
 
-	indexer.logger.Debugf("processing epoch %v stats (root: %v / state: %v), validators: %v/%v", es.epoch, es.dependentRoot.String(), es.dependentState.stateRoot.String(), values.ActiveValidators, len(es.dependentState.validatorList))
+	indexer.logger.Debugf("processing epoch %v stats (root: %v / state: %v), validators: %v/%v", es.epoch, es.dependentRoot.String(), es.dependentState.stateRoot.String(), values.ActiveValidators, len(validatorSet))
 
 	// compute proposers
 	proposerDuties := []phase0.ValidatorIndex{}
@@ -417,7 +421,7 @@ func (es *EpochStats) processState(indexer *Indexer) {
 		es.dependentRoot.String(),
 		es.dependentState.stateRoot.String(),
 		values.ActiveValidators,
-		len(es.dependentState.validatorList),
+		len(validatorSet),
 		time.Since(t1).Milliseconds(),
 		len(packedSsz),
 	)

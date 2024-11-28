@@ -121,7 +121,7 @@ func buildValidatorsPageData(firstValIdx uint64, pageSize uint64, sortOrder stri
 
 	// get latest validator set
 	var validatorSet []*v1.Validator
-	validatorSetRsp := services.GlobalBeaconService.GetCachedValidatorSet()
+	validatorSetRsp := services.GlobalBeaconService.GetCachedValidatorSet(true)
 	if validatorSetRsp == nil {
 		cacheTime = 5 * time.Minute
 		validatorSet = []*v1.Validator{}

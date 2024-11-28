@@ -174,7 +174,6 @@ func buildFilteredSlashingsPageData(pageIdx uint64, pageSize uint64, minSlot uin
 	dbSlashings, totalRows := services.GlobalBeaconService.GetSlashingsByFilter(slashingFilter, pageIdx-1, uint32(pageSize))
 
 	chainState := services.GlobalBeaconService.GetChainState()
-	validatorSetRsp := services.GlobalBeaconService.GetCachedValidatorSet()
 	validatorActivityMap, validatorActivityMax := services.GlobalBeaconService.GetValidatorActivity(3, false)
 
 	for _, slashing := range dbSlashings {
@@ -191,7 +190,7 @@ func buildFilteredSlashingsPageData(pageIdx uint64, pageSize uint64, minSlot uin
 			ValidatorStatus: "",
 		}
 
-		validator := validatorSetRsp[phase0.ValidatorIndex(slashing.ValidatorIndex)]
+		validator := services.GlobalBeaconService.GetValidatorByIndex(phase0.ValidatorIndex(slashing.ValidatorIndex), false)
 		if validator == nil {
 			slashingData.ValidatorStatus = "Unknown"
 		} else {

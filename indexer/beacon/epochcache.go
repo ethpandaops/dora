@@ -37,8 +37,6 @@ type epochCache struct {
 	statsMap       map[epochStatsKey]*EpochStats // epoch status cache by epochStatsKey
 	stateMap       map[phase0.Root]*epochState   // beacon state cache by dependentRoot
 	loadingChan    chan bool                     // limits concurrent state calls by channel capacity
-	valsetMutex    sync.Mutex                    // mutex to protect valsetCache for concurrent access
-	valsetCache    []*phase0.Validator           // global validator set cache for reuse of matching validator entries
 	syncMutex      sync.Mutex                    // mutex to protect syncCache for concurrent access
 	syncCache      []phase0.ValidatorIndex       // global sync committee cache for reuse if matching
 	precomputeLock sync.Mutex                    // mutex to prevent concurrent precomputing of epoch stats
@@ -54,7 +52,6 @@ func newEpochCache(indexer *Indexer) *epochCache {
 		statsMap:    map[epochStatsKey]*EpochStats{},
 		stateMap:    map[phase0.Root]*epochState{},
 		loadingChan: make(chan bool, indexer.maxParallelStateCalls),
-		valsetCache: []*phase0.Validator{},
 
 		votesCache: lru.NewCache[epochVotesKey, *EpochVotes](500),
 	}
@@ -92,7 +89,7 @@ func (cache *epochCache) createOrGetEpochStats(epoch phase0.Epoch, dependentRoot
 
 		if epochState.loadingStatus == 2 && !epochStats.ready {
 			// dependent state is already loaded, process it
-			go epochStats.processState(cache.indexer)
+			go epochStats.processState(cache.indexer, nil)
 		}
 	}
 
@@ -228,35 +225,6 @@ func (cache *epochCache) removeUnreferencedEpochStates() uint64 {
 	}
 
 	return removed
-}
-
-// getOrCreateValidator replaces the supplied validator with an older Validator object from cache if all properties match.
-// heavily reduces memory consumption as validator objects are not duplicated for each validator set request.
-func (cache *epochCache) getOrCreateValidator(index phase0.ValidatorIndex, validator *phase0.Validator) *phase0.Validator {
-	cache.valsetMutex.Lock()
-	defer cache.valsetMutex.Unlock()
-
-	cacheLen := len(cache.valsetCache)
-
-	if index < phase0.ValidatorIndex(cacheLen) {
-		if existingValidator := cache.valsetCache[index]; existingValidator != nil &&
-			bytes.Equal(existingValidator.WithdrawalCredentials[:], validator.WithdrawalCredentials[:]) &&
-			existingValidator.EffectiveBalance == validator.EffectiveBalance &&
-			existingValidator.Slashed == validator.Slashed &&
-			existingValidator.ActivationEligibilityEpoch == validator.ActivationEligibilityEpoch &&
-			existingValidator.ActivationEpoch == validator.ActivationEpoch &&
-			existingValidator.ExitEpoch == validator.ExitEpoch &&
-			existingValidator.WithdrawableEpoch == validator.WithdrawableEpoch {
-			// all properties match, return reference to old cached entry
-			return existingValidator
-		}
-	} else {
-		appendItems := make([]*phase0.Validator, len(cache.valsetCache)-int(index)+100)
-		cache.valsetCache = append(cache.valsetCache, appendItems...)
-	}
-
-	cache.valsetCache[index] = validator
-	return validator
 }
 
 // getOrUpdateSyncCommittee replaces the supplied sync committee with an older sync committee from cache if all properties match.
@@ -457,7 +425,7 @@ func (cache *epochCache) loadEpochStats(epochStats *EpochStats) bool {
 
 	log.Infof("loading epoch %v stats (dep: %v, req: %v)", epochStats.epoch, epochStats.dependentRoot.String(), len(epochStats.requestedBy))
 
-	err := epochStats.dependentState.loadState(client.getContext(), client, cache)
+	state, err := epochStats.dependentState.loadState(client.getContext(), client, cache)
 	if err != nil && epochStats.dependentState.loadingStatus == 0 {
 		client.logger.Warnf("failed loading epoch %v stats (dep: %v): %v", epochStats.epoch, epochStats.dependentRoot.String(), err)
 	}
@@ -466,6 +434,14 @@ func (cache *epochCache) loadEpochStats(epochStats *EpochStats) bool {
 		// epoch state could not be loaded
 		epochStats.dependentState.retryCount++
 		return false
+	}
+
+	var validatorSet []*phase0.Validator
+	if state != nil {
+		validatorSet, err = state.Validators()
+		if err != nil {
+			cache.indexer.logger.Errorf("error getting validator set from state %v: %v", epochStats.dependentRoot.String(), err)
+		}
 	}
 
 	dependentStats := []*EpochStats{}
@@ -478,7 +454,7 @@ func (cache *epochCache) loadEpochStats(epochStats *EpochStats) bool {
 	cache.cacheMutex.Unlock()
 
 	for _, stats := range dependentStats {
-		go stats.processState(cache.indexer)
+		go stats.processState(cache.indexer, validatorSet)
 	}
 
 	return true

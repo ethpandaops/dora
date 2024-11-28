@@ -236,16 +236,18 @@ func (bs *ChainService) GetValidatorNamesCount() uint64 {
 	return bs.validatorNames.GetValidatorNamesCount()
 }
 
-func (bs *ChainService) GetCachedValidatorSet() []*v1.Validator {
-	return bs.beaconIndexer.GetCanonicalValidatorSet(nil)
+func (bs *ChainService) GetCachedValidatorSet(withBalance bool) []*v1.Validator {
+	currentEpoch := bs.consensusPool.GetChainState().CurrentEpoch()
+	return bs.beaconIndexer.GetEpochValidatorSet(currentEpoch, nil, withBalance)
 }
 
-func (bs *ChainService) GetCachedValidatorPubkeyMap() map[phase0.BLSPubKey]*v1.Validator {
-	pubkeyMap := map[phase0.BLSPubKey]*v1.Validator{}
-	for _, val := range bs.GetCachedValidatorSet() {
-		pubkeyMap[val.Validator.PublicKey] = val
-	}
-	return pubkeyMap
+func (bs *ChainService) GetValidatorByIndex(index phase0.ValidatorIndex, withBalance bool) *v1.Validator {
+	currentEpoch := bs.consensusPool.GetChainState().CurrentEpoch()
+	return bs.beaconIndexer.GetEpochValidator(index, currentEpoch, nil, withBalance)
+}
+
+func (bs *ChainService) GetValidatorIndexByPubkey(pubkey phase0.BLSPubKey) (phase0.ValidatorIndex, bool) {
+	return bs.beaconIndexer.GetValidatorIndexByPubkey(pubkey)
 }
 
 func (bs *ChainService) GetFinalizedEpoch() (phase0.Epoch, phase0.Root) {
@@ -367,13 +369,14 @@ func (bs *ChainService) GetValidatorActivity(epochLimit uint64, withCurrentEpoch
 			continue
 		}
 
-		epochVotes := epochStats.GetEpochVotes(bs.beaconIndexer, nil)
-
-		for valIdx, validatorIndex := range epochStatsValues.ActiveIndices {
-			if epochVotes.ActivityBitfield.BitAt(uint64(valIdx)) {
-				activityMap[validatorIndex]++
+		/*
+			epochVotes := epochStats.GetEpochVotes(bs.beaconIndexer, nil)
+			for valIdx, validatorIndex := range epochStatsValues.ActiveIndices {
+				if epochVotes.ActivityBitfield.BitAt(uint64(valIdx)) {
+					activityMap[validatorIndex]++
+				}
 			}
-		}
+		*/
 
 		aggregationCount++
 	}

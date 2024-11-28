@@ -156,7 +156,6 @@ func buildFilteredVoluntaryExitsPageData(pageIdx uint64, pageSize uint64, minSlo
 	dbVoluntaryExits, totalRows := services.GlobalBeaconService.GetVoluntaryExitsByFilter(voluntaryExitFilter, pageIdx-1, uint32(pageSize))
 
 	chainState := services.GlobalBeaconService.GetChainState()
-	validatorSetRsp := services.GlobalBeaconService.GetCachedValidatorSet()
 	validatorActivityMap, validatorActivityMax := services.GlobalBeaconService.GetValidatorActivity(3, false)
 
 	for _, voluntaryExit := range dbVoluntaryExits {
@@ -170,7 +169,7 @@ func buildFilteredVoluntaryExitsPageData(pageIdx uint64, pageSize uint64, minSlo
 			ValidatorStatus: "",
 		}
 
-		validator := validatorSetRsp[phase0.ValidatorIndex(voluntaryExit.ValidatorIndex)]
+		validator := services.GlobalBeaconService.GetValidatorByIndex(phase0.ValidatorIndex(voluntaryExit.ValidatorIndex), false)
 		if validator == nil {
 			voluntaryExitData.ValidatorStatus = "Unknown"
 		} else {
