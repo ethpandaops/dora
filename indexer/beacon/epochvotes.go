@@ -16,7 +16,7 @@ import (
 type epochVotesKey [32 + 8 + 32 + 1]byte
 
 // generate epochStatsKey from epoch and dependentRoot
-func getEpochVotesKey(epoch phase0.Epoch, dependentRoot phase0.Root, highestRoot phase0.Root, blockCount uint8, hasValues bool) epochVotesKey {
+func getEpochVotesKey(epoch phase0.Epoch, dependentRoot phase0.Root, highestRoot phase0.Root, blockCount uint8, hasValues bool, isPrecalc bool) epochVotesKey {
 	var key epochVotesKey
 
 	copy(key[0:], dependentRoot[:])
@@ -25,6 +25,9 @@ func getEpochVotesKey(epoch phase0.Epoch, dependentRoot phase0.Root, highestRoot
 	key[72] = blockCount
 	if hasValues {
 		key[72] |= 0x80
+	}
+	if isPrecalc {
+		key[72] |= 0x40
 	}
 
 	return key
@@ -63,8 +66,9 @@ func (indexer *Indexer) aggregateEpochVotes(epoch phase0.Epoch, chainState *cons
 	}
 
 	votesWithValues := epochStats != nil && epochStats.ready
+	votesWithPrecalc := epochStats != nil && epochStats.precalcValues != nil
 
-	votesKey := getEpochVotesKey(epoch, targetRoot, blocks[len(blocks)-1].Root, uint8(len(blocks)), votesWithValues)
+	votesKey := getEpochVotesKey(epoch, targetRoot, blocks[len(blocks)-1].Root, uint8(len(blocks)), votesWithValues, votesWithPrecalc)
 	if cachedVotes, isOk := indexer.epochCache.votesCache.Get(votesKey); isOk {
 		return cachedVotes
 	}
