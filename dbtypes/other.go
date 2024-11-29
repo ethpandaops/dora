@@ -52,6 +52,8 @@ type MevBlockFilter struct {
 }
 
 type DepositTxFilter struct {
+	MinIndex      uint64
+	MaxIndex      uint64
 	Address       []byte
 	TargetAddress []byte
 	PublicKey     []byte

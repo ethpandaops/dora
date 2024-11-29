@@ -33,12 +33,14 @@ type ValidatorPageData struct {
 
 	TabView string `json:"tab_view"`
 
-	RecentBlocks           []*ValidatorPageDataBlock       `json:"recent_blocks"`
-	RecentBlockCount       uint64                          `json:"recent_block_count"`
-	RecentAttestations     []*ValidatorPageDataAttestation `json:"recent_attestations"`
-	RecentAttestationCount uint64                          `json:"recent_attestation_count"`
-	RecentDeposits         []*ValidatorPageDataDeposit     `json:"recent_deposits"`
-	RecentDepositCount     uint64                          `json:"recent_deposit_count"`
+	RecentBlocks                    []*ValidatorPageDataBlock       `json:"recent_blocks"`
+	RecentBlockCount                uint64                          `json:"recent_block_count"`
+	RecentAttestations              []*ValidatorPageDataAttestation `json:"recent_attestations"`
+	RecentAttestationCount          uint64                          `json:"recent_attestation_count"`
+	RecentDeposits                  []*ValidatorPageDataDeposit     `json:"recent_deposits"`
+	RecentDepositCount              uint64                          `json:"recent_deposit_count"`
+	AdditionalInitiatedDepositCount uint64                          `json:"additional_initiated_deposit_count"`
+	AdditionalIncludedDepositCount  uint64                          `json:"additional_included_deposit_count"`
 }
 
 type ValidatorPageDataBlock struct {
@@ -66,19 +68,24 @@ type ValidatorPageDataAttestation struct {
 }
 
 type ValidatorPageDataDeposit struct {
-	SlotRoot  string                             `json:"slot_root"`
-	Slot      uint64                             `json:"slot"`
-	Amount    uint64                             `json:"amount"`
-	Time      time.Time                          `json:"time"`
-	Status    uint64                             `json:"status"`
-	TxDetails *ValidatorPageDataDepositTxDetails `json:"tx_details"`
+	IsIncluded      bool                               `json:"is_included"`
+	HasIndex        bool                               `json:"has_index"`
+	Index           uint64                             `json:"index"`
+	SlotRoot        []byte                             `json:"slot_root"`
+	Slot            uint64                             `json:"slot"`
+	Time            time.Time                          `json:"time"`
+	Amount          uint64                             `json:"amount"`
+	WithdrawalCreds []byte                             `json:"withdrawal_creds"`
+	Status          uint64                             `json:"status"`
+	TxStatus        uint64                             `json:"tx_status"`
+	TxDetails       *ValidatorPageDataDepositTxDetails `json:"tx_details"`
 }
 
 type ValidatorPageDataDepositTxDetails struct {
 	BlockNumber uint64 `json:"block"`
-	BlockHash   string `json:"block_hash"`
+	BlockHash   []byte `json:"block_hash"`
 	BlockTime   uint64 `json:"block_time"`
 	TxOrigin    string `json:"tx_origin"`
 	TxTarget    string `json:"tx_target"`
-	TxHash      string `json:"tx_hash"`
+	TxHash      []byte `json:"tx_hash"`
 }

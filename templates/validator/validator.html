@@ -186,7 +186,7 @@
           {{ template "recentAttestations" . }}
         {{ end }}
       </div>
-      <div class="tab-pane fade{{ if eq .TabView "deposits" }} show active{{ end }}" id="recentDeposits" role="tabpanel" aria-labelledby="recentDeposits-tab" data-loaded="{{ if eq .TabView "deposits" }}true{{ else }}false{{ end }}"></div>
+      <div class="tab-pane fade{{ if eq .TabView "deposits" }} show active{{ end }}" id="recentDeposits" role="tabpanel" aria-labelledby="recentDeposits-tab" data-loaded="{{ if eq .TabView "deposits" }}true{{ else }}false{{ end }}">
         {{ if eq .TabView "deposits" }}
           {{ template "recentDeposits" . }}
         {{ end }}

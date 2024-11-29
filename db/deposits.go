@@ -154,6 +154,16 @@ func GetDepositTxsFiltered(offset uint64, limit uint32, finalizedBlock uint64, f
 	`)
 
 	filterOp := "WHERE"
+	if filter.MinIndex > 0 {
+		args = append(args, filter.MinIndex)
+		fmt.Fprintf(&sql, " %v deposit_index >= $%v", filterOp, len(args))
+		filterOp = "AND"
+	}
+	if filter.MaxIndex > 0 {
+		args = append(args, filter.MaxIndex)
+		fmt.Fprintf(&sql, " %v deposit_index <= $%v", filterOp, len(args))
+		filterOp = "AND"
+	}
 	if len(filter.Address) > 0 {
 		args = append(args, filter.Address)
 		fmt.Fprintf(&sql, " %v tx_sender = $%v", filterOp, len(args))

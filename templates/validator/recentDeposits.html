@@ -1,13 +1,15 @@
 {{ define "recentDeposits" }}
-<div class="card block-card">
+<div class="card">
   <div class="table-responsive">
     <table class="table table-nobr" id="recent-deposits">
       <thead>
         <tr>
+          <th>Index</th>
           <th>Slot</th>
           <th data-timecol="duration">Time</th>
           <th>Amount</th>
           <th>Withdrawal Cred</th>
+          <th>Transaction</th>
           <th>Incl. Status</th>
         </tr>
       </thead>
@@ -15,7 +17,14 @@
         {{ if gt .RecentDepositCount 0 }}
           {{ range $i, $deposit := .RecentDeposits }}
             <tr>
-              {{ if $deposit.Orphaned }}
+              {{ if not $deposit.HasIndex }}
+                <td data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Deposit index not found">?</td>
+              {{ else }}
+                <td>{{ $deposit.Index }}</td>
+              {{ end }}
+              {{ if not $deposit.IsIncluded }}
+                <td data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Deposit not included in the beacon chain yet">?</td>
+              {{ else if eq $deposit.Status 2 }}
                 <td><a href="/slot/0x{{ printf "%x" $deposit.SlotRoot }}">{{ formatAddCommas $deposit.Slot }}</a></td>
               {{ else }}
                 <td><a href="/slot/{{ $deposit.Slot }}">{{ formatAddCommas $deposit.Slot }}</a></td>
@@ -24,31 +33,61 @@
               <td>{{ formatFullEthFromGwei $deposit.Amount }}</td>
               <td>
                 <span>
-                  {{ formatWithdawalCredentials $deposit.Withdrawalcredentials }}
+                  {{ formatWithdawalCredentials $deposit.WithdrawalCreds }}
                 </span>
-                <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $deposit.Withdrawalcredentials }}"></i>
+                <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $deposit.WithdrawalCreds }}"></i>
               </td>
+              <td>
+                {{- if $deposit.TxDetails }}
+                <div class="d-flex">
+                  <span class="flex-grow-1 text-truncate" style="max-width: 150px;">{{ ethTransactionLink $deposit.TxDetails.TxHash 0 }}</span>
+                  <div>
+                    <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $deposit.TxDetails.TxHash }}"></i>
+                  </div>
+                    <div>
+                      <i class="fa fa-info-circle text-muted ml-2 p-1 nojs-hide tx-details-btn" role="button" data-txdetails="{{ includeJSON $deposit.TxDetails true }}"></i>
+                    </div>
+                  </div>
+                {{- else }}
+                <span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Corresponding consolidation transaction has not been indexed yet.">?</span>
+                {{- end }}
+              </td>
+
               
               <td>
-                {{ if $deposit.Queued }}
-                  <span class="badge rounded-pill text-bg-warning">Queued</span>
-                {{ else if $deposit.Orphaned }}
-                  <span class="badge rounded-pill text-bg-info">Orphaned</span>
-                {{ else }}
-                  <span class="badge rounded-pill text-bg-success">Included</span>
+                {{ if eq $deposit.TxStatus 1 }}
+                  <span class="badge rounded-pill text-bg-success">Tx Included</span>
+                {{ else if eq $deposit.TxStatus 2 }}
+                  <span class="badge rounded-pill text-bg-info">Tx Orphaned</span>
+                {{ end }}
+                
+                {{ if eq $deposit.Status 1 }}
+                  <span class="badge rounded-pill text-bg-success">Req. Included</span>
+                {{ else if eq $deposit.Status 2 }}
+                  <span class="badge rounded-pill text-bg-info">Req. Orphaned</span>
+                {{ else if eq $deposit.Status 0 }}
+                  <span class="badge rounded-pill text-bg-secondary">Req. Pending</span>
                 {{ end }}
               </td>
             </tr>
           {{ end }}
           <tr>
-            <td colspan="6" class="text-center">
-              <a class="text-white" href="/validators/included_deposits?f&f.pubkey=0x{{ printf "%x" .PublicKey }}">View more</a>
+            <td colspan="7" class="text-center">
+              {{ if gt .AdditionalInitiatedDepositCount 0 }}
+                <a class="text-white" href="/validators/initiated_deposits?f&f.pubkey=0x{{ printf "%x" .PublicKey }}">View {{ .AdditionalInitiatedDepositCount }} more initiated deposits</a>
+              {{ end }}
+              {{ if and (gt .AdditionalInitiatedDepositCount 0) (gt .AdditionalIncludedDepositCount 0) }}
+                <span> / </span>
+              {{ end }}
+              {{ if gt .AdditionalIncludedDepositCount 0 }}
+                <a class="text-white" href="/validators/included_deposits?f&f.pubkey=0x{{ printf "%x" .PublicKey }}">View {{ .AdditionalIncludedDepositCount }} more included deposits</a>
+              {{ end }}
             </td>
           </tr>
         {{ else }}
           <tr style="height: 430px;">
             <td></td>
-            <td style="vertical-align: middle;" colspan="4">
+            <td style="vertical-align: middle;" colspan="7">
               <div class="img-fluid mx-auto p-3 d-flex align-items-center" style="max-height: 400px; max-width: 400px; overflow: hidden;">
                 {{ template "timeline_svg" }}
               </div>
