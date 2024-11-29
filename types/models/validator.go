@@ -31,16 +31,25 @@ type ValidatorPageData struct {
 	ShowWithdrawAddress bool      `json:"show_withdraw_address"`
 	WithdrawAddress     []byte    `json:"withdraw_address"`
 
-	TabView string `json:"tab_view"`
+	TabView         string `json:"tab_view"`
+	ElectraIsActive bool   `json:"electra_is_active"`
 
-	RecentBlocks                    []*ValidatorPageDataBlock       `json:"recent_blocks"`
-	RecentBlockCount                uint64                          `json:"recent_block_count"`
-	RecentAttestations              []*ValidatorPageDataAttestation `json:"recent_attestations"`
-	RecentAttestationCount          uint64                          `json:"recent_attestation_count"`
-	RecentDeposits                  []*ValidatorPageDataDeposit     `json:"recent_deposits"`
-	RecentDepositCount              uint64                          `json:"recent_deposit_count"`
-	AdditionalInitiatedDepositCount uint64                          `json:"additional_initiated_deposit_count"`
-	AdditionalIncludedDepositCount  uint64                          `json:"additional_included_deposit_count"`
+	RecentBlocks                          []*ValidatorPageDataBlock         `json:"recent_blocks"`
+	RecentBlockCount                      uint64                            `json:"recent_block_count"`
+	RecentAttestations                    []*ValidatorPageDataAttestation   `json:"recent_attestations"`
+	RecentAttestationCount                uint64                            `json:"recent_attestation_count"`
+	RecentDeposits                        []*ValidatorPageDataDeposit       `json:"recent_deposits"`
+	RecentDepositCount                    uint64                            `json:"recent_deposit_count"`
+	AdditionalInitiatedDepositCount       uint64                            `json:"additional_initiated_deposit_count"`
+	AdditionalIncludedDepositCount        uint64                            `json:"additional_included_deposit_count"`
+	ConsolidationRequests                 []*ValidatorPageDataConsolidation `json:"consolidation_requests"`
+	ConsolidationRequestCount             uint64                            `json:"consolidation_request_count"`
+	AdditionalConsolidationRequestCount   uint64                            `json:"additional_consolidation_request_count"`
+	AdditionalConsolidationRequestTxCount uint64                            `json:"additional_consolidation_request_tx_count"`
+	WithdrawalRequests                    []*ValidatorPageDataWithdrawal    `json:"withdrawal_requests"`
+	WithdrawalRequestCount                uint64                            `json:"withdrawal_request_count"`
+	AdditionalWithdrawalRequestCount      uint64                            `json:"additional_withdrawal_request_count"`
+	AdditionalWithdrawalRequestTxCount    uint64                            `json:"additional_withdrawal_request_tx_count"`
 }
 
 type ValidatorPageDataBlock struct {
@@ -79,13 +88,73 @@ type ValidatorPageDataDeposit struct {
 	Status          uint64                             `json:"status"`
 	TxStatus        uint64                             `json:"tx_status"`
 	TxDetails       *ValidatorPageDataDepositTxDetails `json:"tx_details"`
+	TxHash          []byte                             `json:"tx_hash"`
 }
 
 type ValidatorPageDataDepositTxDetails struct {
 	BlockNumber uint64 `json:"block"`
-	BlockHash   []byte `json:"block_hash"`
+	BlockHash   string `json:"block_hash"`
 	BlockTime   uint64 `json:"block_time"`
 	TxOrigin    string `json:"tx_origin"`
 	TxTarget    string `json:"tx_target"`
-	TxHash      []byte `json:"tx_hash"`
+	TxHash      string `json:"tx_hash"`
+}
+
+type ValidatorPageDataConsolidation struct {
+	IsIncluded           bool      `json:"is_included"`
+	SlotNumber           uint64    `json:"slot"`
+	SlotRoot             []byte    `json:"slot_root"`
+	Time                 time.Time `json:"time"`
+	Status               uint64    `json:"status"`
+	TxStatus             uint64    `json:"tx_status"`
+	SourceAddr           []byte    `json:"src_addr"`
+	SourceValidatorValid bool      `json:"src_vvalid"`
+	SourceValidatorIndex uint64    `json:"src_vindex"`
+	SourceValidatorName  string    `json:"src_vname"`
+	SourcePublicKey      []byte    `json:"src_pubkey"`
+	TargetValidatorValid bool      `json:"tgt_vvalid"`
+	TargetValidatorIndex uint64    `json:"tgt_vindex"`
+	TargetValidatorName  string    `json:"tgt_vname"`
+	TargetPublicKey      []byte    `json:"tgt_pubkey"`
+	LinkedTransaction    bool      `json:"linked_tx"`
+	TransactionHash      []byte    `json:"tx_hash"`
+
+	TransactionDetails *ValidatorPageDataConsolidationTxDetails `json:"tx_details"`
+}
+
+type ValidatorPageDataConsolidationTxDetails struct {
+	BlockNumber uint64 `json:"block"`
+	BlockHash   string `json:"block_hash"`
+	BlockTime   uint64 `json:"block_time"`
+	TxOrigin    string `json:"tx_origin"`
+	TxTarget    string `json:"tx_target"`
+	TxHash      string `json:"tx_hash"`
+}
+
+type ValidatorPageDataWithdrawal struct {
+	IsIncluded        bool      `json:"is_included"`
+	SlotNumber        uint64    `json:"slot"`
+	SlotRoot          []byte    `json:"slot_root"`
+	Time              time.Time `json:"time"`
+	Status            uint64    `json:"status"`
+	TxStatus          uint64    `json:"tx_status"`
+	SourceAddr        []byte    `json:"source_addr"`
+	Amount            uint64    `json:"amount"`
+	ValidatorValid    bool      `json:"vvalid"`
+	ValidatorIndex    uint64    `json:"vindex"`
+	ValidatorName     string    `json:"vname"`
+	PublicKey         []byte    `json:"pubkey"`
+	LinkedTransaction bool      `json:"linked_tx"`
+	TransactionHash   []byte    `json:"tx_hash"`
+
+	TransactionDetails *ValidatorPageDataWithdrawalTxDetails `json:"tx_details"`
+}
+
+type ValidatorPageDataWithdrawalTxDetails struct {
+	BlockNumber uint64 `json:"block"`
+	BlockHash   string `json:"block_hash"`
+	BlockTime   uint64 `json:"block_time"`
+	TxOrigin    string `json:"tx_origin"`
+	TxTarget    string `json:"tx_target"`
+	TxHash      string `json:"tx_hash"`
 }

@@ -192,20 +192,25 @@ func createMenuItems(active string) []types.MainMenuItem {
 			},
 		},
 	})
-	validatorMenu = append(validatorMenu, types.NavigationGroup{
-		Links: []types.NavigationLink{
-			{
-				Label: "Withdrawal Requests",
-				Path:  "/validators/el_withdrawals",
-				Icon:  "fa-money-bill-transfer",
+
+	chainState := services.GlobalBeaconService.GetChainState()
+	specs := chainState.GetSpecs()
+	if specs != nil && specs.ElectraForkEpoch != nil && uint64(chainState.CurrentEpoch()) >= *specs.ElectraForkEpoch {
+		validatorMenu = append(validatorMenu, types.NavigationGroup{
+			Links: []types.NavigationLink{
+				{
+					Label: "Withdrawal Requests",
+					Path:  "/validators/el_withdrawals",
+					Icon:  "fa-money-bill-transfer",
+				},
+				{
+					Label: "Consolidation Requests",
+					Path:  "/validators/el_consolidations",
+					Icon:  "fa-square-plus",
+				},
 			},
-			{
-				Label: "Consolidation Requests",
-				Path:  "/validators/el_consolidations",
-				Icon:  "fa-square-plus",
-			},
-		},
-	})
+		})
+	}
 
 	submitLinks := []types.NavigationLink{}
 	if utils.Config.Frontend.ShowSubmitDeposit {

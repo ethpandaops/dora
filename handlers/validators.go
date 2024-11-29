@@ -286,7 +286,7 @@ func buildValidatorsPageData(firstValIdx uint64, pageSize uint64, sortOrder stri
 	pageData.Validators = make([]*models.ValidatorsPageDataValidator, 0)
 
 	for _, validator := range validatorSet[firstValIdx:lastValIdx] {
-		if validator == nil {
+		if validator == nil || validator.Validator == nil {
 			continue
 		}
 

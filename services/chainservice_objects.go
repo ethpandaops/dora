@@ -409,6 +409,11 @@ func (bs *ChainService) GetWithdrawalRequestsByFilter(filter *dbtypes.Withdrawal
 					if filter.MaxIndex > 0 && (withdrawalRequest.ValidatorIndex == nil || *withdrawalRequest.ValidatorIndex > filter.MaxIndex) {
 						continue
 					}
+					if len(filter.PublicKey) > 0 {
+						if !bytes.Equal(withdrawalRequest.ValidatorPubkey[:], filter.PublicKey) {
+							continue
+						}
+					}
 					if filter.ValidatorName != "" {
 						if withdrawalRequest.ValidatorIndex == nil {
 							continue
@@ -526,6 +531,11 @@ func (bs *ChainService) GetConsolidationRequestsByFilter(filter *dbtypes.Consoli
 					}
 					if filter.MaxSrcIndex > 0 && (consolidationRequest.SourceIndex == nil || *consolidationRequest.SourceIndex > filter.MaxSrcIndex) {
 						continue
+					}
+					if len(filter.PublicKey) > 0 {
+						if !bytes.Equal(consolidationRequest.SourcePubkey[:], filter.PublicKey) && !bytes.Equal(consolidationRequest.TargetPubkey[:], filter.PublicKey) {
+							continue
+						}
 					}
 					if filter.SrcValidatorName != "" {
 						if consolidationRequest.SourceIndex == nil {

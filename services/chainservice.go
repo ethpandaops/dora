@@ -229,6 +229,15 @@ func (bs *ChainService) GetHeadForks(readyOnly bool) []*beacon.ForkHead {
 	return bs.beaconIndexer.GetForkHeads()
 }
 
+func (bs *ChainService) GetCanonicalForkIds() []beacon.ForkKey {
+	canonicalHead := bs.beaconIndexer.GetCanonicalHead(nil)
+	if canonicalHead == nil {
+		return []beacon.ForkKey{0}
+	}
+
+	return bs.beaconIndexer.GetParentForkIds(canonicalHead.GetForkId())
+}
+
 func (bs *ChainService) GetValidatorName(index uint64) string {
 	return bs.validatorNames.GetValidatorName(index)
 }

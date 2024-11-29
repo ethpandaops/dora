@@ -98,6 +98,7 @@ type SlashingFilter struct {
 type WithdrawalRequestFilter struct {
 	MinSlot       uint64
 	MaxSlot       uint64
+	PublicKey     []byte
 	SourceAddress []byte
 	MinIndex      uint64
 	MaxIndex      uint64
@@ -110,6 +111,7 @@ type WithdrawalRequestFilter struct {
 type WithdrawalRequestTxFilter struct {
 	MinDequeue    uint64
 	MaxDequeue    uint64
+	PublicKey     []byte
 	SourceAddress []byte
 	MinIndex      uint64
 	MaxIndex      uint64
@@ -122,6 +124,7 @@ type WithdrawalRequestTxFilter struct {
 type ConsolidationRequestFilter struct {
 	MinSlot          uint64
 	MaxSlot          uint64
+	PublicKey        []byte
 	SourceAddress    []byte
 	MinSrcIndex      uint64
 	MaxSrcIndex      uint64
@@ -135,6 +138,7 @@ type ConsolidationRequestFilter struct {
 type ConsolidationRequestTxFilter struct {
 	MinDequeue       uint64
 	MaxDequeue       uint64
+	PublicKey        []byte
 	SourceAddress    []byte
 	MinSrcIndex      uint64
 	MaxSrcIndex      uint64

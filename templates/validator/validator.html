@@ -165,14 +165,26 @@
       </li>
       <li class="nav-item">
         <a class="nav-link{{ if eq .TabView "attestations" }} active{{ end }}" id="recentAttestations-tab" data-lazy-tab="recentAttestations" data-bs-toggle="tab" data-bs-target="#recentAttestations" href="?v=attestations" role="tab" aria-controls="recentAttestations" aria-selected="{{ if eq .TabView "attestations" }}true{{ else }}false{{ end }}">
-          <i class="fa fa-cubes me-2"></i> Recent Attestations
+          <i class="fa fa-file-signature me-2"></i> Recent Attestations
         </a>
       </li>
       <li class="nav-item">
         <a class="nav-link{{ if eq .TabView "deposits" }} active{{ end }}" id="recentDeposits-tab" data-lazy-tab="recentDeposits" data-bs-toggle="tab" data-bs-target="#recentDeposits" href="?v=deposits" role="tab" aria-controls="recentDeposits" aria-selected="{{ if eq .TabView "deposits" }}true{{ else }}false{{ end }}">
-          <i class="fa fa-cubes me-2"></i> Deposits
+          <i class="fa fa-wallet me-2"></i> Deposits
         </a>
       </li>
+      {{ if .ElectraIsActive }}
+      <li class="nav-item">
+        <a class="nav-link{{ if eq .TabView "withdrawalrequests" }} active{{ end }}" id="recentWithdrawalRequests-tab" data-lazy-tab="recentWithdrawalRequests" data-bs-toggle="tab" data-bs-target="#recentWithdrawalRequests" href="?v=withdrawalrequests" role="tab" aria-controls="recentWithdrawalRequests" aria-selected="{{ if eq .TabView "withdrawalrequests" }}true{{ else }}false{{ end }}">
+          <i class="fa fa-money-bill-transfer me-2"></i> Withdrawal Requests
+        </a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link{{ if eq .TabView "consolidationrequests" }} active{{ end }}" id="recentConsolidationRequests-tab" data-lazy-tab="recentConsolidationRequests" data-bs-toggle="tab" data-bs-target="#recentConsolidationRequests" href="?v=consolidationrequests" role="tab" aria-controls="recentConsolidationRequests" aria-selected="{{ if eq .TabView "consolidationrequests" }}true{{ else }}false{{ end }}">
+          <i class="fa fa-square-plus me-2"></i> Consolidation Requests
+        </a>
+      </li>
+      {{ end }}
     </ul>
 
     <div class="tab-content" id="tabContent">
@@ -191,6 +203,18 @@
           {{ template "recentDeposits" . }}
         {{ end }}
       </div>
+      {{ if .ElectraIsActive }}
+      <div class="tab-pane fade{{ if eq .TabView "withdrawalrequests" }} show active{{ end }}" id="recentWithdrawalRequests" role="tabpanel" aria-labelledby="recentWithdrawalRequests-tab" data-loaded="{{ if eq .TabView "withdrawalrequests" }}true{{ else }}false{{ end }}">
+        {{ if eq .TabView "withdrawalrequests" }}
+          {{ template "withdrawalRequests" . }}
+        {{ end }}
+      </div>
+      <div class="tab-pane fade{{ if eq .TabView "consolidationrequests" }} show active{{ end }}" id="recentConsolidationRequests" role="tabpanel" aria-labelledby="recentConsolidationRequests-tab" data-loaded="{{ if eq .TabView "consolidationrequests" }}true{{ else }}false{{ end }}">
+        {{ if eq .TabView "consolidationrequests" }}
+          {{ template "consolidationRequests" . }}
+        {{ end }}
+      </div>
+      {{ end }}
     </div>
 
     {{ template "txDetails" . }}
@@ -203,6 +227,10 @@
     {{ template "recentAttestations" . }}
   {{ else if eq .TabView "deposits" }}
     {{ template "recentDeposits" . }}
+  {{ else if eq .TabView "withdrawalrequests" }}
+    {{ template "withdrawalRequests" . }}
+  {{ else if eq .TabView "consolidationrequests" }}
+    {{ template "consolidationRequests" . }}
   {{ else }}
     Unknown tab
   {{ end }}

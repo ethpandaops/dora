@@ -140,6 +140,11 @@ func GetConsolidationRequestTxsFiltered(offset uint64, limit uint32, canonicalFo
 		fmt.Fprintf(&sql, " %v dequeue_block <= $%v", filterOp, len(args))
 		filterOp = "AND"
 	}
+	if len(filter.PublicKey) > 0 {
+		args = append(args, filter.PublicKey)
+		fmt.Fprintf(&sql, " %v (source_pubkey = $%v OR target_pubkey = $%v) ", filterOp, len(args), len(args))
+		filterOp = "AND"
+	}
 	if len(filter.SourceAddress) > 0 {
 		args = append(args, filter.SourceAddress)
 		fmt.Fprintf(&sql, " %v source_address = $%v", filterOp, len(args))

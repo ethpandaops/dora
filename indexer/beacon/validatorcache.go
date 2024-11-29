@@ -331,7 +331,7 @@ func (cache *validatorCache) getValidatorSetForRoot(blockRoot phase0.Root) []*ph
 				isParentMap[diff.dependentRoot] = isParent
 			}
 
-			if isParent && diff.epoch > validatorEpoch {
+			if isParent && diff.epoch >= validatorEpoch {
 				validator = diff.validator
 				validatorEpoch = diff.epoch
 			}
@@ -396,7 +396,7 @@ func (cache *validatorCache) getValidatorByIndexAndRoot(index phase0.ValidatorIn
 			isParentMap[diff.dependentRoot] = isParent
 		}
 
-		if isParent && diff.epoch > validatorEpoch {
+		if isParent && diff.epoch >= validatorEpoch {
 			validator = diff.validator
 			validatorEpoch = diff.epoch
 		}

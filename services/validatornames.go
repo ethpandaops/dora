@@ -154,6 +154,10 @@ func (vn *ValidatorNames) resolveNames() (bool, error) {
 	// resolve names by withdrawal address
 	validatorSetMap := map[phase0.BLSPubKey]uint64{}
 	for vidx, validator := range validatorSet {
+		if validator == nil {
+			continue
+		}
+
 		validatorSetMap[validator.PublicKey] = uint64(vidx)
 
 		if validator.WithdrawalCredentials[0] == 0x00 {

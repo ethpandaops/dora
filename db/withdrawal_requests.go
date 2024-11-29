@@ -88,6 +88,11 @@ func GetWithdrawalRequestsFiltered(offset uint64, limit uint32, finalizedBlock u
 		fmt.Fprintf(&sql, " %v slot_number <= $%v", filterOp, len(args))
 		filterOp = "AND"
 	}
+	if len(filter.PublicKey) > 0 {
+		args = append(args, filter.PublicKey)
+		fmt.Fprintf(&sql, " %v validator_pubkey = $%v ", filterOp, len(args))
+		filterOp = "AND"
+	}
 	if len(filter.SourceAddress) > 0 {
 		args = append(args, filter.SourceAddress)
 		fmt.Fprintf(&sql, " %v source_address = $%v", filterOp, len(args))
