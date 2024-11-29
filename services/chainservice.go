@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"math"
 	"sort"
 	"time"
 
@@ -340,46 +341,37 @@ func (bs *ChainService) GetConsensusClientForks() []*ConsensusClientFork {
 	return headForks
 }
 
-func (bs *ChainService) GetValidatorActivity(epochLimit uint64, withCurrentEpoch bool) (map[phase0.ValidatorIndex]uint8, uint64) {
+func (bs *ChainService) GetValidatorVotingActivity(validatorIndex phase0.ValidatorIndex) ([]beacon.ValidatorActivity, phase0.Epoch) {
+	return bs.beaconIndexer.GetValidatorActivity(validatorIndex)
+}
+
+func (bs *ChainService) GetValidatorLiveness(validatorIndex phase0.ValidatorIndex, lookbackEpochs uint64) (votedEpochs uint64) {
+	validatorActivity, _ := bs.beaconIndexer.GetValidatorActivity(validatorIndex)
 	chainState := bs.consensusPool.GetChainState()
-	_, prunedEpoch := bs.beaconIndexer.GetBlockCacheState()
-	currentEpoch := chainState.CurrentEpoch()
-	if !withCurrentEpoch {
-		if currentEpoch == 0 {
-			return map[phase0.ValidatorIndex]uint8{}, 0
-		}
 
-		currentEpoch--
+	latestEpoch := uint64(chainState.CurrentEpoch())
+	if latestEpoch > 2 {
+		latestEpoch -= 2
+	} else {
+		latestEpoch = 0
 	}
 
-	activityMap := map[phase0.ValidatorIndex]uint8{}
-	aggregationCount := uint64(0)
+	lastEpoch := uint64(math.MaxUint64)
+	for _, activity := range validatorActivity {
+		epoch := uint64(chainState.EpochOfSlot(activity.VoteBlock.Slot - phase0.Slot(activity.VoteDelay)))
+		if latestEpoch < epoch {
+			latestEpoch = epoch
+		} else if epoch+lookbackEpochs <= latestEpoch {
+			break
+		}
 
-	for epochIdx := int64(currentEpoch); epochIdx >= int64(prunedEpoch) && epochLimit > 0; epochIdx-- {
-		epoch := phase0.Epoch(epochIdx)
-		epochLimit--
-
-		epochStats := bs.beaconIndexer.GetEpochStats(epoch, nil)
-		if epochStats == nil {
+		if epoch == lastEpoch {
 			continue
 		}
 
-		epochStatsValues := epochStats.GetValues(true)
-		if epochStatsValues == nil {
-			continue
-		}
-
-		/*
-			epochVotes := epochStats.GetEpochVotes(bs.beaconIndexer, nil)
-			for valIdx, validatorIndex := range epochStatsValues.ActiveIndices {
-				if epochVotes.ActivityBitfield.BitAt(uint64(valIdx)) {
-					activityMap[validatorIndex]++
-				}
-			}
-		*/
-
-		aggregationCount++
+		lastEpoch = epoch
+		votedEpochs++
 	}
 
-	return activityMap, aggregationCount
+	return
 }

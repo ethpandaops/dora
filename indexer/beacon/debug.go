@@ -164,7 +164,7 @@ func (indexer *Indexer) getValidatorCacheDebugStats(cacheStats *CacheDebugStats)
 		cacheStats.ValidatorCache.ValidatorDiffs += uint64(refs)
 
 		if validator.recentActivity != nil {
-			cacheStats.ValidatorCache.ValidatorActivity++
+			cacheStats.ValidatorCache.ValidatorActivity += uint64(len(validator.recentActivity))
 		}
 	}
 

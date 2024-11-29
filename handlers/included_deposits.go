@@ -166,7 +166,6 @@ func buildFilteredIncludedDepositsPageData(pageIdx uint64, pageSize uint64, minI
 	dbDeposits, totalRows := services.GlobalBeaconService.GetIncludedDepositsByFilter(depositFilter, pageIdx-1, uint32(pageSize))
 
 	chainState := services.GlobalBeaconService.GetChainState()
-	validatorActivityMap, validatorActivityMax := services.GlobalBeaconService.GetValidatorActivity(3, false)
 
 	for _, deposit := range dbDeposits {
 		depositData := &models.IncludedDepositsPageDataDeposit{
@@ -209,8 +208,8 @@ func buildFilteredIncludedDepositsPageData(pageIdx uint64, pageSize uint64, minI
 			}
 
 			if depositData.ShowUpcheck {
-				depositData.UpcheckActivity = validatorActivityMap[validator.Index]
-				depositData.UpcheckMaximum = uint8(validatorActivityMax)
+				depositData.UpcheckActivity = uint8(services.GlobalBeaconService.GetValidatorLiveness(validator.Index, 3))
+				depositData.UpcheckMaximum = uint8(3)
 			}
 		}
 

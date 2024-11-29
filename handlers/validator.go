@@ -14,6 +14,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/ethpandaops/dora/dbtypes"
+	"github.com/ethpandaops/dora/indexer/beacon"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
@@ -142,9 +143,8 @@ func buildValidatorPageData(validatorIndex uint64, tabView string) (*models.Vali
 
 	if pageData.IsActive {
 		// load activity map
-		activityMap, maxActivity := services.GlobalBeaconService.GetValidatorActivity(3, false)
-		pageData.UpcheckActivity = activityMap[validator.Index]
-		pageData.UpcheckMaximum = uint8(maxActivity)
+		pageData.UpcheckActivity = uint8(services.GlobalBeaconService.GetValidatorLiveness(validator.Index, 3))
+		pageData.UpcheckMaximum = uint8(3)
 	}
 
 	if validator.Validator.ActivationEligibilityEpoch < 18446744073709551615 {
@@ -200,6 +200,93 @@ func buildValidatorPageData(validatorIndex uint64, tabView string) (*models.Vali
 			pageData.RecentBlocks = append(pageData.RecentBlocks, &blockEntry)
 		}
 		pageData.RecentBlockCount = uint64(len(pageData.RecentBlocks))
+	}
+
+	// load latest attestations
+	if pageData.TabView == "attestations" {
+		currentEpoch := uint64(chainState.CurrentEpoch())
+		cutOffEpoch := uint64(0)
+		if currentEpoch > uint64(services.GlobalBeaconService.GetBeaconIndexer().GetInMemoryEpochs()) {
+			cutOffEpoch = currentEpoch - uint64(services.GlobalBeaconService.GetBeaconIndexer().GetInMemoryEpochs())
+		} else {
+			cutOffEpoch = 0
+		}
+
+		validatorActivity, oldestActivityEpoch := services.GlobalBeaconService.GetValidatorVotingActivity(phase0.ValidatorIndex(validatorIndex))
+		validatorActivityIdx := 0
+
+		if cutOffEpoch < uint64(oldestActivityEpoch) {
+			cutOffEpoch = uint64(oldestActivityEpoch)
+		}
+
+		for epochIdx := int64(currentEpoch); epochIdx >= int64(cutOffEpoch); epochIdx-- {
+			epoch := phase0.Epoch(epochIdx)
+			found := false
+
+			for validatorActivityIdx < len(validatorActivity) && chainState.EpochOfSlot(validatorActivity[validatorActivityIdx].VoteBlock.Slot) == epoch {
+				found = true
+				vote := validatorActivity[validatorActivityIdx]
+
+				attestation := &models.ValidatorPageDataAttestation{
+					Epoch:          uint64(epoch),
+					Slot:           uint64(vote.VoteBlock.Slot - phase0.Slot(vote.VoteDelay)),
+					InclusionSlot:  uint64(vote.VoteBlock.Slot),
+					InclusionRoot:  vote.VoteBlock.Root[:],
+					Time:           chainState.SlotToTime(vote.VoteBlock.Slot - phase0.Slot(vote.VoteDelay)),
+					Status:         uint64(services.GlobalBeaconService.CheckBlockOrphanedStatus(vote.VoteBlock.Root)),
+					InclusionDelay: uint64(vote.VoteDelay),
+					HasDuty:        true,
+				}
+				pageData.RecentAttestations = append(pageData.RecentAttestations, attestation)
+				validatorActivityIdx++
+			}
+			if !found {
+				attestation := &models.ValidatorPageDataAttestation{
+					Epoch:  uint64(epoch),
+					Status: 0,
+					Time:   chainState.EpochToTime(epoch),
+					Missed: true,
+				}
+
+				// get epoch stats for this epoch to check for attestation duties
+				epochStats := services.GlobalBeaconService.GetBeaconIndexer().GetEpochStats(epoch, nil)
+
+				var epochStatsValues *beacon.EpochStatsValues
+
+				if epochStats != nil {
+					epochStatsValues = epochStats.GetValues(true)
+				}
+				if epochStatsValues != nil && epochStatsValues.AttesterDuties != nil {
+					dutySlot := phase0.Slot(0)
+					foundDuty := false
+
+				dutiesLoop:
+					for slotIndex, duties1 := range epochStatsValues.AttesterDuties {
+						for _, duties2 := range duties1 {
+							for _, validatorIndice := range duties2 {
+								if epochStatsValues.ActiveIndices[validatorIndice] == phase0.ValidatorIndex(validatorIndex) {
+									dutySlot = phase0.Slot(slotIndex) + chainState.EpochStartSlot(epoch)
+									foundDuty = true
+									break dutiesLoop
+								}
+							}
+						}
+					}
+
+					attestation.HasDuty = foundDuty
+					attestation.Slot = uint64(dutySlot)
+					attestation.Time = chainState.SlotToTime(dutySlot)
+
+					if attestation.Epoch+1 >= currentEpoch {
+						attestation.Scheduled = true
+					}
+				}
+
+				pageData.RecentAttestations = append(pageData.RecentAttestations, attestation)
+			}
+		}
+
+		pageData.RecentAttestationCount = uint64(len(pageData.RecentAttestations))
 	}
 
 	// load recent deposits

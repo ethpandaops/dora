@@ -175,8 +175,6 @@ func buildFilteredInitiatedDepositsPageData(pageIdx uint64, pageSize uint64, add
 		panic(err)
 	}
 
-	validatorActivityMap, validatorActivityMax := services.GlobalBeaconService.GetValidatorActivity(3, false)
-
 	for _, depositTx := range dbDepositTxs {
 		depositTxData := &models.InitiatedDepositsPageDataDeposit{
 			Index:                 depositTx.Index,
@@ -216,8 +214,8 @@ func buildFilteredInitiatedDepositsPageData(pageIdx uint64, pageSize uint64, add
 			}
 
 			if depositTxData.ShowUpcheck {
-				depositTxData.UpcheckActivity = validatorActivityMap[validator.Index]
-				depositTxData.UpcheckMaximum = uint8(validatorActivityMax)
+				depositTxData.UpcheckActivity = uint8(services.GlobalBeaconService.GetValidatorLiveness(validator.Index, 3))
+				depositTxData.UpcheckMaximum = uint8(3)
 			}
 		}
 

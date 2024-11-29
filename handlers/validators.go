@@ -278,9 +278,6 @@ func buildValidatorsPageData(firstValIdx uint64, pageSize uint64, sortOrder stri
 	}
 	pageData.LastPageValIdx = totalValidatorCount - pageSize
 
-	// load activity map
-	activityMap, maxActivity := services.GlobalBeaconService.GetValidatorActivity(3, false)
-
 	// get validators
 	lastValIdx := firstValIdx + pageSize
 	if lastValIdx >= totalValidatorCount {
@@ -320,8 +317,8 @@ func buildValidatorsPageData(firstValIdx uint64, pageSize uint64, sortOrder stri
 		}
 
 		if validatorData.ShowUpcheck {
-			validatorData.UpcheckActivity = activityMap[validator.Index]
-			validatorData.UpcheckMaximum = uint8(maxActivity)
+			validatorData.UpcheckActivity = uint8(services.GlobalBeaconService.GetValidatorLiveness(validator.Index, 3))
+			validatorData.UpcheckMaximum = uint8(3)
 		}
 
 		if validator.Validator.ActivationEpoch < 18446744073709551615 {

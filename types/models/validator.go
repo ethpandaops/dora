@@ -33,10 +33,12 @@ type ValidatorPageData struct {
 
 	TabView string `json:"tab_view"`
 
-	RecentBlocks       []*ValidatorPageDataBlock   `json:"recent_blocks"`
-	RecentBlockCount   uint64                      `json:"recent_block_count"`
-	RecentDeposits     []*ValidatorPageDataDeposit `json:"recent_deposits"`
-	RecentDepositCount uint64                      `json:"recent_deposit_count"`
+	RecentBlocks           []*ValidatorPageDataBlock       `json:"recent_blocks"`
+	RecentBlockCount       uint64                          `json:"recent_block_count"`
+	RecentAttestations     []*ValidatorPageDataAttestation `json:"recent_attestations"`
+	RecentAttestationCount uint64                          `json:"recent_attestation_count"`
+	RecentDeposits         []*ValidatorPageDataDeposit     `json:"recent_deposits"`
+	RecentDepositCount     uint64                          `json:"recent_deposit_count"`
 }
 
 type ValidatorPageDataBlock struct {
@@ -48,6 +50,19 @@ type ValidatorPageDataBlock struct {
 	Status       uint64    `json:"status"`
 	BlockRoot    string    `json:"block_root"`
 	Graffiti     []byte    `json:"graffiti"`
+}
+
+type ValidatorPageDataAttestation struct {
+	Epoch          uint64    `json:"epoch"`
+	Time           time.Time `json:"time"`
+	Status         uint64    `json:"status"`
+	Missed         bool      `json:"missed"`
+	HasDuty        bool      `json:"has_duty"`
+	Scheduled      bool      `json:"scheduled"`
+	Slot           uint64    `json:"slot"`
+	InclusionSlot  uint64    `json:"inclusion_slot"`
+	InclusionRoot  []byte    `json:"inclusion_root"`
+	InclusionDelay uint64    `json:"inclusion_delay"`
 }
 
 type ValidatorPageDataDeposit struct {

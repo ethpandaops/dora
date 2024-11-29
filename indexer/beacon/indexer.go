@@ -103,6 +103,10 @@ func NewIndexer(logger logrus.FieldLogger, consensusPool *consensus.Pool) *Index
 	return indexer
 }
 
+func (indexer *Indexer) GetInMemoryEpochs() uint16 {
+	return indexer.inMemoryEpochs
+}
+
 func (indexer *Indexer) getMinInMemoryEpoch() phase0.Epoch {
 	minInMemoryEpoch := phase0.Epoch(0)
 	if indexer.lastFinalizedEpoch > 0 {
@@ -336,6 +340,7 @@ func (indexer *Indexer) StartIndexer() {
 			}
 		}
 
+		indexer.blockCache.latestBlock = block
 		restoredBlockCount++
 
 		if time.Since(t1) > 5*time.Second {

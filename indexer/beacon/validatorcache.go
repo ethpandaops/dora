@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"math"
 	"reflect"
+	"sort"
 	"sync"
 
 	"github.com/attestantio/go-eth2-client/spec/phase0"
@@ -13,11 +14,13 @@ import (
 type validatorCache struct {
 	indexer *Indexer
 
-	valsetCache   []*validatorEntry // cache for validators
-	cacheMutex    sync.RWMutex      // mutex to protect valsetCache for concurrent access
-	lastFinalized phase0.Epoch      // last
-	pubkeyMap     map[phase0.BLSPubKey]phase0.ValidatorIndex
-	pubkeyMutex   sync.RWMutex // mutex to protect pubkeyMap for concurrent access
+	valsetCache         []*validatorEntry // cache for validators
+	cacheMutex          sync.RWMutex      // mutex to protect valsetCache for concurrent access
+	activityMutex       sync.RWMutex      // mutex to protect recentActivity for concurrent access
+	lastFinalized       phase0.Epoch      // last finalized epoch
+	oldestActivityEpoch phase0.Epoch      // oldest epoch in activity cache
+	pubkeyMap           map[phase0.BLSPubKey]phase0.ValidatorIndex
+	pubkeyMutex         sync.RWMutex // mutex to protect pubkeyMap for concurrent access
 }
 
 // validatorDiffKey is the primary key for validatorDiff entries in cache.
@@ -34,19 +37,33 @@ func getValidatorDiffKey(epoch phase0.Epoch, dependentRoot phase0.Root) validato
 	return key
 }
 
+// validatorEntry represents a validator in the validator set cache.
 type validatorEntry struct {
 	index          phase0.ValidatorIndex
 	finalValidator *phase0.Validator
 	validatorDiffs map[validatorDiffKey]*validatorDiff
-	recentActivity []validatorActivity
+	recentActivity []ValidatorActivity
 }
 
-type validatorActivity struct {
-	dutySlot phase0.Slot
-	voteSlot phase0.Slot
-	forkId   ForkKey
+// ValidatorActivity represents a validator's activity in an epoch.
+// entry size: 18 bytes (10 bytes data + 8 bytes pointer)
+// max. entries per validator: 3-8 (inMemoryEpochs)
+// total memory consumption:
+//   - 10k active validators:
+//     min: 10000 * 18 * 3 = 540kB = 0.54MB
+//     max: 10000 * 18 * 8 = 1440kB = 1.44MB
+//   - 100k active validators:
+//     min: 100000 * 18 * 3 = 5400kB = 5.4MB
+//     max: 100000 * 18 * 8 = 14400kB = 14.4MB
+//   - 1M active validators:
+//     min: 1000000 * 18 * 3 = 54000kB = 54MB
+//     max: 1000000 * 18 * 8 = 144000kB = 144MB
+type ValidatorActivity struct {
+	VoteBlock *Block // the block where the vote was included
+	VoteDelay uint16 // the inclusion delay of the vote in slots
 }
 
+// validatorDiff represents an updated validator entry in the validator set cache.
 type validatorDiff struct {
 	epoch         phase0.Epoch
 	dependentRoot phase0.Root
@@ -56,8 +73,9 @@ type validatorDiff struct {
 // newValidatorCache creates & returns a new instance of validatorCache.
 func newValidatorCache(indexer *Indexer) *validatorCache {
 	cache := &validatorCache{
-		indexer:   indexer,
-		pubkeyMap: make(map[phase0.BLSPubKey]phase0.ValidatorIndex),
+		indexer:             indexer,
+		oldestActivityEpoch: math.MaxInt64,
+		pubkeyMap:           make(map[phase0.BLSPubKey]phase0.ValidatorIndex),
 	}
 
 	return cache
@@ -174,52 +192,105 @@ func (cache *validatorCache) updateValidatorSet(epoch phase0.Epoch, dependentRoo
 }
 
 // updateValidatorActivity updates the validator activity cache.
-func (cache *validatorCache) updateValidatorActivity(validatorIndex phase0.ValidatorIndex, epoch phase0.Epoch, dutySlot phase0.Slot, voteSlot phase0.Slot, forkId ForkKey) {
-	currentEpoch := cache.indexer.consensusPool.GetChainState().CurrentEpoch()
-	if epoch+phase0.Epoch(cache.indexer.inMemoryEpochs) < currentEpoch {
+func (cache *validatorCache) updateValidatorActivity(validatorIndex phase0.ValidatorIndex, epoch phase0.Epoch, dutySlot phase0.Slot, voteBlock *Block) {
+	chainState := cache.indexer.consensusPool.GetChainState()
+	currentEpoch := chainState.CurrentEpoch()
+	cutOffEpoch := phase0.Epoch(0)
+	if currentEpoch > phase0.Epoch(cache.indexer.inMemoryEpochs) {
+		cutOffEpoch = currentEpoch - phase0.Epoch(cache.indexer.inMemoryEpochs)
+	}
+
+	if epoch < cutOffEpoch {
 		// ignore old activity
 		return
 	}
+	if epoch < cache.oldestActivityEpoch {
+		cache.oldestActivityEpoch = epoch
+	} else if cache.oldestActivityEpoch < cutOffEpoch+1 {
+		cache.oldestActivityEpoch = cutOffEpoch + 1
+	}
 
 	cache.cacheMutex.RLock()
-	defer cache.cacheMutex.RUnlock()
 
 	if validatorIndex >= phase0.ValidatorIndex(len(cache.valsetCache)) {
+		cache.cacheMutex.RUnlock()
 		return
 	}
 
 	cachedValidator := cache.valsetCache[validatorIndex]
+	cache.cacheMutex.RUnlock()
 	if cachedValidator == nil {
 		return
 	}
 
+	cache.activityMutex.Lock()
+	defer cache.activityMutex.Unlock()
+
 	if cachedValidator.recentActivity == nil {
-		cachedValidator.recentActivity = make([]validatorActivity, cache.indexer.inMemoryEpochs)
+		cachedValidator.recentActivity = make([]ValidatorActivity, 0, cache.indexer.inMemoryEpochs)
 	}
 
-	activityIndex := epoch % phase0.Epoch(cache.indexer.inMemoryEpochs)
+	replaceIndex := -1
+	cutOffLength := 0
+	activityLength := len(cachedValidator.recentActivity)
+	for i := activityLength - 1; i >= 0; i-- {
+		activity := cachedValidator.recentActivity[i]
+		if activity.VoteBlock == voteBlock {
+			// already exists
+			return
+		}
 
-	cachedValidator.recentActivity[activityIndex] = validatorActivity{
-		dutySlot: dutySlot,
-		voteSlot: voteSlot,
-		forkId:   forkId,
+		dutySlot := phase0.Slot(0)
+		if activity.VoteBlock != nil {
+			dutySlot = activity.VoteBlock.Slot
+		}
+
+		if chainState.EpochOfSlot(dutySlot) < cutOffEpoch {
+			cachedValidator.recentActivity[i].VoteBlock = nil // clear for gc
+			if replaceIndex == -1 {
+				replaceIndex = i
+			} else if replaceIndex == activityLength-cutOffLength-1 {
+				cutOffLength++
+				replaceIndex = i
+			} else {
+				// copy last element to current index
+				cutOffLength++
+				cachedValidator.recentActivity[i] = cachedValidator.recentActivity[activityLength-cutOffLength-1]
+			}
+		}
+	}
+
+	if replaceIndex != -1 {
+		cachedValidator.recentActivity[replaceIndex] = ValidatorActivity{
+			VoteBlock: voteBlock,
+			VoteDelay: uint16(voteBlock.Slot - dutySlot),
+		}
+
+		if cutOffLength > 0 {
+			cachedValidator.recentActivity = cachedValidator.recentActivity[:activityLength-cutOffLength]
+		}
+	} else {
+		cachedValidator.recentActivity = append(cachedValidator.recentActivity, ValidatorActivity{
+			VoteBlock: voteBlock,
+			VoteDelay: uint16(voteBlock.Slot - dutySlot),
+		})
 	}
 }
 
 // setFinalizedEpoch sets the last finalized epoch.
-func (cache *validatorCache) setFinalizedEpoch(epochStats *EpochStats) {
+func (cache *validatorCache) setFinalizedEpoch(epoch phase0.Epoch, nextEpochDependentRoot phase0.Root) {
 	cache.cacheMutex.Lock()
 	defer cache.cacheMutex.Unlock()
 
-	cache.lastFinalized = epochStats.epoch
+	cache.lastFinalized = epoch
 
 	for _, cachedValidator := range cache.valsetCache {
 		for diffKey, diff := range cachedValidator.validatorDiffs {
-			if diff.dependentRoot == epochStats.dependentRoot {
+			if diff.dependentRoot == nextEpochDependentRoot {
 				cachedValidator.finalValidator = diff.validator
 			}
 
-			if diff.epoch < epochStats.epoch {
+			if diff.epoch <= epoch {
 				delete(cachedValidator.validatorDiffs, diffKey)
 			}
 		}
@@ -341,4 +412,37 @@ func (cache *validatorCache) getValidatorIndexByPubkey(pubkey phase0.BLSPubKey) 
 
 	index, found := cache.pubkeyMap[pubkey]
 	return index, found
+}
+
+// getValidatorActivity returns the validator activity for a given validator index.
+func (cache *validatorCache) getValidatorActivity(validatorIndex phase0.ValidatorIndex) []ValidatorActivity {
+	cache.cacheMutex.RLock()
+
+	if validatorIndex >= phase0.ValidatorIndex(len(cache.valsetCache)) {
+		cache.cacheMutex.RUnlock()
+		return []ValidatorActivity{}
+	}
+
+	cachedValidator := cache.valsetCache[validatorIndex]
+	cache.cacheMutex.RUnlock()
+
+	if cachedValidator == nil {
+		return []ValidatorActivity{}
+	}
+
+	cache.activityMutex.RLock()
+	defer cache.activityMutex.RUnlock()
+
+	recentActivity := make([]ValidatorActivity, 0, len(cachedValidator.recentActivity))
+	for _, activity := range cachedValidator.recentActivity {
+		if activity.VoteBlock != nil {
+			recentActivity = append(recentActivity, activity)
+		}
+	}
+
+	sort.Slice(recentActivity, func(i, j int) bool {
+		return recentActivity[i].VoteBlock.Slot > recentActivity[j].VoteBlock.Slot
+	})
+
+	return recentActivity
 }

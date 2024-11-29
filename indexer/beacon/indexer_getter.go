@@ -266,3 +266,9 @@ func (indexer *Indexer) GetValidatorIndexByPubkey(pubkey phase0.BLSPubKey) (phas
 func (indexer *Indexer) GetValidatorByIndex(index phase0.ValidatorIndex, overrideForkId *ForkKey) *phase0.Validator {
 	return indexer.validatorCache.getValidatorByIndex(index, overrideForkId)
 }
+
+// GetValidatorActivity returns the validator activity for a given validator index.
+func (indexer *Indexer) GetValidatorActivity(validatorIndex phase0.ValidatorIndex) ([]ValidatorActivity, phase0.Epoch) {
+	activity := indexer.validatorCache.getValidatorActivity(validatorIndex)
+	return activity, indexer.validatorCache.oldestActivityEpoch
+}

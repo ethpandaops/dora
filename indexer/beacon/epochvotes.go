@@ -76,16 +76,21 @@ func (indexer *Indexer) aggregateEpochVotes(epoch phase0.Epoch, chainState *cons
 		return cachedVotes
 	}
 
-	votes, _ := indexer.aggregateEpochVotesAndActivity(epoch, chainState, blocks, epochStats, targetRoot, votesKey)
-
-	indexer.epochCache.votesCache.Add(votesKey, votes)
+	votes, _ := indexer.aggregateEpochVotesAndActivity(epoch, chainState, blocks, epochStats)
 	indexer.epochCache.votesCacheMiss++
 
 	return votes
 }
 
-func (indexer *Indexer) aggregateEpochVotesAndActivity(epoch phase0.Epoch, chainState *consensus.ChainState, blocks []*Block, epochStats *EpochStats, targetRoot phase0.Root, votesKey epochVotesKey) (*EpochVotes, *EpochVoteActivity) {
+func (indexer *Indexer) aggregateEpochVotesAndActivity(epoch phase0.Epoch, chainState *consensus.ChainState, blocks []*Block, epochStats *EpochStats) (*EpochVotes, *EpochVoteActivity) {
 	t1 := time.Now()
+
+	var targetRoot phase0.Root
+	if chainState.SlotToSlotIndex(blocks[0].Slot) == 0 {
+		targetRoot = blocks[0].Root
+	} else if parentRoot := blocks[0].GetParentRoot(); parentRoot != nil {
+		targetRoot = *parentRoot
+	}
 
 	var epochStatsValues *EpochStatsValues
 	if epochStats != nil {
@@ -141,7 +146,7 @@ func (indexer *Indexer) aggregateEpochVotesAndActivity(epoch phase0.Epoch, chain
 			voteAmount := phase0.Gwei(0)
 			slotIndex := chainState.SlotToSlotIndex(attData.Slot)
 			updateActivity := func(validatorIndex phase0.ValidatorIndex) {
-				indexer.validatorCache.updateValidatorActivity(validatorIndex, epoch, attData.Slot, slot, block.forkId)
+				indexer.validatorCache.updateValidatorActivity(validatorIndex, epoch, attData.Slot, block)
 			}
 
 			if attVersioned.Version >= spec.DataVersionElectra {
@@ -214,7 +219,11 @@ func (indexer *Indexer) aggregateEpochVotesAndActivity(epoch phase0.Epoch, chain
 		votes.TotalVotePercent = float64(votes.CurrentEpoch.TotalVoteAmount+votes.NextEpoch.TotalVoteAmount) * 100 / float64(epochStatsValues.EffectiveBalance)
 	}
 
+	votesWithValues := epochStats != nil && epochStats.ready
+	votesKey := getEpochVotesKey(epoch, targetRoot, blocks[len(blocks)-1].Root, uint8(len(blocks)), votesWithValues)
+
 	indexer.logger.Debugf("aggregated epoch %v votes in %v (blocks: %v) [0x%x]", epoch, time.Since(t1), len(blocks), votesKey[:])
+	indexer.epochCache.votesCache.Add(votesKey, votes)
 
 	return votes, activity
 }
@@ -224,18 +233,20 @@ func (votes *EpochVotes) aggregateVotes(epochStatsValues *EpochStatsValues, slot
 	voteAmount := phase0.Gwei(0)
 
 	voteDuties := epochStatsValues.AttesterDuties[slotIndex][committee]
-	for bitIdx, validatorIndex := range voteDuties {
+	for bitIdx, validatorIndice := range voteDuties {
 		if aggregationBits.BitAt(uint64(bitIdx) + aggregationBitsOffset) {
 
-			if activity.ActivityBitfield.BitAt(uint64(validatorIndex)) {
+			if activity.ActivityBitfield.BitAt(uint64(validatorIndice)) {
 				continue
 			}
 
-			effectiveBalance := epochStatsValues.EffectiveBalances[validatorIndex]
+			effectiveBalance := epochStatsValues.EffectiveBalances[validatorIndice]
 			voteAmount += phase0.Gwei(effectiveBalance) * EtherGweiFactor
 
-			activity.ActivityBitfield.SetBitAt(uint64(validatorIndex), true)
-			updateActivity(phase0.ValidatorIndex(validatorIndex))
+			activity.ActivityBitfield.SetBitAt(uint64(validatorIndice), true)
+
+			validatorIndex := epochStatsValues.ActiveIndices[validatorIndice]
+			updateActivity(validatorIndex)
 		}
 	}
 	return voteAmount, uint64(len(voteDuties))
