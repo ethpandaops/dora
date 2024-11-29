@@ -224,7 +224,8 @@ func (indexer *Indexer) aggregateEpochVotesAndActivity(epoch phase0.Epoch, chain
 	}
 
 	votesWithValues := epochStats != nil && epochStats.ready
-	votesKey := getEpochVotesKey(epoch, targetRoot, blocks[len(blocks)-1].Root, uint8(len(blocks)), votesWithValues)
+	votesWithPrecalc := epochStats != nil && epochStats.precalcValues != nil
+	votesKey := getEpochVotesKey(epoch, targetRoot, blocks[len(blocks)-1].Root, uint8(len(blocks)), votesWithValues, votesWithPrecalc)
 
 	indexer.logger.Debugf("aggregated epoch %v votes in %v (blocks: %v) [0x%x]", epoch, time.Since(t1), len(blocks), votesKey[:])
 	indexer.epochCache.votesCache.Add(votesKey, votes)
