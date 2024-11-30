@@ -74,7 +74,10 @@ func (cs *ChainState) setClientSpecs(specValues map[string]interface{}) (error, 
 	var warning error
 
 	if cs.specs != nil {
-		mismatches := cs.specs.CheckMismatch(specs)
+		mismatches, err := cs.specs.CheckMismatch(specs)
+		if err != nil {
+			return nil, err
+		}
 		if len(mismatches) > 0 {
 			return nil, fmt.Errorf("spec mismatch: %v", strings.Join(mismatches, ", "))
 		}
@@ -85,7 +88,10 @@ func (cs *ChainState) setClientSpecs(specValues map[string]interface{}) (error, 
 			return nil, err
 		}
 
-		mismatches = cs.specs.CheckMismatch(newSpecs)
+		mismatches, err = cs.specs.CheckMismatch(newSpecs)
+		if err != nil {
+			return nil, err
+		}
 		if len(mismatches) > 0 {
 			warning = fmt.Errorf("spec missing: %v", strings.Join(mismatches, ", "))
 		}

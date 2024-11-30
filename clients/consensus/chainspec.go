@@ -2,10 +2,14 @@ package consensus
 
 import (
 	"bytes"
+	"encoding/json"
+	"fmt"
 	"reflect"
+	"sync"
 	"time"
 
 	"github.com/attestantio/go-eth2-client/spec/phase0"
+	"gopkg.in/Knetic/govaluate.v3"
 )
 
 type ForkVersion struct {
@@ -17,7 +21,7 @@ type ForkVersion struct {
 // https://github.com/ethereum/consensus-specs/blob/dev/configs/mainnet.yaml
 type ChainSpec struct {
 	PresetBase                         string            `yaml:"PRESET_BASE"`
-	ConfigName                         string            `yaml:"CONFIG_NAME" nocheck:"true"`
+	ConfigName                         string            `yaml:"CONFIG_NAME" check-if:"false"`
 	MinGenesisTime                     time.Time         `yaml:"MIN_GENESIS_TIME"`
 	GenesisForkVersion                 phase0.Version    `yaml:"GENESIS_FORK_VERSION"`
 	AltairForkVersion                  phase0.Version    `yaml:"ALTAIR_FORK_VERSION"`
@@ -28,10 +32,10 @@ type ChainSpec struct {
 	CapellaForkEpoch                   *uint64           `yaml:"CAPELLA_FORK_EPOCH"`
 	DenebForkVersion                   phase0.Version    `yaml:"DENEB_FORK_VERSION"`
 	DenebForkEpoch                     *uint64           `yaml:"DENEB_FORK_EPOCH"`
-	ElectraForkVersion                 phase0.Version    `yaml:"ELECTRA_FORK_VERSION"`
+	ElectraForkVersion                 phase0.Version    `yaml:"ELECTRA_FORK_VERSION" check-if:"(ElectraForkEpoch ?? 18446744073709551615) < 18446744073709551615"`
 	ElectraForkEpoch                   *uint64           `yaml:"ELECTRA_FORK_EPOCH"`
-	Eip7594ForkVersion                 phase0.Version    `yaml:"EIP7594_FORK_VERSION" nocheck:"true"`
-	Eip7594ForkEpoch                   *uint64           `yaml:"EIP7594_FORK_EPOCH"   nocheck:"true"`
+	Eip7594ForkVersion                 phase0.Version    `yaml:"EIP7594_FORK_VERSION" check-if:"(Eip7594ForkEpoch ?? 18446744073709551615) < 18446744073709551615"`
+	Eip7594ForkEpoch                   *uint64           `yaml:"EIP7594_FORK_EPOCH"`
 	SecondsPerSlot                     time.Duration     `yaml:"SECONDS_PER_SLOT"`
 	SlotsPerEpoch                      uint64            `yaml:"SLOTS_PER_EPOCH"`
 	EpochsPerHistoricalVector          uint64            `yaml:"EPOCHS_PER_HISTORICAL_VECTOR"`
@@ -40,7 +44,7 @@ type ChainSpec struct {
 	MinSeedLookahead                   uint64            `yaml:"MIN_SEED_LOOKAHEAD"`
 	ShuffleRoundCount                  uint64            `yaml:"SHUFFLE_ROUND_COUNT"`
 	MaxEffectiveBalance                uint64            `yaml:"MAX_EFFECTIVE_BALANCE"`
-	MaxEffectiveBalanceElectra         uint64            `yaml:"MAX_EFFECTIVE_BALANCE_ELECTRA"`
+	MaxEffectiveBalanceElectra         uint64            `yaml:"MAX_EFFECTIVE_BALANCE_ELECTRA" check-if:"(ElectraForkEpoch ?? 18446744073709551615) < 18446744073709551615"`
 	TargetCommitteeSize                uint64            `yaml:"TARGET_COMMITTEE_SIZE"`
 	MaxCommitteesPerSlot               uint64            `yaml:"MAX_COMMITTEES_PER_SLOT"`
 	MinPerEpochChurnLimit              uint64            `yaml:"MIN_PER_EPOCH_CHURN_LIMIT"`
@@ -50,32 +54,51 @@ type ChainSpec struct {
 	DomainSyncCommittee                phase0.DomainType `yaml:"DOMAIN_SYNC_COMMITTEE"`
 	SyncCommitteeSize                  uint64            `yaml:"SYNC_COMMITTEE_SIZE"`
 	DepositContractAddress             []byte            `yaml:"DEPOSIT_CONTRACT_ADDRESS"`
-	MaxConsolidationRequestsPerPayload uint64            `yaml:"MAX_CONSOLIDATION_REQUESTS_PER_PAYLOAD"`
-	MaxWithdrawalRequestsPerPayload    uint64            `yaml:"MAX_WITHDRAWAL_REQUESTS_PER_PAYLOAD"`
+	MaxConsolidationRequestsPerPayload uint64            `yaml:"MAX_CONSOLIDATION_REQUESTS_PER_PAYLOAD" check-if:"(ElectraForkEpoch ?? 18446744073709551615) < 18446744073709551615"`
+	MaxWithdrawalRequestsPerPayload    uint64            `yaml:"MAX_WITHDRAWAL_REQUESTS_PER_PAYLOAD"    check-if:"(ElectraForkEpoch ?? 18446744073709551615) < 18446744073709551615"`
 	DepositChainId                     uint64            `yaml:"DEPOSIT_CHAIN_ID"`
 	MinActivationBalance               uint64            `yaml:"MIN_ACTIVATION_BALANCE"`
 
 	// EIP7594: PeerDAS
-	NumberOfColumns              *uint64 `yaml:"NUMBER_OF_COLUMNS"                nocheck:"true"`
-	DataColumnSidecarSubnetCount *uint64 `yaml:"DATA_COLUMN_SIDECAR_SUBNET_COUNT" nocheck:"true"`
-	CustodyRequirement           *uint64 `yaml:"CUSTODY_REQUIREMENT"              nocheck:"true"`
+	NumberOfColumns              *uint64 `yaml:"NUMBER_OF_COLUMNS"                check-if:"(Eip7594ForkEpoch ?? 18446744073709551615) < 18446744073709551615"`
+	DataColumnSidecarSubnetCount *uint64 `yaml:"DATA_COLUMN_SIDECAR_SUBNET_COUNT" check-if:"(Eip7594ForkEpoch ?? 18446744073709551615) < 18446744073709551615"`
+	CustodyRequirement           *uint64 `yaml:"CUSTODY_REQUIREMENT"              check-if:"(Eip7594ForkEpoch ?? 18446744073709551615) < 18446744073709551615"`
 
 	// additional dora specific specs
 	WhiskForkEpoch *uint64
 }
 
 var byteType = reflect.TypeOf(byte(0))
+var specExpressionCache = map[string]*govaluate.EvaluableExpression{}
+var specExpressionCacheMutex sync.Mutex
 
-func (chain *ChainSpec) CheckMismatch(chain2 *ChainSpec) []string {
+func (chain *ChainSpec) CheckMismatch(chain2 *ChainSpec) ([]string, error) {
 	mismatches := []string{}
 
 	chainT := reflect.ValueOf(chain).Elem()
 	chain2T := reflect.ValueOf(chain2).Elem()
 
+	genericSpecValues := map[string]any{}
+	specData, err := json.Marshal(chain)
+	if err != nil {
+		return nil, fmt.Errorf("error marshalling chain spec: %v", err)
+	}
+	err = json.Unmarshal(specData, &genericSpecValues)
+	if err != nil {
+		return nil, fmt.Errorf("error unmarshalling chain spec: %v", err)
+	}
+
 	for i := 0; i < chainT.NumField(); i++ {
 		fieldT := chainT.Type().Field(i)
-		if fieldT.Tag.Get("nocheck") == "true" {
-			continue
+		checkIfExpression := fieldT.Tag.Get("check-if")
+		if checkIfExpression != "" {
+			ok, err := chain.checkIf(checkIfExpression, genericSpecValues)
+			if err != nil {
+				return nil, fmt.Errorf("error checking if expression: %v", err)
+			}
+			if !ok {
+				continue
+			}
 		}
 
 		fieldV := chainT.Field(i)
@@ -107,7 +130,35 @@ func (chain *ChainSpec) CheckMismatch(chain2 *ChainSpec) []string {
 		}
 	}
 
-	return mismatches
+	return mismatches, nil
+}
+
+func (chain *ChainSpec) checkIf(expressionStr string, genericSpecValues map[string]any) (bool, error) {
+	specExpressionCacheMutex.Lock()
+	expression, ok := specExpressionCache[expressionStr]
+	if !ok {
+		var err error
+		expression, err = govaluate.NewEvaluableExpression(expressionStr)
+		if err != nil {
+			specExpressionCacheMutex.Unlock()
+			return false, fmt.Errorf("error parsing dynamic spec expression: %v", err)
+		}
+
+		specExpressionCache[expressionStr] = expression
+	}
+	specExpressionCacheMutex.Unlock()
+
+	result, err := expression.Evaluate(genericSpecValues)
+	if err != nil {
+		return false, fmt.Errorf("error evaluating dynamic spec expression: %v", err)
+	}
+
+	value, ok := result.(bool)
+	if ok {
+		return value, nil
+	}
+
+	return false, nil
 }
 
 func (chain *ChainSpec) Clone() *ChainSpec {
