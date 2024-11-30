@@ -196,8 +196,8 @@ func (cache *validatorCache) updateValidatorActivity(validatorIndex phase0.Valid
 	chainState := cache.indexer.consensusPool.GetChainState()
 	currentEpoch := chainState.CurrentEpoch()
 	cutOffEpoch := phase0.Epoch(0)
-	if currentEpoch > phase0.Epoch(cache.indexer.inMemoryEpochs) {
-		cutOffEpoch = currentEpoch - phase0.Epoch(cache.indexer.inMemoryEpochs)
+	if currentEpoch > phase0.Epoch(cache.indexer.activityHistoryLength) {
+		cutOffEpoch = currentEpoch - phase0.Epoch(cache.indexer.activityHistoryLength)
 	}
 
 	if epoch < cutOffEpoch {
@@ -227,7 +227,7 @@ func (cache *validatorCache) updateValidatorActivity(validatorIndex phase0.Valid
 	defer cache.activityMutex.Unlock()
 
 	if cachedValidator.recentActivity == nil {
-		cachedValidator.recentActivity = make([]ValidatorActivity, 0, cache.indexer.inMemoryEpochs)
+		cachedValidator.recentActivity = make([]ValidatorActivity, 0, cache.indexer.activityHistoryLength)
 	}
 
 	replaceIndex := -1

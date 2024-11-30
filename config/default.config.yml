@@ -65,6 +65,9 @@ indexer:
   # max number of epochs to keep in memory
   inMemoryEpochs: 3
 
+  # number of epochs to keep validator activity history for (high memory usage for large validator sets)
+  activityHistoryLength: 6
+
   # disable synchronizing historic data
   disableSynchronizer: false
 

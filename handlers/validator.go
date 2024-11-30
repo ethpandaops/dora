@@ -214,8 +214,8 @@ func buildValidatorPageData(validatorIndex uint64, tabView string) (*models.Vali
 	if pageData.TabView == "attestations" {
 		currentEpoch := uint64(chainState.CurrentEpoch())
 		cutOffEpoch := uint64(0)
-		if currentEpoch > uint64(services.GlobalBeaconService.GetBeaconIndexer().GetInMemoryEpochs()) {
-			cutOffEpoch = currentEpoch - uint64(services.GlobalBeaconService.GetBeaconIndexer().GetInMemoryEpochs())
+		if currentEpoch > uint64(services.GlobalBeaconService.GetBeaconIndexer().GetActivityHistoryLength()) {
+			cutOffEpoch = currentEpoch - uint64(services.GlobalBeaconService.GetBeaconIndexer().GetActivityHistoryLength())
 		} else {
 			cutOffEpoch = 0
 		}
@@ -248,7 +248,9 @@ func buildValidatorPageData(validatorIndex uint64, tabView string) (*models.Vali
 				pageData.RecentAttestations = append(pageData.RecentAttestations, attestation)
 				validatorActivityIdx++
 			}
-			if !found {
+
+			validatorStatus := v1.ValidatorToState(validator.Validator, &validator.Balance, epoch, beacon.FarFutureEpoch)
+			if !found && strings.HasPrefix(validatorStatus.String(), "active_") {
 				attestation := &models.ValidatorPageDataAttestation{
 					Epoch:  uint64(epoch),
 					Status: 0,

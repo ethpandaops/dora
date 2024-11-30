@@ -97,8 +97,12 @@ func (indexer *Indexer) aggregateEpochVotesAndActivity(epoch phase0.Epoch, chain
 	}
 
 	var epochStatsValues *EpochStatsValues
+	votesWithPrecalc := false
+	votesWithValues := false
 	if epochStats != nil {
 		epochStatsValues = epochStats.GetOrLoadValues(indexer, true, false)
+		votesWithPrecalc = epochStats.precalcValues != nil
+		votesWithValues = epochStats.ready
 	}
 	specs := chainState.GetSpecs()
 
@@ -150,7 +154,9 @@ func (indexer *Indexer) aggregateEpochVotesAndActivity(epoch phase0.Epoch, chain
 			voteAmount := phase0.Gwei(0)
 			slotIndex := chainState.SlotToSlotIndex(attData.Slot)
 			updateActivity := func(validatorIndex phase0.ValidatorIndex) {
-				indexer.validatorCache.updateValidatorActivity(validatorIndex, epoch, attData.Slot, block)
+				if votesWithValues {
+					indexer.validatorCache.updateValidatorActivity(validatorIndex, epoch, attData.Slot, block)
+				}
 			}
 
 			if attVersioned.Version >= spec.DataVersionElectra {
@@ -223,8 +229,6 @@ func (indexer *Indexer) aggregateEpochVotesAndActivity(epoch phase0.Epoch, chain
 		votes.TotalVotePercent = float64(votes.CurrentEpoch.TotalVoteAmount+votes.NextEpoch.TotalVoteAmount) * 100 / float64(epochStatsValues.EffectiveBalance)
 	}
 
-	votesWithValues := epochStats != nil && epochStats.ready
-	votesWithPrecalc := epochStats != nil && epochStats.precalcValues != nil
 	votesKey := getEpochVotesKey(epoch, targetRoot, blocks[len(blocks)-1].Root, uint8(len(blocks)), votesWithValues, votesWithPrecalc)
 
 	indexer.logger.Debugf("aggregated epoch %v votes in %v (blocks: %v) [0x%x]", epoch, time.Since(t1), len(blocks), votesKey[:])

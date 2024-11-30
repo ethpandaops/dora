@@ -34,6 +34,7 @@ type Indexer struct {
 	disableSync           bool
 	blockCompression      bool
 	inMemoryEpochs        uint16
+	activityHistoryLength uint16
 	maxParallelStateCalls uint16
 
 	// caches
@@ -71,6 +72,10 @@ func NewIndexer(logger logrus.FieldLogger, consensusPool *consensus.Pool) *Index
 	if inMemoryEpochs < 2 {
 		inMemoryEpochs = 2
 	}
+	activityHistoryLength := utils.Config.Indexer.ActivityHistoryLength
+	if activityHistoryLength == 0 {
+		activityHistoryLength = 6
+	}
 	maxParallelStateCalls := uint16(utils.Config.Indexer.MaxParallelValidatorSetRequests)
 	if maxParallelStateCalls < 2 {
 		maxParallelStateCalls = 2
@@ -88,6 +93,7 @@ func NewIndexer(logger logrus.FieldLogger, consensusPool *consensus.Pool) *Index
 		disableSync:           utils.Config.Indexer.DisableSynchronizer,
 		blockCompression:      blockCompression,
 		inMemoryEpochs:        inMemoryEpochs,
+		activityHistoryLength: activityHistoryLength,
 		maxParallelStateCalls: maxParallelStateCalls,
 
 		clients:              make([]*Client, 0),
@@ -103,8 +109,8 @@ func NewIndexer(logger logrus.FieldLogger, consensusPool *consensus.Pool) *Index
 	return indexer
 }
 
-func (indexer *Indexer) GetInMemoryEpochs() uint16 {
-	return indexer.inMemoryEpochs
+func (indexer *Indexer) GetActivityHistoryLength() uint16 {
+	return indexer.activityHistoryLength
 }
 
 func (indexer *Indexer) getMinInMemoryEpoch() phase0.Epoch {
