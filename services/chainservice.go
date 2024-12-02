@@ -229,13 +229,26 @@ func (bs *ChainService) GetHeadForks(readyOnly bool) []*beacon.ForkHead {
 	return bs.beaconIndexer.GetForkHeads()
 }
 
-func (bs *ChainService) GetCanonicalForkIds() []beacon.ForkKey {
+func (bs *ChainService) GetCanonicalForkIds() []uint64 {
 	canonicalHead := bs.beaconIndexer.GetCanonicalHead(nil)
 	if canonicalHead == nil {
-		return []beacon.ForkKey{0}
+		return []uint64{0}
 	}
 
-	return bs.beaconIndexer.GetParentForkIds(canonicalHead.GetForkId())
+	forkIds := make([]uint64, len(bs.beaconIndexer.GetParentForkIds(canonicalHead.GetForkId())))
+	for idx, forkId := range bs.beaconIndexer.GetParentForkIds(canonicalHead.GetForkId()) {
+		forkIds[idx] = uint64(forkId)
+	}
+	return forkIds
+}
+
+func (bs *ChainService) isCanonicalForkId(forkId uint64, canonicalForkIds []uint64) bool {
+	for _, canonicalForkId := range canonicalForkIds {
+		if canonicalForkId == forkId {
+			return true
+		}
+	}
+	return false
 }
 
 func (bs *ChainService) GetValidatorName(index uint64) string {

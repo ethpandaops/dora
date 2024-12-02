@@ -75,16 +75,29 @@
                     {{- end }}
                   </td>
                   <td>
-                    {{- if eq $request.Status 1 }}
-                      <span class="badge rounded-pill text-bg-success">Included</span>
-                    {{- else if eq $request.Status 2 }}
-                      <span class="badge rounded-pill text-bg-info">Orphaned</span>
-                    {{- else }}
-                      <span class="badge rounded-pill text-bg-secondary">Pending</span>
-                    {{- end }}
+                    {{ if eq $request.TxStatus 1 }}
+                      <span class="badge rounded-pill text-bg-success">Tx Included</span>
+                    {{ else if eq $request.TxStatus 2 }}
+                      <span class="badge rounded-pill text-bg-info">Tx Orphaned</span>
+                    {{ end }}
+                    
+                    {{ if eq $request.Status 0 }}
+                      <span class="badge rounded-pill text-bg-secondary">Req. Pending</span>
+                    {{ else if eq $request.Status 1 }}
+                      <span class="badge rounded-pill text-bg-success">Req. Included</span>
+                    {{ else if eq $request.Status 2 }}
+                      <span class="badge rounded-pill text-bg-info">Req. Orphaned</span>
+                    {{ end }}
                   </td>
                 </tr>
               {{ end }}
+              <tr>
+                <td colspan="8" class="text-center">
+                  {{ if gt .AdditionalConsolidationRequestCount 0 }}
+                    <a class="text-white" href="/validators/consolidation_requests?f&f.pubkey=0x{{ printf "%x" .PublicKey }}">View {{ .AdditionalConsolidationRequestCount }} more consolidation requests</a>
+                  {{ end }}
+                </td>
+              </tr>
             {{ else }}
               <tr style="height: 430px;">
                 <td class="d-none d-md-table-cell"></td>

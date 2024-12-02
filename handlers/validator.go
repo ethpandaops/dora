@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"bytes"
 	"encoding/hex"
 	"fmt"
 	"math"
@@ -425,8 +424,10 @@ func buildValidatorPageData(validatorIndex uint64, tabView string) (*models.Vali
 
 	// load recent withdrawal requests
 	if pageData.TabView == "withdrawalrequests" {
-		dbElWithdrawals, totalElWithdrawals := services.GlobalBeaconService.GetWithdrawalRequestsByFilter(&dbtypes.WithdrawalRequestFilter{
-			PublicKey: validator.Validator.PublicKey[:],
+		dbElWithdrawals, totalElWithdrawals := services.GlobalBeaconService.GetWithdrawalRequestsByFilter(&services.CombinedWithdrawalRequestFilter{
+			Filter: &dbtypes.WithdrawalRequestFilter{
+				PublicKey: validator.Validator.PublicKey[:],
+			},
 		}, 0, 10)
 		if totalElWithdrawals > 10 {
 			pageData.AdditionalWithdrawalRequestCount = totalElWithdrawals - 10
@@ -446,159 +447,71 @@ func buildValidatorPageData(validatorIndex uint64, tabView string) (*models.Vali
 			return txDetails
 		}
 
-		initiatedFilter := &dbtypes.WithdrawalRequestTxFilter{
-			PublicKey: validator.Validator.PublicKey[:],
-		}
-
-		if len(dbElWithdrawals) > 0 {
-			initiatedFilter.MinDequeue = dbElWithdrawals[0].BlockNumber + 1
-		}
-
-		canonicalForkKeys := services.GlobalBeaconService.GetCanonicalForkIds()
-		canonicalForkIds := make([]uint64, len(canonicalForkKeys))
-		for idx, forkKey := range canonicalForkKeys {
-			canonicalForkIds[idx] = uint64(forkKey)
-		}
-		isCanonical := func(forkId uint64) bool {
-			for _, canonicalForkId := range canonicalForkIds {
-				if canonicalForkId == forkId {
-					return true
-				}
-			}
-			return false
-		}
-
+		// get head block number to calculate queue timing
 		headBlock := services.GlobalBeaconService.GetBeaconIndexer().GetCanonicalHead(nil)
 		headBlockNum := uint64(0)
 		if headBlock != nil && headBlock.GetBlockIndex() != nil {
 			headBlockNum = uint64(headBlock.GetBlockIndex().ExecutionNumber)
 		}
 
-		initiatedWithdrawals, totalInitiatedWithdrawals, _ := db.GetWithdrawalRequestTxsFiltered(0, 20, canonicalForkIds, initiatedFilter)
-		if totalInitiatedWithdrawals > 20 {
-			pageData.AdditionalWithdrawalRequestTxCount = totalInitiatedWithdrawals - 20
-		}
-
-		for _, withdrawal := range initiatedWithdrawals {
-			txStatus := uint64(1)
-			if !isCanonical(withdrawal.ForkId) {
-				txStatus = uint64(2)
-			}
-
-			elWithdrawalData := &models.ValidatorPageDataWithdrawal{
-				SlotNumber:         0,
-				Time:               time.Unix(int64(withdrawal.BlockTime), 0),
-				SourceAddr:         withdrawal.SourceAddress,
-				PublicKey:          withdrawal.ValidatorPubkey,
-				Amount:             withdrawal.Amount,
-				TxStatus:           txStatus,
-				TransactionDetails: buildTxDetails(withdrawal),
-				TransactionHash:    withdrawal.TxHash,
-				LinkedTransaction:  true,
-			}
-
-			if headBlockNum > 0 && withdrawal.DequeueBlock > headBlockNum {
-				queuePos := withdrawal.DequeueBlock - headBlockNum
-				elWithdrawalData.SlotNumber = uint64(chainState.CurrentSlot()) + uint64(queuePos)
-			}
-
-			if withdrawal.ValidatorIndex != nil {
-				elWithdrawalData.ValidatorValid = true
-				elWithdrawalData.ValidatorIndex = *withdrawal.ValidatorIndex
-				elWithdrawalData.ValidatorName = services.GlobalBeaconService.GetValidatorName(*withdrawal.ValidatorIndex)
-			}
-
-			pageData.WithdrawalRequests = append(pageData.WithdrawalRequests, elWithdrawalData)
-		}
-
-		chainState := services.GlobalBeaconService.GetChainState()
-		matcherHeight := services.GlobalBeaconService.GetWithdrawalIndexer().GetMatcherHeight()
-
-		requestTxDetailsFor := [][]byte{}
-
 		for _, elWithdrawal := range dbElWithdrawals {
-			status := uint64(1)
-			if !isCanonical(elWithdrawal.ForkId) {
-				status = uint64(2)
-			}
-
 			elWithdrawalData := &models.ValidatorPageDataWithdrawal{
-				IsIncluded:      true,
-				SlotNumber:      elWithdrawal.SlotNumber,
-				SlotRoot:        elWithdrawal.SlotRoot,
-				Status:          status,
-				Time:            chainState.SlotToTime(phase0.Slot(elWithdrawal.SlotNumber)),
-				SourceAddr:      elWithdrawal.SourceAddress,
-				Amount:          elWithdrawal.Amount,
-				PublicKey:       elWithdrawal.ValidatorPubkey,
-				TransactionHash: elWithdrawal.TxHash,
+				SourceAddr: elWithdrawal.SourceAddress(),
+				PublicKey:  elWithdrawal.ValidatorPubkey(),
+				Amount:     elWithdrawal.Amount(),
 			}
 
-			if elWithdrawal.ValidatorIndex != nil {
-				elWithdrawalData.ValidatorIndex = *elWithdrawal.ValidatorIndex
-				elWithdrawalData.ValidatorName = services.GlobalBeaconService.GetValidatorName(*elWithdrawal.ValidatorIndex)
+			if validatorIndex := elWithdrawal.ValidatorIndex(); validatorIndex != nil {
 				elWithdrawalData.ValidatorValid = true
+				elWithdrawalData.ValidatorIndex = *validatorIndex
+				elWithdrawalData.ValidatorName = services.GlobalBeaconService.GetValidatorName(*validatorIndex)
 			}
 
-			if len(elWithdrawalData.TransactionHash) > 0 {
+			if request := elWithdrawal.Request; request != nil {
+				elWithdrawalData.IsIncluded = true
+				elWithdrawalData.SlotNumber = request.SlotNumber
+				elWithdrawalData.SlotRoot = request.SlotRoot
+				elWithdrawalData.Time = chainState.SlotToTime(phase0.Slot(request.SlotNumber))
+				elWithdrawalData.Status = uint64(1)
+				if elWithdrawal.RequestOrphaned {
+					elWithdrawalData.Status = uint64(2)
+				}
+			}
+
+			if elWithdrawal.Transaction != nil {
+				elWithdrawalData.TransactionHash = elWithdrawal.Transaction.TxHash
 				elWithdrawalData.LinkedTransaction = true
-				requestTxDetailsFor = append(requestTxDetailsFor, elWithdrawalData.TransactionHash)
-			} else if elWithdrawal.BlockNumber > matcherHeight {
-				// withdrawal request has not been matched with a tx yet, try to find the tx on the fly
-				withdrawalRequestTx := db.GetWithdrawalRequestTxsByDequeueRange(elWithdrawal.BlockNumber, elWithdrawal.BlockNumber)
-				if len(withdrawalRequestTx) > 1 {
-					forkIds := services.GlobalBeaconService.GetParentForkIds(beacon.ForkKey(elWithdrawal.ForkId))
-					isParentFork := func(forkId uint64) bool {
-						for _, parentForkId := range forkIds {
-							if uint64(parentForkId) == forkId {
-								return true
-							}
-						}
-						return false
-					}
+				elWithdrawalData.TransactionDetails = buildTxDetails(elWithdrawal.Transaction)
+				elWithdrawalData.TxStatus = uint64(1)
+				if elWithdrawal.TransactionOrphaned {
+					elWithdrawalData.TxStatus = uint64(2)
+				}
 
-					matchingTxs := []*dbtypes.WithdrawalRequestTx{}
-					for _, tx := range withdrawalRequestTx {
-						if isParentFork(tx.ForkId) {
-							matchingTxs = append(matchingTxs, tx)
-						}
+				if !elWithdrawalData.IsIncluded {
+					queuePos := int64(elWithdrawal.Transaction.DequeueBlock) - int64(headBlockNum)
+					targetSlot := int64(chainState.CurrentSlot()) + queuePos
+					if targetSlot > 0 {
+						elWithdrawalData.SlotNumber = uint64(targetSlot)
+						elWithdrawalData.Time = chainState.SlotToTime(phase0.Slot(targetSlot))
 					}
-
-					if len(matchingTxs) >= int(elWithdrawal.SlotIndex)+1 {
-						elWithdrawalData.TransactionHash = matchingTxs[elWithdrawal.SlotIndex].TxHash
-						elWithdrawalData.LinkedTransaction = true
-						elWithdrawalData.TransactionDetails = buildTxDetails(matchingTxs[elWithdrawal.SlotIndex])
-					}
-				} else if len(withdrawalRequestTx) == 1 {
-					elWithdrawalData.TransactionHash = withdrawalRequestTx[0].TxHash
-					elWithdrawalData.LinkedTransaction = true
-					elWithdrawalData.TransactionDetails = buildTxDetails(withdrawalRequestTx[0])
 				}
 			}
 
 			pageData.WithdrawalRequests = append(pageData.WithdrawalRequests, elWithdrawalData)
 		}
-		pageData.WithdrawalRequestCount = uint64(len(pageData.WithdrawalRequests))
 
-		// load tx details for withdrawal requests
-		if len(requestTxDetailsFor) > 0 {
-			for _, txDetails := range db.GetWithdrawalRequestTxsByTxHashes(requestTxDetailsFor) {
-				for _, elWithdrawal := range pageData.WithdrawalRequests {
-					if elWithdrawal.TransactionHash != nil && bytes.Equal(elWithdrawal.TransactionHash, txDetails.TxHash) {
-						elWithdrawal.TransactionDetails = buildTxDetails(txDetails)
-					}
-				}
-			}
-		}
+		pageData.WithdrawalRequestCount = uint64(len(pageData.WithdrawalRequests))
 	}
 
 	// load recent consolidation requests
 	if pageData.TabView == "consolidationrequests" {
-		dbElConsolidations, totalElConsolidations := services.GlobalBeaconService.GetConsolidationRequestsByFilter(&dbtypes.ConsolidationRequestFilter{
-			PublicKey: validator.Validator.PublicKey[:],
+		dbConsolidations, totalConsolidations := services.GlobalBeaconService.GetConsolidationRequestsByFilter(&services.CombinedConsolidationRequestFilter{
+			Filter: &dbtypes.ConsolidationRequestFilter{
+				PublicKey: validator.Validator.PublicKey[:],
+			},
 		}, 0, 10)
-		if totalElConsolidations > 10 {
-			pageData.AdditionalConsolidationRequestTxCount = totalElConsolidations - 10
+		if totalConsolidations > 10 {
+			pageData.AdditionalConsolidationRequestCount = totalConsolidations - 10
 		}
 
 		// helper to load tx details for consolidation requests
@@ -615,163 +528,66 @@ func buildValidatorPageData(validatorIndex uint64, tabView string) (*models.Vali
 			return txDetails
 		}
 
-		initiatedFilter := &dbtypes.ConsolidationRequestTxFilter{
-			PublicKey: validator.Validator.PublicKey[:],
-		}
-
-		if len(dbElConsolidations) > 0 {
-			initiatedFilter.MinDequeue = dbElConsolidations[0].BlockNumber + 1
-		}
-
-		canonicalForkKeys := services.GlobalBeaconService.GetCanonicalForkIds()
-		canonicalForkIds := make([]uint64, len(canonicalForkKeys))
-		for idx, forkKey := range canonicalForkKeys {
-			canonicalForkIds[idx] = uint64(forkKey)
-		}
-		isCanonical := func(forkId uint64) bool {
-			for _, canonicalForkId := range canonicalForkIds {
-				if canonicalForkId == forkId {
-					return true
-				}
-			}
-			return false
-		}
-
+		// get head block number to calculate queue timing
 		headBlock := services.GlobalBeaconService.GetBeaconIndexer().GetCanonicalHead(nil)
 		headBlockNum := uint64(0)
 		if headBlock != nil && headBlock.GetBlockIndex() != nil {
 			headBlockNum = uint64(headBlock.GetBlockIndex().ExecutionNumber)
 		}
 
-		initiatedConsolidations, totalInitiatedConsolidations, _ := db.GetConsolidationRequestTxsFiltered(0, 20, canonicalForkIds, initiatedFilter)
-		if totalInitiatedConsolidations > 20 {
-			pageData.AdditionalConsolidationRequestTxCount = totalInitiatedConsolidations - 20
-		}
-
-		for _, consolidation := range initiatedConsolidations {
-			txStatus := uint64(1)
-			if !isCanonical(consolidation.ForkId) {
-				txStatus = uint64(2)
-			}
-
+		for _, consolidation := range dbConsolidations {
 			elConsolidationData := &models.ValidatorPageDataConsolidation{
-				SlotNumber:         0,
-				Time:               time.Unix(int64(consolidation.BlockTime), 0),
-				SourceAddr:         consolidation.SourceAddress,
-				SourcePublicKey:    consolidation.SourcePubkey,
-				TargetPublicKey:    consolidation.TargetPubkey,
-				TxStatus:           txStatus,
-				TransactionDetails: buildTxDetails(consolidation),
-				TransactionHash:    consolidation.TxHash,
-				LinkedTransaction:  true,
+				SourceAddr:      consolidation.SourceAddress(),
+				SourcePublicKey: consolidation.SourcePubkey(),
+				TargetPublicKey: consolidation.TargetPubkey(),
 			}
 
-			if headBlockNum > 0 && consolidation.DequeueBlock > headBlockNum {
-				queuePos := consolidation.DequeueBlock - headBlockNum
-				elConsolidationData.SlotNumber = uint64(chainState.CurrentSlot()) + uint64(queuePos)
-			}
-
-			if consolidation.SourceIndex != nil {
+			if sourceIndex := consolidation.SourceIndex(); sourceIndex != nil {
 				elConsolidationData.SourceValidatorValid = true
-				elConsolidationData.SourceValidatorIndex = *consolidation.SourceIndex
-				elConsolidationData.SourceValidatorName = services.GlobalBeaconService.GetValidatorName(*consolidation.SourceIndex)
+				elConsolidationData.SourceValidatorIndex = *sourceIndex
+				elConsolidationData.SourceValidatorName = services.GlobalBeaconService.GetValidatorName(*sourceIndex)
 			}
 
-			if consolidation.TargetIndex != nil {
+			if targetIndex := consolidation.TargetIndex(); targetIndex != nil {
 				elConsolidationData.TargetValidatorValid = true
-				elConsolidationData.TargetValidatorIndex = *consolidation.TargetIndex
-				elConsolidationData.TargetValidatorName = services.GlobalBeaconService.GetValidatorName(*consolidation.TargetIndex)
+				elConsolidationData.TargetValidatorIndex = *targetIndex
+				elConsolidationData.TargetValidatorName = services.GlobalBeaconService.GetValidatorName(*targetIndex)
 			}
 
-			pageData.ConsolidationRequests = append(pageData.ConsolidationRequests, elConsolidationData)
-		}
-
-		chainState := services.GlobalBeaconService.GetChainState()
-		matcherHeight := services.GlobalBeaconService.GetConsolidationIndexer().GetMatcherHeight()
-
-		requestTxDetailsFor := [][]byte{}
-
-		for _, elConsolidation := range dbElConsolidations {
-			status := uint64(1)
-			if !isCanonical(elConsolidation.ForkId) {
-				status = uint64(2)
+			if request := consolidation.Request; request != nil {
+				elConsolidationData.IsIncluded = true
+				elConsolidationData.SlotNumber = request.SlotNumber
+				elConsolidationData.SlotRoot = request.SlotRoot
+				elConsolidationData.Time = chainState.SlotToTime(phase0.Slot(request.SlotNumber))
+				elConsolidationData.Status = uint64(1)
+				if consolidation.RequestOrphaned {
+					elConsolidationData.Status = uint64(2)
+				}
 			}
 
-			elConsolidationData := &models.ValidatorPageDataConsolidation{
-				IsIncluded:      true,
-				SlotNumber:      elConsolidation.SlotNumber,
-				SlotRoot:        elConsolidation.SlotRoot,
-				Time:            chainState.SlotToTime(phase0.Slot(elConsolidation.SlotNumber)),
-				Status:          status,
-				SourceAddr:      elConsolidation.SourceAddress,
-				SourcePublicKey: elConsolidation.SourcePubkey,
-				TargetPublicKey: elConsolidation.TargetPubkey,
-				TransactionHash: elConsolidation.TxHash,
-			}
-
-			if elConsolidation.SourceIndex != nil {
-				elConsolidationData.SourceValidatorIndex = *elConsolidation.SourceIndex
-				elConsolidationData.SourceValidatorName = services.GlobalBeaconService.GetValidatorName(*elConsolidation.SourceIndex)
-				elConsolidationData.SourceValidatorValid = true
-			}
-
-			if elConsolidation.TargetIndex != nil {
-				elConsolidationData.TargetValidatorIndex = *elConsolidation.TargetIndex
-				elConsolidationData.TargetValidatorName = services.GlobalBeaconService.GetValidatorName(*elConsolidation.TargetIndex)
-				elConsolidationData.TargetValidatorValid = true
-			}
-
-			if len(elConsolidationData.TransactionHash) > 0 {
+			if transaction := consolidation.Transaction; transaction != nil {
+				elConsolidationData.TransactionHash = transaction.TxHash
 				elConsolidationData.LinkedTransaction = true
-				requestTxDetailsFor = append(requestTxDetailsFor, elConsolidationData.TransactionHash)
-			} else if elConsolidation.BlockNumber > matcherHeight {
-				// consolidation request has not been matched with a tx yet, try to find the tx on the fly
-				consolidationRequestTx := db.GetConsolidationRequestTxsByDequeueRange(elConsolidation.BlockNumber, elConsolidation.BlockNumber)
-				if len(consolidationRequestTx) > 1 {
-					forkIds := services.GlobalBeaconService.GetParentForkIds(beacon.ForkKey(elConsolidation.ForkId))
-					isParentFork := func(forkId uint64) bool {
-						for _, parentForkId := range forkIds {
-							if uint64(parentForkId) == forkId {
-								return true
-							}
-						}
-						return false
-					}
+				elConsolidationData.TransactionDetails = buildTxDetails(transaction)
+				elConsolidationData.TxStatus = uint64(1)
+				if consolidation.TransactionOrphaned {
+					elConsolidationData.TxStatus = uint64(2)
+				}
 
-					matchingTxs := []*dbtypes.ConsolidationRequestTx{}
-					for _, tx := range consolidationRequestTx {
-						if isParentFork(tx.ForkId) {
-							matchingTxs = append(matchingTxs, tx)
-						}
+				if !elConsolidationData.IsIncluded {
+					queuePos := int64(consolidation.Transaction.DequeueBlock) - int64(headBlockNum)
+					targetSlot := int64(chainState.CurrentSlot()) + queuePos
+					if targetSlot > 0 {
+						elConsolidationData.SlotNumber = uint64(targetSlot)
+						elConsolidationData.Time = chainState.SlotToTime(phase0.Slot(targetSlot))
 					}
-
-					if len(matchingTxs) >= int(elConsolidation.SlotIndex)+1 {
-						elConsolidationData.TransactionHash = matchingTxs[elConsolidation.SlotIndex].TxHash
-						elConsolidationData.LinkedTransaction = true
-						elConsolidationData.TransactionDetails = buildTxDetails(matchingTxs[elConsolidation.SlotIndex])
-					}
-
-				} else if len(consolidationRequestTx) == 1 {
-					elConsolidationData.TransactionHash = consolidationRequestTx[0].TxHash
-					elConsolidationData.LinkedTransaction = true
-					elConsolidationData.TransactionDetails = buildTxDetails(consolidationRequestTx[0])
 				}
 			}
 
 			pageData.ConsolidationRequests = append(pageData.ConsolidationRequests, elConsolidationData)
 		}
-		pageData.ConsolidationRequestCount = uint64(len(pageData.ConsolidationRequests))
 
-		// load tx details for consolidation requests
-		if len(requestTxDetailsFor) > 0 {
-			for _, txDetails := range db.GetConsolidationRequestTxsByTxHashes(requestTxDetailsFor) {
-				for _, elConsolidation := range pageData.ConsolidationRequests {
-					if elConsolidation.TransactionHash != nil && bytes.Equal(elConsolidation.TransactionHash, txDetails.TxHash) {
-						elConsolidation.TransactionDetails = buildTxDetails(txDetails)
-					}
-				}
-			}
-		}
+		pageData.ConsolidationRequestCount = uint64(len(pageData.ConsolidationRequests))
 	}
 
 	return pageData, 10 * time.Minute

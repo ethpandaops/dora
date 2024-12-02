@@ -38,10 +38,12 @@ type ElConsolidationsPageData struct {
 }
 
 type ElConsolidationsPageDataConsolidation struct {
+	IsIncluded           bool      `json:"is_included"`
 	SlotNumber           uint64    `json:"slot"`
 	SlotRoot             []byte    `json:"slot_root"`
 	Time                 time.Time `json:"time"`
-	Orphaned             bool      `json:"orphaned"`
+	Status               uint64    `json:"status"`
+	TxStatus             uint64    `json:"tx_status"`
 	SourceAddr           []byte    `json:"src_addr"`
 	SourceValidatorValid bool      `json:"src_vvalid"`
 	SourceValidatorIndex uint64    `json:"src_vindex"`

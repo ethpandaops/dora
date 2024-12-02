@@ -61,7 +61,7 @@ func InsertWithdrawalRequests(elRequests []*dbtypes.WithdrawalRequest, tx *sqlx.
 	return nil
 }
 
-func GetWithdrawalRequestsFiltered(offset uint64, limit uint32, finalizedBlock uint64, filter *dbtypes.WithdrawalRequestFilter) ([]*dbtypes.WithdrawalRequest, uint64, error) {
+func GetWithdrawalRequestsFiltered(offset uint64, limit uint32, canonicalForkIds []uint64, filter *dbtypes.WithdrawalRequestFilter) ([]*dbtypes.WithdrawalRequest, uint64, error) {
 	var sql strings.Builder
 	args := []interface{}{}
 	fmt.Fprint(&sql, `
@@ -128,14 +128,22 @@ func GetWithdrawalRequestsFiltered(offset uint64, limit uint32, finalizedBlock u
 		filterOp = "AND"
 	}
 
-	if filter.WithOrphaned == 0 {
-		args = append(args, finalizedBlock)
-		fmt.Fprintf(&sql, " %v (slot_number > $%v OR orphaned = false)", filterOp, len(args))
-		filterOp = "AND"
-	} else if filter.WithOrphaned == 2 {
-		args = append(args, finalizedBlock)
-		fmt.Fprintf(&sql, " %v (slot_number > $%v OR orphaned = true)", filterOp, len(args))
-		filterOp = "AND"
+	if filter.WithOrphaned != 1 {
+		forkIdStr := make([]string, len(canonicalForkIds))
+		for i, forkId := range canonicalForkIds {
+			forkIdStr[i] = fmt.Sprintf("%v", forkId)
+		}
+		if len(forkIdStr) == 0 {
+			forkIdStr = append(forkIdStr, "0")
+		}
+
+		if filter.WithOrphaned == 0 {
+			fmt.Fprintf(&sql, " %v fork_id IN (%v)", filterOp, strings.Join(forkIdStr, ","))
+			filterOp = "AND"
+		} else if filter.WithOrphaned == 2 {
+			fmt.Fprintf(&sql, " %v fork_id NOT IN (%v)", filterOp, strings.Join(forkIdStr, ","))
+			filterOp = "AND"
+		}
 	}
 
 	args = append(args, limit)

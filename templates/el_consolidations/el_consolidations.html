@@ -174,11 +174,13 @@
               <tbody>
                 {{ range $i, $request := .ElRequests }}
                   <tr>
-                    {{- if $request.Orphaned }}
-                    <td><a href="/slot/0x{{ printf "%x" $request.SlotRoot }}">{{ formatAddCommas $request.SlotNumber }}</a></td>
-                    {{- else }}
-                    <td><a href="/slot/{{ $request.SlotNumber }}">{{ formatAddCommas $request.SlotNumber }}</a></td>
-                    {{- end }}
+                    {{ if not $request.IsIncluded }}
+                      <td data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Consolidation request not included in the beacon chain yet">?</td>
+                    {{ else if eq $request.Status 2 }}
+                      <td><a href="/slot/0x{{ printf "%x" $request.SlotRoot }}">{{ formatAddCommas $request.SlotNumber }}</a></td>
+                    {{ else }}
+                      <td><a href="/slot/{{ $request.SlotNumber }}">{{ formatAddCommas $request.SlotNumber }}</a></td>
+                    {{ end }}
                     <td data-timer="{{ $request.Time.Unix }}"><span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $request.Time }}">{{ formatRecentTimeShort $request.Time }}</span></td>
                     <td>
                       <div class="d-flex">
@@ -228,11 +230,19 @@
                       {{- end }}
                     </td>
                     <td>
-                      {{- if $request.Orphaned }}
-                        <span class="badge rounded-pill text-bg-info">Orphaned</span>
-                      {{- else }}
-                        <span class="badge rounded-pill text-bg-success">Included</span>
-                      {{- end }}
+                      {{ if eq $request.TxStatus 1 }}
+                        <span class="badge rounded-pill text-bg-success">Tx Included</span>
+                      {{ else if eq $request.TxStatus 2 }}
+                        <span class="badge rounded-pill text-bg-info">Tx Orphaned</span>
+                      {{ end }}
+                      
+                      {{ if eq $request.Status 0 }}
+                        <span class="badge rounded-pill text-bg-secondary">Req. Pending</span>
+                      {{ else if eq $request.Status 1 }}
+                        <span class="badge rounded-pill text-bg-success">Req. Included</span>
+                      {{ else if eq $request.Status 2 }}
+                        <span class="badge rounded-pill text-bg-info">Req. Orphaned</span>
+                      {{ end }}
                     </td>
                   </tr>
                 {{ end }}
@@ -353,7 +363,6 @@
           </div>
         {{ end }}
       </div>
-      <div id="footer-placeholder" style="height:71px;"></div>
     </div>
   </div>
 {{ end }}
