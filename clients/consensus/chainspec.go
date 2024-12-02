@@ -32,9 +32,9 @@ type ChainSpec struct {
 	CapellaForkEpoch                   *uint64           `yaml:"CAPELLA_FORK_EPOCH"`
 	DenebForkVersion                   phase0.Version    `yaml:"DENEB_FORK_VERSION"`
 	DenebForkEpoch                     *uint64           `yaml:"DENEB_FORK_EPOCH"`
-	ElectraForkVersion                 phase0.Version    `yaml:"ELECTRA_FORK_VERSION" check-if:"(ElectraForkEpoch ?? 18446744073709551615) < 18446744073709551615"`
+	ElectraForkVersion                 phase0.Version    `yaml:"ELECTRA_FORK_VERSION" check-if-fork:"ElectraForkEpoch"`
 	ElectraForkEpoch                   *uint64           `yaml:"ELECTRA_FORK_EPOCH"`
-	Eip7594ForkVersion                 phase0.Version    `yaml:"EIP7594_FORK_VERSION" check-if:"(Eip7594ForkEpoch ?? 18446744073709551615) < 18446744073709551615"`
+	Eip7594ForkVersion                 phase0.Version    `yaml:"EIP7594_FORK_VERSION" check-if-fork:"Eip7594ForkEpoch"`
 	Eip7594ForkEpoch                   *uint64           `yaml:"EIP7594_FORK_EPOCH"`
 	SecondsPerSlot                     time.Duration     `yaml:"SECONDS_PER_SLOT"`
 	SlotsPerEpoch                      uint64            `yaml:"SLOTS_PER_EPOCH"`
@@ -44,7 +44,7 @@ type ChainSpec struct {
 	MinSeedLookahead                   uint64            `yaml:"MIN_SEED_LOOKAHEAD"`
 	ShuffleRoundCount                  uint64            `yaml:"SHUFFLE_ROUND_COUNT"`
 	MaxEffectiveBalance                uint64            `yaml:"MAX_EFFECTIVE_BALANCE"`
-	MaxEffectiveBalanceElectra         uint64            `yaml:"MAX_EFFECTIVE_BALANCE_ELECTRA" check-if:"(ElectraForkEpoch ?? 18446744073709551615) < 18446744073709551615"`
+	MaxEffectiveBalanceElectra         uint64            `yaml:"MAX_EFFECTIVE_BALANCE_ELECTRA" check-if-fork:"ElectraForkEpoch"`
 	TargetCommitteeSize                uint64            `yaml:"TARGET_COMMITTEE_SIZE"`
 	MaxCommitteesPerSlot               uint64            `yaml:"MAX_COMMITTEES_PER_SLOT"`
 	MinPerEpochChurnLimit              uint64            `yaml:"MIN_PER_EPOCH_CHURN_LIMIT"`
@@ -54,15 +54,15 @@ type ChainSpec struct {
 	DomainSyncCommittee                phase0.DomainType `yaml:"DOMAIN_SYNC_COMMITTEE"`
 	SyncCommitteeSize                  uint64            `yaml:"SYNC_COMMITTEE_SIZE"`
 	DepositContractAddress             []byte            `yaml:"DEPOSIT_CONTRACT_ADDRESS"`
-	MaxConsolidationRequestsPerPayload uint64            `yaml:"MAX_CONSOLIDATION_REQUESTS_PER_PAYLOAD" check-if:"(ElectraForkEpoch ?? 18446744073709551615) < 18446744073709551615"`
-	MaxWithdrawalRequestsPerPayload    uint64            `yaml:"MAX_WITHDRAWAL_REQUESTS_PER_PAYLOAD"    check-if:"(ElectraForkEpoch ?? 18446744073709551615) < 18446744073709551615"`
+	MaxConsolidationRequestsPerPayload uint64            `yaml:"MAX_CONSOLIDATION_REQUESTS_PER_PAYLOAD" check-if-fork:"ElectraForkEpoch"`
+	MaxWithdrawalRequestsPerPayload    uint64            `yaml:"MAX_WITHDRAWAL_REQUESTS_PER_PAYLOAD"    check-if-fork:"ElectraForkEpoch"`
 	DepositChainId                     uint64            `yaml:"DEPOSIT_CHAIN_ID"`
 	MinActivationBalance               uint64            `yaml:"MIN_ACTIVATION_BALANCE"`
 
 	// EIP7594: PeerDAS
-	NumberOfColumns              *uint64 `yaml:"NUMBER_OF_COLUMNS"                check-if:"(Eip7594ForkEpoch ?? 18446744073709551615) < 18446744073709551615"`
-	DataColumnSidecarSubnetCount *uint64 `yaml:"DATA_COLUMN_SIDECAR_SUBNET_COUNT" check-if:"(Eip7594ForkEpoch ?? 18446744073709551615) < 18446744073709551615"`
-	CustodyRequirement           *uint64 `yaml:"CUSTODY_REQUIREMENT"              check-if:"(Eip7594ForkEpoch ?? 18446744073709551615) < 18446744073709551615"`
+	NumberOfColumns              *uint64 `yaml:"NUMBER_OF_COLUMNS"                check-if-fork:"Eip7594ForkEpoch"`
+	DataColumnSidecarSubnetCount *uint64 `yaml:"DATA_COLUMN_SIDECAR_SUBNET_COUNT" check-if-fork:"Eip7594ForkEpoch"`
+	CustodyRequirement           *uint64 `yaml:"CUSTODY_REQUIREMENT"              check-if-fork:"Eip7594ForkEpoch"`
 
 	// additional dora specific specs
 	WhiskForkEpoch *uint64
@@ -90,7 +90,15 @@ func (chain *ChainSpec) CheckMismatch(chain2 *ChainSpec) ([]string, error) {
 
 	for i := 0; i < chainT.NumField(); i++ {
 		fieldT := chainT.Type().Field(i)
+
+		// Check both types of conditions
 		checkIfExpression := fieldT.Tag.Get("check-if")
+		checkIfFork := fieldT.Tag.Get("check-if-fork")
+
+		if checkIfFork != "" {
+			checkIfExpression = fmt.Sprintf("(%s ?? 18446744073709551615) < 18446744073709551615", checkIfFork)
+		}
+
 		if checkIfExpression != "" {
 			ok, err := chain.checkIf(checkIfExpression, genericSpecValues)
 			if err != nil {
