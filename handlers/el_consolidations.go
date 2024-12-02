@@ -50,7 +50,8 @@ func ElConsolidations(w http.ResponseWriter, r *http.Request) {
 	var minTgtIndex uint64
 	var maxTgtIndex uint64
 	var tgtVName string
-	var withOrphaned uint64
+	var withOrphaned uint64 = 1
+	var pubkey string
 
 	if urlArgs.Has("f") {
 		if urlArgs.Has("f.mins") {
@@ -83,13 +84,14 @@ func ElConsolidations(w http.ResponseWriter, r *http.Request) {
 		if urlArgs.Has("f.orphaned") {
 			withOrphaned, _ = strconv.ParseUint(urlArgs.Get("f.orphaned"), 10, 64)
 		}
-	} else {
-		withOrphaned = 1
+		if urlArgs.Has("f.pubkey") {
+			pubkey = urlArgs.Get("f.pubkey")
+		}
 	}
 	var pageError error
 	pageError = services.GlobalCallRateLimiter.CheckCallLimit(r, 2)
 	if pageError == nil {
-		data.Data, pageError = getFilteredElConsolidationsPageData(pageIdx, pageSize, minSlot, maxSlot, sourceAddr, minSrcIndex, maxSrcIndex, srcVName, minTgtIndex, maxTgtIndex, tgtVName, uint8(withOrphaned))
+		data.Data, pageError = getFilteredElConsolidationsPageData(pageIdx, pageSize, minSlot, maxSlot, sourceAddr, minSrcIndex, maxSrcIndex, srcVName, minTgtIndex, maxTgtIndex, tgtVName, uint8(withOrphaned), pubkey)
 	}
 	if pageError != nil {
 		handlePageError(w, r, pageError)
@@ -101,11 +103,11 @@ func ElConsolidations(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func getFilteredElConsolidationsPageData(pageIdx uint64, pageSize uint64, minSlot uint64, maxSlot uint64, sourceAddr string, minSrcIndex uint64, maxSrcIndex uint64, srcVName string, minTgtIndex uint64, maxTgtIndex uint64, tgtVName string, withOrphaned uint8) (*models.ElConsolidationsPageData, error) {
+func getFilteredElConsolidationsPageData(pageIdx uint64, pageSize uint64, minSlot uint64, maxSlot uint64, sourceAddr string, minSrcIndex uint64, maxSrcIndex uint64, srcVName string, minTgtIndex uint64, maxTgtIndex uint64, tgtVName string, withOrphaned uint8, pubkey string) (*models.ElConsolidationsPageData, error) {
 	pageData := &models.ElConsolidationsPageData{}
-	pageCacheKey := fmt.Sprintf("el_consolidations:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v", pageIdx, pageSize, minSlot, maxSlot, sourceAddr, minSrcIndex, maxSrcIndex, srcVName, minTgtIndex, maxTgtIndex, tgtVName, withOrphaned)
+	pageCacheKey := fmt.Sprintf("el_consolidations:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v", pageIdx, pageSize, minSlot, maxSlot, sourceAddr, minSrcIndex, maxSrcIndex, srcVName, minTgtIndex, maxTgtIndex, tgtVName, withOrphaned, pubkey)
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(_ *services.FrontendCacheProcessingPage) interface{} {
-		return buildFilteredElConsolidationsPageData(pageIdx, pageSize, minSlot, maxSlot, sourceAddr, minSrcIndex, maxSrcIndex, srcVName, minTgtIndex, maxTgtIndex, tgtVName, withOrphaned)
+		return buildFilteredElConsolidationsPageData(pageIdx, pageSize, minSlot, maxSlot, sourceAddr, minSrcIndex, maxSrcIndex, srcVName, minTgtIndex, maxTgtIndex, tgtVName, withOrphaned, pubkey)
 	})
 	if pageErr == nil && pageRes != nil {
 		resData, resOk := pageRes.(*models.ElConsolidationsPageData)
@@ -117,7 +119,7 @@ func getFilteredElConsolidationsPageData(pageIdx uint64, pageSize uint64, minSlo
 	return pageData, pageErr
 }
 
-func buildFilteredElConsolidationsPageData(pageIdx uint64, pageSize uint64, minSlot uint64, maxSlot uint64, sourceAddr string, minSrcIndex uint64, maxSrcIndex uint64, srcVName string, minTgtIndex uint64, maxTgtIndex uint64, tgtVName string, withOrphaned uint8) *models.ElConsolidationsPageData {
+func buildFilteredElConsolidationsPageData(pageIdx uint64, pageSize uint64, minSlot uint64, maxSlot uint64, sourceAddr string, minSrcIndex uint64, maxSrcIndex uint64, srcVName string, minTgtIndex uint64, maxTgtIndex uint64, tgtVName string, withOrphaned uint8, pubkey string) *models.ElConsolidationsPageData {
 	filterArgs := url.Values{}
 	if minSlot != 0 {
 		filterArgs.Add("f.mins", fmt.Sprintf("%v", minSlot))
@@ -149,6 +151,9 @@ func buildFilteredElConsolidationsPageData(pageIdx uint64, pageSize uint64, minS
 	if withOrphaned != 0 {
 		filterArgs.Add("f.orphaned", fmt.Sprintf("%v", withOrphaned))
 	}
+	if pubkey != "" {
+		filterArgs.Add("f.pubkey", pubkey)
+	}
 
 	pageData := &models.ElConsolidationsPageData{
 		FilterAddress:          sourceAddr,
@@ -161,6 +166,7 @@ func buildFilteredElConsolidationsPageData(pageIdx uint64, pageSize uint64, minS
 		FilterMaxTgtIndex:      maxTgtIndex,
 		FilterTgtValidatorName: tgtVName,
 		FilterWithOrphaned:     withOrphaned,
+		FilterPublicKey:        pubkey,
 	}
 	logrus.Debugf("el_consolidations page called: %v:%v [%v,%v,%v,%v,%v,%v,%v,%v]", pageIdx, pageSize, minSlot, maxSlot, minSrcIndex, maxSrcIndex, srcVName, minTgtIndex, maxTgtIndex, tgtVName)
 	if pageIdx == 1 {
@@ -189,6 +195,7 @@ func buildFilteredElConsolidationsPageData(pageIdx uint64, pageSize uint64, minS
 		MaxTgtIndex:      maxTgtIndex,
 		TgtValidatorName: tgtVName,
 		WithOrphaned:     withOrphaned,
+		PublicKey:        common.FromHex(pubkey),
 	}
 
 	dbElConsolidations, totalRows := services.GlobalBeaconService.GetConsolidationRequestsByFilter(consolidationRequestFilter, pageIdx-1, uint32(pageSize))

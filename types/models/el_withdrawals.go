@@ -14,6 +14,7 @@ type ElWithdrawalsPageData struct {
 	FilterValidatorName string `json:"filter_vname"`
 	FilterWithOrphaned  uint8  `json:"filter_orphaned"`
 	FilterWithType      uint8  `json:"filter_type"`
+	FilterPublicKey     string `json:"filter_pubkey"`
 
 	ElRequests   []*ElWithdrawalsPageDataWithdrawal `json:"withdrawals"`
 	RequestCount uint64                             `json:"request_count"`

@@ -9,6 +9,7 @@ type ElConsolidationsPageData struct {
 	FilterMinSlot          uint64 `json:"filter_mins"`
 	FilterMaxSlot          uint64 `json:"filter_maxs"`
 	FilterAddress          string `json:"filter_address"`
+	FilterPublicKey        string `json:"filter_pubkey"`
 	FilterMinSrcIndex      uint64 `json:"filter_minsi"`
 	FilterMaxSrcIndex      uint64 `json:"filter_maxsi"`
 	FilterSrcValidatorName string `json:"filter_svname"`

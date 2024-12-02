@@ -72,6 +72,15 @@
                     <input name="f.svname" type="text" class="form-control" placeholder="Source Validator Name" aria-label="Source Validator Name" aria-describedby="basic-addon1" value="{{ .FilterSrcValidatorName }}">
                   </div>
                 </div>
+                <div class="row mt-1">
+                  <div class="col-sm-12 col-md-6 col-lg-4">
+                    Public Key
+                    <i class="fa fa-info-circle text-muted ms-2" role="button" data-bs-toggle="tooltip" data-bs-placement="right" title="This filter matches either source or target validator public keys"></i>
+                  </div>
+                  <div class="col-sm-12 col-md-6 col-lg-8">
+                    <input name="f.pubkey" type="text" class="form-control" placeholder="Public Key (source or target)" aria-label="Public Key" aria-describedby="basic-addon1" value="{{ .FilterPublicKey }}">
+                  </div>
+                </div>
               </div>
             </div>
             <div class="col-sm-12 col-md-6">

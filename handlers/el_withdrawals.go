@@ -49,6 +49,7 @@ func ElWithdrawals(w http.ResponseWriter, r *http.Request) {
 	var vname string
 	var withOrphaned uint64
 	var withType uint64
+	var pubkey string
 
 	if urlArgs.Has("f") {
 		if urlArgs.Has("f.mins") {
@@ -75,13 +76,16 @@ func ElWithdrawals(w http.ResponseWriter, r *http.Request) {
 		if urlArgs.Has("f.type") {
 			withType, _ = strconv.ParseUint(urlArgs.Get("f.type"), 10, 64)
 		}
+		if urlArgs.Has("f.pubkey") {
+			pubkey = urlArgs.Get("f.pubkey")
+		}
 	} else {
 		withOrphaned = 1
 	}
 	var pageError error
 	pageError = services.GlobalCallRateLimiter.CheckCallLimit(r, 2)
 	if pageError == nil {
-		data.Data, pageError = getFilteredElWithdrawalsPageData(pageIdx, pageSize, minSlot, maxSlot, sourceAddr, minIndex, maxIndex, vname, uint8(withOrphaned), uint8(withType))
+		data.Data, pageError = getFilteredElWithdrawalsPageData(pageIdx, pageSize, minSlot, maxSlot, sourceAddr, minIndex, maxIndex, vname, uint8(withOrphaned), uint8(withType), pubkey)
 	}
 	if pageError != nil {
 		handlePageError(w, r, pageError)
@@ -93,11 +97,11 @@ func ElWithdrawals(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func getFilteredElWithdrawalsPageData(pageIdx uint64, pageSize uint64, minSlot uint64, maxSlot uint64, sourceAddr string, minIndex uint64, maxIndex uint64, vname string, withOrphaned uint8, withType uint8) (*models.ElWithdrawalsPageData, error) {
+func getFilteredElWithdrawalsPageData(pageIdx uint64, pageSize uint64, minSlot uint64, maxSlot uint64, sourceAddr string, minIndex uint64, maxIndex uint64, vname string, withOrphaned uint8, withType uint8, pubkey string) (*models.ElWithdrawalsPageData, error) {
 	pageData := &models.ElWithdrawalsPageData{}
-	pageCacheKey := fmt.Sprintf("el_withdrawals:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v", pageIdx, pageSize, minSlot, maxSlot, sourceAddr, minIndex, maxIndex, vname, withOrphaned, withType)
+	pageCacheKey := fmt.Sprintf("el_withdrawals:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v", pageIdx, pageSize, minSlot, maxSlot, sourceAddr, minIndex, maxIndex, vname, withOrphaned, withType, pubkey)
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(_ *services.FrontendCacheProcessingPage) interface{} {
-		return buildFilteredElWithdrawalsPageData(pageIdx, pageSize, minSlot, maxSlot, sourceAddr, minIndex, maxIndex, vname, withOrphaned, withType)
+		return buildFilteredElWithdrawalsPageData(pageIdx, pageSize, minSlot, maxSlot, sourceAddr, minIndex, maxIndex, vname, withOrphaned, withType, pubkey)
 	})
 	if pageErr == nil && pageRes != nil {
 		resData, resOk := pageRes.(*models.ElWithdrawalsPageData)
@@ -109,7 +113,7 @@ func getFilteredElWithdrawalsPageData(pageIdx uint64, pageSize uint64, minSlot u
 	return pageData, pageErr
 }
 
-func buildFilteredElWithdrawalsPageData(pageIdx uint64, pageSize uint64, minSlot uint64, maxSlot uint64, sourceAddr string, minIndex uint64, maxIndex uint64, vname string, withOrphaned uint8, withType uint8) *models.ElWithdrawalsPageData {
+func buildFilteredElWithdrawalsPageData(pageIdx uint64, pageSize uint64, minSlot uint64, maxSlot uint64, sourceAddr string, minIndex uint64, maxIndex uint64, vname string, withOrphaned uint8, withType uint8, pubkey string) *models.ElWithdrawalsPageData {
 	filterArgs := url.Values{}
 	if minSlot != 0 {
 		filterArgs.Add("f.mins", fmt.Sprintf("%v", minSlot))
@@ -135,6 +139,9 @@ func buildFilteredElWithdrawalsPageData(pageIdx uint64, pageSize uint64, minSlot
 	if withType != 0 {
 		filterArgs.Add("f.type", fmt.Sprintf("%v", withType))
 	}
+	if pubkey != "" {
+		filterArgs.Add("f.pubkey", pubkey)
+	}
 
 	pageData := &models.ElWithdrawalsPageData{
 		FilterAddress:       sourceAddr,
@@ -145,6 +152,7 @@ func buildFilteredElWithdrawalsPageData(pageIdx uint64, pageSize uint64, minSlot
 		FilterValidatorName: vname,
 		FilterWithOrphaned:  withOrphaned,
 		FilterWithType:      withType,
+		FilterPublicKey:     pubkey,
 	}
 	logrus.Debugf("el_withdrawals page called: %v:%v [%v,%v,%v,%v,%v]", pageIdx, pageSize, minSlot, maxSlot, minIndex, maxIndex, vname)
 	if pageIdx == 1 {
@@ -170,6 +178,7 @@ func buildFilteredElWithdrawalsPageData(pageIdx uint64, pageSize uint64, minSlot
 		MaxIndex:      maxIndex,
 		ValidatorName: vname,
 		WithOrphaned:  withOrphaned,
+		PublicKey:     common.FromHex(pubkey),
 	}
 
 	switch withType {
