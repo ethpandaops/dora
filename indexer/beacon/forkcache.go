@@ -135,6 +135,9 @@ func (cache *forkCache) getParentForkIds(forkId ForkKey) []ForkKey {
 			cache.parentIdCache.Add(ForkKey(dbFork.ForkId), ForkKey(dbFork.ParentFork))
 			cache.parentIdCacheMiss++
 		} else {
+			parentForkId = 0
+			cache.parentIdCache.Add(ForkKey(parentForkId), ForkKey(0))
+			cache.parentIdCacheMiss++
 			break
 		}
 

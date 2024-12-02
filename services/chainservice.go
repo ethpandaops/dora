@@ -235,8 +235,9 @@ func (bs *ChainService) GetCanonicalForkIds() []uint64 {
 		return []uint64{0}
 	}
 
-	forkIds := make([]uint64, len(bs.beaconIndexer.GetParentForkIds(canonicalHead.GetForkId())))
-	for idx, forkId := range bs.beaconIndexer.GetParentForkIds(canonicalHead.GetForkId()) {
+	parentForkKeys := bs.beaconIndexer.GetParentForkIds(canonicalHead.GetForkId())
+	forkIds := make([]uint64, len(parentForkKeys))
+	for idx, forkId := range parentForkKeys {
 		forkIds[idx] = uint64(forkId)
 	}
 	return forkIds
