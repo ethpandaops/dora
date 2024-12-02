@@ -457,14 +457,7 @@ func buildValidatorPageData(validatorIndex uint64, tabView string) (*models.Vali
 		for _, elWithdrawal := range dbElWithdrawals {
 			elWithdrawalData := &models.ValidatorPageDataWithdrawal{
 				SourceAddr: elWithdrawal.SourceAddress(),
-				PublicKey:  elWithdrawal.ValidatorPubkey(),
 				Amount:     elWithdrawal.Amount(),
-			}
-
-			if validatorIndex := elWithdrawal.ValidatorIndex(); validatorIndex != nil {
-				elWithdrawalData.ValidatorValid = true
-				elWithdrawalData.ValidatorIndex = *validatorIndex
-				elWithdrawalData.ValidatorName = services.GlobalBeaconService.GetValidatorName(*validatorIndex)
 			}
 
 			if request := elWithdrawal.Request; request != nil {

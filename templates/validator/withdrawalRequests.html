@@ -9,7 +9,6 @@
               <th>Time</th>
               <th><span class="d-none d-lg-inline">Source </span>Address</th>
               <th><span class="d-none d-lg-inline">Request </span>Type</th>
-              <th>Validator</th>
               <th>Amount</th>
               <th>Transaction</th>
               <th><span class="d-none d-lg-inline">Incl. </span>Status</th>
@@ -29,7 +28,7 @@
                   <td data-timer="{{ $request.Time.Unix }}"><span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $request.Time }}">{{ formatRecentTimeShort $request.Time }}</span></td>
                   <td>
                     <div class="d-flex">
-                      <span class="flex-grow-1 text-truncate" style="max-width: 400px;">{{ ethAddressLink $request.SourceAddr }}</span>
+                      <span class="flex-grow-1 text-truncate" style="width: 150px;">{{ ethAddressLink $request.SourceAddr }}</span>
                       <div>
                         <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ formatEthAddress $request.SourceAddr }}"></i>
                       </div>
@@ -42,23 +41,11 @@
                       Withdrawal
                     {{- end }}
                   </td>
-                  <td>
-                    {{- if $request.ValidatorValid }}
-                      {{ formatValidator $request.ValidatorIndex $request.ValidatorName }}
-                    {{- else }}
-                      <div class="d-flex">
-                        <span class="flex-grow-1 text-truncate" style="max-width: 150px;" data-bs-toggle="tooltip" title="pubkey not in validator set">0x{{ printf "%x" $request.PublicKey }}</span>
-                        <div>
-                          <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $request.PublicKey }}"></i>
-                        </div>
-                      </div>
-                    {{- end }}
-                  </td>
                   <td>{{ formatEthFromGwei $request.Amount }}</td>
                   <td>
                     {{- if $request.LinkedTransaction }}
                     <div class="d-flex">
-                      <span class="flex-grow-1 text-truncate" style="max-width: 150px;">{{ ethTransactionLink $request.TransactionHash 0 }}</span>
+                      <span class="flex-grow-1 text-truncate" style="width: 150px;">{{ ethTransactionLink $request.TransactionHash 0 }}</span>
                       <div>
                         <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $request.TransactionHash }}"></i>
                       </div>
@@ -88,7 +75,7 @@
                 </tr>
               {{ end }}
               <tr>
-                <td colspan="8" class="text-center">
+                <td colspan="7" class="text-center">
                   {{ if gt .AdditionalWithdrawalRequestCount 0 }}
                     <a class="text-white" href="/validators/withdrawal_requests?f&f.pubkey=0x{{ printf "%x" .PublicKey }}">View {{ .AdditionalWithdrawalRequestCount }} more withdrawal requests</a>
                   {{ end }}

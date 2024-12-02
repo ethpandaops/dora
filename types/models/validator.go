@@ -138,10 +138,6 @@ type ValidatorPageDataWithdrawal struct {
 	TxStatus          uint64    `json:"tx_status"`
 	SourceAddr        []byte    `json:"source_addr"`
 	Amount            uint64    `json:"amount"`
-	ValidatorValid    bool      `json:"vvalid"`
-	ValidatorIndex    uint64    `json:"vindex"`
-	ValidatorName     string    `json:"vname"`
-	PublicKey         []byte    `json:"pubkey"`
 	LinkedTransaction bool      `json:"linked_tx"`
 	TransactionHash   []byte    `json:"tx_hash"`
 

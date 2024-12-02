@@ -29,7 +29,7 @@
                   <td data-timer="{{ $request.Time.Unix }}"><span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $request.Time }}">{{ formatRecentTimeShort $request.Time }}</span></td>
                   <td>
                     <div class="d-flex">
-                      <span class="flex-grow-1 text-truncate" style="max-width: 400px;">{{ ethAddressLink $request.SourceAddr }}</span>
+                      <span class="flex-grow-1 text-truncate" style="width: 150px;">{{ ethAddressLink $request.SourceAddr }}</span>
                       <div>
                         <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ formatEthAddress $request.SourceAddr }}"></i>
                       </div>
@@ -37,7 +37,7 @@
                   </td>
                   <td>
                     {{- if $request.SourceValidatorValid }}
-                      {{ formatValidator $request.SourceValidatorIndex $request.SourceValidatorName }}
+                      {{ formatValidatorWithIndex $request.SourceValidatorIndex $request.SourceValidatorName }}
                     {{- else }}
                       <div class="d-flex">
                         <span class="flex-grow-1 text-truncate" style="max-width: 150px;" data-bs-toggle="tooltip" title="pubkey not in validator set">0x{{ printf "%x" $request.SourcePublicKey }}</span>
@@ -49,7 +49,7 @@
                   </td>
                   <td>
                     {{- if $request.TargetValidatorValid }}
-                      {{ formatValidator $request.TargetValidatorIndex $request.TargetValidatorName }}
+                      {{ formatValidatorWithIndex $request.TargetValidatorIndex $request.TargetValidatorName }}
                     {{- else }}
                       <div class="d-flex">
                         <span class="flex-grow-1 text-truncate" style="max-width: 150px;" data-bs-toggle="tooltip" title="pubkey not in validator set">0x{{ printf "%x" $request.TargetPublicKey }}</span>

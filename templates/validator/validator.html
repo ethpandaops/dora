@@ -1,7 +1,7 @@
 {{ define "page" }}
   <div class="container mt-2">
     <div class="d-md-flex py-2 justify-content-md-between">
-      <h1 class="h4 mb-1 mb-md-0"><i class="fas fa-table mx-2"></i> Validator {{ formatValidatorWithIndex .Index .Name }}</h1>
+      <h1 class="h4 mb-1 mb-md-0"><i class="fas fa-table mx-2"></i> Validator {{ formatValidatorNameWithIndex .Index .Name }}</h1>
       <nav aria-label="breadcrumb">
         <ol class="breadcrumb font-size-1 mb-0" style="padding:0; background-color:transparent;">
           <li class="breadcrumb-item"><a href="/" title="Home">Home</a></li>
@@ -107,7 +107,7 @@
         <div class="row border-bottom p-2 mx-0">
           <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Represents the index for this validator in the beacon chain">Index:</span></div>
           <div class="col-md-10">
-            {{ formatValidatorWithIndex .Index .Name }}
+            {{ formatValidatorNameWithIndex .Index .Name }}
             <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ .Index }}"></i>
           </div>
         </div>
