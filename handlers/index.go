@@ -131,7 +131,7 @@ func buildIndexPageData() (*models.IndexPageData, time.Duration) {
 		pageData.NetworkName = utils.Config.Chain.DisplayName
 	}
 
-	currentValidatorSet := services.GlobalBeaconService.GetCachedValidatorSet(false)
+	currentValidatorSet := services.GlobalBeaconService.GetCachedValidatorSet(true)
 	if currentValidatorSet != nil {
 		for _, validator := range currentValidatorSet {
 			if strings.HasPrefix(validator.Status.String(), "active") {

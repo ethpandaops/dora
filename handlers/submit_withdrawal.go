@@ -109,7 +109,7 @@ func handleSubmitWithdrawalPageDataAjax(w http.ResponseWriter, r *http.Request) 
 		address := query.Get("address")
 		addressBytes := common.HexToAddress(address)
 
-		validators := services.GlobalBeaconService.GetCachedValidatorSet(false)
+		validators := services.GlobalBeaconService.GetCachedValidatorSet(true)
 		result := []models.SubmitWithdrawalPageDataValidator{}
 		for _, validator := range validators {
 			if validator.Validator.WithdrawalCredentials[0] == 0x00 {
