@@ -332,8 +332,18 @@ func buildValidatorPageData(validatorIndex uint64, tabView string) (*models.Vali
 			PublicKey: validator.Validator.PublicKey[:],
 		}
 
-		if len(depositsData) > 0 && depositsData[0].Index != nil {
-			initiatedFilter.MinIndex = *depositsData[0].Index + 1
+		if len(depositsData) > 0 {
+			maxIndex := uint64(0)
+			found := false
+			for _, deposit := range depositsData {
+				if deposit.Index != nil && *deposit.Index > maxIndex {
+					maxIndex = *deposit.Index
+					found = true
+				}
+			}
+			if found {
+				initiatedFilter.MinIndex = maxIndex + 1
+			}
 		}
 
 		initiatedDeposits, totalInitiatedDeposits, _ := db.GetDepositTxsFiltered(0, 10, depositSyncState.FinalBlock, initiatedFilter)
