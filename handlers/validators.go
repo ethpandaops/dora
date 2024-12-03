@@ -331,7 +331,7 @@ func buildValidatorsPageData(firstValIdx uint64, pageSize uint64, sortOrder stri
 			validatorData.ExitEpoch = uint64(validator.Validator.ExitEpoch)
 			validatorData.ExitTs = chainState.EpochToTime(validator.Validator.ExitEpoch)
 		}
-		if validator.Validator.WithdrawalCredentials[0] == 0x01 {
+		if validator.Validator.WithdrawalCredentials[0] == 0x01 || validator.Validator.WithdrawalCredentials[0] == 0x02 {
 			validatorData.ShowWithdrawAddress = true
 			validatorData.WithdrawAddress = validator.Validator.WithdrawalCredentials[12:]
 		}
