@@ -1,8 +1,8 @@
 {{ define "consolidationRequests" }}
 
-  <div class="card mt-2">
-    <div class="card-body px-0 py-3">
-      <div class="table-responsive px-0 py-1">
+  <div class="card">
+    <div class="card-body px-0 py-0">
+      <div class="table-responsive px-0 py-0">
         <table class="table table-nobr" id="elRequests">
           <thead>
             <tr>
@@ -100,13 +100,11 @@
               </tr>
             {{ else }}
               <tr style="height: 430px;">
-                <td class="d-none d-md-table-cell"></td>
-                <td style="vertical-align: middle;" colspan="8">
+                <td style="vertical-align: middle;" colspan="7">
                   <div class="img-fluid mx-auto p-3 d-flex align-items-center" style="max-height: 400px; max-width: 400px; overflow: hidden;">
                     {{ template "timeline_svg" }}
                   </div>
                 </td>
-                <td class="d-none d-md-table-cell"></td>
               </tr>
             {{ end }}
           </tbody>
