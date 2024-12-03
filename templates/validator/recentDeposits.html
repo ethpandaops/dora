@@ -44,10 +44,10 @@
                   <div>
                     <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $deposit.TxHash }}"></i>
                   </div>
-                    <div>
-                      <i class="fa fa-info-circle text-muted ml-2 p-1 nojs-hide tx-details-btn" role="button" data-txdetails="{{ includeJSON $deposit.TxDetails true }}"></i>
-                    </div>
+                  <div>
+                    <i class="fa fa-info-circle text-muted ml-2 p-1 nojs-hide tx-details-btn" role="button" data-txdetails="{{ includeJSON $deposit.TxDetails true }}"></i>
                   </div>
+                </div>
                 {{- else }}
                 <span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Corresponding consolidation transaction has not been indexed yet.">?</span>
                 {{- end }}

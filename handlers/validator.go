@@ -170,7 +170,7 @@ func buildValidatorPageData(validatorIndex uint64, tabView string) (*models.Vali
 		pageData.ExitEpoch = uint64(validator.Validator.ExitEpoch)
 		pageData.ExitTs = chainState.EpochToTime(validator.Validator.ExitEpoch)
 	}
-	if validator.Validator.WithdrawalCredentials[0] == 0x01 {
+	if validator.Validator.WithdrawalCredentials[0] == 0x01 || validator.Validator.WithdrawalCredentials[0] == 0x02 {
 		pageData.ShowWithdrawAddress = true
 		pageData.WithdrawAddress = validator.Validator.WithdrawalCredentials[12:]
 	}
@@ -581,6 +581,87 @@ func buildValidatorPageData(validatorIndex uint64, tabView string) (*models.Vali
 		}
 
 		pageData.ConsolidationRequestCount = uint64(len(pageData.ConsolidationRequests))
+	}
+
+	// Check for exit reason if validator is exiting or has exited
+	if pageData.ShowExit {
+		zeroAmount := uint64(0)
+		exitSlot := uint64(chainState.EpochToSlot(validator.Validator.ExitEpoch))
+
+		// Check for slashing
+		if slashings, totalSlashings := services.GlobalBeaconService.GetSlashingsByFilter(&dbtypes.SlashingFilter{
+			MinIndex: validatorIndex,
+			MaxIndex: validatorIndex,
+		}, 0, 1); totalSlashings > 0 && len(slashings) > 0 {
+			pageData.ExitReason = "Validator was slashed"
+			pageData.ExitReasonSlashing = true
+			pageData.ExitReasonSlot = slashings[0].SlotNumber
+			pageData.ExitReasonSlashingReason = uint64(slashings[0].Reason)
+
+			// Check for voluntary exit
+		} else if exits, totalExits := services.GlobalBeaconService.GetVoluntaryExitsByFilter(&dbtypes.VoluntaryExitFilter{
+			MinIndex: validatorIndex,
+			MaxIndex: validatorIndex,
+		}, 0, 1); totalExits > 0 && len(exits) > 0 {
+			pageData.ExitReason = "Validator submitted a voluntary exit request"
+			pageData.ExitReasonVoluntaryExit = true
+			pageData.ExitReasonSlot = exits[0].SlotNumber
+
+			// Check for full withdrawal request
+		} else if withdrawals, totalWithdrawals := services.GlobalBeaconService.GetWithdrawalRequestsByFilter(&services.CombinedWithdrawalRequestFilter{
+			Filter: &dbtypes.WithdrawalRequestFilter{
+				PublicKey:     validator.Validator.PublicKey[:],
+				SourceAddress: pageData.WithdrawAddress,
+				MaxAmount:     &zeroAmount,
+				MaxSlot:       exitSlot,
+			},
+		}, 0, 1); totalWithdrawals > 0 && len(withdrawals) > 0 && pageData.ShowWithdrawAddress {
+			withdrawal := withdrawals[0]
+			pageData.ExitReason = "Validator submitted a full withdrawal request"
+			pageData.ExitReasonWithdrawal = true
+			pageData.ExitReasonSlot = withdrawal.Request.SlotNumber
+
+			if withdrawal.Transaction != nil {
+				pageData.ExitReasonTxHash = withdrawal.Transaction.TxHash
+				pageData.ExitReasonTxDetails = &models.ValidatorPageDataWithdrawalTxDetails{
+					BlockNumber: withdrawal.Transaction.BlockNumber,
+					BlockHash:   fmt.Sprintf("%#x", withdrawal.Transaction.BlockRoot),
+					BlockTime:   withdrawal.Transaction.BlockTime,
+					TxOrigin:    common.Address(withdrawal.Transaction.TxSender).Hex(),
+					TxTarget:    common.Address(withdrawal.Transaction.TxTarget).Hex(),
+					TxHash:      fmt.Sprintf("%#x", withdrawal.Transaction.TxHash),
+				}
+			}
+			// Check for consolidation request
+		} else if consolidations, totalConsolidations := services.GlobalBeaconService.GetConsolidationRequestsByFilter(&services.CombinedConsolidationRequestFilter{
+			Filter: &dbtypes.ConsolidationRequestFilter{
+				PublicKey:     validator.Validator.PublicKey[:],
+				SourceAddress: pageData.WithdrawAddress,
+				MaxSlot:       exitSlot,
+			},
+		}, 0, 1); totalConsolidations > 0 && len(consolidations) > 0 && pageData.ShowWithdrawAddress {
+			consolidation := consolidations[0]
+			pageData.ExitReason = "Validator was consolidated"
+			pageData.ExitReasonConsolidation = true
+			pageData.ExitReasonSlot = consolidation.Request.SlotNumber
+
+			if targetIndex := consolidation.TargetIndex(); targetIndex != nil {
+				pageData.ExitReasonTargetIndex = *targetIndex
+				pageData.ExitReasonTargetName = services.GlobalBeaconService.GetValidatorName(*targetIndex)
+			}
+
+			if consolidation.Transaction != nil {
+				pageData.ExitReasonTxHash = consolidation.Transaction.TxHash
+				pageData.ExitReasonTxDetails = &models.ValidatorPageDataWithdrawalTxDetails{
+					BlockNumber: consolidation.Transaction.BlockNumber,
+					BlockHash:   fmt.Sprintf("%#x", consolidation.Transaction.BlockRoot),
+					BlockTime:   consolidation.Transaction.BlockTime,
+					TxOrigin:    common.Address(consolidation.Transaction.TxSender).Hex(),
+					TxTarget:    common.Address(consolidation.Transaction.TxTarget).Hex(),
+					TxHash:      fmt.Sprintf("%#x", consolidation.Transaction.TxHash),
+				}
+			}
+		}
 	}
 
 	return pageData, 10 * time.Minute

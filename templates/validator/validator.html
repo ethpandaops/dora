@@ -152,6 +152,39 @@
           </div>
         </div>
         {{ end }}
+        {{ if .ExitReason }}
+        <div class="row border-bottom p-2 mx-0">
+          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Reason why this validator is exiting or has exited">Exit Reason:</span></div>
+          <div class="col-md-10">
+            {{ if .ExitReasonSlashing }}
+              Validator was slashed in <a href="/slot/{{ .ExitReasonSlot }}">slot {{ .ExitReasonSlot }}</a> 
+              ({{ if eq .ExitReasonSlashingReason 1 }}Proposer Slashing{{ else if eq .ExitReasonSlashingReason 2 }}Attester Slashing{{ else }}Unknown Slashing{{ end }})
+            {{ else if .ExitReasonVoluntaryExit }}
+              Validator submitted a voluntary exit request in <a href="/slot/{{ .ExitReasonSlot }}">slot {{ .ExitReasonSlot }}</a>
+            {{ else if .ExitReasonWithdrawal }}
+              Validator submitted a full withdrawal request in <a href="/slot/{{ .ExitReasonSlot }}">slot {{ .ExitReasonSlot }}</a>
+              {{ if .ExitReasonTxDetails }}
+              <br/>
+              <small class="text-muted">
+                Transaction: {{ ethTransactionLink .ExitReasonTxHash 0 }}
+                <i class="fa fa-info-circle text-muted ml-2 p-1 nojs-hide tx-details-btn" role="button" data-txdetails="{{ includeJSON .ExitReasonTxDetails true }}"></i>
+              </small>
+              {{ end }}
+            {{ else if .ExitReasonConsolidation }}
+              Validator was consolidated into validator {{ formatValidatorWithIndex .ExitReasonTargetIndex .ExitReasonTargetName }} (Requested in <a href="/slot/{{ .ExitReasonSlot }}">slot {{ .ExitReasonSlot }}</a>)
+              {{ if .ExitReasonTxDetails }}
+              <br/>
+              <small class="text-muted">
+                Transaction: {{ ethTransactionLink .ExitReasonTxHash 0 }} 
+                <i class="fa fa-info-circle text-muted ml-2 p-1 nojs-hide tx-details-btn" role="button" data-txdetails="{{ includeJSON .ExitReasonTxDetails true }}"></i>
+              </small>
+              {{ end }}
+            {{ else }}
+              {{ .ExitReason }}
+            {{ end }}
+          </div>
+        </div>
+        {{ end }}
         
       </div>
     </div>
