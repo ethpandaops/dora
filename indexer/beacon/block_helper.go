@@ -286,7 +286,7 @@ func getStateDepositIndex(state *spec.VersionedBeaconState) uint64 {
 	return 0
 }
 
-// getStateRandaoMixes returns the RANDAO mixes from a versioned beacon state.
+// getStateRandaoMixes returns the current sync committee from a versioned beacon state.
 func getStateCurrentSyncCommittee(v *spec.VersionedBeaconState) ([]phase0.BLSPubKey, error) {
 	switch v.Version {
 	case spec.DataVersionPhase0:
