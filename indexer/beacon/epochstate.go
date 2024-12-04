@@ -172,19 +172,23 @@ func (s *epochState) processState(state *spec.VersionedBeaconState, cache *epoch
 	s.randaoMixes = randaoMixes
 	s.depositIndex = getStateDepositIndex(state)
 
-	currentSyncCommittee, err := getStateCurrentSyncCommittee(state)
-	if err != nil {
-		return fmt.Errorf("error getting current sync committee from state %v: %v", s.slotRoot.String(), err)
-	}
+	if state.Version >= spec.DataVersionAltair {
+		currentSyncCommittee, err := getStateCurrentSyncCommittee(state)
+		if err != nil {
+			return fmt.Errorf("error getting current sync committee from state %v: %v", s.slotRoot.String(), err)
+		}
 
-	syncCommittee := make([]phase0.ValidatorIndex, len(currentSyncCommittee))
-	for i, v := range currentSyncCommittee {
-		syncCommittee[i] = validatorPubkeyMap[v]
+		syncCommittee := make([]phase0.ValidatorIndex, len(currentSyncCommittee))
+		for i, v := range currentSyncCommittee {
+			syncCommittee[i] = validatorPubkeyMap[v]
+		}
+		if cache != nil {
+			syncCommittee = cache.getOrUpdateSyncCommittee(syncCommittee)
+		}
+		s.syncCommittee = syncCommittee
+	} else {
+		s.syncCommittee = []phase0.ValidatorIndex{}
 	}
-	if cache != nil {
-		syncCommittee = cache.getOrUpdateSyncCommittee(syncCommittee)
-	}
-	s.syncCommittee = syncCommittee
 
 	return nil
 }
