@@ -55,8 +55,15 @@ jobs:
       uses: actions/setup-node@v4
       with:
         node-version: 20.x
-        cache: 'npm'
-        cache-dependency-path: ./ui-package/package-lock.json
+    - name: Cache node-modules for UI package
+      id: cache-npm
+      uses: actions/cache@v3
+      with:
+        path: ./ui-package/node_modules
+        key: uipackage-npm-${{ runner.os }}-${{ hashFiles('./ui-package/package-lock.json') }}
+        restore-keys: |
+          uipackage-npm-${{ runner.os }}-
+          uipackage-npm-
     
     # build UI package
     - name: Build UI package
