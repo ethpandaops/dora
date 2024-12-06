@@ -20,21 +20,15 @@ jobs:
       uses: actions/setup-node@v4
       with:
         node-version: 20.x
-        cache: 'npm'
-        cache-dependency-path: ./ui-package/package-lock.json
-    - name: Cache node modules
+    - name: Cache node-modules for UI package
       id: cache-npm
       uses: actions/cache@v3
-      env:
-        cache-name: cache-node-modules
       with:
-        # npm cache files are stored in `~/.npm` on Linux/macOS
         path: ./ui-package/node_modules
-        key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ hashFiles('./ui-package/package-lock.json') }}
+        key: uipackage-npm-${{ runner.os }}-${{ hashFiles('./ui-package/package-lock.json') }}
         restore-keys: |
-          ${{ runner.os }}-build-${{ env.cache-name }}-
-          ${{ runner.os }}-build-
-          ${{ runner.os }}-
+          uipackage-npm-${{ runner.os }}-
+          uipackage-npm-
 
     - name: Prepare test environment
       run: mkdir -p ui-package/dist && touch ui-package/dist/dummy
