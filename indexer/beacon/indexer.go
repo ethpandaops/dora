@@ -9,7 +9,6 @@ import (
 
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
-	"github.com/ethereum/go-ethereum/common/lru"
 	"github.com/jmoiron/sqlx"
 	dynssz "github.com/pk910/dynamic-ssz"
 	"github.com/sirupsen/logrus"
@@ -35,12 +34,14 @@ type Indexer struct {
 	disableSync           bool
 	blockCompression      bool
 	inMemoryEpochs        uint16
+	activityHistoryLength uint16
 	maxParallelStateCalls uint16
 
 	// caches
-	blockCache *blockCache
-	epochCache *epochCache
-	forkCache  *forkCache
+	blockCache     *blockCache
+	epochCache     *epochCache
+	forkCache      *forkCache
+	validatorCache *validatorCache
 
 	// indexer state
 	clients               []*Client
@@ -62,9 +63,6 @@ type Indexer struct {
 	canonicalHead        *Block
 	canonicalComputation phase0.Root
 	cachedChainHeads     []*ChainHead
-
-	// canonical validator set cache
-	validatorSetCache *lru.Cache[epochStatsKey, []*v1.Validator]
 }
 
 // NewIndexer creates a new instance of the Indexer.
@@ -73,6 +71,10 @@ func NewIndexer(logger logrus.FieldLogger, consensusPool *consensus.Pool) *Index
 	inMemoryEpochs := utils.Config.Indexer.InMemoryEpochs
 	if inMemoryEpochs < 2 {
 		inMemoryEpochs = 2
+	}
+	activityHistoryLength := utils.Config.Indexer.ActivityHistoryLength
+	if activityHistoryLength == 0 {
+		activityHistoryLength = 6
 	}
 	maxParallelStateCalls := uint16(utils.Config.Indexer.MaxParallelValidatorSetRequests)
 	if maxParallelStateCalls < 2 {
@@ -91,20 +93,24 @@ func NewIndexer(logger logrus.FieldLogger, consensusPool *consensus.Pool) *Index
 		disableSync:           utils.Config.Indexer.DisableSynchronizer,
 		blockCompression:      blockCompression,
 		inMemoryEpochs:        inMemoryEpochs,
+		activityHistoryLength: activityHistoryLength,
 		maxParallelStateCalls: maxParallelStateCalls,
 
 		clients:              make([]*Client, 0),
 		backfillCompleteChan: make(chan bool),
-
-		validatorSetCache: lru.NewCache[epochStatsKey, []*v1.Validator](2),
 	}
 
 	indexer.blockCache = newBlockCache(indexer)
 	indexer.epochCache = newEpochCache(indexer)
 	indexer.forkCache = newForkCache(indexer)
+	indexer.validatorCache = newValidatorCache(indexer)
 	indexer.dbWriter = newDbWriter(indexer)
 
 	return indexer
+}
+
+func (indexer *Indexer) GetActivityHistoryLength() uint16 {
+	return indexer.activityHistoryLength
 }
 
 func (indexer *Indexer) getMinInMemoryEpoch() phase0.Epoch {
@@ -340,6 +346,7 @@ func (indexer *Indexer) StartIndexer() {
 			}
 		}
 
+		indexer.blockCache.latestBlock = block
 		restoredBlockCount++
 
 		if time.Since(t1) > 5*time.Second {

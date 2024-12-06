@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"math"
 	"sort"
 	"time"
 
@@ -228,6 +229,29 @@ func (bs *ChainService) GetHeadForks(readyOnly bool) []*beacon.ForkHead {
 	return bs.beaconIndexer.GetForkHeads()
 }
 
+func (bs *ChainService) GetCanonicalForkIds() []uint64 {
+	canonicalHead := bs.beaconIndexer.GetCanonicalHead(nil)
+	if canonicalHead == nil {
+		return []uint64{0}
+	}
+
+	parentForkKeys := bs.beaconIndexer.GetParentForkIds(canonicalHead.GetForkId())
+	forkIds := make([]uint64, len(parentForkKeys))
+	for idx, forkId := range parentForkKeys {
+		forkIds[idx] = uint64(forkId)
+	}
+	return forkIds
+}
+
+func (bs *ChainService) isCanonicalForkId(forkId uint64, canonicalForkIds []uint64) bool {
+	for _, canonicalForkId := range canonicalForkIds {
+		if canonicalForkId == forkId {
+			return true
+		}
+	}
+	return false
+}
+
 func (bs *ChainService) GetValidatorName(index uint64) string {
 	return bs.validatorNames.GetValidatorName(index)
 }
@@ -236,16 +260,18 @@ func (bs *ChainService) GetValidatorNamesCount() uint64 {
 	return bs.validatorNames.GetValidatorNamesCount()
 }
 
-func (bs *ChainService) GetCachedValidatorSet() []*v1.Validator {
-	return bs.beaconIndexer.GetCanonicalValidatorSet(nil)
+func (bs *ChainService) GetCachedValidatorSet(withBalance bool) []*v1.Validator {
+	currentEpoch := bs.consensusPool.GetChainState().CurrentEpoch()
+	return bs.beaconIndexer.GetEpochValidatorSet(currentEpoch, nil, withBalance)
 }
 
-func (bs *ChainService) GetCachedValidatorPubkeyMap() map[phase0.BLSPubKey]*v1.Validator {
-	pubkeyMap := map[phase0.BLSPubKey]*v1.Validator{}
-	for _, val := range bs.GetCachedValidatorSet() {
-		pubkeyMap[val.Validator.PublicKey] = val
-	}
-	return pubkeyMap
+func (bs *ChainService) GetValidatorByIndex(index phase0.ValidatorIndex, withBalance bool) *v1.Validator {
+	currentEpoch := bs.consensusPool.GetChainState().CurrentEpoch()
+	return bs.beaconIndexer.GetEpochValidator(index, currentEpoch, nil, withBalance)
+}
+
+func (bs *ChainService) GetValidatorIndexByPubkey(pubkey phase0.BLSPubKey) (phase0.ValidatorIndex, bool) {
+	return bs.beaconIndexer.GetValidatorIndexByPubkey(pubkey)
 }
 
 func (bs *ChainService) GetFinalizedEpoch() (phase0.Epoch, phase0.Root) {
@@ -338,45 +364,37 @@ func (bs *ChainService) GetConsensusClientForks() []*ConsensusClientFork {
 	return headForks
 }
 
-func (bs *ChainService) GetValidatorActivity(epochLimit uint64, withCurrentEpoch bool) (map[phase0.ValidatorIndex]uint8, uint64) {
+func (bs *ChainService) GetValidatorVotingActivity(validatorIndex phase0.ValidatorIndex) ([]beacon.ValidatorActivity, phase0.Epoch) {
+	return bs.beaconIndexer.GetValidatorActivity(validatorIndex)
+}
+
+func (bs *ChainService) GetValidatorLiveness(validatorIndex phase0.ValidatorIndex, lookbackEpochs uint64) (votedEpochs uint64) {
+	validatorActivity, _ := bs.beaconIndexer.GetValidatorActivity(validatorIndex)
 	chainState := bs.consensusPool.GetChainState()
-	_, prunedEpoch := bs.beaconIndexer.GetBlockCacheState()
-	currentEpoch := chainState.CurrentEpoch()
-	if !withCurrentEpoch {
-		if currentEpoch == 0 {
-			return map[phase0.ValidatorIndex]uint8{}, 0
-		}
 
-		currentEpoch--
+	latestEpoch := uint64(chainState.CurrentEpoch())
+	if latestEpoch > 2 {
+		latestEpoch -= 2
+	} else {
+		latestEpoch = 0
 	}
 
-	activityMap := map[phase0.ValidatorIndex]uint8{}
-	aggregationCount := uint64(0)
+	lastEpoch := uint64(math.MaxUint64)
+	for _, activity := range validatorActivity {
+		epoch := uint64(chainState.EpochOfSlot(activity.VoteBlock.Slot - phase0.Slot(activity.VoteDelay)))
+		if latestEpoch < epoch {
+			latestEpoch = epoch
+		} else if epoch+lookbackEpochs <= latestEpoch {
+			break
+		}
 
-	for epochIdx := int64(currentEpoch); epochIdx >= int64(prunedEpoch) && epochLimit > 0; epochIdx-- {
-		epoch := phase0.Epoch(epochIdx)
-		epochLimit--
-
-		epochStats := bs.beaconIndexer.GetEpochStats(epoch, nil)
-		if epochStats == nil {
+		if epoch == lastEpoch {
 			continue
 		}
 
-		epochStatsValues := epochStats.GetValues(true)
-		if epochStatsValues == nil {
-			continue
-		}
-
-		epochVotes := epochStats.GetEpochVotes(bs.beaconIndexer, nil)
-
-		for valIdx, validatorIndex := range epochStatsValues.ActiveIndices {
-			if epochVotes.ActivityBitfield.BitAt(uint64(valIdx)) {
-				activityMap[validatorIndex]++
-			}
-		}
-
-		aggregationCount++
+		lastEpoch = epoch
+		votedEpochs++
 	}
 
-	return activityMap, aggregationCount
+	return
 }

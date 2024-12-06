@@ -121,7 +121,7 @@ func buildValidatorsPageData(firstValIdx uint64, pageSize uint64, sortOrder stri
 
 	// get latest validator set
 	var validatorSet []*v1.Validator
-	validatorSetRsp := services.GlobalBeaconService.GetCachedValidatorSet()
+	validatorSetRsp := services.GlobalBeaconService.GetCachedValidatorSet(true)
 	if validatorSetRsp == nil {
 		cacheTime = 5 * time.Minute
 		validatorSet = []*v1.Validator{}
@@ -278,9 +278,6 @@ func buildValidatorsPageData(firstValIdx uint64, pageSize uint64, sortOrder stri
 	}
 	pageData.LastPageValIdx = totalValidatorCount - pageSize
 
-	// load activity map
-	activityMap, maxActivity := services.GlobalBeaconService.GetValidatorActivity(3, false)
-
 	// get validators
 	lastValIdx := firstValIdx + pageSize
 	if lastValIdx >= totalValidatorCount {
@@ -289,6 +286,10 @@ func buildValidatorsPageData(firstValIdx uint64, pageSize uint64, sortOrder stri
 	pageData.Validators = make([]*models.ValidatorsPageDataValidator, 0)
 
 	for _, validator := range validatorSet[firstValIdx:lastValIdx] {
+		if validator == nil || validator.Validator == nil {
+			continue
+		}
+
 		validatorData := &models.ValidatorsPageDataValidator{
 			Index:            uint64(validator.Index),
 			Name:             services.GlobalBeaconService.GetValidatorName(uint64(validator.Index)),
@@ -316,8 +317,8 @@ func buildValidatorsPageData(firstValIdx uint64, pageSize uint64, sortOrder stri
 		}
 
 		if validatorData.ShowUpcheck {
-			validatorData.UpcheckActivity = activityMap[validator.Index]
-			validatorData.UpcheckMaximum = uint8(maxActivity)
+			validatorData.UpcheckActivity = uint8(services.GlobalBeaconService.GetValidatorLiveness(validator.Index, 3))
+			validatorData.UpcheckMaximum = uint8(3)
 		}
 
 		if validator.Validator.ActivationEpoch < 18446744073709551615 {
@@ -330,7 +331,7 @@ func buildValidatorsPageData(firstValIdx uint64, pageSize uint64, sortOrder stri
 			validatorData.ExitEpoch = uint64(validator.Validator.ExitEpoch)
 			validatorData.ExitTs = chainState.EpochToTime(validator.Validator.ExitEpoch)
 		}
-		if validator.Validator.WithdrawalCredentials[0] == 0x01 {
+		if validator.Validator.WithdrawalCredentials[0] == 0x01 || validator.Validator.WithdrawalCredentials[0] == 0x02 {
 			validatorData.ShowWithdrawAddress = true
 			validatorData.WithdrawAddress = validator.Validator.WithdrawalCredentials[12:]
 		}

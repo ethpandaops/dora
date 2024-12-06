@@ -701,12 +701,6 @@ func (dbw *dbWriter) buildDbConsolidationRequests(block *Block, orphaned bool, o
 		return []*dbtypes.ConsolidationRequest{}
 	}
 
-	validatorSet := dbw.indexer.GetCanonicalValidatorSet(nil)
-	validatorSetMap := make(map[phase0.BLSPubKey]uint64, len(validatorSet))
-	for idx, validator := range validatorSet {
-		validatorSetMap[validator.Validator.PublicKey] = uint64(idx)
-	}
-
 	blockNumber, _ := blockBody.ExecutionBlockNumber()
 
 	dbConsolidations := make([]*dbtypes.ConsolidationRequest, len(consolidations))
@@ -725,10 +719,12 @@ func (dbw *dbWriter) buildDbConsolidationRequests(block *Block, orphaned bool, o
 		if overrideForkId != nil {
 			dbConsolidation.ForkId = uint64(*overrideForkId)
 		}
-		if sourceIdx, found := validatorSetMap[consolidation.SourcePubkey]; found {
+		if sourceIdx, found := dbw.indexer.validatorCache.getValidatorIndexByPubkey(consolidation.SourcePubkey); found {
+			sourceIdx := uint64(sourceIdx)
 			dbConsolidation.SourceIndex = &sourceIdx
 		}
-		if targetIdx, found := validatorSetMap[consolidation.TargetPubkey]; found {
+		if targetIdx, found := dbw.indexer.validatorCache.getValidatorIndexByPubkey(consolidation.TargetPubkey); found {
+			targetIdx := uint64(targetIdx)
 			dbConsolidation.TargetIndex = &targetIdx
 		}
 
@@ -769,12 +765,6 @@ func (dbw *dbWriter) buildDbWithdrawalRequests(block *Block, orphaned bool, over
 		return []*dbtypes.WithdrawalRequest{}
 	}
 
-	validatorSet := dbw.indexer.GetCanonicalValidatorSet(nil)
-	validatorSetMap := make(map[phase0.BLSPubKey]uint64, len(validatorSet))
-	for idx, validator := range validatorSet {
-		validatorSetMap[validator.Validator.PublicKey] = uint64(idx)
-	}
-
 	blockNumber, _ := blockBody.ExecutionBlockNumber()
 
 	dbWithdrawalRequests := make([]*dbtypes.WithdrawalRequest, len(withdrawalRequests))
@@ -793,7 +783,8 @@ func (dbw *dbWriter) buildDbWithdrawalRequests(block *Block, orphaned bool, over
 		if overrideForkId != nil {
 			dbWithdrawalRequest.ForkId = uint64(*overrideForkId)
 		}
-		if validatorIdx, found := validatorSetMap[withdrawalRequest.ValidatorPubkey]; found {
+		if validatorIdx, found := dbw.indexer.validatorCache.getValidatorIndexByPubkey(withdrawalRequest.ValidatorPubkey); found {
+			validatorIdx := uint64(validatorIdx)
 			dbWithdrawalRequest.ValidatorIndex = &validatorIdx
 		}
 

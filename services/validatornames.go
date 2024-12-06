@@ -12,7 +12,6 @@ import (
 	"sync"
 	"time"
 
-	v1 "github.com/attestantio/go-eth2-client/api/v1"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethpandaops/dora/clients/consensus"
@@ -136,7 +135,7 @@ func (vn *ValidatorNames) getDefaultValidatorNames() string {
 }
 
 func (vn *ValidatorNames) resolveNames() (bool, error) {
-	validatorSet := vn.beaconIndexer.GetCanonicalValidatorSet(nil)
+	validatorSet := vn.beaconIndexer.GetValidatorSet(nil)
 	if validatorSet == nil {
 		return false, fmt.Errorf("validator set not ready")
 	}
@@ -153,18 +152,22 @@ func (vn *ValidatorNames) resolveNames() (bool, error) {
 	}
 
 	// resolve names by withdrawal address
-	validatorSetMap := map[phase0.BLSPubKey]*v1.Validator{}
-	for _, validator := range validatorSet {
-		validatorSetMap[validator.Validator.PublicKey] = validator
-
-		if validator.Validator.WithdrawalCredentials[0] == 0x00 {
+	validatorSetMap := map[phase0.BLSPubKey]uint64{}
+	for vidx, validator := range validatorSet {
+		if validator == nil {
 			continue
 		}
 
-		validatorWithdrawalAddr := common.Address(validator.Validator.WithdrawalCredentials[12:])
+		validatorSetMap[validator.PublicKey] = uint64(vidx)
+
+		if validator.WithdrawalCredentials[0] == 0x00 {
+			continue
+		}
+
+		validatorWithdrawalAddr := common.Address(validator.WithdrawalCredentials[12:])
 		name := vn.namesByWithdrawal[validatorWithdrawalAddr]
 		if name != nil {
-			addResolved(uint64(validator.Index), name)
+			addResolved(uint64(vidx), name)
 		}
 	}
 
@@ -178,9 +181,9 @@ func (vn *ValidatorNames) resolveNames() (bool, error) {
 				Address: address[:],
 			})
 			for _, deposit := range deposits {
-				validator := validatorSetMap[phase0.BLSPubKey(deposit.PublicKey)]
-				if validator != nil {
-					addResolved(uint64(validator.Index), vn.namesByDepositOrigin[address])
+				validatorIndex, found := validatorSetMap[phase0.BLSPubKey(deposit.PublicKey)]
+				if found {
+					addResolved(validatorIndex, vn.namesByDepositOrigin[address])
 				}
 			}
 
@@ -201,9 +204,9 @@ func (vn *ValidatorNames) resolveNames() (bool, error) {
 				TargetAddress: address[:],
 			})
 			for _, deposit := range deposits {
-				validator := validatorSetMap[phase0.BLSPubKey(deposit.PublicKey)]
-				if validator != nil {
-					addResolved(uint64(validator.Index), vn.namesByDepositTarget[address])
+				validatorIndex, found := validatorSetMap[phase0.BLSPubKey(deposit.PublicKey)]
+				if found {
+					addResolved(validatorIndex, vn.namesByDepositTarget[address])
 				}
 			}
 
@@ -253,17 +256,12 @@ func (vn *ValidatorNames) GetValidatorName(index uint64) string {
 }
 
 func (vn *ValidatorNames) GetValidatorNameByPubkey(pubkey []byte) string {
-	validatorSet := GlobalBeaconService.GetCachedValidatorPubkeyMap()
-	if validatorSet == nil {
+	validatorIndex, found := vn.beaconIndexer.GetValidatorIndexByPubkey(phase0.BLSPubKey(pubkey))
+	if !found {
 		return ""
 	}
 
-	validator := validatorSet[phase0.BLSPubKey(pubkey)]
-	if validator == nil {
-		return ""
-	}
-
-	return vn.GetValidatorName(uint64(validator.Index))
+	return vn.GetValidatorName(uint64(validatorIndex))
 }
 
 func (vn *ValidatorNames) GetValidatorNamesCount() uint64 {

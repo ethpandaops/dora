@@ -9,6 +9,7 @@ type ElConsolidationsPageData struct {
 	FilterMinSlot          uint64 `json:"filter_mins"`
 	FilterMaxSlot          uint64 `json:"filter_maxs"`
 	FilterAddress          string `json:"filter_address"`
+	FilterPublicKey        string `json:"filter_pubkey"`
 	FilterMinSrcIndex      uint64 `json:"filter_minsi"`
 	FilterMaxSrcIndex      uint64 `json:"filter_maxsi"`
 	FilterSrcValidatorName string `json:"filter_svname"`
@@ -37,10 +38,12 @@ type ElConsolidationsPageData struct {
 }
 
 type ElConsolidationsPageDataConsolidation struct {
+	IsIncluded           bool      `json:"is_included"`
 	SlotNumber           uint64    `json:"slot"`
 	SlotRoot             []byte    `json:"slot_root"`
 	Time                 time.Time `json:"time"`
-	Orphaned             bool      `json:"orphaned"`
+	Status               uint64    `json:"status"`
+	TxStatus             uint64    `json:"tx_status"`
 	SourceAddr           []byte    `json:"src_addr"`
 	SourceValidatorValid bool      `json:"src_vvalid"`
 	SourceValidatorIndex uint64    `json:"src_vindex"`

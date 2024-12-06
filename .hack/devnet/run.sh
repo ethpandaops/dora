@@ -94,6 +94,7 @@ $(for node in $EXECUTION_NODES; do
 done)
 indexer:
   inMemoryEpochs: 8
+  activityHistoryLength: 6
   cachePersistenceDelay: 8
   disableIndexWriter: false
   syncEpochCooldown: 1

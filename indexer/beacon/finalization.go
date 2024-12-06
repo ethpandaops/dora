@@ -380,6 +380,11 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 
 	t1 = time.Now()
 
+	// update validator cache
+	if len(canonicalBlocks) > 0 {
+		indexer.validatorCache.setFinalizedEpoch(epoch, canonicalBlocks[len(canonicalBlocks)-1].Root)
+	}
+
 	// clean fork cache
 	indexer.forkCache.setFinalizedEpoch(deleteBeforeSlot, justifiedRoot)
 	for _, fork := range indexer.forkCache.getForksBefore(deleteBeforeSlot) {

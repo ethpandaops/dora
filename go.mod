@@ -41,6 +41,7 @@ require (
 )
 
 require (
+	github.com/520MianXiangDuiXiang520/MapSize v0.0.0-20230414174449-030467540731 // indirect
 	github.com/ipfs/go-cid v0.4.1 // indirect
 	github.com/libp2p/go-buffer-pool v0.1.0 // indirect
 	github.com/minio/highwayhash v1.0.2 // indirect

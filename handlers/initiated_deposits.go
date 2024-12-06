@@ -175,9 +175,6 @@ func buildFilteredInitiatedDepositsPageData(pageIdx uint64, pageSize uint64, add
 		panic(err)
 	}
 
-	validatorSetRsp := services.GlobalBeaconService.GetCachedValidatorPubkeyMap()
-	validatorActivityMap, validatorActivityMax := services.GlobalBeaconService.GetValidatorActivity(3, false)
-
 	for _, depositTx := range dbDepositTxs {
 		depositTxData := &models.InitiatedDepositsPageDataDeposit{
 			Index:                 depositTx.Index,
@@ -193,10 +190,10 @@ func buildFilteredInitiatedDepositsPageData(pageIdx uint64, pageSize uint64, add
 			ValidatorStatus:       "",
 		}
 
-		validator := validatorSetRsp[phase0.BLSPubKey(depositTx.PublicKey)]
-		if validator == nil {
+		if validatorIdx, found := services.GlobalBeaconService.GetValidatorIndexByPubkey(phase0.BLSPubKey(depositTx.PublicKey)); !found {
 			depositTxData.ValidatorStatus = "Deposited"
 		} else {
+			validator := services.GlobalBeaconService.GetValidatorByIndex(validatorIdx, false)
 			if strings.HasPrefix(validator.Status.String(), "pending") {
 				depositTxData.ValidatorStatus = "Pending"
 			} else if validator.Status == v1.ValidatorStateActiveOngoing {
@@ -217,8 +214,8 @@ func buildFilteredInitiatedDepositsPageData(pageIdx uint64, pageSize uint64, add
 			}
 
 			if depositTxData.ShowUpcheck {
-				depositTxData.UpcheckActivity = validatorActivityMap[validator.Index]
-				depositTxData.UpcheckMaximum = uint8(validatorActivityMax)
+				depositTxData.UpcheckActivity = uint8(services.GlobalBeaconService.GetValidatorLiveness(validator.Index, 3))
+				depositTxData.UpcheckMaximum = uint8(3)
 			}
 		}
 

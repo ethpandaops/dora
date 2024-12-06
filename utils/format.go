@@ -330,23 +330,33 @@ func FormatEthAddress(address []byte) template.HTML {
 }
 
 func FormatValidator(index uint64, name string) template.HTML {
-	return formatValidator(index, name, "fa-male mr-2")
+	return formatValidator(index, name, "fa-male mr-2", false)
+}
+
+func FormatValidatorWithIndex(index uint64, name string) template.HTML {
+	return formatValidator(index, name, "fa-male mr-2", true)
 }
 
 func FormatSlashedValidator(index uint64, name string) template.HTML {
-	return formatValidator(index, name, "fa-user-slash mr-2 text-danger")
+	return formatValidator(index, name, "fa-user-slash mr-2 text-danger", true)
 }
 
-func formatValidator(index uint64, name string, icon string) template.HTML {
+func formatValidator(index uint64, name string, icon string, withIndex bool) template.HTML {
 	if index == math.MaxInt64 {
 		return template.HTML(fmt.Sprintf("<span class=\"validator-label validator-index\"><i class=\"fas %v\"></i> unknown</span>", icon))
 	} else if name != "" {
-		return template.HTML(fmt.Sprintf("<span class=\"validator-label validator-name\" data-bs-toggle=\"tooltip\" data-bs-placement=\"top\" data-bs-title=\"%v\"><i class=\"fas %v\"></i> <a href=\"/validator/%v\">%v</a></span>", index, icon, index, html.EscapeString(name)))
+		var nameLabel string
+		if withIndex {
+			nameLabel = fmt.Sprintf("%v (%v)", html.EscapeString(name), index)
+		} else {
+			nameLabel = html.EscapeString(name)
+		}
+		return template.HTML(fmt.Sprintf("<span class=\"validator-label validator-name\" data-bs-toggle=\"tooltip\" data-bs-placement=\"top\" data-bs-title=\"%v\"><i class=\"fas %v\"></i> <a href=\"/validator/%v\">%v</a></span>", index, icon, index, nameLabel))
 	}
 	return template.HTML(fmt.Sprintf("<span class=\"validator-label validator-index\"><i class=\"fas %v\"></i> <a href=\"/validator/%v\">%v</a></span>", icon, index, index))
 }
 
-func FormatValidatorWithIndex(index uint64, name string) template.HTML {
+func FormatValidatorNameWithIndex(index uint64, name string) template.HTML {
 	if name != "" {
 		return template.HTML(fmt.Sprintf("<span class=\"validator-label validator-name\">%v (%v)</span>", html.EscapeString(name), index))
 	}

@@ -114,8 +114,7 @@ func buildValidatorsActivityPageData(pageIdx uint64, pageSize uint64, sortOrder 
 
 	// group validators
 	validatorGroupMap := map[string]*models.ValidatorsActiviyPageDataGroup{}
-	validatorSet := services.GlobalBeaconService.GetCachedValidatorSet()
-	activityMap, _ := services.GlobalBeaconService.GetValidatorActivity(4, true)
+	validatorSet := services.GlobalBeaconService.GetCachedValidatorSet(false)
 
 	for vIdx, validator := range validatorSet {
 		var groupKey string
@@ -156,7 +155,7 @@ func buildValidatorsActivityPageData(pageIdx uint64, pageSize uint64, sortOrder 
 		if strings.HasPrefix(statusStr, "active_") {
 			validatorGroup.Activated++
 
-			if activityMap[phase0.ValidatorIndex(vIdx)] > 0 {
+			if services.GlobalBeaconService.GetValidatorLiveness(phase0.ValidatorIndex(vIdx), 3) > 0 {
 				validatorGroup.Online++
 			} else {
 				validatorGroup.Offline++

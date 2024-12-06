@@ -1,0 +1,116 @@
+{{ define "consolidationRequests" }}
+
+  <div class="card">
+    <div class="card-body px-0 py-0">
+      <div class="table-responsive px-0 py-0">
+        <table class="table table-nobr" id="elRequests">
+          <thead>
+            <tr>
+              <th>Slot</th>
+              <th>Time</th>
+              <th><span class="d-none d-lg-inline">Source </span>Address</th>
+              <th>Source Validator</th>
+              <th>Target Validator</th>
+              <th>Transaction</th>
+              <th><span class="d-none d-lg-inline">Incl. </span>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{ if gt .ConsolidationRequestCount 0 }}
+              {{ range $i, $request := .ConsolidationRequests }}
+                <tr>
+                  {{ if not $request.IsIncluded }}
+                    <td data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Consolidation request not included in the beacon chain yet">?</td>
+                  {{ else if eq $request.Status 2 }}
+                    <td><a href="/slot/0x{{ printf "%x" $request.SlotRoot }}">{{ formatAddCommas $request.SlotNumber }}</a></td>
+                  {{ else }}
+                    <td><a href="/slot/{{ $request.SlotNumber }}">{{ formatAddCommas $request.SlotNumber }}</a></td>
+                  {{ end }}
+                  <td data-timer="{{ $request.Time.Unix }}"><span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $request.Time }}">{{ formatRecentTimeShort $request.Time }}</span></td>
+                  <td>
+                    <div class="d-flex">
+                      <span class="flex-grow-1 text-truncate" style="width: 150px;">{{ ethAddressLink $request.SourceAddr }}</span>
+                      <div>
+                        <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ formatEthAddress $request.SourceAddr }}"></i>
+                      </div>
+                    </div>
+                  </td>
+                  <td>
+                    {{- if $request.SourceValidatorValid }}
+                      {{ formatValidatorWithIndex $request.SourceValidatorIndex $request.SourceValidatorName }}
+                    {{- else }}
+                      <div class="d-flex">
+                        <span class="flex-grow-1 text-truncate" style="max-width: 150px;" data-bs-toggle="tooltip" title="pubkey not in validator set">0x{{ printf "%x" $request.SourcePublicKey }}</span>
+                        <div>
+                          <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $request.SourcePublicKey }}"></i>
+                        </div>
+                      </div>
+                    {{- end }}
+                  </td>
+                  <td>
+                    {{- if $request.TargetValidatorValid }}
+                      {{ formatValidatorWithIndex $request.TargetValidatorIndex $request.TargetValidatorName }}
+                    {{- else }}
+                      <div class="d-flex">
+                        <span class="flex-grow-1 text-truncate" style="max-width: 150px;" data-bs-toggle="tooltip" title="pubkey not in validator set">0x{{ printf "%x" $request.TargetPublicKey }}</span>
+                        <div>
+                          <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $request.TargetPublicKey }}"></i>
+                        </div>
+                      </div>
+                    {{- end }}
+                  </td>
+                  <td>
+                    {{- if $request.TransactionHash }}
+                    <div class="d-flex">
+                      <span class="flex-grow-1 text-truncate" style="max-width: 150px;">{{ ethTransactionLink $request.TransactionHash 0 }}</span>
+                      <div>
+                        <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $request.TransactionHash }}"></i>
+                      </div>
+                      <div>
+                        <i class="fa fa-info-circle text-muted ml-2 p-1 nojs-hide tx-details-btn" role="button" data-txdetails="{{ includeJSON $request.TransactionDetails true }}"></i>
+                      </div>
+                    </div>
+                    {{- else }}
+                    <span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Corresponding consolidation transaction has not been indexed yet.">?</span>
+                    {{- end }}
+                  </td>
+                  <td>
+                    {{ if eq $request.TxStatus 1 }}
+                      <span class="badge rounded-pill text-bg-success">Tx Included</span>
+                    {{ else if eq $request.TxStatus 2 }}
+                      <span class="badge rounded-pill text-bg-info">Tx Orphaned</span>
+                    {{ end }}
+                    
+                    {{ if eq $request.Status 0 }}
+                      <span class="badge rounded-pill text-bg-secondary">Req. Pending</span>
+                    {{ else if eq $request.Status 1 }}
+                      <span class="badge rounded-pill text-bg-success">Req. Included</span>
+                    {{ else if eq $request.Status 2 }}
+                      <span class="badge rounded-pill text-bg-info">Req. Orphaned</span>
+                    {{ end }}
+                  </td>
+                </tr>
+              {{ end }}
+              <tr>
+                <td colspan="8" class="text-center">
+                  {{ if gt .AdditionalConsolidationRequestCount 0 }}
+                    <a class="text-white" href="/validators/consolidation_requests?f&f.pubkey=0x{{ printf "%x" .PublicKey }}">View {{ .AdditionalConsolidationRequestCount }} more consolidation requests</a>
+                  {{ end }}
+                </td>
+              </tr>
+            {{ else }}
+              <tr style="height: 430px;">
+                <td style="vertical-align: middle;" colspan="7">
+                  <div class="img-fluid mx-auto p-3 d-flex align-items-center" style="max-height: 400px; max-width: 400px; overflow: hidden;">
+                    {{ template "timeline_svg" }}
+                  </div>
+                </td>
+              </tr>
+            {{ end }}
+          </tbody>
+        </table>
+      </div>
+
+    </div>
+  </div>
+{{ end }}

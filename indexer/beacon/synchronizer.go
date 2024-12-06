@@ -350,7 +350,7 @@ func (sync *synchronizer) syncEpoch(syncEpoch phase0.Epoch, client *Client, last
 	}
 
 	epochState := newEpochState(dependentRoot)
-	err := epochState.loadState(sync.syncCtx, client, nil)
+	state, err := epochState.loadState(sync.syncCtx, client, nil)
 	if (err != nil || epochState.loadingStatus != 2) && !lastTry {
 		return false, fmt.Errorf("error fetching epoch %v state: %v", syncEpoch, err)
 	}
@@ -360,7 +360,18 @@ func (sync *synchronizer) syncEpoch(syncEpoch phase0.Epoch, client *Client, last
 	if epochState != nil && epochState.loadingStatus == 2 {
 		epochStats = newEpochStats(syncEpoch, dependentRoot)
 		epochStats.dependentState = epochState
-		epochStats.processState(sync.indexer)
+
+		var validatorSet []*phase0.Validator
+		if state == nil {
+			sync.logger.Warnf("state for epoch %v not found", syncEpoch)
+		} else {
+			validatorSet, err = state.Validators()
+			if err != nil {
+				sync.logger.Warnf("error getting validator set from state %v: %v", epochStats.dependentRoot.String(), err)
+			}
+		}
+
+		epochStats.processState(sync.indexer, validatorSet)
 		epochStatsValues = epochStats.GetValues(false)
 	}
 

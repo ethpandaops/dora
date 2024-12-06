@@ -14,6 +14,7 @@ type ElWithdrawalsPageData struct {
 	FilterValidatorName string `json:"filter_vname"`
 	FilterWithOrphaned  uint8  `json:"filter_orphaned"`
 	FilterWithType      uint8  `json:"filter_type"`
+	FilterPublicKey     string `json:"filter_pubkey"`
 
 	ElRequests   []*ElWithdrawalsPageDataWithdrawal `json:"withdrawals"`
 	RequestCount uint64                             `json:"request_count"`
@@ -35,10 +36,12 @@ type ElWithdrawalsPageData struct {
 }
 
 type ElWithdrawalsPageDataWithdrawal struct {
+	IsIncluded        bool      `json:"is_included"`
 	SlotNumber        uint64    `json:"slot"`
 	SlotRoot          []byte    `json:"slot_root"`
 	Time              time.Time `json:"time"`
-	Orphaned          bool      `json:"orphaned"`
+	Status            uint64    `json:"status"`
+	TxStatus          uint64    `json:"tx_status"`
 	SourceAddr        []byte    `json:"source_addr"`
 	Amount            uint64    `json:"amount"`
 	ValidatorValid    bool      `json:"vvalid"`

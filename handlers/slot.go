@@ -814,7 +814,6 @@ func getSlotPageTransactions(pageData *models.SlotPageBlockData, tranactions []b
 
 func getSlotPageDepositRequests(pageData *models.SlotPageBlockData, depositRequests []*electra.DepositRequest) {
 	pageData.DepositRequests = make([]*models.SlotPageDepositRequest, 0)
-	validatorsMap := services.GlobalBeaconService.GetCachedValidatorPubkeyMap()
 
 	for _, depositRequest := range depositRequests {
 		receiptData := &models.SlotPageDepositRequest{
@@ -825,13 +824,10 @@ func getSlotPageDepositRequests(pageData *models.SlotPageBlockData, depositReque
 			Index:           depositRequest.Index,
 		}
 
-		if validatorsMap != nil {
-			validator := validatorsMap[depositRequest.Pubkey]
-			if validator != nil {
-				receiptData.Exists = true
-				receiptData.ValidatorIndex = uint64(validator.Index)
-				receiptData.ValidatorName = services.GlobalBeaconService.GetValidatorName(receiptData.ValidatorIndex)
-			}
+		if validatorIdx, found := services.GlobalBeaconService.GetValidatorIndexByPubkey(phase0.BLSPubKey(depositRequest.Pubkey)); found {
+			receiptData.Exists = true
+			receiptData.ValidatorIndex = uint64(validatorIdx)
+			receiptData.ValidatorName = services.GlobalBeaconService.GetValidatorName(receiptData.ValidatorIndex)
 		}
 
 		pageData.DepositRequests = append(pageData.DepositRequests, receiptData)
@@ -843,8 +839,6 @@ func getSlotPageDepositRequests(pageData *models.SlotPageBlockData, depositReque
 func getSlotPageWithdrawalRequests(pageData *models.SlotPageBlockData, withdrawalRequests []*electra.WithdrawalRequest) {
 	pageData.WithdrawalRequests = make([]*models.SlotPageWithdrawalRequest, 0)
 
-	validatorsMap := services.GlobalBeaconService.GetCachedValidatorPubkeyMap()
-
 	for _, withdrawalRequest := range withdrawalRequests {
 		requestData := &models.SlotPageWithdrawalRequest{
 			Address:   withdrawalRequest.SourceAddress[:],
@@ -852,13 +846,10 @@ func getSlotPageWithdrawalRequests(pageData *models.SlotPageBlockData, withdrawa
 			Amount:    uint64(withdrawalRequest.Amount),
 		}
 
-		if validatorsMap != nil {
-			validator := validatorsMap[withdrawalRequest.ValidatorPubkey]
-			if validator != nil {
-				requestData.Exists = true
-				requestData.ValidatorIndex = uint64(validator.Index)
-				requestData.ValidatorName = services.GlobalBeaconService.GetValidatorName(requestData.ValidatorIndex)
-			}
+		if validatorIdx, found := services.GlobalBeaconService.GetValidatorIndexByPubkey(phase0.BLSPubKey(withdrawalRequest.ValidatorPubkey)); found {
+			requestData.Exists = true
+			requestData.ValidatorIndex = uint64(validatorIdx)
+			requestData.ValidatorName = services.GlobalBeaconService.GetValidatorName(requestData.ValidatorIndex)
 		}
 
 		pageData.WithdrawalRequests = append(pageData.WithdrawalRequests, requestData)
@@ -870,8 +861,6 @@ func getSlotPageWithdrawalRequests(pageData *models.SlotPageBlockData, withdrawa
 func getSlotPageConsolidationRequests(pageData *models.SlotPageBlockData, consolidationRequests []*electra.ConsolidationRequest) {
 	pageData.ConsolidationRequests = make([]*models.SlotPageConsolidationRequest, 0)
 
-	validatorsMap := services.GlobalBeaconService.GetCachedValidatorPubkeyMap()
-
 	for _, consolidationRequest := range consolidationRequests {
 		requestData := &models.SlotPageConsolidationRequest{
 			Address:      consolidationRequest.SourceAddress[:],
@@ -879,20 +868,16 @@ func getSlotPageConsolidationRequests(pageData *models.SlotPageBlockData, consol
 			TargetPubkey: consolidationRequest.TargetPubkey[:],
 		}
 
-		if validatorsMap != nil {
-			sourceValidator := validatorsMap[consolidationRequest.SourcePubkey]
-			if sourceValidator != nil {
-				requestData.SourceFound = true
-				requestData.SourceIndex = uint64(sourceValidator.Index)
-				requestData.SourceName = services.GlobalBeaconService.GetValidatorName(requestData.SourceIndex)
-			}
+		if sourceValidatorIdx, found := services.GlobalBeaconService.GetValidatorIndexByPubkey(phase0.BLSPubKey(consolidationRequest.SourcePubkey)); found {
+			requestData.SourceFound = true
+			requestData.SourceIndex = uint64(sourceValidatorIdx)
+			requestData.SourceName = services.GlobalBeaconService.GetValidatorName(requestData.SourceIndex)
+		}
 
-			targetValidator := validatorsMap[consolidationRequest.TargetPubkey]
-			if targetValidator != nil {
-				requestData.TargetFound = true
-				requestData.TargetIndex = uint64(targetValidator.Index)
-				requestData.TargetName = services.GlobalBeaconService.GetValidatorName(requestData.TargetIndex)
-			}
+		if targetValidatorIdx, found := services.GlobalBeaconService.GetValidatorIndexByPubkey(phase0.BLSPubKey(consolidationRequest.TargetPubkey)); found {
+			requestData.TargetFound = true
+			requestData.TargetIndex = uint64(targetValidatorIdx)
+			requestData.TargetName = services.GlobalBeaconService.GetValidatorName(requestData.TargetIndex)
 		}
 
 		pageData.ConsolidationRequests = append(pageData.ConsolidationRequests, requestData)

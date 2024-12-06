@@ -250,3 +250,25 @@ func (indexer *Indexer) GetEpochStats(epoch phase0.Epoch, overrideForkId *ForkKe
 func (indexer *Indexer) GetParentForkIds(forkId ForkKey) []ForkKey {
 	return indexer.forkCache.getParentForkIds(forkId)
 }
+
+// GetValidatorSet returns the most recent basic validator set, excluding balances and validator status.
+// If an overrideForkId is provided, the validator set for the fork is returned.
+func (indexer *Indexer) GetValidatorSet(overrideForkId *ForkKey) []*phase0.Validator {
+	return indexer.validatorCache.getValidatorSet(overrideForkId)
+}
+
+// GetValidatorIndexByPubkey returns the validator index for a given pubkey.
+func (indexer *Indexer) GetValidatorIndexByPubkey(pubkey phase0.BLSPubKey) (phase0.ValidatorIndex, bool) {
+	return indexer.validatorCache.getValidatorIndexByPubkey(pubkey)
+}
+
+// GetValidatorByIndex returns the validator by index for a given forkId.
+func (indexer *Indexer) GetValidatorByIndex(index phase0.ValidatorIndex, overrideForkId *ForkKey) *phase0.Validator {
+	return indexer.validatorCache.getValidatorByIndex(index, overrideForkId)
+}
+
+// GetValidatorActivity returns the validator activity for a given validator index.
+func (indexer *Indexer) GetValidatorActivity(validatorIndex phase0.ValidatorIndex) ([]ValidatorActivity, phase0.Epoch) {
+	activity := indexer.validatorCache.getValidatorActivity(validatorIndex)
+	return activity, indexer.validatorCache.oldestActivityEpoch
+}

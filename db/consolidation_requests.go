@@ -60,7 +60,7 @@ func InsertConsolidationRequests(consolidations []*dbtypes.ConsolidationRequest,
 	return nil
 }
 
-func GetConsolidationRequestsFiltered(offset uint64, limit uint32, finalizedBlock uint64, filter *dbtypes.ConsolidationRequestFilter) ([]*dbtypes.ConsolidationRequest, uint64, error) {
+func GetConsolidationRequestsFiltered(offset uint64, limit uint32, canonicalForkIds []uint64, filter *dbtypes.ConsolidationRequestFilter) ([]*dbtypes.ConsolidationRequest, uint64, error) {
 	var sql strings.Builder
 	args := []interface{}{}
 	fmt.Fprint(&sql, `
@@ -90,6 +90,11 @@ func GetConsolidationRequestsFiltered(offset uint64, limit uint32, finalizedBloc
 	if filter.MaxSlot > 0 {
 		args = append(args, filter.MaxSlot)
 		fmt.Fprintf(&sql, " %v slot_number <= $%v", filterOp, len(args))
+		filterOp = "AND"
+	}
+	if len(filter.PublicKey) > 0 {
+		args = append(args, filter.PublicKey)
+		fmt.Fprintf(&sql, " %v (source_pubkey = $%v OR target_pubkey = $%v) ", filterOp, len(args), len(args))
 		filterOp = "AND"
 	}
 	if len(filter.SourceAddress) > 0 {
@@ -136,14 +141,22 @@ func GetConsolidationRequestsFiltered(offset uint64, limit uint32, finalizedBloc
 		filterOp = "AND"
 	}
 
-	if filter.WithOrphaned == 0 {
-		args = append(args, finalizedBlock)
-		fmt.Fprintf(&sql, " %v (slot_number > $%v OR orphaned = false)", filterOp, len(args))
-		filterOp = "AND"
-	} else if filter.WithOrphaned == 2 {
-		args = append(args, finalizedBlock)
-		fmt.Fprintf(&sql, " %v (slot_number > $%v OR orphaned = true)", filterOp, len(args))
-		filterOp = "AND"
+	if filter.WithOrphaned != 1 {
+		forkIdStr := make([]string, len(canonicalForkIds))
+		for i, forkId := range canonicalForkIds {
+			forkIdStr[i] = fmt.Sprintf("%v", forkId)
+		}
+		if len(forkIdStr) == 0 {
+			forkIdStr = append(forkIdStr, "0")
+		}
+
+		if filter.WithOrphaned == 0 {
+			fmt.Fprintf(&sql, " %v fork_id IN (%v)", filterOp, strings.Join(forkIdStr, ","))
+			filterOp = "AND"
+		} else if filter.WithOrphaned == 2 {
+			fmt.Fprintf(&sql, " %v fork_id NOT IN (%v)", filterOp, strings.Join(forkIdStr, ","))
+			filterOp = "AND"
+		}
 	}
 
 	args = append(args, limit)

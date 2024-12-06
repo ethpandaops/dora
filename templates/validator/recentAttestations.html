@@ -1,36 +1,63 @@
 {{ define "recentAttestations" }}
   <div class="card">
-    <div class="card-header">
-      <h3 class="card-title d-flex justify-content-between align-items-center" style="margin: .5rem 0;">
-        <span><i class="fa fa-cubes"></i> Most recent attestations</span>
-      </h3>
-    </div>
     <div class="card-body p-0">
       <div class="table-responsive">
-        <table class="table table-nobr" id="recent-blocks">
+        <table class="table table-nobr" id="recent-attestations">
           <thead>
             <tr>
               <th>Epoch</th>
               <th>Slot</th>
-              <th data-toggle="tooltip" title="Execution Layer Block Number">Block</th>
-              <th>Status</th>
               <th data-timecol="duration">Time</th>
-              <th>Distance</th>
+              <th>Status</th>
+              <th>Inclusion Distance</th>
+              <th>Inclusion Slot</th>
             </tr>
           </thead>
-          
-            <tbody>
+          <tbody>
+            {{ if gt .RecentAttestationCount 0 }}
+              {{ range $i, $attestation := .RecentAttestations }}
+                <tr>
+                  <td><a href="/epoch/{{ $attestation.Epoch }}">{{ formatAddCommas $attestation.Epoch }}</a></td>
+                  {{ if $attestation.HasDuty }}
+                    <td><a href="/slot/{{ $attestation.Slot }}">{{ formatAddCommas $attestation.Slot }}</a></td>
+                  {{ else }}
+                    <td>?</td>
+                  {{ end }}
+                  <td data-timer="{{ $attestation.Time.Unix }}"><span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $attestation.Time }}">{{ formatRecentTimeShort $attestation.Time }}</span></td>
+                  <td>
+                    {{ if $attestation.Scheduled }}
+                      <span class="badge rounded-pill text-bg-dark">Scheduled</span>
+                    {{ else if eq $attestation.Status 0 }}
+                      <span class="badge rounded-pill text-bg-warning">Missed</span>
+                    {{ else if eq $attestation.Status 1 }}
+                      <span class="badge rounded-pill text-bg-success">Included</span>
+                    {{ else if eq $attestation.Status 2 }}
+                      <span class="badge rounded-pill text-bg-info">Orphaned</span>
+                    {{ else }}
+                      <span class="badge rounded-pill text-bg-dark">Unknown</span>
+                    {{ end }}
+                  </td>
+                  
+                  <td>{{ if eq $attestation.Status 0 }}-{{ else }}{{ $attestation.InclusionDelay }}{{ end }}</td>
+                  {{ if eq $attestation.Status 2 }}
+                    <td><a href="/slot/{{ $attestation.InclusionRoot }}">{{ formatAddCommas $attestation.InclusionSlot }}</a></td>
+                  {{ else if eq $attestation.Status 1 }}
+                    <td><a href="/slot/{{ $attestation.InclusionSlot }}">{{ formatAddCommas $attestation.InclusionSlot }}</a></td>
+                  {{ else }}
+                    <td>?</td>
+                  {{ end }}
+                </tr>
+              {{ end }}
+            {{ else }}
               <tr style="height: 430px;">
-                <td></td>
-                <td style="vertical-align: middle;" colspan="4">
-                  <div class="img-fluid mx-auto p-3 d-flex align-items-center" style="max-height: 400px; width: auto; overflow: hidden;">
+                <td style="vertical-align: middle;" colspan="6">
+                  <div class="img-fluid mx-auto p-3 d-flex align-items-center" style="max-height: 400px; max-width: 400px; overflow: hidden;">
                     {{ template "timeline_svg" }}
                   </div>
                 </td>
-                <td></td>
               </tr>
-            </tbody>
-            
+            {{ end }}
+          </tbody>
         </table>
       </div>
     </div>

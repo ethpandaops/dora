@@ -72,6 +72,14 @@
                     <input name="f.vname" type="text" class="form-control" placeholder="Validator Name" aria-label="Validator Name" aria-describedby="basic-addon1" value="{{ .FilterValidatorName }}">
                   </div>
                 </div>
+                <div class="row mt-1">
+                  <div class="col-sm-12 col-md-6 col-lg-4">
+                    Public Key
+                  </div>
+                  <div class="col-sm-12 col-md-6 col-lg-8">
+                    <input name="f.pubkey" type="text" class="form-control" placeholder="Public Key" aria-label="Public Key" aria-describedby="basic-addon1" value="{{ .FilterPublicKey }}">
+                  </div>
+                </div>
               </div>
             </div>
             <div class="col-sm-12 col-md-6">
@@ -142,7 +150,7 @@
                 <th>Slot</th>
                 <th>Time</th>
                 <th><span class="d-none d-lg-inline">Source </span>Address</th>
-                <th><span class="d-none d-lg-inline">Request </span>Type</th>
+                <th><span class="d-none d-lg-inline">Req. </span>Type</th>
                 <th>Validator</th>
                 <th>Amount</th>
                 <th>Transaction</th>
@@ -153,11 +161,13 @@
               <tbody>
                 {{ range $i, $request := .ElRequests }}
                   <tr>
-                    {{- if $request.Orphaned }}
-                    <td><a href="/slot/0x{{ printf "%x" $request.SlotRoot }}">{{ formatAddCommas $request.SlotNumber }}</a></td>
-                    {{- else }}
-                    <td><a href="/slot/{{ $request.SlotNumber }}">{{ formatAddCommas $request.SlotNumber }}</a></td>
-                    {{- end }}
+                    {{ if not $request.IsIncluded }}
+                      <td data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Consolidation request not included in the beacon chain yet">?</td>
+                    {{ else if eq $request.Status 2 }}
+                      <td><a href="/slot/0x{{ printf "%x" $request.SlotRoot }}">{{ formatAddCommas $request.SlotNumber }}</a></td>
+                    {{ else }}
+                      <td><a href="/slot/{{ $request.SlotNumber }}">{{ formatAddCommas $request.SlotNumber }}</a></td>
+                    {{ end }}
                     <td data-timer="{{ $request.Time.Unix }}"><span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $request.Time }}">{{ formatRecentTimeShort $request.Time }}</span></td>
                     <td>
                       <div class="d-flex">
@@ -203,11 +213,19 @@
                       {{- end }}
                     </td>
                     <td>
-                      {{- if $request.Orphaned }}
-                        <span class="badge rounded-pill text-bg-info">Orphaned</span>
-                      {{- else }}
-                        <span class="badge rounded-pill text-bg-success">Included</span>
-                      {{- end }}
+                      {{ if eq $request.TxStatus 1 }}
+                        <span class="badge rounded-pill text-bg-success">Tx Included</span>
+                      {{ else if eq $request.TxStatus 2 }}
+                        <span class="badge rounded-pill text-bg-info">Tx Orphaned</span>
+                      {{ end }}
+                      
+                      {{ if eq $request.Status 0 }}
+                        <span class="badge rounded-pill text-bg-secondary">Req. Pending</span>
+                      {{ else if eq $request.Status 1 }}
+                        <span class="badge rounded-pill text-bg-success">Req. Included</span>
+                      {{ else if eq $request.Status 2 }}
+                        <span class="badge rounded-pill text-bg-info">Req. Orphaned</span>
+                      {{ end }}
                     </td>
                   </tr>
                 {{ end }}
@@ -327,14 +345,12 @@
           </div>
         {{ end }}
       </div>
-      <div id="footer-placeholder" style="height:71px;"></div>
     </div>
   </div>
 {{ end }}
 {{ define "js" }}
 <script>
   $(document).ready(function() {
-    var popoverEl = $('#tx-details-popover-positioner');
     var lastPopover = null;
 
     $('.tx-details-btn').click(function() {
@@ -400,14 +416,6 @@
   padding-top: 6px;
   padding-left: 10px;
   padding-right: 10px;
-}
-
-.tx-details-popover-positioner {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  left: 0;
-  top: 0;
 }
 
 .tx-details-label {

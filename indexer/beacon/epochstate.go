@@ -22,7 +22,6 @@ type epochState struct {
 	readyChan      chan bool
 	highPriority   bool
 
-	validatorList     []*phase0.Validator
 	validatorBalances []phase0.Gwei
 	randaoMixes       []phase0.Root
 	depositIndex      uint64
@@ -78,9 +77,9 @@ func (s *epochState) awaitStateLoaded(ctx context.Context, timeout time.Duration
 }
 
 // loadState loads the state for the epoch from the client.
-func (s *epochState) loadState(ctx context.Context, client *Client, cache *epochCache) error {
+func (s *epochState) loadState(ctx context.Context, client *Client, cache *epochCache) (*spec.VersionedBeaconState, error) {
 	if s.loadingStatus > 0 {
-		return fmt.Errorf("already loading")
+		return nil, fmt.Errorf("already loading")
 	}
 
 	s.loadingStatus = 1
@@ -109,7 +108,7 @@ func (s *epochState) loadState(ctx context.Context, client *Client, cache *epoch
 		var err error
 		blockHeader, err = LoadBeaconHeader(ctx, client, s.slotRoot)
 		if err != nil {
-			return err
+			return nil, err
 		}
 	}
 
@@ -117,12 +116,12 @@ func (s *epochState) loadState(ctx context.Context, client *Client, cache *epoch
 
 	resState, err := LoadBeaconState(ctx, client, blockHeader.Message.StateRoot)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	err = s.processState(resState, cache)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	s.readyChanMutex.Lock()
@@ -133,7 +132,7 @@ func (s *epochState) loadState(ctx context.Context, client *Client, cache *epoch
 	}
 
 	s.loadingStatus = 2
-	return nil
+	return resState, nil
 }
 
 // processState processes the state and updates the epochState instance.
@@ -144,18 +143,21 @@ func (s *epochState) processState(state *spec.VersionedBeaconState, cache *epoch
 		return fmt.Errorf("error getting validators from state %v: %v", s.slotRoot.String(), err)
 	}
 
-	unifiedValidatorList := make([]*phase0.Validator, len(validatorList))
-	validatorPubkeyMap := map[phase0.BLSPubKey]phase0.ValidatorIndex{}
-	for i, v := range validatorList {
-		if cache != nil {
-			unifiedValidatorList[i] = cache.getOrCreateValidator(phase0.ValidatorIndex(i), v)
-		} else {
-			unifiedValidatorList[i] = v
+	if cache != nil {
+		chainState := cache.indexer.consensusPool.GetChainState()
+		slot, err := state.Slot()
+		if err != nil {
+			return fmt.Errorf("error getting slot from state %v: %v", s.slotRoot.String(), err)
 		}
-		validatorPubkeyMap[v.PublicKey] = phase0.ValidatorIndex(i)
+
+		epoch := chainState.EpochOfSlot(slot)
+		cache.indexer.validatorCache.updateValidatorSet(epoch, s.slotRoot, validatorList)
 	}
 
-	s.validatorList = unifiedValidatorList
+	validatorPubkeyMap := make(map[phase0.BLSPubKey]phase0.ValidatorIndex)
+	for i, v := range validatorList {
+		validatorPubkeyMap[v.PublicKey] = phase0.ValidatorIndex(i)
+	}
 
 	validatorBalances, err := state.ValidatorBalances()
 	if err != nil {
