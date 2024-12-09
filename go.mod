@@ -5,6 +5,7 @@ go 1.22.0
 toolchain go1.22.5
 
 require (
+	github.com/520MianXiangDuiXiang520/MapSize v0.0.0-20230414174449-030467540731
 	github.com/Masterminds/sprig/v3 v3.3.0
 	github.com/attestantio/go-eth2-client v0.21.10
 	github.com/coocood/freecache v1.2.4
@@ -33,15 +34,14 @@ require (
 	github.com/tdewolff/minify v2.3.6+incompatible
 	github.com/timandy/routine v1.1.4
 	github.com/urfave/negroni v1.0.0
-	golang.org/x/crypto v0.29.0
+	golang.org/x/crypto v0.30.0
 	golang.org/x/exp v0.0.0-20240808152545-0cdaa3abc0fa
-	golang.org/x/text v0.20.0
+	golang.org/x/text v0.21.0
 	golang.org/x/time v0.8.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
-	github.com/520MianXiangDuiXiang520/MapSize v0.0.0-20230414174449-030467540731 // indirect
 	github.com/ipfs/go-cid v0.4.1 // indirect
 	github.com/libp2p/go-buffer-pool v0.1.0 // indirect
 	github.com/minio/highwayhash v1.0.2 // indirect
@@ -93,7 +93,7 @@ require (
 	github.com/golang/snappy v0.0.5-0.20220116011046-fa5810519dcb // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
-	github.com/holiman/uint256 v1.3.1
+	github.com/holiman/uint256 v1.3.2
 	github.com/huandu/go-clone v1.7.2 // indirect
 	github.com/huandu/xstrings v1.5.0 // indirect
 	github.com/huin/goupnp v1.3.0 // indirect
@@ -139,11 +139,11 @@ require (
 	go.opentelemetry.io/otel/trace v1.29.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/net v0.30.0 // indirect
-	golang.org/x/sync v0.9.0 // indirect
-	golang.org/x/sys v0.27.0 // indirect
+	golang.org/x/sync v0.10.0 // indirect
+	golang.org/x/sys v0.28.0 // indirect
 	golang.org/x/xerrors v0.0.0-20231012003039-104605ab7028 // indirect
 	google.golang.org/protobuf v1.35.1 // indirect
-	gopkg.in/Knetic/govaluate.v3 v3.0.0 // indirect
+	gopkg.in/Knetic/govaluate.v3 v3.0.0
 	gopkg.in/cenkalti/backoff.v1 v1.1.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	modernc.org/libc v1.55.3 // indirect
