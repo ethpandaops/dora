@@ -14,13 +14,14 @@ import (
 type validatorCache struct {
 	indexer *Indexer
 
-	valsetCache         []*validatorEntry // cache for validators
-	cacheMutex          sync.RWMutex      // mutex to protect valsetCache for concurrent access
-	activityMutex       sync.RWMutex      // mutex to protect recentActivity for concurrent access
-	lastFinalized       phase0.Epoch      // last finalized epoch
-	oldestActivityEpoch phase0.Epoch      // oldest epoch in activity cache
-	pubkeyMap           map[phase0.BLSPubKey]phase0.ValidatorIndex
-	pubkeyMutex         sync.RWMutex // mutex to protect pubkeyMap for concurrent access
+	valsetCache          []*validatorEntry // cache for validators
+	cacheMutex           sync.RWMutex      // mutex to protect valsetCache for concurrent access
+	validatorActivityMap map[phase0.ValidatorIndex][]ValidatorActivity
+	activityMutex        sync.RWMutex // mutex to protect recentActivity for concurrent access
+	lastFinalized        phase0.Epoch // last finalized epoch
+	oldestActivityEpoch  phase0.Epoch // oldest epoch in activity cache
+	pubkeyMap            map[phase0.BLSPubKey]phase0.ValidatorIndex
+	pubkeyMutex          sync.RWMutex // mutex to protect pubkeyMap for concurrent access
 }
 
 // validatorDiffKey is the primary key for validatorDiff entries in cache.
@@ -42,7 +43,6 @@ type validatorEntry struct {
 	index          phase0.ValidatorIndex
 	finalValidator *phase0.Validator
 	validatorDiffs map[validatorDiffKey]*validatorDiff
-	recentActivity []ValidatorActivity
 }
 
 // ValidatorActivity represents a validator's activity in an epoch.
@@ -73,9 +73,10 @@ type validatorDiff struct {
 // newValidatorCache creates & returns a new instance of validatorCache.
 func newValidatorCache(indexer *Indexer) *validatorCache {
 	cache := &validatorCache{
-		indexer:             indexer,
-		oldestActivityEpoch: math.MaxInt64,
-		pubkeyMap:           make(map[phase0.BLSPubKey]phase0.ValidatorIndex),
+		indexer:              indexer,
+		validatorActivityMap: make(map[phase0.ValidatorIndex][]ValidatorActivity),
+		oldestActivityEpoch:  math.MaxInt64,
+		pubkeyMap:            make(map[phase0.BLSPubKey]phase0.ValidatorIndex),
 	}
 
 	return cache
@@ -210,31 +211,19 @@ func (cache *validatorCache) updateValidatorActivity(validatorIndex phase0.Valid
 		cache.oldestActivityEpoch = cutOffEpoch + 1
 	}
 
-	cache.cacheMutex.RLock()
-
-	if validatorIndex >= phase0.ValidatorIndex(len(cache.valsetCache)) {
-		cache.cacheMutex.RUnlock()
-		return
-	}
-
-	cachedValidator := cache.valsetCache[validatorIndex]
-	cache.cacheMutex.RUnlock()
-	if cachedValidator == nil {
-		return
-	}
-
 	cache.activityMutex.Lock()
 	defer cache.activityMutex.Unlock()
 
-	if cachedValidator.recentActivity == nil {
-		cachedValidator.recentActivity = make([]ValidatorActivity, 0, cache.indexer.activityHistoryLength)
+	recentActivity := cache.validatorActivityMap[validatorIndex]
+	if recentActivity == nil {
+		recentActivity = make([]ValidatorActivity, 0, cache.indexer.activityHistoryLength)
 	}
 
 	replaceIndex := -1
 	cutOffLength := 0
-	activityLength := len(cachedValidator.recentActivity)
+	activityLength := len(recentActivity)
 	for i := activityLength - 1; i >= 0; i-- {
-		activity := cachedValidator.recentActivity[i]
+		activity := recentActivity[i]
 		if activity.VoteBlock == voteBlock {
 			// already exists
 			return
@@ -246,7 +235,7 @@ func (cache *validatorCache) updateValidatorActivity(validatorIndex phase0.Valid
 		}
 
 		if chainState.EpochOfSlot(dutySlot) < cutOffEpoch {
-			cachedValidator.recentActivity[i].VoteBlock = nil // clear for gc
+			recentActivity[i].VoteBlock = nil // clear for gc
 			if replaceIndex == -1 {
 				replaceIndex = i
 			} else if replaceIndex == activityLength-cutOffLength-1 {
@@ -255,26 +244,28 @@ func (cache *validatorCache) updateValidatorActivity(validatorIndex phase0.Valid
 			} else {
 				// copy last element to current index
 				cutOffLength++
-				cachedValidator.recentActivity[i] = cachedValidator.recentActivity[activityLength-cutOffLength-1]
+				recentActivity[i] = recentActivity[activityLength-cutOffLength-1]
 			}
 		}
 	}
 
 	if replaceIndex != -1 {
-		cachedValidator.recentActivity[replaceIndex] = ValidatorActivity{
+		recentActivity[replaceIndex] = ValidatorActivity{
 			VoteBlock: voteBlock,
 			VoteDelay: uint16(voteBlock.Slot - dutySlot),
 		}
 
 		if cutOffLength > 0 {
-			cachedValidator.recentActivity = cachedValidator.recentActivity[:activityLength-cutOffLength]
+			recentActivity = recentActivity[:activityLength-cutOffLength]
 		}
 	} else {
-		cachedValidator.recentActivity = append(cachedValidator.recentActivity, ValidatorActivity{
+		recentActivity = append(recentActivity, ValidatorActivity{
 			VoteBlock: voteBlock,
 			VoteDelay: uint16(voteBlock.Slot - dutySlot),
 		})
 	}
+
+	cache.validatorActivityMap[validatorIndex] = recentActivity
 }
 
 // setFinalizedEpoch sets the last finalized epoch.
@@ -416,25 +407,12 @@ func (cache *validatorCache) getValidatorIndexByPubkey(pubkey phase0.BLSPubKey) 
 
 // getValidatorActivity returns the validator activity for a given validator index.
 func (cache *validatorCache) getValidatorActivity(validatorIndex phase0.ValidatorIndex) []ValidatorActivity {
-	cache.cacheMutex.RLock()
-
-	if validatorIndex >= phase0.ValidatorIndex(len(cache.valsetCache)) {
-		cache.cacheMutex.RUnlock()
-		return []ValidatorActivity{}
-	}
-
-	cachedValidator := cache.valsetCache[validatorIndex]
-	cache.cacheMutex.RUnlock()
-
-	if cachedValidator == nil {
-		return []ValidatorActivity{}
-	}
-
 	cache.activityMutex.RLock()
 	defer cache.activityMutex.RUnlock()
 
-	recentActivity := make([]ValidatorActivity, 0, len(cachedValidator.recentActivity))
-	for _, activity := range cachedValidator.recentActivity {
+	cachedActivity := cache.validatorActivityMap[validatorIndex]
+	recentActivity := make([]ValidatorActivity, 0, len(cachedActivity))
+	for _, activity := range cachedActivity {
 		if activity.VoteBlock != nil {
 			recentActivity = append(recentActivity, activity)
 		}
