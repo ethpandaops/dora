@@ -3,7 +3,6 @@ package consensus
 import (
 	"bytes"
 	"fmt"
-	"math"
 	"strings"
 	"sync"
 	"time"
@@ -182,37 +181,11 @@ func (cs *ChainState) GetFinalizedSlot() phase0.Slot {
 }
 
 func (cs *ChainState) CurrentSlot() phase0.Slot {
-	if cs.wallclock == nil {
-		return 0
-	}
-
-	slot, _, err := cs.wallclock.Now()
-	if err != nil {
-		return 0
-	}
-
-	if slot.Number() > uint64(math.MaxInt64) {
-		return 0
-	}
-
-	return phase0.Slot(slot.Number())
+	return cs.TimeToSlot(time.Now())
 }
 
 func (cs *ChainState) CurrentEpoch() phase0.Epoch {
-	if cs.wallclock == nil {
-		return 0
-	}
-
-	_, epoch, err := cs.wallclock.Now()
-	if err != nil {
-		return 0
-	}
-
-	if epoch.Number() > uint64(math.MaxInt64) {
-		return 0
-	}
-
-	return phase0.Epoch(epoch.Number())
+	return cs.EpochOfSlot(cs.CurrentSlot())
 }
 
 func (cs *ChainState) EpochOfSlot(slot phase0.Slot) phase0.Epoch {
