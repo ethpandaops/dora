@@ -51,13 +51,6 @@ type EpochVotes struct {
 	AmountIsCount     bool
 }
 
-// EpochVoteActivity represents the aggregated activity for an epoch.
-type EpochVoteActivity struct {
-	Epoch            phase0.Epoch
-	ActiveIndices    []phase0.ValidatorIndex
-	ActivityBitfield bitfield.Bitfield
-}
-
 // aggregateEpochVotes aggregates the votes for an epoch based on the provided chain state, blocks, and epoch stats.
 func (indexer *Indexer) aggregateEpochVotes(epoch phase0.Epoch, chainState *consensus.ChainState, blocks []*Block, epochStats *EpochStats) *EpochVotes {
 	if len(blocks) == 0 {
@@ -80,13 +73,13 @@ func (indexer *Indexer) aggregateEpochVotes(epoch phase0.Epoch, chainState *cons
 		return cachedVotes
 	}
 
-	votes, _ := indexer.aggregateEpochVotesAndActivity(epoch, chainState, blocks, epochStats)
+	votes := indexer.aggregateEpochVotesAndActivity(epoch, chainState, blocks, epochStats)
 	indexer.epochCache.votesCacheMiss++
 
 	return votes
 }
 
-func (indexer *Indexer) aggregateEpochVotesAndActivity(epoch phase0.Epoch, chainState *consensus.ChainState, blocks []*Block, epochStats *EpochStats) (*EpochVotes, *EpochVoteActivity) {
+func (indexer *Indexer) aggregateEpochVotesAndActivity(epoch phase0.Epoch, chainState *consensus.ChainState, blocks []*Block, epochStats *EpochStats) *EpochVotes {
 	t1 := time.Now()
 
 	var targetRoot phase0.Root
@@ -110,14 +103,10 @@ func (indexer *Indexer) aggregateEpochVotesAndActivity(epoch phase0.Epoch, chain
 		AmountIsCount: epochStatsValues == nil,
 	}
 
-	var activity *EpochVoteActivity
+	var activityBitlist bitfield.Bitlist
 
 	if epochStatsValues != nil {
-		activity = &EpochVoteActivity{
-			Epoch:            epoch,
-			ActiveIndices:    epochStatsValues.ActiveIndices,
-			ActivityBitfield: bitfield.NewBitlist(epochStatsValues.ActiveValidators),
-		}
+		activityBitlist = bitfield.NewBitlist(epochStatsValues.ActiveValidators)
 	}
 
 	deduplicationMap := map[voteDeduplicationKey]bool{}
@@ -135,6 +124,16 @@ func (indexer *Indexer) aggregateEpochVotesAndActivity(epoch phase0.Epoch, chain
 		if err != nil {
 			continue
 		}
+
+		processedFlag := uint8(1)
+		if isNextEpoch {
+			processedFlag = 2
+		}
+		processActivity := (block.processedActivity&processedFlag == 0) && votesWithValues && !votesWithPrecalc
+		if processActivity {
+			block.processedActivity |= processedFlag
+		}
+
 		for attIdx, attVersioned := range attestations {
 			attData, err := attVersioned.Data()
 			if err != nil {
@@ -154,7 +153,7 @@ func (indexer *Indexer) aggregateEpochVotesAndActivity(epoch phase0.Epoch, chain
 			voteAmount := phase0.Gwei(0)
 			slotIndex := chainState.SlotToSlotIndex(attData.Slot)
 			updateActivity := func(validatorIndex phase0.ValidatorIndex) {
-				if votesWithValues {
+				if processActivity {
 					indexer.validatorCache.updateValidatorActivity(validatorIndex, epoch, attData.Slot, block)
 				}
 			}
@@ -177,7 +176,7 @@ func (indexer *Indexer) aggregateEpochVotesAndActivity(epoch phase0.Epoch, chain
 					}
 
 					if epochStatsValues != nil {
-						voteAmt, committeeSize := votes.aggregateVotes(epochStatsValues, slotIndex, uint64(committee), attAggregationBits, aggregationBitsOffset, activity, updateActivity)
+						voteAmt, committeeSize := votes.aggregateVotes(epochStatsValues, slotIndex, uint64(committee), attAggregationBits, aggregationBitsOffset, &activityBitlist, updateActivity)
 						voteAmount += voteAmt
 						aggregationBitsOffset += committeeSize
 					} else {
@@ -189,7 +188,7 @@ func (indexer *Indexer) aggregateEpochVotesAndActivity(epoch phase0.Epoch, chain
 			} else {
 				// pre electra attestation aggregation
 				if epochStatsValues != nil {
-					voteAmt, _ := votes.aggregateVotes(epochStatsValues, slotIndex, uint64(attData.Index), attAggregationBits, 0, activity, updateActivity)
+					voteAmt, _ := votes.aggregateVotes(epochStatsValues, slotIndex, uint64(attData.Index), attAggregationBits, 0, &activityBitlist, updateActivity)
 					voteAmount += voteAmt
 				} else {
 					voteAmt := votes.aggregateVotesWithoutDuties(deduplicationMap, slotIndex, uint64(attData.Index), attAggregationBits, 1, 0)
@@ -234,25 +233,25 @@ func (indexer *Indexer) aggregateEpochVotesAndActivity(epoch phase0.Epoch, chain
 	indexer.logger.Debugf("aggregated epoch %v votes in %v (blocks: %v) [0x%x]", epoch, time.Since(t1), len(blocks), votesKey[:])
 	indexer.epochCache.votesCache.Add(votesKey, votes)
 
-	return votes, activity
+	return votes
 }
 
 // aggregateVotes aggregates the votes for a specific slot and committee based on the provided epoch statistics, aggregation bits, and offset.
-func (votes *EpochVotes) aggregateVotes(epochStatsValues *EpochStatsValues, slotIndex phase0.Slot, committee uint64, aggregationBits bitfield.Bitfield, aggregationBitsOffset uint64, activity *EpochVoteActivity, updateActivity func(validatorIndex phase0.ValidatorIndex)) (phase0.Gwei, uint64) {
+func (votes *EpochVotes) aggregateVotes(epochStatsValues *EpochStatsValues, slotIndex phase0.Slot, committee uint64, aggregationBits bitfield.Bitfield, aggregationBitsOffset uint64, activityBitlist *bitfield.Bitlist, updateActivity func(validatorIndex phase0.ValidatorIndex)) (phase0.Gwei, uint64) {
 	voteAmount := phase0.Gwei(0)
 
 	voteDuties := epochStatsValues.AttesterDuties[slotIndex][committee]
 	for bitIdx, validatorIndice := range voteDuties {
 		if aggregationBits.BitAt(uint64(bitIdx) + aggregationBitsOffset) {
 
-			if activity.ActivityBitfield.BitAt(uint64(validatorIndice)) {
+			if activityBitlist.BitAt(uint64(validatorIndice)) {
 				continue
 			}
 
 			effectiveBalance := epochStatsValues.EffectiveBalances[validatorIndice]
 			voteAmount += phase0.Gwei(effectiveBalance) * EtherGweiFactor
 
-			activity.ActivityBitfield.SetBitAt(uint64(validatorIndice), true)
+			activityBitlist.SetBitAt(uint64(validatorIndice), true)
 
 			validatorIndex := epochStatsValues.ActiveIndices[validatorIndice]
 			updateActivity(validatorIndex)
