@@ -38,7 +38,7 @@
     "react": "^19.0.0",
     "react-bootstrap": "^2.10.6",
     "react-dom": "^19.0.0",
-    "react-select": "^5.8.3",
+    "react-select": "^5.9.0",
     "viem": "^2.21.54",
     "wagmi": "^2.13.4"
   },
