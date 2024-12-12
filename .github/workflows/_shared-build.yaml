@@ -72,7 +72,7 @@ jobs:
 
     # upload artifacts
     - name: "Upload artifact: ui-package"
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         path: ./ui-package/dist/*
         name: ui-package
@@ -99,7 +99,7 @@ jobs:
 
     # download UI build artifacts
     - name: Download UI build artifacts
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         name: ui-package
         path: ./ui-package/dist
@@ -113,7 +113,7 @@ jobs:
 
     # upload artifacts
     - name: "Upload artifact: explorer_linux_amd64"
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         path: ./bin/*
         name: explorer_linux_amd64
@@ -146,7 +146,7 @@ jobs:
 
     # download UI build artifacts
     - name: Download UI build artifacts
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         name: ui-package
         path: ./ui-package/dist
@@ -160,7 +160,7 @@ jobs:
 
     # upload artifacts
     - name: "Upload artifact: explorer_linux_arm64"
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         path: ./bin/*
         name: explorer_linux_arm64
@@ -187,7 +187,7 @@ jobs:
 
     # download UI build artifacts
     - name: Download UI build artifacts
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         name: ui-package
         path: ./ui-package/dist
@@ -201,7 +201,7 @@ jobs:
 
     # upload artifacts
     - name: "Upload artifact: explorer_windows_amd64"
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         path: ./bin/*
         name: explorer_windows_amd64
@@ -228,7 +228,7 @@ jobs:
 
     # download UI build artifacts
     - name: Download UI build artifacts
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         name: ui-package
         path: ./ui-package/dist
@@ -242,7 +242,7 @@ jobs:
 
     # upload artifacts
     - name: "Upload artifact: explorer_darwin_amd64"
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         path: ./bin/*
         name: explorer_darwin_amd64
@@ -269,7 +269,7 @@ jobs:
 
     # download UI build artifacts
     - name: Download UI build artifacts
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         name: ui-package
         path: ./ui-package/dist
@@ -283,7 +283,7 @@ jobs:
 
     # upload artifacts
     - name: "Upload artifact: explorer_darwin_arm64"
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         path: ./bin/*
         name: explorer_darwin_arm64
@@ -313,12 +313,12 @@ jobs:
 
     # download build artifacts
     - name: Download UI build artifacts
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         name: ui-package
         path: ./ui-package/dist
     - name: Download build artifacts
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         name: explorer_linux_amd64
         path: ./bin
@@ -367,12 +367,12 @@ jobs:
 
     # download build artifacts
     - name: Download UI build artifacts
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         name: ui-package
         path: ./ui-package/dist
     - name: Download build artifacts
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         name: explorer_linux_arm64
         path: ./bin
