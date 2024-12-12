@@ -162,13 +162,13 @@ func (indexer *Indexer) getValidatorCacheDebugStats(cacheStats *CacheDebugStats)
 			refs++
 		}
 		cacheStats.ValidatorCache.ValidatorDiffs += uint64(refs)
-
-		if validator.recentActivity != nil {
-			cacheStats.ValidatorCache.ValidatorActivity += uint64(len(validator.recentActivity))
-		}
 	}
 
 	cacheStats.ValidatorCache.ValidatorData = uint64(len(validatorsMap))
+
+	for _, recentActivity := range indexer.validatorCache.validatorActivityMap {
+		cacheStats.ValidatorCache.ValidatorActivity += uint64(len(recentActivity))
+	}
 
 	cacheStats.ValidatorCache.PubkeyMap = CacheDebugMapSize{
 		Length: len(indexer.validatorCache.pubkeyMap),
