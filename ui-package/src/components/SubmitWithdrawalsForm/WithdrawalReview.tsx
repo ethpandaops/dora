@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { useAccount, useSendTransaction } from 'wagmi';
-import { useCall } from 'wagmi'
+import { useStorageAt } from 'wagmi'
 import { useState } from 'react';
 import { IValidator } from './SubmitWithdrawalsFormProps';
 import { toReadableAmount } from '../../utils/ReadableAmount';
@@ -18,11 +18,10 @@ const WithdrawalReview = (props: IWithdrawalReviewProps) => {
   const [addExtraFee, setAddExtraFee] = useState(true);
   const [errorModal, setErrorModal] = useState<string | null>(null);
 
-  const withdrawalQueueLengthCall = useCall({
-    account: address,
-    to: props.withdrawalContract,
-    data: "0x",
-		chain: chain,
+  const withdrawalQueueLengthCall = useStorageAt({
+    address: props.withdrawalContract as `0x${string}`,
+    slot: "0x00",
+    chainId: chain?.id,
 	});
   const submitRequest = useSendTransaction();
 
@@ -41,7 +40,7 @@ const WithdrawalReview = (props: IWithdrawalReviewProps) => {
   let requestFee = 0n;
   let failedQueueLength = false;
   if (withdrawalQueueLengthCall.isFetched && withdrawalQueueLengthCall.data) {
-    var queueLenHex = withdrawalQueueLengthCall.data.data as string;
+    var queueLenHex = withdrawalQueueLengthCall.data as string;
     if (!queueLenHex) {
       failedQueueLength = true;
     } else if (queueLenHex == "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff") {
