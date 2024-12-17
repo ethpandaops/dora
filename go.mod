@@ -23,7 +23,7 @@ require (
 	github.com/mashingan/smapping v0.1.19
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/pk910/dynamic-ssz v0.0.5
-	github.com/pressly/goose/v3 v3.23.0
+	github.com/pressly/goose/v3 v3.23.1
 	github.com/protolambda/bls12-381-util v0.1.0
 	github.com/protolambda/zrnt v0.32.3
 	github.com/protolambda/ztyp v0.2.2
@@ -34,7 +34,7 @@ require (
 	github.com/tdewolff/minify v2.3.6+incompatible
 	github.com/timandy/routine v1.1.4
 	github.com/urfave/negroni v1.0.0
-	golang.org/x/crypto v0.30.0
+	golang.org/x/crypto v0.31.0
 	golang.org/x/exp v0.0.0-20240808152545-0cdaa3abc0fa
 	golang.org/x/text v0.21.0
 	golang.org/x/time v0.8.0
