@@ -160,29 +160,49 @@ func GetProposerIndex(spec *consensus.ChainSpec, state *BeaconState, slot phase0
 
 	seed := Hash(seedData)
 
-	maxEffectiveBalance := spec.MaxEffectiveBalance
-	if spec.ElectraForkEpoch != nil && phase0.Epoch(slot/phase0.Slot(spec.SlotsPerEpoch)) >= phase0.Epoch(*spec.ElectraForkEpoch) {
-		maxEffectiveBalance = spec.MaxEffectiveBalanceElectra
-	}
-
 	activeIndicesCount := state.GetActiveCount()
 	if activeIndicesCount == 0 {
 		return 0, fmt.Errorf("empty active indices list")
 	}
-	maxRandomByte := uint64(1<<8 - 1)
 
-	for i := uint64(0); ; i++ {
-		candidateIndex, err := ComputeShuffledIndex(spec, i%activeIndicesCount, activeIndicesCount, seed, true)
-		if err != nil {
-			return 0, err
+	if spec.ElectraForkEpoch != nil && epoch >= phase0.Epoch(*spec.ElectraForkEpoch) {
+		// Electra fork
+		maxRandomValue := uint64(1<<16 - 1)
+
+		for i := uint64(0); ; i++ {
+			candidateIndex, err := ComputeShuffledIndex(spec, i%activeIndicesCount, activeIndicesCount, seed, true)
+			if err != nil {
+				return 0, err
+			}
+			b := append(seed[:], UintToBytes(i/16)...)
+			offset := (i % 16) * 2
+			hash := Hash(b)
+			randomValue := BytesToUint(hash[offset : offset+2])
+
+			effectiveBal := uint64(state.GetEffectiveBalance(ActiveIndiceIndex(candidateIndex)))
+
+			if effectiveBal*maxRandomValue >= spec.MaxEffectiveBalanceElectra*uint64(randomValue) {
+				return ActiveIndiceIndex(candidateIndex), nil
+			}
 		}
-		b := append(seed[:], UintToBytes(i/32)...)
-		randomByte := Hash(b)[i%32]
 
-		effectiveBal := uint64(state.GetEffectiveBalance(ActiveIndiceIndex(candidateIndex)))
+	} else {
+		// pre-Electra fork
+		maxRandomByte := uint64(1<<8 - 1)
 
-		if effectiveBal*maxRandomByte >= maxEffectiveBalance*uint64(randomByte) {
-			return ActiveIndiceIndex(candidateIndex), nil
+		for i := uint64(0); ; i++ {
+			candidateIndex, err := ComputeShuffledIndex(spec, i%activeIndicesCount, activeIndicesCount, seed, true)
+			if err != nil {
+				return 0, err
+			}
+			b := append(seed[:], UintToBytes(i/32)...)
+			randomByte := Hash(b)[i%32]
+
+			effectiveBal := uint64(state.GetEffectiveBalance(ActiveIndiceIndex(candidateIndex)))
+
+			if effectiveBal*maxRandomByte >= spec.MaxEffectiveBalance*uint64(randomByte) {
+				return ActiveIndiceIndex(candidateIndex), nil
+			}
 		}
 	}
 }
