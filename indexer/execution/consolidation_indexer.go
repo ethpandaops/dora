@@ -17,7 +17,7 @@ import (
 	"github.com/ethpandaops/dora/utils"
 )
 
-const ConsolidationContractAddr = "0x01aBEa29659e5e97C95107F20bb753cD3e09bBBb"
+const ConsolidationContractAddr = "0x00431F263cE400f4455c2dCf564e53007Ca4bbBb"
 
 // ConsolidationIndexer is the indexer for the eip-7251 consolidation system contract
 type ConsolidationIndexer struct {
