@@ -52,7 +52,18 @@ func UintToBytes(data any) []byte {
 }
 
 func BytesToUint(data []byte) uint64 {
-	return binary.LittleEndian.Uint64(data)
+	switch len(data) {
+	case 1:
+		return uint64(data[0])
+	case 2:
+		return uint64(binary.LittleEndian.Uint16(data))
+	case 4:
+		return uint64(binary.LittleEndian.Uint32(data))
+	case 8:
+		return binary.LittleEndian.Uint64(data)
+	default:
+		return 0
+	}
 }
 
 func SplitOffset(listSize, chunks, index uint64) uint64 {
