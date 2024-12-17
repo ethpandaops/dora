@@ -2,13 +2,21 @@ package beacon
 
 import (
 	"encoding/binary"
+	"fmt"
+	"hash/crc64"
 	"math"
 	"reflect"
 	"sort"
 	"sync"
+	"time"
 
 	"github.com/attestantio/go-eth2-client/spec/phase0"
+	"github.com/ethpandaops/dora/db"
+	"github.com/ethpandaops/dora/dbtypes"
+	"github.com/jmoiron/sqlx"
 )
+
+var crc64Table = crc64.MakeTable(crc64.ISO)
 
 // validatorCache is the cache for the validator set and validator activity.
 type validatorCache struct {
@@ -24,25 +32,19 @@ type validatorCache struct {
 	pubkeyMutex          sync.RWMutex // mutex to protect pubkeyMap for concurrent access
 }
 
-// validatorDiffKey is the primary key for validatorDiff entries in cache.
-// consists of dependendRoot (32 byte) and epoch (8 byte).
-type validatorDiffKey [32 + 8]byte
-
-// generate validatorDiffKey from epoch and dependentRoot
-func getValidatorDiffKey(epoch phase0.Epoch, dependentRoot phase0.Root) validatorDiffKey {
-	var key validatorDiffKey
-
-	copy(key[0:], dependentRoot[:])
-	binary.LittleEndian.PutUint64(key[32:], uint64(epoch))
-
-	return key
-}
-
 // validatorEntry represents a validator in the validator set cache.
 type validatorEntry struct {
-	index          phase0.ValidatorIndex
+	validatorDiffs []*validatorDiff // Changed from map to slice
+	dbChecksum     uint64           // checksum of the persisted entry
 	finalValidator *phase0.Validator
-	validatorDiffs map[validatorDiffKey]*validatorDiff
+	activeData     *ValidatorData
+}
+
+// ValidatorData holds the most relevant information about a active validator.
+type ValidatorData struct {
+	ActivationEpoch  phase0.Epoch
+	ExitEpoch        phase0.Epoch
+	effectiveBalance uint16
 }
 
 // ValidatorActivity represents a validator's activity in an epoch.
@@ -82,18 +84,13 @@ func newValidatorCache(indexer *Indexer) *validatorCache {
 	return cache
 }
 
+// EffectiveBalance returns the effective balance of the validator.
+func (v *ValidatorData) EffectiveBalance() phase0.Gwei {
+	return phase0.Gwei(v.effectiveBalance) * EtherGweiFactor
+}
+
 // updateValidatorSet updates the validator set cache with the new validator set.
 func (cache *validatorCache) updateValidatorSet(epoch phase0.Epoch, dependentRoot phase0.Root, validators []*phase0.Validator) {
-	cache.cacheMutex.Lock()
-	defer cache.cacheMutex.Unlock()
-
-	if cache.valsetCache == nil {
-		cache.valsetCache = make([]*validatorEntry, 0, len(validators))
-	}
-
-	isParentMap := map[phase0.Root]bool{}
-	isAheadMap := map[phase0.Root]bool{}
-
 	currentEpoch := cache.indexer.consensusPool.GetChainState().CurrentEpoch()
 	finalizedEpoch, _ := cache.indexer.consensusPool.GetChainState().GetFinalizedCheckpoint()
 	cutOffEpoch := phase0.Epoch(0)
@@ -109,35 +106,50 @@ func (cache *validatorCache) updateValidatorSet(epoch phase0.Epoch, dependentRoo
 		return
 	}
 
+	cache.cacheMutex.Lock()
+	defer cache.cacheMutex.Unlock()
+
+	t1 := time.Now()
+
+	if len(cache.valsetCache) < len(validators) {
+		if len(validators) > cap(cache.valsetCache) {
+			newCache := make([]*validatorEntry, len(validators), len(validators)+1000)
+			copy(newCache, cache.valsetCache)
+			cache.valsetCache = newCache
+		} else {
+			cache.valsetCache = cache.valsetCache[:len(validators)]
+		}
+	}
+
+	isParentMap := map[phase0.Root]bool{}
+	isAheadMap := map[phase0.Root]bool{}
+
 	for i := range validators {
+		var parentChecksum uint64
 		var parentValidator *phase0.Validator
 		parentEpoch := phase0.Epoch(0)
 
-		aheadDiffIdx := validatorDiffKey{}
+		aheadDiffIdx := 0
 		foundAhead := false
 		aheadEpoch := phase0.Epoch(math.MaxInt64)
 
-		var cachedValidator *validatorEntry
-		if len(cache.valsetCache) > i {
-			cachedValidator = cache.valsetCache[i]
-		}
-
+		cachedValidator := cache.valsetCache[i]
 		if cachedValidator == nil {
-			cachedValidator = &validatorEntry{
-				index:          phase0.ValidatorIndex(i),
-				validatorDiffs: make(map[validatorDiffKey]*validatorDiff),
-			}
-			cache.valsetCache = append(cache.valsetCache, cachedValidator)
+			cachedValidator = &validatorEntry{}
+			cache.valsetCache[i] = cachedValidator
 			cache.pubkeyMutex.Lock()
 			cache.pubkeyMap[validators[i].PublicKey] = phase0.ValidatorIndex(i)
 			cache.pubkeyMutex.Unlock()
 		} else {
 			parentValidator = cachedValidator.finalValidator
+			parentChecksum = cachedValidator.dbChecksum
 		}
+
+		deleteKeys := []int{}
 
 		for diffkey, diff := range cachedValidator.validatorDiffs {
 			if diff.epoch < cutOffEpoch {
-				delete(cachedValidator.validatorDiffs, diffkey)
+				deleteKeys = append(deleteKeys, diffkey)
 				continue
 			}
 
@@ -169,27 +181,55 @@ func (cache *validatorCache) updateValidatorSet(epoch phase0.Epoch, dependentRoo
 			}
 		}
 
-		if parentValidator != nil && reflect.DeepEqual(parentValidator, validators[i]) {
+		if parentValidator != nil {
+			parentChecksum = calculateValidatorChecksum(parentValidator)
+		}
+
+		checksum := calculateValidatorChecksum(validators[i])
+		if checksum == parentChecksum {
 			// no change
 			continue
 		}
-
-		diffKey := getValidatorDiffKey(epoch, dependentRoot)
 
 		if foundAhead && reflect.DeepEqual(cachedValidator.validatorDiffs[aheadDiffIdx].validator, validators[i]) {
 			diff := cachedValidator.validatorDiffs[aheadDiffIdx]
 			diff.epoch = epoch
 			diff.dependentRoot = dependentRoot
-			cachedValidator.validatorDiffs[diffKey] = diff
-			delete(cachedValidator.validatorDiffs, aheadDiffIdx)
+			cachedValidator.validatorDiffs[aheadDiffIdx] = diff
+		} else if len(deleteKeys) == 0 {
+			cachedValidator.validatorDiffs = append(cachedValidator.validatorDiffs, &validatorDiff{
+				epoch:         epoch,
+				dependentRoot: dependentRoot,
+				validator:     validators[i],
+			})
 		} else {
-			cachedValidator.validatorDiffs[diffKey] = &validatorDiff{
+			cachedValidator.validatorDiffs[deleteKeys[0]] = &validatorDiff{
 				epoch:         epoch,
 				dependentRoot: dependentRoot,
 				validator:     validators[i],
 			}
+
+			if len(deleteKeys) > 1 {
+				lastIdx := len(cachedValidator.validatorDiffs) - 1
+				delLen := len(deleteKeys)
+				for delIdx := 0; delIdx < delLen; delIdx++ {
+					for delLen > 0 && deleteKeys[delLen-1] == lastIdx {
+						lastIdx--
+						delLen--
+					}
+					if delLen == 0 {
+						break
+					}
+					cachedValidator.validatorDiffs[deleteKeys[delIdx]] = cachedValidator.validatorDiffs[lastIdx]
+					lastIdx--
+				}
+
+				cachedValidator.validatorDiffs = cachedValidator.validatorDiffs[:lastIdx+1]
+			}
 		}
 	}
+
+	cache.indexer.logger.Infof("processed validator set update for epoch %d in %v", epoch, time.Since(t1))
 }
 
 // updateValidatorActivity updates the validator activity cache.
@@ -276,40 +316,63 @@ func (cache *validatorCache) setFinalizedEpoch(epoch phase0.Epoch, nextEpochDepe
 	cache.lastFinalized = epoch
 
 	for _, cachedValidator := range cache.valsetCache {
-		for diffKey, diff := range cachedValidator.validatorDiffs {
+		if cachedValidator == nil {
+			continue
+		}
+
+		// Find the finalized validator state
+		for _, diff := range cachedValidator.validatorDiffs {
 			if diff.dependentRoot == nextEpochDependentRoot {
 				cachedValidator.finalValidator = diff.validator
-			}
+				cachedValidator.dbChecksum = calculateValidatorChecksum(diff.validator)
 
-			if diff.epoch <= epoch {
-				delete(cachedValidator.validatorDiffs, diffKey)
+				cachedValidator.activeData = &ValidatorData{
+					ActivationEpoch:  diff.validator.ActivationEpoch,
+					ExitEpoch:        diff.validator.ExitEpoch,
+					effectiveBalance: uint16(diff.validator.EffectiveBalance / EtherGweiFactor),
+				}
+				break
 			}
+		}
+
+		// Clean up old diffs
+		newDiffs := make([]*validatorDiff, 0)
+		for _, diff := range cachedValidator.validatorDiffs {
+			if diff.epoch > epoch {
+				newDiffs = append(newDiffs, diff)
+			}
+		}
+		cachedValidator.validatorDiffs = newDiffs
+
+		// clear old active data
+		if cachedValidator.activeData != nil && cachedValidator.activeData.ExitEpoch > epoch+100 && cachedValidator.activeData.ActivationEpoch < math.MaxUint64 {
+			cachedValidator.activeData = nil
 		}
 	}
 }
 
 // getValidatorSet returns the validator set for a given forkId.
-func (cache *validatorCache) getValidatorSet(overrideForkId *ForkKey) []*phase0.Validator {
+func (cache *validatorCache) getValidatorSet(overrideForkId *ForkKey) []*ValidatorData {
 	canonicalHead := cache.indexer.GetCanonicalHead(overrideForkId)
 	if canonicalHead == nil {
-		return []*phase0.Validator{}
+		return []*ValidatorData{}
 	}
 
 	return cache.getValidatorSetForRoot(canonicalHead.Root)
 }
 
 // getValidatorSetForRoot returns the validator set for a given blockRoot.
-func (cache *validatorCache) getValidatorSetForRoot(blockRoot phase0.Root) []*phase0.Validator {
+func (cache *validatorCache) getValidatorSetForRoot(blockRoot phase0.Root) []*ValidatorData {
 	cache.cacheMutex.RLock()
 	defer cache.cacheMutex.RUnlock()
 
 	isParentMap := map[phase0.Root]bool{}
 	isAheadMap := map[phase0.Root]bool{}
 
-	validatorSet := make([]*phase0.Validator, 0, len(cache.valsetCache))
+	validatorSet := make([]*ValidatorData, 0, len(cache.valsetCache))
 
 	for _, cachedValidator := range cache.valsetCache {
-		validator := cachedValidator.finalValidator
+		validatorData := cachedValidator.activeData
 		validatorEpoch := cache.lastFinalized
 
 		var aheadValidator *phase0.Validator
@@ -323,11 +386,15 @@ func (cache *validatorCache) getValidatorSetForRoot(blockRoot phase0.Root) []*ph
 			}
 
 			if isParent && diff.epoch >= validatorEpoch {
-				validator = diff.validator
+				validatorData = &ValidatorData{
+					ActivationEpoch:  diff.validator.ActivationEpoch,
+					ExitEpoch:        diff.validator.ExitEpoch,
+					effectiveBalance: uint16(diff.validator.EffectiveBalance / EtherGweiFactor),
+				}
 				validatorEpoch = diff.epoch
 			}
 
-			if !isParent && validator == nil {
+			if !isParent && validatorData == nil {
 				isAhead, checkedAhead := isAheadMap[diff.dependentRoot]
 				if !checkedAhead {
 					isAhead = cache.indexer.blockCache.isCanonicalBlock(blockRoot, diff.dependentRoot)
@@ -341,14 +408,32 @@ func (cache *validatorCache) getValidatorSetForRoot(blockRoot phase0.Root) []*ph
 			}
 		}
 
-		if validator == nil && aheadValidator != nil {
-			validator = aheadValidator
+		if validatorData == nil && aheadValidator != nil {
+			validatorData = &ValidatorData{
+				ActivationEpoch:  aheadValidator.ActivationEpoch,
+				ExitEpoch:        aheadValidator.ExitEpoch,
+				effectiveBalance: uint16(aheadValidator.EffectiveBalance / EtherGweiFactor),
+			}
 		}
 
-		validatorSet = append(validatorSet, validator)
+		validatorSet = append(validatorSet, validatorData)
 	}
 
 	return validatorSet
+}
+
+// wrapDbValidator wraps a dbtypes.Validator to a phase0.Validator
+func wrapDbValidator(dbValidator *dbtypes.Validator) *phase0.Validator {
+	return &phase0.Validator{
+		PublicKey:                  phase0.BLSPubKey(dbValidator.Pubkey),
+		WithdrawalCredentials:      dbValidator.WithdrawalCredentials,
+		EffectiveBalance:           phase0.Gwei(dbValidator.EffectiveBalance),
+		Slashed:                    dbValidator.Slashed,
+		ActivationEligibilityEpoch: phase0.Epoch(dbValidator.ActivationEligibilityEpoch),
+		ActivationEpoch:            phase0.Epoch(dbValidator.ActivationEpoch),
+		ExitEpoch:                  phase0.Epoch(dbValidator.ExitEpoch),
+		WithdrawableEpoch:          phase0.Epoch(dbValidator.WithdrawableEpoch),
+	}
 }
 
 // getValidatorByIndex returns the validator by index for a given forkId.
@@ -366,8 +451,6 @@ func (cache *validatorCache) getValidatorByIndexAndRoot(index phase0.ValidatorIn
 	cache.cacheMutex.RLock()
 	defer cache.cacheMutex.RUnlock()
 
-	isParentMap := map[phase0.Root]bool{}
-
 	if index >= phase0.ValidatorIndex(len(cache.valsetCache)) {
 		return nil
 	}
@@ -380,16 +463,18 @@ func (cache *validatorCache) getValidatorByIndexAndRoot(index phase0.ValidatorIn
 	validator := cachedValidator.finalValidator
 	validatorEpoch := cache.lastFinalized
 
+	// Find the latest valid diff
 	for _, diff := range cachedValidator.validatorDiffs {
-		isParent, checkedParent := isParentMap[diff.dependentRoot]
-		if !checkedParent {
-			isParent = cache.indexer.blockCache.isCanonicalBlock(diff.dependentRoot, blockRoot)
-			isParentMap[diff.dependentRoot] = isParent
-		}
-
-		if isParent && diff.epoch >= validatorEpoch {
+		if cache.indexer.blockCache.isCanonicalBlock(diff.dependentRoot, blockRoot) && diff.epoch >= validatorEpoch {
 			validator = diff.validator
 			validatorEpoch = diff.epoch
+		}
+	}
+
+	// fallback to db if validator is not found in cache
+	if validator == nil {
+		if dbValidator := db.GetValidatorByIndex(index); dbValidator != nil {
+			validator = wrapDbValidator(dbValidator)
 		}
 	}
 
@@ -423,4 +508,141 @@ func (cache *validatorCache) getValidatorActivity(validatorIndex phase0.Validato
 	})
 
 	return recentActivity
+}
+
+func calculateValidatorChecksum(v *phase0.Validator) uint64 {
+	if v == nil {
+		return 0
+	}
+
+	// Create a byte slice containing all validator fields
+	data := make([]byte, 0)
+	data = append(data, v.PublicKey[:]...)
+	data = append(data, v.WithdrawalCredentials[:]...)
+	data = append(data, uint64ToBytes(uint64(v.EffectiveBalance))...)
+	if v.Slashed {
+		data = append(data, 1)
+	} else {
+		data = append(data, 0)
+	}
+	data = append(data, uint64ToBytes(uint64(v.ActivationEligibilityEpoch))...)
+	data = append(data, uint64ToBytes(uint64(v.ActivationEpoch))...)
+	data = append(data, uint64ToBytes(uint64(v.ExitEpoch))...)
+	data = append(data, uint64ToBytes(uint64(v.WithdrawableEpoch))...)
+
+	return crc64.Checksum(data, crc64Table)
+}
+
+func uint64ToBytes(val uint64) []byte {
+	b := make([]byte, 8)
+	binary.LittleEndian.PutUint64(b, val)
+	return b
+}
+
+func (cache *validatorCache) prepopulateFromDB() error {
+	cache.cacheMutex.Lock()
+	defer cache.cacheMutex.Unlock()
+
+	// Get max validator index to pre-allocate slice
+	maxIndex, err := db.GetMaxValidatorIndex()
+	if err != nil {
+		return fmt.Errorf("error getting max validator index: %v", err)
+	}
+
+	// Pre-allocate slice
+	cache.valsetCache = make([]*validatorEntry, maxIndex+1, maxIndex+1+1000)
+
+	// Load validators in batches
+	batchSize := uint64(10000)
+	for start := uint64(0); start <= maxIndex; start += batchSize {
+		end := start + batchSize
+		if end > maxIndex {
+			end = maxIndex
+		}
+
+		validators := db.GetValidatorRange(start, end)
+		for _, dbVal := range validators {
+			// Convert db validator to phase0.Validator
+			val := &phase0.Validator{
+				PublicKey:                  phase0.BLSPubKey(dbVal.Pubkey),
+				WithdrawalCredentials:      dbVal.WithdrawalCredentials,
+				EffectiveBalance:           phase0.Gwei(dbVal.EffectiveBalance),
+				Slashed:                    dbVal.Slashed,
+				ActivationEligibilityEpoch: phase0.Epoch(dbVal.ActivationEligibilityEpoch),
+				ActivationEpoch:            phase0.Epoch(dbVal.ActivationEpoch),
+				ExitEpoch:                  phase0.Epoch(dbVal.ExitEpoch),
+				WithdrawableEpoch:          phase0.Epoch(dbVal.WithdrawableEpoch),
+			}
+
+			// Create cache entry with checksum
+			cache.valsetCache[dbVal.ValidatorIndex] = &validatorEntry{
+				dbChecksum: calculateValidatorChecksum(val),
+				activeData: &ValidatorData{
+					ActivationEpoch:  phase0.Epoch(dbVal.ActivationEpoch),
+					ExitEpoch:        phase0.Epoch(dbVal.ExitEpoch),
+					effectiveBalance: uint16(val.EffectiveBalance / EtherGweiFactor),
+				},
+			}
+
+			// Update pubkey map
+			cache.pubkeyMutex.Lock()
+			cache.pubkeyMap[phase0.BLSPubKey(dbVal.Pubkey)] = phase0.ValidatorIndex(dbVal.ValidatorIndex)
+			cache.pubkeyMutex.Unlock()
+		}
+	}
+
+	return nil
+}
+
+func (cache *validatorCache) persistValidators(tx *sqlx.Tx) error {
+	cache.cacheMutex.RLock()
+	defer cache.cacheMutex.RUnlock()
+
+	batch := make([]*dbtypes.Validator, 0, 100)
+	persisted := 0
+
+	for index, entry := range cache.valsetCache {
+		if entry == nil || entry.finalValidator == nil {
+			continue
+		}
+
+		// Convert to db type
+		dbVal := &dbtypes.Validator{
+			ValidatorIndex:             uint64(index),
+			Pubkey:                     entry.finalValidator.PublicKey[:],
+			WithdrawalCredentials:      entry.finalValidator.WithdrawalCredentials[:],
+			EffectiveBalance:           uint64(entry.finalValidator.EffectiveBalance),
+			Slashed:                    entry.finalValidator.Slashed,
+			ActivationEligibilityEpoch: uint64(entry.finalValidator.ActivationEligibilityEpoch),
+			ActivationEpoch:            uint64(entry.finalValidator.ActivationEpoch),
+			ExitEpoch:                  uint64(entry.finalValidator.ExitEpoch),
+			WithdrawableEpoch:          uint64(entry.finalValidator.WithdrawableEpoch),
+		}
+
+		batch = append(batch, dbVal)
+		entry.finalValidator = nil
+
+		if len(batch) >= 100 {
+			err := db.InsertValidatorBatch(batch, tx)
+			if err != nil {
+				return fmt.Errorf("error persisting validator batch: %v", err)
+			}
+			batch = batch[:0]
+			persisted += 100
+
+			if persisted >= 10000 {
+				break // Max 10k validators per run
+			}
+		}
+	}
+
+	// Insert remaining batch
+	if len(batch) > 0 {
+		err := db.InsertValidatorBatch(batch, tx)
+		if err != nil {
+			return fmt.Errorf("error persisting final validator batch: %v", err)
+		}
+	}
+
+	return nil
 }

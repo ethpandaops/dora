@@ -312,3 +312,15 @@ type WithdrawalRequestTx struct {
 	TxTarget        []byte  `db:"tx_target"`
 	DequeueBlock    uint64  `db:"dequeue_block"`
 }
+
+type Validator struct {
+	ValidatorIndex             uint64 `db:"validator_index"`
+	Pubkey                     []byte `db:"pubkey"`
+	WithdrawalCredentials      []byte `db:"withdrawal_credentials"`
+	EffectiveBalance           uint64 `db:"effective_balance"`
+	Slashed                    bool   `db:"slashed"`
+	ActivationEligibilityEpoch uint64 `db:"activation_eligibility_epoch"`
+	ActivationEpoch            uint64 `db:"activation_epoch"`
+	ExitEpoch                  uint64 `db:"exit_epoch"`
+	WithdrawableEpoch          uint64 `db:"withdrawable_epoch"`
+}
