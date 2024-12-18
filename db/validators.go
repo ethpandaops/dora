@@ -150,3 +150,26 @@ func GetMaxValidatorIndex() (uint64, error) {
 	}
 	return maxIndex, nil
 }
+
+// GetValidatorsByWithdrawalAddress returns validators with a specific withdrawal address
+func GetValidatorsByWithdrawalAddress(withdrawalAddress []byte) []*dbtypes.Validator {
+	validators := []*dbtypes.Validator{}
+
+	wdcreds1 := make([]byte, 32)
+	wdcreds1[0] = 0x01
+	copy(wdcreds1[12:], withdrawalAddress)
+	wdcreds2 := make([]byte, 32)
+	wdcreds2[0] = 0x02
+	copy(wdcreds2[12:], withdrawalAddress)
+
+	err := ReaderDb.Select(&validators, `
+		SELECT * FROM validators 
+		WHERE withdrawal_credentials = $1 OR withdrawal_credentials = $2
+		ORDER BY validator_index ASC
+	`, wdcreds1, wdcreds2)
+	if err != nil {
+		logger.Errorf("Error while fetching validators by withdrawal address: %v", err)
+		return nil
+	}
+	return validators
+}

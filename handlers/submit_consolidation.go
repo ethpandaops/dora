@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,9 +9,11 @@ import (
 	"time"
 
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
+	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/sirupsen/logrus"
 
+	"github.com/ethpandaops/dora/indexer/beacon"
 	"github.com/ethpandaops/dora/indexer/execution"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
@@ -107,39 +108,41 @@ func handleSubmitConsolidationPageDataAjax(w http.ResponseWriter, r *http.Reques
 	case "load_validators":
 		address := query.Get("address")
 		addressBytes := common.HexToAddress(address)
+		currentEpoch := services.GlobalBeaconService.GetChainState().CurrentEpoch()
 
-		validators := services.GlobalBeaconService.GetCachedValidatorSet(true)
+		validators := services.GlobalBeaconService.GetBeaconIndexer().GetValidatorsByWithdrawalAddress(addressBytes, nil)
+		validatorBalances := services.GlobalBeaconService.GetBeaconIndexer().GetRecentValidatorBalances(nil)
+
 		result := []models.SubmitConsolidationPageDataValidator{}
 		for _, validator := range validators {
-			if validator.Validator.WithdrawalCredentials[0] == 0x00 {
-				continue
+			balance := phase0.Gwei(0)
+			if int(validator.Index) < len(validatorBalances) {
+				balance = validatorBalances[validator.Index]
 			}
 
-			if !bytes.Equal(validator.Validator.WithdrawalCredentials[12:], addressBytes[:]) {
-				continue
-			}
+			validatorStatus := v1.ValidatorToState(validator.Validator, &balance, currentEpoch, beacon.FarFutureEpoch)
 
 			var status string
-			if strings.HasPrefix(validator.Status.String(), "pending") {
+			if strings.HasPrefix(validatorStatus.String(), "pending") {
 				status = "Pending"
-			} else if validator.Status == v1.ValidatorStateActiveOngoing {
+			} else if validatorStatus == v1.ValidatorStateActiveOngoing {
 				status = "Active"
-			} else if validator.Status == v1.ValidatorStateActiveExiting {
+			} else if validatorStatus == v1.ValidatorStateActiveExiting {
 				status = "Exiting"
-			} else if validator.Status == v1.ValidatorStateActiveSlashed {
+			} else if validatorStatus == v1.ValidatorStateActiveSlashed {
 				status = "Slashed"
-			} else if validator.Status == v1.ValidatorStateExitedUnslashed {
+			} else if validatorStatus == v1.ValidatorStateExitedUnslashed {
 				status = "Exited"
-			} else if validator.Status == v1.ValidatorStateExitedSlashed {
+			} else if validatorStatus == v1.ValidatorStateExitedSlashed {
 				status = "Slashed"
 			} else {
-				status = validator.Status.String()
+				status = validatorStatus.String()
 			}
 
 			result = append(result, models.SubmitConsolidationPageDataValidator{
 				Index:    uint64(validator.Index),
 				Pubkey:   validator.Validator.PublicKey.String(),
-				Balance:  uint64(validator.Balance),
+				Balance:  uint64(balance),
 				CredType: fmt.Sprintf("%02x", validator.Validator.WithdrawalCredentials[0]),
 				Status:   status,
 			})

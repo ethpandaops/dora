@@ -351,14 +351,15 @@ func (es *EpochStats) processState(indexer *Indexer, validatorSet []*phase0.Vali
 
 		values.ActiveValidators = uint64(len(values.ActiveIndices))
 	} else {
-		for index, validator := range indexer.validatorCache.getValidatorSetForRoot(es.dependentRoot) {
-			values.TotalBalance += es.dependentState.validatorBalances[index]
-			if validator != nil && es.epoch >= validator.ActivationEpoch && es.epoch < validator.ExitEpoch {
-				values.ActiveIndices = append(values.ActiveIndices, phase0.ValidatorIndex(index))
-				values.EffectiveBalances = append(values.EffectiveBalances, uint16(validator.EffectiveBalance()/EtherGweiFactor))
-				values.EffectiveBalance += validator.EffectiveBalance()
-				values.ActiveBalance += es.dependentState.validatorBalances[index]
-			}
+		for _, balance := range es.dependentState.validatorBalances {
+			values.TotalBalance += balance
+		}
+
+		for _, validator := range indexer.validatorCache.getActiveValidatorDataForRoot(&es.epoch, es.dependentRoot) {
+			values.ActiveIndices = append(values.ActiveIndices, phase0.ValidatorIndex(validator.Index))
+			values.EffectiveBalances = append(values.EffectiveBalances, uint16(validator.Data.EffectiveBalance()/EtherGweiFactor))
+			values.EffectiveBalance += validator.Data.EffectiveBalance()
+			values.ActiveBalance += es.dependentState.validatorBalances[validator.Index]
 		}
 	}
 

@@ -267,7 +267,7 @@ func (bs *ChainService) GetCachedValidatorSet(withBalance bool) []*v1.Validator 
 
 func (bs *ChainService) GetValidatorByIndex(index phase0.ValidatorIndex, withBalance bool) *v1.Validator {
 	currentEpoch := bs.consensusPool.GetChainState().CurrentEpoch()
-	return bs.beaconIndexer.GetEpochValidator(index, currentEpoch, nil, withBalance)
+	return bs.beaconIndexer.GetFullValidatorByIndex(index, currentEpoch, nil, withBalance)
 }
 
 func (bs *ChainService) GetValidatorIndexByPubkey(pubkey phase0.BLSPubKey) (phase0.ValidatorIndex, bool) {

@@ -6,7 +6,9 @@ import (
 	"math/rand/v2"
 	"sort"
 
+	v1 "github.com/attestantio/go-eth2-client/api/v1"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/dora/db"
 )
@@ -251,10 +253,24 @@ func (indexer *Indexer) GetParentForkIds(forkId ForkKey) []ForkKey {
 	return indexer.forkCache.getParentForkIds(forkId)
 }
 
-// GetValidatorSet returns the most recent basic validator set, excluding balances and validator status.
-// If an overrideForkId is provided, the validator set for the fork is returned.
-func (indexer *Indexer) GetValidatorSet(overrideForkId *ForkKey) []*phase0.Validator {
-	return indexer.validatorCache.getValidatorSet(overrideForkId)
+// GetValidatorsByWithdrawalAddress returns the validators with the given withdrawal address.
+func (indexer *Indexer) GetValidatorsByWithdrawalAddress(withdrawalAddress common.Address, overrideForkId *ForkKey) []ValidatorWithIndex {
+	canonicalHead := indexer.GetCanonicalHead(overrideForkId)
+	if canonicalHead == nil {
+		return []ValidatorWithIndex{}
+	}
+
+	return indexer.validatorCache.getValidatorsByWithdrawalAddressForRoot(withdrawalAddress, canonicalHead.Root)
+}
+
+// GetActivationExitQueueLengths returns the activation and exit queue lengths for the given epoch.
+func (indexer *Indexer) GetActivationExitQueueLengths(epoch phase0.Epoch, overrideForkId *ForkKey) (uint64, uint64) {
+	canonicalHead := indexer.GetCanonicalHead(overrideForkId)
+	if canonicalHead == nil {
+		return 0, 0
+	}
+
+	return indexer.validatorCache.getActivationExitQueueLengths(epoch, canonicalHead.Root)
 }
 
 // GetValidatorIndexByPubkey returns the validator index for a given pubkey.
@@ -271,4 +287,119 @@ func (indexer *Indexer) GetValidatorByIndex(index phase0.ValidatorIndex, overrid
 func (indexer *Indexer) GetValidatorActivity(validatorIndex phase0.ValidatorIndex) ([]ValidatorActivity, phase0.Epoch) {
 	activity := indexer.validatorCache.getValidatorActivity(validatorIndex)
 	return activity, indexer.validatorCache.oldestActivityEpoch
+}
+
+// GetRecentValidatorBalances returns the most recent validator balances for the given fork.
+func (indexer *Indexer) GetRecentValidatorBalances(overrideForkId *ForkKey) []phase0.Gwei {
+	chainState := indexer.consensusPool.GetChainState()
+
+	canonicalHead := indexer.GetCanonicalHead(overrideForkId)
+	if canonicalHead == nil {
+		return nil
+	}
+
+	headEpoch := chainState.EpochOfSlot(canonicalHead.Slot)
+
+	var epochStats *EpochStats
+	for {
+		cEpoch := chainState.EpochOfSlot(canonicalHead.Slot)
+		if headEpoch-cEpoch > 2 {
+			return nil
+		}
+
+		dependentBlock := indexer.blockCache.getDependentBlock(chainState, canonicalHead, nil)
+		if dependentBlock == nil {
+			return nil
+		}
+		canonicalHead = dependentBlock
+
+		stats := indexer.epochCache.getEpochStats(cEpoch, dependentBlock.Root)
+		if cEpoch > 0 && (stats == nil || stats.dependentState == nil || stats.dependentState.loadingStatus != 2) {
+			continue // retry previous state
+		}
+
+		epochStats = stats
+		break
+	}
+
+	if epochStats == nil {
+		return nil
+	}
+
+	return epochStats.dependentState.validatorBalances
+}
+
+// GetFullValidatorByIndex returns the full validator set entry for a given validator index, including balances and validator status.
+// If an overrideForkId is provided, the validator for the fork is returned.
+func (indexer *Indexer) GetFullValidatorByIndex(validatorIndex phase0.ValidatorIndex, epoch phase0.Epoch, overrideForkId *ForkKey, withBalances bool) *v1.Validator {
+	var epochStats *EpochStats
+
+	if withBalances {
+		chainState := indexer.consensusPool.GetChainState()
+
+		canonicalHead := indexer.GetCanonicalHead(overrideForkId)
+		if canonicalHead == nil {
+			return nil
+		}
+
+		headEpoch := chainState.EpochOfSlot(canonicalHead.Slot)
+
+		for {
+			cEpoch := chainState.EpochOfSlot(canonicalHead.Slot)
+			if headEpoch-cEpoch > 2 {
+				return nil
+			}
+
+			dependentBlock := indexer.blockCache.getDependentBlock(chainState, canonicalHead, nil)
+			if dependentBlock == nil {
+				return nil
+			}
+			canonicalHead = dependentBlock
+
+			stats := indexer.epochCache.getEpochStats(cEpoch, dependentBlock.Root)
+			if cEpoch > 0 && (stats == nil || stats.dependentState == nil || stats.dependentState.loadingStatus != 2) {
+				continue // retry previous state
+			}
+
+			epochStats = stats
+
+			if cEpoch > 0 && stats.epoch > epoch {
+				continue
+			}
+
+			break
+		}
+	}
+
+	hasBalances := epochStats != nil && epochStats.dependentState != nil && epochStats.dependentState.loadingStatus == 2
+
+	var basicValidator *phase0.Validator
+	if hasBalances {
+		basicValidator = indexer.validatorCache.getValidatorByIndexAndRoot(validatorIndex, epochStats.dependentRoot)
+	} else {
+		basicValidator = indexer.validatorCache.getValidatorByIndex(validatorIndex, overrideForkId)
+	}
+
+	if basicValidator == nil {
+		return nil
+	}
+
+	var balance *phase0.Gwei
+	if hasBalances {
+		balance = &epochStats.dependentState.validatorBalances[validatorIndex]
+	}
+
+	state := v1.ValidatorToState(basicValidator, balance, epoch, FarFutureEpoch)
+
+	validatorData := &v1.Validator{
+		Index:     validatorIndex,
+		Status:    state,
+		Validator: basicValidator,
+	}
+
+	if balance != nil {
+		validatorData.Balance = *balance
+	}
+
+	return validatorData
 }

@@ -1,6 +1,7 @@
 package beacon
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"hash/crc64"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/attestantio/go-eth2-client/spec/phase0"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/jmoiron/sqlx"
@@ -22,14 +24,15 @@ var crc64Table = crc64.MakeTable(crc64.ISO)
 type validatorCache struct {
 	indexer *Indexer
 
-	valsetCache          []*validatorEntry // cache for validators
-	cacheMutex           sync.RWMutex      // mutex to protect valsetCache for concurrent access
-	validatorActivityMap map[phase0.ValidatorIndex][]ValidatorActivity
-	activityMutex        sync.RWMutex // mutex to protect recentActivity for concurrent access
-	lastFinalized        phase0.Epoch // last finalized epoch
-	oldestActivityEpoch  phase0.Epoch // oldest epoch in activity cache
-	pubkeyMap            map[phase0.BLSPubKey]phase0.ValidatorIndex
-	pubkeyMutex          sync.RWMutex // mutex to protect pubkeyMap for concurrent access
+	valsetCache              []*validatorEntry // cache for validators
+	cacheMutex               sync.RWMutex      // mutex to protect valsetCache for concurrent access
+	validatorActivityMap     map[phase0.ValidatorIndex][]ValidatorActivity
+	activityMutex            sync.RWMutex // mutex to protect recentActivity for concurrent access
+	lastFinalized            phase0.Epoch // last finalized epoch
+	lastFinalizedActiveCount uint64
+	oldestActivityEpoch      phase0.Epoch // oldest epoch in activity cache
+	pubkeyMap                map[phase0.BLSPubKey]phase0.ValidatorIndex
+	pubkeyMutex              sync.RWMutex // mutex to protect pubkeyMap for concurrent access
 }
 
 // validatorEntry represents a validator in the validator set cache.
@@ -40,11 +43,21 @@ type validatorEntry struct {
 	activeData     *ValidatorData
 }
 
+type ValidatorWithIndex struct {
+	Index     uint64
+	Validator *phase0.Validator
+}
+
 // ValidatorData holds the most relevant information about a active validator.
 type ValidatorData struct {
 	ActivationEpoch  phase0.Epoch
 	ExitEpoch        phase0.Epoch
 	effectiveBalance uint16
+}
+
+type ValidatorDataWithIndex struct {
+	Index uint64
+	Data  *ValidatorData
 }
 
 // ValidatorActivity represents a validator's activity in an epoch.
@@ -314,6 +327,7 @@ func (cache *validatorCache) setFinalizedEpoch(epoch phase0.Epoch, nextEpochDepe
 	defer cache.cacheMutex.Unlock()
 
 	cache.lastFinalized = epoch
+	activeCount := uint64(0)
 
 	for _, cachedValidator := range cache.valsetCache {
 		if cachedValidator == nil {
@@ -345,33 +359,29 @@ func (cache *validatorCache) setFinalizedEpoch(epoch phase0.Epoch, nextEpochDepe
 		cachedValidator.validatorDiffs = newDiffs
 
 		// clear old active data
-		if cachedValidator.activeData != nil && cachedValidator.activeData.ExitEpoch > epoch+100 && cachedValidator.activeData.ActivationEpoch < math.MaxUint64 {
-			cachedValidator.activeData = nil
+		if cachedValidator.activeData != nil {
+			if !cache.isActiveValidator(cachedValidator.activeData) {
+				cachedValidator.activeData = nil
+			} else {
+				activeCount++
+			}
 		}
 	}
+
+	cache.lastFinalizedActiveCount = activeCount
 }
 
-// getValidatorSet returns the validator set for a given forkId.
-func (cache *validatorCache) getValidatorSet(overrideForkId *ForkKey) []*ValidatorData {
-	canonicalHead := cache.indexer.GetCanonicalHead(overrideForkId)
-	if canonicalHead == nil {
-		return []*ValidatorData{}
-	}
-
-	return cache.getValidatorSetForRoot(canonicalHead.Root)
-}
-
-// getValidatorSetForRoot returns the validator set for a given blockRoot.
-func (cache *validatorCache) getValidatorSetForRoot(blockRoot phase0.Root) []*ValidatorData {
+// getActiveValidatorDataForRoot returns the active validator data for a given blockRoot.
+func (cache *validatorCache) getActiveValidatorDataForRoot(epoch *phase0.Epoch, blockRoot phase0.Root) []ValidatorDataWithIndex {
 	cache.cacheMutex.RLock()
 	defer cache.cacheMutex.RUnlock()
 
 	isParentMap := map[phase0.Root]bool{}
 	isAheadMap := map[phase0.Root]bool{}
 
-	validatorSet := make([]*ValidatorData, 0, len(cache.valsetCache))
+	validatorSet := make([]ValidatorDataWithIndex, 0, cache.lastFinalizedActiveCount+100)
 
-	for _, cachedValidator := range cache.valsetCache {
+	for index, cachedValidator := range cache.valsetCache {
 		validatorData := cachedValidator.activeData
 		validatorEpoch := cache.lastFinalized
 
@@ -416,10 +426,146 @@ func (cache *validatorCache) getValidatorSetForRoot(blockRoot phase0.Root) []*Va
 			}
 		}
 
-		validatorSet = append(validatorSet, validatorData)
+		if validatorData != nil {
+			if epoch != nil && (*epoch < validatorData.ActivationEpoch || *epoch >= validatorData.ExitEpoch) {
+				continue
+			}
+
+			validatorSet = append(validatorSet, ValidatorDataWithIndex{
+				Index: uint64(index),
+				Data:  validatorData,
+			})
+		}
 	}
 
 	return validatorSet
+}
+
+// getCachedValidatorSetForRoot returns the cached validator set for a given blockRoot.
+// missing entries can be found in the DB
+func (cache *validatorCache) getCachedValidatorSetForRoot(blockRoot phase0.Root) []ValidatorWithIndex {
+	cache.cacheMutex.RLock()
+	defer cache.cacheMutex.RUnlock()
+
+	isParentMap := map[phase0.Root]bool{}
+	isAheadMap := map[phase0.Root]bool{}
+
+	validatorSet := make([]ValidatorWithIndex, 0, 100)
+
+	for index, cachedValidator := range cache.valsetCache {
+		validatorData := ValidatorWithIndex{
+			Index:     uint64(index),
+			Validator: nil,
+		}
+		validatorEpoch := cache.lastFinalized
+
+		var aheadValidator *phase0.Validator
+		aheadEpoch := phase0.Epoch(math.MaxInt64)
+
+		for _, diff := range cachedValidator.validatorDiffs {
+			isParent, checkedParent := isParentMap[diff.dependentRoot]
+			if !checkedParent {
+				isParent = cache.indexer.blockCache.isCanonicalBlock(diff.dependentRoot, blockRoot)
+				isParentMap[diff.dependentRoot] = isParent
+			}
+
+			if isParent && diff.epoch >= validatorEpoch {
+				validatorData.Validator = diff.validator
+				validatorEpoch = diff.epoch
+			}
+
+			if !isParent && validatorData.Validator == nil {
+				isAhead, checkedAhead := isAheadMap[diff.dependentRoot]
+				if !checkedAhead {
+					isAhead = cache.indexer.blockCache.isCanonicalBlock(blockRoot, diff.dependentRoot)
+					isAheadMap[diff.dependentRoot] = isAhead
+				}
+
+				if isAhead && diff.epoch < aheadEpoch {
+					aheadValidator = diff.validator
+					aheadEpoch = diff.epoch
+				}
+			}
+		}
+
+		if validatorData.Validator == nil && aheadValidator != nil {
+			validatorData.Validator = aheadValidator
+		}
+
+		if validatorData.Validator != nil {
+			validatorSet = append(validatorSet, validatorData)
+		}
+	}
+
+	return validatorSet
+}
+
+// getActivationExitQueueLengths returns the activation and exit queue lengths.
+func (cache *validatorCache) getActivationExitQueueLengths(epoch phase0.Epoch, blockRoot phase0.Root) (uint64, uint64) {
+	cache.cacheMutex.RLock()
+	defer cache.cacheMutex.RUnlock()
+
+	activationQueueLength := uint64(0)
+	exitQueueLength := uint64(0)
+
+	for _, validator := range cache.getActiveValidatorDataForRoot(nil, blockRoot) {
+		if validator.Data.ActivationEpoch < FarFutureEpoch && validator.Data.ActivationEpoch < epoch {
+			activationQueueLength++
+		}
+		if validator.Data.ExitEpoch < FarFutureEpoch && validator.Data.ExitEpoch > epoch {
+			exitQueueLength++
+		}
+	}
+
+	return activationQueueLength, exitQueueLength
+}
+
+// getValidatorsByWithdrawalAddressForRoot returns validators with a specific withdrawal address for a given blockRoot
+func (cache *validatorCache) getValidatorsByWithdrawalAddressForRoot(withdrawalAddress common.Address, blockRoot phase0.Root) []ValidatorWithIndex {
+	// Get validators from DB first
+	dbValidators := db.GetValidatorsByWithdrawalAddress(withdrawalAddress[:])
+
+	cache.cacheMutex.RLock()
+	defer cache.cacheMutex.RUnlock()
+
+	// Result slice
+	result := make([]ValidatorWithIndex, 0, len(dbValidators)+10)
+	dbIdx := 0
+
+	// Process cached validators
+	for _, cachedValidator := range cache.getCachedValidatorSetForRoot(blockRoot) {
+		if cachedValidator.Validator.WithdrawalCredentials[0] != 0x01 && cachedValidator.Validator.WithdrawalCredentials[0] != 0x02 {
+			continue
+		}
+
+		if !bytes.Equal(cachedValidator.Validator.WithdrawalCredentials[12:], withdrawalAddress[:]) {
+			continue
+		}
+
+		for dbIdx < len(dbValidators) && dbValidators[dbIdx].ValidatorIndex < cachedValidator.Index {
+			result = append(result, ValidatorWithIndex{
+				Index:     dbValidators[dbIdx].ValidatorIndex,
+				Validator: wrapDbValidator(dbValidators[dbIdx]),
+			})
+			dbIdx++
+		}
+
+		if dbIdx < len(dbValidators) && dbValidators[dbIdx].ValidatorIndex == cachedValidator.Index {
+			dbIdx++ // skip this index, cache entry is newer
+		}
+
+		result = append(result, cachedValidator)
+	}
+
+	for dbIdx < len(dbValidators) {
+		result = append(result, ValidatorWithIndex{
+			Index:     dbValidators[dbIdx].ValidatorIndex,
+			Validator: wrapDbValidator(dbValidators[dbIdx]),
+		})
+		dbIdx++
+	}
+
+	return result
 }
 
 // wrapDbValidator wraps a dbtypes.Validator to a phase0.Validator
@@ -434,6 +580,16 @@ func wrapDbValidator(dbValidator *dbtypes.Validator) *phase0.Validator {
 		ExitEpoch:                  phase0.Epoch(dbValidator.ExitEpoch),
 		WithdrawableEpoch:          phase0.Epoch(dbValidator.WithdrawableEpoch),
 	}
+}
+
+func (cache *validatorCache) isActiveValidator(validator *ValidatorData) bool {
+	currentEpoch := cache.indexer.consensusPool.GetChainState().CurrentEpoch()
+	cutOffEpoch := phase0.Epoch(0)
+	if currentEpoch > 10 {
+		cutOffEpoch = currentEpoch - 10
+	}
+
+	return validator.ActivationEpoch < FarFutureEpoch && validator.ExitEpoch > cutOffEpoch
 }
 
 // getValidatorByIndex returns the validator by index for a given forkId.
@@ -552,6 +708,8 @@ func (cache *validatorCache) prepopulateFromDB() error {
 	// Pre-allocate slice
 	cache.valsetCache = make([]*validatorEntry, maxIndex+1, maxIndex+1+1000)
 
+	activeCount := uint64(0)
+
 	// Load validators in batches
 	batchSize := uint64(10000)
 	for start := uint64(0); start <= maxIndex; start += batchSize {
@@ -574,15 +732,22 @@ func (cache *validatorCache) prepopulateFromDB() error {
 				WithdrawableEpoch:          phase0.Epoch(dbVal.WithdrawableEpoch),
 			}
 
-			// Create cache entry with checksum
-			cache.valsetCache[dbVal.ValidatorIndex] = &validatorEntry{
+			valEntry := &validatorEntry{
 				dbChecksum: calculateValidatorChecksum(val),
-				activeData: &ValidatorData{
-					ActivationEpoch:  phase0.Epoch(dbVal.ActivationEpoch),
-					ExitEpoch:        phase0.Epoch(dbVal.ExitEpoch),
-					effectiveBalance: uint16(val.EffectiveBalance / EtherGweiFactor),
-				},
 			}
+
+			valData := &ValidatorData{
+				ActivationEpoch:  phase0.Epoch(dbVal.ActivationEpoch),
+				ExitEpoch:        phase0.Epoch(dbVal.ExitEpoch),
+				effectiveBalance: uint16(val.EffectiveBalance / EtherGweiFactor),
+			}
+			if cache.isActiveValidator(valData) {
+				valEntry.activeData = valData
+				activeCount++
+			}
+
+			// Create cache entry with checksum
+			cache.valsetCache[dbVal.ValidatorIndex] = valEntry
 
 			// Update pubkey map
 			cache.pubkeyMutex.Lock()
@@ -590,6 +755,8 @@ func (cache *validatorCache) prepopulateFromDB() error {
 			cache.pubkeyMutex.Unlock()
 		}
 	}
+
+	cache.lastFinalizedActiveCount = activeCount
 
 	return nil
 }
