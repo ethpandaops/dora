@@ -36,7 +36,7 @@ The repository contains a script that simplifies spinning up a development envir
 
 Follow these steps to spin up a full ethereum testnet with the locally build dora instance:
 
-1. Ensure docker & (kurtosis)[https://docs.kurtosis.com/install] are installed on your machine.
+1. Ensure Docker & [Kurtosis](https://docs.kurtosis.com/install) are installed on your machine
 2. Clone the repository
 3. Run `make devnet-run`
 
