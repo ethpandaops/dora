@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { useAccount, useSendTransaction } from 'wagmi';
-import { useCall } from 'wagmi'
+import { useStorageAt } from 'wagmi'
 import { useState } from 'react';
 import { IValidator } from './SubmitConsolidationsFormProps';
 import { toReadableAmount } from '../../utils/ReadableAmount';
@@ -18,11 +18,10 @@ const ConsolidationReview = (props: IConsolidationReviewProps) => {
   const [addExtraFee, setAddExtraFee] = useState(true);
   const [errorModal, setErrorModal] = useState<string | null>(null);
 
-  const consolidationQueueLengthCall = useCall({
-    account: address,
-    to: props.consolidationContract,
-    data: "0x",
-		chain: chain,
+  const consolidationQueueLengthCall = useStorageAt({
+    address: props.consolidationContract as `0x${string}`,
+    slot: "0x00",
+    chainId: chain?.id,
 	});
   const submitRequest = useSendTransaction();
 
@@ -41,7 +40,7 @@ const ConsolidationReview = (props: IConsolidationReviewProps) => {
   let requestFee = 0n;
   let failedQueueLength = false;
   if (consolidationQueueLengthCall.isFetched && consolidationQueueLengthCall.data) {
-    var queueLenHex = consolidationQueueLengthCall.data.data as string;
+    var queueLenHex = consolidationQueueLengthCall.data as string;
     if (!queueLenHex) {
       failedQueueLength = true;
     } else if (queueLenHex == "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff") {
