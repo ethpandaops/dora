@@ -8,9 +8,9 @@ import (
 
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/dora/db"
+	"github.com/ethpandaops/dora/dbtypes"
 )
 
 // GetAllClients returns a slice of all clients in the indexer.
@@ -253,14 +253,9 @@ func (indexer *Indexer) GetParentForkIds(forkId ForkKey) []ForkKey {
 	return indexer.forkCache.getParentForkIds(forkId)
 }
 
-// GetValidatorsByWithdrawalAddress returns the validators with the given withdrawal address.
-func (indexer *Indexer) GetValidatorsByWithdrawalAddress(withdrawalAddress common.Address, overrideForkId *ForkKey) []ValidatorWithIndex {
-	canonicalHead := indexer.GetCanonicalHead(overrideForkId)
-	if canonicalHead == nil {
-		return []ValidatorWithIndex{}
-	}
-
-	return indexer.validatorCache.getValidatorsByWithdrawalAddressForRoot(withdrawalAddress, canonicalHead.Root)
+// GetValidatorsByFilter returns the validators with the given filter.
+func (indexer *Indexer) GetValidatorsByFilter(filter *dbtypes.ValidatorFilter, withBalances bool, overrideForkId *ForkKey) ([]v1.Validator, uint64) {
+	return indexer.validatorCache.getFilteredValidatorsForRoot(filter, withBalances, overrideForkId)
 }
 
 // GetActivationExitQueueLengths returns the activation and exit queue lengths for the given epoch.

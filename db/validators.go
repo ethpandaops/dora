@@ -2,6 +2,7 @@ package db
 
 import (
 	"fmt"
+	"math"
 	"strings"
 
 	"github.com/attestantio/go-eth2-client/spec/phase0"
@@ -151,25 +152,164 @@ func GetMaxValidatorIndex() (uint64, error) {
 	return maxIndex, nil
 }
 
-// GetValidatorsByWithdrawalAddress returns validators with a specific withdrawal address
-func GetValidatorsByWithdrawalAddress(withdrawalAddress []byte) []*dbtypes.Validator {
-	validators := []*dbtypes.Validator{}
+// GetValidatorIndexesByFilter returns validator indexes matching a filter
+func GetValidatorIndexesByFilter(filter dbtypes.ValidatorFilter, currentEpoch uint64) ([]uint64, error) {
+	var sql strings.Builder
+	args := []interface{}{}
+	fmt.Fprint(&sql, `
+	SELECT
+		validator_index
+	FROM validators
+	`)
 
-	wdcreds1 := make([]byte, 32)
-	wdcreds1[0] = 0x01
-	copy(wdcreds1[12:], withdrawalAddress)
-	wdcreds2 := make([]byte, 32)
-	wdcreds2[0] = 0x02
-	copy(wdcreds2[12:], withdrawalAddress)
+	args = buildValidatorFilterSql(filter, currentEpoch, &sql, args)
 
-	err := ReaderDb.Select(&validators, `
-		SELECT * FROM validators 
-		WHERE withdrawal_credentials = $1 OR withdrawal_credentials = $2
-		ORDER BY validator_index ASC
-	`, wdcreds1, wdcreds2)
-	if err != nil {
-		logger.Errorf("Error while fetching validators by withdrawal address: %v", err)
-		return nil
+	switch filter.OrderBy {
+	case dbtypes.ValidatorOrderIndexAsc:
+		fmt.Fprintf(&sql, " ORDER BY validator_index ASC")
+	case dbtypes.ValidatorOrderIndexDesc:
+		fmt.Fprintf(&sql, " ORDER BY validator_index DESC")
+	case dbtypes.ValidatorOrderPubKeyAsc:
+		fmt.Fprintf(&sql, " ORDER BY pubkey ASC")
+	case dbtypes.ValidatorOrderPubKeyDesc:
+		fmt.Fprintf(&sql, " ORDER BY pubkey DESC")
+	case dbtypes.ValidatorOrderBalanceAsc:
+		fmt.Fprintf(&sql, " ORDER BY effective_balance ASC")
+	case dbtypes.ValidatorOrderBalanceDesc:
+		fmt.Fprintf(&sql, " ORDER BY effective_balance DESC")
+	case dbtypes.ValidatorOrderActivationEpochAsc:
+		fmt.Fprintf(&sql, " ORDER BY activation_epoch ASC")
+	case dbtypes.ValidatorOrderActivationEpochDesc:
+		fmt.Fprintf(&sql, " ORDER BY activation_epoch DESC")
+	case dbtypes.ValidatorOrderExitEpochAsc:
+		fmt.Fprintf(&sql, " ORDER BY exit_epoch ASC")
+	case dbtypes.ValidatorOrderExitEpochDesc:
+		fmt.Fprintf(&sql, " ORDER BY exit_epoch DESC")
+	case dbtypes.ValidatorOrderWithdrawableEpochAsc:
+		fmt.Fprintf(&sql, " ORDER BY withdrawable_epoch ASC")
+	case dbtypes.ValidatorOrderWithdrawableEpochDesc:
+		fmt.Fprintf(&sql, " ORDER BY withdrawable_epoch DESC")
 	}
-	return validators
+
+	validatorIds := []uint64{}
+	err := ReaderDb.Select(&validatorIds, sql.String(), args...)
+	if err != nil {
+		logger.Errorf("Error while fetching validators by filter: %v", err)
+		return nil, err
+	}
+
+	return validatorIds, nil
+}
+
+func buildValidatorFilterSql(filter dbtypes.ValidatorFilter, currentEpoch uint64, sql *strings.Builder, args []interface{}) []interface{} {
+	if filter.ValidatorName != "" {
+		fmt.Fprintf(sql, ` LEFT JOIN validator_names ON validator_names."index" = validators.validator_index `)
+	}
+
+	filterOp := "WHERE"
+	if filter.MinIndex != nil {
+		args = append(args, *filter.MinIndex)
+		fmt.Fprintf(sql, " %v validator_index >= $%v", filterOp, len(args))
+		filterOp = "AND"
+	}
+	if filter.MaxIndex != nil {
+		args = append(args, *filter.MaxIndex)
+		fmt.Fprintf(sql, " %v validator_index <= $%v", filterOp, len(args))
+		filterOp = "AND"
+	}
+	if filter.PubKey != nil {
+		args = append(args, filter.PubKey)
+		fmt.Fprintf(sql, " %v pubkey = $%v", filterOp, len(args))
+		filterOp = "AND"
+	}
+	if filter.WithdrawalAddress != nil {
+		wdcreds1 := make([]byte, 32)
+		wdcreds1[0] = 0x01
+		copy(wdcreds1[12:], filter.WithdrawalAddress)
+		wdcreds2 := make([]byte, 32)
+		wdcreds2[0] = 0x02
+		copy(wdcreds2[12:], filter.WithdrawalAddress)
+		args = append(args, wdcreds1, wdcreds2)
+		fmt.Fprintf(sql, " %v (withdrawal_credentials = $%v OR withdrawal_credentials = $%v)", filterOp, len(args)-1, len(args))
+		filterOp = "AND"
+	}
+	if filter.ValidatorName != "" {
+		args = append(args, filter.ValidatorName)
+		fmt.Fprintf(sql, EngineQuery(map[dbtypes.DBEngineType]string{
+			dbtypes.DBEnginePgsql:  ` AND validator_names.name ilike $%v `,
+			dbtypes.DBEngineSqlite: ` AND validator_names.name LIKE $%v `,
+		}), len(args))
+		filterOp = "AND"
+	}
+	if len(filter.Status) > 0 {
+		values := []string{}
+		for _, status := range filter.Status {
+			args = append(args, status)
+			values = append(values, fmt.Sprintf("$%v", len(args)))
+		}
+		fmt.Fprintf(sql, " %v %v IN (%s)", filterOp, buildValidatorStatusSql(currentEpoch), strings.Join(values, ","))
+		filterOp = "AND"
+	}
+
+	return args
+}
+
+func buildValidatorStatusSql(currentEpoch uint64) string {
+	return fmt.Sprintf(`
+		SWITCH (
+			WHEN activation_eligibility_epoch == %v THEN 1
+			WHEN activation_epoch > %v THEN 2
+			WHEN exit_epoch == %v THEN 3
+			WHEN exit_epoch > %v AND slashed THEN 5
+			WHEN exit_epoch > %v THEN 4
+			WHEN withdrawable_epoch > %v AND slashed THEN 7
+			WHEN withdrawable_epoch > %v THEN 6
+			WHEN effective_balance == 0 THEN 9
+			ELSE 8
+		)
+	`, math.MaxInt64, currentEpoch, math.MaxInt64, currentEpoch, currentEpoch, currentEpoch, currentEpoch)
+}
+
+func StreamValidatorsByIndexes(indexes []uint64, cb func(validator *dbtypes.Validator) bool) error {
+	var sql strings.Builder
+	fmt.Fprintf(&sql, `
+	SELECT
+		validator_index, pubkey, withdrawal_credentials, effective_balance,
+		slashed, activation_eligibility_epoch, activation_epoch,
+		exit_epoch, withdrawable_epoch
+	FROM validators
+	WHERE validator_index in (`)
+	argIdx := 0
+	args := make([]any, len(indexes))
+	for i, index := range indexes {
+		if i > 0 {
+			fmt.Fprintf(&sql, ", ")
+		}
+		fmt.Fprintf(&sql, "$%v", argIdx+1)
+		args[argIdx] = index
+		argIdx += 1
+	}
+	fmt.Fprintf(&sql, ")")
+
+	rows, err := ReaderDb.Query(sql.String(), args...)
+	if err != nil {
+		logger.Errorf("Error while fetching validators by filter: %v", err)
+		return err
+	}
+
+	for rows.Next() {
+		validator := dbtypes.Validator{}
+		err := rows.Scan(&validator.ValidatorIndex, &validator.Pubkey, &validator.WithdrawalCredentials, &validator.EffectiveBalance,
+			&validator.Slashed, &validator.ActivationEligibilityEpoch, &validator.ActivationEpoch,
+			&validator.ExitEpoch, &validator.WithdrawableEpoch)
+		if err != nil {
+			logger.Errorf("Error while scanning validator: %v", err)
+			return err
+		}
+		if !cb(&validator) {
+			return nil
+		}
+	}
+
+	return nil
 }

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	v1 "github.com/attestantio/go-eth2-client/api/v1"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
@@ -114,7 +115,8 @@ func buildValidatorsActivityPageData(pageIdx uint64, pageSize uint64, sortOrder 
 
 	// group validators
 	validatorGroupMap := map[string]*models.ValidatorsActiviyPageDataGroup{}
-	validatorSet := services.GlobalBeaconService.GetCachedValidatorSet(false)
+	//validatorSet := services.GlobalBeaconService.GetCachedValidatorSet(false)
+	validatorSet := []*v1.Validator{}
 
 	for vIdx, validator := range validatorSet {
 		var groupKey string
