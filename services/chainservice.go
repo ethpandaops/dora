@@ -45,12 +45,19 @@ func InitChainService(ctx context.Context, logger logrus.FieldLogger) {
 		return
 	}
 
+	var validatorNames *ValidatorNames
+
 	// initialize client pools & indexers
 	consensusPool := consensus.NewPool(ctx, logger.WithField("service", "cl-pool"))
 	executionPool := execution.NewPool(ctx, logger.WithField("service", "el-pool"))
-	beaconIndexer := beacon.NewIndexer(logger.WithField("service", "cl-indexer"), consensusPool)
+	beaconIndexer := beacon.NewIndexer(logger.WithField("service", "cl-indexer"), consensusPool, func(index uint64) string {
+		if validatorNames == nil {
+			return ""
+		}
+		return validatorNames.GetValidatorName(index)
+	})
 	chainState := consensusPool.GetChainState()
-	validatorNames := NewValidatorNames(beaconIndexer, chainState)
+	validatorNames = NewValidatorNames(beaconIndexer, chainState)
 	mevRelayIndexer := mevrelay.NewMevIndexer(logger.WithField("service", "mev-relay"), beaconIndexer, chainState)
 
 	GlobalBeaconService = &ChainService{
@@ -260,14 +267,13 @@ func (bs *ChainService) GetValidatorNamesCount() uint64 {
 	return bs.validatorNames.GetValidatorNamesCount()
 }
 
-func (bs *ChainService) GetCachedValidatorSet(withBalance bool) []*v1.Validator {
-	currentEpoch := bs.consensusPool.GetChainState().CurrentEpoch()
-	return bs.beaconIndexer.GetEpochValidatorSet(currentEpoch, nil, withBalance)
+func (bs *ChainService) GetFilteredValidatorSet(filter *dbtypes.ValidatorFilter, withBalance bool) ([]v1.Validator, uint64) {
+	return bs.beaconIndexer.GetValidatorsByFilter(filter, withBalance, nil)
 }
 
 func (bs *ChainService) GetValidatorByIndex(index phase0.ValidatorIndex, withBalance bool) *v1.Validator {
 	currentEpoch := bs.consensusPool.GetChainState().CurrentEpoch()
-	return bs.beaconIndexer.GetEpochValidator(index, currentEpoch, nil, withBalance)
+	return bs.beaconIndexer.GetFullValidatorByIndex(index, currentEpoch, nil, withBalance)
 }
 
 func (bs *ChainService) GetValidatorIndexByPubkey(pubkey phase0.BLSPubKey) (phase0.ValidatorIndex, bool) {
