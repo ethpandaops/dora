@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { useAccount, useSendTransaction } from 'wagmi';
+import { useAccount, useSendTransaction, useBlockNumber, usePublicClient } from 'wagmi';
 import { useStorageAt } from 'wagmi'
 import { useState } from 'react';
 import { IValidator } from './SubmitWithdrawalsFormProps';
@@ -13,28 +13,94 @@ interface IWithdrawalReviewProps {
   explorerUrl: string;
 }
 
+interface IWithdrawalLogState {
+  lastBlock: bigint;
+  logCount: {[block: string]: number};
+}
+
 const WithdrawalReview = (props: IWithdrawalReviewProps) => {
   const { address, chain } = useAccount();
+  const [logState, setLogState] = useState<IWithdrawalLogState>({
+    lastBlock: 0n,
+    logCount: {},
+  });
   const [addExtraFee, setAddExtraFee] = useState(true);
   const [errorModal, setErrorModal] = useState<string | null>(null);
+
+  const blockNumber = useBlockNumber();
+  const client = usePublicClient({
+    chainId: chain?.id,
+  });
+
+  const logLookbackRange = 10;
+
+  useEffect(() => {
+    // log loader
+    if (!blockNumber.isFetched || !client || !addExtraFee) 
+      return;
+
+    if (!blockNumber.data || blockNumber.data <= logState.lastBlock) 
+      return;
+
+    let fromBlock = blockNumber.data - BigInt(logLookbackRange);
+    if (fromBlock < 0n) 
+      fromBlock = 0n;
+
+    let cancelUpdate = false;
+    let logsPromise = client.request({
+      method: 'eth_getLogs',
+      params: [
+        {
+          address: props.withdrawalContract,
+          fromBlock: "0x"+fromBlock.toString(16),
+        },
+      ],
+    });
+    logsPromise.then((logs) => {
+      if (cancelUpdate) 
+        return;
+
+      let newLogState: IWithdrawalLogState = {
+        lastBlock: blockNumber.data,
+        logCount: {},
+      };
+
+      (logs as any[]).forEach((log) => {
+        let blockNum = BigInt(log.blockNumber);
+        let blockStr = blockNum.toString();
+        if (!newLogState.logCount[blockStr]) 
+          newLogState.logCount[blockStr] = 0;
+        newLogState.logCount[blockStr]++;
+      });
+
+      setLogState(newLogState);
+    });
+
+    return function() {
+      cancelUpdate = true;
+    }
+  }, [blockNumber, client, addExtraFee]);
 
   const withdrawalQueueLengthCall = useStorageAt({
     address: props.withdrawalContract as `0x${string}`,
     slot: "0x00",
     chainId: chain?.id,
 	});
+
   const submitRequest = useSendTransaction();
 
   useEffect(() => {
     const interval = setInterval(() => {
       withdrawalQueueLengthCall.refetch();
+      blockNumber.refetch();
     }, 15000);
     return () => {
       clearInterval(interval);
     };
-  }, [withdrawalQueueLengthCall]);
+  }, []);
 
   let queueLength = 0n;
+  let avgRequestPerBlock = 0;
   let isPreElectra = false;
   let requiredFee = 0n;
   let requestFee = 0n;
@@ -50,7 +116,20 @@ const WithdrawalReview = (props: IWithdrawalReviewProps) => {
       requiredFee = getRequiredFee(queueLength);
 
       if(addExtraFee) {
-        requestFee = getRequiredFee(queueLength + 10n); // add extra fee for 10 withdrawals submitted before this
+        // add extra fee to avoid rejection due to other submissions
+        for(let block in logState.logCount) {
+          avgRequestPerBlock += logState.logCount[block];
+        }
+        avgRequestPerBlock /= logLookbackRange;
+
+        let extraFeeForRequest = avgRequestPerBlock;
+        if (extraFeeForRequest < 2) {
+          extraFeeForRequest = 3;
+        } else {
+          extraFeeForRequest++;
+        }
+
+        requestFee = getRequiredFee(queueLength + BigInt(Math.ceil(extraFeeForRequest)));
       } else {
         requestFee = requiredFee;
       }
@@ -122,6 +201,26 @@ const WithdrawalReview = (props: IWithdrawalReviewProps) => {
               <label htmlFor="addExtraFee" className="ms-1">Add extra fee to avoid rejection due to other submissions</label>
             </div>
           </div>
+          {addExtraFee &&
+          <div className="row">
+            <div className="col-3 col-lg-2">
+              Avg. requests per block:
+            </div>
+            <div className="col-9 col-lg-10">
+              {avgRequestPerBlock.toFixed(2)}  (last {logLookbackRange} blocks)
+            </div>
+          </div>
+          }
+          {addExtraFee &&
+          <div className="row">
+            <div className="col-3 col-lg-2">
+              Extra fee:
+            </div>
+            <div className="col-9 col-lg-10">
+              {toReadableAmount(requestFee - requiredFee, feeFactor, feeUnit, 4)}
+            </div>
+          </div>
+          }
           <div className="row">
             <div className="col-3 col-lg-2">
               Total fee:
@@ -203,6 +302,7 @@ const WithdrawalReview = (props: IWithdrawalReviewProps) => {
       // https://eips.ethereum.org/EIPS/eip-7002#add-withdrawal-request
       // calldata (56 bytes): sourceValidator.pubkey (48 bytes) + amount (8 bytes)
       data: "0x" + props.validator.pubkey.substring(2) + props.withdrawalAmount.toString(16).padStart(16, "0"),
+      gas: 200000n,
     }).then(tx => {
       console.log(tx);
     }).catch(error => {
