@@ -317,7 +317,7 @@ func (indexer *Indexer) GetRecentValidatorBalances(overrideForkId *ForkKey) []ph
 		break
 	}
 
-	if epochStats == nil {
+	if epochStats == nil || epochStats.dependentState == nil {
 		return nil
 	}
 

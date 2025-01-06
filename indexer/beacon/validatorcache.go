@@ -728,6 +728,26 @@ func (cache *validatorCache) getFilteredValidatorsForRoot(filter *dbtypes.Valida
 		return true // get more from db
 	})
 
+	for cachedIndex < len(cachedResults) && (filter.Limit == 0 || resultCount < filter.Limit) {
+		if matchingCount >= filter.Offset {
+			balance := phase0.Gwei(0)
+			var balancePtr *phase0.Gwei
+			if balances != nil {
+				balance = balances[cachedResults[cachedIndex].Index]
+				balancePtr = &balance
+			}
+			result = append(result, v1.Validator{
+				Index:     phase0.ValidatorIndex(cachedResults[cachedIndex].Index),
+				Balance:   balance,
+				Status:    v1.ValidatorToState(cachedResults[cachedIndex].Validator, balancePtr, currentEpoch, FarFutureEpoch),
+				Validator: cachedResults[cachedIndex].Validator,
+			})
+			resultCount++
+		}
+		matchingCount++
+		cachedIndex++
+	}
+
 	// add remaining cached results
 	matchingCount += uint64(len(cachedResults) - cachedIndex)
 
