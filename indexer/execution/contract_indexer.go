@@ -240,15 +240,8 @@ func (ci *contractIndexer[TxType]) processFinalizedBlocks(finalizedBlockNumber u
 		var txBlockHeader *types.Header
 
 		requestTxs := []*TxType{}
-		queueBlock := ci.state.FinalBlock
+		queueBlock := ci.state.FinalBlock + 1
 		queueLength := ci.state.FinalQueueLen
-
-		// we start crawling from the next block, so we need to decrease the queue length for the current block
-		if queueLength > ci.options.dequeueRate {
-			queueLength -= ci.options.dequeueRate
-		} else {
-			queueLength = 0
-		}
 
 		for idx := range logs {
 			log := &logs[idx]
