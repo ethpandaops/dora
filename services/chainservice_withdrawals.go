@@ -8,6 +8,7 @@ import (
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/indexer/beacon"
+	"github.com/prysmaticlabs/prysm/v5/container/slice"
 	"github.com/sirupsen/logrus"
 )
 
@@ -197,6 +198,7 @@ func (bs *ChainService) GetWithdrawalRequestOperationsByFilter(filter *dbtypes.W
 				}
 
 				withdrawalRequests := block.GetDbWithdrawalRequests(bs.beaconIndexer)
+				slice.Reverse(withdrawalRequests) // reverse as other datasources are ordered by descending block index too
 				for idx, withdrawalRequest := range withdrawalRequests {
 					if filter.MinIndex > 0 && (withdrawalRequest.ValidatorIndex == nil || *withdrawalRequest.ValidatorIndex < filter.MinIndex) {
 						continue
