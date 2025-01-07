@@ -73,12 +73,15 @@ func (ccr *CombinedConsolidationRequest) TargetPubkey() []byte {
 	return nil
 }
 
-func (bs *ChainService) GetConsolidationRequestsByFilter(filter *CombinedConsolidationRequestFilter, pageIdx uint64, pageSize uint32) ([]*CombinedConsolidationRequest, uint64) {
-	totalResults := uint64(0)
+func (bs *ChainService) GetConsolidationRequestsByFilter(filter *CombinedConsolidationRequestFilter, pageOffset uint64, pageSize uint32) ([]*CombinedConsolidationRequest, uint64, uint64) {
+	totalPendingTxResults := uint64(0)
+	totalReqResults := uint64(0)
+
 	combinedResults := make([]*CombinedConsolidationRequest, 0)
 	canonicalForkIds := bs.GetCanonicalForkIds()
 
 	initiatedFilter := &dbtypes.ConsolidationRequestTxFilter{
+		MinDequeue:       bs.GetHighestElBlockNumber(nil) + 1,
 		PublicKey:        filter.Filter.PublicKey,
 		SourceAddress:    filter.Filter.SourceAddress,
 		MinSrcIndex:      filter.Filter.MinSrcIndex,
@@ -90,18 +93,9 @@ func (bs *ChainService) GetConsolidationRequestsByFilter(filter *CombinedConsoli
 		WithOrphaned:     filter.Filter.WithOrphaned,
 	}
 
-	var dbOperations []*dbtypes.ConsolidationRequest
-
-	if filter.Request != 1 {
-		dbOperations, totalResults = bs.GetConsolidationRequestOperationsByFilter(filter.Filter, pageIdx, pageSize)
-		if len(dbOperations) > 0 {
-			initiatedFilter.MinDequeue = dbOperations[0].BlockNumber + 1
-		}
-	}
-
 	if filter.Request != 2 {
-		dbTransactions, totalDbTransactions, _ := db.GetConsolidationRequestTxsFiltered(0, 20, canonicalForkIds, initiatedFilter)
-		totalResults += totalDbTransactions
+		dbTransactions, totalDbTransactions, _ := db.GetConsolidationRequestTxsFiltered(pageOffset, pageSize, canonicalForkIds, initiatedFilter)
+		totalPendingTxResults = totalDbTransactions
 
 		for _, consolidation := range dbTransactions {
 			combinedResults = append(combinedResults, &CombinedConsolidationRequest{
@@ -113,8 +107,19 @@ func (bs *ChainService) GetConsolidationRequestsByFilter(filter *CombinedConsoli
 
 	if filter.Request != 1 {
 		requestTxDetailsFor := [][]byte{}
+		dbOperations := []*dbtypes.ConsolidationRequest(nil)
+		page2Offset := uint64(0)
+		if pageOffset > totalPendingTxResults {
+			page2Offset = pageOffset - totalPendingTxResults
+		}
+
+		dbOperations, totalReqResults = bs.GetConsolidationRequestOperationsByFilter(filter.Filter, page2Offset, pageSize)
 
 		for _, dbOperation := range dbOperations {
+			if len(combinedResults) >= int(pageSize) {
+				break
+			}
+
 			combinedResult := &CombinedConsolidationRequest{
 				Request:         dbOperation,
 				RequestOrphaned: !bs.isCanonicalForkId(dbOperation.ForkId, canonicalForkIds),
@@ -170,10 +175,10 @@ func (bs *ChainService) GetConsolidationRequestsByFilter(filter *CombinedConsoli
 		}
 	}
 
-	return combinedResults, totalResults
+	return combinedResults, totalPendingTxResults, totalReqResults
 }
 
-func (bs *ChainService) GetConsolidationRequestOperationsByFilter(filter *dbtypes.ConsolidationRequestFilter, pageIdx uint64, pageSize uint32) ([]*dbtypes.ConsolidationRequest, uint64) {
+func (bs *ChainService) GetConsolidationRequestOperationsByFilter(filter *dbtypes.ConsolidationRequestFilter, pageOffset uint64, pageSize uint32) ([]*dbtypes.ConsolidationRequest, uint64) {
 	chainState := bs.consensusPool.GetChainState()
 	_, prunedEpoch := bs.beaconIndexer.GetBlockCacheState()
 	idxMinSlot := chainState.EpochToSlot(prunedEpoch)
@@ -213,6 +218,11 @@ func (bs *ChainService) GetConsolidationRequestOperationsByFilter(filter *dbtype
 					if filter.MaxSrcIndex > 0 && (consolidationRequest.SourceIndex == nil || *consolidationRequest.SourceIndex > filter.MaxSrcIndex) {
 						continue
 					}
+					if len(filter.SourceAddress) > 0 {
+						if !bytes.Equal(consolidationRequest.SourceAddress[:], filter.SourceAddress) {
+							continue
+						}
+					}
 					if len(filter.PublicKey) > 0 {
 						if !bytes.Equal(consolidationRequest.SourcePubkey[:], filter.PublicKey) && !bytes.Equal(consolidationRequest.TargetPubkey[:], filter.PublicKey) {
 							continue
@@ -250,43 +260,37 @@ func (bs *ChainService) GetConsolidationRequestOperationsByFilter(filter *dbtype
 		}
 	}
 
-	cachedMatchesLen := uint64(len(cachedMatches))
-	cachedPages := cachedMatchesLen / uint64(pageSize)
 	resObjs := make([]*dbtypes.ConsolidationRequest, 0)
 	resIdx := 0
 
-	cachedStart := pageIdx * uint64(pageSize)
+	cachedStart := pageOffset
 	cachedEnd := cachedStart + uint64(pageSize)
+	cachedMatchesLen := uint64(len(cachedMatches))
 
-	if cachedPages > 0 && pageIdx < cachedPages {
+	if cachedEnd <= cachedMatchesLen {
 		resObjs = append(resObjs, cachedMatches[cachedStart:cachedEnd]...)
 		resIdx += int(cachedEnd - cachedStart)
-	} else if pageIdx == cachedPages {
+	} else if cachedStart < cachedMatchesLen {
 		resObjs = append(resObjs, cachedMatches[cachedStart:]...)
 		resIdx += len(cachedMatches) - int(cachedStart)
 	}
 
 	// load older objects from db
-	var dbPage uint64
-	if pageIdx > cachedPages {
-		dbPage = pageIdx - cachedPages
-	} else {
-		dbPage = 0
-	}
-	dbCacheOffset := uint64(pageSize) - (cachedMatchesLen % uint64(pageSize))
-
 	var dbObjects []*dbtypes.ConsolidationRequest
 	var dbCount uint64
 	var err error
 
-	if resIdx > int(pageSize) {
+	if cachedEnd <= cachedMatchesLen {
 		// all results from cache, just get result count from db
 		_, dbCount, err = db.GetConsolidationRequestsFiltered(0, 1, canonicalForkIds, filter)
-	} else if dbPage == 0 {
-		// first page, load first `pagesize-cachedResults` items from db
-		dbObjects, dbCount, err = db.GetConsolidationRequestsFiltered(0, uint32(dbCacheOffset), canonicalForkIds, filter)
 	} else {
-		dbObjects, dbCount, err = db.GetConsolidationRequestsFiltered((dbPage-1)*uint64(pageSize)+dbCacheOffset, pageSize, canonicalForkIds, filter)
+		dbSliceStart := uint64(0)
+		if cachedStart > cachedMatchesLen {
+			dbSliceStart = cachedStart - cachedMatchesLen
+		}
+
+		dbSliceLimit := pageSize - uint32(resIdx)
+		dbObjects, dbCount, err = db.GetConsolidationRequestsFiltered(dbSliceStart, dbSliceLimit, canonicalForkIds, filter)
 	}
 
 	if err != nil {

@@ -130,7 +130,7 @@ func buildFilteredElWithdrawalsPageData(pageIdx uint64, pageSize uint64, minSlot
 	if vname != "" {
 		filterArgs.Add("f.vname", vname)
 	}
-	if withOrphaned != 0 {
+	if withOrphaned != 1 {
 		filterArgs.Add("f.orphaned", fmt.Sprintf("%v", withOrphaned))
 	}
 	if withType != 0 {
@@ -189,7 +189,7 @@ func buildFilteredElWithdrawalsPageData(pageIdx uint64, pageSize uint64, minSlot
 		withdrawalRequestFilter.Filter.MaxAmount = &maxAmount
 	}
 
-	dbElWithdrawals, totalRows := services.GlobalBeaconService.GetWithdrawalRequestsByFilter(withdrawalRequestFilter, pageIdx-1, uint32(pageSize))
+	dbElWithdrawals, totalPendingTxRows, totalRequests := services.GlobalBeaconService.GetWithdrawalRequestsByFilter(withdrawalRequestFilter, (pageIdx-1)*pageSize, uint32(pageSize))
 	chainState := services.GlobalBeaconService.GetChainState()
 	headBlock := services.GlobalBeaconService.GetBeaconIndexer().GetCanonicalHead(nil)
 	headBlockNum := uint64(0)
@@ -257,6 +257,7 @@ func buildFilteredElWithdrawalsPageData(pageIdx uint64, pageSize uint64, minSlot
 		pageData.LastIndex = pageData.ElRequests[pageData.RequestCount-1].SlotNumber
 	}
 
+	totalRows := totalPendingTxRows + totalRequests
 	pageData.TotalPages = totalRows / pageSize
 	if totalRows%pageSize > 0 {
 		pageData.TotalPages++
