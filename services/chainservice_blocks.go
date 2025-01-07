@@ -754,3 +754,27 @@ func (bs *ChainService) CheckBlockOrphanedStatus(blockRoot phase0.Root) dbtypes.
 
 	return dbtypes.Missing
 }
+
+func (bs *ChainService) GetHighestElBlockNumber(overrideForkId *beacon.ForkKey) uint64 {
+	canonicalHead := bs.beaconIndexer.GetCanonicalHead(overrideForkId)
+	for {
+		if canonicalHead == nil {
+			break
+		}
+		if canonicalHead.GetBlockIndex() != nil {
+			return canonicalHead.GetBlockIndex().ExecutionNumber
+		}
+
+		parentRoot := canonicalHead.GetParentRoot()
+		if parentRoot == nil {
+			break
+		}
+
+		canonicalHead = bs.beaconIndexer.GetBlockByRoot(*parentRoot)
+		if canonicalHead == nil || canonicalHead.Slot == 0 {
+			break
+		}
+	}
+
+	return 0
+}

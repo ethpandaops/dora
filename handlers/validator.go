@@ -434,13 +434,13 @@ func buildValidatorPageData(validatorIndex uint64, tabView string) (*models.Vali
 
 	// load recent withdrawal requests
 	if pageData.TabView == "withdrawalrequests" {
-		dbElWithdrawals, totalElWithdrawals := services.GlobalBeaconService.GetWithdrawalRequestsByFilter(&services.CombinedWithdrawalRequestFilter{
+		dbElWithdrawals, totalPendingWithdrawalTxs, totalWithdrawalReqs := services.GlobalBeaconService.GetWithdrawalRequestsByFilter(&services.CombinedWithdrawalRequestFilter{
 			Filter: &dbtypes.WithdrawalRequestFilter{
 				PublicKey: validator.Validator.PublicKey[:],
 			},
 		}, 0, 10)
-		if totalElWithdrawals > 10 {
-			pageData.AdditionalWithdrawalRequestCount = totalElWithdrawals - 10
+		if totalPendingWithdrawalTxs+totalWithdrawalReqs > 10 {
+			pageData.AdditionalWithdrawalRequestCount = totalPendingWithdrawalTxs + totalWithdrawalReqs - 10
 		}
 
 		// helper to load tx details for withdrawal requests
@@ -508,13 +508,13 @@ func buildValidatorPageData(validatorIndex uint64, tabView string) (*models.Vali
 
 	// load recent consolidation requests
 	if pageData.TabView == "consolidationrequests" {
-		dbConsolidations, totalConsolidations := services.GlobalBeaconService.GetConsolidationRequestsByFilter(&services.CombinedConsolidationRequestFilter{
+		dbConsolidations, totalPendingConsolidationTxs, totalConsolidationReqs := services.GlobalBeaconService.GetConsolidationRequestsByFilter(&services.CombinedConsolidationRequestFilter{
 			Filter: &dbtypes.ConsolidationRequestFilter{
 				PublicKey: validator.Validator.PublicKey[:],
 			},
 		}, 0, 10)
-		if totalConsolidations > 10 {
-			pageData.AdditionalConsolidationRequestCount = totalConsolidations - 10
+		if totalPendingConsolidationTxs+totalConsolidationReqs > 10 {
+			pageData.AdditionalConsolidationRequestCount = totalPendingConsolidationTxs + totalConsolidationReqs - 10
 		}
 
 		// helper to load tx details for consolidation requests
@@ -618,14 +618,14 @@ func buildValidatorPageData(validatorIndex uint64, tabView string) (*models.Vali
 			pageData.ExitReasonSlot = exits[0].SlotNumber
 
 			// Check for full withdrawal request
-		} else if withdrawals, totalWithdrawals := services.GlobalBeaconService.GetWithdrawalRequestsByFilter(&services.CombinedWithdrawalRequestFilter{
+		} else if withdrawals, totalPendingWithdrawalTxs, totalWithdrawalReqs := services.GlobalBeaconService.GetWithdrawalRequestsByFilter(&services.CombinedWithdrawalRequestFilter{
 			Filter: &dbtypes.WithdrawalRequestFilter{
 				PublicKey:     validator.Validator.PublicKey[:],
 				SourceAddress: pageData.WithdrawAddress,
 				MaxAmount:     &zeroAmount,
 				MaxSlot:       exitSlot,
 			},
-		}, 0, 1); totalWithdrawals > 0 && len(withdrawals) > 0 && pageData.ShowWithdrawAddress {
+		}, 0, 1); totalPendingWithdrawalTxs+totalWithdrawalReqs > 0 && len(withdrawals) > 0 && pageData.ShowWithdrawAddress {
 			withdrawal := withdrawals[0]
 			pageData.ExitReason = "Validator submitted a full withdrawal request"
 			pageData.ExitReasonWithdrawal = true
@@ -643,13 +643,13 @@ func buildValidatorPageData(validatorIndex uint64, tabView string) (*models.Vali
 				}
 			}
 			// Check for consolidation request
-		} else if consolidations, totalConsolidations := services.GlobalBeaconService.GetConsolidationRequestsByFilter(&services.CombinedConsolidationRequestFilter{
+		} else if consolidations, totalPendingConsolidationTxs, totalConsolidationReqs := services.GlobalBeaconService.GetConsolidationRequestsByFilter(&services.CombinedConsolidationRequestFilter{
 			Filter: &dbtypes.ConsolidationRequestFilter{
 				PublicKey:     validator.Validator.PublicKey[:],
 				SourceAddress: pageData.WithdrawAddress,
 				MaxSlot:       exitSlot,
 			},
-		}, 0, 1); totalConsolidations > 0 && len(consolidations) > 0 && pageData.ShowWithdrawAddress {
+		}, 0, 1); totalPendingConsolidationTxs+totalConsolidationReqs > 0 && len(consolidations) > 0 && pageData.ShowWithdrawAddress {
 			consolidation := consolidations[0]
 			pageData.ExitReason = "Validator was consolidated"
 			pageData.ExitReasonConsolidation = true

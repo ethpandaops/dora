@@ -227,7 +227,7 @@ func GetConsolidationRequestTxsFiltered(offset uint64, limit uint32, canonicalFo
 	FROM cte
 	UNION ALL SELECT * FROM (
 	SELECT * FROM cte
-	ORDER BY block_time DESC
+	ORDER BY block_time DESC, block_index DESC
 	LIMIT $%v 
 	`, len(args))
 
