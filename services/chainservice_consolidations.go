@@ -8,6 +8,7 @@ import (
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/indexer/beacon"
+	"github.com/prysmaticlabs/prysm/v5/container/slice"
 	"github.com/sirupsen/logrus"
 )
 
@@ -211,6 +212,7 @@ func (bs *ChainService) GetConsolidationRequestOperationsByFilter(filter *dbtype
 				}
 
 				consolidationRequests := block.GetDbConsolidationRequests(bs.beaconIndexer)
+				slice.Reverse(consolidationRequests) // reverse as other datasources are ordered by descending block index too
 				for idx, consolidationRequest := range consolidationRequests {
 					if filter.MinSrcIndex > 0 && (consolidationRequest.SourceIndex == nil || *consolidationRequest.SourceIndex < filter.MinSrcIndex) {
 						continue
