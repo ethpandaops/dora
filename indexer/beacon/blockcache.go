@@ -116,7 +116,7 @@ func (cache *blockCache) getBlockByRoot(root phase0.Root) *Block {
 	return cache.rootMap[root]
 }
 
-// getBlockBySlot returns the cached blocks with the given slot.
+// getBlocksBySlot returns the cached blocks with the given slot.
 func (cache *blockCache) getBlocksBySlot(slot phase0.Slot) []*Block {
 	cache.cacheMutex.RLock()
 	defer cache.cacheMutex.RUnlock()
