@@ -56,10 +56,10 @@ func (cwr *CombinedWithdrawalRequest) ValidatorPubkey() []byte {
 
 func (cwr *CombinedWithdrawalRequest) Amount() uint64 {
 	if cwr.Request != nil {
-		return cwr.Request.Amount
+		return db.ConvertInt64ToUint64(cwr.Request.Amount)
 	}
 	if cwr.Transaction != nil {
-		return cwr.Transaction.Amount
+		return db.ConvertInt64ToUint64(cwr.Transaction.Amount)
 	}
 	return 0
 }

@@ -186,7 +186,7 @@ func (wi *WithdrawalIndexer) parseRequestLog(log *types.Log, forkId *beacon.Fork
 		SourceAddress:   senderAddr,
 		ValidatorPubkey: validatorPubkey,
 		ValidatorIndex:  validatorIndex,
-		Amount:          amount,
+		Amount:          db.ConvertUint64ToInt64(amount),
 		TxHash:          log.TxHash[:],
 	}
 
