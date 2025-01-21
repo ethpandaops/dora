@@ -90,7 +90,7 @@ func (ci *ConsolidationIndexer) GetMatcherHeight() uint64 {
 
 // runConsolidationIndexerLoop is the main loop for the consolidation indexer
 func (ci *ConsolidationIndexer) runConsolidationIndexerLoop() {
-	defer utils.HandleSubroutinePanic("ConsolidationIndexer.runConsolidationIndexerLoop")
+	defer utils.HandleSubroutinePanic("ConsolidationIndexer.runConsolidationIndexerLoop", ci.runConsolidationIndexerLoop)
 
 	for {
 		time.Sleep(30 * time.Second)
@@ -170,6 +170,9 @@ func (ci *ConsolidationIndexer) parseRequestLog(log *types.Log, forkId *beacon.F
 	// get the validator indices for the source and target pubkeys
 	var sourceIndex, targetIndex *uint64
 	for index, validator := range ci.indexerCtx.beaconIndexer.GetValidatorSet(forkId) {
+		if validator == nil {
+			continue
+		}
 		if sourceIndex == nil && bytes.Equal(validator.PublicKey[:], sourcePubkey) {
 			index := uint64(index)
 			sourceIndex = &index
