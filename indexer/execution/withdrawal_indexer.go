@@ -172,7 +172,7 @@ func (wi *WithdrawalIndexer) parseRequestLog(log *types.Log, forkId *beacon.Fork
 
 	var validatorIndex *uint64
 	for index, validator := range validatorSet {
-		if bytes.Equal(validator.PublicKey[:], validatorPubkey) {
+		if validator != nil && bytes.Equal(validator.PublicKey[:], validatorPubkey) {
 			index := uint64(index)
 			validatorIndex = &index
 			break
