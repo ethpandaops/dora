@@ -91,7 +91,7 @@ func (wi *WithdrawalIndexer) GetMatcherHeight() uint64 {
 
 // runWithdrawalIndexerLoop is the main loop for the withdrawal indexer
 func (wi *WithdrawalIndexer) runWithdrawalIndexerLoop() {
-	defer utils.HandleSubroutinePanic("WithdrawalIndexer.runWithdrawalIndexerLoop")
+	defer utils.HandleSubroutinePanic("WithdrawalIndexer.runWithdrawalIndexerLoop", wi.runWithdrawalIndexerLoop)
 
 	for {
 		time.Sleep(30 * time.Second)

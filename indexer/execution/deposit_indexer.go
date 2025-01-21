@@ -87,7 +87,7 @@ func NewDepositIndexer(indexer *IndexerCtx) *DepositIndexer {
 
 // runDepositIndexerLoop is the main loop for the deposit indexer
 func (ds *DepositIndexer) runDepositIndexerLoop() {
-	defer utils.HandleSubroutinePanic("DepositIndexer.runDepositIndexerLoop")
+	defer utils.HandleSubroutinePanic("DepositIndexer.runDepositIndexerLoop", ds.runDepositIndexerLoop)
 
 	for {
 		time.Sleep(60 * time.Second)

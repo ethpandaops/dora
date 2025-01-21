@@ -66,7 +66,7 @@ func (mev *MevIndexer) StartUpdater() {
 }
 
 func (mev *MevIndexer) runUpdaterLoop() {
-	defer utils.HandleSubroutinePanic("MevIndexer.runUpdaterLoop")
+	defer utils.HandleSubroutinePanic("MevIndexer.runUpdaterLoop", mev.runUpdaterLoop)
 
 	for {
 		time.Sleep(15 * time.Second)
