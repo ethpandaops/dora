@@ -113,7 +113,7 @@ func GetWithdrawalRequestTxsFiltered(offset uint64, limit uint32, canonicalForkI
 	fmt.Fprint(&sql, `
 	WITH cte AS (
 		SELECT
-			block_number, block_index, block_time, block_root, fork_id, source_address, validator_pubkey, validator_index, amount, tx_hash, tx_sender, tx_target, dequeue_block
+			block_number, block_index, block_time, block_root, fork_id, source_address, validator_pubkey, validator_index, CAST(amount AS BIGINT), tx_hash, tx_sender, tx_target, dequeue_block
 		FROM withdrawal_request_txs
 	`)
 
@@ -164,12 +164,12 @@ func GetWithdrawalRequestTxsFiltered(offset uint64, limit uint32, canonicalForkI
 		filterOp = "AND"
 	}
 	if filter.MinAmount != nil {
-		args = append(args, *filter.MinAmount)
+		args = append(args, ConvertUint64ToInt64(*filter.MinAmount))
 		fmt.Fprintf(&sql, " %v amount >= $%v", filterOp, len(args))
 		filterOp = "AND"
 	}
 	if filter.MaxAmount != nil {
-		args = append(args, *filter.MaxAmount)
+		args = append(args, ConvertUint64ToInt64(*filter.MaxAmount))
 		fmt.Fprintf(&sql, " %v amount <= $%v", filterOp, len(args))
 		filterOp = "AND"
 	}
@@ -203,7 +203,7 @@ func GetWithdrawalRequestTxsFiltered(offset uint64, limit uint32, canonicalForkI
 		null AS source_address,
 		null AS validator_pubkey,
 		0 AS validator_index,
-		0 AS amount,
+		CAST(0 AS BIGINT) AS amount,
 		null AS tx_hash,
 		null AS tx_sender,
 		null AS tx_target,
