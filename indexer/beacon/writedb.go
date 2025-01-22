@@ -777,7 +777,7 @@ func (dbw *dbWriter) buildDbWithdrawalRequests(block *Block, orphaned bool, over
 			ForkId:          uint64(block.forkId),
 			SourceAddress:   withdrawalRequest.SourceAddress[:],
 			ValidatorPubkey: withdrawalRequest.ValidatorPubkey[:],
-			Amount:          uint64(withdrawalRequest.Amount),
+			Amount:          db.ConvertUint64ToInt64(uint64(withdrawalRequest.Amount)),
 			BlockNumber:     blockNumber,
 		}
 		if overrideForkId != nil {

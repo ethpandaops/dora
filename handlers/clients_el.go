@@ -91,7 +91,7 @@ func buildELPeerMapData(parseEnodeRecord func(enrStr string) *enode.Node) *model
 
 	for _, client := range services.GlobalBeaconService.GetExecutionClients() {
 		nodeInfo := client.GetNodeInfo()
-		nodeID := "unknown"
+		nodeID := fmt.Sprintf("unknown-%v", client.GetIndex())
 		if nodeInfo != nil {
 			en := parseEnodeRecord(nodeInfo.Enode)
 			if en != nil {

@@ -114,7 +114,7 @@ func (s *synchronizer) stopSync() {
 }
 
 func (sync *synchronizer) runSync() {
-	defer utils.HandleSubroutinePanic("runSync")
+	defer utils.HandleSubroutinePanic("runSync", nil)
 
 	sync.runMutex.Lock()
 	defer sync.runMutex.Unlock()

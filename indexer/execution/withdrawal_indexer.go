@@ -91,7 +91,7 @@ func (wi *WithdrawalIndexer) GetMatcherHeight() uint64 {
 
 // runWithdrawalIndexerLoop is the main loop for the withdrawal indexer
 func (wi *WithdrawalIndexer) runWithdrawalIndexerLoop() {
-	defer utils.HandleSubroutinePanic("WithdrawalIndexer.runWithdrawalIndexerLoop")
+	defer utils.HandleSubroutinePanic("WithdrawalIndexer.runWithdrawalIndexerLoop", wi.runWithdrawalIndexerLoop)
 
 	for {
 		time.Sleep(30 * time.Second)
@@ -172,7 +172,7 @@ func (wi *WithdrawalIndexer) parseRequestLog(log *types.Log, forkId *beacon.Fork
 
 	var validatorIndex *uint64
 	for index, validator := range validatorSet {
-		if bytes.Equal(validator.PublicKey[:], validatorPubkey) {
+		if validator != nil && bytes.Equal(validator.PublicKey[:], validatorPubkey) {
 			index := uint64(index)
 			validatorIndex = &index
 			break
@@ -186,7 +186,7 @@ func (wi *WithdrawalIndexer) parseRequestLog(log *types.Log, forkId *beacon.Fork
 		SourceAddress:   senderAddr,
 		ValidatorPubkey: validatorPubkey,
 		ValidatorIndex:  validatorIndex,
-		Amount:          amount,
+		Amount:          db.ConvertUint64ToInt64(amount),
 		TxHash:          log.TxHash[:],
 	}
 
