@@ -120,12 +120,12 @@ func (es *EpochStats) getRequestedBy() []*Client {
 	return clients
 }
 
-func (es *EpochStats) restoreFromDb(dbDuty *dbtypes.UnfinalizedDuty, dynSsz *dynssz.DynSsz, chainState *consensus.ChainState) error {
+func (es *EpochStats) restoreFromDb(dbDuty *dbtypes.UnfinalizedDuty, dynSsz *dynssz.DynSsz, chainState *consensus.ChainState, withDuties bool) error {
 	if es.ready {
 		return nil
 	}
 
-	values, err := es.parsePackedSSZ(dynSsz, chainState, dbDuty.DutiesSSZ)
+	values, err := es.parsePackedSSZ(dynSsz, chainState, dbDuty.DutiesSSZ, withDuties)
 	if err != nil {
 		return err
 	}
@@ -187,7 +187,8 @@ func (es *EpochStats) buildPackedSSZ(dynSsz *dynssz.DynSsz) ([]byte, error) {
 }
 
 // unmarshalSSZ unmarshals the EpochStats values using the provided SSZ bytes.
-func (es *EpochStats) parsePackedSSZ(dynSsz *dynssz.DynSsz, chainState *consensus.ChainState, ssz []byte) (*EpochStatsValues, error) {
+// skips computing attester duties if withCommittees is false to speed up the process.
+func (es *EpochStats) parsePackedSSZ(dynSsz *dynssz.DynSsz, chainState *consensus.ChainState, ssz []byte, withCommittees bool) (*EpochStatsValues, error) {
 	if dynSsz == nil {
 		dynSsz = dynssz.NewDynSsz(nil)
 	}
@@ -259,8 +260,10 @@ func (es *EpochStats) parsePackedSSZ(dynSsz *dynssz.DynSsz, chainState *consensu
 	}
 
 	// compute committees
-	attesterDuties, _ := duties.GetAttesterDuties(chainState.GetSpecs(), beaconState, es.epoch)
-	values.AttesterDuties = attesterDuties
+	if withCommittees {
+		attesterDuties, _ := duties.GetAttesterDuties(chainState.GetSpecs(), beaconState, es.epoch)
+		values.AttesterDuties = attesterDuties
+	}
 
 	return values, nil
 }
@@ -298,7 +301,7 @@ func (es *EpochStats) loadValuesFromDb(dynSsz *dynssz.DynSsz, chainState *consen
 		return nil
 	}
 
-	values, err := es.parsePackedSSZ(dynSsz, chainState, dbDuty.DutiesSSZ)
+	values, err := es.parsePackedSSZ(dynSsz, chainState, dbDuty.DutiesSSZ, true)
 	if err != nil {
 		return nil
 	}
