@@ -292,7 +292,7 @@ type WithdrawalRequest struct {
 	SourceAddress   []byte  `db:"source_address"`
 	ValidatorIndex  *uint64 `db:"validator_index"`
 	ValidatorPubkey []byte  `db:"validator_pubkey"`
-	Amount          uint64  `db:"amount"`
+	Amount          int64   `db:"amount"`
 	TxHash          []byte  `db:"tx_hash"`
 	BlockNumber     uint64  `db:"block_number"`
 }
@@ -306,7 +306,7 @@ type WithdrawalRequestTx struct {
 	SourceAddress   []byte  `db:"source_address"`
 	ValidatorPubkey []byte  `db:"validator_pubkey"`
 	ValidatorIndex  *uint64 `db:"validator_index"`
-	Amount          uint64  `db:"amount"`
+	Amount          int64   `db:"amount"`
 	TxHash          []byte  `db:"tx_hash"`
 	TxSender        []byte  `db:"tx_sender"`
 	TxTarget        []byte  `db:"tx_target"`

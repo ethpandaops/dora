@@ -252,7 +252,7 @@ func SearchAhead(w http.ResponseWriter, r *http.Request) {
 
 			cachedBlocks := indexer.GetBlocksByExecutionBlockHash(phase0.Hash32(blockHash))
 			if len(cachedBlocks) > 0 {
-				res := make([]*models.SearchAheadExecBlocksResult, 0)
+				res := make([]*models.SearchAheadExecBlocksResult, len(cachedBlocks))
 				for idx, cachedBlock := range cachedBlocks {
 					header := cachedBlock.GetHeader()
 					index := cachedBlock.GetBlockIndex()

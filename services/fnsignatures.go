@@ -168,7 +168,7 @@ func (tss *TxSignaturesService) LookupSignatures(sigBytes []types.TxSignatureByt
 }
 
 func (tss *TxSignaturesService) runLookupLoop() {
-	defer utils.HandleSubroutinePanic("txsig.loop")
+	defer utils.HandleSubroutinePanic("TxSignaturesService.runLookupLoop", tss.runLookupLoop)
 
 	loopInterval := utils.Config.TxSignature.LookupInterval
 	if loopInterval == 0 {
@@ -204,7 +204,7 @@ func (tss *TxSignaturesService) processPendingSignatures() {
 
 		wg.Add(1)
 		go func(lookup *TxSignaturesLookup) {
-			defer utils.HandleSubroutinePanic("txsig.lookup")
+			defer utils.HandleSubroutinePanic("TxSignaturesService.processPendingSignatures.func1", nil)
 			err := tss.lookupSignature(lookup)
 			if err != nil {
 				logger_tss.Warnf("tx signatures lookup failed: %v", err)

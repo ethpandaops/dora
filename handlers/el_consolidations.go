@@ -145,7 +145,7 @@ func buildFilteredElConsolidationsPageData(pageIdx uint64, pageSize uint64, minS
 	if tgtVName != "" {
 		filterArgs.Add("f.tvname", tgtVName)
 	}
-	if withOrphaned != 0 {
+	if withOrphaned != 1 {
 		filterArgs.Add("f.orphaned", fmt.Sprintf("%v", withOrphaned))
 	}
 	if pubkey != "" {
@@ -197,7 +197,7 @@ func buildFilteredElConsolidationsPageData(pageIdx uint64, pageSize uint64, minS
 		},
 	}
 
-	dbElConsolidations, totalRows := services.GlobalBeaconService.GetConsolidationRequestsByFilter(consolidationRequestFilter, pageIdx-1, uint32(pageSize))
+	dbElConsolidations, totalPendingTxRows, totalRequests := services.GlobalBeaconService.GetConsolidationRequestsByFilter(consolidationRequestFilter, (pageIdx-1)*pageSize, uint32(pageSize))
 	chainState := services.GlobalBeaconService.GetChainState()
 	headBlock := services.GlobalBeaconService.GetBeaconIndexer().GetCanonicalHead(nil)
 	headBlockNum := uint64(0)
@@ -271,6 +271,7 @@ func buildFilteredElConsolidationsPageData(pageIdx uint64, pageSize uint64, minS
 		pageData.LastIndex = pageData.ElRequests[pageData.RequestCount-1].SlotNumber
 	}
 
+	totalRows := totalPendingTxRows + totalRequests
 	pageData.TotalPages = totalRows / pageSize
 	if totalRows%pageSize > 0 {
 		pageData.TotalPages++

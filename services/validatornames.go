@@ -72,7 +72,7 @@ func (vn *ValidatorNames) StartUpdater() {
 }
 
 func (vn *ValidatorNames) runUpdaterLoop() {
-	defer utils.HandleSubroutinePanic("ValidatorNames.runUpdaterLoop")
+	defer utils.HandleSubroutinePanic("ValidatorNames.runUpdaterLoop", vn.runUpdaterLoop)
 
 	for {
 		time.Sleep(30 * time.Second)

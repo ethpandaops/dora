@@ -89,7 +89,7 @@ func (ci *ConsolidationIndexer) GetMatcherHeight() uint64 {
 
 // runConsolidationIndexerLoop is the main loop for the consolidation indexer
 func (ci *ConsolidationIndexer) runConsolidationIndexerLoop() {
-	defer utils.HandleSubroutinePanic("ConsolidationIndexer.runConsolidationIndexerLoop")
+	defer utils.HandleSubroutinePanic("ConsolidationIndexer.runConsolidationIndexerLoop", ci.runConsolidationIndexerLoop)
 
 	for {
 		time.Sleep(30 * time.Second)
