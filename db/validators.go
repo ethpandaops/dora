@@ -59,7 +59,8 @@ func InsertValidatorBatch(validators []*dbtypes.Validator, tx *sqlx.Tx) error {
 	valueStrings := make([]string, len(validators))
 	valueArgs := make([]interface{}, 0, len(validators)*9)
 	for i, val := range validators {
-		valueStrings[i] = "($1, $2, $3, $4, $5, $6, $7, $8, $9)"
+		valueStrings[i] = fmt.Sprintf("($%v, $%v, $%v, $%v, $%v, $%v, $%v, $%v, $%v)",
+			i*9+1, i*9+2, i*9+3, i*9+4, i*9+5, i*9+6, i*9+7, i*9+8, i*9+9)
 		valueArgs = append(valueArgs,
 			val.ValidatorIndex,
 			val.Pubkey,
@@ -145,7 +146,7 @@ func GetValidatorRange(startIndex uint64, endIndex uint64) []*dbtypes.Validator 
 // GetMaxValidatorIndex returns the highest validator index in the database
 func GetMaxValidatorIndex() (uint64, error) {
 	var maxIndex uint64
-	err := ReaderDb.Get(&maxIndex, "SELECT MAX(validator_index) FROM validators")
+	err := ReaderDb.Get(&maxIndex, "SELECT COALESCE(MAX(validator_index), 0) FROM validators")
 	if err != nil {
 		return 0, fmt.Errorf("error getting max validator index: %v", err)
 	}
@@ -271,43 +272,78 @@ func buildValidatorStatusSql(currentEpoch uint64) string {
 }
 
 func StreamValidatorsByIndexes(indexes []uint64, cb func(validator *dbtypes.Validator) bool) error {
-	var sql strings.Builder
-	fmt.Fprintf(&sql, `
-	SELECT
-		validator_index, pubkey, withdrawal_credentials, effective_balance,
-		slashed, activation_eligibility_epoch, activation_epoch,
-		exit_epoch, withdrawable_epoch
-	FROM validators
-	WHERE validator_index in (`)
-	argIdx := 0
-	args := make([]any, len(indexes))
-	for i, index := range indexes {
-		if i > 0 {
-			fmt.Fprintf(&sql, ", ")
+	const batchSize = 100
+
+	// Process in batches
+	for i := 0; i < len(indexes); i += batchSize {
+		end := i + batchSize
+		if end > len(indexes) {
+			end = len(indexes)
 		}
-		fmt.Fprintf(&sql, "$%v", argIdx+1)
-		args[argIdx] = index
-		argIdx += 1
-	}
-	fmt.Fprintf(&sql, ")")
+		batch := indexes[i:end]
 
-	rows, err := ReaderDb.Query(sql.String(), args...)
-	if err != nil {
-		logger.Errorf("Error while fetching validators by filter: %v", err)
-		return err
-	}
+		var sql strings.Builder
+		fmt.Fprintf(&sql, `
+		SELECT
+			validator_index, pubkey, withdrawal_credentials, effective_balance,
+			slashed, activation_eligibility_epoch, activation_epoch,
+			exit_epoch, withdrawable_epoch
+		FROM validators
+		WHERE validator_index in (`)
 
-	for rows.Next() {
-		validator := dbtypes.Validator{}
-		err := rows.Scan(&validator.ValidatorIndex, &validator.Pubkey, &validator.WithdrawalCredentials, &validator.EffectiveBalance,
-			&validator.Slashed, &validator.ActivationEligibilityEpoch, &validator.ActivationEpoch,
-			&validator.ExitEpoch, &validator.WithdrawableEpoch)
+		args := make([]any, len(batch))
+		for j, index := range batch {
+			if j > 0 {
+				fmt.Fprintf(&sql, ", ")
+			}
+			fmt.Fprintf(&sql, "$%v", j+1)
+			args[j] = index
+		}
+		fmt.Fprintf(&sql, ")")
+
+		// Create index map for ordering
+		indexMap := make(map[uint64]int, len(batch))
+		for pos, idx := range batch {
+			indexMap[idx] = pos
+		}
+
+		// Fetch all validators for this batch
+		validators := make([]*dbtypes.Validator, len(batch))
+		rows, err := ReaderDb.Query(sql.String(), args...)
 		if err != nil {
-			logger.Errorf("Error while scanning validator: %v", err)
-			return err
+			return fmt.Errorf("error querying validators: %v", err)
 		}
-		if !cb(&validator) {
-			return nil
+		defer rows.Close()
+
+		for rows.Next() {
+			validator := &dbtypes.Validator{}
+			err := rows.Scan(
+				&validator.ValidatorIndex,
+				&validator.Pubkey,
+				&validator.WithdrawalCredentials,
+				&validator.EffectiveBalance,
+				&validator.Slashed,
+				&validator.ActivationEligibilityEpoch,
+				&validator.ActivationEpoch,
+				&validator.ExitEpoch,
+				&validator.WithdrawableEpoch,
+			)
+			if err != nil {
+				return fmt.Errorf("error scanning validator: %v", err)
+			}
+			pos := indexMap[uint64(validator.ValidatorIndex)]
+			validators[pos] = validator
+		}
+
+		if err = rows.Err(); err != nil {
+			return fmt.Errorf("error iterating rows: %v", err)
+		}
+
+		// Stream in original order
+		for _, v := range validators {
+			if v != nil && !cb(v) {
+				return nil
+			}
 		}
 	}
 

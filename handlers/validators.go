@@ -31,9 +31,9 @@ func Validators(w http.ResponseWriter, r *http.Request) {
 	data := InitPageData(w, r, "validators", "/validators", "Validators", validatorsTemplateFiles)
 
 	urlArgs := r.URL.Query()
-	var pageNumber uint64 = 0
-	if urlArgs.Has("s") {
-		pageNumber, _ = strconv.ParseUint(urlArgs.Get("s"), 10, 64)
+	var pageNumber uint64 = 1
+	if urlArgs.Has("p") {
+		pageNumber, _ = strconv.ParseUint(urlArgs.Get("p"), 10, 64)
 	}
 	var pageSize uint64 = 50
 	if urlArgs.Has("c") {
@@ -120,7 +120,7 @@ func buildValidatorsPageData(pageNumber uint64, pageSize uint64, sortOrder strin
 
 	validatorFilter := dbtypes.ValidatorFilter{
 		Limit:  pageSize,
-		Offset: pageNumber,
+		Offset: (pageNumber - 1) * pageSize,
 	}
 
 	filterArgs := url.Values{}
@@ -221,21 +221,21 @@ func buildValidatorsPageData(pageNumber uint64, pageSize uint64, sortOrder strin
 		if totalPages == 0 {
 			pageNumber = 0
 		} else {
-			pageNumber = totalPages - 1
+			pageNumber = totalPages
 		}
 	}
 
 	pageData.PageSize = pageSize
 	pageData.TotalPages = totalPages
 	pageData.CurrentPageIndex = pageNumber
-	if pageNumber > 0 {
+	if pageNumber > 1 {
 		pageData.PrevPageIndex = pageNumber - 1
 	}
-	if pageNumber+1 < totalPages {
+	if pageNumber < totalPages {
 		pageData.NextPageIndex = pageNumber + 1
 	}
 	if totalPages > 1 {
-		pageData.LastPageIndex = totalPages - 1
+		pageData.LastPageIndex = totalPages
 	}
 
 	// get validators

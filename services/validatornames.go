@@ -152,9 +152,9 @@ func (vn *ValidatorNames) resolveNames() (bool, error) {
 			continue
 		}
 
-		validators, _ := vn.beaconIndexer.GetValidatorsByFilter(&dbtypes.ValidatorFilter{
+		validators, _ := GlobalBeaconService.GetFilteredValidatorSet(&dbtypes.ValidatorFilter{
 			WithdrawalAddress: wdAddr[:],
-		}, false, nil)
+		}, false)
 		for _, validator := range validators {
 			addResolved(uint64(validator.Index), name)
 		}

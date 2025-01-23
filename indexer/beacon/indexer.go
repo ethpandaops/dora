@@ -239,6 +239,11 @@ func (indexer *Indexer) StartIndexer() {
 		indexer.logger.WithError(err).Errorf("failed loading fork state")
 	}
 
+	// restore finalized validator set from db
+	if err := indexer.validatorCache.prepopulateFromDB(); err != nil {
+		indexer.logger.WithError(err).Errorf("failed loading validator set")
+	}
+
 	// restore unfinalized epoch stats from db
 	restoredEpochStats := 0
 	t1 := time.Now()

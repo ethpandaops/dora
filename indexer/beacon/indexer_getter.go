@@ -10,7 +10,6 @@ import (
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/dora/db"
-	"github.com/ethpandaops/dora/dbtypes"
 )
 
 // GetAllClients returns a slice of all clients in the indexer.
@@ -253,9 +252,9 @@ func (indexer *Indexer) GetParentForkIds(forkId ForkKey) []ForkKey {
 	return indexer.forkCache.getParentForkIds(forkId)
 }
 
-// GetValidatorsByFilter returns the validators with the given filter.
-func (indexer *Indexer) GetValidatorsByFilter(filter *dbtypes.ValidatorFilter, withBalances bool, overrideForkId *ForkKey) ([]v1.Validator, uint64) {
-	return indexer.validatorCache.getFilteredValidatorsForRoot(filter, withBalances, overrideForkId)
+// GetCachedValidatorSetForRoot returns the cached validator set for a given blockRoot.
+func (indexer *Indexer) GetCachedValidatorSetForRoot(blockRoot phase0.Root) []ValidatorWithIndex {
+	return indexer.validatorCache.getCachedValidatorSetForRoot(blockRoot)
 }
 
 // GetActivationExitQueueLengths returns the activation and exit queue lengths for the given epoch.

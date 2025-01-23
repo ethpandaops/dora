@@ -319,8 +319,8 @@ type Validator struct {
 	WithdrawalCredentials      []byte `db:"withdrawal_credentials"`
 	EffectiveBalance           uint64 `db:"effective_balance"`
 	Slashed                    bool   `db:"slashed"`
-	ActivationEligibilityEpoch uint64 `db:"activation_eligibility_epoch"`
-	ActivationEpoch            uint64 `db:"activation_epoch"`
-	ExitEpoch                  uint64 `db:"exit_epoch"`
-	WithdrawableEpoch          uint64 `db:"withdrawable_epoch"`
+	ActivationEligibilityEpoch int64  `db:"activation_eligibility_epoch"`
+	ActivationEpoch            int64  `db:"activation_epoch"`
+	ExitEpoch                  int64  `db:"exit_epoch"`
+	WithdrawableEpoch          int64  `db:"withdrawable_epoch"`
 }

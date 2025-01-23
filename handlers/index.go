@@ -146,7 +146,7 @@ func buildIndexPageData() (*models.IndexPageData, time.Duration) {
 
 	if recentEpochStatsValues != nil {
 		pageData.ActiveValidatorCount = recentEpochStatsValues.ActiveValidators
-		pageData.TotalEligibleEther = uint64(recentEpochStatsValues.ActiveBalance)
+		pageData.TotalEligibleEther = uint64(recentEpochStatsValues.EffectiveBalance)
 		pageData.AverageValidatorBalance = uint64(recentEpochStatsValues.ActiveBalance) / recentEpochStatsValues.ActiveValidators
 	}
 
