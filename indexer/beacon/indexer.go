@@ -29,7 +29,6 @@ type Indexer struct {
 	consensusPool *consensus.Pool
 	dynSsz        *dynssz.DynSsz
 	synchronizer  *synchronizer
-	resolveNameFn func(index uint64) string
 
 	// configuration
 	disableSync           bool
@@ -67,7 +66,7 @@ type Indexer struct {
 }
 
 // NewIndexer creates a new instance of the Indexer.
-func NewIndexer(logger logrus.FieldLogger, consensusPool *consensus.Pool, resolveNameFn func(index uint64) string) *Indexer {
+func NewIndexer(logger logrus.FieldLogger, consensusPool *consensus.Pool) *Indexer {
 	// Initialize the indexer with default values from the configuration.
 	inMemoryEpochs := utils.Config.Indexer.InMemoryEpochs
 	if inMemoryEpochs < 2 {
@@ -90,7 +89,6 @@ func NewIndexer(logger logrus.FieldLogger, consensusPool *consensus.Pool, resolv
 	indexer := &Indexer{
 		logger:                logger,
 		consensusPool:         consensusPool,
-		resolveNameFn:         resolveNameFn,
 		disableSync:           utils.Config.Indexer.DisableSynchronizer,
 		blockCompression:      blockCompression,
 		inMemoryEpochs:        inMemoryEpochs,
