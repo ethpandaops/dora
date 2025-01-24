@@ -147,10 +147,6 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 			}
 			canonicalBlocks = append(canonicalBlocks, block)
 		} else {
-			if block.isInFinalizedDb {
-				// orphaned block which is already in db, ignore
-				continue
-			}
 			if block.block == nil {
 				indexer.logger.Warnf("missing block body for orphaned block %v (%v)", block.Slot, block.Root.String())
 				continue
