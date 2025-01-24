@@ -140,12 +140,12 @@ func (cache *forkCache) getParentForkIds(forkId ForkKey) []ForkKey {
 		} else if parentFork := cache.getForkById(parentForkId); parentFork != nil {
 			parentForkId = parentFork.parentFork
 		} else if dbFork := db.GetForkById(uint64(parentForkId)); dbFork != nil {
+			cache.parentIdCache.Add(ForkKey(parentForkId), ForkKey(dbFork.ParentFork))
 			parentForkId = ForkKey(dbFork.ParentFork)
-			cache.parentIdCache.Add(ForkKey(dbFork.ForkId), ForkKey(dbFork.ParentFork))
 			cache.parentIdCacheMiss++
 		} else {
-			parentForkId = 0
 			cache.parentIdCache.Add(ForkKey(parentForkId), ForkKey(0))
+			parentForkId = 0
 			cache.parentIdCacheMiss++
 		}
 
