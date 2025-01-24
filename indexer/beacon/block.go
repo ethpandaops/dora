@@ -317,7 +317,7 @@ func (block *Block) unpruneBlockBody() {
 }
 
 // GetDbBlock returns the database representation of this block.
-func (block *Block) GetDbBlock(indexer *Indexer) *dbtypes.Slot {
+func (block *Block) GetDbBlock(indexer *Indexer, isCanonical bool) *dbtypes.Slot {
 	var epochStats *EpochStats
 	chainState := indexer.consensusPool.GetChainState()
 	if dependentBlock := indexer.blockCache.getDependentBlock(chainState, block, nil); dependentBlock != nil {
@@ -329,7 +329,7 @@ func (block *Block) GetDbBlock(indexer *Indexer) *dbtypes.Slot {
 		return nil
 	}
 
-	if !indexer.IsCanonicalBlock(block, nil) {
+	if !isCanonical {
 		dbBlock.Status = dbtypes.Orphaned
 	}
 
@@ -337,36 +337,31 @@ func (block *Block) GetDbBlock(indexer *Indexer) *dbtypes.Slot {
 }
 
 // GetDbDeposits returns the database representation of the deposits in this block.
-func (block *Block) GetDbDeposits(indexer *Indexer, depositIndex *uint64) []*dbtypes.Deposit {
-	orphaned := !indexer.IsCanonicalBlock(block, nil)
-	dbDeposits := indexer.dbWriter.buildDbDeposits(block, depositIndex, orphaned, nil)
-	dbDeposits = append(dbDeposits, indexer.dbWriter.buildDbDepositRequests(block, orphaned, nil)...)
+func (block *Block) GetDbDeposits(indexer *Indexer, depositIndex *uint64, isCanonical bool) []*dbtypes.Deposit {
+	dbDeposits := indexer.dbWriter.buildDbDeposits(block, depositIndex, !isCanonical, nil)
+	dbDeposits = append(dbDeposits, indexer.dbWriter.buildDbDepositRequests(block, !isCanonical, nil)...)
 
 	return dbDeposits
 }
 
 // GetDbVoluntaryExits returns the database representation of the voluntary exits in this block.
-func (block *Block) GetDbVoluntaryExits(indexer *Indexer) []*dbtypes.VoluntaryExit {
-	orphaned := !indexer.IsCanonicalBlock(block, nil)
-	return indexer.dbWriter.buildDbVoluntaryExits(block, orphaned, nil)
+func (block *Block) GetDbVoluntaryExits(indexer *Indexer, isCanonical bool) []*dbtypes.VoluntaryExit {
+	return indexer.dbWriter.buildDbVoluntaryExits(block, !isCanonical, nil)
 }
 
 // GetDbSlashings returns the database representation of the slashings in this block.
-func (block *Block) GetDbSlashings(indexer *Indexer) []*dbtypes.Slashing {
-	orphaned := !indexer.IsCanonicalBlock(block, nil)
-	return indexer.dbWriter.buildDbSlashings(block, orphaned, nil)
+func (block *Block) GetDbSlashings(indexer *Indexer, isCanonical bool) []*dbtypes.Slashing {
+	return indexer.dbWriter.buildDbSlashings(block, !isCanonical, nil)
 }
 
 // GetDbWithdrawalRequests returns the database representation of the withdrawal requests in this block.
-func (block *Block) GetDbWithdrawalRequests(indexer *Indexer) []*dbtypes.WithdrawalRequest {
-	orphaned := !indexer.IsCanonicalBlock(block, nil)
-	return indexer.dbWriter.buildDbWithdrawalRequests(block, orphaned, nil)
+func (block *Block) GetDbWithdrawalRequests(indexer *Indexer, isCanonical bool) []*dbtypes.WithdrawalRequest {
+	return indexer.dbWriter.buildDbWithdrawalRequests(block, !isCanonical, nil)
 }
 
 // GetDbConsolidationRequests returns the database representation of the consolidation requests in this block.
-func (block *Block) GetDbConsolidationRequests(indexer *Indexer) []*dbtypes.ConsolidationRequest {
-	orphaned := !indexer.IsCanonicalBlock(block, nil)
-	return indexer.dbWriter.buildDbConsolidationRequests(block, orphaned, nil)
+func (block *Block) GetDbConsolidationRequests(indexer *Indexer, isCanonical bool) []*dbtypes.ConsolidationRequest {
+	return indexer.dbWriter.buildDbConsolidationRequests(block, !isCanonical, nil)
 }
 
 // GetForkId returns the fork ID of this block.

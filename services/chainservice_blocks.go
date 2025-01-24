@@ -295,7 +295,7 @@ func (bs *ChainService) GetDbBlocksForSlots(firstSlot uint64, slotLimit uint32, 
 				if !withOrphaned && !isCanonical {
 					continue
 				}
-				dbBlock := block.GetDbBlock(bs.beaconIndexer)
+				dbBlock := block.GetDbBlock(bs.beaconIndexer, isCanonical)
 				if dbBlock != nil {
 					resBlocks = append(resBlocks, dbBlock)
 				}
@@ -597,7 +597,7 @@ func (bs *ChainService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageIdx
 			cachedMatches = append(cachedMatches, cachedDbBlock{
 				slot:     uint64(block.Slot),
 				proposer: uint64(blockHeader.Message.ProposerIndex),
-				orphaned: isCanonical,
+				orphaned: !isCanonical,
 				block:    block,
 			})
 		}
@@ -689,7 +689,7 @@ func (bs *ChainService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageIdx
 			}
 			if block.block != nil {
 				if block.slot >= uint64(prunedSlot) {
-					assignedBlock.Block = block.block.GetDbBlock(bs.beaconIndexer)
+					assignedBlock.Block = block.block.GetDbBlock(bs.beaconIndexer, !block.orphaned)
 				} else {
 					blockRoots = append(blockRoots, block.block.Root[:])
 					blockRootsIdx = append(blockRootsIdx, resIdx)
@@ -745,7 +745,8 @@ func (bs *ChainService) GetDbBlocksByParentRoot(parentRoot phase0.Root) []*dbtyp
 	cachedMatches := bs.beaconIndexer.GetBlockByParentRoot(parentRoot)
 	resBlocks := make([]*dbtypes.Slot, len(cachedMatches))
 	for idx, block := range cachedMatches {
-		resBlocks[idx] = block.GetDbBlock(bs.beaconIndexer)
+		isCanonical := bs.beaconIndexer.IsCanonicalBlock(block, nil)
+		resBlocks[idx] = block.GetDbBlock(bs.beaconIndexer, isCanonical)
 	}
 	if parentBlock == nil {
 		resBlocks = append(resBlocks, db.GetSlotsByParentRoot(parentRoot[:])...)

@@ -2,6 +2,7 @@ package services
 
 import (
 	"bytes"
+	"slices"
 	"strings"
 
 	"github.com/attestantio/go-eth2-client/spec/phase0"
@@ -21,6 +22,7 @@ func (bs *ChainService) GetIncludedDepositsByFilter(filter *dbtypes.DepositFilte
 
 	// load most recent objects from indexer cache
 	cachedMatches := make([]*dbtypes.Deposit, 0)
+	canonicalForkIds := bs.GetCanonicalForkKeys()
 
 	var epochStats *beacon.EpochStats
 	var depositIndex *uint64
@@ -30,12 +32,13 @@ func (bs *ChainService) GetIncludedDepositsByFilter(filter *dbtypes.DepositFilte
 		if blocks != nil {
 			for bidx := 0; bidx < len(blocks); bidx++ {
 				block := blocks[bidx]
+
+				isCanonical := slices.Contains(canonicalForkIds, block.GetForkId())
 				if filter.WithOrphaned != 1 {
-					isOrphaned := !bs.beaconIndexer.IsCanonicalBlock(block, nil)
-					if filter.WithOrphaned == 0 && isOrphaned {
+					if filter.WithOrphaned == 0 && !isCanonical {
 						continue
 					}
-					if filter.WithOrphaned == 2 && !isOrphaned {
+					if filter.WithOrphaned == 2 && isCanonical {
 						continue
 					}
 				}
@@ -56,7 +59,7 @@ func (bs *ChainService) GetIncludedDepositsByFilter(filter *dbtypes.DepositFilte
 					}
 				}
 
-				deposits := block.GetDbDeposits(bs.beaconIndexer, depositIndex)
+				deposits := block.GetDbDeposits(bs.beaconIndexer, depositIndex, isCanonical)
 				for idx, deposit := range deposits {
 					if filter.MinIndex > 0 && (deposit.Index == nil || *deposit.Index < filter.MinIndex) {
 						continue
@@ -125,8 +128,8 @@ func (bs *ChainService) GetIncludedDepositsByFilter(filter *dbtypes.DepositFilte
 	} else {
 		for idx, dbObject := range dbObjects {
 			if dbObject.SlotNumber > uint64(finalizedBlock) {
-				blockStatus := bs.CheckBlockOrphanedStatus(phase0.Root(dbObject.SlotRoot))
-				dbObjects[idx].Orphaned = blockStatus == dbtypes.Orphaned
+				isCanonical := slices.Contains(canonicalForkIds, beacon.ForkKey(dbObject.ForkId))
+				dbObjects[idx].Orphaned = !isCanonical
 			}
 
 			if filter.WithOrphaned != 1 {
@@ -150,6 +153,7 @@ func (bs *ChainService) GetVoluntaryExitsByFilter(filter *dbtypes.VoluntaryExitF
 	finalizedBlock, prunedEpoch := bs.beaconIndexer.GetBlockCacheState()
 	idxMinSlot := chainState.EpochToSlot(prunedEpoch)
 	currentSlot := chainState.CurrentSlot()
+	canonicalForkIds := bs.GetCanonicalForkKeys()
 
 	// load most recent objects from indexer cache
 	cachedMatches := make([]*dbtypes.VoluntaryExit, 0)
@@ -159,12 +163,12 @@ func (bs *ChainService) GetVoluntaryExitsByFilter(filter *dbtypes.VoluntaryExitF
 		if blocks != nil {
 			for bidx := 0; bidx < len(blocks); bidx++ {
 				block := blocks[bidx]
+				isCanonical := slices.Contains(canonicalForkIds, block.GetForkId())
 				if filter.WithOrphaned != 1 {
-					isOrphaned := !bs.beaconIndexer.IsCanonicalBlock(block, nil)
-					if filter.WithOrphaned == 0 && isOrphaned {
+					if filter.WithOrphaned == 0 && !isCanonical {
 						continue
 					}
-					if filter.WithOrphaned == 2 && !isOrphaned {
+					if filter.WithOrphaned == 2 && isCanonical {
 						continue
 					}
 				}
@@ -175,7 +179,7 @@ func (bs *ChainService) GetVoluntaryExitsByFilter(filter *dbtypes.VoluntaryExitF
 					continue
 				}
 
-				voluntaryExits := block.GetDbVoluntaryExits(bs.beaconIndexer)
+				voluntaryExits := block.GetDbVoluntaryExits(bs.beaconIndexer, isCanonical)
 				for idx, voluntaryExit := range voluntaryExits {
 					if filter.MinIndex > 0 && voluntaryExit.ValidatorIndex < filter.MinIndex {
 						continue
@@ -235,8 +239,8 @@ func (bs *ChainService) GetVoluntaryExitsByFilter(filter *dbtypes.VoluntaryExitF
 	} else {
 		for idx, dbObject := range dbObjects {
 			if dbObject.SlotNumber > uint64(finalizedBlock) {
-				blockStatus := bs.CheckBlockOrphanedStatus(phase0.Root(dbObject.SlotRoot))
-				dbObjects[idx].Orphaned = blockStatus == dbtypes.Orphaned
+				isCanonical := slices.Contains(canonicalForkIds, beacon.ForkKey(dbObject.ForkId))
+				dbObjects[idx].Orphaned = !isCanonical
 			}
 
 			if filter.WithOrphaned != 1 {
@@ -260,6 +264,7 @@ func (bs *ChainService) GetSlashingsByFilter(filter *dbtypes.SlashingFilter, pag
 	finalizedBlock, prunedEpoch := bs.beaconIndexer.GetBlockCacheState()
 	idxMinSlot := chainState.EpochToSlot(prunedEpoch)
 	currentSlot := chainState.CurrentSlot()
+	canonicalForkIds := bs.GetCanonicalForkKeys()
 
 	// load most recent objects from indexer cache
 	cachedMatches := make([]*dbtypes.Slashing, 0)
@@ -269,12 +274,12 @@ func (bs *ChainService) GetSlashingsByFilter(filter *dbtypes.SlashingFilter, pag
 		if blocks != nil {
 			for bidx := 0; bidx < len(blocks); bidx++ {
 				block := blocks[bidx]
+				isCanonical := slices.Contains(canonicalForkIds, block.GetForkId())
 				if filter.WithOrphaned != 1 {
-					isOrphaned := !bs.beaconIndexer.IsCanonicalBlock(block, nil)
-					if filter.WithOrphaned == 0 && isOrphaned {
+					if filter.WithOrphaned == 0 && !isCanonical {
 						continue
 					}
-					if filter.WithOrphaned == 2 && !isOrphaned {
+					if filter.WithOrphaned == 2 && isCanonical {
 						continue
 					}
 				}
@@ -285,7 +290,7 @@ func (bs *ChainService) GetSlashingsByFilter(filter *dbtypes.SlashingFilter, pag
 					continue
 				}
 
-				slashings := block.GetDbSlashings(bs.beaconIndexer)
+				slashings := block.GetDbSlashings(bs.beaconIndexer, isCanonical)
 				for idx, slashing := range slashings {
 					if filter.MinIndex > 0 && slashing.ValidatorIndex < filter.MinIndex {
 						continue
@@ -351,8 +356,8 @@ func (bs *ChainService) GetSlashingsByFilter(filter *dbtypes.SlashingFilter, pag
 	} else {
 		for idx, dbObject := range dbObjects {
 			if dbObject.SlotNumber > uint64(finalizedBlock) {
-				blockStatus := bs.CheckBlockOrphanedStatus(phase0.Root(dbObject.SlotRoot))
-				dbObjects[idx].Orphaned = blockStatus == dbtypes.Orphaned
+				isCanonical := slices.Contains(canonicalForkIds, beacon.ForkKey(dbObject.ForkId))
+				dbObjects[idx].Orphaned = !isCanonical
 			}
 
 			if filter.WithOrphaned != 1 {

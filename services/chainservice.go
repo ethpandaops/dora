@@ -229,13 +229,17 @@ func (bs *ChainService) GetHeadForks(readyOnly bool) []*beacon.ForkHead {
 	return bs.beaconIndexer.GetForkHeads()
 }
 
-func (bs *ChainService) GetCanonicalForkIds() []uint64 {
+func (bs *ChainService) GetCanonicalForkKeys() []beacon.ForkKey {
 	canonicalHead := bs.beaconIndexer.GetCanonicalHead(nil)
 	if canonicalHead == nil {
-		return []uint64{0}
+		return []beacon.ForkKey{0}
 	}
 
-	parentForkKeys := bs.beaconIndexer.GetParentForkIds(canonicalHead.GetForkId())
+	return bs.beaconIndexer.GetParentForkIds(canonicalHead.GetForkId())
+}
+
+func (bs *ChainService) GetCanonicalForkIds() []uint64 {
+	parentForkKeys := bs.GetCanonicalForkKeys()
 	forkIds := make([]uint64, len(parentForkKeys))
 	for idx, forkId := range parentForkKeys {
 		forkIds[idx] = uint64(forkId)

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"math/rand/v2"
+	"slices"
 	"sort"
 
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
@@ -209,17 +210,21 @@ func (indexer *Indexer) GetEpochStats(epoch phase0.Epoch, overrideForkId *ForkKe
 	canonicalHead := indexer.GetCanonicalHead(overrideForkId)
 
 	var bestEpochStats *EpochStats
-	var bestDistance uint64
+	var bestDistance phase0.Slot
 
 	if canonicalHead != nil {
+		canonicalForkIds := indexer.forkCache.getParentForkIds(canonicalHead.forkId)
+
 		for _, stats := range epochStats {
 			if !stats.ready {
 				continue
 			}
-			if isInChain, distance := indexer.blockCache.getCanonicalDistance(stats.dependentRoot, canonicalHead.Root, 0); isInChain {
-				if bestEpochStats == nil || distance < bestDistance {
+
+			dependentBlock := indexer.blockCache.getBlockByRoot(stats.dependentRoot)
+			if dependentBlock != nil && slices.Contains(canonicalForkIds, dependentBlock.forkId) {
+				if bestEpochStats == nil || dependentBlock.Slot > bestDistance {
 					bestEpochStats = stats
-					bestDistance = distance
+					bestDistance = dependentBlock.Slot
 				}
 			}
 		}
@@ -230,10 +235,12 @@ func (indexer *Indexer) GetEpochStats(epoch phase0.Epoch, overrideForkId *ForkKe
 				if stats.ready {
 					continue
 				}
-				if isInChain, distance := indexer.blockCache.getCanonicalDistance(stats.dependentRoot, canonicalHead.Root, 0); isInChain {
-					if bestEpochStats == nil || distance < bestDistance {
+
+				dependentBlock := indexer.blockCache.getBlockByRoot(stats.dependentRoot)
+				if dependentBlock != nil && slices.Contains(canonicalForkIds, dependentBlock.forkId) {
+					if bestEpochStats == nil || dependentBlock.Slot > bestDistance {
 						bestEpochStats = stats
-						bestDistance = distance
+						bestDistance = dependentBlock.Slot
 					}
 				}
 			}
