@@ -349,8 +349,8 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 		}
 
 		// delete unfinalized epoch aggregations in epoch
-		if err := db.DeleteUnfinalizedEpochsIn(uint64(epoch), tx); err != nil {
-			return fmt.Errorf("failed deleting unfinalized epoch aggregations of epoch %v: %v", epoch, err)
+		if err := db.DeleteUnfinalizedEpochsBefore(uint64(epoch+1), tx); err != nil {
+			return fmt.Errorf("failed deleting unfinalized epoch aggregations <= epoch %v: %v", epoch, err)
 		}
 
 		// delete unfinalized forks for canonical roots

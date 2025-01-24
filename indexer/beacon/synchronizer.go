@@ -408,8 +408,8 @@ func (sync *synchronizer) syncEpoch(syncEpoch phase0.Epoch, client *Client, last
 		}
 
 		// delete unfinalized epoch aggregations in epoch
-		if err := db.DeleteUnfinalizedEpochsIn(uint64(syncEpoch), tx); err != nil {
-			return fmt.Errorf("failed deleting unfinalized epoch aggregations of epoch %v: %v", syncEpoch, err)
+		if err := db.DeleteUnfinalizedEpochsBefore(uint64(syncEpoch+1), tx); err != nil {
+			return fmt.Errorf("failed deleting unfinalized epoch aggregations <= epoch %v: %v", syncEpoch, err)
 		}
 
 		// delete unfinalized forks for canonical roots

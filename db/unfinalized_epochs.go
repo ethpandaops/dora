@@ -96,8 +96,8 @@ func GetUnfinalizedEpoch(epoch uint64, headRoot []byte) *dbtypes.UnfinalizedEpoc
 	return &unfinalizedEpoch
 }
 
-func DeleteUnfinalizedEpochsIn(epoch uint64, tx *sqlx.Tx) error {
-	_, err := tx.Exec(`DELETE FROM unfinalized_epochs WHERE epoch = $1`, epoch)
+func DeleteUnfinalizedEpochsBefore(epoch uint64, tx *sqlx.Tx) error {
+	_, err := tx.Exec(`DELETE FROM unfinalized_epochs WHERE epoch < $1`, epoch)
 	if err != nil {
 		return err
 	}
