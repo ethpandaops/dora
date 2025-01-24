@@ -72,3 +72,13 @@ func DeleteUnfinalizedDutiesBefore(epoch uint64, tx *sqlx.Tx) error {
 	}
 	return nil
 }
+
+func UpdateUnfinalizedDuty(duty *dbtypes.UnfinalizedDuty, tx *sqlx.Tx) error {
+	_, err := tx.Exec(
+		`UPDATE unfinalized_duties SET duties = $3 WHERE epoch = $1 AND dependent_root = $2`,
+		duty.Epoch, duty.DependentRoot, duty.DutiesSSZ)
+	if err != nil {
+		return err
+	}
+	return nil
+}

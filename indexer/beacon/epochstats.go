@@ -61,6 +61,17 @@ type EpochStatsValues struct {
 // EpochStatsPacked holds the packed values for the epoch-specific information.
 type EpochStatsPacked struct {
 	ActiveValidators    []EpochStatsPackedValidator
+	ProposerDuties      []phase0.ValidatorIndex
+	SyncCommitteeDuties []phase0.ValidatorIndex
+	RandaoMix           phase0.Hash32
+	NextRandaoMix       phase0.Hash32
+	TotalBalance        phase0.Gwei
+	ActiveBalance       phase0.Gwei
+	FirstDepositIndex   uint64
+}
+
+type EpochStatsPackedLegacy struct {
+	ActiveValidators    []EpochStatsPackedValidator
 	SyncCommitteeDuties []phase0.ValidatorIndex
 	RandaoMix           phase0.Hash32
 	NextRandaoMix       phase0.Hash32
@@ -159,6 +170,7 @@ func (es *EpochStats) buildPackedSSZ(dynSsz *dynssz.DynSsz) ([]byte, error) {
 
 	packedValues := &EpochStatsPacked{
 		ActiveValidators:    make([]EpochStatsPackedValidator, es.values.ActiveValidators),
+		ProposerDuties:      es.values.ProposerDuties,
 		SyncCommitteeDuties: es.values.SyncCommitteeDuties,
 		RandaoMix:           es.values.RandaoMix,
 		NextRandaoMix:       es.values.NextRandaoMix,
@@ -188,7 +200,7 @@ func (es *EpochStats) buildPackedSSZ(dynSsz *dynssz.DynSsz) ([]byte, error) {
 
 // unmarshalSSZ unmarshals the EpochStats values using the provided SSZ bytes.
 // skips computing attester duties if withCommittees is false to speed up the process.
-func (es *EpochStats) parsePackedSSZ(dynSsz *dynssz.DynSsz, chainState *consensus.ChainState, ssz []byte, withCommittees bool) (*EpochStatsValues, error) {
+func (es *EpochStats) parsePackedSSZ(dynSsz *dynssz.DynSsz, chainState *consensus.ChainState, ssz []byte, withDuties bool) (*EpochStatsValues, error) {
 	if dynSsz == nil {
 		dynSsz = dynssz.NewDynSsz(nil)
 	}
@@ -204,8 +216,24 @@ func (es *EpochStats) parsePackedSSZ(dynSsz *dynssz.DynSsz, chainState *consensu
 	}
 
 	packedValues := &EpochStatsPacked{}
+	savePackedValues := false
 	if err := dynSsz.UnmarshalSSZ(packedValues, ssz); err != nil {
-		return nil, err
+		// try legacy
+		packedValuesLegacy := &EpochStatsPackedLegacy{}
+		if err := dynSsz.UnmarshalSSZ(packedValuesLegacy, ssz); err != nil {
+			return nil, err
+		} else {
+			packedValues.ActiveValidators = packedValuesLegacy.ActiveValidators
+			packedValues.SyncCommitteeDuties = packedValuesLegacy.SyncCommitteeDuties
+			packedValues.RandaoMix = packedValuesLegacy.RandaoMix
+			packedValues.NextRandaoMix = packedValuesLegacy.NextRandaoMix
+			packedValues.TotalBalance = packedValuesLegacy.TotalBalance
+			packedValues.ActiveBalance = packedValuesLegacy.ActiveBalance
+			packedValues.FirstDepositIndex = packedValuesLegacy.FirstDepositIndex
+			withDuties = true
+			savePackedValues = true
+			fmt.Printf("migrated legacy epoch stats %v (%v)\n", es.epoch, es.dependentRoot.String())
+		}
 	}
 
 	values := &EpochStatsValues{
@@ -232,37 +260,50 @@ func (es *EpochStats) parsePackedSSZ(dynSsz *dynssz.DynSsz, chainState *consensu
 
 	values.ActiveValidators = uint64(len(packedValues.ActiveValidators))
 
-	beaconState := &duties.BeaconState{
-		RandaoMix: &values.RandaoMix,
-		GetActiveCount: func() uint64 {
-			return values.ActiveValidators
-		},
-		GetEffectiveBalance: func(index duties.ActiveIndiceIndex) phase0.Gwei {
-			return phase0.Gwei(values.EffectiveBalances[index]) * EtherGweiFactor
-		},
-	}
-
-	// compute proposers
-	proposerDuties := []phase0.ValidatorIndex{}
-	for slot := chainState.EpochToSlot(es.epoch); slot < chainState.EpochToSlot(es.epoch+1); slot++ {
-		proposer, err := duties.GetProposerIndex(chainState.GetSpecs(), beaconState, slot)
-		proposerIndex := phase0.ValidatorIndex(math.MaxInt64)
-		if err == nil {
-			proposerIndex = values.ActiveIndices[proposer]
+	if withDuties {
+		beaconState := &duties.BeaconState{
+			RandaoMix: &values.RandaoMix,
+			GetActiveCount: func() uint64 {
+				return values.ActiveValidators
+			},
+			GetEffectiveBalance: func(index duties.ActiveIndiceIndex) phase0.Gwei {
+				return phase0.Gwei(values.EffectiveBalances[index]) * EtherGweiFactor
+			},
 		}
 
-		proposerDuties = append(proposerDuties, proposerIndex)
-	}
+		// compute proposers
+		proposerDuties := []phase0.ValidatorIndex{}
+		for slot := chainState.EpochToSlot(es.epoch); slot < chainState.EpochToSlot(es.epoch+1); slot++ {
+			proposer, err := duties.GetProposerIndex(chainState.GetSpecs(), beaconState, slot)
+			proposerIndex := phase0.ValidatorIndex(math.MaxInt64)
+			if err == nil {
+				proposerIndex = values.ActiveIndices[proposer]
+			}
 
-	values.ProposerDuties = proposerDuties
-	if beaconState.RandaoMix != nil {
-		values.RandaoMix = *beaconState.RandaoMix
-	}
+			proposerDuties = append(proposerDuties, proposerIndex)
+		}
 
-	// compute committees
-	if withCommittees {
+		values.ProposerDuties = proposerDuties
+		if beaconState.RandaoMix != nil {
+			values.RandaoMix = *beaconState.RandaoMix
+		}
+
+		// compute committees
 		attesterDuties, _ := duties.GetAttesterDuties(chainState.GetSpecs(), beaconState, es.epoch)
 		values.AttesterDuties = attesterDuties
+	}
+
+	if savePackedValues {
+		packedSsz, _ := es.buildPackedSSZ(dynSsz)
+		dbDuty := &dbtypes.UnfinalizedDuty{
+			Epoch:         uint64(es.epoch),
+			DependentRoot: es.dependentRoot[:],
+			DutiesSSZ:     packedSsz,
+		}
+
+		db.RunDBTransaction(func(tx *sqlx.Tx) error {
+			return db.UpdateUnfinalizedDuty(dbDuty, tx)
+		})
 	}
 
 	return values, nil
