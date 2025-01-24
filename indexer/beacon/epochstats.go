@@ -70,16 +70,6 @@ type EpochStatsPacked struct {
 	FirstDepositIndex   uint64
 }
 
-type EpochStatsPackedLegacy struct {
-	ActiveValidators    []EpochStatsPackedValidator
-	SyncCommitteeDuties []phase0.ValidatorIndex
-	RandaoMix           phase0.Hash32
-	NextRandaoMix       phase0.Hash32
-	TotalBalance        phase0.Gwei
-	ActiveBalance       phase0.Gwei
-	FirstDepositIndex   uint64
-}
-
 // EpochStatsPackedValidator holds the packed values for an active validator.
 type EpochStatsPackedValidator struct {
 	ValidatorIndexOffset uint32 // offset to the previous index in the list (this is smaller than storing the full validator index)
@@ -216,24 +206,8 @@ func (es *EpochStats) parsePackedSSZ(dynSsz *dynssz.DynSsz, chainState *consensu
 	}
 
 	packedValues := &EpochStatsPacked{}
-	savePackedValues := false
 	if err := dynSsz.UnmarshalSSZ(packedValues, ssz); err != nil {
-		// try legacy
-		packedValuesLegacy := &EpochStatsPackedLegacy{}
-		if err := dynSsz.UnmarshalSSZ(packedValuesLegacy, ssz); err != nil {
-			return nil, err
-		} else {
-			packedValues.ActiveValidators = packedValuesLegacy.ActiveValidators
-			packedValues.SyncCommitteeDuties = packedValuesLegacy.SyncCommitteeDuties
-			packedValues.RandaoMix = packedValuesLegacy.RandaoMix
-			packedValues.NextRandaoMix = packedValuesLegacy.NextRandaoMix
-			packedValues.TotalBalance = packedValuesLegacy.TotalBalance
-			packedValues.ActiveBalance = packedValuesLegacy.ActiveBalance
-			packedValues.FirstDepositIndex = packedValuesLegacy.FirstDepositIndex
-			withDuties = true
-			savePackedValues = true
-			fmt.Printf("migrated legacy epoch stats %v (%v)\n", es.epoch, es.dependentRoot.String())
-		}
+		return nil, err
 	}
 
 	values := &EpochStatsValues{
@@ -291,19 +265,6 @@ func (es *EpochStats) parsePackedSSZ(dynSsz *dynssz.DynSsz, chainState *consensu
 		// compute committees
 		attesterDuties, _ := duties.GetAttesterDuties(chainState.GetSpecs(), beaconState, es.epoch)
 		values.AttesterDuties = attesterDuties
-	}
-
-	if savePackedValues {
-		packedSsz, _ := es.buildPackedSSZ(dynSsz)
-		dbDuty := &dbtypes.UnfinalizedDuty{
-			Epoch:         uint64(es.epoch),
-			DependentRoot: es.dependentRoot[:],
-			DutiesSSZ:     packedSsz,
-		}
-
-		db.RunDBTransaction(func(tx *sqlx.Tx) error {
-			return db.UpdateUnfinalizedDuty(dbDuty, tx)
-		})
 	}
 
 	return values, nil
