@@ -846,7 +846,14 @@ func (cache *validatorCache) runPersistLoop() {
 	for range cache.triggerDbUpdate {
 		time.Sleep(2 * time.Second)
 		err := db.RunDBTransaction(func(tx *sqlx.Tx) error {
-			return cache.persistValidators(tx)
+			hasMore, err := cache.persistValidators(tx)
+			if hasMore {
+				select {
+				case cache.triggerDbUpdate <- true:
+				default:
+				}
+			}
+			return err
 		})
 		if err != nil {
 			cache.indexer.logger.WithError(err).Errorf("error persisting validators")
@@ -854,7 +861,7 @@ func (cache *validatorCache) runPersistLoop() {
 	}
 }
 
-func (cache *validatorCache) persistValidators(tx *sqlx.Tx) error {
+func (cache *validatorCache) persistValidators(tx *sqlx.Tx) (bool, error) {
 	cache.cacheMutex.RLock()
 	defer cache.cacheMutex.RUnlock()
 
@@ -862,6 +869,7 @@ func (cache *validatorCache) persistValidators(tx *sqlx.Tx) error {
 	persisted := 0
 	firstIndex := uint64(0)
 	lastIndex := uint64(0)
+	hasMore := false
 
 	for index, entry := range cache.valsetCache {
 		if entry == nil || entry.finalValidator == nil {
@@ -889,15 +897,16 @@ func (cache *validatorCache) persistValidators(tx *sqlx.Tx) error {
 		batch = append(batch, dbVal)
 		entry.finalValidator = nil
 
-		if len(batch) >= 100 {
+		if len(batch) >= 1000 {
 			err := db.InsertValidatorBatch(batch, tx)
 			if err != nil {
-				return fmt.Errorf("error persisting validator batch: %v", err)
+				return false, fmt.Errorf("error persisting validator batch: %v", err)
 			}
 			batch = batch[:0]
-			persisted += 100
+			persisted += 1000
 
 			if persisted >= 10000 {
+				hasMore = true
 				break // Max 10k validators per run
 			}
 		}
@@ -907,7 +916,7 @@ func (cache *validatorCache) persistValidators(tx *sqlx.Tx) error {
 	if len(batch) > 0 {
 		err := db.InsertValidatorBatch(batch, tx)
 		if err != nil {
-			return fmt.Errorf("error persisting final validator batch: %v", err)
+			return false, fmt.Errorf("error persisting final validator batch: %v", err)
 		}
 	}
 
@@ -915,5 +924,5 @@ func (cache *validatorCache) persistValidators(tx *sqlx.Tx) error {
 		cache.indexer.logger.Infof("persisted %d validators to db [%d-%d]", persisted, firstIndex, lastIndex)
 	}
 
-	return nil
+	return hasMore, nil
 }
