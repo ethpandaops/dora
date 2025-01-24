@@ -860,11 +860,18 @@ func (cache *validatorCache) persistValidators(tx *sqlx.Tx) error {
 
 	batch := make([]*dbtypes.Validator, 0, 100)
 	persisted := 0
+	firstIndex := uint64(0)
+	lastIndex := uint64(0)
 
 	for index, entry := range cache.valsetCache {
 		if entry == nil || entry.finalValidator == nil {
 			continue
 		}
+
+		if persisted == 0 && len(batch) == 0 {
+			firstIndex = uint64(index)
+		}
+		lastIndex = uint64(index)
 
 		// Convert to db type
 		dbVal := &dbtypes.Validator{
@@ -902,6 +909,10 @@ func (cache *validatorCache) persistValidators(tx *sqlx.Tx) error {
 		if err != nil {
 			return fmt.Errorf("error persisting final validator batch: %v", err)
 		}
+	}
+
+	if persisted > 0 {
+		cache.indexer.logger.Infof("persisted %d validators to db [%d-%d]", persisted, firstIndex, lastIndex)
 	}
 
 	return nil
