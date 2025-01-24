@@ -215,6 +215,7 @@ func (es *EpochStats) parsePackedSSZ(dynSsz *dynssz.DynSsz, chainState *consensu
 		NextRandaoMix:       packedValues.NextRandaoMix,
 		ActiveIndices:       make([]phase0.ValidatorIndex, len(packedValues.ActiveValidators)),
 		EffectiveBalances:   make([]uint16, len(packedValues.ActiveValidators)),
+		ProposerDuties:      packedValues.ProposerDuties,
 		SyncCommitteeDuties: packedValues.SyncCommitteeDuties,
 		TotalBalance:        packedValues.TotalBalance,
 		ActiveBalance:       packedValues.ActiveBalance,
