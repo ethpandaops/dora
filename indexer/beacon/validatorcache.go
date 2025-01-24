@@ -40,7 +40,16 @@ type validatorEntry struct {
 	finalChecksum  uint64
 	finalValidator *phase0.Validator
 	activeData     *ValidatorData
+	statusFlags    uint16
 }
+
+const (
+	ValidatorStatusPending uint16 = 1 << iota
+	ValidatorStatusExited
+	ValidatorStatusSlashed
+	ValidatorStatusHasAddress  // has execution address set (0x01 or 0x02)
+	ValidatorStatusCompounding // is compounding validator (0x02)
+)
 
 type ValidatorWithIndex struct {
 	Index     uint64
@@ -49,9 +58,9 @@ type ValidatorWithIndex struct {
 
 // ValidatorData holds the most relevant information about a active validator.
 type ValidatorData struct {
-	ActivationEpoch  phase0.Epoch
-	ExitEpoch        phase0.Epoch
-	effectiveBalance uint16
+	ActivationEpoch     phase0.Epoch
+	ExitEpoch           phase0.Epoch
+	EffectiveBalanceEth uint16
 }
 
 type ValidatorDataWithIndex struct {
@@ -101,7 +110,7 @@ func newValidatorCache(indexer *Indexer) *validatorCache {
 
 // EffectiveBalance returns the effective balance of the validator.
 func (v *ValidatorData) EffectiveBalance() phase0.Gwei {
-	return phase0.Gwei(v.effectiveBalance) * EtherGweiFactor
+	return phase0.Gwei(v.EffectiveBalanceEth) * EtherGweiFactor
 }
 
 // updateValidatorSet updates the validator set cache with the new validator set.
@@ -229,6 +238,7 @@ func (cache *validatorCache) updateValidatorSet(slot phase0.Slot, dependentRoot 
 		if isFinalizedValidatorSet {
 			cachedValidator.finalValidator = validators[i]
 			cachedValidator.finalChecksum = checksum
+			cachedValidator.statusFlags = GetValidatorStatusFlags(validators[i])
 			updatedCount++
 		}
 
@@ -305,6 +315,46 @@ func (cache *validatorCache) checkValidatorEqual(validator1 *phase0.Validator, v
 		validator1.ActivationEpoch == validator2.ActivationEpoch &&
 		validator1.ExitEpoch == validator2.ExitEpoch &&
 		validator1.WithdrawableEpoch == validator2.WithdrawableEpoch
+}
+
+func GetValidatorStatusFlags(validator *phase0.Validator) uint16 {
+	flags := uint16(0)
+	if validator.ActivationEpoch == FarFutureEpoch {
+		flags |= ValidatorStatusPending
+	}
+	if validator.ExitEpoch != FarFutureEpoch {
+		flags |= ValidatorStatusExited
+	}
+	if validator.Slashed {
+		flags |= ValidatorStatusSlashed
+	}
+	if validator.WithdrawalCredentials[0] == 0x01 || validator.WithdrawalCredentials[0] == 0x02 {
+		flags |= ValidatorStatusHasAddress
+	}
+	if validator.WithdrawalCredentials[0] == 0x02 {
+		flags |= ValidatorStatusCompounding
+	}
+	return flags
+}
+
+// getValidatorSetSize returns the size of the validator set cache.
+func (cache *validatorCache) getValidatorSetSize() uint64 {
+	cache.cacheMutex.RLock()
+	defer cache.cacheMutex.RUnlock()
+
+	return uint64(len(cache.valsetCache))
+}
+
+// getValidatorSetSize returns the size of the validator set cache.
+func (cache *validatorCache) getValidatorFlags(validatorIndex phase0.ValidatorIndex) uint16 {
+	cache.cacheMutex.RLock()
+	defer cache.cacheMutex.RUnlock()
+
+	if validatorIndex >= phase0.ValidatorIndex(len(cache.valsetCache)) || cache.valsetCache[validatorIndex] == nil {
+		return 0
+	}
+
+	return cache.valsetCache[validatorIndex].statusFlags
 }
 
 // updateValidatorActivity updates the validator activity cache.
@@ -402,12 +452,13 @@ func (cache *validatorCache) setFinalizedEpoch(epoch phase0.Epoch, nextEpochDepe
 			if diff.dependentRoot == nextEpochDependentRoot {
 				cachedValidator.finalValidator = diff.validator
 				cachedValidator.finalChecksum = calculateValidatorChecksum(diff.validator)
+				cachedValidator.statusFlags = GetValidatorStatusFlags(diff.validator)
 				updatedCount++
 
 				cachedValidator.activeData = &ValidatorData{
-					ActivationEpoch:  diff.validator.ActivationEpoch,
-					ExitEpoch:        diff.validator.ExitEpoch,
-					effectiveBalance: uint16(diff.validator.EffectiveBalance / EtherGweiFactor),
+					ActivationEpoch:     diff.validator.ActivationEpoch,
+					ExitEpoch:           diff.validator.ExitEpoch,
+					EffectiveBalanceEth: uint16(diff.validator.EffectiveBalance / EtherGweiFactor),
 				}
 				break
 			}
@@ -472,9 +523,9 @@ func (cache *validatorCache) getActiveValidatorDataForRoot(epoch *phase0.Epoch, 
 
 			if isParent && diff.epoch >= validatorEpoch {
 				validatorData = &ValidatorData{
-					ActivationEpoch:  diff.validator.ActivationEpoch,
-					ExitEpoch:        diff.validator.ExitEpoch,
-					effectiveBalance: uint16(diff.validator.EffectiveBalance / EtherGweiFactor),
+					ActivationEpoch:     diff.validator.ActivationEpoch,
+					ExitEpoch:           diff.validator.ExitEpoch,
+					EffectiveBalanceEth: uint16(diff.validator.EffectiveBalance / EtherGweiFactor),
 				}
 				validatorEpoch = diff.epoch
 			}
@@ -495,9 +546,9 @@ func (cache *validatorCache) getActiveValidatorDataForRoot(epoch *phase0.Epoch, 
 
 		if validatorData == nil && aheadValidator != nil {
 			validatorData = &ValidatorData{
-				ActivationEpoch:  aheadValidator.ActivationEpoch,
-				ExitEpoch:        aheadValidator.ExitEpoch,
-				effectiveBalance: uint16(aheadValidator.EffectiveBalance / EtherGweiFactor),
+				ActivationEpoch:     aheadValidator.ActivationEpoch,
+				ExitEpoch:           aheadValidator.ExitEpoch,
+				EffectiveBalanceEth: uint16(aheadValidator.EffectiveBalance / EtherGweiFactor),
 			}
 		}
 
@@ -757,14 +808,15 @@ func (cache *validatorCache) prepopulateFromDB() error {
 				finalChecksum: calculateValidatorChecksum(val),
 			}
 			valData := &ValidatorData{
-				ActivationEpoch:  phase0.Epoch(db.ConvertInt64ToUint64(dbVal.ActivationEpoch)),
-				ExitEpoch:        phase0.Epoch(db.ConvertInt64ToUint64(dbVal.ExitEpoch)),
-				effectiveBalance: uint16(val.EffectiveBalance / EtherGweiFactor),
+				ActivationEpoch:     phase0.Epoch(db.ConvertInt64ToUint64(dbVal.ActivationEpoch)),
+				ExitEpoch:           phase0.Epoch(db.ConvertInt64ToUint64(dbVal.ExitEpoch)),
+				EffectiveBalanceEth: uint16(val.EffectiveBalance / EtherGweiFactor),
 			}
 			if cache.isActiveValidator(valData) {
 				valEntry.activeData = valData
 				activeCount++
 			}
+			valEntry.statusFlags = GetValidatorStatusFlags(val)
 
 			// Create cache entry with checksum
 			cache.valsetCache[dbVal.ValidatorIndex] = valEntry

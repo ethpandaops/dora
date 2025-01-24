@@ -275,6 +275,21 @@ func (indexer *Indexer) GetCachedValidatorSetForRoot(blockRoot phase0.Root) []Va
 	return indexer.validatorCache.getCachedValidatorSetForRoot(blockRoot)
 }
 
+// GetCachedValidatorSetForRoot returns the cached validator set for a given blockRoot.
+func (indexer *Indexer) GetActiveValidatorDataForRoot(epoch *phase0.Epoch, blockRoot phase0.Root) []ValidatorDataWithIndex {
+	return indexer.validatorCache.getActiveValidatorDataForRoot(epoch, blockRoot)
+}
+
+// GetValidatorSetSize returns the size of the validator set cache.
+func (indexer *Indexer) GetValidatorSetSize() uint64 {
+	return indexer.validatorCache.getValidatorSetSize()
+}
+
+// GetValidatorFlags returns the validator flags for a given validator index.
+func (indexer *Indexer) GetValidatorFlags(validatorIndex phase0.ValidatorIndex) uint16 {
+	return indexer.validatorCache.getValidatorFlags(validatorIndex)
+}
+
 // GetActivationExitQueueLengths returns the activation and exit queue lengths for the given epoch.
 func (indexer *Indexer) GetActivationExitQueueLengths(epoch phase0.Epoch, overrideForkId *ForkKey) (uint64, uint64) {
 	canonicalHead := indexer.GetCanonicalHead(overrideForkId)

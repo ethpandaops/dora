@@ -22,6 +22,15 @@ func (bs *ChainService) GetValidatorIndexByPubkey(pubkey phase0.BLSPubKey) (phas
 	return bs.beaconIndexer.GetValidatorIndexByPubkey(pubkey)
 }
 
+func (bs *ChainService) GetActiveValidatorData() []beacon.ValidatorDataWithIndex {
+	canonicalHead := bs.beaconIndexer.GetCanonicalHead(nil)
+	if canonicalHead == nil {
+		return nil
+	}
+
+	return bs.beaconIndexer.GetActiveValidatorDataForRoot(nil, canonicalHead.Root)
+}
+
 // getValidatorsByWithdrawalAddressForRoot returns validators with a specific withdrawal address for a given blockRoot
 func (bs *ChainService) GetFilteredValidatorSet(filter *dbtypes.ValidatorFilter, withBalance bool) ([]v1.Validator, uint64) {
 	var overrideForkId *beacon.ForkKey

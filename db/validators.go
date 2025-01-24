@@ -272,7 +272,7 @@ func buildValidatorStatusSql(currentEpoch uint64) string {
 }
 
 func StreamValidatorsByIndexes(indexes []uint64, cb func(validator *dbtypes.Validator) bool) error {
-	const batchSize = 100
+	const batchSize = 1000
 
 	// Process in batches
 	for i := 0; i < len(indexes); i += batchSize {
