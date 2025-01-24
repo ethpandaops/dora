@@ -104,7 +104,20 @@ func (indexer *Indexer) GetChainHeads() []*ChainHead {
 
 func (indexer *Indexer) IsCanonicalBlock(block *Block, overrideForkId *ForkKey) bool {
 	canonicalHead := indexer.GetCanonicalHead(overrideForkId)
-	return canonicalHead != nil && indexer.blockCache.isCanonicalBlock(block.Root, canonicalHead.Root)
+	return indexer.IsCanonicalBlockByHead(block, canonicalHead)
+}
+
+func (indexer *Indexer) IsCanonicalBlockByHead(block *Block, headBlock *Block) bool {
+	if headBlock == nil || block == nil {
+		return false
+	}
+
+	if block.forkChecked && headBlock.forkChecked {
+		parentForkIds := indexer.forkCache.getParentForkIds(headBlock.forkId)
+		return slices.Contains(parentForkIds, block.forkId)
+	}
+
+	return indexer.blockCache.isCanonicalBlock(block.Root, headBlock.Root)
 }
 
 // computeCanonicalChain computes the canonical chain and updates the indexer's state.
