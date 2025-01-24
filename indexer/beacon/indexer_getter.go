@@ -220,6 +220,17 @@ func (indexer *Indexer) GetEpochStats(epoch phase0.Epoch, overrideForkId *ForkKe
 			}
 
 			dependentBlock := indexer.blockCache.getBlockByRoot(stats.dependentRoot)
+			if dependentBlock == nil {
+				blockHead := db.GetBlockHeadByRoot(stats.dependentRoot[:])
+				if blockHead != nil {
+					dependentBlock = newBlock(indexer.dynSsz, phase0.Root(blockHead.Root), phase0.Slot(blockHead.Slot))
+					dependentBlock.isInFinalizedDb = true
+					parentRootVal := phase0.Root(blockHead.ParentRoot)
+					dependentBlock.parentRoot = &parentRootVal
+					dependentBlock.forkId = ForkKey(blockHead.ForkId)
+					dependentBlock.forkChecked = true
+				}
+			}
 			if dependentBlock != nil && slices.Contains(canonicalForkIds, dependentBlock.forkId) {
 				if bestEpochStats == nil || dependentBlock.Slot > bestDistance {
 					bestEpochStats = stats
