@@ -199,7 +199,8 @@ func (indexer *Indexer) processEpochPruning(pruneEpoch phase0.Epoch) (uint64, ui
 					return
 				}
 
-				_, err := indexer.dbWriter.persistBlockData(tx, block, epochData.epochStats, depositIndex, false, nil)
+				// persist pruned block data as orphaned here, the canonical blocks will be updated by the finalization or synchronization process later
+				_, err := indexer.dbWriter.persistBlockData(tx, block, epochData.epochStats, depositIndex, true, nil)
 				if err != nil {
 					indexer.logger.Errorf("error persisting pruned slot %v: %v", block.Root.String(), err)
 				}

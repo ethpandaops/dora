@@ -408,16 +408,18 @@ func (sync *synchronizer) syncEpoch(syncEpoch phase0.Epoch, client *Client, last
 		}
 
 		// delete unfinalized epoch aggregations in epoch
-		if err := db.DeleteUnfinalizedEpochsIn(uint64(syncEpoch), tx); err != nil {
-			return fmt.Errorf("failed deleting unfinalized epoch aggregations of epoch %v: %v", syncEpoch, err)
+		if err := db.DeleteUnfinalizedEpochsBefore(uint64(syncEpoch+1), tx); err != nil {
+			return fmt.Errorf("failed deleting unfinalized epoch aggregations <= epoch %v: %v", syncEpoch, err)
 		}
 
 		// delete unfinalized forks for canonical roots
-		if err := db.UpdateFinalizedForkParents(canonicalBlockRoots, tx); err != nil {
-			return fmt.Errorf("failed updating finalized fork parents: %v", err)
-		}
-		if err := db.DeleteFinalizedForks(canonicalBlockRoots, tx); err != nil {
-			return fmt.Errorf("failed deleting finalized forks: %v", err)
+		if len(canonicalBlockRoots) > 0 {
+			if err := db.UpdateFinalizedForkParents(canonicalBlockRoots, tx); err != nil {
+				return fmt.Errorf("failed updating finalized fork parents: %v", err)
+			}
+			if err := db.DeleteFinalizedForks(canonicalBlockRoots, tx); err != nil {
+				return fmt.Errorf("failed deleting finalized forks: %v", err)
+			}
 		}
 
 		err = db.SetExplorerState("indexer.syncstate", &dbtypes.IndexerSyncState{
