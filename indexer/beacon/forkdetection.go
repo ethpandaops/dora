@@ -57,7 +57,7 @@ func (cache *forkCache) processBlock(block *Block) error {
 			parentIsProcessed = true
 			parentIsFinalized = parentSlot < chainState.GetFinalizedSlot()
 		}
-	} else if parentBlock.fokChecked {
+	} else if parentBlock.forkChecked {
 		parentForkId = parentBlock.forkId
 		parentSlot = parentBlock.Slot
 		parentIsProcessed = true
@@ -163,7 +163,7 @@ func (cache *forkCache) processBlock(block *Block) error {
 	// check scenario 2
 	childBlocks := make([]*Block, 0)
 	for _, child := range cache.indexer.blockCache.getBlocksByParentRoot(block.Root) {
-		if !child.fokChecked {
+		if !child.forkChecked {
 			continue
 		}
 
@@ -211,7 +211,7 @@ func (cache *forkCache) processBlock(block *Block) error {
 
 	// set detected fork id to the block
 	block.forkId = currentForkId
-	block.fokChecked = true
+	block.forkChecked = true
 
 	// update fork head block if needed
 	fork := cache.getForkById(currentForkId)
@@ -336,7 +336,7 @@ func (cache *forkCache) updateForkBlocks(startBlock *Block, forkId ForkKey, skip
 		}
 
 		nextBlock := nextBlocks[0]
-		if !nextBlock.fokChecked {
+		if !nextBlock.forkChecked {
 			break
 		}
 

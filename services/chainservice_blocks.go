@@ -281,13 +281,18 @@ func (bs *ChainService) GetDbBlocksForSlots(firstSlot uint64, slotLimit uint32, 
 	}
 
 	// get blocks from cache
+	lastCanonicalBlock := bs.beaconIndexer.GetCanonicalHead(nil)
 	slot := phase0.Slot(firstSlot)
 	if slot >= prunedSlot {
 		for slotIdx := int64(slot); slotIdx >= int64(prunedSlot) && slotIdx >= int64(lastSlot); slotIdx-- {
 			slot = phase0.Slot(slotIdx)
 			blocks := bs.beaconIndexer.GetBlocksBySlot(slot)
 			for _, block := range blocks {
-				if !withOrphaned && !bs.beaconIndexer.IsCanonicalBlock(block, nil) {
+				isCanonical := bs.beaconIndexer.IsCanonicalBlockByHead(block, lastCanonicalBlock)
+				if isCanonical {
+					lastCanonicalBlock = block
+				}
+				if !withOrphaned && !isCanonical {
 					continue
 				}
 				dbBlock := block.GetDbBlock(bs.beaconIndexer)
@@ -353,7 +358,11 @@ func (bs *ChainService) GetDbBlocksForSlots(firstSlot uint64, slotLimit uint32, 
 					continue
 				}
 
-				isCanonical := bs.beaconIndexer.IsCanonicalBlock(block, nil)
+				isCanonical := bs.beaconIndexer.IsCanonicalBlockByHead(block, lastCanonicalBlock)
+				if isCanonical {
+					lastCanonicalBlock = block
+				}
+
 				if !withOrphaned && !isCanonical {
 					continue
 				}
@@ -519,6 +528,8 @@ func (bs *ChainService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageIdx
 
 	// get blocks from cache
 	// iterate from current slot to finalized slot
+	lastCanonicalBlock := bs.beaconIndexer.GetCanonicalHead(nil)
+
 	for slotIdx := int64(startSlot); slotIdx >= int64(finalizedSlot); slotIdx-- {
 		slot := phase0.Slot(slotIdx)
 		blocks := bs.beaconIndexer.GetBlocksBySlot(slot)
@@ -532,13 +543,17 @@ func (bs *ChainService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageIdx
 				continue
 			}
 
-			isOrphaned := !bs.beaconIndexer.IsCanonicalBlock(block, nil)
+			isCanonical := bs.beaconIndexer.IsCanonicalBlockByHead(block, lastCanonicalBlock)
+			if isCanonical {
+				lastCanonicalBlock = block
+			}
+
 			if filter.WithOrphaned != 1 {
-				if filter.WithOrphaned == 0 && isOrphaned {
+				if filter.WithOrphaned == 0 && !isCanonical {
 					// only canonical blocks, skip
 					continue
 				}
-				if filter.WithOrphaned == 2 && !isOrphaned {
+				if filter.WithOrphaned == 2 && isCanonical {
 					// only orphaned blocks, skip
 					continue
 				}
@@ -582,7 +597,7 @@ func (bs *ChainService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageIdx
 			cachedMatches = append(cachedMatches, cachedDbBlock{
 				slot:     uint64(block.Slot),
 				proposer: uint64(blockHeader.Message.ProposerIndex),
-				orphaned: isOrphaned,
+				orphaned: isCanonical,
 				block:    block,
 			})
 		}

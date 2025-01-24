@@ -22,7 +22,7 @@ type Block struct {
 	parentRoot        *phase0.Root
 	dependentRoot     *phase0.Root
 	forkId            ForkKey
-	fokChecked        bool
+	forkChecked       bool
 	headerMutex       sync.Mutex
 	headerChan        chan bool
 	header            *phase0.SignedBeaconBlockHeader
