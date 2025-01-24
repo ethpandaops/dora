@@ -354,11 +354,13 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 		}
 
 		// delete unfinalized forks for canonical roots
-		if err := db.UpdateFinalizedForkParents(canonicalRoots, tx); err != nil {
-			return fmt.Errorf("failed updating finalized fork parents: %v", err)
-		}
-		if err := db.DeleteFinalizedForks(canonicalRoots, tx); err != nil {
-			return fmt.Errorf("failed deleting finalized forks: %v", err)
+		if len(canonicalRoots) > 0 {
+			if err := db.UpdateFinalizedForkParents(canonicalRoots, tx); err != nil {
+				return fmt.Errorf("failed updating finalized fork parents: %v", err)
+			}
+			if err := db.DeleteFinalizedForks(canonicalRoots, tx); err != nil {
+				return fmt.Errorf("failed deleting finalized forks: %v", err)
+			}
 		}
 
 		return nil
