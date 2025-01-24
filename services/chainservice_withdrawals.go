@@ -181,12 +181,12 @@ func (bs *ChainService) GetWithdrawalRequestOperationsByFilter(filter *dbtypes.W
 		if blocks != nil {
 			for bidx := 0; bidx < len(blocks); bidx++ {
 				block := blocks[bidx]
+				isCanonical := bs.isCanonicalForkId(uint64(block.GetForkId()), canonicalForkIds)
 				if filter.WithOrphaned != 1 {
-					isOrphaned := !bs.isCanonicalForkId(uint64(block.GetForkId()), canonicalForkIds)
-					if filter.WithOrphaned == 0 && isOrphaned {
+					if filter.WithOrphaned == 0 && !isCanonical {
 						continue
 					}
-					if filter.WithOrphaned == 2 && !isOrphaned {
+					if filter.WithOrphaned == 2 && isCanonical {
 						continue
 					}
 				}
@@ -197,7 +197,7 @@ func (bs *ChainService) GetWithdrawalRequestOperationsByFilter(filter *dbtypes.W
 					continue
 				}
 
-				withdrawalRequests := block.GetDbWithdrawalRequests(bs.beaconIndexer)
+				withdrawalRequests := block.GetDbWithdrawalRequests(bs.beaconIndexer, isCanonical)
 				slice.Reverse(withdrawalRequests) // reverse as other datasources are ordered by descending block index too
 				for idx, withdrawalRequest := range withdrawalRequests {
 					if filter.MinIndex > 0 && (withdrawalRequest.ValidatorIndex == nil || *withdrawalRequest.ValidatorIndex < filter.MinIndex) {

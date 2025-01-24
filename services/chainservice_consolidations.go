@@ -195,12 +195,12 @@ func (bs *ChainService) GetConsolidationRequestOperationsByFilter(filter *dbtype
 		if blocks != nil {
 			for bidx := 0; bidx < len(blocks); bidx++ {
 				block := blocks[bidx]
+				isCanonical := bs.isCanonicalForkId(uint64(block.GetForkId()), canonicalForkIds)
 				if filter.WithOrphaned != 1 {
-					isOrphaned := !bs.isCanonicalForkId(uint64(block.GetForkId()), canonicalForkIds)
-					if filter.WithOrphaned == 0 && isOrphaned {
+					if filter.WithOrphaned == 0 && !isCanonical {
 						continue
 					}
-					if filter.WithOrphaned == 2 && !isOrphaned {
+					if filter.WithOrphaned == 2 && isCanonical {
 						continue
 					}
 				}
@@ -211,7 +211,7 @@ func (bs *ChainService) GetConsolidationRequestOperationsByFilter(filter *dbtype
 					continue
 				}
 
-				consolidationRequests := block.GetDbConsolidationRequests(bs.beaconIndexer)
+				consolidationRequests := block.GetDbConsolidationRequests(bs.beaconIndexer, isCanonical)
 				slice.Reverse(consolidationRequests) // reverse as other datasources are ordered by descending block index too
 				for idx, consolidationRequest := range consolidationRequests {
 					if filter.MinSrcIndex > 0 && (consolidationRequest.SourceIndex == nil || *consolidationRequest.SourceIndex < filter.MinSrcIndex) {
