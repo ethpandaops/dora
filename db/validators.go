@@ -235,11 +235,11 @@ func buildValidatorFilterSql(filter dbtypes.ValidatorFilter, currentEpoch uint64
 		filterOp = "AND"
 	}
 	if filter.ValidatorName != "" {
-		args = append(args, filter.ValidatorName)
+		args = append(args, "%"+filter.ValidatorName+"%")
 		fmt.Fprintf(sql, EngineQuery(map[dbtypes.DBEngineType]string{
-			dbtypes.DBEnginePgsql:  ` AND validator_names.name ilike $%v `,
-			dbtypes.DBEngineSqlite: ` AND validator_names.name LIKE $%v `,
-		}), len(args))
+			dbtypes.DBEnginePgsql:  ` %v validator_names.name ilike $%v `,
+			dbtypes.DBEngineSqlite: ` %v validator_names.name LIKE $%v `,
+		}), filterOp, len(args))
 		filterOp = "AND"
 	}
 	if len(filter.Status) > 0 {
