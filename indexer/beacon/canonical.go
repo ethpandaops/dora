@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math"
 	"slices"
-	"sort"
 	"strings"
 	"time"
 
@@ -28,47 +27,14 @@ func (indexer *Indexer) GetCanonicalHead(overrideForkId *ForkKey) *Block {
 
 	if overrideForkId != nil && indexer.canonicalHead != nil && indexer.canonicalHead.forkId != *overrideForkId {
 		chainHeads := indexer.cachedChainHeads
-		chainHeadCandidates := []*ChainHead{}
 
 		for _, chainHead := range chainHeads {
 			parentForkIds := indexer.forkCache.getParentForkIds(chainHead.HeadBlock.forkId)
-			isInParentIds := false
-			for _, parentForkId := range parentForkIds {
-				if parentForkId == *overrideForkId {
-					isInParentIds = true
-					break
-				}
-			}
-			if !isInParentIds {
+			if !slices.Contains(parentForkIds, *overrideForkId) {
 				continue
 			}
 
-			chainHeadCandidates = append(chainHeadCandidates, chainHead)
-		}
-
-		if len(chainHeadCandidates) > 0 {
-			sort.Slice(chainHeadCandidates, func(i, j int) bool {
-				percentagesI := float64(0)
-				percentagesJ := float64(0)
-				for k := range chainHeadCandidates[i].PerEpochVotingPercent {
-					factor := float64(1)
-					if k == len(chainHeadCandidates[i].PerEpochVotingPercent)-1 {
-						factor = 0.5
-					}
-					percentagesI += chainHeadCandidates[i].PerEpochVotingPercent[k] * factor
-					if len(chainHeadCandidates[j].PerEpochVotingPercent) > k {
-						percentagesJ += chainHeadCandidates[j].PerEpochVotingPercent[k] * factor
-					}
-				}
-
-				if percentagesI != percentagesJ {
-					return percentagesI > percentagesJ
-				}
-
-				return chainHeadCandidates[i].HeadBlock.Slot > chainHeadCandidates[j].HeadBlock.Slot
-			})
-
-			return chainHeadCandidates[0].HeadBlock
+			return chainHead.HeadBlock
 		}
 	}
 
@@ -81,24 +47,6 @@ func (indexer *Indexer) GetChainHeads() []*ChainHead {
 
 	heads := make([]*ChainHead, len(indexer.cachedChainHeads))
 	copy(heads, indexer.cachedChainHeads)
-	sort.Slice(heads, func(i, j int) bool {
-		percentagesI := float64(0)
-		percentagesJ := float64(0)
-		for k := range heads[i].PerEpochVotingPercent {
-			factor := float64(1)
-			if k == len(heads[i].PerEpochVotingPercent)-1 {
-				factor = 0.5
-			}
-			percentagesI += heads[i].PerEpochVotingPercent[k] * factor
-			percentagesJ += heads[j].PerEpochVotingPercent[k] * factor
-		}
-
-		if percentagesI != percentagesJ {
-			return percentagesI > percentagesJ
-		}
-
-		return heads[i].HeadBlock.Slot > heads[j].HeadBlock.Slot
-	})
 
 	return heads
 }
@@ -232,6 +180,27 @@ func (indexer *Indexer) computeCanonicalChain() bool {
 			}}
 		}
 	}
+
+	slices.SortFunc(chainHeads, func(headA, headB *ChainHead) int {
+		percentagesA := float64(0)
+		percentagesB := float64(0)
+		for k := range headA.PerEpochVotingPercent {
+			factor := float64(1)
+			if k == len(headA.PerEpochVotingPercent)-1 {
+				factor = 0.5
+			}
+			percentagesA += headA.PerEpochVotingPercent[k] * factor
+			if len(headB.PerEpochVotingPercent) > k {
+				percentagesB += headB.PerEpochVotingPercent[k] * factor
+			}
+		}
+
+		if percentagesA != percentagesB {
+			return int((percentagesB - percentagesA) * 100)
+		}
+
+		return int(headB.HeadBlock.Slot - headA.HeadBlock.Slot)
+	})
 
 	return true
 }
