@@ -918,6 +918,8 @@ func (cache *validatorCache) persistValidators(tx *sqlx.Tx) (bool, error) {
 		if err != nil {
 			return false, fmt.Errorf("error persisting final validator batch: %v", err)
 		}
+
+		persisted += len(batch)
 	}
 
 	if persisted > 0 {
