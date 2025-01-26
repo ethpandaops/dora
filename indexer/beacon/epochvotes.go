@@ -233,6 +233,8 @@ func (indexer *Indexer) aggregateEpochVotesAndActivity(epoch phase0.Epoch, chain
 	indexer.logger.Debugf("aggregated epoch %v votes in %v (blocks: %v) [0x%x]", epoch, time.Since(t1), len(blocks), votesKey[:])
 	indexer.epochCache.votesCache.Add(votesKey, votes)
 
+	indexer.metrics.epochVoteAggregateDuration.Observe(float64(time.Since(t1).Milliseconds()))
+
 	return votes
 }
 

@@ -28,13 +28,9 @@ type CacheDebugStats struct {
 		VotesCacheLen uint64
 	}
 	ForkCache struct {
-		ForkMap            CacheDebugMapSize
-		ParentIdCacheLen   uint64
-		ParentIdCacheHit   uint64
-		ParentIdCacheMiss  uint64
-		ParentIdsCacheLen  uint64
-		ParentIdsCacheHit  uint64
-		ParentIdsCacheMiss uint64
+		ForkMap           CacheDebugMapSize
+		ParentIdCacheLen  uint64
+		ParentIdsCacheLen uint64
 	}
 	ValidatorCache struct {
 		Validators        uint64
@@ -139,12 +135,7 @@ func (indexer *Indexer) getForkCacheDebugStats(cacheStats *CacheDebugStats) {
 	}
 
 	cacheStats.ForkCache.ParentIdCacheLen = uint64(indexer.forkCache.parentIdCache.Len())
-	cacheStats.ForkCache.ParentIdCacheHit = indexer.forkCache.parentIdCacheHit
-	cacheStats.ForkCache.ParentIdCacheMiss = indexer.forkCache.parentIdCacheMiss
-
 	cacheStats.ForkCache.ParentIdsCacheLen = uint64(indexer.forkCache.parentIdsCache.Len())
-	cacheStats.ForkCache.ParentIdsCacheHit = indexer.forkCache.parentIdsCacheHit
-	cacheStats.ForkCache.ParentIdsCacheMiss = indexer.forkCache.parentIdsCacheMiss
 }
 
 func (indexer *Indexer) getValidatorCacheDebugStats(cacheStats *CacheDebugStats) {
