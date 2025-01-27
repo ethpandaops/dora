@@ -24,7 +24,8 @@ func InsertSlot(slot *dbtypes.Slot, tx *sqlx.Tx) error {
 			ON CONFLICT (slot, root) DO UPDATE SET
 				status = excluded.status,
 				eth_block_extra = excluded.eth_block_extra,
-				eth_block_extra_text = excluded.eth_block_extra_text`,
+				eth_block_extra_text = excluded.eth_block_extra_text,
+				fork_id = excluded.fork_id`,
 		dbtypes.DBEngineSqlite: `
 			INSERT OR REPLACE INTO slots (
 				slot, proposer, status, root, parent_root, state_root, graffiti, graffiti_text,
