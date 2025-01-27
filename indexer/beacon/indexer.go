@@ -87,9 +87,8 @@ func NewIndexer(logger logrus.FieldLogger, consensusPool *consensus.Pool) *Index
 
 	// Create the indexer instance.
 	indexer := &Indexer{
-		logger:        logger,
-		consensusPool: consensusPool,
-
+		logger:                logger,
+		consensusPool:         consensusPool,
 		disableSync:           utils.Config.Indexer.DisableSynchronizer,
 		blockCompression:      blockCompression,
 		inMemoryEpochs:        inMemoryEpochs,
@@ -236,6 +235,11 @@ func (indexer *Indexer) StartIndexer() {
 
 	if err := indexer.forkCache.loadForkState(); err != nil {
 		indexer.logger.WithError(err).Errorf("failed loading fork state")
+	}
+
+	// restore finalized validator set from db
+	if err := indexer.validatorCache.prepopulateFromDB(); err != nil {
+		indexer.logger.WithError(err).Errorf("failed loading validator set")
 	}
 
 	// restore unfinalized epoch stats from db
