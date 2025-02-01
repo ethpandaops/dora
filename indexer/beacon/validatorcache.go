@@ -777,20 +777,21 @@ func uint64ToBytes(val uint64) []byte {
 	return b
 }
 
-func (cache *validatorCache) prepopulateFromDB() error {
+func (cache *validatorCache) prepopulateFromDB() (uint64, error) {
 	cache.cacheMutex.Lock()
 	defer cache.cacheMutex.Unlock()
 
 	// Get max validator index to pre-allocate slice
 	maxIndex, err := db.GetMaxValidatorIndex()
 	if err != nil {
-		return fmt.Errorf("error getting max validator index: %v", err)
+		return 0, fmt.Errorf("error getting max validator index: %v", err)
 	}
 
 	// Pre-allocate slice
 	cache.valsetCache = make([]*validatorEntry, maxIndex+1, maxIndex+1+1000)
 
 	activeCount := uint64(0)
+	restoreCount := uint64(0)
 
 	// Load validators in batches
 	batchSize := uint64(10000)
@@ -825,12 +826,14 @@ func (cache *validatorCache) prepopulateFromDB() error {
 			cache.pubkeyMutex.Lock()
 			cache.pubkeyMap[phase0.BLSPubKey(dbVal.Pubkey)] = phase0.ValidatorIndex(dbVal.ValidatorIndex)
 			cache.pubkeyMutex.Unlock()
+
+			restoreCount++
 		}
 	}
 
 	cache.lastFinalizedActiveCount = activeCount
 
-	return nil
+	return restoreCount, nil
 }
 
 func (cache *validatorCache) runPersistLoop() {
@@ -865,7 +868,7 @@ func (cache *validatorCache) persistValidators(tx *sqlx.Tx) (bool, error) {
 	cache.cacheMutex.RLock()
 	defer cache.cacheMutex.RUnlock()
 
-	batch := make([]*dbtypes.Validator, 0, 100)
+	batch := make([]*dbtypes.Validator, 0, 1000)
 	persisted := 0
 	firstIndex := uint64(0)
 	lastIndex := uint64(0)

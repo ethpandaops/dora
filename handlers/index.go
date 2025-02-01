@@ -136,7 +136,9 @@ func buildIndexPageData() (*models.IndexPageData, time.Duration) {
 		recentEpochStats := services.GlobalBeaconService.GetBeaconIndexer().GetEpochStats(epochStatsEpoch, nil)
 		if recentEpochStats != nil {
 			recentEpochStatsValues = recentEpochStats.GetValues(false)
-			break
+			if recentEpochStatsValues != nil {
+				break
+			}
 		}
 		if epochStatsEpoch == 0 {
 			break

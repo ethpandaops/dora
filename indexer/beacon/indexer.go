@@ -238,13 +238,16 @@ func (indexer *Indexer) StartIndexer() {
 	}
 
 	// restore finalized validator set from db
-	if err := indexer.validatorCache.prepopulateFromDB(); err != nil {
+	t1 := time.Now()
+	if validatorCount, err := indexer.validatorCache.prepopulateFromDB(); err != nil {
 		indexer.logger.WithError(err).Errorf("failed loading validator set")
+	} else {
+		indexer.logger.Infof("restored %v validators from DB (%.3f sec)", validatorCount, time.Since(t1).Seconds())
 	}
 
 	// restore unfinalized epoch stats from db
 	restoredEpochStats := 0
-	t1 := time.Now()
+	t1 = time.Now()
 	processingLimiter := make(chan bool, 10)
 	processingWaitGroup := sync.WaitGroup{}
 	err = db.StreamUnfinalizedDuties(uint64(finalizedEpoch), func(dbDuty *dbtypes.UnfinalizedDuty) {
