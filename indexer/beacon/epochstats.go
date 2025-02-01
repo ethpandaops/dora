@@ -484,6 +484,20 @@ func (es *EpochStats) precomputeFromParentState(indexer *Indexer, parentState *E
 			EffectiveBalance:    parentStatsValues.EffectiveBalance,
 		}
 
+		// update active validators from validator cache
+		validatorSet := indexer.validatorCache.getActiveValidatorDataForRoot(&es.epoch, es.dependentRoot)
+		if len(validatorSet) > 0 {
+			values.ActiveIndices = make([]phase0.ValidatorIndex, 0, len(validatorSet))
+			values.EffectiveBalances = make([]uint16, 0, len(validatorSet))
+			values.ActiveBalance = 0
+
+			for _, validator := range validatorSet {
+				values.ActiveIndices = append(values.ActiveIndices, phase0.ValidatorIndex(validator.Index))
+				values.EffectiveBalances = append(values.EffectiveBalances, validator.Data.EffectiveBalanceEth)
+				values.ActiveBalance += validator.Data.EffectiveBalance()
+			}
+		}
+
 		values.ActiveValidators = uint64(len(values.ActiveIndices))
 
 		beaconState := &duties.BeaconState{
