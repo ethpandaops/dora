@@ -227,6 +227,9 @@ func (cache *forkCache) processBlock(block *Block) error {
 
 	// persist new forks and updated blocks to the database
 	if len(newForks) > 0 || len(updatedBlocks) > 0 {
+		// purge parent ids cache as the fork id tree has changed
+		cache.parentIdsCache.Purge()
+
 		err := db.RunDBTransaction(func(tx *sqlx.Tx) error {
 			// helper function to update unfinalized block fork ids in batches
 			updateUnfinalizedBlockForkIds := func(updateRoots [][]byte, forkId ForkKey) error {
