@@ -2,13 +2,17 @@ package beacon
 
 import (
 	"bytes"
+	"fmt"
 	"math"
+	"runtime/debug"
 	"sort"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/syndtr/goleveldb/leveldb"
+	"github.com/syndtr/goleveldb/leveldb/util"
 )
 
 // validatorActivityCache is the cache for the validator activity.
@@ -57,6 +61,8 @@ func newValidatorActivityCache(indexer *Indexer, cacheFile string) *validatorAct
 			indexer.logger.WithError(err).Error("failed to open activity cache")
 		} else {
 			cache.activityDb = db
+
+			go cache.cleanupDbLoop()
 		}
 	}
 
@@ -67,14 +73,20 @@ func newValidatorActivityCache(indexer *Indexer, cacheFile string) *validatorAct
 	return cache
 }
 
-// updateValidatorActivity updates the validator activity cache.
-func (cache *validatorActivityCache) updateValidatorActivity(validatorIndex phase0.ValidatorIndex, epoch phase0.Epoch, dutySlot phase0.Slot, voteBlock *Block) {
+func (cache *validatorActivityCache) getCutOffEpoch() phase0.Epoch {
 	chainState := cache.indexer.consensusPool.GetChainState()
 	currentEpoch := chainState.CurrentEpoch()
 	cutOffEpoch := phase0.Epoch(0)
 	if currentEpoch > phase0.Epoch(cache.indexer.activityHistoryLength) {
 		cutOffEpoch = currentEpoch - phase0.Epoch(cache.indexer.activityHistoryLength)
 	}
+
+	return cutOffEpoch
+}
+
+// updateValidatorActivity updates the validator activity cache.
+func (cache *validatorActivityCache) updateValidatorActivity(validatorIndex phase0.ValidatorIndex, epoch phase0.Epoch, dutySlot phase0.Slot, voteBlock *Block) {
+	cutOffEpoch := cache.getCutOffEpoch()
 
 	if epoch < cutOffEpoch {
 		// ignore old activity
@@ -87,7 +99,7 @@ func (cache *validatorActivityCache) updateValidatorActivity(validatorIndex phas
 	}
 
 	if cache.activityDb != nil {
-		cache.updateValidatorActivityDb(validatorIndex, dutySlot, voteBlock, cutOffEpoch)
+		cache.updateValidatorActivityDb(validatorIndex, dutySlot, voteBlock, epoch)
 	} else {
 		cache.updateValidatorActivityMap(validatorIndex, dutySlot, voteBlock, cutOffEpoch)
 	}
@@ -153,65 +165,18 @@ func (cache *validatorActivityCache) updateValidatorActivityMap(validatorIndex p
 	cache.activityMap[validatorIndex] = recentActivity
 }
 
-func (cache *validatorActivityCache) updateValidatorActivityDb(validatorIndex phase0.ValidatorIndex, dutySlot phase0.Slot, voteBlock *Block, cutOffEpoch phase0.Epoch) {
-	chainState := cache.indexer.consensusPool.GetChainState()
-	key := strconv.FormatUint(uint64(validatorIndex), 10)
-
-	var recentActivity []validatorActivityDbEntry
-
-	if value, err := cache.activityDb.Get([]byte(key), nil); err == nil {
-		cache.indexer.dynSsz.UnmarshalSSZ(&recentActivity, value)
-	}
-
-	if recentActivity == nil {
-		recentActivity = make([]validatorActivityDbEntry, 0)
-	}
-
-	replaceIndex := -1
-	cutOffLength := 0
-	activityLength := len(recentActivity)
-	for i := activityLength - 1; i >= 0; i-- {
-		activity := recentActivity[i]
-		if bytes.Equal(activity.Root[:], voteBlock.Root[:]) {
-			// already exists
-			return
-		}
-
-		dutySlot := phase0.Slot(0)
-
-		if chainState.EpochOfSlot(dutySlot) < cutOffEpoch {
-			if replaceIndex == -1 {
-				replaceIndex = i
-			} else if replaceIndex == activityLength-cutOffLength-1 {
-				cutOffLength++
-				replaceIndex = i
-			} else {
-				// copy last element to current index
-				cutOffLength++
-				recentActivity[i] = recentActivity[activityLength-cutOffLength-1]
-			}
-		}
-	}
-
+func (cache *validatorActivityCache) updateValidatorActivityDb(validatorIndex phase0.ValidatorIndex, dutySlot phase0.Slot, voteBlock *Block, epoch phase0.Epoch) {
 	entry := validatorActivityDbEntry{
 		Slot:  voteBlock.Slot,
 		Root:  voteBlock.Root,
 		Delay: uint16(voteBlock.Slot - dutySlot),
 	}
 
-	if replaceIndex != -1 {
-		recentActivity[replaceIndex] = entry
+	key := fmt.Sprintf("%v-%v", validatorIndex, epoch)
+	value, err := cache.indexer.dynSsz.MarshalSSZ(entry)
 
-		if cutOffLength > 0 {
-			recentActivity = recentActivity[:activityLength-cutOffLength]
-		}
-	} else {
-		recentActivity = append(recentActivity, entry)
-	}
-
-	value, err := cache.indexer.dynSsz.MarshalSSZ(recentActivity)
 	if err != nil {
-		cache.indexer.logger.WithError(err).Error("failed to marshal activity cache entry")
+		cache.indexer.logger.WithError(err).Error("failed to marshal activity entry")
 		return
 	}
 
@@ -226,14 +191,26 @@ func (cache *validatorActivityCache) getValidatorActivity(validatorIndex phase0.
 	var recentActivity []ValidatorActivity
 
 	if cache.activityDb != nil {
-		key := strconv.FormatUint(uint64(validatorIndex), 10)
-		var recentActivityDb []validatorActivityDbEntry
-		if value, err := cache.activityDb.Get([]byte(key), nil); err == nil {
-			cache.indexer.dynSsz.UnmarshalSSZ(&recentActivityDb, value)
-		}
+		key := fmt.Sprintf("%v-", validatorIndex)
+		iter := cache.activityDb.NewIterator(util.BytesPrefix([]byte(key)), nil)
+		defer iter.Release()
 
-		recentActivity = make([]ValidatorActivity, 0, len(recentActivityDb))
-		for _, entry := range recentActivityDb {
+		recentActivity = make([]ValidatorActivity, 0)
+		cutOffEpoch := cache.getCutOffEpoch()
+
+		for iter.Next() {
+			keyParts := bytes.Split(iter.Key(), []byte("-"))
+			epoch, err := strconv.ParseUint(string(keyParts[1]), 10, 64)
+			if err != nil || epoch < uint64(cutOffEpoch) {
+				continue
+			}
+
+			entry := validatorActivityDbEntry{}
+			err = cache.indexer.dynSsz.UnmarshalSSZ(&entry, iter.Value())
+			if err != nil {
+				continue
+			}
+
 			block := cache.indexer.blockCache.getBlockByRoot(entry.Root)
 			if block == nil {
 				block = newBlock(cache.indexer.dynSsz, entry.Root, entry.Slot)
@@ -263,4 +240,45 @@ func (cache *validatorActivityCache) getValidatorActivity(validatorIndex phase0.
 	})
 
 	return recentActivity
+}
+
+func (cache *validatorActivityCache) cleanupDbLoop() {
+	defer func() {
+		if err := recover(); err != nil {
+			cache.indexer.logger.WithError(err.(error)).Errorf("uncaught panic in indexer.beacon.validatorActivityCache.cleanupDbLoop subroutine: %v, stack: %v", err, string(debug.Stack()))
+			time.Sleep(10 * time.Second)
+
+			go cache.cleanupDbLoop()
+		}
+	}()
+
+	for {
+		time.Sleep(30 * time.Minute)
+		cache.cleanupDb()
+	}
+}
+
+func (cache *validatorActivityCache) cleanupDb() {
+	chainState := cache.indexer.consensusPool.GetChainState()
+	currentEpoch := chainState.CurrentEpoch()
+	cutOffEpoch := phase0.Epoch(0)
+	if currentEpoch > phase0.Epoch(cache.indexer.activityHistoryLength) {
+		cutOffEpoch = currentEpoch - phase0.Epoch(cache.indexer.activityHistoryLength)
+	}
+
+	iter := cache.activityDb.NewIterator(nil, nil)
+	deleted := 0
+	for iter.Next() {
+		key := iter.Key()
+		keyParts := bytes.Split(key, []byte("-"))
+
+		epoch, err := strconv.ParseUint(string(keyParts[1]), 10, 64)
+		if err != nil || epoch < uint64(cutOffEpoch) {
+			cache.activityDb.Delete(key, nil)
+			deleted++
+		}
+	}
+	iter.Release()
+
+	cache.indexer.logger.Infof("cleaned up activity cache, deleted %d entries", deleted)
 }
