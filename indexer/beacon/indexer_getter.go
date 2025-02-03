@@ -302,7 +302,7 @@ func (indexer *Indexer) GetActivationExitQueueLengths(epoch phase0.Epoch, overri
 
 // GetValidatorIndexByPubkey returns the validator index for a given pubkey.
 func (indexer *Indexer) GetValidatorIndexByPubkey(pubkey phase0.BLSPubKey) (phase0.ValidatorIndex, bool) {
-	return indexer.validatorCache.getValidatorIndexByPubkey(pubkey)
+	return indexer.pubkeyCache.Get(pubkey)
 }
 
 // GetValidatorByIndex returns the validator by index for a given forkId.
@@ -312,8 +312,8 @@ func (indexer *Indexer) GetValidatorByIndex(index phase0.ValidatorIndex, overrid
 
 // GetValidatorActivity returns the validator activity for a given validator index.
 func (indexer *Indexer) GetValidatorActivity(validatorIndex phase0.ValidatorIndex) ([]ValidatorActivity, phase0.Epoch) {
-	activity := indexer.validatorCache.getValidatorActivity(validatorIndex)
-	return activity, indexer.validatorCache.oldestActivityEpoch
+	activity := indexer.validatorActivity.getValidatorActivity(validatorIndex)
+	return activity, indexer.validatorActivity.oldestActivityEpoch
 }
 
 // GetRecentValidatorBalances returns the most recent validator balances for the given fork.

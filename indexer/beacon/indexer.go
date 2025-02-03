@@ -38,10 +38,12 @@ type Indexer struct {
 	maxParallelStateCalls uint16
 
 	// caches
-	blockCache     *blockCache
-	epochCache     *epochCache
-	forkCache      *forkCache
-	validatorCache *validatorCache
+	blockCache        *blockCache
+	epochCache        *epochCache
+	forkCache         *forkCache
+	pubkeyCache       *pubkeyCache
+	validatorCache    *validatorCache
+	validatorActivity *validatorActivityCache
 
 	// indexer state
 	clients               []*Client
@@ -102,7 +104,9 @@ func NewIndexer(logger logrus.FieldLogger, consensusPool *consensus.Pool) *Index
 	indexer.blockCache = newBlockCache(indexer)
 	indexer.epochCache = newEpochCache(indexer)
 	indexer.forkCache = newForkCache(indexer)
+	indexer.pubkeyCache = newPubkeyCache(indexer, utils.Config.Indexer.PubkeyCachePath)
 	indexer.validatorCache = newValidatorCache(indexer)
+	indexer.validatorActivity = newValidatorActivityCache(indexer, utils.Config.Indexer.ActivityCachePath)
 	indexer.dbWriter = newDbWriter(indexer)
 
 	return indexer

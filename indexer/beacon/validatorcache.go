@@ -7,7 +7,6 @@ import (
 	"hash/crc64"
 	"math"
 	"runtime/debug"
-	"sort"
 	"sync"
 	"time"
 
@@ -24,13 +23,8 @@ type validatorCache struct {
 	indexer                  *Indexer
 	valsetCache              []*validatorEntry // cache for validators
 	cacheMutex               sync.RWMutex      // mutex to protect valsetCache for concurrent access
-	validatorActivityMap     map[phase0.ValidatorIndex][]ValidatorActivity
-	activityMutex            sync.RWMutex // mutex to protect recentActivity for concurrent access
-	lastFinalized            phase0.Epoch // last finalized epoch
+	lastFinalized            phase0.Epoch      // last finalized epoch
 	lastFinalizedActiveCount uint64
-	oldestActivityEpoch      phase0.Epoch // oldest epoch in activity cache
-	pubkeyMap                map[phase0.BLSPubKey]phase0.ValidatorIndex
-	pubkeyMutex              sync.RWMutex // mutex to protect pubkeyMap for concurrent access
 	triggerDbUpdate          chan bool
 }
 
@@ -68,24 +62,6 @@ type ValidatorDataWithIndex struct {
 	Data  *ValidatorData
 }
 
-// ValidatorActivity represents a validator's activity in an epoch.
-// entry size: 18 bytes (10 bytes data + 8 bytes pointer)
-// max. entries per validator: 3-8 (inMemoryEpochs)
-// total memory consumption:
-//   - 10k active validators:
-//     min: 10000 * 18 * 3 = 540kB = 0.54MB
-//     max: 10000 * 18 * 8 = 1440kB = 1.44MB
-//   - 100k active validators:
-//     min: 100000 * 18 * 3 = 5400kB = 5.4MB
-//     max: 100000 * 18 * 8 = 14400kB = 14.4MB
-//   - 1M active validators:
-//     min: 1000000 * 18 * 3 = 54000kB = 54MB
-//     max: 1000000 * 18 * 8 = 144000kB = 144MB
-type ValidatorActivity struct {
-	VoteBlock *Block // the block where the vote was included
-	VoteDelay uint16 // the inclusion delay of the vote in slots
-}
-
 // validatorDiff represents an updated validator entry in the validator set cache.
 type validatorDiff struct {
 	epoch         phase0.Epoch
@@ -96,11 +72,8 @@ type validatorDiff struct {
 // newValidatorCache creates & returns a new instance of validatorCache.
 func newValidatorCache(indexer *Indexer) *validatorCache {
 	cache := &validatorCache{
-		indexer:              indexer,
-		validatorActivityMap: make(map[phase0.ValidatorIndex][]ValidatorActivity),
-		oldestActivityEpoch:  math.MaxInt64,
-		pubkeyMap:            make(map[phase0.BLSPubKey]phase0.ValidatorIndex),
-		triggerDbUpdate:      make(chan bool, 1),
+		indexer:         indexer,
+		triggerDbUpdate: make(chan bool, 1),
 	}
 
 	go cache.runPersistLoop()
@@ -178,9 +151,8 @@ func (cache *validatorCache) updateValidatorSet(slot phase0.Slot, dependentRoot 
 		if cachedValidator == nil {
 			cachedValidator = &validatorEntry{}
 			cache.valsetCache[i] = cachedValidator
-			cache.pubkeyMutex.Lock()
-			cache.pubkeyMap[validators[i].PublicKey] = phase0.ValidatorIndex(i)
-			cache.pubkeyMutex.Unlock()
+
+			cache.indexer.pubkeyCache.Add(validators[i].PublicKey, phase0.ValidatorIndex(i))
 		} else {
 			parentValidator = cachedValidator.finalValidator
 			parentChecksum = cachedValidator.finalChecksum
@@ -355,82 +327,6 @@ func (cache *validatorCache) getValidatorFlags(validatorIndex phase0.ValidatorIn
 	}
 
 	return cache.valsetCache[validatorIndex].statusFlags
-}
-
-// updateValidatorActivity updates the validator activity cache.
-func (cache *validatorCache) updateValidatorActivity(validatorIndex phase0.ValidatorIndex, epoch phase0.Epoch, dutySlot phase0.Slot, voteBlock *Block) {
-	chainState := cache.indexer.consensusPool.GetChainState()
-	currentEpoch := chainState.CurrentEpoch()
-	cutOffEpoch := phase0.Epoch(0)
-	if currentEpoch > phase0.Epoch(cache.indexer.activityHistoryLength) {
-		cutOffEpoch = currentEpoch - phase0.Epoch(cache.indexer.activityHistoryLength)
-	}
-
-	if epoch < cutOffEpoch {
-		// ignore old activity
-		return
-	}
-	if epoch < cache.oldestActivityEpoch {
-		cache.oldestActivityEpoch = epoch
-	} else if cache.oldestActivityEpoch < cutOffEpoch+1 {
-		cache.oldestActivityEpoch = cutOffEpoch + 1
-	}
-
-	cache.activityMutex.Lock()
-	defer cache.activityMutex.Unlock()
-
-	recentActivity := cache.validatorActivityMap[validatorIndex]
-	if recentActivity == nil {
-		recentActivity = make([]ValidatorActivity, 0, cache.indexer.activityHistoryLength)
-	}
-
-	replaceIndex := -1
-	cutOffLength := 0
-	activityLength := len(recentActivity)
-	for i := activityLength - 1; i >= 0; i-- {
-		activity := recentActivity[i]
-		if activity.VoteBlock == voteBlock {
-			// already exists
-			return
-		}
-
-		dutySlot := phase0.Slot(0)
-		if activity.VoteBlock != nil {
-			dutySlot = activity.VoteBlock.Slot
-		}
-
-		if chainState.EpochOfSlot(dutySlot) < cutOffEpoch {
-			recentActivity[i].VoteBlock = nil // clear for gc
-			if replaceIndex == -1 {
-				replaceIndex = i
-			} else if replaceIndex == activityLength-cutOffLength-1 {
-				cutOffLength++
-				replaceIndex = i
-			} else {
-				// copy last element to current index
-				cutOffLength++
-				recentActivity[i] = recentActivity[activityLength-cutOffLength-1]
-			}
-		}
-	}
-
-	if replaceIndex != -1 {
-		recentActivity[replaceIndex] = ValidatorActivity{
-			VoteBlock: voteBlock,
-			VoteDelay: uint16(voteBlock.Slot - dutySlot),
-		}
-
-		if cutOffLength > 0 {
-			recentActivity = recentActivity[:activityLength-cutOffLength]
-		}
-	} else {
-		recentActivity = append(recentActivity, ValidatorActivity{
-			VoteBlock: voteBlock,
-			VoteDelay: uint16(voteBlock.Slot - dutySlot),
-		})
-	}
-
-	cache.validatorActivityMap[validatorIndex] = recentActivity
 }
 
 // setFinalizedEpoch sets the last finalized epoch.
@@ -719,35 +615,6 @@ func (cache *validatorCache) getValidatorByIndexAndRoot(index phase0.ValidatorIn
 	return validator
 }
 
-// getValidatorIndexByPubkey returns the validator index by pubkey.
-func (cache *validatorCache) getValidatorIndexByPubkey(pubkey phase0.BLSPubKey) (phase0.ValidatorIndex, bool) {
-	cache.pubkeyMutex.RLock()
-	defer cache.pubkeyMutex.RUnlock()
-
-	index, found := cache.pubkeyMap[pubkey]
-	return index, found
-}
-
-// getValidatorActivity returns the validator activity for a given validator index.
-func (cache *validatorCache) getValidatorActivity(validatorIndex phase0.ValidatorIndex) []ValidatorActivity {
-	cache.activityMutex.RLock()
-	defer cache.activityMutex.RUnlock()
-
-	cachedActivity := cache.validatorActivityMap[validatorIndex]
-	recentActivity := make([]ValidatorActivity, 0, len(cachedActivity))
-	for _, activity := range cachedActivity {
-		if activity.VoteBlock != nil {
-			recentActivity = append(recentActivity, activity)
-		}
-	}
-
-	sort.Slice(recentActivity, func(i, j int) bool {
-		return recentActivity[i].VoteBlock.Slot > recentActivity[j].VoteBlock.Slot
-	})
-
-	return recentActivity
-}
-
 func calculateValidatorChecksum(v *phase0.Validator) uint64 {
 	if v == nil {
 		return 0
@@ -822,10 +689,8 @@ func (cache *validatorCache) prepopulateFromDB() (uint64, error) {
 			// Create cache entry with checksum
 			cache.valsetCache[dbVal.ValidatorIndex] = valEntry
 
-			// Update pubkey map
-			cache.pubkeyMutex.Lock()
-			cache.pubkeyMap[phase0.BLSPubKey(dbVal.Pubkey)] = phase0.ValidatorIndex(dbVal.ValidatorIndex)
-			cache.pubkeyMutex.Unlock()
+			// Update pubkey cache
+			cache.indexer.pubkeyCache.Add(phase0.BLSPubKey(dbVal.Pubkey), phase0.ValidatorIndex(dbVal.ValidatorIndex))
 
 			restoreCount++
 		}
