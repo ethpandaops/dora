@@ -98,6 +98,18 @@ func (cache *forkCache) processBlock(block *Block) error {
 			otherChildren = append(otherChildren, child)
 		}
 
+		if parentIsFinalized {
+			// parent is finalized, so blocks building on top of it might be finalized as well.
+			// check if we have other finalized blocks building on top of the parent in the database
+			for _, child := range db.GetSlotsByParentRoot((*parentRoot)[:]) {
+				if bytes.Equal(child.Root, block.Root[:]) {
+					continue
+				}
+
+				otherChildren = append(otherChildren, newBlock(cache.indexer.dynSsz, phase0.Root(child.Root), phase0.Slot(child.Slot)))
+			}
+		}
+
 		if len(otherChildren) > 0 {
 			logbuf := strings.Builder{}
 
