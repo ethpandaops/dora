@@ -177,8 +177,10 @@ func (indexer *Indexer) getValidatorCacheDebugStats(cacheStats *CacheDebugStats)
 		cacheStats.ValidatorCache.ValidatorActivity += uint64(len(recentActivity))
 	}
 
-	cacheStats.ValidatorCache.PubkeyMap = CacheDebugMapSize{
-		Length: len(indexer.pubkeyCache.pubkeyMap),
-		Size:   mapsize.Size(indexer.pubkeyCache.pubkeyMap),
+	if indexer.pubkeyCache.pubkeyMap != nil {
+		cacheStats.ValidatorCache.PubkeyMap = CacheDebugMapSize{
+			Length: len(indexer.pubkeyCache.pubkeyMap),
+			Size:   mapsize.Size(indexer.pubkeyCache.pubkeyMap),
+		}
 	}
 }
