@@ -106,7 +106,7 @@ func NewIndexer(logger logrus.FieldLogger, consensusPool *consensus.Pool) *Index
 	indexer.forkCache = newForkCache(indexer)
 	indexer.pubkeyCache = newPubkeyCache(indexer, utils.Config.Indexer.PubkeyCachePath)
 	indexer.validatorCache = newValidatorCache(indexer)
-	indexer.validatorActivity = newValidatorActivityCache(indexer, utils.Config.Indexer.ActivityCachePath)
+	indexer.validatorActivity = newValidatorActivityCache(indexer)
 	indexer.dbWriter = newDbWriter(indexer)
 
 	return indexer
