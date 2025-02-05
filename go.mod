@@ -7,7 +7,7 @@ toolchain go1.22.5
 require (
 	github.com/520MianXiangDuiXiang520/MapSize v0.0.0-20230414174449-030467540731
 	github.com/Masterminds/sprig/v3 v3.3.0
-	github.com/attestantio/go-eth2-client v0.0.0-20250204090132-2e07a2cbc932
+	github.com/attestantio/go-eth2-client v0.0.0-20250205171128-0c99cbcafc0b
 	github.com/coocood/freecache v1.2.4
 	github.com/ethereum/go-ethereum v1.14.7
 	github.com/ethpandaops/ethwallclock v0.3.0
