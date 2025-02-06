@@ -15,6 +15,7 @@ import (
 
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/handlers"
+	"github.com/ethpandaops/dora/handlers/api"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/static"
 	"github.com/ethpandaops/dora/types"
@@ -53,13 +54,15 @@ func main() {
 	services.InitChainService(ctx, logger)
 
 	var webserver *http.Server
-	if cfg.Frontend.Enabled {
+	if cfg.Frontend.Enabled || cfg.Api.Enabled {
 		websrv, err := startWebserver(logger)
 		if err != nil {
 			logger.Fatalf("error starting webserver: %v", err)
 		}
 		webserver = websrv
+	}
 
+	if cfg.Frontend.Enabled {
 		err = services.StartFrontendCache()
 		if err != nil {
 			logger.Fatalf("error starting frontend cache service: %v", err)
@@ -84,7 +87,23 @@ func main() {
 	}
 
 	if webserver != nil {
-		startFrontend(webserver)
+		router := mux.NewRouter()
+
+		if cfg.Api.Enabled {
+			apiRouter := router.PathPrefix("/api").Subrouter()
+			startApi(apiRouter)
+		}
+
+		if cfg.Frontend.Enabled {
+			startFrontend(router)
+		}
+
+		n := negroni.New()
+		n.Use(negroni.NewRecovery())
+		//n.Use(gzip.Gzip(gzip.DefaultCompression))
+		n.UseHandler(router)
+
+		webserver.Handler = n
 	}
 
 	utils.WaitForCtrlC()
@@ -138,9 +157,7 @@ func startWebserver(logger logrus.FieldLogger) (*http.Server, error) {
 	return srv, nil
 }
 
-func startFrontend(webserver *http.Server) {
-	router := mux.NewRouter()
-
+func startFrontend(router *mux.Router) {
 	router.HandleFunc("/", handlers.Index).Methods("GET")
 	router.HandleFunc("/index", handlers.Index).Methods("GET")
 	router.HandleFunc("/index/data", handlers.IndexData).Methods("GET")
@@ -202,11 +219,11 @@ func startFrontend(webserver *http.Server) {
 	// serve static files from go embed
 	fileSys := http.FS(static.Files)
 	router.PathPrefix("/").Handler(handlers.CustomFileServer(http.FileServer(fileSys), fileSys, handlers.NotFound))
+}
 
-	n := negroni.New()
-	n.Use(negroni.NewRecovery())
-	//n.Use(gzip.Gzip(gzip.DefaultCompression))
-	n.UseHandler(router)
-
-	webserver.Handler = n
+func startApi(router *mux.Router) {
+	router.HandleFunc("/v1/validator/{indexOrPubkey}", api.ApiValidatorGetV1).Methods("GET", "OPTIONS")
+	router.HandleFunc("/v1/validator", api.ApiValidatorPostV1).Methods("POST", "OPTIONS")
+	router.HandleFunc("/v1/validator/eth1/{eth1address}", api.ApiValidatorByEth1AddressV1).Methods("GET", "OPTIONS")
+	router.HandleFunc("/v1/validator/withdrawalCredentials/{withdrawalCredentialsOrEth1address}", api.ApiWithdrawalCredentialsValidatorsV1).Methods("GET", "OPTIONS")
 }

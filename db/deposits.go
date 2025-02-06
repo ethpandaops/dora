@@ -191,6 +191,17 @@ func GetDepositTxsFiltered(offset uint64, limit uint32, finalizedBlock uint64, f
 		fmt.Fprintf(&sql, ")")
 		filterOp = "AND"
 	}
+	if len(filter.WithdrawalAddress) > 0 {
+		wdcreds1 := make([]byte, 32)
+		wdcreds1[0] = 0x01
+		copy(wdcreds1[12:], filter.WithdrawalAddress)
+		wdcreds2 := make([]byte, 32)
+		wdcreds2[0] = 0x02
+		copy(wdcreds2[12:], filter.WithdrawalAddress)
+		args = append(args, wdcreds1, wdcreds2)
+		fmt.Fprintf(&sql, " %v (withdrawalcredentials = $%v OR withdrawalcredentials = $%v)", filterOp, len(args)-1, len(args))
+		filterOp = "AND"
+	}
 	if filter.MinAmount > 0 {
 		args = append(args, filter.MinAmount*utils.GWEI.Uint64())
 		fmt.Fprintf(&sql, " %v amount >= $%v", filterOp, len(args))

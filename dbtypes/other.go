@@ -52,17 +52,18 @@ type MevBlockFilter struct {
 }
 
 type DepositTxFilter struct {
-	MinIndex      uint64
-	MaxIndex      uint64
-	Address       []byte
-	TargetAddress []byte
-	PublicKey     []byte
-	PublicKeys    [][]byte
-	ValidatorName string
-	MinAmount     uint64
-	MaxAmount     uint64
-	WithOrphaned  uint8
-	WithValid     uint8
+	MinIndex          uint64
+	MaxIndex          uint64
+	Address           []byte
+	TargetAddress     []byte
+	PublicKey         []byte
+	PublicKeys        [][]byte
+	WithdrawalAddress []byte
+	ValidatorName     string
+	MinAmount         uint64
+	MaxAmount         uint64
+	WithOrphaned      uint8
+	WithValid         uint8
 }
 
 type DepositFilter struct {

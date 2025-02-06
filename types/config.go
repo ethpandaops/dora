@@ -57,6 +57,10 @@ type Config struct {
 		ShowSubmitElRequests   bool `yaml:"showSubmitElRequests" envconfig:"FRONTEND_SHOW_SUBMIT_EL_REQUESTS"`
 	} `yaml:"frontend"`
 
+	Api struct {
+		Enabled bool `yaml:"enabled" envconfig:"API_ENABLED"`
+	} `yaml:"api"`
+
 	RateLimit struct {
 		Enabled    bool `yaml:"enabled" envconfig:"RATELIMIT_ENABLED"`
 		ProxyCount uint `yaml:"proxyCount" envconfig:"RATELIMIT_PROXY_COUNT"`
