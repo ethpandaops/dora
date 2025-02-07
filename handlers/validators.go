@@ -196,10 +196,7 @@ func buildValidatorsPageData(pageNumber uint64, pageSize uint64, sortOrder strin
 	}
 
 	// get status options
-	statusMap := map[v1.ValidatorState]uint64{}
-	for _, val := range validatorSet {
-		statusMap[val.Status]++
-	}
+	statusMap := services.GlobalBeaconService.GetValidatorStatusMap()
 	pageData.FilterStatusOpts = make([]models.ValidatorsPageDataStatusOption, 0)
 	for status, count := range statusMap {
 		pageData.FilterStatusOpts = append(pageData.FilterStatusOpts, models.ValidatorsPageDataStatusOption{

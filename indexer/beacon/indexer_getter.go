@@ -290,6 +290,11 @@ func (indexer *Indexer) GetValidatorFlags(validatorIndex phase0.ValidatorIndex) 
 	return indexer.validatorCache.getValidatorFlags(validatorIndex)
 }
 
+// GetValidatorStatusMap returns the validator status map for the validator set at a given block root.
+func (indexer *Indexer) GetValidatorStatusMap(blockRoot phase0.Root) map[v1.ValidatorState]uint64 {
+	return indexer.validatorCache.getValidatorStatusMap(blockRoot)
+}
+
 // GetActivationExitQueueLengths returns the activation and exit queue lengths for the given epoch.
 func (indexer *Indexer) GetActivationExitQueueLengths(epoch phase0.Epoch, overrideForkId *ForkKey) (uint64, uint64) {
 	canonicalHead := indexer.GetCanonicalHead(overrideForkId)

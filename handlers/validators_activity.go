@@ -162,12 +162,12 @@ func buildValidatorsActivityPageData(pageIdx uint64, pageSize uint64, sortOrder 
 		var activeValidatorData *beacon.ValidatorData
 		var validatorFlags uint16
 
-		if activeValidatorIdx < len(activeValidators) && activeValidators[activeValidatorIdx].Index == vidx {
+		if activeValidatorIdx < len(activeValidators) && activeValidators[activeValidatorIdx].Index == phase0.ValidatorIndex(vidx) {
 			activeValidatorData = activeValidators[activeValidatorIdx].Data
 			activeValidatorIdx++
 		}
 
-		if cachedValidatorSetIdx < len(cachedValidatorSet) && cachedValidatorSet[cachedValidatorSetIdx].Index == vidx {
+		if cachedValidatorSetIdx < len(cachedValidatorSet) && cachedValidatorSet[cachedValidatorSetIdx].Index == phase0.ValidatorIndex(vidx) {
 			cachedData := cachedValidatorSet[cachedValidatorSetIdx]
 			activeValidatorData = &beacon.ValidatorData{
 				ActivationEpoch:     cachedData.Validator.ActivationEpoch,

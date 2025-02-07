@@ -31,6 +31,15 @@ func (bs *ChainService) GetActiveValidatorData() []beacon.ValidatorDataWithIndex
 	return bs.beaconIndexer.GetActiveValidatorDataForRoot(nil, canonicalHead.Root)
 }
 
+func (bs *ChainService) GetValidatorStatusMap() map[v1.ValidatorState]uint64 {
+	canonicalHead := bs.beaconIndexer.GetCanonicalHead(nil)
+	if canonicalHead == nil {
+		return nil
+	}
+
+	return bs.beaconIndexer.GetValidatorStatusMap(canonicalHead.Root)
+}
+
 // getValidatorsByWithdrawalAddressForRoot returns validators with a specific withdrawal address for a given blockRoot
 func (bs *ChainService) GetFilteredValidatorSet(filter *dbtypes.ValidatorFilter, withBalance bool) ([]v1.Validator, uint64) {
 	var overrideForkId *beacon.ForkKey
@@ -51,10 +60,10 @@ func (bs *ChainService) GetFilteredValidatorSet(filter *dbtypes.ValidatorFilter,
 
 	// get matching entries from cached validators
 	for _, cachedValidator := range bs.beaconIndexer.GetCachedValidatorSetForRoot(canonicalHead.Root) {
-		if filter.MinIndex != nil && cachedValidator.Index < *filter.MinIndex {
+		if filter.MinIndex != nil && cachedValidator.Index < phase0.ValidatorIndex(*filter.MinIndex) {
 			continue
 		}
-		if filter.MaxIndex != nil && cachedValidator.Index > *filter.MaxIndex {
+		if filter.MaxIndex != nil && cachedValidator.Index > phase0.ValidatorIndex(*filter.MaxIndex) {
 			continue
 		}
 		if filter.WithdrawalAddress != nil {
@@ -66,7 +75,7 @@ func (bs *ChainService) GetFilteredValidatorSet(filter *dbtypes.ValidatorFilter,
 			}
 		}
 		if filter.ValidatorName != "" {
-			vname := bs.validatorNames.GetValidatorName(cachedValidator.Index)
+			vname := bs.validatorNames.GetValidatorName(uint64(cachedValidator.Index))
 			if !strings.Contains(vname, filter.ValidatorName) {
 				continue
 			}
@@ -83,7 +92,7 @@ func (bs *ChainService) GetFilteredValidatorSet(filter *dbtypes.ValidatorFilter,
 		}
 
 		cachedResults = append(cachedResults, cachedValidator)
-		cachedIndexes[cachedValidator.Index] = true
+		cachedIndexes[uint64(cachedValidator.Index)] = true
 	}
 
 	// get matching entries from DB
@@ -182,7 +191,7 @@ func (bs *ChainService) GetFilteredValidatorSet(filter *dbtypes.ValidatorFilter,
 	db.StreamValidatorsByIndexes(dbIndexes, func(validator *dbtypes.Validator) bool {
 		dbEntryCount++
 		validatorWithIndex := beacon.ValidatorWithIndex{
-			Index:     validator.ValidatorIndex,
+			Index:     phase0.ValidatorIndex(validator.ValidatorIndex),
 			Validator: beacon.UnwrapDbValidator(validator),
 		}
 
@@ -195,7 +204,7 @@ func (bs *ChainService) GetFilteredValidatorSet(filter *dbtypes.ValidatorFilter,
 					balancePtr = &balance
 				}
 				result = append(result, v1.Validator{
-					Index:     phase0.ValidatorIndex(cachedResults[cachedIndex].Index),
+					Index:     cachedResults[cachedIndex].Index,
 					Balance:   balance,
 					Status:    v1.ValidatorToState(cachedResults[cachedIndex].Validator, balancePtr, currentEpoch, beacon.FarFutureEpoch),
 					Validator: cachedResults[cachedIndex].Validator,

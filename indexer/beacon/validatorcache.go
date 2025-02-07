@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	v1 "github.com/attestantio/go-eth2-client/api/v1"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
@@ -38,27 +39,29 @@ type validatorEntry struct {
 }
 
 const (
-	ValidatorStatusPending uint16 = 1 << iota
-	ValidatorStatusExited
-	ValidatorStatusSlashed
-	ValidatorStatusHasAddress  // has execution address set (0x01 or 0x02)
-	ValidatorStatusCompounding // is compounding validator (0x02)
+	ValidatorStatusEligible    uint16 = 1 << iota // has ActivationEligibilityEpoch set
+	ValidatorStatusPending                        // has ActivationEpoch set
+	ValidatorStatusExited                         // has ExitEpoch set
+	ValidatorStatusSlashed                        // is Slashed
+	ValidatorStatusHasAddress                     // has execution address set (0x01 or 0x02)
+	ValidatorStatusCompounding                    // is compounding validator (0x02)
 )
 
 type ValidatorWithIndex struct {
-	Index     uint64
+	Index     phase0.ValidatorIndex
 	Validator *phase0.Validator
 }
 
 // ValidatorData holds the most relevant information about a active validator.
 type ValidatorData struct {
-	ActivationEpoch     phase0.Epoch
-	ExitEpoch           phase0.Epoch
-	EffectiveBalanceEth uint16
+	ActivationEligibilityEpoch phase0.Epoch
+	ActivationEpoch            phase0.Epoch
+	ExitEpoch                  phase0.Epoch
+	EffectiveBalanceEth        uint16
 }
 
 type ValidatorDataWithIndex struct {
-	Index uint64
+	Index phase0.ValidatorIndex
 	Data  *ValidatorData
 }
 
@@ -291,6 +294,9 @@ func (cache *validatorCache) checkValidatorEqual(validator1 *phase0.Validator, v
 
 func GetValidatorStatusFlags(validator *phase0.Validator) uint16 {
 	flags := uint16(0)
+	if validator.ActivationEligibilityEpoch != FarFutureEpoch {
+		flags |= ValidatorStatusEligible
+	}
 	if validator.ActivationEpoch == FarFutureEpoch {
 		flags |= ValidatorStatusPending
 	}
@@ -352,9 +358,10 @@ func (cache *validatorCache) setFinalizedEpoch(epoch phase0.Epoch, nextEpochDepe
 				updatedCount++
 
 				cachedValidator.activeData = &ValidatorData{
-					ActivationEpoch:     diff.validator.ActivationEpoch,
-					ExitEpoch:           diff.validator.ExitEpoch,
-					EffectiveBalanceEth: uint16(diff.validator.EffectiveBalance / EtherGweiFactor),
+					ActivationEligibilityEpoch: diff.validator.ActivationEligibilityEpoch,
+					ActivationEpoch:            diff.validator.ActivationEpoch,
+					ExitEpoch:                  diff.validator.ExitEpoch,
+					EffectiveBalanceEth:        uint16(diff.validator.EffectiveBalance / EtherGweiFactor),
 				}
 				break
 			}
@@ -419,9 +426,10 @@ func (cache *validatorCache) getActiveValidatorDataForRoot(epoch *phase0.Epoch, 
 
 			if isParent && diff.epoch >= validatorEpoch {
 				validatorData = &ValidatorData{
-					ActivationEpoch:     diff.validator.ActivationEpoch,
-					ExitEpoch:           diff.validator.ExitEpoch,
-					EffectiveBalanceEth: uint16(diff.validator.EffectiveBalance / EtherGweiFactor),
+					ActivationEligibilityEpoch: diff.validator.ActivationEligibilityEpoch,
+					ActivationEpoch:            diff.validator.ActivationEpoch,
+					ExitEpoch:                  diff.validator.ExitEpoch,
+					EffectiveBalanceEth:        uint16(diff.validator.EffectiveBalance / EtherGweiFactor),
 				}
 				validatorEpoch = diff.epoch
 			}
@@ -442,9 +450,10 @@ func (cache *validatorCache) getActiveValidatorDataForRoot(epoch *phase0.Epoch, 
 
 		if validatorData == nil && aheadValidator != nil {
 			validatorData = &ValidatorData{
-				ActivationEpoch:     aheadValidator.ActivationEpoch,
-				ExitEpoch:           aheadValidator.ExitEpoch,
-				EffectiveBalanceEth: uint16(aheadValidator.EffectiveBalance / EtherGweiFactor),
+				ActivationEligibilityEpoch: aheadValidator.ActivationEligibilityEpoch,
+				ActivationEpoch:            aheadValidator.ActivationEpoch,
+				ExitEpoch:                  aheadValidator.ExitEpoch,
+				EffectiveBalanceEth:        uint16(aheadValidator.EffectiveBalance / EtherGweiFactor),
 			}
 		}
 
@@ -454,7 +463,7 @@ func (cache *validatorCache) getActiveValidatorDataForRoot(epoch *phase0.Epoch, 
 			}
 
 			validatorSet = append(validatorSet, ValidatorDataWithIndex{
-				Index: uint64(index),
+				Index: phase0.ValidatorIndex(index),
 				Data:  validatorData,
 			})
 		}
@@ -476,7 +485,7 @@ func (cache *validatorCache) getCachedValidatorSetForRoot(blockRoot phase0.Root)
 
 	for index, cachedValidator := range cache.valsetCache {
 		validatorData := ValidatorWithIndex{
-			Index:     uint64(index),
+			Index:     phase0.ValidatorIndex(index),
 			Validator: nil,
 		}
 		validatorEpoch := cache.lastFinalized
@@ -567,7 +576,7 @@ func (cache *validatorCache) isActiveValidator(validator *ValidatorData) bool {
 		cutOffEpoch = currentEpoch - 10
 	}
 
-	return validator.ActivationEpoch < FarFutureEpoch && validator.ExitEpoch > cutOffEpoch
+	return validator.ActivationEligibilityEpoch < FarFutureEpoch && validator.ExitEpoch > cutOffEpoch
 }
 
 // getValidatorByIndex returns the validator by index for a given forkId.
@@ -613,6 +622,80 @@ func (cache *validatorCache) getValidatorByIndexAndRoot(index phase0.ValidatorIn
 	}
 
 	return validator
+}
+
+// getValidatorStatusMap returns a map of validator statuses
+func (cache *validatorCache) getValidatorStatusMap(blockRoot phase0.Root) map[v1.ValidatorState]uint64 {
+	cache.cacheMutex.RLock()
+	defer cache.cacheMutex.RUnlock()
+
+	statusMap := map[v1.ValidatorState]uint64{}
+	block := cache.indexer.blockCache.getBlockByRoot(blockRoot)
+	if block == nil {
+		return statusMap
+	}
+
+	chainState := cache.indexer.consensusPool.GetChainState()
+	epoch := chainState.EpochOfSlot(block.Slot)
+
+	recentValidatorSet := cache.getCachedValidatorSetForRoot(blockRoot)
+	recentValidatorIndex := 0
+
+	validatorCount := phase0.ValidatorIndex(len(cache.valsetCache))
+	for index := phase0.ValidatorIndex(0); index < validatorCount; index++ {
+		validatorStatus := v1.ValidatorStateUnknown
+
+		if validatorEntry := cache.valsetCache[index]; validatorEntry != nil {
+			statusFlags := validatorEntry.statusFlags
+			activeData := validatorEntry.activeData
+
+			for recentValidatorIndex < len(recentValidatorSet) && recentValidatorSet[recentValidatorIndex].Index < index {
+				recentValidatorIndex++
+			}
+
+			var recentValidator *phase0.Validator
+			if recentValidatorIndex < len(recentValidatorSet) && recentValidatorSet[recentValidatorIndex].Index == index {
+				recentValidator = recentValidatorSet[recentValidatorIndex].Validator
+			}
+
+			if recentValidator != nil {
+				statusFlags = GetValidatorStatusFlags(recentValidator)
+				activeData = &ValidatorData{
+					ActivationEligibilityEpoch: recentValidator.ActivationEligibilityEpoch,
+					ActivationEpoch:            recentValidator.ActivationEpoch,
+					ExitEpoch:                  recentValidator.ExitEpoch,
+					EffectiveBalanceEth:        uint16(recentValidator.EffectiveBalance / EtherGweiFactor),
+				}
+			}
+
+			if statusFlags&ValidatorStatusEligible == 0 {
+				validatorStatus = v1.ValidatorStatePendingInitialized
+			} else if activeData != nil {
+
+				if activeData.ActivationEpoch > epoch {
+					validatorStatus = v1.ValidatorStatePendingQueued
+				} else if statusFlags&ValidatorStatusSlashed != 0 {
+					if activeData.ExitEpoch != FarFutureEpoch && activeData.ExitEpoch > epoch {
+						validatorStatus = v1.ValidatorStateActiveSlashed
+					} else {
+						validatorStatus = v1.ValidatorStateExitedSlashed
+					}
+				} else if activeData.ExitEpoch != FarFutureEpoch && activeData.ExitEpoch > epoch {
+					validatorStatus = v1.ValidatorStateActiveExiting
+				} else {
+					validatorStatus = v1.ValidatorStateActiveOngoing
+				}
+			} else if statusFlags&ValidatorStatusSlashed != 0 {
+				validatorStatus = v1.ValidatorStateActiveSlashed
+			} else {
+				validatorStatus = v1.ValidatorStateExitedUnslashed
+			}
+		}
+
+		statusMap[validatorStatus]++
+	}
+
+	return statusMap
 }
 
 func calculateValidatorChecksum(v *phase0.Validator) uint64 {
@@ -676,9 +759,10 @@ func (cache *validatorCache) prepopulateFromDB() (uint64, error) {
 				finalChecksum: calculateValidatorChecksum(val),
 			}
 			valData := &ValidatorData{
-				ActivationEpoch:     phase0.Epoch(db.ConvertInt64ToUint64(dbVal.ActivationEpoch)),
-				ExitEpoch:           phase0.Epoch(db.ConvertInt64ToUint64(dbVal.ExitEpoch)),
-				EffectiveBalanceEth: uint16(val.EffectiveBalance / EtherGweiFactor),
+				ActivationEligibilityEpoch: phase0.Epoch(db.ConvertInt64ToUint64(dbVal.ActivationEligibilityEpoch)),
+				ActivationEpoch:            phase0.Epoch(db.ConvertInt64ToUint64(dbVal.ActivationEpoch)),
+				ExitEpoch:                  phase0.Epoch(db.ConvertInt64ToUint64(dbVal.ExitEpoch)),
+				EffectiveBalanceEth:        uint16(val.EffectiveBalance / EtherGweiFactor),
 			}
 			if cache.isActiveValidator(valData) {
 				valEntry.activeData = valData
