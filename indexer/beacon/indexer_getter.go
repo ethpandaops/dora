@@ -275,9 +275,9 @@ func (indexer *Indexer) GetCachedValidatorSetForRoot(blockRoot phase0.Root) []Va
 	return indexer.validatorCache.getCachedValidatorSetForRoot(blockRoot)
 }
 
-// GetCachedValidatorSetForRoot returns the cached validator set for a given blockRoot.
-func (indexer *Indexer) GetActiveValidatorDataForRoot(epoch *phase0.Epoch, blockRoot phase0.Root) []ValidatorDataWithIndex {
-	return indexer.validatorCache.getActiveValidatorDataForRoot(epoch, blockRoot)
+// StreamActiveValidatorDataForRoot streams the available validator set data for a given blockRoot.
+func (indexer *Indexer) StreamActiveValidatorDataForRoot(epoch *phase0.Epoch, blockRoot phase0.Root, activeOnly bool, cb ValidatorSetStreamer) error {
+	return indexer.validatorCache.streamValidatorSetForRoot(epoch, blockRoot, activeOnly, cb)
 }
 
 // GetValidatorSetSize returns the size of the validator set cache.
@@ -291,8 +291,8 @@ func (indexer *Indexer) GetValidatorFlags(validatorIndex phase0.ValidatorIndex) 
 }
 
 // GetValidatorStatusMap returns the validator status map for the validator set at a given block root.
-func (indexer *Indexer) GetValidatorStatusMap(blockRoot phase0.Root) map[v1.ValidatorState]uint64 {
-	return indexer.validatorCache.getValidatorStatusMap(blockRoot)
+func (indexer *Indexer) GetValidatorStatusMap(epoch phase0.Epoch, blockRoot phase0.Root) map[v1.ValidatorState]uint64 {
+	return indexer.validatorCache.getValidatorStatusMap(epoch, blockRoot)
 }
 
 // GetActivationExitQueueLengths returns the activation and exit queue lengths for the given epoch.
@@ -319,6 +319,11 @@ func (indexer *Indexer) GetValidatorByIndex(index phase0.ValidatorIndex, overrid
 func (indexer *Indexer) GetValidatorActivity(validatorIndex phase0.ValidatorIndex) ([]ValidatorActivity, phase0.Epoch) {
 	activity := indexer.validatorActivity.getValidatorActivity(validatorIndex)
 	return activity, indexer.validatorActivity.oldestActivityEpoch
+}
+
+// GetValidatorActivityCount returns the number of validator activity for a given validator index.
+func (indexer *Indexer) GetValidatorActivityCount(validatorIndex phase0.ValidatorIndex, startEpoch phase0.Epoch) (uint64, phase0.Epoch) {
+	return indexer.validatorActivity.getValidatorActivityCount(validatorIndex, startEpoch), indexer.validatorActivity.oldestActivityEpoch
 }
 
 // GetRecentValidatorBalances returns the most recent validator balances for the given fork.

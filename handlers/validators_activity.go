@@ -114,33 +114,24 @@ func buildValidatorsActivityPageData(pageIdx uint64, pageSize uint64, sortOrder 
 	pageData.LastPageIndex = 0
 
 	// group validators
-	var cachedValidatorSet []beacon.ValidatorWithIndex
-	if canonicalHead := services.GlobalBeaconService.GetBeaconIndexer().GetCanonicalHead(nil); canonicalHead != nil {
-		cachedValidatorSet = services.GlobalBeaconService.GetBeaconIndexer().GetCachedValidatorSetForRoot(canonicalHead.Root)
-	}
-	cachedValidatorSetIdx := 0
-
-	activeValidators := services.GlobalBeaconService.GetActiveValidatorData()
-	activeValidatorIdx := 0
-	validatorSetSize := services.GlobalBeaconService.GetBeaconIndexer().GetValidatorSetSize()
-	currentEpoch := services.GlobalBeaconService.GetChainState().CurrentEpoch()
 	validatorGroupMap := map[string]*models.ValidatorsActiviyPageDataGroup{}
+	currentEpoch := services.GlobalBeaconService.GetChainState().CurrentEpoch()
 
-	for vidx := uint64(0); vidx < validatorSetSize; vidx++ {
+	services.GlobalBeaconService.StreamActiveValidatorData(false, func(index phase0.ValidatorIndex, validatorFlags uint16, activeData *beacon.ValidatorData, validator *phase0.Validator) error {
 		var groupKey string
 		var groupName string
 
 		switch groupBy {
 		case 1:
-			groupIdx := vidx / 100000
+			groupIdx := index / 100000
 			groupKey = fmt.Sprintf("%06d", groupIdx)
 			groupName = fmt.Sprintf("%v - %v", groupIdx*100000, (groupIdx+1)*100000)
 		case 2:
-			groupIdx := vidx / 10000
+			groupIdx := index / 10000
 			groupKey = fmt.Sprintf("%06d", groupIdx)
 			groupName = fmt.Sprintf("%v - %v", groupIdx*10000, (groupIdx+1)*10000)
 		case 3:
-			groupName = services.GlobalBeaconService.GetValidatorName(vidx)
+			groupName = services.GlobalBeaconService.GetValidatorName(uint64(index))
 			groupKey = strings.ToLower(groupName)
 		}
 
@@ -159,29 +150,6 @@ func buildValidatorsActivityPageData(pageIdx uint64, pageSize uint64, sortOrder 
 			validatorGroupMap[groupKey] = validatorGroup
 		}
 
-		var activeValidatorData *beacon.ValidatorData
-		var validatorFlags uint16
-
-		if activeValidatorIdx < len(activeValidators) && activeValidators[activeValidatorIdx].Index == phase0.ValidatorIndex(vidx) {
-			activeValidatorData = activeValidators[activeValidatorIdx].Data
-			activeValidatorIdx++
-		}
-
-		if cachedValidatorSetIdx < len(cachedValidatorSet) && cachedValidatorSet[cachedValidatorSetIdx].Index == phase0.ValidatorIndex(vidx) {
-			cachedData := cachedValidatorSet[cachedValidatorSetIdx]
-			activeValidatorData = &beacon.ValidatorData{
-				ActivationEpoch:     cachedData.Validator.ActivationEpoch,
-				ExitEpoch:           cachedData.Validator.ExitEpoch,
-				EffectiveBalanceEth: uint16(cachedData.Validator.EffectiveBalance / beacon.EtherGweiFactor),
-			}
-
-			validatorFlags = beacon.GetValidatorStatusFlags(cachedData.Validator)
-
-			cachedValidatorSetIdx++
-		} else {
-			validatorFlags = services.GlobalBeaconService.GetBeaconIndexer().GetValidatorFlags(phase0.ValidatorIndex(vidx))
-		}
-
 		validatorGroup.Validators++
 
 		if validatorFlags&beacon.ValidatorStatusSlashed != 0 {
@@ -189,9 +157,9 @@ func buildValidatorsActivityPageData(pageIdx uint64, pageSize uint64, sortOrder 
 		}
 
 		isExited := false
-		if activeValidatorData != nil && activeValidatorData.ActivationEpoch <= currentEpoch {
-			if activeValidatorData.ExitEpoch > currentEpoch {
-				votingActivity := services.GlobalBeaconService.GetValidatorLiveness(phase0.ValidatorIndex(vidx), 3)
+		if activeData != nil && activeData.ActivationEpoch <= currentEpoch {
+			if activeData.ExitEpoch > currentEpoch {
+				votingActivity := services.GlobalBeaconService.GetValidatorLiveness(index, 3)
 
 				validatorGroup.Activated++
 				if votingActivity > 0 {
@@ -209,7 +177,9 @@ func buildValidatorsActivityPageData(pageIdx uint64, pageSize uint64, sortOrder 
 		if isExited {
 			validatorGroup.Exited++
 		}
-	}
+
+		return nil
+	})
 
 	// sort / filter groups
 	validatorGroups := maps.Values(validatorGroupMap)

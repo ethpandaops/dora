@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"math"
 	"sort"
 	"time"
 
@@ -352,39 +351,4 @@ func (bs *ChainService) GetConsensusClientForks() []*ConsensusClientFork {
 	})
 
 	return headForks
-}
-
-func (bs *ChainService) GetValidatorVotingActivity(validatorIndex phase0.ValidatorIndex) ([]beacon.ValidatorActivity, phase0.Epoch) {
-	return bs.beaconIndexer.GetValidatorActivity(validatorIndex)
-}
-
-func (bs *ChainService) GetValidatorLiveness(validatorIndex phase0.ValidatorIndex, lookbackEpochs uint64) (votedEpochs uint64) {
-	validatorActivity, _ := bs.beaconIndexer.GetValidatorActivity(validatorIndex)
-	chainState := bs.consensusPool.GetChainState()
-
-	latestEpoch := uint64(chainState.CurrentEpoch())
-	if latestEpoch > 2 {
-		latestEpoch -= 2
-	} else {
-		latestEpoch = 0
-	}
-
-	lastEpoch := uint64(math.MaxUint64)
-	for _, activity := range validatorActivity {
-		epoch := uint64(chainState.EpochOfSlot(activity.VoteBlock.Slot - phase0.Slot(activity.VoteDelay)))
-		if latestEpoch < epoch {
-			latestEpoch = epoch
-		} else if epoch+lookbackEpochs <= latestEpoch {
-			break
-		}
-
-		if epoch == lastEpoch {
-			continue
-		}
-
-		lastEpoch = epoch
-		votedEpochs++
-	}
-
-	return
 }

@@ -22,13 +22,15 @@ func (bs *ChainService) GetValidatorIndexByPubkey(pubkey phase0.BLSPubKey) (phas
 	return bs.beaconIndexer.GetValidatorIndexByPubkey(pubkey)
 }
 
-func (bs *ChainService) GetActiveValidatorData() []beacon.ValidatorDataWithIndex {
+func (bs *ChainService) StreamActiveValidatorData(activeOnly bool, cb beacon.ValidatorSetStreamer) error {
 	canonicalHead := bs.beaconIndexer.GetCanonicalHead(nil)
 	if canonicalHead == nil {
 		return nil
 	}
 
-	return bs.beaconIndexer.GetActiveValidatorDataForRoot(nil, canonicalHead.Root)
+	currentEpoch := bs.consensusPool.GetChainState().CurrentEpoch()
+
+	return bs.beaconIndexer.StreamActiveValidatorDataForRoot(&currentEpoch, canonicalHead.Root, activeOnly, cb)
 }
 
 func (bs *ChainService) GetValidatorStatusMap() map[v1.ValidatorState]uint64 {
@@ -37,7 +39,27 @@ func (bs *ChainService) GetValidatorStatusMap() map[v1.ValidatorState]uint64 {
 		return nil
 	}
 
-	return bs.beaconIndexer.GetValidatorStatusMap(canonicalHead.Root)
+	currentEpoch := bs.consensusPool.GetChainState().CurrentEpoch()
+
+	return bs.beaconIndexer.GetValidatorStatusMap(currentEpoch, canonicalHead.Root)
+}
+
+func (bs *ChainService) GetValidatorVotingActivity(validatorIndex phase0.ValidatorIndex) ([]beacon.ValidatorActivity, phase0.Epoch) {
+	return bs.beaconIndexer.GetValidatorActivity(validatorIndex)
+}
+
+func (bs *ChainService) GetValidatorLiveness(validatorIndex phase0.ValidatorIndex, lookbackEpochs phase0.Epoch) uint64 {
+	chainState := bs.consensusPool.GetChainState()
+	latestEpoch := chainState.CurrentEpoch()
+	if latestEpoch > lookbackEpochs {
+		latestEpoch -= lookbackEpochs
+	} else {
+		latestEpoch = 0
+	}
+
+	validatorActivity, _ := bs.beaconIndexer.GetValidatorActivityCount(validatorIndex, latestEpoch)
+
+	return validatorActivity
 }
 
 // getValidatorsByWithdrawalAddressForRoot returns validators with a specific withdrawal address for a given blockRoot

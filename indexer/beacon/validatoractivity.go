@@ -152,6 +152,23 @@ func (cache *validatorActivityCache) getValidatorActivity(validatorIndex phase0.
 	return recentActivity
 }
 
+// getValidatorActivityCount returns the number of validator activity for a given validator index.
+func (cache *validatorActivityCache) getValidatorActivityCount(validatorIndex phase0.ValidatorIndex, startEpoch phase0.Epoch) (count uint64) {
+	cache.activityMutex.RLock()
+	defer cache.activityMutex.RUnlock()
+
+	startSlot := cache.indexer.consensusPool.GetChainState().EpochToSlot(startEpoch)
+
+	cachedActivity := cache.activityMap[validatorIndex]
+	for _, activity := range cachedActivity {
+		if activity.VoteBlock != nil && activity.VoteBlock.Slot-phase0.Slot(activity.VoteDelay) >= startSlot {
+			count++
+		}
+	}
+
+	return
+}
+
 func (cache *validatorActivityCache) cleanupLoop() {
 	defer func() {
 		if err := recover(); err != nil {

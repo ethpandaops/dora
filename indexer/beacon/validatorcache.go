@@ -396,21 +396,22 @@ func (cache *validatorCache) setFinalizedEpoch(epoch phase0.Epoch, nextEpochDepe
 	}
 }
 
-// getActiveValidatorDataForRoot returns the active validator data for a given blockRoot.
-func (cache *validatorCache) getActiveValidatorDataForRoot(epoch *phase0.Epoch, blockRoot phase0.Root) []ValidatorDataWithIndex {
+type ValidatorSetStreamer func(index phase0.ValidatorIndex, flags uint16, activeData *ValidatorData, validator *phase0.Validator) error
+
+// streamValidatorSetForRoot streams the validator set for a given blockRoot
+func (cache *validatorCache) streamValidatorSetForRoot(epoch *phase0.Epoch, blockRoot phase0.Root, onlyActive bool, cb ValidatorSetStreamer) error {
 	cache.cacheMutex.RLock()
 	defer cache.cacheMutex.RUnlock()
 
 	isParentMap := map[phase0.Root]bool{}
 	isAheadMap := map[phase0.Root]bool{}
 
-	validatorSet := make([]ValidatorDataWithIndex, 0, cache.lastFinalizedActiveCount+100)
-
 	for index, cachedValidator := range cache.valsetCache {
 		if cachedValidator == nil {
 			continue
 		}
 
+		latestValidator := cachedValidator.finalValidator
 		validatorData := cachedValidator.activeData
 		validatorEpoch := cache.lastFinalized
 
@@ -432,6 +433,7 @@ func (cache *validatorCache) getActiveValidatorDataForRoot(epoch *phase0.Epoch, 
 					EffectiveBalanceEth:        uint16(diff.validator.EffectiveBalance / EtherGweiFactor),
 				}
 				validatorEpoch = diff.epoch
+				latestValidator = diff.validator
 			}
 
 			if !isParent && validatorData == nil {
@@ -455,21 +457,25 @@ func (cache *validatorCache) getActiveValidatorDataForRoot(epoch *phase0.Epoch, 
 				ExitEpoch:                  aheadValidator.ExitEpoch,
 				EffectiveBalanceEth:        uint16(aheadValidator.EffectiveBalance / EtherGweiFactor),
 			}
+			latestValidator = aheadValidator
 		}
 
-		if validatorData != nil {
-			if epoch != nil && (*epoch < validatorData.ActivationEpoch || *epoch >= validatorData.ExitEpoch) {
-				continue
-			}
+		if onlyActive && (validatorData == nil || (epoch != nil && (validatorData.ActivationEpoch > *epoch || validatorData.ExitEpoch < *epoch))) {
+			continue
+		}
 
-			validatorSet = append(validatorSet, ValidatorDataWithIndex{
-				Index: phase0.ValidatorIndex(index),
-				Data:  validatorData,
-			})
+		validatorFlags := cachedValidator.statusFlags
+		if latestValidator != nil {
+			validatorFlags = GetValidatorStatusFlags(latestValidator)
+		}
+
+		err := cb(phase0.ValidatorIndex(index), validatorFlags, validatorData, latestValidator)
+		if err != nil {
+			return err
 		}
 	}
 
-	return validatorSet
+	return nil
 }
 
 // getCachedValidatorSetForRoot returns the cached validator set for a given blockRoot.
@@ -536,22 +542,62 @@ func (cache *validatorCache) getCachedValidatorSetForRoot(blockRoot phase0.Root)
 
 // getActivationExitQueueLengths returns the activation and exit queue lengths.
 func (cache *validatorCache) getActivationExitQueueLengths(epoch phase0.Epoch, blockRoot phase0.Root) (uint64, uint64) {
-	cache.cacheMutex.RLock()
-	defer cache.cacheMutex.RUnlock()
-
 	activationQueueLength := uint64(0)
 	exitQueueLength := uint64(0)
+	cache.streamValidatorSetForRoot(&epoch, blockRoot, true, func(index phase0.ValidatorIndex, flags uint16, activeData *ValidatorData, validator *phase0.Validator) error {
+		if activeData == nil {
+			return nil
+		}
 
-	for _, validator := range cache.getActiveValidatorDataForRoot(nil, blockRoot) {
-		if validator.Data.ActivationEpoch < FarFutureEpoch && validator.Data.ActivationEpoch > epoch {
+		if activeData.ActivationEligibilityEpoch < FarFutureEpoch && activeData.ActivationEligibilityEpoch > epoch {
 			activationQueueLength++
 		}
-		if validator.Data.ExitEpoch < FarFutureEpoch && validator.Data.ExitEpoch > epoch {
+		if activeData.ExitEpoch < FarFutureEpoch && activeData.ExitEpoch > epoch {
 			exitQueueLength++
 		}
-	}
+
+		return nil
+	})
 
 	return activationQueueLength, exitQueueLength
+}
+
+// getValidatorStatusMap returns a map of validator statuses
+func (cache *validatorCache) getValidatorStatusMap(epoch phase0.Epoch, blockRoot phase0.Root) map[v1.ValidatorState]uint64 {
+	statusMap := map[v1.ValidatorState]uint64{}
+
+	cache.streamValidatorSetForRoot(&epoch, blockRoot, false, func(index phase0.ValidatorIndex, statusFlags uint16, activeData *ValidatorData, validator *phase0.Validator) error {
+		validatorStatus := v1.ValidatorStateUnknown
+
+		if statusFlags&ValidatorStatusEligible == 0 {
+			validatorStatus = v1.ValidatorStatePendingInitialized
+		} else if activeData != nil {
+
+			if activeData.ActivationEpoch > epoch {
+				validatorStatus = v1.ValidatorStatePendingQueued
+			} else if statusFlags&ValidatorStatusSlashed != 0 {
+				if activeData.ExitEpoch != FarFutureEpoch && activeData.ExitEpoch > epoch {
+					validatorStatus = v1.ValidatorStateActiveSlashed
+				} else {
+					validatorStatus = v1.ValidatorStateExitedSlashed
+				}
+			} else if activeData.ExitEpoch != FarFutureEpoch && activeData.ExitEpoch > epoch {
+				validatorStatus = v1.ValidatorStateActiveExiting
+			} else {
+				validatorStatus = v1.ValidatorStateActiveOngoing
+			}
+		} else if statusFlags&ValidatorStatusSlashed != 0 {
+			validatorStatus = v1.ValidatorStateExitedSlashed
+		} else {
+			validatorStatus = v1.ValidatorStateExitedUnslashed
+		}
+
+		statusMap[validatorStatus]++
+
+		return nil
+	})
+
+	return statusMap
 }
 
 // UnwrapDbValidator unwraps a dbtypes.Validator to a phase0.Validator
@@ -622,80 +668,6 @@ func (cache *validatorCache) getValidatorByIndexAndRoot(index phase0.ValidatorIn
 	}
 
 	return validator
-}
-
-// getValidatorStatusMap returns a map of validator statuses
-func (cache *validatorCache) getValidatorStatusMap(blockRoot phase0.Root) map[v1.ValidatorState]uint64 {
-	cache.cacheMutex.RLock()
-	defer cache.cacheMutex.RUnlock()
-
-	statusMap := map[v1.ValidatorState]uint64{}
-	block := cache.indexer.blockCache.getBlockByRoot(blockRoot)
-	if block == nil {
-		return statusMap
-	}
-
-	chainState := cache.indexer.consensusPool.GetChainState()
-	epoch := chainState.EpochOfSlot(block.Slot)
-
-	recentValidatorSet := cache.getCachedValidatorSetForRoot(blockRoot)
-	recentValidatorIndex := 0
-
-	validatorCount := phase0.ValidatorIndex(len(cache.valsetCache))
-	for index := phase0.ValidatorIndex(0); index < validatorCount; index++ {
-		validatorStatus := v1.ValidatorStateUnknown
-
-		if validatorEntry := cache.valsetCache[index]; validatorEntry != nil {
-			statusFlags := validatorEntry.statusFlags
-			activeData := validatorEntry.activeData
-
-			for recentValidatorIndex < len(recentValidatorSet) && recentValidatorSet[recentValidatorIndex].Index < index {
-				recentValidatorIndex++
-			}
-
-			var recentValidator *phase0.Validator
-			if recentValidatorIndex < len(recentValidatorSet) && recentValidatorSet[recentValidatorIndex].Index == index {
-				recentValidator = recentValidatorSet[recentValidatorIndex].Validator
-			}
-
-			if recentValidator != nil {
-				statusFlags = GetValidatorStatusFlags(recentValidator)
-				activeData = &ValidatorData{
-					ActivationEligibilityEpoch: recentValidator.ActivationEligibilityEpoch,
-					ActivationEpoch:            recentValidator.ActivationEpoch,
-					ExitEpoch:                  recentValidator.ExitEpoch,
-					EffectiveBalanceEth:        uint16(recentValidator.EffectiveBalance / EtherGweiFactor),
-				}
-			}
-
-			if statusFlags&ValidatorStatusEligible == 0 {
-				validatorStatus = v1.ValidatorStatePendingInitialized
-			} else if activeData != nil {
-
-				if activeData.ActivationEpoch > epoch {
-					validatorStatus = v1.ValidatorStatePendingQueued
-				} else if statusFlags&ValidatorStatusSlashed != 0 {
-					if activeData.ExitEpoch != FarFutureEpoch && activeData.ExitEpoch > epoch {
-						validatorStatus = v1.ValidatorStateActiveSlashed
-					} else {
-						validatorStatus = v1.ValidatorStateExitedSlashed
-					}
-				} else if activeData.ExitEpoch != FarFutureEpoch && activeData.ExitEpoch > epoch {
-					validatorStatus = v1.ValidatorStateActiveExiting
-				} else {
-					validatorStatus = v1.ValidatorStateActiveOngoing
-				}
-			} else if statusFlags&ValidatorStatusSlashed != 0 {
-				validatorStatus = v1.ValidatorStateExitedSlashed
-			} else {
-				validatorStatus = v1.ValidatorStateExitedUnslashed
-			}
-		}
-
-		statusMap[validatorStatus]++
-	}
-
-	return statusMap
 }
 
 func calculateValidatorChecksum(v *phase0.Validator) uint64 {

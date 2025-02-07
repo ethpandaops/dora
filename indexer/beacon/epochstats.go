@@ -361,12 +361,13 @@ func (es *EpochStats) processState(indexer *Indexer, validatorSet []*phase0.Vali
 			values.TotalBalance += balance
 		}
 
-		for _, validator := range indexer.validatorCache.getActiveValidatorDataForRoot(&es.epoch, es.dependentRoot) {
-			values.ActiveIndices = append(values.ActiveIndices, phase0.ValidatorIndex(validator.Index))
-			values.EffectiveBalances = append(values.EffectiveBalances, uint16(validator.Data.EffectiveBalance()/EtherGweiFactor))
-			values.EffectiveBalance += validator.Data.EffectiveBalance()
-			values.ActiveBalance += es.dependentState.validatorBalances[validator.Index]
-		}
+		indexer.validatorCache.streamValidatorSetForRoot(&es.epoch, es.dependentRoot, true, func(index phase0.ValidatorIndex, flags uint16, activeData *ValidatorData, validator *phase0.Validator) error {
+			values.ActiveIndices = append(values.ActiveIndices, index)
+			values.EffectiveBalances = append(values.EffectiveBalances, uint16(activeData.EffectiveBalance()/EtherGweiFactor))
+			values.EffectiveBalance += activeData.EffectiveBalance()
+			values.ActiveBalance += es.dependentState.validatorBalances[index]
+			return nil
+		})
 	}
 
 	// get active validator indices & aggregate balances
@@ -485,18 +486,15 @@ func (es *EpochStats) precomputeFromParentState(indexer *Indexer, parentState *E
 		}
 
 		// update active validators from validator cache
-		validatorSet := indexer.validatorCache.getActiveValidatorDataForRoot(&es.epoch, es.dependentRoot)
-		if len(validatorSet) > 0 {
-			values.ActiveIndices = make([]phase0.ValidatorIndex, 0, len(validatorSet))
-			values.EffectiveBalances = make([]uint16, 0, len(validatorSet))
-			values.ActiveBalance = 0
-
-			for _, validator := range validatorSet {
-				values.ActiveIndices = append(values.ActiveIndices, phase0.ValidatorIndex(validator.Index))
-				values.EffectiveBalances = append(values.EffectiveBalances, validator.Data.EffectiveBalanceEth)
-				values.ActiveBalance += validator.Data.EffectiveBalance()
-			}
-		}
+		values.ActiveIndices = make([]phase0.ValidatorIndex, 0, len(parentStatsValues.ActiveIndices))
+		values.EffectiveBalances = make([]uint16, 0, len(parentStatsValues.ActiveIndices))
+		values.ActiveBalance = 0
+		indexer.validatorCache.streamValidatorSetForRoot(&es.epoch, es.dependentRoot, true, func(index phase0.ValidatorIndex, flags uint16, activeData *ValidatorData, validator *phase0.Validator) error {
+			values.ActiveIndices = append(values.ActiveIndices, index)
+			values.EffectiveBalances = append(values.EffectiveBalances, uint16(activeData.EffectiveBalance()/EtherGweiFactor))
+			values.ActiveBalance += es.dependentState.validatorBalances[index]
+			return nil
+		})
 
 		values.ActiveValidators = uint64(len(values.ActiveIndices))
 
