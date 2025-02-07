@@ -263,12 +263,10 @@ func buildValidatorStatusSql(currentEpoch uint64) string {
 			WHEN exit_epoch = %v THEN 3
 			WHEN exit_epoch > %v AND slashed THEN 5
 			WHEN exit_epoch > %v THEN 4
-			WHEN withdrawable_epoch > %v AND slashed THEN 7
-			WHEN withdrawable_epoch > %v THEN 6
-			WHEN effective_balance = 0 THEN 9
-			ELSE 8
+			WHEN slashed THEN 7
+			ELSE 6
 		END
-	`, math.MaxInt64, ConvertUint64ToInt64(currentEpoch), math.MaxInt64, ConvertUint64ToInt64(currentEpoch), ConvertUint64ToInt64(currentEpoch), ConvertUint64ToInt64(currentEpoch), ConvertUint64ToInt64(currentEpoch))
+	`, math.MaxInt64, ConvertUint64ToInt64(currentEpoch), math.MaxInt64, ConvertUint64ToInt64(currentEpoch), ConvertUint64ToInt64(currentEpoch))
 }
 
 func StreamValidatorsByIndexes(indexes []uint64, cb func(validator *dbtypes.Validator) bool) error {
