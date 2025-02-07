@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/attestantio/go-eth2-client/spec"
+	"github.com/attestantio/go-eth2-client/spec/electra"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 )
 
@@ -22,10 +23,11 @@ type epochState struct {
 	readyChan      chan bool
 	highPriority   bool
 
-	validatorBalances []phase0.Gwei
-	randaoMixes       []phase0.Root
-	depositIndex      uint64
-	syncCommittee     []phase0.ValidatorIndex
+	validatorBalances         []phase0.Gwei
+	randaoMixes               []phase0.Root
+	depositIndex              uint64
+	syncCommittee             []phase0.ValidatorIndex
+	pendingPartialWithdrawals []*electra.PendingPartialWithdrawal
 }
 
 // newEpochState creates a new epochState instance with the root of the state to be loaded.
@@ -190,6 +192,14 @@ func (s *epochState) processState(state *spec.VersionedBeaconState, cache *epoch
 		s.syncCommittee = syncCommittee
 	} else {
 		s.syncCommittee = []phase0.ValidatorIndex{}
+	}
+
+	if state.Version >= spec.DataVersionElectra {
+		pendingPartialWithdrawals, err := getStatePendingWithdrawals(state)
+		if err != nil {
+			return fmt.Errorf("error getting pending withdrawal indices from state %v: %v", s.slotRoot.String(), err)
+		}
+		s.pendingPartialWithdrawals = pendingPartialWithdrawals
 	}
 
 	return nil

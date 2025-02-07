@@ -251,6 +251,30 @@ type Slashing struct {
 	ForkId         uint64         `db:"fork_id"`
 }
 
+const (
+	ConsolidationRequestResultUnknown uint8 = 0
+	ConsolidationRequestResultSuccess uint8 = 1
+
+	// global errors
+	ConsolidationRequestResultTotalBalanceTooLow uint8 = 10
+	ConsolidationRequestResultQueueFull          uint8 = 11
+
+	// source validator errors
+	ConsolidationRequestResultSrcNotFound             uint8 = 20
+	ConsolidationRequestResultSrcInvalidCredentials   uint8 = 21
+	ConsolidationRequestResultSrcInvalidSender        uint8 = 22
+	ConsolidationRequestResultSrcNotActive            uint8 = 23
+	ConsolidationRequestResultSrcNotOldEnough         uint8 = 24
+	ConsolidationRequestResultSrcHasPendingWithdrawal uint8 = 25
+
+	// target validator errors
+	ConsolidationRequestResultTgtNotFound           uint8 = 30
+	ConsolidationRequestResultTgtInvalidCredentials uint8 = 31
+	ConsolidationRequestResultTgtInvalidSender      uint8 = 32
+	ConsolidationRequestResultTgtNotCompounding     uint8 = 33
+	ConsolidationRequestResultTgtNotActive          uint8 = 34
+)
+
 type ConsolidationRequest struct {
 	SlotNumber    uint64  `db:"slot_number"`
 	SlotRoot      []byte  `db:"slot_root"`
@@ -264,6 +288,7 @@ type ConsolidationRequest struct {
 	TargetPubkey  []byte  `db:"target_pubkey"`
 	TxHash        []byte  `db:"tx_hash"`
 	BlockNumber   uint64  `db:"block_number"`
+	Result        uint8   `db:"result"`
 }
 
 type ConsolidationRequestTx struct {

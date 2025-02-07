@@ -56,6 +56,7 @@ type EpochStatsValues struct {
 	ActiveBalance       phase0.Gwei
 	EffectiveBalance    phase0.Gwei
 	FirstDepositIndex   uint64
+	PendingWithdrawals  []EpochStatsPendingWithdrawals
 }
 
 // EpochStatsPacked holds the packed values for the epoch-specific information.
@@ -68,12 +69,18 @@ type EpochStatsPacked struct {
 	TotalBalance        phase0.Gwei
 	ActiveBalance       phase0.Gwei
 	FirstDepositIndex   uint64
+	PendingWithdrawals  []EpochStatsPendingWithdrawals
 }
 
 // EpochStatsPackedValidator holds the packed values for an active validator.
 type EpochStatsPackedValidator struct {
 	ValidatorIndexOffset uint32 // offset to the previous index in the list (this is smaller than storing the full validator index)
 	EffectiveBalanceEth  uint16 // effective balance in full ETH
+}
+
+type EpochStatsPendingWithdrawals struct {
+	ValidatorIndex phase0.ValidatorIndex
+	Epoch          phase0.Epoch
 }
 
 // newEpochStats creates a new EpochStats instance.
@@ -167,6 +174,7 @@ func (es *EpochStats) buildPackedSSZ(dynSsz *dynssz.DynSsz) ([]byte, error) {
 		TotalBalance:        es.values.TotalBalance,
 		ActiveBalance:       es.values.ActiveBalance,
 		FirstDepositIndex:   es.values.FirstDepositIndex,
+		PendingWithdrawals:  es.values.PendingWithdrawals,
 	}
 
 	lastValidatorIndex := phase0.ValidatorIndex(0)
@@ -221,6 +229,7 @@ func (es *EpochStats) parsePackedSSZ(dynSsz *dynssz.DynSsz, chainState *consensu
 		ActiveBalance:       packedValues.ActiveBalance,
 		EffectiveBalance:    0,
 		FirstDepositIndex:   packedValues.FirstDepositIndex,
+		PendingWithdrawals:  packedValues.PendingWithdrawals,
 	}
 
 	lastValidatorIndex := phase0.ValidatorIndex(0)
@@ -289,6 +298,7 @@ func (es *EpochStats) pruneValues() {
 		ActiveBalance:       es.values.ActiveBalance,
 		EffectiveBalance:    es.values.EffectiveBalance,
 		FirstDepositIndex:   es.values.FirstDepositIndex,
+		PendingWithdrawals:  nil, // prune
 	}
 
 	es.values = nil
@@ -342,6 +352,14 @@ func (es *EpochStats) processState(indexer *Indexer, validatorSet []*phase0.Vali
 		ActiveBalance:       0,
 		EffectiveBalance:    0,
 		FirstDepositIndex:   es.dependentState.depositIndex,
+		PendingWithdrawals:  make([]EpochStatsPendingWithdrawals, len(es.dependentState.pendingPartialWithdrawals)),
+	}
+
+	for i, pendingPartialWithdrawal := range es.dependentState.pendingPartialWithdrawals {
+		values.PendingWithdrawals[i] = EpochStatsPendingWithdrawals{
+			ValidatorIndex: pendingPartialWithdrawal.ValidatorIndex,
+			Epoch:          pendingPartialWithdrawal.WithdrawableEpoch,
+		}
 	}
 
 	if validatorSet == nil {
