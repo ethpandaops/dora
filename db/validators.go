@@ -193,7 +193,6 @@ func GetValidatorIndexesByFilter(filter dbtypes.ValidatorFilter, currentEpoch ui
 	}
 
 	validatorIds := []uint64{}
-	fmt.Println(sql.String())
 	err := ReaderDb.Select(&validatorIds, sql.String(), args...)
 	if err != nil {
 		logger.Errorf("Error while fetching validators by filter: %v", err)
@@ -259,17 +258,17 @@ func buildValidatorFilterSql(filter dbtypes.ValidatorFilter, currentEpoch uint64
 func buildValidatorStatusSql(currentEpoch uint64) string {
 	return fmt.Sprintf(`
 		CASE
-			WHEN activation_eligibility_epoch == %v THEN 1
+			WHEN activation_eligibility_epoch = %v THEN 1
 			WHEN activation_epoch > %v THEN 2
-			WHEN exit_epoch == %v THEN 3
+			WHEN exit_epoch = %v THEN 3
 			WHEN exit_epoch > %v AND slashed THEN 5
 			WHEN exit_epoch > %v THEN 4
 			WHEN withdrawable_epoch > %v AND slashed THEN 7
 			WHEN withdrawable_epoch > %v THEN 6
-			WHEN effective_balance == 0 THEN 9
+			WHEN effective_balance = 0 THEN 9
 			ELSE 8
 		END
-	`, math.MaxInt64, currentEpoch, math.MaxInt64, currentEpoch, currentEpoch, currentEpoch, currentEpoch)
+	`, math.MaxInt64, ConvertUint64ToInt64(currentEpoch), math.MaxInt64, ConvertUint64ToInt64(currentEpoch), ConvertUint64ToInt64(currentEpoch), ConvertUint64ToInt64(currentEpoch), ConvertUint64ToInt64(currentEpoch))
 }
 
 func StreamValidatorsByIndexes(indexes []uint64, cb func(validator *dbtypes.Validator) bool) error {

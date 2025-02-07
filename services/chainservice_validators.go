@@ -2,7 +2,6 @@ package services
 
 import (
 	"bytes"
-	"fmt"
 	"slices"
 	"sort"
 	"strings"
@@ -82,9 +81,6 @@ func (bs *ChainService) GetFilteredValidatorSet(filter *dbtypes.ValidatorFilter,
 			}
 		}
 
-		if cachedValidator.Index == 71638 {
-			fmt.Println(cachedValidator.Index)
-		}
 		if len(filter.Status) > 0 {
 			var balancePtr *phase0.Gwei
 			if balances != nil {
