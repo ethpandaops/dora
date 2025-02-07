@@ -172,6 +172,16 @@ func (cache *forkCache) processBlock(block *Block) error {
 		}
 	}
 
+	// avoid using forkid 0 for unfinalized blocks, add a new temporary forkid if needed
+	if currentForkId == 0 && parentIsFinalized {
+		cache.lastForkId++
+		fork := newFork(cache.lastForkId, parentSlot, *parentRoot, block, parentForkId)
+		cache.addFork(fork)
+
+		currentForkId = cache.lastForkId
+		cache.indexer.logger.Infof("new fork for canonical chain (base(%v) %v [%v], head(%v) %v [%v])", parentForkId, parentSlot, parentRoot.String(), currentForkId, block.Slot, block.Root.String())
+	}
+
 	// check scenario 2
 	childBlocks := make([]*Block, 0)
 	for _, child := range cache.indexer.blockCache.getBlocksByParentRoot(block.Root) {
