@@ -65,7 +65,7 @@ func ApiValidatorByEth1AddressV1(w http.ResponseWriter, r *http.Request) {
 	}
 
 	deposits, _, err := db.GetDepositTxsFiltered(uint64(offset), uint32(limit), 0, &dbtypes.DepositTxFilter{
-		WithdrawalAddress: eth1Address,
+		Address: eth1Address,
 	})
 	if err != nil {
 		sendServerErrorResponse(w, r.URL.String(), "could not get deposit txs")
