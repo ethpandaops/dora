@@ -57,7 +57,7 @@ func ApiValidatorByEth1AddressV1(w http.ResponseWriter, r *http.Request) {
 	}
 
 	vars := mux.Vars(r)
-	search := vars["address"]
+	search := vars["eth1address"]
 	eth1Address, err := hex.DecodeString(strings.Replace(search, "0x", "", -1))
 	if err != nil {
 		sendBadRequestResponse(w, r.URL.String(), "invalid eth1 address provided")

@@ -99,7 +99,7 @@ func ApiWithdrawalCredentialsValidatorsV1(w http.ResponseWriter, r *http.Request
 	}
 
 	if limit > 0 {
-		if int(limit) > len(relevantValidators) {
+		if len(relevantValidators) > int(limit) {
 			relevantValidators = relevantValidators[:limit]
 		}
 	}
