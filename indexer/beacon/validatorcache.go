@@ -686,7 +686,7 @@ func (cache *validatorCache) getValidatorStatusMap(blockRoot phase0.Root) map[v1
 					validatorStatus = v1.ValidatorStateActiveOngoing
 				}
 			} else if statusFlags&ValidatorStatusSlashed != 0 {
-				validatorStatus = v1.ValidatorStateActiveSlashed
+				validatorStatus = v1.ValidatorStateExitedSlashed
 			} else {
 				validatorStatus = v1.ValidatorStateExitedUnslashed
 			}
