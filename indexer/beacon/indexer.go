@@ -308,7 +308,7 @@ func (indexer *Indexer) StartIndexer() {
 
 		block, _ := indexer.blockCache.createOrGetBlock(phase0.Root(dbBlock.Root), phase0.Slot(dbBlock.Slot))
 		block.forkId = ForkKey(dbBlock.ForkId)
-		block.fokChecked = true
+		block.forkChecked = true
 		block.processingStatus = dbBlock.Status
 		block.isInUnfinalizedDb = true
 
