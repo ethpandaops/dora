@@ -14,9 +14,8 @@ import (
 )
 
 type ApiWithdrawalCredentialsResponseV1 struct {
-	PublicKey      string `json:"public_key"`
-	ValidSignature bool   `json:"valid_signature"`
-	ValidatorIndex uint64 `json:"validator_index"`
+	PublicKey      string `json:"publickey"`
+	ValidatorIndex uint64 `json:"validatorindex"`
 }
 
 // ApiWithdrawalCredentialsValidators godoc
@@ -69,7 +68,7 @@ func ApiWithdrawalCredentialsValidatorsV1(w http.ResponseWriter, r *http.Request
 
 	searchEth1Address := len(searchBytes) == 20
 
-	relevantValidators := []*ApiValidatorEth1ResponseV1{}
+	relevantValidators := []*ApiWithdrawalCredentialsResponseV1{}
 	for _, validator := range validatorSet {
 		if validator.Validator.WithdrawalCredentials[0] != 0x01 && validator.Validator.WithdrawalCredentials[0] != 0x02 {
 			continue
@@ -77,17 +76,15 @@ func ApiWithdrawalCredentialsValidatorsV1(w http.ResponseWriter, r *http.Request
 
 		if searchEth1Address && (validator.Validator.WithdrawalCredentials[0] == 0x01 || validator.Validator.WithdrawalCredentials[0] == 0x02) {
 			if bytes.Equal(validator.Validator.WithdrawalCredentials[12:], searchBytes) {
-				relevantValidators = append(relevantValidators, &ApiValidatorEth1ResponseV1{
+				relevantValidators = append(relevantValidators, &ApiWithdrawalCredentialsResponseV1{
 					PublicKey:      validator.Validator.PublicKey.String(),
-					ValidSignature: true,
 					ValidatorIndex: uint64(validator.Index),
 				})
 			}
 
 		} else if !searchEth1Address && bytes.Equal(validator.Validator.WithdrawalCredentials, searchBytes) {
-			relevantValidators = append(relevantValidators, &ApiValidatorEth1ResponseV1{
+			relevantValidators = append(relevantValidators, &ApiWithdrawalCredentialsResponseV1{
 				PublicKey:      validator.Validator.PublicKey.String(),
-				ValidSignature: true,
 				ValidatorIndex: uint64(validator.Index),
 			})
 		}
