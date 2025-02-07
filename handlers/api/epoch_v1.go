@@ -112,6 +112,7 @@ func ApiEpochV1(w http.ResponseWriter, r *http.Request) {
 		}
 
 		data.MissedBlocks = passedSlotCount - uint64(dbEpoch.BlockCount)
+		data.BlocksCount = uint64(dbEpoch.BlockCount + dbEpoch.OrphanedCount)
 		data.OrphanedBlocks = uint64(dbEpoch.OrphanedCount)
 		data.ProposedBlocks = uint64(dbEpoch.BlockCount)
 	}
