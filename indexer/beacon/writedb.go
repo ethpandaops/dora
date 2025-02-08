@@ -129,15 +129,17 @@ func (dbw *dbWriter) persistBlockChildObjects(tx *sqlx.Tx, block *Block, deposit
 	return nil
 }
 
-func (dbw *dbWriter) persistEpochData(tx *sqlx.Tx, epoch phase0.Epoch, blocks []*Block, epochStats *EpochStats, epochVotes *EpochVotes) error {
+func (dbw *dbWriter) persistEpochData(tx *sqlx.Tx, epoch phase0.Epoch, blocks []*Block, epochStats *EpochStats, epochVotes *EpochVotes, sim *stateSimulator) error {
 	if tx == nil {
 		return db.RunDBTransaction(func(tx *sqlx.Tx) error {
-			return dbw.persistEpochData(tx, epoch, blocks, epochStats, epochVotes)
+			return dbw.persistEpochData(tx, epoch, blocks, epochStats, epochVotes, sim)
 		})
 	}
 	canonicalForkId := ForkKey(0)
 
-	sim := newStateSimulator(dbw.indexer, epochStats)
+	if sim == nil {
+		sim = newStateSimulator(dbw.indexer, epochStats)
+	}
 
 	dbEpoch := dbw.buildDbEpoch(epoch, blocks, epochStats, epochVotes, func(block *Block, depositIndex *uint64) {
 		_, err := dbw.persistBlockData(tx, block, epochStats, depositIndex, false, &canonicalForkId, sim)

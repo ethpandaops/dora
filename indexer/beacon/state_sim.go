@@ -15,6 +15,7 @@ type stateSimulator struct {
 	epochStats       *EpochStats
 	epochStatsValues *EpochStatsValues
 	prevState        *stateSimulatorState
+	validatorSet     []*phase0.Validator
 }
 
 type stateSimulatorState struct {
@@ -115,7 +116,14 @@ func (sim *stateSimulator) getValidator(index phase0.ValidatorIndex) *phase0.Val
 		return validator
 	}
 
-	validator := sim.indexer.validatorCache.getValidatorByIndexAndRoot(index, sim.prevState.epochRoot)
+	var validator *phase0.Validator
+
+	if sim.validatorSet != nil && len(sim.validatorSet) > int(index) {
+		validator = sim.validatorSet[index]
+	} else {
+		validator = sim.indexer.validatorCache.getValidatorByIndexAndRoot(index, sim.prevState.epochRoot)
+	}
+
 	sim.prevState.validatorMap[index] = validator
 	return validator
 }
