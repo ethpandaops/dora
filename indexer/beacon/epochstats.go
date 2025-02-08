@@ -492,7 +492,11 @@ func (es *EpochStats) precomputeFromParentState(indexer *Indexer, parentState *E
 		indexer.validatorCache.streamValidatorSetForRoot(&es.epoch, es.dependentRoot, true, func(index phase0.ValidatorIndex, flags uint16, activeData *ValidatorData, validator *phase0.Validator) error {
 			values.ActiveIndices = append(values.ActiveIndices, index)
 			values.EffectiveBalances = append(values.EffectiveBalances, uint16(activeData.EffectiveBalance()/EtherGweiFactor))
-			values.ActiveBalance += es.dependentState.validatorBalances[index]
+			if parentState.dependentState != nil && len(parentState.dependentState.validatorBalances) > int(index) {
+				values.ActiveBalance += parentState.dependentState.validatorBalances[index]
+			} else {
+				values.ActiveBalance += activeData.EffectiveBalance()
+			}
 			return nil
 		})
 
