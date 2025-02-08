@@ -58,7 +58,13 @@ type ChainSpec struct {
 	MaxWithdrawalRequestsPerPayload       uint64            `yaml:"MAX_WITHDRAWAL_REQUESTS_PER_PAYLOAD"    check-if-fork:"ElectraForkEpoch"`
 	DepositChainId                        uint64            `yaml:"DEPOSIT_CHAIN_ID"`
 	MinActivationBalance                  uint64            `yaml:"MIN_ACTIVATION_BALANCE"`
-	MaxPendingPartialsPerWithdrawalsSweep uint64            `yaml:"MAX_PENDING_PARTIALS_PER_WITHDRAWALS_SWEEP"`
+	MaxPendingPartialsPerWithdrawalsSweep uint64            `yaml:"MAX_PENDING_PARTIALS_PER_WITHDRAWALS_SWEEP" check-if-fork:"ElectraForkEpoch"`
+	PendingPartialWithdrawalsLimit        uint64            `yaml:"PENDING_PARTIAL_WITHDRAWALS_LIMIT"          check-if-fork:"ElectraForkEpoch"`
+	PendingConsolidationsLimit            uint64            `yaml:"PENDING_CONSOLIDATIONS_LIMIT"               check-if-fork:"ElectraForkEpoch"`
+	MinPerEpochChurnLimitElectra          uint64            `yaml:"MIN_PER_EPOCH_CHURN_LIMIT_ELECTRA"          check-if-fork:"ElectraForkEpoch"`
+	MaxPerEpochActivationExitChurnLimit   uint64            `yaml:"MAX_PER_EPOCH_ACTIVATION_EXIT_CHURN_LIMIT"  check-if-fork:"ElectraForkEpoch"`
+	EffectiveBalanceIncrement             uint64            `yaml:"EFFECTIVE_BALANCE_INCREMENT"`
+	ShardCommitteePeriod                  uint64            `yaml:"SHARD_COMMITTEE_PERIOD"`
 
 	// EIP7594: PeerDAS
 	NumberOfColumns              *uint64 `yaml:"NUMBER_OF_COLUMNS"                check-if-fork:"Eip7594ForkEpoch"`

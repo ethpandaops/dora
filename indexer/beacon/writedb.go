@@ -58,7 +58,7 @@ func (dbw *dbWriter) persistMissedSlots(tx *sqlx.Tx, epoch phase0.Epoch, blocks 
 	return nil
 }
 
-func (dbw *dbWriter) persistBlockData(tx *sqlx.Tx, block *Block, epochStats *EpochStats, depositIndex *uint64, orphaned bool, overrideForkId *ForkKey) (*dbtypes.Slot, error) {
+func (dbw *dbWriter) persistBlockData(tx *sqlx.Tx, block *Block, epochStats *EpochStats, depositIndex *uint64, orphaned bool, overrideForkId *ForkKey, sim *stateSimulator) (*dbtypes.Slot, error) {
 	// insert block
 	dbBlock := dbw.buildDbBlock(block, epochStats, overrideForkId)
 	if dbBlock == nil {
@@ -78,7 +78,7 @@ func (dbw *dbWriter) persistBlockData(tx *sqlx.Tx, block *Block, epochStats *Epo
 
 	// insert child objects
 	if block.Slot > 0 {
-		err = dbw.persistBlockChildObjects(tx, block, depositIndex, orphaned, overrideForkId)
+		err = dbw.persistBlockChildObjects(tx, block, depositIndex, orphaned, overrideForkId, sim)
 		if err != nil {
 			return nil, err
 		}
@@ -87,7 +87,7 @@ func (dbw *dbWriter) persistBlockData(tx *sqlx.Tx, block *Block, epochStats *Epo
 	return dbBlock, nil
 }
 
-func (dbw *dbWriter) persistBlockChildObjects(tx *sqlx.Tx, block *Block, depositIndex *uint64, orphaned bool, overrideForkId *ForkKey) error {
+func (dbw *dbWriter) persistBlockChildObjects(tx *sqlx.Tx, block *Block, depositIndex *uint64, orphaned bool, overrideForkId *ForkKey, sim *stateSimulator) error {
 	var err error
 
 	// insert deposits (pre/early electra)
@@ -115,13 +115,13 @@ func (dbw *dbWriter) persistBlockChildObjects(tx *sqlx.Tx, block *Block, deposit
 	}
 
 	// insert consolidation requests
-	err = dbw.persistBlockConsolidationRequests(tx, block, orphaned, overrideForkId)
+	err = dbw.persistBlockConsolidationRequests(tx, block, orphaned, overrideForkId, sim)
 	if err != nil {
 		return err
 	}
 
 	// insert withdrawal requests
-	err = dbw.persistBlockWithdrawalRequests(tx, block, orphaned, overrideForkId)
+	err = dbw.persistBlockWithdrawalRequests(tx, block, orphaned, overrideForkId, sim)
 	if err != nil {
 		return err
 	}
@@ -137,8 +137,10 @@ func (dbw *dbWriter) persistEpochData(tx *sqlx.Tx, epoch phase0.Epoch, blocks []
 	}
 	canonicalForkId := ForkKey(0)
 
+	sim := newStateSimulator(dbw.indexer, epochStats)
+
 	dbEpoch := dbw.buildDbEpoch(epoch, blocks, epochStats, epochVotes, func(block *Block, depositIndex *uint64) {
-		_, err := dbw.persistBlockData(tx, block, epochStats, depositIndex, false, &canonicalForkId)
+		_, err := dbw.persistBlockData(tx, block, epochStats, depositIndex, false, &canonicalForkId, sim)
 		if err != nil {
 			dbw.indexer.logger.Errorf("error persisting slot: %v", err)
 		}
@@ -665,9 +667,9 @@ func (dbw *dbWriter) buildDbSlashings(block *Block, orphaned bool, overrideForkI
 	return dbSlashings
 }
 
-func (dbw *dbWriter) persistBlockConsolidationRequests(tx *sqlx.Tx, block *Block, orphaned bool, overrideForkId *ForkKey) error {
+func (dbw *dbWriter) persistBlockConsolidationRequests(tx *sqlx.Tx, block *Block, orphaned bool, overrideForkId *ForkKey, sim *stateSimulator) error {
 	// insert consolidation requests
-	dbConsolidations := dbw.buildDbConsolidationRequests(block, orphaned, overrideForkId)
+	dbConsolidations := dbw.buildDbConsolidationRequests(block, orphaned, overrideForkId, sim)
 	if orphaned {
 		for idx := range dbConsolidations {
 			dbConsolidations[idx].Orphaned = true
@@ -684,7 +686,7 @@ func (dbw *dbWriter) persistBlockConsolidationRequests(tx *sqlx.Tx, block *Block
 	return nil
 }
 
-func (dbw *dbWriter) buildDbConsolidationRequests(block *Block, orphaned bool, overrideForkId *ForkKey) []*dbtypes.ConsolidationRequest {
+func (dbw *dbWriter) buildDbConsolidationRequests(block *Block, orphaned bool, overrideForkId *ForkKey, sim *stateSimulator) []*dbtypes.ConsolidationRequest {
 	blockBody := block.GetBlock()
 	if blockBody == nil {
 		return nil
@@ -693,6 +695,19 @@ func (dbw *dbWriter) buildDbConsolidationRequests(block *Block, orphaned bool, o
 	requests, err := blockBody.ExecutionRequests()
 	if err != nil {
 		return nil
+	}
+
+	if sim == nil {
+		chainState := dbw.indexer.consensusPool.GetChainState()
+		epochStats := dbw.indexer.epochCache.getEpochStatsByEpochAndRoot(chainState.EpochOfSlot(block.Slot), block.Root)
+		if epochStats != nil {
+			sim = newStateSimulator(dbw.indexer, epochStats)
+		}
+	}
+
+	var blockResults [][]uint8
+	if sim != nil {
+		blockResults = sim.replayBlockResults(block)
 	}
 
 	consolidations := requests.Consolidations
@@ -728,15 +743,19 @@ func (dbw *dbWriter) buildDbConsolidationRequests(block *Block, orphaned bool, o
 			dbConsolidation.TargetIndex = &targetIdx
 		}
 
+		if blockResults != nil {
+			dbConsolidation.Result = blockResults[1][idx]
+		}
+
 		dbConsolidations[idx] = dbConsolidation
 	}
 
 	return dbConsolidations
 }
 
-func (dbw *dbWriter) persistBlockWithdrawalRequests(tx *sqlx.Tx, block *Block, orphaned bool, overrideForkId *ForkKey) error {
+func (dbw *dbWriter) persistBlockWithdrawalRequests(tx *sqlx.Tx, block *Block, orphaned bool, overrideForkId *ForkKey, sim *stateSimulator) error {
 	// insert deposits
-	dbWithdrawalRequests := dbw.buildDbWithdrawalRequests(block, orphaned, overrideForkId)
+	dbWithdrawalRequests := dbw.buildDbWithdrawalRequests(block, orphaned, overrideForkId, sim)
 
 	if len(dbWithdrawalRequests) > 0 {
 		err := db.InsertWithdrawalRequests(dbWithdrawalRequests, tx)
@@ -748,7 +767,7 @@ func (dbw *dbWriter) persistBlockWithdrawalRequests(tx *sqlx.Tx, block *Block, o
 	return nil
 }
 
-func (dbw *dbWriter) buildDbWithdrawalRequests(block *Block, orphaned bool, overrideForkId *ForkKey) []*dbtypes.WithdrawalRequest {
+func (dbw *dbWriter) buildDbWithdrawalRequests(block *Block, orphaned bool, overrideForkId *ForkKey, sim *stateSimulator) []*dbtypes.WithdrawalRequest {
 	blockBody := block.GetBlock()
 	if blockBody == nil {
 		return nil
@@ -757,6 +776,19 @@ func (dbw *dbWriter) buildDbWithdrawalRequests(block *Block, orphaned bool, over
 	requests, err := blockBody.ExecutionRequests()
 	if err != nil {
 		return nil
+	}
+
+	if sim == nil {
+		chainState := dbw.indexer.consensusPool.GetChainState()
+		epochStats := dbw.indexer.epochCache.getEpochStatsByEpochAndRoot(chainState.EpochOfSlot(block.Slot), block.Root)
+		if epochStats != nil {
+			sim = newStateSimulator(dbw.indexer, epochStats)
+		}
+	}
+
+	var blockResults [][]uint8
+	if sim != nil {
+		blockResults = sim.replayBlockResults(block)
 	}
 
 	withdrawalRequests := requests.Withdrawals
@@ -786,6 +818,10 @@ func (dbw *dbWriter) buildDbWithdrawalRequests(block *Block, orphaned bool, over
 		if validatorIdx, found := dbw.indexer.pubkeyCache.Get(withdrawalRequest.ValidatorPubkey); found {
 			validatorIdx := uint64(validatorIdx)
 			dbWithdrawalRequest.ValidatorIndex = &validatorIdx
+		}
+
+		if blockResults != nil {
+			dbWithdrawalRequest.Result = blockResults[0][idx]
 		}
 
 		dbWithdrawalRequests[idx] = dbWithdrawalRequest

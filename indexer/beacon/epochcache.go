@@ -154,6 +154,19 @@ func (cache *epochCache) getEpochStatsByEpoch(epoch phase0.Epoch) []*EpochStats 
 	return statsList
 }
 
+func (cache *epochCache) getEpochStatsByEpochAndRoot(epoch phase0.Epoch, blockRoot phase0.Root) *EpochStats {
+	cache.cacheMutex.RLock()
+	defer cache.cacheMutex.RUnlock()
+
+	for _, stats := range cache.statsMap {
+		if stats.epoch == epoch && cache.indexer.blockCache.isCanonicalBlock(stats.dependentRoot, blockRoot) {
+			return stats
+		}
+	}
+
+	return nil
+}
+
 func (cache *epochCache) getEpochStatsBeforeEpoch(epoch phase0.Epoch) []*EpochStats {
 	cache.cacheMutex.RLock()
 	defer cache.cacheMutex.RUnlock()

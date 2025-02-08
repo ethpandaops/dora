@@ -28,6 +28,7 @@ type epochState struct {
 	depositIndex              uint64
 	syncCommittee             []phase0.ValidatorIndex
 	pendingPartialWithdrawals []*electra.PendingPartialWithdrawal
+	pendingConsolidations     []*electra.PendingConsolidation
 }
 
 // newEpochState creates a new epochState instance with the root of the state to be loaded.
@@ -198,6 +199,14 @@ func (s *epochState) processState(state *spec.VersionedBeaconState, cache *epoch
 			return fmt.Errorf("error getting pending withdrawal indices from state %v: %v", s.slotRoot.String(), err)
 		}
 		s.pendingPartialWithdrawals = pendingPartialWithdrawals
+
+		pendingConsolidations, err := getStatePendingConsolidations(state)
+		if err != nil {
+			return fmt.Errorf("error getting pending consolidation indices from state %v: %v", s.slotRoot.String(), err)
+		}
+
+		// apply epoch transition to get remaining pending consolidations
+		s.pendingConsolidations = pendingConsolidations
 	}
 
 	return nil

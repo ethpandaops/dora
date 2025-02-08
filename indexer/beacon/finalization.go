@@ -311,11 +311,17 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 			dependentBlock := indexer.blockCache.getDependentBlock(chainState, block, client)
 
 			var epochStats *EpochStats
+
 			if dependentBlock != nil {
 				epochStats = indexer.epochCache.getEpochStats(epoch, dependentBlock.Root)
 			}
 
-			if _, err := indexer.dbWriter.persistBlockData(tx, block, epochStats, nil, true, nil); err != nil {
+			var sim *stateSimulator
+			if epochStats != nil {
+				sim = newStateSimulator(indexer, epochStats)
+			}
+
+			if _, err := indexer.dbWriter.persistBlockData(tx, block, epochStats, nil, true, nil, sim); err != nil {
 				return fmt.Errorf("failed persisting orphaned slot %v (%v): %v", block.Slot, block.Root.String(), err)
 			}
 

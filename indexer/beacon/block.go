@@ -431,7 +431,7 @@ func (block *Block) GetDbWithdrawalRequests(indexer *Indexer, isCanonical bool) 
 		return nil
 	}
 
-	return indexer.dbWriter.buildDbWithdrawalRequests(block, !isCanonical, nil)
+	return indexer.dbWriter.buildDbWithdrawalRequests(block, !isCanonical, nil, nil)
 }
 
 // GetDbConsolidationRequests returns the database representation of the consolidation requests in this block.
@@ -440,7 +440,7 @@ func (block *Block) GetDbConsolidationRequests(indexer *Indexer, isCanonical boo
 		return nil
 	}
 
-	return indexer.dbWriter.buildDbConsolidationRequests(block, !isCanonical, nil)
+	return indexer.dbWriter.buildDbConsolidationRequests(block, !isCanonical, nil, nil)
 }
 
 // GetForkId returns the fork ID of this block.

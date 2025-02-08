@@ -308,6 +308,24 @@ type ConsolidationRequestTx struct {
 	DequeueBlock  uint64  `db:"dequeue_block"`
 }
 
+const (
+	WithdrawalRequestResultUnknown uint8 = 0
+	WithdrawalRequestResultSuccess uint8 = 1
+
+	// global errors
+	WithdrawalRequestResultQueueFull uint8 = 10
+
+	// validator errors
+	WithdrawalRequestResultValidatorNotFound             uint8 = 20
+	WithdrawalRequestResultValidatorInvalidCredentials   uint8 = 21
+	WithdrawalRequestResultValidatorInvalidSender        uint8 = 22
+	WithdrawalRequestResultValidatorNotActive            uint8 = 23
+	WithdrawalRequestResultValidatorNotOldEnough         uint8 = 24
+	WithdrawalRequestResultValidatorNotCompounding       uint8 = 25
+	WithdrawalRequestResultValidatorHasPendingWithdrawal uint8 = 26
+	WithdrawalRequestResultValidatorBalanceTooLow        uint8 = 27
+)
+
 type WithdrawalRequest struct {
 	SlotNumber      uint64  `db:"slot_number"`
 	SlotRoot        []byte  `db:"slot_root"`
@@ -320,6 +338,7 @@ type WithdrawalRequest struct {
 	Amount          int64   `db:"amount"`
 	TxHash          []byte  `db:"tx_hash"`
 	BlockNumber     uint64  `db:"block_number"`
+	Result          uint8   `db:"result"`
 }
 
 type WithdrawalRequestTx struct {
