@@ -348,7 +348,7 @@ func (indexer *Indexer) StartIndexer() {
 				restoredPayloadCount++
 			} else {
 				block.setBlockIndex(blockBody, blockPayload)
-				block.isInFinalizedDb = true
+				block.hasExecutionPayload = true
 			}
 		}
 

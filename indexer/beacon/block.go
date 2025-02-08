@@ -278,6 +278,7 @@ func (block *Block) EnsureBlock(loadBlock func() (*spec.VersionedSignedBeaconBlo
 func (block *Block) SetExecutionPayload(payload *eip7732.SignedExecutionPayloadEnvelope) {
 	block.setBlockIndex(block.block, payload)
 	block.executionPayload = payload
+	block.hasExecutionPayload = true
 
 	if block.executionPayloadChan != nil {
 		close(block.executionPayloadChan)
@@ -291,7 +292,7 @@ func (block *Block) EnsureExecutionPayload(loadExecutionPayload func() (*eip7732
 		return false, nil
 	}
 
-	if block.isInUnfinalizedDb || block.isInFinalizedDb {
+	if block.hasExecutionPayload {
 		return false, nil
 	}
 

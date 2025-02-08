@@ -533,6 +533,10 @@ func (dbw *dbWriter) buildDbDepositRequests(block *Block, orphaned bool, overrid
 		requests, _ = blockBody.ExecutionRequests()
 	}
 
+	if requests == nil {
+		return []*dbtypes.Deposit{}
+	}
+
 	deposits := requests.Deposits
 
 	dbDeposits := make([]*dbtypes.Deposit, len(deposits))
@@ -734,6 +738,10 @@ func (dbw *dbWriter) buildDbConsolidationRequests(block *Block, orphaned bool, o
 		blockNumber, _ = blockBody.ExecutionBlockNumber()
 	}
 
+	if requests == nil {
+		return []*dbtypes.ConsolidationRequest{}
+	}
+
 	consolidations := requests.Consolidations
 
 	if len(consolidations) == 0 {
@@ -805,6 +813,10 @@ func (dbw *dbWriter) buildDbWithdrawalRequests(block *Block, orphaned bool, over
 
 		requests, _ = blockBody.ExecutionRequests()
 		blockNumber, _ = blockBody.ExecutionBlockNumber()
+	}
+
+	if requests == nil {
+		return []*dbtypes.WithdrawalRequest{}
 	}
 
 	withdrawalRequests := requests.Withdrawals
