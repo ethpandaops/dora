@@ -293,6 +293,8 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 		if blockIndex := block.GetBlockIndex(); blockIndex != nil {
 			canonicalBlockHashes[i] = blockIndex.ExecutionHash[:]
 		}
+
+		block.blockResults = nil // force re-simulation of block results
 	}
 
 	t1dur := time.Since(t1) - t1loading

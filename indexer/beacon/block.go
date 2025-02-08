@@ -37,6 +37,8 @@ type Block struct {
 	seenMutex         sync.RWMutex
 	seenMap           map[uint16]*Client
 	processedActivity uint8
+	blockResults      [][]uint8
+	blockResultsMutex sync.Mutex
 }
 
 // BlockBodyIndex holds important block propoerties that are used as index for cache lookups.

@@ -707,15 +707,15 @@ func (dbw *dbWriter) buildDbConsolidationRequests(block *Block, orphaned bool, o
 		}
 	}
 
-	var blockResults [][]uint8
-	if sim != nil {
-		blockResults = sim.replayBlockResults(block)
-	}
-
 	consolidations := requests.Consolidations
 
 	if len(consolidations) == 0 {
 		return []*dbtypes.ConsolidationRequest{}
+	}
+
+	var blockResults [][]uint8
+	if sim != nil {
+		blockResults = sim.replayBlockResults(block)
 	}
 
 	blockNumber, _ := blockBody.ExecutionBlockNumber()
@@ -788,15 +788,15 @@ func (dbw *dbWriter) buildDbWithdrawalRequests(block *Block, orphaned bool, over
 		}
 	}
 
-	var blockResults [][]uint8
-	if sim != nil {
-		blockResults = sim.replayBlockResults(block)
-	}
-
 	withdrawalRequests := requests.Withdrawals
 
 	if len(withdrawalRequests) == 0 {
 		return []*dbtypes.WithdrawalRequest{}
+	}
+
+	var blockResults [][]uint8
+	if sim != nil {
+		blockResults = sim.replayBlockResults(block)
 	}
 
 	blockNumber, _ := blockBody.ExecutionBlockNumber()

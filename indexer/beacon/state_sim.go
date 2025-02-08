@@ -455,8 +455,15 @@ func (sim *stateSimulator) replayBlockResults(block *Block) [][]uint8 {
 		return nil
 	}
 
+	block.blockResultsMutex.Lock()
+	defer block.blockResultsMutex.Unlock()
+
+	if len(block.blockResults) > 0 {
+		return block.blockResults
+	}
+
 	parentBlocks := sim.getParentBlocks(block)
-	if sim.prevState == nil || (sim.prevState.block != nil && sim.prevState.block.Slot < block.Slot) {
+	if sim.prevState == nil || (sim.prevState.block != nil && sim.prevState.block.Slot > block.Slot) {
 		state := sim.resetState(block)
 		if state == nil {
 			return nil
@@ -480,5 +487,6 @@ func (sim *stateSimulator) replayBlockResults(block *Block) [][]uint8 {
 
 	results := sim.applyBlock(block)
 	sim.prevState.blockResults = results
+	block.blockResults = results
 	return results
 }

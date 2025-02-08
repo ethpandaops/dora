@@ -260,6 +260,7 @@ func (indexer *Indexer) processEpochPruning(pruneEpoch phase0.Epoch) (uint64, ui
 		block.processingStatus = dbtypes.UnfinalizedBlockStatusPruned
 		block.setBlockIndex(block.block)
 		block.block = nil
+		block.blockResults = nil
 	}
 
 	// clean up epoch stats cache
