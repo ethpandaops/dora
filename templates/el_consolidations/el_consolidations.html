@@ -184,7 +184,7 @@
                     <td data-timer="{{ $request.Time.Unix }}"><span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $request.Time }}">{{ formatRecentTimeShort $request.Time }}</span></td>
                     <td>
                       <div class="d-flex">
-                        <span class="flex-grow-1 text-truncate" style="max-width: 400px;">{{ ethAddressLink $request.SourceAddr }}</span>
+                        <span class="flex-grow-1 text-truncate" style="max-width: 300px;">{{ ethAddressLink $request.SourceAddr }}</span>
                         <div>
                           <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ formatEthAddress $request.SourceAddr }}"></i>
                         </div>
