@@ -83,7 +83,7 @@
               <tr>
                 <td colspan="7" class="text-center">
                   {{ if gt .AdditionalWithdrawalRequestCount 0 }}
-                    <a class="text-white" href="/validators/withdrawal_requests?f&f.pubkey=0x{{ printf "%x" .PublicKey }}">View {{ .AdditionalWithdrawalRequestCount }} more withdrawal requests</a>
+                    <a class="text-white" href="/validators/el_withdrawals?f=&f.pubkey=0x{{ printf "%x" .PublicKey }}">View {{ .AdditionalWithdrawalRequestCount }} more withdrawal requests</a>
                   {{ end }}
                 </td>
               </tr>
