@@ -8,6 +8,7 @@ import (
 
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
@@ -216,6 +217,8 @@ func buildFilteredElWithdrawalsPageData(pageIdx uint64, pageSize uint64, minSlot
 			elWithdrawalData.SlotRoot = request.SlotRoot
 			elWithdrawalData.Time = chainState.SlotToTime(phase0.Slot(request.SlotNumber))
 			elWithdrawalData.Status = uint64(1)
+			elWithdrawalData.Result = request.Result
+			elWithdrawalData.ResultMessage = getWithdrawalResultMessage(request.Result, chainState.GetSpecs())
 			if elWithdrawal.RequestOrphaned {
 				elWithdrawalData.Status = uint64(2)
 			}
@@ -273,4 +276,33 @@ func buildFilteredElWithdrawalsPageData(pageIdx uint64, pageSize uint64, minSlot
 	pageData.LastPageLink = fmt.Sprintf("/validators/el_withdrawals?f&%v&c=%v&p=%v", filterArgs.Encode(), pageData.PageSize, pageData.LastPageIndex)
 
 	return pageData
+}
+
+func getWithdrawalResultMessage(result uint8, specs *consensus.ChainSpec) string {
+	switch result {
+	case dbtypes.WithdrawalRequestResultUnknown:
+		return "Unknown result"
+	case dbtypes.WithdrawalRequestResultSuccess:
+		return "Success"
+	case dbtypes.WithdrawalRequestResultQueueFull:
+		return "Error: Queue is full"
+	case dbtypes.WithdrawalRequestResultValidatorNotFound:
+		return "Error: Validator not found"
+	case dbtypes.WithdrawalRequestResultValidatorInvalidCredentials:
+		return "Error: Validator has invalid credentials"
+	case dbtypes.WithdrawalRequestResultValidatorInvalidSender:
+		return "Error: Validator withdrawal address does not match tx sender"
+	case dbtypes.WithdrawalRequestResultValidatorNotActive:
+		return "Error: Validator is not active"
+	case dbtypes.WithdrawalRequestResultValidatorNotOldEnough:
+		return fmt.Sprintf("Error: Validator is not old enough (min. %v epochs)", specs.ShardCommitteePeriod)
+	case dbtypes.WithdrawalRequestResultValidatorNotCompounding:
+		return "Error: Validator is not compounding"
+	case dbtypes.WithdrawalRequestResultValidatorHasPendingWithdrawal:
+		return "Error: Validator has pending partial withdrawal"
+	case dbtypes.WithdrawalRequestResultValidatorBalanceTooLow:
+		return "Error: Validator balance too low"
+	default:
+		return fmt.Sprintf("Unknown error code: %d", result)
+	}
 }

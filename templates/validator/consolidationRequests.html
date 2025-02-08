@@ -84,7 +84,13 @@
                     {{ if eq $request.Status 0 }}
                       <span class="badge rounded-pill text-bg-secondary">Req. Pending</span>
                     {{ else if eq $request.Status 1 }}
-                      <span class="badge rounded-pill text-bg-success">Req. Included</span>
+                      {{ if eq $request.Result 0 }}
+                        <span class="badge rounded-pill text-bg-warning" data-bs-toggle="tooltip" title="Request was included but result is unknown">Req. Included</span>
+                      {{ else if eq $request.Result 1 }}
+                        <span class="badge rounded-pill text-bg-success">Req. Processed</span>
+                      {{ else }}
+                        <span class="badge rounded-pill text-bg-danger" data-bs-toggle="tooltip" data-bs-html="true" title="{{ $request.ResultMessage }}">Req. Failed</span>
+                      {{ end }}
                     {{ else if eq $request.Status 2 }}
                       <span class="badge rounded-pill text-bg-info">Req. Orphaned</span>
                     {{ end }}
