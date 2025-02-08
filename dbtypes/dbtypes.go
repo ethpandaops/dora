@@ -73,11 +73,13 @@ type Epoch struct {
 }
 
 type OrphanedBlock struct {
-	Root      []byte `db:"root"`
-	HeaderVer uint64 `db:"header_ver"`
-	HeaderSSZ []byte `db:"header_ssz"`
-	BlockVer  uint64 `db:"block_ver"`
-	BlockSSZ  []byte `db:"block_ssz"`
+	Root       []byte `db:"root"`
+	HeaderVer  uint64 `db:"header_ver"`
+	HeaderSSZ  []byte `db:"header_ssz"`
+	BlockVer   uint64 `db:"block_ver"`
+	BlockSSZ   []byte `db:"block_ssz"`
+	PayloadVer uint64 `db:"payload_ver"`
+	PayloadSSZ []byte `db:"payload_ssz"`
 }
 
 type SlotAssignment struct {
@@ -100,14 +102,16 @@ const (
 )
 
 type UnfinalizedBlock struct {
-	Root      []byte                 `db:"root"`
-	Slot      uint64                 `db:"slot"`
-	HeaderVer uint64                 `db:"header_ver"`
-	HeaderSSZ []byte                 `db:"header_ssz"`
-	BlockVer  uint64                 `db:"block_ver"`
-	BlockSSZ  []byte                 `db:"block_ssz"`
-	Status    UnfinalizedBlockStatus `db:"status"`
-	ForkId    uint64                 `db:"fork_id"`
+	Root       []byte                 `db:"root"`
+	Slot       uint64                 `db:"slot"`
+	HeaderVer  uint64                 `db:"header_ver"`
+	HeaderSSZ  []byte                 `db:"header_ssz"`
+	BlockVer   uint64                 `db:"block_ver"`
+	BlockSSZ   []byte                 `db:"block_ssz"`
+	PayloadVer uint64                 `db:"payload_ver"`
+	PayloadSSZ []byte                 `db:"payload_ssz"`
+	Status     UnfinalizedBlockStatus `db:"status"`
+	ForkId     uint64                 `db:"fork_id"`
 }
 
 type UnfinalizedEpoch struct {

@@ -9,6 +9,7 @@ import (
 
 	"github.com/attestantio/go-eth2-client/spec"
 	"github.com/attestantio/go-eth2-client/spec/deneb"
+	"github.com/attestantio/go-eth2-client/spec/eip7732"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 
 	"github.com/ethpandaops/dora/db"
@@ -21,6 +22,7 @@ type CombinedBlockResponse struct {
 	Root     phase0.Root
 	Header   *phase0.SignedBeaconBlockHeader
 	Block    *spec.VersionedSignedBeaconBlock
+	Payload  *eip7732.SignedExecutionPayloadEnvelope
 	Orphaned bool
 }
 
@@ -67,6 +69,7 @@ func (bs *ChainService) GetSlotDetailsByBlockroot(ctx context.Context, blockroot
 			Root:     blockInfo.Root,
 			Header:   blockInfo.GetHeader(),
 			Block:    blockInfo.GetBlock(),
+			Payload:  blockInfo.GetExecutionPayload(),
 			Orphaned: !bs.beaconIndexer.IsCanonicalBlock(blockInfo, nil),
 		}
 	} else if blockInfo, err := bs.beaconIndexer.GetOrphanedBlockByRoot(blockroot); blockInfo != nil || err != nil {
@@ -77,6 +80,7 @@ func (bs *ChainService) GetSlotDetailsByBlockroot(ctx context.Context, blockroot
 			Root:     blockInfo.Root,
 			Header:   blockInfo.GetHeader(),
 			Block:    blockInfo.GetBlock(),
+			Payload:  blockInfo.GetExecutionPayload(),
 			Orphaned: true,
 		}
 	} else {
@@ -125,10 +129,32 @@ func (bs *ChainService) GetSlotDetailsByBlockroot(ctx context.Context, blockroot
 		if err != nil || block == nil {
 			return nil, err
 		}
+
+		var payload *eip7732.SignedExecutionPayloadEnvelope
+		if block.Version >= spec.DataVersionEIP7732 {
+			for retry := headRetry; retry < headRetry+3; retry++ {
+				client := clients[headRetry%len(clients)]
+				payload, err = beacon.LoadExecutionPayload(ctx, client, blockroot)
+				if payload != nil {
+					break
+				} else if err != nil {
+					log := logrus.WithError(err)
+					if client != nil {
+						log = log.WithField("client", client.GetClient().GetName())
+					}
+					log.Warnf("Error loading block payload for root 0x%x", blockroot)
+				}
+			}
+			if err != nil || payload == nil {
+				return nil, err
+			}
+		}
+
 		result = &CombinedBlockResponse{
 			Root:     blockroot,
 			Header:   header,
 			Block:    block,
+			Payload:  payload,
 			Orphaned: false,
 		}
 	}
@@ -160,6 +186,7 @@ func (bs *ChainService) GetSlotDetailsBySlot(ctx context.Context, slot phase0.Sl
 			Root:     cachedBlock.Root,
 			Header:   cachedBlock.GetHeader(),
 			Block:    cachedBlock.GetBlock(),
+			Payload:  cachedBlock.GetExecutionPayload(),
 			Orphaned: isOrphaned,
 		}
 	} else {
@@ -210,10 +237,31 @@ func (bs *ChainService) GetSlotDetailsBySlot(ctx context.Context, slot phase0.Sl
 			return nil, err
 		}
 
+		var payload *eip7732.SignedExecutionPayloadEnvelope
+		if block.Version >= spec.DataVersionEIP7732 {
+			for retry := headRetry; retry < headRetry+3; retry++ {
+				client := clients[headRetry%len(clients)]
+				payload, err = beacon.LoadExecutionPayload(ctx, client, blockRoot)
+				if payload != nil {
+					break
+				} else if err != nil {
+					log := logrus.WithError(err)
+					if client != nil {
+						log = log.WithField("client", client.GetClient().GetName())
+					}
+					log.Warnf("Error loading block payload for root 0x%x", blockRoot)
+				}
+			}
+			if err != nil || payload == nil {
+				return nil, err
+			}
+		}
+
 		result = &CombinedBlockResponse{
 			Root:     blockRoot,
 			Header:   header,
 			Block:    block,
+			Payload:  payload,
 			Orphaned: orphaned,
 		}
 	}

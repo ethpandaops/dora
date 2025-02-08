@@ -556,9 +556,32 @@ func (c *Client) processExecutionPayloadEvent(executionPayloadEvent *v1.Executio
 		return nil
 	}
 
-	_, err := block.EnsureExecutionPayload(func() (*eip7732.SignedExecutionPayloadEnvelope, error) {
+	newPayload, err := block.EnsureExecutionPayload(func() (*eip7732.SignedExecutionPayloadEnvelope, error) {
 		return LoadExecutionPayload(c.getContext(), c, executionPayloadEvent.BlockRoot)
 	})
+	if err != nil {
+		return err
+	}
 
-	return err
+	if newPayload {
+		// write payload to db
+		payloadVer, payloadSSZ, err := marshalVersionedSignedExecutionPayloadEnvelopeSSZ(block.dynSsz, block.executionPayload, c.indexer.blockCompression)
+		if err != nil {
+			return fmt.Errorf("marshal execution payload ssz failed: %v", err)
+		}
+
+		err = db.RunDBTransaction(func(tx *sqlx.Tx) error {
+			err := db.UpdateUnfinalizedBlockPayload(block.Root[:], payloadVer, payloadSSZ, tx)
+			if err != nil {
+				return err
+			}
+
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

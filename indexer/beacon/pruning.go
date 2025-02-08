@@ -257,8 +257,9 @@ func (indexer *Indexer) processEpochPruning(pruneEpoch phase0.Epoch) (uint64, ui
 	for _, block := range pruningBlocks {
 		block.isInFinalizedDb = true
 		block.processingStatus = dbtypes.UnfinalizedBlockStatusPruned
-		block.setBlockIndex(block.block)
+		block.setBlockIndex(block.block, block.executionPayload)
 		block.block = nil
+		block.executionPayload = nil
 	}
 
 	// clean up epoch stats cache

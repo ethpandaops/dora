@@ -121,7 +121,7 @@ func (block *Block) GetBlock() *spec.VersionedSignedBeaconBlock {
 	}
 
 	if block.isInUnfinalizedDb {
-		dbBlock := db.GetUnfinalizedBlock(block.Root[:])
+		dbBlock := db.GetUnfinalizedBlock(block.Root[:], false, true, false)
 		if dbBlock != nil {
 			blockBody, err := unmarshalVersionedSignedBeaconBlockSSZ(block.dynSsz, dbBlock.BlockVer, dbBlock.BlockSSZ)
 			if err == nil {
@@ -155,15 +155,13 @@ func (block *Block) GetExecutionPayload() *eip7732.SignedExecutionPayloadEnvelop
 	}
 
 	if block.hasExecutionPayload && block.isInUnfinalizedDb {
-		/* TODO: add execution payload to unfinalized blocks table
-		dbBlock := db.GetUnfinalizedBlock(block.Root[:])
+		dbBlock := db.GetUnfinalizedBlock(block.Root[:], false, false, true)
 		if dbBlock != nil {
-			blockBody, err := unmarshalVersionedSignedBeaconBlockSSZ(block.dynSsz, dbBlock.BlockVer, dbBlock.BlockSSZ)
+			payload, err := unmarshalVersionedSignedExecutionPayloadEnvelopeSSZ(block.dynSsz, dbBlock.PayloadVer, dbBlock.PayloadSSZ)
 			if err == nil {
-				return blockBody
+				return payload
 			}
 		}
-		*/
 	}
 
 	return nil
@@ -235,7 +233,7 @@ func (block *Block) EnsureHeader(loadHeader func() (*phase0.SignedBeaconBlockHea
 
 // SetBlock sets the versioned signed beacon block of this block.
 func (block *Block) SetBlock(body *spec.VersionedSignedBeaconBlock) {
-	block.setBlockIndex(body)
+	block.setBlockIndex(body, nil)
 	block.block = body
 
 	if block.blockChan != nil {
@@ -266,7 +264,7 @@ func (block *Block) EnsureBlock(loadBlock func() (*spec.VersionedSignedBeaconBlo
 		return false, err
 	}
 
-	block.setBlockIndex(blockBody)
+	block.setBlockIndex(blockBody, nil)
 	block.block = blockBody
 	if block.blockChan != nil {
 		close(block.blockChan)
@@ -278,6 +276,7 @@ func (block *Block) EnsureBlock(loadBlock func() (*spec.VersionedSignedBeaconBlo
 
 // SetExecutionPayload sets the execution payload of this block.
 func (block *Block) SetExecutionPayload(payload *eip7732.SignedExecutionPayloadEnvelope) {
+	block.setBlockIndex(block.block, payload)
 	block.executionPayload = payload
 
 	if block.executionPayloadChan != nil {
@@ -312,6 +311,7 @@ func (block *Block) EnsureExecutionPayload(loadExecutionPayload func() (*eip7732
 		return false, nil
 	}
 
+	block.setBlockIndex(block.block, payload)
 	block.executionPayload = payload
 	block.hasExecutionPayload = true
 	if block.executionPayloadChan != nil {
@@ -323,12 +323,23 @@ func (block *Block) EnsureExecutionPayload(loadExecutionPayload func() (*eip7732
 }
 
 // setBlockIndex sets the block index of this block.
-func (block *Block) setBlockIndex(body *spec.VersionedSignedBeaconBlock) {
-	blockIndex := &BlockBodyIndex{}
-	blockIndex.Graffiti, _ = body.Graffiti()
-	blockIndex.ExecutionExtraData, _ = getBlockExecutionExtraData(body)
-	blockIndex.ExecutionHash, _ = body.ExecutionBlockHash()
-	blockIndex.ExecutionNumber, _ = body.ExecutionBlockNumber()
+func (block *Block) setBlockIndex(body *spec.VersionedSignedBeaconBlock, payload *eip7732.SignedExecutionPayloadEnvelope) {
+	blockIndex := block.blockIndex
+	if blockIndex == nil {
+		blockIndex = &BlockBodyIndex{}
+	}
+
+	if body != nil {
+		blockIndex.Graffiti, _ = body.Graffiti()
+		blockIndex.ExecutionExtraData, _ = getBlockExecutionExtraData(body)
+		blockIndex.ExecutionHash, _ = body.ExecutionBlockHash()
+		if execNumber, err := body.ExecutionBlockNumber(); err == nil {
+			blockIndex.ExecutionNumber = uint64(execNumber)
+		}
+	}
+	if payload != nil {
+		blockIndex.ExecutionNumber = uint64(payload.Message.Payload.BlockNumber)
+	}
 
 	block.blockIndex = blockIndex
 }
@@ -341,7 +352,7 @@ func (block *Block) GetBlockIndex() *BlockBodyIndex {
 
 	blockBody := block.GetBlock()
 	if blockBody != nil {
-		block.setBlockIndex(blockBody)
+		block.setBlockIndex(blockBody, block.GetExecutionPayload())
 	}
 
 	return block.blockIndex
@@ -383,13 +394,24 @@ func (block *Block) buildOrphanedBlock(compress bool) (*dbtypes.OrphanedBlock, e
 		return nil, fmt.Errorf("marshal block ssz failed: %v", err)
 	}
 
-	return &dbtypes.OrphanedBlock{
+	orphanedBlock := &dbtypes.OrphanedBlock{
 		Root:      block.Root[:],
 		HeaderVer: 1,
 		HeaderSSZ: headerSSZ,
 		BlockVer:  blockVer,
 		BlockSSZ:  blockSSZ,
-	}, nil
+	}
+
+	if block.executionPayload != nil {
+		payloadVer, payloadSSZ, err := marshalVersionedSignedExecutionPayloadEnvelopeSSZ(block.dynSsz, block.executionPayload, compress)
+		if err != nil {
+			return nil, fmt.Errorf("marshal execution payload ssz failed: %v", err)
+		}
+		orphanedBlock.PayloadVer = payloadVer
+		orphanedBlock.PayloadSSZ = payloadSSZ
+	}
+
+	return orphanedBlock, nil
 }
 
 // unpruneBlockBody retrieves the block body from the database if it is not already present.
@@ -398,9 +420,12 @@ func (block *Block) unpruneBlockBody() {
 		return
 	}
 
-	dbBlock := db.GetUnfinalizedBlock(block.Root[:])
+	dbBlock := db.GetUnfinalizedBlock(block.Root[:], false, true, true)
 	if dbBlock != nil {
 		block.block, _ = unmarshalVersionedSignedBeaconBlockSSZ(block.dynSsz, dbBlock.BlockVer, dbBlock.BlockSSZ)
+		if len(dbBlock.PayloadSSZ) > 0 {
+			block.executionPayload, _ = unmarshalVersionedSignedExecutionPayloadEnvelopeSSZ(block.dynSsz, dbBlock.PayloadVer, dbBlock.PayloadSSZ)
+		}
 	}
 }
 
