@@ -119,7 +119,17 @@ func (sim *stateSimulator) getValidator(index phase0.ValidatorIndex) *phase0.Val
 	var validator *phase0.Validator
 
 	if sim.validatorSet != nil && len(sim.validatorSet) > int(index) {
-		validator = sim.validatorSet[index]
+		valdata := sim.validatorSet[index]
+		validator = &phase0.Validator{
+			PublicKey:                  valdata.PublicKey,
+			WithdrawalCredentials:      valdata.WithdrawalCredentials,
+			EffectiveBalance:           valdata.EffectiveBalance,
+			Slashed:                    valdata.Slashed,
+			ActivationEligibilityEpoch: valdata.ActivationEligibilityEpoch,
+			ActivationEpoch:            valdata.ActivationEpoch,
+			ExitEpoch:                  valdata.ExitEpoch,
+			WithdrawableEpoch:          valdata.WithdrawableEpoch,
+		}
 	} else {
 		validator = sim.indexer.validatorCache.getValidatorByIndexAndRoot(index, sim.prevState.epochRoot)
 	}
@@ -175,7 +185,12 @@ func (sim *stateSimulator) applyConsolidation(consolidation *electra.Consolidati
 
 	if srcValidator == tgtValidator {
 		// self consolidation, set withdrawal credentials to 0x02
-		srcValidator.WithdrawalCredentials[0] = 0x02
+		if srcValidator.WithdrawalCredentials[0] == 0x01 {
+			withdrawalCreds := make([]byte, 32)
+			copy(withdrawalCreds, srcValidator.WithdrawalCredentials)
+			withdrawalCreds[0] = 0x02
+			srcValidator.WithdrawalCredentials = withdrawalCreds
+		}
 		return dbtypes.ConsolidationRequestResultSuccess
 	}
 
