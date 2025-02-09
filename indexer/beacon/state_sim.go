@@ -478,7 +478,22 @@ func (sim *stateSimulator) replayBlockResults(block *Block) [][]uint8 {
 	}
 
 	parentBlocks := sim.getParentBlocks(block)
-	if sim.prevState == nil || (sim.prevState.block != nil && sim.prevState.block.Slot > block.Slot) {
+
+	canReuseParentState := false
+	if sim.prevState != nil && sim.prevState.block != nil {
+		if sim.prevState.block.Slot == block.Slot {
+			canReuseParentState = bytes.Equal(sim.prevState.block.Root[:], block.Root[:])
+		} else if sim.prevState.block.Slot < block.Slot {
+			for _, parentBlock := range parentBlocks {
+				if parentBlock.Slot == sim.prevState.block.Slot {
+					canReuseParentState = bytes.Equal(parentBlock.Root[:], sim.prevState.block.Root[:])
+					break
+				}
+			}
+		}
+	}
+
+	if !canReuseParentState {
 		state := sim.resetState(block)
 		if state == nil {
 			return nil
