@@ -65,6 +65,7 @@ type IndexPageDataBlocks struct {
 	Proposer     uint64    `json:"proposer"`
 	ProposerName string    `json:"proposer_name"`
 	Status       uint64    `json:"status"`
+	NoPayload    bool      `json:"no_payload"`
 	BlockRoot    []byte    `json:"block_root"`
 }
 
@@ -76,6 +77,7 @@ type IndexPageDataSlots struct {
 	Proposer     uint64                    `json:"proposer"`
 	ProposerName string                    `json:"proposer_name"`
 	Status       uint64                    `json:"status"`
+	NoPayload    bool                      `json:"no_payload"`
 	BlockRoot    []byte                    `json:"block_root"`
 	ParentRoot   []byte                    `json:"-"`
 	ForkGraph    []*IndexPageDataForkGraph `json:"fork_graph"`

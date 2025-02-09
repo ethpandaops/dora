@@ -44,6 +44,7 @@ type EpochPageDataSlot struct {
 	Ts                    time.Time `json:"ts"`
 	Scheduled             bool      `json:"scheduled"`
 	Status                uint8     `json:"status"`
+	NoPayload             bool      `json:"no_payload"`
 	Proposer              uint64    `json:"proposer"`
 	ProposerName          string    `json:"proposer_name"`
 	AttestationCount      uint64    `json:"attestation_count"`

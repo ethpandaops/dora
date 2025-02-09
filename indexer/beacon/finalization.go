@@ -8,6 +8,7 @@ import (
 
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
 	"github.com/attestantio/go-eth2-client/spec"
+	"github.com/attestantio/go-eth2-client/spec/eip7732"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
@@ -145,6 +146,15 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 			if block.block == nil {
 				return true, fmt.Errorf("missing block body for canonical block %v (%v)", block.Slot, block.Root.String())
 			}
+
+			if chainState.IsEip7732Enabled(chainState.EpochOfSlot(block.Slot)) {
+				if _, err := block.EnsureExecutionPayload(func() (*eip7732.SignedExecutionPayloadEnvelope, error) {
+					return LoadExecutionPayload(client.getContext(), client, block.Root)
+				}); err != nil {
+					client.logger.Warnf("failed loading finalized execution payload %v (%v): %v", block.Slot, block.Root.String(), err)
+				}
+			}
+
 			canonicalBlocks = append(canonicalBlocks, block)
 		} else {
 			if block.block == nil {

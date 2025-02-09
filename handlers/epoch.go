@@ -173,6 +173,7 @@ func buildEpochPageData(epoch uint64) (*models.EpochPageData, time.Duration) {
 				Ts:                    chainState.SlotToTime(phase0.Slot(slot)),
 				Scheduled:             slot >= uint64(currentSlot) && dbSlot.Status == dbtypes.Missing,
 				Status:                uint8(dbSlot.Status),
+				NoPayload:             !dbSlot.HasPayload && chainState.IsEip7732Enabled(phase0.Epoch(epoch)),
 				Proposer:              dbSlot.Proposer,
 				ProposerName:          services.GlobalBeaconService.GetValidatorName(dbSlot.Proposer),
 				AttestationCount:      dbSlot.AttestationCount,

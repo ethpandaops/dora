@@ -48,6 +48,7 @@ type Slot struct {
 	EthBlockExtraText     string     `db:"eth_block_extra_text"`
 	SyncParticipation     float32    `db:"sync_participation"`
 	ForkId                uint64     `db:"fork_id"`
+	HasPayload            bool       `db:"has_payload"`
 }
 
 type Epoch struct {
@@ -70,14 +71,17 @@ type Epoch struct {
 	BLSChangeCount        uint64  `db:"bls_change_count"`
 	EthTransactionCount   uint64  `db:"eth_transaction_count"`
 	SyncParticipation     float32 `db:"sync_participation"`
+	PayloadCount          uint64  `db:"payload_count"`
 }
 
 type OrphanedBlock struct {
-	Root      []byte `db:"root"`
-	HeaderVer uint64 `db:"header_ver"`
-	HeaderSSZ []byte `db:"header_ssz"`
-	BlockVer  uint64 `db:"block_ver"`
-	BlockSSZ  []byte `db:"block_ssz"`
+	Root       []byte `db:"root"`
+	HeaderVer  uint64 `db:"header_ver"`
+	HeaderSSZ  []byte `db:"header_ssz"`
+	BlockVer   uint64 `db:"block_ver"`
+	BlockSSZ   []byte `db:"block_ssz"`
+	PayloadVer uint64 `db:"payload_ver"`
+	PayloadSSZ []byte `db:"payload_ssz"`
 }
 
 type SlotAssignment struct {
@@ -100,14 +104,16 @@ const (
 )
 
 type UnfinalizedBlock struct {
-	Root      []byte                 `db:"root"`
-	Slot      uint64                 `db:"slot"`
-	HeaderVer uint64                 `db:"header_ver"`
-	HeaderSSZ []byte                 `db:"header_ssz"`
-	BlockVer  uint64                 `db:"block_ver"`
-	BlockSSZ  []byte                 `db:"block_ssz"`
-	Status    UnfinalizedBlockStatus `db:"status"`
-	ForkId    uint64                 `db:"fork_id"`
+	Root       []byte                 `db:"root"`
+	Slot       uint64                 `db:"slot"`
+	HeaderVer  uint64                 `db:"header_ver"`
+	HeaderSSZ  []byte                 `db:"header_ssz"`
+	BlockVer   uint64                 `db:"block_ver"`
+	BlockSSZ   []byte                 `db:"block_ssz"`
+	PayloadVer uint64                 `db:"payload_ver"`
+	PayloadSSZ []byte                 `db:"payload_ssz"`
+	Status     UnfinalizedBlockStatus `db:"status"`
+	ForkId     uint64                 `db:"fork_id"`
 }
 
 type UnfinalizedEpoch struct {
@@ -133,6 +139,7 @@ type UnfinalizedEpoch struct {
 	BLSChangeCount        uint64  `db:"bls_change_count"`
 	EthTransactionCount   uint64  `db:"eth_transaction_count"`
 	SyncParticipation     float32 `db:"sync_participation"`
+	PayloadCount          uint64  `db:"payload_count"`
 }
 
 type Fork struct {

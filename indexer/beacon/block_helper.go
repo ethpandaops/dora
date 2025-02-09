@@ -208,6 +208,82 @@ func unmarshalVersionedSignedBeaconBlockJson(version uint64, ssz []byte) (*spec.
 	return block, nil
 }
 
+// marshalVersionedSignedExecutionPayloadEnvelopeSSZ marshals a signed execution payload envelope using SSZ encoding.
+func marshalVersionedSignedExecutionPayloadEnvelopeSSZ(dynSsz *dynssz.DynSsz, payload *eip7732.SignedExecutionPayloadEnvelope, compress bool) (version uint64, ssz []byte, err error) {
+	if utils.Config.KillSwitch.DisableSSZEncoding {
+		// SSZ encoding disabled, use json instead
+		version, ssz, err = marshalVersionedSignedExecutionPayloadEnvelopeJson(payload)
+	} else {
+		// SSZ encoding
+		version = uint64(spec.DataVersionEIP7732)
+		ssz, err = dynSsz.MarshalSSZ(payload)
+	}
+
+	if compress {
+		ssz = compressBytes(ssz)
+		version |= compressionFlag
+	}
+
+	return
+}
+
+// unmarshalVersionedSignedExecutionPayloadEnvelopeSSZ unmarshals a versioned signed execution payload envelope using SSZ encoding.
+func unmarshalVersionedSignedExecutionPayloadEnvelopeSSZ(dynSsz *dynssz.DynSsz, version uint64, ssz []byte) (*eip7732.SignedExecutionPayloadEnvelope, error) {
+	if (version & compressionFlag) != 0 {
+		// decompress
+		if d, err := decompressBytes(ssz); err != nil {
+			return nil, fmt.Errorf("failed to decompress: %v", err)
+		} else {
+			ssz = d
+			version &= ^compressionFlag
+		}
+	}
+
+	if (version & jsonVersionFlag) != 0 {
+		// JSON encoding
+		return unmarshalVersionedSignedExecutionPayloadEnvelopeJson(version, ssz)
+	}
+
+	if version != uint64(spec.DataVersionEIP7732) {
+		return nil, fmt.Errorf("unknown version")
+	}
+
+	// SSZ encoding
+	payload := &eip7732.SignedExecutionPayloadEnvelope{}
+	if err := dynSsz.UnmarshalSSZ(payload, ssz); err != nil {
+		return nil, fmt.Errorf("failed to decode eip7732 signed execution payload envelope: %v", err)
+	}
+
+	return payload, nil
+}
+
+// marshalVersionedSignedExecutionPayloadEnvelopeJson marshals a versioned signed execution payload envelope using JSON encoding.
+func marshalVersionedSignedExecutionPayloadEnvelopeJson(payload *eip7732.SignedExecutionPayloadEnvelope) (version uint64, jsonRes []byte, err error) {
+	version = uint64(spec.DataVersionEIP7732)
+	jsonRes, err = payload.MarshalJSON()
+
+	version |= jsonVersionFlag
+
+	return
+}
+
+// unmarshalVersionedSignedExecutionPayloadEnvelopeJson unmarshals a versioned signed execution payload envelope using JSON encoding.
+func unmarshalVersionedSignedExecutionPayloadEnvelopeJson(version uint64, ssz []byte) (*eip7732.SignedExecutionPayloadEnvelope, error) {
+	if version&jsonVersionFlag == 0 {
+		return nil, fmt.Errorf("no json encoding")
+	}
+
+	if version-jsonVersionFlag != uint64(spec.DataVersionEIP7732) {
+		return nil, fmt.Errorf("unknown version")
+	}
+
+	payload := &eip7732.SignedExecutionPayloadEnvelope{}
+	if err := payload.UnmarshalJSON(ssz); err != nil {
+		return nil, fmt.Errorf("failed to decode eip7732 signed execution payload envelope: %v", err)
+	}
+	return payload, nil
+}
+
 // getBlockExecutionExtraData returns the extra data from the execution payload of a versioned signed beacon block.
 func getBlockExecutionExtraData(v *spec.VersionedSignedBeaconBlock) ([]byte, error) {
 	switch v.Version {

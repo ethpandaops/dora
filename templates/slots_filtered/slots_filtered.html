@@ -183,9 +183,9 @@
                       {{- if eq $slot.Slot 0 }}
                         <span class="badge rounded-pill text-bg-info">Genesis</span>
                       {{- else if eq $slot.Status 1 }}
-                        <span class="badge rounded-pill text-bg-success">Proposed</span>
+                        <span class="badge rounded-pill text-bg-success {{ if $slot.NoPayload }}split-warning{{ end }}">Proposed</span>
                       {{- else if eq $slot.Status 2 }}
-                        <span class="badge rounded-pill text-bg-info">Orphaned</span>
+                        <span class="badge rounded-pill text-bg-info {{ if $slot.NoPayload }}split-warning{{ end }}">Missed (Orphaned)</span>
                       {{- else if $slot.Scheduled }}
                         <span class="badge rounded-pill text-bg-secondary">Scheduled</span>
                       {{- else if not $slot.Synchronized }}
@@ -193,7 +193,7 @@
                       {{- else if eq $slot.Status 0 }}
                         <span class="badge rounded-pill text-bg-warning">Missed</span>
                       {{- else }}
-                        <span class="badge rounded-pill text-bg-dark">Unknown</span>
+                        <span class="badge rounded-pill text-bg-dark {{ if $slot.NoPayload }}split-warning{{ end }}">Unknown</span>
                       {{- end }}
                     </td>
                     {{- end }}

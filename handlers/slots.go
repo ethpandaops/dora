@@ -142,12 +142,14 @@ func buildSlotsPageData(firstSlot uint64, pageSize uint64) (*models.SlotsPageDat
 			dbSlot := dbSlots[dbIdx]
 			dbIdx++
 
+			epoch := chainState.EpochOfSlot(phase0.Slot(slot))
 			slotData := &models.SlotsPageDataSlot{
 				Slot:                  slot,
-				Epoch:                 uint64(chainState.EpochOfSlot(phase0.Slot(slot))),
+				Epoch:                 uint64(epoch),
 				Ts:                    chainState.SlotToTime(phase0.Slot(slot)),
 				Finalized:             finalized,
 				Status:                uint8(dbSlot.Status),
+				NoPayload:             !dbSlot.HasPayload && chainState.IsEip7732Enabled(epoch),
 				Scheduled:             slot >= uint64(currentSlot) && dbSlot.Status == dbtypes.Missing,
 				Synchronized:          dbSlot.SyncParticipation != -1,
 				Proposer:              dbSlot.Proposer,
