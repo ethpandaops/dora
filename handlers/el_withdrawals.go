@@ -285,7 +285,7 @@ func getWithdrawalResultMessage(result uint8, specs *consensus.ChainSpec) string
 	case dbtypes.WithdrawalRequestResultSuccess:
 		return "Success"
 	case dbtypes.WithdrawalRequestResultQueueFull:
-		return "Error: Queue is full"
+		return "Error: Withdrawal queue is full"
 	case dbtypes.WithdrawalRequestResultValidatorNotFound:
 		return "Error: Validator not found"
 	case dbtypes.WithdrawalRequestResultValidatorInvalidCredentials:

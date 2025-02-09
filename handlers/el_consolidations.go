@@ -303,7 +303,7 @@ func getConsolidationResultMessage(result uint8, specs *consensus.ChainSpec) str
 		requiredBalance := getConsolidationRequiredBalance(specs)
 		return fmt.Sprintf("Error: Total active balance too low (required: %v ETH)", requiredBalance/beacon.EtherGweiFactor)
 	case dbtypes.ConsolidationRequestResultQueueFull:
-		return "Error: Queue is full"
+		return "Error: Consolidation queue is full"
 	case dbtypes.ConsolidationRequestResultSrcNotFound:
 		return "Error: Source validator not found"
 	case dbtypes.ConsolidationRequestResultSrcInvalidCredentials:
