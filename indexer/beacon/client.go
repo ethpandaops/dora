@@ -146,7 +146,7 @@ func (c *Client) runClientLoop() error {
 
 	c.headRoot = headRoot
 
-	headBlock, isNew, processingTimes, err := c.processBlock(headSlot, headRoot, nil)
+	headBlock, isNew, processingTimes, err := c.processBlock(headSlot, headRoot, nil, true)
 	if err != nil {
 		return fmt.Errorf("failed processing head block: %v", err)
 	}
@@ -294,7 +294,7 @@ func (c *Client) processHeadEvent(headEvent *v1.HeadEvent) error {
 
 // processStreamBlock processes a block received from the stream (either via block or head events).
 func (c *Client) processStreamBlock(slot phase0.Slot, root phase0.Root) (*Block, error) {
-	block, isNew, processingTimes, err := c.processBlock(slot, root, nil)
+	block, isNew, processingTimes, err := c.processBlock(slot, root, nil, false)
 	if err != nil {
 		return nil, err
 	}
@@ -348,7 +348,7 @@ func (c *Client) processReorg(oldHead *Block, newHead *Block) error {
 }
 
 // processBlock processes a block (from stream & polling).
-func (c *Client) processBlock(slot phase0.Slot, root phase0.Root, header *phase0.SignedBeaconBlockHeader) (block *Block, isNew bool, processingTimes []time.Duration, err error) {
+func (c *Client) processBlock(slot phase0.Slot, root phase0.Root, header *phase0.SignedBeaconBlockHeader, loadPayload bool) (block *Block, isNew bool, processingTimes []time.Duration, err error) {
 	chainState := c.client.GetPool().GetChainState()
 	finalizedSlot := chainState.GetFinalizedSlot()
 	processingTimes = make([]time.Duration, 3)
@@ -387,7 +387,6 @@ func (c *Client) processBlock(slot phase0.Slot, root phase0.Root, header *phase0
 	}
 
 	isNew, err = block.EnsureBlock(func() (*spec.VersionedSignedBeaconBlock, error) {
-
 		t1 := time.Now()
 		defer func() {
 			processingTimes[0] += time.Since(t1)
@@ -397,6 +396,25 @@ func (c *Client) processBlock(slot phase0.Slot, root phase0.Root, header *phase0
 	})
 	if err != nil {
 		return
+	}
+
+	if loadPayload {
+		newPayload, _ := block.EnsureExecutionPayload(func() (*eip7732.SignedExecutionPayloadEnvelope, error) {
+			t1 := time.Now()
+			defer func() {
+				processingTimes[0] += time.Since(t1)
+			}()
+
+			return LoadExecutionPayload(c.getContext(), c, root)
+		})
+
+		if !isNew && newPayload {
+			// write payload to db
+			err = c.persistExecutionPayload(block)
+			if err != nil {
+				return
+			}
+		}
 	}
 
 	if slot >= finalizedSlot && isNew {
@@ -494,7 +512,7 @@ func (c *Client) backfillParentBlocks(headBlock *Block) error {
 		if parentBlock == nil {
 			var err error
 
-			parentBlock, isNewBlock, processingTimes, err = c.processBlock(parentSlot, parentRoot, parentHead)
+			parentBlock, isNewBlock, processingTimes, err = c.processBlock(parentSlot, parentRoot, parentHead, true)
 			if err != nil {
 				return fmt.Errorf("could not process block [0x%x]: %v", parentRoot, err)
 			}
@@ -565,23 +583,27 @@ func (c *Client) processExecutionPayloadEvent(executionPayloadEvent *v1.Executio
 
 	if newPayload {
 		// write payload to db
-		payloadVer, payloadSSZ, err := marshalVersionedSignedExecutionPayloadEnvelopeSSZ(block.dynSsz, block.executionPayload, c.indexer.blockCompression)
-		if err != nil {
-			return fmt.Errorf("marshal execution payload ssz failed: %v", err)
-		}
-
-		err = db.RunDBTransaction(func(tx *sqlx.Tx) error {
-			err := db.UpdateUnfinalizedBlockPayload(block.Root[:], payloadVer, payloadSSZ, tx)
-			if err != nil {
-				return err
-			}
-
-			return nil
-		})
+		err = c.persistExecutionPayload(block)
 		if err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+func (c *Client) persistExecutionPayload(block *Block) error {
+	payloadVer, payloadSSZ, err := marshalVersionedSignedExecutionPayloadEnvelopeSSZ(block.dynSsz, block.executionPayload, c.indexer.blockCompression)
+	if err != nil {
+		return fmt.Errorf("marshal execution payload ssz failed: %v", err)
+	}
+
+	return db.RunDBTransaction(func(tx *sqlx.Tx) error {
+		err := db.UpdateUnfinalizedBlockPayload(block.Root[:], payloadVer, payloadSSZ, tx)
+		if err != nil {
+			return err
+		}
+
+		return nil
+	})
 }
