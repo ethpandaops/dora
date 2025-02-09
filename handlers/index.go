@@ -284,13 +284,16 @@ func buildIndexPageRecentBlocksData(pageData *models.IndexPageData, recentBlockC
 		if blockData == nil {
 			continue
 		}
+
+		epoch := chainState.EpochOfSlot(phase0.Slot(blockData.Slot))
 		blockModel := &models.IndexPageDataBlocks{
-			Epoch:        uint64(chainState.EpochOfSlot(phase0.Slot(blockData.Slot))),
+			Epoch:        uint64(epoch),
 			Slot:         blockData.Slot,
 			Ts:           chainState.SlotToTime(phase0.Slot(blockData.Slot)),
 			Proposer:     blockData.Proposer,
 			ProposerName: services.GlobalBeaconService.GetValidatorName(blockData.Proposer),
 			Status:       uint64(blockData.Status),
+			NoPayload:    !blockData.HasPayload && chainState.IsEip7732Enabled(epoch),
 			BlockRoot:    blockData.Root,
 		}
 		if blockData.EthBlockNumber != nil {
@@ -329,11 +332,13 @@ func buildIndexPageRecentSlotsData(pageData *models.IndexPageData, firstSlot pha
 			dbSlot := dbSlots[dbIdx]
 			dbIdx++
 
+			epoch := chainState.EpochOfSlot(phase0.Slot(dbSlot.Slot))
 			slotData := &models.IndexPageDataSlots{
 				Slot:         slot,
-				Epoch:        uint64(chainState.EpochOfSlot(phase0.Slot(dbSlot.Slot))),
+				Epoch:        uint64(epoch),
 				Ts:           chainState.SlotToTime(phase0.Slot(slot)),
 				Status:       uint64(dbSlot.Status),
+				NoPayload:    !dbSlot.HasPayload && chainState.IsEip7732Enabled(epoch),
 				Proposer:     dbSlot.Proposer,
 				ProposerName: services.GlobalBeaconService.GetValidatorName(dbSlot.Proposer),
 				BlockRoot:    dbSlot.Root,

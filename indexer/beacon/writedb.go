@@ -250,6 +250,7 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 	var executionTransactions []bellatrix.Transaction
 	var executionWithdrawals []*capella.Withdrawal
 	var depositRequests []*electra.DepositRequest
+	var hasPayload bool
 
 	if chainState.IsEip7732Enabled(chainState.EpochOfSlot(block.Slot)) {
 		blockPayload := block.GetExecutionPayload()
@@ -259,6 +260,7 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 			executionTransactions = blockPayload.Message.Payload.Transactions
 			executionWithdrawals = blockPayload.Message.Payload.Withdrawals
 			depositRequests = blockPayload.Message.ExecutionRequests.Deposits
+			hasPayload = true
 		}
 	} else {
 		executionBlockNumber, _ = blockBody.ExecutionBlockNumber()
@@ -288,6 +290,7 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 		AttesterSlashingCount: uint64(len(attesterSlashings)),
 		ProposerSlashingCount: uint64(len(proposerSlashings)),
 		BLSChangeCount:        uint64(len(blsToExecChanges)),
+		HasPayload:            hasPayload,
 	}
 
 	if overrideForkId != nil {
@@ -394,14 +397,26 @@ func (dbw *dbWriter) buildDbEpoch(epoch phase0.Epoch, blocks []*Block, epochStat
 			proposerSlashings, _ := blockBody.ProposerSlashings()
 			blsToExecChanges, _ := blockBody.BLSToExecutionChanges()
 			syncAggregate, _ := blockBody.SyncAggregate()
-			executionTransactions, _ := blockBody.ExecutionTransactions()
-			executionWithdrawals, _ := blockBody.Withdrawals()
 
+			var executionTransactions []bellatrix.Transaction
+			var executionWithdrawals []*capella.Withdrawal
 			var depositRequests []*electra.DepositRequest
 
-			executionRequests, _ := blockBody.ExecutionRequests()
-			if executionRequests != nil {
-				depositRequests = executionRequests.Deposits
+			if chainState.IsEip7732Enabled(chainState.EpochOfSlot(block.Slot)) {
+				blockPayload := block.GetExecutionPayload()
+				if blockPayload != nil {
+					dbEpoch.PayloadCount++
+					executionTransactions = blockPayload.Message.Payload.Transactions
+					executionWithdrawals = blockPayload.Message.Payload.Withdrawals
+					depositRequests = blockPayload.Message.ExecutionRequests.Deposits
+				}
+			} else {
+				executionTransactions, _ = blockBody.ExecutionTransactions()
+				executionWithdrawals, _ = blockBody.Withdrawals()
+				executionRequests, _ := blockBody.ExecutionRequests()
+				if executionRequests != nil {
+					depositRequests = executionRequests.Deposits
+				}
 			}
 
 			dbEpoch.AttestationCount += uint64(len(attestations))

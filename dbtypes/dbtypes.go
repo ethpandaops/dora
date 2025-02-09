@@ -48,6 +48,7 @@ type Slot struct {
 	EthBlockExtraText     string     `db:"eth_block_extra_text"`
 	SyncParticipation     float32    `db:"sync_participation"`
 	ForkId                uint64     `db:"fork_id"`
+	HasPayload            bool       `db:"has_payload"`
 }
 
 type Epoch struct {
@@ -70,6 +71,7 @@ type Epoch struct {
 	BLSChangeCount        uint64  `db:"bls_change_count"`
 	EthTransactionCount   uint64  `db:"eth_transaction_count"`
 	SyncParticipation     float32 `db:"sync_participation"`
+	PayloadCount          uint64  `db:"payload_count"`
 }
 
 type OrphanedBlock struct {
@@ -137,6 +139,7 @@ type UnfinalizedEpoch struct {
 	BLSChangeCount        uint64  `db:"bls_change_count"`
 	EthTransactionCount   uint64  `db:"eth_transaction_count"`
 	SyncParticipation     float32 `db:"sync_participation"`
+	PayloadCount          uint64  `db:"payload_count"`
 }
 
 type Fork struct {

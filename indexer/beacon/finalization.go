@@ -153,10 +153,6 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 				}); err != nil {
 					client.logger.Warnf("failed loading finalized execution payload %v (%v): %v", block.Slot, block.Root.String(), err)
 				}
-
-				if block.executionPayload == nil && !lastTry {
-					return false, fmt.Errorf("missing execution payload for canonical block %v (%v)", block.Slot, block.Root.String())
-				}
 			}
 
 			canonicalBlocks = append(canonicalBlocks, block)

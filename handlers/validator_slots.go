@@ -112,12 +112,13 @@ func buildValidatorSlotsPageData(validator uint64, pageIdx uint64, pageSize uint
 			break
 		}
 		slot := blockAssignment.Slot
+		epoch := chainState.EpochOfSlot(phase0.Slot(slot))
 
 		slotData := &models.ValidatorSlotsPageDataSlot{
 			Slot:         slot,
-			Epoch:        uint64(chainState.EpochOfSlot(phase0.Slot(slot))),
+			Epoch:        uint64(epoch),
 			Ts:           chainState.SlotToTime(phase0.Slot(slot)),
-			Finalized:    finalizedEpoch >= chainState.EpochOfSlot(phase0.Slot(slot)),
+			Finalized:    finalizedEpoch >= epoch,
 			Status:       uint8(0),
 			Proposer:     validator,
 			ProposerName: pageData.Name,
@@ -139,6 +140,7 @@ func buildValidatorSlotsPageData(validator uint64, pageIdx uint64, pageSize uint
 				slotData.WithEthBlock = true
 				slotData.EthBlockNumber = *dbBlock.EthBlockNumber
 			}
+			slotData.NoPayload = !dbBlock.HasPayload && chainState.IsEip7732Enabled(epoch)
 		}
 		pageData.Slots = append(pageData.Slots, slotData)
 	}

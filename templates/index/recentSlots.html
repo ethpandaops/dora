@@ -42,9 +42,9 @@
               <td>
                 <span data-bind="if: slot == 0" class="badge rounded-pill text-bg-info">Genesis</span>
                 <span data-bind="if: slot > 0 && status == 0" class="badge rounded-pill text-bg-warning">Missed</span>
-                <span data-bind="if: slot > 0 && status == 1" class="badge rounded-pill text-bg-success">Proposed</span>
-                <span data-bind="if: slot > 0 && status == 2" class="badge rounded-pill text-bg-info">Missed (Orphaned)</span>
-                <span data-bind="if: slot > 0 && status > 2" class="badge rounded-pill text-bg-dark">Unknown</span>
+                <span data-bind="if: slot > 0 && status == 1" class="badge rounded-pill text-bg-success" data-bind="css: {'split-warning': no_payload}">Proposed</span>
+                <span data-bind="if: slot > 0 && status == 2" class="badge rounded-pill text-bg-info" data-bind="css: {'split-warning': no_payload}">Missed (Orphaned)</span>
+                <span data-bind="if: slot > 0 && status > 2" class="badge rounded-pill text-bg-dark" data-bind="css: {'split-warning': no_payload}">Unknown</span>
               </td>
               <td data-bind="attr: {'data-timer': $root.unixtime(ts)}">
                 <span data-bs-toggle="tooltip" data-bs-placement="top" data-bind="attr: {'data-bs-title': $root.timestamp(ts)}, text: $root.formatRecentTimeShort(ts)"></span>
@@ -97,11 +97,11 @@
                     {{ else if eq .Status 0 }}
                       <span class="badge rounded-pill text-bg-warning">Missed</span>
                     {{ else if eq .Status 1 }}
-                      <span class="badge rounded-pill text-bg-success">Proposed</span>
+                      <span class="badge rounded-pill text-bg-success {{ if $slot.NoPayload }}split-warning{{ end }}">Proposed</span>
                     {{ else if eq .Status 2 }}
-                      <span class="badge rounded-pill text-bg-info">Orphaned</span>
+                      <span class="badge rounded-pill text-bg-info {{ if $slot.NoPayload }}split-warning{{ end }}">Missed (Orphaned)</span>
                     {{ else }}
-                      <span class="badge rounded-pill text-bg-dark">Unknown</span>
+                      <span class="badge rounded-pill text-bg-dark {{ if $slot.NoPayload }}split-warning{{ end }}">Unknown</span>
                     {{ end }}
                   </td>
                   <td data-timer="{{ $slot.Ts.Unix }}"><span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $slot.Ts }}">{{ formatRecentTimeShort $slot.Ts }}</span></td>

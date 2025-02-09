@@ -324,9 +324,6 @@ func (sync *synchronizer) syncEpoch(syncEpoch phase0.Epoch, client *Client, last
 				if err != nil && !lastTry {
 					return false, fmt.Errorf("error fetching slot %v execution payload: %v", slot, err)
 				}
-				if blockPayload == nil && !lastTry {
-					return false, fmt.Errorf("error fetching slot %v execution payload: not found", slot)
-				}
 
 				if blockPayload != nil {
 					block.SetExecutionPayload(blockPayload)
