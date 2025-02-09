@@ -171,7 +171,7 @@ func (sim *stateSimulator) applyConsolidation(consolidation *electra.Consolidati
 	}
 
 	if !bytes.Equal(srcWithdrawalCreds[12:], consolidation.SourceAddress[:]) {
-		return dbtypes.ConsolidationRequestResultSrcInvalidCredentials
+		return dbtypes.ConsolidationRequestResultSrcInvalidSender
 	}
 
 	tgtWithdrawalCreds := tgtValidator.WithdrawalCredentials
@@ -180,7 +180,7 @@ func (sim *stateSimulator) applyConsolidation(consolidation *electra.Consolidati
 	}
 
 	if !bytes.Equal(tgtWithdrawalCreds[12:], consolidation.SourceAddress[:]) {
-		return dbtypes.ConsolidationRequestResultTgtInvalidCredentials
+		return dbtypes.ConsolidationRequestResultTgtInvalidSender
 	}
 
 	if srcValidator == tgtValidator {
@@ -280,7 +280,7 @@ func (sim *stateSimulator) applyWithdrawal(withdrawal *electra.WithdrawalRequest
 	}
 
 	if !bytes.Equal(srcWithdrawalCreds[12:], withdrawal.SourceAddress[:]) {
-		return dbtypes.WithdrawalRequestResultValidatorInvalidCredentials
+		return dbtypes.WithdrawalRequestResultValidatorInvalidSender
 	}
 
 	if validator.ActivationEpoch == FarFutureEpoch || validator.ActivationEpoch > sim.epochStats.epoch || validator.ExitEpoch < FarFutureEpoch {
