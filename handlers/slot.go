@@ -682,10 +682,26 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 			}
 			getSlotPageTransactions(pageData, executionPayload.Transactions)
 		case spec.DataVersionEIP7732:
+			payloadHeader := blockData.Block.EIP7732.Message.Body.SignedExecutionPayloadHeader
+			pageData.PayloadHeader = &models.SlotPagePayloadHeader{
+				PayloadStatus:          0,
+				ParentBlockHash:        payloadHeader.Message.ParentBlockHash[:],
+				ParentBlockRoot:        payloadHeader.Message.ParentBlockRoot[:],
+				BlockHash:              payloadHeader.Message.BlockHash[:],
+				GasLimit:               uint64(payloadHeader.Message.GasLimit),
+				BuilderIndex:           uint64(payloadHeader.Message.BuilderIndex),
+				BuilderName:            services.GlobalBeaconService.GetValidatorName(uint64(payloadHeader.Message.BuilderIndex)),
+				Slot:                   uint64(payloadHeader.Message.Slot),
+				Value:                  uint64(payloadHeader.Message.Value),
+				BlobKzgCommitmentsRoot: payloadHeader.Message.BlobKZGCommitmentsRoot[:],
+				Signature:              payloadHeader.Signature[:],
+			}
+
 			if blockData.Payload == nil {
 				break
 			}
 			executionPayload := blockData.Payload.Message.Payload
+			pageData.PayloadHeader.PayloadStatus = 1
 			pageData.ExecutionData = &models.SlotPageExecutionData{
 				ParentHash:    executionPayload.ParentHash[:],
 				FeeRecipient:  executionPayload.FeeRecipient[:],

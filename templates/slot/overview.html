@@ -152,6 +152,77 @@
           </div>
         {{ end }}
 
+
+        {{ if .Block.PayloadHeader }}
+          {{ $block := .Block }}
+          {{ with .Block.PayloadHeader }}
+            <div class="row border-bottom p-2 mx-0">
+              <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Received Eth Block headers and Deposit data">Payload Header:</span></div>
+              <div class="col-md-10">
+
+                <div class="row py-1">
+                  <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Block Number, the height, not the slot">Payload Status:</span></div>
+                  <div class="col-md-10 text-monospace text-break">
+                    {{ if eq .PayloadStatus 0 }}
+                      <span class="badge rounded-pill text-bg-warning">Missing</span>
+                    {{ else if eq .PayloadStatus 1 }}
+                      <span class="badge rounded-pill text-bg-success">Proposed</span>
+                    {{ else if eq .PayloadStatus 2 }}
+                      <span class="badge rounded-pill text-bg-info">Orphaned</span>
+                    {{ else }}
+                      <span class="badge rounded-pill text-bg-dark">Unknown</span>
+                    {{ end }}
+                  </div>
+                </div>
+
+                <div class="row py-1">
+                  <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="The Execution Block Hash">Block Hash:</span></div>
+                  <div class="col-md-10 text-monospace text-break">
+                    {{ ethBlockHashLink .BlockHash }}
+                    <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" .BlockHash }}"></i>
+                  </div>
+                </div>
+
+                <div class="row py-1">
+                  <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Parent Execution Block Hash">Parent Hash:</span></div>
+                  <div class="col-md-10 text-monospace text-break">
+                    {{ ethBlockHashLink .ParentBlockHash }}
+                    <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" .ParentBlockHash }}"></i>
+                  </div>
+                </div>
+
+                <div class="row py-1">
+                  <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Parent Execution Block Hash">Builder Index:</span></div>
+                  <div class="col-md-10 text-monospace text-break">
+                    {{ formatValidator .BuilderIndex .BuilderName }}
+                  </div>
+                </div>
+
+                <div class="row py-1">
+                  <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Parent Execution Block Hash">Block Value:</span></div>
+                  <div class="col-md-10 text-monospace text-break">
+                    {{ formatEthFromGwei .Value }}
+                  </div>
+                </div>
+
+                <div class="row py-1">
+                  <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Parent Execution Block Hash">Gas Limit:</span></div>
+                  <div class="col-md-10 text-monospace text-break">
+                    {{ .GasLimit }}
+                  </div>
+                </div>
+
+                <div class="row py-1">
+                  <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Parent Execution Block Hash">Blob KZG Root:</span></div>
+                  <div class="col-md-10 text-monospace text-break">
+                    0x{{ printf "%x" .BlobKzgCommitmentsRoot }}
+                    <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" .BlobKzgCommitmentsRoot }}"></i>
+                  </div>
+                </div>
+              </div>
+            </div>
+          {{ end }}
+        {{ end }}
         {{ if .Block.ExecutionData }}
           {{ $block := .Block }}
           {{ with .Block.ExecutionData }}
@@ -163,19 +234,21 @@
                   <div class="col-md-10 text-monospace text-break">{{ ethBlockLink .BlockNumber }}</div>
                 </div>
 
-                <div class="row py-1">
-                  <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="The Execution Block Hash">Block Hash:</span></div>
-                  <div class="col-md-10 text-monospace text-break">
-                    {{ ethBlockHashLink .BlockHash }}
+                {{ if not $block.PayloadHeader }}
+                  <div class="row py-1">
+                    <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="The Execution Block Hash">Block Hash:</span></div>
+                    <div class="col-md-10 text-monospace text-break">
+                      {{ ethBlockHashLink .BlockHash }}
+                    </div>
                   </div>
-                </div>
 
-                <div class="row py-1">
-                  <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Parent Execution Block Hash">Parent Hash:</span></div>
-                  <div class="col-md-10 text-monospace text-break">
-                    0x{{ printf "%x" .ParentHash }}
+                  <div class="row py-1">
+                    <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Parent Execution Block Hash">Parent Hash:</span></div>
+                    <div class="col-md-10 text-monospace text-break">
+                      0x{{ printf "%x" .ParentHash }}
+                    </div>
                   </div>
-                </div>
+                {{ end }}
 
                 <div class="row py-1">
                   <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Fee recipient">Fee Recipient:</span></div>
@@ -189,10 +262,12 @@
                   <div class="col-md-10 text-monospace text-break">{{ .GasUsed }}</div>
                 </div>
 
-                <div class="row py-1">
-                  <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Gas Limit">Gas Limit:</span></div>
-                  <div class="col-md-10 text-monospace text-break">{{ .GasLimit }}</div>
-                </div>
+                {{ if not $block.PayloadHeader }}
+                  <div class="row py-1">
+                    <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Gas Limit">Gas Limit:</span></div>
+                    <div class="col-md-10 text-monospace text-break">{{ .GasLimit }}</div>
+                  </div>
+                {{ end }}
 
                 <div class="row py-1">
                   <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Base fee per gas">Base fee per gas:</span></div>

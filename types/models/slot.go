@@ -66,7 +66,9 @@ type SlotPageBlockData struct {
 	WithdrawalRequestsCount    uint64                 `json:"withdrawal_requests_count"`
 	ConsolidationRequestsCount uint64                 `json:"consolidation_requests_count"`
 
-	ExecutionData         *SlotPageExecutionData          `json:"execution_data"`
+	PayloadHeader *SlotPagePayloadHeader `json:"payload_header"`
+	ExecutionData *SlotPageExecutionData `json:"execution_data"`
+
 	Attestations          []*SlotPageAttestation          `json:"attestations"`           // Attestations included in this block
 	Deposits              []*SlotPageDeposit              `json:"deposits"`               // Deposits included in this block
 	VoluntaryExits        []*SlotPageVoluntaryExit        `json:"voluntary_exits"`        // Voluntary Exits included in this block
@@ -96,6 +98,20 @@ type SlotPageExecutionData struct {
 	BaseFeePerGas uint64    `json:"base_fee_per_gas"`
 	BlockHash     []byte    `json:"block_hash"`
 	BlockNumber   uint64    `json:"block_number"`
+}
+
+type SlotPagePayloadHeader struct {
+	PayloadStatus          uint16 `json:"payload_status"`
+	ParentBlockHash        []byte `json:"parent_block_hash"`
+	ParentBlockRoot        []byte `json:"parent_block_root"`
+	BlockHash              []byte `json:"block_hash"`
+	GasLimit               uint64 `json:"gas_limit"`
+	BuilderIndex           uint64 `json:"builder_index"`
+	BuilderName            string `json:"builder_name"`
+	Slot                   uint64 `json:"slot"`
+	Value                  uint64 `json:"value"`
+	BlobKzgCommitmentsRoot []byte `json:"blob_kzg_commitments_root"`
+	Signature              []byte `json:"signature"`
 }
 
 type SlotPageAttestation struct {
