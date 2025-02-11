@@ -284,6 +284,7 @@
         $.get(event.target.getAttribute('href') + "&lazy=true", function(data) {
           $(tabEl).html(data);
           $(tabEl).data("loaded", true);
+          explorer.initControls();
         });
       }
 

@@ -15,11 +15,11 @@ func InsertWithdrawalRequests(elRequests []*dbtypes.WithdrawalRequest, tx *sqlx.
 			dbtypes.DBEnginePgsql:  "INSERT INTO withdrawal_requests ",
 			dbtypes.DBEngineSqlite: "INSERT OR REPLACE INTO withdrawal_requests ",
 		}),
-		"(slot_number, slot_root, slot_index, orphaned, fork_id, source_address, validator_index, validator_pubkey, amount, tx_hash, block_number)",
+		"(slot_number, slot_root, slot_index, orphaned, fork_id, source_address, validator_index, validator_pubkey, amount, tx_hash, block_number, result)",
 		" VALUES ",
 	)
 	argIdx := 0
-	fieldCount := 11
+	fieldCount := 12
 
 	args := make([]any, len(elRequests)*fieldCount)
 	for i, elRequest := range elRequests {
@@ -47,10 +47,11 @@ func InsertWithdrawalRequests(elRequests []*dbtypes.WithdrawalRequest, tx *sqlx.
 		args[argIdx+8] = elRequest.Amount
 		args[argIdx+9] = elRequest.TxHash
 		args[argIdx+10] = elRequest.BlockNumber
+		args[argIdx+11] = elRequest.Result
 		argIdx += fieldCount
 	}
 	fmt.Fprint(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
-		dbtypes.DBEnginePgsql:  " ON CONFLICT (slot_root, slot_index) DO UPDATE SET orphaned = excluded.orphaned, tx_hash = excluded.tx_hash",
+		dbtypes.DBEnginePgsql:  " ON CONFLICT (slot_root, slot_index) DO UPDATE SET orphaned = excluded.orphaned, tx_hash = excluded.tx_hash, result = excluded.result",
 		dbtypes.DBEngineSqlite: "",
 	}))
 
@@ -67,7 +68,7 @@ func GetWithdrawalRequestsFiltered(offset uint64, limit uint32, canonicalForkIds
 	fmt.Fprint(&sql, `
 	WITH cte AS (
 		SELECT
-			slot_number, slot_index, slot_root, orphaned, fork_id, source_address, validator_index, validator_pubkey, CAST(amount AS BIGINT), tx_hash, block_number
+			slot_number, slot_index, slot_root, orphaned, fork_id, source_address, validator_index, validator_pubkey, CAST(amount AS BIGINT), tx_hash, block_number, result
 		FROM withdrawal_requests
 	`)
 
@@ -159,7 +160,8 @@ func GetWithdrawalRequestsFiltered(offset uint64, limit uint32, canonicalForkIds
 		null AS validator_pubkey,
 		CAST(0 AS BIGINT) AS amount,
 		null AS tx_hash,
-		0 AS block_number
+		0 AS block_number,
+		0 AS result
 	FROM cte
 	UNION ALL SELECT * FROM (
 	SELECT * FROM cte

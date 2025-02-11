@@ -355,22 +355,21 @@ func (sync *synchronizer) syncEpoch(syncEpoch phase0.Epoch, client *Client, last
 		return false, fmt.Errorf("error fetching epoch %v state: %v", syncEpoch, err)
 	}
 
+	var validatorSet []*phase0.Validator
+	if state == nil {
+		sync.logger.Warnf("state for epoch %v not found", syncEpoch)
+	} else {
+		validatorSet, err = state.Validators()
+		if err != nil {
+			sync.logger.Warnf("error getting validator set from state %v: %v", dependentRoot.String(), err)
+		}
+	}
+
 	var epochStats *EpochStats
 	var epochStatsValues *EpochStatsValues
 	if epochState != nil && epochState.loadingStatus == 2 {
 		epochStats = newEpochStats(syncEpoch, dependentRoot)
 		epochStats.dependentState = epochState
-
-		var validatorSet []*phase0.Validator
-		if state == nil {
-			sync.logger.Warnf("state for epoch %v not found", syncEpoch)
-		} else {
-			validatorSet, err = state.Validators()
-			if err != nil {
-				sync.logger.Warnf("error getting validator set from state %v: %v", epochStats.dependentRoot.String(), err)
-			}
-		}
-
 		epochStats.processState(sync.indexer, validatorSet)
 		epochStatsValues = epochStats.GetValues(false)
 	}
@@ -391,9 +390,12 @@ func (sync *synchronizer) syncEpoch(syncEpoch phase0.Epoch, client *Client, last
 		}
 	}
 
+	sim := newStateSimulator(sync.indexer, epochStats)
+	sim.validatorSet = validatorSet
+
 	// save blocks
 	err = db.RunDBTransaction(func(tx *sqlx.Tx) error {
-		err = sync.indexer.dbWriter.persistEpochData(tx, syncEpoch, canonicalBlocks, epochStats, epochVotes)
+		err = sync.indexer.dbWriter.persistEpochData(tx, syncEpoch, canonicalBlocks, epochStats, epochVotes, sim)
 		if err != nil {
 			return fmt.Errorf("error persisting epoch data to db: %v", err)
 		}
@@ -436,8 +438,8 @@ func (sync *synchronizer) syncEpoch(syncEpoch phase0.Epoch, client *Client, last
 	}
 
 	// cleanup cache (remove blocks from this epoch)
-	for slot := firstSlot; slot <= lastSlot; slot++ {
-		if sync.cachedBlocks[slot] != nil {
+	for slot := range sync.cachedBlocks {
+		if slot <= lastSlot {
 			delete(sync.cachedBlocks, slot)
 		}
 	}

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"math"
 	"sort"
 	"time"
 
@@ -264,20 +263,6 @@ func (bs *ChainService) GetValidatorNamesCount() uint64 {
 	return bs.validatorNames.GetValidatorNamesCount()
 }
 
-func (bs *ChainService) GetCachedValidatorSet(withBalance bool) []*v1.Validator {
-	currentEpoch := bs.consensusPool.GetChainState().CurrentEpoch()
-	return bs.beaconIndexer.GetEpochValidatorSet(currentEpoch, nil, withBalance)
-}
-
-func (bs *ChainService) GetValidatorByIndex(index phase0.ValidatorIndex, withBalance bool) *v1.Validator {
-	currentEpoch := bs.consensusPool.GetChainState().CurrentEpoch()
-	return bs.beaconIndexer.GetEpochValidator(index, currentEpoch, nil, withBalance)
-}
-
-func (bs *ChainService) GetValidatorIndexByPubkey(pubkey phase0.BLSPubKey) (phase0.ValidatorIndex, bool) {
-	return bs.beaconIndexer.GetValidatorIndexByPubkey(pubkey)
-}
-
 func (bs *ChainService) GetFinalizedEpoch() (phase0.Epoch, phase0.Root) {
 	chainState := bs.consensusPool.GetChainState()
 	return chainState.GetFinalizedCheckpoint()
@@ -366,39 +351,4 @@ func (bs *ChainService) GetConsensusClientForks() []*ConsensusClientFork {
 	})
 
 	return headForks
-}
-
-func (bs *ChainService) GetValidatorVotingActivity(validatorIndex phase0.ValidatorIndex) ([]beacon.ValidatorActivity, phase0.Epoch) {
-	return bs.beaconIndexer.GetValidatorActivity(validatorIndex)
-}
-
-func (bs *ChainService) GetValidatorLiveness(validatorIndex phase0.ValidatorIndex, lookbackEpochs uint64) (votedEpochs uint64) {
-	validatorActivity, _ := bs.beaconIndexer.GetValidatorActivity(validatorIndex)
-	chainState := bs.consensusPool.GetChainState()
-
-	latestEpoch := uint64(chainState.CurrentEpoch())
-	if latestEpoch > 2 {
-		latestEpoch -= 2
-	} else {
-		latestEpoch = 0
-	}
-
-	lastEpoch := uint64(math.MaxUint64)
-	for _, activity := range validatorActivity {
-		epoch := uint64(chainState.EpochOfSlot(activity.VoteBlock.Slot - phase0.Slot(activity.VoteDelay)))
-		if latestEpoch < epoch {
-			latestEpoch = epoch
-		} else if epoch+lookbackEpochs <= latestEpoch {
-			break
-		}
-
-		if epoch == lastEpoch {
-			continue
-		}
-
-		lastEpoch = epoch
-		votedEpochs++
-	}
-
-	return
 }

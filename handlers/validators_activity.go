@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/attestantio/go-eth2-client/spec/phase0"
+	"github.com/ethpandaops/dora/indexer/beacon"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
@@ -114,23 +115,23 @@ func buildValidatorsActivityPageData(pageIdx uint64, pageSize uint64, sortOrder 
 
 	// group validators
 	validatorGroupMap := map[string]*models.ValidatorsActiviyPageDataGroup{}
-	validatorSet := services.GlobalBeaconService.GetCachedValidatorSet(false)
+	currentEpoch := services.GlobalBeaconService.GetChainState().CurrentEpoch()
 
-	for vIdx, validator := range validatorSet {
+	services.GlobalBeaconService.StreamActiveValidatorData(false, func(index phase0.ValidatorIndex, validatorFlags uint16, activeData *beacon.ValidatorData, validator *phase0.Validator) error {
 		var groupKey string
 		var groupName string
 
 		switch groupBy {
 		case 1:
-			groupIdx := uint64(vIdx) / 100000
+			groupIdx := index / 100000
 			groupKey = fmt.Sprintf("%06d", groupIdx)
 			groupName = fmt.Sprintf("%v - %v", groupIdx*100000, (groupIdx+1)*100000)
 		case 2:
-			groupIdx := uint64(vIdx) / 10000
+			groupIdx := index / 10000
 			groupKey = fmt.Sprintf("%06d", groupIdx)
 			groupName = fmt.Sprintf("%v - %v", groupIdx*10000, (groupIdx+1)*10000)
 		case 3:
-			groupName = services.GlobalBeaconService.GetValidatorName(uint64(vIdx))
+			groupName = services.GlobalBeaconService.GetValidatorName(uint64(index))
 			groupKey = strings.ToLower(groupName)
 		}
 
@@ -151,23 +152,34 @@ func buildValidatorsActivityPageData(pageIdx uint64, pageSize uint64, sortOrder 
 
 		validatorGroup.Validators++
 
-		statusStr := validator.Status.String()
-		if strings.HasPrefix(statusStr, "active_") {
-			validatorGroup.Activated++
-
-			if services.GlobalBeaconService.GetValidatorLiveness(phase0.ValidatorIndex(vIdx), 3) > 0 {
-				validatorGroup.Online++
-			} else {
-				validatorGroup.Offline++
-			}
-		}
-		if strings.HasPrefix(statusStr, "exited_") || strings.HasPrefix(statusStr, "withdrawal_") {
-			validatorGroup.Exited++
-		}
-		if strings.HasSuffix(statusStr, "_slashed") {
+		if validatorFlags&beacon.ValidatorStatusSlashed != 0 {
 			validatorGroup.Slashed++
 		}
-	}
+
+		isExited := false
+		if activeData != nil && activeData.ActivationEpoch <= currentEpoch {
+			if activeData.ExitEpoch > currentEpoch {
+				votingActivity := services.GlobalBeaconService.GetValidatorLiveness(index, 3)
+
+				validatorGroup.Activated++
+				if votingActivity > 0 {
+					validatorGroup.Online++
+				} else {
+					validatorGroup.Offline++
+				}
+			} else {
+				isExited = true
+			}
+		} else if validatorFlags&beacon.ValidatorStatusExited != 0 {
+			isExited = true
+		}
+
+		if isExited {
+			validatorGroup.Exited++
+		}
+
+		return nil
+	})
 
 	// sort / filter groups
 	validatorGroups := maps.Values(validatorGroupMap)
