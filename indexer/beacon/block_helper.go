@@ -44,6 +44,9 @@ func MarshalVersionedSignedBeaconBlockSSZ(dynSsz *dynssz.DynSsz, block *spec.Ver
 		case spec.DataVersionElectra:
 			version = uint64(block.Version)
 			ssz, err = dynSsz.MarshalSSZ(block.Electra)
+		case spec.DataVersionEip7805:
+			version = uint64(block.Version)
+			ssz, err = dynSsz.MarshalSSZ(block.Eip7805)
 		default:
 			err = fmt.Errorf("unknown block version")
 		}
@@ -110,6 +113,11 @@ func unmarshalVersionedSignedBeaconBlockSSZ(dynSsz *dynssz.DynSsz, version uint6
 		if err := dynSsz.UnmarshalSSZ(block.Electra, ssz); err != nil {
 			return nil, fmt.Errorf("failed to decode electra signed beacon block: %v", err)
 		}
+	case spec.DataVersionEip7805:
+		block.Eip7805 = &electra.SignedBeaconBlock{}
+		if err := dynSsz.UnmarshalSSZ(block.Eip7805, ssz); err != nil {
+			return nil, fmt.Errorf("failed to decode eip7805 signed beacon block: %v", err)
+		}
 	default:
 		return nil, fmt.Errorf("unknown block version")
 	}
@@ -137,6 +145,9 @@ func MarshalVersionedSignedBeaconBlockJson(block *spec.VersionedSignedBeaconBloc
 	case spec.DataVersionElectra:
 		version = uint64(block.Version)
 		jsonRes, err = block.Electra.MarshalJSON()
+	case spec.DataVersionEip7805:
+		version = uint64(block.Version)
+		jsonRes, err = block.Eip7805.MarshalJSON()
 	default:
 		err = fmt.Errorf("unknown block version")
 	}
@@ -185,6 +196,11 @@ func unmarshalVersionedSignedBeaconBlockJson(version uint64, ssz []byte) (*spec.
 		if err := block.Electra.UnmarshalJSON(ssz); err != nil {
 			return nil, fmt.Errorf("failed to decode electra signed beacon block: %v", err)
 		}
+	case spec.DataVersionEip7805:
+		block.Eip7805 = &electra.SignedBeaconBlock{}
+		if err := block.Eip7805.UnmarshalJSON(ssz); err != nil {
+			return nil, fmt.Errorf("failed to decode eip7805 signed beacon block: %v", err)
+		}
 	default:
 		return nil, fmt.Errorf("unknown block version")
 	}
@@ -218,6 +234,12 @@ func getBlockExecutionExtraData(v *spec.VersionedSignedBeaconBlock) ([]byte, err
 		}
 
 		return v.Electra.Message.Body.ExecutionPayload.ExtraData, nil
+	case spec.DataVersionEip7805:
+		if v.Eip7805 == nil || v.Eip7805.Message == nil || v.Eip7805.Message.Body == nil || v.Eip7805.Message.Body.ExecutionPayload == nil {
+			return nil, errors.New("no eip7805 block")
+		}
+
+		return v.Eip7805.Message.Body.ExecutionPayload.ExtraData, nil
 	default:
 		return nil, errors.New("unknown version")
 	}
@@ -262,6 +284,12 @@ func getStateRandaoMixes(v *spec.VersionedBeaconState) ([]phase0.Root, error) {
 		}
 
 		return v.Electra.RANDAOMixes, nil
+	case spec.DataVersionEip7805:
+		if v.Eip7805 == nil || v.Eip7805.RANDAOMixes == nil {
+			return nil, errors.New("no eip7805 block")
+		}
+
+		return v.Eip7805.RANDAOMixes, nil
 	default:
 		return nil, errors.New("unknown version")
 	}
@@ -282,6 +310,8 @@ func getStateDepositIndex(state *spec.VersionedBeaconState) uint64 {
 		return state.Deneb.ETH1DepositIndex
 	case spec.DataVersionElectra:
 		return state.Electra.ETH1DepositIndex
+	case spec.DataVersionEip7805:
+		return state.Eip7805.ETH1DepositIndex
 	}
 	return 0
 }
@@ -321,6 +351,12 @@ func getStateCurrentSyncCommittee(v *spec.VersionedBeaconState) ([]phase0.BLSPub
 		}
 
 		return v.Electra.CurrentSyncCommittee.Pubkeys, nil
+	case spec.DataVersionEip7805:
+		if v.Eip7805 == nil || v.Eip7805.CurrentSyncCommittee == nil {
+			return nil, errors.New("no eip7805 block")
+		}
+
+		return v.Eip7805.CurrentSyncCommittee.Pubkeys, nil
 	default:
 		return nil, errors.New("unknown version")
 	}
