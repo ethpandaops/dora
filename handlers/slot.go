@@ -688,6 +688,28 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 				BlockNumber:   uint64(executionPayload.BlockNumber),
 			}
 			getSlotPageTransactions(pageData, executionPayload.Transactions)
+		case spec.DataVersionEip7805:
+			if blockData.Block.Eip7805 == nil {
+				break
+			}
+			executionPayload := blockData.Block.Eip7805.Message.Body.ExecutionPayload
+			pageData.ExecutionData = &models.SlotPageExecutionData{
+				ParentHash:    executionPayload.ParentHash[:],
+				FeeRecipient:  executionPayload.FeeRecipient[:],
+				StateRoot:     executionPayload.StateRoot[:],
+				ReceiptsRoot:  executionPayload.ReceiptsRoot[:],
+				LogsBloom:     executionPayload.LogsBloom[:],
+				Random:        executionPayload.PrevRandao[:],
+				GasLimit:      uint64(executionPayload.GasLimit),
+				GasUsed:       uint64(executionPayload.GasUsed),
+				Timestamp:     uint64(executionPayload.Timestamp),
+				Time:          time.Unix(int64(executionPayload.Timestamp), 0),
+				ExtraData:     executionPayload.ExtraData,
+				BaseFeePerGas: executionPayload.BaseFeePerGas.Uint64(),
+				BlockHash:     executionPayload.BlockHash[:],
+				BlockNumber:   uint64(executionPayload.BlockNumber),
+			}
+			getSlotPageTransactions(pageData, executionPayload.Transactions)
 		}
 	}
 
