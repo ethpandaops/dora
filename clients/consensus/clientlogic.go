@@ -62,18 +62,9 @@ func (client *Client) checkClient() error {
 		return fmt.Errorf("initialization of attestantio/go-eth2-client failed: %w", err)
 	}
 
-	// get node version
-	nodeVersion, err := client.rpcClient.GetNodeVersion(ctx)
-	if err != nil {
-		return fmt.Errorf("error while fetching node version: %v", err)
-	}
-
-	client.versionStr = nodeVersion
-	client.parseClientVersion(nodeVersion)
-
-	// update node peers
-	if err = client.updateNodePeers(ctx); err != nil {
-		return fmt.Errorf("could not get node peers for %s: %v", client.endpointConfig.Name, err)
+	// update node metadata
+	if err = client.updateNodeMetadata(ctx); err != nil {
+		return fmt.Errorf("could not get node metadata for %s: %v", client.endpointConfig.Name, err)
 	}
 
 	// get & compare genesis
@@ -223,12 +214,12 @@ func (client *Client) runClientLogic() error {
 			}()
 		}
 
-		if currentEpoch-client.lastPeerUpdateEpoch >= 1 {
-			client.lastPeerUpdateEpoch = currentEpoch
+		if time.Since(client.lastMetadataUpdate) >= 5*time.Minute {
+			client.lastMetadataUpdate = time.Now()
 			go func() {
 				// update node peers
-				if err = client.updateNodePeers(client.clientCtx); err != nil {
-					client.logger.Errorf("could not get node peers for %s: %v", client.endpointConfig.Name, err)
+				if err = client.updateNodeMetadata(client.clientCtx); err != nil {
+					client.logger.Errorf("could not get node metadata for %s: %v", client.endpointConfig.Name, err)
 				} else {
 					client.logger.WithFields(logrus.Fields{"epoch": currentEpoch, "peers": len(client.peers)}).Debug("updated consensus node peers")
 				}
@@ -258,23 +249,34 @@ func (client *Client) updateSynchronizationStatus(ctx context.Context) error {
 	return nil
 }
 
-func (client *Client) updateNodePeers(ctx context.Context) error {
+func (client *Client) updateNodeMetadata(ctx context.Context) error {
 	var cancel context.CancelFunc
 	ctx, cancel = context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
-	var err error
+	client.lastMetadataUpdate = time.Now()
+
+	// get node version
+	nodeVersion, err := client.rpcClient.GetNodeVersion(ctx)
+	if err != nil {
+		return fmt.Errorf("error while fetching node version: %v", err)
+	}
+
+	client.versionStr = nodeVersion
+	client.parseClientVersion(nodeVersion)
+
+	// get node identity
 	client.nodeIdentity, err = client.rpcClient.GetNodeIdentity(ctx)
 	if err != nil {
 		return fmt.Errorf("could not get node peer id: %v", err)
 	}
 
+	// get node peers
 	peers, err := client.rpcClient.GetNodePeers(ctx)
 	if err != nil {
 		return fmt.Errorf("could not get peers: %v", err)
 	}
 	client.peers = peers
-	client.lastPeerUpdateEpoch = client.pool.chainState.CurrentEpoch()
 
 	return nil
 }
