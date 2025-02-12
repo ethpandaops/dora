@@ -266,7 +266,12 @@ func buildFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string
 				slotData.WithEthBlock = true
 				slotData.EthBlockNumber = *dbBlock.Block.EthBlockNumber
 			}
-			slotData.NoPayload = !dbBlock.Block.HasPayload && chainState.IsEip7732Enabled(epoch)
+
+			payloadStatus := dbBlock.Block.PayloadStatus
+			if !chainState.IsEip7732Enabled(epoch) {
+				payloadStatus = dbtypes.PayloadStatusCanonical
+			}
+			slotData.PayloadStatus = uint8(payloadStatus)
 		}
 		pageData.Slots = append(pageData.Slots, slotData)
 	}

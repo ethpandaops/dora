@@ -286,15 +286,21 @@ func buildIndexPageRecentBlocksData(pageData *models.IndexPageData, recentBlockC
 		}
 
 		epoch := chainState.EpochOfSlot(phase0.Slot(blockData.Slot))
+
+		payloadStatus := blockData.PayloadStatus
+		if !chainState.IsEip7732Enabled(epoch) {
+			payloadStatus = dbtypes.PayloadStatusCanonical
+		}
+
 		blockModel := &models.IndexPageDataBlocks{
-			Epoch:        uint64(epoch),
-			Slot:         blockData.Slot,
-			Ts:           chainState.SlotToTime(phase0.Slot(blockData.Slot)),
-			Proposer:     blockData.Proposer,
-			ProposerName: services.GlobalBeaconService.GetValidatorName(blockData.Proposer),
-			Status:       uint64(blockData.Status),
-			NoPayload:    !blockData.HasPayload && chainState.IsEip7732Enabled(epoch),
-			BlockRoot:    blockData.Root,
+			Epoch:         uint64(epoch),
+			Slot:          blockData.Slot,
+			Ts:            chainState.SlotToTime(phase0.Slot(blockData.Slot)),
+			Proposer:      blockData.Proposer,
+			ProposerName:  services.GlobalBeaconService.GetValidatorName(blockData.Proposer),
+			Status:        uint64(blockData.Status),
+			PayloadStatus: uint8(payloadStatus),
+			BlockRoot:     blockData.Root,
 		}
 		if blockData.EthBlockNumber != nil {
 			blockModel.WithEthBlock = true
@@ -333,17 +339,23 @@ func buildIndexPageRecentSlotsData(pageData *models.IndexPageData, firstSlot pha
 			dbIdx++
 
 			epoch := chainState.EpochOfSlot(phase0.Slot(dbSlot.Slot))
+
+			payloadStatus := dbSlot.PayloadStatus
+			if !chainState.IsEip7732Enabled(phase0.Epoch(epoch)) {
+				payloadStatus = dbtypes.PayloadStatusCanonical
+			}
+
 			slotData := &models.IndexPageDataSlots{
-				Slot:         slot,
-				Epoch:        uint64(epoch),
-				Ts:           chainState.SlotToTime(phase0.Slot(slot)),
-				Status:       uint64(dbSlot.Status),
-				NoPayload:    !dbSlot.HasPayload && chainState.IsEip7732Enabled(epoch),
-				Proposer:     dbSlot.Proposer,
-				ProposerName: services.GlobalBeaconService.GetValidatorName(dbSlot.Proposer),
-				BlockRoot:    dbSlot.Root,
-				ParentRoot:   dbSlot.ParentRoot,
-				ForkGraph:    make([]*models.IndexPageDataForkGraph, 0),
+				Slot:          slot,
+				Epoch:         uint64(epoch),
+				Ts:            chainState.SlotToTime(phase0.Slot(slot)),
+				Status:        uint64(dbSlot.Status),
+				PayloadStatus: uint8(payloadStatus),
+				Proposer:      dbSlot.Proposer,
+				ProposerName:  services.GlobalBeaconService.GetValidatorName(dbSlot.Proposer),
+				BlockRoot:     dbSlot.Root,
+				ParentRoot:    dbSlot.ParentRoot,
+				ForkGraph:     make([]*models.IndexPageDataForkGraph, 0),
 			}
 			pageData.RecentSlots = append(pageData.RecentSlots, slotData)
 			blockCount++

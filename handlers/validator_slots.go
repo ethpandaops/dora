@@ -140,7 +140,12 @@ func buildValidatorSlotsPageData(validator uint64, pageIdx uint64, pageSize uint
 				slotData.WithEthBlock = true
 				slotData.EthBlockNumber = *dbBlock.EthBlockNumber
 			}
-			slotData.NoPayload = !dbBlock.HasPayload && chainState.IsEip7732Enabled(epoch)
+
+			payloadStatus := dbBlock.PayloadStatus
+			if !chainState.IsEip7732Enabled(epoch) {
+				payloadStatus = dbtypes.PayloadStatusCanonical
+			}
+			slotData.PayloadStatus = uint8(payloadStatus)
 		}
 		pageData.Slots = append(pageData.Slots, slotData)
 	}

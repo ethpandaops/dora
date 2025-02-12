@@ -10,11 +10,11 @@ ALTER TABLE public."orphaned_blocks" ADD
  "payload_ssz" bytea NULL;
 
 ALTER TABLE public."slots" ADD
- "has_payload" boolean NOT NULL DEFAULT false;
+ "payload_status" smallint NOT NULL DEFAULT 0;
 
-CREATE INDEX IF NOT EXISTS "slots_has_payload_idx"
+CREATE INDEX IF NOT EXISTS "slots_payload_status_idx"
     ON public."slots" 
-    ("has_payload" ASC NULLS LAST);
+    ("payload_status" ASC NULLS LAST);
 
 ALTER TABLE public."epochs" ADD
  "payload_count" int NOT NULL DEFAULT 0;

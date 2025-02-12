@@ -18,6 +18,14 @@ const (
 	Orphaned
 )
 
+type PayloadStatus uint8
+
+const (
+	PayloadStatusMissing PayloadStatus = iota
+	PayloadStatusCanonical
+	PayloadStatusOrphaned
+)
+
 type SlotHeader struct {
 	Slot     uint64     `db:"slot"`
 	Proposer uint64     `db:"proposer"`
@@ -25,30 +33,30 @@ type SlotHeader struct {
 }
 
 type Slot struct {
-	Slot                  uint64     `db:"slot"`
-	Proposer              uint64     `db:"proposer"`
-	Status                SlotStatus `db:"status"`
-	Root                  []byte     `db:"root"`
-	ParentRoot            []byte     `db:"parent_root"`
-	StateRoot             []byte     `db:"state_root"`
-	Graffiti              []byte     `db:"graffiti"`
-	GraffitiText          string     `db:"graffiti_text"`
-	AttestationCount      uint64     `db:"attestation_count"`
-	DepositCount          uint64     `db:"deposit_count"`
-	ExitCount             uint64     `db:"exit_count"`
-	WithdrawCount         uint64     `db:"withdraw_count"`
-	WithdrawAmount        uint64     `db:"withdraw_amount"`
-	AttesterSlashingCount uint64     `db:"attester_slashing_count"`
-	ProposerSlashingCount uint64     `db:"proposer_slashing_count"`
-	BLSChangeCount        uint64     `db:"bls_change_count"`
-	EthTransactionCount   uint64     `db:"eth_transaction_count"`
-	EthBlockNumber        *uint64    `db:"eth_block_number"`
-	EthBlockHash          []byte     `db:"eth_block_hash"`
-	EthBlockExtra         []byte     `db:"eth_block_extra"`
-	EthBlockExtraText     string     `db:"eth_block_extra_text"`
-	SyncParticipation     float32    `db:"sync_participation"`
-	ForkId                uint64     `db:"fork_id"`
-	HasPayload            bool       `db:"has_payload"`
+	Slot                  uint64        `db:"slot"`
+	Proposer              uint64        `db:"proposer"`
+	Status                SlotStatus    `db:"status"`
+	Root                  []byte        `db:"root"`
+	ParentRoot            []byte        `db:"parent_root"`
+	StateRoot             []byte        `db:"state_root"`
+	Graffiti              []byte        `db:"graffiti"`
+	GraffitiText          string        `db:"graffiti_text"`
+	AttestationCount      uint64        `db:"attestation_count"`
+	DepositCount          uint64        `db:"deposit_count"`
+	ExitCount             uint64        `db:"exit_count"`
+	WithdrawCount         uint64        `db:"withdraw_count"`
+	WithdrawAmount        uint64        `db:"withdraw_amount"`
+	AttesterSlashingCount uint64        `db:"attester_slashing_count"`
+	ProposerSlashingCount uint64        `db:"proposer_slashing_count"`
+	BLSChangeCount        uint64        `db:"bls_change_count"`
+	EthTransactionCount   uint64        `db:"eth_transaction_count"`
+	EthBlockNumber        *uint64       `db:"eth_block_number"`
+	EthBlockHash          []byte        `db:"eth_block_hash"`
+	EthBlockExtra         []byte        `db:"eth_block_extra"`
+	EthBlockExtraText     string        `db:"eth_block_extra_text"`
+	SyncParticipation     float32       `db:"sync_participation"`
+	ForkId                uint64        `db:"fork_id"`
+	PayloadStatus         PayloadStatus `db:"payload_status"`
 }
 
 type Epoch struct {

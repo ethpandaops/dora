@@ -250,7 +250,7 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 	var executionTransactions []bellatrix.Transaction
 	var executionWithdrawals []*capella.Withdrawal
 	var depositRequests []*electra.DepositRequest
-	var hasPayload bool
+	var payloadStatus dbtypes.PayloadStatus
 
 	if chainState.IsEip7732Enabled(chainState.EpochOfSlot(block.Slot)) {
 		blockPayload := block.GetExecutionPayload()
@@ -260,9 +260,12 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 			executionTransactions = blockPayload.Message.Payload.Transactions
 			executionWithdrawals = blockPayload.Message.Payload.Withdrawals
 			depositRequests = blockPayload.Message.ExecutionRequests.Deposits
-			hasPayload = true
+			payloadStatus = dbtypes.PayloadStatusCanonical
+		} else {
+			payloadStatus = dbtypes.PayloadStatusMissing
 		}
 	} else {
+		payloadStatus = dbtypes.PayloadStatusCanonical
 		executionBlockNumber, _ = blockBody.ExecutionBlockNumber()
 
 		executionExtraData, _ = getBlockExecutionExtraData(blockBody)
@@ -290,7 +293,7 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 		AttesterSlashingCount: uint64(len(attesterSlashings)),
 		ProposerSlashingCount: uint64(len(proposerSlashings)),
 		BLSChangeCount:        uint64(len(blsToExecChanges)),
-		HasPayload:            hasPayload,
+		PayloadStatus:         payloadStatus,
 	}
 
 	if overrideForkId != nil {

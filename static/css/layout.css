@@ -332,3 +332,13 @@ span.validator-label {
     rgba(255,193,7,1) 100%
   );
 }
+
+.badge.split-info {
+  background: linear-gradient(
+    90deg,
+    rgba(255,255,255,0) 0%,
+    rgba(255,255,255,0) 50%,
+    rgba(13,202,240,1) 50%,
+    rgba(13,202,240,1) 100%
+  );
+}
