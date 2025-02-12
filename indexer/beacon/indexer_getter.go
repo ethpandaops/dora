@@ -10,7 +10,13 @@ import (
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/dora/db"
+	dynssz "github.com/pk910/dynamic-ssz"
 )
+
+// GetDynSSZ returns the dynSsz instance used by the indexer.
+func (indexer *Indexer) GetDynSSZ() *dynssz.DynSsz {
+	return indexer.dynSsz
+}
 
 // GetAllClients returns a slice of all clients in the indexer.
 func (indexer *Indexer) GetAllClients() []*Client {
