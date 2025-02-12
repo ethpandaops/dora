@@ -266,7 +266,7 @@ func (block *Block) buildUnfinalizedBlock(compress bool) (*dbtypes.UnfinalizedBl
 		return nil, fmt.Errorf("marshal header ssz failed: %v", err)
 	}
 
-	blockVer, blockSSZ, err := marshalVersionedSignedBeaconBlockSSZ(block.dynSsz, block.GetBlock(), compress)
+	blockVer, blockSSZ, err := MarshalVersionedSignedBeaconBlockSSZ(block.dynSsz, block.GetBlock(), compress, false)
 	if err != nil {
 		return nil, fmt.Errorf("marshal block ssz failed: %v", err)
 	}
@@ -290,7 +290,7 @@ func (block *Block) buildOrphanedBlock(compress bool) (*dbtypes.OrphanedBlock, e
 		return nil, fmt.Errorf("marshal header ssz failed: %v", err)
 	}
 
-	blockVer, blockSSZ, err := marshalVersionedSignedBeaconBlockSSZ(block.dynSsz, block.GetBlock(), compress)
+	blockVer, blockSSZ, err := MarshalVersionedSignedBeaconBlockSSZ(block.dynSsz, block.GetBlock(), compress, false)
 	if err != nil {
 		return nil, fmt.Errorf("marshal block ssz failed: %v", err)
 	}
