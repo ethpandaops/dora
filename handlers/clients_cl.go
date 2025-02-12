@@ -154,7 +154,7 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 		PeerDASInfos: &models.ClientCLPagePeerDAS{
 			Warnings: models.ClientCLPageDataPeerDASWarnings{
 				MissingENRsPeers:       []string{},
-				MissingCSCFromENRPeers: []string{},
+				MissingCGCFromENRPeers: []string{},
 				EmptyColumns:           []uint64{},
 			},
 		},
@@ -416,15 +416,15 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 
 		custodySubnetCount := pageData.PeerDASInfos.CustodyRequirement
 
-		if cscHex, ok := enrValues["csc"]; ok {
-			val, err := strconv.ParseUint(cscHex.(string), 0, 64)
+		if cgcHex, ok := enrValues["cgc"]; ok {
+			val, err := strconv.ParseUint(cgcHex.(string), 0, 64)
 			if err != nil {
-				logrus.WithFields(logrus.Fields{"node": v.Alias, "peer_id": v.PeerID, "csc": cscHex.(string)}).Error("failed to decode csc. ", err)
+				logrus.WithFields(logrus.Fields{"node": v.Alias, "peer_id": v.PeerID, "cgc": cgcHex.(string)}).Error("failed to decode cgc. ", err)
 			} else {
 				custodySubnetCount = val
 			}
 		} else {
-			pageData.PeerDASInfos.Warnings.MissingCSCFromENRPeers = append(pageData.PeerDASInfos.Warnings.MissingCSCFromENRPeers, v.PeerID)
+			pageData.PeerDASInfos.Warnings.MissingCGCFromENRPeers = append(pageData.PeerDASInfos.Warnings.MissingCGCFromENRPeers, v.PeerID)
 			pageData.PeerDASInfos.Warnings.HasWarnings = true
 		}
 
@@ -450,7 +450,7 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 		peerDASInfo := models.ClientCLPageDataNodePeerDAS{
 			Columns:     resColumns,
 			Subnets:     resSubnets,
-			CSC:         custodySubnetCount,
+			CGC:         custodySubnetCount,
 			IsSuperNode: uint64(len(resColumns)) == pageData.PeerDASInfos.NumberOfColumns,
 		}
 		v.PeerDAS = &peerDASInfo
