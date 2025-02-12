@@ -57,9 +57,9 @@ type ClientCLPageDataPeerDASWarnings struct {
 	// MissingENRs indicates that the client is missing ENRs for some peers
 	MissingENRs      bool     `json:"missing_enrs"`
 	MissingENRsPeers []string `json:"missing_enrs_peers"`
-	// MissingCSCFromENR indicates that the client is missing the CSC from the ENR for some peers
-	MissingCSCFromENR      bool     `json:"missing_csc_from_enr"`
-	MissingCSCFromENRPeers []string `json:"missing_csc_from_enr_peers"`
+	// MissingCGCFromENR indicates that the client is missing the CGC from the ENR for some peers
+	MissingCGCFromENR      bool     `json:"missing_cgc_from_enr"`
+	MissingCGCFromENRPeers []string `json:"missing_cgc_from_enr_peers"`
 	// MissingSpecValues indicates that wer were unable to parse the spec values, thus using defaults
 	MissingSpecValues bool `json:"missing_spec_values"`
 	// MissingPeersOnColum
@@ -115,7 +115,7 @@ type ClientCLPageDataNodeENRValue struct {
 }
 
 type ClientCLPageDataNodePeerDAS struct {
-	CSC         uint64   `json:"csc"`
+	CGC         uint64   `json:"cgc"`
 	Columns     []uint64 `json:"columns"`
 	Subnets     []uint64 `json:"subnets"`
 	IsSuperNode bool     `json:"is_super_node"`
