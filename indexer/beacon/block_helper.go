@@ -18,11 +18,11 @@ import (
 var jsonVersionFlag uint64 = 0x40000000
 var compressionFlag uint64 = 0x20000000
 
-// marshalVersionedSignedBeaconBlockSSZ marshals a versioned signed beacon block using SSZ encoding.
-func marshalVersionedSignedBeaconBlockSSZ(dynSsz *dynssz.DynSsz, block *spec.VersionedSignedBeaconBlock, compress bool) (version uint64, ssz []byte, err error) {
-	if utils.Config.KillSwitch.DisableSSZEncoding {
+// MarshalVersionedSignedBeaconBlockSSZ marshals a versioned signed beacon block using SSZ encoding.
+func MarshalVersionedSignedBeaconBlockSSZ(dynSsz *dynssz.DynSsz, block *spec.VersionedSignedBeaconBlock, compress bool, forceSSZ bool) (version uint64, ssz []byte, err error) {
+	if utils.Config.KillSwitch.DisableSSZEncoding && !forceSSZ {
 		// SSZ encoding disabled, use json instead
-		version, ssz, err = marshalVersionedSignedBeaconBlockJson(block)
+		version, ssz, err = MarshalVersionedSignedBeaconBlockJson(block)
 	} else {
 		// SSZ encoding
 		switch block.Version {
@@ -116,8 +116,8 @@ func unmarshalVersionedSignedBeaconBlockSSZ(dynSsz *dynssz.DynSsz, version uint6
 	return block, nil
 }
 
-// marshalVersionedSignedBeaconBlockJson marshals a versioned signed beacon block using JSON encoding.
-func marshalVersionedSignedBeaconBlockJson(block *spec.VersionedSignedBeaconBlock) (version uint64, jsonRes []byte, err error) {
+// MarshalVersionedSignedBeaconBlockJson marshals a versioned signed beacon block using JSON encoding.
+func MarshalVersionedSignedBeaconBlockJson(block *spec.VersionedSignedBeaconBlock) (version uint64, jsonRes []byte, err error) {
 	switch block.Version {
 	case spec.DataVersionPhase0:
 		version = uint64(block.Version)

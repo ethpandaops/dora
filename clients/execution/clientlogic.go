@@ -74,7 +74,7 @@ func (client *Client) checkClient() error {
 		client.logger.Warnf("error updating node peers: %v", err)
 	}
 
-	// get & comare chain specs
+	// get & compare chain specs
 	specs, err := client.rpcClient.GetChainSpec(ctx)
 	if err != nil {
 		return fmt.Errorf("error while fetching specs: %v", err)

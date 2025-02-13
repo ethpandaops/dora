@@ -17,7 +17,7 @@ import (
 )
 
 // epochStatsKey is the primary key for EpochStats entries in cache.
-// consists of dependendRoot (32 byte) and epoch (8 byte).
+// consists of dependentRoot (32 byte) and epoch (8 byte).
 type epochStatsKey [32 + 8]byte
 
 // generate epochStatsKey from epoch and dependentRoot
