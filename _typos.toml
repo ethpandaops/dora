@@ -1,0 +1,9 @@
+
+[files]
+extend-exclude = ["static/**/*","ui-package/node_modules/**/*", "ui-package/dist/*", "go.mod", "go.sum"]
+
+[default]
+check-filename = false
+
+[default.extend-words]
+CoSE = "CoSE"
