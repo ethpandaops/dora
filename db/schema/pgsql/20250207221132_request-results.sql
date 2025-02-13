@@ -2,10 +2,10 @@
 -- +goose StatementBegin
 
 ALTER TABLE public."consolidation_requests"
-    ADD "result" TINYINT NOT NULL DEFAULT 0;
+    ADD "result" smallint NOT NULL DEFAULT 0;
 
 ALTER TABLE public."withdrawal_requests"
-    ADD "result" TINYINT NOT NULL DEFAULT 0;
+    ADD "result" smallint NOT NULL DEFAULT 0;
 
 -- +goose StatementEnd
 -- +goose Down

@@ -53,7 +53,7 @@ func InsertConsolidationRequestTxs(consolidationTxs []*dbtypes.ConsolidationRequ
 		argIdx += fieldCount
 	}
 	fmt.Fprint(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
-		dbtypes.DBEnginePgsql:  " ON CONFLICT (block_root, block_index) DO UPDATE SET source_index = excluded.source_index, target_index = excluded.target_index, fork_id = excluded.fork_id",
+		dbtypes.DBEnginePgsql:  " ON CONFLICT (block_root, block_index) DO UPDATE SET source_index = excluded.source_index, target_index = excluded.target_index, dequeue_block = excluded.dequeue_block, fork_id = excluded.fork_id",
 		dbtypes.DBEngineSqlite: "",
 	}))
 
