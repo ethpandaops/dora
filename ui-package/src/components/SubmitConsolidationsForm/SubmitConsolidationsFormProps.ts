@@ -1,4 +1,3 @@
-
 export interface ISubmitConsolidationsFormProps {
   consolidationContract: string;
   explorerUrl: string;
@@ -11,4 +10,5 @@ export interface IValidator {
   credtype: string;
   balance: number;
   status: string;
+  isconsolidable: boolean;
 }

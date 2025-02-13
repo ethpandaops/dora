@@ -168,6 +168,13 @@ const WithdrawalReview = (props: IWithdrawalReviewProps) => {
           The network is not on Electra yet, so withdrawal requests can not be submitted.
         </div>
       : <div>
+          {!props.validator.iswithdrawable && (
+            <div className="alert alert-warning" role="alert">
+              <i className="fa-solid fa-triangle-exclamation me-2"></i>
+              This withdrawal will fail because the validator is not withdrawable yet. The validator must be withdrawable before funds can be withdrawn.
+            </div>
+          )}
+          
           <div className="row">
             <div className="col-3 col-lg-2">
               Withdrawal Contract:
@@ -231,7 +238,11 @@ const WithdrawalReview = (props: IWithdrawalReviewProps) => {
           </div>
           <div className="row mt-3">
             <div className="col-12">
-              <button className="btn btn-primary" disabled={submitRequest.isPending || submitRequest.isSuccess} onClick={() => submitWithdrawal()}>
+              <button 
+                className="btn btn-primary" 
+                disabled={submitRequest.isPending || submitRequest.isSuccess} 
+                onClick={() => submitWithdrawal()}
+              >
                 {submitRequest.isSuccess ?
                   <span>Submitted</span> :
                   submitRequest.isPending ? (

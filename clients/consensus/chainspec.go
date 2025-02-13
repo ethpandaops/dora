@@ -58,6 +58,7 @@ type ChainSpec struct {
 	MaxWithdrawalRequestsPerPayload    uint64            `yaml:"MAX_WITHDRAWAL_REQUESTS_PER_PAYLOAD"    check-if-fork:"ElectraForkEpoch"`
 	DepositChainId                     uint64            `yaml:"DEPOSIT_CHAIN_ID"`
 	MinActivationBalance               uint64            `yaml:"MIN_ACTIVATION_BALANCE"`
+	ShardCommitteePeriod               uint64            `yaml:"SHARD_COMMITTEE_PERIOD"`
 
 	// EIP7594: PeerDAS
 	NumberOfColumns              *uint64 `yaml:"NUMBER_OF_COLUMNS"                check-if-fork:"Eip7594ForkEpoch"`

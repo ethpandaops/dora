@@ -1,4 +1,3 @@
-
 export interface ISubmitWithdrawalsFormProps {
   withdrawalContract: string;
   explorerUrl: string;
@@ -12,4 +11,5 @@ export interface IValidator {
   credtype: string;
   balance: number;
   status: string;
+  iswithdrawable: boolean;
 }

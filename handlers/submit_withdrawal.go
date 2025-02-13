@@ -10,9 +10,11 @@ import (
 	"time"
 
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
+	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/sirupsen/logrus"
 
+	"github.com/ethpandaops/dora/indexer/beacon"
 	"github.com/ethpandaops/dora/indexer/execution"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
@@ -109,6 +111,9 @@ func handleSubmitWithdrawalPageDataAjax(w http.ResponseWriter, r *http.Request) 
 		address := query.Get("address")
 		addressBytes := common.HexToAddress(address)
 
+		chainState := services.GlobalBeaconService.GetChainState()
+		chainSpecs := chainState.GetSpecs()
+
 		validators := services.GlobalBeaconService.GetCachedValidatorSet(true)
 		result := []models.SubmitWithdrawalPageDataValidator{}
 		for _, validator := range validators {
@@ -137,12 +142,18 @@ func handleSubmitWithdrawalPageDataAjax(w http.ResponseWriter, r *http.Request) 
 				status = validator.Status.String()
 			}
 
+			withdrawable := false
+			if validator.Validator.ActivationEpoch < beacon.FarFutureEpoch && validator.Validator.ActivationEpoch+phase0.Epoch(chainSpecs.ShardCommitteePeriod) > chainState.CurrentEpoch() {
+				withdrawable = true
+			}
+
 			result = append(result, models.SubmitWithdrawalPageDataValidator{
-				Index:    uint64(validator.Index),
-				Pubkey:   validator.Validator.PublicKey.String(),
-				Balance:  uint64(validator.Balance),
-				CredType: fmt.Sprintf("%02x", validator.Validator.WithdrawalCredentials[0]),
-				Status:   status,
+				Index:          uint64(validator.Index),
+				Pubkey:         validator.Validator.PublicKey.String(),
+				Balance:        uint64(validator.Balance),
+				CredType:       fmt.Sprintf("%02x", validator.Validator.WithdrawalCredentials[0]),
+				Status:         status,
+				IsWithdrawable: withdrawable,
 			})
 		}
 

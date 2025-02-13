@@ -10,9 +10,10 @@ type SubmitConsolidationPageData struct {
 }
 
 type SubmitConsolidationPageDataValidator struct {
-	Index    uint64 `json:"index"`
-	Pubkey   string `json:"pubkey"`
-	Balance  uint64 `json:"balance"`
-	CredType string `json:"credtype"`
-	Status   string `json:"status"`
+	Index          uint64 `json:"index"`
+	Pubkey         string `json:"pubkey"`
+	Balance        uint64 `json:"balance"`
+	CredType       string `json:"credtype"`
+	Status         string `json:"status"`
+	IsConsolidable bool   `json:"isconsolidable"`
 }
