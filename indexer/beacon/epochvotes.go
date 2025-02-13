@@ -12,7 +12,7 @@ import (
 )
 
 // epochVotesKey is the primary key for EpochVotes entries in cache.
-// consists of dependendRoot (32 byte), epoch (8 byte), highestRoot (32 byte) and blockCount/hasValues (1 byte).
+// consists of dependentRoot (32 byte), epoch (8 byte), highestRoot (32 byte) and blockCount/hasValues (1 byte).
 type epochVotesKey [32 + 8 + 32 + 1]byte
 
 // generate epochStatsKey from epoch and dependentRoot
@@ -202,9 +202,7 @@ func (indexer *Indexer) aggregateEpochVotesAndActivity(epoch phase0.Epoch, chain
 				} else {
 					votes.CurrentEpoch.TargetVoteAmount += voteAmount
 				}
-			} /*else {
-				indexer.logger.Infof("vote target missmatch %v != 0x%x", attData.Target.Root, targetRoot)
-			}*/
+			}
 			parentRoot := block.GetParentRoot()
 
 			if parentRoot != nil && bytes.Equal(attData.BeaconBlockRoot[:], parentRoot[:]) {
