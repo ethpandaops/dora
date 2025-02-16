@@ -37,6 +37,8 @@ type Block struct {
 	seenMutex         sync.RWMutex
 	seenMap           map[uint16]*Client
 	processedActivity uint8
+	blockResults      [][]uint8
+	blockResultsMutex sync.Mutex
 }
 
 // BlockBodyIndex holds important block properties that are used as index for cache lookups.
@@ -431,7 +433,7 @@ func (block *Block) GetDbWithdrawalRequests(indexer *Indexer, isCanonical bool) 
 		return nil
 	}
 
-	return indexer.dbWriter.buildDbWithdrawalRequests(block, !isCanonical, nil)
+	return indexer.dbWriter.buildDbWithdrawalRequests(block, !isCanonical, nil, nil)
 }
 
 // GetDbConsolidationRequests returns the database representation of the consolidation requests in this block.
@@ -440,7 +442,7 @@ func (block *Block) GetDbConsolidationRequests(indexer *Indexer, isCanonical boo
 		return nil
 	}
 
-	return indexer.dbWriter.buildDbConsolidationRequests(block, !isCanonical, nil)
+	return indexer.dbWriter.buildDbConsolidationRequests(block, !isCanonical, nil, nil)
 }
 
 // GetForkId returns the fork ID of this block.

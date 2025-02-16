@@ -8,7 +8,9 @@ import (
 
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/dora/dbtypes"
+	"github.com/ethpandaops/dora/indexer/beacon"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
@@ -230,6 +232,8 @@ func buildFilteredElConsolidationsPageData(pageIdx uint64, pageSize uint64, minS
 			elConsolidationData.SlotRoot = request.SlotRoot
 			elConsolidationData.Time = chainState.SlotToTime(phase0.Slot(request.SlotNumber))
 			elConsolidationData.Status = uint64(1)
+			elConsolidationData.Result = request.Result
+			elConsolidationData.ResultMessage = getConsolidationResultMessage(request.Result, chainState.GetSpecs())
 			if consolidation.RequestOrphaned {
 				elConsolidationData.Status = uint64(2)
 			}
@@ -287,4 +291,75 @@ func buildFilteredElConsolidationsPageData(pageIdx uint64, pageSize uint64, minS
 	pageData.LastPageLink = fmt.Sprintf("/validators/el_consolidations?f&%v&c=%v&p=%v", filterArgs.Encode(), pageData.PageSize, pageData.LastPageIndex)
 
 	return pageData
+}
+
+func getConsolidationResultMessage(result uint8, specs *consensus.ChainSpec) string {
+	switch result {
+	case dbtypes.ConsolidationRequestResultUnknown:
+		return "Unknown result"
+	case dbtypes.ConsolidationRequestResultSuccess:
+		return "Success"
+	case dbtypes.ConsolidationRequestResultTotalBalanceTooLow:
+		requiredBalance := getConsolidationRequiredBalance(specs)
+		return fmt.Sprintf("Error: Total active balance too low (required: %v ETH)", requiredBalance/beacon.EtherGweiFactor)
+	case dbtypes.ConsolidationRequestResultQueueFull:
+		return "Error: Consolidation queue is full"
+	case dbtypes.ConsolidationRequestResultSrcNotFound:
+		return "Error: Source validator not found"
+	case dbtypes.ConsolidationRequestResultSrcInvalidCredentials:
+		return "Error: Source validator has invalid credentials"
+	case dbtypes.ConsolidationRequestResultSrcInvalidSender:
+		return "Error: Source validator withdrawal address does not match tx sender"
+	case dbtypes.ConsolidationRequestResultSrcNotActive:
+		return "Error: Source validator is not active"
+	case dbtypes.ConsolidationRequestResultSrcNotOldEnough:
+		return fmt.Sprintf("Error: Source validator is not old enough (min. %v epochs)", specs.ShardCommitteePeriod)
+	case dbtypes.ConsolidationRequestResultSrcHasPendingWithdrawal:
+		return "Error: Source validator has pending partial withdrawal"
+	case dbtypes.ConsolidationRequestResultTgtNotFound:
+		return "Error: Target validator not found"
+	case dbtypes.ConsolidationRequestResultTgtInvalidCredentials:
+		return "Error: Target validator has invalid credentials"
+	case dbtypes.ConsolidationRequestResultTgtInvalidSender:
+		return "Error: Target validator withdrawal address does not match tx sender"
+	case dbtypes.ConsolidationRequestResultTgtNotCompounding:
+		return "Error: Target validator is not compounding"
+	case dbtypes.ConsolidationRequestResultTgtNotActive:
+		return "Error: Target validator is not active"
+	default:
+		return fmt.Sprintf("Unknown error code: %d", result)
+	}
+}
+
+func getConsolidationRequiredBalance(chainSpec *consensus.ChainSpec) phase0.Gwei {
+	// (c) claude-3.5-sonnet
+	// We need: consolidationChurnLimit > chainSpec.MinActivationBalance
+	// Where: consolidationChurnLimit = balanceChurnLimit - activationExitChurnLimit
+	// And: balanceChurnLimit = max(totalActiveBalance/ChurnLimitQuotient, MinPerEpochChurnLimitElectra)
+	// And: activationExitChurnLimit = min(balanceChurnLimit, MaxPerEpochActivationExitChurnLimit)
+
+	// Work backwards:
+	// 1. balanceChurnLimit - activationExitChurnLimit > MinActivationBalance
+	// 2. balanceChurnLimit - min(balanceChurnLimit, MaxPerEpochActivationExitChurnLimit) > MinActivationBalance
+	// 3. For the minimum valid totalActiveBalance, these will be equal:
+	//    balanceChurnLimit - MaxPerEpochActivationExitChurnLimit = MinActivationBalance
+	// 4. Therefore: balanceChurnLimit = MinActivationBalance + MaxPerEpochActivationExitChurnLimit
+
+	requiredBalanceChurnLimit := chainSpec.MinActivationBalance + chainSpec.MaxPerEpochActivationExitChurnLimit
+
+	// Round up to next increment
+	if requiredBalanceChurnLimit%chainSpec.EffectiveBalanceIncrement != 0 {
+		requiredBalanceChurnLimit += chainSpec.EffectiveBalanceIncrement - (requiredBalanceChurnLimit % chainSpec.EffectiveBalanceIncrement)
+	}
+
+	// Now solve for totalActiveBalance:
+	// balanceChurnLimit = max(totalActiveBalance/ChurnLimitQuotient, MinPerEpochChurnLimitElectra)
+	// Therefore: totalActiveBalance = balanceChurnLimit * ChurnLimitQuotient
+
+	// But first ensure we meet the minimum churn limit
+	if requiredBalanceChurnLimit < chainSpec.MinPerEpochChurnLimitElectra {
+		requiredBalanceChurnLimit = chainSpec.MinPerEpochChurnLimitElectra
+	}
+
+	return phase0.Gwei(requiredBalanceChurnLimit * chainSpec.ChurnLimitQuotient)
 }

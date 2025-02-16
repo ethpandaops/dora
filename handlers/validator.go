@@ -476,6 +476,8 @@ func buildValidatorPageData(validatorIndex uint64, tabView string) (*models.Vali
 				elWithdrawalData.SlotRoot = request.SlotRoot
 				elWithdrawalData.Time = chainState.SlotToTime(phase0.Slot(request.SlotNumber))
 				elWithdrawalData.Status = uint64(1)
+				elWithdrawalData.Result = request.Result
+				elWithdrawalData.ResultMessage = getWithdrawalResultMessage(request.Result, chainState.GetSpecs())
 				if elWithdrawal.RequestOrphaned {
 					elWithdrawalData.Status = uint64(2)
 				}
@@ -563,6 +565,8 @@ func buildValidatorPageData(validatorIndex uint64, tabView string) (*models.Vali
 				elConsolidationData.SlotRoot = request.SlotRoot
 				elConsolidationData.Time = chainState.SlotToTime(phase0.Slot(request.SlotNumber))
 				elConsolidationData.Status = uint64(1)
+				elConsolidationData.Result = request.Result
+				elConsolidationData.ResultMessage = getConsolidationResultMessage(request.Result, chainState.GetSpecs())
 				if consolidation.RequestOrphaned {
 					elConsolidationData.Status = uint64(2)
 				}

@@ -43,6 +43,8 @@ type ElConsolidationsPageDataConsolidation struct {
 	SlotRoot             []byte    `json:"slot_root"`
 	Time                 time.Time `json:"time"`
 	Status               uint64    `json:"status"`
+	Result               uint8     `json:"result"`
+	ResultMessage        string    `json:"result_message"`
 	TxStatus             uint64    `json:"tx_status"`
 	SourceAddr           []byte    `json:"src_addr"`
 	SourceValidatorValid bool      `json:"src_vvalid"`
