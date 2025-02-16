@@ -96,6 +96,13 @@
             <a class="nav-link" id="consolidationRequests-tab" data-bs-toggle="tab" href="#consolidationRequests" role="tab" aria-controls="consolidationRequests" aria-selected="false">Consolidation Requests <span class="badge bg-secondary text-white">{{ .Block.ConsolidationRequestsCount }}</span></a>
           </li>
         {{ end }}
+        {{ if .Block }}
+          <li class="nav-item ms-auto">
+            <a class="nav-link" id="download-tab" data-bs-toggle="tab" href="#download" role="tab" aria-controls="download" aria-selected="false">
+              <i class="fas fa-download"></i>
+            </a>
+          </li>
+        {{ end }}
       {{ end }}
     </ul>
 
@@ -251,7 +258,54 @@
             {{ template "block_consolidation_requests" . }}
           </div>
         {{ end }}
+        {{ if .Block }}
+          <div class="tab-pane fade" id="download" role="tabpanel" aria-labelledby="download-tab">
+            <div class="card block-card">
+              <div class="card-body">
+                <h3 class="h5 mb-4">Download Block Data</h3>
+                
+                <div class="row g-4">
+                  <div class="col-md-6">
+                    <div class="card h-100">
+                      <div class="card-header">
+                        <h4 class="h6 mb-0">Signed Beacon Block Header</h4>
+                      </div>
+                      <div class="card-body">
+                        <div class="d-grid gap-2">
+                          <a href="?download=header-ssz" class="btn btn-outline-primary">
+                            <i class="fas fa-file-download me-2"></i>Download as SSZ
+                          </a>
+                          <a href="?download=header-json" class="btn btn-outline-primary">
+                            <i class="fas fa-file-download me-2"></i>Download as JSON
+                          </a>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
 
+                  <div class="col-md-6">
+                    <div class="card h-100">
+                      <div class="card-header">
+                        <h4 class="h6 mb-0">Signed Beacon Block</h4>
+                      </div>
+                      <div class="card-body">
+                        <div class="d-grid gap-2">
+                          <a href="?download=block-ssz" class="btn btn-outline-primary">
+                            <i class="fas fa-file-download me-2"></i>Download as SSZ
+                          </a>
+                          <a href="?download=block-json" class="btn btn-outline-primary">
+                            <i class="fas fa-file-download me-2"></i>Download as JSON
+                          </a>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                </div>
+              </div>
+            </div>
+          </div>
+        {{ end }}
       {{ end }}
     </div>
     <script type="text/javascript">

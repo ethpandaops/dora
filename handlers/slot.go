@@ -69,14 +69,21 @@ func Slot(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	urlArgs := r.URL.Query()
-
-	var pageData *models.SlotPageData
-	var pageError error
-	pageError = services.GlobalCallRateLimiter.CheckCallLimit(r, 1)
-	if pageError == nil {
-		pageData, pageError = getSlotPageData(blockSlot, blockRootHash)
+	if pageError := services.GlobalCallRateLimiter.CheckCallLimit(r, 1); pageError != nil {
+		handlePageError(w, r, pageError)
+		return
 	}
+
+	urlArgs := r.URL.Query()
+	if urlArgs.Has("download") {
+		if err := handleSlotDownload(r.Context(), w, blockSlot, blockRootHash, urlArgs.Get("download")); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		return
+	}
+
+	pageData, pageError := getSlotPageData(blockSlot, blockRootHash)
 	if pageError != nil {
 		handlePageError(w, r, pageError)
 		return
@@ -734,12 +741,12 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 	return pageData
 }
 
-func getSlotPageTransactions(pageData *models.SlotPageBlockData, tranactions []bellatrix.Transaction) {
+func getSlotPageTransactions(pageData *models.SlotPageBlockData, transactions []bellatrix.Transaction) {
 	pageData.Transactions = make([]*models.SlotPageTransaction, 0)
 	sigLookupBytes := []types.TxSignatureBytes{}
 	sigLookupMap := map[types.TxSignatureBytes][]*models.SlotPageTransaction{}
 
-	for idx, txBytes := range tranactions {
+	for idx, txBytes := range transactions {
 		var tx ethtypes.Transaction
 
 		err := tx.UnmarshalBinary(txBytes)
@@ -793,7 +800,7 @@ func getSlotPageTransactions(pageData *models.SlotPageBlockData, tranactions []b
 			txData.FuncName = "transfer"
 		}
 	}
-	pageData.TransactionsCount = uint64(len(tranactions))
+	pageData.TransactionsCount = uint64(len(transactions))
 
 	if len(sigLookupBytes) > 0 {
 		sigLookups := services.GlobalTxSignaturesService.LookupSignatures(sigLookupBytes)
@@ -884,4 +891,74 @@ func getSlotPageConsolidationRequests(pageData *models.SlotPageBlockData, consol
 	}
 
 	pageData.ConsolidationRequestsCount = uint64(len(pageData.ConsolidationRequests))
+}
+
+func handleSlotDownload(ctx context.Context, w http.ResponseWriter, blockSlot int64, blockRoot []byte, downloadType string) error {
+	chainState := services.GlobalBeaconService.GetChainState()
+	currentSlot := chainState.CurrentSlot()
+	var blockData *services.CombinedBlockResponse
+	var err error
+	if blockSlot > -1 {
+		if phase0.Slot(blockSlot) <= currentSlot {
+			blockData, err = services.GlobalBeaconService.GetSlotDetailsBySlot(ctx, phase0.Slot(blockSlot))
+		}
+	} else {
+		blockData, err = services.GlobalBeaconService.GetSlotDetailsByBlockroot(ctx, phase0.Root(blockRoot))
+	}
+
+	if err != nil {
+		return fmt.Errorf("error getting block data: %v", err)
+	}
+
+	if blockData == nil || blockData.Block == nil {
+		return fmt.Errorf("block not found")
+	}
+
+	switch downloadType {
+	case "block-ssz":
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=block-%d-%x.ssz", blockData.Header.Message.Slot, blockData.Root[:]))
+
+		dynSsz := services.GlobalBeaconService.GetBeaconIndexer().GetDynSSZ()
+		_, blockSSZ, err := beacon.MarshalVersionedSignedBeaconBlockSSZ(dynSsz, blockData.Block, false, true)
+		if err != nil {
+			return fmt.Errorf("error serializing block: %v", err)
+		}
+		w.Write(blockSSZ)
+		return nil
+
+	case "block-json":
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=block-%d-%x.json", blockData.Header.Message.Slot, blockData.Root[:]))
+
+		_, jsonRes, err := beacon.MarshalVersionedSignedBeaconBlockJson(blockData.Block)
+		if err != nil {
+			return fmt.Errorf("error serializing block: %v", err)
+		}
+		w.Write(jsonRes)
+		return nil
+
+	case "header-ssz":
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=header-%d-%x.ssz", blockData.Header.Message.Slot, blockData.Root[:]))
+		headerSSZ, err := blockData.Header.MarshalSSZ()
+		if err != nil {
+			return fmt.Errorf("error serializing header: %v", err)
+		}
+		w.Write(headerSSZ)
+		return nil
+
+	case "header-json":
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=header-%d-%x.json", blockData.Header.Message.Slot, blockData.Root[:]))
+		jsonRes, err := blockData.Header.MarshalJSON()
+		if err != nil {
+			return fmt.Errorf("error serializing header: %v", err)
+		}
+		w.Write(jsonRes)
+		return nil
+
+	default:
+		return fmt.Errorf("unknown download type: %s", downloadType)
+	}
 }

@@ -657,7 +657,7 @@ func (v *EpochStatsValues) GetEffectiveBalance(index duties.ActiveIndiceIndex) p
 	return phase0.Gwei(v.EffectiveBalances[index]) * EtherGweiFactor
 }
 
-// GetDbEpoch returns the database Epoch representaion for the EpochStats.
+// GetDbEpoch returns the database Epoch representation for the EpochStats.
 func (es *EpochStats) GetDbEpoch(indexer *Indexer, headBlock *Block) *dbtypes.Epoch {
 	chainState := indexer.consensusPool.GetChainState()
 	if headBlock == nil {
