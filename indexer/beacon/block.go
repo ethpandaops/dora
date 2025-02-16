@@ -38,7 +38,7 @@ type Block struct {
 	processedActivity uint8
 }
 
-// BlockBodyIndex holds important block propoerties that are used as index for cache lookups.
+// BlockBodyIndex holds important block properties that are used as index for cache lookups.
 // this structure should be preserved after pruning, so the block is still identifiable.
 type BlockBodyIndex struct {
 	Graffiti           [32]byte

@@ -62,7 +62,7 @@ type ClientCLPageDataPeerDASWarnings struct {
 	MissingCGCFromENRPeers []string `json:"missing_cgc_from_enr_peers"`
 	// MissingSpecValues indicates that wer were unable to parse the spec values, thus using defaults
 	MissingSpecValues bool `json:"missing_spec_values"`
-	// MissingPeersOnColum
+	// MissingPeersOnColumn
 	EmptyColumns []uint64 `json:"missing_peers_on_column"`
 }
 
@@ -90,10 +90,10 @@ type ClientCLPageDataNode struct {
 	PeerID       string                          `json:"peer_id"`
 	NodeID       string                          `json:"node_id"`
 	Type         string                          `json:"type"`  // "internal" or "external" . internal nodes are clients, external nodes are peers of clients
-	Alias        string                          `json:"alias"` // only relevent for internal peers (clients)
+	Alias        string                          `json:"alias"` // only relevant for internal peers (clients)
 	ENR          string                          `json:"enr"`
 	ENRKeyValues []*ClientCLPageDataNodeENRValue `json:"enr_kv"`
-	Peers        []*ClientCLPageDataNodePeers    `json:"peers"` // only relevent for internal peers
+	Peers        []*ClientCLPageDataNodePeers    `json:"peers"` // only relevant for internal peers
 	PeerDAS      *ClientCLPageDataNodePeerDAS    `json:"peer_das"`
 	PeersIn      []string                        `json:"peers_in"`
 	PeersOut     []string                        `json:"peers_out"`

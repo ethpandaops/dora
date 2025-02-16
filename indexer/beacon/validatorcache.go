@@ -25,7 +25,7 @@ type validatorCache struct {
 }
 
 // validatorDiffKey is the primary key for validatorDiff entries in cache.
-// consists of dependendRoot (32 byte) and epoch (8 byte).
+// consists of dependentRoot (32 byte) and epoch (8 byte).
 type validatorDiffKey [32 + 8]byte
 
 // generate validatorDiffKey from epoch and dependentRoot
