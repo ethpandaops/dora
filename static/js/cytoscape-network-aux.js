@@ -30,13 +30,22 @@ $_network.layouts = {
   fcose : function(nodeCount){
     return {
       name: 'fcose',
-      idealEdgeLength: 3 * nodeCount,
-      nestingFactor: 1.2,
+      idealEdgeLength: nodeCount < 50 ? nodeCount * 5 : nodeCount * 3,
+      nestingFactor: 1.4,
+      nodeRepulsion: nodeCount * 1000,
+      edgeElasticity: 0.45,
+      gravity: 0.25,
+      numIter: 2500,
+      tile: true,
+      tilingPaddingVertical: 10,
+      tilingPaddingHorizontal: 10,
       animate: false,
+      fit: true,
+      padding: nodeCount < 20 ? 100 : 30,
+      randomize: true,
       stop: function() {
         $("#nodemap-loading").hide();
       },
-      padding: nodeCount < 20 ? 200 : 0,
     }
   },
   circle : function() {

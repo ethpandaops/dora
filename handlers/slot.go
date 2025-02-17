@@ -763,12 +763,12 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 	return pageData
 }
 
-func getSlotPageTransactions(pageData *models.SlotPageBlockData, tranactions []bellatrix.Transaction) {
+func getSlotPageTransactions(pageData *models.SlotPageBlockData, transactions []bellatrix.Transaction) {
 	pageData.Transactions = make([]*models.SlotPageTransaction, 0)
 	sigLookupBytes := []types.TxSignatureBytes{}
 	sigLookupMap := map[types.TxSignatureBytes][]*models.SlotPageTransaction{}
 
-	for idx, txBytes := range tranactions {
+	for idx, txBytes := range transactions {
 		var tx ethtypes.Transaction
 
 		err := tx.UnmarshalBinary(txBytes)
@@ -822,7 +822,7 @@ func getSlotPageTransactions(pageData *models.SlotPageBlockData, tranactions []b
 			txData.FuncName = "transfer"
 		}
 	}
-	pageData.TransactionsCount = uint64(len(tranactions))
+	pageData.TransactionsCount = uint64(len(transactions))
 
 	if len(sigLookupBytes) > 0 {
 		sigLookups := services.GlobalTxSignaturesService.LookupSignatures(sigLookupBytes)
