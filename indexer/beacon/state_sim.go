@@ -504,19 +504,15 @@ func (sim *stateSimulator) replayBlockResults(block *Block) [][]uint8 {
 		return sim.prevState.blockResults
 	}
 
-	// replay parent blocks up to the current block and apply all operations for relevant indices
+	// replay parent blocks up to the current block and apply all relevant operations
 	for _, parentBlock := range parentBlocks {
 		sim.applyBlock(parentBlock)
 	}
 
-	// get consolidations from block
-	blockBody := block.GetBlock()
-	if blockBody == nil {
-		return nil
-	}
-
+	// apply current block and store results
 	results := sim.applyBlock(block)
 	sim.prevState.blockResults = results
 	block.blockResults = results
+
 	return results
 }
