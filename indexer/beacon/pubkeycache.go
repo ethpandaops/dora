@@ -72,3 +72,10 @@ func (c *pubkeyCache) Get(pubkey phase0.BLSPubKey) (phase0.ValidatorIndex, bool)
 		return index, exists
 	}
 }
+
+func (c *pubkeyCache) Close() error {
+	if c.pubkeyDb != nil {
+		return c.pubkeyDb.Close()
+	}
+	return nil
+}

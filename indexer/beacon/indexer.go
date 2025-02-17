@@ -405,6 +405,10 @@ func (indexer *Indexer) StartIndexer() {
 	}()
 }
 
+func (indexer *Indexer) StopIndexer() {
+	indexer.pubkeyCache.Close()
+}
+
 func (indexer *Indexer) runIndexerLoop() {
 	defer func() {
 		if err := recover(); err != nil {
