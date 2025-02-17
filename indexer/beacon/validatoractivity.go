@@ -63,26 +63,26 @@ func (cache *validatorActivityCache) getCutOffEpoch() phase0.Epoch {
 // updateValidatorActivity updates the validator activity cache.
 func (cache *validatorActivityCache) updateValidatorActivity(validatorIndex phase0.ValidatorIndex, epoch phase0.Epoch, dutySlot phase0.Slot, voteBlock *Block) {
 	cutOffEpoch := cache.getCutOffEpoch()
-	chainState := cache.indexer.consensusPool.GetChainState()
-
 	if epoch < cutOffEpoch {
 		// ignore old activity
 		return
 	}
+
+	cache.activityMutex.Lock()
+	defer cache.activityMutex.Unlock()
+
 	if epoch < cache.oldestActivityEpoch {
 		cache.oldestActivityEpoch = epoch
 	} else if cache.oldestActivityEpoch < cutOffEpoch+1 {
 		cache.oldestActivityEpoch = cutOffEpoch + 1
 	}
 
-	cache.activityMutex.Lock()
-	defer cache.activityMutex.Unlock()
-
 	recentActivity := cache.activityMap[validatorIndex]
 	if recentActivity == nil {
 		recentActivity = make([]ValidatorActivity, 0, cache.indexer.activityHistoryLength)
 	}
 
+	chainState := cache.indexer.consensusPool.GetChainState()
 	replaceIndex := -1
 	cutOffLength := 0
 	activityLength := len(recentActivity)
