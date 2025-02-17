@@ -1,6 +1,7 @@
 module github.com/ethpandaops/dora
 
-go 1.22.0
+go 1.23.5
+
 toolchain go1.23.6
 
 require (
