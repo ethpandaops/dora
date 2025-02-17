@@ -311,8 +311,9 @@ func (ci *contractIndexer[TxType]) processFinalizedBlocks(finalizedBlockNumber u
 		}
 
 		// calculate how many requests were dequeued at the end of the current block range
-		if ci.options.dequeueRate > 0 && queueBlock < toBlock {
-			dequeuedRequests := (toBlock - queueBlock) * ci.options.dequeueRate
+		if ci.options.dequeueRate > 0 {
+			// we need to add 1 to the block range as we want to preserve the queue state after the last block in the range
+			dequeuedRequests := (toBlock - queueBlock + 1) * ci.options.dequeueRate
 			if dequeuedRequests > queueLength {
 				queueLength = 0
 			} else {
@@ -402,12 +403,6 @@ func (ci *contractIndexer[TxType]) processRecentBlocksForFork(headFork *forkWith
 	}()
 
 	queueBlock := startBlockNumber
-	// we start crawling from the next block, so we need to decrease the queue length for the current block
-	if queueLength > ci.options.dequeueRate {
-		queueLength -= ci.options.dequeueRate
-	} else {
-		queueLength = 0
-	}
 
 	// process blocks in range until the head el block is reached
 	for startBlockNumber <= elHeadBlockNumber {
@@ -527,16 +522,16 @@ func (ci *contractIndexer[TxType]) processRecentBlocksForFork(headFork *forkWith
 			}
 
 			// calculate how many requests were dequeued at the end of the current block range
-			if queueBlock < toBlock {
-				dequeuedRequests := (toBlock - queueBlock) * ci.options.dequeueRate
+			if ci.options.dequeueRate > 0 {
+				dequeuedRequests := (toBlock - queueBlock + 1) * ci.options.dequeueRate
 				if dequeuedRequests > queueLength {
 					queueLength = 0
 				} else {
 					queueLength -= dequeuedRequests
 				}
-
-				queueBlock = toBlock
 			}
+
+			queueBlock = toBlock
 
 			if len(requestTxs) > 0 {
 				ci.logger.Infof("crawled recent contract logs for fork %v (%v-%v): %v events", headFork.forkId, startBlockNumber, toBlock, len(requestTxs))

@@ -266,6 +266,30 @@ type Slashing struct {
 	ForkId         uint64         `db:"fork_id"`
 }
 
+const (
+	ConsolidationRequestResultUnknown uint8 = 0
+	ConsolidationRequestResultSuccess uint8 = 1
+
+	// global errors
+	ConsolidationRequestResultTotalBalanceTooLow uint8 = 10
+	ConsolidationRequestResultQueueFull          uint8 = 11
+
+	// source validator errors
+	ConsolidationRequestResultSrcNotFound             uint8 = 20
+	ConsolidationRequestResultSrcInvalidCredentials   uint8 = 21
+	ConsolidationRequestResultSrcInvalidSender        uint8 = 22
+	ConsolidationRequestResultSrcNotActive            uint8 = 23
+	ConsolidationRequestResultSrcNotOldEnough         uint8 = 24
+	ConsolidationRequestResultSrcHasPendingWithdrawal uint8 = 25
+
+	// target validator errors
+	ConsolidationRequestResultTgtNotFound           uint8 = 30
+	ConsolidationRequestResultTgtInvalidCredentials uint8 = 31
+	ConsolidationRequestResultTgtInvalidSender      uint8 = 32
+	ConsolidationRequestResultTgtNotCompounding     uint8 = 33
+	ConsolidationRequestResultTgtNotActive          uint8 = 34
+)
+
 type ConsolidationRequest struct {
 	SlotNumber    uint64  `db:"slot_number"`
 	SlotRoot      []byte  `db:"slot_root"`
@@ -279,6 +303,7 @@ type ConsolidationRequest struct {
 	TargetPubkey  []byte  `db:"target_pubkey"`
 	TxHash        []byte  `db:"tx_hash"`
 	BlockNumber   uint64  `db:"block_number"`
+	Result        uint8   `db:"result"`
 }
 
 type ConsolidationRequestTx struct {
@@ -298,6 +323,24 @@ type ConsolidationRequestTx struct {
 	DequeueBlock  uint64  `db:"dequeue_block"`
 }
 
+const (
+	WithdrawalRequestResultUnknown uint8 = 0
+	WithdrawalRequestResultSuccess uint8 = 1
+
+	// global errors
+	WithdrawalRequestResultQueueFull uint8 = 10
+
+	// validator errors
+	WithdrawalRequestResultValidatorNotFound             uint8 = 20
+	WithdrawalRequestResultValidatorInvalidCredentials   uint8 = 21
+	WithdrawalRequestResultValidatorInvalidSender        uint8 = 22
+	WithdrawalRequestResultValidatorNotActive            uint8 = 23
+	WithdrawalRequestResultValidatorNotOldEnough         uint8 = 24
+	WithdrawalRequestResultValidatorNotCompounding       uint8 = 25
+	WithdrawalRequestResultValidatorHasPendingWithdrawal uint8 = 26
+	WithdrawalRequestResultValidatorBalanceTooLow        uint8 = 27
+)
+
 type WithdrawalRequest struct {
 	SlotNumber      uint64  `db:"slot_number"`
 	SlotRoot        []byte  `db:"slot_root"`
@@ -310,6 +353,7 @@ type WithdrawalRequest struct {
 	Amount          int64   `db:"amount"`
 	TxHash          []byte  `db:"tx_hash"`
 	BlockNumber     uint64  `db:"block_number"`
+	Result          uint8   `db:"result"`
 }
 
 type WithdrawalRequestTx struct {
@@ -326,4 +370,16 @@ type WithdrawalRequestTx struct {
 	TxSender        []byte  `db:"tx_sender"`
 	TxTarget        []byte  `db:"tx_target"`
 	DequeueBlock    uint64  `db:"dequeue_block"`
+}
+
+type Validator struct {
+	ValidatorIndex             uint64 `db:"validator_index"`
+	Pubkey                     []byte `db:"pubkey"`
+	WithdrawalCredentials      []byte `db:"withdrawal_credentials"`
+	EffectiveBalance           uint64 `db:"effective_balance"`
+	Slashed                    bool   `db:"slashed"`
+	ActivationEligibilityEpoch int64  `db:"activation_eligibility_epoch"`
+	ActivationEpoch            int64  `db:"activation_epoch"`
+	ExitEpoch                  int64  `db:"exit_epoch"`
+	WithdrawableEpoch          int64  `db:"withdrawable_epoch"`
 }

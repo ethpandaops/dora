@@ -19,11 +19,11 @@ import (
 var jsonVersionFlag uint64 = 0x40000000
 var compressionFlag uint64 = 0x20000000
 
-// marshalVersionedSignedBeaconBlockSSZ marshals a versioned signed beacon block using SSZ encoding.
-func marshalVersionedSignedBeaconBlockSSZ(dynSsz *dynssz.DynSsz, block *spec.VersionedSignedBeaconBlock, compress bool) (version uint64, ssz []byte, err error) {
-	if utils.Config.KillSwitch.DisableSSZEncoding {
+// MarshalVersionedSignedBeaconBlockSSZ marshals a versioned signed beacon block using SSZ encoding.
+func MarshalVersionedSignedBeaconBlockSSZ(dynSsz *dynssz.DynSsz, block *spec.VersionedSignedBeaconBlock, compress bool, forceSSZ bool) (version uint64, ssz []byte, err error) {
+	if utils.Config.KillSwitch.DisableSSZEncoding && !forceSSZ {
 		// SSZ encoding disabled, use json instead
-		version, ssz, err = marshalVersionedSignedBeaconBlockJson(block)
+		version, ssz, err = MarshalVersionedSignedBeaconBlockJson(block)
 	} else {
 		// SSZ encoding
 		switch block.Version {
@@ -125,8 +125,8 @@ func unmarshalVersionedSignedBeaconBlockSSZ(dynSsz *dynssz.DynSsz, version uint6
 	return block, nil
 }
 
-// marshalVersionedSignedBeaconBlockJson marshals a versioned signed beacon block using JSON encoding.
-func marshalVersionedSignedBeaconBlockJson(block *spec.VersionedSignedBeaconBlock) (version uint64, jsonRes []byte, err error) {
+// MarshalVersionedSignedBeaconBlockJson marshals a versioned signed beacon block using JSON encoding.
+func MarshalVersionedSignedBeaconBlockJson(block *spec.VersionedSignedBeaconBlock) (version uint64, jsonRes []byte, err error) {
 	switch block.Version {
 	case spec.DataVersionPhase0:
 		version = uint64(block.Version)
@@ -430,6 +430,54 @@ func getStateCurrentSyncCommittee(v *spec.VersionedBeaconState) ([]phase0.BLSPub
 		}
 
 		return v.EIP7732.CurrentSyncCommittee.Pubkeys, nil
+	default:
+		return nil, errors.New("unknown version")
+	}
+}
+
+// getStatePendingWithdrawals returns the pending withdrawals from a versioned beacon state.
+func getStatePendingWithdrawals(v *spec.VersionedBeaconState) ([]*electra.PendingPartialWithdrawal, error) {
+	switch v.Version {
+	case spec.DataVersionPhase0:
+		return nil, errors.New("no pending withdrawals in phase0")
+	case spec.DataVersionAltair:
+		return nil, errors.New("no pending withdrawals in altair")
+	case spec.DataVersionBellatrix:
+		return nil, errors.New("no pending withdrawals in bellatrix")
+	case spec.DataVersionCapella:
+		return nil, errors.New("no pending withdrawals in capella")
+	case spec.DataVersionDeneb:
+		return nil, errors.New("no pending withdrawals in deneb")
+	case spec.DataVersionElectra:
+		if v.Electra == nil || v.Electra.PendingPartialWithdrawals == nil {
+			return nil, errors.New("no electra block")
+		}
+
+		return v.Electra.PendingPartialWithdrawals, nil
+	default:
+		return nil, errors.New("unknown version")
+	}
+}
+
+// getStatePendingConsolidations returns the pending consolidations from a versioned beacon state.
+func getStatePendingConsolidations(v *spec.VersionedBeaconState) ([]*electra.PendingConsolidation, error) {
+	switch v.Version {
+	case spec.DataVersionPhase0:
+		return nil, errors.New("no pending consolidations in phase0")
+	case spec.DataVersionAltair:
+		return nil, errors.New("no pending consolidations in altair")
+	case spec.DataVersionBellatrix:
+		return nil, errors.New("no pending consolidations in bellatrix")
+	case spec.DataVersionCapella:
+		return nil, errors.New("no pending consolidations in capella")
+	case spec.DataVersionDeneb:
+		return nil, errors.New("no pending consolidations in deneb")
+	case spec.DataVersionElectra:
+		if v.Electra == nil || v.Electra.PendingConsolidations == nil {
+			return nil, errors.New("no electra block")
+		}
+
+		return v.Electra.PendingConsolidations, nil
 	default:
 		return nil, errors.New("unknown version")
 	}

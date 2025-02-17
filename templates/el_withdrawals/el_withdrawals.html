@@ -171,7 +171,7 @@
                     <td data-timer="{{ $request.Time.Unix }}"><span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $request.Time }}">{{ formatRecentTimeShort $request.Time }}</span></td>
                     <td>
                       <div class="d-flex">
-                        <span class="flex-grow-1 text-truncate" style="max-width: 400px;">{{ ethAddressLink $request.SourceAddr }}</span>
+                        <span class="flex-grow-1 text-truncate" style="max-width: 300px;">{{ ethAddressLink $request.SourceAddr }}</span>
                         <div>
                           <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ formatEthAddress $request.SourceAddr }}"></i>
                         </div>
@@ -222,7 +222,13 @@
                       {{ if eq $request.Status 0 }}
                         <span class="badge rounded-pill text-bg-secondary">Req. Pending</span>
                       {{ else if eq $request.Status 1 }}
-                        <span class="badge rounded-pill text-bg-success">Req. Included</span>
+                        {{ if eq $request.Result 0 }}
+                          <span class="badge rounded-pill text-bg-warning" data-bs-toggle="tooltip" title="Request was included but result is unknown">Req. Included</span>
+                        {{ else if eq $request.Result 1 }}
+                          <span class="badge rounded-pill text-bg-success">Req. Included</span>
+                        {{ else }}
+                          <span class="badge rounded-pill text-bg-danger" data-bs-toggle="tooltip" data-bs-html="true" title="{{ $request.ResultMessage }}">Req. Failed</span>
+                        {{ end }}
                       {{ else if eq $request.Status 2 }}
                         <span class="badge rounded-pill text-bg-info">Req. Orphaned</span>
                       {{ end }}
