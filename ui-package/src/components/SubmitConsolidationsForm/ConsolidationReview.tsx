@@ -168,6 +168,18 @@ const ConsolidationReview = (props: IConsolidationReviewProps) => {
           The network is not on Electra yet, so consolidation requests can not be submitted.
         </div>
       : <div>
+          {!props.sourceValidator.isconsolidable && (
+            <div className="alert alert-warning" role="alert">
+              <i className="fa-solid fa-triangle-exclamation me-2"></i>
+              This consolidation will fail because the source validator is not withdrawable yet. The validator must be withdrawable before it can be consolidated.
+            </div>
+          )}
+          {props.targetValidator.credtype !== "0x02" && props.targetValidator.index != props.sourceValidator.index && (
+            <div className="alert alert-warning" role="alert">
+              <i className="fa-solid fa-triangle-exclamation me-2"></i>
+              This consolidation will fail because the target validator does not have 0x02 withdrawal credentials. The target validator must first perform a self-consolidation to update its withdrawal credentials to 0x02.
+            </div>
+          )}
           <div className="row">
             <div className="col-3 col-lg-2">
               Consolidation Contract:
@@ -231,7 +243,11 @@ const ConsolidationReview = (props: IConsolidationReviewProps) => {
           </div>
           <div className="row mt-3">
             <div className="col-12">
-              <button className="btn btn-primary" disabled={submitRequest.isPending || submitRequest.isSuccess} onClick={() => submitConsolidation()}>
+              <button 
+                className="btn btn-primary" 
+                disabled={submitRequest.isPending || submitRequest.isSuccess} 
+                onClick={() => submitConsolidation()}
+              >
                 {submitRequest.isSuccess ?
                   <span>Submitted</span> :
                   submitRequest.isPending ? (

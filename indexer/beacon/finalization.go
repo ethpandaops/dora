@@ -293,6 +293,8 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 		if blockIndex := block.GetBlockIndex(); blockIndex != nil {
 			canonicalBlockHashes[i] = blockIndex.ExecutionHash[:]
 		}
+
+		block.blockResults = nil // force re-simulation of block results
 	}
 
 	t1dur := time.Since(t1) - t1loading
@@ -302,7 +304,7 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 	deleteBeforeSlot := chainState.EpochToSlot(epoch + 1)
 	err := db.RunDBTransaction(func(tx *sqlx.Tx) error {
 		// persist canonical epoch data
-		if err := indexer.dbWriter.persistEpochData(tx, epoch, canonicalBlocks, epochStats, epochVotes); err != nil {
+		if err := indexer.dbWriter.persistEpochData(tx, epoch, canonicalBlocks, epochStats, epochVotes, nil); err != nil {
 			return fmt.Errorf("failed persisting epoch data for epoch %v: %v", epoch, err)
 		}
 
@@ -311,11 +313,17 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 			dependentBlock := indexer.blockCache.getDependentBlock(chainState, block, client)
 
 			var epochStats *EpochStats
+
 			if dependentBlock != nil {
 				epochStats = indexer.epochCache.getEpochStats(epoch, dependentBlock.Root)
 			}
 
-			if _, err := indexer.dbWriter.persistBlockData(tx, block, epochStats, nil, true, nil); err != nil {
+			var sim *stateSimulator
+			if epochStats != nil {
+				sim = newStateSimulator(indexer, epochStats)
+			}
+
+			if _, err := indexer.dbWriter.persistBlockData(tx, block, epochStats, nil, true, nil, sim); err != nil {
 				return fmt.Errorf("failed persisting orphaned slot %v (%v): %v", block.Slot, block.Root.String(), err)
 			}
 

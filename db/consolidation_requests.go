@@ -15,11 +15,11 @@ func InsertConsolidationRequests(consolidations []*dbtypes.ConsolidationRequest,
 			dbtypes.DBEnginePgsql:  "INSERT INTO consolidation_requests ",
 			dbtypes.DBEngineSqlite: "INSERT OR REPLACE INTO consolidation_requests ",
 		}),
-		"(slot_number, slot_root, slot_index, orphaned, fork_id, source_address, source_index, source_pubkey, target_index, target_pubkey, tx_hash, block_number)",
+		"(slot_number, slot_root, slot_index, orphaned, fork_id, source_address, source_index, source_pubkey, target_index, target_pubkey, tx_hash, block_number, result)",
 		" VALUES ",
 	)
 	argIdx := 0
-	fieldCount := 12
+	fieldCount := 13
 
 	args := make([]interface{}, len(consolidations)*fieldCount)
 	for i, consolidation := range consolidations {
@@ -47,10 +47,11 @@ func InsertConsolidationRequests(consolidations []*dbtypes.ConsolidationRequest,
 		args[argIdx+9] = consolidation.TargetPubkey[:]
 		args[argIdx+10] = consolidation.TxHash[:]
 		args[argIdx+11] = consolidation.BlockNumber
+		args[argIdx+12] = consolidation.Result
 		argIdx += fieldCount
 	}
 	fmt.Fprint(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
-		dbtypes.DBEnginePgsql:  " ON CONFLICT (slot_root, slot_index) DO UPDATE SET orphaned = excluded.orphaned, fork_id = excluded.fork_id",
+		dbtypes.DBEnginePgsql:  " ON CONFLICT (slot_root, slot_index) DO UPDATE SET orphaned = excluded.orphaned, fork_id = excluded.fork_id, result = excluded.result",
 		dbtypes.DBEngineSqlite: "",
 	}))
 	_, err := tx.Exec(sql.String(), args...)
@@ -66,7 +67,7 @@ func GetConsolidationRequestsFiltered(offset uint64, limit uint32, canonicalFork
 	fmt.Fprint(&sql, `
 	WITH cte AS (
 		SELECT
-			slot_number, slot_root, slot_index, orphaned, fork_id, source_address, source_index, source_pubkey, target_index, target_pubkey, tx_hash, block_number
+			slot_number, slot_root, slot_index, orphaned, fork_id, source_address, source_index, source_pubkey, target_index, target_pubkey, tx_hash, block_number, result
 		FROM consolidation_requests
 	`)
 
@@ -173,7 +174,8 @@ func GetConsolidationRequestsFiltered(offset uint64, limit uint32, canonicalFork
 		0 AS target_index,
 		null AS target_pubkey,
 		null AS tx_hash,
-		0 AS block_number
+		0 AS block_number,
+		0 AS result
 	FROM cte
 	UNION ALL SELECT * FROM (
 	SELECT * FROM cte
