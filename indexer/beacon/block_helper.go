@@ -454,6 +454,12 @@ func getStatePendingWithdrawals(v *spec.VersionedBeaconState) ([]*electra.Pendin
 		}
 
 		return v.Electra.PendingPartialWithdrawals, nil
+	case spec.DataVersionEIP7732:
+		if v.EIP7732 == nil || v.EIP7732.PendingPartialWithdrawals == nil {
+			return nil, errors.New("no eip7732 block")
+		}
+
+		return v.EIP7732.PendingPartialWithdrawals, nil
 	default:
 		return nil, errors.New("unknown version")
 	}
@@ -478,6 +484,12 @@ func getStatePendingConsolidations(v *spec.VersionedBeaconState) ([]*electra.Pen
 		}
 
 		return v.Electra.PendingConsolidations, nil
+	case spec.DataVersionEIP7732:
+		if v.EIP7732 == nil || v.EIP7732.PendingConsolidations == nil {
+			return nil, errors.New("no eip7732 block")
+		}
+
+		return v.EIP7732.PendingConsolidations, nil
 	default:
 		return nil, errors.New("unknown version")
 	}
