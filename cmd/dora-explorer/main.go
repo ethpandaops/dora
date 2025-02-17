@@ -89,6 +89,7 @@ func main() {
 
 	utils.WaitForCtrlC()
 	logger.Println("exiting...")
+	services.GlobalBeaconService.StopService()
 	db.MustCloseDB()
 }
 
