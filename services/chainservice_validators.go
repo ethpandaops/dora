@@ -30,7 +30,7 @@ func (bs *ChainService) StreamActiveValidatorData(activeOnly bool, cb beacon.Val
 
 	currentEpoch := bs.consensusPool.GetChainState().CurrentEpoch()
 
-	return bs.beaconIndexer.StreamActiveValidatorDataForRoot(&currentEpoch, canonicalHead.Root, activeOnly, cb)
+	return bs.beaconIndexer.StreamActiveValidatorDataForRoot(canonicalHead.Root, activeOnly, &currentEpoch, cb)
 }
 
 func (bs *ChainService) GetValidatorStatusMap() map[v1.ValidatorState]uint64 {

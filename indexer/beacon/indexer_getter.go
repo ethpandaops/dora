@@ -282,8 +282,8 @@ func (indexer *Indexer) GetCachedValidatorSetForRoot(blockRoot phase0.Root) []Va
 }
 
 // StreamActiveValidatorDataForRoot streams the available validator set data for a given blockRoot.
-func (indexer *Indexer) StreamActiveValidatorDataForRoot(epoch *phase0.Epoch, blockRoot phase0.Root, activeOnly bool, cb ValidatorSetStreamer) error {
-	return indexer.validatorCache.streamValidatorSetForRoot(epoch, blockRoot, activeOnly, cb)
+func (indexer *Indexer) StreamActiveValidatorDataForRoot(blockRoot phase0.Root, activeOnly bool, epoch *phase0.Epoch, cb ValidatorSetStreamer) error {
+	return indexer.validatorCache.streamValidatorSetForRoot(blockRoot, activeOnly, epoch, cb)
 }
 
 // GetValidatorSetSize returns the size of the validator set cache.
