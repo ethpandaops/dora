@@ -30,7 +30,7 @@ func (bs *ChainService) StreamActiveValidatorData(activeOnly bool, cb beacon.Val
 
 	currentEpoch := bs.consensusPool.GetChainState().CurrentEpoch()
 
-	return bs.beaconIndexer.StreamActiveValidatorDataForRoot(&currentEpoch, canonicalHead.Root, activeOnly, cb)
+	return bs.beaconIndexer.StreamActiveValidatorDataForRoot(canonicalHead.Root, activeOnly, &currentEpoch, cb)
 }
 
 func (bs *ChainService) GetValidatorStatusMap() map[v1.ValidatorState]uint64 {
@@ -62,6 +62,11 @@ func (bs *ChainService) GetValidatorLiveness(validatorIndex phase0.ValidatorInde
 	return validatorActivity
 }
 
+type ValidatorWithIndex struct {
+	Index     phase0.ValidatorIndex
+	Validator *phase0.Validator
+}
+
 // getValidatorsByWithdrawalAddressForRoot returns validators with a specific withdrawal address for a given blockRoot
 func (bs *ChainService) GetFilteredValidatorSet(filter *dbtypes.ValidatorFilter, withBalance bool) ([]v1.Validator, uint64) {
 	var overrideForkId *beacon.ForkKey
@@ -77,46 +82,54 @@ func (bs *ChainService) GetFilteredValidatorSet(filter *dbtypes.ValidatorFilter,
 	}
 	currentEpoch := bs.consensusPool.GetChainState().CurrentEpoch()
 
-	cachedResults := make([]beacon.ValidatorWithIndex, 0, 1000)
+	cachedResults := make([]ValidatorWithIndex, 0, 1000)
 	cachedIndexes := map[uint64]bool{}
 
 	// get matching entries from cached validators
-	for _, cachedValidator := range bs.beaconIndexer.GetCachedValidatorSetForRoot(canonicalHead.Root) {
-		if filter.MinIndex != nil && cachedValidator.Index < phase0.ValidatorIndex(*filter.MinIndex) {
-			continue
+	bs.beaconIndexer.StreamActiveValidatorDataForRoot(canonicalHead.Root, false, &currentEpoch, func(index phase0.ValidatorIndex, flags uint16, activeData *beacon.ValidatorData, validator *phase0.Validator) error {
+		if validator == nil {
+			return nil
 		}
-		if filter.MaxIndex != nil && cachedValidator.Index > phase0.ValidatorIndex(*filter.MaxIndex) {
-			continue
+		if filter.MinIndex != nil && index < phase0.ValidatorIndex(*filter.MinIndex) {
+			return nil
+		}
+		if filter.MaxIndex != nil && index > phase0.ValidatorIndex(*filter.MaxIndex) {
+			return nil
 		}
 		if filter.WithdrawalAddress != nil {
-			if cachedValidator.Validator.WithdrawalCredentials[0] != 0x01 && cachedValidator.Validator.WithdrawalCredentials[0] != 0x02 {
-				continue
+			if validator.WithdrawalCredentials[0] != 0x01 && validator.WithdrawalCredentials[0] != 0x02 {
+				return nil
 			}
-			if !bytes.Equal(cachedValidator.Validator.WithdrawalCredentials[12:], filter.WithdrawalAddress[:]) {
-				continue
+			if !bytes.Equal(validator.WithdrawalCredentials[12:], filter.WithdrawalAddress[:]) {
+				return nil
 			}
 		}
 		if filter.ValidatorName != "" {
-			vname := bs.validatorNames.GetValidatorName(uint64(cachedValidator.Index))
+			vname := bs.validatorNames.GetValidatorName(uint64(index))
 			if !strings.Contains(vname, filter.ValidatorName) {
-				continue
+				return nil
 			}
 		}
 
 		if len(filter.Status) > 0 {
 			var balancePtr *phase0.Gwei
 			if balances != nil {
-				balancePtr = &balances[cachedValidator.Index]
+				balancePtr = &balances[index]
 			}
-			validatorState := v1.ValidatorToState(cachedValidator.Validator, balancePtr, currentEpoch, beacon.FarFutureEpoch)
+			validatorState := v1.ValidatorToState(validator, balancePtr, currentEpoch, beacon.FarFutureEpoch)
 			if !slices.Contains(filter.Status, validatorState) {
-				continue
+				return nil
 			}
 		}
 
-		cachedResults = append(cachedResults, cachedValidator)
-		cachedIndexes[uint64(cachedValidator.Index)] = true
-	}
+		cachedResults = append(cachedResults, ValidatorWithIndex{
+			Index:     index,
+			Validator: validator,
+		})
+		cachedIndexes[uint64(index)] = true
+
+		return nil
+	})
 
 	// get matching entries from DB
 	dbIndexes, err := db.GetValidatorIndexesByFilter(*filter, uint64(currentEpoch))
@@ -126,31 +139,31 @@ func (bs *ChainService) GetFilteredValidatorSet(filter *dbtypes.ValidatorFilter,
 	}
 
 	// sort results
-	var sortFn func(valA, valB beacon.ValidatorWithIndex) bool
+	var sortFn func(valA, valB ValidatorWithIndex) bool
 	switch filter.OrderBy {
 	case dbtypes.ValidatorOrderIndexAsc:
-		sortFn = func(valA, valB beacon.ValidatorWithIndex) bool {
+		sortFn = func(valA, valB ValidatorWithIndex) bool {
 			return valA.Index < valB.Index
 		}
 	case dbtypes.ValidatorOrderIndexDesc:
-		sortFn = func(valA, valB beacon.ValidatorWithIndex) bool {
+		sortFn = func(valA, valB ValidatorWithIndex) bool {
 			return valA.Index > valB.Index
 		}
 	case dbtypes.ValidatorOrderPubKeyAsc:
-		sortFn = func(valA, valB beacon.ValidatorWithIndex) bool {
+		sortFn = func(valA, valB ValidatorWithIndex) bool {
 			return bytes.Compare(valA.Validator.PublicKey[:], valB.Validator.PublicKey[:]) < 0
 		}
 	case dbtypes.ValidatorOrderPubKeyDesc:
-		sortFn = func(valA, valB beacon.ValidatorWithIndex) bool {
+		sortFn = func(valA, valB ValidatorWithIndex) bool {
 			return bytes.Compare(valA.Validator.PublicKey[:], valB.Validator.PublicKey[:]) > 0
 		}
 	case dbtypes.ValidatorOrderBalanceAsc:
 		if balances == nil {
-			sortFn = func(valA, valB beacon.ValidatorWithIndex) bool {
+			sortFn = func(valA, valB ValidatorWithIndex) bool {
 				return valA.Validator.EffectiveBalance < valB.Validator.EffectiveBalance
 			}
 		} else {
-			sortFn = func(valA, valB beacon.ValidatorWithIndex) bool {
+			sortFn = func(valA, valB ValidatorWithIndex) bool {
 				return balances[valA.Index] < balances[valB.Index]
 			}
 			sort.Slice(dbIndexes, func(i, j int) bool {
@@ -159,11 +172,11 @@ func (bs *ChainService) GetFilteredValidatorSet(filter *dbtypes.ValidatorFilter,
 		}
 	case dbtypes.ValidatorOrderBalanceDesc:
 		if balances == nil {
-			sortFn = func(valA, valB beacon.ValidatorWithIndex) bool {
+			sortFn = func(valA, valB ValidatorWithIndex) bool {
 				return valA.Validator.EffectiveBalance > valB.Validator.EffectiveBalance
 			}
 		} else {
-			sortFn = func(valA, valB beacon.ValidatorWithIndex) bool {
+			sortFn = func(valA, valB ValidatorWithIndex) bool {
 				return balances[valA.Index] > balances[valB.Index]
 			}
 			sort.Slice(dbIndexes, func(i, j int) bool {
@@ -171,27 +184,27 @@ func (bs *ChainService) GetFilteredValidatorSet(filter *dbtypes.ValidatorFilter,
 			})
 		}
 	case dbtypes.ValidatorOrderActivationEpochAsc:
-		sortFn = func(valA, valB beacon.ValidatorWithIndex) bool {
+		sortFn = func(valA, valB ValidatorWithIndex) bool {
 			return valA.Validator.ActivationEpoch < valB.Validator.ActivationEpoch
 		}
 	case dbtypes.ValidatorOrderActivationEpochDesc:
-		sortFn = func(valA, valB beacon.ValidatorWithIndex) bool {
+		sortFn = func(valA, valB ValidatorWithIndex) bool {
 			return valA.Validator.ActivationEpoch > valB.Validator.ActivationEpoch
 		}
 	case dbtypes.ValidatorOrderExitEpochAsc:
-		sortFn = func(valA, valB beacon.ValidatorWithIndex) bool {
+		sortFn = func(valA, valB ValidatorWithIndex) bool {
 			return valA.Validator.ExitEpoch < valB.Validator.ExitEpoch
 		}
 	case dbtypes.ValidatorOrderExitEpochDesc:
-		sortFn = func(valA, valB beacon.ValidatorWithIndex) bool {
+		sortFn = func(valA, valB ValidatorWithIndex) bool {
 			return valA.Validator.ExitEpoch > valB.Validator.ExitEpoch
 		}
 	case dbtypes.ValidatorOrderWithdrawableEpochAsc:
-		sortFn = func(valA, valB beacon.ValidatorWithIndex) bool {
+		sortFn = func(valA, valB ValidatorWithIndex) bool {
 			return valA.Validator.WithdrawableEpoch < valB.Validator.WithdrawableEpoch
 		}
 	case dbtypes.ValidatorOrderWithdrawableEpochDesc:
-		sortFn = func(valA, valB beacon.ValidatorWithIndex) bool {
+		sortFn = func(valA, valB ValidatorWithIndex) bool {
 			return valA.Validator.WithdrawableEpoch > valB.Validator.WithdrawableEpoch
 		}
 	}
@@ -213,7 +226,7 @@ func (bs *ChainService) GetFilteredValidatorSet(filter *dbtypes.ValidatorFilter,
 
 	db.StreamValidatorsByIndexes(dbIndexes, func(validator *dbtypes.Validator) bool {
 		dbEntryCount++
-		validatorWithIndex := beacon.ValidatorWithIndex{
+		validatorWithIndex := ValidatorWithIndex{
 			Index:     phase0.ValidatorIndex(validator.ValidatorIndex),
 			Validator: beacon.UnwrapDbValidator(validator),
 		}

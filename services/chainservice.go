@@ -192,6 +192,17 @@ func (cs *ChainService) StartService() error {
 	return nil
 }
 
+func (bs *ChainService) StopService() {
+	if !bs.started {
+		return
+	}
+
+	if bs.beaconIndexer != nil {
+		bs.beaconIndexer.StopIndexer()
+		bs.beaconIndexer = nil
+	}
+}
+
 func (bs *ChainService) GetBeaconIndexer() *beacon.Indexer {
 	return bs.beaconIndexer
 }

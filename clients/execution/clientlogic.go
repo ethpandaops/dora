@@ -59,19 +59,10 @@ func (client *Client) checkClient() error {
 		return fmt.Errorf("initialization of execution client failed: %w", err)
 	}
 
-	// get node version
-	nodeVersion, err := client.rpcClient.GetClientVersion(ctx)
+	// get node metadata
+	err = client.updateNodeMetadata(ctx)
 	if err != nil {
-		return fmt.Errorf("error while fetching node version: %v", err)
-	}
-
-	client.versionStr = nodeVersion
-	client.parseClientVersion(nodeVersion)
-
-	// get peers
-	err = client.updateNodePeers(ctx)
-	if err != nil {
-		client.logger.Warnf("error updating node peers: %v", err)
+		client.logger.Warnf("error updating node metadata: %v", err)
 	}
 
 	// get & compare chain specs
@@ -100,13 +91,22 @@ func (client *Client) checkClient() error {
 	return nil
 }
 
-func (client *Client) updateNodePeers(ctx context.Context) error {
+func (client *Client) updateNodeMetadata(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
-	client.lastPeersUpdate = time.Now()
+	client.lastMetadataUpdate = time.Now()
 
-	var err error
+	// get node version
+	nodeVersion, err := client.rpcClient.GetClientVersion(ctx)
+	if err != nil {
+		return fmt.Errorf("error while fetching node version: %v", err)
+	}
+
+	client.versionStr = nodeVersion
+	client.parseClientVersion(nodeVersion)
+
+	// get node peers
 	client.nodeInfo, err = client.rpcClient.GetAdminNodeInfo(ctx)
 	if err != nil {
 		client.didFetchPeers = false
@@ -173,11 +173,11 @@ func (client *Client) runClientLogic() error {
 			pollTimeout = 12*time.Second - pollTimeout
 		}
 
-		peerRefreshTimeout := time.Since(client.lastPeersUpdate)
-		if peerRefreshTimeout > 5*time.Minute {
-			peerRefreshTimeout = 0
+		metadataRefreshTimeout := time.Since(client.lastMetadataUpdate)
+		if metadataRefreshTimeout > 5*time.Minute {
+			metadataRefreshTimeout = 0
 		} else {
-			peerRefreshTimeout = 5*time.Minute - peerRefreshTimeout
+			metadataRefreshTimeout = 5*time.Minute - metadataRefreshTimeout
 		}
 
 		select {
@@ -221,10 +221,10 @@ func (client *Client) runClientLogic() error {
 			}
 
 			client.lastEvent = time.Now()
-		case <-time.After(peerRefreshTimeout):
-			err := client.updateNodePeers(client.clientCtx)
+		case <-time.After(metadataRefreshTimeout):
+			err := client.updateNodeMetadata(client.clientCtx)
 			if err != nil {
-				client.logger.Warnf("error updating node peers: %v", err)
+				client.logger.Warnf("error updating node metadata: %v", err)
 			}
 
 		}

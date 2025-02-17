@@ -19,7 +19,17 @@ import (
 
 var crc64Table = crc64.MakeTable(crc64.ISO)
 
-// validatorCache is the cache for the validator set and validator activity.
+// Validator status flag constants representing different validator states
+const (
+	ValidatorStatusEligible    uint16 = 1 << iota // Validator is eligible for activation
+	ValidatorStatusPending                        // Validator is pending activation
+	ValidatorStatusExited                         // Validator has exited
+	ValidatorStatusSlashed                        // Validator has been slashed
+	ValidatorStatusHasAddress                     // Validator has withdrawal credentials set to 0x01 or 0x02
+	ValidatorStatusCompounding                    // Validator is set to compound rewards (0x02)
+)
+
+// validatorCache manages the in-memory cache of validator states and handles updates
 type validatorCache struct {
 	indexer                  *Indexer
 	valsetCache              []*validatorEntry // cache for validators
@@ -29,7 +39,7 @@ type validatorCache struct {
 	triggerDbUpdate          chan bool
 }
 
-// validatorEntry represents a validator in the validator set cache.
+// validatorEntry represents a single validator's state in the cache
 type validatorEntry struct {
 	validatorDiffs []*validatorDiff
 	finalChecksum  uint64
@@ -38,31 +48,12 @@ type validatorEntry struct {
 	statusFlags    uint16
 }
 
-const (
-	ValidatorStatusEligible    uint16 = 1 << iota // has ActivationEligibilityEpoch set
-	ValidatorStatusPending                        // has ActivationEpoch set
-	ValidatorStatusExited                         // has ExitEpoch set
-	ValidatorStatusSlashed                        // is Slashed
-	ValidatorStatusHasAddress                     // has execution address set (0x01 or 0x02)
-	ValidatorStatusCompounding                    // is compounding validator (0x02)
-)
-
-type ValidatorWithIndex struct {
-	Index     phase0.ValidatorIndex
-	Validator *phase0.Validator
-}
-
-// ValidatorData holds the most relevant information about a active validator.
+// ValidatorData contains the essential validator state information for active validators
 type ValidatorData struct {
 	ActivationEligibilityEpoch phase0.Epoch
 	ActivationEpoch            phase0.Epoch
 	ExitEpoch                  phase0.Epoch
 	EffectiveBalanceEth        uint16
-}
-
-type ValidatorDataWithIndex struct {
-	Index phase0.ValidatorIndex
-	Data  *ValidatorData
 }
 
 // validatorDiff represents an updated validator entry in the validator set cache.
@@ -72,7 +63,7 @@ type validatorDiff struct {
 	validator     *phase0.Validator
 }
 
-// newValidatorCache creates & returns a new instance of validatorCache.
+// newValidatorCache initializes a new validator cache instance and starts the persist loop
 func newValidatorCache(indexer *Indexer) *validatorCache {
 	cache := &validatorCache{
 		indexer:         indexer,
@@ -89,7 +80,11 @@ func (v *ValidatorData) EffectiveBalance() phase0.Gwei {
 	return phase0.Gwei(v.EffectiveBalanceEth) * EtherGweiFactor
 }
 
-// updateValidatorSet updates the validator set cache with the new validator set.
+// updateValidatorSet processes validator set updates and maintains the cache state
+// Parameters:
+//   - slot: The slot number for this update
+//   - dependentRoot: The dependent root hash for this update
+//   - validators: Full validator set for this epoch
 func (cache *validatorCache) updateValidatorSet(slot phase0.Slot, dependentRoot phase0.Root, validators []*phase0.Validator) {
 	chainState := cache.indexer.consensusPool.GetChainState()
 	epoch := chainState.EpochOfSlot(slot)
@@ -275,6 +270,8 @@ func (cache *validatorCache) updateValidatorSet(slot phase0.Slot, dependentRoot 
 	cache.indexer.logger.Infof("processed %vvalidator set update for epoch %d in %v", isFinalizedStr, epoch, time.Since(t1))
 }
 
+// checkValidatorEqual compares two validator states for equality
+// Returns true if both validators are nil or if all fields match
 func (cache *validatorCache) checkValidatorEqual(validator1 *phase0.Validator, validator2 *phase0.Validator) bool {
 	if validator1 == nil && validator2 == nil {
 		return true
@@ -292,6 +289,8 @@ func (cache *validatorCache) checkValidatorEqual(validator1 *phase0.Validator, v
 		validator1.WithdrawableEpoch == validator2.WithdrawableEpoch
 }
 
+// GetValidatorStatusFlags calculates the status flags for a validator
+// Returns a bitmask of flags representing the validator's state
 func GetValidatorStatusFlags(validator *phase0.Validator) uint16 {
 	flags := uint16(0)
 	if validator.ActivationEligibilityEpoch != FarFutureEpoch {
@@ -315,7 +314,7 @@ func GetValidatorStatusFlags(validator *phase0.Validator) uint16 {
 	return flags
 }
 
-// getValidatorSetSize returns the size of the validator set cache.
+// getValidatorSetSize returns the current number of validators in the validator set
 func (cache *validatorCache) getValidatorSetSize() uint64 {
 	cache.cacheMutex.RLock()
 	defer cache.cacheMutex.RUnlock()
@@ -323,7 +322,8 @@ func (cache *validatorCache) getValidatorSetSize() uint64 {
 	return uint64(len(cache.valsetCache))
 }
 
-// getValidatorSetSize returns the size of the validator set cache.
+// getValidatorFlags returns the status flags for a specific validator
+// Returns 0 if validator index is invalid or not found
 func (cache *validatorCache) getValidatorFlags(validatorIndex phase0.ValidatorIndex) uint16 {
 	cache.cacheMutex.RLock()
 	defer cache.cacheMutex.RUnlock()
@@ -335,7 +335,7 @@ func (cache *validatorCache) getValidatorFlags(validatorIndex phase0.ValidatorIn
 	return cache.valsetCache[validatorIndex].statusFlags
 }
 
-// setFinalizedEpoch sets the last finalized epoch.
+// setFinalizedEpoch sets the last finalized epoch and updates the validator set
 func (cache *validatorCache) setFinalizedEpoch(epoch phase0.Epoch, nextEpochDependentRoot phase0.Root) {
 	cache.cacheMutex.Lock()
 	defer cache.cacheMutex.Unlock()
@@ -399,7 +399,15 @@ func (cache *validatorCache) setFinalizedEpoch(epoch phase0.Epoch, nextEpochDepe
 type ValidatorSetStreamer func(index phase0.ValidatorIndex, flags uint16, activeData *ValidatorData, validator *phase0.Validator) error
 
 // streamValidatorSetForRoot streams the validator set for a given blockRoot
-func (cache *validatorCache) streamValidatorSetForRoot(epoch *phase0.Epoch, blockRoot phase0.Root, onlyActive bool, cb ValidatorSetStreamer) error {
+// Parameters:
+//   - blockRoot: Get the latest validator set that's based on a chain that includes this blockRoot
+//   - onlyActive: If true, only active validators are streamed
+//   - epoch: Pointer to the epoch to make the onlyActive filter more accurate (can be nil)
+//   - cb: Callback function to process each validator (activeData/validator might be nil based on activation/caching state)
+//
+// Returns:
+//   - error: Any error that occurred during streaming
+func (cache *validatorCache) streamValidatorSetForRoot(blockRoot phase0.Root, onlyActive bool, epoch *phase0.Epoch, cb ValidatorSetStreamer) error {
 	cache.cacheMutex.RLock()
 	defer cache.cacheMutex.RUnlock()
 
@@ -478,73 +486,11 @@ func (cache *validatorCache) streamValidatorSetForRoot(epoch *phase0.Epoch, bloc
 	return nil
 }
 
-// getCachedValidatorSetForRoot returns the cached validator set for a given blockRoot.
-// missing entries can be found in the DB
-func (cache *validatorCache) getCachedValidatorSetForRoot(blockRoot phase0.Root) []ValidatorWithIndex {
-	cache.cacheMutex.RLock()
-	defer cache.cacheMutex.RUnlock()
-
-	isParentMap := map[phase0.Root]bool{}
-	isAheadMap := map[phase0.Root]bool{}
-
-	validatorSet := make([]ValidatorWithIndex, 0, 100)
-
-	for index, cachedValidator := range cache.valsetCache {
-		validatorData := ValidatorWithIndex{
-			Index:     phase0.ValidatorIndex(index),
-			Validator: nil,
-		}
-		validatorEpoch := cache.lastFinalized
-
-		if cachedValidator != nil {
-			var aheadValidator *phase0.Validator
-			aheadEpoch := phase0.Epoch(math.MaxInt64)
-			validatorData.Validator = cachedValidator.finalValidator
-
-			for _, diff := range cachedValidator.validatorDiffs {
-				isParent, checkedParent := isParentMap[diff.dependentRoot]
-				if !checkedParent {
-					isParent = cache.indexer.blockCache.isCanonicalBlock(diff.dependentRoot, blockRoot)
-					isParentMap[diff.dependentRoot] = isParent
-				}
-
-				if isParent && diff.epoch >= validatorEpoch {
-					validatorData.Validator = diff.validator
-					validatorEpoch = diff.epoch
-				}
-
-				if !isParent && validatorData.Validator == nil {
-					isAhead, checkedAhead := isAheadMap[diff.dependentRoot]
-					if !checkedAhead {
-						isAhead = cache.indexer.blockCache.isCanonicalBlock(blockRoot, diff.dependentRoot)
-						isAheadMap[diff.dependentRoot] = isAhead
-					}
-
-					if isAhead && diff.epoch < aheadEpoch {
-						aheadValidator = diff.validator
-						aheadEpoch = diff.epoch
-					}
-				}
-			}
-
-			if validatorData.Validator == nil && aheadValidator != nil {
-				validatorData.Validator = aheadValidator
-			}
-		}
-
-		if validatorData.Validator != nil {
-			validatorSet = append(validatorSet, validatorData)
-		}
-	}
-
-	return validatorSet
-}
-
 // getActivationExitQueueLengths returns the activation and exit queue lengths.
 func (cache *validatorCache) getActivationExitQueueLengths(epoch phase0.Epoch, blockRoot phase0.Root) (uint64, uint64) {
 	activationQueueLength := uint64(0)
 	exitQueueLength := uint64(0)
-	cache.streamValidatorSetForRoot(&epoch, blockRoot, true, func(index phase0.ValidatorIndex, flags uint16, activeData *ValidatorData, validator *phase0.Validator) error {
+	cache.streamValidatorSetForRoot(blockRoot, true, &epoch, func(index phase0.ValidatorIndex, flags uint16, activeData *ValidatorData, validator *phase0.Validator) error {
 		if activeData == nil {
 			return nil
 		}
@@ -566,7 +512,7 @@ func (cache *validatorCache) getActivationExitQueueLengths(epoch phase0.Epoch, b
 func (cache *validatorCache) getValidatorStatusMap(epoch phase0.Epoch, blockRoot phase0.Root) map[v1.ValidatorState]uint64 {
 	statusMap := map[v1.ValidatorState]uint64{}
 
-	cache.streamValidatorSetForRoot(&epoch, blockRoot, false, func(index phase0.ValidatorIndex, statusFlags uint16, activeData *ValidatorData, validator *phase0.Validator) error {
+	cache.streamValidatorSetForRoot(blockRoot, false, &epoch, func(index phase0.ValidatorIndex, statusFlags uint16, activeData *ValidatorData, validator *phase0.Validator) error {
 		validatorStatus := v1.ValidatorStateUnknown
 
 		if statusFlags&ValidatorStatusEligible == 0 {
@@ -615,6 +561,8 @@ func UnwrapDbValidator(dbValidator *dbtypes.Validator) *phase0.Validator {
 	return validator
 }
 
+// isActiveValidator determines if a validator is currently active based on epochs
+// Takes into account activation and exit epochs relative to current state
 func (cache *validatorCache) isActiveValidator(validator *ValidatorData) bool {
 	currentEpoch := cache.indexer.consensusPool.GetChainState().CurrentEpoch()
 	cutOffEpoch := phase0.Epoch(0)
@@ -681,6 +629,8 @@ func (cache *validatorCache) getValidatorByIndexAndRoot(index phase0.ValidatorIn
 	return validator
 }
 
+// calculateValidatorChecksum generates a CRC64 checksum of all validator fields
+// Used to efficiently detect changes in validator state
 func calculateValidatorChecksum(v *phase0.Validator) uint64 {
 	if v == nil {
 		return 0
@@ -710,6 +660,8 @@ func uint64ToBytes(val uint64) []byte {
 	return b
 }
 
+// prepopulateFromDB pre-populates the validator set cache from the database
+// Returns the number of validators restored and any error that occurred
 func (cache *validatorCache) prepopulateFromDB() (uint64, error) {
 	cache.cacheMutex.Lock()
 	defer cache.cacheMutex.Unlock()
@@ -768,6 +720,8 @@ func (cache *validatorCache) prepopulateFromDB() (uint64, error) {
 	return restoreCount, nil
 }
 
+// runPersistLoop handles the background persistence of validator states to the database
+// Runs in a separate goroutine and recovers from panics
 func (cache *validatorCache) runPersistLoop() {
 	defer func() {
 		if err := recover(); err != nil {
@@ -796,6 +750,13 @@ func (cache *validatorCache) runPersistLoop() {
 	}
 }
 
+// persistValidators writes a batch of validator states to the database
+// Parameters:
+//   - tx: Database transaction to use for the writes
+//
+// Returns:
+//   - bool: true if there are more validators to persist
+//   - error: any error that occurred during persistence
 func (cache *validatorCache) persistValidators(tx *sqlx.Tx) (bool, error) {
 	cache.cacheMutex.RLock()
 	defer cache.cacheMutex.RUnlock()
