@@ -276,11 +276,6 @@ func (indexer *Indexer) GetParentForkIds(forkId ForkKey) []ForkKey {
 	return indexer.forkCache.getParentForkIds(forkId)
 }
 
-// GetCachedValidatorSetForRoot returns the cached validator set for a given blockRoot.
-func (indexer *Indexer) GetCachedValidatorSetForRoot(blockRoot phase0.Root) []ValidatorWithIndex {
-	return indexer.validatorCache.getCachedValidatorSetForRoot(blockRoot)
-}
-
 // StreamActiveValidatorDataForRoot streams the available validator set data for a given blockRoot.
 func (indexer *Indexer) StreamActiveValidatorDataForRoot(blockRoot phase0.Root, activeOnly bool, epoch *phase0.Epoch, cb ValidatorSetStreamer) error {
 	return indexer.validatorCache.streamValidatorSetForRoot(blockRoot, activeOnly, epoch, cb)

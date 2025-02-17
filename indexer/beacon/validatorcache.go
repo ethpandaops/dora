@@ -56,12 +56,6 @@ type ValidatorData struct {
 	EffectiveBalanceEth        uint16
 }
 
-// ValidatorWithIndex is a struct that holds a validator and its index
-type ValidatorWithIndex struct {
-	Index     phase0.ValidatorIndex
-	Validator *phase0.Validator
-}
-
 // validatorDiff represents an updated validator entry in the validator set cache.
 type validatorDiff struct {
 	epoch         phase0.Epoch
@@ -490,68 +484,6 @@ func (cache *validatorCache) streamValidatorSetForRoot(blockRoot phase0.Root, on
 	}
 
 	return nil
-}
-
-// getCachedValidatorSetForRoot returns the cached validator set for a given blockRoot.
-// missing entries can be found in the DB
-func (cache *validatorCache) getCachedValidatorSetForRoot(blockRoot phase0.Root) []ValidatorWithIndex {
-	cache.cacheMutex.RLock()
-	defer cache.cacheMutex.RUnlock()
-
-	isParentMap := map[phase0.Root]bool{}
-	isAheadMap := map[phase0.Root]bool{}
-
-	validatorSet := make([]ValidatorWithIndex, 0, 100)
-
-	for index, cachedValidator := range cache.valsetCache {
-		validatorData := ValidatorWithIndex{
-			Index:     phase0.ValidatorIndex(index),
-			Validator: nil,
-		}
-		validatorEpoch := cache.lastFinalized
-
-		if cachedValidator != nil {
-			var aheadValidator *phase0.Validator
-			aheadEpoch := phase0.Epoch(math.MaxInt64)
-			validatorData.Validator = cachedValidator.finalValidator
-
-			for _, diff := range cachedValidator.validatorDiffs {
-				isParent, checkedParent := isParentMap[diff.dependentRoot]
-				if !checkedParent {
-					isParent = cache.indexer.blockCache.isCanonicalBlock(diff.dependentRoot, blockRoot)
-					isParentMap[diff.dependentRoot] = isParent
-				}
-
-				if isParent && diff.epoch >= validatorEpoch {
-					validatorData.Validator = diff.validator
-					validatorEpoch = diff.epoch
-				}
-
-				if !isParent && validatorData.Validator == nil {
-					isAhead, checkedAhead := isAheadMap[diff.dependentRoot]
-					if !checkedAhead {
-						isAhead = cache.indexer.blockCache.isCanonicalBlock(blockRoot, diff.dependentRoot)
-						isAheadMap[diff.dependentRoot] = isAhead
-					}
-
-					if isAhead && diff.epoch < aheadEpoch {
-						aheadValidator = diff.validator
-						aheadEpoch = diff.epoch
-					}
-				}
-			}
-
-			if validatorData.Validator == nil && aheadValidator != nil {
-				validatorData.Validator = aheadValidator
-			}
-		}
-
-		if validatorData.Validator != nil {
-			validatorSet = append(validatorSet, validatorData)
-		}
-	}
-
-	return validatorSet
 }
 
 // getActivationExitQueueLengths returns the activation and exit queue lengths.
