@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,6 +13,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/sirupsen/logrus"
 
+	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/indexer/beacon"
 	"github.com/ethpandaops/dora/indexer/execution"
 	"github.com/ethpandaops/dora/services"
@@ -107,22 +107,16 @@ func handleSubmitConsolidationPageDataAjax(w http.ResponseWriter, r *http.Reques
 
 	switch query.Get("ajax") {
 	case "load_validators":
-		address := query.Get("address")
-		addressBytes := common.HexToAddress(address)
-
 		chainState := services.GlobalBeaconService.GetChainState()
 		chainSpecs := chainState.GetSpecs()
-		validators := services.GlobalBeaconService.GetCachedValidatorSet(true)
+		address := query.Get("address")
+		addressBytes := common.HexToAddress(address)
+		validators, _ := services.GlobalBeaconService.GetFilteredValidatorSet(&dbtypes.ValidatorFilter{
+			WithdrawalAddress: addressBytes[:],
+		}, true)
+
 		result := []models.SubmitConsolidationPageDataValidator{}
 		for _, validator := range validators {
-			if validator.Validator.WithdrawalCredentials[0] == 0x00 {
-				continue
-			}
-
-			if !bytes.Equal(validator.Validator.WithdrawalCredentials[12:], addressBytes[:]) {
-				continue
-			}
-
 			var status string
 			if strings.HasPrefix(validator.Status.String(), "pending") {
 				status = "Pending"

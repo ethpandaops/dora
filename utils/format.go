@@ -48,7 +48,7 @@ func FormatFloat(num float64, precision int) string {
 	return string(r)
 }
 
-func FormatAddCommasFormated(num float64, precision uint) template.HTML {
+func FormatAddCommasFormatted(num float64, precision uint) template.HTML {
 	p := message.NewPrinter(language.English)
 	s := p.Sprintf(fmt.Sprintf("%%.%vf", precision), num)
 	if precision > 0 {
@@ -57,8 +57,8 @@ func FormatAddCommasFormated(num float64, precision uint) template.HTML {
 	return template.HTML(strings.ReplaceAll(string([]rune(p.Sprintf(s, num))), ",", `<span class="thousands-separator"></span>`))
 }
 
-func FormatBigNumberAddCommasFormated(val hexutil.Big, precision uint) template.HTML {
-	return FormatAddCommasFormated(float64(val.ToInt().Int64()), 0)
+func FormatBigNumberAddCommasFormatted(val hexutil.Big, precision uint) template.HTML {
+	return FormatAddCommasFormatted(float64(val.ToInt().Int64()), 0)
 }
 
 func FormatAddCommas(n uint64) template.HTML {
