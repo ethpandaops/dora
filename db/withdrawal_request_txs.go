@@ -52,7 +52,7 @@ func InsertWithdrawalRequestTxs(withdrawalTxs []*dbtypes.WithdrawalRequestTx, tx
 		argIdx += fieldCount
 	}
 	fmt.Fprint(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
-		dbtypes.DBEnginePgsql:  " ON CONFLICT (block_root, block_index) DO UPDATE SET validator_index = excluded.validator_index, fork_id = excluded.fork_id",
+		dbtypes.DBEnginePgsql:  " ON CONFLICT (block_root, block_index) DO UPDATE SET validator_index = excluded.validator_index, dequeue_block = excluded.dequeue_block, fork_id = excluded.fork_id",
 		dbtypes.DBEngineSqlite: "",
 	}))
 

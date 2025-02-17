@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/attestantio/go-eth2-client/spec/electra"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/dora/db"
@@ -44,36 +45,45 @@ type EpochStats struct {
 
 // EpochStatsValues holds the values for the epoch-specific information.
 type EpochStatsValues struct {
-	RandaoMix           phase0.Hash32
-	NextRandaoMix       phase0.Hash32
-	ActiveIndices       []phase0.ValidatorIndex
-	EffectiveBalances   []uint16
-	ProposerDuties      []phase0.ValidatorIndex
-	AttesterDuties      [][][]duties.ActiveIndiceIndex
-	SyncCommitteeDuties []phase0.ValidatorIndex
-	ActiveValidators    uint64
-	TotalBalance        phase0.Gwei
-	ActiveBalance       phase0.Gwei
-	EffectiveBalance    phase0.Gwei
-	FirstDepositIndex   uint64
+	RandaoMix             phase0.Hash32
+	NextRandaoMix         phase0.Hash32
+	ActiveIndices         []phase0.ValidatorIndex
+	EffectiveBalances     []uint16
+	ProposerDuties        []phase0.ValidatorIndex
+	AttesterDuties        [][][]duties.ActiveIndiceIndex
+	SyncCommitteeDuties   []phase0.ValidatorIndex
+	ActiveValidators      uint64
+	TotalBalance          phase0.Gwei
+	ActiveBalance         phase0.Gwei
+	EffectiveBalance      phase0.Gwei
+	FirstDepositIndex     uint64
+	PendingWithdrawals    []EpochStatsPendingWithdrawals
+	PendingConsolidations []electra.PendingConsolidation
 }
 
 // EpochStatsPacked holds the packed values for the epoch-specific information.
 type EpochStatsPacked struct {
-	ActiveValidators    []EpochStatsPackedValidator
-	ProposerDuties      []phase0.ValidatorIndex
-	SyncCommitteeDuties []phase0.ValidatorIndex
-	RandaoMix           phase0.Hash32
-	NextRandaoMix       phase0.Hash32
-	TotalBalance        phase0.Gwei
-	ActiveBalance       phase0.Gwei
-	FirstDepositIndex   uint64
+	ActiveValidators      []EpochStatsPackedValidator
+	ProposerDuties        []phase0.ValidatorIndex
+	SyncCommitteeDuties   []phase0.ValidatorIndex
+	RandaoMix             phase0.Hash32
+	NextRandaoMix         phase0.Hash32
+	TotalBalance          phase0.Gwei
+	ActiveBalance         phase0.Gwei
+	FirstDepositIndex     uint64
+	PendingWithdrawals    []EpochStatsPendingWithdrawals
+	PendingConsolidations []electra.PendingConsolidation
 }
 
 // EpochStatsPackedValidator holds the packed values for an active validator.
 type EpochStatsPackedValidator struct {
 	ValidatorIndexOffset uint32 // offset to the previous index in the list (this is smaller than storing the full validator index)
 	EffectiveBalanceEth  uint16 // effective balance in full ETH
+}
+
+type EpochStatsPendingWithdrawals struct {
+	ValidatorIndex phase0.ValidatorIndex
+	Epoch          phase0.Epoch
 }
 
 // newEpochStats creates a new EpochStats instance.
@@ -159,14 +169,16 @@ func (es *EpochStats) buildPackedSSZ(dynSsz *dynssz.DynSsz) ([]byte, error) {
 	}
 
 	packedValues := &EpochStatsPacked{
-		ActiveValidators:    make([]EpochStatsPackedValidator, es.values.ActiveValidators),
-		ProposerDuties:      es.values.ProposerDuties,
-		SyncCommitteeDuties: es.values.SyncCommitteeDuties,
-		RandaoMix:           es.values.RandaoMix,
-		NextRandaoMix:       es.values.NextRandaoMix,
-		TotalBalance:        es.values.TotalBalance,
-		ActiveBalance:       es.values.ActiveBalance,
-		FirstDepositIndex:   es.values.FirstDepositIndex,
+		ActiveValidators:      make([]EpochStatsPackedValidator, es.values.ActiveValidators),
+		ProposerDuties:        es.values.ProposerDuties,
+		SyncCommitteeDuties:   es.values.SyncCommitteeDuties,
+		RandaoMix:             es.values.RandaoMix,
+		NextRandaoMix:         es.values.NextRandaoMix,
+		TotalBalance:          es.values.TotalBalance,
+		ActiveBalance:         es.values.ActiveBalance,
+		FirstDepositIndex:     es.values.FirstDepositIndex,
+		PendingWithdrawals:    es.values.PendingWithdrawals,
+		PendingConsolidations: es.values.PendingConsolidations,
 	}
 
 	lastValidatorIndex := phase0.ValidatorIndex(0)
@@ -211,16 +223,18 @@ func (es *EpochStats) parsePackedSSZ(dynSsz *dynssz.DynSsz, chainState *consensu
 	}
 
 	values := &EpochStatsValues{
-		RandaoMix:           packedValues.RandaoMix,
-		NextRandaoMix:       packedValues.NextRandaoMix,
-		ActiveIndices:       make([]phase0.ValidatorIndex, len(packedValues.ActiveValidators)),
-		EffectiveBalances:   make([]uint16, len(packedValues.ActiveValidators)),
-		ProposerDuties:      packedValues.ProposerDuties,
-		SyncCommitteeDuties: packedValues.SyncCommitteeDuties,
-		TotalBalance:        packedValues.TotalBalance,
-		ActiveBalance:       packedValues.ActiveBalance,
-		EffectiveBalance:    0,
-		FirstDepositIndex:   packedValues.FirstDepositIndex,
+		RandaoMix:             packedValues.RandaoMix,
+		NextRandaoMix:         packedValues.NextRandaoMix,
+		ActiveIndices:         make([]phase0.ValidatorIndex, len(packedValues.ActiveValidators)),
+		EffectiveBalances:     make([]uint16, len(packedValues.ActiveValidators)),
+		ProposerDuties:        packedValues.ProposerDuties,
+		SyncCommitteeDuties:   packedValues.SyncCommitteeDuties,
+		TotalBalance:          packedValues.TotalBalance,
+		ActiveBalance:         packedValues.ActiveBalance,
+		EffectiveBalance:      0,
+		FirstDepositIndex:     packedValues.FirstDepositIndex,
+		PendingWithdrawals:    packedValues.PendingWithdrawals,
+		PendingConsolidations: packedValues.PendingConsolidations,
 	}
 
 	lastValidatorIndex := phase0.ValidatorIndex(0)
@@ -278,17 +292,19 @@ func (es *EpochStats) pruneValues() {
 	}
 
 	es.prunedValues = &EpochStatsValues{
-		RandaoMix:           es.values.RandaoMix,
-		NextRandaoMix:       es.values.NextRandaoMix,
-		EffectiveBalances:   nil, // prune
-		ProposerDuties:      es.values.ProposerDuties,
-		AttesterDuties:      nil, // prune
-		SyncCommitteeDuties: es.values.SyncCommitteeDuties,
-		ActiveValidators:    es.values.ActiveValidators,
-		TotalBalance:        es.values.TotalBalance,
-		ActiveBalance:       es.values.ActiveBalance,
-		EffectiveBalance:    es.values.EffectiveBalance,
-		FirstDepositIndex:   es.values.FirstDepositIndex,
+		RandaoMix:             es.values.RandaoMix,
+		NextRandaoMix:         es.values.NextRandaoMix,
+		EffectiveBalances:     nil, // prune
+		ProposerDuties:        es.values.ProposerDuties,
+		AttesterDuties:        nil, // prune
+		SyncCommitteeDuties:   es.values.SyncCommitteeDuties,
+		ActiveValidators:      es.values.ActiveValidators,
+		TotalBalance:          es.values.TotalBalance,
+		ActiveBalance:         es.values.ActiveBalance,
+		EffectiveBalance:      es.values.EffectiveBalance,
+		FirstDepositIndex:     es.values.FirstDepositIndex,
+		PendingWithdrawals:    nil, // prune
+		PendingConsolidations: nil, // prune
 	}
 
 	es.values = nil
@@ -335,13 +351,26 @@ func (es *EpochStats) processState(indexer *Indexer, validatorSet []*phase0.Vali
 
 	chainState := indexer.consensusPool.GetChainState()
 	values := &EpochStatsValues{
-		ActiveIndices:       make([]phase0.ValidatorIndex, 0),
-		EffectiveBalances:   make([]uint16, 0),
-		SyncCommitteeDuties: es.dependentState.syncCommittee,
-		TotalBalance:        0,
-		ActiveBalance:       0,
-		EffectiveBalance:    0,
-		FirstDepositIndex:   es.dependentState.depositIndex,
+		ActiveIndices:         make([]phase0.ValidatorIndex, 0),
+		EffectiveBalances:     make([]uint16, 0),
+		SyncCommitteeDuties:   es.dependentState.syncCommittee,
+		TotalBalance:          0,
+		ActiveBalance:         0,
+		EffectiveBalance:      0,
+		FirstDepositIndex:     es.dependentState.depositIndex,
+		PendingWithdrawals:    make([]EpochStatsPendingWithdrawals, len(es.dependentState.pendingPartialWithdrawals)),
+		PendingConsolidations: make([]electra.PendingConsolidation, len(es.dependentState.pendingConsolidations)),
+	}
+
+	for i, pendingPartialWithdrawal := range es.dependentState.pendingPartialWithdrawals {
+		values.PendingWithdrawals[i] = EpochStatsPendingWithdrawals{
+			ValidatorIndex: pendingPartialWithdrawal.ValidatorIndex,
+			Epoch:          pendingPartialWithdrawal.WithdrawableEpoch,
+		}
+	}
+
+	for i, pendingConsolidation := range es.dependentState.pendingConsolidations {
+		values.PendingConsolidations[i] = *pendingConsolidation
 	}
 
 	if validatorSet != nil {

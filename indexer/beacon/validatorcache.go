@@ -613,6 +613,17 @@ func (cache *validatorCache) getValidatorByIndexAndRoot(index phase0.ValidatorIn
 		if dbValidator := db.GetValidatorByIndex(index); dbValidator != nil {
 			validator = UnwrapDbValidator(dbValidator)
 		}
+	} else {
+		validator = &phase0.Validator{
+			PublicKey:                  validator.PublicKey,
+			WithdrawalCredentials:      validator.WithdrawalCredentials,
+			EffectiveBalance:           validator.EffectiveBalance,
+			Slashed:                    validator.Slashed,
+			ActivationEligibilityEpoch: validator.ActivationEligibilityEpoch,
+			ActivationEpoch:            validator.ActivationEpoch,
+			ExitEpoch:                  validator.ExitEpoch,
+			WithdrawableEpoch:          validator.WithdrawableEpoch,
+		}
 	}
 
 	return validator

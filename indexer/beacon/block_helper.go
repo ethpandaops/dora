@@ -325,3 +325,51 @@ func getStateCurrentSyncCommittee(v *spec.VersionedBeaconState) ([]phase0.BLSPub
 		return nil, errors.New("unknown version")
 	}
 }
+
+// getStatePendingWithdrawals returns the pending withdrawals from a versioned beacon state.
+func getStatePendingWithdrawals(v *spec.VersionedBeaconState) ([]*electra.PendingPartialWithdrawal, error) {
+	switch v.Version {
+	case spec.DataVersionPhase0:
+		return nil, errors.New("no pending withdrawals in phase0")
+	case spec.DataVersionAltair:
+		return nil, errors.New("no pending withdrawals in altair")
+	case spec.DataVersionBellatrix:
+		return nil, errors.New("no pending withdrawals in bellatrix")
+	case spec.DataVersionCapella:
+		return nil, errors.New("no pending withdrawals in capella")
+	case spec.DataVersionDeneb:
+		return nil, errors.New("no pending withdrawals in deneb")
+	case spec.DataVersionElectra:
+		if v.Electra == nil || v.Electra.PendingPartialWithdrawals == nil {
+			return nil, errors.New("no electra block")
+		}
+
+		return v.Electra.PendingPartialWithdrawals, nil
+	default:
+		return nil, errors.New("unknown version")
+	}
+}
+
+// getStatePendingConsolidations returns the pending consolidations from a versioned beacon state.
+func getStatePendingConsolidations(v *spec.VersionedBeaconState) ([]*electra.PendingConsolidation, error) {
+	switch v.Version {
+	case spec.DataVersionPhase0:
+		return nil, errors.New("no pending consolidations in phase0")
+	case spec.DataVersionAltair:
+		return nil, errors.New("no pending consolidations in altair")
+	case spec.DataVersionBellatrix:
+		return nil, errors.New("no pending consolidations in bellatrix")
+	case spec.DataVersionCapella:
+		return nil, errors.New("no pending consolidations in capella")
+	case spec.DataVersionDeneb:
+		return nil, errors.New("no pending consolidations in deneb")
+	case spec.DataVersionElectra:
+		if v.Electra == nil || v.Electra.PendingConsolidations == nil {
+			return nil, errors.New("no electra block")
+		}
+
+		return v.Electra.PendingConsolidations, nil
+	default:
+		return nil, errors.New("unknown version")
+	}
+}
