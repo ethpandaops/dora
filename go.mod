@@ -155,4 +155,6 @@ require (
 
 replace github.com/ethereum/go-ethereum => github.com/s1na/go-ethereum v0.0.0-20250103133732-7e1b0ba7e83f
 
-replace github.com/pk910/dynamic-ssz => github.com/pk910/dynamic-ssz v0.0.0-20240817223314-5a1c1715e8bf
+replace github.com/attestantio/go-eth2-client => github.com/pk910/go-eth2-client v0.0.0-20250218205628-270f1b6bcae3
+
+replace github.com/pk910/dynamic-ssz => ../../pk910/dynamic-ssz
