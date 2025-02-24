@@ -214,7 +214,7 @@ func (cache *validatorActivityCache) cleanupCache() {
 
 				// copy last element to current index
 				cutOffLength++
-				if i != activityLength-cutOffLength-1 {
+				if i != activityLength-cutOffLength-1 && cutOffLength < activityLength {
 					recentActivity[i] = recentActivity[activityLength-cutOffLength-1]
 				}
 			}
