@@ -199,9 +199,11 @@ func (client *Client) runClientLogic() error {
 				return fmt.Errorf("could not get synchronization status for %s: %v", client.endpointConfig.Name, err)
 			}
 
-			if client.isSyncing {
-				return fmt.Errorf("beacon node is synchronizing")
-			}
+			/*
+				if client.isSyncing {
+					return fmt.Errorf("beacon node is synchronizing")
+				}
+			*/
 		}
 
 		if currentEpoch-client.lastFinalityUpdateEpoch >= 1 && client.pool.chainState.SlotToSlotIndex(currentSlot) > 1 {
