@@ -119,9 +119,11 @@ func (client *Client) runClientLogic() error {
 	}
 
 	// check latest header / sync status
-	if client.isSyncing {
-		return fmt.Errorf("beacon node is synchronizing")
-	}
+	/*
+		if client.isSyncing {
+			return fmt.Errorf("beacon node is synchronizing")
+		}
+	*/
 
 	// start event stream
 	blockStream := client.rpcClient.NewBlockStream(client.clientCtx, client.logger, rpc.StreamBlockEvent|rpc.StreamHeadEvent|rpc.StreamFinalizedEvent)
