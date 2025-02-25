@@ -44,7 +44,7 @@ func main() {
 		"release": utils.BuildRelease,
 	}).Printf("starting")
 
-	db.MustInitDB()
+	db.MustInitDB(&cfg.Database)
 	err = db.ApplyEmbeddedDbSchema(-2)
 	if err != nil {
 		logger.Fatalf("error initializing db schema: %v", err)

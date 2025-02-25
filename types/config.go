@@ -110,32 +110,7 @@ type Config struct {
 		RefreshInterval time.Duration    `yaml:"refreshInterval" envconfig:"MEVINDEXER_REFRESH_INTERVAL"`
 	} `yaml:"mevIndexer"`
 
-	Database struct {
-		Engine string `yaml:"engine" envconfig:"DATABASE_ENGINE"`
-		Sqlite struct {
-			File         string `yaml:"file" envconfig:"DATABASE_SQLITE_FILE"`
-			MaxOpenConns int    `yaml:"maxOpenConns" envconfig:"DATABASE_SQLITE_MAX_OPEN_CONNS"`
-			MaxIdleConns int    `yaml:"maxIdleConns" envconfig:"DATABASE_SQLITE_MAX_IDLE_CONNS"`
-		} `yaml:"sqlite"`
-		Pgsql struct {
-			Username     string `yaml:"user" envconfig:"DATABASE_PGSQL_USERNAME"`
-			Password     string `yaml:"password" envconfig:"DATABASE_PGSQL_PASSWORD"`
-			Name         string `yaml:"name" envconfig:"DATABASE_PGSQL_NAME"`
-			Host         string `yaml:"host" envconfig:"DATABASE_PGSQL_HOST"`
-			Port         string `yaml:"port" envconfig:"DATABASE_PGSQL_PORT"`
-			MaxOpenConns int    `yaml:"maxOpenConns" envconfig:"DATABASE_PGSQL_MAX_OPEN_CONNS"`
-			MaxIdleConns int    `yaml:"maxIdleConns" envconfig:"DATABASE_PGSQL_MAX_IDLE_CONNS"`
-		} `yaml:"pgsql"`
-		PgsqlWriter struct {
-			Username     string `yaml:"user" envconfig:"DATABASE_PGSQL_WRITER_USERNAME"`
-			Password     string `yaml:"password" envconfig:"DATABASE_PGSQL_WRITER_PASSWORD"`
-			Name         string `yaml:"name" envconfig:"DATABASE_PGSQL_WRITER_NAME"`
-			Host         string `yaml:"host" envconfig:"DATABASE_PGSQL_WRITER_HOST"`
-			Port         string `yaml:"port" envconfig:"DATABASE_PGSQL_WRITER_PORT"`
-			MaxOpenConns int    `yaml:"maxOpenConns" envconfig:"DATABASE_PGSQL_WRITER_MAX_OPEN_CONNS"`
-			MaxIdleConns int    `yaml:"maxIdleConns" envconfig:"DATABASE_PGSQL_WRITER_MAX_IDLE_CONNS"`
-		} `yaml:"pgsqlWriter"`
-	} `yaml:"database"`
+	Database DatabaseConfig `yaml:"database"`
 
 	KillSwitch struct {
 		DisableSSZEncoding      bool `yaml:"disableSSZEncoding" envconfig:"KILLSWITCH_DISABLE_SSZ_ENCODING"`
@@ -169,18 +144,35 @@ type MevRelayConfig struct {
 	BlockLimit int    `yaml:"blockLimit"`
 }
 
+type DatabaseConfig struct {
+	Engine      string                     `yaml:"engine" envconfig:"DATABASE_ENGINE"`
+	Sqlite      *SqliteDatabaseConfig      `yaml:"sqlite"`
+	Pgsql       *PgsqlDatabaseConfig       `yaml:"pgsql"`
+	PgsqlWriter *PgsqlWriterDatabaseConfig `yaml:"pgsqlWriter"`
+}
+
 type SqliteDatabaseConfig struct {
-	File         string
-	MaxOpenConns int
-	MaxIdleConns int
+	File         string `yaml:"file" envconfig:"DATABASE_SQLITE_FILE"`
+	MaxOpenConns int    `yaml:"maxOpenConns" envconfig:"DATABASE_SQLITE_MAX_OPEN_CONNS"`
+	MaxIdleConns int    `yaml:"maxIdleConns" envconfig:"DATABASE_SQLITE_MAX_IDLE_CONNS"`
 }
 
 type PgsqlDatabaseConfig struct {
-	Username     string
-	Password     string
-	Name         string
-	Host         string
-	Port         string
-	MaxOpenConns int
-	MaxIdleConns int
+	Username     string `yaml:"user" envconfig:"DATABASE_PGSQL_USERNAME"`
+	Password     string `yaml:"password" envconfig:"DATABASE_PGSQL_PASSWORD"`
+	Name         string `yaml:"name" envconfig:"DATABASE_PGSQL_NAME"`
+	Host         string `yaml:"host" envconfig:"DATABASE_PGSQL_HOST"`
+	Port         string `yaml:"port" envconfig:"DATABASE_PGSQL_PORT"`
+	MaxOpenConns int    `yaml:"maxOpenConns" envconfig:"DATABASE_PGSQL_MAX_OPEN_CONNS"`
+	MaxIdleConns int    `yaml:"maxIdleConns" envconfig:"DATABASE_PGSQL_MAX_IDLE_CONNS"`
+}
+
+type PgsqlWriterDatabaseConfig struct {
+	Username     string `yaml:"user" envconfig:"DATABASE_PGSQL_WRITER_USERNAME"`
+	Password     string `yaml:"password" envconfig:"DATABASE_PGSQL_WRITER_PASSWORD"`
+	Name         string `yaml:"name" envconfig:"DATABASE_PGSQL_WRITER_NAME"`
+	Host         string `yaml:"host" envconfig:"DATABASE_PGSQL_WRITER_HOST"`
+	Port         string `yaml:"port" envconfig:"DATABASE_PGSQL_WRITER_PORT"`
+	MaxOpenConns int    `yaml:"maxOpenConns" envconfig:"DATABASE_PGSQL_WRITER_MAX_OPEN_CONNS"`
+	MaxIdleConns int    `yaml:"maxIdleConns" envconfig:"DATABASE_PGSQL_WRITER_MAX_IDLE_CONNS"`
 }
