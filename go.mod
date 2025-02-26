@@ -16,7 +16,6 @@ require (
 	github.com/gorilla/mux v1.8.1
 	github.com/jackc/pgx/v4 v4.18.3
 	github.com/jmoiron/sqlx v1.4.0
-	github.com/juliangruber/go-intersect v1.1.0
 	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/lib/pq v1.10.9
 	github.com/libp2p/go-libp2p v0.36.5
