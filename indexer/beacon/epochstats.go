@@ -63,16 +63,16 @@ type EpochStatsValues struct {
 
 // EpochStatsPacked holds the packed values for the epoch-specific information.
 type EpochStatsPacked struct {
-	ActiveValidators      []EpochStatsPackedValidator
-	ProposerDuties        []phase0.ValidatorIndex
-	SyncCommitteeDuties   []phase0.ValidatorIndex
+	ActiveValidators      []EpochStatsPackedValidator `ssz-max:"10000000"`
+	ProposerDuties        []phase0.ValidatorIndex     `ssz-max:"100"`
+	SyncCommitteeDuties   []phase0.ValidatorIndex     `ssz-max:"10000"`
 	RandaoMix             phase0.Hash32
 	NextRandaoMix         phase0.Hash32
 	TotalBalance          phase0.Gwei
 	ActiveBalance         phase0.Gwei
 	FirstDepositIndex     uint64
-	PendingWithdrawals    []EpochStatsPendingWithdrawals
-	PendingConsolidations []electra.PendingConsolidation
+	PendingWithdrawals    []EpochStatsPendingWithdrawals `ssz-max:"10000000"`
+	PendingConsolidations []electra.PendingConsolidation `ssz-max:"10000000"`
 }
 
 // EpochStatsPackedValidator holds the packed values for an active validator.
