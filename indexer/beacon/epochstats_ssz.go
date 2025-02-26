@@ -4,9 +4,9 @@
 package beacon
 
 import (
-	ssz "github.com/ferranbt/fastssz"
 	"github.com/attestantio/go-eth2-client/spec/electra"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
+	ssz "github.com/ferranbt/fastssz"
 )
 
 // MarshalSSZ ssz marshals the EpochStatsPacked object
