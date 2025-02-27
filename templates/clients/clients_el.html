@@ -27,10 +27,10 @@
               <div class="card-body px-0 peer-nodemap-menu">
                 <div class="btn-group btn-group-sm" role="group" aria-label="Network layouts" style="position: absolute; bottom: 5px; right: 10px;">
                   <button type="button" class="btn btn-secondary" disabled>Layouts</button>
-                  <button type="button" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Cose" class="btn btn-secondary" onclick='$_network.fitAnimated(peerGraph,$_network.layouts.fcose(data.nodes.length))'><i class="fa-solid fa-share-alt"></i></button>
+                  <button type="button" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="CoSE" class="btn btn-secondary" onclick='$_network.fitAnimated(peerGraph,$_network.layouts.fcose(peerGraphData.nodes.length))'><i class="fa-solid fa-share-alt"></i></button>
                   <button type="button" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Circle" class="btn btn-secondary" onclick='$_network.fitAnimated(peerGraph,$_network.layouts.circle())'><i class="fa-solid fa-circle"></i></button>
                   <button type="button" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Grid" class="btn btn-secondary" onclick='$_network.fitAnimated(peerGraph,$_network.layouts.grid())'><i class="fa-solid fa-th"></i></button>
-                  <button type="button" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Concentric" class="btn btn-secondary" onclick='$_network.fitAnimated(peerGraph,$_network.layouts.concentric(data.nodes.length))'><i class="fa-solid fa-sun"></i></button>
+                  <button type="button" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Concentric" class="btn btn-secondary" onclick='$_network.fitAnimated(peerGraph,$_network.layouts.concentric(peerGraphData.nodes.length))'><i class="fa-solid fa-sun"></i></button>
                 </div>
               </div>
             </div>
@@ -119,7 +119,7 @@
                   </tr>
                   <tr class="collapse peerInfo" style="transition:0s" id="peerInfo-{{ $client.PeerID }}">
                     <td colspan="7" style="padding: 10px 0;" class="peer-details-container" data-peerid="{{ $client.PeerID }}">
-                      
+
                     </td>
                   </tr>
                 {{ end }}

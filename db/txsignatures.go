@@ -58,9 +58,9 @@ func InsertTxFunctionSignature(txFuncSig *dbtypes.TxFunctionSignature, tx *sqlx.
 }
 
 func GetUnknownFunctionSignatures(sigBytes []types.TxSignatureBytes) []*dbtypes.TxUnknownFunctionSignature {
-	unknwonFnSigs := []*dbtypes.TxUnknownFunctionSignature{}
+	unknownFnSigs := []*dbtypes.TxUnknownFunctionSignature{}
 	if len(sigBytes) == 0 {
-		return unknwonFnSigs
+		return unknownFnSigs
 	}
 	var sql strings.Builder
 	fmt.Fprintf(&sql, `
@@ -79,12 +79,12 @@ func GetUnknownFunctionSignatures(sigBytes []types.TxSignatureBytes) []*dbtypes.
 		argIdx += 1
 	}
 	fmt.Fprintf(&sql, ")")
-	err := ReaderDb.Select(&unknwonFnSigs, sql.String(), args...)
+	err := ReaderDb.Select(&unknownFnSigs, sql.String(), args...)
 	if err != nil {
 		logger.Errorf("Error while fetching unknown function signatures: %v", err)
 		return nil
 	}
-	return unknwonFnSigs
+	return unknownFnSigs
 }
 
 func InsertUnknownFunctionSignatures(txUnknownSigs []*dbtypes.TxUnknownFunctionSignature, tx *sqlx.Tx) error {

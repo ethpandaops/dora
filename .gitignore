@@ -1,4 +1,5 @@
 .vscode
+.DS_Store
 bin
 temp
 config.yaml

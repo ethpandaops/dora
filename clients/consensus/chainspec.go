@@ -20,44 +20,51 @@ type ForkVersion struct {
 
 // https://github.com/ethereum/consensus-specs/blob/dev/configs/mainnet.yaml
 type ChainSpec struct {
-	PresetBase                         string            `yaml:"PRESET_BASE"`
-	ConfigName                         string            `yaml:"CONFIG_NAME" check-if:"false"`
-	MinGenesisTime                     time.Time         `yaml:"MIN_GENESIS_TIME"`
-	GenesisForkVersion                 phase0.Version    `yaml:"GENESIS_FORK_VERSION"`
-	AltairForkVersion                  phase0.Version    `yaml:"ALTAIR_FORK_VERSION"`
-	AltairForkEpoch                    *uint64           `yaml:"ALTAIR_FORK_EPOCH"`
-	BellatrixForkVersion               phase0.Version    `yaml:"BELLATRIX_FORK_VERSION"`
-	BellatrixForkEpoch                 *uint64           `yaml:"BELLATRIX_FORK_EPOCH"`
-	CapellaForkVersion                 phase0.Version    `yaml:"CAPELLA_FORK_VERSION"`
-	CapellaForkEpoch                   *uint64           `yaml:"CAPELLA_FORK_EPOCH"`
-	DenebForkVersion                   phase0.Version    `yaml:"DENEB_FORK_VERSION"`
-	DenebForkEpoch                     *uint64           `yaml:"DENEB_FORK_EPOCH"`
-	ElectraForkVersion                 phase0.Version    `yaml:"ELECTRA_FORK_VERSION" check-if-fork:"ElectraForkEpoch"`
-	ElectraForkEpoch                   *uint64           `yaml:"ELECTRA_FORK_EPOCH"`
-	Eip7594ForkVersion                 phase0.Version    `yaml:"EIP7594_FORK_VERSION" check-if-fork:"Eip7594ForkEpoch"`
-	Eip7594ForkEpoch                   *uint64           `yaml:"EIP7594_FORK_EPOCH"`
-	SecondsPerSlot                     time.Duration     `yaml:"SECONDS_PER_SLOT"`
-	SlotsPerEpoch                      uint64            `yaml:"SLOTS_PER_EPOCH"`
-	EpochsPerHistoricalVector          uint64            `yaml:"EPOCHS_PER_HISTORICAL_VECTOR"`
-	EpochsPerSlashingVector            uint64            `yaml:"EPOCHS_PER_SLASHINGS_VECTOR"`
-	EpochsPerSyncCommitteePeriod       uint64            `yaml:"EPOCHS_PER_SYNC_COMMITTEE_PERIOD"`
-	MinSeedLookahead                   uint64            `yaml:"MIN_SEED_LOOKAHEAD"`
-	ShuffleRoundCount                  uint64            `yaml:"SHUFFLE_ROUND_COUNT"`
-	MaxEffectiveBalance                uint64            `yaml:"MAX_EFFECTIVE_BALANCE"`
-	MaxEffectiveBalanceElectra         uint64            `yaml:"MAX_EFFECTIVE_BALANCE_ELECTRA" check-if-fork:"ElectraForkEpoch"`
-	TargetCommitteeSize                uint64            `yaml:"TARGET_COMMITTEE_SIZE"`
-	MaxCommitteesPerSlot               uint64            `yaml:"MAX_COMMITTEES_PER_SLOT"`
-	MinPerEpochChurnLimit              uint64            `yaml:"MIN_PER_EPOCH_CHURN_LIMIT"`
-	ChurnLimitQuotient                 uint64            `yaml:"CHURN_LIMIT_QUOTIENT"`
-	DomainBeaconProposer               phase0.DomainType `yaml:"DOMAIN_BEACON_PROPOSER"`
-	DomainBeaconAttester               phase0.DomainType `yaml:"DOMAIN_BEACON_ATTESTER"`
-	DomainSyncCommittee                phase0.DomainType `yaml:"DOMAIN_SYNC_COMMITTEE"`
-	SyncCommitteeSize                  uint64            `yaml:"SYNC_COMMITTEE_SIZE"`
-	DepositContractAddress             []byte            `yaml:"DEPOSIT_CONTRACT_ADDRESS"`
-	MaxConsolidationRequestsPerPayload uint64            `yaml:"MAX_CONSOLIDATION_REQUESTS_PER_PAYLOAD" check-if-fork:"ElectraForkEpoch"`
-	MaxWithdrawalRequestsPerPayload    uint64            `yaml:"MAX_WITHDRAWAL_REQUESTS_PER_PAYLOAD"    check-if-fork:"ElectraForkEpoch"`
-	DepositChainId                     uint64            `yaml:"DEPOSIT_CHAIN_ID"`
-	MinActivationBalance               uint64            `yaml:"MIN_ACTIVATION_BALANCE"`
+	PresetBase                            string            `yaml:"PRESET_BASE"`
+	ConfigName                            string            `yaml:"CONFIG_NAME" check-if:"false"`
+	MinGenesisTime                        time.Time         `yaml:"MIN_GENESIS_TIME"`
+	GenesisForkVersion                    phase0.Version    `yaml:"GENESIS_FORK_VERSION"`
+	AltairForkVersion                     phase0.Version    `yaml:"ALTAIR_FORK_VERSION"`
+	AltairForkEpoch                       *uint64           `yaml:"ALTAIR_FORK_EPOCH"`
+	BellatrixForkVersion                  phase0.Version    `yaml:"BELLATRIX_FORK_VERSION"`
+	BellatrixForkEpoch                    *uint64           `yaml:"BELLATRIX_FORK_EPOCH"`
+	CapellaForkVersion                    phase0.Version    `yaml:"CAPELLA_FORK_VERSION"`
+	CapellaForkEpoch                      *uint64           `yaml:"CAPELLA_FORK_EPOCH"`
+	DenebForkVersion                      phase0.Version    `yaml:"DENEB_FORK_VERSION"`
+	DenebForkEpoch                        *uint64           `yaml:"DENEB_FORK_EPOCH"`
+	ElectraForkVersion                    phase0.Version    `yaml:"ELECTRA_FORK_VERSION" check-if-fork:"ElectraForkEpoch"`
+	ElectraForkEpoch                      *uint64           `yaml:"ELECTRA_FORK_EPOCH"   check-if-fork:"ElectraForkEpoch"`
+	Eip7594ForkVersion                    phase0.Version    `yaml:"EIP7594_FORK_VERSION" check-if-fork:"Eip7594ForkEpoch"`
+	Eip7594ForkEpoch                      *uint64           `yaml:"EIP7594_FORK_EPOCH"   check-if-fork:"Eip7594ForkEpoch"`
+	SecondsPerSlot                        time.Duration     `yaml:"SECONDS_PER_SLOT"`
+	SlotsPerEpoch                         uint64            `yaml:"SLOTS_PER_EPOCH"`
+	EpochsPerHistoricalVector             uint64            `yaml:"EPOCHS_PER_HISTORICAL_VECTOR"`
+	EpochsPerSlashingVector               uint64            `yaml:"EPOCHS_PER_SLASHINGS_VECTOR"`
+	EpochsPerSyncCommitteePeriod          uint64            `yaml:"EPOCHS_PER_SYNC_COMMITTEE_PERIOD"`
+	MinSeedLookahead                      uint64            `yaml:"MIN_SEED_LOOKAHEAD"`
+	ShuffleRoundCount                     uint64            `yaml:"SHUFFLE_ROUND_COUNT"`
+	MaxEffectiveBalance                   uint64            `yaml:"MAX_EFFECTIVE_BALANCE"`
+	MaxEffectiveBalanceElectra            uint64            `yaml:"MAX_EFFECTIVE_BALANCE_ELECTRA" check-if-fork:"ElectraForkEpoch"`
+	TargetCommitteeSize                   uint64            `yaml:"TARGET_COMMITTEE_SIZE"`
+	MaxCommitteesPerSlot                  uint64            `yaml:"MAX_COMMITTEES_PER_SLOT"`
+	MinPerEpochChurnLimit                 uint64            `yaml:"MIN_PER_EPOCH_CHURN_LIMIT"`
+	ChurnLimitQuotient                    uint64            `yaml:"CHURN_LIMIT_QUOTIENT"`
+	DomainBeaconProposer                  phase0.DomainType `yaml:"DOMAIN_BEACON_PROPOSER"`
+	DomainBeaconAttester                  phase0.DomainType `yaml:"DOMAIN_BEACON_ATTESTER"`
+	DomainSyncCommittee                   phase0.DomainType `yaml:"DOMAIN_SYNC_COMMITTEE"`
+	SyncCommitteeSize                     uint64            `yaml:"SYNC_COMMITTEE_SIZE"`
+	DepositContractAddress                []byte            `yaml:"DEPOSIT_CONTRACT_ADDRESS"`
+	MaxConsolidationRequestsPerPayload    uint64            `yaml:"MAX_CONSOLIDATION_REQUESTS_PER_PAYLOAD" check-if-fork:"ElectraForkEpoch"`
+	MaxWithdrawalRequestsPerPayload       uint64            `yaml:"MAX_WITHDRAWAL_REQUESTS_PER_PAYLOAD"    check-if-fork:"ElectraForkEpoch"`
+	DepositChainId                        uint64            `yaml:"DEPOSIT_CHAIN_ID"`
+	MinActivationBalance                  uint64            `yaml:"MIN_ACTIVATION_BALANCE"`
+	MaxPendingPartialsPerWithdrawalsSweep uint64            `yaml:"MAX_PENDING_PARTIALS_PER_WITHDRAWALS_SWEEP" check-if-fork:"ElectraForkEpoch"`
+	PendingPartialWithdrawalsLimit        uint64            `yaml:"PENDING_PARTIAL_WITHDRAWALS_LIMIT"          check-if-fork:"ElectraForkEpoch"`
+	PendingConsolidationsLimit            uint64            `yaml:"PENDING_CONSOLIDATIONS_LIMIT"               check-if-fork:"ElectraForkEpoch"`
+	MinPerEpochChurnLimitElectra          uint64            `yaml:"MIN_PER_EPOCH_CHURN_LIMIT_ELECTRA"          check-if-fork:"ElectraForkEpoch"`
+	MaxPerEpochActivationExitChurnLimit   uint64            `yaml:"MAX_PER_EPOCH_ACTIVATION_EXIT_CHURN_LIMIT"  check-if-fork:"ElectraForkEpoch"`
+	EffectiveBalanceIncrement             uint64            `yaml:"EFFECTIVE_BALANCE_INCREMENT"`
+	ShardCommitteePeriod                  uint64            `yaml:"SHARD_COMMITTEE_PERIOD"`
 
 	// EIP7594: PeerDAS
 	NumberOfColumns              *uint64 `yaml:"NUMBER_OF_COLUMNS"                check-if-fork:"Eip7594ForkEpoch"`
