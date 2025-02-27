@@ -58,7 +58,8 @@ type Config struct {
 	} `yaml:"frontend"`
 
 	Api struct {
-		Enabled bool `yaml:"enabled" envconfig:"API_ENABLED"`
+		Enabled     bool     `yaml:"enabled" envconfig:"API_ENABLED"`
+		CorsOrigins []string `yaml:"corsOrigins" envconfig:"API_CORS_ORIGINS"`
 	} `yaml:"api"`
 
 	RateLimit struct {

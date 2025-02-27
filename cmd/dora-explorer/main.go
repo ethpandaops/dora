@@ -16,6 +16,7 @@ import (
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/handlers"
 	"github.com/ethpandaops/dora/handlers/api"
+	"github.com/ethpandaops/dora/handlers/middleware"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/static"
 	"github.com/ethpandaops/dora/types"
@@ -223,6 +224,9 @@ func startFrontend(router *mux.Router) {
 }
 
 func startApi(router *mux.Router) {
+	// Add the CORS middleware to all API routes
+	router.Use(middleware.CorsMiddleware)
+
 	router.HandleFunc("/v1/validator/{indexOrPubkey}", api.ApiValidatorGetV1).Methods("GET", "OPTIONS")
 	router.HandleFunc("/v1/validator", api.ApiValidatorPostV1).Methods("POST", "OPTIONS")
 	router.HandleFunc("/v1/validator/eth1/{eth1address}", api.ApiValidatorByEth1AddressV1).Methods("GET", "OPTIONS")
