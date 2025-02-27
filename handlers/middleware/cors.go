@@ -2,7 +2,7 @@ package middleware
 
 import (
 	"net/http"
-	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/ethpandaops/dora/utils"
@@ -38,14 +38,15 @@ func matchOrigin(pattern, origin string) bool {
 		return true
 	}
 
-	// Convert the glob pattern to a filepath-style pattern
-	pattern = strings.ReplaceAll(pattern, "*", "###STAR###")
-	pattern = filepath.Clean(pattern)
-	pattern = strings.ReplaceAll(pattern, "###STAR###", "*")
+	// Escape special regex chars except *
+	pattern = regexp.QuoteMeta(pattern)
+	// Replace * with regex pattern for any characters
+	pattern = strings.ReplaceAll(pattern, "\\*", ".*")
+	pattern = "^" + pattern + "$"
 
-	matched, err := filepath.Match(pattern, origin)
+	matched, err := regexp.MatchString(pattern, origin)
 	if err != nil {
-		return false // Invalid pattern
+		return false
 	}
 	return matched
 }
