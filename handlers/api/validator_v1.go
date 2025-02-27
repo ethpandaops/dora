@@ -6,12 +6,11 @@ import (
 	"fmt"
 	"math"
 	"net/http"
-	"slices"
 	"strconv"
 	"strings"
 
-	v1 "github.com/attestantio/go-eth2-client/api/v1"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
+	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/services"
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
@@ -89,18 +88,9 @@ func getApiValidator(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	validatorSet := services.GlobalBeaconService.GetCachedValidatorSet(true)
-	if validatorSet == nil {
-		sendServerErrorResponse(w, r.URL.String(), "could not get validator set")
-		return
-	}
-
-	relevantValidators := []*v1.Validator{}
-	for _, validator := range validatorSet {
-		if slices.Contains(queryIndices, validator.Index) {
-			relevantValidators = append(relevantValidators, validator)
-		}
-	}
+	relevantValidators, _ := services.GlobalBeaconService.GetFilteredValidatorSet(&dbtypes.ValidatorFilter{
+		Indices: queryIndices,
+	}, true)
 
 	data := []*ApiValidatorResponseV1{}
 	for _, validator := range relevantValidators {

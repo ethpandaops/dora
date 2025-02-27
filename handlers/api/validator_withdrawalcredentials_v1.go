@@ -1,13 +1,13 @@
 package api
 
 import (
-	"bytes"
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"strconv"
 	"strings"
 
+	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/services"
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
@@ -60,35 +60,15 @@ func ApiWithdrawalCredentialsValidatorsV1(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	validatorSet := services.GlobalBeaconService.GetCachedValidatorSet(true)
-	if validatorSet == nil {
-		sendServerErrorResponse(w, r.URL.String(), "could not get validator set")
-		return
+	filter := &dbtypes.ValidatorFilter{}
+
+	if len(searchBytes) == 20 {
+		filter.WithdrawalAddress = searchBytes
+	} else {
+		filter.WithdrawalCreds = searchBytes
 	}
 
-	searchEth1Address := len(searchBytes) == 20
-
-	relevantValidators := []*ApiWithdrawalCredentialsResponseV1{}
-	for _, validator := range validatorSet {
-		if validator.Validator.WithdrawalCredentials[0] != 0x01 && validator.Validator.WithdrawalCredentials[0] != 0x02 {
-			continue
-		}
-
-		if searchEth1Address && (validator.Validator.WithdrawalCredentials[0] == 0x01 || validator.Validator.WithdrawalCredentials[0] == 0x02) {
-			if bytes.Equal(validator.Validator.WithdrawalCredentials[12:], searchBytes) {
-				relevantValidators = append(relevantValidators, &ApiWithdrawalCredentialsResponseV1{
-					PublicKey:      validator.Validator.PublicKey.String(),
-					ValidatorIndex: uint64(validator.Index),
-				})
-			}
-
-		} else if !searchEth1Address && bytes.Equal(validator.Validator.WithdrawalCredentials, searchBytes) {
-			relevantValidators = append(relevantValidators, &ApiWithdrawalCredentialsResponseV1{
-				PublicKey:      validator.Validator.PublicKey.String(),
-				ValidatorIndex: uint64(validator.Index),
-			})
-		}
-	}
+	relevantValidators, _ := services.GlobalBeaconService.GetFilteredValidatorSet(filter, true)
 
 	if offset > 0 {
 		if int(offset) > len(relevantValidators) {
