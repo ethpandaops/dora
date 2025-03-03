@@ -119,9 +119,11 @@ func (client *Client) runClientLogic() error {
 	}
 
 	// check latest header / sync status
-	if client.isSyncing {
-		return fmt.Errorf("beacon node is synchronizing")
-	}
+	/*
+		if client.isSyncing {
+			return fmt.Errorf("beacon node is synchronizing")
+		}
+	*/
 
 	// start event stream
 	blockStream := client.rpcClient.NewBlockStream(client.clientCtx, client.logger, rpc.StreamBlockEvent|rpc.StreamHeadEvent|rpc.StreamFinalizedEvent)
@@ -199,9 +201,11 @@ func (client *Client) runClientLogic() error {
 				return fmt.Errorf("could not get synchronization status for %s: %v", client.endpointConfig.Name, err)
 			}
 
-			if client.isSyncing {
-				return fmt.Errorf("beacon node is synchronizing")
-			}
+			/*
+				if client.isSyncing {
+					return fmt.Errorf("beacon node is synchronizing")
+				}
+			*/
 		}
 
 		if currentEpoch-client.lastFinalityUpdateEpoch >= 1 && client.pool.chainState.SlotToSlotIndex(currentSlot) > 1 {

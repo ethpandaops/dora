@@ -17,6 +17,30 @@ func SliceContains(list []string, target string) bool {
 	return false
 }
 
+// FindMatchingIndices returns indices that appear in both slices
+// assumes both slices contain uint64 values
+func FindMatchingIndices(a, b []uint64) []uint64 {
+	if len(a) == 0 || len(b) == 0 {
+		return nil
+	}
+
+	// Use map for O(1) lookups
+	lookup := make(map[uint64]struct{}, len(a))
+	for _, v := range a {
+		lookup[v] = struct{}{}
+	}
+
+	// Find matches
+	result := make([]uint64, 0, min(len(a), len(b)))
+	for _, v := range b {
+		if _, ok := lookup[v]; ok {
+			result = append(result, v)
+		}
+	}
+
+	return result
+}
+
 // MustParseHex will parse a string into hex
 func MustParseHex(hexString string) []byte {
 	data, err := hex.DecodeString(strings.Replace(hexString, "0x", "", -1))
