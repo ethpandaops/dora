@@ -17,7 +17,7 @@ import (
 	"github.com/ethpandaops/dora/utils"
 )
 
-const WithdrawalContractAddr = "0x00000961Ef480Eb55e80D19ad83579A64c007002"
+const WithdrawalContractAddr = "0x0c15F14308530b7CDB8460094BbB9cC28b9AaaAA"
 
 // WithdrawalIndexer is the indexer for the eip-7002 consolidation system contract
 type WithdrawalIndexer struct {
