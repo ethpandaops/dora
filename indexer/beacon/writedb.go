@@ -11,7 +11,6 @@ import (
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/utils"
 	"github.com/jmoiron/sqlx"
-	"github.com/juliangruber/go-intersect"
 )
 
 type dbWriter struct {
@@ -647,10 +646,7 @@ func (dbw *dbWriter) buildDbSlashings(block *Block, orphaned bool, overrideForkI
 			continue
 		}
 
-		inter := intersect.Simple(att1AttestingIndices, att2AttestingIndices)
-		for _, j := range inter {
-			valIdx := j.(uint64)
-
+		for _, valIdx := range utils.FindMatchingIndices(att1AttestingIndices, att2AttestingIndices) {
 			dbSlashing := &dbtypes.Slashing{
 				SlotNumber:     uint64(block.Slot),
 				SlotIndex:      uint64(slashingIndex),
