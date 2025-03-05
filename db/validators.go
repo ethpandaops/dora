@@ -218,6 +218,15 @@ func buildValidatorFilterSql(filter dbtypes.ValidatorFilter, currentEpoch uint64
 		fmt.Fprintf(sql, " %v validator_index <= $%v", filterOp, len(args))
 		filterOp = "AND"
 	}
+	if len(filter.Indices) > 0 {
+		indices := []string{}
+		for _, index := range filter.Indices {
+			args = append(args, index)
+			indices = append(indices, fmt.Sprintf("$%v", len(args)))
+		}
+		fmt.Fprintf(sql, " %v validator_index IN (%s)", filterOp, strings.Join(indices, ","))
+		filterOp = "AND"
+	}
 	if filter.PubKey != nil {
 		args = append(args, filter.PubKey)
 		fmt.Fprintf(sql, " %v pubkey = $%v", filterOp, len(args))
@@ -232,6 +241,11 @@ func buildValidatorFilterSql(filter dbtypes.ValidatorFilter, currentEpoch uint64
 		copy(wdcreds2[12:], filter.WithdrawalAddress)
 		args = append(args, wdcreds1, wdcreds2)
 		fmt.Fprintf(sql, " %v (withdrawal_credentials = $%v OR withdrawal_credentials = $%v)", filterOp, len(args)-1, len(args))
+		filterOp = "AND"
+	}
+	if filter.WithdrawalCreds != nil {
+		args = append(args, filter.WithdrawalCreds)
+		fmt.Fprintf(sql, " %v withdrawal_credentials = $%v", filterOp, len(args))
 		filterOp = "AND"
 	}
 	if filter.ValidatorName != "" {
