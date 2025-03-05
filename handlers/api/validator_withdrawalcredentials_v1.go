@@ -84,10 +84,18 @@ func ApiWithdrawalCredentialsValidatorsV1(w http.ResponseWriter, r *http.Request
 		}
 	}
 
+	data := []*ApiWithdrawalCredentialsResponseV1{}
+	for _, validator := range relevantValidators {
+		data = append(data, &ApiWithdrawalCredentialsResponseV1{
+			PublicKey:      validator.Validator.PublicKey.String(),
+			ValidatorIndex: uint64(validator.Index),
+		})
+	}
+
 	j := json.NewEncoder(w)
 	response := &ApiResponse{}
 	response.Status = "OK"
-	response.Data = relevantValidators
+	response.Data = data
 
 	err = j.Encode(response)
 	if err != nil {
