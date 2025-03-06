@@ -17,17 +17,17 @@ import (
 )
 
 type ApiValidatorResponseV1 struct {
-	Activationeligibilityepoch int64  `json:"activationeligibilityepoch"`
-	Activationepoch            int64  `json:"activationepoch"`
-	Balance                    int64  `json:"balance"`
-	Effectivebalance           int64  `json:"effectivebalance"`
+	Activationeligibilityepoch uint64 `json:"activationeligibilityepoch"`
+	Activationepoch            uint64 `json:"activationepoch"`
+	Balance                    uint64 `json:"balance"`
+	Effectivebalance           uint64 `json:"effectivebalance"`
 	Exitepoch                  uint64 `json:"exitepoch"`
 	Isonline                   bool   `json:"isonline"`
 	Name                       string `json:"name"`
 	Pubkey                     string `json:"pubkey"`
 	Slashed                    bool   `json:"slashed"`
 	Status                     string `json:"status"`
-	Validatorindex             int64  `json:"validatorindex"`
+	Validatorindex             uint64 `json:"validatorindex"`
 	Withdrawableepoch          uint64 `json:"withdrawableepoch"`
 	Withdrawalcredentials      string `json:"withdrawalcredentials"`
 }
@@ -96,17 +96,17 @@ func getApiValidator(w http.ResponseWriter, r *http.Request) {
 	for _, validator := range relevantValidators {
 		isOnline := services.GlobalBeaconService.GetValidatorLiveness(validator.Index, 3) > 0
 		data = append(data, &ApiValidatorResponseV1{
-			Activationeligibilityepoch: int64(validator.Validator.ActivationEligibilityEpoch),
-			Activationepoch:            int64(validator.Validator.ActivationEpoch),
-			Balance:                    int64(validator.Balance),
-			Effectivebalance:           int64(validator.Validator.EffectiveBalance),
+			Activationeligibilityepoch: uint64(validator.Validator.ActivationEligibilityEpoch),
+			Activationepoch:            uint64(validator.Validator.ActivationEpoch),
+			Balance:                    uint64(validator.Balance),
+			Effectivebalance:           uint64(validator.Validator.EffectiveBalance),
 			Exitepoch:                  uint64(validator.Validator.ExitEpoch),
 			Isonline:                   isOnline,
 			Name:                       services.GlobalBeaconService.GetValidatorName(uint64(validator.Index)),
 			Pubkey:                     validator.Validator.PublicKey.String(),
 			Slashed:                    validator.Validator.Slashed,
 			Status:                     validator.Status.String(),
-			Validatorindex:             int64(validator.Index),
+			Validatorindex:             uint64(validator.Index),
 			Withdrawableepoch:          uint64(validator.Validator.WithdrawableEpoch),
 			Withdrawalcredentials:      fmt.Sprintf("0x%x", validator.Validator.WithdrawalCredentials),
 		})
