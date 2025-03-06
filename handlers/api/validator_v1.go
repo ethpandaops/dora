@@ -21,14 +21,14 @@ type ApiValidatorResponseV1 struct {
 	Activationepoch            int64  `json:"activationepoch"`
 	Balance                    int64  `json:"balance"`
 	Effectivebalance           int64  `json:"effectivebalance"`
-	Exitepoch                  int64  `json:"exitepoch"`
+	Exitepoch                  uint64 `json:"exitepoch"`
 	Isonline                   bool   `json:"isonline"`
 	Name                       string `json:"name"`
 	Pubkey                     string `json:"pubkey"`
 	Slashed                    bool   `json:"slashed"`
 	Status                     string `json:"status"`
 	Validatorindex             int64  `json:"validatorindex"`
-	Withdrawableepoch          int64  `json:"withdrawableepoch"`
+	Withdrawableepoch          uint64 `json:"withdrawableepoch"`
 	Withdrawalcredentials      string `json:"withdrawalcredentials"`
 }
 
@@ -100,14 +100,14 @@ func getApiValidator(w http.ResponseWriter, r *http.Request) {
 			Activationepoch:            int64(validator.Validator.ActivationEpoch),
 			Balance:                    int64(validator.Balance),
 			Effectivebalance:           int64(validator.Validator.EffectiveBalance),
-			Exitepoch:                  int64(validator.Validator.ExitEpoch),
+			Exitepoch:                  uint64(validator.Validator.ExitEpoch),
 			Isonline:                   isOnline,
 			Name:                       services.GlobalBeaconService.GetValidatorName(uint64(validator.Index)),
 			Pubkey:                     validator.Validator.PublicKey.String(),
 			Slashed:                    validator.Validator.Slashed,
 			Status:                     validator.Status.String(),
 			Validatorindex:             int64(validator.Index),
-			Withdrawableepoch:          int64(validator.Validator.WithdrawableEpoch),
+			Withdrawableepoch:          uint64(validator.Validator.WithdrawableEpoch),
 			Withdrawalcredentials:      fmt.Sprintf("0x%x", validator.Validator.WithdrawalCredentials),
 		})
 	}
