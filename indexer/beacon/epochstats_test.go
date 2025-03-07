@@ -6,7 +6,6 @@ import (
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/sirupsen/logrus"
 	"github.com/sirupsen/logrus/hooks/test"
-	"github.com/stretchr/testify/assert"
 )
 
 // TestEpochStats_PrunedDependentState tests that storing a local copy of dependentState
@@ -46,19 +45,27 @@ func TestEpochStats_PrunedDependentState(t *testing.T) {
 		// Set dependentState to nil to simulate the epoch cache pruner.
 		es.dependentState = nil
 
-		// This should panic - assert it does.
-		assert.Panics(t, func() {
-			indexer.logger.Infof(
-				"processed epoch %v stats (root: %v / state: %v, validators: %v/%v, %v ms), %v bytes",
-				es.epoch,
-				es.dependentRoot.String(),
-				es.dependentState.stateRoot.String(),
-				es.values.ActiveValidators,
-				0,
-				0,
-				0,
-			)
-		}, "Should panic when accessing es.dependentState.stateRoot after setting dependentState to nil")
+		// This should panic - we're testing that it does
+		defer func() {
+			if r := recover(); r == nil {
+				t.Errorf("Expected panic when accessing es.dependentState.stateRoot after setting dependentState to nil, but no panic occurred")
+			}
+		}()
+
+		// This will panic because dependentState is nil
+		indexer.logger.Infof(
+			"processed epoch %v stats (root: %v / state: %v, validators: %v/%v, %v ms), %v bytes",
+			es.epoch,
+			es.dependentRoot.String(),
+			es.dependentState.stateRoot.String(), // This will panic
+			es.values.ActiveValidators,
+			0,
+			0,
+			0,
+		)
+
+		// We should never reach here
+		t.Errorf("Expected panic, but code continued execution")
 	})
 
 	t.Run("DependentStateNotNil_ShouldNotPanic", func(t *testing.T) {
@@ -90,24 +97,37 @@ func TestEpochStats_PrunedDependentState(t *testing.T) {
 		// Set es.dependentState to nil to simulate the epoch cache pruner.
 		es.dependentState = nil
 
-		assert.NotPanics(t, func() {
-			indexer.logger.Infof(
-				"processed epoch %v stats (root: %v / state: %v, validators: %v/%v, %v ms), %v bytes",
-				es.epoch,
-				es.dependentRoot.String(),
-				dependentState.stateRoot.String(),
-				es.values.ActiveValidators,
-				0,
-				0,
-				0,
-			)
-		}, "Should not panic when using local copy of dependentState")
-
-		assert.Contains(
-			t,
-			hook.LastEntry().Message,
-			"state: 0x0200000000000000000000000000000000000000000000000000000000000000",
-			"Log message should contain the correct stateRoot",
+		// This should not panic because we're using the local copy
+		indexer.logger.Infof(
+			"processed epoch %v stats (root: %v / state: %v, validators: %v/%v, %v ms), %v bytes",
+			es.epoch,
+			es.dependentRoot.String(),
+			dependentState.stateRoot.String(), // Using local copy - won't panic
+			es.values.ActiveValidators,
+			0,
+			0,
+			0,
 		)
+
+		// Verify the log message contains the correct stateRoot
+		if len(hook.Entries) < 2 {
+			t.Errorf("Expected at least 2 log entries, got %d", len(hook.Entries))
+		} else {
+			logMsg := hook.Entries[len(hook.Entries)-1].Message
+			expectedStateRoot := "state: 0x0200000000000000000000000000000000000000000000000000000000000000"
+			if logMsg == "" || logMsg != "" && !contains(logMsg, expectedStateRoot) {
+				t.Errorf("Expected log message to contain %q, but got %q", expectedStateRoot, logMsg)
+			}
+		}
 	})
+}
+
+// Helper function to check if a string contains a substring
+func contains(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
 }
