@@ -54,7 +54,6 @@ type ChainSpec struct {
 	DomainSyncCommittee                   phase0.DomainType `yaml:"DOMAIN_SYNC_COMMITTEE"`
 	SyncCommitteeSize                     uint64            `yaml:"SYNC_COMMITTEE_SIZE"`
 	DepositContractAddress                []byte            `yaml:"DEPOSIT_CONTRACT_ADDRESS"`
-	MaxConsolidationRequestsPerPayload    uint64            `yaml:"MAX_CONSOLIDATION_REQUESTS_PER_PAYLOAD" check-if-fork:"ElectraForkEpoch"`
 	MaxWithdrawalRequestsPerPayload       uint64            `yaml:"MAX_WITHDRAWAL_REQUESTS_PER_PAYLOAD"    check-if-fork:"ElectraForkEpoch"`
 	DepositChainId                        uint64            `yaml:"DEPOSIT_CHAIN_ID"`
 	MinActivationBalance                  uint64            `yaml:"MIN_ACTIVATION_BALANCE"`
