@@ -187,11 +187,7 @@ func (cache *validatorActivityCache) cleanupLoop() {
 
 func (cache *validatorActivityCache) cleanupCache() {
 	chainState := cache.indexer.consensusPool.GetChainState()
-	currentEpoch := chainState.CurrentEpoch()
-	cutOffEpoch := phase0.Epoch(0)
-	if currentEpoch > phase0.Epoch(cache.indexer.activityHistoryLength) {
-		cutOffEpoch = currentEpoch - phase0.Epoch(cache.indexer.activityHistoryLength)
-	}
+	cutOffEpoch := cache.getCutOffEpoch()
 
 	cache.activityMutex.Lock()
 	defer cache.activityMutex.Unlock()
