@@ -65,6 +65,7 @@ type Indexer struct {
 	canonicalHead        *Block
 	canonicalComputation phase0.Root
 	cachedChainHeads     []*ChainHead
+	badChainRoots        []phase0.Root
 }
 
 // NewIndexer creates a new instance of the Indexer.
@@ -108,6 +109,13 @@ func NewIndexer(logger logrus.FieldLogger, consensusPool *consensus.Pool) *Index
 	indexer.validatorCache = newValidatorCache(indexer)
 	indexer.validatorActivity = newValidatorActivityCache(indexer)
 	indexer.dbWriter = newDbWriter(indexer)
+
+	badChainRoots := utils.Config.Indexer.BadChainRoots
+	if len(badChainRoots) > 0 {
+		for _, root := range badChainRoots {
+			indexer.badChainRoots = append(indexer.badChainRoots, phase0.Root(utils.MustParseHex(root)))
+		}
+	}
 
 	return indexer
 }
@@ -269,7 +277,7 @@ func (indexer *Indexer) StartIndexer() {
 			epochStats := indexer.epochCache.createOrGetEpochStats(phase0.Epoch(dbDuty.Epoch), phase0.Root(dbDuty.DependentRoot), false)
 			pruneStats := dbDuty.Epoch < uint64(indexer.lastPrunedEpoch)
 
-			err := epochStats.restoreFromDb(dbDuty, indexer.dynSsz, chainState, !pruneStats)
+			err := epochStats.restoreFromDb(dbDuty, chainState, !pruneStats)
 			if err != nil {
 				indexer.logger.WithError(err).Errorf("failed restoring epoch stats for epoch %v (%x) from db", dbDuty.Epoch, dbDuty.DependentRoot)
 				return

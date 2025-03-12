@@ -135,7 +135,7 @@ func handleSubmitConsolidationPageDataAjax(w http.ResponseWriter, r *http.Reques
 			}
 
 			consolidable := false
-			if validator.Validator.ActivationEpoch < beacon.FarFutureEpoch && validator.Validator.ActivationEpoch+phase0.Epoch(chainSpecs.ShardCommitteePeriod) > chainState.CurrentEpoch() {
+			if validator.Validator.ActivationEpoch < beacon.FarFutureEpoch && validator.Validator.ActivationEpoch+phase0.Epoch(chainSpecs.ShardCommitteePeriod) < chainState.CurrentEpoch() {
 				consolidable = true
 			}
 

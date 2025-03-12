@@ -1,57 +1,267 @@
 {{ define "block_attestations" }}
-  {{ range $i, $attestation := .Block.Attestations }}
-    <div class="card my-2">
-      <div class="card-body px-0 py-1">
-        <div class="row border-bottom p-1 mx-0">
-          <div class="col-md-12 text-center"><b>Attestation {{ $i }}</b></div>
-        </div>
-        <div class="row border-bottom p-1 mx-0">
-          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Slot number to which the validator is attesting">Slot:</span></div>
-          <div class="col-md-10"><a href="/slot/{{ $attestation.Slot }}">{{ $attestation.Slot }}</a></div>
-        </div>
-        <div class="row border-bottom p-1 mx-0">
-          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="An identifier for a specific committee during a slot">Committee Index:</span></div>
-          <div class="col-md-10">
-            {{ range $index := $attestation.CommitteeIndex }}
-              <span class="badge bg-secondary mx-2">{{ $index }}</span>
-            {{ end }}
-          </div>
-        </div>
-        <div class="row border-bottom p-1 mx-0">
-          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Represents the aggregated attestation of all participating validators in this attestation">Aggregation Bits:</span></div>
-          <div class="col-md-10">{{ formatBitlist $attestation.AggregationBits $attestation.Validators }}</div>
-        </div>
-        <div class="row border-bottom p-1 mx-0">
-          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Validators who have submitted their attestation and have been included by the block proposer">Included Validators:</span></div>
-          <div class="col-md-10">
-            {{ range $validator := $attestation.IncludedValidators }}
-              {{ formatValidator $validator.Index $validator.Name }}
-            {{ end }}
-          </div>
-        </div>
-        <div class="row border-bottom p-1 mx-0">
-          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Points to the block to which validators are attesting">Beacon Block Root:</span></div>
-          <div class="col-md-10 text-monospace text-break"><a href="/slot/{{ printf "%x" $attestation.BeaconBlockRoot }}">0x{{ printf "%x" $attestation.BeaconBlockRoot }}</a></div>
-        </div>
-        <div class="row border-bottom p-1 mx-0">
-          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Points to the latest justified epoch">Source:</span></div>
-          <div class="col-md-10">
-            Epoch <a href="/epoch/{{ $attestation.SourceEpoch }}">{{ $attestation.SourceEpoch }}</a> 
-            <span class="text-monospace text-break">(<a href="{{ printf "%x" $attestation.SourceRoot }}">0x{{ printf "%x" $attestation.SourceRoot }}</a>)</span>
-          </div>
-        </div>
-        <div class="row border-bottom p-1 mx-0">
-          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Points to the latest epoch boundary">Target:</span></div>
-          <div class="col-md-10">
-            Epoch <a href="/epoch/{{ $attestation.TargetEpoch }}">{{ $attestation.TargetEpoch }}</a> 
-            <span class="text-monospace text-break">(<a href="{{ printf "%x" $attestation.TargetRoot }}">0x{{ printf "%x" $attestation.TargetRoot }}</a>)</span>
-          </div>
-        </div>
-        <div class="row p-1 mx-0">
-          <div class="col-md-2">Signature:</div>
-          <div class="col-md-10 text-monospace text-break">0x{{ printf "%x" $attestation.Signature }}</div>
+<div id="attestationsData" class="attestations-container">
+  {{ html "<!-- ko foreach: attestations -->" }}
+  <div class="card my-2">
+    <div class="card-body px-0 py-1">
+      <div class="row border-bottom p-1 mx-0">
+        <div class="col-md-12 text-center">
+          <b>Attestation <span data-bind="text: slot"></span></b>
         </div>
       </div>
+      <div class="row border-bottom p-1 mx-0">
+        <div class="col-md-2">
+          <span data-bs-toggle="tooltip" data-bs-placement="top" title="Slot number to which the validator is attesting">Slot:</span>
+        </div>
+        <div class="col-md-10">
+          <a data-bind="attr: {href: '/slot/' + slot}, text: slot"></a>
+        </div>
+      </div>
+      <div class="row border-bottom p-1 mx-0">
+        <div class="col-md-2">
+          <span data-bs-toggle="tooltip" data-bs-placement="top" title="An identifier for a specific committee during a slot">Committee Index:</span>
+        </div>
+        <div class="col-md-10">
+          {{ html "<!-- ko foreach: committee_index -->" }}
+          <span class="badge bg-secondary mx-2" data-bind="text: $data"></span>
+          {{ html "<!-- /ko -->" }}
+        </div>
+      </div>
+      <div class="row border-bottom p-1 mx-0">
+        <div class="col-md-2">
+          <span data-bs-toggle="tooltip" data-bs-placement="top" title="Summary of validator participation">Aggregation:</span>
+        </div>
+        <div class="col-md-10 d-flex justify-content-between">
+          <span data-bind="text: aggregationSummary"></span>
+          <i class="fas fa-chevron-down cursor-pointer" 
+             data-bind="click: toggleDetails, 
+                       css: { 'fa-chevron-down': !showDetails(), 'fa-chevron-up': showDetails() }">
+          </i>
+        </div>
+      </div>
+      {{ html "<!-- ko if: showDetails -->" }}
+      <div class="row border-bottom p-1 mx-0">
+        <div class="col-md-2">
+          <span data-bs-toggle="tooltip" data-bs-placement="top" title="Represents the aggregated attestation of all participating validators in this attestation">Aggregation Bits:</span>
+        </div>
+        <div class="col-md-10">
+          <div data-bind="html: formattedAggregationBits"></div>
+        </div>
+      </div>
+      {{ html "<!-- ko if: included_validators.length > 0 -->" }}
+      <div class="row border-bottom p-1 mx-0">
+        <div class="col-md-2">
+          <span data-bs-toggle="tooltip" data-bs-placement="top" title="Validators who have submitted their attestation and have been included by the block proposer">Included Validators:</span>
+        </div>
+        <div class="col-md-10">
+          {{ html "<!-- ko foreach: included_validators -->" }}
+          <span class="validator-label validator-name" data-bs-toggle="tooltip" data-bs-placement="top" data-bind="attr: {'data-bs-title': $data}">
+            <i class="fas fa-male mr-2"></i>
+            <a data-bind="attr: {href: '/validator/' + $data}">
+              <!-- ko if: $root.getValidatorName($data) -->
+              <span data-bind="text: $root.getValidatorName($data) + ' (' + $data + ')'"></span>
+              <!-- /ko -->
+              <!-- ko ifnot: $root.getValidatorName($data) -->
+              <span data-bind="text: $data"></span>
+              <!-- /ko -->
+            </a>
+          </span>
+          {{ html "<!-- /ko -->" }}
+        </div>
+      </div>
+      {{ html "<!-- /ko -->" }}
+      {{ html "<!-- /ko -->" }}
+      <div class="row border-bottom p-1 mx-0">
+        <div class="col-md-2">
+          <span data-bs-toggle="tooltip" data-bs-placement="top" title="Points to the block to which validators are attesting">Beacon Block Root:</span>
+        </div>
+        <div class="col-md-10 text-monospace text-break">
+          <a data-bind="attr: {href: '/slot/0x' + beaconBlockRootHex()}, text: '0x' + beaconBlockRootHex()"></a>
+        </div>
+      </div>
+      <div class="row border-bottom p-1 mx-0">
+        <div class="col-md-2">
+          <span data-bs-toggle="tooltip" data-bs-placement="top" title="Points to the latest justified epoch">Source:</span>
+        </div>
+        <div class="col-md-10">
+          Epoch <a data-bind="attr: {href: '/epoch/' + source_epoch}, text: source_epoch"></a>
+          <span class="text-monospace text-break">
+            (<a data-bind="attr: {href: '/block/0x' + sourceRootHex()}, text: '0x' + sourceRootHex()"></a>)
+          </span>
+        </div>
+      </div>
+      <div class="row border-bottom p-1 mx-0">
+        <div class="col-md-2">
+          <span data-bs-toggle="tooltip" data-bs-placement="top" title="Points to the latest epoch boundary">Target:</span>
+        </div>
+        <div class="col-md-10">
+          Epoch <a data-bind="attr: {href: '/epoch/' + target_epoch}, text: target_epoch"></a>
+          <span class="text-monospace text-break">
+            (<a data-bind="attr: {href: '/block/0x' + targetRootHex()}, text: '0x' + targetRootHex()"></a>)
+          </span>
+        </div>
+      </div>
+      <div class="row p-1 mx-0">
+        <div class="col-md-2">Signature:</div>
+        <div class="col-md-10 text-monospace text-break" data-bind="text: '0x' + signatureHex()"></div>
+      </div>
     </div>
-  {{ end }}
+  </div>
+  {{ html "<!-- /ko -->" }}
+</div>
+
+<script src="/js/knockout.min.js"></script>
+<script type="text/javascript">
+  var specValues = JSON.parse({{ includeJSON .Block.SpecValues false }});
+  var validatorNames = JSON.parse({{ includeJSON .Block.ValidatorNames false }});
+  var attestationsData = JSON.parse({{ includeJSON .Block.Attestations false }});
+  
+  function base64ToBytes(base64) {
+    const binString = atob(base64);
+    return Uint8Array.from(binString, (m) => m.charCodeAt(0));
+  }
+
+  function bytesToHex(bytes) {
+    return Array.from(bytes).map(b => b.toString(16).padStart(2,'0')).join('');
+  }
+
+  function AttestationViewModel(data) {
+    var self = this;
+    self.slot = data.slot;
+    self.committee_index = data.committeeindex;
+    self.aggregation_bits = base64ToBytes(data.aggregationbits);
+    self.beacon_block_root = base64ToBytes(data.beaconblockroot);
+    self.source_epoch = data.source_epoch;
+    self.source_root = base64ToBytes(data.source_root);
+    self.target_epoch = data.target_epoch;
+    self.target_root = base64ToBytes(data.target_root);
+    self.signature = base64ToBytes(data.signature);
+    self.validators = data.validators;
+    self.included_validators = data.included_validators;
+
+    self.showDetails = ko.observable(false);
+    
+    self.toggleDetails = function() {
+      var isOpen = self.showDetails();
+      self.showDetails(!isOpen);
+
+      if (!isOpen) {
+        setTimeout(function() {
+          explorer.initControls();
+        }, 100);
+      }
+    };
+
+    self.aggregationSummary = ko.computed(function() {
+      var total = self.aggregation_bits.length * 8;
+      var set = 0;
+      for (var i = 0; i < self.aggregation_bits.length; i++) {
+        for (var j = 0; j < 8; j++) {
+          if (self.aggregation_bits[i] & (1 << j)) {
+            set++;
+          }
+        }
+      }
+      var percentage = ((set / total) * 100).toFixed(2);
+      return set + " validators attesting, " + (total - set) + " not attesting (" + percentage + "%)";
+    });
+
+    // Format hex values
+    self.beaconBlockRootHex = ko.computed(function() {
+      return bytesToHex(self.beacon_block_root);
+    });
+    
+    self.sourceRootHex = ko.computed(function() {
+      return bytesToHex(self.source_root);
+    });
+    
+    self.targetRootHex = ko.computed(function() {
+      return bytesToHex(self.target_root);
+    });
+
+    self.signatureHex = ko.computed(function() {
+      return bytesToHex(self.signature);
+    });
+
+    // Format aggregation bits with validator info
+    self.formattedAggregationBits = ko.computed(function() {
+      var bits = self.aggregation_bits;
+      var html = '<pre class="text-bitfield text-monospace text-break" style="font-size:1rem;">';
+      var perLine = 8;
+      
+      for (var y = 0; y < bits.length; y += perLine) {
+        var start = y * 8;
+        var end = (y + perLine) * 8;
+        if (self.validators.length > 0 && end >= self.validators.length) {
+          end = self.validators.length;
+        } else if (self.validators.length === 0 && end >= bits.length * 8) {
+          end = bits.length * 8;
+        }
+
+        if (y > 0) {
+          html += '<br/>';
+        }
+
+        for (var x = start; x < end; x++) {
+          if (x % 8 === 0 && x !== start) {
+            html += ' ';
+          }
+
+          var validator = self.validators[x];
+          if (validator !== undefined) {
+            var name = validatorNames[validator];
+            if (name) {
+              html += `<span data-bs-toggle="tooltip" data-bs-placement="top" title="${name} (${validator})">`;
+            } else {
+              html += `<span data-bs-toggle="tooltip" data-bs-placement="top" title="${validator}">`;
+            }
+          }
+
+          var byteIndex = Math.floor(x / 8);
+          var bitIndex = x % 8;
+          var isSet = (bits[byteIndex] & (1 << bitIndex)) !== 0;
+          html += isSet ? '1' : '0';
+
+          if (validator) {
+            html += '</span>';
+          }
+        }
+      }
+      html += '</pre>';
+      return html;
+    });
+  }
+
+  function AttestationsViewModel() {
+    var self = this;
+
+    self.getValidatorName = function(index) {
+      return validatorNames[index];
+    }
+
+    self.attestations = ko.observableArray(attestationsData.map(function(att) {
+      return new AttestationViewModel(att);
+    }));
+  }
+
+  ko.applyBindings(new AttestationsViewModel(), document.getElementById('attestationsData'));
+</script>
+
+<style>
+.validator-label {
+  margin-right: 0.5rem;
+}
+.validator-label.validator-index {
+  white-space: nowrap;
+}
+.validator-label.validator-name {
+  white-space: nowrap;
+}
+.text-bitfield > span > span {
+  width: 8px;
+  display: inline-block;
+}
+.cursor-pointer {
+  cursor: pointer;
+}
+</style>
 {{ end }}

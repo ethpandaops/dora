@@ -236,6 +236,10 @@ func (vn *ValidatorNames) GetValidatorName(index uint64) string {
 		return name.name
 	}
 
+	if vn.resolvedNamesByIndex == nil {
+		return ""
+	}
+
 	name = vn.resolvedNamesByIndex[index]
 	if name != nil {
 		return name.name
