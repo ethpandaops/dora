@@ -34,8 +34,8 @@ func newForkCache(indexer *Indexer) *forkCache {
 	return &forkCache{
 		indexer:        indexer,
 		forkMap:        make(map[ForkKey]*Fork),
-		parentIdCache:  lru.NewCache[ForkKey, ForkKey](1000),
-		parentIdsCache: lru.NewCache[ForkKey, []ForkKey](30),
+		parentIdCache:  lru.NewCache[ForkKey, ForkKey](100000),
+		parentIdsCache: lru.NewCache[ForkKey, []ForkKey](3000),
 	}
 }
 
