@@ -23,6 +23,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/ethpandaops/dora/db"
+	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/indexer/beacon"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
@@ -323,6 +324,8 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 		Eth1dataDepositroot:    eth1Data.DepositRoot[:],
 		Eth1dataDepositcount:   eth1Data.DepositCount,
 		Eth1dataBlockhash:      eth1Data.BlockHash,
+		ValidatorNames:         make(map[uint64]string),
+		SpecValues:             make(map[string]interface{}),
 		ProposerSlashingsCount: uint64(len(proposerSlashings)),
 		AttesterSlashingsCount: uint64(len(attesterSlashings)),
 		AttestationsCount:      uint64(len(attestations)),
@@ -331,9 +334,15 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 		SlashingsCount:         uint64(len(proposerSlashings)) + uint64(len(attesterSlashings)),
 	}
 
+	pageData.SpecValues["committees_per_slot"] = specs.MaxCommitteesPerSlot
+	pageData.SpecValues["target_committee_size"] = specs.TargetCommitteeSize
+	pageData.SpecValues["slots_per_epoch"] = specs.SlotsPerEpoch
+
 	epoch := chainState.EpochOfSlot(blockData.Header.Message.Slot)
 	assignmentsMap := make(map[phase0.Epoch]*beacon.EpochStatsValues)
 	assignmentsLoaded := make(map[phase0.Epoch]bool)
+	dbEpochMap := make(map[phase0.Epoch]*dbtypes.Epoch)
+	dbEpochLoaded := make(map[phase0.Epoch]bool)
 	assignmentsMap[epoch] = epochStatsValues
 	assignmentsLoaded[epoch] = true
 
@@ -354,19 +363,38 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 			continue
 		}
 
+		totalActiveValidators := uint64(0)
+
 		attEpoch := chainState.EpochOfSlot(attData.Slot)
 		if !assignmentsLoaded[attEpoch] { // get epoch duties from cache
+			assignmentsLoaded[attEpoch] = true
 			beaconIndexer := services.GlobalBeaconService.GetBeaconIndexer()
 			if epochStats := beaconIndexer.GetEpochStats(epoch, nil); epochStats != nil {
 				epochStatsValues := epochStats.GetOrLoadValues(beaconIndexer, true, false)
 
 				assignmentsMap[attEpoch] = epochStatsValues
-				assignmentsLoaded[attEpoch] = true
+			}
+		}
+
+		if assignmentsMap[attEpoch] != nil {
+			totalActiveValidators = assignmentsMap[attEpoch].ActiveValidators
+		} else {
+			if !dbEpochLoaded[attEpoch] {
+				dbEpochLoaded[attEpoch] = true
+				dbEpochs := db.GetEpochs(uint64(attEpoch), 1)
+				if len(dbEpochs) > 0 && dbEpochs[0].Epoch == uint64(attEpoch) {
+					dbEpochMap[attEpoch] = dbEpochs[0]
+				}
+			}
+
+			if dbEpochMap[attEpoch] != nil {
+				totalActiveValidators = dbEpochMap[attEpoch].ValidatorCount
 			}
 		}
 
 		attPageData := models.SlotPageAttestation{
 			Slot:            uint64(attData.Slot),
+			TotalActive:     totalActiveValidators,
 			AggregationBits: attAggregationBits,
 			Signature:       attSignature[:],
 			BeaconBlockRoot: attData.BeaconBlockRoot[:],
@@ -436,19 +464,17 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 			attPageData.CommitteeIndex = []uint64{uint64(attData.Index)}
 		}
 
-		attPageData.Validators = make([]types.NamedValidator, len(attAssignments))
+		attPageData.Validators = attAssignments
 		for j := 0; j < len(attAssignments); j++ {
-			attPageData.Validators[j] = types.NamedValidator{
-				Index: attAssignments[j],
-				Name:  services.GlobalBeaconService.GetValidatorName(attAssignments[j]),
+			if _, found := pageData.ValidatorNames[attAssignments[j]]; !found {
+				pageData.ValidatorNames[attAssignments[j]] = services.GlobalBeaconService.GetValidatorName(attAssignments[j])
 			}
 		}
 
-		attPageData.IncludedValidators = make([]types.NamedValidator, len(includedValidators))
+		attPageData.IncludedValidators = includedValidators
 		for j := 0; j < len(includedValidators); j++ {
-			attPageData.IncludedValidators[j] = types.NamedValidator{
-				Index: includedValidators[j],
-				Name:  services.GlobalBeaconService.GetValidatorName(includedValidators[j]),
+			if _, found := pageData.ValidatorNames[includedValidators[j]]; !found {
+				pageData.ValidatorNames[includedValidators[j]] = services.GlobalBeaconService.GetValidatorName(includedValidators[j])
 			}
 		}
 

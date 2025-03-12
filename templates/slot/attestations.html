@@ -28,9 +28,24 @@
       </div>
       <div class="row border-bottom p-1 mx-0">
         <div class="col-md-2">
+          <span data-bs-toggle="tooltip" data-bs-placement="top" title="Summary of validator participation">Aggregation:</span>
+        </div>
+        <div class="col-md-10 d-flex justify-content-between">
+          <span data-bind="text: aggregationSummary"></span>
+          <i class="fas fa-chevron-down cursor-pointer" 
+             data-bind="click: toggleDetails, 
+                       css: { 'fa-chevron-down': !showDetails(), 'fa-chevron-up': showDetails() }">
+          </i>
+        </div>
+      </div>
+      {{ html "<!-- ko if: showDetails -->" }}
+      <div class="row border-bottom p-1 mx-0">
+        <div class="col-md-2">
           <span data-bs-toggle="tooltip" data-bs-placement="top" title="Represents the aggregated attestation of all participating validators in this attestation">Aggregation Bits:</span>
         </div>
-        <div class="col-md-10" data-bind="html: formattedAggregationBits"></div>
+        <div class="col-md-10">
+          <div data-bind="html: formattedAggregationBits"></div>
+        </div>
       </div>
       {{ html "<!-- ko if: included_validators.length > 0 -->" }}
       <div class="row border-bottom p-1 mx-0">
@@ -38,26 +53,22 @@
           <span data-bs-toggle="tooltip" data-bs-placement="top" title="Validators who have submitted their attestation and have been included by the block proposer">Included Validators:</span>
         </div>
         <div class="col-md-10">
-          <button class="btn btn-sm btn-primary" data-bind="click: toggleIncludedValidators, text: showIncludedValidators() ? 'Hide Validators' : 'Show Validators (' + included_validators.length + ')'"></button>
-          {{ html "<!-- ko if: showIncludedValidators -->" }}
-          <div class="mt-2">
-            {{ html "<!-- ko foreach: included_validators -->" }}
-            <span class="validator-label validator-name" data-bs-toggle="tooltip" data-bs-placement="top" data-bind="attr: {'data-bs-title': index}">
-              <i class="fas fa-male mr-2"></i>
-              <a data-bind="attr: {href: '/validator/' + index}">
-                <!-- ko if: name -->
-                <span data-bind="text: name + ' (' + index + ')'"></span>
-                <!-- /ko -->
-                <!-- ko ifnot: name -->
-                <span data-bind="text: index"></span>
-                <!-- /ko -->
-              </a>
-            </span>
-            {{ html "<!-- /ko -->" }}
-          </div>
+          {{ html "<!-- ko foreach: included_validators -->" }}
+          <span class="validator-label validator-name" data-bs-toggle="tooltip" data-bs-placement="top" data-bind="attr: {'data-bs-title': $value}">
+            <i class="fas fa-male mr-2"></i>
+            <a data-bind="attr: {href: '/validator/' + $data}">
+              <!-- ko if: $root.getValidatorName($data) -->
+              <span data-bind="text: $root.getValidatorName($data) + ' (' + $data + ')'"></span>
+              <!-- /ko -->
+              <!-- ko ifnot: $root.getValidatorName($data) -->
+              <span data-bind="text: $data"></span>
+              <!-- /ko -->
+            </a>
+          </span>
           {{ html "<!-- /ko -->" }}
         </div>
       </div>
+      {{ html "<!-- /ko -->" }}
       {{ html "<!-- /ko -->" }}
       <div class="row border-bottom p-1 mx-0">
         <div class="col-md-2">
@@ -100,6 +111,8 @@
 
 <script src="/js/knockout.min.js"></script>
 <script type="text/javascript">
+  var specValues = JSON.parse({{ includeJSON .Block.SpecValues false }});
+  var validatorNames = JSON.parse({{ includeJSON .Block.ValidatorNames false }});
   var attestationsData = JSON.parse({{ includeJSON .Block.Attestations false }});
   
   function base64ToBytes(base64) {
@@ -125,11 +138,25 @@
     self.validators = data.validators;
     self.included_validators = data.included_validators;
 
-    self.showIncludedValidators = ko.observable(false);
+    self.showDetails = ko.observable(false);
     
-    self.toggleIncludedValidators = function() {
-      self.showIncludedValidators(!self.showIncludedValidators());
+    self.toggleDetails = function() {
+      self.showDetails(!self.showDetails());
     };
+
+    self.aggregationSummary = ko.computed(function() {
+      var total = self.aggregation_bits.length * 8;
+      var set = 0;
+      for (var i = 0; i < self.aggregation_bits.length; i++) {
+        for (var j = 0; j < 8; j++) {
+          if (self.aggregation_bits[i] & (1 << j)) {
+            set++;
+          }
+        }
+      }
+      var percentage = ((set / total) * 100).toFixed(2);
+      return set + " validators attesting, " + (total - set) + " not attesting (" + percentage + "%)";
+    });
 
     // Format hex values
     self.beaconBlockRootHex = ko.computed(function() {
@@ -163,19 +190,22 @@
           end = bits.length * 8;
         }
 
+        if (y > 0) {
+          html += '<br/>';
+        }
+
         for (var x = start; x < end; x++) {
-          if (x % 8 === 0) {
-            if (x !== 0) {
-              html += ' ';
-            }
+          if (x % 8 === 0 && x !== start) {
+            html += ' ';
           }
 
           var validator = self.validators[x];
-          if (validator) {
-            if (validator.name) {
-              html += `<span data-bs-toggle="tooltip" data-bs-placement="top" title="${validator.name} (${validator.index})">`;
+          if (validator !== undefined) {
+            var name = validatorNames[validator];
+            if (name) {
+              html += `<span data-bs-toggle="tooltip" data-bs-placement="top" title="${name} (${validator})">`;
             } else {
-              html += `<span data-bs-toggle="tooltip" data-bs-placement="top" title="${validator.index}">`;
+              html += `<span data-bs-toggle="tooltip" data-bs-placement="top" title="${validator}">`;
             }
           }
 
@@ -196,6 +226,11 @@
 
   function AttestationsViewModel() {
     var self = this;
+
+    self.getValidatorName = function(index) {
+      return validatorNames[index];
+    }
+
     self.attestations = ko.observableArray(attestationsData.map(function(att) {
       return new AttestationViewModel(att);
     }));
@@ -217,6 +252,9 @@
 .text-bitfield > span > span {
   width: 8px;
   display: inline-block;
+}
+.cursor-pointer {
+  cursor: pointer;
 }
 </style>
 {{ end }}
