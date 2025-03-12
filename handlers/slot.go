@@ -20,7 +20,6 @@ import (
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/gorilla/mux"
-	"github.com/juliangruber/go-intersect"
 	"github.com/sirupsen/logrus"
 
 	"github.com/ethpandaops/dora/db"
@@ -530,9 +529,7 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 		for j := range att2AttestingIndices {
 			slashingData.Attestation2Indices[j] = uint64(att2AttestingIndices[j])
 		}
-		inter := intersect.Simple(att1AttestingIndices, att2AttestingIndices)
-		for _, j := range inter {
-			valIdx := j.(uint64)
+		for _, valIdx := range utils.FindMatchingIndices(att1AttestingIndices, att2AttestingIndices) {
 			slashingData.SlashedValidators = append(slashingData.SlashedValidators, types.NamedValidator{
 				Index: valIdx,
 				Name:  services.GlobalBeaconService.GetValidatorName(valIdx),
