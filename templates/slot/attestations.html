@@ -32,26 +32,33 @@
         </div>
         <div class="col-md-10" data-bind="html: formattedAggregationBits"></div>
       </div>
+      {{ html "<!-- ko if: included_validators.length > 0 -->" }}
       <div class="row border-bottom p-1 mx-0">
         <div class="col-md-2">
           <span data-bs-toggle="tooltip" data-bs-placement="top" title="Validators who have submitted their attestation and have been included by the block proposer">Included Validators:</span>
         </div>
         <div class="col-md-10">
-          {{ html "<!-- ko foreach: included_validators -->" }}
-          <span class="validator-label validator-name" data-bs-toggle="tooltip" data-bs-placement="top" data-bind="attr: {'data-bs-title': index}">
-            <i class="fas fa-male mr-2"></i>
-            <a data-bind="attr: {href: '/validator/' + index}">
-              <!-- ko if: name -->
-              <span data-bind="text: name + ' (' + index + ')'"></span>
-              <!-- /ko -->
-              <!-- ko ifnot: name -->
-              <span data-bind="text: index"></span>
-              <!-- /ko -->
-            </a>
-          </span>
+          <button class="btn btn-sm btn-primary" data-bind="click: toggleIncludedValidators, text: showIncludedValidators() ? 'Hide Validators' : 'Show Validators (' + included_validators.length + ')'"></button>
+          {{ html "<!-- ko if: showIncludedValidators -->" }}
+          <div class="mt-2">
+            {{ html "<!-- ko foreach: included_validators -->" }}
+            <span class="validator-label validator-name" data-bs-toggle="tooltip" data-bs-placement="top" data-bind="attr: {'data-bs-title': index}">
+              <i class="fas fa-male mr-2"></i>
+              <a data-bind="attr: {href: '/validator/' + index}">
+                <!-- ko if: name -->
+                <span data-bind="text: name + ' (' + index + ')'"></span>
+                <!-- /ko -->
+                <!-- ko ifnot: name -->
+                <span data-bind="text: index"></span>
+                <!-- /ko -->
+              </a>
+            </span>
+            {{ html "<!-- /ko -->" }}
+          </div>
           {{ html "<!-- /ko -->" }}
         </div>
       </div>
+      {{ html "<!-- /ko -->" }}
       <div class="row border-bottom p-1 mx-0">
         <div class="col-md-2">
           <span data-bs-toggle="tooltip" data-bs-placement="top" title="Points to the block to which validators are attesting">Beacon Block Root:</span>
@@ -118,6 +125,12 @@
     self.validators = data.validators;
     self.included_validators = data.included_validators;
 
+    self.showIncludedValidators = ko.observable(false);
+    
+    self.toggleIncludedValidators = function() {
+      self.showIncludedValidators(!self.showIncludedValidators());
+    };
+
     // Format hex values
     self.beaconBlockRootHex = ko.computed(function() {
       return bytesToHex(self.beacon_block_root);
@@ -138,7 +151,7 @@
     // Format aggregation bits with validator info
     self.formattedAggregationBits = ko.computed(function() {
       var bits = self.aggregation_bits;
-      var html = '<div class="text-bitfield text-monospace">';
+      var html = '<pre class="text-bitfield text-monospace text-break" style="font-size:1rem;">';
       var perLine = 8;
       
       for (var y = 0; y < bits.length; y += perLine) {
@@ -153,9 +166,8 @@
         for (var x = start; x < end; x++) {
           if (x % 8 === 0) {
             if (x !== 0) {
-              html += '</span> ';
+              html += ' ';
             }
-            html += '<span>';
           }
 
           var validator = self.validators[x];
@@ -176,9 +188,8 @@
             html += '</span>';
           }
         }
-        html += '</span><br/>';
       }
-      html += '</div>';
+      html += '</pre>';
       return html;
     });
   }
