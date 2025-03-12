@@ -65,6 +65,7 @@ type Indexer struct {
 	canonicalHead        *Block
 	canonicalComputation phase0.Root
 	cachedChainHeads     []*ChainHead
+	badChainRoots        []phase0.Root
 }
 
 // NewIndexer creates a new instance of the Indexer.
@@ -108,6 +109,13 @@ func NewIndexer(logger logrus.FieldLogger, consensusPool *consensus.Pool) *Index
 	indexer.validatorCache = newValidatorCache(indexer)
 	indexer.validatorActivity = newValidatorActivityCache(indexer)
 	indexer.dbWriter = newDbWriter(indexer)
+
+	badChainRoots := utils.Config.Indexer.BadChainRoots
+	if len(badChainRoots) > 0 {
+		for _, root := range badChainRoots {
+			indexer.badChainRoots = append(indexer.badChainRoots, phase0.Root(utils.MustParseHex(root)))
+		}
+	}
 
 	return indexer
 }
