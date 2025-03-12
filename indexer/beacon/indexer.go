@@ -269,7 +269,7 @@ func (indexer *Indexer) StartIndexer() {
 			epochStats := indexer.epochCache.createOrGetEpochStats(phase0.Epoch(dbDuty.Epoch), phase0.Root(dbDuty.DependentRoot), false)
 			pruneStats := dbDuty.Epoch < uint64(indexer.lastPrunedEpoch)
 
-			err := epochStats.restoreFromDb(dbDuty, indexer.dynSsz, chainState, !pruneStats)
+			err := epochStats.restoreFromDb(dbDuty, chainState, !pruneStats)
 			if err != nil {
 				indexer.logger.WithError(err).Errorf("failed restoring epoch stats for epoch %v (%x) from db", dbDuty.Epoch, dbDuty.DependentRoot)
 				return
