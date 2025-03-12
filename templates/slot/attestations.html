@@ -54,7 +54,7 @@
         </div>
         <div class="col-md-10">
           {{ html "<!-- ko foreach: included_validators -->" }}
-          <span class="validator-label validator-name" data-bs-toggle="tooltip" data-bs-placement="top" data-bind="attr: {'data-bs-title': $value}">
+          <span class="validator-label validator-name" data-bs-toggle="tooltip" data-bs-placement="top" data-bind="attr: {'data-bs-title': $data}">
             <i class="fas fa-male mr-2"></i>
             <a data-bind="attr: {href: '/validator/' + $data}">
               <!-- ko if: $root.getValidatorName($data) -->
@@ -141,7 +141,14 @@
     self.showDetails = ko.observable(false);
     
     self.toggleDetails = function() {
-      self.showDetails(!self.showDetails());
+      var isOpen = self.showDetails();
+      self.showDetails(!isOpen);
+
+      if (!isOpen) {
+        setTimeout(function() {
+          explorer.initControls();
+        }, 100);
+      }
     };
 
     self.aggregationSummary = ko.computed(function() {
