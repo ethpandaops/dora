@@ -42,14 +42,14 @@
           {{ html "<!-- ko if: showIncludedValidators -->" }}
           <div class="mt-2">
             {{ html "<!-- ko foreach: included_validators -->" }}
-            <span class="validator-label validator-name" data-bs-toggle="tooltip" data-bs-placement="top" data-bind="attr: {'data-bs-title': index}">
+            <span class="validator-label validator-name" data-bs-toggle="tooltip" data-bs-placement="top" data-bind="attr: {'data-bs-title': $value}">
               <i class="fas fa-male mr-2"></i>
-              <a data-bind="attr: {href: '/validator/' + index}">
-                <!-- ko if: name -->
-                <span data-bind="text: name + ' (' + index + ')'"></span>
+              <a data-bind="attr: {href: '/validator/' + $data}">
+                <!-- ko if: $root.getValidatorName($data) -->
+                <span data-bind="text: $root.getValidatorName($data) + ' (' + $data + ')'"></span>
                 <!-- /ko -->
-                <!-- ko ifnot: name -->
-                <span data-bind="text: index"></span>
+                <!-- ko ifnot: $root.getValidatorName($data) -->
+                <span data-bind="text: $data"></span>
                 <!-- /ko -->
               </a>
             </span>
@@ -100,6 +100,8 @@
 
 <script src="/js/knockout.min.js"></script>
 <script type="text/javascript">
+  var specValues = JSON.parse({{ includeJSON .Block.SpecValues false }});
+  var validatorNames = JSON.parse({{ includeJSON .Block.ValidatorNames false }});
   var attestationsData = JSON.parse({{ includeJSON .Block.Attestations false }});
   
   function base64ToBytes(base64) {
@@ -163,19 +165,22 @@
           end = bits.length * 8;
         }
 
+        if (y > 0) {
+          html += '<br/>';
+        }
+
         for (var x = start; x < end; x++) {
-          if (x % 8 === 0) {
-            if (x !== 0) {
-              html += ' ';
-            }
+          if (x % 8 === 0 && x !== start) {
+            html += ' ';
           }
 
           var validator = self.validators[x];
-          if (validator) {
-            if (validator.name) {
-              html += `<span data-bs-toggle="tooltip" data-bs-placement="top" title="${validator.name} (${validator.index})">`;
+          if (validator !== undefined) {
+            var name = validatorNames[validator];
+            if (name) {
+              html += `<span data-bs-toggle="tooltip" data-bs-placement="top" title="${name} (${validator})">`;
             } else {
-              html += `<span data-bs-toggle="tooltip" data-bs-placement="top" title="${validator.index}">`;
+              html += `<span data-bs-toggle="tooltip" data-bs-placement="top" title="${validator}">`;
             }
           }
 
@@ -196,6 +201,11 @@
 
   function AttestationsViewModel() {
     var self = this;
+
+    self.getValidatorName = function(index) {
+      return validatorNames[index];
+    }
+
     self.attestations = ko.observableArray(attestationsData.map(function(att) {
       return new AttestationViewModel(att);
     }));

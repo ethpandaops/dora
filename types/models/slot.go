@@ -52,6 +52,8 @@ type SlotPageBlockData struct {
 	SyncAggregateSignature     []byte                 `json:"syncaggregate_signature"`
 	SyncAggParticipation       float64                `json:"syncaggregate_participation"`
 	SyncAggCommittee           []types.NamedValidator `json:"syncaggregate_committee"`
+	ValidatorNames             map[uint64]string      `json:"validator_names"`
+	SpecValues                 map[string]interface{} `json:"spec_values"`
 	ProposerSlashingsCount     uint64                 `json:"proposer_slashings_count"`
 	AttesterSlashingsCount     uint64                 `json:"attester_slashings_count"`
 	AttestationsCount          uint64                 `json:"attestations_count"`
@@ -101,11 +103,11 @@ type SlotPageExecutionData struct {
 type SlotPageAttestation struct {
 	Slot           uint64   `json:"slot"`
 	CommitteeIndex []uint64 `json:"committeeindex"`
+	TotalActive    uint64   `json:"total_active"`
 
-	AggregationBits []byte                 `json:"aggregationbits"`
-	Validators      []types.NamedValidator `json:"validators"`
-
-	IncludedValidators []types.NamedValidator `json:"included_validators"`
+	AggregationBits    []byte   `json:"aggregationbits"`
+	Validators         []uint64 `json:"validators"`
+	IncludedValidators []uint64 `json:"included_validators"`
 
 	Signature []byte `json:"signature"`
 
