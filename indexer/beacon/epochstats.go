@@ -334,6 +334,10 @@ func (es *EpochStats) processState(indexer *Indexer, validatorSet []*phase0.Vali
 		return
 	}
 
+	// processState is executed in a separate goroutine. Here we copy dependentState to
+	// avoid the epoch cache pruner from setting dependentState to nil while we are processing.
+	dependentState := es.dependentState
+
 	es.processingMutex.Lock()
 	if es.processing {
 		es.processingMutex.Unlock()
@@ -353,40 +357,40 @@ func (es *EpochStats) processState(indexer *Indexer, validatorSet []*phase0.Vali
 	values := &EpochStatsValues{
 		ActiveIndices:         make([]phase0.ValidatorIndex, 0),
 		EffectiveBalances:     make([]uint16, 0),
-		SyncCommitteeDuties:   es.dependentState.syncCommittee,
+		SyncCommitteeDuties:   dependentState.syncCommittee,
 		TotalBalance:          0,
 		ActiveBalance:         0,
 		EffectiveBalance:      0,
-		FirstDepositIndex:     es.dependentState.depositIndex,
-		PendingWithdrawals:    make([]EpochStatsPendingWithdrawals, len(es.dependentState.pendingPartialWithdrawals)),
-		PendingConsolidations: make([]electra.PendingConsolidation, len(es.dependentState.pendingConsolidations)),
+		FirstDepositIndex:     dependentState.depositIndex,
+		PendingWithdrawals:    make([]EpochStatsPendingWithdrawals, len(dependentState.pendingPartialWithdrawals)),
+		PendingConsolidations: make([]electra.PendingConsolidation, len(dependentState.pendingConsolidations)),
 	}
 
-	for i, pendingPartialWithdrawal := range es.dependentState.pendingPartialWithdrawals {
+	for i, pendingPartialWithdrawal := range dependentState.pendingPartialWithdrawals {
 		values.PendingWithdrawals[i] = EpochStatsPendingWithdrawals{
 			ValidatorIndex: pendingPartialWithdrawal.ValidatorIndex,
 			Epoch:          pendingPartialWithdrawal.WithdrawableEpoch,
 		}
 	}
 
-	for i, pendingConsolidation := range es.dependentState.pendingConsolidations {
+	for i, pendingConsolidation := range dependentState.pendingConsolidations {
 		values.PendingConsolidations[i] = *pendingConsolidation
 	}
 
 	if validatorSet != nil {
 		for index, validator := range validatorSet {
-			values.TotalBalance += es.dependentState.validatorBalances[index]
+			values.TotalBalance += dependentState.validatorBalances[index]
 			if es.epoch >= validator.ActivationEpoch && es.epoch < validator.ExitEpoch {
 				values.ActiveIndices = append(values.ActiveIndices, phase0.ValidatorIndex(index))
 				values.EffectiveBalances = append(values.EffectiveBalances, uint16(validator.EffectiveBalance/EtherGweiFactor))
 				values.EffectiveBalance += validator.EffectiveBalance
-				values.ActiveBalance += es.dependentState.validatorBalances[index]
+				values.ActiveBalance += dependentState.validatorBalances[index]
 			}
 		}
 
 		values.ActiveValidators = uint64(len(values.ActiveIndices))
 	} else {
-		for _, balance := range es.dependentState.validatorBalances {
+		for _, balance := range dependentState.validatorBalances {
 			values.TotalBalance += balance
 		}
 
@@ -394,7 +398,7 @@ func (es *EpochStats) processState(indexer *Indexer, validatorSet []*phase0.Vali
 			values.ActiveIndices = append(values.ActiveIndices, index)
 			values.EffectiveBalances = append(values.EffectiveBalances, uint16(activeData.EffectiveBalance()/EtherGweiFactor))
 			values.EffectiveBalance += activeData.EffectiveBalance()
-			values.ActiveBalance += es.dependentState.validatorBalances[index]
+			values.ActiveBalance += dependentState.validatorBalances[index]
 			return nil
 		})
 	}
@@ -404,7 +408,7 @@ func (es *EpochStats) processState(indexer *Indexer, validatorSet []*phase0.Vali
 	values.ActiveValidators = uint64(len(values.ActiveIndices))
 	beaconState := &duties.BeaconState{
 		GetRandaoMixes: func() []phase0.Root {
-			return es.dependentState.randaoMixes
+			return dependentState.randaoMixes
 		},
 		GetActiveCount: func() uint64 {
 			return values.ActiveValidators
@@ -414,7 +418,7 @@ func (es *EpochStats) processState(indexer *Indexer, validatorSet []*phase0.Vali
 		},
 	}
 
-	indexer.logger.Debugf("processing epoch %v stats (root: %v / state: %v), validators: %v/%v", es.epoch, es.dependentRoot.String(), es.dependentState.stateRoot.String(), values.ActiveValidators, len(validatorSet))
+	indexer.logger.Debugf("processing epoch %v stats (root: %v / state: %v), validators: %v/%v", es.epoch, es.dependentRoot.String(), dependentState.stateRoot.String(), values.ActiveValidators, len(validatorSet))
 
 	// compute proposers
 	proposerDuties := []phase0.ValidatorIndex{}
@@ -458,7 +462,7 @@ func (es *EpochStats) processState(indexer *Indexer, validatorSet []*phase0.Vali
 		return db.InsertUnfinalizedDuty(dbDuty, tx)
 	})
 	if err != nil {
-		indexer.logger.WithError(err).Errorf("failed storing epoch %v stats (%v / %v) to unfinalized duties", es.epoch, es.dependentRoot.String(), es.dependentState.stateRoot.String())
+		indexer.logger.WithError(err).Errorf("failed storing epoch %v stats (%v / %v) to unfinalized duties", es.epoch, es.dependentRoot.String(), dependentState.stateRoot.String())
 	}
 
 	es.isInDb = true
@@ -467,7 +471,7 @@ func (es *EpochStats) processState(indexer *Indexer, validatorSet []*phase0.Vali
 		"processed epoch %v stats (root: %v / state: %v, validators: %v/%v, %v ms), %v bytes",
 		es.epoch,
 		es.dependentRoot.String(),
-		es.dependentState.stateRoot.String(),
+		dependentState.stateRoot.String(),
 		values.ActiveValidators,
 		len(validatorSet),
 		time.Since(t1).Milliseconds(),
