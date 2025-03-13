@@ -52,6 +52,7 @@ type Client struct {
 	blockDispatcher         Dispatcher[*v1.BlockEvent]
 	headDispatcher          Dispatcher[*v1.HeadEvent]
 	checkpointDispatcher    Dispatcher[*v1.Finality]
+	inclusionListDispatcher Dispatcher[*v1.InclusionListEvent]
 }
 
 func (pool *Pool) newPoolClient(clientIdx uint16, endpoint *ClientConfig) (*Client, error) {
@@ -94,6 +95,10 @@ func (client *Client) SubscribeHeadEvent(capacity int, blocking bool) *Subscript
 
 func (client *Client) SubscribeFinalizedEvent(capacity int) *Subscription[*v1.Finality] {
 	return client.checkpointDispatcher.Subscribe(capacity, false)
+}
+
+func (client *Client) SubscribeInclusionListEvent(capacity int, blocking bool) *Subscription[*v1.InclusionListEvent] {
+	return client.inclusionListDispatcher.Subscribe(capacity, blocking)
 }
 
 func (client *Client) GetPool() *Pool {

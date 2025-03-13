@@ -37,6 +37,7 @@ func Slot(w http.ResponseWriter, r *http.Request) {
 	var slotTemplateFiles = append(layoutTemplateFiles,
 		"slot/slot.html",
 		"slot/overview.html",
+		"slot/inclusion_lists.html",
 		"slot/transactions.html",
 		"slot/attestations.html",
 		"slot/deposits.html",
@@ -293,6 +294,9 @@ func buildSlotPageData(ctx context.Context, blockSlot int64, blockRoot []byte) (
 			}
 		}
 	}
+
+	pageData.InclusionLists = getSlotPageInclusionLists(slot, pageData.Block.Transactions)
+	pageData.InclusionListsCount = uint64(len(pageData.InclusionLists))
 
 	return pageData, cacheTimeout
 }
@@ -763,82 +767,39 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 	return pageData
 }
 
+func getSlotPageInclusionLists(slot phase0.Slot, blockTransactions []*models.SlotPageTransaction) []*models.SlotPageInclusionList {
+	blockTransactionMap := map[string]bool{}
+	for _, transaction := range blockTransactions {
+		blockTransactionMap[string(transaction.Hash)] = true
+	}
+
+	inclusionLists := []*models.SlotPageInclusionList{}
+	for _, inclusionList := range services.GlobalBeaconService.GetBeaconIndexer().GetInclusionListsBySlot(slot - 1) {
+		transactions := decodeTransactions(nil, inclusionList.Message.Transactions)
+		transactionsIncluded := make([]bool, len(transactions))
+		for i, transaction := range transactions {
+			transactionsIncluded[i] = blockTransactionMap[string(transaction.Hash)]
+		}
+
+		inclusionLists = append(inclusionLists, &models.SlotPageInclusionList{
+			Validator: types.NamedValidator{
+				Index: uint64(inclusionList.Message.ValidatorIndex),
+				Name:  services.GlobalBeaconService.GetValidatorName(uint64(inclusionList.Message.ValidatorIndex)),
+			},
+			InclusionListCommitteeRoot: inclusionList.Message.InclusionListCommitteeRoot[:],
+			Transactions:               transactions,
+			TransactionsCount:          uint64(len(transactions)),
+			TransactionsIncluded:       transactionsIncluded,
+			Signature:                  inclusionList.Signature[:],
+		})
+	}
+
+	return inclusionLists
+}
+
 func getSlotPageTransactions(pageData *models.SlotPageBlockData, transactions []bellatrix.Transaction) {
-	pageData.Transactions = make([]*models.SlotPageTransaction, 0)
-	sigLookupBytes := []types.TxSignatureBytes{}
-	sigLookupMap := map[types.TxSignatureBytes][]*models.SlotPageTransaction{}
-
-	for idx, txBytes := range transactions {
-		var tx ethtypes.Transaction
-
-		err := tx.UnmarshalBinary(txBytes)
-		if err != nil {
-			logrus.Warnf("error decoding transaction 0x%x.%v: %v\n", pageData.BlockRoot, idx, err)
-			continue
-		}
-
-		txHash := tx.Hash()
-		txValue, _ := tx.Value().Float64()
-		ethFloat, _ := utils.ETH.Float64()
-		txValue = txValue / ethFloat
-
-		txData := &models.SlotPageTransaction{
-			Index: uint64(idx),
-			Hash:  txHash[:],
-			Value: txValue,
-			Data:  tx.Data(),
-			Type:  uint64(tx.Type()),
-		}
-		txData.DataLen = uint64(len(txData.Data))
-		txFrom, err := ethtypes.Sender(ethtypes.NewPragueSigner(tx.ChainId()), &tx)
-		if err != nil {
-			txData.From = "unknown"
-			logrus.Warnf("error decoding transaction sender 0x%x.%v: %v\n", pageData.BlockRoot, idx, err)
-		} else {
-			txData.From = txFrom.String()
-		}
-		txTo := tx.To()
-		if txTo == nil {
-			txData.To = "new contract"
-		} else {
-			txData.To = txTo.String()
-		}
-
-		pageData.Transactions = append(pageData.Transactions, txData)
-
-		// check call fn signature
-		if txData.DataLen >= 4 {
-			sigBytes := types.TxSignatureBytes(txData.Data[0:4])
-			if sigLookupMap[sigBytes] == nil {
-				sigLookupMap[sigBytes] = []*models.SlotPageTransaction{
-					txData,
-				}
-				sigLookupBytes = append(sigLookupBytes, sigBytes)
-			} else {
-				sigLookupMap[sigBytes] = append(sigLookupMap[sigBytes], txData)
-			}
-		} else {
-			txData.FuncSigStatus = 10
-			txData.FuncName = "transfer"
-		}
-	}
+	pageData.Transactions = decodeTransactions(pageData.BlockRoot, transactions)
 	pageData.TransactionsCount = uint64(len(transactions))
-
-	if len(sigLookupBytes) > 0 {
-		sigLookups := services.GlobalTxSignaturesService.LookupSignatures(sigLookupBytes)
-		for _, sigLookup := range sigLookups {
-			for _, txData := range sigLookupMap[sigLookup.Bytes] {
-				txData.FuncSigStatus = uint64(sigLookup.Status)
-				txData.FuncBytes = fmt.Sprintf("0x%x", sigLookup.Bytes[:])
-				if sigLookup.Status == types.TxSigStatusFound {
-					txData.FuncSig = sigLookup.Signature
-					txData.FuncName = sigLookup.Name
-				} else {
-					txData.FuncName = "call?"
-				}
-			}
-		}
-	}
 }
 
 func getSlotPageDepositRequests(pageData *models.SlotPageBlockData, depositRequests []*electra.DepositRequest) {
@@ -983,4 +944,83 @@ func handleSlotDownload(ctx context.Context, w http.ResponseWriter, blockSlot in
 	default:
 		return fmt.Errorf("unknown download type: %s", downloadType)
 	}
+}
+
+func decodeTransactions(blockRoot []byte, transactions []bellatrix.Transaction) []*models.SlotPageTransaction {
+	decodedTransactions := make([]*models.SlotPageTransaction, 0)
+	sigLookupBytes := []types.TxSignatureBytes{}
+	sigLookupMap := map[types.TxSignatureBytes][]*models.SlotPageTransaction{}
+
+	for idx, txBytes := range transactions {
+		var tx ethtypes.Transaction
+
+		err := tx.UnmarshalBinary(txBytes)
+		if err != nil {
+			logrus.Warnf("error decoding transaction 0x%x.%v: %v\n", blockRoot, idx, err)
+			continue
+		}
+
+		txHash := tx.Hash()
+		txValue, _ := tx.Value().Float64()
+		ethFloat, _ := utils.ETH.Float64()
+		txValue = txValue / ethFloat
+
+		txData := &models.SlotPageTransaction{
+			Index: uint64(idx),
+			Hash:  txHash[:],
+			Value: txValue,
+			Data:  tx.Data(),
+			Type:  uint64(tx.Type()),
+		}
+		txData.DataLen = uint64(len(txData.Data))
+		txFrom, err := ethtypes.Sender(ethtypes.NewPragueSigner(tx.ChainId()), &tx)
+		if err != nil {
+			txData.From = "unknown"
+			logrus.Warnf("error decoding transaction sender 0x%x.%v: %v\n", blockRoot, idx, err)
+		} else {
+			txData.From = txFrom.String()
+		}
+		txTo := tx.To()
+		if txTo == nil {
+			txData.To = "new contract"
+		} else {
+			txData.To = txTo.String()
+		}
+
+		decodedTransactions = append(decodedTransactions, txData)
+
+		// check call fn signature
+		if txData.DataLen >= 4 {
+			sigBytes := types.TxSignatureBytes(txData.Data[0:4])
+			if sigLookupMap[sigBytes] == nil {
+				sigLookupMap[sigBytes] = []*models.SlotPageTransaction{
+					txData,
+				}
+				sigLookupBytes = append(sigLookupBytes, sigBytes)
+			} else {
+				sigLookupMap[sigBytes] = append(sigLookupMap[sigBytes], txData)
+			}
+		} else {
+			txData.FuncSigStatus = 10
+			txData.FuncName = "transfer"
+		}
+	}
+
+	if len(sigLookupBytes) > 0 {
+		sigLookups := services.GlobalTxSignaturesService.LookupSignatures(sigLookupBytes)
+		for _, sigLookup := range sigLookups {
+			for _, txData := range sigLookupMap[sigLookup.Bytes] {
+				txData.FuncSigStatus = uint64(sigLookup.Status)
+				txData.FuncBytes = fmt.Sprintf("0x%x", sigLookup.Bytes[:])
+				if sigLookup.Status == types.TxSigStatusFound {
+					txData.FuncSig = sigLookup.Signature
+					txData.FuncName = sigLookup.Name
+				} else {
+					txData.FuncName = "call?"
+				}
+			}
+		}
+	}
+
+	return decodedTransactions
 }
