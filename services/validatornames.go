@@ -129,6 +129,8 @@ func (vn *ValidatorNames) getDefaultValidatorNames() string {
 		return "~internal/sepolia.names.yml"
 	case "holesky":
 		return "~internal/holesky.names.yml"
+	case "hoodi":
+		return "~internal/hoodi.names.yml"
 	}
 
 	return ""
