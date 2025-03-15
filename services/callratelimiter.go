@@ -27,7 +27,7 @@ type callRateVisitor struct {
 
 var GlobalCallRateLimiter *CallRateLimiter
 
-// StartFrontendCache is used to start the global frontend cache service
+// StartCallRateLimiter is used to start the global frontend cache service
 func StartCallRateLimiter(proxyCount uint, rateLimit uint, burstLimit uint) error {
 	if GlobalCallRateLimiter != nil {
 		return nil

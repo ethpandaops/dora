@@ -276,7 +276,7 @@ func (es *EpochStats) parsePackedSSZ(chainState *consensus.ChainState, ssz []byt
 	return values, nil
 }
 
-// packValues packs the EpochStats values.
+// pruneValues packs the EpochStats values.
 func (es *EpochStats) pruneValues() {
 	if es.values == nil {
 		return
