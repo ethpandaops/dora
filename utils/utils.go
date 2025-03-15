@@ -7,7 +7,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// sliceContains reports whether the provided string is present in the given slice of strings.
+// SliceContains reports whether the provided string is present in the given slice of strings.
 func SliceContains(list []string, target string) bool {
 	for _, s := range list {
 		if s == target {

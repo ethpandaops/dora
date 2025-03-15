@@ -67,7 +67,7 @@ type ValidatorWithIndex struct {
 	Validator *phase0.Validator
 }
 
-// getValidatorsByWithdrawalAddressForRoot returns validators with a specific withdrawal address for a given blockRoot
+// GetFilteredValidatorSet returns validators with a specific withdrawal address for a given blockRoot
 func (bs *ChainService) GetFilteredValidatorSet(filter *dbtypes.ValidatorFilter, withBalance bool) ([]v1.Validator, uint64) {
 	var overrideForkId *beacon.ForkKey
 
