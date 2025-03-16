@@ -188,7 +188,35 @@ func (bs *ChainService) GetSlotDetailsBySlot(ctx context.Context, slot phase0.Sl
 			Block:    cachedBlock.GetBlock(),
 			Orphaned: isOrphaned,
 		}
-	} else {
+	} else if blockdb.GlobalBlockDb != nil {
+		blockHead := db.GetBlockHeadBySlot(uint64(slot))
+		if blockHead != nil {
+			blockroot := blockHead.Root
+			headerSsz, version, err := blockdb.GlobalBlockDb.GetBlockHeader(blockroot[:])
+			if err == nil && version > 0 {
+				block, err := blockdb.GlobalBlockDb.GetBlockBody(blockroot, func(version uint64, block []byte) (interface{}, error) {
+					return beacon.UnmarshalVersionedSignedBeaconBlockSSZ(bs.beaconIndexer.GetDynSSZ(), version, block)
+				})
+				if err != nil {
+					return nil, err
+				}
+
+				header := &phase0.SignedBeaconBlockHeader{}
+				err = header.UnmarshalSSZ(headerSsz)
+				if err != nil {
+					return nil, err
+				}
+
+				result = &CombinedBlockResponse{
+					Root:     phase0.Root(blockroot),
+					Header:   header,
+					Block:    block.(*spec.VersionedSignedBeaconBlock),
+					Orphaned: false,
+				}
+			}
+		}
+	}
+	if result == nil {
 
 		var header *phase0.SignedBeaconBlockHeader
 		var blockRoot phase0.Root
