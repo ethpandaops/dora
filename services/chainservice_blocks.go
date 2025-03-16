@@ -11,6 +11,7 @@ import (
 	"github.com/attestantio/go-eth2-client/spec/deneb"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 
+	"github.com/ethpandaops/dora/blockdb"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/indexer/beacon"
@@ -58,6 +59,7 @@ func (bs *ChainService) GetBlockBlob(ctx context.Context, blockroot phase0.Root,
 // If found, it constructs a CombinedBlockResponse using the block information from the cache.
 // If not found, it checks if the block root is present in the orphaned block database.
 // If found, it constructs a CombinedBlockResponse with the orphaned block information.
+// If not found and blockDb is configured, it retrieves the block body from the block database.
 // If not found in either cache or db, it retrieves the block header and block body from a random
 // ready client and constructs a CombinedBlockResponse with the retrieved information.
 func (bs *ChainService) GetSlotDetailsByBlockroot(ctx context.Context, blockroot phase0.Root) (*CombinedBlockResponse, error) {
@@ -79,7 +81,31 @@ func (bs *ChainService) GetSlotDetailsByBlockroot(ctx context.Context, blockroot
 			Block:    blockInfo.GetBlock(),
 			Orphaned: true,
 		}
-	} else {
+	} else if blockdb.GlobalBlockDb != nil {
+		headerSsz, version, err := blockdb.GlobalBlockDb.GetBlockHeader(blockroot[:])
+		if err == nil && version > 0 {
+			block, err := blockdb.GlobalBlockDb.GetBlockBody(blockroot[:], func(version uint64, block []byte) (interface{}, error) {
+				return beacon.UnmarshalVersionedSignedBeaconBlockSSZ(bs.beaconIndexer.GetDynSSZ(), version, block)
+			})
+			if err != nil {
+				return nil, err
+			}
+
+			header := &phase0.SignedBeaconBlockHeader{}
+			err = header.UnmarshalSSZ(headerSsz)
+			if err != nil {
+				return nil, err
+			}
+
+			result = &CombinedBlockResponse{
+				Root:     blockroot,
+				Header:   header,
+				Block:    block.(*spec.VersionedSignedBeaconBlock),
+				Orphaned: false,
+			}
+		}
+	}
+	if result == nil {
 		var header *phase0.SignedBeaconBlockHeader
 		var err error
 		clients := bs.beaconIndexer.GetReadyClientsByBlockRoot(blockroot, false)

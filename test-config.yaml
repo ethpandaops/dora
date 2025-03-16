@@ -117,3 +117,10 @@ database:
     user: "pk910"
     password: "SBekcBFpRW9rZrVL" # internal dev DB, no worries about password leaking ;)
     name: "pk910"
+
+# separate block db for storing block bodies (no archive beacon node required)
+blockDb:
+  engine: "none" # pebble / none
+  pebble:
+    path: "./tmp-blockdb.peb"
+    cacheSize: 100 # 100MB

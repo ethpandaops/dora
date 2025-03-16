@@ -190,7 +190,7 @@ func (indexer *Indexer) GetOrphanedBlockByRoot(blockRoot phase0.Root) (*Block, e
 		return nil, fmt.Errorf("failed unmarshal orphaned block header [%x] from db: %v", orphanedBlock.Root, err)
 	}
 
-	blockBody, err := unmarshalVersionedSignedBeaconBlockSSZ(indexer.dynSsz, orphanedBlock.BlockVer, orphanedBlock.BlockSSZ)
+	blockBody, err := UnmarshalVersionedSignedBeaconBlockSSZ(indexer.dynSsz, orphanedBlock.BlockVer, orphanedBlock.BlockSSZ)
 	if err != nil {
 		return nil, fmt.Errorf("could not restore orphaned block body %v [%x] from db: %v", header.Message.Slot, orphanedBlock.Root, err)
 	}

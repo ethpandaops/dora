@@ -9,6 +9,7 @@ import (
 
 	"github.com/attestantio/go-eth2-client/spec"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
+	"github.com/ethpandaops/dora/blockdb"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	dynssz "github.com/pk910/dynamic-ssz"
@@ -146,7 +147,7 @@ func (block *Block) GetBlock() *spec.VersionedSignedBeaconBlock {
 	if block.isInUnfinalizedDb {
 		dbBlock := db.GetUnfinalizedBlock(block.Root[:])
 		if dbBlock != nil {
-			blockBody, err := unmarshalVersionedSignedBeaconBlockSSZ(block.dynSsz, dbBlock.BlockVer, dbBlock.BlockSSZ)
+			blockBody, err := UnmarshalVersionedSignedBeaconBlockSSZ(block.dynSsz, dbBlock.BlockVer, dbBlock.BlockSSZ)
 			if err == nil {
 				return blockBody
 			}
@@ -361,6 +362,38 @@ func (block *Block) buildOrphanedBlock(compress bool) (*dbtypes.OrphanedBlock, e
 	}, nil
 }
 
+func (block *Block) writeToBlockDb() error {
+	if block.isDisposed || blockdb.GlobalBlockDb == nil {
+		return nil
+	}
+
+	headerSSZ, err := block.header.MarshalSSZ()
+	if err != nil {
+		return fmt.Errorf("marshal header ssz failed: %v", err)
+	}
+
+	added, err := blockdb.GlobalBlockDb.AddBlockHeader(block.Root[:], 1, headerSSZ)
+	if err != nil {
+		return fmt.Errorf("error adding block %v to blockdb: %v", block.Root.String(), err)
+	}
+
+	if !added {
+		return nil
+	}
+
+	version, ssz, err := MarshalVersionedSignedBeaconBlockSSZ(block.dynSsz, block.block, true, false)
+	if err != nil {
+		return fmt.Errorf("error marshalling block %v: %v", block.Root.String(), err)
+	}
+
+	err = blockdb.GlobalBlockDb.AddBlockBody(block.Root[:], version, ssz)
+	if err != nil {
+		return fmt.Errorf("error adding block %v to blockdb: %v", block.Root.String(), err)
+	}
+
+	return nil
+}
+
 // unpruneBlockBody retrieves the block body from the database if it is not already present.
 func (block *Block) unpruneBlockBody() {
 	if block.isDisposed || block.block != nil || !block.isInUnfinalizedDb {
@@ -369,7 +402,7 @@ func (block *Block) unpruneBlockBody() {
 
 	dbBlock := db.GetUnfinalizedBlock(block.Root[:])
 	if dbBlock != nil {
-		block.block, _ = unmarshalVersionedSignedBeaconBlockSSZ(block.dynSsz, dbBlock.BlockVer, dbBlock.BlockSSZ)
+		block.block, _ = UnmarshalVersionedSignedBeaconBlockSSZ(block.dynSsz, dbBlock.BlockVer, dbBlock.BlockSSZ)
 	}
 }
 

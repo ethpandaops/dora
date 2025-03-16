@@ -10,6 +10,7 @@ import (
 
 	"github.com/attestantio/go-eth2-client/spec"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
+	"github.com/ethpandaops/dora/blockdb"
 	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
@@ -435,6 +436,16 @@ func (sync *synchronizer) syncEpoch(syncEpoch phase0.Epoch, client *Client, last
 	})
 	if err != nil {
 		return false, err
+	}
+
+	// save block bodies to blockdb
+	if blockdb.GlobalBlockDb != nil && !sync.indexer.disableBlockDbWrite {
+		for _, block := range canonicalBlocks {
+			err := block.writeToBlockDb()
+			if err != nil {
+				sync.logger.Errorf("error writing block %v to blockdb: %v", block.Root.String(), err)
+			}
+		}
 	}
 
 	// cleanup cache (remove blocks from this epoch)

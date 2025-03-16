@@ -104,3 +104,10 @@ database:
     user: ""
     password: ""
     name: ""
+
+# separate block db for storing block bodies (no archive beacon node required)
+blockDb:
+  engine: "none" # pebble / none
+  pebble:
+    path: "./tmp-blockdb.peb"
+    cacheSize: 100 # 100MB

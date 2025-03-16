@@ -11,6 +11,7 @@ import (
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/jmoiron/sqlx"
 
+	"github.com/ethpandaops/dora/blockdb"
 	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/dora/clients/execution"
 	"github.com/ethpandaops/dora/clients/sshtunnel"
@@ -128,6 +129,18 @@ func (cs *ChainService) StartService() error {
 		}
 
 		executionIndexerCtx.AddClientInfo(client, endpoint.Priority, endpoint.Archive)
+	}
+
+	// initialize blockdb if configured
+	switch utils.Config.BlockDb.Engine {
+	case "pebble":
+		err := blockdb.InitWithPebble(utils.Config.BlockDb.Pebble)
+		if err != nil {
+			return fmt.Errorf("failed initializing pebble blockdb: %v", err)
+		}
+		cs.logger.Infof("Pebble blockdb initialized at %v", utils.Config.BlockDb.Pebble.Path)
+	default:
+		cs.logger.Infof("Blockdb disabled")
 	}
 
 	// reset sync state if configured

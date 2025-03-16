@@ -93,6 +93,7 @@ type Config struct {
 		DisableSynchronizer             bool   `yaml:"disableSynchronizer" envconfig:"INDEXER_DISABLE_SYNCHRONIZER"`
 		SyncEpochCooldown               uint   `yaml:"syncEpochCooldown" envconfig:"INDEXER_SYNC_EPOCH_COOLDOWN"`
 		MaxParallelValidatorSetRequests uint   `yaml:"maxParallelValidatorSetRequests" envconfig:"INDEXER_MAX_PARALLEL_VALIDATOR_SET_REQUESTS"`
+		DisableBlockDB                  bool   `yaml:"disableBlockDB" envconfig:"INDEXER_DISABLE_BLOCK_DB"`
 		PubkeyCachePath                 string `yaml:"pubkeyCachePath" envconfig:"INDEXER_PUBKEY_CACHE_PATH"`
 
 		BadChainRoots []string `yaml:"badChainRoots" envconfig:"INDEXER_BAD_CHAIN_ROOTS"`
@@ -138,6 +139,11 @@ type Config struct {
 			MaxIdleConns int    `yaml:"maxIdleConns" envconfig:"DATABASE_PGSQL_WRITER_MAX_IDLE_CONNS"`
 		} `yaml:"pgsqlWriter"`
 	} `yaml:"database"`
+
+	BlockDb struct {
+		Engine string               `yaml:"engine" envconfig:"BLOCKDB_ENGINE"`
+		Pebble PebbleDatabaseConfig `yaml:"pebble"`
+	} `yaml:"blockDb"`
 
 	KillSwitch struct {
 		DisableSSZEncoding      bool `yaml:"disableSSZEncoding" envconfig:"KILLSWITCH_DISABLE_SSZ_ENCODING"`
@@ -185,4 +191,9 @@ type PgsqlDatabaseConfig struct {
 	Port         string
 	MaxOpenConns int
 	MaxIdleConns int
+}
+
+type PebbleDatabaseConfig struct {
+	Path      string `yaml:"path" envconfig:"BLOCKDB_ROCKSDB_PATH"`
+	CacheSize int    `yaml:"cacheSize" envconfig:"BLOCKDB_ROCKSDB_CACHE_SIZE"`
 }
