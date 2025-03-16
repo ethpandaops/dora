@@ -363,7 +363,7 @@ func (block *Block) buildOrphanedBlock(compress bool) (*dbtypes.OrphanedBlock, e
 }
 
 func (block *Block) writeToBlockDb() error {
-	if block.isDisposed || blockdb.GlobalBlockDb == nil {
+	if block.isDisposed || block.header == nil || block.block == nil || blockdb.GlobalBlockDb == nil {
 		return nil
 	}
 
