@@ -99,9 +99,9 @@ func (e *PebbleEngine) AddBlockHeader(root []byte, version uint64, header []byte
 
 	res, closer, err := e.db.Get(key)
 	if err == nil && len(res) > 0 {
+		closer.Close()
 		return false, nil
 	}
-	closer.Close()
 
 	data := make([]byte, 8+len(header))
 	binary.BigEndian.PutUint64(data[:8], version)
