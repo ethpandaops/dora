@@ -19,26 +19,27 @@ type DbConfig struct {
 	Pgsql  types.PgsqlDatabaseConfig
 }
 
-func main() {
-	sourceEngine := flag.String("source-engine", "", "Source database engine (sqlite/pgsql)")
-	sourceSqlitePath := flag.String("source-sqlite-path", "", "Source SQLite database path")
-	sourcePgsqlHost := flag.String("source-pgsql-host", "", "Source PostgreSQL host")
-	sourcePgsqlPort := flag.String("source-pgsql-port", "5432", "Source PostgreSQL port")
-	sourcePgsqlUser := flag.String("source-pgsql-user", "", "Source PostgreSQL user")
-	sourcePgsqlPass := flag.String("source-pgsql-pass", "", "Source PostgreSQL password")
-	sourcePgsqlDb := flag.String("source-pgsql-db", "", "Source PostgreSQL database name")
+func migrate() {
+	flags := flag.NewFlagSet("migrate", flag.ExitOnError)
+	sourceEngine := flags.String("source-engine", "", "Source database engine (sqlite/pgsql)")
+	sourceSqlitePath := flags.String("source-sqlite-path", "", "Source SQLite database path")
+	sourcePgsqlHost := flags.String("source-pgsql-host", "", "Source PostgreSQL host")
+	sourcePgsqlPort := flags.String("source-pgsql-port", "5432", "Source PostgreSQL port")
+	sourcePgsqlUser := flags.String("source-pgsql-user", "", "Source PostgreSQL user")
+	sourcePgsqlPass := flags.String("source-pgsql-pass", "", "Source PostgreSQL password")
+	sourcePgsqlDb := flags.String("source-pgsql-db", "", "Source PostgreSQL database name")
 
-	targetEngine := flag.String("target-engine", "", "Target database engine (sqlite/pgsql)")
-	targetSqlitePath := flag.String("target-sqlite-path", "", "Target SQLite database path")
-	targetPgsqlHost := flag.String("target-pgsql-host", "", "Target PostgreSQL host")
-	targetPgsqlPort := flag.String("target-pgsql-port", "5432", "Target PostgreSQL port")
-	targetPgsqlUser := flag.String("target-pgsql-user", "", "Target PostgreSQL user")
-	targetPgsqlPass := flag.String("target-pgsql-pass", "", "Target PostgreSQL password")
-	targetPgsqlDb := flag.String("target-pgsql-db", "", "Target PostgreSQL database name")
+	targetEngine := flags.String("target-engine", "", "Target database engine (sqlite/pgsql)")
+	targetSqlitePath := flags.String("target-sqlite-path", "", "Target SQLite database path")
+	targetPgsqlHost := flags.String("target-pgsql-host", "", "Target PostgreSQL host")
+	targetPgsqlPort := flags.String("target-pgsql-port", "5432", "Target PostgreSQL port")
+	targetPgsqlUser := flags.String("target-pgsql-user", "", "Target PostgreSQL user")
+	targetPgsqlPass := flags.String("target-pgsql-pass", "", "Target PostgreSQL password")
+	targetPgsqlDb := flags.String("target-pgsql-db", "", "Target PostgreSQL database name")
 
-	debug := flag.Bool("debug", false, "Enable debug mode")
+	debug := flags.Bool("debug", false, "Enable debug mode")
 
-	flag.Parse()
+	flags.Parse(os.Args[1:])
 
 	if *debug {
 		logrus.SetLevel(logrus.DebugLevel)
