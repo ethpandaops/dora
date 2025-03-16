@@ -53,12 +53,12 @@ func (e *PebbleEngine) GetBlockHeader(root []byte) ([]byte, uint64, error) {
 	binary.BigEndian.PutUint16(key[2+len(root):], BlockTypeHeader)
 
 	res, closer, err := e.db.Get(key)
-	if err != nil {
+	if err != nil && err != pebble.ErrNotFound {
 		return nil, 0, err
 	}
 	defer closer.Close()
 
-	if len(res) == 0 {
+	if err == pebble.ErrNotFound || len(res) == 0 {
 		return nil, 0, nil
 	}
 
@@ -76,12 +76,12 @@ func (e *PebbleEngine) GetBlockBody(root []byte, parser func(uint64, []byte) (in
 	binary.BigEndian.PutUint16(key[2+len(root):], BlockTypeBody)
 
 	res, closer, err := e.db.Get(key)
-	if err != nil {
+	if err != nil && err != pebble.ErrNotFound {
 		return nil, err
 	}
 	defer closer.Close()
 
-	if len(res) == 0 {
+	if err == pebble.ErrNotFound || len(res) == 0 {
 		return nil, nil
 	}
 
@@ -98,14 +98,10 @@ func (e *PebbleEngine) AddBlockHeader(root []byte, version uint64, header []byte
 	binary.BigEndian.PutUint16(key[2+len(root):], BlockTypeHeader)
 
 	res, closer, err := e.db.Get(key)
-	if err != nil {
-		return false, err
-	}
-	defer closer.Close()
-
-	if len(res) > 0 {
+	if err == nil && len(res) > 0 {
 		return false, nil
 	}
+	closer.Close()
 
 	data := make([]byte, 8+len(header))
 	binary.BigEndian.PutUint64(data[:8], version)
