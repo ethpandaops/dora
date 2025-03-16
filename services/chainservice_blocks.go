@@ -64,6 +64,41 @@ func (bs *ChainService) GetBlockBlob(ctx context.Context, blockroot phase0.Root,
 // ready client and constructs a CombinedBlockResponse with the retrieved information.
 func (bs *ChainService) GetSlotDetailsByBlockroot(ctx context.Context, blockroot phase0.Root) (*CombinedBlockResponse, error) {
 	var result *CombinedBlockResponse
+	var clients []*beacon.Client
+	var header *phase0.SignedBeaconBlockHeader
+
+	loadBlockHeader := func() error {
+		if clients == nil {
+			clients := bs.beaconIndexer.GetReadyClientsByBlockRoot(blockroot, false)
+			if len(clients) == 0 {
+				clients = bs.beaconIndexer.GetReadyClients(true)
+			}
+			if len(clients) == 0 {
+				return fmt.Errorf("no clients available")
+			}
+		}
+
+		headRetry := 0
+		var err error
+		for ; headRetry < 3; headRetry++ {
+			client := clients[headRetry%len(clients)]
+			header, err = beacon.LoadBeaconHeader(ctx, client, blockroot)
+			if header != nil {
+				break
+			} else if err != nil {
+				log := logrus.WithError(err)
+				if client != nil {
+					log = log.WithField("client", client.GetClient().GetName())
+				}
+				log.Warnf("Error loading block header for root 0x%x", blockroot)
+			}
+		}
+		if err != nil || header == nil {
+			return err
+		}
+		return nil
+	}
+
 	if blockInfo := bs.beaconIndexer.GetBlockByRoot(blockroot); blockInfo != nil {
 		result = &CombinedBlockResponse{
 			Root:     blockInfo.Root,
@@ -83,8 +118,20 @@ func (bs *ChainService) GetSlotDetailsByBlockroot(ctx context.Context, blockroot
 		}
 	} else if blockdb.GlobalBlockDb != nil {
 		blockHead := db.GetBlockHeadByRoot(blockroot[:])
+		slot := uint64(0)
 		if blockHead != nil {
-			blockData, err := blockdb.GlobalBlockDb.GetBlock(ctx, uint64(blockHead.Slot), blockroot[:], func(version uint64, block []byte) (interface{}, error) {
+			slot = uint64(blockHead.Slot)
+		} else {
+			err := loadBlockHeader()
+			if err != nil {
+				return nil, err
+			}
+
+			slot = uint64(header.Message.Slot)
+		}
+
+		if blockHead != nil {
+			blockData, err := blockdb.GlobalBlockDb.GetBlock(ctx, slot, blockroot[:], func(version uint64, block []byte) (interface{}, error) {
 				return beacon.UnmarshalVersionedSignedBeaconBlockSSZ(bs.beaconIndexer.GetDynSSZ(), version, block)
 			})
 			if err == nil && blockData != nil {
@@ -104,37 +151,18 @@ func (bs *ChainService) GetSlotDetailsByBlockroot(ctx context.Context, blockroot
 		}
 	}
 	if result == nil {
-		var header *phase0.SignedBeaconBlockHeader
-		var err error
-		clients := bs.beaconIndexer.GetReadyClientsByBlockRoot(blockroot, false)
-		if len(clients) == 0 {
-			clients = bs.beaconIndexer.GetReadyClients(true)
-		}
-		if len(clients) == 0 {
-			return nil, fmt.Errorf("no clients available")
-		}
-
-		headRetry := 0
-		for ; headRetry < 3; headRetry++ {
-			client := clients[headRetry%len(clients)]
-			header, err = beacon.LoadBeaconHeader(ctx, client, blockroot)
-			if header != nil {
-				break
-			} else if err != nil {
-				log := logrus.WithError(err)
-				if client != nil {
-					log = log.WithField("client", client.GetClient().GetName())
-				}
-				log.Warnf("Error loading block header for root 0x%x", blockroot)
+		if header == nil {
+			err := loadBlockHeader()
+			if err != nil {
+				return nil, err
 			}
 		}
-		if err != nil || header == nil {
-			return nil, err
-		}
 
+		var err error
 		var block *spec.VersionedSignedBeaconBlock
-		for retry := headRetry; retry < headRetry+3; retry++ {
-			client := clients[headRetry%len(clients)]
+		bodyRetry := 0
+		for ; bodyRetry < 3; bodyRetry++ {
+			client := clients[bodyRetry%len(clients)]
 			block, err = beacon.LoadBeaconBlock(ctx, client, blockroot)
 			if block != nil {
 				break
@@ -167,6 +195,40 @@ func (bs *ChainService) GetSlotDetailsByBlockroot(ctx context.Context, blockroot
 // using the slot and constructs a CombinedBlockResponse with the retrieved information.
 func (bs *ChainService) GetSlotDetailsBySlot(ctx context.Context, slot phase0.Slot) (*CombinedBlockResponse, error) {
 	var result *CombinedBlockResponse
+	var clients []*beacon.Client
+	var header *phase0.SignedBeaconBlockHeader
+	var blockRoot phase0.Root
+	var orphaned bool
+
+	loadBlockHeader := func() error {
+		if clients == nil {
+			clients = bs.beaconIndexer.GetReadyClients(true)
+			if len(clients) == 0 {
+				return fmt.Errorf("no clients available")
+			}
+		}
+
+		headRetry := 0
+		var err error
+		for ; headRetry < 3; headRetry++ {
+			client := clients[headRetry%len(clients)]
+			header, blockRoot, orphaned, err = beacon.LoadBeaconHeaderBySlot(ctx, client, slot)
+			if err != nil {
+				log := logrus.WithError(err)
+				if client != nil {
+					log = log.WithField("client", client.GetClient().GetName())
+				}
+				log.Warnf("Error loading block header for slot %v", slot)
+			} else {
+				break
+			}
+		}
+		if err != nil || header == nil {
+			return err
+		}
+		return nil
+	}
+
 	if cachedBlocks := bs.beaconIndexer.GetBlocksBySlot(slot); len(cachedBlocks) > 0 {
 		var cachedBlock *beacon.Block
 		isOrphaned := false
@@ -189,8 +251,16 @@ func (bs *ChainService) GetSlotDetailsBySlot(ctx context.Context, slot phase0.Sl
 	} else if blockdb.GlobalBlockDb != nil {
 		blockHead := db.GetBlockHeadBySlot(uint64(slot))
 		if blockHead != nil {
-			blockroot := blockHead.Root
-			blockData, err := blockdb.GlobalBlockDb.GetBlock(ctx, uint64(blockHead.Slot), blockroot[:], func(version uint64, block []byte) (interface{}, error) {
+			blockRoot = phase0.Root(blockHead.Root)
+		} else {
+			err := loadBlockHeader()
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		if blockHead != nil || header != nil {
+			blockData, err := blockdb.GlobalBlockDb.GetBlock(ctx, uint64(slot), blockRoot[:], func(version uint64, block []byte) (interface{}, error) {
 				return beacon.UnmarshalVersionedSignedBeaconBlockSSZ(bs.beaconIndexer.GetDynSSZ(), version, block)
 			})
 			if err == nil && blockData != nil {
@@ -201,7 +271,7 @@ func (bs *ChainService) GetSlotDetailsBySlot(ctx context.Context, slot phase0.Sl
 				}
 
 				result = &CombinedBlockResponse{
-					Root:     phase0.Root(blockroot),
+					Root:     blockRoot,
 					Header:   header,
 					Block:    blockData.Body.(*spec.VersionedSignedBeaconBlock),
 					Orphaned: false,
@@ -209,39 +279,20 @@ func (bs *ChainService) GetSlotDetailsBySlot(ctx context.Context, slot phase0.Sl
 			}
 		}
 	}
+
 	if result == nil {
-
-		var header *phase0.SignedBeaconBlockHeader
-		var blockRoot phase0.Root
-		var orphaned bool
-		var err error
-
-		clients := bs.beaconIndexer.GetReadyClients(true)
-		if len(clients) == 0 {
-			return nil, fmt.Errorf("no clients available")
-		}
-
-		headRetry := 0
-		for ; headRetry < 3; headRetry++ {
-			client := clients[headRetry%len(clients)]
-			header, blockRoot, orphaned, err = beacon.LoadBeaconHeaderBySlot(ctx, client, slot)
+		if header == nil {
+			err := loadBlockHeader()
 			if err != nil {
-				log := logrus.WithError(err)
-				if client != nil {
-					log = log.WithField("client", client.GetClient().GetName())
-				}
-				log.Warnf("Error loading block header for slot %v", slot)
-			} else {
-				break
+				return nil, err
 			}
 		}
-		if err != nil || header == nil {
-			return nil, err
-		}
 
+		var err error
 		var block *spec.VersionedSignedBeaconBlock
-		for retry := headRetry; retry < headRetry+3; retry++ {
-			client := clients[headRetry%len(clients)]
+		bodyRetry := 0
+		for ; bodyRetry < 3; bodyRetry++ {
+			client := clients[bodyRetry%len(clients)]
 			block, err = beacon.LoadBeaconBlock(ctx, client, blockRoot)
 			if block != nil {
 				break

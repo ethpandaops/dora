@@ -6,33 +6,20 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"path"
 	"strings"
-	"sync"
 
 	"github.com/ethpandaops/dora/blockdb/types"
 	dtypes "github.com/ethpandaops/dora/types"
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
-	"github.com/sirupsen/logrus"
 )
-
-type uploadTask struct {
-	key       string
-	data      []byte
-	resultCh  chan error
-	cancelled bool
-}
 
 type S3Engine struct {
 	client     *minio.Client
 	bucket     string
 	pathPrefix string
-
-	uploadQueue    chan *uploadTask
-	uploadersDone  sync.WaitGroup
-	uploadersCtx   context.Context
-	uploadersClose context.CancelFunc
 }
 
 func NewS3Engine(config dtypes.S3BlockDBConfig) (types.BlockDbEngine, error) {
@@ -54,82 +41,60 @@ func NewS3Engine(config dtypes.S3BlockDBConfig) (types.BlockDbEngine, error) {
 		return nil, fmt.Errorf("bucket %s does not exist", config.Bucket)
 	}
 
-	if config.UploadQueueSize == 0 {
-		config.UploadQueueSize = 100
-	}
-	if config.MaxConcurrentUploads == 0 {
-		config.MaxConcurrentUploads = 10
-	}
-
-	uploaderCtx, uploaderClose := context.WithCancel(context.Background())
 	engine := &S3Engine{
-		client:         client,
-		bucket:         config.Bucket,
-		pathPrefix:     strings.TrimPrefix(config.Path, "/"),
-		uploadQueue:    make(chan *uploadTask, config.UploadQueueSize),
-		uploadersCtx:   uploaderCtx,
-		uploadersClose: uploaderClose,
-	}
-
-	// Start upload workers
-	engine.uploadersDone.Add(int(config.MaxConcurrentUploads))
-	for i := uint(0); i < config.MaxConcurrentUploads; i++ {
-		go engine.uploadWorker()
+		client:     client,
+		bucket:     config.Bucket,
+		pathPrefix: strings.TrimPrefix(config.Path, "/"),
 	}
 
 	return engine, nil
 }
 
-func (e *S3Engine) uploadWorker() {
-	defer e.uploadersDone.Done()
-
-	for {
-		select {
-		case <-e.uploadersCtx.Done():
-			return
-		case task := <-e.uploadQueue:
-			if task == nil || task.cancelled {
-				continue
-			}
-
-			var err error
-			for retry := 0; retry < 3; retry++ {
-				_, err = e.client.PutObject(
-					e.uploadersCtx,
-					e.bucket,
-					task.key,
-					bytes.NewReader(task.data),
-					int64(len(task.data)),
-					minio.PutObjectOptions{ContentType: "application/octet-stream"},
-				)
-
-				if err == nil || retry >= 3 {
-					break
-				}
-			}
-
-			if err != nil {
-				logrus.Errorf("Failed to upload block %s: %v", task.key, err)
-			}
-
-			if task.resultCh != nil {
-				task.resultCh <- err
-				close(task.resultCh)
-			}
-		}
-	}
-}
-
 func (e *S3Engine) Close() error {
-	e.uploadersClose()     // Signal workers to stop
-	e.uploadersDone.Wait() // Wait for all uploads to complete
-	close(e.uploadQueue)
 	return nil
 }
 
 func (e *S3Engine) getObjectKey(root []byte, slot uint64) string {
 	rootHex := hex.EncodeToString(root[:4]) // First 4 bytes
 	return path.Join(e.pathPrefix, fmt.Sprintf("%06d", slot/10000), fmt.Sprintf("%010d_%s", slot, rootHex))
+}
+
+type objectMetadata struct {
+	objVersion   uint32
+	headerLength uint32
+	bodyVersion  uint32
+	bodyLength   uint32
+}
+
+func (e *S3Engine) readObjectMetadata(data []byte) (*objectMetadata, int, error) {
+	metadataLength := 4
+	metadata := &objectMetadata{
+		objVersion: binary.BigEndian.Uint32(data[:4]),
+	}
+
+	switch metadata.objVersion {
+	case 1:
+		metadata.headerLength = binary.BigEndian.Uint32(data[4:8])
+		metadata.bodyVersion = binary.BigEndian.Uint32(data[8:12])
+		metadata.bodyLength = binary.BigEndian.Uint32(data[12:16])
+		metadataLength += 12
+	}
+
+	return metadata, metadataLength, nil
+}
+
+func (e *S3Engine) writeObjectMetadata(metadata *objectMetadata) []byte {
+	data := make([]byte, 4, 16)
+	binary.BigEndian.PutUint32(data, metadata.objVersion)
+
+	switch metadata.objVersion {
+	case 1:
+		data = binary.BigEndian.AppendUint32(data, metadata.headerLength)
+		data = binary.BigEndian.AppendUint32(data, metadata.bodyVersion)
+		data = binary.BigEndian.AppendUint32(data, metadata.bodyLength)
+	}
+
+	return data
 }
 
 func (e *S3Engine) GetBlockHeader(slot uint64, root []byte) ([]byte, uint64, error) {
@@ -205,36 +170,53 @@ func (e *S3Engine) GetBlock(ctx context.Context, slot uint64, root []byte, parse
 	defer obj.Close()
 
 	// read metadata
-	metadata := make([]byte, 16)
-	_, err = obj.Read(metadata)
+	buf := make([]byte, 1024)
+	buflen, err := obj.Read(buf)
+	if (err != nil && err != io.EOF) || buflen == 0 {
+		return nil, fmt.Errorf("failed to read metadata: %w", err)
+	}
+
+	metadata, metadataLength, err := e.readObjectMetadata(buf)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read metadata: %w", err)
 	}
-	headerVersion := binary.BigEndian.Uint32(metadata[:4])
-	headerLength := binary.BigEndian.Uint32(metadata[4:8])
-	bodyVersion := binary.BigEndian.Uint32(metadata[8:12])
-	bodyLength := binary.BigEndian.Uint32(metadata[12:16])
 
-	headerData := make([]byte, headerLength)
-	_, err = obj.Read(headerData)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read header data: %w", err)
+	headerData := make([]byte, metadata.headerLength)
+	headerOffset := 0
+	if buflen > metadataLength {
+		copy(headerData, buf[metadataLength:buflen])
+		headerOffset = buflen - metadataLength
 	}
 
-	bodyData := make([]byte, bodyLength)
-	_, err = obj.Read(bodyData)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read body data: %w", err)
+	if buflen < int(metadataLength)+int(metadata.headerLength) {
+		_, err = obj.Read(headerData[headerOffset:])
+		if err != nil {
+			return nil, fmt.Errorf("failed to read header data: %w", err)
+		}
+	}
+
+	bodyData := make([]byte, metadata.bodyLength)
+	bodyOffset := 0
+	if buflen > int(metadataLength)+int(metadata.headerLength) {
+		copy(bodyData, buf[int(metadataLength)+int(metadata.headerLength):buflen])
+		bodyOffset = buflen - int(metadataLength) - int(metadata.headerLength)
+	}
+
+	if buflen < int(metadataLength)+int(metadata.headerLength)+int(metadata.bodyLength) {
+		_, err = obj.Read(bodyData[bodyOffset:])
+		if err != nil {
+			return nil, fmt.Errorf("failed to read body data: %w", err)
+		}
 	}
 
 	blockData := &types.BlockData{
-		HeaderVersion: uint64(headerVersion),
+		HeaderVersion: uint64(metadata.objVersion),
 		HeaderData:    headerData,
-		BodyVersion:   uint64(bodyVersion),
+		BodyVersion:   uint64(metadata.bodyVersion),
 	}
 
 	if parseBlock != nil {
-		body, err := parseBlock(uint64(bodyVersion), bodyData)
+		body, err := parseBlock(uint64(metadata.bodyVersion), bodyData)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse body: %w", err)
 		}
@@ -261,31 +243,33 @@ func (e *S3Engine) AddBlock(ctx context.Context, slot uint64, root []byte, dataC
 		return false, fmt.Errorf("failed to get block data: %w", err)
 	}
 
-	// Prepare data with header and body versions and lengths
-	data := make([]byte, 16+len(blockData.HeaderData)+len(blockData.BodyData))
-	binary.BigEndian.PutUint32(data[:4], uint32(blockData.HeaderVersion))
-	binary.BigEndian.PutUint32(data[4:8], uint32(len(blockData.HeaderData)))
-	binary.BigEndian.PutUint32(data[8:12], uint32(blockData.BodyVersion))
-	binary.BigEndian.PutUint32(data[12:16], uint32(len(blockData.BodyData)))
-
-	copy(data[16:], blockData.HeaderData)
-	copy(data[16+len(blockData.HeaderData):], blockData.BodyData)
-
-	// Create upload task
-	resultCh := make(chan error, 1)
-	task := &uploadTask{
-		key:      key,
-		data:     data,
-		resultCh: resultCh,
+	metadata := &objectMetadata{
+		objVersion:   uint32(blockData.HeaderVersion),
+		headerLength: uint32(len(blockData.HeaderData)),
+		bodyVersion:  uint32(blockData.BodyVersion),
+		bodyLength:   uint32(len(blockData.BodyData)),
 	}
 
-	// Add to upload queue
-	select {
-	case e.uploadQueue <- task:
-		// Task queued successfully
-	case <-ctx.Done():
-		task.cancelled = true
-		return false, ctx.Err()
+	metadataBytes := e.writeObjectMetadata(metadata)
+	metadataLength := len(metadataBytes)
+
+	// Prepare data with header and body versions and lengths
+	data := make([]byte, metadataLength+int(metadata.headerLength)+int(metadata.bodyLength))
+	copy(data[:metadataLength], metadataBytes)
+	copy(data[metadataLength:metadataLength+int(metadata.headerLength)], blockData.HeaderData)
+	copy(data[metadataLength+int(metadata.headerLength):], blockData.BodyData)
+
+	// Upload object
+	_, err = e.client.PutObject(
+		ctx,
+		e.bucket,
+		key,
+		bytes.NewReader(data),
+		int64(len(data)),
+		minio.PutObjectOptions{ContentType: "application/octet-stream"},
+	)
+	if err != nil {
+		return false, fmt.Errorf("failed to upload block: %w", err)
 	}
 
 	return true, nil

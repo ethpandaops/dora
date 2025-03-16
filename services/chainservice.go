@@ -139,6 +139,12 @@ func (cs *ChainService) StartService() error {
 			return fmt.Errorf("failed initializing pebble blockdb: %v", err)
 		}
 		cs.logger.Infof("Pebble blockdb initialized at %v", utils.Config.BlockDb.Pebble.Path)
+	case "s3":
+		err := blockdb.InitWithS3(utils.Config.BlockDb.S3)
+		if err != nil {
+			return fmt.Errorf("failed initializing s3 blockdb: %v", err)
+		}
+		cs.logger.Infof("S3 blockdb initialized at %v", utils.Config.BlockDb.S3.Bucket)
 	default:
 		cs.logger.Infof("Blockdb disabled")
 	}
