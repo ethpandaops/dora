@@ -214,6 +214,10 @@ func (bs *ChainService) StopService() {
 		bs.beaconIndexer.StopIndexer()
 		bs.beaconIndexer = nil
 	}
+
+	if blockdb.GlobalBlockDb != nil {
+		blockdb.GlobalBlockDb.Close()
+	}
 }
 
 func (bs *ChainService) GetBeaconIndexer() *beacon.Indexer {

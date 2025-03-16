@@ -66,6 +66,8 @@ func blockdbSync() {
 		logger.Fatal("No blockdb engine configured")
 	}
 
+	defer blockdb.GlobalBlockDb.Close()
+
 	// Initialize client pool
 	ctx := context.Background()
 	pool := consensus.NewPool(ctx, logger.WithField("component", "cl-pool"))
