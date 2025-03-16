@@ -25,6 +25,7 @@ func blockdbSync() {
 	startSlot := flags.Uint64("start", 0, "Start slot")
 	endSlot := flags.Uint64("end", 0, "End slot")
 	clientName := flags.String("client", "", "Only use this specific client from config")
+	concurrency := flags.Int("concurrency", 1, "Number of concurrent slot processors")
 	flags.Parse(os.Args[1:])
 
 	if *configPath == "" {
@@ -32,13 +33,13 @@ func blockdbSync() {
 		os.Exit(1)
 	}
 
-	if *startSlot == 0 || *endSlot == 0 {
-		fmt.Println("Error: start and end slot parameters are required")
+	if *endSlot < *startSlot {
+		fmt.Println("Error: end slot must be greater than start slot")
 		os.Exit(1)
 	}
 
-	if *endSlot < *startSlot {
-		fmt.Println("Error: end slot must be greater than start slot")
+	if *concurrency < 1 {
+		fmt.Println("Error: concurrency must be at least 1")
 		os.Exit(1)
 	}
 
@@ -130,62 +131,94 @@ func blockdbSync() {
 
 	logger.Infof("Starting sync from slot %d to %d", *startSlot, *endSlot)
 
-	// Process slots
+	// Create channels for work distribution and synchronization
+	jobs := make(chan uint64, *concurrency)
+	results := make(chan error, *concurrency)
+	done := make(chan bool)
 
-	for slot := *startSlot; slot < *endSlot; slot++ {
-		if slot%100 == 0 {
-			logger.Infof("Processing slot %d", slot)
-		}
-
-		client := pool.GetReadyEndpoint(consensus.AnyClient)
-		if client == nil {
-			logger.Fatal("No ready client found")
-		}
-
-		blockHeader, err := client.GetRPCClient().GetBlockHeaderBySlot(ctx, phase0.Slot(slot))
-		if err != nil {
-			logger.Warnf("Failed to get block for slot %d: %v", slot, err)
-			continue
-		}
-
-		if blockHeader == nil {
-			continue
-		}
-
-		// Store block header
-		headerBytes, err := blockHeader.Header.MarshalSSZ()
-		if err != nil {
-			logger.Warnf("Failed to marshal block header for slot %d: %v", slot, err)
-			continue
-		}
-
-		added, err := blockdb.GlobalBlockDb.AddBlockHeader(blockHeader.Root[:], 1, headerBytes)
-		if err != nil {
-			logger.Warnf("Failed to store block header for slot %d: %v", slot, err)
-			continue
-		}
-
-		if added {
-			// Store block body only if header was newly added
-			blockBody, err := client.GetRPCClient().GetBlockBodyByBlockroot(ctx, blockHeader.Root)
-			if err != nil {
-				logger.Warnf("Failed to get block body for slot %d: %v", slot, err)
-				continue
+	// Start worker goroutines
+	for i := 0; i < *concurrency; i++ {
+		go func() {
+			for slot := range jobs {
+				err := processSlot(ctx, pool, dynSsz, slot, logger)
+				results <- err
 			}
-
-			version, bodyBytes, err := beacon.MarshalVersionedSignedBeaconBlockSSZ(dynSsz, blockBody, true, false)
-			if err != nil {
-				logger.Warnf("Failed to marshal block body for slot %d: %v", slot, err)
-				continue
-			}
-
-			err = blockdb.GlobalBlockDb.AddBlockBody(blockHeader.Root[:], version, bodyBytes)
-			if err != nil {
-				logger.Warnf("Failed to store block body for slot %d: %v", slot, err)
-				continue
-			}
-		}
+		}()
 	}
 
+	// Start result collector
+	go func() {
+		for slot := *startSlot; slot < *endSlot; slot++ {
+			err := <-results
+			if err != nil {
+				logger.Warn(err)
+			}
+		}
+		done <- true
+	}()
+
+	// Send jobs
+	for slot := *startSlot; slot < *endSlot; slot++ {
+		jobs <- slot
+	}
+	close(jobs)
+
+	// Wait for completion
+	<-done
+
 	logger.Info("Sync completed")
+}
+
+func processSlot(ctx context.Context, pool *consensus.Pool, dynSsz *dynssz.DynSsz, slot uint64, logger *logrus.Logger) error {
+	client := pool.GetReadyEndpoint(consensus.AnyClient)
+	if client == nil {
+		return fmt.Errorf("no ready client found for slot %d", slot)
+	}
+
+	t1 := time.Now()
+
+	blockHeader, err := client.GetRPCClient().GetBlockHeaderBySlot(ctx, phase0.Slot(slot))
+	if err != nil {
+		return fmt.Errorf("failed to get block for slot %d: %v", slot, err)
+	}
+
+	if blockHeader == nil {
+		logger.Infof("Processed slot %d: not found  (%.2f ms)", slot, time.Since(t1).Seconds()*1000)
+		return nil
+	}
+
+	// Store block header
+	headerBytes, err := blockHeader.Header.MarshalSSZ()
+	if err != nil {
+		return fmt.Errorf("failed to marshal block header for slot %d: %v", slot, err)
+	}
+
+	added, err := blockdb.GlobalBlockDb.AddBlockHeader(blockHeader.Root[:], 1, headerBytes)
+	if err != nil {
+		return fmt.Errorf("failed to store block header for slot %d: %v", slot, err)
+	}
+
+	if added {
+		// Store block body only if header was newly added
+		blockBody, err := client.GetRPCClient().GetBlockBodyByBlockroot(ctx, blockHeader.Root)
+		if err != nil {
+			return fmt.Errorf("failed to get block body for slot %d: %v", slot, err)
+		}
+
+		version, bodyBytes, err := beacon.MarshalVersionedSignedBeaconBlockSSZ(dynSsz, blockBody, true, false)
+		if err != nil {
+			return fmt.Errorf("failed to marshal block body for slot %d: %v", slot, err)
+		}
+
+		err = blockdb.GlobalBlockDb.AddBlockBody(blockHeader.Root[:], version, bodyBytes)
+		if err != nil {
+			return fmt.Errorf("failed to store block body for slot %d: %v", slot, err)
+		}
+
+		logger.Infof("Processed slot %d: added (%.2f ms)", slot, time.Since(t1).Seconds()*1000)
+	} else {
+		logger.Infof("Processed slot %d: already exists (%.2f ms)", slot, time.Since(t1).Seconds()*1000)
+	}
+
+	return nil
 }
