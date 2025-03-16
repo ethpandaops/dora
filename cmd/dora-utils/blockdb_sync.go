@@ -176,6 +176,7 @@ func processSlot(ctx context.Context, pool *consensus.Pool, dynSsz *dynssz.DynSs
 	}
 
 	t1 := time.Now()
+	log := logger.WithField("client", client.GetName())
 
 	blockHeader, err := client.GetRPCClient().GetBlockHeaderBySlot(ctx, phase0.Slot(slot))
 	if err != nil {
@@ -183,7 +184,7 @@ func processSlot(ctx context.Context, pool *consensus.Pool, dynSsz *dynssz.DynSs
 	}
 
 	if blockHeader == nil {
-		logger.Infof("Processed slot %d: not found  (%.2f ms)", slot, time.Since(t1).Seconds()*1000)
+		log.Infof("Processed slot %d: missed  (%.2f ms)", slot, time.Since(t1).Seconds()*1000)
 		return nil
 	}
 
@@ -215,9 +216,9 @@ func processSlot(ctx context.Context, pool *consensus.Pool, dynSsz *dynssz.DynSs
 			return fmt.Errorf("failed to store block body for slot %d: %v", slot, err)
 		}
 
-		logger.Infof("Processed slot %d: added (%.2f ms)", slot, time.Since(t1).Seconds()*1000)
+		log.Infof("Processed slot %d: added   (%.2f ms)", slot, time.Since(t1).Seconds()*1000)
 	} else {
-		logger.Infof("Processed slot %d: already exists (%.2f ms)", slot, time.Since(t1).Seconds()*1000)
+		log.Infof("Processed slot %d: present (%.2f ms)", slot, time.Since(t1).Seconds()*1000)
 	}
 
 	return nil
