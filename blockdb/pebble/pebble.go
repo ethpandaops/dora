@@ -97,13 +97,13 @@ func (e *PebbleEngine) AddBlockHeader(root []byte, version uint64, header []byte
 	copy(key[2:], root)
 	binary.BigEndian.PutUint16(key[2+len(root):], BlockTypeHeader)
 
-	header, closer, err := e.db.Get(key)
+	res, closer, err := e.db.Get(key)
 	if err != nil {
 		return false, err
 	}
 	defer closer.Close()
 
-	if len(header) > 0 {
+	if len(res) > 0 {
 		return false, nil
 	}
 
