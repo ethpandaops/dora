@@ -9,6 +9,7 @@ import (
 
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/blockdb"
+	btypes "github.com/ethpandaops/dora/blockdb/types"
 	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/dora/clients/sshtunnel"
 	"github.com/ethpandaops/dora/indexer/beacon"
@@ -67,6 +68,12 @@ func blockdbSync() {
 			logger.Fatalf("Failed initializing pebble blockdb: %v", err)
 		}
 		logger.Infof("Pebble blockdb initialized at %v", cfg.BlockDb.Pebble.Path)
+	case "s3":
+		err := blockdb.InitWithS3(cfg.BlockDb.S3)
+		if err != nil {
+			logger.Fatalf("Failed initializing s3 blockdb: %v", err)
+		}
+		logger.Infof("S3 blockdb initialized at %v", cfg.BlockDb.S3.Bucket)
 	default:
 		logger.Fatal("No blockdb engine configured")
 	}
@@ -139,6 +146,17 @@ func blockdbSync() {
 	slotsPerEpoch := chainState.GetSpecs().SlotsPerEpoch
 	startSlot := *startEpoch * slotsPerEpoch
 	endSlot := (*endEpoch + 1) * slotsPerEpoch
+
+	for {
+		client := pool.GetReadyEndpoint(consensus.AnyClient)
+		if client == nil {
+			logger.Info("No ready client found, waiting for 10 seconds")
+			time.Sleep(10 * time.Second)
+			continue
+		}
+
+		break
+	}
 
 	logger.Infof("Starting sync from epoch %d to %d (slots %d to %d)", *startEpoch, *endEpoch, startSlot, endSlot-1)
 
@@ -243,28 +261,29 @@ func processSlot(ctx context.Context, pool *consensus.Pool, dynSsz *dynssz.DynSs
 		return slotResult{slot: slot, err: fmt.Errorf("failed to marshal block header for slot %d: %v", slot, err), time: time.Since(t1)}
 	}
 
-	added, err := blockdb.GlobalBlockDb.AddBlockHeader(blockHeader.Root[:], 1, headerBytes)
+	added, err := blockdb.GlobalBlockDb.AddBlockWithCallback(ctx, slot, blockHeader.Root[:], func() (*btypes.BlockData, error) {
+		blockBody, err := client.GetRPCClient().GetBlockBodyByBlockroot(ctx, blockHeader.Root)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get block body for slot %d: %v", slot, err)
+		}
+
+		version, bodyBytes, err := beacon.MarshalVersionedSignedBeaconBlockSSZ(dynSsz, blockBody, true, false)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal block body for slot %d: %v", slot, err)
+		}
+
+		return &btypes.BlockData{
+			HeaderVersion: 1,
+			HeaderData:    headerBytes,
+			BodyVersion:   version,
+			BodyData:      bodyBytes,
+		}, nil
+	})
 	if err != nil {
 		return slotResult{slot: slot, err: fmt.Errorf("failed to store block header for slot %d: %v", slot, err), time: time.Since(t1)}
 	}
 
 	if added {
-		// Store block body only if header was newly added
-		blockBody, err := client.GetRPCClient().GetBlockBodyByBlockroot(ctx, blockHeader.Root)
-		if err != nil {
-			return slotResult{slot: slot, err: fmt.Errorf("failed to get block body for slot %d: %v", slot, err), time: time.Since(t1)}
-		}
-
-		version, bodyBytes, err := beacon.MarshalVersionedSignedBeaconBlockSSZ(dynSsz, blockBody, true, false)
-		if err != nil {
-			return slotResult{slot: slot, err: fmt.Errorf("failed to marshal block body for slot %d: %v", slot, err), time: time.Since(t1)}
-		}
-
-		err = blockdb.GlobalBlockDb.AddBlockBody(blockHeader.Root[:], version, bodyBytes)
-		if err != nil {
-			return slotResult{slot: slot, err: fmt.Errorf("failed to store block body for slot %d: %v", slot, err), time: time.Since(t1)}
-		}
-
 		log.Debugf("Slot %d: added   (%.2f ms)", slot, time.Since(t1).Seconds()*1000)
 		return slotResult{slot: slot, status: "added", time: time.Since(t1)}
 	} else {

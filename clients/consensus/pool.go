@@ -80,6 +80,10 @@ func (pool *Pool) GetReadyEndpoint(clientType ClientType) *Client {
 		readyClients[i], readyClients[j] = readyClients[j], readyClients[i]
 	})
 
+	if len(readyClients) == 0 {
+		return nil
+	}
+
 	return readyClients[0]
 }
 

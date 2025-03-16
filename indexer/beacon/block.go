@@ -10,6 +10,7 @@ import (
 	"github.com/attestantio/go-eth2-client/spec"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/blockdb"
+	btypes "github.com/ethpandaops/dora/blockdb/types"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	dynssz "github.com/pk910/dynamic-ssz"
@@ -367,26 +368,24 @@ func (block *Block) writeToBlockDb() error {
 		return nil
 	}
 
-	headerSSZ, err := block.header.MarshalSSZ()
-	if err != nil {
-		return fmt.Errorf("marshal header ssz failed: %v", err)
-	}
+	_, err := blockdb.GlobalBlockDb.AddBlockWithCallback(context.Background(), uint64(block.Slot), block.Root[:], func() (*btypes.BlockData, error) {
+		headerSSZ, err := block.header.MarshalSSZ()
+		if err != nil {
+			return nil, fmt.Errorf("marshal header ssz failed: %v", err)
+		}
 
-	added, err := blockdb.GlobalBlockDb.AddBlockHeader(block.Root[:], 1, headerSSZ)
-	if err != nil {
-		return fmt.Errorf("error adding block %v to blockdb: %v", block.Root.String(), err)
-	}
+		version, ssz, err := MarshalVersionedSignedBeaconBlockSSZ(block.dynSsz, block.block, true, false)
+		if err != nil {
+			return nil, fmt.Errorf("error marshalling block %v: %v", block.Root.String(), err)
+		}
 
-	if !added {
-		return nil
-	}
-
-	version, ssz, err := MarshalVersionedSignedBeaconBlockSSZ(block.dynSsz, block.block, true, false)
-	if err != nil {
-		return fmt.Errorf("error marshalling block %v: %v", block.Root.String(), err)
-	}
-
-	err = blockdb.GlobalBlockDb.AddBlockBody(block.Root[:], version, ssz)
+		return &btypes.BlockData{
+			HeaderVersion: 1,
+			HeaderData:    headerSSZ,
+			BodyVersion:   version,
+			BodyData:      ssz,
+		}, nil
+	})
 	if err != nil {
 		return fmt.Errorf("error adding block %v to blockdb: %v", block.Root.String(), err)
 	}

@@ -82,26 +82,24 @@ func (bs *ChainService) GetSlotDetailsByBlockroot(ctx context.Context, blockroot
 			Orphaned: true,
 		}
 	} else if blockdb.GlobalBlockDb != nil {
-		headerSsz, version, err := blockdb.GlobalBlockDb.GetBlockHeader(blockroot[:])
-		if err == nil && version > 0 {
-			block, err := blockdb.GlobalBlockDb.GetBlockBody(blockroot[:], func(version uint64, block []byte) (interface{}, error) {
+		blockHead := db.GetBlockHeadByRoot(blockroot[:])
+		if blockHead != nil {
+			blockData, err := blockdb.GlobalBlockDb.GetBlock(ctx, uint64(blockHead.Slot), blockroot[:], func(version uint64, block []byte) (interface{}, error) {
 				return beacon.UnmarshalVersionedSignedBeaconBlockSSZ(bs.beaconIndexer.GetDynSSZ(), version, block)
 			})
-			if err != nil {
-				return nil, err
-			}
+			if err == nil && blockData != nil {
+				header := &phase0.SignedBeaconBlockHeader{}
+				err = header.UnmarshalSSZ(blockData.HeaderData)
+				if err != nil {
+					return nil, err
+				}
 
-			header := &phase0.SignedBeaconBlockHeader{}
-			err = header.UnmarshalSSZ(headerSsz)
-			if err != nil {
-				return nil, err
-			}
-
-			result = &CombinedBlockResponse{
-				Root:     blockroot,
-				Header:   header,
-				Block:    block.(*spec.VersionedSignedBeaconBlock),
-				Orphaned: false,
+				result = &CombinedBlockResponse{
+					Root:     blockroot,
+					Header:   header,
+					Block:    blockData.Body.(*spec.VersionedSignedBeaconBlock),
+					Orphaned: false,
+				}
 			}
 		}
 	}
@@ -192,17 +190,12 @@ func (bs *ChainService) GetSlotDetailsBySlot(ctx context.Context, slot phase0.Sl
 		blockHead := db.GetBlockHeadBySlot(uint64(slot))
 		if blockHead != nil {
 			blockroot := blockHead.Root
-			headerSsz, version, err := blockdb.GlobalBlockDb.GetBlockHeader(blockroot[:])
-			if err == nil && version > 0 {
-				block, err := blockdb.GlobalBlockDb.GetBlockBody(blockroot, func(version uint64, block []byte) (interface{}, error) {
-					return beacon.UnmarshalVersionedSignedBeaconBlockSSZ(bs.beaconIndexer.GetDynSSZ(), version, block)
-				})
-				if err != nil {
-					return nil, err
-				}
-
+			blockData, err := blockdb.GlobalBlockDb.GetBlock(ctx, uint64(blockHead.Slot), blockroot[:], func(version uint64, block []byte) (interface{}, error) {
+				return beacon.UnmarshalVersionedSignedBeaconBlockSSZ(bs.beaconIndexer.GetDynSSZ(), version, block)
+			})
+			if err == nil && blockData != nil {
 				header := &phase0.SignedBeaconBlockHeader{}
-				err = header.UnmarshalSSZ(headerSsz)
+				err = header.UnmarshalSSZ(blockData.HeaderData)
 				if err != nil {
 					return nil, err
 				}
@@ -210,7 +203,7 @@ func (bs *ChainService) GetSlotDetailsBySlot(ctx context.Context, slot phase0.Sl
 				result = &CombinedBlockResponse{
 					Root:     phase0.Root(blockroot),
 					Header:   header,
-					Block:    block.(*spec.VersionedSignedBeaconBlock),
+					Block:    blockData.Body.(*spec.VersionedSignedBeaconBlock),
 					Orphaned: false,
 				}
 			}

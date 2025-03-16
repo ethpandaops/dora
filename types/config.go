@@ -116,8 +116,9 @@ type Config struct {
 	Database DatabaseConfig `yaml:"database"`
 
 	BlockDb struct {
-		Engine string               `yaml:"engine" envconfig:"BLOCKDB_ENGINE"`
-		Pebble PebbleDatabaseConfig `yaml:"pebble"`
+		Engine string              `yaml:"engine" envconfig:"BLOCKDB_ENGINE"`
+		Pebble PebbleBlockDBConfig `yaml:"pebble"`
+		S3     S3BlockDBConfig     `yaml:"s3"`
 	} `yaml:"blockDb"`
 
 	KillSwitch struct {
@@ -185,7 +186,19 @@ type PgsqlWriterDatabaseConfig struct {
 	MaxIdleConns int    `yaml:"maxIdleConns" envconfig:"DATABASE_PGSQL_WRITER_MAX_IDLE_CONNS"`
 }
 
-type PebbleDatabaseConfig struct {
+type PebbleBlockDBConfig struct {
 	Path      string `yaml:"path" envconfig:"BLOCKDB_ROCKSDB_PATH"`
 	CacheSize int    `yaml:"cacheSize" envconfig:"BLOCKDB_ROCKSDB_CACHE_SIZE"`
+}
+
+type S3BlockDBConfig struct {
+	Endpoint             string `yaml:"endpoint" envconfig:"BLOCKDB_S3_ENDPOINT"`
+	Secure               bool   `yaml:"secure" envconfig:"BLOCKDB_S3_SECURE"`
+	Bucket               string `yaml:"bucket" envconfig:"BLOCKDB_S3_BUCKET"`
+	Region               string `yaml:"region" envconfig:"BLOCKDB_S3_REGION"`
+	AccessKey            string `yaml:"accessKey" envconfig:"BLOCKDB_S3_ACCESS_KEY"`
+	SecretKey            string `yaml:"secretKey" envconfig:"BLOCKDB_S3_SECRET_KEY"`
+	Path                 string `yaml:"path" envconfig:"BLOCKDB_S3_PATH"`
+	MaxConcurrentUploads uint   `yaml:"maxConcurrentUploads" envconfig:"BLOCKDB_S3_MAX_CONCURRENT_UPLOADS"`
+	UploadQueueSize      uint   `yaml:"uploadQueueSize" envconfig:"BLOCKDB_S3_UPLOAD_QUEUE_SIZE"`
 }
