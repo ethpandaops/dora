@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"sync"
 	"time"
 
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
@@ -383,20 +384,25 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 
 	// save block bodies to blockdb
 	if blockdb.GlobalBlockDb != nil && !indexer.disableBlockDbWrite {
+		var wg sync.WaitGroup
 		for _, block := range canonicalBlocks {
-			err := block.writeToBlockDb()
-			if err != nil {
-				indexer.logger.Errorf("error writing block %v to blockdb: %v", block.Root.String(), err)
-			}
+			wg.Add(1)
+			go func(b *Block) {
+				defer wg.Done()
+				if err := b.writeToBlockDb(); err != nil {
+					indexer.logger.Errorf("error writing block %v to blockdb: %v", b.Root.String(), err)
+				}
+			}(block)
 		}
+		wg.Wait()
 	}
+	t3dur := time.Since(t1)
 
 	indexer.lastFinalizedEpoch = epoch + 1
 
 	// sleep 500 ms to give running UI threads time to fetch data from cache
 	time.Sleep(500 * time.Millisecond)
 
-	t3dur := time.Since(t1)
 	t1 = time.Now()
 
 	// update validator cache
