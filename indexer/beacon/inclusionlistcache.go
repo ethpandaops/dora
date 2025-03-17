@@ -84,9 +84,6 @@ func (cache *inclusionListCache) cleanupLoop() {
 func (cache *inclusionListCache) cleanupCache() {
 	chainState := cache.indexer.consensusPool.GetChainState()
 	cutOffEpoch := chainState.CurrentEpoch() - phase0.Epoch(cache.indexer.activityHistoryLength)
-	if cutOffEpoch < 0 {
-		return
-	}
 
 	cache.cacheMutex.Lock()
 	defer cache.cacheMutex.Unlock()
