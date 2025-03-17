@@ -291,7 +291,8 @@ span.validator-label {
 }
 
 .table-sorting thead .col-sorting {
-  float: right;
+  display: inline-block;
+  margin-left: 5px;
 }
 
 .table-sorting thead .sort-link {
