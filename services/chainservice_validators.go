@@ -96,6 +96,9 @@ func (bs *ChainService) GetFilteredValidatorSet(filter *dbtypes.ValidatorFilter,
 		if filter.MaxIndex != nil && index > phase0.ValidatorIndex(*filter.MaxIndex) {
 			return nil
 		}
+		if len(filter.Indices) > 0 && !slices.Contains(filter.Indices, index) {
+			return nil
+		}
 		if filter.WithdrawalAddress != nil {
 			if validator.WithdrawalCredentials[0] != 0x01 && validator.WithdrawalCredentials[0] != 0x02 {
 				return nil
@@ -103,6 +106,9 @@ func (bs *ChainService) GetFilteredValidatorSet(filter *dbtypes.ValidatorFilter,
 			if !bytes.Equal(validator.WithdrawalCredentials[12:], filter.WithdrawalAddress[:]) {
 				return nil
 			}
+		}
+		if filter.WithdrawalCreds != nil && !bytes.Equal(validator.WithdrawalCredentials, filter.WithdrawalCreds) {
+			return nil
 		}
 		if filter.ValidatorName != "" {
 			vname := bs.validatorNames.GetValidatorName(uint64(index))

@@ -43,7 +43,7 @@ jobs:
     needs: [build_binaries]
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3
       with:
         fetch-depth: 100
         ref: ${{ github.sha }}
@@ -64,11 +64,11 @@ jobs:
 
     # download build artifacts
     - name: "Download build artifacts"
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@cc203385981b70ca67e1cc392babf9cc229d5806 # v4
 
     # create draft release
     - name: Create latest release
-      uses: actions/create-release@v1
+      uses: actions/create-release@0cb9c9b65d5d1901c1f53e5e66eaf4afd303e70e # v1
       id: create_release
       with:
         draft: true
@@ -97,7 +97,7 @@ jobs:
         cd explorer_windows_amd64
         zip -r -q ../dora_${{ inputs.version }}_windows_amd64.zip .
     - name: "Upload release artifact: dora_${{ inputs.version }}_windows_amd64.zip"
-      uses: actions/upload-release-asset@v1
+      uses: actions/upload-release-asset@e8f9f06c4b078e705bd2ea027f0926603fc9b4d5 # v1
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
         asset_path: ./dora_${{ inputs.version }}_windows_amd64.zip
@@ -111,7 +111,7 @@ jobs:
         cd explorer_linux_amd64
         tar -czf ../dora_${{ inputs.version }}_linux_amd64.tar.gz .
     - name: "Upload release artifact: dora_${{ inputs.version }}_linux_amd64.tar.gz"
-      uses: actions/upload-release-asset@v1
+      uses: actions/upload-release-asset@e8f9f06c4b078e705bd2ea027f0926603fc9b4d5 # v1
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
         asset_path: ./dora_${{ inputs.version }}_linux_amd64.tar.gz
@@ -125,7 +125,7 @@ jobs:
         cd explorer_linux_arm64
         tar -czf ../dora_${{ inputs.version }}_linux_arm64.tar.gz .
     - name: "Upload release artifact: dora_${{ inputs.version }}_linux_arm64.tar.gz"
-      uses: actions/upload-release-asset@v1
+      uses: actions/upload-release-asset@e8f9f06c4b078e705bd2ea027f0926603fc9b4d5 # v1
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
         asset_path: ./dora_${{ inputs.version }}_linux_arm64.tar.gz
@@ -139,7 +139,7 @@ jobs:
         cd explorer_darwin_amd64
         tar -czf ../dora_${{ inputs.version }}_darwin_amd64.tar.gz .
     - name: "Upload release artifact: dora_${{ inputs.version }}_darwin_amd64.tar.gz"
-      uses: actions/upload-release-asset@v1
+      uses: actions/upload-release-asset@e8f9f06c4b078e705bd2ea027f0926603fc9b4d5 # v1
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
         asset_path: ./dora_${{ inputs.version }}_darwin_amd64.tar.gz
@@ -153,7 +153,7 @@ jobs:
         cd explorer_darwin_arm64
         tar -czf ../dora_${{ inputs.version }}_darwin_arm64.tar.gz .
     - name: "Upload release artifact: dora_${{ inputs.version }}_darwin_arm64.tar.gz"
-      uses: actions/upload-release-asset@v1
+      uses: actions/upload-release-asset@e8f9f06c4b078e705bd2ea027f0926603fc9b4d5 # v1
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
         asset_path: ./dora_${{ inputs.version }}_darwin_arm64.tar.gz
