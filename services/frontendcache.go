@@ -120,7 +120,7 @@ func (fc *FrontendCacheService) processPageCall(pageKey string, caching bool, pa
 	callIdx := fc.pageCallCounter
 	fc.pageCallCounterMutex.Unlock()
 
-	callGoId := int64(0)
+	callGoId := uint64(0)
 
 	go func(callIdx uint64) {
 		defer func() {
@@ -195,7 +195,7 @@ func (fc *FrontendCacheService) completePageLoad(pageKey string, processingPage 
 	fc.processingMutex.Unlock()
 }
 
-func (fc *FrontendCacheService) extractPageCallStack(callGoid int64) string {
+func (fc *FrontendCacheService) extractPageCallStack(callGoid uint64) string {
 	if fc.callStackMutex.TryLock() {
 		runtime.Stack(fc.callStackBuffer, true)
 		fc.callStackMutex.Unlock()
