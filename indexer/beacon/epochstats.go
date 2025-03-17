@@ -17,7 +17,6 @@ import (
 	"github.com/ethpandaops/dora/indexer/beacon/duties"
 	"github.com/jmoiron/sqlx"
 	"github.com/mashingan/smapping"
-	dynssz "github.com/pk910/dynamic-ssz"
 )
 
 // EpochStats holds the epoch-specific information based on the underlying dependent beacon state.
@@ -63,16 +62,16 @@ type EpochStatsValues struct {
 
 // EpochStatsPacked holds the packed values for the epoch-specific information.
 type EpochStatsPacked struct {
-	ActiveValidators      []EpochStatsPackedValidator
-	ProposerDuties        []phase0.ValidatorIndex
-	SyncCommitteeDuties   []phase0.ValidatorIndex
+	ActiveValidators      []EpochStatsPackedValidator `ssz-max:"10000000"`
+	ProposerDuties        []phase0.ValidatorIndex     `ssz-max:"100"`
+	SyncCommitteeDuties   []phase0.ValidatorIndex     `ssz-max:"10000"`
 	RandaoMix             phase0.Hash32
 	NextRandaoMix         phase0.Hash32
 	TotalBalance          phase0.Gwei
 	ActiveBalance         phase0.Gwei
 	FirstDepositIndex     uint64
-	PendingWithdrawals    []EpochStatsPendingWithdrawals
-	PendingConsolidations []electra.PendingConsolidation
+	PendingWithdrawals    []EpochStatsPendingWithdrawals `ssz-max:"10000000"`
+	PendingConsolidations []electra.PendingConsolidation `ssz-max:"10000000"`
 }
 
 // EpochStatsPackedValidator holds the packed values for an active validator.
@@ -131,12 +130,12 @@ func (es *EpochStats) getRequestedBy() []*Client {
 	return clients
 }
 
-func (es *EpochStats) restoreFromDb(dbDuty *dbtypes.UnfinalizedDuty, dynSsz *dynssz.DynSsz, chainState *consensus.ChainState, withDuties bool) error {
+func (es *EpochStats) restoreFromDb(dbDuty *dbtypes.UnfinalizedDuty, chainState *consensus.ChainState, withDuties bool) error {
 	if es.ready {
 		return nil
 	}
 
-	values, err := es.parsePackedSSZ(dynSsz, chainState, dbDuty.DutiesSSZ, withDuties)
+	values, err := es.parsePackedSSZ(chainState, dbDuty.DutiesSSZ, withDuties)
 	if err != nil {
 		return err
 	}
@@ -159,13 +158,9 @@ func (es *EpochStats) setStatsReady() {
 }
 
 // marshalSSZ marshals the EpochStats values using SSZ.
-func (es *EpochStats) buildPackedSSZ(dynSsz *dynssz.DynSsz) ([]byte, error) {
+func (es *EpochStats) buildPackedSSZ() ([]byte, error) {
 	if es.values == nil {
 		return nil, fmt.Errorf("no values to marshal")
-	}
-
-	if dynSsz == nil {
-		dynSsz = dynssz.NewDynSsz(nil)
 	}
 
 	packedValues := &EpochStatsPacked{
@@ -192,7 +187,7 @@ func (es *EpochStats) buildPackedSSZ(dynSsz *dynssz.DynSsz) ([]byte, error) {
 		}
 	}
 
-	rawSsz, err := dynSsz.MarshalSSZ(packedValues)
+	rawSsz, err := packedValues.MarshalSSZ()
 	if err != nil {
 		return nil, err
 	}
@@ -202,11 +197,7 @@ func (es *EpochStats) buildPackedSSZ(dynSsz *dynssz.DynSsz) ([]byte, error) {
 
 // unmarshalSSZ unmarshals the EpochStats values using the provided SSZ bytes.
 // skips computing attester duties if withCommittees is false to speed up the process.
-func (es *EpochStats) parsePackedSSZ(dynSsz *dynssz.DynSsz, chainState *consensus.ChainState, ssz []byte, withDuties bool) (*EpochStatsValues, error) {
-	if dynSsz == nil {
-		dynSsz = dynssz.NewDynSsz(nil)
-	}
-
+func (es *EpochStats) parsePackedSSZ(chainState *consensus.ChainState, ssz []byte, withDuties bool) (*EpochStatsValues, error) {
 	if len(ssz) == 0 {
 		return nil, nil
 	}
@@ -218,7 +209,7 @@ func (es *EpochStats) parsePackedSSZ(dynSsz *dynssz.DynSsz, chainState *consensu
 	}
 
 	packedValues := &EpochStatsPacked{}
-	if err := dynSsz.UnmarshalSSZ(packedValues, ssz); err != nil {
+	if err := packedValues.UnmarshalSSZ(ssz); err != nil {
 		return nil, err
 	}
 
@@ -310,7 +301,7 @@ func (es *EpochStats) pruneValues() {
 	es.values = nil
 }
 
-func (es *EpochStats) loadValuesFromDb(dynSsz *dynssz.DynSsz, chainState *consensus.ChainState) *EpochStatsValues {
+func (es *EpochStats) loadValuesFromDb(chainState *consensus.ChainState) *EpochStatsValues {
 	if !es.isInDb {
 		return nil
 	}
@@ -320,7 +311,7 @@ func (es *EpochStats) loadValuesFromDb(dynSsz *dynssz.DynSsz, chainState *consen
 		return nil
 	}
 
-	values, err := es.parsePackedSSZ(dynSsz, chainState, dbDuty.DutiesSSZ, true)
+	values, err := es.parsePackedSSZ(chainState, dbDuty.DutiesSSZ, true)
 	if err != nil {
 		return nil
 	}
@@ -333,6 +324,10 @@ func (es *EpochStats) processState(indexer *Indexer, validatorSet []*phase0.Vali
 	if es.dependentState == nil || es.dependentState.loadingStatus != 2 {
 		return
 	}
+
+	// processState is executed in a separate goroutine. Here we copy dependentState to
+	// avoid the epoch cache pruner from setting dependentState to nil while we are processing.
+	dependentState := es.dependentState
 
 	es.processingMutex.Lock()
 	if es.processing {
@@ -353,40 +348,40 @@ func (es *EpochStats) processState(indexer *Indexer, validatorSet []*phase0.Vali
 	values := &EpochStatsValues{
 		ActiveIndices:         make([]phase0.ValidatorIndex, 0),
 		EffectiveBalances:     make([]uint16, 0),
-		SyncCommitteeDuties:   es.dependentState.syncCommittee,
+		SyncCommitteeDuties:   dependentState.syncCommittee,
 		TotalBalance:          0,
 		ActiveBalance:         0,
 		EffectiveBalance:      0,
-		FirstDepositIndex:     es.dependentState.depositIndex,
-		PendingWithdrawals:    make([]EpochStatsPendingWithdrawals, len(es.dependentState.pendingPartialWithdrawals)),
-		PendingConsolidations: make([]electra.PendingConsolidation, len(es.dependentState.pendingConsolidations)),
+		FirstDepositIndex:     dependentState.depositIndex,
+		PendingWithdrawals:    make([]EpochStatsPendingWithdrawals, len(dependentState.pendingPartialWithdrawals)),
+		PendingConsolidations: make([]electra.PendingConsolidation, len(dependentState.pendingConsolidations)),
 	}
 
-	for i, pendingPartialWithdrawal := range es.dependentState.pendingPartialWithdrawals {
+	for i, pendingPartialWithdrawal := range dependentState.pendingPartialWithdrawals {
 		values.PendingWithdrawals[i] = EpochStatsPendingWithdrawals{
 			ValidatorIndex: pendingPartialWithdrawal.ValidatorIndex,
 			Epoch:          pendingPartialWithdrawal.WithdrawableEpoch,
 		}
 	}
 
-	for i, pendingConsolidation := range es.dependentState.pendingConsolidations {
+	for i, pendingConsolidation := range dependentState.pendingConsolidations {
 		values.PendingConsolidations[i] = *pendingConsolidation
 	}
 
 	if validatorSet != nil {
 		for index, validator := range validatorSet {
-			values.TotalBalance += es.dependentState.validatorBalances[index]
+			values.TotalBalance += dependentState.validatorBalances[index]
 			if es.epoch >= validator.ActivationEpoch && es.epoch < validator.ExitEpoch {
 				values.ActiveIndices = append(values.ActiveIndices, phase0.ValidatorIndex(index))
 				values.EffectiveBalances = append(values.EffectiveBalances, uint16(validator.EffectiveBalance/EtherGweiFactor))
 				values.EffectiveBalance += validator.EffectiveBalance
-				values.ActiveBalance += es.dependentState.validatorBalances[index]
+				values.ActiveBalance += dependentState.validatorBalances[index]
 			}
 		}
 
 		values.ActiveValidators = uint64(len(values.ActiveIndices))
 	} else {
-		for _, balance := range es.dependentState.validatorBalances {
+		for _, balance := range dependentState.validatorBalances {
 			values.TotalBalance += balance
 		}
 
@@ -394,7 +389,7 @@ func (es *EpochStats) processState(indexer *Indexer, validatorSet []*phase0.Vali
 			values.ActiveIndices = append(values.ActiveIndices, index)
 			values.EffectiveBalances = append(values.EffectiveBalances, uint16(activeData.EffectiveBalance()/EtherGweiFactor))
 			values.EffectiveBalance += activeData.EffectiveBalance()
-			values.ActiveBalance += es.dependentState.validatorBalances[index]
+			values.ActiveBalance += dependentState.validatorBalances[index]
 			return nil
 		})
 	}
@@ -404,7 +399,7 @@ func (es *EpochStats) processState(indexer *Indexer, validatorSet []*phase0.Vali
 	values.ActiveValidators = uint64(len(values.ActiveIndices))
 	beaconState := &duties.BeaconState{
 		GetRandaoMixes: func() []phase0.Root {
-			return es.dependentState.randaoMixes
+			return dependentState.randaoMixes
 		},
 		GetActiveCount: func() uint64 {
 			return values.ActiveValidators
@@ -414,7 +409,7 @@ func (es *EpochStats) processState(indexer *Indexer, validatorSet []*phase0.Vali
 		},
 	}
 
-	indexer.logger.Debugf("processing epoch %v stats (root: %v / state: %v), validators: %v/%v", es.epoch, es.dependentRoot.String(), es.dependentState.stateRoot.String(), values.ActiveValidators, len(validatorSet))
+	indexer.logger.Debugf("processing epoch %v stats (root: %v / state: %v), validators: %v/%v", es.epoch, es.dependentRoot.String(), dependentState.stateRoot.String(), values.ActiveValidators, len(validatorSet))
 
 	// compute proposers
 	proposerDuties := []phase0.ValidatorIndex{}
@@ -447,7 +442,7 @@ func (es *EpochStats) processState(indexer *Indexer, validatorSet []*phase0.Vali
 	es.values = values
 	es.precalcValues = nil
 
-	packedSsz, _ := es.buildPackedSSZ(indexer.dynSsz)
+	packedSsz, _ := es.buildPackedSSZ()
 	dbDuty := &dbtypes.UnfinalizedDuty{
 		Epoch:         uint64(es.epoch),
 		DependentRoot: es.dependentRoot[:],
@@ -458,7 +453,7 @@ func (es *EpochStats) processState(indexer *Indexer, validatorSet []*phase0.Vali
 		return db.InsertUnfinalizedDuty(dbDuty, tx)
 	})
 	if err != nil {
-		indexer.logger.WithError(err).Errorf("failed storing epoch %v stats (%v / %v) to unfinalized duties", es.epoch, es.dependentRoot.String(), es.dependentState.stateRoot.String())
+		indexer.logger.WithError(err).Errorf("failed storing epoch %v stats (%v / %v) to unfinalized duties", es.epoch, es.dependentRoot.String(), dependentState.stateRoot.String())
 	}
 
 	es.isInDb = true
@@ -467,7 +462,7 @@ func (es *EpochStats) processState(indexer *Indexer, validatorSet []*phase0.Vali
 		"processed epoch %v stats (root: %v / state: %v, validators: %v/%v, %v ms), %v bytes",
 		es.epoch,
 		es.dependentRoot.String(),
-		es.dependentState.stateRoot.String(),
+		dependentState.stateRoot.String(),
 		values.ActiveValidators,
 		len(validatorSet),
 		time.Since(t1).Milliseconds(),
@@ -632,7 +627,7 @@ func (es *EpochStats) GetOrLoadValues(indexer *Indexer, withPrecalc bool, keepIn
 	}
 
 	if es.isInDb {
-		values := es.loadValuesFromDb(indexer.dynSsz, indexer.consensusPool.GetChainState())
+		values := es.loadValuesFromDb(indexer.consensusPool.GetChainState())
 		if values != nil {
 			if keepInCache {
 				es.values = values

@@ -7,7 +7,7 @@ import (
 	"github.com/attestantio/go-eth2-client/spec/electra"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/dbtypes"
-	"github.com/juliangruber/go-intersect"
+	"github.com/ethpandaops/dora/utils"
 )
 
 type stateSimulator struct {
@@ -410,10 +410,7 @@ func (sim *stateSimulator) applyBlock(block *Block) [][]uint8 {
 			continue
 		}
 
-		inter := intersect.Simple(att1AttestingIndices, att2AttestingIndices)
-		for _, j := range inter {
-			valIdx := j.(uint64)
-
+		for _, valIdx := range utils.FindMatchingIndices(att1AttestingIndices, att2AttestingIndices) {
 			validator := sim.getValidator(phase0.ValidatorIndex(valIdx))
 			if validator == nil {
 				return nil

@@ -118,6 +118,18 @@ func (indexer *Indexer) computeCanonicalChain() bool {
 			continue
 		}
 
+		isBadRoot := false
+		for _, badRoot := range indexer.badChainRoots {
+			if indexer.blockCache.isCanonicalBlock(badRoot, fork.Block.Root) {
+				isBadRoot = true
+				break
+			}
+		}
+
+		if isBadRoot {
+			continue
+		}
+
 		forkVotes, epochParticipation := indexer.aggregateForkVotes(fork.ForkId, aggregateEpochs)
 		headForkVotes[fork.ForkId] = forkVotes
 		chainHeads = append(chainHeads, &ChainHead{
@@ -152,9 +164,26 @@ func (indexer *Indexer) computeCanonicalChain() bool {
 
 	if headBlock == nil {
 		// just get latest block
-		latestBlocks := indexer.blockCache.getLatestBlocks(1, nil)
-		if len(latestBlocks) > 0 {
-			headBlock = latestBlocks[0]
+		latestBlocks := indexer.blockCache.getLatestBlocks(10, nil)
+		checkedForks := make(map[ForkKey]bool)
+		for _, headBlock := range latestBlocks {
+			if checkedForks[headBlock.forkId] {
+				continue
+			}
+
+			checkedForks[headBlock.forkId] = true
+
+			isBadRoot := false
+			for _, badRoot := range indexer.badChainRoots {
+				if indexer.blockCache.isCanonicalBlock(badRoot, headBlock.Root) {
+					isBadRoot = true
+					break
+				}
+			}
+
+			if isBadRoot {
+				continue
+			}
 
 			forkVotes, epochParticipation := indexer.aggregateForkVotes(headBlock.forkId, aggregateEpochs)
 			participationStr := make([]string, len(epochParticipation))

@@ -41,7 +41,7 @@ beaconapi:
   # beacon node rpc endpoints
   endpoints:
     - name: "local"
-      url: "http://127.0.0.1:8545"
+      url: "http://127.0.0.1:5052"
 
   # local cache for page models
   localCacheSize: 100 # 100MB

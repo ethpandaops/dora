@@ -57,6 +57,11 @@ type Config struct {
 		ShowSubmitElRequests   bool `yaml:"showSubmitElRequests" envconfig:"FRONTEND_SHOW_SUBMIT_EL_REQUESTS"`
 	} `yaml:"frontend"`
 
+	Api struct {
+		Enabled     bool     `yaml:"enabled" envconfig:"API_ENABLED"`
+		CorsOrigins []string `yaml:"corsOrigins" envconfig:"API_CORS_ORIGINS"`
+	} `yaml:"api"`
+
 	RateLimit struct {
 		Enabled    bool `yaml:"enabled" envconfig:"RATELIMIT_ENABLED"`
 		ProxyCount uint `yaml:"proxyCount" envconfig:"RATELIMIT_PROXY_COUNT"`
@@ -94,6 +99,8 @@ type Config struct {
 		SyncEpochCooldown               uint   `yaml:"syncEpochCooldown" envconfig:"INDEXER_SYNC_EPOCH_COOLDOWN"`
 		MaxParallelValidatorSetRequests uint   `yaml:"maxParallelValidatorSetRequests" envconfig:"INDEXER_MAX_PARALLEL_VALIDATOR_SET_REQUESTS"`
 		PubkeyCachePath                 string `yaml:"pubkeyCachePath" envconfig:"INDEXER_PUBKEY_CACHE_PATH"`
+
+		BadChainRoots []string `yaml:"badChainRoots" envconfig:"INDEXER_BAD_CHAIN_ROOTS"`
 	} `yaml:"indexer"`
 
 	TxSignature struct {

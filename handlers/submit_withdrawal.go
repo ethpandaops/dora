@@ -136,7 +136,7 @@ func handleSubmitWithdrawalPageDataAjax(w http.ResponseWriter, r *http.Request) 
 			}
 
 			withdrawable := false
-			if validator.Validator.ActivationEpoch < beacon.FarFutureEpoch && validator.Validator.ActivationEpoch+phase0.Epoch(chainSpecs.ShardCommitteePeriod) > chainState.CurrentEpoch() {
+			if validator.Validator.ActivationEpoch < beacon.FarFutureEpoch && validator.Validator.ActivationEpoch+phase0.Epoch(chainSpecs.ShardCommitteePeriod) < chainState.CurrentEpoch() {
 				withdrawable = true
 			}
 
