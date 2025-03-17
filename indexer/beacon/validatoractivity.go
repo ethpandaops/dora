@@ -187,11 +187,7 @@ func (cache *validatorActivityCache) cleanupLoop() {
 
 func (cache *validatorActivityCache) cleanupCache() {
 	chainState := cache.indexer.consensusPool.GetChainState()
-	currentEpoch := chainState.CurrentEpoch()
-	cutOffEpoch := phase0.Epoch(0)
-	if currentEpoch > phase0.Epoch(cache.indexer.activityHistoryLength) {
-		cutOffEpoch = currentEpoch - phase0.Epoch(cache.indexer.activityHistoryLength)
-	}
+	cutOffEpoch := cache.getCutOffEpoch()
 
 	cache.activityMutex.Lock()
 	defer cache.activityMutex.Unlock()
@@ -214,7 +210,7 @@ func (cache *validatorActivityCache) cleanupCache() {
 
 				// copy last element to current index
 				cutOffLength++
-				if i != activityLength-cutOffLength-1 {
+				if i != activityLength-cutOffLength-1 && cutOffLength < activityLength {
 					recentActivity[i] = recentActivity[activityLength-cutOffLength-1]
 				}
 			}

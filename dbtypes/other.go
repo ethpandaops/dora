@@ -1,6 +1,9 @@
 package dbtypes
 
-import v1 "github.com/attestantio/go-eth2-client/api/v1"
+import (
+	v1 "github.com/attestantio/go-eth2-client/api/v1"
+	"github.com/attestantio/go-eth2-client/spec/phase0"
+)
 
 type AssignedSlot struct {
 	Slot     uint64 `db:"slot"`
@@ -54,17 +57,18 @@ type MevBlockFilter struct {
 }
 
 type DepositTxFilter struct {
-	MinIndex      uint64
-	MaxIndex      uint64
-	Address       []byte
-	TargetAddress []byte
-	PublicKey     []byte
-	PublicKeys    [][]byte
-	ValidatorName string
-	MinAmount     uint64
-	MaxAmount     uint64
-	WithOrphaned  uint8
-	WithValid     uint8
+	MinIndex          uint64
+	MaxIndex          uint64
+	Address           []byte
+	TargetAddress     []byte
+	PublicKey         []byte
+	PublicKeys        [][]byte
+	WithdrawalAddress []byte
+	ValidatorName     string
+	MinAmount         uint64
+	MaxAmount         uint64
+	WithOrphaned      uint8
+	WithValid         uint8
 }
 
 type DepositFilter struct {
@@ -171,8 +175,10 @@ const (
 type ValidatorFilter struct {
 	MinIndex          *uint64
 	MaxIndex          *uint64
+	Indices           []phase0.ValidatorIndex
 	PubKey            []byte
 	WithdrawalAddress []byte
+	WithdrawalCreds   []byte
 	ValidatorName     string
 	Status            []v1.ValidatorState
 

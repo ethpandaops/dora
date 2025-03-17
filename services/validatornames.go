@@ -129,6 +129,8 @@ func (vn *ValidatorNames) getDefaultValidatorNames() string {
 		return "~internal/sepolia.names.yml"
 	case "holesky":
 		return "~internal/holesky.names.yml"
+	case "hoodi":
+		return "~internal/hoodi.names.yml"
 	}
 
 	return ""
@@ -234,6 +236,10 @@ func (vn *ValidatorNames) GetValidatorName(index uint64) string {
 	name := vn.namesByIndex[index]
 	if name != nil {
 		return name.name
+	}
+
+	if vn.resolvedNamesByIndex == nil {
+		return ""
 	}
 
 	name = vn.resolvedNamesByIndex[index]
