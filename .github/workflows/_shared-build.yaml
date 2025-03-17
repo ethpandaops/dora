@@ -90,7 +90,7 @@ jobs:
     - name: Set up go
       uses: actions/setup-go@v4
       with:
-        go-version: 1.23.x
+        go-version: 1.24.x
     
     # setup project dependencies
     - name: Get dependencies
@@ -131,7 +131,7 @@ jobs:
     - name: Set up go
       uses: actions/setup-go@v4
       with:
-        go-version: 1.23.x
+        go-version: 1.24.x
 
     # setup cross build libs
     - name: Get cross build dependencies
@@ -178,7 +178,7 @@ jobs:
     - name: Set up go
       uses: actions/setup-go@v4
       with:
-        go-version: 1.23.x
+        go-version: 1.24.x
 
     # setup project dependencies
     - name: Get dependencies
@@ -219,7 +219,7 @@ jobs:
     - name: Set up go
       uses: actions/setup-go@v4
       with:
-        go-version: 1.23.x
+        go-version: 1.24.x
 
     # setup project dependencies
     - name: Get dependencies
@@ -260,7 +260,7 @@ jobs:
     - name: Set up go
       uses: actions/setup-go@v4
       with:
-        go-version: 1.23.x
+        go-version: 1.24.x
 
     # setup project dependencies
     - name: Get dependencies
