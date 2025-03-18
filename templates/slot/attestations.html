@@ -57,12 +57,12 @@
           <span class="validator-label validator-name" data-bs-toggle="tooltip" data-bs-placement="top" data-bind="attr: {'data-bs-title': $data}">
             <i class="fas fa-male mr-2"></i>
             <a data-bind="attr: {href: '/validator/' + $data}">
-              <!-- ko if: $root.getValidatorName($data) -->
+              {{ html "<!-- ko if: $root.getValidatorName($data) -->" }}
               <span data-bind="text: $root.getValidatorName($data) + ' (' + $data + ')'"></span>
-              <!-- /ko -->
-              <!-- ko ifnot: $root.getValidatorName($data) -->
+              {{ html "<!-- /ko -->" }}
+              {{ html "<!-- ko ifnot: $root.getValidatorName($data) -->" }}
               <span data-bind="text: $data"></span>
-              <!-- /ko -->
+              {{ html "<!-- /ko -->" }}
             </a>
           </span>
           {{ html "<!-- /ko -->" }}
