@@ -97,66 +97,6 @@ func (e *S3Engine) writeObjectMetadata(metadata *objectMetadata) []byte {
 	return data
 }
 
-func (e *S3Engine) GetBlockHeader(slot uint64, root []byte) ([]byte, uint64, error) {
-	key := e.getObjectKey(root, slot)
-
-	obj, err := e.client.GetObject(context.Background(), e.bucket, key, minio.GetObjectOptions{})
-	if err != nil {
-		if minio.ToErrorResponse(err).Code == "NoSuchKey" {
-			return nil, 0, nil
-		}
-		return nil, 0, fmt.Errorf("failed to get object: %w", err)
-	}
-	defer obj.Close()
-
-	// Read version (first 8 bytes)
-	versionBytes := make([]byte, 8)
-	_, err = obj.Read(versionBytes)
-	if err != nil {
-		return nil, 0, fmt.Errorf("failed to read version: %w", err)
-	}
-	version := binary.BigEndian.Uint64(versionBytes)
-
-	// Read the rest (header data)
-	var headerData bytes.Buffer
-	_, err = headerData.ReadFrom(obj)
-	if err != nil {
-		return nil, 0, fmt.Errorf("failed to read header data: %w", err)
-	}
-
-	return headerData.Bytes(), version, nil
-}
-
-func (e *S3Engine) GetBlockBody(slot uint64, root []byte, parser func(uint64, []byte) (interface{}, error)) (interface{}, error) {
-	key := e.getObjectKey(root, slot)
-
-	obj, err := e.client.GetObject(context.Background(), e.bucket, key, minio.GetObjectOptions{})
-	if err != nil {
-		if minio.ToErrorResponse(err).Code == "NoSuchKey" {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("failed to get object: %w", err)
-	}
-	defer obj.Close()
-
-	// Read version
-	versionBytes := make([]byte, 8)
-	_, err = obj.Read(versionBytes)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read version: %w", err)
-	}
-	version := binary.BigEndian.Uint64(versionBytes)
-
-	// Read body data
-	var bodyData bytes.Buffer
-	_, err = bodyData.ReadFrom(obj)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read body data: %w", err)
-	}
-
-	return parser(version, bodyData.Bytes())
-}
-
 func (e *S3Engine) GetBlock(ctx context.Context, slot uint64, root []byte, parseBlock func(uint64, []byte) (interface{}, error)) (*types.BlockData, error) {
 	key := e.getObjectKey(root, slot)
 
