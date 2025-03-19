@@ -186,7 +186,7 @@
                     </td>
                     <td>
                       {{- if $request.ValidatorValid }}
-                        {{ formatValidator $request.ValidatorIndex $request.ValidatorName }}
+                        {{ formatValidatorWithIndex $request.ValidatorIndex $request.ValidatorName }}
                       {{- else }}
                         <div class="d-flex">
                           <span class="flex-grow-1 text-truncate" style="max-width: 150px;" data-bs-toggle="tooltip" title="pubkey not in validator set">0x{{ printf "%x" $request.PublicKey }}</span>

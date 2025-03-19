@@ -220,6 +220,7 @@ const DepositEntry = (props: IDepositEntryProps): React.ReactElement => {
       functionName: "deposit",
       args: args,
       value: BigInt(props.deposit.amount) * BigInt(10 ** 9),
+      gas: 150000n,
     }).then(tx => {
       console.log(tx);
     }).catch(error => {

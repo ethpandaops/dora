@@ -166,16 +166,16 @@ func (indexer *Indexer) computeCanonicalChain() bool {
 		// just get latest block
 		latestBlocks := indexer.blockCache.getLatestBlocks(10, nil)
 		checkedForks := make(map[ForkKey]bool)
-		for _, headBlock := range latestBlocks {
-			if checkedForks[headBlock.forkId] {
+		for _, block := range latestBlocks {
+			if checkedForks[block.forkId] {
 				continue
 			}
 
-			checkedForks[headBlock.forkId] = true
+			checkedForks[block.forkId] = true
 
 			isBadRoot := false
 			for _, badRoot := range indexer.badChainRoots {
-				if indexer.blockCache.isCanonicalBlock(badRoot, headBlock.Root) {
+				if indexer.blockCache.isCanonicalBlock(badRoot, block.Root) {
 					isBadRoot = true
 					break
 				}
@@ -185,7 +185,7 @@ func (indexer *Indexer) computeCanonicalChain() bool {
 				continue
 			}
 
-			forkVotes, epochParticipation := indexer.aggregateForkVotes(headBlock.forkId, aggregateEpochs)
+			forkVotes, epochParticipation := indexer.aggregateForkVotes(block.forkId, aggregateEpochs)
 			participationStr := make([]string, len(epochParticipation))
 			for i, p := range epochParticipation {
 				participationStr[i] = fmt.Sprintf("%.2f%%", p)
@@ -193,16 +193,16 @@ func (indexer *Indexer) computeCanonicalChain() bool {
 
 			indexer.logger.Infof(
 				"fallback fork %v votes in last %v epochs: %v ETH (%v), head: %v (%v)",
-				headBlock.forkId,
+				block.forkId,
 				aggregateEpochs,
 				forkVotes/EtherGweiFactor,
 				strings.Join(participationStr, ", "),
-				headBlock.Slot,
-				headBlock.Root.String(),
+				block.Slot,
+				block.Root.String(),
 			)
 
 			chainHeads = []*ChainHead{{
-				HeadBlock:             headBlock,
+				HeadBlock:             block,
 				AggregatedHeadVotes:   forkVotes,
 				PerEpochVotingPercent: epochParticipation,
 			}}
@@ -229,6 +229,10 @@ func (indexer *Indexer) computeCanonicalChain() bool {
 
 		return int(headB.HeadBlock.Slot - headA.HeadBlock.Slot)
 	})
+
+	if headBlock == nil && len(chainHeads) > 0 {
+		headBlock = chainHeads[0].HeadBlock
+	}
 
 	return true
 }
