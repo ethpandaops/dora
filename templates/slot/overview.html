@@ -58,7 +58,7 @@
     {{ if ne .Slot 0 }}
       <div class="row border-bottom p-2 mx-0">
         <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="A chosen validator by the beacon chain to propose the next block">Proposer:</span></div>
-        <div class="col-md-10">{{ formatValidator .Proposer .ProposerName }}</div>
+        <div class="col-md-10">{{ formatValidatorWithIndex .Proposer .ProposerName }}</div>
       </div>
     {{ end }}
 
