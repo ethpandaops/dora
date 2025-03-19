@@ -199,6 +199,14 @@ func (indexer *Indexer) GetOrphanedBlockByRoot(blockRoot phase0.Root) (*Block, e
 	block.SetHeader(header)
 	block.SetBlock(blockBody)
 
+	if len(orphanedBlock.PayloadSSZ) > 0 {
+		payload, err := unmarshalVersionedSignedExecutionPayloadEnvelopeSSZ(indexer.dynSsz, orphanedBlock.PayloadVer, orphanedBlock.PayloadSSZ)
+		if err != nil {
+			return nil, fmt.Errorf("could not restore orphaned block payload %v [%x] from db: %v", header.Message.Slot, orphanedBlock.Root, err)
+		}
+		block.SetExecutionPayload(payload)
+	}
+
 	return block, nil
 }
 
