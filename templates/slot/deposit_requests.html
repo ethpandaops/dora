@@ -22,7 +22,7 @@
             </td>
             <td>
               {{- if $deposit.Exists }}
-                {{ formatValidator $deposit.ValidatorIndex $deposit.ValidatorName }}
+                {{ formatValidatorWithIndex $deposit.ValidatorIndex $deposit.ValidatorName }}
               {{- else }}
                 ?
               {{- end }}

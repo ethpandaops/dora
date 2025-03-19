@@ -3,6 +3,7 @@ package beacon
 import (
 	"bytes"
 	"fmt"
+	"slices"
 	"sort"
 	"sync"
 
@@ -149,6 +150,9 @@ func (cache *forkCache) getParentForkIds(forkId ForkKey) []ForkKey {
 			cache.parentIdCacheMiss++
 		}
 
+		if slices.Contains(parentForks, parentForkId) {
+			break
+		}
 		parentForks = append(parentForks, parentForkId)
 	}
 

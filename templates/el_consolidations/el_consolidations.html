@@ -192,7 +192,7 @@
                     </td>
                     <td>
                       {{- if $request.SourceValidatorValid }}
-                        {{ formatValidator $request.SourceValidatorIndex $request.SourceValidatorName }}
+                        {{ formatValidatorWithIndex $request.SourceValidatorIndex $request.SourceValidatorName }}
                       {{- else }}
                         <div class="d-flex">
                           <span class="flex-grow-1 text-truncate" style="max-width: 150px;" data-bs-toggle="tooltip" title="pubkey not in validator set">0x{{ printf "%x" $request.SourcePublicKey }}</span>
@@ -204,7 +204,7 @@
                     </td>
                     <td>
                       {{- if $request.TargetValidatorValid }}
-                        {{ formatValidator $request.TargetValidatorIndex $request.TargetValidatorName }}
+                        {{ formatValidatorWithIndex $request.TargetValidatorIndex $request.TargetValidatorName }}
                       {{- else }}
                         <div class="d-flex">
                           <span class="flex-grow-1 text-truncate" style="max-width: 150px;" data-bs-toggle="tooltip" title="pubkey not in validator set">0x{{ printf "%x" $request.TargetPublicKey }}</span>
