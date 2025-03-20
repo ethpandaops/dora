@@ -20,7 +20,7 @@
             </td>
             <td>
               {{- if $withdrawalreq.Exists }}
-                {{ formatValidator $withdrawalreq.ValidatorIndex $withdrawalreq.ValidatorName }}
+                {{ formatValidatorWithIndex $withdrawalreq.ValidatorIndex $withdrawalreq.ValidatorName }}
               {{- else }}
                 ?
               {{- end }}
