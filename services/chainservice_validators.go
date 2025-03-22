@@ -58,6 +58,9 @@ func (bs *ChainService) GetValidatorLiveness(validatorIndex phase0.ValidatorInde
 	}
 
 	validatorActivity, _ := bs.beaconIndexer.GetValidatorActivityCount(validatorIndex, latestEpoch)
+	if validatorActivity > uint64(lookbackEpochs) {
+		validatorActivity = uint64(lookbackEpochs)
+	}
 
 	return validatorActivity
 }
