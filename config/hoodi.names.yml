@@ -38,11 +38,11 @@
 910000-924999: "bloxroute"
 925000-954999: "kiln"
 955000-959999: "launchnodes"
-960000-964999: "ef-security"
+960000-964999: "commit-boost"
 965000-969999: "unused"
 970000-974999: "unused"
 975000-979999: "unused"
-980000-984999: "unused"
+980000-984999: "ef-security"
 985000-1059999: "attestant"
 
 "withdrawal:0x4473dCDDbf77679A643BdB654dbd86D67F8d32f2": "Lido"
