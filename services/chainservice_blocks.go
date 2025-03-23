@@ -69,7 +69,7 @@ func (bs *ChainService) GetSlotDetailsByBlockroot(ctx context.Context, blockroot
 
 	loadBlockHeader := func() error {
 		if clients == nil {
-			clients := bs.beaconIndexer.GetReadyClientsByBlockRoot(blockroot, false)
+			clients = bs.beaconIndexer.GetReadyClientsByBlockRoot(blockroot, false)
 			if len(clients) == 0 {
 				clients = bs.beaconIndexer.GetReadyClients(true)
 			}
