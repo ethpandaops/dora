@@ -265,3 +265,11 @@ func (cs *ChainState) GetValidatorChurnLimit(validatorCount uint64) uint64 {
 
 	return adaptable
 }
+
+func (cs *ChainState) IsEip7732Enabled(epoch phase0.Epoch) bool {
+	if cs.specs == nil {
+		return false
+	}
+
+	return cs.specs.Eip7732ForkEpoch != nil && phase0.Epoch(*cs.specs.Eip7732ForkEpoch) <= epoch
+}
