@@ -34,8 +34,10 @@ type ChainSpec struct {
 	DenebForkEpoch                        *uint64           `yaml:"DENEB_FORK_EPOCH"`
 	ElectraForkVersion                    phase0.Version    `yaml:"ELECTRA_FORK_VERSION" check-if-fork:"ElectraForkEpoch"`
 	ElectraForkEpoch                      *uint64           `yaml:"ELECTRA_FORK_EPOCH"   check-if-fork:"ElectraForkEpoch"`
-	Eip7594ForkVersion                    phase0.Version    `yaml:"EIP7594_FORK_VERSION" check-if-fork:"Eip7594ForkEpoch"`
-	Eip7594ForkEpoch                      *uint64           `yaml:"EIP7594_FORK_EPOCH"   check-if-fork:"Eip7594ForkEpoch"`
+	FuluForkVersion                       phase0.Version    `yaml:"FULU_FORK_VERSION" check-if-fork:"FuluForkEpoch"`
+	FuluForkEpoch                         *uint64           `yaml:"FULU_FORK_EPOCH"`
+	Eip7805ForkVersion                    phase0.Version    `yaml:"EIP7805_FORK_VERSION" check-if-fork:"Eip7805ForkEpoch"`
+	Eip7805ForkEpoch                      *uint64           `yaml:"EIP7805_FORK_EPOCH"`
 	SecondsPerSlot                        time.Duration     `yaml:"SECONDS_PER_SLOT"`
 	SlotsPerEpoch                         uint64            `yaml:"SLOTS_PER_EPOCH"`
 	EpochsPerHistoricalVector             uint64            `yaml:"EPOCHS_PER_HISTORICAL_VECTOR"`
@@ -67,9 +69,9 @@ type ChainSpec struct {
 	ShardCommitteePeriod                  uint64            `yaml:"SHARD_COMMITTEE_PERIOD"`
 
 	// EIP7594: PeerDAS
-	NumberOfColumns              *uint64 `yaml:"NUMBER_OF_COLUMNS"                check-if-fork:"Eip7594ForkEpoch"`
-	DataColumnSidecarSubnetCount *uint64 `yaml:"DATA_COLUMN_SIDECAR_SUBNET_COUNT" check-if-fork:"Eip7594ForkEpoch"`
-	CustodyRequirement           *uint64 `yaml:"CUSTODY_REQUIREMENT"              check-if-fork:"Eip7594ForkEpoch"`
+	NumberOfColumns              *uint64 `yaml:"NUMBER_OF_COLUMNS"                check-if-fork:"FuluForkEpoch"`
+	DataColumnSidecarSubnetCount *uint64 `yaml:"DATA_COLUMN_SIDECAR_SUBNET_COUNT" check-if-fork:"FuluForkEpoch"`
+	CustodyRequirement           *uint64 `yaml:"CUSTODY_REQUIREMENT"              check-if-fork:"FuluForkEpoch"`
 
 	// additional dora specific specs
 	WhiskForkEpoch *uint64
