@@ -64,28 +64,28 @@ jobs:
         script: |
           try {
             var snapshotTag = "snapshot";
-            var snapshotRelease = await github.repos.getReleaseByTag({
+            var snapshotRelease = await github.rest.repos.getReleaseByTag({
               owner: context.repo.owner,
               repo: context.repo.repo,
               tag: snapshotTag
             });
             if(snapshotRelease && snapshotRelease.data && snapshotRelease.data.tag_name == snapshotTag) {
               console.log("delete previous snapshot release");
-              await github.repos.deleteRelease({
+              await github.rest.repos.deleteRelease({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 release_id: snapshotRelease.data.id
               });
             }
 
-            var snapshotRef = await github.git.getRef({
+            var snapshotRef = await github.rest.git.getRef({
               owner: context.repo.owner,
               repo: context.repo.repo,
               ref: "tags/" + snapshotTag
             });
             if(snapshotRef && snapshotRef.data && snapshotRef.data.ref) {
               if(snapshotRef.data.object.sha !== context.sha) {
-                await github.git.updateRef({
+                await github.rest.git.updateRef({
                   owner: context.repo.owner,
                   repo: context.repo.repo,
                   ref: "tags/" + snapshotTag,
@@ -94,7 +94,7 @@ jobs:
               }
             }
             else {
-              await github.git.createRef({
+              await github.rest.git.createRef({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 ref: "tags/" + snapshotTag,
