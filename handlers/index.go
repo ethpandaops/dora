@@ -156,13 +156,43 @@ func buildIndexPageData() (*models.IndexPageData, time.Duration) {
 	pageData.EnteringValidatorCount = activationQueueLength
 	pageData.ExitingValidatorCount = exitQueueLength
 
-	pageData.ValidatorsPerEpoch = chainState.GetValidatorChurnLimit(pageData.ActiveValidatorCount)
-	pageData.ValidatorsPerDay = pageData.ValidatorsPerEpoch * 225
-	depositQueueTime := float64(pageData.EnteringValidatorCount) / float64(pageData.ValidatorsPerDay)
-	if depositQueueTime > 0 {
-		depositQueueDays, depositQueueFractionalDays := math.Modf(depositQueueTime)
-		depositQueueHours := int(depositQueueFractionalDays * 24)
-		pageData.NewDepositProcessAfter = fmt.Sprintf("%d days and %d hours", int(depositQueueDays), depositQueueHours)
+	if specs.ElectraForkEpoch != nil && *specs.ElectraForkEpoch <= uint64(currentEpoch) {
+		// electra deposit queue
+		depositQueue := services.GlobalBeaconService.GetBeaconIndexer().GetLatestDepositQueue(nil)
+		if depositQueue != nil {
+			depositAmount := phase0.Gwei(0)
+			validatorCount := uint64(0)
+
+			for _, deposit := range depositQueue {
+				depositAmount += deposit.Amount
+				_, found := services.GlobalBeaconService.GetValidatorIndexByPubkey(deposit.Pubkey)
+				if !found {
+					validatorCount++
+				}
+			}
+
+			pageData.EnteringValidatorCount += validatorCount
+			pageData.EnteringEtherAmount = uint64(depositAmount)
+			pageData.EtherChurnPerEpoch = chainState.GetActivationExitChurnLimit(pageData.TotalEligibleEther)
+			pageData.EtherChurnPerDay = pageData.EtherChurnPerEpoch * 225
+
+			depositQueueTime := float64(depositAmount) / float64(pageData.EtherChurnPerDay)
+			if depositQueueTime > 0 {
+				depositQueueDays, depositQueueFractionalDays := math.Modf(depositQueueTime)
+				depositQueueHours := int(depositQueueFractionalDays * 24)
+				pageData.NewDepositProcessAfter = fmt.Sprintf("%d days and %d hours", int(depositQueueDays), depositQueueHours)
+			}
+		}
+	} else {
+		// pre-electra
+		pageData.ValidatorsPerEpoch = chainState.GetValidatorChurnLimit(pageData.ActiveValidatorCount)
+		pageData.ValidatorsPerDay = pageData.ValidatorsPerEpoch * 225
+		depositQueueTime := float64(pageData.EnteringValidatorCount) / float64(pageData.ValidatorsPerDay)
+		if depositQueueTime > 0 {
+			depositQueueDays, depositQueueFractionalDays := math.Modf(depositQueueTime)
+			depositQueueHours := int(depositQueueFractionalDays * 24)
+			pageData.NewDepositProcessAfter = fmt.Sprintf("%d days and %d hours", int(depositQueueDays), depositQueueHours)
+		}
 	}
 
 	networkGenesis, _ := services.GlobalBeaconService.GetGenesis()
