@@ -29,8 +29,8 @@ require (
 	github.com/protolambda/zrnt v0.34.1
 	github.com/protolambda/ztyp v0.2.2
 	github.com/prysmaticlabs/go-bitfield v0.0.0-20240618144021-706c95b2dd15
-	github.com/prysmaticlabs/prysm/v5 v5.3.1
-	github.com/rs/zerolog v1.33.0
+	github.com/prysmaticlabs/prysm/v5 v5.3.2
+	github.com/rs/zerolog v1.34.0
 	github.com/sirupsen/logrus v1.9.3
 	github.com/syndtr/goleveldb v1.0.1-0.20210819022825-2ae1ddf74ef7
 	github.com/tdewolff/minify v2.3.6+incompatible

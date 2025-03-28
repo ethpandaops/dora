@@ -265,3 +265,29 @@ func (cs *ChainState) GetValidatorChurnLimit(validatorCount uint64) uint64 {
 
 	return adaptable
 }
+
+func (cs *ChainState) GetBalanceChurnLimit(totalActiveBalance uint64) uint64 {
+	if cs.specs == nil {
+		return 0
+	}
+
+	balanceChurnLimit := totalActiveBalance / cs.specs.ChurnLimitQuotient
+	if balanceChurnLimit < cs.specs.MinPerEpochChurnLimitElectra {
+		balanceChurnLimit = cs.specs.MinPerEpochChurnLimitElectra
+	}
+
+	return balanceChurnLimit - (balanceChurnLimit % cs.specs.EffectiveBalanceIncrement)
+}
+
+func (cs *ChainState) GetActivationExitChurnLimit(totalActiveBalance uint64) uint64 {
+	if cs.specs == nil {
+		return 0
+	}
+
+	balanceChurnLimit := cs.GetBalanceChurnLimit(totalActiveBalance)
+	if balanceChurnLimit > cs.specs.MaxPerEpochActivationExitChurnLimit {
+		return cs.specs.MaxPerEpochActivationExitChurnLimit
+	}
+
+	return balanceChurnLimit
+}

@@ -18,9 +18,12 @@ type IndexPageData struct {
 	CurrentEpochProgress    float64   `json:"cur_epoch_prog"`
 	ActiveValidatorCount    uint64    `json:"active_val"`
 	EnteringValidatorCount  uint64    `json:"entering_val"`
+	EnteringEtherAmount     uint64    `json:"entering_ether"`
 	ExitingValidatorCount   uint64    `json:"exiting_val"`
 	ValidatorsPerEpoch      uint64    `json:"churn_epoch"`
+	EtherChurnPerEpoch      uint64    `json:"churn_ether"`
 	ValidatorsPerDay        uint64    `json:"churn_day"`
+	EtherChurnPerDay        uint64    `json:"churn_ether_day"`
 	TotalEligibleEther      uint64    `json:"eligible"`
 	AverageValidatorBalance uint64    `json:"avg_balance"`
 	NewDepositProcessAfter  string    `json:"queue_delay"`
