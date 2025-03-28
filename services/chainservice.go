@@ -11,6 +11,7 @@ import (
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/jmoiron/sqlx"
 
+	"github.com/ethpandaops/dora/blockdb"
 	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/dora/clients/execution"
 	"github.com/ethpandaops/dora/clients/sshtunnel"
@@ -130,6 +131,24 @@ func (cs *ChainService) StartService() error {
 		executionIndexerCtx.AddClientInfo(client, endpoint.Priority, endpoint.Archive)
 	}
 
+	// initialize blockdb if configured
+	switch utils.Config.BlockDb.Engine {
+	case "pebble":
+		err := blockdb.InitWithPebble(utils.Config.BlockDb.Pebble)
+		if err != nil {
+			return fmt.Errorf("failed initializing pebble blockdb: %v", err)
+		}
+		cs.logger.Infof("Pebble blockdb initialized at %v", utils.Config.BlockDb.Pebble.Path)
+	case "s3":
+		err := blockdb.InitWithS3(utils.Config.BlockDb.S3)
+		if err != nil {
+			return fmt.Errorf("failed initializing s3 blockdb: %v", err)
+		}
+		cs.logger.Infof("S3 blockdb initialized at %v", utils.Config.BlockDb.S3.Bucket)
+	default:
+		cs.logger.Infof("Blockdb disabled")
+	}
+
 	// reset sync state if configured
 	if utils.Config.Indexer.ResyncFromEpoch != nil {
 		err := db.RunDBTransaction(func(tx *sqlx.Tx) error {
@@ -200,6 +219,10 @@ func (bs *ChainService) StopService() {
 	if bs.beaconIndexer != nil {
 		bs.beaconIndexer.StopIndexer()
 		bs.beaconIndexer = nil
+	}
+
+	if blockdb.GlobalBlockDb != nil {
+		blockdb.GlobalBlockDb.Close()
 	}
 }
 

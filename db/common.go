@@ -129,21 +129,21 @@ func mustInitPgsql(writer *types.PgsqlDatabaseConfig, reader *types.PgsqlDatabas
 	return dbConnWriter, dbConnReader
 }
 
-func MustInitDB() {
-	if utils.Config.Database.Engine == "sqlite" {
-		sqliteConfig := (*types.SqliteDatabaseConfig)(&utils.Config.Database.Sqlite)
+func MustInitDB(dbcfg *types.DatabaseConfig) {
+	if dbcfg.Engine == "sqlite" {
+		sqliteConfig := (*types.SqliteDatabaseConfig)(dbcfg.Sqlite)
 		DbEngine = dbtypes.DBEngineSqlite
 		writerDb, ReaderDb = mustInitSqlite(sqliteConfig)
-	} else if utils.Config.Database.Engine == "pgsql" {
-		readerConfig := (*types.PgsqlDatabaseConfig)(&utils.Config.Database.Pgsql)
-		writerConfig := (*types.PgsqlDatabaseConfig)(&utils.Config.Database.PgsqlWriter)
+	} else if dbcfg.Engine == "pgsql" {
+		readerConfig := (*types.PgsqlDatabaseConfig)(dbcfg.Pgsql)
+		writerConfig := (*types.PgsqlDatabaseConfig)(dbcfg.PgsqlWriter)
 		if writerConfig.Host == "" {
 			writerConfig = readerConfig
 		}
 		DbEngine = dbtypes.DBEnginePgsql
 		writerDb, ReaderDb = mustInitPgsql(writerConfig, readerConfig)
 	} else {
-		logger.Fatalf("unknown database engine type: %s", utils.Config.Database.Engine)
+		logger.Fatalf("unknown database engine type: %s", dbcfg.Engine)
 	}
 }
 
