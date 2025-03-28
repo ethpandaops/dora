@@ -8,6 +8,7 @@ import (
 	"sort"
 
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
+	"github.com/attestantio/go-eth2-client/spec/electra"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/dora/db"
@@ -269,6 +270,21 @@ func (indexer *Indexer) GetEpochStats(epoch phase0.Epoch, overrideForkId *ForkKe
 	}
 
 	return bestEpochStats
+}
+
+// GetLatestDepositQueue returns the latest deposit queue for the given epoch and optional fork ID override.
+func (indexer *Indexer) GetLatestDepositQueue(overrideForkId *ForkKey) []*electra.PendingDeposit {
+	canonicalHead := indexer.GetCanonicalHead(overrideForkId)
+	if canonicalHead == nil {
+		return nil
+	}
+
+	epochState := indexer.epochCache.getLatestReadyEpochStateForBlockRoot(canonicalHead.Root)
+	if epochState == nil {
+		return nil
+	}
+
+	return epochState.pendingDeposits
 }
 
 // GetParentForkIds returns the parent fork ids of the given fork.
