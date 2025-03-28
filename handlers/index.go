@@ -163,11 +163,16 @@ func buildIndexPageData() (*models.IndexPageData, time.Duration) {
 			depositAmount := phase0.Gwei(0)
 			validatorCount := uint64(0)
 
+			newValidators := map[phase0.BLSPubKey]interface{}{}
 			for _, deposit := range depositQueue {
 				depositAmount += deposit.Amount
 				_, found := services.GlobalBeaconService.GetValidatorIndexByPubkey(deposit.Pubkey)
 				if !found {
-					validatorCount++
+					_, isNew := newValidators[deposit.Pubkey]
+					if !isNew {
+						newValidators[deposit.Pubkey] = nil
+						validatorCount++
+					}
 				}
 			}
 
