@@ -1,8 +1,10 @@
 package handlers
 
 import (
+	"bytes"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -39,10 +41,34 @@ func QueuedDeposits(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	var minIndex uint64
+	var maxIndex uint64
+	var publickey string
+	var minAmount uint64
+	var maxAmount uint64
+
+	if urlArgs.Has("f") {
+		if urlArgs.Has("f.mini") {
+			minIndex, _ = strconv.ParseUint(urlArgs.Get("f.mini"), 10, 64)
+		}
+		if urlArgs.Has("f.maxi") {
+			maxIndex, _ = strconv.ParseUint(urlArgs.Get("f.maxi"), 10, 64)
+		}
+		if urlArgs.Has("f.pubkey") {
+			publickey = urlArgs.Get("f.pubkey")
+		}
+		if urlArgs.Has("f.mina") {
+			minAmount, _ = strconv.ParseUint(urlArgs.Get("f.mina"), 10, 64)
+		}
+		if urlArgs.Has("f.maxa") {
+			maxAmount, _ = strconv.ParseUint(urlArgs.Get("f.maxa"), 10, 64)
+		}
+	}
+
 	var pageError error
 	pageError = services.GlobalCallRateLimiter.CheckCallLimit(r, 2)
 	if pageError == nil {
-		data.Data, pageError = getQueuedDepositsPageData(pageIdx, pageSize)
+		data.Data, pageError = getQueuedDepositsPageData(pageIdx, pageSize, minIndex, maxIndex, publickey, minAmount, maxAmount)
 	}
 	if pageError != nil {
 		handlePageError(w, r, pageError)
@@ -54,11 +80,17 @@ func QueuedDeposits(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func getQueuedDepositsPageData(pageIdx uint64, pageSize uint64) (*models.QueuedDepositsPageData, error) {
-	pageData := &models.QueuedDepositsPageData{}
-	pageCacheKey := fmt.Sprintf("queued_deposits:%v:%v", pageIdx, pageSize)
+func getQueuedDepositsPageData(pageIdx uint64, pageSize uint64, minIndex uint64, maxIndex uint64, publickey string, minAmount uint64, maxAmount uint64) (*models.QueuedDepositsPageData, error) {
+	pageData := &models.QueuedDepositsPageData{
+		FilterMinIndex:  minIndex,
+		FilterMaxIndex:  maxIndex,
+		FilterPubKey:    publickey,
+		FilterMinAmount: minAmount,
+		FilterMaxAmount: maxAmount,
+	}
+	pageCacheKey := fmt.Sprintf("queued_deposits:%v:%v:%v:%v:%v:%v:%v", pageIdx, pageSize, minIndex, maxIndex, publickey, minAmount, maxAmount)
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(_ *services.FrontendCacheProcessingPage) interface{} {
-		return buildQueuedDepositsPageData(pageIdx, pageSize)
+		return buildQueuedDepositsPageData(pageIdx, pageSize, minIndex, maxIndex, publickey, minAmount, maxAmount)
 	})
 	if pageErr == nil && pageRes != nil {
 		resData, resOk := pageRes.(*models.QueuedDepositsPageData)
@@ -70,15 +102,23 @@ func getQueuedDepositsPageData(pageIdx uint64, pageSize uint64) (*models.QueuedD
 	return pageData, pageErr
 }
 
-func buildQueuedDepositsPageData(pageIdx uint64, pageSize uint64) *models.QueuedDepositsPageData {
-	pageData := &models.QueuedDepositsPageData{}
+func buildQueuedDepositsPageData(pageIdx uint64, pageSize uint64, minIndex uint64, maxIndex uint64, publickey string, minAmount uint64, maxAmount uint64) *models.QueuedDepositsPageData {
+	specs := services.GlobalBeaconService.GetChainState().GetSpecs()
+	pageData := &models.QueuedDepositsPageData{
+		FilterMinIndex:      minIndex,
+		FilterMaxIndex:      maxIndex,
+		FilterPubKey:        publickey,
+		FilterMinAmount:     minAmount,
+		FilterMaxAmount:     maxAmount,
+		MaxEffectiveBalance: specs.MaxEffectiveBalance,
+	}
 
 	if pageIdx == 1 {
 		pageData.IsDefaultPage = true
 	}
 
-	if pageSize > 100 {
-		pageSize = 100
+	if pageSize > 1000 {
+		pageSize = 1000
 	}
 	pageData.PageSize = pageSize
 	pageData.CurrentPageIndex = pageIdx
@@ -86,18 +126,16 @@ func buildQueuedDepositsPageData(pageIdx uint64, pageSize uint64) *models.Queued
 		pageData.PrevPageIndex = pageIdx - 1
 	}
 
-	canonicalHead := services.GlobalBeaconService.GetBeaconIndexer().GetCanonicalHead(nil)
-	if canonicalHead == nil {
-		return pageData
-	}
-
-	queue := services.GlobalBeaconService.GetIndexedDepositQueue(canonicalHead)
-	if queue == nil {
-		return pageData
-	}
+	filteredQueue := services.GlobalBeaconService.GetFilteredQueuedDeposits(&services.QueuedDepositFilter{
+		MinIndex:  minIndex,
+		MaxIndex:  maxIndex,
+		PublicKey: common.FromHex(publickey),
+		MinAmount: minAmount,
+		MaxAmount: maxAmount,
+	})
 
 	// Calculate total pages
-	totalDeposits := uint64(len(queue))
+	totalDeposits := uint64(len(filteredQueue))
 	pageData.TotalPages = totalDeposits / pageSize
 	if totalDeposits%pageSize > 0 {
 		pageData.TotalPages++
@@ -108,10 +146,27 @@ func buildQueuedDepositsPageData(pageIdx uint64, pageSize uint64) *models.Queued
 	}
 
 	// Calculate page links
-	pageData.FirstPageLink = fmt.Sprintf("/validators/queued_deposits?c=%v", pageData.PageSize)
-	pageData.PrevPageLink = fmt.Sprintf("/validators/queued_deposits?c=%v&p=%v", pageData.PageSize, pageData.PrevPageIndex)
-	pageData.NextPageLink = fmt.Sprintf("/validators/queued_deposits?c=%v&p=%v", pageData.PageSize, pageData.NextPageIndex)
-	pageData.LastPageLink = fmt.Sprintf("/validators/queued_deposits?c=%v&p=%v", pageData.PageSize, pageData.LastPageIndex)
+	filterArgs := url.Values{}
+	if minIndex > 0 {
+		filterArgs.Add("f.mini", fmt.Sprintf("%v", minIndex))
+	}
+	if maxIndex > 0 {
+		filterArgs.Add("f.maxi", fmt.Sprintf("%v", maxIndex))
+	}
+	if publickey != "" {
+		filterArgs.Add("f.pubkey", publickey)
+	}
+	if minAmount > 0 {
+		filterArgs.Add("f.mina", fmt.Sprintf("%v", minAmount))
+	}
+	if maxAmount > 0 {
+		filterArgs.Add("f.maxa", fmt.Sprintf("%v", maxAmount))
+	}
+
+	pageData.FirstPageLink = fmt.Sprintf("/validators/queued_deposits?f&%v&c=%v", filterArgs.Encode(), pageData.PageSize)
+	pageData.PrevPageLink = fmt.Sprintf("/validators/queued_deposits?f&%v&c=%v&p=%v", filterArgs.Encode(), pageData.PageSize, pageData.PrevPageIndex)
+	pageData.NextPageLink = fmt.Sprintf("/validators/queued_deposits?f&%v&c=%v&p=%v", filterArgs.Encode(), pageData.PageSize, pageData.NextPageIndex)
+	pageData.LastPageLink = fmt.Sprintf("/validators/queued_deposits?f&%v&c=%v&p=%v", filterArgs.Encode(), pageData.PageSize, pageData.LastPageIndex)
 
 	// Calculate slice for current page
 	start := (pageIdx - 1) * pageSize
@@ -122,7 +177,7 @@ func buildQueuedDepositsPageData(pageIdx uint64, pageSize uint64) *models.Queued
 
 	depositIndexes := make([]uint64, 0)
 	for i := start; i < end; i++ {
-		queueEntry := queue[i]
+		queueEntry := filteredQueue[i]
 		if queueEntry.DepositIndex == nil {
 			continue
 		}
@@ -134,9 +189,12 @@ func buildQueuedDepositsPageData(pageIdx uint64, pageSize uint64) *models.Queued
 		txDetailsMap[txDetail.Index] = txDetail
 	}
 
+	g2AtInfinity := bytes.Repeat([]byte{0x00}, 96)
+	g2AtInfinity[0] = 0xc0
+
 	// Process only deposits for current page
 	for i := start; i < end; i++ {
-		queueEntry := queue[i]
+		queueEntry := filteredQueue[i]
 
 		depositData := &models.QueuedDepositsPageDataDeposit{
 			QueuePosition:         queueEntry.QueuePos,
@@ -197,6 +255,10 @@ func buildQueuedDepositsPageData(pageIdx uint64, pageSize uint64) *models.Queued
 					TxHash:      fmt.Sprintf("%#x", tx.TxHash),
 				}
 			}
+		}
+
+		if queueEntry.PendingDeposit.Slot == 0 && queueEntry.PendingDeposit.WithdrawalCredentials[0] == 0x02 && bytes.Equal(queueEntry.PendingDeposit.Signature[:], g2AtInfinity) {
+			depositData.ExcessDeposit = true
 		}
 
 		pageData.Deposits = append(pageData.Deposits, depositData)

@@ -14,23 +14,94 @@
       </nav>
     </div>
 
-    <div class="card mt-2">
-      <div class="card-body px-0 py-3">
-        <div class="row mt-3">
-          <div class="col-8 col-md-6 table-pagesize">
-            <label class="px-2">
-              <span>Show </span>
-              <select name="c" aria-controls="deposits" class="custom-select custom-select-sm form-control form-control-sm" onchange="window.location.href='/validators/queued_deposits?c=' + this.value">
-                <option value="{{ .PageSize }}" selected>{{ .PageSize }}</option>
-                <option value="10">10</option>
-                <option value="25">25</option>
-                <option value="50">50</option>
-                <option value="100">100</option>
-              </select>
-              <span> entries per page</span>
-            </label>
+    <div id="header-placeholder" style="height:35px;"></div>
+    <form action="/validators/queued_deposits" method="get" id="depositsFilterForm">
+      <input type="hidden" name="f">
+      <div class="card mt-2">
+        <div class="card-header">
+          Deposit Filters
+        </div>
+        <div class="card-body p-2">
+          <div class="row">
+            <div class="col-sm-12 col-md-6">
+              <div class="container">
+                <div class="row mt-1">
+                  <div class="col-sm-12 col-md-6 col-lg-4">
+                    Deposit Index
+                  </div>
+                  <div class="col-sm-12 col-md-6 col-lg-8 d-flex">
+                    <div class="flex-grow-1">
+                      <input name="f.mini" type="number" class="form-control" placeholder="Min Index" aria-label="Min Index" aria-describedby="basic-addon1" value="{{ if gt .FilterMinIndex 0 }}{{ .FilterMinIndex }}{{ end }}">
+                    </div>
+                    <div class="text-center filter-amount-separator">
+                      -
+                    </div>
+                    <div class="flex-grow-1">
+                      <input name="f.maxi" type="number" class="form-control" placeholder="Max Index" aria-label="Max Index" aria-describedby="basic-addon1" value="{{ if gt .FilterMaxIndex 0 }}{{ .FilterMaxIndex }}{{ end }}">
+                    </div>
+                  </div>
+                </div>
+                <div class="row mt-1">
+                  <div class="col-sm-12 col-md-6 col-lg-4">
+                    Public Key
+                  </div>
+                  <div class="col-sm-12 col-md-6 col-lg-8">
+                    <input name="f.pubkey" type="text" class="form-control" placeholder="Public Key" aria-label="Public Key" aria-describedby="basic-addon1" value="{{ .FilterPubKey }}">
+                  </div>
+                </div>
+                <div class="row mt-1">
+                  <div class="col-sm-12 col-md-6 col-lg-4">
+                    Deposit Amount
+                  </div>
+                  <div class="col-sm-12 col-md-6 col-lg-8 d-flex">
+                    <div class="flex-grow-1">
+                      <input name="f.mina" type="number" class="form-control" placeholder="Min Amount" aria-label="Min Amount" aria-describedby="basic-addon1" value="{{ if gt .FilterMinAmount 0 }}{{ .FilterMinAmount }}{{ end }}">
+                    </div>
+                    <div class="text-center filter-amount-separator">
+                      -
+                    </div>
+                    <div class="flex-grow-1">
+                      <input name="f.maxa" type="number" class="form-control" placeholder="Max Amount" aria-label="Max Amount" aria-describedby="basic-addon1" value="{{ if gt .FilterMaxAmount 0 }}{{ .FilterMaxAmount }}{{ end }}">
+                    </div>
+                    <div class="text-center filter-amount-separator">
+                      ETH
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="row mt-3">
+            <div class="col-8 col-md-6 table-pagesize">
+              <label class="px-2">
+                <span>Show </span>
+                <select name="c" aria-controls="deposits" class="custom-select custom-select-sm form-control form-control-sm">
+                  <option value="{{ .PageSize }}" selected>{{ .PageSize }}</option>
+                  <option value="10">10</option>
+                  <option value="25">25</option>
+                  <option value="50">50</option>
+                  <option value="100">100</option>
+                </select>
+                <span> entries per page</span>
+              </label>
+            </div>
+            <div class="col-4 col-md-6">
+              <div class="container text-end">
+                <button type="submit" class="btn btn-primary">Apply Filter</button>
+              </div>
+            </div>
           </div>
         </div>
+      </div>
+    </form>
+    <script type="text/javascript">
+      $('#depositsFilterForm').submit(function () {
+        $(this).find('input[type="text"],input[type="number"]').filter(function () { return !this.value; }).prop('name', '');
+      });
+    </script>
+
+    <div class="card mt-2">
+      <div class="card-body px-0 py-3">
         <div class="table-responsive px-0 py-1">
           <table class="table table-nobr" id="deposits">
             <thead>
@@ -47,6 +118,7 @@
             </thead>
             {{ if gt .DepositCount 0 }}
               <tbody>
+                {{ $max_effective_balance := .MaxEffectiveBalance }}
                 {{ range $i, $deposit := .Deposits }}
                   <tr>
                     <td>{{ $deposit.QueuePosition }}</td>
@@ -54,8 +126,10 @@
                     <td>
                       {{ if $deposit.HasIndex }}
                         <span class="badge rounded-pill text-bg-primary" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="This deposit was triggered via a validator deposit transaction">{{ $deposit.Index }}</span>
+                      {{ else if $deposit.ExcessDeposit }}
+                        <span class="badge rounded-pill text-bg-warning" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="This deposit was triggered by a 0x01 to 0x02 withdrawal credential change, where the source validator already had a balance above {{ formatFullEthFromGwei $max_effective_balance }}">excess</span>
                       {{ else }}
-                        <span class="badge rounded-pill text-bg-secondary" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="This deposit was triggered via a pre-electra deposit or system operation">no</span>
+                        <span class="badge rounded-pill text-bg-secondary" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="The source of this deposit is unknown, it might be a pre-electra deposit">unknown</span>
                       {{ end }}</td>
                     <td>
                       <div class="d-flex">
@@ -71,7 +145,7 @@
                         </div>
                       </div>
                     </td>
-                    <td>{{ formatFullEthFromGwei $deposit.Amount }}</td>
+                    <td>{{ formatEthFromGwei $deposit.Amount }}</td>
                     <td>
                       <span>
                         {{ formatWithdawalCredentials $deposit.Withdrawalcredentials }}

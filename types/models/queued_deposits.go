@@ -6,10 +6,18 @@ import (
 
 // QueuedDepositsPageData is a struct to hold info for the queued_deposits page
 type QueuedDepositsPageData struct {
-	Deposits     []*QueuedDepositsPageDataDeposit `json:"deposits"`
-	DepositCount uint64                           `json:"deposit_count"`
-	DepositsFrom uint64                           `json:"deposits_from"`
-	DepositsTo   uint64                           `json:"deposits_to"`
+	Deposits            []*QueuedDepositsPageDataDeposit `json:"deposits"`
+	DepositCount        uint64                           `json:"deposit_count"`
+	DepositsFrom        uint64                           `json:"deposits_from"`
+	DepositsTo          uint64                           `json:"deposits_to"`
+	MaxEffectiveBalance uint64                           `json:"max_effective_balance"`
+
+	// Filter fields
+	FilterMinIndex  uint64 `json:"filter_mini"`
+	FilterMaxIndex  uint64 `json:"filter_maxi"`
+	FilterPubKey    string `json:"filter_publickey"`
+	FilterMinAmount uint64 `json:"filter_mina"`
+	FilterMaxAmount uint64 `json:"filter_maxa"`
 
 	// Add paging fields
 	IsDefaultPage    bool   `json:"default_page"`
@@ -28,6 +36,7 @@ type QueuedDepositsPageData struct {
 type QueuedDepositsPageDataDeposit struct {
 	Index                 uint64                                  `json:"index"`
 	HasIndex              bool                                    `json:"has_index"`
+	ExcessDeposit         bool                                    `json:"excess_deposit"`
 	PublicKey             []byte                                  `json:"pubkey"`
 	Withdrawalcredentials []byte                                  `json:"wtdcreds"`
 	Amount                uint64                                  `json:"amount"`

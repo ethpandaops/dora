@@ -41,6 +41,7 @@ type ValidatorPageData struct {
 	ExitReasonTargetName     string                                `json:"exit_reason_target_name"`
 	ExitReasonTxHash         []byte                                `json:"exit_reason_tx_hash"`
 	ExitReasonTxDetails      *ValidatorPageDataWithdrawalTxDetails `json:"exit_reason_tx_details"`
+	QueuedDepositCount       uint64                                `json:"queued_deposit_count"`
 
 	TabView         string `json:"tab_view"`
 	ElectraIsActive bool   `json:"electra_is_active"`

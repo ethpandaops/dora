@@ -528,3 +528,51 @@ func (bs *ChainService) getLastIncludedDeposit(headRoot phase0.Root) *dbtypes.De
 
 	return nil
 }
+
+type QueuedDepositFilter struct {
+	MinIndex  uint64
+	MaxIndex  uint64
+	NoIndex   bool
+	PublicKey []byte
+	MinAmount uint64
+	MaxAmount uint64
+}
+
+func (bs *ChainService) GetFilteredQueuedDeposits(filter *QueuedDepositFilter) []*IndexedDepositQueue {
+	canonicalHead := bs.beaconIndexer.GetCanonicalHead(nil)
+	if canonicalHead == nil {
+		return nil
+	}
+
+	queue := bs.GetIndexedDepositQueue(canonicalHead)
+	if queue == nil {
+		return nil
+	}
+
+	// Filter queue entries based on criteria
+	filteredQueue := make([]*IndexedDepositQueue, 0)
+	for _, entry := range queue {
+		if filter.MinIndex > 0 && (entry.DepositIndex == nil || *entry.DepositIndex < filter.MinIndex) {
+			continue
+		}
+		if filter.MaxIndex > 0 && (entry.DepositIndex == nil || *entry.DepositIndex > filter.MaxIndex) {
+			continue
+		}
+		if filter.NoIndex && entry.DepositIndex != nil {
+			continue
+		}
+		if len(filter.PublicKey) > 0 && !bytes.Equal(filter.PublicKey, entry.PendingDeposit.Pubkey[:]) {
+			continue
+		}
+		if filter.MinAmount > 0 && uint64(entry.PendingDeposit.Amount) < filter.MinAmount {
+			continue
+		}
+		if filter.MaxAmount > 0 && uint64(entry.PendingDeposit.Amount) > filter.MaxAmount {
+			continue
+		}
+
+		filteredQueue = append(filteredQueue, entry)
+	}
+
+	return filteredQueue
+}

@@ -1,5 +1,12 @@
 {{ define "recentDeposits" }}
 <div class="card">
+  {{ if gt .QueuedDepositCount 0 }}
+  <div class="alert alert-warning m-3">
+    <i class="fas fa-exclamation-triangle me-2"></i>
+    Found {{ .QueuedDepositCount }} additional queued deposit{{ if gt .QueuedDepositCount 1 }}s{{ end }} for this validator. 
+    <a href="/validators/queued_deposits?f&f.pubkey=0x{{ printf "%x" .PublicKey }}" class="alert-link">View queued deposits</a>
+  </div>
+  {{ end }}
   <div class="table-responsive">
     <table class="table table-nobr" id="recent-deposits">
       <thead>

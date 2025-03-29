@@ -135,6 +135,14 @@ func buildValidatorPageData(validatorIndex uint64, tabView string) (*models.Vali
 		TabView:             tabView,
 		ElectraIsActive:     specs.ElectraForkEpoch != nil && uint64(chainState.CurrentEpoch()) >= *specs.ElectraForkEpoch,
 	}
+
+	// Check for queued deposits
+	filteredQueue := services.GlobalBeaconService.GetFilteredQueuedDeposits(&services.QueuedDepositFilter{
+		PublicKey: validator.Validator.PublicKey[:],
+		NoIndex:   true,
+	})
+	pageData.QueuedDepositCount = uint64(len(filteredQueue))
+
 	if strings.HasPrefix(validator.Status.String(), "pending") {
 		pageData.State = "Pending"
 	} else if validator.Status == v1.ValidatorStateActiveOngoing {
