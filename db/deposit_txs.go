@@ -232,7 +232,7 @@ func GetDepositTxsFiltered(offset uint64, limit uint32, canonicalForkIds []uint6
 		null AS withdrawalcredentials,
 		0 AS amount, 
 		null AS signature, 
-		false AS valid_signature, 
+		0 AS valid_signature, 
 		false AS orphaned, 
 		null AS tx_hash, 
 		null AS tx_sender, 
