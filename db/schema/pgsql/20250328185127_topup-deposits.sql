@@ -2,7 +2,7 @@
 -- +goose StatementBegin
 
 ALTER TABLE public."deposit_txs"
-RENAME TO public."deposit_txs_old";
+RENAME TO "deposit_txs_old";
 
 CREATE TABLE IF NOT EXISTS deposit_txs (
     deposit_index BIGINT NOT NULL,
