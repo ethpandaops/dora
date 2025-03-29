@@ -211,9 +211,11 @@ func GetDepositsFiltered(offset uint64, limit uint32, canonicalForkIds []uint64,
 
 	if txFilter != nil {
 		if txFilter.WithValid == 0 {
-			fmt.Fprint(&sql, " AND deposit_txs.valid_signature IN (1, 2)")
+			fmt.Fprintf(&sql, " %v deposit_txs.valid_signature IN (1, 2)", filterOp)
+			filterOp = "AND"
 		} else if txFilter.WithValid == 2 {
-			fmt.Fprint(&sql, " AND deposit_txs.valid_signature = 0")
+			fmt.Fprintf(&sql, " %v deposit_txs.valid_signature = 0", filterOp)
+			filterOp = "AND"
 		}
 
 		if len(txFilter.WithdrawalAddress) > 0 {

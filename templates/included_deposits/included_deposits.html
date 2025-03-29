@@ -31,13 +31,13 @@
                   </div>
                   <div class="col-sm-12 col-md-6 col-lg-8 d-flex">
                     <div class="flex-grow-1">
-                      <input name="f.mina" type="number" class="form-control" placeholder="Min Index" aria-label="Min Index" aria-describedby="basic-addon1" value="{{ if gt .FilterMinIndex 0 }}{{ .FilterMinIndex }}{{ end }}">
+                      <input name="f.mini" type="number" class="form-control" placeholder="Min Index" aria-label="Min Index" aria-describedby="basic-addon1" value="{{ if gt .FilterMinIndex 0 }}{{ .FilterMinIndex }}{{ end }}">
                     </div>
                     <div class="text-center filter-amount-separator">
                       -
                     </div>
                     <div class="flex-grow-1">
-                      <input name="f.maxa" type="number" class="form-control" placeholder="Max Index" aria-label="Max Index" aria-describedby="basic-addon1" value="{{ if gt .FilterMaxIndex 0 }}{{ .FilterMaxIndex }}{{ end }}">
+                      <input name="f.maxi" type="number" class="form-control" placeholder="Max Index" aria-label="Max Index" aria-describedby="basic-addon1" value="{{ if gt .FilterMaxIndex 0 }}{{ .FilterMaxIndex }}{{ end }}">
                     </div>
                   </div>
                 </div>
@@ -241,6 +241,15 @@
                               data-bs-placement="top" 
                               data-bs-title="Queue Position: {{ .QueuePosition }} (Est. Time: {{ formatRecentTimeShort .EstimatedTime }})">
                             Queued
+                        </span>
+                      {{ end }}
+
+                      {{ if not .TransactionDetails.ValidSignature }}
+                        <span class="badge rounded-pill text-bg-danger" 
+                              data-bs-toggle="tooltip" 
+                              data-bs-placement="top" 
+                              data-bs-title="The deposit signature is invalid. This could indicate a potential issue with the deposit transaction.">
+                          <i class="fas fa-exclamation-triangle"></i>
                         </span>
                       {{ end }}
                     </td>

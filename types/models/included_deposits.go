@@ -62,10 +62,11 @@ type IncludedDepositsPageDataDeposit struct {
 }
 
 type IncludedDepositsPageDataDepositTxDetails struct {
-	BlockNumber uint64 `json:"block"`
-	BlockHash   string `json:"block_hash"`
-	BlockTime   uint64 `json:"block_time"`
-	TxOrigin    string `json:"tx_origin"`
-	TxTarget    string `json:"tx_target"`
-	TxHash      string `json:"tx_hash"`
+	BlockNumber    uint64 `json:"block"`
+	BlockHash      string `json:"block_hash"`
+	BlockTime      uint64 `json:"block_time"`
+	TxOrigin       string `json:"tx_origin"`
+	TxTarget       string `json:"tx_target"`
+	TxHash         string `json:"tx_hash"`
+	ValidSignature bool   `json:"valid_signature"`
 }

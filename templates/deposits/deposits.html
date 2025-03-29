@@ -194,6 +194,15 @@
                     Queued
                   </span>
                 {{ end }}
+
+                {{ if not $deposit.TransactionDetails.ValidSignature }}
+                  <span class="badge rounded-pill text-bg-danger" 
+                        data-bs-toggle="tooltip" 
+                        data-bs-placement="top" 
+                        data-bs-title="The deposit signature is invalid. This could indicate a potential issue with the deposit transaction.">
+                    <i class="fas fa-exclamation-triangle"></i>
+                  </span>
+                {{ end }}
               </td>
               <td>
                 {{- $deposit.ValidatorStatus -}}
