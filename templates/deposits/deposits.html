@@ -21,7 +21,7 @@
             <div class="card">
               <div class="card-body text-center">
                 <h6 class="card-title text-muted mb-1">Entering Validators</h6>
-                <h4 class="mb-0">{{ formatAddCommas .EnteringValidatorCount }}</h4>
+                <h4 class="mb-0" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ .EnteringValidatorCount }} new validator keys entering the validator set">{{ formatAddCommas .EnteringValidatorCount }}</h4>
               </div>
             </div>
           </div>
@@ -29,7 +29,7 @@
             <div class="card">
               <div class="card-body text-center">
                 <h6 class="card-title text-muted mb-1">Queued ETH</h6>
-                <h4 class="mb-0">{{ formatFullEthFromGwei .EnteringEtherAmount }}</h4>
+                <h4 class="mb-0" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ formatFullEthFromGwei .EnteringEtherAmount }} ETH queued for deposit (including TopUp deposits)">{{ formatFullEthFromGwei .EnteringEtherAmount }}</h4>
               </div>
             </div>
           </div>

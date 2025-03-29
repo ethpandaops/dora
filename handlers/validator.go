@@ -1,9 +1,10 @@
 package handlers
 
 import (
+	"bytes"
 	"encoding/hex"
+	"errors"
 	"fmt"
-	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -15,7 +16,6 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
 
-	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/indexer/beacon"
 	"github.com/ethpandaops/dora/services"
@@ -78,6 +78,9 @@ func Validator(w http.ResponseWriter, r *http.Request) {
 	if pageError == nil {
 		data.Data, pageError = getValidatorPageData(uint64(validator.Index), tabView)
 	}
+	if data.Data == nil {
+		pageError = errors.New("validator not found")
+	}
 	if pageError != nil {
 		handlePageError(w, r, pageError)
 		return
@@ -116,6 +119,9 @@ func buildValidatorPageData(validatorIndex uint64, tabView string) (*models.Vali
 	chainState := services.GlobalBeaconService.GetChainState()
 	specs := chainState.GetSpecs()
 	validator := services.GlobalBeaconService.GetValidatorByIndex(phase0.ValidatorIndex(validatorIndex), true)
+	if validator == nil {
+		return nil, 0
+	}
 
 	pageData := &models.ValidatorPageData{
 		CurrentEpoch:        uint64(chainState.CurrentEpoch()),
@@ -303,130 +309,96 @@ func buildValidatorPageData(validatorIndex uint64, tabView string) (*models.Vali
 		// first get recent included deposits
 		pageData.RecentDeposits = make([]*models.ValidatorPageDataDeposit, 0)
 
-		// helper to load tx details for included deposits
-		buildTxDetails := func(depositTx *dbtypes.DepositTx) *models.ValidatorPageDataDepositTxDetails {
-			txDetails := &models.ValidatorPageDataDepositTxDetails{
-				BlockNumber: depositTx.BlockNumber,
-				BlockHash:   fmt.Sprintf("0x%x", depositTx.BlockRoot),
-				BlockTime:   depositTx.BlockTime,
-				TxOrigin:    common.Address(depositTx.TxSender).Hex(),
-				TxTarget:    common.Address(depositTx.TxTarget).Hex(),
-				TxHash:      fmt.Sprintf("0x%x", depositTx.TxHash),
-			}
-
-			return txDetails
-		}
-
-		depositSyncState := dbtypes.DepositIndexerState{}
-		db.GetExplorerState("indexer.depositstate", &depositSyncState)
-
-		depositsData, totalIncludedDeposits := services.GlobalBeaconService.GetIncludedDepositsByFilter(&dbtypes.DepositFilter{
-			PublicKey: validator.Validator.PublicKey[:],
+		depositsData, totalIncludedDeposits := services.GlobalBeaconService.GetDepositRequestsByFilter(&services.CombinedDepositRequestFilter{
+			Filter: &dbtypes.DepositTxFilter{
+				PublicKey:    validator.Validator.PublicKey[:],
+				WithValid:    1,
+				WithOrphaned: 1,
+			},
 		}, 0, 100)
 
 		if totalIncludedDeposits > 10 {
 			pageData.AdditionalIncludedDepositCount = totalIncludedDeposits - 10
 		}
 
-		initiatedFilter := &dbtypes.DepositTxFilter{
-			PublicKey: validator.Validator.PublicKey[:],
-		}
-
-		if len(depositsData) > 0 {
-			maxIndex := uint64(0)
-			found := false
-			for _, deposit := range depositsData {
-				if deposit.Index != nil && *deposit.Index > maxIndex {
-					maxIndex = *deposit.Index
-					found = true
-				}
-			}
-			if found {
-				initiatedFilter.MinIndex = maxIndex + 1
-			}
-		}
-
-		initiatedDeposits, totalInitiatedDeposits, _ := db.GetDepositTxsFilteredLegacy(0, 10, depositSyncState.FinalBlock, initiatedFilter)
-		if totalInitiatedDeposits > 10 {
-			pageData.AdditionalInitiatedDepositCount = totalInitiatedDeposits - 10
-		}
-
-		for _, deposit := range initiatedDeposits {
-			txStatus := uint64(1)
-			if deposit.Orphaned {
-				txStatus = uint64(2)
-			}
-
-			pageData.RecentDeposits = append(pageData.RecentDeposits, &models.ValidatorPageDataDeposit{
-				Index:           uint64(deposit.Index),
-				HasIndex:        true,
-				Time:            time.Unix(int64(deposit.BlockTime), 0),
-				Amount:          deposit.Amount,
-				WithdrawalCreds: deposit.WithdrawalCredentials,
-				TxStatus:        txStatus,
-				TxDetails:       buildTxDetails(deposit),
-				TxHash:          deposit.TxHash,
-			})
-		}
-
-		minDepositIndex := uint64(math.MaxUint64)
-		maxDepositIndex := uint64(0)
-		recentDepositsMap := make(map[uint64]*models.ValidatorPageDataDeposit)
-
 		for _, deposit := range depositsData {
-			blockStatus := uint64(1)
-			if deposit.Orphaned {
-				blockStatus = uint64(2)
-			}
-
 			depositData := &models.ValidatorPageDataDeposit{
-				IsIncluded:      true,
-				Slot:            uint64(deposit.SlotNumber),
-				Time:            chainState.SlotToTime(phase0.Slot(deposit.SlotNumber)),
-				Amount:          deposit.Amount,
-				WithdrawalCreds: deposit.WithdrawalCredentials,
-				Status:          blockStatus,
+				PublicKey:        deposit.PublicKey(),
+				WithdrawalCreds:  deposit.WithdrawalCredentials(),
+				Amount:           deposit.Amount(),
+				Time:             chainState.SlotToTime(phase0.Slot(deposit.Request.SlotNumber)),
+				Slot:             deposit.Request.SlotNumber,
+				SlotRoot:         deposit.Request.SlotRoot,
+				Orphaned:         deposit.RequestOrphaned,
+				DepositorAddress: deposit.SourceAddress(),
 			}
 
-			if deposit.Index != nil {
+			if deposit.Request != nil {
 				depositData.HasIndex = true
-				depositData.Index = *deposit.Index
+				depositData.Index = *deposit.Request.Index
+			}
 
-				if *deposit.Index < minDepositIndex {
-					minDepositIndex = *deposit.Index
-				}
-				if *deposit.Index > maxDepositIndex {
-					maxDepositIndex = *deposit.Index
+			// Add queue status
+			if deposit.IsQueued {
+				depositData.IsQueued = true
+				if !bytes.Equal(deposit.QueueEntry.PendingDeposit.Pubkey[:], deposit.PublicKey()) {
+					logrus.Warnf("queue entry public key mismatch: %x != %x", deposit.QueueEntry.PendingDeposit.Pubkey[:], deposit.PublicKey())
 				}
 
-				recentDepositsMap[*deposit.Index] = depositData
+				depositData.QueuePosition = deposit.QueueEntry.QueuePos
+				depositData.EstimatedTime = deposit.QueueEntry.TimeEstimate
+			}
+
+			// Add validator status
+			if validatorIdx, found := services.GlobalBeaconService.GetValidatorIndexByPubkey(phase0.BLSPubKey(deposit.PublicKey())); !found {
+				depositData.ValidatorStatus = "Deposited"
+				depositData.ValidatorExists = false
+			} else {
+				depositData.ValidatorExists = true
+				depositData.ValidatorIndex = uint64(validatorIdx)
+				depositData.ValidatorName = services.GlobalBeaconService.GetValidatorName(uint64(validatorIdx))
+
+				validator := services.GlobalBeaconService.GetValidatorByIndex(validatorIdx, false)
+				if strings.HasPrefix(validator.Status.String(), "pending") {
+					depositData.ValidatorStatus = "Pending"
+				} else if validator.Status == v1.ValidatorStateActiveOngoing {
+					depositData.ValidatorStatus = "Active"
+					depositData.ShowUpcheck = true
+				} else if validator.Status == v1.ValidatorStateActiveExiting {
+					depositData.ValidatorStatus = "Exiting"
+					depositData.ShowUpcheck = true
+				} else if validator.Status == v1.ValidatorStateActiveSlashed {
+					depositData.ValidatorStatus = "Slashed"
+					depositData.ShowUpcheck = true
+				} else if validator.Status == v1.ValidatorStateExitedUnslashed {
+					depositData.ValidatorStatus = "Exited"
+				} else if validator.Status == v1.ValidatorStateExitedSlashed {
+					depositData.ValidatorStatus = "Slashed"
+				} else {
+					depositData.ValidatorStatus = validator.Status.String()
+				}
+
+				if depositData.ShowUpcheck {
+					depositData.UpcheckActivity = uint8(services.GlobalBeaconService.GetValidatorLiveness(validator.Index, 3))
+					depositData.UpcheckMaximum = uint8(3)
+				}
+			}
+
+			// Add transaction details if available
+			if deposit.Transaction != nil {
+				depositData.HasTransaction = true
+				depositData.TransactionHash = deposit.Transaction.TxHash
+				depositData.TransactionDetails = &models.ValidatorPageDataDepositTxDetails{
+					BlockNumber: deposit.Transaction.BlockNumber,
+					BlockHash:   fmt.Sprintf("%#x", deposit.Transaction.BlockRoot),
+					BlockTime:   deposit.Transaction.BlockTime,
+					TxOrigin:    common.Address(deposit.Transaction.TxSender).Hex(),
+					TxTarget:    common.Address(deposit.Transaction.TxTarget).Hex(),
+					TxHash:      fmt.Sprintf("%#x", deposit.Transaction.TxHash),
+				}
 			}
 
 			pageData.RecentDeposits = append(pageData.RecentDeposits, depositData)
-		}
-
-		if minDepositIndex < math.MaxUint64 {
-			depositTxs, _, _ := db.GetDepositTxsFilteredLegacy(0, 10, depositSyncState.FinalBlock, &dbtypes.DepositTxFilter{
-				MinIndex:  minDepositIndex,
-				MaxIndex:  maxDepositIndex,
-				PublicKey: validator.Validator.PublicKey[:],
-			})
-
-			for _, depositTx := range depositTxs {
-				recentDeposit := recentDepositsMap[depositTx.Index]
-				if recentDeposit == nil {
-					continue
-				}
-
-				txStatus := uint64(1)
-				if depositTx.Orphaned {
-					txStatus = uint64(2)
-				}
-
-				recentDeposit.TxStatus = txStatus
-				recentDeposit.TxDetails = buildTxDetails(depositTx)
-				recentDeposit.TxHash = depositTx.TxHash
-			}
 		}
 
 		pageData.RecentDepositCount = uint64(len(pageData.RecentDeposits))
