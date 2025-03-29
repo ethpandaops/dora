@@ -131,7 +131,7 @@ func handleSubmitDepositPageDataAjax(w http.ResponseWriter, r *http.Request) err
 		depositSyncState := dbtypes.DepositIndexerState{}
 		db.GetExplorerState("indexer.depositstate", &depositSyncState)
 
-		deposits, depositCount, err := db.GetDepositTxsFiltered(0, 1000, depositSyncState.FinalBlock, &dbtypes.DepositTxFilter{
+		deposits, depositCount, err := db.GetDepositTxsFilteredLegacy(0, 1000, depositSyncState.FinalBlock, &dbtypes.DepositTxFilter{
 			PublicKeys:   pubkeys,
 			WithOrphaned: 0,
 		})

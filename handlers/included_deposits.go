@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bytes"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -47,6 +48,8 @@ func IncludedDeposits(w http.ResponseWriter, r *http.Request) {
 	var minAmount uint64
 	var maxAmount uint64
 	var withOrphaned uint64
+	var address string
+	var withValid uint64
 
 	if urlArgs.Has("f") {
 		if urlArgs.Has("f.mini") {
@@ -70,13 +73,20 @@ func IncludedDeposits(w http.ResponseWriter, r *http.Request) {
 		if urlArgs.Has("f.orphaned") {
 			withOrphaned, _ = strconv.ParseUint(urlArgs.Get("f.orphaned"), 10, 64)
 		}
+		if urlArgs.Has("f.address") {
+			address = urlArgs.Get("f.address")
+		}
+		if urlArgs.Has("f.valid") {
+			withValid, _ = strconv.ParseUint(urlArgs.Get("f.valid"), 10, 64)
+		}
 	} else {
 		withOrphaned = 1
+		withValid = 1
 	}
 	var pageError error
 	pageError = services.GlobalCallRateLimiter.CheckCallLimit(r, 2)
 	if pageError == nil {
-		data.Data, pageError = getFilteredIncludedDepositsPageData(pageIdx, pageSize, minIndex, maxIndex, publickey, vname, minAmount, maxAmount, uint8(withOrphaned))
+		data.Data, pageError = getFilteredIncludedDepositsPageData(pageIdx, pageSize, minIndex, maxIndex, publickey, vname, minAmount, maxAmount, uint8(withOrphaned), address, uint8(withValid))
 	}
 	if pageError != nil {
 		handlePageError(w, r, pageError)
@@ -88,11 +98,11 @@ func IncludedDeposits(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func getFilteredIncludedDepositsPageData(pageIdx uint64, pageSize uint64, minIndex uint64, maxIndex uint64, publickey string, vname string, minAmount uint64, maxAmount uint64, withOrphaned uint8) (*models.IncludedDepositsPageData, error) {
+func getFilteredIncludedDepositsPageData(pageIdx uint64, pageSize uint64, minIndex uint64, maxIndex uint64, publickey string, vname string, minAmount uint64, maxAmount uint64, withOrphaned uint8, address string, withValid uint8) (*models.IncludedDepositsPageData, error) {
 	pageData := &models.IncludedDepositsPageData{}
-	pageCacheKey := fmt.Sprintf("included_deposits:%v:%v:%v:%v:%v:%v:%v:%v:%v", pageIdx, pageSize, minIndex, maxIndex, publickey, vname, minAmount, maxAmount, withOrphaned)
+	pageCacheKey := fmt.Sprintf("included_deposits:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v", pageIdx, pageSize, minIndex, maxIndex, publickey, vname, minAmount, maxAmount, withOrphaned, address, withValid)
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(_ *services.FrontendCacheProcessingPage) interface{} {
-		return buildFilteredIncludedDepositsPageData(pageIdx, pageSize, minIndex, maxIndex, publickey, vname, minAmount, maxAmount, withOrphaned)
+		return buildFilteredIncludedDepositsPageData(pageIdx, pageSize, minIndex, maxIndex, publickey, vname, minAmount, maxAmount, withOrphaned, address, withValid)
 	})
 	if pageErr == nil && pageRes != nil {
 		resData, resOk := pageRes.(*models.IncludedDepositsPageData)
@@ -104,7 +114,7 @@ func getFilteredIncludedDepositsPageData(pageIdx uint64, pageSize uint64, minInd
 	return pageData, pageErr
 }
 
-func buildFilteredIncludedDepositsPageData(pageIdx uint64, pageSize uint64, minIndex uint64, maxIndex uint64, publickey string, vname string, minAmount uint64, maxAmount uint64, withOrphaned uint8) *models.IncludedDepositsPageData {
+func buildFilteredIncludedDepositsPageData(pageIdx uint64, pageSize uint64, minIndex uint64, maxIndex uint64, publickey string, vname string, minAmount uint64, maxAmount uint64, withOrphaned uint8, address string, withValid uint8) *models.IncludedDepositsPageData {
 	filterArgs := url.Values{}
 	if minIndex != 0 {
 		filterArgs.Add("f.mini", fmt.Sprintf("%v", minIndex))
@@ -127,6 +137,12 @@ func buildFilteredIncludedDepositsPageData(pageIdx uint64, pageSize uint64, minI
 	if withOrphaned != 0 {
 		filterArgs.Add("f.orphaned", fmt.Sprintf("%v", withOrphaned))
 	}
+	if address != "" {
+		filterArgs.Add("f.address", address)
+	}
+	if withValid != 0 {
+		filterArgs.Add("f.valid", fmt.Sprintf("%v", withValid))
+	}
 
 	pageData := &models.IncludedDepositsPageData{
 		FilterMinIndex:      minIndex,
@@ -136,6 +152,8 @@ func buildFilteredIncludedDepositsPageData(pageIdx uint64, pageSize uint64, minI
 		FilterMinAmount:     minAmount,
 		FilterMaxAmount:     maxAmount,
 		FilterWithOrphaned:  withOrphaned,
+		FilterAddress:       address,
+		FilterWithValid:     withValid,
 	}
 	logrus.Debugf("included_deposits page called: %v:%v [%v,%v,%v,%v,%v,%v]", pageIdx, pageSize, minIndex, maxIndex, publickey, vname, minAmount, maxAmount)
 	if pageIdx == 1 {
@@ -152,41 +170,66 @@ func buildFilteredIncludedDepositsPageData(pageIdx uint64, pageSize uint64, minI
 		pageData.PrevPageIndex = pageIdx - 1
 	}
 
-	// load included deposits
-	depositFilter := &dbtypes.DepositFilter{
-		MinIndex:      minIndex,
-		MaxIndex:      maxIndex,
-		PublicKey:     common.FromHex(publickey),
-		ValidatorName: vname,
-		MinAmount:     minAmount,
-		MaxAmount:     maxAmount,
-		WithOrphaned:  withOrphaned,
+	// Calculate offset from page index
+	pageOffset := (pageIdx - 1) * pageSize
+
+	// Update to use new filter structure
+	depositFilter := &services.CombinedDepositRequestFilter{
+		Filter: &dbtypes.DepositTxFilter{
+			MinIndex:      minIndex,
+			MaxIndex:      maxIndex,
+			PublicKey:     common.FromHex(publickey),
+			ValidatorName: vname,
+			MinAmount:     minAmount,
+			MaxAmount:     maxAmount,
+			WithOrphaned:  withOrphaned,
+			Address:       common.FromHex(address),
+			WithValid:     withValid,
+		},
 	}
 
-	dbDeposits, totalRows := services.GlobalBeaconService.GetIncludedDepositsByFilter(depositFilter, pageIdx-1, uint32(pageSize))
+	// Get deposits using new service function with offset
+	dbDeposits, totalRows := services.GlobalBeaconService.GetDepositRequestsByFilter(depositFilter, pageOffset, uint32(pageSize))
 
 	chainState := services.GlobalBeaconService.GetChainState()
 
 	for _, deposit := range dbDeposits {
 		depositData := &models.IncludedDepositsPageDataDeposit{
-			PublicKey:             deposit.PublicKey,
-			Withdrawalcredentials: deposit.WithdrawalCredentials,
-			Amount:                deposit.Amount,
-			Time:                  chainState.SlotToTime(phase0.Slot(deposit.SlotNumber)),
-			SlotNumber:            deposit.SlotNumber,
-			SlotRoot:              deposit.SlotRoot,
-			Orphaned:              deposit.Orphaned,
-			ValidatorStatus:       "",
+			PublicKey:             deposit.PublicKey(),
+			Withdrawalcredentials: deposit.WithdrawalCredentials(),
+			Amount:                deposit.Amount(),
+			Time:                  chainState.SlotToTime(phase0.Slot(deposit.Request.SlotNumber)),
+			SlotNumber:            deposit.Request.SlotNumber,
+			SlotRoot:              deposit.Request.SlotRoot,
+			Orphaned:              deposit.RequestOrphaned,
+			DepositorAddress:      deposit.SourceAddress(),
 		}
 
-		if deposit.Index != nil {
+		if deposit.Request != nil {
 			depositData.HasIndex = true
-			depositData.Index = *deposit.Index
+			depositData.Index = *deposit.Request.Index
 		}
 
-		if validatorIdx, found := services.GlobalBeaconService.GetValidatorIndexByPubkey(phase0.BLSPubKey(deposit.PublicKey)); !found {
+		// Add queue status
+		if deposit.IsQueued {
+			depositData.IsQueued = true
+			if !bytes.Equal(deposit.QueueEntry.PendingDeposit.Pubkey[:], deposit.PublicKey()) {
+				logrus.Warnf("queue entry public key mismatch: %x != %x", deposit.QueueEntry.PendingDeposit.Pubkey[:], deposit.PublicKey())
+			}
+
+			depositData.QueuePosition = deposit.QueueEntry.QueuePos
+			depositData.EstimatedTime = deposit.QueueEntry.TimeEstimate
+		}
+
+		// Add validator status
+		if validatorIdx, found := services.GlobalBeaconService.GetValidatorIndexByPubkey(phase0.BLSPubKey(deposit.PublicKey())); !found {
 			depositData.ValidatorStatus = "Deposited"
+			depositData.ValidatorExists = false
 		} else {
+			depositData.ValidatorExists = true
+			depositData.ValidatorIndex = uint64(validatorIdx)
+			depositData.ValidatorName = services.GlobalBeaconService.GetValidatorName(uint64(validatorIdx))
+
 			validator := services.GlobalBeaconService.GetValidatorByIndex(validatorIdx, false)
 			if strings.HasPrefix(validator.Status.String(), "pending") {
 				depositData.ValidatorStatus = "Pending"
@@ -210,6 +253,20 @@ func buildFilteredIncludedDepositsPageData(pageIdx uint64, pageSize uint64, minI
 			if depositData.ShowUpcheck {
 				depositData.UpcheckActivity = uint8(services.GlobalBeaconService.GetValidatorLiveness(validator.Index, 3))
 				depositData.UpcheckMaximum = uint8(3)
+			}
+		}
+
+		// Add transaction details if available
+		if deposit.Transaction != nil {
+			depositData.HasTransaction = true
+			depositData.TransactionHash = deposit.Transaction.TxHash
+			depositData.TransactionDetails = &models.IncludedDepositsPageDataDepositTxDetails{
+				BlockNumber: deposit.Transaction.BlockNumber,
+				BlockHash:   fmt.Sprintf("%#x", deposit.Transaction.BlockRoot),
+				BlockTime:   deposit.Transaction.BlockTime,
+				TxOrigin:    common.Address(deposit.Transaction.TxSender).Hex(),
+				TxTarget:    common.Address(deposit.Transaction.TxTarget).Hex(),
+				TxHash:      fmt.Sprintf("%#x", deposit.Transaction.TxHash),
 			}
 		}
 

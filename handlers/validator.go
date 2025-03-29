@@ -346,7 +346,7 @@ func buildValidatorPageData(validatorIndex uint64, tabView string) (*models.Vali
 			}
 		}
 
-		initiatedDeposits, totalInitiatedDeposits, _ := db.GetDepositTxsFiltered(0, 10, depositSyncState.FinalBlock, initiatedFilter)
+		initiatedDeposits, totalInitiatedDeposits, _ := db.GetDepositTxsFilteredLegacy(0, 10, depositSyncState.FinalBlock, initiatedFilter)
 		if totalInitiatedDeposits > 10 {
 			pageData.AdditionalInitiatedDepositCount = totalInitiatedDeposits - 10
 		}
@@ -406,7 +406,7 @@ func buildValidatorPageData(validatorIndex uint64, tabView string) (*models.Vali
 		}
 
 		if minDepositIndex < math.MaxUint64 {
-			depositTxs, _, _ := db.GetDepositTxsFiltered(0, 10, depositSyncState.FinalBlock, &dbtypes.DepositTxFilter{
+			depositTxs, _, _ := db.GetDepositTxsFilteredLegacy(0, 10, depositSyncState.FinalBlock, &dbtypes.DepositTxFilter{
 				MinIndex:  minDepositIndex,
 				MaxIndex:  maxDepositIndex,
 				PublicKey: validator.Validator.PublicKey[:],

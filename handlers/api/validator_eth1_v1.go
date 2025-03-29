@@ -64,7 +64,7 @@ func ApiValidatorByEth1AddressV1(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	deposits, _, err := db.GetDepositTxsFiltered(uint64(offset), uint32(limit), 0, &dbtypes.DepositTxFilter{
+	deposits, _, err := db.GetDepositTxsFilteredLegacy(uint64(offset), uint32(limit), 0, &dbtypes.DepositTxFilter{
 		Address: eth1Address,
 	})
 	if err != nil {
@@ -77,7 +77,7 @@ func ApiValidatorByEth1AddressV1(w http.ResponseWriter, r *http.Request) {
 		index, _ := services.GlobalBeaconService.GetValidatorIndexByPubkey(phase0.BLSPubKey(deposit.PublicKey))
 		data = append(data, &ApiValidatorEth1ResponseV1{
 			PublicKey:      fmt.Sprintf("0x%x", deposit.PublicKey),
-			ValidSignature: deposit.ValidSignature,
+			ValidSignature: deposit.ValidSignature == 1 || deposit.ValidSignature == 2,
 			ValidatorIndex: uint64(index),
 		})
 	}

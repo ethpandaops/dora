@@ -10,6 +10,7 @@ import (
 
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/services"
@@ -92,7 +93,7 @@ func buildDepositsPageData(firstEpoch uint64, pageSize uint64) (*models.Deposits
 			Time:                  time.Unix(int64(depositTx.BlockTime), 0),
 			Block:                 depositTx.BlockNumber,
 			Orphaned:              depositTx.Orphaned,
-			Valid:                 depositTx.ValidSignature,
+			Valid:                 depositTx.ValidSignature == 1 || depositTx.ValidSignature == 2,
 		}
 
 		validatorIndex, found := services.GlobalBeaconService.GetValidatorIndexByPubkey(phase0.BLSPubKey(depositTx.PublicKey))
@@ -129,24 +130,53 @@ func buildDepositsPageData(firstEpoch uint64, pageSize uint64) (*models.Deposits
 	pageData.InitiatedDepositCount = uint64(len(pageData.InitiatedDeposits))
 
 	// load included deposits
-	dbDeposits, _ := services.GlobalBeaconService.GetIncludedDepositsByFilter(&dbtypes.DepositFilter{}, 0, 20)
+	depositFilter := &services.CombinedDepositRequestFilter{
+		Filter: &dbtypes.DepositTxFilter{
+			WithOrphaned: 0,
+		},
+	}
+
+	// Get deposits using new service function with offset
+	dbDeposits, _ := services.GlobalBeaconService.GetDepositRequestsByFilter(depositFilter, 0, uint32(20))
 	for _, deposit := range dbDeposits {
 		depositData := &models.DepositsPageDataIncludedDeposit{
-			PublicKey:             deposit.PublicKey,
-			Withdrawalcredentials: deposit.WithdrawalCredentials,
-			Amount:                deposit.Amount,
-			SlotNumber:            deposit.SlotNumber,
-			SlotRoot:              deposit.SlotRoot,
-			Time:                  chainState.SlotToTime(phase0.Slot(deposit.SlotNumber)),
-			Orphaned:              deposit.Orphaned,
+			PublicKey:             deposit.PublicKey(),
+			Withdrawalcredentials: deposit.WithdrawalCredentials(),
+			Amount:                deposit.Amount(),
+			Time:                  chainState.SlotToTime(phase0.Slot(deposit.Request.SlotNumber)),
+			SlotNumber:            deposit.Request.SlotNumber,
+			SlotRoot:              deposit.Request.SlotRoot,
+			Orphaned:              deposit.RequestOrphaned,
+			DepositorAddress:      deposit.SourceAddress(),
 		}
 
-		if deposit.Index != nil {
+		// Add queue status
+		if deposit.IsQueued {
+			depositData.IsQueued = true
+			depositData.QueuePosition = deposit.QueueEntry.QueuePos
+			depositData.EstimatedTime = deposit.QueueEntry.TimeEstimate
+		}
+
+		if deposit.Request.Index != nil {
 			depositData.HasIndex = true
-			depositData.Index = *deposit.Index
+			depositData.Index = *deposit.Request.Index
 		}
 
-		validatorIndex, found := services.GlobalBeaconService.GetValidatorIndexByPubkey(phase0.BLSPubKey(deposit.PublicKey))
+		// Add transaction details if available
+		if deposit.Transaction != nil {
+			depositData.HasTransaction = true
+			depositData.TransactionDetails = &models.DepositsPageDataIncludedDepositTxDetails{
+				BlockNumber:    deposit.Transaction.BlockNumber,
+				BlockHash:      fmt.Sprintf("%#x", deposit.Transaction.BlockRoot),
+				BlockTime:      deposit.Transaction.BlockTime,
+				TxOrigin:       common.Address(deposit.Transaction.TxSender).Hex(),
+				TxTarget:       common.Address(deposit.Transaction.TxTarget).Hex(),
+				TxHash:         fmt.Sprintf("%#x", deposit.Transaction.TxHash),
+				ValidSignature: deposit.Transaction.ValidSignature == 1 || deposit.Transaction.ValidSignature == 2,
+			}
+		}
+
+		validatorIndex, found := services.GlobalBeaconService.GetValidatorIndexByPubkey(phase0.BLSPubKey(deposit.PublicKey()))
 		if !found {
 			depositData.ValidatorStatus = "Deposited"
 		} else {

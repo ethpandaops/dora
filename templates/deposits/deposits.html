@@ -145,6 +145,7 @@
                 <th>Index</th>
                 <th>Slot</th>
                 <th>Time</th>
+                <th>Depositor</th>
                 <th class="d-none d-md-table-cell">Val<span class="d-none d-lg-inline">idator </span>Key</th>
                 <th>Amount</th>
                 <th class="d-none d-md-table-cell">W<span class="d-none d-lg-inline">ithdrawal</span> Cred</th>
@@ -166,7 +167,27 @@
                     <td>
                       <div class="d-flex">
                         <span class="flex-grow-1 text-truncate" style="max-width: 150px;">
-                          <a href="/validator/0x{{ printf "%x" $deposit.PublicKey }}">0x{{ printf "%x" $deposit.PublicKey }}</a>
+                          {{ if $deposit.DepositorAddress }}
+                            {{ ethAddressLink $deposit.DepositorAddress }}
+                          {{ else }}
+                            ?
+                          {{ end }}
+                        </span>
+                        {{ if $deposit.DepositorAddress }}
+                        <div>
+                          <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ formatEthAddress $deposit.DepositorAddress }}"></i>
+                        </div>
+                        {{ end }}
+                      </div>
+                    </td>
+                    <td>
+                      <div class="d-flex">
+                        <span class="flex-grow-1 text-truncate" style="max-width: 150px;">
+                          {{ if $deposit.ValidatorExists }}
+                            {{ formatValidatorWithIndex $deposit.ValidatorIndex $deposit.ValidatorName }}
+                          {{ else }}
+                            0x{{ printf "%x" $deposit.PublicKey }}
+                          {{ end }}
                         </span>
                         <div>
                           <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $deposit.PublicKey }}"></i>
@@ -185,6 +206,15 @@
                         <span class="badge rounded-pill text-bg-info">Orphaned</span>
                       {{ else }}
                         <span class="badge rounded-pill text-bg-success">Included</span>
+                      {{ end }}
+
+                      {{ if $deposit.IsQueued }}
+                        <span class="badge rounded-pill text-bg-warning" 
+                              data-bs-toggle="tooltip" 
+                              data-bs-placement="top" 
+                              data-bs-title="Queue Position: {{ $deposit.QueuePosition }} (Est. Time: {{ formatRecentTimeShort $deposit.EstimatedTime }})">
+                            Queued
+                        </span>
                       {{ end }}
                     </td>
                     <td>

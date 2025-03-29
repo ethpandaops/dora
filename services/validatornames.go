@@ -168,7 +168,7 @@ func (vn *ValidatorNames) resolveNames() (bool, error) {
 		pageSize := uint64(5000)
 
 		for {
-			deposits, depositCount, _ := db.GetDepositTxsFiltered(offset, uint32(pageSize), 0, &dbtypes.DepositTxFilter{
+			deposits, depositCount, _ := db.GetDepositTxsFilteredLegacy(offset, uint32(pageSize), 0, &dbtypes.DepositTxFilter{
 				Address: address[:],
 			})
 			for _, deposit := range deposits {
@@ -191,7 +191,7 @@ func (vn *ValidatorNames) resolveNames() (bool, error) {
 		pageSize := uint64(5000)
 
 		for {
-			deposits, depositCount, _ := db.GetDepositTxsFiltered(offset, uint32(pageSize), 0, &dbtypes.DepositTxFilter{
+			deposits, depositCount, _ := db.GetDepositTxsFilteredLegacy(offset, uint32(pageSize), 0, &dbtypes.DepositTxFilter{
 				TargetAddress: address[:],
 			})
 			for _, deposit := range deposits {

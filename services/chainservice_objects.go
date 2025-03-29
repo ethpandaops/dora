@@ -115,12 +115,12 @@ func (bs *ChainService) GetIncludedDepositsByFilter(filter *dbtypes.DepositFilte
 
 	if resIdx > int(pageSize) {
 		// all results from cache, just get result count from db
-		_, dbCount, err = db.GetDepositsFiltered(0, 1, uint64(finalizedBlock), filter)
+		_, dbCount, err = db.GetDepositsFilteredLegacy(0, 1, uint64(finalizedBlock), filter)
 	} else if dbPage == 0 {
 		// first page, load first `pagesize-cachedResults` items from db
-		dbObjects, dbCount, err = db.GetDepositsFiltered(0, uint32(dbCacheOffset), uint64(finalizedBlock), filter)
+		dbObjects, dbCount, err = db.GetDepositsFilteredLegacy(0, uint32(dbCacheOffset), uint64(finalizedBlock), filter)
 	} else {
-		dbObjects, dbCount, err = db.GetDepositsFiltered((dbPage-1)*uint64(pageSize)+dbCacheOffset, pageSize, uint64(finalizedBlock), filter)
+		dbObjects, dbCount, err = db.GetDepositsFilteredLegacy((dbPage-1)*uint64(pageSize)+dbCacheOffset, pageSize, uint64(finalizedBlock), filter)
 	}
 
 	if err != nil {
