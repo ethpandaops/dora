@@ -396,6 +396,9 @@ func buildValidatorPageData(validatorIndex uint64, tabView string) (*models.Vali
 					TxTarget:    common.Address(deposit.Transaction.TxTarget).Hex(),
 					TxHash:      fmt.Sprintf("%#x", deposit.Transaction.TxHash),
 				}
+				if deposit.Transaction.ValidSignature == 0 {
+					depositData.InvalidSignature = true
+				}
 			}
 
 			pageData.RecentDeposits = append(pageData.RecentDeposits, depositData)

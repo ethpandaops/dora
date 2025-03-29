@@ -62,19 +62,19 @@ type DepositsPageDataIncludedDeposit struct {
 	DepositorAddress      []byte                                    `json:"depositor_address"`
 	HasTransaction        bool                                      `json:"has_transaction"`
 	TransactionDetails    *DepositsPageDataIncludedDepositTxDetails `json:"tx_details"`
+	InvalidSignature      bool                                      `json:"invalid_signature"`
 	ValidatorExists       bool                                      `json:"validator_exists"`
 	ValidatorIndex        uint64                                    `json:"validator_index"`
 	ValidatorName         string                                    `json:"validator_name"`
 }
 
 type DepositsPageDataIncludedDepositTxDetails struct {
-	BlockNumber    uint64 `json:"block"`
-	BlockHash      string `json:"block_hash"`
-	BlockTime      uint64 `json:"block_time"`
-	TxOrigin       string `json:"tx_origin"`
-	TxTarget       string `json:"tx_target"`
-	TxHash         string `json:"tx_hash"`
-	ValidSignature bool   `json:"valid_signature"`
+	BlockNumber uint64 `json:"block"`
+	BlockHash   string `json:"block_hash"`
+	BlockTime   uint64 `json:"block_time"`
+	TxOrigin    string `json:"tx_origin"`
+	TxTarget    string `json:"tx_target"`
+	TxHash      string `json:"tx_hash"`
 }
 
 type DepositsPageDataQueuedDeposit struct {

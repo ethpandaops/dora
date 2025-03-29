@@ -195,7 +195,7 @@
                   </span>
                 {{ end }}
 
-                {{ if not $deposit.TransactionDetails.ValidSignature }}
+                {{ if $deposit.InvalidSignature }}
                   <span class="badge rounded-pill text-bg-danger" 
                         data-bs-toggle="tooltip" 
                         data-bs-placement="top" 

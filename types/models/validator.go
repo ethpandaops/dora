@@ -105,6 +105,7 @@ type ValidatorPageDataDeposit struct {
 	DepositorAddress   []byte                             `json:"depositor_address"`
 	HasTransaction     bool                               `json:"has_transaction"`
 	TransactionDetails *ValidatorPageDataDepositTxDetails `json:"tx_details"`
+	InvalidSignature   bool                               `json:"invalid_signature"`
 	TransactionHash    []byte                             `json:"tx_hash"`
 	ValidatorExists    bool                               `json:"validator_exists"`
 	ValidatorIndex     uint64                             `json:"validator_index"`

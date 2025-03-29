@@ -245,13 +245,15 @@ func buildDepositsPageData(firstEpoch uint64, pageSize uint64, tabView string) (
 			if deposit.Transaction != nil {
 				depositData.HasTransaction = true
 				depositData.TransactionDetails = &models.DepositsPageDataIncludedDepositTxDetails{
-					BlockNumber:    deposit.Transaction.BlockNumber,
-					BlockHash:      fmt.Sprintf("%#x", deposit.Transaction.BlockRoot),
-					BlockTime:      deposit.Transaction.BlockTime,
-					TxOrigin:       common.Address(deposit.Transaction.TxSender).Hex(),
-					TxTarget:       common.Address(deposit.Transaction.TxTarget).Hex(),
-					TxHash:         fmt.Sprintf("%#x", deposit.Transaction.TxHash),
-					ValidSignature: deposit.Transaction.ValidSignature == 1 || deposit.Transaction.ValidSignature == 2,
+					BlockNumber: deposit.Transaction.BlockNumber,
+					BlockHash:   fmt.Sprintf("%#x", deposit.Transaction.BlockRoot),
+					BlockTime:   deposit.Transaction.BlockTime,
+					TxOrigin:    common.Address(deposit.Transaction.TxSender).Hex(),
+					TxTarget:    common.Address(deposit.Transaction.TxTarget).Hex(),
+					TxHash:      fmt.Sprintf("%#x", deposit.Transaction.TxHash),
+				}
+				if deposit.Transaction.ValidSignature == 0 {
+					depositData.InvalidSignature = true
 				}
 			}
 

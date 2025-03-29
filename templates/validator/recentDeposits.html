@@ -95,7 +95,7 @@
                   </span>
                 {{ end }}
 
-                {{ if not .TransactionDetails.ValidSignature }}
+                {{ if .InvalidSignature }}
                   <span class="badge rounded-pill text-bg-danger" 
                         data-bs-toggle="tooltip" 
                         data-bs-placement="top" 
