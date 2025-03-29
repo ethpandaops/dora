@@ -21,6 +21,7 @@ import (
 
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
+	"github.com/ethpandaops/dora/indexer/beacon"
 	"github.com/ethpandaops/dora/utils"
 )
 
@@ -102,8 +103,8 @@ func (ds *DepositIndexer) runDepositIndexerLoop() {
 
 // processFinalTx is the callback for the contract indexer to process final transactions
 // it parses the transaction and returns the corresponding deposit transaction
-func (ci *DepositIndexer) processFinalTx(log *types.Log, tx *types.Transaction, header *types.Header, txFrom common.Address, dequeueBlock uint64) (*dbtypes.DepositTx, error) {
-	requestTx := ci.parseDepositLog(log)
+func (ci *DepositIndexer) processFinalTx(log *types.Log, tx *types.Transaction, header *types.Header, txFrom common.Address, dequeueBlock uint64, parentTxs []*dbtypes.DepositTx) (*dbtypes.DepositTx, error) {
+	requestTx := ci.parseDepositLog(log, parentTxs, 0)
 	if requestTx == nil {
 		return nil, fmt.Errorf("invalid deposit log")
 	}
@@ -119,8 +120,14 @@ func (ci *DepositIndexer) processFinalTx(log *types.Log, tx *types.Transaction, 
 
 // processRecentTx is the callback for the contract indexer to process recent transactions
 // it parses the transaction and returns the corresponding deposit transaction
-func (ci *DepositIndexer) processRecentTx(log *types.Log, tx *types.Transaction, header *types.Header, txFrom common.Address, dequeueBlock uint64, fork *forkWithClients) (*dbtypes.DepositTx, error) {
-	requestTx := ci.parseDepositLog(log)
+func (ci *DepositIndexer) processRecentTx(log *types.Log, tx *types.Transaction, header *types.Header, txFrom common.Address, dequeueBlock uint64, fork *forkWithClients, parentTxs []*dbtypes.DepositTx) (*dbtypes.DepositTx, error) {
+	forkId := uint64(fork.forkId)
+	clBlock := ci.indexerCtx.beaconIndexer.GetBlocksByExecutionBlockHash(phase0.Hash32(log.BlockHash))
+	if len(clBlock) > 0 {
+		forkId = uint64(clBlock[0].GetForkId())
+	}
+
+	requestTx := ci.parseDepositLog(log, parentTxs, forkId)
 	if requestTx == nil {
 		return nil, fmt.Errorf("invalid deposit log")
 	}
@@ -130,19 +137,13 @@ func (ci *DepositIndexer) processRecentTx(log *types.Log, tx *types.Transaction,
 	requestTx.BlockTime = header.Time
 	requestTx.TxSender = txFrom[:]
 	requestTx.TxTarget = txTo[:]
-
-	clBlock := ci.indexerCtx.beaconIndexer.GetBlocksByExecutionBlockHash(phase0.Hash32(log.BlockHash))
-	if len(clBlock) > 0 {
-		requestTx.ForkId = uint64(clBlock[0].GetForkId())
-	} else {
-		requestTx.ForkId = uint64(fork.forkId)
-	}
+	requestTx.ForkId = forkId
 
 	return requestTx, nil
 }
 
 // parseDepositLog parses a deposit log and returns the corresponding deposit transaction
-func (ci *DepositIndexer) parseDepositLog(log *types.Log) *dbtypes.DepositTx {
+func (ci *DepositIndexer) parseDepositLog(log *types.Log, parentTxs []*dbtypes.DepositTx, forkId uint64) *dbtypes.DepositTx {
 	if !bytes.Equal(log.Topics[0][:], ci.depositEventTopic) {
 		return nil
 	}
@@ -163,7 +164,7 @@ func (ci *DepositIndexer) parseDepositLog(log *types.Log) *dbtypes.DepositTx {
 		Signature:             event[3].([]byte),
 		TxHash:                log.TxHash[:],
 	}
-	ci.checkDepositValidity(requestTx)
+	ci.checkDepositValidity(requestTx, parentTxs, forkId)
 
 	return requestTx
 }
@@ -187,7 +188,50 @@ func (ci *DepositIndexer) persistDepositTxs(tx *sqlx.Tx, requests []*dbtypes.Dep
 }
 
 // checkDepositValidity checks if a deposit transaction has a valid signature
-func (ds *DepositIndexer) checkDepositValidity(depositTx *dbtypes.DepositTx) {
+func (ds *DepositIndexer) checkDepositValidity(depositTx *dbtypes.DepositTx, parentTxs []*dbtypes.DepositTx, forkId uint64) {
+	// first, check if there is already a valid deposit for the same public key
+	isTopUp := false
+	for _, parentTx := range parentTxs {
+		if bytes.Equal(parentTx.PublicKey, depositTx.PublicKey) && parentTx.ValidSignature == 1 {
+			isTopUp = true
+			break
+		}
+	}
+
+	if !isTopUp {
+		validator, isFound := ds.indexerCtx.beaconIndexer.GetValidatorIndexByPubkey(phase0.BLSPubKey(depositTx.PublicKey))
+		if isFound {
+			validator := ds.indexerCtx.beaconIndexer.GetValidatorByIndex(validator, nil)
+			if validator != nil && validator.ActivationEpoch == 0 {
+				// genesis validator won't have a successful deposit, these are always top-ups
+				isTopUp = true
+			}
+		}
+	}
+
+	if !isTopUp {
+		parentForkIds := ds.indexerCtx.beaconIndexer.GetParentForkIds(beacon.ForkKey(forkId))
+		parentForkIdsUint := make([]uint64, len(parentForkIds))
+		for i, forkId := range parentForkIds {
+			parentForkIdsUint[i] = uint64(forkId)
+		}
+
+		dbDepositTxs, _, err := db.GetDepositTxsFiltered(0, 1, parentForkIdsUint, &dbtypes.DepositTxFilter{
+			PublicKey:    depositTx.PublicKey,
+			WithValid:    0,
+			WithOrphaned: 0,
+		})
+		if err == nil && len(dbDepositTxs) > 0 {
+			isTopUp = true
+		}
+	}
+
+	if isTopUp {
+		// if there is already a valid deposit for the same public key, set valid signature to 2, indicating that this is a top-up deposit
+		depositTx.ValidSignature = 2
+		return
+	}
+
 	depositMsg := &zrnt_common.DepositMessage{
 		Pubkey:                zrnt_common.BLSPubkey(depositTx.PublicKey),
 		WithdrawalCredentials: tree.Root(depositTx.WithdrawalCredentials),
@@ -203,6 +247,6 @@ func (ds *DepositIndexer) checkDepositValidity(depositTx *dbtypes.DepositTx) {
 	sigData := zrnt_common.BLSSignature(depositTx.Signature)
 	sig, err2 := sigData.Signature()
 	if err == nil && err2 == nil && blsu.Verify(pubkey, signingRoot[:], sig) {
-		depositTx.ValidSignature = true
+		depositTx.ValidSignature = 1
 	}
 }
