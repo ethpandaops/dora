@@ -94,6 +94,11 @@ func GetDepositTxs(firstIndex uint64, limit uint32) []*dbtypes.DepositTx {
 }
 
 func GetDepositTxsByIndexes(indexes []uint64) []*dbtypes.DepositTx {
+	depositTxs := []*dbtypes.DepositTx{}
+	if len(indexes) == 0 {
+		return depositTxs
+	}
+
 	var sql strings.Builder
 	args := []interface{}{}
 
@@ -111,7 +116,6 @@ func GetDepositTxsByIndexes(indexes []uint64) []*dbtypes.DepositTx {
 	}
 	fmt.Fprintf(&sql, ")")
 
-	depositTxs := []*dbtypes.DepositTx{}
 	err := ReaderDb.Select(&depositTxs, sql.String(), args...)
 	if err != nil {
 		logger.Errorf("Error while fetching deposit txs by indexes: %v", err)
