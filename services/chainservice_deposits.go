@@ -77,8 +77,6 @@ func (ccr *CombinedDepositRequest) Amount() uint64 {
 }
 
 func (bs *ChainService) GetDepositRequestsByFilter(filter *CombinedDepositRequestFilter, pageOffset uint64, pageSize uint32) ([]*CombinedDepositRequest, uint64) {
-	totalReqResults := uint64(0)
-
 	combinedResults := make([]*CombinedDepositRequest, 0)
 	canonicalForkIds := bs.GetCanonicalForkIds()
 
@@ -86,13 +84,10 @@ func (bs *ChainService) GetDepositRequestsByFilter(filter *CombinedDepositReques
 
 	canonicalHead := bs.beaconIndexer.GetCanonicalHead(nil)
 	if canonicalHead != nil {
-		indexedDepositQueue := bs.GetIndexedDepositQueue(canonicalHead)
-		if indexedDepositQueue != nil {
-			for _, queueEntry := range indexedDepositQueue {
-				depositIndex := queueEntry.DepositIndex
-				if depositIndex != nil {
-					pendingDepositPositions[*depositIndex] = queueEntry
-				}
+		for _, queueEntry := range bs.GetIndexedDepositQueue(canonicalHead) {
+			depositIndex := queueEntry.DepositIndex
+			if depositIndex != nil {
+				pendingDepositPositions[*depositIndex] = queueEntry
 			}
 		}
 	}
@@ -111,8 +106,6 @@ func (bs *ChainService) GetDepositRequestsByFilter(filter *CombinedDepositReques
 		}
 	*/
 
-	dbOperations := []*dbtypes.DepositWithTx{}
-
 	operationFilter := &dbtypes.DepositFilter{
 		MinIndex:      filter.Filter.MinIndex,
 		MaxIndex:      filter.Filter.MaxIndex,
@@ -129,7 +122,7 @@ func (bs *ChainService) GetDepositRequestsByFilter(filter *CombinedDepositReques
 		WithValid:     filter.Filter.WithValid,
 	}
 
-	dbOperations, totalReqResults = bs.GetDepositOperationsByFilter(operationFilter, txFilter, pageOffset, pageSize)
+	dbOperations, totalReqResults := bs.GetDepositOperationsByFilter(operationFilter, txFilter, pageOffset, pageSize)
 
 	for _, dbOperation := range dbOperations {
 		if len(combinedResults) >= int(pageSize) {
@@ -318,6 +311,8 @@ func (bs *ChainService) GetDepositOperationsByFilter(filter *dbtypes.DepositFilt
 
 			filteredMatches = append(filteredMatches, depositWithTx)
 		}
+
+		cachedMatches = filteredMatches
 	}
 
 	slice.Reverse(cachedMatches) // reverse as other datasources are ordered by descending block index too
