@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS deposit_txs (
     tx_sender bytea NOT NULL,
     tx_target bytea NOT NULL,
     fork_id BIGINT NOT NULL DEFAULT 0,
-    CONSTRAINT deposit_txs_pkey PRIMARY KEY (deposit_index, block_root)
+    CONSTRAINT deposit_txs_primary_key PRIMARY KEY (deposit_index, block_root)
 );
 
 INSERT INTO public."deposit_txs" (
