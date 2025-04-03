@@ -121,34 +121,24 @@ func buildDepositsPageData(firstEpoch uint64, pageSize uint64, tabView string) (
 	activationQueueLength, _ := services.GlobalBeaconService.GetBeaconIndexer().GetActivationExitQueueLengths(currentEpoch, nil)
 	pageData.EnteringValidatorCount = activationQueueLength
 
+	var queuedDeposits *services.IndexedDepositQueue
+
 	if specs.ElectraForkEpoch != nil && *specs.ElectraForkEpoch <= uint64(currentEpoch) {
 		// electra deposit queue
-		depositQueue := services.GlobalBeaconService.GetBeaconIndexer().GetLatestDepositQueue(nil)
-		if depositQueue != nil {
-			depositAmount := phase0.Gwei(0)
-			validatorCount := uint64(0)
-
-			newValidators := map[phase0.BLSPubKey]interface{}{}
-			for _, deposit := range depositQueue {
-				depositAmount += deposit.Amount
-				_, found := services.GlobalBeaconService.GetValidatorIndexByPubkey(deposit.Pubkey)
-				if !found {
-					_, isNew := newValidators[deposit.Pubkey]
-					if !isNew {
-						newValidators[deposit.Pubkey] = nil
-						validatorCount++
-					}
-				}
+		headBlock := services.GlobalBeaconService.GetBeaconIndexer().GetCanonicalHead(nil)
+		queuedDeposits = services.GlobalBeaconService.GetIndexedDepositQueue(headBlock)
+		if queuedDeposits == nil {
+			queuedDeposits = &services.IndexedDepositQueue{
+				Queue: make([]*services.IndexedDepositQueueEntry, 0),
 			}
-
-			pageData.EnteringValidatorCount += validatorCount
-			pageData.EnteringEtherAmount = uint64(depositAmount)
-			pageData.EtherChurnPerEpoch = chainState.GetActivationExitChurnLimit(totalEligibleEther)
-			pageData.EtherChurnPerDay = pageData.EtherChurnPerEpoch * 225
-
-			estQueueEpochDuration := phase0.Epoch(uint64(depositAmount) / pageData.EtherChurnPerEpoch)
-			pageData.NewDepositProcessAfter = chainState.EpochToTime(currentEpoch + estQueueEpochDuration)
 		}
+
+		pageData.EnteringValidatorCount = queuedDeposits.TotalNew
+		pageData.EnteringEtherAmount = uint64(queuedDeposits.TotalGwei)
+		pageData.EtherChurnPerEpoch = chainState.GetActivationExitChurnLimit(totalEligibleEther)
+		pageData.EtherChurnPerDay = pageData.EtherChurnPerEpoch * 225
+
+		pageData.NewDepositProcessAfter = chainState.EpochToTime(queuedDeposits.QueueEstimation)
 	} else {
 		// pre-electra
 		pageData.ValidatorsPerEpoch = chainState.GetValidatorChurnLimit(activeValidatorCount)
@@ -293,16 +283,15 @@ func buildDepositsPageData(firstEpoch uint64, pageSize uint64, tabView string) (
 
 	case "queue":
 		if pageData.IsElectraActive {
-			headBlock := services.GlobalBeaconService.GetBeaconIndexer().GetCanonicalHead(nil)
-			queuedDeposits := services.GlobalBeaconService.GetIndexedDepositQueue(headBlock)
+
 			depositIndexes := make([]uint64, 0)
-			limit := len(queuedDeposits)
+			limit := len(queuedDeposits.Queue)
 			if limit > 20 {
 				limit = 20
 			}
 
 			for i := 0; i < limit; i++ {
-				queueEntry := queuedDeposits[i]
+				queueEntry := queuedDeposits.Queue[i]
 				if queueEntry.DepositIndex == nil {
 					continue
 				}
@@ -314,7 +303,7 @@ func buildDepositsPageData(firstEpoch uint64, pageSize uint64, tabView string) (
 				txDetailsMap[txDetail.Index] = txDetail
 			}
 
-			for _, queueEntry := range queuedDeposits[:limit] {
+			for _, queueEntry := range queuedDeposits.Queue[:limit] {
 				depositData := &models.DepositsPageDataQueuedDeposit{
 					QueuePosition:         queueEntry.QueuePos,
 					EstimatedTime:         chainState.EpochToTime(queueEntry.EpochEstimate),

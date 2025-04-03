@@ -21,7 +21,7 @@ type CombinedDepositRequest struct {
 	Transaction         *dbtypes.DepositTx
 	TransactionOrphaned bool
 	IsQueued            bool
-	QueueEntry          *IndexedDepositQueue
+	QueueEntry          *IndexedDepositQueueEntry
 }
 
 type CombinedDepositRequestFilter struct {
@@ -79,11 +79,11 @@ func (bs *ChainService) GetDepositRequestsByFilter(filter *CombinedDepositReques
 	combinedResults := make([]*CombinedDepositRequest, 0)
 	canonicalForkIds := bs.GetCanonicalForkIds()
 
-	pendingDepositPositions := map[uint64]*IndexedDepositQueue{}
+	pendingDepositPositions := map[uint64]*IndexedDepositQueueEntry{}
 
 	canonicalHead := bs.beaconIndexer.GetCanonicalHead(nil)
 	if canonicalHead != nil {
-		for _, queueEntry := range bs.GetIndexedDepositQueue(canonicalHead) {
+		for _, queueEntry := range bs.GetIndexedDepositQueue(canonicalHead).Queue {
 			depositIndex := queueEntry.DepositIndex
 			if depositIndex != nil {
 				pendingDepositPositions[*depositIndex] = queueEntry
@@ -371,14 +371,21 @@ func (bs *ChainService) GetDepositOperationsByFilter(filter *dbtypes.DepositFilt
 	return resObjs, cachedMatchesLen + dbCount
 }
 
-type IndexedDepositQueue struct {
+type IndexedDepositQueueEntry struct {
 	QueuePos       uint64
 	DepositIndex   *uint64
 	EpochEstimate  phase0.Epoch
 	PendingDeposit *electra.PendingDeposit
 }
 
-func (bs *ChainService) GetIndexedDepositQueue(headBlock *beacon.Block) []*IndexedDepositQueue {
+type IndexedDepositQueue struct {
+	Queue           []*IndexedDepositQueueEntry
+	TotalNew        uint64
+	TotalGwei       phase0.Gwei
+	QueueEstimation phase0.Epoch
+}
+
+func (bs *ChainService) GetIndexedDepositQueue(headBlock *beacon.Block) *IndexedDepositQueue {
 	forkId := headBlock.GetForkId()
 	queueBlockRoot, queueSlot, queueBalance, queue := bs.beaconIndexer.GetLatestDepositQueueByBlockRoot(headBlock.Root)
 	lastIncludedDeposit := bs.getLastIncludedDeposit(queueBlockRoot)
@@ -392,13 +399,17 @@ func (bs *ChainService) GetIndexedDepositQueue(headBlock *beacon.Block) []*Index
 		totalActiveBalance = epochStatsValues.ActiveBalance
 	}
 
+	indexedQueue := &IndexedDepositQueue{
+		Queue: make([]*IndexedDepositQueueEntry, len(queue)),
+	}
+
 	queueLen := len(queue)
-	indexedQueue := make([]*IndexedDepositQueue, queueLen)
 	depositIndex := *lastIncludedDeposit.Index
+	newValidators := map[phase0.BLSPubKey]interface{}{}
 
 	for idx := queueLen - 1; idx >= 0; idx-- {
 		deposit := queue[idx]
-		queueEntry := &IndexedDepositQueue{
+		queueEntry := &IndexedDepositQueueEntry{
 			PendingDeposit: deposit,
 		}
 
@@ -413,13 +424,21 @@ func (bs *ChainService) GetIndexedDepositQueue(headBlock *beacon.Block) []*Index
 			depositIndex--
 		}
 
-		indexedQueue[idx] = queueEntry
+		_, found := bs.beaconIndexer.GetValidatorIndexByPubkey(deposit.Pubkey)
+		if !found {
+			_, isNew := newValidators[deposit.Pubkey]
+			if !isNew {
+				newValidators[deposit.Pubkey] = nil
+				indexedQueue.TotalNew++
+			}
+		}
+
+		indexedQueue.Queue[idx] = queueEntry
 	}
 
 	chainState := bs.consensusPool.GetChainState()
 	specs := chainState.GetSpecs()
 
-	totalDepositAmount := phase0.Gwei(0)
 	activationExitChurnLimit := phase0.Gwei(chainState.GetActivationExitChurnLimit(uint64(totalActiveBalance)))
 	queueEpoch := chainState.EpochOfSlot(queueSlot)
 
@@ -432,8 +451,8 @@ func (bs *ChainService) GetIndexedDepositQueue(headBlock *beacon.Block) []*Index
 	queueBalance += activationExitChurnLimit
 	currentEpochCount := uint64(0)
 
-	for idx, queueEntry := range indexedQueue {
-		indexedQueue[idx].QueuePos = uint64(idx)
+	for idx, queueEntry := range indexedQueue.Queue {
+		queueEntry.QueuePos = uint64(idx)
 
 		if totalActiveBalance > 0 {
 			if currentEpochCount >= maxPendingDepositsPerEpoch {
@@ -448,15 +467,17 @@ func (bs *ChainService) GetIndexedDepositQueue(headBlock *beacon.Block) []*Index
 				currentEpochCount = 0
 			}
 
-			indexedQueue[idx].EpochEstimate = queueEpoch
+			queueEntry.EpochEstimate = queueEpoch
 			currentEpochCount++
 			queueBalance -= queueEntry.PendingDeposit.Amount
 		}
 
-		totalDepositAmount += queueEntry.PendingDeposit.Amount
+		indexedQueue.TotalGwei += queueEntry.PendingDeposit.Amount
 	}
 
-	if !bytes.Equal(indexedQueue[len(indexedQueue)-1].PendingDeposit.Pubkey[:], lastIncludedDeposit.PublicKey[:]) {
+	indexedQueue.QueueEstimation = queueEpoch
+
+	if !bytes.Equal(indexedQueue.Queue[len(indexedQueue.Queue)-1].PendingDeposit.Pubkey[:], lastIncludedDeposit.PublicKey[:]) {
 		// something is bad, return nil
 		return nil
 	}
@@ -559,7 +580,7 @@ type QueuedDepositFilter struct {
 	MaxAmount uint64
 }
 
-func (bs *ChainService) GetFilteredQueuedDeposits(filter *QueuedDepositFilter) []*IndexedDepositQueue {
+func (bs *ChainService) GetFilteredQueuedDeposits(filter *QueuedDepositFilter) []*IndexedDepositQueueEntry {
 	canonicalHead := bs.beaconIndexer.GetCanonicalHead(nil)
 	if canonicalHead == nil {
 		return nil
@@ -571,8 +592,8 @@ func (bs *ChainService) GetFilteredQueuedDeposits(filter *QueuedDepositFilter) [
 	}
 
 	// Filter queue entries based on criteria
-	filteredQueue := make([]*IndexedDepositQueue, 0)
-	for _, entry := range queue {
+	filteredQueue := make([]*IndexedDepositQueueEntry, 0)
+	for _, entry := range queue.Queue {
 		if filter.MinIndex > 0 && (entry.DepositIndex == nil || *entry.DepositIndex < filter.MinIndex) {
 			continue
 		}
