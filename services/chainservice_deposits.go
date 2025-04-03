@@ -5,6 +5,7 @@ import (
 	"math"
 	"slices"
 	"strings"
+	"sync"
 
 	"github.com/attestantio/go-eth2-client/spec/electra"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
@@ -390,7 +391,9 @@ func (bs *ChainService) GetIndexedDepositQueue(headBlock *beacon.Block) *Indexed
 	queueBlockRoot, queueSlot, queueBalance, queue := bs.beaconIndexer.GetLatestDepositQueueByBlockRoot(headBlock.Root)
 	lastIncludedDeposit := bs.getLastIncludedDeposit(queueBlockRoot)
 	if lastIncludedDeposit == nil || lastIncludedDeposit.Index == nil {
-		return nil
+		return &IndexedDepositQueue{
+			Queue: []*IndexedDepositQueueEntry{},
+		}
 	}
 
 	epochStatsValues, _ := bs.GetRecentEpochStats(&forkId)
@@ -405,7 +408,9 @@ func (bs *ChainService) GetIndexedDepositQueue(headBlock *beacon.Block) *Indexed
 
 	queueLen := len(queue)
 	depositIndex := *lastIncludedDeposit.Index
-	newValidators := map[phase0.BLSPubKey]interface{}{}
+	newValidators := make(map[phase0.BLSPubKey]interface{})
+
+	var newValidatorsMutex sync.Mutex
 
 	for idx := queueLen - 1; idx >= 0; idx-- {
 		deposit := queue[idx]
@@ -424,17 +429,42 @@ func (bs *ChainService) GetIndexedDepositQueue(headBlock *beacon.Block) *Indexed
 			depositIndex--
 		}
 
-		_, found := bs.beaconIndexer.GetValidatorIndexByPubkey(deposit.Pubkey)
-		if !found {
-			_, isNew := newValidators[deposit.Pubkey]
-			if !isNew {
-				newValidators[deposit.Pubkey] = nil
-				indexedQueue.TotalNew++
-			}
-		}
-
 		indexedQueue.Queue[idx] = queueEntry
 	}
+
+	type workItem struct {
+		idx   int
+		entry *IndexedDepositQueueEntry
+	}
+
+	workChan := make(chan workItem, queueLen)
+
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for work := range workChan {
+				_, found := bs.beaconIndexer.GetValidatorIndexByPubkey(work.entry.PendingDeposit.Pubkey)
+				if !found {
+					newValidatorsMutex.Lock()
+					_, isNew := newValidators[work.entry.PendingDeposit.Pubkey]
+					if !isNew {
+						newValidators[work.entry.PendingDeposit.Pubkey] = nil
+						indexedQueue.TotalNew++
+					}
+					newValidatorsMutex.Unlock()
+				}
+			}
+		}()
+	}
+
+	for idx, entry := range indexedQueue.Queue {
+		workChan <- workItem{idx: idx, entry: entry}
+	}
+	close(workChan)
+
+	wg.Wait()
 
 	chainState := bs.consensusPool.GetChainState()
 	specs := chainState.GetSpecs()
@@ -479,7 +509,9 @@ func (bs *ChainService) GetIndexedDepositQueue(headBlock *beacon.Block) *Indexed
 
 	if !bytes.Equal(indexedQueue.Queue[len(indexedQueue.Queue)-1].PendingDeposit.Pubkey[:], lastIncludedDeposit.PublicKey[:]) {
 		// something is bad, return nil
-		return nil
+		return &IndexedDepositQueue{
+			Queue: []*IndexedDepositQueueEntry{},
+		}
 	}
 
 	return indexedQueue
