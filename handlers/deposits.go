@@ -234,7 +234,7 @@ func buildDepositsPageData(firstEpoch uint64, pageSize uint64, tabView string) (
 			if deposit.IsQueued {
 				depositData.IsQueued = true
 				depositData.QueuePosition = deposit.QueueEntry.QueuePos
-				depositData.EstimatedTime = deposit.QueueEntry.TimeEstimate
+				depositData.EstimatedTime = chainState.EpochToTime(deposit.QueueEntry.EpochEstimate)
 			}
 
 			if deposit.Request.Index != nil {
@@ -317,7 +317,7 @@ func buildDepositsPageData(firstEpoch uint64, pageSize uint64, tabView string) (
 			for _, queueEntry := range queuedDeposits[:limit] {
 				depositData := &models.DepositsPageDataQueuedDeposit{
 					QueuePosition:         queueEntry.QueuePos,
-					EstimatedTime:         queueEntry.TimeEstimate,
+					EstimatedTime:         chainState.EpochToTime(queueEntry.EpochEstimate),
 					PublicKey:             queueEntry.PendingDeposit.Pubkey[:],
 					Withdrawalcredentials: queueEntry.PendingDeposit.WithdrawalCredentials[:],
 					Amount:                uint64(queueEntry.PendingDeposit.Amount),

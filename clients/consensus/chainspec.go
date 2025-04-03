@@ -59,6 +59,7 @@ type ChainSpec struct {
 	DepositChainId                        uint64            `yaml:"DEPOSIT_CHAIN_ID"`
 	MinActivationBalance                  uint64            `yaml:"MIN_ACTIVATION_BALANCE"`
 	MaxPendingPartialsPerWithdrawalsSweep uint64            `yaml:"MAX_PENDING_PARTIALS_PER_WITHDRAWALS_SWEEP" check-if-fork:"ElectraForkEpoch"`
+	MaxPendingDepositsPerEpoch            uint64            `yaml:"MAX_PENDING_DEPOSITS_PER_EPOCH"             check-if-fork:"ElectraForkEpoch"`
 	PendingPartialWithdrawalsLimit        uint64            `yaml:"PENDING_PARTIAL_WITHDRAWALS_LIMIT"          check-if-fork:"ElectraForkEpoch"`
 	PendingConsolidationsLimit            uint64            `yaml:"PENDING_CONSOLIDATIONS_LIMIT"               check-if-fork:"ElectraForkEpoch"`
 	MinPerEpochChurnLimitElectra          uint64            `yaml:"MIN_PER_EPOCH_CHURN_LIMIT_ELECTRA"          check-if-fork:"ElectraForkEpoch"`

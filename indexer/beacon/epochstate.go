@@ -28,6 +28,7 @@ type epochState struct {
 	randaoMixes               []phase0.Root
 	depositIndex              uint64
 	syncCommittee             []phase0.ValidatorIndex
+	depositBalanceToConsume   phase0.Gwei
 	pendingDeposits           []*electra.PendingDeposit
 	pendingPartialWithdrawals []*electra.PendingPartialWithdrawal
 	pendingConsolidations     []*electra.PendingConsolidation
@@ -198,6 +199,12 @@ func (s *epochState) processState(state *spec.VersionedBeaconState, cache *epoch
 	}
 
 	if state.Version >= spec.DataVersionElectra {
+		depositBalanceToConsume, err := getStateDepositBalanceToConsume(state)
+		if err != nil {
+			return fmt.Errorf("error getting deposit balance to consume from state %v: %v", s.slotRoot.String(), err)
+		}
+		s.depositBalanceToConsume = depositBalanceToConsume
+
 		pendingDeposits, err := getStatePendingDeposits(state)
 		if err != nil {
 			return fmt.Errorf("error getting pending deposit indices from state %v: %v", s.slotRoot.String(), err)

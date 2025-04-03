@@ -103,7 +103,8 @@ func getQueuedDepositsPageData(pageIdx uint64, pageSize uint64, minIndex uint64,
 }
 
 func buildQueuedDepositsPageData(pageIdx uint64, pageSize uint64, minIndex uint64, maxIndex uint64, publickey string, minAmount uint64, maxAmount uint64) *models.QueuedDepositsPageData {
-	specs := services.GlobalBeaconService.GetChainState().GetSpecs()
+	chainState := services.GlobalBeaconService.GetChainState()
+	specs := chainState.GetSpecs()
 	pageData := &models.QueuedDepositsPageData{
 		FilterMinIndex:      minIndex,
 		FilterMaxIndex:      maxIndex,
@@ -198,7 +199,7 @@ func buildQueuedDepositsPageData(pageIdx uint64, pageSize uint64, minIndex uint6
 
 		depositData := &models.QueuedDepositsPageDataDeposit{
 			QueuePosition:         queueEntry.QueuePos,
-			EstimatedTime:         queueEntry.TimeEstimate,
+			EstimatedTime:         chainState.EpochToTime(queueEntry.EpochEstimate),
 			PublicKey:             queueEntry.PendingDeposit.Pubkey[:],
 			Amount:                uint64(queueEntry.PendingDeposit.Amount),
 			Withdrawalcredentials: queueEntry.PendingDeposit.WithdrawalCredentials[:],

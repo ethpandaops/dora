@@ -14,7 +14,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
-	"github.com/ethpandaops/dora/indexer/beacon"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
@@ -130,21 +129,7 @@ func buildIndexPageData() (*models.IndexPageData, time.Duration) {
 		pageData.NetworkName = utils.Config.Chain.DisplayName
 	}
 
-	var recentEpochStatsValues *beacon.EpochStatsValues
-	epochStatsEpoch := currentEpoch
-	for epochStatsEpoch+3 > currentEpoch {
-		recentEpochStats := services.GlobalBeaconService.GetBeaconIndexer().GetEpochStats(epochStatsEpoch, nil)
-		if recentEpochStats != nil {
-			recentEpochStatsValues = recentEpochStats.GetValues(false)
-			if recentEpochStatsValues != nil {
-				break
-			}
-		}
-		if epochStatsEpoch == 0 {
-			break
-		}
-		epochStatsEpoch--
-	}
+	recentEpochStatsValues, _ := services.GlobalBeaconService.GetRecentEpochStats(nil)
 
 	if recentEpochStatsValues != nil {
 		pageData.ActiveValidatorCount = recentEpochStatsValues.ActiveValidators

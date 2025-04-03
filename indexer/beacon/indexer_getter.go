@@ -283,18 +283,18 @@ func (indexer *Indexer) GetLatestDepositQueue(overrideForkId *ForkKey) []*electr
 		return nil
 	}
 
-	_, queue := indexer.GetLatestDepositQueueByBlockRoot(canonicalHead.Root)
+	_, _, _, queue := indexer.GetLatestDepositQueueByBlockRoot(canonicalHead.Root)
 	return queue
 }
 
 // GetLatestDepositQueueByBlockRoot returns the latest deposit queue for the given block root.
-func (indexer *Indexer) GetLatestDepositQueueByBlockRoot(blockRoot phase0.Root) (phase0.Root, []*electra.PendingDeposit) {
+func (indexer *Indexer) GetLatestDepositQueueByBlockRoot(blockRoot phase0.Root) (phase0.Root, phase0.Slot, phase0.Gwei, []*electra.PendingDeposit) {
 	epochState := indexer.epochCache.getLatestReadyEpochStateForBlockRoot(blockRoot)
 	if epochState == nil {
-		return phase0.Root{}, nil
+		return phase0.Root{}, 0, 0, nil
 	}
 
-	return epochState.slotRoot, epochState.pendingDeposits
+	return epochState.slotRoot, epochState.stateSlot, epochState.depositBalanceToConsume, epochState.pendingDeposits
 }
 
 // GetParentForkIds returns the parent fork ids of the given fork.

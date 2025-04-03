@@ -218,7 +218,7 @@ func buildFilteredIncludedDepositsPageData(pageIdx uint64, pageSize uint64, minI
 			}
 
 			depositData.QueuePosition = deposit.QueueEntry.QueuePos
-			depositData.EstimatedTime = deposit.QueueEntry.TimeEstimate
+			depositData.EstimatedTime = chainState.EpochToTime(deposit.QueueEntry.EpochEstimate)
 		}
 
 		// Add validator status

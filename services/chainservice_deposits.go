@@ -5,7 +5,6 @@ import (
 	"math"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/attestantio/go-eth2-client/spec/electra"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
@@ -375,25 +374,22 @@ func (bs *ChainService) GetDepositOperationsByFilter(filter *dbtypes.DepositFilt
 type IndexedDepositQueue struct {
 	QueuePos       uint64
 	DepositIndex   *uint64
-	TimeEstimate   time.Time
+	EpochEstimate  phase0.Epoch
 	PendingDeposit *electra.PendingDeposit
 }
 
 func (bs *ChainService) GetIndexedDepositQueue(headBlock *beacon.Block) []*IndexedDepositQueue {
-	queueBlockRoot, queue := bs.beaconIndexer.GetLatestDepositQueueByBlockRoot(headBlock.Root)
+	forkId := headBlock.GetForkId()
+	queueBlockRoot, queueSlot, queueBalance, queue := bs.beaconIndexer.GetLatestDepositQueueByBlockRoot(headBlock.Root)
 	lastIncludedDeposit := bs.getLastIncludedDeposit(queueBlockRoot)
 	if lastIncludedDeposit == nil || lastIncludedDeposit.Index == nil {
 		return nil
 	}
 
-	chainState := bs.consensusPool.GetChainState()
-	epochStats := bs.beaconIndexer.GetEpochStatsByBlockRoot(chainState.EpochOfSlot(headBlock.Slot), headBlock.Root)
+	epochStatsValues, _ := bs.GetRecentEpochStats(&forkId)
 	totalActiveBalance := phase0.Gwei(0)
-	if epochStats != nil {
-		values := epochStats.GetValues(false)
-		if values != nil {
-			totalActiveBalance = values.EffectiveBalance
-		}
+	if epochStatsValues != nil {
+		totalActiveBalance = epochStatsValues.ActiveBalance
 	}
 
 	queueLen := len(queue)
@@ -420,19 +416,44 @@ func (bs *ChainService) GetIndexedDepositQueue(headBlock *beacon.Block) []*Index
 		indexedQueue[idx] = queueEntry
 	}
 
+	chainState := bs.consensusPool.GetChainState()
+	specs := chainState.GetSpecs()
+
 	totalDepositAmount := phase0.Gwei(0)
-	activationExitChurnLimit := chainState.GetActivationExitChurnLimit(uint64(totalActiveBalance))
-	currentEpoch := chainState.CurrentEpoch()
+	activationExitChurnLimit := phase0.Gwei(chainState.GetActivationExitChurnLimit(uint64(totalActiveBalance)))
+	queueEpoch := chainState.EpochOfSlot(queueSlot)
+
+	maxPendingDepositsPerEpoch := specs.MaxPendingDepositsPerEpoch
+	if maxPendingDepositsPerEpoch == 0 {
+		maxPendingDepositsPerEpoch = 16
+	}
+
+	queueEpoch++
+	queueBalance += activationExitChurnLimit
+	currentEpochCount := uint64(0)
 
 	for idx, queueEntry := range indexedQueue {
 		indexedQueue[idx].QueuePos = uint64(idx)
 
 		if totalActiveBalance > 0 {
-			estQueueEpochDuration := phase0.Epoch(uint64(totalDepositAmount) / activationExitChurnLimit)
-			indexedQueue[idx].TimeEstimate = chainState.EpochToTime(currentEpoch + estQueueEpochDuration)
+			if currentEpochCount >= maxPendingDepositsPerEpoch {
+				queueEpoch++
+				queueBalance = activationExitChurnLimit
+				currentEpochCount = 0
+			}
+
+			for queueBalance < queueEntry.PendingDeposit.Amount {
+				queueEpoch++
+				queueBalance += activationExitChurnLimit
+				currentEpochCount = 0
+			}
+
+			indexedQueue[idx].EpochEstimate = queueEpoch
+			currentEpochCount++
+			queueBalance -= queueEntry.PendingDeposit.Amount
 		}
 
-		totalDepositAmount += phase0.Gwei(queueEntry.PendingDeposit.Amount)
+		totalDepositAmount += queueEntry.PendingDeposit.Amount
 	}
 
 	if !bytes.Equal(indexedQueue[len(indexedQueue)-1].PendingDeposit.Pubkey[:], lastIncludedDeposit.PublicKey[:]) {
