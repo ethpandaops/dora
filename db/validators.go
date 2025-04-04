@@ -227,10 +227,21 @@ func buildValidatorFilterSql(filter dbtypes.ValidatorFilter, currentEpoch uint64
 		fmt.Fprintf(sql, " %v validator_index IN (%s)", filterOp, strings.Join(indices, ","))
 		filterOp = "AND"
 	}
-	if filter.PubKey != nil {
-		args = append(args, filter.PubKey)
-		fmt.Fprintf(sql, " %v pubkey = $%v", filterOp, len(args))
-		filterOp = "AND"
+	if len(filter.PubKey) > 0 {
+		pubkeylen := len(filter.PubKey)
+		if pubkeylen > 48 {
+			pubkeylen = 48
+		}
+
+		if pubkeylen == 48 {
+			args = append(args, filter.PubKey)
+			fmt.Fprintf(sql, " %v pubkey = $%v", filterOp, len(args))
+			filterOp = "AND"
+		} else {
+			args = append(args, filter.PubKey)
+			fmt.Fprintf(sql, " %v SUBSTRING(pubkey, 1, %v) = $%v", filterOp, pubkeylen, len(args))
+			filterOp = "AND"
+		}
 	}
 	if filter.WithdrawalAddress != nil {
 		wdcreds1 := make([]byte, 32)

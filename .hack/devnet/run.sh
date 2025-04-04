@@ -28,11 +28,11 @@ kurtosis files inspect "$ENCLAVE_NAME" validator-ranges validator-ranges.yaml | 
 ## Generate Dora config
 ENCLAVE_UUID=$(kurtosis enclave inspect "$ENCLAVE_NAME" --full-uuids | grep 'UUID:' | awk '{print $2}')
 
-BEACON_NODES=$(docker ps -aq -f "label=enclave_uuid=$ENCLAVE_UUID" \
+BEACON_NODES=$(docker ps -aq -f "label=kurtosis_enclave_uuid=$ENCLAVE_UUID" \
               -f "label=com.kurtosistech.app-id=kurtosis" \
               -f "label=com.kurtosistech.custom.ethereum-package.client-type=beacon" | tac)
 
-EXECUTION_NODES=$(docker ps -aq -f "label=enclave_uuid=$ENCLAVE_UUID" \
+EXECUTION_NODES=$(docker ps -aq -f "label=kurtosis_enclave_uuid=$ENCLAVE_UUID" \
               -f "label=com.kurtosistech.app-id=kurtosis" \
               -f "label=com.kurtosistech.custom.ethereum-package.client-type=execution" | tac)
 

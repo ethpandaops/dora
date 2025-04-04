@@ -167,10 +167,9 @@ func buildFilteredInitiatedDepositsPageData(pageIdx uint64, pageSize uint64, add
 	}
 
 	offset := (pageIdx - 1) * pageSize
-	depositSyncState := dbtypes.DepositIndexerState{}
-	db.GetExplorerState("indexer.depositstate", &depositSyncState)
+	canonicalForkIds := services.GlobalBeaconService.GetCanonicalForkIds()
 
-	dbDepositTxs, totalRows, err := db.GetDepositTxsFiltered(offset, uint32(pageSize), depositSyncState.FinalBlock, depositFilter)
+	dbDepositTxs, totalRows, err := db.GetDepositTxsFiltered(offset, uint32(pageSize), canonicalForkIds, depositFilter)
 	if err != nil {
 		panic(err)
 	}
@@ -186,7 +185,7 @@ func buildFilteredInitiatedDepositsPageData(pageIdx uint64, pageSize uint64, add
 			Time:                  time.Unix(int64(depositTx.BlockTime), 0),
 			Block:                 depositTx.BlockNumber,
 			Orphaned:              depositTx.Orphaned,
-			Valid:                 depositTx.ValidSignature,
+			Valid:                 depositTx.ValidSignature == 1 || depositTx.ValidSignature == 2,
 			ValidatorStatus:       "",
 		}
 

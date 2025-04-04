@@ -23,10 +23,13 @@ type epochState struct {
 	readyChan      chan bool
 	highPriority   bool
 
+	stateSlot                 phase0.Slot
 	validatorBalances         []phase0.Gwei
 	randaoMixes               []phase0.Root
 	depositIndex              uint64
 	syncCommittee             []phase0.ValidatorIndex
+	depositBalanceToConsume   phase0.Gwei
+	pendingDeposits           []*electra.PendingDeposit
 	pendingPartialWithdrawals []*electra.PendingPartialWithdrawal
 	pendingConsolidations     []*electra.PendingConsolidation
 }
@@ -141,17 +144,19 @@ func (s *epochState) loadState(ctx context.Context, client *Client, cache *epoch
 // processState processes the state and updates the epochState instance.
 // the function extracts and unifies all relevant information from the beacon state, so the full beacon state can be dropped from memory afterwards.
 func (s *epochState) processState(state *spec.VersionedBeaconState, cache *epochCache) error {
+	slot, err := state.Slot()
+	if err != nil {
+		return fmt.Errorf("error getting slot from state %v: %v", s.slotRoot.String(), err)
+	}
+
+	s.stateSlot = slot
+
 	validatorList, err := state.Validators()
 	if err != nil {
 		return fmt.Errorf("error getting validators from state %v: %v", s.slotRoot.String(), err)
 	}
 
 	if cache != nil {
-		slot, err := state.Slot()
-		if err != nil {
-			return fmt.Errorf("error getting slot from state %v: %v", s.slotRoot.String(), err)
-		}
-
 		cache.indexer.validatorCache.updateValidatorSet(slot, s.slotRoot, validatorList)
 	}
 
@@ -194,6 +199,18 @@ func (s *epochState) processState(state *spec.VersionedBeaconState, cache *epoch
 	}
 
 	if state.Version >= spec.DataVersionElectra {
+		depositBalanceToConsume, err := getStateDepositBalanceToConsume(state)
+		if err != nil {
+			return fmt.Errorf("error getting deposit balance to consume from state %v: %v", s.slotRoot.String(), err)
+		}
+		s.depositBalanceToConsume = depositBalanceToConsume
+
+		pendingDeposits, err := getStatePendingDeposits(state)
+		if err != nil {
+			return fmt.Errorf("error getting pending deposit indices from state %v: %v", s.slotRoot.String(), err)
+		}
+		s.pendingDeposits = pendingDeposits
+
 		pendingPartialWithdrawals, err := getStatePendingWithdrawals(state)
 		if err != nil {
 			return fmt.Errorf("error getting pending withdrawal indices from state %v: %v", s.slotRoot.String(), err)

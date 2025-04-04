@@ -2,20 +2,20 @@
   <div class="container mt-2">
     <div class="d-md-flex py-2 justify-content-md-between">
       <h1 class="h4 mb-1 mb-md-0">
-        <i class="fas fa-file-signature mx-2"></i>Included Deposits
+        <i class="fas fa-file-signature mx-2"></i>Queued Deposits
       </h1>
       <nav aria-label="breadcrumb">
         <ol class="breadcrumb font-size-1 mb-0" style="padding:0; background-color:transparent;">
           <li class="breadcrumb-item"><a href="/" title="Home">Home</a></li>
           <li class="breadcrumb-item"><a href="/validators" title="Validators">Validators</a></li>
           <li class="breadcrumb-item"><a href="/validators/deposits" title="Deposits">Deposits</a></li>
-          <li class="breadcrumb-item active" aria-current="page">Included</li>
+          <li class="breadcrumb-item active" aria-current="page">Queued</li>
         </ol>
       </nav>
     </div>
 
     <div id="header-placeholder" style="height:35px;"></div>
-    <form action="/validators/included_deposits" method="get" id="depositsFilterForm">
+    <form action="/validators/queued_deposits" method="get" id="depositsFilterForm">
       <input type="hidden" name="f">
       <div class="card mt-2">
         <div class="card-header">
@@ -43,30 +43,12 @@
                 </div>
                 <div class="row mt-1">
                   <div class="col-sm-12 col-md-6 col-lg-4">
-                    Address
-                  </div>
-                  <div class="col-sm-12 col-md-6 col-lg-8">
-                    <input name="f.address" type="text" class="form-control" placeholder="Address" aria-label="Address" aria-describedby="basic-addon1" value="{{ .FilterAddress }}">
-                  </div>
-                </div>
-                <div class="row mt-1">
-                  <div class="col-sm-12 col-md-6 col-lg-4">
                     Public Key
                   </div>
                   <div class="col-sm-12 col-md-6 col-lg-8">
                     <input name="f.pubkey" type="text" class="form-control" placeholder="Public Key" aria-label="Public Key" aria-describedby="basic-addon1" value="{{ .FilterPubKey }}">
                   </div>
                 </div>
-                <!--
-                <div class="row mt-1">
-                  <div class="col-sm-12 col-md-6 col-lg-4">
-                    Validator Name
-                  </div>
-                  <div class="col-sm-12 col-md-6 col-lg-8">
-                    <input name="f.vname" type="text" class="form-control" placeholder="Validator Name" aria-label="Validator Name" aria-describedby="basic-addon1" value="{{ .FilterValidatorName }}">
-                  </div>
-                </div>
-                -->
                 <div class="row mt-1">
                   <div class="col-sm-12 col-md-6 col-lg-4">
                     Deposit Amount
@@ -88,41 +70,12 @@
                 </div>
               </div>
             </div>
-            <div class="col-sm-12 col-md-6">
-              <div class="container">
-                <div class="row mt-1">
-                  <div class="col-sm-12 col-md-6 col-lg-4">
-                    <nobr>Invalid Signatures</nobr>
-                  </div>
-                  <div class="col-sm-12 col-md-6 col-lg-4">
-                    <select name="f.valid" aria-controls="valid" class="form-control">
-                      <option value="0" {{ if eq .FilterWithValid 0 }}selected{{ end }}>Hide invalid</option>
-                      <option value="1" {{ if eq .FilterWithValid 1 }}selected{{ end }}>Show all</option>
-                      <option value="2" {{ if eq .FilterWithValid 2 }}selected{{ end }}>Invalid only</option>
-                    </select>
-                  </div>
-                </div>
-                <div class="row mt-1">
-                  <div class="col-sm-12 col-md-6 col-lg-4">
-                    <nobr>Orphaned Deposits</nobr>
-                  </div>
-                  <div class="col-sm-12 col-md-6 col-lg-4">
-                    <select name="f.orphaned" aria-controls="orphaned" class="form-control">
-                      <option value="0" {{ if eq .FilterWithOrphaned 0 }}selected{{ end }}>Hide orphaned</option>
-                      <option value="1" {{ if eq .FilterWithOrphaned 1 }}selected{{ end }}>Show all</option>
-                      <option value="2" {{ if eq .FilterWithOrphaned 2 }}selected{{ end }}>Orphaned only</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-            </div>
-
           </div>
           <div class="row mt-3">
             <div class="col-8 col-md-6 table-pagesize">
               <label class="px-2">
                 <span>Show </span>
-                <select name="c" aria-controls="slots" class="custom-select custom-select-sm form-control form-control-sm">
+                <select name="c" aria-controls="deposits" class="custom-select custom-select-sm form-control form-control-sm">
                   <option value="{{ .PageSize }}" selected>{{ .PageSize }}</option>
                   <option value="10">10</option>
                   <option value="25">25</option>
@@ -153,48 +106,34 @@
           <table class="table table-nobr" id="deposits">
             <thead>
               <tr>
-                <th>Slot</th>
-                <th>Time</th>
-                <th>Index</th>
-                <th>Depositor</th>
+                <th>Position</th>
+                <th>Est. Time</th>
+                <th>Deposit</th>
                 <th class="d-none d-md-table-cell">Pub<span class="d-none d-lg-inline">lic </span>Key</th>
-                <th class="d-none d-md-table-cell">W<span class="d-none d-lg-inline">ithdrawal</span> Cred</th>
                 <th>Amount</th>
+                <th class="d-none d-md-table-cell">W<span class="d-none d-lg-inline">ithdrawal</span> Cred</th>
                 <th>Transaction</th>
-                <th><span class="d-none d-lg-inline">Incl. </span>Status</th>
                 <th>Val<span class="d-none d-lg-inline">idator</span> State</th>
               </tr>
             </thead>
             {{ if gt .DepositCount 0 }}
               <tbody>
+                {{ $max_effective_balance := .MaxEffectiveBalance }}
                 {{ range $i, $deposit := .Deposits }}
                   <tr>
-                    {{ if $deposit.Orphaned }}
-                    <td><a href="/slot/0x{{ printf "%x" $deposit.SlotRoot }}">{{ formatAddCommas $deposit.SlotNumber }}</a></td>
-                    {{ else }}
-                    <td><a href="/slot/{{ $deposit.SlotNumber }}">{{ formatAddCommas $deposit.SlotNumber }}</a></td>
-                    {{ end }}
-                    <td data-timer="{{ $deposit.Time.Unix }}"><span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $deposit.Time }}">{{ formatRecentTimeShort $deposit.Time }}</span></td>
-                    <td>{{ if $deposit.HasIndex }}{{ $deposit.Index }}{{ else }}?{{ end }}</td>
+                    <td>{{ $deposit.QueuePosition }}</td>
+                    <td data-timer="{{ $deposit.EstimatedTime.Unix }}"><span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $deposit.EstimatedTime }}">{{ formatRecentTimeShort $deposit.EstimatedTime }}</span></td>
+                    <td>
+                      {{ if $deposit.HasIndex }}
+                        <span class="badge rounded-pill text-bg-primary" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="This deposit was triggered via a validator deposit transaction">{{ $deposit.Index }}</span>
+                      {{ else if $deposit.ExcessDeposit }}
+                        <span class="badge rounded-pill text-bg-warning" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="This deposit was triggered by a 0x01 to 0x02 withdrawal credential change, where the source validator already had a balance above {{ formatFullEthFromGwei $max_effective_balance }}">excess</span>
+                      {{ else }}
+                        <span class="badge rounded-pill text-bg-secondary" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="The source of this deposit is unknown, it might be a pre-electra deposit">unknown</span>
+                      {{ end }}</td>
                     <td>
                       <div class="d-flex">
-                        <span class="flex-grow-1 text-truncate" style="max-width: 150px;">
-                          {{ if $deposit.DepositorAddress }}
-                            {{ ethAddressLink $deposit.DepositorAddress }}
-                          {{ else }}
-                            ?
-                          {{ end }}
-                        </span>
-                        {{ if $deposit.DepositorAddress }}
-                        <div>
-                          <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ formatEthAddress $deposit.DepositorAddress }}"></i>
-                        </div>
-                        {{ end }}
-                      </div>
-                    </td>
-                    <td>
-                      <div class="d-flex">
-                        <span class="flex-grow-1 text-truncate" style="max-width: 150px;">
+                        <span class="flex-grow-1 text-truncate" style="max-width: 200px;">
                           {{ if $deposit.ValidatorExists }}
                             {{ formatValidatorWithIndex $deposit.ValidatorIndex $deposit.ValidatorName }}
                           {{ else }}
@@ -206,13 +145,13 @@
                         </div>
                       </div>
                     </td>
+                    <td>{{ formatEthFromGwei $deposit.Amount }}</td>
                     <td>
                       <span>
                         {{ formatWithdawalCredentials $deposit.Withdrawalcredentials }}
                       </span>
                       <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $deposit.Withdrawalcredentials }}"></i>
                     </td>
-                    <td>{{ formatFullEthFromGwei $deposit.Amount }}</td>
                     <td>
                       {{- if $deposit.HasTransaction }}
                       <div class="d-flex">
@@ -224,34 +163,11 @@
                           <i class="fa fa-info-circle text-muted ml-2 p-1 nojs-hide tx-details-btn" role="button" data-txdetails="{{ includeJSON $deposit.TransactionDetails true }}"></i>
                         </div>
                       </div>
+                      {{- else if not $deposit.HasIndex }}
+                      <span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="System deposits do not have a corresponding transaction.">none</span>
                       {{- else }}
-                      <span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Corresponding deposit transaction has not been indexed yet.">?</span>
+                      <span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Corresponding deposit transaction has not been indexed yet.">not found</span>
                       {{- end }}
-                    </td>
-                    <td>
-                      {{ if .Orphaned }}
-                        <span class="badge rounded-pill text-bg-info">Orphaned</span>
-                      {{ else }}
-                        <span class="badge rounded-pill text-bg-success">Included</span>
-                      {{ end }}
-
-                      {{ if .IsQueued }}
-                        <span class="badge rounded-pill text-bg-warning" 
-                              data-bs-toggle="tooltip" 
-                              data-bs-placement="top" 
-                              data-bs-title="Queue Position: {{ .QueuePosition }} (Est. Time: {{ formatRecentTimeShort .EstimatedTime }})">
-                            Queued
-                        </span>
-                      {{ end }}
-
-                      {{ if .InvalidSignature }}
-                        <span class="badge rounded-pill text-bg-danger" 
-                              data-bs-toggle="tooltip" 
-                              data-bs-placement="top" 
-                              data-bs-title="The deposit signature is invalid. This could indicate a potential issue with the deposit transaction.">
-                          <i class="fas fa-exclamation-triangle"></i>
-                        </span>
-                      {{ end }}
                     </td>
                     <td>
                       {{- $deposit.ValidatorStatus -}}
@@ -357,7 +273,7 @@
           <div class="row">
             <div class="col-sm-12 col-md-5 table-metainfo">
               <div class="px-2">
-                <div class="table-meta" role="status" aria-live="polite">Showing included deposit {{ .FirstIndex }} to {{ .LastIndex }}</div>
+                <div class="table-meta" role="status" aria-live="polite">Showing queued deposits {{ .DepositsFrom }} to {{ .DepositsTo }}</div>
               </div>
             </div>
             <div class="col-sm-12 col-md-7 table-paging">
@@ -384,7 +300,6 @@
           </div>
         {{ end }}
       </div>
-      <div id="footer-placeholder" style="height:71px;"></div>
     </div>
   </div>
 {{ end }}

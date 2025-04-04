@@ -54,38 +54,38 @@ jobs:
     steps:
     # download build artifacts
     - name: "Download build artifacts"
-      uses: actions/download-artifact@cc203385981b70ca67e1cc392babf9cc229d5806 # v4.1.9
+      uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e # v4.2.1
 
     # (re)create snapshot binary release
     - name: Update snapshot tag & remove previous snapshot release
-      uses: actions/github-script@ffc2c79a5b2490bd33e0a41c1de74b877714d736 # v3.2.0
+      uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
       with:
         github-token: ${{secrets.GITHUB_TOKEN}}          
         script: |
           try {
             var snapshotTag = "snapshot";
-            var snapshotRelease = await github.repos.getReleaseByTag({
+            var snapshotRelease = await github.rest.repos.getReleaseByTag({
               owner: context.repo.owner,
               repo: context.repo.repo,
               tag: snapshotTag
             });
             if(snapshotRelease && snapshotRelease.data && snapshotRelease.data.tag_name == snapshotTag) {
               console.log("delete previous snapshot release");
-              await github.repos.deleteRelease({
+              await github.rest.repos.deleteRelease({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 release_id: snapshotRelease.data.id
               });
             }
 
-            var snapshotRef = await github.git.getRef({
+            var snapshotRef = await github.rest.git.getRef({
               owner: context.repo.owner,
               repo: context.repo.repo,
               ref: "tags/" + snapshotTag
             });
             if(snapshotRef && snapshotRef.data && snapshotRef.data.ref) {
               if(snapshotRef.data.object.sha !== context.sha) {
-                await github.git.updateRef({
+                await github.rest.git.updateRef({
                   owner: context.repo.owner,
                   repo: context.repo.repo,
                   ref: "tags/" + snapshotTag,
@@ -94,7 +94,7 @@ jobs:
               }
             }
             else {
-              await github.git.createRef({
+              await github.rest.git.createRef({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 ref: "tags/" + snapshotTag,
