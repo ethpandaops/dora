@@ -507,7 +507,7 @@ func (bs *ChainService) GetIndexedDepositQueue(headBlock *beacon.Block) *Indexed
 
 	indexedQueue.QueueEstimation = queueEpoch
 
-	if !bytes.Equal(indexedQueue.Queue[len(indexedQueue.Queue)-1].PendingDeposit.Pubkey[:], lastIncludedDeposit.PublicKey[:]) {
+	if len(indexedQueue.Queue) > 0 && !bytes.Equal(indexedQueue.Queue[len(indexedQueue.Queue)-1].PendingDeposit.Pubkey[:], lastIncludedDeposit.PublicKey[:]) {
 		// something is bad, return nil
 		return &IndexedDepositQueue{
 			Queue: []*IndexedDepositQueueEntry{},
