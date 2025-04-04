@@ -288,6 +288,30 @@ func (bs *ChainService) GetParentForkIds(forkId beacon.ForkKey) []beacon.ForkKey
 	return bs.beaconIndexer.GetParentForkIds(forkId)
 }
 
+func (bs *ChainService) GetRecentEpochStats(overrideForkId *beacon.ForkKey) (*beacon.EpochStatsValues, phase0.Epoch) {
+	chainState := bs.consensusPool.GetChainState()
+	currentEpoch := chainState.CurrentEpoch()
+
+	var recentEpochStatsValues *beacon.EpochStatsValues
+
+	epochStatsEpoch := currentEpoch
+	for epochStatsEpoch+3 > currentEpoch {
+		recentEpochStats := bs.beaconIndexer.GetEpochStats(epochStatsEpoch, overrideForkId)
+		if recentEpochStats != nil {
+			recentEpochStatsValues = recentEpochStats.GetValues(false)
+			if recentEpochStatsValues != nil {
+				break
+			}
+		}
+		if epochStatsEpoch == 0 {
+			break
+		}
+		epochStatsEpoch--
+	}
+
+	return recentEpochStatsValues, epochStatsEpoch
+}
+
 type ConsensusClientFork struct {
 	Slot phase0.Slot
 	Root phase0.Root

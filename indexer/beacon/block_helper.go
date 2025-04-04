@@ -326,6 +326,30 @@ func getStateCurrentSyncCommittee(v *spec.VersionedBeaconState) ([]phase0.BLSPub
 	}
 }
 
+// getStateDepositBalanceToConsume returns the deposit balance to consume from a versioned beacon state.
+func getStateDepositBalanceToConsume(v *spec.VersionedBeaconState) (phase0.Gwei, error) {
+	switch v.Version {
+	case spec.DataVersionPhase0:
+		return 0, errors.New("no pending deposits in phase0")
+	case spec.DataVersionAltair:
+		return 0, errors.New("no pending deposits in altair")
+	case spec.DataVersionBellatrix:
+		return 0, errors.New("no pending deposits in bellatrix")
+	case spec.DataVersionCapella:
+		return 0, errors.New("no pending deposits in capella")
+	case spec.DataVersionDeneb:
+		return 0, errors.New("no pending deposits in deneb")
+	case spec.DataVersionElectra:
+		if v.Electra == nil {
+			return 0, errors.New("no electra block")
+		}
+
+		return v.Electra.DepositBalanceToConsume, nil
+	default:
+		return 0, errors.New("unknown version")
+	}
+}
+
 // getStatePendingDeposits returns the pending deposits from a versioned beacon state.
 func getStatePendingDeposits(v *spec.VersionedBeaconState) ([]*electra.PendingDeposit, error) {
 	switch v.Version {
