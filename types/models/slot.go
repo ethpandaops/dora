@@ -8,19 +8,21 @@ import (
 
 // SlotPageData is a struct to hold info for the slot details page
 type SlotPageData struct {
-	Slot                   uint64                `json:"slot"`
-	Epoch                  uint64                `json:"epoch"`
-	EpochFinalized         bool                  `json:"epoch_finalized"`
-	EpochParticipationRate float64               `json:"epoch_participation_rate"`
-	Ts                     time.Time             `json:"time"`
-	NextSlot               uint64                `json:"next_slot"`
-	PreviousSlot           uint64                `json:"prev_slot"`
-	Status                 uint16                `json:"status"`
-	Future                 bool                  `json:"future"`
-	Proposer               uint64                `json:"proposer"`
-	ProposerName           string                `json:"proposer_name"`
-	Block                  *SlotPageBlockData    `json:"block"`
-	Badges                 []*SlotPageBlockBadge `json:"badges"`
+	Slot                   uint64                   `json:"slot"`
+	Epoch                  uint64                   `json:"epoch"`
+	EpochFinalized         bool                     `json:"epoch_finalized"`
+	EpochParticipationRate float64                  `json:"epoch_participation_rate"`
+	Ts                     time.Time                `json:"time"`
+	NextSlot               uint64                   `json:"next_slot"`
+	PreviousSlot           uint64                   `json:"prev_slot"`
+	Status                 uint16                   `json:"status"`
+	Future                 bool                     `json:"future"`
+	Proposer               uint64                   `json:"proposer"`
+	ProposerName           string                   `json:"proposer_name"`
+	Block                  *SlotPageBlockData       `json:"block"`
+	InclusionLists         []*SlotPageInclusionList `json:"inclusion_lists"`
+	InclusionListsCount    uint64                   `json:"inclusion_lists_count"`
+	Badges                 []*SlotPageBlockBadge    `json:"badges"`
 }
 
 type SlotPageBlockBadge struct {
@@ -116,6 +118,15 @@ type SlotPageAttestation struct {
 	SourceRoot      []byte `json:"source_root"`
 	TargetEpoch     uint64 `json:"target_epoch"`
 	TargetRoot      []byte `json:"target_root"`
+}
+
+type SlotPageInclusionList struct {
+	Validator                  types.NamedValidator   `json:"validator"`
+	InclusionListCommitteeRoot []byte                 `json:"inclusion_list_committee_root"`
+	Transactions               []*SlotPageTransaction `json:"transactions"`
+	TransactionsCount          uint64                 `json:"transactions_count"`
+	TransactionsIncluded       []bool                 `json:"transactions_included"`
+	Signature                  []byte                 `json:"signature"`
 }
 
 type SlotPageDeposit struct {
