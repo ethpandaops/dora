@@ -4,10 +4,11 @@ import (
 	"context"
 	"time"
 
+	"math/rand/v2"
+
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
 	"github.com/ethpandaops/ethwallclock"
 	"github.com/sirupsen/logrus"
-	"golang.org/x/exp/rand"
 )
 
 type Pool struct {

@@ -37,10 +37,10 @@ type contractIndexerOptions[TxType any] struct {
 	dequeueRate     uint64         // number of logs to dequeue per block, 0 for no queue
 
 	// processFinalTx processes a finalized transaction log
-	processFinalTx func(log *types.Log, tx *types.Transaction, header *types.Header, txFrom common.Address, dequeueBlock uint64) (*TxType, error)
+	processFinalTx func(log *types.Log, tx *types.Transaction, header *types.Header, txFrom common.Address, dequeueBlock uint64, parentTxs []*TxType) (*TxType, error)
 
 	// processRecentTx processes a recent (non-finalized) transaction log
-	processRecentTx func(log *types.Log, tx *types.Transaction, header *types.Header, txFrom common.Address, dequeueBlock uint64, fork *forkWithClients) (*TxType, error)
+	processRecentTx func(log *types.Log, tx *types.Transaction, header *types.Header, txFrom common.Address, dequeueBlock uint64, fork *forkWithClients, parentTxs []*TxType) (*TxType, error)
 
 	// persistTxs persists processed transactions to the database
 	persistTxs func(tx *sqlx.Tx, txs []*TxType) error
@@ -298,7 +298,7 @@ func (ci *contractIndexer[TxType]) processFinalizedBlocks(finalizedBlockNumber u
 			}
 
 			// process the log and get the corresponding transaction
-			requestTx, err := ci.options.processFinalTx(log, txDetails, txBlockHeader, txFrom, dequeueBlock)
+			requestTx, err := ci.options.processFinalTx(log, txDetails, txBlockHeader, txFrom, dequeueBlock, requestTxs)
 			if err != nil {
 				continue
 			}
@@ -509,7 +509,7 @@ func (ci *contractIndexer[TxType]) processRecentBlocksForFork(headFork *forkWith
 				}
 
 				// process the log and get the corresponding transaction
-				requestTx, err := ci.options.processRecentTx(log, txDetails, txBlockHeader, txFrom, dequeueBlock, headFork)
+				requestTx, err := ci.options.processRecentTx(log, txDetails, txBlockHeader, txFrom, dequeueBlock, headFork, requestTxs)
 				if err != nil {
 					continue
 				}

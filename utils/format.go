@@ -393,6 +393,8 @@ func formatWithdrawalHash(hash []byte) template.HTML {
 	var colorClass string
 	if hash[0] == 0x01 {
 		colorClass = "text-success"
+	} else if hash[0] == 0x02 {
+		colorClass = "text-info"
 	} else {
 		colorClass = "text-warning"
 	}
@@ -405,7 +407,7 @@ func FormatWithdawalCredentials(hash []byte) template.HTML {
 		return "INVALID CREDENTIALS"
 	}
 
-	if hash[0] == 0x01 && Config.Frontend.EthExplorerLink != "" {
+	if (hash[0] == 0x01 || hash[0] == 0x02) && Config.Frontend.EthExplorerLink != "" {
 		link, err := url.JoinPath(Config.Frontend.EthExplorerLink, "address", fmt.Sprintf("0x%x", hash[12:]))
 		if err == nil {
 			return template.HTML(fmt.Sprintf(`<a href="%v">%v</a>`, link, formatWithdrawalHash(hash)))
