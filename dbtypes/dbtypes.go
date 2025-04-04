@@ -281,7 +281,6 @@ const (
 	// target validator errors
 	ConsolidationRequestResultTgtNotFound           uint8 = 30
 	ConsolidationRequestResultTgtInvalidCredentials uint8 = 31
-	ConsolidationRequestResultTgtInvalidSender      uint8 = 32
 	ConsolidationRequestResultTgtNotCompounding     uint8 = 33
 	ConsolidationRequestResultTgtNotActive          uint8 = 34
 )

@@ -76,6 +76,7 @@ const SubmitConsolidationsForm = (props: ISubmitConsolidationsFormProps): React.
             </div>
             <div className="col-12 col-lg-11">
               <ValidatorSelector
+                placeholder="Select a validator"
                 validators={validators}
                 onChange={(validator) => {
                   console.log("source validator", validator);
@@ -138,12 +139,15 @@ const SubmitConsolidationsForm = (props: ISubmitConsolidationsFormProps): React.
             </div>
             <div className="col-12 col-lg-11">
               <ValidatorSelector
-                validators={validators}
+                placeholder="Search for a validator by index or pubkey"
+                validators={[]}
                 onChange={(validator) => {
                   console.log("target validator", validator);
                   setTargetValidator(validator);
                 }}
                 value={targetValidator}
+                isLazyLoaded={true}
+                searchValidatorsCallback={props.searchValidatorsCallback}
               />
             </div>
           </div>
