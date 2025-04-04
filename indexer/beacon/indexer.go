@@ -469,6 +469,12 @@ func (indexer *Indexer) runIndexerLoop() {
 			indexer.lastPruneRunEpoch = chainState.CurrentEpoch()
 
 		case slotEvent := <-indexer.wallclockSubscription.Channel():
+			genesis := chainState.GetGenesis()
+			if time.Since(genesis.GenesisTime) < 0 {
+				// genesis time is in the future, skip
+				continue
+			}
+
 			epoch := chainState.EpochOfSlot(phase0.Slot(slotEvent.Number()))
 			slotIndex := chainState.SlotToSlotIndex(phase0.Slot(slotEvent.Number()))
 			slotProgress := uint8(100 / chainState.GetSpecs().SlotsPerEpoch * uint64(slotIndex))

@@ -1,16 +1,49 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import Select, { createFilter, OptionProps } from 'react-select'
 import { IValidator } from './SubmitConsolidationsFormProps';
 import { FilterOptionOption } from 'react-select/dist/declarations/src/filters';
 
 interface IValidatorSelectorProps {
+  placeholder: string;
   validators: IValidator[];
   onChange: (validator: IValidator) => void;
   value: IValidator | null;
+  isLazyLoaded?: boolean;
+  searchValidatorsCallback?: (searchTerm: string) => Promise<IValidator[]>;
 }
 
 const ValidatorSelector = (props: IValidatorSelectorProps): React.ReactElement => {
+  const [inputValue, setInputValue] = useState<string>('');
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [options, setOptions] = useState<IValidator[]>(props.validators);
+
+  useEffect(() => {
+    if (!props.isLazyLoaded) {
+      setOptions(props.validators);
+    }
+  }, [props.validators, props.isLazyLoaded]);
+
+  const handleInputChange = (newValue: string) => {
+    setInputValue(newValue);
+    
+    if (props.isLazyLoaded && props.searchValidatorsCallback) {
+      setIsLoading(true);
+      props.searchValidatorsCallback(newValue)
+        .then(results => {
+          setOptions(results);
+          setIsLoading(false);
+        })
+        .catch(() => {
+          setIsLoading(false);
+        });
+    }
+  };
+
   const filterOptions = (option: FilterOptionOption<IValidator>, inputValue: string) => {
+    if (props.isLazyLoaded) {
+      return true; // Server-side filtering
+    }
+    
     inputValue = inputValue.trim();
     if (inputValue) {
       if(inputValue.startsWith("0x") || !/^[0-9]+$/.test(inputValue)) {
@@ -25,8 +58,8 @@ const ValidatorSelector = (props: IValidatorSelectorProps): React.ReactElement =
   return (
     <Select<IValidator, false>
       className="validator-selector"
-      options={props.validators}
-      placeholder="Select a validator"
+      options={options}
+      placeholder={props.placeholder}
       components={{
         Option: ({ children, ...props }) => (
           <ValidatorOption {...props}>
@@ -43,6 +76,8 @@ const ValidatorSelector = (props: IValidatorSelectorProps): React.ReactElement =
       getOptionLabel={(o) => "Selected validator: [" + o.index + "] " + o.pubkey}
       getOptionValue={(o) => o.pubkey}
       value={props.value}
+      onInputChange={handleInputChange}
+      isLoading={isLoading}
       classNames={{
         control: () => "validator-selector-control",
         container: () => "validator-selector-container",
@@ -53,7 +88,6 @@ const ValidatorSelector = (props: IValidatorSelectorProps): React.ReactElement =
       }}
     />
   );
-
 }
 
 const ValidatorOption = (props: OptionProps<IValidator, false>) => {

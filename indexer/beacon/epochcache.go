@@ -181,6 +181,34 @@ func (cache *epochCache) getEpochStatsBeforeEpoch(epoch phase0.Epoch) []*EpochSt
 	return statsList
 }
 
+func (cache *epochCache) getLatestReadyEpochStateForBlockRoot(blockRoot phase0.Root) *epochState {
+	cache.cacheMutex.RLock()
+	defer cache.cacheMutex.RUnlock()
+
+	stateCandidates := []*epochState{}
+	for _, state := range cache.stateMap {
+		if state.loadingStatus != 2 {
+			continue
+		}
+
+		if !cache.indexer.blockCache.isCanonicalBlock(state.slotRoot, blockRoot) {
+			continue
+		}
+
+		stateCandidates = append(stateCandidates, state)
+	}
+
+	if len(stateCandidates) == 0 {
+		return nil
+	}
+
+	sort.Slice(stateCandidates, func(a, b int) bool {
+		return stateCandidates[a].stateSlot > stateCandidates[b].stateSlot
+	})
+
+	return stateCandidates[0]
+}
+
 // removeEpochStats removes an EpochStats struct from cache.
 // stops loading state call if not referenced by another epoch status.
 func (cache *epochCache) removeEpochStats(epochStats *EpochStats) {

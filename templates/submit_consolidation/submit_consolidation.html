@@ -58,6 +58,14 @@
                 console.log(data);
                 return data;
               });
+          },
+          searchValidatorsCallback: function(searchTerm) {
+            return fetch(`?ajax=search_validators&search=${searchTerm}`)
+              .then(response => response.json())
+              .then(data => {
+                console.log(data);
+                return data;
+              });
           }
         }
       }

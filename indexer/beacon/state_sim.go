@@ -179,10 +179,6 @@ func (sim *stateSimulator) applyConsolidation(consolidation *electra.Consolidati
 		return dbtypes.ConsolidationRequestResultTgtInvalidCredentials
 	}
 
-	if !bytes.Equal(tgtWithdrawalCreds[12:], consolidation.SourceAddress[:]) {
-		return dbtypes.ConsolidationRequestResultTgtInvalidSender
-	}
-
 	if srcValidator == tgtValidator {
 		// self consolidation, set withdrawal credentials to 0x02
 		if srcValidator.WithdrawalCredentials[0] == 0x01 {
