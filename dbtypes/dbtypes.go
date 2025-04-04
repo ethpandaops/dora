@@ -203,7 +203,7 @@ type DepositTx struct {
 	WithdrawalCredentials []byte `db:"withdrawalcredentials"`
 	Amount                uint64 `db:"amount"`
 	Signature             []byte `db:"signature"`
-	ValidSignature        bool   `db:"valid_signature"`
+	ValidSignature        uint8  `db:"valid_signature"`
 	Orphaned              bool   `db:"orphaned"`
 	TxHash                []byte `db:"tx_hash"`
 	TxSender              []byte `db:"tx_sender"`
@@ -221,6 +221,17 @@ type Deposit struct {
 	WithdrawalCredentials []byte  `db:"withdrawalcredentials"`
 	Amount                uint64  `db:"amount"`
 	ForkId                uint64  `db:"fork_id"`
+}
+
+type DepositWithTx struct {
+	Deposit
+	BlockNumber    *uint64 `db:"block_number"`
+	BlockTime      *uint64 `db:"block_time"`
+	BlockRoot      []byte  `db:"block_root"`
+	ValidSignature *uint8  `db:"valid_signature"`
+	TxHash         []byte  `db:"tx_hash"`
+	TxSender       []byte  `db:"tx_sender"`
+	TxTarget       []byte  `db:"tx_target"`
 }
 
 type VoluntaryExit struct {
@@ -270,7 +281,6 @@ const (
 	// target validator errors
 	ConsolidationRequestResultTgtNotFound           uint8 = 30
 	ConsolidationRequestResultTgtInvalidCredentials uint8 = 31
-	ConsolidationRequestResultTgtInvalidSender      uint8 = 32
 	ConsolidationRequestResultTgtNotCompounding     uint8 = 33
 	ConsolidationRequestResultTgtNotActive          uint8 = 34
 )

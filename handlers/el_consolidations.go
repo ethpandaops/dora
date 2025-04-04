@@ -320,8 +320,6 @@ func getConsolidationResultMessage(result uint8, specs *consensus.ChainSpec) str
 		return "Error: Target validator not found"
 	case dbtypes.ConsolidationRequestResultTgtInvalidCredentials:
 		return "Error: Target validator has invalid credentials"
-	case dbtypes.ConsolidationRequestResultTgtInvalidSender:
-		return "Error: Target validator withdrawal address does not match tx sender"
 	case dbtypes.ConsolidationRequestResultTgtNotCompounding:
 		return "Error: Target validator is not compounding"
 	case dbtypes.ConsolidationRequestResultTgtNotActive:

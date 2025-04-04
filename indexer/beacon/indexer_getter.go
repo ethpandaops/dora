@@ -8,6 +8,7 @@ import (
 	"sort"
 
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
+	"github.com/attestantio/go-eth2-client/spec/electra"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/dora/db"
@@ -274,6 +275,31 @@ func (indexer *Indexer) GetEpochStats(epoch phase0.Epoch, overrideForkId *ForkKe
 	}
 
 	return bestEpochStats
+}
+
+func (indexer *Indexer) GetEpochStatsByBlockRoot(epoch phase0.Epoch, blockRoot phase0.Root) *EpochStats {
+	return indexer.epochCache.getEpochStatsByEpochAndRoot(epoch, blockRoot)
+}
+
+// GetLatestDepositQueue returns the latest deposit queue for the given epoch and optional fork ID override.
+func (indexer *Indexer) GetLatestDepositQueue(overrideForkId *ForkKey) []*electra.PendingDeposit {
+	canonicalHead := indexer.GetCanonicalHead(overrideForkId)
+	if canonicalHead == nil {
+		return nil
+	}
+
+	_, _, _, queue := indexer.GetLatestDepositQueueByBlockRoot(canonicalHead.Root)
+	return queue
+}
+
+// GetLatestDepositQueueByBlockRoot returns the latest deposit queue for the given block root.
+func (indexer *Indexer) GetLatestDepositQueueByBlockRoot(blockRoot phase0.Root) (phase0.Root, phase0.Slot, phase0.Gwei, []*electra.PendingDeposit) {
+	epochState := indexer.epochCache.getLatestReadyEpochStateForBlockRoot(blockRoot)
+	if epochState == nil {
+		return phase0.Root{}, 0, 0, nil
+	}
+
+	return epochState.slotRoot, epochState.stateSlot, epochState.depositBalanceToConsume, epochState.pendingDeposits
 }
 
 // GetParentForkIds returns the parent fork ids of the given fork.

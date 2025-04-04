@@ -210,6 +210,16 @@ func (cache *validatorCache) updateValidatorSet(slot phase0.Slot, dependentRoot 
 			cachedValidator.finalChecksum = checksum
 			cachedValidator.statusFlags = GetValidatorStatusFlags(validators[i])
 			updatedCount++
+
+			activeData := &ValidatorData{
+				ActivationEligibilityEpoch: validators[i].ActivationEligibilityEpoch,
+				ActivationEpoch:            validators[i].ActivationEpoch,
+				ExitEpoch:                  validators[i].ExitEpoch,
+				EffectiveBalanceEth:        uint16(validators[i].EffectiveBalance / EtherGweiFactor),
+			}
+			if cache.isActiveValidator(activeData) {
+				cachedValidator.activeData = activeData
+			}
 		}
 
 		if foundAhead && cache.checkValidatorEqual(cachedValidator.validatorDiffs[aheadDiffIdx].validator, validators[i]) {

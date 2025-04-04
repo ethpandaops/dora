@@ -41,6 +41,7 @@ type ValidatorPageData struct {
 	ExitReasonTargetName     string                                `json:"exit_reason_target_name"`
 	ExitReasonTxHash         []byte                                `json:"exit_reason_tx_hash"`
 	ExitReasonTxDetails      *ValidatorPageDataWithdrawalTxDetails `json:"exit_reason_tx_details"`
+	QueuedDepositCount       uint64                                `json:"queued_deposit_count"`
 
 	TabView         string `json:"tab_view"`
 	ElectraIsActive bool   `json:"electra_is_active"`
@@ -86,18 +87,30 @@ type ValidatorPageDataAttestation struct {
 }
 
 type ValidatorPageDataDeposit struct {
-	IsIncluded      bool                               `json:"is_included"`
-	HasIndex        bool                               `json:"has_index"`
-	Index           uint64                             `json:"index"`
-	SlotRoot        []byte                             `json:"slot_root"`
-	Slot            uint64                             `json:"slot"`
-	Time            time.Time                          `json:"time"`
-	Amount          uint64                             `json:"amount"`
-	WithdrawalCreds []byte                             `json:"withdrawal_creds"`
-	Status          uint64                             `json:"status"`
-	TxStatus        uint64                             `json:"tx_status"`
-	TxDetails       *ValidatorPageDataDepositTxDetails `json:"tx_details"`
-	TxHash          []byte                             `json:"tx_hash"`
+	Index              uint64                             `json:"index"`
+	HasIndex           bool                               `json:"has_index"`
+	PublicKey          []byte                             `json:"pubkey"`
+	WithdrawalCreds    []byte                             `json:"withdrawal_creds"`
+	Amount             uint64                             `json:"amount"`
+	Slot               uint64                             `json:"slot"`
+	SlotRoot           []byte                             `json:"slot_root"`
+	Time               time.Time                          `json:"time"`
+	Orphaned           bool                               `json:"orphaned"`
+	ValidatorStatus    string                             `json:"vstatus"`
+	ShowUpcheck        bool                               `json:"show_upcheck"`
+	UpcheckActivity    uint8                              `json:"upcheck_act"`
+	UpcheckMaximum     uint8                              `json:"upcheck_max"`
+	IsQueued           bool                               `json:"is_queued"`
+	QueuePosition      uint64                             `json:"queue_position"`
+	EstimatedTime      time.Time                          `json:"estimated_time"`
+	DepositorAddress   []byte                             `json:"depositor_address"`
+	HasTransaction     bool                               `json:"has_transaction"`
+	TransactionDetails *ValidatorPageDataDepositTxDetails `json:"tx_details"`
+	InvalidSignature   bool                               `json:"invalid_signature"`
+	TransactionHash    []byte                             `json:"tx_hash"`
+	ValidatorExists    bool                               `json:"validator_exists"`
+	ValidatorIndex     uint64                             `json:"validator_index"`
+	ValidatorName      string                             `json:"validator_name"`
 }
 
 type ValidatorPageDataDepositTxDetails struct {
