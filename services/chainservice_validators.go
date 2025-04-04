@@ -102,6 +102,15 @@ func (bs *ChainService) GetFilteredValidatorSet(filter *dbtypes.ValidatorFilter,
 		if len(filter.Indices) > 0 && !slices.Contains(filter.Indices, index) {
 			return nil
 		}
+		if len(filter.PubKey) > 0 {
+			pubkeylen := len(filter.PubKey)
+			if pubkeylen > 48 {
+				pubkeylen = 48
+			}
+			if !bytes.Equal(validator.PublicKey[:pubkeylen], filter.PubKey) {
+				return nil
+			}
+		}
 		if filter.WithdrawalAddress != nil {
 			if validator.WithdrawalCredentials[0] != 0x01 && validator.WithdrawalCredentials[0] != 0x02 {
 				return nil
