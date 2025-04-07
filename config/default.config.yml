@@ -107,7 +107,20 @@ database:
 
 # separate block db for storing block bodies (no archive beacon node required)
 blockDb:
-  engine: "none" # pebble / none
+  engine: "none" # pebble / s3 / none (disable block db)
+
+  # pebble settings (only used if engine is set to pebble)
   pebble:
     path: "./tmp-blockdb.peb"
     cacheSize: 100 # 100MB
+
+  # s3 settings (only used if engine is set to s3)
+  s3:
+    bucket: ""
+    endpoint: ""
+    secure: false
+    region: ""
+    accessKey: ""
+    secretKey: ""
+    path: "" # path prefix
+
