@@ -205,6 +205,22 @@ func GetBlockHeadByRoot(root []byte) *dbtypes.BlockHead {
 	return &blockHead
 }
 
+func GetBlockHeadBySlot(slot uint64) *dbtypes.BlockHead {
+	blockHead := dbtypes.BlockHead{}
+	err := ReaderDb.Get(&blockHead, `
+	SELECT
+		root, slot, parent_root, fork_id
+	FROM slots
+	ORDER BY status ASC
+	WHERE status != 0 AND slot = $1
+	LIMIT 1
+	`, slot)
+	if err != nil {
+		return nil
+	}
+	return &blockHead
+}
+
 func GetSlotsByBlockHash(blockHash []byte) []*dbtypes.Slot {
 	slots := []*dbtypes.Slot{}
 	err := ReaderDb.Select(&slots, `

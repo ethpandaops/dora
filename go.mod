@@ -7,7 +7,8 @@ toolchain go1.24.1
 require (
 	github.com/520MianXiangDuiXiang520/MapSize v0.0.0-20230414174449-030467540731
 	github.com/Masterminds/sprig/v3 v3.3.0
-	github.com/attestantio/go-eth2-client v0.24.1
+	github.com/attestantio/go-eth2-client v0.24.2
+	github.com/cockroachdb/pebble v1.1.4
 	github.com/coocood/freecache v1.2.4
 	github.com/ethereum/go-ethereum v1.15.0
 	github.com/ethpandaops/ethwallclock v0.3.0
@@ -20,6 +21,7 @@ require (
 	github.com/lib/pq v1.10.9
 	github.com/libp2p/go-libp2p v0.36.5
 	github.com/mashingan/smapping v0.1.19
+	github.com/minio/minio-go/v7 v7.0.88
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/pk910/dynamic-ssz v0.0.6
 	github.com/pressly/goose/v3 v3.24.2
@@ -34,18 +36,33 @@ require (
 	github.com/tdewolff/minify v2.3.6+incompatible
 	github.com/timandy/routine v1.1.5
 	github.com/urfave/negroni v1.0.0
-	golang.org/x/crypto v0.36.0
+	golang.org/x/crypto v0.37.0
 	golang.org/x/exp v0.0.0-20250305212735-054e65f0b394
-	golang.org/x/text v0.23.0
+	golang.org/x/text v0.24.0
 	golang.org/x/time v0.11.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
+	github.com/DataDog/zstd v1.5.5 // indirect
+	github.com/cockroachdb/errors v1.11.3 // indirect
+	github.com/cockroachdb/fifo v0.0.0-20240606204812-0bbfbd93a7ce // indirect
+	github.com/cockroachdb/logtags v0.0.0-20230118201751-21c54148d20b // indirect
+	github.com/cockroachdb/redact v1.1.5 // indirect
+	github.com/cockroachdb/tokenbucket v0.0.0-20230807174530-cc333fc44b06 // indirect
 	github.com/emicklei/dot v1.6.4 // indirect
+	github.com/getsentry/sentry-go v0.27.0 // indirect
+	github.com/go-ini/ini v1.67.0 // indirect
+	github.com/goccy/go-json v0.10.5 // indirect
+	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/ipfs/go-cid v0.4.1 // indirect
+	github.com/klauspost/compress v1.18.0 // indirect
+	github.com/kr/pretty v0.3.1 // indirect
+	github.com/kr/text v0.2.0 // indirect
 	github.com/libp2p/go-buffer-pool v0.1.0 // indirect
+	github.com/minio/crc64nvme v1.0.1 // indirect
 	github.com/minio/highwayhash v1.0.2 // indirect
+	github.com/minio/md5-simd v1.1.2 // indirect
 	github.com/mr-tron/base58 v1.2.0 // indirect
 	github.com/multiformats/go-base32 v0.1.0 // indirect
 	github.com/multiformats/go-base36 v0.2.0 // indirect
@@ -57,6 +74,8 @@ require (
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/prysmaticlabs/fastssz v0.0.0-20241008181541-518c4ce73516 // indirect
 	github.com/prysmaticlabs/gohashtree v0.0.4-beta.0.20240624100937-73632381301b // indirect
+	github.com/rogpeppe/go-internal v1.13.1 // indirect
+	github.com/rs/xid v1.6.0 // indirect
 	github.com/spaolacci/murmur3 v1.1.0 // indirect
 	github.com/thomaso-mirodin/intmath v0.0.0-20160323211736-5dc6d854e46e // indirect
 	go.opentelemetry.io/auto/sdk v1.1.0 // indirect
@@ -138,8 +157,8 @@ require (
 	go.opentelemetry.io/otel/trace v1.35.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/net v0.38.0 // indirect
-	golang.org/x/sync v0.12.0 // indirect
-	golang.org/x/sys v0.31.0 // indirect
+	golang.org/x/sync v0.13.0 // indirect
+	golang.org/x/sys v0.32.0 // indirect
 	golang.org/x/xerrors v0.0.0-20240903120638-7835f813f4da // indirect
 	google.golang.org/protobuf v1.36.6 // indirect
 	gopkg.in/Knetic/govaluate.v3 v3.0.0
