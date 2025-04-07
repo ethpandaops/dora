@@ -208,8 +208,8 @@ func unmarshalVersionedSignedBeaconBlockJson(version uint64, ssz []byte) (*spec.
 	return block, nil
 }
 
-// marshalVersionedSignedExecutionPayloadEnvelopeSSZ marshals a signed execution payload envelope using SSZ encoding.
-func marshalVersionedSignedExecutionPayloadEnvelopeSSZ(dynSsz *dynssz.DynSsz, payload *eip7732.SignedExecutionPayloadEnvelope, compress bool) (version uint64, ssz []byte, err error) {
+// MarshalVersionedSignedExecutionPayloadEnvelopeSSZ marshals a signed execution payload envelope using SSZ encoding.
+func MarshalVersionedSignedExecutionPayloadEnvelopeSSZ(dynSsz *dynssz.DynSsz, payload *eip7732.SignedExecutionPayloadEnvelope, compress bool) (version uint64, ssz []byte, err error) {
 	if utils.Config.KillSwitch.DisableSSZEncoding {
 		// SSZ encoding disabled, use json instead
 		version, ssz, err = marshalVersionedSignedExecutionPayloadEnvelopeJson(payload)
@@ -227,8 +227,8 @@ func marshalVersionedSignedExecutionPayloadEnvelopeSSZ(dynSsz *dynssz.DynSsz, pa
 	return
 }
 
-// unmarshalVersionedSignedExecutionPayloadEnvelopeSSZ unmarshals a versioned signed execution payload envelope using SSZ encoding.
-func unmarshalVersionedSignedExecutionPayloadEnvelopeSSZ(dynSsz *dynssz.DynSsz, version uint64, ssz []byte) (*eip7732.SignedExecutionPayloadEnvelope, error) {
+// UnmarshalVersionedSignedExecutionPayloadEnvelopeSSZ unmarshals a versioned signed execution payload envelope using SSZ encoding.
+func UnmarshalVersionedSignedExecutionPayloadEnvelopeSSZ(dynSsz *dynssz.DynSsz, version uint64, ssz []byte) (*eip7732.SignedExecutionPayloadEnvelope, error) {
 	if (version & compressionFlag) != 0 {
 		// decompress
 		if d, err := decompressBytes(ssz); err != nil {

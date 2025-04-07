@@ -361,7 +361,7 @@ func (indexer *Indexer) StartIndexer() {
 		}
 
 		if len(dbBlock.PayloadSSZ) > 0 {
-			blockPayload, err := unmarshalVersionedSignedExecutionPayloadEnvelopeSSZ(indexer.dynSsz, dbBlock.PayloadVer, dbBlock.PayloadSSZ)
+			blockPayload, err := UnmarshalVersionedSignedExecutionPayloadEnvelopeSSZ(indexer.dynSsz, dbBlock.PayloadVer, dbBlock.PayloadSSZ)
 			if err != nil {
 				indexer.logger.Warnf("could not restore unfinalized block payload %v [%x] from db: %v", dbBlock.Slot, dbBlock.Root, err)
 			} else if block.processingStatus == 0 {

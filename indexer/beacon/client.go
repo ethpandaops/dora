@@ -593,7 +593,7 @@ func (c *Client) processExecutionPayloadEvent(executionPayloadEvent *v1.Executio
 }
 
 func (c *Client) persistExecutionPayload(block *Block) error {
-	payloadVer, payloadSSZ, err := marshalVersionedSignedExecutionPayloadEnvelopeSSZ(block.dynSsz, block.executionPayload, c.indexer.blockCompression)
+	payloadVer, payloadSSZ, err := MarshalVersionedSignedExecutionPayloadEnvelopeSSZ(block.dynSsz, block.executionPayload, c.indexer.blockCompression)
 	if err != nil {
 		return fmt.Errorf("marshal execution payload ssz failed: %v", err)
 	}

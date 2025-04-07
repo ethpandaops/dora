@@ -14,8 +14,9 @@ const (
 )
 
 const (
-	BlockTypeHeader uint16 = 1
-	BlockTypeBody   uint16 = 2
+	BlockTypeHeader  uint16 = 1
+	BlockTypeBody    uint16 = 2
+	BlockTypePayload uint16 = 3
 )
 
 type PebbleEngine struct {
@@ -97,7 +98,34 @@ func (e *PebbleEngine) getBlockBody(root []byte, parser func(uint64, []byte) (in
 	return body, version, nil
 }
 
-func (e *PebbleEngine) GetBlock(_ context.Context, _ uint64, root []byte, parseBlock func(uint64, []byte) (interface{}, error)) (*types.BlockData, error) {
+func (e *PebbleEngine) getBlockPayload(root []byte, parser func(uint64, []byte) (interface{}, error)) (interface{}, uint64, error) {
+	key := make([]byte, 2+len(root)+2)
+	binary.BigEndian.PutUint16(key[:2], KeyNamespaceBlock)
+	copy(key[2:], root)
+	binary.BigEndian.PutUint16(key[2+len(root):], BlockTypePayload)
+
+	res, closer, err := e.db.Get(key)
+	if err != nil && err != pebble.ErrNotFound {
+		return nil, 0, err
+	}
+	defer closer.Close()
+
+	if err == pebble.ErrNotFound || len(res) == 0 {
+		return nil, 0, nil
+	}
+
+	version := binary.BigEndian.Uint64(res[:8])
+	block := res[8:]
+
+	body, err := parser(version, block)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return body, version, nil
+}
+
+func (e *PebbleEngine) GetBlock(_ context.Context, _ uint64, root []byte, parseBlock func(uint64, []byte) (interface{}, error), parsePayload func(uint64, []byte) (interface{}, error)) (*types.BlockData, error) {
 	header, header_ver, err := e.getBlockHeader(root)
 	if err != nil {
 		return nil, err
@@ -123,6 +151,14 @@ func (e *PebbleEngine) GetBlock(_ context.Context, _ uint64, root []byte, parseB
 
 	blockData.Body = body
 	blockData.BodyVersion = body_ver
+
+	payload, payload_ver, err := e.getBlockPayload(root, parsePayload)
+	if err != nil {
+		return nil, err
+	}
+
+	blockData.Payload = payload
+	blockData.PayloadVersion = payload_ver
 
 	return blockData, nil
 }
@@ -157,6 +193,19 @@ func (e *PebbleEngine) addBlockBody(root []byte, version uint64, block []byte) e
 	return e.db.Set(key, data, nil)
 }
 
+func (e *PebbleEngine) addBlockPayload(root []byte, version uint64, payload []byte) error {
+	key := make([]byte, 2+len(root)+2)
+	binary.BigEndian.PutUint16(key[:2], KeyNamespaceBlock)
+	copy(key[2:], root)
+	binary.BigEndian.PutUint16(key[2+len(root):], BlockTypePayload)
+
+	data := make([]byte, 8+len(payload))
+	binary.BigEndian.PutUint64(data[:8], version)
+	copy(data[8:], payload)
+
+	return e.db.Set(key, data, nil)
+}
+
 func (e *PebbleEngine) AddBlock(_ context.Context, _ uint64, root []byte, dataCb func() (*types.BlockData, error)) (bool, error) {
 	key := make([]byte, 2+len(root)+2)
 	binary.BigEndian.PutUint16(key[:2], KeyNamespaceBlock)
@@ -180,6 +229,13 @@ func (e *PebbleEngine) AddBlock(_ context.Context, _ uint64, root []byte, dataCb
 	err = e.addBlockBody(root, blockData.BodyVersion, blockData.BodyData)
 	if err != nil {
 		return false, err
+	}
+
+	if blockData.PayloadVersion != 0 {
+		err = e.addBlockPayload(root, blockData.PayloadVersion, blockData.PayloadData)
+		if err != nil {
+			return false, err
+		}
 	}
 
 	return true, nil

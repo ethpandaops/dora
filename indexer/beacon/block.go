@@ -190,7 +190,7 @@ func (block *Block) GetExecutionPayload() *eip7732.SignedExecutionPayloadEnvelop
 	if block.hasExecutionPayload && block.isInUnfinalizedDb {
 		dbBlock := db.GetUnfinalizedBlock(block.Root[:], false, false, true)
 		if dbBlock != nil {
-			payload, err := unmarshalVersionedSignedExecutionPayloadEnvelopeSSZ(block.dynSsz, dbBlock.PayloadVer, dbBlock.PayloadSSZ)
+			payload, err := UnmarshalVersionedSignedExecutionPayloadEnvelopeSSZ(block.dynSsz, dbBlock.PayloadVer, dbBlock.PayloadSSZ)
 			if err == nil {
 				return payload
 			}
@@ -461,7 +461,7 @@ func (block *Block) buildOrphanedBlock(compress bool) (*dbtypes.OrphanedBlock, e
 	}
 
 	if block.executionPayload != nil {
-		payloadVer, payloadSSZ, err := marshalVersionedSignedExecutionPayloadEnvelopeSSZ(block.dynSsz, block.executionPayload, compress)
+		payloadVer, payloadSSZ, err := MarshalVersionedSignedExecutionPayloadEnvelopeSSZ(block.dynSsz, block.executionPayload, compress)
 		if err != nil {
 			return nil, fmt.Errorf("marshal execution payload ssz failed: %v", err)
 		}
@@ -512,7 +512,7 @@ func (block *Block) unpruneBlockBody() {
 	if dbBlock != nil {
 		block.block, _ = UnmarshalVersionedSignedBeaconBlockSSZ(block.dynSsz, dbBlock.BlockVer, dbBlock.BlockSSZ)
 		if len(dbBlock.PayloadSSZ) > 0 {
-			block.executionPayload, _ = unmarshalVersionedSignedExecutionPayloadEnvelopeSSZ(block.dynSsz, dbBlock.PayloadVer, dbBlock.PayloadSSZ)
+			block.executionPayload, _ = UnmarshalVersionedSignedExecutionPayloadEnvelopeSSZ(block.dynSsz, dbBlock.PayloadVer, dbBlock.PayloadSSZ)
 		}
 	}
 }

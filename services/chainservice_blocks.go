@@ -177,6 +177,8 @@ func (bs *ChainService) GetSlotDetailsByBlockroot(ctx context.Context, blockroot
 	if result == nil && header != nil && blockdb.GlobalBlockDb != nil {
 		blockData, err := blockdb.GlobalBlockDb.GetBlock(ctx, uint64(header.Message.Slot), blockroot[:], func(version uint64, block []byte) (interface{}, error) {
 			return beacon.UnmarshalVersionedSignedBeaconBlockSSZ(bs.beaconIndexer.GetDynSSZ(), version, block)
+		}, func(version uint64, payload []byte) (interface{}, error) {
+			return beacon.UnmarshalVersionedSignedExecutionPayloadEnvelopeSSZ(bs.beaconIndexer.GetDynSSZ(), version, payload)
 		})
 		if err == nil && blockData != nil {
 			result = &CombinedBlockResponse{
@@ -309,6 +311,8 @@ func (bs *ChainService) GetSlotDetailsBySlot(ctx context.Context, slot phase0.Sl
 	if result == nil && header != nil && blockdb.GlobalBlockDb != nil {
 		blockData, err := blockdb.GlobalBlockDb.GetBlock(ctx, uint64(slot), blockRoot[:], func(version uint64, block []byte) (interface{}, error) {
 			return beacon.UnmarshalVersionedSignedBeaconBlockSSZ(bs.beaconIndexer.GetDynSSZ(), version, block)
+		}, func(version uint64, payload []byte) (interface{}, error) {
+			return beacon.UnmarshalVersionedSignedExecutionPayloadEnvelopeSSZ(bs.beaconIndexer.GetDynSSZ(), version, payload)
 		})
 		if err == nil && blockData != nil {
 			header := &phase0.SignedBeaconBlockHeader{}
