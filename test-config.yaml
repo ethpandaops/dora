@@ -117,3 +117,22 @@ database:
     user: "pk910"
     password: "SBekcBFpRW9rZrVL" # internal dev DB, no worries about password leaking ;)
     name: "pk910"
+
+# separate block db for storing block bodies (no archive beacon node required)
+blockDb:
+  engine: "none" # pebble / s3 / none (disable block db)
+
+  # pebble settings (only used if engine is set to pebble)
+  pebble:
+    path: "./tmp-blockdb.peb"
+    cacheSize: 100 # 100MB
+
+  # s3 settings (only used if engine is set to s3)
+  s3:
+    bucket: "s3-bucket-name"
+    endpoint: "bucketid.r2.cloudflarestorage.com"
+    secure: true
+    region: ""
+    accessKey: "access-key"
+    secretKey: "secret-key"
+    path: "ephemery" # path prefix

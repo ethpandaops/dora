@@ -54,9 +54,9 @@ jobs:
         prev_tag=$(git tag --sort=-version:refname | grep -e "^v[0-9.]*$" | head -n 1)
         echo "previous release: $prev_tag"
         if [ "$prev_tag" ]; then
-          changelog=$(git log --oneline --no-decorate $prev_tag..HEAD)
+          changelog=$(git log --oneline --merges --first-parent --no-decorate $prev_tag..HEAD)
         else
-          changelog=$(git log --oneline --no-decorate)
+          changelog=$(git log --oneline --merges --first-parent --no-decorate)
         fi
         echo "changelog<<EOF" >> $GITHUB_OUTPUT
         echo " - ${changelog//$'\n'/$'\n' - }" >> $GITHUB_OUTPUT
@@ -76,8 +76,15 @@ jobs:
         release_name: "v${{ inputs.version }}"
         tag_name: "v${{ inputs.version }}"
         body: |
-          ### Changes
+          ### Major Changes
+          * ...
+
+          <details>
+            <summary>Full changelog</summary>
+
+            ### Full changelog
           ${{ steps.changelog.outputs.changelog }}
+          </details>
 
           ### Release Artifacts
           Please read through the [wiki](https://github.com/ethpandaops/dora/wiki) for setup & configuration instructions.
