@@ -32,6 +32,7 @@ type Indexer struct {
 
 	// configuration
 	disableSync           bool
+	disableBlockDbWrite   bool
 	blockCompression      bool
 	inMemoryEpochs        uint16
 	activityHistoryLength uint16
@@ -93,6 +94,7 @@ func NewIndexer(logger logrus.FieldLogger, consensusPool *consensus.Pool) *Index
 		logger:                logger,
 		consensusPool:         consensusPool,
 		disableSync:           utils.Config.Indexer.DisableSynchronizer,
+		disableBlockDbWrite:   utils.Config.Indexer.DisableBlockDB,
 		blockCompression:      blockCompression,
 		inMemoryEpochs:        inMemoryEpochs,
 		activityHistoryLength: activityHistoryLength,
@@ -347,7 +349,7 @@ func (indexer *Indexer) StartIndexer() {
 		block.SetHeader(header)
 		indexer.blockCache.addBlockToParentMap(block)
 
-		blockBody, err := unmarshalVersionedSignedBeaconBlockSSZ(indexer.dynSsz, dbBlock.BlockVer, dbBlock.BlockSSZ)
+		blockBody, err := UnmarshalVersionedSignedBeaconBlockSSZ(indexer.dynSsz, dbBlock.BlockVer, dbBlock.BlockSSZ)
 		if err != nil {
 			indexer.logger.Warnf("could not restore unfinalized block body %v [%x] from db: %v", dbBlock.Slot, dbBlock.Root, err)
 		} else if block.processingStatus == 0 {

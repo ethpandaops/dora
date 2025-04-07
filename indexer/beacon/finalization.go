@@ -4,12 +4,14 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"sync"
 	"time"
 
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
 	"github.com/attestantio/go-eth2-client/spec"
 	"github.com/attestantio/go-eth2-client/spec/eip7732"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
+	"github.com/ethpandaops/dora/blockdb"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/jmoiron/sqlx"
@@ -388,6 +390,23 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 	}
 
 	t2dur := time.Since(t1)
+	t1 = time.Now()
+
+	// save block bodies to blockdb
+	if blockdb.GlobalBlockDb != nil && !indexer.disableBlockDbWrite {
+		var wg sync.WaitGroup
+		for _, block := range canonicalBlocks {
+			wg.Add(1)
+			go func(b *Block) {
+				defer wg.Done()
+				if err := b.writeToBlockDb(); err != nil {
+					indexer.logger.Errorf("error writing block %v to blockdb: %v", b.Root.String(), err)
+				}
+			}(block)
+		}
+		wg.Wait()
+	}
+	t3dur := time.Since(t1)
 
 	indexer.lastFinalizedEpoch = epoch + 1
 
@@ -419,7 +438,7 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 	}
 
 	// log summary
-	indexer.logger.Infof("completed epoch %v finalization (process: %v ms, load: %v s, write: %v ms, clean: %v ms)", epoch, t1dur.Milliseconds(), t1loading.Seconds(), t2dur.Milliseconds(), time.Since(t1).Milliseconds())
+	indexer.logger.Infof("completed epoch %v finalization (process: %v ms, load: %v s, write: %v ms, blockdb: %v ms, clean: %v ms)", epoch, t1dur.Milliseconds(), t1loading.Seconds(), t2dur.Milliseconds(), t3dur.Milliseconds(), time.Since(t1).Milliseconds())
 	indexer.logger.Infof("epoch %v blocks: %v canonical, %v orphaned", epoch, len(canonicalBlocks), len(orphanedBlocks))
 	if epochStatsValues != nil {
 		indexer.logger.Infof("epoch %v stats: %v validators (%v ETH)", epoch, epochStatsValues.ActiveValidators, epochStatsValues.EffectiveBalance/EtherGweiFactor)

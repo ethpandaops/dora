@@ -98,6 +98,7 @@ type Config struct {
 		DisableSynchronizer             bool   `yaml:"disableSynchronizer" envconfig:"INDEXER_DISABLE_SYNCHRONIZER"`
 		SyncEpochCooldown               uint   `yaml:"syncEpochCooldown" envconfig:"INDEXER_SYNC_EPOCH_COOLDOWN"`
 		MaxParallelValidatorSetRequests uint   `yaml:"maxParallelValidatorSetRequests" envconfig:"INDEXER_MAX_PARALLEL_VALIDATOR_SET_REQUESTS"`
+		DisableBlockDB                  bool   `yaml:"disableBlockDB" envconfig:"INDEXER_DISABLE_BLOCK_DB"`
 		PubkeyCachePath                 string `yaml:"pubkeyCachePath" envconfig:"INDEXER_PUBKEY_CACHE_PATH"`
 
 		BadChainRoots []string `yaml:"badChainRoots" envconfig:"INDEXER_BAD_CHAIN_ROOTS"`
@@ -117,32 +118,13 @@ type Config struct {
 		RefreshInterval time.Duration    `yaml:"refreshInterval" envconfig:"MEVINDEXER_REFRESH_INTERVAL"`
 	} `yaml:"mevIndexer"`
 
-	Database struct {
-		Engine string `yaml:"engine" envconfig:"DATABASE_ENGINE"`
-		Sqlite struct {
-			File         string `yaml:"file" envconfig:"DATABASE_SQLITE_FILE"`
-			MaxOpenConns int    `yaml:"maxOpenConns" envconfig:"DATABASE_SQLITE_MAX_OPEN_CONNS"`
-			MaxIdleConns int    `yaml:"maxIdleConns" envconfig:"DATABASE_SQLITE_MAX_IDLE_CONNS"`
-		} `yaml:"sqlite"`
-		Pgsql struct {
-			Username     string `yaml:"user" envconfig:"DATABASE_PGSQL_USERNAME"`
-			Password     string `yaml:"password" envconfig:"DATABASE_PGSQL_PASSWORD"`
-			Name         string `yaml:"name" envconfig:"DATABASE_PGSQL_NAME"`
-			Host         string `yaml:"host" envconfig:"DATABASE_PGSQL_HOST"`
-			Port         string `yaml:"port" envconfig:"DATABASE_PGSQL_PORT"`
-			MaxOpenConns int    `yaml:"maxOpenConns" envconfig:"DATABASE_PGSQL_MAX_OPEN_CONNS"`
-			MaxIdleConns int    `yaml:"maxIdleConns" envconfig:"DATABASE_PGSQL_MAX_IDLE_CONNS"`
-		} `yaml:"pgsql"`
-		PgsqlWriter struct {
-			Username     string `yaml:"user" envconfig:"DATABASE_PGSQL_WRITER_USERNAME"`
-			Password     string `yaml:"password" envconfig:"DATABASE_PGSQL_WRITER_PASSWORD"`
-			Name         string `yaml:"name" envconfig:"DATABASE_PGSQL_WRITER_NAME"`
-			Host         string `yaml:"host" envconfig:"DATABASE_PGSQL_WRITER_HOST"`
-			Port         string `yaml:"port" envconfig:"DATABASE_PGSQL_WRITER_PORT"`
-			MaxOpenConns int    `yaml:"maxOpenConns" envconfig:"DATABASE_PGSQL_WRITER_MAX_OPEN_CONNS"`
-			MaxIdleConns int    `yaml:"maxIdleConns" envconfig:"DATABASE_PGSQL_WRITER_MAX_IDLE_CONNS"`
-		} `yaml:"pgsqlWriter"`
-	} `yaml:"database"`
+	Database DatabaseConfig `yaml:"database"`
+
+	BlockDb struct {
+		Engine string              `yaml:"engine" envconfig:"BLOCKDB_ENGINE"`
+		Pebble PebbleBlockDBConfig `yaml:"pebble"`
+		S3     S3BlockDBConfig     `yaml:"s3"`
+	} `yaml:"blockDb"`
 
 	KillSwitch struct {
 		DisableSSZEncoding      bool `yaml:"disableSSZEncoding" envconfig:"KILLSWITCH_DISABLE_SSZ_ENCODING"`
@@ -176,18 +158,52 @@ type MevRelayConfig struct {
 	BlockLimit int    `yaml:"blockLimit"`
 }
 
+type DatabaseConfig struct {
+	Engine      string                     `yaml:"engine" envconfig:"DATABASE_ENGINE"`
+	Sqlite      *SqliteDatabaseConfig      `yaml:"sqlite"`
+	Pgsql       *PgsqlDatabaseConfig       `yaml:"pgsql"`
+	PgsqlWriter *PgsqlWriterDatabaseConfig `yaml:"pgsqlWriter"`
+}
+
 type SqliteDatabaseConfig struct {
-	File         string
-	MaxOpenConns int
-	MaxIdleConns int
+	File         string `yaml:"file" envconfig:"DATABASE_SQLITE_FILE"`
+	MaxOpenConns int    `yaml:"maxOpenConns" envconfig:"DATABASE_SQLITE_MAX_OPEN_CONNS"`
+	MaxIdleConns int    `yaml:"maxIdleConns" envconfig:"DATABASE_SQLITE_MAX_IDLE_CONNS"`
 }
 
 type PgsqlDatabaseConfig struct {
-	Username     string
-	Password     string
-	Name         string
-	Host         string
-	Port         string
-	MaxOpenConns int
-	MaxIdleConns int
+	Username     string `yaml:"user" envconfig:"DATABASE_PGSQL_USERNAME"`
+	Password     string `yaml:"password" envconfig:"DATABASE_PGSQL_PASSWORD"`
+	Name         string `yaml:"name" envconfig:"DATABASE_PGSQL_NAME"`
+	Host         string `yaml:"host" envconfig:"DATABASE_PGSQL_HOST"`
+	Port         string `yaml:"port" envconfig:"DATABASE_PGSQL_PORT"`
+	MaxOpenConns int    `yaml:"maxOpenConns" envconfig:"DATABASE_PGSQL_MAX_OPEN_CONNS"`
+	MaxIdleConns int    `yaml:"maxIdleConns" envconfig:"DATABASE_PGSQL_MAX_IDLE_CONNS"`
+}
+
+type PgsqlWriterDatabaseConfig struct {
+	Username     string `yaml:"user" envconfig:"DATABASE_PGSQL_WRITER_USERNAME"`
+	Password     string `yaml:"password" envconfig:"DATABASE_PGSQL_WRITER_PASSWORD"`
+	Name         string `yaml:"name" envconfig:"DATABASE_PGSQL_WRITER_NAME"`
+	Host         string `yaml:"host" envconfig:"DATABASE_PGSQL_WRITER_HOST"`
+	Port         string `yaml:"port" envconfig:"DATABASE_PGSQL_WRITER_PORT"`
+	MaxOpenConns int    `yaml:"maxOpenConns" envconfig:"DATABASE_PGSQL_WRITER_MAX_OPEN_CONNS"`
+	MaxIdleConns int    `yaml:"maxIdleConns" envconfig:"DATABASE_PGSQL_WRITER_MAX_IDLE_CONNS"`
+}
+
+type PebbleBlockDBConfig struct {
+	Path      string `yaml:"path" envconfig:"BLOCKDB_ROCKSDB_PATH"`
+	CacheSize int    `yaml:"cacheSize" envconfig:"BLOCKDB_ROCKSDB_CACHE_SIZE"`
+}
+
+type S3BlockDBConfig struct {
+	Endpoint             string `yaml:"endpoint" envconfig:"BLOCKDB_S3_ENDPOINT"`
+	Secure               bool   `yaml:"secure" envconfig:"BLOCKDB_S3_SECURE"`
+	Bucket               string `yaml:"bucket" envconfig:"BLOCKDB_S3_BUCKET"`
+	Region               string `yaml:"region" envconfig:"BLOCKDB_S3_REGION"`
+	AccessKey            string `yaml:"accessKey" envconfig:"BLOCKDB_S3_ACCESS_KEY"`
+	SecretKey            string `yaml:"secretKey" envconfig:"BLOCKDB_S3_SECRET_KEY"`
+	Path                 string `yaml:"path" envconfig:"BLOCKDB_S3_PATH"`
+	MaxConcurrentUploads uint   `yaml:"maxConcurrentUploads" envconfig:"BLOCKDB_S3_MAX_CONCURRENT_UPLOADS"`
+	UploadQueueSize      uint   `yaml:"uploadQueueSize" envconfig:"BLOCKDB_S3_UPLOAD_QUEUE_SIZE"`
 }

@@ -5,12 +5,13 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"sort"
-	"sync"
+	gosync "sync"
 	"time"
 
 	"github.com/attestantio/go-eth2-client/spec"
 	"github.com/attestantio/go-eth2-client/spec/eip7732"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
+	"github.com/ethpandaops/dora/blockdb"
 	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
@@ -25,9 +26,9 @@ type synchronizer struct {
 
 	syncCtx       context.Context
 	syncCtxCancel context.CancelFunc
-	runMutex      sync.Mutex
+	runMutex      gosync.Mutex
 
-	stateMutex   sync.Mutex
+	stateMutex   gosync.Mutex
 	running      bool
 	currentEpoch phase0.Epoch
 
@@ -93,7 +94,7 @@ func (sync *synchronizer) startSync(startEpoch phase0.Epoch) {
 }
 
 func (s *synchronizer) stopSync() {
-	var lockedMutex *sync.Mutex
+	var lockedMutex *gosync.Mutex
 	defer func() {
 		if lockedMutex != nil {
 			lockedMutex.Unlock()
@@ -453,6 +454,21 @@ func (sync *synchronizer) syncEpoch(syncEpoch phase0.Epoch, client *Client, last
 	})
 	if err != nil {
 		return false, err
+	}
+
+	// save block bodies to blockdb
+	if blockdb.GlobalBlockDb != nil && !sync.indexer.disableBlockDbWrite {
+		var wg gosync.WaitGroup
+		for _, block := range canonicalBlocks {
+			wg.Add(1)
+			go func(b *Block) {
+				defer wg.Done()
+				if err := b.writeToBlockDb(); err != nil {
+					sync.logger.Errorf("error writing block %v to blockdb: %v", b.Root.String(), err)
+				}
+			}(block)
+		}
+		wg.Wait()
 	}
 
 	// cleanup cache (remove blocks from this epoch)

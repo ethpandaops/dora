@@ -10,6 +10,8 @@ import (
 	"github.com/attestantio/go-eth2-client/spec"
 	"github.com/attestantio/go-eth2-client/spec/eip7732"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
+	"github.com/ethpandaops/dora/blockdb"
+	btypes "github.com/ethpandaops/dora/blockdb/types"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	dynssz "github.com/pk910/dynamic-ssz"
@@ -150,7 +152,7 @@ func (block *Block) GetBlock() *spec.VersionedSignedBeaconBlock {
 	if block.isInUnfinalizedDb {
 		dbBlock := db.GetUnfinalizedBlock(block.Root[:], false, true, false)
 		if dbBlock != nil {
-			blockBody, err := unmarshalVersionedSignedBeaconBlockSSZ(block.dynSsz, dbBlock.BlockVer, dbBlock.BlockSSZ)
+			blockBody, err := UnmarshalVersionedSignedBeaconBlockSSZ(block.dynSsz, dbBlock.BlockVer, dbBlock.BlockSSZ)
 			if err == nil {
 				return blockBody
 			}
@@ -470,6 +472,36 @@ func (block *Block) buildOrphanedBlock(compress bool) (*dbtypes.OrphanedBlock, e
 	return orphanedBlock, nil
 }
 
+func (block *Block) writeToBlockDb() error {
+	if block.isDisposed || block.header == nil || block.block == nil || blockdb.GlobalBlockDb == nil {
+		return nil
+	}
+
+	_, err := blockdb.GlobalBlockDb.AddBlockWithCallback(context.Background(), uint64(block.Slot), block.Root[:], func() (*btypes.BlockData, error) {
+		headerSSZ, err := block.header.MarshalSSZ()
+		if err != nil {
+			return nil, fmt.Errorf("marshal header ssz failed: %v", err)
+		}
+
+		version, ssz, err := MarshalVersionedSignedBeaconBlockSSZ(block.dynSsz, block.block, true, false)
+		if err != nil {
+			return nil, fmt.Errorf("error marshalling block %v: %v", block.Root.String(), err)
+		}
+
+		return &btypes.BlockData{
+			HeaderVersion: 1,
+			HeaderData:    headerSSZ,
+			BodyVersion:   version,
+			BodyData:      ssz,
+		}, nil
+	})
+	if err != nil {
+		return fmt.Errorf("error adding block %v to blockdb: %v", block.Root.String(), err)
+	}
+
+	return nil
+}
+
 // unpruneBlockBody retrieves the block body from the database if it is not already present.
 func (block *Block) unpruneBlockBody() {
 	if block.isDisposed || block.block != nil || !block.isInUnfinalizedDb {
@@ -478,7 +510,7 @@ func (block *Block) unpruneBlockBody() {
 
 	dbBlock := db.GetUnfinalizedBlock(block.Root[:], false, true, true)
 	if dbBlock != nil {
-		block.block, _ = unmarshalVersionedSignedBeaconBlockSSZ(block.dynSsz, dbBlock.BlockVer, dbBlock.BlockSSZ)
+		block.block, _ = UnmarshalVersionedSignedBeaconBlockSSZ(block.dynSsz, dbBlock.BlockVer, dbBlock.BlockSSZ)
 		if len(dbBlock.PayloadSSZ) > 0 {
 			block.executionPayload, _ = unmarshalVersionedSignedExecutionPayloadEnvelopeSSZ(block.dynSsz, dbBlock.PayloadVer, dbBlock.PayloadSSZ)
 		}
