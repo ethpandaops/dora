@@ -595,7 +595,7 @@ func (bs *ChainService) getLastIncludedDeposit(headRoot phase0.Root) *dbtypes.De
 		}, nil)
 		if err != nil {
 			logrus.Warnf("ChainService.getLastIncludedDeposit error: %v", err)
-		} else {
+		} else if len(dbDeposits) > 0 {
 			return &dbDeposits[0].Deposit
 		}
 	}
