@@ -9,6 +9,7 @@ import (
 
 	"github.com/attestantio/go-eth2-client/spec"
 	"github.com/attestantio/go-eth2-client/spec/deneb"
+	"github.com/attestantio/go-eth2-client/spec/eip7732"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 
 	"github.com/ethpandaops/dora/blockdb"
@@ -22,6 +23,7 @@ type CombinedBlockResponse struct {
 	Root     phase0.Root
 	Header   *phase0.SignedBeaconBlockHeader
 	Block    *spec.VersionedSignedBeaconBlock
+	Payload  *eip7732.SignedExecutionPayloadEnvelope
 	Orphaned bool
 }
 
@@ -105,6 +107,7 @@ func (bs *ChainService) GetSlotDetailsByBlockroot(ctx context.Context, blockroot
 			Root:     blockInfo.Root,
 			Header:   blockInfo.GetHeader(),
 			Block:    blockInfo.GetBlock(),
+			Payload:  blockInfo.GetExecutionPayload(),
 			Orphaned: !bs.beaconIndexer.IsCanonicalBlock(blockInfo, nil),
 		}
 	} else if blockInfo, err := bs.beaconIndexer.GetOrphanedBlockByRoot(blockroot); blockInfo != nil || err != nil {
@@ -116,6 +119,7 @@ func (bs *ChainService) GetSlotDetailsByBlockroot(ctx context.Context, blockroot
 			Root:     blockInfo.Root,
 			Header:   blockInfo.GetHeader(),
 			Block:    blockInfo.GetBlock(),
+			Payload:  blockInfo.GetExecutionPayload(),
 			Orphaned: true,
 		}
 	}
@@ -128,18 +132,34 @@ func (bs *ChainService) GetSlotDetailsByBlockroot(ctx context.Context, blockroot
 		}
 
 		var block *spec.VersionedSignedBeaconBlock
+		var payload *eip7732.SignedExecutionPayloadEnvelope
 		bodyRetry := 0
 		for ; bodyRetry < 3; bodyRetry++ {
 			client := clients[bodyRetry%len(clients)]
-			block, err = beacon.LoadBeaconBlock(ctx, client, blockroot)
-			if block != nil {
-				break
-			} else if err != nil {
-				log := logrus.WithError(err)
-				if client != nil {
-					log = log.WithField("client", client.GetClient().GetName())
+			if block == nil {
+				block, err = beacon.LoadBeaconBlock(ctx, client, blockroot)
+				if err != nil {
+					log := logrus.WithError(err)
+					if client != nil {
+						log = log.WithField("client", client.GetClient().GetName())
+					}
+					log.Warnf("Error loading block body for root 0x%x", blockroot)
 				}
-				log.Warnf("Error loading block body for root 0x%x", blockroot)
+			}
+
+			if block.Version >= spec.DataVersionEIP7732 {
+				payload, err = beacon.LoadExecutionPayload(ctx, client, blockroot)
+				if payload != nil {
+					break
+				} else if err != nil {
+					log := logrus.WithError(err)
+					if client != nil {
+						log = log.WithField("client", client.GetClient().GetName())
+					}
+					log.Warnf("Error loading block payload for root 0x%x", blockroot)
+				}
+			} else if block != nil {
+				break
 			}
 		}
 		if err == nil && block != nil {
@@ -147,6 +167,7 @@ func (bs *ChainService) GetSlotDetailsByBlockroot(ctx context.Context, blockroot
 				Root:     blockroot,
 				Header:   header,
 				Block:    block,
+				Payload:  payload,
 				Orphaned: false,
 			}
 		}
@@ -156,6 +177,8 @@ func (bs *ChainService) GetSlotDetailsByBlockroot(ctx context.Context, blockroot
 	if result == nil && header != nil && blockdb.GlobalBlockDb != nil {
 		blockData, err := blockdb.GlobalBlockDb.GetBlock(ctx, uint64(header.Message.Slot), blockroot[:], func(version uint64, block []byte) (interface{}, error) {
 			return beacon.UnmarshalVersionedSignedBeaconBlockSSZ(bs.beaconIndexer.GetDynSSZ(), version, block)
+		}, func(version uint64, payload []byte) (interface{}, error) {
+			return beacon.UnmarshalVersionedSignedExecutionPayloadEnvelopeSSZ(bs.beaconIndexer.GetDynSSZ(), version, payload)
 		})
 		if err == nil && blockData != nil {
 			result = &CombinedBlockResponse{
@@ -229,6 +252,7 @@ func (bs *ChainService) GetSlotDetailsBySlot(ctx context.Context, slot phase0.Sl
 			Root:     cachedBlock.Root,
 			Header:   cachedBlock.GetHeader(),
 			Block:    cachedBlock.GetBlock(),
+			Payload:  cachedBlock.GetExecutionPayload(),
 			Orphaned: isOrphaned,
 		}
 	}
@@ -244,18 +268,32 @@ func (bs *ChainService) GetSlotDetailsBySlot(ctx context.Context, slot phase0.Sl
 
 		var err error
 		var block *spec.VersionedSignedBeaconBlock
+		var payload *eip7732.SignedExecutionPayloadEnvelope
 		bodyRetry := 0
 		for ; bodyRetry < 3; bodyRetry++ {
 			client := clients[bodyRetry%len(clients)]
 			block, err = beacon.LoadBeaconBlock(ctx, client, blockRoot)
-			if block != nil {
-				break
-			} else if err != nil {
+			if err != nil {
 				log := logrus.WithError(err)
 				if client != nil {
 					log = log.WithField("client", client.GetClient().GetName())
 				}
 				log.Warnf("Error loading block body for slot %v", slot)
+			}
+
+			if block.Version >= spec.DataVersionEIP7732 {
+				payload, err = beacon.LoadExecutionPayload(ctx, client, blockRoot)
+				if payload != nil {
+					break
+				} else if err != nil {
+					log := logrus.WithError(err)
+					if client != nil {
+						log = log.WithField("client", client.GetClient().GetName())
+					}
+					log.Warnf("Error loading block payload for root 0x%x", blockRoot)
+				}
+			} else if block != nil {
+				break
 			}
 		}
 		if err == nil && block != nil {
@@ -263,6 +301,7 @@ func (bs *ChainService) GetSlotDetailsBySlot(ctx context.Context, slot phase0.Sl
 				Root:     blockRoot,
 				Header:   header,
 				Block:    block,
+				Payload:  payload,
 				Orphaned: orphaned,
 			}
 		}
@@ -272,6 +311,8 @@ func (bs *ChainService) GetSlotDetailsBySlot(ctx context.Context, slot phase0.Sl
 	if result == nil && header != nil && blockdb.GlobalBlockDb != nil {
 		blockData, err := blockdb.GlobalBlockDb.GetBlock(ctx, uint64(slot), blockRoot[:], func(version uint64, block []byte) (interface{}, error) {
 			return beacon.UnmarshalVersionedSignedBeaconBlockSSZ(bs.beaconIndexer.GetDynSSZ(), version, block)
+		}, func(version uint64, payload []byte) (interface{}, error) {
+			return beacon.UnmarshalVersionedSignedExecutionPayloadEnvelopeSSZ(bs.beaconIndexer.GetDynSSZ(), version, payload)
 		})
 		if err == nil && blockData != nil {
 			header := &phase0.SignedBeaconBlockHeader{}
