@@ -84,10 +84,13 @@ func (bs *ChainService) GetDepositRequestsByFilter(filter *CombinedDepositReques
 
 	canonicalHead := bs.beaconIndexer.GetCanonicalHead(nil)
 	if canonicalHead != nil {
-		for _, queueEntry := range bs.GetIndexedDepositQueue(canonicalHead).Queue {
-			depositIndex := queueEntry.DepositIndex
-			if depositIndex != nil {
-				pendingDepositPositions[*depositIndex] = queueEntry
+		indexedQueue := bs.GetIndexedDepositQueue(canonicalHead)
+		if indexedQueue != nil {
+			for _, queueEntry := range indexedQueue.Queue {
+				depositIndex := queueEntry.DepositIndex
+				if depositIndex != nil {
+					pendingDepositPositions[*depositIndex] = queueEntry
+				}
 			}
 		}
 	}
