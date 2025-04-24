@@ -84,10 +84,13 @@ func (bs *ChainService) GetDepositRequestsByFilter(filter *CombinedDepositReques
 
 	canonicalHead := bs.beaconIndexer.GetCanonicalHead(nil)
 	if canonicalHead != nil {
-		for _, queueEntry := range bs.GetIndexedDepositQueue(canonicalHead).Queue {
-			depositIndex := queueEntry.DepositIndex
-			if depositIndex != nil {
-				pendingDepositPositions[*depositIndex] = queueEntry
+		indexedQueue := bs.GetIndexedDepositQueue(canonicalHead)
+		if indexedQueue != nil {
+			for _, queueEntry := range indexedQueue.Queue {
+				depositIndex := queueEntry.DepositIndex
+				if depositIndex != nil {
+					pendingDepositPositions[*depositIndex] = queueEntry
+				}
 			}
 		}
 	}
@@ -409,6 +412,7 @@ func (bs *ChainService) GetIndexedDepositQueue(headBlock *beacon.Block) *Indexed
 	queueLen := len(queue)
 	depositIndex := *lastIncludedDeposit.Index
 	newValidators := make(map[phase0.BLSPubKey]interface{})
+	reachedGenesis := false
 
 	var newValidatorsMutex sync.Mutex
 
@@ -419,14 +423,20 @@ func (bs *ChainService) GetIndexedDepositQueue(headBlock *beacon.Block) *Indexed
 		}
 
 		if deposit.Slot > 0 {
-			if depositIndex == 0 {
-				// something is bad, return nil
-				return nil
-			}
-
 			depositIndexCopy := uint64(depositIndex)
 			queueEntry.DepositIndex = &depositIndexCopy
-			depositIndex--
+			if depositIndex > 0 {
+				depositIndex--
+			} else {
+				if reachedGenesis {
+					// something is bad, return empty queue
+					return &IndexedDepositQueue{
+						Queue: []*IndexedDepositQueueEntry{},
+					}
+				}
+
+				reachedGenesis = true
+			}
 		}
 
 		indexedQueue.Queue[idx] = queueEntry
@@ -508,7 +518,8 @@ func (bs *ChainService) GetIndexedDepositQueue(headBlock *beacon.Block) *Indexed
 	indexedQueue.QueueEstimation = queueEpoch
 
 	if len(indexedQueue.Queue) > 0 && !bytes.Equal(indexedQueue.Queue[len(indexedQueue.Queue)-1].PendingDeposit.Pubkey[:], lastIncludedDeposit.PublicKey[:]) {
-		// something is bad, return nil
+		// something is bad, return empty queue
+		logrus.Warnf("ChainService.GetIndexedDepositQueue: last included deposit not found in queue, %x != %x", indexedQueue.Queue[len(indexedQueue.Queue)-1].PendingDeposit.Pubkey[:], lastIncludedDeposit.PublicKey[:])
 		return &IndexedDepositQueue{
 			Queue: []*IndexedDepositQueueEntry{},
 		}
