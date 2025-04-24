@@ -7,8 +7,8 @@ toolchain go1.24.1
 require (
 	github.com/520MianXiangDuiXiang520/MapSize v0.0.0-20230414174449-030467540731
 	github.com/Masterminds/sprig/v3 v3.3.0
-	github.com/attestantio/go-eth2-client v0.24.2
-	github.com/cockroachdb/pebble v1.1.4
+	github.com/attestantio/go-eth2-client v0.25.0
+	github.com/cockroachdb/pebble v1.1.5
 	github.com/coocood/freecache v1.2.4
 	github.com/ethereum/go-ethereum v1.15.0
 	github.com/ethpandaops/ethwallclock v0.3.0
@@ -21,7 +21,7 @@ require (
 	github.com/lib/pq v1.10.9
 	github.com/libp2p/go-libp2p v0.36.5
 	github.com/mashingan/smapping v0.1.19
-	github.com/minio/minio-go/v7 v7.0.88
+	github.com/minio/minio-go/v7 v7.0.90
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/pk910/dynamic-ssz v0.0.6
 	github.com/pressly/goose/v3 v3.24.2
@@ -29,7 +29,7 @@ require (
 	github.com/protolambda/zrnt v0.34.1
 	github.com/protolambda/ztyp v0.2.2
 	github.com/prysmaticlabs/go-bitfield v0.0.0-20240618144021-706c95b2dd15
-	github.com/prysmaticlabs/prysm/v5 v5.3.2
+	github.com/prysmaticlabs/prysm/v5 v5.3.3
 	github.com/rs/zerolog v1.34.0
 	github.com/sirupsen/logrus v1.9.3
 	github.com/syndtr/goleveldb v1.0.1-0.20210819022825-2ae1ddf74ef7
@@ -126,7 +126,7 @@ require (
 	github.com/jackc/puddle v1.3.0 // indirect
 	github.com/jackpal/go-nat-pmp v1.0.2 // indirect
 	github.com/kilic/bls12-381 v0.1.0 // indirect
-	github.com/klauspost/cpuid/v2 v2.2.9 // indirect
+	github.com/klauspost/cpuid/v2 v2.2.10 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mfridman/interpolate v0.0.2 // indirect

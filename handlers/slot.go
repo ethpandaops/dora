@@ -410,6 +410,7 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 
 		var attAssignments []uint64
 		includedValidators := []uint64{}
+		attEpochStatsValues := assignmentsMap[attEpoch]
 
 		if attVersioned.Version >= spec.DataVersionElectra {
 			// EIP-7549 attestation
@@ -428,19 +429,20 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 				}
 
 				attPageData.CommitteeIndex = append(attPageData.CommitteeIndex, uint64(committee))
-				if assignmentsMap[attEpoch] != nil {
+				if attEpochStatsValues != nil {
 					slotIndex := int(chainState.SlotToSlotIndex(attData.Slot))
-					committeeAssignments := assignmentsMap[attEpoch].AttesterDuties[slotIndex][uint64(committee)]
+					committeeAssignments := attEpochStatsValues.AttesterDuties[slotIndex][uint64(committee)]
 					if len(committeeAssignments) == 0 {
 						break
 					}
 
 					committeeAssignmentsInt := make([]uint64, 0)
 					for j := 0; j < len(committeeAssignments); j++ {
+						validatorIndex := attEpochStatsValues.ActiveIndices[committeeAssignments[j]]
 						if attAggregationBits.BitAt(attBitsOffset + uint64(j)) {
-							includedValidators = append(includedValidators, uint64(committeeAssignments[j]))
+							includedValidators = append(includedValidators, uint64(validatorIndex))
 						}
-						committeeAssignmentsInt = append(committeeAssignmentsInt, uint64(committeeAssignments[j]))
+						committeeAssignmentsInt = append(committeeAssignmentsInt, uint64(validatorIndex))
 					}
 
 					attBitsOffset += uint64(len(committeeAssignments))
@@ -449,15 +451,16 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 			}
 		} else {
 			// pre-electra attestation
-			if assignmentsMap[attEpoch] != nil {
+			if attEpochStatsValues != nil {
 				slotIndex := int(chainState.SlotToSlotIndex(attData.Slot))
-				committeeAssignments := assignmentsMap[attEpoch].AttesterDuties[slotIndex][uint64(attData.Index)]
+				committeeAssignments := attEpochStatsValues.AttesterDuties[slotIndex][uint64(attData.Index)]
 				committeeAssignmentsInt := make([]uint64, 0)
 				for j := 0; j < len(committeeAssignments); j++ {
+					validatorIndex := attEpochStatsValues.ActiveIndices[committeeAssignments[j]]
 					if attAggregationBits.BitAt(uint64(j)) {
-						includedValidators = append(includedValidators, uint64(committeeAssignments[j]))
+						includedValidators = append(includedValidators, uint64(validatorIndex))
 					}
-					committeeAssignmentsInt = append(committeeAssignmentsInt, uint64(committeeAssignments[j]))
+					committeeAssignmentsInt = append(committeeAssignmentsInt, uint64(validatorIndex))
 				}
 
 				attAssignments = committeeAssignmentsInt

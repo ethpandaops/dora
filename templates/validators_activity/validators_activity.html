@@ -143,7 +143,7 @@
                     <td>{{ $group.Validators }}</td>
                     <td>{{ $group.Activated }}</td>
                     <td>{{ $group.Online }}</td>
-                    <td>{{ $group.Offline }}</td>
+                    <td><a href="/validators/offline?group={{ $groupBy }}&key={{ $group.GroupLower }}">{{ $group.Offline }}</a></td>
                     <td>{{ $group.Exited }}</td>
                     <td>{{ $group.Slashed }}</td>
                   </tr>
