@@ -83,7 +83,6 @@ func (cache *validatorActivityCache) updateValidatorActivity(validatorIndex phas
 	}
 
 	chainState := cache.indexer.consensusPool.GetChainState()
-	replaceIndex := -1
 	cutOffLength := 0
 	activityLength := len(recentActivity)
 	for i := activityLength - 1; i >= 0; i-- {
@@ -100,27 +99,22 @@ func (cache *validatorActivityCache) updateValidatorActivity(validatorIndex phas
 
 		if chainState.EpochOfSlot(dutySlot) < cutOffEpoch {
 			recentActivity[i].VoteBlock = nil // clear for gc
-			if replaceIndex == -1 {
-				replaceIndex = i
-			} else if replaceIndex == activityLength-cutOffLength-1 {
-				cutOffLength++
-				replaceIndex = i
-			} else {
+			if i < activityLength-cutOffLength-1 {
 				// copy last element to current index
-				cutOffLength++
 				recentActivity[i] = recentActivity[activityLength-cutOffLength-1]
 			}
+			cutOffLength++
 		}
 	}
 
-	if replaceIndex != -1 {
-		recentActivity[replaceIndex] = ValidatorActivity{
+	if cutOffLength > 0 {
+		recentActivity[activityLength-cutOffLength] = ValidatorActivity{
 			VoteBlock: voteBlock,
 			VoteDelay: uint16(voteBlock.Slot - dutySlot),
 		}
 
-		if cutOffLength > 0 {
-			recentActivity = recentActivity[:activityLength-cutOffLength]
+		if cutOffLength > 1 {
+			recentActivity = recentActivity[:activityLength-(cutOffLength-1)]
 		}
 	} else {
 		recentActivity = append(recentActivity, ValidatorActivity{
@@ -209,10 +203,11 @@ func (cache *validatorActivityCache) cleanupCache() {
 				deleted++
 
 				// copy last element to current index
-				cutOffLength++
-				if i != activityLength-cutOffLength-1 && cutOffLength < activityLength {
+				if i < activityLength-cutOffLength-1 {
 					recentActivity[i] = recentActivity[activityLength-cutOffLength-1]
 				}
+
+				cutOffLength++
 			}
 		}
 
