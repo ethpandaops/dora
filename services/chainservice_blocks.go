@@ -103,12 +103,16 @@ func (bs *ChainService) GetSlotDetailsByBlockroot(ctx context.Context, blockroot
 
 	// try loading from cache
 	if blockInfo := bs.beaconIndexer.GetBlockByRoot(blockroot); blockInfo != nil {
-		result = &CombinedBlockResponse{
-			Root:     blockInfo.Root,
-			Header:   blockInfo.GetHeader(),
-			Block:    blockInfo.GetBlock(),
-			Payload:  blockInfo.GetExecutionPayload(),
-			Orphaned: !bs.beaconIndexer.IsCanonicalBlock(blockInfo, nil),
+		blockHeader := blockInfo.GetHeader()
+		blockBody := blockInfo.GetBlock()
+		if blockHeader != nil && blockBody != nil {
+			result = &CombinedBlockResponse{
+				Root:     blockInfo.Root,
+				Header:   blockInfo.GetHeader(),
+				Block:    blockInfo.GetBlock(),
+				Payload:  blockInfo.GetExecutionPayload(),
+				Orphaned: !bs.beaconIndexer.IsCanonicalBlock(blockInfo, nil),
+			}
 		}
 	} else if blockInfo, err := bs.beaconIndexer.GetOrphanedBlockByRoot(blockroot); blockInfo != nil || err != nil {
 		// try loading from orphaned block db
@@ -248,12 +252,17 @@ func (bs *ChainService) GetSlotDetailsBySlot(ctx context.Context, slot phase0.Sl
 			cachedBlock = cachedBlocks[0]
 			isOrphaned = true
 		}
-		result = &CombinedBlockResponse{
-			Root:     cachedBlock.Root,
-			Header:   cachedBlock.GetHeader(),
-			Block:    cachedBlock.GetBlock(),
-			Payload:  cachedBlock.GetExecutionPayload(),
-			Orphaned: isOrphaned,
+
+		blockHeader := cachedBlock.GetHeader()
+		blockBody := cachedBlock.GetBlock()
+		if blockHeader != nil && blockBody != nil {
+			result = &CombinedBlockResponse{
+				Root:     cachedBlock.Root,
+				Header:   blockHeader,
+				Block:    blockBody,
+				Payload:  cachedBlock.GetExecutionPayload(),
+				Orphaned: isOrphaned,
+			}
 		}
 	}
 

@@ -178,6 +178,7 @@ func startFrontend(router *mux.Router) {
 	router.HandleFunc("/search/{type}", handlers.SearchAhead).Methods("GET")
 	router.HandleFunc("/validators", handlers.Validators).Methods("GET")
 	router.HandleFunc("/validators/activity", handlers.ValidatorsActivity).Methods("GET")
+	router.HandleFunc("/validators/offline", handlers.ValidatorsOffline).Methods("GET")
 	router.HandleFunc("/validators/deposits", handlers.Deposits).Methods("GET")
 	router.HandleFunc("/validators/deposits/submit", handlers.SubmitDeposit).Methods("GET", "POST")
 	router.HandleFunc("/validators/initiated_deposits", handlers.InitiatedDeposits).Methods("GET")
