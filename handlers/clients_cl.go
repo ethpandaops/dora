@@ -258,21 +258,20 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 				Alias:  client.GetName(),
 				Type:   "internal",
 			}
-			if id != nil {
-				if node.ENR == "" {
-					node.ENR = id.Enr
-				} else if node.ENR != "" {
-					// Need to compare `seq` field from ENRs and only store highest
-					nodeENR := parseEnrRecord(node.ENR)
-					idENR := parseEnrRecord(id.Enr)
-					if nodeENR != nil && idENR != nil && idENR.Seq() > nodeENR.Seq() {
-						node.ENR = id.Enr // idENR has higher sequence number, so override.
-					}
-				}
-
-				node.ENR = id.Enr
-			}
 			pageData.Nodes[peerId] = node
+		}
+
+		if id != nil {
+			if node.ENR == "" {
+				node.ENR = id.Enr
+			} else if node.ENR != "" {
+				// Need to compare `seq` field from ENRs and only store highest
+				nodeENR := parseEnrRecord(node.ENR)
+				idENR := parseEnrRecord(id.Enr)
+				if nodeENR != nil && idENR != nil && idENR.Seq() > nodeENR.Seq() {
+					node.ENR = id.Enr // idENR has higher sequence number, so override.
+				}
+			}
 		}
 
 		peers := client.GetNodePeers()
