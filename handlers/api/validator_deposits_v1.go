@@ -46,19 +46,6 @@ func ApiValidatorDepositsV1(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
 		// Get the validators from the URL
 		param = vars["indexOrPubkey"]
-	} else {
-		// Get the validators from the request body
-		decoder := json.NewDecoder(r.Body)
-		req := &struct {
-			IndicesOrPubKey string `json:"indicesOrPubkey"`
-		}{}
-
-		err := decoder.Decode(req)
-		if err != nil {
-			sendBadRequestResponse(w, r.URL.String(), "error decoding request body")
-			return
-		}
-		param = req.IndicesOrPubKey
 	}
 
 	pubkeys, err := parseValidatorParamsToPubkeys(param, 100)
