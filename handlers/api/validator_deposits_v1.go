@@ -67,17 +67,6 @@ func ApiValidatorDepositsV1(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	relevantValidators, _ := services.GlobalBeaconService.GetFilteredValidatorSet(&dbtypes.ValidatorFilter{
-		Indices: queryIndices,
-	}, true)
-
-	pubkeys := make([][]byte, 0, len(relevantValidators))
-	for _, relevantValidator := range relevantValidators {
-		pubkey := relevantValidator.Validator.PublicKey[:]
-
-		pubkeys = append(pubkeys, pubkey)
-	}
-
 	canonicalForkIds := services.GlobalBeaconService.GetCanonicalForkIds()
 
 	deposits, _, err := db.GetDepositTxsFiltered(0, 1000, canonicalForkIds, &dbtypes.DepositTxFilter{
