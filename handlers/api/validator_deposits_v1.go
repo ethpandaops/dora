@@ -61,7 +61,7 @@ func ApiValidatorDepositsV1(w http.ResponseWriter, r *http.Request) {
 		param = req.IndicesOrPubKey
 	}
 
-	queryIndices, err := parseValidatorParamsToIndices(param, 100)
+	pubkeys, err := parseValidatorParamsToPubkeys(param, 100)
 	if err != nil {
 		sendBadRequestResponse(w, r.URL.String(), err.Error())
 		return
