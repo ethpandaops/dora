@@ -109,6 +109,15 @@ func (bs *ChainService) GetDepositRequestsByFilter(filter *CombinedDepositReques
 		}
 	*/
 
+	// Check if filter is nil or filter.Filter is nil, if so, initialize with an empty filter
+	if filter == nil {
+		filter = &CombinedDepositRequestFilter{
+			Filter: &dbtypes.DepositTxFilter{},
+		}
+	} else if filter.Filter == nil {
+		filter.Filter = &dbtypes.DepositTxFilter{}
+	}
+
 	operationFilter := &dbtypes.DepositFilter{
 		MinIndex:      filter.Filter.MinIndex,
 		MaxIndex:      filter.Filter.MaxIndex,
