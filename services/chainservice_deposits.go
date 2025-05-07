@@ -137,14 +137,8 @@ func (bs *ChainService) GetDepositRequestsByFilter(filter *CombinedDepositReques
 			RequestOrphaned: !bs.isCanonicalForkId(dbOperation.ForkId, canonicalForkIds),
 		}
 
-		if queueEntry, ok := pendingDepositPositions[*dbOperation.Index]; ok {
-			combinedResult.IsQueued = true
-			combinedResult.QueueEntry = queueEntry
-		}
-
 		if dbOperation.BlockNumber != nil {
 			combinedResult.Transaction = &dbtypes.DepositTx{
-				Index:                 *dbOperation.Index,
 				BlockNumber:           *dbOperation.BlockNumber,
 				BlockTime:             *dbOperation.BlockTime,
 				BlockRoot:             dbOperation.BlockRoot,
@@ -158,6 +152,14 @@ func (bs *ChainService) GetDepositRequestsByFilter(filter *CombinedDepositReques
 				TxTarget:              dbOperation.TxTarget,
 			}
 			combinedResult.TransactionOrphaned = combinedResult.RequestOrphaned
+		}
+
+		if dbOperation.Index != nil {
+			combinedResult.Transaction.Index = *dbOperation.Index
+			if queueEntry, ok := pendingDepositPositions[*dbOperation.Index]; ok {
+				combinedResult.IsQueued = true
+				combinedResult.QueueEntry = queueEntry
+			}
 		}
 
 		combinedResults = append(combinedResults, combinedResult)
