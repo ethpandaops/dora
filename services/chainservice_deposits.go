@@ -491,8 +491,14 @@ func (bs *ChainService) GetIndexedDepositQueue(headBlock *beacon.Block) *Indexed
 	queueBalance += activationExitChurnLimit
 	currentEpochCount := uint64(0)
 
+	var lastNormalDeposit *IndexedDepositQueueEntry
+
 	for idx, queueEntry := range indexedQueue.Queue {
 		queueEntry.QueuePos = uint64(idx)
+
+		if queueEntry.DepositIndex != nil {
+			lastNormalDeposit = queueEntry
+		}
 
 		if totalActiveBalance > 0 {
 			if currentEpochCount >= maxPendingDepositsPerEpoch {
@@ -517,9 +523,9 @@ func (bs *ChainService) GetIndexedDepositQueue(headBlock *beacon.Block) *Indexed
 
 	indexedQueue.QueueEstimation = queueEpoch
 
-	if len(indexedQueue.Queue) > 0 && !bytes.Equal(indexedQueue.Queue[len(indexedQueue.Queue)-1].PendingDeposit.Pubkey[:], lastIncludedDeposit.PublicKey[:]) {
+	if lastNormalDeposit != nil && !bytes.Equal(lastNormalDeposit.PendingDeposit.Pubkey[:], lastIncludedDeposit.PublicKey[:]) {
 		// something is bad, return empty queue
-		logrus.Warnf("ChainService.GetIndexedDepositQueue: last included deposit not found in queue, %x != %x", indexedQueue.Queue[len(indexedQueue.Queue)-1].PendingDeposit.Pubkey[:], lastIncludedDeposit.PublicKey[:])
+		logrus.Warnf("ChainService.GetIndexedDepositQueue: last included deposit not found in queue, %x != %x", lastNormalDeposit.PendingDeposit.Pubkey[:], lastIncludedDeposit.PublicKey[:])
 		return &IndexedDepositQueue{
 			Queue: []*IndexedDepositQueueEntry{},
 		}
