@@ -124,7 +124,7 @@ func (client *Client) runClientLogic() error {
 	}
 
 	// start event stream
-	blockStream := client.rpcClient.NewBlockStream(client.clientCtx, client.logger, rpc.StreamBlockEvent|rpc.StreamHeadEvent|rpc.StreamFinalizedEvent)
+	blockStream := client.rpcClient.NewBlockStream(client.clientCtx, client.logger, rpc.StreamBlockEvent|rpc.StreamHeadEvent|rpc.StreamFinalizedEvent|rpc.StreamInclusionListEvent)
 	defer blockStream.Close()
 
 	// process events
@@ -161,6 +161,12 @@ func (client *Client) runClientLogic() error {
 				err := client.processFinalizedEvent(evt.Data.(*v1.FinalizedCheckpointEvent))
 				if err != nil {
 					client.logger.Warnf("failed processing finalized event: %v", err)
+				}
+
+			case rpc.StreamInclusionListEvent:
+				err := client.processInclusionListEvent(evt.Data.(*v1.InclusionListEvent))
+				if err != nil {
+					client.logger.Warnf("failed processing inclusion list event: %v", err)
 				}
 			}
 
@@ -348,6 +354,12 @@ func (client *Client) processFinalizedEvent(evt *v1.FinalizedCheckpointEvent) er
 
 		client.logger.Debugf("processed finalization_checkpoint event: finalized %v [0x%x], justified %v [0x%x], retry: %v", client.finalizedEpoch, client.finalizedRoot, client.justifiedEpoch, client.justifiedRoot, retry)
 	}()
+
+	return nil
+}
+
+func (client *Client) processInclusionListEvent(evt *v1.InclusionListEvent) error {
+	client.inclusionListDispatcher.Fire(evt)
 
 	return nil
 }
