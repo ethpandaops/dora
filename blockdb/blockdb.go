@@ -45,17 +45,19 @@ func (db *BlockDb) Close() error {
 	return db.engine.Close()
 }
 
-func (db *BlockDb) GetBlock(ctx context.Context, slot uint64, root []byte, parseBlock func(uint64, []byte) (interface{}, error)) (*types.BlockData, error) {
-	return db.engine.GetBlock(ctx, slot, root, parseBlock)
+func (db *BlockDb) GetBlock(ctx context.Context, slot uint64, root []byte, parseBlock func(uint64, []byte) (interface{}, error), parsePayload func(uint64, []byte) (interface{}, error)) (*types.BlockData, error) {
+	return db.engine.GetBlock(ctx, slot, root, parseBlock, parsePayload)
 }
 
-func (db *BlockDb) AddBlock(ctx context.Context, slot uint64, root []byte, header_ver uint64, header_data []byte, body_ver uint64, body_data []byte) (bool, error) {
+func (db *BlockDb) AddBlock(ctx context.Context, slot uint64, root []byte, header_ver uint64, header_data []byte, body_ver uint64, body_data []byte, payload_ver uint64, payload_data []byte) (bool, error) {
 	return db.engine.AddBlock(ctx, slot, root, func() (*types.BlockData, error) {
 		return &types.BlockData{
-			HeaderVersion: header_ver,
-			HeaderData:    header_data,
-			BodyVersion:   body_ver,
-			BodyData:      body_data,
+			HeaderVersion:  header_ver,
+			HeaderData:     header_data,
+			BodyVersion:    body_ver,
+			BodyData:       body_data,
+			PayloadVersion: payload_ver,
+			PayloadData:    payload_data,
 		}, nil
 	})
 }
