@@ -43,6 +43,10 @@ type Slot struct {
 	BLSChangeCount        uint64     `db:"bls_change_count"`
 	EthTransactionCount   uint64     `db:"eth_transaction_count"`
 	BlobCount             uint64     `db:"blob_count"`
+	EthGasUsed            uint64     `db:"eth_gas_used"`
+	EthGasLimit           uint64     `db:"eth_gas_limit"`
+	EthBaseFee            uint64     `db:"eth_base_fee"`
+	EthFeeRecipient       []byte     `db:"eth_fee_recipient"`
 	EthBlockNumber        *uint64    `db:"eth_block_number"`
 	EthBlockHash          []byte     `db:"eth_block_hash"`
 	EthBlockExtra         []byte     `db:"eth_block_extra"`
@@ -71,6 +75,8 @@ type Epoch struct {
 	BLSChangeCount        uint64  `db:"bls_change_count"`
 	EthTransactionCount   uint64  `db:"eth_transaction_count"`
 	BlobCount             uint64  `db:"blob_count"`
+	EthGasUsed            uint64  `db:"eth_gas_used"`
+	EthGasLimit           uint64  `db:"eth_gas_limit"`
 	SyncParticipation     float32 `db:"sync_participation"`
 }
 
@@ -135,6 +141,8 @@ type UnfinalizedEpoch struct {
 	BLSChangeCount        uint64  `db:"bls_change_count"`
 	EthTransactionCount   uint64  `db:"eth_transaction_count"`
 	BlobCount             uint64  `db:"blob_count"`
+	EthGasUsed            uint64  `db:"eth_gas_used"`
+	EthGasLimit           uint64  `db:"eth_gas_limit"`
 	SyncParticipation     float32 `db:"sync_participation"`
 }
 

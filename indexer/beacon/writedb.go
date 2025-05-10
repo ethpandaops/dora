@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 
+	"github.com/attestantio/go-eth2-client/spec"
 	"github.com/attestantio/go-eth2-client/spec/electra"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/clients/consensus"
@@ -307,6 +308,45 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 		for _, withdrawal := range executionWithdrawals {
 			dbBlock.WithdrawAmount += uint64(withdrawal.Amount)
 		}
+
+		switch blockBody.Version {
+		case spec.DataVersionBellatrix:
+			if blockBody.Bellatrix != nil && blockBody.Bellatrix.Message != nil &&
+				blockBody.Bellatrix.Message.Body != nil && blockBody.Bellatrix.Message.Body.ExecutionPayload != nil {
+				payload := blockBody.Bellatrix.Message.Body.ExecutionPayload
+				dbBlock.EthGasUsed = payload.GasUsed
+				dbBlock.EthGasLimit = payload.GasLimit
+				dbBlock.EthBaseFee = utils.GetBaseFeeAsUint64(payload.BaseFeePerGas)
+				dbBlock.EthFeeRecipient = payload.FeeRecipient[:]
+			}
+		case spec.DataVersionCapella:
+			if blockBody.Capella != nil && blockBody.Capella.Message != nil &&
+				blockBody.Capella.Message.Body != nil && blockBody.Capella.Message.Body.ExecutionPayload != nil {
+				payload := blockBody.Capella.Message.Body.ExecutionPayload
+				dbBlock.EthGasUsed = payload.GasUsed
+				dbBlock.EthGasLimit = payload.GasLimit
+				dbBlock.EthBaseFee = utils.GetBaseFeeAsUint64(payload.BaseFeePerGas)
+				dbBlock.EthFeeRecipient = payload.FeeRecipient[:]
+			}
+		case spec.DataVersionDeneb:
+			if blockBody.Deneb != nil && blockBody.Deneb.Message != nil &&
+				blockBody.Deneb.Message.Body != nil && blockBody.Deneb.Message.Body.ExecutionPayload != nil {
+				payload := blockBody.Deneb.Message.Body.ExecutionPayload
+				dbBlock.EthGasUsed = payload.GasUsed
+				dbBlock.EthGasLimit = payload.GasLimit
+				dbBlock.EthBaseFee = utils.GetBaseFeeAsUint64(payload.BaseFeePerGas)
+				dbBlock.EthFeeRecipient = payload.FeeRecipient[:]
+			}
+		case spec.DataVersionElectra:
+			if blockBody.Electra != nil && blockBody.Electra.Message != nil &&
+				blockBody.Electra.Message.Body != nil && blockBody.Electra.Message.Body.ExecutionPayload != nil {
+				payload := blockBody.Electra.Message.Body.ExecutionPayload
+				dbBlock.EthGasUsed = payload.GasUsed
+				dbBlock.EthGasLimit = payload.GasLimit
+				dbBlock.EthBaseFee = utils.GetBaseFeeAsUint64(payload.BaseFeePerGas)
+				dbBlock.EthFeeRecipient = payload.FeeRecipient[:]
+			}
+		}
 	}
 
 	return &dbBlock
@@ -414,6 +454,38 @@ func (dbw *dbWriter) buildDbEpoch(epoch phase0.Epoch, blocks []*Block, epochStat
 			dbEpoch.WithdrawCount += uint64(len(executionWithdrawals))
 			for _, withdrawal := range executionWithdrawals {
 				dbEpoch.WithdrawAmount += uint64(withdrawal.Amount)
+			}
+
+			// Aggregate gas used and gas limit
+			switch blockBody.Version {
+			case spec.DataVersionBellatrix:
+				if blockBody.Bellatrix != nil && blockBody.Bellatrix.Message != nil &&
+					blockBody.Bellatrix.Message.Body != nil && blockBody.Bellatrix.Message.Body.ExecutionPayload != nil {
+					payload := blockBody.Bellatrix.Message.Body.ExecutionPayload
+					dbEpoch.EthGasUsed += payload.GasUsed
+					dbEpoch.EthGasLimit += payload.GasLimit
+				}
+			case spec.DataVersionCapella:
+				if blockBody.Capella != nil && blockBody.Capella.Message != nil &&
+					blockBody.Capella.Message.Body != nil && blockBody.Capella.Message.Body.ExecutionPayload != nil {
+					payload := blockBody.Capella.Message.Body.ExecutionPayload
+					dbEpoch.EthGasUsed += payload.GasUsed
+					dbEpoch.EthGasLimit += payload.GasLimit
+				}
+			case spec.DataVersionDeneb:
+				if blockBody.Deneb != nil && blockBody.Deneb.Message != nil &&
+					blockBody.Deneb.Message.Body != nil && blockBody.Deneb.Message.Body.ExecutionPayload != nil {
+					payload := blockBody.Deneb.Message.Body.ExecutionPayload
+					dbEpoch.EthGasUsed += payload.GasUsed
+					dbEpoch.EthGasLimit += payload.GasLimit
+				}
+			case spec.DataVersionElectra:
+				if blockBody.Electra != nil && blockBody.Electra.Message != nil &&
+					blockBody.Electra.Message.Body != nil && blockBody.Electra.Message.Body.ExecutionPayload != nil {
+					payload := blockBody.Electra.Message.Body.ExecutionPayload
+					dbEpoch.EthGasUsed += payload.GasUsed
+					dbEpoch.EthGasLimit += payload.GasLimit
+				}
 			}
 		}
 	}
