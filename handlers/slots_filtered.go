@@ -258,6 +258,7 @@ func buildFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string
 			slotData.AttesterSlashingCount = dbBlock.Block.AttesterSlashingCount
 			slotData.SyncParticipation = float64(dbBlock.Block.SyncParticipation) * 100
 			slotData.EthTransactionCount = dbBlock.Block.EthTransactionCount
+			slotData.BlobCount = dbBlock.Block.BlobCount
 			slotData.Graffiti = dbBlock.Block.Graffiti
 			slotData.ElExtraData = dbBlock.Block.EthBlockExtra
 			slotData.BlockRoot = dbBlock.Block.Root

@@ -159,6 +159,7 @@ func buildSlotsPageData(firstSlot uint64, pageSize uint64) (*models.SlotsPageDat
 				AttesterSlashingCount: dbSlot.AttesterSlashingCount,
 				SyncParticipation:     float64(dbSlot.SyncParticipation) * 100,
 				EthTransactionCount:   dbSlot.EthTransactionCount,
+				BlobCount:             dbSlot.BlobCount,
 				Graffiti:              dbSlot.Graffiti,
 				BlockRoot:             dbSlot.Root,
 				ParentRoot:            dbSlot.ParentRoot,

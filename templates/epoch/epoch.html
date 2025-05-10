@@ -155,7 +155,7 @@
                   <nobr><span data-toggle="tooltip" data-placement="top" title="Proposer Slashings">P</span> / 
                   <span data-toggle="tooltip" data-placement="top" title="Attester Slashings">A</span></nobr>
                 </th>
-                <th>Tx<span class="d-none d-lg-inline"> Count</span></th>
+                <th>Tx / Blob</th>
                 <th>Sync<span class="d-none d-lg-inline"> Agg</span> %</th>
                 <th>Graffiti</th>
               </tr>
@@ -193,13 +193,12 @@
                     <td class="d-none d-md-table-cell">{{ if not (eq $slot.Status 0) }}{{ $slot.AttestationCount }}{{ end }}</td>
                     <td>{{ if not (eq $slot.Status 0) }}{{ $slot.DepositCount }} / {{ $slot.ExitCount }}{{ end }}</td>
                     <td>{{ if not (eq $slot.Status 0) }}{{ $slot.ProposerSlashingCount }} / {{ $slot.AttesterSlashingCount }}{{ end }}</td>
-                    <td>{{ if not (eq $slot.Status 0) }}{{ $slot.EthTransactionCount }}{{ end }}</td>
+                    <td>{{ if not (eq $slot.Status 0) }}{{ $slot.EthTransactionCount }} / {{ $slot.BlobCount }}{{ end }}</td>
                     <td>{{ if not (eq $slot.Status 0) }}{{ formatFloat $slot.SyncParticipation 2 }}%{{ end }}</td>
                     <td>{{ if not (eq $slot.Status 0) }}{{ formatGraffiti $slot.Graffiti }}{{ end }}</td>
                   {{ else }}
                     <td colspan="6">Not indexed yet</td>
                   {{ end }}
-                  
                 </tr>
               {{ end }}
             </tbody>

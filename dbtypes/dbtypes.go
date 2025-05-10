@@ -42,6 +42,7 @@ type Slot struct {
 	ProposerSlashingCount uint64     `db:"proposer_slashing_count"`
 	BLSChangeCount        uint64     `db:"bls_change_count"`
 	EthTransactionCount   uint64     `db:"eth_transaction_count"`
+	BlobCount             uint64     `db:"blob_count"`
 	EthBlockNumber        *uint64    `db:"eth_block_number"`
 	EthBlockHash          []byte     `db:"eth_block_hash"`
 	EthBlockExtra         []byte     `db:"eth_block_extra"`
@@ -69,6 +70,7 @@ type Epoch struct {
 	ProposerSlashingCount uint64  `db:"proposer_slashing_count"`
 	BLSChangeCount        uint64  `db:"bls_change_count"`
 	EthTransactionCount   uint64  `db:"eth_transaction_count"`
+	BlobCount             uint64  `db:"blob_count"`
 	SyncParticipation     float32 `db:"sync_participation"`
 }
 
@@ -132,6 +134,7 @@ type UnfinalizedEpoch struct {
 	ProposerSlashingCount uint64  `db:"proposer_slashing_count"`
 	BLSChangeCount        uint64  `db:"bls_change_count"`
 	EthTransactionCount   uint64  `db:"eth_transaction_count"`
+	BlobCount             uint64  `db:"blob_count"`
 	SyncParticipation     float32 `db:"sync_participation"`
 }
 

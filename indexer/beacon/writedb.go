@@ -247,6 +247,7 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 	executionExtraData, _ := getBlockExecutionExtraData(blockBody)
 	executionTransactions, _ := blockBody.ExecutionTransactions()
 	executionWithdrawals, _ := blockBody.Withdrawals()
+	blobKzgCommitments, _ := blockBody.BlobKZGCommitments()
 
 	var depositRequests []*electra.DepositRequest
 
@@ -271,6 +272,7 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 		AttesterSlashingCount: uint64(len(attesterSlashings)),
 		ProposerSlashingCount: uint64(len(proposerSlashings)),
 		BLSChangeCount:        uint64(len(blsToExecChanges)),
+		BlobCount:             uint64(len(blobKzgCommitments)),
 	}
 
 	if overrideForkId != nil {
@@ -379,6 +381,7 @@ func (dbw *dbWriter) buildDbEpoch(epoch phase0.Epoch, blocks []*Block, epochStat
 			syncAggregate, _ := blockBody.SyncAggregate()
 			executionTransactions, _ := blockBody.ExecutionTransactions()
 			executionWithdrawals, _ := blockBody.Withdrawals()
+			blobKzgCommitments, _ := blockBody.BlobKZGCommitments()
 
 			var depositRequests []*electra.DepositRequest
 
@@ -407,6 +410,7 @@ func (dbw *dbWriter) buildDbEpoch(epoch phase0.Epoch, blocks []*Block, epochStat
 			}
 
 			dbEpoch.EthTransactionCount += uint64(len(executionTransactions))
+			dbEpoch.BlobCount += uint64(len(blobKzgCommitments))
 			dbEpoch.WithdrawCount += uint64(len(executionWithdrawals))
 			for _, withdrawal := range executionWithdrawals {
 				dbEpoch.WithdrawAmount += uint64(withdrawal.Amount)
