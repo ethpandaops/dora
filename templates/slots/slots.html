@@ -12,59 +12,85 @@
 
     <div class="card mt-2">
       <div class="card-body px-0 py-3">
-        <div class="row">
-          <div class="col-sm-12 col-md-6 table-pagesize">
-            <form action="/slots" method="get">
-              <label class="px-2">
+        <form action="/slots" method="get" id="slotsForm">
+          <div class="row">
+            <div class="col-9 col-md-9">
+              {{ if not .IsDefaultPage }}
+                <input name="s" type="hidden" value="{{ .CurrentPageSlot }}">
+              {{ end }}
+              <div class="mx-2">
                 <span>Show </span>
-                <select name="c" aria-controls="slots" class="custom-select custom-select-sm form-control form-control-sm" onchange="this.form.submit()">
+                <select name="c" aria-controls="slots" class="custom-select custom-select-sm form-control form-control-sm d-inline-block" style="width: auto;" onchange="$('#slotsForm').submit()">
                   <option value="{{ .PageSize }}" selected>{{ .PageSize }}</option>
                   <option value="10">10</option>
                   <option value="25">25</option>
                   <option value="50">50</option>
                   <option value="100">100</option>
                 </select>
-                {{ if not .IsDefaultPage }}
-                  <input name="s" type="hidden" value="{{ .CurrentPageSlot }}">
-                {{ end }}
-                <span> entries</span>
-              </label>
-            </form>
-          </div>
-          <div class="col-sm-12 col-md-6 table-search">
-            <div class="px-2" style="text-align: right;">
-              <a href="/slots/filtered">
-                <i class="fas fa-filter mx-2"></i>Filter Blocks
-              </a>
+                <span> entries, </span>
+                <input type="hidden" id="displayColumnsField" />
+                <span>columns: </span>
+                <select name="d" multiple="multiple" class="filter-multiselect" style="width: 200px;">
+                  <option value="1" {{ if .DisplayChain }}selected{{ end }}>Chain</option>
+                  <option value="2" {{ if .DisplayEpoch }}selected{{ end }}>Epoch</option>
+                  <option value="3" {{ if .DisplaySlot }}selected{{ end }}>Slot</option>
+                  <option value="4" {{ if .DisplayStatus }}selected{{ end }}>Status</option>
+                  <option value="5" {{ if .DisplayTime }}selected{{ end }}>Time</option>
+                  <option value="6" {{ if .DisplayProposer }}selected{{ end }}>Proposer</option>
+                  <option value="7" {{ if .DisplayAttestations }}selected{{ end }}>Attestations</option>
+                  <option value="8" {{ if .DisplayDeposits }}selected{{ end }}>Deposits/Exits</option>
+                  <option value="9" {{ if .DisplaySlashings }}selected{{ end }}>Slashings</option>
+                  <option value="10" {{ if .DisplayTxCount }}selected{{ end }}>Tx / Blob Count</option>
+                  <option value="11" {{ if .DisplaySyncAgg }}selected{{ end }}>Sync Agg</option>
+                  <option value="12" {{ if .DisplayGraffiti }}selected{{ end }}>Graffiti</option>
+                  <option value="13" {{ if .DisplayElExtraData }}selected{{ end }}>Extra Data</option>
+                  <option value="14" {{ if .DisplayGasUsage }}selected{{ end }}>Gas Usage</option>
+                  <option value="15" {{ if .DisplayGasLimit }}selected{{ end }}>Gas Limit</option>
+                </select>
+              </div>
+            </div>
+            <div class="col-3 col-md-3 text-end">
+              <div class="px-2">
+                <a href="/slots/filtered">
+                  <i class="fas fa-filter mx-2"></i>Filter Blocks
+                </a>
+              </div>
             </div>
           </div>
-        </div>
+        </form>
         <div class="table-responsive px-0 py-1">
           <table class="table table-nobr" id="slots">
             <thead>
               <tr>
-                <th>Chain</th>
-                <th>Epoch</th>
-                <th>Slot</th>
-                <th>Status</th>
-                <th style="min-width: 125px">Time</th>
-                <th>Prop<span class="d-none d-lg-inline">oser</span></th>
-                <th class="d-none d-md-table-cell">Att<span class="d-none d-lg-inline">estations</span></th>
+                {{ if .DisplayChain }}<th>Chain</th>{{ end }}
+                {{ if .DisplayEpoch }}<th>Epoch</th>{{ end }}
+                {{ if .DisplaySlot }}<th>Slot</th>{{ end }}
+                {{ if .DisplayStatus }}<th>Status</th>{{ end }}
+                {{ if .DisplayTime }}<th style="min-width: 125px">Time</th>{{ end }}
+                {{ if .DisplayProposer }}<th>Prop<span class="d-none d-lg-inline">oser</span></th>{{ end }}
+                {{ if .DisplayAttestations }}<th class="d-none d-md-table-cell">Att<span class="d-none d-lg-inline">estations</span></th>{{ end }}
+                {{ if .DisplayDeposits }}
                 <th>
                   <nobr><span data-toggle="tooltip" data-placement="top" title="Deposits">D<span class="d-none d-lg-inline">ep</span> </span> / 
                   <span data-toggle="tooltip" data-placement="top" title="Exits">E<span class="d-none d-lg-inline">x</span> </span></nobr>
                 </th>
-                <th><span data-toggle="tooltip" data-placement="top" title="Proposer Slashings / Attester Slashings">Slashings</span></th>
-                <th>Txs<span class="d-none d-lg-inline"> / Blobs</span></th>
-                <th>Sync<span class="d-none d-lg-inline"> Agg</span> %</th>
-                <th>Graffiti</th>
+                {{ end }}
+                {{ if .DisplaySlashings }}<th><span data-toggle="tooltip" data-placement="top" title="Proposer Slashings / Attester Slashings">Slashings</span></th>{{ end }}
+                {{ if .DisplayTxCount }}<th>Txs<span class="d-none d-lg-inline"> / Blobs</span></th>{{ end }}
+                {{ if .DisplaySyncAgg }}<th>Sync<span class="d-none d-lg-inline"> Agg</span> %</th>{{ end }}
+                {{ if .DisplayGraffiti }}<th>Graffiti</th>{{ end }}
+                {{ if .DisplayElExtraData }}<th>Extra Data</th>{{ end }}
+                {{ if .DisplayGasUsage }}<th>Gas Usage</th>{{ end }}
+                {{ if .DisplayGasLimit }}<th>Gas Limit</th>{{ end }}
               </tr>
             </thead>
             {{ if gt .SlotCount 0 }}
               <tbody>
                 {{ $treeWidth := .ForkTreeWidth }}
+                {{ $g := . }}
                 {{ range $i, $slot := .Slots }}
                   <tr>
+                    {{ if $g.DisplayChain }}
                     <td class="graph-container" style="min-width: {{ $treeWidth }}px;">
                       {{ range $j, $graph := $slot.ForkGraph }}
                         <div class="graph-fork" data-index="{{ $graph.Index }}" style="left: {{ $graph.Left }}px;">
@@ -79,12 +105,16 @@
                         </div>
                       {{ end }}
                     </td>
-                    <td><a href="/epoch/{{ $slot.Epoch }}">{{ formatAddCommas $slot.Epoch }}</a></td>
-                    {{ if eq $slot.Status 2 }}
-                      <td><a href="/slot/0x{{ printf "%x" $slot.BlockRoot }}">{{ formatAddCommas $slot.Slot }}</a></td>
-                    {{ else }}
-                      <td><a href="/slot/{{ $slot.Slot }}">{{ formatAddCommas $slot.Slot }}</a></td>
                     {{ end }}
+                    {{ if $g.DisplayEpoch }}<td><a href="/epoch/{{ $slot.Epoch }}">{{ formatAddCommas $slot.Epoch }}</a></td>{{ end }}
+                    {{ if $g.DisplaySlot }}
+                      {{ if eq $slot.Status 2 }}
+                        <td><a href="/slot/0x{{ printf "%x" $slot.BlockRoot }}">{{ formatAddCommas $slot.Slot }}</a></td>
+                      {{ else }}
+                        <td><a href="/slot/{{ $slot.Slot }}">{{ formatAddCommas $slot.Slot }}</a></td>
+                      {{ end }}
+                    {{ end }}
+                    {{ if $g.DisplayStatus }}
                     <td>
                       {{ if eq $slot.Slot 0 }}
                         <span class="badge rounded-pill text-bg-info">Genesis</span>
@@ -102,17 +132,39 @@
                         <span class="badge rounded-pill text-bg-dark">Unknown</span>
                       {{ end }}
                     </td>
-                    <td data-timer="{{ $slot.Ts.Unix }}"><span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $slot.Ts }}">{{ formatRecentTimeShort $slot.Ts }}</span></td>
+                    {{ end }}
+                    {{ if $g.DisplayTime }}<td data-timer="{{ $slot.Ts.Unix }}"><span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $slot.Ts }}">{{ formatRecentTimeShort $slot.Ts }}</span></td>{{ end }}
                     {{ if $slot.Synchronized }}
-                      <td>{{ if gt $slot.Slot 0 }}{{ formatValidator $slot.Proposer $slot.ProposerName }}{{ end }}</td>
-                      <td class="d-none d-md-table-cell">{{ if not (eq $slot.Status 0) }}{{ $slot.AttestationCount }}{{ end }}</td>
-                      <td>{{ if not (eq $slot.Status 0) }}{{ $slot.DepositCount }} / {{ $slot.ExitCount }}{{ end }}</td>
-                      <td>{{ if not (eq $slot.Status 0) }}{{ $slot.ProposerSlashingCount }} / {{ $slot.AttesterSlashingCount }}{{ end }}</td>
-                      <td>{{ if not (eq $slot.Status 0) }}{{ $slot.EthTransactionCount }} / {{ $slot.BlobCount }}{{ end }}</td>
-                      <td>{{ if not (eq $slot.Status 0) }}{{ formatFloat $slot.SyncParticipation 2 }}%{{ end }}</td>
-                      <td>{{ if not (eq $slot.Status 0) }}{{ formatGraffiti $slot.Graffiti }}{{ end }}</td>
+                      {{ if $g.DisplayProposer }}<td>{{ if gt $slot.Slot 0 }}{{ formatValidator $slot.Proposer $slot.ProposerName }}{{ end }}</td>{{ end }}
+                      {{ if $g.DisplayAttestations }}<td class="d-none d-md-table-cell">{{ if not (eq $slot.Status 0) }}{{ $slot.AttestationCount }}{{ end }}</td>{{ end }}
+                      {{ if $g.DisplayDeposits }}<td>{{ if not (eq $slot.Status 0) }}{{ $slot.DepositCount }} / {{ $slot.ExitCount }}{{ end }}</td>{{ end }}
+                      {{ if $g.DisplaySlashings }}<td>{{ if not (eq $slot.Status 0) }}{{ $slot.ProposerSlashingCount }} / {{ $slot.AttesterSlashingCount }}{{ end }}</td>{{ end }}
+                      {{ if $g.DisplayTxCount }}<td>{{ if not (eq $slot.Status 0) }}{{ $slot.EthTransactionCount }} / {{ $slot.BlobCount }}{{ end }}</td>{{ end }}
+                      {{ if $g.DisplaySyncAgg }}<td>{{ if not (eq $slot.Status 0) }}{{ formatFloat $slot.SyncParticipation 2 }}%{{ end }}</td>{{ end }}
+                      {{ if $g.DisplayGraffiti }}<td>{{ if not (eq $slot.Status 0) }}{{ formatGraffiti $slot.Graffiti }}{{ end }}</td>{{ end }}
+                      {{ if $g.DisplayElExtraData }}<td>{{ if not (eq $slot.Status 0) }}{{ formatGraffiti $slot.ElExtraData }}{{ end }}</td>{{ end }}
+                      {{ if $g.DisplayGasUsage }}<td>{{ if not (eq $slot.Status 0) }}
+                        <div style="position:relative;width:inherit;height:inherit;">
+                          {{ formatAddCommas $slot.GasUsed }} <small class="text-muted ml-3">({{ formatFloat (percentage $slot.GasUsed $slot.GasLimit) 2 }}%)</small>
+                          <div class="progress" style="position:absolute;bottom:-6px;width:100%;height:4px;">
+                            <div class="progress-bar" role="progressbar" style="width: {{ percentage $slot.GasUsed $slot.GasLimit }}%;" aria-valuenow="{{ $slot.GasUsed }}" aria-valuemin="0" aria-valuemax="{{ $slot.GasLimit }}"></div>
+                          </div>
+                        </div>
+                      {{ end }}</td>{{ end }}
+                      {{ if $g.DisplayGasLimit }}<td>{{ if not (eq $slot.Status 0) }}{{ formatFloat (div (float64 $slot.GasLimit) 1000000) 2 }} M{{ end }}</td>{{ end }}
                     {{ else }}
-                      <td colspan="7">Not indexed yet</td>
+                      {{ $colCount := 0 }}
+                      {{ if $g.DisplayProposer }}{{ $colCount = add $colCount 1 }}{{ end }}
+                      {{ if $g.DisplayAttestations }}{{ $colCount = add $colCount 1 }}{{ end }}
+                      {{ if $g.DisplayDeposits }}{{ $colCount = add $colCount 1 }}{{ end }}
+                      {{ if $g.DisplaySlashings }}{{ $colCount = add $colCount 1 }}{{ end }}
+                      {{ if $g.DisplayTxCount }}{{ $colCount = add $colCount 1 }}{{ end }}
+                      {{ if $g.DisplaySyncAgg }}{{ $colCount = add $colCount 1 }}{{ end }}
+                      {{ if $g.DisplayGraffiti }}{{ $colCount = add $colCount 1 }}{{ end }}
+                      {{ if $g.DisplayElExtraData }}{{ $colCount = add $colCount 1 }}{{ end }}
+                      {{ if $g.DisplayGasUsage }}{{ $colCount = add $colCount 1 }}{{ end }}
+                      {{ if $g.DisplayGasLimit }}{{ $colCount = add $colCount 1 }}{{ end }}
+                      {{ if gt $colCount 0 }}<td colspan="{{ $colCount }}">Not indexed yet</td>{{ end }}
                     {{ end }}
                     
                   </tr>
@@ -122,7 +174,7 @@
               <tbody>
                 <tr style="height: 430px;">
                   <td class="d-none d-md-table-cell"></td>
-                  <td style="vertical-align: middle;" colspan="9">
+                  <td style="vertical-align: middle;" colspan="{{ .DisplayColCount }}">
                     <div class="img-fluid mx-auto p-3 d-flex align-items-center" style="max-height: 400px; max-width: 400px; overflow: hidden;">
                       {{ template "professor_svg" }}
                     </div>
@@ -144,19 +196,19 @@
               <div class="d-inline-block px-2">
                 <ul class="pagination">
                   <li class="first paginate_button page-item {{ if le .PrevPageIndex 1 }}disabled{{ end }}" id="tpg_first">
-                    <a tab-index="1" aria-controls="tpg_first" class="page-link" href="/slots?c={{ .PageSize }}">First</a>
+                    <a tab-index="1" aria-controls="tpg_first" class="page-link" href="{{ .FirstPageLink }}">First</a>
                   </li>
                   <li class="previous paginate_button page-item {{ if eq .PrevPageIndex 0 }}disabled{{ end }}" id="tpg_previous">
-                    <a tab-index="1" aria-controls="tpg_previous" class="page-link" href="/slots?s={{ .PrevPageSlot }}&c={{ .PageSize }}"><i class="fas fa-chevron-left"></i></a>
+                    <a tab-index="1" aria-controls="tpg_previous" class="page-link" href="{{ .PrevPageLink }}"><i class="fas fa-chevron-left"></i></a>
                   </li>
                   <li class="page-item disabled">
                     <a class="page-link" style="background-color: transparent;">{{ .CurrentPageIndex }} of {{ .TotalPages }}</a>
                   </li>
                   <li class="next paginate_button page-item {{ if eq .NextPageIndex 0 }}disabled{{ end }}" id="tpg_next">
-                    <a tab-index="1" aria-controls="tpg_next" class="page-link" href="/slots?s={{ .NextPageSlot }}&c={{ .PageSize }}"><i class="fas fa-chevron-right"></i></a>
+                    <a tab-index="1" aria-controls="tpg_next" class="page-link" href="{{ .NextPageLink }}"><i class="fas fa-chevron-right"></i></a>
                   </li>
                   <li class="last paginate_button page-item {{ if or (eq .LastPageSlot 0) (le .NextPageSlot .LastPageSlot) }}disabled{{ end }}" id="tpg_last">
-                    <a tab-index="1" aria-controls="tpg_last" class="page-link" href="/slots?s={{ .LastPageSlot }}&c={{ .PageSize }}">Last</a>
+                    <a tab-index="1" aria-controls="tpg_last" class="page-link" href="{{ .LastPageLink }}">Last</a>
                   </li>
                 </ul>
               </div>
@@ -169,7 +221,69 @@
   </div>
 {{ end }}
 {{ define "js" }}
+<script src="/js/bootstrap-multiselect.js"></script>
+<script type="text/javascript">
+$('#slotsForm').submit(function () { 
+  var displayColumns = Array.prototype.filter.call($(this).find('select[name="d"]').prop('name', '').find("option"), function(el) {
+    return el.selected;
+  }).map(function(el) {
+    return el.value;
+  }).join(" ");
+  if(displayColumns.length > 0) {
+    $(this).find("#displayColumnsField").prop('name', 'd').val(displayColumns);
+  }
+});
+$(function() {
+  var columnSelectionsChanged = false;
+  var initialSelections = [];
+  
+  $('#slotsForm .filter-multiselect').each(function() {
+    $(this).find('option:selected').each(function() {
+      initialSelections.push($(this).val());
+    });
+    
+    $(this).multiselect({
+      onInitialized: function() {
+        this.$button.attr("data-bs-toggle", "dropdown");
+        this.$container.addClass("filter-multiselect-container");
+      },
+      onChange: function(option, checked) {
+        columnSelectionsChanged = true;
+      },
+      onDropdownHide: function() {
+        if (columnSelectionsChanged) {
+          $('#slotsForm').submit();
+        }
+      }
+    });
+  });
+});
+</script>
 {{ end }}
 {{ define "css" }}
-  <link rel="stylesheet" href="/css/forkgraph.css" />
+<link rel="stylesheet" href="/css/bootstrap-multiselect.css">
+<link rel="stylesheet" href="/css/forkgraph.css" />
+<style>
+  .filter-multiselect-container {
+    width: auto;
+    min-width: 200px;
+  }
+  .filter-multiselect-container.btn-group>.btn {
+    text-align: left;
+  }
+  .filter-multiselect-container .multiselect-container {
+    width: 100%;
+  }
+  .filter-multiselect-container .multiselect-container>li>a>label {
+    padding: 4px 8px;
+    width: 100%;
+    white-space: nowrap;
+  }
+  .filter-multiselect-container .multiselect-container>li>a>label>input {
+    margin: 0 4px;
+  }
+  .gas-usage-progress {
+    height: 5px;
+  }
+</style>
 {{ end }}

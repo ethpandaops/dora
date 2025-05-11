@@ -115,6 +115,8 @@
                 <option value="10" {{ if .DisplaySyncAgg }}selected{{ end }}>Sync Agg</option>
                 <option value="11" {{ if .DisplayGraffiti }}selected{{ end }}>Graffiti</option>
                 <option value="12" {{ if .DisplayElExtraData }}selected{{ end }}>Extra Data</option>
+                <option value="13" {{ if .DisplayGasUsage }}selected{{ end }}>Gas Usage</option>
+                <option value="14" {{ if .DisplayGasLimit }}selected{{ end }}>Gas Limit</option>
               </select>
             </div>
             <div class="col-2 col-md-2">
@@ -161,6 +163,8 @@
                 {{ if .DisplaySyncAgg }}<th>Sync<span class="d-none d-lg-inline"> Agg</span> %</th>{{ end }}
                 {{ if .DisplayGraffiti }}<th>Graffiti</th>{{ end }}
                 {{ if .DisplayElExtraData }}<th>Extra Data</th>{{ end }}
+                {{ if .DisplayGasUsage }}<th>Gas Usage</th>{{ end }}
+                {{ if .DisplayGasLimit }}<th>Gas Limit</th>{{ end }}
               </tr>
             </thead>
             {{- if gt .SlotCount 0 }}
@@ -223,6 +227,19 @@
                     {{- end }}
                     {{- if $g.DisplayElExtraData }}
                       <td>{{ if not (eq $slot.Status 0) }}{{ formatGraffiti $slot.ElExtraData }}{{ end }}</td>
+                    {{- end }}
+                    {{- if $g.DisplayGasUsage }}
+                      <td>{{ if not (eq $slot.Status 0) }}
+                        <div style="position:relative;width:inherit;height:inherit;">
+                          {{ formatAddCommas $slot.GasUsed }} <small class="text-muted ml-3">({{ formatFloat (percentage $slot.GasUsed $slot.GasLimit) 2 }}%)</small>
+                          <div class="progress" style="position:absolute;bottom:-6px;width:100%;height:4px;">
+                            <div class="progress-bar" role="progressbar" style="width: {{ percentage $slot.GasUsed $slot.GasLimit }}%;" aria-valuenow="{{ $slot.GasUsed }}" aria-valuemin="0" aria-valuemax="{{ $slot.GasLimit }}"></div>
+                          </div>
+                        </div>
+                      {{ end }}</td>
+                    {{- end }}
+                    {{- if $g.DisplayGasLimit }}
+                      <td>{{ if not (eq $slot.Status 0) }}{{ formatFloat (div (float64 $slot.GasLimit) 1000000) 2 }} M{{ end }}</td>
                     {{- end }}
                   </tr>
                 {{ end }}
@@ -323,6 +340,8 @@ $(function() {
   .filter-multiselect-container .multiselect-container>li>a>label>input {
     margin: 0 4px;
   }
-  
+  .gas-usage-progress {
+    height: 5px;
+  }
 </style>
 {{ end }}

@@ -416,3 +416,16 @@ func FormatWithdawalCredentials(hash []byte) template.HTML {
 
 	return formatWithdrawalHash(hash)
 }
+
+// FormatGweiValue formats a gas value in Gwei
+func FormatGweiValue(val uint64) string {
+	return FormatFloat(float64(val)/float64(1e9), 2) + " Gwei"
+}
+
+// CalculatePercentage calculates the percentage of a value from a total
+func CalculatePercentage(value uint64, total uint64) float64 {
+	if total == 0 {
+		return 0
+	}
+	return float64(value) * 100 / float64(total)
+}

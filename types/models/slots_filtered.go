@@ -25,6 +25,8 @@ type SlotsFilteredPageData struct {
 	DisplaySyncAgg      bool   `json:"dp_syncagg"`
 	DisplayGraffiti     bool   `json:"dp_graffiti"`
 	DisplayElExtraData  bool   `json:"dp_elextra"`
+	DisplayGasUsage     bool   `json:"dp_gasusage"`
+	DisplayGasLimit     bool   `json:"dp_gaslimit"`
 	DisplayColCount     uint64 `json:"display_col_count"`
 
 	Slots     []*SlotsFilteredPageDataSlot `json:"slots"`
@@ -71,6 +73,8 @@ type SlotsFilteredPageDataSlot struct {
 	EthBlockNumber        uint64    `json:"eth_block_number"`
 	Graffiti              []byte    `json:"graffiti"`
 	ElExtraData           []byte    `json:"el_extra_data"`
+	GasUsed               uint64    `json:"gas_used"`
+	GasLimit              uint64    `json:"gas_limit"`
 	BlockRoot             []byte    `json:"block_root"`
 	ParentRoot            []byte    `json:"parent_root"`
 }

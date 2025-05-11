@@ -184,6 +184,8 @@ func buildFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string
 		DisplaySyncAgg:      displayMap[10],
 		DisplayGraffiti:     displayMap[11],
 		DisplayElExtraData:  displayMap[12],
+		DisplayGasUsage:     displayMap[13],
+		DisplayGasLimit:     displayMap[14],
 		DisplayColCount:     uint64(len(displayMap)),
 	}
 	logrus.Debugf("slots_filtered page called: %v:%v [%v/%v]", pageIdx, pageSize, graffiti, extradata)
@@ -261,6 +263,8 @@ func buildFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string
 			slotData.BlobCount = dbBlock.Block.BlobCount
 			slotData.Graffiti = dbBlock.Block.Graffiti
 			slotData.ElExtraData = dbBlock.Block.EthBlockExtra
+			slotData.GasUsed = dbBlock.Block.EthGasUsed
+			slotData.GasLimit = dbBlock.Block.EthGasLimit
 			slotData.BlockRoot = dbBlock.Block.Root
 			if dbBlock.Block.EthBlockNumber != nil {
 				slotData.WithEthBlock = true
