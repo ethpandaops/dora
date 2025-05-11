@@ -133,6 +133,44 @@ func GetMevBlockByBlockHash(blockHash []byte) *dbtypes.MevBlock {
 	return &mevBlock
 }
 
+// GetMevBlocksByBlockHashes retrieves multiple MEV blocks in a single database query for better performance
+func GetMevBlocksByBlockHashes(blockHashes [][]byte) map[string]*dbtypes.MevBlock {
+	if len(blockHashes) == 0 {
+		return map[string]*dbtypes.MevBlock{}
+	}
+
+	// Create a query with multiple parameters
+	queryArgs := make([]interface{}, len(blockHashes))
+	placeholders := make([]string, len(blockHashes))
+
+	for i, hash := range blockHashes {
+		queryArgs[i] = hash
+		placeholders[i] = fmt.Sprintf("$%d", i+1)
+	}
+
+	query := fmt.Sprintf(`
+	SELECT
+		slot_number, block_hash, block_number, builder_pubkey, proposer_index, proposed, seenby_relays, fee_recipient, tx_count, gas_used, block_value, block_value_gwei
+	FROM mev_blocks
+	WHERE block_hash IN (%s)
+	`, strings.Join(placeholders, ", "))
+
+	mevBlocks := []*dbtypes.MevBlock{}
+	err := ReaderDb.Select(&mevBlocks, query, queryArgs...)
+	if err != nil {
+		logger.Errorf("Error while fetching MEV blocks by hashes: %v", err)
+		return map[string]*dbtypes.MevBlock{}
+	}
+
+	// Convert to map for easy lookup
+	result := make(map[string]*dbtypes.MevBlock, len(mevBlocks))
+	for _, block := range mevBlocks {
+		result[fmt.Sprintf("%x", block.BlockHash)] = block
+	}
+
+	return result
+}
+
 func GetMevBlocksFiltered(offset uint64, limit uint32, filter *dbtypes.MevBlockFilter) ([]*dbtypes.MevBlock, uint64, error) {
 	var sql strings.Builder
 	args := []any{}

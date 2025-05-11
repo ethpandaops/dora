@@ -9,10 +9,12 @@ import (
 	"strings"
 
 	"github.com/attestantio/go-eth2-client/spec/phase0"
+	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
+	"github.com/ethpandaops/dora/utils"
 	"github.com/sirupsen/logrus"
 )
 
@@ -146,6 +148,10 @@ func buildFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string
 			9:  true,
 			10: true,
 			11: true,
+			12: true,
+			13: true,
+			14: true,
+			15: true,
 		}
 	} else {
 		displayList := make([]uint64, len(displayMap))
@@ -184,6 +190,9 @@ func buildFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string
 		DisplaySyncAgg:      displayMap[10],
 		DisplayGraffiti:     displayMap[11],
 		DisplayElExtraData:  displayMap[12],
+		DisplayGasUsage:     displayMap[13],
+		DisplayGasLimit:     displayMap[14],
+		DisplayMevBlock:     displayMap[15],
 		DisplayColCount:     uint64(len(displayMap)),
 	}
 	logrus.Debugf("slots_filtered page called: %v:%v [%v/%v]", pageIdx, pageSize, graffiti, extradata)
@@ -227,6 +236,22 @@ func buildFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string
 	}
 
 	dbBlocks := services.GlobalBeaconService.GetDbBlocksByFilter(blockFilter, pageIdx, uint32(pageSize), withScheduledCount)
+	mevBlocksMap := make(map[string]*dbtypes.MevBlock)
+
+	if pageData.DisplayMevBlock {
+		var execBlockHashes [][]byte
+
+		for _, dbBlock := range dbBlocks {
+			if dbBlock.Block != nil && dbBlock.Block.Status > 0 && dbBlock.Block.EthBlockHash != nil {
+				execBlockHashes = append(execBlockHashes, dbBlock.Block.EthBlockHash)
+			}
+		}
+
+		if len(execBlockHashes) > 0 {
+			mevBlocksMap = db.GetMevBlocksByBlockHashes(execBlockHashes)
+		}
+	}
+
 	haveMore := false
 	for idx, dbBlock := range dbBlocks {
 		if idx >= int(pageSize) {
@@ -258,12 +283,30 @@ func buildFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string
 			slotData.AttesterSlashingCount = dbBlock.Block.AttesterSlashingCount
 			slotData.SyncParticipation = float64(dbBlock.Block.SyncParticipation) * 100
 			slotData.EthTransactionCount = dbBlock.Block.EthTransactionCount
+			slotData.BlobCount = dbBlock.Block.BlobCount
 			slotData.Graffiti = dbBlock.Block.Graffiti
 			slotData.ElExtraData = dbBlock.Block.EthBlockExtra
+			slotData.GasUsed = dbBlock.Block.EthGasUsed
+			slotData.GasLimit = dbBlock.Block.EthGasLimit
 			slotData.BlockRoot = dbBlock.Block.Root
 			if dbBlock.Block.EthBlockNumber != nil {
 				slotData.WithEthBlock = true
 				slotData.EthBlockNumber = *dbBlock.Block.EthBlockNumber
+			}
+
+			if pageData.DisplayMevBlock && dbBlock.Block.EthBlockHash != nil {
+				if mevBlock, exists := mevBlocksMap[fmt.Sprintf("%x", dbBlock.Block.EthBlockHash)]; exists {
+					slotData.IsMevBlock = true
+
+					var relays []string
+					for _, relay := range utils.Config.MevIndexer.Relays {
+						relayFlag := uint64(1) << uint64(relay.Index)
+						if mevBlock.SeenbyRelays&relayFlag > 0 {
+							relays = append(relays, relay.Name)
+						}
+					}
+					slotData.MevBlockRelays = strings.Join(relays, ", ")
+				}
 			}
 		}
 		pageData.Slots = append(pageData.Slots, slotData)

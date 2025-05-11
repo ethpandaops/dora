@@ -39,7 +39,7 @@
 955000-959999: "launchnodes"
 960000-964999: "commit-boost"
 965000-969999: "unused"
-970000-974999: "unused"
+970000-974999: "rockawayx"
 975000-979999: "unused"
 980000-984999: "ef-security"
 985000-1059999: "attestant"
@@ -55,3 +55,4 @@
 "depositor:0x4f0F5Ab30f62B62ed0466B697f0eC7B30560EE48": "SSVLabs"
 "depositor:0x9B491F043189af6d31d3D4b1A7cA1cF72f40C52a": "Everstake"
 "depositor:0x03B1F066125897834e46aBd7DC6415D8759F8372": "Lodestar"
+"depositor:0xeF5241f8E892cAB2cD7991b4476c3F796DdEAAB5": "Serenita"

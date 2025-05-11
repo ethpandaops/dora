@@ -52,7 +52,7 @@ jobs:
 
     # setup node & npm
     - name: Set up node
-      uses: actions/setup-node@cdca7365b2dadb8aad0a33bc7601856ffabcc48e # v4.3.0
+      uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
       with:
         node-version: 20.x
     - name: Cache node-modules for UI package
@@ -99,7 +99,7 @@ jobs:
 
     # download UI build artifacts
     - name: Download UI build artifacts
-      uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e # v4.2.1
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
       with:
         name: ui-package
         path: ./ui-package/dist
@@ -146,7 +146,7 @@ jobs:
 
     # download UI build artifacts
     - name: Download UI build artifacts
-      uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e # v4.2.1
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
       with:
         name: ui-package
         path: ./ui-package/dist
@@ -187,7 +187,7 @@ jobs:
 
     # download UI build artifacts
     - name: Download UI build artifacts
-      uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e # v4.2.1
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
       with:
         name: ui-package
         path: ./ui-package/dist
@@ -228,7 +228,7 @@ jobs:
 
     # download UI build artifacts
     - name: Download UI build artifacts
-      uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e # v4.2.1
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
       with:
         name: ui-package
         path: ./ui-package/dist
@@ -269,7 +269,7 @@ jobs:
 
     # download UI build artifacts
     - name: Download UI build artifacts
-      uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e # v4.2.1
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
       with:
         name: ui-package
         path: ./ui-package/dist
@@ -313,12 +313,12 @@ jobs:
 
     # download build artifacts
     - name: Download UI build artifacts
-      uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e # v4.2.1
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
       with:
         name: ui-package
         path: ./ui-package/dist
     - name: Download build artifacts
-      uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e # v4.2.1
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
       with:
         name: explorer_linux_amd64
         path: ./bin
@@ -367,12 +367,12 @@ jobs:
 
     # download build artifacts
     - name: Download UI build artifacts
-      uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e # v4.2.1
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
       with:
         name: ui-package
         path: ./ui-package/dist
     - name: Download build artifacts
-      uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e # v4.2.1
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
       with:
         name: explorer_linux_arm64
         path: ./bin
