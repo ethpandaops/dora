@@ -17,6 +17,7 @@ import (
 var (
 	// Custom errors
 	errCustodySubnetCountTooLarge = errors.New("custody subnet count larger than data column sidecar subnet count")
+	errCustodyColumnCountZero     = errors.New("custody column count is zero")
 
 	// maxUint256 is the maximum value of a uint256.
 	maxUint256 = &uint256.Int{math.MaxUint64, math.MaxUint64, math.MaxUint64, math.MaxUint64}
@@ -26,6 +27,9 @@ func CustodyColumnSubnets(nodeId enode.ID, custodySubnetCount uint64, dataColumn
 	// Check if the custody subnet count is larger than the data column sidecar subnet count.
 	if custodySubnetCount > dataColumnSidecarSubnetCount {
 		return nil, errCustodySubnetCountTooLarge
+	}
+	if dataColumnSidecarSubnetCount == 0 {
+		return nil, errCustodyColumnCountZero
 	}
 
 	// First, compute the subnet IDs that the node should participate in.

@@ -111,10 +111,13 @@
                 <option value="6" {{ if .DisplayAttestations }}selected{{ end }}>Attestations</option>
                 <option value="7" {{ if .DisplayDeposits }}selected{{ end }}>Deposits/Exits</option>
                 <option value="8" {{ if .DisplaySlashings }}selected{{ end }}>Slashings</option>
-                <option value="9" {{ if .DisplayTxCount }}selected{{ end }}>Tx Count</option>
+                <option value="9" {{ if .DisplayTxCount }}selected{{ end }}>Tx / Blob Count</option>
                 <option value="10" {{ if .DisplaySyncAgg }}selected{{ end }}>Sync Agg</option>
                 <option value="11" {{ if .DisplayGraffiti }}selected{{ end }}>Graffiti</option>
                 <option value="12" {{ if .DisplayElExtraData }}selected{{ end }}>Extra Data</option>
+                <option value="13" {{ if .DisplayGasUsage }}selected{{ end }}>Gas Usage</option>
+                <option value="14" {{ if .DisplayGasLimit }}selected{{ end }}>Gas Limit</option>
+                <option value="15" {{ if .DisplayMevBlock }}selected{{ end }}>MEV Block</option>
               </select>
             </div>
             <div class="col-2 col-md-2">
@@ -157,10 +160,13 @@
                   <span data-toggle="tooltip" data-placement="top" title="Attester Slashings">A</span></nobr>
                 </th>
                 {{ end }}
-                {{ if .DisplayTxCount }}<th>Tx<span class="d-none d-lg-inline"> Count</span></th>{{ end }}
+                {{ if .DisplayTxCount }}<th>Txs<span class="d-none d-lg-inline"> / Blobs</span></th>{{ end }}
                 {{ if .DisplaySyncAgg }}<th>Sync<span class="d-none d-lg-inline"> Agg</span> %</th>{{ end }}
                 {{ if .DisplayGraffiti }}<th>Graffiti</th>{{ end }}
                 {{ if .DisplayElExtraData }}<th>Extra Data</th>{{ end }}
+                {{ if .DisplayGasUsage }}<th>Gas Usage</th>{{ end }}
+                {{ if .DisplayGasLimit }}<th>Gas Limit</th>{{ end }}
+                {{ if .DisplayMevBlock }}<th>MEV Block</th>{{ end }}
               </tr>
             </thead>
             {{- if gt .SlotCount 0 }}
@@ -213,7 +219,7 @@
                       <td>{{ if not (eq $slot.Status 0) }}{{ $slot.ProposerSlashingCount }} / {{ $slot.AttesterSlashingCount }}{{ end }}</td>
                     {{- end }}
                     {{- if $g.DisplayTxCount }}
-                      <td>{{ if not (eq $slot.Status 0) }}{{ $slot.EthTransactionCount }}{{ end }}</td>
+                      <td>{{ if not (eq $slot.Status 0) }}{{ $slot.EthTransactionCount }} / {{ $slot.BlobCount }}{{ end }}</td>
                     {{- end }}
                     {{- if $g.DisplaySyncAgg }}
                       <td>{{ if not (eq $slot.Status 0) }}{{ formatFloat $slot.SyncParticipation 2 }}%{{ end }}</td>
@@ -223,6 +229,28 @@
                     {{- end }}
                     {{- if $g.DisplayElExtraData }}
                       <td>{{ if not (eq $slot.Status 0) }}{{ formatGraffiti $slot.ElExtraData }}{{ end }}</td>
+                    {{- end }}
+                    {{- if $g.DisplayGasUsage }}
+                      <td>{{ if not (eq $slot.Status 0) }}
+                        <div style="position:relative;width:inherit;height:inherit;">
+                          {{ formatAddCommas $slot.GasUsed }} <small class="text-muted ml-3">({{ formatFloat (percentage $slot.GasUsed $slot.GasLimit) 2 }}%)</small>
+                          <div class="progress" style="position:absolute;bottom:-6px;width:100%;height:4px;">
+                            <div class="progress-bar" role="progressbar" style="width: {{ percentage $slot.GasUsed $slot.GasLimit }}%;" aria-valuenow="{{ $slot.GasUsed }}" aria-valuemin="0" aria-valuemax="{{ $slot.GasLimit }}"></div>
+                          </div>
+                        </div>
+                      {{ end }}</td>
+                    {{- end }}
+                    {{- if $g.DisplayGasLimit }}
+                      <td>{{ if not (eq $slot.Status 0) }}{{ formatFloat (div (float64 $slot.GasLimit) 1000000) 2 }} M{{ end }}</td>
+                    {{- end }}
+                    {{- if $g.DisplayMevBlock }}
+                      <td>{{ if not (eq $slot.Status 0) }}
+                        {{ if $slot.IsMevBlock }}
+                          <span class="badge rounded-pill text-bg-success" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $slot.MevBlockRelays }}">Yes</span>
+                        {{ else }}
+                          <span class="badge rounded-pill text-bg-secondary">No</span>
+                        {{ end }}
+                      {{ end }}</td>
                     {{- end }}
                   </tr>
                 {{ end }}
@@ -323,6 +351,8 @@ $(function() {
   .filter-multiselect-container .multiselect-container>li>a>label>input {
     margin: 0 4px;
   }
-  
+  .gas-usage-progress {
+    height: 5px;
+  }
 </style>
 {{ end }}

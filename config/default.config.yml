@@ -36,6 +36,7 @@ frontend:
   showPeerDASInfos: false
   showSubmitDeposit: false
   showSubmitElRequests: false
+  publicRpcUrl: "http://127.0.0.1:8545"
   
 beaconapi:
   # beacon node rpc endpoints

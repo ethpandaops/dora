@@ -11,7 +11,7 @@ require (
 	github.com/cockroachdb/pebble v1.1.5
 	github.com/coocood/freecache v1.2.4
 	github.com/ethereum/go-ethereum v1.15.0
-	github.com/ethpandaops/ethwallclock v0.3.0
+	github.com/ethpandaops/ethwallclock v0.4.0
 	github.com/glebarez/go-sqlite v1.22.0
 	github.com/go-redis/redis/v8 v8.11.5
 	github.com/gorilla/mux v1.8.1
@@ -21,7 +21,7 @@ require (
 	github.com/lib/pq v1.10.9
 	github.com/libp2p/go-libp2p v0.36.5
 	github.com/mashingan/smapping v0.1.19
-	github.com/minio/minio-go/v7 v7.0.90
+	github.com/minio/minio-go/v7 v7.0.91
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/pk910/dynamic-ssz v0.0.6
 	github.com/pressly/goose/v3 v3.24.2

@@ -233,5 +233,6 @@ func startApi(router *mux.Router) {
 	router.HandleFunc("/v1/validator", api.ApiValidatorPostV1).Methods("POST", "OPTIONS")
 	router.HandleFunc("/v1/validator/eth1/{eth1address}", api.ApiValidatorByEth1AddressV1).Methods("GET", "OPTIONS")
 	router.HandleFunc("/v1/validator/withdrawalCredentials/{withdrawalCredentialsOrEth1address}", api.ApiWithdrawalCredentialsValidatorsV1).Methods("GET", "OPTIONS")
+	router.HandleFunc("/v1/validator/{indexOrPubkey}/deposits", api.ApiValidatorDepositsV1).Methods("GET", "OPTIONS")
 	router.HandleFunc("/v1/epoch/{epoch}", api.ApiEpochV1).Methods("GET", "OPTIONS")
 }

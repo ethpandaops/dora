@@ -44,4 +44,5 @@ type EpochsPageDataEpoch struct {
 	HeadVoteParticipation   float64   `json:"head_vote_participation"`
 	TotalVoteParticipation  float64   `json:"total_vote_participation"`
 	EthTransactionCount     uint64    `json:"eth_transaction_count"`
+	BlobCount               uint64    `json:"blob_count"`
 }

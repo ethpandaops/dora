@@ -134,6 +134,8 @@ func buildEpochPageData(epoch uint64) (*models.EpochPageData, time.Duration) {
 		pageData.TotalVoted = dbEpoch.VotedTotal
 		pageData.SyncParticipation = float64(dbEpoch.SyncParticipation) * 100
 		pageData.ValidatorCount = dbEpoch.ValidatorCount
+		pageData.EthTransactionCount = dbEpoch.EthTransactionCount
+		pageData.BlobCount = dbEpoch.BlobCount
 		if dbEpoch.ValidatorCount > 0 {
 			pageData.AverageValidatorBalance = dbEpoch.ValidatorBalance / dbEpoch.ValidatorCount
 		} else {
@@ -182,6 +184,7 @@ func buildEpochPageData(epoch uint64) (*models.EpochPageData, time.Duration) {
 				AttesterSlashingCount: dbSlot.AttesterSlashingCount,
 				SyncParticipation:     float64(dbSlot.SyncParticipation) * 100,
 				EthTransactionCount:   dbSlot.EthTransactionCount,
+				BlobCount:             dbSlot.BlobCount,
 				Graffiti:              dbSlot.Graffiti,
 				BlockRoot:             dbSlot.Root,
 			}
