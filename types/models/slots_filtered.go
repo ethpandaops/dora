@@ -25,6 +25,9 @@ type SlotsFilteredPageData struct {
 	DisplaySyncAgg      bool   `json:"dp_syncagg"`
 	DisplayGraffiti     bool   `json:"dp_graffiti"`
 	DisplayElExtraData  bool   `json:"dp_elextra"`
+	DisplayGasUsage     bool   `json:"dp_gasusage"`
+	DisplayGasLimit     bool   `json:"dp_gaslimit"`
+	DisplayMevBlock     bool   `json:"dp_mevblock"`
 	DisplayColCount     uint64 `json:"display_col_count"`
 
 	Slots     []*SlotsFilteredPageDataSlot `json:"slots"`
@@ -66,10 +69,15 @@ type SlotsFilteredPageDataSlot struct {
 	AttesterSlashingCount uint64    `json:"attester_slashing_count"`
 	SyncParticipation     float64   `json:"sync_participation"`
 	EthTransactionCount   uint64    `json:"eth_transaction_count"`
+	BlobCount             uint64    `json:"blob_count"`
 	WithEthBlock          bool      `json:"with_eth_block"`
 	EthBlockNumber        uint64    `json:"eth_block_number"`
 	Graffiti              []byte    `json:"graffiti"`
 	ElExtraData           []byte    `json:"el_extra_data"`
+	GasUsed               uint64    `json:"gas_used"`
+	GasLimit              uint64    `json:"gas_limit"`
 	BlockRoot             []byte    `json:"block_root"`
 	ParentRoot            []byte    `json:"parent_root"`
+	IsMevBlock            bool      `json:"is_mev_block"`
+	MevBlockRelays        string    `json:"mev_block_relays"`
 }

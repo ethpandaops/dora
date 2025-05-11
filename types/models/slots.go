@@ -12,6 +12,24 @@ type SlotsPageData struct {
 	LastSlot      uint64               `json:"last_slot"`
 	ForkTreeWidth int                  `json:"forktree_width"`
 
+	DisplayChain        bool   `json:"dp_chain"`
+	DisplayEpoch        bool   `json:"dp_epoch"`
+	DisplaySlot         bool   `json:"dp_slot"`
+	DisplayStatus       bool   `json:"dp_status"`
+	DisplayTime         bool   `json:"dp_time"`
+	DisplayProposer     bool   `json:"dp_proposer"`
+	DisplayAttestations bool   `json:"dp_attestations"`
+	DisplayDeposits     bool   `json:"dp_deposits"`
+	DisplaySlashings    bool   `json:"dp_slashings"`
+	DisplayTxCount      bool   `json:"dp_txcount"`
+	DisplaySyncAgg      bool   `json:"dp_syncagg"`
+	DisplayGraffiti     bool   `json:"dp_graffiti"`
+	DisplayElExtraData  bool   `json:"dp_elextra"`
+	DisplayGasUsage     bool   `json:"dp_gasusage"`
+	DisplayGasLimit     bool   `json:"dp_gaslimit"`
+	DisplayMevBlock     bool   `json:"dp_mevblock"`
+	DisplayColCount     uint64 `json:"display_col_count"`
+
 	IsDefaultPage    bool   `json:"default_page"`
 	TotalPages       uint64 `json:"total_pages"`
 	PageSize         uint64 `json:"page_size"`
@@ -22,6 +40,11 @@ type SlotsPageData struct {
 	NextPageIndex    uint64 `json:"next_page_index"`
 	NextPageSlot     uint64 `json:"next_page_slot"`
 	LastPageSlot     uint64 `json:"last_page_slot"`
+
+	FirstPageLink string `json:"first_page_link"`
+	PrevPageLink  string `json:"prev_page_link"`
+	NextPageLink  string `json:"next_page_link"`
+	LastPageLink  string `json:"last_page_link"`
 }
 
 type SlotsPageDataSlot struct {
@@ -41,12 +64,18 @@ type SlotsPageDataSlot struct {
 	AttesterSlashingCount uint64                    `json:"attester_slashing_count"`
 	SyncParticipation     float64                   `json:"sync_participation"`
 	EthTransactionCount   uint64                    `json:"eth_transaction_count"`
+	BlobCount             uint64                    `json:"blob_count"`
 	WithEthBlock          bool                      `json:"with_eth_block"`
 	EthBlockNumber        uint64                    `json:"eth_block_number"`
 	Graffiti              []byte                    `json:"graffiti"`
+	ElExtraData           []byte                    `json:"el_extra_data"`
+	GasUsed               uint64                    `json:"gas_used"`
+	GasLimit              uint64                    `json:"gas_limit"`
 	BlockRoot             []byte                    `json:"block_root"`
 	ParentRoot            []byte                    `json:"parent_root"`
 	ForkGraph             []*SlotsPageDataForkGraph `json:"fork_graph"`
+	IsMevBlock            bool                      `json:"is_mev_block"`
+	MevBlockRelays        string                    `json:"mev_block_relays"`
 }
 
 type SlotsPageDataForkGraph struct {

@@ -55,11 +55,8 @@
                   <nobr><span data-toggle="tooltip" data-placement="top" title="Deposits">D<span class="d-none d-lg-inline">eposits</span> </span> / 
                   <span data-toggle="tooltip" data-placement="top" title="Exits">E<span class="d-none d-lg-inline">xits</span> </span></nobr>
                 </th>
-                <th><span class="d-none d-lg-inline">Slashings</span>
-                  <nobr><span data-toggle="tooltip" data-placement="top" title="Proposer Slashings">P</span> / 
-                  <span data-toggle="tooltip" data-placement="top" title="Attester Slashings">A</span></nobr>
-                </th>
-                <th>Tx<span class="d-none d-lg-inline"> Count</span></th>
+                <th><span data-toggle="tooltip" data-placement="top" title="Proposer Slashings / Attester Slashings">Slashings</span></th>
+                <th>Txs / Blobs</th>
                 <th>Finalized</th>
                 <th class="d-none d-md-table-cell">Eligible</th>
                 <th>Target Vote</th>
@@ -77,7 +74,7 @@
                       <td class="d-none d-md-table-cell">{{ $epoch.AttestationCount }}</td>
                       <td>{{ $epoch.DepositCount }} / {{ $epoch.ExitCount }}</td>
                       <td>{{ $epoch.ProposerSlashingCount }} / {{ $epoch.AttesterSlashingCount }}</td>
-                      <td>{{ $epoch.EthTransactionCount }}</td>
+                      <td>{{ $epoch.EthTransactionCount }} / {{ $epoch.BlobCount }}</td>
                     {{ else }}
                       <td class="d-md-none" colspan="3">Not indexed yet</td>
                       <td class="d-none d-md-table-cell" colspan="4">Not indexed yet</td>

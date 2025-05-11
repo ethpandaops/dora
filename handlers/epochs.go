@@ -146,6 +146,7 @@ func buildEpochsPageData(firstEpoch uint64, pageSize uint64) (*models.EpochsPage
 				epochData.TotalVoteParticipation = float64(dbEpoch.VotedTotal) * 100.0 / float64(dbEpoch.Eligible)
 			}
 			epochData.EthTransactionCount = dbEpoch.EthTransactionCount
+			epochData.BlobCount = dbEpoch.BlobCount
 		} else {
 			allSynchronized = false
 		}
