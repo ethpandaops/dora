@@ -46,6 +46,7 @@
                   <option value="13" {{ if .DisplayElExtraData }}selected{{ end }}>Extra Data</option>
                   <option value="14" {{ if .DisplayGasUsage }}selected{{ end }}>Gas Usage</option>
                   <option value="15" {{ if .DisplayGasLimit }}selected{{ end }}>Gas Limit</option>
+                  <option value="16" {{ if .DisplayMevBlock }}selected{{ end }}>MEV Block</option>
                 </select>
               </div>
             </div>
@@ -82,6 +83,7 @@
                 {{ if .DisplayElExtraData }}<th>Extra Data</th>{{ end }}
                 {{ if .DisplayGasUsage }}<th>Gas Usage</th>{{ end }}
                 {{ if .DisplayGasLimit }}<th>Gas Limit</th>{{ end }}
+                {{ if .DisplayMevBlock }}<th>MEV Block</th>{{ end }}
               </tr>
             </thead>
             {{ if gt .SlotCount 0 }}
@@ -152,6 +154,13 @@
                         </div>
                       {{ end }}</td>{{ end }}
                       {{ if $g.DisplayGasLimit }}<td>{{ if not (eq $slot.Status 0) }}{{ formatFloat (div (float64 $slot.GasLimit) 1000000) 2 }} M{{ end }}</td>{{ end }}
+                      {{ if $g.DisplayMevBlock }}<td>{{ if not (eq $slot.Status 0) }}
+                        {{ if $slot.IsMevBlock }}
+                          <span class="badge rounded-pill text-bg-success" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $slot.MevBlockRelays }}">Yes</span>
+                        {{ else }}
+                          <span class="badge rounded-pill text-bg-secondary">No</span>
+                        {{ end }}
+                      {{ end }}</td>{{ end }}
                     {{ else }}
                       {{ $colCount := 0 }}
                       {{ if $g.DisplayProposer }}{{ $colCount = add $colCount 1 }}{{ end }}
@@ -164,6 +173,7 @@
                       {{ if $g.DisplayElExtraData }}{{ $colCount = add $colCount 1 }}{{ end }}
                       {{ if $g.DisplayGasUsage }}{{ $colCount = add $colCount 1 }}{{ end }}
                       {{ if $g.DisplayGasLimit }}{{ $colCount = add $colCount 1 }}{{ end }}
+                      {{ if $g.DisplayMevBlock }}{{ $colCount = add $colCount 1 }}{{ end }}
                       {{ if gt $colCount 0 }}<td colspan="{{ $colCount }}">Not indexed yet</td>{{ end }}
                     {{ end }}
                     
@@ -281,9 +291,6 @@ $(function() {
   }
   .filter-multiselect-container .multiselect-container>li>a>label>input {
     margin: 0 4px;
-  }
-  .gas-usage-progress {
-    height: 5px;
   }
 </style>
 {{ end }}

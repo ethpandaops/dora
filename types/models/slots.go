@@ -27,6 +27,7 @@ type SlotsPageData struct {
 	DisplayElExtraData  bool   `json:"dp_elextra"`
 	DisplayGasUsage     bool   `json:"dp_gasusage"`
 	DisplayGasLimit     bool   `json:"dp_gaslimit"`
+	DisplayMevBlock     bool   `json:"dp_mevblock"`
 	DisplayColCount     uint64 `json:"display_col_count"`
 
 	IsDefaultPage    bool   `json:"default_page"`
@@ -73,6 +74,8 @@ type SlotsPageDataSlot struct {
 	BlockRoot             []byte                    `json:"block_root"`
 	ParentRoot            []byte                    `json:"parent_root"`
 	ForkGraph             []*SlotsPageDataForkGraph `json:"fork_graph"`
+	IsMevBlock            bool                      `json:"is_mev_block"`
+	MevBlockRelays        string                    `json:"mev_block_relays"`
 }
 
 type SlotsPageDataForkGraph struct {

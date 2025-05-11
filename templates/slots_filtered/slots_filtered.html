@@ -117,6 +117,7 @@
                 <option value="12" {{ if .DisplayElExtraData }}selected{{ end }}>Extra Data</option>
                 <option value="13" {{ if .DisplayGasUsage }}selected{{ end }}>Gas Usage</option>
                 <option value="14" {{ if .DisplayGasLimit }}selected{{ end }}>Gas Limit</option>
+                <option value="15" {{ if .DisplayMevBlock }}selected{{ end }}>MEV Block</option>
               </select>
             </div>
             <div class="col-2 col-md-2">
@@ -165,6 +166,7 @@
                 {{ if .DisplayElExtraData }}<th>Extra Data</th>{{ end }}
                 {{ if .DisplayGasUsage }}<th>Gas Usage</th>{{ end }}
                 {{ if .DisplayGasLimit }}<th>Gas Limit</th>{{ end }}
+                {{ if .DisplayMevBlock }}<th>MEV Block</th>{{ end }}
               </tr>
             </thead>
             {{- if gt .SlotCount 0 }}
@@ -240,6 +242,15 @@
                     {{- end }}
                     {{- if $g.DisplayGasLimit }}
                       <td>{{ if not (eq $slot.Status 0) }}{{ formatFloat (div (float64 $slot.GasLimit) 1000000) 2 }} M{{ end }}</td>
+                    {{- end }}
+                    {{- if $g.DisplayMevBlock }}
+                      <td>{{ if not (eq $slot.Status 0) }}
+                        {{ if $slot.IsMevBlock }}
+                          <span class="badge rounded-pill text-bg-success" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $slot.MevBlockRelays }}">Yes</span>
+                        {{ else }}
+                          <span class="badge rounded-pill text-bg-secondary">No</span>
+                        {{ end }}
+                      {{ end }}</td>
                     {{- end }}
                   </tr>
                 {{ end }}

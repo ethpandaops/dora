@@ -11,10 +11,12 @@ import (
 	"time"
 
 	"github.com/attestantio/go-eth2-client/spec/phase0"
+	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
+	"github.com/ethpandaops/dora/utils"
 	"github.com/sirupsen/logrus"
 )
 
@@ -105,6 +107,10 @@ func buildSlotsPageData(firstSlot uint64, pageSize uint64, displayColumns string
 			10: true,
 			11: true,
 			12: true,
+			13: true,
+			14: true,
+			15: true,
+			16: true,
 		}
 	} else {
 		for col := range displayMap {
@@ -127,6 +133,7 @@ func buildSlotsPageData(firstSlot uint64, pageSize uint64, displayColumns string
 	pageData.DisplayElExtraData = displayMap[13]
 	pageData.DisplayGasUsage = displayMap[14]
 	pageData.DisplayGasLimit = displayMap[15]
+	pageData.DisplayMevBlock = displayMap[16]
 	pageData.DisplayColCount = uint64(len(displayMap))
 
 	// Build column selection URL parameter if not default
@@ -190,7 +197,7 @@ func buildSlotsPageData(firstSlot uint64, pageSize uint64, displayColumns string
 		lastSlot = 0
 	}
 
-	// get slot assignments
+	// Get slot assignments
 	firstEpoch := chainState.EpochOfSlot(phase0.Slot(firstSlot))
 
 	// load slots
@@ -204,6 +211,23 @@ func buildSlotsPageData(firstSlot uint64, pageSize uint64, displayColumns string
 	isFirstPage := firstSlot >= uint64(currentSlot)
 	openForks := map[int][]byte{}
 	maxOpenFork := 0
+
+	mevBlocksMap := make(map[string]*dbtypes.MevBlock)
+
+	if pageData.DisplayMevBlock {
+		var execBlockHashes [][]byte
+
+		for _, dbSlot := range dbSlots {
+			if dbSlot != nil && dbSlot.Status > 0 && dbSlot.EthBlockHash != nil {
+				execBlockHashes = append(execBlockHashes, dbSlot.EthBlockHash)
+			}
+		}
+
+		if len(execBlockHashes) > 0 {
+			mevBlocksMap = db.GetMevBlocksByBlockHashes(execBlockHashes)
+		}
+	}
+
 	for slotIdx := int64(firstSlot); slotIdx >= int64(lastSlot); slotIdx-- {
 		slot := uint64(slotIdx)
 		finalized := finalizedEpoch > 0 && finalizedEpoch >= chainState.EpochOfSlot(phase0.Slot(slot))
@@ -244,6 +268,21 @@ func buildSlotsPageData(firstSlot uint64, pageSize uint64, displayColumns string
 			if dbSlot.EthBlockNumber != nil {
 				slotData.WithEthBlock = true
 				slotData.EthBlockNumber = *dbSlot.EthBlockNumber
+			}
+
+			if pageData.DisplayMevBlock && dbSlot.EthBlockHash != nil {
+				if mevBlock, exists := mevBlocksMap[fmt.Sprintf("%x", dbSlot.EthBlockHash)]; exists {
+					slotData.IsMevBlock = true
+
+					var relays []string
+					for _, relay := range utils.Config.MevIndexer.Relays {
+						relayFlag := uint64(1) << uint64(relay.Index)
+						if mevBlock.SeenbyRelays&relayFlag > 0 {
+							relays = append(relays, relay.Name)
+						}
+					}
+					slotData.MevBlockRelays = strings.Join(relays, ", ")
+				}
 			}
 
 			pageData.Slots = append(pageData.Slots, slotData)
