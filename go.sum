@@ -361,8 +361,8 @@ github.com/pingcap/errors v0.11.4 h1:lFuQV/oaUMGcD2tqt+01ROSmJs75VG1ToEOkZIZ4nE4
 github.com/pingcap/errors v0.11.4/go.mod h1:Oi8TUi2kEtXXLMJk9l1cGmz20kV3TaQ0usTwv5KuLY8=
 github.com/pk910/dynamic-ssz v0.0.6 h1:Tu97LSc2TtCyqRfoSbhG9XuR/FbA7CkKeAnlkgUydFY=
 github.com/pk910/dynamic-ssz v0.0.6/go.mod h1:b6CrLaB2X7pYA+OSEEbkgXDEcRnjLOZIxZTsMuO/Y9c=
-github.com/pk910/go-eth2-client v0.0.0-20250207131221-7db107ca35a6 h1:BV+ckGR3dTxc8l3mO1+VSIHIMSaFVEdIynA1MRFfD1c=
-github.com/pk910/go-eth2-client v0.0.0-20250207131221-7db107ca35a6/go.mod h1:/KTLN3WuH1xrJL7ZZrpBoWM1xCCihnFbzequD5L+83o=
+github.com/pk910/go-eth2-client v0.0.0-20250512153740-3fee7a64d13c h1:V5NswnbD/2KuOY4V0Qc256E/Z+84Y+7wunyy4P3neJ4=
+github.com/pk910/go-eth2-client v0.0.0-20250512153740-3fee7a64d13c/go.mod h1:fvULSL9WtNskkOB4i+Yyr6BKpNHXvmpGZj9969fCrfY=
 github.com/pkg/diff v0.0.0-20210226163009-20ebb0f2a09e/go.mod h1:pJLUxLENpZxwdsKMEsNbx1VGcRFpLqf3715MtcvvzbA=
 github.com/pkg/errors v0.8.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
 github.com/pkg/errors v0.9.1 h1:FEBLx1zS214owpjy7qsBeixbURkuhQAwrK5UwLGTwt4=
