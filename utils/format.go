@@ -32,7 +32,7 @@ func FormatETHFromGweiShort(gwei uint64) string {
 	return fmt.Sprintf("%.4f", float64(gwei)/math.Pow10(9))
 }
 
-func FormatFullETHFromGwei(gwei uint64) string {
+func FormatFullEthFromGwei(gwei uint64) string {
 	return fmt.Sprintf("%v ETH", uint64(float64(gwei)/math.Pow10(9)))
 }
 

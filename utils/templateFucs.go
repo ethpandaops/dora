@@ -54,7 +54,7 @@ func GetTemplateFuncs() template.FuncMap {
 		"formatParticipation":          FormatParticipation,
 		"formatEthFromGwei":            FormatETHFromGwei,
 		"formatEthFromGweiShort":       FormatETHFromGweiShort,
-		"formatFullETHFromGwei":        FormatFullETHFromGwei,
+		"formatFullEthFromGwei":        FormatFullEthFromGwei,
 		"formatEthAddCommasFromGwei":   FormatETHAddCommasFromGwei,
 		"formatBytesAmount":            FormatBytesAmount,
 		"formatAmount":                 FormatAmount,
