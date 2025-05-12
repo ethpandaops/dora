@@ -20,15 +20,15 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// Slots will return the main "slots" page using a go template
-func Slots(w http.ResponseWriter, r *http.Request) {
-	var slotsTemplateFiles = append(layoutTemplateFiles,
-		"slots/slots.html",
+// Blocks will return the main "blocks" page using a go template
+func Blocks(w http.ResponseWriter, r *http.Request) {
+	var blocksTemplateFiles = append(layoutTemplateFiles,
+		"blocks/blocks.html",
 		"_svg/professor.html",
 	)
 
-	var pageTemplate = templates.GetTemplate(slotsTemplateFiles...)
-	data := InitPageData(w, r, "blockchain", "/slots", "Slots", slotsTemplateFiles)
+	var pageTemplate = templates.GetTemplate(blocksTemplateFiles...)
+	data := InitPageData(w, r, "blockchain", "/blocks", "Blocks", blocksTemplateFiles)
 
 	urlArgs := r.URL.Query()
 	var pageSize uint64 = 50
@@ -47,28 +47,28 @@ func Slots(w http.ResponseWriter, r *http.Request) {
 	var pageError error
 	pageError = services.GlobalCallRateLimiter.CheckCallLimit(r, 1)
 	if pageError == nil {
-		data.Data, pageError = getSlotsPageData(firstSlot, pageSize, displayColumns)
+		data.Data, pageError = getBlocksPageData(firstSlot, pageSize, displayColumns)
 	}
 	if pageError != nil {
 		handlePageError(w, r, pageError)
 		return
 	}
 	w.Header().Set("Content-Type", "text/html")
-	if handleTemplateError(w, r, "slots.go", "Slots", "", pageTemplate.ExecuteTemplate(w, "layout", data)) != nil {
+	if handleTemplateError(w, r, "blocks.go", "Blocks", "", pageTemplate.ExecuteTemplate(w, "layout", data)) != nil {
 		return // an error has occurred and was processed
 	}
 }
 
-func getSlotsPageData(firstSlot uint64, pageSize uint64, displayColumns string) (*models.SlotsPageData, error) {
-	pageData := &models.SlotsPageData{}
-	pageCacheKey := fmt.Sprintf("slots:%v:%v:%v", firstSlot, pageSize, displayColumns)
+func getBlocksPageData(firstSlot uint64, pageSize uint64, displayColumns string) (*models.BlocksPageData, error) {
+	pageData := &models.BlocksPageData{}
+	pageCacheKey := fmt.Sprintf("blocks:%v:%v:%v", firstSlot, pageSize, displayColumns)
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
-		pageData, cacheTimeout := buildSlotsPageData(firstSlot, pageSize, displayColumns)
+		pageData, cacheTimeout := buildBlocksPageData(firstSlot, pageSize, displayColumns)
 		pageCall.CacheTimeout = cacheTimeout
 		return pageData
 	})
 	if pageErr == nil && pageRes != nil {
-		resData, resOk := pageRes.(*models.SlotsPageData)
+		resData, resOk := pageRes.(*models.BlocksPageData)
 		if !resOk {
 			return nil, ErrInvalidPageModel
 		}
@@ -77,9 +77,9 @@ func getSlotsPageData(firstSlot uint64, pageSize uint64, displayColumns string) 
 	return pageData, pageErr
 }
 
-func buildSlotsPageData(firstSlot uint64, pageSize uint64, displayColumns string) (*models.SlotsPageData, time.Duration) {
-	logrus.Debugf("slots page called: %v:%v", firstSlot, pageSize)
-	pageData := &models.SlotsPageData{}
+func buildBlocksPageData(firstSlot uint64, pageSize uint64, displayColumns string) (*models.BlocksPageData, time.Duration) {
+	logrus.Debugf("blocks page called: %v:%v", firstSlot, pageSize)
+	pageData := &models.BlocksPageData{}
 
 	// Set display columns based on the parameter
 	displayMap := map[uint64]bool{}
@@ -101,16 +101,16 @@ func buildSlotsPageData(firstSlot uint64, pageSize uint64, displayColumns string
 			4:  true,
 			5:  true,
 			6:  true,
-			7:  true,
-			8:  true,
-			9:  true,
+			7:  false,
+			8:  false,
+			9:  false,
 			10: true,
-			11: true,
-			12: true,
-			13: false,
-			14: false,
-			15: false,
-			16: false,
+			11: false,
+			12: false,
+			13: true,
+			14: true,
+			15: true,
+			16: true,
 		}
 	} else {
 		for col := range displayMap {
@@ -119,7 +119,7 @@ func buildSlotsPageData(firstSlot uint64, pageSize uint64, displayColumns string
 	}
 
 	pageData.DisplayChain = displayMap[1]
-	pageData.DisplayEpoch = displayMap[2]
+	pageData.DisplayNumber = displayMap[2]
 	pageData.DisplaySlot = displayMap[3]
 	pageData.DisplayStatus = displayMap[4]
 	pageData.DisplayTime = displayMap[5]
@@ -183,10 +183,10 @@ func buildSlotsPageData(firstSlot uint64, pageSize uint64, displayColumns string
 	pageData.LastPageSlot = pageSize - 1
 
 	// Add pagination links with column selection preserved
-	pageData.FirstPageLink = fmt.Sprintf("/slots?c=%v%v", pageData.PageSize, displayColumnsParam)
-	pageData.PrevPageLink = fmt.Sprintf("/slots?s=%v&c=%v%v", pageData.PrevPageSlot, pageData.PageSize, displayColumnsParam)
-	pageData.NextPageLink = fmt.Sprintf("/slots?s=%v&c=%v%v", pageData.NextPageSlot, pageData.PageSize, displayColumnsParam)
-	pageData.LastPageLink = fmt.Sprintf("/slots?s=%v&c=%v%v", pageData.LastPageSlot, pageData.PageSize, displayColumnsParam)
+	pageData.FirstPageLink = fmt.Sprintf("/blocks?c=%v%v", pageData.PageSize, displayColumnsParam)
+	pageData.PrevPageLink = fmt.Sprintf("/blocks?s=%v&c=%v%v", pageData.PrevPageSlot, pageData.PageSize, displayColumnsParam)
+	pageData.NextPageLink = fmt.Sprintf("/blocks?s=%v&c=%v%v", pageData.NextPageSlot, pageData.PageSize, displayColumnsParam)
+	pageData.LastPageLink = fmt.Sprintf("/blocks?s=%v&c=%v%v", pageData.LastPageSlot, pageData.PageSize, displayColumnsParam)
 
 	finalizedEpoch, _ := services.GlobalBeaconService.GetFinalizedEpoch()
 	slotLimit := pageSize - 1
@@ -200,11 +200,11 @@ func buildSlotsPageData(firstSlot uint64, pageSize uint64, displayColumns string
 	// Get slot assignments
 	firstEpoch := chainState.EpochOfSlot(phase0.Slot(firstSlot))
 
-	// load slots
-	pageData.Slots = make([]*models.SlotsPageDataSlot, 0)
-	dbSlots := services.GlobalBeaconService.GetDbBlocksForSlots(firstSlot, uint32(pageSize), true, true)
+	// load blocks
+	pageData.Blocks = make([]*models.BlocksPageDataSlot, 0)
+	dbBlocks := services.GlobalBeaconService.GetDbBlocksForSlots(firstSlot, uint32(pageSize), false, true)
 	dbIdx := 0
-	dbCnt := len(dbSlots)
+	dbCnt := len(dbBlocks)
 	blockCount := uint64(0)
 	allFinalized := true
 	allSynchronized := true
@@ -217,7 +217,7 @@ func buildSlotsPageData(firstSlot uint64, pageSize uint64, displayColumns string
 	if pageData.DisplayMevBlock {
 		var execBlockHashes [][]byte
 
-		for _, dbSlot := range dbSlots {
+		for _, dbSlot := range dbBlocks {
 			if dbSlot != nil && dbSlot.Status > 0 && dbSlot.EthBlockHash != nil {
 				execBlockHashes = append(execBlockHashes, dbSlot.EthBlockHash)
 			}
@@ -235,11 +235,11 @@ func buildSlotsPageData(firstSlot uint64, pageSize uint64, displayColumns string
 			allFinalized = false
 		}
 
-		for dbIdx < dbCnt && dbSlots[dbIdx] != nil && dbSlots[dbIdx].Slot == slot {
-			dbSlot := dbSlots[dbIdx]
+		for dbIdx < dbCnt && dbBlocks[dbIdx] != nil && dbBlocks[dbIdx].Slot == slot {
+			dbSlot := dbBlocks[dbIdx]
 			dbIdx++
 
-			slotData := &models.SlotsPageDataSlot{
+			slotData := &models.BlocksPageDataSlot{
 				Slot:                  slot,
 				Epoch:                 uint64(chainState.EpochOfSlot(phase0.Slot(slot))),
 				Ts:                    chainState.SlotToTime(phase0.Slot(slot)),
@@ -263,7 +263,7 @@ func buildSlotsPageData(firstSlot uint64, pageSize uint64, displayColumns string
 				GasLimit:              dbSlot.EthGasLimit,
 				BlockRoot:             dbSlot.Root,
 				ParentRoot:            dbSlot.ParentRoot,
-				ForkGraph:             make([]*models.SlotsPageDataForkGraph, 0),
+				ForkGraph:             make([]*models.BlocksPageDataForkGraph, 0),
 			}
 			if dbSlot.EthBlockNumber != nil {
 				slotData.WithEthBlock = true
@@ -285,9 +285,9 @@ func buildSlotsPageData(firstSlot uint64, pageSize uint64, displayColumns string
 				}
 			}
 
-			pageData.Slots = append(pageData.Slots, slotData)
+			pageData.Blocks = append(pageData.Blocks, slotData)
 			blockCount++
-			buildSlotsPageSlotGraph(pageData, slotData, &maxOpenFork, openForks, isFirstPage)
+			buildBlocksPageSlotGraph(pageData, slotData, &maxOpenFork, openForks, isFirstPage)
 		}
 	}
 	pageData.SlotCount = uint64(blockCount)
@@ -309,18 +309,18 @@ func buildSlotsPageData(firstSlot uint64, pageSize uint64, displayColumns string
 	return pageData, cacheTimeout
 }
 
-func buildSlotsPageSlotGraph(pageData *models.SlotsPageData, slotData *models.SlotsPageDataSlot, maxOpenFork *int, openForks map[int][]byte, isFirstPage bool) {
+func buildBlocksPageSlotGraph(pageData *models.BlocksPageData, slotData *models.BlocksPageDataSlot, maxOpenFork *int, openForks map[int][]byte, isFirstPage bool) {
 	// fork tree
 	var forkGraphIdx int = -1
 	var freeForkIdx int = -1
-	getForkGraph := func(slotData *models.SlotsPageDataSlot, forkIdx int) *models.SlotsPageDataForkGraph {
-		forkGraph := &models.SlotsPageDataForkGraph{}
+	getForkGraph := func(slotData *models.BlocksPageDataSlot, forkIdx int) *models.BlocksPageDataForkGraph {
+		forkGraph := &models.BlocksPageDataForkGraph{}
 		graphCount := len(slotData.ForkGraph)
 		if graphCount > forkIdx {
 			forkGraph = slotData.ForkGraph[forkIdx]
 		} else {
 			for graphCount <= forkIdx {
-				forkGraph = &models.SlotsPageDataForkGraph{
+				forkGraph = &models.BlocksPageDataForkGraph{
 					Index: graphCount,
 					Left:  10 + (graphCount * 20),
 					Tiles: map[string]bool{},
@@ -397,7 +397,7 @@ func buildSlotsPageSlotGraph(pageData *models.SlotsPageData, slotData *models.Sl
 				}
 
 				// add line up to the top for each fork
-				for _, slot := range pageData.Slots {
+				for _, slot := range pageData.Blocks {
 					if bytes.Equal(slot.BlockRoot, slotData.BlockRoot) {
 						continue
 					}

@@ -1,18 +1,18 @@
 {{ define "page" }}
   <div class="container mt-2">
     <div class="d-md-flex py-2 justify-content-md-between">
-      <h1 class="h4 mb-1 mb-md-0"><i class="fas fa-table-list mx-2"></i>Slots</h1>
+      <h1 class="h4 mb-1 mb-md-0"><i class="fas fa-cube mx-2"></i>Blocks</h1>
       <nav aria-label="breadcrumb">
         <ol class="breadcrumb font-size-1 mb-0" style="padding:0; background-color:transparent;">
           <li class="breadcrumb-item"><a href="/" title="Home">Home</a></li>
-          <li class="breadcrumb-item active" aria-current="page">Slots</li>
+          <li class="breadcrumb-item active" aria-current="page">Blocks</li>
         </ol>
       </nav>
     </div>
 
     <div class="card mt-2">
       <div class="card-body px-0 py-3">
-        <form action="/slots" method="get" id="slotsForm">
+        <form action="/blocks" method="get" id="blocksForm">
           <div class="row">
             <div class="col-9 col-md-9">
               {{ if not .IsDefaultPage }}
@@ -20,7 +20,7 @@
               {{ end }}
               <div class="mx-2">
                 <span>Show </span>
-                <select name="c" aria-controls="slots" class="custom-select custom-select-sm form-control form-control-sm d-inline-block" style="width: auto;" onchange="$('#slotsForm').submit()">
+                <select name="c" aria-controls="blocks" class="custom-select custom-select-sm form-control form-control-sm d-inline-block" style="width: auto;" onchange="$('#blocksForm').submit()">
                   <option value="{{ .PageSize }}" selected>{{ .PageSize }}</option>
                   <option value="10">10</option>
                   <option value="25">25</option>
@@ -32,7 +32,7 @@
                 <span>columns: </span>
                 <select name="d" multiple="multiple" class="filter-multiselect" style="width: 200px;">
                   <option value="1" {{ if .DisplayChain }}selected{{ end }}>Chain</option>
-                  <option value="2" {{ if .DisplayEpoch }}selected{{ end }}>Epoch</option>
+                  <option value="2" {{ if .DisplayNumber }}selected{{ end }}>Number</option>
                   <option value="3" {{ if .DisplaySlot }}selected{{ end }}>Slot</option>
                   <option value="4" {{ if .DisplayStatus }}selected{{ end }}>Status</option>
                   <option value="5" {{ if .DisplayTime }}selected{{ end }}>Time</option>
@@ -52,19 +52,19 @@
             </div>
             <div class="col-3 col-md-3 text-end">
               <div class="px-2">
-                <a href="/slots/filtered">
-                  <i class="fas fa-filter mx-2"></i>Filter Slots
+                <a href="/slots/filtered?f&f.missing=0&d=1+2+3+4+5+9+13+15+14+12">
+                  <i class="fas fa-filter mx-2"></i>Filter Blocks
                 </a>
               </div>
             </div>
           </div>
         </form>
         <div class="table-responsive px-0 py-1">
-          <table class="table table-nobr" id="slots">
+          <table class="table table-nobr" id="blocks">
             <thead>
               <tr>
                 {{ if .DisplayChain }}<th>Chain</th>{{ end }}
-                {{ if .DisplayEpoch }}<th>Epoch</th>{{ end }}
+                {{ if .DisplayNumber }}<th>Number</th>{{ end }}
                 {{ if .DisplaySlot }}<th>Slot</th>{{ end }}
                 {{ if .DisplayStatus }}<th>Status</th>{{ end }}
                 {{ if .DisplayTime }}<th style="min-width: 125px">Time</th>{{ end }}
@@ -90,7 +90,7 @@
               <tbody>
                 {{ $treeWidth := .ForkTreeWidth }}
                 {{ $g := . }}
-                {{ range $i, $slot := .Slots }}
+                {{ range $i, $slot := .Blocks }}
                   <tr>
                     {{ if $g.DisplayChain }}
                     <td class="graph-container" style="min-width: {{ $treeWidth }}px;">
@@ -108,7 +108,7 @@
                       {{ end }}
                     </td>
                     {{ end }}
-                    {{ if $g.DisplayEpoch }}<td><a href="/epoch/{{ $slot.Epoch }}">{{ formatAddCommas $slot.Epoch }}</a></td>{{ end }}
+                    {{ if $g.DisplayNumber }}<td>{{ ethBlockLink $slot.EthBlockNumber }}</td>{{ end }}
                     {{ if $g.DisplaySlot }}
                       {{ if eq $slot.Status 2 }}
                         <td><a href="/slot/0x{{ printf "%x" $slot.BlockRoot }}">{{ formatAddCommas $slot.Slot }}</a></td>
@@ -199,7 +199,7 @@
           <div class="row">
             <div class="col-sm-12 col-md-5 table-metainfo">
               <div class="px-2">
-                <div class="table-meta" role="status" aria-live="polite">Showing slot {{ .FirstSlot }} to {{ .LastSlot }}</div>
+                <div class="table-meta" role="status" aria-live="polite">Showing block {{ .FirstSlot }} to {{ .LastSlot }}</div>
               </div>
             </div>
             <div class="col-sm-12 col-md-7 table-paging">
@@ -233,7 +233,7 @@
 {{ define "js" }}
 <script src="/js/bootstrap-multiselect.js"></script>
 <script type="text/javascript">
-$('#slotsForm').submit(function () { 
+$('#blocksForm').submit(function () { 
   var displayColumns = Array.prototype.filter.call($(this).find('select[name="d"]').prop('name', '').find("option"), function(el) {
     return el.selected;
   }).map(function(el) {
@@ -247,7 +247,7 @@ $(function() {
   var columnSelectionsChanged = false;
   var initialSelections = [];
   
-  $('#slotsForm .filter-multiselect').each(function() {
+  $('#blocksForm .filter-multiselect').each(function() {
     $(this).find('option:selected').each(function() {
       initialSelections.push($(this).val());
     });
@@ -262,7 +262,7 @@ $(function() {
       },
       onDropdownHide: function() {
         if (columnSelectionsChanged) {
-          $('#slotsForm').submit();
+          $('#blocksForm').submit();
         }
       }
     });
