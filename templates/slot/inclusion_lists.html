@@ -1,0 +1,102 @@
+{{ define "inclusion_lists" }}
+  {{ range $i, $inclusionList := .InclusionLists }}
+    <div class="card my-2">
+      <div class="card-body px-0 py-1">
+        <div class="row border-bottom p-1 mx-0">
+          <div class="col-md-12 text-center"><b>Inclusion List {{ $i }}</b></div>
+        </div>
+        <div class="row border-bottom p-1 mx-0">
+          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="A validator who has submitted their inclusion list">Validator:</span></div>
+          <div class="col-md-10">
+            {{ formatValidatorWithIndex $inclusionList.Validator.Index $inclusionList.Validator.Name }}
+          </div>
+        </div>
+        <div class="row border-bottom p-1 mx-0">
+          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="The hash-tree-root of the IL committee">IL Committee Root:</span></div>
+          <div class="col-md-10 text-monospace text-break">
+            0x{{ printf "%x" $inclusionList.InclusionListCommitteeRoot }}
+            <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $inclusionList.InclusionListCommitteeRoot }}"></i>
+          </div>
+        </div>
+        <div class="row border-bottom p-1 mx-0">
+          <div class="col-md-2">Signature:</div>
+          <div class="col-md-10 text-monospace text-break">0x{{ printf "%x" $inclusionList.Signature }}</div>
+        </div>
+        <div class="row border-bottom p-1 mx-0">
+          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Amount of transactions included in this inclusion list">Transactions:</span></div>
+          <div class="col-md-10 text-monospace text-break"><b>{{ formatAddCommas $inclusionList.TransactionsCount }}</b></div>
+        </div>
+        <div class="table-ellipsis px-0">
+          <table class="table" id="inclusion_list_transactions">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Hash</th>
+                <th>From</th>
+                <th>To</th>
+                <th>Method</th>
+                <th>Value</th>
+                <th>Call Data</th>
+                <th>Included</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {{ range $j, $transaction := $inclusionList.Transactions }}
+                <tr>
+                  <td>{{ $j }}</td>
+                  <td>
+                    <div class="ellipsis-copy-btn">
+                      <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $transaction.Hash }}"></i>
+                    </div>
+                    0x{{ printf "%x" $transaction.Hash }}
+                  </td>
+                  <td>
+                    <div class="ellipsis-copy-btn">
+                      <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $transaction.From }}"></i>
+                    </div>
+                    {{ $transaction.From }}
+                  </td>
+                  <td>
+                    <div class="ellipsis-copy-btn">
+                      <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $transaction.To }}"></i>
+                    </div>
+                    {{ $transaction.To }}
+                  </td>
+                  <td>
+                    {{ if eq $transaction.FuncSigStatus 10 }}
+                      <span class="badge rounded-pill text-bg-secondary" style="font-size: 12px; font-weight: 500;">{{ $transaction.FuncName }}</span>
+                    {{ else if eq $transaction.FuncSigStatus 1 }}
+                      <span class="badge rounded-pill text-bg-secondary" style="font-size: 12px; font-weight: 500;" data-bs-toggle="tooltip" data-bs-placement="bottom" data-bs-title="call {{ $transaction.FuncBytes }}: {{ $transaction.FuncSig }}">{{ $transaction.FuncName }}</span>
+                    {{ else }}
+                      <span class="badge rounded-pill text-bg-secondary" style="font-size: 12px; font-weight: 500;" data-bs-toggle="tooltip" data-bs-placement="bottom" data-bs-title="call {{ $transaction.FuncBytes }}">{{ $transaction.FuncName }}</span>
+                    {{ end }}
+                  </td>
+                  <td>{{ $transaction.Value }} ETH</td>
+                  <td>
+                    {{ if gt $transaction.DataLen 0 }}
+                      <span class="badge rounded-pill text-bg-secondary" style="font-size: 12px; font-weight: 500;">{{ $transaction.DataLen }} B</span>
+                      <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $transaction.Data }}"></i>
+                    {{ end }}
+                  </td>
+                  <td>
+                    {{ if index $inclusionList.TransactionsIncluded $j }}
+                      <span class="badge rounded-pill text-bg-success" style="font-size: 12px; font-weight: 500;">Yes</span>
+                    {{ else }}
+                      <span class="badge rounded-pill text-bg-danger" style="font-size: 12px; font-weight: 500;">No</span>
+                    {{ end }}
+                  </td>
+                  <td>
+                    <i class="fa fa-circle-info text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" data-bs-html="true" data-bs-title="{{ "" -}}
+                      TX Type: {{ $transaction.Type }}<br>
+                    {{- "" }}"></i>
+                  </td>
+                </tr>
+              {{ end }}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  {{ end }}
+{{ end }}
