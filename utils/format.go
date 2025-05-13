@@ -429,3 +429,18 @@ func CalculatePercentage(value uint64, total uint64) float64 {
 	}
 	return float64(value) * 100 / float64(total)
 }
+
+// FormatByteAmount converts a byte count to a human-readable string with appropriate unit (B, kB, MB, GB)
+func FormatByteAmount(bytes uint64) template.HTML {
+	const unit = 1024
+	if bytes < unit {
+		return template.HTML(fmt.Sprintf("%d B", bytes))
+	}
+	div, exp := uint64(unit), 0
+	for n := bytes / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	value := float64(bytes) / float64(div)
+	return template.HTML(fmt.Sprintf("%.2f %ciB", value, "kMGTPE"[exp]))
+}

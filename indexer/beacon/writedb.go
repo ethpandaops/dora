@@ -276,6 +276,13 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 		BlobCount:             uint64(len(blobKzgCommitments)),
 	}
 
+	blockSize, err := getBlockSize(block.dynSsz, blockBody)
+	if err != nil {
+		dbw.indexer.logger.Warnf("error while building db blocks: failed to get block size: %v", err)
+	} else {
+		dbBlock.BlockSize = uint64(blockSize)
+	}
+
 	if overrideForkId != nil {
 		dbBlock.ForkId = uint64(*overrideForkId)
 	}

@@ -45,6 +45,7 @@
                   <option value="11" {{ if .DisplaySyncAgg }}selected{{ end }}>Sync Agg</option>
                   <option value="16" {{ if .DisplayMevBlock }}selected{{ end }}>MEV Block</option>
                   <option value="15" {{ if .DisplayGasLimit }}selected{{ end }}>Gas Limit</option>
+                  <option value="17" {{ if .DisplayBlockSize }}selected{{ end }}>Block Size</option>
                   <option value="12" {{ if .DisplayGraffiti }}selected{{ end }}>Graffiti</option>
                   <option value="13" {{ if .DisplayElExtraData }}selected{{ end }}>Extra Data</option>
                 </select>
@@ -82,6 +83,7 @@
                 {{ if .DisplaySyncAgg }}<th>Sync<span class="d-none d-lg-inline"> Agg</span> %</th>{{ end }}
                 {{ if .DisplayMevBlock }}<th>MEV Block</th>{{ end }}
                 {{ if .DisplayGasLimit }}<th>Gas Limit</th>{{ end }}
+                {{ if .DisplayBlockSize }}<th>Block Size</th>{{ end }}
                 {{ if .DisplayGraffiti }}<th>Graffiti</th>{{ end }}
                 {{ if .DisplayElExtraData }}<th>Extra Data</th>{{ end }}
               </tr>
@@ -159,6 +161,7 @@
                         {{ end }}
                       {{ end }}</td>{{ end }}
                       {{ if $g.DisplayGasLimit }}<td>{{ if not (eq $slot.Status 0) }}{{ formatFloat (div (float64 $slot.GasLimit) 1000000) 2 }} M{{ end }}</td>{{ end }}
+                      {{ if $g.DisplayBlockSize }}<td>{{ if not (eq $slot.Status 0) }}{{ formatByteAmount $slot.BlockSize }}{{ end }}</td>{{ end }}
                       {{ if $g.DisplayGraffiti }}<td>{{ if not (eq $slot.Status 0) }}{{ formatGraffiti $slot.Graffiti }}{{ end }}</td>{{ end }}
                       {{ if $g.DisplayElExtraData }}<td>{{ if not (eq $slot.Status 0) }}{{ formatGraffiti $slot.ElExtraData }}{{ end }}</td>{{ end }}
                     {{ else }}
@@ -172,6 +175,7 @@
                       {{ if $g.DisplaySyncAgg }}{{ $colCount = add $colCount 1 }}{{ end }}
                       {{ if $g.DisplayMevBlock }}{{ $colCount = add $colCount 1 }}{{ end }}
                       {{ if $g.DisplayGasLimit }}{{ $colCount = add $colCount 1 }}{{ end }}
+                      {{ if $g.DisplayBlockSize }}{{ $colCount = add $colCount 1 }}{{ end }}
                       {{ if $g.DisplayGraffiti }}{{ $colCount = add $colCount 1 }}{{ end }}
                       {{ if $g.DisplayElExtraData }}{{ $colCount = add $colCount 1 }}{{ end }}
                       {{ if gt $colCount 0 }}<td colspan="{{ $colCount }}">Not indexed yet</td>{{ end }}

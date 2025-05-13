@@ -111,6 +111,7 @@ func buildBlocksPageData(firstSlot uint64, pageSize uint64, displayColumns strin
 			14: true,
 			15: true,
 			16: true,
+			17: true,
 		}
 	} else {
 		for col := range displayMap {
@@ -134,6 +135,7 @@ func buildBlocksPageData(firstSlot uint64, pageSize uint64, displayColumns strin
 	pageData.DisplayGasUsage = displayMap[14]
 	pageData.DisplayGasLimit = displayMap[15]
 	pageData.DisplayMevBlock = displayMap[16]
+	pageData.DisplayBlockSize = displayMap[17]
 	pageData.DisplayColCount = uint64(len(displayMap))
 
 	// Build column selection URL parameter if not default
@@ -261,6 +263,7 @@ func buildBlocksPageData(firstSlot uint64, pageSize uint64, displayColumns strin
 				ElExtraData:           dbSlot.EthBlockExtra,
 				GasUsed:               dbSlot.EthGasUsed,
 				GasLimit:              dbSlot.EthGasLimit,
+				BlockSize:             dbSlot.BlockSize,
 				BlockRoot:             dbSlot.Root,
 				ParentRoot:            dbSlot.ParentRoot,
 				ForkGraph:             make([]*models.BlocksPageDataForkGraph, 0),
