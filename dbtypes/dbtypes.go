@@ -53,6 +53,7 @@ type Slot struct {
 	EthBlockExtraText     string     `db:"eth_block_extra_text"`
 	SyncParticipation     float32    `db:"sync_participation"`
 	ForkId                uint64     `db:"fork_id"`
+	BlockSize             uint64     `db:"block_size"`
 }
 
 type Epoch struct {
