@@ -497,6 +497,8 @@ func getBlockSize(dynSsz *dynssz.DynSsz, block *spec.VersionedSignedBeaconBlock)
 		return dynSsz.SizeSSZ(block.Deneb)
 	case spec.DataVersionElectra:
 		return dynSsz.SizeSSZ(block.Electra)
+	case spec.DataVersionFulu:
+		return dynSsz.SizeSSZ(block.Fulu)
 	default:
 		return 0, errors.New("unknown version")
 	}
