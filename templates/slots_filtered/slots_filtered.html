@@ -112,12 +112,13 @@
                 <option value="7" {{ if .DisplayDeposits }}selected{{ end }}>Deposits/Exits</option>
                 <option value="8" {{ if .DisplaySlashings }}selected{{ end }}>Slashings</option>
                 <option value="9" {{ if .DisplayTxCount }}selected{{ end }}>Tx / Blob Count</option>
+                <option value="13" {{ if .DisplayGasUsage }}selected{{ end }}>Gas Usage</option>
                 <option value="10" {{ if .DisplaySyncAgg }}selected{{ end }}>Sync Agg</option>
+                <option value="15" {{ if .DisplayMevBlock }}selected{{ end }}>MEV Block</option>
+                <option value="14" {{ if .DisplayGasLimit }}selected{{ end }}>Gas Limit</option>
+                <option value="16" {{ if .DisplayBlockSize }}selected{{ end }}>Block Size</option>
                 <option value="11" {{ if .DisplayGraffiti }}selected{{ end }}>Graffiti</option>
                 <option value="12" {{ if .DisplayElExtraData }}selected{{ end }}>Extra Data</option>
-                <option value="13" {{ if .DisplayGasUsage }}selected{{ end }}>Gas Usage</option>
-                <option value="14" {{ if .DisplayGasLimit }}selected{{ end }}>Gas Limit</option>
-                <option value="15" {{ if .DisplayMevBlock }}selected{{ end }}>MEV Block</option>
               </select>
             </div>
             <div class="col-2 col-md-2">
@@ -161,12 +162,13 @@
                 </th>
                 {{ end }}
                 {{ if .DisplayTxCount }}<th>Txs<span class="d-none d-lg-inline"> / Blobs</span></th>{{ end }}
+                {{ if .DisplayGasUsage }}<th>Gas Usage</th>{{ end }}
                 {{ if .DisplaySyncAgg }}<th>Sync<span class="d-none d-lg-inline"> Agg</span> %</th>{{ end }}
+                {{ if .DisplayMevBlock }}<th>MEV Block</th>{{ end }}
+                {{ if .DisplayGasLimit }}<th>Gas Limit</th>{{ end }}
+                {{ if .DisplayBlockSize }}<th>Block Size</th>{{ end }}
                 {{ if .DisplayGraffiti }}<th>Graffiti</th>{{ end }}
                 {{ if .DisplayElExtraData }}<th>Extra Data</th>{{ end }}
-                {{ if .DisplayGasUsage }}<th>Gas Usage</th>{{ end }}
-                {{ if .DisplayGasLimit }}<th>Gas Limit</th>{{ end }}
-                {{ if .DisplayMevBlock }}<th>MEV Block</th>{{ end }}
               </tr>
             </thead>
             {{- if gt .SlotCount 0 }}
@@ -221,15 +223,6 @@
                     {{- if $g.DisplayTxCount }}
                       <td>{{ if not (eq $slot.Status 0) }}{{ $slot.EthTransactionCount }} / {{ $slot.BlobCount }}{{ end }}</td>
                     {{- end }}
-                    {{- if $g.DisplaySyncAgg }}
-                      <td>{{ if not (eq $slot.Status 0) }}{{ formatFloat $slot.SyncParticipation 2 }}%{{ end }}</td>
-                    {{- end }}
-                    {{- if $g.DisplayGraffiti }}
-                      <td>{{ if not (eq $slot.Status 0) }}{{ formatGraffiti $slot.Graffiti }}{{ end }}</td>
-                    {{- end }}
-                    {{- if $g.DisplayElExtraData }}
-                      <td>{{ if not (eq $slot.Status 0) }}{{ formatGraffiti $slot.ElExtraData }}{{ end }}</td>
-                    {{- end }}
                     {{- if $g.DisplayGasUsage }}
                       <td>{{ if not (eq $slot.Status 0) }}
                         <div style="position:relative;width:inherit;height:inherit;">
@@ -240,8 +233,8 @@
                         </div>
                       {{ end }}</td>
                     {{- end }}
-                    {{- if $g.DisplayGasLimit }}
-                      <td>{{ if not (eq $slot.Status 0) }}{{ formatFloat (div (float64 $slot.GasLimit) 1000000) 2 }} M{{ end }}</td>
+                    {{- if $g.DisplaySyncAgg }}
+                      <td>{{ if not (eq $slot.Status 0) }}{{ formatFloat $slot.SyncParticipation 2 }}%{{ end }}</td>
                     {{- end }}
                     {{- if $g.DisplayMevBlock }}
                       <td>{{ if not (eq $slot.Status 0) }}
@@ -251,6 +244,18 @@
                           <span class="badge rounded-pill text-bg-secondary">No</span>
                         {{ end }}
                       {{ end }}</td>
+                    {{- end }}
+                    {{- if $g.DisplayGasLimit }}
+                      <td>{{ if not (eq $slot.Status 0) }}{{ formatFloat (div (float64 $slot.GasLimit) 1000000) 2 }} M{{ end }}</td>
+                    {{- end }}
+                    {{- if $g.DisplayBlockSize }}
+                      <td>{{ if not (eq $slot.Status 0) }}{{ formatByteAmount $slot.BlockSize }}{{ end }}</td>
+                    {{- end }}
+                    {{- if $g.DisplayGraffiti }}
+                      <td>{{ if not (eq $slot.Status 0) }}{{ formatGraffiti $slot.Graffiti }}{{ end }}</td>
+                    {{- end }}
+                    {{- if $g.DisplayElExtraData }}
+                      <td>{{ if not (eq $slot.Status 0) }}{{ formatGraffiti $slot.ElExtraData }}{{ end }}</td>
                     {{- end }}
                   </tr>
                 {{ end }}

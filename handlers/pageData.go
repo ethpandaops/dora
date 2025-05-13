@@ -117,6 +117,11 @@ func createMenuItems(active string) []types.MainMenuItem {
 			{
 				Label: "Slots",
 				Path:  "/slots",
+				Icon:  "fa-table-list",
+			},
+			{
+				Label: "Blocks",
+				Path:  "/blocks",
 				Icon:  "fa-cube",
 			},
 		},

@@ -61,6 +61,7 @@ func GetTemplateFuncs() template.FuncMap {
 		"formatBigAmount":              FormatBigAmount,
 		"formatAmountFormatted":        FormatAmountFormatted,
 		"formatGwei":                   FormatGweiValue,
+		"formatByteAmount":             FormatByteAmount,
 		"percentage":                   CalculatePercentage,
 		"ethBlockLink":                 FormatEthBlockLink,
 		"ethBlockHashLink":             FormatEthBlockHashLink,
