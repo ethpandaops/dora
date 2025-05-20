@@ -139,8 +139,8 @@ const SubmitConsolidationsForm = (props: ISubmitConsolidationsFormProps): React.
             </div>
             <div className="col-12 col-lg-11">
               <ValidatorSelector
-                placeholder="Search for a validator by index or pubkey"
-                validators={[]}
+                placeholder="Select or search for a validator by index or pubkey"
+                validators={validators}
                 onChange={(validator) => {
                   console.log("target validator", validator);
                   setTargetValidator(validator);

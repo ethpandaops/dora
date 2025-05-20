@@ -51,6 +51,9 @@
         submitDepositConfig: {
           genesisForkVersion: "0x{{ printf "%x" .GenesisForkVersion }}",
           depositContract: "0x{{ printf "%x" .DepositContract }}",
+          explorerLink: "{{ .ExplorerUrl }}",
+          maxEffectiveBalance: "{{ .MaxEffectiveBalance }}",
+          maxEffectiveBalanceElectra: "{{ .MaxEffectiveBalanceElectra }}",
           loadDepositTxs: function(pubkeys) {
             return fetch("?ajax=load_deposits", {
               method: "POST",
@@ -58,14 +61,28 @@
                 "Content-Type": "application/json"
               },
               body: JSON.stringify(pubkeys)
-            }).then((response) => {
+            }).then(function(response) {
               if (!response.ok) {
                 throw new Error("Failed to load deposits: " + response.statusText);
               }
               return response;
-            }).then((response) => {
+            }).then(function(response) {
               return response.json();
             });
+          },
+          loadValidators: function(address) {
+            return fetch(`?ajax=load_validators&address=${address}`)
+              .then(response => response.json())
+              .then(data => {
+                return data;
+              });
+          },
+          searchValidators: function(searchTerm) {
+            return fetch(`?ajax=search_validators&search=${searchTerm}`)
+              .then(response => response.json())
+              .then(data => {
+                return data;
+              });
           }
         }
       }
