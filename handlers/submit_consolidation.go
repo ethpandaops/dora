@@ -101,6 +101,10 @@ func buildSubmitConsolidationPageData() (*models.SubmitConsolidationPageData, ti
 		ExplorerUrl:           utils.Config.Frontend.EthExplorerLink,
 	}
 
+	if utils.Config.Chain.DisplayName != "" {
+		pageData.NetworkName = utils.Config.Chain.DisplayName
+	}
+
 	return pageData, 1 * time.Hour
 }
 

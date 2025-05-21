@@ -107,6 +107,10 @@ func buildSubmitDepositPageData() (*models.SubmitDepositPageData, time.Duration)
 		MaxEffectiveBalanceElectra: fmt.Sprintf("%d", specs.MaxEffectiveBalanceElectra),
 	}
 
+	if utils.Config.Chain.DisplayName != "" {
+		pageData.NetworkName = utils.Config.Chain.DisplayName
+	}
+
 	return pageData, 1 * time.Hour
 }
 
