@@ -99,6 +99,10 @@ func buildSubmitWithdrawalPageData() (*models.SubmitWithdrawalPageData, time.Dur
 		MinValidatorBalance: specs.MinActivationBalance,
 	}
 
+	if utils.Config.Chain.DisplayName != "" {
+		pageData.NetworkName = utils.Config.Chain.DisplayName
+	}
+
 	return pageData, 1 * time.Hour
 }
 

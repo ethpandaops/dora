@@ -154,7 +154,7 @@ func (bs *ChainService) GetDepositRequestsByFilter(filter *CombinedDepositReques
 			combinedResult.TransactionOrphaned = combinedResult.RequestOrphaned
 		}
 
-		if dbOperation.Index != nil {
+		if dbOperation.BlockNumber != nil && dbOperation.Index != nil {
 			combinedResult.Transaction.Index = *dbOperation.Index
 			if queueEntry, ok := pendingDepositPositions[*dbOperation.Index]; ok {
 				combinedResult.IsQueued = true
