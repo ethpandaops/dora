@@ -1,4 +1,3 @@
-
 .submit-deposit-modal {
     .deposit-error {
         text-wrap: wrap;
@@ -10,5 +9,99 @@
     .tx-details-label {
         width: 150px;
         font-weight: bold;
+    }
+}
+
+.submit-deposits {
+    .nav-tabs {
+        margin-bottom: 1rem;
+        margin-left: -4px;
+        margin-right: -4px;
+        padding-left: 12px;
+        padding-right: 12px;
+        
+        .nav-link {
+            cursor: pointer;
+            
+            &.active {
+                font-weight: 600;
+            }
+        }
+    }
+
+    // Validator Selector Styles
+    .validator-selector {
+        .validator-item {
+            display: flex;
+        }
+      
+        .validator-index {
+            width: 80px;
+        }
+      
+        .validator-pubkey {
+            width: 200px;
+            flex-grow: 1;
+        }
+      
+        .validator-balance {
+            padding-left: 10px;
+            width: 100px;
+        }
+      
+        .validator-status {
+            width: 60px;
+        }
+      
+      
+        .validator-selector-control {
+            background-color: transparent;
+        }
+      
+        .validator-selector-menu {
+            background-color: var(--bs-body-bg);
+        }
+      
+        .validator-selector-option {
+            cursor: default;
+            display: block;
+            font-size: inherit;
+            width: 100%;
+            user-select: none;
+            -webkit-tap-highlight-color: rgba(128, 128, 128, 0.1);
+            background-color: transparent;
+            color: inherit;
+            padding: 8px 12px;
+            box-sizing: border-box;
+        }
+      
+        .validator-selector-option.selected {
+            color: var(--bs-body-color);
+            background-color: rgba(var(--bs-primary-rgb), 0.3);
+        }
+      
+        .validator-selector-option:hover, .validator-selector-option.focused {
+            color: var(--bs-body-color);
+            background-color: var(--bs-tertiary-bg);
+        }
+      
+        .validator-selector-option.selected:hover, .validator-selector-option.selected.focused {
+            color: var(--bs-body-color);
+            background-color: rgba(var(--bs-primary-rgb), 0.4);
+        }
+      
+        .validator-selector-single-value {
+            color: var(--bs-body-color);
+        }
+      
+        .validator-selector-input {
+            color: var(--bs-body-color);
+        }
+       
+    }
+
+    // Topup Deposit Styles
+    .withdrawal-details {
+        align-items: center;
     }
 }

@@ -1,3 +1,4 @@
+import { IValidator } from '../SubmitConsolidationsForm/SubmitConsolidationsFormProps';
 
 export interface ISubmitDepositsFormProps {
   chainId: number;
@@ -8,7 +9,12 @@ export interface ISubmitDepositsFormProps {
   explorerLink?: string;
   genesisForkVersion: string;
   depositContract: string;
+  maxEffectiveBalance: string;
+  maxEffectiveBalanceElectra: string;
   loadDepositTxs(pubkeys: string[]): Promise<{deposits: IDepositTx[], count: number, havemore: boolean}>;
+  // Properties for topup deposit functionality
+  loadValidators?: (address: string) => Promise<IValidator[]>;
+  searchValidators?: (searchTerm: string) => Promise<IValidator[]>;
 }
 
 export interface IDepositTx {
