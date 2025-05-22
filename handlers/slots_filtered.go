@@ -153,6 +153,7 @@ func buildFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string
 			14: false,
 			15: false,
 			16: false,
+			17: true,
 		}
 	} else {
 		displayList := make([]uint64, len(displayMap))
@@ -195,6 +196,7 @@ func buildFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string
 		DisplayGasLimit:     displayMap[14],
 		DisplayMevBlock:     displayMap[15],
 		DisplayBlockSize:    displayMap[16],
+		DisplayRecvDelay:    displayMap[17],
 		DisplayColCount:     uint64(len(displayMap)),
 	}
 	logrus.Debugf("slots_filtered page called: %v:%v [%v/%v]", pageIdx, pageSize, graffiti, extradata)
@@ -292,6 +294,7 @@ func buildFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string
 			slotData.GasLimit = dbBlock.Block.EthGasLimit
 			slotData.BlockSize = dbBlock.Block.BlockSize
 			slotData.BlockRoot = dbBlock.Block.Root
+			slotData.RecvDelay = dbBlock.Block.RecvDelay
 			if dbBlock.Block.EthBlockNumber != nil {
 				slotData.WithEthBlock = true
 				slotData.EthBlockNumber = *dbBlock.Block.EthBlockNumber
