@@ -29,6 +29,7 @@ type SlotsFilteredPageData struct {
 	DisplayGasLimit     bool   `json:"dp_gaslimit"`
 	DisplayMevBlock     bool   `json:"dp_mevblock"`
 	DisplayBlockSize    bool   `json:"dp_blocksize"`
+	DisplayRecvDelay    bool   `json:"dp_recvdelay"`
 	DisplayColCount     uint64 `json:"display_col_count"`
 
 	Slots     []*SlotsFilteredPageDataSlot `json:"slots"`
@@ -80,6 +81,7 @@ type SlotsFilteredPageDataSlot struct {
 	BlockSize             uint64    `json:"block_size"`
 	BlockRoot             []byte    `json:"block_root"`
 	ParentRoot            []byte    `json:"parent_root"`
+	RecvDelay             int32     `json:"recv_delay"`
 	IsMevBlock            bool      `json:"is_mev_block"`
 	MevBlockRelays        string    `json:"mev_block_relays"`
 }
