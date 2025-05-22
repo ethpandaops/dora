@@ -32,6 +32,7 @@ type Block struct {
 	blockChan         chan bool
 	block             *spec.VersionedSignedBeaconBlock
 	blockIndex        *BlockBodyIndex
+	recvDelay         int32
 	isInFinalizedDb   bool // block is in finalized table (slots)
 	isInUnfinalizedDb bool // block is in unfinalized table (unfinalized_blocks)
 	isDisposed        bool // block is disposed
@@ -97,14 +98,18 @@ func (block *Block) GetSeenBy() []*Client {
 }
 
 // SetSeenBy sets the client that has seen this block.
-func (block *Block) SetSeenBy(client *Client) {
+func (block *Block) SetSeenBy(client *Client, recvDelay int32) {
 	if block.isDisposed {
 		return
 	}
 
 	block.seenMutex.Lock()
 	defer block.seenMutex.Unlock()
+
 	block.seenMap[client.index] = client
+	if block.recvDelay == 0 || recvDelay < block.recvDelay {
+		block.recvDelay = recvDelay
+	}
 }
 
 // GetHeader returns the signed beacon block header of this block.
@@ -335,6 +340,7 @@ func (block *Block) buildUnfinalizedBlock(compress bool) (*dbtypes.UnfinalizedBl
 		BlockSSZ:  blockSSZ,
 		Status:    0,
 		ForkId:    uint64(block.forkId),
+		RecvDelay: block.recvDelay,
 	}, nil
 }
 

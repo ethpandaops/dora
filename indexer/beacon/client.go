@@ -145,7 +145,7 @@ func (c *Client) runClientLoop() error {
 
 	c.headRoot = headRoot
 
-	headBlock, isNew, processingTimes, err := c.processBlock(headSlot, headRoot, nil)
+	headBlock, isNew, processingTimes, err := c.processBlock(headSlot, headRoot, nil, false)
 	if err != nil {
 		return fmt.Errorf("failed processing head block: %v", err)
 	}
@@ -299,7 +299,7 @@ func (c *Client) processInclusionListEvent(inclusionListEvent *v1.InclusionListE
 
 // processStreamBlock processes a block received from the stream (either via block or head events).
 func (c *Client) processStreamBlock(slot phase0.Slot, root phase0.Root) (*Block, error) {
-	block, isNew, processingTimes, err := c.processBlock(slot, root, nil)
+	block, isNew, processingTimes, err := c.processBlock(slot, root, nil, true)
 	if err != nil {
 		return nil, err
 	}
@@ -353,7 +353,7 @@ func (c *Client) processReorg(oldHead *Block, newHead *Block) error {
 }
 
 // processBlock processes a block (from stream & polling).
-func (c *Client) processBlock(slot phase0.Slot, root phase0.Root, header *phase0.SignedBeaconBlockHeader) (block *Block, isNew bool, processingTimes []time.Duration, err error) {
+func (c *Client) processBlock(slot phase0.Slot, root phase0.Root, header *phase0.SignedBeaconBlockHeader, trackRecvDelay bool) (block *Block, isNew bool, processingTimes []time.Duration, err error) {
 	chainState := c.client.GetPool().GetChainState()
 	finalizedSlot := chainState.GetFinalizedSlot()
 	processingTimes = make([]time.Duration, 3)
@@ -375,6 +375,14 @@ func (c *Client) processBlock(slot phase0.Slot, root phase0.Root, header *phase0
 		block, _ = c.indexer.blockCache.createOrGetBlock(root, slot)
 	}
 
+	recvDelay := int32(0)
+	if trackRecvDelay {
+		slotTime := chainState.SlotToTime(slot)
+		recvDelay = int32(time.Since(slotTime).Milliseconds())
+	}
+
+	block.SetSeenBy(c, recvDelay)
+
 	err = block.EnsureHeader(func() (*phase0.SignedBeaconBlockHeader, error) {
 		if header != nil {
 			return header, nil
@@ -392,7 +400,6 @@ func (c *Client) processBlock(slot phase0.Slot, root phase0.Root, header *phase0
 	}
 
 	isNew, err = block.EnsureBlock(func() (*spec.VersionedSignedBeaconBlock, error) {
-
 		t1 := time.Now()
 		defer func() {
 			processingTimes[0] += time.Since(t1)
@@ -499,7 +506,7 @@ func (c *Client) backfillParentBlocks(headBlock *Block) error {
 		if parentBlock == nil {
 			var err error
 
-			parentBlock, isNewBlock, processingTimes, err = c.processBlock(parentSlot, parentRoot, parentHead)
+			parentBlock, isNewBlock, processingTimes, err = c.processBlock(parentSlot, parentRoot, parentHead, false)
 			if err != nil {
 				return fmt.Errorf("could not process block [0x%x]: %v", parentRoot, err)
 			}

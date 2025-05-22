@@ -274,6 +274,7 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 		ProposerSlashingCount: uint64(len(proposerSlashings)),
 		BLSChangeCount:        uint64(len(blsToExecChanges)),
 		BlobCount:             uint64(len(blobKzgCommitments)),
+		RecvDelay:             block.recvDelay,
 	}
 
 	blockSize, err := getBlockSize(block.dynSsz, blockBody)

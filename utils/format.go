@@ -48,6 +48,21 @@ func FormatFloat(num float64, precision int) string {
 	return string(r)
 }
 
+func formatPercentageAlert(num float64, precision int, warnBelow float64, errBelow float64) template.HTML {
+	p := message.NewPrinter(language.English)
+	f := fmt.Sprintf("%%.%vf", precision)
+	s := strings.TrimRight(strings.TrimRight(p.Sprintf(f, num), "0"), ".")
+	r := []rune(p.Sprintf(s, num))
+	switch {
+	case num < errBelow:
+		return template.HTML(fmt.Sprintf("<span class=\"text-danger\">%s%%</span>", string(r)))
+	case num < warnBelow:
+		return template.HTML(fmt.Sprintf("<span class=\"text-warning\">%s%%</span>", string(r)))
+	default:
+		return template.HTML(fmt.Sprintf("%s%%", string(r)))
+	}
+}
+
 func FormatAddCommasFormatted(num float64, precision uint) template.HTML {
 	p := message.NewPrinter(language.English)
 	s := p.Sprintf(fmt.Sprintf("%%.%vf", precision), num)
@@ -443,4 +458,11 @@ func FormatByteAmount(bytes uint64) template.HTML {
 	}
 	value := float64(bytes) / float64(div)
 	return template.HTML(fmt.Sprintf("%.2f %ciB", value, "kMGTPE"[exp]))
+}
+
+func FormatRecvDelay(delay int32) template.HTML {
+	if delay == 0 {
+		return template.HTML("-")
+	}
+	return template.HTML(fmt.Sprintf("%.2f s", float64(delay)/1000))
 }

@@ -334,6 +334,7 @@ func (indexer *Indexer) StartIndexer() {
 		block.forkChecked = true
 		block.processingStatus = dbBlock.Status
 		block.isInUnfinalizedDb = true
+		block.recvDelay = dbBlock.RecvDelay
 
 		if dbBlock.HeaderVer != 1 {
 			indexer.logger.Warnf("failed unmarshal unfinalized block header %v [%x] from db: unsupported header version", dbBlock.Slot, dbBlock.Root)
