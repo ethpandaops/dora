@@ -117,6 +117,7 @@
                 <option value="15" {{ if .DisplayMevBlock }}selected{{ end }}>MEV Block</option>
                 <option value="14" {{ if .DisplayGasLimit }}selected{{ end }}>Gas Limit</option>
                 <option value="16" {{ if .DisplayBlockSize }}selected{{ end }}>Block Size</option>
+                <option value="17" {{ if .DisplayRecvDelay }}selected{{ end }}>Seen</option>
                 <option value="11" {{ if .DisplayGraffiti }}selected{{ end }}>Graffiti</option>
                 <option value="12" {{ if .DisplayElExtraData }}selected{{ end }}>Extra Data</option>
               </select>
@@ -167,6 +168,7 @@
                 {{ if .DisplayMevBlock }}<th>MEV Block</th>{{ end }}
                 {{ if .DisplayGasLimit }}<th>Gas Limit</th>{{ end }}
                 {{ if .DisplayBlockSize }}<th>Block Size</th>{{ end }}
+                {{ if .DisplayRecvDelay }}<th>Recv</th>{{ end }}
                 {{ if .DisplayGraffiti }}<th>Graffiti</th>{{ end }}
                 {{ if .DisplayElExtraData }}<th>Extra Data</th>{{ end }}
               </tr>
@@ -234,7 +236,7 @@
                       {{ end }}</td>
                     {{- end }}
                     {{- if $g.DisplaySyncAgg }}
-                      <td>{{ if not (eq $slot.Status 0) }}{{ formatFloat $slot.SyncParticipation 2 }}%{{ end }}</td>
+                      <td>{{ if not (eq $slot.Status 0) }}{{ formatPercentageAlert $slot.SyncParticipation 2 95 80 }}{{ end }}</td>
                     {{- end }}
                     {{- if $g.DisplayMevBlock }}
                       <td>{{ if not (eq $slot.Status 0) }}
@@ -250,6 +252,9 @@
                     {{- end }}
                     {{- if $g.DisplayBlockSize }}
                       <td>{{ if not (eq $slot.Status 0) }}{{ formatByteAmount $slot.BlockSize }}{{ end }}</td>
+                    {{- end }}
+                    {{- if $g.DisplayRecvDelay }}
+                      <td>{{ if not (eq $slot.Status 0) }}{{ formatRecvDelay $slot.RecvDelay }}{{ end }}</td>
                     {{- end }}
                     {{- if $g.DisplayGraffiti }}
                       <td>{{ if not (eq $slot.Status 0) }}{{ formatGraffiti $slot.Graffiti }}{{ end }}</td>

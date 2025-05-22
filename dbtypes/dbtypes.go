@@ -54,6 +54,7 @@ type Slot struct {
 	SyncParticipation     float32    `db:"sync_participation"`
 	ForkId                uint64     `db:"fork_id"`
 	BlockSize             uint64     `db:"block_size"`
+	RecvDelay             int32      `db:"recv_delay"`
 }
 
 type Epoch struct {
@@ -117,6 +118,7 @@ type UnfinalizedBlock struct {
 	BlockSSZ  []byte                 `db:"block_ssz"`
 	Status    UnfinalizedBlockStatus `db:"status"`
 	ForkId    uint64                 `db:"fork_id"`
+	RecvDelay int32                  `db:"recv_delay"`
 }
 
 type UnfinalizedEpoch struct {

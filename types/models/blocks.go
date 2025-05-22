@@ -29,6 +29,7 @@ type BlocksPageData struct {
 	DisplayGasLimit     bool   `json:"dp_gaslimit"`
 	DisplayMevBlock     bool   `json:"dp_mevblock"`
 	DisplayBlockSize    bool   `json:"dp_blocksize"`
+	DisplayRecvDelay    bool   `json:"dp_recvdelay"`
 	DisplayColCount     uint64 `json:"display_col_count"`
 
 	IsDefaultPage    bool   `json:"default_page"`
@@ -75,6 +76,7 @@ type BlocksPageDataSlot struct {
 	BlockSize             uint64                     `json:"block_size"`
 	BlockRoot             []byte                     `json:"block_root"`
 	ParentRoot            []byte                     `json:"parent_root"`
+	RecvDelay             int32                      `json:"recv_delay"`
 	ForkGraph             []*BlocksPageDataForkGraph `json:"fork_graph"`
 	IsMevBlock            bool                       `json:"is_mev_block"`
 	MevBlockRelays        string                     `json:"mev_block_relays"`
