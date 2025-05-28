@@ -109,12 +109,7 @@
             <span class="template-row badge rounded-pill" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-html="true" data-bind="css: {'text-bg-success': active, 'text-bg-secondary': !active }, attr: {title: 'Epoch: ' + epoch + '<br>Fork Version: ' + $root.hexstr(version) + '<br>Time: ' + $root.timestamp(new Date(($root.unixtime($root.genesis_time()) + epoch * $root.slots_per_epoch() * $root.seconds_per_slot()) * 1000))}, text: name"></span>
           {{ html "<!-- /ko -->" }}
           {{ range $i, $fork := .NetworkForks }}
-            {{ $genesisUnix := int $.GenesisTime.Unix }}
-            {{ $epochFloat := float64 $fork.Epoch }}
-            {{ $slotsFloat := float64 $.SlotsPerEpoch }}
-            {{ $secondsFloat := float64 $.SecondsPerSlot }}
-            {{ $epochOffset := mul $epochFloat (mul $slotsFloat $secondsFloat) }}
-            {{ $epochSeconds := add $genesisUnix (int $epochOffset) }}
+            {{ $epochSeconds := add $.GenesisTime.Unix (mul $fork.Epoch (mul $.SlotsPerEpoch $.SecondsPerSlot)) }}
             {{ if $fork.Active }}
               <span class="badge rounded-pill text-bg-success" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-html="true" title="Epoch: {{ $fork.Epoch }}<br>Fork Version: 0x{{ printf "%x" $fork.Version }}<br>Time: {{ $epochSeconds | date "2006-01-02 15:04:05 MST" }}">{{ $fork.Name }}</span>
             {{ else }}
