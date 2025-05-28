@@ -1,4 +1,3 @@
-
 .bi {
   vertical-align: -.125em;
   fill: currentColor;
@@ -328,4 +327,16 @@ span.validator-label {
 
 .table-sm>:not(caption)>*>* {
   padding: 1px .25rem;
+}
+
+/* Custom tooltip styling for network forks */
+.tooltip-inner {
+  max-width: 300px;
+  white-space: nowrap;
+}
+
+/* Specific styling for fork tooltips */
+.badge[data-bs-toggle="tooltip"] + .tooltip .tooltip-inner {
+  max-width: 350px;
+  text-align: left;
 }
