@@ -313,8 +313,16 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 		dbBlock.EthBlockExtra = executionExtraData
 		dbBlock.EthBlockExtraText = utils.GraffitiToString(executionExtraData[:])
 		dbBlock.WithdrawCount = uint64(len(executionWithdrawals))
+
+		withdrawalAmountOverflow := false
 		for _, withdrawal := range executionWithdrawals {
 			dbBlock.WithdrawAmount += uint64(withdrawal.Amount)
+			if dbBlock.WithdrawAmount < uint64(withdrawal.Amount) {
+				withdrawalAmountOverflow = true
+			}
+		}
+		if withdrawalAmountOverflow || dbBlock.WithdrawAmount >= math.MaxInt64 {
+			dbBlock.WithdrawAmount = math.MaxInt64
 		}
 
 		switch blockBody.Version {
@@ -460,8 +468,16 @@ func (dbw *dbWriter) buildDbEpoch(epoch phase0.Epoch, blocks []*Block, epochStat
 			dbEpoch.EthTransactionCount += uint64(len(executionTransactions))
 			dbEpoch.BlobCount += uint64(len(blobKzgCommitments))
 			dbEpoch.WithdrawCount += uint64(len(executionWithdrawals))
+
+			withdrawalAmountOverflow := false
 			for _, withdrawal := range executionWithdrawals {
 				dbEpoch.WithdrawAmount += uint64(withdrawal.Amount)
+				if dbEpoch.WithdrawAmount < uint64(withdrawal.Amount) {
+					withdrawalAmountOverflow = true
+				}
+			}
+			if withdrawalAmountOverflow || dbEpoch.WithdrawAmount >= math.MaxInt64 {
+				dbEpoch.WithdrawAmount = math.MaxInt64
 			}
 
 			// Aggregate gas used and gas limit
