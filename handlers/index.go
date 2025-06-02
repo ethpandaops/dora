@@ -118,6 +118,8 @@ func buildIndexPageData() (*models.IndexPageData, time.Duration) {
 		DepositContract:       common.Address(specs.DepositContractAddress).String(),
 		ShowSyncingMessage:    !isSynced,
 		SlotsPerEpoch:         specs.SlotsPerEpoch,
+		SecondsPerSlot:        uint64(specs.SecondsPerSlot.Seconds()),
+		SecondsPerEpoch:       uint64(specs.SecondsPerSlot.Seconds() * float64(specs.SlotsPerEpoch)),
 		CurrentEpoch:          uint64(currentEpoch),
 		CurrentFinalizedEpoch: int64(finalizedEpoch) - 1,
 		CurrentJustifiedEpoch: int64(justifiedEpoch) - 1,
