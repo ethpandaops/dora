@@ -48,6 +48,8 @@ type IndexPageDataForks struct {
 	Epoch   uint64 `json:"epoch"`
 	Version []byte `json:"version"`
 	Active  bool   `json:"active"`
+	Time    uint64 `json:"time"`
+	Type    string `json:"type"` // "consensus" or "bpo"
 }
 
 type IndexPageDataEpochs struct {

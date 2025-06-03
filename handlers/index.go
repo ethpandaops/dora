@@ -7,6 +7,7 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"time"
 
@@ -195,12 +196,28 @@ func buildIndexPageData() (*models.IndexPageData, time.Duration) {
 	}
 
 	pageData.NetworkForks = make([]*models.IndexPageDataForks, 0)
+
+	// Add Phase0 (Genesis) fork
+	if networkGenesis != nil {
+		pageData.NetworkForks = append(pageData.NetworkForks, &models.IndexPageDataForks{
+			Name:    "Phase0",
+			Epoch:   0,
+			Version: networkGenesis.GenesisForkVersion[:],
+			Time:    uint64(networkGenesis.GenesisTime.Unix()),
+			Active:  true,
+			Type:    "consensus",
+		})
+	}
+
+	// Add consensus forks
 	if specs.AltairForkEpoch != nil && *specs.AltairForkEpoch < uint64(18446744073709551615) {
 		pageData.NetworkForks = append(pageData.NetworkForks, &models.IndexPageDataForks{
 			Name:    "Altair",
 			Epoch:   *specs.AltairForkEpoch,
 			Version: specs.AltairForkVersion[:],
+			Time:    uint64(chainState.EpochToTime(phase0.Epoch(*specs.AltairForkEpoch)).Unix()),
 			Active:  uint64(currentEpoch) >= *specs.AltairForkEpoch,
+			Type:    "consensus",
 		})
 	}
 	if specs.BellatrixForkEpoch != nil && *specs.BellatrixForkEpoch < uint64(18446744073709551615) {
@@ -208,7 +225,9 @@ func buildIndexPageData() (*models.IndexPageData, time.Duration) {
 			Name:    "Bellatrix",
 			Epoch:   *specs.BellatrixForkEpoch,
 			Version: specs.BellatrixForkVersion[:],
+			Time:    uint64(chainState.EpochToTime(phase0.Epoch(*specs.BellatrixForkEpoch)).Unix()),
 			Active:  uint64(currentEpoch) >= *specs.BellatrixForkEpoch,
+			Type:    "consensus",
 		})
 	}
 	if specs.CapellaForkEpoch != nil && *specs.CapellaForkEpoch < uint64(18446744073709551615) {
@@ -216,7 +235,9 @@ func buildIndexPageData() (*models.IndexPageData, time.Duration) {
 			Name:    "Capella",
 			Epoch:   *specs.CapellaForkEpoch,
 			Version: specs.CapellaForkVersion[:],
+			Time:    uint64(chainState.EpochToTime(phase0.Epoch(*specs.CapellaForkEpoch)).Unix()),
 			Active:  uint64(currentEpoch) >= *specs.CapellaForkEpoch,
+			Type:    "consensus",
 		})
 	}
 	if specs.DenebForkEpoch != nil && *specs.DenebForkEpoch < uint64(18446744073709551615) {
@@ -224,7 +245,9 @@ func buildIndexPageData() (*models.IndexPageData, time.Duration) {
 			Name:    "Deneb",
 			Epoch:   *specs.DenebForkEpoch,
 			Version: specs.DenebForkVersion[:],
+			Time:    uint64(chainState.EpochToTime(phase0.Epoch(*specs.DenebForkEpoch)).Unix()),
 			Active:  uint64(currentEpoch) >= *specs.DenebForkEpoch,
+			Type:    "consensus",
 		})
 	}
 	if specs.ElectraForkEpoch != nil && *specs.ElectraForkEpoch < uint64(18446744073709551615) {
@@ -232,7 +255,9 @@ func buildIndexPageData() (*models.IndexPageData, time.Duration) {
 			Name:    "Electra",
 			Epoch:   *specs.ElectraForkEpoch,
 			Version: specs.ElectraForkVersion[:],
+			Time:    uint64(chainState.EpochToTime(phase0.Epoch(*specs.ElectraForkEpoch)).Unix()),
 			Active:  uint64(currentEpoch) >= *specs.ElectraForkEpoch,
+			Type:    "consensus",
 		})
 	}
 	if specs.FuluForkEpoch != nil && *specs.FuluForkEpoch < uint64(18446744073709551615) {
@@ -240,9 +265,28 @@ func buildIndexPageData() (*models.IndexPageData, time.Duration) {
 			Name:    "Fulu",
 			Epoch:   *specs.FuluForkEpoch,
 			Version: specs.FuluForkVersion[:],
+			Time:    uint64(chainState.EpochToTime(phase0.Epoch(*specs.FuluForkEpoch)).Unix()),
 			Active:  uint64(currentEpoch) >= *specs.FuluForkEpoch,
+			Type:    "consensus",
 		})
 	}
+
+	// Add BPO forks from BLOB_SCHEDULE
+	for i, blobSchedule := range specs.BlobSchedule {
+		pageData.NetworkForks = append(pageData.NetworkForks, &models.IndexPageDataForks{
+			Name:    fmt.Sprintf("BPO%d", i+1),
+			Epoch:   blobSchedule.Epoch,
+			Version: nil, // BPO forks don't have fork versions
+			Time:    uint64(chainState.EpochToTime(phase0.Epoch(blobSchedule.Epoch)).Unix()),
+			Active:  uint64(currentEpoch) >= blobSchedule.Epoch,
+			Type:    "bpo",
+		})
+	}
+
+	// Sort all forks by epoch
+	sort.Slice(pageData.NetworkForks, func(i, j int) bool {
+		return pageData.NetworkForks[i].Epoch < pageData.NetworkForks[j].Epoch
+	})
 
 	// load recent epochs
 	buildIndexPageRecentEpochsData(pageData, currentEpoch, finalizedEpoch, justifiedEpoch, recentEpochCount)

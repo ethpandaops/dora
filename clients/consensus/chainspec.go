@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"sort"
 	"sync"
 	"time"
 
@@ -16,6 +17,11 @@ type ForkVersion struct {
 	Epoch           uint64
 	CurrentVersion  []byte
 	PreviousVersion []byte
+}
+
+type BlobScheduleEntry struct {
+	Epoch            uint64 `yaml:"EPOCH"`
+	MaxBlobsPerBlock uint64 `yaml:"MAX_BLOBS_PER_BLOCK"`
 }
 
 // https://github.com/ethereum/consensus-specs/blob/dev/configs/mainnet.yaml
@@ -68,9 +74,10 @@ type ChainSpec struct {
 	ShardCommitteePeriod                  uint64            `yaml:"SHARD_COMMITTEE_PERIOD"`
 
 	// EIP7594: PeerDAS
-	NumberOfColumns              *uint64 `yaml:"NUMBER_OF_COLUMNS"                check-if-fork:"FuluForkEpoch"`
-	DataColumnSidecarSubnetCount *uint64 `yaml:"DATA_COLUMN_SIDECAR_SUBNET_COUNT" check-if-fork:"FuluForkEpoch"`
-	CustodyRequirement           *uint64 `yaml:"CUSTODY_REQUIREMENT"              check-if-fork:"FuluForkEpoch"`
+	NumberOfColumns              *uint64             `yaml:"NUMBER_OF_COLUMNS"                check-if-fork:"FuluForkEpoch"`
+	DataColumnSidecarSubnetCount *uint64             `yaml:"DATA_COLUMN_SIDECAR_SUBNET_COUNT" check-if-fork:"FuluForkEpoch"`
+	CustodyRequirement           *uint64             `yaml:"CUSTODY_REQUIREMENT"              check-if-fork:"FuluForkEpoch"`
+	BlobSchedule                 []BlobScheduleEntry `yaml:"BLOB_SCHEDULE"                    check-if-fork:"FuluForkEpoch"`
 
 	// additional dora specific specs
 	WhiskForkEpoch *uint64
@@ -136,6 +143,26 @@ func (chain *ChainSpec) CheckMismatch(chain2 *ChainSpec) ([]string, error) {
 
 			if !bytes.Equal(bytesA, bytesB) {
 				mismatches = append(mismatches, chainT.Type().Field(i).Name)
+			}
+		} else if fieldV.Type().Kind() == reflect.Slice && fieldV.Type().Elem() == reflect.TypeOf(BlobScheduleEntry{}) {
+			// compare blob schedule entries
+			blobScheduleA := fieldV.Interface().([]BlobScheduleEntry)
+			blobScheduleB := field2V.Interface().([]BlobScheduleEntry)
+
+			// sort both by epoch
+			sort.Slice(blobScheduleA, func(i, j int) bool {
+				return blobScheduleA[i].Epoch < blobScheduleA[j].Epoch
+			})
+			sort.Slice(blobScheduleB, func(i, j int) bool {
+				return blobScheduleB[i].Epoch < blobScheduleB[j].Epoch
+			})
+
+			// compare each entry
+			for i := range blobScheduleA {
+				if len(blobScheduleB) > i && blobScheduleA[i] != blobScheduleB[i] {
+					mismatches = append(mismatches, fmt.Sprintf("%s[%d]", fieldT.Name, i))
+					break
+				}
 			}
 		} else if fieldV.Interface() != field2V.Interface() {
 			if chainT.Field(i).Interface() == reflect.Zero(chainT.Field(i).Type()).Interface() {
