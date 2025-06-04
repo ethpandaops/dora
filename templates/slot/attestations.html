@@ -53,28 +53,15 @@
           <span data-bs-toggle="tooltip" data-bs-placement="top" title="Validators in this committee - green icons are attesting, red icons are not attesting">Validators:</span>
         </div>
         <div class="col-md-10">
-          {{ html "<!-- ko foreach: attestingValidators -->" }}
-          <span class="validator-label validator-name" data-bs-toggle="tooltip" data-bs-placement="top" data-bind="attr: {'data-bs-title': $data}">
-            <i class="fas fa-male mr-2 text-success"></i>
-            <a data-bind="attr: {href: '/validator/' + $data}">
-              {{ html "<!-- ko if: $root.getValidatorName($data) -->" }}
-              <span data-bind="text: $root.getValidatorName($data) + ' (' + $data + ')'"></span>
+          {{ html "<!-- ko foreach: orderedValidators -->" }}
+          <span class="validator-label validator-name" data-bs-toggle="tooltip" data-bs-placement="top" data-bind="attr: {'data-bs-title': validator}">
+            <i data-bind="css: {'fas fa-male mr-2 text-success': isAttesting, 'fas fa-male mr-2 text-danger': !isAttesting}"></i>
+            <a data-bind="attr: {href: '/validator/' + validator}">
+              {{ html "<!-- ko if: $root.getValidatorName(validator) -->" }}
+              <span data-bind="text: $root.getValidatorName(validator) + ' (' + validator + ')'"></span>
               {{ html "<!-- /ko -->" }}
-              {{ html "<!-- ko ifnot: $root.getValidatorName($data) -->" }}
-              <span data-bind="text: $data"></span>
-              {{ html "<!-- /ko -->" }}
-            </a>
-          </span>
-          {{ html "<!-- /ko -->" }}
-          {{ html "<!-- ko foreach: nonAttestingValidators -->" }}
-          <span class="validator-label validator-name" data-bs-toggle="tooltip" data-bs-placement="top" data-bind="attr: {'data-bs-title': $data}">
-            <i class="fas fa-male mr-2 text-danger"></i>
-            <a data-bind="attr: {href: '/validator/' + $data}">
-              {{ html "<!-- ko if: $root.getValidatorName($data) -->" }}
-              <span data-bind="text: $root.getValidatorName($data) + ' (' + $data + ')'"></span>
-              {{ html "<!-- /ko -->" }}
-              {{ html "<!-- ko ifnot: $root.getValidatorName($data) -->" }}
-              <span data-bind="text: $data"></span>
+              {{ html "<!-- ko ifnot: $root.getValidatorName(validator) -->" }}
+              <span data-bind="text: validator"></span>
               {{ html "<!-- /ko -->" }}
             </a>
           </span>
@@ -165,13 +152,13 @@
     };
 
     self.aggregationSummary = ko.computed(function() {
-      var total = self.validators.length;
+      var total = self.aggregation_bits.length * 8;
       var set = 0;
-      for (var i = 0; i < total; i++) {
-        var byteIndex = Math.floor(i / 8);
-        var bitIndex = i % 8;
-        if (self.aggregation_bits[byteIndex] & (1 << bitIndex)) {
-          set++;
+      for (var i = 0; i < self.aggregation_bits.length; i++) {
+        for (var j = 0; j < 8; j++) {
+          if (self.aggregation_bits[i] & (1 << j)) {
+            set++;
+          }
         }
       }
       var percentage = ((set / total) * 100).toFixed(2);
@@ -195,33 +182,22 @@
       return bytesToHex(self.signature);
     });
 
-    // Compute attesting and non-attesting validators
-    self.attestingValidators = ko.computed(function() {
-      var attesting = [];
+    // Compute ordered validators with attestation status
+    self.orderedValidators = ko.computed(function() {
+      var ordered = [];
 
       for (var i = 0; i < self.validators.length; i++) {
         var byteIndex = Math.floor(i / 8);
         var bitIndex = i % 8;
-        var isSet = (self.aggregation_bits[byteIndex] & (1 << bitIndex)) !== 0;
-        if (isSet) {
-          attesting.push(self.validators[i]);
-        }
-      }
-      return attesting;
-    });
+        var isAttesting = (self.aggregation_bits[byteIndex] & (1 << bitIndex)) !== 0;
 
-    self.nonAttestingValidators = ko.computed(function() {
-      var nonAttesting = [];
-
-      for (var i = 0; i < self.validators.length; i++) {
-        var byteIndex = Math.floor(i / 8);
-        var bitIndex = i % 8;
-        var isSet = (self.aggregation_bits[byteIndex] & (1 << bitIndex)) !== 0;
-        if (!isSet) {
-          nonAttesting.push(self.validators[i]);
-        }
+        ordered.push({
+          validator: self.validators[i],
+          isAttesting: isAttesting,
+          position: i
+        });
       }
-      return nonAttesting;
+      return ordered;
     });
 
     // Format aggregation bits with validator info
