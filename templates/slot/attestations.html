@@ -55,7 +55,7 @@
         <div class="col-md-10">
           {{ html "<!-- ko foreach: orderedValidators -->" }}
           <span class="validator-label validator-name" data-bs-toggle="tooltip" data-bs-placement="top" data-bind="attr: {'data-bs-title': validator}">
-            <i data-bind="css: {'fas fa-male mr-2 text-success': isAttesting, 'fas fa-male mr-2 text-danger': !isAttesting}"></i>
+            <i class="fas fa-male mr-2" data-bind="css: {'text-success': isAttesting, 'text-danger': !isAttesting}"></i>
             <a data-bind="attr: {href: '/validator/' + validator}">
               {{ html "<!-- ko if: $root.getValidatorName(validator) -->" }}
               <span data-bind="text: $root.getValidatorName(validator) + ' (' + validator + ')'"></span>
