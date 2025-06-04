@@ -32,8 +32,8 @@
         </div>
         <div class="col-md-10 d-flex justify-content-between">
           <span data-bind="text: aggregationSummary"></span>
-          <i class="fas fa-chevron-down cursor-pointer" 
-             data-bind="click: toggleDetails, 
+          <i class="fas fa-chevron-down cursor-pointer"
+             data-bind="click: toggleDetails,
                        css: { 'fa-chevron-down': !showDetails(), 'fa-chevron-up': showDetails() }">
           </i>
         </div>
@@ -47,15 +47,28 @@
           <div data-bind="html: formattedAggregationBits"></div>
         </div>
       </div>
-      {{ html "<!-- ko if: included_validators.length > 0 -->" }}
+      {{ html "<!-- ko if: validators.length > 0 -->" }}
       <div class="row border-bottom p-1 mx-0">
         <div class="col-md-2">
-          <span data-bs-toggle="tooltip" data-bs-placement="top" title="Validators who have submitted their attestation and have been included by the block proposer">Included Validators:</span>
+          <span data-bs-toggle="tooltip" data-bs-placement="top" title="Validators in this committee - green icons are attesting, red icons are not attesting">Validators:</span>
         </div>
         <div class="col-md-10">
-          {{ html "<!-- ko foreach: included_validators -->" }}
+          {{ html "<!-- ko foreach: attestingValidators -->" }}
           <span class="validator-label validator-name" data-bs-toggle="tooltip" data-bs-placement="top" data-bind="attr: {'data-bs-title': $data}">
-            <i class="fas fa-male mr-2"></i>
+            <i class="fas fa-male mr-2 text-success"></i>
+            <a data-bind="attr: {href: '/validator/' + $data}">
+              {{ html "<!-- ko if: $root.getValidatorName($data) -->" }}
+              <span data-bind="text: $root.getValidatorName($data) + ' (' + $data + ')'"></span>
+              {{ html "<!-- /ko -->" }}
+              {{ html "<!-- ko ifnot: $root.getValidatorName($data) -->" }}
+              <span data-bind="text: $data"></span>
+              {{ html "<!-- /ko -->" }}
+            </a>
+          </span>
+          {{ html "<!-- /ko -->" }}
+          {{ html "<!-- ko foreach: nonAttestingValidators -->" }}
+          <span class="validator-label validator-name" data-bs-toggle="tooltip" data-bs-placement="top" data-bind="attr: {'data-bs-title': $data}">
+            <i class="fas fa-male mr-2 text-danger"></i>
             <a data-bind="attr: {href: '/validator/' + $data}">
               {{ html "<!-- ko if: $root.getValidatorName($data) -->" }}
               <span data-bind="text: $root.getValidatorName($data) + ' (' + $data + ')'"></span>
@@ -69,7 +82,6 @@
         </div>
       </div>
       {{ html "<!-- /ko -->" }}
-      {{ html "<!-- /ko -->" }}
       <div class="row border-bottom p-1 mx-0">
         <div class="col-md-2">
           <span data-bs-toggle="tooltip" data-bs-placement="top" title="Points to the block to which validators are attesting">Beacon Block Root:</span>
@@ -78,6 +90,7 @@
           <a data-bind="attr: {href: '/slot/0x' + beaconBlockRootHex()}, text: '0x' + beaconBlockRootHex()"></a>
         </div>
       </div>
+      {{ html "<!-- /ko -->" }}
       <div class="row border-bottom p-1 mx-0">
         <div class="col-md-2">
           <span data-bs-toggle="tooltip" data-bs-placement="top" title="Points to the latest justified epoch">Source:</span>
@@ -114,7 +127,7 @@
   var specValues = JSON.parse({{ includeJSON .Block.SpecValues false }});
   var validatorNames = JSON.parse({{ includeJSON .Block.ValidatorNames false }});
   var attestationsData = JSON.parse({{ includeJSON .Block.Attestations false }});
-  
+
   function base64ToBytes(base64) {
     const binString = atob(base64);
     return Uint8Array.from(binString, (m) => m.charCodeAt(0));
@@ -139,7 +152,7 @@
     self.included_validators = data.included_validators;
 
     self.showDetails = ko.observable(false);
-    
+
     self.toggleDetails = function() {
       var isOpen = self.showDetails();
       self.showDetails(!isOpen);
@@ -152,13 +165,13 @@
     };
 
     self.aggregationSummary = ko.computed(function() {
-      var total = self.aggregation_bits.length * 8;
+      var total = self.validators.length;
       var set = 0;
-      for (var i = 0; i < self.aggregation_bits.length; i++) {
-        for (var j = 0; j < 8; j++) {
-          if (self.aggregation_bits[i] & (1 << j)) {
-            set++;
-          }
+      for (var i = 0; i < total; i++) {
+        var byteIndex = Math.floor(i / 8);
+        var bitIndex = i % 8;
+        if (self.aggregation_bits[byteIndex] & (1 << bitIndex)) {
+          set++;
         }
       }
       var percentage = ((set / total) * 100).toFixed(2);
@@ -169,11 +182,11 @@
     self.beaconBlockRootHex = ko.computed(function() {
       return bytesToHex(self.beacon_block_root);
     });
-    
+
     self.sourceRootHex = ko.computed(function() {
       return bytesToHex(self.source_root);
     });
-    
+
     self.targetRootHex = ko.computed(function() {
       return bytesToHex(self.target_root);
     });
@@ -182,12 +195,41 @@
       return bytesToHex(self.signature);
     });
 
+    // Compute attesting and non-attesting validators
+    self.attestingValidators = ko.computed(function() {
+      var attesting = [];
+
+      for (var i = 0; i < self.validators.length; i++) {
+        var byteIndex = Math.floor(i / 8);
+        var bitIndex = i % 8;
+        var isSet = (self.aggregation_bits[byteIndex] & (1 << bitIndex)) !== 0;
+        if (isSet) {
+          attesting.push(self.validators[i]);
+        }
+      }
+      return attesting;
+    });
+
+    self.nonAttestingValidators = ko.computed(function() {
+      var nonAttesting = [];
+
+      for (var i = 0; i < self.validators.length; i++) {
+        var byteIndex = Math.floor(i / 8);
+        var bitIndex = i % 8;
+        var isSet = (self.aggregation_bits[byteIndex] & (1 << bitIndex)) !== 0;
+        if (!isSet) {
+          nonAttesting.push(self.validators[i]);
+        }
+      }
+      return nonAttesting;
+    });
+
     // Format aggregation bits with validator info
     self.formattedAggregationBits = ko.computed(function() {
       var bits = self.aggregation_bits;
       var html = '<pre class="text-bitfield text-monospace text-break" style="font-size:1rem;">';
       var perLine = 8;
-      
+
       for (var y = 0; y < bits.length; y += perLine) {
         var start = y * 8;
         var end = (y + perLine) * 8;
@@ -262,6 +304,12 @@
 }
 .cursor-pointer {
   cursor: pointer;
+}
+.validator-attesting {
+  color: #28a745 !important;
+}
+.validator-not-attesting {
+  color: #dc3545 !important;
 }
 </style>
 {{ end }}
