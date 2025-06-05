@@ -46,7 +46,8 @@ type Client struct {
 	finalizedRoot           phase0.Root
 	finalizedEpoch          phase0.Epoch
 	lastFinalityUpdateEpoch phase0.Epoch
-	lastMetadataUpdate      time.Time
+	lastMetadataUpdateEpoch phase0.Epoch
+	lastMetadataUpdateTime  time.Time
 	lastSyncUpdateEpoch     phase0.Epoch
 	peers                   []*v1.Peer
 	blockDispatcher         Dispatcher[*v1.BlockEvent]
