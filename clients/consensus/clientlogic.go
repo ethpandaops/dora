@@ -96,6 +96,9 @@ func (client *Client) checkClient() error {
 	// init wallclock
 	client.pool.chainState.initWallclock()
 
+	// set metadata refresh epoch
+	client.lastMetadataUpdateEpoch = client.pool.chainState.CurrentEpoch()
+
 	// check synchronization state
 	err = client.updateSynchronizationStatus(ctx)
 	if err != nil {
@@ -214,8 +217,8 @@ func (client *Client) runClientLogic() error {
 			}()
 		}
 
-		if time.Since(client.lastMetadataUpdate) >= 5*time.Minute {
-			client.lastMetadataUpdate = time.Now()
+		if (currentEpoch-client.lastFinalityUpdateEpoch >= 1 && client.pool.chainState.SlotToSlotIndex(currentSlot) >= 1) || time.Since(client.lastMetadataUpdateTime) > 10*time.Minute {
+			client.lastFinalityUpdateEpoch = currentEpoch
 			go func() {
 				// update node peers
 				if err = client.updateNodeMetadata(client.clientCtx); err != nil {
@@ -254,7 +257,7 @@ func (client *Client) updateNodeMetadata(ctx context.Context) error {
 	ctx, cancel = context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
-	client.lastMetadataUpdate = time.Now()
+	client.lastMetadataUpdateTime = time.Now()
 
 	// get node version
 	nodeVersion, err := client.rpcClient.GetNodeVersion(ctx)
