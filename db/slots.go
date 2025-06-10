@@ -17,9 +17,9 @@ func InsertSlot(slot *dbtypes.Slot, tx *sqlx.Tx) error {
 		dbtypes.DBEnginePgsql: `
 			INSERT INTO slots (
 				slot, proposer, status, root, parent_root, state_root, graffiti, graffiti_text,
-				attestation_count, deposit_count, exit_count, withdraw_count, withdraw_amount, attester_slashing_count, 
-				proposer_slashing_count, bls_change_count, eth_transaction_count, eth_block_number, eth_block_hash, 
-				eth_block_extra, eth_block_extra_text, sync_participation, fork_id, blob_count, eth_gas_used, 
+				attestation_count, deposit_count, exit_count, withdraw_count, withdraw_amount, attester_slashing_count,
+				proposer_slashing_count, bls_change_count, eth_transaction_count, eth_block_number, eth_block_hash,
+				eth_block_extra, eth_block_extra_text, sync_participation, fork_id, blob_count, eth_gas_used,
 				eth_gas_limit, eth_base_fee, eth_fee_recipient, block_size, recv_delay
 			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30)
 			ON CONFLICT (slot, root) DO UPDATE SET
@@ -30,9 +30,9 @@ func InsertSlot(slot *dbtypes.Slot, tx *sqlx.Tx) error {
 		dbtypes.DBEngineSqlite: `
 			INSERT OR REPLACE INTO slots (
 				slot, proposer, status, root, parent_root, state_root, graffiti, graffiti_text,
-				attestation_count, deposit_count, exit_count, withdraw_count, withdraw_amount, attester_slashing_count, 
-				proposer_slashing_count, bls_change_count, eth_transaction_count, eth_block_number, eth_block_hash, 
-				eth_block_extra, eth_block_extra_text, sync_participation, fork_id, blob_count, eth_gas_used, 
+				attestation_count, deposit_count, exit_count, withdraw_count, withdraw_amount, attester_slashing_count,
+				proposer_slashing_count, bls_change_count, eth_transaction_count, eth_block_number, eth_block_hash,
+				eth_block_extra, eth_block_extra_text, sync_participation, fork_id, blob_count, eth_gas_used,
 				eth_gas_limit, eth_base_fee, eth_fee_recipient, block_size, recv_delay
 			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30)`,
 	}),
@@ -126,9 +126,9 @@ func GetSlotsByParentRoot(parentRoot []byte) []*dbtypes.Slot {
 	err := ReaderDb.Select(&slots, `
 	SELECT
 		slot, proposer, status, root, parent_root, state_root, graffiti, graffiti_text,
-		attestation_count, deposit_count, exit_count, withdraw_count, withdraw_amount, attester_slashing_count, 
-		proposer_slashing_count, bls_change_count, eth_transaction_count, eth_block_number, eth_block_hash, 
-		eth_block_extra, eth_block_extra_text, sync_participation, fork_id, blob_count, eth_gas_used, 
+		attestation_count, deposit_count, exit_count, withdraw_count, withdraw_amount, attester_slashing_count,
+		proposer_slashing_count, bls_change_count, eth_transaction_count, eth_block_number, eth_block_hash,
+		eth_block_extra, eth_block_extra_text, sync_participation, fork_id, blob_count, eth_gas_used,
 		eth_gas_limit, eth_base_fee, eth_fee_recipient, block_size, recv_delay
 	FROM slots
 	WHERE parent_root = $1
@@ -146,9 +146,9 @@ func GetSlotByRoot(root []byte) *dbtypes.Slot {
 	err := ReaderDb.Get(&block, `
 	SELECT
 		root, slot, parent_root, state_root, status, proposer, graffiti, graffiti_text,
-		attestation_count, deposit_count, exit_count, withdraw_count, withdraw_amount, attester_slashing_count, 
+		attestation_count, deposit_count, exit_count, withdraw_count, withdraw_amount, attester_slashing_count,
 		proposer_slashing_count, bls_change_count, eth_transaction_count, eth_block_number, eth_block_hash,
-		eth_block_extra, eth_block_extra_text, sync_participation, fork_id, blob_count, eth_gas_used, 
+		eth_block_extra, eth_block_extra_text, sync_participation, fork_id, blob_count, eth_gas_used,
 		eth_gas_limit, eth_base_fee, eth_fee_recipient, block_size, recv_delay
 	FROM slots
 	WHERE root = $1
@@ -173,9 +173,9 @@ func GetSlotsByRoots(roots [][]byte) map[phase0.Root]*dbtypes.Slot {
 	sql := fmt.Sprintf(
 		`SELECT
 			root, slot, parent_root, state_root, status, proposer, graffiti, graffiti_text,
-			attestation_count, deposit_count, exit_count, withdraw_count, withdraw_amount, attester_slashing_count, 
+			attestation_count, deposit_count, exit_count, withdraw_count, withdraw_amount, attester_slashing_count,
 			proposer_slashing_count, bls_change_count, eth_transaction_count, eth_block_number, eth_block_hash,
-			eth_block_extra, eth_block_extra_text, sync_participation, fork_id, blob_count, eth_gas_used, 
+			eth_block_extra, eth_block_extra_text, sync_participation, fork_id, blob_count, eth_gas_used,
 			eth_gas_limit, eth_base_fee, eth_fee_recipient, block_size, recv_delay
 		FROM slots
 		WHERE root IN (%v)
@@ -233,9 +233,9 @@ func GetSlotsByBlockHash(blockHash []byte) []*dbtypes.Slot {
 	err := ReaderDb.Select(&slots, `
 	SELECT
 		slot, proposer, status, root, parent_root, state_root, graffiti, graffiti_text,
-		attestation_count, deposit_count, exit_count, withdraw_count, withdraw_amount, attester_slashing_count, 
-		proposer_slashing_count, bls_change_count, eth_transaction_count, eth_block_number, eth_block_hash, 
-		eth_block_extra, eth_block_extra_text, sync_participation, fork_id, blob_count, eth_gas_used, 
+		attestation_count, deposit_count, exit_count, withdraw_count, withdraw_amount, attester_slashing_count,
+		proposer_slashing_count, bls_change_count, eth_transaction_count, eth_block_number, eth_block_hash,
+		eth_block_extra, eth_block_extra_text, sync_participation, fork_id, blob_count, eth_gas_used,
 		eth_gas_limit, eth_base_fee, eth_fee_recipient, block_size, recv_delay
 	FROM slots
 	WHERE eth_block_hash = $1
@@ -331,26 +331,47 @@ func GetFilteredSlots(filter *dbtypes.BlockFilter, firstSlot uint64, offset uint
 	}
 	if filter.Graffiti != "" {
 		argIdx++
-		fmt.Fprintf(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
-			dbtypes.DBEnginePgsql:  ` AND slots.graffiti_text ilike $%v `,
-			dbtypes.DBEngineSqlite: ` AND slots.graffiti_text LIKE $%v `,
-		}), argIdx)
+		if filter.InvertGraffiti {
+			fmt.Fprintf(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
+				dbtypes.DBEnginePgsql:  ` AND (slots.graffiti_text IS NULL OR slots.graffiti_text NOT ilike $%v) `,
+				dbtypes.DBEngineSqlite: ` AND (slots.graffiti_text IS NULL OR slots.graffiti_text NOT LIKE $%v) `,
+			}), argIdx)
+		} else {
+			fmt.Fprintf(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
+				dbtypes.DBEnginePgsql:  ` AND slots.graffiti_text ilike $%v `,
+				dbtypes.DBEngineSqlite: ` AND slots.graffiti_text LIKE $%v `,
+			}), argIdx)
+		}
 		args = append(args, "%"+filter.Graffiti+"%")
 	}
 	if filter.ExtraData != "" {
 		argIdx++
-		fmt.Fprintf(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
-			dbtypes.DBEnginePgsql:  ` AND slots.eth_block_extra_text ilike $%v `,
-			dbtypes.DBEngineSqlite: ` AND slots.eth_block_extra_text LIKE $%v `,
-		}), argIdx)
+		if filter.InvertExtraData {
+			fmt.Fprintf(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
+				dbtypes.DBEnginePgsql:  ` AND (slots.eth_block_extra_text IS NULL OR slots.eth_block_extra_text NOT ilike $%v) `,
+				dbtypes.DBEngineSqlite: ` AND (slots.eth_block_extra_text IS NULL OR slots.eth_block_extra_text NOT LIKE $%v) `,
+			}), argIdx)
+		} else {
+			fmt.Fprintf(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
+				dbtypes.DBEnginePgsql:  ` AND slots.eth_block_extra_text ilike $%v `,
+				dbtypes.DBEngineSqlite: ` AND slots.eth_block_extra_text LIKE $%v `,
+			}), argIdx)
+		}
 		args = append(args, "%"+filter.ExtraData+"%")
 	}
 	if filter.ProposerName != "" {
 		argIdx++
-		fmt.Fprintf(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
-			dbtypes.DBEnginePgsql:  ` AND validator_names.name ilike $%v `,
-			dbtypes.DBEngineSqlite: ` AND validator_names.name LIKE $%v `,
-		}), argIdx)
+		if filter.InvertProposer {
+			fmt.Fprintf(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
+				dbtypes.DBEnginePgsql:  ` AND (validator_names.name IS NULL OR validator_names.name NOT ilike $%v) `,
+				dbtypes.DBEngineSqlite: ` AND (validator_names.name IS NULL OR validator_names.name NOT LIKE $%v) `,
+			}), argIdx)
+		} else {
+			fmt.Fprintf(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
+				dbtypes.DBEnginePgsql:  ` AND validator_names.name ilike $%v `,
+				dbtypes.DBEngineSqlite: ` AND validator_names.name LIKE $%v `,
+			}), argIdx)
+		}
 		args = append(args, "%"+filter.ProposerName+"%")
 	}
 

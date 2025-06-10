@@ -46,6 +46,9 @@ func SlotsFiltered(w http.ResponseWriter, r *http.Request) {
 	var extradata string
 	var proposer string
 	var pname string
+	var invertgraffiti bool
+	var invertextradata bool
+	var invertproposer bool
 	var withOrphaned uint64
 	var withMissing uint64
 
@@ -53,14 +56,23 @@ func SlotsFiltered(w http.ResponseWriter, r *http.Request) {
 		if urlArgs.Has("f.graffiti") {
 			graffiti = urlArgs.Get("f.graffiti")
 		}
+		if urlArgs.Has("f.ginvert") {
+			invertgraffiti = urlArgs.Get("f.ginvert") == "on"
+		}
 		if urlArgs.Has("f.extra") {
 			extradata = urlArgs.Get("f.extra")
+		}
+		if urlArgs.Has("f.einvert") {
+			invertextradata = urlArgs.Get("f.einvert") == "on"
 		}
 		if urlArgs.Has("f.proposer") {
 			proposer = urlArgs.Get("f.proposer")
 		}
 		if urlArgs.Has("f.pname") {
 			pname = urlArgs.Get("f.pname")
+		}
+		if urlArgs.Has("f.pinvert") {
+			invertproposer = urlArgs.Get("f.pinvert") == "on"
 		}
 		if urlArgs.Has("f.orphaned") {
 			withOrphaned, _ = strconv.ParseUint(urlArgs.Get("f.orphaned"), 10, 64)
@@ -75,7 +87,7 @@ func SlotsFiltered(w http.ResponseWriter, r *http.Request) {
 	var pageError error
 	pageError = services.GlobalCallRateLimiter.CheckCallLimit(r, 2)
 	if pageError == nil {
-		data.Data, pageError = getFilteredSlotsPageData(pageIdx, pageSize, graffiti, extradata, proposer, pname, uint8(withOrphaned), uint8(withMissing), displayColumns)
+		data.Data, pageError = getFilteredSlotsPageData(pageIdx, pageSize, graffiti, invertgraffiti, extradata, invertextradata, proposer, pname, invertproposer, uint8(withOrphaned), uint8(withMissing), displayColumns)
 	}
 	if pageError != nil {
 		handlePageError(w, r, pageError)
@@ -87,11 +99,11 @@ func SlotsFiltered(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func getFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string, extradata string, proposer string, pname string, withOrphaned uint8, withMissing uint8, displayColumns string) (*models.SlotsFilteredPageData, error) {
+func getFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string, invertgraffiti bool, extradata string, invertextradata bool, proposer string, pname string, invertproposer bool, withOrphaned uint8, withMissing uint8, displayColumns string) (*models.SlotsFilteredPageData, error) {
 	pageData := &models.SlotsFilteredPageData{}
-	pageCacheKey := fmt.Sprintf("slots_filtered:%v:%v:%v:%v:%v:%v:%v:%v:%v", pageIdx, pageSize, graffiti, extradata, proposer, pname, withOrphaned, withMissing, displayColumns)
+	pageCacheKey := fmt.Sprintf("slots_filtered:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v", pageIdx, pageSize, graffiti, invertgraffiti, extradata, invertextradata, proposer, pname, invertproposer, withOrphaned, withMissing, displayColumns)
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(_ *services.FrontendCacheProcessingPage) interface{} {
-		return buildFilteredSlotsPageData(pageIdx, pageSize, graffiti, extradata, proposer, pname, withOrphaned, withMissing, displayColumns)
+		return buildFilteredSlotsPageData(pageIdx, pageSize, graffiti, invertgraffiti, extradata, invertextradata, proposer, pname, invertproposer, withOrphaned, withMissing, displayColumns)
 	})
 	if pageErr == nil && pageRes != nil {
 		resData, resOk := pageRes.(*models.SlotsFilteredPageData)
@@ -103,20 +115,35 @@ func getFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string, 
 	return pageData, pageErr
 }
 
-func buildFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string, extradata string, proposer string, pname string, withOrphaned uint8, withMissing uint8, displayColumns string) *models.SlotsFilteredPageData {
+func buildFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string, invertgraffiti bool, extradata string, invertextradata bool, proposer string, pname string, invertproposer bool, withOrphaned uint8, withMissing uint8, displayColumns string) *models.SlotsFilteredPageData {
 	chainState := services.GlobalBeaconService.GetChainState()
 	filterArgs := url.Values{}
 	if graffiti != "" {
 		filterArgs.Add("f.graffiti", graffiti)
 	}
+	if invertgraffiti {
+		filterArgs.Add("f.ginvert", "on")
+	}
 	if extradata != "" {
 		filterArgs.Add("f.extra", extradata)
+	}
+	if invertextradata {
+		filterArgs.Add("f.einvert", "on")
 	}
 	if proposer != "" {
 		filterArgs.Add("f.proposer", proposer)
 	}
 	if pname != "" {
 		filterArgs.Add("f.pname", pname)
+	}
+	if invertgraffiti {
+		filterArgs.Add("f.ginvert", "on")
+	}
+	if invertextradata {
+		filterArgs.Add("f.einvert", "on")
+	}
+	if invertproposer {
+		filterArgs.Add("f.pinvert", "on")
 	}
 	if withOrphaned != 0 {
 		filterArgs.Add("f.orphaned", fmt.Sprintf("%v", withOrphaned))
@@ -173,12 +200,15 @@ func buildFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string
 	}
 
 	pageData := &models.SlotsFilteredPageData{
-		FilterGraffiti:     graffiti,
-		FilterExtraData:    extradata,
-		FilterProposer:     proposer,
-		FilterProposerName: pname,
-		FilterWithOrphaned: withOrphaned,
-		FilterWithMissing:  withMissing,
+		FilterGraffiti:        graffiti,
+		FilterExtraData:       extradata,
+		FilterProposer:        proposer,
+		FilterProposerName:    pname,
+		FilterInvertGraffiti:  invertgraffiti,
+		FilterInvertExtraData: invertextradata,
+		FilterInvertProposer:  invertproposer,
+		FilterWithOrphaned:    withOrphaned,
+		FilterWithMissing:     withMissing,
 
 		DisplayEpoch:        displayMap[1],
 		DisplaySlot:         displayMap[2],
@@ -223,11 +253,14 @@ func buildFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string
 	// load slots
 	pageData.Slots = make([]*models.SlotsFilteredPageDataSlot, 0)
 	blockFilter := &dbtypes.BlockFilter{
-		Graffiti:     graffiti,
-		ExtraData:    extradata,
-		ProposerName: pname,
-		WithOrphaned: withOrphaned,
-		WithMissing:  withMissing,
+		Graffiti:        graffiti,
+		ExtraData:       extradata,
+		ProposerName:    pname,
+		InvertGraffiti:  invertgraffiti,
+		InvertExtraData: invertextradata,
+		InvertProposer:  invertproposer,
+		WithOrphaned:    withOrphaned,
+		WithMissing:     withMissing,
 	}
 	if proposer != "" {
 		pidx, _ := strconv.ParseUint(proposer, 10, 64)
