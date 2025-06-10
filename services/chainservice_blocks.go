@@ -649,7 +649,8 @@ func (bs *ChainService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageIdx
 				blockGraffiti := string(blockIndex.Graffiti[:])
 				graffitiMatches := strings.Contains(blockGraffiti, filter.Graffiti)
 				if filter.InvertGraffiti {
-					if graffitiMatches {
+					// For inverted filter, include empty/null graffiti AND non-matching graffiti
+					if blockGraffiti != "" && graffitiMatches {
 						continue
 					}
 				} else {
@@ -664,7 +665,8 @@ func (bs *ChainService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageIdx
 				blockExtraData := string(blockIndex.ExecutionExtraData)
 				extraDataMatches := strings.Contains(blockExtraData, filter.ExtraData)
 				if filter.InvertExtraData {
-					if extraDataMatches {
+					// For inverted filter, include empty/null extra data AND non-matching extra data
+					if blockExtraData != "" && extraDataMatches {
 						continue
 					}
 				} else {
@@ -685,7 +687,8 @@ func (bs *ChainService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageIdx
 				proposerName := bs.validatorNames.GetValidatorName(proposer)
 				nameMatches := strings.Contains(proposerName, filter.ProposerName)
 				if filter.InvertProposer {
-					if nameMatches {
+					// For inverted filter, include empty/null names AND non-matching names
+					if proposerName != "" && nameMatches {
 						continue
 					}
 				} else {
@@ -742,7 +745,8 @@ func (bs *ChainService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageIdx
 					assignedName := bs.validatorNames.GetValidatorName(uint64(canonicalProposer))
 					nameMatches := assignedName != "" && strings.Contains(assignedName, filter.ProposerName)
 					if filter.InvertProposer {
-						if nameMatches {
+						// For inverted filter, include empty/null names AND non-matching names
+						if assignedName != "" && nameMatches {
 							continue
 						}
 					} else {

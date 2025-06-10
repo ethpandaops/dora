@@ -333,8 +333,8 @@ func GetFilteredSlots(filter *dbtypes.BlockFilter, firstSlot uint64, offset uint
 		argIdx++
 		if filter.InvertGraffiti {
 			fmt.Fprintf(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
-				dbtypes.DBEnginePgsql:  ` AND (slots.graffiti_text IS NULL OR slots.graffiti_text NOT ilike $%v) `,
-				dbtypes.DBEngineSqlite: ` AND (slots.graffiti_text IS NULL OR slots.graffiti_text NOT LIKE $%v) `,
+				dbtypes.DBEnginePgsql:  ` AND (slots.graffiti_text IS NULL OR slots.graffiti_text = '' OR slots.graffiti_text NOT ilike $%v) `,
+				dbtypes.DBEngineSqlite: ` AND (slots.graffiti_text IS NULL OR slots.graffiti_text = '' OR slots.graffiti_text NOT LIKE $%v) `,
 			}), argIdx)
 		} else {
 			fmt.Fprintf(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
@@ -348,8 +348,8 @@ func GetFilteredSlots(filter *dbtypes.BlockFilter, firstSlot uint64, offset uint
 		argIdx++
 		if filter.InvertExtraData {
 			fmt.Fprintf(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
-				dbtypes.DBEnginePgsql:  ` AND (slots.eth_block_extra_text IS NULL OR slots.eth_block_extra_text NOT ilike $%v) `,
-				dbtypes.DBEngineSqlite: ` AND (slots.eth_block_extra_text IS NULL OR slots.eth_block_extra_text NOT LIKE $%v) `,
+				dbtypes.DBEnginePgsql:  ` AND (slots.eth_block_extra_text IS NULL OR slots.eth_block_extra_text = '' OR slots.eth_block_extra_text NOT ilike $%v) `,
+				dbtypes.DBEngineSqlite: ` AND (slots.eth_block_extra_text IS NULL OR slots.eth_block_extra_text = '' OR slots.eth_block_extra_text NOT LIKE $%v) `,
 			}), argIdx)
 		} else {
 			fmt.Fprintf(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
@@ -363,8 +363,8 @@ func GetFilteredSlots(filter *dbtypes.BlockFilter, firstSlot uint64, offset uint
 		argIdx++
 		if filter.InvertProposer {
 			fmt.Fprintf(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
-				dbtypes.DBEnginePgsql:  ` AND (validator_names.name IS NULL OR validator_names.name NOT ilike $%v) `,
-				dbtypes.DBEngineSqlite: ` AND (validator_names.name IS NULL OR validator_names.name NOT LIKE $%v) `,
+				dbtypes.DBEnginePgsql:  ` AND (validator_names.name IS NULL OR validator_names.name = '' OR validator_names.name NOT ilike $%v) `,
+				dbtypes.DBEngineSqlite: ` AND (validator_names.name IS NULL OR validator_names.name = '' OR validator_names.name NOT LIKE $%v) `,
 			}), argIdx)
 		} else {
 			fmt.Fprintf(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
