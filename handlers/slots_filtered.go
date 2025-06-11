@@ -136,12 +136,6 @@ func buildFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string
 	if pname != "" {
 		filterArgs.Add("f.pname", pname)
 	}
-	if invertgraffiti {
-		filterArgs.Add("f.ginvert", "on")
-	}
-	if invertextradata {
-		filterArgs.Add("f.einvert", "on")
-	}
 	if invertproposer {
 		filterArgs.Add("f.pinvert", "on")
 	}
