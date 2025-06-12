@@ -113,7 +113,7 @@
         </div>
         <div class="row border-bottom p-2 mx-0">
           <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Represents the public key for this validator">Public Key:</span></div>
-          <div class="col-md-10">
+          <div class="col-md-10 text-monospace">
             0x{{ printf "%x" .PublicKey }}
             <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" .PublicKey }}"></i>
           </div>
@@ -139,7 +139,7 @@
         </div>
         <div class="row border-bottom p-2 mx-0">
           <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Represents the current withdrawal credentials for this validator">W/Credentials:</span></div>
-          <div class="col-md-10">
+          <div class="col-md-10 text-monospace">
             0x{{ printf "%x" .WithdrawCredentials }}
             <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" .WithdrawCredentials }}"></i>
           </div>

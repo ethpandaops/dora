@@ -97,7 +97,7 @@
                       </span>
                     </td>
                     <td>{{ formatAddCommas $client.HeadSlot }}</td>
-                    <td>
+                    <td class="text-monospace">
                       <span class="text-truncate d-inline-block" style="max-width: 200px">0x{{ printf "%x" $client.HeadRoot }}</span>
                       <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $client.HeadRoot }}"></i>
                     </td>

@@ -143,7 +143,7 @@
                 {{ range $i, $validator := .Validators }}
                   <tr>
                     <td><a href="/validator/{{ $validator.Index }}">{{ formatValidatorNameWithIndex $validator.Index $validator.Name }}</a></td>
-                    <td><a href="/validator/0x{{ printf "%x" $validator.PublicKey }}" class="text-truncate d-inline-block" style="max-width: 200px">0x{{ printf "%x" $validator.PublicKey }}</a></td>
+                    <td class="text-monospace"><a href="/validator/0x{{ printf "%x" $validator.PublicKey }}" class="text-truncate d-inline-block" style="max-width: 200px">0x{{ printf "%x" $validator.PublicKey }}</a></td>
                     <td>{{ formatEthFromGwei $validator.Balance }} ({{ formatEthAddCommasFromGwei $validator.EffectiveBalance }} ETH)</td>
                     <td>
                       {{- $validator.State -}}
