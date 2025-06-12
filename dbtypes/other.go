@@ -37,12 +37,15 @@ type UnfinalizedBlockFilter struct {
 }
 
 type BlockFilter struct {
-	Graffiti      string
-	ExtraData     string
-	ProposerIndex *uint64
-	ProposerName  string
-	WithOrphaned  uint8
-	WithMissing   uint8
+	Graffiti        string
+	InvertGraffiti  bool
+	ExtraData       string
+	InvertExtraData bool
+	ProposerIndex   *uint64
+	ProposerName    string
+	InvertProposer  bool
+	WithOrphaned    uint8
+	WithMissing     uint8
 }
 
 type MevBlockFilter struct {

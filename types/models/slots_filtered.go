@@ -6,12 +6,15 @@ import (
 
 // SlotsPageData is a struct to hold info for the slots page
 type SlotsFilteredPageData struct {
-	FilterGraffiti     string `json:"filter_graffiti"`
-	FilterExtraData    string `json:"filter_extra_data"`
-	FilterProposer     string `json:"filter_proposer"`
-	FilterProposerName string `json:"filter_pname"`
-	FilterWithOrphaned uint8  `json:"filter_orphaned"`
-	FilterWithMissing  uint8  `json:"filter_missing"`
+	FilterGraffiti        string `json:"filter_graffiti"`
+	FilterInvertGraffiti  bool   `json:"filter_invert_graffiti"`
+	FilterExtraData       string `json:"filter_extra_data"`
+	FilterInvertExtraData bool   `json:"filter_invert_extra_data"`
+	FilterProposer        string `json:"filter_proposer"`
+	FilterProposerName    string `json:"filter_pname"`
+	FilterInvertProposer  bool   `json:"filter_invert_proposer"`
+	FilterWithOrphaned    uint8  `json:"filter_orphaned"`
+	FilterWithMissing     uint8  `json:"filter_missing"`
 
 	DisplayEpoch        bool   `json:"dp_epoch"`
 	DisplaySlot         bool   `json:"dp_slot"`
