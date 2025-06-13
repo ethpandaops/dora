@@ -1,4 +1,0 @@
-Create a new optional tab that is a subcategory of Validators tab. This tab should open a new page, and list the most recent slot's attestation aggregations. This aggregation view should show only missed aggregations and categorize it by client name.
-Client name will be a combination of <cl>-<el>-<num> where cl: nimbus, teku, prysm, lodestar, grandine, lighthouse, and the el: erigon, geth, reth, besu, nethermind. 
-Ideally we should group the attestations by the different CLs, and show an aggregated view of the total number of missed attestations in the past 2 epochs. This information wont be available for a long time, as its cached for non finalized epochs only. Ideally the summary page should show always the 2 non finalized epochs.
-Make this page fit in with all other pages, use very similar design elements that you already see being used. Use same font sizes/types and same structural elements. Do you need any further info? 
