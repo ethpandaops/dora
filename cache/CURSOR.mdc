@@ -1,0 +1,22 @@
+---
+description: Cache - Two-tier caching abstraction with local memory and Redis storage
+globs: 
+  - "*.go"
+  - "**/*_test.go"
+alwaysApply: false
+---
+
+Cache component provides two-tier caching abstraction combining fast local in-memory storage with persistent Redis storage.
+
+## Key Implementation Patterns
+- **Tiered Cache Strategy**: Local-first lookup with automatic Redis fallback, write-through to both tiers
+- **RemoteCache Interface**: Use pluggable remote storage backends for testability and flexibility
+- **Context-aware Operations**: All remote operations must use context.Context with reasonable timeouts
+- **Type-safe Methods**: Provide specialized methods for common Go types (string, uint64, bool, JSON)
+
+## Critical Constraints
+- **Thread-safe Design**: All cache operations must be safe for concurrent access
+- **Graceful Degradation**: Cache must operate in local-only mode when Redis unavailable
+- **JSON Serialization**: Complex objects use JSON with cachedValue wrapper for versioning
+- **Key Prefixing**: Use Redis namespace isolation for multi-tenant scenarios
+- **No Runtime Reconfiguration**: Cache backends set at initialization only

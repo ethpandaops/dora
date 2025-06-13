@@ -1,0 +1,23 @@
+---
+description: Execution Client - Multi-client Ethereum execution layer interface with connection pooling
+globs: 
+  - "*.go"
+  - "**/*_test.go"
+alwaysApply: false
+---
+
+# Execution Client
+
+Multi-client Ethereum execution layer interface that supports Geth, Besu, Nethermind, Erigon, Reth, and Ethereumjs via connection pooling.
+
+## Key Integration Patterns
+- Use Pool to manage multiple Client instances with automatic failover
+- Support client type detection via version string pattern matching
+- Implement retry logic with exponential backoff for failed operations
+- Maintain shared ChainState across all clients for consistency
+
+## Important Constraints
+- Always use pool-based access rather than direct client instantiation
+- Implement proper client lifecycle management (online/offline status tracking)
+- Support both HTTP and WebSocket connections with SSH tunnel capability
+- Maintain backward compatibility across different execution client versions

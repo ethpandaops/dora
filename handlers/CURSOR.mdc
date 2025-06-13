@@ -1,0 +1,29 @@
+---
+description: HTTP handlers - Ethereum beacon chain explorer web interface controllers
+globs: 
+  - "*.go"
+  - "**/*.go"
+alwaysApply: false
+---
+
+# HTTP Handlers
+
+HTTP request handlers that serve the Dora Ethereum beacon chain explorer web interface and API endpoints.
+
+## Key Integration Patterns
+- Use `InitPageData()` for consistent page initialization with common template data
+- Integrate with `services.GlobalBeaconService` for all beacon chain data access
+- Implement caching via `services.GlobalFrontendCache.ProcessCachedPage()` for performance
+- Support rate limiting through `services.GlobalCallRateLimiter.CheckCallLimit()`
+
+## Response Architecture  
+- Separate data building (`build*PageData`) from request handling for reusability
+- Use template-based HTML rendering with Go templates for web pages
+- Return structured JSON responses for API endpoints
+- Implement lazy loading patterns for tabbed interfaces
+
+## Error Handling
+- Use `handlePageError()` for consistent error page responses
+- Use `handleTemplateError()` for template execution error handling
+- Provide user-friendly error messages with appropriate HTTP status codes
+- Support both HTML error pages and JSON error responses

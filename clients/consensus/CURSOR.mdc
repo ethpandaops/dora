@@ -1,0 +1,15 @@
+---
+description: Consensus Client Pool - Ethereum beacon chain client management with multi-client failover
+globs: 
+  - "*.go"
+  - "**/*.go"
+alwaysApply: false
+---
+
+Ethereum consensus client pool that manages multiple beacon chain connections with automatic failover and shared chain state.
+
+- Use Pool pattern for managing multiple Client instances with shared ChainState
+- Implement subscription-based event dispatching with generic Dispatcher[T] pattern  
+- Maintain client health monitoring with automatic retry logic and exponential backoff
+- Share finality and chain state updates across all pool clients
+- Support client-specific configurations while maintaining pool-level consensus view

@@ -1,0 +1,19 @@
+---
+description: Database Types - Database struct definitions for Dora Ethereum explorer data persistence
+globs: 
+  - "*.go"
+alwaysApply: false
+---
+
+Database struct definitions for Dora explorer that map directly to database tables and query results.
+
+## Key Patterns
+- All structs use `db` struct tags for database column mapping
+- Use SlotStatus enum type (Missing, Canonical, Orphaned) for blockchain data consistency
+- Search result types are optimized for specific query patterns and minimal data transfer
+- Engine abstraction supports multiple database backends (SQLite, PostgreSQL)
+
+## Critical Constraints
+- Never modify existing `db` tag names - database schema migrations depend on them
+- All blockchain identifiers use []byte for consistency with raw blockchain data
+- Maintain exact field ordering for database compatibility

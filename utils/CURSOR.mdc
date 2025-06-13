@@ -1,0 +1,25 @@
+---
+description: Utils - Foundational infrastructure layer for Dora Ethereum explorer
+globs: 
+  - "*.go"
+  - "**/*.go"
+alwaysApply: false
+---
+
+# Utils Package - Foundational Infrastructure Layer
+
+Provides shared utilities, configuration management, and Ethereum-specific data transformation for the Dora explorer.
+
+## Key Patterns
+- **Template-centric rendering**: All formatting functions designed for HTML template integration
+- **Global configuration state**: Centralized config loading with hybrid YAML/env/default strategy  
+- **Protocol compliance layer**: Implements Ethereum consensus specifications (ENR, PeerDAS)
+- **Safe numeric operations**: uint256 conversions with overflow protection
+- **Structured logging**: Hook-based architecture for multiple output destinations
+
+## Critical Constraints
+- Template functions require HTML escaping for security
+- Configuration requires at least one beacon node endpoint
+- Panic recovery includes automatic restart with 10-second delay
+- ENR operations only support secp256k1 public keys
+- All hex parsing failures are fatal errors

@@ -1,0 +1,16 @@
+---
+description: Execution Indexer - Ethereum execution layer contract indexing with multi-client support
+globs: 
+  - "*.go"
+  - "**/*_test.go"
+alwaysApply: false
+---
+
+Ethereum execution layer indexer supporting deposits, withdrawals, and consolidations via generic contract indexing pattern.
+
+- Use generic contractIndexer[TxType] pattern for type-safe transaction processing
+- Implement priority-based execution client selection with archive node fallback
+- Support fork-aware processing with separate handlers for finalized vs recent transactions
+- Always include batch processing with configurable batch sizes for RPC efficiency
+- Maintain queue-based dequeue rate calculations for transaction timing predictions
+- Use IndexerCtx for centralized client pool and chain state management

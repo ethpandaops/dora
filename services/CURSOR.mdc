@@ -1,0 +1,15 @@
+---
+description: Services - Core business logic layer providing data access and caching services
+globs: 
+  - "*.go"
+  - "**/*_test.go"
+alwaysApply: false
+---
+
+Core business logic services that orchestrate data access between blockchain clients, database, and frontend cache.
+
+- ChainService manages consensus/execution client pools for blockchain data retrieval
+- FrontendCacheService provides tiered caching with processing coordination
+- All services use dependency injection pattern with logger and client pool dependencies
+- Implement rate limiting for external API calls to prevent client overload
+- Use context-aware operations for cancellation and timeouts

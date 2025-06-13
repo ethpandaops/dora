@@ -1,0 +1,16 @@
+---
+description: Configuration management for embedded default configs and validator names
+globs: 
+  - "*.go"
+  - "*.yml"
+  - "*.yaml"
+alwaysApply: false
+---
+
+Configuration component that embeds default configuration files and validator names using Go's embed package.
+
+- Use Go's `embed` package to bundle configuration files into the binary
+- Embed default.config.yml as a string for the main explorer configuration
+- Embed *.names.yml files as a filesystem for validator name mappings
+- Keep validator name files organized by network (holesky, sepolia, etc.)
+- Configuration files should be self-documenting with comments explaining options

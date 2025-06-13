@@ -1,0 +1,14 @@
+---
+description: UI Utils - Ethereum amount formatting utilities
+globs: 
+  - "*.ts"
+  - "*.tsx"
+alwaysApply: false
+---
+
+Ethereum amount formatting utilities for converting raw values to human-readable formats.
+
+- Use `toReadableAmount()` for user-facing display with proper decimal handling
+- Default to 18 decimals for ETH values, customize for other tokens
+- Always handle both number and bigint inputs for compatibility
+- Strip trailing zeros from formatted amounts for clean display

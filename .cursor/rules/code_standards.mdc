@@ -1,0 +1,15 @@
+# Code Standards
+
+This file defines coding standards and conventions for this project.
+
+## Code Style
+- Follow language-specific best practices
+- Maintain consistency with existing code
+- Use meaningful names for variables and functions
+
+## Documentation
+- Document public APIs and interfaces
+- Include examples where helpful
+- Keep documentation up to date
+
+_This file will be auto-generated and customized by Claude AI._

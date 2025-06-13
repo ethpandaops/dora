@@ -1,0 +1,16 @@
+---
+description: Beacon Indexer - Multi-client Ethereum beacon chain indexer with real-time processing and layered caching
+globs: 
+  - "*.go"
+  - "**/*_test.go"
+alwaysApply: false
+---
+
+Ethereum beacon chain indexer that processes data from multiple consensus clients with real-time event processing and comprehensive caching.
+
+- Support multiple consensus clients simultaneously via Client abstraction
+- Use layered caching strategy: blockCache, epochCache, forkCache, validatorCache
+- Implement memory-bounded design with configurable `inMemoryEpochs` limit
+- Process finalization events to persist data and prune old cache entries
+- Use background synchronizer for historical data gaps and recovery
+- Maintain thread-safe operations with proper mutex protection for concurrent processing

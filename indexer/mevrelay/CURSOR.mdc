@@ -1,0 +1,16 @@
+---
+description: MEV Relay Indexer - Fetches and indexes MEV block data from multiple Ethereum MEV relays
+globs: 
+  - "*.go"
+  - "**/*_test.go"
+alwaysApply: false
+---
+
+MEV relay data indexer that fetches block bid traces from multiple MEV relays concurrently.
+
+- Use in-memory cache with mutex protection for concurrent relay data fetching
+- Implement periodic refresh with configurable intervals (default 10 minutes)
+- Always check finalized slot boundaries to avoid processing stale data
+- Use relay flag bitmasks to track which relays have seen each block
+- Include retry logic and proper error handling for HTTP relay requests
+- Maintain lastLoadedSlot tracking per relay to avoid duplicate processing

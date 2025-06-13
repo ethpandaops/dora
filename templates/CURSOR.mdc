@@ -1,0 +1,28 @@
+---
+description: Templates - HTML template management system with embedded filesystem and caching
+globs: 
+  - "*.html"
+  - "*.go"
+  - "templates.go"
+alwaysApply: false
+---
+
+HTML template management system for Dora blockchain explorer with embedded filesystem, caching, and minification.
+
+## Architecture Patterns
+- Use Go embed.FS for compile-time template embedding via `//go:embed *` directive
+- Implement thread-safe template caching with RWMutex for production performance
+- Support debug mode with live file reloading that bypasses cache
+- Template names must be unique across entire directory structure
+
+## Integration Requirements
+- Templates must be compatible with utils.GetTemplateFuncs() function map
+- Use parseTemplateFiles() for consistent template parsing across debug/production modes
+- Minification is configurable via utils.Config.Frontend.Minify flag
+- All templates must be parseable at compile-time for validation
+
+## Template Organization
+- Group related templates in subdirectories by functional area
+- Use layout.html as base template for consistent page structure
+- Include error templates (404.html, 500.html) in _layout directory
+- SVG templates go in _svg directory for reusable components
