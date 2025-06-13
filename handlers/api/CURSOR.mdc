@@ -1,0 +1,28 @@
+---
+description: API V1 handlers - Ethereum beacon chain API endpoints for validators and epochs
+globs: 
+  - "*.go"
+  - "**/*_v1.go"
+alwaysApply: false
+---
+
+# API V1 Handlers
+
+REST API handlers that implement version 1 endpoints for Ethereum beacon chain data access.
+
+## Key Integration Patterns
+- Use `ApiResponse` struct for consistent JSON response format with `status` and `data` fields
+- Support validator lookup by both index and pubkey via `parseValidatorParamsToIndices` helper
+- Integrate with `services.GlobalBeaconService` for validator data and beacon chain state
+- Use comma-separated parameters with configurable limits for batch operations
+
+## Response Conventions
+- Always use `SendOKResponse()` for successful responses with proper JSON encoding
+- Use `sendBadRequestResponse()` for 400 errors and `sendServerErrorResponse()` for 500 errors
+- Structure response data as single object or array based on result count
+- Include comprehensive validator state fields (balance, status, epochs, pubkey, etc.)
+
+## Parameter Handling
+- Support mixed validator identifiers: indices (numeric) and pubkeys (hex with/without 0x prefix)
+- Enforce parameter limits to prevent resource exhaustion
+- Return descriptive error messages for invalid parameters or missing validators

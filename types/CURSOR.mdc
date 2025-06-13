@@ -1,0 +1,19 @@
+---
+description: Types - Core type definitions for Dora Ethereum explorer configuration and data models
+globs: 
+  - "*.go"
+alwaysApply: false
+---
+
+Central type definitions for Dora Ethereum explorer that define configuration, page data, and core domain types.
+
+## Key Patterns
+- Configuration structs use yaml and envconfig tags for external configuration
+- Use embedded structs to organize related config sections (e.g. Frontend, BeaconApi)  
+- All blockchain numeric values use uint64 type for consistency
+- Transaction signature types use fixed-size byte arrays and enum-style constants
+
+## Critical Constraints
+- Never modify existing struct field names - other components depend on them
+- All new config fields must include both yaml and envconfig tags
+- Keep type definitions at this level - complex logic belongs in other components

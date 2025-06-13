@@ -1,0 +1,23 @@
+---
+description: Data models for Dora Ethereum explorer - defines structs for pages, clients, and blockchain entities
+globs: 
+  - "*.go"
+alwaysApply: false
+---
+
+# Types/Models Component
+
+Data model definitions for Dora Ethereum explorer that serve as the interface between handlers and templates.
+
+## Key Patterns
+- All structs follow `*PageData` naming convention for view models
+- Use JSON struct tags for frontend serialization
+- Include display flags (e.g. `Display*` fields) for UI conditional rendering
+- Maintain time.Time for all timestamp fields
+- Use uint64 for all blockchain numeric values (slots, epochs, balances)
+
+## Critical Constraints
+- Never modify existing JSON field names - frontend depends on them
+- All new fields must include appropriate JSON tags
+- Display flags must have `dp_` prefix in JSON for consistency
+- Client and validator structs must support both execution and consensus layer data

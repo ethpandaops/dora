@@ -1,0 +1,15 @@
+---
+description: Beacon Duties - Ethereum validator duty assignments using cryptographic shuffling
+globs: 
+  - "*.go"
+  - "**/*_test.go"
+alwaysApply: false
+---
+
+Implements Ethereum beacon chain validator duty assignments using cryptographic shuffling algorithms.
+
+- Use Fisher-Yates shuffle with deterministic seeding for validator selection
+- Support both pre-Electra and Electra fork proposer selection algorithms  
+- Maintain cryptographically secure randomness via SHA256 hashing
+- Optimize for large validator sets with efficient shuffling algorithms
+- Always validate index bounds and handle empty validator lists gracefully

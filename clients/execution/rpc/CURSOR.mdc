@@ -1,0 +1,23 @@
+---
+description: Execution RPC - Ethereum execution client RPC interface with SSH tunnel support
+globs: 
+  - "*.go"
+  - "**/*_test.go"
+alwaysApply: false
+---
+
+# Execution RPC Client
+
+Ethereum execution client RPC interface that provides standardized access to execution layer APIs with SSH tunnel support.
+
+## Key Patterns
+- Use ExecutionClient struct as the primary interface for all execution client operations
+- Support SSH tunneling for secure remote connections via sshtunnel.SSHTunnel
+- Implement client-specific workarounds (e.g., Nethermind admin_peers boolean parameter)
+- Maintain dual RPC clients: raw rpc.Client for direct calls, ethclient.Client for standard operations
+
+## Important Constraints
+- Always initialize client before use via Initialize() method
+- Handle SSH tunnel lifecycle properly - start during construction, cleanup on close
+- Support both key-based and password-based SSH authentication
+- Implement context-aware operations for all RPC calls

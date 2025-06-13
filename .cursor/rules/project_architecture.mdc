@@ -1,0 +1,15 @@
+# Project Architecture
+
+This file contains project-specific architecture guidelines and patterns.
+
+## Overview
+- Project structure and organization
+- Module dependencies and relationships
+- Key architectural decisions
+
+## Guidelines
+- Follow established patterns in the codebase
+- Maintain consistency with existing architecture
+- Document significant architectural changes
+
+_This file will be auto-generated and customized by Claude AI._

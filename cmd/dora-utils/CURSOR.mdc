@@ -1,0 +1,23 @@
+---
+description: Dora Utils - CLI utilities for Ethereum blockchain data management
+globs: 
+  - "*.go"
+  - "**/*_test.go"
+alwaysApply: false
+---
+
+# Dora Utils
+
+CLI utility collection that provides blockdb synchronization and database migration functionality for Ethereum blockchain data.
+
+## Key Integration Patterns
+- Multi-client consensus layer support via connection pooling
+- Concurrent slot processing with configurable worker count
+- Dynamic SSZ encoding/decoding for Ethereum block data
+- Support for multiple storage backends (Pebble, S3) and database engines (SQLite, PostgreSQL)
+
+## Important Constraints
+- Always validate epoch ranges before processing (end > start)
+- Use connection pooling for high-throughput beacon client operations
+- Implement proper error handling with detailed logging for debugging
+- Maintain transactional integrity during database migrations

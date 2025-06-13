@@ -1,0 +1,15 @@
+---
+description: Consensus RPC - Ethereum beacon chain RPC client abstraction
+globs: 
+  - "*.go"
+  - "**/*.go"
+alwaysApply: false
+---
+
+Ethereum consensus layer RPC client that provides beacon chain API access and real-time event streaming.
+
+- Use go-eth2-client library for all beacon API operations
+- Implement concurrent event streaming with proper context cancellation
+- Support SSH tunneling for secure remote beacon node connections
+- Handle SSZ serialization toggle for client compatibility
+- Maintain stateful connections for block/finalization event streams

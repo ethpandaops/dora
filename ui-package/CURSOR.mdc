@@ -1,0 +1,17 @@
+---
+description: UI Package - Embeddable React components for Ethereum staking operations
+globs: 
+  - "*.tsx"
+  - "*.ts"
+  - "*.scss"
+  - "webpack.config.js"
+alwaysApply: false
+---
+
+Embeddable React UI components for Ethereum staking operations (deposits, withdrawals, consolidations) with Web3 wallet integration.
+
+- All components must be wrapped with WagmiRainbowProvider for Web3 functionality
+- Use lazy loading with webpack chunks for component isolation and performance  
+- Export components via global namespace (globalThis.doraUiComponents) for embedding
+- Maintain stateless design with external configuration via props interfaces
+- Components integrate with Go embed.FS for asset serving in parent application

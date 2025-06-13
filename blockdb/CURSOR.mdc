@@ -1,0 +1,14 @@
+---
+description: BlockDB - Block storage abstraction layer supporting multiple backend engines
+globs: 
+  - "*.go"
+  - "**/*.go"
+alwaysApply: false
+---
+
+Block storage abstraction layer supporting multiple backend engines via strategy pattern.
+
+- Use BlockDbEngine interface for all storage backend implementations
+- Maintain global singleton pattern with InitWithPebble/InitWithS3 initialization
+- Keep API stateless - all operations require context and explicit parameters
+- Support lazy parsing with parseBlock callback in GetBlock operations
