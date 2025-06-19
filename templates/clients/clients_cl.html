@@ -619,6 +619,11 @@
           clientRow.click()
         }
       }
+      
+      // Check refresh cooldown status on page load
+      if (typeof window.explorer !== 'undefined' && window.explorer.checkRefreshCooldown) {
+        window.explorer.checkRefreshCooldown();
+      }
     });
   </script>
 

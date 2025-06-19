@@ -165,6 +165,7 @@ func startFrontend(router *mux.Router) {
 	router.HandleFunc("/index/data", handlers.IndexData).Methods("GET")
 	router.HandleFunc("/clients/consensus", handlers.ClientsCL).Methods("GET")
 	router.HandleFunc("/clients/consensus/refresh", handlers.ClientsCLRefresh).Methods("POST")
+	router.HandleFunc("/clients/consensus/refresh/status", handlers.ClientsCLRefreshStatus).Methods("GET")
 	router.HandleFunc("/clients/execution", handlers.ClientsEl).Methods("GET")
 	router.HandleFunc("/forks", handlers.Forks).Methods("GET")
 	router.HandleFunc("/epochs", handlers.Epochs).Methods("GET")
