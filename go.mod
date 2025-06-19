@@ -7,7 +7,7 @@ toolchain go1.24.1
 require (
 	github.com/520MianXiangDuiXiang520/MapSize v0.0.0-20230414174449-030467540731
 	github.com/Masterminds/sprig/v3 v3.3.0
-	github.com/attestantio/go-eth2-client v0.25.2
+	github.com/attestantio/go-eth2-client v0.26.0
 	github.com/cockroachdb/pebble v1.1.5
 	github.com/coocood/freecache v1.2.4
 	github.com/ethereum/go-ethereum v1.15.0
@@ -21,7 +21,7 @@ require (
 	github.com/lib/pq v1.10.9
 	github.com/libp2p/go-libp2p v0.36.5
 	github.com/mashingan/smapping v0.1.19
-	github.com/minio/minio-go/v7 v7.0.92
+	github.com/minio/minio-go/v7 v7.0.93
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/pk910/dynamic-ssz v0.0.6
 	github.com/pressly/goose/v3 v3.24.3
