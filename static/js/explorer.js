@@ -13,6 +13,7 @@
     renderRecentTime: renderRecentTime,
     tooltipDict: tooltipDict,
     refreshPeerInfos: refreshPeerInfos,
+    hexToDecimal: hexToDecimal,
   };
 
   function modalFixes() {
@@ -84,6 +85,13 @@
     setTimeout(function () {
       tooltip.setContent({ '.tooltip-inner': title });
     }, 1000);
+  }
+
+  function hexToDecimal(hexValue) {
+    if (typeof hexValue !== 'string') return '';
+    var cleanHex = hexValue.replace(/^0x/i, '');
+    var decimal = parseInt(cleanHex, 16);
+    return isNaN(decimal) ? '' : decimal.toString();
   }
 
   function updateTimers() {
@@ -333,7 +341,6 @@
       alert('Failed to refresh peer information: ' + error.message);
     });
   }
-
 })()
 
 window.refreshPeerInfos = function() {
