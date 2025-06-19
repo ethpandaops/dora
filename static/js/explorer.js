@@ -96,8 +96,7 @@
   }
 
   function checkRefreshCooldown() {
-    var refreshIcon = $('i.fa-refresh');
-    var refreshButton = refreshIcon.closest('[onclick="refreshPeerInfos()"]');
+    var refreshButton = $('i[onclick="refreshPeerInfos()"]');
     
     if (refreshButton.length === 0) return; // Button not found on this page
     
@@ -111,7 +110,7 @@
             'cursor': 'not-allowed',
             'pointer-events': 'none'
           });
-          refreshIcon.removeClass('fa-refresh').addClass('fa-clock-o');
+          refreshButton.removeClass('fa-refresh').addClass('fa-clock-o');
           var cooldownMsg = `Refresh cooldown active - ${data.remaining_seconds}s remaining`;
           if (data.online_clients) {
             if (data.total_cooldown === 60 && data.online_clients * 3 > 60) {
@@ -135,7 +134,7 @@
                     'cursor': 'pointer',
                     'pointer-events': 'auto'
                   });
-                  refreshIcon.removeClass('fa-clock-o').addClass('fa-refresh');
+                  refreshButton.removeClass('fa-clock-o').addClass('fa-refresh');
                   refreshButton.attr('title', 'Refresh peer information');
                 } else {
                   // Update remaining time
@@ -158,7 +157,7 @@
                   'cursor': 'pointer',
                   'pointer-events': 'auto'
                 });
-                refreshIcon.removeClass('fa-clock-o').addClass('fa-refresh');
+                refreshButton.removeClass('fa-clock-o').addClass('fa-refresh');
                 refreshButton.attr('title', 'Refresh peer information');
               });
           }, 1000);
@@ -169,7 +168,7 @@
             'cursor': 'pointer',
             'pointer-events': 'auto'
           });
-          refreshIcon.removeClass('fa-clock-o').addClass('fa-refresh');
+          refreshButton.removeClass('fa-clock-o').addClass('fa-refresh');
           refreshButton.attr('title', 'Refresh peer information');
         }
       })
@@ -399,8 +398,7 @@
   }
 
   function refreshPeerInfos() {
-    var refreshIcon = $('i.fa-refresh, i.fa-clock-o');
-    var refreshButton = refreshIcon.closest('[onclick="refreshPeerInfos()"]');
+    var refreshButton = $('i[onclick="refreshPeerInfos()"]');
     
     // Check if button is disabled due to cooldown
     if (refreshButton.hasClass('disabled') || refreshButton.css('pointer-events') === 'none') {
@@ -412,7 +410,7 @@
       'opacity': '0.7',
       'pointer-events': 'none'
     });
-    refreshIcon.removeClass('fa-refresh fa-clock-o').addClass('fa-refresh fa-spin');
+    refreshButton.removeClass('fa-refresh fa-clock-o').addClass('fa-refresh fa-spin');
     
     // Call the refresh API
     fetch('/clients/consensus/refresh', {
@@ -425,14 +423,14 @@
     .then(data => {
       if (data.success) {
         // Success - show success message briefly then reload
-        refreshIcon.removeClass('fa-spin fa-refresh').addClass('fa-check text-success');
+        refreshButton.removeClass('fa-spin fa-refresh').addClass('fa-check text-success');
         refreshButton.attr('title', `Successfully refreshed ${data.refreshed_clients} clients`);
         setTimeout(() => {
           window.location.reload();
         }, 1000);
       } else {
         // Error - show message and re-enable button or start cooldown
-        refreshIcon.removeClass('fa-spin').addClass('fa-refresh');
+        refreshButton.removeClass('fa-spin').addClass('fa-refresh');
         
         if (data.message && data.message.includes('cooldown')) {
           // Handle cooldown - start checking cooldown status
@@ -449,7 +447,7 @@
     })
     .catch(error => {
       // Network error - show message and re-enable button
-      refreshIcon.removeClass('fa-spin').addClass('fa-refresh');
+      refreshButton.removeClass('fa-spin').addClass('fa-refresh');
       refreshButton.removeClass('disabled').css({
         'opacity': '1',
         'pointer-events': 'auto'
@@ -460,8 +458,7 @@
 })()
 
 window.refreshPeerInfos = function() {
-  var refreshIcon = $('i.fa-refresh, i.fa-clock-o');
-  var refreshButton = refreshIcon.closest('[onclick="refreshPeerInfos()"]');
+  var refreshButton = $('i[onclick="refreshPeerInfos()"]');
   
   // Check if button is disabled due to cooldown
   if (refreshButton.hasClass('disabled') || refreshButton.css('pointer-events') === 'none') {
@@ -473,7 +470,7 @@ window.refreshPeerInfos = function() {
     'opacity': '0.7',
     'pointer-events': 'none'
   });
-  refreshIcon.removeClass('fa-refresh fa-clock-o').addClass('fa-refresh fa-spin');
+  refreshButton.removeClass('fa-refresh fa-clock-o').addClass('fa-refresh fa-spin');
   
   // Call the refresh API
   fetch('/clients/consensus/refresh', {
@@ -486,14 +483,14 @@ window.refreshPeerInfos = function() {
   .then(data => {
     if (data.success) {
       // Success - show success message briefly then reload
-      refreshIcon.removeClass('fa-spin fa-refresh').addClass('fa-check text-success');
+      refreshButton.removeClass('fa-spin fa-refresh').addClass('fa-check text-success');
       refreshButton.attr('title', `Successfully refreshed ${data.refreshed_clients} clients`);
       setTimeout(() => {
         window.location.reload();
       }, 1000);
     } else {
       // Error - show message and re-enable button or start cooldown
-      refreshIcon.removeClass('fa-spin').addClass('fa-refresh');
+      refreshButton.removeClass('fa-spin').addClass('fa-refresh');
       
       if (data.message && data.message.includes('cooldown')) {
         // Handle cooldown - start checking cooldown status
@@ -510,7 +507,7 @@ window.refreshPeerInfos = function() {
   })
   .catch(error => {
     // Network error - show message and re-enable button
-    refreshIcon.removeClass('fa-spin').addClass('fa-refresh');
+    refreshButton.removeClass('fa-spin').addClass('fa-refresh');
     refreshButton.removeClass('disabled').css({
       'opacity': '1',
       'pointer-events': 'auto'

@@ -102,7 +102,12 @@ func ClientsCLRefresh(w http.ResponseWriter, r *http.Request) {
 	// Update last refresh time
 	lastRefreshTime = time.Now()
 
-	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+	// Use dynamic timeout based on number of clients (min 60s, max 300s)
+	timeoutDuration := time.Duration(60+onlineClientCount) * time.Second
+	if timeoutDuration > 300*time.Second {
+		timeoutDuration = 300 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), timeoutDuration)
 	defer cancel()
 
 	if len(consensusClients) == 0 {
@@ -169,12 +174,12 @@ func ClientsCLRefresh(w http.ResponseWriter, r *http.Request) {
 
 	// Wait for all goroutines to complete
 	wg.Wait()
-	close(resultsChan)
 
-	// Collect results
+	// Collect results (no need to close buffered channel, just read what's there)
 	refreshedClients := 0
 	failedClients := 0
-	for result := range resultsChan {
+	for i := 0; i < len(onlineClients); i++ {
+		result := <-resultsChan
 		if result.success {
 			refreshedClients++
 		} else {
