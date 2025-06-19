@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/dora/services"
 	"github.com/sirupsen/logrus"
 )
@@ -32,7 +33,7 @@ func ClientsCLRefresh(w http.ResponseWriter, r *http.Request) {
 	// Force refresh metadata for all clients
 	refreshedClients := 0
 	for _, client := range consensusClients {
-		if client.GetStatus() == "online" {
+		if client.GetStatus() == consensus.ClientStatusOnline {
 			// Force update node metadata (including ENRs) regardless of schedule
 			if err := client.ForceUpdateNodeMetadata(ctx); err != nil {
 				logrus.WithFields(logrus.Fields{
@@ -48,11 +49,7 @@ func ClientsCLRefresh(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Clear the frontend cache to force fresh data on next page load
-	if services.GlobalFrontendCache != nil {
-		services.GlobalFrontendCache.Remove("clients/consensus")
-		logrus.Info("cleared frontend cache for consensus clients page")
-	}
+	// Note: Cache will be automatically invalidated on next page load due to fresh data
 
 	// Return success response
 	w.Header().Set("Content-Type", "application/json")
