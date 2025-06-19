@@ -12,6 +12,7 @@
     initControls: initControls,
     renderRecentTime: renderRecentTime,
     tooltipDict: tooltipDict,
+    refreshPeerInfos: refreshPeerInfos,
   };
 
   function modalFixes() {
@@ -304,5 +305,16 @@
     })
   }
 
+  function refreshPeerInfos() {
+    var refreshIcon = $('i.fa-refresh');
+    refreshIcon.addClass('fa-spin');
+    window.location.reload();
+  }
 
 })()
+
+window.refreshPeerInfos = function() {
+  var refreshIcon = $('i.fa-refresh');
+  refreshIcon.addClass('fa-spin');
+  window.location.reload();
+};
