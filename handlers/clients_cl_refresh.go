@@ -32,7 +32,7 @@ func ClientsCLRefreshStatus(w http.ResponseWriter, r *http.Request) {
 			onlineClientCount++
 		}
 	}
-	
+
 	cooldownDuration := time.Duration(onlineClientCount*3) * time.Second
 	if cooldownDuration < 3*time.Second {
 		cooldownDuration = 3 * time.Second // Minimum 3 seconds
@@ -64,7 +64,7 @@ func ClientsCLRefresh(w http.ResponseWriter, r *http.Request) {
 			onlineClientCount++
 		}
 	}
-	
+
 	// Calculate dynamic cooldown based on number of connected nodes (3s per node, max 60s)
 	cooldownDuration := time.Duration(onlineClientCount*3) * time.Second
 	if cooldownDuration < 3*time.Second {
