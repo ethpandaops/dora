@@ -308,7 +308,30 @@
   function refreshPeerInfos() {
     var refreshIcon = $('i.fa-refresh');
     refreshIcon.addClass('fa-spin');
-    window.location.reload();
+    
+    // Call the refresh API
+    fetch('/clients/consensus/refresh', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    })
+    .then(response => response.json())
+    .then(data => {
+      if (data.success) {
+        // Success - reload the page to show fresh data
+        window.location.reload();
+      } else {
+        // Error - show message and stop spinning
+        refreshIcon.removeClass('fa-spin');
+        alert('Failed to refresh peer information: ' + (data.message || 'Unknown error'));
+      }
+    })
+    .catch(error => {
+      // Network error - show message and stop spinning
+      refreshIcon.removeClass('fa-spin');
+      alert('Failed to refresh peer information: ' + error.message);
+    });
   }
 
 })()
@@ -316,5 +339,28 @@
 window.refreshPeerInfos = function() {
   var refreshIcon = $('i.fa-refresh');
   refreshIcon.addClass('fa-spin');
-  window.location.reload();
+  
+  // Call the refresh API
+  fetch('/clients/consensus/refresh', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  })
+  .then(response => response.json())
+  .then(data => {
+    if (data.success) {
+      // Success - reload the page to show fresh data
+      window.location.reload();
+    } else {
+      // Error - show message and stop spinning
+      refreshIcon.removeClass('fa-spin');
+      alert('Failed to refresh peer information: ' + (data.message || 'Unknown error'));
+    }
+  })
+  .catch(error => {
+    // Network error - show message and stop spinning
+    refreshIcon.removeClass('fa-spin');
+    alert('Failed to refresh peer information: ' + error.message);
+  });
 };
