@@ -11,11 +11,12 @@
         </ol>
       </nav>
     </div>
+
     <div class="card mt-2">
       <div class="accordion" id="network-accordion">
         <div class="accordion-item">
           <h2 class="accordion-header">
-            <button id="peerGraphToggler" class="accordion-button btn-secondary collapsed" style="box-shadow: none;" type="button" data-bs-toggle="collapse" data-bs-target="#peerGraph" aria-expanded="true" aria-controls="peerGraph">
+            <button id="peerGraphToggler" class="accordion-button btn-secondary collapsed" style="box-shadow: none;" type="button" data-bs-toggle="collapse" data-bs-target="#peerGraph" aria-expanded="false" aria-controls="peerGraph">
               <i class="fa-solid fa-circle-nodes" style="margin-right:5px"></i> Client graph
             </button>
           </h2>
@@ -260,7 +261,7 @@
                       </span>
                     </td>
                     <td><a href="/slot/{{ $client.HeadSlot }}">{{ formatAddCommas $client.HeadSlot }}</a></td>
-                    <td>
+                    <td class="text-monospace">
                       <a href="/slot/0x{{ printf "%x" $client.HeadRoot }}" class="text-truncate d-inline-block" style="max-width: 200px">0x{{ printf "%x" $client.HeadRoot }}</a>
                       <i class="fa fa-copy text-muted p-1" role="button" data-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $client.HeadRoot }}"></i>
                     </td>
@@ -603,6 +604,7 @@
         </div>
 
       </div>
+
       <div id="footer-placeholder" style="height:30px;"></div>
     </div>
   </div>
@@ -641,17 +643,12 @@
     peerGraph = $_network.create(container, peerGraphData);
   }
 
-  if(peerGraphData.nodes.filter(function(node) { return node.group == "internal" }).length <= 100) {
-    $('#peerGraph').addClass('show');
-    $('#peerGraphToggler').removeClass('collapsed');
+  // Always keep graph collapsed by default - render only when opened
+  $('#peerGraph').on('shown.bs.collapse', function () {
+    if(peerGraphRendered) return;
     renderPeerGraph();
-  } else {
-    $('#peerGraph').on('shown.bs.collapse', function () {
-      if(peerGraphRendered) return;
-      renderPeerGraph();
-      peerGraphRendered = true;
-    });
-  }
+    peerGraphRendered = true;
+  });
 
 
   var lastClickedNode = null;
