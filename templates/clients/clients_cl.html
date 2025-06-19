@@ -340,7 +340,12 @@
                 <tr>
                   <td data-bind="text: key"></td>
                   <td>
+                    {{ html "<!-- ko if: key === 'quic' -->" }}
+                    <code data-bind="text: window.explorer.hexToDecimal(value)"></code>
+                    {{ html "<!-- /ko -->" }}
+                    {{ html "<!-- ko if: key !== 'quic' -->" }}
                     <code data-bind="text: value"></code>
+                    {{ html "<!-- /ko -->" }}
                     <i class="fa fa-copy text-muted p-1" role="button" data-placement="right" data-toggle="tooltip" data-bind="attr: {'data-clipboard-text': $data.value, title: 'Copy ' + $data.key + ' to clipboard'}" ></i>
                   </td>
                 </tr>
