@@ -340,7 +340,12 @@
                 <tr>
                   <td data-bind="text: key"></td>
                   <td>
+                    {{ html "<!-- ko if: key === 'cgc' -->" }}
+                    <code data-bind="text: value, attr: {'data-bs-toggle': 'tooltip', 'data-bs-placement': 'right', 'data-bs-title': 'Decimal: ' + window.explorer.hexToDecimal(value)}"></code>
+                    {{ html "<!-- /ko -->" }}
+                    {{ html "<!-- ko if: key !== 'cgc' -->" }}
                     <code data-bind="text: value"></code>
+                    {{ html "<!-- /ko -->" }}
                     <i class="fa fa-copy text-muted p-1" role="button" data-placement="right" data-toggle="tooltip" data-bind="attr: {'data-clipboard-text': $data.value, title: 'Copy ' + $data.key + ' to clipboard'}" ></i>
                   </td>
                 </tr>
@@ -534,7 +539,7 @@
                       </tr>
                       <tr>
                         <td>CGC</td>
-                        <td><code data-bind="text: peer_das().cgc"></code></td>
+                        <td><code data-bind="text: peer_das().cgc, attr: {'data-bs-toggle': 'tooltip', 'data-bs-placement': 'right', 'data-bs-title': 'Decimal: ' + peer_das().cgc}"></code></td>
                       </tr>
                       <tr>
                         <td>Columns</td>
