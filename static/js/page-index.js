@@ -12,10 +12,15 @@
   var baseModel = {
     formatAddCommas: function(x) { return x; },
     unixtime: function(x) { return Math.floor(new Date(x).getTime() / 1000); },
-    timestamp: function(x) { 
+    timestamp: function(x) {
       var d = new Date(x);
       var p = /^([0-9-]+)T([0-9:]+).[0-9]+Z$/.exec(d.toISOString());
       return p[1] + " " + p[2] + " +0000 UTC";
+    },
+    timestampUtc: function(x) {
+      var d = new Date(x);
+      var p = /^([0-9-]+)T([0-9:]+).[0-9]+Z$/.exec(d.toISOString());
+      return p[1] + " " + p[2] + " UTC";
     },
     formatRecentTimeShort: function(x) { return window.explorer.renderRecentTime(Math.floor(new Date(x).getTime() / 1000)); },
     formatEth: function(x) { return formatFloat(x / 1000000000, 4); },
@@ -87,7 +92,7 @@
   }
 
   function createModel(data) {
-    window.explorer.pageModel = viewModel = Object.create(baseModel);
+    window.explorer.pageModel = viewModel = Object.assign({}, baseModel);
     var val;
     for(var prop in data) {
       val = data[prop];
