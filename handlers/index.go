@@ -274,12 +274,13 @@ func buildIndexPageData() (*models.IndexPageData, time.Duration) {
 	// Add BPO forks from BLOB_SCHEDULE
 	for i, blobSchedule := range specs.BlobSchedule {
 		pageData.NetworkForks = append(pageData.NetworkForks, &models.IndexPageDataForks{
-			Name:    fmt.Sprintf("BPO%d", i+1),
-			Epoch:   blobSchedule.Epoch,
-			Version: nil, // BPO forks don't have fork versions
-			Time:    uint64(chainState.EpochToTime(phase0.Epoch(blobSchedule.Epoch)).Unix()),
-			Active:  uint64(currentEpoch) >= blobSchedule.Epoch,
-			Type:    "bpo",
+			Name:             fmt.Sprintf("BPO%d", i+1),
+			Epoch:            blobSchedule.Epoch,
+			Version:          nil, // BPO forks don't have fork versions
+			Time:             uint64(chainState.EpochToTime(phase0.Epoch(blobSchedule.Epoch)).Unix()),
+			Active:           uint64(currentEpoch) >= blobSchedule.Epoch,
+			Type:             "bpo",
+			MaxBlobsPerBlock: &blobSchedule.MaxBlobsPerBlock,
 		})
 	}
 
