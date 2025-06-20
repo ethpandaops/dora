@@ -13,6 +13,7 @@
     renderRecentTime: renderRecentTime,
     tooltipDict: tooltipDict,
     hexToDecimal: hexToDecimal,
+    formatEnrValue: formatEnrValue,
   };
 
   function modalFixes() {
@@ -91,6 +92,157 @@
     var cleanHex = hexValue.replace(/^0x/i, '');
     var decimal = parseInt(cleanHex, 16);
     return isNaN(decimal) ? '' : decimal.toString();
+  }
+
+  function hexToUtf8(hex) {
+    if (!hex || typeof hex !== 'string') return hex;
+    
+    // Remove 0x prefix if present
+    var cleanHex = hex.replace(/^0x/i, '');
+    
+    // Check if it's actually hex
+    if (!/^[0-9a-fA-F]*$/.test(cleanHex)) return hex;
+    
+    try {
+      var bytes = [];
+      for (var i = 0; i < cleanHex.length; i += 2) {
+        bytes.push(parseInt(cleanHex.substr(i, 2), 16));
+      }
+      
+      // Convert bytes to UTF-8 string
+      var decoded = new TextDecoder('utf-8').decode(new Uint8Array(bytes));
+      
+      // Check if it's printable ASCII or contains common characters
+      var isPrintable = /^[\x20-\x7E\n\r\t]*$/.test(decoded);
+      var hasAlphanumeric = /[a-zA-Z0-9]/.test(decoded);
+      
+      if (isPrintable && hasAlphanumeric) {
+        return decoded;
+      }
+    } catch(e) {
+      // Return original if decoding fails
+      console.log('Hex decode error for', hex, ':', e);
+    }
+    
+    return hex;
+  }
+
+  function decodeRlpString(hex) {
+    if (!hex || typeof hex !== 'string') return hex;
+    
+    var cleanHex = hex.replace(/^0x/i, '');
+    if (cleanHex.length < 4) return hex;
+    
+    try {
+      var firstByte = parseInt(cleanHex.substr(0, 2), 16);
+      
+      // Special handling for lighthouse format: d88a[string]
+      if (firstByte === 0xd8) {
+        var secondByte = parseInt(cleanHex.substr(2, 2), 16);
+        if (secondByte >= 0x80 && secondByte <= 0xb7) {
+          // This looks like d8 + string_encoding
+          var stringLength = secondByte - 0x80;
+          var stringHex = cleanHex.substr(4, stringLength * 2);
+          return hexToUtf8('0x' + stringHex);
+        }
+      }
+      
+      // Standard RLP list
+      if (firstByte >= 0xc0 && firstByte <= 0xf7) {
+        // Short list
+        var listLength = firstByte - 0xc0;
+        var listHex = cleanHex.substr(2);
+        var items = [];
+        var offset = 0;
+        
+        while (offset < listHex.length && items.length < 10) {
+          var itemFirstByte = parseInt(listHex.substr(offset, 2), 16);
+          if (itemFirstByte >= 0x80 && itemFirstByte <= 0xb7) {
+            var itemLength = itemFirstByte - 0x80;
+            var itemHex = listHex.substr(offset + 2, itemLength * 2);
+            var itemText = hexToUtf8('0x' + itemHex);
+            if (itemText !== '0x' + itemHex) {
+              items.push(itemText);
+            }
+            offset += 2 + itemLength * 2;
+          } else if (itemFirstByte <= 0x7f) {
+            // Single byte
+            items.push(String.fromCharCode(itemFirstByte));
+            offset += 2;
+          } else {
+            break;
+          }
+        }
+        
+        if (items.length > 0) {
+          return items.join(', ');
+        }
+      } else if (firstByte >= 0x80 && firstByte <= 0xb7) {
+        // Single string
+        var length = firstByte - 0x80;
+        var stringHex = cleanHex.substr(2, length * 2);
+        return hexToUtf8('0x' + stringHex);
+      }
+    } catch(e) {
+      console.log('RLP decode error for', hex, ':', e);
+    }
+    
+    return hexToUtf8(hex);
+  }
+
+  function formatEnrValue(key, value) {
+    if (!value) return value;
+    
+    switch(key) {
+      case 'client':
+        // Try RLP decoding first, then regular hex decoding
+        var decoded = decodeRlpString(value);
+        if (decoded === value) {
+          decoded = hexToUtf8(value);
+        }
+        
+        
+        // Try to parse as JSON if it looks like JSON
+        try {
+          if (decoded.startsWith('[') || decoded.startsWith('"')) {
+            var parsed = JSON.parse(decoded);
+            if (Array.isArray(parsed)) {
+              return parsed.join(', ');
+            }
+            return parsed;
+          }
+        } catch(e) {
+          // Return decoded string if JSON parsing fails
+        }
+        return decoded;
+      case 'cgc':
+        // Show both hex and decimal for cgc
+        var decimal = hexToDecimal(value);
+        return value + (decimal ? ' (' + decimal + ')' : '');
+      case 'seq':
+        // Convert sequence number to decimal
+        return hexToDecimal(value) || value;
+      case 'ip':
+        // IP is already in readable format
+        return value;
+      case 'tcp':
+      case 'udp':
+      case 'quic':
+        // Ports - convert to decimal
+        return hexToDecimal(value) || value;
+      case 'id':
+        // ID field is usually readable
+        return value;
+      case 'eth2':
+      case 'attnets':
+      case 'syncnets':
+        // These are hex bitmasks, keep as hex but maybe show some info
+        return value;
+      default:
+        // Try to decode as UTF-8 for other fields
+        var decoded = hexToUtf8(value);
+        return decoded !== value ? decoded : value;
+    }
   }
 
   function updateTimers() {
