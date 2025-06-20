@@ -342,10 +342,10 @@
                   <td data-bind="text: key"></td>
                   <td>
                     {{ html "<!-- ko if: key === 'cgc' -->" }}
-                    <code data-bind="text: window.explorer.formatEnrValue(key, value), attr: {'data-bs-toggle': 'tooltip', 'data-bs-placement': 'right', 'data-bs-title': 'Decimal: ' + window.explorer.hexToDecimal(value)}"></code>
+                    <code data-bind="text: value, attr: {'data-bs-toggle': 'tooltip', 'data-bs-placement': 'right', 'data-bs-title': 'Decimal: ' + window.explorer.hexToDecimal(value)}"></code>
                     {{ html "<!-- /ko -->" }}
                     {{ html "<!-- ko if: key !== 'cgc' -->" }}
-                    <code data-bind="text: window.explorer.formatEnrValue(key, value)"></code>
+                    <code data-bind="text: value"></code>
                     {{ html "<!-- /ko -->" }}
                     <i class="fa fa-copy text-muted p-1" role="button" data-placement="right" data-toggle="tooltip" data-bind="attr: {'data-clipboard-text': $data.value, title: 'Copy ' + $data.key + ' to clipboard'}" ></i>
                   </td>
@@ -451,7 +451,7 @@
                           <tr>
                             <td data-bind="text: key"></td>
                             <td>
-                              <code data-bind="text: window.explorer.formatEnrValue(key, value)"></code>
+                              <code data-bind="text: value"></code>
                               <i class="fa fa-copy text-muted p-1" role="button" data-placement="right" data-toggle="tooltip" data-bind="attr: {'data-clipboard-text': value, title: 'Copy ' + key + ' to clipboard'}"></i>
                             </td>
                           </tr>
@@ -525,7 +525,7 @@
                         {{ html "<!-- ko foreach: enr_kv -->" }}
                           <tr>
                             <td style="padding-right:15px; vertical-align:top" data-bind="text: key"></td>
-                            <td><code style="word-break: break-all; text-wrap: pretty;" data-bind="text: window.explorer.formatEnrValue(key, value)"></code></td>
+                            <td><code style="word-break: break-all; text-wrap: pretty;" data-bind="text: value"></code></td>
                           </tr>
                         {{ html "<!-- /ko -->" }}
                       {{ html "<!-- /ko -->" }}

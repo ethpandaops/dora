@@ -13,7 +13,6 @@
     renderRecentTime: renderRecentTime,
     tooltipDict: tooltipDict,
     hexToDecimal: hexToDecimal,
-    formatEnrValue: formatEnrValue,
   };
 
   function modalFixes() {
@@ -94,98 +93,6 @@
     return isNaN(decimal) ? '' : decimal.toString();
   }
 
-  function hexToUtf8(hex) {
-    if (!hex || typeof hex !== 'string') return hex;
-    
-    // Remove 0x prefix if present
-    var cleanHex = hex.replace(/^0x/i, '');
-    
-    // Check if it's actually hex
-    if (!/^[0-9a-fA-F]*$/.test(cleanHex)) return hex;
-    
-    try {
-      var bytes = [];
-      for (var i = 0; i < cleanHex.length; i += 2) {
-        bytes.push(parseInt(cleanHex.substr(i, 2), 16));
-      }
-      
-      // Convert bytes to UTF-8 string
-      var decoded = new TextDecoder('utf-8').decode(new Uint8Array(bytes));
-      
-      // Check if it's printable ASCII or contains common characters
-      var isPrintable = /^[\x20-\x7E\n\r\t]*$/.test(decoded);
-      var hasAlphanumeric = /[a-zA-Z0-9]/.test(decoded);
-      
-      if (isPrintable && hasAlphanumeric) {
-        return decoded;
-      }
-    } catch(e) {
-      // Return original if decoding fails
-      console.log('Hex decode error for', hex, ':', e);
-    }
-    
-    return hex;
-  }
-
-  function decodeRlpString(hex) {
-    if (!hex || typeof hex !== 'string') return hex;
-    
-    var cleanHex = hex.replace(/^0x/i, '');
-    if (cleanHex.length < 2) return hex;
-    
-    try {
-      var firstByte = parseInt(cleanHex.substr(0, 2), 16);
-      
-      // RLP list
-      if (firstByte >= 0xc0 && firstByte <= 0xf7) {
-        var listHex = cleanHex.substr(2);
-        var items = [];
-        var offset = 0;
-        
-        while (offset < listHex.length && items.length < 10) {
-          var itemFirstByte = parseInt(listHex.substr(offset, 2), 16);
-          if (itemFirstByte >= 0x80 && itemFirstByte <= 0xb7) {
-            var itemLength = itemFirstByte - 0x80;
-            var itemHex = listHex.substr(offset + 2, itemLength * 2);
-            var itemText = hexToUtf8('0x' + itemHex);
-            if (itemText !== '0x' + itemHex) {
-              items.push(itemText);
-            }
-            offset += 2 + itemLength * 2;
-          } else if (itemFirstByte <= 0x7f) {
-            items.push(String.fromCharCode(itemFirstByte));
-            offset += 2;
-          } else {
-            break;
-          }
-        }
-        
-        if (items.length > 0) {
-          return items.join(', ');
-        }
-      } else if (firstByte >= 0x80 && firstByte <= 0xb7) {
-        // Single string
-        var length = firstByte - 0x80;
-        var stringHex = cleanHex.substr(2, length * 2);
-        return hexToUtf8('0x' + stringHex);
-      }
-    } catch(e) {
-      console.log('RLP decode error for', hex, ':', e);
-    }
-    
-    return hex;
-  }
-
-  function formatEnrValue(key, value) {
-    if (!value) return value;
-    
-    if (key === 'client') {
-      return decodeRlpString(value);
-    }
-    
-    // For all other fields, return the original value
-    return value;
-  }
 
   function updateTimers() {
     var timerEls = document.querySelectorAll("[data-timer]");
