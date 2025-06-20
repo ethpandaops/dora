@@ -837,7 +837,10 @@
         var viewModel = createModel(nodes[peerId]);
         ko.applyBindings(viewModel, detailsContainer.get(0));
         window.explorer.initControls();
-        jdenticon.update(".peer-table-icon",null)
+        jdenticon.update(".peer-table-icon",null);
+        
+        // Initialize peer collapse handlers for this instance
+        initPeerCollapseHandlers(detailsContainer);
       });
 
     })();
@@ -897,14 +900,16 @@
     })();
   })();
 
-  // Handle peer details collapse toggle
-  $(document).on('show.bs.collapse', '.peer-details-collapse', function () {
-    $(this).siblings('.client-row-divider').find('.peer-collapse-btn').html('<i class="fa fa-chevron-up"></i> Hide Connected Peers');
-  });
+  // Function to initialize peer collapse handlers for a specific container
+  function initPeerCollapseHandlers(container) {
+    container.find('.peer-details-collapse').on('show.bs.collapse', function () {
+      $(this).siblings('.client-row-divider').find('.peer-collapse-btn').html('<i class="fa fa-chevron-up"></i> Hide Connected Peers');
+    });
 
-  $(document).on('hide.bs.collapse', '.peer-details-collapse', function () {
-    $(this).siblings('.client-row-divider').find('.peer-collapse-btn').html('<i class="fa fa-chevron-down"></i> Show Connected Peers');
-  });
+    container.find('.peer-details-collapse').on('hide.bs.collapse', function () {
+      $(this).siblings('.client-row-divider').find('.peer-collapse-btn').html('<i class="fa fa-chevron-down"></i> Show Connected Peers');
+    });
+  }
 
 </script>
 {{ end }}
