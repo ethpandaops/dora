@@ -193,56 +193,17 @@
   function formatEnrValue(key, value) {
     if (!value) return value;
     
-    switch(key) {
-      case 'client':
-        // Try RLP decoding first, then regular hex decoding
-        var decoded = decodeRlpString(value);
-        if (decoded === value) {
-          decoded = hexToUtf8(value);
-        }
-        
-        
-        // Try to parse as JSON if it looks like JSON
-        try {
-          if (decoded.startsWith('[') || decoded.startsWith('"')) {
-            var parsed = JSON.parse(decoded);
-            if (Array.isArray(parsed)) {
-              return parsed.join(', ');
-            }
-            return parsed;
-          }
-        } catch(e) {
-          // Return decoded string if JSON parsing fails
-        }
-        return decoded;
-      case 'cgc':
-        // Show both hex and decimal for cgc
-        var decimal = hexToDecimal(value);
-        return value + (decimal ? ' (' + decimal + ')' : '');
-      case 'seq':
-        // Convert sequence number to decimal
-        return hexToDecimal(value) || value;
-      case 'ip':
-        // IP is already in readable format
-        return value;
-      case 'tcp':
-      case 'udp':
-      case 'quic':
-        // Ports - convert to decimal
-        return hexToDecimal(value) || value;
-      case 'id':
-        // ID field is usually readable
-        return value;
-      case 'eth2':
-      case 'attnets':
-      case 'syncnets':
-        // These are hex bitmasks, keep as hex but maybe show some info
-        return value;
-      default:
-        // Try to decode as UTF-8 for other fields
-        var decoded = hexToUtf8(value);
-        return decoded !== value ? decoded : value;
+    if (key === 'client') {
+      // Try RLP decoding first, then regular hex decoding
+      var decoded = decodeRlpString(value);
+      if (decoded === value) {
+        decoded = hexToUtf8(value);
+      }
+      return decoded;
     }
+    
+    // For all other fields, return the original value
+    return value;
   }
 
   function updateTimers() {
