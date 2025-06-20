@@ -647,16 +647,32 @@ func (bs *ChainService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageIdx
 			// filter by graffiti
 			if filter.Graffiti != "" {
 				blockGraffiti := string(blockIndex.Graffiti[:])
-				if !strings.Contains(blockGraffiti, filter.Graffiti) {
-					continue
+				graffitiMatches := strings.Contains(blockGraffiti, filter.Graffiti)
+				if filter.InvertGraffiti {
+					// For inverted filter, include empty/null graffiti AND non-matching graffiti
+					if blockGraffiti != "" && graffitiMatches {
+						continue
+					}
+				} else {
+					if !graffitiMatches {
+						continue
+					}
 				}
 			}
 
 			// filter by extra data
 			if filter.ExtraData != "" {
 				blockExtraData := string(blockIndex.ExecutionExtraData)
-				if !strings.Contains(blockExtraData, filter.ExtraData) {
-					continue
+				extraDataMatches := strings.Contains(blockExtraData, filter.ExtraData)
+				if filter.InvertExtraData {
+					// For inverted filter, include empty/null extra data AND non-matching extra data
+					if blockExtraData != "" && extraDataMatches {
+						continue
+					}
+				} else {
+					if !extraDataMatches {
+						continue
+					}
 				}
 			}
 
@@ -669,8 +685,16 @@ func (bs *ChainService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageIdx
 			}
 			if filter.ProposerName != "" {
 				proposerName := bs.validatorNames.GetValidatorName(proposer)
-				if !strings.Contains(proposerName, filter.ProposerName) {
-					continue
+				nameMatches := strings.Contains(proposerName, filter.ProposerName)
+				if filter.InvertProposer {
+					// For inverted filter, include empty/null names AND non-matching names
+					if proposerName != "" && nameMatches {
+						continue
+					}
+				} else {
+					if !nameMatches {
+						continue
+					}
 				}
 			}
 
@@ -719,8 +743,16 @@ func (bs *ChainService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageIdx
 				}
 				if filter.ProposerName != "" {
 					assignedName := bs.validatorNames.GetValidatorName(uint64(canonicalProposer))
-					if assignedName == "" || !strings.Contains(assignedName, filter.ProposerName) {
-						continue
+					nameMatches := assignedName != "" && strings.Contains(assignedName, filter.ProposerName)
+					if filter.InvertProposer {
+						// For inverted filter, include empty/null names AND non-matching names
+						if assignedName != "" && nameMatches {
+							continue
+						}
+					} else {
+						if !nameMatches {
+							continue
+						}
 					}
 				}
 

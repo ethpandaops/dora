@@ -91,7 +91,7 @@
       <div class="row border-bottom p-2 mx-0">
         <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Name of the Network">Genesis Validators Root:</span></div>
         <div class="col-md-10">
-          <span data-bind="text: $root.hexstr(genesis_valroot())">0x{{ printf "%x" .GenesisValidatorsRoot }}</span>
+          <span class="text-monospace" data-bind="text: $root.hexstr(genesis_valroot())">0x{{ printf "%x" .GenesisValidatorsRoot }}</span>
           <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" .GenesisValidatorsRoot }}" data-bind="attr: {'data-clipboard-text': $root.hexstr(genesis_valroot())}"></i>
         </div>
       </div>

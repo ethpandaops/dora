@@ -27,7 +27,13 @@
                     Graffiti
                   </div>
                   <div class="col-sm-12 col-md-6 col-lg-8">
-                    <input name="f.graffiti" type="text" class="form-control" placeholder="Graffiti" aria-label="Graffiti" aria-describedby="basic-addon1" value="{{ .FilterGraffiti }}">
+                    <div class="input-group">
+                      <input name="f.graffiti" type="text" class="form-control" placeholder="Graffiti" aria-label="Graffiti" value="{{ .FilterGraffiti }}">
+                      <div class="input-group-text">
+                        <input name="f.ginvert" type="checkbox" class="form-check-input me-1" {{ if .FilterInvertGraffiti }}checked{{ end }} title="Invert filter (exclude matches)">
+                        <label class="form-check-label small" for="f.ginvert" title="Invert filter (exclude matches)">NOT</label>
+                      </div>
+                    </div>
                   </div>
                 </div>
                 <div class="row mt-1">
@@ -35,7 +41,13 @@
                     EL Extra Data
                   </div>
                   <div class="col-sm-12 col-md-6 col-lg-8">
-                    <input name="f.extra" type="text" class="form-control" placeholder="EL Extra Data" aria-label="EL Extra Data" aria-describedby="basic-addon1" value="{{ .FilterExtraData }}">
+                    <div class="input-group">
+                      <input name="f.extra" type="text" class="form-control" placeholder="EL Extra Data" aria-label="EL Extra Data" value="{{ .FilterExtraData }}">
+                      <div class="input-group-text">
+                        <input name="f.einvert" type="checkbox" class="form-check-input me-1" {{ if .FilterInvertExtraData }}checked{{ end }} title="Invert filter (exclude matches)">
+                        <label class="form-check-label small" for="f.einvert" title="Invert filter (exclude matches)">NOT</label>
+                      </div>
+                    </div>
                   </div>
                 </div>
                 <div class="row mt-1">
@@ -51,7 +63,13 @@
                     Proposer Name
                   </div>
                   <div class="col-sm-12 col-md-6 col-lg-8">
-                    <input name="f.pname" type="text" class="form-control" placeholder="Proposer Name" aria-label="Proposer Name" aria-describedby="basic-addon1" value="{{ .FilterProposerName }}">
+                    <div class="input-group">
+                      <input name="f.pname" type="text" class="form-control" placeholder="Proposer Name" aria-label="Proposer Name" value="{{ .FilterProposerName }}">
+                      <div class="input-group-text">
+                        <input name="f.pinvert" type="checkbox" class="form-check-input me-1" {{ if .FilterInvertProposer }}checked{{ end }} title="Invert filter (exclude matches)">
+                        <label class="form-check-label small" for="f.pinvert" title="Invert filter (exclude matches)">NOT</label>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -139,7 +157,7 @@
 
     <div class="card mt-2">
       <div class="card-body px-0 py-3">
-            
+
         <div class="table-responsive px-0 py-1">
           <table class="table table-nobr" id="slots">
             <thead>
@@ -152,13 +170,13 @@
                 {{ if .DisplayAttestations }}<th class="d-none d-md-table-cell">Att<span class="d-none d-lg-inline">estations</span></th>{{ end }}
                 {{ if .DisplayDeposits }}
                 <th>
-                  <nobr><span data-toggle="tooltip" data-placement="top" title="Deposits">D<span class="d-none d-lg-inline">eposits</span> </span> / 
+                  <nobr><span data-toggle="tooltip" data-placement="top" title="Deposits">D<span class="d-none d-lg-inline">eposits</span> </span> /
                   <span data-toggle="tooltip" data-placement="top" title="Exits">E<span class="d-none d-lg-inline">xits</span> </span></nobr>
                 </th>
                 {{ end }}
                 {{ if .DisplaySlashings }}
                 <th><span class="d-none d-lg-inline">Slashings</span>
-                  <nobr><span data-toggle="tooltip" data-placement="top" title="Proposer Slashings">P</span> / 
+                  <nobr><span data-toggle="tooltip" data-placement="top" title="Proposer Slashings">P</span> /
                   <span data-toggle="tooltip" data-placement="top" title="Attester Slashings">A</span></nobr>
                 </th>
                 {{ end }}
@@ -318,8 +336,8 @@
 {{ define "js" }}
 <script src="/js/bootstrap-multiselect.js"></script>
 <script type="text/javascript">
-$('#slotsFilterForm').submit(function () { 
-  $(this).find('input[type="text"],input[type="number"]').filter(function () { return !this.value; }).prop('name', ''); 
+$('#slotsFilterForm').submit(function () {
+  $(this).find('input[type="text"],input[type="number"]').filter(function () { return !this.value; }).prop('name', '');
   var displayColumns = Array.prototype.filter.call($(this).find('select[name="d"]').prop('name', '').find("option"), function(el) {
     return el.selected;
   }).map(function(el) {
@@ -329,8 +347,8 @@ $('#slotsFilterForm').submit(function () {
     $(this).find("#displayColumnsField").prop('name', 'd').val(displayColumns);
   }
 });
-$(function() { 
-  $('#slotsFilterForm .filter-multiselect').each(function() { 
+$(function() {
+  $('#slotsFilterForm .filter-multiselect').each(function() {
     $(this).multiselect({
       onInitialized: function() {
         this.$button.attr("data-bs-toggle", "dropdown");

@@ -11,11 +11,12 @@
         </ol>
       </nav>
     </div>
+
     <div class="card mt-2">
       <div class="accordion" id="network-accordion">
         <div class="accordion-item">
           <h2 class="accordion-header">
-            <button id="peerGraphToggler" class="accordion-button btn-secondary collapsed" style="box-shadow: none;" type="button" data-bs-toggle="collapse" data-bs-target="#peerGraph" aria-expanded="true" aria-controls="peerGraph">
+            <button id="peerGraphToggler" class="accordion-button btn-secondary collapsed" style="box-shadow: none;" type="button" data-bs-toggle="collapse" data-bs-target="#peerGraph" aria-expanded="false" aria-controls="peerGraph">
               <i class="fa-solid fa-circle-nodes" style="margin-right:5px"></i> Client graph
             </button>
           </h2>
@@ -218,6 +219,7 @@
         <div class="table-responsive px-0 py-1">
           <div style="text-align: right; margin-right: 15px;">
             Peer infos:
+            <i class="fa fa-refresh text-muted p-1 mx-1" role="button" data-bs-toggle="tooltip" data-bs-placement="top" title="Refresh peer information" onclick="refreshPeerInfos()" style="cursor: pointer;"></i>
             <div class="btn-group btn-group-sm" role="group" aria-label="Peer info controls">
               <button type="button" class="btn btn-outline-secondary" onclick='$(".collapse.peerInfo").collapse("hide");'>Hide all</button>
               <button type="button" class="btn btn-outline-secondary" onclick='$(".collapse.peerInfo").collapse("show");'>Show all</button>
@@ -259,7 +261,7 @@
                       </span>
                     </td>
                     <td><a href="/slot/{{ $client.HeadSlot }}">{{ formatAddCommas $client.HeadSlot }}</a></td>
-                    <td>
+                    <td class="text-monospace">
                       <a href="/slot/0x{{ printf "%x" $client.HeadRoot }}" class="text-truncate d-inline-block" style="max-width: 200px">0x{{ printf "%x" $client.HeadRoot }}</a>
                       <i class="fa fa-copy text-muted p-1" role="button" data-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $client.HeadRoot }}"></i>
                     </td>
@@ -323,10 +325,8 @@
                 <tr style="vertical-align: top;">
                   <td>ENR</td>
                   <td>
-                    <div style="word-break: break-all; text-wrap: pretty;">
-                      <code data-bind="text: enr"></code>
-                      <i class="fa fa-copy text-muted p-1" role="button" data-placement="right" data-toggle="tooltip" title="Copy to clipboard" data-bind="attr: {'data-clipboard-text': enr}"></i>
-                    </div>
+                    <code class="enr-text-container" data-bind="text: enr"></code>
+                    <i class="fa fa-copy text-muted p-1" role="button" data-placement="right" data-toggle="tooltip" title="Copy to clipboard" data-bind="attr: {'data-clipboard-text': enr}"></i>
                   </td>
                 </tr>
                 {{ html "<!-- /ko -->" }}
@@ -340,7 +340,12 @@
                 <tr>
                   <td data-bind="text: key"></td>
                   <td>
+                    {{ html "<!-- ko if: key === 'cgc' -->" }}
+                    <code data-bind="text: value, attr: {'data-bs-toggle': 'tooltip', 'data-bs-placement': 'right', 'data-bs-title': 'Decimal: ' + window.explorer.hexToDecimal(value)}"></code>
+                    {{ html "<!-- /ko -->" }}
+                    {{ html "<!-- ko if: key !== 'cgc' -->" }}
                     <code data-bind="text: value"></code>
+                    {{ html "<!-- /ko -->" }}
                     <i class="fa fa-copy text-muted p-1" role="button" data-placement="right" data-toggle="tooltip" data-bind="attr: {'data-clipboard-text': $data.value, title: 'Copy ' + $data.key + ' to clipboard'}" ></i>
                   </td>
                 </tr>
@@ -356,19 +361,15 @@
                   <tr>
                     <td>Custody columns</td>
                     <td>
-                      <div style="word-break: break-all; text-wrap: pretty;">
-                        <code data-bind="text: peer_das().columns.join(', ')"></code>
-                        <i class="fa fa-copy text-muted p-1" role="button" data-placement="right" data-toggle="tooltip" data-bind="attr: {'data-clipboard-text': peer_das().columns.join(', ')}" title="Copy custody columns to clipboard"></i>
-                      </div>
+                      <code class="enr-text-container" data-bind="text: peer_das().columns.join(', ')"></code>
+                      <i class="fa fa-copy text-muted p-1" role="button" data-placement="right" data-toggle="tooltip" data-bind="attr: {'data-clipboard-text': peer_das().columns.join(', ')}" title="Copy custody columns to clipboard"></i>
                     </td>
                   </tr>
                   <tr>
                     <td>Custody subnets</td>
                     <td>
-                      <div style="word-break: break-all; text-wrap: pretty;">
-                        <code data-bind="text: peer_das().subnets.join(', ')"></code>
-                        <i class="fa fa-copy text-muted p-1" role="button" data-placement="right" data-toggle="tooltip" data-bind="attr: {'data-clipboard-text': peer_das().subnets.join(', ')}" title="Copy custody subnets to clipboard"></i>
-                      </div>
+                      <code class="enr-text-container" data-bind="text: peer_das().subnets.join(', ')"></code>
+                      <i class="fa fa-copy text-muted p-1" role="button" data-placement="right" data-toggle="tooltip" data-bind="attr: {'data-clipboard-text': peer_das().subnets.join(', ')}" title="Copy custody subnets to clipboard"></i>
                     </td>
                   </tr>
               </tbody>
@@ -434,10 +435,8 @@
                         <tr>
                           <td>ENR</td>
                           <td>
-                            <div style="word-break: break-all; text-wrap: pretty;">
-                              <code data-bind="text: $node.enr"></code>
-                              <i class="fa fa-copy text-muted p-1" role="button" data-placement="right" data-toggle="tooltip" title="Copy to clipboard" data-bind="attr: {'data-clipboard-text': enr || $node.enr}"></i>
-                            </div>
+                            <code class="enr-text-container" data-bind="text: $node.enr"></code>
+                            <i class="fa fa-copy text-muted p-1" role="button" data-placement="right" data-toggle="tooltip" title="Copy to clipboard" data-bind="attr: {'data-clipboard-text': enr || $node.enr}"></i>
                           </td>
                         </tr>
                         {{ html "<!-- ko if: $node.enr != '' -->" }}
@@ -460,19 +459,15 @@
                             <tr>
                               <td>Custody columns</td>
                               <td>
-                                <div style="word-break: break-all; text-wrap: pretty;">
-                                  <code data-bind="text: $node.peer_das.columns.join(', ')"></code>
-                                  <i class="fa fa-copy text-muted p-1" role="button" data-placement="right" data-toggle="tooltip" title="Copy to clipboard" data-bind="attr: {'data-clipboard-text': $node.peer_das.columns.join(', ')}" ></i>
-                                </div>
+                                <code class="enr-text-container" data-bind="text: $node.peer_das.columns.join(', ')"></code>
+                                <i class="fa fa-copy text-muted p-1" role="button" data-placement="right" data-toggle="tooltip" title="Copy to clipboard" data-bind="attr: {'data-clipboard-text': $node.peer_das.columns.join(', ')}" ></i>
                               </td>
                             </tr>
                             <tr>
                               <td>Custody subnets</td>
                               <td>
-                                <div style="word-break: break-all; text-wrap: pretty;">
-                                  <code data-bind="text: $node.peer_das.subnets.join(', ')"></code>
-                                  <i class="fa fa-copy text-muted p-1" role="button" data-placement="right" data-toggle="tooltip" title="Copy to clipboard" data-bind="attr: {'data-clipboard-text': $node.peer_das.subnets.join(', ')}" ></i>
-                                </div>
+                                <code class="enr-text-container" data-bind="text: $node.peer_das.subnets.join(', ')"></code>
+                                <i class="fa fa-copy text-muted p-1" role="button" data-placement="right" data-toggle="tooltip" title="Copy to clipboard" data-bind="attr: {'data-clipboard-text': $node.peer_das.subnets.join(', ')}" ></i>
                               </td>
                             </tr>
                         </tbody>
@@ -510,7 +505,7 @@
                     {{ html "<!-- ko if: $root.showSensitivePeerInfos -->" }}
                       <tr>
                         <td>ENR</td>
-                        <td><code style="word-break: break-all; text-wrap: pretty;" data-bind="text: !$root.showSensitivePeerInfos ? '***' : enr ? enr : 'Unknown'"></code></td>
+                        <td><code class="enr-text-container" data-bind="text: !$root.showSensitivePeerInfos ? '***' : enr ? enr : 'Unknown'"></code></td>
                       </tr>
                       {{ html "<!-- ko if: enr != '' -->" }}
                         <tr>
@@ -519,7 +514,7 @@
                         {{ html "<!-- ko foreach: enr_kv -->" }}
                           <tr>
                             <td style="padding-right:15px; vertical-align:top" data-bind="text: key"></td>
-                            <td><code style="word-break: break-all; text-wrap: pretty;" data-bind="text: value"></code></td>
+                            <td><code class="enr-text-container" data-bind="text: value"></code></td>
                           </tr>
                         {{ html "<!-- /ko -->" }}
                       {{ html "<!-- /ko -->" }}
@@ -538,11 +533,11 @@
                       </tr>
                       <tr>
                         <td>Columns</td>
-                        <td><code style="word-break: break-all; text-wrap: pretty;" data-bind="text: peer_das().columns.join(', ')"></code></td>
+                        <td><code class="enr-text-container" data-bind="text: peer_das().columns.join(', ')"></code></td>
                       </tr>
                       <tr>
                         <td>Subnets</td>
-                        <td><code style="word-break: break-all; text-wrap: pretty;" data-bind="text: peer_das().subnets.join(', ')"></code></td>
+                        <td><code class="enr-text-container" data-bind="text: peer_das().subnets.join(', ')"></code></td>
                       </tr>
                     {{ html "<!-- /ko -->" }}
                     <tr>
@@ -597,6 +592,7 @@
         </div>
 
       </div>
+
       <div id="footer-placeholder" style="height:30px;"></div>
     </div>
   </div>
@@ -610,6 +606,11 @@
         if (clientRow) {
           clientRow.click()
         }
+      }
+      
+      // Check refresh cooldown status on page load
+      if (typeof window.explorer !== 'undefined' && window.explorer.checkRefreshCooldown) {
+        window.explorer.checkRefreshCooldown();
       }
     });
   </script>
@@ -635,17 +636,12 @@
     peerGraph = $_network.create(container, peerGraphData);
   }
 
-  if(peerGraphData.nodes.filter(function(node) { return node.group == "internal" }).length <= 100) {
-    $('#peerGraph').addClass('show');
-    $('#peerGraphToggler').removeClass('collapsed');
+  // Always keep graph collapsed by default - render only when opened
+  $('#peerGraph').on('shown.bs.collapse', function () {
+    if(peerGraphRendered) return;
     renderPeerGraph();
-  } else {
-    $('#peerGraph').on('shown.bs.collapse', function () {
-      if(peerGraphRendered) return;
-      renderPeerGraph();
-      peerGraphRendered = true;
-    });
-  }
+    peerGraphRendered = true;
+  });
 
 
   var lastClickedNode = null;

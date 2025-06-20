@@ -146,7 +146,7 @@
                     <td><a href="/slot/{{ $mevBlock.SlotNumber }}">{{ formatAddCommas $mevBlock.SlotNumber }}</a></td>
                     <td data-timer="{{ $mevBlock.Time.Unix }}"><span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $mevBlock.Time }}">{{ formatRecentTimeShort $mevBlock.Time }}</span></td>
                     <td>{{ ethBlockLink $mevBlock.BlockNumber }}</td>
-                    <td>
+                    <td class="text-monospace">
                       <div class="d-flex">
                         <span class="flex-grow-1 text-truncate" style="max-width: 150px;">
                           0x{{ printf "%x" $mevBlock.BlockHash }}
@@ -157,7 +157,7 @@
                       </div>
                     </td>
                     <td>{{ formatValidator $mevBlock.ValidatorIndex $mevBlock.ValidatorName }}</td>
-                    <td>
+                    <td class="text-monospace">
                       <div class="d-flex">
                         <span class="flex-grow-1 text-truncate" style="max-width: 150px;">
                           0x{{ printf "%x" $mevBlock.BuilderPubkey }}
