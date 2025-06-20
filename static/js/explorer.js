@@ -93,6 +93,7 @@
     return isNaN(decimal) ? '' : decimal.toString();
   }
 
+
   function updateTimers() {
     var timerEls = document.querySelectorAll("[data-timer]");
     timerEls.forEach(function(timerEl) {
