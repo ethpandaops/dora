@@ -375,8 +375,13 @@
             </table>
             {{ html "<!-- /ko -->" }}
           </div>
-          <div class="client-row-divider">Peers</div>
-          <div>
+          <div class="client-row-divider">
+            Peers
+            <button type="button" class="btn btn-outline-secondary btn-sm float-end peer-collapse-btn" data-bs-toggle="collapse" data-bind="attr: {'data-bs-target': '#peer-details-list-' + peer_id, 'aria-controls': 'peer-details-list-' + peer_id}" aria-expanded="false">
+              <i class="fa fa-chevron-down"></i> Show Connected Peers
+            </button>
+          </div>
+          <div class="collapse peer-details-collapse" data-bind="attr: {id: 'peer-details-list-' + peer_id}">
             <div class="peer-table-column">
               {{ html "<!-- ko foreach: peers -->" }}
 
@@ -891,6 +896,15 @@
 
     })();
   })();
+
+  // Handle peer details collapse toggle
+  $(document).on('show.bs.collapse', '.peer-details-collapse', function () {
+    $(this).siblings('.client-row-divider').find('.peer-collapse-btn').html('<i class="fa fa-chevron-up"></i> Hide Connected Peers');
+  });
+
+  $(document).on('hide.bs.collapse', '.peer-details-collapse', function () {
+    $(this).siblings('.client-row-divider').find('.peer-collapse-btn').html('<i class="fa fa-chevron-down"></i> Show Connected Peers');
+  });
 
 </script>
 {{ end }}
