@@ -131,26 +131,13 @@
     if (!hex || typeof hex !== 'string') return hex;
     
     var cleanHex = hex.replace(/^0x/i, '');
-    if (cleanHex.length < 4) return hex;
+    if (cleanHex.length < 2) return hex;
     
     try {
       var firstByte = parseInt(cleanHex.substr(0, 2), 16);
       
-      // Special handling for lighthouse format: d88a[string]
-      if (firstByte === 0xd8) {
-        var secondByte = parseInt(cleanHex.substr(2, 2), 16);
-        if (secondByte >= 0x80 && secondByte <= 0xb7) {
-          // This looks like d8 + string_encoding
-          var stringLength = secondByte - 0x80;
-          var stringHex = cleanHex.substr(4, stringLength * 2);
-          return hexToUtf8('0x' + stringHex);
-        }
-      }
-      
-      // Standard RLP list
+      // RLP list
       if (firstByte >= 0xc0 && firstByte <= 0xf7) {
-        // Short list
-        var listLength = firstByte - 0xc0;
         var listHex = cleanHex.substr(2);
         var items = [];
         var offset = 0;
@@ -166,7 +153,6 @@
             }
             offset += 2 + itemLength * 2;
           } else if (itemFirstByte <= 0x7f) {
-            // Single byte
             items.push(String.fromCharCode(itemFirstByte));
             offset += 2;
           } else {
@@ -187,19 +173,14 @@
       console.log('RLP decode error for', hex, ':', e);
     }
     
-    return hexToUtf8(hex);
+    return hex;
   }
 
   function formatEnrValue(key, value) {
     if (!value) return value;
     
     if (key === 'client') {
-      // Try RLP decoding first, then regular hex decoding
-      var decoded = decodeRlpString(value);
-      if (decoded === value) {
-        decoded = hexToUtf8(value);
-      }
-      return decoded;
+      return decodeRlpString(value);
     }
     
     // For all other fields, return the original value
