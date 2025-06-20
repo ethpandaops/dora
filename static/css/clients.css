@@ -19,6 +19,7 @@ Client peers table
   padding-left: 30px;
   padding-right: 30px;
   display: inline-block;
+  max-width: 100%;
 }
 
 .client-node-peerinfo {
@@ -193,4 +194,25 @@ Client peers table
 
 .peerdetails-modal-peer:hover{
   font-weight: 600;
+}
+
+/* ENR text wrapping improvements */
+code.enr-text-container {
+  max-width: calc(100vw - 200px);
+  overflow-wrap: break-word;
+  word-break: break-all;
+  white-space: pre-wrap;
+  hyphens: auto;
+  display: inline-block;
+}
+
+.client-table-info td {
+  max-width: calc(100vw - 250px);
+  overflow-wrap: break-word;
+  word-break: break-all;
+}
+
+/* Modal specific ENR styling */
+.modal-body .client-table-info td {
+  max-width: calc(100vw - 300px);
 }
