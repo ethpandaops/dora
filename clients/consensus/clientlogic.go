@@ -284,6 +284,12 @@ func (client *Client) updateNodeMetadata(ctx context.Context) error {
 	return nil
 }
 
+// ForceUpdateNodeMetadata forces an immediate update of node metadata including ENRs,
+// bypassing the normal epoch-based update schedule
+func (client *Client) ForceUpdateNodeMetadata(ctx context.Context) error {
+	return client.updateNodeMetadata(ctx)
+}
+
 func (client *Client) updateFinalityCheckpoints(ctx context.Context) (phase0.Root, error) {
 	var cancel context.CancelFunc
 	ctx, cancel = context.WithTimeout(ctx, 30*time.Second)
