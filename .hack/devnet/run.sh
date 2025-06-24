@@ -66,6 +66,7 @@ frontend:
   showSensitivePeerInfos: true
   showSubmitDeposit: true
   showSubmitElRequests: true
+  showPeerDASInfos: true
 beaconapi:
   localCacheSize: 10
   redisCacheAddr: ""
