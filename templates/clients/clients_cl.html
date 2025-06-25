@@ -47,12 +47,12 @@
       <div class="accordion" id="peerdas-columns-accordion">
         <div class="accordion-item">
           <h2 class="accordion-header">
-            <button class="accordion-button btn-secondary" style="box-shadow: none;" type="button" data-bs-toggle="collapse" data-bs-target="#collapseColumnInfos" aria-expanded="true" aria-controls="collapseColumnInfos">
+            <button class="accordion-button btn-secondary collapsed" style="box-shadow: none;" type="button" data-bs-toggle="collapse" data-bs-target="#collapseColumnInfos" aria-expanded="false" aria-controls="collapseColumnInfos">
               <i class="fa-solid fa-table-columns" style="margin-right:5px"></i> PeerDAS column custody
               <span class="badge badge-pill badge-secondary">Total peers: {{ len $root.Nodes }}</span>
             </button>
           </h2>
-          <div id="collapseColumnInfos" class="accordion-collapse collapse show" data-bs-parent="#peerdas-columns-accordion">
+          <div id="collapseColumnInfos" class="accordion-collapse collapse" data-bs-parent="#peerdas-columns-accordion">
             <div class="accordion-body">
               <div>
                 {{ if $root.PeerDASInfos.Warnings.HasWarnings }}
@@ -155,58 +155,65 @@
               </div>
             </div>
 
-            {{ range $i := until $root.PeerDASInfos.TotalRows }}
-            <div class="table-responsive">
-              <table class="bg-dark text-white-50" style="margin: 0 auto; text-align: center; border: 1px solid">
-                <thead>
-                  <tr style="border-bottom: 1px dashed;">
-                    {{ range $j := until 32 }}
-                      {{ $idx := add ($j) (int (mul (float64 $i) (float64 32))) }}
-                      {{ $peersPerColumn := index $root.PeerDASInfos.ColumnDistribution (int64 $idx) }}
-                      {{ $peerCount := len $peersPerColumn }}
-                      <th style="border-right: 1px solid; font-size: 0.8rem;"
-                        class="
-                        {{ if eq $peerCount 0 }}
-                          bg-danger
-                          text-light
-                        {{ else if lt $peerCount 2 }}
-                          bg-warning
-                          text-dark
-                        {{ end }}">
-                        <span class="text-light">{{ $idx }}</span>
-                        <div class="dastablepeercount">({{ $peerCount }})</div>
-                      </th>
-                    {{ end }}
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    {{ range $j := until 32 }}
-                      {{ $idx := add ($j) (int (mul (float64 $i) (float64 32))) }}
-                      {{ $peersPerColumn := index $root.PeerDASInfos.ColumnDistribution (int64 $idx) }}
-                      {{ $peerCount := len $peersPerColumn }}
-                      <td style="border-right: 1px solid; vertical-align: top; min-width: 39px;">
-                        <div style="display: flex; flex-flow: wrap; margin: 0 auto;">
-                        {{ with $peers := $peersPerColumn }}
-                          {{ range $i, $p := $peers}}
-                            {{ $peerData := index $root.Nodes $p }}
-                            <svg class="peer-table-icon dastablenode node-{{ $p }} {{ $peerData.Type}} {{ if $peerData.PeerDAS.IsSuperNode }}supernode{{end}}"
-                                 data-jdenticon-value="{{ $p }}"
-                                 data-peerid="{{ $p }}" data-alias="{{ $peerData.Alias }}"
-                                 data-toggle="tooltip"
-                                 data-placement="top"
-                                 title="{{ $peerData.Alias }}"
-                                 data-animation=false>
-                            </svg>
-                          {{ end }}
-                        {{ end }}
-                        </div>
-                      </td>
-                    {{ end }}
-                  </tr>
-              </table>
+            <div id="peerdas-table-container">
+              <!-- PeerDAS table will be rendered here when accordion is opened -->
             </div>
-            {{ end }}
+
+            <!-- Hidden template for PeerDAS table -->
+            <div id="peerdas-table-template" style="display: none;">
+              {{ range $i := until $root.PeerDASInfos.TotalRows }}
+              <div class="table-responsive">
+                <table class="bg-dark text-white-50" style="margin: 0 auto; text-align: center; border: 1px solid">
+                  <thead>
+                    <tr style="border-bottom: 1px dashed;">
+                      {{ range $j := until 32 }}
+                        {{ $idx := add ($j) (int (mul (float64 $i) (float64 32))) }}
+                        {{ $peersPerColumn := index $root.PeerDASInfos.ColumnDistribution (int64 $idx) }}
+                        {{ $peerCount := len $peersPerColumn }}
+                        <th style="border-right: 1px solid; font-size: 0.8rem;"
+                          class="
+                          {{ if eq $peerCount 0 }}
+                            bg-danger
+                            text-light
+                          {{ else if lt $peerCount 2 }}
+                            bg-warning
+                            text-dark
+                          {{ end }}">
+                          <span class="text-light">{{ $idx }}</span>
+                          <div class="dastablepeercount">({{ $peerCount }})</div>
+                        </th>
+                      {{ end }}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      {{ range $j := until 32 }}
+                        {{ $idx := add ($j) (int (mul (float64 $i) (float64 32))) }}
+                        {{ $peersPerColumn := index $root.PeerDASInfos.ColumnDistribution (int64 $idx) }}
+                        {{ $peerCount := len $peersPerColumn }}
+                        <td style="border-right: 1px solid; vertical-align: top; min-width: 39px;">
+                          <div style="display: flex; flex-flow: wrap; margin: 0 auto;">
+                          {{ with $peers := $peersPerColumn }}
+                            {{ range $i, $p := $peers}}
+                              {{ $peerData := index $root.Nodes $p }}
+                              <svg class="peer-table-icon dastablenode node-{{ $p }} {{ $peerData.Type}} {{ if $peerData.PeerDAS.IsSuperNode }}supernode{{end}}"
+                                   data-jdenticon-value="{{ $p }}"
+                                   data-peerid="{{ $p }}" data-alias="{{ $peerData.Alias }}"
+                                   data-toggle="tooltip"
+                                   data-placement="top"
+                                   title="{{ $peerData.Alias }}"
+                                   data-animation=false>
+                              </svg>
+                            {{ end }}
+                          {{ end }}
+                          </div>
+                        </td>
+                      {{ end }}
+                    </tr>
+                </table>
+              </div>
+              {{ end }}
+            </div>
             </div>
           </div>
         </div>
@@ -672,76 +679,7 @@
 
   }
 
-  // PeerDASTable Hover
-  let hoverTimeout;
-  $('.dastablenode').hover(
-    function() {
-      hoverTimeout = setTimeout(() => {
-        var searchText = $('#searchDASTablePeers').val();
-        if(searchText) searchText = searchText.trim().toLowerCase();
-
-        if (!searchText && lastClickedNode == null) {
-          const $target = $(this);
-          const selector = $target.attr('class').split(/\s+/).map(cls => cls!=""?'.' + cls:"").join('');
-          $(selector).addClass('highlight');
-          $('.dastablenode').addClass('blur');
-        }
-      }, 500); //500ms delay before highlighting
-    },
-    function() {
-      clearTimeout(hoverTimeout); // Clear the timeout if the mouse leaves before 2 seconds
-      var searchText = $('#searchDASTablePeers').val();
-      if(searchText) searchText = searchText.trim().toLowerCase();
-
-      if (!searchText && lastClickedNode == null) {
-        const $target = $(this);
-        const selector = $target.attr('class').split(/\s+/).map(cls => cls!=""?'.' + cls:"").join('');
-        $(selector).removeClass('highlight');
-        $('.dastablenode').removeClass('blur');
-      }
-    }
-  );
-
-  // PeerDASTable Click
-  $('.dastablenode').on('click', function() {
-    const $target = $(this);
-    const selector = $target.attr('class').split(/\s+/).map(cls => '.' + cls).join('');
-
-    const peerID = $target.data('peerid').toString();
-
-    showPeerDetailsModal(peerID);
-
-    // Remove highlight/blur from the last clicked node
-    if (lastClickedNode != null) {
-      $(lastClickedNode).removeClass('highlight');
-      $('.dastablenode').removeClass('blur');
-    }
-
-    // Highlight clicked node and blur others
-    $(selector).addClass('highlight');
-    $('.dastablenode').not(selector).addClass('blur');
-
-    // Store the clicked node
-    lastClickedNode = selector;
-
-    // Add node to searchtext
-    $('#searchDASTablePeers').val(nodes[peerID].alias).trigger("input");
-
-  });
-
-  // Event listener to remove highlight when clicking outside
-  $(document).on('click', function(event) {
-    var searchText = $('#searchDASTablePeers').val();
-    if(searchText) searchText = searchText.trim().toLowerCase();
-
-    if (!searchText && !$(event.target).closest('.dastablenode').length) {
-      // Remove highlight and blur when clicking outside a .dastablenode element
-      $('.dastablenode').removeClass('highlight blur');
-      lastClickedNode = null;
-    }
-  });
-
-  // PeerDASTable search
+  // PeerDAS search and clear handlers (always active)
   $('#searchDASTablePeers').on('input', function() {
     var searchText = $(this).val();
     if(searchText) searchText = searchText.trim().toLowerCase();
@@ -751,19 +689,30 @@
         const peerId = $(this).data('peerid').toString().toLowerCase();
         const alias = $(this).data('alias').toString().toLowerCase();
         if (peerId.includes(searchText) || alias.includes(searchText)) {
-          $(this).addClass('highlight').removeClass('blur');  // Add 'highlight' if matches, remove 'blur'
+          $(this).addClass('highlight').removeClass('blur');
         } else {
-          $(this).addClass('blur').removeClass('highlight');  // Add 'blur' if doesn't match, remove 'highlight'
+          $(this).addClass('blur').removeClass('highlight');
         }
       });
     } else {
-      $('.dastablenode').removeClass('blur highlight');  // Remove both classes if search text is cleared
+      $('.dastablenode').removeClass('blur highlight');
     }
   });
 
-  // Clear search input
   $('#clearSearchButton').click(function(){
-    $('#searchDASTablePeers').val(''); // Clear the input
+    $('#searchDASTablePeers').val('');
+    $('.dastablenode').removeClass('blur highlight');
+  });
+
+  // Event listener to remove highlight when clicking outside (always active)
+  $(document).on('click', function(event) {
+    var searchText = $('#searchDASTablePeers').val();
+    if(searchText) searchText = searchText.trim().toLowerCase();
+
+    if (!searchText && !$(event.target).closest('.dastablenode').length) {
+      $('.dastablenode').removeClass('highlight blur');
+      lastClickedNode = null;
+    }
   });
 
   $('.client-row').on('click', function() {
@@ -896,6 +845,81 @@
 
     container.find('.peer-details-collapse').on('hide.bs.collapse', function () {
       $(this).siblings('.client-row-divider').find('.peer-collapse-btn').html('<i class="fa fa-chevron-down"></i> Show Connected Peers');
+    });
+  }
+
+  // PeerDAS accordion handler - render table only when opened
+  var peerDASTableRendered = false;
+  $('#collapseColumnInfos').on('shown.bs.collapse', function () {
+    if (!peerDASTableRendered) {
+      var template = $('#peerdas-table-template').html();
+      $('#peerdas-table-container').html(template);
+      
+      // Initialize jdenticon for the newly added SVG elements
+      jdenticon.update(".peer-table-icon", null);
+      
+      // Re-initialize all PeerDAS table interactions
+      initializePeerDASTableInteractions();
+      
+      peerDASTableRendered = true;
+    }
+  });
+
+  // Initialize PeerDAS table interactions (moved from inline)
+  function initializePeerDASTableInteractions() {
+    // PeerDASTable Hover
+    let hoverTimeout;
+    $('.dastablenode').hover(
+      function() {
+        hoverTimeout = setTimeout(() => {
+          var searchText = $('#searchDASTablePeers').val();
+          if(searchText) searchText = searchText.trim().toLowerCase();
+
+          if (!searchText && lastClickedNode == null) {
+            const $target = $(this);
+            const selector = $target.attr('class').split(/\s+/).map(cls => cls!=""?'.' + cls:"").join('');
+            $(selector).addClass('highlight');
+            $('.dastablenode').addClass('blur');
+          }
+        }, 500);
+      },
+      function() {
+        clearTimeout(hoverTimeout);
+        var searchText = $('#searchDASTablePeers').val();
+        if(searchText) searchText = searchText.trim().toLowerCase();
+
+        if (!searchText && lastClickedNode == null) {
+          const $target = $(this);
+          const selector = $target.attr('class').split(/\s+/).map(cls => cls!=""?'.' + cls:"").join('');
+          $(selector).removeClass('highlight');
+          $('.dastablenode').removeClass('blur');
+        }
+      }
+    );
+
+    // PeerDASTable Click
+    $('.dastablenode').on('click', function() {
+      const $target = $(this);
+      const selector = $target.attr('class').split(/\s+/).map(cls => '.' + cls).join('');
+      const peerID = $target.data('peerid').toString();
+
+      showPeerDetailsModal(peerID);
+
+      // Remove highlight/blur from the last clicked node
+      if (lastClickedNode != null) {
+        $(lastClickedNode).removeClass('highlight');
+        $('.dastablenode').removeClass('blur');
+      }
+
+      // Highlight clicked node and blur others
+      $(selector).addClass('highlight');
+      $('.dastablenode').not(selector).addClass('blur');
+
+      // Store the clicked node
+      lastClickedNode = selector;
+
+      // Add node to searchtext
+      $('#searchDASTablePeers').val(nodes[peerID].alias).trigger("input");
     });
   }
 
