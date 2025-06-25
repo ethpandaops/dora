@@ -18,6 +18,7 @@ import (
 )
 
 type FrontendCacheService struct {
+	cachingEnabled       bool
 	pageCallCounter      uint64
 	pageCallCounterMutex sync.Mutex
 	tieredCache          *cache.TieredCache
@@ -72,6 +73,7 @@ func StartFrontendCache() error {
 		tieredCache:     tieredCache,
 		processingDict:  make(map[string]*FrontendCacheProcessingPage),
 		callStackBuffer: make([]byte, 1024*1024*5),
+		cachingEnabled:  !utils.Config.Frontend.DisablePageCache && !utils.Config.Frontend.Debug,
 	}
 	return nil
 }
@@ -136,7 +138,7 @@ func (fc *FrontendCacheService) processPageCall(pageKey string, caching bool, pa
 		callGoId = routine.Goid()
 
 		// check cache
-		if !utils.Config.Frontend.Debug && caching && fc.getFrontendCache(pageKey, pageData) == nil {
+		if fc.cachingEnabled && caching && fc.getFrontendCache(pageKey, pageData) == nil {
 			logrus.Debugf("page served from cache: %v", pageKey)
 			if !isTimedOut {
 				returnChan <- pageData
@@ -150,7 +152,7 @@ func (fc *FrontendCacheService) processPageCall(pageKey string, caching bool, pa
 		if isTimedOut {
 			return
 		}
-		if !utils.Config.Frontend.Debug && caching && pageCall.CacheTimeout >= 0 {
+		if fc.cachingEnabled && caching && pageCall.CacheTimeout >= 0 {
 			fc.setFrontendCache(pageKey, pageData, pageCall.CacheTimeout)
 		}
 		if !isTimedOut {
