@@ -12,4 +12,4 @@ network_params:
   shard_committee_period: 1
   preset: mainnet
 additional_services:
-  - dora
+  - dora # needed for config exctraction
