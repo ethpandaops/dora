@@ -30,6 +30,7 @@ type BlocksPageData struct {
 	DisplayMevBlock     bool   `json:"dp_mevblock"`
 	DisplayBlockSize    bool   `json:"dp_blocksize"`
 	DisplayRecvDelay    bool   `json:"dp_recvdelay"`
+	DisplayExecTime     bool   `json:"dp_exectime"`
 	DisplayColCount     uint64 `json:"display_col_count"`
 
 	IsDefaultPage    bool   `json:"default_page"`
@@ -77,6 +78,10 @@ type BlocksPageDataSlot struct {
 	BlockRoot             []byte                     `json:"block_root"`
 	ParentRoot            []byte                     `json:"parent_root"`
 	RecvDelay             int32                      `json:"recv_delay"`
+	MinExecTime           uint32                     `json:"min_exec_time"`
+	MaxExecTime           uint32                     `json:"max_exec_time"`
+	AvgExecTime           uint32                     `json:"avg_exec_time"`
+	ExecutionTimes        []ExecutionTimeDetail      `json:"execution_times"`
 	ForkGraph             []*BlocksPageDataForkGraph `json:"fork_graph"`
 	IsMevBlock            bool                       `json:"is_mev_block"`
 	MevBlockRelays        string                     `json:"mev_block_relays"`
