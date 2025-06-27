@@ -19,11 +19,11 @@ else
   --args-file "${config_file}"
 fi
 
-# Get chain config
-kurtosis files inspect "$ENCLAVE_NAME" el_cl_genesis_data ./config.yaml | tail -n +2 > "${__dir}/generated-chain-config.yaml"
-
 # Get validator ranges
 kurtosis files inspect "$ENCLAVE_NAME" validator-ranges validator-ranges.yaml | tail -n +2 > "${__dir}/generated-validator-ranges.yaml"
+
+# Get dora config
+kurtosis files inspect "$ENCLAVE_NAME" dora-config dora-config.yaml | tail -n +2 > "${__dir}/generated-dora-kt-config.yaml"
 
 ## Generate Dora config
 ENCLAVE_UUID=$(kurtosis enclave inspect "$ENCLAVE_NAME" --full-uuids | grep 'UUID:' | awk '{print $2}')
@@ -107,6 +107,14 @@ database:
   sqlite:
     file: "${__dir}/generated-database.sqlite"
 EOF
+
+if [ -f ${__dir}/generated-dora-kt-config.yaml ]; then
+  fullcfg=$(yq eval-all 'select(fileIndex == 0) as $target | select(fileIndex == 1) as $source | $target.executionapi.endpoints = $source.executionapi.endpoints | $target' ${__dir}/generated-dora-config.yaml ${__dir}/generated-dora-kt-config.yaml)
+  if [ ! -z "$fullcfg" ]; then
+    echo "$fullcfg" > ${__dir}/generated-dora-config.yaml
+    rm ${__dir}/generated-dora-kt-config.yaml
+  fi
+fi
 
 
 cat <<EOF

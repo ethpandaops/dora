@@ -20,6 +20,7 @@ import (
 	"github.com/ethpandaops/dora/indexer/beacon"
 	execindexer "github.com/ethpandaops/dora/indexer/execution"
 	"github.com/ethpandaops/dora/indexer/mevrelay"
+	"github.com/ethpandaops/dora/indexer/snooper"
 	"github.com/ethpandaops/dora/utils"
 	"github.com/sirupsen/logrus"
 )
@@ -34,6 +35,7 @@ type ChainService struct {
 	consolidationIndexer *execindexer.ConsolidationIndexer
 	withdrawalIndexer    *execindexer.WithdrawalIndexer
 	mevRelayIndexer      *mevrelay.MevIndexer
+	snooperManager       *snooper.SnooperManager
 	started              bool
 }
 
@@ -52,6 +54,10 @@ func InitChainService(ctx context.Context, logger logrus.FieldLogger) {
 	chainState := consensusPool.GetChainState()
 	validatorNames := NewValidatorNames(beaconIndexer, chainState)
 	mevRelayIndexer := mevrelay.NewMevIndexer(logger.WithField("service", "mev-relay"), beaconIndexer, chainState)
+	snooperManager := snooper.NewSnooperManager(logger.WithField("service", "snooper-manager"), beaconIndexer)
+
+	// Set execution time provider
+	beaconIndexer.SetExecutionTimeProvider(snooper.NewExecutionTimeProvider(snooperManager.GetCache()))
 
 	GlobalBeaconService = &ChainService{
 		logger:          logger,
@@ -60,6 +66,7 @@ func InitChainService(ctx context.Context, logger logrus.FieldLogger) {
 		beaconIndexer:   beaconIndexer,
 		validatorNames:  validatorNames,
 		mevRelayIndexer: mevRelayIndexer,
+		snooperManager:  snooperManager,
 	}
 }
 
@@ -129,6 +136,13 @@ func (cs *ChainService) StartService() error {
 		}
 
 		executionIndexerCtx.AddClientInfo(client, endpoint.Priority, endpoint.Archive)
+
+		// Add snooper client if configured
+		if endpoint.EngineSnooperUrl != "" {
+			if err := cs.snooperManager.AddClient(client, endpoint.EngineSnooperUrl); err != nil {
+				cs.logger.WithError(err).Errorf("could not add snooper client for '%v'", endpoint.Name)
+			}
+		}
 	}
 
 	// initialize blockdb if configured
@@ -221,6 +235,11 @@ func (bs *ChainService) StopService() {
 		bs.beaconIndexer = nil
 	}
 
+	if bs.snooperManager != nil {
+		bs.snooperManager.Close()
+		bs.snooperManager = nil
+	}
+
 	if blockdb.GlobalBlockDb != nil {
 		blockdb.GlobalBlockDb.Close()
 	}
@@ -236,6 +255,10 @@ func (bs *ChainService) GetConsolidationIndexer() *execindexer.ConsolidationInde
 
 func (bs *ChainService) GetWithdrawalIndexer() *execindexer.WithdrawalIndexer {
 	return bs.withdrawalIndexer
+}
+
+func (bs *ChainService) GetSnooperManager() *snooper.SnooperManager {
+	return bs.snooperManager
 }
 
 func (bs *ChainService) GetConsensusClients() []*consensus.Client {

@@ -314,6 +314,23 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 		dbBlock.EthBlockExtraText = utils.GraffitiToString(executionExtraData[:])
 		dbBlock.WithdrawCount = uint64(len(executionWithdrawals))
 
+		// Get execution times from the block
+		if execTimes := block.GetExecutionTimes(); len(execTimes) > 0 {
+			// Calculate min/max times for quick queries
+			minTime, maxTime := CalculateMinMaxTimesForStorage(execTimes)
+			if minTime > 0 {
+				dbBlock.MinExecTime = minTime
+				dbBlock.MaxExecTime = maxTime
+
+				execTimesSSZ, err := block.dynSsz.MarshalSSZ(execTimes)
+				if err != nil {
+					dbw.indexer.logger.Warnf("error while building db blocks: failed to marshal execution times: %v", err)
+				} else {
+					dbBlock.ExecTimes = execTimesSSZ
+				}
+			}
+		}
+
 		withdrawalAmountOverflow := false
 		for _, withdrawal := range executionWithdrawals {
 			dbBlock.WithdrawAmount += uint64(withdrawal.Amount)

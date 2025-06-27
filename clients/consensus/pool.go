@@ -7,6 +7,7 @@ import (
 	"math/rand/v2"
 
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
+	"github.com/ethpandaops/dora/utils"
 	"github.com/ethpandaops/ethwallclock"
 	"github.com/sirupsen/logrus"
 )
@@ -28,15 +29,15 @@ func NewPool(ctx context.Context, logger logrus.FieldLogger) *Pool {
 	}
 }
 
-func (pool *Pool) SubscribeFinalizedEvent(capacity int) *Subscription[*v1.Finality] {
+func (pool *Pool) SubscribeFinalizedEvent(capacity int) *utils.Subscription[*v1.Finality] {
 	return pool.chainState.checkpointDispatcher.Subscribe(capacity, false)
 }
 
-func (pool *Pool) SubscribeWallclockEpochEvent(capacity int) *Subscription[*ethwallclock.Epoch] {
+func (pool *Pool) SubscribeWallclockEpochEvent(capacity int) *utils.Subscription[*ethwallclock.Epoch] {
 	return pool.chainState.wallclockEpochDispatcher.Subscribe(capacity, false)
 }
 
-func (pool *Pool) SubscribeWallclockSlotEvent(capacity int) *Subscription[*ethwallclock.Slot] {
+func (pool *Pool) SubscribeWallclockSlotEvent(capacity int) *utils.Subscription[*ethwallclock.Slot] {
 	return pool.chainState.wallclockSlotDispatcher.Subscribe(capacity, false)
 }
 
