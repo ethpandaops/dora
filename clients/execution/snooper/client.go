@@ -133,7 +133,10 @@ func (c *Client) registerModule() error {
 		Name: fmt.Sprintf("dora-execution-time-%d", c.clientID),
 		Config: map[string]interface{}{
 			// Extract block information from engine_newPayloadV4 requests
-			"request_select": `select(.method == "engine_newPayloadV4") | {method: .method, blockNumber: .params[0].blockNumber, blockHash: .params[0].blockHash}`,
+			"request_select": `{method: .method, blockNumber: .params[0].blockNumber, blockHash: .params[0].blockHash}`,
+			"request_filter": map[string]interface{}{
+				"json_query": `.method == "engine_newPayloadV4"`,
+			},
 		},
 	}
 
