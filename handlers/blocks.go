@@ -11,8 +11,10 @@ import (
 	"time"
 
 	"github.com/attestantio/go-eth2-client/spec/phase0"
+	"github.com/ethpandaops/dora/clients/execution"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
+	"github.com/ethpandaops/dora/indexer/beacon"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
@@ -94,6 +96,12 @@ func buildBlocksPageData(firstSlot uint64, pageSize uint64, displayColumns strin
 		}
 	}
 	if len(displayMap) == 0 {
+		// Check if snooper clients are configured
+		hasSnooperClients := false
+		if snooperManager := services.GlobalBeaconService.GetSnooperManager(); snooperManager != nil {
+			hasSnooperClients = snooperManager.HasClients()
+		}
+
 		displayMap = map[uint64]bool{
 			1:  true,
 			2:  true,
@@ -112,7 +120,8 @@ func buildBlocksPageData(firstSlot uint64, pageSize uint64, displayColumns strin
 			15: true,
 			16: true,
 			17: true,
-			18: false,
+			18: !hasSnooperClients, // Disable receive delay if snooper clients exist
+			19: hasSnooperClients,  // Enable exec time if snooper clients exist
 		}
 	} else {
 		for col := range displayMap {
@@ -138,6 +147,7 @@ func buildBlocksPageData(firstSlot uint64, pageSize uint64, displayColumns strin
 	pageData.DisplayMevBlock = displayMap[16]
 	pageData.DisplayBlockSize = displayMap[17]
 	pageData.DisplayRecvDelay = displayMap[18]
+	pageData.DisplayExecTime = displayMap[19]
 	pageData.DisplayColCount = uint64(len(displayMap))
 
 	// Build column selection URL parameter if not default
@@ -291,6 +301,44 @@ func buildBlocksPageData(firstSlot uint64, pageSize uint64, displayColumns strin
 				}
 			}
 
+			// Add execution times if available
+			if pageData.DisplayExecTime && dbSlot.MinExecTime != nil && dbSlot.MaxExecTime != nil && *dbSlot.MinExecTime > 0 {
+				slotData.MinExecTime = *dbSlot.MinExecTime
+				slotData.MaxExecTime = *dbSlot.MaxExecTime
+
+				// Deserialize execution times if available
+				if len(dbSlot.ExecTimes) > 0 {
+					execTimes := []beacon.ExecutionTime{}
+					if err := services.GlobalBeaconService.GetBeaconIndexer().GetDynSSZ().UnmarshalSSZ(&execTimes, dbSlot.ExecTimes); err == nil {
+						slotData.ExecutionTimes = make([]models.ExecutionTimeDetail, 0, len(execTimes))
+						totalAvg := uint64(0)
+						totalCount := uint64(0)
+
+						for _, et := range execTimes {
+							detail := models.ExecutionTimeDetail{
+								ClientType: getClientTypeName(et.ClientType),
+								MinTime:    et.MinTime,
+								MaxTime:    et.MaxTime,
+								AvgTime:    et.AvgTime,
+								Count:      et.Count,
+							}
+							slotData.ExecutionTimes = append(slotData.ExecutionTimes, detail)
+							totalAvg += uint64(et.AvgTime) * uint64(et.Count)
+							totalCount += uint64(et.Count)
+						}
+
+						if totalCount > 0 {
+							slotData.AvgExecTime = uint32(totalAvg / totalCount)
+						}
+					}
+				}
+
+				// If we don't have detailed times, calculate average from min/max
+				if slotData.AvgExecTime == 0 {
+					slotData.AvgExecTime = (slotData.MinExecTime + slotData.MaxExecTime) / 2
+				}
+			}
+
 			pageData.Blocks = append(pageData.Blocks, slotData)
 			blockCount++
 			buildBlocksPageSlotGraph(pageData, slotData, &maxOpenFork, openForks, isFirstPage)
@@ -313,6 +361,14 @@ func buildBlocksPageData(firstSlot uint64, pageSize uint64, displayColumns strin
 		cacheTimeout = 12 * time.Second
 	}
 	return pageData, cacheTimeout
+}
+
+func getClientTypeName(clientType uint8) string {
+	if clientType > 0 {
+		return execution.ClientType(clientType).String()
+	}
+
+	return fmt.Sprintf("Unknown(%d)", clientType)
 }
 
 func buildBlocksPageSlotGraph(pageData *models.BlocksPageData, slotData *models.BlocksPageDataSlot, maxOpenFork *int, openForks map[int][]byte, isFirstPage bool) {

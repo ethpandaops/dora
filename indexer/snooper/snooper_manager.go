@@ -149,7 +149,7 @@ func (sm *SnooperManager) HandleExecutionTimeEvent(event *snooper.ExecutionTimeE
 	}
 
 	block := sm.indexer.GetBlocksByExecutionBlockHash(phase0.Hash32(event.BlockHash))
-	if block == nil {
+	if len(block) == 0 {
 		// Store in cache
 		sm.cache.Set(event.BlockHash, clientInfo.execution, event.ExecutionTime)
 	} else {
@@ -265,4 +265,11 @@ func (sm *SnooperManager) runClientEventListener(ctx context.Context, clientInfo
 			sm.HandleExecutionTimeEvent(blockEvent)
 		}
 	}
+}
+
+// HasClients returns true if any snooper clients are configured
+func (sm *SnooperManager) HasClients() bool {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
+	return len(sm.clients) > 0
 }

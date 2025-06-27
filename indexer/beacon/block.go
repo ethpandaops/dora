@@ -523,10 +523,10 @@ func (block *Block) AddExecutionTime(execTime ExecutionTime) {
 	// Add new entry
 	block.executionTimes = append(block.executionTimes, execTime)
 
-	if execTime.MinTime < block.minExecutionTime {
+	if block.minExecutionTime == 0 || execTime.MinTime < block.minExecutionTime {
 		block.minExecutionTime = execTime.MinTime
 	}
-	if execTime.MaxTime > block.maxExecutionTime {
+	if block.maxExecutionTime == 0 || execTime.MaxTime > block.maxExecutionTime {
 		block.maxExecutionTime = execTime.MaxTime
 	}
 }

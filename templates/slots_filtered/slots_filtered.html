@@ -136,6 +136,7 @@
                 <option value="14" {{ if .DisplayGasLimit }}selected{{ end }}>Gas Limit</option>
                 <option value="16" {{ if .DisplayBlockSize }}selected{{ end }}>Block Size</option>
                 <option value="17" {{ if .DisplayRecvDelay }}selected{{ end }}>Seen</option>
+                <option value="18" {{ if .DisplayExecTime }}selected{{ end }}>Execution Time</option>
                 <option value="11" {{ if .DisplayGraffiti }}selected{{ end }}>Graffiti</option>
                 <option value="12" {{ if .DisplayElExtraData }}selected{{ end }}>Extra Data</option>
               </select>
@@ -187,6 +188,7 @@
                 {{ if .DisplayGasLimit }}<th>Gas Limit</th>{{ end }}
                 {{ if .DisplayBlockSize }}<th>Block Size</th>{{ end }}
                 {{ if .DisplayRecvDelay }}<th>Recv</th>{{ end }}
+                {{ if .DisplayExecTime }}<th>Exec Time</th>{{ end }}
                 {{ if .DisplayGraffiti }}<th>Graffiti</th>{{ end }}
                 {{ if .DisplayElExtraData }}<th>Extra Data</th>{{ end }}
               </tr>
@@ -274,6 +276,15 @@
                     {{- if $g.DisplayRecvDelay }}
                       <td>{{ if not (eq $slot.Status 0) }}{{ formatRecvDelay $slot.RecvDelay }}{{ end }}</td>
                     {{- end }}
+                    {{- if $g.DisplayExecTime }}
+                      <td>{{ if not (eq $slot.Status 0) }}
+                        {{ if gt $slot.MinExecTime 0 }}
+                          <span class="exec-time-display" data-slot="{{ $slot.Slot }}" data-exec-times='{{ includeJSON $slot.ExecutionTimes true }}' data-min="{{ $slot.MinExecTime }}" data-max="{{ $slot.MaxExecTime }}" data-avg="{{ $slot.AvgExecTime }}">
+                            {{ $slot.MaxExecTime }}ms (⌀{{ $slot.AvgExecTime }}ms)
+                          </span>
+                        {{ end }}
+                      {{ end }}</td>
+                    {{- end }}
                     {{- if $g.DisplayGraffiti }}
                       <td>{{ if not (eq $slot.Status 0) }}{{ formatGraffiti $slot.Graffiti }}{{ end }}</td>
                     {{- end }}
@@ -356,6 +367,62 @@ $(function() {
       }
     });
   });
+
+  // Initialize popovers for execution times
+  $('.exec-time-display').each(function() {
+    var $el = $(this);
+    var execTimes = $el.data('exec-times');
+    var minTime = $el.data('min');
+    var maxTime = $el.data('max');
+    var avgTime = $el.data('avg');
+    
+    var content = '<div class="exec-time-popover">';
+    
+    // Overall stats section
+    var totalCount = 0;
+    if (execTimes && execTimes.length > 0) {
+      execTimes.forEach(function(et) {
+        totalCount += et.count;
+      });
+    }
+    
+    content += '<div class="overall-stats">';
+    content += '<div><strong>Range:</strong> ' + minTime + ' - ' + maxTime + ' ms</div>';
+    content += '<div><strong>Average:</strong> ' + avgTime + ' ms (' + totalCount + ' samples)</div>';
+    content += '</div>';
+    
+    if (execTimes && execTimes.length > 0) {
+      content += '<div class="client-breakdown">';
+      content += '<div class="breakdown-header">';
+      content += '<span>Client</span><span>Min</span><span>Max</span><span>Avg</span><span>Count</span>';
+      content += '</div>';
+      
+      execTimes.forEach(function(et) {
+        content += '<div class="breakdown-row">';
+        content += '<span>' + et.client_type + '</span>';
+        content += '<span>' + et.min_time + 'ms</span>';
+        content += '<span>' + et.max_time + 'ms</span>';
+        content += '<span>' + et.avg_time + 'ms</span>';
+        content += '<span>' + et.count + '</span>';
+        content += '</div>';
+      });
+      
+      content += '</div>';
+    } else {
+      content += '<div class="no-data">No detailed client breakdown available</div>';
+    }
+    
+    content += '</div>';
+    
+    $el.popover({
+      html: true,
+      trigger: 'hover',
+      placement: 'top',
+      content: content,
+      container: 'body',
+      template: '<div class="popover exec-time-popover-container" role="tooltip"><div class="popover-arrow"></div><h3 class="popover-header"></h3><div class="popover-body"></div></div>'
+    });
+  });
 });
 </script>
 {{ end }}
@@ -381,6 +448,54 @@ $(function() {
   }
   .gas-usage-progress {
     height: 5px;
+  }
+  .exec-time-display {
+    cursor: pointer;
+    text-decoration: underline dotted;
+  }
+  .exec-time-popover {
+    min-width: 400px;
+    max-width: 500px;
+    font-size: 0.875rem;
+  }
+  .exec-time-popover .overall-stats {
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #dee2e6;
+  }
+  .exec-time-popover .overall-stats div {
+    margin-bottom: 4px;
+  }
+  .exec-time-popover .client-breakdown {
+    display: grid;
+    grid-template-columns: 1fr 70px 70px 70px 60px;
+    gap: 10px;
+  }
+  .exec-time-popover .breakdown-header {
+    display: contents;
+    font-weight: bold;
+    border-bottom: 1px solid #dee2e6;
+  }
+  .exec-time-popover .breakdown-header span {
+    padding-bottom: 4px;
+    border-bottom: 1px solid #dee2e6;
+  }
+  .exec-time-popover .breakdown-row {
+    display: contents;
+  }
+  .exec-time-popover .breakdown-row span {
+    padding: 2px 0;
+  }
+  .exec-time-popover .no-data {
+    color: #6c757d;
+    font-style: italic;
+    margin-top: 8px;
+  }
+  .exec-time-popover-container {
+    max-width: 500px !important;
+  }
+  .exec-time-popover-container .popover-body {
+    padding: 12px;
   }
 </style>
 {{ end }}

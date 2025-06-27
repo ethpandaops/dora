@@ -7,6 +7,7 @@ import (
 	"runtime/debug"
 	"strings"
 	"time"
+	"unsafe"
 
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
 	"github.com/attestantio/go-eth2-client/spec"
@@ -429,6 +430,7 @@ func (c *Client) processBlock(slot phase0.Slot, root phase0.Root, header *phase0
 				}).Debug("Added cached execution times to block")
 			}
 		}
+		c.logger.Infof("execution times (%x): %v", unsafe.Pointer(block), block.GetExecutionTimes())
 
 		t1 := time.Now()
 
