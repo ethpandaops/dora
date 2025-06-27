@@ -135,13 +135,14 @@ type Config struct {
 }
 
 type EndpointConfig struct {
-	Ssh            *EndpointSshConfig `yaml:"ssh"`
-	Url            string             `yaml:"url"`
-	Name           string             `yaml:"name"`
-	Archive        bool               `yaml:"archive"`
-	SkipValidators bool               `yaml:"skipValidators"`
-	Priority       int                `yaml:"priority"`
-	Headers        map[string]string  `yaml:"headers"`
+	Ssh              *EndpointSshConfig `yaml:"ssh"`
+	Url              string             `yaml:"url"`
+	Name             string             `yaml:"name"`
+	Archive          bool               `yaml:"archive"`
+	SkipValidators   bool               `yaml:"skipValidators"`
+	Priority         int                `yaml:"priority"`
+	Headers          map[string]string  `yaml:"headers"`
+	EngineSnooperUrl string             `yaml:"engineSnooperUrl"`
 }
 
 type EndpointSshConfig struct {

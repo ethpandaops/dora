@@ -25,10 +25,11 @@ const EtherGweiFactor = 1_000_000_000
 
 // Indexer is responsible for indexing the ethereum beacon chain.
 type Indexer struct {
-	logger        logrus.FieldLogger
-	consensusPool *consensus.Pool
-	dynSsz        *dynssz.DynSsz
-	synchronizer  *synchronizer
+	logger                logrus.FieldLogger
+	consensusPool         *consensus.Pool
+	dynSsz                *dynssz.DynSsz
+	synchronizer          *synchronizer
+	executionTimeProvider ExecutionTimeProvider
 
 	// configuration
 	disableSync           bool
@@ -58,8 +59,8 @@ type Indexer struct {
 	lastPrunedEpoch       phase0.Epoch
 	lastPruneRunEpoch     phase0.Epoch
 	lastPrecalcRunEpoch   phase0.Epoch
-	finalitySubscription  *consensus.Subscription[*v1.Finality]
-	wallclockSubscription *consensus.Subscription[*ethwallclock.Slot]
+	finalitySubscription  *utils.Subscription[*v1.Finality]
+	wallclockSubscription *utils.Subscription[*ethwallclock.Slot]
 
 	// canonical head state
 	canonicalHeadMutex   sync.Mutex
@@ -120,6 +121,10 @@ func NewIndexer(logger logrus.FieldLogger, consensusPool *consensus.Pool) *Index
 	}
 
 	return indexer
+}
+
+func (indexer *Indexer) SetExecutionTimeProvider(executionTimeProvider ExecutionTimeProvider) {
+	indexer.executionTimeProvider = executionTimeProvider
 }
 
 func (indexer *Indexer) GetActivityHistoryLength() uint16 {
@@ -334,13 +339,18 @@ func (indexer *Indexer) StartIndexer() {
 		block.isInUnfinalizedDb = true
 		block.recvDelay = dbBlock.RecvDelay
 
+		err := block.restoreExecutionTimes(uint16(dbBlock.MinExecTime), uint16(dbBlock.MaxExecTime), dbBlock.ExecTimes)
+		if err != nil {
+			indexer.logger.Warnf("failed restoring execution times for block %v [%x] from db: %v", dbBlock.Slot, dbBlock.Root, err)
+		}
+
 		if dbBlock.HeaderVer != 1 {
 			indexer.logger.Warnf("failed unmarshal unfinalized block header %v [%x] from db: unsupported header version", dbBlock.Slot, dbBlock.Root)
 			return
 		}
 
 		header := &phase0.SignedBeaconBlockHeader{}
-		err := header.UnmarshalSSZ(dbBlock.HeaderSSZ)
+		err = header.UnmarshalSSZ(dbBlock.HeaderSSZ)
 		if err != nil {
 			indexer.logger.Warnf("failed unmarshal unfinalized block header %v [%x] from db: %v", dbBlock.Slot, dbBlock.Root, err)
 			return

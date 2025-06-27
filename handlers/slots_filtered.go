@@ -11,6 +11,7 @@ import (
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
+	"github.com/ethpandaops/dora/indexer/beacon"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
@@ -157,6 +158,12 @@ func buildFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string
 		}
 	}
 	if len(displayMap) == 0 {
+		// Check if snooper clients are configured
+		hasSnooperClients := false
+		if snooperManager := services.GlobalBeaconService.GetSnooperManager(); snooperManager != nil {
+			hasSnooperClients = snooperManager.HasClients()
+		}
+
 		displayMap = map[uint64]bool{
 			1:  true,
 			2:  true,
@@ -174,7 +181,8 @@ func buildFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string
 			14: false,
 			15: false,
 			16: false,
-			17: true,
+			17: !hasSnooperClients, // Disable receive delay if snooper clients exist
+			18: hasSnooperClients,  // Enable exec time if snooper clients exist
 		}
 	} else {
 		displayList := make([]uint64, len(displayMap))
@@ -221,6 +229,7 @@ func buildFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string
 		DisplayMevBlock:     displayMap[15],
 		DisplayBlockSize:    displayMap[16],
 		DisplayRecvDelay:    displayMap[17],
+		DisplayExecTime:     displayMap[18],
 		DisplayColCount:     uint64(len(displayMap)),
 	}
 	logrus.Debugf("slots_filtered page called: %v:%v [%v/%v]", pageIdx, pageSize, graffiti, extradata)
@@ -339,6 +348,44 @@ func buildFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string
 						}
 					}
 					slotData.MevBlockRelays = strings.Join(relays, ", ")
+				}
+			}
+
+			// Add execution times if available
+			if pageData.DisplayExecTime && dbBlock.Block.MinExecTime > 0 && dbBlock.Block.MaxExecTime > 0 {
+				slotData.MinExecTime = dbBlock.Block.MinExecTime
+				slotData.MaxExecTime = dbBlock.Block.MaxExecTime
+
+				// Deserialize execution times if available
+				if len(dbBlock.Block.ExecTimes) > 0 {
+					execTimes := []beacon.ExecutionTime{}
+					if err := services.GlobalBeaconService.GetBeaconIndexer().GetDynSSZ().UnmarshalSSZ(&execTimes, dbBlock.Block.ExecTimes); err == nil {
+						slotData.ExecutionTimes = make([]models.ExecutionTimeDetail, 0, len(execTimes))
+						totalAvg := uint64(0)
+						totalCount := uint64(0)
+
+						for _, et := range execTimes {
+							detail := models.ExecutionTimeDetail{
+								ClientType: getClientTypeName(et.ClientType),
+								MinTime:    et.MinTime,
+								MaxTime:    et.MaxTime,
+								AvgTime:    et.AvgTime,
+								Count:      et.Count,
+							}
+							slotData.ExecutionTimes = append(slotData.ExecutionTimes, detail)
+							totalAvg += uint64(et.AvgTime) * uint64(et.Count)
+							totalCount += uint64(et.Count)
+						}
+
+						if totalCount > 0 {
+							slotData.AvgExecTime = uint32(totalAvg / totalCount)
+						}
+					}
+				}
+
+				// If we don't have detailed times, calculate average from min/max
+				if slotData.AvgExecTime == 0 {
+					slotData.AvgExecTime = (slotData.MinExecTime + slotData.MaxExecTime) / 2
 				}
 			}
 		}

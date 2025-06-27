@@ -26,6 +26,14 @@ var clientTypePatterns = map[ClientType]*regexp.Regexp{
 	RethClient:       regexp.MustCompile("(?i)^Reth/.*"),
 }
 
+func (t ClientType) Uint8() uint8 {
+	if t == UnknownClient {
+		return 0
+	}
+
+	return uint8(t)
+}
+
 func (client *Client) parseClientVersion(version string) {
 	for clientType, versionPattern := range clientTypePatterns {
 		if versionPattern.MatchString(version) {
