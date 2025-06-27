@@ -113,12 +113,12 @@ const (
 )
 
 type UnfinalizedBlock struct {
-	Root      []byte                 `db:"root"`
-	Slot      uint64                 `db:"slot"`
-	HeaderVer uint64                 `db:"header_ver"`
-	HeaderSSZ []byte                 `db:"header_ssz"`
-	BlockVer  uint64                 `db:"block_ver"`
-	BlockSSZ  []byte                 `db:"block_ssz"`
+	Root        []byte                 `db:"root"`
+	Slot        uint64                 `db:"slot"`
+	HeaderVer   uint64                 `db:"header_ver"`
+	HeaderSSZ   []byte                 `db:"header_ssz"`
+	BlockVer    uint64                 `db:"block_ver"`
+	BlockSSZ    []byte                 `db:"block_ssz"`
 	Status      UnfinalizedBlockStatus `db:"status"`
 	ForkId      uint64                 `db:"fork_id"`
 	RecvDelay   int32                  `db:"recv_delay"`

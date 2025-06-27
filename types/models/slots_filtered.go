@@ -59,32 +59,32 @@ type SlotsFilteredPageData struct {
 }
 
 type SlotsFilteredPageDataSlot struct {
-	Slot                  uint64    `json:"slot"`
-	Epoch                 uint64    `json:"epoch"`
-	Ts                    time.Time `json:"ts"`
-	Finalized             bool      `json:"scheduled"`
-	Scheduled             bool      `json:"finalized"`
-	Status                uint8     `json:"status"`
-	Synchronized          bool      `json:"synchronized"`
-	Proposer              uint64    `json:"proposer"`
-	ProposerName          string    `json:"proposer_name"`
-	AttestationCount      uint64    `json:"attestation_count"`
-	DepositCount          uint64    `json:"deposit_count"`
-	ExitCount             uint64    `json:"exit_count"`
-	ProposerSlashingCount uint64    `json:"proposer_slashing_count"`
-	AttesterSlashingCount uint64    `json:"attester_slashing_count"`
-	SyncParticipation     float64   `json:"sync_participation"`
-	EthTransactionCount   uint64    `json:"eth_transaction_count"`
-	BlobCount             uint64    `json:"blob_count"`
-	WithEthBlock          bool      `json:"with_eth_block"`
-	EthBlockNumber        uint64    `json:"eth_block_number"`
-	Graffiti              []byte    `json:"graffiti"`
-	ElExtraData           []byte    `json:"el_extra_data"`
-	GasUsed               uint64    `json:"gas_used"`
-	GasLimit              uint64    `json:"gas_limit"`
-	BlockSize             uint64    `json:"block_size"`
-	BlockRoot             []byte    `json:"block_root"`
-	ParentRoot            []byte    `json:"parent_root"`
+	Slot                  uint64                `json:"slot"`
+	Epoch                 uint64                `json:"epoch"`
+	Ts                    time.Time             `json:"ts"`
+	Finalized             bool                  `json:"scheduled"`
+	Scheduled             bool                  `json:"finalized"`
+	Status                uint8                 `json:"status"`
+	Synchronized          bool                  `json:"synchronized"`
+	Proposer              uint64                `json:"proposer"`
+	ProposerName          string                `json:"proposer_name"`
+	AttestationCount      uint64                `json:"attestation_count"`
+	DepositCount          uint64                `json:"deposit_count"`
+	ExitCount             uint64                `json:"exit_count"`
+	ProposerSlashingCount uint64                `json:"proposer_slashing_count"`
+	AttesterSlashingCount uint64                `json:"attester_slashing_count"`
+	SyncParticipation     float64               `json:"sync_participation"`
+	EthTransactionCount   uint64                `json:"eth_transaction_count"`
+	BlobCount             uint64                `json:"blob_count"`
+	WithEthBlock          bool                  `json:"with_eth_block"`
+	EthBlockNumber        uint64                `json:"eth_block_number"`
+	Graffiti              []byte                `json:"graffiti"`
+	ElExtraData           []byte                `json:"el_extra_data"`
+	GasUsed               uint64                `json:"gas_used"`
+	GasLimit              uint64                `json:"gas_limit"`
+	BlockSize             uint64                `json:"block_size"`
+	BlockRoot             []byte                `json:"block_root"`
+	ParentRoot            []byte                `json:"parent_root"`
 	RecvDelay             int32                 `json:"recv_delay"`
 	MinExecTime           uint32                `json:"min_exec_time"`
 	MaxExecTime           uint32                `json:"max_exec_time"`
