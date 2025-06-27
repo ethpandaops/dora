@@ -2,8 +2,10 @@ package snooper
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/url"
 	"strings"
 	"sync"
@@ -85,10 +87,24 @@ func (c *Client) Connect() error {
 		u.Path = u.Path + "/_snooper/control"
 	}
 
+	// Extract credentials if present
+	var headers http.Header
+	if u.User != nil {
+		headers = make(http.Header)
+		username := u.User.Username()
+		password, _ := u.User.Password()
+		auth := username + ":" + password
+		basicAuth := "Basic " + base64.StdEncoding.EncodeToString([]byte(auth))
+		headers.Set("Authorization", basicAuth)
+		
+		// Remove credentials from URL
+		u.User = nil
+	}
+
 	c.logger.WithField("url", u.String()).Debug("connecting to snooper control endpoint")
 
 	// Establish websocket connection
-	conn, _, err := websocket.DefaultDialer.DialContext(c.ctx, u.String(), nil)
+	conn, _, err := websocket.DefaultDialer.DialContext(c.ctx, u.String(), headers)
 	if err != nil {
 		return fmt.Errorf("websocket dial failed: %w", err)
 	}
