@@ -33,6 +33,10 @@ type Block struct {
 	block             *spec.VersionedSignedBeaconBlock
 	blockIndex        *BlockBodyIndex
 	recvDelay         int32
+	executionTimes    []ExecutionTime // execution times from snooper clients
+	minExecutionTime  uint16
+	maxExecutionTime  uint16
+	executionTimesMux sync.RWMutex
 	isInFinalizedDb   bool // block is in finalized table (slots)
 	isInUnfinalizedDb bool // block is in unfinalized table (unfinalized_blocks)
 	isDisposed        bool // block is disposed
@@ -486,4 +490,57 @@ func (block *Block) GetDbConsolidationRequests(indexer *Indexer, isCanonical boo
 // GetForkId returns the fork ID of this block.
 func (block *Block) GetForkId() ForkKey {
 	return block.forkId
+}
+
+// AddExecutionTime adds an execution time to this block
+func (block *Block) AddExecutionTime(execTime ExecutionTime) {
+	block.executionTimesMux.Lock()
+	defer block.executionTimesMux.Unlock()
+
+	// Check if we already have an entry for this client type
+	for i := range block.executionTimes {
+		existingExecTime := &block.executionTimes[i]
+		if existingExecTime.ClientType == execTime.ClientType {
+			// Update existing entry with min/max and increment count
+			if execTime.MinTime < existingExecTime.MinTime {
+				existingExecTime.MinTime = execTime.MinTime
+				if block.minExecutionTime == 0 || execTime.MinTime < block.minExecutionTime {
+					block.minExecutionTime = execTime.MinTime
+				}
+			}
+			if execTime.MaxTime > existingExecTime.MaxTime {
+				existingExecTime.MaxTime = execTime.MaxTime
+				if block.maxExecutionTime == 0 || execTime.MaxTime > block.maxExecutionTime {
+					block.maxExecutionTime = execTime.MaxTime
+				}
+			}
+			existingExecTime.AvgTime = (existingExecTime.AvgTime*existingExecTime.Count + execTime.AvgTime) / (existingExecTime.Count + 1)
+			existingExecTime.Count += execTime.Count
+			return
+		}
+	}
+
+	// Add new entry
+	block.executionTimes = append(block.executionTimes, execTime)
+
+	if execTime.MinTime < block.minExecutionTime {
+		block.minExecutionTime = execTime.MinTime
+	}
+	if execTime.MaxTime > block.maxExecutionTime {
+		block.maxExecutionTime = execTime.MaxTime
+	}
+}
+
+// GetExecutionTimes returns a copy of the execution times for this block
+func (block *Block) GetExecutionTimes() []ExecutionTime {
+	block.executionTimesMux.RLock()
+	defer block.executionTimesMux.RUnlock()
+
+	if len(block.executionTimes) == 0 {
+		return nil
+	}
+
+	result := make([]ExecutionTime, len(block.executionTimes))
+	copy(result, block.executionTimes)
+	return result
 }
