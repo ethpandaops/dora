@@ -677,6 +677,38 @@
 
     });
 
+    // Update column counts and coloring based on visible peers
+    updateColumnCounts();
+  }
+
+  // Function to update column counts and header coloring based on visible peers
+  function updateColumnCounts() {
+    // For each column, count visible peers and update header styling
+    $('table thead th').each(function() {
+      var columnHeader = $(this);
+      var columnIndex = columnHeader.find('span').text(); // Get column number from span
+      
+      if (columnIndex) {
+        // Find the corresponding table cell in the same column
+        var columnCell = columnHeader.closest('table').find('tbody td').eq(columnHeader.index());
+        
+        // Count visible peers in this column
+        var visiblePeerCount = columnCell.find('.dastablenode:visible').length;
+        
+        // Update the count display
+        columnHeader.find('.dastablepeercount').text('(' + visiblePeerCount + ')');
+        
+        // Remove existing background classes
+        columnHeader.removeClass('bg-danger bg-warning text-light text-dark');
+        
+        // Apply new coloring based on visible peer count
+        if (visiblePeerCount === 0) {
+          columnHeader.addClass('bg-danger text-light');
+        } else if (visiblePeerCount < 2) {
+          columnHeader.addClass('bg-warning text-dark');
+        }
+      }
+    });
   }
 
   // PeerDAS search and clear handlers (always active)
