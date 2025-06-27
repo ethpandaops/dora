@@ -85,7 +85,7 @@ func (c *Client) Connect() error {
 		u.Path = u.Path + "/_snooper/control"
 	}
 
-	c.logger.WithField("url", u.String()).Debug("Connecting to snooper control endpoint")
+	c.logger.WithField("url", u.String()).Debug("connecting to snooper control endpoint")
 
 	// Establish websocket connection
 	conn, _, err := websocket.DefaultDialer.DialContext(c.ctx, u.String(), nil)
@@ -94,7 +94,7 @@ func (c *Client) Connect() error {
 	}
 
 	c.conn = conn
-	c.logger.Debug("WebSocket connection established")
+	c.logger.Debug("snooper client connected")
 
 	// Start message handling goroutine
 	c.wg.Add(1)
@@ -106,7 +106,7 @@ func (c *Client) Connect() error {
 		return fmt.Errorf("module registration failed: %w", err)
 	}
 
-	c.logger.WithField("module_id", c.moduleID).Info("Snooper client connected and registered")
+	c.logger.WithField("module_id", c.moduleID).Debug("snooper client connected and set up")
 	return nil
 }
 
@@ -234,9 +234,9 @@ func (c *Client) handleMessages() {
 				return
 			default:
 				if websocket.IsCloseError(err, websocket.CloseGoingAway, websocket.CloseNormalClosure) {
-					c.logger.Info("WebSocket connection closed")
+					c.logger.Info("snooper client connection closed")
 				} else {
-					c.logger.WithError(err).Error("WebSocket read error")
+					c.logger.WithError(err).Error("snooper client read error")
 				}
 				c.cancel()
 				return
@@ -247,7 +247,7 @@ func (c *Client) handleMessages() {
 		case websocket.TextMessage:
 			var msg WSMessage
 			if err := json.Unmarshal(data, &msg); err != nil {
-				c.logger.WithError(err).Debug("Failed to unmarshal JSON message")
+				c.logger.WithError(err).Debug("failed to unmarshal JSON message")
 				continue
 			}
 
@@ -271,7 +271,7 @@ func (c *Client) handleMessages() {
 				expectingBinary = false
 				lastJSONMessage = nil
 			} else {
-				c.logger.Warn("Received unexpected binary message")
+				c.logger.Warn("received unexpected binary message")
 			}
 		}
 	}
@@ -289,7 +289,7 @@ func (c *Client) handleJSONMessage(msg *WSMessageWithBinary) {
 			select {
 			case responseChan <- msg:
 			default:
-				c.logger.WithField("response_id", msg.ResponseID).Warn("Failed to deliver response")
+				c.logger.WithField("response_id", msg.ResponseID).Warn("failed to deliver response")
 			}
 		}
 		return
@@ -300,7 +300,7 @@ func (c *Client) handleJSONMessage(msg *WSMessageWithBinary) {
 	case "tracer_event":
 		c.handleTracerEvent(msg)
 	default:
-		c.logger.WithField("method", msg.Method).Debug("Unknown message method")
+		c.logger.WithField("method", msg.Method).Debug("unknown message method")
 	}
 }
 
@@ -308,48 +308,48 @@ func (c *Client) handleJSONMessage(msg *WSMessageWithBinary) {
 func (c *Client) handleTracerEvent(msg *WSMessageWithBinary) {
 	tracerData, ok := msg.Data.(map[string]interface{})
 	if !ok {
-		c.logger.Debug("Invalid tracer event data")
+		c.logger.Debug("invalid tracer event data")
 		return
 	}
 
 	// Extract timing information
 	duration, ok := tracerData["duration_ms"].(float64)
 	if !ok {
-		c.logger.Debug("Missing duration_ms in tracer event")
+		c.logger.Debug("missing duration_ms in tracer event")
 		return
 	}
 
 	// Extract request data to get block information
 	requestData, ok := tracerData["request_data"].(map[string]interface{})
 	if !ok {
-		c.logger.Debug("Missing request_data in tracer event")
+		c.logger.Debug("missing request_data in tracer event")
 		return
 	}
 
 	// Extract block hash and number
 	blockHashStr, ok := requestData["blockHash"].(string)
 	if !ok {
-		c.logger.Debug("Missing blockHash in request_data")
+		c.logger.Debug("missing blockHash in request_data")
 		return
 	}
 
 	blockNumberStr, ok := requestData["blockNumber"].(string)
 	if !ok {
-		c.logger.Debug("Missing blockNumber in request_data")
+		c.logger.Debug("missing blockNumber in request_data")
 		return
 	}
 
 	// Parse block hash
 	blockHash := common.HexToHash(blockHashStr)
 	if blockHash == (common.Hash{}) {
-		c.logger.WithField("block_hash", blockHashStr).Debug("Invalid block hash")
+		c.logger.WithField("block_hash", blockHashStr).Debug("invalid block hash")
 		return
 	}
 
 	// Parse block number (hex string)
 	var blockNumber uint64
 	if _, err := fmt.Sscanf(blockNumberStr, "0x%x", &blockNumber); err != nil {
-		c.logger.WithField("block_number", blockNumberStr).WithError(err).Debug("Failed to parse block number")
+		c.logger.WithField("block_number", blockNumberStr).WithError(err).Debug("failed to parse block number")
 		return
 	}
 
@@ -366,7 +366,7 @@ func (c *Client) handleTracerEvent(msg *WSMessageWithBinary) {
 		"block_hash":     blockHash.Hex(),
 		"block_number":   blockNumber,
 		"execution_time": event.ExecutionTime,
-	}).Debug("Received execution time event")
+	}).Debug("received execution time event")
 
 	c.executionTimeDispatcher.Fire(event)
 }

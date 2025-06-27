@@ -319,8 +319,8 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 			// Calculate min/max times for quick queries
 			minTime, maxTime := CalculateMinMaxTimesForStorage(execTimes)
 			if minTime > 0 {
-				dbBlock.MinExecTime = &minTime
-				dbBlock.MaxExecTime = &maxTime
+				dbBlock.MinExecTime = minTime
+				dbBlock.MaxExecTime = maxTime
 
 				execTimesSSZ, err := block.dynSsz.MarshalSSZ(execTimes)
 				if err != nil {

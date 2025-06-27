@@ -13,6 +13,7 @@ import (
 	btypes "github.com/ethpandaops/dora/blockdb/types"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
+	"github.com/jmoiron/sqlx"
 	dynssz "github.com/pk910/dynamic-ssz"
 )
 
@@ -36,6 +37,7 @@ type Block struct {
 	executionTimes    []ExecutionTime // execution times from snooper clients
 	minExecutionTime  uint16
 	maxExecutionTime  uint16
+	execTimeUpdate    *time.Ticker
 	executionTimesMux sync.RWMutex
 	isInFinalizedDb   bool // block is in finalized table (slots)
 	isInUnfinalizedDb bool // block is in unfinalized table (unfinalized_blocks)
@@ -335,16 +337,24 @@ func (block *Block) buildUnfinalizedBlock(compress bool) (*dbtypes.UnfinalizedBl
 		return nil, fmt.Errorf("marshal block ssz failed: %v", err)
 	}
 
+	execTimesSSZ, err := block.dynSsz.MarshalSSZ(block.executionTimes)
+	if err != nil {
+		return nil, fmt.Errorf("marshal exec times ssz failed: %v", err)
+	}
+
 	return &dbtypes.UnfinalizedBlock{
-		Root:      block.Root[:],
-		Slot:      uint64(block.Slot),
-		HeaderVer: 1,
-		HeaderSSZ: headerSSZ,
-		BlockVer:  blockVer,
-		BlockSSZ:  blockSSZ,
-		Status:    0,
-		ForkId:    uint64(block.forkId),
-		RecvDelay: block.recvDelay,
+		Root:        block.Root[:],
+		Slot:        uint64(block.Slot),
+		HeaderVer:   1,
+		HeaderSSZ:   headerSSZ,
+		BlockVer:    blockVer,
+		BlockSSZ:    blockSSZ,
+		Status:      0,
+		ForkId:      uint64(block.forkId),
+		RecvDelay:   block.recvDelay,
+		MinExecTime: uint32(block.minExecutionTime),
+		MaxExecTime: uint32(block.maxExecutionTime),
+		ExecTimes:   execTimesSSZ,
 	}, nil
 }
 
@@ -529,6 +539,45 @@ func (block *Block) AddExecutionTime(execTime ExecutionTime) {
 	if block.maxExecutionTime == 0 || execTime.MaxTime > block.maxExecutionTime {
 		block.maxExecutionTime = execTime.MaxTime
 	}
+
+	if block.execTimeUpdate == nil {
+		block.execTimeUpdate = time.NewTicker(10 * time.Second)
+		go func() {
+			<-block.execTimeUpdate.C
+			block.execTimeUpdate.Stop()
+			block.execTimeUpdate = nil
+			if block.isDisposed || !block.isInUnfinalizedDb {
+				return
+			}
+
+			block.executionTimesMux.RLock()
+			defer block.executionTimesMux.RUnlock()
+
+			execTimesSSZ, err := block.dynSsz.MarshalSSZ(block.executionTimes)
+			if err != nil {
+				return
+			}
+
+			db.RunDBTransaction(func(tx *sqlx.Tx) error {
+				return db.UpdateUnfinalizedBlockExecutionTimes(block.Root[:], uint32(block.minExecutionTime), uint32(block.maxExecutionTime), execTimesSSZ, tx)
+			})
+		}()
+	}
+}
+
+func (block *Block) restoreExecutionTimes(minExecutionTime uint16, maxExecutionTime uint16, execTimesSSZ []byte) error {
+	if block.isDisposed || !block.isInUnfinalizedDb {
+		return nil
+	}
+
+	block.executionTimesMux.Lock()
+	defer block.executionTimesMux.Unlock()
+
+	block.minExecutionTime = minExecutionTime
+	block.maxExecutionTime = maxExecutionTime
+
+	block.executionTimes = []ExecutionTime{}
+	return block.dynSsz.UnmarshalSSZ(&block.executionTimes, execTimesSSZ)
 }
 
 // GetExecutionTimes returns a copy of the execution times for this block

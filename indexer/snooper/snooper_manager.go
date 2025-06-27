@@ -72,7 +72,7 @@ func (sm *SnooperManager) AddClient(executionClient *execution.Client, snooperUR
 	sm.logger.WithFields(logrus.Fields{
 		"client_id":   clientID,
 		"snooper_url": snooperURL,
-	}).Info("Adding snooper client")
+	}).Debug("adding snooper client")
 
 	// Create new snooper client
 	snooperClient := snooper.NewClient(snooperURL, clientID, sm.logger)
@@ -109,7 +109,7 @@ func (sm *SnooperManager) RemoveClient(clientID uint16) {
 		return
 	}
 
-	sm.logger.WithField("client_id", clientID).Info("Removing snooper client")
+	sm.logger.WithField("client_id", clientID).Info("removing snooper client")
 
 	// Unsubscribe from execution time events
 	if clientInfo.execTimeSubscription != nil {
@@ -140,7 +140,7 @@ func (sm *SnooperManager) HandleExecutionTimeEvent(event *snooper.ExecutionTimeE
 		"block_hash":     event.BlockHash.Hex(),
 		"block_number":   event.BlockNumber,
 		"execution_time": event.ExecutionTime,
-	}).Debug("Received execution time event")
+	}).Debug("received execution time event")
 
 	// Get client type ID for the client
 	clientInfo, exists := sm.clients[event.ClientID]
@@ -168,8 +168,6 @@ func (sm *SnooperManager) HandleExecutionTimeEvent(event *snooper.ExecutionTimeE
 
 // Close gracefully shuts down the snooper manager
 func (sm *SnooperManager) Close() error {
-	sm.logger.Info("Shutting down snooper manager")
-
 	// Cancel context to stop all clients
 	sm.cancel()
 
@@ -192,7 +190,7 @@ func (sm *SnooperManager) Close() error {
 	// Close the cache
 	sm.cache.Close()
 
-	sm.logger.Info("Snooper manager shutdown complete")
+	sm.logger.Info("snooper manager shutdown complete")
 	return nil
 }
 
@@ -207,17 +205,17 @@ func (sm *SnooperManager) runClientWithReconnection(ctx context.Context, clientI
 	for {
 		select {
 		case <-ctx.Done():
-			logger.Debug("Client context cancelled, stopping reconnection loop")
+			logger.Debug("client context cancelled, stopping reconnection loop")
 			return
 		default:
 		}
 
-		logger.Debug("Attempting to connect snooper client")
+		logger.Debug("attempting to connect snooper client")
 
 		// Try to connect
 		err := clientInfo.snooper.Connect()
 		if err != nil {
-			logger.WithError(err).WithField("backoff", backoffDuration).Warn("Failed to connect snooper client, retrying")
+			logger.WithError(err).WithField("backoff", backoffDuration).Warn("failed to connect snooper client, retrying")
 
 			// Wait before retrying
 			select {
@@ -236,7 +234,7 @@ func (sm *SnooperManager) runClientWithReconnection(ctx context.Context, clientI
 
 		// Reset backoff on successful connection
 		backoffDuration = sm.reconnectBackoff
-		logger.Info("Snooper client connected successfully")
+		logger.Debug("snooper client connected successfully")
 
 		// Run the client
 		err = clientInfo.snooper.Run()
@@ -247,10 +245,10 @@ func (sm *SnooperManager) runClientWithReconnection(ctx context.Context, clientI
 		// Check if we should stop
 		select {
 		case <-ctx.Done():
-			logger.Debug("Client context cancelled, stopping")
+			logger.Debug("client context cancelled, stopping")
 			return
 		default:
-			logger.Debug("Snooper client disconnected, will attempt reconnection")
+			logger.Debug("snooper client disconnected, will attempt reconnection")
 		}
 	}
 }

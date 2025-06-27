@@ -339,13 +339,18 @@ func (indexer *Indexer) StartIndexer() {
 		block.isInUnfinalizedDb = true
 		block.recvDelay = dbBlock.RecvDelay
 
+		err := block.restoreExecutionTimes(uint16(dbBlock.MinExecTime), uint16(dbBlock.MaxExecTime), dbBlock.ExecTimes)
+		if err != nil {
+			indexer.logger.Warnf("failed restoring execution times for block %v [%x] from db: %v", dbBlock.Slot, dbBlock.Root, err)
+		}
+
 		if dbBlock.HeaderVer != 1 {
 			indexer.logger.Warnf("failed unmarshal unfinalized block header %v [%x] from db: unsupported header version", dbBlock.Slot, dbBlock.Root)
 			return
 		}
 
 		header := &phase0.SignedBeaconBlockHeader{}
-		err := header.UnmarshalSSZ(dbBlock.HeaderSSZ)
+		err = header.UnmarshalSSZ(dbBlock.HeaderSSZ)
 		if err != nil {
 			indexer.logger.Warnf("failed unmarshal unfinalized block header %v [%x] from db: %v", dbBlock.Slot, dbBlock.Root, err)
 			return
@@ -371,18 +376,6 @@ func (indexer *Indexer) StartIndexer() {
 		if blockFork != nil {
 			if blockFork.headBlock == nil || blockFork.headBlock.Slot < block.Slot {
 				blockFork.headBlock = block
-			}
-		}
-
-		if dbBlock.ExecTimes != nil {
-			execTimes := []ExecutionTime{}
-			err := indexer.dynSsz.UnmarshalSSZ(&execTimes, dbBlock.ExecTimes)
-			if err != nil {
-				indexer.logger.Warnf("failed unmarshal execution times for block %v [%x] from db: %v", dbBlock.Slot, dbBlock.Root, err)
-			}
-
-			for _, execTime := range execTimes {
-				block.AddExecutionTime(execTime)
 			}
 		}
 

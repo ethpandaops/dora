@@ -352,9 +352,9 @@ func buildFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string
 			}
 
 			// Add execution times if available
-			if pageData.DisplayExecTime && dbBlock.Block.MinExecTime != nil && dbBlock.Block.MaxExecTime != nil && *dbBlock.Block.MinExecTime > 0 {
-				slotData.MinExecTime = *dbBlock.Block.MinExecTime
-				slotData.MaxExecTime = *dbBlock.Block.MaxExecTime
+			if pageData.DisplayExecTime && dbBlock.Block.MinExecTime > 0 && dbBlock.Block.MaxExecTime > 0 {
+				slotData.MinExecTime = dbBlock.Block.MinExecTime
+				slotData.MaxExecTime = dbBlock.Block.MaxExecTime
 
 				// Deserialize execution times if available
 				if len(dbBlock.Block.ExecTimes) > 0 {

@@ -55,8 +55,8 @@ type Slot struct {
 	ForkId                uint64     `db:"fork_id"`
 	BlockSize             uint64     `db:"block_size"`
 	RecvDelay             int32      `db:"recv_delay"`
-	MinExecTime           *uint32    `db:"min_exec_time"`
-	MaxExecTime           *uint32    `db:"max_exec_time"`
+	MinExecTime           uint32     `db:"min_exec_time"`
+	MaxExecTime           uint32     `db:"max_exec_time"`
 	ExecTimes             []byte     `db:"exec_times"`
 }
 
@@ -122,8 +122,8 @@ type UnfinalizedBlock struct {
 	Status      UnfinalizedBlockStatus `db:"status"`
 	ForkId      uint64                 `db:"fork_id"`
 	RecvDelay   int32                  `db:"recv_delay"`
-	MinExecTime *uint32                `db:"min_exec_time"`
-	MaxExecTime *uint32                `db:"max_exec_time"`
+	MinExecTime uint32                 `db:"min_exec_time"`
+	MaxExecTime uint32                 `db:"max_exec_time"`
 	ExecTimes   []byte                 `db:"exec_times"`
 }
 

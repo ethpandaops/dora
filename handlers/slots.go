@@ -301,9 +301,9 @@ func buildSlotsPageData(firstSlot uint64, pageSize uint64, displayColumns string
 			}
 
 			// Add execution times if available
-			if pageData.DisplayExecTime && dbSlot.MinExecTime != nil && dbSlot.MaxExecTime != nil && *dbSlot.MinExecTime > 0 {
-				slotData.MinExecTime = *dbSlot.MinExecTime
-				slotData.MaxExecTime = *dbSlot.MaxExecTime
+			if pageData.DisplayExecTime && dbSlot.MinExecTime > 0 && dbSlot.MaxExecTime > 0 {
+				slotData.MinExecTime = dbSlot.MinExecTime
+				slotData.MaxExecTime = dbSlot.MaxExecTime
 
 				// Deserialize execution times if available
 				if len(dbSlot.ExecTimes) > 0 {
