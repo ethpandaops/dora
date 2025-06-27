@@ -12,7 +12,8 @@ ALTER TABLE public."unfinalized_blocks"
     ADD "exec_times" bytea;
 
 -- Add index on execution time fields for performance queries
-CREATE INDEX CONCURRENTLY IF NOT EXISTS "idx_slots_exec_times" ON public."slots" ("min_exec_time", "max_exec_time") WHERE "min_exec_time" > 0;
+CREATE INDEX IF NOT EXISTS "idx_slots_max_exec_times" ON public."slots" ("max_exec_time" ASC NULLS FIRST);
+CREATE INDEX IF NOT EXISTS "idx_slots_min_exec_times" ON public."slots" ("min_exec_time" ASC NULLS FIRST);
 
 -- +goose StatementEnd
 
