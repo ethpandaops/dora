@@ -20,7 +20,8 @@ ALTER TABLE "unfinalized_blocks"
     ADD "exec_times" blob;
 
 -- Add index on execution time fields for performance queries
-CREATE INDEX IF NOT EXISTS "idx_slots_exec_times" ON "slots" ("min_exec_time", "max_exec_time") WHERE "min_exec_time" > 0;
+CREATE INDEX IF NOT EXISTS "idx_slots_max_exec_times" ON "slots" ("max_exec_time" ASC);
+CREATE INDEX IF NOT EXISTS "idx_slots_min_exec_times" ON "slots" ("min_exec_time" ASC);
 
 -- +goose StatementEnd
 
