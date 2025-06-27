@@ -392,7 +392,9 @@ func (sync *synchronizer) syncEpoch(syncEpoch phase0.Epoch, client *Client, last
 	}
 
 	sim := newStateSimulator(sync.indexer, epochStats)
-	sim.validatorSet = validatorSet
+	if sim != nil {
+		sim.validatorSet = validatorSet
+	}
 
 	// save blocks
 	err = db.RunDBTransaction(func(tx *sqlx.Tx) error {
