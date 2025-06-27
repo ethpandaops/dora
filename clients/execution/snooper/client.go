@@ -96,7 +96,7 @@ func (c *Client) Connect() error {
 		auth := username + ":" + password
 		basicAuth := "Basic " + base64.StdEncoding.EncodeToString([]byte(auth))
 		headers.Set("Authorization", basicAuth)
-		
+
 		// Remove credentials from URL
 		u.User = nil
 	}
