@@ -96,12 +96,6 @@ func buildBlocksPageData(firstSlot uint64, pageSize uint64, displayColumns strin
 		}
 	}
 	if len(displayMap) == 0 {
-		// Check if snooper clients are configured
-		hasSnooperClients := false
-		if snooperManager := services.GlobalBeaconService.GetSnooperManager(); snooperManager != nil {
-			hasSnooperClients = snooperManager.HasClients()
-		}
-
 		displayMap = map[uint64]bool{
 			1:  true,
 			2:  true,
@@ -120,8 +114,8 @@ func buildBlocksPageData(firstSlot uint64, pageSize uint64, displayColumns strin
 			15: true,
 			16: true,
 			17: true,
-			18: !hasSnooperClients, // Disable receive delay if snooper clients exist
-			19: hasSnooperClients,  // Enable exec time if snooper clients exist
+			18: false,
+			19: false,
 		}
 	} else {
 		for col := range displayMap {
