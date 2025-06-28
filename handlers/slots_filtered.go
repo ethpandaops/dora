@@ -52,6 +52,10 @@ func SlotsFiltered(w http.ResponseWriter, r *http.Request) {
 	var invertproposer bool
 	var withOrphaned uint64
 	var withMissing uint64
+	var minSyncAgg string
+	var maxSyncAgg string
+	var minExecTime string
+	var maxExecTime string
 
 	if urlArgs.Has("f") {
 		if urlArgs.Has("f.graffiti") {
@@ -81,6 +85,18 @@ func SlotsFiltered(w http.ResponseWriter, r *http.Request) {
 		if urlArgs.Has("f.missing") {
 			withMissing, _ = strconv.ParseUint(urlArgs.Get("f.missing"), 10, 64)
 		}
+		if urlArgs.Has("f.minsync") {
+			minSyncAgg = urlArgs.Get("f.minsync")
+		}
+		if urlArgs.Has("f.maxsync") {
+			maxSyncAgg = urlArgs.Get("f.maxsync")
+		}
+		if urlArgs.Has("f.minexec") {
+			minExecTime = urlArgs.Get("f.minexec")
+		}
+		if urlArgs.Has("f.maxexec") {
+			maxExecTime = urlArgs.Get("f.maxexec")
+		}
 	} else {
 		withOrphaned = 1
 		withMissing = 1
@@ -88,7 +104,7 @@ func SlotsFiltered(w http.ResponseWriter, r *http.Request) {
 	var pageError error
 	pageError = services.GlobalCallRateLimiter.CheckCallLimit(r, 2)
 	if pageError == nil {
-		data.Data, pageError = getFilteredSlotsPageData(pageIdx, pageSize, graffiti, invertgraffiti, extradata, invertextradata, proposer, pname, invertproposer, uint8(withOrphaned), uint8(withMissing), displayColumns)
+		data.Data, pageError = getFilteredSlotsPageData(pageIdx, pageSize, graffiti, invertgraffiti, extradata, invertextradata, proposer, pname, invertproposer, uint8(withOrphaned), uint8(withMissing), minSyncAgg, maxSyncAgg, minExecTime, maxExecTime, displayColumns)
 	}
 	if pageError != nil {
 		handlePageError(w, r, pageError)
@@ -100,11 +116,11 @@ func SlotsFiltered(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func getFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string, invertgraffiti bool, extradata string, invertextradata bool, proposer string, pname string, invertproposer bool, withOrphaned uint8, withMissing uint8, displayColumns string) (*models.SlotsFilteredPageData, error) {
+func getFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string, invertgraffiti bool, extradata string, invertextradata bool, proposer string, pname string, invertproposer bool, withOrphaned uint8, withMissing uint8, minSyncAgg string, maxSyncAgg string, minExecTime string, maxExecTime string, displayColumns string) (*models.SlotsFilteredPageData, error) {
 	pageData := &models.SlotsFilteredPageData{}
-	pageCacheKey := fmt.Sprintf("slots_filtered:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v", pageIdx, pageSize, graffiti, invertgraffiti, extradata, invertextradata, proposer, pname, invertproposer, withOrphaned, withMissing, displayColumns)
+	pageCacheKey := fmt.Sprintf("slots_filtered:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v", pageIdx, pageSize, graffiti, invertgraffiti, extradata, invertextradata, proposer, pname, invertproposer, withOrphaned, withMissing, minSyncAgg, maxSyncAgg, minExecTime, maxExecTime, displayColumns)
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(_ *services.FrontendCacheProcessingPage) interface{} {
-		return buildFilteredSlotsPageData(pageIdx, pageSize, graffiti, invertgraffiti, extradata, invertextradata, proposer, pname, invertproposer, withOrphaned, withMissing, displayColumns)
+		return buildFilteredSlotsPageData(pageIdx, pageSize, graffiti, invertgraffiti, extradata, invertextradata, proposer, pname, invertproposer, withOrphaned, withMissing, minSyncAgg, maxSyncAgg, minExecTime, maxExecTime, displayColumns)
 	})
 	if pageErr == nil && pageRes != nil {
 		resData, resOk := pageRes.(*models.SlotsFilteredPageData)
@@ -116,7 +132,7 @@ func getFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string, 
 	return pageData, pageErr
 }
 
-func buildFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string, invertgraffiti bool, extradata string, invertextradata bool, proposer string, pname string, invertproposer bool, withOrphaned uint8, withMissing uint8, displayColumns string) *models.SlotsFilteredPageData {
+func buildFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string, invertgraffiti bool, extradata string, invertextradata bool, proposer string, pname string, invertproposer bool, withOrphaned uint8, withMissing uint8, minSyncAgg string, maxSyncAgg string, minExecTime string, maxExecTime string, displayColumns string) *models.SlotsFilteredPageData {
 	chainState := services.GlobalBeaconService.GetChainState()
 	filterArgs := url.Values{}
 	if graffiti != "" {
@@ -146,6 +162,24 @@ func buildFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string
 	if withMissing != 0 {
 		filterArgs.Add("f.missing", fmt.Sprintf("%v", withMissing))
 	}
+	if minSyncAgg != "" {
+		filterArgs.Add("f.minsync", minSyncAgg)
+	}
+	if maxSyncAgg != "" {
+		filterArgs.Add("f.maxsync", maxSyncAgg)
+	}
+	if minExecTime != "" {
+		filterArgs.Add("f.minexec", minExecTime)
+	}
+	if maxExecTime != "" {
+		filterArgs.Add("f.maxexec", maxExecTime)
+	}
+
+	// Check if snooper clients are configured
+	hasSnooperClients := false
+	if snooperManager := services.GlobalBeaconService.GetSnooperManager(); snooperManager != nil {
+		hasSnooperClients = snooperManager.HasClients()
+	}
 
 	displayMap := map[uint64]bool{}
 	if displayColumns != "" {
@@ -158,11 +192,6 @@ func buildFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string
 		}
 	}
 	if len(displayMap) == 0 {
-		// Check if snooper clients are configured
-		hasSnooperClients := false
-		if snooperManager := services.GlobalBeaconService.GetSnooperManager(); snooperManager != nil {
-			hasSnooperClients = snooperManager.HasClients()
-		}
 
 		displayMap = map[uint64]bool{
 			1:  true,
@@ -211,6 +240,10 @@ func buildFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string
 		FilterInvertProposer:  invertproposer,
 		FilterWithOrphaned:    withOrphaned,
 		FilterWithMissing:     withMissing,
+		FilterMinSyncAgg:      minSyncAgg,
+		FilterMaxSyncAgg:      maxSyncAgg,
+		FilterMinExecTime:     minExecTime,
+		FilterMaxExecTime:     maxExecTime,
 
 		DisplayEpoch:        displayMap[1],
 		DisplaySlot:         displayMap[2],
@@ -231,6 +264,8 @@ func buildFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string
 		DisplayRecvDelay:    displayMap[17],
 		DisplayExecTime:     displayMap[18],
 		DisplayColCount:     uint64(len(displayMap)),
+
+		HasSnooperClients: hasSnooperClients,
 	}
 	logrus.Debugf("slots_filtered page called: %v:%v [%v/%v]", pageIdx, pageSize, graffiti, extradata)
 	if pageIdx == 0 {
@@ -268,6 +303,38 @@ func buildFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string
 	if proposer != "" {
 		pidx, _ := strconv.ParseUint(proposer, 10, 64)
 		blockFilter.ProposerIndex = &pidx
+	}
+	if minSyncAgg != "" {
+		minSync, err := strconv.ParseFloat(minSyncAgg, 32)
+		if err == nil {
+			minSyncFloat32 := float32(minSync)
+			// Convert percentage (0-100) to ratio (0-1)
+			minSyncFloat32 = minSyncFloat32 / 100.0
+			blockFilter.MinSyncParticipation = &minSyncFloat32
+		}
+	}
+	if maxSyncAgg != "" {
+		maxSync, err := strconv.ParseFloat(maxSyncAgg, 32)
+		if err == nil {
+			maxSyncFloat32 := float32(maxSync)
+			// Convert percentage (0-100) to ratio (0-1)
+			maxSyncFloat32 = maxSyncFloat32 / 100.0
+			blockFilter.MaxSyncParticipation = &maxSyncFloat32
+		}
+	}
+	if minExecTime != "" {
+		minExec, err := strconv.ParseUint(minExecTime, 10, 32)
+		if err == nil {
+			minExecUint32 := uint32(minExec)
+			blockFilter.MinExecTime = &minExecUint32
+		}
+	}
+	if maxExecTime != "" {
+		maxExec, err := strconv.ParseUint(maxExecTime, 10, 32)
+		if err == nil {
+			maxExecUint32 := uint32(maxExec)
+			blockFilter.MaxExecTime = &maxExecUint32
+		}
 	}
 
 	withScheduledCount := chainState.GetSpecs().SlotsPerEpoch - uint64(chainState.SlotToSlotIndex(currentSlot)) - 1

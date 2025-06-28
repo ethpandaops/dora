@@ -15,6 +15,10 @@ type SlotsFilteredPageData struct {
 	FilterInvertProposer  bool   `json:"filter_invert_proposer"`
 	FilterWithOrphaned    uint8  `json:"filter_orphaned"`
 	FilterWithMissing     uint8  `json:"filter_missing"`
+	FilterMinSyncAgg      string `json:"filter_min_sync"`
+	FilterMaxSyncAgg      string `json:"filter_max_sync"`
+	FilterMinExecTime     string `json:"filter_min_exec"`
+	FilterMaxExecTime     string `json:"filter_max_exec"`
 
 	DisplayEpoch        bool   `json:"dp_epoch"`
 	DisplaySlot         bool   `json:"dp_slot"`
@@ -35,6 +39,8 @@ type SlotsFilteredPageData struct {
 	DisplayRecvDelay    bool   `json:"dp_recvdelay"`
 	DisplayExecTime     bool   `json:"dp_exectime"`
 	DisplayColCount     uint64 `json:"display_col_count"`
+
+	HasSnooperClients bool `json:"has_snooper_clients"`
 
 	Slots     []*SlotsFilteredPageDataSlot `json:"slots"`
 	SlotCount uint64                       `json:"slot_count"`
