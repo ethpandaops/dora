@@ -46,3 +46,10 @@ type SearchAheadValidatorNameResult struct {
 	Name  string `json:"name,omitempty"`
 	Count string `json:"count,omitempty"`
 }
+
+// SearchAheadValidatorResult is a struct to hold the search ahead validator results
+type SearchAheadValidatorResult struct {
+	Index  string `json:"index,omitempty"`
+	Pubkey string `json:"pubkey,omitempty"`
+	Name   string `json:"name,omitempty"`
+}
