@@ -3,10 +3,12 @@ package snooper
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/attestantio/go-eth2-client/spec/phase0"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethpandaops/dora/clients/execution"
 	"github.com/ethpandaops/dora/clients/execution/snooper"
 	"github.com/ethpandaops/dora/indexer/beacon"
@@ -34,7 +36,9 @@ type snooperClientInfo struct {
 	clientID             uint16
 	snooperURL           string
 	cancel               context.CancelFunc
-	execTimeSubscription *utils.Subscription[*snooper.ExecutionTimeEvent]
+	module               *snooper.ModuleRegistration
+	execTimeSubscription *utils.Subscription[*snooper.WSMessageWithBinary]
+	getPayloadHashes     *BlockHashRingBuffer // Ring buffer for engine_getPayloadV* block hashes
 }
 
 // NewSnooperManager creates a new snooper manager
@@ -75,10 +79,34 @@ func (sm *SnooperManager) AddClient(executionClient *execution.Client, snooperUR
 	}).Debug("adding snooper client")
 
 	// Create new snooper client
-	snooperClient := snooper.NewClient(snooperURL, clientID, sm.logger)
+	config := snooper.ClientConfig{
+		URL:    snooperURL,
+		Logger: sm.logger,
+	}
+	snooperClient := snooper.NewClient(config)
 
 	// Create client context
 	clientCtx, clientCancel := context.WithCancel(sm.ctx)
+
+	// Register response tracer module
+	moduleConfig := snooper.ModuleConfig{
+		Type: "response_tracer",
+		Name: fmt.Sprintf("dora-execution-time-%d", clientID),
+		Config: map[string]interface{}{
+			// Extract block information from engine_newPayloadV4 requests
+			"request_select":  `{method: .method, blockNumber: .params[0].blockNumber // null, blockHash: .params[0].blockHash // null}`,
+			"response_select": `{blockHash: .result.executionPayload.blockHash}`,
+			"request_filter": map[string]interface{}{
+				"json_query": `((.method | startswith("engine_newPayloadV")) or (.method | startswith("engine_getPayloadV")))`,
+			},
+		},
+	}
+
+	module, err := snooperClient.RegisterModule(moduleConfig)
+	if err != nil {
+		clientCancel()
+		return fmt.Errorf("failed to register module: %w", err)
+	}
 
 	clientInfo := &snooperClientInfo{
 		execution:            executionClient,
@@ -86,14 +114,22 @@ func (sm *SnooperManager) AddClient(executionClient *execution.Client, snooperUR
 		clientID:             clientID,
 		snooperURL:           snooperURL,
 		cancel:               clientCancel,
-		execTimeSubscription: snooperClient.SubscribeExecutionTimeEvent(10, false),
+		module:               module,
+		execTimeSubscription: module.Subscribe(10, false),
+		getPayloadHashes:     NewBlockHashRingBuffer(5), // Store last 5 block hashes
 	}
 
 	sm.clients[clientID] = clientInfo
 
-	// Start the client in a goroutine with reconnection logic
+	// Start the client
+	if err := snooperClient.Start(); err != nil {
+		clientCancel()
+		delete(sm.clients, clientID)
+		return fmt.Errorf("failed to start snooper client: %w", err)
+	}
+
+	// Start event listener
 	sm.wg.Add(1)
-	go sm.runClientWithReconnection(clientCtx, clientInfo)
 	go sm.runClientEventListener(clientCtx, clientInfo)
 
 	return nil
@@ -117,12 +153,17 @@ func (sm *SnooperManager) RemoveClient(clientID uint16) {
 		clientInfo.execTimeSubscription = nil
 	}
 
+	// Unregister module
+	if clientInfo.module != nil {
+		clientInfo.snooper.UnregisterModule(clientInfo.module)
+	}
+
 	// Cancel the client context
 	clientInfo.cancel()
 
-	// Close the client
+	// Stop the client
 	if clientInfo.snooper != nil {
-		clientInfo.snooper.Close()
+		clientInfo.snooper.Stop()
 	}
 
 	delete(sm.clients, clientID)
@@ -133,8 +174,17 @@ func (sm *SnooperManager) GetCache() *ExecutionTimeCache {
 	return sm.cache
 }
 
-// HandleExecutionTimeEvent implements the snooper.ExecutionTimeEventHandler interface
-func (sm *SnooperManager) HandleExecutionTimeEvent(event *snooper.ExecutionTimeEvent) {
+// ExecutionTimeEvent represents a block execution time event
+type ExecutionTimeEvent struct {
+	BlockHash     common.Hash
+	BlockNumber   uint64
+	ClientID      uint16
+	ExecutionTime time.Duration
+	Timestamp     time.Time
+}
+
+// HandleExecutionTimeEvent processes execution time events from tracer_event messages
+func (sm *SnooperManager) HandleExecutionTimeEvent(event *ExecutionTimeEvent) {
 	sm.logger.WithFields(logrus.Fields{
 		"client_id":      event.ClientID,
 		"block_hash":     event.BlockHash.Hex(),
@@ -177,7 +227,7 @@ func (sm *SnooperManager) Close() error {
 		if clientInfo := sm.clients[clientID]; clientInfo != nil {
 			clientInfo.cancel()
 			if clientInfo.snooper != nil {
-				clientInfo.snooper.Close()
+				clientInfo.snooper.Stop()
 			}
 		}
 	}
@@ -194,75 +244,162 @@ func (sm *SnooperManager) Close() error {
 	return nil
 }
 
-// runClientWithReconnection runs a snooper client with automatic reconnection
-func (sm *SnooperManager) runClientWithReconnection(ctx context.Context, clientInfo *snooperClientInfo) {
+func (sm *SnooperManager) runClientEventListener(ctx context.Context, clientInfo *snooperClientInfo) {
 	defer sm.wg.Done()
 
-	logger := sm.logger.WithField("client_id", clientInfo.clientID)
-	backoffDuration := sm.reconnectBackoff
-	maxBackoff := 5 * time.Minute
-
-	for {
-		select {
-		case <-ctx.Done():
-			logger.Debug("client context cancelled, stopping reconnection loop")
-			return
-		default:
-		}
-
-		logger.Debug("attempting to connect snooper client")
-
-		// Try to connect
-		err := clientInfo.snooper.Connect()
-		if err != nil {
-			logger.WithError(err).WithField("backoff", backoffDuration).Warn("failed to connect snooper client, retrying")
-
-			// Wait before retrying
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(backoffDuration):
-			}
-
-			// Exponential backoff with jitter
-			backoffDuration = time.Duration(float64(backoffDuration) * 1.5)
-			if backoffDuration > maxBackoff {
-				backoffDuration = maxBackoff
-			}
-			continue
-		}
-
-		// Reset backoff on successful connection
-		backoffDuration = sm.reconnectBackoff
-		logger.Debug("snooper client connected successfully")
-
-		// Run the client
-		err = clientInfo.snooper.Run()
-		if err != nil && err != context.Canceled {
-			logger.WithError(err).Warn("Snooper client disconnected")
-		}
-
-		// Check if we should stop
-		select {
-		case <-ctx.Done():
-			logger.Debug("client context cancelled, stopping")
-			return
-		default:
-			logger.Debug("snooper client disconnected, will attempt reconnection")
-		}
-	}
-}
-
-func (sm *SnooperManager) runClientEventListener(ctx context.Context, clientInfo *snooperClientInfo) {
 	// listen to execution time events
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case blockEvent := <-clientInfo.execTimeSubscription.Channel():
-			sm.HandleExecutionTimeEvent(blockEvent)
+		case msg := <-clientInfo.execTimeSubscription.Channel():
+			// Process tracer_event message
+			if msg.Method != "tracer_event" {
+				continue
+			}
+
+			sm.processTracerEvent(msg, clientInfo)
 		}
 	}
+}
+
+// processTracerEvent processes tracer events for both engine_newPayloadV* and engine_getPayloadV* calls
+func (sm *SnooperManager) processTracerEvent(msg *snooper.WSMessageWithBinary, clientInfo *snooperClientInfo) {
+	tracerData, ok := msg.Data.(map[string]interface{})
+	if !ok {
+		sm.logger.Debug("invalid tracer event data")
+		return
+	}
+
+	// Extract request data to determine method type
+	requestData, ok := tracerData["request_data"].(map[string]interface{})
+	if !ok {
+		sm.logger.Debug("missing request_data in tracer event", tracerData)
+		return
+	}
+
+	method, ok := requestData["method"].(string)
+	if !ok {
+		sm.logger.Info("missing method in request_data")
+		return
+	}
+
+	// Handle engine_getPayloadV* calls
+	if strings.HasPrefix(method, "engine_getPayloadV") {
+		sm.handleGetPayloadEvent(tracerData, clientInfo)
+		return
+	}
+
+	// Handle engine_newPayloadV* calls
+	if strings.HasPrefix(method, "engine_newPayloadV") {
+		sm.handleNewPayloadEvent(tracerData, clientInfo)
+		return
+	}
+
+	sm.logger.WithField("method", method).Debug("unhandled method type in tracer event")
+}
+
+// handleGetPayloadEvent processes engine_getPayloadV* tracer events
+func (sm *SnooperManager) handleGetPayloadEvent(tracerData map[string]interface{}, clientInfo *snooperClientInfo) {
+	// Extract response data to get block hash
+	responseData, ok := tracerData["response_data"].(map[string]interface{})
+	if !ok {
+		sm.logger.Debug("missing response_data in getPayload tracer event")
+		return
+	}
+
+	blockHashStr, ok := responseData["blockHash"].(string)
+	if !ok {
+		sm.logger.Debug("missing blockHash in getPayload response_data")
+		return
+	}
+
+	// Parse block hash
+	blockHash := common.HexToHash(blockHashStr)
+	if blockHash == (common.Hash{}) {
+		sm.logger.WithField("block_hash", blockHashStr).Debug("invalid block hash in getPayload")
+		return
+	}
+
+	// Add to ring buffer
+	clientInfo.getPayloadHashes.Add(blockHash)
+
+	sm.logger.WithFields(logrus.Fields{
+		"client_id":   clientInfo.clientID,
+		"block_hash":  blockHash.Hex(),
+		"buffer_size": clientInfo.getPayloadHashes.Size(),
+	}).Debug("stored getPayload block hash")
+}
+
+// handleNewPayloadEvent processes engine_newPayloadV* tracer events
+func (sm *SnooperManager) handleNewPayloadEvent(tracerData map[string]interface{}, clientInfo *snooperClientInfo) {
+	// Extract request data to get block information
+	requestData, ok := tracerData["request_data"].(map[string]interface{})
+	if !ok {
+		sm.logger.Debug("missing request_data in newPayload tracer event")
+		return
+	}
+
+	// Extract block hash and number
+	blockHashStr, ok := requestData["blockHash"].(string)
+	if !ok {
+		sm.logger.Debug("missing blockHash in newPayload request_data")
+		return
+	}
+
+	// Parse block hash
+	blockHash := common.HexToHash(blockHashStr)
+	if blockHash == (common.Hash{}) {
+		sm.logger.WithField("block_hash", blockHashStr).Debug("invalid block hash in newPayload")
+		return
+	}
+
+	// Check if this block hash was from a previous getPayload call
+	if clientInfo.getPayloadHashes.Contains(blockHash) {
+		sm.logger.WithFields(logrus.Fields{
+			"client_id":  clientInfo.clientID,
+			"block_hash": blockHash.Hex(),
+		}).Debug("ignoring newPayload for block")
+		return
+	}
+
+	blockNumberStr, ok := requestData["blockNumber"].(string)
+	if !ok {
+		sm.logger.Debug("missing blockNumber in newPayload request_data")
+		return
+	}
+
+	// Parse block number (hex string)
+	var blockNumber uint64
+	if _, err := fmt.Sscanf(blockNumberStr, "0x%x", &blockNumber); err != nil {
+		sm.logger.WithField("block_number", blockNumberStr).WithError(err).Debug("failed to parse block number in newPayload")
+		return
+	}
+
+	// Extract timing information
+	duration, ok := tracerData["duration_ms"].(float64)
+	if !ok {
+		sm.logger.Debug("missing duration_ms in newPayload tracer event")
+		return
+	}
+
+	// Create execution time event
+	event := &ExecutionTimeEvent{
+		BlockHash:     blockHash,
+		BlockNumber:   blockNumber,
+		ClientID:      clientInfo.clientID,
+		ExecutionTime: time.Duration(duration) * time.Millisecond,
+		Timestamp:     time.Now(),
+	}
+
+	sm.logger.WithFields(logrus.Fields{
+		"client_id":      event.ClientID,
+		"block_hash":     event.BlockHash.Hex(),
+		"block_number":   event.BlockNumber,
+		"execution_time": event.ExecutionTime,
+	}).Debug("processing newPayload execution time event")
+
+	sm.HandleExecutionTimeEvent(event)
 }
 
 // HasClients returns true if any snooper clients are configured
