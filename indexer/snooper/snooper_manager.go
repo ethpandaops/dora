@@ -104,6 +104,7 @@ func (sm *SnooperManager) AddClient(executionClient *execution.Client, snooperUR
 
 	module, err := snooperClient.RegisterModule(moduleConfig)
 	if err != nil {
+		clientCancel()
 		return fmt.Errorf("failed to register module: %w", err)
 	}
 
@@ -122,6 +123,8 @@ func (sm *SnooperManager) AddClient(executionClient *execution.Client, snooperUR
 
 	// Start the client
 	if err := snooperClient.Start(); err != nil {
+		clientCancel()
+		delete(sm.clients, clientID)
 		return fmt.Errorf("failed to start snooper client: %w", err)
 	}
 
