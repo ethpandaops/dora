@@ -101,6 +101,11 @@ func buildEpochsPageData(firstEpoch uint64, pageSize uint64) (*models.EpochsPage
 	}
 	pageData.LastPageEpoch = pageSize - 1
 
+	// Populate UrlParams for page jump functionality
+	pageData.UrlParams = make(map[string]string)
+	pageData.UrlParams["count"] = fmt.Sprintf("%v", pageData.PageSize)
+	pageData.MaxEpoch = uint64(currentEpoch)
+
 	finalizedEpoch, _ := chainState.GetFinalizedCheckpoint()
 	justifiedEpoch, _ := chainState.GetJustifiedCheckpoint()
 	epochLimit := pageSize

@@ -27,6 +27,8 @@ type ValidatorsPageData struct {
 	NextPageIndex    uint64                         `json:"next_page_index"`
 	LastPageIndex    uint64                         `json:"last_page_index"`
 	FilteredPageLink string                         `json:"filtered_page_link"`
+
+	UrlParams map[string]string `json:"url_params"`
 }
 
 type ValidatorsPageDataStatusOption struct {

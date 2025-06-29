@@ -402,6 +402,15 @@ func buildFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string
 		pageData.TotalPages++
 	}
 
+	// Populate UrlParams for page jump functionality
+	pageData.UrlParams = make(map[string]string)
+	for key, values := range filterArgs {
+		if len(values) > 0 {
+			pageData.UrlParams[key] = values[0]
+		}
+	}
+	pageData.UrlParams["c"] = fmt.Sprintf("%v", pageData.PageSize)
+
 	pageData.FirstPageLink = fmt.Sprintf("/slots/filtered?f&%v&c=%v", filterArgs.Encode(), pageData.PageSize)
 	pageData.PrevPageLink = fmt.Sprintf("/slots/filtered?f&%v&c=%v&s=%v", filterArgs.Encode(), pageData.PageSize, pageData.PrevPageSlot)
 	pageData.NextPageLink = fmt.Sprintf("/slots/filtered?f&%v&c=%v&s=%v", filterArgs.Encode(), pageData.PageSize, pageData.NextPageSlot)

@@ -164,6 +164,15 @@ func buildQueuedDepositsPageData(pageIdx uint64, pageSize uint64, minIndex uint6
 		filterArgs.Add("f.maxa", fmt.Sprintf("%v", maxAmount))
 	}
 
+	// Populate UrlParams for page jump functionality
+	pageData.UrlParams = make(map[string]string)
+	for key, values := range filterArgs {
+		if len(values) > 0 {
+			pageData.UrlParams[key] = values[0]
+		}
+	}
+	pageData.UrlParams["c"] = fmt.Sprintf("%v", pageData.PageSize)
+
 	pageData.FirstPageLink = fmt.Sprintf("/validators/queued_deposits?f&%v&c=%v", filterArgs.Encode(), pageData.PageSize)
 	pageData.PrevPageLink = fmt.Sprintf("/validators/queued_deposits?f&%v&c=%v&p=%v", filterArgs.Encode(), pageData.PageSize, pageData.PrevPageIndex)
 	pageData.NextPageLink = fmt.Sprintf("/validators/queued_deposits?f&%v&c=%v&p=%v", filterArgs.Encode(), pageData.PageSize, pageData.NextPageIndex)
