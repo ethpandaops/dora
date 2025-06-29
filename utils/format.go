@@ -51,12 +51,12 @@ func FormatFloat(num float64, precision int) string {
 func FormatBaseFee(weiValue uint64) string {
 	// Convert wei to gwei (1 gwei = 1e9 wei)
 	gweiValue := float64(weiValue) / 1e9
-	
+
 	// If less than 0.1 gwei, show in wei
 	if gweiValue < 0.1 {
 		return fmt.Sprintf("%s wei", FormatAddCommas(weiValue))
 	}
-	
+
 	// Show in gwei with appropriate decimal places
 	if gweiValue < 1 {
 		return fmt.Sprintf("%.3f gwei", gweiValue)

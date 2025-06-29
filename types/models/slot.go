@@ -85,23 +85,23 @@ type SlotPageBlockData struct {
 }
 
 type SlotPageExecutionData struct {
-	ParentHash     []byte    `json:"parent_hash"`
-	FeeRecipient   []byte    `json:"fee_recipient"`
-	StateRoot      []byte    `json:"state_root"`
-	ReceiptsRoot   []byte    `json:"receipts_root"`
-	LogsBloom      []byte    `json:"logs_bloom"`
-	Random         []byte    `json:"random"`
-	GasLimit       uint64    `json:"gas_limit"`
-	GasUsed        uint64    `json:"gas_used"`
-	Timestamp      uint64    `json:"timestamp"`
-	Time           time.Time `json:"time"`
-	ExtraData      []byte    `json:"extra_data"`
-	BaseFeePerGas  uint64    `json:"base_fee_per_gas"`
-	BlockHash      []byte    `json:"block_hash"`
-	BlockNumber    uint64    `json:"block_number"`
-	BlobGasUsed    *uint64   `json:"blob_gas_used,omitempty"`
-	ExcessBlobGas  *uint64   `json:"excess_blob_gas,omitempty"`
-	BlobBaseFee    *uint64   `json:"blob_base_fee,omitempty"`
+	ParentHash    []byte    `json:"parent_hash"`
+	FeeRecipient  []byte    `json:"fee_recipient"`
+	StateRoot     []byte    `json:"state_root"`
+	ReceiptsRoot  []byte    `json:"receipts_root"`
+	LogsBloom     []byte    `json:"logs_bloom"`
+	Random        []byte    `json:"random"`
+	GasLimit      uint64    `json:"gas_limit"`
+	GasUsed       uint64    `json:"gas_used"`
+	Timestamp     uint64    `json:"timestamp"`
+	Time          time.Time `json:"time"`
+	ExtraData     []byte    `json:"extra_data"`
+	BaseFeePerGas uint64    `json:"base_fee_per_gas"`
+	BlockHash     []byte    `json:"block_hash"`
+	BlockNumber   uint64    `json:"block_number"`
+	BlobGasUsed   *uint64   `json:"blob_gas_used,omitempty"`
+	ExcessBlobGas *uint64   `json:"excess_blob_gas,omitempty"`
+	BlobBaseFee   *uint64   `json:"blob_base_fee,omitempty"`
 }
 
 type SlotPageAttestation struct {

@@ -678,24 +678,24 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 			executionPayload := blockData.Block.Deneb.Message.Body.ExecutionPayload
 			blobGasUsed := uint64(executionPayload.BlobGasUsed)
 			excessBlobGas := uint64(executionPayload.ExcessBlobGas)
-			
+
 			pageData.ExecutionData = &models.SlotPageExecutionData{
-				ParentHash:     executionPayload.ParentHash[:],
-				FeeRecipient:   executionPayload.FeeRecipient[:],
-				StateRoot:      executionPayload.StateRoot[:],
-				ReceiptsRoot:   executionPayload.ReceiptsRoot[:],
-				LogsBloom:      executionPayload.LogsBloom[:],
-				Random:         executionPayload.PrevRandao[:],
-				GasLimit:       uint64(executionPayload.GasLimit),
-				GasUsed:        uint64(executionPayload.GasUsed),
-				Timestamp:      uint64(executionPayload.Timestamp),
-				Time:           time.Unix(int64(executionPayload.Timestamp), 0),
-				ExtraData:      executionPayload.ExtraData,
-				BaseFeePerGas:  executionPayload.BaseFeePerGas.Uint64(),
-				BlockHash:      executionPayload.BlockHash[:],
-				BlockNumber:    uint64(executionPayload.BlockNumber),
-				BlobGasUsed:    &blobGasUsed,
-				ExcessBlobGas:  &excessBlobGas,
+				ParentHash:    executionPayload.ParentHash[:],
+				FeeRecipient:  executionPayload.FeeRecipient[:],
+				StateRoot:     executionPayload.StateRoot[:],
+				ReceiptsRoot:  executionPayload.ReceiptsRoot[:],
+				LogsBloom:     executionPayload.LogsBloom[:],
+				Random:        executionPayload.PrevRandao[:],
+				GasLimit:      uint64(executionPayload.GasLimit),
+				GasUsed:       uint64(executionPayload.GasUsed),
+				Timestamp:     uint64(executionPayload.Timestamp),
+				Time:          time.Unix(int64(executionPayload.Timestamp), 0),
+				ExtraData:     executionPayload.ExtraData,
+				BaseFeePerGas: executionPayload.BaseFeePerGas.Uint64(),
+				BlockHash:     executionPayload.BlockHash[:],
+				BlockNumber:   uint64(executionPayload.BlockNumber),
+				BlobGasUsed:   &blobGasUsed,
+				ExcessBlobGas: &excessBlobGas,
 			}
 			getSlotPageTransactions(pageData, executionPayload.Transactions)
 		case spec.DataVersionElectra:
@@ -705,24 +705,24 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 			executionPayload := blockData.Block.Electra.Message.Body.ExecutionPayload
 			blobGasUsed := uint64(executionPayload.BlobGasUsed)
 			excessBlobGas := uint64(executionPayload.ExcessBlobGas)
-			
+
 			pageData.ExecutionData = &models.SlotPageExecutionData{
-				ParentHash:     executionPayload.ParentHash[:],
-				FeeRecipient:   executionPayload.FeeRecipient[:],
-				StateRoot:      executionPayload.StateRoot[:],
-				ReceiptsRoot:   executionPayload.ReceiptsRoot[:],
-				LogsBloom:      executionPayload.LogsBloom[:],
-				Random:         executionPayload.PrevRandao[:],
-				GasLimit:       uint64(executionPayload.GasLimit),
-				GasUsed:        uint64(executionPayload.GasUsed),
-				Timestamp:      uint64(executionPayload.Timestamp),
-				Time:           time.Unix(int64(executionPayload.Timestamp), 0),
-				ExtraData:      executionPayload.ExtraData,
-				BaseFeePerGas:  executionPayload.BaseFeePerGas.Uint64(),
-				BlockHash:      executionPayload.BlockHash[:],
-				BlockNumber:    uint64(executionPayload.BlockNumber),
-				BlobGasUsed:    &blobGasUsed,
-				ExcessBlobGas:  &excessBlobGas,
+				ParentHash:    executionPayload.ParentHash[:],
+				FeeRecipient:  executionPayload.FeeRecipient[:],
+				StateRoot:     executionPayload.StateRoot[:],
+				ReceiptsRoot:  executionPayload.ReceiptsRoot[:],
+				LogsBloom:     executionPayload.LogsBloom[:],
+				Random:        executionPayload.PrevRandao[:],
+				GasLimit:      uint64(executionPayload.GasLimit),
+				GasUsed:       uint64(executionPayload.GasUsed),
+				Timestamp:     uint64(executionPayload.Timestamp),
+				Time:          time.Unix(int64(executionPayload.Timestamp), 0),
+				ExtraData:     executionPayload.ExtraData,
+				BaseFeePerGas: executionPayload.BaseFeePerGas.Uint64(),
+				BlockHash:     executionPayload.BlockHash[:],
+				BlockNumber:   uint64(executionPayload.BlockNumber),
+				BlobGasUsed:   &blobGasUsed,
+				ExcessBlobGas: &excessBlobGas,
 			}
 			getSlotPageTransactions(pageData, executionPayload.Transactions)
 		}
