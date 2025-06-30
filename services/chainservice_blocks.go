@@ -698,6 +698,28 @@ func (bs *ChainService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageIdx
 				}
 			}
 
+			// filter by sync participation
+			if filter.MinSyncParticipation != nil || filter.MaxSyncParticipation != nil {
+				syncParticipation := blockIndex.SyncParticipation
+				if filter.MinSyncParticipation != nil && syncParticipation < *filter.MinSyncParticipation {
+					continue
+				}
+				if filter.MaxSyncParticipation != nil && syncParticipation > *filter.MaxSyncParticipation {
+					continue
+				}
+			}
+
+			// filter by execution time
+			if filter.MinExecTime != nil || filter.MaxExecTime != nil {
+				maxExecTime := block.GetMaxExecutionTime()
+				if filter.MinExecTime != nil && maxExecTime < *filter.MinExecTime {
+					continue
+				}
+				if filter.MaxExecTime != nil && maxExecTime > *filter.MaxExecTime {
+					continue
+				}
+			}
+
 			cachedMatches = append(cachedMatches, cachedDbBlock{
 				slot:     uint64(block.Slot),
 				proposer: uint64(blockHeader.Message.ProposerIndex),
@@ -707,7 +729,7 @@ func (bs *ChainService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageIdx
 		}
 
 		// reconstruct missing blocks from epoch duties
-		if filter.WithMissing != 0 && filter.Graffiti == "" && filter.ExtraData == "" && filter.WithOrphaned != 2 {
+		if filter.WithMissing != 0 && filter.Graffiti == "" && filter.ExtraData == "" && filter.WithOrphaned != 2 && filter.MinSyncParticipation == nil && filter.MaxSyncParticipation == nil && filter.MinExecTime == nil && filter.MaxExecTime == nil {
 			hasCanonicalProposer := false
 			canonicalProposer := getCanonicalProposer(slot)
 

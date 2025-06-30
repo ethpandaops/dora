@@ -195,6 +195,14 @@ func buildSlotsPageData(firstSlot uint64, pageSize uint64, displayColumns string
 	}
 	pageData.LastPageSlot = pageSize - 1
 
+	// Populate UrlParams for page jump functionality
+	pageData.UrlParams = make(map[string]string)
+	pageData.UrlParams["c"] = fmt.Sprintf("%v", pageData.PageSize)
+	if len(displayList) > 0 {
+		pageData.UrlParams["d"] = strings.Join(displayList, "+")
+	}
+	pageData.MaxSlot = uint64(maxSlot)
+
 	// Add pagination links with column selection preserved
 	pageData.FirstPageLink = fmt.Sprintf("/slots?c=%v%v", pageData.PageSize, displayColumnsParam)
 	pageData.PrevPageLink = fmt.Sprintf("/slots?s=%v&c=%v%v", pageData.PrevPageSlot, pageData.PageSize, displayColumnsParam)
