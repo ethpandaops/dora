@@ -359,14 +359,14 @@
             <div class="col-sm-12 col-md-7 table-paging">
               <div class="d-inline-block px-2">
                 <form method="GET" style="display: inline-flex; align-items: center;" id="pageJumpForm">
+                  <input type="hidden" name="f">
                   {{ range $key, $value := .UrlParams }}
                     {{ if ne $key "s" }}
                       <input type="hidden" name="{{ $key }}" value="{{ $value }}">
                     {{ end }}
                   {{ end }}
                   <div class="input-group" style="width: 120px;">
-                    <input type="number" class="form-control" name="s" id="pageJumpInput" 
-                           min="1" max="{{ .TotalPages }}" placeholder="Page" 
+                    <input type="number" class="form-control" name="s" id="pageJumpInput" min="1" placeholder="Page" 
                            style="height: 38px; font-size: 14px; text-align: center; border-radius: 0.375rem 0 0 0.375rem;">
                     <button type="submit" class="btn btn-outline-secondary" style="height: 38px; border-radius: 0 0.375rem 0.375rem 0;">
                       Go
@@ -376,7 +376,7 @@
               </div>
               <div class="d-inline-block px-2">
                 <ul class="pagination">
-                  <li class="first paginate_button page-item {{ if le .PrevPageIndex 1 }}disabled{{ end }}" id="tpg_first">
+                  <li class="first paginate_button page-item {{ if eq .PrevPageIndex 0 }}disabled{{ end }}" id="tpg_first">
                     <a tab-index="1" aria-controls="tpg_first" class="page-link" href="{{ .FirstPageLink }}">First</a>
                   </li>
                   <li class="previous paginate_button page-item {{ if eq .PrevPageIndex 0 }}disabled{{ end }}" id="tpg_previous">
@@ -426,19 +426,33 @@ $(function() {
   });
 
   // Page jump functionality
-  $('#pageJumpForm').on('submit', function(e) {
+$('#pageJumpForm').on('submit', function(e) {
+    e.preventDefault();
+    
     var pageInput = $('#pageJumpInput');
     var pageNum = parseInt(pageInput.val());
     var maxPages = parseInt(pageInput.attr('max'));
+    var maxSlot = parseInt($('#maxSlot').val());
+    var pageSize = parseInt($('#pageSize').val());
     
     if (isNaN(pageNum) || pageNum < 1 || pageNum > maxPages) {
-      e.preventDefault();
       pageInput.addClass('is-invalid');
       setTimeout(function() {
         pageInput.removeClass('is-invalid');
       }, 2000);
       return false;
     }
+    
+    // Calculate page number
+    var url = new URL(window.location);
+    if (pageNum === 1) {
+      url.searchParams.delete('s');
+    } else {
+      pageNum = pageNum - 1;
+      url.searchParams.set('s', pageNum);
+    }
+    
+    window.location.href = url.toString();
   });
 
   // Enter key support for page jump
