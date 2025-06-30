@@ -294,6 +294,16 @@ func buildValidatorsPageData(pageNumber uint64, pageSize uint64, sortOrder strin
 	pageData.ValidatorCount = validatorSetLen
 	pageData.FirstValidator = pageNumber * pageSize
 	pageData.LastValidator = pageData.FirstValidator + uint64(len(pageData.Validators))
+
+	// Populate UrlParams for page jump functionality
+	pageData.UrlParams = make(map[string]string)
+	for key, values := range filterArgs {
+		if len(values) > 0 {
+			pageData.UrlParams[key] = values[0]
+		}
+	}
+	pageData.UrlParams["c"] = fmt.Sprintf("%v", pageData.PageSize)
+
 	pageData.FilteredPageLink = fmt.Sprintf("/validators?f&%v&c=%v", filterArgs.Encode(), pageData.PageSize)
 
 	return pageData, cacheTime

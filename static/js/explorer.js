@@ -281,6 +281,18 @@
         maxPendingRequests: requestNum,
       },
     });
+    var bhValidators = new Bloodhound({
+      datumTokenizer: Bloodhound.tokenizers.whitespace,
+      queryTokenizer: Bloodhound.tokenizers.whitespace,
+      identify: function (obj) {
+        return obj.index
+      },
+      remote: {
+        url: "/search/validator?q=",
+        prepare: prepareQueryFn,
+        maxPendingRequests: requestNum,
+      },
+    });
 
 
     searchEl.typeahead(
@@ -357,6 +369,19 @@
             return `<div class="text-monospace" style="display:flex"><div class="text-truncate" style="flex:1 1 auto;">${data.graffiti}</div><div style="max-width:fit-content;white-space:nowrap;">${data.count}</div></div>`
           },
         },
+      },
+      {
+        limit: 5,
+        name: "validator",
+        source: bhValidators,
+        display: "index",
+        templates: {
+          header: '<h3 class="h5">Validators:</h3>',
+          suggestion: function (data) {
+            var nameDisplay = data.name ? `<span class="text-muted" style="white-space:nowrap"> (${data.name})</span>` : '';
+            return `<div class="text-monospace"><div class="search-table"><span class="search-cell">${data.index}:</span><span class="search-cell search-truncate">${data.pubkey}</span>${nameDisplay}</div></div>`;
+          },
+        },
       }
     )
 
@@ -386,6 +411,8 @@
         var el = document.createElement("textarea")
         el.innerHTML = sug.graffiti
         window.location = "/slots/filtered?f&f.orphaned=1&f.graffiti=" + encodeURIComponent(el.value)
+      } else if (sug.pubkey !== undefined) {
+        window.location = "/validator/" + sug.index
       } else if (sug.name !== undefined) {
           // sug.name is html-escaped to prevent xss, we need to unescape it
           var el = document.createElement("textarea")
