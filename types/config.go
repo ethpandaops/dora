@@ -132,6 +132,8 @@ type Config struct {
 		DisableSSZRequests      bool `yaml:"disableSSZRequests" envconfig:"KILLSWITCH_DISABLE_SSZ_REQUESTS"`
 		DisableBlockCompression bool `yaml:"disableBlockCompression" envconfig:"KILLSWITCH_DISABLE_BLOCK_COMPRESSION"`
 	} `yaml:"killSwitch"`
+
+	AuthGroups map[string]*AuthGroupConfig `yaml:"authGroups"`
 }
 
 type EndpointConfig struct {
@@ -143,6 +145,7 @@ type EndpointConfig struct {
 	Priority         int                `yaml:"priority"`
 	Headers          map[string]string  `yaml:"headers"`
 	EngineSnooperUrl string             `yaml:"engineSnooperUrl"`
+	AuthGroup        string             `yaml:"authGroup"`
 }
 
 type EndpointSshConfig struct {
@@ -151,6 +154,16 @@ type EndpointSshConfig struct {
 	User     string `yaml:"user"`
 	Password string `yaml:"password"`
 	Keyfile  string `yaml:"keyfile"`
+}
+
+type AuthGroupConfig struct {
+	Credentials *AuthGroupCredentials `yaml:"credentials"`
+	Headers     map[string]string     `yaml:"headers"`
+}
+
+type AuthGroupCredentials struct {
+	Username string `yaml:"username"`
+	Password string `yaml:"password"`
 }
 
 type MevRelayConfig struct {

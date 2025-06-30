@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"net/url"
 	"sort"
 	"time"
 
@@ -21,6 +22,7 @@ import (
 	execindexer "github.com/ethpandaops/dora/indexer/execution"
 	"github.com/ethpandaops/dora/indexer/mevrelay"
 	"github.com/ethpandaops/dora/indexer/snooper"
+	"github.com/ethpandaops/dora/types"
 	"github.com/ethpandaops/dora/utils"
 	"github.com/sirupsen/logrus"
 )
@@ -70,6 +72,56 @@ func InitChainService(ctx context.Context, logger logrus.FieldLogger) {
 	}
 }
 
+// applyAuthGroupToEndpoint applies authGroup settings to an endpoint configuration
+func applyAuthGroupToEndpoint(endpoint *types.EndpointConfig) (*types.EndpointConfig, error) {
+	if endpoint.AuthGroup == "" {
+		return endpoint, nil
+	}
+
+	authGroup, exists := utils.Config.AuthGroups[endpoint.AuthGroup]
+	if !exists {
+		return nil, fmt.Errorf("authGroup '%s' not found", endpoint.AuthGroup)
+	}
+
+	// Create a copy of the endpoint to avoid modifying the original
+	endpointCopy := *endpoint
+	
+	// Apply credentials to URLs if provided
+	if authGroup.Credentials != nil && authGroup.Credentials.Username != "" {
+		// Apply to main URL
+		urlObj, err := url.Parse(endpointCopy.Url)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse URL: %v", err)
+		}
+		
+		urlObj.User = url.UserPassword(authGroup.Credentials.Username, authGroup.Credentials.Password)
+		endpointCopy.Url = urlObj.String()
+
+		// Apply to snooper URL if present
+		if endpointCopy.EngineSnooperUrl != "" {
+			snooperUrlObj, err := url.Parse(endpointCopy.EngineSnooperUrl)
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse snooper URL: %v", err)
+			}
+			
+			snooperUrlObj.User = url.UserPassword(authGroup.Credentials.Username, authGroup.Credentials.Password)
+			endpointCopy.EngineSnooperUrl = snooperUrlObj.String()
+		}
+	}
+
+	// Merge headers (authGroup headers take precedence)
+	if len(authGroup.Headers) > 0 {
+		if endpointCopy.Headers == nil {
+			endpointCopy.Headers = make(map[string]string)
+		}
+		for key, value := range authGroup.Headers {
+			endpointCopy.Headers[key] = value
+		}
+	}
+
+	return &endpointCopy, nil
+}
+
 // StartService is used to start the beaconchain service
 func (cs *ChainService) StartService() error {
 	if cs.started {
@@ -81,30 +133,37 @@ func (cs *ChainService) StartService() error {
 
 	// add consensus clients
 	for index, endpoint := range utils.Config.BeaconApi.Endpoints {
+		// Apply authGroup settings if configured
+		processedEndpoint, err := applyAuthGroupToEndpoint(&endpoint)
+		if err != nil {
+			cs.logger.Errorf("could not apply authGroup to beacon client '%v': %v", endpoint.Name, err)
+			continue
+		}
+
 		endpointConfig := &consensus.ClientConfig{
-			URL:        endpoint.Url,
-			Name:       endpoint.Name,
-			Headers:    endpoint.Headers,
+			URL:        processedEndpoint.Url,
+			Name:       processedEndpoint.Name,
+			Headers:    processedEndpoint.Headers,
 			DisableSSZ: utils.Config.KillSwitch.DisableSSZRequests,
 		}
 
-		if endpoint.Ssh != nil {
+		if processedEndpoint.Ssh != nil {
 			endpointConfig.SshConfig = &sshtunnel.SshConfig{
-				Host:     endpoint.Ssh.Host,
-				Port:     endpoint.Ssh.Port,
-				User:     endpoint.Ssh.User,
-				Password: endpoint.Ssh.Password,
-				Keyfile:  endpoint.Ssh.Keyfile,
+				Host:     processedEndpoint.Ssh.Host,
+				Port:     processedEndpoint.Ssh.Port,
+				User:     processedEndpoint.Ssh.User,
+				Password: processedEndpoint.Ssh.Password,
+				Keyfile:  processedEndpoint.Ssh.Keyfile,
 			}
 		}
 
 		client, err := cs.consensusPool.AddEndpoint(endpointConfig)
 		if err != nil {
-			cs.logger.Errorf("could not add beacon client '%v' to pool: %v", endpoint.Name, err)
+			cs.logger.Errorf("could not add beacon client '%v' to pool: %v", processedEndpoint.Name, err)
 			continue
 		}
 
-		cs.beaconIndexer.AddClient(uint16(index), client, endpoint.Priority, endpoint.Archive, endpoint.SkipValidators)
+		cs.beaconIndexer.AddClient(uint16(index), client, processedEndpoint.Priority, processedEndpoint.Archive, processedEndpoint.SkipValidators)
 	}
 
 	if len(cs.consensusPool.GetAllEndpoints()) == 0 {
@@ -113,34 +172,41 @@ func (cs *ChainService) StartService() error {
 
 	// add execution clients
 	for _, endpoint := range utils.Config.ExecutionApi.Endpoints {
-		endpointConfig := &execution.ClientConfig{
-			URL:     endpoint.Url,
-			Name:    endpoint.Name,
-			Headers: endpoint.Headers,
+		// Apply authGroup settings if configured
+		processedEndpoint, err := applyAuthGroupToEndpoint(&endpoint)
+		if err != nil {
+			cs.logger.Errorf("could not apply authGroup to execution client '%v': %v", endpoint.Name, err)
+			continue
 		}
 
-		if endpoint.Ssh != nil {
+		endpointConfig := &execution.ClientConfig{
+			URL:     processedEndpoint.Url,
+			Name:    processedEndpoint.Name,
+			Headers: processedEndpoint.Headers,
+		}
+
+		if processedEndpoint.Ssh != nil {
 			endpointConfig.SshConfig = &sshtunnel.SshConfig{
-				Host:     endpoint.Ssh.Host,
-				Port:     endpoint.Ssh.Port,
-				User:     endpoint.Ssh.User,
-				Password: endpoint.Ssh.Password,
-				Keyfile:  endpoint.Ssh.Keyfile,
+				Host:     processedEndpoint.Ssh.Host,
+				Port:     processedEndpoint.Ssh.Port,
+				User:     processedEndpoint.Ssh.User,
+				Password: processedEndpoint.Ssh.Password,
+				Keyfile:  processedEndpoint.Ssh.Keyfile,
 			}
 		}
 
 		client, err := cs.executionPool.AddEndpoint(endpointConfig)
 		if err != nil {
-			cs.logger.Errorf("could not add execution client '%v' to pool: %v", endpoint.Name, err)
+			cs.logger.Errorf("could not add execution client '%v' to pool: %v", processedEndpoint.Name, err)
 			continue
 		}
 
-		executionIndexerCtx.AddClientInfo(client, endpoint.Priority, endpoint.Archive)
+		executionIndexerCtx.AddClientInfo(client, processedEndpoint.Priority, processedEndpoint.Archive)
 
 		// Add snooper client if configured
-		if endpoint.EngineSnooperUrl != "" {
-			if err := cs.snooperManager.AddClient(client, endpoint.EngineSnooperUrl); err != nil {
-				cs.logger.WithError(err).Errorf("could not add snooper client for '%v'", endpoint.Name)
+		if processedEndpoint.EngineSnooperUrl != "" {
+			if err := cs.snooperManager.AddClient(client, processedEndpoint.EngineSnooperUrl); err != nil {
+				cs.logger.WithError(err).Errorf("could not add snooper client for '%v'", processedEndpoint.Name)
 			}
 		}
 	}
