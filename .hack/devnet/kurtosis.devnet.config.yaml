@@ -3,7 +3,7 @@ participants_matrix:
     - el_type: geth
   cl:
     - cl_type: lighthouse
-      cl_type: ethpandaops/lighthouse:unstable
+      cl_image: ethpandaops/lighthouse:unstable
     - cl_type: teku
     - cl_type: nimbus
     - cl_type: grandine
