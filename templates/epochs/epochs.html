@@ -141,6 +141,23 @@
             </div>
             <div class="col-sm-12 col-md-7 table-paging">
               <div class="d-inline-block px-2">
+                <form method="GET" style="display: inline-flex; align-items: center;" id="pageJumpForm">
+                  {{ range $key, $value := .UrlParams }}
+                    <input type="hidden" name="{{ $key }}" value="{{ $value }}">
+                  {{ end }}
+                  <input type="hidden" id="maxEpoch" value="{{ .MaxEpoch }}">
+                  <input type="hidden" id="pageSize" value="{{ .PageSize }}">
+                  <div class="input-group" style="width: 120px;">
+                    <input type="number" class="form-control" name="page" id="pageJumpInput" 
+                           min="1" max="{{ .TotalPages }}" placeholder="Page" 
+                           style="height: 38px; font-size: 14px; text-align: center; border-radius: 0.375rem 0 0 0.375rem;">
+                    <button type="submit" class="btn btn-outline-secondary" style="height: 38px; border-radius: 0 0.375rem 0.375rem 0;">
+                      Go
+                    </button>
+                  </div>
+                </form>
+              </div>
+              <div class="d-inline-block px-2">
                 <ul class="pagination">
                   <li class="first paginate_button page-item {{ if le .PrevPageIndex 1 }}disabled{{ end }}" id="tpg_first">
                     <a tab-index="1" aria-controls="tpg_first" class="page-link" href="/epochs?count={{ .PageSize }}">First</a>
@@ -168,6 +185,48 @@
   </div>
 {{ end }}
 {{ define "js" }}
+<script type="text/javascript">
+$(function() {
+  // Page jump functionality for index-based pagination
+  $('#pageJumpForm').on('submit', function(e) {
+    e.preventDefault();
+    
+    var pageInput = $('#pageJumpInput');
+    var pageNum = parseInt(pageInput.val());
+    var maxPages = parseInt(pageInput.attr('max'));
+    var maxEpoch = parseInt($('#maxEpoch').val());
+    var pageSize = parseInt($('#pageSize').val());
+    
+    if (isNaN(pageNum) || pageNum < 1 || pageNum > maxPages) {
+      pageInput.addClass('is-invalid');
+      setTimeout(function() {
+        pageInput.removeClass('is-invalid');
+      }, 2000);
+      return false;
+    }
+    
+    // Calculate starting epoch from page number
+    // Page 1 = most recent epochs (no epoch parameter needed)
+    // Page 2+ = maxEpoch - ((pageNum - 1) * pageSize)
+    var url = new URL(window.location);
+    if (pageNum === 1) {
+      url.searchParams.delete('epoch');
+    } else {
+      var startEpoch = maxEpoch - ((pageNum - 1) * pageSize);
+      url.searchParams.set('epoch', startEpoch);
+    }
+    
+    window.location.href = url.toString();
+  });
+
+  // Enter key support for page jump
+  $('#pageJumpInput').on('keypress', function(e) {
+    if (e.which === 13) {
+      $('#pageJumpForm').submit();
+    }
+  });
+});
+</script>
 {{ end }}
 {{ define "css" }}
 {{ end }}
