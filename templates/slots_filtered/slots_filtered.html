@@ -100,6 +100,46 @@
                     </select>
                   </div>
                 </div>
+                <div class="row mt-1">
+                  <div class="col-sm-12 col-md-6 col-lg-4">
+                    <nobr>Sync Agg %</nobr>
+                  </div>
+                  <div class="col-sm-12 col-md-6 col-lg-8 d-flex">
+                    <div class="flex-grow-1">
+                      <input name="f.minsync" type="number" class="form-control" placeholder="Min %" aria-label="Min Sync Participation" min="0" max="100" step="0.1" value="{{ .FilterMinSyncAgg }}">
+                    </div>
+                    <div class="text-center filter-separator">
+                      -
+                    </div>
+                    <div class="flex-grow-1">
+                      <input name="f.maxsync" type="number" class="form-control" placeholder="Max %" aria-label="Max Sync Participation" min="0" max="100" step="0.1" value="{{ .FilterMaxSyncAgg }}">
+                    </div>
+                    <div class="text-center" style="width: 30px;">
+                      %
+                    </div>
+                  </div>
+                </div>
+                {{ if .HasSnooperClients }}
+                <div class="row mt-1">
+                  <div class="col-sm-12 col-md-6 col-lg-4">
+                    <nobr>Exec Time</nobr>
+                  </div>
+                  <div class="col-sm-12 col-md-6 col-lg-8 d-flex">
+                    <div class="flex-grow-1">
+                      <input name="f.minexec" type="number" class="form-control" placeholder="Min ms" aria-label="Min Execution Time" min="0" value="{{ .FilterMinExecTime }}">
+                    </div>
+                    <div class="text-center filter-separator">
+                      -
+                    </div>
+                    <div class="flex-grow-1">
+                      <input name="f.maxexec" type="number" class="form-control" placeholder="Max ms" aria-label="Max Execution Time" min="0" value="{{ .FilterMaxExecTime }}">
+                    </div>
+                    <div class="text-center" style="width: 30px;">
+                      ms
+                    </div>
+                  </div>
+                </div>
+                {{ end }}
               </div>
             </div>
 
@@ -445,6 +485,10 @@ $(function() {
   }
   .filter-multiselect-container .multiselect-container>li>a>label>input {
     margin: 0 4px;
+  }
+  .filter-separator {
+    width: 20px;
+    text-align: center;
   }
   .gas-usage-progress {
     height: 5px;

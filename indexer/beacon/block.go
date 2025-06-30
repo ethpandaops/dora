@@ -13,6 +13,7 @@ import (
 	btypes "github.com/ethpandaops/dora/blockdb/types"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
+	"github.com/ethpandaops/dora/utils"
 	"github.com/jmoiron/sqlx"
 	dynssz "github.com/pk910/dynamic-ssz"
 )
@@ -57,6 +58,7 @@ type BlockBodyIndex struct {
 	ExecutionExtraData []byte
 	ExecutionHash      phase0.Hash32
 	ExecutionNumber    uint64
+	SyncParticipation  float32
 }
 
 // newBlock creates a new Block instance.
@@ -299,6 +301,21 @@ func (block *Block) setBlockIndex(body *spec.VersionedSignedBeaconBlock) {
 	blockIndex.ExecutionExtraData, _ = getBlockExecutionExtraData(body)
 	blockIndex.ExecutionHash, _ = body.ExecutionBlockHash()
 	blockIndex.ExecutionNumber, _ = body.ExecutionBlockNumber()
+
+	// Calculate sync participation
+	syncAggregate, err := body.SyncAggregate()
+	if err == nil && syncAggregate != nil {
+		assignedCount := len(syncAggregate.SyncCommitteeBits) * 8
+		votedCount := 0
+		for i := 0; i < assignedCount; i++ {
+			if utils.BitAtVector(syncAggregate.SyncCommitteeBits, i) {
+				votedCount++
+			}
+		}
+		if assignedCount > 0 {
+			blockIndex.SyncParticipation = float32(votedCount) / float32(assignedCount)
+		}
+	}
 
 	block.blockIndex = blockIndex
 }
@@ -592,4 +609,20 @@ func (block *Block) GetExecutionTimes() []ExecutionTime {
 	result := make([]ExecutionTime, len(block.executionTimes))
 	copy(result, block.executionTimes)
 	return result
+}
+
+// GetMinExecutionTime returns the minimum execution time across all clients
+func (block *Block) GetMinExecutionTime() uint32 {
+	block.executionTimesMux.RLock()
+	defer block.executionTimesMux.RUnlock()
+
+	return uint32(block.minExecutionTime)
+}
+
+// GetMaxExecutionTime returns the maximum execution time across all clients
+func (block *Block) GetMaxExecutionTime() uint32 {
+	block.executionTimesMux.RLock()
+	defer block.executionTimesMux.RUnlock()
+
+	return uint32(block.maxExecutionTime)
 }
