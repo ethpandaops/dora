@@ -21,6 +21,9 @@ type EpochsPageData struct {
 	NextPageIndex    uint64 `json:"next_page_index"`
 	NextPageEpoch    uint64 `json:"next_page_epoch"`
 	LastPageEpoch    uint64 `json:"last_page_epoch"`
+
+	UrlParams map[string]string `json:"url_params"`
+	MaxEpoch  uint64            `json:"max_epoch"`
 }
 
 type EpochsPageDataEpoch struct {
