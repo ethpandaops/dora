@@ -63,7 +63,7 @@ func CustodyColumnSubnets(nodeId enode.ID, custodySubnetCount uint64, dataColumn
 }
 
 // CustodyColumns computes the columns the node should custody.
-// https://github.com/ethereum/consensus-specs/blob/dev/specs/_features/eip7594/das-core.md#helper-functions
+// https://github.com/ethereum/consensus-specs/blob/dev/specs/fulu/das-core.md#helper-functions
 func CustodyColumns(nodeId enode.ID, custodySubnetCount uint64, numberOfColumns uint64, dataColumnSidecarSubnetCount uint64) (map[uint64]bool, error) {
 
 	// Compute the custodied subnets.

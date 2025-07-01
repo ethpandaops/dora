@@ -222,7 +222,7 @@ func buildSlotPageData(ctx context.Context, blockSlot int64, blockRoot []byte) (
 		NextSlot:       uint64(slot + 1),
 		PreviousSlot:   uint64(slot - 1),
 		Future:         slot >= currentSlot,
-		EpochFinalized: finalizedEpoch > chainState.EpochOfSlot(slot),
+		EpochFinalized: finalizedEpoch >= chainState.EpochOfSlot(slot),
 		Badges:         []*models.SlotPageBlockBadge{},
 	}
 

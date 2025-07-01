@@ -170,7 +170,7 @@
                       {{ if $g.DisplayExecTime }}<td>{{ if not (eq $slot.Status 0) }}
                         {{ if gt $slot.MinExecTime 0 }}
                           <span class="exec-time-display" data-slot="{{ $slot.Slot }}" data-exec-times='{{ includeJSON $slot.ExecutionTimes true }}' data-min="{{ $slot.MinExecTime }}" data-max="{{ $slot.MaxExecTime }}" data-avg="{{ $slot.AvgExecTime }}">
-                            {{ $slot.MaxExecTime }}ms (⌀{{ $slot.AvgExecTime }}ms)
+                            {{ formatAlertNumber (printf "%dms (⌀%dms)" $slot.MaxExecTime $slot.AvgExecTime) (float64 $slot.MaxExecTime) 500 1000 }}
                           </span>
                         {{ end }}
                       {{ end }}</td>{{ end }}
@@ -240,7 +240,7 @@
               </div>
               <div class="d-inline-block px-2">
                 <ul class="pagination">
-                  <li class="first paginate_button page-item {{ if le .PrevPageIndex 1 }}disabled{{ end }}" id="tpg_first">
+                  <li class="first paginate_button page-item {{ if eq .PrevPageIndex 0 }}disabled{{ end }}" id="tpg_first">
                     <a tab-index="1" aria-controls="tpg_first" class="page-link" href="{{ .FirstPageLink }}">First</a>
                   </li>
                   <li class="previous paginate_button page-item {{ if eq .PrevPageIndex 0 }}disabled{{ end }}" id="tpg_previous">
