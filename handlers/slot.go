@@ -318,6 +318,7 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 		BlockRoot:              blockData.Root[:],
 		ParentRoot:             blockData.Header.Message.ParentRoot[:],
 		StateRoot:              blockData.Header.Message.StateRoot[:],
+		BodyRoot:               blockData.Header.Message.BodyRoot[:],
 		Signature:              blockData.Header.Signature[:],
 		RandaoReveal:           randaoReveal[:],
 		Graffiti:               graffiti[:],
@@ -675,6 +676,9 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 				break
 			}
 			executionPayload := blockData.Block.Deneb.Message.Body.ExecutionPayload
+			blobGasUsed := uint64(executionPayload.BlobGasUsed)
+			excessBlobGas := uint64(executionPayload.ExcessBlobGas)
+
 			pageData.ExecutionData = &models.SlotPageExecutionData{
 				ParentHash:    executionPayload.ParentHash[:],
 				FeeRecipient:  executionPayload.FeeRecipient[:],
@@ -690,6 +694,8 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 				BaseFeePerGas: executionPayload.BaseFeePerGas.Uint64(),
 				BlockHash:     executionPayload.BlockHash[:],
 				BlockNumber:   uint64(executionPayload.BlockNumber),
+				BlobGasUsed:   &blobGasUsed,
+				ExcessBlobGas: &excessBlobGas,
 			}
 			getSlotPageTransactions(pageData, executionPayload.Transactions)
 		case spec.DataVersionElectra:
@@ -697,6 +703,9 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 				break
 			}
 			executionPayload := blockData.Block.Electra.Message.Body.ExecutionPayload
+			blobGasUsed := uint64(executionPayload.BlobGasUsed)
+			excessBlobGas := uint64(executionPayload.ExcessBlobGas)
+
 			pageData.ExecutionData = &models.SlotPageExecutionData{
 				ParentHash:    executionPayload.ParentHash[:],
 				FeeRecipient:  executionPayload.FeeRecipient[:],
@@ -712,6 +721,8 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 				BaseFeePerGas: executionPayload.BaseFeePerGas.Uint64(),
 				BlockHash:     executionPayload.BlockHash[:],
 				BlockNumber:   uint64(executionPayload.BlockNumber),
+				BlobGasUsed:   &blobGasUsed,
+				ExcessBlobGas: &excessBlobGas,
 			}
 			getSlotPageTransactions(pageData, executionPayload.Transactions)
 		case spec.DataVersionFulu:

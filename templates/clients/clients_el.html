@@ -73,19 +73,11 @@
                     </td>
                     <td style="font-size: 0.8rem; vertical-align: middle;">
                       <span style="width:30px;display: inline-block;" class="text-success" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Inbound Peers">
-                        {{ if and ($client.DidFetchPeers) (not (contains $client.Version "Nethermind")) }}
-                          {{ $client.PeersInboundCounter }}
-                        {{ else }}
-                          ?
-                        {{ end }}
+                        {{ $client.PeersInboundCounter }}
                         <i class="fa-solid fa-arrow-down"></i>
                       </span>
                       <span style="width:30px;display: inline-block;" class="text-danger" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Outbound Peers">
-                        {{ if and ($client.DidFetchPeers) (not (contains $client.Version "Nethermind")) }}
-                          {{ $client.PeersOutboundCounter }}
-                        {{ else }}
-                          ?
-                        {{ end }}
+                        {{ $client.PeersOutboundCounter }}
                         <i class="fa-solid fa-arrow-up"></i>
                       </span>
                       <span style="width:30px;display: inline-block;" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Total Peers">
@@ -184,9 +176,6 @@
             <div class="peer-table-column">
               {{ html "<!-- ko foreach: peers -->" }}
                 <div style="padding-left: 20px; padding-top:3px">
-                  {{ html "<!-- ko if: $parent.version().includes('Nethermind') -->" }}
-                    <i class="fa-solid fa-question text-warning" data-bs-toggle="tooltip" data-bs-placement="left" data-bs-title="Unknown peer direction"></i>
-                  {{ html "<!-- /ko -->" }}
                   {{ html "<!-- ko if: direction == 'inbound' -->" }}
                     <i class="fa-solid fa-down-long text-success" data-bs-toggle="tooltip" data-bs-placement="left" data-bs-title="Inbound"></i>
                   {{ html "<!-- /ko -->" }}
