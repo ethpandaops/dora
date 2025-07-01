@@ -466,3 +466,14 @@ func FormatRecvDelay(delay int32) template.HTML {
 	}
 	return template.HTML(fmt.Sprintf("%.2f s", float64(delay)/1000))
 }
+
+func formatAlertNumber(displayText string, value float64, yellowThreshold float64, redThreshold float64) template.HTML {
+	switch {
+	case value >= redThreshold:
+		return template.HTML(fmt.Sprintf("<span class=\"text-danger\">%s</span>", displayText))
+	case value >= yellowThreshold:
+		return template.HTML(fmt.Sprintf("<span class=\"text-warning\">%s</span>", displayText))
+	default:
+		return template.HTML(displayText)
+	}
+}

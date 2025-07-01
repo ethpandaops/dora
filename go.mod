@@ -23,7 +23,7 @@ require (
 	github.com/mashingan/smapping v0.1.19
 	github.com/minio/minio-go/v7 v7.0.94
 	github.com/mitchellh/mapstructure v1.5.0
-	github.com/pk910/dynamic-ssz v0.0.6
+	github.com/pk910/dynamic-ssz v1.0.0
 	github.com/pressly/goose/v3 v3.24.3
 	github.com/protolambda/bls12-381-util v0.1.0
 	github.com/protolambda/zrnt v0.34.1
@@ -113,7 +113,7 @@ require (
 	github.com/goccy/go-yaml v1.11.3 // indirect
 	github.com/golang/snappy v0.0.5-0.20231225225746-43d5d4cd4e0e // indirect
 	github.com/google/uuid v1.6.0 // indirect
-	github.com/gorilla/websocket v1.5.3 // indirect
+	github.com/gorilla/websocket v1.5.3
 	github.com/holiman/uint256 v1.3.2
 	github.com/huandu/go-clone v1.7.2 // indirect
 	github.com/huandu/xstrings v1.5.0 // indirect

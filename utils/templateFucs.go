@@ -79,6 +79,7 @@ func GetTemplateFuncs() template.FuncMap {
 		"formatGraffiti":               FormatGraffiti,
 		"formatRecvDelay":              FormatRecvDelay,
 		"formatPercentageAlert":        formatPercentageAlert,
+		"formatAlertNumber":            formatAlertNumber,
 	}
 
 	for k, v := range customFuncs {
