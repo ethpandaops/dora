@@ -288,17 +288,11 @@
     peerGraph = $_network.create(container, peerGraphData);
   }
 
-  if(peerGraphData.nodes.filter(function(node) { return node.group == "internal" }).length <= 100) {
-    $('#peerGraph').addClass('show');
-    $('#peerGraphToggler').removeClass('collapsed');
+  $('#peerGraph').on('shown.bs.collapse', function () {
+    if(peerGraphRendered) return;
     renderPeerGraph();
-  } else {
-    $('#peerGraph').on('shown.bs.collapse', function () {
-      if(peerGraphRendered) return;
-      renderPeerGraph();
-      peerGraphRendered = true;
-    });
-  }
+    peerGraphRendered = true;
+  });
 
   $('.client-row').on('click', function() {
     var peerId = $(this).data('peerid');
