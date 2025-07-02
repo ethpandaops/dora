@@ -113,7 +113,7 @@ func (client *Client) updateNodeMetadata(ctx context.Context) error {
 		return fmt.Errorf("could not get node info: %v", err)
 	}
 
-	peers, err := client.rpcClient.GetAdminPeers(ctx)
+	peers, err := client.rpcClient.GetAdminPeersWithClientType(ctx, rpc.ConvertClientType(client.clientType.Uint8()))
 	if err != nil {
 		client.didFetchPeers = false
 		return fmt.Errorf("could not get peers: %v", err)

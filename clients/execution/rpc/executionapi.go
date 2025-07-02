@@ -7,7 +7,6 @@ import (
 	"math/big"
 	"net/url"
 	"strconv"
-	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -19,6 +18,24 @@ import (
 
 	"github.com/ethpandaops/dora/clients/sshtunnel"
 )
+
+// ClientType represents execution client types
+type ClientType int8
+
+const (
+	UnknownClientType    ClientType = -1
+	NethermindClientType ClientType = 5
+)
+
+// ConvertClientType converts execution.ClientType to rpc.ClientType
+func ConvertClientType(clientTypeValue uint8) ClientType {
+	switch clientTypeValue {
+	case 5: // NethermindClient from execution package
+		return NethermindClientType
+	default:
+		return UnknownClientType
+	}
+}
 
 // NethermindPeerInfo represents the Nethermind-specific peer format
 type NethermindPeerInfo struct {
@@ -166,11 +183,12 @@ func (ec *ExecutionClient) GetChainSpec(ctx context.Context) (*ChainSpec, error)
 }
 
 func (ec *ExecutionClient) GetAdminPeers(ctx context.Context) ([]*p2p.PeerInfo, error) {
-	// Check if this is likely a Nethermind client by name
-	isNethermind := strings.Contains(strings.ToLower(ec.name), "nethermind")
+	return ec.GetAdminPeersWithClientType(ctx, UnknownClientType)
+}
 
-	if isNethermind {
-		logrus.Debugf("Detected Nethermind client %s, using Nethermind-specific parsing", ec.name)
+func (ec *ExecutionClient) GetAdminPeersWithClientType(ctx context.Context, clientType ClientType) ([]*p2p.PeerInfo, error) {
+	if clientType == NethermindClientType {
+		logrus.Debugf("Using Nethermind-specific parsing for client %s", ec.name)
 		// For Nethermind, go directly to raw JSON parsing
 		var rawResult json.RawMessage
 		err := ec.rpcClient.CallContext(ctx, &rawResult, "admin_peers", false)

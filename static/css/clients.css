@@ -212,6 +212,10 @@ code.enr-text-container {
   word-break: break-all;
 }
 
+.client-table-info td:first-child {
+  white-space: nowrap;
+}
+
 /* Modal specific ENR styling */
 .modal-body .client-table-info td {
   max-width: calc(100vw - 300px);
