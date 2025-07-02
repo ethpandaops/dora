@@ -48,7 +48,7 @@
               <button type="button" class="btn btn-outline-secondary" onclick='$(".collapse.peerInfo").collapse("show");'>Show all</button>
             </div>
           </div>
-          <table class="table table-nobr" id="clients">
+          <table class="table" id="clients">
             <thead>
               <tr>
                 <th>#</th>
@@ -72,15 +72,15 @@
                       </span>
                     </td>
                     <td style="font-size: 0.8rem; vertical-align: middle;">
-                      <span style="width:30px;display: inline-block;" class="text-success" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Inbound Peers">
+                      <span class="client-node-peer-count text-success" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Inbound Peers">
                         {{ $client.PeersInboundCounter }}
                         <i class="fa-solid fa-arrow-down"></i>
                       </span>
-                      <span style="width:30px;display: inline-block;" class="text-danger" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Outbound Peers">
+                      <span class="client-node-peer-count text-danger" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Outbound Peers">
                         {{ $client.PeersOutboundCounter }}
                         <i class="fa-solid fa-arrow-up"></i>
                       </span>
-                      <span style="width:30px;display: inline-block;" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Total Peers">
+                      <span class="client-node-peer-count" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Total Peers">
                         {{ if $client.DidFetchPeers }}
                           ({{ $client.PeerCount }})
                         {{ else }}
@@ -105,7 +105,7 @@
                       {{ end }}
                     </td>
                     <td>
-                      <span class="text-truncate d-inline-block" style="max-width: 400px">{{ $client.Version }}</span>
+                      <span class="text-truncate d-inline-block" style="max-width: 300px">{{ $client.Version }}</span>
                       <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $client.Version }}"></i>
                     </td>
                   </tr>
@@ -229,7 +229,7 @@
                           <td>Protocols</td>
                           <td>
                             <div style="word-break: break-all; text-wrap: pretty;">
-                              <code style="white-space: pre;" data-bind="text: JSON.stringify(protocols, null, 2)"></code>
+                              <code style="white-space: pre-wrap;" data-bind="text: JSON.stringify(protocols, null, 2)"></code>
                               <i class="fa fa-copy text-muted p-1" role="button" data-bs-placement="right" data-bs-toggle="tooltip" title="Copy to clipboard" data-bind="attr: {'data-clipboard-text': JSON.stringify(protocols, null, 2)}"></i>
                             </div>
                           </td>
