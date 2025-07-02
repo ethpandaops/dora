@@ -22,18 +22,18 @@ import (
 
 // NethermindPeerInfo represents the Nethermind-specific peer format
 type NethermindPeerInfo struct {
-	Name        string                 `json:"name,omitempty"`
-	ID          string                 `json:"id"`
-	Host        string                 `json:"host,omitempty"`
-	Port        uint16                 `json:"port,omitempty"`
-	Address     string                 `json:"address,omitempty"`
-	IsBootnode  bool                   `json:"isBootnode,omitempty"`
-	IsTrusted   bool                   `json:"isTrusted,omitempty"`
-	IsStatic    bool                   `json:"isStatic,omitempty"`
-	Enode       string                 `json:"enode"`
-	Inbound     bool                   `json:"inbound"`
-	Caps        []string               `json:"caps,omitempty"`
-	Protocols   map[string]interface{} `json:"protocols,omitempty"`
+	Name       string                 `json:"name,omitempty"`
+	ID         string                 `json:"id"`
+	Host       string                 `json:"host,omitempty"`
+	Port       uint16                 `json:"port,omitempty"`
+	Address    string                 `json:"address,omitempty"`
+	IsBootnode bool                   `json:"isBootnode,omitempty"`
+	IsTrusted  bool                   `json:"isTrusted,omitempty"`
+	IsStatic   bool                   `json:"isStatic,omitempty"`
+	Enode      string                 `json:"enode"`
+	Inbound    bool                   `json:"inbound"`
+	Caps       []string               `json:"caps,omitempty"`
+	Protocols  map[string]interface{} `json:"protocols,omitempty"`
 }
 
 // convertNethermindPeer converts a NethermindPeerInfo to p2p.PeerInfo format
@@ -45,14 +45,14 @@ func convertNethermindPeer(np *NethermindPeerInfo) *p2p.PeerInfo {
 		Enode:     np.Enode,
 		Protocols: np.Protocols,
 	}
-	
+
 	// Set the Network fields directly on the anonymous struct
-	peer.Network.LocalAddress = ""    // Not provided by Nethermind
+	peer.Network.LocalAddress = "" // Not provided by Nethermind
 	peer.Network.RemoteAddress = np.Address
 	peer.Network.Inbound = np.Inbound
 	peer.Network.Trusted = np.IsTrusted
 	peer.Network.Static = np.IsStatic
-	
+
 	return peer
 }
 
@@ -168,7 +168,7 @@ func (ec *ExecutionClient) GetChainSpec(ctx context.Context) (*ChainSpec, error)
 func (ec *ExecutionClient) GetAdminPeers(ctx context.Context) ([]*p2p.PeerInfo, error) {
 	// Check if this is likely a Nethermind client by name
 	isNethermind := strings.Contains(strings.ToLower(ec.name), "nethermind")
-	
+
 	if isNethermind {
 		logrus.Debugf("Detected Nethermind client %s, using Nethermind-specific parsing", ec.name)
 		// For Nethermind, go directly to raw JSON parsing
@@ -181,36 +181,36 @@ func (ec *ExecutionClient) GetAdminPeers(ctx context.Context) ([]*p2p.PeerInfo, 
 				return nil, fmt.Errorf("failed to get admin_peers from Nethermind: %v", err)
 			}
 		}
-		
+
 		logrus.Debugf("Raw JSON response from Nethermind client %s: %s", ec.name, string(rawResult))
-		
+
 		// Try to unmarshal as Nethermind format
 		var nethermindPeers []*NethermindPeerInfo
 		if err := json.Unmarshal(rawResult, &nethermindPeers); err != nil {
 			return nil, fmt.Errorf("failed to parse Nethermind admin_peers response: %v", err)
 		}
-		
+
 		logrus.Debugf("Successfully parsed Nethermind format for client %s, converting %d peers", ec.name, len(nethermindPeers))
-		
+
 		// Convert Nethermind format to standard format
 		result := make([]*p2p.PeerInfo, len(nethermindPeers))
 		for i, np := range nethermindPeers {
 			result[i] = convertNethermindPeer(np)
 			logrus.Debugf("Converted peer %d: ID=%s, Inbound=%t -> %t", i, np.ID, np.Inbound, result[i].Network.Inbound)
 		}
-		
+
 		return result, nil
 	}
-	
+
 	// For non-Nethermind clients, use standard format
 	var standardResult []*p2p.PeerInfo
 	err := ec.rpcClient.CallContext(ctx, &standardResult, "admin_peers")
-	
+
 	if err == nil {
 		logrus.Debugf("Successfully parsed admin_peers in standard format for client %s", ec.name)
 		return standardResult, nil
 	}
-	
+
 	// If that fails with "Invalid params", try with boolean parameter (some clients need this)
 	if err.Error() == "Invalid params" {
 		logrus.Debugf("Trying admin_peers with boolean parameter for client %s", ec.name)
@@ -221,7 +221,7 @@ func (ec *ExecutionClient) GetAdminPeers(ctx context.Context) ([]*p2p.PeerInfo, 
 			return standardResult, nil
 		}
 	}
-	
+
 	return nil, fmt.Errorf("failed to get admin_peers: %v", err)
 }
 
