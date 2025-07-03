@@ -44,8 +44,8 @@
           <div style="text-align: right; margin-right: 15px;">
             Peer infos:
             <div class="btn-group btn-group-sm" role="group" aria-label="Peer info controls">
-              <button type="button" class="btn btn-outline-secondary" onclick='$(".collapse.peerInfo").collapse("hide");'>Hide all</button>
-              <button type="button" class="btn btn-outline-secondary" onclick='$(".collapse.peerInfo").collapse("show");'>Show all</button>
+              <button type="button" id="toggleAllPeers" class="btn btn-outline-secondary" onclick='toggleAllPeers();'>Show all</button>
+              <button type="button" id="toggleNodeIds" class="btn btn-outline-secondary" onclick='toggleNodeIds();'>Expand node IDs</button>
             </div>
           </div>
           <table class="table" id="clients">
@@ -357,6 +357,62 @@
     container.find('.peer-details-collapse').on('hide.bs.collapse', function () {
       $(this).siblings('.client-row-divider').find('.peer-collapse-btn').html('<i class="fa fa-chevron-down"></i> Show Connected Peers');
     });
+  }
+
+  // Function to toggle all peer info sections
+  function toggleAllPeers() {
+    var button = $('#toggleAllPeers');
+    var buttonText = button.text();
+    
+    if (buttonText === 'Show all') {
+      // Show all peer info sections
+      $('.collapse.peerInfo').collapse('show');
+      
+      // Wait for the peer info sections to be shown, then show all connected peers
+      setTimeout(function() {
+        $('.peer-details-collapse').collapse('show');
+      }, 500);
+      
+      button.text('Hide all');
+    } else {
+      // Hide all peer info sections
+      $('.collapse.peerInfo').collapse('hide');
+      button.text('Show all');
+      
+      // Reset the node IDs button since we're hiding everything
+      $('#toggleNodeIds').text('Expand node IDs');
+    }
+  }
+
+  // Function to toggle node IDs display
+  function toggleNodeIds() {
+    var button = $('#toggleNodeIds');
+    var buttonText = button.text();
+    
+    if (buttonText === 'Expand node IDs') {
+      // Show all peer info sections to reveal node identity details
+      $('.collapse.peerInfo').collapse('show');
+      
+      // Wait for the peer info sections to be shown, then hide all connected peers
+      setTimeout(function() {
+        $('.peer-details-collapse').collapse('hide');
+      }, 500);
+      
+      // Update button text
+      button.text('Hide all node IDs');
+      
+      // Update the general toggle button since we're showing peer info
+      $('#toggleAllPeers').text('Hide all');
+    } else {
+      // Hide all peer info sections
+      $('.collapse.peerInfo').collapse('hide');
+      
+      // Update button text
+      button.text('Expand node IDs');
+      
+      // Update the general toggle button since we're hiding peer info
+      $('#toggleAllPeers').text('Show all');
+    }
   }
 
 </script>
