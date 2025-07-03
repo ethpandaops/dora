@@ -67,6 +67,43 @@
     </script>
 
     <div class="card mt-2">
+      <div class="card-header">
+        Filters
+      </div>
+      <div class="card-body p-2">
+        <div class="row">
+          <div class="col-sm-12 col-md-6">
+            <div class="input-group">
+              <input type="text" id="searchInput" class="form-control" placeholder="Search by group name..." onkeyup="applyFilters()">
+              <div class="input-group-append">
+                <button class="btn btn-outline-secondary" type="button" onclick="clearSearch()">
+                  <i class="fas fa-times"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+          <div class="col-sm-12 col-md-6">
+            <div class="form-check-inline">
+              <label>Show:</label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="checkbox" id="showOnline" checked onchange="applyFilters()">
+              <label class="form-check-label" for="showOnline">Online</label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="checkbox" id="showOffline" checked onchange="applyFilters()">
+              <label class="form-check-label" for="showOffline">Offline</label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="checkbox" id="showOther" checked onchange="applyFilters()">
+              <label class="form-check-label" for="showOther">Other</label>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card mt-2">
       <div class="card-body px-0 py-3">
             
         <div class="table-responsive table-sorting px-0 py-1">
@@ -128,7 +165,7 @@
               <tbody>
                 {{ $groupBy := .ViewOptionGroupBy }}
                 {{ range $i, $group := .Groups }}
-                  <tr>
+                  <tr class="validator-row" data-group-name="{{ $group.Group }}" data-online="{{ $group.Online }}" data-offline="{{ $group.Offline }}">
                     <td>
                       {{ if $group.Group }}
                         {{ $group.Group }}
@@ -200,6 +237,83 @@
   </div>
 {{ end }}
 {{ define "js" }}
+<script type="text/javascript">
+  function applyFilters() {
+    var searchTerm = document.getElementById('searchInput').value.toLowerCase();
+    var showOnline = document.getElementById('showOnline').checked;
+    var showOffline = document.getElementById('showOffline').checked;
+    var showOther = document.getElementById('showOther').checked;
+    
+    var rows = document.querySelectorAll('.validator-row');
+    var visibleCount = 0;
+    
+    rows.forEach(function(row) {
+      var groupName = row.getAttribute('data-group-name') || '';
+      var onlineCount = parseInt(row.getAttribute('data-online')) || 0;
+      var offlineCount = parseInt(row.getAttribute('data-offline')) || 0;
+      
+      // Check if group name matches search
+      var nameMatches = groupName.toLowerCase().includes(searchTerm);
+      
+      // Check status filter
+      var statusMatches = false;
+      
+      if (onlineCount > 0 && showOnline) {
+        statusMatches = true;
+      }
+      if (offlineCount > 0 && showOffline) {
+        statusMatches = true;
+      }
+      if (onlineCount === 0 && offlineCount === 0 && showOther) {
+        statusMatches = true;
+      }
+      
+      // Show/hide row based on filters
+      if (nameMatches && statusMatches) {
+        row.style.display = '';
+        visibleCount++;
+      } else {
+        row.style.display = 'none';
+      }
+    });
+    
+    // Update result count display
+    updateResultCount(visibleCount, rows.length);
+  }
+  
+  function clearSearch() {
+    document.getElementById('searchInput').value = '';
+    applyFilters();
+  }
+  
+  function updateResultCount(visible, total) {
+    // Find or create result count display
+    var resultDiv = document.getElementById('filter-results');
+    if (!resultDiv) {
+      resultDiv = document.createElement('div');
+      resultDiv.id = 'filter-results';
+      resultDiv.className = 'text-muted small px-2 py-1';
+      
+      // Insert after the filters card
+      var filtersCard = document.querySelector('.card:nth-of-type(2)');
+      if (filtersCard && filtersCard.nextSibling) {
+        filtersCard.parentNode.insertBefore(resultDiv, filtersCard.nextSibling);
+      }
+    }
+    
+    if (visible === total) {
+      resultDiv.style.display = 'none';
+    } else {
+      resultDiv.style.display = 'block';
+      resultDiv.innerHTML = 'Showing ' + visible + ' of ' + total + ' groups';
+    }
+  }
+  
+  // Initialize filters on page load
+  document.addEventListener('DOMContentLoaded', function() {
+    applyFilters();
+  });
+</script>
 {{ end }}
 {{ define "css" }}
 {{ end }}
