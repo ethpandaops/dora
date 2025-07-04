@@ -15,27 +15,33 @@
     <form action="/validators/activity" method="get" id="validatorsActivityFilterForm">
       <div class="card mt-2">
         <div class="card-header">
-          View Options
+          View Options & Filters
         </div>
         <div class="card-body p-2">
-          <div class="row">
+          <div class="row align-items-end">
             <div class="col-sm-12 col-md-6">
-              <div class="container">
-                <div class="row mt-1">
-                  <div class="col-sm-12 col-md-6 col-lg-4">
-                    Group By
-                  </div>
-                  <div class="col-sm-12 col-md-6 col-lg-8">
-                    <select name="group" aria-controls="missing" class="form-control">
-                      <option value="1" {{ if eq .ViewOptionGroupBy 1 }}selected{{ end }}>Validator Indexes (100k)</option>
-                      <option value="2" {{ if eq .ViewOptionGroupBy 2 }}selected{{ end }}>Validator Indexes (10k)</option>
-                      <option value="3" {{ if eq .ViewOptionGroupBy 3 }}selected{{ end }}>Validator Names</option>
-                    </select>
+              <div class="form-group">
+                <label for="group">Group By</label>
+                <select name="group" id="group" class="form-control custom-select-with-arrow">
+                  <option value="1" {{ if eq .ViewOptionGroupBy 1 }}selected{{ end }}>Validator Indexes (100k)</option>
+                  <option value="2" {{ if eq .ViewOptionGroupBy 2 }}selected{{ end }}>Validator Indexes (10k)</option>
+                  <option value="3" {{ if eq .ViewOptionGroupBy 3 }}selected{{ end }}>Validator Names</option>
+                </select>
+              </div>
+            </div>
+            <div class="col-sm-12 col-md-6">
+              <div class="form-group">
+                <label for="search">Search</label>
+                <div class="input-group">
+                  <input type="text" name="search" id="search" class="form-control" placeholder="Search by group name..." value="{{ .SearchTerm }}">
+                  <div class="input-group-append">
+                    <button class="btn btn-outline-secondary" type="button" onclick="clearSearch()">
+                      <i class="fas fa-times"></i>
+                    </button>
                   </div>
                 </div>
               </div>
             </div>
-
           </div>
           <div class="row mt-3">
             <div class="col-8 col-md-6 table-pagesize">
@@ -53,7 +59,7 @@
             </div>
             <div class="col-4 col-md-6">
               <div class="container text-end">
-                <button type="submit" class="btn btn-primary">Apply Settings</button>
+                <button type="submit" class="btn btn-primary">Apply</button>
               </div>
             </div>
           </div>
@@ -65,43 +71,6 @@
         $(this).find('input[type="text"],input[type="number"]').filter(function () { return !this.value; }).prop('name', '');
       });
     </script>
-
-    <div class="card mt-2">
-      <div class="card-header">
-        Filters
-      </div>
-      <div class="card-body p-2">
-        <div class="row">
-          <div class="col-sm-12 col-md-6">
-            <div class="input-group">
-              <input type="text" id="searchInput" class="form-control" placeholder="Search by group name..." onkeyup="applyFilters()">
-              <div class="input-group-append">
-                <button class="btn btn-outline-secondary" type="button" onclick="clearSearch()">
-                  <i class="fas fa-times"></i>
-                </button>
-              </div>
-            </div>
-          </div>
-          <div class="col-sm-12 col-md-6">
-            <div class="form-check-inline">
-              <label>Show:</label>
-            </div>
-            <div class="form-check form-check-inline">
-              <input class="form-check-input" type="checkbox" id="showOnline" checked onchange="applyFilters()">
-              <label class="form-check-label" for="showOnline">Online</label>
-            </div>
-            <div class="form-check form-check-inline">
-              <input class="form-check-input" type="checkbox" id="showOffline" checked onchange="applyFilters()">
-              <label class="form-check-label" for="showOffline">Offline</label>
-            </div>
-            <div class="form-check form-check-inline">
-              <input class="form-check-input" type="checkbox" id="showOther" checked onchange="applyFilters()">
-              <label class="form-check-label" for="showOther">Other</label>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
 
     <div class="card mt-2">
       <div class="card-body px-0 py-3">
@@ -165,7 +134,7 @@
               <tbody>
                 {{ $groupBy := .ViewOptionGroupBy }}
                 {{ range $i, $group := .Groups }}
-                  <tr class="validator-row" data-group-name="{{ $group.Group }}" data-online="{{ $group.Online }}" data-offline="{{ $group.Offline }}">
+                  <tr class="validator-row">
                     <td>
                       {{ if $group.Group }}
                         {{ $group.Group }}
@@ -238,82 +207,36 @@
 {{ end }}
 {{ define "js" }}
 <script type="text/javascript">
-  function applyFilters() {
-    var searchTerm = document.getElementById('searchInput').value.toLowerCase();
-    var showOnline = document.getElementById('showOnline').checked;
-    var showOffline = document.getElementById('showOffline').checked;
-    var showOther = document.getElementById('showOther').checked;
-    
-    var rows = document.querySelectorAll('.validator-row');
-    var visibleCount = 0;
-    
-    rows.forEach(function(row) {
-      var groupName = row.getAttribute('data-group-name') || '';
-      var onlineCount = parseInt(row.getAttribute('data-online')) || 0;
-      var offlineCount = parseInt(row.getAttribute('data-offline')) || 0;
-      
-      // Check if group name matches search
-      var nameMatches = groupName.toLowerCase().includes(searchTerm);
-      
-      // Check status filter
-      var statusMatches = false;
-      
-      if (onlineCount > 0 && showOnline) {
-        statusMatches = true;
-      }
-      if (offlineCount > 0 && showOffline) {
-        statusMatches = true;
-      }
-      if (onlineCount === 0 && offlineCount === 0 && showOther) {
-        statusMatches = true;
-      }
-      
-      // Show/hide row based on filters
-      if (nameMatches && statusMatches) {
-        row.style.display = '';
-        visibleCount++;
-      } else {
-        row.style.display = 'none';
-      }
-    });
-    
-    // Update result count display
-    updateResultCount(visibleCount, rows.length);
-  }
-  
   function clearSearch() {
-    document.getElementById('searchInput').value = '';
-    applyFilters();
+    document.querySelector('input[name="search"]').value = '';
+    document.getElementById('validatorsActivityFilterForm').submit();
   }
   
-  function updateResultCount(visible, total) {
-    // Find or create result count display
-    var resultDiv = document.getElementById('filter-results');
-    if (!resultDiv) {
-      resultDiv = document.createElement('div');
-      resultDiv.id = 'filter-results';
-      resultDiv.className = 'text-muted small px-2 py-1';
-      
-      // Insert after the filters card
-      var filtersCard = document.querySelector('.card:nth-of-type(2)');
-      if (filtersCard && filtersCard.nextSibling) {
-        filtersCard.parentNode.insertBefore(resultDiv, filtersCard.nextSibling);
-      }
-    }
-    
-    if (visible === total) {
-      resultDiv.style.display = 'none';
-    } else {
-      resultDiv.style.display = 'block';
-      resultDiv.innerHTML = 'Showing ' + visible + ' of ' + total + ' groups';
-    }
-  }
-  
-  // Initialize filters on page load
+  // Auto-submit form when Enter is pressed in search field
   document.addEventListener('DOMContentLoaded', function() {
-    applyFilters();
+    var searchInput = document.querySelector('input[name="search"]');
+    if (searchInput) {
+      searchInput.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          document.getElementById('validatorsActivityFilterForm').submit();
+        }
+      });
+    }
   });
 </script>
 {{ end }}
 {{ define "css" }}
+<style>
+.custom-select-with-arrow {
+  background-image: url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 4 5'%3E%3Cpath fill='%23666' d='m2 0-2 2h4zm0 5 2-2h-4z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  background-size: 8px 10px;
+  padding-right: 30px;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+}
+</style>
 {{ end }}
