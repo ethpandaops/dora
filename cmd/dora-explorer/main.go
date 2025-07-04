@@ -27,7 +27,7 @@ import (
 	"github.com/ethpandaops/dora/types"
 	uipackage "github.com/ethpandaops/dora/ui-package"
 	"github.com/ethpandaops/dora/utils"
-	
+
 	// Swagger
 	_ "github.com/ethpandaops/dora/docs"
 	httpSwagger "github.com/swaggo/http-swagger"
@@ -251,7 +251,7 @@ func startApi(router *mux.Router) {
 	router.HandleFunc("/v1/epoch/{epoch}", api.ApiEpochV1).Methods("GET", "OPTIONS")
 	router.HandleFunc("/v1/clients/execution", handlers.APIExecutionClients).Methods("GET", "OPTIONS")
 	router.HandleFunc("/v1/clients/consensus", handlers.APIConsensusClients).Methods("GET", "OPTIONS")
-	
+
 	// Swagger UI
 	router.PathPrefix("/swagger/").Handler(httpSwagger.WrapHandler)
 }

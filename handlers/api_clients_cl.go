@@ -112,7 +112,7 @@ func getConsensusClientNodeInfo() ([]APIConsensusClientNodeInfo, error) {
 		// Get peer information
 		if peers := client.GetNodePeers(); peers != nil {
 			clientInfo.PeerCount = uint32(len(peers))
-			
+
 			// Count inbound/outbound peers
 			for _, peer := range peers {
 				if peer.Direction == "inbound" {

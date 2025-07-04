@@ -72,7 +72,7 @@ func getExecutionClientNodeInfo() ([]APIExecutionClientNodeInfo, error) {
 
 	for _, client := range services.GlobalBeaconService.GetExecutionClients() {
 		nodeInfo := client.GetNodeInfo()
-		
+
 		clientInfo := APIExecutionClientNodeInfo{
 			ClientName: client.GetName(),
 			NodeID:     "unknown",
