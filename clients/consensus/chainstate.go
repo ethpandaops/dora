@@ -11,7 +11,7 @@ import (
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/utils"
 	"github.com/ethpandaops/ethwallclock"
-	"github.com/mashingan/smapping"
+	"gopkg.in/yaml.v2"
 )
 
 type ChainState struct {
@@ -66,7 +66,12 @@ func (cs *ChainState) setClientSpecs(specValues map[string]interface{}) (error, 
 		specs = specs.Clone()
 	}
 
-	err := smapping.FillStructByTags(specs, specValues, "yaml")
+	specValuesYaml, err := yaml.Marshal(specValues)
+	if err != nil {
+		return nil, err
+	}
+
+	err = yaml.Unmarshal(specValuesYaml, specs)
 	if err != nil {
 		return nil, err
 	}
@@ -83,7 +88,7 @@ func (cs *ChainState) setClientSpecs(specValues map[string]interface{}) (error, 
 		}
 
 		newSpecs := &ChainSpec{}
-		err = smapping.FillStructByTags(newSpecs, specValues, "yaml")
+		err = yaml.Unmarshal(specValuesYaml, newSpecs)
 		if err != nil {
 			return nil, err
 		}
