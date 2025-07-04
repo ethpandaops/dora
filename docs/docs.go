@@ -14,69 +14,7 @@ const docTemplate = `{
     },
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
-    "paths": {},
-    "definitions": {}
-}`
-
-var doc = `{
-    "schemes": [
-        "http",
-        "https"
-    ],
-    "swagger": "2.0",
-    "info": {
-        "description": "API for Dora Ethereum Explorer - provides access to execution and consensus client information",
-        "title": "Dora Explorer API",
-        "contact": {
-            "name": "ethPandaOps",
-            "url": "https://github.com/ethpandaops/dora"
-        },
-        "version": "1.0"
-    },
-    "host": "localhost:8080",
-    "basePath": "/api",
     "paths": {
-        "/v1/clients/consensus": {
-            "get": {
-                "description": "Returns a list of all connected consensus clients with their node information, including PeerDAS support",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "clients"
-                ],
-                "summary": "Get consensus clients information",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/handlers.APIConsensusClientsResponse"
-                        }
-                    },
-                    "429": {
-                        "description": "Rate limit exceeded",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "500": {
-                        "description": "Internal server error",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
         "/v1/clients/execution": {
             "get": {
                 "description": "Returns a list of all connected execution clients with their node information",
@@ -117,9 +55,93 @@ var doc = `{
                     }
                 }
             }
+        },
+        "/v1/clients/consensus": {
+            "get": {
+                "description": "Returns a list of all connected consensus clients with their node information, including PeerDAS support",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clients"
+                ],
+                "summary": "Get consensus clients information",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIConsensusClientsResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limit exceeded",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
+        "handlers.APIExecutionClientNodeInfo": {
+            "type": "object",
+            "properties": {
+                "client_name": {
+                    "type": "string"
+                },
+                "enode": {
+                    "type": "string"
+                },
+                "ip": {
+                    "type": "string"
+                },
+                "last_update": {
+                    "type": "string"
+                },
+                "node_id": {
+                    "type": "string"
+                },
+                "port": {
+                    "type": "integer"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "string"
+                }
+            }
+        },
+        "handlers.APIExecutionClientsResponse": {
+            "type": "object",
+            "properties": {
+                "clients": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/handlers.APIExecutionClientNodeInfo"
+                    }
+                },
+                "count": {
+                    "type": "integer"
+                }
+            }
+        },
         "handlers.APIConsensusClientNodeInfo": {
             "type": "object",
             "properties": {
@@ -189,7 +211,109 @@ var doc = `{
                     "type": "integer"
                 }
             }
+        }
+    }
+}`
+
+var doc = `{
+    "schemes": [
+        "http",
+        "https"
+    ],
+    "swagger": "2.0",
+    "info": {
+        "description": "API for Dora Ethereum Explorer - provides access to execution and consensus client information",
+        "title": "Dora Explorer API",
+        "contact": {},
+        "version": "1.0"
+    },
+    "host": "localhost:8080",
+    "basePath": "/api",
+    "paths": {
+        "/v1/clients/execution": {
+            "get": {
+                "description": "Returns a list of all connected execution clients with their node information",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clients"
+                ],
+                "summary": "Get execution clients information",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIExecutionClientsResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limit exceeded",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
         },
+        "/v1/clients/consensus": {
+            "get": {
+                "description": "Returns a list of all connected consensus clients with their node information, including PeerDAS support",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clients"
+                ],
+                "summary": "Get consensus clients information",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIConsensusClientsResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limit exceeded",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
         "handlers.APIExecutionClientNodeInfo": {
             "type": "object",
             "properties": {
@@ -226,6 +350,76 @@ var doc = `{
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/handlers.APIExecutionClientNodeInfo"
+                    }
+                },
+                "count": {
+                    "type": "integer"
+                }
+            }
+        },
+        "handlers.APIConsensusClientNodeInfo": {
+            "type": "object",
+            "properties": {
+                "client_name": {
+                    "type": "string"
+                },
+                "client_type": {
+                    "type": "string"
+                },
+                "column_indexes": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "enr": {
+                    "type": "string"
+                },
+                "head_root": {
+                    "type": "string"
+                },
+                "head_slot": {
+                    "type": "integer"
+                },
+                "last_error": {
+                    "type": "string"
+                },
+                "last_refresh": {
+                    "type": "string"
+                },
+                "node_id": {
+                    "type": "string"
+                },
+                "peer_count": {
+                    "type": "integer"
+                },
+                "peer_id": {
+                    "type": "string"
+                },
+                "peers_inbound": {
+                    "type": "integer"
+                },
+                "peers_outbound": {
+                    "type": "integer"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "supports_data_column": {
+                    "type": "boolean"
+                },
+                "version": {
+                    "type": "string"
+                }
+            }
+        },
+        "handlers.APIConsensusClientsResponse": {
+            "type": "object",
+            "properties": {
+                "clients": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/handlers.APIConsensusClientNodeInfo"
                     }
                 },
                 "count": {

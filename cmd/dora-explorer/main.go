@@ -1,3 +1,8 @@
+// @title Dora Explorer API
+// @version 1.0
+// @description API for Dora Ethereum Explorer - provides access to execution and consensus client information
+// @host localhost:8080
+// @BasePath /api
 package main
 
 import (
