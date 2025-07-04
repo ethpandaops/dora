@@ -136,3 +136,8 @@ func (client *Client) GetNodePeers() []*p2p.PeerInfo {
 func (client *Client) DidFetchPeers() bool {
 	return client.didFetchPeers
 }
+
+// ForceUpdatePeerData forces an immediate update of peer data from this client
+func (client *Client) ForceUpdatePeerData(ctx context.Context) error {
+	return client.updateNodeMetadata(ctx)
+}

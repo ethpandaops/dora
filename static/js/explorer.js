@@ -100,17 +100,16 @@
     
     if (refreshButton.length === 0) return; // Button not found on this page
     
-    fetch('/clients/consensus/refresh/status')
+    // Determine the client type based on current URL
+    var clientType = window.location.pathname.includes('/clients/execution') ? 'execution' : 'consensus';
+    
+    fetch(`/clients/${clientType}/refresh/status`)
       .then(response => response.json())
       .then(data => {
         if (data.cooldown_active) {
-          // Button is in cooldown
-          refreshButton.addClass('disabled').css({
-            'opacity': '0.5',
-            'cursor': 'not-allowed',
-            'pointer-events': 'none'
-          });
-          refreshButton.removeClass('fa-refresh').addClass('fa-clock-o');
+          // Hide button during cooldown
+          refreshButton.hide();
+          
           var cooldownMsg = `Refresh cooldown active - ${data.remaining_seconds}s remaining`;
           if (data.online_clients) {
             if (data.total_cooldown === 60 && data.online_clients * 3 > 60) {
@@ -123,12 +122,13 @@
           
           // Update countdown every second
           var countdown = setInterval(() => {
-            fetch('/clients/consensus/refresh/status')
+            fetch(`/clients/${clientType}/refresh/status`)
               .then(response => response.json())
               .then(statusData => {
                 if (!statusData.cooldown_active) {
-                  // Cooldown ended
+                  // Cooldown ended - show button
                   clearInterval(countdown);
+                  refreshButton.show();
                   refreshButton.removeClass('disabled').css({
                     'opacity': '1',
                     'cursor': 'pointer',
@@ -162,7 +162,8 @@
               });
           }, 1000);
         } else {
-          // Button is available
+          // Button is available - show it
+          refreshButton.show();
           refreshButton.removeClass('disabled').css({
             'opacity': '1',
             'cursor': 'pointer',
@@ -173,8 +174,16 @@
         }
       })
       .catch(error => {
-        // On error, assume button is available
+        // On error, assume button is available - show it
         console.warn('Failed to check refresh cooldown status:', error);
+        refreshButton.show();
+        refreshButton.removeClass('disabled').css({
+          'opacity': '1',
+          'cursor': 'pointer',
+          'pointer-events': 'auto'
+        });
+        refreshButton.removeClass('fa-clock-o').addClass('fa-refresh');
+        refreshButton.attr('title', 'Refresh peer information');
       });
   }
 
@@ -439,8 +448,11 @@
     });
     refreshButton.removeClass('fa-refresh fa-clock-o').addClass('fa-refresh fa-spin');
     
+    // Determine the client type based on current URL
+    var clientType = window.location.pathname.includes('/clients/execution') ? 'execution' : 'consensus';
+    
     // Call the refresh API
-    fetch('/clients/consensus/refresh', {
+    fetch(`/clients/${clientType}/refresh`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -499,8 +511,11 @@ window.refreshPeerInfos = function() {
   });
   refreshButton.removeClass('fa-refresh fa-clock-o').addClass('fa-refresh fa-spin');
   
+  // Determine the client type based on current URL
+  var clientType = window.location.pathname.includes('/clients/execution') ? 'execution' : 'consensus';
+  
   // Call the refresh API
-  fetch('/clients/consensus/refresh', {
+  fetch(`/clients/${clientType}/refresh`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
