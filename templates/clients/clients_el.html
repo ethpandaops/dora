@@ -359,12 +359,13 @@
     });
   }
 
-  // Function to toggle all peer info sections
+  // Function to toggle all peer info sections (right button)
   function toggleAllPeers() {
-    var button = $('#toggleAllPeers');
-    var buttonText = button.text();
+    var rightButton = $('#toggleAllPeers');
+    var leftButton = $('#toggleNodeIds');
+    var rightButtonText = rightButton.text();
     
-    if (buttonText === 'Show all') {
+    if (rightButtonText === 'Show all') {
       // Show all peer info sections
       $('.collapse.peerInfo').collapse('show');
       
@@ -373,23 +374,39 @@
         $('.peer-details-collapse').collapse('show');
       }, 500);
       
-      button.text('Hide all');
+      // Right button: Show all -> Hide all
+      rightButton.text('Hide all');
+      // Left button: Expand node IDs -> Hide peers
+      leftButton.text('Hide peers');
+      leftButton.show();
+    } else if (rightButtonText === 'Show peers') {
+      // Show connected peers (peer info sections are already shown)
+      $('.peer-details-collapse').collapse('show');
+      
+      // Right button: Show peers -> Hide all
+      rightButton.text('Hide all');
+      // Left button: Hide all node IDs -> Hide peers
+      leftButton.text('Hide peers');
+      leftButton.show();
     } else {
       // Hide all peer info sections
       $('.collapse.peerInfo').collapse('hide');
-      button.text('Show all');
       
-      // Reset the node IDs button since we're hiding everything
-      $('#toggleNodeIds').text('Expand node IDs');
+      // Right button: Hide all -> Show all
+      rightButton.text('Show all');
+      // Left button: Hide peers -> Expand node IDs
+      leftButton.text('Expand node IDs');
+      leftButton.show();
     }
   }
 
-  // Function to toggle node IDs display
+  // Function to toggle node IDs display (left button)
   function toggleNodeIds() {
-    var button = $('#toggleNodeIds');
-    var buttonText = button.text();
+    var leftButton = $('#toggleNodeIds');
+    var rightButton = $('#toggleAllPeers');
+    var leftButtonText = leftButton.text();
     
-    if (buttonText === 'Expand node IDs') {
+    if (leftButtonText === 'Expand node IDs') {
       // Show all peer info sections to reveal node identity details
       $('.collapse.peerInfo').collapse('show');
       
@@ -398,20 +415,26 @@
         $('.peer-details-collapse').collapse('hide');
       }, 500);
       
-      // Update button text
-      button.text('Hide all node IDs');
+      // Left button: Expand node IDs -> Hide all node IDs
+      leftButton.text('Hide all node IDs');
+      // Right button: Show all -> Show peers
+      rightButton.text('Show peers');
+    } else if (leftButtonText === 'Hide peers') {
+      // Hide only the connected peers, keep node IDs visible
+      $('.peer-details-collapse').collapse('hide');
       
-      // Update the general toggle button since we're showing peer info
-      $('#toggleAllPeers').text('Hide all');
+      // Left button: Hide peers -> Hide all node IDs
+      leftButton.text('Hide all node IDs');
+      // Right button: Hide all -> Show peers
+      rightButton.text('Show peers');
     } else {
-      // Hide all peer info sections
+      // Hide all peer info sections (Hide all node IDs)
       $('.collapse.peerInfo').collapse('hide');
       
-      // Update button text
-      button.text('Expand node IDs');
-      
-      // Update the general toggle button since we're hiding peer info
-      $('#toggleAllPeers').text('Show all');
+      // Left button: Hide all node IDs -> Expand node IDs
+      leftButton.text('Expand node IDs');
+      // Right button: Show peers -> Show all
+      rightButton.text('Show all');
     }
   }
 
@@ -419,4 +442,14 @@
 {{ end }}
 {{ define "css" }}
 <link rel="stylesheet" href="/css/clients.css" />
+<style>
+#toggleAllPeers, #toggleNodeIds {
+  min-width: 140px;
+  width: 140px;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+</style>
 {{ end }}
