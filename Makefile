@@ -6,9 +6,12 @@ GOLDFLAGS += -X 'github.com/ethpandaops/dora/utils.BuildVersion="$(VERSION)"'
 GOLDFLAGS += -X 'github.com/ethpandaops/dora/utils.Buildtime="$(BUILDTIME)"'
 GOLDFLAGS += -X 'github.com/ethpandaops/dora/utils.BuildRelease="$(RELEASE)"'
 
-.PHONY: all test clean
+.PHONY: all docs test clean
 
-all: test build
+all: docs build
+
+docs:
+	go install github.com/swaggo/swag/cmd/swag@v1.16.3 && swag init -g cmd/dora-explorer/main.go --parseDependency -o docs
 
 test: ensure-ui
 	$(MAKE) -C ui-package test

@@ -29,15 +29,6 @@ type ApiValidatorDepositsResponseV1 struct {
 	WithdrawalCredentials string `json:"withdrawal_credentials"`
 }
 
-// ApiValidatorDepositsV1 godoc
-// @Summary Get validator execution layer deposits
-// @Description Get all eth1 deposits for up to 100 validators
-// @Tags Validators
-// @Produce  json
-// @Param  indexOrPubkey path string true "Up to 100 validator indicesOrPubkeys, comma separated"
-// @Success 200 {object} types.ApiResponse{data=[]types.ApiValidatorDepositsResponseV1}
-// @Failure 400 {object} types.ApiResponse
-// @Router /api/v1/validator/{indexOrPubkey}/deposits [get]
 func ApiValidatorDepositsV1(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 

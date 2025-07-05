@@ -18,16 +18,6 @@ type ApiWithdrawalCredentialsResponseV1 struct {
 	ValidatorIndex uint64 `json:"validatorindex"`
 }
 
-// ApiWithdrawalCredentialsValidators godoc
-// @Summary Get all validators that have a specific withdrawal credentials
-// @Tags Validator
-// @Produce  json
-// @Param withdrawalCredentialsOrEth1address path string true "Provide a withdrawal credential or an eth1 address with an optional 0x prefix". It can also be a valid ENS name.
-// @Param  limit query int false "Limit the number of results, maximum: 200" default(10)
-// @Param offset query int false "Offset the number of results" default(0)
-// @Success 200 {object} ApiResponse{data=[]ApiWithdrawalCredentialsResponseV1}
-// @Failure 400 {object} ApiResponse
-// @Router /api/v1/validator/withdrawalCredentials/{withdrawalCredentialsOrEth1address} [get]
 func ApiWithdrawalCredentialsValidatorsV1(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	q := r.URL.Query()
