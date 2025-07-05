@@ -22,16 +22,6 @@ type ApiValidatorEth1ResponseV1 struct {
 	ValidatorIndex uint64 `json:"validator_index"`
 }
 
-// ApiValidatorByEth1Address godoc
-// @Summary Get all validators that belong to an eth1 address
-// @Tags Validator
-// @Produce  json
-// @Param  eth1address path string true "Eth1 address from which the validator deposits were sent".
-// @Param limit query string false "Limit the number of results (default: 2000)"
-// @Param offset query string false "Offset the results (default: 0)"
-// @Success 200 {object} ApiResponse{data=[]ApiValidatorEth1ResponseV1}
-// @Failure 400 {object} ApiResponse
-// @Router /api/v1/validator/eth1/{eth1address} [get]
 func ApiValidatorByEth1AddressV1(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	q := r.URL.Query()

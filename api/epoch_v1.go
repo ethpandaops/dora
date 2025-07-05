@@ -36,16 +36,6 @@ type APIEpochResponseV1 struct {
 	WithdrawalCount         uint64 `json:"withdrawalcount"`
 }
 
-// ApiEpoch godoc
-// @Summary Get epoch by number, latest, finalized
-// @Tags Epoch
-// @Description Returns information for a specified epoch by the epoch number or an epoch tag (can be latest or finalized)
-// @Produce  json
-// @Param  epoch path string true "Epoch number, the string latest or the string finalized"
-// @Success 200 {object} ApiResponse{data=APIEpochResponseV1} "Success"
-// @Failure 400 {object} ApiResponse "Failure"
-// @Failure 500 {object} ApiResponse "Server Error"
-// @Router /api/v1/epoch/{epoch} [get]
 func ApiEpochV1(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 

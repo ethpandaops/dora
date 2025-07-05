@@ -1,0 +1,141 @@
+basePath: /api
+definitions:
+  handlers.APIConsensusClientNodeInfo:
+    properties:
+      client_name:
+        type: string
+      client_type:
+        type: string
+      column_indexes:
+        items:
+          type: integer
+        type: array
+      enr:
+        type: string
+      head_root:
+        type: string
+      head_slot:
+        type: integer
+      last_error:
+        type: string
+      last_refresh:
+        type: string
+      node_id:
+        type: string
+      peer_count:
+        type: integer
+      peer_id:
+        type: string
+      peers_inbound:
+        type: integer
+      peers_outbound:
+        type: integer
+      status:
+        type: string
+      supports_data_column:
+        type: boolean
+      version:
+        type: string
+    type: object
+  handlers.APIConsensusClientsResponse:
+    properties:
+      clients:
+        items:
+          $ref: '#/definitions/handlers.APIConsensusClientNodeInfo'
+        type: array
+      count:
+        type: integer
+    type: object
+  handlers.APIExecutionClientNodeInfo:
+    properties:
+      client_name:
+        type: string
+      enode:
+        type: string
+      ip:
+        type: string
+      last_update:
+        type: string
+      node_id:
+        type: string
+      port:
+        type: integer
+      status:
+        type: string
+      version:
+        type: string
+    type: object
+  handlers.APIExecutionClientsResponse:
+    properties:
+      clients:
+        items:
+          $ref: '#/definitions/handlers.APIExecutionClientNodeInfo'
+        type: array
+      count:
+        type: integer
+    type: object
+host: localhost:8080
+info:
+  contact: {}
+  description: API for Dora Ethereum Explorer - provides access to execution and consensus
+    client information
+  title: Dora Explorer API
+  version: "1.0"
+paths:
+  /v1/clients/consensus:
+    get:
+      consumes:
+      - application/json
+      description: Returns a list of all connected consensus clients with their node
+        information, including PeerDAS support
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.APIConsensusClientsResponse'
+        "429":
+          description: Rate limit exceeded
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get consensus clients information
+      tags:
+      - clients
+  /v1/clients/execution:
+    get:
+      consumes:
+      - application/json
+      description: Returns a list of all connected execution clients with their node
+        information
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.APIExecutionClientsResponse'
+        "429":
+          description: Rate limit exceeded
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get execution clients information
+      tags:
+      - clients
+swagger: "2.0"

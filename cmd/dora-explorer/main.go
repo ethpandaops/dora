@@ -20,7 +20,7 @@ import (
 
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/handlers"
-	"github.com/ethpandaops/dora/handlers/api"
+	"github.com/ethpandaops/dora/api"
 	"github.com/ethpandaops/dora/handlers/middleware"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/static"
