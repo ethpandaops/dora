@@ -39,4 +39,4 @@ devnet-clean:
 	.hack/devnet/cleanup.sh
 
 docs:
-	go install github.com/swaggo/swag/cmd/swag@v1.16.3 && swag init -g handler.go -d handlers/api --parseDependency -o handlers/docs
+	go install github.com/swaggo/swag/cmd/swag@v1.16.3 && swag init -g handler.go -d handlers/api --parseDependency -o docs

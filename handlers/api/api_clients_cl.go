@@ -45,7 +45,7 @@ type APIConsensusClientsResponse struct {
 // @Success 200 {object} APIConsensusClientsResponse
 // @Failure 429 {object} map[string]string "Rate limit exceeded"
 // @Failure 500 {object} map[string]string "Internal server error"
-// @Router /v1/clients/consensus [get]
+// @Router /clients/consensus [get]
 func APIConsensusClients(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 

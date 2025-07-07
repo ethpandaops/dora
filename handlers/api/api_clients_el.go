@@ -37,7 +37,7 @@ type APIExecutionClientsResponse struct {
 // @Success 200 {object} APIExecutionClientsResponse
 // @Failure 429 {object} map[string]string "Rate limit exceeded"
 // @Failure 500 {object} map[string]string "Internal server error"
-// @Router /v1/clients/execution [get]
+// @Router /clients/execution [get]
 func APIExecutionClients(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
