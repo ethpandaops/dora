@@ -40,7 +40,7 @@
     </div>
     <div class="card mt-2">
       <div class="card-body px-0 py-3">
-        <div class="table-responsive px-0 py-1">
+        <div class="table-responsive table-sorting px-0 py-1">
           <div style="text-align: right; margin-right: 15px;">
             Peer infos:
             <i class="fa fa-refresh text-muted p-1 mx-1" role="button" data-bs-toggle="tooltip" data-bs-placement="top" title="Refresh peer information" onclick="refreshPeerInfos()" style="cursor: pointer;"></i>
@@ -52,19 +52,61 @@
           <table class="table" id="clients">
             <thead>
               <tr>
-                <th class="sortable" data-sort="index">#</th>
-                <th class="sortable" data-sort="name">Name <i class="fa fa-sort"></i></th>
-                <th class="sortable" data-sort="peers">Peers <i class="fa fa-sort"></i></th>
-                <th class="sortable" data-sort="block">Block <i class="fa fa-sort"></i></th>
-                <th class="sortable" data-sort="blockhash">Block hash <i class="fa fa-sort"></i></th>
-                <th class="sortable" data-sort="status">Status <i class="fa fa-sort"></i></th>
-                <th class="sortable" data-sort="version">Version <i class="fa fa-sort"></i></th>
+                <th>
+                  #
+                  <div class="col-sorting">
+                    <a href="/clients/execution?o=index" class="sort-link {{ if eq .Sorting "index" }}active{{ end }}"><i class="fas fa-arrow-up"></i></a>
+                    <a href="/clients/execution?o=index-d" class="sort-link {{ if eq .Sorting "index-d" }}active{{ end }}"><i class="fas fa-arrow-down"></i></a>
+                  </div>
+                </th>
+                <th>
+                  Name
+                  <div class="col-sorting">
+                    <a href="/clients/execution?o=name" class="sort-link {{ if eq .Sorting "name" }}active{{ end }}"><i class="fas fa-arrow-up"></i></a>
+                    <a href="/clients/execution?o=name-d" class="sort-link {{ if eq .Sorting "name-d" }}active{{ end }}"><i class="fas fa-arrow-down"></i></a>
+                  </div>
+                </th>
+                <th>
+                  Peers
+                  <div class="col-sorting">
+                    <a href="/clients/execution?o=peers" class="sort-link {{ if eq .Sorting "peers" }}active{{ end }}"><i class="fas fa-arrow-up"></i></a>
+                    <a href="/clients/execution?o=peers-d" class="sort-link {{ if eq .Sorting "peers-d" }}active{{ end }}"><i class="fas fa-arrow-down"></i></a>
+                  </div>
+                </th>
+                <th>
+                  Block
+                  <div class="col-sorting">
+                    <a href="/clients/execution?o=block" class="sort-link {{ if eq .Sorting "block" }}active{{ end }}"><i class="fas fa-arrow-up"></i></a>
+                    <a href="/clients/execution?o=block-d" class="sort-link {{ if eq .Sorting "block-d" }}active{{ end }}"><i class="fas fa-arrow-down"></i></a>
+                  </div>
+                </th>
+                <th>
+                  Block hash
+                  <div class="col-sorting">
+                    <a href="/clients/execution?o=blockhash" class="sort-link {{ if eq .Sorting "blockhash" }}active{{ end }}"><i class="fas fa-arrow-up"></i></a>
+                    <a href="/clients/execution?o=blockhash-d" class="sort-link {{ if eq .Sorting "blockhash-d" }}active{{ end }}"><i class="fas fa-arrow-down"></i></a>
+                  </div>
+                </th>
+                <th>
+                  Status
+                  <div class="col-sorting">
+                    <a href="/clients/execution?o=status" class="sort-link {{ if eq .Sorting "status" }}active{{ end }}"><i class="fas fa-arrow-up"></i></a>
+                    <a href="/clients/execution?o=status-d" class="sort-link {{ if eq .Sorting "status-d" }}active{{ end }}"><i class="fas fa-arrow-down"></i></a>
+                  </div>
+                </th>
+                <th>
+                  Version
+                  <div class="col-sorting">
+                    <a href="/clients/execution?o=version" class="sort-link {{ if eq .Sorting "version" }}active{{ end }}"><i class="fas fa-arrow-up"></i></a>
+                    <a href="/clients/execution?o=version-d" class="sort-link {{ if eq .Sorting "version-d" }}active{{ end }}"><i class="fas fa-arrow-down"></i></a>
+                  </div>
+                </th>
               </tr>
             </thead>
-              <tbody id="clientsTableBody">
+              <tbody>
                 {{ $root := . }}
                 {{ range $i, $client := .Clients }}
-                  <tr class="client-row-data" data-index="{{ $client.Index }}" data-name="{{ $client.Name }}" data-peers="{{ $client.PeerCount }}" data-block="{{ $client.HeadSlot }}" data-blockhash="{{ printf "%x" $client.HeadRoot }}" data-status="{{ $client.Status }}" data-version="{{ $client.Version }}">
+                  <tr>
                     <td>{{ $client.Index }}</td>
                     <td>
                       <svg class="client-node-icon" data-jdenticon-value="{{ $client.PeerID }}"></svg>
@@ -444,81 +486,6 @@
     }
   }
 
-  // Table sorting functionality
-  var currentSortColumn = 'name';
-  var currentSortDirection = 'desc';
-
-  function sortTable(column) {
-    var tbody = document.getElementById('clientsTableBody');
-    var rows = Array.from(tbody.querySelectorAll('tr.client-row-data'));
-    
-    // Toggle sort direction if clicking the same column
-    if (currentSortColumn === column) {
-      currentSortDirection = currentSortDirection === 'asc' ? 'desc' : 'asc';
-    } else {
-      currentSortDirection = 'asc';
-      currentSortColumn = column;
-    }
-    
-    // Sort rows
-    rows.sort(function(a, b) {
-      var aValue = a.getAttribute('data-' + column);
-      var bValue = b.getAttribute('data-' + column);
-      
-      // Handle numeric columns
-      if (column === 'index' || column === 'peers' || column === 'block') {
-        aValue = parseInt(aValue) || 0;
-        bValue = parseInt(bValue) || 0;
-      }
-      
-      // Handle status column with priority order
-      if (column === 'status') {
-        var statusOrder = { 'online': 0, 'synchronizing': 1, 'optimistic': 2, 'offline': 3 };
-        aValue = statusOrder[aValue] !== undefined ? statusOrder[aValue] : 4;
-        bValue = statusOrder[bValue] !== undefined ? statusOrder[bValue] : 4;
-      }
-      
-      if (aValue < bValue) {
-        return currentSortDirection === 'asc' ? -1 : 1;
-      }
-      if (aValue > bValue) {
-        return currentSortDirection === 'asc' ? 1 : -1;
-      }
-      return 0;
-    });
-    
-    // Update sort indicators
-    document.querySelectorAll('th.sortable i').forEach(function(icon) {
-      icon.className = 'fa fa-sort';
-    });
-    
-    var currentHeader = document.querySelector('th[data-sort="' + column + '"] i');
-    if (currentHeader) {
-      currentHeader.className = 'fa fa-sort-' + (currentSortDirection === 'asc' ? 'up' : 'down');
-    }
-    
-    // Re-append sorted rows (including their peer info rows)
-    rows.forEach(function(row) {
-      tbody.appendChild(row);
-      var peerInfoRow = row.nextElementSibling;
-      if (peerInfoRow && peerInfoRow.classList.contains('peerInfo')) {
-        tbody.appendChild(peerInfoRow);
-      }
-    });
-  }
-
-  // Add click handlers to sortable headers
-  document.addEventListener('DOMContentLoaded', function() {
-    document.querySelectorAll('th.sortable').forEach(function(header) {
-      header.style.cursor = 'pointer';
-      header.addEventListener('click', function() {
-        sortTable(this.getAttribute('data-sort'));
-      });
-    });
-    
-    // Set initial sort by name
-    sortTable('name');
-  });
 
 </script>
 {{ end }}
@@ -532,24 +499,6 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-th.sortable {
-  cursor: pointer;
-  user-select: none;
-}
-
-th.sortable:hover {
-  background-color: rgba(0, 123, 255, 0.1);
-}
-
-th.sortable i {
-  margin-left: 5px;
-  opacity: 0.6;
-}
-
-th.sortable:hover i {
-  opacity: 1;
 }
 </style>
 {{ end }}

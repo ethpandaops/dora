@@ -13,6 +13,8 @@ type ClientsCLPageData struct {
 	ShowPeerDASInfos       bool                             `json:"show_peer_das_infos"`
 	PeerDASInfos           *ClientCLPagePeerDAS             `json:"peer_das"`
 	Nodes                  map[string]*ClientCLPageDataNode `json:"nodes"`
+	Sorting                string                           `json:"sorting"`
+	IsDefaultSorting       bool                             `json:"is_default_sorting"`
 }
 
 // ## Peer graph data

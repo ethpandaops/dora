@@ -26,10 +26,17 @@ func ClientsCL(w http.ResponseWriter, r *http.Request) {
 	var pageTemplate = templates.GetTemplate(clientsTemplateFiles...)
 	data := InitPageData(w, r, "clients/consensus", "/clients/consensus", "Consensus clients", clientsTemplateFiles)
 
+	// Get sorting parameter
+	urlArgs := r.URL.Query()
+	var sortOrder string
+	if urlArgs.Has("o") {
+		sortOrder = urlArgs.Get("o")
+	}
+
 	var pageError error
 	pageError = services.GlobalCallRateLimiter.CheckCallLimit(r, 1)
 	if pageError == nil {
-		data.Data, pageError = getCLClientsPageData()
+		data.Data, pageError = getCLClientsPageData(sortOrder)
 	}
 	if pageError != nil {
 		handlePageError(w, r, pageError)
@@ -41,11 +48,11 @@ func ClientsCL(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func getCLClientsPageData() (*models.ClientsCLPageData, error) {
+func getCLClientsPageData(sortOrder string) (*models.ClientsCLPageData, error) {
 	pageData := &models.ClientsCLPageData{}
-	pageCacheKey := "clients/consensus"
+	pageCacheKey := fmt.Sprintf("clients/consensus/%s", sortOrder)
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
-		pageData, cacheTimeout := buildCLClientsPageData()
+		pageData, cacheTimeout := buildCLClientsPageData(sortOrder)
 		pageCall.CacheTimeout = cacheTimeout
 		return pageData
 	})
@@ -144,7 +151,7 @@ func buildCLPeerMapData() *models.ClientCLPageDataPeerMap {
 	return peerMap
 }
 
-func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
+func buildCLClientsPageData(sortOrder string) (*models.ClientsCLPageData, time.Duration) {
 	logrus.Debugf("clients page called")
 	pageData := &models.ClientsCLPageData{
 		Clients:                []*models.ClientsCLPageDataClient{},
@@ -509,6 +516,92 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 			node.ENRKeyValues = nil
 		}
 	}
+
+	// Apply sorting
+	switch sortOrder {
+	case "index-d":
+		sort.Slice(pageData.Clients, func(i, j int) bool {
+			return pageData.Clients[i].Index > pageData.Clients[j].Index
+		})
+	case "name":
+		sort.Slice(pageData.Clients, func(i, j int) bool {
+			return pageData.Clients[i].Name < pageData.Clients[j].Name
+		})
+	case "name-d":
+		sort.Slice(pageData.Clients, func(i, j int) bool {
+			return pageData.Clients[i].Name > pageData.Clients[j].Name
+		})
+	case "peers":
+		sort.Slice(pageData.Clients, func(i, j int) bool {
+			return pageData.Clients[i].PeerCount < pageData.Clients[j].PeerCount
+		})
+	case "peers-d":
+		sort.Slice(pageData.Clients, func(i, j int) bool {
+			return pageData.Clients[i].PeerCount > pageData.Clients[j].PeerCount
+		})
+	case "headslot":
+		sort.Slice(pageData.Clients, func(i, j int) bool {
+			return pageData.Clients[i].HeadSlot < pageData.Clients[j].HeadSlot
+		})
+	case "headslot-d":
+		sort.Slice(pageData.Clients, func(i, j int) bool {
+			return pageData.Clients[i].HeadSlot > pageData.Clients[j].HeadSlot
+		})
+	case "headroot":
+		sort.Slice(pageData.Clients, func(i, j int) bool {
+			return string(pageData.Clients[i].HeadRoot) < string(pageData.Clients[j].HeadRoot)
+		})
+	case "headroot-d":
+		sort.Slice(pageData.Clients, func(i, j int) bool {
+			return string(pageData.Clients[i].HeadRoot) > string(pageData.Clients[j].HeadRoot)
+		})
+	case "status":
+		sort.Slice(pageData.Clients, func(i, j int) bool {
+			statusOrder := map[string]int{"online": 0, "synchronizing": 1, "optimistic": 2, "offline": 3}
+			aVal, aExists := statusOrder[pageData.Clients[i].Status]
+			bVal, bExists := statusOrder[pageData.Clients[j].Status]
+			if !aExists {
+				aVal = 4
+			}
+			if !bExists {
+				bVal = 4
+			}
+			return aVal < bVal
+		})
+	case "status-d":
+		sort.Slice(pageData.Clients, func(i, j int) bool {
+			statusOrder := map[string]int{"online": 0, "synchronizing": 1, "optimistic": 2, "offline": 3}
+			aVal, aExists := statusOrder[pageData.Clients[i].Status]
+			bVal, bExists := statusOrder[pageData.Clients[j].Status]
+			if !aExists {
+				aVal = 4
+			}
+			if !bExists {
+				bVal = 4
+			}
+			return aVal > bVal
+		})
+	case "version":
+		sort.Slice(pageData.Clients, func(i, j int) bool {
+			return pageData.Clients[i].Version < pageData.Clients[j].Version
+		})
+	case "version-d":
+		sort.Slice(pageData.Clients, func(i, j int) bool {
+			return pageData.Clients[i].Version > pageData.Clients[j].Version
+		})
+	case "index":
+		sort.Slice(pageData.Clients, func(i, j int) bool {
+			return pageData.Clients[i].Index < pageData.Clients[j].Index
+		})
+	default:
+		// Default sort by name ascending
+		sort.Slice(pageData.Clients, func(i, j int) bool {
+			return pageData.Clients[i].Name < pageData.Clients[j].Name
+		})
+		pageData.IsDefaultSorting = true
+		sortOrder = "name"
+	}
+	pageData.Sorting = sortOrder
 
 	return pageData, cacheTime
 }
