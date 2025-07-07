@@ -39,7 +39,7 @@ type ApiValidatorRequestV1 struct {
 // @Param  indexOrPubkey path string true "Up to 100 validator indicesOrPubkeys, comma separated"
 // @Success 200 {object} ApiResponse{data=[]ApiValidatorResponseV1}
 // @Failure 400 {object} ApiResponse
-// @Router /validator/{indexOrPubkey} [get]
+// @Router /v1/validator/{indexOrPubkey} [get]
 func ApiValidatorGetV1(w http.ResponseWriter, r *http.Request) {
 	getApiValidator(w, r)
 }
@@ -52,7 +52,7 @@ func ApiValidatorGetV1(w http.ResponseWriter, r *http.Request) {
 // @Param  indexOrPubkey body ApiValidatorRequestV1 true "Up to 100 validator indicesOrPubkeys, comma separated"
 // @Success 200 {object} ApiResponse{data=[]ApiValidatorResponseV1}
 // @Failure 400 {object} ApiResponse
-// @Router /validator [post]
+// @Router /v1/validator [post]
 func ApiValidatorPostV1(w http.ResponseWriter, r *http.Request) {
 	getApiValidator(w, r)
 }
