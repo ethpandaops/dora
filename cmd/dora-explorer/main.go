@@ -1,3 +1,8 @@
+// @title Dora Explorer API
+// @version 1.0
+// @description API for Dora Ethereum Explorer - provides access to execution and consensus client information
+// @host localhost:8080
+// @BasePath /api
 package main
 
 import (
@@ -22,6 +27,10 @@ import (
 	"github.com/ethpandaops/dora/types"
 	uipackage "github.com/ethpandaops/dora/ui-package"
 	"github.com/ethpandaops/dora/utils"
+
+	// Swagger
+	_ "github.com/ethpandaops/dora/docs"
+	httpSwagger "github.com/swaggo/http-swagger"
 )
 
 func main() {
@@ -240,4 +249,9 @@ func startApi(router *mux.Router) {
 	router.HandleFunc("/v1/validator/withdrawalCredentials/{withdrawalCredentialsOrEth1address}", api.ApiWithdrawalCredentialsValidatorsV1).Methods("GET", "OPTIONS")
 	router.HandleFunc("/v1/validator/{indexOrPubkey}/deposits", api.ApiValidatorDepositsV1).Methods("GET", "OPTIONS")
 	router.HandleFunc("/v1/epoch/{epoch}", api.ApiEpochV1).Methods("GET", "OPTIONS")
+	router.HandleFunc("/v1/clients/execution", api.APIExecutionClients).Methods("GET", "OPTIONS")
+	router.HandleFunc("/v1/clients/consensus", api.APIConsensusClients).Methods("GET", "OPTIONS")
+
+	// Swagger UI
+	router.PathPrefix("/swagger/").Handler(httpSwagger.WrapHandler)
 }

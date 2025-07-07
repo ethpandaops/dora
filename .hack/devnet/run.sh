@@ -67,6 +67,10 @@ frontend:
   showSubmitDeposit: true
   showSubmitElRequests: true
   showPeerDASInfos: true
+api:
+  enabled: true
+  corsOrigins:
+    - "*"
 beaconapi:
   localCacheSize: 10
   redisCacheAddr: ""
