@@ -223,7 +223,8 @@ paths:
       consumes:
       - application/json
       description: Returns a list of all connected consensus clients with their node
-        information, including PeerDAS support
+        information, including PeerDAS support. Sensitive information (PeerID, NodeID,
+        ENR) is only included if ShowSensitivePeerInfos is enabled in the configuration.
       produces:
       - application/json
       responses:
@@ -251,7 +252,8 @@ paths:
       consumes:
       - application/json
       description: Returns a list of all connected execution clients with their node
-        information
+        information. Sensitive information (IP addresses, ports, enode) is only included
+        if ShowSensitivePeerInfos is enabled in the configuration.
       produces:
       - application/json
       responses:

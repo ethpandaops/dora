@@ -26,7 +26,7 @@ const docTemplate = `{
     "paths": {
         "/clients/consensus": {
             "get": {
-                "description": "Returns a list of all connected consensus clients with their node information, including PeerDAS support",
+                "description": "Returns a list of all connected consensus clients with their node information, including PeerDAS support. Sensitive information (PeerID, NodeID, ENR) is only included if ShowSensitivePeerInfos is enabled in the configuration.",
                 "consumes": [
                     "application/json"
                 ],
@@ -67,7 +67,7 @@ const docTemplate = `{
         },
         "/clients/execution": {
             "get": {
-                "description": "Returns a list of all connected execution clients with their node information",
+                "description": "Returns a list of all connected execution clients with their node information. Sensitive information (IP addresses, ports, enode) is only included if ShowSensitivePeerInfos is enabled in the configuration.",
                 "consumes": [
                     "application/json"
                 ],

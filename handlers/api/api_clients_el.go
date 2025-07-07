@@ -7,6 +7,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethpandaops/dora/services"
+	"github.com/ethpandaops/dora/utils"
 	"github.com/sirupsen/logrus"
 )
 
@@ -30,7 +31,7 @@ type APIExecutionClientsResponse struct {
 
 // APIExecutionClients returns execution client node information as JSON
 // @Summary Get execution clients information
-// @Description Returns a list of all connected execution clients with their node information
+// @Description Returns a list of all connected execution clients with their node information. Sensitive information (IP addresses, ports, enode) is only included if ShowSensitivePeerInfos is enabled in the configuration.
 // @Tags clients
 // @Accept json
 // @Produce json
@@ -85,7 +86,6 @@ func getExecutionClientNodeInfo() ([]APIExecutionClientNodeInfo, error) {
 		}
 
 		if nodeInfo != nil {
-			clientInfo.Enode = nodeInfo.Enode
 			clientInfo.Version = nodeInfo.Name
 			clientInfo.Status = "connected"
 
@@ -93,8 +93,11 @@ func getExecutionClientNodeInfo() ([]APIExecutionClientNodeInfo, error) {
 			if nodeInfo.Enode != "" {
 				if en, err := enode.ParseV4(nodeInfo.Enode); err == nil {
 					clientInfo.NodeID = en.ID().String()
-					clientInfo.IP = en.IP().String()
-					clientInfo.Port = en.TCP()
+					if utils.Config.Frontend.ShowSensitivePeerInfos {
+						clientInfo.IP = en.IP().String()
+						clientInfo.Port = en.TCP()
+						clientInfo.Enode = nodeInfo.Enode
+					}
 				} else {
 					logrus.WithFields(logrus.Fields{
 						"client": client.GetName(),

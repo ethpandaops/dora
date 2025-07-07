@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ethpandaops/dora/services"
+	"github.com/ethpandaops/dora/utils"
 	"github.com/sirupsen/logrus"
 )
 
@@ -38,7 +39,7 @@ type APIConsensusClientsResponse struct {
 
 // APIConsensusClients returns consensus client node information as JSON
 // @Summary Get consensus clients information
-// @Description Returns a list of all connected consensus clients with their node information, including PeerDAS support
+// @Description Returns a list of all connected consensus clients with their node information, including PeerDAS support. Sensitive information (PeerID, NodeID, ENR) is only included if ShowSensitivePeerInfos is enabled in the configuration.
 // @Tags clients
 // @Accept json
 // @Produce json
@@ -125,10 +126,12 @@ func getConsensusClientNodeInfo() ([]APIConsensusClientNodeInfo, error) {
 
 		// Get node identity information
 		if nodeIdentity := client.GetNodeIdentity(); nodeIdentity != nil {
-			clientInfo.PeerID = nodeIdentity.PeerID
-			clientInfo.ENR = nodeIdentity.Enr
-			// Note: NodeID not available in the interface, using PeerID as fallback
-			clientInfo.NodeID = nodeIdentity.PeerID
+			if utils.Config.Frontend.ShowSensitivePeerInfos {
+				clientInfo.PeerID = nodeIdentity.PeerID
+				clientInfo.ENR = nodeIdentity.Enr
+				// Note: NodeID not available in the interface, using PeerID as fallback
+				clientInfo.NodeID = nodeIdentity.PeerID
+			}
 		}
 
 		// Note: PeerDAS information not available in the current interface
