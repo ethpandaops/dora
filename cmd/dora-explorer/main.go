@@ -29,7 +29,7 @@ import (
 	"github.com/ethpandaops/dora/utils"
 
 	// Swagger
-	_ "github.com/ethpandaops/dora/docs"
+	"github.com/ethpandaops/dora/docs"
 	httpSwagger "github.com/swaggo/http-swagger"
 )
 
@@ -239,6 +239,29 @@ func startFrontend(router *mux.Router) {
 	router.PathPrefix("/").Handler(handlers.CustomFileServer(http.FileServer(fileSys), fileSys, handlers.NotFound))
 }
 
+func createSwaggerHandler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Import the docs package to access SwaggerInfo
+		swaggerInfo := docs.SwaggerInfo
+		
+		// Set the host dynamically based on the request
+		swaggerInfo.Host = r.Host
+		
+		// Determine scheme based on request
+		scheme := "http"
+		if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
+			scheme = "https"
+		}
+		swaggerInfo.Schemes = []string{scheme}
+		
+		// Serve the swagger UI with custom configuration for server selection
+		httpSwagger.Handler(
+			httpSwagger.URL("/api/swagger/doc.json"),
+			httpSwagger.DeepLinking(true),
+		).ServeHTTP(w, r)
+	})
+}
+
 func startApi(router *mux.Router) {
 	// Add the CORS middleware to all API routes
 	router.Use(middleware.CorsMiddleware)
@@ -252,6 +275,6 @@ func startApi(router *mux.Router) {
 	router.HandleFunc("/v1/clients/execution", api.APIExecutionClients).Methods("GET", "OPTIONS")
 	router.HandleFunc("/v1/clients/consensus", api.APIConsensusClients).Methods("GET", "OPTIONS")
 
-	// Swagger UI
-	router.PathPrefix("/swagger/").Handler(httpSwagger.WrapHandler)
+	// Swagger UI with dynamic host
+	router.PathPrefix("/swagger/").Handler(createSwaggerHandler())
 }
