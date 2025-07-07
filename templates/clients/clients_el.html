@@ -40,7 +40,7 @@
     </div>
     <div class="card mt-2">
       <div class="card-body px-0 py-3">
-        <div class="table-responsive px-0 py-1">
+        <div class="table-responsive table-sorting px-0 py-1">
           <div style="text-align: right; margin-right: 15px;">
             Peer infos:
             <i class="fa fa-refresh text-muted p-1 mx-1" role="button" data-bs-toggle="tooltip" data-bs-placement="top" title="Refresh peer information" onclick="refreshPeerInfos()" style="cursor: pointer;"></i>
@@ -52,13 +52,55 @@
           <table class="table" id="clients">
             <thead>
               <tr>
-                <th>#</th>
-                <th>Name</th>
-                <th>Peers</th>
-                <th>Block</th>
-                <th>Block hash</th>
-                <th>Status</th>
-                <th>Version</th>
+                <th>
+                  #
+                  <div class="col-sorting">
+                    <a href="/clients/execution?o=index" class="sort-link {{ if eq .Sorting "index" }}active{{ end }}"><i class="fas fa-arrow-up"></i></a>
+                    <a href="/clients/execution?o=index-d" class="sort-link {{ if eq .Sorting "index-d" }}active{{ end }}"><i class="fas fa-arrow-down"></i></a>
+                  </div>
+                </th>
+                <th>
+                  Name
+                  <div class="col-sorting">
+                    <a href="/clients/execution?o=name" class="sort-link {{ if eq .Sorting "name" }}active{{ end }}"><i class="fas fa-arrow-up"></i></a>
+                    <a href="/clients/execution?o=name-d" class="sort-link {{ if eq .Sorting "name-d" }}active{{ end }}"><i class="fas fa-arrow-down"></i></a>
+                  </div>
+                </th>
+                <th>
+                  Peers
+                  <div class="col-sorting">
+                    <a href="/clients/execution?o=peers" class="sort-link {{ if eq .Sorting "peers" }}active{{ end }}"><i class="fas fa-arrow-up"></i></a>
+                    <a href="/clients/execution?o=peers-d" class="sort-link {{ if eq .Sorting "peers-d" }}active{{ end }}"><i class="fas fa-arrow-down"></i></a>
+                  </div>
+                </th>
+                <th>
+                  Block
+                  <div class="col-sorting">
+                    <a href="/clients/execution?o=block" class="sort-link {{ if eq .Sorting "block" }}active{{ end }}"><i class="fas fa-arrow-up"></i></a>
+                    <a href="/clients/execution?o=block-d" class="sort-link {{ if eq .Sorting "block-d" }}active{{ end }}"><i class="fas fa-arrow-down"></i></a>
+                  </div>
+                </th>
+                <th>
+                  Block hash
+                  <div class="col-sorting">
+                    <a href="/clients/execution?o=blockhash" class="sort-link {{ if eq .Sorting "blockhash" }}active{{ end }}"><i class="fas fa-arrow-up"></i></a>
+                    <a href="/clients/execution?o=blockhash-d" class="sort-link {{ if eq .Sorting "blockhash-d" }}active{{ end }}"><i class="fas fa-arrow-down"></i></a>
+                  </div>
+                </th>
+                <th>
+                  Status
+                  <div class="col-sorting">
+                    <a href="/clients/execution?o=status" class="sort-link {{ if eq .Sorting "status" }}active{{ end }}"><i class="fas fa-arrow-up"></i></a>
+                    <a href="/clients/execution?o=status-d" class="sort-link {{ if eq .Sorting "status-d" }}active{{ end }}"><i class="fas fa-arrow-down"></i></a>
+                  </div>
+                </th>
+                <th>
+                  Version
+                  <div class="col-sorting">
+                    <a href="/clients/execution?o=version" class="sort-link {{ if eq .Sorting "version" }}active{{ end }}"><i class="fas fa-arrow-up"></i></a>
+                    <a href="/clients/execution?o=version-d" class="sort-link {{ if eq .Sorting "version-d" }}active{{ end }}"><i class="fas fa-arrow-down"></i></a>
+                  </div>
+                </th>
               </tr>
             </thead>
               <tbody>
@@ -443,6 +485,7 @@
       rightButton.text('Show all');
     }
   }
+
 
 </script>
 {{ end }}
