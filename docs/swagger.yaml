@@ -205,15 +205,8 @@ definitions:
         type: integer
     type: object
 info:
-  contact:
-    email: support@swagger.io
-    name: API Support
-    url: http://www.swagger.io/support
+  contact: {}
   description: This is the API documentation for the Dora Explorer application.
-  license:
-    name: MIT
-    url: https://opensource.org/licenses/MIT
-  termsOfService: http://swagger.io/terms/
   title: Dora Explorer API
   version: "1.0"
 paths:

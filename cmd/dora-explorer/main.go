@@ -254,7 +254,7 @@ func createSwaggerHandler() http.Handler {
 		}
 		swaggerInfo.Schemes = []string{scheme}
 
-		// Serve the swagger UI with custom configuration for server selection
+		// Serve the swagger UI with dynamic host configuration
 		httpSwagger.Handler(
 			httpSwagger.URL("/api/swagger/doc.json"),
 			httpSwagger.DeepLinking(true),
