@@ -223,7 +223,7 @@
 
     <div class="card mt-2">
       <div class="card-body px-0 py-3">
-        <div class="table-responsive px-0 py-1">
+        <div class="table-responsive table-sorting px-0 py-1">
           <div style="text-align: right; margin-right: 15px;">
             Peer infos:
             <i class="fa fa-refresh text-muted p-1 mx-1" role="button" data-bs-toggle="tooltip" data-bs-placement="top" title="Refresh peer information" onclick="refreshPeerInfos()" style="cursor: pointer;"></i>
@@ -235,13 +235,55 @@
           <table class="table table-nobr" id="clients">
             <thead>
               <tr>
-                <th>#</th>
-                <th>Name</th>
-                <th>Peers</th>
-                <th>Head Slot</th>
-                <th>Head Root</th>
-                <th>Status</th>
-                <th>Version</th>
+                <th>
+                  #
+                  <div class="col-sorting">
+                    <a href="/clients/consensus?o=index" class="sort-link {{ if eq .Sorting "index" }}active{{ end }}"><i class="fas fa-arrow-up"></i></a>
+                    <a href="/clients/consensus?o=index-d" class="sort-link {{ if eq .Sorting "index-d" }}active{{ end }}"><i class="fas fa-arrow-down"></i></a>
+                  </div>
+                </th>
+                <th>
+                  Name
+                  <div class="col-sorting">
+                    <a href="/clients/consensus?o=name" class="sort-link {{ if eq .Sorting "name" }}active{{ end }}"><i class="fas fa-arrow-up"></i></a>
+                    <a href="/clients/consensus?o=name-d" class="sort-link {{ if eq .Sorting "name-d" }}active{{ end }}"><i class="fas fa-arrow-down"></i></a>
+                  </div>
+                </th>
+                <th>
+                  Peers
+                  <div class="col-sorting">
+                    <a href="/clients/consensus?o=peers" class="sort-link {{ if eq .Sorting "peers" }}active{{ end }}"><i class="fas fa-arrow-up"></i></a>
+                    <a href="/clients/consensus?o=peers-d" class="sort-link {{ if eq .Sorting "peers-d" }}active{{ end }}"><i class="fas fa-arrow-down"></i></a>
+                  </div>
+                </th>
+                <th>
+                  Head Slot
+                  <div class="col-sorting">
+                    <a href="/clients/consensus?o=headslot" class="sort-link {{ if eq .Sorting "headslot" }}active{{ end }}"><i class="fas fa-arrow-up"></i></a>
+                    <a href="/clients/consensus?o=headslot-d" class="sort-link {{ if eq .Sorting "headslot-d" }}active{{ end }}"><i class="fas fa-arrow-down"></i></a>
+                  </div>
+                </th>
+                <th>
+                  Head Root
+                  <div class="col-sorting">
+                    <a href="/clients/consensus?o=headroot" class="sort-link {{ if eq .Sorting "headroot" }}active{{ end }}"><i class="fas fa-arrow-up"></i></a>
+                    <a href="/clients/consensus?o=headroot-d" class="sort-link {{ if eq .Sorting "headroot-d" }}active{{ end }}"><i class="fas fa-arrow-down"></i></a>
+                  </div>
+                </th>
+                <th>
+                  Status
+                  <div class="col-sorting">
+                    <a href="/clients/consensus?o=status" class="sort-link {{ if eq .Sorting "status" }}active{{ end }}"><i class="fas fa-arrow-up"></i></a>
+                    <a href="/clients/consensus?o=status-d" class="sort-link {{ if eq .Sorting "status-d" }}active{{ end }}"><i class="fas fa-arrow-down"></i></a>
+                  </div>
+                </th>
+                <th>
+                  Version
+                  <div class="col-sorting">
+                    <a href="/clients/consensus?o=version" class="sort-link {{ if eq .Sorting "version" }}active{{ end }}"><i class="fas fa-arrow-up"></i></a>
+                    <a href="/clients/consensus?o=version-d" class="sort-link {{ if eq .Sorting "version-d" }}active{{ end }}"><i class="fas fa-arrow-down"></i></a>
+                  </div>
+                </th>
               </tr>
             </thead>
               <tbody>
@@ -1001,6 +1043,7 @@
       rightButton.text('Show all');
     }
   }
+
 
 </script>
 {{ end }}

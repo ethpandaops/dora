@@ -11,6 +11,8 @@ type ClientsELPageData struct {
 	PeerMap                *ClientELPageDataPeerMap          `json:"peer_map"`
 	ShowSensitivePeerInfos bool                              `json:"show_sensitive_peer_infos"`
 	Nodes                  map[string]*ClientsELPageDataNode `json:"nodes"`
+	Sorting                string                            `json:"sorting"`
+	IsDefaultSorting       bool                              `json:"is_default_sorting"`
 }
 
 type ClientsELPageDataClient struct {
