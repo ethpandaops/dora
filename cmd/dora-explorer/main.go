@@ -243,17 +243,17 @@ func createSwaggerHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Import the docs package to access SwaggerInfo
 		swaggerInfo := docs.SwaggerInfo
-		
+
 		// Set the host dynamically based on the request
 		swaggerInfo.Host = r.Host
-		
+
 		// Determine scheme based on request
 		scheme := "http"
 		if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
 			scheme = "https"
 		}
 		swaggerInfo.Schemes = []string{scheme}
-		
+
 		// Serve the swagger UI with custom configuration for server selection
 		httpSwagger.Handler(
 			httpSwagger.URL("/api/swagger/doc.json"),
