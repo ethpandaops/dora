@@ -37,7 +37,7 @@ type ApiValidatorDepositsResponseV1 struct {
 // @Param  indexOrPubkey path string true "Up to 100 validator indicesOrPubkeys, comma separated"
 // @Success 200 {object} api.ApiResponse{data=[]api.ApiValidatorDepositsResponseV1}
 // @Failure 400 {object} api.ApiResponse
-// @Router /validator/{indexOrPubkey}/deposits [get]
+// @Router /v1/validator/{indexOrPubkey}/deposits [get]
 func ApiValidatorDepositsV1(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 

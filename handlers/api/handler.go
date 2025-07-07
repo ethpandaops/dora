@@ -12,7 +12,7 @@ package api
 // @license.name MIT
 // @license.url https://opensource.org/licenses/MIT
 
-// @BasePath /api/v1
+// @BasePath /api
 // @schemes http https
 
 // @securityDefinitions.basic BasicAuth

@@ -24,7 +24,7 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
-        "/clients/consensus": {
+        "/v1/clients/consensus": {
             "get": {
                 "description": "Returns a list of all connected consensus clients with their node information, including PeerDAS support. Sensitive information (PeerID, NodeID, ENR) is only included if ShowSensitivePeerInfos is enabled in the configuration.",
                 "consumes": [
@@ -65,7 +65,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/clients/execution": {
+        "/v1/clients/execution": {
             "get": {
                 "description": "Returns a list of all connected execution clients with their node information. Sensitive information (IP addresses, ports, enode) is only included if ShowSensitivePeerInfos is enabled in the configuration.",
                 "consumes": [
@@ -106,7 +106,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/epoch/{epoch}": {
+        "/v1/epoch/{epoch}": {
             "get": {
                 "description": "Returns information for a specified epoch by the epoch number or an epoch tag (can be latest or finalized)",
                 "produces": [
@@ -159,7 +159,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/validator": {
+        "/v1/validator": {
             "post": {
                 "description": "This POST endpoint exists because the GET endpoint can lead to a \"URI too long\" error when searching for too many validators based on their pubkeys.",
                 "produces": [
@@ -211,7 +211,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/validator/eth1/{eth1address}": {
+        "/v1/validator/eth1/{eth1address}": {
             "get": {
                 "produces": [
                     "application/json"
@@ -272,7 +272,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/validator/withdrawalCredentials/{withdrawalCredentialsOrEth1address}": {
+        "/v1/validator/withdrawalCredentials/{withdrawalCredentialsOrEth1address}": {
             "get": {
                 "produces": [
                     "application/json"
@@ -335,7 +335,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/validator/{indexOrPubkey}": {
+        "/v1/validator/{indexOrPubkey}": {
             "get": {
                 "description": "Searching for too many validators based on their pubkeys will lead to a \"URI too long\" error",
                 "produces": [
@@ -385,7 +385,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/validator/{indexOrPubkey}/deposits": {
+        "/v1/validator/{indexOrPubkey}/deposits": {
             "get": {
                 "description": "Get all eth1 deposits for up to 100 validators",
                 "produces": [
@@ -774,7 +774,7 @@ const docTemplate = `{
 var SwaggerInfo = &swag.Spec{
 	Version:          "1.0",
 	Host:             "",
-	BasePath:         "/api/v1",
+	BasePath:         "/api",
 	Schemes:          []string{"http", "https"},
 	Title:            "Dora Explorer API",
 	Description:      "This is the API documentation for the Dora Explorer application.",
