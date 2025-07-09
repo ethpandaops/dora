@@ -254,6 +254,46 @@ func (cs *ChainState) EpochStartSlot(epoch phase0.Epoch) phase0.Slot {
 	return phase0.Slot(epoch) * phase0.Slot(cs.specs.SlotsPerEpoch)
 }
 
+func (cs *ChainState) GetCurrentForkVersion() phase0.Version {
+	if cs.specs == nil {
+		return phase0.Version{}
+	}
+
+	currentEpoch := cs.CurrentEpoch()
+
+	switch {
+	case cs.specs.FuluForkEpoch != nil && currentEpoch >= phase0.Epoch(*cs.specs.FuluForkEpoch):
+		return cs.specs.FuluForkVersion
+	case cs.specs.ElectraForkEpoch != nil && currentEpoch >= phase0.Epoch(*cs.specs.ElectraForkEpoch):
+		return cs.specs.ElectraForkVersion
+	case cs.specs.DenebForkEpoch != nil && currentEpoch >= phase0.Epoch(*cs.specs.DenebForkEpoch):
+		return cs.specs.DenebForkVersion
+	case cs.specs.CapellaForkEpoch != nil && currentEpoch >= phase0.Epoch(*cs.specs.CapellaForkEpoch):
+		return cs.specs.CapellaForkVersion
+	case cs.specs.BellatrixForkEpoch != nil && currentEpoch >= phase0.Epoch(*cs.specs.BellatrixForkEpoch):
+		return cs.specs.BellatrixForkVersion
+	case cs.specs.AltairForkEpoch != nil && currentEpoch >= phase0.Epoch(*cs.specs.AltairForkEpoch):
+		return cs.specs.AltairForkVersion
+	default:
+		return cs.specs.GenesisForkVersion
+	}
+}
+
+func (cs *ChainState) GetCurrentForkDigest() phase0.ForkDigest {
+	if cs.specs == nil || cs.genesis == nil {
+		return phase0.ForkDigest{}
+	}
+
+	forkData := phase0.ForkData{
+		CurrentVersion:        cs.GetCurrentForkVersion(),
+		GenesisValidatorsRoot: cs.genesis.GenesisValidatorsRoot,
+	}
+
+	forkDataRoot, _ := forkData.HashTreeRoot()
+
+	return phase0.ForkDigest(forkDataRoot[:4])
+}
+
 func (cs *ChainState) GetValidatorChurnLimit(validatorCount uint64) uint64 {
 	if cs.specs == nil {
 		return 0
