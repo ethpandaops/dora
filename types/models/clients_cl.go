@@ -15,6 +15,7 @@ type ClientsCLPageData struct {
 	Nodes                  map[string]*ClientCLPageDataNode `json:"nodes"`
 	Sorting                string                           `json:"sorting"`
 	IsDefaultSorting       bool                             `json:"is_default_sorting"`
+	CurrentForkDigest      []byte                           `json:"current_fork_digest"`
 }
 
 // ## Peer graph data
@@ -81,6 +82,7 @@ type ClientsCLPageDataClient struct {
 	LastRefresh          time.Time `json:"refresh"`
 	LastError            string    `json:"error"`
 	PeerID               string    `json:"peer_id"`
+	NodeENR              string    `json:"node_enr"`
 	PeerCount            uint32    `json:"peer_count"`
 	PeersInboundCounter  uint32    `json:"peers_inbound_counter"`
 	PeersOutboundCounter uint32    `json:"peers_outbound_counter"`

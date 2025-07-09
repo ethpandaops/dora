@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"math"
+	"time"
 
 	"github.com/attestantio/go-eth2-client/spec"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
@@ -18,9 +19,12 @@ type DasGuardian struct {
 func NewDasGuardian(ctx context.Context, logger logrus.FieldLogger) (*DasGuardian, error) {
 	guardianApi := &dasGuardianAPI{}
 	opts := &dasguardian.DasGuardianConfig{
-		Logger:     logger,
-		Libp2pHost: "127.0.0.1",
-		BeaconAPI:  guardianApi,
+		Logger:            logger,
+		Libp2pHost:        "127.0.0.1",
+		BeaconAPI:         guardianApi,
+		ConnectionRetries: 3,
+		ConnectionTimeout: 10 * time.Second,
+		InitTimeout:       1 * time.Second,
 	}
 
 	guardian, err := dasguardian.NewDASGuardian(ctx, opts)
@@ -33,18 +37,17 @@ func NewDasGuardian(ctx context.Context, logger logrus.FieldLogger) (*DasGuardia
 	}, nil
 }
 
-func (d *DasGuardian) ScanNode(ctx context.Context, nodeEnr string) (*dasguardian.DASEvaluationResult, error) {
+func (d *DasGuardian) ScanNode(ctx context.Context, nodeEnr string) (*dasguardian.DasGuardianScanResult, error) {
 	node, err := dasguardian.ParseNode(nodeEnr)
 	if err != nil {
 		return nil, err
 	}
 
+	// Scan can return both result and error (partial results)
 	res, err := d.guardian.Scan(ctx, node)
-	if err != nil {
-		return nil, err
-	}
-
-	return &res, nil
+	
+	// Return both - the handler will deal with partial results
+	return res, err
 }
 
 // dasGuardianAPI is the beacon api interface for the DAS Guardian.
