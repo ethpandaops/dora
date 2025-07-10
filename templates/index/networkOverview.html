@@ -103,13 +103,13 @@
           <div id="forkBadges" class="d-flex justify-content-between align-items-center">
             <div class="template-tbody">
               {{ html "<!-- ko foreach: forks -->" }}
-                <span class="template-row badge rounded-pill me-1 border fork-hover" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-html="true" data-bind="css: {'text-bg-success': active, 'text-bg-secondary': !active, 'border-warning': type === 'bpo'}, attr: {title: 'Epoch: ' + epoch + (version ? '<br>Fork Version: ' + $root.hexstr(version) : '') + '<br>Time: ' + $root.timestampUtc(new Date(time * 1000)) + (type === 'bpo' ? '<br>Type: Block-Parameter-Only' + (max_blobs_per_block ? '<br>Max Blobs Per Block: ' + max_blobs_per_block : '') : ''), 'data-fork-timestamp': time, 'data-fork-active': active}, text: name"></span>
+                <span class="template-row badge rounded-pill me-1 border fork-hover" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-html="true" data-bind="css: {'text-bg-success': active, 'text-bg-secondary': !active, 'border-warning': type === 'bpo'}, attr: {title: 'Epoch: ' + epoch + (version ? '<br>Fork Version: ' + $root.hexstr(version) : '') + (fork_digest ? '<br>Fork Digest: ' + $root.hexstr(fork_digest) : '') + '<br>Time: ' + $root.timestampUtc(new Date(time * 1000)) + (type === 'bpo' ? '<br>Type: Block-Parameter-Only' + (max_blobs_per_block ? '<br>Max Blobs Per Block: ' + max_blobs_per_block : '') : ''), 'data-fork-timestamp': time, 'data-fork-active': active}, text: name"></span>
               {{ html "<!-- /ko -->" }}
               {{ range $i, $fork := .NetworkForks }}
                 {{ if $fork.Active }}
-                  <span class="badge rounded-pill text-bg-success me-1 border fork-hover {{ if eq $fork.Type "bpo" }} border-warning{{ end }}" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-html="true" title="Epoch: {{ $fork.Epoch }}{{ if $fork.Version }}<br>Fork Version: 0x{{ printf "%x" $fork.Version }}{{ end }}<br>Time: {{ $fork.Time | uint64ToTime | date "2006-01-02 15:04:05 MST" }}{{ if eq $fork.Type "bpo" }}<br>Type: Block-Parameter-Only{{ if $fork.MaxBlobsPerBlock }}<br>Max Blobs Per Block: {{ $fork.MaxBlobsPerBlock }}{{ end }}{{ end }}" data-fork-timestamp="{{ $fork.Time }}" data-fork-active="true">{{ $fork.Name }}</span>
+                  <span class="badge rounded-pill text-bg-success me-1 border fork-hover {{ if eq $fork.Type "bpo" }} border-warning{{ end }}" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-html="true" title="Epoch: {{ $fork.Epoch }}{{ if $fork.Version }}<br>Fork Version: 0x{{ printf "%x" $fork.Version }}{{ end }}{{ if $fork.ForkDigest }}<br>Fork Digest: 0x{{ printf "%x" $fork.ForkDigest }}{{ end }}<br>Time: {{ $fork.Time | uint64ToTime | date "2006-01-02 15:04:05 MST" }}{{ if eq $fork.Type "bpo" }}<br>Type: Block-Parameter-Only{{ if $fork.MaxBlobsPerBlock }}<br>Max Blobs Per Block: {{ $fork.MaxBlobsPerBlock }}{{ end }}{{ end }}" data-fork-timestamp="{{ $fork.Time }}" data-fork-active="true">{{ $fork.Name }}</span>
                 {{ else }}
-                  <span class="badge rounded-pill text-bg-secondary me-1 border fork-hover {{ if eq $fork.Type "bpo" }} border-warning{{ end }}" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-html="true" title="Epoch: {{ $fork.Epoch }}{{ if $fork.Version }}<br>Fork Version: 0x{{ printf "%x" $fork.Version }}{{ end }}<br>Time: {{ $fork.Time | uint64ToTime | date "2006-01-02 15:04:05 MST" }}{{ if eq $fork.Type "bpo" }}<br>Type: Block-Parameter-Only{{ if $fork.MaxBlobsPerBlock }}<br>Max Blobs Per Block: {{ $fork.MaxBlobsPerBlock }}{{ end }}{{ end }}" data-fork-timestamp="{{ $fork.Time }}" data-fork-active="false">{{ $fork.Name }}</span>
+                  <span class="badge rounded-pill text-bg-secondary me-1 border fork-hover {{ if eq $fork.Type "bpo" }} border-warning{{ end }}" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-html="true" title="Epoch: {{ $fork.Epoch }}{{ if $fork.Version }}<br>Fork Version: 0x{{ printf "%x" $fork.Version }}{{ end }}{{ if $fork.ForkDigest }}<br>Fork Digest: 0x{{ printf "%x" $fork.ForkDigest }}{{ end }}<br>Time: {{ $fork.Time | uint64ToTime | date "2006-01-02 15:04:05 MST" }}{{ if eq $fork.Type "bpo" }}<br>Type: Block-Parameter-Only{{ if $fork.MaxBlobsPerBlock }}<br>Max Blobs Per Block: {{ $fork.MaxBlobsPerBlock }}{{ end }}{{ end }}" data-fork-timestamp="{{ $fork.Time }}" data-fork-active="false">{{ $fork.Name }}</span>
                 {{ end }}
               {{ end }}
             </div>
@@ -126,6 +126,7 @@
                     <th scope="col">Epoch</th>
                     <th scope="col">Activation Time</th>
                     <th scope="col">Fork Version</th>
+                    <th scope="col">Fork Digest</th>
                     <th scope="col" class="d-flex justify-content-between align-items-center">
                       Status
                       <i class="fas fa-chevron-up cursor-pointer text-muted toggle-fork-view"
@@ -146,6 +147,9 @@
                       <span class="text-monospace small" data-bind="text: version ? $root.hexstr(version) : 'N/A'"></span>
                     </td>
                     <td>
+                      <span class="text-monospace small" data-bind="text: fork_digest ? $root.hexstr(fork_digest) : 'N/A'"></span>
+                    </td>
+                    <td>
                       <span class="badge" data-bind="text: active ? 'Active' : 'Pending', css: {'text-bg-success': active, 'text-bg-secondary': !active}"></span>
                     </td>
                   </tr>
@@ -160,6 +164,11 @@
                       <td>
                         <span class="text-monospace small">
                           {{ if $fork.Version }}0x{{ printf "%x" $fork.Version }}{{ else }}N/A{{ end }}
+                        </span>
+                      </td>
+                      <td>
+                        <span class="text-monospace small">
+                          {{ if $fork.ForkDigest }}0x{{ printf "%x" $fork.ForkDigest }}{{ else }}N/A{{ end }}
                         </span>
                       </td>
                       <td>

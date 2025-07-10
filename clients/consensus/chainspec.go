@@ -70,6 +70,7 @@ type ChainSpec struct {
 	PendingConsolidationsLimit            uint64            `yaml:"PENDING_CONSOLIDATIONS_LIMIT"               check-if-fork:"ElectraForkEpoch"`
 	MinPerEpochChurnLimitElectra          uint64            `yaml:"MIN_PER_EPOCH_CHURN_LIMIT_ELECTRA"          check-if-fork:"ElectraForkEpoch"`
 	MaxPerEpochActivationExitChurnLimit   uint64            `yaml:"MAX_PER_EPOCH_ACTIVATION_EXIT_CHURN_LIMIT"  check-if-fork:"ElectraForkEpoch"`
+	MaxBlobsPerBlockElectra               uint64            `yaml:"MAX_BLOBS_PER_BLOCK_ELECTRA"                check-if-fork:"ElectraForkEpoch"`
 	EffectiveBalanceIncrement             uint64            `yaml:"EFFECTIVE_BALANCE_INCREMENT"`
 	ShardCommitteePeriod                  uint64            `yaml:"SHARD_COMMITTEE_PERIOD"`
 
