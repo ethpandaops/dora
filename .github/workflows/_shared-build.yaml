@@ -137,7 +137,7 @@ jobs:
     - name: Get cross build dependencies
       run: |
         sudo apt-get update
-        sudo apt-get -y install gcc-aarch64-linux-gnu
+        sudo apt-get -y install gcc-aarch64-linux-gnu libstdc++-14-dev-arm64-cross
     
     # setup project dependencies
     - name: Get dependencies
