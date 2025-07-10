@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"time"
 
@@ -110,6 +111,10 @@ func (d *dasGuardianAPI) GetBeaconBlock(ctx context.Context, slot uint64) (*spec
 	block, err := GlobalBeaconService.GetSlotDetailsBySlot(ctx, phase0.Slot(slot))
 	if err != nil {
 		return nil, err
+	}
+
+	if block == nil {
+		return nil, fmt.Errorf("block not found for slot %d", slot)
 	}
 
 	return block.Block, nil
