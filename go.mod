@@ -255,4 +255,4 @@ require (
 
 replace github.com/attestantio/go-eth2-client => github.com/attestantio/go-eth2-client v0.0.0-20250603135601-6ac0bfda7fda
 
-replace github.com/probe-lab/eth-das-guardian => github.com/pk910/eth-das-guardian v0.0.0-20250710022624-ab2571922dd6
+replace github.com/probe-lab/eth-das-guardian => github.com/pk910/eth-das-guardian v0.0.0-20250710141417-ca4a5a19b831

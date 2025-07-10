@@ -45,7 +45,7 @@ func (d *DasGuardian) ScanNode(ctx context.Context, nodeEnr string) (*dasguardia
 
 	// Scan can return both result and error (partial results)
 	res, err := d.guardian.Scan(ctx, node)
-	
+
 	// Return both - the handler will deal with partial results
 	return res, err
 }
@@ -56,6 +56,17 @@ type dasGuardianAPI struct {
 
 func (d *dasGuardianAPI) Init(ctx context.Context) error {
 	return nil
+}
+
+func (d *dasGuardianAPI) GetStateVersion() string {
+	fuluForkEpoch := d.GetFuluForkEpoch()
+	currentEpoch := GlobalBeaconService.GetChainState().CurrentEpoch()
+
+	if currentEpoch >= phase0.Epoch(fuluForkEpoch) {
+		return "fulu"
+	}
+
+	return "electra"
 }
 
 func (d *dasGuardianAPI) GetForkDigest() ([]byte, error) {
@@ -77,17 +88,17 @@ func (d *dasGuardianAPI) GetLatestBlockHeader() *phase0.BeaconBlockHeader {
 	return header.Message
 }
 
-func (d *dasGuardianAPI) GetFuluForkEpoch() int {
+func (d *dasGuardianAPI) GetFuluForkEpoch() uint64 {
 	specs := GlobalBeaconService.GetChainState().GetSpecs()
 	if specs == nil {
 		return 0
 	}
 
 	if specs.FuluForkEpoch == nil {
-		return math.MaxInt
+		return math.MaxInt64
 	}
 
-	return int(*specs.FuluForkEpoch)
+	return *specs.FuluForkEpoch
 }
 
 func (d *dasGuardianAPI) GetNodeIdentity(ctx context.Context) (*api.NodeIdentity, error) {

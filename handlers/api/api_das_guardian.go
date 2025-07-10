@@ -27,13 +27,13 @@ type APIDasGuardianScanResponse struct {
 type APIDasGuardianScanResult struct {
 	// P2P Information
 	Libp2pInfo map[string]interface{} `json:"libp2p_info"`
-	
+
 	// Status Information (from RemoteStatus)
 	RemoteStatus *APIDasGuardianStatus `json:"remote_status,omitempty"`
-	
+
 	// Metadata (from RemoteMetadata)
 	RemoteMetadata *APIDasGuardianMetadata `json:"remote_metadata,omitempty"`
-	
+
 	// DAS Evaluation Result
 	EvalResult *APIDasGuardianEvalResult `json:"eval_result,omitempty"`
 }
@@ -45,13 +45,14 @@ type APIDasGuardianStatus struct {
 	FinalizedEpoch uint64 `json:"finalized_epoch"`
 	HeadRoot       string `json:"head_root"`
 	HeadSlot       uint64 `json:"head_slot"`
+	EarliestSlot   uint64 `json:"earliest_slot"`
 }
 
 // APIDasGuardianMetadata represents the beacon node metadata
 type APIDasGuardianMetadata struct {
-	SeqNumber   uint64 `json:"seq_number"`
-	Attnets     string `json:"attnets"`
-	Syncnets    string `json:"syncnets"`
+	SeqNumber         uint64 `json:"seq_number"`
+	Attnets           string `json:"attnets"`
+	Syncnets          string `json:"syncnets"`
 	CustodyGroupCount uint64 `json:"custody_group_count"`
 }
 
@@ -131,23 +132,38 @@ func APIDasGuardianScan(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Map status information
-		if scanResult.RemoteStatus != nil {
+		if scanResult.RemoteStatusV1 != nil {
 			result.RemoteStatus = &APIDasGuardianStatus{
-				ForkDigest:     fmt.Sprintf("0x%x", scanResult.RemoteStatus.ForkDigest),
-				FinalizedRoot:  fmt.Sprintf("0x%x", scanResult.RemoteStatus.FinalizedRoot),
-				FinalizedEpoch: uint64(scanResult.RemoteStatus.FinalizedEpoch),
-				HeadRoot:       fmt.Sprintf("0x%x", scanResult.RemoteStatus.HeadRoot),
-				HeadSlot:       uint64(scanResult.RemoteStatus.HeadSlot),
+				ForkDigest:     fmt.Sprintf("0x%x", scanResult.RemoteStatusV1.ForkDigest),
+				FinalizedRoot:  fmt.Sprintf("0x%x", scanResult.RemoteStatusV1.FinalizedRoot),
+				FinalizedEpoch: uint64(scanResult.RemoteStatusV1.FinalizedEpoch),
+				HeadRoot:       fmt.Sprintf("0x%x", scanResult.RemoteStatusV1.HeadRoot),
+				HeadSlot:       uint64(scanResult.RemoteStatusV1.HeadSlot),
+			}
+		} else if scanResult.RemoteStatusV2 != nil {
+			result.RemoteStatus = &APIDasGuardianStatus{
+				ForkDigest:     fmt.Sprintf("0x%x", scanResult.RemoteStatusV2.ForkDigest),
+				FinalizedRoot:  fmt.Sprintf("0x%x", scanResult.RemoteStatusV2.FinalizedRoot),
+				FinalizedEpoch: uint64(scanResult.RemoteStatusV2.FinalizedEpoch),
+				HeadRoot:       fmt.Sprintf("0x%x", scanResult.RemoteStatusV2.HeadRoot),
+				HeadSlot:       uint64(scanResult.RemoteStatusV2.HeadSlot),
+				EarliestSlot:   uint64(scanResult.RemoteStatusV2.EarliestAvailableSlot),
 			}
 		}
 
 		// Map metadata
-		if scanResult.RemoteMetadata != nil {
+		if scanResult.RemoteMetadataV2 != nil {
 			result.RemoteMetadata = &APIDasGuardianMetadata{
-				SeqNumber:         scanResult.RemoteMetadata.SeqNumber,
-				Attnets:           fmt.Sprintf("0x%x", scanResult.RemoteMetadata.Attnets),
-				Syncnets:          fmt.Sprintf("0x%x", scanResult.RemoteMetadata.Syncnets),
-				CustodyGroupCount: uint64(scanResult.RemoteMetadata.CustodyGroupCount),
+				SeqNumber: scanResult.RemoteMetadataV2.SeqNumber,
+				Attnets:   fmt.Sprintf("0x%x", scanResult.RemoteMetadataV2.Attnets),
+				Syncnets:  fmt.Sprintf("0x%x", scanResult.RemoteMetadataV2.Syncnets),
+			}
+		} else if scanResult.RemoteMetadataV3 != nil {
+			result.RemoteMetadata = &APIDasGuardianMetadata{
+				SeqNumber:         scanResult.RemoteMetadataV3.SeqNumber,
+				Attnets:           fmt.Sprintf("0x%x", scanResult.RemoteMetadataV3.Attnets),
+				Syncnets:          fmt.Sprintf("0x%x", scanResult.RemoteMetadataV3.Syncnets),
+				CustodyGroupCount: uint64(scanResult.RemoteMetadataV3.CustodyGroupCount),
 			}
 		}
 
