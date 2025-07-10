@@ -309,4 +309,4 @@ require (
 
 replace github.com/attestantio/go-eth2-client => github.com/attestantio/go-eth2-client v0.0.0-20250603135601-6ac0bfda7fda
 
-replace github.com/probe-lab/eth-das-guardian => ../../pk910/eth-das-guardian
+replace github.com/probe-lab/eth-das-guardian => github.com/pk910/eth-das-guardian v0.0.0-20250710005251-70363394b218

@@ -910,6 +910,8 @@ github.com/pion/webrtc/v4 v4.0.10 h1:Hq/JLjhqLxi+NmCtE8lnRPDr8H4LcNvwg8OxVcdv56Q
 github.com/pion/webrtc/v4 v4.0.10/go.mod h1:ViHLVaNpiuvaH8pdiuQxuA9awuE6KVzAXx3vVWilOck=
 github.com/pk910/dynamic-ssz v1.0.0 h1:xxWUGHggH8n5c6EeHpOGUg6jNHzdrOupPmqvjd+PYKo=
 github.com/pk910/dynamic-ssz v1.0.0/go.mod h1:HhLP9GzzGSieNuRBzPyWG5CzsjGXceJ1glhLjb3pcRM=
+github.com/pk910/eth-das-guardian v0.0.0-20250710005251-70363394b218 h1:KqZ6GnfdidRw5KDhIVZVvC9xw85Rd+li9O20krD+5l0=
+github.com/pk910/eth-das-guardian v0.0.0-20250710005251-70363394b218/go.mod h1:1hh/IxCeOfOrOdZZ/kFqhIqMcMnACj6WGtupm6KQDp8=
 github.com/pkg/diff v0.0.0-20210226163009-20ebb0f2a09e/go.mod h1:pJLUxLENpZxwdsKMEsNbx1VGcRFpLqf3715MtcvvzbA=
 github.com/pkg/errors v0.8.0/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
 github.com/pkg/errors v0.8.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
