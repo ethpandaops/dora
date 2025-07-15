@@ -7,6 +7,7 @@ import (
 	"github.com/attestantio/go-eth2-client/spec"
 	"github.com/attestantio/go-eth2-client/spec/bellatrix"
 	"github.com/attestantio/go-eth2-client/spec/capella"
+	"github.com/attestantio/go-eth2-client/spec/deneb"
 	"github.com/attestantio/go-eth2-client/spec/electra"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/clients/consensus"
@@ -248,13 +249,13 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 	blsToExecChanges, _ := blockBody.BLSToExecutionChanges()
 	syncAggregate, _ := blockBody.SyncAggregate()
 	executionBlockHash, _ := blockBody.ExecutionBlockHash()
-	blobKzgCommitments, _ := blockBody.BlobKZGCommitments()
 
 	var executionBlockNumber uint64
 	var executionExtraData []byte
 	var executionTransactions []bellatrix.Transaction
 	var executionWithdrawals []*capella.Withdrawal
 	var depositRequests []*electra.DepositRequest
+	var blobKzgCommitments []deneb.KZGCommitment
 	var payloadStatus dbtypes.PayloadStatus
 
 	if chainState.IsEip7732Enabled(chainState.EpochOfSlot(block.Slot)) {
@@ -265,6 +266,7 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 			executionTransactions = blockPayload.Message.Payload.Transactions
 			executionWithdrawals = blockPayload.Message.Payload.Withdrawals
 			depositRequests = blockPayload.Message.ExecutionRequests.Deposits
+			blobKzgCommitments = blockPayload.Message.BlobKZGCommitments
 			payloadStatus = dbtypes.PayloadStatusCanonical
 		} else {
 			payloadStatus = dbtypes.PayloadStatusMissing
@@ -276,6 +278,7 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 		executionExtraData, _ = getBlockExecutionExtraData(blockBody)
 		executionTransactions, _ = blockBody.ExecutionTransactions()
 		executionWithdrawals, _ = blockBody.Withdrawals()
+		blobKzgCommitments, _ = blockBody.BlobKZGCommitments()
 		executionRequests, _ := blockBody.ExecutionRequests()
 		if executionRequests != nil {
 			depositRequests = executionRequests.Deposits
@@ -478,11 +481,11 @@ func (dbw *dbWriter) buildDbEpoch(epoch phase0.Epoch, blocks []*Block, epochStat
 			proposerSlashings, _ := blockBody.ProposerSlashings()
 			blsToExecChanges, _ := blockBody.BLSToExecutionChanges()
 			syncAggregate, _ := blockBody.SyncAggregate()
-			blobKzgCommitments, _ := blockBody.BlobKZGCommitments()
 
 			var executionTransactions []bellatrix.Transaction
 			var executionWithdrawals []*capella.Withdrawal
 			var depositRequests []*electra.DepositRequest
+			var blobKzgCommitments []deneb.KZGCommitment
 
 			if chainState.IsEip7732Enabled(chainState.EpochOfSlot(block.Slot)) {
 				blockPayload := block.GetExecutionPayload()
@@ -491,10 +494,12 @@ func (dbw *dbWriter) buildDbEpoch(epoch phase0.Epoch, blocks []*Block, epochStat
 					executionTransactions = blockPayload.Message.Payload.Transactions
 					executionWithdrawals = blockPayload.Message.Payload.Withdrawals
 					depositRequests = blockPayload.Message.ExecutionRequests.Deposits
+					blobKzgCommitments = blockPayload.Message.BlobKZGCommitments
 				}
 			} else {
 				executionTransactions, _ = blockBody.ExecutionTransactions()
 				executionWithdrawals, _ = blockBody.Withdrawals()
+				blobKzgCommitments, _ = blockBody.BlobKZGCommitments()
 				executionRequests, _ := blockBody.ExecutionRequests()
 				if executionRequests != nil {
 					depositRequests = executionRequests.Deposits
