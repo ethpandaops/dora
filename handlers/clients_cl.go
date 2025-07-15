@@ -215,7 +215,7 @@ func buildCLClientsPageData(sortOrder string) (*models.ClientsCLPageData, time.D
 		})
 		return enrValues
 	}
-	
+
 	getMetadataValuesFromIdentity := func(nodeIdentity *rpc.NodeIdentity) []*models.ClientCLPageDataNodeENRValue {
 		metadataValues := []*models.ClientCLPageDataNodeENRValue{}
 		if nodeIdentity != nil {
@@ -224,6 +224,13 @@ func buildCLClientsPageData(sortOrder string) (*models.ClientsCLPageData, time.D
 				metadataValues = append(metadataValues, &models.ClientCLPageDataNodeENRValue{
 					Key:   "attnets",
 					Value: nodeIdentity.Metadata.Attnets,
+				})
+			}
+			// Add custody_group_count if present (MetadataV3 field for Fulu)
+			if nodeIdentity.Metadata.CustodyGroupCount != nil {
+				metadataValues = append(metadataValues, &models.ClientCLPageDataNodeENRValue{
+					Key:   "custody_group_count",
+					Value: fmt.Sprintf("%v", nodeIdentity.Metadata.CustodyGroupCount),
 				})
 			}
 			// Add seq_number if present
@@ -311,17 +318,22 @@ func buildCLClientsPageData(sortOrder string) (*models.ClientsCLPageData, time.D
 					node.ENR = id.Enr // idENR has higher sequence number, so override.
 				}
 			}
-			
+
 			// Add metadata information
-			if id.Metadata.Attnets != "" || id.Metadata.Syncnets != "" || id.Metadata.SeqNumber != nil {
+			if id.Metadata.Attnets != "" || id.Metadata.Syncnets != "" || id.Metadata.SeqNumber != nil || id.Metadata.CustodyGroupCount != nil {
 				seqNumber := ""
 				if id.Metadata.SeqNumber != nil {
 					seqNumber = fmt.Sprintf("%v", id.Metadata.SeqNumber)
 				}
+				custodyGroupCount := ""
+				if id.Metadata.CustodyGroupCount != nil {
+					custodyGroupCount = fmt.Sprintf("%v", id.Metadata.CustodyGroupCount)
+				}
 				node.Metadata = &models.ClientCLPageDataNodeMetadata{
-					Attnets:   id.Metadata.Attnets,
-					Syncnets:  id.Metadata.Syncnets,
-					SeqNumber: seqNumber,
+					Attnets:           id.Metadata.Attnets,
+					Syncnets:          id.Metadata.Syncnets,
+					SeqNumber:         seqNumber,
+					CustodyGroupCount: custodyGroupCount,
 				}
 			}
 		}
