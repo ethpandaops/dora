@@ -454,6 +454,12 @@ func getStateDepositBalanceToConsume(v *spec.VersionedBeaconState) (phase0.Gwei,
 		}
 
 		return v.Electra.DepositBalanceToConsume, nil
+	case spec.DataVersionEIP7732:
+		if v.EIP7732 == nil {
+			return 0, errors.New("no eip7732 block")
+		}
+
+		return v.EIP7732.DepositBalanceToConsume, nil
 	default:
 		return 0, errors.New("unknown version")
 	}
@@ -478,6 +484,12 @@ func getStatePendingDeposits(v *spec.VersionedBeaconState) ([]*electra.PendingDe
 		}
 
 		return v.Electra.PendingDeposits, nil
+	case spec.DataVersionEIP7732:
+		if v.EIP7732 == nil || v.EIP7732.PendingDeposits == nil {
+			return nil, errors.New("no eip7732 block")
+		}
+
+		return v.EIP7732.PendingDeposits, nil
 	default:
 		return nil, errors.New("unknown version")
 	}
@@ -558,6 +570,8 @@ func getBlockSize(dynSsz *dynssz.DynSsz, block *spec.VersionedSignedBeaconBlock)
 		return dynSsz.SizeSSZ(block.Deneb)
 	case spec.DataVersionElectra:
 		return dynSsz.SizeSSZ(block.Electra)
+	case spec.DataVersionEIP7732:
+		return dynSsz.SizeSSZ(block.EIP7732)
 	default:
 		return 0, errors.New("unknown version")
 	}
