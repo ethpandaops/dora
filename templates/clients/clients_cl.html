@@ -382,25 +382,46 @@
               </tbody>
             </table>
             {{ html "<!-- ko if: showSensitivePeerInfos -->" }}
-            <div class="client-row-divider">ENR fields</div>
-            <table class="table table-borderless table-sm client-table-info" style="margin-top:10px">
-              <tbody>
-                {{ html "<!-- ko foreach: enr_kv -->" }}
-                <tr>
-                  <td data-bind="text: key"></td>
-                  <td>
-                    {{ html "<!-- ko if: key === 'cgc' -->" }}
-                    <code data-bind="text: value, attr: {'data-bs-toggle': 'tooltip', 'data-bs-placement': 'right', 'data-bs-title': 'Decimal: ' + window.explorer.hexToDecimal(value)}"></code>
+            <div class="client-row-divider">ENR fields & Metadata</div>
+            <div class="row" style="margin-top:10px">
+              <!-- ENR fields on the left -->
+              <div class="col-md-6">
+                <table class="table table-borderless table-sm client-table-info">
+                  <tbody>
+                    {{ html "<!-- ko foreach: enr_kv -->" }}
+                    <tr>
+                      <td data-bind="text: key"></td>
+                      <td>
+                        {{ html "<!-- ko if: key === 'cgc' -->" }}
+                        <code data-bind="text: value, attr: {'data-bs-toggle': 'tooltip', 'data-bs-placement': 'right', 'data-bs-title': 'Decimal: ' + window.explorer.hexToDecimal(value)}"></code>
+                        {{ html "<!-- /ko -->" }}
+                        {{ html "<!-- ko if: key !== 'cgc' -->" }}
+                        <code data-bind="text: value"></code>
+                        {{ html "<!-- /ko -->" }}
+                        <i class="fa fa-copy text-muted p-1" role="button" data-placement="right" data-toggle="tooltip" data-bind="attr: {'data-clipboard-text': $data.value, title: 'Copy ' + $data.key + ' to clipboard'}" ></i>
+                      </td>
+                    </tr>
                     {{ html "<!-- /ko -->" }}
-                    {{ html "<!-- ko if: key !== 'cgc' -->" }}
-                    <code data-bind="text: value"></code>
+                  </tbody>
+                </table>
+              </div>
+              <!-- Metadata fields on the right -->
+              <div class="col-md-6">
+                <table class="table table-borderless table-sm client-table-info">
+                  <tbody>
+                    {{ html "<!-- ko foreach: metadata_kv -->" }}
+                    <tr>
+                      <td data-bind="text: key"></td>
+                      <td>
+                        <code data-bind="text: value"></code>
+                        <i class="fa fa-copy text-muted p-1" role="button" data-placement="right" data-toggle="tooltip" data-bind="attr: {'data-clipboard-text': $data.value, title: 'Copy ' + $data.key + ' to clipboard'}" ></i>
+                      </td>
+                    </tr>
                     {{ html "<!-- /ko -->" }}
-                    <i class="fa fa-copy text-muted p-1" role="button" data-placement="right" data-toggle="tooltip" data-bind="attr: {'data-clipboard-text': $data.value, title: 'Copy ' + $data.key + ' to clipboard'}" ></i>
-                  </td>
-                </tr>
-                {{ html "<!-- /ko -->" }}
-              </tbody>
-            </table>
+                  </tbody>
+                </table>
+              </div>
+            </div>
             {{ html "<!-- /ko -->" }}
 
             {{ html "<!-- ko if: showPeerDASInfos -->" }}
