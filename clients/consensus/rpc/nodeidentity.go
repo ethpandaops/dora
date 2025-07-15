@@ -6,7 +6,8 @@ type NodeIdentity struct {
 	P2PAddresses       []string `json:"p2p_addresses"`
 	DiscoveryAddresses []string `json:"discovery_addresses"`
 	Metadata           struct {
-		Attnets string `json:"attnets"`
-		//SeqNumber string `json:"seq_number"` // BUG: Teku and Grandine have an int type for this field
+		Attnets   string      `json:"attnets"`
+		Syncnets  string      `json:"syncnets"`
+		SeqNumber interface{} `json:"seq_number"` // Can be string or int depending on client
 	} `json:"metadata"`
 }

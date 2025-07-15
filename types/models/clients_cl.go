@@ -89,16 +89,25 @@ type ClientsCLPageDataClient struct {
 // ClientCLPageDataNode represents a generic node on the CL network. Can be a client or a peer of a client
 // This is useful to generate a generic view of all nodes we know about in the network.
 type ClientCLPageDataNode struct {
-	PeerID       string                          `json:"peer_id"`
-	NodeID       string                          `json:"node_id"`
-	Type         string                          `json:"type"`  // "internal" or "external" . internal nodes are clients, external nodes are peers of clients
-	Alias        string                          `json:"alias"` // only relevant for internal peers (clients)
-	ENR          string                          `json:"enr"`
-	ENRKeyValues []*ClientCLPageDataNodeENRValue `json:"enr_kv"`
-	Peers        []*ClientCLPageDataNodePeers    `json:"peers"` // only relevant for internal peers
-	PeerDAS      *ClientCLPageDataNodePeerDAS    `json:"peer_das"`
-	PeersIn      []string                        `json:"peers_in"`
-	PeersOut     []string                        `json:"peers_out"`
+	PeerID           string                          `json:"peer_id"`
+	NodeID           string                          `json:"node_id"`
+	Type             string                          `json:"type"`  // "internal" or "external" . internal nodes are clients, external nodes are peers of clients
+	Alias            string                          `json:"alias"` // only relevant for internal peers (clients)
+	ENR              string                          `json:"enr"`
+	ENRKeyValues     []*ClientCLPageDataNodeENRValue `json:"enr_kv"`
+	MetadataKeyValues []*ClientCLPageDataNodeENRValue `json:"metadata_kv"`
+	Peers            []*ClientCLPageDataNodePeers    `json:"peers"` // only relevant for internal peers
+	PeerDAS          *ClientCLPageDataNodePeerDAS    `json:"peer_das"`
+	PeersIn          []string                        `json:"peers_in"`
+	PeersOut         []string                        `json:"peers_out"`
+	Metadata         *ClientCLPageDataNodeMetadata   `json:"metadata,omitempty"`
+}
+
+// ClientCLPageDataNodeMetadata represents the metadata from the node identity
+type ClientCLPageDataNodeMetadata struct {
+	Attnets   string `json:"attnets,omitempty"`
+	Syncnets  string `json:"syncnets,omitempty"`
+	SeqNumber string `json:"seq_number,omitempty"`
 }
 
 // ClientCLPageDataNodePeers represents the peers of a client

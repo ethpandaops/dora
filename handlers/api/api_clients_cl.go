@@ -13,22 +13,30 @@ import (
 
 // APIConsensusClientNodeInfo represents the response structure for consensus client node info
 type APIConsensusClientNodeInfo struct {
-	ClientName         string    `json:"client_name"`
-	ClientType         string    `json:"client_type"`
-	Version            string    `json:"version"`
-	PeerID             string    `json:"peer_id"`
-	NodeID             string    `json:"node_id"`
-	ENR                string    `json:"enr"`
-	HeadSlot           uint64    `json:"head_slot"`
-	HeadRoot           string    `json:"head_root"`
-	Status             string    `json:"status"`
-	PeerCount          uint32    `json:"peer_count"`
-	PeersInbound       uint32    `json:"peers_inbound"`
-	PeersOutbound      uint32    `json:"peers_outbound"`
-	LastRefresh        time.Time `json:"last_refresh"`
-	LastError          string    `json:"last_error,omitempty"`
-	SupportsDataColumn bool      `json:"supports_data_column"`
-	ColumnIndexes      []uint64  `json:"column_indexes,omitempty"`
+	ClientName         string                        `json:"client_name"`
+	ClientType         string                        `json:"client_type"`
+	Version            string                        `json:"version"`
+	PeerID             string                        `json:"peer_id"`
+	NodeID             string                        `json:"node_id"`
+	ENR                string                        `json:"enr"`
+	HeadSlot           uint64                        `json:"head_slot"`
+	HeadRoot           string                        `json:"head_root"`
+	Status             string                        `json:"status"`
+	PeerCount          uint32                        `json:"peer_count"`
+	PeersInbound       uint32                        `json:"peers_inbound"`
+	PeersOutbound      uint32                        `json:"peers_outbound"`
+	LastRefresh        time.Time                     `json:"last_refresh"`
+	LastError          string                        `json:"last_error,omitempty"`
+	SupportsDataColumn bool                          `json:"supports_data_column"`
+	ColumnIndexes      []uint64                      `json:"column_indexes,omitempty"`
+	Metadata           *APIConsensusClientMetadata   `json:"metadata,omitempty"`
+}
+
+// APIConsensusClientMetadata represents the metadata from the node identity
+type APIConsensusClientMetadata struct {
+	Attnets   string `json:"attnets,omitempty"`
+	Syncnets  string `json:"syncnets,omitempty"`
+	SeqNumber string `json:"seq_number,omitempty"`
 }
 
 // APIConsensusClientsResponse represents the full API response
@@ -131,6 +139,19 @@ func getConsensusClientNodeInfo() ([]APIConsensusClientNodeInfo, error) {
 				clientInfo.ENR = nodeIdentity.Enr
 				// Note: NodeID not available in the interface, using PeerID as fallback
 				clientInfo.NodeID = nodeIdentity.PeerID
+			}
+			
+			// Add metadata information (available regardless of sensitive info setting)
+			if nodeIdentity.Metadata.Attnets != "" || nodeIdentity.Metadata.Syncnets != "" || nodeIdentity.Metadata.SeqNumber != nil {
+				seqNumber := ""
+				if nodeIdentity.Metadata.SeqNumber != nil {
+					seqNumber = fmt.Sprintf("%v", nodeIdentity.Metadata.SeqNumber)
+				}
+				clientInfo.Metadata = &APIConsensusClientMetadata{
+					Attnets:   nodeIdentity.Metadata.Attnets,
+					Syncnets:  nodeIdentity.Metadata.Syncnets,
+					SeqNumber: seqNumber,
+				}
 			}
 		}
 
