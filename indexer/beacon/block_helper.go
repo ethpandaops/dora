@@ -542,3 +542,23 @@ func getStatePendingConsolidations(v *spec.VersionedBeaconState) ([]*electra.Pen
 		return nil, errors.New("unknown version")
 	}
 }
+
+// getBlockSize returns the block size from a versioned beacon block.
+func getBlockSize(dynSsz *dynssz.DynSsz, block *spec.VersionedSignedBeaconBlock) (int, error) {
+	switch block.Version {
+	case spec.DataVersionPhase0:
+		return dynSsz.SizeSSZ(block.Phase0)
+	case spec.DataVersionAltair:
+		return dynSsz.SizeSSZ(block.Altair)
+	case spec.DataVersionBellatrix:
+		return dynSsz.SizeSSZ(block.Bellatrix)
+	case spec.DataVersionCapella:
+		return dynSsz.SizeSSZ(block.Capella)
+	case spec.DataVersionDeneb:
+		return dynSsz.SizeSSZ(block.Deneb)
+	case spec.DataVersionElectra:
+		return dynSsz.SizeSSZ(block.Electra)
+	default:
+		return 0, errors.New("unknown version")
+	}
+}

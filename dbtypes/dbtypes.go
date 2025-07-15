@@ -50,12 +50,22 @@ type Slot struct {
 	ProposerSlashingCount uint64        `db:"proposer_slashing_count"`
 	BLSChangeCount        uint64        `db:"bls_change_count"`
 	EthTransactionCount   uint64        `db:"eth_transaction_count"`
+	BlobCount             uint64        `db:"blob_count"`
+	EthGasUsed            uint64        `db:"eth_gas_used"`
+	EthGasLimit           uint64        `db:"eth_gas_limit"`
+	EthBaseFee            uint64        `db:"eth_base_fee"`
+	EthFeeRecipient       []byte        `db:"eth_fee_recipient"`
 	EthBlockNumber        *uint64       `db:"eth_block_number"`
 	EthBlockHash          []byte        `db:"eth_block_hash"`
 	EthBlockExtra         []byte        `db:"eth_block_extra"`
 	EthBlockExtraText     string        `db:"eth_block_extra_text"`
 	SyncParticipation     float32       `db:"sync_participation"`
 	ForkId                uint64        `db:"fork_id"`
+	BlockSize             uint64        `db:"block_size"`
+	RecvDelay             int32         `db:"recv_delay"`
+	MinExecTime           uint32        `db:"min_exec_time"`
+	MaxExecTime           uint32        `db:"max_exec_time"`
+	ExecTimes             []byte        `db:"exec_times"`
 	PayloadStatus         PayloadStatus `db:"payload_status"`
 }
 
@@ -78,6 +88,9 @@ type Epoch struct {
 	ProposerSlashingCount uint64  `db:"proposer_slashing_count"`
 	BLSChangeCount        uint64  `db:"bls_change_count"`
 	EthTransactionCount   uint64  `db:"eth_transaction_count"`
+	BlobCount             uint64  `db:"blob_count"`
+	EthGasUsed            uint64  `db:"eth_gas_used"`
+	EthGasLimit           uint64  `db:"eth_gas_limit"`
 	SyncParticipation     float32 `db:"sync_participation"`
 	PayloadCount          uint64  `db:"payload_count"`
 }
@@ -112,16 +125,20 @@ const (
 )
 
 type UnfinalizedBlock struct {
-	Root       []byte                 `db:"root"`
-	Slot       uint64                 `db:"slot"`
-	HeaderVer  uint64                 `db:"header_ver"`
-	HeaderSSZ  []byte                 `db:"header_ssz"`
-	BlockVer   uint64                 `db:"block_ver"`
-	BlockSSZ   []byte                 `db:"block_ssz"`
-	PayloadVer uint64                 `db:"payload_ver"`
-	PayloadSSZ []byte                 `db:"payload_ssz"`
-	Status     UnfinalizedBlockStatus `db:"status"`
-	ForkId     uint64                 `db:"fork_id"`
+	Root        []byte                 `db:"root"`
+	Slot        uint64                 `db:"slot"`
+	HeaderVer   uint64                 `db:"header_ver"`
+	HeaderSSZ   []byte                 `db:"header_ssz"`
+	BlockVer    uint64                 `db:"block_ver"`
+	BlockSSZ    []byte                 `db:"block_ssz"`
+	PayloadVer  uint64                 `db:"payload_ver"`
+	PayloadSSZ  []byte                 `db:"payload_ssz"`
+	Status      UnfinalizedBlockStatus `db:"status"`
+	ForkId      uint64                 `db:"fork_id"`
+	RecvDelay   int32                  `db:"recv_delay"`
+	MinExecTime uint32                 `db:"min_exec_time"`
+	MaxExecTime uint32                 `db:"max_exec_time"`
+	ExecTimes   []byte                 `db:"exec_times"`
 }
 
 type UnfinalizedEpoch struct {
@@ -146,6 +163,9 @@ type UnfinalizedEpoch struct {
 	ProposerSlashingCount uint64  `db:"proposer_slashing_count"`
 	BLSChangeCount        uint64  `db:"bls_change_count"`
 	EthTransactionCount   uint64  `db:"eth_transaction_count"`
+	BlobCount             uint64  `db:"blob_count"`
+	EthGasUsed            uint64  `db:"eth_gas_used"`
+	EthGasLimit           uint64  `db:"eth_gas_limit"`
 	SyncParticipation     float32 `db:"sync_participation"`
 	PayloadCount          uint64  `db:"payload_count"`
 }

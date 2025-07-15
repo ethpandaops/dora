@@ -1,3 +1,8 @@
+// @title Dora Explorer API
+// @version 1.0
+// @description API for Dora Ethereum Explorer - provides access to execution and consensus client information
+// @host localhost:8080
+// @BasePath /api
 package main
 
 import (
@@ -22,6 +27,10 @@ import (
 	"github.com/ethpandaops/dora/types"
 	uipackage "github.com/ethpandaops/dora/ui-package"
 	"github.com/ethpandaops/dora/utils"
+
+	// Swagger
+	"github.com/ethpandaops/dora/docs"
+	httpSwagger "github.com/swaggo/http-swagger"
 )
 
 func main() {
@@ -164,7 +173,11 @@ func startFrontend(router *mux.Router) {
 	router.HandleFunc("/index", handlers.Index).Methods("GET")
 	router.HandleFunc("/index/data", handlers.IndexData).Methods("GET")
 	router.HandleFunc("/clients/consensus", handlers.ClientsCL).Methods("GET")
+	router.HandleFunc("/clients/consensus/refresh", handlers.ClientsCLRefresh).Methods("POST")
+	router.HandleFunc("/clients/consensus/refresh/status", handlers.ClientsCLRefreshStatus).Methods("GET")
 	router.HandleFunc("/clients/execution", handlers.ClientsEl).Methods("GET")
+	router.HandleFunc("/clients/execution/refresh", handlers.ClientsELRefresh).Methods("POST")
+	router.HandleFunc("/clients/execution/refresh/status", handlers.ClientsELRefreshStatus).Methods("GET")
 	router.HandleFunc("/forks", handlers.Forks).Methods("GET")
 	router.HandleFunc("/epochs", handlers.Epochs).Methods("GET")
 	router.HandleFunc("/epoch/{epoch}", handlers.Epoch).Methods("GET")
@@ -172,6 +185,7 @@ func startFrontend(router *mux.Router) {
 	router.HandleFunc("/slots/filtered", handlers.SlotsFiltered).Methods("GET")
 	router.HandleFunc("/slot/{slotOrHash}", handlers.Slot).Methods("GET")
 	router.HandleFunc("/slot/{root}/blob/{commitment}", handlers.SlotBlob).Methods("GET")
+	router.HandleFunc("/blocks", handlers.Blocks).Methods("GET")
 	router.HandleFunc("/mev/blocks", handlers.MevBlocks).Methods("GET")
 
 	router.HandleFunc("/search", handlers.Search).Methods("GET")
@@ -225,6 +239,29 @@ func startFrontend(router *mux.Router) {
 	router.PathPrefix("/").Handler(handlers.CustomFileServer(http.FileServer(fileSys), fileSys, handlers.NotFound))
 }
 
+func createSwaggerHandler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Import the docs package to access SwaggerInfo
+		swaggerInfo := docs.SwaggerInfo
+
+		// Set the host dynamically based on the request
+		swaggerInfo.Host = r.Host
+
+		// Determine scheme based on request
+		scheme := "http"
+		if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
+			scheme = "https"
+		}
+		swaggerInfo.Schemes = []string{scheme}
+
+		// Serve the swagger UI with dynamic host configuration
+		httpSwagger.Handler(
+			httpSwagger.URL("/api/swagger/doc.json"),
+			httpSwagger.DeepLinking(true),
+		).ServeHTTP(w, r)
+	})
+}
+
 func startApi(router *mux.Router) {
 	// Add the CORS middleware to all API routes
 	router.Use(middleware.CorsMiddleware)
@@ -233,5 +270,11 @@ func startApi(router *mux.Router) {
 	router.HandleFunc("/v1/validator", api.ApiValidatorPostV1).Methods("POST", "OPTIONS")
 	router.HandleFunc("/v1/validator/eth1/{eth1address}", api.ApiValidatorByEth1AddressV1).Methods("GET", "OPTIONS")
 	router.HandleFunc("/v1/validator/withdrawalCredentials/{withdrawalCredentialsOrEth1address}", api.ApiWithdrawalCredentialsValidatorsV1).Methods("GET", "OPTIONS")
+	router.HandleFunc("/v1/validator/{indexOrPubkey}/deposits", api.ApiValidatorDepositsV1).Methods("GET", "OPTIONS")
 	router.HandleFunc("/v1/epoch/{epoch}", api.ApiEpochV1).Methods("GET", "OPTIONS")
+	router.HandleFunc("/v1/clients/execution", api.APIExecutionClients).Methods("GET", "OPTIONS")
+	router.HandleFunc("/v1/clients/consensus", api.APIConsensusClients).Methods("GET", "OPTIONS")
+
+	// Swagger UI with dynamic host
+	router.PathPrefix("/swagger/").Handler(createSwaggerHandler())
 }

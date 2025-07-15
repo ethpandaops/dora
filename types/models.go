@@ -30,6 +30,7 @@ type PageData struct {
 	Debug                 bool
 	DebugTemplates        []string
 	MainMenuItems         []MainMenuItem
+	ApiEnabled            bool
 }
 
 type MainMenuItem struct {

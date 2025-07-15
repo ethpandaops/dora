@@ -27,7 +27,13 @@
                     Graffiti
                   </div>
                   <div class="col-sm-12 col-md-6 col-lg-8">
-                    <input name="f.graffiti" type="text" class="form-control" placeholder="Graffiti" aria-label="Graffiti" aria-describedby="basic-addon1" value="{{ .FilterGraffiti }}">
+                    <div class="input-group">
+                      <input name="f.graffiti" type="text" class="form-control" placeholder="Graffiti" aria-label="Graffiti" value="{{ .FilterGraffiti }}">
+                      <div class="input-group-text">
+                        <input name="f.ginvert" type="checkbox" class="form-check-input me-1" {{ if .FilterInvertGraffiti }}checked{{ end }} title="Invert filter (exclude matches)">
+                        <label class="form-check-label small" for="f.ginvert" title="Invert filter (exclude matches)">NOT</label>
+                      </div>
+                    </div>
                   </div>
                 </div>
                 <div class="row mt-1">
@@ -35,7 +41,13 @@
                     EL Extra Data
                   </div>
                   <div class="col-sm-12 col-md-6 col-lg-8">
-                    <input name="f.extra" type="text" class="form-control" placeholder="EL Extra Data" aria-label="EL Extra Data" aria-describedby="basic-addon1" value="{{ .FilterExtraData }}">
+                    <div class="input-group">
+                      <input name="f.extra" type="text" class="form-control" placeholder="EL Extra Data" aria-label="EL Extra Data" value="{{ .FilterExtraData }}">
+                      <div class="input-group-text">
+                        <input name="f.einvert" type="checkbox" class="form-check-input me-1" {{ if .FilterInvertExtraData }}checked{{ end }} title="Invert filter (exclude matches)">
+                        <label class="form-check-label small" for="f.einvert" title="Invert filter (exclude matches)">NOT</label>
+                      </div>
+                    </div>
                   </div>
                 </div>
                 <div class="row mt-1">
@@ -51,7 +63,13 @@
                     Proposer Name
                   </div>
                   <div class="col-sm-12 col-md-6 col-lg-8">
-                    <input name="f.pname" type="text" class="form-control" placeholder="Proposer Name" aria-label="Proposer Name" aria-describedby="basic-addon1" value="{{ .FilterProposerName }}">
+                    <div class="input-group">
+                      <input name="f.pname" type="text" class="form-control" placeholder="Proposer Name" aria-label="Proposer Name" value="{{ .FilterProposerName }}">
+                      <div class="input-group-text">
+                        <input name="f.pinvert" type="checkbox" class="form-check-input me-1" {{ if .FilterInvertProposer }}checked{{ end }} title="Invert filter (exclude matches)">
+                        <label class="form-check-label small" for="f.pinvert" title="Invert filter (exclude matches)">NOT</label>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -82,6 +100,46 @@
                     </select>
                   </div>
                 </div>
+                <div class="row mt-1">
+                  <div class="col-sm-12 col-md-6 col-lg-4">
+                    <nobr>Sync Agg %</nobr>
+                  </div>
+                  <div class="col-sm-12 col-md-6 col-lg-8 d-flex">
+                    <div class="flex-grow-1">
+                      <input name="f.minsync" type="number" class="form-control" placeholder="Min %" aria-label="Min Sync Participation" min="0" max="100" step="0.1" value="{{ .FilterMinSyncAgg }}">
+                    </div>
+                    <div class="text-center filter-separator">
+                      -
+                    </div>
+                    <div class="flex-grow-1">
+                      <input name="f.maxsync" type="number" class="form-control" placeholder="Max %" aria-label="Max Sync Participation" min="0" max="100" step="0.1" value="{{ .FilterMaxSyncAgg }}">
+                    </div>
+                    <div class="text-center" style="width: 30px;">
+                      %
+                    </div>
+                  </div>
+                </div>
+                {{ if .HasSnooperClients }}
+                <div class="row mt-1">
+                  <div class="col-sm-12 col-md-6 col-lg-4">
+                    <nobr>Exec Time</nobr>
+                  </div>
+                  <div class="col-sm-12 col-md-6 col-lg-8 d-flex">
+                    <div class="flex-grow-1">
+                      <input name="f.minexec" type="number" class="form-control" placeholder="Min ms" aria-label="Min Execution Time" min="0" value="{{ .FilterMinExecTime }}">
+                    </div>
+                    <div class="text-center filter-separator">
+                      -
+                    </div>
+                    <div class="flex-grow-1">
+                      <input name="f.maxexec" type="number" class="form-control" placeholder="Max ms" aria-label="Max Execution Time" min="0" value="{{ .FilterMaxExecTime }}">
+                    </div>
+                    <div class="text-center" style="width: 30px;">
+                      ms
+                    </div>
+                  </div>
+                </div>
+                {{ end }}
               </div>
             </div>
 
@@ -111,8 +169,14 @@
                 <option value="6" {{ if .DisplayAttestations }}selected{{ end }}>Attestations</option>
                 <option value="7" {{ if .DisplayDeposits }}selected{{ end }}>Deposits/Exits</option>
                 <option value="8" {{ if .DisplaySlashings }}selected{{ end }}>Slashings</option>
-                <option value="9" {{ if .DisplayTxCount }}selected{{ end }}>Tx Count</option>
+                <option value="9" {{ if .DisplayTxCount }}selected{{ end }}>Tx / Blob Count</option>
+                <option value="13" {{ if .DisplayGasUsage }}selected{{ end }}>Gas Usage</option>
                 <option value="10" {{ if .DisplaySyncAgg }}selected{{ end }}>Sync Agg</option>
+                <option value="15" {{ if .DisplayMevBlock }}selected{{ end }}>MEV Block</option>
+                <option value="14" {{ if .DisplayGasLimit }}selected{{ end }}>Gas Limit</option>
+                <option value="16" {{ if .DisplayBlockSize }}selected{{ end }}>Block Size</option>
+                <option value="17" {{ if .DisplayRecvDelay }}selected{{ end }}>Seen</option>
+                <option value="18" {{ if .DisplayExecTime }}selected{{ end }}>Execution Time</option>
                 <option value="11" {{ if .DisplayGraffiti }}selected{{ end }}>Graffiti</option>
                 <option value="12" {{ if .DisplayElExtraData }}selected{{ end }}>Extra Data</option>
               </select>
@@ -134,7 +198,7 @@
 
     <div class="card mt-2">
       <div class="card-body px-0 py-3">
-            
+
         <div class="table-responsive px-0 py-1">
           <table class="table table-nobr" id="slots">
             <thead>
@@ -147,18 +211,24 @@
                 {{ if .DisplayAttestations }}<th class="d-none d-md-table-cell">Att<span class="d-none d-lg-inline">estations</span></th>{{ end }}
                 {{ if .DisplayDeposits }}
                 <th>
-                  <nobr><span data-toggle="tooltip" data-placement="top" title="Deposits">D<span class="d-none d-lg-inline">eposits</span> </span> / 
+                  <nobr><span data-toggle="tooltip" data-placement="top" title="Deposits">D<span class="d-none d-lg-inline">eposits</span> </span> /
                   <span data-toggle="tooltip" data-placement="top" title="Exits">E<span class="d-none d-lg-inline">xits</span> </span></nobr>
                 </th>
                 {{ end }}
                 {{ if .DisplaySlashings }}
                 <th><span class="d-none d-lg-inline">Slashings</span>
-                  <nobr><span data-toggle="tooltip" data-placement="top" title="Proposer Slashings">P</span> / 
+                  <nobr><span data-toggle="tooltip" data-placement="top" title="Proposer Slashings">P</span> /
                   <span data-toggle="tooltip" data-placement="top" title="Attester Slashings">A</span></nobr>
                 </th>
                 {{ end }}
-                {{ if .DisplayTxCount }}<th>Tx<span class="d-none d-lg-inline"> Count</span></th>{{ end }}
+                {{ if .DisplayTxCount }}<th>Txs<span class="d-none d-lg-inline"> / Blobs</span></th>{{ end }}
+                {{ if .DisplayGasUsage }}<th>Gas Usage</th>{{ end }}
                 {{ if .DisplaySyncAgg }}<th>Sync<span class="d-none d-lg-inline"> Agg</span> %</th>{{ end }}
+                {{ if .DisplayMevBlock }}<th>MEV Block</th>{{ end }}
+                {{ if .DisplayGasLimit }}<th>Gas Limit</th>{{ end }}
+                {{ if .DisplayBlockSize }}<th>Block Size</th>{{ end }}
+                {{ if .DisplayRecvDelay }}<th>Recv</th>{{ end }}
+                {{ if .DisplayExecTime }}<th>Exec Time</th>{{ end }}
                 {{ if .DisplayGraffiti }}<th>Graffiti</th>{{ end }}
                 {{ if .DisplayElExtraData }}<th>Extra Data</th>{{ end }}
               </tr>
@@ -213,10 +283,47 @@
                       <td>{{ if not (eq $slot.Status 0) }}{{ $slot.ProposerSlashingCount }} / {{ $slot.AttesterSlashingCount }}{{ end }}</td>
                     {{- end }}
                     {{- if $g.DisplayTxCount }}
-                      <td>{{ if not (eq $slot.Status 0) }}{{ $slot.EthTransactionCount }}{{ end }}</td>
+                      <td>{{ if not (eq $slot.Status 0) }}{{ $slot.EthTransactionCount }} / {{ $slot.BlobCount }}{{ end }}</td>
+                    {{- end }}
+                    {{- if $g.DisplayGasUsage }}
+                      <td>{{ if not (eq $slot.Status 0) }}
+                        <div style="position:relative;width:inherit;height:inherit;">
+                          {{ formatAddCommas $slot.GasUsed }} <small class="text-muted ml-3">({{ formatFloat (percentage $slot.GasUsed $slot.GasLimit) 2 }}%)</small>
+                          <div class="progress" style="position:absolute;bottom:-6px;width:100%;height:4px;">
+                            <div class="progress-bar" role="progressbar" style="width: {{ percentage $slot.GasUsed $slot.GasLimit }}%;" aria-valuenow="{{ $slot.GasUsed }}" aria-valuemin="0" aria-valuemax="{{ $slot.GasLimit }}"></div>
+                          </div>
+                        </div>
+                      {{ end }}</td>
                     {{- end }}
                     {{- if $g.DisplaySyncAgg }}
-                      <td>{{ if not (eq $slot.Status 0) }}{{ formatFloat $slot.SyncParticipation 2 }}%{{ end }}</td>
+                      <td>{{ if not (eq $slot.Status 0) }}{{ formatPercentageAlert $slot.SyncParticipation 2 95 80 }}{{ end }}</td>
+                    {{- end }}
+                    {{- if $g.DisplayMevBlock }}
+                      <td>{{ if not (eq $slot.Status 0) }}
+                        {{ if $slot.IsMevBlock }}
+                          <span class="badge rounded-pill text-bg-success" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $slot.MevBlockRelays }}">Yes</span>
+                        {{ else }}
+                          <span class="badge rounded-pill text-bg-secondary">No</span>
+                        {{ end }}
+                      {{ end }}</td>
+                    {{- end }}
+                    {{- if $g.DisplayGasLimit }}
+                      <td>{{ if not (eq $slot.Status 0) }}{{ formatFloat (div (float64 $slot.GasLimit) 1000000) 2 }} M{{ end }}</td>
+                    {{- end }}
+                    {{- if $g.DisplayBlockSize }}
+                      <td>{{ if not (eq $slot.Status 0) }}{{ formatByteAmount $slot.BlockSize }}{{ end }}</td>
+                    {{- end }}
+                    {{- if $g.DisplayRecvDelay }}
+                      <td>{{ if not (eq $slot.Status 0) }}{{ formatRecvDelay $slot.RecvDelay }}{{ end }}</td>
+                    {{- end }}
+                    {{- if $g.DisplayExecTime }}
+                      <td>{{ if not (eq $slot.Status 0) }}
+                        {{ if gt $slot.MinExecTime 0 }}
+                          <span class="exec-time-display" data-slot="{{ $slot.Slot }}" data-exec-times='{{ includeJSON $slot.ExecutionTimes true }}' data-min="{{ $slot.MinExecTime }}" data-max="{{ $slot.MaxExecTime }}" data-avg="{{ $slot.AvgExecTime }}">
+                            {{ formatAlertNumber (printf "%dms (⌀%dms)" $slot.MaxExecTime $slot.AvgExecTime) (float64 $slot.MaxExecTime) 500 1000 }}
+                          </span>
+                        {{ end }}
+                      {{ end }}</td>
                     {{- end }}
                     {{- if $g.DisplayGraffiti }}
                       <td>{{ if not (eq $slot.Status 0) }}{{ formatGraffiti $slot.Graffiti }}{{ end }}</td>
@@ -251,8 +358,25 @@
             </div>
             <div class="col-sm-12 col-md-7 table-paging">
               <div class="d-inline-block px-2">
+                <form method="GET" style="display: inline-flex; align-items: center;" id="pageJumpForm">
+                  <input type="hidden" name="f">
+                  {{ range $key, $value := .UrlParams }}
+                    {{ if ne $key "s" }}
+                      <input type="hidden" name="{{ $key }}" value="{{ $value }}">
+                    {{ end }}
+                  {{ end }}
+                  <div class="input-group" style="width: 120px;">
+                    <input type="number" class="form-control" name="s" id="pageJumpInput" min="1" placeholder="Page" 
+                           style="height: 38px; font-size: 14px; text-align: center; border-radius: 0.375rem 0 0 0.375rem;">
+                    <button type="submit" class="btn btn-outline-secondary" style="height: 38px; border-radius: 0 0.375rem 0.375rem 0;">
+                      Go
+                    </button>
+                  </div>
+                </form>
+              </div>
+              <div class="d-inline-block px-2">
                 <ul class="pagination">
-                  <li class="first paginate_button page-item {{ if le .PrevPageIndex 1 }}disabled{{ end }}" id="tpg_first">
+                  <li class="first paginate_button page-item {{ if eq .PrevPageIndex 0 }}disabled{{ end }}" id="tpg_first">
                     <a tab-index="1" aria-controls="tpg_first" class="page-link" href="{{ .FirstPageLink }}">First</a>
                   </li>
                   <li class="previous paginate_button page-item {{ if eq .PrevPageIndex 0 }}disabled{{ end }}" id="tpg_previous">
@@ -280,8 +404,8 @@
 {{ define "js" }}
 <script src="/js/bootstrap-multiselect.js"></script>
 <script type="text/javascript">
-$('#slotsFilterForm').submit(function () { 
-  $(this).find('input[type="text"],input[type="number"]').filter(function () { return !this.value; }).prop('name', ''); 
+$('#slotsFilterForm').submit(function () {
+  $(this).find('input[type="text"],input[type="number"]').filter(function () { return !this.value; }).prop('name', '');
   var displayColumns = Array.prototype.filter.call($(this).find('select[name="d"]').prop('name', '').find("option"), function(el) {
     return el.selected;
   }).map(function(el) {
@@ -291,13 +415,106 @@ $('#slotsFilterForm').submit(function () {
     $(this).find("#displayColumnsField").prop('name', 'd').val(displayColumns);
   }
 });
-$(function() { 
-  $('#slotsFilterForm .filter-multiselect').each(function() { 
+$(function() {
+  $('#slotsFilterForm .filter-multiselect').each(function() {
     $(this).multiselect({
       onInitialized: function() {
         this.$button.attr("data-bs-toggle", "dropdown");
         this.$container.addClass("filter-multiselect-container");
       }
+    });
+  });
+
+  // Page jump functionality
+$('#pageJumpForm').on('submit', function(e) {
+    e.preventDefault();
+    
+    var pageInput = $('#pageJumpInput');
+    var pageNum = parseInt(pageInput.val());
+    var maxPages = parseInt(pageInput.attr('max'));
+    var maxSlot = parseInt($('#maxSlot').val());
+    var pageSize = parseInt($('#pageSize').val());
+    
+    if (isNaN(pageNum) || pageNum < 1 || pageNum > maxPages) {
+      pageInput.addClass('is-invalid');
+      setTimeout(function() {
+        pageInput.removeClass('is-invalid');
+      }, 2000);
+      return false;
+    }
+    
+    // Calculate page number
+    var url = new URL(window.location);
+    if (pageNum === 1) {
+      url.searchParams.delete('s');
+    } else {
+      pageNum = pageNum - 1;
+      url.searchParams.set('s', pageNum);
+    }
+    
+    window.location.href = url.toString();
+  });
+
+  // Enter key support for page jump
+  $('#pageJumpInput').on('keypress', function(e) {
+    if (e.which === 13) {
+      $('#pageJumpForm').submit();
+    }
+  });
+
+  // Initialize popovers for execution times
+  $('.exec-time-display').each(function() {
+    var $el = $(this);
+    var execTimes = $el.data('exec-times');
+    var minTime = $el.data('min');
+    var maxTime = $el.data('max');
+    var avgTime = $el.data('avg');
+    
+    var content = '<div class="exec-time-popover">';
+    
+    // Overall stats section
+    var totalCount = 0;
+    if (execTimes && execTimes.length > 0) {
+      execTimes.forEach(function(et) {
+        totalCount += et.count;
+      });
+    }
+    
+    content += '<div class="overall-stats">';
+    content += '<div><strong>Range:</strong> ' + minTime + ' - ' + maxTime + ' ms</div>';
+    content += '<div><strong>Average:</strong> ' + avgTime + ' ms (' + totalCount + ' samples)</div>';
+    content += '</div>';
+    
+    if (execTimes && execTimes.length > 0) {
+      content += '<div class="client-breakdown">';
+      content += '<div class="breakdown-header">';
+      content += '<span>Client</span><span>Min</span><span>Max</span><span>Avg</span><span>Count</span>';
+      content += '</div>';
+      
+      execTimes.forEach(function(et) {
+        content += '<div class="breakdown-row">';
+        content += '<span>' + et.client_type + '</span>';
+        content += '<span>' + et.min_time + 'ms</span>';
+        content += '<span>' + et.max_time + 'ms</span>';
+        content += '<span>' + et.avg_time + 'ms</span>';
+        content += '<span>' + et.count + '</span>';
+        content += '</div>';
+      });
+      
+      content += '</div>';
+    } else {
+      content += '<div class="no-data">No detailed client breakdown available</div>';
+    }
+    
+    content += '</div>';
+    
+    $el.popover({
+      html: true,
+      trigger: 'hover',
+      placement: 'top',
+      content: content,
+      container: 'body',
+      template: '<div class="popover exec-time-popover-container" role="tooltip"><div class="popover-arrow"></div><h3 class="popover-header"></h3><div class="popover-body"></div></div>'
     });
   });
 });
@@ -323,6 +540,60 @@ $(function() {
   .filter-multiselect-container .multiselect-container>li>a>label>input {
     margin: 0 4px;
   }
-  
+  .filter-separator {
+    width: 20px;
+    text-align: center;
+  }
+  .gas-usage-progress {
+    height: 5px;
+  }
+  .exec-time-display {
+    cursor: pointer;
+    text-decoration: underline dotted;
+  }
+  .exec-time-popover {
+    min-width: 400px;
+    max-width: 500px;
+    font-size: 0.875rem;
+  }
+  .exec-time-popover .overall-stats {
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #dee2e6;
+  }
+  .exec-time-popover .overall-stats div {
+    margin-bottom: 4px;
+  }
+  .exec-time-popover .client-breakdown {
+    display: grid;
+    grid-template-columns: 1fr 70px 70px 70px 60px;
+    gap: 10px;
+  }
+  .exec-time-popover .breakdown-header {
+    display: contents;
+    font-weight: bold;
+    border-bottom: 1px solid #dee2e6;
+  }
+  .exec-time-popover .breakdown-header span {
+    padding-bottom: 4px;
+    border-bottom: 1px solid #dee2e6;
+  }
+  .exec-time-popover .breakdown-row {
+    display: contents;
+  }
+  .exec-time-popover .breakdown-row span {
+    padding: 2px 0;
+  }
+  .exec-time-popover .no-data {
+    color: #6c757d;
+    font-style: italic;
+    margin-top: 8px;
+  }
+  .exec-time-popover-container {
+    max-width: 500px !important;
+  }
+  .exec-time-popover-container .popover-body {
+    padding: 12px;
+  }
 </style>
 {{ end }}

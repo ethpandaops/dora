@@ -36,7 +36,7 @@
                       {{ end }}
                     </td>
                     <td rowspan="{{ $fork.ClientCount }}"><a href="/slot/{{ $fork.HeadSlot }}">{{ formatAddCommas $fork.HeadSlot }}</a></td>
-                    <td rowspan="{{ $fork.ClientCount }}">
+                    <td rowspan="{{ $fork.ClientCount }}" class="text-monospace">
                       <a href="/slot/0x{{ printf "%x" $fork.HeadRoot }}" class="text-truncate d-inline-block" style="max-width: 200px">0x{{ printf "%x" $fork.HeadRoot }}</a>
                       <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $fork.HeadRoot }}"></i>
                     </td>

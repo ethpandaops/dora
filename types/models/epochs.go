@@ -21,6 +21,9 @@ type EpochsPageData struct {
 	NextPageIndex    uint64 `json:"next_page_index"`
 	NextPageEpoch    uint64 `json:"next_page_epoch"`
 	LastPageEpoch    uint64 `json:"last_page_epoch"`
+
+	UrlParams map[string]string `json:"url_params"`
+	MaxEpoch  uint64            `json:"max_epoch"`
 }
 
 type EpochsPageDataEpoch struct {
@@ -44,4 +47,5 @@ type EpochsPageDataEpoch struct {
 	HeadVoteParticipation   float64   `json:"head_vote_participation"`
 	TotalVoteParticipation  float64   `json:"total_vote_participation"`
 	EthTransactionCount     uint64    `json:"eth_transaction_count"`
+	BlobCount               uint64    `json:"blob_count"`
 }

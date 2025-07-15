@@ -1,15 +1,10 @@
 package api
 
 import (
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"math"
 	"net/http"
-	"strconv"
-	"strings"
 
-	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/services"
 	"github.com/gorilla/mux"
@@ -32,6 +27,10 @@ type ApiValidatorResponseV1 struct {
 	Withdrawalcredentials      string `json:"withdrawalcredentials"`
 }
 
+type ApiValidatorRequestV1 struct {
+	IndicesOrPubKey string `json:"indicesOrPubkey"`
+}
+
 // ApiValidator godoc
 // @Summary Get up to 100 validators
 // @Tags Validator
@@ -40,7 +39,7 @@ type ApiValidatorResponseV1 struct {
 // @Param  indexOrPubkey path string true "Up to 100 validator indicesOrPubkeys, comma separated"
 // @Success 200 {object} ApiResponse{data=[]ApiValidatorResponseV1}
 // @Failure 400 {object} ApiResponse
-// @Router /api/v1/validator/{indexOrPubkey} [get]
+// @Router /v1/validator/{indexOrPubkey} [get]
 func ApiValidatorGetV1(w http.ResponseWriter, r *http.Request) {
 	getApiValidator(w, r)
 }
@@ -50,10 +49,10 @@ func ApiValidatorGetV1(w http.ResponseWriter, r *http.Request) {
 // @Tags Validator
 // @Description This POST endpoint exists because the GET endpoint can lead to a "URI too long" error when searching for too many validators based on their pubkeys.
 // @Produce  json
-// @Param  indexOrPubkey body types.DashboardRequest true "Up to 100 validator indicesOrPubkeys, comma separated"
+// @Param  indexOrPubkey body ApiValidatorRequestV1 true "Up to 100 validator indicesOrPubkeys, comma separated"
 // @Success 200 {object} ApiResponse{data=[]ApiValidatorResponseV1}
 // @Failure 400 {object} ApiResponse
-// @Router /api/v1/validator [post]
+// @Router /v1/validator [post]
 func ApiValidatorPostV1(w http.ResponseWriter, r *http.Request) {
 	getApiValidator(w, r)
 }
@@ -127,35 +126,4 @@ func getApiValidator(w http.ResponseWriter, r *http.Request) {
 		sendServerErrorResponse(w, r.URL.String(), "could not serialize data results")
 		logrus.Errorf("error serializing json data for API %v route: %v", r.URL, err)
 	}
-}
-
-func parseValidatorParamsToIndices(origParam string, limit int) (indices []phase0.ValidatorIndex, err error) {
-	params := strings.Split(origParam, ",")
-	if len(params) > limit {
-		return nil, fmt.Errorf("only a maximum of %d query parameters are allowed", limit)
-	}
-	for _, param := range params {
-		if strings.Contains(param, "0x") || len(param) == 96 {
-			pubkey, err := hex.DecodeString(strings.Replace(param, "0x", "", -1))
-			if err != nil {
-				return nil, fmt.Errorf("invalid validator-parameter")
-			}
-
-			indice, found := services.GlobalBeaconService.GetValidatorIndexByPubkey(phase0.BLSPubKey(pubkey))
-			if !found {
-				return nil, fmt.Errorf("validator pubkey %s not found", param)
-			}
-			indices = append(indices, indice)
-		} else {
-			index, err := strconv.ParseUint(param, 10, 64)
-			if err != nil {
-				return nil, fmt.Errorf("invalid validator-parameter: %v", param)
-			}
-			if index < math.MaxInt64 {
-				indices = append(indices, phase0.ValidatorIndex(index))
-			}
-		}
-	}
-
-	return
 }

@@ -101,6 +101,11 @@ func buildEpochsPageData(firstEpoch uint64, pageSize uint64) (*models.EpochsPage
 	}
 	pageData.LastPageEpoch = pageSize - 1
 
+	// Populate UrlParams for page jump functionality
+	pageData.UrlParams = make(map[string]string)
+	pageData.UrlParams["count"] = fmt.Sprintf("%v", pageData.PageSize)
+	pageData.MaxEpoch = uint64(currentEpoch)
+
 	finalizedEpoch, _ := chainState.GetFinalizedCheckpoint()
 	justifiedEpoch, _ := chainState.GetJustifiedCheckpoint()
 	epochLimit := pageSize
@@ -115,7 +120,7 @@ func buildEpochsPageData(firstEpoch uint64, pageSize uint64) (*models.EpochsPage
 	allSynchronized := true
 	for epochIdx := int64(firstEpoch); epochIdx >= 0 && epochCount < epochLimit; epochIdx-- {
 		epoch := uint64(epochIdx)
-		finalized := int64(finalizedEpoch) > epochIdx
+		finalized := int64(finalizedEpoch) >= epochIdx
 		if !finalized {
 			allFinalized = false
 		}
@@ -123,7 +128,7 @@ func buildEpochsPageData(firstEpoch uint64, pageSize uint64) (*models.EpochsPage
 			Epoch:     epoch,
 			Ts:        chainState.EpochToTime(phase0.Epoch(epoch)),
 			Finalized: finalized,
-			Justified: int64(justifiedEpoch) > epochIdx,
+			Justified: int64(justifiedEpoch) >= epochIdx,
 		}
 		if dbIdx < dbCnt && dbEpochs[dbIdx] != nil && dbEpochs[dbIdx].Epoch == epoch {
 			dbEpoch := dbEpochs[dbIdx]
@@ -146,6 +151,7 @@ func buildEpochsPageData(firstEpoch uint64, pageSize uint64) (*models.EpochsPage
 				epochData.TotalVoteParticipation = float64(dbEpoch.VotedTotal) * 100.0 / float64(dbEpoch.Eligible)
 			}
 			epochData.EthTransactionCount = dbEpoch.EthTransactionCount
+			epochData.BlobCount = dbEpoch.BlobCount
 		} else {
 			allSynchronized = false
 		}

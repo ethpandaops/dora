@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 
+	"github.com/attestantio/go-eth2-client/spec"
 	"github.com/attestantio/go-eth2-client/spec/bellatrix"
 	"github.com/attestantio/go-eth2-client/spec/capella"
 	"github.com/attestantio/go-eth2-client/spec/electra"
@@ -247,6 +248,7 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 	blsToExecChanges, _ := blockBody.BLSToExecutionChanges()
 	syncAggregate, _ := blockBody.SyncAggregate()
 	executionBlockHash, _ := blockBody.ExecutionBlockHash()
+	blobKzgCommitments, _ := blockBody.BlobKZGCommitments()
 
 	var executionBlockNumber uint64
 	var executionExtraData []byte
@@ -296,7 +298,16 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 		AttesterSlashingCount: uint64(len(attesterSlashings)),
 		ProposerSlashingCount: uint64(len(proposerSlashings)),
 		BLSChangeCount:        uint64(len(blsToExecChanges)),
+		BlobCount:             uint64(len(blobKzgCommitments)),
+		RecvDelay:             block.recvDelay,
 		PayloadStatus:         payloadStatus,
+	}
+
+	blockSize, err := getBlockSize(block.dynSsz, blockBody)
+	if err != nil {
+		dbw.indexer.logger.Warnf("error while building db blocks: failed to get block size: %v", err)
+	} else {
+		dbBlock.BlockSize = uint64(blockSize)
 	}
 
 	if overrideForkId != nil {
@@ -328,8 +339,72 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 		dbBlock.EthBlockExtra = executionExtraData
 		dbBlock.EthBlockExtraText = utils.GraffitiToString(executionExtraData[:])
 		dbBlock.WithdrawCount = uint64(len(executionWithdrawals))
+
+		// Get execution times from the block
+		if execTimes := block.GetExecutionTimes(); len(execTimes) > 0 {
+			// Calculate min/max times for quick queries
+			minTime, maxTime := CalculateMinMaxTimesForStorage(execTimes)
+			if minTime > 0 {
+				dbBlock.MinExecTime = minTime
+				dbBlock.MaxExecTime = maxTime
+
+				execTimesSSZ, err := block.dynSsz.MarshalSSZ(execTimes)
+				if err != nil {
+					dbw.indexer.logger.Warnf("error while building db blocks: failed to marshal execution times: %v", err)
+				} else {
+					dbBlock.ExecTimes = execTimesSSZ
+				}
+			}
+		}
+
+		withdrawalAmountOverflow := false
 		for _, withdrawal := range executionWithdrawals {
 			dbBlock.WithdrawAmount += uint64(withdrawal.Amount)
+			if dbBlock.WithdrawAmount < uint64(withdrawal.Amount) {
+				withdrawalAmountOverflow = true
+			}
+		}
+		if withdrawalAmountOverflow || dbBlock.WithdrawAmount >= math.MaxInt64 {
+			dbBlock.WithdrawAmount = math.MaxInt64
+		}
+
+		switch blockBody.Version {
+		case spec.DataVersionBellatrix:
+			if blockBody.Bellatrix != nil && blockBody.Bellatrix.Message != nil &&
+				blockBody.Bellatrix.Message.Body != nil && blockBody.Bellatrix.Message.Body.ExecutionPayload != nil {
+				payload := blockBody.Bellatrix.Message.Body.ExecutionPayload
+				dbBlock.EthGasUsed = payload.GasUsed
+				dbBlock.EthGasLimit = payload.GasLimit
+				dbBlock.EthBaseFee = utils.GetBaseFeeAsUint64(payload.BaseFeePerGas)
+				dbBlock.EthFeeRecipient = payload.FeeRecipient[:]
+			}
+		case spec.DataVersionCapella:
+			if blockBody.Capella != nil && blockBody.Capella.Message != nil &&
+				blockBody.Capella.Message.Body != nil && blockBody.Capella.Message.Body.ExecutionPayload != nil {
+				payload := blockBody.Capella.Message.Body.ExecutionPayload
+				dbBlock.EthGasUsed = payload.GasUsed
+				dbBlock.EthGasLimit = payload.GasLimit
+				dbBlock.EthBaseFee = utils.GetBaseFeeAsUint64(payload.BaseFeePerGas)
+				dbBlock.EthFeeRecipient = payload.FeeRecipient[:]
+			}
+		case spec.DataVersionDeneb:
+			if blockBody.Deneb != nil && blockBody.Deneb.Message != nil &&
+				blockBody.Deneb.Message.Body != nil && blockBody.Deneb.Message.Body.ExecutionPayload != nil {
+				payload := blockBody.Deneb.Message.Body.ExecutionPayload
+				dbBlock.EthGasUsed = payload.GasUsed
+				dbBlock.EthGasLimit = payload.GasLimit
+				dbBlock.EthBaseFee = utils.GetBaseFeeAsUint64(payload.BaseFeePerGas)
+				dbBlock.EthFeeRecipient = payload.FeeRecipient[:]
+			}
+		case spec.DataVersionElectra:
+			if blockBody.Electra != nil && blockBody.Electra.Message != nil &&
+				blockBody.Electra.Message.Body != nil && blockBody.Electra.Message.Body.ExecutionPayload != nil {
+				payload := blockBody.Electra.Message.Body.ExecutionPayload
+				dbBlock.EthGasUsed = payload.GasUsed
+				dbBlock.EthGasLimit = payload.GasLimit
+				dbBlock.EthBaseFee = utils.GetBaseFeeAsUint64(payload.BaseFeePerGas)
+				dbBlock.EthFeeRecipient = payload.FeeRecipient[:]
+			}
 		}
 	}
 
@@ -403,6 +478,7 @@ func (dbw *dbWriter) buildDbEpoch(epoch phase0.Epoch, blocks []*Block, epochStat
 			proposerSlashings, _ := blockBody.ProposerSlashings()
 			blsToExecChanges, _ := blockBody.BLSToExecutionChanges()
 			syncAggregate, _ := blockBody.SyncAggregate()
+			blobKzgCommitments, _ := blockBody.BlobKZGCommitments()
 
 			var executionTransactions []bellatrix.Transaction
 			var executionWithdrawals []*capella.Withdrawal
@@ -445,9 +521,50 @@ func (dbw *dbWriter) buildDbEpoch(epoch phase0.Epoch, blocks []*Block, epochStat
 			}
 
 			dbEpoch.EthTransactionCount += uint64(len(executionTransactions))
+			dbEpoch.BlobCount += uint64(len(blobKzgCommitments))
 			dbEpoch.WithdrawCount += uint64(len(executionWithdrawals))
+
+			withdrawalAmountOverflow := false
 			for _, withdrawal := range executionWithdrawals {
 				dbEpoch.WithdrawAmount += uint64(withdrawal.Amount)
+				if dbEpoch.WithdrawAmount < uint64(withdrawal.Amount) {
+					withdrawalAmountOverflow = true
+				}
+			}
+			if withdrawalAmountOverflow || dbEpoch.WithdrawAmount >= math.MaxInt64 {
+				dbEpoch.WithdrawAmount = math.MaxInt64
+			}
+
+			// Aggregate gas used and gas limit
+			switch blockBody.Version {
+			case spec.DataVersionBellatrix:
+				if blockBody.Bellatrix != nil && blockBody.Bellatrix.Message != nil &&
+					blockBody.Bellatrix.Message.Body != nil && blockBody.Bellatrix.Message.Body.ExecutionPayload != nil {
+					payload := blockBody.Bellatrix.Message.Body.ExecutionPayload
+					dbEpoch.EthGasUsed += payload.GasUsed
+					dbEpoch.EthGasLimit += payload.GasLimit
+				}
+			case spec.DataVersionCapella:
+				if blockBody.Capella != nil && blockBody.Capella.Message != nil &&
+					blockBody.Capella.Message.Body != nil && blockBody.Capella.Message.Body.ExecutionPayload != nil {
+					payload := blockBody.Capella.Message.Body.ExecutionPayload
+					dbEpoch.EthGasUsed += payload.GasUsed
+					dbEpoch.EthGasLimit += payload.GasLimit
+				}
+			case spec.DataVersionDeneb:
+				if blockBody.Deneb != nil && blockBody.Deneb.Message != nil &&
+					blockBody.Deneb.Message.Body != nil && blockBody.Deneb.Message.Body.ExecutionPayload != nil {
+					payload := blockBody.Deneb.Message.Body.ExecutionPayload
+					dbEpoch.EthGasUsed += payload.GasUsed
+					dbEpoch.EthGasLimit += payload.GasLimit
+				}
+			case spec.DataVersionElectra:
+				if blockBody.Electra != nil && blockBody.Electra.Message != nil &&
+					blockBody.Electra.Message.Body != nil && blockBody.Electra.Message.Body.ExecutionPayload != nil {
+					payload := blockBody.Electra.Message.Body.ExecutionPayload
+					dbEpoch.EthGasUsed += payload.GasUsed
+					dbEpoch.EthGasLimit += payload.GasLimit
+				}
 			}
 		}
 	}

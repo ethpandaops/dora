@@ -12,9 +12,11 @@ import (
 	"github.com/attestantio/go-eth2-client/spec"
 	"github.com/attestantio/go-eth2-client/spec/eip7732"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
+	"github.com/ethpandaops/dora/utils"
 	"github.com/jmoiron/sqlx"
 	"github.com/sirupsen/logrus"
 )
@@ -31,9 +33,9 @@ type Client struct {
 	archive        bool
 	skipValidators bool
 
-	blockSubscription            *consensus.Subscription[*v1.BlockEvent]
-	headSubscription             *consensus.Subscription[*v1.HeadEvent]
-	executionPayloadSubscription *consensus.Subscription[*v1.ExecutionPayloadEvent]
+	blockSubscription            *utils.Subscription[*v1.BlockEvent]
+	headSubscription             *utils.Subscription[*v1.HeadEvent]
+	executionPayloadSubscription *utils.Subscription[*v1.ExecutionPayloadEvent]
 
 	headRoot phase0.Root
 }
@@ -146,7 +148,7 @@ func (c *Client) runClientLoop() error {
 
 	c.headRoot = headRoot
 
-	headBlock, isNew, processingTimes, err := c.processBlock(headSlot, headRoot, nil, true)
+	headBlock, isNew, processingTimes, err := c.processBlock(headSlot, headRoot, nil, false, true)
 	if err != nil {
 		return fmt.Errorf("failed processing head block: %v", err)
 	}
@@ -294,7 +296,7 @@ func (c *Client) processHeadEvent(headEvent *v1.HeadEvent) error {
 
 // processStreamBlock processes a block received from the stream (either via block or head events).
 func (c *Client) processStreamBlock(slot phase0.Slot, root phase0.Root) (*Block, error) {
-	block, isNew, processingTimes, err := c.processBlock(slot, root, nil, false)
+	block, isNew, processingTimes, err := c.processBlock(slot, root, nil, true, false)
 	if err != nil {
 		return nil, err
 	}
@@ -348,7 +350,7 @@ func (c *Client) processReorg(oldHead *Block, newHead *Block) error {
 }
 
 // processBlock processes a block (from stream & polling).
-func (c *Client) processBlock(slot phase0.Slot, root phase0.Root, header *phase0.SignedBeaconBlockHeader, loadPayload bool) (block *Block, isNew bool, processingTimes []time.Duration, err error) {
+func (c *Client) processBlock(slot phase0.Slot, root phase0.Root, header *phase0.SignedBeaconBlockHeader, trackRecvDelay bool, loadPayload bool) (block *Block, isNew bool, processingTimes []time.Duration, err error) {
 	chainState := c.client.GetPool().GetChainState()
 	finalizedSlot := chainState.GetFinalizedSlot()
 	processingTimes = make([]time.Duration, 3)
@@ -369,6 +371,14 @@ func (c *Client) processBlock(slot phase0.Slot, root phase0.Root, header *phase0
 	} else {
 		block, _ = c.indexer.blockCache.createOrGetBlock(root, slot)
 	}
+
+	recvDelay := int32(0)
+	if trackRecvDelay {
+		slotTime := chainState.SlotToTime(slot)
+		recvDelay = int32(time.Since(slotTime).Milliseconds())
+	}
+
+	block.SetSeenBy(c, recvDelay)
 
 	err = block.EnsureHeader(func() (*phase0.SignedBeaconBlockHeader, error) {
 		if header != nil {
@@ -420,6 +430,33 @@ func (c *Client) processBlock(slot phase0.Slot, root phase0.Root, header *phase0
 	if slot >= finalizedSlot && isNew {
 		c.indexer.blockCache.addBlockToParentMap(block)
 		c.indexer.blockCache.addBlockToExecBlockMap(block)
+
+		// Check for cached execution times and add them to the block
+		blockIndex := block.GetBlockIndex()
+		if blockIndex != nil && !bytes.Equal(blockIndex.ExecutionHash[:], zeroHash[:]) {
+			executionHash := common.Hash(blockIndex.ExecutionHash)
+			cachedTimes := c.indexer.executionTimeProvider.GetAndDeleteExecutionTimes(executionHash)
+			for _, cachedTime := range cachedTimes {
+				// Convert the cached time to beacon ExecutionTime format
+				client := cachedTime.GetClient()
+				execTime := ExecutionTime{
+					ClientType: client.GetClientType().Uint8(),
+					MinTime:    cachedTime.GetTime(),
+					MaxTime:    cachedTime.GetTime(),
+					AvgTime:    cachedTime.GetTime(),
+					Count:      1,
+				}
+				block.AddExecutionTime(execTime)
+			}
+			if len(cachedTimes) > 0 {
+				c.logger.WithFields(map[string]interface{}{
+					"slot":           block.Slot,
+					"execution_hash": executionHash.Hex(),
+					"times_count":    len(cachedTimes),
+				}).Debug("Added cached execution times to block")
+			}
+		}
+
 		t1 := time.Now()
 
 		// fork detection
@@ -512,7 +549,7 @@ func (c *Client) backfillParentBlocks(headBlock *Block) error {
 		if parentBlock == nil {
 			var err error
 
-			parentBlock, isNewBlock, processingTimes, err = c.processBlock(parentSlot, parentRoot, parentHead, true)
+			parentBlock, isNewBlock, processingTimes, err = c.processBlock(parentSlot, parentRoot, parentHead, false, true)
 			if err != nil {
 				return fmt.Errorf("could not process block [0x%x]: %v", parentRoot, err)
 			}

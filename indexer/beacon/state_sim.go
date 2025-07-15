@@ -78,9 +78,19 @@ func (sim *stateSimulator) resetState(block *Block) *stateSimulatorState {
 		pendingWithdrawals = []EpochStatsPendingWithdrawals{}
 	}
 
+	epochRoot := block.Root
+	chainState := sim.indexer.consensusPool.GetChainState()
+	specs := chainState.GetSpecs()
+	if chainState.SlotToSlotIndex(block.Slot) == phase0.Slot(specs.SlotsPerEpoch-1) {
+		parentRoot := block.GetParentRoot()
+		if parentRoot != nil {
+			epochRoot = *parentRoot
+		}
+	}
+
 	state := &stateSimulatorState{
 		block:                     nil,
-		epochRoot:                 block.Root,
+		epochRoot:                 epochRoot,
 		pendingWithdrawals:        pendingWithdrawals,
 		pendingConsolidationCount: 0,
 		additionalWithdrawals:     []phase0.ValidatorIndex{},

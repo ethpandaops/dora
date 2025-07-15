@@ -5,14 +5,19 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/attestantio/go-eth2-client/spec/phase0"
+	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
+	"github.com/ethpandaops/dora/indexer/beacon"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
+	"github.com/ethpandaops/dora/utils"
 	"github.com/sirupsen/logrus"
 )
 
@@ -35,11 +40,15 @@ func Slots(w http.ResponseWriter, r *http.Request) {
 	if urlArgs.Has("s") {
 		firstSlot, _ = strconv.ParseUint(urlArgs.Get("s"), 10, 64)
 	}
+	var displayColumns string = ""
+	if urlArgs.Has("d") {
+		displayColumns = urlArgs.Get("d")
+	}
 
 	var pageError error
 	pageError = services.GlobalCallRateLimiter.CheckCallLimit(r, 1)
 	if pageError == nil {
-		data.Data, pageError = getSlotsPageData(firstSlot, pageSize)
+		data.Data, pageError = getSlotsPageData(firstSlot, pageSize, displayColumns)
 	}
 	if pageError != nil {
 		handlePageError(w, r, pageError)
@@ -51,11 +60,11 @@ func Slots(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func getSlotsPageData(firstSlot uint64, pageSize uint64) (*models.SlotsPageData, error) {
+func getSlotsPageData(firstSlot uint64, pageSize uint64, displayColumns string) (*models.SlotsPageData, error) {
 	pageData := &models.SlotsPageData{}
-	pageCacheKey := fmt.Sprintf("slots:%v:%v", firstSlot, pageSize)
+	pageCacheKey := fmt.Sprintf("slots:%v:%v:%v", firstSlot, pageSize, displayColumns)
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
-		pageData, cacheTimeout := buildSlotsPageData(firstSlot, pageSize)
+		pageData, cacheTimeout := buildSlotsPageData(firstSlot, pageSize, displayColumns)
 		pageCall.CacheTimeout = cacheTimeout
 		return pageData
 	})
@@ -69,9 +78,87 @@ func getSlotsPageData(firstSlot uint64, pageSize uint64) (*models.SlotsPageData,
 	return pageData, pageErr
 }
 
-func buildSlotsPageData(firstSlot uint64, pageSize uint64) (*models.SlotsPageData, time.Duration) {
+func buildSlotsPageData(firstSlot uint64, pageSize uint64, displayColumns string) (*models.SlotsPageData, time.Duration) {
 	logrus.Debugf("slots page called: %v:%v", firstSlot, pageSize)
 	pageData := &models.SlotsPageData{}
+
+	// Set display columns based on the parameter
+	displayMap := map[uint64]bool{}
+	displayList := []string{}
+	if displayColumns != "" {
+		for _, col := range strings.Split(displayColumns, " ") {
+			colNum, err := strconv.ParseUint(col, 10, 64)
+			if err != nil {
+				continue
+			}
+			displayMap[colNum] = true
+		}
+	}
+	if len(displayMap) == 0 {
+		// Check if snooper clients are configured
+		hasSnooperClients := false
+		if snooperManager := services.GlobalBeaconService.GetSnooperManager(); snooperManager != nil {
+			hasSnooperClients = snooperManager.HasClients()
+		}
+
+		displayMap = map[uint64]bool{
+			1:  true,
+			2:  true,
+			3:  true,
+			4:  true,
+			5:  true,
+			6:  true,
+			7:  true,
+			8:  true,
+			9:  true,
+			10: true,
+			11: true,
+			12: true,
+			13: false,
+			14: false,
+			15: false,
+			16: false,
+			17: false,
+			18: !hasSnooperClients, // Disable receive delay if snooper clients exist
+			19: hasSnooperClients,  // Enable exec time if snooper clients exist
+		}
+	} else {
+		for col := range displayMap {
+			displayList = append(displayList, fmt.Sprintf("%v", col))
+		}
+	}
+
+	pageData.DisplayChain = displayMap[1]
+	pageData.DisplayEpoch = displayMap[2]
+	pageData.DisplaySlot = displayMap[3]
+	pageData.DisplayStatus = displayMap[4]
+	pageData.DisplayTime = displayMap[5]
+	pageData.DisplayProposer = displayMap[6]
+	pageData.DisplayAttestations = displayMap[7]
+	pageData.DisplayDeposits = displayMap[8]
+	pageData.DisplaySlashings = displayMap[9]
+	pageData.DisplayTxCount = displayMap[10]
+	pageData.DisplaySyncAgg = displayMap[11]
+	pageData.DisplayGraffiti = displayMap[12]
+	pageData.DisplayElExtraData = displayMap[13]
+	pageData.DisplayGasUsage = displayMap[14]
+	pageData.DisplayGasLimit = displayMap[15]
+	pageData.DisplayMevBlock = displayMap[16]
+	pageData.DisplayBlockSize = displayMap[17]
+	pageData.DisplayRecvDelay = displayMap[18]
+	pageData.DisplayExecTime = displayMap[19]
+	pageData.DisplayColCount = uint64(len(displayMap))
+
+	// Build column selection URL parameter if not default
+	displayColumnsParam := ""
+	if len(displayList) > 0 {
+		sort.Slice(displayList, func(a, b int) bool {
+			colA, _ := strconv.ParseUint(displayList[a], 10, 64)
+			colB, _ := strconv.ParseUint(displayList[b], 10, 64)
+			return colA < colB
+		})
+		displayColumnsParam = "&d=" + strings.Join(displayList, "+")
+	}
 
 	chainState := services.GlobalBeaconService.GetChainState()
 	currentSlot := chainState.CurrentSlot()
@@ -108,6 +195,20 @@ func buildSlotsPageData(firstSlot uint64, pageSize uint64) (*models.SlotsPageDat
 	}
 	pageData.LastPageSlot = pageSize - 1
 
+	// Populate UrlParams for page jump functionality
+	pageData.UrlParams = make(map[string]string)
+	pageData.UrlParams["c"] = fmt.Sprintf("%v", pageData.PageSize)
+	if len(displayList) > 0 {
+		pageData.UrlParams["d"] = strings.Join(displayList, "+")
+	}
+	pageData.MaxSlot = uint64(maxSlot)
+
+	// Add pagination links with column selection preserved
+	pageData.FirstPageLink = fmt.Sprintf("/slots?c=%v%v", pageData.PageSize, displayColumnsParam)
+	pageData.PrevPageLink = fmt.Sprintf("/slots?s=%v&c=%v%v", pageData.PrevPageSlot, pageData.PageSize, displayColumnsParam)
+	pageData.NextPageLink = fmt.Sprintf("/slots?s=%v&c=%v%v", pageData.NextPageSlot, pageData.PageSize, displayColumnsParam)
+	pageData.LastPageLink = fmt.Sprintf("/slots?s=%v&c=%v%v", pageData.LastPageSlot, pageData.PageSize, displayColumnsParam)
+
 	finalizedEpoch, _ := services.GlobalBeaconService.GetFinalizedEpoch()
 	slotLimit := pageSize - 1
 	var lastSlot uint64
@@ -117,7 +218,7 @@ func buildSlotsPageData(firstSlot uint64, pageSize uint64) (*models.SlotsPageDat
 		lastSlot = 0
 	}
 
-	// get slot assignments
+	// Get slot assignments
 	firstEpoch := chainState.EpochOfSlot(phase0.Slot(firstSlot))
 
 	// load slots
@@ -131,6 +232,23 @@ func buildSlotsPageData(firstSlot uint64, pageSize uint64) (*models.SlotsPageDat
 	isFirstPage := firstSlot >= uint64(currentSlot)
 	openForks := map[int][]byte{}
 	maxOpenFork := 0
+
+	mevBlocksMap := make(map[string]*dbtypes.MevBlock)
+
+	if pageData.DisplayMevBlock {
+		var execBlockHashes [][]byte
+
+		for _, dbSlot := range dbSlots {
+			if dbSlot != nil && dbSlot.Status > 0 && dbSlot.EthBlockHash != nil {
+				execBlockHashes = append(execBlockHashes, dbSlot.EthBlockHash)
+			}
+		}
+
+		if len(execBlockHashes) > 0 {
+			mevBlocksMap = db.GetMevBlocksByBlockHashes(execBlockHashes)
+		}
+	}
+
 	for slotIdx := int64(firstSlot); slotIdx >= int64(lastSlot); slotIdx-- {
 		slot := uint64(slotIdx)
 		finalized := finalizedEpoch > 0 && finalizedEpoch >= chainState.EpochOfSlot(phase0.Slot(slot))
@@ -166,14 +284,73 @@ func buildSlotsPageData(firstSlot uint64, pageSize uint64) (*models.SlotsPageDat
 				AttesterSlashingCount: dbSlot.AttesterSlashingCount,
 				SyncParticipation:     float64(dbSlot.SyncParticipation) * 100,
 				EthTransactionCount:   dbSlot.EthTransactionCount,
+				BlobCount:             dbSlot.BlobCount,
 				Graffiti:              dbSlot.Graffiti,
+				ElExtraData:           dbSlot.EthBlockExtra,
+				GasUsed:               dbSlot.EthGasUsed,
+				GasLimit:              dbSlot.EthGasLimit,
+				BlockSize:             dbSlot.BlockSize,
 				BlockRoot:             dbSlot.Root,
 				ParentRoot:            dbSlot.ParentRoot,
+				RecvDelay:             dbSlot.RecvDelay,
 				ForkGraph:             make([]*models.SlotsPageDataForkGraph, 0),
 			}
 			if dbSlot.EthBlockNumber != nil {
 				slotData.WithEthBlock = true
 				slotData.EthBlockNumber = *dbSlot.EthBlockNumber
+			}
+
+			if pageData.DisplayMevBlock && dbSlot.EthBlockHash != nil {
+				if mevBlock, exists := mevBlocksMap[fmt.Sprintf("%x", dbSlot.EthBlockHash)]; exists {
+					slotData.IsMevBlock = true
+
+					var relays []string
+					for _, relay := range utils.Config.MevIndexer.Relays {
+						relayFlag := uint64(1) << uint64(relay.Index)
+						if mevBlock.SeenbyRelays&relayFlag > 0 {
+							relays = append(relays, relay.Name)
+						}
+					}
+					slotData.MevBlockRelays = strings.Join(relays, ", ")
+				}
+			}
+
+			// Add execution times if available
+			if pageData.DisplayExecTime && dbSlot.MinExecTime > 0 && dbSlot.MaxExecTime > 0 {
+				slotData.MinExecTime = dbSlot.MinExecTime
+				slotData.MaxExecTime = dbSlot.MaxExecTime
+
+				// Deserialize execution times if available
+				if len(dbSlot.ExecTimes) > 0 {
+					execTimes := []beacon.ExecutionTime{}
+					if err := services.GlobalBeaconService.GetBeaconIndexer().GetDynSSZ().UnmarshalSSZ(&execTimes, dbSlot.ExecTimes); err == nil {
+						slotData.ExecutionTimes = make([]models.ExecutionTimeDetail, 0, len(execTimes))
+						totalAvg := uint64(0)
+						totalCount := uint64(0)
+
+						for _, et := range execTimes {
+							detail := models.ExecutionTimeDetail{
+								ClientType: getClientTypeName(et.ClientType),
+								MinTime:    et.MinTime,
+								MaxTime:    et.MaxTime,
+								AvgTime:    et.AvgTime,
+								Count:      et.Count,
+							}
+							slotData.ExecutionTimes = append(slotData.ExecutionTimes, detail)
+							totalAvg += uint64(et.AvgTime) * uint64(et.Count)
+							totalCount += uint64(et.Count)
+						}
+
+						if totalCount > 0 {
+							slotData.AvgExecTime = uint32(totalAvg / totalCount)
+						}
+					}
+				}
+
+				// If we don't have detailed times, calculate average from min/max
+				if slotData.AvgExecTime == 0 {
+					slotData.AvgExecTime = (slotData.MinExecTime + slotData.MaxExecTime) / 2
+				}
 			}
 
 			pageData.Slots = append(pageData.Slots, slotData)

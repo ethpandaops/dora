@@ -42,6 +42,7 @@ type SlotPageBlockData struct {
 	BlockRoot                  []byte                 `json:"blockroot"`
 	ParentRoot                 []byte                 `json:"parentroot"`
 	StateRoot                  []byte                 `json:"stateroot"`
+	BodyRoot                   []byte                 `json:"bodyroot"`
 	Signature                  []byte                 `json:"signature"`
 	RandaoReveal               []byte                 `json:"randaoreveal"`
 	Graffiti                   []byte                 `json:"graffiti"`
@@ -100,6 +101,9 @@ type SlotPageExecutionData struct {
 	BaseFeePerGas uint64    `json:"base_fee_per_gas"`
 	BlockHash     []byte    `json:"block_hash"`
 	BlockNumber   uint64    `json:"block_number"`
+	BlobGasUsed   *uint64   `json:"blob_gas_used,omitempty"`
+	ExcessBlobGas *uint64   `json:"excess_blob_gas,omitempty"`
+	BlobBaseFee   *uint64   `json:"blob_base_fee,omitempty"`
 }
 
 type SlotPagePayloadHeader struct {

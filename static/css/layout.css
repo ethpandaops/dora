@@ -1,4 +1,3 @@
-
 .bi {
   vertical-align: -.125em;
   fill: currentColor;
@@ -348,4 +347,8 @@ span.validator-label {
     rgba(13,202,240,1) 50%,
     rgba(13,202,240,1) 100%
   );
+}
+
+.text-monospace {
+  font-family: var(--bs-font-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace) !important;
 }

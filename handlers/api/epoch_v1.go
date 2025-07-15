@@ -45,7 +45,7 @@ type APIEpochResponseV1 struct {
 // @Success 200 {object} ApiResponse{data=APIEpochResponseV1} "Success"
 // @Failure 400 {object} ApiResponse "Failure"
 // @Failure 500 {object} ApiResponse "Server Error"
-// @Router /api/v1/epoch/{epoch} [get]
+// @Router /v1/epoch/{epoch} [get]
 func ApiEpochV1(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 

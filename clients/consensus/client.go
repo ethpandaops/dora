@@ -11,6 +11,7 @@ import (
 
 	"github.com/ethpandaops/dora/clients/consensus/rpc"
 	"github.com/ethpandaops/dora/clients/sshtunnel"
+	"github.com/ethpandaops/dora/utils"
 )
 
 type ClientConfig struct {
@@ -46,13 +47,14 @@ type Client struct {
 	finalizedRoot              phase0.Root
 	finalizedEpoch             phase0.Epoch
 	lastFinalityUpdateEpoch    phase0.Epoch
-	lastMetadataUpdate         time.Time
+	lastMetadataUpdateEpoch    phase0.Epoch
+	lastMetadataUpdateTime     time.Time
 	lastSyncUpdateEpoch        phase0.Epoch
 	peers                      []*v1.Peer
-	blockDispatcher            Dispatcher[*v1.BlockEvent]
-	headDispatcher             Dispatcher[*v1.HeadEvent]
-	checkpointDispatcher       Dispatcher[*v1.Finality]
-	executionPayloadDispatcher Dispatcher[*v1.ExecutionPayloadEvent]
+	blockDispatcher            utils.Dispatcher[*v1.BlockEvent]
+	headDispatcher             utils.Dispatcher[*v1.HeadEvent]
+	checkpointDispatcher       utils.Dispatcher[*v1.Finality]
+	executionPayloadDispatcher utils.Dispatcher[*v1.ExecutionPayloadEvent]
 }
 
 func (pool *Pool) newPoolClient(clientIdx uint16, endpoint *ClientConfig) (*Client, error) {
@@ -85,19 +87,19 @@ func (client *Client) resetContext() {
 	client.clientCtx, client.clientCtxCancel = context.WithCancel(client.pool.ctx)
 }
 
-func (client *Client) SubscribeBlockEvent(capacity int, blocking bool) *Subscription[*v1.BlockEvent] {
+func (client *Client) SubscribeBlockEvent(capacity int, blocking bool) *utils.Subscription[*v1.BlockEvent] {
 	return client.blockDispatcher.Subscribe(capacity, blocking)
 }
 
-func (client *Client) SubscribeHeadEvent(capacity int, blocking bool) *Subscription[*v1.HeadEvent] {
+func (client *Client) SubscribeHeadEvent(capacity int, blocking bool) *utils.Subscription[*v1.HeadEvent] {
 	return client.headDispatcher.Subscribe(capacity, blocking)
 }
 
-func (client *Client) SubscribeFinalizedEvent(capacity int) *Subscription[*v1.Finality] {
+func (client *Client) SubscribeFinalizedEvent(capacity int) *utils.Subscription[*v1.Finality] {
 	return client.checkpointDispatcher.Subscribe(capacity, false)
 }
 
-func (client *Client) SubscribeExecutionPayloadEvent(capacity int, blocking bool) *Subscription[*v1.ExecutionPayloadEvent] {
+func (client *Client) SubscribeExecutionPayloadEvent(capacity int, blocking bool) *utils.Subscription[*v1.ExecutionPayloadEvent] {
 	return client.executionPayloadDispatcher.Subscribe(capacity, blocking)
 }
 

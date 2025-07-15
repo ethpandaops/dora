@@ -86,6 +86,15 @@
           <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" .Block.StateRoot }}"></i>
         </div>
       </div>
+      {{ if .Block.BodyRoot }}
+        <div class="row border-bottom p-2 mx-0">
+          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="The hash-tree-root of the BeaconBlockBody">Body Root:</span></div>
+          <div class="col-md-10 text-monospace text-break">
+            0x{{ printf "%x" .Block.BodyRoot }} 
+            <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" .Block.BodyRoot }}"></i>
+          </div>
+        </div>
+      {{ end }}
       {{ if ne .Slot 0 }}
         <div class="row border-bottom p-2 mx-0">
           <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="The BLS signature obtained by using the BeaconState, BeaconBlock and private key">Signature:</span></div>
@@ -239,6 +248,7 @@
                     <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="The Execution Block Hash">Block Hash:</span></div>
                     <div class="col-md-10 text-monospace text-break">
                       {{ ethBlockHashLink .BlockHash }}
+                      <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" .BlockHash }}"></i>
                     </div>
                   </div>
 
@@ -246,6 +256,37 @@
                     <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Parent Execution Block Hash">Parent Hash:</span></div>
                     <div class="col-md-10 text-monospace text-break">
                       0x{{ printf "%x" .ParentHash }}
+                      <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" .ParentHash }}"></i>
+                    </div>
+                  </div>
+                {{ end }}
+
+                {{ if .StateRoot }}
+                  <div class="row py-1">
+                    <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Execution State Root">State Root:</span></div>
+                    <div class="col-md-10 text-monospace text-break">
+                      0x{{ printf "%x" .StateRoot }}
+                      <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" .StateRoot }}"></i>
+                    </div>
+                  </div>
+                {{ end }}
+
+                {{ if .ReceiptsRoot }}
+                  <div class="row py-1">
+                    <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Execution Receipts Root">Receipts Root:</span></div>
+                    <div class="col-md-10 text-monospace text-break">
+                      0x{{ printf "%x" .ReceiptsRoot }}
+                      <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" .ReceiptsRoot }}"></i>
+                    </div>
+                  </div>
+                {{ end }}
+
+                {{ if .Random }}
+                  <div class="row py-1">
+                    <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Previous RANDAO value">Random:</span></div>
+                    <div class="col-md-10 text-monospace text-break">
+                      0x{{ printf "%x" .Random }}
+                      <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" .Random }}"></i>
                     </div>
                   </div>
                 {{ end }}
@@ -254,25 +295,54 @@
                   <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Fee recipient">Fee Recipient:</span></div>
                   <div class="col-md-10 text-monospace text-break">
                     {{ ethAddressLink .FeeRecipient }}
+                    <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" .FeeRecipient }}"></i>
                   </div>
                 </div>
 
                 <div class="row py-1">
                   <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Gas Used">Gas Used:</span></div>
-                  <div class="col-md-10 text-monospace text-break">{{ .GasUsed }}</div>
+                  <div class="col-md-10">
+                    <div style="position:relative;width:200px;height:inherit;">
+                      {{ formatAddCommas .GasUsed }} <small class="text-muted ml-3">({{ formatFloat (percentage .GasUsed .GasLimit) 2 }}%)</small>
+                      <div class="progress" style="position:absolute;bottom:-6px;width:200px;height:4px;">
+                        <div class="progress-bar" role="progressbar" style="width: {{ percentage .GasUsed .GasLimit }}%;" aria-valuenow="{{ .GasUsed }}" aria-valuemin="0" aria-valuemax="{{ .GasLimit }}"></div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
                 {{ if not $block.PayloadHeader }}
                   <div class="row py-1">
                     <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Gas Limit">Gas Limit:</span></div>
-                    <div class="col-md-10 text-monospace text-break">{{ .GasLimit }}</div>
+                    <div class="col-md-10 text-monospace text-break">{{ formatAddCommas .GasLimit }}</div>
                   </div>
                 {{ end }}
 
                 <div class="row py-1">
                   <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Base fee per gas">Base fee per gas:</span></div>
-                  <div class="col-md-10 text-monospace text-break">{{ .BaseFeePerGas }}</div>
+                  <div class="col-md-10 text-monospace text-break">{{ formatBaseFee .BaseFeePerGas }}</div>
                 </div>
+
+                {{ if .BlobBaseFee }}
+                  <div class="row py-1">
+                    <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Base fee per blob gas">Blob base fee:</span></div>
+                    <div class="col-md-10 text-monospace text-break">{{ formatBaseFee .BlobBaseFee }}</div>
+                  </div>
+                {{ end }}
+
+                {{ if .ExcessBlobGas }}
+                  <div class="row py-1">
+                    <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Excess blob gas">Excess blob gas:</span></div>
+                    <div class="col-md-10 text-monospace text-break">{{ formatAddCommas .ExcessBlobGas }}</div>
+                  </div>
+                {{ end }}
+
+                {{ if .BlobGasUsed }}
+                  <div class="row py-1">
+                    <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Blob gas used">Blob gas used:</span></div>
+                    <div class="col-md-10 text-monospace text-break">{{ formatAddCommas .BlobGasUsed }}</div>
+                  </div>
+                {{ end }}
 
                 <div class="row py-1">
                   <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Transactions">Transactions:</span></div>

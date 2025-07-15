@@ -35,6 +35,7 @@ type EpochPageData struct {
 	ScheduledCount          uint64               `json:"scheduled_count"`
 	OrphanedCount           uint64               `json:"orphaned_count"`
 	EthTransactionCount     uint64               `json:"eth_transaction_count"`
+	BlobCount               uint64               `json:"blob_count"`
 	Slots                   []*EpochPageDataSlot `json:"slots"`
 }
 
@@ -54,6 +55,7 @@ type EpochPageDataSlot struct {
 	AttesterSlashingCount uint64    `json:"attester_slashing_count"`
 	SyncParticipation     float64   `json:"sync_participation"`
 	EthTransactionCount   uint64    `json:"eth_transaction_count"`
+	BlobCount             uint64    `json:"blob_count"`
 	EthBlockNumber        uint64    `json:"eth_block_number"`
 	WithEthBlock          bool      `json:"with_eth_block"`
 	Graffiti              []byte    `json:"graffiti"`

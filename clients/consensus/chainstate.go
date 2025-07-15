@@ -9,6 +9,7 @@ import (
 
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
+	"github.com/ethpandaops/dora/utils"
 	"github.com/ethpandaops/ethwallclock"
 	"github.com/mashingan/smapping"
 )
@@ -26,9 +27,9 @@ type ChainState struct {
 	finalityMutex sync.RWMutex
 	finality      *v1.Finality
 
-	checkpointDispatcher     Dispatcher[*v1.Finality]
-	wallclockEpochDispatcher Dispatcher[*ethwallclock.Epoch]
-	wallclockSlotDispatcher  Dispatcher[*ethwallclock.Slot]
+	checkpointDispatcher     utils.Dispatcher[*v1.Finality]
+	wallclockEpochDispatcher utils.Dispatcher[*ethwallclock.Epoch]
+	wallclockSlotDispatcher  utils.Dispatcher[*ethwallclock.Slot]
 }
 
 func newChainState() *ChainState {

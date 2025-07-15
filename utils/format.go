@@ -32,7 +32,7 @@ func FormatETHFromGweiShort(gwei uint64) string {
 	return fmt.Sprintf("%.4f", float64(gwei)/math.Pow10(9))
 }
 
-func FormatFullETHFromGwei(gwei uint64) string {
+func FormatFullEthFromGwei(gwei uint64) string {
 	return fmt.Sprintf("%v ETH", uint64(float64(gwei)/math.Pow10(9)))
 }
 
@@ -46,6 +46,40 @@ func FormatFloat(num float64, precision int) string {
 	s := strings.TrimRight(strings.TrimRight(p.Sprintf(f, num), "0"), ".")
 	r := []rune(p.Sprintf(s, num))
 	return string(r)
+}
+
+func FormatBaseFee(weiValue uint64) template.HTML {
+	// Convert wei to gwei (1 gwei = 1e9 wei)
+	gweiValue := float64(weiValue) / 1e9
+
+	// If less than 0.1 gwei, show in wei
+	if gweiValue < 0.1 {
+		return template.HTML(string(FormatAddCommas(weiValue)) + " wei")
+	}
+
+	// Show in gwei with appropriate decimal places
+	if gweiValue < 1 {
+		return template.HTML(fmt.Sprintf("%.3f gwei", gweiValue))
+	} else if gweiValue < 100 {
+		return template.HTML(fmt.Sprintf("%.2f gwei", gweiValue))
+	} else {
+		return template.HTML(fmt.Sprintf("%.1f gwei", gweiValue))
+	}
+}
+
+func formatPercentageAlert(num float64, precision int, warnBelow float64, errBelow float64) template.HTML {
+	p := message.NewPrinter(language.English)
+	f := fmt.Sprintf("%%.%vf", precision)
+	s := strings.TrimRight(strings.TrimRight(p.Sprintf(f, num), "0"), ".")
+	r := []rune(p.Sprintf(s, num))
+	switch {
+	case num < errBelow:
+		return template.HTML(fmt.Sprintf("<span class=\"text-danger\">%s%%</span>", string(r)))
+	case num < warnBelow:
+		return template.HTML(fmt.Sprintf("<span class=\"text-warning\">%s%%</span>", string(r)))
+	default:
+		return template.HTML(fmt.Sprintf("%s%%", string(r)))
+	}
 }
 
 func FormatAddCommasFormatted(num float64, precision uint) template.HTML {
@@ -415,4 +449,50 @@ func FormatWithdawalCredentials(hash []byte) template.HTML {
 	}
 
 	return formatWithdrawalHash(hash)
+}
+
+// FormatGweiValue formats a gas value in Gwei
+func FormatGweiValue(val uint64) string {
+	return FormatFloat(float64(val)/float64(1e9), 2) + " Gwei"
+}
+
+// CalculatePercentage calculates the percentage of a value from a total
+func CalculatePercentage(value uint64, total uint64) float64 {
+	if total == 0 {
+		return 0
+	}
+	return float64(value) * 100 / float64(total)
+}
+
+// FormatByteAmount converts a byte count to a human-readable string with appropriate unit (B, kB, MB, GB)
+func FormatByteAmount(bytes uint64) template.HTML {
+	const unit = 1024
+	if bytes < unit {
+		return template.HTML(fmt.Sprintf("%d B", bytes))
+	}
+	div, exp := uint64(unit), 0
+	for n := bytes / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	value := float64(bytes) / float64(div)
+	return template.HTML(fmt.Sprintf("%.2f %ciB", value, "kMGTPE"[exp]))
+}
+
+func FormatRecvDelay(delay int32) template.HTML {
+	if delay == 0 {
+		return template.HTML("-")
+	}
+	return template.HTML(fmt.Sprintf("%.2f s", float64(delay)/1000))
+}
+
+func formatAlertNumber(displayText string, value float64, yellowThreshold float64, redThreshold float64) template.HTML {
+	switch {
+	case value >= redThreshold:
+		return template.HTML(fmt.Sprintf("<span class=\"text-danger\">%s</span>", displayText))
+	case value >= yellowThreshold:
+		return template.HTML(fmt.Sprintf("<span class=\"text-warning\">%s</span>", displayText))
+	default:
+		return template.HTML(displayText)
+	}
 }

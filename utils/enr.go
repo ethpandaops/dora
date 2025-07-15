@@ -68,13 +68,15 @@ func GetNodeIDFromENR(r *enr.Record) enode.ID {
 
 // attrFormatters contains formatting functions for well-known ENR keys.
 var attrFormatters = map[string]func(rlp.RawValue) (string, bool){
-	"id":   formatAttrString,
-	"ip":   formatAttrIP,
-	"ip6":  formatAttrIP,
-	"tcp":  formatAttrUint,
-	"tcp6": formatAttrUint,
-	"udp":  formatAttrUint,
-	"udp6": formatAttrUint,
+	"id":     formatAttrString,
+	"ip":     formatAttrIP,
+	"ip6":    formatAttrIP,
+	"tcp":    formatAttrUint,
+	"tcp6":   formatAttrUint,
+	"udp":    formatAttrUint,
+	"udp6":   formatAttrUint,
+	"quic":   formatAttrUint,
+	"client": formatAttrClient,
 }
 
 func formatAttrRaw(v rlp.RawValue) (string, bool) {
@@ -101,6 +103,21 @@ func formatAttrUint(v rlp.RawValue) (string, bool) {
 		return "", false
 	}
 	return strconv.FormatUint(x, 10), true
+}
+
+func formatAttrClient(v rlp.RawValue) (string, bool) {
+	var client []string
+	if err := rlp.DecodeBytes(v, &client); err != nil {
+		return "", false
+	}
+	result := ""
+	for i, part := range client {
+		if i > 0 {
+			result += ", "
+		}
+		result += part
+	}
+	return result, true
 }
 
 // ConvertPeerIDStringToEnodeID converts a libp2p peer ID string to an enode.ID.
