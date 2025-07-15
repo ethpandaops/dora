@@ -60,10 +60,12 @@ func (e *S3Engine) getObjectKey(root []byte, slot uint64) string {
 }
 
 type objectMetadata struct {
-	objVersion   uint32
-	headerLength uint32
-	bodyVersion  uint32
-	bodyLength   uint32
+	objVersion     uint32
+	headerLength   uint32
+	bodyVersion    uint32
+	bodyLength     uint32
+	payloadVersion uint32
+	payloadLength  uint32
 }
 
 func (e *S3Engine) readObjectMetadata(data []byte) (*objectMetadata, int, error) {
@@ -78,6 +80,13 @@ func (e *S3Engine) readObjectMetadata(data []byte) (*objectMetadata, int, error)
 		metadata.bodyVersion = binary.BigEndian.Uint32(data[8:12])
 		metadata.bodyLength = binary.BigEndian.Uint32(data[12:16])
 		metadataLength += 12
+	case 2:
+		metadata.headerLength = binary.BigEndian.Uint32(data[4:8])
+		metadata.bodyVersion = binary.BigEndian.Uint32(data[8:12])
+		metadata.bodyLength = binary.BigEndian.Uint32(data[12:16])
+		metadata.payloadVersion = binary.BigEndian.Uint32(data[16:20])
+		metadata.payloadLength = binary.BigEndian.Uint32(data[20:24])
+		metadataLength += 20
 	}
 
 	return metadata, metadataLength, nil
@@ -92,12 +101,18 @@ func (e *S3Engine) writeObjectMetadata(metadata *objectMetadata) []byte {
 		data = binary.BigEndian.AppendUint32(data, metadata.headerLength)
 		data = binary.BigEndian.AppendUint32(data, metadata.bodyVersion)
 		data = binary.BigEndian.AppendUint32(data, metadata.bodyLength)
+	case 2:
+		data = binary.BigEndian.AppendUint32(data, metadata.headerLength)
+		data = binary.BigEndian.AppendUint32(data, metadata.bodyVersion)
+		data = binary.BigEndian.AppendUint32(data, metadata.bodyLength)
+		data = binary.BigEndian.AppendUint32(data, metadata.payloadVersion)
+		data = binary.BigEndian.AppendUint32(data, metadata.payloadLength)
 	}
 
 	return data
 }
 
-func (e *S3Engine) GetBlock(ctx context.Context, slot uint64, root []byte, parseBlock func(uint64, []byte) (interface{}, error)) (*types.BlockData, error) {
+func (e *S3Engine) GetBlock(ctx context.Context, slot uint64, root []byte, parseBlock func(uint64, []byte) (interface{}, error), parsePayload func(uint64, []byte) (interface{}, error)) (*types.BlockData, error) {
 	key := e.getObjectKey(root, slot)
 
 	obj, err := e.client.GetObject(ctx, e.bucket, key, minio.GetObjectOptions{})
@@ -184,20 +199,29 @@ func (e *S3Engine) AddBlock(ctx context.Context, slot uint64, root []byte, dataC
 	}
 
 	metadata := &objectMetadata{
-		objVersion:   uint32(blockData.HeaderVersion),
+		objVersion:   1,
 		headerLength: uint32(len(blockData.HeaderData)),
 		bodyVersion:  uint32(blockData.BodyVersion),
 		bodyLength:   uint32(len(blockData.BodyData)),
+	}
+
+	if blockData.PayloadVersion != 0 {
+		metadata.objVersion = 2
+		metadata.payloadVersion = uint32(blockData.PayloadVersion)
+		metadata.payloadLength = uint32(len(blockData.PayloadData))
 	}
 
 	metadataBytes := e.writeObjectMetadata(metadata)
 	metadataLength := len(metadataBytes)
 
 	// Prepare data with header and body versions and lengths
-	data := make([]byte, metadataLength+int(metadata.headerLength)+int(metadata.bodyLength))
+	data := make([]byte, metadataLength+int(metadata.headerLength)+int(metadata.bodyLength)+int(metadata.payloadLength))
 	copy(data[:metadataLength], metadataBytes)
 	copy(data[metadataLength:metadataLength+int(metadata.headerLength)], blockData.HeaderData)
-	copy(data[metadataLength+int(metadata.headerLength):], blockData.BodyData)
+	copy(data[metadataLength+int(metadata.headerLength):metadataLength+int(metadata.headerLength)+int(metadata.bodyLength)], blockData.BodyData)
+	if metadata.objVersion == 2 {
+		copy(data[metadataLength+int(metadata.headerLength)+int(metadata.bodyLength):metadataLength+int(metadata.headerLength)+int(metadata.bodyLength)+int(metadata.payloadLength)], blockData.PayloadData)
+	}
 
 	// Upload object
 	_, err = e.client.PutObject(
