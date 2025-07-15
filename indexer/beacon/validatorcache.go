@@ -53,7 +53,7 @@ type ValidatorData struct {
 	ActivationEligibilityEpoch phase0.Epoch
 	ActivationEpoch            phase0.Epoch
 	ExitEpoch                  phase0.Epoch
-	EffectiveBalanceEth        uint16
+	EffectiveBalanceEth        uint32
 }
 
 // validatorDiff represents an updated validator entry in the validator set cache.
@@ -215,7 +215,7 @@ func (cache *validatorCache) updateValidatorSet(slot phase0.Slot, dependentRoot 
 				ActivationEligibilityEpoch: validators[i].ActivationEligibilityEpoch,
 				ActivationEpoch:            validators[i].ActivationEpoch,
 				ExitEpoch:                  validators[i].ExitEpoch,
-				EffectiveBalanceEth:        uint16(validators[i].EffectiveBalance / EtherGweiFactor),
+				EffectiveBalanceEth:        uint32(validators[i].EffectiveBalance / EtherGweiFactor),
 			}
 			if cache.isActiveValidator(activeData) {
 				cachedValidator.activeData = activeData
@@ -371,7 +371,7 @@ func (cache *validatorCache) setFinalizedEpoch(epoch phase0.Epoch, nextEpochDepe
 					ActivationEligibilityEpoch: diff.validator.ActivationEligibilityEpoch,
 					ActivationEpoch:            diff.validator.ActivationEpoch,
 					ExitEpoch:                  diff.validator.ExitEpoch,
-					EffectiveBalanceEth:        uint16(diff.validator.EffectiveBalance / EtherGweiFactor),
+					EffectiveBalanceEth:        uint32(diff.validator.EffectiveBalance / EtherGweiFactor),
 				}
 				break
 			}
@@ -448,7 +448,7 @@ func (cache *validatorCache) streamValidatorSetForRoot(blockRoot phase0.Root, on
 					ActivationEligibilityEpoch: diff.validator.ActivationEligibilityEpoch,
 					ActivationEpoch:            diff.validator.ActivationEpoch,
 					ExitEpoch:                  diff.validator.ExitEpoch,
-					EffectiveBalanceEth:        uint16(diff.validator.EffectiveBalance / EtherGweiFactor),
+					EffectiveBalanceEth:        uint32(diff.validator.EffectiveBalance / EtherGweiFactor),
 				}
 				validatorEpoch = diff.epoch
 				latestValidator = diff.validator
@@ -473,7 +473,7 @@ func (cache *validatorCache) streamValidatorSetForRoot(blockRoot phase0.Root, on
 				ActivationEligibilityEpoch: aheadValidator.ActivationEligibilityEpoch,
 				ActivationEpoch:            aheadValidator.ActivationEpoch,
 				ExitEpoch:                  aheadValidator.ExitEpoch,
-				EffectiveBalanceEth:        uint16(aheadValidator.EffectiveBalance / EtherGweiFactor),
+				EffectiveBalanceEth:        uint32(aheadValidator.EffectiveBalance / EtherGweiFactor),
 			}
 			latestValidator = aheadValidator
 		}
@@ -707,7 +707,7 @@ func (cache *validatorCache) prepopulateFromDB() (uint64, error) {
 				ActivationEligibilityEpoch: phase0.Epoch(db.ConvertInt64ToUint64(dbVal.ActivationEligibilityEpoch)),
 				ActivationEpoch:            phase0.Epoch(db.ConvertInt64ToUint64(dbVal.ActivationEpoch)),
 				ExitEpoch:                  phase0.Epoch(db.ConvertInt64ToUint64(dbVal.ExitEpoch)),
-				EffectiveBalanceEth:        uint16(val.EffectiveBalance / EtherGweiFactor),
+				EffectiveBalanceEth:        uint32(val.EffectiveBalance / EtherGweiFactor),
 			}
 			if cache.isActiveValidator(valData) {
 				valEntry.activeData = valData
