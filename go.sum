@@ -601,8 +601,8 @@ github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZb
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/pressly/goose/v3 v3.24.3 h1:DSWWNwwggVUsYZ0X2VitiAa9sKuqtBfe+Jr9zFGwWlM=
 github.com/pressly/goose/v3 v3.24.3/go.mod h1:v9zYL4xdViLHCUUJh/mhjnm6JrK7Eul8AS93IxiZM4E=
-github.com/probe-lab/eth-das-guardian v0.0.0-20250716073142-3ff413971bea h1:sCRpWh5L0uSHEhy2jPcIUbSp+cjEQ4Hjo3Pv7eArryY=
-github.com/probe-lab/eth-das-guardian v0.0.0-20250716073142-3ff413971bea/go.mod h1:MfHNGCeEaJjjds8H7RrfMqf+rZd8+X95/Z4NK4fmxPY=
+github.com/probe-lab/eth-das-guardian v0.1.0 h1:LNsTEtDcYVD8mC2jYapILLhEgXQgWoQYGo1ZXqSSfdU=
+github.com/probe-lab/eth-das-guardian v0.1.0/go.mod h1:MfHNGCeEaJjjds8H7RrfMqf+rZd8+X95/Z4NK4fmxPY=
 github.com/prometheus/client_golang v0.8.0/go.mod h1:7SWBe2y4D6OKWSNQJUaRYU/AaXPKyh/dDVn+NZz0KFw=
 github.com/prometheus/client_golang v1.21.1 h1:DOvXXTqVzvkIewV/CDPFdejpMCGeMcbGCQ8YOmu+Ibk=
 github.com/prometheus/client_golang v1.21.1/go.mod h1:U9NM32ykUErtVBxdvD3zfi+EuFkkaBvMb09mIfe0Zgg=
