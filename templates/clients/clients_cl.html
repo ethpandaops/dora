@@ -818,8 +818,17 @@
                   <tr>
                     <td><strong>Finalized Root:</strong></td>
                     <td><code class="text-truncate d-inline-block" style="max-width: 400px">${escapeHtml(status.finalized_root)}</code></td>
-                  </tr>
-                </tbody>
+                  </tr>`;
+            
+            // Add earliest_available_slot if available (statusv2 only)
+            if (status.earliest_slot !== undefined) {
+              html += `<tr>
+                    <td><strong>Earliest Available Slot:</strong></td>
+                    <td><a href="/slot/${status.earliest_slot}">${status.earliest_slot.toLocaleString()}</a></td>
+                  </tr>`;
+            }
+            
+            html += `</tbody>
               </table>
             </div>`;
           }
