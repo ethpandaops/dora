@@ -669,7 +669,7 @@ func buildCLClientsPageData(sortOrder string) (*models.ClientsCLPageData, time.D
 	pageData.Sorting = sortOrder
 
 	// Add current fork digest
-	forkDigest := chainState.GetCurrentForkDigest()
+	forkDigest := chainState.GetForkDigestForEpoch(chainState.CurrentEpoch())
 	pageData.CurrentForkDigest = forkDigest[:]
 
 	return pageData, cacheTime

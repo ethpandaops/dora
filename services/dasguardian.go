@@ -70,8 +70,9 @@ func (d *dasGuardianAPI) GetStateVersion() string {
 	return "electra"
 }
 
-func (d *dasGuardianAPI) GetForkDigest() ([]byte, error) {
-	forkDigest := GlobalBeaconService.GetChainState().GetCurrentForkDigest()
+func (d *dasGuardianAPI) GetForkDigest(slot uint64) ([]byte, error) {
+	chainState := GlobalBeaconService.GetChainState()
+	forkDigest := chainState.GetForkDigestForEpoch(chainState.EpochOfSlot(phase0.Slot(slot)))
 	return forkDigest[:], nil
 }
 

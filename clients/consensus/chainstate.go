@@ -255,22 +255,21 @@ func (cs *ChainState) EpochStartSlot(epoch phase0.Epoch) phase0.Slot {
 	return phase0.Slot(epoch) * phase0.Slot(cs.specs.SlotsPerEpoch)
 }
 
-func (cs *ChainState) GetCurrentForkDigest() phase0.ForkDigest {
+func (cs *ChainState) GetForkDigestForEpoch(epoch phase0.Epoch) phase0.ForkDigest {
 	if cs.specs == nil || cs.genesis == nil {
 		return phase0.ForkDigest{}
 	}
 
 	var currentBlobParams *BlobScheduleEntry
 
-	currentEpoch := cs.CurrentEpoch()
-	if cs.specs.FuluForkEpoch != nil && currentEpoch >= phase0.Epoch(*cs.specs.FuluForkEpoch) {
+	if cs.specs.FuluForkEpoch != nil && epoch >= phase0.Epoch(*cs.specs.FuluForkEpoch) {
 		currentBlobParams = &BlobScheduleEntry{
 			Epoch:            *cs.specs.ElectraForkEpoch,
 			MaxBlobsPerBlock: cs.specs.MaxBlobsPerBlockElectra,
 		}
 
 		for i, blobScheduleEntry := range cs.specs.BlobSchedule {
-			if blobScheduleEntry.Epoch <= uint64(currentEpoch) {
+			if blobScheduleEntry.Epoch <= uint64(epoch) {
 				currentBlobParams = &cs.specs.BlobSchedule[i]
 			} else {
 				break
@@ -278,7 +277,7 @@ func (cs *ChainState) GetCurrentForkDigest() phase0.ForkDigest {
 		}
 	}
 
-	currentForkVersion := cs.GetForkVersionAtEpoch(currentEpoch)
+	currentForkVersion := cs.GetForkVersionAtEpoch(epoch)
 
 	return cs.GetForkDigest(currentForkVersion, currentBlobParams)
 }
