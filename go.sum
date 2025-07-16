@@ -593,8 +593,6 @@ github.com/pion/webrtc/v4 v4.0.10 h1:Hq/JLjhqLxi+NmCtE8lnRPDr8H4LcNvwg8OxVcdv56Q
 github.com/pion/webrtc/v4 v4.0.10/go.mod h1:ViHLVaNpiuvaH8pdiuQxuA9awuE6KVzAXx3vVWilOck=
 github.com/pk910/dynamic-ssz v1.0.0 h1:xxWUGHggH8n5c6EeHpOGUg6jNHzdrOupPmqvjd+PYKo=
 github.com/pk910/dynamic-ssz v1.0.0/go.mod h1:HhLP9GzzGSieNuRBzPyWG5CzsjGXceJ1glhLjb3pcRM=
-github.com/pk910/eth-das-guardian v0.0.0-20250710141417-ca4a5a19b831 h1:G2F9GZOV5dvnvX0hJkV1JczJD/JK487MATOts61R0pg=
-github.com/pk910/eth-das-guardian v0.0.0-20250710141417-ca4a5a19b831/go.mod h1:MfHNGCeEaJjjds8H7RrfMqf+rZd8+X95/Z4NK4fmxPY=
 github.com/pkg/diff v0.0.0-20210226163009-20ebb0f2a09e/go.mod h1:pJLUxLENpZxwdsKMEsNbx1VGcRFpLqf3715MtcvvzbA=
 github.com/pkg/errors v0.8.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
 github.com/pkg/errors v0.9.1 h1:FEBLx1zS214owpjy7qsBeixbURkuhQAwrK5UwLGTwt4=
@@ -603,6 +601,8 @@ github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZb
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/pressly/goose/v3 v3.24.3 h1:DSWWNwwggVUsYZ0X2VitiAa9sKuqtBfe+Jr9zFGwWlM=
 github.com/pressly/goose/v3 v3.24.3/go.mod h1:v9zYL4xdViLHCUUJh/mhjnm6JrK7Eul8AS93IxiZM4E=
+github.com/probe-lab/eth-das-guardian v0.0.0-20250716073142-3ff413971bea h1:sCRpWh5L0uSHEhy2jPcIUbSp+cjEQ4Hjo3Pv7eArryY=
+github.com/probe-lab/eth-das-guardian v0.0.0-20250716073142-3ff413971bea/go.mod h1:MfHNGCeEaJjjds8H7RrfMqf+rZd8+X95/Z4NK4fmxPY=
 github.com/prometheus/client_golang v0.8.0/go.mod h1:7SWBe2y4D6OKWSNQJUaRYU/AaXPKyh/dDVn+NZz0KFw=
 github.com/prometheus/client_golang v1.21.1 h1:DOvXXTqVzvkIewV/CDPFdejpMCGeMcbGCQ8YOmu+Ibk=
 github.com/prometheus/client_golang v1.21.1/go.mod h1:U9NM32ykUErtVBxdvD3zfi+EuFkkaBvMb09mIfe0Zgg=

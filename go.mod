@@ -25,7 +25,7 @@ require (
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/pk910/dynamic-ssz v1.0.0
 	github.com/pressly/goose/v3 v3.24.3
-	github.com/probe-lab/eth-das-guardian v0.0.0-20250709114608-a6e2a7fbb69c
+	github.com/probe-lab/eth-das-guardian v0.0.0-20250716073142-3ff413971bea
 	github.com/protolambda/bls12-381-util v0.1.0
 	github.com/protolambda/zrnt v0.34.1
 	github.com/protolambda/ztyp v0.2.2
@@ -254,5 +254,3 @@ require (
 )
 
 replace github.com/attestantio/go-eth2-client => github.com/attestantio/go-eth2-client v0.0.0-20250603135601-6ac0bfda7fda
-
-replace github.com/probe-lab/eth-das-guardian => github.com/pk910/eth-das-guardian v0.0.0-20250710141417-ca4a5a19b831
