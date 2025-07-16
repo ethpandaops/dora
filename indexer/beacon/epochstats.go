@@ -47,7 +47,7 @@ type EpochStatsValues struct {
 	RandaoMix             phase0.Hash32
 	NextRandaoMix         phase0.Hash32
 	ActiveIndices         []phase0.ValidatorIndex
-	EffectiveBalances     []uint16
+	EffectiveBalances     []uint32
 	ProposerDuties        []phase0.ValidatorIndex
 	AttesterDuties        [][][]duties.ActiveIndiceIndex
 	SyncCommitteeDuties   []phase0.ValidatorIndex
@@ -61,12 +61,15 @@ type EpochStatsValues struct {
 }
 
 // EpochStatsPacked holds the packed values for the epoch-specific information.
+//
+//	generate ssz: (this is really ugly, needs path patching and post-fixing to work)
+//	sszgen --suffix ssz --path . --include $GOPATH/pkg/mod/github.com/attestantio/go-eth2-client\@v0.26.0/spec/phase0,$GOPATH/pkg/mod/github.com/attestantio/go-eth2-client\@v0.26.0/spec/electra --objs EpochStatsPacked
 type EpochStatsPacked struct {
 	ActiveValidators      []EpochStatsPackedValidator `ssz-max:"10000000"`
 	ProposerDuties        []phase0.ValidatorIndex     `ssz-max:"100"`
 	SyncCommitteeDuties   []phase0.ValidatorIndex     `ssz-max:"10000"`
-	RandaoMix             phase0.Hash32
-	NextRandaoMix         phase0.Hash32
+	RandaoMix             phase0.Hash32               `ssz-size:"32"`
+	NextRandaoMix         phase0.Hash32               `ssz-size:"32"`
 	TotalBalance          phase0.Gwei
 	ActiveBalance         phase0.Gwei
 	FirstDepositIndex     uint64
@@ -77,7 +80,7 @@ type EpochStatsPacked struct {
 // EpochStatsPackedValidator holds the packed values for an active validator.
 type EpochStatsPackedValidator struct {
 	ValidatorIndexOffset uint32 // offset to the previous index in the list (this is smaller than storing the full validator index)
-	EffectiveBalanceEth  uint16 // effective balance in full ETH
+	EffectiveBalanceEth  uint32 // effective balance in full ETH
 }
 
 type EpochStatsPendingWithdrawals struct {
@@ -217,7 +220,7 @@ func (es *EpochStats) parsePackedSSZ(chainState *consensus.ChainState, ssz []byt
 		RandaoMix:             packedValues.RandaoMix,
 		NextRandaoMix:         packedValues.NextRandaoMix,
 		ActiveIndices:         make([]phase0.ValidatorIndex, len(packedValues.ActiveValidators)),
-		EffectiveBalances:     make([]uint16, len(packedValues.ActiveValidators)),
+		EffectiveBalances:     make([]uint32, len(packedValues.ActiveValidators)),
 		ProposerDuties:        packedValues.ProposerDuties,
 		SyncCommitteeDuties:   packedValues.SyncCommitteeDuties,
 		TotalBalance:          packedValues.TotalBalance,
@@ -347,7 +350,7 @@ func (es *EpochStats) processState(indexer *Indexer, validatorSet []*phase0.Vali
 	chainState := indexer.consensusPool.GetChainState()
 	values := &EpochStatsValues{
 		ActiveIndices:         make([]phase0.ValidatorIndex, 0),
-		EffectiveBalances:     make([]uint16, 0),
+		EffectiveBalances:     make([]uint32, 0),
 		SyncCommitteeDuties:   dependentState.syncCommittee,
 		TotalBalance:          0,
 		ActiveBalance:         0,
@@ -373,7 +376,7 @@ func (es *EpochStats) processState(indexer *Indexer, validatorSet []*phase0.Vali
 			values.TotalBalance += dependentState.validatorBalances[index]
 			if es.epoch >= validator.ActivationEpoch && es.epoch < validator.ExitEpoch {
 				values.ActiveIndices = append(values.ActiveIndices, phase0.ValidatorIndex(index))
-				values.EffectiveBalances = append(values.EffectiveBalances, uint16(validator.EffectiveBalance/EtherGweiFactor))
+				values.EffectiveBalances = append(values.EffectiveBalances, uint32(validator.EffectiveBalance/EtherGweiFactor))
 				values.EffectiveBalance += validator.EffectiveBalance
 				values.ActiveBalance += dependentState.validatorBalances[index]
 			}
@@ -387,7 +390,7 @@ func (es *EpochStats) processState(indexer *Indexer, validatorSet []*phase0.Vali
 
 		indexer.validatorCache.streamValidatorSetForRoot(es.dependentRoot, true, &es.epoch, func(index phase0.ValidatorIndex, flags uint16, activeData *ValidatorData, validator *phase0.Validator) error {
 			values.ActiveIndices = append(values.ActiveIndices, index)
-			values.EffectiveBalances = append(values.EffectiveBalances, uint16(activeData.EffectiveBalance()/EtherGweiFactor))
+			values.EffectiveBalances = append(values.EffectiveBalances, uint32(activeData.EffectiveBalance()/EtherGweiFactor))
 			values.EffectiveBalance += activeData.EffectiveBalance()
 			values.ActiveBalance += dependentState.validatorBalances[index]
 			return nil
@@ -511,11 +514,11 @@ func (es *EpochStats) precomputeFromParentState(indexer *Indexer, parentState *E
 
 		// update active validators from validator cache
 		values.ActiveIndices = make([]phase0.ValidatorIndex, 0, len(parentStatsValues.ActiveIndices))
-		values.EffectiveBalances = make([]uint16, 0, len(parentStatsValues.ActiveIndices))
+		values.EffectiveBalances = make([]uint32, 0, len(parentStatsValues.ActiveIndices))
 		values.ActiveBalance = 0
 		indexer.validatorCache.streamValidatorSetForRoot(es.dependentRoot, true, &es.epoch, func(index phase0.ValidatorIndex, flags uint16, activeData *ValidatorData, validator *phase0.Validator) error {
 			values.ActiveIndices = append(values.ActiveIndices, index)
-			values.EffectiveBalances = append(values.EffectiveBalances, uint16(activeData.EffectiveBalance()/EtherGweiFactor))
+			values.EffectiveBalances = append(values.EffectiveBalances, uint32(activeData.EffectiveBalance()/EtherGweiFactor))
 			if parentState.dependentState != nil && len(parentState.dependentState.validatorBalances) > int(index) {
 				values.ActiveBalance += parentState.dependentState.validatorBalances[index]
 			} else {

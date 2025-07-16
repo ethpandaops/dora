@@ -48,22 +48,22 @@ func FormatFloat(num float64, precision int) string {
 	return string(r)
 }
 
-func FormatBaseFee(weiValue uint64) string {
+func FormatBaseFee(weiValue uint64) template.HTML {
 	// Convert wei to gwei (1 gwei = 1e9 wei)
 	gweiValue := float64(weiValue) / 1e9
 
 	// If less than 0.1 gwei, show in wei
 	if gweiValue < 0.1 {
-		return fmt.Sprintf("%s wei", FormatAddCommas(weiValue))
+		return template.HTML(string(FormatAddCommas(weiValue)) + " wei")
 	}
 
 	// Show in gwei with appropriate decimal places
 	if gweiValue < 1 {
-		return fmt.Sprintf("%.3f gwei", gweiValue)
+		return template.HTML(fmt.Sprintf("%.3f gwei", gweiValue))
 	} else if gweiValue < 100 {
-		return fmt.Sprintf("%.2f gwei", gweiValue)
+		return template.HTML(fmt.Sprintf("%.2f gwei", gweiValue))
 	} else {
-		return fmt.Sprintf("%.1f gwei", gweiValue)
+		return template.HTML(fmt.Sprintf("%.1f gwei", gweiValue))
 	}
 }
 
