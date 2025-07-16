@@ -51,6 +51,7 @@ type IndexPageDataForks struct {
 	Time             uint64  `json:"time"`
 	Type             string  `json:"type"`                          // "consensus" or "bpo"
 	MaxBlobsPerBlock *uint64 `json:"max_blobs_per_block,omitempty"` // Only for BPO forks
+	ForkDigest       []byte  `json:"fork_digest"`                   // Fork digest for this fork
 }
 
 type IndexPageDataEpochs struct {
