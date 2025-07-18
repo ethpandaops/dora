@@ -392,6 +392,7 @@ func buildCLClientsPageData(sortOrder string) (*models.ClientsCLPageData, time.D
 			Name:                 client.GetName(),
 			Version:              client.GetVersion(),
 			PeerID:               peerId,
+			NodeENR:              node.ENR,
 			PeerCount:            inPeerCount + outPeerCount,
 			PeersInboundCounter:  inPeerCount,
 			PeersOutboundCounter: outPeerCount,
@@ -666,6 +667,10 @@ func buildCLClientsPageData(sortOrder string) (*models.ClientsCLPageData, time.D
 		sortOrder = "name"
 	}
 	pageData.Sorting = sortOrder
+
+	// Add current fork digest
+	forkDigest := chainState.GetForkDigestForEpoch(chainState.CurrentEpoch())
+	pageData.CurrentForkDigest = forkDigest[:]
 
 	return pageData, cacheTime
 }

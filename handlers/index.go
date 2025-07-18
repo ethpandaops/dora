@@ -7,11 +7,13 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"time"
 
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/services"
@@ -195,54 +197,125 @@ func buildIndexPageData() (*models.IndexPageData, time.Duration) {
 	}
 
 	pageData.NetworkForks = make([]*models.IndexPageDataForks, 0)
-	if specs.AltairForkEpoch != nil && *specs.AltairForkEpoch < uint64(18446744073709551615) {
+
+	// Add Phase0 (Genesis) fork
+	if networkGenesis != nil {
+		forkDigest := chainState.GetForkDigest(phase0.Version(networkGenesis.GenesisForkVersion), nil)
 		pageData.NetworkForks = append(pageData.NetworkForks, &models.IndexPageDataForks{
-			Name:    "Altair",
-			Epoch:   *specs.AltairForkEpoch,
-			Version: specs.AltairForkVersion[:],
-			Active:  uint64(currentEpoch) >= *specs.AltairForkEpoch,
+			Name:       "Phase0",
+			Epoch:      0,
+			Version:    networkGenesis.GenesisForkVersion[:],
+			Time:       uint64(networkGenesis.GenesisTime.Unix()),
+			Active:     true,
+			Type:       "consensus",
+			ForkDigest: forkDigest[:],
+		})
+	}
+
+	// Add consensus forks
+	if specs.AltairForkEpoch != nil && *specs.AltairForkEpoch < uint64(18446744073709551615) {
+		forkDigest := chainState.GetForkDigest(specs.AltairForkVersion, nil)
+		pageData.NetworkForks = append(pageData.NetworkForks, &models.IndexPageDataForks{
+			Name:       "Altair",
+			Epoch:      *specs.AltairForkEpoch,
+			Version:    specs.AltairForkVersion[:],
+			Time:       uint64(chainState.EpochToTime(phase0.Epoch(*specs.AltairForkEpoch)).Unix()),
+			Active:     uint64(currentEpoch) >= *specs.AltairForkEpoch,
+			Type:       "consensus",
+			ForkDigest: forkDigest[:],
 		})
 	}
 	if specs.BellatrixForkEpoch != nil && *specs.BellatrixForkEpoch < uint64(18446744073709551615) {
+		forkDigest := chainState.GetForkDigest(specs.BellatrixForkVersion, nil)
 		pageData.NetworkForks = append(pageData.NetworkForks, &models.IndexPageDataForks{
-			Name:    "Bellatrix",
-			Epoch:   *specs.BellatrixForkEpoch,
-			Version: specs.BellatrixForkVersion[:],
-			Active:  uint64(currentEpoch) >= *specs.BellatrixForkEpoch,
+			Name:       "Bellatrix",
+			Epoch:      *specs.BellatrixForkEpoch,
+			Version:    specs.BellatrixForkVersion[:],
+			Time:       uint64(chainState.EpochToTime(phase0.Epoch(*specs.BellatrixForkEpoch)).Unix()),
+			Active:     uint64(currentEpoch) >= *specs.BellatrixForkEpoch,
+			Type:       "consensus",
+			ForkDigest: forkDigest[:],
 		})
 	}
 	if specs.CapellaForkEpoch != nil && *specs.CapellaForkEpoch < uint64(18446744073709551615) {
+		forkDigest := chainState.GetForkDigest(specs.CapellaForkVersion, nil)
 		pageData.NetworkForks = append(pageData.NetworkForks, &models.IndexPageDataForks{
-			Name:    "Capella",
-			Epoch:   *specs.CapellaForkEpoch,
-			Version: specs.CapellaForkVersion[:],
-			Active:  uint64(currentEpoch) >= *specs.CapellaForkEpoch,
+			Name:       "Capella",
+			Epoch:      *specs.CapellaForkEpoch,
+			Version:    specs.CapellaForkVersion[:],
+			Time:       uint64(chainState.EpochToTime(phase0.Epoch(*specs.CapellaForkEpoch)).Unix()),
+			Active:     uint64(currentEpoch) >= *specs.CapellaForkEpoch,
+			Type:       "consensus",
+			ForkDigest: forkDigest[:],
 		})
 	}
 	if specs.DenebForkEpoch != nil && *specs.DenebForkEpoch < uint64(18446744073709551615) {
+		forkDigest := chainState.GetForkDigest(specs.DenebForkVersion, nil)
 		pageData.NetworkForks = append(pageData.NetworkForks, &models.IndexPageDataForks{
-			Name:    "Deneb",
-			Epoch:   *specs.DenebForkEpoch,
-			Version: specs.DenebForkVersion[:],
-			Active:  uint64(currentEpoch) >= *specs.DenebForkEpoch,
+			Name:       "Deneb",
+			Epoch:      *specs.DenebForkEpoch,
+			Version:    specs.DenebForkVersion[:],
+			Time:       uint64(chainState.EpochToTime(phase0.Epoch(*specs.DenebForkEpoch)).Unix()),
+			Active:     uint64(currentEpoch) >= *specs.DenebForkEpoch,
+			Type:       "consensus",
+			ForkDigest: forkDigest[:],
 		})
 	}
 	if specs.ElectraForkEpoch != nil && *specs.ElectraForkEpoch < uint64(18446744073709551615) {
+		forkDigest := chainState.GetForkDigest(specs.ElectraForkVersion, nil)
 		pageData.NetworkForks = append(pageData.NetworkForks, &models.IndexPageDataForks{
-			Name:    "Electra",
-			Epoch:   *specs.ElectraForkEpoch,
-			Version: specs.ElectraForkVersion[:],
-			Active:  uint64(currentEpoch) >= *specs.ElectraForkEpoch,
+			Name:       "Electra",
+			Epoch:      *specs.ElectraForkEpoch,
+			Version:    specs.ElectraForkVersion[:],
+			Time:       uint64(chainState.EpochToTime(phase0.Epoch(*specs.ElectraForkEpoch)).Unix()),
+			Active:     uint64(currentEpoch) >= *specs.ElectraForkEpoch,
+			Type:       "consensus",
+			ForkDigest: forkDigest[:],
 		})
 	}
-	if specs.Eip7594ForkEpoch != nil && *specs.Eip7594ForkEpoch < uint64(18446744073709551615) {
+	if specs.FuluForkEpoch != nil && *specs.FuluForkEpoch < uint64(18446744073709551615) {
+		currentBlobParams := &consensus.BlobScheduleEntry{
+			Epoch:            *specs.ElectraForkEpoch,
+			MaxBlobsPerBlock: specs.MaxBlobsPerBlockElectra,
+		}
+		forkDigest := chainState.GetForkDigest(specs.FuluForkVersion, currentBlobParams)
 		pageData.NetworkForks = append(pageData.NetworkForks, &models.IndexPageDataForks{
-			Name:    "eip7594",
-			Epoch:   *specs.Eip7594ForkEpoch,
-			Version: specs.Eip7594ForkVersion[:],
-			Active:  uint64(currentEpoch) >= *specs.Eip7594ForkEpoch,
+			Name:       "Fulu",
+			Epoch:      *specs.FuluForkEpoch,
+			Version:    specs.FuluForkVersion[:],
+			Time:       uint64(chainState.EpochToTime(phase0.Epoch(*specs.FuluForkEpoch)).Unix()),
+			Active:     uint64(currentEpoch) >= *specs.FuluForkEpoch,
+			Type:       "consensus",
+			ForkDigest: forkDigest[:],
 		})
 	}
+
+	// Add BPO forks from BLOB_SCHEDULE
+	for i, blobSchedule := range specs.BlobSchedule {
+		// BPO forks use the fork version that's active at the time of BPO activation
+		forkVersion := chainState.GetForkVersionAtEpoch(phase0.Epoch(blobSchedule.Epoch))
+		blobParams := &consensus.BlobScheduleEntry{
+			Epoch:            blobSchedule.Epoch,
+			MaxBlobsPerBlock: blobSchedule.MaxBlobsPerBlock,
+		}
+		forkDigest := chainState.GetForkDigest(forkVersion, blobParams)
+
+		pageData.NetworkForks = append(pageData.NetworkForks, &models.IndexPageDataForks{
+			Name:             fmt.Sprintf("BPO%d", i+1),
+			Epoch:            blobSchedule.Epoch,
+			Version:          nil, // BPO forks don't have fork versions
+			Time:             uint64(chainState.EpochToTime(phase0.Epoch(blobSchedule.Epoch)).Unix()),
+			Active:           uint64(currentEpoch) >= blobSchedule.Epoch,
+			Type:             "bpo",
+			MaxBlobsPerBlock: &blobSchedule.MaxBlobsPerBlock,
+			ForkDigest:       forkDigest[:],
+		})
+	}
+
+	// Sort all forks by epoch
+	sort.Slice(pageData.NetworkForks, func(i, j int) bool {
+		return pageData.NetworkForks[i].Epoch < pageData.NetworkForks[j].Epoch
+	})
 
 	// load recent epochs
 	buildIndexPageRecentEpochsData(pageData, currentEpoch, finalizedEpoch, justifiedEpoch, recentEpochCount)

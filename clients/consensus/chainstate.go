@@ -2,6 +2,7 @@ package consensus
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"fmt"
 	"strings"
 	"sync"
@@ -11,7 +12,7 @@ import (
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/utils"
 	"github.com/ethpandaops/ethwallclock"
-	"github.com/mashingan/smapping"
+	"gopkg.in/yaml.v2"
 )
 
 type ChainState struct {
@@ -66,7 +67,12 @@ func (cs *ChainState) setClientSpecs(specValues map[string]interface{}) (error, 
 		specs = specs.Clone()
 	}
 
-	err := smapping.FillStructByTags(specs, specValues, "yaml")
+	specValuesYaml, err := yaml.Marshal(specValues)
+	if err != nil {
+		return nil, err
+	}
+
+	err = yaml.Unmarshal(specValuesYaml, specs)
 	if err != nil {
 		return nil, err
 	}
@@ -83,7 +89,7 @@ func (cs *ChainState) setClientSpecs(specValues map[string]interface{}) (error, 
 		}
 
 		newSpecs := &ChainSpec{}
-		err = smapping.FillStructByTags(newSpecs, specValues, "yaml")
+		err = yaml.Unmarshal(specValuesYaml, newSpecs)
 		if err != nil {
 			return nil, err
 		}
@@ -247,6 +253,98 @@ func (cs *ChainState) EpochStartSlot(epoch phase0.Epoch) phase0.Slot {
 	}
 
 	return phase0.Slot(epoch) * phase0.Slot(cs.specs.SlotsPerEpoch)
+}
+
+func (cs *ChainState) GetForkDigestForEpoch(epoch phase0.Epoch) phase0.ForkDigest {
+	if cs.specs == nil || cs.genesis == nil {
+		return phase0.ForkDigest{}
+	}
+
+	var currentBlobParams *BlobScheduleEntry
+
+	if cs.specs.FuluForkEpoch != nil && epoch >= phase0.Epoch(*cs.specs.FuluForkEpoch) {
+		currentBlobParams = &BlobScheduleEntry{
+			Epoch:            *cs.specs.ElectraForkEpoch,
+			MaxBlobsPerBlock: cs.specs.MaxBlobsPerBlockElectra,
+		}
+
+		for i, blobScheduleEntry := range cs.specs.BlobSchedule {
+			if blobScheduleEntry.Epoch <= uint64(epoch) {
+				currentBlobParams = &cs.specs.BlobSchedule[i]
+			} else {
+				break
+			}
+		}
+	}
+
+	currentForkVersion := cs.GetForkVersionAtEpoch(epoch)
+
+	return cs.GetForkDigest(currentForkVersion, currentBlobParams)
+}
+
+func (cs *ChainState) GetForkDigest(forkVersion phase0.Version, blobParams *BlobScheduleEntry) phase0.ForkDigest {
+	if cs.specs == nil || cs.genesis == nil {
+		return phase0.ForkDigest{}
+	}
+
+	forkData := phase0.ForkData{
+		CurrentVersion:        forkVersion,
+		GenesisValidatorsRoot: cs.genesis.GenesisValidatorsRoot,
+	}
+
+	forkDataRoot, _ := forkData.HashTreeRoot()
+
+	// For Fulu fork and later, modify the fork digest with blob parameters
+	if blobParams != nil {
+		// serialize epoch and max_blobs_per_block as uint64 little-endian
+		epochBytes := make([]byte, 8)
+		maxBlobsBytes := make([]byte, 8)
+		for i := 0; i < 8; i++ {
+			epochBytes[i] = byte((blobParams.Epoch >> (8 * i)) & 0xff)
+			maxBlobsBytes[i] = byte((blobParams.MaxBlobsPerBlock >> (8 * i)) & 0xff)
+		}
+		blobParamBytes := append(epochBytes, maxBlobsBytes...)
+
+		blobParamHash := [32]byte{}
+		{
+			h := sha256.New()
+			h.Write(blobParamBytes)
+			copy(blobParamHash[:], h.Sum(nil))
+		}
+
+		// xor baseDigest with first 4 bytes of blobParamHash
+		forkDigest := make([]byte, 4)
+		for i := 0; i < 4; i++ {
+			forkDigest[i] = forkDataRoot[i] ^ blobParamHash[i]
+		}
+
+		return phase0.ForkDigest(forkDigest)
+	}
+
+	return phase0.ForkDigest(forkDataRoot[:4])
+}
+
+func (cs *ChainState) GetForkVersionAtEpoch(epoch phase0.Epoch) phase0.Version {
+	if cs.specs == nil {
+		return phase0.Version{}
+	}
+
+	switch {
+	case cs.specs.FuluForkEpoch != nil && epoch >= phase0.Epoch(*cs.specs.FuluForkEpoch):
+		return cs.specs.FuluForkVersion
+	case cs.specs.ElectraForkEpoch != nil && epoch >= phase0.Epoch(*cs.specs.ElectraForkEpoch):
+		return cs.specs.ElectraForkVersion
+	case cs.specs.DenebForkEpoch != nil && epoch >= phase0.Epoch(*cs.specs.DenebForkEpoch):
+		return cs.specs.DenebForkVersion
+	case cs.specs.CapellaForkEpoch != nil && epoch >= phase0.Epoch(*cs.specs.CapellaForkEpoch):
+		return cs.specs.CapellaForkVersion
+	case cs.specs.BellatrixForkEpoch != nil && epoch >= phase0.Epoch(*cs.specs.BellatrixForkEpoch):
+		return cs.specs.BellatrixForkVersion
+	case cs.specs.AltairForkEpoch != nil && epoch >= phase0.Epoch(*cs.specs.AltairForkEpoch):
+		return cs.specs.AltairForkVersion
+	default:
+		return cs.specs.GenesisForkVersion
+	}
 }
 
 func (cs *ChainState) GetValidatorChurnLimit(validatorCount uint64) uint64 {

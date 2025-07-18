@@ -44,10 +44,14 @@ type IndexPageData struct {
 }
 
 type IndexPageDataForks struct {
-	Name    string `json:"name"`
-	Epoch   uint64 `json:"epoch"`
-	Version []byte `json:"version"`
-	Active  bool   `json:"active"`
+	Name             string  `json:"name"`
+	Epoch            uint64  `json:"epoch"`
+	Version          []byte  `json:"version"`
+	Active           bool    `json:"active"`
+	Time             uint64  `json:"time"`
+	Type             string  `json:"type"`                          // "consensus" or "bpo"
+	MaxBlobsPerBlock *uint64 `json:"max_blobs_per_block,omitempty"` // Only for BPO forks
+	ForkDigest       []byte  `json:"fork_digest"`                   // Fork digest for this fork
 }
 
 type IndexPageDataEpochs struct {
