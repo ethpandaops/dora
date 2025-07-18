@@ -8,6 +8,7 @@ import (
 
 	"github.com/attestantio/go-eth2-client/spec"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	dasguardian "github.com/probe-lab/eth-das-guardian"
 	"github.com/probe-lab/eth-das-guardian/api"
 	"github.com/sirupsen/logrus"
@@ -104,8 +105,51 @@ func (d *dasGuardianAPI) GetFuluForkEpoch() uint64 {
 }
 
 func (d *dasGuardianAPI) GetNodeIdentity(ctx context.Context) (*api.NodeIdentity, error) {
-	// not needed for now
-	return nil, nil
+	// Get the first available consensus client
+	consensusClients := GlobalBeaconService.GetConsensusClients()
+	if len(consensusClients) == 0 {
+		return nil, fmt.Errorf("no consensus clients available")
+	}
+	
+	// Use the first available client
+	client := consensusClients[0]
+	localNodeIdentity := client.GetNodeIdentity()
+	if localNodeIdentity == nil {
+		return nil, fmt.Errorf("node identity not available from consensus client")
+	}
+	
+	// Convert from local rpc.NodeIdentity to api.NodeIdentity
+	nodeIdentity := &api.NodeIdentity{}
+	nodeIdentity.Data.PeerID = localNodeIdentity.PeerID
+	nodeIdentity.Data.Enr = localNodeIdentity.Enr
+	nodeIdentity.Data.Maddrs = localNodeIdentity.P2PAddresses
+	nodeIdentity.Data.DiscvAddrs = localNodeIdentity.DiscoveryAddresses
+	
+	// Convert metadata
+	nodeIdentity.Data.Metadata.SeqNum = fmt.Sprintf("%v", localNodeIdentity.Metadata.SeqNumber)
+	
+	// Convert attnets from string to hexutil.Bytes
+	if localNodeIdentity.Metadata.Attnets != "" {
+		attnets, err := hexutil.Decode(localNodeIdentity.Metadata.Attnets)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode attnets: %v", err)
+		}
+		nodeIdentity.Data.Metadata.Attnets = attnets
+	}
+	
+	// Convert syncnets from string to hexutil.Bytes
+	if localNodeIdentity.Metadata.Syncnets != "" {
+		syncnets, err := hexutil.Decode(localNodeIdentity.Metadata.Syncnets)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode syncnets: %v", err)
+		}
+		nodeIdentity.Data.Metadata.Syncnets = syncnets
+	}
+	
+	// Convert custody group count
+	nodeIdentity.Data.Metadata.Cgc = fmt.Sprintf("%v", localNodeIdentity.Metadata.CustodyGroupCount)
+	
+	return nodeIdentity, nil
 }
 
 func (d *dasGuardianAPI) GetBeaconBlock(ctx context.Context, slot uint64) (*spec.VersionedSignedBeaconBlock, error) {
