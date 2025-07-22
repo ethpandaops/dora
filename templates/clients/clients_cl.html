@@ -671,12 +671,56 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
               </div>
               <div class="modal-body" id="dasGuardianModalBody">
-                <div class="text-center" id="dasGuardianLoading">
+                <!-- Scan Options -->
+                <div id="dasGuardianOptions">
+                  <div class="alert alert-info">
+                    <i class="fa-solid fa-info-circle"></i> DAS Guardian scans are resource-intensive operations. Nodes may temporarily ban the scanner after use.
+                  </div>
+                  
+                  <h6>Scan Options</h6>
+                  <div class="form-check mb-3">
+                    <input class="form-check-input" type="radio" name="scanType" id="scanMetadataOnly" value="metadata" checked>
+                    <label class="form-check-label" for="scanMetadataOnly">
+                      <strong>Metadata Only</strong> - Quick scan for node status and custody information (no DAS column validation)
+                    </label>
+                  </div>
+                  <div class="form-check mb-3">
+                    <input class="form-check-input" type="radio" name="scanType" id="scanWithSlots" value="slots">
+                    <label class="form-check-label" for="scanWithSlots">
+                      <strong>Scan Specific Slots</strong> - Validate DAS columns for selected slots
+                    </label>
+                  </div>
+                  
+                  <!-- Slot Selection (hidden by default) -->
+                  <div id="slotSelectionSection" style="display: none;" class="mt-3 p-3 border rounded">
+                    <h6>Select Slots to Scan</h6>
+                    <div class="input-group mb-3">
+                      <input type="text" class="form-control" id="slotInput" placeholder="Enter slot number or root">
+                      <button class="btn btn-outline-secondary" type="button" id="addSlotBtn">
+                        <i class="fa-solid fa-plus"></i> Add Slot
+                      </button>
+                    </div>
+                    <div id="selectedSlotsList">
+                      <!-- Selected slots will appear here -->
+                    </div>
+                  </div>
+                  
+                  <div class="mt-4">
+                    <button type="button" class="btn btn-primary" id="startScanBtn">
+                      <i class="fa-solid fa-play"></i> Start Scan
+                    </button>
+                  </div>
+                </div>
+                
+                <!-- Loading indicator (hidden by default) -->
+                <div class="text-center" id="dasGuardianLoading" style="display: none;">
                   <div class="spinner-border text-primary" role="status">
                     <span class="visually-hidden">Loading...</span>
                   </div>
                   <p class="mt-3">Running DAS Guardian scan...</p>
                 </div>
+                
+                <!-- Results (hidden by default) -->
                 <div id="dasGuardianResults" style="display: none;">
                   <!-- Results will be populated here -->
                 </div>
@@ -693,264 +737,6 @@
       <div id="footer-placeholder" style="height:30px;"></div>
     </div>
   </div>
-
-  <script type="text/javascript">
-    $(document).ready(function() {
-      hashParams = new URLSearchParams(window.location.hash.substring(1))
-
-      // DAS Guardian functionality
-      $('.das-check-btn').on('click', function() {
-        const enr = $(this).data('enr');
-        const clientName = $(this).data('client-name');
-        
-        // Update modal title
-        $('#dasGuardianClientName').text(clientName);
-        
-        // Reset modal state
-        $('#dasGuardianLoading').show();
-        $('#dasGuardianResults').hide().empty();
-        
-        // Show modal
-        $('#dasGuardianModal').modal('show');
-        
-        // Make API call
-        $.ajax({
-          url: '/api/v1/das-guardian/scan',
-          method: 'POST',
-          contentType: 'application/json',
-          data: JSON.stringify({ enr: enr }),
-          success: function(response) {
-            $('#dasGuardianLoading').hide();
-            displayDasGuardianResults(response);
-          },
-          error: function(xhr) {
-            $('#dasGuardianLoading').hide();
-            let errorMsg = 'Failed to run DAS Guardian scan';
-            try {
-              const errorData = JSON.parse(xhr.responseText);
-              if (errorData.error) errorMsg = errorData.error;
-            } catch (e) {}
-            displayDasGuardianError(errorMsg);
-          }
-        });
-      });
-
-      function displayDasGuardianResults(data) {
-        const $results = $('#dasGuardianResults');
-        
-        let html = '';
-        
-        // Handle error case
-        if (data.error && !data.result) {
-          html = `<div class="alert alert-danger" role="alert">
-            <h5><i class="fa-solid fa-triangle-exclamation"></i> Error</h5>
-            <p>${escapeHtml(data.error)}</p>
-          </div>`;
-          $results.html(html).show();
-          return;
-        }
-        
-        // Display results even if there was an error (partial results)
-        if (data.result) {
-          const result = data.result;
-          
-          // P2P Information Section
-          if (result.libp2p_info && Object.keys(result.libp2p_info).length > 0) {
-            html += `<div class="mb-4">
-              <h6 class="border-bottom pb-2"><i class="fa-solid fa-network-wired"></i> P2P Information</h6>
-              <table class="table table-sm">
-                <tbody>`;
-            
-            // Extract specific fields from libp2p_info
-            if (result.libp2p_info.peer_id) {
-              html += `<tr><td><strong>Peer ID:</strong></td><td><code>${escapeHtml(result.libp2p_info.peer_id)}</code></td></tr>`;
-            }
-            if (result.libp2p_info.user_agent) {
-              html += `<tr><td><strong>User Agent:</strong></td><td>${escapeHtml(result.libp2p_info.user_agent)}</td></tr>`;
-            }
-            if (result.libp2p_info.protocol_version) {
-              html += `<tr><td><strong>Protocol Version:</strong></td><td>${escapeHtml(result.libp2p_info.protocol_version)}</td></tr>`;
-            }
-            if (result.libp2p_info.ping_rtt) {
-              html += `<tr><td><strong>Ping RTT:</strong></td><td>${escapeHtml(result.libp2p_info.ping_rtt)}</td></tr>`;
-            }
-            if (result.libp2p_info.multiaddresses && Array.isArray(result.libp2p_info.multiaddresses)) {
-              html += `<tr><td><strong>Addresses:</strong></td><td>${result.libp2p_info.multiaddresses.map(addr => `<code>${escapeHtml(addr)}</code>`).join('<br>')}</td></tr>`;
-            }
-            if (result.libp2p_info.protocols && Array.isArray(result.libp2p_info.protocols)) {
-              html += `<tr><td><strong>Protocols:</strong></td><td><small>${result.libp2p_info.protocols.map(p => `<code>${escapeHtml(p)}</code>`).join(' ')}</small></td></tr>`;
-            }
-            
-            html += `</tbody></table></div>`;
-          }
-          
-          // Status Information Section  
-          if (result.remote_status) {
-            const status = result.remote_status;
-            const localForkDigest = '{{ printf "0x%x" .CurrentForkDigest }}';
-            const forkDigestValid = status.fork_digest === localForkDigest;
-            
-            html += `<div class="mb-4">
-              <h6 class="border-bottom pb-2"><i class="fa-solid fa-signal"></i> Beacon Status</h6>
-              <table class="table table-sm">
-                <tbody>
-                  <tr>
-                    <td><strong>Fork Digest:</strong></td>
-                    <td>
-                      <code>${escapeHtml(status.fork_digest)}</code>
-                      ${forkDigestValid ? 
-                        '<span class="badge bg-success ms-2"><i class="fa-solid fa-check"></i> Valid</span>' : 
-                        '<span class="badge bg-danger ms-2"><i class="fa-solid fa-times"></i> Invalid</span>'}
-                    </td>
-                  </tr>
-                  <tr>
-                    <td><strong>Head Slot:</strong></td>
-                    <td><a href="/slot/${status.head_slot}">${status.head_slot.toLocaleString()}</a></td>
-                  </tr>
-                  <tr>
-                    <td><strong>Head Root:</strong></td>
-                    <td><code class="text-truncate d-inline-block" style="max-width: 400px">${escapeHtml(status.head_root)}</code></td>
-                  </tr>
-                  <tr>
-                    <td><strong>Finalized Epoch:</strong></td>
-                    <td><a href="/epoch/${status.finalized_epoch}">${status.finalized_epoch.toLocaleString()}</a></td>
-                  </tr>
-                  <tr>
-                    <td><strong>Finalized Root:</strong></td>
-                    <td><code class="text-truncate d-inline-block" style="max-width: 400px">${escapeHtml(status.finalized_root)}</code></td>
-                  </tr>`;
-            
-            // Add earliest_available_slot if available (statusv2 only)
-            if (status.earliest_slot !== undefined) {
-              html += `<tr>
-                    <td><strong>Earliest Available Slot:</strong></td>
-                    <td><a href="/slot/${status.earliest_slot}">${status.earliest_slot.toLocaleString()}</a></td>
-                  </tr>`;
-            }
-            
-            html += `</tbody>
-              </table>
-            </div>`;
-          }
-          
-          // Metadata Section
-          if (result.remote_metadata) {
-            const metadata = result.remote_metadata;
-            html += `<div class="mb-4">
-              <h6 class="border-bottom pb-2"><i class="fa-solid fa-info-circle"></i> Node Metadata</h6>
-              <table class="table table-sm">
-                <tbody>
-                  <tr><td><strong>Sequence Number:</strong></td><td>${metadata.seq_number}</td></tr>
-                  <tr><td><strong>Attnets:</strong></td><td><code>${escapeHtml(metadata.attnets)}</code></td></tr>
-                  <tr><td><strong>Syncnets:</strong></td><td><code>${escapeHtml(metadata.syncnets)}</code></td></tr>
-                  <tr><td><strong>Custody Group Count:</strong></td><td>${metadata.custody_group_count}</td></tr>
-                </tbody>
-              </table>
-            </div>`;
-          }
-          
-          // DAS Evaluation Results
-          if (result.eval_result) {
-            const evalResult = result.eval_result;
-            html += `<div class="mb-4">
-              <h6 class="border-bottom pb-2"><i class="fa-solid fa-database"></i> DAS Custody Check</h6>`;
-            
-            if (evalResult.error) {
-              html += `<div class="alert alert-warning"><i class="fa-solid fa-triangle-exclamation"></i> ${escapeHtml(evalResult.error)}</div>`;
-            }
-            
-            if (evalResult.node_id) {
-              html += `<p><strong>Node ID:</strong> <code>${escapeHtml(evalResult.node_id)}</code></p>`;
-            }
-            
-            if (evalResult.column_idx && evalResult.column_idx.length > 0) {
-              html += `<p><strong>Custody Columns:</strong> ${evalResult.column_idx.map(idx => `<span class="badge bg-primary">${idx}</span>`).join(' ')}</p>`;
-            }
-            
-            // Display slot validation results
-            if (evalResult.slots && evalResult.slots.length > 0) {
-              html += `<div class="table-responsive">
-                <table class="table table-sm table-bordered">
-                  <thead>
-                    <tr>
-                      <th>Slot</th>
-                      <th>Status</th>
-                      <th>Column Validation</th>
-                    </tr>
-                  </thead>
-                  <tbody>`;
-              
-              for (let i = 0; i < evalResult.slots.length; i++) {
-                const slot = evalResult.slots[i];
-                const isValid = evalResult.valid_slot && evalResult.valid_slot[i];
-                const columnValidation = evalResult.valid_column && evalResult.valid_column[i];
-                
-                html += `<tr>
-                  <td><a href="/slot/${slot}">${slot.toLocaleString()}</a></td>
-                  <td>${isValid ? '<span class="badge bg-success">Valid</span>' : '<span class="badge bg-danger">Invalid</span>'}</td>
-                  <td>`;
-                
-                if (columnValidation) {
-                  const validCount = columnValidation.filter(v => v).length;
-                  const totalCount = columnValidation.length;
-                  html += `<span class="badge ${validCount === totalCount ? 'bg-success' : validCount > 0 ? 'bg-warning' : 'bg-danger'}">${validCount}/${totalCount} valid</span>`;
-                }
-                
-                html += `</td></tr>`;
-              }
-              
-              html += `</tbody></table></div>`;
-            }
-            
-            html += `</div>`;
-          }
-          
-          // Show error at the bottom if there was one along with partial results
-          if (data.error) {
-            html += `<div class="alert alert-warning" role="alert">
-              <h6><i class="fa-solid fa-triangle-exclamation"></i> Partial Results</h6>
-              <p class="mb-0">The scan completed with some errors. The information above shows all data that could be retrieved.</p>
-              <p class="mb-0"><strong>Error:</strong> ${escapeHtml(data.error)}</p>
-            </div>`;
-          }
-        }
-        
-        $results.html(html).show();
-      }
-
-      function displayDasGuardianError(error) {
-        const html = `<div class="alert alert-danger" role="alert">
-          <h5><i class="fa-solid fa-triangle-exclamation"></i> Error</h5>
-          <p>${escapeHtml(error)}</p>
-        </div>`;
-        $('#dasGuardianResults').html(html).show();
-      }
-
-      function escapeHtml(text) {
-        if (!text) return '';
-        const map = {
-          '&': '&amp;',
-          '<': '&lt;',
-          '>': '&gt;',
-          '"': '&quot;',
-          "'": '&#039;'
-        };
-        return text.toString().replace(/[&<>"']/g, m => map[m]);
-      }
-      if (hashParams.has("name")) {
-        name = hashParams.get("name")
-        clientRow = $("#clientRow-" + name)
-        if (clientRow) {
-          clientRow.click()
-        }
-      }
-      
-      // Check refresh cooldown status on page load
-      if (typeof window.explorer !== 'undefined' && window.explorer.checkRefreshCooldown) {
-        window.explorer.checkRefreshCooldown();
-      }
-    });
-  </script>
 
 {{ end }}
 
@@ -1377,7 +1163,407 @@
     }
   }
 
+  $(document).ready(function() {
+    hashParams = new URLSearchParams(window.location.hash.substring(1))
 
+    // DAS Guardian functionality
+    let dasGuardianEnr = null;
+    let selectedSlots = [];
+    const fuluActivationEpoch = {{ .FuluActivationEpoch }};
+    
+    $('.das-check-btn').on('click', function() {
+      dasGuardianEnr = $(this).data('enr');
+      const clientName = $(this).data('client-name');
+      
+      // Update modal title
+      $('#dasGuardianClientName').text(clientName);
+      
+      // Reset modal state
+      $('#dasGuardianOptions').show();
+      $('#dasGuardianLoading').hide();
+      $('#dasGuardianResults').hide().empty();
+      $('#slotSelectionSection').hide();
+      $('#selectedSlotsList').empty();
+      selectedSlots = [];
+      
+      // Reset form
+      $('#scanMetadataOnly').prop('checked', true);
+      $('#slotInput').val('');
+      
+      // Show modal
+      $('#dasGuardianModal').modal('show');
+    });
+    
+    // Handle scan type selection
+    $('input[name="scanType"]').on('change', function() {
+      if ($(this).val() === 'slots') {
+        $('#slotSelectionSection').show();
+      } else {
+        $('#slotSelectionSection').hide();
+      }
+    });
+    
+    // Add slot functionality
+    $('#addSlotBtn').on('click', function() {
+      const input = $('#slotInput').val().trim();
+      if (!input) return;
+      
+      // Check if it's a slot number or root
+      if (/^\d+$/.test(input)) {
+        const slotNumber = parseInt(input);
+        if (!selectedSlots.includes(slotNumber)) {
+          selectedSlots.push(slotNumber);
+          addSlotToList(slotNumber);
+          $('#slotInput').val('');
+        }
+      } else if (/^0x[a-fA-F0-9]{64}$/.test(input)) {
+        // It's a root, look up the slot
+        $('#addSlotBtn').prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Looking up...');
+        
+        $.ajax({
+          url: `/api/v1/slot/${input}`,
+          method: 'GET',
+          success: function(response) {
+            if (response.data && !selectedSlots.includes(response.data.slot)) {
+              selectedSlots.push(response.data.slot);
+              addSlotToList(response.data.slot);
+              $('#slotInput').val('');
+            }
+            $('#addSlotBtn').prop('disabled', false).html('<i class="fa-solid fa-plus"></i> Add Slot');
+          },
+          error: function() {
+            alert('Block root not found');
+            $('#addSlotBtn').prop('disabled', false).html('<i class="fa-solid fa-plus"></i> Add Slot');
+          }
+        });
+      } else {
+        alert('Please enter a valid slot number or block root (0x...)');
+      }
+    });
+    
+    // Handle enter key in slot input
+    $('#slotInput').on('keypress', function(e) {
+      if (e.which === 13) {
+        $('#addSlotBtn').click();
+      }
+    });
+    
+    function addSlotToList(slot) {
+      const slotElement = $(`
+        <div class="slot-item border rounded p-2 mb-2" data-slot="${slot}">
+          <div class="d-flex justify-content-between align-items-center">
+            <div>
+              <strong>Slot ${slot.toLocaleString()}</strong>
+              <span class="slot-info ms-2 text-muted">
+                <i class="fas fa-spinner fa-spin"></i> Loading...
+              </span>
+            </div>
+            <button type="button" class="btn btn-sm btn-outline-danger" aria-label="Remove">
+              <i class="fa-solid fa-times"></i>
+            </button>
+          </div>
+        </div>
+      `);
+      
+      slotElement.find('.btn-outline-danger').on('click', function() {
+        selectedSlots = selectedSlots.filter(s => s !== slot);
+        slotElement.remove();
+      });
+      
+      $('#selectedSlotsList').append(slotElement);
+      
+      // Fetch slot info
+      $.ajax({
+        url: `/api/v1/slot/${slot}`,
+        method: 'GET',
+        success: function(response) {
+          let infoHtml = '';
+          
+          // Check if slot is pre-Fulu (DAS not available)
+          const slotEpoch = Math.floor(slot / 32);
+          const isPreFulu = fuluActivationEpoch !== 18446744073709551615 && slotEpoch < fuluActivationEpoch; // 18446744073709551615 is max uint64 (never activated)
+          
+          if (response.data && response.data.status !== 'Missing') {
+            infoHtml = `<span class="text-success"><i class="fa-solid fa-check"></i> Proposed</span>`;
+            // Always display blob count (even when 0)
+            const blobCount = response.data.blob_count || 0;
+            infoHtml += ` | <span class="text-info">${blobCount} blob${blobCount !== 1 ? 's' : ''}</span>`;
+            
+            // Add pre-Fulu warning if applicable
+            if (isPreFulu) {
+              infoHtml += ` | <span class="text-warning"><i class="fa-solid fa-exclamation-triangle"></i> Pre-Fulu (DAS not available)</span>`;
+            }
+          } else {
+            infoHtml = `<span class="text-warning"><i class="fa-solid fa-times"></i> Not proposed</span>`;
+            // Add pre-Fulu warning for missing blocks too
+            if (isPreFulu) {
+              infoHtml += ` | <span class="text-warning"><i class="fa-solid fa-exclamation-triangle"></i> Pre-Fulu (DAS not available)</span>`;
+            }
+          }
+          slotElement.find('.slot-info').html(infoHtml);
+        },
+        error: function() {
+          slotElement.find('.slot-info').html('<span class="text-danger"><i class="fa-solid fa-exclamation-triangle"></i> Error loading</span>');
+        }
+      });
+    }
+    
+    // Start scan button
+    $('#startScanBtn').on('click', function() {
+      const scanType = $('input[name="scanType"]:checked').val();
+      
+      if (scanType === 'slots' && selectedSlots.length === 0) {
+        alert('Please select at least one slot to scan');
+        return;
+      }
+      
+      // Hide options, show loading
+      $('#dasGuardianOptions').hide();
+      $('#dasGuardianLoading').show();
+      
+      // Prepare request data
+      const requestData = { enr: dasGuardianEnr };
+      if (scanType === 'slots') {
+        requestData.slots = selectedSlots;
+      }
+      
+      // Make API call
+      $.ajax({
+        url: '/api/v1/das-guardian/scan',
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify(requestData),
+        success: function(response) {
+          $('#dasGuardianLoading').hide();
+          displayDasGuardianResults(response);
+        },
+        error: function(xhr) {
+          $('#dasGuardianLoading').hide();
+          let errorMsg = 'Failed to run DAS Guardian scan';
+          try {
+            const errorData = JSON.parse(xhr.responseText);
+            if (errorData.error) errorMsg = errorData.error;
+          } catch (e) {}
+          displayDasGuardianError(errorMsg);
+        }
+      });
+    });
+
+    function displayDasGuardianResults(data) {
+      const $results = $('#dasGuardianResults');
+      
+      let html = '';
+      
+      // Handle error case
+      if (data.error && !data.result) {
+        html = `<div class="alert alert-danger" role="alert">
+          <h5><i class="fa-solid fa-triangle-exclamation"></i> Error</h5>
+          <p>${escapeHtml(data.error)}</p>
+        </div>`;
+        $results.html(html).show();
+        return;
+      }
+      
+      // Display results even if there was an error (partial results)
+      if (data.result) {
+        const result = data.result;
+        
+        // P2P Information Section
+        if (result.libp2p_info && Object.keys(result.libp2p_info).length > 0) {
+          html += `<div class="mb-4">
+            <h6 class="border-bottom pb-2"><i class="fa-solid fa-network-wired"></i> P2P Information</h6>
+            <table class="table table-sm">
+              <tbody>`;
+          
+          // Extract specific fields from libp2p_info
+          if (result.libp2p_info.peer_id) {
+            html += `<tr><td><strong>Peer ID:</strong></td><td><code>${escapeHtml(result.libp2p_info.peer_id)}</code></td></tr>`;
+          }
+          if (result.libp2p_info.user_agent) {
+            html += `<tr><td><strong>User Agent:</strong></td><td>${escapeHtml(result.libp2p_info.user_agent)}</td></tr>`;
+          }
+          if (result.libp2p_info.protocol_version) {
+            html += `<tr><td><strong>Protocol Version:</strong></td><td>${escapeHtml(result.libp2p_info.protocol_version)}</td></tr>`;
+          }
+          if (result.libp2p_info.ping_rtt) {
+            html += `<tr><td><strong>Ping RTT:</strong></td><td>${escapeHtml(result.libp2p_info.ping_rtt)}</td></tr>`;
+          }
+          if (result.libp2p_info.multiaddresses && Array.isArray(result.libp2p_info.multiaddresses)) {
+            html += `<tr><td><strong>Addresses:</strong></td><td>${result.libp2p_info.multiaddresses.map(addr => `<code>${escapeHtml(addr)}</code>`).join('<br>')}</td></tr>`;
+          }
+          if (result.libp2p_info.protocols && Array.isArray(result.libp2p_info.protocols)) {
+            html += `<tr><td><strong>Protocols:</strong></td><td><small>${result.libp2p_info.protocols.map(p => `<code>${escapeHtml(p)}</code>`).join(' ')}</small></td></tr>`;
+          }
+          
+          html += `</tbody></table></div>`;
+        }
+        
+        // Status Information Section  
+        if (result.remote_status) {
+          const status = result.remote_status;
+          const localForkDigest = '{{ printf "0x%x" .CurrentForkDigest }}';
+          const forkDigestValid = status.fork_digest === localForkDigest;
+          
+          html += `<div class="mb-4">
+            <h6 class="border-bottom pb-2"><i class="fa-solid fa-signal"></i> Beacon Status</h6>
+            <table class="table table-sm">
+              <tbody>
+                <tr>
+                  <td><strong>Fork Digest:</strong></td>
+                  <td>
+                    <code>${escapeHtml(status.fork_digest)}</code>
+                    ${forkDigestValid ? 
+                      '<span class="badge bg-success ms-2"><i class="fa-solid fa-check"></i> Valid</span>' : 
+                      '<span class="badge bg-danger ms-2"><i class="fa-solid fa-times"></i> Invalid</span>'}
+                  </td>
+                </tr>
+                <tr>
+                  <td><strong>Head Slot:</strong></td>
+                  <td><a href="/slot/${status.head_slot}">${status.head_slot.toLocaleString()}</a></td>
+                </tr>
+                <tr>
+                  <td><strong>Head Root:</strong></td>
+                  <td><code class="text-truncate d-inline-block" style="max-width: 400px">${escapeHtml(status.head_root)}</code></td>
+                </tr>
+                <tr>
+                  <td><strong>Finalized Epoch:</strong></td>
+                  <td><a href="/epoch/${status.finalized_epoch}">${status.finalized_epoch.toLocaleString()}</a></td>
+                </tr>
+                <tr>
+                  <td><strong>Finalized Root:</strong></td>
+                  <td><code class="text-truncate d-inline-block" style="max-width: 400px">${escapeHtml(status.finalized_root)}</code></td>
+                </tr>`;
+          
+          // Add earliest_available_slot if available (statusv2 only)
+          if (status.earliest_slot !== undefined) {
+            html += `<tr>
+                  <td><strong>Earliest Available Slot:</strong></td>
+                  <td><a href="/slot/${status.earliest_slot}">${status.earliest_slot.toLocaleString()}</a></td>
+                </tr>`;
+          }
+          
+          html += `</tbody>
+            </table>
+          </div>`;
+        }
+        
+        // Metadata Section
+        if (result.remote_metadata) {
+          const metadata = result.remote_metadata;
+          html += `<div class="mb-4">
+            <h6 class="border-bottom pb-2"><i class="fa-solid fa-info-circle"></i> Node Metadata</h6>
+            <table class="table table-sm">
+              <tbody>
+                <tr><td><strong>Sequence Number:</strong></td><td>${metadata.seq_number}</td></tr>
+                <tr><td><strong>Attnets:</strong></td><td><code>${escapeHtml(metadata.attnets)}</code></td></tr>
+                <tr><td><strong>Syncnets:</strong></td><td><code>${escapeHtml(metadata.syncnets)}</code></td></tr>
+                <tr><td><strong>Custody Group Count:</strong></td><td>${metadata.custody_group_count}</td></tr>
+              </tbody>
+            </table>
+          </div>`;
+        }
+        
+        // DAS Evaluation Results
+        if (result.eval_result) {
+          const evalResult = result.eval_result;
+          html += `<div class="mb-4">
+            <h6 class="border-bottom pb-2"><i class="fa-solid fa-database"></i> DAS Custody Check</h6>`;
+          
+          if (evalResult.error) {
+            html += `<div class="alert alert-warning"><i class="fa-solid fa-triangle-exclamation"></i> ${escapeHtml(evalResult.error)}</div>`;
+          }
+          
+          if (evalResult.node_id) {
+            html += `<p><strong>Node ID:</strong> <code>${escapeHtml(evalResult.node_id)}</code></p>`;
+          }
+          
+          if (evalResult.column_idx && evalResult.column_idx.length > 0) {
+            html += `<p><strong>Custody Columns:</strong> ${evalResult.column_idx.map(idx => `<span class="badge bg-primary">${idx}</span>`).join(' ')}</p>`;
+          }
+          
+          // Display slot validation results
+          if (evalResult.slots && evalResult.slots.length > 0) {
+            html += `<div class="table-responsive">
+              <table class="table table-sm table-bordered">
+                <thead>
+                  <tr>
+                    <th>Slot</th>
+                    <th>Status</th>
+                    <th>Column Validation</th>
+                  </tr>
+                </thead>
+                <tbody>`;
+            
+            for (let i = 0; i < evalResult.slots.length; i++) {
+              const slot = evalResult.slots[i];
+              const isValid = evalResult.valid_slot && evalResult.valid_slot[i];
+              const columnValidation = evalResult.valid_column && evalResult.valid_column[i];
+              
+              html += `<tr>
+                <td><a href="/slot/${slot}">${slot.toLocaleString()}</a></td>
+                <td>${isValid ? '<span class="badge bg-success">Valid</span>' : '<span class="badge bg-danger">Invalid</span>'}</td>
+                <td>`;
+              
+              if (columnValidation) {
+                const validCount = columnValidation.filter(v => v).length;
+                const totalCount = columnValidation.length;
+                html += `<span class="badge ${validCount === totalCount ? 'bg-success' : validCount > 0 ? 'bg-warning' : 'bg-danger'}">${validCount}/${totalCount} valid</span>`;
+              }
+              
+              html += `</td></tr>`;
+            }
+            
+            html += `</tbody></table></div>`;
+          }
+          
+          html += `</div>`;
+        }
+        
+        // Show error at the bottom if there was one along with partial results
+        if (data.error) {
+          html += `<div class="alert alert-warning" role="alert">
+            <h6><i class="fa-solid fa-triangle-exclamation"></i> Partial Results</h6>
+            <p class="mb-0">The scan completed with some errors. The information above shows all data that could be retrieved.</p>
+            <p class="mb-0"><strong>Error:</strong> ${escapeHtml(data.error)}</p>
+          </div>`;
+        }
+      }
+      
+      $results.html(html).show();
+    }
+
+    function displayDasGuardianError(error) {
+      const html = `<div class="alert alert-danger" role="alert">
+        <h5><i class="fa-solid fa-triangle-exclamation"></i> Error</h5>
+        <p>${escapeHtml(error)}</p>
+      </div>`;
+      $('#dasGuardianResults').html(html).show();
+    }
+
+    function escapeHtml(text) {
+      if (!text) return '';
+      const map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+      };
+      return text.toString().replace(/[&<>"']/g, m => map[m]);
+    }
+    if (hashParams.has("name")) {
+      name = hashParams.get("name")
+      clientRow = $("#clientRow-" + name)
+      if (clientRow) {
+        clientRow.click()
+      }
+    }
+    
+    // Check refresh cooldown status on page load
+    if (typeof window.explorer !== 'undefined' && window.explorer.checkRefreshCooldown) {
+      window.explorer.checkRefreshCooldown();
+    }
+  });
 </script>
 {{ end }}
 {{ define "css" }}
