@@ -46,7 +46,7 @@ func (d *DasGuardian) ScanNode(ctx context.Context, nodeEnr string) (*dasguardia
 	}
 
 	// Scan can return both result and error (partial results)
-	res, err := d.guardian.Scan(ctx, node)
+	res, err := d.guardian.Scan(ctx, node, dasguardian.WithNoSlots())
 
 	// Return both - the handler will deal with partial results
 	return res, err
@@ -163,4 +163,21 @@ func (d *dasGuardianAPI) GetBeaconBlock(ctx context.Context, slot uint64) (*spec
 	}
 
 	return block.Block, nil
+}
+
+func (d *dasGuardianAPI) ReadSpecParameter(key string) (any, bool) {
+	specs := GlobalBeaconService.GetChainState().GetSpecs()
+	if specs == nil {
+		return nil, false
+	}
+
+	switch key {
+	case "FULU_FORK_EPOCH":
+		if specs.FuluForkEpoch != nil {
+			return *specs.FuluForkEpoch, true
+		}
+		return nil, false
+	default:
+		return nil, false
+	}
 }
