@@ -37,12 +37,12 @@ type APIMassNodeResult struct {
 	Success           bool                   `json:"success"`
 	Error             string                 `json:"error,omitempty"`
 	NodeAlias         string                 `json:"node_alias,omitempty"`
-	ValidColumns      [][]bool               `json:"valid_columns,omitempty"`      // Per-slot array of column validity
-	TotalColumns      int                    `json:"total_columns"`                // Total number of columns per slot
-	SlotResults       map[uint64]*SlotResult `json:"slot_results,omitempty"`       // Slot -> result details
-	CustodyGroupCount uint64                 `json:"custody_group_count"`          // CGC from node metadata
-	CustodyColumns    []uint64               `json:"custody_columns,omitempty"`    // Custody column indices
-	EarliestSlot      uint64                 `json:"earliest_slot"`                // Earliest available slot from node status
+	ValidColumns      [][]bool               `json:"valid_columns,omitempty"`   // Per-slot array of column validity
+	TotalColumns      int                    `json:"total_columns"`             // Total number of columns per slot
+	SlotResults       map[uint64]*SlotResult `json:"slot_results,omitempty"`    // Slot -> result details
+	CustodyGroupCount uint64                 `json:"custody_group_count"`       // CGC from node metadata
+	CustodyColumns    []uint64               `json:"custody_columns,omitempty"` // Custody column indices
+	EarliestSlot      uint64                 `json:"earliest_slot"`             // Earliest available slot from node status
 }
 
 // SlotResult represents the scan result for a single slot
@@ -143,7 +143,7 @@ func APIDasGuardianMassScan(w http.ResponseWriter, r *http.Request) {
 		if randomCount <= 0 {
 			randomCount = 4 // Default to 4 slots
 		}
-		
+
 		// Select random slots once for all nodes to ensure comparability
 		var err error
 		selectedSlots, err = selectRandomSlotsForMassScan(req.RandomMode, int(randomCount))
@@ -152,7 +152,7 @@ func APIDasGuardianMassScan(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, `{"error": "failed to select random slots"}`, http.StatusInternalServerError)
 			return
 		}
-		
+
 		if len(selectedSlots) == 0 {
 			http.Error(w, `{"error": "no suitable slots found for the specified criteria"}`, http.StatusBadRequest)
 			return
@@ -208,17 +208,17 @@ func APIDasGuardianMassScan(w http.ResponseWriter, r *http.Request) {
 				if scanResult.RemoteStatusV2 != nil {
 					nodeResult.EarliestSlot = scanResult.RemoteStatusV2.EarliestAvailableSlot
 				}
-				
+
 				if scanResult.RemoteMetadataV3 != nil {
 					nodeResult.CustodyGroupCount = uint64(scanResult.RemoteMetadataV3.CustodyGroupCount)
 				}
-				
+
 				// Extract custody columns from evaluation result
 				if scanResult.EvalResult.ColumnIdx != nil {
 					nodeResult.CustodyColumns = make([]uint64, len(scanResult.EvalResult.ColumnIdx))
 					copy(nodeResult.CustodyColumns, scanResult.EvalResult.ColumnIdx)
 				}
-				
+
 				if scanResult.EvalResult.Slots != nil {
 					// Set scanned slots (should be same for all nodes)
 					mu.Lock()
@@ -293,25 +293,25 @@ func selectRandomSlotsForMassScan(mode string, count int) ([]uint64, error) {
 	// Calculate the valid slot range for DAS data availability
 	specs := chainState.GetSpecs()
 	currentEpoch := uint64(chainState.CurrentEpoch())
-	
+
 	// Start with Fulu activation as the absolute minimum
 	var startSlot uint64 = 0
 	if specs != nil && specs.FuluForkEpoch != nil {
 		startSlot = uint64(chainState.EpochToSlot(phase0.Epoch(*specs.FuluForkEpoch)))
 	}
-	
+
 	// Apply data column sidecar availability limit
 	if specs != nil && specs.MinEpochsForDataColumnSidecars > 0 && currentEpoch > specs.MinEpochsForDataColumnSidecars {
 		// Data columns are only available for the last MinEpochsForDataColumnSidecars epochs
 		dataAvailabilityEpoch := currentEpoch - specs.MinEpochsForDataColumnSidecars
 		dataAvailabilitySlot := uint64(chainState.EpochToSlot(phase0.Epoch(dataAvailabilityEpoch)))
-		
+
 		// Use the more restrictive limit (later slot)
 		if dataAvailabilitySlot > startSlot {
 			startSlot = dataAvailabilitySlot
 		}
 	}
-	
+
 	endSlot := currentSlot
 
 	// If no valid range, return empty

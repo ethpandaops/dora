@@ -139,12 +139,12 @@ func APIDasGuardianScan(w http.ResponseWriter, r *http.Request) {
 		if randomCount <= 0 {
 			randomCount = 4 // Default to 4 slots
 		}
-		
+
 		// Create callback that will be called with node status
 		slotCallback := func(nodeStatus *dasguardian.StatusV2) ([]uint64, error) {
 			return selectRandomSlotsWithNodeStatus(req.RandomMode, int(randomCount), nodeStatus)
 		}
-		
+
 		// Scan with callback
 		scanResult, scanErr = dasGuardian.ScanNodeWithCallback(ctx, req.ENR, slotCallback)
 	} else {
@@ -237,30 +237,30 @@ func selectRandomSlotsWithNodeStatus(mode string, count int, nodeStatus *dasguar
 	// Calculate the valid slot range for DAS data availability
 	specs := chainState.GetSpecs()
 	currentEpoch := uint64(chainState.CurrentEpoch())
-	
+
 	// Start with Fulu activation as the absolute minimum
 	var startSlot uint64 = 0
 	if specs != nil && specs.FuluForkEpoch != nil {
 		startSlot = uint64(chainState.EpochToSlot(phase0.Epoch(*specs.FuluForkEpoch)))
 	}
-	
+
 	// Apply data column sidecar availability limit
 	if specs != nil && specs.MinEpochsForDataColumnSidecars > 0 && currentEpoch > specs.MinEpochsForDataColumnSidecars {
 		// Data columns are only available for the last MinEpochsForDataColumnSidecars epochs
 		dataAvailabilityEpoch := currentEpoch - specs.MinEpochsForDataColumnSidecars
 		dataAvailabilitySlot := uint64(chainState.EpochToSlot(phase0.Epoch(dataAvailabilityEpoch)))
-		
+
 		// Use the more restrictive limit (later slot)
 		if dataAvailabilitySlot > startSlot {
 			startSlot = dataAvailabilitySlot
 		}
 	}
-	
+
 	// Use the node's earliest available slot if it's higher than our calculated minimum
 	if nodeStatus != nil && nodeStatus.EarliestAvailableSlot > startSlot {
 		startSlot = nodeStatus.EarliestAvailableSlot
 	}
-	
+
 	endSlot := currentSlot
 
 	// If no valid range, return empty

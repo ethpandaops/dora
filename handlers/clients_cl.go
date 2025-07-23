@@ -167,7 +167,7 @@ func buildCLClientsPageData(sortOrder string) (*models.ClientsCLPageData, time.D
 			},
 		},
 		Nodes: make(map[string]*models.ClientCLPageDataNode),
-		
+
 		// DAS Guardian configuration (check enabled by default, mass scan disabled by default)
 		DisableDasGuardianCheck:   utils.Config.Frontend.DisableDasGuardianCheck,
 		EnableDasGuardianMassScan: utils.Config.Frontend.EnableDasGuardianMassScan,
