@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"reflect"
 	"time"
 
 	"github.com/attestantio/go-eth2-client/spec"
@@ -39,6 +40,10 @@ func NewDasGuardian(ctx context.Context, logger logrus.FieldLogger) (*DasGuardia
 	}, nil
 }
 
+func (d *DasGuardian) Close() error {
+	return d.guardian.Close()
+}
+
 func (d *DasGuardian) ScanNode(ctx context.Context, nodeEnr string, slots []uint64) (*dasguardian.DasGuardianScanResult, error) {
 	node, err := dasguardian.ParseNode(nodeEnr)
 	if err != nil {
@@ -61,6 +66,7 @@ func (d *DasGuardian) ScanNode(ctx context.Context, nodeEnr string, slots []uint
 	// Return both - the handler will deal with partial results
 	return res, err
 }
+
 
 // dasGuardianAPI is the beacon api interface for the DAS Guardian.
 type dasGuardianAPI struct {
@@ -181,13 +187,32 @@ func (d *dasGuardianAPI) ReadSpecParameter(key string) (any, bool) {
 		return nil, false
 	}
 
-	switch key {
-	case "FULU_FORK_EPOCH":
-		if specs.FuluForkEpoch != nil {
-			return *specs.FuluForkEpoch, true
+	// Use reflection to find the field by yaml tag
+	specsValue := reflect.ValueOf(specs).Elem()
+	specsType := specsValue.Type()
+
+	for i := 0; i < specsType.NumField(); i++ {
+		field := specsType.Field(i)
+		yamlTag := field.Tag.Get("yaml")
+
+		// Check if the yaml tag matches the requested key
+		if yamlTag == key {
+			fieldValue := specsValue.Field(i)
+
+			// Handle pointer types
+			if fieldValue.Kind() == reflect.Ptr {
+				if fieldValue.IsNil() {
+					return nil, false
+				}
+				// Dereference the pointer to get the actual value
+				return fieldValue.Elem().Interface(), true
+			}
+
+			// Handle non-pointer types
+			return fieldValue.Interface(), true
 		}
-		return nil, false
-	default:
-		return nil, false
 	}
+
+	// Key not found
+	return nil, false
 }

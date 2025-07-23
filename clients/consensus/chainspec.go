@@ -62,6 +62,7 @@ type ChainSpec struct {
 	DepositContractAddress                []byte            `yaml:"DEPOSIT_CONTRACT_ADDRESS"`
 	MaxConsolidationRequestsPerPayload    uint64            `yaml:"MAX_CONSOLIDATION_REQUESTS_PER_PAYLOAD" check-if-fork:"ElectraForkEpoch"`
 	MaxWithdrawalRequestsPerPayload       uint64            `yaml:"MAX_WITHDRAWAL_REQUESTS_PER_PAYLOAD"    check-if-fork:"ElectraForkEpoch"`
+	MinEpochsForDataColumnSidecars        uint64            `yaml:"MIN_EPOCHS_FOR_DATA_COLUMN_SIDECARS_REQUESTS"`
 	DepositChainId                        uint64            `yaml:"DEPOSIT_CHAIN_ID"`
 	MinActivationBalance                  uint64            `yaml:"MIN_ACTIVATION_BALANCE"`
 	MaxPendingPartialsPerWithdrawalsSweep uint64            `yaml:"MAX_PENDING_PARTIALS_PER_WITHDRAWALS_SWEEP" check-if-fork:"ElectraForkEpoch"`

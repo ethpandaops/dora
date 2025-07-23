@@ -25,7 +25,7 @@ require (
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/pk910/dynamic-ssz v1.0.0
 	github.com/pressly/goose/v3 v3.24.3
-	github.com/probe-lab/eth-das-guardian v0.2.0
+	github.com/probe-lab/eth-das-guardian v0.2.1
 	github.com/protolambda/bls12-381-util v0.1.0
 	github.com/protolambda/zrnt v0.34.1
 	github.com/protolambda/ztyp v0.2.2
