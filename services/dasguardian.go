@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"reflect"
 	"time"
 
 	"github.com/attestantio/go-eth2-client/spec"
@@ -39,6 +40,10 @@ func NewDasGuardian(ctx context.Context, logger logrus.FieldLogger) (*DasGuardia
 	}, nil
 }
 
+func (d *DasGuardian) Close() error {
+	return d.guardian.Close()
+}
+
 func (d *DasGuardian) ScanNode(ctx context.Context, nodeEnr string, slots []uint64) (*dasguardian.DasGuardianScanResult, error) {
 	node, err := dasguardian.ParseNode(nodeEnr)
 	if err != nil {
@@ -53,6 +58,51 @@ func (d *DasGuardian) ScanNode(ctx context.Context, nodeEnr string, slots []uint
 	} else {
 		// Specific slots requested
 		slotSelector = dasguardian.WithCustomSlots(slots)
+	}
+
+	// Scan can return both result and error (partial results)
+	res, err := d.guardian.Scan(ctx, node, slotSelector)
+
+	// Return both - the handler will deal with partial results
+	return res, err
+}
+
+// SlotSelectorCallback is a function type that receives node status and returns selected slots
+type SlotSelectorCallback func(nodeStatus *dasguardian.StatusV2) ([]uint64, error)
+
+func (d *DasGuardian) ScanNodeWithCallback(ctx context.Context, nodeEnr string, slotCallback SlotSelectorCallback) (*dasguardian.DasGuardianScanResult, error) {
+	node, err := dasguardian.ParseNode(nodeEnr)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create a custom slot selector that uses our callback
+	slotSelector := func(ctx context.Context, apiCli dasguardian.BeaconAPI, statusV2 *dasguardian.StatusV2) ([]dasguardian.SampleableSlot, error) {
+		// Call our callback to get the selected slots based on node status
+		selectedSlots, err := slotCallback(statusV2)
+		if err != nil {
+			return nil, err
+		}
+
+		// Convert to SampleableSlot format
+		var sampleableSlots []dasguardian.SampleableSlot
+		for _, slot := range selectedSlots {
+			beaconBlock, err := GlobalBeaconService.GetSlotDetailsBySlot(ctx, phase0.Slot(slot))
+			if err != nil {
+				return nil, err
+			}
+
+			if beaconBlock == nil {
+				continue
+			}
+
+			sampleableSlots = append(sampleableSlots, dasguardian.SampleableSlot{
+				Slot:        slot,
+				BeaconBlock: beaconBlock.Block,
+			})
+		}
+
+		return sampleableSlots, nil
 	}
 
 	// Scan can return both result and error (partial results)
@@ -181,13 +231,32 @@ func (d *dasGuardianAPI) ReadSpecParameter(key string) (any, bool) {
 		return nil, false
 	}
 
-	switch key {
-	case "FULU_FORK_EPOCH":
-		if specs.FuluForkEpoch != nil {
-			return *specs.FuluForkEpoch, true
+	// Use reflection to find the field by yaml tag
+	specsValue := reflect.ValueOf(specs).Elem()
+	specsType := specsValue.Type()
+
+	for i := 0; i < specsType.NumField(); i++ {
+		field := specsType.Field(i)
+		yamlTag := field.Tag.Get("yaml")
+
+		// Check if the yaml tag matches the requested key
+		if yamlTag == key {
+			fieldValue := specsValue.Field(i)
+
+			// Handle pointer types
+			if fieldValue.Kind() == reflect.Ptr {
+				if fieldValue.IsNil() {
+					return nil, false
+				}
+				// Dereference the pointer to get the actual value
+				return fieldValue.Elem().Interface(), true
+			}
+
+			// Handle non-pointer types
+			return fieldValue.Interface(), true
 		}
-		return nil, false
-	default:
-		return nil, false
 	}
+
+	// Key not found
+	return nil, false
 }

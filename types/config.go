@@ -56,6 +56,10 @@ type Config struct {
 		ShowPeerDASInfos       bool `yaml:"showPeerDASInfos" envconfig:"FRONTEND_SHOW_PEER_DAS_INFOS"`
 		ShowSubmitDeposit      bool `yaml:"showSubmitDeposit" envconfig:"FRONTEND_SHOW_SUBMIT_DEPOSIT"`
 		ShowSubmitElRequests   bool `yaml:"showSubmitElRequests" envconfig:"FRONTEND_SHOW_SUBMIT_EL_REQUESTS"`
+		
+		// DAS Guardian configuration
+		DisableDasGuardianCheck    bool `yaml:"disableDasGuardianCheck" envconfig:"FRONTEND_DISABLE_DAS_GUARDIAN_CHECK"`
+		EnableDasGuardianMassScan  bool `yaml:"enableDasGuardianMassScan" envconfig:"FRONTEND_ENABLE_DAS_GUARDIAN_MASS_SCAN"`
 	} `yaml:"frontend"`
 
 	Api struct {

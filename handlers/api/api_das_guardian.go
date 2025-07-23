@@ -4,17 +4,24 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"net/http"
 	"time"
 
+	"github.com/attestantio/go-eth2-client/spec/phase0"
+	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/services"
+	"github.com/ethpandaops/dora/utils"
+	dasguardian "github.com/probe-lab/eth-das-guardian"
 	"github.com/sirupsen/logrus"
 )
 
 // APIDasGuardianScanRequest represents the request body for DAS Guardian scan
 type APIDasGuardianScanRequest struct {
-	ENR   string   `json:"enr"`
-	Slots []uint64 `json:"slots,omitempty"` // Optional slot numbers to scan
+	ENR         string   `json:"enr"`
+	Slots       []uint64 `json:"slots,omitempty"`        // Optional slot numbers to scan
+	RandomMode  string   `json:"random_mode,omitempty"`  // Random slot selection mode: "non_missed", "with_blobs", "available"
+	RandomCount int32    `json:"random_count,omitempty"` // Number of random slots to select (default: 4)
 }
 
 // APIDasGuardianScanResponse represents the response from DAS Guardian scan
@@ -84,6 +91,12 @@ type APIDasGuardianEvalResult struct {
 func APIDasGuardianScan(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
+	// Check if DAS Guardian check is disabled
+	if utils.Config.Frontend.DisableDasGuardianCheck {
+		http.Error(w, `{"error": "DAS Guardian check is disabled"}`, http.StatusForbidden)
+		return
+	}
+
 	// Check rate limit (5 calls per minute per IP)
 	if err := services.GlobalCallRateLimiter.CheckCallLimit(r, 5); err != nil {
 		http.Error(w, `{"error": "rate limit exceeded"}`, http.StatusTooManyRequests)
@@ -113,8 +126,31 @@ func APIDasGuardianScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	defer dasGuardian.Close()
+
 	// Perform scan
-	scanResult, scanErr := dasGuardian.ScanNode(ctx, req.ENR, req.Slots)
+	var scanResult *dasguardian.DasGuardianScanResult
+	var scanErr error
+
+	// Handle slot selection
+	if req.RandomMode != "" {
+		// Use callback-based random slot selection
+		randomCount := req.RandomCount
+		if randomCount <= 0 {
+			randomCount = 4 // Default to 4 slots
+		}
+		
+		// Create callback that will be called with node status
+		slotCallback := func(nodeStatus *dasguardian.StatusV2) ([]uint64, error) {
+			return selectRandomSlotsWithNodeStatus(req.RandomMode, int(randomCount), nodeStatus)
+		}
+		
+		// Scan with callback
+		scanResult, scanErr = dasGuardian.ScanNodeWithCallback(ctx, req.ENR, slotCallback)
+	} else {
+		// Use manually provided slots or metadata-only scan
+		scanResult, scanErr = dasGuardian.ScanNode(ctx, req.ENR, req.Slots)
+	}
 
 	// Build response - success is true only if no error AND we have results
 	response := APIDasGuardianScanResponse{
@@ -191,4 +227,93 @@ func APIDasGuardianScan(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error": "failed to encode response"}`, http.StatusInternalServerError)
 		return
 	}
+}
+
+// selectRandomSlotsWithNodeStatus selects random slots based on the specified mode and node status
+func selectRandomSlotsWithNodeStatus(mode string, count int, nodeStatus *dasguardian.StatusV2) ([]uint64, error) {
+	chainState := services.GlobalBeaconService.GetChainState()
+	currentSlot := uint64(chainState.CurrentSlot())
+
+	// Calculate the valid slot range for DAS data availability
+	specs := chainState.GetSpecs()
+	currentEpoch := uint64(chainState.CurrentEpoch())
+	
+	// Start with Fulu activation as the absolute minimum
+	var startSlot uint64 = 0
+	if specs != nil && specs.FuluForkEpoch != nil {
+		startSlot = uint64(chainState.EpochToSlot(phase0.Epoch(*specs.FuluForkEpoch)))
+	}
+	
+	// Apply data column sidecar availability limit
+	if specs != nil && specs.MinEpochsForDataColumnSidecars > 0 && currentEpoch > specs.MinEpochsForDataColumnSidecars {
+		// Data columns are only available for the last MinEpochsForDataColumnSidecars epochs
+		dataAvailabilityEpoch := currentEpoch - specs.MinEpochsForDataColumnSidecars
+		dataAvailabilitySlot := uint64(chainState.EpochToSlot(phase0.Epoch(dataAvailabilityEpoch)))
+		
+		// Use the more restrictive limit (later slot)
+		if dataAvailabilitySlot > startSlot {
+			startSlot = dataAvailabilitySlot
+		}
+	}
+	
+	// Use the node's earliest available slot if it's higher than our calculated minimum
+	if nodeStatus != nil && nodeStatus.EarliestAvailableSlot > startSlot {
+		startSlot = nodeStatus.EarliestAvailableSlot
+	}
+	
+	endSlot := currentSlot
+
+	// If no valid range, return empty
+	if startSlot >= endSlot {
+		return []uint64{}, nil
+	}
+
+	// Collect valid slots by random sampling
+	var validSlots []uint64
+	maxPolls := count * 3
+	polled := 0
+
+	// Keep track of already checked slots to avoid duplicates
+	checkedSlots := make(map[uint64]bool)
+
+	for polled < maxPolls && len(validSlots) < count {
+		polled++
+
+		// Generate random slot in range
+		randomSlot := startSlot + uint64(rand.Int63n(int64(endSlot-startSlot)))
+
+		// Skip if already checked
+		if checkedSlots[randomSlot] {
+			continue
+		}
+		checkedSlots[randomSlot] = true
+
+		// Check slot using specific slot filter
+		filter := &dbtypes.BlockFilter{
+			Slot:         &randomSlot,
+			WithOrphaned: 1,
+			WithMissing:  1,
+		}
+
+		blocks := services.GlobalBeaconService.GetDbBlocksByFilter(filter, 0, 1, 0)
+
+		// Check conditions based on mode
+		switch mode {
+		case "non_missed":
+			// Accept if slot has a proposed block (not missing)
+			if len(blocks) > 0 && blocks[0].Block != nil {
+				validSlots = append(validSlots, randomSlot)
+			}
+		case "with_blobs":
+			// Accept if slot has a proposed block with blobs
+			if len(blocks) > 0 && blocks[0].Block != nil && blocks[0].Block.BlobCount > 0 {
+				validSlots = append(validSlots, randomSlot)
+			}
+		case "available":
+			// Accept any slot (including missing ones)
+			validSlots = append(validSlots, randomSlot)
+		}
+	}
+
+	return validSlots, nil
 }

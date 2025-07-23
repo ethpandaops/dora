@@ -225,6 +225,11 @@
       <div class="card-body px-0 py-3">
         <div class="table-responsive table-sorting px-0 py-1">
           <div style="text-align: right; margin-right: 15px;">
+            {{ if and $root.ShowPeerDASInfos (not $root.DisableDasGuardianCheck) $root.EnableDasGuardianMassScan }}
+            <button type="button" class="btn btn-outline-primary btn-sm me-3" id="massDasGuardianBtn">
+              <i class="fa-solid fa-shield-halved"></i> Mass DAS Guardian Check
+            </button>
+            {{ end }}
             Peer infos:
             <i class="fa fa-refresh text-muted p-1 mx-1" role="button" data-bs-toggle="tooltip" data-bs-placement="top" title="Refresh peer information" onclick="refreshPeerInfos()" style="cursor: pointer;"></i>
             <div class="btn-group btn-group-sm" role="group" aria-label="Peer info controls">
@@ -333,7 +338,7 @@
                       <i class="fa fa-copy text-muted p-1" role="button" data-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $client.Version }}"></i>
                     </td>
                     <td>
-                      {{ if $client.NodeENR }}
+                      {{ if and $client.NodeENR $root.ShowPeerDASInfos (not $root.DisableDasGuardianCheck) }}
                       <button class="btn btn-sm btn-outline-primary das-check-btn" 
                               data-enr="{{ $client.NodeENR }}" 
                               data-client-name="{{ $client.Name }}"
@@ -354,6 +359,7 @@
               </tbody>
           </table>
         </div>
+
 
         <!-- Peer details template -->
         <div class="peer-details-content d-none">
@@ -661,6 +667,7 @@
         </div>
 
         <!-- DAS Guardian Modal -->
+        {{ if and $root.ShowPeerDASInfos (not $root.DisableDasGuardianCheck) }}
         <div class="modal fade" id="dasGuardianModal" tabindex="-1" role="dialog" aria-labelledby="dasGuardianModalTitle" aria-hidden="true">
           <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
             <div class="modal-content">
@@ -679,15 +686,21 @@
                   
                   <h6>Scan Options</h6>
                   <div class="form-check mb-3">
-                    <input class="form-check-input" type="radio" name="scanType" id="scanMetadataOnly" value="metadata" checked>
-                    <label class="form-check-label" for="scanMetadataOnly">
-                      <strong>Metadata Only</strong> - Quick scan for node status and custody information (no DAS column validation)
+                    <input class="form-check-input" type="radio" name="scanType" id="scanRandomSlots" value="random" checked>
+                    <label class="form-check-label" for="scanRandomSlots">
+                      <strong>Scan Random Slots</strong> - Validate DAS columns for randomly selected slots
                     </label>
                   </div>
                   <div class="form-check mb-3">
                     <input class="form-check-input" type="radio" name="scanType" id="scanWithSlots" value="slots">
                     <label class="form-check-label" for="scanWithSlots">
                       <strong>Scan Specific Slots</strong> - Validate DAS columns for selected slots
+                    </label>
+                  </div>
+                  <div class="form-check mb-3">
+                    <input class="form-check-input" type="radio" name="scanType" id="scanMetadataOnly" value="metadata">
+                    <label class="form-check-label" for="scanMetadataOnly">
+                      <strong>Metadata Only</strong> - Quick scan for node status and custody information (no DAS column validation)
                     </label>
                   </div>
                   
@@ -702,6 +715,33 @@
                     </div>
                     <div id="selectedSlotsList">
                       <!-- Selected slots will appear here -->
+                    </div>
+                  </div>
+                  
+                  <!-- Random Slot Selection (shown by default since random is now default) -->
+                  <div id="randomSlotSelectionSection" class="mt-3 p-3 border rounded">
+                    <h6>Random Slot Selection Mode</h6>
+                    <div class="form-check mb-2">
+                      <input class="form-check-input" type="radio" name="randomMode" id="randomWithBlobs" value="with_blobs" checked>
+                      <label class="form-check-label" for="randomWithBlobs">
+                        <strong>Random Slots with Blobs</strong> - Select from slots that contain blob transactions
+                      </label>
+                    </div>
+                    <div class="form-check mb-2">
+                      <input class="form-check-input" type="radio" name="randomMode" id="randomNonMissed" value="non_missed">
+                      <label class="form-check-label" for="randomNonMissed">
+                        <strong>Random Non-Missed Slots</strong> - Select from slots that have proposed blocks
+                      </label>
+                    </div>
+                    <div class="form-check mb-3">
+                      <input class="form-check-input" type="radio" name="randomMode" id="randomAvailable" value="available">
+                      <label class="form-check-label" for="randomAvailable">
+                        <strong>Random Available Slots</strong> - Select from all available slots for DAS validation
+                      </label>
+                    </div>
+                    <div class="mb-3">
+                      <label for="randomSlotCount" class="form-label">Number of slots to select (4-5 recommended):</label>
+                      <input type="number" class="form-control" id="randomSlotCount" min="1" max="10" value="4">
                     </div>
                   </div>
                   
@@ -731,6 +771,114 @@
             </div>
           </div>
         </div>
+        {{ end }}
+
+        <!-- Mass DAS Guardian Modal -->
+        {{ if and $root.ShowPeerDASInfos (not $root.DisableDasGuardianCheck) $root.EnableDasGuardianMassScan }}
+        <div class="modal fade" id="massDasGuardianModal" tabindex="-1" role="dialog" aria-labelledby="massDasGuardianModalTitle" aria-hidden="true">
+          <div class="modal-dialog modal-dialog-centered modal-xl mass-das-modal-extra-wide" role="document">
+            <div class="modal-content">
+              <div class="modal-header">
+                <h5 class="modal-title" id="massDasGuardianModalTitle">
+                  <i class="fa-solid fa-shield-halved"></i> Mass DAS Guardian Check
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+              </div>
+              <div class="modal-body" id="massDasGuardianModalBody">
+                <!-- Slot Selection -->
+                <div id="massDasGuardianSlotSelection">
+                  <div class="alert alert-info">
+                    <i class="fa-solid fa-info-circle"></i> Mass DAS Guardian scans will test all available nodes in parallel. This operation may take several minutes.
+                  </div>
+                  
+                  <h6>Select Slots to Test</h6>
+                  <div class="form-check mb-3">
+                    <input class="form-check-input" type="radio" name="massScanType" id="massRandomSlots" value="random" checked>
+                    <label class="form-check-label" for="massRandomSlots">
+                      <strong>Random Slots</strong> - Test randomly selected slots
+                    </label>
+                  </div>
+                  <div class="form-check mb-3">
+                    <input class="form-check-input" type="radio" name="massScanType" id="massSpecificSlots" value="slots">
+                    <label class="form-check-label" for="massSpecificSlots">
+                      <strong>Specific Slots</strong> - Test manually selected slots
+                    </label>
+                  </div>
+                  
+                  <!-- Random Slot Selection -->
+                  <div id="massRandomSlotSection" class="mt-3 p-3 border rounded">
+                    <h6>Random Slot Selection</h6>
+                    <div class="form-check mb-2">
+                      <input class="form-check-input" type="radio" name="massRandomMode" id="massRandomWithBlobs" value="with_blobs" checked>
+                      <label class="form-check-label" for="massRandomWithBlobs">
+                        <strong>Random Slots with Blobs</strong> - Select from slots that contain blob transactions
+                      </label>
+                    </div>
+                    <div class="form-check mb-2">
+                      <input class="form-check-input" type="radio" name="massRandomMode" id="massRandomNonMissed" value="non_missed">
+                      <label class="form-check-label" for="massRandomNonMissed">
+                        <strong>Random Non-Missed Slots</strong> - Select from slots that have proposed blocks
+                      </label>
+                    </div>
+                    <div class="form-check mb-3">
+                      <input class="form-check-input" type="radio" name="massRandomMode" id="massRandomAvailable" value="available">
+                      <label class="form-check-label" for="massRandomAvailable">
+                        <strong>Random Available Slots</strong> - Select from all available slots
+                      </label>
+                    </div>
+                    <div class="mb-3">
+                      <label for="massRandomSlotCount" class="form-label">Number of slots to test (3-5 recommended):</label>
+                      <input type="number" class="form-control" id="massRandomSlotCount" min="1" max="10" value="4">
+                    </div>
+                  </div>
+                  
+                  <!-- Specific Slot Selection -->
+                  <div id="massSpecificSlotSection" style="display: none;" class="mt-3 p-3 border rounded">
+                    <h6>Select Specific Slots</h6>
+                    <div class="input-group mb-3">
+                      <input type="text" class="form-control" id="massSlotInput" placeholder="Enter slot number or root">
+                      <button class="btn btn-outline-secondary" type="button" id="massAddSlotBtn">
+                        <i class="fa-solid fa-plus"></i> Add Slot
+                      </button>
+                    </div>
+                    <div id="massSelectedSlotsList">
+                      <!-- Selected slots will appear here -->
+                    </div>
+                  </div>
+                  
+                  <div class="mt-4">
+                    <button type="button" class="btn btn-primary" id="startMassScanBtn">
+                      <i class="fa-solid fa-play"></i> Start Mass Scan
+                    </button>
+                  </div>
+                </div>
+                
+                <!-- Loading indicator (hidden by default) -->
+                <div class="text-center" id="massDasGuardianLoading" style="display: none;">
+                  <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                  </div>
+                  <p class="mt-3">Running mass DAS Guardian scan...</p>
+                  <div id="massLoadingProgress" class="mt-3">
+                    <div class="progress">
+                      <div class="progress-bar" role="progressbar" style="width: 0%" id="massProgressBar"></div>
+                    </div>
+                    <small class="text-muted mt-2" id="massProgressText">Initializing...</small>
+                  </div>
+                </div>
+                
+                <!-- Results (hidden by default) -->
+                <div id="massDasGuardianResults" style="display: none;">
+                  <!-- Results grid will be populated here -->
+                </div>
+              </div>
+              <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        {{ end }}
 
       </div>
 
@@ -1183,12 +1331,15 @@
       $('#dasGuardianLoading').hide();
       $('#dasGuardianResults').hide().empty();
       $('#slotSelectionSection').hide();
+      $('#randomSlotSelectionSection').show(); // Show by default since random is now default
       $('#selectedSlotsList').empty();
       selectedSlots = [];
       
       // Reset form
-      $('#scanMetadataOnly').prop('checked', true);
+      $('#scanRandomSlots').prop('checked', true); // Default to random slots
       $('#slotInput').val('');
+      $('#randomWithBlobs').prop('checked', true); // Default to with_blobs
+      $('#randomSlotCount').val('4');
       
       // Show modal
       $('#dasGuardianModal').modal('show');
@@ -1196,10 +1347,14 @@
     
     // Handle scan type selection
     $('input[name="scanType"]').on('change', function() {
-      if ($(this).val() === 'slots') {
+      const scanType = $(this).val();
+      $('#slotSelectionSection').hide();
+      $('#randomSlotSelectionSection').hide();
+      
+      if (scanType === 'slots') {
         $('#slotSelectionSection').show();
-      } else {
-        $('#slotSelectionSection').hide();
+      } else if (scanType === 'random') {
+        $('#randomSlotSelectionSection').show();
       }
     });
     
@@ -1325,6 +1480,11 @@
       const requestData = { enr: dasGuardianEnr };
       if (scanType === 'slots') {
         requestData.slots = selectedSlots;
+      } else if (scanType === 'random') {
+        const randomMode = $('input[name="randomMode"]:checked').val();
+        const randomCount = parseInt($('#randomSlotCount').val()) || 4;
+        requestData.random_mode = randomMode;
+        requestData.random_count = randomCount;
       }
       
       // Make API call
@@ -1551,6 +1711,316 @@
       };
       return text.toString().replace(/[&<>"']/g, m => map[m]);
     }
+
+    // Reset function for mass DAS Guardian modal (called from onclick)
+    function resetMassDasGuardianModal() {
+      // Reset modal state
+      $('#massDasGuardianSlotSelection').show();
+      $('#massDasGuardianLoading').hide();
+      $('#massDasGuardianResults').hide().empty();
+      $('#massSpecificSlotSection').hide();
+      $('#massRandomSlotSection').show();
+      $('#massSelectedSlotsList').empty();
+      massSelectedSlots = [];
+      
+      // Reset form
+      $('#massRandomSlots').prop('checked', true);
+      $('#massRandomWithBlobs').prop('checked', true);
+      $('#massRandomSlotCount').val('4');
+      $('#massSlotInput').val('');
+      
+      // Show modal
+      $('#massDasGuardianModal').modal('show');
+    }
+
+    // Mass DAS Guardian functionality
+    let massSelectedSlots = [];
+    
+    $('#massDasGuardianBtn').on('click', function() {
+      // Reset modal state
+      $('#massDasGuardianSlotSelection').show();
+      $('#massDasGuardianLoading').hide();
+      $('#massDasGuardianResults').hide().empty();
+      $('#massSpecificSlotSection').hide();
+      $('#massRandomSlotSection').show();
+      $('#massSelectedSlotsList').empty();
+      massSelectedSlots = [];
+      
+      // Reset form
+      $('#massRandomSlots').prop('checked', true);
+      $('#massRandomWithBlobs').prop('checked', true);
+      $('#massRandomSlotCount').val('4');
+      $('#massSlotInput').val('');
+      
+      // Show modal
+      $('#massDasGuardianModal').modal('show');
+    });
+    
+    // Handle mass scan type selection
+    $('input[name="massScanType"]').on('change', function() {
+      const scanType = $(this).val();
+      $('#massRandomSlotSection').hide();
+      $('#massSpecificSlotSection').hide();
+      
+      if (scanType === 'random') {
+        $('#massRandomSlotSection').show();
+      } else if (scanType === 'slots') {
+        $('#massSpecificSlotSection').show();
+      }
+    });
+    
+    // Mass scan specific slot functionality
+    $('#massAddSlotBtn').on('click', function() {
+      const input = $('#massSlotInput').val().trim();
+      if (!input) return;
+      
+      // Check if it's a slot number or root
+      if (/^\d+$/.test(input)) {
+        const slotNumber = parseInt(input);
+        if (!massSelectedSlots.includes(slotNumber)) {
+          massSelectedSlots.push(slotNumber);
+          addMassSlotToList(slotNumber);
+          $('#massSlotInput').val('');
+        }
+      } else if (/^0x[a-fA-F0-9]{64}$/.test(input)) {
+        // It's a root, look up the slot
+        $('#massAddSlotBtn').prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Looking up...');
+        
+        $.ajax({
+          url: `/api/v1/slot/${input}`,
+          method: 'GET',
+          success: function(response) {
+            if (response.data && !massSelectedSlots.includes(response.data.slot)) {
+              massSelectedSlots.push(response.data.slot);
+              addMassSlotToList(response.data.slot);
+              $('#massSlotInput').val('');
+            }
+            $('#massAddSlotBtn').prop('disabled', false).html('<i class="fa-solid fa-plus"></i> Add Slot');
+          },
+          error: function() {
+            alert('Block root not found');
+            $('#massAddSlotBtn').prop('disabled', false).html('<i class="fa-solid fa-plus"></i> Add Slot');
+          }
+        });
+      } else {
+        alert('Please enter a valid slot number or block root (0x...)');
+      }
+    });
+    
+    // Handle enter key in mass slot input
+    $('#massSlotInput').on('keypress', function(e) {
+      if (e.which === 13) {
+        $('#massAddSlotBtn').click();
+      }
+    });
+    
+    function addMassSlotToList(slot) {
+      const slotElement = $(`
+        <div class="slot-item border rounded p-2 mb-2" data-slot="${slot}">
+          <div class="d-flex justify-content-between align-items-center">
+            <div>
+              <strong>Slot ${slot.toLocaleString()}</strong>
+              <span class="slot-info ms-2 text-muted">
+                <i class="fas fa-spinner fa-spin"></i> Loading...
+              </span>
+            </div>
+            <button type="button" class="btn btn-sm btn-outline-danger" aria-label="Remove">
+              <i class="fa-solid fa-times"></i>
+            </button>
+          </div>
+        </div>
+      `);
+      
+      slotElement.find('.btn-outline-danger').on('click', function() {
+        massSelectedSlots = massSelectedSlots.filter(s => s !== slot);
+        slotElement.remove();
+      });
+      
+      $('#massSelectedSlotsList').append(slotElement);
+      
+      // Fetch slot info (reuse the existing function logic)
+      $.ajax({
+        url: `/api/v1/slot/${slot}`,
+        method: 'GET',
+        success: function(response) {
+          let infoHtml = '';
+          
+          // Check if slot is pre-Fulu (DAS not available)
+          const slotEpoch = Math.floor(slot / 32);
+          const isPreFulu = fuluActivationEpoch !== 18446744073709551615 && slotEpoch < fuluActivationEpoch;
+          
+          if (response.data && response.data.status !== 'Missing') {
+            infoHtml = `<span class="text-success"><i class="fa-solid fa-check"></i> Proposed</span>`;
+            // Always display blob count (even when 0)
+            const blobCount = response.data.blob_count || 0;
+            infoHtml += ` | <span class="text-info">${blobCount} blob${blobCount !== 1 ? 's' : ''}</span>`;
+            
+            // Add pre-Fulu warning if applicable
+            if (isPreFulu) {
+              infoHtml += ` | <span class="text-warning"><i class="fa-solid fa-exclamation-triangle"></i> Pre-Fulu (DAS not available)</span>`;
+            }
+          } else {
+            infoHtml = `<span class="text-warning"><i class="fa-solid fa-times"></i> Not proposed</span>`;
+            // Add pre-Fulu warning for missing blocks too
+            if (isPreFulu) {
+              infoHtml += ` | <span class="text-warning"><i class="fa-solid fa-exclamation-triangle"></i> Pre-Fulu (DAS not available)</span>`;
+            }
+          }
+          slotElement.find('.slot-info').html(infoHtml);
+        },
+        error: function() {
+          slotElement.find('.slot-info').html('<span class="text-danger"><i class="fa-solid fa-exclamation-triangle"></i> Error loading</span>');
+        }
+      });
+    }
+    
+    // Start mass scan functionality
+    $('#startMassScanBtn').on('click', function() {
+      const scanType = $('input[name="massScanType"]:checked').val();
+      
+      if (scanType === 'slots' && massSelectedSlots.length === 0) {
+        alert('Please select at least one slot to scan');
+        return;
+      }
+      
+      // Hide slot selection, show loading
+      $('#massDasGuardianSlotSelection').hide();
+      $('#massDasGuardianLoading').show();
+      $('#massProgressBar').css('width', '0%');
+      $('#massProgressText').text('Initializing...');
+      
+      // Prepare request data
+      const requestData = { mass_scan: true };
+      if (scanType === 'slots') {
+        requestData.slots = massSelectedSlots;
+      } else {
+        // Random mode
+        const randomMode = $('input[name="massRandomMode"]:checked').val();
+        const randomCount = parseInt($('#massRandomSlotCount').val()) || 4;
+        requestData.random_mode = randomMode;
+        requestData.random_count = randomCount;
+      }
+      
+      // Make API call
+      $.ajax({
+        url: '/api/v1/das-guardian/mass-scan',
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify(requestData),
+        success: function(response) {
+          $('#massDasGuardianLoading').hide();
+          displayMassDasGuardianResults(response);
+        },
+        error: function(xhr) {
+          $('#massDasGuardianLoading').hide();
+          let errorMsg = 'Failed to run mass DAS Guardian scan';
+          try {
+            const errorData = JSON.parse(xhr.responseText);
+            if (errorData.error) errorMsg = errorData.error;
+          } catch (e) {}
+          displayMassDasGuardianError(errorMsg);
+        }
+      });
+    });
+    
+    function displayMassDasGuardianResults(data) {
+      const $results = $('#massDasGuardianResults');
+      
+      if (data.error && !data.results) {
+        displayMassDasGuardianError(data.error);
+        return;
+      }
+      
+      // Create results grid: slots as columns, nodes as rows
+      let html = '<div class="table-responsive"><table class="table table-sm table-bordered table-striped mass-das-results-table"><thead class="table-dark"><tr>';
+      html += '<th class="mass-das-node-col">Node</th>';
+      html += '<th class="text-center mass-das-cgc-col">CGC</th>';
+      html += '<th class="text-center mass-das-earliest-col">Earliest Slot</th>';
+      
+      // Add slot columns
+      const slots = data.slots || [];
+      slots.forEach(slot => {
+        html += `<th class="text-center mass-das-slot-col">Slot ${slot.toLocaleString()}</th>`;
+      });
+      html += '</tr></thead><tbody>';
+      
+      // Add node rows (sorted by node name)
+      const results = data.results || {};
+      const sortedNodeEnrs = Object.keys(results).sort((a, b) => {
+        const nodeA = results[a].node_alias || a.substring(0, 20) + '...';
+        const nodeB = results[b].node_alias || b.substring(0, 20) + '...';
+        return nodeA.localeCompare(nodeB);
+      });
+      
+      sortedNodeEnrs.forEach(nodeEnr => {
+        const nodeResult = results[nodeEnr];
+        const nodeName = nodeResult.node_alias || nodeEnr.substring(0, 20) + '...';
+        
+        html += `<tr><td class="mass-das-node-col"><strong>${escapeHtml(nodeName)}</strong><small class="text-muted">${escapeHtml(nodeEnr.substring(0, 30))}...</small></td>`;
+        // Format custody columns for tooltip
+        const custodyColumns = nodeResult.custody_columns || [];
+        const custodyColumnsText = custodyColumns.length > 0 ? custodyColumns.join(', ') : 'No custody columns available';
+        const cgcDisplay = nodeResult.custody_group_count || '-';
+        
+        html += `<td class="text-center mass-das-cgc-col" data-bs-toggle="tooltip" data-bs-placement="top" title="Custody columns: ${custodyColumnsText}" style="cursor: ${custodyColumns.length > 0 ? 'help' : 'default'}">${cgcDisplay}</td>`;
+        html += `<td class="text-center mass-das-earliest-col">${nodeResult.earliest_slot ? nodeResult.earliest_slot.toLocaleString() : '-'}</td>`;
+        
+        slots.forEach(slot => {
+          const slotResult = nodeResult.slot_results && nodeResult.slot_results[slot];
+          if (slotResult) {
+            if (slotResult.error) {
+              // Slot-specific error
+              html += `<td class="text-center mass-das-slot-col"><span class="badge bg-danger" data-bs-toggle="tooltip" data-bs-placement="top" title="${escapeHtml(slotResult.error)}" style="cursor: help">Error</span></td>`;
+            } else {
+              // Normal slot result
+              const validColumns = slotResult.valid_column_count || 0;
+              const totalColumns = slotResult.total_columns || 0;
+              const percentage = totalColumns > 0 ? Math.round((validColumns / totalColumns) * 100) : 0;
+              
+              let badgeClass = 'bg-danger';
+              if (percentage >= 90) badgeClass = 'bg-success';
+              else if (percentage >= 50) badgeClass = 'bg-warning';
+              
+              html += `<td class="text-center mass-das-slot-col"><span class="badge ${badgeClass}">${validColumns}/${totalColumns}</span><br><small class="text-muted">(${percentage}%)</small></td>`;
+            }
+          } else if (nodeResult.error) {
+            // Node-level error
+            html += `<td class="text-center mass-das-slot-col"><span class="badge bg-danger" data-bs-toggle="tooltip" data-bs-placement="top" title="${escapeHtml(nodeResult.error)}" style="cursor: help">Error</span></td>`;
+          } else {
+            // No data available
+            html += '<td class="text-center mass-das-slot-col"><span class="badge bg-secondary">-</span></td>';
+          }
+        });
+        html += '</tr>';
+      });
+      
+      html += '</tbody></table></div>';
+      
+      if (data.error) {
+        html += `<div class="alert alert-warning mt-3">
+          <h6><i class="fa-solid fa-triangle-exclamation"></i> Partial Results</h6>
+          <p class="mb-0">Some scans completed with errors. The table above shows all available data.</p>
+          <p class="mb-0"><strong>Error:</strong> ${escapeHtml(data.error)}</p>
+        </div>`;
+      }
+      
+      $results.html(html).show();
+      
+      // Initialize Bootstrap tooltips for custody columns and errors
+      $results.find('[data-bs-toggle="tooltip"]').tooltip({
+        container: 'body', // Render tooltips in body to avoid z-index issues
+        boundary: 'viewport' // Keep tooltips within viewport
+      });
+    }
+    
+    function displayMassDasGuardianError(error) {
+      const html = `<div class="alert alert-danger" role="alert">
+        <h5><i class="fa-solid fa-triangle-exclamation"></i> Error</h5>
+        <p>${escapeHtml(error)}</p>
+      </div>`;
+      $('#massDasGuardianResults').html(html).show();
+    }
+    
     if (hashParams.has("name")) {
       name = hashParams.get("name")
       clientRow = $("#clientRow-" + name)
@@ -1576,6 +2046,88 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Mass DAS Guardian results table column sizing */
+.mass-das-results-table .mass-das-node-col {
+  width: 200px;
+  min-width: 180px;
+  max-width: 220px;
+  vertical-align: top;
+}
+
+.mass-das-results-table .mass-das-node-col strong {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  line-height: 1.2;
+}
+
+.mass-das-results-table .mass-das-node-col small {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  line-height: 1.1;
+}
+
+.mass-das-results-table .mass-das-cgc-col {
+  width: 80px;
+  min-width: 70px;
+  max-width: 90px;
+}
+
+.mass-das-results-table .mass-das-earliest-col,
+.mass-das-results-table .mass-das-slot-col {
+  width: 120px;
+  min-width: 100px;
+  max-width: 140px;
+}
+
+/* Ensure consistent row height */
+.mass-das-results-table tbody tr {
+  height: 60px;
+}
+
+.mass-das-results-table tbody td {
+  vertical-align: middle;
+  padding: 8px;
+}
+
+/* Override vertical alignment for node column to top */
+.mass-das-results-table .mass-das-node-col {
+  vertical-align: top !important;
+  padding-top: 8px;
+}
+
+/* Make mass DAS Guardian modal extra wide */
+.mass-das-modal-extra-wide {
+  max-width: 95vw;
+}
+
+@media (min-width: 1200px) {
+  .mass-das-modal-extra-wide {
+    max-width: 90vw;
+  }
+}
+
+@media (min-width: 1400px) {
+  .mass-das-modal-extra-wide {
+    max-width: 85vw;
+  }
+}
+
+/* Fix tooltip z-index to appear above modals */
+.tooltip {
+  z-index: 9999 !important;
+}
+
+/* Ensure Bootstrap tooltips appear above modals */
+.bs-tooltip-top, .bs-tooltip-bottom, .bs-tooltip-start, .bs-tooltip-end {
+  z-index: 9999 !important;
 }
 </style>
 {{ end }}
