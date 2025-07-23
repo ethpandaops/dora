@@ -40,6 +40,9 @@ type DepositsPageDataInitiatedDeposit struct {
 	ShowUpcheck           bool      `json:"show_upcheck"`
 	UpcheckActivity       uint8     `json:"upcheck_act"`
 	UpcheckMaximum        uint8     `json:"upcheck_max"`
+	ValidatorExists       bool      `json:"validator_exists"`
+	ValidatorIndex        uint64    `json:"validator_index"`
+	ValidatorName         string    `json:"validator_name"`
 }
 
 type DepositsPageDataIncludedDeposit struct {

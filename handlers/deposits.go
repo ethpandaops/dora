@@ -170,7 +170,12 @@ func buildDepositsPageData(firstEpoch uint64, pageSize uint64, tabView string) (
 			validatorIndex, found := services.GlobalBeaconService.GetValidatorIndexByPubkey(phase0.BLSPubKey(depositTx.PublicKey))
 			if !found {
 				depositTxData.ValidatorStatus = "Deposited"
+				depositTxData.ValidatorExists = false
 			} else {
+				depositTxData.ValidatorExists = true
+				depositTxData.ValidatorIndex = uint64(validatorIndex)
+				depositTxData.ValidatorName = services.GlobalBeaconService.GetValidatorName(uint64(validatorIndex))
+
 				validator := services.GlobalBeaconService.GetValidatorByIndex(validatorIndex, false)
 				if strings.HasPrefix(validator.Status.String(), "pending") {
 					depositTxData.ValidatorStatus = "Pending"
