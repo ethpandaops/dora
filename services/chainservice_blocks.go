@@ -623,6 +623,20 @@ func (bs *ChainService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageIdx
 				continue
 			}
 
+			// filter by specific slot number
+			if filter.Slot != nil {
+				if uint64(block.Slot) != *filter.Slot {
+					continue
+				}
+			}
+
+			// filter by specific block root
+			if len(filter.BlockRoot) > 0 {
+				if !bytes.Equal(block.Root[:], filter.BlockRoot) {
+					continue
+				}
+			}
+
 			isCanonical := bs.beaconIndexer.IsCanonicalBlockByHead(block, lastCanonicalBlock)
 			if isCanonical {
 				lastCanonicalBlock = block
@@ -716,20 +730,6 @@ func (bs *ChainService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageIdx
 					continue
 				}
 				if filter.MaxExecTime != nil && maxExecTime > *filter.MaxExecTime {
-					continue
-				}
-			}
-
-			// filter by specific slot number
-			if filter.Slot != nil {
-				if uint64(block.Slot) != *filter.Slot {
-					continue
-				}
-			}
-
-			// filter by specific block root
-			if len(filter.BlockRoot) > 0 {
-				if !bytes.Equal(block.Root[:], filter.BlockRoot) {
 					continue
 				}
 			}

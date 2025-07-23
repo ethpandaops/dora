@@ -690,6 +690,12 @@
                       <strong>Scan Specific Slots</strong> - Validate DAS columns for selected slots
                     </label>
                   </div>
+                  <div class="form-check mb-3">
+                    <input class="form-check-input" type="radio" name="scanType" id="scanRandomSlots" value="random">
+                    <label class="form-check-label" for="scanRandomSlots">
+                      <strong>Scan Random Slots</strong> - Validate DAS columns for randomly selected slots
+                    </label>
+                  </div>
                   
                   <!-- Slot Selection (hidden by default) -->
                   <div id="slotSelectionSection" style="display: none;" class="mt-3 p-3 border rounded">
@@ -702,6 +708,33 @@
                     </div>
                     <div id="selectedSlotsList">
                       <!-- Selected slots will appear here -->
+                    </div>
+                  </div>
+                  
+                  <!-- Random Slot Selection (hidden by default) -->
+                  <div id="randomSlotSelectionSection" style="display: none;" class="mt-3 p-3 border rounded">
+                    <h6>Random Slot Selection Mode</h6>
+                    <div class="form-check mb-2">
+                      <input class="form-check-input" type="radio" name="randomMode" id="randomNonMissed" value="non_missed" checked>
+                      <label class="form-check-label" for="randomNonMissed">
+                        <strong>Random Non-Missed Slots</strong> - Select from slots that have proposed blocks
+                      </label>
+                    </div>
+                    <div class="form-check mb-2">
+                      <input class="form-check-input" type="radio" name="randomMode" id="randomWithBlobs" value="with_blobs">
+                      <label class="form-check-label" for="randomWithBlobs">
+                        <strong>Random Slots with Blobs</strong> - Select from slots that contain blob transactions
+                      </label>
+                    </div>
+                    <div class="form-check mb-3">
+                      <input class="form-check-input" type="radio" name="randomMode" id="randomAvailable" value="available">
+                      <label class="form-check-label" for="randomAvailable">
+                        <strong>Random Available Slots</strong> - Select from all available slots for DAS validation
+                      </label>
+                    </div>
+                    <div class="mb-3">
+                      <label for="randomSlotCount" class="form-label">Number of slots to select (4-5 recommended):</label>
+                      <input type="number" class="form-control" id="randomSlotCount" min="1" max="10" value="4">
                     </div>
                   </div>
                   
@@ -1183,12 +1216,15 @@
       $('#dasGuardianLoading').hide();
       $('#dasGuardianResults').hide().empty();
       $('#slotSelectionSection').hide();
+      $('#randomSlotSelectionSection').hide();
       $('#selectedSlotsList').empty();
       selectedSlots = [];
       
       // Reset form
       $('#scanMetadataOnly').prop('checked', true);
       $('#slotInput').val('');
+      $('#randomNonMissed').prop('checked', true);
+      $('#randomSlotCount').val('4');
       
       // Show modal
       $('#dasGuardianModal').modal('show');
@@ -1196,10 +1232,14 @@
     
     // Handle scan type selection
     $('input[name="scanType"]').on('change', function() {
-      if ($(this).val() === 'slots') {
+      const scanType = $(this).val();
+      $('#slotSelectionSection').hide();
+      $('#randomSlotSelectionSection').hide();
+      
+      if (scanType === 'slots') {
         $('#slotSelectionSection').show();
-      } else {
-        $('#slotSelectionSection').hide();
+      } else if (scanType === 'random') {
+        $('#randomSlotSelectionSection').show();
       }
     });
     
@@ -1325,6 +1365,11 @@
       const requestData = { enr: dasGuardianEnr };
       if (scanType === 'slots') {
         requestData.slots = selectedSlots;
+      } else if (scanType === 'random') {
+        const randomMode = $('input[name="randomMode"]:checked').val();
+        const randomCount = parseInt($('#randomSlotCount').val()) || 4;
+        requestData.random_mode = randomMode;
+        requestData.random_count = randomCount;
       }
       
       // Make API call
