@@ -36,6 +36,10 @@ frontend:
   showPeerDASInfos: true
   showSubmitDeposit: true
   showSubmitElRequests: true
+  
+  # DAS Guardian configuration
+  disableDasGuardianCheck: false     # Disable DAS Guardian completely (default: false - enabled)
+  enableDasGuardianMassScan: true    # Enable mass DAS Guardian scanning (default: false - disabled)
 
   
 beaconapi:

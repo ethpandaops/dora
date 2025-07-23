@@ -11,6 +11,7 @@ import (
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/services"
+	"github.com/ethpandaops/dora/utils"
 	dasguardian "github.com/probe-lab/eth-das-guardian"
 	"github.com/sirupsen/logrus"
 )
@@ -89,6 +90,12 @@ type APIDasGuardianEvalResult struct {
 // @Router /v1/das-guardian/scan [post]
 func APIDasGuardianScan(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+
+	// Check if DAS Guardian check is disabled
+	if utils.Config.Frontend.DisableDasGuardianCheck {
+		http.Error(w, `{"error": "DAS Guardian check is disabled"}`, http.StatusForbidden)
+		return
+	}
 
 	// Check rate limit (5 calls per minute per IP)
 	if err := services.GlobalCallRateLimiter.CheckCallLimit(r, 5); err != nil {
