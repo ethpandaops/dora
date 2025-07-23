@@ -39,14 +39,24 @@ func NewDasGuardian(ctx context.Context, logger logrus.FieldLogger) (*DasGuardia
 	}, nil
 }
 
-func (d *DasGuardian) ScanNode(ctx context.Context, nodeEnr string) (*dasguardian.DasGuardianScanResult, error) {
+func (d *DasGuardian) ScanNode(ctx context.Context, nodeEnr string, slots []uint64) (*dasguardian.DasGuardianScanResult, error) {
 	node, err := dasguardian.ParseNode(nodeEnr)
 	if err != nil {
 		return nil, err
 	}
 
+	// Select appropriate slot selector based on input
+	var slotSelector dasguardian.SlotSelector
+	if len(slots) == 0 {
+		// No slots specified - scan metadata only
+		slotSelector = dasguardian.WithNoSlots()
+	} else {
+		// Specific slots requested
+		slotSelector = dasguardian.WithCustomSlots(slots)
+	}
+
 	// Scan can return both result and error (partial results)
-	res, err := d.guardian.Scan(ctx, node, dasguardian.WithNoSlots())
+	res, err := d.guardian.Scan(ctx, node, slotSelector)
 
 	// Return both - the handler will deal with partial results
 	return res, err

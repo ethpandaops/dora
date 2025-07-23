@@ -272,6 +272,7 @@ func startApi(router *mux.Router) {
 	router.HandleFunc("/v1/validator/withdrawalCredentials/{withdrawalCredentialsOrEth1address}", api.ApiWithdrawalCredentialsValidatorsV1).Methods("GET", "OPTIONS")
 	router.HandleFunc("/v1/validator/{indexOrPubkey}/deposits", api.ApiValidatorDepositsV1).Methods("GET", "OPTIONS")
 	router.HandleFunc("/v1/epoch/{epoch}", api.ApiEpochV1).Methods("GET", "OPTIONS")
+	router.HandleFunc("/v1/slot/{slotOrHash}", api.APISlotV1).Methods("GET", "OPTIONS")
 	router.HandleFunc("/v1/clients/execution", api.APIExecutionClients).Methods("GET", "OPTIONS")
 	router.HandleFunc("/v1/clients/consensus", api.APIConsensusClients).Methods("GET", "OPTIONS")
 	router.HandleFunc("/v1/das-guardian/scan", api.APIDasGuardianScan).Methods("POST", "OPTIONS")

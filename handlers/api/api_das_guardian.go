@@ -13,7 +13,8 @@ import (
 
 // APIDasGuardianScanRequest represents the request body for DAS Guardian scan
 type APIDasGuardianScanRequest struct {
-	ENR string `json:"enr"`
+	ENR   string   `json:"enr"`
+	Slots []uint64 `json:"slots,omitempty"` // Optional slot numbers to scan
 }
 
 // APIDasGuardianScanResponse represents the response from DAS Guardian scan
@@ -113,7 +114,7 @@ func APIDasGuardianScan(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Perform scan
-	scanResult, scanErr := dasGuardian.ScanNode(ctx, req.ENR)
+	scanResult, scanErr := dasGuardian.ScanNode(ctx, req.ENR, req.Slots)
 
 	// Build response - success is true only if no error AND we have results
 	response := APIDasGuardianScanResponse{

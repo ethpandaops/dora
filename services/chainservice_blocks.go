@@ -720,6 +720,20 @@ func (bs *ChainService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageIdx
 				}
 			}
 
+			// filter by specific slot number
+			if filter.Slot != nil {
+				if uint64(block.Slot) != *filter.Slot {
+					continue
+				}
+			}
+
+			// filter by specific block root
+			if len(filter.BlockRoot) > 0 {
+				if !bytes.Equal(block.Root[:], filter.BlockRoot) {
+					continue
+				}
+			}
+
 			cachedMatches = append(cachedMatches, cachedDbBlock{
 				slot:     uint64(block.Slot),
 				proposer: uint64(blockHeader.Message.ProposerIndex),
@@ -729,7 +743,20 @@ func (bs *ChainService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageIdx
 		}
 
 		// reconstruct missing blocks from epoch duties
-		if filter.WithMissing != 0 && filter.Graffiti == "" && filter.ExtraData == "" && filter.WithOrphaned != 2 && filter.MinSyncParticipation == nil && filter.MaxSyncParticipation == nil && filter.MinExecTime == nil && filter.MaxExecTime == nil {
+		// For slot/root filtering, we still need to check if we need missing blocks for that specific slot
+		shouldCheckMissing := filter.WithMissing != 0 && filter.Graffiti == "" && filter.ExtraData == "" && filter.WithOrphaned != 2 && filter.MinSyncParticipation == nil && filter.MaxSyncParticipation == nil && filter.MinExecTime == nil && filter.MaxExecTime == nil
+
+		// If filtering by slot, only check missing for that specific slot
+		if filter.Slot != nil {
+			shouldCheckMissing = shouldCheckMissing && uint64(slot) == *filter.Slot
+		}
+
+		// If filtering by block root, don't check missing (missing blocks don't have roots)
+		if len(filter.BlockRoot) > 0 {
+			shouldCheckMissing = false
+		}
+
+		if shouldCheckMissing {
 			hasCanonicalProposer := false
 			canonicalProposer := getCanonicalProposer(slot)
 

@@ -16,6 +16,7 @@ type ClientsCLPageData struct {
 	Sorting                string                           `json:"sorting"`
 	IsDefaultSorting       bool                             `json:"is_default_sorting"`
 	CurrentForkDigest      []byte                           `json:"current_fork_digest"`
+	FuluActivationEpoch    uint64                           `json:"fulu_activation_epoch"`
 }
 
 // ## Peer graph data

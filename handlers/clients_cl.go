@@ -672,5 +672,13 @@ func buildCLClientsPageData(sortOrder string) (*models.ClientsCLPageData, time.D
 	forkDigest := chainState.GetForkDigestForEpoch(chainState.CurrentEpoch())
 	pageData.CurrentForkDigest = forkDigest[:]
 
+	// Add Fulu activation epoch for DAS Guardian UI
+	if specs != nil && specs.FuluForkEpoch != nil {
+		pageData.FuluActivationEpoch = *specs.FuluForkEpoch
+	} else {
+		// If Fulu fork epoch is not set, use max uint64 (never activated)
+		pageData.FuluActivationEpoch = ^uint64(0)
+	}
+
 	return pageData, cacheTime
 }
