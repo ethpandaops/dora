@@ -679,9 +679,9 @@
                   
                   <h6>Scan Options</h6>
                   <div class="form-check mb-3">
-                    <input class="form-check-input" type="radio" name="scanType" id="scanMetadataOnly" value="metadata" checked>
-                    <label class="form-check-label" for="scanMetadataOnly">
-                      <strong>Metadata Only</strong> - Quick scan for node status and custody information (no DAS column validation)
+                    <input class="form-check-input" type="radio" name="scanType" id="scanRandomSlots" value="random" checked>
+                    <label class="form-check-label" for="scanRandomSlots">
+                      <strong>Scan Random Slots</strong> - Validate DAS columns for randomly selected slots
                     </label>
                   </div>
                   <div class="form-check mb-3">
@@ -691,9 +691,9 @@
                     </label>
                   </div>
                   <div class="form-check mb-3">
-                    <input class="form-check-input" type="radio" name="scanType" id="scanRandomSlots" value="random">
-                    <label class="form-check-label" for="scanRandomSlots">
-                      <strong>Scan Random Slots</strong> - Validate DAS columns for randomly selected slots
+                    <input class="form-check-input" type="radio" name="scanType" id="scanMetadataOnly" value="metadata">
+                    <label class="form-check-label" for="scanMetadataOnly">
+                      <strong>Metadata Only</strong> - Quick scan for node status and custody information (no DAS column validation)
                     </label>
                   </div>
                   
@@ -711,19 +711,19 @@
                     </div>
                   </div>
                   
-                  <!-- Random Slot Selection (hidden by default) -->
-                  <div id="randomSlotSelectionSection" style="display: none;" class="mt-3 p-3 border rounded">
+                  <!-- Random Slot Selection (shown by default since random is now default) -->
+                  <div id="randomSlotSelectionSection" class="mt-3 p-3 border rounded">
                     <h6>Random Slot Selection Mode</h6>
                     <div class="form-check mb-2">
-                      <input class="form-check-input" type="radio" name="randomMode" id="randomNonMissed" value="non_missed" checked>
-                      <label class="form-check-label" for="randomNonMissed">
-                        <strong>Random Non-Missed Slots</strong> - Select from slots that have proposed blocks
+                      <input class="form-check-input" type="radio" name="randomMode" id="randomWithBlobs" value="with_blobs" checked>
+                      <label class="form-check-label" for="randomWithBlobs">
+                        <strong>Random Slots with Blobs</strong> - Select from slots that contain blob transactions
                       </label>
                     </div>
                     <div class="form-check mb-2">
-                      <input class="form-check-input" type="radio" name="randomMode" id="randomWithBlobs" value="with_blobs">
-                      <label class="form-check-label" for="randomWithBlobs">
-                        <strong>Random Slots with Blobs</strong> - Select from slots that contain blob transactions
+                      <input class="form-check-input" type="radio" name="randomMode" id="randomNonMissed" value="non_missed">
+                      <label class="form-check-label" for="randomNonMissed">
+                        <strong>Random Non-Missed Slots</strong> - Select from slots that have proposed blocks
                       </label>
                     </div>
                     <div class="form-check mb-3">
@@ -1216,14 +1216,14 @@
       $('#dasGuardianLoading').hide();
       $('#dasGuardianResults').hide().empty();
       $('#slotSelectionSection').hide();
-      $('#randomSlotSelectionSection').hide();
+      $('#randomSlotSelectionSection').show(); // Show by default since random is now default
       $('#selectedSlotsList').empty();
       selectedSlots = [];
       
       // Reset form
-      $('#scanMetadataOnly').prop('checked', true);
+      $('#scanRandomSlots').prop('checked', true); // Default to random slots
       $('#slotInput').val('');
-      $('#randomNonMissed').prop('checked', true);
+      $('#randomWithBlobs').prop('checked', true); // Default to with_blobs
       $('#randomSlotCount').val('4');
       
       // Show modal
