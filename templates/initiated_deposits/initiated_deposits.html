@@ -41,7 +41,6 @@
                     <input name="f.pubkey" type="text" class="form-control" placeholder="Public Key" aria-label="Public Key" aria-describedby="basic-addon1" value="{{ .FilterPubKey }}">
                   </div>
                 </div>
-                <!--
                 <div class="row mt-1">
                   <div class="col-sm-12 col-md-6 col-lg-4">
                     Validator Name
@@ -50,7 +49,6 @@
                     <input name="f.vname" type="text" class="form-control" placeholder="Validator Name" aria-label="Validator Name" aria-describedby="basic-addon1" value="{{ .FilterValidatorName }}">
                   </div>
                 </div>
-                -->
                 <div class="row mt-1">
                   <div class="col-sm-12 col-md-6 col-lg-4">
                     Deposit Amount
@@ -165,7 +163,11 @@
                     <td>
                       <div class="d-flex">
                         <span class="flex-grow-1 text-truncate" style="max-width: 150px;">
-                          <a href="/validator/0x{{ printf "%x" $deposit.PublicKey }}">0x{{ printf "%x" $deposit.PublicKey }}</a>
+                          {{ if $deposit.ValidatorExists }}
+                            {{ formatValidatorWithIndex $deposit.ValidatorIndex $deposit.ValidatorName }}
+                          {{ else }}
+                            <a href="/validator/0x{{ printf "%x" $deposit.PublicKey }}">0x{{ printf "%x" $deposit.PublicKey }}</a>
+                          {{ end }}
                         </span>
                         <div>
                           <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $deposit.PublicKey }}"></i>
