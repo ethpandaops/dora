@@ -276,6 +276,7 @@ func startApi(router *mux.Router) {
 	router.HandleFunc("/v1/clients/execution", api.APIExecutionClients).Methods("GET", "OPTIONS")
 	router.HandleFunc("/v1/clients/consensus", api.APIConsensusClients).Methods("GET", "OPTIONS")
 	router.HandleFunc("/v1/das-guardian/scan", api.APIDasGuardianScan).Methods("POST", "OPTIONS")
+	router.HandleFunc("/v1/das-guardian/mass-scan", api.APIDasGuardianMassScan).Methods("POST", "OPTIONS")
 
 	// Swagger UI with dynamic host
 	router.PathPrefix("/swagger/").Handler(createSwaggerHandler())

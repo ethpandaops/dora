@@ -11,6 +11,7 @@ import (
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/services"
+	"github.com/ethpandaops/dora/utils"
 	dasguardian "github.com/probe-lab/eth-das-guardian"
 	"github.com/sirupsen/logrus"
 )
@@ -90,6 +91,12 @@ type APIDasGuardianEvalResult struct {
 func APIDasGuardianScan(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
+	// Check if DAS Guardian check is disabled
+	if utils.Config.Frontend.DisableDasGuardianCheck {
+		http.Error(w, `{"error": "DAS Guardian check is disabled"}`, http.StatusForbidden)
+		return
+	}
+
 	// Check rate limit (5 calls per minute per IP)
 	if err := services.GlobalCallRateLimiter.CheckCallLimit(r, 5); err != nil {
 		http.Error(w, `{"error": "rate limit exceeded"}`, http.StatusTooManyRequests)
@@ -126,27 +133,24 @@ func APIDasGuardianScan(w http.ResponseWriter, r *http.Request) {
 	var scanErr error
 
 	// Handle slot selection
-	var slotsToScan []uint64
 	if req.RandomMode != "" {
-		// Select random slots locally using our database
+		// Use callback-based random slot selection
 		randomCount := req.RandomCount
 		if randomCount <= 0 {
 			randomCount = 4 // Default to 4 slots
 		}
-
-		selectedSlots, err := selectRandomSlots(req.RandomMode, int(randomCount))
-		if err != nil {
-			http.Error(w, fmt.Sprintf(`{"error": "failed to select random slots: %v"}`, err), http.StatusInternalServerError)
-			return
+		
+		// Create callback that will be called with node status
+		slotCallback := func(nodeStatus *dasguardian.StatusV2) ([]uint64, error) {
+			return selectRandomSlotsWithNodeStatus(req.RandomMode, int(randomCount), nodeStatus)
 		}
-		slotsToScan = selectedSlots
+		
+		// Scan with callback
+		scanResult, scanErr = dasGuardian.ScanNodeWithCallback(ctx, req.ENR, slotCallback)
 	} else {
-		// Use manually provided slots
-		slotsToScan = req.Slots
+		// Use manually provided slots or metadata-only scan
+		scanResult, scanErr = dasGuardian.ScanNode(ctx, req.ENR, req.Slots)
 	}
-
-	// Scan with selected slots
-	scanResult, scanErr = dasGuardian.ScanNode(ctx, req.ENR, slotsToScan)
 
 	// Build response - success is true only if no error AND we have results
 	response := APIDasGuardianScanResponse{
@@ -225,8 +229,8 @@ func APIDasGuardianScan(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// selectRandomSlots selects random slots based on the specified mode
-func selectRandomSlots(mode string, count int) ([]uint64, error) {
+// selectRandomSlotsWithNodeStatus selects random slots based on the specified mode and node status
+func selectRandomSlotsWithNodeStatus(mode string, count int, nodeStatus *dasguardian.StatusV2) ([]uint64, error) {
 	chainState := services.GlobalBeaconService.GetChainState()
 	currentSlot := uint64(chainState.CurrentSlot())
 
@@ -250,6 +254,11 @@ func selectRandomSlots(mode string, count int) ([]uint64, error) {
 		if dataAvailabilitySlot > startSlot {
 			startSlot = dataAvailabilitySlot
 		}
+	}
+	
+	// Use the node's earliest available slot if it's higher than our calculated minimum
+	if nodeStatus != nil && nodeStatus.EarliestAvailableSlot > startSlot {
+		startSlot = nodeStatus.EarliestAvailableSlot
 	}
 	
 	endSlot := currentSlot

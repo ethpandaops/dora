@@ -67,6 +67,50 @@ func (d *DasGuardian) ScanNode(ctx context.Context, nodeEnr string, slots []uint
 	return res, err
 }
 
+// SlotSelectorCallback is a function type that receives node status and returns selected slots
+type SlotSelectorCallback func(nodeStatus *dasguardian.StatusV2) ([]uint64, error)
+
+func (d *DasGuardian) ScanNodeWithCallback(ctx context.Context, nodeEnr string, slotCallback SlotSelectorCallback) (*dasguardian.DasGuardianScanResult, error) {
+	node, err := dasguardian.ParseNode(nodeEnr)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create a custom slot selector that uses our callback
+	slotSelector := func(ctx context.Context, apiCli dasguardian.BeaconAPI, statusV2 *dasguardian.StatusV2) ([]dasguardian.SampleableSlot, error) {
+		// Call our callback to get the selected slots based on node status
+		selectedSlots, err := slotCallback(statusV2)
+		if err != nil {
+			return nil, err
+		}
+
+		// Convert to SampleableSlot format
+		var sampleableSlots []dasguardian.SampleableSlot
+		for _, slot := range selectedSlots {
+			beaconBlock, err := GlobalBeaconService.GetSlotDetailsBySlot(ctx, phase0.Slot(slot))
+			if err != nil {
+				return nil, err
+			}
+
+			if beaconBlock == nil {
+				continue
+			}
+
+			sampleableSlots = append(sampleableSlots, dasguardian.SampleableSlot{
+				Slot:        slot,
+				BeaconBlock: beaconBlock.Block,
+			})
+		}
+
+		return sampleableSlots, nil
+	}
+
+	// Scan can return both result and error (partial results)
+	res, err := d.guardian.Scan(ctx, node, slotSelector)
+
+	// Return both - the handler will deal with partial results
+	return res, err
+}
 
 // dasGuardianAPI is the beacon api interface for the DAS Guardian.
 type dasGuardianAPI struct {
