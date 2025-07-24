@@ -284,10 +284,6 @@ func buildELClientsPageData(sortOrder string) (*models.ClientsELPageData, time.D
 		}
 
 		forkConfig := buildForkConfig(client)
-		logrus.WithFields(logrus.Fields{
-			"client":        client.GetName(),
-			"hasForkConfig": forkConfig != nil,
-		}).Debug("Setting fork config on node")
 
 		resNode := &models.ClientsELPageDataNode{
 			Name:          client.GetName(),
@@ -406,7 +402,6 @@ func buildELClientsPageData(sortOrder string) (*models.ClientsELPageData, time.D
 }
 
 func buildForkConfig(client interface{}) *models.ClientELPageDataForkConfig {
-	// Type assertion to get the client with GetCachedEthConfig method
 	execClient, ok := client.(interface {
 		GetCachedEthConfig() map[string]interface{}
 	})
@@ -446,6 +441,5 @@ func buildForkConfig(client interface{}) *models.ClientELPageDataForkConfig {
 		forkConfig.Last = last
 	}
 
-	logrus.WithField("forkConfig", forkConfig).Debug("Built fork configuration data")
 	return forkConfig
 }
