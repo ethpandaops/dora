@@ -167,6 +167,10 @@ func buildCLClientsPageData(sortOrder string) (*models.ClientsCLPageData, time.D
 			},
 		},
 		Nodes: make(map[string]*models.ClientCLPageDataNode),
+
+		// DAS Guardian configuration (check enabled by default, mass scan disabled by default)
+		DisableDasGuardianCheck:   utils.Config.Frontend.DisableDasGuardianCheck,
+		EnableDasGuardianMassScan: utils.Config.Frontend.EnableDasGuardianMassScan,
 	}
 	chainState := services.GlobalBeaconService.GetChainState()
 
@@ -392,6 +396,7 @@ func buildCLClientsPageData(sortOrder string) (*models.ClientsCLPageData, time.D
 			Name:                 client.GetName(),
 			Version:              client.GetVersion(),
 			PeerID:               peerId,
+			NodeENR:              node.ENR,
 			PeerCount:            inPeerCount + outPeerCount,
 			PeersInboundCounter:  inPeerCount,
 			PeersOutboundCounter: outPeerCount,
@@ -666,6 +671,18 @@ func buildCLClientsPageData(sortOrder string) (*models.ClientsCLPageData, time.D
 		sortOrder = "name"
 	}
 	pageData.Sorting = sortOrder
+
+	// Add current fork digest
+	forkDigest := chainState.GetForkDigestForEpoch(chainState.CurrentEpoch())
+	pageData.CurrentForkDigest = forkDigest[:]
+
+	// Add Fulu activation epoch for DAS Guardian UI
+	if specs != nil && specs.FuluForkEpoch != nil {
+		pageData.FuluActivationEpoch = *specs.FuluForkEpoch
+	} else {
+		// If Fulu fork epoch is not set, use max uint64 (never activated)
+		pageData.FuluActivationEpoch = ^uint64(0)
+	}
 
 	return pageData, cacheTime
 }

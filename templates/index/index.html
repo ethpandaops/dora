@@ -28,6 +28,26 @@
 {{ define "js" }}
   <script src="/js/knockout.min.js"></script>
   <script src="/js/page-index.js"></script>
+  <script>
+    function toggleForkView(element) {
+      const badges = document.getElementById('forkBadges');
+      const table = document.getElementById('forkTable');
+      
+      if (badges.classList.contains('d-none')) {
+        // Show badges, hide table
+        badges.classList.remove('d-none');
+        table.classList.add('d-none');
+        element.classList.remove('fa-chevron-up');
+        element.classList.add('fa-chevron-down');
+      } else {
+        // Show table, hide badges
+        badges.classList.add('d-none');
+        table.classList.remove('d-none');
+        element.classList.remove('fa-chevron-down');
+        element.classList.add('fa-chevron-up');
+      }
+    }
+  </script>
 {{ end }}
 {{ define "css" }}
 <link rel="stylesheet" href="/css/forkgraph.css" />
@@ -49,6 +69,15 @@
   .tooltip-inner {
     max-width: max-content;
     text-align: left;
+  }
+  .cursor-pointer {
+    cursor: pointer;
+  }
+  #forkTable {
+    margin-right: -20px;
+  }
+  #forkTable .toggle-fork-view {
+    margin-right: 10px;
   }
 </style>
 {{ end }}

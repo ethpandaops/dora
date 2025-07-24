@@ -9,6 +9,7 @@ import (
 	"math/big"
 	"os"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/Masterminds/sprig/v3"
@@ -45,6 +46,7 @@ func GetTemplateFuncs() template.FuncMap {
 		"round": func(i float64, n int) float64 {
 			return math.Round(i*math.Pow10(n)) / math.Pow10(n)
 		},
+		"uint64ToTime":                 func(i uint64) time.Time { return time.Unix(int64(i), 0).UTC() },
 		"percent":                      func(i float64) float64 { return i * 100 },
 		"contains":                     strings.Contains,
 		"formatAddCommas":              FormatAddCommas,
