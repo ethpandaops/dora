@@ -325,10 +325,12 @@ func GetFilteredSlots(filter *dbtypes.BlockFilter, firstSlot uint64, offset uint
 		fmt.Fprintf(&sql, ` AND slots.status = 2 `)
 	}
 	if filter.Slot != nil {
+		argIdx++
 		fmt.Fprintf(&sql, ` AND slots.slot = $%v `, argIdx)
 		args = append(args, *filter.Slot)
 	}
 	if len(filter.BlockRoot) > 0 {
+		argIdx++
 		fmt.Fprintf(&sql, ` AND slots.root = $%v `, argIdx)
 		args = append(args, filter.BlockRoot)
 	}
