@@ -116,6 +116,7 @@ type SlotPageAttestation struct {
 	Signature []byte `json:"signature"`
 
 	BeaconBlockRoot []byte `json:"beaconblockroot"`
+	BeaconBlockSlot uint64 `json:"beaconblockslot"`
 	SourceEpoch     uint64 `json:"source_epoch"`
 	SourceRoot      []byte `json:"source_root"`
 	TargetEpoch     uint64 `json:"target_epoch"`

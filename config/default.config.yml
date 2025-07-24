@@ -39,6 +39,10 @@ frontend:
   showSubmitElRequests: false
   publicRpcUrl: "http://127.0.0.1:8545"
   
+  # DAS Guardian configuration
+  #disableDasGuardianCheck: false     # Disable DAS Guardian completely (default: false - enabled)
+  #enableDasGuardianMassScan: false   # Enable mass DAS Guardian scanning (default: false - disabled)
+  
 beaconapi:
   # beacon node rpc endpoints
   endpoints:

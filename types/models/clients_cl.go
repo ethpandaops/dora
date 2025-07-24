@@ -6,15 +6,21 @@ import (
 
 // ClientsCLPageData is a struct to hold info for the clients page
 type ClientsCLPageData struct {
-	Clients                []*ClientsCLPageDataClient       `json:"clients"`
-	ClientCount            uint64                           `json:"client_count"`
-	PeerMap                *ClientCLPageDataPeerMap         `json:"peer_map"`
-	ShowSensitivePeerInfos bool                             `json:"show_sensitive_peer_infos"`
-	ShowPeerDASInfos       bool                             `json:"show_peer_das_infos"`
-	PeerDASInfos           *ClientCLPagePeerDAS             `json:"peer_das"`
-	Nodes                  map[string]*ClientCLPageDataNode `json:"nodes"`
-	Sorting                string                           `json:"sorting"`
-	IsDefaultSorting       bool                             `json:"is_default_sorting"`
+	Clients                []*ClientsCLPageDataClient `json:"clients"`
+	ClientCount            uint64                     `json:"client_count"`
+	PeerMap                *ClientCLPageDataPeerMap   `json:"peer_map"`
+	ShowSensitivePeerInfos bool                       `json:"show_sensitive_peer_infos"`
+	ShowPeerDASInfos       bool                       `json:"show_peer_das_infos"`
+	PeerDASInfos           *ClientCLPagePeerDAS       `json:"peer_das"`
+
+	// DAS Guardian configuration
+	DisableDasGuardianCheck   bool                             `json:"disable_das_guardian_check"`
+	EnableDasGuardianMassScan bool                             `json:"enable_das_guardian_mass_scan"`
+	Nodes                     map[string]*ClientCLPageDataNode `json:"nodes"`
+	Sorting                   string                           `json:"sorting"`
+	IsDefaultSorting          bool                             `json:"is_default_sorting"`
+	CurrentForkDigest         []byte                           `json:"current_fork_digest"`
+	FuluActivationEpoch       uint64                           `json:"fulu_activation_epoch"`
 }
 
 // ## Peer graph data
@@ -81,6 +87,7 @@ type ClientsCLPageDataClient struct {
 	LastRefresh          time.Time `json:"refresh"`
 	LastError            string    `json:"error"`
 	PeerID               string    `json:"peer_id"`
+	NodeENR              string    `json:"node_enr"`
 	PeerCount            uint32    `json:"peer_count"`
 	PeersInboundCounter  uint32    `json:"peers_inbound_counter"`
 	PeersOutboundCounter uint32    `json:"peers_outbound_counter"`

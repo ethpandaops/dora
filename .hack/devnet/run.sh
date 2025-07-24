@@ -66,6 +66,9 @@ frontend:
   showSensitivePeerInfos: true
   showSubmitDeposit: true
   showSubmitElRequests: true
+  showPeerDASInfos: true
+  disableDasGuardianCheck: false
+  enableDasGuardianMassScan: true
 api:
   enabled: true
   corsOrigins:

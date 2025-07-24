@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"sort"
 	"sync"
 	"time"
 
@@ -16,6 +17,11 @@ type ForkVersion struct {
 	Epoch           uint64
 	CurrentVersion  []byte
 	PreviousVersion []byte
+}
+
+type BlobScheduleEntry struct {
+	Epoch            uint64 `yaml:"EPOCH"`
+	MaxBlobsPerBlock uint64 `yaml:"MAX_BLOBS_PER_BLOCK"`
 }
 
 // https://github.com/ethereum/consensus-specs/blob/dev/configs/mainnet.yaml
@@ -34,8 +40,8 @@ type ChainSpec struct {
 	DenebForkEpoch                        *uint64           `yaml:"DENEB_FORK_EPOCH"`
 	ElectraForkVersion                    phase0.Version    `yaml:"ELECTRA_FORK_VERSION" check-if-fork:"ElectraForkEpoch"`
 	ElectraForkEpoch                      *uint64           `yaml:"ELECTRA_FORK_EPOCH"   check-if-fork:"ElectraForkEpoch"`
-	Eip7594ForkVersion                    phase0.Version    `yaml:"EIP7594_FORK_VERSION" check-if-fork:"Eip7594ForkEpoch"`
-	Eip7594ForkEpoch                      *uint64           `yaml:"EIP7594_FORK_EPOCH"   check-if-fork:"Eip7594ForkEpoch"`
+	FuluForkVersion                       phase0.Version    `yaml:"FULU_FORK_VERSION" check-if-fork:"FuluForkEpoch"`
+	FuluForkEpoch                         *uint64           `yaml:"FULU_FORK_EPOCH"`
 	SecondsPerSlot                        time.Duration     `yaml:"SECONDS_PER_SLOT"`
 	SlotsPerEpoch                         uint64            `yaml:"SLOTS_PER_EPOCH"`
 	EpochsPerHistoricalVector             uint64            `yaml:"EPOCHS_PER_HISTORICAL_VECTOR"`
@@ -56,6 +62,7 @@ type ChainSpec struct {
 	DepositContractAddress                []byte            `yaml:"DEPOSIT_CONTRACT_ADDRESS"`
 	MaxConsolidationRequestsPerPayload    uint64            `yaml:"MAX_CONSOLIDATION_REQUESTS_PER_PAYLOAD" check-if-fork:"ElectraForkEpoch"`
 	MaxWithdrawalRequestsPerPayload       uint64            `yaml:"MAX_WITHDRAWAL_REQUESTS_PER_PAYLOAD"    check-if-fork:"ElectraForkEpoch"`
+	MinEpochsForDataColumnSidecars        uint64            `yaml:"MIN_EPOCHS_FOR_DATA_COLUMN_SIDECARS_REQUESTS"`
 	DepositChainId                        uint64            `yaml:"DEPOSIT_CHAIN_ID"`
 	MinActivationBalance                  uint64            `yaml:"MIN_ACTIVATION_BALANCE"`
 	MaxPendingPartialsPerWithdrawalsSweep uint64            `yaml:"MAX_PENDING_PARTIALS_PER_WITHDRAWALS_SWEEP" check-if-fork:"ElectraForkEpoch"`
@@ -64,13 +71,15 @@ type ChainSpec struct {
 	PendingConsolidationsLimit            uint64            `yaml:"PENDING_CONSOLIDATIONS_LIMIT"               check-if-fork:"ElectraForkEpoch"`
 	MinPerEpochChurnLimitElectra          uint64            `yaml:"MIN_PER_EPOCH_CHURN_LIMIT_ELECTRA"          check-if-fork:"ElectraForkEpoch"`
 	MaxPerEpochActivationExitChurnLimit   uint64            `yaml:"MAX_PER_EPOCH_ACTIVATION_EXIT_CHURN_LIMIT"  check-if-fork:"ElectraForkEpoch"`
+	MaxBlobsPerBlockElectra               uint64            `yaml:"MAX_BLOBS_PER_BLOCK_ELECTRA"                check-if-fork:"ElectraForkEpoch"`
 	EffectiveBalanceIncrement             uint64            `yaml:"EFFECTIVE_BALANCE_INCREMENT"`
 	ShardCommitteePeriod                  uint64            `yaml:"SHARD_COMMITTEE_PERIOD"`
 
 	// EIP7594: PeerDAS
-	NumberOfColumns              *uint64 `yaml:"NUMBER_OF_COLUMNS"                check-if-fork:"Eip7594ForkEpoch"`
-	DataColumnSidecarSubnetCount *uint64 `yaml:"DATA_COLUMN_SIDECAR_SUBNET_COUNT" check-if-fork:"Eip7594ForkEpoch"`
-	CustodyRequirement           *uint64 `yaml:"CUSTODY_REQUIREMENT"              check-if-fork:"Eip7594ForkEpoch"`
+	NumberOfColumns              *uint64             `yaml:"NUMBER_OF_COLUMNS"                check-if-fork:"FuluForkEpoch"`
+	DataColumnSidecarSubnetCount *uint64             `yaml:"DATA_COLUMN_SIDECAR_SUBNET_COUNT" check-if-fork:"FuluForkEpoch"`
+	CustodyRequirement           *uint64             `yaml:"CUSTODY_REQUIREMENT"              check-if-fork:"FuluForkEpoch"`
+	BlobSchedule                 []BlobScheduleEntry `yaml:"BLOB_SCHEDULE"                    check-if-fork:"FuluForkEpoch"`
 
 	// additional dora specific specs
 	WhiskForkEpoch *uint64
@@ -136,6 +145,26 @@ func (chain *ChainSpec) CheckMismatch(chain2 *ChainSpec) ([]string, error) {
 
 			if !bytes.Equal(bytesA, bytesB) {
 				mismatches = append(mismatches, chainT.Type().Field(i).Name)
+			}
+		} else if fieldV.Type().Kind() == reflect.Slice && fieldV.Type().Elem() == reflect.TypeOf(BlobScheduleEntry{}) {
+			// compare blob schedule entries
+			blobScheduleA := fieldV.Interface().([]BlobScheduleEntry)
+			blobScheduleB := field2V.Interface().([]BlobScheduleEntry)
+
+			// sort both by epoch
+			sort.Slice(blobScheduleA, func(i, j int) bool {
+				return blobScheduleA[i].Epoch < blobScheduleA[j].Epoch
+			})
+			sort.Slice(blobScheduleB, func(i, j int) bool {
+				return blobScheduleB[i].Epoch < blobScheduleB[j].Epoch
+			})
+
+			// compare each entry
+			for i := range blobScheduleA {
+				if len(blobScheduleB) > i && blobScheduleA[i] != blobScheduleB[i] {
+					mismatches = append(mismatches, fmt.Sprintf("%s[%d]", fieldT.Name, i))
+					break
+				}
 			}
 		} else if fieldV.Interface() != field2V.Interface() {
 			if chainT.Field(i).Interface() == reflect.Zero(chainT.Field(i).Type()).Interface() {
