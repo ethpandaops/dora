@@ -76,6 +76,7 @@ var attrFormatters = map[string]func(rlp.RawValue) (string, bool){
 	"udp":    formatAttrUint,
 	"udp6":   formatAttrUint,
 	"quic":   formatAttrUint,
+	"quic6":  formatAttrUint,
 	"client": formatAttrClient,
 }
 
