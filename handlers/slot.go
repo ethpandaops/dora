@@ -347,6 +347,8 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 	assignmentsMap[epoch] = epochStatsValues
 	assignmentsLoaded[epoch] = true
 
+	attHeadBlocks := make(map[phase0.Root]phase0.Slot)
+
 	pageData.Attestations = make([]*models.SlotPageAttestation, pageData.AttestationsCount)
 	for i, attVersioned := range attestations {
 		attData, _ := attVersioned.Data()
@@ -403,6 +405,19 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 			SourceRoot:      attData.Source.Root[:],
 			TargetEpoch:     uint64(attData.Target.Epoch),
 			TargetRoot:      attData.Target.Root[:],
+		}
+
+		if slot, ok := attHeadBlocks[attData.BeaconBlockRoot]; ok {
+			attPageData.BeaconBlockSlot = uint64(slot)
+		} else {
+			beaconBlocks := services.GlobalBeaconService.GetDbBlocksByFilter(&dbtypes.BlockFilter{
+				BlockRoot: attData.BeaconBlockRoot[:],
+			}, 0, 1, 0)
+			if len(beaconBlocks) > 0 {
+				slot := phase0.Slot(beaconBlocks[0].Slot)
+				attHeadBlocks[attData.BeaconBlockRoot] = slot
+				attPageData.BeaconBlockSlot = uint64(slot)
+			}
 		}
 
 		var attAssignments []uint64

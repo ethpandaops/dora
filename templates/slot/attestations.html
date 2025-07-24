@@ -69,15 +69,18 @@
         </div>
       </div>
       {{ html "<!-- /ko -->" }}
+      {{ html "<!-- /ko -->" }}
       <div class="row border-bottom p-1 mx-0">
         <div class="col-md-2">
-          <span data-bs-toggle="tooltip" data-bs-placement="top" title="Points to the block to which validators are attesting">Beacon Block Root:</span>
+          <span data-bs-toggle="tooltip" data-bs-placement="top" title="Points to the block to which validators are attesting">Head Block:</span>
         </div>
         <div class="col-md-10 text-monospace text-break">
-          <a data-bind="attr: {href: '/slot/0x' + beaconBlockRootHex()}, text: '0x' + beaconBlockRootHex()"></a>
+          Slot <a data-bind="attr: {href: '/slot/' + beacon_block_slot}, text: beacon_block_slot"></a>
+          <span class="text-monospace text-break">
+            (<a data-bind="attr: {href: '/slot/0x' + beaconBlockRootHex()}, text: '0x' + beaconBlockRootHex()"></a>)
+          </span>
         </div>
       </div>
-      {{ html "<!-- /ko -->" }}
       <div class="row border-bottom p-1 mx-0">
         <div class="col-md-2">
           <span data-bs-toggle="tooltip" data-bs-placement="top" title="Points to the latest justified epoch">Source:</span>
@@ -130,6 +133,7 @@
     self.committee_index = data.committeeindex;
     self.aggregation_bits = base64ToBytes(data.aggregationbits);
     self.beacon_block_root = base64ToBytes(data.beaconblockroot);
+    self.beacon_block_slot = data.beaconblockslot;
     self.source_epoch = data.source_epoch;
     self.source_root = base64ToBytes(data.source_root);
     self.target_epoch = data.target_epoch;
