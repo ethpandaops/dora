@@ -76,6 +76,7 @@ var attrFormatters = map[string]func(rlp.RawValue) (string, bool){
 	"udp":    formatAttrUint,
 	"udp6":   formatAttrUint,
 	"quic":   formatAttrUint,
+	"quic6":  formatAttrUint,
 	"client": formatAttrClient,
 }
 
@@ -91,7 +92,7 @@ func formatAttrString(v rlp.RawValue) (string, bool) {
 
 func formatAttrIP(v rlp.RawValue) (string, bool) {
 	content, _, err := rlp.SplitString(v)
-	if err != nil || len(content) != 4 && len(content) != 6 {
+	if err != nil || (len(content) != 4 && len(content) != 16) {
 		return "", false
 	}
 	return net.IP(content).String(), true
