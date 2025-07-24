@@ -169,14 +169,14 @@
             <table class="table table-borderless table-sm client-table-info ">
               <tbody>
                 <tr>
-                  <td>Name</td>
+                  <td style="white-space: nowrap;">Name</td>
                   <td>
                     <code data-bind="text: name"></code>
                     <i class="fa fa-copy text-muted p-1" role="button" data-bs-placement="right" data-bs-toggle="tooltip" title="Copy to clipboard" data-bind="attr: {'data-clipboard-text': name}"></i>
                   </td>
                 </tr>
                 <tr>
-                  <td>Peer ID</td>
+                  <td style="white-space: nowrap;">Peer ID</td>
                   <td>
                     <code data-bind="text: peer_id"></code>
                     <i class="fa fa-copy text-muted p-1" role="button" data-bs-placement="right" data-bs-toggle="tooltip" title="Copy to clipboard" data-bind="attr: {'data-clipboard-text': peer_id}"></i>
@@ -184,7 +184,7 @@
                 </tr>
                 {{ html "<!-- ko if: showSensitivePeerInfos -->" }}
                 <tr style="vertical-align: top;">
-                  <td>Enode</td>
+                  <td style="white-space: nowrap;">Enode</td>
                   <td>
                     <div style="word-break: break-all; text-wrap: pretty;">
                       <code data-bind="text: enode"></code>
@@ -193,7 +193,7 @@
                   </td>
                 </tr>
                 <tr style="vertical-align: top;">
-                  <td>IP Address</td>
+                  <td style="white-space: nowrap;">IP Address</td>
                   <td>
                     <div style="word-break: break-all; text-wrap: pretty;">
                       <code data-bind="text: ip_addr"></code>
@@ -202,7 +202,7 @@
                   </td>
                 </tr>
                 <tr style="vertical-align: top;">
-                  <td>Listen Address</td>
+                  <td style="white-space: nowrap;">Listen Address</td>
                   <td>
                     <div style="word-break: break-all; text-wrap: pretty;">
                       <code data-bind="text: listen_addr"></code>
