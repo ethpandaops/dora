@@ -127,6 +127,42 @@
     return Array.from(bytes).map(b => b.toString(16).padStart(2,'0')).join('');
   }
 
+  function getCommitteeCount(activeCount) {
+    var committeesPerSlot = Math.floor(Math.floor(activeCount / specValues.slots_per_epoch) / specValues.target_committee_size);
+    if (committeesPerSlot > specValues.max_committees_per_slot) {
+      return specValues.max_committees_per_slot;
+    }
+    if (committeesPerSlot == 0) {
+      return 1;
+    }
+    return committeesPerSlot;
+  }
+
+  function getCommitteeSize(attestation) {
+    var activeCount = attestation.total_active;
+    var slot = attestation.slot;
+    var committeeIdxs = attestation.committeeindex;
+
+    var slotIndex = slot % specValues.slots_per_epoch;
+    var committeesPerSlot = getCommitteeCount(activeCount);
+    var committeesCount = committeesPerSlot * specValues.slots_per_epoch;
+
+    var committeesSizes = [];
+    var splitOffset = function(listSize, chunks, index) {
+      return Math.floor(listSize * index / chunks);
+    }
+
+    for (var i = 0; i < committeeIdxs.length; i++) {
+      let indexOffset = committeeIdxs[i] + (slotIndex * committeesPerSlot)
+      
+      let start = splitOffset(activeCount, committeesCount, indexOffset)
+      let end = splitOffset(activeCount, committeesCount, indexOffset + 1)
+      committeesSizes.push(end - start);
+    }
+
+    return committeesSizes;
+  }
+
   function AttestationViewModel(data) {
     var self = this;
     self.slot = data.slot;
@@ -156,9 +192,9 @@
     };
 
     self.aggregationSummary = ko.computed(function() {
-      var total = self.aggregation_bits.length * 8;
+      var total = getCommitteeSize(data).reduce((a, b) => a + b, 0);
       var set = 0;
-      for (var i = 0; i < self.aggregation_bits.length; i++) {
+      for (var i = 0; i < Math.ceil(total/8); i++) {
         for (var j = 0; j < 8; j++) {
           if (self.aggregation_bits[i] & (1 << j)) {
             set++;
@@ -210,6 +246,10 @@
       var html = '<pre class="text-bitfield text-monospace text-break" style="font-size:1rem;">';
       var perLine = 8;
 
+      var committeesSizes = getCommitteeSize(data);
+      var currentCommitteeStart = 0;
+      var currentCommitteeIdx = 0;
+
       for (var y = 0; y < bits.length; y += perLine) {
         var start = y * 8;
         var end = (y + perLine) * 8;
@@ -224,6 +264,14 @@
         }
 
         for (var x = start; x < end; x++) {
+          if (x >= currentCommitteeStart + committeesSizes[currentCommitteeIdx]) {
+            currentCommitteeIdx++;
+            currentCommitteeStart = x;
+            if (!committeesSizes[currentCommitteeIdx]) {
+              break;
+            }
+          }
+
           if (x % 8 === 0 && x !== start) {
             html += ' ';
           }
@@ -232,10 +280,12 @@
           if (validator !== undefined) {
             var name = validatorNames[validator];
             if (name) {
-              html += `<span data-bs-toggle="tooltip" data-bs-placement="top" title="${name} (${validator})">`;
+              html += `<span class="aggregation-bit committee-idx-${currentCommitteeIdx}" data-bs-toggle="tooltip" data-bs-placement="top" title="${name} (${validator})">`;
             } else {
-              html += `<span data-bs-toggle="tooltip" data-bs-placement="top" title="${validator}">`;
+              html += `<span class="aggregation-bit committee-idx-${currentCommitteeIdx}" data-bs-toggle="tooltip" data-bs-placement="top" title="${validator}">`;
             }
+          } else {
+            html += `<span class="aggregation-bit committee-idx-${currentCommitteeIdx}">`;
           }
 
           var byteIndex = Math.floor(x / 8);
@@ -243,9 +293,7 @@
           var isSet = (bits[byteIndex] & (1 << bitIndex)) !== 0;
           html += isSet ? '1' : '0';
 
-          if (validator) {
-            html += '</span>';
-          }
+          html += '</span>';
         }
       }
       html += '</pre>';

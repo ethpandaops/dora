@@ -335,7 +335,7 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 		SlashingsCount:         uint64(len(proposerSlashings)) + uint64(len(attesterSlashings)),
 	}
 
-	pageData.SpecValues["committees_per_slot"] = specs.MaxCommitteesPerSlot
+	pageData.SpecValues["max_committees_per_slot"] = specs.MaxCommitteesPerSlot
 	pageData.SpecValues["target_committee_size"] = specs.TargetCommitteeSize
 	pageData.SpecValues["slots_per_epoch"] = specs.SlotsPerEpoch
 
