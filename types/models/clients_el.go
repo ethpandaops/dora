@@ -46,12 +46,12 @@ type ClientsELPageDataNode struct {
 }
 
 type ClientELPageDataForkConfig struct {
-	CurrentHash   string `json:"current_hash"`
-	CurrentForkId string `json:"current_fork_id"`
-	NextHash      string `json:"next_hash"`
-	NextForkId    string `json:"next_fork_id"`
-	LastHash      string `json:"last_hash"`
-	LastForkId    string `json:"last_fork_id"`
+	CurrentHash   string                 `json:"current_hash"`
+	CurrentForkId string                 `json:"current_fork_id"`
+	NextHash      string                 `json:"next_hash"`
+	NextForkId    string                 `json:"next_fork_id"`
+	LastHash      string                 `json:"last_hash"`
+	LastForkId    string                 `json:"last_fork_id"`
 	Current       map[string]interface{} `json:"current"`
 	Next          map[string]interface{} `json:"next"`
 	Last          map[string]interface{} `json:"last"`
