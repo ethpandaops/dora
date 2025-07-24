@@ -363,6 +363,14 @@ func FormatEthAddress(address []byte) template.HTML {
 	return template.HTML(caption)
 }
 
+func FormatEthAddressShort(address []byte) template.HTML {
+	caption := common.BytesToAddress(address).String()
+	if len(caption) > 8 {
+		return template.HTML(caption[:6] + "..." + caption[len(caption)-4:])
+	}
+	return template.HTML(caption)
+}
+
 func FormatValidator(index uint64, name string) template.HTML {
 	return formatValidator(index, name, "fa-male mr-2", false)
 }

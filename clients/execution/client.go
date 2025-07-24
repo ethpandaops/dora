@@ -92,6 +92,10 @@ func (client *Client) GetNodeInfo() *p2p.NodeInfo {
 	return client.nodeInfo
 }
 
+func (client *Client) GetEthConfig(ctx context.Context) (map[string]interface{}, error) {
+	return client.rpcClient.GetEthConfig(ctx)
+}
+
 func (client *Client) GetEndpointConfig() *ClientConfig {
 	return client.endpointConfig
 }

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"sort"
@@ -283,6 +284,12 @@ func buildELClientsPageData(sortOrder string) (*models.ClientsELPageData, time.D
 			PeerID:               peerID,
 		}
 
+		forkConfig := buildForkConfig(client)
+		logrus.WithFields(logrus.Fields{
+			"client": client.GetName(),
+			"hasForkConfig": forkConfig != nil,
+		}).Debug("Setting fork config on node")
+		
 		resNode := &models.ClientsELPageDataNode{
 			Name:          client.GetName(),
 			Version:       client.GetVersion(),
@@ -291,6 +298,7 @@ func buildELClientsPageData(sortOrder string) (*models.ClientsELPageData, time.D
 			PeerID:        peerID,
 			PeerName:      peerName,
 			DidFetchPeers: client.DidFetchPeers(),
+			ForkConfig:    forkConfig,
 		}
 
 		if pageData.ShowSensitivePeerInfos {
@@ -396,4 +404,82 @@ func buildELClientsPageData(sortOrder string) (*models.ClientsELPageData, time.D
 	pageData.Sorting = sortOrder
 
 	return pageData, cacheTime
+}
+
+func buildForkConfig(client interface{}) *models.ClientELPageDataForkConfig {
+	logrus.WithField("clientType", fmt.Sprintf("%T", client)).Debug("buildForkConfig called")
+	
+	// Type assertion to get the client with GetEthConfig method
+	execClient, ok := client.(interface {
+		GetEthConfig(ctx context.Context) (map[string]interface{}, error)
+	})
+	if !ok {
+		logrus.WithField("clientType", fmt.Sprintf("%T", client)).Debug("Type assertion failed - client does not support GetEthConfig")
+		return nil
+	}
+	
+	logrus.Debug("Type assertion succeeded - client supports GetEthConfig")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	ethConfig, err := execClient.GetEthConfig(ctx)
+	if err != nil {
+		logrus.WithError(err).Debug("Failed to get eth_config, client may not support this method")
+		return nil
+	}
+
+	if ethConfig == nil {
+		logrus.Debug("eth_config returned nil result")
+		return nil
+	}
+
+	logrus.WithField("ethConfig", ethConfig).Debug("Successfully retrieved eth_config data")
+	forkConfig := &models.ClientELPageDataForkConfig{}
+
+	// Extract fork hashes and IDs, use "0" if not available
+	if currentHash, ok := ethConfig["currentHash"].(string); ok {
+		forkConfig.CurrentHash = currentHash
+	} else {
+		forkConfig.CurrentHash = "0"
+	}
+	if currentForkId, ok := ethConfig["currentForkId"].(string); ok {
+		forkConfig.CurrentForkId = currentForkId
+	} else {
+		forkConfig.CurrentForkId = "0"
+	}
+	if nextHash, ok := ethConfig["nextHash"].(string); ok {
+		forkConfig.NextHash = nextHash
+	} else {
+		forkConfig.NextHash = "0"
+	}
+	if nextForkId, ok := ethConfig["nextForkId"].(string); ok {
+		forkConfig.NextForkId = nextForkId
+	} else {
+		forkConfig.NextForkId = "0"
+	}
+	if lastHash, ok := ethConfig["lastHash"].(string); ok {
+		forkConfig.LastHash = lastHash
+	} else {
+		forkConfig.LastHash = "0"
+	}
+	if lastForkId, ok := ethConfig["lastForkId"].(string); ok {
+		forkConfig.LastForkId = lastForkId
+	} else {
+		forkConfig.LastForkId = "0"
+	}
+
+	// Extract detailed fork configurations
+	if current, ok := ethConfig["current"].(map[string]interface{}); ok {
+		forkConfig.Current = current
+	}
+	if next, ok := ethConfig["next"].(map[string]interface{}); ok {
+		forkConfig.Next = next
+	}
+	if last, ok := ethConfig["last"].(map[string]interface{}); ok {
+		forkConfig.Last = last
+	}
+
+	logrus.WithField("forkConfig", forkConfig).Debug("Built fork configuration data")
+	return forkConfig
 }
