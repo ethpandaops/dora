@@ -122,6 +122,18 @@ func (client *Client) updateNodeMetadata(ctx context.Context) error {
 	client.peers = peers
 	client.didFetchPeers = true
 
+	// get eth_config
+	ethConfig, err := client.rpcClient.GetEthConfig(ctx)
+	if err != nil {
+		client.logger.Debugf("could not get eth_config: %v", err)
+		// Don't return error since eth_config is optional
+	} else {
+		client.ethConfigMutex.Lock()
+		client.ethConfig = ethConfig
+		client.ethConfigMutex.Unlock()
+		client.logger.Debugf("updated eth_config data")
+	}
+
 	return nil
 }
 

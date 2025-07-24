@@ -283,6 +283,8 @@ func buildELClientsPageData(sortOrder string) (*models.ClientsELPageData, time.D
 			PeerID:               peerID,
 		}
 
+		forkConfig := buildForkConfig(client)
+
 		resNode := &models.ClientsELPageDataNode{
 			Name:          client.GetName(),
 			Version:       client.GetVersion(),
@@ -291,6 +293,7 @@ func buildELClientsPageData(sortOrder string) (*models.ClientsELPageData, time.D
 			PeerID:        peerID,
 			PeerName:      peerName,
 			DidFetchPeers: client.DidFetchPeers(),
+			ForkConfig:    forkConfig,
 		}
 
 		if pageData.ShowSensitivePeerInfos {
@@ -396,4 +399,47 @@ func buildELClientsPageData(sortOrder string) (*models.ClientsELPageData, time.D
 	pageData.Sorting = sortOrder
 
 	return pageData, cacheTime
+}
+
+func buildForkConfig(client interface{}) *models.ClientELPageDataForkConfig {
+	execClient, ok := client.(interface {
+		GetCachedEthConfig() map[string]interface{}
+	})
+	if !ok {
+		return nil
+	}
+
+	ethConfig := execClient.GetCachedEthConfig()
+	if ethConfig == nil {
+		return nil
+	}
+
+	getString := func(key string) string {
+		if val, ok := ethConfig[key].(string); ok {
+			return val
+		}
+		return "0"
+	}
+
+	forkConfig := &models.ClientELPageDataForkConfig{
+		CurrentHash:   getString("currentHash"),
+		CurrentForkId: getString("currentForkId"),
+		NextHash:      getString("nextHash"),
+		NextForkId:    getString("nextForkId"),
+		LastHash:      getString("lastHash"),
+		LastForkId:    getString("lastForkId"),
+	}
+
+	// Extract detailed fork configurations
+	if current, ok := ethConfig["current"].(map[string]interface{}); ok {
+		forkConfig.Current = current
+	}
+	if next, ok := ethConfig["next"].(map[string]interface{}); ok {
+		forkConfig.Next = next
+	}
+	if last, ok := ethConfig["last"].(map[string]interface{}); ok {
+		forkConfig.Last = last
+	}
+
+	return forkConfig
 }
