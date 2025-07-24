@@ -419,38 +419,20 @@ func buildForkConfig(client interface{}) *models.ClientELPageDataForkConfig {
 		return nil
 	}
 
-	forkConfig := &models.ClientELPageDataForkConfig{}
+	getString := func(key string) string {
+		if val, ok := ethConfig[key].(string); ok {
+			return val
+		}
+		return "0"
+	}
 
-	// Extract fork hashes and IDs, use "0" if not available
-	if currentHash, ok := ethConfig["currentHash"].(string); ok {
-		forkConfig.CurrentHash = currentHash
-	} else {
-		forkConfig.CurrentHash = "0"
-	}
-	if currentForkId, ok := ethConfig["currentForkId"].(string); ok {
-		forkConfig.CurrentForkId = currentForkId
-	} else {
-		forkConfig.CurrentForkId = "0"
-	}
-	if nextHash, ok := ethConfig["nextHash"].(string); ok {
-		forkConfig.NextHash = nextHash
-	} else {
-		forkConfig.NextHash = "0"
-	}
-	if nextForkId, ok := ethConfig["nextForkId"].(string); ok {
-		forkConfig.NextForkId = nextForkId
-	} else {
-		forkConfig.NextForkId = "0"
-	}
-	if lastHash, ok := ethConfig["lastHash"].(string); ok {
-		forkConfig.LastHash = lastHash
-	} else {
-		forkConfig.LastHash = "0"
-	}
-	if lastForkId, ok := ethConfig["lastForkId"].(string); ok {
-		forkConfig.LastForkId = lastForkId
-	} else {
-		forkConfig.LastForkId = "0"
+	forkConfig := &models.ClientELPageDataForkConfig{
+		CurrentHash:   getString("currentHash"),
+		CurrentForkId: getString("currentForkId"),
+		NextHash:      getString("nextHash"),
+		NextForkId:    getString("nextForkId"),
+		LastHash:      getString("lastHash"),
+		LastForkId:    getString("lastForkId"),
 	}
 
 	// Extract detailed fork configurations
