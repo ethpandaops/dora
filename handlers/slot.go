@@ -335,7 +335,7 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 		SlashingsCount:         uint64(len(proposerSlashings)) + uint64(len(attesterSlashings)),
 	}
 
-	pageData.SpecValues["committees_per_slot"] = specs.MaxCommitteesPerSlot
+	pageData.SpecValues["max_committees_per_slot"] = specs.MaxCommitteesPerSlot
 	pageData.SpecValues["target_committee_size"] = specs.TargetCommitteeSize
 	pageData.SpecValues["slots_per_epoch"] = specs.SlotsPerEpoch
 
@@ -346,6 +346,8 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 	dbEpochLoaded := make(map[phase0.Epoch]bool)
 	assignmentsMap[epoch] = epochStatsValues
 	assignmentsLoaded[epoch] = true
+
+	attHeadBlocks := make(map[phase0.Root]phase0.Slot)
 
 	pageData.Attestations = make([]*models.SlotPageAttestation, pageData.AttestationsCount)
 	for i, attVersioned := range attestations {
@@ -403,6 +405,19 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 			SourceRoot:      attData.Source.Root[:],
 			TargetEpoch:     uint64(attData.Target.Epoch),
 			TargetRoot:      attData.Target.Root[:],
+		}
+
+		if slot, ok := attHeadBlocks[attData.BeaconBlockRoot]; ok {
+			attPageData.BeaconBlockSlot = uint64(slot)
+		} else {
+			beaconBlocks := services.GlobalBeaconService.GetDbBlocksByFilter(&dbtypes.BlockFilter{
+				BlockRoot: attData.BeaconBlockRoot[:],
+			}, 0, 1, 0)
+			if len(beaconBlocks) > 0 {
+				slot := phase0.Slot(beaconBlocks[0].Slot)
+				attHeadBlocks[attData.BeaconBlockRoot] = slot
+				attPageData.BeaconBlockSlot = uint64(slot)
+			}
 		}
 
 		var attAssignments []uint64
