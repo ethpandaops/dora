@@ -69,7 +69,6 @@ func GetTemplateFuncs() template.FuncMap {
 		"ethAddressLink":               FormatEthAddressLink,
 		"ethTransactionLink":           FormatEthTransactionLink,
 		"formatEthAddress":             FormatEthAddress,
-		"formatEthAddressShort":        FormatEthAddressShort,
 		"formatValidator":              FormatValidator,
 		"formatValidatorWithIndex":     FormatValidatorWithIndex,
 		"formatValidatorNameWithIndex": FormatValidatorNameWithIndex,

@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"sort"
@@ -407,34 +406,19 @@ func buildELClientsPageData(sortOrder string) (*models.ClientsELPageData, time.D
 }
 
 func buildForkConfig(client interface{}) *models.ClientELPageDataForkConfig {
-	logrus.WithField("clientType", fmt.Sprintf("%T", client)).Debug("buildForkConfig called")
-
-	// Type assertion to get the client with GetEthConfig method
+	// Type assertion to get the client with GetCachedEthConfig method
 	execClient, ok := client.(interface {
-		GetEthConfig(ctx context.Context) (map[string]interface{}, error)
+		GetCachedEthConfig() map[string]interface{}
 	})
 	if !ok {
-		logrus.WithField("clientType", fmt.Sprintf("%T", client)).Debug("Type assertion failed - client does not support GetEthConfig")
 		return nil
 	}
 
-	logrus.Debug("Type assertion succeeded - client supports GetEthConfig")
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	ethConfig, err := execClient.GetEthConfig(ctx)
-	if err != nil {
-		logrus.WithError(err).Debug("Failed to get eth_config, client may not support this method")
-		return nil
-	}
-
+	ethConfig := execClient.GetCachedEthConfig()
 	if ethConfig == nil {
-		logrus.Debug("eth_config returned nil result")
 		return nil
 	}
 
-	logrus.WithField("ethConfig", ethConfig).Debug("Successfully retrieved eth_config data")
 	forkConfig := &models.ClientELPageDataForkConfig{}
 
 	// Extract fork hashes and IDs, use "0" if not available

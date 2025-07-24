@@ -176,9 +176,9 @@
                     <td>{{ if $deposit.HasIndex }}{{ $deposit.Index }}{{ else }}?{{ end }}</td>
                     <td>
                       <div class="d-flex">
-                        <span class="flex-grow-1">
+                        <span class="flex-grow-1 text-truncate" style="max-width: 150px;">
                           {{ if $deposit.DepositorAddress }}
-                            <a href="/address/{{ formatEthAddress $deposit.DepositorAddress }}" style="text-decoration: none;">{{ formatEthAddressShort $deposit.DepositorAddress }}</a>
+                            {{ ethAddressLink $deposit.DepositorAddress }}
                           {{ else }}
                             ?
                           {{ end }}
@@ -192,7 +192,7 @@
                     </td>
                     <td>
                       <div class="d-flex">
-                        <span class="flex-grow-1" style="max-width: 250px;">
+                        <span class="flex-grow-1 text-truncate" style="max-width: 150px;">
                           {{ if $deposit.ValidatorExists }}
                             {{ formatValidatorWithIndex $deposit.ValidatorIndex $deposit.ValidatorName }}
                           {{ else }}

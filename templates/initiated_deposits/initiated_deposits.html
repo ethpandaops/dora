@@ -156,7 +156,7 @@
                     <td>{{ $deposit.Index }}</td>
                     <td>
                       <div class="d-flex">
-                        <span class="flex-grow-1"><a href="/address/{{ formatEthAddress $deposit.Address }}" style="text-decoration: none;">{{ formatEthAddressShort $deposit.Address }}</a></span>
+                        <span class="flex-grow-1 text-truncate" style="max-width: 150px;">{{ ethAddressLink $deposit.Address }}</span>
                         <div>
                           <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ formatEthAddress $deposit.Address }}"></i>
                         </div>
@@ -164,7 +164,7 @@
                     </td>
                     <td>
                       <div class="d-flex">
-                        <span class="flex-grow-1" style="max-width: 250px;">
+                        <span class="flex-grow-1 text-truncate" style="max-width: 150px;">
                           {{ if $deposit.ValidatorExists }}
                             {{ formatValidatorWithIndex $deposit.ValidatorIndex $deposit.ValidatorName }}
                           {{ else }}
