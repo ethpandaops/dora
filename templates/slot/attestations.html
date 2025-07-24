@@ -22,7 +22,7 @@
         </div>
         <div class="col-md-10">
           {{ html "<!-- ko foreach: committee_index -->" }}
-          <span class="badge bg-secondary mx-2" data-bind="text: $data"></span>
+          <span class="badge bg-secondary mx-2 committee-badge" data-bind="text: $data, attr: {'data-committee-idx': $data}"></span>
           {{ html "<!-- /ko -->" }}
         </div>
       </div>
@@ -196,7 +196,7 @@
       var set = 0;
       for (var i = 0; i < Math.ceil(total/8); i++) {
         for (var j = 0; j < 8; j++) {
-          if (self.aggregation_bits[i] & (1 << j)) {
+          if ((i*8)+j < total && self.aggregation_bits[i] & (1 << j)) {
             set++;
           }
         }
@@ -314,6 +314,60 @@
   }
 
   ko.applyBindings(new AttestationsViewModel(), document.getElementById('attestationsData'));
+
+  // Add hover event handlers for committee badges and aggregation bits
+  document.addEventListener('DOMContentLoaded', function() {
+    // Handle hover on committee badges
+    document.addEventListener('mouseover', function(e) {
+      if (e.target.classList.contains('committee-badge')) {
+        const committeeIdx = e.target.getAttribute('data-committee-idx');
+        // Highlight corresponding aggregation bits
+        document.querySelectorAll(`.committee-idx-${committeeIdx}`).forEach(bit => {
+          bit.classList.add('aggregation-bit-highlighted');
+        });
+      }
+      
+      // Handle hover on aggregation bits
+      if (e.target.classList.contains('aggregation-bit')) {
+        // Find the committee index from the class
+        const classes = Array.from(e.target.classList);
+        const committeeClass = classes.find(c => c.startsWith('committee-idx-'));
+        if (committeeClass) {
+          const committeeIdx = committeeClass.replace('committee-idx-', '');
+          // Highlight all bits with same committee index
+          document.querySelectorAll(`.${committeeClass}`).forEach(bit => {
+            bit.classList.add('aggregation-bit-highlighted');
+          });
+          // Highlight corresponding badge
+          document.querySelectorAll(`[data-committee-idx="${committeeIdx}"]`).forEach(badge => {
+            badge.classList.add('committee-badge-highlighted');
+          });
+        }
+      }
+    });
+
+    // Handle hover out
+    document.addEventListener('mouseout', function(e) {
+      if (e.target.classList.contains('committee-badge')) {
+        const committeeIdx = e.target.getAttribute('data-committee-idx');
+        // Remove highlight from aggregation bits
+        document.querySelectorAll(`.committee-idx-${committeeIdx}`).forEach(bit => {
+          bit.classList.remove('aggregation-bit-highlighted');
+        });
+      }
+      
+      // Handle hover out on aggregation bits
+      if (e.target.classList.contains('aggregation-bit')) {
+        // Remove all highlights
+        document.querySelectorAll('.aggregation-bit-highlighted').forEach(bit => {
+          bit.classList.remove('aggregation-bit-highlighted');
+        });
+        document.querySelectorAll('.committee-badge-highlighted').forEach(badge => {
+          badge.classList.remove('committee-badge-highlighted');
+        });
+      }
+    });
+  });
 </script>
 
 <style>
@@ -338,6 +392,20 @@
 }
 .validator-not-attesting {
   color: #dc3545 !important;
+}
+.committee-badge {
+  transition: background-color 0.2s ease;
+}
+.committee-badge-highlighted {
+  background-color: #0d6efd !important;
+}
+.aggregation-bit {
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+.aggregation-bit-highlighted {
+  background-color: #0d6efd;
+  color: white;
+  font-weight: bold;
 }
 </style>
 {{ end }}
