@@ -286,10 +286,10 @@ func buildELClientsPageData(sortOrder string) (*models.ClientsELPageData, time.D
 
 		forkConfig := buildForkConfig(client)
 		logrus.WithFields(logrus.Fields{
-			"client": client.GetName(),
+			"client":        client.GetName(),
 			"hasForkConfig": forkConfig != nil,
 		}).Debug("Setting fork config on node")
-		
+
 		resNode := &models.ClientsELPageDataNode{
 			Name:          client.GetName(),
 			Version:       client.GetVersion(),
@@ -408,7 +408,7 @@ func buildELClientsPageData(sortOrder string) (*models.ClientsELPageData, time.D
 
 func buildForkConfig(client interface{}) *models.ClientELPageDataForkConfig {
 	logrus.WithField("clientType", fmt.Sprintf("%T", client)).Debug("buildForkConfig called")
-	
+
 	// Type assertion to get the client with GetEthConfig method
 	execClient, ok := client.(interface {
 		GetEthConfig(ctx context.Context) (map[string]interface{}, error)
@@ -417,7 +417,7 @@ func buildForkConfig(client interface{}) *models.ClientELPageDataForkConfig {
 		logrus.WithField("clientType", fmt.Sprintf("%T", client)).Debug("Type assertion failed - client does not support GetEthConfig")
 		return nil
 	}
-	
+
 	logrus.Debug("Type assertion succeeded - client supports GetEthConfig")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
