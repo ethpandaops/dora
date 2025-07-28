@@ -441,17 +441,17 @@ func (es *EpochStats) processState(indexer *Indexer, validatorSet []*phase0.Vali
 		values.ProposerDuties = proposerDuties
 	}
 
-	if beaconState.RandaoMix != nil {
-		values.RandaoMix = *beaconState.RandaoMix
-		values.NextRandaoMix = *beaconState.NextRandaoMix
-	}
-
 	// compute committees
 	attesterDuties, err := duties.GetAttesterDuties(chainState.GetSpecs(), beaconState, es.epoch)
 	if err != nil {
 		indexer.logger.Warnf("failed computing attester duties for epoch %v: %v", es.epoch, err)
 	}
 	values.AttesterDuties = attesterDuties
+
+	if beaconState.RandaoMix != nil {
+		values.RandaoMix = *beaconState.RandaoMix
+		values.NextRandaoMix = *beaconState.NextRandaoMix
+	}
 
 	es.values = values
 	es.precalcValues = nil
