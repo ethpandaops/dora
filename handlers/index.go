@@ -347,8 +347,8 @@ func buildIndexPageRecentEpochsData(pageData *models.IndexPageData, currentEpoch
 		pageData.RecentEpochs = append(pageData.RecentEpochs, &models.IndexPageDataEpochs{
 			Epoch:             epochData.Epoch,
 			Ts:                chainState.EpochToTime(phase0.Epoch(epochData.Epoch)),
-			Finalized:         uint64(finalizedEpoch) >= epochData.Epoch,
-			Justified:         uint64(justifiedEpoch) >= epochData.Epoch,
+			Finalized:         uint64(finalizedEpoch) > 0 && uint64(finalizedEpoch) >= epochData.Epoch,
+			Justified:         uint64(justifiedEpoch) > 0 && uint64(justifiedEpoch) >= epochData.Epoch,
 			EligibleEther:     epochData.Eligible,
 			TargetVoted:       epochData.VotedTarget,
 			VoteParticipation: voteParticipation,

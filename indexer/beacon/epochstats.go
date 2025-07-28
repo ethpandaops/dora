@@ -415,7 +415,7 @@ func (es *EpochStats) processState(indexer *Indexer, validatorSet []*phase0.Vali
 	indexer.logger.Debugf("processing epoch %v stats (root: %v / state: %v), validators: %v/%v", es.epoch, es.dependentRoot.String(), dependentState.stateRoot.String(), values.ActiveValidators, len(validatorSet))
 
 	// compute proposers
-	if len(dependentState.proposerLookahead) > 0 && (es.epoch == chainState.EpochOfSlot(dependentState.stateSlot) || es.epoch == chainState.EpochOfSlot(dependentState.stateSlot)+2) {
+	if len(dependentState.proposerLookahead) > 0 && (es.epoch == chainState.EpochOfSlot(dependentState.stateSlot) || es.epoch == chainState.EpochOfSlot(dependentState.stateSlot)+1) {
 		slotsPerEpoch := chainState.GetSpecs().SlotsPerEpoch
 		offset := uint64(0)
 		if es.epoch == chainState.EpochOfSlot(dependentState.stateSlot)+1 {
