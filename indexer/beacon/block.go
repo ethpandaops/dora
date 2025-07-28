@@ -298,9 +298,13 @@ func (block *Block) EnsureBlock(loadBlock func() (*spec.VersionedSignedBeaconBlo
 func (block *Block) setBlockIndex(body *spec.VersionedSignedBeaconBlock) {
 	blockIndex := &BlockBodyIndex{}
 	blockIndex.Graffiti, _ = body.Graffiti()
-	blockIndex.ExecutionExtraData, _ = getBlockExecutionExtraData(body)
-	blockIndex.ExecutionHash, _ = body.ExecutionBlockHash()
-	blockIndex.ExecutionNumber, _ = body.ExecutionBlockNumber()
+
+	executionPayload, _ := body.ExecutionPayload()
+	if executionPayload != nil {
+		blockIndex.ExecutionExtraData, _ = executionPayload.ExtraData()
+		blockIndex.ExecutionHash, _ = executionPayload.BlockHash()
+		blockIndex.ExecutionNumber, _ = executionPayload.BlockNumber()
+	}
 
 	// Calculate sync participation
 	syncAggregate, err := body.SyncAggregate()
