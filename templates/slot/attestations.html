@@ -321,27 +321,35 @@
     document.addEventListener('mouseover', function(e) {
       if (e.target.classList.contains('committee-badge')) {
         const committeeIdx = e.target.getAttribute('data-committee-idx');
-        // Highlight corresponding aggregation bits
-        document.querySelectorAll(`.committee-idx-${committeeIdx}`).forEach(bit => {
-          bit.classList.add('aggregation-bit-highlighted');
-        });
+        // Find the parent attestation card
+        const attestationCard = e.target.closest('.card');
+        if (attestationCard) {
+          // Highlight corresponding aggregation bits within this attestation only
+          attestationCard.querySelectorAll(`.committee-idx-${committeeIdx}`).forEach(bit => {
+            bit.classList.add('aggregation-bit-highlighted');
+          });
+        }
       }
       
       // Handle hover on aggregation bits
       if (e.target.classList.contains('aggregation-bit')) {
-        // Find the committee index from the class
-        const classes = Array.from(e.target.classList);
-        const committeeClass = classes.find(c => c.startsWith('committee-idx-'));
-        if (committeeClass) {
-          const committeeIdx = committeeClass.replace('committee-idx-', '');
-          // Highlight all bits with same committee index
-          document.querySelectorAll(`.${committeeClass}`).forEach(bit => {
-            bit.classList.add('aggregation-bit-highlighted');
-          });
-          // Highlight corresponding badge
-          document.querySelectorAll(`[data-committee-idx="${committeeIdx}"]`).forEach(badge => {
-            badge.classList.add('committee-badge-highlighted');
-          });
+        // Find the parent attestation card
+        const attestationCard = e.target.closest('.card');
+        if (attestationCard) {
+          // Find the committee index from the class
+          const classes = Array.from(e.target.classList);
+          const committeeClass = classes.find(c => c.startsWith('committee-idx-'));
+          if (committeeClass) {
+            const committeeIdx = committeeClass.replace('committee-idx-', '');
+            // Highlight all bits with same committee index within this attestation only
+            attestationCard.querySelectorAll(`.${committeeClass}`).forEach(bit => {
+              bit.classList.add('aggregation-bit-highlighted');
+            });
+            // Highlight corresponding badge within this attestation only
+            attestationCard.querySelectorAll(`[data-committee-idx="${committeeIdx}"]`).forEach(badge => {
+              badge.classList.add('committee-badge-highlighted');
+            });
+          }
         }
       }
     });
@@ -350,21 +358,29 @@
     document.addEventListener('mouseout', function(e) {
       if (e.target.classList.contains('committee-badge')) {
         const committeeIdx = e.target.getAttribute('data-committee-idx');
-        // Remove highlight from aggregation bits
-        document.querySelectorAll(`.committee-idx-${committeeIdx}`).forEach(bit => {
-          bit.classList.remove('aggregation-bit-highlighted');
-        });
+        // Find the parent attestation card
+        const attestationCard = e.target.closest('.card');
+        if (attestationCard) {
+          // Remove highlight from aggregation bits within this attestation only
+          attestationCard.querySelectorAll(`.committee-idx-${committeeIdx}`).forEach(bit => {
+            bit.classList.remove('aggregation-bit-highlighted');
+          });
+        }
       }
       
       // Handle hover out on aggregation bits
       if (e.target.classList.contains('aggregation-bit')) {
-        // Remove all highlights
-        document.querySelectorAll('.aggregation-bit-highlighted').forEach(bit => {
-          bit.classList.remove('aggregation-bit-highlighted');
-        });
-        document.querySelectorAll('.committee-badge-highlighted').forEach(badge => {
-          badge.classList.remove('committee-badge-highlighted');
-        });
+        // Find the parent attestation card
+        const attestationCard = e.target.closest('.card');
+        if (attestationCard) {
+          // Remove all highlights within this attestation only
+          attestationCard.querySelectorAll('.aggregation-bit-highlighted').forEach(bit => {
+            bit.classList.remove('aggregation-bit-highlighted');
+          });
+          attestationCard.querySelectorAll('.committee-badge-highlighted').forEach(badge => {
+            badge.classList.remove('committee-badge-highlighted');
+          });
+        }
       }
     });
   });

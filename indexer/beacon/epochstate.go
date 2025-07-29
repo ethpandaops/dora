@@ -32,6 +32,7 @@ type epochState struct {
 	pendingDeposits           []*electra.PendingDeposit
 	pendingPartialWithdrawals []*electra.PendingPartialWithdrawal
 	pendingConsolidations     []*electra.PendingConsolidation
+	proposerLookahead         []phase0.ValidatorIndex
 }
 
 // newEpochState creates a new epochState instance with the root of the state to be loaded.
@@ -225,6 +226,9 @@ func (s *epochState) processState(state *spec.VersionedBeaconState, cache *epoch
 		// apply epoch transition to get remaining pending consolidations
 		s.pendingConsolidations = pendingConsolidations
 	}
+
+	proposerLookahead, _ := getStateProposerLookahead(state)
+	s.proposerLookahead = proposerLookahead
 
 	return nil
 }
