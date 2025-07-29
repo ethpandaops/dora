@@ -139,13 +139,15 @@ func getConsensusClientNodeInfo() ([]APIConsensusClientNodeInfo, error) {
 			if utils.Config.Frontend.ShowSensitivePeerInfos {
 				clientInfo.PeerID = nodeIdentity.PeerID
 				clientInfo.ENR = nodeIdentity.Enr
-				// Note: NodeID not available in the interface, using PeerID as fallback
 				clientInfo.NodeID = nodeIdentity.PeerID
+			}
 
-				// Decode ENR if available
-				if nodeIdentity.Enr != "" {
-					if enrRecord, err := utils.DecodeENR(nodeIdentity.Enr); err == nil {
+			if nodeIdentity.Enr != "" {
+				if enrRecord, err := utils.DecodeENR(nodeIdentity.Enr); err == nil {
+					if utils.Config.Frontend.ShowSensitivePeerInfos {
 						clientInfo.ENRDecoded = utils.GetKeyValuesFromENR(enrRecord)
+					} else {
+						clientInfo.ENRDecoded = utils.GetKeyValuesFromENRFiltered(enrRecord)
 					}
 				}
 			}
