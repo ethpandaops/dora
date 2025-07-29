@@ -12,6 +12,9 @@ definitions:
         type: array
       enr:
         type: string
+      enr_decoded:
+        additionalProperties: true
+        type: object
       head_root:
         type: string
       head_slot:

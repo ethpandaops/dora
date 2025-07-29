@@ -19,6 +19,7 @@ type APIConsensusClientNodeInfo struct {
 	PeerID             string                      `json:"peer_id"`
 	NodeID             string                      `json:"node_id"`
 	ENR                string                      `json:"enr"`
+	ENRDecoded         map[string]interface{}      `json:"enr_decoded,omitempty"`
 	HeadSlot           uint64                      `json:"head_slot"`
 	HeadRoot           string                      `json:"head_root"`
 	Status             string                      `json:"status"`
@@ -140,6 +141,13 @@ func getConsensusClientNodeInfo() ([]APIConsensusClientNodeInfo, error) {
 				clientInfo.ENR = nodeIdentity.Enr
 				// Note: NodeID not available in the interface, using PeerID as fallback
 				clientInfo.NodeID = nodeIdentity.PeerID
+
+				// Decode ENR if available
+				if nodeIdentity.Enr != "" {
+					if enrRecord, err := utils.DecodeENR(nodeIdentity.Enr); err == nil {
+						clientInfo.ENRDecoded = utils.GetKeyValuesFromENR(enrRecord)
+					}
+				}
 			}
 
 			// Add metadata information (available regardless of sensitive info setting)
