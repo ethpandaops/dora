@@ -443,6 +443,10 @@
                 "enr": {
                     "type": "string"
                 },
+                "enr_decoded": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
                 "head_root": {
                     "type": "string"
                 },
