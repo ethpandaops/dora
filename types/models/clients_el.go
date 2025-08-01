@@ -46,15 +46,18 @@ type ClientsELPageDataNode struct {
 }
 
 type ClientELPageDataForkConfig struct {
-	CurrentHash   string                 `json:"current_hash"`
-	CurrentForkId string                 `json:"current_fork_id"`
-	NextHash      string                 `json:"next_hash"`
-	NextForkId    string                 `json:"next_fork_id"`
-	LastHash      string                 `json:"last_hash"`
-	LastForkId    string                 `json:"last_fork_id"`
-	Current       map[string]interface{} `json:"current"`
-	Next          map[string]interface{} `json:"next"`
-	Last          map[string]interface{} `json:"last"`
+	Current *EthConfigObject `json:"current"`
+	Next    *EthConfigObject `json:"next"`
+	Last    *EthConfigObject `json:"last"`
+}
+
+type EthConfigObject struct {
+	ActivationTime  uint64                 `json:"activationTime"`
+	BlobSchedule    map[string]interface{} `json:"blobSchedule"`
+	ChainId         string                 `json:"chainId"`
+	ForkId          string                 `json:"forkId"`
+	Precompiles     map[string]interface{} `json:"precompiles"`
+	SystemContracts map[string]interface{} `json:"systemContracts"`
 }
 
 type ClientELPageDataNodePeers struct {

@@ -414,32 +414,52 @@ func buildForkConfig(client interface{}) *models.ClientELPageDataForkConfig {
 		return nil
 	}
 
-	getString := func(key string) string {
-		if val, ok := ethConfig[key].(string); ok {
-			return val
-		}
-		return "0"
-	}
+	forkConfig := &models.ClientELPageDataForkConfig{}
 
-	forkConfig := &models.ClientELPageDataForkConfig{
-		CurrentHash:   getString("currentHash"),
-		CurrentForkId: getString("currentForkId"),
-		NextHash:      getString("nextHash"),
-		NextForkId:    getString("nextForkId"),
-		LastHash:      getString("lastHash"),
-		LastForkId:    getString("lastForkId"),
-	}
-
-	// Extract detailed fork configurations
+	// Parse current config object
 	if current, ok := ethConfig["current"].(map[string]interface{}); ok {
-		forkConfig.Current = current
+		forkConfig.Current = parseEthConfigObject(current)
 	}
+
+	// Parse next config object (may be null)
 	if next, ok := ethConfig["next"].(map[string]interface{}); ok {
-		forkConfig.Next = next
+		forkConfig.Next = parseEthConfigObject(next)
 	}
+
+	// Parse last config object (may be null)
 	if last, ok := ethConfig["last"].(map[string]interface{}); ok {
-		forkConfig.Last = last
+		forkConfig.Last = parseEthConfigObject(last)
 	}
 
 	return forkConfig
+}
+
+func parseEthConfigObject(config map[string]interface{}) *models.EthConfigObject {
+	obj := &models.EthConfigObject{}
+
+	if activationTime, ok := config["activationTime"].(float64); ok {
+		obj.ActivationTime = uint64(activationTime)
+	}
+
+	if blobSchedule, ok := config["blobSchedule"].(map[string]interface{}); ok {
+		obj.BlobSchedule = blobSchedule
+	}
+
+	if chainId, ok := config["chainId"].(string); ok {
+		obj.ChainId = chainId
+	}
+
+	if forkId, ok := config["forkId"].(string); ok {
+		obj.ForkId = forkId
+	}
+
+	if precompiles, ok := config["precompiles"].(map[string]interface{}); ok {
+		obj.Precompiles = precompiles
+	}
+
+	if systemContracts, ok := config["systemContracts"].(map[string]interface{}); ok {
+		obj.SystemContracts = systemContracts
+	}
+
+	return obj
 }

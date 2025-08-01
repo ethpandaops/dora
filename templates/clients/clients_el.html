@@ -215,58 +215,65 @@
             </table>
           </div>
           
-          <div class="client-row-divider">Fork Configuration</div>
+          <div class="client-row-divider">
+            Fork Configuration
+            <span class="text-muted" style="float: right; font-size: 0.9em;">
+              {{ html "<!-- ko if: fork_config() -->" }}
+              Chain ID: <code data-bind="text: fork_config().current ? fork_config().current.chainId : (fork_config().next ? fork_config().next.chainId : fork_config().last.chainId)"></code>
+              <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy Chain ID" data-bind="click: function() { var chainId = (fork_config().current && fork_config().current.chainId) || (fork_config().next && fork_config().next.chainId) || (fork_config().last && fork_config().last.chainId) || ''; navigator.clipboard.writeText(chainId); }"></i>
+              {{ html "<!-- /ko -->" }}
+            </span>
+          </div>
           {{ html "<!-- ko if: fork_config() -->" }}
           <div class="client-node-peerinfo">
             <table class="table table-borderless table-sm client-table-info">
               <thead>
                 <tr>
-                  <td colspan="2" class="text-center"><strong>Fork Hashes & IDs</strong></td>
+                  <th style="width:15%">Fork</th>
+                  <th style="width:35%">Activation Time (UTC)</th>
+                  <th style="width:50%">Fork ID</th>
                 </tr>
               </thead>
               <tbody>
+                {{ html "<!-- ko if: fork_config().current -->" }}
                 <tr>
-                  <td>Current Hash</td>
+                  <td><strong>Current</strong></td>
                   <td>
-                    <code data-bind="text: fork_config().current_hash"></code>
-                    <i class="fa fa-copy text-muted p-1" role="button" data-bs-placement="right" data-bs-toggle="tooltip" title="Copy to clipboard" data-bind="attr: {'data-clipboard-text': fork_config().current_hash}"></i>
+                    <code data-bind="text: new Date(fork_config().current.activationTime * 1000).toISOString().slice(0, 19).replace('T', ' ')"></code>
+                    <i class="fa fa-copy text-muted" role="button" data-bs-toggle="tooltip" title="Copy" data-bind="click: function() { navigator.clipboard.writeText(fork_config().current.activationTime); }"></i>
+                  </td>
+                  <td>
+                    <code data-bind="text: fork_config().current.forkId"></code>
+                    <i class="fa fa-copy text-muted" role="button" data-bs-toggle="tooltip" title="Copy" data-bind="click: function() { navigator.clipboard.writeText(fork_config().current.forkId); }"></i>
                   </td>
                 </tr>
+                {{ html "<!-- /ko -->" }}
+                {{ html "<!-- ko if: fork_config().next -->" }}
                 <tr>
-                  <td>Current Fork ID</td>
+                  <td><strong>Next</strong></td>
                   <td>
-                    <code data-bind="text: fork_config().current_fork_id"></code>
-                    <i class="fa fa-copy text-muted p-1" role="button" data-bs-placement="right" data-bs-toggle="tooltip" title="Copy to clipboard" data-bind="attr: {'data-clipboard-text': fork_config().current_fork_id}"></i>
+                    <code data-bind="text: new Date(fork_config().next.activationTime * 1000).toISOString().slice(0, 19).replace('T', ' ')"></code>
+                    <i class="fa fa-copy text-muted" role="button" data-bs-toggle="tooltip" title="Copy" data-bind="click: function() { navigator.clipboard.writeText(fork_config().next.activationTime); }"></i>
+                  </td>
+                  <td>
+                    <code data-bind="text: fork_config().next.forkId"></code>
+                    <i class="fa fa-copy text-muted" role="button" data-bs-toggle="tooltip" title="Copy" data-bind="click: function() { navigator.clipboard.writeText(fork_config().next.forkId); }"></i>
                   </td>
                 </tr>
+                {{ html "<!-- /ko -->" }}
+                {{ html "<!-- ko if: fork_config().last -->" }}
                 <tr>
-                  <td>Next Hash</td>
+                  <td><strong>Last</strong></td>
                   <td>
-                    <code data-bind="text: fork_config().next_hash"></code>
-                    <i class="fa fa-copy text-muted p-1" role="button" data-bs-placement="right" data-bs-toggle="tooltip" title="Copy to clipboard" data-bind="attr: {'data-clipboard-text': fork_config().next_hash}"></i>
+                    <code data-bind="text: new Date(fork_config().last.activationTime * 1000).toISOString().slice(0, 19).replace('T', ' ')"></code>
+                    <i class="fa fa-copy text-muted" role="button" data-bs-toggle="tooltip" title="Copy" data-bind="click: function() { navigator.clipboard.writeText(fork_config().last.activationTime); }"></i>
+                  </td>
+                  <td>
+                    <code data-bind="text: fork_config().last.forkId"></code>
+                    <i class="fa fa-copy text-muted" role="button" data-bs-toggle="tooltip" title="Copy" data-bind="click: function() { navigator.clipboard.writeText(fork_config().last.forkId); }"></i>
                   </td>
                 </tr>
-                <tr>
-                  <td>Next Fork ID</td>
-                  <td>
-                    <code data-bind="text: fork_config().next_fork_id"></code>
-                    <i class="fa fa-copy text-muted p-1" role="button" data-bs-placement="right" data-bs-toggle="tooltip" title="Copy to clipboard" data-bind="attr: {'data-clipboard-text': fork_config().next_fork_id}"></i>
-                  </td>
-                </tr>
-                <tr>
-                  <td>Last Hash</td>
-                  <td>
-                    <code data-bind="text: fork_config().last_hash"></code>
-                    <i class="fa fa-copy text-muted p-1" role="button" data-bs-placement="right" data-bs-toggle="tooltip" title="Copy to clipboard" data-bind="attr: {'data-clipboard-text': fork_config().last_hash}"></i>
-                  </td>
-                </tr>
-                <tr>
-                  <td>Last Fork ID</td>
-                  <td>
-                    <code data-bind="text: fork_config().last_fork_id"></code>
-                    <i class="fa fa-copy text-muted p-1" role="button" data-bs-placement="right" data-bs-toggle="tooltip" title="Copy to clipboard" data-bind="attr: {'data-clipboard-text': fork_config().last_fork_id}"></i>
-                  </td>
-                </tr>
+                {{ html "<!-- /ko -->" }}
               </tbody>
             </table>
           </div>
