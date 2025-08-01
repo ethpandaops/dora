@@ -283,6 +283,8 @@ func buildELClientsPageData(sortOrder string) (*models.ClientsELPageData, time.D
 			PeerID:               peerID,
 		}
 
+		forkConfig := buildForkConfig(client)
+
 		resNode := &models.ClientsELPageDataNode{
 			Name:          client.GetName(),
 			Version:       client.GetVersion(),
@@ -291,6 +293,7 @@ func buildELClientsPageData(sortOrder string) (*models.ClientsELPageData, time.D
 			PeerID:        peerID,
 			PeerName:      peerName,
 			DidFetchPeers: client.DidFetchPeers(),
+			ForkConfig:    forkConfig,
 		}
 
 		if pageData.ShowSensitivePeerInfos {
@@ -396,4 +399,67 @@ func buildELClientsPageData(sortOrder string) (*models.ClientsELPageData, time.D
 	pageData.Sorting = sortOrder
 
 	return pageData, cacheTime
+}
+
+func buildForkConfig(client interface{}) *models.ClientELPageDataForkConfig {
+	execClient, ok := client.(interface {
+		GetCachedEthConfig() map[string]interface{}
+	})
+	if !ok {
+		return nil
+	}
+
+	ethConfig := execClient.GetCachedEthConfig()
+	if ethConfig == nil {
+		return nil
+	}
+
+	forkConfig := &models.ClientELPageDataForkConfig{}
+
+	// Parse current config object
+	if current, ok := ethConfig["current"].(map[string]interface{}); ok {
+		forkConfig.Current = parseEthConfigObject(current)
+	}
+
+	// Parse next config object (may be null)
+	if next, ok := ethConfig["next"].(map[string]interface{}); ok {
+		forkConfig.Next = parseEthConfigObject(next)
+	}
+
+	// Parse last config object (may be null)
+	if last, ok := ethConfig["last"].(map[string]interface{}); ok {
+		forkConfig.Last = parseEthConfigObject(last)
+	}
+
+	return forkConfig
+}
+
+func parseEthConfigObject(config map[string]interface{}) *models.EthConfigObject {
+	obj := &models.EthConfigObject{}
+
+	if activationTime, ok := config["activationTime"].(float64); ok {
+		obj.ActivationTime = uint64(activationTime)
+	}
+
+	if blobSchedule, ok := config["blobSchedule"].(map[string]interface{}); ok {
+		obj.BlobSchedule = blobSchedule
+	}
+
+	if chainId, ok := config["chainId"].(string); ok {
+		obj.ChainId = chainId
+	}
+
+	if forkId, ok := config["forkId"].(string); ok {
+		obj.ForkId = forkId
+	}
+
+	if precompiles, ok := config["precompiles"].(map[string]interface{}); ok {
+		obj.Precompiles = precompiles
+	}
+
+	if systemContracts, ok := config["systemContracts"].(map[string]interface{}); ok {
+		obj.SystemContracts = systemContracts
+	}
+
+	return obj
 }
