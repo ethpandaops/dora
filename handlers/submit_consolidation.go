@@ -92,12 +92,18 @@ func buildSubmitConsolidationPageData() (*models.SubmitConsolidationPageData, ti
 	chainState := services.GlobalBeaconService.GetChainState()
 	specs := chainState.GetSpecs()
 
+	// Get consolidation contract address from client config, fallback to default
+	consolidationContract := services.GlobalBeaconService.GetSystemContractAddress("consolidation")
+	if consolidationContract == "" {
+		consolidationContract = execution.DefaultConsolidationContractAddr
+	}
+
 	pageData := &models.SubmitConsolidationPageData{
 		NetworkName:           specs.ConfigName,
 		PublicRPCUrl:          utils.Config.Frontend.PublicRPCUrl,
 		RainbowkitProjectId:   utils.Config.Frontend.RainbowkitProjectId,
 		ChainId:               specs.DepositChainId,
-		ConsolidationContract: execution.ConsolidationContractAddr,
+		ConsolidationContract: consolidationContract,
 		ExplorerUrl:           utils.Config.Frontend.EthExplorerLink,
 	}
 

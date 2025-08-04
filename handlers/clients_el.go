@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/p2p/enode"
+	"github.com/ethpandaops/dora/clients/execution"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
@@ -401,63 +402,50 @@ func buildELClientsPageData(sortOrder string) (*models.ClientsELPageData, time.D
 	return pageData, cacheTime
 }
 
-func buildForkConfig(client interface{}) *models.ClientELPageDataForkConfig {
-	execClient, ok := client.(interface {
-		GetCachedEthConfig() map[string]interface{}
-	})
-	if !ok {
-		return nil
-	}
-
-	ethConfig := execClient.GetCachedEthConfig()
+func buildForkConfig(client *execution.Client) *models.ClientELPageDataForkConfig {
+	ethConfig := client.GetCachedEthConfig()
 	if ethConfig == nil {
 		return nil
 	}
 
 	forkConfig := &models.ClientELPageDataForkConfig{}
 
-	// Parse current config object
-	if current, ok := ethConfig["current"].(map[string]interface{}); ok {
-		forkConfig.Current = parseEthConfigObject(current)
+	if ethConfig.Current != nil {
+		forkConfig.Current = convertEthConfigFork(ethConfig.Current)
 	}
 
-	// Parse next config object (may be null)
-	if next, ok := ethConfig["next"].(map[string]interface{}); ok {
-		forkConfig.Next = parseEthConfigObject(next)
+	if ethConfig.Next != nil {
+		forkConfig.Next = convertEthConfigFork(ethConfig.Next)
 	}
 
-	// Parse last config object (may be null)
-	if last, ok := ethConfig["last"].(map[string]interface{}); ok {
-		forkConfig.Last = parseEthConfigObject(last)
+	if ethConfig.Last != nil {
+		forkConfig.Last = convertEthConfigFork(ethConfig.Last)
 	}
 
 	return forkConfig
 }
 
-func parseEthConfigObject(config map[string]interface{}) *models.EthConfigObject {
+func convertEthConfigFork(fork *execution.EthConfigFork) *models.EthConfigObject {
 	obj := &models.EthConfigObject{}
 
-	if activationTime, ok := config["activationTime"].(float64); ok {
-		obj.ActivationTime = uint64(activationTime)
-	}
+	obj.ActivationTime = fork.ActivationTime
+	obj.ChainId = fork.ChainID
+	obj.ForkId = fork.ForkID
+	obj.BlobSchedule = fork.BlobSchedule
+	obj.Precompiles = fork.Precompiles
 
-	if blobSchedule, ok := config["blobSchedule"].(map[string]interface{}); ok {
-		obj.BlobSchedule = blobSchedule
-	}
-
-	if chainId, ok := config["chainId"].(string); ok {
-		obj.ChainId = chainId
-	}
-
-	if forkId, ok := config["forkId"].(string); ok {
-		obj.ForkId = forkId
-	}
-
-	if precompiles, ok := config["precompiles"].(map[string]interface{}); ok {
-		obj.Precompiles = precompiles
-	}
-
-	if systemContracts, ok := config["systemContracts"].(map[string]interface{}); ok {
+	// Convert system contracts back to map for compatibility with existing model
+	if fork.SystemContracts != nil {
+		systemContracts := make(map[string]interface{})
+		if fork.SystemContracts.DepositContract != "" {
+			systemContracts["depositContract"] = fork.SystemContracts.DepositContract
+		}
+		if fork.SystemContracts.WithdrawalContract != "" {
+			systemContracts["withdrawalContract"] = fork.SystemContracts.WithdrawalContract
+		}
+		if fork.SystemContracts.ConsolidationContract != "" {
+			systemContracts["consolidationContract"] = fork.SystemContracts.ConsolidationContract
+		}
 		obj.SystemContracts = systemContracts
 	}
 

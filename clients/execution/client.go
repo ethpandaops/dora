@@ -44,7 +44,7 @@ type Client struct {
 	nodeInfo           *p2p.NodeInfo
 	peers              []*p2p.PeerInfo
 	didFetchPeers      bool
-	ethConfig          map[string]interface{}
+	ethConfig          *EthConfig
 	ethConfigMutex     sync.RWMutex
 }
 
@@ -98,7 +98,7 @@ func (client *Client) GetEthConfig(ctx context.Context) (map[string]interface{},
 	return client.rpcClient.GetEthConfig(ctx)
 }
 
-func (client *Client) GetCachedEthConfig() map[string]interface{} {
+func (client *Client) GetCachedEthConfig() *EthConfig {
 	client.ethConfigMutex.RLock()
 	defer client.ethConfigMutex.RUnlock()
 	return client.ethConfig

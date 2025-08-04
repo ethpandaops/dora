@@ -89,12 +89,18 @@ func buildSubmitWithdrawalPageData() (*models.SubmitWithdrawalPageData, time.Dur
 	chainState := services.GlobalBeaconService.GetChainState()
 	specs := chainState.GetSpecs()
 
+	// Get withdrawal contract address from client config, fallback to default
+	withdrawalContract := services.GlobalBeaconService.GetSystemContractAddress("withdrawal")
+	if withdrawalContract == "" {
+		withdrawalContract = execution.DefaultWithdrawalContractAddr
+	}
+
 	pageData := &models.SubmitWithdrawalPageData{
 		NetworkName:         specs.ConfigName,
 		PublicRPCUrl:        utils.Config.Frontend.PublicRPCUrl,
 		RainbowkitProjectId: utils.Config.Frontend.RainbowkitProjectId,
 		ChainId:             specs.DepositChainId,
-		WithdrawalContract:  execution.WithdrawalContractAddr,
+		WithdrawalContract:  withdrawalContract,
 		ExplorerUrl:         utils.Config.Frontend.EthExplorerLink,
 		MinValidatorBalance: specs.MinActivationBalance,
 	}

@@ -145,3 +145,31 @@ func (ictx *IndexerCtx) getForksWithClients(clientType execution.ClientType) []*
 
 	return forksWithClients
 }
+
+// GetSystemContractAddress returns the address of a system contract from the first available client's config
+func (ictx *IndexerCtx) GetSystemContractAddress(contractType string) string {
+	// Try canonical clients first
+	for _, forkWithClients := range ictx.getForksWithClients(execution.AnyClient) {
+		if forkWithClients.canonical && len(forkWithClients.clients) > 0 {
+			client := forkWithClients.clients[0]
+			config := client.GetCachedEthConfig()
+			if config != nil && config.Current != nil {
+				if addr := config.Current.GetSystemContractAddress(contractType); addr != "" {
+					return addr
+				}
+			}
+		}
+	}
+
+	// Fallback to any available client if no canonical fork found
+	for client := range ictx.executionClients {
+		config := client.GetCachedEthConfig()
+		if config != nil && config.Current != nil {
+			if addr := config.Current.GetSystemContractAddress(contractType); addr != "" {
+				return addr
+			}
+		}
+	}
+
+	return ""
+}
