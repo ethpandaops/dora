@@ -404,6 +404,26 @@ func GetFilteredSlots(filter *dbtypes.BlockFilter, firstSlot uint64, offset uint
 		fmt.Fprintf(&sql, ` AND slots.max_exec_time <= $%v `, argIdx)
 		args = append(args, *filter.MaxExecTime)
 	}
+	if filter.MinTxCount != nil {
+		argIdx++
+		fmt.Fprintf(&sql, ` AND slots.eth_transaction_count >= $%v `, argIdx)
+		args = append(args, *filter.MinTxCount)
+	}
+	if filter.MaxTxCount != nil {
+		argIdx++
+		fmt.Fprintf(&sql, ` AND slots.eth_transaction_count <= $%v `, argIdx)
+		args = append(args, *filter.MaxTxCount)
+	}
+	if filter.MinBlobCount != nil {
+		argIdx++
+		fmt.Fprintf(&sql, ` AND slots.blob_count >= $%v `, argIdx)
+		args = append(args, *filter.MinBlobCount)
+	}
+	if filter.MaxBlobCount != nil {
+		argIdx++
+		fmt.Fprintf(&sql, ` AND slots.blob_count <= $%v `, argIdx)
+		args = append(args, *filter.MaxBlobCount)
+	}
 
 	fmt.Fprintf(&sql, `	ORDER BY slots.slot DESC `)
 	fmt.Fprintf(&sql, ` LIMIT $%v OFFSET $%v `, argIdx+1, argIdx+2)
