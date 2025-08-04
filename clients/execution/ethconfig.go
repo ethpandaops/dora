@@ -10,16 +10,11 @@ type EthConfigFork struct {
 	ActivationTime  uint64                 `json:"activationTime"`
 	ChainID         string                 `json:"chainId"`
 	ForkID          string                 `json:"forkId"`
-	BlobSchedule    map[string]interface{} `json:"blobSchedule"` // TODO: parse this properly
-	Precompiles     map[string]interface{} `json:"precompiles"`  // TODO: parse this properly
-	SystemContracts *SystemContracts       `json:"systemContracts"`
+	BlobSchedule    map[string]string `json:"blobSchedule"`
+	Precompiles     map[string]string `json:"precompiles"`
+	SystemContracts map[string]string       `json:"systemContracts"`
 }
 
-type SystemContracts struct {
-	DepositContract       string `json:"depositContract"`
-	WithdrawalContract    string `json:"withdrawalContract"`
-	ConsolidationContract string `json:"consolidationContract"`
-}
 
 type EthConfig struct {
 	Current *EthConfigFork `json:"current"`
@@ -89,44 +84,32 @@ func parseEthConfigFork(raw map[string]interface{}) (*EthConfigFork, error) {
 		fork.ForkID = forkID
 	}
 
-	// Parse blob schedule (keep as map for now, TODO: proper parsing)
+	// Parse blob schedule
 	if blobSchedule, ok := raw["blobSchedule"].(map[string]interface{}); ok {
-		fork.BlobSchedule = blobSchedule
+		fork.BlobSchedule = parseStringMap(blobSchedule)
 	}
 
-	// Parse precompiles (keep as map for now, TODO: proper parsing)
+	// Parse precompiles
 	if precompiles, ok := raw["precompiles"].(map[string]interface{}); ok {
-		fork.Precompiles = precompiles
+		fork.Precompiles = parseStringMap(precompiles)
 	}
 
 	// Parse system contracts
 	if systemContracts, ok := raw["systemContracts"].(map[string]interface{}); ok {
-		contracts, err := parseSystemContracts(systemContracts)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse system contracts: %w", err)
-		}
-		fork.SystemContracts = contracts
+		fork.SystemContracts = parseStringMap(systemContracts)
 	}
 
 	return fork, nil
 }
 
-func parseSystemContracts(raw map[string]interface{}) (*SystemContracts, error) {
-	contracts := &SystemContracts{}
-
-	if deposit, ok := raw["depositContract"].(string); ok {
-		contracts.DepositContract = deposit
+func parseStringMap(raw map[string]interface{}) map[string]string {
+	result := make(map[string]string)
+	for key, value := range raw {
+		if str, ok := value.(string); ok {
+			result[key] = str
+		}
 	}
-
-	if withdrawal, ok := raw["withdrawalContract"].(string); ok {
-		contracts.WithdrawalContract = withdrawal
-	}
-
-	if consolidation, ok := raw["consolidationContract"].(string); ok {
-		contracts.ConsolidationContract = consolidation
-	}
-
-	return contracts, nil
+	return result
 }
 
 // GetActivationTime returns the activation time as a time.Time
@@ -140,14 +123,17 @@ func (f *EthConfigFork) GetSystemContractAddress(contractType string) string {
 		return ""
 	}
 
-	switch contractType {
-	case "deposit":
-		return f.SystemContracts.DepositContract
-	case "withdrawal":
-		return f.SystemContracts.WithdrawalContract
-	case "consolidation":
-		return f.SystemContracts.ConsolidationContract
-	default:
-		return ""
+	// Map common contract type names to their actual keys
+	keyMap := map[string]string{
+		"deposit":       "depositContract",
+		"withdrawal":    "withdrawalContract",
+		"consolidation": "consolidationContract",
 	}
+
+	if key, exists := keyMap[contractType]; exists {
+		return f.SystemContracts[key]
+	}
+
+	// Also allow direct key lookup for flexibility
+	return f.SystemContracts[contractType]
 }
