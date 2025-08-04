@@ -56,6 +56,10 @@ func SlotsFiltered(w http.ResponseWriter, r *http.Request) {
 	var maxSyncAgg string
 	var minExecTime string
 	var maxExecTime string
+	var minTxCount string
+	var maxTxCount string
+	var minBlobCount string
+	var maxBlobCount string
 
 	if urlArgs.Has("f") {
 		if urlArgs.Has("f.graffiti") {
@@ -97,6 +101,18 @@ func SlotsFiltered(w http.ResponseWriter, r *http.Request) {
 		if urlArgs.Has("f.maxexec") {
 			maxExecTime = urlArgs.Get("f.maxexec")
 		}
+		if urlArgs.Has("f.mintx") {
+			minTxCount = urlArgs.Get("f.mintx")
+		}
+		if urlArgs.Has("f.maxtx") {
+			maxTxCount = urlArgs.Get("f.maxtx")
+		}
+		if urlArgs.Has("f.minblob") {
+			minBlobCount = urlArgs.Get("f.minblob")
+		}
+		if urlArgs.Has("f.maxblob") {
+			maxBlobCount = urlArgs.Get("f.maxblob")
+		}
 	} else {
 		withOrphaned = 1
 		withMissing = 1
@@ -104,7 +120,7 @@ func SlotsFiltered(w http.ResponseWriter, r *http.Request) {
 	var pageError error
 	pageError = services.GlobalCallRateLimiter.CheckCallLimit(r, 2)
 	if pageError == nil {
-		data.Data, pageError = getFilteredSlotsPageData(pageIdx, pageSize, graffiti, invertgraffiti, extradata, invertextradata, proposer, pname, invertproposer, uint8(withOrphaned), uint8(withMissing), minSyncAgg, maxSyncAgg, minExecTime, maxExecTime, displayColumns)
+		data.Data, pageError = getFilteredSlotsPageData(pageIdx, pageSize, graffiti, invertgraffiti, extradata, invertextradata, proposer, pname, invertproposer, uint8(withOrphaned), uint8(withMissing), minSyncAgg, maxSyncAgg, minExecTime, maxExecTime, minTxCount, maxTxCount, minBlobCount, maxBlobCount, displayColumns)
 	}
 	if pageError != nil {
 		handlePageError(w, r, pageError)
@@ -116,11 +132,11 @@ func SlotsFiltered(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func getFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string, invertgraffiti bool, extradata string, invertextradata bool, proposer string, pname string, invertproposer bool, withOrphaned uint8, withMissing uint8, minSyncAgg string, maxSyncAgg string, minExecTime string, maxExecTime string, displayColumns string) (*models.SlotsFilteredPageData, error) {
+func getFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string, invertgraffiti bool, extradata string, invertextradata bool, proposer string, pname string, invertproposer bool, withOrphaned uint8, withMissing uint8, minSyncAgg string, maxSyncAgg string, minExecTime string, maxExecTime string, minTxCount string, maxTxCount string, minBlobCount string, maxBlobCount string, displayColumns string) (*models.SlotsFilteredPageData, error) {
 	pageData := &models.SlotsFilteredPageData{}
-	pageCacheKey := fmt.Sprintf("slots_filtered:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v", pageIdx, pageSize, graffiti, invertgraffiti, extradata, invertextradata, proposer, pname, invertproposer, withOrphaned, withMissing, minSyncAgg, maxSyncAgg, minExecTime, maxExecTime, displayColumns)
+	pageCacheKey := fmt.Sprintf("slots_filtered:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v", pageIdx, pageSize, graffiti, invertgraffiti, extradata, invertextradata, proposer, pname, invertproposer, withOrphaned, withMissing, minSyncAgg, maxSyncAgg, minExecTime, maxExecTime, minTxCount, maxTxCount, minBlobCount, maxBlobCount, displayColumns)
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(_ *services.FrontendCacheProcessingPage) interface{} {
-		return buildFilteredSlotsPageData(pageIdx, pageSize, graffiti, invertgraffiti, extradata, invertextradata, proposer, pname, invertproposer, withOrphaned, withMissing, minSyncAgg, maxSyncAgg, minExecTime, maxExecTime, displayColumns)
+		return buildFilteredSlotsPageData(pageIdx, pageSize, graffiti, invertgraffiti, extradata, invertextradata, proposer, pname, invertproposer, withOrphaned, withMissing, minSyncAgg, maxSyncAgg, minExecTime, maxExecTime, minTxCount, maxTxCount, minBlobCount, maxBlobCount, displayColumns)
 	})
 	if pageErr == nil && pageRes != nil {
 		resData, resOk := pageRes.(*models.SlotsFilteredPageData)
@@ -132,7 +148,7 @@ func getFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string, 
 	return pageData, pageErr
 }
 
-func buildFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string, invertgraffiti bool, extradata string, invertextradata bool, proposer string, pname string, invertproposer bool, withOrphaned uint8, withMissing uint8, minSyncAgg string, maxSyncAgg string, minExecTime string, maxExecTime string, displayColumns string) *models.SlotsFilteredPageData {
+func buildFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string, invertgraffiti bool, extradata string, invertextradata bool, proposer string, pname string, invertproposer bool, withOrphaned uint8, withMissing uint8, minSyncAgg string, maxSyncAgg string, minExecTime string, maxExecTime string, minTxCount string, maxTxCount string, minBlobCount string, maxBlobCount string, displayColumns string) *models.SlotsFilteredPageData {
 	chainState := services.GlobalBeaconService.GetChainState()
 	filterArgs := url.Values{}
 	if graffiti != "" {
@@ -173,6 +189,18 @@ func buildFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string
 	}
 	if maxExecTime != "" {
 		filterArgs.Add("f.maxexec", maxExecTime)
+	}
+	if minTxCount != "" {
+		filterArgs.Add("f.mintx", minTxCount)
+	}
+	if maxTxCount != "" {
+		filterArgs.Add("f.maxtx", maxTxCount)
+	}
+	if minBlobCount != "" {
+		filterArgs.Add("f.minblob", minBlobCount)
+	}
+	if maxBlobCount != "" {
+		filterArgs.Add("f.maxblob", maxBlobCount)
 	}
 
 	// Check if snooper clients are configured
@@ -244,6 +272,10 @@ func buildFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string
 		FilterMaxSyncAgg:      maxSyncAgg,
 		FilterMinExecTime:     minExecTime,
 		FilterMaxExecTime:     maxExecTime,
+		FilterMinTxCount:      minTxCount,
+		FilterMaxTxCount:      maxTxCount,
+		FilterMinBlobCount:    minBlobCount,
+		FilterMaxBlobCount:    maxBlobCount,
 
 		DisplayEpoch:        displayMap[1],
 		DisplaySlot:         displayMap[2],
@@ -334,6 +366,30 @@ func buildFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string
 		if err == nil {
 			maxExecUint32 := uint32(maxExec)
 			blockFilter.MaxExecTime = &maxExecUint32
+		}
+	}
+	if minTxCount != "" {
+		minTx, err := strconv.ParseUint(minTxCount, 10, 64)
+		if err == nil {
+			blockFilter.MinTxCount = &minTx
+		}
+	}
+	if maxTxCount != "" {
+		maxTx, err := strconv.ParseUint(maxTxCount, 10, 64)
+		if err == nil {
+			blockFilter.MaxTxCount = &maxTx
+		}
+	}
+	if minBlobCount != "" {
+		minBlob, err := strconv.ParseUint(minBlobCount, 10, 64)
+		if err == nil {
+			blockFilter.MinBlobCount = &minBlob
+		}
+	}
+	if maxBlobCount != "" {
+		maxBlob, err := strconv.ParseUint(maxBlobCount, 10, 64)
+		if err == nil {
+			blockFilter.MaxBlobCount = &maxBlob
 		}
 	}
 

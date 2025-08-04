@@ -235,14 +235,14 @@ func (s *synchronizer) getSyncClients(epoch phase0.Epoch) []*Client {
 
 	sort.Slice(archiveClients, func(i, j int) bool {
 		if archiveClients[i].priority == archiveClients[j].priority {
-			return rand.UintN(1) == 0
+			return rand.UintN(2) == 0
 		}
 		return archiveClients[i].priority > archiveClients[j].priority
 	})
 
 	sort.Slice(normalClients, func(i, j int) bool {
 		if normalClients[i].priority == normalClients[j].priority {
-			return rand.UintN(1) == 0
+			return rand.UintN(2) == 0
 		}
 		return normalClients[i].priority > normalClients[j].priority
 	})
