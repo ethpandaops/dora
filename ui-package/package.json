@@ -22,25 +22,25 @@
     "sass-loader": "^16.0.5",
     "style-loader": "^4.0.0",
     "ts-loader": "^9.5.2",
-    "typescript": "^5.8.3",
+    "typescript": "^5.9.2",
     "url-loader": "^4.1.1",
-    "webpack": "^5.100.1",
+    "webpack": "^5.101.0",
     "webpack-cli": "^6.0.1",
-    "webpack-visualizer-plugin2": "^1.2.0"
+    "webpack-visualizer-plugin2": "^2.0.0"
   },
   "dependencies": {
-    "@chainsafe/bls": "^8.1.0",
+    "@chainsafe/bls": "^8.2.0",
     "@chainsafe/ssz": "^1.2.1",
     "@rainbow-me/rainbowkit": "^2.2.8",
-    "@tanstack/react-query": "^5.83.0",
-    "@types/react": "^19.1.8",
-    "@types/react-dom": "^19.1.6",
-    "react": "^19.1.0",
+    "@tanstack/react-query": "^5.84.1",
+    "@types/react": "^19.1.9",
+    "@types/react-dom": "^19.1.7",
+    "react": "^19.1.1",
     "react-bootstrap": "^2.10.10",
-    "react-dom": "^19.1.0",
+    "react-dom": "^19.1.1",
     "react-select": "^5.10.2",
-    "viem": "^2.31.7",
-    "wagmi": "^2.15.6"
+    "viem": "^2.33.2",
+    "wagmi": "^2.16.1"
   },
   "scripts": {
     "build": "webpack",
