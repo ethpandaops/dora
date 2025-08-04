@@ -415,24 +415,30 @@ func (es *EpochStats) processState(indexer *Indexer, validatorSet []*phase0.Vali
 	indexer.logger.Debugf("processing epoch %v stats (root: %v / state: %v), validators: %v/%v", es.epoch, es.dependentRoot.String(), dependentState.stateRoot.String(), values.ActiveValidators, len(validatorSet))
 
 	// compute proposers
-	proposerDuties := []phase0.ValidatorIndex{}
-	for slot := chainState.EpochToSlot(es.epoch); slot < chainState.EpochToSlot(es.epoch+1); slot++ {
-		proposer, err := duties.GetProposerIndex(chainState.GetSpecs(), beaconState, slot)
-		proposerIndex := phase0.ValidatorIndex(math.MaxInt64)
-		if err != nil {
-			indexer.logger.Warnf("failed computing proposer for slot %v: %v", slot, err)
-			proposerIndex = math.MaxInt64
-		} else {
-			proposerIndex = values.ActiveIndices[proposer]
+	if len(dependentState.proposerLookahead) > 0 && (es.epoch == chainState.EpochOfSlot(dependentState.stateSlot) || es.epoch == chainState.EpochOfSlot(dependentState.stateSlot)+1) {
+		slotsPerEpoch := chainState.GetSpecs().SlotsPerEpoch
+		offset := uint64(0)
+		if es.epoch == chainState.EpochOfSlot(dependentState.stateSlot)+1 {
+			offset = slotsPerEpoch
 		}
 
-		proposerDuties = append(proposerDuties, proposerIndex)
-	}
+		values.ProposerDuties = dependentState.proposerLookahead[offset : offset+slotsPerEpoch]
+	} else {
+		proposerDuties := []phase0.ValidatorIndex{}
+		for slot := chainState.EpochToSlot(es.epoch); slot < chainState.EpochToSlot(es.epoch+1); slot++ {
+			proposer, err := duties.GetProposerIndex(chainState.GetSpecs(), beaconState, slot)
+			proposerIndex := phase0.ValidatorIndex(math.MaxInt64)
+			if err != nil {
+				indexer.logger.Warnf("failed computing proposer for slot %v: %v", slot, err)
+				proposerIndex = math.MaxInt64
+			} else {
+				proposerIndex = values.ActiveIndices[proposer]
+			}
 
-	values.ProposerDuties = proposerDuties
-	if beaconState.RandaoMix != nil {
-		values.RandaoMix = *beaconState.RandaoMix
-		values.NextRandaoMix = *beaconState.NextRandaoMix
+			proposerDuties = append(proposerDuties, proposerIndex)
+		}
+
+		values.ProposerDuties = proposerDuties
 	}
 
 	// compute committees
@@ -441,6 +447,11 @@ func (es *EpochStats) processState(indexer *Indexer, validatorSet []*phase0.Vali
 		indexer.logger.Warnf("failed computing attester duties for epoch %v: %v", es.epoch, err)
 	}
 	values.AttesterDuties = attesterDuties
+
+	if beaconState.RandaoMix != nil {
+		values.RandaoMix = *beaconState.RandaoMix
+		values.NextRandaoMix = *beaconState.NextRandaoMix
+	}
 
 	es.values = values
 	es.precalcValues = nil
