@@ -431,23 +431,22 @@ func convertEthConfigFork(fork *execution.EthConfigFork) *models.EthConfigObject
 	obj.ActivationTime = fork.ActivationTime
 	obj.ChainId = fork.ChainID
 	obj.ForkId = fork.ForkID
-	obj.BlobSchedule = fork.BlobSchedule
-	obj.Precompiles = fork.Precompiles
-
-	// Convert system contracts back to map for compatibility with existing model
-	if fork.SystemContracts != nil {
-		systemContracts := make(map[string]interface{})
-		if fork.SystemContracts.DepositContract != "" {
-			systemContracts["depositContract"] = fork.SystemContracts.DepositContract
-		}
-		if fork.SystemContracts.WithdrawalContract != "" {
-			systemContracts["withdrawalContract"] = fork.SystemContracts.WithdrawalContract
-		}
-		if fork.SystemContracts.ConsolidationContract != "" {
-			systemContracts["consolidationContract"] = fork.SystemContracts.ConsolidationContract
-		}
-		obj.SystemContracts = systemContracts
-	}
+	
+	// Convert string maps to interface{} maps for model compatibility
+	obj.BlobSchedule = convertStringMapToInterface(fork.BlobSchedule)
+	obj.Precompiles = convertStringMapToInterface(fork.Precompiles)
+	obj.SystemContracts = convertStringMapToInterface(fork.SystemContracts)
 
 	return obj
+}
+
+func convertStringMapToInterface(stringMap map[string]string) map[string]interface{} {
+	if stringMap == nil {
+		return nil
+	}
+	interfaceMap := make(map[string]interface{})
+	for key, value := range stringMap {
+		interfaceMap[key] = value
+	}
+	return interfaceMap
 }
