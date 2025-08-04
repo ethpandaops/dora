@@ -207,44 +207,6 @@ func unmarshalVersionedSignedBeaconBlockJson(version uint64, ssz []byte) (*spec.
 	return block, nil
 }
 
-// getBlockExecutionExtraData returns the extra data from the execution payload of a versioned signed beacon block.
-func getBlockExecutionExtraData(v *spec.VersionedSignedBeaconBlock) ([]byte, error) {
-	switch v.Version {
-	case spec.DataVersionBellatrix:
-		if v.Bellatrix == nil || v.Bellatrix.Message == nil || v.Bellatrix.Message.Body == nil || v.Bellatrix.Message.Body.ExecutionPayload == nil {
-			return nil, errors.New("no bellatrix block")
-		}
-
-		return v.Bellatrix.Message.Body.ExecutionPayload.ExtraData, nil
-	case spec.DataVersionCapella:
-		if v.Capella == nil || v.Capella.Message == nil || v.Capella.Message.Body == nil || v.Capella.Message.Body.ExecutionPayload == nil {
-			return nil, errors.New("no capella block")
-		}
-
-		return v.Capella.Message.Body.ExecutionPayload.ExtraData, nil
-	case spec.DataVersionDeneb:
-		if v.Deneb == nil || v.Deneb.Message == nil || v.Deneb.Message.Body == nil || v.Deneb.Message.Body.ExecutionPayload == nil {
-			return nil, errors.New("no deneb block")
-		}
-
-		return v.Deneb.Message.Body.ExecutionPayload.ExtraData, nil
-	case spec.DataVersionElectra:
-		if v.Electra == nil || v.Electra.Message == nil || v.Electra.Message.Body == nil || v.Electra.Message.Body.ExecutionPayload == nil {
-			return nil, errors.New("no electra block")
-		}
-
-		return v.Electra.Message.Body.ExecutionPayload.ExtraData, nil
-	case spec.DataVersionFulu:
-		if v.Fulu == nil || v.Fulu.Message == nil || v.Fulu.Message.Body == nil || v.Fulu.Message.Body.ExecutionPayload == nil {
-			return nil, errors.New("no fulu block")
-		}
-
-		return v.Fulu.Message.Body.ExecutionPayload.ExtraData, nil
-	default:
-		return nil, errors.New("unknown version")
-	}
-}
-
 // getStateRandaoMixes returns the RANDAO mixes from a versioned beacon state.
 func getStateRandaoMixes(v *spec.VersionedBeaconState) ([]phase0.Root, error) {
 	switch v.Version {
@@ -477,6 +439,32 @@ func getStatePendingConsolidations(v *spec.VersionedBeaconState) ([]*electra.Pen
 		}
 
 		return v.Fulu.PendingConsolidations, nil
+	default:
+		return nil, errors.New("unknown version")
+	}
+}
+
+// getStateProposerLookahead returns the proposer lookahead from a versioned beacon state.
+func getStateProposerLookahead(v *spec.VersionedBeaconState) ([]phase0.ValidatorIndex, error) {
+	switch v.Version {
+	case spec.DataVersionPhase0:
+		return nil, errors.New("no proposer lookahead in phase0")
+	case spec.DataVersionAltair:
+		return nil, errors.New("no proposer lookahead in altair")
+	case spec.DataVersionBellatrix:
+		return nil, errors.New("no proposer lookahead in bellatrix")
+	case spec.DataVersionCapella:
+		return nil, errors.New("no proposer lookahead in capella")
+	case spec.DataVersionDeneb:
+		return nil, errors.New("no proposer lookahead in deneb")
+	case spec.DataVersionElectra:
+		return nil, errors.New("no proposer lookahead in electra")
+	case spec.DataVersionFulu:
+		if v.Fulu == nil || v.Fulu.ProposerLookahead == nil {
+			return nil, errors.New("no fulu block")
+		}
+
+		return v.Fulu.ProposerLookahead, nil
 	default:
 		return nil, errors.New("unknown version")
 	}
