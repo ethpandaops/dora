@@ -7,17 +7,17 @@ import (
 )
 
 type EthConfigFork struct {
-	ActivationTime  uint64 `json:"activationTime"`
-	ChainID         string `json:"chainId"`
-	ForkID          string `json:"forkId"`
+	ActivationTime  uint64                 `json:"activationTime"`
+	ChainID         string                 `json:"chainId"`
+	ForkID          string                 `json:"forkId"`
 	BlobSchedule    map[string]interface{} `json:"blobSchedule"` // TODO: parse this properly
 	Precompiles     map[string]interface{} `json:"precompiles"`  // TODO: parse this properly
 	SystemContracts *SystemContracts       `json:"systemContracts"`
 }
 
 type SystemContracts struct {
-	DepositContract      string `json:"depositContract"`
-	WithdrawalContract   string `json:"withdrawalContract"`
+	DepositContract       string `json:"depositContract"`
+	WithdrawalContract    string `json:"withdrawalContract"`
 	ConsolidationContract string `json:"consolidationContract"`
 }
 
