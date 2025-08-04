@@ -140,6 +140,38 @@
                   </div>
                 </div>
                 {{ end }}
+                <div class="row mt-1">
+                  <div class="col-sm-12 col-md-6 col-lg-4">
+                    <nobr>Tx Count</nobr>
+                  </div>
+                  <div class="col-sm-12 col-md-6 col-lg-8 d-flex">
+                    <div class="flex-grow-1">
+                      <input name="f.mintx" type="number" class="form-control" placeholder="Min" aria-label="Min Transaction Count" min="0" value="{{ .FilterMinTxCount }}">
+                    </div>
+                    <div class="text-center filter-separator">
+                      -
+                    </div>
+                    <div class="flex-grow-1">
+                      <input name="f.maxtx" type="number" class="form-control" placeholder="Max" aria-label="Max Transaction Count" min="0" value="{{ .FilterMaxTxCount }}">
+                    </div>
+                  </div>
+                </div>
+                <div class="row mt-1">
+                  <div class="col-sm-12 col-md-6 col-lg-4">
+                    <nobr>Blob Count</nobr>
+                  </div>
+                  <div class="col-sm-12 col-md-6 col-lg-8 d-flex">
+                    <div class="flex-grow-1">
+                      <input name="f.minblob" type="number" class="form-control" placeholder="Min" aria-label="Min Blob Count" min="0" value="{{ .FilterMinBlobCount }}">
+                    </div>
+                    <div class="text-center filter-separator">
+                      -
+                    </div>
+                    <div class="flex-grow-1">
+                      <input name="f.maxblob" type="number" class="form-control" placeholder="Max" aria-label="Max Blob Count" min="0" value="{{ .FilterMaxBlobCount }}">
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 

@@ -50,6 +50,10 @@ type BlockFilter struct {
 	MaxSyncParticipation *float32
 	MinExecTime          *uint32
 	MaxExecTime          *uint32
+	MinTxCount           *uint64
+	MaxTxCount           *uint64
+	MinBlobCount         *uint64
+	MaxBlobCount         *uint64
 	Slot                 *uint64 // Filter by specific slot number
 	BlockRoot            []byte  // Filter by specific block root
 }
