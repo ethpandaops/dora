@@ -431,7 +431,7 @@ func convertEthConfigFork(fork *execution.EthConfigFork) *models.EthConfigObject
 	obj.ActivationTime = fork.ActivationTime
 	obj.ChainId = fork.ChainID
 	obj.ForkId = fork.ForkID
-	
+
 	// Convert string maps to interface{} maps for model compatibility
 	obj.BlobSchedule = convertStringMapToInterface(fork.BlobSchedule)
 	obj.Precompiles = convertStringMapToInterface(fork.Precompiles)

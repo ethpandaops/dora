@@ -7,14 +7,13 @@ import (
 )
 
 type EthConfigFork struct {
-	ActivationTime  uint64                 `json:"activationTime"`
-	ChainID         string                 `json:"chainId"`
-	ForkID          string                 `json:"forkId"`
+	ActivationTime  uint64            `json:"activationTime"`
+	ChainID         string            `json:"chainId"`
+	ForkID          string            `json:"forkId"`
 	BlobSchedule    map[string]string `json:"blobSchedule"`
 	Precompiles     map[string]string `json:"precompiles"`
-	SystemContracts map[string]string       `json:"systemContracts"`
+	SystemContracts map[string]string `json:"systemContracts"`
 }
-
 
 type EthConfig struct {
 	Current *EthConfigFork `json:"current"`
