@@ -423,6 +423,12 @@ func getStateDepositBalanceToConsume(v *spec.VersionedBeaconState) (phase0.Gwei,
 		}
 
 		return v.Fulu.DepositBalanceToConsume, nil
+	case spec.DataVersionEip7805:
+		if v.Eip7805 == nil {
+			return 0, errors.New("no eip7805 block")
+		}
+
+		return v.Eip7805.DepositBalanceToConsume, nil
 	default:
 		return 0, errors.New("unknown version")
 	}
@@ -453,6 +459,12 @@ func getStatePendingDeposits(v *spec.VersionedBeaconState) ([]*electra.PendingDe
 		}
 
 		return v.Fulu.PendingDeposits, nil
+	case spec.DataVersionEip7805:
+		if v.Eip7805 == nil || v.Eip7805.PendingDeposits == nil {
+			return nil, errors.New("no eip7805 block")
+		}
+
+		return v.Eip7805.PendingDeposits, nil
 	default:
 		return nil, errors.New("unknown version")
 	}
@@ -483,6 +495,12 @@ func getStatePendingWithdrawals(v *spec.VersionedBeaconState) ([]*electra.Pendin
 		}
 
 		return v.Fulu.PendingPartialWithdrawals, nil
+	case spec.DataVersionEip7805:
+		if v.Eip7805 == nil || v.Eip7805.PendingPartialWithdrawals == nil {
+			return nil, errors.New("no eip7805 block")
+		}
+
+		return v.Eip7805.PendingPartialWithdrawals, nil
 	default:
 		return nil, errors.New("unknown version")
 	}
@@ -513,6 +531,12 @@ func getStatePendingConsolidations(v *spec.VersionedBeaconState) ([]*electra.Pen
 		}
 
 		return v.Fulu.PendingConsolidations, nil
+	case spec.DataVersionEip7805:
+		if v.Eip7805 == nil || v.Eip7805.PendingConsolidations == nil {
+			return nil, errors.New("no eip7805 block")
+		}
+
+		return v.Eip7805.PendingConsolidations, nil
 	default:
 		return nil, errors.New("unknown version")
 	}
@@ -535,6 +559,8 @@ func getBlockSize(dynSsz *dynssz.DynSsz, block *spec.VersionedSignedBeaconBlock)
 		return dynSsz.SizeSSZ(block.Electra)
 	case spec.DataVersionFulu:
 		return dynSsz.SizeSSZ(block.Fulu)
+	case spec.DataVersionEip7805:
+		return dynSsz.SizeSSZ(block.Eip7805)
 	default:
 		return 0, errors.New("unknown version")
 	}
