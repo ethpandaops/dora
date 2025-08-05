@@ -283,7 +283,7 @@ func (indexer *Indexer) aggregateForkVotes(forkId ForkKey, epochLimit uint64) (t
 		}
 
 		fork := indexer.forkCache.getForkById(thisForkId)
-		if fork == nil {
+		if fork == nil || fork.parentFork == thisForkId {
 			break
 		}
 
