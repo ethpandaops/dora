@@ -203,8 +203,11 @@ func (c *Client) processBlockEvent(blockEvent *v1.BlockEvent) error {
 // processHeadEvent processes a head event from the event stream.
 func (c *Client) processHeadEvent(headEvent *v1.HeadEvent) error {
 	if c.client.GetStatus() != consensus.ClientStatusOnline && c.client.GetStatus() != consensus.ClientStatusOptimistic {
-		// client is not ready, skip
-		return nil
+		finalizedSlot := c.client.GetPool().GetChainState().GetFinalizedSlot()
+		if headEvent.Slot < finalizedSlot {
+			c.logger.Debugf("head event %v:%v is in the past, skipping", headEvent.Slot, headEvent.Block.String())
+			return nil
+		}
 	}
 
 	block, err := c.processStreamBlock(headEvent.Slot, headEvent.Block)
