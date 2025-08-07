@@ -169,6 +169,11 @@ func (indexer *Indexer) GetBlocksByExecutionBlockNumber(blockNumber uint64) []*B
 	return indexer.blockCache.getBlocksByExecutionBlockNumber(blockNumber)
 }
 
+// GetBlocksByForkId returns a slice of blocks that belong to the specified forkId.
+func (indexer *Indexer) GetBlocksByForkId(forkId ForkKey) []*Block {
+	return indexer.blockCache.getForkBlocks(forkId)
+}
+
 // GetBlockDistance returns whether the base root is in the canonical chain defined by the head root and the distance between both blocks.
 func (indexer *Indexer) GetBlockDistance(baseRoot phase0.Root, headRoot phase0.Root) (bool, uint64) {
 	return indexer.blockCache.getCanonicalDistance(baseRoot, headRoot, 0)
@@ -300,6 +305,11 @@ func (indexer *Indexer) GetLatestDepositQueueByBlockRoot(blockRoot phase0.Root) 
 // GetParentForkIds returns the parent fork ids of the given fork.
 func (indexer *Indexer) GetParentForkIds(forkId ForkKey) []ForkKey {
 	return indexer.forkCache.getParentForkIds(forkId)
+}
+
+// GetFinalizedForkId returns the finalized fork id.
+func (indexer *Indexer) GetFinalizedForkId() ForkKey {
+	return indexer.forkCache.finalizedForkId
 }
 
 // StreamActiveValidatorDataForRoot streams the available validator set data for a given blockRoot.
