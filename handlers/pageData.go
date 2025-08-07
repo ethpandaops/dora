@@ -125,6 +125,11 @@ func createMenuItems(active string) []types.MainMenuItem {
 				Path:  "/blocks",
 				Icon:  "fa-cube",
 			},
+			{
+				Label: "Chain Forks",
+				Path:  "/chain-forks",
+				Icon:  "fa-project-diagram",
+			},
 		},
 	})
 	if len(utils.Config.MevIndexer.Relays) > 0 {

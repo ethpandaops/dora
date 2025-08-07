@@ -1,0 +1,790 @@
+package handlers
+
+import (
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"sort"
+	"strconv"
+	"time"
+
+	"github.com/attestantio/go-eth2-client/spec/phase0"
+	"github.com/ethpandaops/dora/db"
+	"github.com/ethpandaops/dora/dbtypes"
+	"github.com/ethpandaops/dora/indexer/beacon"
+	"github.com/ethpandaops/dora/services"
+	"github.com/ethpandaops/dora/templates"
+	"github.com/ethpandaops/dora/types/models"
+	"github.com/sirupsen/logrus"
+)
+
+const DefaultChainForksPageSize = 8640 // 24 hours at 12 seconds per slot
+
+// ChainForks will return the chain forks visualization page using a go template
+func ChainForks(w http.ResponseWriter, r *http.Request) {
+	var chainForksTemplateFiles = append(layoutTemplateFiles,
+		"chain_forks/chain_forks.html",
+	)
+
+	var pageTemplate = templates.GetTemplate(chainForksTemplateFiles...)
+	data := InitPageData(w, r, "blockchain", "/chain-forks", "Chain Forks", chainForksTemplateFiles)
+
+	// Parse start slot parameter
+	var startSlot uint64 = 0
+	if startSlotStr := r.URL.Query().Get("start"); startSlotStr != "" {
+		if parsed, err := strconv.ParseUint(startSlotStr, 10, 64); err == nil {
+			startSlot = parsed
+		}
+	}
+
+	// If no start slot specified, use recent head slot
+	if startSlot == 0 {
+		chainState := services.GlobalBeaconService.GetChainState()
+		currentSlot := uint64(chainState.CurrentSlot())
+		// Start from current slot and go backwards
+		startSlot = currentSlot
+	}
+
+	var pageError error
+	pageError = services.GlobalCallRateLimiter.CheckCallLimit(r, 1)
+	if pageError == nil {
+		data.Data, pageError = getChainForksPageData(startSlot)
+	}
+	if pageError != nil {
+		handlePageError(w, r, pageError)
+		return
+	}
+
+	if r.Header.Get("Accept") == "application/json" {
+		w.Header().Set("Content-Type", "application/json")
+		chainForksDataBytes, err := json.Marshal(data.Data)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		_, err = w.Write(chainForksDataBytes)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Error writing response: %v", err), http.StatusInternalServerError)
+		}
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html")
+	if handleTemplateError(w, r, "chain_forks.go", "ChainForks", "", pageTemplate.ExecuteTemplate(w, "layout", data)) != nil {
+		return // an error has occurred and was processed
+	}
+}
+
+func getChainForksPageData(startSlot uint64) (*models.ChainForksPageData, error) {
+	pageData := &models.ChainForksPageData{}
+	pageCacheKey := fmt.Sprintf("chain_forks_%d", startSlot)
+	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
+		pageData, cacheTimeout := buildChainForksPageData(startSlot)
+		pageCall.CacheTimeout = cacheTimeout
+		return pageData
+	})
+	if pageErr == nil && pageRes != nil {
+		resData, resOk := pageRes.(*models.ChainForksPageData)
+		if !resOk {
+			return nil, ErrInvalidPageModel
+		}
+		pageData = resData
+	}
+	return pageData, pageErr
+}
+
+func buildChainForksPageData(startSlot uint64) (*models.ChainForksPageData, time.Duration) {
+	// Calculate slot ranges for time window
+	// startSlot parameter = head slot (most recent, shown at top of visualization)
+	// actualStartSlot = older slot (shown at bottom of visualization, goes back ~1000 slots)
+	endSlot := startSlot // Head slot (newest)
+	actualStartSlot := calculateStartSlot(startSlot) // Goes back in time for time window
+	
+	chainState := services.GlobalBeaconService.GetChainState()
+	specs := chainState.GetSpecs()
+	
+	// Calculate epochs (225 epochs = 1 day)
+	startEpoch := uint64(chainState.EpochOfSlot(phase0.Slot(actualStartSlot)))
+	endEpoch := uint64(chainState.EpochOfSlot(phase0.Slot(endSlot)))
+	
+	// Initialize page data
+	pageData := &models.ChainForksPageData{
+		StartSlot:    actualStartSlot,
+		EndSlot:      endSlot,
+		StartEpoch:   startEpoch,
+		EndEpoch:     endEpoch,
+		PageSize:     DefaultChainForksPageSize,
+		FinalitySlot: uint64(chainState.GetFinalizedSlot()),
+		ChainSpecs: &models.ChainSpecs{
+			SlotsPerEpoch:  uint64(specs.SlotsPerEpoch),
+			SecondsPerSlot: uint64(specs.SecondsPerSlot.Seconds()),
+		},
+	}
+	cacheTime := specs.SecondsPerSlot * 12
+
+	// Get fork data from database
+	slotRange := endSlot - actualStartSlot
+	dbForks, err := db.GetForkVisualizationData(actualStartSlot, slotRange)
+	if err != nil {
+		logrus.Errorf("Error fetching fork visualization data: %v", err)
+		return pageData, cacheTime
+	}
+
+	// Process forks with epoch-based participation data
+	indexer := services.GlobalBeaconService.GetBeaconIndexer()
+	pageData.Forks = processForksWithEpochData(dbForks, indexer, startEpoch, endEpoch)
+
+	// Add canonical chain and mark canonical forks
+	pageData.Forks = addCanonicalChain(pageData.Forks, indexer)
+
+	// Sort forks by base slot for proper visualization
+	sort.Slice(pageData.Forks, func(i, j int) bool {
+		if pageData.Forks[i].BaseSlot == pageData.Forks[j].BaseSlot {
+			return pageData.Forks[i].ForkId < pageData.Forks[j].ForkId
+		}
+		return pageData.Forks[i].BaseSlot < pageData.Forks[j].BaseSlot
+	})
+
+	// Build diagram data
+	pageData.ChainDiagram = buildChainDiagram(pageData.Forks, startEpoch, endEpoch, indexer)
+
+	// Set up pagination
+	if startSlot >= DefaultChainForksPageSize {
+		prevSlot := startSlot - DefaultChainForksPageSize
+		pageData.PrevPageSlot = &prevSlot
+	}
+
+	finalizedSlot := uint64(chainState.GetFinalizedSlot())
+	if startSlot+DefaultChainForksPageSize < finalizedSlot {
+		nextSlot := startSlot + DefaultChainForksPageSize
+		pageData.NextPageSlot = &nextSlot
+	}
+
+	return pageData, cacheTime
+}
+
+// calculateForkHead calculates fork head using pre-fetched blocks
+func calculateForkHead(dbFork *dbtypes.Fork, hasHead bool, allForks []*dbtypes.Fork, forkBlocks []*beacon.Block) uint64 {
+	if hasHead {
+		// Fork has a head - find the latest slot from cached blocks or database
+		latestSlot := dbFork.BaseSlot
+		
+		// Check cached blocks first
+		for _, block := range forkBlocks {
+			if uint64(block.Slot) > latestSlot && uint64(block.Slot) >= dbFork.BaseSlot {
+				latestSlot = uint64(block.Slot)
+			}
+		}
+		
+		// Always check database for finalized blocks (especially important for forks that started before finalization)
+		finalizedHead := getFinalizedForkHead(dbFork.ForkId, dbFork.BaseSlot)
+		if finalizedHead > latestSlot {
+			latestSlot = finalizedHead
+		}
+		
+		return latestSlot
+	}
+	
+	// Fork was superseded - find where it ended
+	headSlot := dbFork.LeafSlot
+	for _, childFork := range allForks {
+		if childFork.ParentFork == dbFork.ForkId && childFork.BaseSlot > headSlot {
+			headSlot = childFork.BaseSlot
+		}
+	}
+	
+	return headSlot
+}
+
+
+// getFinalizedForkHead finds the highest finalized slot for a given fork ID
+func getFinalizedForkHead(forkId uint64, baseSlot uint64) uint64 {
+	var slot uint64
+
+	err := db.ReaderDb.Get(&slot, `
+		SELECT slot 
+		FROM slots 
+		WHERE fork_id = $1 AND slot >= $2
+		ORDER BY slot DESC
+		LIMIT 1
+	`, forkId, baseSlot)
+
+	if err != nil {
+		return baseSlot
+	}
+
+	return slot
+}
+
+func buildChainDiagram(forks []*models.ChainFork, startEpoch, endEpoch uint64, indexer *beacon.Indexer) *models.ChainDiagram {
+	// Get specs for proper epoch to slot conversion
+	chainState := services.GlobalBeaconService.GetChainState()
+	specs := chainState.GetSpecs()
+	slotsPerEpoch := uint64(specs.SlotsPerEpoch)
+	
+	diagram := &models.ChainDiagram{
+		Epochs: make([]uint64, 0),
+		Forks: make([]*models.DiagramFork, 0),
+		CanonicalLine: &models.DiagramCanonicalLine{
+			StartSlot: startEpoch * slotsPerEpoch, // Convert epoch to slot using actual spec
+			EndSlot:   endEpoch * slotsPerEpoch,
+		},
+	}
+
+	// Create epochs array (every 5 epochs for visualization stepping, starting from rounded value)
+	firstEpoch := (startEpoch / 5) * 5 // Round down to nearest 5
+	for epoch := firstEpoch; epoch <= endEpoch; epoch += 5 {
+		diagram.Epochs = append(diagram.Epochs, epoch)
+	}
+
+	// Build fork tree structure - assign horizontal positions to avoid overlap
+	forkMap := make(map[uint64]*models.ChainFork)
+	for _, fork := range forks {
+		forkMap[fork.ForkId] = fork
+	}
+
+	// Assign horizontal positions like a git graph
+	// Canonical chain goes on the left (position 0)
+	// Other forks get positions to the right (1, 2, 3, ...)
+
+	// Get canonical fork IDs from chain service (these are the current canonical branches)
+	canonicalForkIds := services.GlobalBeaconService.GetCanonicalForkIds()
+	canonicalForkIdSet := make(map[uint64]bool)
+	for _, forkId := range canonicalForkIds {
+		canonicalForkIdSet[forkId] = true
+	}
+
+	// The canonical chain is represented in TWO parts:
+	// 1. Finalized canonical chain (fork ID 0 or first canonical fork in finalized range)
+	// 2. Current head canonical chain (from GetCanonicalForkIds for unfinalized range)
+	// We need to treat these as ONE continuous canonical chain
+
+	// Find the main canonical fork (the one extending to current head)
+	// This is used for identification but all canonical forks get the same position
+	latestSlot := uint64(0)
+	for _, fork := range forks {
+		if canonicalForkIdSet[fork.ForkId] && fork.HeadSlot > latestSlot {
+			latestSlot = fork.HeadSlot
+		}
+	}
+
+	// Mark canonical forks for proper rendering
+	for _, fork := range forks {
+		if canonicalForkIdSet[fork.ForkId] {
+			fork.IsCanonical = true
+		}
+	}
+
+	// Canonical chain reconstruction is now done in buildChainForksPageData
+
+	// Assign positions using simplified lane management
+	positions := assignForkPositions(forks)
+	
+	// Create diagram forks
+	for _, fork := range forks {
+		position := positions[fork.ForkId]
+		diagramFork := &models.DiagramFork{
+			ForkId:               fork.ForkId,
+			BaseSlot:             fork.BaseSlot,
+			BaseRoot:             fork.BaseRoot,
+			LeafSlot:             fork.LeafSlot,
+			LeafRoot:             fork.LeafRoot,
+			HeadSlot:             fork.HeadSlot,
+			HeadRoot:             fork.HeadRoot,
+			Length:               fork.Length,
+			Participation:        fork.Participation,
+			ParticipationByEpoch: fork.ParticipationByEpoch,
+			Position:             position,
+			ParentFork:           fork.ParentFork,
+		}
+		diagram.Forks = append(diagram.Forks, diagramFork)
+	}
+
+	return diagram
+}
+
+// calculateStartSlot determines the actual start slot for the fork visualization
+func calculateStartSlot(startSlot uint64) uint64 {
+	recentSlotWindow := uint64(DefaultChainForksPageSize) // Use the proper page size instead of hardcoded 1000
+	if startSlot > recentSlotWindow {
+		return startSlot - recentSlotWindow
+	}
+	return 0
+}
+
+// processForksWithEpochData converts database forks to page data with epoch-based participation
+func processForksWithEpochData(dbForks []*dbtypes.Fork, indexer *beacon.Indexer, startEpoch, endEpoch uint64) []*models.ChainFork {
+	forks := make([]*models.ChainFork, 0, len(dbForks)+1)
+	
+	// Build child fork map
+	childForkMap := make(map[uint64]bool)
+	for _, dbFork := range dbForks {
+		if dbFork.ParentFork != 0 {
+			childForkMap[dbFork.ParentFork] = true
+		}
+	}
+	
+	// Extract fork IDs for participation query
+	forkIds := make([]uint64, len(dbForks))
+	for i, dbFork := range dbForks {
+		forkIds[i] = dbFork.ForkId
+	}
+	
+	// Get chain state for epoch/slot calculations
+	chainState := services.GlobalBeaconService.GetChainState()
+	specs := chainState.GetSpecs()
+	slotsPerEpoch := uint64(specs.SlotsPerEpoch)
+	
+	// Fetch all fork blocks from cache once (optimization)
+	forkBlocksCache := make(map[uint64][]*beacon.Block)
+	for _, dbFork := range dbForks {
+		forkBlocks := indexer.GetBlocksByForkId(beacon.ForkKey(dbFork.ForkId))
+		forkBlocksCache[dbFork.ForkId] = forkBlocks
+	}
+	
+	// Fetch participation data for all forks in one query (finalized blocks)
+	participationData, err := db.GetForkParticipationByEpoch(startEpoch, endEpoch, forkIds)
+	if err != nil {
+		logrus.Errorf("Error fetching fork participation by epoch: %v", err)
+		// Fall back to old processing method
+		startSlot := startEpoch * slotsPerEpoch
+		endSlot := endEpoch * slotsPerEpoch
+		return processForks(dbForks, indexer, startSlot, endSlot)
+	}
+	
+	// Build participation lookup map: forkId -> epoch -> participation
+	participationMap := make(map[uint64]map[uint64]*models.EpochParticipation)
+	for _, pData := range participationData {
+		if participationMap[pData.ForkId] == nil {
+			participationMap[pData.ForkId] = make(map[uint64]*models.EpochParticipation)
+		}
+		participationMap[pData.ForkId][pData.Epoch] = &models.EpochParticipation{
+			Epoch:         pData.Epoch,
+			Participation: pData.Participation,
+			SlotCount:     pData.SlotCount,
+		}
+	}
+	
+	// Add participation from cached unfinalized blocks
+	for forkId, forkBlocks := range forkBlocksCache {
+		if participationMap[forkId] == nil {
+			participationMap[forkId] = make(map[uint64]*models.EpochParticipation)
+		}
+		
+		// Group blocks by epoch and calculate participation
+		epochBlocks := make(map[uint64][]*beacon.Block)
+		for _, block := range forkBlocks {
+			epoch := uint64(block.Slot) / slotsPerEpoch
+			if epoch >= startEpoch && epoch <= endEpoch {
+				epochBlocks[epoch] = append(epochBlocks[epoch], block)
+			}
+		}
+		
+		// Calculate participation per epoch from cached blocks
+		for epoch, blocks := range epochBlocks {
+			var participationSum float64
+			var validBlockCount uint64
+			
+			for _, block := range blocks {
+				if blockIndex := block.GetBlockIndex(); blockIndex != nil {
+					participationSum += float64(blockIndex.SyncParticipation)
+					validBlockCount++
+				}
+			}
+			
+			if validBlockCount > 0 {
+				avgParticipation := participationSum / float64(validBlockCount)
+				
+				// If we already have DB data for this epoch, merge it
+				if existing, exists := participationMap[forkId][epoch]; exists {
+					// Weighted average of DB and cache data
+					totalSlots := existing.SlotCount + validBlockCount
+					weightedParticipation := (existing.Participation * float64(existing.SlotCount) + avgParticipation * float64(validBlockCount)) / float64(totalSlots)
+					existing.Participation = weightedParticipation
+					existing.SlotCount = totalSlots
+				} else {
+					// Create new epoch participation entry
+					participationMap[forkId][epoch] = &models.EpochParticipation{
+						Epoch:         epoch,
+						Participation: avgParticipation,
+						SlotCount:     validBlockCount,
+					}
+				}
+			}
+		}
+	}
+
+	// Process each fork
+	for _, dbFork := range dbForks {
+		hasHead := !childForkMap[dbFork.ForkId]
+		
+		// Calculate head slot using cached blocks
+		headSlot := calculateForkHead(dbFork, hasHead, dbForks, forkBlocksCache[dbFork.ForkId])
+		
+		// Get epoch-based participation data for this fork
+		epochParticipation := make([]*models.EpochParticipation, 0)
+		var participationSum float64
+		var participationCount int
+		
+		if forkParticipation, exists := participationMap[dbFork.ForkId]; exists {
+			for epoch := startEpoch; epoch <= endEpoch; epoch++ {
+				if epochData, hasData := forkParticipation[epoch]; hasData {
+					epochParticipation = append(epochParticipation, epochData)
+					participationSum += epochData.Participation
+					participationCount++
+				}
+			}
+		}
+		
+		// Calculate average participation from epoch data
+		var avgParticipation float64
+		if participationCount > 0 {
+			avgParticipation = participationSum / float64(participationCount)
+		}
+		
+		chainFork := &models.ChainFork{
+			ForkId:               dbFork.ForkId,
+			BaseSlot:             dbFork.BaseSlot,
+			BaseRoot:             dbFork.BaseRoot,
+			LeafSlot:             dbFork.LeafSlot,
+			LeafRoot:             dbFork.LeafRoot,
+			HeadSlot:             headSlot,
+			HeadRoot:             nil,
+			ParentFork:           dbFork.ParentFork,
+			Participation:        avgParticipation,
+			ParticipationByEpoch: epochParticipation,
+			IsCanonical:          false,
+			Length:               headSlot - dbFork.BaseSlot + 1,
+		}
+		forks = append(forks, chainFork)
+	}
+	
+	return forks
+}
+
+// processForks converts database forks to page data with epoch-based participation
+func processForks(dbForks []*dbtypes.Fork, indexer *beacon.Indexer, startSlot, endSlot uint64) []*models.ChainFork {
+	forks := make([]*models.ChainFork, 0, len(dbForks)+1)
+	
+	// Build child fork map
+	childForkMap := make(map[uint64]bool)
+	for _, dbFork := range dbForks {
+		if dbFork.ParentFork != 0 {
+			childForkMap[dbFork.ParentFork] = true
+		}
+	}
+	
+	// Extract fork IDs for participation query
+	forkIds := make([]uint64, len(dbForks))
+	for i, dbFork := range dbForks {
+		forkIds[i] = dbFork.ForkId
+	}
+	
+	// Fetch all fork blocks from cache once (optimization)
+	forkBlocksCache := make(map[uint64][]*beacon.Block)
+	for _, dbFork := range dbForks {
+		forkBlocks := indexer.GetBlocksByForkId(beacon.ForkKey(dbFork.ForkId))
+		forkBlocksCache[dbFork.ForkId] = forkBlocks
+	}
+
+	// Get chain state for epoch/slot calculations
+	chainState := services.GlobalBeaconService.GetChainState()
+	specs := chainState.GetSpecs()
+	slotsPerEpoch := uint64(specs.SlotsPerEpoch)
+	startEpoch := uint64(chainState.EpochOfSlot(phase0.Slot(startSlot)))
+	endEpoch := uint64(chainState.EpochOfSlot(phase0.Slot(endSlot)))
+	
+	// Fetch participation data for all forks in one query (finalized blocks)
+	participationData, err := db.GetForkParticipationByEpoch(startEpoch, endEpoch, forkIds)
+	if err != nil {
+		logrus.Errorf("Error fetching fork participation by epoch: %v", err)
+		participationData = []*db.ForkParticipationByEpoch{} // Empty slice to avoid nil issues
+	}
+	
+	// Build participation lookup map: forkId -> epoch -> participation
+	participationMap := make(map[uint64]map[uint64]*models.EpochParticipation)
+	for _, pData := range participationData {
+		if participationMap[pData.ForkId] == nil {
+			participationMap[pData.ForkId] = make(map[uint64]*models.EpochParticipation)
+		}
+		participationMap[pData.ForkId][pData.Epoch] = &models.EpochParticipation{
+			Epoch:         pData.Epoch,
+			Participation: pData.Participation,
+			SlotCount:     pData.SlotCount,
+		}
+	}
+	
+	// Add participation from cached unfinalized blocks
+	for forkId, forkBlocks := range forkBlocksCache {
+		if participationMap[forkId] == nil {
+			participationMap[forkId] = make(map[uint64]*models.EpochParticipation)
+		}
+		
+		// Group blocks by epoch and calculate participation
+		epochBlocks := make(map[uint64][]*beacon.Block)
+		for _, block := range forkBlocks {
+			epoch := uint64(block.Slot) / slotsPerEpoch
+			if epoch >= startEpoch && epoch <= endEpoch {
+				epochBlocks[epoch] = append(epochBlocks[epoch], block)
+			}
+		}
+		
+		// Calculate participation per epoch from cached blocks
+		for epoch, blocks := range epochBlocks {
+			var participationSum float64
+			var validBlockCount uint64
+			
+			for _, block := range blocks {
+				if blockIndex := block.GetBlockIndex(); blockIndex != nil {
+					participationSum += float64(blockIndex.SyncParticipation)
+					validBlockCount++
+				}
+			}
+			
+			if validBlockCount > 0 {
+				avgParticipation := participationSum / float64(validBlockCount)
+				
+				// If we already have DB data for this epoch, merge it
+				if existing, exists := participationMap[forkId][epoch]; exists {
+					// Weighted average of DB and cache data
+					totalSlots := existing.SlotCount + validBlockCount
+					weightedParticipation := (existing.Participation * float64(existing.SlotCount) + avgParticipation * float64(validBlockCount)) / float64(totalSlots)
+					existing.Participation = weightedParticipation
+					existing.SlotCount = totalSlots
+				} else {
+					// Create new epoch participation entry
+					participationMap[forkId][epoch] = &models.EpochParticipation{
+						Epoch:         epoch,
+						Participation: avgParticipation,
+						SlotCount:     validBlockCount,
+					}
+				}
+			}
+		}
+	}
+	
+	// Process each fork
+	for _, dbFork := range dbForks {
+		hasHead := !childForkMap[dbFork.ForkId]
+		headSlot := calculateForkHead(dbFork, hasHead, dbForks, forkBlocksCache[dbFork.ForkId])
+		
+		// Get epoch-based participation data for this fork
+		epochParticipation := make([]*models.EpochParticipation, 0)
+		var participationSum float64
+		var participationCount int
+		
+		if forkParticipation, exists := participationMap[dbFork.ForkId]; exists {
+			for epoch := startEpoch; epoch <= endEpoch; epoch++ {
+				if epochData, hasData := forkParticipation[epoch]; hasData {
+					epochParticipation = append(epochParticipation, epochData)
+					participationSum += epochData.Participation
+					participationCount++
+				}
+			}
+		}
+		
+		// Calculate average participation from epoch data
+		var avgParticipation float64
+		if participationCount > 0 {
+			avgParticipation = participationSum / float64(participationCount)
+		}
+		
+		chainFork := &models.ChainFork{
+			ForkId:        dbFork.ForkId,
+			BaseSlot:      dbFork.BaseSlot,
+			BaseRoot:      dbFork.BaseRoot,
+			LeafSlot:      dbFork.LeafSlot,
+			LeafRoot:      dbFork.LeafRoot,
+			HeadSlot:      headSlot,
+			HeadRoot:      nil,
+			ParentFork:           dbFork.ParentFork,
+			Participation:        avgParticipation,
+			ParticipationByEpoch: epochParticipation,
+			IsCanonical:          false,
+			Length:        headSlot - dbFork.BaseSlot + 1,
+		}
+		forks = append(forks, chainFork)
+	}
+	
+	return forks
+}
+
+
+
+// addCanonicalChain adds canonical chain representation and marks canonical forks
+func addCanonicalChain(forks []*models.ChainFork, indexer *beacon.Indexer) []*models.ChainFork {
+	canonicalForkIds := services.GlobalBeaconService.GetCanonicalForkIds()
+	canonicalForkIdSet := make(map[uint64]bool)
+	for _, forkId := range canonicalForkIds {
+		canonicalForkIdSet[forkId] = true
+	}
+	
+	// Mark canonical forks
+	canonicalHead := indexer.GetCanonicalHead(nil)
+	var currentCanonicalForkId uint64 = 0
+	if canonicalHead != nil {
+		currentCanonicalForkId = uint64(canonicalHead.GetForkId())
+	}
+	
+	for _, fork := range forks {
+		if canonicalForkIdSet[fork.ForkId] {
+			if fork.ForkId == 0 || fork.ForkId == currentCanonicalForkId {
+				fork.IsCanonical = true
+			}
+		}
+	}
+	
+	// Find orphan forks and add canonical chain if needed
+	existingForkIds := make(map[uint64]bool)
+	for _, fork := range forks {
+		existingForkIds[fork.ForkId] = true
+	}
+	
+	var earliestOrphanFork *models.ChainFork = nil
+	for _, fork := range forks {
+		if fork.ForkId != 1 && fork.ParentFork != 0 && !existingForkIds[fork.ParentFork] {
+			if earliestOrphanFork == nil || fork.BaseSlot < earliestOrphanFork.BaseSlot {
+				earliestOrphanFork = fork
+			}
+		}
+	}
+	
+	if canonicalHead != nil && earliestOrphanFork != nil {
+		canonicalChain := createCanonicalChainFork(forks, canonicalForkIdSet, earliestOrphanFork)
+		
+		// Update orphan forks to connect to canonical chain
+		for _, fork := range forks {
+			if fork.ForkId != 1 && fork.ParentFork != 0 && !existingForkIds[fork.ParentFork] {
+				fork.ParentFork = 0 // Connect to canonical chain
+			}
+		}
+		
+		forks = append(forks, canonicalChain)
+	}
+	
+	return forks
+}
+
+// createCanonicalChainFork creates the canonical chain representation
+func createCanonicalChainFork(forks []*models.ChainFork, canonicalForkIdSet map[uint64]bool, earliestOrphanFork *models.ChainFork) *models.ChainFork {
+	canonicalEndSlot := earliestOrphanFork.BaseSlot
+	for _, fork := range forks {
+		if canonicalForkIdSet[fork.ForkId] && fork.BaseSlot < canonicalEndSlot {
+			canonicalEndSlot = fork.BaseSlot
+		}
+	}
+	
+	// Calculate average participation (all values are already 0-1)
+	participation := 0.95 // Default high participation for canonical chain
+	participationSum := participation
+	participationCount := 1 // Count the default value
+	
+	for _, fork := range forks {
+		if fork.Participation > 0 {
+			participationSum += fork.Participation // Already 0-1, no conversion needed
+			participationCount++
+		}
+	}
+	
+	participation = participationSum / float64(participationCount)
+	
+	return &models.ChainFork{
+		ForkId:        0,
+		BaseSlot:      0,
+		BaseRoot:      nil,
+		LeafSlot:      0,
+		LeafRoot:      nil,
+		HeadSlot:      canonicalEndSlot,
+		HeadRoot:      nil,
+		ParentFork:    0,
+		Participation: participation,
+		IsCanonical:   true,
+		Length:        canonicalEndSlot + 1,
+	}
+}
+
+// assignForkPositions assigns horizontal positions to forks with intelligent lane reuse
+func assignForkPositions(forks []*models.ChainFork) map[uint64]int {
+	positions := make(map[uint64]int)
+	
+	// Track when lanes become available for reuse
+	type laneInfo struct {
+		endSlot uint64
+		forkId  uint64
+	}
+	activeLanes := make(map[int]*laneInfo)
+	nextAvailableLane := 1 // Lane 0 reserved for canonical chain
+	const laneReuseGap = uint64(100) // Minimum gap before reusing a lane
+	
+	// Sort forks by base slot for chronological processing
+	sortedForks := make([]*models.ChainFork, len(forks))
+	copy(sortedForks, forks)
+	sort.Slice(sortedForks, func(i, j int) bool {
+		return sortedForks[i].BaseSlot < sortedForks[j].BaseSlot
+	})
+	
+	// Build parent-child relationships for inheritance
+	childForks := make(map[uint64][]*models.ChainFork)
+	for _, fork := range forks {
+		if fork.ParentFork != 0 {
+			childForks[fork.ParentFork] = append(childForks[fork.ParentFork], fork)
+		}
+	}
+	
+	// Sort child forks by length (longest inherits parent's lane)
+	for _, children := range childForks {
+		sort.Slice(children, func(i, j int) bool {
+			if children[i].Length != children[j].Length {
+				return children[i].Length > children[j].Length
+			}
+			return children[i].Participation > children[j].Participation
+		})
+	}
+	
+	inheritedLanes := make(map[uint64]int)
+	
+	// Assign positions
+	for _, fork := range sortedForks {
+		var position int
+		
+		if fork.IsCanonical {
+			position = 0 // Canonical chain always gets position 0
+			activeLanes[0] = &laneInfo{endSlot: fork.HeadSlot, forkId: fork.ForkId}
+		} else if inheritedPos, hasInheritance := inheritedLanes[fork.ForkId]; hasInheritance {
+			// This fork inherits its parent's lane
+			position = inheritedPos
+			activeLanes[position] = &laneInfo{endSlot: fork.HeadSlot, forkId: fork.ForkId}
+		} else {
+			// Find a free lane with sufficient gap, or allocate new lane
+			position = -1
+			for lane, info := range activeLanes {
+				if lane > 0 && info.endSlot+laneReuseGap < fork.BaseSlot {
+					position = lane
+					break
+				}
+			}
+			
+			if position == -1 {
+				position = nextAvailableLane
+				nextAvailableLane++
+			}
+			
+			activeLanes[position] = &laneInfo{endSlot: fork.HeadSlot, forkId: fork.ForkId}
+		}
+		
+		positions[fork.ForkId] = position
+		
+		// Set up inheritance for this fork's children
+		if children, hasChildren := childForks[fork.ForkId]; hasChildren && len(children) > 0 {
+			inheritancePos := position
+			if position == 0 && !children[0].IsCanonical {
+				// Don't pass canonical position to non-canonical children
+				inheritancePos = nextAvailableLane
+				nextAvailableLane++
+			}
+			inheritedLanes[children[0].ForkId] = inheritancePos
+		}
+	}
+	
+	return positions
+}

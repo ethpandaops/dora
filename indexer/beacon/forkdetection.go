@@ -177,6 +177,10 @@ func (cache *forkCache) processBlock(block *Block) error {
 		cache.lastForkId++
 		fork := newFork(cache.lastForkId, parentSlot, *parentRoot, block, parentForkId)
 		cache.addFork(fork)
+		cache.parentIdCache.Add(fork.forkId, fork.parentFork)
+		newForks = append(newForks, &newForkInfo{
+			fork: fork,
+		})
 
 		currentForkId = cache.lastForkId
 		cache.indexer.logger.Infof("new fork for canonical chain (base(%v) %v [%v], head(%v) %v [%v])", parentForkId, parentSlot, parentRoot.String(), currentForkId, block.Slot, block.Root.String())
