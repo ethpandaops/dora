@@ -284,7 +284,7 @@ function renderChainForkTree() {
             // Check if we have epoch-based participation data
             if (fork.participationByEpoch && Array.isArray(fork.participationByEpoch) && fork.participationByEpoch.length > 0) {
                 // Draw segments with different colors for each epoch
-                forkElements = drawForkWithParticipationGradient(fork, forkX, startY, adjustedHeadY, svg);
+                forkElements = drawForkWithParticipationGradient(fork, forkX, startY, adjustedHeadY, svg, getSlotY);
             } else {
                 // Fall back to single-color line (no epoch data or empty array)
                 const forkLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
@@ -307,7 +307,6 @@ function renderChainForkTree() {
         if (forkPositions[fork.parentFork] !== undefined && fork.forkId !== fork.parentFork) {
             const parentX = forkPositions[fork.parentFork];
             const parentFork = diagram.forks.find(f => f.forkId === fork.parentFork);
-            
             
             // Only draw branching connection if parent and child are at different X positions
             // Canonical chain forks at the same position don't need horizontal branch lines
@@ -412,8 +411,6 @@ function renderChainForkTree() {
             }
         });
     });
-    
-    
     
     // Clear container and add SVG
     container.innerHTML = '';
@@ -691,7 +688,7 @@ function getParticipationColor(participation) {
     return `rgb(${r}, ${g}, ${b})`;
 }
 
-function drawForkWithParticipationGradient(fork, forkX, startY, endY, svg) {
+function drawForkWithParticipationGradient(fork, forkX, startY, endY, svg, getSlotY) {
     const elements = [];
     const strokeWidth = '3';
     
@@ -705,52 +702,86 @@ function drawForkWithParticipationGradient(fork, forkX, startY, endY, svg) {
     // Use dynamic slots per epoch
     const slotsPerEpoch = (window.chainDiagramData.specs && window.chainDiagramData.specs.slots_per_epoch) ? window.chainDiagramData.specs.slots_per_epoch : 32;
     
-    // Calculate total Y range
-    const totalHeight = Math.abs(endY - startY);
+    // Create segments covering the full slot range
+    const totalSlots = fork.headSlot - fork.baseSlot;
+    if (totalSlots <= 0) {
+        return elements;
+    }
+    
+    // Find participation data for each epoch that the fork spans
+    // This ensures we properly handle partial epochs at the beginning and end
+    const segments = [];
+    
     const baseEpoch = Math.floor(fork.baseSlot / slotsPerEpoch);
     const headEpoch = Math.floor(fork.headSlot / slotsPerEpoch);
-    const epochSpan = Math.max(1, headEpoch - baseEpoch);
     
-    // Draw segments for each epoch
-    for (let i = 0; i < epochData.length; i++) {
-        const epoch = epochData[i];
-        const participation = epoch.participation;
-        const color = getParticipationColor(participation);
+    for (let epoch = baseEpoch; epoch <= headEpoch; epoch++) {
+        // Calculate the slot range for this epoch that intersects with the fork
+        const epochStartSlot = epoch * slotsPerEpoch;
+        const epochEndSlot = (epoch + 1) * slotsPerEpoch - 1;
         
-        // Calculate Y positions for this epoch segment
-        // Since endY < startY (newer slots are at top), we need to interpolate correctly
-        const epochProgress = (epoch.epoch - baseEpoch) / epochSpan;
-        const nextEpochProgress = i < epochData.length - 1 ? 
-            (epochData[i + 1].epoch - baseEpoch) / epochSpan : 1.0;
+        // Find the actual intersection with the fork's slot range
+        const segmentStartSlot = Math.max(fork.baseSlot, epochStartSlot);
+        const segmentEndSlot = Math.min(fork.headSlot, epochEndSlot);
         
-        // Interpolate between startY and endY (endY is typically smaller than startY)
-        const segmentStartY = startY + (epochProgress * (endY - startY));
-        const segmentEndY = startY + (nextEpochProgress * (endY - startY));
+        // Skip if this epoch doesn't intersect with the fork
+        if (segmentStartSlot > segmentEndSlot) continue;
+        
+        // Find participation for this epoch
+        const epochParticipation = epochData.find(e => e.epoch === epoch);
+        const participation = epochParticipation ? epochParticipation.participation : 0;
+        
+        // Calculate Y positions based on slot progression
+        const startSlotProgress = (segmentStartSlot - fork.baseSlot) / totalSlots;
+        const endSlotProgress = (segmentEndSlot - fork.baseSlot) / totalSlots;
+        
+        const segmentStartY = startY + (startSlotProgress * (endY - startY)) + 0.5;
+        const segmentEndY = startY + (endSlotProgress * (endY - startY)) - 0.5;
+        
+        segments.push({
+            epoch: epoch,
+            startSlot: segmentStartSlot,
+            endSlot: segmentEndSlot,
+            startY: segmentStartY,
+            endY: segmentEndY,
+            participation: participation,
+            hasData: !!epochParticipation
+        });
+    }
+    
+    // Draw segments
+    for (let i = 0; i < segments.length; i++) {
+        const segmentData = segments[i];
+        const color = getParticipationColor(segmentData.participation);
+        
+        // Skip zero-length segments
+        if (Math.abs(segmentData.endY - segmentData.startY) < 0.5) continue;
         
         // Draw segment line
-        const segment = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-        segment.setAttribute('x1', forkX);
-        segment.setAttribute('y1', segmentStartY);
-        segment.setAttribute('x2', forkX);
-        segment.setAttribute('y2', segmentEndY);
-        segment.setAttribute('class', 'fork-line');
-        segment.setAttribute('stroke', color);
-        segment.setAttribute('data-fork-id', fork.forkId);
-        segment.setAttribute('data-epoch', epoch.epoch);
-        segment.setAttribute('data-participation', (participation * 100).toFixed(1));
-        segment.setAttribute('stroke-width', strokeWidth);
-        segment.style.cursor = 'pointer';
+        const segmentLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        segmentLine.setAttribute('x1', forkX);
+        segmentLine.setAttribute('y1', segmentData.startY);
+        segmentLine.setAttribute('x2', forkX);
+        segmentLine.setAttribute('y2', segmentData.endY);
+        segmentLine.setAttribute('class', 'fork-line');
+        segmentLine.setAttribute('stroke', color);
+        segmentLine.setAttribute('data-fork-id', fork.forkId);
+        segmentLine.setAttribute('data-epoch', segmentData.epoch);
+        segmentLine.setAttribute('data-participation', (segmentData.participation * 100).toFixed(1));
+        segmentLine.setAttribute('data-has-data', segmentData.hasData);
+        segmentLine.setAttribute('stroke-width', strokeWidth);
+        segmentLine.style.cursor = 'pointer';
         
-        // Add tooltip on hover for epoch details
-        segment.addEventListener('mouseenter', (e) => {
-            showEpochTooltip(e, epoch.epoch, participation, epoch.slotCount);
+        // Add tooltip on hover for segment details
+        segmentLine.addEventListener('mouseenter', (e) => {
+            showEpochTooltip(e, segmentData.epoch, segmentData.participation, segmentData.endSlot - segmentData.startSlot + 1);
         });
-        segment.addEventListener('mouseleave', () => {
+        segmentLine.addEventListener('mouseleave', () => {
             hideEpochTooltip();
         });
         
-        svg.appendChild(segment);
-        elements.push(segment);
+        svg.appendChild(segmentLine);
+        elements.push(segmentLine);
     }
     
     return elements;

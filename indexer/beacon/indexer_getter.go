@@ -307,6 +307,11 @@ func (indexer *Indexer) GetParentForkIds(forkId ForkKey) []ForkKey {
 	return indexer.forkCache.getParentForkIds(forkId)
 }
 
+// GetFinalizedForkId returns the finalized fork id.
+func (indexer *Indexer) GetFinalizedForkId() ForkKey {
+	return indexer.forkCache.finalizedForkId
+}
+
 // StreamActiveValidatorDataForRoot streams the available validator set data for a given blockRoot.
 func (indexer *Indexer) StreamActiveValidatorDataForRoot(blockRoot phase0.Root, activeOnly bool, epoch *phase0.Epoch, cb ValidatorSetStreamer) error {
 	return indexer.validatorCache.streamValidatorSetForRoot(blockRoot, activeOnly, epoch, cb)
