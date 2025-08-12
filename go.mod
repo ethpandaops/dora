@@ -23,7 +23,7 @@ require (
 	github.com/mashingan/smapping v0.1.19
 	github.com/minio/minio-go/v7 v7.0.95
 	github.com/mitchellh/mapstructure v1.5.0
-	github.com/pk910/dynamic-ssz v1.0.1
+	github.com/pk910/dynamic-ssz v1.0.2-0.20250810091446-ab49378a4775
 	github.com/pressly/goose/v3 v3.24.3
 	github.com/probe-lab/eth-das-guardian v0.2.1
 	github.com/protolambda/bls12-381-util v0.1.0
