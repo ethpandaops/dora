@@ -268,6 +268,8 @@ func (indexer *Indexer) aggregateForkVotes(forkId ForkKey, epochLimit uint64) (t
 	lastSlot := phase0.Slot(0)
 	thisForkId := forkId
 	for {
+		lastBlocks = lastBlocks[:0]
+
 		for _, block := range indexer.blockCache.getLatestBlocks(epochLimit*specs.SlotsPerEpoch, &thisForkId) {
 			lastSlot = block.Slot
 			if block.Slot < minAggregateSlot {
@@ -281,7 +283,7 @@ func (indexer *Indexer) aggregateForkVotes(forkId ForkKey, epochLimit uint64) (t
 		}
 
 		fork := indexer.forkCache.getForkById(thisForkId)
-		if fork == nil {
+		if fork == nil || fork.parentFork == thisForkId {
 			break
 		}
 
