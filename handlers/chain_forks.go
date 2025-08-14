@@ -296,6 +296,7 @@ func buildChainDiagram(forks []*models.ChainFork, startEpoch, endEpoch uint64, i
 			HeadSlot:             fork.HeadSlot,
 			HeadRoot:             fork.HeadRoot,
 			Length:               fork.Length,
+			BlockCount:           fork.BlockCount,
 			Participation:        fork.Participation,
 			ParticipationByEpoch: fork.ParticipationByEpoch,
 			Position:             position,
@@ -328,17 +329,17 @@ func processForksWithEpochData(dbForks []*dbtypes.Fork, indexer *beacon.Indexer,
 		}
 	}
 
+	// Get chain state for epoch/slot calculations
+	chainState := services.GlobalBeaconService.GetChainState()
+	specs := chainState.GetSpecs()
+	slotsPerEpoch := uint64(specs.SlotsPerEpoch)
+
 	// Extract fork IDs for participation query, including canonical chain (fork ID 0)
 	forkIds := make([]uint64, len(dbForks)+1)
 	forkIds[0] = 0 // Always include canonical chain for finalized blocks
 	for i, dbFork := range dbForks {
 		forkIds[i+1] = dbFork.ForkId
 	}
-
-	// Get chain state for epoch/slot calculations
-	chainState := services.GlobalBeaconService.GetChainState()
-	specs := chainState.GetSpecs()
-	slotsPerEpoch := uint64(specs.SlotsPerEpoch)
 
 	// Fetch all fork blocks from cache once (optimization)
 	forkBlocksCache := make(map[uint64][]*beacon.Block)
@@ -428,6 +429,14 @@ func processForksWithEpochData(dbForks []*dbtypes.Fork, indexer *beacon.Indexer,
 		}
 	}
 
+	// Fetch block counts for all forks (finalized blocks) - just count by fork_id
+	finalizedEpoch, _ := indexer.GetBlockCacheState()
+	finalizedSlot := chainState.EpochToSlot(finalizedEpoch)
+	blockCounts, err := db.GetForkBlockCounts(forkIds, uint64(finalizedSlot))
+	if err != nil {
+		return nil, err
+	}
+
 	// Process each fork
 	for _, dbFork := range dbForks {
 		hasHead := !childForkMap[dbFork.ForkId]
@@ -456,6 +465,14 @@ func processForksWithEpochData(dbForks []*dbtypes.Fork, indexer *beacon.Indexer,
 			avgParticipation = participationSum / float64(participationCount)
 		}
 
+		// Calculate block count for this fork - blocks are already marked with correct fork_id
+		blockCount := blockCounts[dbFork.ForkId] // From finalized blocks
+
+		// Add blocks from cache (unfinalized) - all blocks with this fork_id
+		if cachedBlocks, exists := forkBlocksCache[dbFork.ForkId]; exists {
+			blockCount += uint64(len(cachedBlocks))
+		}
+
 		chainFork := &models.ChainFork{
 			ForkId:               dbFork.ForkId,
 			BaseSlot:             dbFork.BaseSlot,
@@ -469,6 +486,7 @@ func processForksWithEpochData(dbForks []*dbtypes.Fork, indexer *beacon.Indexer,
 			ParticipationByEpoch: epochParticipation,
 			IsCanonical:          false,
 			Length:               headSlot - dbFork.BaseSlot + 1,
+			BlockCount:           blockCount,
 		}
 		forks = append(forks, chainFork)
 	}
@@ -500,6 +518,14 @@ func processForksWithEpochData(dbForks []*dbtypes.Fork, indexer *beacon.Indexer,
 			}
 		}
 
+		// Calculate block count for canonical chain
+		canonicalBlockCount := blockCounts[0] // From finalized blocks
+
+		// Add blocks from cache (unfinalized) - all blocks with fork_id = 0
+		if canonicalCachedBlocks, exists := forkBlocksCache[0]; exists {
+			canonicalBlockCount += uint64(len(canonicalCachedBlocks))
+		}
+
 		canonicalChain := &models.ChainFork{
 			ForkId:               0,
 			BaseSlot:             startEpoch * slotsPerEpoch,
@@ -513,6 +539,7 @@ func processForksWithEpochData(dbForks []*dbtypes.Fork, indexer *beacon.Indexer,
 			ParticipationByEpoch: epochParticipation,
 			IsCanonical:          true,
 			Length:               canonicalEndSlot - (startEpoch * slotsPerEpoch) + 1,
+			BlockCount:           canonicalBlockCount,
 		}
 		forks = append(forks, canonicalChain)
 	}
@@ -624,6 +651,11 @@ func createCanonicalChainFork(forks []*models.ChainFork, canonicalForkIdSet map[
 	// Note: ParticipationByEpoch should now be populated by processForksWithEpochData
 	// since we added fork ID 0 to the database and cache queries
 
+	// Calculate block count for the canonical chain segment
+	// This is a rough estimate since we don't have the exact data here
+	// The actual block count is calculated in processForksWithEpochData
+	blockCount := uint64(float64(canonicalEndSlot+1) * 0.95) // Assume ~95% block production
+
 	return &models.ChainFork{
 		ForkId:        0,
 		BaseSlot:      0,
@@ -636,6 +668,7 @@ func createCanonicalChainFork(forks []*models.ChainFork, canonicalForkIdSet map[
 		Participation: participation,
 		IsCanonical:   true,
 		Length:        canonicalEndSlot + 1,
+		BlockCount:    blockCount,
 	}
 }
 

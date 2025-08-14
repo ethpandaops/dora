@@ -33,7 +33,8 @@ type ChainFork struct {
 	Participation float64                   `json:"participation"`        // Overall average participation
 	ParticipationByEpoch []*EpochParticipation `json:"participation_by_epoch"` // Participation per epoch
 	IsCanonical   bool                      `json:"is_canonical"`
-	Length        uint64                    `json:"length"`
+	Length        uint64                    `json:"length"`       // Number of slots in the fork
+	BlockCount    uint64                    `json:"block_count"`  // Actual number of blocks in the fork
 }
 
 type EpochParticipation struct {
@@ -57,6 +58,7 @@ type DiagramFork struct {
 	HeadSlot      uint64                    `json:"head_slot"`  // Current head of this fork
 	HeadRoot      []byte                    `json:"head_root"`
 	Length        uint64                    `json:"length"`
+	BlockCount    uint64                    `json:"block_count"`            // Actual number of blocks
 	Participation float64                   `json:"participation"`          // Overall average
 	ParticipationByEpoch []*EpochParticipation `json:"participation_by_epoch"` // Per epoch data
 	Position      int                       `json:"position"` // Horizontal position from canonical line

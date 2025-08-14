@@ -154,7 +154,7 @@ func GetForkById(forkId uint64) *dbtypes.Fork {
 
 func GetForkVisualizationData(startSlot uint64, pageSize uint64) ([]*dbtypes.Fork, error) {
 	forks := []*dbtypes.Fork{}
-	
+
 	// Get forks that overlap with our time window or are parents of forks in our window
 	err := ReaderDb.Select(&forks, `
 		WITH RECURSIVE fork_tree AS (
@@ -178,22 +178,65 @@ func GetForkVisualizationData(startSlot uint64, pageSize uint64) ([]*dbtypes.For
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return forks, nil
+}
+
+// GetForkBlockCounts returns the number of blocks for each fork ID
+func GetForkBlockCounts(forkIds []uint64, finalizedSlot uint64) (map[uint64]uint64, error) {
+	if len(forkIds) == 0 {
+		return map[uint64]uint64{}, nil
+	}
+
+	// Build the query with placeholders for fork IDs
+	args := []any{}
+	placeholders := make([]string, len(forkIds))
+	for i, forkId := range forkIds {
+		args = append(args, forkId)
+		placeholders[i] = fmt.Sprintf("$%d", len(args))
+	}
+
+	args = append(args, finalizedSlot)
+
+	query := fmt.Sprintf(`
+		SELECT fork_id, COUNT(*) as block_count
+		FROM slots
+		WHERE fork_id IN (%s)
+		  AND status != 0
+		  AND slot < $1
+		GROUP BY fork_id
+	`, strings.Join(placeholders, ","))
+
+	rows, err := ReaderDb.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	blockCounts := make(map[uint64]uint64)
+	for rows.Next() {
+		var forkId, count uint64
+		if err := rows.Scan(&forkId, &count); err != nil {
+			return nil, err
+		}
+		blockCounts[forkId] = count
+	}
+
+	return blockCounts, nil
 }
 
 func GetSyncCommitteeParticipation(slot uint64) (float64, error) {
 	var participation float64
-	
+
 	// Handle potential overflow by using int64
 	startSlot := int64(slot) - 1800
 	endSlot := int64(slot) + 1800
-	
+
 	// Ensure we don't go below 0
 	if startSlot < 0 {
 		startSlot = 0
 	}
-	
+
 	err := ReaderDb.Get(&participation, `
 		SELECT 
 			COALESCE(AVG(CASE WHEN sync_participation IS NOT NULL 
@@ -205,7 +248,7 @@ func GetSyncCommitteeParticipation(slot uint64) (float64, error) {
 	if err != nil {
 		return 0, err
 	}
-	
+
 	return participation, nil
 }
 
@@ -223,11 +266,11 @@ func GetForkParticipationByEpoch(startEpoch, endEpoch uint64, forkIds []uint64) 
 	if len(forkIds) == 0 {
 		return []*ForkParticipationByEpoch{}, nil
 	}
-	
+
 	// Build IN clause for fork IDs
 	var forkPlaceholders strings.Builder
 	args := make([]interface{}, 0, len(forkIds)+2)
-	
+
 	for i, forkId := range forkIds {
 		if i > 0 {
 			forkPlaceholders.WriteString(",")
@@ -235,12 +278,12 @@ func GetForkParticipationByEpoch(startEpoch, endEpoch uint64, forkIds []uint64) 
 		args = append(args, forkId)
 		fmt.Fprintf(&forkPlaceholders, "$%d", len(args))
 	}
-	
+
 	// Add epoch range parameters
 	args = append(args, startEpoch, endEpoch)
 	startEpochParam := len(args) - 1
 	endEpochParam := len(args)
-	
+
 	query := fmt.Sprintf(`
 		SELECT 
 			s.fork_id,
@@ -254,12 +297,12 @@ func GetForkParticipationByEpoch(startEpoch, endEpoch uint64, forkIds []uint64) 
 		GROUP BY s.fork_id, (s.slot / 32)
 		ORDER BY s.fork_id, (s.slot / 32)
 	`, forkPlaceholders.String(), startEpochParam, endEpochParam)
-	
+
 	var results []*ForkParticipationByEpoch
 	err := ReaderDb.Select(&results, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("error fetching fork participation by epoch: %w", err)
 	}
-	
+
 	return results, nil
 }

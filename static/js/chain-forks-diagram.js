@@ -5,6 +5,11 @@
  * Horizontal axis only for positioning without overlap
  */
 
+let zoomLevel = 1.0;
+const ZOOM_MIN = 0.5;
+const ZOOM_MAX = 3.0;
+const ZOOM_STEP = 0.1;
+
 document.addEventListener('DOMContentLoaded', function() {
     if (typeof window.chainDiagramData === 'undefined') {
         console.warn('Chain diagram data not found');
@@ -12,6 +17,24 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     renderChainForkTree();
+    
+    // Add zoom event listeners
+    const zoomInBtn = document.getElementById('zoomIn');
+    const zoomOutBtn = document.getElementById('zoomOut');
+    const zoomResetBtn = document.getElementById('zoomReset');
+    
+    if (zoomInBtn) zoomInBtn.addEventListener('click', () => zoom(ZOOM_STEP));
+    if (zoomOutBtn) zoomOutBtn.addEventListener('click', () => zoom(-ZOOM_STEP));
+    if (zoomResetBtn) zoomResetBtn.addEventListener('click', resetZoom);
+    
+    // Add mouse wheel zoom - will be attached after diagram creation
+    // This is handled in renderChainForkTree after creating the scroll container
+    
+    // Add hide single-block forks checkbox listener
+    const hideCheckbox = document.getElementById('hideSingleBlockForks');
+    if (hideCheckbox) {
+        hideCheckbox.addEventListener('change', renderChainForkTree);
+    }
 });
 
 function renderChainForkTree() {
@@ -51,11 +74,20 @@ function renderChainForkTree() {
         headSlot: fork.head_slot !== undefined ? fork.head_slot : fork.headSlot,
         headRoot: fork.head_root !== undefined ? fork.head_root : fork.headRoot,
         length: fork.length,
+        blockCount: fork.block_count !== undefined ? fork.block_count : (fork.blockCount || 0),
         participation: fork.participation,
         participationByEpoch: fork.participation_by_epoch !== undefined ? fork.participation_by_epoch : fork.participationByEpoch,
         position: fork.position,
         parentFork: fork.parent_fork !== undefined ? fork.parent_fork : (fork.parentFork || 0)
     }));
+    
+    // Check if we should hide single-block forks
+    const hideCheckbox = document.getElementById('hideSingleBlockForks');
+    const hideSingleBlockForks = hideCheckbox && hideCheckbox.checked;
+    
+    if (hideSingleBlockForks) {
+        diagram.forks = hideAndMergeSingleBlockForks(diagram.forks);
+    }
     
     
     if (diagram.forks.length === 0) {
@@ -64,8 +96,29 @@ function renderChainForkTree() {
     }
     
     // Calculate dimensions
-    const containerWidth = container.offsetWidth - 40;
-    const containerHeight = Math.max(600, 800);
+    const containerAvailableWidth = container.offsetWidth - 40;
+    
+    // Calculate epoch range first to determine required height
+    const startEpoch = data.startEpoch;
+    const endEpoch = data.endEpoch;
+    const epochRange = endEpoch - startEpoch;
+    
+    // Ensure each 5-epoch block is at least 50px
+    const minHeightPer5Epochs = 50;
+    const epochBlocks = Math.ceil(epochRange / 5);
+    const minRequiredHeight = epochBlocks * minHeightPer5Epochs;
+    
+    // Use the larger of our minimum requirement or the default height
+    const containerHeight = Math.max(600, 800, minRequiredHeight + 80); // +80 for margins
+    
+    // Calculate required width based on number of forks
+    const forkSpacing = 80; // Same as in getTreeX function
+    const maxPosition = Math.max(...diagram.forks.map(f => f.position || 0));
+    const margin = { top: 40, right: 80, bottom: 40, left: 120 };
+    const minRequiredWidth = margin.left + 40 + (maxPosition * forkSpacing) + margin.right + 100; // Extra padding
+    
+    // Use the larger of container width or required width
+    const containerWidth = Math.max(containerAvailableWidth, minRequiredWidth);
     
     // Create SVG
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -75,14 +128,10 @@ function renderChainForkTree() {
     svg.style.background = 'transparent';
     
     // Layout parameters
-    const margin = { top: 40, right: 80, bottom: 40, left: 120 };
     const drawingWidth = containerWidth - margin.left - margin.right;
     const drawingHeight = containerHeight - margin.top - margin.bottom;
     
-    // Calculate epoch range (newest at top, time flows down)
-    const startEpoch = data.startEpoch;
-    const endEpoch = data.endEpoch;
-    const epochRange = endEpoch - startEpoch;
+    // Calculate time scale with minimum height constraint
     const timeScale = epochRange > 0 ? drawingHeight / epochRange : 1;
     
     
@@ -385,12 +434,12 @@ function renderChainForkTree() {
         }
         svg.appendChild(forkLabel);
         
-        // Block count label (length of this fork)
+        // Block count label (actual number of blocks in this fork)
         const blockCountLabel = document.createElementNS('http://www.w3.org/2000/svg', 'text');
         blockCountLabel.setAttribute('x', forkX + 12);
         blockCountLabel.setAttribute('y', (baseY + adjustedHeadY) / 2);
         blockCountLabel.setAttribute('class', 'block-count-label');
-        blockCountLabel.textContent = `${fork.length} blocks`;
+        blockCountLabel.textContent = `${fork.blockCount || fork.block_count || 0} blocks`;
         svg.appendChild(blockCountLabel);
         
     });
@@ -412,9 +461,21 @@ function renderChainForkTree() {
         });
     });
     
-    // Clear container and add SVG
+    // Clear container and create scroll wrapper
     container.innerHTML = '';
-    container.appendChild(svg);
+    
+    // Create scroll container
+    const scrollContainer = document.createElement('div');
+    scrollContainer.className = 'diagram-scroll-container';
+    scrollContainer.appendChild(svg);
+    
+    // Add mouse wheel zoom to scroll container
+    scrollContainer.addEventListener('wheel', handleWheelZoom, { passive: false });
+    
+    container.appendChild(scrollContainer);
+    
+    // Apply current zoom level
+    applyZoom();
     
     // Show initial overview in details panel
     showOverview();
@@ -475,11 +536,15 @@ function showForkDetails(fork) {
     const forkId = fork.forkId || 0;
     const isCanonical = fork.position === 0; // Canonical chain is always at position 0
     
+    // Check if this is a merged fork
+    const mergedForkIds = fork.mergedForkIds;
+    const isMerged = mergedForkIds && mergedForkIds.length > 1;
+    
     panel.innerHTML = `
         <div class="fork-detail-card">
             <div class="fork-detail-header">
                 <span class="fork-badge ${isCanonical ? 'canonical' : 'orphaned'}">
-                    ${isCanonical ? 'Canonical Chain' : `Fork ${forkId}`}
+                    ${isCanonical ? 'Canonical Chain' : `Fork ${forkId}${isMerged ? ' (Merged)' : ''}`}
                 </span>
                 <strong>Chain Fork Details</strong>
             </div>
@@ -487,6 +552,11 @@ function showForkDetails(fork) {
             <div class="fork-detail-grid">
                 <span class="detail-label">Fork ID:</span>
                 <span class="detail-value">${forkId}</span>
+                
+                ${isMerged ? `
+                <span class="detail-label">Merged Fork IDs:</span>
+                <span class="detail-value">${mergedForkIds.join(', ')}</span>
+                ` : ''}
                 
                 <span class="detail-label">Base ${isCanonical ? 'Slot' : 'Block'}:</span>
                 <span class="detail-value">
@@ -518,8 +588,11 @@ function showForkDetails(fork) {
                     }
                 </span>
                 
-                <span class="detail-label">Length:</span>
-                <span class="detail-value">${length.toLocaleString()} blocks</span>
+                <span class="detail-label">Slot Range:</span>
+                <span class="detail-value">${length.toLocaleString()} slots</span>
+                
+                <span class="detail-label">Block Count:</span>
+                <span class="detail-value">${(fork.blockCount || 0).toLocaleString()} blocks</span>
                 
                 <span class="detail-label">Duration:</span>
                 <span class="detail-value">${(length * ((window.chainDiagramData.specs && window.chainDiagramData.specs.seconds_per_slot) ? window.chainDiagramData.specs.seconds_per_slot : 12)).toLocaleString()} seconds</span>
@@ -596,6 +669,8 @@ function showOverview() {
                    .reduce((sum, f) => sum + (f.participation || 0), 0) / totalForks : 0; // Already 0-1
     const maxLength = totalForks > 0 ? 
         Math.max(...diagram.forks.filter(f => (f.fork_id || f.forkId) !== 0).map(f => f.length || 1)) : 0;
+    const maxBlockCount = totalForks > 0 ?
+        Math.max(...diagram.forks.filter(f => (f.fork_id || f.forkId) !== 0).map(f => f.blockCount || 0)) : 0;
     
     panel.innerHTML = `
         <div class="fork-detail-card">
@@ -611,7 +686,7 @@ function showOverview() {
                 <span class="detail-value">${totalForks}</span>
                 
                 <span class="detail-label">Longest Fork:</span>
-                <span class="detail-value">${maxLength} blocks</span>
+                <span class="detail-value">${maxLength} slots (${maxBlockCount} blocks)</span>
                 
                 <span class="detail-label">Avg Participation:</span>
                 <span class="detail-value">
@@ -857,4 +932,193 @@ function copyToClipboard(text) {
     }).catch(err => {
         console.error('Failed to copy:', err);
     });
+}
+
+// Zoom functionality
+function zoom(direction) {
+    const newZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, zoomLevel + direction));
+    if (newZoom !== zoomLevel) {
+        zoomLevel = newZoom;
+        applyZoom();
+    }
+}
+
+function resetZoom() {
+    zoomLevel = 1.0;
+    applyZoom();
+}
+
+function handleWheelZoom(event) {
+    event.preventDefault();
+    const delta = event.deltaY > 0 ? -ZOOM_STEP : ZOOM_STEP;
+    zoom(delta);
+}
+
+function applyZoom() {
+    const svg = document.querySelector('#chainDiagram svg');
+    if (svg) {
+        // Apply zoom transform to the SVG
+        svg.style.transform = `scale(${zoomLevel})`;
+        svg.style.transformOrigin = 'top left';
+        
+        // The scroll container will handle overflow automatically
+        // We don't need to change container sizes since overflow is handled by CSS
+    }
+    
+    // Update button states
+    const zoomInBtn = document.getElementById('zoomIn');
+    const zoomOutBtn = document.getElementById('zoomOut');
+    
+    if (zoomInBtn) zoomInBtn.disabled = zoomLevel >= ZOOM_MAX;
+    if (zoomOutBtn) zoomOutBtn.disabled = zoomLevel <= ZOOM_MIN;
+}
+
+// Hide single-block forks and merge chains into single lines
+function hideAndMergeSingleBlockForks(forks) {
+    console.log('hideAndMergeSingleBlockForks called with', forks.length, 'forks');
+    
+    // Step 1: Build parent-child relationships first to identify which single-block forks have children
+    const tempChildrenMap = new Map();
+    for (const fork of forks) {
+        if (!tempChildrenMap.has(fork.parentFork)) {
+            tempChildrenMap.set(fork.parentFork, []);
+        }
+        tempChildrenMap.get(fork.parentFork).push(fork.forkId);
+    }
+    
+    // Step 2: Filter out single-block forks ONLY if they don't have children
+    const filteredForks = forks.filter(fork => {
+        const blockCount = fork.blockCount || 0;
+        if (blockCount === 1) {
+            const children = tempChildrenMap.get(fork.forkId) || [];
+            if (children.length > 0) {
+                console.log(`Keeping single-block fork ${fork.forkId} because it has ${children.length} children: [${children.join(', ')}]`);
+                return true; // Keep it - it's a branching point
+            } else {
+                console.log(`Removing single-block fork ${fork.forkId} - no children`);
+                return false; // Remove it - it's just clutter
+            }
+        }
+        return true; // Keep all non-single-block forks
+    });
+    console.log(`Removed ${forks.length - filteredForks.length} single-block forks (kept those with children)`);
+    
+    // Step 3: Build parent-child relationships for remaining forks
+    const forkMap = new Map();
+    const childrenMap = new Map();
+    
+    for (const fork of filteredForks) {
+        forkMap.set(fork.forkId, fork);
+        if (!childrenMap.has(fork.parentFork)) {
+            childrenMap.set(fork.parentFork, []);
+        }
+        childrenMap.get(fork.parentFork).push(fork.forkId);
+    }
+    
+    // Step 4: Find chains to merge (follow single-child chains)
+    const processed = new Set();
+    const result = [];
+    
+    for (const fork of filteredForks) {
+        if (processed.has(fork.forkId)) continue;
+        
+        // Find the complete chain starting from this fork
+        const chain = buildMergeChain(fork.forkId, forkMap, childrenMap);
+        
+        if (chain.length === 1) {
+            // No chain, keep as-is
+            result.push({ ...fork });
+            processed.add(fork.forkId);
+        } else {
+            // Merge the entire chain
+            const firstFork = forkMap.get(chain[0]);
+            const lastFork = forkMap.get(chain[chain.length - 1]);
+            
+            const mergedFork = {
+                forkId: lastFork.forkId,  // Use HEAD fork ID, not first
+                baseSlot: firstFork.baseSlot,
+                baseRoot: firstFork.baseRoot,
+                leafSlot: firstFork.leafSlot,
+                leafRoot: firstFork.leafRoot,
+                headSlot: lastFork.headSlot,
+                headRoot: lastFork.headRoot,
+                length: lastFork.headSlot - firstFork.baseSlot + 1,
+                blockCount: chain.reduce((sum, forkId) => sum + (forkMap.get(forkId).blockCount || 0), 0),
+                participation: calculateAverageParticipation(chain.map(id => forkMap.get(id))),
+                participationByEpoch: mergeParticipationByEpoch(chain.map(id => forkMap.get(id))),
+                position: lastFork.position,  // Use HEAD fork position
+                parentFork: firstFork.parentFork,
+                mergedForkIds: chain
+            };
+            
+            console.log(`Merged chain [${chain.join(' -> ')}] into single fork ${mergedFork.forkId}`);
+            result.push(mergedFork);
+            
+            // Mark all in chain as processed
+            for (const forkId of chain) {
+                processed.add(forkId);
+            }
+        }
+    }
+    
+    console.log(`Final result: input ${forks.length} forks, output ${result.length} forks`);
+    return result;
+}
+
+// Build a chain of forks that should be merged (following single-child paths)
+function buildMergeChain(startForkId, forkMap, childrenMap) {
+    const chain = [startForkId];
+    let currentForkId = startForkId;
+    
+    // Follow the chain forward (child direction)
+    while (true) {
+        const children = childrenMap.get(currentForkId) || [];
+        if (children.length === 1) {
+            // Single child - extend the chain
+            currentForkId = children[0];
+            chain.push(currentForkId);
+        } else {
+            // Multiple or no children - end the chain
+            break;
+        }
+    }
+    
+    return chain;
+}
+
+
+function calculateAverageParticipation(forks) {
+    let totalParticipation = 0;
+    let count = 0;
+    
+    for (const fork of forks) {
+        if (fork.participation > 0) {
+            totalParticipation += fork.participation;
+            count++;
+        }
+    }
+    
+    return count > 0 ? totalParticipation / count : 0;
+}
+
+function mergeParticipationByEpoch(forks) {
+    const epochMap = new Map();
+    
+    for (const fork of forks) {
+        if (fork.participationByEpoch) {
+            for (const epochData of fork.participationByEpoch) {
+                const key = epochData.epoch;
+                if (!epochMap.has(key)) {
+                    epochMap.set(key, { ...epochData });
+                } else {
+                    // Average the participation values
+                    const existing = epochMap.get(key);
+                    existing.participation = (existing.participation + epochData.participation) / 2;
+                    existing.slotCount += epochData.slotCount;
+                }
+            }
+        }
+    }
+    
+    return Array.from(epochMap.values()).sort((a, b) => a.epoch - b.epoch);
 }

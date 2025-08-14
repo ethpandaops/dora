@@ -32,8 +32,31 @@
     <!-- Integrated Chain Visualization -->
     <div class="card">
       <div class="card-header">
-        <h5 class="card-title mb-0">Chain Fork Visualization</h5>
-        <small class="text-muted">Canonical chain flows vertically, forks branch horizontally. Click on any point for details.</small>
+        <div class="d-flex justify-content-between align-items-center">
+          <div>
+            <h5 class="card-title mb-0">Chain Fork Visualization</h5>
+            <small class="text-muted">Canonical chain flows vertically, forks branch horizontally. Click on any point for details.</small>
+          </div>
+          <div class="d-flex align-items-center gap-3">
+            <div class="form-check form-check-sm">
+              <input class="form-check-input" type="checkbox" id="hideSingleBlockForks">
+              <label class="form-check-label" for="hideSingleBlockForks">
+                Hide 1-block forks
+              </label>
+            </div>
+            <div class="btn-group btn-group-sm" role="group">
+              <button type="button" class="btn btn-outline-secondary" id="zoomOut" title="Zoom Out">
+                <i class="fas fa-search-minus"></i>
+              </button>
+              <button type="button" class="btn btn-outline-secondary" id="zoomReset" title="Reset Zoom">
+                <i class="fas fa-compress"></i>
+              </button>
+              <button type="button" class="btn btn-outline-secondary" id="zoomIn" title="Zoom In">
+                <i class="fas fa-search-plus"></i>
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
       <div class="card-body p-0">
         {{ if .Forks }}
@@ -125,10 +148,18 @@
     
     .integrated-chain-diagram {
       min-height: 600px;
+      max-height: 1200px;
       background: var(--fork-bg-primary);
-      overflow: auto;
+      overflow: hidden;
       position: relative;
       padding: 20px;
+    }
+    
+    .diagram-scroll-container {
+      width: 100%;
+      height: 100%;
+      overflow: auto;
+      position: relative;
     }
     
     .fork-details-panel {
@@ -165,7 +196,7 @@
     
     .canonical-timeline {
       stroke: var(--fork-text-secondary);
-      stroke-width: 2;
+      stroke-width: 1;
       stroke-dasharray: 2,2;
       opacity: 0.5;
     }
