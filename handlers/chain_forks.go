@@ -201,44 +201,52 @@ func buildChainForksPageData(startSlot uint64, pageSizeEpochs uint64) (*models.C
 }
 
 // calculateForkHead calculates fork head using pre-fetched blocks
-func calculateForkHead(dbFork *dbtypes.Fork, hasHead bool, allForks []*dbtypes.Fork, forkBlocks []*beacon.Block) uint64 {
+func calculateForkHead(dbFork *dbtypes.Fork, hasHead bool, allForks []*dbtypes.Fork, forkBlocks []*beacon.Block) (uint64, []byte) {
 	if hasHead {
 		// Fork has a head - find the latest slot from cached blocks or database
 		latestSlot := dbFork.BaseSlot
+		latestRoot := dbFork.BaseRoot
 
 		// Check cached blocks first
 		for _, block := range forkBlocks {
 			if uint64(block.Slot) > latestSlot && uint64(block.Slot) >= dbFork.BaseSlot {
 				latestSlot = uint64(block.Slot)
+				latestRoot = block.Root[:]
 			}
 		}
 
 		// Always check database for finalized blocks (especially important for forks that started before finalization)
-		finalizedHead := getFinalizedForkHead(dbFork.ForkId, dbFork.BaseSlot)
+		finalizedHead, finalizedHeadRoot := getFinalizedForkHead(dbFork.ForkId, dbFork.BaseSlot)
 		if finalizedHead > latestSlot {
 			latestSlot = finalizedHead
+			latestRoot = finalizedHeadRoot
 		}
 
-		return latestSlot
+		return latestSlot, latestRoot
 	}
 
 	// Fork was superseded - find where it ended
 	headSlot := dbFork.LeafSlot
+	headRoot := dbFork.LeafRoot
 	for _, childFork := range allForks {
 		if childFork.ParentFork == dbFork.ForkId && childFork.BaseSlot > headSlot {
 			headSlot = childFork.BaseSlot
+			headRoot = childFork.BaseRoot
 		}
 	}
 
-	return headSlot
+	return headSlot, headRoot
 }
 
 // getFinalizedForkHead finds the highest finalized slot for a given fork ID
-func getFinalizedForkHead(forkId uint64, baseSlot uint64) uint64 {
-	var slot uint64
+func getFinalizedForkHead(forkId uint64, baseSlot uint64) (uint64, []byte) {
+	var res struct {
+		Slot uint64 `db:"slot"`
+		Root []byte `db:"root"`
+	}
 
-	err := db.ReaderDb.Get(&slot, `
-		SELECT slot 
+	err := db.ReaderDb.Get(&res, `
+		SELECT slot, root 
 		FROM slots 
 		WHERE fork_id = $1 AND slot >= $2
 		ORDER BY slot DESC
@@ -246,10 +254,10 @@ func getFinalizedForkHead(forkId uint64, baseSlot uint64) uint64 {
 	`, forkId, baseSlot)
 
 	if err != nil {
-		return baseSlot
+		return baseSlot, nil
 	}
 
-	return slot
+	return res.Slot, res.Root
 }
 
 func buildChainDiagram(forks []*models.ChainFork, startEpoch, endEpoch uint64, indexer *beacon.Indexer) *models.ChainDiagram {
@@ -361,8 +369,6 @@ func processForksWithEpochData(dbForks []*dbtypes.Fork, indexer *beacon.Indexer,
 
 	// Get chain state for epoch/slot calculations
 	chainState := services.GlobalBeaconService.GetChainState()
-	specs := chainState.GetSpecs()
-	slotsPerEpoch := uint64(specs.SlotsPerEpoch)
 
 	// Extract fork IDs for participation query, including canonical chain (fork ID 0)
 	forkIds := make([]uint64, len(dbForks)+1)
@@ -580,7 +586,7 @@ func processForksWithEpochData(dbForks []*dbtypes.Fork, indexer *beacon.Indexer,
 		hasHead := !childForkMap[dbFork.ForkId]
 
 		// Calculate head slot using cached blocks
-		headSlot := calculateForkHead(dbFork, hasHead, dbForks, forkBlocksCache[dbFork.ForkId])
+		headSlot, headRoot := calculateForkHead(dbFork, hasHead, dbForks, forkBlocksCache[dbFork.ForkId])
 
 		// Get epoch-based participation data for this fork
 		epochParticipation := make([]*models.EpochParticipation, 0)
@@ -684,7 +690,7 @@ func processForksWithEpochData(dbForks []*dbtypes.Fork, indexer *beacon.Indexer,
 			LeafSlot:             dbFork.LeafSlot,
 			LeafRoot:             dbFork.LeafRoot,
 			HeadSlot:             headSlot,
-			HeadRoot:             nil,
+			HeadRoot:             headRoot,
 			ParentFork:           dbFork.ParentFork,
 			Participation:        avgParticipation,
 			ParticipationByEpoch: epochParticipation,
@@ -733,12 +739,16 @@ func processForksWithEpochData(dbForks []*dbtypes.Fork, indexer *beacon.Indexer,
 		}
 
 		var canonicalEndSlot uint64
+		var canonicalEndRoot []byte
 		if latestForkBuildingOnFinalizedFork != nil && latestForkBuildingOnFinalizedFork.LeafSlot >= uint64(finalizedSlot) {
 			canonicalEndSlot = latestForkBuildingOnFinalizedFork.BaseSlot
+			canonicalEndRoot = latestForkBuildingOnFinalizedFork.BaseRoot
 		} else if canonicalHead := indexer.GetCanonicalHead(nil); canonicalHead != nil {
 			canonicalEndSlot = uint64(canonicalHead.Slot)
+			canonicalEndRoot = canonicalHead.Root[:]
 		} else {
 			canonicalEndSlot = 0
+			canonicalEndRoot = nil
 		}
 
 		// Calculate block count for canonical chain
@@ -754,17 +764,17 @@ func processForksWithEpochData(dbForks []*dbtypes.Fork, indexer *beacon.Indexer,
 
 		canonicalChain := &models.ChainFork{
 			ForkId:               0,
-			BaseSlot:             startEpoch * slotsPerEpoch,
+			BaseSlot:             0,
 			BaseRoot:             nil,
-			LeafSlot:             startEpoch * slotsPerEpoch,
+			LeafSlot:             0,
 			LeafRoot:             nil,
 			HeadSlot:             canonicalEndSlot,
-			HeadRoot:             nil,
+			HeadRoot:             canonicalEndRoot,
 			ParentFork:           0,
 			Participation:        avgParticipation,
 			ParticipationByEpoch: epochParticipation,
 			IsCanonical:          true,
-			Length:               canonicalEndSlot - (startEpoch * slotsPerEpoch) + 1,
+			Length:               canonicalEndSlot + 1,
 			BlockCount:           canonicalBlockCount,
 		}
 		forks = append(forks, canonicalChain)
@@ -862,9 +872,11 @@ func addCanonicalChain(forks []*models.ChainFork, indexer *beacon.Indexer) []*mo
 // createCanonicalChainFork creates the canonical chain representation
 func createCanonicalChainFork(forks []*models.ChainFork, canonicalForkIdSet map[uint64]bool, earliestOrphanFork *models.ChainFork) *models.ChainFork {
 	canonicalEndSlot := earliestOrphanFork.BaseSlot
+	canonicalEndRoot := earliestOrphanFork.BaseRoot
 	for _, fork := range forks {
 		if canonicalForkIdSet[fork.ForkId] && fork.BaseSlot < canonicalEndSlot {
 			canonicalEndSlot = fork.BaseSlot
+			canonicalEndRoot = fork.BaseRoot
 		}
 	}
 
@@ -897,7 +909,7 @@ func createCanonicalChainFork(forks []*models.ChainFork, canonicalForkIdSet map[
 		LeafSlot:      0,
 		LeafRoot:      nil,
 		HeadSlot:      canonicalEndSlot,
-		HeadRoot:      nil,
+		HeadRoot:      canonicalEndRoot,
 		ParentFork:    0,
 		Participation: participation,
 		IsCanonical:   true,

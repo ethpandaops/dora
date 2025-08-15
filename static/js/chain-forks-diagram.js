@@ -232,7 +232,9 @@ function renderChainForkTree() {
     
     // Draw time grid (horizontal lines) - showing every 5 epochs
     const epochStep = 5;
-    for (let epoch = startEpoch; epoch <= endEpoch; epoch += epochStep) {
+    // Start from the nearest multiple of epochStep at or before startEpoch
+    const firstGridEpoch = Math.floor(startEpoch / epochStep) * epochStep;
+    for (let epoch = firstGridEpoch; epoch <= endEpoch; epoch += epochStep) {
         const y = getEpochY(epoch);
         
         // Grid line
@@ -356,7 +358,10 @@ function renderChainForkTree() {
                 }
                 // Draw horizontal branching line (always gray, behind fork lines)
                 const branchLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-                branchLine.setAttribute('x1', parentX + 6);
+                // For canonical chain (fork 0), start directly at the line (no bullet offset)
+                // For other forks, offset by bullet radius (6px)
+                const startX = fork.parentFork === 0 ? parentX : parentX + 6;
+                branchLine.setAttribute('x1', startX);
                 branchLine.setAttribute('y1', branchY);
                 branchLine.setAttribute('x2', forkX);
                 branchLine.setAttribute('y2', branchY);
@@ -599,7 +604,7 @@ function showForkDetails(fork) {
                 
                 <span class="detail-label">Head ${isCanonical ? 'Slot' : 'Block'}:</span>
                 <span class="detail-value">
-                    ${isCanonical || !fork.headRoot ? 
+                    ${!fork.headRoot ? 
                         `<a href="/slot/${headSlot}">${headSlot.toLocaleString()}</a>` :
                         `<a href="/slot/0x${bytesToHex(fork.headRoot)}" title="0x${bytesToHex(fork.headRoot)}">
                             ${headSlot.toLocaleString()} (0x${bytesToHex(fork.headRoot).substring(0, 8)}...)
@@ -611,7 +616,24 @@ function showForkDetails(fork) {
                 <span class="detail-value">${length.toLocaleString()} slots</span>
                 
                 <span class="detail-label">Block Count:</span>
-                <span class="detail-value">${(fork.blockCount || 0).toLocaleString()} blocks</span>
+                <span class="detail-value">
+                    ${(fork.blockCount || 0).toLocaleString()} blocks
+                    ${forkId !== 0 ? `
+                        <a href="/slots/filtered?f=1&f.missing=0&f.orphaned=1&f.fork=${isMerged ? mergedForkIds.join(',') : forkId}" 
+                           class="text-decoration-none ms-2" 
+                           title="View filtered slots for this fork"
+                           style="font-size: 0.875rem; color: #6c757d;">
+                            <i class="fas fa-eye"></i> View
+                        </a>
+                    ` : `
+                        <a href="/slots/filtered" 
+                           class="text-decoration-none ms-2" 
+                           title="View all slots"
+                           style="font-size: 0.875rem; color: #6c757d;">
+                            <i class="fas fa-eye"></i> View
+                        </a>
+                    `}
+                </span>
                 
                 <span class="detail-label">Duration:</span>
                 <span class="detail-value">${(length * ((window.chainDiagramData.specs && window.chainDiagramData.specs.seconds_per_slot) ? window.chainDiagramData.specs.seconds_per_slot : 12)).toLocaleString()} seconds</span>
