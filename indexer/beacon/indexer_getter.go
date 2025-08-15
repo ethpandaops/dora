@@ -208,6 +208,11 @@ func (indexer *Indexer) GetOrphanedBlockByRoot(blockRoot phase0.Root) (*Block, e
 	return block, nil
 }
 
+// GetEpochStatsByEpoch returns the epoch stats for the given epoch.
+func (indexer *Indexer) GetEpochStatsByEpoch(epoch phase0.Epoch) []*EpochStats {
+	return indexer.epochCache.getEpochStatsByEpoch(epoch)
+}
+
 // GetEpochStats returns the epoch stats for the given epoch and optional fork ID override.
 func (indexer *Indexer) GetEpochStats(epoch phase0.Epoch, overrideForkId *ForkKey) *EpochStats {
 	epochStats := indexer.epochCache.getEpochStatsByEpoch(epoch)

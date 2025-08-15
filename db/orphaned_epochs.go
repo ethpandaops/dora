@@ -104,3 +104,39 @@ func GetOrphanedEpoch(epoch uint64, headRoot []byte) *dbtypes.OrphanedEpoch {
 	}
 	return &orphanedEpoch
 }
+
+// OrphanedEpochParticipation represents participation data for an orphaned epoch
+type OrphanedEpochParticipation struct {
+	Epoch       uint64 `db:"epoch"`
+	HeadForkId  uint64 `db:"epoch_head_fork_id"`
+	BlockCount  uint64 `db:"block_count"`
+	Eligible    uint64 `db:"eligible"`
+	VotedTarget uint64 `db:"voted_target"`
+	VotedHead   uint64 `db:"voted_head"`
+	VotedTotal  uint64 `db:"voted_total"`
+}
+
+// GetOrphanedEpochParticipation gets participation data for orphaned epochs in the given range
+func GetOrphanedEpochParticipation(startEpoch, endEpoch uint64) ([]*OrphanedEpochParticipation, error) {
+	var results []*OrphanedEpochParticipation
+
+	err := ReaderDb.Select(&results, `
+		SELECT 
+			epoch,
+			epoch_head_fork_id,
+			block_count,
+			eligible,
+			voted_target,
+			voted_head,
+			voted_total
+		FROM orphaned_epochs
+		WHERE epoch >= $1 AND epoch <= $2
+		ORDER BY epoch, epoch_head_fork_id
+	`, startEpoch, endEpoch)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return results, nil
+}

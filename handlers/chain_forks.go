@@ -384,76 +384,180 @@ func processForksWithEpochData(dbForks []*dbtypes.Fork, indexer *beacon.Indexer,
 	finalizedForkId := indexer.GetFinalizedForkId()
 	if finalizedForkId != 0 {
 		// Get blocks from the current canonical fork for unfinalized canonical chain
-		canonicalForkId := finalizedForkId // Use the latest canonical fork
-		canonicalBlocks := indexer.GetBlocksByForkId(beacon.ForkKey(canonicalForkId))
+		canonicalBlocks := indexer.GetBlocksByForkId(finalizedForkId)
 		if len(canonicalBlocks) > 0 {
 			// Add these blocks as canonical chain (fork ID 0) for participation calculation
 			forkBlocksCache[0] = canonicalBlocks
 		}
 	}
 
-	// Fetch participation data for all forks in one query (finalized blocks)
-	participationData, err := db.GetForkParticipationByEpoch(startEpoch, endEpoch, forkIds)
+	// Get epoch boundaries for different data sources
+	finalizedEpoch, prunedEpoch := indexer.GetBlockCacheState()
+
+	// Build participation lookup map: forkId -> epoch -> participation
+	participationMap := make(map[uint64]map[uint64]*models.EpochParticipation)
+
+	// 1. Fetch finalized canonical epochs participation (epoch <= finalizedEpoch from epochs table)
+	if uint64(finalizedEpoch) >= startEpoch {
+		finalizedEndEpoch := endEpoch
+		if uint64(finalizedEpoch) < endEpoch {
+			finalizedEndEpoch = uint64(finalizedEpoch)
+		}
+
+		finalizedData, err := db.GetFinalizedEpochParticipation(startEpoch, finalizedEndEpoch)
+		if err != nil {
+			return nil, err
+		}
+
+		// Add finalized canonical epochs data (fork ID 0)
+		if participationMap[0] == nil {
+			participationMap[0] = make(map[uint64]*models.EpochParticipation)
+		}
+		for _, data := range finalizedData {
+			participationMap[0][data.Epoch] = &models.EpochParticipation{
+				Epoch:         data.Epoch,
+				Participation: calculateParticipation(data.VotedTarget, data.Eligible),
+				SlotCount:     data.BlockCount,
+			}
+		}
+	}
+
+	// 2. Fetch pruned epochs participation (prunedEpoch < epoch <= finalizedEpoch from unfinalized_epochs table)
+	if uint64(prunedEpoch) < uint64(finalizedEpoch) && uint64(prunedEpoch) < endEpoch && startEpoch <= uint64(finalizedEpoch) {
+		unfinalizedStartEpoch := startEpoch
+		if uint64(prunedEpoch) > startEpoch {
+			unfinalizedStartEpoch = uint64(prunedEpoch)
+		}
+
+		unfinalizedEndEpoch := endEpoch
+		if uint64(finalizedEpoch) < endEpoch {
+			unfinalizedEndEpoch = uint64(finalizedEpoch)
+		}
+
+		if unfinalizedStartEpoch <= unfinalizedEndEpoch {
+			unfinalizedData, err := db.GetUnfinalizedEpochParticipation(unfinalizedStartEpoch, unfinalizedEndEpoch)
+			if err != nil {
+				return nil, err
+			}
+
+			// Add unfinalized epochs data
+			for _, data := range unfinalizedData {
+				if participationMap[data.HeadForkId] == nil {
+					participationMap[data.HeadForkId] = make(map[uint64]*models.EpochParticipation)
+				}
+				participationMap[data.HeadForkId][data.Epoch] = &models.EpochParticipation{
+					Epoch:         data.Epoch,
+					Participation: calculateParticipation(data.VotedTarget, data.Eligible),
+					SlotCount:     data.BlockCount,
+				}
+			}
+		}
+	}
+
+	// 3. Fetch orphaned epoch participation data for non-canonical finalized epochs
+	orphanedEpochData, err := db.GetOrphanedEpochParticipation(startEpoch, endEpoch)
 	if err != nil {
 		return nil, err
 	}
 
-	// Build participation lookup map: forkId -> epoch -> participation
-	participationMap := make(map[uint64]map[uint64]*models.EpochParticipation)
-	for _, pData := range participationData {
-		if participationMap[pData.ForkId] == nil {
-			participationMap[pData.ForkId] = make(map[uint64]*models.EpochParticipation)
+	// Build orphaned epoch lookup map: forkId -> epoch -> participation
+	orphanedEpochMap := make(map[uint64]map[uint64]*db.OrphanedEpochParticipation)
+	for _, oData := range orphanedEpochData {
+		if orphanedEpochMap[oData.HeadForkId] == nil {
+			orphanedEpochMap[oData.HeadForkId] = make(map[uint64]*db.OrphanedEpochParticipation)
 		}
-		participationMap[pData.ForkId][pData.Epoch] = &models.EpochParticipation{
-			Epoch:         pData.Epoch,
-			Participation: pData.Participation,
-			SlotCount:     pData.SlotCount,
+		orphanedEpochMap[oData.HeadForkId][oData.Epoch] = oData
+
+		// Also add to participationMap for easier access
+		if participationMap[oData.HeadForkId] == nil {
+			participationMap[oData.HeadForkId] = make(map[uint64]*models.EpochParticipation)
+		}
+		participationMap[oData.HeadForkId][oData.Epoch] = &models.EpochParticipation{
+			Epoch:         oData.Epoch,
+			Participation: calculateParticipation(oData.VotedTarget, oData.Eligible),
+			SlotCount:     oData.BlockCount,
 		}
 	}
 
-	// Add participation from cached unfinalized blocks
-	for forkId, forkBlocks := range forkBlocksCache {
-		if participationMap[forkId] == nil {
-			participationMap[forkId] = make(map[uint64]*models.EpochParticipation)
-		}
+	// 4. Add participation from cached epochs (epoch > prunedEpoch)
+	if uint64(prunedEpoch) < endEpoch {
+		cacheStartEpoch := uint64(prunedEpoch)
 
-		// Group blocks by epoch and calculate participation
-		epochBlocks := make(map[uint64][]*beacon.Block)
-		for _, block := range forkBlocks {
-			epoch := uint64(block.Slot) / slotsPerEpoch
-			if epoch >= startEpoch && epoch <= endEpoch {
-				epochBlocks[epoch] = append(epochBlocks[epoch], block)
-			}
-		}
+		nextEpochBlocks := make([]*beacon.Block, 0)
 
-		// Calculate participation per epoch from cached blocks
-		for epoch, blocks := range epochBlocks {
-			var participationSum float64
-			var validBlockCount uint64
+		for epoch := cacheStartEpoch; epoch <= endEpoch; epoch++ {
 
-			for _, block := range blocks {
-				if blockIndex := block.GetBlockIndex(); blockIndex != nil {
-					participationSum += float64(blockIndex.SyncParticipation)
-					validBlockCount++
+			epochBlocks := make([]*beacon.Block, 0)
+			if len(nextEpochBlocks) > 0 {
+				epochBlocks = append(epochBlocks, nextEpochBlocks...)
+			} else {
+				for slot := chainState.EpochToSlot(phase0.Epoch(epoch)); slot < chainState.EpochToSlot(phase0.Epoch(epoch+1)); slot++ {
+					epochBlocks = append(epochBlocks, indexer.GetBlocksBySlot(phase0.Slot(slot))...)
 				}
 			}
 
-			if validBlockCount > 0 {
-				avgParticipation := participationSum / float64(validBlockCount)
+			nextEpochBlocks = nextEpochBlocks[:0]
+			for slot := chainState.EpochToSlot(phase0.Epoch(epoch + 1)); slot < chainState.EpochToSlot(phase0.Epoch(epoch+2)); slot++ {
+				nextEpochBlocks = append(nextEpochBlocks, indexer.GetBlocksBySlot(phase0.Slot(slot))...)
+			}
+			epochBlocks = append(epochBlocks, nextEpochBlocks...)
 
-				// If we already have DB data for this epoch, merge it
-				if existing, exists := participationMap[forkId][epoch]; exists {
-					// Weighted average of DB and cache data
-					totalSlots := existing.SlotCount + validBlockCount
-					weightedParticipation := (existing.Participation*float64(existing.SlotCount) + avgParticipation*float64(validBlockCount)) / float64(totalSlots)
-					existing.Participation = weightedParticipation
-					existing.SlotCount = totalSlots
-				} else {
-					// Create new epoch participation entry
-					participationMap[forkId][epoch] = &models.EpochParticipation{
-						Epoch:         epoch,
-						Participation: avgParticipation,
-						SlotCount:     validBlockCount,
+			if len(epochBlocks) == 0 {
+				continue
+			}
+
+			forkIds := make([]beacon.ForkKey, 0)
+			for _, block := range epochBlocks {
+				forkId := block.GetForkId()
+				found := false
+				for _, id := range forkIds {
+					if id == forkId {
+						found = true
+						break
+					}
+				}
+				if !found {
+					forkIds = append(forkIds, forkId)
+				}
+			}
+
+			for _, forkId := range forkIds {
+				epochStats := indexer.GetEpochStats(phase0.Epoch(epoch), (*beacon.ForkKey)(&forkId))
+				if epochStats == nil {
+					continue
+				}
+
+				var headBlock *beacon.Block
+				blockCount := 0
+				for _, block := range epochBlocks {
+					if block.GetForkId() == forkId {
+						if headBlock == nil || block.Slot > headBlock.Slot {
+							headBlock = block
+						}
+
+						if chainState.EpochOfSlot(phase0.Slot(block.Slot)) == phase0.Epoch(epoch) {
+							blockCount++
+						}
+					}
+				}
+
+				epochVotes := epochStats.GetEpochVotes(indexer, headBlock)
+				if epochVotes != nil {
+					epochStatsValues := epochStats.GetValues(true)
+					if epochStatsValues != nil {
+						votedTarget := uint64(epochVotes.CurrentEpoch.TargetVoteAmount + epochVotes.NextEpoch.TargetVoteAmount)
+						eligible := uint64(epochStatsValues.EffectiveBalance)
+
+						participation := calculateParticipation(votedTarget, eligible)
+
+						if participationMap[uint64(forkId)] == nil {
+							participationMap[uint64(forkId)] = make(map[uint64]*models.EpochParticipation)
+						}
+						participationMap[uint64(forkId)][epoch] = &models.EpochParticipation{
+							Epoch:         epoch,
+							Participation: participation,
+							SlotCount:     uint64(blockCount),
+						}
 					}
 				}
 			}
@@ -461,9 +565,13 @@ func processForksWithEpochData(dbForks []*dbtypes.Fork, indexer *beacon.Indexer,
 	}
 
 	// Fetch block counts for all forks (finalized blocks) - just count by fork_id
-	finalizedEpoch, _ := indexer.GetBlockCacheState()
 	finalizedSlot := chainState.EpochToSlot(finalizedEpoch)
-	blockCounts, err := db.GetForkBlockCounts(forkIds, uint64(finalizedSlot))
+	blockCountStartSlot := chainState.EpochToSlot(phase0.Epoch(startEpoch))
+	blockCountEndSlot := chainState.EpochToSlot(phase0.Epoch(endEpoch))
+	if endEpoch > uint64(finalizedEpoch) {
+		blockCountEndSlot = finalizedSlot
+	}
+	blockCounts, err := db.GetForkBlockCounts(uint64(blockCountStartSlot), uint64(blockCountEndSlot))
 	if err != nil {
 		return nil, err
 	}
@@ -480,6 +588,7 @@ func processForksWithEpochData(dbForks []*dbtypes.Fork, indexer *beacon.Indexer,
 		var participationSum float64
 		var participationCount int
 
+		// Get participation data from participationMap (already includes all sources)
 		if forkParticipation, exists := participationMap[dbFork.ForkId]; exists {
 			for epoch := startEpoch; epoch <= endEpoch; epoch++ {
 				if epochData, hasData := forkParticipation[epoch]; hasData {
@@ -489,6 +598,71 @@ func processForksWithEpochData(dbForks []*dbtypes.Fork, indexer *beacon.Indexer,
 				}
 			}
 		}
+
+		// Check for inherited orphaned epoch stats for epochs without direct data
+		for epoch := startEpoch; epoch <= endEpoch; epoch++ {
+			// Skip if we already have participation data for this epoch
+			hasExistingData := false
+			if forkParticipation, exists := participationMap[dbFork.ForkId]; exists {
+				if _, hasData := forkParticipation[epoch]; hasData {
+					hasExistingData = true
+				}
+			}
+
+			if !hasExistingData {
+				// If no direct match, check parent forks for inherited orphaned epoch stats
+				if orphanedEpochMap[dbFork.ForkId] != nil {
+					if _, hasDirectMatch := orphanedEpochMap[dbFork.ForkId][epoch]; !hasDirectMatch {
+						// Walk up the fork tree to find orphaned epoch stats
+						currentForkId := dbFork.ForkId
+						for {
+							// Find forks that build on this fork
+							foundChildWithData := false
+							for _, childFork := range dbForks {
+								if childFork.ParentFork == currentForkId {
+									if childOrphanedData, hasChildOrphaned := orphanedEpochMap[childFork.ForkId]; hasChildOrphaned {
+										if orphanedData, hasEpoch := childOrphanedData[epoch]; hasEpoch {
+											epochParticipation = append(epochParticipation, &models.EpochParticipation{
+												Epoch:         epoch,
+												Participation: calculateParticipation(orphanedData.VotedTarget, orphanedData.Eligible),
+												SlotCount:     orphanedData.BlockCount,
+											})
+											participationSum += calculateParticipation(orphanedData.VotedTarget, orphanedData.Eligible)
+											participationCount++
+											foundChildWithData = true
+											break
+										}
+									}
+								}
+							}
+
+							if foundChildWithData {
+								break
+							}
+
+							// Move to the next fork in the chain
+							nextForkFound := false
+							for _, fork := range dbForks {
+								if fork.ParentFork == currentForkId {
+									currentForkId = fork.ForkId
+									nextForkFound = true
+									break
+								}
+							}
+
+							if !nextForkFound {
+								break
+							}
+						}
+					}
+				}
+			}
+		}
+
+		// Sort epoch participation by epoch
+		sort.Slice(epochParticipation, func(i, j int) bool {
+			return epochParticipation[i].Epoch < epochParticipation[j].Epoch
+		})
 
 		// Calculate average participation from epoch data
 		var avgParticipation float64
@@ -522,6 +696,17 @@ func processForksWithEpochData(dbForks []*dbtypes.Fork, indexer *beacon.Indexer,
 		forks = append(forks, chainFork)
 	}
 
+	if finalizedForkId != 0 {
+		participationData, ok := participationMap[uint64(finalizedForkId)]
+		if ok {
+			for epoch, participation := range participationData {
+				participationMap[0][epoch] = participation
+			}
+
+			delete(participationMap, uint64(finalizedForkId))
+		}
+	}
+
 	// Also process canonical chain (fork ID 0) if we have participation data for it
 	if canonicalParticipation, hasCanonical := participationMap[0]; hasCanonical {
 		epochParticipation := make([]*models.EpochParticipation, 0)
@@ -541,16 +726,27 @@ func processForksWithEpochData(dbForks []*dbtypes.Fork, indexer *beacon.Indexer,
 			avgParticipation = participationSum / float64(participationCount)
 		}
 
-		// Find the earliest orphan fork to determine canonical chain end
-		var canonicalEndSlot uint64 = startEpoch*slotsPerEpoch + DefaultChainForksPageSize
+		var latestForkBuildingOnFinalizedFork *models.ChainFork = nil
 		for _, fork := range forks {
-			if fork.ParentFork != 0 && fork.BaseSlot < canonicalEndSlot {
-				canonicalEndSlot = fork.BaseSlot
+			if (fork.ParentFork == uint64(finalizedForkId) || fork.ParentFork == 0) && (latestForkBuildingOnFinalizedFork == nil || fork.BaseSlot > latestForkBuildingOnFinalizedFork.BaseSlot) {
+				latestForkBuildingOnFinalizedFork = fork
 			}
+		}
+
+		var canonicalEndSlot uint64
+		if latestForkBuildingOnFinalizedFork != nil && latestForkBuildingOnFinalizedFork.LeafSlot >= uint64(finalizedSlot) {
+			canonicalEndSlot = latestForkBuildingOnFinalizedFork.BaseSlot
+		} else if canonicalHead := indexer.GetCanonicalHead(nil); canonicalHead != nil {
+			canonicalEndSlot = uint64(canonicalHead.Slot)
+		} else {
+			canonicalEndSlot = 0
 		}
 
 		// Calculate block count for canonical chain
 		canonicalBlockCount := blockCounts[0] // From finalized blocks
+		if finalizedForkId != 0 {
+			canonicalBlockCount += blockCounts[uint64(finalizedForkId)]
+		}
 
 		// Add blocks from cache (unfinalized) - all blocks with fork_id = 0
 		if canonicalCachedBlocks, exists := forkBlocksCache[0]; exists {
@@ -576,6 +772,14 @@ func processForksWithEpochData(dbForks []*dbtypes.Fork, indexer *beacon.Indexer,
 	}
 
 	return forks, nil
+}
+
+// calculateParticipation calculates voting participation percentage from raw voting data
+func calculateParticipation(votedTarget, eligible uint64) float64 {
+	if eligible == 0 {
+		return 0
+	}
+	return (float64(votedTarget) / float64(eligible))
 }
 
 // addCanonicalChain adds canonical chain representation and marks canonical forks

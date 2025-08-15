@@ -112,3 +112,40 @@ func DeleteUnfinalizedEpochsBefore(epoch uint64, tx *sqlx.Tx) error {
 	}
 	return nil
 }
+
+// UnfinalizedEpochParticipation represents participation data for an unfinalized epoch
+type UnfinalizedEpochParticipation struct {
+	Epoch       uint64 `db:"epoch"`
+	HeadForkId  uint64 `db:"epoch_head_fork_id"`
+	BlockCount  uint64 `db:"block_count"`
+	Eligible    uint64 `db:"eligible"`
+	VotedTarget uint64 `db:"voted_target"`
+	VotedHead   uint64 `db:"voted_head"`
+	VotedTotal  uint64 `db:"voted_total"`
+}
+
+// GetUnfinalizedEpochParticipation gets participation data for unfinalized epochs in the given range
+// This is used for pruned epochs that are stored in the database
+func GetUnfinalizedEpochParticipation(startEpoch, endEpoch uint64) ([]*UnfinalizedEpochParticipation, error) {
+	var results []*UnfinalizedEpochParticipation
+
+	err := ReaderDb.Select(&results, `
+		SELECT 
+			epoch,
+			epoch_head_fork_id,
+			block_count,
+			eligible,
+			voted_target,
+			voted_head,
+			voted_total
+		FROM unfinalized_epochs
+		WHERE epoch >= $1 AND epoch <= $2
+		ORDER BY epoch, epoch_head_fork_id
+	`, startEpoch, endEpoch)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return results, nil
+}

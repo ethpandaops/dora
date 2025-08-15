@@ -183,29 +183,16 @@ func GetForkVisualizationData(startSlot uint64, pageSize uint64) ([]*dbtypes.For
 }
 
 // GetForkBlockCounts returns the number of blocks for each fork ID
-func GetForkBlockCounts(forkIds []uint64, finalizedSlot uint64) (map[uint64]uint64, error) {
-	if len(forkIds) == 0 {
-		return map[uint64]uint64{}, nil
-	}
+func GetForkBlockCounts(startSlot uint64, endSlot uint64) (map[uint64]uint64, error) {
+	args := []any{startSlot, endSlot}
 
-	// Build the query with placeholders for fork IDs
-	args := []any{}
-	placeholders := make([]string, len(forkIds))
-	for i, forkId := range forkIds {
-		args = append(args, forkId)
-		placeholders[i] = fmt.Sprintf("$%d", len(args))
-	}
-
-	args = append(args, finalizedSlot)
-
-	query := fmt.Sprintf(`
+	query := `
 		SELECT fork_id, COUNT(*) as block_count
 		FROM slots
-		WHERE fork_id IN (%s)
-		  AND status != 0
-		  AND slot < $1
+		WHERE status != 0
+		  AND slot >= $1 AND slot < $2
 		GROUP BY fork_id
-	`, strings.Join(placeholders, ","))
+	`
 
 	rows, err := ReaderDb.Query(query, args...)
 	if err != nil {
