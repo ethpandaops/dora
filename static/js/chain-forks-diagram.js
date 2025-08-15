@@ -10,6 +10,11 @@ const ZOOM_MIN = 0.5;
 const ZOOM_MAX = 3.0;
 const ZOOM_STEP = 0.1;
 
+// Zoom focus tracking
+let currentMousePos = { viewportX: 0, viewportY: 0, documentX: 0, documentY: 0 };
+let scrollContainer = null;
+let previousZoomLevel = 1.0;
+
 document.addEventListener('DOMContentLoaded', function() {
     if (typeof window.chainDiagramData === 'undefined') {
         console.warn('Chain diagram data not found');
@@ -492,9 +497,19 @@ function renderChainForkTree() {
     container.innerHTML = '';
     
     // Create scroll container
-    const scrollContainer = document.createElement('div');
+    scrollContainer = document.createElement('div');
     scrollContainer.className = 'diagram-scroll-container';
     scrollContainer.appendChild(svg);
+    
+    // Add mouse tracking for zoom focus
+    scrollContainer.addEventListener('mousemove', (event) => {
+        const rect = scrollContainer.getBoundingClientRect();
+        // Store both viewport coordinates and document coordinates for better precision
+        currentMousePos.viewportX = event.clientX - rect.left;
+        currentMousePos.viewportY = event.clientY - rect.top;
+        currentMousePos.documentX = currentMousePos.viewportX + scrollContainer.scrollLeft;
+        currentMousePos.documentY = currentMousePos.viewportY + scrollContainer.scrollTop;
+    });
     
     // Add mouse wheel zoom to scroll container
     scrollContainer.addEventListener('wheel', handleWheelZoom, { passive: false });
@@ -989,12 +1004,14 @@ function copyToClipboard(text) {
 function zoom(direction) {
     const newZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, zoomLevel + direction));
     if (newZoom !== zoomLevel) {
+        previousZoomLevel = zoomLevel;
         zoomLevel = newZoom;
         applyZoom();
     }
 }
 
 function resetZoom() {
+    previousZoomLevel = zoomLevel;
     zoomLevel = 1.0;
     applyZoom();
 }
@@ -1011,9 +1028,60 @@ function handleWheelZoom(event) {
 }
 
 function applyZoom() {
+    if (!scrollContainer) {
+        renderChainForkTree();
+        return;
+    }
+
+    // Store current state before re-render
+    const oldScrollLeft = scrollContainer.scrollLeft;
+    const oldScrollTop = scrollContainer.scrollTop;
+    const oldZoom = previousZoomLevel;
+    
+    // Determine focus point in document coordinates
+    let focusDocumentX, focusDocumentY, focusViewportX, focusViewportY;
+    
+    if (currentMousePos.documentX > 0 && currentMousePos.documentY > 0) {
+        // Use mouse position as focus point
+        focusDocumentX = currentMousePos.documentX;
+        focusDocumentY = currentMousePos.documentY;
+        focusViewportX = currentMousePos.viewportX;
+        focusViewportY = currentMousePos.viewportY;
+    } else {
+        // Use viewport center as focus point
+        focusViewportX = scrollContainer.clientWidth / 2;
+        focusViewportY = scrollContainer.clientHeight / 2;
+        focusDocumentX = oldScrollLeft + focusViewportX;
+        focusDocumentY = oldScrollTop + focusViewportY;
+    }
+
     // Re-render the diagram with the new zoom level
-    // This will scale positions but keep line widths constant
     renderChainForkTree();
+
+    // Calculate new scroll position with higher precision
+    if (scrollContainer && oldZoom > 0) {
+        const zoomRatio = zoomLevel / oldZoom;
+        
+        // The point in the old document coordinate system becomes:
+        // newDocumentCoord = oldDocumentCoord * zoomRatio
+        // We want the focus point to remain at the same viewport position:
+        // newScrollPos = newDocumentCoord - viewportOffset
+        const newFocusDocumentX = focusDocumentX * zoomRatio;
+        const newFocusDocumentY = focusDocumentY * zoomRatio;
+        
+        const newScrollLeft = Math.round(newFocusDocumentX - focusViewportX);
+        const newScrollTop = Math.round(newFocusDocumentY - focusViewportY);
+        
+        // Apply the new scroll position
+        scrollContainer.scrollLeft = Math.max(0, newScrollLeft);
+        scrollContainer.scrollTop = Math.max(0, newScrollTop);
+        
+        // Update mouse position for next zoom operation
+        if (currentMousePos.documentX > 0) {
+            currentMousePos.documentX = newFocusDocumentX;
+            currentMousePos.documentY = newFocusDocumentY;
+        }
+    }
 }
 
 // Hide single-block forks and merge chains into single lines
@@ -1341,20 +1409,8 @@ function reassignForkPositions(forks) {
                 return bParticipation - aParticipation;
             });
             
-            
             const highestParticipationChild = sortedChildren[0];
             const highestParticipationChildId = highestParticipationChild.forkId || highestParticipationChild.fork_id;
-            
-            // Debug for fork 155 children (152 and 161)
-            if (parentFork === 155) {
-                console.log(`Processing fork ${forkId} with parent 155`);
-                console.log(`FORK 155 children:`, sortedChildren.map(child => ({
-                    forkId: child.forkId || child.fork_id,
-                    currentParticipation: (child.currentParticipation * 100).toFixed(1) + '%'
-                })));
-                console.log(`Winner: Fork ${highestParticipationChildId}, Current fork: ${forkId}`);
-                console.log(`Parent position: ${parentPosition}`);
-            }
             
             if (forkId === highestParticipationChildId) {
                 // This fork has highest participation among siblings - continue in parent lane
@@ -1379,11 +1435,6 @@ function reassignForkPositions(forks) {
         
         positions.set(forkId, position);
         lanes.set(position, { endSlot: headSlot, forkId: forkId, participation: participation });
-        
-        // Debug final position assignment
-        if ([152, 155, 161].includes(forkId)) {
-            console.log(`Fork ${forkId} assigned to position ${position}`);
-        }
         
         result.push({
             ...fork,
