@@ -149,8 +149,7 @@ func buildChainForksPageData(startSlot uint64, pageSizeEpochs uint64) (*models.C
 	cacheTime := specs.SecondsPerSlot * 12
 
 	// Get fork data from database
-	slotRange := endSlot - actualStartSlot
-	dbForks, err := db.GetForkVisualizationData(actualStartSlot, slotRange)
+	dbForks, err := db.GetForkVisualizationData(actualStartSlot, endSlot)
 	if err != nil {
 		logrus.Errorf("Error fetching fork visualization data: %v", err)
 		return pageData, cacheTime

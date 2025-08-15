@@ -152,29 +152,36 @@ func GetForkById(forkId uint64) *dbtypes.Fork {
 	return &fork
 }
 
-func GetForkVisualizationData(startSlot uint64, pageSize uint64) ([]*dbtypes.Fork, error) {
+func GetForkVisualizationData(startSlot uint64, endSlot uint64) ([]*dbtypes.Fork, error) {
 	forks := []*dbtypes.Fork{}
 
-	// Get forks that overlap with our time window or are parents of forks in our window
+	// Get forks that overlap with our time window and their direct parents/children
 	err := ReaderDb.Select(&forks, `
-		WITH RECURSIVE fork_tree AS (
-			-- Base case: forks that intersect with our time window
+		SELECT DISTINCT fork_id, base_slot, base_root, leaf_slot, leaf_root, parent_fork
+		FROM (
+			-- Forks that overlap with our time window
 			SELECT fork_id, base_slot, base_root, leaf_slot, leaf_root, parent_fork
 			FROM forks 
-			WHERE (base_slot >= $1 AND base_slot < $2) 
-			   OR (base_slot < $1 AND leaf_slot >= $1)
+			WHERE base_slot < $2 AND leaf_slot >= $1
 			
 			UNION
 			
-			-- Recursive case: parent forks of forks already selected
-			SELECT f.fork_id, f.base_slot, f.base_root, f.leaf_slot, f.leaf_root, f.parent_fork
-			FROM forks f
-			INNER JOIN fork_tree ft ON f.fork_id = ft.parent_fork
-		)
-		SELECT DISTINCT fork_id, base_slot, base_root, leaf_slot, leaf_root, parent_fork
-		FROM fork_tree
+			-- Direct parents of forks in our window
+			SELECT p.fork_id, p.base_slot, p.base_root, p.leaf_slot, p.leaf_root, p.parent_fork
+			FROM forks p
+			INNER JOIN forks f ON p.fork_id = f.parent_fork
+			WHERE f.base_slot < $2 AND f.leaf_slot >= $1
+			
+			UNION
+			
+			-- Direct children of forks in our window
+			SELECT c.fork_id, c.base_slot, c.base_root, c.leaf_slot, c.leaf_root, c.parent_fork
+			FROM forks c
+			INNER JOIN forks f ON c.parent_fork = f.fork_id
+			WHERE f.base_slot < $2 AND f.leaf_slot >= $1
+		) AS combined_forks
 		ORDER BY base_slot ASC, fork_id ASC
-	`, startSlot, startSlot+pageSize)
+	`, startSlot, endSlot)
 	if err != nil {
 		return nil, err
 	}
