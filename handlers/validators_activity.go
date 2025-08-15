@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -192,12 +193,35 @@ func buildValidatorsActivityPageData(pageIdx uint64, pageSize uint64, sortOrder 
 
 	// filter groups based on search term
 	validatorGroups := []*models.ValidatorsActiviyPageDataGroup{}
+
+	// Check if search term is a valid regex pattern
+	var searchRegex *regexp.Regexp
+	if searchTerm != "" {
+		// Try to compile as regex
+		var err error
+		searchRegex, err = regexp.Compile("(?i)" + searchTerm) // Case-insensitive regex
+		if err != nil {
+			// If not valid regex, fall back to literal string matching
+			searchRegex = nil
+		}
+	}
+
 	for _, group := range validatorGroupMap {
 		// Apply search filter
 		if searchTerm != "" {
-			groupNameLower := strings.ToLower(group.Group)
-			searchTermLower := strings.ToLower(searchTerm)
-			if !strings.Contains(groupNameLower, searchTermLower) {
+			matched := false
+
+			if searchRegex != nil {
+				// Use regex matching
+				matched = searchRegex.MatchString(group.Group)
+			} else {
+				// Fall back to substring matching for invalid regex
+				groupNameLower := strings.ToLower(group.Group)
+				searchTermLower := strings.ToLower(searchTerm)
+				matched = strings.Contains(groupNameLower, searchTermLower)
+			}
+
+			if !matched {
 				continue
 			}
 		}
