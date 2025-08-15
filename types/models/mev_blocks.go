@@ -49,6 +49,7 @@ type MevBlocksPageDataBlock struct {
 	RelayCount     uint64                    `json:"relay_count"`
 	FeeRecipient   []byte                    `json:"fee_recipient"`
 	TxCount        uint64                    `json:"tx_count"`
+	BlobCount      uint64                    `json:"blob_count"`
 	GasUsed        uint64                    `json:"gas_used"`
 	BlockValue     uint64                    `json:"block_value"`
 	BlockValueStr  string                    `json:"block_value_str"`
