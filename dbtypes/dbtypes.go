@@ -209,6 +209,7 @@ type MevBlock struct {
 	SeenbyRelays   uint64 `db:"seenby_relays"`
 	FeeRecipient   []byte `db:"fee_recipient"`
 	TxCount        uint64 `db:"tx_count"`
+	BlobCount      uint64 `db:"blob_count"`
 	GasUsed        uint64 `db:"gas_used"`
 	BlockValue     []byte `db:"block_value"`
 	BlockValueGwei uint64 `db:"block_value_gwei"`

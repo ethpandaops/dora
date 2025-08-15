@@ -123,9 +123,13 @@ func GetMevBlockByBlockHash(blockHash []byte) *dbtypes.MevBlock {
 	mevBlock := dbtypes.MevBlock{}
 	err := ReaderDb.Get(&mevBlock, `
 	SELECT
-		slot_number, block_hash, block_number, builder_pubkey, proposer_index, proposed, seenby_relays, fee_recipient, tx_count, gas_used, block_value, block_value_gwei
+		mev_blocks.slot_number, mev_blocks.block_hash, mev_blocks.block_number, mev_blocks.builder_pubkey, 
+		mev_blocks.proposer_index, mev_blocks.proposed, mev_blocks.seenby_relays, mev_blocks.fee_recipient, 
+		mev_blocks.tx_count, mev_blocks.gas_used, mev_blocks.block_value, mev_blocks.block_value_gwei,
+		COALESCE(slots.blob_count, 0) AS blob_count
 	FROM mev_blocks
-	WHERE block_hash = $1
+	LEFT JOIN slots ON mev_blocks.slot_number = slots.slot
+	WHERE mev_blocks.block_hash = $1
 	`, blockHash)
 	if err != nil {
 		return nil
@@ -150,9 +154,13 @@ func GetMevBlocksByBlockHashes(blockHashes [][]byte) map[string]*dbtypes.MevBloc
 
 	query := fmt.Sprintf(`
 	SELECT
-		slot_number, block_hash, block_number, builder_pubkey, proposer_index, proposed, seenby_relays, fee_recipient, tx_count, gas_used, block_value, block_value_gwei
+		mev_blocks.slot_number, mev_blocks.block_hash, mev_blocks.block_number, mev_blocks.builder_pubkey, 
+		mev_blocks.proposer_index, mev_blocks.proposed, mev_blocks.seenby_relays, mev_blocks.fee_recipient, 
+		mev_blocks.tx_count, mev_blocks.gas_used, mev_blocks.block_value, mev_blocks.block_value_gwei,
+		COALESCE(slots.blob_count, 0) AS blob_count
 	FROM mev_blocks
-	WHERE block_hash IN (%s)
+	LEFT JOIN slots ON mev_blocks.slot_number = slots.slot
+	WHERE mev_blocks.block_hash IN (%s)
 	`, strings.Join(placeholders, ", "))
 
 	mevBlocks := []*dbtypes.MevBlock{}
@@ -177,8 +185,12 @@ func GetMevBlocksFiltered(offset uint64, limit uint32, filter *dbtypes.MevBlockF
 	fmt.Fprint(&sql, `
 	WITH cte AS (
 		SELECT
-			slot_number, block_hash, block_number, builder_pubkey, proposer_index, proposed, seenby_relays, fee_recipient, tx_count, gas_used, block_value, block_value_gwei
+			mev_blocks.slot_number, mev_blocks.block_hash, mev_blocks.block_number, mev_blocks.builder_pubkey, 
+			mev_blocks.proposer_index, mev_blocks.proposed, mev_blocks.seenby_relays, mev_blocks.fee_recipient, 
+			mev_blocks.tx_count, mev_blocks.gas_used, mev_blocks.block_value, mev_blocks.block_value_gwei,
+			COALESCE(slots.blob_count, 0) AS blob_count
 		FROM mev_blocks
+		LEFT JOIN slots ON mev_blocks.slot_number = slots.slot
 	`)
 
 	if filter.ProposerName != "" {
@@ -262,7 +274,8 @@ func GetMevBlocksFiltered(offset uint64, limit uint32, filter *dbtypes.MevBlockF
 		0 AS tx_count,
 		0 AS gas_used,
 		null AS block_value,
-		0 AS block_value_gwei
+		0 AS block_value_gwei,
+		0 AS blob_count
 	FROM cte
 	UNION ALL SELECT * FROM (
 	SELECT * FROM cte

@@ -225,6 +225,7 @@ func buildFilteredMevBlocksPageData(pageIdx uint64, pageSize uint64, minSlot uin
 			Relays:         []*models.MevBlocksPageDataRelay{},
 			FeeRecipient:   mevBlock.FeeRecipient,
 			TxCount:        mevBlock.TxCount,
+			BlobCount:      mevBlock.BlobCount,
 			GasUsed:        mevBlock.GasUsed,
 			BlockValue:     mevBlock.BlockValueGwei,
 		}
