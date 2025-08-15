@@ -16,7 +16,7 @@ import (
 	"github.com/ethpandaops/dora/utils"
 )
 
-const ConsolidationContractAddr = "0x0000BBdDc7CE488642fb579F8B00f3a590007251"
+const DefaultConsolidationContractAddr = "0x0000BBdDc7CE488642fb579F8B00f3a590007251"
 
 // ConsolidationIndexer is the indexer for the eip-7251 consolidation system contract
 type ConsolidationIndexer struct {
@@ -53,7 +53,7 @@ func NewConsolidationIndexer(indexer *IndexerCtx) *ConsolidationIndexer {
 		&contractIndexerOptions[dbtypes.ConsolidationRequestTx]{
 			stateKey:        "indexer.consolidationindexer",
 			batchSize:       batchSize,
-			contractAddress: common.HexToAddress(ConsolidationContractAddr),
+			contractAddress: common.HexToAddress(ci.getConsolidationContractAddr()),
 			deployBlock:     uint64(utils.Config.ExecutionApi.ElectraDeployBlock),
 			dequeueRate:     specs.MaxConsolidationRequestsPerPayload,
 
@@ -80,6 +80,15 @@ func NewConsolidationIndexer(indexer *IndexerCtx) *ConsolidationIndexer {
 	go ci.runConsolidationIndexerLoop()
 
 	return ci
+}
+
+// getConsolidationContractAddr returns the consolidation contract address from config or falls back to default
+func (ci *ConsolidationIndexer) getConsolidationContractAddr() string {
+	if addr := ci.indexerCtx.GetSystemContractAddress("consolidation"); addr != "" {
+		return addr
+	}
+	ci.logger.Warnf("using default consolidation contract address, could not get from client config")
+	return DefaultConsolidationContractAddr
 }
 
 // GetMatcherHeight returns the last processed el block number from the transaction matcher
