@@ -193,7 +193,7 @@ func buildValidatorsActivityPageData(pageIdx uint64, pageSize uint64, sortOrder 
 
 	// filter groups based on search term
 	validatorGroups := []*models.ValidatorsActiviyPageDataGroup{}
-	
+
 	// Check if search term is a valid regex pattern
 	var searchRegex *regexp.Regexp
 	if searchTerm != "" {
@@ -205,12 +205,12 @@ func buildValidatorsActivityPageData(pageIdx uint64, pageSize uint64, sortOrder 
 			searchRegex = nil
 		}
 	}
-	
+
 	for _, group := range validatorGroupMap {
 		// Apply search filter
 		if searchTerm != "" {
 			matched := false
-			
+
 			if searchRegex != nil {
 				// Use regex matching
 				matched = searchRegex.MatchString(group.Group)
@@ -220,7 +220,7 @@ func buildValidatorsActivityPageData(pageIdx uint64, pageSize uint64, sortOrder 
 				searchTermLower := strings.ToLower(searchTerm)
 				matched = strings.Contains(groupNameLower, searchTermLower)
 			}
-			
+
 			if !matched {
 				continue
 			}
