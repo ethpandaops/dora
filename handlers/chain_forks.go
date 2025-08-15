@@ -37,6 +37,14 @@ func ChainForks(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Parse page size parameter (in epochs)
+	var pageSizeEpochs uint64 = 0 // 0 means use default
+	if pageSizeStr := r.URL.Query().Get("size"); pageSizeStr != "" {
+		if parsed, err := strconv.ParseUint(pageSizeStr, 10, 64); err == nil && parsed > 0 && parsed <= 10000 {
+			pageSizeEpochs = parsed
+		}
+	}
+
 	// If no start slot specified, use recent head slot
 	if startSlot == 0 {
 		chainState := services.GlobalBeaconService.GetChainState()
@@ -48,7 +56,7 @@ func ChainForks(w http.ResponseWriter, r *http.Request) {
 	var pageError error
 	pageError = services.GlobalCallRateLimiter.CheckCallLimit(r, 1)
 	if pageError == nil {
-		data.Data, pageError = getChainForksPageData(startSlot)
+		data.Data, pageError = getChainForksPageData(startSlot, pageSizeEpochs)
 	}
 	if pageError != nil {
 		handlePageError(w, r, pageError)
@@ -75,11 +83,11 @@ func ChainForks(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func getChainForksPageData(startSlot uint64) (*models.ChainForksPageData, error) {
+func getChainForksPageData(startSlot uint64, pageSizeEpochs uint64) (*models.ChainForksPageData, error) {
 	pageData := &models.ChainForksPageData{}
-	pageCacheKey := fmt.Sprintf("chain_forks_%d", startSlot)
+	pageCacheKey := fmt.Sprintf("chain_forks_%d_%d", startSlot, pageSizeEpochs)
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
-		pageData, cacheTimeout := buildChainForksPageData(startSlot)
+		pageData, cacheTimeout := buildChainForksPageData(startSlot, pageSizeEpochs)
 		pageCall.CacheTimeout = cacheTimeout
 		return pageData
 	})
@@ -93,31 +101,49 @@ func getChainForksPageData(startSlot uint64) (*models.ChainForksPageData, error)
 	return pageData, pageErr
 }
 
-func buildChainForksPageData(startSlot uint64) (*models.ChainForksPageData, time.Duration) {
+func buildChainForksPageData(startSlot uint64, pageSizeEpochs uint64) (*models.ChainForksPageData, time.Duration) {
 	// Calculate slot ranges for time window
 	// startSlot parameter = head slot (most recent, shown at top of visualization)
 	// actualStartSlot = older slot (shown at bottom of visualization, goes back ~1000 slots)
-	endSlot := startSlot                             // Head slot (newest)
-	actualStartSlot := calculateStartSlot(startSlot) // Goes back in time for time window
+	endSlot := startSlot                                             // Head slot (newest)
+	actualStartSlot := calculateStartSlot(startSlot, pageSizeEpochs) // Goes back in time for time window
 
 	chainState := services.GlobalBeaconService.GetChainState()
 	specs := chainState.GetSpecs()
+
+	// Debug: log time window calculation
+	logrus.Infof("Chain forks: pageSizeEpochs=%d, slots %d-%d, epochs %d-%d",
+		pageSizeEpochs, actualStartSlot, endSlot,
+		uint64(chainState.EpochOfSlot(phase0.Slot(actualStartSlot))),
+		uint64(chainState.EpochOfSlot(phase0.Slot(endSlot))))
 
 	// Calculate epochs (225 epochs = 1 day)
 	startEpoch := uint64(chainState.EpochOfSlot(phase0.Slot(actualStartSlot)))
 	endEpoch := uint64(chainState.EpochOfSlot(phase0.Slot(endSlot)))
 
+	// Calculate epoch counts for time selectors
+	secondsPerEpoch := uint64(specs.SlotsPerEpoch) * uint64(specs.SecondsPerSlot.Seconds())
+	epochsFor3h := uint64(3*3600) / secondsPerEpoch
+	epochsFor12h := uint64(12*3600) / secondsPerEpoch
+	epochsFor1d := uint64(24*3600) / secondsPerEpoch
+	epochsFor7d := uint64(7*24*3600) / secondsPerEpoch
+
 	// Initialize page data
 	pageData := &models.ChainForksPageData{
-		StartSlot:    actualStartSlot,
-		EndSlot:      endSlot,
-		StartEpoch:   startEpoch,
-		EndEpoch:     endEpoch,
-		PageSize:     DefaultChainForksPageSize,
-		FinalitySlot: uint64(chainState.GetFinalizedSlot()),
+		StartSlot:      actualStartSlot,
+		EndSlot:        endSlot,
+		StartEpoch:     startEpoch,
+		EndEpoch:       endEpoch,
+		PageSize:       DefaultChainForksPageSize,
+		PageSizeEpochs: pageSizeEpochs,
+		FinalitySlot:   uint64(chainState.GetFinalizedSlot()),
 		ChainSpecs: &models.ChainSpecs{
 			SlotsPerEpoch:  uint64(specs.SlotsPerEpoch),
 			SecondsPerSlot: uint64(specs.SecondsPerSlot.Seconds()),
+			EpochsFor3h:    epochsFor3h,
+			EpochsFor12h:   epochsFor12h,
+			EpochsFor1d:    epochsFor1d,
+			EpochsFor7d:    epochsFor7d,
 		},
 	}
 	cacheTime := specs.SecondsPerSlot * 12
@@ -154,14 +180,21 @@ func buildChainForksPageData(startSlot uint64) (*models.ChainForksPageData, time
 	pageData.ChainDiagram = buildChainDiagram(pageData.Forks, startEpoch, endEpoch, indexer)
 
 	// Set up pagination
-	if startSlot >= DefaultChainForksPageSize {
-		prevSlot := startSlot - DefaultChainForksPageSize
+	var pageSize uint64
+	if pageSizeEpochs > 0 {
+		pageSize = pageSizeEpochs * uint64(specs.SlotsPerEpoch)
+	} else {
+		pageSize = uint64(DefaultChainForksPageSize)
+	}
+
+	if startSlot >= pageSize {
+		prevSlot := startSlot - pageSize
 		pageData.PrevPageSlot = &prevSlot
 	}
 
 	finalizedSlot := uint64(chainState.GetFinalizedSlot())
-	if startSlot+DefaultChainForksPageSize < finalizedSlot {
-		nextSlot := startSlot + DefaultChainForksPageSize
+	if startSlot+pageSize < finalizedSlot {
+		nextSlot := startSlot + pageSize
 		pageData.NextPageSlot = &nextSlot
 	}
 
@@ -247,46 +280,22 @@ func buildChainDiagram(forks []*models.ChainFork, startEpoch, endEpoch uint64, i
 		forkMap[fork.ForkId] = fork
 	}
 
-	// Assign horizontal positions like a git graph
-	// Canonical chain goes on the left (position 0)
-	// Other forks get positions to the right (1, 2, 3, ...)
-
-	// Get canonical fork IDs from chain service (these are the current canonical branches)
+	// Get canonical fork IDs from chain service for proper marking
 	canonicalForkIds := services.GlobalBeaconService.GetCanonicalForkIds()
 	canonicalForkIdSet := make(map[uint64]bool)
 	for _, forkId := range canonicalForkIds {
 		canonicalForkIdSet[forkId] = true
 	}
 
-	// The canonical chain is represented in TWO parts:
-	// 1. Finalized canonical chain (fork ID 0 or first canonical fork in finalized range)
-	// 2. Current head canonical chain (from GetCanonicalForkIds for unfinalized range)
-	// We need to treat these as ONE continuous canonical chain
-
-	// Find the main canonical fork (the one extending to current head)
-	// This is used for identification but all canonical forks get the same position
-	latestSlot := uint64(0)
+	// Mark canonical forks for proper rendering - client will handle positioning
 	for _, fork := range forks {
-		if canonicalForkIdSet[fork.ForkId] && fork.HeadSlot > latestSlot {
-			latestSlot = fork.HeadSlot
-		}
-	}
-
-	// Mark canonical forks for proper rendering
-	for _, fork := range forks {
-		if canonicalForkIdSet[fork.ForkId] {
+		if canonicalForkIdSet[fork.ForkId] || fork.ForkId == 0 {
 			fork.IsCanonical = true
 		}
 	}
 
-	// Canonical chain reconstruction is now done in buildChainForksPageData
-
-	// Assign positions using simplified lane management
-	positions := assignForkPositions(forks)
-
-	// Create diagram forks
+	// Create diagram forks - client will handle positioning
 	for _, fork := range forks {
-		position := positions[fork.ForkId]
 		diagramFork := &models.DiagramFork{
 			ForkId:               fork.ForkId,
 			BaseSlot:             fork.BaseSlot,
@@ -299,8 +308,8 @@ func buildChainDiagram(forks []*models.ChainFork, startEpoch, endEpoch uint64, i
 			BlockCount:           fork.BlockCount,
 			Participation:        fork.Participation,
 			ParticipationByEpoch: fork.ParticipationByEpoch,
-			Position:             position,
 			ParentFork:           fork.ParentFork,
+			IsCanonical:          fork.IsCanonical,
 		}
 		diagram.Forks = append(diagram.Forks, diagramFork)
 	}
@@ -309,11 +318,33 @@ func buildChainDiagram(forks []*models.ChainFork, startEpoch, endEpoch uint64, i
 }
 
 // calculateStartSlot determines the actual start slot for the fork visualization
-func calculateStartSlot(startSlot uint64) uint64 {
-	recentSlotWindow := uint64(DefaultChainForksPageSize) // Use the proper page size instead of hardcoded 1000
-	if startSlot > recentSlotWindow {
-		return startSlot - recentSlotWindow
+func calculateStartSlot(startSlot uint64, pageSizeEpochs uint64) uint64 {
+	chainState := services.GlobalBeaconService.GetChainState()
+	specs := chainState.GetSpecs()
+	slotsPerEpoch := uint64(specs.SlotsPerEpoch)
+
+	var recentSlotWindow uint64
+	if pageSizeEpochs > 0 {
+		// Convert epochs to slots using actual chain specs
+		recentSlotWindow = pageSizeEpochs * slotsPerEpoch
+	} else {
+		// Use default page size
+		recentSlotWindow = uint64(DefaultChainForksPageSize)
 	}
+
+	// Debug logging
+	logrus.Infof("calculateStartSlot: startSlot=%d, pageSizeEpochs=%d, slotsPerEpoch=%d, recentSlotWindow=%d",
+		startSlot, pageSizeEpochs, slotsPerEpoch, recentSlotWindow)
+
+	if startSlot > recentSlotWindow {
+		result := startSlot - recentSlotWindow
+		logrus.Infof("calculateStartSlot: returning %d (startSlot - recentSlotWindow)", result)
+		return result
+	}
+
+	// If requested window is larger than available history, start from slot 0
+	// but still respect the window size for the end slot calculation
+	logrus.Infof("calculateStartSlot: returning 0 (requested window larger than available history)")
 	return 0
 }
 
@@ -670,90 +701,4 @@ func createCanonicalChainFork(forks []*models.ChainFork, canonicalForkIdSet map[
 		Length:        canonicalEndSlot + 1,
 		BlockCount:    blockCount,
 	}
-}
-
-// assignForkPositions assigns horizontal positions to forks with intelligent lane reuse
-func assignForkPositions(forks []*models.ChainFork) map[uint64]int {
-	positions := make(map[uint64]int)
-
-	// Track when lanes become available for reuse
-	type laneInfo struct {
-		endSlot uint64
-		forkId  uint64
-	}
-	activeLanes := make(map[int]*laneInfo)
-	nextAvailableLane := 1           // Lane 0 reserved for canonical chain
-	const laneReuseGap = uint64(100) // Minimum gap before reusing a lane
-
-	// Sort forks by base slot for chronological processing
-	sortedForks := make([]*models.ChainFork, len(forks))
-	copy(sortedForks, forks)
-	sort.Slice(sortedForks, func(i, j int) bool {
-		return sortedForks[i].BaseSlot < sortedForks[j].BaseSlot
-	})
-
-	// Build parent-child relationships for inheritance
-	childForks := make(map[uint64][]*models.ChainFork)
-	for _, fork := range forks {
-		if fork.ParentFork != 0 {
-			childForks[fork.ParentFork] = append(childForks[fork.ParentFork], fork)
-		}
-	}
-
-	// Sort child forks by length (longest inherits parent's lane)
-	for _, children := range childForks {
-		sort.Slice(children, func(i, j int) bool {
-			if children[i].Length != children[j].Length {
-				return children[i].Length > children[j].Length
-			}
-			return children[i].Participation > children[j].Participation
-		})
-	}
-
-	inheritedLanes := make(map[uint64]int)
-
-	// Assign positions
-	for _, fork := range sortedForks {
-		var position int
-
-		if fork.IsCanonical {
-			position = 0 // Canonical chain always gets position 0
-			activeLanes[0] = &laneInfo{endSlot: fork.HeadSlot, forkId: fork.ForkId}
-		} else if inheritedPos, hasInheritance := inheritedLanes[fork.ForkId]; hasInheritance {
-			// This fork inherits its parent's lane
-			position = inheritedPos
-			activeLanes[position] = &laneInfo{endSlot: fork.HeadSlot, forkId: fork.ForkId}
-		} else {
-			// Find a free lane with sufficient gap, or allocate new lane
-			position = -1
-			for lane, info := range activeLanes {
-				if lane > 0 && info.endSlot+laneReuseGap < fork.BaseSlot {
-					position = lane
-					break
-				}
-			}
-
-			if position == -1 {
-				position = nextAvailableLane
-				nextAvailableLane++
-			}
-
-			activeLanes[position] = &laneInfo{endSlot: fork.HeadSlot, forkId: fork.ForkId}
-		}
-
-		positions[fork.ForkId] = position
-
-		// Set up inheritance for this fork's children
-		if children, hasChildren := childForks[fork.ForkId]; hasChildren && len(children) > 0 {
-			inheritancePos := position
-			if position == 0 && !children[0].IsCanonical {
-				// Don't pass canonical position to non-canonical children
-				inheritancePos = nextAvailableLane
-				nextAvailableLane++
-			}
-			inheritedLanes[children[0].ForkId] = inheritancePos
-		}
-	}
-
-	return positions
 }

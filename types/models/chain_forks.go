@@ -2,39 +2,44 @@ package models
 
 // ChainForksPageData is a struct to hold info for the chain forks visualization page
 type ChainForksPageData struct {
-	Forks         []*ChainFork     `json:"forks"`
-	StartSlot     uint64           `json:"start_slot"`
-	EndSlot       uint64           `json:"end_slot"`
-	StartEpoch    uint64           `json:"start_epoch"`
-	EndEpoch      uint64           `json:"end_epoch"`
-	PageSize      uint64           `json:"page_size"`
-	FinalitySlot  uint64           `json:"finality_slot"`
-	PrevPageSlot  *uint64          `json:"prev_page_slot"`
-	NextPageSlot  *uint64          `json:"next_page_slot"`
-	ChainDiagram  *ChainDiagram    `json:"chain_diagram"`
-	ChainSpecs    *ChainSpecs      `json:"chain_specs"`
+	Forks          []*ChainFork  `json:"forks"`
+	StartSlot      uint64        `json:"start_slot"`
+	EndSlot        uint64        `json:"end_slot"`
+	StartEpoch     uint64        `json:"start_epoch"`
+	EndEpoch       uint64        `json:"end_epoch"`
+	PageSize       uint64        `json:"page_size"`
+	PageSizeEpochs uint64        `json:"page_size_epochs"` // Custom page size in epochs (0 = default)
+	FinalitySlot   uint64        `json:"finality_slot"`
+	PrevPageSlot   *uint64       `json:"prev_page_slot"`
+	NextPageSlot   *uint64       `json:"next_page_slot"`
+	ChainDiagram   *ChainDiagram `json:"chain_diagram"`
+	ChainSpecs     *ChainSpecs   `json:"chain_specs"`
 }
 
 // ChainSpecs contains chain specification values needed for visualization
 type ChainSpecs struct {
-	SlotsPerEpoch uint64 `json:"slots_per_epoch"`
+	SlotsPerEpoch  uint64 `json:"slots_per_epoch"`
 	SecondsPerSlot uint64 `json:"seconds_per_slot"`
+	EpochsFor3h    uint64 `json:"epochs_for_3h"` // Pre-calculated epoch counts for time selectors
+	EpochsFor12h   uint64 `json:"epochs_for_12h"`
+	EpochsFor1d    uint64 `json:"epochs_for_1d"`
+	EpochsFor7d    uint64 `json:"epochs_for_7d"`
 }
 
 type ChainFork struct {
-	ForkId        uint64                    `json:"fork_id"`
-	BaseSlot      uint64                    `json:"base_slot"`
-	BaseRoot      []byte                    `json:"base_root"`
-	LeafSlot      uint64                    `json:"leaf_slot"`  // First block of this fork (where it diverged)
-	LeafRoot      []byte                    `json:"leaf_root"`
-	HeadSlot      uint64                    `json:"head_slot"`  // Current head of this fork
-	HeadRoot      []byte                    `json:"head_root"`
-	ParentFork    uint64                    `json:"parent_fork"`
-	Participation float64                   `json:"participation"`        // Overall average participation
+	ForkId               uint64                `json:"fork_id"`
+	BaseSlot             uint64                `json:"base_slot"`
+	BaseRoot             []byte                `json:"base_root"`
+	LeafSlot             uint64                `json:"leaf_slot"` // First block of this fork (where it diverged)
+	LeafRoot             []byte                `json:"leaf_root"`
+	HeadSlot             uint64                `json:"head_slot"` // Current head of this fork
+	HeadRoot             []byte                `json:"head_root"`
+	ParentFork           uint64                `json:"parent_fork"`
+	Participation        float64               `json:"participation"`          // Overall average participation
 	ParticipationByEpoch []*EpochParticipation `json:"participation_by_epoch"` // Participation per epoch
-	IsCanonical   bool                      `json:"is_canonical"`
-	Length        uint64                    `json:"length"`       // Number of slots in the fork
-	BlockCount    uint64                    `json:"block_count"`  // Actual number of blocks in the fork
+	IsCanonical          bool                  `json:"is_canonical"`
+	Length               uint64                `json:"length"`      // Number of slots in the fork
+	BlockCount           uint64                `json:"block_count"` // Actual number of blocks in the fork
 }
 
 type EpochParticipation struct {
@@ -44,25 +49,25 @@ type EpochParticipation struct {
 }
 
 type ChainDiagram struct {
-	Epochs        []uint64               `json:"epochs"`        // Changed from slots to epochs
-	Forks         []*DiagramFork         `json:"forks"`
-	CanonicalLine *DiagramCanonicalLine  `json:"canonical_line"`
+	Epochs        []uint64              `json:"epochs"` // Changed from slots to epochs
+	Forks         []*DiagramFork        `json:"forks"`
+	CanonicalLine *DiagramCanonicalLine `json:"canonical_line"`
 }
 
 type DiagramFork struct {
-	ForkId        uint64                    `json:"fork_id"`
-	BaseSlot      uint64                    `json:"base_slot"`
-	BaseRoot      []byte                    `json:"base_root"`
-	LeafSlot      uint64                    `json:"leaf_slot"`  // First block of fork (where it diverged)
-	LeafRoot      []byte                    `json:"leaf_root"`
-	HeadSlot      uint64                    `json:"head_slot"`  // Current head of this fork
-	HeadRoot      []byte                    `json:"head_root"`
-	Length        uint64                    `json:"length"`
-	BlockCount    uint64                    `json:"block_count"`            // Actual number of blocks
-	Participation float64                   `json:"participation"`          // Overall average
+	ForkId               uint64                `json:"fork_id"`
+	BaseSlot             uint64                `json:"base_slot"`
+	BaseRoot             []byte                `json:"base_root"`
+	LeafSlot             uint64                `json:"leaf_slot"` // First block of fork (where it diverged)
+	LeafRoot             []byte                `json:"leaf_root"`
+	HeadSlot             uint64                `json:"head_slot"` // Current head of this fork
+	HeadRoot             []byte                `json:"head_root"`
+	Length               uint64                `json:"length"`
+	BlockCount           uint64                `json:"block_count"`            // Actual number of blocks
+	Participation        float64               `json:"participation"`          // Overall average
 	ParticipationByEpoch []*EpochParticipation `json:"participation_by_epoch"` // Per epoch data
-	Position      int                       `json:"position"` // Horizontal position from canonical line
-	ParentFork    uint64                    `json:"parent_fork"`
+	ParentFork           uint64                `json:"parent_fork"`
+	IsCanonical          bool                  `json:"is_canonical"` // Whether this is part of canonical chain
 }
 
 type DiagramCanonicalLine struct {

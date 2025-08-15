@@ -14,18 +14,30 @@
     <div class="d-flex justify-content-between align-items-center mb-3">
       <div>
         {{ if .PrevPageSlot }}
-          <a href="/chain-forks?start={{ .PrevPageSlot }}" class="btn btn-sm btn-outline-primary">
+          <a href="/chain-forks?start={{ .PrevPageSlot }}{{ if .PageSizeEpochs }}&size={{ .PageSizeEpochs }}{{ end }}" class="btn btn-sm btn-outline-primary">
             <i class="fas fa-arrow-left"></i> Previous
           </a>
         {{ end }}
         {{ if .NextPageSlot }}
-          <a href="/chain-forks?start={{ .NextPageSlot }}" class="btn btn-sm btn-outline-primary ms-2">
+          <a href="/chain-forks?start={{ .NextPageSlot }}{{ if .PageSizeEpochs }}&size={{ .PageSizeEpochs }}{{ end }}" class="btn btn-sm btn-outline-primary ms-2">
             Next <i class="fas fa-arrow-right"></i>
           </a>
         {{ end }}
       </div>
-      <div class="text-muted">
+      <div class="text-center">
+        <div class="btn-group btn-group-sm mb-2" role="group" aria-label="Time Range">
+          <a href="/chain-forks" class="btn btn-outline-secondary{{ if not .PageSizeEpochs }} active{{ end }}">Default</a>
+          <a href="/chain-forks?size={{ .ChainSpecs.EpochsFor3h }}" class="btn btn-outline-secondary{{ if eq .PageSizeEpochs .ChainSpecs.EpochsFor3h }} active{{ end }}">3h</a>
+          <a href="/chain-forks?size={{ .ChainSpecs.EpochsFor12h }}" class="btn btn-outline-secondary{{ if eq .PageSizeEpochs .ChainSpecs.EpochsFor12h }} active{{ end }}">12h</a>
+          <a href="/chain-forks?size={{ .ChainSpecs.EpochsFor1d }}" class="btn btn-outline-secondary{{ if eq .PageSizeEpochs .ChainSpecs.EpochsFor1d }} active{{ end }}">1d</a>
+          <a href="/chain-forks?size={{ .ChainSpecs.EpochsFor7d }}" class="btn btn-outline-secondary{{ if eq .PageSizeEpochs .ChainSpecs.EpochsFor7d }} active{{ end }}">7d</a>
+        </div>
+      </div>
+      <div class="text-muted text-end">
         Slots {{ formatAddCommas .StartSlot }} - {{ formatAddCommas .EndSlot }} (Epochs {{ .StartEpoch }} - {{ .EndEpoch }})
+        {{ if .PageSizeEpochs }}
+          <br><small>Custom view: {{ .PageSizeEpochs }} epochs</small>
+        {{ end }}
       </div>
     </div>
 
@@ -147,8 +159,7 @@
     }
     
     .integrated-chain-diagram {
-      min-height: 600px;
-      max-height: 1200px;
+      /* Height will be set dynamically by JavaScript */
       background: var(--fork-bg-primary);
       overflow: hidden;
       position: relative;
@@ -157,7 +168,7 @@
     
     .diagram-scroll-container {
       width: 100%;
-      height: 100%;
+      height: calc(100% - 40px); /* Account for padding */
       overflow: auto;
       position: relative;
     }
@@ -196,9 +207,9 @@
     
     .canonical-timeline {
       stroke: var(--fork-text-secondary);
-      stroke-width: 1;
-      stroke-dasharray: 2,2;
-      opacity: 0.5;
+      stroke-width: 0.5;
+      stroke-dasharray: 1,3;
+      opacity: 0.2;
     }
     
     .fork-line {
