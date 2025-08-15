@@ -202,22 +202,22 @@ func GetMevBlocksFiltered(offset uint64, limit uint32, filter *dbtypes.MevBlockF
 	filterOp := "WHERE"
 	if filter.MinSlot > 0 {
 		args = append(args, filter.MinSlot)
-		fmt.Fprintf(&sql, " %v slot_number >= $%v", filterOp, len(args))
+		fmt.Fprintf(&sql, " %v mev_blocks.slot_number >= $%v", filterOp, len(args))
 		filterOp = "AND"
 	}
 	if filter.MaxSlot > 0 {
 		args = append(args, filter.MaxSlot)
-		fmt.Fprintf(&sql, " %v slot_number <= $%v", filterOp, len(args))
+		fmt.Fprintf(&sql, " %v mev_blocks.slot_number <= $%v", filterOp, len(args))
 		filterOp = "AND"
 	}
 	if filter.MinIndex > 0 {
 		args = append(args, filter.MinIndex)
-		fmt.Fprintf(&sql, " %v proposer_index >= $%v", filterOp, len(args))
+		fmt.Fprintf(&sql, " %v mev_blocks.proposer_index >= $%v", filterOp, len(args))
 		filterOp = "AND"
 	}
 	if filter.MaxIndex > 0 {
 		args = append(args, filter.MaxIndex)
-		fmt.Fprintf(&sql, " %v proposer_index <= $%v", filterOp, len(args))
+		fmt.Fprintf(&sql, " %v mev_blocks.proposer_index <= $%v", filterOp, len(args))
 		filterOp = "AND"
 	}
 	if len(filter.Proposed) > 0 {
@@ -227,14 +227,14 @@ func GetMevBlocksFiltered(offset uint64, limit uint32, filter *dbtypes.MevBlockF
 				fmt.Fprintf(&sql, " OR ")
 			}
 			args = append(args, v)
-			fmt.Fprintf(&sql, " proposed = $%v", len(args))
+			fmt.Fprintf(&sql, " mev_blocks.proposed = $%v", len(args))
 		}
 		fmt.Fprintf(&sql, " )")
 		filterOp = "AND"
 	}
 	if len(filter.BuilderPubkey) > 0 {
 		args = append(args, filter.BuilderPubkey)
-		fmt.Fprintf(&sql, " %v builder_pubkey = $%v", filterOp, len(args))
+		fmt.Fprintf(&sql, " %v mev_blocks.builder_pubkey = $%v", filterOp, len(args))
 		filterOp = "AND"
 	}
 	if len(filter.MevRelay) > 0 {
@@ -246,7 +246,7 @@ func GetMevBlocksFiltered(offset uint64, limit uint32, filter *dbtypes.MevBlockF
 			seenbyPattern |= uint64(1) << relayId
 		}
 		args = append(args, seenbyPattern)
-		fmt.Fprintf(&sql, " %v (seenby_relays & $%v) != 0", filterOp, len(args))
+		fmt.Fprintf(&sql, " %v (mev_blocks.seenby_relays & $%v) != 0", filterOp, len(args))
 		filterOp = "AND"
 	}
 	if filter.ProposerName != "" {
