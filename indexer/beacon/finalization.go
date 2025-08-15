@@ -1,6 +1,7 @@
 package beacon
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"sort"
@@ -14,6 +15,7 @@ import (
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/jmoiron/sqlx"
+	"github.com/mashingan/smapping"
 )
 
 // processFinalityEvent processes a finality event.
@@ -299,6 +301,89 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 		block.blockResults = nil // force re-simulation of block results
 	}
 
+	dependentGroups := map[phase0.Root][]*Block{}
+	for _, block := range orphanedBlocks {
+		var dependentRoot phase0.Root
+		client := indexer.GetReadyClientByBlockRoot(block.Root, false)
+		if client == nil {
+			seenBy := block.GetSeenBy()
+			if len(seenBy) > 0 {
+				client = seenBy[0]
+			}
+		}
+		if dependentBlock := indexer.blockCache.getDependentBlock(chainState, block, client); dependentBlock != nil {
+			dependentRoot = dependentBlock.Root
+		}
+
+		if dependentGroups[dependentRoot] == nil {
+			dependentGroups[dependentRoot] = []*Block{block}
+		} else {
+			dependentGroups[dependentRoot] = append(dependentGroups[dependentRoot], block)
+		}
+	}
+
+	orphanedEpochData := []*pruningEpochData{}
+	for dependentRoot, blocks := range dependentGroups {
+		epochStats := indexer.epochCache.getEpochStats(epoch, dependentRoot)
+
+		// ensure epoch stats are loaded
+		if epochStats != nil && !epochStats.ready {
+			continue
+		}
+
+		// get all chain heads from the list of blocks
+		chainHeads := map[phase0.Root]*Block{}
+		for _, block := range blocks {
+			parentRoot := block.GetParentRoot()
+			if parentRoot != nil {
+				delete(chainHeads, *parentRoot)
+			}
+
+			chainHeads[block.Root] = block
+		}
+
+		// reconstruct all chains from the chain heads
+		chainBlocks := map[*Block][]*Block{}
+		for _, chainHead := range chainHeads {
+			chain := []*Block{}
+
+			for _, block := range blocks {
+				if indexer.blockCache.isCanonicalBlock(block.Root, chainHead.Root) {
+					chain = append(chain, block)
+				}
+			}
+
+			chainBlocks[chainHead] = chain
+		}
+
+		// generate epoch aggregations for each chain
+		for chainHead, chain := range chainBlocks {
+			nextBlocks := []*Block{}
+			nextParentRoot := chainHead.Root
+			for _, block := range nextEpochBlocks {
+				parentRoot := block.GetParentRoot()
+				if parentRoot != nil && bytes.Equal((*parentRoot)[:], nextParentRoot[:]) {
+					nextBlocks = append(nextBlocks, block)
+					nextParentRoot = block.Root
+				}
+			}
+
+			// compute votes for canonical blocks
+			votingBlocks := make([]*Block, len(chain)+len(nextBlocks))
+			copy(votingBlocks, chain)
+			copy(votingBlocks[len(chain):], nextBlocks)
+			epochVotes := indexer.aggregateEpochVotes(epoch, chainState, votingBlocks, epochStats)
+
+			orphanedEpochData = append(orphanedEpochData, &pruningEpochData{
+				dependentRoot: dependentRoot,
+				chainHead:     chainHead,
+				chain:         chain,
+				epochStats:    epochStats,
+				epochVotes:    epochVotes,
+			})
+		}
+	}
+
 	t1dur := time.Since(t1) - t1loading
 	t1 = time.Now()
 
@@ -336,6 +421,29 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 
 			if err := db.InsertOrphanedBlock(orphanedBlock, tx); err != nil {
 				return fmt.Errorf("failed persisting orphaned slot %v (%v): %v", block.Slot, block.Root.String(), err)
+			}
+		}
+
+		// persist orphaned epoch data
+		for _, epochData := range orphanedEpochData {
+			dbEpoch := indexer.dbWriter.buildDbEpoch(epoch, epochData.chain, epochData.epochStats, epochData.epochVotes, nil)
+
+			mapped := smapping.MapTags(dbEpoch, "db")
+
+			dbOrphanedEpoch := dbtypes.OrphanedEpoch{}
+			err := smapping.FillStructByTags(&dbOrphanedEpoch, mapped, "db")
+			if err != nil {
+				indexer.logger.Errorf("mapper failed copying epoch to unfinalized epoch: %v", err)
+				continue
+			}
+
+			dbOrphanedEpoch.DependentRoot = epochData.dependentRoot[:]
+			dbOrphanedEpoch.EpochHeadRoot = epochData.chainHead.Root[:]
+			dbOrphanedEpoch.EpochHeadForkId = uint64(epochData.chainHead.forkId)
+
+			err = db.InsertOrphanedEpoch(&dbOrphanedEpoch, tx)
+			if err != nil {
+				indexer.logger.Errorf("error persisting orphaned epoch %v: %v", dbOrphanedEpoch.Epoch, err)
 			}
 		}
 
