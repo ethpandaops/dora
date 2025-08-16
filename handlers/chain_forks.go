@@ -18,7 +18,13 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-const DefaultChainForksPageSize = 8640 // 24 hours at 12 seconds per slot
+// getDefaultChainForksPageSize returns 1 day worth of epochs
+func getDefaultChainForksPageSize() uint64 {
+	chainState := services.GlobalBeaconService.GetChainState()
+	specs := chainState.GetSpecs()
+	secondsPerEpoch := uint64(specs.SlotsPerEpoch) * uint64(specs.SecondsPerSlot.Seconds())
+	return uint64(24*3600) / secondsPerEpoch // 1 day worth of epochs
+}
 
 // ChainForks will return the chain forks visualization page using a go template
 func ChainForks(w http.ResponseWriter, r *http.Request) {
@@ -40,8 +46,16 @@ func ChainForks(w http.ResponseWriter, r *http.Request) {
 	// Parse page size parameter (in epochs)
 	var pageSizeEpochs uint64 = 0 // 0 means use default
 	if pageSizeStr := r.URL.Query().Get("size"); pageSizeStr != "" {
-		if parsed, err := strconv.ParseUint(pageSizeStr, 10, 64); err == nil && parsed > 0 && parsed <= 10000 {
-			pageSizeEpochs = parsed
+		if parsed, err := strconv.ParseUint(pageSizeStr, 10, 64); err == nil && parsed > 0 {
+			// Calculate max allowed epochs (14 days)
+			chainState := services.GlobalBeaconService.GetChainState()
+			specs := chainState.GetSpecs()
+			secondsPerEpoch := uint64(specs.SlotsPerEpoch) * uint64(specs.SecondsPerSlot.Seconds())
+			maxEpochs := uint64(14*24*3600) / secondsPerEpoch
+			
+			if parsed <= maxEpochs {
+				pageSizeEpochs = parsed
+			}
 		}
 	}
 
@@ -53,6 +67,12 @@ func ChainForks(w http.ResponseWriter, r *http.Request) {
 		startSlot = currentSlot
 	}
 
+	// Store original requested size for UI display
+	originalPageSizeEpochs := pageSizeEpochs
+
+	// Normalize slot range to reduce cache fragmentation
+	startSlot, pageSizeEpochs = normalizeSlotRange(startSlot, pageSizeEpochs)
+
 	var pageError error
 	pageError = services.GlobalCallRateLimiter.CheckCallLimit(r, 1)
 	if pageError == nil {
@@ -61,7 +81,8 @@ func ChainForks(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 
 			// Get cached diagram data for AJAX
-			ajaxData, ajaxErr := getChainForksDiagramData(startSlot, pageSizeEpochs)
+			originalStart, _ := strconv.ParseUint(r.URL.Query().Get("start"), 10, 64)
+			ajaxData, ajaxErr := getChainForksDiagramData(startSlot, pageSizeEpochs, originalStart, originalPageSizeEpochs)
 			if ajaxErr != nil {
 				handlePageError(w, r, ajaxErr)
 				return
@@ -79,8 +100,8 @@ func ChainForks(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Get lightweight page data for template only (no fork processing)
-		data.Data, pageError = getChainForksPageData(startSlot, pageSizeEpochs)
+		// Get lightweight page data for template only (just chain specs)
+		data.Data, pageError = getChainForksPageData()
 	}
 	if pageError != nil {
 		handlePageError(w, r, pageError)
@@ -93,31 +114,35 @@ func ChainForks(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func getChainForksPageData(startSlot uint64, pageSizeEpochs uint64) (*models.ChainForksPageData, error) {
-	pageData := &models.ChainForksPageData{}
-	pageCacheKey := fmt.Sprintf("chain_forks_%d_%d", startSlot, pageSizeEpochs)
-	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
-		pageData, cacheTimeout := buildChainForksPageData(startSlot, pageSizeEpochs)
-		pageCall.CacheTimeout = cacheTimeout
-		return pageData
-	})
-	if pageErr == nil && pageRes != nil {
-		resData, resOk := pageRes.(*models.ChainForksPageData)
-		if !resOk {
-			return nil, ErrInvalidPageModel
-		}
-		pageData = resData
+func getChainForksPageData() (*models.ChainForksPageData, error) {
+	// Just return chain specs, no caching needed for static data
+	chainState := services.GlobalBeaconService.GetChainState()
+	specs := chainState.GetSpecs()
+
+	// Calculate epoch counts for time selectors
+	secondsPerEpoch := uint64(specs.SlotsPerEpoch) * uint64(specs.SecondsPerSlot.Seconds())
+
+	pageData := &models.ChainForksPageData{
+		ChainSpecs: &models.ChainSpecs{
+			SlotsPerEpoch:  uint64(specs.SlotsPerEpoch),
+			SecondsPerSlot: uint64(specs.SecondsPerSlot.Seconds()),
+			EpochsFor12h:   uint64(12*3600) / secondsPerEpoch,
+			EpochsFor1d:    uint64(24*3600) / secondsPerEpoch,
+			EpochsFor7d:    uint64(7*24*3600) / secondsPerEpoch,
+			EpochsFor14d:   uint64(14*24*3600) / secondsPerEpoch,
+		},
 	}
-	return pageData, pageErr
+
+	return pageData, nil
 }
 
-func getChainForksDiagramData(startSlot uint64, pageSizeEpochs uint64) (*models.ChainForksDiagramData, error) {
+func getChainForksDiagramData(startSlot uint64, pageSizeEpochs uint64, originalStart uint64, originalPageSizeEpochs uint64) (*models.ChainForksDiagramData, error) {
 	// Use separate cache key for diagram data only
 	diagramCacheKey := fmt.Sprintf("chain_forks_diagram_%d_%d", startSlot, pageSizeEpochs)
-	var diagramData *models.ChainForksDiagramData
+	diagramData := &models.ChainForksDiagramData{}
 
-	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(diagramCacheKey, true, &diagramData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
-		diagramData, cacheTimeout := buildChainForksDiagramData(startSlot, pageSizeEpochs)
+	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(diagramCacheKey, true, diagramData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
+		diagramData, cacheTimeout := buildChainForksDiagramData(startSlot, pageSizeEpochs, originalStart, originalPageSizeEpochs)
 		pageCall.CacheTimeout = cacheTimeout
 		return diagramData
 	})
@@ -132,75 +157,20 @@ func getChainForksDiagramData(startSlot uint64, pageSizeEpochs uint64) (*models.
 	return diagramData, pageErr
 }
 
-func buildChainForksPageData(startSlot uint64, pageSizeEpochs uint64) (*models.ChainForksPageData, time.Duration) {
-	// Calculate slot ranges for time window (same logic as full version)
-	endSlot := startSlot
-	actualStartSlot := calculateStartSlot(startSlot, pageSizeEpochs)
-
+func buildChainForksDiagramData(startSlot uint64, pageSizeEpochs uint64, originalStart uint64, originalPageSizeEpochs uint64) (*models.ChainForksDiagramData, time.Duration) {
 	chainState := services.GlobalBeaconService.GetChainState()
 	specs := chainState.GetSpecs()
+	currentSlot := uint64(chainState.CurrentSlot())
 
-	// Calculate epochs
-	startEpoch := uint64(chainState.EpochOfSlot(phase0.Slot(actualStartSlot)))
-	endEpoch := uint64(chainState.EpochOfSlot(phase0.Slot(endSlot)))
-
-	// Calculate epoch counts for time selectors
-	secondsPerEpoch := uint64(specs.SlotsPerEpoch) * uint64(specs.SecondsPerSlot.Seconds())
-	epochsFor3h := uint64(3*3600) / secondsPerEpoch
-	epochsFor12h := uint64(12*3600) / secondsPerEpoch
-	epochsFor1d := uint64(24*3600) / secondsPerEpoch
-	epochsFor7d := uint64(7*24*3600) / secondsPerEpoch
-
-	// Initialize page data with basic info only (no fork processing)
-	pageData := &models.ChainForksPageData{
-		StartSlot:      actualStartSlot,
-		EndSlot:        endSlot,
-		StartEpoch:     startEpoch,
-		EndEpoch:       endEpoch,
-		PageSize:       DefaultChainForksPageSize,
-		PageSizeEpochs: pageSizeEpochs,
-		FinalitySlot:   uint64(chainState.GetFinalizedSlot()),
-		ChainSpecs: &models.ChainSpecs{
-			SlotsPerEpoch:  uint64(specs.SlotsPerEpoch),
-			SecondsPerSlot: uint64(specs.SecondsPerSlot.Seconds()),
-			EpochsFor3h:    epochsFor3h,
-			EpochsFor12h:   epochsFor12h,
-			EpochsFor1d:    epochsFor1d,
-			EpochsFor7d:    epochsFor7d,
-		},
+	// Use normalized boundaries directly - no additional calculation needed
+	actualStartSlot := startSlot
+	endSlot := startSlot + (pageSizeEpochs * uint64(specs.SlotsPerEpoch))
+	
+	// Clip end slot to current slot - don't render future epochs
+	if endSlot > currentSlot {
+		endSlot = currentSlot
 	}
-
-	cacheTime := specs.SecondsPerSlot * 12
-
-	// Set up pagination (same logic as full version)
-	var pageSize uint64
-	if pageSizeEpochs > 0 {
-		pageSize = pageSizeEpochs * uint64(specs.SlotsPerEpoch)
-	} else {
-		pageSize = uint64(DefaultChainForksPageSize)
-	}
-
-	if startSlot >= pageSize {
-		prevSlot := startSlot - pageSize
-		pageData.PrevPageSlot = &prevSlot
-	}
-
-	finalizedSlot := uint64(chainState.GetFinalizedSlot())
-	if startSlot+pageSize < finalizedSlot {
-		nextSlot := startSlot + pageSize
-		pageData.NextPageSlot = &nextSlot
-	}
-
-	return pageData, cacheTime
-}
-
-func buildChainForksDiagramData(startSlot uint64, pageSizeEpochs uint64) (*models.ChainForksDiagramData, time.Duration) {
-	// Calculate slot ranges for time window
-	endSlot := startSlot
-	actualStartSlot := calculateStartSlot(startSlot, pageSizeEpochs)
-
-	chainState := services.GlobalBeaconService.GetChainState()
-	specs := chainState.GetSpecs()
+	
 
 	// Calculate epochs
 	startEpoch := uint64(chainState.EpochOfSlot(phase0.Slot(actualStartSlot)))
@@ -220,13 +190,17 @@ func buildChainForksDiagramData(startSlot uint64, pageSizeEpochs uint64) (*model
 	if err != nil {
 		logrus.Errorf("Error fetching fork visualization data: %v", err)
 		return &models.ChainForksDiagramData{
-			Diagram:      nil,
-			StartSlot:    actualStartSlot,
-			EndSlot:      endSlot,
-			StartEpoch:   startEpoch,
-			EndEpoch:     endEpoch,
-			FinalitySlot: uint64(chainState.GetFinalizedSlot()),
-			Error:        "Failed to fetch fork data from database",
+			Diagram:             nil,
+			StartSlot:           actualStartSlot,
+			EndSlot:             endSlot,
+			StartEpoch:          startEpoch,
+			EndEpoch:            endEpoch,
+			FinalitySlot:        uint64(chainState.GetFinalizedSlot()),
+			RequestedStartSlot:  originalStart,
+			RequestedSizeEpochs: originalPageSizeEpochs,
+			PrevPageSlot:        nil,
+			NextPageSlot:        nil,
+			Error:               "Failed to fetch fork data from database",
 		}, cacheTime
 	}
 
@@ -236,13 +210,17 @@ func buildChainForksDiagramData(startSlot uint64, pageSizeEpochs uint64) (*model
 	if err != nil {
 		logrus.Errorf("Error processing forks with epoch-based participation data: %v", err)
 		return &models.ChainForksDiagramData{
-			Diagram:      nil,
-			StartSlot:    actualStartSlot,
-			EndSlot:      endSlot,
-			StartEpoch:   startEpoch,
-			EndEpoch:     endEpoch,
-			FinalitySlot: finalizedSlot,
-			Error:        "Failed to process fork data",
+			Diagram:             nil,
+			StartSlot:           actualStartSlot,
+			EndSlot:             endSlot,
+			StartEpoch:          startEpoch,
+			EndEpoch:            endEpoch,
+			FinalitySlot:        finalizedSlot,
+			RequestedStartSlot:  originalStart,
+			RequestedSizeEpochs: originalPageSizeEpochs,
+			PrevPageSlot:        nil,
+			NextPageSlot:        nil,
+			Error:               "Failed to process fork data",
 		}, 0
 	}
 
@@ -260,14 +238,51 @@ func buildChainForksDiagramData(startSlot uint64, pageSizeEpochs uint64) (*model
 	// Build diagram data
 	chainDiagram := buildChainDiagram(forks, startEpoch, endEpoch, indexer)
 
+	// Set up pagination using proper boundaries
+	var prevPageSlot *uint64
+	var nextPageSlot *uint64
+
+	// For previous page, calculate what start slot would result in a page ending at our start
+	if actualStartSlot > 0 {
+		// Previous page should end at our start, so calculate its start
+		prevStart := actualStartSlot - (pageSizeEpochs * uint64(specs.SlotsPerEpoch))
+		if prevStart > 0 {
+			prevPageSlot = &prevStart
+		} else {
+			// If we'd go negative, start from 0
+			zeroSlot := uint64(0)
+			prevPageSlot = &zeroSlot
+		}
+	}
+
+	// For next page, only available if we're not already at head
+	if startSlot < currentSlot {
+		// Calculate view size for next page calculation
+		var viewSize uint64
+		if pageSizeEpochs > 0 {
+			viewSize = pageSizeEpochs * uint64(specs.SlotsPerEpoch)
+		} else {
+			viewSize = getDefaultChainForksPageSize() * uint64(specs.SlotsPerEpoch)
+		}
+
+		nextSlot := startSlot + viewSize
+		if nextSlot < finalizedSlot {
+			nextPageSlot = &nextSlot
+		}
+	}
+
 	// Return only the data needed for AJAX
 	return &models.ChainForksDiagramData{
-		Diagram:      chainDiagram,
-		StartSlot:    actualStartSlot,
-		EndSlot:      endSlot,
-		StartEpoch:   startEpoch,
-		EndEpoch:     endEpoch,
-		FinalitySlot: uint64(chainState.GetFinalizedSlot()),
+		Diagram:             chainDiagram,
+		StartSlot:           actualStartSlot,
+		EndSlot:             endSlot,
+		StartEpoch:          startEpoch,
+		EndEpoch:            endEpoch,
+		FinalitySlot:        uint64(chainState.GetFinalizedSlot()),
+		RequestedStartSlot:  originalStart,
+		RequestedSizeEpochs: originalPageSizeEpochs,
+		PrevPageSlot:        prevPageSlot,
+		NextPageSlot:        nextPageSlot,
 	}, cacheTime
 }
 
@@ -407,22 +422,15 @@ func calculateStartSlot(startSlot uint64, pageSizeEpochs uint64) uint64 {
 		recentSlotWindow = pageSizeEpochs * slotsPerEpoch
 	} else {
 		// Use default page size
-		recentSlotWindow = uint64(DefaultChainForksPageSize)
+		recentSlotWindow = getDefaultChainForksPageSize() * slotsPerEpoch
 	}
 
-	// Debug logging
-	logrus.Infof("calculateStartSlot: startSlot=%d, pageSizeEpochs=%d, slotsPerEpoch=%d, recentSlotWindow=%d",
-		startSlot, pageSizeEpochs, slotsPerEpoch, recentSlotWindow)
-
 	if startSlot > recentSlotWindow {
-		result := startSlot - recentSlotWindow
-		logrus.Infof("calculateStartSlot: returning %d (startSlot - recentSlotWindow)", result)
-		return result
+		return startSlot - recentSlotWindow
 	}
 
 	// If requested window is larger than available history, start from slot 0
 	// but still respect the window size for the end slot calculation
-	logrus.Infof("calculateStartSlot: returning 0 (requested window larger than available history)")
 	return 0
 }
 
@@ -987,4 +995,67 @@ func createCanonicalChainFork(forks []*models.ChainFork, canonicalForkIdSet map[
 		Length:        canonicalEndSlot + 1,
 		BlockCount:    blockCount,
 	}
+}
+
+// normalizeSlotRange normalizes the requested slot range to reduce cache fragmentation
+func normalizeSlotRange(startSlot uint64, pageSizeEpochs uint64) (uint64, uint64) {
+	chainState := services.GlobalBeaconService.GetChainState()
+	specs := chainState.GetSpecs()
+	currentSlot := uint64(chainState.CurrentSlot())
+	slotsPerEpoch := uint64(specs.SlotsPerEpoch)
+	
+
+	// Calculate view range size in slots
+	var viewSize uint64
+	if pageSizeEpochs > 0 {
+		viewSize = pageSizeEpochs * slotsPerEpoch
+	} else {
+		viewSize = getDefaultChainForksPageSize() * slotsPerEpoch
+	}
+
+	// When at head: normalize END to boundary, ensure range includes current head
+	if startSlot >= currentSlot {
+		// Calculate 20% slice size in epochs
+		if pageSizeEpochs == 0 {
+			pageSizeEpochs = getDefaultChainForksPageSize()
+		}
+		sliceEpochs := pageSizeEpochs / 5 // 20% slices
+		if sliceEpochs == 0 {
+			sliceEpochs = 1
+		}
+
+		currentEpoch := currentSlot / slotsPerEpoch
+		
+		// Find the boundary END that includes current head, then calculate start
+		// Round current epoch UP to next slice boundary for the END
+		boundaryEndEpoch := ((currentEpoch + sliceEpochs - 1) / sliceEpochs) * sliceEpochs
+		
+		// Ensure the boundary end is actually beyond current epoch
+		if boundaryEndEpoch <= currentEpoch {
+			boundaryEndEpoch += sliceEpochs
+		}
+		
+		// Calculate start that gives us exactly requested size ending at boundary
+		boundaryStartEpoch := boundaryEndEpoch - pageSizeEpochs
+		boundarySlot := boundaryStartEpoch * slotsPerEpoch
+
+
+		return boundarySlot, pageSizeEpochs
+	}
+
+	// When not at head: normalize start to boundary, pass through page size
+	sliceSize := viewSize / 5 // 20% slices
+	if sliceSize == 0 {
+		sliceSize = 1
+	}
+
+	// If start matches a boundary, keep it
+	if startSlot%sliceSize == 0 {
+		return startSlot, pageSizeEpochs
+	}
+
+	// Align start to the next boundary (add slots)
+	alignedStart := ((startSlot / sliceSize) + 1) * sliceSize
+
+	return alignedStart, pageSizeEpochs
 }

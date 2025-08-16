@@ -12,32 +12,20 @@
 
     <!-- Navigation Controls -->
     <div class="d-flex justify-content-between align-items-center mb-3">
-      <div>
-        {{ if .PrevPageSlot }}
-          <a href="/chain-forks?start={{ .PrevPageSlot }}{{ if .PageSizeEpochs }}&size={{ .PageSizeEpochs }}{{ end }}" class="btn btn-sm btn-outline-primary">
-            <i class="fas fa-arrow-left"></i> Previous
-          </a>
-        {{ end }}
-        {{ if .NextPageSlot }}
-          <a href="/chain-forks?start={{ .NextPageSlot }}{{ if .PageSizeEpochs }}&size={{ .PageSizeEpochs }}{{ end }}" class="btn btn-sm btn-outline-primary ms-2">
-            Next <i class="fas fa-arrow-right"></i>
-          </a>
-        {{ end }}
+      <div id="navigationButtons">
+        <!-- Previous/Next buttons will be populated by JavaScript -->
       </div>
       <div class="text-center">
-        <div class="btn-group btn-group-sm mb-2" role="group" aria-label="Time Range">
-          <a href="/chain-forks" class="btn btn-outline-secondary{{ if not .PageSizeEpochs }} active{{ end }}">Default</a>
-          <a href="/chain-forks?size={{ .ChainSpecs.EpochsFor3h }}" class="btn btn-outline-secondary{{ if eq .PageSizeEpochs .ChainSpecs.EpochsFor3h }} active{{ end }}">3h</a>
-          <a href="/chain-forks?size={{ .ChainSpecs.EpochsFor12h }}" class="btn btn-outline-secondary{{ if eq .PageSizeEpochs .ChainSpecs.EpochsFor12h }} active{{ end }}">12h</a>
-          <a href="/chain-forks?size={{ .ChainSpecs.EpochsFor1d }}" class="btn btn-outline-secondary{{ if eq .PageSizeEpochs .ChainSpecs.EpochsFor1d }} active{{ end }}">1d</a>
-          <a href="/chain-forks?size={{ .ChainSpecs.EpochsFor7d }}" class="btn btn-outline-secondary{{ if eq .PageSizeEpochs .ChainSpecs.EpochsFor7d }} active{{ end }}">7d</a>
+        <div class="btn-group btn-group-sm mb-2" role="group" aria-label="Time Range" id="timeRangeButtons">
+          <a href="/chain-forks" class="btn btn-outline-secondary time-range-btn" data-size="0">Default</a>
+          <a href="/chain-forks?size={{ .ChainSpecs.EpochsFor12h }}" class="btn btn-outline-secondary time-range-btn" data-size="{{ .ChainSpecs.EpochsFor12h }}">12h</a>
+          <a href="/chain-forks?size={{ .ChainSpecs.EpochsFor1d }}" class="btn btn-outline-secondary time-range-btn" data-size="{{ .ChainSpecs.EpochsFor1d }}">1d</a>
+          <a href="/chain-forks?size={{ .ChainSpecs.EpochsFor7d }}" class="btn btn-outline-secondary time-range-btn" data-size="{{ .ChainSpecs.EpochsFor7d }}">7d</a>
+          <a href="/chain-forks?size={{ .ChainSpecs.EpochsFor14d }}" class="btn btn-outline-secondary time-range-btn" data-size="{{ .ChainSpecs.EpochsFor14d }}">14d</a>
         </div>
       </div>
-      <div class="text-muted text-end">
-        Slots {{ formatAddCommas .StartSlot }} - {{ formatAddCommas .EndSlot }} (Epochs {{ .StartEpoch }} - {{ .EndEpoch }})
-        {{ if .PageSizeEpochs }}
-          <br><small>Custom view: {{ .PageSizeEpochs }} epochs</small>
-        {{ end }}
+      <div class="text-muted text-end" id="rangeInfo">
+        <!-- Range info will be populated by JavaScript -->
       </div>
     </div>
 

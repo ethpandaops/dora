@@ -1,38 +1,33 @@
 package models
 
-// ChainForksPageData is a struct to hold info for the chain forks visualization page
+// ChainForksPageData is a struct to hold minimal info for the chain forks visualization page template
 type ChainForksPageData struct {
-	StartSlot      uint64      `json:"start_slot"`
-	EndSlot        uint64      `json:"end_slot"`
-	StartEpoch     uint64      `json:"start_epoch"`
-	EndEpoch       uint64      `json:"end_epoch"`
-	PageSize       uint64      `json:"page_size"`
-	PageSizeEpochs uint64      `json:"page_size_epochs"` // Custom page size in epochs (0 = default)
-	FinalitySlot   uint64      `json:"finality_slot"`
-	PrevPageSlot   *uint64     `json:"prev_page_slot"`
-	NextPageSlot   *uint64     `json:"next_page_slot"`
-	ChainSpecs     *ChainSpecs `json:"chain_specs"`
+	ChainSpecs *ChainSpecs `json:"chain_specs"`
 }
 
 // ChainSpecs contains chain specification values needed for visualization
 type ChainSpecs struct {
 	SlotsPerEpoch  uint64 `json:"slots_per_epoch"`
 	SecondsPerSlot uint64 `json:"seconds_per_slot"`
-	EpochsFor3h    uint64 `json:"epochs_for_3h"` // Pre-calculated epoch counts for time selectors
-	EpochsFor12h   uint64 `json:"epochs_for_12h"`
+	EpochsFor12h   uint64 `json:"epochs_for_12h"` // Pre-calculated epoch counts for time selectors
 	EpochsFor1d    uint64 `json:"epochs_for_1d"`
 	EpochsFor7d    uint64 `json:"epochs_for_7d"`
+	EpochsFor14d   uint64 `json:"epochs_for_14d"`
 }
 
-// ChainForksDiagramData contains only the data needed for AJAX diagram requests
+// ChainForksDiagramData contains all the data needed for AJAX diagram requests
 type ChainForksDiagramData struct {
-	Diagram      *ChainDiagram `json:"diagram"`
-	StartSlot    uint64        `json:"start_slot"`
-	EndSlot      uint64        `json:"end_slot"`
-	StartEpoch   uint64        `json:"start_epoch"`
-	EndEpoch     uint64        `json:"end_epoch"`
-	FinalitySlot uint64        `json:"finality_slot"`
-	Error        string        `json:"error,omitempty"` // Error message if something went wrong
+	Diagram             *ChainDiagram `json:"diagram"`
+	StartSlot           uint64        `json:"start_slot"`
+	EndSlot             uint64        `json:"end_slot"`
+	StartEpoch          uint64        `json:"start_epoch"`
+	EndEpoch            uint64        `json:"end_epoch"`
+	FinalitySlot        uint64        `json:"finality_slot"`
+	RequestedStartSlot  uint64        `json:"requested_start_slot"`  // Original requested start
+	RequestedSizeEpochs uint64        `json:"requested_size_epochs"` // Original requested size
+	PrevPageSlot        *uint64       `json:"prev_page_slot"`
+	NextPageSlot        *uint64       `json:"next_page_slot"`
+	Error               string        `json:"error,omitempty"` // Error message if something went wrong
 }
 
 type ChainFork struct {

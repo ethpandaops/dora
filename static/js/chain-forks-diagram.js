@@ -223,6 +223,12 @@ function loadDiagramData(isRefresh = false, callback = null) {
                 }
                 
                 currentDiagramData = data;
+                
+                // Update UI elements with data
+                updateNavigationButtons(data);
+                updateTimeRangeButtons(data);
+                updateRangeInfo(data);
+                
                 renderChainForkTree();
                 
                 // Restore scroll position and details panel if we're refreshing
@@ -440,7 +446,7 @@ function renderChainForkTree() {
     
     // Calculate epoch range first to determine required height
     const startEpoch = currentDiagramData.start_epoch;
-    const endEpoch = currentDiagramData.end_epoch;
+    const endEpoch = currentDiagramData.end_epoch + 1;
     const epochRange = endEpoch - startEpoch;
     
     // Ensure each 5-epoch block is at least 50px (zoom applied later)
@@ -468,10 +474,6 @@ function renderChainForkTree() {
     svg.setAttribute('viewBox', `0 0 ${containerWidth} ${containerHeight}`);
     svg.style.background = 'transparent';
     
-    // Layout parameters
-    const drawingWidth = containerWidth - margin.left - margin.right;
-    const drawingHeight = containerHeight - margin.top - margin.bottom;
-    
     // Calculate base time scale (zoom will be applied in getEpochY)
     const baseDrawingHeight = baseContainerHeight - margin.top - margin.bottom;
     const timeScale = epochRange > 0 ? baseDrawingHeight / epochRange : 1;
@@ -480,16 +482,28 @@ function renderChainForkTree() {
     
     // Helper functions
     function getEpochY(epoch) {
-        // Head (newest) at top, older epochs below  
-        const y = margin.top + ((endEpoch - epoch) * timeScale * zoomLevel);
+        // Head (newest) at top, older epochs below
+        // Add a small top gap (20px) to ensure head content isn't at the very edge
+        const topGap = 20;
+        const y = margin.top + topGap + ((endEpoch - epoch) * timeScale * zoomLevel);
         return y;
     }
     
-    // Convert slot to epoch for Y positioning
+    // Convert slot to precise Y position with slot-level precision within epochs
     function getSlotY(slot) {
         const slotsPerEpoch = (staticData.specs && staticData.specs.slots_per_epoch) ? staticData.specs.slots_per_epoch : 32; // Use static specs data
         const epoch = Math.floor(slot / slotsPerEpoch);
-        const y = getEpochY(epoch);
+        const slotInEpoch = slot % slotsPerEpoch;
+        
+        // Get the Y position for the epoch start
+        const epochY = getEpochY(epoch);
+        
+        // Calculate the height of one epoch in pixels
+        const epochHeight = timeScale * zoomLevel;
+        
+        // Add slot-level offset within the epoch
+        const slotOffset = ((slotInEpoch / slotsPerEpoch) * epochHeight);
+        const y = epochY - slotOffset;
         
         
         return y;
@@ -550,8 +564,18 @@ function renderChainForkTree() {
     }
     
     
-    // Draw time grid (horizontal lines) - showing every 5 epochs
-    const epochStep = 5;
+    // Draw time grid (horizontal lines) - dynamic interval based on zoom level
+    const epochHeight = timeScale * zoomLevel;
+    let epochStep = 5; // Start with default 5 epochs
+    
+    // Adjust interval based on zoom level for optimal visual spacing
+    while (epochStep * epochHeight < 10 && epochStep < 320) {
+        epochStep *= 2; // Double interval if too small (min 10px spacing)
+    }
+    while (epochStep * epochHeight > 300 && epochStep > 1) {
+        epochStep = Math.max(1, Math.floor(epochStep / 2)); // Halve interval if too large (max 300px spacing)
+    }
+    
     // Start from the nearest multiple of epochStep at or before startEpoch
     const firstGridEpoch = Math.floor(startEpoch / epochStep) * epochStep;
     for (let epoch = firstGridEpoch; epoch <= endEpoch; epoch += epochStep) {
@@ -644,6 +668,7 @@ function renderChainForkTree() {
         
         
         
+        
         // Use actual data positions - no artificial adjustments!
         let adjustedHeadY = headY;
         
@@ -668,14 +693,9 @@ function renderChainForkTree() {
             // Only draw branching connection if parent and child are at different X positions
             // Canonical chain forks at the same position don't need horizontal branch lines
             if (parentX !== forkX) {
-                // Determine the Y position for the branch point
+                // Always use the precise Y position for this fork's base slot
+                // This ensures horizontal branching lines don't overlap when multiple forks start at different slots
                 let branchY = baseY;
-                
-                // If the parent fork ends at or near this fork's base slot, and the parent has an adjusted head position,
-                // use the parent's actual head Y position for the branch point
-                if (parentFork && Math.abs(parentFork.headSlot - fork.baseSlot) <= 1 && forkHeadY[parentFork.forkId] !== undefined) {
-                    branchY = forkHeadY[parentFork.forkId];
-                }
                 // Draw horizontal branching line (always gray, behind fork lines)
                 const branchLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
                 // For canonical chain (fork 0), start directly at the line (no bullet offset)
@@ -715,17 +735,9 @@ function renderChainForkTree() {
         let forkElements = [];
         
         if (fork.baseSlot !== fork.headSlot) {
-            // Determine the starting Y position for the fork line
+            // Always use the precise Y position for this fork's base slot
+            // This ensures fork lines start at their exact base slot positions and don't overlap
             let startY = baseY;
-            
-            // If this fork continues from a parent (either at same or different position), 
-            // and the parent ends at this fork's base, start drawing from the parent's actual head Y position
-            const parentFork = diagram.forks.find(f => f.forkId === fork.parentFork);
-            if (parentFork && 
-                Math.abs(parentFork.headSlot - fork.baseSlot) <= 1 && 
-                forkHeadY[parentFork.forkId] !== undefined) {
-                startY = forkHeadY[parentFork.forkId];
-            }
             
             // Check if we have epoch-based participation data
             if (fork.participationByEpoch && Array.isArray(fork.participationByEpoch) && fork.participationByEpoch.length > 0) {
@@ -1305,9 +1317,9 @@ function drawForkWithParticipationGradient(fork, forkX, startY, endY, svg, getSl
         const epochParticipation = epochData.find(e => e.epoch === epoch);
         const participation = epochParticipation ? epochParticipation.participation : 0;
         
-        // Use direct slot-to-Y conversion for exact epoch boundary positioning
-        const segmentStartY = getSlotY(epochStartSlot);
-        const segmentEndY = getSlotY(epochEndSlot + 1); // +1 because epochEndSlot is inclusive
+        // Use direct slot-to-Y conversion for exact fork segment positioning
+        const segmentStartY = getSlotY(segmentStartSlot);
+        const segmentEndY = getSlotY(segmentEndSlot + 1); // +1 because segmentEndSlot is inclusive
         
         segments.push({
             epoch: epoch,
@@ -2016,4 +2028,70 @@ function findHighParticipationLane(lanes, baseSlot, specs, targetPosition) {
     
     // If target position is occupied, find next available position
     return findNextAvailableLaneJS(lanes, baseSlot, specs);
+}
+
+// Update navigation buttons based on data
+function updateNavigationButtons(data) {
+    const container = document.getElementById('navigationButtons');
+    if (!container) return;
+    
+    let html = '';
+    
+    if (data.prev_page_slot !== null && data.prev_page_slot !== undefined) {
+        const sizeParam = data.requested_size_epochs ? `&size=${data.requested_size_epochs}` : '';
+        html += `<a href="/chain-forks?start=${data.prev_page_slot}${sizeParam}" class="btn btn-sm btn-outline-primary">
+            <i class="fas fa-arrow-left"></i> Previous
+        </a>`;
+    }
+    
+    if (data.next_page_slot !== null && data.next_page_slot !== undefined) {
+        const sizeParam = data.requested_size_epochs ? `&size=${data.requested_size_epochs}` : '';
+        html += `<a href="/chain-forks?start=${data.next_page_slot}${sizeParam}" class="btn btn-sm btn-outline-primary ms-2">
+            Next <i class="fas fa-arrow-right"></i>
+        </a>`;
+    }
+    
+    container.innerHTML = html;
+}
+
+// Update time range buttons highlighting
+function updateTimeRangeButtons(data) {
+    const buttons = document.querySelectorAll('#timeRangeButtons .btn');
+    const requestedSize = data.requested_size_epochs || 0;
+    
+    buttons.forEach(btn => {
+        const btnSize = parseInt(btn.getAttribute('data-size')) || 0;
+        if (btnSize === requestedSize) {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
+    });
+}
+
+// Update range info display
+function updateRangeInfo(data) {
+    const container = document.getElementById('rangeInfo');
+    if (!container) return;
+    
+    const formatNumber = (num) => num.toLocaleString();
+    
+    let html = `Slots ${formatNumber(data.start_slot)} - ${formatNumber(data.end_slot)} (Epochs ${data.start_epoch} - ${data.end_epoch})`;
+    
+    // Check if this is a custom view (not matching predefined sizes)
+    if (window.chainDiagramData && window.chainDiagramData.specs) {
+        const specs = window.chainDiagramData.specs;
+        const requestedSize = data.requested_size_epochs || 0;
+        const isCustom = requestedSize > 0 && 
+                        requestedSize !== specs.epochs_for_3h &&
+                        requestedSize !== specs.epochs_for_12h &&
+                        requestedSize !== specs.epochs_for_1d &&
+                        requestedSize !== specs.epochs_for_7d;
+        
+        if (isCustom) {
+            html += `<br><small>Custom view: ${requestedSize} epochs</small>`;
+        }
+    }
+    
+    container.innerHTML = html;
 }
