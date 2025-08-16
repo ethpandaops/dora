@@ -6,14 +6,32 @@
  */
 
 let zoomLevel = 1.0;
-const ZOOM_MIN = 0.5;
-const ZOOM_MAX = 3.0;
-const ZOOM_STEP = 0.1;
+const ZOOM_MIN = 0.1; // Allow zooming out more for overview
+const ZOOM_MAX = 20.0; // Allow much higher zoom for detailed inspection
+const ZOOM_STEP_BASE = 0.1;
 
 // Zoom focus tracking
 let currentMousePos = { viewportX: 0, viewportY: 0, documentX: 0, documentY: 0 };
 let scrollContainer = null;
 let previousZoomLevel = 1.0;
+
+// Tooltip event queue system to prevent stuttering
+let tooltipQueue = {
+    showTimer: null,
+    hideTimer: null,
+    currentElement: null,
+    isShowing: false,
+    pendingShow: null
+};
+
+// Fork highlight event queue system to prevent stuttering
+let highlightQueue = {
+    highlightTimer: null,
+    unhighlightTimer: null,
+    currentForkId: null,
+    isHighlighted: false,
+    pendingHighlight: null
+};
 
 document.addEventListener('DOMContentLoaded', function() {
     if (typeof window.chainDiagramData === 'undefined') {
@@ -28,8 +46,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const zoomOutBtn = document.getElementById('zoomOut');
     const zoomResetBtn = document.getElementById('zoomReset');
     
-    if (zoomInBtn) zoomInBtn.addEventListener('click', () => zoom(ZOOM_STEP));
-    if (zoomOutBtn) zoomOutBtn.addEventListener('click', () => zoom(-ZOOM_STEP));
+    if (zoomInBtn) zoomInBtn.addEventListener('click', () => zoom(1));
+    if (zoomOutBtn) zoomOutBtn.addEventListener('click', () => zoom(-1));
     if (zoomResetBtn) zoomResetBtn.addEventListener('click', resetZoom);
     
     // Add mouse wheel zoom - will be attached after diagram creation
@@ -379,6 +397,19 @@ function renderChainForkTree() {
                 branchLine.style.opacity = '0.6';
                 svg.appendChild(branchLine);
                 
+                // Add wider invisible hit area for easier hovering
+                const branchHitArea = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                branchHitArea.setAttribute('x1', startX);
+                branchHitArea.setAttribute('y1', branchY);
+                branchHitArea.setAttribute('x2', forkX);
+                branchHitArea.setAttribute('y2', branchY);
+                branchHitArea.setAttribute('stroke', 'transparent');
+                branchHitArea.setAttribute('stroke-width', '8'); // Wider hit area for horizontal lines
+                branchHitArea.setAttribute('data-fork-id', fork.forkId);
+                branchHitArea.setAttribute('data-hit-area', 'true'); // Mark as hit area to exclude from highlighting
+                branchHitArea.style.cursor = 'pointer';
+                svg.appendChild(branchHitArea); // Add after original line so it's on top
+                
                 // Removed branch point circle - only showing head bubbles
             }
         }
@@ -416,7 +447,21 @@ function renderChainForkTree() {
                 forkLine.setAttribute('stroke-width', '3');
                 forkLine.style.cursor = 'pointer';
                 svg.appendChild(forkLine);
-                forkElements.push(forkLine);
+                
+                // Add wider invisible hit area for easier hovering
+                const hitArea = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                hitArea.setAttribute('x1', forkX);
+                hitArea.setAttribute('y1', startY);
+                hitArea.setAttribute('x2', forkX);
+                hitArea.setAttribute('y2', adjustedHeadY);
+                hitArea.setAttribute('stroke', 'transparent');
+                hitArea.setAttribute('stroke-width', '12'); // Much wider hit area
+                hitArea.setAttribute('data-fork-id', fork.forkId);
+                hitArea.setAttribute('data-hit-area', 'true'); // Mark as hit area to exclude from highlighting
+                hitArea.style.cursor = 'pointer';
+                svg.appendChild(hitArea); // Add after original line so it's on top
+                
+                forkElements.push(forkLine, hitArea);
             }
         }
     });
@@ -486,8 +531,8 @@ function renderChainForkTree() {
         forkElements.forEach(el => {
             if (el) {
                 el.addEventListener('click', () => showForkDetails(fork));
-                el.addEventListener('mouseenter', () => highlightFork(fork.forkId));
-                el.addEventListener('mouseleave', () => unhighlightFork(fork.forkId));
+                el.addEventListener('mouseenter', () => queueHighlightFork(fork.forkId));
+                el.addEventListener('mouseleave', () => queueUnhighlightFork(fork.forkId));
             }
         });
     });
@@ -524,6 +569,11 @@ function highlightFork(forkId) {
     const elements = document.querySelectorAll(`[data-fork-id="${forkId}"]`);
     
     elements.forEach(el => {
+        // Skip hit areas - don't move or modify them
+        if (el.getAttribute('data-hit-area') === 'true') {
+            return;
+        }
+        
         // Move element to end of parent to increase z-index
         el.parentNode.appendChild(el);
         
@@ -544,6 +594,11 @@ function unhighlightFork(forkId) {
     const elements = document.querySelectorAll(`[data-fork-id="${forkId}"]`);
     
     elements.forEach(el => {
+        // Skip hit areas - don't modify them
+        if (el.getAttribute('data-hit-area') === 'true') {
+            return;
+        }
+        
         if (el.tagName === 'line') {
             // Simple restore: just remove the style override
             if (el.getAttribute('data-hover-active')) {
@@ -559,6 +614,68 @@ function unhighlightFork(forkId) {
             }
         }
     });
+}
+
+// Debounced highlight functions to prevent stuttering
+function queueHighlightFork(forkId) {
+    // Clear any pending unhighlight timer
+    if (highlightQueue.unhighlightTimer) {
+        clearTimeout(highlightQueue.unhighlightTimer);
+        highlightQueue.unhighlightTimer = null;
+    }
+    
+    // If already highlighting the same fork, do nothing
+    if (highlightQueue.isHighlighted && highlightQueue.currentForkId === forkId) {
+        return;
+    }
+    
+    // Clear any pending highlight timer
+    if (highlightQueue.highlightTimer) {
+        clearTimeout(highlightQueue.highlightTimer);
+    }
+    
+    // Store pending highlight data
+    highlightQueue.pendingHighlight = forkId;
+    highlightQueue.currentForkId = forkId;
+    
+    // Set timer to highlight after 30ms (shorter than tooltip for responsiveness)
+    highlightQueue.highlightTimer = setTimeout(() => {
+        // Only highlight if we're still hovering the same fork
+        if (highlightQueue.currentForkId === forkId && highlightQueue.pendingHighlight === forkId) {
+            highlightFork(forkId);
+            highlightQueue.isHighlighted = true;
+            highlightQueue.pendingHighlight = null;
+        }
+        highlightQueue.highlightTimer = null;
+    }, 30);
+}
+
+function queueUnhighlightFork(forkId) {
+    // Only process unhighlight if we were highlighting or about to highlight this fork
+    if (highlightQueue.currentForkId !== forkId) {
+        return;
+    }
+    
+    // Clear any pending highlight timer
+    if (highlightQueue.highlightTimer) {
+        clearTimeout(highlightQueue.highlightTimer);
+        highlightQueue.highlightTimer = null;
+        highlightQueue.pendingHighlight = null;
+    }
+    
+    // Only unhighlight if we're actually highlighting
+    if (highlightQueue.isHighlighted) {
+        // Set timer to unhighlight after a short delay to prevent flicker
+        highlightQueue.unhighlightTimer = setTimeout(() => {
+            unhighlightFork(forkId);
+            highlightQueue.isHighlighted = false;
+            highlightQueue.currentForkId = null;
+            highlightQueue.unhighlightTimer = null;
+        }, 10);
+    } else {
+        // Not highlighting, just reset
+        highlightQueue.currentForkId = null;
+    }
 }
 
 function showForkDetails(fork) {
@@ -873,12 +990,9 @@ function drawForkWithParticipationGradient(fork, forkX, startY, endY, svg, getSl
         const epochParticipation = epochData.find(e => e.epoch === epoch);
         const participation = epochParticipation ? epochParticipation.participation : 0;
         
-        // Calculate Y positions based on slot progression
-        const startSlotProgress = (segmentStartSlot - fork.baseSlot) / totalSlots;
-        const endSlotProgress = (segmentEndSlot - fork.baseSlot) / totalSlots;
-        
-        const segmentStartY = startY + (startSlotProgress * (endY - startY)) + 0.5;
-        const segmentEndY = startY + (endSlotProgress * (endY - startY)) - 0.5;
+        // Use direct slot-to-Y conversion for exact epoch boundary positioning
+        const segmentStartY = getSlotY(epochStartSlot);
+        const segmentEndY = getSlotY(epochEndSlot + 1); // +1 because epochEndSlot is inclusive
         
         segments.push({
             epoch: epoch,
@@ -914,16 +1028,37 @@ function drawForkWithParticipationGradient(fork, forkX, startY, endY, svg, getSl
         segmentLine.setAttribute('stroke-width', strokeWidth);
         segmentLine.style.cursor = 'pointer';
         
-        // Add tooltip on hover for segment details
-        segmentLine.addEventListener('mouseenter', (e) => {
-            showEpochTooltip(e, segmentData.epoch, segmentData.participation, segmentData.endSlot - segmentData.startSlot + 1);
-        });
-        segmentLine.addEventListener('mouseleave', () => {
-            hideEpochTooltip();
-        });
+        // Add wider invisible hit area for easier hovering
+        const segmentHitArea = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        segmentHitArea.setAttribute('x1', forkX);
+        segmentHitArea.setAttribute('y1', segmentData.startY);
+        segmentHitArea.setAttribute('x2', forkX);
+        segmentHitArea.setAttribute('y2', segmentData.endY);
+        segmentHitArea.setAttribute('stroke', 'transparent');
+        segmentHitArea.setAttribute('stroke-width', '12'); // Much wider hit area
+        segmentHitArea.setAttribute('data-fork-id', fork.forkId);
+        segmentHitArea.setAttribute('data-hit-area', 'true'); // Mark as hit area to exclude from highlighting
+        segmentHitArea.setAttribute('data-epoch', segmentData.epoch);
+        segmentHitArea.setAttribute('data-participation', (segmentData.participation * 100).toFixed(1));
+        segmentHitArea.setAttribute('data-has-data', segmentData.hasData);
+        segmentHitArea.style.cursor = 'pointer';
+        
+        // Add tooltip on hover for segment details (both visible line and hit area)
+        const addSegmentEvents = (element) => {
+            element.addEventListener('mouseenter', (e) => {
+                queueShowEpochTooltip(e, segmentData.epoch, segmentData.participation, segmentData.endSlot - segmentData.startSlot + 1, element);
+            });
+            element.addEventListener('mouseleave', () => {
+                queueHideEpochTooltip(element);
+            });
+        };
+        
+        addSegmentEvents(segmentLine);
+        addSegmentEvents(segmentHitArea);
         
         svg.appendChild(segmentLine);
-        elements.push(segmentLine);
+        svg.appendChild(segmentHitArea);
+        elements.push(segmentLine, segmentHitArea);
     }
     
     return elements;
@@ -979,6 +1114,68 @@ function hideEpochTooltip() {
     }
 }
 
+// Debounced tooltip functions to prevent stuttering
+function queueShowEpochTooltip(event, epoch, participation, slotCount, element) {
+    // Clear any pending hide timer
+    if (tooltipQueue.hideTimer) {
+        clearTimeout(tooltipQueue.hideTimer);
+        tooltipQueue.hideTimer = null;
+    }
+    
+    // If already showing the same element, do nothing
+    if (tooltipQueue.isShowing && tooltipQueue.currentElement === element) {
+        return;
+    }
+    
+    // Clear any pending show timer
+    if (tooltipQueue.showTimer) {
+        clearTimeout(tooltipQueue.showTimer);
+    }
+    
+    // Store pending show data
+    tooltipQueue.pendingShow = { event, epoch, participation, slotCount, element };
+    tooltipQueue.currentElement = element;
+    
+    // Set timer to show tooltip after 50ms
+    tooltipQueue.showTimer = setTimeout(() => {
+        // Only show if we're still hovering the same element
+        if (tooltipQueue.currentElement === element && tooltipQueue.pendingShow) {
+            const { event: e, epoch: ep, participation: part, slotCount: count } = tooltipQueue.pendingShow;
+            showEpochTooltip(e, ep, part, count);
+            tooltipQueue.isShowing = true;
+            tooltipQueue.pendingShow = null;
+        }
+        tooltipQueue.showTimer = null;
+    }, 50);
+}
+
+function queueHideEpochTooltip(element) {
+    // Only process hide if we were showing or about to show this element
+    if (tooltipQueue.currentElement !== element) {
+        return;
+    }
+    
+    // Clear any pending show timer
+    if (tooltipQueue.showTimer) {
+        clearTimeout(tooltipQueue.showTimer);
+        tooltipQueue.showTimer = null;
+        tooltipQueue.pendingShow = null;
+    }
+    
+    // Only hide if we're actually showing a tooltip
+    if (tooltipQueue.isShowing) {
+        // Set timer to hide tooltip after a short delay to prevent flicker
+        tooltipQueue.hideTimer = setTimeout(() => {
+            hideEpochTooltip();
+            tooltipQueue.isShowing = false;
+            tooltipQueue.currentElement = null;
+            tooltipQueue.hideTimer = null;
+        }, 10);
+    } else {
+        // Not showing, just reset
+        tooltipQueue.currentElement = null;
+    }
+}
 
 function bytesToHex(bytes) {
     if (!bytes) return '';
@@ -1000,9 +1197,21 @@ function copyToClipboard(text) {
     });
 }
 
-// Zoom functionality
+// Calculate dynamic zoom step based on current zoom level
+function getDynamicZoomStep(currentZoom) {
+    // Logarithmic scaling: step size increases with zoom level
+    // At 1x: step = 0.1
+    // At 5x: step = 0.5  
+    // At 10x: step = 1.0
+    // At 20x: step = 2.0
+    return ZOOM_STEP_BASE * Math.max(1, currentZoom);
+}
+
+// Zoom functionality with dynamic step size
 function zoom(direction) {
-    const newZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, zoomLevel + direction));
+    const dynamicStep = getDynamicZoomStep(zoomLevel);
+    const actualDirection = direction > 0 ? dynamicStep : -dynamicStep;
+    const newZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, zoomLevel + actualDirection));
     if (newZoom !== zoomLevel) {
         previousZoomLevel = zoomLevel;
         zoomLevel = newZoom;
@@ -1023,8 +1232,8 @@ function handleWheelZoom(event) {
     }
     
     event.preventDefault();
-    const delta = event.deltaY > 0 ? -ZOOM_STEP : ZOOM_STEP;
-    zoom(delta);
+    const direction = event.deltaY > 0 ? -1 : 1;
+    zoom(direction);
 }
 
 function applyZoom() {
