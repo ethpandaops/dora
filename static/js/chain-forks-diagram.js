@@ -274,7 +274,33 @@ function startDataRefresh() {
 }
 
 function isAtHead() {
-    // Check if we're viewing the head of the chain (no start parameter in URL)
+    const staticData = window.chainDiagramData;
+    if (!staticData || !staticData.specs) {
+        // Fallback to URL-based check if no static data
+        const urlParams = new URLSearchParams(window.location.search);
+        return !urlParams.has('start') || urlParams.get('start') === '';
+    }
+    
+    // Calculate current slot based on time
+    const now = Math.floor(Date.now() / 1000); // Current time in seconds
+    const genesisTime = staticData.specs.genesis_time;
+    const secondsPerSlot = staticData.specs.seconds_per_slot;
+    const calculatedCurrentSlot = Math.floor((now - genesisTime) / secondsPerSlot);
+    
+    // Use the more recent of calculated vs backend-provided current slot
+    const currentSlot = Math.max(calculatedCurrentSlot, staticData.specs.current_slot || 0);
+    
+    // Check if we have diagram data and if the displayed range includes current head
+    if (currentDiagramData && currentDiagramData.start_slot && currentDiagramData.end_slot) {
+        const startSlot = currentDiagramData.start_slot;
+        const endSlot = currentDiagramData.end_slot;
+        
+        // We're at head if the current slot is within our displayed range
+        // and the range extends close to the current head (within a few slots)
+        return currentSlot >= startSlot && Math.abs(endSlot - currentSlot) <= 100;
+    }
+    
+    // Fallback to URL-based check
     const urlParams = new URLSearchParams(window.location.search);
     return !urlParams.has('start') || urlParams.get('start') === '';
 }
@@ -1099,7 +1125,7 @@ function showForkDetails(fork) {
                 <span class="detail-label">Base Root:</span>
                 <span class="detail-value" style="display: flex; align-items: center;">
                     <a href="/slot/0x${bytesToHex(fork.baseRoot)}" title="0x${bytesToHex(fork.baseRoot)}" style="flex: 1;">
-                        0x${bytesToHex(fork.baseRoot).substring(0, 16)}...
+                        0x${bytesToHex(fork.baseRoot).substring(0, 14)}...
                     </a>
                     <i class="fas fa-copy copy-button" onclick="copyToClipboard('0x${bytesToHex(fork.baseRoot)}')" style="flex-shrink: 0;"></i>
                 </span>
@@ -1109,7 +1135,7 @@ function showForkDetails(fork) {
                 <span class="detail-label">First Fork Root:</span>
                 <span class="detail-value" style="display: flex; align-items: center;">
                     <a href="/slot/0x${bytesToHex(fork.leafRoot)}" title="0x${bytesToHex(fork.leafRoot)}" style="flex: 1;">
-                        0x${bytesToHex(fork.leafRoot).substring(0, 16)}...
+                        0x${bytesToHex(fork.leafRoot).substring(0, 14)}...
                     </a>
                     <i class="fas fa-copy copy-button" onclick="copyToClipboard('0x${bytesToHex(fork.leafRoot)}')" style="flex-shrink: 0;"></i>
                 </span>
@@ -1119,7 +1145,7 @@ function showForkDetails(fork) {
                 <span class="detail-label">Head Root:</span>
                 <span class="detail-value" style="display: flex; align-items: center;">
                     <a href="/slot/0x${bytesToHex(fork.headRoot)}" title="0x${bytesToHex(fork.headRoot)}" style="flex: 1;">
-                        0x${bytesToHex(fork.headRoot).substring(0, 16)}...
+                        0x${bytesToHex(fork.headRoot).substring(0, 14)}...
                     </a>
                     <i class="fas fa-copy copy-button" onclick="copyToClipboard('0x${bytesToHex(fork.headRoot)}')" style="flex-shrink: 0;"></i>
                 </span>

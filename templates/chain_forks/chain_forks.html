@@ -81,7 +81,7 @@
   <!-- Pass static data to JavaScript (specs only) -->
   <script>
     window.chainDiagramData = {
-      specs: {{ includeJSON .ChainSpecs false }}
+      specs: JSON.parse({{ includeJSON .ChainSpecs false }})
     };
   </script>
 {{ end }}

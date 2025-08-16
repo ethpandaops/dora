@@ -52,7 +52,7 @@ func ChainForks(w http.ResponseWriter, r *http.Request) {
 			specs := chainState.GetSpecs()
 			secondsPerEpoch := uint64(specs.SlotsPerEpoch) * uint64(specs.SecondsPerSlot.Seconds())
 			maxEpochs := uint64(14*24*3600) / secondsPerEpoch
-			
+
 			if parsed <= maxEpochs {
 				pageSizeEpochs = parsed
 			}
@@ -71,7 +71,8 @@ func ChainForks(w http.ResponseWriter, r *http.Request) {
 	originalPageSizeEpochs := pageSizeEpochs
 
 	// Normalize slot range to reduce cache fragmentation
-	startSlot, pageSizeEpochs = normalizeSlotRange(startSlot, pageSizeEpochs)
+	var cacheSlot uint64
+	startSlot, pageSizeEpochs, cacheSlot = normalizeSlotRange(startSlot, pageSizeEpochs)
 
 	var pageError error
 	pageError = services.GlobalCallRateLimiter.CheckCallLimit(r, 1)
@@ -82,7 +83,7 @@ func ChainForks(w http.ResponseWriter, r *http.Request) {
 
 			// Get cached diagram data for AJAX
 			originalStart, _ := strconv.ParseUint(r.URL.Query().Get("start"), 10, 64)
-			ajaxData, ajaxErr := getChainForksDiagramData(startSlot, pageSizeEpochs, originalStart, originalPageSizeEpochs)
+			ajaxData, ajaxErr := getChainForksDiagramData(startSlot, pageSizeEpochs, cacheSlot, originalStart, originalPageSizeEpochs)
 			if ajaxErr != nil {
 				handlePageError(w, r, ajaxErr)
 				return
@@ -118,6 +119,7 @@ func getChainForksPageData() (*models.ChainForksPageData, error) {
 	// Just return chain specs, no caching needed for static data
 	chainState := services.GlobalBeaconService.GetChainState()
 	specs := chainState.GetSpecs()
+	genesis := chainState.GetGenesis()
 
 	// Calculate epoch counts for time selectors
 	secondsPerEpoch := uint64(specs.SlotsPerEpoch) * uint64(specs.SecondsPerSlot.Seconds())
@@ -126,6 +128,8 @@ func getChainForksPageData() (*models.ChainForksPageData, error) {
 		ChainSpecs: &models.ChainSpecs{
 			SlotsPerEpoch:  uint64(specs.SlotsPerEpoch),
 			SecondsPerSlot: uint64(specs.SecondsPerSlot.Seconds()),
+			GenesisTime:    uint64(genesis.GenesisTime.Unix()),
+			CurrentSlot:    uint64(chainState.CurrentSlot()),
 			EpochsFor12h:   uint64(12*3600) / secondsPerEpoch,
 			EpochsFor1d:    uint64(24*3600) / secondsPerEpoch,
 			EpochsFor7d:    uint64(7*24*3600) / secondsPerEpoch,
@@ -136,9 +140,9 @@ func getChainForksPageData() (*models.ChainForksPageData, error) {
 	return pageData, nil
 }
 
-func getChainForksDiagramData(startSlot uint64, pageSizeEpochs uint64, originalStart uint64, originalPageSizeEpochs uint64) (*models.ChainForksDiagramData, error) {
+func getChainForksDiagramData(startSlot uint64, pageSizeEpochs uint64, cacheSlot uint64, originalStart uint64, originalPageSizeEpochs uint64) (*models.ChainForksDiagramData, error) {
 	// Use separate cache key for diagram data only
-	diagramCacheKey := fmt.Sprintf("chain_forks_diagram_%d_%d", startSlot, pageSizeEpochs)
+	diagramCacheKey := fmt.Sprintf("chain_forks_diagram_%d_%d_%d", startSlot, pageSizeEpochs, cacheSlot)
 	diagramData := &models.ChainForksDiagramData{}
 
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(diagramCacheKey, true, diagramData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
@@ -165,12 +169,11 @@ func buildChainForksDiagramData(startSlot uint64, pageSizeEpochs uint64, origina
 	// Use normalized boundaries directly - no additional calculation needed
 	actualStartSlot := startSlot
 	endSlot := startSlot + (pageSizeEpochs * uint64(specs.SlotsPerEpoch))
-	
+
 	// Clip end slot to current slot - don't render future epochs
 	if endSlot > currentSlot {
 		endSlot = currentSlot
 	}
-	
 
 	// Calculate epochs
 	startEpoch := uint64(chainState.EpochOfSlot(phase0.Slot(actualStartSlot)))
@@ -998,12 +1001,11 @@ func createCanonicalChainFork(forks []*models.ChainFork, canonicalForkIdSet map[
 }
 
 // normalizeSlotRange normalizes the requested slot range to reduce cache fragmentation
-func normalizeSlotRange(startSlot uint64, pageSizeEpochs uint64) (uint64, uint64) {
+func normalizeSlotRange(startSlot uint64, pageSizeEpochs uint64) (uint64, uint64, uint64) {
 	chainState := services.GlobalBeaconService.GetChainState()
 	specs := chainState.GetSpecs()
 	currentSlot := uint64(chainState.CurrentSlot())
 	slotsPerEpoch := uint64(specs.SlotsPerEpoch)
-	
 
 	// Calculate view range size in slots
 	var viewSize uint64
@@ -1025,22 +1027,21 @@ func normalizeSlotRange(startSlot uint64, pageSizeEpochs uint64) (uint64, uint64
 		}
 
 		currentEpoch := currentSlot / slotsPerEpoch
-		
+
 		// Find the boundary END that includes current head, then calculate start
 		// Round current epoch UP to next slice boundary for the END
 		boundaryEndEpoch := ((currentEpoch + sliceEpochs - 1) / sliceEpochs) * sliceEpochs
-		
+
 		// Ensure the boundary end is actually beyond current epoch
 		if boundaryEndEpoch <= currentEpoch {
 			boundaryEndEpoch += sliceEpochs
 		}
-		
+
 		// Calculate start that gives us exactly requested size ending at boundary
 		boundaryStartEpoch := boundaryEndEpoch - pageSizeEpochs
 		boundarySlot := boundaryStartEpoch * slotsPerEpoch
 
-
-		return boundarySlot, pageSizeEpochs
+		return boundarySlot, pageSizeEpochs, currentSlot
 	}
 
 	// When not at head: normalize start to boundary, pass through page size
@@ -1051,11 +1052,11 @@ func normalizeSlotRange(startSlot uint64, pageSizeEpochs uint64) (uint64, uint64
 
 	// If start matches a boundary, keep it
 	if startSlot%sliceSize == 0 {
-		return startSlot, pageSizeEpochs
+		return startSlot, pageSizeEpochs, startSlot
 	}
 
 	// Align start to the next boundary (add slots)
 	alignedStart := ((startSlot / sliceSize) + 1) * sliceSize
 
-	return alignedStart, pageSizeEpochs
+	return alignedStart, pageSizeEpochs, alignedStart
 }
