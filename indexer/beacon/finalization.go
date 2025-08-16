@@ -304,6 +304,7 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 
 	canonicalRoots := make([][]byte, len(canonicalBlocks))
 	canonicalBlockHashes := make([][]byte, len(canonicalBlocks))
+	finalizedForkIds := map[ForkKey]bool{}
 	for i, block := range canonicalBlocks {
 		canonicalRoots[i] = block.Root[:]
 		if blockIndex := block.GetBlockIndex(); blockIndex != nil {
@@ -311,6 +312,7 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 		}
 
 		block.blockResults = nil // force re-simulation of block results
+		finalizedForkIds[block.GetForkId()] = true
 	}
 
 	dependentGroups := map[phase0.Root][]*Block{}
@@ -345,13 +347,15 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 
 		// get all chain heads from the list of blocks
 		chainHeads := map[phase0.Root]*Block{}
+		cForkId := ForkKey(0)
 		for _, block := range blocks {
 			parentRoot := block.GetParentRoot()
-			if parentRoot != nil {
+			if parentRoot != nil && (cForkId == 0 || block.GetForkId() == cForkId || finalizedForkIds[cForkId]) {
 				delete(chainHeads, *parentRoot)
 			}
 
 			chainHeads[block.Root] = block
+			cForkId = block.GetForkId()
 		}
 
 		// reconstruct all chains from the chain heads
