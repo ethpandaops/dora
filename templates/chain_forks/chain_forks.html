@@ -182,7 +182,7 @@
       stroke: var(--fork-text-secondary);
       stroke-width: 0.5;
       stroke-dasharray: 1,3;
-      opacity: 0.2;
+      opacity: 0.7;
     }
     
     .fork-line {
@@ -328,7 +328,7 @@
       font-weight: bold;
       color: var(--fork-text-primary);
       text-shadow: 0 0 3px var(--fork-bg-primary);
-      mix-blend-mode: difference;
+      mix-blend-mode: darken;
     }
     
     .copy-button {
@@ -344,12 +344,12 @@
     }
 
     /* Additional dark mode specific adjustments */
-    [data-bs-theme="dark"] .canonical-timeline {
-      opacity: 0.7;
-    }
-
     [data-bs-theme="dark"] .participation-text {
       text-shadow: 0 0 3px rgba(0,0,0,0.8);
+      mix-blend-mode: normal;
+    }
+    [data-bs-theme="light"] .participation-text {
+      text-shadow: 0 0 3px rgba(255, 255, 255, 0.8);
       mix-blend-mode: normal;
     }
 
@@ -357,7 +357,7 @@
       opacity: 1;
     }
 
-    [data-bs-theme="dark"] .fork-line:hover {
+    .fork-line:hover {
       filter: brightness(1.2);
     }
   </style>

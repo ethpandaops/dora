@@ -1346,7 +1346,7 @@ function drawForkWithParticipationGradient(fork, forkX, startY, endY, svg, getSl
         // Scale up participation for partial epochs (when fork head doesn't reach epoch boundary)
         if (epochParticipation && epoch === headEpoch && fork.headSlot < epochEndSlot) {
             // Calculate how many slots are actually used in this partial epoch
-            const slotsUsedInEpoch = (fork.headSlot - epochStartSlot) + 1;
+            const slotsUsedInEpoch = (fork.headSlot - epochStartSlot);
             
             // Only scale if we have slot count data and it's less than full epoch
             if (slotsUsedInEpoch < slotsPerEpoch) {
