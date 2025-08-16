@@ -151,3 +151,152 @@ func GetForkById(forkId uint64) *dbtypes.Fork {
 
 	return &fork
 }
+
+func GetForkVisualizationData(startSlot uint64, endSlot uint64) ([]*dbtypes.Fork, error) {
+	forks := []*dbtypes.Fork{}
+
+	// Get forks that overlap with our time window and their direct parents/children
+	err := ReaderDb.Select(&forks, `
+		SELECT DISTINCT fork_id, base_slot, base_root, leaf_slot, leaf_root, parent_fork
+		FROM (
+			-- Forks that overlap with our time window
+			SELECT fork_id, base_slot, base_root, leaf_slot, leaf_root, parent_fork
+			FROM forks 
+			WHERE base_slot < $2 AND leaf_slot >= $1
+			
+			UNION
+			
+			-- Direct parents of forks in our window
+			SELECT p.fork_id, p.base_slot, p.base_root, p.leaf_slot, p.leaf_root, p.parent_fork
+			FROM forks p
+			INNER JOIN forks f ON p.fork_id = f.parent_fork
+			WHERE f.base_slot < $2 AND f.leaf_slot >= $1
+			
+			UNION
+			
+			-- Direct children of forks in our window
+			SELECT c.fork_id, c.base_slot, c.base_root, c.leaf_slot, c.leaf_root, c.parent_fork
+			FROM forks c
+			INNER JOIN forks f ON c.parent_fork = f.fork_id
+			WHERE f.base_slot < $2 AND f.leaf_slot >= $1
+		) AS combined_forks
+		ORDER BY base_slot ASC, fork_id ASC
+	`, startSlot, endSlot)
+	if err != nil {
+		return nil, err
+	}
+
+	return forks, nil
+}
+
+// GetForkBlockCounts returns the number of blocks for each fork ID
+func GetForkBlockCounts(startSlot uint64, endSlot uint64) (map[uint64]uint64, error) {
+	args := []any{startSlot, endSlot}
+
+	query := `
+		SELECT fork_id, COUNT(*) as block_count
+		FROM slots
+		WHERE status != 0
+		  AND slot >= $1 AND slot < $2
+		GROUP BY fork_id
+	`
+
+	rows, err := ReaderDb.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	blockCounts := make(map[uint64]uint64)
+	for rows.Next() {
+		var forkId, count uint64
+		if err := rows.Scan(&forkId, &count); err != nil {
+			return nil, err
+		}
+		blockCounts[forkId] = count
+	}
+
+	return blockCounts, nil
+}
+
+func GetSyncCommitteeParticipation(slot uint64) (float64, error) {
+	var participation float64
+
+	// Handle potential overflow by using int64
+	startSlot := int64(slot) - 1800
+	endSlot := int64(slot) + 1800
+
+	// Ensure we don't go below 0
+	if startSlot < 0 {
+		startSlot = 0
+	}
+
+	err := ReaderDb.Get(&participation, `
+		SELECT 
+			COALESCE(AVG(CASE WHEN sync_participation IS NOT NULL 
+				THEN sync_participation ELSE 0 END), 0) as avg_participation
+		FROM slots 
+		WHERE slot >= $1 AND slot < $2
+			AND sync_participation IS NOT NULL
+	`, startSlot, endSlot)
+	if err != nil {
+		return 0, err
+	}
+
+	return participation, nil
+}
+
+// ForkParticipationByEpoch represents participation data for a fork in a specific epoch
+type ForkParticipationByEpoch struct {
+	ForkId        uint64  `db:"fork_id"`
+	Epoch         uint64  `db:"epoch"`
+	Participation float64 `db:"avg_participation"`
+	SlotCount     uint64  `db:"slot_count"`
+}
+
+// GetForkParticipationByEpoch gets average participation per fork per epoch for the given epoch range
+// This is optimized to fetch all data in one query to avoid expensive repeated queries
+func GetForkParticipationByEpoch(startEpoch, endEpoch uint64, forkIds []uint64) ([]*ForkParticipationByEpoch, error) {
+	if len(forkIds) == 0 {
+		return []*ForkParticipationByEpoch{}, nil
+	}
+
+	// Build IN clause for fork IDs
+	var forkPlaceholders strings.Builder
+	args := make([]interface{}, 0, len(forkIds)+2)
+
+	for i, forkId := range forkIds {
+		if i > 0 {
+			forkPlaceholders.WriteString(",")
+		}
+		args = append(args, forkId)
+		fmt.Fprintf(&forkPlaceholders, "$%d", len(args))
+	}
+
+	// Add epoch range parameters
+	args = append(args, startEpoch, endEpoch)
+	startEpochParam := len(args) - 1
+	endEpochParam := len(args)
+
+	query := fmt.Sprintf(`
+		SELECT 
+			s.fork_id,
+			(s.slot / 32) AS epoch,
+			AVG(COALESCE(s.sync_participation, 0)) AS avg_participation,
+			COUNT(*) AS slot_count
+		FROM slots s
+		WHERE s.fork_id IN (%s)
+			AND (s.slot / 32) >= $%d AND (s.slot / 32) <= $%d
+			AND s.sync_participation IS NOT NULL
+		GROUP BY s.fork_id, (s.slot / 32)
+		ORDER BY s.fork_id, (s.slot / 32)
+	`, forkPlaceholders.String(), startEpochParam, endEpochParam)
+
+	var results []*ForkParticipationByEpoch
+	err := ReaderDb.Select(&results, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("error fetching fork participation by epoch: %w", err)
+	}
+
+	return results, nil
+}

@@ -81,3 +81,37 @@ func GetEpochs(firstEpoch uint64, limit uint32) []*dbtypes.Epoch {
 	}
 	return epochs
 }
+
+// EpochParticipation represents participation data for a finalized canonical epoch
+type EpochParticipation struct {
+	Epoch       uint64 `db:"epoch"`
+	BlockCount  uint64 `db:"block_count"`
+	Eligible    uint64 `db:"eligible"`
+	VotedTarget uint64 `db:"voted_target"`
+	VotedHead   uint64 `db:"voted_head"`
+	VotedTotal  uint64 `db:"voted_total"`
+}
+
+// GetFinalizedEpochParticipation gets participation data for finalized canonical epochs in the given range
+func GetFinalizedEpochParticipation(startEpoch, endEpoch uint64) ([]*EpochParticipation, error) {
+	var results []*EpochParticipation
+
+	err := ReaderDb.Select(&results, `
+		SELECT 
+			epoch,
+			block_count,
+			eligible,
+			voted_target,
+			voted_head,
+			voted_total
+		FROM epochs
+		WHERE epoch >= $1 AND epoch <= $2
+		ORDER BY epoch
+	`, startEpoch, endEpoch)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return results, nil
+}

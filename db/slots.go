@@ -424,6 +424,15 @@ func GetFilteredSlots(filter *dbtypes.BlockFilter, firstSlot uint64, offset uint
 		fmt.Fprintf(&sql, ` AND slots.blob_count <= $%v `, argIdx)
 		args = append(args, *filter.MaxBlobCount)
 	}
+	if len(filter.ForkIds) > 0 {
+		forkIdPlaceholders := make([]string, len(filter.ForkIds))
+		for i, forkId := range filter.ForkIds {
+			argIdx++
+			forkIdPlaceholders[i] = fmt.Sprintf("$%v", argIdx)
+			args = append(args, forkId)
+		}
+		fmt.Fprintf(&sql, ` AND slots.fork_id IN (%s) `, strings.Join(forkIdPlaceholders, ", "))
+	}
 
 	fmt.Fprintf(&sql, `	ORDER BY slots.slot DESC `)
 	fmt.Fprintf(&sql, ` LIMIT $%v OFFSET $%v `, argIdx+1, argIdx+2)

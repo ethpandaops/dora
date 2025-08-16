@@ -23,6 +23,7 @@ type SlotsFilteredPageData struct {
 	FilterMaxTxCount      string `json:"filter_max_tx"`
 	FilterMinBlobCount    string `json:"filter_min_blob"`
 	FilterMaxBlobCount    string `json:"filter_max_blob"`
+	FilterForkIds         string `json:"filter_fork_ids"`
 
 	DisplayEpoch        bool   `json:"dp_epoch"`
 	DisplaySlot         bool   `json:"dp_slot"`
