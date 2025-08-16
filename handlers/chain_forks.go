@@ -56,24 +56,34 @@ func ChainForks(w http.ResponseWriter, r *http.Request) {
 	var pageError error
 	pageError = services.GlobalCallRateLimiter.CheckCallLimit(r, 1)
 	if pageError == nil {
+		// Check for AJAX request
+		if r.URL.Query().Get("ajax") == "1" || r.Header.Get("Accept") == "application/json" {
+			w.Header().Set("Content-Type", "application/json")
+
+			// Get cached diagram data for AJAX
+			ajaxData, ajaxErr := getChainForksDiagramData(startSlot, pageSizeEpochs)
+			if ajaxErr != nil {
+				handlePageError(w, r, ajaxErr)
+				return
+			}
+
+			ajaxDataBytes, err := json.Marshal(ajaxData)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			_, err = w.Write(ajaxDataBytes)
+			if err != nil {
+				http.Error(w, fmt.Sprintf("Error writing response: %v", err), http.StatusInternalServerError)
+			}
+			return
+		}
+
+		// Get lightweight page data for template only (no fork processing)
 		data.Data, pageError = getChainForksPageData(startSlot, pageSizeEpochs)
 	}
 	if pageError != nil {
 		handlePageError(w, r, pageError)
-		return
-	}
-
-	if r.Header.Get("Accept") == "application/json" {
-		w.Header().Set("Content-Type", "application/json")
-		chainForksDataBytes, err := json.Marshal(data.Data)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		_, err = w.Write(chainForksDataBytes)
-		if err != nil {
-			http.Error(w, fmt.Sprintf("Error writing response: %v", err), http.StatusInternalServerError)
-		}
 		return
 	}
 
@@ -101,23 +111,36 @@ func getChainForksPageData(startSlot uint64, pageSizeEpochs uint64) (*models.Cha
 	return pageData, pageErr
 }
 
+func getChainForksDiagramData(startSlot uint64, pageSizeEpochs uint64) (*models.ChainForksDiagramData, error) {
+	// Use separate cache key for diagram data only
+	diagramCacheKey := fmt.Sprintf("chain_forks_diagram_%d_%d", startSlot, pageSizeEpochs)
+	var diagramData *models.ChainForksDiagramData
+
+	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(diagramCacheKey, true, &diagramData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
+		diagramData, cacheTimeout := buildChainForksDiagramData(startSlot, pageSizeEpochs)
+		pageCall.CacheTimeout = cacheTimeout
+		return diagramData
+	})
+
+	if pageErr == nil && pageRes != nil {
+		resData, resOk := pageRes.(*models.ChainForksDiagramData)
+		if !resOk {
+			return nil, ErrInvalidPageModel
+		}
+		diagramData = resData
+	}
+	return diagramData, pageErr
+}
+
 func buildChainForksPageData(startSlot uint64, pageSizeEpochs uint64) (*models.ChainForksPageData, time.Duration) {
-	// Calculate slot ranges for time window
-	// startSlot parameter = head slot (most recent, shown at top of visualization)
-	// actualStartSlot = older slot (shown at bottom of visualization, goes back ~1000 slots)
-	endSlot := startSlot                                             // Head slot (newest)
-	actualStartSlot := calculateStartSlot(startSlot, pageSizeEpochs) // Goes back in time for time window
+	// Calculate slot ranges for time window (same logic as full version)
+	endSlot := startSlot
+	actualStartSlot := calculateStartSlot(startSlot, pageSizeEpochs)
 
 	chainState := services.GlobalBeaconService.GetChainState()
 	specs := chainState.GetSpecs()
 
-	// Debug: log time window calculation
-	logrus.Infof("Chain forks: pageSizeEpochs=%d, slots %d-%d, epochs %d-%d",
-		pageSizeEpochs, actualStartSlot, endSlot,
-		uint64(chainState.EpochOfSlot(phase0.Slot(actualStartSlot))),
-		uint64(chainState.EpochOfSlot(phase0.Slot(endSlot))))
-
-	// Calculate epochs (225 epochs = 1 day)
+	// Calculate epochs
 	startEpoch := uint64(chainState.EpochOfSlot(phase0.Slot(actualStartSlot)))
 	endEpoch := uint64(chainState.EpochOfSlot(phase0.Slot(endSlot)))
 
@@ -128,7 +151,7 @@ func buildChainForksPageData(startSlot uint64, pageSizeEpochs uint64) (*models.C
 	epochsFor1d := uint64(24*3600) / secondsPerEpoch
 	epochsFor7d := uint64(7*24*3600) / secondsPerEpoch
 
-	// Initialize page data
+	// Initialize page data with basic info only (no fork processing)
 	pageData := &models.ChainForksPageData{
 		StartSlot:      actualStartSlot,
 		EndSlot:        endSlot,
@@ -146,39 +169,10 @@ func buildChainForksPageData(startSlot uint64, pageSizeEpochs uint64) (*models.C
 			EpochsFor7d:    epochsFor7d,
 		},
 	}
+
 	cacheTime := specs.SecondsPerSlot * 12
 
-	// Get fork data from database
-	dbForks, err := db.GetForkVisualizationData(actualStartSlot, endSlot)
-	if err != nil {
-		logrus.Errorf("Error fetching fork visualization data: %v", err)
-		return pageData, cacheTime
-	}
-
-	// Process forks with epoch-based participation data
-	indexer := services.GlobalBeaconService.GetBeaconIndexer()
-	forks, err := processForksWithEpochData(dbForks, indexer, startEpoch, endEpoch)
-	if err != nil {
-		logrus.Errorf("Error processing forks with epoch-based participation data: %v", err)
-		return pageData, 0
-	}
-	pageData.Forks = forks
-
-	// Add canonical chain and mark canonical forks
-	pageData.Forks = addCanonicalChain(pageData.Forks, indexer)
-
-	// Sort forks by base slot for proper visualization
-	sort.Slice(pageData.Forks, func(i, j int) bool {
-		if pageData.Forks[i].BaseSlot == pageData.Forks[j].BaseSlot {
-			return pageData.Forks[i].ForkId < pageData.Forks[j].ForkId
-		}
-		return pageData.Forks[i].BaseSlot < pageData.Forks[j].BaseSlot
-	})
-
-	// Build diagram data
-	pageData.ChainDiagram = buildChainDiagram(pageData.Forks, startEpoch, endEpoch, indexer)
-
-	// Set up pagination
+	// Set up pagination (same logic as full version)
 	var pageSize uint64
 	if pageSizeEpochs > 0 {
 		pageSize = pageSizeEpochs * uint64(specs.SlotsPerEpoch)
@@ -198,6 +192,83 @@ func buildChainForksPageData(startSlot uint64, pageSizeEpochs uint64) (*models.C
 	}
 
 	return pageData, cacheTime
+}
+
+func buildChainForksDiagramData(startSlot uint64, pageSizeEpochs uint64) (*models.ChainForksDiagramData, time.Duration) {
+	// Calculate slot ranges for time window
+	endSlot := startSlot
+	actualStartSlot := calculateStartSlot(startSlot, pageSizeEpochs)
+
+	chainState := services.GlobalBeaconService.GetChainState()
+	specs := chainState.GetSpecs()
+
+	// Calculate epochs
+	startEpoch := uint64(chainState.EpochOfSlot(phase0.Slot(actualStartSlot)))
+	endEpoch := uint64(chainState.EpochOfSlot(phase0.Slot(endSlot)))
+
+	finalizedSlot := uint64(chainState.GetFinalizedSlot())
+
+	var cacheTime time.Duration
+	if startSlot > finalizedSlot {
+		cacheTime = specs.SecondsPerSlot * 12
+	} else {
+		cacheTime = 30 * time.Minute
+	}
+
+	// Get fork data from database
+	dbForks, err := db.GetForkVisualizationData(actualStartSlot, endSlot)
+	if err != nil {
+		logrus.Errorf("Error fetching fork visualization data: %v", err)
+		return &models.ChainForksDiagramData{
+			Diagram:      nil,
+			StartSlot:    actualStartSlot,
+			EndSlot:      endSlot,
+			StartEpoch:   startEpoch,
+			EndEpoch:     endEpoch,
+			FinalitySlot: uint64(chainState.GetFinalizedSlot()),
+			Error:        "Failed to fetch fork data from database",
+		}, cacheTime
+	}
+
+	// Process forks with epoch-based participation data
+	indexer := services.GlobalBeaconService.GetBeaconIndexer()
+	forks, err := processForksWithEpochData(dbForks, indexer, startEpoch, endEpoch)
+	if err != nil {
+		logrus.Errorf("Error processing forks with epoch-based participation data: %v", err)
+		return &models.ChainForksDiagramData{
+			Diagram:      nil,
+			StartSlot:    actualStartSlot,
+			EndSlot:      endSlot,
+			StartEpoch:   startEpoch,
+			EndEpoch:     endEpoch,
+			FinalitySlot: finalizedSlot,
+			Error:        "Failed to process fork data",
+		}, 0
+	}
+
+	// Add canonical chain and mark canonical forks
+	forks = addCanonicalChain(forks, indexer)
+
+	// Sort forks by base slot for proper visualization
+	sort.Slice(forks, func(i, j int) bool {
+		if forks[i].BaseSlot == forks[j].BaseSlot {
+			return forks[i].ForkId < forks[j].ForkId
+		}
+		return forks[i].BaseSlot < forks[j].BaseSlot
+	})
+
+	// Build diagram data
+	chainDiagram := buildChainDiagram(forks, startEpoch, endEpoch, indexer)
+
+	// Return only the data needed for AJAX
+	return &models.ChainForksDiagramData{
+		Diagram:      chainDiagram,
+		StartSlot:    actualStartSlot,
+		EndSlot:      endSlot,
+		StartEpoch:   startEpoch,
+		EndEpoch:     endEpoch,
+		FinalitySlot: uint64(chainState.GetFinalizedSlot()),
+	}, cacheTime
 }
 
 // calculateForkHead calculates fork head using pre-fetched blocks

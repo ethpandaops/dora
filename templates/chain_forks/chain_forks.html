@@ -71,42 +71,28 @@
         </div>
       </div>
       <div class="card-body p-0">
-        {{ if .Forks }}
-          <div class="fork-visualization-container">
-            <div class="chain-diagram-section">
-              <div id="chainDiagram" class="integrated-chain-diagram">
-                <!-- Diagram will be rendered here by JavaScript -->
-              </div>
+        <div class="fork-visualization-container">
+          <div class="chain-diagram-section">
+            <div id="chainDiagram" class="integrated-chain-diagram">
+              <!-- Diagram will be rendered here by JavaScript -->
             </div>
-            <div class="fork-details-section">
-              <div id="forkDetailsPanel" class="fork-details-panel">
-                <div class="details-placeholder">
-                  <i class="fas fa-mouse-pointer text-muted mb-2"></i>
-                  <p class="text-muted">Click on any fork point to see details</p>
-                </div>
+          </div>
+          <div class="fork-details-section">
+            <div id="forkDetailsPanel" class="fork-details-panel">
+              <div class="details-placeholder">
+                <i class="fas fa-mouse-pointer text-muted mb-2"></i>
+                <p class="text-muted">Click on any fork point to see details</p>
               </div>
             </div>
           </div>
-        {{ else }}
-          <div class="empty-state">
-            <i class="fas fa-check-circle text-success fa-3x mb-3"></i>
-            <h5>No Chain Forks</h5>
-            <p class="text-muted">No chain forks detected in this time range.<br>This indicates a healthy, unified chain.</p>
-          </div>
-        {{ end }}
+        </div>
       </div>
     </div>
   </div>
 
-  <!-- Pass data to JavaScript -->
+  <!-- Pass static data to JavaScript (specs only) -->
   <script>
     window.chainDiagramData = {
-      diagram: {{ includeJSON .ChainDiagram false }},
-      startSlot: {{ .StartSlot }},
-      endSlot: {{ .EndSlot }},
-      startEpoch: {{ .StartEpoch }},
-      endEpoch: {{ .EndEpoch }},
-      finalitySlot: {{ .FinalitySlot }},
       specs: {{ includeJSON .ChainSpecs false }}
     };
   </script>

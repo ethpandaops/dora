@@ -33,14 +33,38 @@ let highlightQueue = {
     pendingHighlight: null
 };
 
+// Data loading and refresh management
+let currentDiagramData = null;
+let dataRefreshInterval = null;
+let isLoadingData = false;
+let lastDataLoadTime = 0;
+const REFRESH_INTERVAL = 15000; // 15 seconds
+
+// View state preservation
+let viewState = {
+    hideSingleBlockForks: false,
+    selectedForkId: null,
+    detailsPanelContent: null,
+    scrollPosition: { x: 0, y: 0 }
+};
+
 document.addEventListener('DOMContentLoaded', function() {
     if (typeof window.chainDiagramData === 'undefined') {
         console.warn('Chain diagram data not found');
         return;
     }
     
-    renderChainForkTree();
+    // Initialize UI event listeners
+    initializeEventListeners();
     
+    // Load initial data
+    loadDiagramData(false, () => {
+        // Start periodic refresh after initial load
+        startDataRefresh();
+    });
+});
+
+function initializeEventListeners() {
     // Add zoom event listeners
     const zoomInBtn = document.getElementById('zoomIn');
     const zoomOutBtn = document.getElementById('zoomOut');
@@ -50,29 +74,305 @@ document.addEventListener('DOMContentLoaded', function() {
     if (zoomOutBtn) zoomOutBtn.addEventListener('click', () => zoom(-1));
     if (zoomResetBtn) zoomResetBtn.addEventListener('click', resetZoom);
     
-    // Add mouse wheel zoom - will be attached after diagram creation
-    // This is handled in renderChainForkTree after creating the scroll container
-    
     // Add hide single-block forks checkbox listener
     const hideCheckbox = document.getElementById('hideSingleBlockForks');
     if (hideCheckbox) {
-        hideCheckbox.addEventListener('change', renderChainForkTree);
+        hideCheckbox.addEventListener('change', () => {
+            viewState.hideSingleBlockForks = hideCheckbox.checked;
+            // Save scroll position before filter re-render
+            saveScrollPosition();
+            renderChainForkTree();
+            // Restore scroll position after filter re-render
+            restoreScrollPosition();
+        });
     }
+    
+    // Add navigation link interceptors for time frame changes
+    interceptNavigationLinks();
     
     // Add window resize listener to update container height
     let resizeTimeout;
     window.addEventListener('resize', () => {
         clearTimeout(resizeTimeout);
         resizeTimeout = setTimeout(() => {
+            // Save scroll position before resize re-render
+            saveScrollPosition();
             renderChainForkTree();
+            // Restore scroll position after resize re-render
+            restoreScrollPosition();
         }, 250); // Debounce resize events
     });
-});
+}
+
+function interceptNavigationLinks() {
+    // Intercept pagination and time range links to handle via AJAX
+    const navLinks = document.querySelectorAll('a[href*="/chain-forks"]');
+    
+    navLinks.forEach(link => {
+        link.addEventListener('click', (e) => {
+            e.preventDefault();
+            
+            // Clear existing data when changing time frame
+            clearViewState();
+            
+            // Update browser URL without reload
+            window.history.pushState(null, '', link.href);
+            
+            // Load new data (buildAjaxUrl will read from updated window.location)
+            loadDiagramData(false, () => {
+                // Restart refresh if at head
+                if (isAtHead()) {
+                    startDataRefresh();
+                } else {
+                    stopDataRefresh();
+                }
+            });
+        });
+    });
+}
+
+function clearViewState() {
+    // Clear view state when changing time frames
+    viewState.selectedForkId = null;
+    viewState.detailsPanelContent = null;
+    viewState.scrollPosition = { x: 0, y: 0 }; // Reset scroll position for new time frame
+    
+    // Clear details panel
+    const panel = document.getElementById('forkDetailsPanel');
+    if (panel) {
+        panel.innerHTML = `
+            <div class="details-placeholder">
+                <i class="fas fa-mouse-pointer text-muted mb-2"></i>
+                <p class="text-muted">Click on any fork point to see details</p>
+            </div>
+        `;
+    }
+    
+    // Stop any existing refresh interval
+    stopDataRefresh();
+}
+
+function stopDataRefresh() {
+    if (dataRefreshInterval) {
+        clearInterval(dataRefreshInterval);
+        dataRefreshInterval = null;
+    }
+}
+
+function buildAjaxUrl() {
+    const currentUrl = new URL(window.location);
+    
+    // Build AJAX URL with same parameters as current page
+    const ajaxUrl = new URL(currentUrl.pathname, currentUrl.origin);
+    ajaxUrl.searchParams.set('ajax', '1');
+    
+    // Copy existing URL parameters (start, size) if they exist
+    const startParam = currentUrl.searchParams.get('start');
+    const sizeParam = currentUrl.searchParams.get('size');
+    
+    if (startParam) {
+        ajaxUrl.searchParams.set('start', startParam);
+    }
+    if (sizeParam) {
+        ajaxUrl.searchParams.set('size', sizeParam);
+    }
+    
+    return ajaxUrl.toString();
+}
+
+function loadDiagramData(isRefresh = false, callback = null) {
+    if (isLoadingData) {
+        return;
+    }
+    
+    isLoadingData = true;
+    const startTime = Date.now();
+    
+    // Show loading indicator if this is initial load
+    if (!isRefresh && !currentDiagramData) {
+        showLoadingIndicator();
+    }
+    
+    fetch(buildAjaxUrl())
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            lastDataLoadTime = Date.now();
+            
+            // Check for API errors
+            if (data.error) {
+                hideLoadingIndicator();
+                showApiError(data.error);
+                return;
+            }
+            
+            // Check if this is new data or the same data
+            const isNewData = !currentDiagramData || 
+                             currentDiagramData.start_slot !== data.start_slot ||
+                             currentDiagramData.end_slot !== data.end_slot ||
+                             JSON.stringify(currentDiagramData.diagram) !== JSON.stringify(data.diagram);
+            
+            if (isNewData || !isRefresh) {
+                // Save scroll position before refresh
+                if (isRefresh) {
+                    saveScrollPosition();
+                }
+                
+                currentDiagramData = data;
+                renderChainForkTree();
+                
+                // Restore scroll position and details panel if we're refreshing
+                if (isRefresh) {
+                    restoreScrollPosition();
+                    if (viewState.selectedForkId) {
+                        restoreDetailsPanel();
+                    }
+                } else {
+                    // Show overview for initial load or when changing time frames
+                    // Use setTimeout to ensure DOM is ready
+                    setTimeout(showOverview, 0);
+                }
+            }
+            
+            hideLoadingIndicator();
+            
+            if (callback) {
+                callback(data);
+            }
+        })
+        .catch(error => {
+            console.error('Error loading diagram data:', error);
+            hideLoadingIndicator();
+            showErrorMessage('Failed to load diagram data: ' + error.message);
+        })
+        .finally(() => {
+            isLoadingData = false;
+        });
+}
+
+function startDataRefresh() {
+    if (dataRefreshInterval) {
+        clearInterval(dataRefreshInterval);
+    }
+    
+    dataRefreshInterval = setInterval(() => {
+        // Only refresh if we're at head (no specific start time selected)
+        if (isAtHead()) {
+            loadDiagramData(true);
+        }
+    }, REFRESH_INTERVAL);
+}
+
+function isAtHead() {
+    // Check if we're viewing the head of the chain (no start parameter in URL)
+    const urlParams = new URLSearchParams(window.location.search);
+    return !urlParams.has('start') || urlParams.get('start') === '';
+}
+
+function showLoadingIndicator() {
+    const container = document.getElementById('chainDiagram');
+    if (container) {
+        container.style.opacity = '0.5';
+        container.style.pointerEvents = 'none';
+    }
+}
+
+function hideLoadingIndicator() {
+    const container = document.getElementById('chainDiagram');
+    if (container) {
+        container.style.opacity = '1';
+        container.style.pointerEvents = 'auto';
+    }
+}
+
+function showErrorMessage(message) {
+    const container = document.getElementById('chainDiagram');
+    if (container) {
+        container.innerHTML = `
+            <div class="d-flex align-items-center justify-content-center h-100">
+                <div class="text-center">
+                    <i class="fas fa-exclamation-triangle text-warning fa-3x mb-3"></i>
+                    <h5>Error Loading Data</h5>
+                    <p class="text-muted">${message}</p>
+                    <button class="btn btn-primary" onclick="loadDiagramData(false)">
+                        <i class="fas fa-redo"></i> Retry
+                    </button>
+                </div>
+            </div>
+        `;
+    }
+}
+
+function showApiError(errorMessage) {
+    const container = document.getElementById('chainDiagram');
+    if (container) {
+        container.innerHTML = `
+            <div class="d-flex align-items-center justify-content-center h-100">
+                <div class="text-center">
+                    <i class="fas fa-server text-danger fa-3x mb-3"></i>
+                    <h5>Server Error</h5>
+                    <p class="text-muted">${errorMessage}</p>
+                    <button class="btn btn-primary" onclick="loadDiagramData(false)">
+                        <i class="fas fa-redo"></i> Retry
+                    </button>
+                </div>
+            </div>
+        `;
+    }
+}
+
+function restoreDetailsPanel() {
+    // Find the fork in current data and refresh details panel
+    if (!viewState.selectedForkId || !currentDiagramData) {
+        return;
+    }
+    
+    const fork = findForkById(viewState.selectedForkId);
+    if (fork) {
+        showForkDetails(fork);
+    }
+}
+
+function findForkById(forkId) {
+    if (!currentDiagramData || !currentDiagramData.diagram || !currentDiagramData.diagram.forks) {
+        return null;
+    }
+    
+    return currentDiagramData.diagram.forks.find(f => f.forkId === forkId);
+}
+
+function saveScrollPosition() {
+    if (scrollContainer) {
+        viewState.scrollPosition = {
+            x: scrollContainer.scrollLeft,
+            y: scrollContainer.scrollTop
+        };
+    }
+}
+
+function restoreScrollPosition() {
+    if (scrollContainer && viewState.scrollPosition) {
+        // Use requestAnimationFrame to ensure the DOM is updated
+        requestAnimationFrame(() => {
+            scrollContainer.scrollLeft = viewState.scrollPosition.x;
+            scrollContainer.scrollTop = viewState.scrollPosition.y;
+        });
+    }
+}
 
 function renderChainForkTree() {
     const container = document.getElementById('chainDiagram');
     if (!container) {
-        console.error('Chain diagram container not found');
+        console.warn('Chain diagram container not found, deferring render');
+        return;
+    }
+    
+    // Return early if no data loaded yet
+    if (!currentDiagramData) {
         return;
     }
     
@@ -82,8 +382,8 @@ function renderChainForkTree() {
     const dynamicHeight = Math.min(Math.max(viewportHeight * 0.7, 600), 1200);
     container.style.height = `${dynamicHeight}px`;
     
-    const data = window.chainDiagramData;
-    let diagram = data.diagram;
+    const staticData = window.chainDiagramData;
+    let diagram = currentDiagramData.diagram;
     
     // Parse diagram if it's a JSON string
     if (typeof diagram === 'string') {
@@ -120,11 +420,8 @@ function renderChainForkTree() {
         isCanonical: fork.is_canonical !== undefined ? fork.is_canonical : (fork.isCanonical || false)
     }));
     
-    // Check if we should hide single-block forks
-    const hideCheckbox = document.getElementById('hideSingleBlockForks');
-    const hideSingleBlockForks = hideCheckbox && hideCheckbox.checked;
-    
-    if (hideSingleBlockForks) {
+    // Use view state for single-block forks filter
+    if (viewState.hideSingleBlockForks) {
         // Hide single-block forks and merge chains
         diagram.forks = hideAndMergeSingleBlockForks(diagram.forks);
     } else {
@@ -142,8 +439,8 @@ function renderChainForkTree() {
     const containerAvailableWidth = container.offsetWidth - 40;
     
     // Calculate epoch range first to determine required height
-    const startEpoch = data.startEpoch;
-    const endEpoch = data.endEpoch;
+    const startEpoch = currentDiagramData.start_epoch;
+    const endEpoch = currentDiagramData.end_epoch;
     const epochRange = endEpoch - startEpoch;
     
     // Ensure each 5-epoch block is at least 50px (zoom applied later)
@@ -190,7 +487,7 @@ function renderChainForkTree() {
     
     // Convert slot to epoch for Y positioning
     function getSlotY(slot) {
-        const slotsPerEpoch = (data.specs && data.specs.slots_per_epoch) ? data.specs.slots_per_epoch : 32; // Use dynamic value with fallback
+        const slotsPerEpoch = (staticData.specs && staticData.specs.slots_per_epoch) ? staticData.specs.slots_per_epoch : 32; // Use static specs data
         const epoch = Math.floor(slot / slotsPerEpoch);
         const y = getEpochY(epoch);
         
@@ -280,9 +577,9 @@ function renderChainForkTree() {
     }
     
     // Draw finality checkpoint line
-    const finalitySlot = data.finalitySlot;
+    const finalitySlot = currentDiagramData.finality_slot;
     if (finalitySlot) {
-        const slotsPerEpoch = (data.specs && data.specs.slots_per_epoch) ? data.specs.slots_per_epoch : 32;
+        const slotsPerEpoch = (staticData.specs && staticData.specs.slots_per_epoch) ? staticData.specs.slots_per_epoch : 32;
         const finalityEpoch = Math.floor(finalitySlot / slotsPerEpoch);
         if (finalityEpoch >= startEpoch && finalityEpoch <= endEpoch) {
             const finalityY = getEpochY(finalityEpoch);
@@ -681,6 +978,9 @@ function queueUnhighlightFork(forkId) {
 function showForkDetails(fork) {
     const panel = document.getElementById('forkDetailsPanel');
     
+    // Update view state to preserve selection during refresh
+    viewState.selectedForkId = fork.forkId;
+    
     const participationPercent = (fork.participation * 100).toFixed(1); // Convert 0-1 to percentage
     const participationColor = getParticipationColor(fork.participation);
     
@@ -819,8 +1119,23 @@ function showForkDetails(fork) {
 
 function showOverview() {
     const panel = document.getElementById('forkDetailsPanel');
-    const data = window.chainDiagramData;
-    let diagram = data.diagram;
+    
+    if (!panel) {
+        console.warn('Fork details panel not found');
+        return;
+    }
+    
+    if (!currentDiagramData) {
+        panel.innerHTML = `
+            <div class="details-placeholder">
+                <i class="fas fa-mouse-pointer text-muted mb-2"></i>
+                <p class="text-muted">Loading diagram data...</p>
+            </div>
+        `;
+        return;
+    }
+    
+    let diagram = currentDiagramData.diagram;
     
     if (typeof diagram === 'string') {
         diagram = JSON.parse(diagram);
@@ -853,7 +1168,7 @@ function showOverview() {
             
             <div class="fork-detail-grid">
                 <span class="detail-label">Time Range:</span>
-                <span class="detail-value">Epochs ${window.chainDiagramData.startEpoch.toLocaleString()} - ${window.chainDiagramData.endEpoch.toLocaleString()}</span>
+                <span class="detail-value">Epochs ${currentDiagramData.start_epoch || 0} - ${currentDiagramData.end_epoch || 0}</span>
                 
                 <span class="detail-label">Total Forks:</span>
                 <span class="detail-value">${totalForks}</span>
