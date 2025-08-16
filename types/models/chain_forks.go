@@ -9,8 +9,8 @@ type ChainForksPageData struct {
 type ChainSpecs struct {
 	SlotsPerEpoch  uint64 `json:"slots_per_epoch"`
 	SecondsPerSlot uint64 `json:"seconds_per_slot"`
-	GenesisTime    uint64 `json:"genesis_time"`    // Genesis time in unix timestamp
-	CurrentSlot    uint64 `json:"current_slot"`    // Current head slot
+	GenesisTime    uint64 `json:"genesis_time"`   // Genesis time in unix timestamp
+	CurrentSlot    uint64 `json:"current_slot"`   // Current head slot
 	EpochsFor12h   uint64 `json:"epochs_for_12h"` // Pre-calculated epoch counts for time selectors
 	EpochsFor1d    uint64 `json:"epochs_for_1d"`
 	EpochsFor7d    uint64 `json:"epochs_for_7d"`

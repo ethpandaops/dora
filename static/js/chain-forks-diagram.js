@@ -1341,11 +1341,27 @@ function drawForkWithParticipationGradient(fork, forkX, startY, endY, svg, getSl
         
         // Find participation for this epoch
         const epochParticipation = epochData.find(e => e.epoch === epoch);
-        const participation = epochParticipation ? epochParticipation.participation : 0;
+        let participation = epochParticipation ? epochParticipation.participation : 0;
+        
+        // Scale up participation for partial epochs (when fork head doesn't reach epoch boundary)
+        if (epochParticipation && epoch === headEpoch && fork.headSlot < epochEndSlot) {
+            // Calculate how many slots are actually used in this partial epoch
+            const slotsUsedInEpoch = (fork.headSlot - epochStartSlot) + 1;
+            
+            // Only scale if we have slot count data and it's less than full epoch
+            if (slotsUsedInEpoch < slotsPerEpoch) {
+                // Scale up linearly to represent what full epoch participation would be
+                const scaleFactor = slotsPerEpoch / slotsUsedInEpoch;
+                participation = Math.min(1.0, participation * scaleFactor); // Cap at 100%
+            }
+        }
         
         // Use direct slot-to-Y conversion for exact fork segment positioning
         const segmentStartY = getSlotY(segmentStartSlot);
-        const segmentEndY = getSlotY(segmentEndSlot + 1); // +1 because segmentEndSlot is inclusive
+        // For the last segment of a fork, use the actual head slot, not +1
+        const actualEndSlot = (segmentEndSlot >= fork.headSlot) ? fork.headSlot : (segmentEndSlot + 1);
+        const segmentEndY = getSlotY(actualEndSlot);
+        
         
         segments.push({
             epoch: epoch,
@@ -1794,21 +1810,68 @@ function calculateAverageParticipation(forks) {
 
 function mergeParticipationByEpoch(forks) {
     const epochMap = new Map();
+    const slotsPerEpoch = (window.chainDiagramData.specs && window.chainDiagramData.specs.slots_per_epoch) ? window.chainDiagramData.specs.slots_per_epoch : 32;
     
+    // First pass: collect all epoch data and identify which epochs have full data
+    const allEpochData = [];
     for (const fork of forks) {
         if (fork.participationByEpoch) {
             for (const epochData of fork.participationByEpoch) {
-                const key = epochData.epoch;
-                if (!epochMap.has(key)) {
-                    epochMap.set(key, { ...epochData });
-                } else {
-                    // Average the participation values
-                    const existing = epochMap.get(key);
-                    existing.participation = (existing.participation + epochData.participation) / 2;
-                    existing.slotCount += epochData.slotCount;
-                }
+                allEpochData.push({
+                    ...epochData,
+                    forkId: fork.forkId,
+                    forkHeadSlot: fork.headSlot
+                });
             }
         }
+    }
+    
+    // Group by epoch to see all data for each epoch
+    const epochGroups = new Map();
+    for (const data of allEpochData) {
+        if (!epochGroups.has(data.epoch)) {
+            epochGroups.set(data.epoch, []);
+        }
+        epochGroups.get(data.epoch).push(data);
+    }
+    
+    // Second pass: merge epoch data, only scale if no full epoch data exists
+    for (const [epoch, epochDataList] of epochGroups) {
+        // Check if any fork has full slot count for this epoch
+        const hasFullEpochData = epochDataList.some(data => {
+            const slotCount = data.slotCount || data.slot_count || slotsPerEpoch;
+            return slotCount >= slotsPerEpoch;
+        });
+        
+        let totalParticipation = 0;
+        let totalSlotCount = 0;
+        let dataCount = 0;
+        
+        for (const epochData of epochDataList) {
+            let participation = epochData.participation;
+            let slotCount = epochData.slotCount || epochData.slot_count || slotsPerEpoch;
+            
+            // Only scale up partial epochs if no full epoch data exists for this epoch
+            const headEpoch = Math.floor(epochData.forkHeadSlot / slotsPerEpoch);
+            if (!hasFullEpochData && epochData.epoch === headEpoch && slotCount < slotsPerEpoch) {
+                const scaleFactor = slotsPerEpoch / slotCount;
+                participation = Math.min(1.0, participation * scaleFactor);
+            }
+            
+            totalParticipation += participation;
+            totalSlotCount += slotCount;
+            dataCount++;
+        }
+        
+        // Average participation across all forks for this epoch
+        const avgParticipation = dataCount > 0 ? totalParticipation / dataCount : 0;
+        
+        epochMap.set(epoch, {
+            epoch: epoch,
+            participation: avgParticipation,
+            slotCount: totalSlotCount,
+            slot_count: totalSlotCount
+        });
     }
     
     return Array.from(epochMap.values()).sort((a, b) => a.epoch - b.epoch);
@@ -1820,6 +1883,9 @@ function calculate5EpochParticipation(fork, targetEpoch) {
         return fork.participation || 0; // Fallback to overall participation
     }
     
+    const slotsPerEpoch = (window.chainDiagramData.specs && window.chainDiagramData.specs.slots_per_epoch) ? window.chainDiagramData.specs.slots_per_epoch : 32;
+    const headEpoch = Math.floor(fork.headSlot / slotsPerEpoch);
+    
     // Find participation data around the target epoch (±2 epochs for 5-epoch window)
     const relevantEpochs = fork.participationByEpoch.filter(epochData => 
         epochData.epoch >= targetEpoch - 2 && epochData.epoch <= targetEpoch + 2
@@ -1829,13 +1895,22 @@ function calculate5EpochParticipation(fork, targetEpoch) {
         return fork.participation || 0; // Fallback to overall participation
     }
     
-    // Calculate weighted average based on slot count
+    // Calculate weighted average based on slot count with scaling for partial epochs
     let totalParticipation = 0;
     let totalSlots = 0;
     
     for (const epochData of relevantEpochs) {
-        totalParticipation += epochData.participation * (epochData.slotCount || 1);
-        totalSlots += (epochData.slotCount || 1);
+        let participation = epochData.participation;
+        let slotCount = epochData.slotCount || epochData.slot_count || slotsPerEpoch;
+        
+        // Scale up participation for partial epochs at fork head
+        if (epochData.epoch === headEpoch && slotCount < slotsPerEpoch) {
+            const scaleFactor = slotsPerEpoch / slotCount;
+            participation = Math.min(1.0, participation * scaleFactor);
+        }
+        
+        totalParticipation += participation * slotCount;
+        totalSlots += slotCount;
     }
     
     return totalSlots > 0 ? totalParticipation / totalSlots : (fork.participation || 0);

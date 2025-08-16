@@ -131,6 +131,7 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 	canonicalBlocks := []*Block{}
 	orphanedBlocks := []*Block{}
 	nextEpochCanonicalBlocks := []*Block{}
+	nextEpochOrphanedBlocks := []*Block{}
 
 	var dependentRoot phase0.Root
 
@@ -161,9 +162,11 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 	}
 
 	for _, block := range nextEpochBlocks {
+		block.unpruneBlockBody()
 		if indexer.blockCache.isCanonicalBlock(block.Root, justifiedRoot) {
-			block.unpruneBlockBody()
 			nextEpochCanonicalBlocks = append(nextEpochCanonicalBlocks, block)
+		} else {
+			nextEpochOrphanedBlocks = append(nextEpochOrphanedBlocks, block)
 		}
 	}
 
@@ -171,8 +174,14 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 	sort.Slice(canonicalBlocks, func(i, j int) bool {
 		return canonicalBlocks[i].Slot < canonicalBlocks[j].Slot
 	})
+	sort.Slice(orphanedBlocks, func(i, j int) bool {
+		return orphanedBlocks[i].Slot < orphanedBlocks[j].Slot
+	})
 	sort.Slice(nextEpochCanonicalBlocks, func(i, j int) bool {
 		return nextEpochCanonicalBlocks[i].Slot < nextEpochCanonicalBlocks[j].Slot
+	})
+	sort.Slice(nextEpochOrphanedBlocks, func(i, j int) bool {
+		return nextEpochOrphanedBlocks[i].Slot < nextEpochOrphanedBlocks[j].Slot
 	})
 
 	// check if first canonical block is really the first block of the epoch
@@ -360,7 +369,7 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 		for chainHead, chain := range chainBlocks {
 			nextBlocks := []*Block{}
 			nextParentRoot := chainHead.Root
-			for _, block := range nextEpochBlocks {
+			for _, block := range nextEpochOrphanedBlocks {
 				parentRoot := block.GetParentRoot()
 				if parentRoot != nil && bytes.Equal((*parentRoot)[:], nextParentRoot[:]) {
 					nextBlocks = append(nextBlocks, block)

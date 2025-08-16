@@ -413,30 +413,6 @@ func buildChainDiagram(forks []*models.ChainFork, startEpoch, endEpoch uint64, i
 	return diagram
 }
 
-// calculateStartSlot determines the actual start slot for the fork visualization
-func calculateStartSlot(startSlot uint64, pageSizeEpochs uint64) uint64 {
-	chainState := services.GlobalBeaconService.GetChainState()
-	specs := chainState.GetSpecs()
-	slotsPerEpoch := uint64(specs.SlotsPerEpoch)
-
-	var recentSlotWindow uint64
-	if pageSizeEpochs > 0 {
-		// Convert epochs to slots using actual chain specs
-		recentSlotWindow = pageSizeEpochs * slotsPerEpoch
-	} else {
-		// Use default page size
-		recentSlotWindow = getDefaultChainForksPageSize() * slotsPerEpoch
-	}
-
-	if startSlot > recentSlotWindow {
-		return startSlot - recentSlotWindow
-	}
-
-	// If requested window is larger than available history, start from slot 0
-	// but still respect the window size for the end slot calculation
-	return 0
-}
-
 // processForksWithEpochData converts database forks to page data with epoch-based participation
 func processForksWithEpochData(dbForks []*dbtypes.Fork, indexer *beacon.Indexer, startEpoch, endEpoch uint64) ([]*models.ChainFork, error) {
 	forks := make([]*models.ChainFork, 0, len(dbForks)+1)
@@ -567,7 +543,7 @@ func processForksWithEpochData(dbForks []*dbtypes.Fork, indexer *beacon.Indexer,
 	}
 
 	// 4. Add participation from cached epochs (epoch > prunedEpoch)
-	if uint64(prunedEpoch) < endEpoch {
+	if uint64(prunedEpoch) <= endEpoch {
 		cacheStartEpoch := uint64(prunedEpoch)
 
 		nextEpochBlocks := make([]*beacon.Block, 0)
