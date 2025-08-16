@@ -1038,7 +1038,13 @@ func normalizeSlotRange(startSlot uint64, pageSizeEpochs uint64) (uint64, uint64
 		}
 
 		// Calculate start that gives us exactly requested size ending at boundary
-		boundaryStartEpoch := boundaryEndEpoch - pageSizeEpochs
+		var boundaryStartEpoch uint64
+		if boundaryEndEpoch > pageSizeEpochs {
+			boundaryStartEpoch = boundaryEndEpoch - pageSizeEpochs
+		} else {
+			boundaryStartEpoch = 0
+		}
+
 		boundarySlot := boundaryStartEpoch * slotsPerEpoch
 
 		return boundarySlot, pageSizeEpochs, currentSlot
