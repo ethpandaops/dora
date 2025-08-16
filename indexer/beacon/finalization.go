@@ -183,6 +183,9 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 	sort.Slice(nextEpochOrphanedBlocks, func(i, j int) bool {
 		return nextEpochOrphanedBlocks[i].Slot < nextEpochOrphanedBlocks[j].Slot
 	})
+	sort.Slice(epochBlocks, func(i, j int) bool {
+		return epochBlocks[i].Slot < epochBlocks[j].Slot
+	})
 
 	// check if first canonical block is really the first block of the epoch
 	// clients do backfilling, so we only need to check if the first block
@@ -356,7 +359,7 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 		for _, chainHead := range chainHeads {
 			chain := []*Block{}
 
-			for _, block := range blocks {
+			for _, block := range epochBlocks {
 				if indexer.blockCache.isCanonicalBlock(block.Root, chainHead.Root) {
 					chain = append(chain, block)
 				}
