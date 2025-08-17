@@ -403,6 +403,9 @@ function renderChainForkTree() {
         return;
     }
     
+    // Clear any stuck highlights from previous renders
+    clearAllHighlights();
+    
     // Return early if no data loaded yet
     if (!currentDiagramData) {
         return;
@@ -951,6 +954,26 @@ function unhighlightFork(forkId) {
     });
 }
 
+// Safety function to clear all highlights
+function clearAllHighlights() {
+    // Clear all line highlights
+    const highlightedLines = document.querySelectorAll('[data-hover-active="true"]');
+    highlightedLines.forEach(line => {
+        line.style.removeProperty('stroke-width');
+        line.removeAttribute('data-hover-active');
+    });
+    
+    // Clear all circle highlights
+    const highlightedCircles = document.querySelectorAll('[data-original-radius]');
+    highlightedCircles.forEach(circle => {
+        const originalRadius = circle.getAttribute('data-original-radius');
+        if (originalRadius) {
+            circle.setAttribute('r', originalRadius);
+            circle.removeAttribute('data-original-radius');
+        }
+    });
+}
+
 // Debounced highlight functions to prevent stuttering
 function queueHighlightFork(forkId) {
     // Clear any pending unhighlight timer
@@ -962,6 +985,12 @@ function queueHighlightFork(forkId) {
     // If already highlighting the same fork, do nothing
     if (highlightQueue.isHighlighted && highlightQueue.currentForkId === forkId) {
         return;
+    }
+    
+    // Clear any previous highlight immediately when switching to a different fork
+    if (highlightQueue.isHighlighted && highlightQueue.currentForkId && highlightQueue.currentForkId !== forkId) {
+        unhighlightFork(highlightQueue.currentForkId);
+        highlightQueue.isHighlighted = false;
     }
     
     // Clear any pending highlight timer
