@@ -210,6 +210,23 @@ func buildFilteredMevBlocksPageData(pageIdx uint64, pageSize uint64, minSlot uin
 		panic(err)
 	}
 
+	blockBlobCountMap := make(map[string]uint64)
+	blockRoots := [][]byte{}
+	for _, mevBlock := range dbMevBlocks {
+		block := services.GlobalBeaconService.GetBeaconIndexer().GetBlocksByExecutionBlockHash(phase0.Hash32(mevBlock.BlockHash))
+		if len(block) > 0 {
+			blockIndex := block[0].GetBlockIndex()
+			blockBlobCountMap[string(blockIndex.ExecutionHash[:])] = blockIndex.BlobCount
+		} else {
+			blockRoots = append(blockRoots, mevBlock.BlockHash)
+		}
+	}
+	blockBlobCounts := db.GetSlotBlobCountByExecutionHashes(blockRoots)
+
+	for _, blockBlobCount := range blockBlobCounts {
+		blockBlobCountMap[string(blockBlobCount.EthBlockHash)] = blockBlobCount.BlobCount
+	}
+
 	chainState := services.GlobalBeaconService.GetChainState()
 
 	for _, mevBlock := range dbMevBlocks {
@@ -225,7 +242,7 @@ func buildFilteredMevBlocksPageData(pageIdx uint64, pageSize uint64, minSlot uin
 			Relays:         []*models.MevBlocksPageDataRelay{},
 			FeeRecipient:   mevBlock.FeeRecipient,
 			TxCount:        mevBlock.TxCount,
-			BlobCount:      mevBlock.BlobCount,
+			BlobCount:      blockBlobCountMap[string(mevBlock.BlockHash)],
 			GasUsed:        mevBlock.GasUsed,
 			BlockValue:     mevBlock.BlockValueGwei,
 		}

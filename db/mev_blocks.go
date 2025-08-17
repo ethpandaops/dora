@@ -123,13 +123,9 @@ func GetMevBlockByBlockHash(blockHash []byte) *dbtypes.MevBlock {
 	mevBlock := dbtypes.MevBlock{}
 	err := ReaderDb.Get(&mevBlock, `
 	SELECT
-		mev_blocks.slot_number, mev_blocks.block_hash, mev_blocks.block_number, mev_blocks.builder_pubkey, 
-		mev_blocks.proposer_index, mev_blocks.proposed, mev_blocks.seenby_relays, mev_blocks.fee_recipient, 
-		mev_blocks.tx_count, mev_blocks.gas_used, mev_blocks.block_value, mev_blocks.block_value_gwei,
-		COALESCE(slots.blob_count, 0) AS blob_count
+		slot_number, block_hash, block_number, builder_pubkey, proposer_index, proposed, seenby_relays, fee_recipient, tx_count, gas_used, block_value, block_value_gwei
 	FROM mev_blocks
-	LEFT JOIN slots ON mev_blocks.slot_number = slots.slot
-	WHERE mev_blocks.block_hash = $1
+	WHERE block_hash = $1
 	`, blockHash)
 	if err != nil {
 		return nil
@@ -154,13 +150,9 @@ func GetMevBlocksByBlockHashes(blockHashes [][]byte) map[string]*dbtypes.MevBloc
 
 	query := fmt.Sprintf(`
 	SELECT
-		mev_blocks.slot_number, mev_blocks.block_hash, mev_blocks.block_number, mev_blocks.builder_pubkey, 
-		mev_blocks.proposer_index, mev_blocks.proposed, mev_blocks.seenby_relays, mev_blocks.fee_recipient, 
-		mev_blocks.tx_count, mev_blocks.gas_used, mev_blocks.block_value, mev_blocks.block_value_gwei,
-		COALESCE(slots.blob_count, 0) AS blob_count
+		slot_number, block_hash, block_number, builder_pubkey, proposer_index, proposed, seenby_relays, fee_recipient, tx_count, gas_used, block_value, block_value_gwei
 	FROM mev_blocks
-	LEFT JOIN slots ON mev_blocks.slot_number = slots.slot
-	WHERE mev_blocks.block_hash IN (%s)
+	WHERE block_hash IN (%s)
 	`, strings.Join(placeholders, ", "))
 
 	mevBlocks := []*dbtypes.MevBlock{}
@@ -185,12 +177,8 @@ func GetMevBlocksFiltered(offset uint64, limit uint32, filter *dbtypes.MevBlockF
 	fmt.Fprint(&sql, `
 	WITH cte AS (
 		SELECT
-			mev_blocks.slot_number, mev_blocks.block_hash, mev_blocks.block_number, mev_blocks.builder_pubkey, 
-			mev_blocks.proposer_index, mev_blocks.proposed, mev_blocks.seenby_relays, mev_blocks.fee_recipient, 
-			mev_blocks.tx_count, mev_blocks.gas_used, mev_blocks.block_value, mev_blocks.block_value_gwei,
-			COALESCE(slots.blob_count, 0) AS blob_count
+			slot_number, block_hash, block_number, builder_pubkey, proposer_index, proposed, seenby_relays, fee_recipient, tx_count, gas_used, block_value, block_value_gwei
 		FROM mev_blocks
-		LEFT JOIN slots ON mev_blocks.slot_number = slots.slot
 	`)
 
 	if filter.ProposerName != "" {
@@ -202,22 +190,22 @@ func GetMevBlocksFiltered(offset uint64, limit uint32, filter *dbtypes.MevBlockF
 	filterOp := "WHERE"
 	if filter.MinSlot > 0 {
 		args = append(args, filter.MinSlot)
-		fmt.Fprintf(&sql, " %v mev_blocks.slot_number >= $%v", filterOp, len(args))
+		fmt.Fprintf(&sql, " %v slot_number >= $%v", filterOp, len(args))
 		filterOp = "AND"
 	}
 	if filter.MaxSlot > 0 {
 		args = append(args, filter.MaxSlot)
-		fmt.Fprintf(&sql, " %v mev_blocks.slot_number <= $%v", filterOp, len(args))
+		fmt.Fprintf(&sql, " %v slot_number <= $%v", filterOp, len(args))
 		filterOp = "AND"
 	}
 	if filter.MinIndex > 0 {
 		args = append(args, filter.MinIndex)
-		fmt.Fprintf(&sql, " %v mev_blocks.proposer_index >= $%v", filterOp, len(args))
+		fmt.Fprintf(&sql, " %v proposer_index >= $%v", filterOp, len(args))
 		filterOp = "AND"
 	}
 	if filter.MaxIndex > 0 {
 		args = append(args, filter.MaxIndex)
-		fmt.Fprintf(&sql, " %v mev_blocks.proposer_index <= $%v", filterOp, len(args))
+		fmt.Fprintf(&sql, " %v proposer_index <= $%v", filterOp, len(args))
 		filterOp = "AND"
 	}
 	if len(filter.Proposed) > 0 {
@@ -227,14 +215,14 @@ func GetMevBlocksFiltered(offset uint64, limit uint32, filter *dbtypes.MevBlockF
 				fmt.Fprintf(&sql, " OR ")
 			}
 			args = append(args, v)
-			fmt.Fprintf(&sql, " mev_blocks.proposed = $%v", len(args))
+			fmt.Fprintf(&sql, " proposed = $%v", len(args))
 		}
 		fmt.Fprintf(&sql, " )")
 		filterOp = "AND"
 	}
 	if len(filter.BuilderPubkey) > 0 {
 		args = append(args, filter.BuilderPubkey)
-		fmt.Fprintf(&sql, " %v mev_blocks.builder_pubkey = $%v", filterOp, len(args))
+		fmt.Fprintf(&sql, " %v builder_pubkey = $%v", filterOp, len(args))
 		filterOp = "AND"
 	}
 	if len(filter.MevRelay) > 0 {
@@ -246,7 +234,7 @@ func GetMevBlocksFiltered(offset uint64, limit uint32, filter *dbtypes.MevBlockF
 			seenbyPattern |= uint64(1) << relayId
 		}
 		args = append(args, seenbyPattern)
-		fmt.Fprintf(&sql, " %v (mev_blocks.seenby_relays & $%v) != 0", filterOp, len(args))
+		fmt.Fprintf(&sql, " %v (seenby_relays & $%v) != 0", filterOp, len(args))
 		filterOp = "AND"
 	}
 	if filter.ProposerName != "" {
@@ -274,8 +262,7 @@ func GetMevBlocksFiltered(offset uint64, limit uint32, filter *dbtypes.MevBlockF
 		0 AS tx_count,
 		0 AS gas_used,
 		null AS block_value,
-		0 AS block_value_gwei,
-		0 AS blob_count
+		0 AS block_value_gwei
 	FROM cte
 	UNION ALL SELECT * FROM (
 	SELECT * FROM cte
