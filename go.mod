@@ -37,7 +37,7 @@ require (
 	github.com/swaggo/swag v1.16.6
 	github.com/syndtr/goleveldb v1.0.1-0.20220614013038-64ee5596c38a
 	github.com/tdewolff/minify v2.3.6+incompatible
-	github.com/timandy/routine v1.1.5
+	github.com/timandy/routine v1.1.6
 	github.com/urfave/negroni v1.0.0
 	golang.org/x/crypto v0.41.0
 	golang.org/x/exp v0.0.0-20250506013437-ce4c2cf36ca6
