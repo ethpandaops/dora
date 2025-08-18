@@ -5,10 +5,10 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-func InsertUnfinalizedEpoch(epoch *dbtypes.UnfinalizedEpoch, tx *sqlx.Tx) error {
+func InsertOrphanedEpoch(epoch *dbtypes.OrphanedEpoch, tx *sqlx.Tx) error {
 	_, err := tx.Exec(EngineQuery(map[dbtypes.DBEngineType]string{
 		dbtypes.DBEnginePgsql: `
-			INSERT INTO unfinalized_epochs (
+			INSERT INTO orphaned_epochs (
 				epoch, dependent_root, epoch_head_root, epoch_head_fork_id, validator_count, validator_balance, eligible, voted_target, 
 				voted_head, voted_total, block_count, orphaned_count, attestation_count, deposit_count, exit_count, withdraw_count, 
 				withdraw_amount, attester_slashing_count, proposer_slashing_count, bls_change_count, eth_transaction_count, sync_participation,
@@ -38,7 +38,7 @@ func InsertUnfinalizedEpoch(epoch *dbtypes.UnfinalizedEpoch, tx *sqlx.Tx) error 
 				eth_gas_used = excluded.eth_gas_used,
 				eth_gas_limit = excluded.eth_gas_limit`,
 		dbtypes.DBEngineSqlite: `
-			INSERT OR REPLACE INTO unfinalized_epochs (
+			INSERT OR REPLACE INTO orphaned_epochs (
 				epoch, dependent_root, epoch_head_root, epoch_head_fork_id, validator_count, validator_balance, eligible, voted_target, 
 				voted_head, voted_total, block_count, orphaned_count, attestation_count, deposit_count, exit_count, withdraw_count, 
 				withdraw_amount, attester_slashing_count, proposer_slashing_count, bls_change_count, eth_transaction_count, sync_participation,
@@ -56,22 +56,22 @@ func InsertUnfinalizedEpoch(epoch *dbtypes.UnfinalizedEpoch, tx *sqlx.Tx) error 
 	return nil
 }
 
-func StreamUnfinalizedEpochs(epoch uint64, cb func(duty *dbtypes.UnfinalizedEpoch)) error {
+func StreamOrphanedEpochs(epoch uint64, cb func(duty *dbtypes.OrphanedEpoch)) error {
 	rows, err := ReaderDb.Query(`
 	SELECT
 		epoch, dependent_root, epoch_head_root, epoch_head_fork_id, validator_count, validator_balance, eligible, voted_target,
 		voted_head, voted_total, block_count, orphaned_count, attestation_count, deposit_count, exit_count, withdraw_count,
 		withdraw_amount, attester_slashing_count, proposer_slashing_count, bls_change_count, eth_transaction_count, sync_participation,
 		blob_count, eth_gas_used, eth_gas_limit
-	FROM unfinalized_epochs
+	FROM orphaned_epochs
 	WHERE epoch >= $1`, epoch)
 	if err != nil {
-		logger.Errorf("Error while fetching unfinalized epochs: %v", err)
+		logger.Errorf("Error while fetching orphaned epochs: %v", err)
 		return nil
 	}
 
 	for rows.Next() {
-		e := dbtypes.UnfinalizedEpoch{}
+		e := dbtypes.OrphanedEpoch{}
 		err := rows.Scan(
 			&e.Epoch, &e.DependentRoot, &e.EpochHeadRoot, &e.EpochHeadForkId, &e.ValidatorCount, &e.ValidatorBalance, &e.Eligible, &e.VotedTarget,
 			&e.VotedHead, &e.VotedTotal, &e.BlockCount, &e.OrphanedCount, &e.AttestationCount, &e.DepositCount, &e.ExitCount, &e.WithdrawCount,
@@ -79,7 +79,7 @@ func StreamUnfinalizedEpochs(epoch uint64, cb func(duty *dbtypes.UnfinalizedEpoc
 			&e.BlobCount, &e.EthGasUsed, &e.EthGasLimit,
 		)
 		if err != nil {
-			logger.Errorf("Error while scanning unfinalized epoch: %v", err)
+			logger.Errorf("Error while scanning orphaned epoch: %v", err)
 			return err
 		}
 		cb(&e)
@@ -88,33 +88,25 @@ func StreamUnfinalizedEpochs(epoch uint64, cb func(duty *dbtypes.UnfinalizedEpoc
 	return nil
 }
 
-func GetUnfinalizedEpoch(epoch uint64, headRoot []byte) *dbtypes.UnfinalizedEpoch {
-	unfinalizedEpoch := dbtypes.UnfinalizedEpoch{}
-	err := ReaderDb.Get(&unfinalizedEpoch, `
+func GetOrphanedEpoch(epoch uint64, headRoot []byte) *dbtypes.OrphanedEpoch {
+	orphanedEpoch := dbtypes.OrphanedEpoch{}
+	err := ReaderDb.Get(&orphanedEpoch, `
 	SELECT
 		epoch, dependent_root, epoch_head_root, epoch_head_fork_id, validator_count, validator_balance, eligible, voted_target,
 		voted_head, voted_total, block_count, orphaned_count, attestation_count, deposit_count, exit_count, withdraw_count,
 		withdraw_amount, attester_slashing_count, proposer_slashing_count, bls_change_count, eth_transaction_count, sync_participation,
 		blob_count, eth_gas_used, eth_gas_limit
-	FROM unfinalized_epochs
+	FROM orphaned_epochs
 	WHERE epoch = $1 AND epoch_head_root = $2
 	`, epoch, headRoot)
 	if err != nil {
 		return nil
 	}
-	return &unfinalizedEpoch
+	return &orphanedEpoch
 }
 
-func DeleteUnfinalizedEpochsBefore(epoch uint64, tx *sqlx.Tx) error {
-	_, err := tx.Exec(`DELETE FROM unfinalized_epochs WHERE epoch < $1`, epoch)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-// UnfinalizedEpochParticipation represents participation data for an unfinalized epoch
-type UnfinalizedEpochParticipation struct {
+// OrphanedEpochParticipation represents participation data for an orphaned epoch
+type OrphanedEpochParticipation struct {
 	Epoch       uint64 `db:"epoch"`
 	HeadForkId  uint64 `db:"epoch_head_fork_id"`
 	BlockCount  uint64 `db:"block_count"`
@@ -124,10 +116,9 @@ type UnfinalizedEpochParticipation struct {
 	VotedTotal  uint64 `db:"voted_total"`
 }
 
-// GetUnfinalizedEpochParticipation gets participation data for unfinalized epochs in the given range
-// This is used for pruned epochs that are stored in the database
-func GetUnfinalizedEpochParticipation(startEpoch, endEpoch uint64) ([]*UnfinalizedEpochParticipation, error) {
-	var results []*UnfinalizedEpochParticipation
+// GetOrphanedEpochParticipation gets participation data for orphaned epochs in the given range
+func GetOrphanedEpochParticipation(startEpoch, endEpoch uint64) ([]*OrphanedEpochParticipation, error) {
+	var results []*OrphanedEpochParticipation
 
 	err := ReaderDb.Select(&results, `
 		SELECT 
@@ -138,7 +129,7 @@ func GetUnfinalizedEpochParticipation(startEpoch, endEpoch uint64) ([]*Unfinaliz
 			voted_target,
 			voted_head,
 			voted_total
-		FROM unfinalized_epochs
+		FROM orphaned_epochs
 		WHERE epoch >= $1 AND epoch <= $2
 		ORDER BY epoch, epoch_head_fork_id
 	`, startEpoch, endEpoch)

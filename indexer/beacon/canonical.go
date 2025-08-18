@@ -268,8 +268,6 @@ func (indexer *Indexer) aggregateForkVotes(forkId ForkKey, epochLimit uint64) (t
 	lastSlot := phase0.Slot(0)
 	thisForkId := forkId
 	for {
-		lastBlocks = lastBlocks[:0]
-
 		for _, block := range indexer.blockCache.getLatestBlocks(epochLimit*specs.SlotsPerEpoch, &thisForkId) {
 			lastSlot = block.Slot
 			if block.Slot < minAggregateSlot {
@@ -319,7 +317,19 @@ func (indexer *Indexer) aggregateForkVotes(forkId ForkKey, epochLimit uint64) (t
 			continue
 		}
 
-		dependentRoot := epochVotingBlocks[0].GetParentRoot()
+		var dependentRoot *phase0.Root
+
+		if chainState.EpochOfSlot(epochVotingBlocks[0].Slot) == 0 {
+			firstBlock := epochVotingBlocks[0]
+			if firstBlock.Slot == 0 {
+				dependentRoot = &firstBlock.Root
+			} else {
+				dependentRoot = firstBlock.GetParentRoot()
+			}
+		} else {
+			dependentRoot = epochVotingBlocks[0].GetParentRoot()
+		}
+
 		if dependentRoot == nil {
 			epochPercent = append(epochPercent, 0)
 			continue

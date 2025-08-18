@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/jmoiron/sqlx"
@@ -37,6 +38,8 @@ func migrate() {
 	targetPgsqlPass := flags.String("target-pgsql-pass", "", "Target PostgreSQL password")
 	targetPgsqlDb := flags.String("target-pgsql-db", "", "Target PostgreSQL database name")
 
+	limitTablesStr := flags.String("limit-tables", "", "Limit tables to migrate (comma separated list)")
+
 	debug := flags.Bool("debug", false, "Enable debug mode")
 
 	flags.Parse(os.Args[1:])
@@ -48,6 +51,11 @@ func migrate() {
 	if *sourceEngine == "" || *targetEngine == "" {
 		flag.Usage()
 		os.Exit(1)
+	}
+
+	limitTables := make([]string, 0)
+	if limitTablesStr != nil && *limitTablesStr != "" {
+		limitTables = strings.Split(*limitTablesStr, ",")
 	}
 
 	sourceConfig := DbConfig{Engine: *sourceEngine}
@@ -73,12 +81,12 @@ func migrate() {
 		targetConfig.Pgsql.Name = *targetPgsqlDb
 	}
 
-	if err := migrateDatabase(sourceConfig, targetConfig); err != nil {
+	if err := migrateDatabase(sourceConfig, targetConfig, limitTables); err != nil {
 		logrus.Fatalf("Migration failed: %v", err)
 	}
 }
 
-func migrateDatabase(source, target DbConfig) error {
+func migrateDatabase(source, target DbConfig, limitTables []string) error {
 	var sourceDb *sqlx.DB
 	var err error
 
@@ -127,6 +135,17 @@ func migrateDatabase(source, target DbConfig) error {
 	}
 	if err != nil {
 		return fmt.Errorf("failed to get table names: %v", err)
+	}
+
+	// Filter tables if limitTables is provided
+	if len(limitTables) > 0 {
+		filteredTables := make([]string, 0)
+		for _, table := range tables {
+			if slices.Contains(limitTables, table) {
+				filteredTables = append(filteredTables, table)
+			}
+		}
+		tables = filteredTables
 	}
 
 	// Migrate each table
