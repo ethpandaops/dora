@@ -480,6 +480,36 @@ func GetSlotStatus(blockRoots [][]byte) []*dbtypes.BlockStatus {
 	return orphanedRefs
 }
 
+func GetSlotBlobCountByExecutionHashes(blockHashes [][]byte) []*dbtypes.BlockBlobCount {
+	blockBlockCounts := []*dbtypes.BlockBlobCount{}
+	if len(blockHashes) == 0 {
+		return blockBlockCounts
+	}
+	var sql strings.Builder
+	fmt.Fprintf(&sql, `
+	SELECT
+		root, eth_block_hash, blob_count
+	FROM slots
+	WHERE eth_block_hash in (`)
+	argIdx := 0
+	args := make([]any, len(blockHashes))
+	for i, root := range blockHashes {
+		if i > 0 {
+			fmt.Fprintf(&sql, ", ")
+		}
+		fmt.Fprintf(&sql, "$%v", argIdx+1)
+		args[argIdx] = root
+		argIdx += 1
+	}
+	fmt.Fprintf(&sql, ")")
+	err := ReaderDb.Select(&blockBlockCounts, sql.String(), args...)
+	if err != nil {
+		logger.Errorf("Error while fetching block blob counts: %v", err)
+		return nil
+	}
+	return blockBlockCounts
+}
+
 func GetHighestRootBeforeSlot(slot uint64, withOrphaned bool) []byte {
 	var result []byte
 	statusFilter := ""

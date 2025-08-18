@@ -16,6 +16,12 @@ type BlockStatus struct {
 	Status SlotStatus `db:"status"`
 }
 
+type BlockBlobCount struct {
+	Root         []byte `db:"root"`
+	EthBlockHash []byte `db:"eth_block_hash"`
+	BlobCount    uint64 `db:"blob_count"`
+}
+
 type BlockHead struct {
 	Slot       uint64 `db:"slot"`
 	Root       []byte `db:"root"`
