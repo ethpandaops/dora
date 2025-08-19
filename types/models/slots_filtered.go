@@ -24,6 +24,7 @@ type SlotsFilteredPageData struct {
 	FilterMinBlobCount    string `json:"filter_min_blob"`
 	FilterMaxBlobCount    string `json:"filter_max_blob"`
 	FilterForkIds         string `json:"filter_fork_ids"`
+	FilterWithMevBlock    uint8  `json:"filter_mev_block"`
 
 	DisplayEpoch        bool   `json:"dp_epoch"`
 	DisplaySlot         bool   `json:"dp_slot"`
@@ -46,6 +47,7 @@ type SlotsFilteredPageData struct {
 	DisplayColCount     uint64 `json:"display_col_count"`
 
 	HasSnooperClients bool `json:"has_snooper_clients"`
+	HasMevRelays      bool `json:"has_mev_relays"`
 
 	Slots     []*SlotsFilteredPageDataSlot `json:"slots"`
 	SlotCount uint64                       `json:"slot_count"`

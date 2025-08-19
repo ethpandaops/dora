@@ -61,6 +61,7 @@ func SlotsFiltered(w http.ResponseWriter, r *http.Request) {
 	var minBlobCount string
 	var maxBlobCount string
 	var forkIds string
+	var withMevBlock uint64
 
 	if urlArgs.Has("f") {
 		if urlArgs.Has("f.graffiti") {
@@ -117,6 +118,9 @@ func SlotsFiltered(w http.ResponseWriter, r *http.Request) {
 		if urlArgs.Has("f.fork") {
 			forkIds = urlArgs.Get("f.fork")
 		}
+		if urlArgs.Has("f.mev") {
+			withMevBlock, _ = strconv.ParseUint(urlArgs.Get("f.mev"), 10, 64)
+		}
 	} else {
 		withOrphaned = 1
 		withMissing = 1
@@ -124,7 +128,7 @@ func SlotsFiltered(w http.ResponseWriter, r *http.Request) {
 	var pageError error
 	pageError = services.GlobalCallRateLimiter.CheckCallLimit(r, 2)
 	if pageError == nil {
-		data.Data, pageError = getFilteredSlotsPageData(pageIdx, pageSize, graffiti, invertgraffiti, extradata, invertextradata, proposer, pname, invertproposer, uint8(withOrphaned), uint8(withMissing), minSyncAgg, maxSyncAgg, minExecTime, maxExecTime, minTxCount, maxTxCount, minBlobCount, maxBlobCount, forkIds, displayColumns)
+		data.Data, pageError = getFilteredSlotsPageData(pageIdx, pageSize, graffiti, invertgraffiti, extradata, invertextradata, proposer, pname, invertproposer, uint8(withOrphaned), uint8(withMissing), minSyncAgg, maxSyncAgg, minExecTime, maxExecTime, minTxCount, maxTxCount, minBlobCount, maxBlobCount, forkIds, uint8(withMevBlock), displayColumns)
 	}
 	if pageError != nil {
 		handlePageError(w, r, pageError)
@@ -136,11 +140,11 @@ func SlotsFiltered(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func getFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string, invertgraffiti bool, extradata string, invertextradata bool, proposer string, pname string, invertproposer bool, withOrphaned uint8, withMissing uint8, minSyncAgg string, maxSyncAgg string, minExecTime string, maxExecTime string, minTxCount string, maxTxCount string, minBlobCount string, maxBlobCount string, forkIds string, displayColumns string) (*models.SlotsFilteredPageData, error) {
+func getFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string, invertgraffiti bool, extradata string, invertextradata bool, proposer string, pname string, invertproposer bool, withOrphaned uint8, withMissing uint8, minSyncAgg string, maxSyncAgg string, minExecTime string, maxExecTime string, minTxCount string, maxTxCount string, minBlobCount string, maxBlobCount string, forkIds string, withMevBlock uint8, displayColumns string) (*models.SlotsFilteredPageData, error) {
 	pageData := &models.SlotsFilteredPageData{}
-	pageCacheKey := fmt.Sprintf("slots_filtered:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v", pageIdx, pageSize, graffiti, invertgraffiti, extradata, invertextradata, proposer, pname, invertproposer, withOrphaned, withMissing, minSyncAgg, maxSyncAgg, minExecTime, maxExecTime, minTxCount, maxTxCount, minBlobCount, maxBlobCount, forkIds, displayColumns)
+	pageCacheKey := fmt.Sprintf("slots_filtered:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v", pageIdx, pageSize, graffiti, invertgraffiti, extradata, invertextradata, proposer, pname, invertproposer, withOrphaned, withMissing, minSyncAgg, maxSyncAgg, minExecTime, maxExecTime, minTxCount, maxTxCount, minBlobCount, maxBlobCount, forkIds, withMevBlock, displayColumns)
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(_ *services.FrontendCacheProcessingPage) interface{} {
-		return buildFilteredSlotsPageData(pageIdx, pageSize, graffiti, invertgraffiti, extradata, invertextradata, proposer, pname, invertproposer, withOrphaned, withMissing, minSyncAgg, maxSyncAgg, minExecTime, maxExecTime, minTxCount, maxTxCount, minBlobCount, maxBlobCount, forkIds, displayColumns)
+		return buildFilteredSlotsPageData(pageIdx, pageSize, graffiti, invertgraffiti, extradata, invertextradata, proposer, pname, invertproposer, withOrphaned, withMissing, minSyncAgg, maxSyncAgg, minExecTime, maxExecTime, minTxCount, maxTxCount, minBlobCount, maxBlobCount, forkIds, withMevBlock, displayColumns)
 	})
 	if pageErr == nil && pageRes != nil {
 		resData, resOk := pageRes.(*models.SlotsFilteredPageData)
@@ -152,7 +156,7 @@ func getFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string, 
 	return pageData, pageErr
 }
 
-func buildFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string, invertgraffiti bool, extradata string, invertextradata bool, proposer string, pname string, invertproposer bool, withOrphaned uint8, withMissing uint8, minSyncAgg string, maxSyncAgg string, minExecTime string, maxExecTime string, minTxCount string, maxTxCount string, minBlobCount string, maxBlobCount string, forkIds string, displayColumns string) *models.SlotsFilteredPageData {
+func buildFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string, invertgraffiti bool, extradata string, invertextradata bool, proposer string, pname string, invertproposer bool, withOrphaned uint8, withMissing uint8, minSyncAgg string, maxSyncAgg string, minExecTime string, maxExecTime string, minTxCount string, maxTxCount string, minBlobCount string, maxBlobCount string, forkIds string, withMevBlock uint8, displayColumns string) *models.SlotsFilteredPageData {
 	chainState := services.GlobalBeaconService.GetChainState()
 	filterArgs := url.Values{}
 	if graffiti != "" {
@@ -209,12 +213,18 @@ func buildFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string
 	if forkIds != "" {
 		filterArgs.Add("f.fork", forkIds)
 	}
+	if withMevBlock != 0 {
+		filterArgs.Add("f.mev", fmt.Sprintf("%v", withMevBlock))
+	}
 
 	// Check if snooper clients are configured
 	hasSnooperClients := false
 	if snooperManager := services.GlobalBeaconService.GetSnooperManager(); snooperManager != nil {
 		hasSnooperClients = snooperManager.HasClients()
 	}
+
+	// Check if MEV relays are configured
+	hasMevRelays := len(utils.Config.MevIndexer.Relays) > 0
 
 	displayMap := map[uint64]bool{}
 	if displayColumns != "" {
@@ -284,6 +294,7 @@ func buildFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string
 		FilterMinBlobCount:    minBlobCount,
 		FilterMaxBlobCount:    maxBlobCount,
 		FilterForkIds:         forkIds,
+		FilterWithMevBlock:    withMevBlock,
 
 		DisplayEpoch:        displayMap[1],
 		DisplaySlot:         displayMap[2],
@@ -306,6 +317,7 @@ func buildFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string
 		DisplayColCount:     uint64(len(displayMap)),
 
 		HasSnooperClients: hasSnooperClients,
+		HasMevRelays:      hasMevRelays,
 	}
 	logrus.Debugf("slots_filtered page called: %v:%v [%v/%v]", pageIdx, pageSize, graffiti, extradata)
 	if pageIdx == 0 {
@@ -339,6 +351,7 @@ func buildFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string
 		InvertProposer:  invertproposer,
 		WithOrphaned:    withOrphaned,
 		WithMissing:     withMissing,
+		WithMevBlock:    withMevBlock,
 	}
 	if proposer != "" {
 		pidx, _ := strconv.ParseUint(proposer, 10, 64)

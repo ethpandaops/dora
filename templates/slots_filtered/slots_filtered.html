@@ -20,13 +20,13 @@
         </div>
         <div class="card-body p-2">
           <div class="row">
-            <div class="col-sm-12 col-md-6">
+            <div class="col-sm-12 col-md-4">
               <div class="container">
-                <div class="row mt-1">
-                  <div class="col-sm-12 col-md-6 col-lg-4">
+                <div class="row">
+                  <div class="col-sm-12 col-md-5">
                     Graffiti
                   </div>
-                  <div class="col-sm-12 col-md-6 col-lg-8">
+                  <div class="col-sm-12 col-md-7">
                     <div class="input-group">
                       <input name="f.graffiti" type="text" class="form-control" placeholder="Graffiti" aria-label="Graffiti" value="{{ .FilterGraffiti }}">
                       <div class="input-group-text">
@@ -36,11 +36,11 @@
                     </div>
                   </div>
                 </div>
-                <div class="row mt-1">
-                  <div class="col-sm-12 col-md-6 col-lg-4">
+                <div class="row mt-2">
+                  <div class="col-sm-12 col-md-5">
                     EL Extra Data
                   </div>
-                  <div class="col-sm-12 col-md-6 col-lg-8">
+                  <div class="col-sm-12 col-md-7">
                     <div class="input-group">
                       <input name="f.extra" type="text" class="form-control" placeholder="EL Extra Data" aria-label="EL Extra Data" value="{{ .FilterExtraData }}">
                       <div class="input-group-text">
@@ -50,19 +50,19 @@
                     </div>
                   </div>
                 </div>
-                <div class="row mt-1">
-                  <div class="col-sm-12 col-md-6 col-lg-4">
+                <div class="row mt-2">
+                  <div class="col-sm-12 col-md-5">
                     Proposer Index
                   </div>
-                  <div class="col-sm-12 col-md-6 col-lg-8">
+                  <div class="col-sm-12 col-md-7">
                     <input name="f.proposer" type="number" class="form-control" placeholder="Proposer Index" aria-label="Proposer Index" aria-describedby="basic-addon1" value="{{ .FilterProposer }}">
                   </div>
                 </div>
-                <div class="row mt-1">
-                  <div class="col-sm-12 col-md-6 col-lg-4">
+                <div class="row mt-2">
+                  <div class="col-sm-12 col-md-5">
                     Proposer Name
                   </div>
-                  <div class="col-sm-12 col-md-6 col-lg-8">
+                  <div class="col-sm-12 col-md-7">
                     <div class="input-group">
                       <input name="f.pname" type="text" class="form-control" placeholder="Proposer Name" aria-label="Proposer Name" value="{{ .FilterProposerName }}">
                       <div class="input-group-text">
@@ -74,13 +74,13 @@
                 </div>
               </div>
             </div>
-            <div class="col-sm-12 col-md-6">
+            <div class="col-sm-12 col-md-4">
               <div class="container">
-                <div class="row mt-1">
-                  <div class="col-sm-12 col-md-6 col-lg-4">
+                <div class="row">
+                  <div class="col-sm-12 col-md-6">
                     <nobr>Missing Blocks</nobr>
                   </div>
-                  <div class="col-sm-12 col-md-6 col-lg-4">
+                  <div class="col-sm-12 col-md-6">
                     <select name="f.missing" aria-controls="missing" class="form-control">
                       <option value="0" {{ if eq .FilterWithMissing 0 }}selected{{ end }}>Hide missing</option>
                       <option value="1" {{ if eq .FilterWithMissing 1 }}selected{{ end }}>Show all</option>
@@ -88,11 +88,11 @@
                     </select>
                   </div>
                 </div>
-                <div class="row mt-1">
-                  <div class="col-sm-12 col-md-6 col-lg-4">
+                <div class="row mt-2">
+                  <div class="col-sm-12 col-md-6">
                     <nobr>Orphaned Blocks</nobr>
                   </div>
-                  <div class="col-sm-12 col-md-6 col-lg-4">
+                  <div class="col-sm-12 col-md-6">
                     <select name="f.orphaned" aria-controls="orphaned" class="form-control">
                       <option value="0" {{ if eq .FilterWithOrphaned 0 }}selected{{ end }}>Hide orphaned</option>
                       <option value="1" {{ if eq .FilterWithOrphaned 1 }}selected{{ end }}>Show all</option>
@@ -100,81 +100,95 @@
                     </select>
                   </div>
                 </div>
-                <div class="row mt-1">
-                  <div class="col-sm-12 col-md-6 col-lg-4">
+                {{ if .HasMevRelays }}
+                <div class="row mt-2">
+                  <div class="col-sm-12 col-md-6">
+                    <nobr>MEV Blocks</nobr>
+                  </div>
+                  <div class="col-sm-12 col-md-6">
+                    <select name="f.mev" aria-controls="mev" class="form-control">
+                      <option value="0" {{ if eq .FilterWithMevBlock 0 }}selected{{ end }}>Show all</option>
+                      <option value="1" {{ if eq .FilterWithMevBlock 1 }}selected{{ end }}>MEV only</option>
+                      <option value="2" {{ if eq .FilterWithMevBlock 2 }}selected{{ end }}>Non-MEV only</option>
+                    </select>
+                  </div>
+                </div>
+                {{ end }}
+              </div>
+            </div>
+            <div class="col-sm-12 col-md-4">
+              <div class="container">
+                <div class="row">
+                  <div class="col-sm-12 col-md-4">
                     <nobr>Sync Agg %</nobr>
                   </div>
-                  <div class="col-sm-12 col-md-6 col-lg-8 d-flex">
-                    <div class="flex-grow-1">
-                      <input name="f.minsync" type="number" class="form-control" placeholder="Min %" aria-label="Min Sync Participation" min="0" max="100" step="0.1" value="{{ .FilterMinSyncAgg }}">
-                    </div>
-                    <div class="text-center filter-separator">
-                      -
-                    </div>
-                    <div class="flex-grow-1">
-                      <input name="f.maxsync" type="number" class="form-control" placeholder="Max %" aria-label="Max Sync Participation" min="0" max="100" step="0.1" value="{{ .FilterMaxSyncAgg }}">
-                    </div>
-                    <div class="text-center" style="width: 30px;">
-                      %
+                  <div class="col-sm-12 col-md-8">
+                    <div class="row g-1">
+                      <div class="col-5">
+                        <input name="f.minsync" type="number" class="form-control" placeholder="Min %" aria-label="Min Sync Participation" min="0" max="100" step="0.1" value="{{ .FilterMinSyncAgg }}">
+                      </div>
+                      <div class="col-2 d-flex align-items-center justify-content-center">
+                        <span>-</span>
+                      </div>
+                      <div class="col-5">
+                        <input name="f.maxsync" type="number" class="form-control" placeholder="Max %" aria-label="Max Sync Participation" min="0" max="100" step="0.1" value="{{ .FilterMaxSyncAgg }}">
+                      </div>
                     </div>
                   </div>
                 </div>
                 {{ if .HasSnooperClients }}
-                <div class="row mt-1">
-                  <div class="col-sm-12 col-md-6 col-lg-4">
+                <div class="row mt-2">
+                  <div class="col-sm-12 col-md-4">
                     <nobr>Exec Time</nobr>
                   </div>
-                  <div class="col-sm-12 col-md-6 col-lg-8 d-flex">
-                    <div class="flex-grow-1">
-                      <input name="f.minexec" type="number" class="form-control" placeholder="Min ms" aria-label="Min Execution Time" min="0" value="{{ .FilterMinExecTime }}">
-                    </div>
-                    <div class="text-center filter-separator">
-                      -
-                    </div>
-                    <div class="flex-grow-1">
-                      <input name="f.maxexec" type="number" class="form-control" placeholder="Max ms" aria-label="Max Execution Time" min="0" value="{{ .FilterMaxExecTime }}">
-                    </div>
-                    <div class="text-center" style="width: 30px;">
-                      ms
+                  <div class="col-sm-12 col-md-8">
+                    <div class="row g-1">
+                      <div class="col-5">
+                        <input name="f.minexec" type="number" class="form-control" placeholder="Min ms" aria-label="Min Execution Time" min="0" value="{{ .FilterMinExecTime }}">
+                      </div>
+                      <div class="col-2 d-flex align-items-center justify-content-center">
+                        <span>-</span>
+                      </div>
+                      <div class="col-5">
+                        <input name="f.maxexec" type="number" class="form-control" placeholder="Max ms" aria-label="Max Execution Time" min="0" value="{{ .FilterMaxExecTime }}">
+                      </div>
                     </div>
                   </div>
                 </div>
                 {{ end }}
-                <div class="row mt-1">
-                  <div class="col-sm-12 col-md-6 col-lg-4">
+                <div class="row mt-2">
+                  <div class="col-sm-12 col-md-4">
                     <nobr>Tx Count</nobr>
                   </div>
-                  <div class="col-sm-12 col-md-6 col-lg-8 d-flex">
-                    <div class="flex-grow-1">
-                      <input name="f.mintx" type="number" class="form-control" placeholder="Min" aria-label="Min Transaction Count" min="0" value="{{ .FilterMinTxCount }}">
-                    </div>
-                    <div class="text-center filter-separator">
-                      -
-                    </div>
-                    <div class="flex-grow-1">
-                      <input name="f.maxtx" type="number" class="form-control" placeholder="Max" aria-label="Max Transaction Count" min="0" value="{{ .FilterMaxTxCount }}">
-                    </div>
-                    <div class="text-center" style="width: 30px;">
-                      
+                  <div class="col-sm-12 col-md-8">
+                    <div class="row g-1">
+                      <div class="col-5">
+                        <input name="f.mintx" type="number" class="form-control" placeholder="Min" aria-label="Min Transaction Count" min="0" value="{{ .FilterMinTxCount }}">
+                      </div>
+                      <div class="col-2 d-flex align-items-center justify-content-center">
+                        <span>-</span>
+                      </div>
+                      <div class="col-5">
+                        <input name="f.maxtx" type="number" class="form-control" placeholder="Max" aria-label="Max Transaction Count" min="0" value="{{ .FilterMaxTxCount }}">
+                      </div>
                     </div>
                   </div>
                 </div>
-                <div class="row mt-1">
-                  <div class="col-sm-12 col-md-6 col-lg-4">
+                <div class="row mt-2">
+                  <div class="col-sm-12 col-md-4">
                     <nobr>Blob Count</nobr>
                   </div>
-                  <div class="col-sm-12 col-md-6 col-lg-8 d-flex">
-                    <div class="flex-grow-1">
-                      <input name="f.minblob" type="number" class="form-control" placeholder="Min" aria-label="Min Blob Count" min="0" value="{{ .FilterMinBlobCount }}">
-                    </div>
-                    <div class="text-center filter-separator">
-                      -
-                    </div>
-                    <div class="flex-grow-1">
-                      <input name="f.maxblob" type="number" class="form-control" placeholder="Max" aria-label="Max Blob Count" min="0" value="{{ .FilterMaxBlobCount }}">
-                    </div>
-                    <div class="text-center" style="width: 30px;">
-                      
+                  <div class="col-sm-12 col-md-8">
+                    <div class="row g-1">
+                      <div class="col-5">
+                        <input name="f.minblob" type="number" class="form-control" placeholder="Min" aria-label="Min Blob Count" min="0" value="{{ .FilterMinBlobCount }}">
+                      </div>
+                      <div class="col-2 d-flex align-items-center justify-content-center">
+                        <span>-</span>
+                      </div>
+                      <div class="col-5">
+                        <input name="f.maxblob" type="number" class="form-control" placeholder="Max" aria-label="Max Blob Count" min="0" value="{{ .FilterMaxBlobCount }}">
+                      </div>
                     </div>
                   </div>
                 </div>

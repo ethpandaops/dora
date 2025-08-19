@@ -424,6 +424,15 @@ func GetFilteredSlots(filter *dbtypes.BlockFilter, firstSlot uint64, offset uint
 		fmt.Fprintf(&sql, ` AND slots.blob_count <= $%v `, argIdx)
 		args = append(args, *filter.MaxBlobCount)
 	}
+	if filter.WithMevBlock != 0 {
+		if filter.WithMevBlock == 1 {
+			// Only MEV blocks
+			fmt.Fprintf(&sql, ` AND slots.eth_block_hash IN (SELECT DISTINCT block_hash FROM mev_blocks) `)
+		} else if filter.WithMevBlock == 2 {
+			// Only non-MEV blocks
+			fmt.Fprintf(&sql, ` AND (slots.eth_block_hash IS NULL OR slots.eth_block_hash NOT IN (SELECT DISTINCT block_hash FROM mev_blocks)) `)
+		}
+	}
 	if len(filter.ForkIds) > 0 {
 		forkIdPlaceholders := make([]string, len(filter.ForkIds))
 		for i, forkId := range filter.ForkIds {
