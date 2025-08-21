@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/url"
 	"sort"
+	"strings"
 	"time"
 
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
@@ -87,14 +88,23 @@ func applyAuthGroupToEndpoint(endpoint *types.EndpointConfig) (*types.EndpointCo
 	endpointCopy := *endpoint
 
 	// Apply credentials to URLs if provided
-	if authGroup.Credentials != nil && authGroup.Credentials.Username != "" {
+	if authGroup.Credentials != nil && (authGroup.Credentials.Username != "" || authGroup.Credentials.Password != "") {
 		// Apply to main URL
 		urlObj, err := url.Parse(endpointCopy.Url)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse URL: %v", err)
 		}
 
-		urlObj.User = url.UserPassword(authGroup.Credentials.Username, authGroup.Credentials.Password)
+		if authGroup.Credentials.Username != "" && authGroup.Credentials.Password != "" {
+			urlObj.User = url.UserPassword(authGroup.Credentials.Username, authGroup.Credentials.Password)
+		} else if authGroup.Credentials.Username != "" {
+			urlObj.User = url.User(authGroup.Credentials.Username)
+		} else if authGroup.Credentials.Password != "" {
+			credParts := strings.SplitN(authGroup.Credentials.Password, ":", 2)
+			if len(credParts) == 2 {
+				urlObj.User = url.UserPassword(credParts[0], credParts[1])
+			}
+		}
 		endpointCopy.Url = urlObj.String()
 
 		// Apply to snooper URL if present
