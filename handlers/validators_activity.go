@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -15,7 +16,6 @@ import (
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
 	"github.com/sirupsen/logrus"
-	"golang.org/x/exp/maps"
 )
 
 // ValidatorsActivity will return the filtered "slots" page using a go template
@@ -58,10 +58,16 @@ func ValidatorsActivity(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Parse filter parameters
+	var searchTerm string
+	if urlArgs.Has("search") {
+		searchTerm = strings.TrimSpace(urlArgs.Get("search"))
+	}
+
 	var pageError error
 	pageError = services.GlobalCallRateLimiter.CheckCallLimit(r, 2)
 	if pageError == nil {
-		data.Data, pageError = getValidatorsActivityPageData(pageIdx, pageSize, sortOrder, groupBy)
+		data.Data, pageError = getValidatorsActivityPageData(pageIdx, pageSize, sortOrder, groupBy, searchTerm)
 	}
 	if pageError != nil {
 		handlePageError(w, r, pageError)
@@ -73,12 +79,12 @@ func ValidatorsActivity(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func getValidatorsActivityPageData(pageIdx uint64, pageSize uint64, sortOrder string, groupBy uint64) (*models.ValidatorsActivityPageData, error) {
+func getValidatorsActivityPageData(pageIdx uint64, pageSize uint64, sortOrder string, groupBy uint64, searchTerm string) (*models.ValidatorsActivityPageData, error) {
 	pageData := &models.ValidatorsActivityPageData{}
-	pageCacheKey := fmt.Sprintf("validators_activiy:%v:%v:%v:%v", pageIdx, pageSize, sortOrder, groupBy)
+	pageCacheKey := fmt.Sprintf("validators_activiy:%v:%v:%v:%v:%v", pageIdx, pageSize, sortOrder, groupBy, searchTerm)
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(processingPage *services.FrontendCacheProcessingPage) interface{} {
 		processingPage.CacheTimeout = 10 * time.Second
-		return buildValidatorsActivityPageData(pageIdx, pageSize, sortOrder, groupBy)
+		return buildValidatorsActivityPageData(pageIdx, pageSize, sortOrder, groupBy, searchTerm)
 	})
 	if pageErr == nil && pageRes != nil {
 		resData, resOk := pageRes.(*models.ValidatorsActivityPageData)
@@ -90,13 +96,17 @@ func getValidatorsActivityPageData(pageIdx uint64, pageSize uint64, sortOrder st
 	return pageData, pageErr
 }
 
-func buildValidatorsActivityPageData(pageIdx uint64, pageSize uint64, sortOrder string, groupBy uint64) *models.ValidatorsActivityPageData {
+func buildValidatorsActivityPageData(pageIdx uint64, pageSize uint64, sortOrder string, groupBy uint64, searchTerm string) *models.ValidatorsActivityPageData {
 	filterArgs := url.Values{}
 	filterArgs.Add("group", fmt.Sprintf("%v", groupBy))
+	if searchTerm != "" {
+		filterArgs.Add("search", searchTerm)
+	}
 
 	pageData := &models.ValidatorsActivityPageData{
 		ViewOptionGroupBy: groupBy,
 		Sorting:           sortOrder,
+		SearchTerm:        searchTerm,
 	}
 	logrus.Debugf("validators_activity page called: %v:%v [%v]", pageIdx, pageSize, groupBy)
 	if pageIdx == 0 {
@@ -181,8 +191,45 @@ func buildValidatorsActivityPageData(pageIdx uint64, pageSize uint64, sortOrder 
 		return nil
 	})
 
-	// sort / filter groups
-	validatorGroups := maps.Values(validatorGroupMap)
+	// filter groups based on search term
+	validatorGroups := []*models.ValidatorsActiviyPageDataGroup{}
+
+	// Check if search term is a valid regex pattern
+	var searchRegex *regexp.Regexp
+	if searchTerm != "" {
+		// Try to compile as regex
+		var err error
+		searchRegex, err = regexp.Compile("(?i)" + searchTerm) // Case-insensitive regex
+		if err != nil {
+			// If not valid regex, fall back to literal string matching
+			searchRegex = nil
+		}
+	}
+
+	for _, group := range validatorGroupMap {
+		// Apply search filter
+		if searchTerm != "" {
+			matched := false
+
+			if searchRegex != nil {
+				// Use regex matching
+				matched = searchRegex.MatchString(group.Group)
+			} else {
+				// Fall back to substring matching for invalid regex
+				groupNameLower := strings.ToLower(group.Group)
+				searchTermLower := strings.ToLower(searchTerm)
+				matched = strings.Contains(groupNameLower, searchTermLower)
+			}
+
+			if !matched {
+				continue
+			}
+		}
+
+		validatorGroups = append(validatorGroups, group)
+	}
+
+	// sort filtered groups
 	switch sortOrder {
 	case "group":
 		sort.Slice(validatorGroups, func(a, b int) bool {

@@ -32,18 +32,33 @@ func DecodeENR(raw string) (*enr.Record, error) {
 }
 
 func GetKeyValuesFromENR(r *enr.Record) map[string]interface{} {
-	fields := make(map[string]interface{})
-	// Get sequence number
-	fields["seq"] = r.Seq()
+	return getKeyValuesFromENR(r, false)
+}
 
-	// Get signature
+func GetKeyValuesFromENRFiltered(r *enr.Record) map[string]interface{} {
+	return getKeyValuesFromENR(r, true)
+}
+
+func getKeyValuesFromENR(r *enr.Record, filterSensitive bool) map[string]interface{} {
+	fields := make(map[string]interface{})
+
+	sensitiveFields := map[string]bool{
+		"ip":  true,
+		"ip6": true,
+	}
+
+	fields["seq"] = r.Seq()
 	fields["signature"] = "0x" + hex.EncodeToString(r.Signature())
 
-	// Get all key value pairs
 	kv := r.AppendElements(nil)[1:]
 	for i := 0; i < len(kv); i += 2 {
 		key := kv[i].(string)
 		val := kv[i+1].(rlp.RawValue)
+
+		if filterSensitive && sensitiveFields[key] {
+			continue
+		}
+
 		formatter := attrFormatters[key]
 		if formatter == nil {
 			formatter = formatAttrRaw
@@ -76,6 +91,7 @@ var attrFormatters = map[string]func(rlp.RawValue) (string, bool){
 	"udp":    formatAttrUint,
 	"udp6":   formatAttrUint,
 	"quic":   formatAttrUint,
+	"quic6":  formatAttrUint,
 	"client": formatAttrClient,
 }
 
@@ -91,7 +107,7 @@ func formatAttrString(v rlp.RawValue) (string, bool) {
 
 func formatAttrIP(v rlp.RawValue) (string, bool) {
 	content, _, err := rlp.SplitString(v)
-	if err != nil || len(content) != 4 && len(content) != 6 {
+	if err != nil || (len(content) != 4 && len(content) != 16) {
 		return "", false
 	}
 	return net.IP(content).String(), true

@@ -31,7 +31,7 @@ type ApiValidatorEth1ResponseV1 struct {
 // @Param offset query string false "Offset the results (default: 0)"
 // @Success 200 {object} ApiResponse{data=[]ApiValidatorEth1ResponseV1}
 // @Failure 400 {object} ApiResponse
-// @Router /api/v1/validator/eth1/{eth1address} [get]
+// @Router /v1/validator/eth1/{eth1address} [get]
 func ApiValidatorByEth1AddressV1(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	q := r.URL.Query()

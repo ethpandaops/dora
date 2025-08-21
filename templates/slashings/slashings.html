@@ -210,6 +210,7 @@
             <div class="col-sm-12 col-md-7 table-paging">
               <div class="d-inline-block px-2">
                 <form method="GET" style="display: inline-flex; align-items: center;" id="pageJumpForm">
+                  <input type="hidden" name="f">
                   {{ range $key, $value := .UrlParams }}
                     {{ if ne $key "p" }}
                       <input type="hidden" name="{{ $key }}" value="{{ $value }}">

@@ -48,6 +48,25 @@ func FormatFloat(num float64, precision int) string {
 	return string(r)
 }
 
+func FormatBaseFee(weiValue uint64) template.HTML {
+	// Convert wei to gwei (1 gwei = 1e9 wei)
+	gweiValue := float64(weiValue) / 1e9
+
+	// If less than 0.1 gwei, show in wei
+	if gweiValue < 0.1 {
+		return template.HTML(string(FormatAddCommas(weiValue)) + " wei")
+	}
+
+	// Show in gwei with appropriate decimal places
+	if gweiValue < 1 {
+		return template.HTML(fmt.Sprintf("%.3f gwei", gweiValue))
+	} else if gweiValue < 100 {
+		return template.HTML(fmt.Sprintf("%.2f gwei", gweiValue))
+	} else {
+		return template.HTML(fmt.Sprintf("%.1f gwei", gweiValue))
+	}
+}
+
 func formatPercentageAlert(num float64, precision int, warnBelow float64, errBelow float64) template.HTML {
 	p := message.NewPrinter(language.English)
 	f := fmt.Sprintf("%%.%vf", precision)
@@ -465,4 +484,15 @@ func FormatRecvDelay(delay int32) template.HTML {
 		return template.HTML("-")
 	}
 	return template.HTML(fmt.Sprintf("%.2f s", float64(delay)/1000))
+}
+
+func formatAlertNumber(displayText string, value float64, yellowThreshold float64, redThreshold float64) template.HTML {
+	switch {
+	case value >= redThreshold:
+		return template.HTML(fmt.Sprintf("<span class=\"text-danger\">%s</span>", displayText))
+	case value >= yellowThreshold:
+		return template.HTML(fmt.Sprintf("<span class=\"text-warning\">%s</span>", displayText))
+	default:
+		return template.HTML(displayText)
+	}
 }

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"sort"
-	gosync "sync"
+	"sync"
 	"time"
 
 	"github.com/attestantio/go-eth2-client/spec"
@@ -25,9 +25,9 @@ type synchronizer struct {
 
 	syncCtx       context.Context
 	syncCtxCancel context.CancelFunc
-	runMutex      gosync.Mutex
+	runMutex      sync.Mutex
 
-	stateMutex   gosync.Mutex
+	stateMutex   sync.Mutex
 	running      bool
 	currentEpoch phase0.Epoch
 
@@ -59,41 +59,41 @@ func newSynchronizer(indexer *Indexer, logger logrus.FieldLogger) *synchronizer 
 	return sync
 }
 
-func (sync *synchronizer) isEpochAhead(epoch phase0.Epoch) bool {
-	sync.stateMutex.Lock()
-	defer sync.stateMutex.Unlock()
-	if sync.running {
-		if sync.currentEpoch < epoch {
+func (s *synchronizer) isEpochAhead(epoch phase0.Epoch) bool {
+	s.stateMutex.Lock()
+	defer s.stateMutex.Unlock()
+	if s.running {
+		if s.currentEpoch < epoch {
 			return true
 		}
 	}
 	return false
 }
 
-func (sync *synchronizer) startSync(startEpoch phase0.Epoch) {
-	sync.stopSync()
+func (s *synchronizer) startSync(startEpoch phase0.Epoch) {
+	s.stopSync()
 
 	// start synchronizer
-	sync.stateMutex.Lock()
-	defer sync.stateMutex.Unlock()
-	if sync.running {
-		sync.logger.Errorf("cannot start synchronizer: already running")
+	s.stateMutex.Lock()
+	defer s.stateMutex.Unlock()
+	if s.running {
+		s.logger.Errorf("cannot start synchronizer: already running")
 		return
 	}
-	if startEpoch < sync.currentEpoch {
-		sync.currentEpoch = startEpoch
+	if startEpoch < s.currentEpoch {
+		s.currentEpoch = startEpoch
 	}
-	sync.running = true
+	s.running = true
 
 	ctx, cancel := context.WithCancel(context.Background())
-	sync.syncCtx = ctx
-	sync.syncCtxCancel = cancel
+	s.syncCtx = ctx
+	s.syncCtxCancel = cancel
 
-	go sync.runSync()
+	go s.runSync()
 }
 
 func (s *synchronizer) stopSync() {
-	var lockedMutex *gosync.Mutex
+	var lockedMutex *sync.Mutex
 	defer func() {
 		if lockedMutex != nil {
 			lockedMutex.Unlock()
@@ -114,37 +114,37 @@ func (s *synchronizer) stopSync() {
 	lockedMutex = &s.runMutex
 }
 
-func (sync *synchronizer) runSync() {
+func (s *synchronizer) runSync() {
 	defer utils.HandleSubroutinePanic("runSync", nil)
 
-	sync.runMutex.Lock()
-	defer sync.runMutex.Unlock()
+	s.runMutex.Lock()
+	defer s.runMutex.Unlock()
 
 	defer func() {
-		sync.running = false
-		sync.syncCtxCancel()
+		s.running = false
+		s.syncCtxCancel()
 	}()
 
-	sync.cachedBlocks = make(map[phase0.Slot]*Block)
-	sync.cachedSlot = 0
+	s.cachedBlocks = make(map[phase0.Slot]*Block)
+	s.cachedSlot = 0
 	isComplete := false
 	retryCount := 0
 
-	sync.logger.Infof("synchronization started. head epoch: %v", sync.currentEpoch)
+	s.logger.Infof("synchronization started. head epoch: %v", s.currentEpoch)
 
 	for {
 		// synchronize next epoch
-		syncEpoch := sync.currentEpoch
-		syncClients := sync.getSyncClients(syncEpoch)
+		syncEpoch := s.currentEpoch
+		syncClients := s.getSyncClients(syncEpoch)
 		if len(syncClients) == 0 {
-			sync.logger.Warnf("no clients available for synchronization of epoch %v", syncEpoch)
+			s.logger.Warnf("no clients available for synchronization of epoch %v", syncEpoch)
 
 			// wait for 10 seconds before retrying
 			time.Sleep(10 * time.Second)
 			continue
 		}
 
-		if syncEpoch >= sync.indexer.lastFinalizedEpoch {
+		if syncEpoch >= s.indexer.lastFinalizedEpoch {
 			isComplete = true
 			break
 		}
@@ -156,7 +156,7 @@ func (sync *synchronizer) runSync() {
 		lastRetry := retryCount >= retryLimit
 		syncClient := syncClients[retryCount%len(syncClients)]
 
-		synclogger := sync.logger.WithFields(logrus.Fields{
+		synclogger := s.logger.WithFields(logrus.Fields{
 			"epoch":  syncEpoch,
 			"client": syncClient.client.GetName(),
 		})
@@ -169,17 +169,17 @@ func (sync *synchronizer) runSync() {
 			synclogger.Infof("synchronizing epoch %v", syncEpoch)
 		}
 
-		done, err := sync.syncEpoch(syncEpoch, syncClient, lastRetry)
+		done, err := s.syncEpoch(syncEpoch, syncClient, lastRetry)
 		if done || lastRetry {
 			if err != nil {
-				sync.logger.Errorf("synchronization of epoch %v failed: %v - skipping epoch", syncEpoch, err)
+				s.logger.Errorf("synchronization of epoch %v failed: %v - skipping epoch", syncEpoch, err)
 			}
 			retryCount = 0
-			sync.stateMutex.Lock()
+			s.stateMutex.Lock()
 			syncEpoch++
-			sync.currentEpoch = syncEpoch
-			sync.stateMutex.Unlock()
-			if syncEpoch >= sync.indexer.lastFinalizedEpoch {
+			s.currentEpoch = syncEpoch
+			s.stateMutex.Unlock()
+			if syncEpoch >= s.indexer.lastFinalizedEpoch {
 				isComplete = true
 				break
 			}
@@ -189,30 +189,30 @@ func (sync *synchronizer) runSync() {
 			time.Sleep(10 * time.Second)
 		}
 
-		if sync.syncCtx.Err() != nil {
+		if s.syncCtx.Err() != nil {
 			break
 		}
 	}
 
 	if isComplete {
-		sync.logger.Infof("synchronization complete. Head epoch: %v", sync.currentEpoch)
+		s.logger.Infof("synchronization complete. Head epoch: %v", s.currentEpoch)
 		db.RunDBTransaction(func(tx *sqlx.Tx) error {
 			return db.SetExplorerState("indexer.syncstate", &dbtypes.IndexerSyncState{
-				Epoch: uint64(sync.currentEpoch),
+				Epoch: uint64(s.currentEpoch),
 			}, tx)
 		})
 	} else {
-		sync.logger.Infof("synchronization aborted. Head epoch: %v", sync.currentEpoch)
+		s.logger.Infof("synchronization aborted. Head epoch: %v", s.currentEpoch)
 	}
 
-	sync.running = false
+	s.running = false
 }
 
-func (sync *synchronizer) getSyncClients(epoch phase0.Epoch) []*Client {
+func (s *synchronizer) getSyncClients(epoch phase0.Epoch) []*Client {
 	archiveClients := make([]*Client, 0)
 	normalClients := make([]*Client, 0)
 
-	for _, client := range sync.indexer.clients {
+	for _, client := range s.indexer.clients {
 		if client.client.GetStatus() != consensus.ClientStatusOnline {
 			continue
 		}
@@ -235,14 +235,14 @@ func (sync *synchronizer) getSyncClients(epoch phase0.Epoch) []*Client {
 
 	sort.Slice(archiveClients, func(i, j int) bool {
 		if archiveClients[i].priority == archiveClients[j].priority {
-			return rand.UintN(1) == 0
+			return rand.UintN(2) == 0
 		}
 		return archiveClients[i].priority > archiveClients[j].priority
 	})
 
 	sort.Slice(normalClients, func(i, j int) bool {
 		if normalClients[i].priority == normalClients[j].priority {
-			return rand.UintN(1) == 0
+			return rand.UintN(2) == 0
 		}
 		return normalClients[i].priority > normalClients[j].priority
 	})
@@ -250,8 +250,8 @@ func (sync *synchronizer) getSyncClients(epoch phase0.Epoch) []*Client {
 	return append(archiveClients, normalClients...)
 }
 
-func (sync *synchronizer) loadBlockHeader(client *Client, slot phase0.Slot) (*phase0.SignedBeaconBlockHeader, phase0.Root, error) {
-	ctx, cancel := context.WithTimeout(sync.syncCtx, beaconHeaderRequestTimeout)
+func (s *synchronizer) loadBlockHeader(client *Client, slot phase0.Slot) (*phase0.SignedBeaconBlockHeader, phase0.Root, error) {
+	ctx, cancel := context.WithTimeout(s.syncCtx, beaconHeaderRequestTimeout)
 	defer cancel()
 
 	header, root, orphaned, err := LoadBeaconHeaderBySlot(ctx, client, slot)
@@ -262,18 +262,18 @@ func (sync *synchronizer) loadBlockHeader(client *Client, slot phase0.Slot) (*ph
 	return header, root, err
 }
 
-func (sync *synchronizer) loadBlockBody(client *Client, root phase0.Root) (*spec.VersionedSignedBeaconBlock, error) {
-	ctx, cancel := context.WithTimeout(sync.syncCtx, beaconHeaderRequestTimeout)
+func (s *synchronizer) loadBlockBody(client *Client, root phase0.Root) (*spec.VersionedSignedBeaconBlock, error) {
+	ctx, cancel := context.WithTimeout(s.syncCtx, beaconHeaderRequestTimeout)
 	defer cancel()
 	return LoadBeaconBlock(ctx, client, root)
 }
 
-func (sync *synchronizer) syncEpoch(syncEpoch phase0.Epoch, client *Client, lastTry bool) (bool, error) {
+func (s *synchronizer) syncEpoch(syncEpoch phase0.Epoch, client *Client, lastTry bool) (bool, error) {
 	if !utils.Config.Indexer.ResyncForceUpdate && db.IsEpochSynchronized(uint64(syncEpoch)) {
 		return true, nil
 	}
 
-	chainState := sync.indexer.consensusPool.GetChainState()
+	chainState := s.indexer.consensusPool.GetChainState()
 	specs := chainState.GetSpecs()
 
 	// load headers & blocks from this & next epoch
@@ -286,23 +286,23 @@ func (sync *synchronizer) syncEpoch(syncEpoch phase0.Epoch, client *Client, last
 
 	var firstBlock *Block
 	for slot := firstSlot; slot <= lastSlot; slot++ {
-		if sync.cachedSlot < slot || sync.cachedBlocks[slot] == nil {
-			blockHeader, blockRoot, err := sync.loadBlockHeader(client, slot)
+		if s.cachedSlot < slot || s.cachedBlocks[slot] == nil {
+			blockHeader, blockRoot, err := s.loadBlockHeader(client, slot)
 			if err != nil {
 				return false, fmt.Errorf("error fetching slot %v header: %v", slot, err)
 			}
 			if blockHeader == nil {
 				continue
 			}
-			if sync.syncCtx.Err() != nil {
+			if s.syncCtx.Err() != nil {
 				return false, nil
 			}
 
-			block := newBlock(sync.indexer.dynSsz, blockRoot, slot)
+			block := newBlock(s.indexer.dynSsz, blockRoot, slot)
 			block.SetHeader(blockHeader)
 
 			if slot > 0 {
-				blockBody, err := sync.loadBlockBody(client, phase0.Root(blockRoot))
+				blockBody, err := s.loadBlockBody(client, phase0.Root(blockRoot))
 				if err != nil {
 					return false, fmt.Errorf("error fetching slot %v block: %v", slot, err)
 				}
@@ -313,26 +313,26 @@ func (sync *synchronizer) syncEpoch(syncEpoch phase0.Epoch, client *Client, last
 				block.SetBlock(blockBody)
 			}
 
-			sync.cachedBlocks[slot] = block
+			s.cachedBlocks[slot] = block
 		}
 
-		if firstBlock == nil && sync.cachedBlocks[slot] != nil {
-			firstBlock = sync.cachedBlocks[slot]
+		if firstBlock == nil && s.cachedBlocks[slot] != nil {
+			firstBlock = s.cachedBlocks[slot]
 		}
 
 		if chainState.EpochOfSlot(slot) == syncEpoch {
-			canonicalBlocks = append(canonicalBlocks, sync.cachedBlocks[slot])
-			canonicalBlockRoots = append(canonicalBlockRoots, sync.cachedBlocks[slot].Root[:])
-			if blockIndex := sync.cachedBlocks[slot].GetBlockIndex(); blockIndex != nil {
+			canonicalBlocks = append(canonicalBlocks, s.cachedBlocks[slot])
+			canonicalBlockRoots = append(canonicalBlockRoots, s.cachedBlocks[slot].Root[:])
+			if blockIndex := s.cachedBlocks[slot].GetBlockIndex(); blockIndex != nil {
 				canonicalBlockHashes = append(canonicalBlockHashes, blockIndex.ExecutionHash[:])
 			}
 		} else {
-			nextEpochCanonicalBlocks = append(nextEpochCanonicalBlocks, sync.cachedBlocks[slot])
+			nextEpochCanonicalBlocks = append(nextEpochCanonicalBlocks, s.cachedBlocks[slot])
 		}
 	}
-	sync.cachedSlot = lastSlot
+	s.cachedSlot = lastSlot
 
-	if sync.syncCtx.Err() != nil {
+	if s.syncCtx.Err() != nil {
 		return false, nil
 	}
 
@@ -351,18 +351,18 @@ func (sync *synchronizer) syncEpoch(syncEpoch phase0.Epoch, client *Client, last
 	}
 
 	epochState := newEpochState(dependentRoot)
-	state, err := epochState.loadState(sync.syncCtx, client, nil)
+	state, err := epochState.loadState(s.syncCtx, client, nil)
 	if (err != nil || epochState.loadingStatus != 2) && !lastTry {
 		return false, fmt.Errorf("error fetching epoch %v state: %v", syncEpoch, err)
 	}
 
 	var validatorSet []*phase0.Validator
 	if state == nil {
-		sync.logger.Warnf("state for epoch %v not found", syncEpoch)
+		s.logger.Warnf("state for epoch %v not found", syncEpoch)
 	} else {
 		validatorSet, err = state.Validators()
 		if err != nil {
-			sync.logger.Warnf("error getting validator set from state %v: %v", dependentRoot.String(), err)
+			s.logger.Warnf("error getting validator set from state %v: %v", dependentRoot.String(), err)
 		}
 	}
 
@@ -371,11 +371,11 @@ func (sync *synchronizer) syncEpoch(syncEpoch phase0.Epoch, client *Client, last
 	if epochState != nil && epochState.loadingStatus == 2 {
 		epochStats = newEpochStats(syncEpoch, dependentRoot)
 		epochStats.dependentState = epochState
-		epochStats.processState(sync.indexer, validatorSet)
+		epochStats.processState(s.indexer, validatorSet)
 		epochStatsValues = epochStats.GetValues(false)
 	}
 
-	if sync.syncCtx.Err() != nil {
+	if s.syncCtx.Err() != nil {
 		return false, nil
 	}
 
@@ -385,26 +385,26 @@ func (sync *synchronizer) syncEpoch(syncEpoch phase0.Epoch, client *Client, last
 		votingBlocks := make([]*Block, len(canonicalBlocks)+len(nextEpochCanonicalBlocks))
 		copy(votingBlocks, canonicalBlocks)
 		copy(votingBlocks[len(canonicalBlocks):], nextEpochCanonicalBlocks)
-		epochVotes = sync.indexer.aggregateEpochVotes(syncEpoch, chainState, votingBlocks, epochStats)
+		epochVotes = s.indexer.aggregateEpochVotes(syncEpoch, chainState, votingBlocks, epochStats)
 		if epochVotes == nil && !lastTry {
 			return false, fmt.Errorf("failed computing votes for epoch %v", syncEpoch)
 		}
 	}
 
-	sim := newStateSimulator(sync.indexer, epochStats)
+	sim := newStateSimulator(s.indexer, epochStats)
 	if sim != nil {
 		sim.validatorSet = validatorSet
 	}
 
 	// save blocks
 	err = db.RunDBTransaction(func(tx *sqlx.Tx) error {
-		err = sync.indexer.dbWriter.persistEpochData(tx, syncEpoch, canonicalBlocks, epochStats, epochVotes, sim)
+		err = s.indexer.dbWriter.persistEpochData(tx, syncEpoch, canonicalBlocks, epochStats, epochVotes, sim)
 		if err != nil {
 			return fmt.Errorf("error persisting epoch data to db: %v", err)
 		}
 
 		// persist sync committee assignments
-		if err := sync.indexer.dbWriter.persistSyncAssignments(tx, syncEpoch, epochStats); err != nil {
+		if err := s.indexer.dbWriter.persistSyncAssignments(tx, syncEpoch, epochStats); err != nil {
 			return fmt.Errorf("error persisting sync committee assignments to db: %v", err)
 		}
 
@@ -441,14 +441,14 @@ func (sync *synchronizer) syncEpoch(syncEpoch phase0.Epoch, client *Client, last
 	}
 
 	// save block bodies to blockdb
-	if blockdb.GlobalBlockDb != nil && !sync.indexer.disableBlockDbWrite {
-		var wg gosync.WaitGroup
+	if blockdb.GlobalBlockDb != nil && !s.indexer.disableBlockDbWrite {
+		var wg sync.WaitGroup
 		for _, block := range canonicalBlocks {
 			wg.Add(1)
 			go func(b *Block) {
 				defer wg.Done()
 				if err := b.writeToBlockDb(); err != nil {
-					sync.logger.Errorf("error writing block %v to blockdb: %v", b.Root.String(), err)
+					s.logger.Errorf("error writing block %v to blockdb: %v", b.Root.String(), err)
 				}
 			}(block)
 		}
@@ -456,9 +456,9 @@ func (sync *synchronizer) syncEpoch(syncEpoch phase0.Epoch, client *Client, last
 	}
 
 	// cleanup cache (remove blocks from this epoch)
-	for slot := range sync.cachedBlocks {
+	for slot := range s.cachedBlocks {
 		if slot <= lastSlot {
-			delete(sync.cachedBlocks, slot)
+			delete(s.cachedBlocks, slot)
 		}
 	}
 

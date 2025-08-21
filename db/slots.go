@@ -324,6 +324,16 @@ func GetFilteredSlots(filter *dbtypes.BlockFilter, firstSlot uint64, offset uint
 	} else if filter.WithOrphaned == 2 {
 		fmt.Fprintf(&sql, ` AND slots.status = 2 `)
 	}
+	if filter.Slot != nil {
+		argIdx++
+		fmt.Fprintf(&sql, ` AND slots.slot = $%v `, argIdx)
+		args = append(args, *filter.Slot)
+	}
+	if len(filter.BlockRoot) > 0 {
+		argIdx++
+		fmt.Fprintf(&sql, ` AND slots.root = $%v `, argIdx)
+		args = append(args, filter.BlockRoot)
+	}
 	if filter.ProposerIndex != nil {
 		argIdx++
 		fmt.Fprintf(&sql, ` AND slots.proposer = $%v `, argIdx)
@@ -394,6 +404,35 @@ func GetFilteredSlots(filter *dbtypes.BlockFilter, firstSlot uint64, offset uint
 		fmt.Fprintf(&sql, ` AND slots.max_exec_time <= $%v `, argIdx)
 		args = append(args, *filter.MaxExecTime)
 	}
+	if filter.MinTxCount != nil {
+		argIdx++
+		fmt.Fprintf(&sql, ` AND slots.eth_transaction_count >= $%v `, argIdx)
+		args = append(args, *filter.MinTxCount)
+	}
+	if filter.MaxTxCount != nil {
+		argIdx++
+		fmt.Fprintf(&sql, ` AND slots.eth_transaction_count <= $%v `, argIdx)
+		args = append(args, *filter.MaxTxCount)
+	}
+	if filter.MinBlobCount != nil {
+		argIdx++
+		fmt.Fprintf(&sql, ` AND slots.blob_count >= $%v `, argIdx)
+		args = append(args, *filter.MinBlobCount)
+	}
+	if filter.MaxBlobCount != nil {
+		argIdx++
+		fmt.Fprintf(&sql, ` AND slots.blob_count <= $%v `, argIdx)
+		args = append(args, *filter.MaxBlobCount)
+	}
+	if len(filter.ForkIds) > 0 {
+		forkIdPlaceholders := make([]string, len(filter.ForkIds))
+		for i, forkId := range filter.ForkIds {
+			argIdx++
+			forkIdPlaceholders[i] = fmt.Sprintf("$%v", argIdx)
+			args = append(args, forkId)
+		}
+		fmt.Fprintf(&sql, ` AND slots.fork_id IN (%s) `, strings.Join(forkIdPlaceholders, ", "))
+	}
 
 	fmt.Fprintf(&sql, `	ORDER BY slots.slot DESC `)
 	fmt.Fprintf(&sql, ` LIMIT $%v OFFSET $%v `, argIdx+1, argIdx+2)
@@ -439,6 +478,36 @@ func GetSlotStatus(blockRoots [][]byte) []*dbtypes.BlockStatus {
 		return nil
 	}
 	return orphanedRefs
+}
+
+func GetSlotBlobCountByExecutionHashes(blockHashes [][]byte) []*dbtypes.BlockBlobCount {
+	blockBlockCounts := []*dbtypes.BlockBlobCount{}
+	if len(blockHashes) == 0 {
+		return blockBlockCounts
+	}
+	var sql strings.Builder
+	fmt.Fprintf(&sql, `
+	SELECT
+		root, eth_block_hash, blob_count
+	FROM slots
+	WHERE eth_block_hash in (`)
+	argIdx := 0
+	args := make([]any, len(blockHashes))
+	for i, root := range blockHashes {
+		if i > 0 {
+			fmt.Fprintf(&sql, ", ")
+		}
+		fmt.Fprintf(&sql, "$%v", argIdx+1)
+		args[argIdx] = root
+		argIdx += 1
+	}
+	fmt.Fprintf(&sql, ")")
+	err := ReaderDb.Select(&blockBlockCounts, sql.String(), args...)
+	if err != nil {
+		logger.Errorf("Error while fetching block blob counts: %v", err)
+		return nil
+	}
+	return blockBlockCounts
 }
 
 func GetHighestRootBeforeSlot(slot uint64, withOrphaned bool) []byte {

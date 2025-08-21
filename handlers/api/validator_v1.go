@@ -27,6 +27,10 @@ type ApiValidatorResponseV1 struct {
 	Withdrawalcredentials      string `json:"withdrawalcredentials"`
 }
 
+type ApiValidatorRequestV1 struct {
+	IndicesOrPubKey string `json:"indicesOrPubkey"`
+}
+
 // ApiValidator godoc
 // @Summary Get up to 100 validators
 // @Tags Validator
@@ -35,7 +39,7 @@ type ApiValidatorResponseV1 struct {
 // @Param  indexOrPubkey path string true "Up to 100 validator indicesOrPubkeys, comma separated"
 // @Success 200 {object} ApiResponse{data=[]ApiValidatorResponseV1}
 // @Failure 400 {object} ApiResponse
-// @Router /api/v1/validator/{indexOrPubkey} [get]
+// @Router /v1/validator/{indexOrPubkey} [get]
 func ApiValidatorGetV1(w http.ResponseWriter, r *http.Request) {
 	getApiValidator(w, r)
 }
@@ -45,10 +49,10 @@ func ApiValidatorGetV1(w http.ResponseWriter, r *http.Request) {
 // @Tags Validator
 // @Description This POST endpoint exists because the GET endpoint can lead to a "URI too long" error when searching for too many validators based on their pubkeys.
 // @Produce  json
-// @Param  indexOrPubkey body types.DashboardRequest true "Up to 100 validator indicesOrPubkeys, comma separated"
+// @Param  indexOrPubkey body ApiValidatorRequestV1 true "Up to 100 validator indicesOrPubkeys, comma separated"
 // @Success 200 {object} ApiResponse{data=[]ApiValidatorResponseV1}
 // @Failure 400 {object} ApiResponse
-// @Router /api/v1/validator [post]
+// @Router /v1/validator [post]
 func ApiValidatorPostV1(w http.ResponseWriter, r *http.Request) {
 	getApiValidator(w, r)
 }

@@ -281,7 +281,7 @@ func (indexer *Indexer) aggregateForkVotes(forkId ForkKey, epochLimit uint64) (t
 		}
 
 		fork := indexer.forkCache.getForkById(thisForkId)
-		if fork == nil {
+		if fork == nil || fork.parentFork == thisForkId {
 			break
 		}
 
@@ -317,7 +317,19 @@ func (indexer *Indexer) aggregateForkVotes(forkId ForkKey, epochLimit uint64) (t
 			continue
 		}
 
-		dependentRoot := epochVotingBlocks[0].GetParentRoot()
+		var dependentRoot *phase0.Root
+
+		if chainState.EpochOfSlot(epochVotingBlocks[0].Slot) == 0 {
+			firstBlock := epochVotingBlocks[0]
+			if firstBlock.Slot == 0 {
+				dependentRoot = &firstBlock.Root
+			} else {
+				dependentRoot = firstBlock.GetParentRoot()
+			}
+		} else {
+			dependentRoot = epochVotingBlocks[0].GetParentRoot()
+		}
+
 		if dependentRoot == nil {
 			epochPercent = append(epochPercent, 0)
 			continue

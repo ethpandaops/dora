@@ -54,6 +54,7 @@ func InitPageData(w http.ResponseWriter, r *http.Request, active, path, title st
 		Lang:             "en-US",
 		Debug:            utils.Config.Frontend.Debug,
 		MainMenuItems:    createMenuItems(active),
+		ApiEnabled:       utils.Config.Api.Enabled,
 	}
 
 	chainState := services.GlobalBeaconService.GetChainState()
@@ -124,6 +125,13 @@ func createMenuItems(active string) []types.MainMenuItem {
 				Path:  "/blocks",
 				Icon:  "fa-cube",
 			},
+			/*
+				{
+					Label: "Chain Forks",
+					Path:  "/chain-forks",
+					Icon:  "fa-project-diagram",
+				},
+			*/
 		},
 	})
 	if len(utils.Config.MevIndexer.Relays) > 0 {

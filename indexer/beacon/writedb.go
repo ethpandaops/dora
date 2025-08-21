@@ -5,6 +5,8 @@ import (
 	"math"
 
 	"github.com/attestantio/go-eth2-client/spec"
+	"github.com/attestantio/go-eth2-client/spec/bellatrix"
+	"github.com/attestantio/go-eth2-client/spec/capella"
 	"github.com/attestantio/go-eth2-client/spec/electra"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/clients/consensus"
@@ -243,12 +245,22 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 	proposerSlashings, _ := blockBody.ProposerSlashings()
 	blsToExecChanges, _ := blockBody.BLSToExecutionChanges()
 	syncAggregate, _ := blockBody.SyncAggregate()
-	executionBlockNumber, _ := blockBody.ExecutionBlockNumber()
-	executionBlockHash, _ := blockBody.ExecutionBlockHash()
-	executionExtraData, _ := getBlockExecutionExtraData(blockBody)
-	executionTransactions, _ := blockBody.ExecutionTransactions()
-	executionWithdrawals, _ := blockBody.Withdrawals()
 	blobKzgCommitments, _ := blockBody.BlobKZGCommitments()
+
+	var executionExtraData []byte
+	var executionBlockNumber uint64
+	var executionBlockHash phase0.Hash32
+	var executionTransactions []bellatrix.Transaction
+	var executionWithdrawals []*capella.Withdrawal
+
+	executionPayload, _ := blockBody.ExecutionPayload()
+	if executionPayload != nil {
+		executionExtraData, _ = executionPayload.ExtraData()
+		executionBlockHash, _ = executionPayload.BlockHash()
+		executionBlockNumber, _ = executionPayload.BlockNumber()
+		executionTransactions, _ = executionPayload.Transactions()
+		executionWithdrawals, _ = executionPayload.Withdrawals()
+	}
 
 	var depositRequests []*electra.DepositRequest
 
@@ -374,6 +386,15 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 			if blockBody.Electra != nil && blockBody.Electra.Message != nil &&
 				blockBody.Electra.Message.Body != nil && blockBody.Electra.Message.Body.ExecutionPayload != nil {
 				payload := blockBody.Electra.Message.Body.ExecutionPayload
+				dbBlock.EthGasUsed = payload.GasUsed
+				dbBlock.EthGasLimit = payload.GasLimit
+				dbBlock.EthBaseFee = utils.GetBaseFeeAsUint64(payload.BaseFeePerGas)
+				dbBlock.EthFeeRecipient = payload.FeeRecipient[:]
+			}
+		case spec.DataVersionFulu:
+			if blockBody.Fulu != nil && blockBody.Fulu.Message != nil &&
+				blockBody.Fulu.Message.Body != nil && blockBody.Fulu.Message.Body.ExecutionPayload != nil {
+				payload := blockBody.Fulu.Message.Body.ExecutionPayload
 				dbBlock.EthGasUsed = payload.GasUsed
 				dbBlock.EthGasLimit = payload.GasLimit
 				dbBlock.EthBaseFee = utils.GetBaseFeeAsUint64(payload.BaseFeePerGas)
@@ -524,6 +545,13 @@ func (dbw *dbWriter) buildDbEpoch(epoch phase0.Epoch, blocks []*Block, epochStat
 				if blockBody.Electra != nil && blockBody.Electra.Message != nil &&
 					blockBody.Electra.Message.Body != nil && blockBody.Electra.Message.Body.ExecutionPayload != nil {
 					payload := blockBody.Electra.Message.Body.ExecutionPayload
+					dbEpoch.EthGasUsed += payload.GasUsed
+					dbEpoch.EthGasLimit += payload.GasLimit
+				}
+			case spec.DataVersionFulu:
+				if blockBody.Fulu != nil && blockBody.Fulu.Message != nil &&
+					blockBody.Fulu.Message.Body != nil && blockBody.Fulu.Message.Body.ExecutionPayload != nil {
+					payload := blockBody.Fulu.Message.Body.ExecutionPayload
 					dbEpoch.EthGasUsed += payload.GasUsed
 					dbEpoch.EthGasLimit += payload.GasLimit
 				}

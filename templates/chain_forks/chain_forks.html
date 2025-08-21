@@ -1,0 +1,364 @@
+{{ define "page" }}
+  <div class="container mt-2">
+    <div class="d-md-flex py-2 justify-content-md-between">
+      <h1 class="h4 mb-1 mb-md-0"><i class="fas fa-project-diagram mx-2"></i>Chain Forks Visualization</h1>
+      <nav aria-label="breadcrumb">
+        <ol class="breadcrumb font-size-1 mb-0" style="padding:0; background-color:transparent;">
+          <li class="breadcrumb-item"><a href="/" title="Home">Home</a></li>
+          <li class="breadcrumb-item active" aria-current="page">Chain Forks</li>
+        </ol>
+      </nav>
+    </div>
+
+    <!-- Navigation Controls -->
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <div id="navigationButtons">
+        <!-- Previous/Next buttons will be populated by JavaScript -->
+      </div>
+      <div class="text-center">
+        <div class="btn-group btn-group-sm mb-2" role="group" aria-label="Time Range" id="timeRangeButtons">
+          <a href="/chain-forks" class="btn btn-outline-secondary time-range-btn" data-size="0">Default</a>
+          <a href="/chain-forks?size={{ .ChainSpecs.EpochsFor12h }}" class="btn btn-outline-secondary time-range-btn" data-size="{{ .ChainSpecs.EpochsFor12h }}">12h</a>
+          <a href="/chain-forks?size={{ .ChainSpecs.EpochsFor1d }}" class="btn btn-outline-secondary time-range-btn" data-size="{{ .ChainSpecs.EpochsFor1d }}">1d</a>
+          <a href="/chain-forks?size={{ .ChainSpecs.EpochsFor7d }}" class="btn btn-outline-secondary time-range-btn" data-size="{{ .ChainSpecs.EpochsFor7d }}">7d</a>
+          <a href="/chain-forks?size={{ .ChainSpecs.EpochsFor14d }}" class="btn btn-outline-secondary time-range-btn" data-size="{{ .ChainSpecs.EpochsFor14d }}">14d</a>
+        </div>
+      </div>
+      <div class="text-muted text-end" id="rangeInfo">
+        <!-- Range info will be populated by JavaScript -->
+      </div>
+    </div>
+
+    <!-- Integrated Chain Visualization -->
+    <div class="card">
+      <div class="card-header">
+        <div class="d-flex justify-content-between align-items-center">
+          <div>
+            <h5 class="card-title mb-0">Chain Fork Visualization</h5>
+            <small class="text-muted">Canonical chain flows vertically, forks branch horizontally. Click on any point for details.</small>
+          </div>
+          <div class="d-flex align-items-center gap-3">
+            <div class="form-check form-check-sm">
+              <input class="form-check-input" type="checkbox" id="hideSingleBlockForks">
+              <label class="form-check-label" for="hideSingleBlockForks">
+                Hide 1-block forks
+              </label>
+            </div>
+            <div class="btn-group btn-group-sm" role="group">
+              <button type="button" class="btn btn-outline-secondary" id="zoomOut" title="Zoom Out">
+                <i class="fas fa-search-minus"></i>
+              </button>
+              <button type="button" class="btn btn-outline-secondary" id="zoomReset" title="Reset Zoom">
+                <i class="fas fa-compress"></i>
+              </button>
+              <button type="button" class="btn btn-outline-secondary" id="zoomIn" title="Zoom In">
+                <i class="fas fa-search-plus"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="card-body p-0">
+        <div class="fork-visualization-container">
+          <div class="chain-diagram-section">
+            <div id="chainDiagram" class="integrated-chain-diagram">
+              <!-- Diagram will be rendered here by JavaScript -->
+            </div>
+          </div>
+          <div class="fork-details-section">
+            <div id="forkDetailsPanel" class="fork-details-panel">
+              <div class="details-placeholder">
+                <i class="fas fa-mouse-pointer text-muted mb-2"></i>
+                <p class="text-muted">Click on any fork point to see details</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Pass static data to JavaScript (specs only) -->
+  <script>
+    window.chainDiagramData = {
+      specs: JSON.parse({{ includeJSON .ChainSpecs false }})
+    };
+  </script>
+{{ end }}
+
+{{ define "js" }}
+  <script src="/js/chain-forks-diagram.js"></script>
+{{ end }}
+
+{{ define "css" }}
+  <style>
+    /* CSS Custom Properties for theme compatibility */
+    :root {
+      --fork-bg-primary: var(--bs-body-bg, #ffffff);
+      --fork-bg-secondary: var(--bs-secondary-bg, #f8f9fa);
+      --fork-text-primary: var(--bs-body-color, #212529);
+      --fork-text-secondary: var(--bs-secondary-color, #6c757d);
+      --fork-border-color: var(--bs-border-color, #dee2e6);
+      --fork-success-color: var(--bs-success, #198754);
+      --fork-danger-color: var(--bs-danger, #dc3545);
+      --fork-warning-color: var(--bs-warning, #fd7e14);
+      --fork-info-color: var(--bs-info, #0dcaf0);
+    }
+
+    /* Dark theme overrides */
+    [data-bs-theme="dark"] {
+      --fork-bg-primary: var(--bs-dark, #212529);
+      --fork-bg-secondary: var(--bs-gray-800, #343a40);
+      --fork-text-primary: var(--bs-gray-100, #f8f9fa);
+      --fork-text-secondary: var(--bs-gray-300, #adb5bd);
+      --fork-border-color: var(--bs-border-color-translucent, rgba(255,255,255,.175));
+    }
+
+    .fork-visualization-container {
+      display: flex;
+      min-height: 600px;
+      background: var(--fork-bg-primary);
+      color: var(--fork-text-primary);
+    }
+    
+    .chain-diagram-section {
+      flex: 1;
+      min-width: 60%;
+      border-right: 1px solid var(--fork-border-color);
+    }
+    
+    .fork-details-section {
+      flex: 0 0 400px;
+      background: var(--fork-bg-secondary);
+    }
+    
+    .integrated-chain-diagram {
+      /* Height will be set dynamically by JavaScript */
+      background: var(--fork-bg-primary);
+      overflow: hidden;
+      position: relative;
+    }
+    
+    .diagram-scroll-container {
+      width: 100%;
+      height: 100%;
+      overflow: auto;
+      position: relative;
+    }
+    
+    .fork-details-panel {
+      padding: 20px;
+      height: 100%;
+      overflow-y: auto;
+    }
+    
+    .details-placeholder {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 200px;
+      text-align: center;
+      color: var(--fork-text-secondary);
+    }
+    
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 300px;
+      text-align: center;
+    }
+    
+    /* Chain diagram SVG styles */
+    .canonical-line {
+      stroke: var(--fork-success-color);
+      stroke-width: 6;
+      opacity: 0.8;
+    }
+    
+    .canonical-timeline {
+      stroke: var(--fork-text-secondary);
+      stroke-width: 0.5;
+      stroke-dasharray: 1,3;
+      opacity: 0.7;
+    }
+    
+    .fork-line {
+      stroke-width: 3;
+      opacity: 0.9;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    
+    .fork-line-hover {
+      stroke-width: 5 !important;
+      opacity: 1 !important;
+    }
+    
+    .fork-line-low { stroke: var(--fork-danger-color); }
+    .fork-line-medium { stroke: var(--fork-warning-color); }
+    .fork-line-high { stroke: var(--fork-success-color); }
+    .fork-line-unknown { stroke: var(--fork-text-secondary); }
+    
+    .fork-point {
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    
+    .fork-point-hover {
+      r: 8 !important;
+    }
+    
+    .slot-label {
+      fill: var(--fork-text-secondary);
+      font-size: 11px;
+      font-family: var(--bs-font-monospace, 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace);
+    }
+    
+    .fork-label {
+      fill: var(--fork-text-primary);
+      font-size: 10px;
+      font-weight: 600;
+      font-family: var(--bs-font-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
+    }
+    
+    .block-count-label {
+      fill: var(--fork-text-secondary);
+      font-size: 9px;
+      font-weight: 500;
+    }
+    
+    .participation-indicator {
+      stroke-width: 2;
+      stroke: var(--fork-bg-primary);
+    }
+    
+    /* Fork details panel styles */
+    .fork-detail-card {
+      background: var(--fork-bg-primary);
+      border: 1px solid var(--fork-border-color);
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 16px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    [data-bs-theme="dark"] .fork-detail-card {
+      box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+    }
+    
+    .fork-detail-header {
+      display: flex;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    
+    .fork-badge {
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      margin-right: 8px;
+    }
+    
+    .fork-badge.canonical { 
+      background: rgba(var(--bs-success-rgb), 0.25); 
+      color: var(--fork-success-color); 
+      border: 1px solid rgba(var(--bs-success-rgb), 0.5);
+    }
+    
+    .fork-badge.orphaned { 
+      background: rgba(var(--bs-warning-rgb), 0.25); 
+      color: var(--fork-warning-color);
+      border: 1px solid rgba(var(--bs-warning-rgb), 0.5);
+    }
+    
+    .fork-detail-grid {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 8px 16px;
+      font-size: 13px;
+    }
+    
+    .detail-label {
+      font-weight: 600;
+      color: var(--fork-text-secondary);
+    }
+    
+    .detail-value {
+      font-family: var(--bs-font-monospace, 'SF Mono', Monaco, monospace);
+      color: var(--fork-text-primary);
+      word-break: break-all;
+    }
+    
+    .detail-value a {
+      color: var(--bs-link-color, #0d6efd);
+      text-decoration: none;
+    }
+    
+    .detail-value a:hover {
+      text-decoration: underline;
+      color: var(--bs-link-hover-color, #0a58ca);
+    }
+    
+    .participation-bar {
+      width: 100%;
+      height: 20px;
+      background: var(--fork-bg-secondary);
+      border: 1px solid var(--fork-border-color);
+      border-radius: 10px;
+      overflow: hidden;
+      position: relative;
+    }
+    
+    .participation-fill {
+      height: 100%;
+      border-radius: 10px;
+      transition: width 0.3s ease;
+    }
+    
+    .participation-text {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 11px;
+      font-weight: bold;
+      color: var(--fork-text-primary);
+      text-shadow: 0 0 3px var(--fork-bg-primary);
+      mix-blend-mode: darken;
+    }
+    
+    .copy-button {
+      cursor: pointer;
+      color: var(--fork-text-secondary);
+      font-size: 12px;
+      margin-left: 8px;
+      transition: color 0.2s ease;
+    }
+    
+    .copy-button:hover {
+      color: var(--fork-text-primary);
+    }
+
+    /* Additional dark mode specific adjustments */
+    [data-bs-theme="dark"] .participation-text {
+      text-shadow: 0 0 3px rgba(0,0,0,0.8);
+      mix-blend-mode: normal;
+    }
+    [data-bs-theme="light"] .participation-text {
+      text-shadow: 0 0 3px rgba(255, 255, 255, 0.8);
+      mix-blend-mode: normal;
+    }
+
+    [data-bs-theme="dark"] .fork-line {
+      opacity: 1;
+    }
+
+    .fork-line:hover {
+      filter: brightness(1.2);
+    }
+  </style>
+{{ end }}

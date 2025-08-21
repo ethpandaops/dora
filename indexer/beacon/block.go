@@ -54,11 +54,13 @@ type Block struct {
 // BlockBodyIndex holds important block properties that are used as index for cache lookups.
 // this structure should be preserved after pruning, so the block is still identifiable.
 type BlockBodyIndex struct {
-	Graffiti           [32]byte
-	ExecutionExtraData []byte
-	ExecutionHash      phase0.Hash32
-	ExecutionNumber    uint64
-	SyncParticipation  float32
+	Graffiti            [32]byte
+	ExecutionExtraData  []byte
+	ExecutionHash       phase0.Hash32
+	ExecutionNumber     uint64
+	SyncParticipation   float32
+	EthTransactionCount uint64
+	BlobCount           uint64
 }
 
 // newBlock creates a new Block instance.
@@ -298,9 +300,22 @@ func (block *Block) EnsureBlock(loadBlock func() (*spec.VersionedSignedBeaconBlo
 func (block *Block) setBlockIndex(body *spec.VersionedSignedBeaconBlock) {
 	blockIndex := &BlockBodyIndex{}
 	blockIndex.Graffiti, _ = body.Graffiti()
-	blockIndex.ExecutionExtraData, _ = getBlockExecutionExtraData(body)
-	blockIndex.ExecutionHash, _ = body.ExecutionBlockHash()
-	blockIndex.ExecutionNumber, _ = body.ExecutionBlockNumber()
+
+	executionPayload, _ := body.ExecutionPayload()
+	if executionPayload != nil {
+		blockIndex.ExecutionExtraData, _ = executionPayload.ExtraData()
+		blockIndex.ExecutionHash, _ = executionPayload.BlockHash()
+		blockIndex.ExecutionNumber, _ = executionPayload.BlockNumber()
+
+		// Calculate transaction count
+		executionTransactions, _ := executionPayload.Transactions()
+		blockIndex.EthTransactionCount = uint64(len(executionTransactions))
+
+		// Calculate blob count
+		blobKzgCommitments, _ := body.BlobKZGCommitments()
+		blockIndex.BlobCount = uint64(len(blobKzgCommitments))
+
+	}
 
 	// Calculate sync participation
 	syncAggregate, err := body.SyncAggregate()

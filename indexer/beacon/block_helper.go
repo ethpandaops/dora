@@ -44,6 +44,9 @@ func MarshalVersionedSignedBeaconBlockSSZ(dynSsz *dynssz.DynSsz, block *spec.Ver
 		case spec.DataVersionElectra:
 			version = uint64(block.Version)
 			ssz, err = dynSsz.MarshalSSZ(block.Electra)
+		case spec.DataVersionFulu:
+			version = uint64(block.Version)
+			ssz, err = dynSsz.MarshalSSZ(block.Fulu)
 		default:
 			err = fmt.Errorf("unknown block version")
 		}
@@ -110,6 +113,11 @@ func UnmarshalVersionedSignedBeaconBlockSSZ(dynSsz *dynssz.DynSsz, version uint6
 		if err := dynSsz.UnmarshalSSZ(block.Electra, ssz); err != nil {
 			return nil, fmt.Errorf("failed to decode electra signed beacon block: %v", err)
 		}
+	case spec.DataVersionFulu:
+		block.Fulu = &electra.SignedBeaconBlock{}
+		if err := dynSsz.UnmarshalSSZ(block.Fulu, ssz); err != nil {
+			return nil, fmt.Errorf("failed to decode fulu signed beacon block: %v", err)
+		}
 	default:
 		return nil, fmt.Errorf("unknown block version")
 	}
@@ -137,6 +145,9 @@ func MarshalVersionedSignedBeaconBlockJson(block *spec.VersionedSignedBeaconBloc
 	case spec.DataVersionElectra:
 		version = uint64(block.Version)
 		jsonRes, err = block.Electra.MarshalJSON()
+	case spec.DataVersionFulu:
+		version = uint64(block.Version)
+		jsonRes, err = block.Fulu.MarshalJSON()
 	default:
 		err = fmt.Errorf("unknown block version")
 	}
@@ -185,42 +196,15 @@ func unmarshalVersionedSignedBeaconBlockJson(version uint64, ssz []byte) (*spec.
 		if err := block.Electra.UnmarshalJSON(ssz); err != nil {
 			return nil, fmt.Errorf("failed to decode electra signed beacon block: %v", err)
 		}
+	case spec.DataVersionFulu:
+		block.Fulu = &electra.SignedBeaconBlock{}
+		if err := block.Fulu.UnmarshalJSON(ssz); err != nil {
+			return nil, fmt.Errorf("failed to decode fulu signed beacon block: %v", err)
+		}
 	default:
 		return nil, fmt.Errorf("unknown block version")
 	}
 	return block, nil
-}
-
-// getBlockExecutionExtraData returns the extra data from the execution payload of a versioned signed beacon block.
-func getBlockExecutionExtraData(v *spec.VersionedSignedBeaconBlock) ([]byte, error) {
-	switch v.Version {
-	case spec.DataVersionBellatrix:
-		if v.Bellatrix == nil || v.Bellatrix.Message == nil || v.Bellatrix.Message.Body == nil || v.Bellatrix.Message.Body.ExecutionPayload == nil {
-			return nil, errors.New("no bellatrix block")
-		}
-
-		return v.Bellatrix.Message.Body.ExecutionPayload.ExtraData, nil
-	case spec.DataVersionCapella:
-		if v.Capella == nil || v.Capella.Message == nil || v.Capella.Message.Body == nil || v.Capella.Message.Body.ExecutionPayload == nil {
-			return nil, errors.New("no capella block")
-		}
-
-		return v.Capella.Message.Body.ExecutionPayload.ExtraData, nil
-	case spec.DataVersionDeneb:
-		if v.Deneb == nil || v.Deneb.Message == nil || v.Deneb.Message.Body == nil || v.Deneb.Message.Body.ExecutionPayload == nil {
-			return nil, errors.New("no deneb block")
-		}
-
-		return v.Deneb.Message.Body.ExecutionPayload.ExtraData, nil
-	case spec.DataVersionElectra:
-		if v.Electra == nil || v.Electra.Message == nil || v.Electra.Message.Body == nil || v.Electra.Message.Body.ExecutionPayload == nil {
-			return nil, errors.New("no electra block")
-		}
-
-		return v.Electra.Message.Body.ExecutionPayload.ExtraData, nil
-	default:
-		return nil, errors.New("unknown version")
-	}
 }
 
 // getStateRandaoMixes returns the RANDAO mixes from a versioned beacon state.
@@ -262,6 +246,12 @@ func getStateRandaoMixes(v *spec.VersionedBeaconState) ([]phase0.Root, error) {
 		}
 
 		return v.Electra.RANDAOMixes, nil
+	case spec.DataVersionFulu:
+		if v.Fulu == nil || v.Fulu.RANDAOMixes == nil {
+			return nil, errors.New("no fulu block")
+		}
+
+		return v.Fulu.RANDAOMixes, nil
 	default:
 		return nil, errors.New("unknown version")
 	}
@@ -282,6 +272,8 @@ func getStateDepositIndex(state *spec.VersionedBeaconState) uint64 {
 		return state.Deneb.ETH1DepositIndex
 	case spec.DataVersionElectra:
 		return state.Electra.ETH1DepositIndex
+	case spec.DataVersionFulu:
+		return state.Fulu.ETH1DepositIndex
 	}
 	return 0
 }
@@ -321,6 +313,12 @@ func getStateCurrentSyncCommittee(v *spec.VersionedBeaconState) ([]phase0.BLSPub
 		}
 
 		return v.Electra.CurrentSyncCommittee.Pubkeys, nil
+	case spec.DataVersionFulu:
+		if v.Fulu == nil || v.Fulu.CurrentSyncCommittee == nil {
+			return nil, errors.New("no fulu block")
+		}
+
+		return v.Fulu.CurrentSyncCommittee.Pubkeys, nil
 	default:
 		return nil, errors.New("unknown version")
 	}
@@ -345,6 +343,12 @@ func getStateDepositBalanceToConsume(v *spec.VersionedBeaconState) (phase0.Gwei,
 		}
 
 		return v.Electra.DepositBalanceToConsume, nil
+	case spec.DataVersionFulu:
+		if v.Fulu == nil {
+			return 0, errors.New("no fulu block")
+		}
+
+		return v.Fulu.DepositBalanceToConsume, nil
 	default:
 		return 0, errors.New("unknown version")
 	}
@@ -369,6 +373,12 @@ func getStatePendingDeposits(v *spec.VersionedBeaconState) ([]*electra.PendingDe
 		}
 
 		return v.Electra.PendingDeposits, nil
+	case spec.DataVersionFulu:
+		if v.Fulu == nil || v.Fulu.PendingDeposits == nil {
+			return nil, errors.New("no fulu block")
+		}
+
+		return v.Fulu.PendingDeposits, nil
 	default:
 		return nil, errors.New("unknown version")
 	}
@@ -393,6 +403,12 @@ func getStatePendingWithdrawals(v *spec.VersionedBeaconState) ([]*electra.Pendin
 		}
 
 		return v.Electra.PendingPartialWithdrawals, nil
+	case spec.DataVersionFulu:
+		if v.Fulu == nil || v.Fulu.PendingPartialWithdrawals == nil {
+			return nil, errors.New("no fulu block")
+		}
+
+		return v.Fulu.PendingPartialWithdrawals, nil
 	default:
 		return nil, errors.New("unknown version")
 	}
@@ -417,6 +433,38 @@ func getStatePendingConsolidations(v *spec.VersionedBeaconState) ([]*electra.Pen
 		}
 
 		return v.Electra.PendingConsolidations, nil
+	case spec.DataVersionFulu:
+		if v.Fulu == nil || v.Fulu.PendingConsolidations == nil {
+			return nil, errors.New("no fulu block")
+		}
+
+		return v.Fulu.PendingConsolidations, nil
+	default:
+		return nil, errors.New("unknown version")
+	}
+}
+
+// getStateProposerLookahead returns the proposer lookahead from a versioned beacon state.
+func getStateProposerLookahead(v *spec.VersionedBeaconState) ([]phase0.ValidatorIndex, error) {
+	switch v.Version {
+	case spec.DataVersionPhase0:
+		return nil, errors.New("no proposer lookahead in phase0")
+	case spec.DataVersionAltair:
+		return nil, errors.New("no proposer lookahead in altair")
+	case spec.DataVersionBellatrix:
+		return nil, errors.New("no proposer lookahead in bellatrix")
+	case spec.DataVersionCapella:
+		return nil, errors.New("no proposer lookahead in capella")
+	case spec.DataVersionDeneb:
+		return nil, errors.New("no proposer lookahead in deneb")
+	case spec.DataVersionElectra:
+		return nil, errors.New("no proposer lookahead in electra")
+	case spec.DataVersionFulu:
+		if v.Fulu == nil || v.Fulu.ProposerLookahead == nil {
+			return nil, errors.New("no fulu block")
+		}
+
+		return v.Fulu.ProposerLookahead, nil
 	default:
 		return nil, errors.New("unknown version")
 	}
@@ -437,6 +485,8 @@ func getBlockSize(dynSsz *dynssz.DynSsz, block *spec.VersionedSignedBeaconBlock)
 		return dynSsz.SizeSSZ(block.Deneb)
 	case spec.DataVersionElectra:
 		return dynSsz.SizeSSZ(block.Electra)
+	case spec.DataVersionFulu:
+		return dynSsz.SizeSSZ(block.Fulu)
 	default:
 		return 0, errors.New("unknown version")
 	}

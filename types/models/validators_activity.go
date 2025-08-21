@@ -10,6 +10,9 @@ type ValidatorsActivityPageData struct {
 	LastValidator  uint64                            `json:"last_validx"`
 	Sorting        string                            `json:"sorting"`
 
+	// Filter parameters
+	SearchTerm string `json:"search_term"`
+
 	FirstGroup uint64 `json:"first_group"`
 	LastGroup  uint64 `json:"last_group"`
 

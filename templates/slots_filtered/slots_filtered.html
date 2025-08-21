@@ -140,6 +140,44 @@
                   </div>
                 </div>
                 {{ end }}
+                <div class="row mt-1">
+                  <div class="col-sm-12 col-md-6 col-lg-4">
+                    <nobr>Tx Count</nobr>
+                  </div>
+                  <div class="col-sm-12 col-md-6 col-lg-8 d-flex">
+                    <div class="flex-grow-1">
+                      <input name="f.mintx" type="number" class="form-control" placeholder="Min" aria-label="Min Transaction Count" min="0" value="{{ .FilterMinTxCount }}">
+                    </div>
+                    <div class="text-center filter-separator">
+                      -
+                    </div>
+                    <div class="flex-grow-1">
+                      <input name="f.maxtx" type="number" class="form-control" placeholder="Max" aria-label="Max Transaction Count" min="0" value="{{ .FilterMaxTxCount }}">
+                    </div>
+                    <div class="text-center" style="width: 30px;">
+                      
+                    </div>
+                  </div>
+                </div>
+                <div class="row mt-1">
+                  <div class="col-sm-12 col-md-6 col-lg-4">
+                    <nobr>Blob Count</nobr>
+                  </div>
+                  <div class="col-sm-12 col-md-6 col-lg-8 d-flex">
+                    <div class="flex-grow-1">
+                      <input name="f.minblob" type="number" class="form-control" placeholder="Min" aria-label="Min Blob Count" min="0" value="{{ .FilterMinBlobCount }}">
+                    </div>
+                    <div class="text-center filter-separator">
+                      -
+                    </div>
+                    <div class="flex-grow-1">
+                      <input name="f.maxblob" type="number" class="form-control" placeholder="Max" aria-label="Max Blob Count" min="0" value="{{ .FilterMaxBlobCount }}">
+                    </div>
+                    <div class="text-center" style="width: 30px;">
+                      
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -320,7 +358,7 @@
                       <td>{{ if not (eq $slot.Status 0) }}
                         {{ if gt $slot.MinExecTime 0 }}
                           <span class="exec-time-display" data-slot="{{ $slot.Slot }}" data-exec-times='{{ includeJSON $slot.ExecutionTimes true }}' data-min="{{ $slot.MinExecTime }}" data-max="{{ $slot.MaxExecTime }}" data-avg="{{ $slot.AvgExecTime }}">
-                            {{ $slot.MaxExecTime }}ms (⌀{{ $slot.AvgExecTime }}ms)
+                            {{ formatAlertNumber (printf "%dms (⌀%dms)" $slot.MaxExecTime $slot.AvgExecTime) (float64 $slot.MaxExecTime) 500 1000 }}
                           </span>
                         {{ end }}
                       {{ end }}</td>
@@ -359,14 +397,14 @@
             <div class="col-sm-12 col-md-7 table-paging">
               <div class="d-inline-block px-2">
                 <form method="GET" style="display: inline-flex; align-items: center;" id="pageJumpForm">
+                  <input type="hidden" name="f">
                   {{ range $key, $value := .UrlParams }}
                     {{ if ne $key "s" }}
                       <input type="hidden" name="{{ $key }}" value="{{ $value }}">
                     {{ end }}
                   {{ end }}
                   <div class="input-group" style="width: 120px;">
-                    <input type="number" class="form-control" name="s" id="pageJumpInput" 
-                           min="1" max="{{ .TotalPages }}" placeholder="Page" 
+                    <input type="number" class="form-control" name="s" id="pageJumpInput" min="1" placeholder="Page" 
                            style="height: 38px; font-size: 14px; text-align: center; border-radius: 0.375rem 0 0 0.375rem;">
                     <button type="submit" class="btn btn-outline-secondary" style="height: 38px; border-radius: 0 0.375rem 0.375rem 0;">
                       Go
@@ -376,7 +414,7 @@
               </div>
               <div class="d-inline-block px-2">
                 <ul class="pagination">
-                  <li class="first paginate_button page-item {{ if le .PrevPageIndex 1 }}disabled{{ end }}" id="tpg_first">
+                  <li class="first paginate_button page-item {{ if eq .PrevPageIndex 0 }}disabled{{ end }}" id="tpg_first">
                     <a tab-index="1" aria-controls="tpg_first" class="page-link" href="{{ .FirstPageLink }}">First</a>
                   </li>
                   <li class="previous paginate_button page-item {{ if eq .PrevPageIndex 0 }}disabled{{ end }}" id="tpg_previous">
@@ -426,19 +464,33 @@ $(function() {
   });
 
   // Page jump functionality
-  $('#pageJumpForm').on('submit', function(e) {
+$('#pageJumpForm').on('submit', function(e) {
+    e.preventDefault();
+    
     var pageInput = $('#pageJumpInput');
     var pageNum = parseInt(pageInput.val());
     var maxPages = parseInt(pageInput.attr('max'));
+    var maxSlot = parseInt($('#maxSlot').val());
+    var pageSize = parseInt($('#pageSize').val());
     
     if (isNaN(pageNum) || pageNum < 1 || pageNum > maxPages) {
-      e.preventDefault();
       pageInput.addClass('is-invalid');
       setTimeout(function() {
         pageInput.removeClass('is-invalid');
       }, 2000);
       return false;
     }
+    
+    // Calculate page number
+    var url = new URL(window.location);
+    if (pageNum === 1) {
+      url.searchParams.delete('s');
+    } else {
+      pageNum = pageNum - 1;
+      url.searchParams.set('s', pageNum);
+    }
+    
+    window.location.href = url.toString();
   });
 
   // Enter key support for page jump

@@ -1,0 +1,491 @@
+basePath: /api
+definitions:
+  api.APIConsensusClientNodeInfo:
+    properties:
+      client_name:
+        type: string
+      client_type:
+        type: string
+      column_indexes:
+        items:
+          type: integer
+        type: array
+      enr:
+        type: string
+      enr_decoded:
+        additionalProperties: true
+        type: object
+      head_root:
+        type: string
+      head_slot:
+        type: integer
+      last_error:
+        type: string
+      last_refresh:
+        type: string
+      node_id:
+        type: string
+      peer_count:
+        type: integer
+      peer_id:
+        type: string
+      peers_inbound:
+        type: integer
+      peers_outbound:
+        type: integer
+      status:
+        type: string
+      supports_data_column:
+        type: boolean
+      version:
+        type: string
+    type: object
+  api.APIConsensusClientsResponse:
+    properties:
+      clients:
+        items:
+          $ref: '#/definitions/api.APIConsensusClientNodeInfo'
+        type: array
+      count:
+        type: integer
+    type: object
+  api.APIEpochResponseV1:
+    properties:
+      attestationscount:
+        type: integer
+      attesterslashingscount:
+        type: integer
+      averagevalidatorbalance:
+        type: integer
+      blockscount:
+        type: integer
+      depositscount:
+        type: integer
+      eligibleether:
+        type: integer
+      epoch:
+        type: integer
+      finalized:
+        type: boolean
+      globalparticipationrate:
+        type: integer
+      missedblocks:
+        type: integer
+      orphanedblocks:
+        type: integer
+      proposedblocks:
+        type: integer
+      proposerslashingscount:
+        type: integer
+      rewards_exported:
+        type: integer
+      scheduledblocks:
+        type: integer
+      totalvalidatorbalance:
+        type: integer
+      ts:
+        type: integer
+      validatorscount:
+        type: integer
+      voluntaryexitscount:
+        type: integer
+      votedether:
+        type: integer
+      withdrawalcount:
+        type: integer
+    type: object
+  api.APIExecutionClientNodeInfo:
+    properties:
+      client_name:
+        type: string
+      enode:
+        type: string
+      ip:
+        type: string
+      last_update:
+        type: string
+      node_id:
+        type: string
+      port:
+        type: integer
+      status:
+        type: string
+      version:
+        type: string
+    type: object
+  api.APIExecutionClientsResponse:
+    properties:
+      clients:
+        items:
+          $ref: '#/definitions/api.APIExecutionClientNodeInfo'
+        type: array
+      count:
+        type: integer
+    type: object
+  api.ApiResponse:
+    properties:
+      data: {}
+      status:
+        type: string
+    type: object
+  api.ApiValidatorDepositsResponseV1:
+    properties:
+      amount:
+        type: integer
+      block_number:
+        type: integer
+      block_ts:
+        type: integer
+      from_address:
+        type: string
+      merkletree_index:
+        type: string
+      publickey:
+        type: string
+      removed:
+        type: boolean
+      signature:
+        type: string
+      tx_hash:
+        type: string
+      tx_index:
+        type: integer
+      tx_input:
+        type: string
+      valid_signature:
+        type: boolean
+      withdrawal_credentials:
+        type: string
+    type: object
+  api.ApiValidatorEth1ResponseV1:
+    properties:
+      public_key:
+        type: string
+      valid_signature:
+        type: boolean
+      validator_index:
+        type: integer
+    type: object
+  api.ApiValidatorRequestV1:
+    properties:
+      indicesOrPubkey:
+        type: string
+    type: object
+  api.ApiValidatorResponseV1:
+    properties:
+      activationeligibilityepoch:
+        type: integer
+      activationepoch:
+        type: integer
+      balance:
+        type: integer
+      effectivebalance:
+        type: integer
+      exitepoch:
+        type: integer
+      isonline:
+        type: boolean
+      name:
+        type: string
+      pubkey:
+        type: string
+      slashed:
+        type: boolean
+      status:
+        type: string
+      validatorindex:
+        type: integer
+      withdrawableepoch:
+        type: integer
+      withdrawalcredentials:
+        type: string
+    type: object
+  api.ApiWithdrawalCredentialsResponseV1:
+    properties:
+      publickey:
+        type: string
+      validatorindex:
+        type: integer
+    type: object
+info:
+  contact: {}
+  description: This is the API documentation for the Dora Explorer application.
+  title: Dora Explorer API
+  version: "1.0"
+paths:
+  /v1/clients/consensus:
+    get:
+      consumes:
+      - application/json
+      description: Returns a list of all connected consensus clients with their node
+        information, including PeerDAS support. Sensitive information (PeerID, NodeID,
+        ENR) is only included if ShowSensitivePeerInfos is enabled in the configuration.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.APIConsensusClientsResponse'
+        "429":
+          description: Rate limit exceeded
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get consensus clients information
+      tags:
+      - clients
+  /v1/clients/execution:
+    get:
+      consumes:
+      - application/json
+      description: Returns a list of all connected execution clients with their node
+        information. Sensitive information (IP addresses, ports, enode) is only included
+        if ShowSensitivePeerInfos is enabled in the configuration.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.APIExecutionClientsResponse'
+        "429":
+          description: Rate limit exceeded
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get execution clients information
+      tags:
+      - clients
+  /v1/epoch/{epoch}:
+    get:
+      description: Returns information for a specified epoch by the epoch number or
+        an epoch tag (can be latest or finalized)
+      parameters:
+      - description: Epoch number, the string latest or the string finalized
+        in: path
+        name: epoch
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            allOf:
+            - $ref: '#/definitions/api.ApiResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/api.APIEpochResponseV1'
+              type: object
+        "400":
+          description: Failure
+          schema:
+            $ref: '#/definitions/api.ApiResponse'
+        "500":
+          description: Server Error
+          schema:
+            $ref: '#/definitions/api.ApiResponse'
+      summary: Get epoch by number, latest, finalized
+      tags:
+      - Epoch
+  /v1/validator:
+    post:
+      description: This POST endpoint exists because the GET endpoint can lead to
+        a "URI too long" error when searching for too many validators based on their
+        pubkeys.
+      parameters:
+      - description: Up to 100 validator indicesOrPubkeys, comma separated
+        in: body
+        name: indexOrPubkey
+        required: true
+        schema:
+          $ref: '#/definitions/api.ApiValidatorRequestV1'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/api.ApiResponse'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/api.ApiValidatorResponseV1'
+                  type: array
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ApiResponse'
+      summary: Get up to 100 validators
+      tags:
+      - Validator
+  /v1/validator/{indexOrPubkey}:
+    get:
+      description: Searching for too many validators based on their pubkeys will lead
+        to a "URI too long" error
+      parameters:
+      - description: Up to 100 validator indicesOrPubkeys, comma separated
+        in: path
+        name: indexOrPubkey
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/api.ApiResponse'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/api.ApiValidatorResponseV1'
+                  type: array
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ApiResponse'
+      summary: Get up to 100 validators
+      tags:
+      - Validator
+  /v1/validator/{indexOrPubkey}/deposits:
+    get:
+      description: Get all eth1 deposits for up to 100 validators
+      parameters:
+      - description: Up to 100 validator indicesOrPubkeys, comma separated
+        in: path
+        name: indexOrPubkey
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/api.ApiResponse'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/api.ApiValidatorDepositsResponseV1'
+                  type: array
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ApiResponse'
+      summary: Get validator execution layer deposits
+      tags:
+      - Validators
+  /v1/validator/eth1/{eth1address}:
+    get:
+      parameters:
+      - description: Eth1 address from which the validator deposits were sent
+        in: path
+        name: eth1address
+        required: true
+        type: string
+      - description: 'Limit the number of results (default: 2000)'
+        in: query
+        name: limit
+        type: string
+      - description: 'Offset the results (default: 0)'
+        in: query
+        name: offset
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/api.ApiResponse'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/api.ApiValidatorEth1ResponseV1'
+                  type: array
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ApiResponse'
+      summary: Get all validators that belong to an eth1 address
+      tags:
+      - Validator
+  /v1/validator/withdrawalCredentials/{withdrawalCredentialsOrEth1address}:
+    get:
+      parameters:
+      - description: Provide a withdrawal credential or an eth1 address with an optional
+          0x prefix
+        in: path
+        name: withdrawalCredentialsOrEth1address
+        required: true
+        type: string
+      - default: 10
+        description: 'Limit the number of results, maximum: 200'
+        in: query
+        name: limit
+        type: integer
+      - default: 0
+        description: Offset the number of results
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/api.ApiResponse'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/api.ApiWithdrawalCredentialsResponseV1'
+                  type: array
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ApiResponse'
+      summary: Get all validators that have a specific withdrawal credentials
+      tags:
+      - Validator
+schemes:
+- http
+- https
+securityDefinitions:
+  BasicAuth:
+    type: basic
+swagger: "2.0"
+tags:
+- description: Validator related endpoints
+  name: Validator
+- description: Epoch related endpoints
+  name: Epoch
+- description: Client information endpoints
+  name: clients

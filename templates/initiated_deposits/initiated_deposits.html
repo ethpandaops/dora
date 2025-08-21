@@ -165,7 +165,11 @@
                     <td>
                       <div class="d-flex">
                         <span class="flex-grow-1 text-truncate" style="max-width: 150px;">
-                          <a href="/validator/0x{{ printf "%x" $deposit.PublicKey }}">0x{{ printf "%x" $deposit.PublicKey }}</a>
+                          {{ if $deposit.ValidatorExists }}
+                            {{ formatValidatorWithIndex $deposit.ValidatorIndex $deposit.ValidatorName }}
+                          {{ else }}
+                            0x{{ printf "%x" $deposit.PublicKey }}
+                          {{ end }}
                         </span>
                         <div>
                           <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $deposit.PublicKey }}"></i>
@@ -232,6 +236,7 @@
             <div class="col-sm-12 col-md-7 table-paging">
               <div class="d-inline-block px-2">
                 <form method="GET" style="display: inline-flex; align-items: center;" id="pageJumpForm">
+                  <input type="hidden" name="f">
                   {{ range $key, $value := .UrlParams }}
                     {{ if ne $key "p" }}
                       <input type="hidden" name="{{ $key }}" value="{{ $value }}">
