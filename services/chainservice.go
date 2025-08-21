@@ -85,7 +85,7 @@ func applyAuthGroupToEndpoint(endpoint *types.EndpointConfig) (*types.EndpointCo
 
 	// Create a copy of the endpoint to avoid modifying the original
 	endpointCopy := *endpoint
-	
+
 	// Apply credentials to URLs if provided
 	if authGroup.Credentials != nil && authGroup.Credentials.Username != "" {
 		// Apply to main URL
@@ -93,7 +93,7 @@ func applyAuthGroupToEndpoint(endpoint *types.EndpointConfig) (*types.EndpointCo
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse URL: %v", err)
 		}
-		
+
 		urlObj.User = url.UserPassword(authGroup.Credentials.Username, authGroup.Credentials.Password)
 		endpointCopy.Url = urlObj.String()
 
@@ -103,19 +103,21 @@ func applyAuthGroupToEndpoint(endpoint *types.EndpointConfig) (*types.EndpointCo
 			if err != nil {
 				return nil, fmt.Errorf("failed to parse snooper URL: %v", err)
 			}
-			
+
 			snooperUrlObj.User = url.UserPassword(authGroup.Credentials.Username, authGroup.Credentials.Password)
 			endpointCopy.EngineSnooperUrl = snooperUrlObj.String()
 		}
 	}
 
-	// Merge headers (authGroup headers take precedence)
+	// Merge headers (endpoint headers take precedence)
 	if len(authGroup.Headers) > 0 {
 		if endpointCopy.Headers == nil {
 			endpointCopy.Headers = make(map[string]string)
 		}
 		for key, value := range authGroup.Headers {
-			endpointCopy.Headers[key] = value
+			if _, exists := endpointCopy.Headers[key]; !exists {
+				endpointCopy.Headers[key] = value
+			}
 		}
 	}
 
