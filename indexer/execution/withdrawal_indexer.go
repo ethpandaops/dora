@@ -17,7 +17,7 @@ import (
 	"github.com/ethpandaops/dora/utils"
 )
 
-const WithdrawalContractAddr = "0x00000961Ef480Eb55e80D19ad83579A64c007002"
+const DefaultWithdrawalContractAddr = "0x00000961Ef480Eb55e80D19ad83579A64c007002"
 
 // WithdrawalIndexer is the indexer for the eip-7002 consolidation system contract
 type WithdrawalIndexer struct {
@@ -54,7 +54,7 @@ func NewWithdrawalIndexer(indexer *IndexerCtx) *WithdrawalIndexer {
 		&contractIndexerOptions[dbtypes.WithdrawalRequestTx]{
 			stateKey:        "indexer.withdrawalindexer",
 			batchSize:       batchSize,
-			contractAddress: common.HexToAddress(WithdrawalContractAddr),
+			contractAddress: common.HexToAddress(wi.getWithdrawalContractAddr()),
 			deployBlock:     uint64(utils.Config.ExecutionApi.ElectraDeployBlock),
 			dequeueRate:     specs.MaxWithdrawalRequestsPerPayload,
 
@@ -81,6 +81,15 @@ func NewWithdrawalIndexer(indexer *IndexerCtx) *WithdrawalIndexer {
 	go wi.runWithdrawalIndexerLoop()
 
 	return wi
+}
+
+// getWithdrawalContractAddr returns the withdrawal contract address from config or falls back to default
+func (wi *WithdrawalIndexer) getWithdrawalContractAddr() string {
+	if addr := wi.indexerCtx.GetSystemContractAddress("withdrawal"); addr != "" {
+		return addr
+	}
+	wi.logger.Warnf("using default withdrawal contract address, could not get from client config")
+	return DefaultWithdrawalContractAddr
 }
 
 // GetMatcherHeight returns the last processed el block number from the transaction matcher
