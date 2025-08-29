@@ -1,5 +1,17 @@
 basePath: /api
 definitions:
+  api.APIConsensusClientMetadata:
+    properties:
+      attnets:
+        type: string
+      custody_group_count:
+        description: MetadataV3 field for Fulu
+        type: string
+      seq_number:
+        type: string
+      syncnets:
+        type: string
+    type: object
   api.APIConsensusClientNodeInfo:
     properties:
       client_name:
@@ -23,6 +35,8 @@ definitions:
         type: string
       last_refresh:
         type: string
+      metadata:
+        $ref: '#/definitions/api.APIConsensusClientMetadata'
       node_id:
         type: string
       peer_count:
@@ -47,6 +61,144 @@ definitions:
           $ref: '#/definitions/api.APIConsensusClientNodeInfo'
         type: array
       count:
+        type: integer
+    type: object
+  api.APIDasGuardianEvalResult:
+    properties:
+      column_idx:
+        items:
+          type: integer
+        type: array
+      downloaded_result:
+        items:
+          items:
+            type: string
+          type: array
+        type: array
+      error:
+        type: string
+      node_id:
+        type: string
+      slots:
+        items:
+          type: integer
+        type: array
+      valid_column:
+        items:
+          items:
+            type: boolean
+          type: array
+        type: array
+      valid_kzg:
+        items:
+          items:
+            type: string
+          type: array
+        type: array
+      valid_slot:
+        items:
+          type: boolean
+        type: array
+    type: object
+  api.APIDasGuardianMassScanRequest:
+    properties:
+      random_count:
+        description: 'Number of random slots to select (default: 4)'
+        type: integer
+      random_mode:
+        description: 'Random slot selection mode: "non_missed", "with_blobs", "available"'
+        type: string
+      slots:
+        description: Optional slot numbers to scan
+        items:
+          type: integer
+        type: array
+    type: object
+  api.APIDasGuardianMassScanResponse:
+    properties:
+      error:
+        type: string
+      results:
+        additionalProperties:
+          $ref: '#/definitions/api.APIMassNodeResult'
+        description: ENR -> node result
+        type: object
+      slots:
+        description: The slots that were scanned
+        items:
+          type: integer
+        type: array
+      success:
+        type: boolean
+    type: object
+  api.APIDasGuardianMetadata:
+    properties:
+      attnets:
+        type: string
+      custody_group_count:
+        type: integer
+      seq_number:
+        type: integer
+      syncnets:
+        type: string
+    type: object
+  api.APIDasGuardianScanRequest:
+    properties:
+      enr:
+        type: string
+      random_count:
+        description: 'Number of random slots to select (default: 4)'
+        type: integer
+      random_mode:
+        description: 'Random slot selection mode: "non_missed", "with_blobs", "available"'
+        type: string
+      slots:
+        description: Optional slot numbers to scan
+        items:
+          type: integer
+        type: array
+    type: object
+  api.APIDasGuardianScanResponse:
+    properties:
+      error:
+        type: string
+      result:
+        $ref: '#/definitions/api.APIDasGuardianScanResult'
+      success:
+        type: boolean
+    type: object
+  api.APIDasGuardianScanResult:
+    properties:
+      eval_result:
+        allOf:
+        - $ref: '#/definitions/api.APIDasGuardianEvalResult'
+        description: DAS Evaluation Result
+      libp2p_info:
+        additionalProperties: true
+        description: P2P Information
+        type: object
+      remote_metadata:
+        allOf:
+        - $ref: '#/definitions/api.APIDasGuardianMetadata'
+        description: Metadata (from RemoteMetadata)
+      remote_status:
+        allOf:
+        - $ref: '#/definitions/api.APIDasGuardianStatus'
+        description: Status Information (from RemoteStatus)
+    type: object
+  api.APIDasGuardianStatus:
+    properties:
+      earliest_slot:
+        type: integer
+      finalized_epoch:
+        type: integer
+      finalized_root:
+        type: string
+      fork_digest:
+        type: string
+      head_root:
+        type: string
+      head_slot:
         type: integer
     type: object
   api.APIEpochResponseV1:
@@ -121,6 +273,192 @@ definitions:
         type: array
       count:
         type: integer
+    type: object
+  api.APIMassNodeResult:
+    properties:
+      custody_columns:
+        description: Custody column indices
+        items:
+          type: integer
+        type: array
+      custody_group_count:
+        description: CGC from node metadata
+        type: integer
+      earliest_slot:
+        description: Earliest available slot from node status
+        type: integer
+      error:
+        type: string
+      node_alias:
+        type: string
+      slot_results:
+        additionalProperties:
+          $ref: '#/definitions/api.SlotResult'
+        description: Slot -> result details
+        type: object
+      success:
+        type: boolean
+      total_columns:
+        description: Total number of columns per slot
+        type: integer
+      valid_columns:
+        description: Per-slot array of column validity
+        items:
+          items:
+            type: boolean
+          type: array
+        type: array
+    type: object
+  api.APISlotData:
+    properties:
+      attestationscount:
+        type: integer
+      attesterslashingscount:
+        type: integer
+      blob_count:
+        type: integer
+      blockroot:
+        type: string
+      depositscount:
+        type: integer
+      epoch:
+        type: integer
+      exec_base_fee_per_gas:
+        type: integer
+      exec_block_hash:
+        type: string
+      exec_block_number:
+        type: integer
+      exec_extra_data:
+        type: string
+      exec_fee_recipient:
+        type: string
+      exec_gas_limit:
+        type: integer
+      exec_gas_used:
+        type: integer
+      exec_transactions_count:
+        type: integer
+      graffiti:
+        type: string
+      graffiti_text:
+        type: string
+      parentroot:
+        type: string
+      proposer:
+        type: integer
+      proposerslashingscount:
+        type: integer
+      slot:
+        type: integer
+      stateroot:
+        type: string
+      status:
+        type: string
+      syncaggregate_participation:
+        type: number
+      voluntaryexitscount:
+        type: integer
+      withdrawalcount:
+        type: integer
+    type: object
+  api.APISlotListItem:
+    properties:
+      attestation_count:
+        type: integer
+      attester_slashing_count:
+        type: integer
+      avg_exec_time:
+        type: integer
+      blob_count:
+        type: integer
+      block_root:
+        type: string
+      block_size:
+        type: integer
+      deposit_count:
+        type: integer
+      el_extra_data:
+        type: string
+      epoch:
+        type: integer
+      eth_block_number:
+        type: integer
+      eth_transaction_count:
+        type: integer
+      execution_times:
+        items:
+          $ref: '#/definitions/models.ExecutionTimeDetail'
+        type: array
+      exit_count:
+        type: integer
+      finalized:
+        type: boolean
+      gas_limit:
+        type: integer
+      gas_used:
+        type: integer
+      graffiti:
+        type: string
+      graffiti_text:
+        type: string
+      is_mev_block:
+        type: boolean
+      max_exec_time:
+        type: integer
+      mev_block_relays:
+        type: string
+      min_exec_time:
+        type: integer
+      parent_root:
+        type: string
+      proposer:
+        type: integer
+      proposer_name:
+        type: string
+      proposer_slashing_count:
+        type: integer
+      recv_delay:
+        type: integer
+      scheduled:
+        type: boolean
+      slot:
+        type: integer
+      state_root:
+        type: string
+      status:
+        type: string
+      sync_aggregate_participation:
+        type: number
+      time:
+        type: string
+      with_eth_block:
+        type: boolean
+    type: object
+  api.APISlotResponse:
+    properties:
+      data:
+        $ref: '#/definitions/api.APISlotData'
+      status:
+        type: string
+    type: object
+  api.APISlotsData:
+    properties:
+      next_slot:
+        type: integer
+      slots:
+        items:
+          $ref: '#/definitions/api.APISlotListItem'
+        type: array
+      total_count:
+        type: integer
+    type: object
+  api.APISlotsResponse:
+    properties:
+      data:
+        $ref: '#/definitions/api.APISlotsData'
+      status:
+        type: string
     type: object
   api.ApiResponse:
     properties:
@@ -207,6 +545,28 @@ definitions:
       validatorindex:
         type: integer
     type: object
+  api.SlotResult:
+    properties:
+      error:
+        type: string
+      total_columns:
+        type: integer
+      valid_column_count:
+        type: integer
+    type: object
+  models.ExecutionTimeDetail:
+    properties:
+      avg_time:
+        type: integer
+      client_type:
+        type: string
+      count:
+        type: integer
+      max_time:
+        type: integer
+      min_time:
+        type: integer
+    type: object
 info:
   contact: {}
   description: This is the API documentation for the Dora Explorer application.
@@ -271,6 +631,89 @@ paths:
       summary: Get execution clients information
       tags:
       - clients
+  /v1/das-guardian/mass-scan:
+    post:
+      consumes:
+      - application/json
+      description: Performs DAS Guardian scans on all available consensus client nodes
+        in parallel
+      parameters:
+      - description: Mass scan parameters
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/api.APIDasGuardianMassScanRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.APIDasGuardianMassScanResponse'
+        "400":
+          description: Invalid request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "429":
+          description: Rate limit exceeded
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Scan all nodes using DAS Guardian
+      tags:
+      - das-guardian
+  /v1/das-guardian/scan:
+    post:
+      consumes:
+      - application/json
+      description: Performs a comprehensive scan of a beacon node using eth-das-guardian
+        to check P2P connectivity, fork digest validity, head accuracy, and custody
+        information
+      parameters:
+      - description: Node ENR to scan
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/api.APIDasGuardianScanRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.APIDasGuardianScanResponse'
+        "400":
+          description: Invalid request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "429":
+          description: Rate limit exceeded
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Scan a node using DAS Guardian
+      tags:
+      - das-guardian
   /v1/epoch/{epoch}:
     get:
       description: Returns information for a specified epoch by the epoch number or
@@ -304,6 +747,151 @@ paths:
       summary: Get epoch by number, latest, finalized
       tags:
       - Epoch
+  /v1/slot/{slotOrHash}:
+    get:
+      description: Returns detailed information about a specific slot from the database.
+        Accepts either slot number or block root (0x-prefixed hex)
+      parameters:
+      - description: Slot number or block root (0x-prefixed hex)
+        in: path
+        name: slotOrHash
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.APISlotResponse'
+        "400":
+          description: Invalid slot number or root format
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Slot not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get slot information
+      tags:
+      - Slot
+  /v1/slots:
+    get:
+      description: Returns a list of slots with various filtering options, sorted
+        by slot number descending
+      parameters:
+      - description: Filter by graffiti
+        in: query
+        name: graffiti
+        type: string
+      - description: Invert graffiti filter
+        in: query
+        name: graffiti_invert
+        type: boolean
+      - description: Filter by extra data
+        in: query
+        name: extra_data
+        type: string
+      - description: Invert extra data filter
+        in: query
+        name: extra_data_invert
+        type: boolean
+      - description: Filter by proposer index
+        in: query
+        name: proposer
+        type: string
+      - description: Filter by proposer name
+        in: query
+        name: proposer_name
+        type: string
+      - description: Invert proposer filter
+        in: query
+        name: proposer_invert
+        type: boolean
+      - description: Include orphaned blocks (0=exclude, 1=include, 2=only orphaned)
+        in: query
+        name: with_orphaned
+        type: integer
+      - description: Include missing blocks (0=exclude, 1=include, 2=only missing)
+        in: query
+        name: with_missing
+        type: integer
+      - description: Minimum sync aggregate participation (0-100)
+        in: query
+        name: min_sync
+        type: number
+      - description: Maximum sync aggregate participation (0-100)
+        in: query
+        name: max_sync
+        type: number
+      - description: Minimum execution time in ms
+        in: query
+        name: min_exec_time
+        type: integer
+      - description: Maximum execution time in ms
+        in: query
+        name: max_exec_time
+        type: integer
+      - description: Minimum transaction count
+        in: query
+        name: min_tx_count
+        type: integer
+      - description: Maximum transaction count
+        in: query
+        name: max_tx_count
+        type: integer
+      - description: Minimum blob count
+        in: query
+        name: min_blob_count
+        type: integer
+      - description: Maximum blob count
+        in: query
+        name: max_blob_count
+        type: integer
+      - description: Comma-separated list of fork IDs
+        in: query
+        name: fork_ids
+        type: string
+      - description: Start slot for pagination (inclusive)
+        in: query
+        name: start_slot
+        type: integer
+      - description: Number of results to return (max 100, default 100)
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.APISlotsResponse'
+        "400":
+          description: Invalid parameters
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get filtered slots list
+      tags:
+      - Slot
   /v1/validator:
     post:
       description: This POST endpoint exists because the GET endpoint can lead to

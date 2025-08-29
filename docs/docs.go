@@ -97,6 +97,128 @@ const docTemplate = `{
                 }
             }
         },
+        "/v1/das-guardian/mass-scan": {
+            "post": {
+                "description": "Performs DAS Guardian scans on all available consensus client nodes in parallel",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "das-guardian"
+                ],
+                "summary": "Scan all nodes using DAS Guardian",
+                "parameters": [
+                    {
+                        "description": "Mass scan parameters",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.APIDasGuardianMassScanRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIDasGuardianMassScanResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limit exceeded",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/das-guardian/scan": {
+            "post": {
+                "description": "Performs a comprehensive scan of a beacon node using eth-das-guardian to check P2P connectivity, fork digest validity, head accuracy, and custody information",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "das-guardian"
+                ],
+                "summary": "Scan a node using DAS Guardian",
+                "parameters": [
+                    {
+                        "description": "Node ENR to scan",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.APIDasGuardianScanRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIDasGuardianScanResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limit exceeded",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/v1/epoch/{epoch}": {
             "get": {
                 "description": "Returns information for a specified epoch by the epoch number or an epoch tag (can be latest or finalized)",
@@ -145,6 +267,222 @@ const docTemplate = `{
                         "description": "Server Error",
                         "schema": {
                             "$ref": "#/definitions/api.ApiResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/slot/{slotOrHash}": {
+            "get": {
+                "description": "Returns detailed information about a specific slot from the database. Accepts either slot number or block root (0x-prefixed hex)",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Slot"
+                ],
+                "summary": "Get slot information",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Slot number or block root (0x-prefixed hex)",
+                        "name": "slotOrHash",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.APISlotResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid slot number or root format",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Slot not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/slots": {
+            "get": {
+                "description": "Returns a list of slots with various filtering options, sorted by slot number descending",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Slot"
+                ],
+                "summary": "Get filtered slots list",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter by graffiti",
+                        "name": "graffiti",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Invert graffiti filter",
+                        "name": "graffiti_invert",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by extra data",
+                        "name": "extra_data",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Invert extra data filter",
+                        "name": "extra_data_invert",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by proposer index",
+                        "name": "proposer",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by proposer name",
+                        "name": "proposer_name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Invert proposer filter",
+                        "name": "proposer_invert",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Include orphaned blocks (0=exclude, 1=include, 2=only orphaned)",
+                        "name": "with_orphaned",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Include missing blocks (0=exclude, 1=include, 2=only missing)",
+                        "name": "with_missing",
+                        "in": "query"
+                    },
+                    {
+                        "type": "number",
+                        "description": "Minimum sync aggregate participation (0-100)",
+                        "name": "min_sync",
+                        "in": "query"
+                    },
+                    {
+                        "type": "number",
+                        "description": "Maximum sync aggregate participation (0-100)",
+                        "name": "max_sync",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Minimum execution time in ms",
+                        "name": "min_exec_time",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Maximum execution time in ms",
+                        "name": "max_exec_time",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Minimum transaction count",
+                        "name": "min_tx_count",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Maximum transaction count",
+                        "name": "max_tx_count",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Minimum blob count",
+                        "name": "min_blob_count",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Maximum blob count",
+                        "name": "max_blob_count",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Comma-separated list of fork IDs",
+                        "name": "fork_ids",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Start slot for pagination (inclusive)",
+                        "name": "start_slot",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Number of results to return (max 100, default 100)",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.APISlotsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid parameters",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     }
                 }
@@ -428,6 +766,24 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "api.APIConsensusClientMetadata": {
+            "type": "object",
+            "properties": {
+                "attnets": {
+                    "type": "string"
+                },
+                "custody_group_count": {
+                    "description": "MetadataV3 field for Fulu",
+                    "type": "string"
+                },
+                "seq_number": {
+                    "type": "string"
+                },
+                "syncnets": {
+                    "type": "string"
+                }
+            }
+        },
         "api.APIConsensusClientNodeInfo": {
             "type": "object",
             "properties": {
@@ -446,6 +802,10 @@ const docTemplate = `{
                 "enr": {
                     "type": "string"
                 },
+                "enr_decoded": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
                 "head_root": {
                     "type": "string"
                 },
@@ -457,6 +817,9 @@ const docTemplate = `{
                 },
                 "last_refresh": {
                     "type": "string"
+                },
+                "metadata": {
+                    "$ref": "#/definitions/api.APIConsensusClientMetadata"
                 },
                 "node_id": {
                     "type": "string"
@@ -494,6 +857,218 @@ const docTemplate = `{
                     }
                 },
                 "count": {
+                    "type": "integer"
+                }
+            }
+        },
+        "api.APIDasGuardianEvalResult": {
+            "type": "object",
+            "properties": {
+                "column_idx": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "downloaded_result": {
+                    "type": "array",
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "error": {
+                    "type": "string"
+                },
+                "node_id": {
+                    "type": "string"
+                },
+                "slots": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "valid_column": {
+                    "type": "array",
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "type": "boolean"
+                        }
+                    }
+                },
+                "valid_kzg": {
+                    "type": "array",
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "valid_slot": {
+                    "type": "array",
+                    "items": {
+                        "type": "boolean"
+                    }
+                }
+            }
+        },
+        "api.APIDasGuardianMassScanRequest": {
+            "type": "object",
+            "properties": {
+                "random_count": {
+                    "description": "Number of random slots to select (default: 4)",
+                    "type": "integer"
+                },
+                "random_mode": {
+                    "description": "Random slot selection mode: \"non_missed\", \"with_blobs\", \"available\"",
+                    "type": "string"
+                },
+                "slots": {
+                    "description": "Optional slot numbers to scan",
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                }
+            }
+        },
+        "api.APIDasGuardianMassScanResponse": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "type": "string"
+                },
+                "results": {
+                    "description": "ENR -\u003e node result",
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/api.APIMassNodeResult"
+                    }
+                },
+                "slots": {
+                    "description": "The slots that were scanned",
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "success": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "api.APIDasGuardianMetadata": {
+            "type": "object",
+            "properties": {
+                "attnets": {
+                    "type": "string"
+                },
+                "custody_group_count": {
+                    "type": "integer"
+                },
+                "seq_number": {
+                    "type": "integer"
+                },
+                "syncnets": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.APIDasGuardianScanRequest": {
+            "type": "object",
+            "properties": {
+                "enr": {
+                    "type": "string"
+                },
+                "random_count": {
+                    "description": "Number of random slots to select (default: 4)",
+                    "type": "integer"
+                },
+                "random_mode": {
+                    "description": "Random slot selection mode: \"non_missed\", \"with_blobs\", \"available\"",
+                    "type": "string"
+                },
+                "slots": {
+                    "description": "Optional slot numbers to scan",
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                }
+            }
+        },
+        "api.APIDasGuardianScanResponse": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "type": "string"
+                },
+                "result": {
+                    "$ref": "#/definitions/api.APIDasGuardianScanResult"
+                },
+                "success": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "api.APIDasGuardianScanResult": {
+            "type": "object",
+            "properties": {
+                "eval_result": {
+                    "description": "DAS Evaluation Result",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/api.APIDasGuardianEvalResult"
+                        }
+                    ]
+                },
+                "libp2p_info": {
+                    "description": "P2P Information",
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "remote_metadata": {
+                    "description": "Metadata (from RemoteMetadata)",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/api.APIDasGuardianMetadata"
+                        }
+                    ]
+                },
+                "remote_status": {
+                    "description": "Status Information (from RemoteStatus)",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/api.APIDasGuardianStatus"
+                        }
+                    ]
+                }
+            }
+        },
+        "api.APIDasGuardianStatus": {
+            "type": "object",
+            "properties": {
+                "earliest_slot": {
+                    "type": "integer"
+                },
+                "finalized_epoch": {
+                    "type": "integer"
+                },
+                "finalized_root": {
+                    "type": "string"
+                },
+                "fork_digest": {
+                    "type": "string"
+                },
+                "head_root": {
+                    "type": "string"
+                },
+                "head_slot": {
                     "type": "integer"
                 }
             }
@@ -606,6 +1181,285 @@ const docTemplate = `{
                 },
                 "count": {
                     "type": "integer"
+                }
+            }
+        },
+        "api.APIMassNodeResult": {
+            "type": "object",
+            "properties": {
+                "custody_columns": {
+                    "description": "Custody column indices",
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "custody_group_count": {
+                    "description": "CGC from node metadata",
+                    "type": "integer"
+                },
+                "earliest_slot": {
+                    "description": "Earliest available slot from node status",
+                    "type": "integer"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "node_alias": {
+                    "type": "string"
+                },
+                "slot_results": {
+                    "description": "Slot -\u003e result details",
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/api.SlotResult"
+                    }
+                },
+                "success": {
+                    "type": "boolean"
+                },
+                "total_columns": {
+                    "description": "Total number of columns per slot",
+                    "type": "integer"
+                },
+                "valid_columns": {
+                    "description": "Per-slot array of column validity",
+                    "type": "array",
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "type": "boolean"
+                        }
+                    }
+                }
+            }
+        },
+        "api.APISlotData": {
+            "type": "object",
+            "properties": {
+                "attestationscount": {
+                    "type": "integer"
+                },
+                "attesterslashingscount": {
+                    "type": "integer"
+                },
+                "blob_count": {
+                    "type": "integer"
+                },
+                "blockroot": {
+                    "type": "string"
+                },
+                "depositscount": {
+                    "type": "integer"
+                },
+                "epoch": {
+                    "type": "integer"
+                },
+                "exec_base_fee_per_gas": {
+                    "type": "integer"
+                },
+                "exec_block_hash": {
+                    "type": "string"
+                },
+                "exec_block_number": {
+                    "type": "integer"
+                },
+                "exec_extra_data": {
+                    "type": "string"
+                },
+                "exec_fee_recipient": {
+                    "type": "string"
+                },
+                "exec_gas_limit": {
+                    "type": "integer"
+                },
+                "exec_gas_used": {
+                    "type": "integer"
+                },
+                "exec_transactions_count": {
+                    "type": "integer"
+                },
+                "graffiti": {
+                    "type": "string"
+                },
+                "graffiti_text": {
+                    "type": "string"
+                },
+                "parentroot": {
+                    "type": "string"
+                },
+                "proposer": {
+                    "type": "integer"
+                },
+                "proposerslashingscount": {
+                    "type": "integer"
+                },
+                "slot": {
+                    "type": "integer"
+                },
+                "stateroot": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "syncaggregate_participation": {
+                    "type": "number"
+                },
+                "voluntaryexitscount": {
+                    "type": "integer"
+                },
+                "withdrawalcount": {
+                    "type": "integer"
+                }
+            }
+        },
+        "api.APISlotListItem": {
+            "type": "object",
+            "properties": {
+                "attestation_count": {
+                    "type": "integer"
+                },
+                "attester_slashing_count": {
+                    "type": "integer"
+                },
+                "avg_exec_time": {
+                    "type": "integer"
+                },
+                "blob_count": {
+                    "type": "integer"
+                },
+                "block_root": {
+                    "type": "string"
+                },
+                "block_size": {
+                    "type": "integer"
+                },
+                "deposit_count": {
+                    "type": "integer"
+                },
+                "el_extra_data": {
+                    "type": "string"
+                },
+                "epoch": {
+                    "type": "integer"
+                },
+                "eth_block_number": {
+                    "type": "integer"
+                },
+                "eth_transaction_count": {
+                    "type": "integer"
+                },
+                "execution_times": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.ExecutionTimeDetail"
+                    }
+                },
+                "exit_count": {
+                    "type": "integer"
+                },
+                "finalized": {
+                    "type": "boolean"
+                },
+                "gas_limit": {
+                    "type": "integer"
+                },
+                "gas_used": {
+                    "type": "integer"
+                },
+                "graffiti": {
+                    "type": "string"
+                },
+                "graffiti_text": {
+                    "type": "string"
+                },
+                "is_mev_block": {
+                    "type": "boolean"
+                },
+                "max_exec_time": {
+                    "type": "integer"
+                },
+                "mev_block_relays": {
+                    "type": "string"
+                },
+                "min_exec_time": {
+                    "type": "integer"
+                },
+                "parent_root": {
+                    "type": "string"
+                },
+                "proposer": {
+                    "type": "integer"
+                },
+                "proposer_name": {
+                    "type": "string"
+                },
+                "proposer_slashing_count": {
+                    "type": "integer"
+                },
+                "recv_delay": {
+                    "type": "integer"
+                },
+                "scheduled": {
+                    "type": "boolean"
+                },
+                "slot": {
+                    "type": "integer"
+                },
+                "state_root": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "sync_aggregate_participation": {
+                    "type": "number"
+                },
+                "time": {
+                    "type": "string"
+                },
+                "with_eth_block": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "api.APISlotResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/api.APISlotData"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.APISlotsData": {
+            "type": "object",
+            "properties": {
+                "next_slot": {
+                    "type": "integer"
+                },
+                "slots": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/api.APISlotListItem"
+                    }
+                },
+                "total_count": {
+                    "type": "integer"
+                }
+            }
+        },
+        "api.APISlotsResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/api.APISlotsData"
+                },
+                "status": {
+                    "type": "string"
                 }
             }
         },
@@ -735,6 +1589,40 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "validatorindex": {
+                    "type": "integer"
+                }
+            }
+        },
+        "api.SlotResult": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "type": "string"
+                },
+                "total_columns": {
+                    "type": "integer"
+                },
+                "valid_column_count": {
+                    "type": "integer"
+                }
+            }
+        },
+        "models.ExecutionTimeDetail": {
+            "type": "object",
+            "properties": {
+                "avg_time": {
+                    "type": "integer"
+                },
+                "client_type": {
+                    "type": "string"
+                },
+                "count": {
+                    "type": "integer"
+                },
+                "max_time": {
+                    "type": "integer"
+                },
+                "min_time": {
                     "type": "integer"
                 }
             }
