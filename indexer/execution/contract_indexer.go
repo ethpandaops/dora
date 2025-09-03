@@ -483,7 +483,11 @@ func (ci *contractIndexer[TxType]) processRecentBlocksForFork(headFork *forkWith
 				}
 
 				// get transaction sender
-				txFrom, err := types.Sender(types.LatestSignerForChainID(txDetails.ChainId()), txDetails)
+				chainId := txDetails.ChainId()
+				if chainId != nil && chainId.Cmp(big.NewInt(0)) == 0 {
+					chainId = nil
+				}
+				txFrom, err := types.Sender(types.LatestSignerForChainID(chainId), txDetails)
 				if err != nil {
 					return fmt.Errorf("could not decode tx sender (%v): %v", log.TxHash, err)
 				}
