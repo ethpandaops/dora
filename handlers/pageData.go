@@ -172,19 +172,30 @@ func createMenuItems(active string) []types.MainMenuItem {
 		Links: clientLinks,
 	})
 
-	validatorMenu = append(validatorMenu, types.NavigationGroup{
-		Links: []types.NavigationLink{
-			{
-				Label: "Validators",
-				Path:  "/validators",
-				Icon:  "fa-table",
-			},
-			{
-				Label: "Validator Activity",
-				Path:  "/validators/activity",
-				Icon:  "fa-tachometer",
-			},
+	validatorMenuLinks := []types.NavigationLink{
+		{
+			Label: "Validators",
+			Path:  "/validators",
+			Icon:  "fa-table",
 		},
+	}
+
+	if utils.Config.Frontend.ShowValidatorSummary {
+		validatorMenuLinks = append(validatorMenuLinks, types.NavigationLink{
+			Label: "Validator Summary",
+			Path:  "/validators/summary",
+			Icon:  "fa-chart-pie",
+		})
+	}
+
+	validatorMenuLinks = append(validatorMenuLinks, types.NavigationLink{
+		Label: "Validator Activity",
+		Path:  "/validators/activity",
+		Icon:  "fa-tachometer",
+	})
+
+	validatorMenu = append(validatorMenu, types.NavigationGroup{
+		Links: validatorMenuLinks,
 	})
 	validatorMenu = append(validatorMenu, types.NavigationGroup{
 		Links: []types.NavigationLink{

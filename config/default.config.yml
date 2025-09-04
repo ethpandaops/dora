@@ -37,6 +37,7 @@ frontend:
   showPeerDASInfos: false
   showSubmitDeposit: false
   showSubmitElRequests: false
+  showValidatorSummary: false
   publicRpcUrl: "http://127.0.0.1:8545"
   
   # DAS Guardian configuration
