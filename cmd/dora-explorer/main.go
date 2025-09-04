@@ -179,6 +179,7 @@ func startFrontend(router *mux.Router) {
 	router.HandleFunc("/clients/execution/refresh", handlers.ClientsELRefresh).Methods("POST")
 	router.HandleFunc("/clients/execution/refresh/status", handlers.ClientsELRefreshStatus).Methods("GET")
 	router.HandleFunc("/forks", handlers.Forks).Methods("GET")
+	router.HandleFunc("/chain-forks", handlers.ChainForks).Methods("GET")
 	router.HandleFunc("/epochs", handlers.Epochs).Methods("GET")
 	router.HandleFunc("/epoch/{epoch}", handlers.Epoch).Methods("GET")
 	router.HandleFunc("/slots", handlers.Slots).Methods("GET")

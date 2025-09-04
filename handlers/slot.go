@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"math/big"
 	"net/http"
 	"strconv"
 	"strings"
@@ -764,7 +765,12 @@ func getSlotPageTransactions(pageData *models.SlotPageBlockData, transactions []
 			Type:  uint64(tx.Type()),
 		}
 		txData.DataLen = uint64(len(txData.Data))
-		txFrom, err := ethtypes.Sender(ethtypes.NewPragueSigner(tx.ChainId()), &tx)
+
+		chainId := tx.ChainId()
+		if chainId != nil && chainId.Cmp(big.NewInt(0)) == 0 {
+			chainId = nil
+		}
+		txFrom, err := ethtypes.Sender(ethtypes.LatestSignerForChainID(chainId), &tx)
 		if err != nil {
 			txData.From = "unknown"
 			logrus.Warnf("error decoding transaction sender 0x%x.%v: %v\n", pageData.BlockRoot, idx, err)
