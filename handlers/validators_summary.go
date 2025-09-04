@@ -74,7 +74,7 @@ func getValidatorsSummaryPageData() (*models.ValidatorsSummaryPageData, error) {
 func buildValidatorsSummaryPageData() (*models.ValidatorsSummaryPageData, time.Duration) {
 	logrus.Debugf("validators summary page called")
 	pageData := &models.ValidatorsSummaryPageData{}
-	
+
 	// Cache for one epoch duration - get actual timing from chain state
 	chainState := services.GlobalBeaconService.GetChainState()
 	specs := chainState.GetSpecs()
@@ -85,7 +85,7 @@ func buildValidatorsSummaryPageData() (*models.ValidatorsSummaryPageData, time.D
 	// Get all validators (we'll filter out exited ones in processing)
 	validatorFilter := dbtypes.ValidatorFilter{}
 	validators, _ := services.GlobalBeaconService.GetFilteredValidatorSet(&validatorFilter, false)
-	
+
 	if len(validators) == 0 {
 		return pageData, cacheTime
 	}
@@ -106,15 +106,15 @@ func buildValidatorsSummaryPageData() (*models.ValidatorsSummaryPageData, time.D
 		}
 
 		// Skip exited and withdrawn validators
-		if validator.Status == v1.ValidatorStateExitedUnslashed || 
-		   validator.Status == v1.ValidatorStateExitedSlashed ||
-		   validator.Status == v1.ValidatorStateWithdrawalDone {
+		if validator.Status == v1.ValidatorStateExitedUnslashed ||
+			validator.Status == v1.ValidatorStateExitedSlashed ||
+			validator.Status == v1.ValidatorStateWithdrawalDone {
 			continue
 		}
 
 		validatorName := services.GlobalBeaconService.GetValidatorName(uint64(validator.Index))
 		executionClient, consensusClient := parseClientTypesFromName(validatorName)
-		
+
 		executionClients[executionClient] = true
 		consensusClients[consensusClient] = true
 
@@ -143,7 +143,7 @@ func buildValidatorsSummaryPageData() (*models.ValidatorsSummaryPageData, time.D
 		totalEffectiveBalance += uint64(validator.Validator.EffectiveBalance)
 
 		effectiveBalance := uint64(validator.Validator.EffectiveBalance)
-		
+
 		// Check if validator is online - only for active validators
 		isOnline := false
 		if validator.Status == v1.ValidatorStateActiveOngoing || validator.Status == v1.ValidatorStateActiveExiting {
@@ -173,7 +173,7 @@ func buildValidatorsSummaryPageData() (*models.ValidatorsSummaryPageData, time.D
 			if cell.ValidatorCount > 0 {
 				cell.BalancePercentage = (float64(cell.EffectiveBalance) / float64(totalEffectiveBalance)) * 100
 				cell.OnlinePercentage = (float64(cell.OnlineEffectiveBalance) / float64(cell.EffectiveBalance)) * 100
-				
+
 				// Determine health status
 				if cell.OnlinePercentage == 100 {
 					cell.HealthStatus = "healthy"
@@ -228,17 +228,17 @@ func buildValidatorsSummaryPageData() (*models.ValidatorsSummaryPageData, time.D
 		if validator.Validator == nil {
 			continue
 		}
-		
+
 		// Skip exited and withdrawn validators
-		if validator.Status == v1.ValidatorStateExitedUnslashed || 
-		   validator.Status == v1.ValidatorStateExitedSlashed ||
-		   validator.Status == v1.ValidatorStateWithdrawalDone {
+		if validator.Status == v1.ValidatorStateExitedUnslashed ||
+			validator.Status == v1.ValidatorStateExitedSlashed ||
+			validator.Status == v1.ValidatorStateWithdrawalDone {
 			continue
 		}
-		
+
 		activeValidators++
 		effectiveBalance := uint64(validator.Validator.EffectiveBalance)
-		
+
 		if validator.Status == v1.ValidatorStateActiveOngoing || validator.Status == v1.ValidatorStateActiveExiting {
 			liveness := services.GlobalBeaconService.GetValidatorLiveness(validator.Index, 3)
 			if liveness >= 2 {
@@ -252,7 +252,7 @@ func buildValidatorsSummaryPageData() (*models.ValidatorsSummaryPageData, time.D
 	pageData.ConsensusClients = clClientList
 	pageData.TotalValidators = activeValidators
 	pageData.TotalEffectiveETH = totalEffectiveBalance / 1000000000 // Convert to ETH as whole numbers
-	pageData.OverallHealthy = onlineEffectiveBalance / 1000000000 // Convert online EB to ETH
+	pageData.OverallHealthy = onlineEffectiveBalance / 1000000000   // Convert online EB to ETH
 	pageData.ClientBreakdown = clientBreakdown
 	pageData.NetworkHealthScore = (float64(onlineEffectiveBalance) / float64(totalEffectiveBalance)) * 100
 
@@ -265,7 +265,7 @@ func parseClientTypesFromName(validatorName string) (string, string) {
 	}
 
 	name := strings.ToLower(validatorName)
-	
+
 	// Parse execution client - check nimbusel patterns first to avoid confusion with nimbus
 	executionClient := "unknown"
 	if strings.Contains(name, "nimbusel") || strings.Contains(name, "nimbus-el") {
@@ -306,7 +306,7 @@ func parseClientTypesFromName(validatorName string) (string, string) {
 			if part == "" {
 				continue
 			}
-			
+
 			// Try execution clients first (to catch nimbusel before nimbus)
 			if executionClient == "unknown" {
 				switch part {
@@ -324,7 +324,7 @@ func parseClientTypesFromName(validatorName string) (string, string) {
 					executionClient = "erigon"
 				}
 			}
-			
+
 			// Try consensus clients (only match nimbus if nimbusel wasn't found)
 			if consensusClient == "unknown" {
 				switch part {
@@ -368,7 +368,7 @@ func buildClientBreakdown(clientCombinations map[string]map[string]*models.Valid
 	for _, clClient := range clClients {
 		clStats[clClient] = &models.ValidatorsSummaryClientBreak{
 			ClientName:              clClient,
-			Layer:                   "consensus", 
+			Layer:                   "consensus",
 			ClientType:              clClient,
 			OnlineEffectiveBalance:  clClientBalances[clClient]["online"],
 			OfflineEffectiveBalance: clClientBalances[clClient]["offline"],
@@ -405,7 +405,7 @@ func buildClientBreakdown(clientCombinations map[string]map[string]*models.Valid
 			stat.BalancePercentage = (float64(stat.EffectiveBalance) / float64(totalEffectiveBalance)) * 100
 			stat.OnlinePercentage = (float64(stat.OnlineEffectiveBalance) / float64(stat.EffectiveBalance)) * 100
 			stat.OfflineValidators = stat.ValidatorCount - stat.OnlineValidators
-			
+
 			if stat.OnlinePercentage == 100 {
 				stat.HealthStatus = "healthy"
 			} else if stat.OnlinePercentage >= 95 {
@@ -423,7 +423,7 @@ func buildClientBreakdown(clientCombinations map[string]map[string]*models.Valid
 			stat.BalancePercentage = (float64(stat.EffectiveBalance) / float64(totalEffectiveBalance)) * 100
 			stat.OnlinePercentage = (float64(stat.OnlineEffectiveBalance) / float64(stat.EffectiveBalance)) * 100
 			stat.OfflineValidators = stat.ValidatorCount - stat.OnlineValidators
-			
+
 			if stat.OnlinePercentage == 100 {
 				stat.HealthStatus = "healthy"
 			} else if stat.OnlinePercentage >= 95 {

@@ -179,7 +179,7 @@ func createMenuItems(active string) []types.MainMenuItem {
 			Icon:  "fa-table",
 		},
 	}
-	
+
 	if utils.Config.Frontend.ShowValidatorSummary {
 		validatorMenuLinks = append(validatorMenuLinks, types.NavigationLink{
 			Label: "Validator Summary",
@@ -187,13 +187,13 @@ func createMenuItems(active string) []types.MainMenuItem {
 			Icon:  "fa-chart-pie",
 		})
 	}
-	
+
 	validatorMenuLinks = append(validatorMenuLinks, types.NavigationLink{
 		Label: "Validator Activity",
 		Path:  "/validators/activity",
 		Icon:  "fa-tachometer",
 	})
-	
+
 	validatorMenu = append(validatorMenu, types.NavigationGroup{
 		Links: validatorMenuLinks,
 	})
