@@ -25,6 +25,18 @@ kurtosis files inspect "$ENCLAVE_NAME" validator-ranges validator-ranges.yaml | 
 # Get dora config
 kurtosis files inspect "$ENCLAVE_NAME" dora-config dora-config.yaml | tail -n +2 > "${__dir}/generated-dora-kt-config.yaml"
 
+# Extract network name from config
+NETWORK_NAME=$(grep -E "^\s*network:" "${config_file}" | sed 's/.*network:\s*//' | tr -d '"'\'' ')
+
+# Determine validator names source based on network type
+if [[ "$NETWORK_NAME" == *"devnet"* ]]; then
+  # Use inventory API for devnet networks
+  VALIDATOR_NAMES_CONFIG="validatorNamesInventory: \"https://config.${NETWORK_NAME}.ethpandaops.io/api/v1/nodes/validator-ranges\""
+else
+  # Use local validator ranges file for all other networks
+  VALIDATOR_NAMES_CONFIG="validatorNamesYaml: \"${__dir}/generated-validator-ranges.yaml\""
+fi
+
 ## Generate Dora config
 ENCLAVE_UUID=$(kurtosis enclave inspect "$ENCLAVE_NAME" --full-uuids | grep 'UUID:' | awk '{print $2}')
 
@@ -62,17 +74,19 @@ frontend:
   done
   )"
   rainbowkitProjectId: "15fe4ab4d5c0bcb6f0dc7c398301ff0e"
-  validatorNamesYaml: "${__dir}/generated-validator-ranges.yaml"
+  ${VALIDATOR_NAMES_CONFIG}
   showSensitivePeerInfos: true
   showSubmitDeposit: true
   showSubmitElRequests: true
   showPeerDASInfos: true
   disableDasGuardianCheck: false
   enableDasGuardianMassScan: true
+  showValidatorSummary: true
 api:
   enabled: true
   corsOrigins:
     - "*"
+
 beaconapi:
   localCacheSize: 10
   redisCacheAddr: ""
