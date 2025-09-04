@@ -42,6 +42,22 @@ type ClientsELPageDataNode struct {
 	ListenAddr    string                       `json:"listen_addr"`
 	Peers         []*ClientELPageDataNodePeers `json:"peers"`
 	DidFetchPeers bool                         `json:"peers_fetched"`
+	ForkConfig    *ClientELPageDataForkConfig  `json:"fork_config"`
+}
+
+type ClientELPageDataForkConfig struct {
+	Current *EthConfigObject `json:"current"`
+	Next    *EthConfigObject `json:"next"`
+	Last    *EthConfigObject `json:"last"`
+}
+
+type EthConfigObject struct {
+	ActivationTime  uint64                 `json:"activationTime"`
+	BlobSchedule    map[string]interface{} `json:"blobSchedule"`
+	ChainId         string                 `json:"chainId"`
+	ForkId          string                 `json:"forkId"`
+	Precompiles     map[string]interface{} `json:"precompiles"`
+	SystemContracts map[string]interface{} `json:"systemContracts"`
 }
 
 type ClientELPageDataNodePeers struct {
