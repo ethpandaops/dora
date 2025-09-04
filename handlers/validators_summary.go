@@ -10,6 +10,8 @@ import (
 
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
 
+	"github.com/ethpandaops/dora/clients/consensus"
+	"github.com/ethpandaops/dora/clients/execution"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
@@ -71,6 +73,11 @@ func getValidatorsSummaryPageData() (*models.ValidatorsSummaryPageData, error) {
 	return pageData, pageErr
 }
 
+type validatorsSummaryClientBalances struct {
+	online  uint64
+	offline uint64
+}
+
 func buildValidatorsSummaryPageData() (*models.ValidatorsSummaryPageData, time.Duration) {
 	logrus.Debugf("validators summary page called")
 	pageData := &models.ValidatorsSummaryPageData{}
@@ -83,7 +90,13 @@ func buildValidatorsSummaryPageData() (*models.ValidatorsSummaryPageData, time.D
 	cacheTime := epochDuration
 
 	// Get all validators (we'll filter out exited ones in processing)
-	validatorFilter := dbtypes.ValidatorFilter{}
+	validatorFilter := dbtypes.ValidatorFilter{
+		Status: []v1.ValidatorState{
+			v1.ValidatorStateActiveOngoing,
+			v1.ValidatorStateActiveExiting,
+			v1.ValidatorStateActiveSlashed,
+		},
+	}
 	validators, _ := services.GlobalBeaconService.GetFilteredValidatorSet(&validatorFilter, false)
 
 	if len(validators) == 0 {
@@ -91,24 +104,20 @@ func buildValidatorsSummaryPageData() (*models.ValidatorsSummaryPageData, time.D
 	}
 
 	// Parse client types from validator names and group by client combinations
-	clientCombinations := make(map[string]map[string]*models.ValidatorsSummaryMatrixCell)
-	executionClients := make(map[string]bool)
-	consensusClients := make(map[string]bool)
+	clientCombinations := make(map[execution.ClientType]map[consensus.ClientType]*models.ValidatorsSummaryMatrixCell)
+	executionClients := make(map[execution.ClientType]bool)
+	consensusClients := make(map[consensus.ClientType]bool)
 	totalEffectiveBalance := uint64(0)
 
 	// Track balances per client for breakdown table
-	elClientBalances := make(map[string]map[string]uint64) // [client][online/offline] -> balance
-	clClientBalances := make(map[string]map[string]uint64)
+	elClientBalances := make(map[execution.ClientType]*validatorsSummaryClientBalances) // [client][online/offline] -> balance
+	clClientBalances := make(map[consensus.ClientType]*validatorsSummaryClientBalances)
+
+	onlineEffectiveBalance := uint64(0)
+	activeValidators := uint64(0)
 
 	for _, validator := range validators {
 		if validator.Validator == nil {
-			continue
-		}
-
-		// Skip exited and withdrawn validators
-		if validator.Status == v1.ValidatorStateExitedUnslashed ||
-			validator.Status == v1.ValidatorStateExitedSlashed ||
-			validator.Status == v1.ValidatorStateWithdrawalDone {
 			continue
 		}
 
@@ -119,22 +128,22 @@ func buildValidatorsSummaryPageData() (*models.ValidatorsSummaryPageData, time.D
 		consensusClients[consensusClient] = true
 
 		if clientCombinations[executionClient] == nil {
-			clientCombinations[executionClient] = make(map[string]*models.ValidatorsSummaryMatrixCell)
+			clientCombinations[executionClient] = make(map[consensus.ClientType]*models.ValidatorsSummaryMatrixCell)
 		}
 
 		if clientCombinations[executionClient][consensusClient] == nil {
 			clientCombinations[executionClient][consensusClient] = &models.ValidatorsSummaryMatrixCell{
-				ExecutionClient: executionClient,
-				ConsensusClient: consensusClient,
+				ExecutionClient: executionClient.String(),
+				ConsensusClient: consensusClient.String(),
 			}
 		}
 
 		// Initialize client balance tracking
 		if elClientBalances[executionClient] == nil {
-			elClientBalances[executionClient] = make(map[string]uint64)
+			elClientBalances[executionClient] = &validatorsSummaryClientBalances{}
 		}
 		if clClientBalances[consensusClient] == nil {
-			clClientBalances[consensusClient] = make(map[string]uint64)
+			clClientBalances[consensusClient] = &validatorsSummaryClientBalances{}
 		}
 
 		cell := clientCombinations[executionClient][consensusClient]
@@ -148,7 +157,10 @@ func buildValidatorsSummaryPageData() (*models.ValidatorsSummaryPageData, time.D
 		isOnline := false
 		if validator.Status == v1.ValidatorStateActiveOngoing || validator.Status == v1.ValidatorStateActiveExiting {
 			liveness := services.GlobalBeaconService.GetValidatorLiveness(validator.Index, 3)
-			isOnline = liveness >= 2 // Consider online if attested in 2+ of last 3 epochs
+			if liveness >= 2 { // Consider online if attested in 2+ of last 3 epochs
+				isOnline = true
+				onlineEffectiveBalance += effectiveBalance
+			}
 		}
 		// For pending validators, consider them as "offline" (not yet active)
 		// For slashed validators, they can still be online if actively attesting
@@ -156,14 +168,16 @@ func buildValidatorsSummaryPageData() (*models.ValidatorsSummaryPageData, time.D
 		if isOnline {
 			cell.OnlineValidators++
 			cell.OnlineEffectiveBalance += effectiveBalance
-			elClientBalances[executionClient]["online"] += effectiveBalance
-			clClientBalances[consensusClient]["online"] += effectiveBalance
+			elClientBalances[executionClient].online += effectiveBalance
+			clClientBalances[consensusClient].online += effectiveBalance
 		} else {
 			cell.OfflineValidators++
 			cell.OfflineEffectiveBalance += effectiveBalance
-			elClientBalances[executionClient]["offline"] += effectiveBalance
-			clClientBalances[consensusClient]["offline"] += effectiveBalance
+			elClientBalances[executionClient].offline += effectiveBalance
+			clClientBalances[consensusClient].offline += effectiveBalance
 		}
+
+		activeValidators++
 	}
 
 	// Calculate percentages and health status
@@ -189,17 +203,21 @@ func buildValidatorsSummaryPageData() (*models.ValidatorsSummaryPageData, time.D
 	}
 
 	// Convert maps to sorted slices for consistent ordering
-	elClientList := make([]string, 0, len(executionClients))
+	elClientList := make([]execution.ClientType, 0, len(executionClients))
 	for client := range executionClients {
 		elClientList = append(elClientList, client)
 	}
-	sort.Strings(elClientList)
+	sort.Slice(elClientList, func(i, j int) bool {
+		return elClientList[i].String() < elClientList[j].String()
+	})
 
-	clClientList := make([]string, 0, len(consensusClients))
+	clClientList := make([]consensus.ClientType, 0, len(consensusClients))
 	for client := range consensusClients {
 		clClientList = append(clClientList, client)
 	}
-	sort.Strings(clClientList)
+	sort.Slice(clClientList, func(i, j int) bool {
+		return clClientList[i].String() < clClientList[j].String()
+	})
 
 	// Build dynamic matrix
 	matrix := make([][]models.ValidatorsSummaryMatrixCell, len(elClientList))
@@ -210,8 +228,8 @@ func buildValidatorsSummaryPageData() (*models.ValidatorsSummaryPageData, time.D
 				matrix[i][j] = *clientCombinations[elClient][clClient]
 			} else {
 				matrix[i][j] = models.ValidatorsSummaryMatrixCell{
-					ExecutionClient: elClient,
-					ConsensusClient: clClient,
+					ExecutionClient: elClient.String(),
+					ConsensusClient: clClient.String(),
 					HealthStatus:    "empty",
 				}
 			}
@@ -221,35 +239,19 @@ func buildValidatorsSummaryPageData() (*models.ValidatorsSummaryPageData, time.D
 	// Build client breakdown for detailed table
 	clientBreakdown := buildClientBreakdown(clientCombinations, totalEffectiveBalance, elClientList, clClientList, elClientBalances, clClientBalances)
 
-	// Calculate network health score using effective balance (excluding exited validators)
-	onlineEffectiveBalance := uint64(0)
-	activeValidators := uint64(0)
-	for _, validator := range validators {
-		if validator.Validator == nil {
-			continue
-		}
+	elClientListStrings := make([]string, len(elClientList))
+	for i, elClient := range elClientList {
+		elClientListStrings[i] = elClient.String()
+	}
 
-		// Skip exited and withdrawn validators
-		if validator.Status == v1.ValidatorStateExitedUnslashed ||
-			validator.Status == v1.ValidatorStateExitedSlashed ||
-			validator.Status == v1.ValidatorStateWithdrawalDone {
-			continue
-		}
-
-		activeValidators++
-		effectiveBalance := uint64(validator.Validator.EffectiveBalance)
-
-		if validator.Status == v1.ValidatorStateActiveOngoing || validator.Status == v1.ValidatorStateActiveExiting {
-			liveness := services.GlobalBeaconService.GetValidatorLiveness(validator.Index, 3)
-			if liveness >= 2 {
-				onlineEffectiveBalance += effectiveBalance
-			}
-		}
+	clClientListStrings := make([]string, len(clClientList))
+	for i, clClient := range clClientList {
+		clClientListStrings[i] = clClient.String()
 	}
 
 	pageData.ClientMatrix = matrix
-	pageData.ExecutionClients = elClientList
-	pageData.ConsensusClients = clClientList
+	pageData.ExecutionClients = elClientListStrings
+	pageData.ConsensusClients = clClientListStrings
 	pageData.TotalValidators = activeValidators
 	pageData.TotalEffectiveETH = totalEffectiveBalance / 1000000000 // Convert to ETH as whole numbers
 	pageData.OverallHealthy = onlineEffectiveBalance / 1000000000   // Convert online EB to ETH
@@ -259,119 +261,72 @@ func buildValidatorsSummaryPageData() (*models.ValidatorsSummaryPageData, time.D
 	return pageData, cacheTime
 }
 
-func parseClientTypesFromName(validatorName string) (string, string) {
+func parseClientTypesFromName(validatorName string) (execution.ClientType, consensus.ClientType) {
 	if validatorName == "" {
-		return "unknown", "unknown"
+		return execution.UnknownClient, consensus.UnknownClient
 	}
 
 	name := strings.ToLower(validatorName)
 
 	// Parse execution client - check nimbusel patterns first to avoid confusion with nimbus
-	executionClient := "unknown"
+	executionClient := execution.UnknownClient
 	if strings.Contains(name, "nimbusel") || strings.Contains(name, "nimbus-el") {
-		executionClient = "nimbusel"
+		executionClient = execution.NimbusELClient
 	} else if strings.Contains(name, "geth") {
-		executionClient = "geth"
+		executionClient = execution.GethClient
 	} else if strings.Contains(name, "besu") {
-		executionClient = "besu"
+		executionClient = execution.BesuClient
 	} else if strings.Contains(name, "nethermind") {
-		executionClient = "nethermind"
+		executionClient = execution.NethermindClient
 	} else if strings.Contains(name, "reth") {
-		executionClient = "reth"
+		executionClient = execution.RethClient
 	} else if strings.Contains(name, "erigon") {
-		executionClient = "erigon"
+		executionClient = execution.ErigonClient
 	}
 
 	// Parse consensus client - use exact word matching to avoid nimbus/nimbusel conflicts
-	consensusClient := "unknown"
+	consensusClient := consensus.UnknownClient
 	if strings.Contains(name, "lighthouse") {
-		consensusClient = "lighthouse"
+		consensusClient = consensus.LighthouseClient
 	} else if strings.Contains(name, "prysm") {
-		consensusClient = "prysm"
+		consensusClient = consensus.PrysmClient
 	} else if strings.Contains(name, "teku") {
-		consensusClient = "teku"
+		consensusClient = consensus.TekuClient
 	} else if strings.Contains(name, "lodestar") {
-		consensusClient = "lodestar"
+		consensusClient = consensus.LodestarClient
 	} else if strings.Contains(name, "grandine") {
-		consensusClient = "grandine"
+		consensusClient = consensus.GrandineClient
 	} else if regexp.MustCompile(`\bnimbus\b`).MatchString(name) {
-		consensusClient = "nimbus"
-	}
-
-	// Try to parse from more complex patterns like "prysm-geth-1" or "lighthouse_besu_node_5"
-	if consensusClient == "unknown" || executionClient == "unknown" {
-		parts := regexp.MustCompile(`[_\-\s]+`).Split(name, -1)
-		for _, part := range parts {
-			part = strings.TrimSpace(part)
-			if part == "" {
-				continue
-			}
-
-			// Try execution clients first (to catch nimbusel before nimbus)
-			if executionClient == "unknown" {
-				switch part {
-				case "nimbusel": // Check nimbusel first
-					executionClient = "nimbusel"
-				case "geth":
-					executionClient = "geth"
-				case "besu":
-					executionClient = "besu"
-				case "nethermind":
-					executionClient = "nethermind"
-				case "reth":
-					executionClient = "reth"
-				case "erigon":
-					executionClient = "erigon"
-				}
-			}
-
-			// Try consensus clients (only match nimbus if nimbusel wasn't found)
-			if consensusClient == "unknown" {
-				switch part {
-				case "lighthouse":
-					consensusClient = "lighthouse"
-				case "prysm":
-					consensusClient = "prysm"
-				case "teku":
-					consensusClient = "teku"
-				case "nimbus":
-					consensusClient = "nimbus"
-				case "lodestar":
-					consensusClient = "lodestar"
-				case "grandine":
-					consensusClient = "grandine"
-				}
-			}
-		}
+		consensusClient = consensus.NimbusClient
 	}
 
 	return executionClient, consensusClient
 }
 
-func buildClientBreakdown(clientCombinations map[string]map[string]*models.ValidatorsSummaryMatrixCell, totalEffectiveBalance uint64, elClients, clClients []string, elClientBalances, clClientBalances map[string]map[string]uint64) []models.ValidatorsSummaryClientBreak {
+func buildClientBreakdown(clientCombinations map[execution.ClientType]map[consensus.ClientType]*models.ValidatorsSummaryMatrixCell, totalEffectiveBalance uint64, elClients []execution.ClientType, clClients []consensus.ClientType, elClientBalances map[execution.ClientType]*validatorsSummaryClientBalances, clClientBalances map[consensus.ClientType]*validatorsSummaryClientBalances) []models.ValidatorsSummaryClientBreak {
 	breakdown := []models.ValidatorsSummaryClientBreak{}
 
 	// Aggregate by execution client
-	elStats := make(map[string]*models.ValidatorsSummaryClientBreak)
+	elStats := make(map[execution.ClientType]*models.ValidatorsSummaryClientBreak)
 	for _, elClient := range elClients {
 		elStats[elClient] = &models.ValidatorsSummaryClientBreak{
-			ClientName:              elClient,
+			ClientName:              elClient.String(),
 			Layer:                   "execution",
-			ClientType:              elClient,
-			OnlineEffectiveBalance:  elClientBalances[elClient]["online"],
-			OfflineEffectiveBalance: elClientBalances[elClient]["offline"],
+			ClientType:              elClient.String(),
+			OnlineEffectiveBalance:  elClientBalances[elClient].online,
+			OfflineEffectiveBalance: elClientBalances[elClient].offline,
 		}
 	}
 
 	// Aggregate by consensus client
-	clStats := make(map[string]*models.ValidatorsSummaryClientBreak)
+	clStats := make(map[consensus.ClientType]*models.ValidatorsSummaryClientBreak)
 	for _, clClient := range clClients {
 		clStats[clClient] = &models.ValidatorsSummaryClientBreak{
-			ClientName:              clClient,
+			ClientName:              clClient.String(),
 			Layer:                   "consensus",
-			ClientType:              clClient,
-			OnlineEffectiveBalance:  clClientBalances[clClient]["online"],
-			OfflineEffectiveBalance: clClientBalances[clClient]["offline"],
+			ClientType:              clClient.String(),
+			OnlineEffectiveBalance:  clClientBalances[clClient].online,
+			OfflineEffectiveBalance: clClientBalances[clClient].offline,
 		}
 	}
 
