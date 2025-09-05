@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/p2p/enode"
+	"github.com/ethpandaops/dora/clients/execution"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
@@ -283,6 +284,8 @@ func buildELClientsPageData(sortOrder string) (*models.ClientsELPageData, time.D
 			PeerID:               peerID,
 		}
 
+		forkConfig := buildForkConfig(client)
+
 		resNode := &models.ClientsELPageDataNode{
 			Name:          client.GetName(),
 			Version:       client.GetVersion(),
@@ -291,6 +294,7 @@ func buildELClientsPageData(sortOrder string) (*models.ClientsELPageData, time.D
 			PeerID:        peerID,
 			PeerName:      peerName,
 			DidFetchPeers: client.DidFetchPeers(),
+			ForkConfig:    forkConfig,
 		}
 
 		if pageData.ShowSensitivePeerInfos {
@@ -396,4 +400,53 @@ func buildELClientsPageData(sortOrder string) (*models.ClientsELPageData, time.D
 	pageData.Sorting = sortOrder
 
 	return pageData, cacheTime
+}
+
+func buildForkConfig(client *execution.Client) *models.ClientELPageDataForkConfig {
+	ethConfig := client.GetCachedEthConfig()
+	if ethConfig == nil {
+		return nil
+	}
+
+	forkConfig := &models.ClientELPageDataForkConfig{}
+
+	if ethConfig.Current != nil {
+		forkConfig.Current = convertEthConfigFork(ethConfig.Current)
+	}
+
+	if ethConfig.Next != nil {
+		forkConfig.Next = convertEthConfigFork(ethConfig.Next)
+	}
+
+	if ethConfig.Last != nil {
+		forkConfig.Last = convertEthConfigFork(ethConfig.Last)
+	}
+
+	return forkConfig
+}
+
+func convertEthConfigFork(fork *execution.EthConfigFork) *models.EthConfigObject {
+	obj := &models.EthConfigObject{}
+
+	obj.ActivationTime = fork.ActivationTime
+	obj.ChainId = fork.ChainID
+	obj.ForkId = fork.ForkID
+
+	// Convert string maps to interface{} maps for model compatibility
+	obj.BlobSchedule = convertStringMapToInterface(fork.BlobSchedule)
+	obj.Precompiles = convertStringMapToInterface(fork.Precompiles)
+	obj.SystemContracts = convertStringMapToInterface(fork.SystemContracts)
+
+	return obj
+}
+
+func convertStringMapToInterface(stringMap map[string]string) map[string]interface{} {
+	if stringMap == nil {
+		return nil
+	}
+	interfaceMap := make(map[string]interface{})
+	for key, value := range stringMap {
+		interfaceMap[key] = value
+	}
+	return interfaceMap
 }

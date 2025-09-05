@@ -362,6 +362,24 @@ func (bs *ChainService) GetExecutionClients() []*execution.Client {
 	return bs.executionPool.GetAllEndpoints()
 }
 
+func (bs *ChainService) GetSystemContractAddress(contractType string) string {
+	if bs == nil || bs.executionPool == nil {
+		return ""
+	}
+
+	// Get any ready client and check its config
+	for _, client := range bs.executionPool.GetReadyEndpoints(execution.AnyClient) {
+		config := client.GetCachedEthConfig()
+		if config != nil && config.Current != nil {
+			if addr := config.Current.GetSystemContractAddress(contractType); addr != "" {
+				return addr
+			}
+		}
+	}
+
+	return ""
+}
+
 func (bs *ChainService) GetChainState() *consensus.ChainState {
 	if bs == nil || bs.consensusPool == nil {
 		return nil

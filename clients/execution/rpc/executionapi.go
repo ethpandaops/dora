@@ -144,6 +144,12 @@ func (ec *ExecutionClient) GetAdminNodeInfo(ctx context.Context) (*p2p.NodeInfo,
 	return result, err
 }
 
+func (ec *ExecutionClient) GetEthConfig(ctx context.Context) (map[string]interface{}, error) {
+	var result map[string]interface{}
+	err := ec.rpcClient.CallContext(ctx, &result, "eth_config")
+	return result, err
+}
+
 func (ec *ExecutionClient) GetNodeSyncing(ctx context.Context) (*SyncStatus, error) {
 	status, err := ec.ethClient.SyncProgress(ctx)
 	if err != nil {
