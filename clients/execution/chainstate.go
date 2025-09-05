@@ -6,12 +6,14 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethpandaops/dora/clients/execution/rpc"
 )
 
 type ChainState struct {
 	specMutex sync.RWMutex
 	specs     *rpc.ChainSpec
+	config    *core.Genesis
 }
 
 func newChainState() *ChainState {
@@ -57,4 +59,12 @@ func (cache *ChainState) GetChainID() *big.Int {
 	}
 
 	return chainID
+}
+
+func (cache *ChainState) SetGenesisConfig(genesis *core.Genesis) {
+	cache.config = genesis
+}
+
+func (cache *ChainState) GetGenesisConfig() *core.Genesis {
+	return cache.config
 }

@@ -143,6 +143,17 @@ func (cs *ChainService) StartService() error {
 
 	executionIndexerCtx := execindexer.NewIndexerCtx(cs.logger.WithField("service", "el-indexer"), cs.executionPool, cs.consensusPool, cs.beaconIndexer)
 
+	// load genesis config if configured
+	if utils.Config.ExecutionApi.GenesisConfig != "" {
+		genesis, err := utils.LoadGenesisFromPathOrURL(utils.Config.ExecutionApi.GenesisConfig)
+		if err != nil {
+			cs.logger.WithError(err).Errorf("failed to load execution layer genesis config from %s", utils.Config.ExecutionApi.GenesisConfig)
+		} else if genesis != nil {
+			cs.executionPool.GetChainState().SetGenesisConfig(genesis)
+			cs.logger.Infof("loaded execution layer genesis config from %s", utils.Config.ExecutionApi.GenesisConfig)
+		}
+	}
+
 	// add consensus clients
 	for index, endpoint := range utils.Config.BeaconApi.Endpoints {
 		// Apply authGroup settings if configured
