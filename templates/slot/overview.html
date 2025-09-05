@@ -248,6 +248,30 @@
                   <div class="col-md-10 text-monospace text-break">{{ formatBaseFee .BaseFeePerGas }}</div>
                 </div>
 
+                {{ if .BlobGasUsed }}
+                <div class="row py-1">
+                  <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Blob gas used">Blob gas used:</span></div>
+                  <div class="col-md-10">
+                    <div style="position:relative;width:200px;height:inherit;">
+                      {{ formatAddCommas .BlobGasUsed }} 
+                      {{ if .BlobGasLimit }}
+                      <small class="text-muted ml-3">({{ formatFloat (percentage .BlobGasUsed .BlobGasLimit) 2 }}%)</small>
+                      <div class="progress" style="position:absolute;bottom:-6px;width:200px;height:4px;">
+                        <div class="progress-bar" role="progressbar" style="width: {{ percentage .BlobGasUsed .BlobGasLimit }}%;" aria-valuenow="{{ .BlobGasUsed }}" aria-valuemin="0" aria-valuemax="{{ .BlobGasLimit }}"></div>
+                      </div>
+                      {{ end }}
+                    </div>
+                  </div>
+                </div>
+                {{ end }}
+
+                {{ if .BlobGasLimit }}
+                  <div class="row py-1">
+                    <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Blob gas limit">Blob gas limit:</span></div>
+                    <div class="col-md-10 text-monospace text-break">{{ formatAddCommas .BlobGasLimit }} ({{ .BlobLimit }} blobs)</div>
+                  </div>
+                {{ end }}
+
                 {{ if .BlobBaseFee }}
                   <div class="row py-1">
                     <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Base fee per blob gas">Blob base fee:</span></div>
@@ -259,13 +283,6 @@
                   <div class="row py-1">
                     <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Excess blob gas">Excess blob gas:</span></div>
                     <div class="col-md-10 text-monospace text-break">{{ formatAddCommas .ExcessBlobGas }}</div>
-                  </div>
-                {{ end }}
-
-                {{ if .BlobGasUsed }}
-                  <div class="row py-1">
-                    <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Blob gas used">Blob gas used:</span></div>
-                    <div class="col-md-10 text-monospace text-break">{{ formatAddCommas .BlobGasUsed }}</div>
                   </div>
                 {{ end }}
 

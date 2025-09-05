@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/p2p/enode"
+	"github.com/ethpandaops/dora/clients/execution"
+	execrpc "github.com/ethpandaops/dora/clients/execution/rpc"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
@@ -283,6 +285,8 @@ func buildELClientsPageData(sortOrder string) (*models.ClientsELPageData, time.D
 			PeerID:               peerID,
 		}
 
+		forkConfig := buildForkConfig(client)
+
 		resNode := &models.ClientsELPageDataNode{
 			Name:          client.GetName(),
 			Version:       client.GetVersion(),
@@ -291,6 +295,7 @@ func buildELClientsPageData(sortOrder string) (*models.ClientsELPageData, time.D
 			PeerID:        peerID,
 			PeerName:      peerName,
 			DidFetchPeers: client.DidFetchPeers(),
+			ForkConfig:    forkConfig,
 		}
 
 		if pageData.ShowSensitivePeerInfos {
@@ -396,4 +401,52 @@ func buildELClientsPageData(sortOrder string) (*models.ClientsELPageData, time.D
 	pageData.Sorting = sortOrder
 
 	return pageData, cacheTime
+}
+
+func buildForkConfig(client *execution.Client) *models.ClientELPageDataForkConfig {
+	ethConfig := client.GetEthConfig()
+	if ethConfig == nil {
+		return nil
+	}
+
+	forkConfig := &models.ClientELPageDataForkConfig{}
+
+	if ethConfig.Current != nil {
+		forkConfig.Current = convertEthConfigFork(ethConfig.Current)
+	}
+
+	if ethConfig.Next != nil {
+		forkConfig.Next = convertEthConfigFork(ethConfig.Next)
+	}
+
+	if ethConfig.Last != nil {
+		forkConfig.Last = convertEthConfigFork(ethConfig.Last)
+	}
+
+	return forkConfig
+}
+
+func convertEthConfigFork(fork *execrpc.EthConfigFork) *models.EthConfigObject {
+	obj := &models.EthConfigObject{}
+
+	obj.ActivationTime = fork.ActivationTime
+	obj.ChainId = fork.ChainID
+	obj.ForkId = fork.ForkID
+
+	// Convert string maps to interface{} maps for model compatibility
+	obj.BlobSchedule.Max = fork.BlobSchedule.Max
+	obj.BlobSchedule.Target = fork.BlobSchedule.Target
+	obj.BlobSchedule.BaseFeeUpdateFraction = fork.BlobSchedule.BaseFeeUpdateFraction
+
+	obj.Precompiles = make(map[string]string)
+	for key, value := range fork.Precompiles {
+		obj.Precompiles[key] = value.String()
+	}
+
+	obj.SystemContracts = make(map[string]string)
+	for key, value := range fork.SystemContracts {
+		obj.SystemContracts[key] = value.String()
+	}
+
+	return obj
 }

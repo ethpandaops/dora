@@ -16,6 +16,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/sirupsen/logrus"
 
+	"github.com/ethpandaops/dora/clients/execution/rpc"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/indexer/beacon"
 	"github.com/ethpandaops/dora/indexer/execution"
@@ -92,12 +93,18 @@ func buildSubmitConsolidationPageData() (*models.SubmitConsolidationPageData, ti
 	chainState := services.GlobalBeaconService.GetChainState()
 	specs := chainState.GetSpecs()
 
+	// Get consolidation contract address from client config, fallback to default
+	consolidationContract := services.GlobalBeaconService.GetSystemContractAddress(rpc.ConsolidationRequestContract)
+	if consolidationContract == nil {
+		consolidationContract = &execution.DefaultConsolidationContractAddr
+	}
+
 	pageData := &models.SubmitConsolidationPageData{
 		NetworkName:           specs.ConfigName,
 		PublicRPCUrl:          utils.Config.Frontend.PublicRPCUrl,
 		RainbowkitProjectId:   utils.Config.Frontend.RainbowkitProjectId,
 		ChainId:               specs.DepositChainId,
-		ConsolidationContract: execution.ConsolidationContractAddr,
+		ConsolidationContract: consolidationContract.String(),
 		ExplorerUrl:           utils.Config.Frontend.EthExplorerLink,
 	}
 

@@ -44,6 +44,7 @@ type Client struct {
 	nodeInfo           *p2p.NodeInfo
 	peers              []*p2p.PeerInfo
 	didFetchPeers      bool
+	ethConfig          *rpc.EthConfig
 }
 
 func (pool *Pool) newPoolClient(clientIdx uint16, endpoint *ClientConfig) (*Client, error) {
@@ -90,6 +91,10 @@ func (client *Client) GetVersion() string {
 
 func (client *Client) GetNodeInfo() *p2p.NodeInfo {
 	return client.nodeInfo
+}
+
+func (client *Client) GetEthConfig() *rpc.EthConfig {
+	return client.ethConfig
 }
 
 func (client *Client) GetEndpointConfig() *ClientConfig {

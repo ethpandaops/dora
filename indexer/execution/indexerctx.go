@@ -5,6 +5,7 @@ import (
 	"sort"
 
 	"github.com/attestantio/go-eth2-client/spec/phase0"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/dora/clients/execution"
 	"github.com/ethpandaops/dora/indexer/beacon"
@@ -144,4 +145,9 @@ func (ictx *IndexerCtx) getForksWithClients(clientType execution.ClientType) []*
 	})
 
 	return forksWithClients
+}
+
+// GetSystemContractAddress returns the address of a system contract from the first available client's config
+func (ictx *IndexerCtx) GetSystemContractAddress(contractType string) *common.Address {
+	return ictx.executionPool.GetChainState().GetSystemContractAddress(contractType)
 }

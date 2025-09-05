@@ -100,6 +100,8 @@ type SlotPageExecutionData struct {
 	BlockHash     []byte    `json:"block_hash"`
 	BlockNumber   uint64    `json:"block_number"`
 	BlobGasUsed   *uint64   `json:"blob_gas_used,omitempty"`
+	BlobLimit     *uint64   `json:"blob_limit,omitempty"`
+	BlobGasLimit  *uint64   `json:"blob_gas_limit,omitempty"`
 	ExcessBlobGas *uint64   `json:"excess_blob_gas,omitempty"`
 	BlobBaseFee   *uint64   `json:"blob_base_fee,omitempty"`
 }
