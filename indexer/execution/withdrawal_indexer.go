@@ -11,13 +11,14 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/sirupsen/logrus"
 
+	"github.com/ethpandaops/dora/clients/execution/rpc"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/indexer/beacon"
 	"github.com/ethpandaops/dora/utils"
 )
 
-const DefaultWithdrawalContractAddr = "0x00000961Ef480Eb55e80D19ad83579A64c007002"
+var DefaultWithdrawalContractAddr = common.HexToAddress("0x00000961Ef480Eb55e80D19ad83579A64c007002")
 
 // WithdrawalIndexer is the indexer for the eip-7002 consolidation system contract
 type WithdrawalIndexer struct {
@@ -54,7 +55,7 @@ func NewWithdrawalIndexer(indexer *IndexerCtx) *WithdrawalIndexer {
 		&contractIndexerOptions[dbtypes.WithdrawalRequestTx]{
 			stateKey:        "indexer.withdrawalindexer",
 			batchSize:       batchSize,
-			contractAddress: common.HexToAddress(wi.getWithdrawalContractAddr()),
+			contractAddress: wi.getWithdrawalContractAddr(),
 			deployBlock:     uint64(utils.Config.ExecutionApi.ElectraDeployBlock),
 			dequeueRate:     specs.MaxWithdrawalRequestsPerPayload,
 
@@ -84,9 +85,9 @@ func NewWithdrawalIndexer(indexer *IndexerCtx) *WithdrawalIndexer {
 }
 
 // getWithdrawalContractAddr returns the withdrawal contract address from config or falls back to default
-func (wi *WithdrawalIndexer) getWithdrawalContractAddr() string {
-	if addr := wi.indexerCtx.GetSystemContractAddress("withdrawal"); addr != "" {
-		return addr
+func (wi *WithdrawalIndexer) getWithdrawalContractAddr() common.Address {
+	if addr := wi.indexerCtx.GetSystemContractAddress(rpc.WithdrawalRequestContract); addr != nil {
+		return *addr
 	}
 	wi.logger.Warnf("using default withdrawal contract address, could not get from client config")
 	return DefaultWithdrawalContractAddr

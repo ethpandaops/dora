@@ -11,6 +11,7 @@ import (
 
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/jmoiron/sqlx"
 
 	"github.com/ethpandaops/dora/blockdb"
@@ -362,30 +363,24 @@ func (bs *ChainService) GetExecutionClients() []*execution.Client {
 	return bs.executionPool.GetAllEndpoints()
 }
 
-func (bs *ChainService) GetSystemContractAddress(contractType string) string {
-	if bs == nil || bs.executionPool == nil {
-		return ""
-	}
-
-	// Get any ready client and check its config
-	for _, client := range bs.executionPool.GetReadyEndpoints(execution.AnyClient) {
-		config := client.GetCachedEthConfig()
-		if config != nil && config.Current != nil {
-			if addr := config.Current.GetSystemContractAddress(contractType); addr != "" {
-				return addr
-			}
-		}
-	}
-
-	return ""
-}
-
 func (bs *ChainService) GetChainState() *consensus.ChainState {
 	if bs == nil || bs.consensusPool == nil {
 		return nil
 	}
 
 	return bs.consensusPool.GetChainState()
+}
+
+func (bs *ChainService) GetExecutionChainState() *execution.ChainState {
+	if bs == nil || bs.executionPool == nil {
+		return nil
+	}
+
+	return bs.executionPool.GetChainState()
+}
+
+func (bs *ChainService) GetSystemContractAddress(systemContract string) *common.Address {
+	return bs.executionPool.GetChainState().GetSystemContractAddress(systemContract)
 }
 
 func (bs *ChainService) GetHeadForks(readyOnly bool) []*beacon.ForkHead {

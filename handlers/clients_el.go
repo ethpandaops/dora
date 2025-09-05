@@ -9,6 +9,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethpandaops/dora/clients/execution"
+	execrpc "github.com/ethpandaops/dora/clients/execution/rpc"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
@@ -403,7 +404,7 @@ func buildELClientsPageData(sortOrder string) (*models.ClientsELPageData, time.D
 }
 
 func buildForkConfig(client *execution.Client) *models.ClientELPageDataForkConfig {
-	ethConfig := client.GetCachedEthConfig()
+	ethConfig := client.GetEthConfig()
 	if ethConfig == nil {
 		return nil
 	}
@@ -425,7 +426,7 @@ func buildForkConfig(client *execution.Client) *models.ClientELPageDataForkConfi
 	return forkConfig
 }
 
-func convertEthConfigFork(fork *execution.EthConfigFork) *models.EthConfigObject {
+func convertEthConfigFork(fork *execrpc.EthConfigFork) *models.EthConfigObject {
 	obj := &models.EthConfigObject{}
 
 	obj.ActivationTime = fork.ActivationTime
@@ -433,20 +434,19 @@ func convertEthConfigFork(fork *execution.EthConfigFork) *models.EthConfigObject
 	obj.ForkId = fork.ForkID
 
 	// Convert string maps to interface{} maps for model compatibility
-	obj.BlobSchedule = convertStringMapToInterface(fork.BlobSchedule)
-	obj.Precompiles = convertStringMapToInterface(fork.Precompiles)
-	obj.SystemContracts = convertStringMapToInterface(fork.SystemContracts)
+	obj.BlobSchedule.Max = fork.BlobSchedule.Max
+	obj.BlobSchedule.Target = fork.BlobSchedule.Target
+	obj.BlobSchedule.BaseFeeUpdateFraction = fork.BlobSchedule.BaseFeeUpdateFraction
+
+	obj.Precompiles = make(map[string]string)
+	for key, value := range fork.Precompiles {
+		obj.Precompiles[key] = value.String()
+	}
+
+	obj.SystemContracts = make(map[string]string)
+	for key, value := range fork.SystemContracts {
+		obj.SystemContracts[key] = value.String()
+	}
 
 	return obj
-}
-
-func convertStringMapToInterface(stringMap map[string]string) map[string]interface{} {
-	if stringMap == nil {
-		return nil
-	}
-	interfaceMap := make(map[string]interface{})
-	for key, value := range stringMap {
-		interfaceMap[key] = value
-	}
-	return interfaceMap
 }

@@ -10,13 +10,14 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/sirupsen/logrus"
 
+	"github.com/ethpandaops/dora/clients/execution/rpc"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/indexer/beacon"
 	"github.com/ethpandaops/dora/utils"
 )
 
-const DefaultConsolidationContractAddr = "0x0000BBdDc7CE488642fb579F8B00f3a590007251"
+var DefaultConsolidationContractAddr = common.HexToAddress("0x0000BBdDc7CE488642fb579F8B00f3a590007251")
 
 // ConsolidationIndexer is the indexer for the eip-7251 consolidation system contract
 type ConsolidationIndexer struct {
@@ -53,7 +54,7 @@ func NewConsolidationIndexer(indexer *IndexerCtx) *ConsolidationIndexer {
 		&contractIndexerOptions[dbtypes.ConsolidationRequestTx]{
 			stateKey:        "indexer.consolidationindexer",
 			batchSize:       batchSize,
-			contractAddress: common.HexToAddress(ci.getConsolidationContractAddr()),
+			contractAddress: ci.getConsolidationContractAddr(),
 			deployBlock:     uint64(utils.Config.ExecutionApi.ElectraDeployBlock),
 			dequeueRate:     specs.MaxConsolidationRequestsPerPayload,
 
@@ -83,9 +84,9 @@ func NewConsolidationIndexer(indexer *IndexerCtx) *ConsolidationIndexer {
 }
 
 // getConsolidationContractAddr returns the consolidation contract address from config or falls back to default
-func (ci *ConsolidationIndexer) getConsolidationContractAddr() string {
-	if addr := ci.indexerCtx.GetSystemContractAddress("consolidation"); addr != "" {
-		return addr
+func (ci *ConsolidationIndexer) getConsolidationContractAddr() common.Address {
+	if addr := ci.indexerCtx.GetSystemContractAddress(rpc.ConsolidationRequestContract); addr != nil {
+		return *addr
 	}
 	ci.logger.Warnf("using default consolidation contract address, could not get from client config")
 	return DefaultConsolidationContractAddr

@@ -13,6 +13,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/sirupsen/logrus"
 
+	"github.com/ethpandaops/dora/clients/execution/rpc"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/indexer/beacon"
 	"github.com/ethpandaops/dora/indexer/execution"
@@ -90,9 +91,9 @@ func buildSubmitWithdrawalPageData() (*models.SubmitWithdrawalPageData, time.Dur
 	specs := chainState.GetSpecs()
 
 	// Get withdrawal contract address from client config, fallback to default
-	withdrawalContract := services.GlobalBeaconService.GetSystemContractAddress("withdrawal")
-	if withdrawalContract == "" {
-		withdrawalContract = execution.DefaultWithdrawalContractAddr
+	withdrawalContract := services.GlobalBeaconService.GetSystemContractAddress(rpc.WithdrawalRequestContract)
+	if withdrawalContract == nil {
+		withdrawalContract = &execution.DefaultWithdrawalContractAddr
 	}
 
 	pageData := &models.SubmitWithdrawalPageData{
@@ -100,7 +101,7 @@ func buildSubmitWithdrawalPageData() (*models.SubmitWithdrawalPageData, time.Dur
 		PublicRPCUrl:        utils.Config.Frontend.PublicRPCUrl,
 		RainbowkitProjectId: utils.Config.Frontend.RainbowkitProjectId,
 		ChainId:             specs.DepositChainId,
-		WithdrawalContract:  withdrawalContract,
+		WithdrawalContract:  withdrawalContract.String(),
 		ExplorerUrl:         utils.Config.Frontend.EthExplorerLink,
 		MinValidatorBalance: specs.MinActivationBalance,
 	}

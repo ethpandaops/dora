@@ -219,8 +219,8 @@
             Fork Configuration
             <span class="text-muted" style="float: right; font-size: 0.9em;">
               {{ html "<!-- ko if: fork_config() -->" }}
-              Chain ID: <code data-bind="text: fork_config().current ? fork_config().current.chainId : (fork_config().next ? fork_config().next.chainId : fork_config().last.chainId)"></code>
-              <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy Chain ID" data-bind="click: function() { var chainId = (fork_config().current && fork_config().current.chainId) || (fork_config().next && fork_config().next.chainId) || (fork_config().last && fork_config().last.chainId) || ''; navigator.clipboard.writeText(chainId); }"></i>
+              Chain ID: <code data-bind="text: (fork_config().current && fork_config().current.chainId) || ''"></code>
+              <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy Chain ID" data-bind="click: function() { var chainId = (fork_config().current && fork_config().current.chainId) || ''; navigator.clipboard.writeText(chainId); }"></i>
               {{ html "<!-- /ko -->" }}
             </span>
           </div>

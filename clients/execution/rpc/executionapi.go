@@ -144,8 +144,8 @@ func (ec *ExecutionClient) GetAdminNodeInfo(ctx context.Context) (*p2p.NodeInfo,
 	return result, err
 }
 
-func (ec *ExecutionClient) GetEthConfig(ctx context.Context) (map[string]interface{}, error) {
-	var result map[string]interface{}
+func (ec *ExecutionClient) GetEthConfig(ctx context.Context) (*EthConfig, error) {
+	var result *EthConfig
 	err := ec.rpcClient.CallContext(ctx, &result, "eth_config")
 	return result, err
 }

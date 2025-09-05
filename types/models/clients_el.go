@@ -52,12 +52,16 @@ type ClientELPageDataForkConfig struct {
 }
 
 type EthConfigObject struct {
-	ActivationTime  uint64                 `json:"activationTime"`
-	BlobSchedule    map[string]interface{} `json:"blobSchedule"`
-	ChainId         string                 `json:"chainId"`
-	ForkId          string                 `json:"forkId"`
-	Precompiles     map[string]interface{} `json:"precompiles"`
-	SystemContracts map[string]interface{} `json:"systemContracts"`
+	ActivationTime uint64 `json:"activationTime"`
+	BlobSchedule   struct {
+		Max                   uint64 `json:"max"`
+		Target                uint64 `json:"target"`
+		BaseFeeUpdateFraction uint64 `json:"baseFeeUpdateFraction"`
+	} `json:"blobSchedule"`
+	ChainId         string            `json:"chainId"`
+	ForkId          string            `json:"forkId"`
+	Precompiles     map[string]string `json:"precompiles"`
+	SystemContracts map[string]string `json:"systemContracts"`
 }
 
 type ClientELPageDataNodePeers struct {
