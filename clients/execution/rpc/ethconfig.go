@@ -76,7 +76,7 @@ func checkAddressSet(prefix string, a1 map[string]common.Address, a2 map[string]
 		}
 	}
 
-	for k, _ := range a2 {
+	for k := range a2 {
 		if !checked[k] {
 			mismatches = append(mismatches, fmt.Sprintf("%s.%s", prefix, k))
 		}
