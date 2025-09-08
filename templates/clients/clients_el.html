@@ -146,6 +146,12 @@
                       {{ else }}
                         <span class="badge rounded-pill text-bg-dark">{{ $client.Status }}</span>
                       {{ end }}
+                      {{ if $client.ConfigWarnings }}
+                        <span class="text-warning" data-bs-toggle="tooltip" data-bs-placement="top" 
+                          title="{{ range $idx, $warning := $client.ConfigWarnings }}{{ if $idx }}, {{ end }}{{ $warning }}{{ end }}">
+                          <i class="fas fa-exclamation-triangle"></i>
+                        </span>
+                      {{ end }}
                     </td>
                     <td>
                       <span class="text-truncate d-inline-block" style="max-width: 300px">{{ $client.Version }}</span>
@@ -169,14 +175,14 @@
             <table class="table table-borderless table-sm client-table-info ">
               <tbody>
                 <tr>
-                  <td>Name</td>
+                  <td style="white-space: nowrap;">Name</td>
                   <td>
                     <code data-bind="text: name"></code>
                     <i class="fa fa-copy text-muted p-1" role="button" data-bs-placement="right" data-bs-toggle="tooltip" title="Copy to clipboard" data-bind="attr: {'data-clipboard-text': name}"></i>
                   </td>
                 </tr>
                 <tr>
-                  <td>Peer ID</td>
+                  <td style="white-space: nowrap;">Peer ID</td>
                   <td>
                     <code data-bind="text: peer_id"></code>
                     <i class="fa fa-copy text-muted p-1" role="button" data-bs-placement="right" data-bs-toggle="tooltip" title="Copy to clipboard" data-bind="attr: {'data-clipboard-text': peer_id}"></i>
@@ -184,7 +190,7 @@
                 </tr>
                 {{ html "<!-- ko if: showSensitivePeerInfos -->" }}
                 <tr style="vertical-align: top;">
-                  <td>Enode</td>
+                  <td style="white-space: nowrap;">Enode</td>
                   <td>
                     <div style="word-break: break-all; text-wrap: pretty;">
                       <code data-bind="text: enode"></code>
@@ -193,7 +199,7 @@
                   </td>
                 </tr>
                 <tr style="vertical-align: top;">
-                  <td>IP Address</td>
+                  <td style="white-space: nowrap;">IP Address</td>
                   <td>
                     <div style="word-break: break-all; text-wrap: pretty;">
                       <code data-bind="text: ip_addr"></code>
@@ -202,7 +208,7 @@
                   </td>
                 </tr>
                 <tr style="vertical-align: top;">
-                  <td>Listen Address</td>
+                  <td style="white-space: nowrap;">Listen Address</td>
                   <td>
                     <div style="word-break: break-all; text-wrap: pretty;">
                       <code data-bind="text: listen_addr"></code>
@@ -214,6 +220,76 @@
               </tbody>
             </table>
           </div>
+          
+          <div class="client-row-divider">
+            Fork Configuration
+            <span class="text-muted" style="float: right; font-size: 0.9em;">
+              {{ html "<!-- ko if: fork_config() -->" }}
+              Chain ID: <code data-bind="text: (fork_config().current && fork_config().current.chainId) || ''"></code>
+              <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy Chain ID" data-bind="click: function() { var chainId = (fork_config().current && fork_config().current.chainId) || ''; navigator.clipboard.writeText(chainId); }"></i>
+              {{ html "<!-- /ko -->" }}
+            </span>
+          </div>
+          {{ html "<!-- ko if: fork_config() -->" }}
+          <div class="client-node-peerinfo">
+            <table class="table table-borderless table-sm client-table-info">
+              <thead>
+                <tr>
+                  <th style="width:15%">Fork</th>
+                  <th style="width:35%">Activation Time (UTC)</th>
+                  <th style="width:50%">Fork ID</th>
+                </tr>
+              </thead>
+              <tbody>
+                {{ html "<!-- ko if: fork_config().current -->" }}
+                <tr>
+                  <td><strong>Current</strong></td>
+                  <td>
+                    <code data-bind="text: new Date(fork_config().current.activationTime * 1000).toISOString().slice(0, 19).replace('T', ' ')"></code>
+                    <i class="fa fa-copy text-muted" role="button" data-bs-toggle="tooltip" title="Copy" data-bind="click: function() { navigator.clipboard.writeText(fork_config().current.activationTime); }"></i>
+                  </td>
+                  <td>
+                    <code data-bind="text: fork_config().current.forkId"></code>
+                    <i class="fa fa-copy text-muted" role="button" data-bs-toggle="tooltip" title="Copy" data-bind="click: function() { navigator.clipboard.writeText(fork_config().current.forkId); }"></i>
+                  </td>
+                </tr>
+                {{ html "<!-- /ko -->" }}
+                {{ html "<!-- ko if: fork_config().next -->" }}
+                <tr>
+                  <td><strong>Next</strong></td>
+                  <td>
+                    <code data-bind="text: new Date(fork_config().next.activationTime * 1000).toISOString().slice(0, 19).replace('T', ' ')"></code>
+                    <i class="fa fa-copy text-muted" role="button" data-bs-toggle="tooltip" title="Copy" data-bind="click: function() { navigator.clipboard.writeText(fork_config().next.activationTime); }"></i>
+                  </td>
+                  <td>
+                    <code data-bind="text: fork_config().next.forkId"></code>
+                    <i class="fa fa-copy text-muted" role="button" data-bs-toggle="tooltip" title="Copy" data-bind="click: function() { navigator.clipboard.writeText(fork_config().next.forkId); }"></i>
+                  </td>
+                </tr>
+                {{ html "<!-- /ko -->" }}
+                {{ html "<!-- ko if: fork_config().last -->" }}
+                <tr>
+                  <td><strong>Last</strong></td>
+                  <td>
+                    <code data-bind="text: new Date(fork_config().last.activationTime * 1000).toISOString().slice(0, 19).replace('T', ' ')"></code>
+                    <i class="fa fa-copy text-muted" role="button" data-bs-toggle="tooltip" title="Copy" data-bind="click: function() { navigator.clipboard.writeText(fork_config().last.activationTime); }"></i>
+                  </td>
+                  <td>
+                    <code data-bind="text: fork_config().last.forkId"></code>
+                    <i class="fa fa-copy text-muted" role="button" data-bs-toggle="tooltip" title="Copy" data-bind="click: function() { navigator.clipboard.writeText(fork_config().last.forkId); }"></i>
+                  </td>
+                </tr>
+                {{ html "<!-- /ko -->" }}
+              </tbody>
+            </table>
+          </div>
+          {{ html "<!-- /ko -->" }}
+          {{ html "<!-- ko ifnot: fork_config() -->" }}
+          <div class="client-node-peerinfo">
+            <p style="color: #888; font-style: italic;">Fork configuration data not available for this client.</p>
+          </div>
+          {{ html "<!-- /ko -->" }}
+          
           <div class="client-row-divider" style="position: relative;">
             Peers
             <button type="button" class="btn btn-outline-secondary btn-sm peer-collapse-btn" data-bs-toggle="collapse" data-bind="attr: {'data-bs-target': '#peer-details-list-' + peer_id(), 'aria-controls': 'peer-details-list-' + peer_id()}" aria-expanded="false" style="position: absolute; right: 0; top: 0;">

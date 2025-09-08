@@ -91,6 +91,9 @@ func (client *Client) checkClient() error {
 
 	if warning != nil {
 		client.logger.Warnf("incomplete chain specs: %v", warning)
+		client.specWarnings = []string{warning.Error()}
+	} else {
+		client.specWarnings = nil
 	}
 
 	// init wallclock
