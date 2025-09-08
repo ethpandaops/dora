@@ -283,6 +283,7 @@ func buildELClientsPageData(sortOrder string) (*models.ClientsELPageData, time.D
 			Status:               client.GetStatus().String(),
 			LastRefresh:          client.GetLastEventTime(),
 			PeerID:               peerID,
+			ConfigWarnings:       client.GetConfigWarnings(),
 		}
 
 		forkConfig := buildForkConfig(client)

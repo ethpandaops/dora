@@ -29,6 +29,7 @@ type ClientsELPageDataClient struct {
 	PeersInboundCounter  uint32    `json:"peers_inbound_counter"`
 	PeersOutboundCounter uint32    `json:"peers_outbound_counter"`
 	PeerID               string    `json:"peer_id"`
+	ConfigWarnings       []string  `json:"config_warnings"`
 }
 
 type ClientsELPageDataNode struct {

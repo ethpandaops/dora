@@ -146,6 +146,12 @@
                       {{ else }}
                         <span class="badge rounded-pill text-bg-dark">{{ $client.Status }}</span>
                       {{ end }}
+                      {{ if $client.ConfigWarnings }}
+                        <span class="text-warning" data-bs-toggle="tooltip" data-bs-placement="top" 
+                          title="{{ range $idx, $warning := $client.ConfigWarnings }}{{ if $idx }}, {{ end }}{{ $warning }}{{ end }}">
+                          <i class="fas fa-exclamation-triangle"></i>
+                        </span>
+                      {{ end }}
                     </td>
                     <td>
                       <span class="text-truncate d-inline-block" style="max-width: 300px">{{ $client.Version }}</span>
