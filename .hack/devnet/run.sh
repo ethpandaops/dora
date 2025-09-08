@@ -25,6 +25,9 @@ kurtosis files inspect "$ENCLAVE_NAME" validator-ranges validator-ranges.yaml | 
 # Get dora config
 kurtosis files inspect "$ENCLAVE_NAME" dora-config dora-config.yaml | tail -n +2 > "${__dir}/generated-dora-kt-config.yaml"
 
+# Get el genesis config
+kurtosis files inspect "$ENCLAVE_NAME" el_cl_genesis_data "./genesis.json" | tail -n +1 > "${__dir}/generated-el-genesis.json"
+
 # Extract network name from config
 NETWORK_NAME=$(grep -E "^\s*network:" "${config_file}" | sed 's/.*network:\s*//' | tr -d '"'\'' ')
 
@@ -105,6 +108,7 @@ $(for node in $BEACON_NODES; do
     echo "    - { name: $name, url: http://$ip:$port }"
 done)
 executionapi:
+  genesisConfig: "${__dir}/generated-el-genesis.json"
   depositLogBatchSize: 1000
   endpoints:
 $(for node in $EXECUTION_NODES; do

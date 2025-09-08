@@ -11,6 +11,7 @@ import (
 
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/jmoiron/sqlx"
 
 	"github.com/ethpandaops/dora/blockdb"
@@ -142,6 +143,17 @@ func (cs *ChainService) StartService() error {
 	cs.started = true
 
 	executionIndexerCtx := execindexer.NewIndexerCtx(cs.logger.WithField("service", "el-indexer"), cs.executionPool, cs.consensusPool, cs.beaconIndexer)
+
+	// load genesis config if configured
+	if utils.Config.ExecutionApi.GenesisConfig != "" {
+		genesis, err := utils.LoadGenesisFromPathOrURL(utils.Config.ExecutionApi.GenesisConfig)
+		if err != nil {
+			cs.logger.WithError(err).Errorf("failed to load execution layer genesis config from %s", utils.Config.ExecutionApi.GenesisConfig)
+		} else if genesis != nil {
+			cs.executionPool.GetChainState().SetGenesisConfig(genesis)
+			cs.logger.Infof("loaded execution layer genesis config from %s", utils.Config.ExecutionApi.GenesisConfig)
+		}
+	}
 
 	// add consensus clients
 	for index, endpoint := range utils.Config.BeaconApi.Endpoints {
@@ -357,6 +369,18 @@ func (bs *ChainService) GetChainState() *consensus.ChainState {
 	}
 
 	return bs.consensusPool.GetChainState()
+}
+
+func (bs *ChainService) GetExecutionChainState() *execution.ChainState {
+	if bs == nil || bs.executionPool == nil {
+		return nil
+	}
+
+	return bs.executionPool.GetChainState()
+}
+
+func (bs *ChainService) GetSystemContractAddress(systemContract string) *common.Address {
+	return bs.executionPool.GetChainState().GetSystemContractAddress(systemContract)
 }
 
 func (bs *ChainService) GetHeadForks(readyOnly bool) []*beacon.ForkHead {
