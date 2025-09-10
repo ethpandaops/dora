@@ -115,32 +115,32 @@ func readConfigEnv(cfg *types.Config) error {
 }
 
 // loadEndpointsFromUrl loads endpoint configurations from a URL or file path
-func loadEndpointsFromUrl(endpointsUrl string) ([]types.EndpointConfig, error) {
+func loadEndpointsFromUrl(endpointsURL string) ([]types.EndpointConfig, error) {
 	var data []byte
 	var err error
 
 	// Check if it's a URL or a file path
-	if strings.HasPrefix(endpointsUrl, "http://") || strings.HasPrefix(endpointsUrl, "https://") {
+	if strings.HasPrefix(endpointsURL, "http://") || strings.HasPrefix(endpointsURL, "https://") {
 		// Load from HTTP URL
-		resp, err := http.Get(endpointsUrl)
+		resp, err := http.Get(endpointsURL)
 		if err != nil {
-			return nil, fmt.Errorf("failed to fetch endpoints from URL %s: %w", endpointsUrl, err)
+			return nil, fmt.Errorf("failed to fetch endpoints from URL %s: %w", endpointsURL, err)
 		}
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
-			return nil, fmt.Errorf("failed to fetch endpoints from URL %s: status code %d", endpointsUrl, resp.StatusCode)
+			return nil, fmt.Errorf("failed to fetch endpoints from URL %s: status code %d", endpointsURL, resp.StatusCode)
 		}
 
 		data, err = io.ReadAll(resp.Body)
 		if err != nil {
-			return nil, fmt.Errorf("failed to read response body from URL %s: %w", endpointsUrl, err)
+			return nil, fmt.Errorf("failed to read response body from URL %s: %w", endpointsURL, err)
 		}
 	} else {
 		// Load from file
-		data, err = os.ReadFile(endpointsUrl)
+		data, err = os.ReadFile(endpointsURL)
 		if err != nil {
-			return nil, fmt.Errorf("failed to read endpoints file %s: %w", endpointsUrl, err)
+			return nil, fmt.Errorf("failed to read endpoints file %s: %w", endpointsURL, err)
 		}
 	}
 
