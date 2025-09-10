@@ -2,8 +2,11 @@ package utils
 
 import (
 	"fmt"
+	"io"
+	"net/http"
 	"net/url"
 	"os"
+	"strings"
 
 	"github.com/kelseyhightower/envconfig"
 	"gopkg.in/yaml.v3"
@@ -23,6 +26,15 @@ func ReadConfig(cfg *types.Config, path string) error {
 	}
 
 	readConfigEnv(cfg)
+
+	// Load beacon endpoints from URL if specified
+	if cfg.BeaconApi.EndpointsUrl != "" && cfg.BeaconApi.Endpoints == nil {
+		endpoints, err := loadEndpointsFromUrl(cfg.BeaconApi.EndpointsUrl)
+		if err != nil {
+			return fmt.Errorf("failed to load beacon endpoints from URL: %w", err)
+		}
+		cfg.BeaconApi.Endpoints = endpoints
+	}
 
 	// endpoints
 	if cfg.BeaconApi.Endpoints == nil && cfg.BeaconApi.Endpoint != "" {
@@ -45,6 +57,15 @@ func ReadConfig(cfg *types.Config, path string) error {
 	}
 	if len(cfg.BeaconApi.Endpoints) == 0 {
 		return fmt.Errorf("missing beacon node endpoints (need at least 1 endpoint to run the explorer)")
+	}
+
+	// Load execution endpoints from URL if specified
+	if cfg.ExecutionApi.EndpointsUrl != "" && cfg.ExecutionApi.Endpoints == nil {
+		endpoints, err := loadEndpointsFromUrl(cfg.ExecutionApi.EndpointsUrl)
+		if err != nil {
+			return fmt.Errorf("failed to load execution endpoints from URL: %w", err)
+		}
+		cfg.ExecutionApi.Endpoints = endpoints
 	}
 
 	// execution endpoints
@@ -91,4 +112,44 @@ func readConfigFile(cfg *types.Config, path string) error {
 
 func readConfigEnv(cfg *types.Config) error {
 	return envconfig.Process("", cfg)
+}
+
+// loadEndpointsFromUrl loads endpoint configurations from a URL or file path
+func loadEndpointsFromUrl(endpointsUrl string) ([]types.EndpointConfig, error) {
+	var data []byte
+	var err error
+
+	// Check if it's a URL or a file path
+	if strings.HasPrefix(endpointsUrl, "http://") || strings.HasPrefix(endpointsUrl, "https://") {
+		// Load from HTTP URL
+		resp, err := http.Get(endpointsUrl)
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch endpoints from URL %s: %w", endpointsUrl, err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("failed to fetch endpoints from URL %s: status code %d", endpointsUrl, resp.StatusCode)
+		}
+
+		data, err = io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read response body from URL %s: %w", endpointsUrl, err)
+		}
+	} else {
+		// Load from file
+		data, err = os.ReadFile(endpointsUrl)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read endpoints file %s: %w", endpointsUrl, err)
+		}
+	}
+
+	// Parse YAML data
+	var endpoints []types.EndpointConfig
+	err = yaml.Unmarshal(data, &endpoints)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse endpoints YAML: %w", err)
+	}
+
+	return endpoints, nil
 }

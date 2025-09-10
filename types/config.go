@@ -76,8 +76,9 @@ type Config struct {
 	} `yaml:"rateLimit"`
 
 	BeaconApi struct {
-		Endpoint  string           `yaml:"endpoint" envconfig:"BEACONAPI_ENDPOINT"`
-		Endpoints []EndpointConfig `yaml:"endpoints"`
+		Endpoint     string           `yaml:"endpoint" envconfig:"BEACONAPI_ENDPOINT"`
+		Endpoints    []EndpointConfig `yaml:"endpoints"`
+		EndpointsUrl string           `yaml:"endpointsUrl" envconfig:"BEACONAPI_ENDPOINTS_URL"`
 
 		LocalCacheSize       int    `yaml:"localCacheSize" envconfig:"BEACONAPI_LOCAL_CACHE_SIZE"`
 		SkipFinalAssignments bool   `yaml:"skipFinalAssignments" envconfig:"BEACONAPI_SKIP_FINAL_ASSIGNMENTS"`
@@ -87,8 +88,9 @@ type Config struct {
 	} `yaml:"beaconapi"`
 
 	ExecutionApi struct {
-		Endpoint  string           `yaml:"endpoint" envconfig:"EXECUTIONAPI_ENDPOINT"`
-		Endpoints []EndpointConfig `yaml:"endpoints"`
+		Endpoint     string           `yaml:"endpoint" envconfig:"EXECUTIONAPI_ENDPOINT"`
+		Endpoints    []EndpointConfig `yaml:"endpoints"`
+		EndpointsUrl string           `yaml:"endpointsUrl" envconfig:"EXECUTIONAPI_ENDPOINTS_URL"`
 
 		LogBatchSize       int    `yaml:"logBatchSize" envconfig:"EXECUTIONAPI_LOG_BATCH_SIZE"`
 		DepositDeployBlock int    `yaml:"depositDeployBlock" envconfig:"EXECUTIONAPI_DEPOSIT_DEPLOY_BLOCK"` // el block number from where to crawl the deposit system contract (should be <=, but close to deposit contract deployment)
