@@ -56,6 +56,7 @@ type Config struct {
 		ShowPeerDASInfos       bool `yaml:"showPeerDASInfos" envconfig:"FRONTEND_SHOW_PEER_DAS_INFOS"`
 		ShowSubmitDeposit      bool `yaml:"showSubmitDeposit" envconfig:"FRONTEND_SHOW_SUBMIT_DEPOSIT"`
 		ShowSubmitElRequests   bool `yaml:"showSubmitElRequests" envconfig:"FRONTEND_SHOW_SUBMIT_EL_REQUESTS"`
+		ShowValidatorSummary   bool `yaml:"showValidatorSummary" envconfig:"FRONTEND_SHOW_VALIDATOR_SUMMARY"`
 
 		// DAS Guardian configuration
 		DisableDasGuardianCheck   bool `yaml:"disableDasGuardianCheck" envconfig:"FRONTEND_DISABLE_DAS_GUARDIAN_CHECK"`
@@ -75,8 +76,9 @@ type Config struct {
 	} `yaml:"rateLimit"`
 
 	BeaconApi struct {
-		Endpoint  string           `yaml:"endpoint" envconfig:"BEACONAPI_ENDPOINT"`
-		Endpoints []EndpointConfig `yaml:"endpoints"`
+		Endpoint     string           `yaml:"endpoint" envconfig:"BEACONAPI_ENDPOINT"`
+		Endpoints    []EndpointConfig `yaml:"endpoints"`
+		EndpointsURL string           `yaml:"endpointsURL" envconfig:"BEACONAPI_ENDPOINTS_URL"`
 
 		LocalCacheSize       int    `yaml:"localCacheSize" envconfig:"BEACONAPI_LOCAL_CACHE_SIZE"`
 		SkipFinalAssignments bool   `yaml:"skipFinalAssignments" envconfig:"BEACONAPI_SKIP_FINAL_ASSIGNMENTS"`
@@ -86,12 +88,14 @@ type Config struct {
 	} `yaml:"beaconapi"`
 
 	ExecutionApi struct {
-		Endpoint  string           `yaml:"endpoint" envconfig:"EXECUTIONAPI_ENDPOINT"`
-		Endpoints []EndpointConfig `yaml:"endpoints"`
+		Endpoint     string           `yaml:"endpoint" envconfig:"EXECUTIONAPI_ENDPOINT"`
+		Endpoints    []EndpointConfig `yaml:"endpoints"`
+		EndpointsURL string           `yaml:"endpointsURL" envconfig:"EXECUTIONAPI_ENDPOINTS_URL"`
 
-		LogBatchSize       int `yaml:"logBatchSize" envconfig:"EXECUTIONAPI_LOG_BATCH_SIZE"`
-		DepositDeployBlock int `yaml:"depositDeployBlock" envconfig:"EXECUTIONAPI_DEPOSIT_DEPLOY_BLOCK"` // el block number from where to crawl the deposit system contract (should be <=, but close to deposit contract deployment)
-		ElectraDeployBlock int `yaml:"electraDeployBlock" envconfig:"EXECUTIONAPI_ELECTRA_DEPLOY_BLOCK"` // el block number from where to crawl the electra system contracts (should be <=, but close to electra fork activation block)
+		LogBatchSize       int    `yaml:"logBatchSize" envconfig:"EXECUTIONAPI_LOG_BATCH_SIZE"`
+		DepositDeployBlock int    `yaml:"depositDeployBlock" envconfig:"EXECUTIONAPI_DEPOSIT_DEPLOY_BLOCK"` // el block number from where to crawl the deposit system contract (should be <=, but close to deposit contract deployment)
+		ElectraDeployBlock int    `yaml:"electraDeployBlock" envconfig:"EXECUTIONAPI_ELECTRA_DEPLOY_BLOCK"` // el block number from where to crawl the electra system contracts (should be <=, but close to electra fork activation block)
+		GenesisConfig      string `yaml:"genesisConfig" envconfig:"EXECUTIONAPI_GENESIS_CONFIG"`            // path or URL to genesis.json file in geth format
 	} `yaml:"executionapi"`
 
 	Indexer struct {
@@ -136,6 +140,8 @@ type Config struct {
 		DisableSSZRequests      bool `yaml:"disableSSZRequests" envconfig:"KILLSWITCH_DISABLE_SSZ_REQUESTS"`
 		DisableBlockCompression bool `yaml:"disableBlockCompression" envconfig:"KILLSWITCH_DISABLE_BLOCK_COMPRESSION"`
 	} `yaml:"killSwitch"`
+
+	AuthGroups map[string]*AuthGroupConfig `yaml:"authGroups"`
 }
 
 type EndpointConfig struct {
@@ -147,6 +153,7 @@ type EndpointConfig struct {
 	Priority         int                `yaml:"priority"`
 	Headers          map[string]string  `yaml:"headers"`
 	EngineSnooperUrl string             `yaml:"engineSnooperUrl"`
+	AuthGroup        string             `yaml:"authGroup"`
 }
 
 type EndpointSshConfig struct {
@@ -155,6 +162,16 @@ type EndpointSshConfig struct {
 	User     string `yaml:"user"`
 	Password string `yaml:"password"`
 	Keyfile  string `yaml:"keyfile"`
+}
+
+type AuthGroupConfig struct {
+	Credentials *AuthGroupCredentials `yaml:"credentials"`
+	Headers     map[string]string     `yaml:"headers"`
+}
+
+type AuthGroupCredentials struct {
+	Username string `yaml:"username"`
+	Password string `yaml:"password"`
 }
 
 type MevRelayConfig struct {

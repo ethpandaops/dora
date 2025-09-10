@@ -404,6 +404,7 @@ func buildCLClientsPageData(sortOrder string) (*models.ClientsCLPageData, time.D
 			HeadRoot:             lastHeadRoot[:],
 			Status:               client.GetStatus().String(),
 			LastRefresh:          client.GetLastEventTime(),
+			SpecWarnings:         client.GetSpecWarnings(),
 		}
 
 		lastError := client.GetLastClientError()

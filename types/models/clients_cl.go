@@ -91,6 +91,7 @@ type ClientsCLPageDataClient struct {
 	PeerCount            uint32    `json:"peer_count"`
 	PeersInboundCounter  uint32    `json:"peers_inbound_counter"`
 	PeersOutboundCounter uint32    `json:"peers_outbound_counter"`
+	SpecWarnings         []string  `json:"spec_warnings"`
 }
 
 // ClientCLPageDataNode represents a generic node on the CL network. Can be a client or a peer of a client

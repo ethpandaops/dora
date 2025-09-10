@@ -106,6 +106,41 @@ func (client *Client) updateNodeMetadata(ctx context.Context) error {
 	client.versionStr = nodeVersion
 	client.parseClientVersion(nodeVersion)
 
+	// get eth_config
+	ethConfig, err := client.rpcClient.GetEthConfig(ctx)
+	if err != nil {
+		client.logger.Debugf("could not get eth_config: %v", err)
+		// Don't return error since eth_config is optional
+		client.configWarnings = nil
+	} else {
+		warnings, err := client.pool.chainState.SetClientConfig(ethConfig)
+
+		if ethConfig.Current != nil {
+			client.ethConfig = ethConfig
+		}
+
+		// Store warnings and errors for UI display
+		allWarnings := []string{}
+
+		// Add config error to warnings if present
+		if err != nil {
+			client.logger.Warnf("error setting client eth_config: %v", err)
+			allWarnings = append(allWarnings, fmt.Sprintf("config error: %v", err))
+		}
+
+		// Add regular warnings
+		for _, warning := range warnings {
+			client.logger.Warnf("eth_config warning: %v", warning)
+			allWarnings = append(allWarnings, warning.Error())
+		}
+
+		if len(allWarnings) > 0 {
+			client.configWarnings = allWarnings
+		} else {
+			client.configWarnings = nil
+		}
+	}
+
 	// get node peers
 	client.nodeInfo, err = client.rpcClient.GetAdminNodeInfo(ctx)
 	if err != nil {
