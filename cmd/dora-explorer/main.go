@@ -267,16 +267,43 @@ func startApi(router *mux.Router) {
 	// Add the CORS middleware to all API routes
 	router.Use(middleware.CorsMiddleware)
 
+	// Validator APIs
 	router.HandleFunc("/v1/validator/{indexOrPubkey}", api.ApiValidatorGetV1).Methods("GET", "OPTIONS")
 	router.HandleFunc("/v1/validator", api.ApiValidatorPostV1).Methods("POST", "OPTIONS")
 	router.HandleFunc("/v1/validator/eth1/{eth1address}", api.ApiValidatorByEth1AddressV1).Methods("GET", "OPTIONS")
 	router.HandleFunc("/v1/validator/withdrawalCredentials/{withdrawalCredentialsOrEth1address}", api.ApiWithdrawalCredentialsValidatorsV1).Methods("GET", "OPTIONS")
 	router.HandleFunc("/v1/validator/{indexOrPubkey}/deposits", api.ApiValidatorDepositsV1).Methods("GET", "OPTIONS")
+	router.HandleFunc("/v1/validators", api.APIValidatorsV1).Methods("GET", "OPTIONS")
+	router.HandleFunc("/v1/validator_names", api.APIValidatorNamesV1).Methods("GET", "POST", "OPTIONS")
+
+	// Epoch and slot APIs
+	router.HandleFunc("/v1/epochs", api.APIEpochsV1).Methods("GET", "OPTIONS")
 	router.HandleFunc("/v1/epoch/{epoch}", api.ApiEpochV1).Methods("GET", "OPTIONS")
 	router.HandleFunc("/v1/slot/{slotOrHash}", api.APISlotV1).Methods("GET", "OPTIONS")
 	router.HandleFunc("/v1/slots", api.APISlotsV1).Methods("GET", "OPTIONS")
+
+	// Deposit APIs
+	router.HandleFunc("/v1/deposits/included", api.APIDepositsIncludedV1).Methods("GET", "OPTIONS")
+	router.HandleFunc("/v1/deposits/transactions", api.APIDepositsTransactionsV1).Methods("GET", "OPTIONS")
+	router.HandleFunc("/v1/deposits/queue", api.APIDepositsQueueV1).Methods("GET", "OPTIONS")
+
+	// Validator action APIs
+	router.HandleFunc("/v1/slashings", api.APISlashingsV1).Methods("GET", "OPTIONS")
+	router.HandleFunc("/v1/voluntary_exits", api.APIVoluntaryExitsV1).Methods("GET", "OPTIONS")
+	router.HandleFunc("/v1/withdrawal_requests", api.APIWithdrawalRequestsV1).Methods("GET", "OPTIONS")
+	router.HandleFunc("/v1/consolidation_requests", api.APIConsolidationRequestsV1).Methods("GET", "OPTIONS")
+
+	// MEV APIs
+	router.HandleFunc("/v1/mev_blocks", api.APIMevBlocksV1).Methods("GET", "OPTIONS")
+
+	// Network APIs
+	router.HandleFunc("/v1/network/forks", api.APINetworkForksV1).Methods("GET", "OPTIONS")
+
+	// Client APIs
 	router.HandleFunc("/v1/clients/execution", api.APIExecutionClients).Methods("GET", "OPTIONS")
 	router.HandleFunc("/v1/clients/consensus", api.APIConsensusClients).Methods("GET", "OPTIONS")
+
+	// DAS Guardian APIs
 	router.HandleFunc("/v1/das-guardian/scan", api.APIDasGuardianScan).Methods("POST", "OPTIONS")
 	router.HandleFunc("/v1/das-guardian/mass-scan", api.APIDasGuardianMassScan).Methods("POST", "OPTIONS")
 

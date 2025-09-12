@@ -79,12 +79,6 @@ func APIDasGuardianMassScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check rate limit (1 call per 5 minutes per IP for mass scans)
-	if err := services.GlobalCallRateLimiter.CheckCallLimit(r, 1); err != nil {
-		http.Error(w, `{"error": "rate limit exceeded"}`, http.StatusTooManyRequests)
-		return
-	}
-
 	// Parse request
 	var req APIDasGuardianMassScanRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
