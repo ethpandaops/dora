@@ -30,12 +30,12 @@ type APINetworkForksData struct {
 // APINetworkForkInfo represents information about a single network fork
 type APINetworkForkInfo struct {
 	Name             string  `json:"name"`
-	Version          *string `json:"version,omitempty"`          // nil for BPO forks
+	Version          *string `json:"version,omitempty"` // nil for BPO forks
 	Epoch            uint64  `json:"epoch"`
 	Active           bool    `json:"active"`
 	Scheduled        bool    `json:"scheduled"`
 	Time             int64   `json:"time,omitempty"`
-	Type             string  `json:"type"`                        // "consensus" or "bpo"
+	Type             string  `json:"type"` // "consensus" or "bpo"
 	ForkDigest       string  `json:"fork_digest"`
 	MaxBlobsPerBlock *uint64 `json:"max_blobs_per_block,omitempty"` // only for BPO forks
 }
@@ -87,13 +87,13 @@ func APINetworkForksV1(w http.ResponseWriter, r *http.Request) {
 		version := fmt.Sprintf("0x%x", specs.AltairForkVersion)
 		epoch := *specs.AltairForkEpoch
 		forks = append(forks, &APINetworkForkInfo{
-			Name:      "Altair",
-			Version:   &version,
-			Epoch:     epoch,
-			Active:    uint64(currentEpoch) >= epoch,
-			Scheduled: true,
-			Time:      chainState.EpochToTime(phase0.Epoch(epoch)).Unix(),
-			Type:      "consensus",
+			Name:       "Altair",
+			Version:    &version,
+			Epoch:      epoch,
+			Active:     uint64(currentEpoch) >= epoch,
+			Scheduled:  true,
+			Time:       chainState.EpochToTime(phase0.Epoch(epoch)).Unix(),
+			Type:       "consensus",
 			ForkDigest: fmt.Sprintf("0x%x", forkDigest),
 		})
 	}
@@ -104,13 +104,13 @@ func APINetworkForksV1(w http.ResponseWriter, r *http.Request) {
 		version := fmt.Sprintf("0x%x", specs.BellatrixForkVersion)
 		epoch := *specs.BellatrixForkEpoch
 		forks = append(forks, &APINetworkForkInfo{
-			Name:      "Bellatrix",
-			Version:   &version,
-			Epoch:     epoch,
-			Active:    uint64(currentEpoch) >= epoch,
-			Scheduled: true,
-			Time:      chainState.EpochToTime(phase0.Epoch(epoch)).Unix(),
-			Type:      "consensus",
+			Name:       "Bellatrix",
+			Version:    &version,
+			Epoch:      epoch,
+			Active:     uint64(currentEpoch) >= epoch,
+			Scheduled:  true,
+			Time:       chainState.EpochToTime(phase0.Epoch(epoch)).Unix(),
+			Type:       "consensus",
 			ForkDigest: fmt.Sprintf("0x%x", forkDigest),
 		})
 	}
@@ -121,13 +121,13 @@ func APINetworkForksV1(w http.ResponseWriter, r *http.Request) {
 		version := fmt.Sprintf("0x%x", specs.CapellaForkVersion)
 		epoch := *specs.CapellaForkEpoch
 		forks = append(forks, &APINetworkForkInfo{
-			Name:      "Capella",
-			Version:   &version,
-			Epoch:     epoch,
-			Active:    uint64(currentEpoch) >= epoch,
-			Scheduled: true,
-			Time:      chainState.EpochToTime(phase0.Epoch(epoch)).Unix(),
-			Type:      "consensus",
+			Name:       "Capella",
+			Version:    &version,
+			Epoch:      epoch,
+			Active:     uint64(currentEpoch) >= epoch,
+			Scheduled:  true,
+			Time:       chainState.EpochToTime(phase0.Epoch(epoch)).Unix(),
+			Type:       "consensus",
 			ForkDigest: fmt.Sprintf("0x%x", forkDigest),
 		})
 	}
@@ -138,13 +138,13 @@ func APINetworkForksV1(w http.ResponseWriter, r *http.Request) {
 		version := fmt.Sprintf("0x%x", specs.DenebForkVersion)
 		epoch := *specs.DenebForkEpoch
 		forks = append(forks, &APINetworkForkInfo{
-			Name:      "Deneb",
-			Version:   &version,
-			Epoch:     epoch,
-			Active:    uint64(currentEpoch) >= epoch,
-			Scheduled: true,
-			Time:      chainState.EpochToTime(phase0.Epoch(epoch)).Unix(),
-			Type:      "consensus",
+			Name:       "Deneb",
+			Version:    &version,
+			Epoch:      epoch,
+			Active:     uint64(currentEpoch) >= epoch,
+			Scheduled:  true,
+			Time:       chainState.EpochToTime(phase0.Epoch(epoch)).Unix(),
+			Type:       "consensus",
 			ForkDigest: fmt.Sprintf("0x%x", forkDigest),
 		})
 	}
@@ -155,13 +155,13 @@ func APINetworkForksV1(w http.ResponseWriter, r *http.Request) {
 		version := fmt.Sprintf("0x%x", specs.ElectraForkVersion)
 		epoch := *specs.ElectraForkEpoch
 		forks = append(forks, &APINetworkForkInfo{
-			Name:      "Electra",
-			Version:   &version,
-			Epoch:     epoch,
-			Active:    uint64(currentEpoch) >= epoch,
-			Scheduled: true,
-			Time:      chainState.EpochToTime(phase0.Epoch(epoch)).Unix(),
-			Type:      "consensus",
+			Name:       "Electra",
+			Version:    &version,
+			Epoch:      epoch,
+			Active:     uint64(currentEpoch) >= epoch,
+			Scheduled:  true,
+			Time:       chainState.EpochToTime(phase0.Epoch(epoch)).Unix(),
+			Type:       "consensus",
 			ForkDigest: fmt.Sprintf("0x%x", forkDigest),
 		})
 	}
@@ -176,13 +176,13 @@ func APINetworkForksV1(w http.ResponseWriter, r *http.Request) {
 		version := fmt.Sprintf("0x%x", specs.FuluForkVersion)
 		epoch := *specs.FuluForkEpoch
 		forks = append(forks, &APINetworkForkInfo{
-			Name:      "Fulu",
-			Version:   &version,
-			Epoch:     epoch,
-			Active:    uint64(currentEpoch) >= epoch,
-			Scheduled: true,
-			Time:      chainState.EpochToTime(phase0.Epoch(epoch)).Unix(),
-			Type:      "consensus",
+			Name:       "Fulu",
+			Version:    &version,
+			Epoch:      epoch,
+			Active:     uint64(currentEpoch) >= epoch,
+			Scheduled:  true,
+			Time:       chainState.EpochToTime(phase0.Epoch(epoch)).Unix(),
+			Type:       "consensus",
 			ForkDigest: fmt.Sprintf("0x%x", forkDigest),
 		})
 	}
