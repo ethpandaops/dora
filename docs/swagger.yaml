@@ -1,5 +1,16 @@
 basePath: /api
 definitions:
+  api.APICheckpoints:
+    properties:
+      finalized_epoch:
+        type: integer
+      finalized_root:
+        type: string
+      justified_epoch:
+        type: integer
+      justified_root:
+        type: string
+    type: object
   api.APIConsensusClientMetadata:
     properties:
       attnets:
@@ -140,6 +151,21 @@ definitions:
         $ref: '#/definitions/api.APIConsolidationRequestsData'
       status:
         type: string
+    type: object
+  api.APICurrentState:
+    properties:
+      current_epoch:
+        type: integer
+      current_epoch_progress:
+        type: number
+      current_slot:
+        type: integer
+      seconds_per_epoch:
+        type: integer
+      seconds_per_slot:
+        type: integer
+      slots_per_epoch:
+        type: integer
     type: object
   api.APIDasGuardianEvalResult:
     properties:
@@ -752,6 +778,113 @@ definitions:
       status:
         type: string
     type: object
+  api.APINetworkInfo:
+    properties:
+      config_name:
+        type: string
+      consolidation_contract:
+        type: string
+      deposit_contract:
+        type: string
+      genesis_root:
+        type: string
+      genesis_time:
+        type: integer
+      genesis_validators_root:
+        type: string
+      network_name:
+        type: string
+      withdrawal_contract:
+        type: string
+    type: object
+  api.APINetworkOverviewData:
+    properties:
+      checkpoints:
+        $ref: '#/definitions/api.APICheckpoints'
+      current_state:
+        $ref: '#/definitions/api.APICurrentState'
+      forks:
+        items:
+          $ref: '#/definitions/api.APINetworkForkInfo'
+        type: array
+      is_synced:
+        type: boolean
+      network_info:
+        $ref: '#/definitions/api.APINetworkInfo'
+      queue_stats:
+        $ref: '#/definitions/api.APIQueueStats'
+      validator_stats:
+        $ref: '#/definitions/api.APIValidatorStats'
+    type: object
+  api.APINetworkOverviewResponse:
+    properties:
+      data:
+        $ref: '#/definitions/api.APINetworkOverviewData'
+      status:
+        type: string
+    type: object
+  api.APINetworkSplitInfo:
+    properties:
+      fork_id:
+        type: string
+      head_block_hash:
+        type: string
+      head_execution_number:
+        type: integer
+      head_root:
+        type: string
+      head_slot:
+        type: integer
+      is_canonical:
+        type: boolean
+      last_epoch_participation:
+        items:
+          type: number
+        type: array
+      last_epoch_votes:
+        items:
+          type: integer
+        type: array
+      total_chain_weight:
+        type: integer
+    type: object
+  api.APINetworkSplitsData:
+    properties:
+      current_epoch:
+        type: integer
+      current_slot:
+        type: integer
+      finalized_epoch:
+        type: integer
+      finalized_root:
+        type: string
+      splits:
+        items:
+          $ref: '#/definitions/api.APINetworkSplitInfo'
+        type: array
+    type: object
+  api.APINetworkSplitsResponse:
+    properties:
+      data:
+        $ref: '#/definitions/api.APINetworkSplitsData'
+      status:
+        type: string
+    type: object
+  api.APIQueueStats:
+    properties:
+      deposit_estimated_time:
+        type: integer
+      entering_ether_amount:
+        type: integer
+      entering_validator_count:
+        type: integer
+      ether_churn_per_day:
+        type: integer
+      exit_estimated_time:
+        type: integer
+      exiting_validator_count:
+        type: integer
+    type: object
   api.APISlashingInfo:
     properties:
       orphaned:
@@ -1022,6 +1155,19 @@ definitions:
         $ref: '#/definitions/api.APIValidatorNamesData'
       status:
         type: string
+    type: object
+  api.APIValidatorStats:
+    properties:
+      active_validator_count:
+        type: integer
+      average_balance:
+        type: integer
+      total_active_balance:
+        type: integer
+      total_balance:
+        type: integer
+      total_eligible_ether:
+        type: integer
     type: object
   api.APIValidatorsData:
     properties:
@@ -1875,6 +2021,55 @@ paths:
               type: string
             type: object
       summary: Get network forks
+      tags:
+      - network
+  /v1/network/overview:
+    get:
+      consumes:
+      - application/json
+      description: Returns comprehensive network state information including network
+        info, current state, checkpoints, validator stats, queue stats, and fork information
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.APINetworkOverviewResponse'
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get network overview
+      tags:
+      - network
+  /v1/network/splits:
+    get:
+      consumes:
+      - application/json
+      description: Returns information about active network forks/splits, their participation
+        rates, and head blocks
+      parameters:
+      - description: 'Include stale forks with no voting weight (default: false)'
+        in: query
+        name: with_stale
+        type: boolean
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.APINetworkSplitsResponse'
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get network splits
       tags:
       - network
   /v1/slashings:

@@ -886,6 +886,78 @@ const docTemplate = `{
                 }
             }
         },
+        "/v1/network/overview": {
+            "get": {
+                "description": "Returns comprehensive network state information including network info, current state, checkpoints, validator stats, queue stats, and fork information",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "network"
+                ],
+                "summary": "Get network overview",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.APINetworkOverviewResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/network/splits": {
+            "get": {
+                "description": "Returns information about active network forks/splits, their participation rates, and head blocks",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "network"
+                ],
+                "summary": "Get network splits",
+                "parameters": [
+                    {
+                        "type": "boolean",
+                        "description": "Include stale forks with no voting weight (default: false)",
+                        "name": "with_stale",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.APINetworkSplitsResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/v1/slashings": {
             "get": {
                 "description": "Returns a list of slashings with detailed information and filtering options",
@@ -1892,6 +1964,23 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "api.APICheckpoints": {
+            "type": "object",
+            "properties": {
+                "finalized_epoch": {
+                    "type": "integer"
+                },
+                "finalized_root": {
+                    "type": "string"
+                },
+                "justified_epoch": {
+                    "type": "integer"
+                },
+                "justified_root": {
+                    "type": "string"
+                }
+            }
+        },
         "api.APIConsensusClientMetadata": {
             "type": "object",
             "properties": {
@@ -2102,6 +2191,29 @@ const docTemplate = `{
                 },
                 "status": {
                     "type": "string"
+                }
+            }
+        },
+        "api.APICurrentState": {
+            "type": "object",
+            "properties": {
+                "current_epoch": {
+                    "type": "integer"
+                },
+                "current_epoch_progress": {
+                    "type": "number"
+                },
+                "current_slot": {
+                    "type": "integer"
+                },
+                "seconds_per_epoch": {
+                    "type": "integer"
+                },
+                "seconds_per_slot": {
+                    "type": "integer"
+                },
+                "slots_per_epoch": {
+                    "type": "integer"
                 }
             }
         },
@@ -3033,6 +3145,170 @@ const docTemplate = `{
                 }
             }
         },
+        "api.APINetworkInfo": {
+            "type": "object",
+            "properties": {
+                "config_name": {
+                    "type": "string"
+                },
+                "consolidation_contract": {
+                    "type": "string"
+                },
+                "deposit_contract": {
+                    "type": "string"
+                },
+                "genesis_root": {
+                    "type": "string"
+                },
+                "genesis_time": {
+                    "type": "integer"
+                },
+                "genesis_validators_root": {
+                    "type": "string"
+                },
+                "network_name": {
+                    "type": "string"
+                },
+                "withdrawal_contract": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.APINetworkOverviewData": {
+            "type": "object",
+            "properties": {
+                "checkpoints": {
+                    "$ref": "#/definitions/api.APICheckpoints"
+                },
+                "current_state": {
+                    "$ref": "#/definitions/api.APICurrentState"
+                },
+                "forks": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/api.APINetworkForkInfo"
+                    }
+                },
+                "is_synced": {
+                    "type": "boolean"
+                },
+                "network_info": {
+                    "$ref": "#/definitions/api.APINetworkInfo"
+                },
+                "queue_stats": {
+                    "$ref": "#/definitions/api.APIQueueStats"
+                },
+                "validator_stats": {
+                    "$ref": "#/definitions/api.APIValidatorStats"
+                }
+            }
+        },
+        "api.APINetworkOverviewResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/api.APINetworkOverviewData"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.APINetworkSplitInfo": {
+            "type": "object",
+            "properties": {
+                "fork_id": {
+                    "type": "string"
+                },
+                "head_block_hash": {
+                    "type": "string"
+                },
+                "head_execution_number": {
+                    "type": "integer"
+                },
+                "head_root": {
+                    "type": "string"
+                },
+                "head_slot": {
+                    "type": "integer"
+                },
+                "is_canonical": {
+                    "type": "boolean"
+                },
+                "last_epoch_participation": {
+                    "type": "array",
+                    "items": {
+                        "type": "number"
+                    }
+                },
+                "last_epoch_votes": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "total_chain_weight": {
+                    "type": "integer"
+                }
+            }
+        },
+        "api.APINetworkSplitsData": {
+            "type": "object",
+            "properties": {
+                "current_epoch": {
+                    "type": "integer"
+                },
+                "current_slot": {
+                    "type": "integer"
+                },
+                "finalized_epoch": {
+                    "type": "integer"
+                },
+                "finalized_root": {
+                    "type": "string"
+                },
+                "splits": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/api.APINetworkSplitInfo"
+                    }
+                }
+            }
+        },
+        "api.APINetworkSplitsResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/api.APINetworkSplitsData"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.APIQueueStats": {
+            "type": "object",
+            "properties": {
+                "deposit_estimated_time": {
+                    "type": "integer"
+                },
+                "entering_ether_amount": {
+                    "type": "integer"
+                },
+                "entering_validator_count": {
+                    "type": "integer"
+                },
+                "ether_churn_per_day": {
+                    "type": "integer"
+                },
+                "exit_estimated_time": {
+                    "type": "integer"
+                },
+                "exiting_validator_count": {
+                    "type": "integer"
+                }
+            }
+        },
         "api.APISlashingInfo": {
             "type": "object",
             "properties": {
@@ -3443,6 +3719,26 @@ const docTemplate = `{
                 },
                 "status": {
                     "type": "string"
+                }
+            }
+        },
+        "api.APIValidatorStats": {
+            "type": "object",
+            "properties": {
+                "active_validator_count": {
+                    "type": "integer"
+                },
+                "average_balance": {
+                    "type": "integer"
+                },
+                "total_active_balance": {
+                    "type": "integer"
+                },
+                "total_balance": {
+                    "type": "integer"
+                },
+                "total_eligible_ether": {
+                    "type": "integer"
                 }
             }
         },

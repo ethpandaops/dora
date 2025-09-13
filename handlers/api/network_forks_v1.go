@@ -56,164 +56,14 @@ func APINetworkForksV1(w http.ResponseWriter, r *http.Request) {
 	specs := chainState.GetSpecs()
 	currentEpoch := chainState.CurrentEpoch()
 	finalizedEpoch, _ := services.GlobalBeaconService.GetFinalizedEpoch()
-	networkGenesis := chainState.GetGenesis()
 
 	if specs == nil {
 		http.Error(w, `{"status": "ERROR: chain specs not available"}`, http.StatusInternalServerError)
 		return
 	}
 
-	var forks []*APINetworkForkInfo
-
-	// Add Phase0 (Genesis) fork
-	if networkGenesis != nil {
-		forkDigest := chainState.GetForkDigest(phase0.Version(networkGenesis.GenesisForkVersion), nil)
-		version := fmt.Sprintf("0x%x", networkGenesis.GenesisForkVersion)
-		forks = append(forks, &APINetworkForkInfo{
-			Name:       "Phase0",
-			Version:    &version,
-			Epoch:      0,
-			Active:     true,
-			Scheduled:  true,
-			Time:       networkGenesis.GenesisTime.Unix(),
-			Type:       "consensus",
-			ForkDigest: fmt.Sprintf("0x%x", forkDigest),
-		})
-	}
-
-	// Add Altair fork
-	if specs.AltairForkEpoch != nil && *specs.AltairForkEpoch < uint64(18446744073709551615) {
-		forkDigest := chainState.GetForkDigest(specs.AltairForkVersion, nil)
-		version := fmt.Sprintf("0x%x", specs.AltairForkVersion)
-		epoch := *specs.AltairForkEpoch
-		forks = append(forks, &APINetworkForkInfo{
-			Name:       "Altair",
-			Version:    &version,
-			Epoch:      epoch,
-			Active:     uint64(currentEpoch) >= epoch,
-			Scheduled:  true,
-			Time:       chainState.EpochToTime(phase0.Epoch(epoch)).Unix(),
-			Type:       "consensus",
-			ForkDigest: fmt.Sprintf("0x%x", forkDigest),
-		})
-	}
-
-	// Add Bellatrix fork
-	if specs.BellatrixForkEpoch != nil && *specs.BellatrixForkEpoch < uint64(18446744073709551615) {
-		forkDigest := chainState.GetForkDigest(specs.BellatrixForkVersion, nil)
-		version := fmt.Sprintf("0x%x", specs.BellatrixForkVersion)
-		epoch := *specs.BellatrixForkEpoch
-		forks = append(forks, &APINetworkForkInfo{
-			Name:       "Bellatrix",
-			Version:    &version,
-			Epoch:      epoch,
-			Active:     uint64(currentEpoch) >= epoch,
-			Scheduled:  true,
-			Time:       chainState.EpochToTime(phase0.Epoch(epoch)).Unix(),
-			Type:       "consensus",
-			ForkDigest: fmt.Sprintf("0x%x", forkDigest),
-		})
-	}
-
-	// Add Capella fork
-	if specs.CapellaForkEpoch != nil && *specs.CapellaForkEpoch < uint64(18446744073709551615) {
-		forkDigest := chainState.GetForkDigest(specs.CapellaForkVersion, nil)
-		version := fmt.Sprintf("0x%x", specs.CapellaForkVersion)
-		epoch := *specs.CapellaForkEpoch
-		forks = append(forks, &APINetworkForkInfo{
-			Name:       "Capella",
-			Version:    &version,
-			Epoch:      epoch,
-			Active:     uint64(currentEpoch) >= epoch,
-			Scheduled:  true,
-			Time:       chainState.EpochToTime(phase0.Epoch(epoch)).Unix(),
-			Type:       "consensus",
-			ForkDigest: fmt.Sprintf("0x%x", forkDigest),
-		})
-	}
-
-	// Add Deneb fork
-	if specs.DenebForkEpoch != nil && *specs.DenebForkEpoch < uint64(18446744073709551615) {
-		forkDigest := chainState.GetForkDigest(specs.DenebForkVersion, nil)
-		version := fmt.Sprintf("0x%x", specs.DenebForkVersion)
-		epoch := *specs.DenebForkEpoch
-		forks = append(forks, &APINetworkForkInfo{
-			Name:       "Deneb",
-			Version:    &version,
-			Epoch:      epoch,
-			Active:     uint64(currentEpoch) >= epoch,
-			Scheduled:  true,
-			Time:       chainState.EpochToTime(phase0.Epoch(epoch)).Unix(),
-			Type:       "consensus",
-			ForkDigest: fmt.Sprintf("0x%x", forkDigest),
-		})
-	}
-
-	// Add Electra fork
-	if specs.ElectraForkEpoch != nil && *specs.ElectraForkEpoch < uint64(18446744073709551615) {
-		forkDigest := chainState.GetForkDigest(specs.ElectraForkVersion, nil)
-		version := fmt.Sprintf("0x%x", specs.ElectraForkVersion)
-		epoch := *specs.ElectraForkEpoch
-		forks = append(forks, &APINetworkForkInfo{
-			Name:       "Electra",
-			Version:    &version,
-			Epoch:      epoch,
-			Active:     uint64(currentEpoch) >= epoch,
-			Scheduled:  true,
-			Time:       chainState.EpochToTime(phase0.Epoch(epoch)).Unix(),
-			Type:       "consensus",
-			ForkDigest: fmt.Sprintf("0x%x", forkDigest),
-		})
-	}
-
-	// Add Fulu fork
-	if specs.FuluForkEpoch != nil && *specs.FuluForkEpoch < uint64(18446744073709551615) {
-		currentBlobParams := &consensus.BlobScheduleEntry{
-			Epoch:            *specs.ElectraForkEpoch,
-			MaxBlobsPerBlock: specs.MaxBlobsPerBlockElectra,
-		}
-		forkDigest := chainState.GetForkDigest(specs.FuluForkVersion, currentBlobParams)
-		version := fmt.Sprintf("0x%x", specs.FuluForkVersion)
-		epoch := *specs.FuluForkEpoch
-		forks = append(forks, &APINetworkForkInfo{
-			Name:       "Fulu",
-			Version:    &version,
-			Epoch:      epoch,
-			Active:     uint64(currentEpoch) >= epoch,
-			Scheduled:  true,
-			Time:       chainState.EpochToTime(phase0.Epoch(epoch)).Unix(),
-			Type:       "consensus",
-			ForkDigest: fmt.Sprintf("0x%x", forkDigest),
-		})
-	}
-
-	// Add BPO forks from BLOB_SCHEDULE
-	for i, blobSchedule := range specs.BlobSchedule {
-		// BPO forks use the fork version that's active at the time of BPO activation
-		forkVersion := chainState.GetForkVersionAtEpoch(phase0.Epoch(blobSchedule.Epoch))
-		blobParams := &consensus.BlobScheduleEntry{
-			Epoch:            blobSchedule.Epoch,
-			MaxBlobsPerBlock: blobSchedule.MaxBlobsPerBlock,
-		}
-		forkDigest := chainState.GetForkDigest(forkVersion, blobParams)
-
-		forks = append(forks, &APINetworkForkInfo{
-			Name:             fmt.Sprintf("BPO%d", i+1),
-			Version:          nil, // BPO forks don't have fork versions
-			Epoch:            blobSchedule.Epoch,
-			Active:           uint64(currentEpoch) >= blobSchedule.Epoch,
-			Scheduled:        true,
-			Time:             chainState.EpochToTime(phase0.Epoch(blobSchedule.Epoch)).Unix(),
-			Type:             "bpo",
-			ForkDigest:       fmt.Sprintf("0x%x", forkDigest),
-			MaxBlobsPerBlock: &blobSchedule.MaxBlobsPerBlock,
-		})
-	}
-
-	// Sort all forks by epoch
-	sort.Slice(forks, func(i, j int) bool {
-		return forks[i].Epoch < forks[j].Epoch
-	})
+	// Use shared fork building logic
+	forks := buildNetworkForks(chainState)
 
 	response := APINetworkForksResponse{
 		Status: "OK",
@@ -231,4 +81,86 @@ func APINetworkForksV1(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"status": "ERROR: failed to encode response"}`, http.StatusInternalServerError)
 		return
 	}
+}
+
+// buildNetworkForks creates the complete list of network forks (consensus + BPO)
+// This is shared between network/overview and network/forks APIs
+func buildNetworkForks(chainState *consensus.ChainState) []*APINetworkForkInfo {
+	var forks []*APINetworkForkInfo
+
+	currentEpoch := chainState.CurrentEpoch()
+	specs := chainState.GetSpecs()
+
+	// Add Phase0 (Genesis) fork
+	networkGenesis := chainState.GetGenesis()
+	if networkGenesis != nil {
+		forkDigest := chainState.GetForkDigest(networkGenesis.GenesisForkVersion, nil)
+		version := fmt.Sprintf("0x%x", networkGenesis.GenesisForkVersion)
+		forks = append(forks, &APINetworkForkInfo{
+			Name:       "Phase0",
+			Version:    &version,
+			Epoch:      0,
+			Active:     true,
+			Scheduled:  true,
+			Time:       networkGenesis.GenesisTime.Unix(),
+			Type:       "consensus",
+			ForkDigest: fmt.Sprintf("0x%x", forkDigest),
+		})
+	}
+
+	// Helper function to add consensus fork
+	addConsensusFork := func(name string, forkEpoch *uint64, forkVersion phase0.Version) {
+		if forkEpoch != nil && *forkEpoch < uint64(18446744073709551615) {
+			forkDigest := chainState.GetForkDigest(forkVersion, nil)
+			version := fmt.Sprintf("0x%x", forkVersion)
+			epoch := *forkEpoch
+			forks = append(forks, &APINetworkForkInfo{
+				Name:       name,
+				Version:    &version,
+				Epoch:      epoch,
+				Active:     uint64(currentEpoch) >= epoch,
+				Scheduled:  true,
+				Time:       chainState.EpochToTime(phase0.Epoch(epoch)).Unix(),
+				Type:       "consensus",
+				ForkDigest: fmt.Sprintf("0x%x", forkDigest),
+			})
+		}
+	}
+
+	// Add all consensus forks
+	addConsensusFork("Altair", specs.AltairForkEpoch, specs.AltairForkVersion)
+	addConsensusFork("Bellatrix", specs.BellatrixForkEpoch, specs.BellatrixForkVersion)
+	addConsensusFork("Capella", specs.CapellaForkEpoch, specs.CapellaForkVersion)
+	addConsensusFork("Deneb", specs.DenebForkEpoch, specs.DenebForkVersion)
+	addConsensusFork("Electra", specs.ElectraForkEpoch, specs.ElectraForkVersion)
+	addConsensusFork("Fulu", specs.FuluForkEpoch, specs.FuluForkVersion)
+
+	// Add BPO forks from BLOB_SCHEDULE
+	for i, blobSchedule := range specs.BlobSchedule {
+		forkVersion := chainState.GetForkVersionAtEpoch(phase0.Epoch(blobSchedule.Epoch))
+		blobParams := &consensus.BlobScheduleEntry{
+			Epoch:            blobSchedule.Epoch,
+			MaxBlobsPerBlock: blobSchedule.MaxBlobsPerBlock,
+		}
+		forkDigest := chainState.GetForkDigest(forkVersion, blobParams)
+
+		forks = append(forks, &APINetworkForkInfo{
+			Name:             fmt.Sprintf("BPO%d", i+1),
+			Version:          nil,
+			Epoch:            blobSchedule.Epoch,
+			Active:           uint64(currentEpoch) >= blobSchedule.Epoch,
+			Scheduled:        true,
+			Time:             chainState.EpochToTime(phase0.Epoch(blobSchedule.Epoch)).Unix(),
+			Type:             "bpo",
+			ForkDigest:       fmt.Sprintf("0x%x", forkDigest),
+			MaxBlobsPerBlock: &blobSchedule.MaxBlobsPerBlock,
+		})
+	}
+
+	// Sort forks by epoch
+	sort.Slice(forks, func(i, j int) bool {
+		return forks[i].Epoch < forks[j].Epoch
+	})
+
+	return forks
 }

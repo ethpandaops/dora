@@ -16,7 +16,6 @@ import (
 	"github.com/ethpandaops/dora/clients/execution/rpc"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/indexer/beacon"
-	"github.com/ethpandaops/dora/indexer/execution"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
@@ -92,9 +91,6 @@ func buildSubmitWithdrawalPageData() (*models.SubmitWithdrawalPageData, time.Dur
 
 	// Get withdrawal contract address from client config, fallback to default
 	withdrawalContract := services.GlobalBeaconService.GetSystemContractAddress(rpc.WithdrawalRequestContract)
-	if withdrawalContract == nil {
-		withdrawalContract = &execution.DefaultWithdrawalContractAddr
-	}
 
 	pageData := &models.SubmitWithdrawalPageData{
 		NetworkName:         specs.ConfigName,
