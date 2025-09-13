@@ -54,6 +54,8 @@ type Client struct {
 	blockDispatcher         utils.Dispatcher[*v1.BlockEvent]
 	headDispatcher          utils.Dispatcher[*v1.HeadEvent]
 	checkpointDispatcher    utils.Dispatcher[*v1.Finality]
+
+	specWarnings []string // warnings from incomplete spec checks
 }
 
 func (pool *Pool) newPoolClient(clientIdx uint16, endpoint *ClientConfig) (*Client, error) {
@@ -174,4 +176,8 @@ func (client *Client) GetNodePeers() []*v1.Peer {
 		return []*v1.Peer{}
 	}
 	return client.peers
+}
+
+func (client *Client) GetSpecWarnings() []string {
+	return client.specWarnings
 }

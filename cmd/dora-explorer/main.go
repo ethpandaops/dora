@@ -192,6 +192,9 @@ func startFrontend(router *mux.Router) {
 	router.HandleFunc("/search", handlers.Search).Methods("GET")
 	router.HandleFunc("/search/{type}", handlers.SearchAhead).Methods("GET")
 	router.HandleFunc("/validators", handlers.Validators).Methods("GET")
+	if utils.Config.Frontend.ShowValidatorSummary {
+		router.HandleFunc("/validators/summary", handlers.ValidatorsSummary).Methods("GET")
+	}
 	router.HandleFunc("/validators/activity", handlers.ValidatorsActivity).Methods("GET")
 	router.HandleFunc("/validators/offline", handlers.ValidatorsOffline).Methods("GET")
 	router.HandleFunc("/validators/deposits", handlers.Deposits).Methods("GET")

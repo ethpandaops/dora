@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"math/big"
 	"net/http"
 	"strconv"
 	"strings"
@@ -685,6 +686,28 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 			pageData.ExecutionData.BlockNumber = uint64(blockNumber)
 		}
 
+		if excessBlobGas, err := executionPayload.ExcessBlobGas(); err == nil {
+			pageData.ExecutionData.ExcessBlobGas = &excessBlobGas
+		}
+
+		if blobGasUsed, err := executionPayload.BlobGasUsed(); err == nil {
+			pageData.ExecutionData.BlobGasUsed = &blobGasUsed
+		}
+
+		executionChainState := services.GlobalBeaconService.GetExecutionChainState()
+		blobSchedule := executionChainState.GetBlobScheduleForTimestamp(time.Unix(int64(pageData.ExecutionData.Timestamp), 0))
+		if blobSchedule != nil {
+			blobGasLimit := blobSchedule.Max * 131072
+			pageData.ExecutionData.BlobGasLimit = &blobGasLimit
+			pageData.ExecutionData.BlobLimit = &blobSchedule.Max
+		}
+
+		if pageData.ExecutionData.ExcessBlobGas != nil && blobSchedule != nil {
+			blobBaseFee := executionChainState.CalcBaseFeePerBlobGas(*pageData.ExecutionData.ExcessBlobGas, blobSchedule.BaseFeeUpdateFraction)
+			blobBaseFeeUint64 := blobBaseFee.Uint64()
+			pageData.ExecutionData.BlobBaseFee = &blobBaseFeeUint64
+		}
+
 		if transactions, err := executionPayload.Transactions(); err == nil {
 			getSlotPageTransactions(pageData, transactions)
 		}
@@ -764,7 +787,12 @@ func getSlotPageTransactions(pageData *models.SlotPageBlockData, transactions []
 			Type:  uint64(tx.Type()),
 		}
 		txData.DataLen = uint64(len(txData.Data))
-		txFrom, err := ethtypes.Sender(ethtypes.NewPragueSigner(tx.ChainId()), &tx)
+
+		chainId := tx.ChainId()
+		if chainId != nil && chainId.Cmp(big.NewInt(0)) == 0 {
+			chainId = nil
+		}
+		txFrom, err := ethtypes.Sender(ethtypes.LatestSignerForChainID(chainId), &tx)
 		if err != nil {
 			txData.From = "unknown"
 			logrus.Warnf("error decoding transaction sender 0x%x.%v: %v\n", pageData.BlockRoot, idx, err)
