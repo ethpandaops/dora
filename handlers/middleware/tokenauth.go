@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"path/filepath"
 	"strings"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -46,10 +47,11 @@ func (m *TokenAuthMiddleware) authenticateToken(tokenString string) (*types.APIT
 	
 	if claims, ok := token.Claims.(*types.APITokenClaims); ok && token.Valid {
 		tokenInfo := &types.APITokenInfo{
-			Name:        claims.Name,
-			RateLimit:   claims.RateLimit,
-			CorsOrigins: claims.CorsOrigins,
-			IssuedAt:    claims.IssuedAt.Time,
+			Name:           claims.Name,
+			RateLimit:      claims.RateLimit,
+			CorsOrigins:    claims.CorsOrigins,
+			DomainPatterns: claims.DomainPatterns,
+			IssuedAt:       claims.IssuedAt.Time,
 		}
 		
 		if claims.ExpiresAt != nil {
@@ -60,6 +62,28 @@ func (m *TokenAuthMiddleware) authenticateToken(tokenString string) (*types.APIT
 	}
 	
 	return nil, fmt.Errorf("invalid token claims")
+}
+
+// validateDomainPatterns checks if the request domain matches any of the allowed patterns
+func validateDomainPatterns(requestDomain string, patterns []string) bool {
+	// If no patterns are specified, allow any domain
+	if len(patterns) == 0 {
+		return true
+	}
+	
+	// Check each pattern
+	for _, pattern := range patterns {
+		// Use filepath.Match for wildcard pattern matching
+		if matched, _ := filepath.Match(pattern, requestDomain); matched {
+			return true
+		}
+		// Also check exact match (in case pattern has no wildcards)
+		if pattern == requestDomain {
+			return true
+		}
+	}
+	
+	return false
 }
 
 
@@ -81,6 +105,20 @@ func (m *TokenAuthMiddleware) Middleware(next http.Handler) http.Handler {
 					clientIP := GetClientIP(r)
 					logrus.WithError(err).WithField("client_ip", clientIP).Warn("API authentication failed")
 					APIErrorResponse(w, http.StatusUnauthorized, "ERROR: invalid authentication token")
+					return
+				}
+				
+				// Validate domain patterns if specified in token
+				requestDomain := r.Host
+				if !validateDomainPatterns(requestDomain, tokenInfo.DomainPatterns) {
+					clientIP := GetClientIP(r)
+					logrus.WithFields(logrus.Fields{
+						"client_ip":        clientIP,
+						"token_name":       tokenInfo.Name,
+						"request_domain":   requestDomain,
+						"allowed_patterns": tokenInfo.DomainPatterns,
+					}).Warn("API request rejected: domain not allowed for token")
+					APIErrorResponse(w, http.StatusForbidden, "ERROR: token not valid for this domain")
 					return
 				}
 				

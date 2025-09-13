@@ -41,18 +41,19 @@ var generateSecretCmd = &cobra.Command{
 func init() {
 	// Add token command to root
 	rootCmd.AddCommand(tokenCmd)
-	
+
 	// Add subcommands
 	tokenCmd.AddCommand(generateTokenCmd)
 	tokenCmd.AddCommand(generateSecretCmd)
-	
+
 	// Token generation flags
 	generateTokenCmd.Flags().StringP("name", "n", "", "Token name/identifier (required)")
 	generateTokenCmd.Flags().UintP("rate-limit", "r", 0, "Rate limit per minute (0 = unlimited)")
 	generateTokenCmd.Flags().StringP("duration", "d", "", "Token duration (e.g. '24h', '7d', '30d', empty = no expiration)")
 	generateTokenCmd.Flags().StringP("secret", "s", "", "JWT signing secret (uses config value if not provided)")
 	generateTokenCmd.Flags().StringSliceP("cors-origins", "c", []string{}, "Allowed CORS origins (e.g. 'https://example.com,https://*.example.com')")
-	
+	generateTokenCmd.Flags().StringSliceP("domain-patterns", "p", []string{}, "Dora instance domain patterns (e.g. 'api.example.com,*.example.com', empty = any domain)")
+
 	// Mark name as required
 	generateTokenCmd.MarkFlagRequired("name")
 }
@@ -64,7 +65,8 @@ func generateToken(cmd *cobra.Command) error {
 	duration, _ := cmd.Flags().GetString("duration")
 	secret, _ := cmd.Flags().GetString("secret")
 	corsOrigins, _ := cmd.Flags().GetStringSlice("cors-origins")
-	
+	domainPatterns, _ := cmd.Flags().GetStringSlice("domain-patterns")
+
 	// Use config secret if not provided
 	if secret == "" {
 		if utils.Config != nil && utils.Config.Api.AuthSecret != "" {
@@ -73,19 +75,20 @@ func generateToken(cmd *cobra.Command) error {
 			return fmt.Errorf("no JWT secret provided. Use --secret flag or set API_AUTH_SECRET in config")
 		}
 	}
-	
+
 	// Create token claims
 	now := time.Now()
 	claims := &types.APITokenClaims{
-		Name:        name,
-		RateLimit:   rateLimit,
-		CorsOrigins: corsOrigins,
+		Name:           name,
+		RateLimit:      rateLimit,
+		CorsOrigins:    corsOrigins,
+		DomainPatterns: domainPatterns,
 		RegisteredClaims: jwt.RegisteredClaims{
 			IssuedAt: jwt.NewNumericDate(now),
 			Subject:  "api-access",
 		},
 	}
-	
+
 	// Set expiration if duration provided
 	if duration != "" {
 		parsedDuration, err := parseDurationWithDays(duration)
@@ -94,14 +97,14 @@ func generateToken(cmd *cobra.Command) error {
 		}
 		claims.ExpiresAt = jwt.NewNumericDate(now.Add(parsedDuration))
 	}
-	
+
 	// Create and sign token
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	tokenString, err := token.SignedString([]byte(secret))
 	if err != nil {
 		return fmt.Errorf("failed to sign token: %v", err)
 	}
-	
+
 	// Print token information
 	fmt.Printf("Generated API Token:\n")
 	fmt.Printf("==================\n")
@@ -118,6 +121,12 @@ func generateToken(cmd *cobra.Command) error {
 	} else {
 		fmt.Printf("%v\n", corsOrigins)
 	}
+	fmt.Printf("Dora Instance Domain Patterns: ")
+	if len(domainPatterns) == 0 {
+		fmt.Printf("Any dora instance allowed\n")
+	} else {
+		fmt.Printf("%v\n", domainPatterns)
+	}
 	fmt.Printf("Issued At: %s\n", now.Format(time.RFC3339))
 	if claims.ExpiresAt != nil {
 		fmt.Printf("Expires At: %s\n", claims.ExpiresAt.Format(time.RFC3339))
@@ -127,7 +136,7 @@ func generateToken(cmd *cobra.Command) error {
 	fmt.Printf("\nToken:\n%s\n", tokenString)
 	fmt.Printf("\nUsage:\n")
 	fmt.Printf("curl -H \"Authorization: Bearer %s\" http://localhost:8080/api/v1/epochs\n", tokenString)
-	
+
 	return nil
 }
 
@@ -139,10 +148,10 @@ func generateSecret() {
 		fmt.Printf("Error generating secret: %v\n", err)
 		return
 	}
-	
+
 	// Encode as base64
 	secret := base64.StdEncoding.EncodeToString(secretBytes)
-	
+
 	fmt.Printf("Generated JWT Secret:\n")
 	fmt.Printf("====================\n")
 	fmt.Printf("Secret: %s\n", secret)
@@ -163,7 +172,7 @@ func parseDurationWithDays(s string) (time.Duration, error) {
 		}
 		return time.Duration(days) * 24 * time.Hour, nil
 	}
-	
+
 	// Use standard time.ParseDuration for other formats
 	return time.ParseDuration(s)
 }
