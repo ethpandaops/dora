@@ -264,7 +264,15 @@ func createSwaggerHandler() http.Handler {
 }
 
 func startApi(router *mux.Router) {
-	// Add the CORS middleware to all API routes
+	// Add token authentication middleware first
+	tokenAuthMiddleware := middleware.NewTokenAuthMiddleware()
+	router.Use(tokenAuthMiddleware.Middleware)
+	
+	// Add rate limiting middleware (depends on token info from auth middleware)
+	rateLimitMiddleware := middleware.NewRateLimitMiddleware()
+	router.Use(rateLimitMiddleware.Middleware)
+	
+	// Add CORS middleware last (can access token info from auth middleware)
 	router.Use(middleware.CorsMiddleware)
 
 	// Validator APIs
