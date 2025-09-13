@@ -51,6 +51,7 @@ func init() {
 	generateTokenCmd.Flags().UintP("rate-limit", "r", 0, "Rate limit per minute (0 = unlimited)")
 	generateTokenCmd.Flags().StringP("duration", "d", "", "Token duration (e.g. '24h', '7d', '30d', empty = no expiration)")
 	generateTokenCmd.Flags().StringP("secret", "s", "", "JWT signing secret (uses config value if not provided)")
+	generateTokenCmd.Flags().StringP("config", "", "", "Path to dora config file to load secret from")
 	generateTokenCmd.Flags().StringSliceP("cors-origins", "c", []string{}, "Allowed CORS origins (e.g. 'https://example.com,https://*.example.com')")
 	generateTokenCmd.Flags().StringSliceP("domain-patterns", "p", []string{}, "Dora instance domain patterns (e.g. 'api.example.com,*.example.com', empty = any domain)")
 
@@ -64,15 +65,26 @@ func generateToken(cmd *cobra.Command) error {
 	rateLimit, _ := cmd.Flags().GetUint("rate-limit")
 	duration, _ := cmd.Flags().GetString("duration")
 	secret, _ := cmd.Flags().GetString("secret")
+	configPath, _ := cmd.Flags().GetString("config")
 	corsOrigins, _ := cmd.Flags().GetStringSlice("cors-origins")
 	domainPatterns, _ := cmd.Flags().GetStringSlice("domain-patterns")
+
+	// Load config if path provided
+	if configPath != "" {
+		cfg := &types.Config{}
+		err := utils.ReadConfig(cfg, configPath)
+		if err != nil {
+			return fmt.Errorf("error reading config file: %v", err)
+		}
+		utils.Config = cfg
+	}
 
 	// Use config secret if not provided
 	if secret == "" {
 		if utils.Config != nil && utils.Config.Api.AuthSecret != "" {
 			secret = utils.Config.Api.AuthSecret
 		} else {
-			return fmt.Errorf("no JWT secret provided. Use --secret flag or set API_AUTH_SECRET in config")
+			return fmt.Errorf("no JWT secret provided. Use --secret flag, --config flag, or set API_AUTH_SECRET in config")
 		}
 	}
 
