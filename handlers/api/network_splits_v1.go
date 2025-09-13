@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
 
 	"github.com/ethpandaops/dora/indexer/beacon"
 	"github.com/ethpandaops/dora/services"
@@ -80,11 +81,13 @@ func APINetworkSplitsV1(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	canonicalForkKeys := services.GlobalBeaconService.GetCanonicalForkKeys()
+
 	// Build splits information
 	splits := make([]*APINetworkSplitInfo, 0, len(chainHeads))
 
 	// The first chain head is considered canonical
-	for i, chainHead := range chainHeads {
+	for _, chainHead := range chainHeads {
 		block := chainHead.HeadBlock
 		if block == nil {
 			continue
@@ -119,7 +122,7 @@ func APINetworkSplitsV1(w http.ResponseWriter, r *http.Request) {
 			LastEpochVotes:         epochVotes,
 			LastEpochParticipation: chainHead.PerEpochVotingPercent,
 			TotalChainWeight:       uint64(chainHead.AggregatedHeadVotes),
-			IsCanonical:            i == 0, // First chain head is canonical
+			IsCanonical:            slices.Contains(canonicalForkKeys, block.GetForkId()),
 		}
 
 		splits = append(splits, split)
