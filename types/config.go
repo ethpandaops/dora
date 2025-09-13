@@ -66,7 +66,7 @@ type Config struct {
 	Api struct {
 		Enabled     bool     `yaml:"enabled" envconfig:"API_ENABLED"`
 		CorsOrigins []string `yaml:"corsOrigins" envconfig:"API_CORS_ORIGINS"`
-		
+
 		// Rate limiting and authentication
 		AuthSecret              string   `yaml:"authSecret" envconfig:"API_AUTH_SECRET"`
 		RequireAuth             bool     `yaml:"requireAuth" envconfig:"API_REQUIRE_AUTH"`

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/spf13/cobra"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/blockdb"
 	btypes "github.com/ethpandaops/dora/blockdb/types"
@@ -16,6 +15,7 @@ import (
 	"github.com/ethpandaops/dora/utils"
 	dynssz "github.com/pk910/dynamic-ssz"
 	"github.com/sirupsen/logrus"
+	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
 
@@ -28,14 +28,14 @@ var blockdbSyncCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(blockdbSyncCmd)
-	
+
 	blockdbSyncCmd.Flags().StringP("config", "c", "", "Path to the config file (required)")
 	blockdbSyncCmd.Flags().Uint64P("start", "s", 0, "Start epoch")
 	blockdbSyncCmd.Flags().Uint64P("end", "e", 0, "End epoch")
 	blockdbSyncCmd.Flags().String("client", "", "Only use this specific client from config")
 	blockdbSyncCmd.Flags().IntP("concurrency", "j", 1, "Number of concurrent slot processors")
 	blockdbSyncCmd.Flags().BoolP("verbose", "v", false, "Verbose output")
-	
+
 	blockdbSyncCmd.MarkFlagRequired("config")
 }
 

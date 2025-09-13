@@ -5,9 +5,9 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/spf13/cobra"
 	"github.com/jmoiron/sqlx"
 	"github.com/sirupsen/logrus"
+	"github.com/spf13/cobra"
 
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/types"
@@ -28,7 +28,7 @@ var migrateCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(migrateCmd)
-	
+
 	// Source database flags
 	migrateCmd.Flags().String("source-engine", "", "Source database engine (sqlite/pgsql)")
 	migrateCmd.Flags().String("source-sqlite-path", "", "Source SQLite database path")
@@ -37,7 +37,7 @@ func init() {
 	migrateCmd.Flags().String("source-pgsql-user", "", "Source PostgreSQL user")
 	migrateCmd.Flags().String("source-pgsql-pass", "", "Source PostgreSQL password")
 	migrateCmd.Flags().String("source-pgsql-db", "", "Source PostgreSQL database name")
-	
+
 	// Target database flags
 	migrateCmd.Flags().String("target-engine", "", "Target database engine (sqlite/pgsql)")
 	migrateCmd.Flags().String("target-sqlite-path", "", "Target SQLite database path")
@@ -46,11 +46,11 @@ func init() {
 	migrateCmd.Flags().String("target-pgsql-user", "", "Target PostgreSQL user")
 	migrateCmd.Flags().String("target-pgsql-pass", "", "Target PostgreSQL password")
 	migrateCmd.Flags().String("target-pgsql-db", "", "Target PostgreSQL database name")
-	
+
 	// Additional options
 	migrateCmd.Flags().String("limit-tables", "", "Limit tables to migrate (comma separated list)")
 	migrateCmd.Flags().BoolP("debug", "d", false, "Enable debug mode")
-	
+
 	// Mark required flags
 	migrateCmd.MarkFlagRequired("source-engine")
 	migrateCmd.MarkFlagRequired("target-engine")
@@ -61,7 +61,7 @@ func runMigrate(cmd *cobra.Command, args []string) error {
 	sourceEngine, _ := cmd.Flags().GetString("source-engine")
 	targetEngine, _ := cmd.Flags().GetString("target-engine")
 	limitTablesStr, _ := cmd.Flags().GetString("limit-tables")
-	
+
 	// Source database flags
 	sourceSqlitePath, _ := cmd.Flags().GetString("source-sqlite-path")
 	sourcePgsqlHost, _ := cmd.Flags().GetString("source-pgsql-host")
@@ -69,7 +69,7 @@ func runMigrate(cmd *cobra.Command, args []string) error {
 	sourcePgsqlUser, _ := cmd.Flags().GetString("source-pgsql-user")
 	sourcePgsqlPass, _ := cmd.Flags().GetString("source-pgsql-pass")
 	sourcePgsqlDb, _ := cmd.Flags().GetString("source-pgsql-db")
-	
+
 	// Target database flags
 	targetSqlitePath, _ := cmd.Flags().GetString("target-sqlite-path")
 	targetPgsqlHost, _ := cmd.Flags().GetString("target-pgsql-host")
@@ -117,7 +117,7 @@ func runMigrate(cmd *cobra.Command, args []string) error {
 	if err := migrateDatabase(sourceConfig, targetConfig, limitTables); err != nil {
 		return fmt.Errorf("migration failed: %v", err)
 	}
-	
+
 	logrus.Info("Migration completed successfully")
 	return nil
 }

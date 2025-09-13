@@ -33,18 +33,18 @@ func (m *TokenAuthMiddleware) authenticateToken(tokenString string) (*types.APIT
 	if utils.Config.Api.AuthSecret == "" {
 		return nil, fmt.Errorf("authentication secret not configured")
 	}
-	
+
 	token, err := jwt.ParseWithClaims(tokenString, &types.APITokenClaims{}, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
 		return []byte(utils.Config.Api.AuthSecret), nil
 	})
-	
+
 	if err != nil {
 		return nil, fmt.Errorf("invalid token: %v", err)
 	}
-	
+
 	if claims, ok := token.Claims.(*types.APITokenClaims); ok && token.Valid {
 		tokenInfo := &types.APITokenInfo{
 			Name:           claims.Name,
@@ -53,14 +53,14 @@ func (m *TokenAuthMiddleware) authenticateToken(tokenString string) (*types.APIT
 			DomainPatterns: claims.DomainPatterns,
 			IssuedAt:       claims.IssuedAt.Time,
 		}
-		
+
 		if claims.ExpiresAt != nil {
 			tokenInfo.ExpiresAt = &claims.ExpiresAt.Time
 		}
-		
+
 		return tokenInfo, nil
 	}
-	
+
 	return nil, fmt.Errorf("invalid token claims")
 }
 
@@ -70,7 +70,7 @@ func validateDomainPatterns(requestDomain string, patterns []string) bool {
 	if len(patterns) == 0 {
 		return true
 	}
-	
+
 	// Check each pattern
 	for _, pattern := range patterns {
 		// Use filepath.Match for wildcard pattern matching
@@ -82,16 +82,15 @@ func validateDomainPatterns(requestDomain string, patterns []string) bool {
 			return true
 		}
 	}
-	
+
 	return false
 }
-
 
 // Middleware processes JWT authentication and adds token info to request context
 func (m *TokenAuthMiddleware) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var tokenInfo *types.APITokenInfo
-		
+
 		// Check for Authorization header
 		authHeader := r.Header.Get("Authorization")
 		if authHeader != "" {
@@ -107,7 +106,7 @@ func (m *TokenAuthMiddleware) Middleware(next http.Handler) http.Handler {
 					APIErrorResponse(w, http.StatusUnauthorized, "ERROR: invalid authentication token")
 					return
 				}
-				
+
 				// Validate domain patterns if specified in token
 				requestDomain := r.Host
 				if !validateDomainPatterns(requestDomain, tokenInfo.DomainPatterns) {
@@ -121,7 +120,7 @@ func (m *TokenAuthMiddleware) Middleware(next http.Handler) http.Handler {
 					APIErrorResponse(w, http.StatusForbidden, "ERROR: token not valid for this domain")
 					return
 				}
-				
+
 				clientIP := GetClientIP(r)
 				logrus.WithFields(logrus.Fields{
 					"client_ip":  clientIP,
@@ -132,7 +131,7 @@ func (m *TokenAuthMiddleware) Middleware(next http.Handler) http.Handler {
 				return
 			}
 		}
-		
+
 		// Check if authentication is required
 		if utils.Config.Api.RequireAuth && tokenInfo == nil {
 			// Skip authentication requirement for OPTIONS requests (CORS preflight)
@@ -140,19 +139,19 @@ func (m *TokenAuthMiddleware) Middleware(next http.Handler) http.Handler {
 				next.ServeHTTP(w, r)
 				return
 			}
-			
+
 			clientIP := GetClientIP(r)
 			logrus.WithField("client_ip", clientIP).Warn("API request rejected: authentication required")
 			APIErrorResponse(w, http.StatusUnauthorized, "ERROR: authentication required")
 			return
 		}
-		
+
 		// Add token info to request context if authenticated
 		if tokenInfo != nil {
 			ctx := context.WithValue(r.Context(), contextKeyTokenInfo, tokenInfo)
 			r = r.WithContext(ctx)
 		}
-		
+
 		// Continue to next handler
 		next.ServeHTTP(w, r)
 	})

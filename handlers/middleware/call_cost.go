@@ -31,11 +31,11 @@ func CallCostMiddleware(next http.Handler) http.Handler {
 		costMutex.RLock()
 		cost, exists := endpointCosts[r.URL.Path]
 		costMutex.RUnlock()
-		
+
 		if !exists {
 			cost = 1 // Default cost
 		}
-		
+
 		// Store cost in request context for rate limiting middleware
 		ctx := context.WithValue(r.Context(), contextKeyCallCost, cost)
 		next.ServeHTTP(w, r.WithContext(ctx))
