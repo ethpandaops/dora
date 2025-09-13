@@ -263,57 +263,80 @@ func createSwaggerHandler() http.Handler {
 	})
 }
 
+type apiEndpoint struct {
+	path     string
+	handler  http.HandlerFunc
+	methods  []string
+	callCost int
+}
+
 func startApi(router *mux.Router) {
+	// Define all API endpoints with their handlers and call costs in one place
+	apiEndpoints := []apiEndpoint{
+		// Validator APIs
+		{"/v1/validator/{indexOrPubkey}", api.ApiValidatorGetV1, []string{"GET", "OPTIONS"}, 1},
+		{"/v1/validator", api.ApiValidatorPostV1, []string{"POST", "OPTIONS"}, 1},
+		{"/v1/validator/eth1/{eth1address}", api.ApiValidatorByEth1AddressV1, []string{"GET", "OPTIONS"}, 1},
+		{"/v1/validator/withdrawalCredentials/{withdrawalCredentialsOrEth1address}", api.ApiWithdrawalCredentialsValidatorsV1, []string{"GET", "OPTIONS"}, 1},
+		{"/v1/validator/{indexOrPubkey}/deposits", api.ApiValidatorDepositsV1, []string{"GET", "OPTIONS"}, 1},
+		{"/v1/validators", api.APIValidatorsV1, []string{"GET", "OPTIONS"}, 1},
+		{"/v1/validator_names", api.APIValidatorNamesV1, []string{"GET", "POST", "OPTIONS"}, 1},
+
+		// Epoch and slot APIs
+		{"/v1/epochs", api.APIEpochsV1, []string{"GET", "OPTIONS"}, 1},
+		{"/v1/epoch/{epoch}", api.ApiEpochV1, []string{"GET", "OPTIONS"}, 1},
+		{"/v1/slot/{slotOrHash}", api.APISlotV1, []string{"GET", "OPTIONS"}, 1},
+		{"/v1/slots", api.APISlotsV1, []string{"GET", "OPTIONS"}, 1},
+
+		// Deposit APIs
+		{"/v1/deposits/included", api.APIDepositsIncludedV1, []string{"GET", "OPTIONS"}, 1},
+		{"/v1/deposits/transactions", api.APIDepositsTransactionsV1, []string{"GET", "OPTIONS"}, 1},
+		{"/v1/deposits/queue", api.APIDepositsQueueV1, []string{"GET", "OPTIONS"}, 1},
+
+		// Validator action APIs
+		{"/v1/slashings", api.APISlashingsV1, []string{"GET", "OPTIONS"}, 1},
+		{"/v1/voluntary_exits", api.APIVoluntaryExitsV1, []string{"GET", "OPTIONS"}, 1},
+		{"/v1/withdrawal_requests", api.APIWithdrawalRequestsV1, []string{"GET", "OPTIONS"}, 1},
+		{"/v1/consolidation_requests", api.APIConsolidationRequestsV1, []string{"GET", "OPTIONS"}, 1},
+
+		// MEV APIs
+		{"/v1/mev_blocks", api.APIMevBlocksV1, []string{"GET", "OPTIONS"}, 1},
+
+		// Network APIs
+		{"/v1/network/forks", api.APINetworkForksV1, []string{"GET", "OPTIONS"}, 1},
+
+		// Client APIs
+		{"/v1/clients/execution", api.APIExecutionClients, []string{"GET", "OPTIONS"}, 1},
+		{"/v1/clients/consensus", api.APIConsensusClients, []string{"GET", "OPTIONS"}, 1},
+
+		// DAS Guardian APIs (higher call cost due to computation intensity)
+		{"/v1/das-guardian/scan", api.APIDasGuardianScan, []string{"POST", "OPTIONS"}, 10},
+		{"/v1/das-guardian/mass-scan", api.APIDasGuardianMassScan, []string{"POST", "OPTIONS"}, 25},
+	}
+
+	// Set endpoint call costs from the map
+	for _, endpoint := range apiEndpoints {
+		middleware.SetEndpointCost("/api"+endpoint.path, endpoint.callCost)
+	}
+
 	// Add token authentication middleware first
 	tokenAuthMiddleware := middleware.NewTokenAuthMiddleware()
 	router.Use(tokenAuthMiddleware.Middleware)
-	
-	// Add rate limiting middleware (depends on token info from auth middleware)
+
+	// Add call cost middleware (must run before rate limiter to set context)
+	router.Use(middleware.CallCostMiddleware)
+
+	// Add rate limiting middleware (depends on token info from auth middleware and call cost from context)
 	rateLimitMiddleware := middleware.NewRateLimitMiddleware()
 	router.Use(rateLimitMiddleware.Middleware)
-	
+
 	// Add CORS middleware last (can access token info from auth middleware)
 	router.Use(middleware.CorsMiddleware)
 
-	// Validator APIs
-	router.HandleFunc("/v1/validator/{indexOrPubkey}", api.ApiValidatorGetV1).Methods("GET", "OPTIONS")
-	router.HandleFunc("/v1/validator", api.ApiValidatorPostV1).Methods("POST", "OPTIONS")
-	router.HandleFunc("/v1/validator/eth1/{eth1address}", api.ApiValidatorByEth1AddressV1).Methods("GET", "OPTIONS")
-	router.HandleFunc("/v1/validator/withdrawalCredentials/{withdrawalCredentialsOrEth1address}", api.ApiWithdrawalCredentialsValidatorsV1).Methods("GET", "OPTIONS")
-	router.HandleFunc("/v1/validator/{indexOrPubkey}/deposits", api.ApiValidatorDepositsV1).Methods("GET", "OPTIONS")
-	router.HandleFunc("/v1/validators", api.APIValidatorsV1).Methods("GET", "OPTIONS")
-	router.HandleFunc("/v1/validator_names", api.APIValidatorNamesV1).Methods("GET", "POST", "OPTIONS")
-
-	// Epoch and slot APIs
-	router.HandleFunc("/v1/epochs", api.APIEpochsV1).Methods("GET", "OPTIONS")
-	router.HandleFunc("/v1/epoch/{epoch}", api.ApiEpochV1).Methods("GET", "OPTIONS")
-	router.HandleFunc("/v1/slot/{slotOrHash}", api.APISlotV1).Methods("GET", "OPTIONS")
-	router.HandleFunc("/v1/slots", api.APISlotsV1).Methods("GET", "OPTIONS")
-
-	// Deposit APIs
-	router.HandleFunc("/v1/deposits/included", api.APIDepositsIncludedV1).Methods("GET", "OPTIONS")
-	router.HandleFunc("/v1/deposits/transactions", api.APIDepositsTransactionsV1).Methods("GET", "OPTIONS")
-	router.HandleFunc("/v1/deposits/queue", api.APIDepositsQueueV1).Methods("GET", "OPTIONS")
-
-	// Validator action APIs
-	router.HandleFunc("/v1/slashings", api.APISlashingsV1).Methods("GET", "OPTIONS")
-	router.HandleFunc("/v1/voluntary_exits", api.APIVoluntaryExitsV1).Methods("GET", "OPTIONS")
-	router.HandleFunc("/v1/withdrawal_requests", api.APIWithdrawalRequestsV1).Methods("GET", "OPTIONS")
-	router.HandleFunc("/v1/consolidation_requests", api.APIConsolidationRequestsV1).Methods("GET", "OPTIONS")
-
-	// MEV APIs
-	router.HandleFunc("/v1/mev_blocks", api.APIMevBlocksV1).Methods("GET", "OPTIONS")
-
-	// Network APIs
-	router.HandleFunc("/v1/network/forks", api.APINetworkForksV1).Methods("GET", "OPTIONS")
-
-	// Client APIs
-	router.HandleFunc("/v1/clients/execution", api.APIExecutionClients).Methods("GET", "OPTIONS")
-	router.HandleFunc("/v1/clients/consensus", api.APIConsensusClients).Methods("GET", "OPTIONS")
-
-	// DAS Guardian APIs
-	router.HandleFunc("/v1/das-guardian/scan", api.APIDasGuardianScan).Methods("POST", "OPTIONS")
-	router.HandleFunc("/v1/das-guardian/mass-scan", api.APIDasGuardianMassScan).Methods("POST", "OPTIONS")
+	// Register all endpoints from the map
+	for _, endpoint := range apiEndpoints {
+		router.HandleFunc(endpoint.path, endpoint.handler).Methods(endpoint.methods...)
+	}
 
 	// Swagger UI with dynamic host
 	router.PathPrefix("/swagger/").Handler(createSwaggerHandler())

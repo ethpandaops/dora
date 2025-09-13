@@ -120,6 +120,11 @@ func (m *RateLimitMiddleware) getRateLimiter(key string, limit uint, burst uint)
 		m.rateLimiters[key] = entry
 	} else {
 		entry.lastSeen = time.Now()
+		
+		// If the existing limiter has a smaller burst than requested, update it
+		if entry.limiter.Burst() < int(burst) {
+			entry.limiter.SetBurst(int(burst))
+		}
 	}
 
 	return entry.limiter
@@ -153,8 +158,18 @@ func (m *RateLimitMiddleware) Middleware(next http.Handler) http.Handler {
 
 		// Apply rate limiting (skip if disabled, whitelisted, or unlimited token)
 		if !utils.Config.Api.DisableDefaultRateLimit && rateLimit > 0 && !m.isWhitelisted(clientIP) {
+			// Get the call cost for this endpoint
+			callCost := GetCallCost(r)
+			
 			limiter := m.getRateLimiter(rateLimitKey, rateLimit, rateLimitBurst)
-			if !limiter.AllowN(time.Now(), int(1)) {
+			
+			// If call cost exceeds burst limit, ensure burst is at least the call cost
+			if callCost > int(rateLimitBurst) {
+				// Create a new limiter with sufficient burst for this call cost
+				limiter = m.getRateLimiter(rateLimitKey, rateLimit, uint(callCost))
+			}
+			
+			if !limiter.AllowN(time.Now(), callCost) {
 				// Add rate limit headers
 				w.Header().Set("X-RateLimit-Limit", strconv.FormatUint(uint64(rateLimit), 10))
 				w.Header().Set("X-RateLimit-Remaining", "0")
@@ -164,6 +179,8 @@ func (m *RateLimitMiddleware) Middleware(next http.Handler) http.Handler {
 					"client_ip":      clientIP,
 					"rate_limit_key": rateLimitKey,
 					"rate_limit":     rateLimit,
+					"call_cost":      callCost,
+					"endpoint":       r.URL.Path,
 				}).Warn("API rate limit exceeded")
 
 				APIErrorResponse(w, http.StatusTooManyRequests, "ERROR: rate limit exceeded")
