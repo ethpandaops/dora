@@ -66,6 +66,14 @@ type Config struct {
 	Api struct {
 		Enabled     bool     `yaml:"enabled" envconfig:"API_ENABLED"`
 		CorsOrigins []string `yaml:"corsOrigins" envconfig:"API_CORS_ORIGINS"`
+
+		// Rate limiting and authentication
+		AuthSecret              string   `yaml:"authSecret" envconfig:"API_AUTH_SECRET"`
+		RequireAuth             bool     `yaml:"requireAuth" envconfig:"API_REQUIRE_AUTH"`
+		DefaultRateLimit        uint     `yaml:"defaultRateLimit" envconfig:"API_DEFAULT_RATE_LIMIT"`
+		DefaultRateLimitBurst   uint     `yaml:"defaultRateLimitBurst" envconfig:"API_DEFAULT_RATE_LIMIT_BURST"`
+		DisableDefaultRateLimit bool     `yaml:"disableDefaultRateLimit" envconfig:"API_DISABLE_DEFAULT_RATE_LIMIT"`
+		WhitelistedIPs          []string `yaml:"whitelistedIPs" envconfig:"API_WHITELISTED_IPS"`
 	} `yaml:"api"`
 
 	RateLimit struct {

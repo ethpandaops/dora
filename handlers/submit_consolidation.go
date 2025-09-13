@@ -19,7 +19,6 @@ import (
 	"github.com/ethpandaops/dora/clients/execution/rpc"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/indexer/beacon"
-	"github.com/ethpandaops/dora/indexer/execution"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
@@ -95,9 +94,6 @@ func buildSubmitConsolidationPageData() (*models.SubmitConsolidationPageData, ti
 
 	// Get consolidation contract address from client config, fallback to default
 	consolidationContract := services.GlobalBeaconService.GetSystemContractAddress(rpc.ConsolidationRequestContract)
-	if consolidationContract == nil {
-		consolidationContract = &execution.DefaultConsolidationContractAddr
-	}
 
 	pageData := &models.SubmitConsolidationPageData{
 		NetworkName:           specs.ConfigName,

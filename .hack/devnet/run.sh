@@ -89,7 +89,8 @@ api:
   enabled: true
   corsOrigins:
     - "*"
-
+  authSecret: "test"
+  defaultRateLimit: 60
 beaconapi:
   localCacheSize: 10
   redisCacheAddr: ""

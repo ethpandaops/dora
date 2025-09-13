@@ -1,14 +1,13 @@
 package main
 
 import (
-	"flag"
 	"fmt"
-	"os"
 	"slices"
 	"strings"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/sirupsen/logrus"
+	"github.com/spf13/cobra"
 
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/types"
@@ -20,70 +19,107 @@ type DbConfig struct {
 	Pgsql  types.PgsqlDatabaseConfig
 }
 
-func migrate() {
-	flags := flag.NewFlagSet("migrate", flag.ExitOnError)
-	sourceEngine := flags.String("source-engine", "", "Source database engine (sqlite/pgsql)")
-	sourceSqlitePath := flags.String("source-sqlite-path", "", "Source SQLite database path")
-	sourcePgsqlHost := flags.String("source-pgsql-host", "", "Source PostgreSQL host")
-	sourcePgsqlPort := flags.String("source-pgsql-port", "5432", "Source PostgreSQL port")
-	sourcePgsqlUser := flags.String("source-pgsql-user", "", "Source PostgreSQL user")
-	sourcePgsqlPass := flags.String("source-pgsql-pass", "", "Source PostgreSQL password")
-	sourcePgsqlDb := flags.String("source-pgsql-db", "", "Source PostgreSQL database name")
+var migrateCmd = &cobra.Command{
+	Use:   "migrate",
+	Short: "Migrate database between different engines",
+	Long:  "Migrate data from one database engine to another (SQLite <-> PostgreSQL)",
+	RunE:  runMigrate,
+}
 
-	targetEngine := flags.String("target-engine", "", "Target database engine (sqlite/pgsql)")
-	targetSqlitePath := flags.String("target-sqlite-path", "", "Target SQLite database path")
-	targetPgsqlHost := flags.String("target-pgsql-host", "", "Target PostgreSQL host")
-	targetPgsqlPort := flags.String("target-pgsql-port", "5432", "Target PostgreSQL port")
-	targetPgsqlUser := flags.String("target-pgsql-user", "", "Target PostgreSQL user")
-	targetPgsqlPass := flags.String("target-pgsql-pass", "", "Target PostgreSQL password")
-	targetPgsqlDb := flags.String("target-pgsql-db", "", "Target PostgreSQL database name")
+func init() {
+	rootCmd.AddCommand(migrateCmd)
 
-	limitTablesStr := flags.String("limit-tables", "", "Limit tables to migrate (comma separated list)")
+	// Source database flags
+	migrateCmd.Flags().String("source-engine", "", "Source database engine (sqlite/pgsql)")
+	migrateCmd.Flags().String("source-sqlite-path", "", "Source SQLite database path")
+	migrateCmd.Flags().String("source-pgsql-host", "", "Source PostgreSQL host")
+	migrateCmd.Flags().String("source-pgsql-port", "5432", "Source PostgreSQL port")
+	migrateCmd.Flags().String("source-pgsql-user", "", "Source PostgreSQL user")
+	migrateCmd.Flags().String("source-pgsql-pass", "", "Source PostgreSQL password")
+	migrateCmd.Flags().String("source-pgsql-db", "", "Source PostgreSQL database name")
 
-	debug := flags.Bool("debug", false, "Enable debug mode")
+	// Target database flags
+	migrateCmd.Flags().String("target-engine", "", "Target database engine (sqlite/pgsql)")
+	migrateCmd.Flags().String("target-sqlite-path", "", "Target SQLite database path")
+	migrateCmd.Flags().String("target-pgsql-host", "", "Target PostgreSQL host")
+	migrateCmd.Flags().String("target-pgsql-port", "5432", "Target PostgreSQL port")
+	migrateCmd.Flags().String("target-pgsql-user", "", "Target PostgreSQL user")
+	migrateCmd.Flags().String("target-pgsql-pass", "", "Target PostgreSQL password")
+	migrateCmd.Flags().String("target-pgsql-db", "", "Target PostgreSQL database name")
 
-	flags.Parse(os.Args[1:])
+	// Additional options
+	migrateCmd.Flags().String("limit-tables", "", "Limit tables to migrate (comma separated list)")
+	migrateCmd.Flags().BoolP("debug", "d", false, "Enable debug mode")
 
-	if *debug {
+	// Mark required flags
+	migrateCmd.MarkFlagRequired("source-engine")
+	migrateCmd.MarkFlagRequired("target-engine")
+}
+
+func runMigrate(cmd *cobra.Command, args []string) error {
+	debug, _ := cmd.Flags().GetBool("debug")
+	sourceEngine, _ := cmd.Flags().GetString("source-engine")
+	targetEngine, _ := cmd.Flags().GetString("target-engine")
+	limitTablesStr, _ := cmd.Flags().GetString("limit-tables")
+
+	// Source database flags
+	sourceSqlitePath, _ := cmd.Flags().GetString("source-sqlite-path")
+	sourcePgsqlHost, _ := cmd.Flags().GetString("source-pgsql-host")
+	sourcePgsqlPort, _ := cmd.Flags().GetString("source-pgsql-port")
+	sourcePgsqlUser, _ := cmd.Flags().GetString("source-pgsql-user")
+	sourcePgsqlPass, _ := cmd.Flags().GetString("source-pgsql-pass")
+	sourcePgsqlDb, _ := cmd.Flags().GetString("source-pgsql-db")
+
+	// Target database flags
+	targetSqlitePath, _ := cmd.Flags().GetString("target-sqlite-path")
+	targetPgsqlHost, _ := cmd.Flags().GetString("target-pgsql-host")
+	targetPgsqlPort, _ := cmd.Flags().GetString("target-pgsql-port")
+	targetPgsqlUser, _ := cmd.Flags().GetString("target-pgsql-user")
+	targetPgsqlPass, _ := cmd.Flags().GetString("target-pgsql-pass")
+	targetPgsqlDb, _ := cmd.Flags().GetString("target-pgsql-db")
+
+	if debug {
 		logrus.SetLevel(logrus.DebugLevel)
 	}
 
-	if *sourceEngine == "" || *targetEngine == "" {
-		flag.Usage()
-		os.Exit(1)
+	if sourceEngine == "" || targetEngine == "" {
+		return fmt.Errorf("source-engine and target-engine are required")
 	}
 
 	limitTables := make([]string, 0)
-	if limitTablesStr != nil && *limitTablesStr != "" {
-		limitTables = strings.Split(*limitTablesStr, ",")
+	if limitTablesStr != "" {
+		limitTables = strings.Split(limitTablesStr, ",")
 	}
 
-	sourceConfig := DbConfig{Engine: *sourceEngine}
-	targetConfig := DbConfig{Engine: *targetEngine}
+	sourceConfig := DbConfig{Engine: sourceEngine}
+	targetConfig := DbConfig{Engine: targetEngine}
 
-	if *sourceEngine == "sqlite" {
-		sourceConfig.Sqlite.File = *sourceSqlitePath
+	if sourceEngine == "sqlite" {
+		sourceConfig.Sqlite.File = sourceSqlitePath
 	} else {
-		sourceConfig.Pgsql.Host = *sourcePgsqlHost
-		sourceConfig.Pgsql.Port = *sourcePgsqlPort
-		sourceConfig.Pgsql.Username = *sourcePgsqlUser
-		sourceConfig.Pgsql.Password = *sourcePgsqlPass
-		sourceConfig.Pgsql.Name = *sourcePgsqlDb
+		sourceConfig.Pgsql.Host = sourcePgsqlHost
+		sourceConfig.Pgsql.Port = sourcePgsqlPort
+		sourceConfig.Pgsql.Username = sourcePgsqlUser
+		sourceConfig.Pgsql.Password = sourcePgsqlPass
+		sourceConfig.Pgsql.Name = sourcePgsqlDb
 	}
 
-	if *targetEngine == "sqlite" {
-		targetConfig.Sqlite.File = *targetSqlitePath
+	if targetEngine == "sqlite" {
+		targetConfig.Sqlite.File = targetSqlitePath
 	} else {
-		targetConfig.Pgsql.Host = *targetPgsqlHost
-		targetConfig.Pgsql.Port = *targetPgsqlPort
-		targetConfig.Pgsql.Username = *targetPgsqlUser
-		targetConfig.Pgsql.Password = *targetPgsqlPass
-		targetConfig.Pgsql.Name = *targetPgsqlDb
+		targetConfig.Pgsql.Host = targetPgsqlHost
+		targetConfig.Pgsql.Port = targetPgsqlPort
+		targetConfig.Pgsql.Username = targetPgsqlUser
+		targetConfig.Pgsql.Password = targetPgsqlPass
+		targetConfig.Pgsql.Name = targetPgsqlDb
 	}
 
 	if err := migrateDatabase(sourceConfig, targetConfig, limitTables); err != nil {
-		logrus.Fatalf("Migration failed: %v", err)
+		return fmt.Errorf("migration failed: %v", err)
 	}
+
+	logrus.Info("Migration completed successfully")
+	return nil
 }
 
 func migrateDatabase(source, target DbConfig, limitTables []string) error {

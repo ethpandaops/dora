@@ -7,7 +7,10 @@ package api
 // @BasePath /api
 // @schemes http https
 
-// @securityDefinitions.basic BasicAuth
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
+// @description Type "Bearer" followed by a space and JWT token.
 
 // @tag.name Validator
 // @tag.description Validator related endpoints

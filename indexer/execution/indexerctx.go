@@ -148,6 +148,6 @@ func (ictx *IndexerCtx) getForksWithClients(clientType execution.ClientType) []*
 }
 
 // GetSystemContractAddress returns the address of a system contract from the first available client's config
-func (ictx *IndexerCtx) GetSystemContractAddress(contractType string) *common.Address {
+func (ictx *IndexerCtx) GetSystemContractAddress(contractType string) common.Address {
 	return ictx.executionPool.GetChainState().GetSystemContractAddress(contractType)
 }

@@ -42,12 +42,6 @@ type APIExecutionClientsResponse struct {
 func APIExecutionClients(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	// Check rate limit
-	if err := services.GlobalCallRateLimiter.CheckCallLimit(r, 1); err != nil {
-		http.Error(w, `{"error": "rate limit exceeded"}`, http.StatusTooManyRequests)
-		return
-	}
-
 	clients, err := getExecutionClientNodeInfo()
 	if err != nil {
 		logrus.WithError(err).Error("failed to get execution client node info")

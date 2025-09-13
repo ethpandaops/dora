@@ -2,9 +2,7 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/attestantio/go-eth2-client/spec/phase0"
@@ -17,44 +15,55 @@ import (
 	"github.com/ethpandaops/dora/utils"
 	dynssz "github.com/pk910/dynamic-ssz"
 	"github.com/sirupsen/logrus"
+	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
 
-func blockdbSync() {
-	flags := flag.NewFlagSet("blockdb-sync", flag.ExitOnError)
-	configPath := flags.String("config", "", "Path to the config file")
-	startEpoch := flags.Uint64("start", 0, "Start epoch")
-	endEpoch := flags.Uint64("end", 0, "End epoch")
-	clientName := flags.String("client", "", "Only use this specific client from config")
-	concurrency := flags.Int("concurrency", 1, "Number of concurrent slot processors")
-	verbose := flags.Bool("verbose", false, "Verbose output")
-	flags.Parse(os.Args[1:])
+var blockdbSyncCmd = &cobra.Command{
+	Use:   "blockdb-sync",
+	Short: "Sync blocks from beacon node to blockdb",
+	Long:  "Synchronize block data from beacon node to the block database for the specified epoch range",
+	RunE:  runBlockdbSync,
+}
 
-	if *configPath == "" {
-		fmt.Println("Error: config parameter is required")
-		os.Exit(1)
+func init() {
+	rootCmd.AddCommand(blockdbSyncCmd)
+
+	blockdbSyncCmd.Flags().StringP("config", "c", "", "Path to the config file (required)")
+	blockdbSyncCmd.Flags().Uint64P("start", "s", 0, "Start epoch")
+	blockdbSyncCmd.Flags().Uint64P("end", "e", 0, "End epoch")
+	blockdbSyncCmd.Flags().String("client", "", "Only use this specific client from config")
+	blockdbSyncCmd.Flags().IntP("concurrency", "j", 1, "Number of concurrent slot processors")
+	blockdbSyncCmd.Flags().BoolP("verbose", "v", false, "Verbose output")
+
+	blockdbSyncCmd.MarkFlagRequired("config")
+}
+
+func runBlockdbSync(cmd *cobra.Command, args []string) error {
+	configPath, _ := cmd.Flags().GetString("config")
+	startEpoch, _ := cmd.Flags().GetUint64("start")
+	endEpoch, _ := cmd.Flags().GetUint64("end")
+	clientName, _ := cmd.Flags().GetString("client")
+	concurrency, _ := cmd.Flags().GetInt("concurrency")
+	verbose, _ := cmd.Flags().GetBool("verbose")
+
+	if endEpoch < startEpoch {
+		return fmt.Errorf("end epoch must be greater than start epoch")
 	}
 
-	if *endEpoch < *startEpoch {
-		fmt.Println("Error: end epoch must be greater than start epoch")
-		os.Exit(1)
-	}
-
-	if *concurrency < 1 {
-		fmt.Println("Error: concurrency must be at least 1")
-		os.Exit(1)
+	if concurrency < 1 {
+		return fmt.Errorf("concurrency must be at least 1")
 	}
 
 	cfg := &types.Config{}
-	err := utils.ReadConfig(cfg, *configPath)
+	err := utils.ReadConfig(cfg, configPath)
 	if err != nil {
-		fmt.Printf("Error reading config file: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("error reading config file: %v", err)
 	}
 	utils.Config = cfg
 
 	logger := logrus.New()
-	if *verbose {
+	if verbose {
 		logger.SetLevel(logrus.DebugLevel)
 	} else {
 		logger.SetLevel(logrus.InfoLevel)
@@ -87,7 +96,7 @@ func blockdbSync() {
 	// Add consensus clients
 	for _, endpoint := range cfg.BeaconApi.Endpoints {
 		// Skip if client flag is set and doesn't match this endpoint
-		if *clientName != "" && endpoint.Name != *clientName {
+		if clientName != "" && endpoint.Name != clientName {
 			continue
 		}
 
@@ -115,14 +124,14 @@ func blockdbSync() {
 		}
 
 		// If using specific client, we can break after adding it
-		if *clientName != "" {
+		if clientName != "" {
 			break
 		}
 	}
 
 	if len(pool.GetAllEndpoints()) == 0 {
-		if *clientName != "" {
-			logger.Fatalf("Client '%s' not found in config", *clientName)
+		if clientName != "" {
+			logger.Fatalf("Client '%s' not found in config", clientName)
 		} else {
 			logger.Fatal("No beacon clients configured")
 		}
@@ -144,8 +153,8 @@ func blockdbSync() {
 	dynSsz := dynssz.NewDynSsz(staticSpec)
 
 	slotsPerEpoch := chainState.GetSpecs().SlotsPerEpoch
-	startSlot := *startEpoch * slotsPerEpoch
-	endSlot := (*endEpoch + 1) * slotsPerEpoch
+	startSlot := startEpoch * slotsPerEpoch
+	endSlot := (endEpoch + 1) * slotsPerEpoch
 
 	for {
 		client := pool.GetReadyEndpoint(consensus.AnyClient)
@@ -158,23 +167,23 @@ func blockdbSync() {
 		break
 	}
 
-	logger.Infof("Starting sync from epoch %d to %d (slots %d to %d)", *startEpoch, *endEpoch, startSlot, endSlot-1)
+	logger.Infof("Starting sync from epoch %d to %d (slots %d to %d)", startEpoch, endEpoch, startSlot, endSlot-1)
 
 	// Create channels for work distribution and synchronization
-	jobs := make(chan uint64, *concurrency)
-	results := make(chan slotResult, *concurrency)
+	jobs := make(chan uint64, concurrency)
+	results := make(chan slotResult, concurrency)
 	done := make(chan bool)
 
 	// Initialize epoch stats map
 	epochStats := make(map[uint64]*epochSummary)
-	for epoch := *startEpoch; epoch <= *endEpoch; epoch++ {
+	for epoch := startEpoch; epoch <= endEpoch; epoch++ {
 		epochStats[epoch] = &epochSummary{
 			processed: make(map[string]int),
 		}
 	}
 
 	// Start worker goroutines
-	for i := 0; i < *concurrency; i++ {
+	for i := 0; i < concurrency; i++ {
 		go func() {
 			for slot := range jobs {
 				result := processSlot(ctx, pool, dynSsz, slot, logger)
@@ -217,6 +226,7 @@ func blockdbSync() {
 	<-done
 
 	logger.Info("Sync completed")
+	return nil
 }
 
 type slotResult struct {
