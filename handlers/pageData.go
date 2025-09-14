@@ -224,7 +224,7 @@ func createMenuItems(active string) []types.MainMenuItem {
 			Links: []types.NavigationLink{
 				{
 					Label: "Withdrawal Requests",
-					Path:  "/validators/el_withdrawals",
+					Path:  "/validators/withdrawals",
 					Icon:  "fa-money-bill-transfer",
 				},
 				{

@@ -1,0 +1,349 @@
+{{ define "page" }}
+  <div class="container mt-2">
+    <div class="d-md-flex py-2 justify-content-md-between">
+      <h1 class="h4 mb-1 mb-md-0">
+        <i class="fas fa-money-bill-transfer mx-2"></i>Withdrawal Requests
+      </h1>
+      <nav aria-label="breadcrumb">
+        <ol class="breadcrumb font-size-1 mb-0" style="padding:0; background-color:transparent;">
+          <li class="breadcrumb-item"><a href="/" title="Home">Home</a></li>
+          <li class="breadcrumb-item"><a href="/validators" title="Validators">Validators</a></li>
+          <li class="breadcrumb-item active" aria-current="page">Withdrawal Requests</li>
+        </ol>
+      </nav>
+    </div>
+
+    <div class="card mt-2">
+      <div class="card-body px-0 py-2">
+        <!-- Withdrawal Stats -->
+        <div class="row mx-3 mb-3">
+          <div class="col-md-3">
+            <div class="card">
+              <div class="card-body text-center">
+                <h6 class="card-title text-muted mb-1">Total Requests</h6>
+                <h4 class="mb-0" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ .TotalWithdrawalCount }} total withdrawal requests">{{ formatAddCommas .TotalWithdrawalCount }}</h4>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-3">
+            <div class="card">
+              <div class="card-body text-center">
+                <h6 class="card-title text-muted mb-1">Queued Withdrawal Requests</h6>
+                <h4 class="mb-0" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ .WithdrawingValidatorCount }} validators being withdrawn">{{ formatAddCommas .WithdrawingValidatorCount }}</h4>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-3">
+            <div class="card">
+              <div class="card-body text-center">
+                <h6 class="card-title text-muted mb-1">Queued Withdrawal Amount</h6>
+                <h4 class="mb-0" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ formatFullEthFromGwei .WithdrawingAmount }} ETH being withdrawn">{{ formatFullEthFromGwei .WithdrawingAmount }}</h4>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-3">
+            <div class="card">
+              <div class="card-body text-center">
+                <h6 class="card-title text-muted mb-1">Queue Duration Est.</h6>
+                {{ if .HasQueueDuration }}
+                <h4 class="mb-0" data-timer="{{ .QueueDurationEstimate.Unix }}"><span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ .QueueDurationEstimate }}">{{ formatRecentTimeShort .QueueDurationEstimate }}</span></h4>
+                {{ else }}
+                <h4 class="mb-0">-</h4>
+                {{ end }}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <ul class="nav nav-tabs" id="withdrawalTabs" role="tablist">
+          <li class="nav-item" role="presentation">
+            <a class="nav-link {{ if eq .TabView "recent" }}active{{ end }}" id="recent-tab" data-lazy-tab="recent" data-bs-toggle="tab" data-bs-target="#recent" type="button" role="tab" href="?v=recent">
+              Withdrawal Requests
+            </a>
+          </li>
+          <li class="nav-item" role="presentation">
+            <a class="nav-link {{ if eq .TabView "queue" }}active{{ end }}" id="queue-tab" data-lazy-tab="queue" data-bs-toggle="tab" data-bs-target="#queue" type="button" role="tab" href="?v=queue">
+              Withdrawal Queue
+            </a>
+          </li>
+        </ul>
+
+        <div class="tab-content" id="withdrawalTabsContent">
+          <div class="tab-pane fade {{ if eq .TabView "recent" }}show active{{ end }}" id="recent" role="tabpanel" data-loaded="{{ if eq .TabView "recent" }}true{{ else }}false{{ end }}">
+            {{ if eq .TabView "recent" }}
+              {{ template "recentWithdrawals" . }}
+            {{ end }}
+          </div>
+
+          <div class="tab-pane fade {{ if eq .TabView "queue" }}show active{{ end }}" id="queue" role="tabpanel" data-loaded="{{ if eq .TabView "queue" }}true{{ else }}false{{ end }}">
+            {{ if eq .TabView "queue" }}
+              {{ template "queueWithdrawals" . }}
+            {{ end }}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+{{ end }}
+
+{{ define "lazyPage" }}
+  {{ if eq .TabView "recent" }}
+    {{ template "recentWithdrawals" . }}
+  {{ else if eq .TabView "queue" }}
+    {{ template "queueWithdrawals" . }}
+  {{ else }}
+    Unknown tab
+  {{ end }}
+{{ end }}
+
+{{ define "recentWithdrawals" }}
+<div class="container">
+  <div class="row">
+    <div class="col-sm-12 col-md-6">
+      <h5 class="mx-2">Recent Withdrawals</h6>
+    </div>
+    <div class="col-sm-12 col-md-6 table-search">
+      <div class="px-2" style="text-align: right;">
+        <a href="/validators/el_withdrawals">
+          <i class="fas fa-filter mx-2"></i>Filter All Withdrawals
+        </a>
+      </div>
+    </div>
+  </div>
+  <h6 class="m-2 text-muted">This table displays the most recent withdrawal requests.</h6>
+  <div class="table-responsive px-0 py-1 pt-2">
+    <table class="table table-nobr mb-0" id="recent_withdrawals">
+      <thead>
+        <tr>
+          <th>Slot</th>
+          <th>Time</th>
+          <th><span class="d-none d-lg-inline">Source </span>Address</th>
+          <th><span class="d-none d-lg-inline">Req. </span>Type</th>
+          <th>Validator</th>
+          <th>Amount</th>
+          <th>Transaction</th>
+          <th><span class="d-none d-lg-inline">Incl. </span>Status</th>
+        </tr>
+      </thead>
+      {{ if gt .RecentWithdrawalCount 0 }}
+        <tbody>
+          {{ range $i, $withdrawal := .RecentWithdrawals }}
+            <tr>
+              <td>
+                {{ if not $withdrawal.IsIncluded }}
+                  <span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Withdrawal request not included in the beacon chain yet">?</span>
+                {{ else }}
+                  <a href="/slot/{{ $withdrawal.SlotNumber }}">{{ formatAddCommas $withdrawal.SlotNumber }}</a>
+                {{ end }}
+              </td>
+              <td data-timer="{{ $withdrawal.Time.Unix }}"><span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $withdrawal.Time }}">{{ formatRecentTimeShort $withdrawal.Time }}</span></td>
+              <td>
+                <div class="d-flex">
+                  <span class="flex-grow-1 text-truncate" style="max-width: 300px;">
+                    {{ if $withdrawal.SourceAddr }}
+                      {{ ethAddressLink $withdrawal.SourceAddr }}
+                    {{ else }}
+                      ?
+                    {{ end }}
+                  </span>
+                  {{ if $withdrawal.SourceAddr }}
+                  <div>
+                    <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ formatEthAddress $withdrawal.SourceAddr }}"></i>
+                  </div>
+                  {{ end }}
+                </div>
+              </td>
+              <td>
+                {{- if eq $withdrawal.Amount 0 }}
+                  Exit
+                {{- else }}
+                  Withdrawal
+                {{- end }}
+              </td>
+              <td>
+                {{- if $withdrawal.ValidatorValid }}
+                  {{ formatValidatorWithIndex $withdrawal.ValidatorIndex $withdrawal.ValidatorName }}
+                {{- else }}
+                  <div class="d-flex">
+                    <span class="flex-grow-1 text-truncate" style="max-width: 150px;" data-bs-toggle="tooltip" title="pubkey not in validator set">0x{{ printf "%x" $withdrawal.PublicKey }}</span>
+                    <div>
+                      <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $withdrawal.PublicKey }}"></i>
+                    </div>
+                  </div>
+                {{- end }}
+              </td>
+              <td>{{ formatFullEthFromGwei $withdrawal.Amount }}</td>
+              <td>
+                {{- if $withdrawal.LinkedTransaction }}
+                <div class="d-flex">
+                  <span class="flex-grow-1 text-truncate text-monospace" style="max-width: 150px;">{{ ethTransactionLink $withdrawal.TransactionHash 0 }}</span>
+                  <div>
+                    <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $withdrawal.TransactionHash }}"></i>
+                  </div>
+                </div>
+                {{- else }}
+                <span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Corresponding withdrawal transaction has not been indexed yet.">?</span>
+                {{- end }}
+              </td>
+              <td>
+                {{ if eq $withdrawal.TxStatus 1 }}
+                  <span class="badge rounded-pill text-bg-success">Tx Included</span>
+                {{ else if eq $withdrawal.TxStatus 2 }}
+                  <span class="badge rounded-pill text-bg-info">Tx Orphaned</span>
+                {{ end }}
+                
+                {{ if eq $withdrawal.Status 0 }}
+                  <span class="badge rounded-pill text-bg-secondary">Req. Pending</span>
+                {{ else if eq $withdrawal.Status 1 }}
+                  {{ if eq $withdrawal.Result 0 }}
+                    <span class="badge rounded-pill text-bg-warning" data-bs-toggle="tooltip" title="Request was included but result is unknown">Req. Included</span>
+                  {{ else if eq $withdrawal.Result 1 }}
+                    <span class="badge rounded-pill text-bg-success">Req. Processed</span>
+                  {{ else }}
+                    <span class="badge rounded-pill text-bg-danger" data-bs-toggle="tooltip" data-bs-html="true" title="{{ $withdrawal.ResultMessage }}">Req. Failed</span>
+                  {{ end }}
+                {{ else if eq $withdrawal.Status 2 }}
+                  <span class="badge rounded-pill text-bg-info">Req. Orphaned</span>
+                {{ end }}
+              </td>
+            </tr>
+          {{ end }}
+        </tbody>
+      {{ else }}
+        <tbody>
+          <tr style="height: 430px;">
+            <td class="d-none d-md-table-cell"></td>
+            <td style="vertical-align: middle;" colspan="6">
+              <div class="img-fluid mx-auto p-3 d-flex align-items-center" style="max-height: 400px; max-width: 400px; overflow: hidden;">
+                {{ template "professor_svg" }}
+              </div>
+            </td>
+            <td class="d-none d-md-table-cell"></td>
+          </tr>
+        </tbody>
+      {{ end }}
+    </table>
+  </div>
+  <div class="text-center">
+    <a class="text-white" href="/validators/el_withdrawals">View more</a>
+  </div>
+</div>
+{{ end }}
+
+{{ define "queueWithdrawals" }}
+<div class="container">
+  <div class="row">
+    <div class="col-sm-12 col-md-6">
+      <h5 class="mx-2">Withdrawal Queue</h6>
+    </div>
+    <div class="col-sm-12 col-md-6 table-search">
+      <div class="px-2" style="text-align: right;">
+        <a href="/validators/queued_withdrawals">
+          <i class="fas fa-filter mx-2"></i>View Withdrawal Queue
+        </a>
+      </div>
+    </div>
+  </div>
+  <h6 class="m-2 text-muted">This table displays pending withdrawals in the queue.</h6>
+  <div class="table-responsive px-0 py-1 pt-2">
+    <table class="table table-nobr mb-0" id="queued_withdrawals">
+      <thead>
+        <tr>
+          <th>Validator</th>
+          <th>Amount</th>
+          <th>Status</th>
+          <th>Estimated Time</th>
+        </tr>
+      </thead>
+      {{ if gt .QueuedTabCount 0 }}
+        <tbody>
+          {{ range $i, $withdrawal := .QueuedWithdrawals }}
+            <tr>
+              <td>
+                {{ formatValidatorWithIndex $withdrawal.ValidatorIndex $withdrawal.ValidatorName }}
+              </td>
+              <td>
+                {{ formatFullEthFromGwei $withdrawal.Amount }}
+              </td>
+              <td>
+                {{- $withdrawal.ValidatorStatus -}}
+                {{- if $withdrawal.ShowUpcheck -}}
+                  {{- if eq $withdrawal.UpcheckActivity $withdrawal.UpcheckMaximum }}
+                    <i class="fas fa-power-off fa-sm text-success" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $withdrawal.UpcheckActivity }}/{{ $withdrawal.UpcheckMaximum }}"></i>
+                  {{- else if gt $withdrawal.UpcheckActivity 0 }}
+                    <i class="fas fa-power-off fa-sm text-warning" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $withdrawal.UpcheckActivity }}/{{ $withdrawal.UpcheckMaximum }}"></i>
+                  {{- else }}
+                    <i class="fas fa-power-off fa-sm text-danger" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $withdrawal.UpcheckActivity }}/{{ $withdrawal.UpcheckMaximum }}"></i>
+                  {{- end -}}
+                {{- end -}}
+              </td>
+              <td>
+                {{ if $withdrawal.EstimatedTime.IsZero }}
+                  <span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Withdrawal time not calculated yet">-</span>
+                {{ else }}
+                  <span data-timer="{{ $withdrawal.EstimatedTime.Unix }}" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $withdrawal.EstimatedTime }}">
+                    {{ formatRecentTimeShort $withdrawal.EstimatedTime }}
+                  </span>
+                {{ end }}
+              </td>
+            </tr>
+          {{ end }}
+        </tbody>
+      {{ else }}
+        <tbody>
+          <tr style="height: 430px;">
+            <td style="vertical-align: middle;" colspan="4">
+              <div class="img-fluid mx-auto p-3 d-flex align-items-center" style="max-height: 400px; max-width: 400px; overflow: hidden;">
+                {{ template "professor_svg" }}
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      {{ end }}
+    </table>
+  </div>
+  <div class="text-center">
+    <a class="text-white" href="/validators/queued_withdrawals">View more</a>
+  </div>
+</div>
+{{ end }}
+
+{{ define "js" }}
+<script type="text/javascript">
+  $(document).ready(function() {
+    const tabEl = document.querySelectorAll('a[data-lazy-tab]')
+    Array.from(tabEl).forEach(el => {
+      el.addEventListener('click', onTabSelected);
+    });
+
+    function onTabSelected(event) {
+      event.preventDefault();
+      var tabId = event.target.getAttribute('data-lazy-tab');
+      var tabEl = document.getElementById(tabId);
+      if (!$(tabEl).data("loaded")) {
+        $.get(event.target.getAttribute('href') + "&lazy=true", function(data) {
+          $(tabEl).html(data);
+          $(tabEl).data("loaded", true);
+          explorer.initControls();
+        });
+      }
+
+      var tab = new bootstrap.Tab(tabEl);
+      tab.show();
+
+      window.history.replaceState(null, document.title, "/validators/withdrawals" + event.target.getAttribute('href'));
+    }
+  });
+</script>
+{{ end }}
+
+{{ define "css" }}
+<style>
+.nav-tabs {
+  padding: 0 1rem;
+}
+.tab-content {
+  padding-top: 1rem;
+}
+</style>
+{{ end }}
