@@ -229,7 +229,7 @@ func createMenuItems(active string) []types.MainMenuItem {
 				},
 				{
 					Label: "Consolidation Requests",
-					Path:  "/validators/el_consolidations",
+					Path:  "/validators/consolidations",
 					Icon:  "fa-square-plus",
 				},
 			},
