@@ -6,17 +6,17 @@ import (
 
 // ConsolidationsPageData is a struct to hold info for the consolidations overview page
 type ConsolidationsPageData struct {
-	TotalConsolidationCount      uint64                                       `json:"total_consolidation_count"`
-	ConsolidatingValidatorCount  uint64                                       `json:"consolidating_validator_count"`
-	ConsolidatingAmount          uint64                                       `json:"consolidating_amount"`
-	QueuedConsolidationCount     uint64                                       `json:"queued_consolidation_count"`
-	QueueDurationEstimate        time.Time                                    `json:"queue_duration_estimate"`
-	HasQueueDuration             bool                                         `json:"has_queue_duration"`
-	RecentConsolidations         []*ConsolidationsPageDataRecentConsolidation `json:"recent_consolidations"`
-	RecentConsolidationCount     uint64                                       `json:"recent_consolidation_count"`
-	QueuedConsolidations     []*ConsolidationsPageDataQueuedConsolidation `json:"queued_consolidations"`
-	QueuedTabCount           uint64                                       `json:"queued_tab_count"`
-	TabView                      string                                       `json:"tab_view"`
+	TotalConsolidationCount     uint64                                       `json:"total_consolidation_count"`
+	ConsolidatingValidatorCount uint64                                       `json:"consolidating_validator_count"`
+	ConsolidatingAmount         uint64                                       `json:"consolidating_amount"`
+	QueuedConsolidationCount    uint64                                       `json:"queued_consolidation_count"`
+	QueueDurationEstimate       time.Time                                    `json:"queue_duration_estimate"`
+	HasQueueDuration            bool                                         `json:"has_queue_duration"`
+	RecentConsolidations        []*ConsolidationsPageDataRecentConsolidation `json:"recent_consolidations"`
+	RecentConsolidationCount    uint64                                       `json:"recent_consolidation_count"`
+	QueuedConsolidations        []*ConsolidationsPageDataQueuedConsolidation `json:"queued_consolidations"`
+	QueuedTabCount              uint64                                       `json:"queued_tab_count"`
+	TabView                     string                                       `json:"tab_view"`
 }
 
 type ConsolidationsPageDataRecentConsolidation struct {
