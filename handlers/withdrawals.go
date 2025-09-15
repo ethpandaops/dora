@@ -103,19 +103,21 @@ func buildWithdrawalsPageData(firstEpoch uint64, pageSize uint64, tabView string
 	}
 
 	zeroAmount := uint64(0)
+	oneAmount := uint64(1)
+
 	_, _, totalWithdrawals := services.GlobalBeaconService.GetWithdrawalRequestsByFilter(&services.CombinedWithdrawalRequestFilter{
 		Filter: &dbtypes.WithdrawalRequestFilter{
 			WithOrphaned: 1,
-			MaxAmount:    &zeroAmount,
+			MinAmount:    &oneAmount,
 		},
 	}, 0, 1)
 	pageData.TotalWithdrawalCount = totalWithdrawals
 
-	oneAmount := uint64(1)
 	_, _, totalExits := services.GlobalBeaconService.GetWithdrawalRequestsByFilter(&services.CombinedWithdrawalRequestFilter{
 		Filter: &dbtypes.WithdrawalRequestFilter{
 			WithOrphaned: 1,
-			MinAmount:    &oneAmount,
+
+			MaxAmount: &zeroAmount,
 		},
 	}, 0, 1)
 	pageData.TotalExitCount = totalExits
