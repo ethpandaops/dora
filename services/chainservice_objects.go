@@ -82,13 +82,17 @@ func (bs *ChainService) GetVoluntaryExitsByFilter(filter *dbtypes.VoluntaryExitF
 
 	// load older objects from db
 	dbPage := pageIdx - cachedPages
+	if cachedPages > pageIdx {
+		dbPage = 0
+	}
+
 	dbCacheOffset := uint64(pageSize) - (cachedMatchesLen % uint64(pageSize))
 
 	var dbObjects []*dbtypes.VoluntaryExit
 	var dbCount uint64
 	var err error
 
-	if resIdx > int(pageSize) {
+	if resIdx >= int(pageSize) {
 		// all results from cache, just get result count from db
 		_, dbCount, err = db.GetVoluntaryExitsFiltered(0, 1, uint64(finalizedBlock), filter)
 	} else if dbPage == 0 {
