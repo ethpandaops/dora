@@ -205,8 +205,8 @@ func createMenuItems(active string) []types.MainMenuItem {
 				Icon:  "fa-file-signature",
 			},
 			{
-				Label: "Voluntary Exits",
-				Path:  "/validators/voluntary_exits",
+				Label: "Exits",
+				Path:  "/validators/exits",
 				Icon:  "fa-door-open",
 			},
 			{
