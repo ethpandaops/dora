@@ -288,6 +288,7 @@ func startApi(router *mux.Router) {
 		{"/v1/validator/withdrawalCredentials/{withdrawalCredentialsOrEth1address}", api.ApiWithdrawalCredentialsValidatorsV1, []string{"GET", "OPTIONS"}, 1},
 		{"/v1/validator/{indexOrPubkey}/deposits", api.ApiValidatorDepositsV1, []string{"GET", "OPTIONS"}, 1},
 		{"/v1/validators", api.APIValidatorsV1, []string{"GET", "OPTIONS"}, 1},
+		{"/v1/validators/activity", api.APIValidatorsActivityV1, []string{"GET", "OPTIONS"}, 2},
 		{"/v1/validator_names", api.APIValidatorNamesV1, []string{"GET", "POST", "OPTIONS"}, 1},
 
 		// Epoch and slot APIs

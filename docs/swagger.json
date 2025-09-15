@@ -1759,6 +1759,79 @@
                 }
             }
         },
+        "/v1/validators/activity": {
+            "get": {
+                "description": "Returns aggregated validator activity statistics with grouping and filtering options",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "validators"
+                ],
+                "summary": "Get validators activity statistics",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Number of groups to return (max 1000, default 50)",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page number (starts at 1)",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Grouping option: 1=by 100k indexes, 2=by 10k indexes, 3=by validator names (default: 3 if names available, else 1)",
+                        "name": "group",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Search term for group names (supports regex)",
+                        "name": "search",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Sort order: group, group-d, count, count-d, active, active-d, online, online-d, offline, offline-d, exited, exited-d, slashed, slashed-d (default: group)",
+                        "name": "order",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIValidatorsActivityResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid parameters",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/v1/voluntary_exits": {
             "get": {
                 "description": "Returns a list of voluntary exits with detailed information and filtering options",
@@ -3613,6 +3686,32 @@
                 }
             }
         },
+        "api.APIValidatorActivityGroup": {
+            "type": "object",
+            "properties": {
+                "activated": {
+                    "type": "integer"
+                },
+                "exited": {
+                    "type": "integer"
+                },
+                "group": {
+                    "type": "string"
+                },
+                "offline": {
+                    "type": "integer"
+                },
+                "online": {
+                    "type": "integer"
+                },
+                "slashed": {
+                    "type": "integer"
+                },
+                "validators": {
+                    "type": "integer"
+                }
+            }
+        },
         "api.APIValidatorInfo": {
             "type": "object",
             "properties": {
@@ -3736,6 +3835,62 @@
                 },
                 "total_eligible_ether": {
                     "type": "integer"
+                }
+            }
+        },
+        "api.APIValidatorsActivityData": {
+            "type": "object",
+            "properties": {
+                "current_epoch": {
+                    "type": "integer"
+                },
+                "finalized_epoch": {
+                    "type": "integer"
+                },
+                "first_group": {
+                    "type": "integer"
+                },
+                "group_by": {
+                    "description": "Filter and grouping options",
+                    "type": "integer"
+                },
+                "group_count": {
+                    "type": "integer"
+                },
+                "groups": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/api.APIValidatorActivityGroup"
+                    }
+                },
+                "last_group": {
+                    "type": "integer"
+                },
+                "page_index": {
+                    "type": "integer"
+                },
+                "search_term": {
+                    "type": "string"
+                },
+                "sorting": {
+                    "type": "string"
+                },
+                "total_groups": {
+                    "type": "integer"
+                },
+                "total_pages": {
+                    "type": "integer"
+                }
+            }
+        },
+        "api.APIValidatorsActivityResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/api.APIValidatorsActivityData"
+                },
+                "status": {
+                    "type": "string"
                 }
             }
         },

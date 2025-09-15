@@ -1087,6 +1087,23 @@ definitions:
       status:
         type: string
     type: object
+  api.APIValidatorActivityGroup:
+    properties:
+      activated:
+        type: integer
+      exited:
+        type: integer
+      group:
+        type: string
+      offline:
+        type: integer
+      online:
+        type: integer
+      slashed:
+        type: integer
+      validators:
+        type: integer
+    type: object
   api.APIValidatorInfo:
     properties:
       activation_epoch:
@@ -1168,6 +1185,43 @@ definitions:
         type: integer
       total_eligible_ether:
         type: integer
+    type: object
+  api.APIValidatorsActivityData:
+    properties:
+      current_epoch:
+        type: integer
+      finalized_epoch:
+        type: integer
+      first_group:
+        type: integer
+      group_by:
+        description: Filter and grouping options
+        type: integer
+      group_count:
+        type: integer
+      groups:
+        items:
+          $ref: '#/definitions/api.APIValidatorActivityGroup'
+        type: array
+      last_group:
+        type: integer
+      page_index:
+        type: integer
+      search_term:
+        type: string
+      sorting:
+        type: string
+      total_groups:
+        type: integer
+      total_pages:
+        type: integer
+    type: object
+  api.APIValidatorsActivityResponse:
+    properties:
+      data:
+        $ref: '#/definitions/api.APIValidatorsActivityData'
+      status:
+        type: string
     type: object
   api.APIValidatorsData:
     properties:
@@ -2598,6 +2652,58 @@ paths:
               type: string
             type: object
       summary: Get validators list
+      tags:
+      - validators
+  /v1/validators/activity:
+    get:
+      consumes:
+      - application/json
+      description: Returns aggregated validator activity statistics with grouping
+        and filtering options
+      parameters:
+      - description: Number of groups to return (max 1000, default 50)
+        in: query
+        name: limit
+        type: integer
+      - description: Page number (starts at 1)
+        in: query
+        name: page
+        type: integer
+      - description: 'Grouping option: 1=by 100k indexes, 2=by 10k indexes, 3=by validator
+          names (default: 3 if names available, else 1)'
+        in: query
+        name: group
+        type: integer
+      - description: Search term for group names (supports regex)
+        in: query
+        name: search
+        type: string
+      - description: 'Sort order: group, group-d, count, count-d, active, active-d,
+          online, online-d, offline, offline-d, exited, exited-d, slashed, slashed-d
+          (default: group)'
+        in: query
+        name: order
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.APIValidatorsActivityResponse'
+        "400":
+          description: Invalid parameters
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get validators activity statistics
       tags:
       - validators
   /v1/voluntary_exits:
