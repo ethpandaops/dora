@@ -63,6 +63,7 @@ func generateToken(cmd *cobra.Command) error {
 	// Get flags
 	name, _ := cmd.Flags().GetString("name")
 	rateLimit, _ := cmd.Flags().GetUint("rate-limit")
+	perIpRateLimit, _ := cmd.Flags().GetBool("per-ip-rate-limit")
 	duration, _ := cmd.Flags().GetString("duration")
 	secret, _ := cmd.Flags().GetString("secret")
 	configPath, _ := cmd.Flags().GetString("config")
@@ -93,6 +94,7 @@ func generateToken(cmd *cobra.Command) error {
 	claims := &types.APITokenClaims{
 		Name:           name,
 		RateLimit:      rateLimit,
+		PerIpRateLimit: perIpRateLimit,
 		CorsOrigins:    corsOrigins,
 		DomainPatterns: domainPatterns,
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -127,6 +129,7 @@ func generateToken(cmd *cobra.Command) error {
 	} else {
 		fmt.Printf("%d requests/minute\n", rateLimit)
 	}
+	fmt.Printf("Per IP Rate Limit: %t\n", perIpRateLimit)
 	fmt.Printf("CORS Origins: ")
 	if len(corsOrigins) == 0 {
 		fmt.Printf("Uses global config\n")

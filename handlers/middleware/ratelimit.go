@@ -150,7 +150,11 @@ func (m *RateLimitMiddleware) Middleware(next http.Handler) http.Handler {
 				rateLimit = 0 // No rate limit for unlimited tokens
 			}
 
-			rateLimitKey = fmt.Sprintf("token:%s", tokenInfo.Name)
+			if tokenInfo.PerIpRateLimit {
+				rateLimitKey = fmt.Sprintf("token:%s:ip:%s", tokenInfo.Name, clientIP)
+			} else {
+				rateLimitKey = fmt.Sprintf("token:%s", tokenInfo.Name)
+			}
 		} else {
 			// Unauthenticated request - use IP-based rate limiting
 			rateLimitKey = fmt.Sprintf("ip:%s", clientIP)

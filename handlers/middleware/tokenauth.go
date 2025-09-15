@@ -49,6 +49,7 @@ func (m *TokenAuthMiddleware) authenticateToken(tokenString string) (*types.APIT
 		tokenInfo := &types.APITokenInfo{
 			Name:           claims.Name,
 			RateLimit:      claims.RateLimit,
+			PerIpRateLimit: claims.PerIpRateLimit,
 			CorsOrigins:    claims.CorsOrigins,
 			DomainPatterns: claims.DomainPatterns,
 			IssuedAt:       claims.IssuedAt.Time,
