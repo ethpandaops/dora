@@ -60,7 +60,18 @@ jobs:
         fi
         echo "changelog<<EOF" >> $GITHUB_OUTPUT
         echo " - ${changelog//$'\n'/$'\n' - }" >> $GITHUB_OUTPUT
+        echo " - ${changelog//$'\n'/$'\n' - }" >> ./generated_changelog.txt
         echo "EOF" >> $GITHUB_OUTPUT
+
+    - name: "Generate AI release notes"
+      id: ai_release_notes
+      run: |
+        ./.github/scripts/ai-release-notes.sh "$(cat ./generated_changelog.txt)"
+      env:
+        OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL }}
+        OPENROUTER_TOKEN: ${{ secrets.OPENROUTER_TOKEN }}
+        GITHUB_TOKEN: ${{ github.token }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
 
     # download build artifacts
     - name: "Download build artifacts"
@@ -77,7 +88,7 @@ jobs:
         tag_name: "v${{ inputs.version }}"
         body: |
           ### Major Changes
-          * ...
+          ${{ steps.ai_release_notes.outputs.release_notes }}
 
           <details>
             <summary>Full changelog</summary>
