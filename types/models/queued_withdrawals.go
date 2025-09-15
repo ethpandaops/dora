@@ -33,14 +33,14 @@ type QueuedWithdrawalsPageData struct {
 }
 
 type QueuedWithdrawalsPageDataWithdrawal struct {
-	ValidatorIndex     uint64    `json:"validator_index"`
-	ValidatorName      string    `json:"validator_name"`
-	ValidatorStatus    string    `json:"validator_status"`
-	PublicKey          []byte    `json:"pubkey"`
-	Amount             uint64    `json:"amount"`
-	WithdrawableEpoch  uint64    `json:"withdrawable_epoch"`
-	EstimatedTime      time.Time `json:"estimated_time"`
-	ShowUpcheck        bool      `json:"show_upcheck"`
-	UpcheckActivity    uint8     `json:"upcheck_act"`
-	UpcheckMaximum     uint8     `json:"upcheck_max"`
+	ValidatorIndex    uint64    `json:"validator_index"`
+	ValidatorName     string    `json:"validator_name"`
+	ValidatorStatus   string    `json:"validator_status"`
+	PublicKey         []byte    `json:"pubkey"`
+	Amount            uint64    `json:"amount"`
+	WithdrawableEpoch uint64    `json:"withdrawable_epoch"`
+	EstimatedTime     time.Time `json:"estimated_time"`
+	ShowUpcheck       bool      `json:"show_upcheck"`
+	UpcheckActivity   uint8     `json:"upcheck_act"`
+	UpcheckMaximum    uint8     `json:"upcheck_max"`
 }

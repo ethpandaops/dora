@@ -6,12 +6,13 @@ import (
 
 // WithdrawalsPageData is a struct to hold info for the withdrawals overview page
 type WithdrawalsPageData struct {
-	TotalWithdrawalCount      uint64 `json:"total_withdrawal_count"`
-	WithdrawingValidatorCount uint64 `json:"withdrawing_validator_count"`
-	WithdrawingAmount         uint64 `json:"withdrawing_amount"`
-	QueuedWithdrawalCount     uint64 `json:"queued_withdrawal_count"`
+	TotalWithdrawalCount      uint64    `json:"total_withdrawal_count"`
+	TotalExitCount            uint64    `json:"total_exit_count"`
+	WithdrawingValidatorCount uint64    `json:"withdrawing_validator_count"`
+	WithdrawingAmount         uint64    `json:"withdrawing_amount"`
+	QueuedWithdrawalCount     uint64    `json:"queued_withdrawal_count"`
 	QueueDurationEstimate     time.Time `json:"queue_duration_estimate"`
-	HasQueueDuration          bool   `json:"has_queue_duration"`
+	HasQueueDuration          bool      `json:"has_queue_duration"`
 
 	TabView string `json:"tab_view"`
 
@@ -42,14 +43,14 @@ type WithdrawalsPageDataRecentWithdrawal struct {
 }
 
 type WithdrawalsPageDataQueuedWithdrawal struct {
-	ValidatorIndex     uint64    `json:"validator_index"`
-	ValidatorName      string    `json:"validator_name"`
-	ValidatorStatus    string    `json:"validator_status"`
-	PublicKey          []byte    `json:"pubkey"`
-	Amount             uint64    `json:"amount"`
-	WithdrawableEpoch  uint64    `json:"withdrawable_epoch"`
-	EstimatedTime      time.Time `json:"estimated_time"`
-	ShowUpcheck        bool      `json:"show_upcheck"`
-	UpcheckActivity    uint8     `json:"upcheck_act"`
-	UpcheckMaximum     uint8     `json:"upcheck_max"`
+	ValidatorIndex    uint64    `json:"validator_index"`
+	ValidatorName     string    `json:"validator_name"`
+	ValidatorStatus   string    `json:"validator_status"`
+	PublicKey         []byte    `json:"pubkey"`
+	Amount            uint64    `json:"amount"`
+	WithdrawableEpoch uint64    `json:"withdrawable_epoch"`
+	EstimatedTime     time.Time `json:"estimated_time"`
+	ShowUpcheck       bool      `json:"show_upcheck"`
+	UpcheckActivity   uint8     `json:"upcheck_act"`
+	UpcheckMaximum    uint8     `json:"upcheck_max"`
 }

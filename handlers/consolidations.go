@@ -117,8 +117,8 @@ func buildConsolidationsPageData(firstEpoch uint64, pageSize uint64, tabView str
 	if len(queuedConsolidations) > 0 {
 		lastQueueEntry := queuedConsolidations[0]
 		if lastQueueEntry.SrcValidator != nil && lastQueueEntry.SrcValidator.Validator != nil {
-			exitEpoch := lastQueueEntry.SrcValidator.Validator.ExitEpoch
-			pageData.QueueDurationEstimate = chainState.EpochToTime(exitEpoch)
+			withdrawableEpoch := lastQueueEntry.SrcValidator.Validator.WithdrawableEpoch
+			pageData.QueueDurationEstimate = chainState.EpochToTime(withdrawableEpoch)
 			pageData.HasQueueDuration = true
 		}
 	}
@@ -216,10 +216,10 @@ func buildConsolidationsPageData(firstEpoch uint64, pageSize uint64, tabView str
 				// Get public key from validator
 				queueData.SourcePublicKey = queueEntry.SrcValidator.Validator.PublicKey[:]
 
-				if queueEntry.SrcValidator.Validator.ExitEpoch != math.MaxUint64 {
-					queueData.EstimatedTime = chainState.EpochToTime(queueEntry.SrcValidator.Validator.ExitEpoch)
+				if queueEntry.SrcValidator.Validator.WithdrawableEpoch != math.MaxUint64 {
+					queueData.EstimatedTime = chainState.EpochToTime(queueEntry.SrcValidator.Validator.WithdrawableEpoch)
 				} else {
-					// ExitEpoch not set yet for pending consolidation
+					// WithdrawableEpoch not set yet for pending consolidation
 					queueData.EstimatedTime = time.Time{}
 				}
 			}

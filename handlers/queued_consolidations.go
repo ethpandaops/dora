@@ -202,10 +202,10 @@ func buildFilteredQueuedConsolidationsPageData(pageIdx uint64, pageSize uint64, 
 			// Get public key from validator
 			consolidationData.SourcePublicKey = queueEntry.SrcValidator.Validator.PublicKey[:]
 
-			if queueEntry.SrcValidator.Validator.ExitEpoch != math.MaxUint64 {
-				consolidationData.EstimatedTime = chainState.EpochToTime(queueEntry.SrcValidator.Validator.ExitEpoch)
+			if queueEntry.SrcValidator.Validator.WithdrawableEpoch != math.MaxUint64 {
+				consolidationData.EstimatedTime = chainState.EpochToTime(queueEntry.SrcValidator.Validator.WithdrawableEpoch)
 			} else {
-				// ExitEpoch not set yet for pending consolidation
+				// WithdrawableEpoch not set yet for pending consolidation
 				consolidationData.EstimatedTime = time.Time{}
 			}
 		}

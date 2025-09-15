@@ -21,7 +21,10 @@
             <div class="card">
               <div class="card-body text-center">
                 <h6 class="card-title text-muted mb-1">Total Requests</h6>
-                <h4 class="mb-0" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ .TotalWithdrawalCount }} total withdrawal requests">{{ formatAddCommas .TotalWithdrawalCount }}</h4>
+                <h4 class="mb-0">
+                  <span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ .TotalWithdrawalCount }} total withdrawal requests">{{ formatAddCommas .TotalWithdrawalCount }}</span> /
+                  <span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ .TotalExitCount }} total el triggered exit requests">{{ formatAddCommas .TotalExitCount }}</span>
+                </h4>
               </div>
             </div>
           </div>

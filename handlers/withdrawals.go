@@ -102,18 +102,34 @@ func buildWithdrawalsPageData(firstEpoch uint64, pageSize uint64, tabView string
 		pageData.HasQueueDuration = true
 	}
 
-	withdrawalFilter := &services.CombinedWithdrawalRequestFilter{
+	zeroAmount := uint64(0)
+	_, _, totalWithdrawals := services.GlobalBeaconService.GetWithdrawalRequestsByFilter(&services.CombinedWithdrawalRequestFilter{
 		Filter: &dbtypes.WithdrawalRequestFilter{
 			WithOrphaned: 1,
+			MaxAmount:    &zeroAmount,
 		},
-	}
-
-	dbWithdrawals, _, totalWithdrawals := services.GlobalBeaconService.GetWithdrawalRequestsByFilter(withdrawalFilter, 0, uint32(20))
+	}, 0, 1)
 	pageData.TotalWithdrawalCount = totalWithdrawals
+
+	oneAmount := uint64(1)
+	_, _, totalExits := services.GlobalBeaconService.GetWithdrawalRequestsByFilter(&services.CombinedWithdrawalRequestFilter{
+		Filter: &dbtypes.WithdrawalRequestFilter{
+			WithOrphaned: 1,
+			MinAmount:    &oneAmount,
+		},
+	}, 0, 1)
+	pageData.TotalExitCount = totalExits
 
 	// Only load data for the selected tab
 	switch tabView {
 	case "recent":
+		withdrawalFilter := &services.CombinedWithdrawalRequestFilter{
+			Filter: &dbtypes.WithdrawalRequestFilter{
+				WithOrphaned: 1,
+			},
+		}
+
+		dbWithdrawals, _, _ := services.GlobalBeaconService.GetWithdrawalRequestsByFilter(withdrawalFilter, 0, uint32(20))
 		for _, withdrawal := range dbWithdrawals {
 			withdrawalData := &models.WithdrawalsPageDataRecentWithdrawal{
 				SourceAddr: withdrawal.SourceAddress(),
