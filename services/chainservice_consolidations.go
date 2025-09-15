@@ -4,12 +4,15 @@ import (
 	"bytes"
 	"strings"
 
+	v1 "github.com/attestantio/go-eth2-client/api/v1"
+	"github.com/attestantio/go-eth2-client/spec/electra"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/indexer/beacon"
 	"github.com/prysmaticlabs/prysm/v5/container/slice"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/exp/maps"
 )
 
 type CombinedConsolidationRequest struct {
@@ -315,4 +318,118 @@ func (bs *ChainService) GetConsolidationRequestOperationsByFilter(filter *dbtype
 	}
 
 	return resObjs, cachedMatchesLen + dbCount
+}
+
+type ConsolidationQueueEntry struct {
+	QueuePos         uint64
+	SrcIndex         phase0.ValidatorIndex
+	TgtIndex         phase0.ValidatorIndex
+	SrcValidator     *v1.Validator
+	TgtValidator     *v1.Validator
+	SrcValidatorName string
+	TgtValidatorName string
+}
+
+type ConsolidationQueueFilter struct {
+	MinSrcIndex   *uint64
+	MaxSrcIndex   *uint64
+	MinTgtIndex   *uint64
+	MaxTgtIndex   *uint64
+	PublicKey     []byte
+	ValidatorName string
+	ReverseOrder  bool
+}
+
+func (bs *ChainService) GetConsolidationQueueByFilter(filter *ConsolidationQueueFilter, offset uint64, limit uint64) ([]*ConsolidationQueueEntry, uint64) {
+	epochStats, _ := bs.GetRecentEpochStats(nil)
+	if epochStats == nil {
+		return nil, 0
+	}
+
+	var filterIndex *phase0.ValidatorIndex
+	if len(filter.PublicKey) > 0 {
+		if index, found := bs.beaconIndexer.GetValidatorIndexByPubkey(phase0.BLSPubKey(filter.PublicKey)); found {
+			filterIndex = &index
+		}
+	}
+
+	pendingConsolidations := epochStats.PendingConsolidations
+	if filter.ReverseOrder {
+		revConsolidations := make([]electra.PendingConsolidation, len(pendingConsolidations))
+		for idx, consolidation := range pendingConsolidations {
+			revConsolidations[len(pendingConsolidations)-idx-1] = consolidation
+		}
+		pendingConsolidations = revConsolidations
+	}
+
+	queue := []*ConsolidationQueueEntry{}
+	validatorIndexesMap := map[phase0.ValidatorIndex]bool{}
+	for idx, consolidation := range pendingConsolidations {
+		if filter.MinSrcIndex != nil && consolidation.SourceIndex < phase0.ValidatorIndex(*filter.MinSrcIndex) {
+			continue
+		}
+		if filter.MaxSrcIndex != nil && consolidation.SourceIndex > phase0.ValidatorIndex(*filter.MaxSrcIndex) {
+			continue
+		}
+		if filter.MinTgtIndex != nil && consolidation.TargetIndex < phase0.ValidatorIndex(*filter.MinTgtIndex) {
+			continue
+		}
+		if filter.MaxTgtIndex != nil && consolidation.TargetIndex > phase0.ValidatorIndex(*filter.MaxTgtIndex) {
+			continue
+		}
+		if filterIndex != nil && consolidation.SourceIndex != *filterIndex && consolidation.TargetIndex != *filterIndex {
+			continue
+		}
+
+		srcName := bs.validatorNames.GetValidatorName(uint64(consolidation.SourceIndex))
+		tgtName := bs.validatorNames.GetValidatorName(uint64(consolidation.TargetIndex))
+
+		if filter.ValidatorName != "" && !strings.Contains(srcName, filter.ValidatorName) && !strings.Contains(tgtName, filter.ValidatorName) {
+			continue
+		}
+
+		validatorIndexesMap[consolidation.SourceIndex] = true
+		validatorIndexesMap[consolidation.TargetIndex] = true
+
+		queue = append(queue, &ConsolidationQueueEntry{
+			QueuePos:         uint64(idx),
+			SrcIndex:         consolidation.SourceIndex,
+			TgtIndex:         consolidation.TargetIndex,
+			SrcValidatorName: srcName,
+			TgtValidatorName: tgtName,
+		})
+
+		if len(queue) > int(offset+limit) {
+			break
+		}
+	}
+
+	validatorIndexes := maps.Keys(validatorIndexesMap)
+	if len(validatorIndexes) == 0 {
+		return []*ConsolidationQueueEntry{}, 0
+	}
+
+	validators, _ := bs.GetFilteredValidatorSet(&dbtypes.ValidatorFilter{
+		Indices: validatorIndexes,
+	}, false)
+
+	validatorsMap := map[phase0.ValidatorIndex]*v1.Validator{}
+	for idx, validator := range validators {
+		validatorsMap[validator.Index] = &validators[idx]
+	}
+
+	for _, entry := range queue {
+		entry.SrcValidator = validatorsMap[entry.SrcIndex]
+		entry.TgtValidator = validatorsMap[entry.TgtIndex]
+	}
+
+	if len(queue) < int(offset) {
+		return []*ConsolidationQueueEntry{}, uint64(len(queue))
+	}
+
+	if len(queue) > int(offset+limit) {
+		return queue[offset : offset+limit], uint64(len(queue))
+	}
+
+	return queue[offset:], uint64(len(queue))
 }

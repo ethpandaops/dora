@@ -205,8 +205,8 @@ func createMenuItems(active string) []types.MainMenuItem {
 				Icon:  "fa-file-signature",
 			},
 			{
-				Label: "Voluntary Exits",
-				Path:  "/validators/voluntary_exits",
+				Label: "Exits",
+				Path:  "/validators/exits",
 				Icon:  "fa-door-open",
 			},
 			{
@@ -224,12 +224,12 @@ func createMenuItems(active string) []types.MainMenuItem {
 			Links: []types.NavigationLink{
 				{
 					Label: "Withdrawal Requests",
-					Path:  "/validators/el_withdrawals",
+					Path:  "/validators/withdrawals",
 					Icon:  "fa-money-bill-transfer",
 				},
 				{
 					Label: "Consolidation Requests",
-					Path:  "/validators/el_consolidations",
+					Path:  "/validators/consolidations",
 					Icon:  "fa-square-plus",
 				},
 			},
