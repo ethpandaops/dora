@@ -2,45 +2,29 @@
   <div class="container mt-2">
     <div class="d-md-flex py-2 justify-content-md-between">
       <h1 class="h4 mb-1 mb-md-0">
-        <i class="fas fa-door-open mx-2"></i>Voluntary Exits
+        <i class="fas fa-money-bill-transfer mx-2"></i>Queued Withdrawals
       </h1>
       <nav aria-label="breadcrumb">
         <ol class="breadcrumb font-size-1 mb-0" style="padding:0; background-color:transparent;">
           <li class="breadcrumb-item"><a href="/" title="Home">Home</a></li>
           <li class="breadcrumb-item"><a href="/validators" title="Validators">Validators</a></li>
-          <li class="breadcrumb-item"><a href="/validators/exits" title="Exits">Exits</a></li>
-          <li class="breadcrumb-item active" aria-current="page">Voluntary Exits</li>
+          <li class="breadcrumb-item"><a href="/validators/withdrawals" title="Withdrawal Requests">Withdrawal Requests</a></li>
+          <li class="breadcrumb-item active" aria-current="page">Queue</li>
         </ol>
       </nav>
     </div>
 
     <div id="header-placeholder" style="height:35px;"></div>
-    <form action="/validators/voluntary_exits" method="get" id="voluntaryExitsFilterForm">
+    <form action="/validators/queued_withdrawals" method="get" id="withdrawalsFilterForm">
       <input type="hidden" name="f">
       <div class="card mt-2">
         <div class="card-header">
-          Voluntary Exits Filters
+          Withdrawal Queue Filters
         </div>
         <div class="card-body p-2">
           <div class="row">
             <div class="col-sm-12 col-md-6">
               <div class="container">
-                <div class="row mt-1">
-                  <div class="col-sm-12 col-md-6 col-lg-4">
-                    Slot Number
-                  </div>
-                  <div class="col-sm-12 col-md-6 col-lg-8 d-flex">
-                    <div class="flex-grow-1">
-                      <input name="f.mins" type="number" class="form-control" placeholder="Min Slot" aria-label="Min Slot" aria-describedby="basic-addon1" value="{{ if gt .FilterMinSlot 0 }}{{ .FilterMinSlot }}{{ end }}">
-                    </div>
-                    <div class="text-center filter-amount-separator">
-                      -
-                    </div>
-                    <div class="flex-grow-1">
-                      <input name="f.maxs" type="number" class="form-control" placeholder="Max Slot" aria-label="Max Slot" aria-describedby="basic-addon1" value="{{ if gt .FilterMaxSlot 0 }}{{ .FilterMaxSlot }}{{ end }}">
-                    </div>
-                  </div>
-                </div>
                 <div class="row mt-1">
                   <div class="col-sm-12 col-md-6 col-lg-4">
                     Validator Index
@@ -65,31 +49,22 @@
                     <input name="f.vname" type="text" class="form-control" placeholder="Validator Name" aria-label="Validator Name" aria-describedby="basic-addon1" value="{{ .FilterValidatorName }}">
                   </div>
                 </div>
-              </div>
-            </div>
-            <div class="col-sm-12 col-md-6">
-              <div class="container">
                 <div class="row mt-1">
                   <div class="col-sm-12 col-md-6 col-lg-4">
-                    <nobr>Orphaned Exits</nobr>
+                    Public Key
                   </div>
-                  <div class="col-sm-12 col-md-6 col-lg-4">
-                    <select name="f.orphaned" aria-controls="orphaned" class="form-control">
-                      <option value="0" {{ if eq .FilterWithOrphaned 0 }}selected{{ end }}>Hide orphaned</option>
-                      <option value="1" {{ if eq .FilterWithOrphaned 1 }}selected{{ end }}>Show all</option>
-                      <option value="2" {{ if eq .FilterWithOrphaned 2 }}selected{{ end }}>Orphaned only</option>
-                    </select>
+                  <div class="col-sm-12 col-md-6 col-lg-8">
+                    <input name="f.pubkey" type="text" class="form-control" placeholder="Public Key" aria-label="Public Key" aria-describedby="basic-addon1" value="{{ .FilterPublicKey }}">
                   </div>
                 </div>
               </div>
             </div>
-
           </div>
           <div class="row mt-3">
             <div class="col-8 col-md-6 table-pagesize">
               <label class="px-2">
                 <span>Show </span>
-                <select name="c" aria-controls="slots" class="custom-select custom-select-sm form-control form-control-sm">
+                <select name="c" aria-controls="withdrawals" class="custom-select custom-select-sm form-control form-control-sm">
                   <option value="{{ .PageSize }}" selected>{{ .PageSize }}</option>
                   <option value="10">10</option>
                   <option value="25">25</option>
@@ -109,7 +84,7 @@
       </div>
     </form>
     <script type="text/javascript">
-      $('#voluntaryExitsFilterForm').submit(function () {
+      $('#withdrawalsFilterForm').submit(function () {
         $(this).find('input[type="text"],input[type="number"]').filter(function () { return !this.value; }).prop('name', '');
       });
     </script>
@@ -117,63 +92,45 @@
     <div class="card mt-2">
       <div class="card-body px-0 py-3">
         <div class="table-responsive px-0 py-1">
-          <table class="table table-nobr" id="voluntaryExits">
+          <table class="table table-nobr" id="withdrawals">
             <thead>
               <tr>
-                <th>Slot</th>
-                <th>Time</th>
                 <th>Validator</th>
-                <th class="d-none d-md-table-cell">Pub<span class="d-none d-lg-inline">lic </span>Key</th>
-                <th class="d-none d-md-table-cell">W<span class="d-none d-lg-inline">ithdrawal</span> Cred</th>
-                <th><span class="d-none d-lg-inline">Incl. </span>Status</th>
-                <th>Val<span class="d-none d-lg-inline">idator</span> State</th>
+                <th>Amount</th>
+                <th>Status</th>
+                <th>Estimated Time</th>
               </tr>
             </thead>
-            {{ if gt .ExitCount 0 }}
+            {{ if gt .WithdrawalCount 0 }}
               <tbody>
-                {{ range $i, $voluntaryExit := .VoluntaryExits }}
+                {{ range $i, $withdrawal := .QueuedWithdrawals }}
                   <tr>
-                    {{ if $voluntaryExit.Orphaned }}
-                    <td><a href="/slot/0x{{ printf "%x" $voluntaryExit.SlotRoot }}">{{ formatAddCommas $voluntaryExit.SlotNumber }}</a></td>
-                    {{ else }}
-                    <td><a href="/slot/{{ $voluntaryExit.SlotNumber }}">{{ formatAddCommas $voluntaryExit.SlotNumber }}</a></td>
-                    {{ end }}
-                    <td data-timer="{{ $voluntaryExit.Time.Unix }}"><span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $voluntaryExit.Time }}">{{ formatRecentTimeShort $voluntaryExit.Time }}</span></td>
-                    <td>{{ formatValidatorWithIndex $voluntaryExit.ValidatorIndex $voluntaryExit.ValidatorName }}</td>
                     <td>
-                      <div class="d-flex">
-                        <span class="flex-grow-1 text-truncate" style="max-width: 150px;">
-                          0x{{ printf "%x" $voluntaryExit.PublicKey }}
-                        </span>
-                        <div>
-                          <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $voluntaryExit.PublicKey }}"></i>
-                        </div>
-                      </div>
+                      {{ formatValidatorWithIndex $withdrawal.ValidatorIndex $withdrawal.ValidatorName }}
                     </td>
                     <td>
-                      <span>
-                        {{ formatWithdawalCredentials $voluntaryExit.WithdrawalCreds }}
-                      </span>
-                      <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $voluntaryExit.WithdrawalCreds }}"></i>
+                      {{ formatFullEthFromGwei $withdrawal.Amount }}
                     </td>
                     <td>
-                      {{ if $voluntaryExit.Orphaned }}
-                        <span class="badge rounded-pill text-bg-info">Orphaned</span>
-                      {{ else }}
-                        <span class="badge rounded-pill text-bg-success">Included</span>
-                      {{ end }}
-                    </td>
-                    <td>
-                      {{- $voluntaryExit.ValidatorStatus -}}
-                      {{- if $voluntaryExit.ShowUpcheck -}}
-                        {{- if eq $voluntaryExit.UpcheckActivity $voluntaryExit.UpcheckMaximum }}
-                          <i class="fas fa-power-off fa-sm text-success" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $voluntaryExit.UpcheckActivity }}/{{ $voluntaryExit.UpcheckMaximum }}"></i>
-                        {{- else if gt $voluntaryExit.UpcheckActivity 0 }}
-                          <i class="fas fa-power-off fa-sm text-warning" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $voluntaryExit.UpcheckActivity }}/{{ $voluntaryExit.UpcheckMaximum }}"></i>
+                      {{- $withdrawal.ValidatorStatus -}}
+                      {{- if $withdrawal.ShowUpcheck -}}
+                        {{- if eq $withdrawal.UpcheckActivity $withdrawal.UpcheckMaximum }}
+                          <i class="fas fa-power-off fa-sm text-success" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $withdrawal.UpcheckActivity }}/{{ $withdrawal.UpcheckMaximum }}"></i>
+                        {{- else if gt $withdrawal.UpcheckActivity 0 }}
+                          <i class="fas fa-power-off fa-sm text-warning" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $withdrawal.UpcheckActivity }}/{{ $withdrawal.UpcheckMaximum }}"></i>
                         {{- else }}
-                          <i class="fas fa-power-off fa-sm text-danger" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $voluntaryExit.UpcheckActivity }}/{{ $voluntaryExit.UpcheckMaximum }}"></i>
+                          <i class="fas fa-power-off fa-sm text-danger" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $withdrawal.UpcheckActivity }}/{{ $withdrawal.UpcheckMaximum }}"></i>
                         {{- end -}}
                       {{- end -}}
+                    </td>
+                    <td>
+                      {{ if $withdrawal.EstimatedTime.IsZero }}
+                        <span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Withdrawal time not calculated yet">-</span>
+                      {{ else }}
+                        <span data-timer="{{ $withdrawal.EstimatedTime.Unix }}" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $withdrawal.EstimatedTime }}">
+                          {{ formatRecentTimeShort $withdrawal.EstimatedTime }}
+                        </span>
+                      {{ end }}
                     </td>
                   </tr>
                 {{ end }}
@@ -181,23 +138,22 @@
             {{ else }}
               <tbody>
                 <tr style="height: 430px;">
-                  <td class="d-none d-md-table-cell"></td>
-                  <td style="vertical-align: middle;" colspan="10">
+                  <td style="vertical-align: middle;" colspan="4">
                     <div class="img-fluid mx-auto p-3 d-flex align-items-center" style="max-height: 400px; max-width: 400px; overflow: hidden;">
                       {{ template "professor_svg" }}
                     </div>
                   </td>
-                  <td class="d-none d-md-table-cell"></td>
                 </tr>
               </tbody>
             {{ end }}
           </table>
         </div>
+
         {{ if gt .TotalPages 1 }}
           <div class="row">
             <div class="col-sm-12 col-md-5 table-metainfo">
               <div class="px-2">
-                <div class="table-meta" role="status" aria-live="polite">Showing voluntary exits from slot {{ .FirstIndex }} to {{ .LastIndex }}</div>
+                <div class="table-meta" role="status" aria-live="polite">Showing withdrawals {{ if gt .FirstIndex 0 }}{{ .FirstIndex }}{{ else }}0{{ end }} to {{ if gt .LastIndex 0 }}{{ .LastIndex }}{{ else }}0{{ end }}</div>
               </div>
             </div>
             <div class="col-sm-12 col-md-7 table-paging">
@@ -242,10 +198,10 @@
           </div>
         {{ end }}
       </div>
-      <div id="footer-placeholder" style="height:71px;"></div>
     </div>
   </div>
 {{ end }}
+
 {{ define "js" }}
 <script>
   $(document).ready(function() {
@@ -274,14 +230,13 @@
   });
 </script>
 {{ end }}
+
 {{ define "css" }}
 <style>
-
 .filter-amount-separator {
   padding-top: 6px;
   padding-left: 10px;
   padding-right: 10px;
 }
-
 </style>
 {{ end }}

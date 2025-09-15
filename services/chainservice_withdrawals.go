@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"strings"
 
+	v1 "github.com/attestantio/go-eth2-client/api/v1"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
@@ -285,4 +286,137 @@ func (bs *ChainService) GetWithdrawalRequestOperationsByFilter(filter *dbtypes.W
 	}
 
 	return resObjs, cachedMatchesLen + dbCount
+}
+
+type WithdrawalQueueEntry struct {
+	ValidatorIndex          phase0.ValidatorIndex
+	Validator               *v1.Validator
+	ValidatorName           string
+	WithdrawableEpoch       phase0.Epoch
+	Amount                  phase0.Gwei
+	EstimatedWithdrawalTime phase0.Slot
+}
+
+type WithdrawalQueueFilter struct {
+	MinValidatorIndex *uint64
+	MaxValidatorIndex *uint64
+	ValidatorName     string
+	PublicKey         []byte
+}
+
+func (bs *ChainService) GetWithdrawalQueueByFilter(filter *WithdrawalQueueFilter, pageOffset uint64, pageSize uint32) ([]*WithdrawalQueueEntry, uint64, phase0.Gwei) {
+	chainState := bs.consensusPool.GetChainState()
+	epochStats, epochStatsEpoch := bs.GetRecentEpochStats(nil)
+
+	if epochStats == nil {
+		return []*WithdrawalQueueEntry{}, 0, 0
+	}
+
+	var filterIndex *phase0.ValidatorIndex
+	if len(filter.PublicKey) > 0 {
+		if index, found := bs.beaconIndexer.GetValidatorIndexByPubkey(phase0.BLSPubKey(filter.PublicKey)); found {
+			filterIndex = &index
+		}
+	}
+
+	// First pass - collect all matching entries and validator indices
+	queue := []*WithdrawalQueueEntry{}
+	validatorIndexesMap := map[phase0.ValidatorIndex]bool{}
+	totalAmount := phase0.Gwei(0)
+
+	for _, pendingWithdrawal := range epochStats.PendingWithdrawals {
+		// Apply filters
+		if filter.MinValidatorIndex != nil && uint64(pendingWithdrawal.ValidatorIndex) < *filter.MinValidatorIndex {
+			continue
+		}
+		if filter.MaxValidatorIndex != nil && uint64(pendingWithdrawal.ValidatorIndex) > *filter.MaxValidatorIndex {
+			continue
+		}
+		if filterIndex != nil && pendingWithdrawal.ValidatorIndex != *filterIndex {
+			continue
+		}
+		if filter.ValidatorName != "" {
+			validatorName := bs.validatorNames.GetValidatorName(uint64(pendingWithdrawal.ValidatorIndex))
+			if !strings.Contains(validatorName, filter.ValidatorName) {
+				continue
+			}
+		}
+
+		validatorIndexesMap[pendingWithdrawal.ValidatorIndex] = true
+		totalAmount += pendingWithdrawal.Amount
+
+		queue = append(queue, &WithdrawalQueueEntry{
+			ValidatorIndex:    pendingWithdrawal.ValidatorIndex,
+			ValidatorName:     bs.validatorNames.GetValidatorName(uint64(pendingWithdrawal.ValidatorIndex)),
+			WithdrawableEpoch: pendingWithdrawal.WithdrawableEpoch,
+			Amount:            pendingWithdrawal.Amount,
+		})
+	}
+
+	validatorIndexes := make([]phase0.ValidatorIndex, 0, len(validatorIndexesMap))
+	for index := range validatorIndexesMap {
+		validatorIndexes = append(validatorIndexes, index)
+	}
+
+	if len(validatorIndexes) == 0 {
+		return []*WithdrawalQueueEntry{}, 0, 0
+	}
+
+	// Bulk load all validators
+	validators, _ := bs.GetFilteredValidatorSet(&dbtypes.ValidatorFilter{
+		Indices: validatorIndexes,
+	}, false)
+
+	validatorsMap := map[phase0.ValidatorIndex]*v1.Validator{}
+	for idx, validator := range validators {
+		validatorsMap[validator.Index] = &validators[idx]
+	}
+
+	// Second pass - populate validator data and calculate withdrawal times
+	specs := chainState.GetSpecs()
+	currentSlot := chainState.EpochToSlot(epochStatsEpoch)
+	processableWithdrawals := uint64(0)
+	processableSlot := phase0.Slot(0)
+
+	for _, entry := range queue {
+		entry.Validator = validatorsMap[entry.ValidatorIndex]
+
+		// Calculate estimated withdrawal time
+		minWithdrawalSlot := chainState.EpochToSlot(entry.WithdrawableEpoch)
+		if minWithdrawalSlot < currentSlot {
+			minWithdrawalSlot = currentSlot
+		}
+		if processableSlot < minWithdrawalSlot {
+			withdrawnCount := uint64(minWithdrawalSlot-processableSlot) * specs.MaxPendingPartialsPerWithdrawalsSweep
+			if withdrawnCount >= processableWithdrawals {
+				processableWithdrawals = 0
+				processableSlot = minWithdrawalSlot
+			} else {
+				processableWithdrawals -= withdrawnCount
+				processableSlot = minWithdrawalSlot
+			}
+		}
+
+		if entry.Validator != nil && entry.Validator.Status == v1.ValidatorStateActiveOngoing {
+			processableWithdrawals++
+		}
+
+		entry.EstimatedWithdrawalTime = minWithdrawalSlot + phase0.Slot(processableWithdrawals/specs.MaxPendingPartialsPerWithdrawalsSweep)
+	}
+
+	totalCount := uint64(len(queue))
+
+	// Apply pagination
+	start := pageOffset
+	end := pageOffset + uint64(pageSize)
+
+	if start >= totalCount {
+		return []*WithdrawalQueueEntry{}, totalCount, totalAmount
+	}
+
+	if end > totalCount {
+		end = totalCount
+	}
+
+	return queue[start:end], totalCount, totalAmount
 }

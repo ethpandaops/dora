@@ -21,7 +21,7 @@ type stateSimulator struct {
 type stateSimulatorState struct {
 	epochRoot                 phase0.Root
 	block                     *Block
-	pendingWithdrawals        []EpochStatsPendingWithdrawals
+	pendingWithdrawals        []electra.PendingPartialWithdrawal
 	additionalWithdrawals     []phase0.ValidatorIndex
 	pendingConsolidationCount uint64
 	validatorMap              map[phase0.ValidatorIndex]*phase0.Validator
@@ -75,7 +75,7 @@ func (sim *stateSimulator) getParentBlocks(block *Block) []*Block {
 func (sim *stateSimulator) resetState(block *Block) *stateSimulatorState {
 	pendingWithdrawals := sim.epochStatsValues.PendingWithdrawals
 	if pendingWithdrawals == nil {
-		pendingWithdrawals = []EpochStatsPendingWithdrawals{}
+		pendingWithdrawals = []electra.PendingPartialWithdrawal{}
 	}
 
 	epochRoot := block.Root
@@ -343,7 +343,7 @@ func (sim *stateSimulator) applyBlock(block *Block) [][]uint8 {
 	processedWithdrawals := uint64(0)
 	skippedWithdrawals := uint64(0)
 	for _, pendingWithdrawal := range sim.prevState.pendingWithdrawals {
-		if pendingWithdrawal.Epoch > sim.epochStats.epoch {
+		if pendingWithdrawal.WithdrawableEpoch > sim.epochStats.epoch {
 			break
 		}
 
