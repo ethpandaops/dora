@@ -13,6 +13,11 @@ import (
 	"github.com/ethpandaops/dora/clients/execution/rpc"
 )
 
+var DefaultSystemContractAddresses = map[string]common.Address{
+	rpc.ConsolidationRequestContract: common.HexToAddress("0x0000BBdDc7CE488642fb579F8B00f3a590007251"),
+	rpc.WithdrawalRequestContract:    common.HexToAddress("0x00000961Ef480Eb55e80D19ad83579A64c007002"),
+}
+
 type ChainState struct {
 	specMutex         sync.RWMutex
 	specs             *rpc.ChainSpec
@@ -135,13 +140,19 @@ func (cache *ChainState) getCurrentEthConfig() *rpc.EthConfigFork {
 	return cache.clientConfig.Current
 }
 
-func (cache *ChainState) GetSystemContractAddress(systemContract string) *common.Address {
+func (cache *ChainState) GetSystemContractAddress(systemContract string) common.Address {
+	var addr *common.Address
+
 	currentConfig := cache.getCurrentEthConfig()
-	if currentConfig == nil {
-		return nil
+	if currentConfig != nil {
+		addr = currentConfig.GetSystemContractAddress(systemContract)
 	}
 
-	return currentConfig.GetSystemContractAddress(systemContract)
+	if addr != nil {
+		return *addr
+	}
+
+	return DefaultSystemContractAddresses[systemContract]
 }
 
 func (cache *ChainState) SetGenesisConfig(genesis *core.Genesis) {

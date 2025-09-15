@@ -97,6 +97,558 @@ const docTemplate = `{
                 }
             }
         },
+        "/v1/consolidation_requests": {
+            "get": {
+                "description": "Returns a list of consolidation requests (EL triggered) with detailed information and filtering options",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "consolidation_requests"
+                ],
+                "summary": "Get consolidation requests list",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Number of consolidation requests to return (max 100)",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Offset for pagination",
+                        "name": "offset",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Minimum slot number",
+                        "name": "min_slot",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Maximum slot number",
+                        "name": "max_slot",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by source address",
+                        "name": "source_address",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Minimum source validator index",
+                        "name": "min_src_index",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Maximum source validator index",
+                        "name": "max_src_index",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by source validator name",
+                        "name": "src_validator_name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Minimum target validator index",
+                        "name": "min_tgt_index",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Maximum target validator index",
+                        "name": "max_tgt_index",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by target validator name",
+                        "name": "tgt_validator_name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Include orphaned requests (2=orphaned only, 1=include all, 0=exclude orphaned)",
+                        "name": "with_orphaned",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by public key",
+                        "name": "public_key",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIConsolidationRequestsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid parameters",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/das-guardian/mass-scan": {
+            "post": {
+                "description": "Performs DAS Guardian scans on all available consensus client nodes in parallel",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "das-guardian"
+                ],
+                "summary": "Scan all nodes using DAS Guardian",
+                "parameters": [
+                    {
+                        "description": "Mass scan parameters",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.APIDasGuardianMassScanRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIDasGuardianMassScanResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limit exceeded",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/das-guardian/scan": {
+            "post": {
+                "description": "Performs a comprehensive scan of a beacon node using eth-das-guardian to check P2P connectivity, fork digest validity, head accuracy, and custody information",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "das-guardian"
+                ],
+                "summary": "Scan a node using DAS Guardian",
+                "parameters": [
+                    {
+                        "description": "Node ENR to scan",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.APIDasGuardianScanRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIDasGuardianScanResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limit exceeded",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/deposits/included": {
+            "get": {
+                "description": "Returns a list of deposits that have been successfully included in beacon chain blocks with comprehensive filtering",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "deposits"
+                ],
+                "summary": "Get deposits included in blocks",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Number of deposits to return (max 100)",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Offset for pagination",
+                        "name": "offset",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Minimum deposit index",
+                        "name": "min_index",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Maximum deposit index",
+                        "name": "max_index",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by validator public key (with or without 0x prefix)",
+                        "name": "public_key",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by validator name",
+                        "name": "validator_name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Minimum deposit amount in gwei",
+                        "name": "min_amount",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Maximum deposit amount in gwei",
+                        "name": "max_amount",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Include orphaned deposits (0=canonical only, 1=include all, 2=orphaned only)",
+                        "name": "with_orphaned",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by depositor address",
+                        "name": "address",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Filter by signature validity (0=invalid only, 1=valid only, 2=all)",
+                        "name": "with_valid",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIDepositsIncludedResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid parameters",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/deposits/queue": {
+            "get": {
+                "description": "Returns a list of deposits in the queue waiting to be processed (Electra only) with comprehensive filtering",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "deposits"
+                ],
+                "summary": "Get deposit queue",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Number of deposits to return (max 100)",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Offset for pagination",
+                        "name": "offset",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Minimum deposit index",
+                        "name": "min_index",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Maximum deposit index",
+                        "name": "max_index",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by validator public key (with or without 0x prefix)",
+                        "name": "public_key",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Minimum deposit amount in gwei",
+                        "name": "min_amount",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Maximum deposit amount in gwei",
+                        "name": "max_amount",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIDepositsQueueResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid parameters",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/deposits/transactions": {
+            "get": {
+                "description": "Returns a list of deposit transactions that have been initiated on the execution layer with comprehensive filtering",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "deposits"
+                ],
+                "summary": "Get deposit transactions",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Number of deposits to return (max 100)",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Offset for pagination",
+                        "name": "offset",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Minimum deposit index",
+                        "name": "min_index",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Maximum deposit index",
+                        "name": "max_index",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by validator public key (with or without 0x prefix)",
+                        "name": "public_key",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by validator name",
+                        "name": "validator_name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Minimum deposit amount in gwei",
+                        "name": "min_amount",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Maximum deposit amount in gwei",
+                        "name": "max_amount",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Include orphaned deposits (0=canonical only, 1=include all, 2=orphaned only)",
+                        "name": "with_orphaned",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by transaction sender address",
+                        "name": "address",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by transaction target address",
+                        "name": "target_address",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Filter by signature validity (0=invalid only, 1=valid only, 2=all)",
+                        "name": "with_valid",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIDepositsTransactionsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid parameters",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/v1/epoch/{epoch}": {
             "get": {
                 "description": "Returns information for a specified epoch by the epoch number or an epoch tag (can be latest or finalized)",
@@ -145,6 +697,581 @@ const docTemplate = `{
                         "description": "Server Error",
                         "schema": {
                             "$ref": "#/definitions/api.ApiResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/epochs": {
+            "get": {
+                "description": "Returns a list of epochs with detailed information and statistics",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "epochs"
+                ],
+                "summary": "Get epochs list",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "First epoch to display",
+                        "name": "epoch",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Number of epochs to return (max 100)",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIEpochsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid parameters",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/mev_blocks": {
+            "get": {
+                "description": "Returns a list of MEV blocks with relay information and comprehensive filtering",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "mev_blocks"
+                ],
+                "summary": "Get MEV blocks",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Number of MEV blocks to return (max 100)",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Offset for pagination",
+                        "name": "offset",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Minimum slot number",
+                        "name": "min_slot",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Maximum slot number",
+                        "name": "max_slot",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Minimum proposer validator index",
+                        "name": "min_index",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Maximum proposer validator index",
+                        "name": "max_index",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by proposer validator name",
+                        "name": "validator_name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by MEV relays (comma-separated relay IDs)",
+                        "name": "relays",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by proposed status (comma-separated: 0=not proposed, 1=proposed, 2=orphaned)",
+                        "name": "proposed",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIMevBlocksResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid parameters",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/network/forks": {
+            "get": {
+                "description": "Returns comprehensive information about past, current, and future network forks including consensus forks and BPO (Block Parameter Override) forks with fork digests",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "network"
+                ],
+                "summary": "Get network forks",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.APINetworkForksResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/network/overview": {
+            "get": {
+                "description": "Returns comprehensive network state information including network info, current state, checkpoints, validator stats, queue stats, and fork information",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "network"
+                ],
+                "summary": "Get network overview",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.APINetworkOverviewResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/network/splits": {
+            "get": {
+                "description": "Returns information about active network forks/splits, their participation rates, and head blocks",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "network"
+                ],
+                "summary": "Get network splits",
+                "parameters": [
+                    {
+                        "type": "boolean",
+                        "description": "Include stale forks with no voting weight (default: false)",
+                        "name": "with_stale",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.APINetworkSplitsResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/slashings": {
+            "get": {
+                "description": "Returns a list of slashings with detailed information and filtering options",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "slashings"
+                ],
+                "summary": "Get slashings list",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Number of slashings to return (max 100)",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page number (starts at 1)",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Minimum slot number",
+                        "name": "min_slot",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Maximum slot number",
+                        "name": "max_slot",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Minimum validator index",
+                        "name": "min_index",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Maximum validator index",
+                        "name": "max_index",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by validator name",
+                        "name": "validator_name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by slasher name",
+                        "name": "slasher_name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Filter by slashing reason",
+                        "name": "reason",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Include orphaned slashings (0=exclude, 1=include, 2=only orphaned)",
+                        "name": "with_orphaned",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.APISlashingsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid parameters",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/slot/{slotOrHash}": {
+            "get": {
+                "description": "Returns detailed information about a specific slot from the database. Accepts either slot number or block root (0x-prefixed hex)",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Slot"
+                ],
+                "summary": "Get slot information",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Slot number or block root (0x-prefixed hex)",
+                        "name": "slotOrHash",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.APISlotResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid slot number or root format",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Slot not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/slots": {
+            "get": {
+                "description": "Returns a list of slots with various filtering options, sorted by slot number descending",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Slot"
+                ],
+                "summary": "Get filtered slots list",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter by graffiti",
+                        "name": "graffiti",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Invert graffiti filter",
+                        "name": "graffiti_invert",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by extra data",
+                        "name": "extra_data",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Invert extra data filter",
+                        "name": "extra_data_invert",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by proposer index",
+                        "name": "proposer",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by proposer name",
+                        "name": "proposer_name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Invert proposer filter",
+                        "name": "proposer_invert",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Include orphaned blocks (0=exclude, 1=include, 2=only orphaned)",
+                        "name": "with_orphaned",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Include missing blocks (0=exclude, 1=include, 2=only missing)",
+                        "name": "with_missing",
+                        "in": "query"
+                    },
+                    {
+                        "type": "number",
+                        "description": "Minimum sync aggregate participation (0-100)",
+                        "name": "min_sync",
+                        "in": "query"
+                    },
+                    {
+                        "type": "number",
+                        "description": "Maximum sync aggregate participation (0-100)",
+                        "name": "max_sync",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Minimum execution time in ms",
+                        "name": "min_exec_time",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Maximum execution time in ms",
+                        "name": "max_exec_time",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Minimum transaction count",
+                        "name": "min_tx_count",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Maximum transaction count",
+                        "name": "max_tx_count",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Minimum blob count",
+                        "name": "min_blob_count",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Maximum blob count",
+                        "name": "max_blob_count",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Comma-separated list of fork IDs",
+                        "name": "fork_ids",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Start slot for pagination (inclusive)",
+                        "name": "start_slot",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Number of results to return (max 100, default 100)",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.APISlotsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid parameters",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     }
                 }
@@ -425,9 +1552,526 @@ const docTemplate = `{
                     }
                 }
             }
+        },
+        "/v1/validator_names": {
+            "get": {
+                "description": "Returns validator names for given validator indices or public keys. Supports GET with query params or POST with JSON body for large lists.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "validator_names"
+                ],
+                "summary": "Get validator names",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Comma-separated list of validator indices (GET only)",
+                        "name": "indices",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Comma-separated list of validator public keys (GET only, with or without 0x prefix)",
+                        "name": "pubkeys",
+                        "in": "query"
+                    },
+                    {
+                        "description": "Request body for POST requests with indices and/or pubkeys arrays",
+                        "name": "body",
+                        "in": "body",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIValidatorNamesRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIValidatorNamesResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid parameters",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "Returns validator names for given validator indices or public keys. Supports GET with query params or POST with JSON body for large lists.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "validator_names"
+                ],
+                "summary": "Get validator names",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Comma-separated list of validator indices (GET only)",
+                        "name": "indices",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Comma-separated list of validator public keys (GET only, with or without 0x prefix)",
+                        "name": "pubkeys",
+                        "in": "query"
+                    },
+                    {
+                        "description": "Request body for POST requests with indices and/or pubkeys arrays",
+                        "name": "body",
+                        "in": "body",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIValidatorNamesRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIValidatorNamesResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid parameters",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/validators": {
+            "get": {
+                "description": "Returns a list of validators with detailed information and filtering options",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "validators"
+                ],
+                "summary": "Get validators list",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Number of validators to return (max 1000)",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page number (starts at 1)",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by public key",
+                        "name": "pubkey",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by validator index",
+                        "name": "index",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by validator name",
+                        "name": "name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by validator status (comma-separated)",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Sort order: index, index-d, pubkey, pubkey-d, balance, balance-d, activation, activation-d, exit, exit-d",
+                        "name": "order",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIValidatorsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid parameters",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/validators/activity": {
+            "get": {
+                "description": "Returns aggregated validator activity statistics with grouping and filtering options",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "validators"
+                ],
+                "summary": "Get validators activity statistics",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Number of groups to return (max 1000, default 50)",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page number (starts at 1)",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Grouping option: 1=by 100k indexes, 2=by 10k indexes, 3=by validator names (default: 3 if names available, else 1)",
+                        "name": "group",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Search term for group names (supports regex)",
+                        "name": "search",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Sort order: group, group-d, count, count-d, active, active-d, online, online-d, offline, offline-d, exited, exited-d, slashed, slashed-d (default: group)",
+                        "name": "order",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIValidatorsActivityResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid parameters",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/voluntary_exits": {
+            "get": {
+                "description": "Returns a list of voluntary exits with detailed information and filtering options",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "voluntary_exits"
+                ],
+                "summary": "Get voluntary exits list",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Number of voluntary exits to return (max 100)",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page number (starts at 1)",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Minimum slot number",
+                        "name": "min_slot",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Maximum slot number",
+                        "name": "max_slot",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Minimum validator index",
+                        "name": "min_index",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Maximum validator index",
+                        "name": "max_index",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by validator name",
+                        "name": "validator_name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Include orphaned exits (1=include, 0=exclude)",
+                        "name": "with_orphaned",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIVoluntaryExitsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid parameters",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/withdrawal_requests": {
+            "get": {
+                "description": "Returns a list of withdrawal requests (EL triggered) with detailed information and filtering options",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "withdrawal_requests"
+                ],
+                "summary": "Get withdrawal requests list",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Number of withdrawal requests to return (max 100)",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Offset for pagination",
+                        "name": "offset",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Minimum slot number",
+                        "name": "min_slot",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Maximum slot number",
+                        "name": "max_slot",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by source address",
+                        "name": "source_address",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Minimum validator index",
+                        "name": "min_index",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Maximum validator index",
+                        "name": "max_index",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by validator name",
+                        "name": "validator_name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Include orphaned requests (1=include, 0=exclude)",
+                        "name": "with_orphaned",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Filter by type (1=withdrawals, 2=exits)",
+                        "name": "type",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by public key",
+                        "name": "public_key",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIWithdrawalRequestsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid parameters",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
+        "api.APICheckpoints": {
+            "type": "object",
+            "properties": {
+                "finalized_epoch": {
+                    "type": "integer"
+                },
+                "finalized_root": {
+                    "type": "string"
+                },
+                "justified_epoch": {
+                    "type": "integer"
+                },
+                "justified_root": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.APIConsensusClientMetadata": {
+            "type": "object",
+            "properties": {
+                "attnets": {
+                    "type": "string"
+                },
+                "custody_group_count": {
+                    "description": "MetadataV3 field for Fulu",
+                    "type": "string"
+                },
+                "seq_number": {
+                    "type": "string"
+                },
+                "syncnets": {
+                    "type": "string"
+                }
+            }
+        },
         "api.APIConsensusClientNodeInfo": {
             "type": "object",
             "properties": {
@@ -446,6 +2090,10 @@ const docTemplate = `{
                 "enr": {
                     "type": "string"
                 },
+                "enr_decoded": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
                 "head_root": {
                     "type": "string"
                 },
@@ -457,6 +2105,9 @@ const docTemplate = `{
                 },
                 "last_refresh": {
                     "type": "string"
+                },
+                "metadata": {
+                    "$ref": "#/definitions/api.APIConsensusClientMetadata"
                 },
                 "node_id": {
                     "type": "string"
@@ -494,6 +2145,715 @@ const docTemplate = `{
                     }
                 },
                 "count": {
+                    "type": "integer"
+                }
+            }
+        },
+        "api.APIConsolidationRequestInfo": {
+            "type": "object",
+            "properties": {
+                "is_included": {
+                    "type": "boolean"
+                },
+                "result": {
+                    "type": "integer"
+                },
+                "result_message": {
+                    "type": "string"
+                },
+                "slot_number": {
+                    "type": "integer"
+                },
+                "slot_root": {
+                    "type": "string"
+                },
+                "source_address": {
+                    "type": "string"
+                },
+                "source_public_key": {
+                    "type": "string"
+                },
+                "source_validator_index": {
+                    "type": "integer"
+                },
+                "source_validator_name": {
+                    "type": "string"
+                },
+                "source_validator_valid": {
+                    "type": "boolean"
+                },
+                "status": {
+                    "description": "0=pending, 1=included, 2=orphaned",
+                    "type": "integer"
+                },
+                "target_public_key": {
+                    "type": "string"
+                },
+                "target_validator_index": {
+                    "type": "integer"
+                },
+                "target_validator_name": {
+                    "type": "string"
+                },
+                "target_validator_valid": {
+                    "type": "boolean"
+                },
+                "time": {
+                    "type": "integer"
+                },
+                "transaction_details": {
+                    "$ref": "#/definitions/api.APIConsolidationRequestTxDetails"
+                },
+                "transaction_hash": {
+                    "type": "string"
+                },
+                "tx_status": {
+                    "description": "0=pending, 1=confirmed, 2=orphaned",
+                    "type": "integer"
+                }
+            }
+        },
+        "api.APIConsolidationRequestTxDetails": {
+            "type": "object",
+            "properties": {
+                "block_hash": {
+                    "type": "string"
+                },
+                "block_number": {
+                    "type": "integer"
+                },
+                "block_time": {
+                    "type": "integer"
+                },
+                "tx_hash": {
+                    "type": "string"
+                },
+                "tx_origin": {
+                    "type": "string"
+                },
+                "tx_target": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.APIConsolidationRequestsData": {
+            "type": "object",
+            "properties": {
+                "consolidation_requests": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/api.APIConsolidationRequestInfo"
+                    }
+                },
+                "count": {
+                    "type": "integer"
+                },
+                "total_pending": {
+                    "type": "integer"
+                },
+                "total_requests": {
+                    "type": "integer"
+                }
+            }
+        },
+        "api.APIConsolidationRequestsResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/api.APIConsolidationRequestsData"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.APICurrentState": {
+            "type": "object",
+            "properties": {
+                "current_epoch": {
+                    "type": "integer"
+                },
+                "current_epoch_progress": {
+                    "type": "number"
+                },
+                "current_slot": {
+                    "type": "integer"
+                },
+                "seconds_per_epoch": {
+                    "type": "integer"
+                },
+                "seconds_per_slot": {
+                    "type": "integer"
+                },
+                "slots_per_epoch": {
+                    "type": "integer"
+                }
+            }
+        },
+        "api.APIDasGuardianEvalResult": {
+            "type": "object",
+            "properties": {
+                "column_idx": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "downloaded_result": {
+                    "type": "array",
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "error": {
+                    "type": "string"
+                },
+                "node_id": {
+                    "type": "string"
+                },
+                "slots": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "valid_column": {
+                    "type": "array",
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "type": "boolean"
+                        }
+                    }
+                },
+                "valid_kzg": {
+                    "type": "array",
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "valid_slot": {
+                    "type": "array",
+                    "items": {
+                        "type": "boolean"
+                    }
+                }
+            }
+        },
+        "api.APIDasGuardianMassScanRequest": {
+            "type": "object",
+            "properties": {
+                "random_count": {
+                    "description": "Number of random slots to select (default: 4)",
+                    "type": "integer"
+                },
+                "random_mode": {
+                    "description": "Random slot selection mode: \"non_missed\", \"with_blobs\", \"available\"",
+                    "type": "string"
+                },
+                "slots": {
+                    "description": "Optional slot numbers to scan",
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                }
+            }
+        },
+        "api.APIDasGuardianMassScanResponse": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "type": "string"
+                },
+                "results": {
+                    "description": "ENR -\u003e node result",
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/api.APIMassNodeResult"
+                    }
+                },
+                "slots": {
+                    "description": "The slots that were scanned",
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "success": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "api.APIDasGuardianMetadata": {
+            "type": "object",
+            "properties": {
+                "attnets": {
+                    "type": "string"
+                },
+                "custody_group_count": {
+                    "type": "integer"
+                },
+                "seq_number": {
+                    "type": "integer"
+                },
+                "syncnets": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.APIDasGuardianScanRequest": {
+            "type": "object",
+            "properties": {
+                "enr": {
+                    "type": "string"
+                },
+                "random_count": {
+                    "description": "Number of random slots to select (default: 4)",
+                    "type": "integer"
+                },
+                "random_mode": {
+                    "description": "Random slot selection mode: \"non_missed\", \"with_blobs\", \"available\"",
+                    "type": "string"
+                },
+                "slots": {
+                    "description": "Optional slot numbers to scan",
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                }
+            }
+        },
+        "api.APIDasGuardianScanResponse": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "type": "string"
+                },
+                "result": {
+                    "$ref": "#/definitions/api.APIDasGuardianScanResult"
+                },
+                "success": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "api.APIDasGuardianScanResult": {
+            "type": "object",
+            "properties": {
+                "eval_result": {
+                    "description": "DAS Evaluation Result",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/api.APIDasGuardianEvalResult"
+                        }
+                    ]
+                },
+                "libp2p_info": {
+                    "description": "P2P Information",
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "remote_metadata": {
+                    "description": "Metadata (from RemoteMetadata)",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/api.APIDasGuardianMetadata"
+                        }
+                    ]
+                },
+                "remote_status": {
+                    "description": "Status Information (from RemoteStatus)",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/api.APIDasGuardianStatus"
+                        }
+                    ]
+                }
+            }
+        },
+        "api.APIDasGuardianStatus": {
+            "type": "object",
+            "properties": {
+                "earliest_slot": {
+                    "type": "integer"
+                },
+                "finalized_epoch": {
+                    "type": "integer"
+                },
+                "finalized_root": {
+                    "type": "string"
+                },
+                "fork_digest": {
+                    "type": "string"
+                },
+                "head_root": {
+                    "type": "string"
+                },
+                "head_slot": {
+                    "type": "integer"
+                }
+            }
+        },
+        "api.APIDepositIncludedInfo": {
+            "type": "object",
+            "properties": {
+                "amount": {
+                    "type": "integer"
+                },
+                "block_number": {
+                    "type": "integer"
+                },
+                "index": {
+                    "type": "integer"
+                },
+                "orphaned": {
+                    "type": "boolean"
+                },
+                "public_key": {
+                    "type": "string"
+                },
+                "slot_number": {
+                    "type": "integer"
+                },
+                "slot_root": {
+                    "type": "string"
+                },
+                "time": {
+                    "type": "integer"
+                },
+                "tx_hash": {
+                    "type": "string"
+                },
+                "tx_origin": {
+                    "type": "string"
+                },
+                "tx_target": {
+                    "type": "string"
+                },
+                "valid": {
+                    "type": "boolean"
+                },
+                "validator_index": {
+                    "type": "integer"
+                },
+                "validator_name": {
+                    "type": "string"
+                },
+                "withdrawal_credentials": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.APIDepositQueueInfo": {
+            "type": "object",
+            "properties": {
+                "amount": {
+                    "type": "integer"
+                },
+                "block_hash": {
+                    "type": "string"
+                },
+                "block_number": {
+                    "type": "integer"
+                },
+                "estimated_time": {
+                    "type": "integer"
+                },
+                "index": {
+                    "type": "integer"
+                },
+                "public_key": {
+                    "type": "string"
+                },
+                "queue_position": {
+                    "type": "integer"
+                },
+                "time": {
+                    "type": "integer"
+                },
+                "tx_hash": {
+                    "type": "string"
+                },
+                "tx_origin": {
+                    "type": "string"
+                },
+                "tx_target": {
+                    "type": "string"
+                },
+                "validator_index": {
+                    "type": "integer"
+                },
+                "validator_liveness": {
+                    "type": "integer"
+                },
+                "validator_liveness_max": {
+                    "type": "integer"
+                },
+                "validator_name": {
+                    "type": "string"
+                },
+                "validator_status": {
+                    "type": "string"
+                },
+                "withdrawal_credentials": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.APIDepositTransactionInfo": {
+            "type": "object",
+            "properties": {
+                "amount": {
+                    "type": "integer"
+                },
+                "block_hash": {
+                    "type": "string"
+                },
+                "block_number": {
+                    "type": "integer"
+                },
+                "index": {
+                    "type": "integer"
+                },
+                "orphaned": {
+                    "type": "boolean"
+                },
+                "public_key": {
+                    "type": "string"
+                },
+                "time": {
+                    "type": "integer"
+                },
+                "tx_hash": {
+                    "type": "string"
+                },
+                "tx_origin": {
+                    "type": "string"
+                },
+                "tx_target": {
+                    "type": "string"
+                },
+                "valid": {
+                    "type": "boolean"
+                },
+                "validator_index": {
+                    "type": "integer"
+                },
+                "validator_liveness": {
+                    "type": "integer"
+                },
+                "validator_liveness_max": {
+                    "type": "integer"
+                },
+                "validator_name": {
+                    "type": "string"
+                },
+                "validator_status": {
+                    "type": "string"
+                },
+                "withdrawal_credentials": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.APIDepositsIncludedData": {
+            "type": "object",
+            "properties": {
+                "count": {
+                    "type": "integer"
+                },
+                "current_epoch": {
+                    "type": "integer"
+                },
+                "deposits": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/api.APIDepositIncludedInfo"
+                    }
+                },
+                "total_count": {
+                    "type": "integer"
+                }
+            }
+        },
+        "api.APIDepositsIncludedResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/api.APIDepositsIncludedData"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.APIDepositsQueueData": {
+            "type": "object",
+            "properties": {
+                "count": {
+                    "type": "integer"
+                },
+                "current_epoch": {
+                    "type": "integer"
+                },
+                "deposits": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/api.APIDepositQueueInfo"
+                    }
+                },
+                "estimated_process_time": {
+                    "type": "integer"
+                },
+                "is_electra": {
+                    "type": "boolean"
+                },
+                "total_amount": {
+                    "type": "integer"
+                },
+                "total_count": {
+                    "type": "integer"
+                },
+                "total_new_validators": {
+                    "type": "integer"
+                }
+            }
+        },
+        "api.APIDepositsQueueResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/api.APIDepositsQueueData"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.APIDepositsTransactionsData": {
+            "type": "object",
+            "properties": {
+                "count": {
+                    "type": "integer"
+                },
+                "current_epoch": {
+                    "type": "integer"
+                },
+                "deposits": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/api.APIDepositTransactionInfo"
+                    }
+                },
+                "total_count": {
+                    "type": "integer"
+                }
+            }
+        },
+        "api.APIDepositsTransactionsResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/api.APIDepositsTransactionsData"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.APIEpochInfo": {
+            "type": "object",
+            "properties": {
+                "attestations": {
+                    "type": "integer"
+                },
+                "attester_slashings": {
+                    "type": "integer"
+                },
+                "bls_changes": {
+                    "type": "integer"
+                },
+                "consolidation_requests": {
+                    "type": "integer"
+                },
+                "deposits": {
+                    "type": "integer"
+                },
+                "deposits_amount": {
+                    "type": "integer"
+                },
+                "eligible_ether": {
+                    "type": "integer"
+                },
+                "epoch": {
+                    "type": "integer"
+                },
+                "exits": {
+                    "type": "integer"
+                },
+                "finalized": {
+                    "type": "boolean"
+                },
+                "head_voted": {
+                    "type": "integer"
+                },
+                "max_sync_committee_size": {
+                    "type": "integer"
+                },
+                "min_sync_committee_size": {
+                    "type": "integer"
+                },
+                "missed_blocks": {
+                    "type": "integer"
+                },
+                "orphaned_blocks": {
+                    "type": "integer"
+                },
+                "proposed_blocks": {
+                    "type": "integer"
+                },
+                "proposer_slashings": {
+                    "type": "integer"
+                },
+                "sync_participation": {
+                    "type": "number"
+                },
+                "target_voted": {
+                    "type": "integer"
+                },
+                "total_voted": {
+                    "type": "integer"
+                },
+                "validator_balance": {
+                    "type": "integer"
+                },
+                "validators": {
+                    "type": "integer"
+                },
+                "vote_participation": {
+                    "type": "number"
+                },
+                "voting_finalized": {
+                    "type": "boolean"
+                },
+                "voting_justified": {
+                    "type": "boolean"
+                },
+                "withdrawal_requests": {
+                    "type": "integer"
+                },
+                "withdrawals_amount": {
+                    "type": "integer"
+                },
+                "withdrawals_count": {
                     "type": "integer"
                 }
             }
@@ -566,6 +2926,46 @@ const docTemplate = `{
                 }
             }
         },
+        "api.APIEpochsData": {
+            "type": "object",
+            "properties": {
+                "current_epoch": {
+                    "type": "integer"
+                },
+                "epoch_count": {
+                    "type": "integer"
+                },
+                "epochs": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/api.APIEpochInfo"
+                    }
+                },
+                "finalized_epoch": {
+                    "type": "integer"
+                },
+                "first_epoch": {
+                    "type": "integer"
+                },
+                "last_epoch": {
+                    "type": "integer"
+                },
+                "total_epochs": {
+                    "type": "integer"
+                }
+            }
+        },
+        "api.APIEpochsResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/api.APIEpochsData"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
         "api.APIExecutionClientNodeInfo": {
             "type": "object",
             "properties": {
@@ -606,6 +3006,1124 @@ const docTemplate = `{
                 },
                 "count": {
                     "type": "integer"
+                }
+            }
+        },
+        "api.APIMassNodeResult": {
+            "type": "object",
+            "properties": {
+                "custody_columns": {
+                    "description": "Custody column indices",
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "custody_group_count": {
+                    "description": "CGC from node metadata",
+                    "type": "integer"
+                },
+                "earliest_slot": {
+                    "description": "Earliest available slot from node status",
+                    "type": "integer"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "node_alias": {
+                    "type": "string"
+                },
+                "slot_results": {
+                    "description": "Slot -\u003e result details",
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/api.SlotResult"
+                    }
+                },
+                "success": {
+                    "type": "boolean"
+                },
+                "total_columns": {
+                    "description": "Total number of columns per slot",
+                    "type": "integer"
+                },
+                "valid_columns": {
+                    "description": "Per-slot array of column validity",
+                    "type": "array",
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "type": "boolean"
+                        }
+                    }
+                }
+            }
+        },
+        "api.APIMevBlockInfo": {
+            "type": "object",
+            "properties": {
+                "blob_count": {
+                    "type": "integer"
+                },
+                "block_hash": {
+                    "type": "string"
+                },
+                "block_number": {
+                    "type": "integer"
+                },
+                "block_value_gwei": {
+                    "type": "integer"
+                },
+                "builder_pubkey": {
+                    "type": "string"
+                },
+                "fee_recipient": {
+                    "type": "string"
+                },
+                "gas_used": {
+                    "type": "integer"
+                },
+                "proposed": {
+                    "description": "0=not proposed, 1=proposed, 2=orphaned",
+                    "type": "integer"
+                },
+                "relays": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/api.APIMevBlockRelayInfo"
+                    }
+                },
+                "slot_number": {
+                    "type": "integer"
+                },
+                "time": {
+                    "type": "integer"
+                },
+                "tx_count": {
+                    "type": "integer"
+                },
+                "validator_index": {
+                    "type": "integer"
+                },
+                "validator_name": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.APIMevBlockRelayInfo": {
+            "type": "object",
+            "properties": {
+                "relay_id": {
+                    "type": "integer"
+                },
+                "relay_name": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.APIMevBlocksData": {
+            "type": "object",
+            "properties": {
+                "count": {
+                    "type": "integer"
+                },
+                "mev_blocks": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/api.APIMevBlockInfo"
+                    }
+                },
+                "total_count": {
+                    "type": "integer"
+                }
+            }
+        },
+        "api.APIMevBlocksResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/api.APIMevBlocksData"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.APINetworkForkInfo": {
+            "type": "object",
+            "properties": {
+                "active": {
+                    "type": "boolean"
+                },
+                "epoch": {
+                    "type": "integer"
+                },
+                "fork_digest": {
+                    "type": "string"
+                },
+                "max_blobs_per_block": {
+                    "description": "only for BPO forks",
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "scheduled": {
+                    "type": "boolean"
+                },
+                "time": {
+                    "type": "integer"
+                },
+                "type": {
+                    "description": "\"consensus\" or \"bpo\"",
+                    "type": "string"
+                },
+                "version": {
+                    "description": "nil for BPO forks",
+                    "type": "string"
+                }
+            }
+        },
+        "api.APINetworkForksData": {
+            "type": "object",
+            "properties": {
+                "config_name": {
+                    "type": "string"
+                },
+                "count": {
+                    "type": "integer"
+                },
+                "current_epoch": {
+                    "type": "integer"
+                },
+                "finalized_epoch": {
+                    "type": "integer"
+                },
+                "forks": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/api.APINetworkForkInfo"
+                    }
+                }
+            }
+        },
+        "api.APINetworkForksResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/api.APINetworkForksData"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.APINetworkInfo": {
+            "type": "object",
+            "properties": {
+                "config_name": {
+                    "type": "string"
+                },
+                "consolidation_contract": {
+                    "type": "string"
+                },
+                "deposit_contract": {
+                    "type": "string"
+                },
+                "genesis_root": {
+                    "type": "string"
+                },
+                "genesis_time": {
+                    "type": "integer"
+                },
+                "genesis_validators_root": {
+                    "type": "string"
+                },
+                "network_name": {
+                    "type": "string"
+                },
+                "withdrawal_contract": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.APINetworkOverviewData": {
+            "type": "object",
+            "properties": {
+                "checkpoints": {
+                    "$ref": "#/definitions/api.APICheckpoints"
+                },
+                "current_state": {
+                    "$ref": "#/definitions/api.APICurrentState"
+                },
+                "forks": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/api.APINetworkForkInfo"
+                    }
+                },
+                "is_synced": {
+                    "type": "boolean"
+                },
+                "network_info": {
+                    "$ref": "#/definitions/api.APINetworkInfo"
+                },
+                "queue_stats": {
+                    "$ref": "#/definitions/api.APIQueueStats"
+                },
+                "validator_stats": {
+                    "$ref": "#/definitions/api.APIValidatorStats"
+                }
+            }
+        },
+        "api.APINetworkOverviewResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/api.APINetworkOverviewData"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.APINetworkSplitInfo": {
+            "type": "object",
+            "properties": {
+                "fork_id": {
+                    "type": "string"
+                },
+                "head_block_hash": {
+                    "type": "string"
+                },
+                "head_execution_number": {
+                    "type": "integer"
+                },
+                "head_root": {
+                    "type": "string"
+                },
+                "head_slot": {
+                    "type": "integer"
+                },
+                "is_canonical": {
+                    "type": "boolean"
+                },
+                "last_epoch_participation": {
+                    "type": "array",
+                    "items": {
+                        "type": "number"
+                    }
+                },
+                "last_epoch_votes": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "total_chain_weight": {
+                    "type": "integer"
+                }
+            }
+        },
+        "api.APINetworkSplitsData": {
+            "type": "object",
+            "properties": {
+                "current_epoch": {
+                    "type": "integer"
+                },
+                "current_slot": {
+                    "type": "integer"
+                },
+                "finalized_epoch": {
+                    "type": "integer"
+                },
+                "finalized_root": {
+                    "type": "string"
+                },
+                "splits": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/api.APINetworkSplitInfo"
+                    }
+                }
+            }
+        },
+        "api.APINetworkSplitsResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/api.APINetworkSplitsData"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.APIQueueStats": {
+            "type": "object",
+            "properties": {
+                "deposit_estimated_time": {
+                    "type": "integer"
+                },
+                "entering_ether_amount": {
+                    "type": "integer"
+                },
+                "entering_validator_count": {
+                    "type": "integer"
+                },
+                "ether_churn_per_day": {
+                    "type": "integer"
+                },
+                "exit_estimated_time": {
+                    "type": "integer"
+                },
+                "exiting_validator_count": {
+                    "type": "integer"
+                }
+            }
+        },
+        "api.APISlashingInfo": {
+            "type": "object",
+            "properties": {
+                "orphaned": {
+                    "type": "boolean"
+                },
+                "reason": {
+                    "type": "integer"
+                },
+                "slasher_index": {
+                    "type": "integer"
+                },
+                "slasher_name": {
+                    "type": "string"
+                },
+                "slot_number": {
+                    "type": "integer"
+                },
+                "slot_root": {
+                    "type": "string"
+                },
+                "time": {
+                    "type": "integer"
+                },
+                "validator_balance": {
+                    "type": "integer"
+                },
+                "validator_index": {
+                    "type": "integer"
+                },
+                "validator_liveness": {
+                    "type": "integer"
+                },
+                "validator_liveness_total": {
+                    "type": "integer"
+                },
+                "validator_name": {
+                    "type": "string"
+                },
+                "validator_status": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.APISlashingsData": {
+            "type": "object",
+            "properties": {
+                "count": {
+                    "type": "integer"
+                },
+                "page_index": {
+                    "type": "integer"
+                },
+                "slashings": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/api.APISlashingInfo"
+                    }
+                },
+                "total_count": {
+                    "type": "integer"
+                },
+                "total_pages": {
+                    "type": "integer"
+                }
+            }
+        },
+        "api.APISlashingsResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/api.APISlashingsData"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.APISlotData": {
+            "type": "object",
+            "properties": {
+                "attestationscount": {
+                    "type": "integer"
+                },
+                "attesterslashingscount": {
+                    "type": "integer"
+                },
+                "blob_count": {
+                    "type": "integer"
+                },
+                "blockroot": {
+                    "type": "string"
+                },
+                "depositscount": {
+                    "type": "integer"
+                },
+                "epoch": {
+                    "type": "integer"
+                },
+                "exec_base_fee_per_gas": {
+                    "type": "integer"
+                },
+                "exec_block_hash": {
+                    "type": "string"
+                },
+                "exec_block_number": {
+                    "type": "integer"
+                },
+                "exec_extra_data": {
+                    "type": "string"
+                },
+                "exec_fee_recipient": {
+                    "type": "string"
+                },
+                "exec_gas_limit": {
+                    "type": "integer"
+                },
+                "exec_gas_used": {
+                    "type": "integer"
+                },
+                "exec_transactions_count": {
+                    "type": "integer"
+                },
+                "graffiti": {
+                    "type": "string"
+                },
+                "graffiti_text": {
+                    "type": "string"
+                },
+                "parentroot": {
+                    "type": "string"
+                },
+                "proposer": {
+                    "type": "integer"
+                },
+                "proposerslashingscount": {
+                    "type": "integer"
+                },
+                "slot": {
+                    "type": "integer"
+                },
+                "stateroot": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "syncaggregate_participation": {
+                    "type": "number"
+                },
+                "voluntaryexitscount": {
+                    "type": "integer"
+                },
+                "withdrawalcount": {
+                    "type": "integer"
+                }
+            }
+        },
+        "api.APISlotListItem": {
+            "type": "object",
+            "properties": {
+                "attestation_count": {
+                    "type": "integer"
+                },
+                "attester_slashing_count": {
+                    "type": "integer"
+                },
+                "avg_exec_time": {
+                    "type": "integer"
+                },
+                "blob_count": {
+                    "type": "integer"
+                },
+                "block_root": {
+                    "type": "string"
+                },
+                "block_size": {
+                    "type": "integer"
+                },
+                "deposit_count": {
+                    "type": "integer"
+                },
+                "el_extra_data": {
+                    "type": "string"
+                },
+                "epoch": {
+                    "type": "integer"
+                },
+                "eth_block_number": {
+                    "type": "integer"
+                },
+                "eth_transaction_count": {
+                    "type": "integer"
+                },
+                "execution_times": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.ExecutionTimeDetail"
+                    }
+                },
+                "exit_count": {
+                    "type": "integer"
+                },
+                "finalized": {
+                    "type": "boolean"
+                },
+                "gas_limit": {
+                    "type": "integer"
+                },
+                "gas_used": {
+                    "type": "integer"
+                },
+                "graffiti": {
+                    "type": "string"
+                },
+                "graffiti_text": {
+                    "type": "string"
+                },
+                "is_mev_block": {
+                    "type": "boolean"
+                },
+                "max_exec_time": {
+                    "type": "integer"
+                },
+                "mev_block_relays": {
+                    "type": "string"
+                },
+                "min_exec_time": {
+                    "type": "integer"
+                },
+                "parent_root": {
+                    "type": "string"
+                },
+                "proposer": {
+                    "type": "integer"
+                },
+                "proposer_name": {
+                    "type": "string"
+                },
+                "proposer_slashing_count": {
+                    "type": "integer"
+                },
+                "recv_delay": {
+                    "type": "integer"
+                },
+                "scheduled": {
+                    "type": "boolean"
+                },
+                "slot": {
+                    "type": "integer"
+                },
+                "state_root": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "sync_aggregate_participation": {
+                    "type": "number"
+                },
+                "time": {
+                    "type": "string"
+                },
+                "with_eth_block": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "api.APISlotResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/api.APISlotData"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.APISlotsData": {
+            "type": "object",
+            "properties": {
+                "next_slot": {
+                    "type": "integer"
+                },
+                "slots": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/api.APISlotListItem"
+                    }
+                },
+                "total_count": {
+                    "type": "integer"
+                }
+            }
+        },
+        "api.APISlotsResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/api.APISlotsData"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.APIValidatorActivityGroup": {
+            "type": "object",
+            "properties": {
+                "activated": {
+                    "type": "integer"
+                },
+                "exited": {
+                    "type": "integer"
+                },
+                "group": {
+                    "type": "string"
+                },
+                "offline": {
+                    "type": "integer"
+                },
+                "online": {
+                    "type": "integer"
+                },
+                "slashed": {
+                    "type": "integer"
+                },
+                "validators": {
+                    "type": "integer"
+                }
+            }
+        },
+        "api.APIValidatorInfo": {
+            "type": "object",
+            "properties": {
+                "activation_epoch": {
+                    "type": "integer"
+                },
+                "activation_time": {
+                    "type": "integer"
+                },
+                "balance": {
+                    "type": "integer"
+                },
+                "effective_balance": {
+                    "type": "integer"
+                },
+                "exit_epoch": {
+                    "type": "integer"
+                },
+                "exit_time": {
+                    "type": "integer"
+                },
+                "index": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "public_key": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "validator_liveness": {
+                    "type": "integer"
+                },
+                "validator_liveness_max": {
+                    "type": "integer"
+                },
+                "withdrawal_address": {
+                    "type": "string"
+                },
+                "withdrawal_credentials": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.APIValidatorNameInfo": {
+            "type": "object",
+            "properties": {
+                "found": {
+                    "type": "boolean"
+                },
+                "index": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "public_key": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.APIValidatorNamesData": {
+            "type": "object",
+            "properties": {
+                "count": {
+                    "type": "integer"
+                },
+                "validator_names": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/api.APIValidatorNameInfo"
+                    }
+                }
+            }
+        },
+        "api.APIValidatorNamesRequest": {
+            "type": "object",
+            "properties": {
+                "indices": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "pubkeys": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "api.APIValidatorNamesResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/api.APIValidatorNamesData"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.APIValidatorStats": {
+            "type": "object",
+            "properties": {
+                "active_validator_count": {
+                    "type": "integer"
+                },
+                "average_balance": {
+                    "type": "integer"
+                },
+                "total_active_balance": {
+                    "type": "integer"
+                },
+                "total_balance": {
+                    "type": "integer"
+                },
+                "total_eligible_ether": {
+                    "type": "integer"
+                }
+            }
+        },
+        "api.APIValidatorsActivityData": {
+            "type": "object",
+            "properties": {
+                "current_epoch": {
+                    "type": "integer"
+                },
+                "finalized_epoch": {
+                    "type": "integer"
+                },
+                "first_group": {
+                    "type": "integer"
+                },
+                "group_by": {
+                    "description": "Filter and grouping options",
+                    "type": "integer"
+                },
+                "group_count": {
+                    "type": "integer"
+                },
+                "groups": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/api.APIValidatorActivityGroup"
+                    }
+                },
+                "last_group": {
+                    "type": "integer"
+                },
+                "page_index": {
+                    "type": "integer"
+                },
+                "search_term": {
+                    "type": "string"
+                },
+                "sorting": {
+                    "type": "string"
+                },
+                "total_groups": {
+                    "type": "integer"
+                },
+                "total_pages": {
+                    "type": "integer"
+                }
+            }
+        },
+        "api.APIValidatorsActivityResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/api.APIValidatorsActivityData"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.APIValidatorsData": {
+            "type": "object",
+            "properties": {
+                "count": {
+                    "type": "integer"
+                },
+                "current_epoch": {
+                    "type": "integer"
+                },
+                "finalized_epoch": {
+                    "type": "integer"
+                },
+                "first_validator": {
+                    "type": "integer"
+                },
+                "last_validator": {
+                    "type": "integer"
+                },
+                "page_index": {
+                    "type": "integer"
+                },
+                "total_count": {
+                    "type": "integer"
+                },
+                "total_pages": {
+                    "type": "integer"
+                },
+                "validators": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/api.APIValidatorInfo"
+                    }
+                }
+            }
+        },
+        "api.APIValidatorsResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/api.APIValidatorsData"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.APIVoluntaryExitInfo": {
+            "type": "object",
+            "properties": {
+                "orphaned": {
+                    "type": "boolean"
+                },
+                "public_key": {
+                    "type": "string"
+                },
+                "slot_number": {
+                    "type": "integer"
+                },
+                "slot_root": {
+                    "type": "string"
+                },
+                "time": {
+                    "type": "integer"
+                },
+                "validator_balance": {
+                    "type": "integer"
+                },
+                "validator_index": {
+                    "type": "integer"
+                },
+                "validator_liveness": {
+                    "type": "integer"
+                },
+                "validator_liveness_total": {
+                    "type": "integer"
+                },
+                "validator_name": {
+                    "type": "string"
+                },
+                "validator_status": {
+                    "type": "string"
+                },
+                "withdrawal_credentials": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.APIVoluntaryExitsData": {
+            "type": "object",
+            "properties": {
+                "count": {
+                    "type": "integer"
+                },
+                "page_index": {
+                    "type": "integer"
+                },
+                "total_count": {
+                    "type": "integer"
+                },
+                "total_pages": {
+                    "type": "integer"
+                },
+                "voluntary_exits": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/api.APIVoluntaryExitInfo"
+                    }
+                }
+            }
+        },
+        "api.APIVoluntaryExitsResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/api.APIVoluntaryExitsData"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.APIWithdrawalRequestInfo": {
+            "type": "object",
+            "properties": {
+                "amount": {
+                    "type": "integer"
+                },
+                "is_included": {
+                    "type": "boolean"
+                },
+                "public_key": {
+                    "type": "string"
+                },
+                "result": {
+                    "type": "integer"
+                },
+                "result_message": {
+                    "type": "string"
+                },
+                "slot_number": {
+                    "type": "integer"
+                },
+                "slot_root": {
+                    "type": "string"
+                },
+                "source_address": {
+                    "type": "string"
+                },
+                "status": {
+                    "description": "0=pending, 1=included, 2=orphaned",
+                    "type": "integer"
+                },
+                "time": {
+                    "type": "integer"
+                },
+                "transaction_details": {
+                    "$ref": "#/definitions/api.APIWithdrawalRequestTxDetails"
+                },
+                "transaction_hash": {
+                    "type": "string"
+                },
+                "tx_status": {
+                    "description": "0=pending, 1=confirmed, 2=orphaned",
+                    "type": "integer"
+                },
+                "validator_index": {
+                    "type": "integer"
+                },
+                "validator_name": {
+                    "type": "string"
+                },
+                "validator_valid": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "api.APIWithdrawalRequestTxDetails": {
+            "type": "object",
+            "properties": {
+                "block_hash": {
+                    "type": "string"
+                },
+                "block_number": {
+                    "type": "integer"
+                },
+                "block_time": {
+                    "type": "integer"
+                },
+                "tx_hash": {
+                    "type": "string"
+                },
+                "tx_origin": {
+                    "type": "string"
+                },
+                "tx_target": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.APIWithdrawalRequestsData": {
+            "type": "object",
+            "properties": {
+                "count": {
+                    "type": "integer"
+                },
+                "total_pending": {
+                    "type": "integer"
+                },
+                "total_requests": {
+                    "type": "integer"
+                },
+                "withdrawal_requests": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/api.APIWithdrawalRequestInfo"
+                    }
+                }
+            }
+        },
+        "api.APIWithdrawalRequestsResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/api.APIWithdrawalRequestsData"
+                },
+                "status": {
+                    "type": "string"
                 }
             }
         },
@@ -738,11 +4256,48 @@ const docTemplate = `{
                     "type": "integer"
                 }
             }
+        },
+        "api.SlotResult": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "type": "string"
+                },
+                "total_columns": {
+                    "type": "integer"
+                },
+                "valid_column_count": {
+                    "type": "integer"
+                }
+            }
+        },
+        "models.ExecutionTimeDetail": {
+            "type": "object",
+            "properties": {
+                "avg_time": {
+                    "type": "integer"
+                },
+                "client_type": {
+                    "type": "string"
+                },
+                "count": {
+                    "type": "integer"
+                },
+                "max_time": {
+                    "type": "integer"
+                },
+                "min_time": {
+                    "type": "integer"
+                }
+            }
         }
     },
     "securityDefinitions": {
-        "BasicAuth": {
-            "type": "basic"
+        "BearerAuth": {
+            "description": "Type \"Bearer\" followed by a space and JWT token.",
+            "type": "apiKey",
+            "name": "Authorization",
+            "in": "header"
         }
     },
     "tags": [

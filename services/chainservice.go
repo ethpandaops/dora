@@ -379,7 +379,7 @@ func (bs *ChainService) GetExecutionChainState() *execution.ChainState {
 	return bs.executionPool.GetChainState()
 }
 
-func (bs *ChainService) GetSystemContractAddress(systemContract string) *common.Address {
+func (bs *ChainService) GetSystemContractAddress(systemContract string) common.Address {
 	return bs.executionPool.GetChainState().GetSystemContractAddress(systemContract)
 }
 
