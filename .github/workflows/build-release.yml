@@ -60,13 +60,13 @@ jobs:
         fi
         echo "changelog<<EOF" >> $GITHUB_OUTPUT
         echo " - ${changelog//$'\n'/$'\n' - }" >> $GITHUB_OUTPUT
-        echo " - ${changelog//$'\n'/$'\n' - }" >> ./generated_changelog.txt
         echo "EOF" >> $GITHUB_OUTPUT
+        echo "prev_tag=$prev_tag" >> $GITHUB_OUTPUT
 
     - name: "Generate AI release notes"
       id: ai_release_notes
       run: |
-        ./.github/scripts/ai-release-notes.sh "$(cat ./generated_changelog.txt)"
+        ./.github/scripts/ai-release-notes.sh "${{ steps.changelog.outputs.prev_tag }}"
       env:
         OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL }}
         OPENROUTER_TOKEN: ${{ secrets.OPENROUTER_TOKEN }}
