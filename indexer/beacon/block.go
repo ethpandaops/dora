@@ -13,6 +13,8 @@ import (
 	btypes "github.com/ethpandaops/dora/blockdb/types"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
+	"github.com/ethpandaops/dora/utils"
+	"github.com/jmoiron/sqlx"
 	dynssz "github.com/pk910/dynamic-ssz"
 )
 
@@ -33,6 +35,11 @@ type Block struct {
 	block             *spec.VersionedSignedBeaconBlock
 	blockIndex        *BlockBodyIndex
 	recvDelay         int32
+	executionTimes    []ExecutionTime // execution times from snooper clients
+	minExecutionTime  uint16
+	maxExecutionTime  uint16
+	execTimeUpdate    *time.Ticker
+	executionTimesMux sync.RWMutex
 	isInFinalizedDb   bool // block is in finalized table (slots)
 	isInUnfinalizedDb bool // block is in unfinalized table (unfinalized_blocks)
 	isDisposed        bool // block is disposed
@@ -47,10 +54,13 @@ type Block struct {
 // BlockBodyIndex holds important block properties that are used as index for cache lookups.
 // this structure should be preserved after pruning, so the block is still identifiable.
 type BlockBodyIndex struct {
-	Graffiti           [32]byte
-	ExecutionExtraData []byte
-	ExecutionHash      phase0.Hash32
-	ExecutionNumber    uint64
+	Graffiti            [32]byte
+	ExecutionExtraData  []byte
+	ExecutionHash       phase0.Hash32
+	ExecutionNumber     uint64
+	SyncParticipation   float32
+	EthTransactionCount uint64
+	BlobCount           uint64
 }
 
 // newBlock creates a new Block instance.
@@ -290,9 +300,37 @@ func (block *Block) EnsureBlock(loadBlock func() (*spec.VersionedSignedBeaconBlo
 func (block *Block) setBlockIndex(body *spec.VersionedSignedBeaconBlock) {
 	blockIndex := &BlockBodyIndex{}
 	blockIndex.Graffiti, _ = body.Graffiti()
-	blockIndex.ExecutionExtraData, _ = getBlockExecutionExtraData(body)
-	blockIndex.ExecutionHash, _ = body.ExecutionBlockHash()
-	blockIndex.ExecutionNumber, _ = body.ExecutionBlockNumber()
+
+	executionPayload, _ := body.ExecutionPayload()
+	if executionPayload != nil {
+		blockIndex.ExecutionExtraData, _ = executionPayload.ExtraData()
+		blockIndex.ExecutionHash, _ = executionPayload.BlockHash()
+		blockIndex.ExecutionNumber, _ = executionPayload.BlockNumber()
+
+		// Calculate transaction count
+		executionTransactions, _ := executionPayload.Transactions()
+		blockIndex.EthTransactionCount = uint64(len(executionTransactions))
+
+		// Calculate blob count
+		blobKzgCommitments, _ := body.BlobKZGCommitments()
+		blockIndex.BlobCount = uint64(len(blobKzgCommitments))
+
+	}
+
+	// Calculate sync participation
+	syncAggregate, err := body.SyncAggregate()
+	if err == nil && syncAggregate != nil {
+		assignedCount := len(syncAggregate.SyncCommitteeBits) * 8
+		votedCount := 0
+		for i := 0; i < assignedCount; i++ {
+			if utils.BitAtVector(syncAggregate.SyncCommitteeBits, i) {
+				votedCount++
+			}
+		}
+		if assignedCount > 0 {
+			blockIndex.SyncParticipation = float32(votedCount) / float32(assignedCount)
+		}
+	}
 
 	block.blockIndex = blockIndex
 }
@@ -331,16 +369,24 @@ func (block *Block) buildUnfinalizedBlock(compress bool) (*dbtypes.UnfinalizedBl
 		return nil, fmt.Errorf("marshal block ssz failed: %v", err)
 	}
 
+	execTimesSSZ, err := block.dynSsz.MarshalSSZ(block.executionTimes)
+	if err != nil {
+		return nil, fmt.Errorf("marshal exec times ssz failed: %v", err)
+	}
+
 	return &dbtypes.UnfinalizedBlock{
-		Root:      block.Root[:],
-		Slot:      uint64(block.Slot),
-		HeaderVer: 1,
-		HeaderSSZ: headerSSZ,
-		BlockVer:  blockVer,
-		BlockSSZ:  blockSSZ,
-		Status:    0,
-		ForkId:    uint64(block.forkId),
-		RecvDelay: block.recvDelay,
+		Root:        block.Root[:],
+		Slot:        uint64(block.Slot),
+		HeaderVer:   1,
+		HeaderSSZ:   headerSSZ,
+		BlockVer:    blockVer,
+		BlockSSZ:    blockSSZ,
+		Status:      0,
+		ForkId:      uint64(block.forkId),
+		RecvDelay:   block.recvDelay,
+		MinExecTime: uint32(block.minExecutionTime),
+		MaxExecTime: uint32(block.maxExecutionTime),
+		ExecTimes:   execTimesSSZ,
 	}, nil
 }
 
@@ -486,4 +532,112 @@ func (block *Block) GetDbConsolidationRequests(indexer *Indexer, isCanonical boo
 // GetForkId returns the fork ID of this block.
 func (block *Block) GetForkId() ForkKey {
 	return block.forkId
+}
+
+// AddExecutionTime adds an execution time to this block
+func (block *Block) AddExecutionTime(execTime ExecutionTime) {
+	block.executionTimesMux.Lock()
+	defer block.executionTimesMux.Unlock()
+
+	// Check if we already have an entry for this client type
+	for i := range block.executionTimes {
+		existingExecTime := &block.executionTimes[i]
+		if existingExecTime.ClientType == execTime.ClientType {
+			// Update existing entry with min/max and increment count
+			if execTime.MinTime < existingExecTime.MinTime {
+				existingExecTime.MinTime = execTime.MinTime
+				if block.minExecutionTime == 0 || execTime.MinTime < block.minExecutionTime {
+					block.minExecutionTime = execTime.MinTime
+				}
+			}
+			if execTime.MaxTime > existingExecTime.MaxTime {
+				existingExecTime.MaxTime = execTime.MaxTime
+				if block.maxExecutionTime == 0 || execTime.MaxTime > block.maxExecutionTime {
+					block.maxExecutionTime = execTime.MaxTime
+				}
+			}
+			existingExecTime.AvgTime = (existingExecTime.AvgTime*existingExecTime.Count + execTime.AvgTime) / (existingExecTime.Count + 1)
+			existingExecTime.Count += execTime.Count
+			return
+		}
+	}
+
+	// Add new entry
+	block.executionTimes = append(block.executionTimes, execTime)
+
+	if block.minExecutionTime == 0 || execTime.MinTime < block.minExecutionTime {
+		block.minExecutionTime = execTime.MinTime
+	}
+	if block.maxExecutionTime == 0 || execTime.MaxTime > block.maxExecutionTime {
+		block.maxExecutionTime = execTime.MaxTime
+	}
+
+	if block.execTimeUpdate == nil {
+		block.execTimeUpdate = time.NewTicker(10 * time.Second)
+		go func() {
+			<-block.execTimeUpdate.C
+			block.execTimeUpdate.Stop()
+			block.execTimeUpdate = nil
+			if block.isDisposed || !block.isInUnfinalizedDb {
+				return
+			}
+
+			block.executionTimesMux.RLock()
+			defer block.executionTimesMux.RUnlock()
+
+			execTimesSSZ, err := block.dynSsz.MarshalSSZ(block.executionTimes)
+			if err != nil {
+				return
+			}
+
+			db.RunDBTransaction(func(tx *sqlx.Tx) error {
+				return db.UpdateUnfinalizedBlockExecutionTimes(block.Root[:], uint32(block.minExecutionTime), uint32(block.maxExecutionTime), execTimesSSZ, tx)
+			})
+		}()
+	}
+}
+
+func (block *Block) restoreExecutionTimes(minExecutionTime uint16, maxExecutionTime uint16, execTimesSSZ []byte) error {
+	if block.isDisposed || !block.isInUnfinalizedDb {
+		return nil
+	}
+
+	block.executionTimesMux.Lock()
+	defer block.executionTimesMux.Unlock()
+
+	block.minExecutionTime = minExecutionTime
+	block.maxExecutionTime = maxExecutionTime
+
+	block.executionTimes = []ExecutionTime{}
+	return block.dynSsz.UnmarshalSSZ(&block.executionTimes, execTimesSSZ)
+}
+
+// GetExecutionTimes returns a copy of the execution times for this block
+func (block *Block) GetExecutionTimes() []ExecutionTime {
+	block.executionTimesMux.RLock()
+	defer block.executionTimesMux.RUnlock()
+
+	if len(block.executionTimes) == 0 {
+		return nil
+	}
+
+	result := make([]ExecutionTime, len(block.executionTimes))
+	copy(result, block.executionTimes)
+	return result
+}
+
+// GetMinExecutionTime returns the minimum execution time across all clients
+func (block *Block) GetMinExecutionTime() uint32 {
+	block.executionTimesMux.RLock()
+	defer block.executionTimesMux.RUnlock()
+
+	return uint32(block.minExecutionTime)
+}
+
+// GetMaxExecutionTime returns the maximum execution time across all clients
+func (block *Block) GetMaxExecutionTime() uint32 {
+	block.executionTimesMux.RLock()
+	defer block.executionTimesMux.RUnlock()
+
+	return uint32(block.maxExecutionTime)
 }

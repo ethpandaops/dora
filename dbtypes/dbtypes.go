@@ -55,6 +55,9 @@ type Slot struct {
 	ForkId                uint64     `db:"fork_id"`
 	BlockSize             uint64     `db:"block_size"`
 	RecvDelay             int32      `db:"recv_delay"`
+	MinExecTime           uint32     `db:"min_exec_time"`
+	MaxExecTime           uint32     `db:"max_exec_time"`
+	ExecTimes             []byte     `db:"exec_times"`
 }
 
 type Epoch struct {
@@ -110,18 +113,49 @@ const (
 )
 
 type UnfinalizedBlock struct {
-	Root      []byte                 `db:"root"`
-	Slot      uint64                 `db:"slot"`
-	HeaderVer uint64                 `db:"header_ver"`
-	HeaderSSZ []byte                 `db:"header_ssz"`
-	BlockVer  uint64                 `db:"block_ver"`
-	BlockSSZ  []byte                 `db:"block_ssz"`
-	Status    UnfinalizedBlockStatus `db:"status"`
-	ForkId    uint64                 `db:"fork_id"`
-	RecvDelay int32                  `db:"recv_delay"`
+	Root        []byte                 `db:"root"`
+	Slot        uint64                 `db:"slot"`
+	HeaderVer   uint64                 `db:"header_ver"`
+	HeaderSSZ   []byte                 `db:"header_ssz"`
+	BlockVer    uint64                 `db:"block_ver"`
+	BlockSSZ    []byte                 `db:"block_ssz"`
+	Status      UnfinalizedBlockStatus `db:"status"`
+	ForkId      uint64                 `db:"fork_id"`
+	RecvDelay   int32                  `db:"recv_delay"`
+	MinExecTime uint32                 `db:"min_exec_time"`
+	MaxExecTime uint32                 `db:"max_exec_time"`
+	ExecTimes   []byte                 `db:"exec_times"`
 }
 
 type UnfinalizedEpoch struct {
+	Epoch                 uint64  `db:"epoch"`
+	DependentRoot         []byte  `db:"dependent_root"`
+	EpochHeadRoot         []byte  `db:"epoch_head_root"`
+	EpochHeadForkId       uint64  `db:"epoch_head_fork_id"`
+	ValidatorCount        uint64  `db:"validator_count"`
+	ValidatorBalance      uint64  `db:"validator_balance"`
+	Eligible              uint64  `db:"eligible"`
+	VotedTarget           uint64  `db:"voted_target"`
+	VotedHead             uint64  `db:"voted_head"`
+	VotedTotal            uint64  `db:"voted_total"`
+	BlockCount            uint16  `db:"block_count"`
+	OrphanedCount         uint16  `db:"orphaned_count"`
+	AttestationCount      uint64  `db:"attestation_count"`
+	DepositCount          uint64  `db:"deposit_count"`
+	ExitCount             uint64  `db:"exit_count"`
+	WithdrawCount         uint64  `db:"withdraw_count"`
+	WithdrawAmount        uint64  `db:"withdraw_amount"`
+	AttesterSlashingCount uint64  `db:"attester_slashing_count"`
+	ProposerSlashingCount uint64  `db:"proposer_slashing_count"`
+	BLSChangeCount        uint64  `db:"bls_change_count"`
+	EthTransactionCount   uint64  `db:"eth_transaction_count"`
+	BlobCount             uint64  `db:"blob_count"`
+	EthGasUsed            uint64  `db:"eth_gas_used"`
+	EthGasLimit           uint64  `db:"eth_gas_limit"`
+	SyncParticipation     float32 `db:"sync_participation"`
+}
+
+type OrphanedEpoch struct {
 	Epoch                 uint64  `db:"epoch"`
 	DependentRoot         []byte  `db:"dependent_root"`
 	EpochHeadRoot         []byte  `db:"epoch_head_root"`

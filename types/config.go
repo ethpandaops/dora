@@ -50,16 +50,30 @@ type Config struct {
 		HttpWriteTimeout time.Duration `yaml:"httpWriteTimeout" envconfig:"FRONTEND_HTTP_WRITE_TIMEOUT"`
 		HttpIdleTimeout  time.Duration `yaml:"httpIdleTimeout" envconfig:"FRONTEND_HTTP_IDLE_TIMEOUT"`
 		AllowDutyLoading bool          `yaml:"allowDutyLoading" envconfig:"FRONTEND_ALLOW_DUTY_LOADING"`
+		DisablePageCache bool          `yaml:"disablePageCache" envconfig:"FRONTEND_DISABLE_PAGE_CACHE"`
 
 		ShowSensitivePeerInfos bool `yaml:"showSensitivePeerInfos" envconfig:"FRONTEND_SHOW_SENSITIVE_PEER_INFOS"`
 		ShowPeerDASInfos       bool `yaml:"showPeerDASInfos" envconfig:"FRONTEND_SHOW_PEER_DAS_INFOS"`
 		ShowSubmitDeposit      bool `yaml:"showSubmitDeposit" envconfig:"FRONTEND_SHOW_SUBMIT_DEPOSIT"`
 		ShowSubmitElRequests   bool `yaml:"showSubmitElRequests" envconfig:"FRONTEND_SHOW_SUBMIT_EL_REQUESTS"`
+		ShowValidatorSummary   bool `yaml:"showValidatorSummary" envconfig:"FRONTEND_SHOW_VALIDATOR_SUMMARY"`
+
+		// DAS Guardian configuration
+		DisableDasGuardianCheck   bool `yaml:"disableDasGuardianCheck" envconfig:"FRONTEND_DISABLE_DAS_GUARDIAN_CHECK"`
+		EnableDasGuardianMassScan bool `yaml:"enableDasGuardianMassScan" envconfig:"FRONTEND_ENABLE_DAS_GUARDIAN_MASS_SCAN"`
 	} `yaml:"frontend"`
 
 	Api struct {
 		Enabled     bool     `yaml:"enabled" envconfig:"API_ENABLED"`
 		CorsOrigins []string `yaml:"corsOrigins" envconfig:"API_CORS_ORIGINS"`
+
+		// Rate limiting and authentication
+		AuthSecret              string   `yaml:"authSecret" envconfig:"API_AUTH_SECRET"`
+		RequireAuth             bool     `yaml:"requireAuth" envconfig:"API_REQUIRE_AUTH"`
+		DefaultRateLimit        uint     `yaml:"defaultRateLimit" envconfig:"API_DEFAULT_RATE_LIMIT"`
+		DefaultRateLimitBurst   uint     `yaml:"defaultRateLimitBurst" envconfig:"API_DEFAULT_RATE_LIMIT_BURST"`
+		DisableDefaultRateLimit bool     `yaml:"disableDefaultRateLimit" envconfig:"API_DISABLE_DEFAULT_RATE_LIMIT"`
+		WhitelistedIPs          []string `yaml:"whitelistedIPs" envconfig:"API_WHITELISTED_IPS"`
 	} `yaml:"api"`
 
 	RateLimit struct {
@@ -70,8 +84,9 @@ type Config struct {
 	} `yaml:"rateLimit"`
 
 	BeaconApi struct {
-		Endpoint  string           `yaml:"endpoint" envconfig:"BEACONAPI_ENDPOINT"`
-		Endpoints []EndpointConfig `yaml:"endpoints"`
+		Endpoint     string           `yaml:"endpoint" envconfig:"BEACONAPI_ENDPOINT"`
+		Endpoints    []EndpointConfig `yaml:"endpoints"`
+		EndpointsURL string           `yaml:"endpointsUrl" envconfig:"BEACONAPI_ENDPOINTS_URL"`
 
 		LocalCacheSize       int    `yaml:"localCacheSize" envconfig:"BEACONAPI_LOCAL_CACHE_SIZE"`
 		SkipFinalAssignments bool   `yaml:"skipFinalAssignments" envconfig:"BEACONAPI_SKIP_FINAL_ASSIGNMENTS"`
@@ -81,12 +96,14 @@ type Config struct {
 	} `yaml:"beaconapi"`
 
 	ExecutionApi struct {
-		Endpoint  string           `yaml:"endpoint" envconfig:"EXECUTIONAPI_ENDPOINT"`
-		Endpoints []EndpointConfig `yaml:"endpoints"`
+		Endpoint     string           `yaml:"endpoint" envconfig:"EXECUTIONAPI_ENDPOINT"`
+		Endpoints    []EndpointConfig `yaml:"endpoints"`
+		EndpointsURL string           `yaml:"endpointsUrl" envconfig:"EXECUTIONAPI_ENDPOINTS_URL"`
 
-		LogBatchSize       int `yaml:"logBatchSize" envconfig:"EXECUTIONAPI_LOG_BATCH_SIZE"`
-		DepositDeployBlock int `yaml:"depositDeployBlock" envconfig:"EXECUTIONAPI_DEPOSIT_DEPLOY_BLOCK"` // el block number from where to crawl the deposit system contract (should be <=, but close to deposit contract deployment)
-		ElectraDeployBlock int `yaml:"electraDeployBlock" envconfig:"EXECUTIONAPI_ELECTRA_DEPLOY_BLOCK"` // el block number from where to crawl the electra system contracts (should be <=, but close to electra fork activation block)
+		LogBatchSize       int    `yaml:"logBatchSize" envconfig:"EXECUTIONAPI_LOG_BATCH_SIZE"`
+		DepositDeployBlock int    `yaml:"depositDeployBlock" envconfig:"EXECUTIONAPI_DEPOSIT_DEPLOY_BLOCK"` // el block number from where to crawl the deposit system contract (should be <=, but close to deposit contract deployment)
+		ElectraDeployBlock int    `yaml:"electraDeployBlock" envconfig:"EXECUTIONAPI_ELECTRA_DEPLOY_BLOCK"` // el block number from where to crawl the electra system contracts (should be <=, but close to electra fork activation block)
+		GenesisConfig      string `yaml:"genesisConfig" envconfig:"EXECUTIONAPI_GENESIS_CONFIG"`            // path or URL to genesis.json file in geth format
 	} `yaml:"executionapi"`
 
 	Indexer struct {
@@ -131,16 +148,20 @@ type Config struct {
 		DisableSSZRequests      bool `yaml:"disableSSZRequests" envconfig:"KILLSWITCH_DISABLE_SSZ_REQUESTS"`
 		DisableBlockCompression bool `yaml:"disableBlockCompression" envconfig:"KILLSWITCH_DISABLE_BLOCK_COMPRESSION"`
 	} `yaml:"killSwitch"`
+
+	AuthGroups map[string]*AuthGroupConfig `yaml:"authGroups"`
 }
 
 type EndpointConfig struct {
-	Ssh            *EndpointSshConfig `yaml:"ssh"`
-	Url            string             `yaml:"url"`
-	Name           string             `yaml:"name"`
-	Archive        bool               `yaml:"archive"`
-	SkipValidators bool               `yaml:"skipValidators"`
-	Priority       int                `yaml:"priority"`
-	Headers        map[string]string  `yaml:"headers"`
+	Ssh              *EndpointSshConfig `yaml:"ssh"`
+	Url              string             `yaml:"url"`
+	Name             string             `yaml:"name"`
+	Archive          bool               `yaml:"archive"`
+	SkipValidators   bool               `yaml:"skipValidators"`
+	Priority         int                `yaml:"priority"`
+	Headers          map[string]string  `yaml:"headers"`
+	EngineSnooperUrl string             `yaml:"engineSnooperUrl"`
+	AuthGroup        string             `yaml:"authGroup"`
 }
 
 type EndpointSshConfig struct {
@@ -149,6 +170,16 @@ type EndpointSshConfig struct {
 	User     string `yaml:"user"`
 	Password string `yaml:"password"`
 	Keyfile  string `yaml:"keyfile"`
+}
+
+type AuthGroupConfig struct {
+	Credentials *AuthGroupCredentials `yaml:"credentials"`
+	Headers     map[string]string     `yaml:"headers"`
+}
+
+type AuthGroupCredentials struct {
+	Username string `yaml:"username"`
+	Password string `yaml:"password"`
 }
 
 type MevRelayConfig struct {

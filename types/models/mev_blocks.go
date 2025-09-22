@@ -32,6 +32,8 @@ type MevBlocksPageData struct {
 	PrevPageLink  string `json:"prev_page_link"`
 	NextPageLink  string `json:"next_page_link"`
 	LastPageLink  string `json:"last_page_link"`
+
+	UrlParams map[string]string `json:"url_params"`
 }
 
 type MevBlocksPageDataBlock struct {
@@ -47,6 +49,7 @@ type MevBlocksPageDataBlock struct {
 	RelayCount     uint64                    `json:"relay_count"`
 	FeeRecipient   []byte                    `json:"fee_recipient"`
 	TxCount        uint64                    `json:"tx_count"`
+	BlobCount      uint64                    `json:"blob_count"`
 	GasUsed        uint64                    `json:"gas_used"`
 	BlockValue     uint64                    `json:"block_value"`
 	BlockValueStr  string                    `json:"block_value_str"`

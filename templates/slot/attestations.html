@@ -22,7 +22,7 @@
         </div>
         <div class="col-md-10">
           {{ html "<!-- ko foreach: committee_index -->" }}
-          <span class="badge bg-secondary mx-2" data-bind="text: $data"></span>
+          <span class="badge bg-secondary mx-2 committee-badge" data-bind="text: $data, attr: {'data-committee-idx': $data}"></span>
           {{ html "<!-- /ko -->" }}
         </div>
       </div>
@@ -32,8 +32,8 @@
         </div>
         <div class="col-md-10 d-flex justify-content-between">
           <span data-bind="text: aggregationSummary"></span>
-          <i class="fas fa-chevron-down cursor-pointer" 
-             data-bind="click: toggleDetails, 
+          <i class="fas fa-chevron-down cursor-pointer"
+             data-bind="click: toggleDetails,
                        css: { 'fa-chevron-down': !showDetails(), 'fa-chevron-up': showDetails() }">
           </i>
         </div>
@@ -47,21 +47,21 @@
           <div data-bind="html: formattedAggregationBits"></div>
         </div>
       </div>
-      {{ html "<!-- ko if: included_validators.length > 0 -->" }}
+      {{ html "<!-- ko if: validators.length > 0 -->" }}
       <div class="row border-bottom p-1 mx-0">
         <div class="col-md-2">
-          <span data-bs-toggle="tooltip" data-bs-placement="top" title="Validators who have submitted their attestation and have been included by the block proposer">Included Validators:</span>
+          <span data-bs-toggle="tooltip" data-bs-placement="top" title="Validators in this committee - green icons are attesting, red icons are not attesting">Validators:</span>
         </div>
         <div class="col-md-10">
-          {{ html "<!-- ko foreach: included_validators -->" }}
-          <span class="validator-label validator-name" data-bs-toggle="tooltip" data-bs-placement="top" data-bind="attr: {'data-bs-title': $data}">
-            <i class="fas fa-male mr-2"></i>
-            <a data-bind="attr: {href: '/validator/' + $data}">
-              {{ html "<!-- ko if: $root.getValidatorName($data) -->" }}
-              <span data-bind="text: $root.getValidatorName($data) + ' (' + $data + ')'"></span>
+          {{ html "<!-- ko foreach: orderedValidators -->" }}
+          <span class="validator-label validator-name" data-bs-toggle="tooltip" data-bs-placement="top" data-bind="attr: {'data-bs-title': validator}">
+            <i class="fas fa-male mr-2" data-bind="css: {'text-success': isAttesting, 'text-danger': !isAttesting}"></i>
+            <a data-bind="attr: {href: '/validator/' + validator}">
+              {{ html "<!-- ko if: $root.getValidatorName(validator) -->" }}
+              <span data-bind="text: $root.getValidatorName(validator) + ' (' + validator + ')'"></span>
               {{ html "<!-- /ko -->" }}
-              {{ html "<!-- ko ifnot: $root.getValidatorName($data) -->" }}
-              <span data-bind="text: $data"></span>
+              {{ html "<!-- ko ifnot: $root.getValidatorName(validator) -->" }}
+              <span data-bind="text: validator"></span>
               {{ html "<!-- /ko -->" }}
             </a>
           </span>
@@ -72,10 +72,13 @@
       {{ html "<!-- /ko -->" }}
       <div class="row border-bottom p-1 mx-0">
         <div class="col-md-2">
-          <span data-bs-toggle="tooltip" data-bs-placement="top" title="Points to the block to which validators are attesting">Beacon Block Root:</span>
+          <span data-bs-toggle="tooltip" data-bs-placement="top" title="Points to the block to which validators are attesting">Head Block:</span>
         </div>
         <div class="col-md-10 text-monospace text-break">
-          <a data-bind="attr: {href: '/slot/0x' + beaconBlockRootHex()}, text: '0x' + beaconBlockRootHex()"></a>
+          Slot <a data-bind="attr: {href: '/slot/' + beacon_block_slot}, text: beacon_block_slot"></a>
+          <span class="text-monospace text-break">
+            (<a data-bind="attr: {href: '/slot/0x' + beaconBlockRootHex()}, text: '0x' + beaconBlockRootHex()"></a>)
+          </span>
         </div>
       </div>
       <div class="row border-bottom p-1 mx-0">
@@ -85,7 +88,7 @@
         <div class="col-md-10">
           Epoch <a data-bind="attr: {href: '/epoch/' + source_epoch}, text: source_epoch"></a>
           <span class="text-monospace text-break">
-            (<a data-bind="attr: {href: '/block/0x' + sourceRootHex()}, text: '0x' + sourceRootHex()"></a>)
+            (<a data-bind="attr: {href: '/slot/0x' + sourceRootHex()}, text: '0x' + sourceRootHex()"></a>)
           </span>
         </div>
       </div>
@@ -96,7 +99,7 @@
         <div class="col-md-10">
           Epoch <a data-bind="attr: {href: '/epoch/' + target_epoch}, text: target_epoch"></a>
           <span class="text-monospace text-break">
-            (<a data-bind="attr: {href: '/block/0x' + targetRootHex()}, text: '0x' + targetRootHex()"></a>)
+            (<a data-bind="attr: {href: '/slot/0x' + targetRootHex()}, text: '0x' + targetRootHex()"></a>)
           </span>
         </div>
       </div>
@@ -114,7 +117,7 @@
   var specValues = JSON.parse({{ includeJSON .Block.SpecValues false }});
   var validatorNames = JSON.parse({{ includeJSON .Block.ValidatorNames false }});
   var attestationsData = JSON.parse({{ includeJSON .Block.Attestations false }});
-  
+
   function base64ToBytes(base64) {
     const binString = atob(base64);
     return Uint8Array.from(binString, (m) => m.charCodeAt(0));
@@ -124,12 +127,49 @@
     return Array.from(bytes).map(b => b.toString(16).padStart(2,'0')).join('');
   }
 
+  function getCommitteeCount(activeCount) {
+    var committeesPerSlot = Math.floor(Math.floor(activeCount / specValues.slots_per_epoch) / specValues.target_committee_size);
+    if (committeesPerSlot > specValues.max_committees_per_slot) {
+      return specValues.max_committees_per_slot;
+    }
+    if (committeesPerSlot == 0) {
+      return 1;
+    }
+    return committeesPerSlot;
+  }
+
+  function getCommitteeSize(attestation) {
+    var activeCount = attestation.total_active;
+    var slot = attestation.slot;
+    var committeeIdxs = attestation.committeeindex;
+
+    var slotIndex = slot % specValues.slots_per_epoch;
+    var committeesPerSlot = getCommitteeCount(activeCount);
+    var committeesCount = committeesPerSlot * specValues.slots_per_epoch;
+
+    var committeesSizes = [];
+    var splitOffset = function(listSize, chunks, index) {
+      return Math.floor(listSize * index / chunks);
+    }
+
+    for (var i = 0; i < committeeIdxs.length; i++) {
+      let indexOffset = committeeIdxs[i] + (slotIndex * committeesPerSlot)
+      
+      let start = splitOffset(activeCount, committeesCount, indexOffset)
+      let end = splitOffset(activeCount, committeesCount, indexOffset + 1)
+      committeesSizes.push(end - start);
+    }
+
+    return committeesSizes;
+  }
+
   function AttestationViewModel(data) {
     var self = this;
     self.slot = data.slot;
     self.committee_index = data.committeeindex;
     self.aggregation_bits = base64ToBytes(data.aggregationbits);
     self.beacon_block_root = base64ToBytes(data.beaconblockroot);
+    self.beacon_block_slot = data.beaconblockslot;
     self.source_epoch = data.source_epoch;
     self.source_root = base64ToBytes(data.source_root);
     self.target_epoch = data.target_epoch;
@@ -139,7 +179,7 @@
     self.included_validators = data.included_validators;
 
     self.showDetails = ko.observable(false);
-    
+
     self.toggleDetails = function() {
       var isOpen = self.showDetails();
       self.showDetails(!isOpen);
@@ -152,11 +192,11 @@
     };
 
     self.aggregationSummary = ko.computed(function() {
-      var total = self.aggregation_bits.length * 8;
+      var total = getCommitteeSize(data).reduce((a, b) => a + b, 0);
       var set = 0;
-      for (var i = 0; i < self.aggregation_bits.length; i++) {
+      for (var i = 0; i < Math.ceil(total/8); i++) {
         for (var j = 0; j < 8; j++) {
-          if (self.aggregation_bits[i] & (1 << j)) {
+          if ((i*8)+j < total && self.aggregation_bits[i] & (1 << j)) {
             set++;
           }
         }
@@ -169,11 +209,11 @@
     self.beaconBlockRootHex = ko.computed(function() {
       return bytesToHex(self.beacon_block_root);
     });
-    
+
     self.sourceRootHex = ko.computed(function() {
       return bytesToHex(self.source_root);
     });
-    
+
     self.targetRootHex = ko.computed(function() {
       return bytesToHex(self.target_root);
     });
@@ -182,12 +222,34 @@
       return bytesToHex(self.signature);
     });
 
+    // Compute ordered validators with attestation status
+    self.orderedValidators = ko.computed(function() {
+      var ordered = [];
+
+      for (var i = 0; i < self.validators.length; i++) {
+        var byteIndex = Math.floor(i / 8);
+        var bitIndex = i % 8;
+        var isAttesting = (self.aggregation_bits[byteIndex] & (1 << bitIndex)) !== 0;
+
+        ordered.push({
+          validator: self.validators[i],
+          isAttesting: isAttesting,
+          position: i
+        });
+      }
+      return ordered;
+    });
+
     // Format aggregation bits with validator info
     self.formattedAggregationBits = ko.computed(function() {
       var bits = self.aggregation_bits;
       var html = '<pre class="text-bitfield text-monospace text-break" style="font-size:1rem;">';
       var perLine = 8;
-      
+
+      var committeesSizes = getCommitteeSize(data);
+      var currentCommitteeStart = 0;
+      var currentCommitteeIdx = 0;
+
       for (var y = 0; y < bits.length; y += perLine) {
         var start = y * 8;
         var end = (y + perLine) * 8;
@@ -202,6 +264,14 @@
         }
 
         for (var x = start; x < end; x++) {
+          if (x >= currentCommitteeStart + committeesSizes[currentCommitteeIdx]) {
+            currentCommitteeIdx++;
+            currentCommitteeStart = x;
+            if (!committeesSizes[currentCommitteeIdx]) {
+              break;
+            }
+          }
+
           if (x % 8 === 0 && x !== start) {
             html += ' ';
           }
@@ -210,10 +280,12 @@
           if (validator !== undefined) {
             var name = validatorNames[validator];
             if (name) {
-              html += `<span data-bs-toggle="tooltip" data-bs-placement="top" title="${name} (${validator})">`;
+              html += `<span class="aggregation-bit committee-idx-${currentCommitteeIdx}" data-bs-toggle="tooltip" data-bs-placement="top" title="${name} (${validator})">`;
             } else {
-              html += `<span data-bs-toggle="tooltip" data-bs-placement="top" title="${validator}">`;
+              html += `<span class="aggregation-bit committee-idx-${currentCommitteeIdx}" data-bs-toggle="tooltip" data-bs-placement="top" title="${validator}">`;
             }
+          } else {
+            html += `<span class="aggregation-bit committee-idx-${currentCommitteeIdx}">`;
           }
 
           var byteIndex = Math.floor(x / 8);
@@ -221,9 +293,7 @@
           var isSet = (bits[byteIndex] & (1 << bitIndex)) !== 0;
           html += isSet ? '1' : '0';
 
-          if (validator) {
-            html += '</span>';
-          }
+          html += '</span>';
         }
       }
       html += '</pre>';
@@ -244,6 +314,76 @@
   }
 
   ko.applyBindings(new AttestationsViewModel(), document.getElementById('attestationsData'));
+
+  // Add hover event handlers for committee badges and aggregation bits
+  document.addEventListener('DOMContentLoaded', function() {
+    // Handle hover on committee badges
+    document.addEventListener('mouseover', function(e) {
+      if (e.target.classList.contains('committee-badge')) {
+        const committeeIdx = e.target.getAttribute('data-committee-idx');
+        // Find the parent attestation card
+        const attestationCard = e.target.closest('.card');
+        if (attestationCard) {
+          // Highlight corresponding aggregation bits within this attestation only
+          attestationCard.querySelectorAll(`.committee-idx-${committeeIdx}`).forEach(bit => {
+            bit.classList.add('aggregation-bit-highlighted');
+          });
+        }
+      }
+      
+      // Handle hover on aggregation bits
+      if (e.target.classList.contains('aggregation-bit')) {
+        // Find the parent attestation card
+        const attestationCard = e.target.closest('.card');
+        if (attestationCard) {
+          // Find the committee index from the class
+          const classes = Array.from(e.target.classList);
+          const committeeClass = classes.find(c => c.startsWith('committee-idx-'));
+          if (committeeClass) {
+            const committeeIdx = committeeClass.replace('committee-idx-', '');
+            // Highlight all bits with same committee index within this attestation only
+            attestationCard.querySelectorAll(`.${committeeClass}`).forEach(bit => {
+              bit.classList.add('aggregation-bit-highlighted');
+            });
+            // Highlight corresponding badge within this attestation only
+            attestationCard.querySelectorAll(`[data-committee-idx="${committeeIdx}"]`).forEach(badge => {
+              badge.classList.add('committee-badge-highlighted');
+            });
+          }
+        }
+      }
+    });
+
+    // Handle hover out
+    document.addEventListener('mouseout', function(e) {
+      if (e.target.classList.contains('committee-badge')) {
+        const committeeIdx = e.target.getAttribute('data-committee-idx');
+        // Find the parent attestation card
+        const attestationCard = e.target.closest('.card');
+        if (attestationCard) {
+          // Remove highlight from aggregation bits within this attestation only
+          attestationCard.querySelectorAll(`.committee-idx-${committeeIdx}`).forEach(bit => {
+            bit.classList.remove('aggregation-bit-highlighted');
+          });
+        }
+      }
+      
+      // Handle hover out on aggregation bits
+      if (e.target.classList.contains('aggregation-bit')) {
+        // Find the parent attestation card
+        const attestationCard = e.target.closest('.card');
+        if (attestationCard) {
+          // Remove all highlights within this attestation only
+          attestationCard.querySelectorAll('.aggregation-bit-highlighted').forEach(bit => {
+            bit.classList.remove('aggregation-bit-highlighted');
+          });
+          attestationCard.querySelectorAll('.committee-badge-highlighted').forEach(badge => {
+            badge.classList.remove('committee-badge-highlighted');
+          });
+        }
+      }
+    });
+  });
 </script>
 
 <style>
@@ -262,6 +402,26 @@
 }
 .cursor-pointer {
   cursor: pointer;
+}
+.validator-attesting {
+  color: #28a745 !important;
+}
+.validator-not-attesting {
+  color: #dc3545 !important;
+}
+.committee-badge {
+  transition: background-color 0.2s ease;
+}
+.committee-badge-highlighted {
+  background-color: #0d6efd !important;
+}
+.aggregation-bit {
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+.aggregation-bit-highlighted {
+  background-color: #0d6efd;
+  color: white;
+  font-weight: bold;
 }
 </style>
 {{ end }}

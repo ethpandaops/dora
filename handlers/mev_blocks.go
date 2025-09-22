@@ -210,6 +210,23 @@ func buildFilteredMevBlocksPageData(pageIdx uint64, pageSize uint64, minSlot uin
 		panic(err)
 	}
 
+	blockBlobCountMap := make(map[string]uint64)
+	blockRoots := [][]byte{}
+	for _, mevBlock := range dbMevBlocks {
+		block := services.GlobalBeaconService.GetBeaconIndexer().GetBlocksByExecutionBlockHash(phase0.Hash32(mevBlock.BlockHash))
+		if len(block) > 0 {
+			blockIndex := block[0].GetBlockIndex()
+			blockBlobCountMap[string(blockIndex.ExecutionHash[:])] = blockIndex.BlobCount
+		} else {
+			blockRoots = append(blockRoots, mevBlock.BlockHash)
+		}
+	}
+	blockBlobCounts := db.GetSlotBlobCountByExecutionHashes(blockRoots)
+
+	for _, blockBlobCount := range blockBlobCounts {
+		blockBlobCountMap[string(blockBlobCount.EthBlockHash)] = blockBlobCount.BlobCount
+	}
+
 	chainState := services.GlobalBeaconService.GetChainState()
 
 	for _, mevBlock := range dbMevBlocks {
@@ -225,6 +242,7 @@ func buildFilteredMevBlocksPageData(pageIdx uint64, pageSize uint64, minSlot uin
 			Relays:         []*models.MevBlocksPageDataRelay{},
 			FeeRecipient:   mevBlock.FeeRecipient,
 			TxCount:        mevBlock.TxCount,
+			BlobCount:      blockBlobCountMap[string(mevBlock.BlockHash)],
 			GasUsed:        mevBlock.GasUsed,
 			BlockValue:     mevBlock.BlockValueGwei,
 		}
@@ -257,6 +275,15 @@ func buildFilteredMevBlocksPageData(pageIdx uint64, pageSize uint64, minSlot uin
 	if pageIdx < pageData.TotalPages {
 		pageData.NextPageIndex = pageIdx + 1
 	}
+
+	// Populate UrlParams for page jump functionality
+	pageData.UrlParams = make(map[string]string)
+	for key, values := range filterArgs {
+		if len(values) > 0 {
+			pageData.UrlParams[key] = values[0]
+		}
+	}
+	pageData.UrlParams["c"] = fmt.Sprintf("%v", pageData.PageSize)
 
 	pageData.FirstPageLink = fmt.Sprintf("/mev/blocks?f&%v&c=%v", filterArgs.Encode(), pageData.PageSize)
 	pageData.PrevPageLink = fmt.Sprintf("/mev/blocks?f&%v&c=%v&p=%v", filterArgs.Encode(), pageData.PageSize, pageData.PrevPageIndex)

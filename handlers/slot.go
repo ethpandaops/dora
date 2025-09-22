@@ -223,7 +223,7 @@ func buildSlotPageData(ctx context.Context, blockSlot int64, blockRoot []byte) (
 		NextSlot:       uint64(slot + 1),
 		PreviousSlot:   uint64(slot - 1),
 		Future:         slot >= currentSlot,
-		EpochFinalized: finalizedEpoch > chainState.EpochOfSlot(slot),
+		EpochFinalized: finalizedEpoch >= chainState.EpochOfSlot(slot),
 		Badges:         []*models.SlotPageBlockBadge{},
 	}
 
@@ -322,6 +322,7 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 		BlockRoot:              blockData.Root[:],
 		ParentRoot:             blockData.Header.Message.ParentRoot[:],
 		StateRoot:              blockData.Header.Message.StateRoot[:],
+		BodyRoot:               blockData.Header.Message.BodyRoot[:],
 		Signature:              blockData.Header.Signature[:],
 		RandaoReveal:           randaoReveal[:],
 		Graffiti:               graffiti[:],
@@ -338,7 +339,7 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 		SlashingsCount:         uint64(len(proposerSlashings)) + uint64(len(attesterSlashings)),
 	}
 
-	pageData.SpecValues["committees_per_slot"] = specs.MaxCommitteesPerSlot
+	pageData.SpecValues["max_committees_per_slot"] = specs.MaxCommitteesPerSlot
 	pageData.SpecValues["target_committee_size"] = specs.TargetCommitteeSize
 	pageData.SpecValues["slots_per_epoch"] = specs.SlotsPerEpoch
 
@@ -349,6 +350,8 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 	dbEpochLoaded := make(map[phase0.Epoch]bool)
 	assignmentsMap[epoch] = epochStatsValues
 	assignmentsLoaded[epoch] = true
+
+	attHeadBlocks := make(map[phase0.Root]phase0.Slot)
 
 	pageData.Attestations = make([]*models.SlotPageAttestation, pageData.AttestationsCount)
 	for i, attVersioned := range attestations {
@@ -406,6 +409,19 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 			SourceRoot:      attData.Source.Root[:],
 			TargetEpoch:     uint64(attData.Target.Epoch),
 			TargetRoot:      attData.Target.Root[:],
+		}
+
+		if slot, ok := attHeadBlocks[attData.BeaconBlockRoot]; ok {
+			attPageData.BeaconBlockSlot = uint64(slot)
+		} else {
+			beaconBlocks := services.GlobalBeaconService.GetDbBlocksByFilter(&dbtypes.BlockFilter{
+				BlockRoot: attData.BeaconBlockRoot[:],
+			}, 0, 1, 0)
+			if len(beaconBlocks) > 0 {
+				slot := phase0.Slot(beaconBlocks[0].Slot)
+				attHeadBlocks[attData.BeaconBlockRoot] = slot
+				attPageData.BeaconBlockSlot = uint64(slot)
+			}
 		}
 
 		var attAssignments []uint64
@@ -618,150 +634,86 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 		pageData.SyncAggParticipation = utils.SyncCommitteeParticipation(pageData.SyncAggregateBits, specs.SyncCommitteeSize)
 	}
 
-	if specs.BellatrixForkEpoch != nil && uint64(epoch) >= *specs.BellatrixForkEpoch {
-		switch blockData.Block.Version {
-		case spec.DataVersionBellatrix:
-			if blockData.Block.Bellatrix == nil {
-				break
-			}
-			executionPayload := blockData.Block.Bellatrix.Message.Body.ExecutionPayload
-			var baseFeePerGasBEBytes [32]byte
-			for i := 0; i < 32; i++ {
-				baseFeePerGasBEBytes[i] = executionPayload.BaseFeePerGas[32-1-i]
-			}
-			baseFeePerGas := new(big.Int).SetBytes(baseFeePerGasBEBytes[:])
-			pageData.ExecutionData = &models.SlotPageExecutionData{
-				ParentHash:    executionPayload.ParentHash[:],
-				FeeRecipient:  executionPayload.FeeRecipient[:],
-				StateRoot:     executionPayload.StateRoot[:],
-				ReceiptsRoot:  executionPayload.ReceiptsRoot[:],
-				LogsBloom:     executionPayload.LogsBloom[:],
-				Random:        executionPayload.PrevRandao[:],
-				GasLimit:      uint64(executionPayload.GasLimit),
-				GasUsed:       uint64(executionPayload.GasUsed),
-				Timestamp:     uint64(executionPayload.Timestamp),
-				Time:          time.Unix(int64(executionPayload.Timestamp), 0),
-				ExtraData:     executionPayload.ExtraData,
-				BaseFeePerGas: baseFeePerGas.Uint64(),
-				BlockHash:     executionPayload.BlockHash[:],
-				BlockNumber:   uint64(executionPayload.BlockNumber),
-			}
-			getSlotPageTransactions(pageData, executionPayload.Transactions)
-		case spec.DataVersionCapella:
-			if blockData.Block.Capella == nil {
-				break
-			}
-			executionPayload := blockData.Block.Capella.Message.Body.ExecutionPayload
-			var baseFeePerGasBEBytes [32]byte
-			for i := 0; i < 32; i++ {
-				baseFeePerGasBEBytes[i] = executionPayload.BaseFeePerGas[32-1-i]
-			}
-			baseFeePerGas := new(big.Int).SetBytes(baseFeePerGasBEBytes[:])
-			pageData.ExecutionData = &models.SlotPageExecutionData{
-				ParentHash:    executionPayload.ParentHash[:],
-				FeeRecipient:  executionPayload.FeeRecipient[:],
-				StateRoot:     executionPayload.StateRoot[:],
-				ReceiptsRoot:  executionPayload.ReceiptsRoot[:],
-				LogsBloom:     executionPayload.LogsBloom[:],
-				Random:        executionPayload.PrevRandao[:],
-				GasLimit:      uint64(executionPayload.GasLimit),
-				GasUsed:       uint64(executionPayload.GasUsed),
-				Timestamp:     uint64(executionPayload.Timestamp),
-				Time:          time.Unix(int64(executionPayload.Timestamp), 0),
-				ExtraData:     executionPayload.ExtraData,
-				BaseFeePerGas: baseFeePerGas.Uint64(),
-				BlockHash:     executionPayload.BlockHash[:],
-				BlockNumber:   uint64(executionPayload.BlockNumber),
-			}
-			getSlotPageTransactions(pageData, executionPayload.Transactions)
-		case spec.DataVersionDeneb:
-			if blockData.Block.Deneb == nil {
-				break
-			}
-			executionPayload := blockData.Block.Deneb.Message.Body.ExecutionPayload
-			pageData.ExecutionData = &models.SlotPageExecutionData{
-				ParentHash:    executionPayload.ParentHash[:],
-				FeeRecipient:  executionPayload.FeeRecipient[:],
-				StateRoot:     executionPayload.StateRoot[:],
-				ReceiptsRoot:  executionPayload.ReceiptsRoot[:],
-				LogsBloom:     executionPayload.LogsBloom[:],
-				Random:        executionPayload.PrevRandao[:],
-				GasLimit:      uint64(executionPayload.GasLimit),
-				GasUsed:       uint64(executionPayload.GasUsed),
-				Timestamp:     uint64(executionPayload.Timestamp),
-				Time:          time.Unix(int64(executionPayload.Timestamp), 0),
-				ExtraData:     executionPayload.ExtraData,
-				BaseFeePerGas: executionPayload.BaseFeePerGas.Uint64(),
-				BlockHash:     executionPayload.BlockHash[:],
-				BlockNumber:   uint64(executionPayload.BlockNumber),
-			}
-			getSlotPageTransactions(pageData, executionPayload.Transactions)
-		case spec.DataVersionElectra:
-			if blockData.Block.Electra == nil {
-				break
-			}
-			executionPayload := blockData.Block.Electra.Message.Body.ExecutionPayload
-			pageData.ExecutionData = &models.SlotPageExecutionData{
-				ParentHash:    executionPayload.ParentHash[:],
-				FeeRecipient:  executionPayload.FeeRecipient[:],
-				StateRoot:     executionPayload.StateRoot[:],
-				ReceiptsRoot:  executionPayload.ReceiptsRoot[:],
-				LogsBloom:     executionPayload.LogsBloom[:],
-				Random:        executionPayload.PrevRandao[:],
-				GasLimit:      uint64(executionPayload.GasLimit),
-				GasUsed:       uint64(executionPayload.GasUsed),
-				Timestamp:     uint64(executionPayload.Timestamp),
-				Time:          time.Unix(int64(executionPayload.Timestamp), 0),
-				ExtraData:     executionPayload.ExtraData,
-				BaseFeePerGas: executionPayload.BaseFeePerGas.Uint64(),
-				BlockHash:     executionPayload.BlockHash[:],
-				BlockNumber:   uint64(executionPayload.BlockNumber),
-			}
-			getSlotPageTransactions(pageData, executionPayload.Transactions)
-		case spec.DataVersionFulu:
-			if blockData.Block.Fulu == nil {
-				break
-			}
-			executionPayload := blockData.Block.Fulu.Message.Body.ExecutionPayload
-			pageData.ExecutionData = &models.SlotPageExecutionData{
-				ParentHash:    executionPayload.ParentHash[:],
-				FeeRecipient:  executionPayload.FeeRecipient[:],
-				StateRoot:     executionPayload.StateRoot[:],
-				ReceiptsRoot:  executionPayload.ReceiptsRoot[:],
-				LogsBloom:     executionPayload.LogsBloom[:],
-				Random:        executionPayload.PrevRandao[:],
-				GasLimit:      uint64(executionPayload.GasLimit),
-				GasUsed:       uint64(executionPayload.GasUsed),
-				Timestamp:     uint64(executionPayload.Timestamp),
-				Time:          time.Unix(int64(executionPayload.Timestamp), 0),
-				ExtraData:     executionPayload.ExtraData,
-				BaseFeePerGas: executionPayload.BaseFeePerGas.Uint64(),
-				BlockHash:     executionPayload.BlockHash[:],
-				BlockNumber:   uint64(executionPayload.BlockNumber),
-			}
-			getSlotPageTransactions(pageData, executionPayload.Transactions)
-		case spec.DataVersionEip7805:
-			if blockData.Block.Eip7805 == nil {
-				break
-			}
-			executionPayload := blockData.Block.Eip7805.Message.Body.ExecutionPayload
-			pageData.ExecutionData = &models.SlotPageExecutionData{
-				ParentHash:    executionPayload.ParentHash[:],
-				FeeRecipient:  executionPayload.FeeRecipient[:],
-				StateRoot:     executionPayload.StateRoot[:],
-				ReceiptsRoot:  executionPayload.ReceiptsRoot[:],
-				LogsBloom:     executionPayload.LogsBloom[:],
-				Random:        executionPayload.PrevRandao[:],
-				GasLimit:      uint64(executionPayload.GasLimit),
-				GasUsed:       uint64(executionPayload.GasUsed),
-				Timestamp:     uint64(executionPayload.Timestamp),
-				Time:          time.Unix(int64(executionPayload.Timestamp), 0),
-				ExtraData:     executionPayload.ExtraData,
-				BaseFeePerGas: executionPayload.BaseFeePerGas.Uint64(),
-				BlockHash:     executionPayload.BlockHash[:],
-				BlockNumber:   uint64(executionPayload.BlockNumber),
-			}
-			getSlotPageTransactions(pageData, executionPayload.Transactions)
+	if executionPayload, _ := blockData.Block.ExecutionPayload(); executionPayload != nil {
+		pageData.ExecutionData = &models.SlotPageExecutionData{}
+
+		if parentHash, err := executionPayload.ParentHash(); err == nil {
+			pageData.ExecutionData.ParentHash = parentHash[:]
+		}
+
+		if feeRecipient, err := executionPayload.FeeRecipient(); err == nil {
+			pageData.ExecutionData.FeeRecipient = feeRecipient[:]
+		}
+
+		if stateRoot, err := executionPayload.StateRoot(); err == nil {
+			pageData.ExecutionData.StateRoot = stateRoot[:]
+		}
+
+		if receiptsRoot, err := executionPayload.ReceiptsRoot(); err == nil {
+			pageData.ExecutionData.ReceiptsRoot = receiptsRoot[:]
+		}
+
+		if logsBloom, err := executionPayload.LogsBloom(); err == nil {
+			pageData.ExecutionData.LogsBloom = logsBloom[:]
+		}
+
+		if random, err := executionPayload.PrevRandao(); err == nil {
+			pageData.ExecutionData.Random = random[:]
+		}
+
+		if gasLimit, err := executionPayload.GasLimit(); err == nil {
+			pageData.ExecutionData.GasLimit = uint64(gasLimit)
+		}
+
+		if gasUsed, err := executionPayload.GasUsed(); err == nil {
+			pageData.ExecutionData.GasUsed = uint64(gasUsed)
+		}
+
+		if timestamp, err := executionPayload.Timestamp(); err == nil {
+			pageData.ExecutionData.Timestamp = uint64(timestamp)
+			pageData.ExecutionData.Time = time.Unix(int64(timestamp), 0)
+		}
+
+		if extraData, err := executionPayload.ExtraData(); err == nil {
+			pageData.ExecutionData.ExtraData = extraData
+		}
+
+		if baseFeePerGas, err := executionPayload.BaseFeePerGas(); err == nil {
+			pageData.ExecutionData.BaseFeePerGas = baseFeePerGas.Uint64()
+		}
+
+		if blockHash, err := executionPayload.BlockHash(); err == nil {
+			pageData.ExecutionData.BlockHash = blockHash[:]
+		}
+
+		if blockNumber, err := executionPayload.BlockNumber(); err == nil {
+			pageData.ExecutionData.BlockNumber = uint64(blockNumber)
+		}
+
+		if excessBlobGas, err := executionPayload.ExcessBlobGas(); err == nil {
+			pageData.ExecutionData.ExcessBlobGas = &excessBlobGas
+		}
+
+		if blobGasUsed, err := executionPayload.BlobGasUsed(); err == nil {
+			pageData.ExecutionData.BlobGasUsed = &blobGasUsed
+		}
+
+		executionChainState := services.GlobalBeaconService.GetExecutionChainState()
+		blobSchedule := executionChainState.GetBlobScheduleForTimestamp(time.Unix(int64(pageData.ExecutionData.Timestamp), 0))
+		if blobSchedule != nil {
+			blobGasLimit := blobSchedule.Max * 131072
+			pageData.ExecutionData.BlobGasLimit = &blobGasLimit
+			pageData.ExecutionData.BlobLimit = &blobSchedule.Max
+		}
+
+		if pageData.ExecutionData.ExcessBlobGas != nil && blobSchedule != nil {
+			blobBaseFee := executionChainState.CalcBaseFeePerBlobGas(*pageData.ExecutionData.ExcessBlobGas, blobSchedule.BaseFeeUpdateFraction)
+			blobBaseFeeUint64 := blobBaseFee.Uint64()
+			pageData.ExecutionData.BlobBaseFee = &blobBaseFeeUint64
+		}
+
+		if transactions, err := executionPayload.Transactions(); err == nil {
+			getSlotPageTransactions(pageData, transactions)
 		}
 	}
 
@@ -803,13 +755,10 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 		}
 	}
 
-	if specs.ElectraForkEpoch != nil && uint64(epoch) >= *specs.ElectraForkEpoch {
-		requests, err := blockData.Block.ExecutionRequests()
-		if err == nil && requests != nil {
-			getSlotPageDepositRequests(pageData, requests.Deposits)
-			getSlotPageWithdrawalRequests(pageData, requests.Withdrawals)
-			getSlotPageConsolidationRequests(pageData, requests.Consolidations)
-		}
+	if requests, err := blockData.Block.ExecutionRequests(); err == nil && requests != nil {
+		getSlotPageDepositRequests(pageData, requests.Deposits)
+		getSlotPageWithdrawalRequests(pageData, requests.Withdrawals)
+		getSlotPageConsolidationRequests(pageData, requests.Consolidations)
 	}
 
 	return pageData
@@ -1021,7 +970,11 @@ func decodeTransactions(blockRoot []byte, transactions []bellatrix.Transaction) 
 			Type:  uint64(tx.Type()),
 		}
 		txData.DataLen = uint64(len(txData.Data))
-		txFrom, err := ethtypes.Sender(ethtypes.NewPragueSigner(tx.ChainId()), &tx)
+		chainId := tx.ChainId()
+		if chainId != nil && chainId.Cmp(big.NewInt(0)) == 0 {
+			chainId = nil
+		}
+		txFrom, err := ethtypes.Sender(ethtypes.LatestSignerForChainID(chainId), &tx)
 		if err != nil {
 			txData.From = "unknown"
 			logrus.Warnf("error decoding transaction sender 0x%x.%v: %v\n", blockRoot, idx, err)

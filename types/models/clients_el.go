@@ -11,6 +11,8 @@ type ClientsELPageData struct {
 	PeerMap                *ClientELPageDataPeerMap          `json:"peer_map"`
 	ShowSensitivePeerInfos bool                              `json:"show_sensitive_peer_infos"`
 	Nodes                  map[string]*ClientsELPageDataNode `json:"nodes"`
+	Sorting                string                            `json:"sorting"`
+	IsDefaultSorting       bool                              `json:"is_default_sorting"`
 }
 
 type ClientsELPageDataClient struct {
@@ -27,6 +29,7 @@ type ClientsELPageDataClient struct {
 	PeersInboundCounter  uint32    `json:"peers_inbound_counter"`
 	PeersOutboundCounter uint32    `json:"peers_outbound_counter"`
 	PeerID               string    `json:"peer_id"`
+	ConfigWarnings       []string  `json:"config_warnings"`
 }
 
 type ClientsELPageDataNode struct {
@@ -40,6 +43,26 @@ type ClientsELPageDataNode struct {
 	ListenAddr    string                       `json:"listen_addr"`
 	Peers         []*ClientELPageDataNodePeers `json:"peers"`
 	DidFetchPeers bool                         `json:"peers_fetched"`
+	ForkConfig    *ClientELPageDataForkConfig  `json:"fork_config"`
+}
+
+type ClientELPageDataForkConfig struct {
+	Current *EthConfigObject `json:"current"`
+	Next    *EthConfigObject `json:"next"`
+	Last    *EthConfigObject `json:"last"`
+}
+
+type EthConfigObject struct {
+	ActivationTime uint64 `json:"activationTime"`
+	BlobSchedule   struct {
+		Max                   uint64 `json:"max"`
+		Target                uint64 `json:"target"`
+		BaseFeeUpdateFraction uint64 `json:"baseFeeUpdateFraction"`
+	} `json:"blobSchedule"`
+	ChainId         string            `json:"chainId"`
+	ForkId          string            `json:"forkId"`
+	Precompiles     map[string]string `json:"precompiles"`
+	SystemContracts map[string]string `json:"systemContracts"`
 }
 
 type ClientELPageDataNodePeers struct {

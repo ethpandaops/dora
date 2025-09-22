@@ -10,6 +10,7 @@ import (
 
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
 	"github.com/ethereum/go-ethereum/p2p/enr"
+	"github.com/ethpandaops/dora/clients/consensus/rpc"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
@@ -26,10 +27,17 @@ func ClientsCL(w http.ResponseWriter, r *http.Request) {
 	var pageTemplate = templates.GetTemplate(clientsTemplateFiles...)
 	data := InitPageData(w, r, "clients/consensus", "/clients/consensus", "Consensus clients", clientsTemplateFiles)
 
+	// Get sorting parameter
+	urlArgs := r.URL.Query()
+	var sortOrder string
+	if urlArgs.Has("o") {
+		sortOrder = urlArgs.Get("o")
+	}
+
 	var pageError error
 	pageError = services.GlobalCallRateLimiter.CheckCallLimit(r, 1)
 	if pageError == nil {
-		data.Data, pageError = getCLClientsPageData()
+		data.Data, pageError = getCLClientsPageData(sortOrder)
 	}
 	if pageError != nil {
 		handlePageError(w, r, pageError)
@@ -41,11 +49,11 @@ func ClientsCL(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func getCLClientsPageData() (*models.ClientsCLPageData, error) {
+func getCLClientsPageData(sortOrder string) (*models.ClientsCLPageData, error) {
 	pageData := &models.ClientsCLPageData{}
-	pageCacheKey := "clients/consensus"
+	pageCacheKey := fmt.Sprintf("clients/consensus/%s", sortOrder)
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
-		pageData, cacheTimeout := buildCLClientsPageData()
+		pageData, cacheTimeout := buildCLClientsPageData(sortOrder)
 		pageCall.CacheTimeout = cacheTimeout
 		return pageData
 	})
@@ -144,7 +152,7 @@ func buildCLPeerMapData() *models.ClientCLPageDataPeerMap {
 	return peerMap
 }
 
-func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
+func buildCLClientsPageData(sortOrder string) (*models.ClientsCLPageData, time.Duration) {
 	logrus.Debugf("clients page called")
 	pageData := &models.ClientsCLPageData{
 		Clients:                []*models.ClientsCLPageDataClient{},
@@ -159,6 +167,10 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 			},
 		},
 		Nodes: make(map[string]*models.ClientCLPageDataNode),
+
+		// DAS Guardian configuration (check enabled by default, mass scan disabled by default)
+		DisableDasGuardianCheck:   utils.Config.Frontend.DisableDasGuardianCheck,
+		EnableDasGuardianMassScan: utils.Config.Frontend.EnableDasGuardianMassScan,
 	}
 	chainState := services.GlobalBeaconService.GetChainState()
 
@@ -206,6 +218,44 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 			return enrValues[i].Key < enrValues[j].Key
 		})
 		return enrValues
+	}
+
+	getMetadataValuesFromIdentity := func(nodeIdentity *rpc.NodeIdentity) []*models.ClientCLPageDataNodeENRValue {
+		metadataValues := []*models.ClientCLPageDataNodeENRValue{}
+		if nodeIdentity != nil {
+			// Add attnets if present
+			if nodeIdentity.Metadata.Attnets != "" {
+				metadataValues = append(metadataValues, &models.ClientCLPageDataNodeENRValue{
+					Key:   "attnets",
+					Value: nodeIdentity.Metadata.Attnets,
+				})
+			}
+			// Add custody_group_count if present (MetadataV3 field for Fulu)
+			if nodeIdentity.Metadata.CustodyGroupCount != nil {
+				metadataValues = append(metadataValues, &models.ClientCLPageDataNodeENRValue{
+					Key:   "custody_group_count",
+					Value: fmt.Sprintf("%v", nodeIdentity.Metadata.CustodyGroupCount),
+				})
+			}
+			// Add seq_number if present
+			if nodeIdentity.Metadata.SeqNumber != nil {
+				metadataValues = append(metadataValues, &models.ClientCLPageDataNodeENRValue{
+					Key:   "seq_number",
+					Value: fmt.Sprintf("%v", nodeIdentity.Metadata.SeqNumber),
+				})
+			}
+			// Add syncnets if present
+			if nodeIdentity.Metadata.Syncnets != "" {
+				metadataValues = append(metadataValues, &models.ClientCLPageDataNodeENRValue{
+					Key:   "syncnets",
+					Value: nodeIdentity.Metadata.Syncnets,
+				})
+			}
+		}
+		sort.Slice(metadataValues, func(i, j int) bool {
+			return metadataValues[i].Key < metadataValues[j].Key
+		})
+		return metadataValues
 	}
 
 	// Add peer node to global nodes map
@@ -272,6 +322,24 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 					node.ENR = id.Enr // idENR has higher sequence number, so override.
 				}
 			}
+
+			// Add metadata information
+			if id.Metadata.Attnets != "" || id.Metadata.Syncnets != "" || id.Metadata.SeqNumber != nil || id.Metadata.CustodyGroupCount != nil {
+				seqNumber := ""
+				if id.Metadata.SeqNumber != nil {
+					seqNumber = fmt.Sprintf("%v", id.Metadata.SeqNumber)
+				}
+				custodyGroupCount := ""
+				if id.Metadata.CustodyGroupCount != nil {
+					custodyGroupCount = fmt.Sprintf("%v", id.Metadata.CustodyGroupCount)
+				}
+				node.Metadata = &models.ClientCLPageDataNodeMetadata{
+					Attnets:           id.Metadata.Attnets,
+					Syncnets:          id.Metadata.Syncnets,
+					SeqNumber:         seqNumber,
+					CustodyGroupCount: custodyGroupCount,
+				}
+			}
 		}
 
 		peers := client.GetNodePeers()
@@ -328,6 +396,7 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 			Name:                 client.GetName(),
 			Version:              client.GetVersion(),
 			PeerID:               peerId,
+			NodeENR:              node.ENR,
 			PeerCount:            inPeerCount + outPeerCount,
 			PeersInboundCounter:  inPeerCount,
 			PeersOutboundCounter: outPeerCount,
@@ -335,6 +404,7 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 			HeadRoot:             lastHeadRoot[:],
 			Status:               client.GetStatus().String(),
 			LastRefresh:          client.GetLastEventTime(),
+			SpecWarnings:         client.GetSpecWarnings(),
 		}
 
 		lastError := client.GetLastClientError()
@@ -404,6 +474,13 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 
 		if pageData.ShowSensitivePeerInfos {
 			v.ENRKeyValues = getEnrValues(enrValues)
+			// Find the client for this node to get metadata
+			for _, client := range services.GlobalBeaconService.GetConsensusClients() {
+				if id := client.GetNodeIdentity(); id != nil && id.PeerID == v.PeerID {
+					v.MetadataKeyValues = getMetadataValuesFromIdentity(id)
+					break
+				}
+			}
 		}
 
 		// Calculate node ID
@@ -508,6 +585,104 @@ func buildCLClientsPageData() (*models.ClientsCLPageData, time.Duration) {
 			node.ENR = ""
 			node.ENRKeyValues = nil
 		}
+	}
+
+	// Apply sorting
+	switch sortOrder {
+	case "index-d":
+		sort.Slice(pageData.Clients, func(i, j int) bool {
+			return pageData.Clients[i].Index > pageData.Clients[j].Index
+		})
+	case "name":
+		sort.Slice(pageData.Clients, func(i, j int) bool {
+			return pageData.Clients[i].Name < pageData.Clients[j].Name
+		})
+	case "name-d":
+		sort.Slice(pageData.Clients, func(i, j int) bool {
+			return pageData.Clients[i].Name > pageData.Clients[j].Name
+		})
+	case "peers":
+		sort.Slice(pageData.Clients, func(i, j int) bool {
+			return pageData.Clients[i].PeerCount < pageData.Clients[j].PeerCount
+		})
+	case "peers-d":
+		sort.Slice(pageData.Clients, func(i, j int) bool {
+			return pageData.Clients[i].PeerCount > pageData.Clients[j].PeerCount
+		})
+	case "headslot":
+		sort.Slice(pageData.Clients, func(i, j int) bool {
+			return pageData.Clients[i].HeadSlot < pageData.Clients[j].HeadSlot
+		})
+	case "headslot-d":
+		sort.Slice(pageData.Clients, func(i, j int) bool {
+			return pageData.Clients[i].HeadSlot > pageData.Clients[j].HeadSlot
+		})
+	case "headroot":
+		sort.Slice(pageData.Clients, func(i, j int) bool {
+			return string(pageData.Clients[i].HeadRoot) < string(pageData.Clients[j].HeadRoot)
+		})
+	case "headroot-d":
+		sort.Slice(pageData.Clients, func(i, j int) bool {
+			return string(pageData.Clients[i].HeadRoot) > string(pageData.Clients[j].HeadRoot)
+		})
+	case "status":
+		sort.Slice(pageData.Clients, func(i, j int) bool {
+			statusOrder := map[string]int{"online": 0, "synchronizing": 1, "optimistic": 2, "offline": 3}
+			aVal, aExists := statusOrder[pageData.Clients[i].Status]
+			bVal, bExists := statusOrder[pageData.Clients[j].Status]
+			if !aExists {
+				aVal = 4
+			}
+			if !bExists {
+				bVal = 4
+			}
+			return aVal < bVal
+		})
+	case "status-d":
+		sort.Slice(pageData.Clients, func(i, j int) bool {
+			statusOrder := map[string]int{"online": 0, "synchronizing": 1, "optimistic": 2, "offline": 3}
+			aVal, aExists := statusOrder[pageData.Clients[i].Status]
+			bVal, bExists := statusOrder[pageData.Clients[j].Status]
+			if !aExists {
+				aVal = 4
+			}
+			if !bExists {
+				bVal = 4
+			}
+			return aVal > bVal
+		})
+	case "version":
+		sort.Slice(pageData.Clients, func(i, j int) bool {
+			return pageData.Clients[i].Version < pageData.Clients[j].Version
+		})
+	case "version-d":
+		sort.Slice(pageData.Clients, func(i, j int) bool {
+			return pageData.Clients[i].Version > pageData.Clients[j].Version
+		})
+	case "index":
+		sort.Slice(pageData.Clients, func(i, j int) bool {
+			return pageData.Clients[i].Index < pageData.Clients[j].Index
+		})
+	default:
+		// Default sort by name ascending
+		sort.Slice(pageData.Clients, func(i, j int) bool {
+			return pageData.Clients[i].Name < pageData.Clients[j].Name
+		})
+		pageData.IsDefaultSorting = true
+		sortOrder = "name"
+	}
+	pageData.Sorting = sortOrder
+
+	// Add current fork digest
+	forkDigest := chainState.GetForkDigestForEpoch(chainState.CurrentEpoch())
+	pageData.CurrentForkDigest = forkDigest[:]
+
+	// Add Fulu activation epoch for DAS Guardian UI
+	if specs != nil && specs.FuluForkEpoch != nil {
+		pageData.FuluActivationEpoch = *specs.FuluForkEpoch
+	} else {
+		// If Fulu fork epoch is not set, use max uint64 (never activated)
+		pageData.FuluActivationEpoch = ^uint64(0)
 	}
 
 	return pageData, cacheTime

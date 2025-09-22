@@ -40,24 +40,67 @@
     </div>
     <div class="card mt-2">
       <div class="card-body px-0 py-3">
-        <div class="table-responsive px-0 py-1">
+        <div class="table-responsive table-sorting px-0 py-1">
           <div style="text-align: right; margin-right: 15px;">
             Peer infos:
+            <i class="fa fa-refresh text-muted p-1 mx-1" role="button" data-bs-toggle="tooltip" data-bs-placement="top" title="Refresh peer information" onclick="refreshPeerInfos()" style="cursor: pointer;"></i>
             <div class="btn-group btn-group-sm" role="group" aria-label="Peer info controls">
-              <button type="button" class="btn btn-outline-secondary" onclick='$(".collapse.peerInfo").collapse("hide");'>Hide all</button>
-              <button type="button" class="btn btn-outline-secondary" onclick='$(".collapse.peerInfo").collapse("show");'>Show all</button>
+              <button type="button" id="toggleAllPeers" class="btn btn-outline-secondary" onclick='toggleAllPeers();'>Show all</button>
+              <button type="button" id="toggleNodeIds" class="btn btn-outline-secondary" onclick='toggleNodeIds();'>Expand node IDs</button>
             </div>
           </div>
-          <table class="table table-nobr" id="clients">
+          <table class="table" id="clients">
             <thead>
               <tr>
-                <th>#</th>
-                <th>Name</th>
-                <th>Peers</th>
-                <th>Block</th>
-                <th>Block hash</th>
-                <th>Status</th>
-                <th>Version</th>
+                <th>
+                  #
+                  <div class="col-sorting">
+                    <a href="/clients/execution?o=index" class="sort-link {{ if eq .Sorting "index" }}active{{ end }}"><i class="fas fa-arrow-up"></i></a>
+                    <a href="/clients/execution?o=index-d" class="sort-link {{ if eq .Sorting "index-d" }}active{{ end }}"><i class="fas fa-arrow-down"></i></a>
+                  </div>
+                </th>
+                <th>
+                  Name
+                  <div class="col-sorting">
+                    <a href="/clients/execution?o=name" class="sort-link {{ if eq .Sorting "name" }}active{{ end }}"><i class="fas fa-arrow-up"></i></a>
+                    <a href="/clients/execution?o=name-d" class="sort-link {{ if eq .Sorting "name-d" }}active{{ end }}"><i class="fas fa-arrow-down"></i></a>
+                  </div>
+                </th>
+                <th>
+                  Peers
+                  <div class="col-sorting">
+                    <a href="/clients/execution?o=peers" class="sort-link {{ if eq .Sorting "peers" }}active{{ end }}"><i class="fas fa-arrow-up"></i></a>
+                    <a href="/clients/execution?o=peers-d" class="sort-link {{ if eq .Sorting "peers-d" }}active{{ end }}"><i class="fas fa-arrow-down"></i></a>
+                  </div>
+                </th>
+                <th>
+                  Block
+                  <div class="col-sorting">
+                    <a href="/clients/execution?o=block" class="sort-link {{ if eq .Sorting "block" }}active{{ end }}"><i class="fas fa-arrow-up"></i></a>
+                    <a href="/clients/execution?o=block-d" class="sort-link {{ if eq .Sorting "block-d" }}active{{ end }}"><i class="fas fa-arrow-down"></i></a>
+                  </div>
+                </th>
+                <th>
+                  Block hash
+                  <div class="col-sorting">
+                    <a href="/clients/execution?o=blockhash" class="sort-link {{ if eq .Sorting "blockhash" }}active{{ end }}"><i class="fas fa-arrow-up"></i></a>
+                    <a href="/clients/execution?o=blockhash-d" class="sort-link {{ if eq .Sorting "blockhash-d" }}active{{ end }}"><i class="fas fa-arrow-down"></i></a>
+                  </div>
+                </th>
+                <th>
+                  Status
+                  <div class="col-sorting">
+                    <a href="/clients/execution?o=status" class="sort-link {{ if eq .Sorting "status" }}active{{ end }}"><i class="fas fa-arrow-up"></i></a>
+                    <a href="/clients/execution?o=status-d" class="sort-link {{ if eq .Sorting "status-d" }}active{{ end }}"><i class="fas fa-arrow-down"></i></a>
+                  </div>
+                </th>
+                <th>
+                  Version
+                  <div class="col-sorting">
+                    <a href="/clients/execution?o=version" class="sort-link {{ if eq .Sorting "version" }}active{{ end }}"><i class="fas fa-arrow-up"></i></a>
+                    <a href="/clients/execution?o=version-d" class="sort-link {{ if eq .Sorting "version-d" }}active{{ end }}"><i class="fas fa-arrow-down"></i></a>
+                  </div>
+                </th>
               </tr>
             </thead>
               <tbody>
@@ -72,23 +115,15 @@
                       </span>
                     </td>
                     <td style="font-size: 0.8rem; vertical-align: middle;">
-                      <span style="width:30px;display: inline-block;" class="text-success" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Inbound Peers">
-                        {{ if and ($client.DidFetchPeers) (not (contains $client.Version "Nethermind")) }}
-                          {{ $client.PeersInboundCounter }}
-                        {{ else }}
-                          ?
-                        {{ end }}
+                      <span class="client-node-peer-count text-success" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Inbound Peers">
+                        {{ $client.PeersInboundCounter }}
                         <i class="fa-solid fa-arrow-down"></i>
                       </span>
-                      <span style="width:30px;display: inline-block;" class="text-danger" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Outbound Peers">
-                        {{ if and ($client.DidFetchPeers) (not (contains $client.Version "Nethermind")) }}
-                          {{ $client.PeersOutboundCounter }}
-                        {{ else }}
-                          ?
-                        {{ end }}
+                      <span class="client-node-peer-count text-danger" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Outbound Peers">
+                        {{ $client.PeersOutboundCounter }}
                         <i class="fa-solid fa-arrow-up"></i>
                       </span>
-                      <span style="width:30px;display: inline-block;" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Total Peers">
+                      <span class="client-node-peer-count" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Total Peers">
                         {{ if $client.DidFetchPeers }}
                           ({{ $client.PeerCount }})
                         {{ else }}
@@ -97,7 +132,7 @@
                       </span>
                     </td>
                     <td>{{ formatAddCommas $client.HeadSlot }}</td>
-                    <td>
+                    <td class="text-monospace">
                       <span class="text-truncate d-inline-block" style="max-width: 200px">0x{{ printf "%x" $client.HeadRoot }}</span>
                       <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $client.HeadRoot }}"></i>
                     </td>
@@ -111,9 +146,15 @@
                       {{ else }}
                         <span class="badge rounded-pill text-bg-dark">{{ $client.Status }}</span>
                       {{ end }}
+                      {{ if $client.ConfigWarnings }}
+                        <span class="text-warning" data-bs-toggle="tooltip" data-bs-placement="top" 
+                          title="{{ range $idx, $warning := $client.ConfigWarnings }}{{ if $idx }}, {{ end }}{{ $warning }}{{ end }}">
+                          <i class="fas fa-exclamation-triangle"></i>
+                        </span>
+                      {{ end }}
                     </td>
                     <td>
-                      <span class="text-truncate d-inline-block" style="max-width: 400px">{{ $client.Version }}</span>
+                      <span class="text-truncate d-inline-block" style="max-width: 300px">{{ $client.Version }}</span>
                       <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $client.Version }}"></i>
                     </td>
                   </tr>
@@ -134,14 +175,14 @@
             <table class="table table-borderless table-sm client-table-info ">
               <tbody>
                 <tr>
-                  <td>Name</td>
+                  <td style="white-space: nowrap;">Name</td>
                   <td>
                     <code data-bind="text: name"></code>
                     <i class="fa fa-copy text-muted p-1" role="button" data-bs-placement="right" data-bs-toggle="tooltip" title="Copy to clipboard" data-bind="attr: {'data-clipboard-text': name}"></i>
                   </td>
                 </tr>
                 <tr>
-                  <td>Peer ID</td>
+                  <td style="white-space: nowrap;">Peer ID</td>
                   <td>
                     <code data-bind="text: peer_id"></code>
                     <i class="fa fa-copy text-muted p-1" role="button" data-bs-placement="right" data-bs-toggle="tooltip" title="Copy to clipboard" data-bind="attr: {'data-clipboard-text': peer_id}"></i>
@@ -149,7 +190,7 @@
                 </tr>
                 {{ html "<!-- ko if: showSensitivePeerInfos -->" }}
                 <tr style="vertical-align: top;">
-                  <td>Enode</td>
+                  <td style="white-space: nowrap;">Enode</td>
                   <td>
                     <div style="word-break: break-all; text-wrap: pretty;">
                       <code data-bind="text: enode"></code>
@@ -158,7 +199,7 @@
                   </td>
                 </tr>
                 <tr style="vertical-align: top;">
-                  <td>IP Address</td>
+                  <td style="white-space: nowrap;">IP Address</td>
                   <td>
                     <div style="word-break: break-all; text-wrap: pretty;">
                       <code data-bind="text: ip_addr"></code>
@@ -167,7 +208,7 @@
                   </td>
                 </tr>
                 <tr style="vertical-align: top;">
-                  <td>Listen Address</td>
+                  <td style="white-space: nowrap;">Listen Address</td>
                   <td>
                     <div style="word-break: break-all; text-wrap: pretty;">
                       <code data-bind="text: listen_addr"></code>
@@ -179,14 +220,86 @@
               </tbody>
             </table>
           </div>
-          <div class="client-row-divider">Peers</div>
-          <div>
+          
+          <div class="client-row-divider">
+            Fork Configuration
+            <span class="text-muted" style="float: right; font-size: 0.9em;">
+              {{ html "<!-- ko if: fork_config() -->" }}
+              Chain ID: <code data-bind="text: (fork_config().current && fork_config().current.chainId) || ''"></code>
+              <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy Chain ID" data-bind="click: function() { var chainId = (fork_config().current && fork_config().current.chainId) || ''; navigator.clipboard.writeText(chainId); }"></i>
+              {{ html "<!-- /ko -->" }}
+            </span>
+          </div>
+          {{ html "<!-- ko if: fork_config() -->" }}
+          <div class="client-node-peerinfo">
+            <table class="table table-borderless table-sm client-table-info">
+              <thead>
+                <tr>
+                  <th style="width:15%">Fork</th>
+                  <th style="width:35%">Activation Time (UTC)</th>
+                  <th style="width:50%">Fork ID</th>
+                </tr>
+              </thead>
+              <tbody>
+                {{ html "<!-- ko if: fork_config().current -->" }}
+                <tr>
+                  <td><strong>Current</strong></td>
+                  <td>
+                    <code data-bind="text: new Date(fork_config().current.activationTime * 1000).toISOString().slice(0, 19).replace('T', ' ')"></code>
+                    <i class="fa fa-copy text-muted" role="button" data-bs-toggle="tooltip" title="Copy" data-bind="click: function() { navigator.clipboard.writeText(fork_config().current.activationTime); }"></i>
+                  </td>
+                  <td>
+                    <code data-bind="text: fork_config().current.forkId"></code>
+                    <i class="fa fa-copy text-muted" role="button" data-bs-toggle="tooltip" title="Copy" data-bind="click: function() { navigator.clipboard.writeText(fork_config().current.forkId); }"></i>
+                  </td>
+                </tr>
+                {{ html "<!-- /ko -->" }}
+                {{ html "<!-- ko if: fork_config().next -->" }}
+                <tr>
+                  <td><strong>Next</strong></td>
+                  <td>
+                    <code data-bind="text: new Date(fork_config().next.activationTime * 1000).toISOString().slice(0, 19).replace('T', ' ')"></code>
+                    <i class="fa fa-copy text-muted" role="button" data-bs-toggle="tooltip" title="Copy" data-bind="click: function() { navigator.clipboard.writeText(fork_config().next.activationTime); }"></i>
+                  </td>
+                  <td>
+                    <code data-bind="text: fork_config().next.forkId"></code>
+                    <i class="fa fa-copy text-muted" role="button" data-bs-toggle="tooltip" title="Copy" data-bind="click: function() { navigator.clipboard.writeText(fork_config().next.forkId); }"></i>
+                  </td>
+                </tr>
+                {{ html "<!-- /ko -->" }}
+                {{ html "<!-- ko if: fork_config().last -->" }}
+                <tr>
+                  <td><strong>Last</strong></td>
+                  <td>
+                    <code data-bind="text: new Date(fork_config().last.activationTime * 1000).toISOString().slice(0, 19).replace('T', ' ')"></code>
+                    <i class="fa fa-copy text-muted" role="button" data-bs-toggle="tooltip" title="Copy" data-bind="click: function() { navigator.clipboard.writeText(fork_config().last.activationTime); }"></i>
+                  </td>
+                  <td>
+                    <code data-bind="text: fork_config().last.forkId"></code>
+                    <i class="fa fa-copy text-muted" role="button" data-bs-toggle="tooltip" title="Copy" data-bind="click: function() { navigator.clipboard.writeText(fork_config().last.forkId); }"></i>
+                  </td>
+                </tr>
+                {{ html "<!-- /ko -->" }}
+              </tbody>
+            </table>
+          </div>
+          {{ html "<!-- /ko -->" }}
+          {{ html "<!-- ko ifnot: fork_config() -->" }}
+          <div class="client-node-peerinfo">
+            <p style="color: #888; font-style: italic;">Fork configuration data not available for this client.</p>
+          </div>
+          {{ html "<!-- /ko -->" }}
+          
+          <div class="client-row-divider" style="position: relative;">
+            Peers
+            <button type="button" class="btn btn-outline-secondary btn-sm peer-collapse-btn" data-bs-toggle="collapse" data-bind="attr: {'data-bs-target': '#peer-details-list-' + peer_id(), 'aria-controls': 'peer-details-list-' + peer_id()}" aria-expanded="false" style="position: absolute; right: 0; top: 0;">
+              <i class="fa fa-chevron-down"></i> Show Connected Peers
+            </button>
+          </div>
+          <div class="collapse peer-details-collapse" data-bind="attr: {id: 'peer-details-list-' + peer_id()}">
             <div class="peer-table-column">
               {{ html "<!-- ko foreach: peers -->" }}
                 <div style="padding-left: 20px; padding-top:3px">
-                  {{ html "<!-- ko if: $parent.version().includes('Nethermind') -->" }}
-                    <i class="fa-solid fa-question text-warning" data-bs-toggle="tooltip" data-bs-placement="left" data-bs-title="Unknown peer direction"></i>
-                  {{ html "<!-- /ko -->" }}
                   {{ html "<!-- ko if: direction == 'inbound' -->" }}
                     <i class="fa-solid fa-down-long text-success" data-bs-toggle="tooltip" data-bs-placement="left" data-bs-title="Inbound"></i>
                   {{ html "<!-- /ko -->" }}
@@ -235,7 +348,7 @@
                           <td>Protocols</td>
                           <td>
                             <div style="word-break: break-all; text-wrap: pretty;">
-                              <code style="white-space: pre;" data-bind="text: JSON.stringify(protocols, null, 2)"></code>
+                              <code style="white-space: pre-wrap;" data-bind="text: JSON.stringify(protocols, null, 2)"></code>
                               <i class="fa fa-copy text-muted p-1" role="button" data-bs-placement="right" data-bs-toggle="tooltip" title="Copy to clipboard" data-bind="attr: {'data-clipboard-text': JSON.stringify(protocols, null, 2)}"></i>
                             </div>
                           </td>
@@ -264,6 +377,11 @@
           clientRow.click()
         }
       }
+      
+      // Check refresh cooldown status on page load
+      if (typeof window.explorer !== 'undefined' && window.explorer.checkRefreshCooldown) {
+        window.explorer.checkRefreshCooldown();
+      }
     });
   </script>
 
@@ -288,17 +406,11 @@
     peerGraph = $_network.create(container, peerGraphData);
   }
 
-  if(peerGraphData.nodes.filter(function(node) { return node.group == "internal" }).length <= 100) {
-    $('#peerGraph').addClass('show');
-    $('#peerGraphToggler').removeClass('collapsed');
+  $('#peerGraph').on('shown.bs.collapse', function () {
+    if(peerGraphRendered) return;
     renderPeerGraph();
-  } else {
-    $('#peerGraph').on('shown.bs.collapse', function () {
-      if(peerGraphRendered) return;
-      renderPeerGraph();
-      peerGraphRendered = true;
-    });
-  }
+    peerGraphRendered = true;
+  });
 
   $('.client-row').on('click', function() {
     var peerId = $(this).data('peerid');
@@ -351,14 +463,118 @@
         var viewModel = createModel(nodes[peerId]);
         ko.applyBindings(viewModel, detailsContainer.get(0));
         window.explorer.initControls();
-        jdenticon.update(".peer-table-icon",null)
+        jdenticon.update(".peer-table-icon",null);
+        
+        // Initialize peer collapse handlers for this instance
+        initPeerCollapseHandlers(detailsContainer);
       });
 
     })();
   })();
 
+  // Function to initialize peer collapse handlers for a specific container
+  function initPeerCollapseHandlers(container) {
+    container.find('.peer-details-collapse').on('show.bs.collapse', function () {
+      $(this).siblings('.client-row-divider').find('.peer-collapse-btn').html('<i class="fa fa-chevron-up"></i> Hide Connected Peers');
+    });
+
+    container.find('.peer-details-collapse').on('hide.bs.collapse', function () {
+      $(this).siblings('.client-row-divider').find('.peer-collapse-btn').html('<i class="fa fa-chevron-down"></i> Show Connected Peers');
+    });
+  }
+
+  // Function to toggle all peer info sections (right button)
+  function toggleAllPeers() {
+    var rightButton = $('#toggleAllPeers');
+    var leftButton = $('#toggleNodeIds');
+    var rightButtonText = rightButton.text();
+    
+    if (rightButtonText === 'Show all') {
+      // Show all peer info sections
+      $('.collapse.peerInfo').collapse('show');
+      
+      // Wait for the peer info sections to be shown, then show all connected peers
+      setTimeout(function() {
+        $('.peer-details-collapse').collapse('show');
+      }, 500);
+      
+      // Right button: Show all -> Hide all
+      rightButton.text('Hide all');
+      // Left button: Expand node IDs -> Hide peers
+      leftButton.text('Hide peers');
+      leftButton.show();
+    } else if (rightButtonText === 'Show peers') {
+      // Show connected peers (peer info sections are already shown)
+      $('.peer-details-collapse').collapse('show');
+      
+      // Right button: Show peers -> Hide all
+      rightButton.text('Hide all');
+      // Left button: Hide all node IDs -> Hide peers
+      leftButton.text('Hide peers');
+      leftButton.show();
+    } else {
+      // Hide all peer info sections
+      $('.collapse.peerInfo').collapse('hide');
+      
+      // Right button: Hide all -> Show all
+      rightButton.text('Show all');
+      // Left button: Hide peers -> Expand node IDs
+      leftButton.text('Expand node IDs');
+      leftButton.show();
+    }
+  }
+
+  // Function to toggle node IDs display (left button)
+  function toggleNodeIds() {
+    var leftButton = $('#toggleNodeIds');
+    var rightButton = $('#toggleAllPeers');
+    var leftButtonText = leftButton.text();
+    
+    if (leftButtonText === 'Expand node IDs') {
+      // Show all peer info sections to reveal node identity details
+      $('.collapse.peerInfo').collapse('show');
+      
+      // Wait for the peer info sections to be shown, then hide all connected peers
+      setTimeout(function() {
+        $('.peer-details-collapse').collapse('hide');
+      }, 500);
+      
+      // Left button: Expand node IDs -> Hide all node IDs
+      leftButton.text('Hide all node IDs');
+      // Right button: Show all -> Show peers
+      rightButton.text('Show peers');
+    } else if (leftButtonText === 'Hide peers') {
+      // Hide only the connected peers, keep node IDs visible
+      $('.peer-details-collapse').collapse('hide');
+      
+      // Left button: Hide peers -> Hide all node IDs
+      leftButton.text('Hide all node IDs');
+      // Right button: Hide all -> Show peers
+      rightButton.text('Show peers');
+    } else {
+      // Hide all peer info sections (Hide all node IDs)
+      $('.collapse.peerInfo').collapse('hide');
+      
+      // Left button: Hide all node IDs -> Expand node IDs
+      leftButton.text('Expand node IDs');
+      // Right button: Show peers -> Show all
+      rightButton.text('Show all');
+    }
+  }
+
+
 </script>
 {{ end }}
 {{ define "css" }}
 <link rel="stylesheet" href="/css/clients.css" />
+<style>
+#toggleAllPeers, #toggleNodeIds {
+  min-width: 140px;
+  width: 140px;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+</style>
 {{ end }}

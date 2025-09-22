@@ -10,13 +10,12 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/sirupsen/logrus"
 
+	"github.com/ethpandaops/dora/clients/execution/rpc"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/indexer/beacon"
 	"github.com/ethpandaops/dora/utils"
 )
-
-const ConsolidationContractAddr = "0x0000BBdDc7CE488642fb579F8B00f3a590007251"
 
 // ConsolidationIndexer is the indexer for the eip-7251 consolidation system contract
 type ConsolidationIndexer struct {
@@ -53,7 +52,7 @@ func NewConsolidationIndexer(indexer *IndexerCtx) *ConsolidationIndexer {
 		&contractIndexerOptions[dbtypes.ConsolidationRequestTx]{
 			stateKey:        "indexer.consolidationindexer",
 			batchSize:       batchSize,
-			contractAddress: common.HexToAddress(ConsolidationContractAddr),
+			contractAddress: ci.indexerCtx.GetSystemContractAddress(rpc.ConsolidationRequestContract),
 			deployBlock:     uint64(utils.Config.ExecutionApi.ElectraDeployBlock),
 			dequeueRate:     specs.MaxConsolidationRequestsPerPayload,
 

@@ -15,9 +15,10 @@ const FarFutureEpoch = phase0.Epoch(math.MaxUint64)
 
 // ChainHead represents a head block of the chain.
 type ChainHead struct {
-	HeadBlock             *Block      // The head block of the chain.
-	AggregatedHeadVotes   phase0.Gwei // The aggregated votes of the last 2 epochs for the head block.
-	PerEpochVotingPercent []float64   // The voting percentage in the last epochs (ascendeing order).
+	HeadBlock             *Block        // The head block of the chain.
+	AggregatedHeadVotes   phase0.Gwei   // The aggregated votes of the last 2 epochs for the head block.
+	PerEpochVotingPercent []float64     // The voting percentage in the last epochs.
+	PerEpochVotes         []phase0.Gwei // The votes in the last epochs.
 }
 
 // GetCanonicalHead returns the canonical head block of the chain.
@@ -130,12 +131,13 @@ func (indexer *Indexer) computeCanonicalChain() bool {
 			continue
 		}
 
-		forkVotes, epochParticipation := indexer.aggregateForkVotes(fork.ForkId, aggregateEpochs)
+		forkVotes, epochParticipation, epochVotes := indexer.aggregateForkVotes(fork.ForkId, aggregateEpochs)
 		headForkVotes[fork.ForkId] = forkVotes
 		chainHeads = append(chainHeads, &ChainHead{
 			HeadBlock:             fork.Block,
 			AggregatedHeadVotes:   forkVotes,
 			PerEpochVotingPercent: epochParticipation,
+			PerEpochVotes:         epochVotes,
 		})
 
 		if forkVotes > 0 {
@@ -185,7 +187,7 @@ func (indexer *Indexer) computeCanonicalChain() bool {
 				continue
 			}
 
-			forkVotes, epochParticipation := indexer.aggregateForkVotes(block.forkId, aggregateEpochs)
+			forkVotes, epochParticipation, epochVotes := indexer.aggregateForkVotes(block.forkId, aggregateEpochs)
 			participationStr := make([]string, len(epochParticipation))
 			for i, p := range epochParticipation {
 				participationStr[i] = fmt.Sprintf("%.2f%%", p)
@@ -205,6 +207,7 @@ func (indexer *Indexer) computeCanonicalChain() bool {
 				HeadBlock:             block,
 				AggregatedHeadVotes:   forkVotes,
 				PerEpochVotingPercent: epochParticipation,
+				PerEpochVotes:         epochVotes,
 			}}
 		}
 	}
@@ -238,12 +241,13 @@ func (indexer *Indexer) computeCanonicalChain() bool {
 }
 
 // aggregateForkVotes aggregates the votes for a given fork.
-func (indexer *Indexer) aggregateForkVotes(forkId ForkKey, epochLimit uint64) (totalVotes phase0.Gwei, epochPercent []float64) {
+func (indexer *Indexer) aggregateForkVotes(forkId ForkKey, epochLimit uint64) (totalVotes phase0.Gwei, epochPercent []float64, epochVotes []phase0.Gwei) {
 	chainState := indexer.consensusPool.GetChainState()
 	specs := chainState.GetSpecs()
 	currentEpoch := chainState.CurrentEpoch()
 
 	epochPercent = make([]float64, 0, epochLimit)
+	epochVotes = make([]phase0.Gwei, 0, epochLimit)
 	if epochLimit == 0 {
 		return
 	}
@@ -283,7 +287,7 @@ func (indexer *Indexer) aggregateForkVotes(forkId ForkKey, epochLimit uint64) (t
 		}
 
 		fork := indexer.forkCache.getForkById(thisForkId)
-		if fork == nil {
+		if fork == nil || fork.parentFork == thisForkId {
 			break
 		}
 
@@ -316,26 +320,41 @@ func (indexer *Indexer) aggregateForkVotes(forkId ForkKey, epochLimit uint64) (t
 
 		if len(epochVotingBlocks) == 0 {
 			epochPercent = append(epochPercent, 0)
+			epochVotes = append(epochVotes, 0)
 			continue
 		}
 
-		dependentRoot := epochVotingBlocks[0].GetParentRoot()
+		var dependentRoot *phase0.Root
+
+		if chainState.EpochOfSlot(epochVotingBlocks[0].Slot) == 0 {
+			firstBlock := epochVotingBlocks[0]
+			if firstBlock.Slot == 0 {
+				dependentRoot = &firstBlock.Root
+			} else {
+				dependentRoot = firstBlock.GetParentRoot()
+			}
+		} else {
+			dependentRoot = epochVotingBlocks[0].GetParentRoot()
+		}
+
 		if dependentRoot == nil {
 			epochPercent = append(epochPercent, 0)
+			epochVotes = append(epochVotes, 0)
 			continue
 		}
 
 		epochStats := indexer.epochCache.getEpochStats(epoch, *dependentRoot)
 		if epochStats == nil {
 			epochPercent = append(epochPercent, 0)
+			epochVotes = append(epochVotes, 0)
 			continue
 		}
 
-		epochVotes := indexer.aggregateEpochVotes(epoch, chainState, epochVotingBlocks, epochStats)
-		if epochVotes.AmountIsCount {
-			totalVotes += (epochVotes.CurrentEpoch.TargetVoteAmount + epochVotes.NextEpoch.TargetVoteAmount) * 32 * EtherGweiFactor
+		epochVoteRes := indexer.aggregateEpochVotes(epoch, chainState, epochVotingBlocks, epochStats)
+		if epochVoteRes.AmountIsCount {
+			totalVotes += (epochVoteRes.CurrentEpoch.TargetVoteAmount + epochVoteRes.NextEpoch.TargetVoteAmount) * 32 * EtherGweiFactor
 		} else {
-			totalVotes += epochVotes.CurrentEpoch.TargetVoteAmount + epochVotes.NextEpoch.TargetVoteAmount
+			totalVotes += epochVoteRes.CurrentEpoch.TargetVoteAmount + epochVoteRes.NextEpoch.TargetVoteAmount
 		}
 
 		lastBlock := epochVotingBlocks[len(epochVotingBlocks)-1]
@@ -354,13 +373,14 @@ func (indexer *Indexer) aggregateForkVotes(forkId ForkKey, epochLimit uint64) (t
 		if epochProgress == 0 {
 			participationExtrapolation = 0
 		} else {
-			participationExtrapolation = 100 * epochVotes.TargetVotePercent / epochProgress
+			participationExtrapolation = 100 * epochVoteRes.TargetVotePercent / epochProgress
 		}
 		if participationExtrapolation > 100 {
 			participationExtrapolation = 100
 		}
 
 		epochPercent = append(epochPercent, participationExtrapolation)
+		epochVotes = append(epochVotes, epochVoteRes.CurrentEpoch.TargetVoteAmount+epochVoteRes.NextEpoch.TargetVoteAmount)
 	}
 
 	return

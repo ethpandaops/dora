@@ -54,6 +54,7 @@ func InitPageData(w http.ResponseWriter, r *http.Request, active, path, title st
 		Lang:             "en-US",
 		Debug:            utils.Config.Frontend.Debug,
 		MainMenuItems:    createMenuItems(active),
+		ApiEnabled:       utils.Config.Api.Enabled,
 	}
 
 	chainState := services.GlobalBeaconService.GetChainState()
@@ -124,6 +125,13 @@ func createMenuItems(active string) []types.MainMenuItem {
 				Path:  "/blocks",
 				Icon:  "fa-cube",
 			},
+			/*
+				{
+					Label: "Chain Forks",
+					Path:  "/chain-forks",
+					Icon:  "fa-project-diagram",
+				},
+			*/
 		},
 	})
 	if len(utils.Config.MevIndexer.Relays) > 0 {
@@ -164,19 +172,30 @@ func createMenuItems(active string) []types.MainMenuItem {
 		Links: clientLinks,
 	})
 
-	validatorMenu = append(validatorMenu, types.NavigationGroup{
-		Links: []types.NavigationLink{
-			{
-				Label: "Validators",
-				Path:  "/validators",
-				Icon:  "fa-table",
-			},
-			{
-				Label: "Validator Activity",
-				Path:  "/validators/activity",
-				Icon:  "fa-tachometer",
-			},
+	validatorMenuLinks := []types.NavigationLink{
+		{
+			Label: "Validators",
+			Path:  "/validators",
+			Icon:  "fa-table",
 		},
+	}
+
+	if utils.Config.Frontend.ShowValidatorSummary {
+		validatorMenuLinks = append(validatorMenuLinks, types.NavigationLink{
+			Label: "Validator Summary",
+			Path:  "/validators/summary",
+			Icon:  "fa-chart-pie",
+		})
+	}
+
+	validatorMenuLinks = append(validatorMenuLinks, types.NavigationLink{
+		Label: "Validator Activity",
+		Path:  "/validators/activity",
+		Icon:  "fa-tachometer",
+	})
+
+	validatorMenu = append(validatorMenu, types.NavigationGroup{
+		Links: validatorMenuLinks,
 	})
 	validatorMenu = append(validatorMenu, types.NavigationGroup{
 		Links: []types.NavigationLink{
@@ -186,8 +205,8 @@ func createMenuItems(active string) []types.MainMenuItem {
 				Icon:  "fa-file-signature",
 			},
 			{
-				Label: "Voluntary Exits",
-				Path:  "/validators/voluntary_exits",
+				Label: "Exits",
+				Path:  "/validators/exits",
 				Icon:  "fa-door-open",
 			},
 			{
@@ -205,12 +224,12 @@ func createMenuItems(active string) []types.MainMenuItem {
 			Links: []types.NavigationLink{
 				{
 					Label: "Withdrawal Requests",
-					Path:  "/validators/el_withdrawals",
+					Path:  "/validators/withdrawals",
 					Icon:  "fa-money-bill-transfer",
 				},
 				{
 					Label: "Consolidation Requests",
-					Path:  "/validators/el_consolidations",
+					Path:  "/validators/consolidations",
 					Icon:  "fa-square-plus",
 				},
 			},

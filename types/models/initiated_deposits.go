@@ -31,6 +31,8 @@ type InitiatedDepositsPageData struct {
 	PrevPageLink  string `json:"prev_page_link"`
 	NextPageLink  string `json:"next_page_link"`
 	LastPageLink  string `json:"last_page_link"`
+
+	UrlParams map[string]string `json:"url_params"`
 }
 
 type InitiatedDepositsPageDataDeposit struct {
@@ -48,4 +50,7 @@ type InitiatedDepositsPageDataDeposit struct {
 	ShowUpcheck           bool      `json:"show_upcheck"`
 	UpcheckActivity       uint8     `json:"upcheck_act"`
 	UpcheckMaximum        uint8     `json:"upcheck_max"`
+	ValidatorExists       bool      `json:"validator_exists"`
+	ValidatorIndex        uint64    `json:"validator_index"`
+	ValidatorName         string    `json:"validator_name"`
 }

@@ -44,6 +44,8 @@ type Client struct {
 	nodeInfo           *p2p.NodeInfo
 	peers              []*p2p.PeerInfo
 	didFetchPeers      bool
+	ethConfig          *rpc.EthConfig
+	configWarnings     []string // warnings from eth_config checks
 }
 
 func (pool *Pool) newPoolClient(clientIdx uint16, endpoint *ClientConfig) (*Client, error) {
@@ -92,6 +94,10 @@ func (client *Client) GetNodeInfo() *p2p.NodeInfo {
 	return client.nodeInfo
 }
 
+func (client *Client) GetEthConfig() *rpc.EthConfig {
+	return client.ethConfig
+}
+
 func (client *Client) GetEndpointConfig() *ClientConfig {
 	return client.endpointConfig
 }
@@ -135,4 +141,13 @@ func (client *Client) GetNodePeers() []*p2p.PeerInfo {
 
 func (client *Client) DidFetchPeers() bool {
 	return client.didFetchPeers
+}
+
+// ForceUpdatePeerData forces an immediate update of peer data from this client
+func (client *Client) ForceUpdatePeerData(ctx context.Context) error {
+	return client.updateNodeMetadata(ctx)
+}
+
+func (client *Client) GetConfigWarnings() []string {
+	return client.configWarnings
 }

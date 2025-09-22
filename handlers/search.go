@@ -34,6 +34,17 @@ func Search(w http.ResponseWriter, r *http.Request) {
 
 	_, err := strconv.Atoi(searchQuery)
 	if err == nil {
+		// Check if it's a validator index first
+		validatorIndex, err := strconv.ParseUint(searchQuery, 10, 64)
+		if err == nil {
+			validator := services.GlobalBeaconService.GetValidatorByIndex(phase0.ValidatorIndex(validatorIndex), false)
+			if validator != nil {
+				http.Redirect(w, r, fmt.Sprintf("/validator/%v", validatorIndex), http.StatusMovedPermanently)
+				return
+			}
+		}
+
+		// If not a validator, check for slot
 		blockResult := &dbtypes.SearchBlockResult{}
 		err = db.ReaderDb.Get(blockResult, `
 			SELECT slot, root, status 
@@ -51,7 +62,17 @@ func Search(w http.ResponseWriter, r *http.Request) {
 	}
 
 	hashQuery := strings.Replace(searchQuery, "0x", "", -1)
-	if len(hashQuery) == 64 {
+	if len(hashQuery) == 96 {
+		// Check if it's a validator pubkey (48 bytes = 96 hex chars)
+		validatorPubkey, err := hex.DecodeString(hashQuery)
+		if err == nil && len(validatorPubkey) == 48 {
+			validatorIndex, found := services.GlobalBeaconService.GetValidatorIndexByPubkey(phase0.BLSPubKey(validatorPubkey))
+			if found {
+				http.Redirect(w, r, fmt.Sprintf("/validator/%v", validatorIndex), http.StatusMovedPermanently)
+				return
+			}
+		}
+	} else if len(hashQuery) == 64 {
 		blockHash, err := hex.DecodeString(hashQuery)
 		if err == nil {
 			blockResult := &dbtypes.SearchBlockResult{}
@@ -385,6 +406,55 @@ func SearchAhead(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			result = model
+		}
+	case "validator":
+		if len(search) == 0 {
+			break
+		}
+		if !searchLikeRE.MatchString(search) {
+			break
+		}
+
+		// Check if search is numeric (validator index)
+		if validatorIndex, convertErr := strconv.ParseUint(search, 10, 64); convertErr == nil {
+			validator := services.GlobalBeaconService.GetValidatorByIndex(phase0.ValidatorIndex(validatorIndex), false)
+			if validator != nil {
+				result = &[]models.SearchAheadValidatorResult{
+					{
+						Index:  fmt.Sprintf("%v", validatorIndex),
+						Pubkey: fmt.Sprintf("0x%x", validator.Validator.PublicKey),
+						Name:   services.GlobalBeaconService.GetValidatorName(validatorIndex),
+					},
+				}
+			}
+		} else if len(search) >= 2 && len(search) <= 96 {
+			// Search by pubkey prefix
+			validators := &dbtypes.SearchAheadValidatorResult{}
+			err = db.ReaderDb.Select(validators, db.EngineQuery(map[dbtypes.DBEngineType]string{
+				dbtypes.DBEnginePgsql: `
+					SELECT v.validator_index, v.pubkey
+					FROM validators v
+					WHERE ENCODE(v.pubkey, 'hex') ILIKE $1
+					ORDER BY v.validator_index
+					LIMIT 10`,
+				dbtypes.DBEngineSqlite: `
+					SELECT v.validator_index, v.pubkey
+					FROM validators v
+					WHERE HEX(v.pubkey) LIKE UPPER($1)
+					ORDER BY v.validator_index
+					LIMIT 10`,
+			}), search+"%")
+			if err == nil {
+				model := make([]models.SearchAheadValidatorResult, len(*validators))
+				for i, entry := range *validators {
+					model[i] = models.SearchAheadValidatorResult{
+						Index:  fmt.Sprintf("%v", entry.Index),
+						Pubkey: fmt.Sprintf("0x%x", entry.Pubkey),
+						Name:   services.GlobalBeaconService.GetValidatorName(entry.Index),
+					}
+				}
+				result = model
+			}
 		}
 
 	default:

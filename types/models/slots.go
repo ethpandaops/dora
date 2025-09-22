@@ -30,6 +30,7 @@ type SlotsPageData struct {
 	DisplayMevBlock     bool   `json:"dp_mevblock"`
 	DisplayBlockSize    bool   `json:"dp_blocksize"`
 	DisplayRecvDelay    bool   `json:"dp_recvdelay"`
+	DisplayExecTime     bool   `json:"dp_exectime"`
 	DisplayColCount     uint64 `json:"display_col_count"`
 
 	IsDefaultPage    bool   `json:"default_page"`
@@ -47,6 +48,9 @@ type SlotsPageData struct {
 	PrevPageLink  string `json:"prev_page_link"`
 	NextPageLink  string `json:"next_page_link"`
 	LastPageLink  string `json:"last_page_link"`
+
+	UrlParams map[string]string `json:"url_params"`
+	MaxSlot   uint64            `json:"max_slot"`
 }
 
 type SlotsPageDataSlot struct {
@@ -77,6 +81,10 @@ type SlotsPageDataSlot struct {
 	BlockRoot             []byte                    `json:"block_root"`
 	ParentRoot            []byte                    `json:"parent_root"`
 	RecvDelay             int32                     `json:"recv_delay"`
+	MinExecTime           uint32                    `json:"min_exec_time"`
+	MaxExecTime           uint32                    `json:"max_exec_time"`
+	AvgExecTime           uint32                    `json:"avg_exec_time"`
+	ExecutionTimes        []ExecutionTimeDetail     `json:"execution_times"`
 	ForkGraph             []*SlotsPageDataForkGraph `json:"fork_graph"`
 	IsMevBlock            bool                      `json:"is_mev_block"`
 	MevBlockRelays        string                    `json:"mev_block_relays"`
@@ -87,4 +95,12 @@ type SlotsPageDataForkGraph struct {
 	Left  int             `json:"left"`
 	Tiles map[string]bool `json:"tiles"`
 	Block bool            `json:"block"`
+}
+
+type ExecutionTimeDetail struct {
+	ClientType string `json:"client_type"`
+	MinTime    uint16 `json:"min_time"`
+	MaxTime    uint16 `json:"max_time"`
+	AvgTime    uint16 `json:"avg_time"`
+	Count      uint16 `json:"count"`
 }

@@ -8,7 +8,8 @@
         <ol class="breadcrumb font-size-1 mb-0" style="padding:0; background-color:transparent;">
           <li class="breadcrumb-item"><a href="/" title="Home">Home</a></li>
           <li class="breadcrumb-item"><a href="/validators" title="Validators">Validators</a></li>
-          <li class="breadcrumb-item active" aria-current="page">Withdrawal Requests</li>
+          <li class="breadcrumb-item"><a href="/validators/withdrawals" title="EL Withdrawals">Withdrawals</a></li>
+          <li class="breadcrumb-item active" aria-current="page">Filtered</li>
         </ol>
       </nav>
     </div>
@@ -200,7 +201,7 @@
                     <td>
                       {{- if $request.LinkedTransaction }}
                       <div class="d-flex">
-                        <span class="flex-grow-1 text-truncate" style="max-width: 150px;">{{ ethTransactionLink $request.TransactionHash 0 }}</span>
+                        <span class="flex-grow-1 text-truncate text-monospace" style="max-width: 150px;">{{ ethTransactionLink $request.TransactionHash 0 }}</span>
                         <div>
                           <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $request.TransactionHash }}"></i>
                         </div>
@@ -329,6 +330,24 @@
             </div>
             <div class="col-sm-12 col-md-7 table-paging">
               <div class="d-inline-block px-2">
+                <form method="GET" style="display: inline-flex; align-items: center;" id="pageJumpForm">
+                  <input type="hidden" name="f">
+                  {{ range $key, $value := .UrlParams }}
+                    {{ if ne $key "p" }}
+                      <input type="hidden" name="{{ $key }}" value="{{ $value }}">
+                    {{ end }}
+                  {{ end }}
+                  <div class="input-group" style="width: 120px;">
+                    <input type="number" class="form-control" name="p" id="pageJumpInput" 
+                           min="1" max="{{ .TotalPages }}" placeholder="Page" 
+                           style="height: 38px; font-size: 14px; text-align: center; border-radius: 0.375rem 0 0 0.375rem;">
+                    <button type="submit" class="btn btn-outline-secondary" style="height: 38px; border-radius: 0 0.375rem 0.375rem 0;">
+                      Go
+                    </button>
+                  </div>
+                </form>
+              </div>
+              <div class="d-inline-block px-2">
                 <ul class="pagination">
                   <li class="first paginate_button page-item {{ if lt .PrevPageIndex 1 }}disabled{{ end }}" id="tpg_first">
                     <a tab-index="1" aria-controls="tpg_first" class="page-link" href="{{ .FirstPageLink }}">First</a>
@@ -409,6 +428,29 @@
       if(lastPopover) {
         lastPopover.hide();
         lastPopover = null;
+      }
+    });
+
+    // Page jump functionality
+    $('#pageJumpForm').on('submit', function(e) {
+      var pageInput = $('#pageJumpInput');
+      var pageNum = parseInt(pageInput.val());
+      var maxPages = parseInt(pageInput.attr('max'));
+      
+      if (isNaN(pageNum) || pageNum < 1 || pageNum > maxPages) {
+        e.preventDefault();
+        pageInput.addClass('is-invalid');
+        setTimeout(function() {
+          pageInput.removeClass('is-invalid');
+        }, 2000);
+        return false;
+      }
+    });
+
+    // Enter key support for page jump
+    $('#pageJumpInput').on('keypress', function(e) {
+      if (e.which === 13) {
+        $('#pageJumpForm').submit();
       }
     });
 

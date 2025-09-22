@@ -8,7 +8,7 @@ GOLDFLAGS += -X 'github.com/ethpandaops/dora/utils.BuildRelease="$(RELEASE)"'
 
 .PHONY: all test clean
 
-all: test build
+all: api-docs build
 
 test: ensure-ui
 	$(MAKE) -C ui-package test
@@ -37,3 +37,6 @@ devnet-run: devnet ensure-ui
 
 devnet-clean:
 	.hack/devnet/cleanup.sh
+
+api-docs:
+	go install github.com/swaggo/swag/cmd/swag@v1.16.3 && swag init -g handler.go -d handlers/api --parseDependency -o docs

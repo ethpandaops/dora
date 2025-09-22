@@ -1,3 +1,8 @@
+// @title Dora Explorer API
+// @version 1.0
+// @description API for Dora Ethereum Explorer - provides access to execution and consensus client information
+// @host localhost:8080
+// @BasePath /api
 package main
 
 import (
@@ -22,6 +27,10 @@ import (
 	"github.com/ethpandaops/dora/types"
 	uipackage "github.com/ethpandaops/dora/ui-package"
 	"github.com/ethpandaops/dora/utils"
+
+	// Swagger
+	"github.com/ethpandaops/dora/docs"
+	httpSwagger "github.com/swaggo/http-swagger"
 )
 
 func main() {
@@ -164,8 +173,13 @@ func startFrontend(router *mux.Router) {
 	router.HandleFunc("/index", handlers.Index).Methods("GET")
 	router.HandleFunc("/index/data", handlers.IndexData).Methods("GET")
 	router.HandleFunc("/clients/consensus", handlers.ClientsCL).Methods("GET")
+	router.HandleFunc("/clients/consensus/refresh", handlers.ClientsCLRefresh).Methods("POST")
+	router.HandleFunc("/clients/consensus/refresh/status", handlers.ClientsCLRefreshStatus).Methods("GET")
 	router.HandleFunc("/clients/execution", handlers.ClientsEl).Methods("GET")
+	router.HandleFunc("/clients/execution/refresh", handlers.ClientsELRefresh).Methods("POST")
+	router.HandleFunc("/clients/execution/refresh/status", handlers.ClientsELRefreshStatus).Methods("GET")
 	router.HandleFunc("/forks", handlers.Forks).Methods("GET")
+	router.HandleFunc("/chain-forks", handlers.ChainForks).Methods("GET")
 	router.HandleFunc("/epochs", handlers.Epochs).Methods("GET")
 	router.HandleFunc("/epoch/{epoch}", handlers.Epoch).Methods("GET")
 	router.HandleFunc("/slots", handlers.Slots).Methods("GET")
@@ -178,6 +192,9 @@ func startFrontend(router *mux.Router) {
 	router.HandleFunc("/search", handlers.Search).Methods("GET")
 	router.HandleFunc("/search/{type}", handlers.SearchAhead).Methods("GET")
 	router.HandleFunc("/validators", handlers.Validators).Methods("GET")
+	if utils.Config.Frontend.ShowValidatorSummary {
+		router.HandleFunc("/validators/summary", handlers.ValidatorsSummary).Methods("GET")
+	}
 	router.HandleFunc("/validators/activity", handlers.ValidatorsActivity).Methods("GET")
 	router.HandleFunc("/validators/offline", handlers.ValidatorsOffline).Methods("GET")
 	router.HandleFunc("/validators/deposits", handlers.Deposits).Methods("GET")
@@ -186,8 +203,13 @@ func startFrontend(router *mux.Router) {
 	router.HandleFunc("/validators/included_deposits", handlers.IncludedDeposits).Methods("GET")
 	router.HandleFunc("/validators/queued_deposits", handlers.QueuedDeposits).Methods("GET")
 	router.HandleFunc("/validators/voluntary_exits", handlers.VoluntaryExits).Methods("GET")
+	router.HandleFunc("/validators/exits", handlers.Exits).Methods("GET")
 	router.HandleFunc("/validators/slashings", handlers.Slashings).Methods("GET")
 	router.HandleFunc("/validators/el_withdrawals", handlers.ElWithdrawals).Methods("GET")
+	router.HandleFunc("/validators/withdrawals", handlers.Withdrawals).Methods("GET")
+	router.HandleFunc("/validators/queued_withdrawals", handlers.QueuedWithdrawals).Methods("GET")
+	router.HandleFunc("/validators/consolidations", handlers.Consolidations).Methods("GET")
+	router.HandleFunc("/validators/queued_consolidations", handlers.QueuedConsolidations).Methods("GET")
 	router.HandleFunc("/validators/el_consolidations", handlers.ElConsolidations).Methods("GET")
 	router.HandleFunc("/validators/submit_consolidations", handlers.SubmitConsolidation).Methods("GET")
 	router.HandleFunc("/validators/submit_withdrawals", handlers.SubmitWithdrawal).Methods("GET")
@@ -226,14 +248,107 @@ func startFrontend(router *mux.Router) {
 	router.PathPrefix("/").Handler(handlers.CustomFileServer(http.FileServer(fileSys), fileSys, handlers.NotFound))
 }
 
+func createSwaggerHandler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Import the docs package to access SwaggerInfo
+		swaggerInfo := docs.SwaggerInfo
+
+		// Set the host dynamically based on the request
+		swaggerInfo.Host = r.Host
+
+		// Determine scheme based on request
+		scheme := "http"
+		if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
+			scheme = "https"
+		}
+		swaggerInfo.Schemes = []string{scheme}
+
+		// Serve the swagger UI with dynamic host configuration
+		httpSwagger.Handler(
+			httpSwagger.URL("/api/swagger/doc.json"),
+			httpSwagger.DeepLinking(true),
+		).ServeHTTP(w, r)
+	})
+}
+
+type apiEndpoint struct {
+	path     string
+	handler  http.HandlerFunc
+	methods  []string
+	callCost int
+}
+
 func startApi(router *mux.Router) {
-	// Add the CORS middleware to all API routes
+	// Define all API endpoints with their handlers and call costs in one place
+	apiEndpoints := []apiEndpoint{
+		// Validator APIs
+		{"/v1/validator/{indexOrPubkey}", api.ApiValidatorGetV1, []string{"GET", "OPTIONS"}, 1},
+		{"/v1/validator", api.ApiValidatorPostV1, []string{"POST", "OPTIONS"}, 1},
+		{"/v1/validator/eth1/{eth1address}", api.ApiValidatorByEth1AddressV1, []string{"GET", "OPTIONS"}, 1},
+		{"/v1/validator/withdrawalCredentials/{withdrawalCredentialsOrEth1address}", api.ApiWithdrawalCredentialsValidatorsV1, []string{"GET", "OPTIONS"}, 1},
+		{"/v1/validator/{indexOrPubkey}/deposits", api.ApiValidatorDepositsV1, []string{"GET", "OPTIONS"}, 1},
+		{"/v1/validators", api.APIValidatorsV1, []string{"GET", "OPTIONS"}, 1},
+		{"/v1/validators/activity", api.APIValidatorsActivityV1, []string{"GET", "OPTIONS"}, 2},
+		{"/v1/validator_names", api.APIValidatorNamesV1, []string{"GET", "POST", "OPTIONS"}, 1},
+
+		// Epoch and slot APIs
+		{"/v1/epochs", api.APIEpochsV1, []string{"GET", "OPTIONS"}, 1},
+		{"/v1/epoch/{epoch}", api.ApiEpochV1, []string{"GET", "OPTIONS"}, 1},
+		{"/v1/slot/{slotOrHash}", api.APISlotV1, []string{"GET", "OPTIONS"}, 1},
+		{"/v1/slots", api.APISlotsV1, []string{"GET", "OPTIONS"}, 1},
+
+		// Deposit APIs
+		{"/v1/deposits/included", api.APIDepositsIncludedV1, []string{"GET", "OPTIONS"}, 1},
+		{"/v1/deposits/transactions", api.APIDepositsTransactionsV1, []string{"GET", "OPTIONS"}, 1},
+		{"/v1/deposits/queue", api.APIDepositsQueueV1, []string{"GET", "OPTIONS"}, 1},
+
+		// Validator action APIs
+		{"/v1/slashings", api.APISlashingsV1, []string{"GET", "OPTIONS"}, 1},
+		{"/v1/voluntary_exits", api.APIVoluntaryExitsV1, []string{"GET", "OPTIONS"}, 1},
+		{"/v1/withdrawal_requests", api.APIWithdrawalRequestsV1, []string{"GET", "OPTIONS"}, 1},
+		{"/v1/consolidation_requests", api.APIConsolidationRequestsV1, []string{"GET", "OPTIONS"}, 1},
+
+		// MEV APIs
+		{"/v1/mev_blocks", api.APIMevBlocksV1, []string{"GET", "OPTIONS"}, 1},
+
+		// Network APIs
+		{"/v1/network/overview", api.APINetworkOverviewV1, []string{"GET", "OPTIONS"}, 1},
+		{"/v1/network/forks", api.APINetworkForksV1, []string{"GET", "OPTIONS"}, 1},
+		{"/v1/network/splits", api.APINetworkSplitsV1, []string{"GET", "OPTIONS"}, 1},
+
+		// Client APIs
+		{"/v1/clients/execution", api.APIExecutionClients, []string{"GET", "OPTIONS"}, 1},
+		{"/v1/clients/consensus", api.APIConsensusClients, []string{"GET", "OPTIONS"}, 1},
+
+		// DAS Guardian APIs (higher call cost due to computation intensity)
+		{"/v1/das-guardian/scan", api.APIDasGuardianScan, []string{"POST", "OPTIONS"}, 10},
+		{"/v1/das-guardian/mass-scan", api.APIDasGuardianMassScan, []string{"POST", "OPTIONS"}, 25},
+	}
+
+	// Set endpoint call costs from the map
+	for _, endpoint := range apiEndpoints {
+		middleware.SetEndpointCost("/api"+endpoint.path, endpoint.callCost)
+	}
+
+	// Add token authentication middleware first
+	tokenAuthMiddleware := middleware.NewTokenAuthMiddleware()
+	router.Use(tokenAuthMiddleware.Middleware)
+
+	// Add call cost middleware (must run before rate limiter to set context)
+	router.Use(middleware.CallCostMiddleware)
+
+	// Add rate limiting middleware (depends on token info from auth middleware and call cost from context)
+	rateLimitMiddleware := middleware.NewRateLimitMiddleware()
+	router.Use(rateLimitMiddleware.Middleware)
+
+	// Add CORS middleware last (can access token info from auth middleware)
 	router.Use(middleware.CorsMiddleware)
 
-	router.HandleFunc("/v1/validator/{indexOrPubkey}", api.ApiValidatorGetV1).Methods("GET", "OPTIONS")
-	router.HandleFunc("/v1/validator", api.ApiValidatorPostV1).Methods("POST", "OPTIONS")
-	router.HandleFunc("/v1/validator/eth1/{eth1address}", api.ApiValidatorByEth1AddressV1).Methods("GET", "OPTIONS")
-	router.HandleFunc("/v1/validator/withdrawalCredentials/{withdrawalCredentialsOrEth1address}", api.ApiWithdrawalCredentialsValidatorsV1).Methods("GET", "OPTIONS")
-	router.HandleFunc("/v1/validator/{indexOrPubkey}/deposits", api.ApiValidatorDepositsV1).Methods("GET", "OPTIONS")
-	router.HandleFunc("/v1/epoch/{epoch}", api.ApiEpochV1).Methods("GET", "OPTIONS")
+	// Register all endpoints from the map
+	for _, endpoint := range apiEndpoints {
+		router.HandleFunc(endpoint.path, endpoint.handler).Methods(endpoint.methods...)
+	}
+
+	// Swagger UI with dynamic host
+	router.PathPrefix("/swagger/").Handler(createSwaggerHandler())
 }

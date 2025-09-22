@@ -158,7 +158,7 @@
                   {{ end }}
                 </div>
               </td>
-              <td>
+              <td class="text-monospace">
                 <div class="d-flex">
                   <span class="flex-grow-1 text-truncate" style="max-width: 150px;">
                     {{ if $deposit.ValidatorExists }}
@@ -173,7 +173,7 @@
                 </div>
               </td>
               <td>{{ formatFullEthFromGwei $deposit.Amount }}</td>
-              <td>
+              <td class="text-monospace">
                 <span>
                   {{ formatWithdawalCredentials $deposit.Withdrawalcredentials }}
                 </span>
@@ -294,7 +294,11 @@
               <td>
                 <div class="d-flex">
                   <span class="flex-grow-1 text-truncate" style="max-width: 150px;">
-                    <a href="/validator/0x{{ printf "%x" $deposit.PublicKey }}">0x{{ printf "%x" $deposit.PublicKey }}</a>
+                    {{ if $deposit.ValidatorExists }}
+                      {{ formatValidatorWithIndex $deposit.ValidatorIndex $deposit.ValidatorName }}
+                    {{ else }}
+                      0x{{ printf "%x" $deposit.PublicKey }}
+                    {{ end }}
                   </span>
                   <div>
                     <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $deposit.PublicKey }}"></i>

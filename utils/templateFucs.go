@@ -9,6 +9,7 @@ import (
 	"math/big"
 	"os"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/Masterminds/sprig/v3"
@@ -45,10 +46,12 @@ func GetTemplateFuncs() template.FuncMap {
 		"round": func(i float64, n int) float64 {
 			return math.Round(i*math.Pow10(n)) / math.Pow10(n)
 		},
+		"uint64ToTime":                 func(i uint64) time.Time { return time.Unix(int64(i), 0).UTC() },
 		"percent":                      func(i float64) float64 { return i * 100 },
 		"contains":                     strings.Contains,
 		"formatAddCommas":              FormatAddCommas,
 		"formatFloat":                  FormatFloat,
+		"formatBaseFee":                FormatBaseFee,
 		"formatBitlist":                FormatBitlist,
 		"formatBitvectorValidators":    formatBitvectorValidators,
 		"formatParticipation":          FormatParticipation,
@@ -77,6 +80,7 @@ func GetTemplateFuncs() template.FuncMap {
 		"formatGraffiti":               FormatGraffiti,
 		"formatRecvDelay":              FormatRecvDelay,
 		"formatPercentageAlert":        formatPercentageAlert,
+		"formatAlertNumber":            formatAlertNumber,
 	}
 
 	for k, v := range customFuncs {
@@ -123,7 +127,7 @@ func IncludeJSON(obj any, escapeHTML bool) template.HTML {
 
 func GraffitiToString(graffiti []byte) string {
 	s := strings.Map(fixUtf, string(bytes.Trim(graffiti, "\x00")))
-	s = strings.Replace(s, "\u0000", "", -1) // rempove 0x00 bytes as it is not supported in postgres
+	s = strings.Replace(s, "\u0000", "", -1) // remove 0x00 bytes as it is not supported in postgres
 
 	if !utf8.ValidString(s) {
 		return "INVALID_UTF8_STRING"

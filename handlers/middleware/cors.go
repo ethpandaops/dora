@@ -12,14 +12,36 @@ func CorsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		origin := r.Header.Get("Origin")
 		if origin != "" && utils.Config.Api.Enabled {
-			// Check if origin matches any of the allowed origins
-			for _, allowed := range utils.Config.Api.CorsOrigins {
-				if matchOrigin(allowed, origin) {
-					w.Header().Set("Access-Control-Allow-Origin", origin)
-					w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-					w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-					break
+			corsAllowed := false
+
+			// Check token-specific CORS origins first
+			if tokenInfo := GetTokenInfo(r); tokenInfo != nil && len(tokenInfo.CorsOrigins) > 0 {
+				// Use token-specific CORS origins
+				for _, allowed := range tokenInfo.CorsOrigins {
+					if matchOrigin(allowed, origin) {
+						corsAllowed = true
+						break
+					}
 				}
+			} else {
+				// Fallback to global CORS configuration
+				if len(utils.Config.Api.CorsOrigins) == 0 {
+					// Empty config means allow all origins
+					corsAllowed = true
+				} else {
+					for _, allowed := range utils.Config.Api.CorsOrigins {
+						if matchOrigin(allowed, origin) {
+							corsAllowed = true
+							break
+						}
+					}
+				}
+			}
+
+			if corsAllowed {
+				w.Header().Set("Access-Control-Allow-Origin", origin)
+				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+				w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 			}
 		}
 

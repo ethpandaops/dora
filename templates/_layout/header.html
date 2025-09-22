@@ -54,7 +54,7 @@
             {{ if .IsReady }}
             <form action="/search">
               <div class="main-search-wrapper">
-                <input id="explorer-search" name="q" type="search" class="form-control form-control-dark search-input" placeholder="Slots / Epochs / Roots / EL-Blocks / Graffitis" aria-label="Search" autocomplete="off">
+                <input id="explorer-search" name="q" type="search" class="form-control form-control-dark search-input" placeholder="Slots / Epochs / Roots / EL-Blocks / Graffitis / Validators" aria-label="Search" autocomplete="off">
               </div>
             </form>
             {{ end }}
@@ -95,6 +95,13 @@
         {{ end }}
       </li>
     {{ end }}
+    {{ end }}
+    {{ if .ApiEnabled }}
+    <li class="nav-item">
+      <a class="nav-link" href="/api/swagger/" target="_blank">
+        <span class="nav-text">API</span>
+      </a>
+    </li>
     {{ end }}
     <li class="nav-item dropdown theme-selector">
       <a class="nav-link dropdown-toggle" href="#" id="bd-theme-text" role="button" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">

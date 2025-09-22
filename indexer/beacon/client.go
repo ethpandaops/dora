@@ -11,9 +11,11 @@ import (
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
 	"github.com/attestantio/go-eth2-client/spec"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
+	"github.com/ethpandaops/dora/utils"
 	"github.com/jmoiron/sqlx"
 	"github.com/sirupsen/logrus"
 )
@@ -30,9 +32,9 @@ type Client struct {
 	archive        bool
 	skipValidators bool
 
-	blockSubscription         *consensus.Subscription[*v1.BlockEvent]
-	headSubscription          *consensus.Subscription[*v1.HeadEvent]
-	inclusionListSubscription *consensus.Subscription[*v1.InclusionListEvent]
+	blockSubscription         *utils.Subscription[*v1.BlockEvent]
+	headSubscription          *utils.Subscription[*v1.HeadEvent]
+	inclusionListSubscription *utils.Subscription[*v1.InclusionListEvent]
 
 	headRoot phase0.Root
 }
@@ -417,6 +419,33 @@ func (c *Client) processBlock(slot phase0.Slot, root phase0.Root, header *phase0
 	if slot >= finalizedSlot && isNew {
 		c.indexer.blockCache.addBlockToParentMap(block)
 		c.indexer.blockCache.addBlockToExecBlockMap(block)
+
+		// Check for cached execution times and add them to the block
+		blockIndex := block.GetBlockIndex()
+		if blockIndex != nil && !bytes.Equal(blockIndex.ExecutionHash[:], zeroHash[:]) {
+			executionHash := common.Hash(blockIndex.ExecutionHash)
+			cachedTimes := c.indexer.executionTimeProvider.GetAndDeleteExecutionTimes(executionHash)
+			for _, cachedTime := range cachedTimes {
+				// Convert the cached time to beacon ExecutionTime format
+				client := cachedTime.GetClient()
+				execTime := ExecutionTime{
+					ClientType: client.GetClientType().Uint8(),
+					MinTime:    cachedTime.GetTime(),
+					MaxTime:    cachedTime.GetTime(),
+					AvgTime:    cachedTime.GetTime(),
+					Count:      1,
+				}
+				block.AddExecutionTime(execTime)
+			}
+			if len(cachedTimes) > 0 {
+				c.logger.WithFields(map[string]interface{}{
+					"slot":           block.Slot,
+					"execution_hash": executionHash.Hex(),
+					"times_count":    len(cachedTimes),
+				}).Debug("Added cached execution times to block")
+			}
+		}
+
 		t1 := time.Now()
 
 		// fork detection

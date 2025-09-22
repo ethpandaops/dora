@@ -20,9 +20,28 @@ server:
   host: "localhost" # Address to listen on
   port: "8080" # Port to listen on
 
+# API configuration
+api:
+  enabled: true # Enable or disable API endpoints
+  corsOrigins: [] # List of allowed CORS origins, empty = allow all
+  
+  # Authentication secret for JWT tokens (use random base64 string, generate with: dora-utils token secret)
+  authSecret: ""
 
+  # Require authentication for all API requests (set to true to disable unauthenticated access)
+  requireAuth: false
+  
+  # Default rate limiting for unauthenticated requests
+  defaultRateLimit: 60 # requests per minute, 0 = no limit
+  defaultRateLimitBurst: 10 # burst capacity
+  disableDefaultRateLimit: false # disable rate limiting completely
+  
+  # IP/CIDR whitelisting (bypass rate limits) - supports IPv4/IPv6 addresses and CIDR ranges
+  whitelistedIPs: [] # e.g. ["127.0.0.1", "::1", "10.0.0.0/8", "2001:db8::/32"]
+
+# Frontend configuration
 frontend:
-  enabled: true # Enable or disable to web frontend
+  enabled: true # Enable or disable the web frontend
   debug: false
   minimize: false
   siteName: "Dora the Explorer" # Name of the site, displayed in the title tag
@@ -31,10 +50,15 @@ frontend:
   ethExplorerLink: "https://explorer.ephemery.dev/"
   validatorNamesYaml: "validator_names.yaml"
   #validatorNamesInventory: "https://config.4844-devnet-7.ethpandaops.io/api/v1/nodes/validator-ranges"
+  disablePageCache: false
   showSensitivePeerInfos: true
   showPeerDASInfos: true
   showSubmitDeposit: true
   showSubmitElRequests: true
+  
+  # DAS Guardian configuration
+  disableDasGuardianCheck: false     # Disable DAS Guardian completely (default: false - enabled)
+  enableDasGuardianMassScan: true    # Enable mass DAS Guardian scanning (default: false - disabled)
 
   
 beaconapi:
@@ -64,6 +88,9 @@ executionapi:
   logBatchSize: 1000
   depositDeployBlock: 0 # el block number from where to crawl the deposit contract (should be <=, but close to the deposit contract deployment block)
   electraDeployBlock: 0 # el block number from where to crawl the electra system contracts (should be <=, but close to electra fork activation block)
+  genesisConfig: "" # path or URL to genesis.json file in geth format
+  # genesisConfig: "/path/to/genesis.json"
+  # genesisConfig: "https://example.com/genesis.json"
 
 indexer:
   # max number of epochs to keep in memory

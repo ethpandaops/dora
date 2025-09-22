@@ -11,13 +11,12 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/sirupsen/logrus"
 
+	"github.com/ethpandaops/dora/clients/execution/rpc"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/indexer/beacon"
 	"github.com/ethpandaops/dora/utils"
 )
-
-const WithdrawalContractAddr = "0x00000961Ef480Eb55e80D19ad83579A64c007002"
 
 // WithdrawalIndexer is the indexer for the eip-7002 consolidation system contract
 type WithdrawalIndexer struct {
@@ -54,7 +53,7 @@ func NewWithdrawalIndexer(indexer *IndexerCtx) *WithdrawalIndexer {
 		&contractIndexerOptions[dbtypes.WithdrawalRequestTx]{
 			stateKey:        "indexer.withdrawalindexer",
 			batchSize:       batchSize,
-			contractAddress: common.HexToAddress(WithdrawalContractAddr),
+			contractAddress: wi.indexerCtx.GetSystemContractAddress(rpc.WithdrawalRequestContract),
 			deployBlock:     uint64(utils.Config.ExecutionApi.ElectraDeployBlock),
 			dequeueRate:     specs.MaxWithdrawalRequestsPerPayload,
 

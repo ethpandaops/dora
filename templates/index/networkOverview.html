@@ -20,7 +20,7 @@
             <div class="p-2">
               <div class="text-secondary mb-0">Epoch</div>
               <h5 class="font-weight-normal mb-0">
-                <span data-bs-toggle="tooltip" data-bs-placement="top" title="The most recent epoch" data-bind="text: cur_epoch">{{ .CurrentEpoch }}</span> / 
+                <span data-bs-toggle="tooltip" data-bs-placement="top" title="The most recent epoch" data-bind="text: cur_epoch">{{ .CurrentEpoch }}</span> /
                 <span data-bs-toggle="tooltip" data-bs-placement="top" title="The most recent finalized epoch" data-bind="text: finalized_epoch">{{ .CurrentFinalizedEpoch }}</span>
               </h5>
             </div>
@@ -82,7 +82,7 @@
         <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Name of the Network">Genesis Time:</span></div>
         <div class="col-md-10">
           <div>
-            <span aria-ethereum-date="{{ .GenesisTime.Unix }}" aria-ethereum-date-format="FROMNOW" data-bind="attr: {'aria-ethereum-date': $root.unixtime(genesis_time())}, text: $root.timestamp(genesis_time())">{{ .GenesisTime.UTC }}</span>
+            <span class="genesis-time-hover" aria-ethereum-date="{{ .GenesisTime.Unix }}" aria-ethereum-date-format="FROMNOW" data-bind="attr: {'aria-ethereum-date': $root.unixtime(genesis_time())}, text: $root.timestamp(genesis_time())" data-genesis-timestamp="{{ .GenesisTime.Unix }}">{{ .GenesisTime.UTC }}</span>
             (<span id="timestamp" aria-ethereum-date="{{ .GenesisTime.Unix }}" aria-ethereum-date-format="LOCAL" data-timer="{{ .GenesisTime.Unix }}" data-bind="attr: {'aria-ethereum-date': $root.unixtime(genesis_time()), 'data-timer': $root.unixtime(genesis_time())}, text: $root.formatRecentTimeShort(genesis_time())">{{ formatRecentTimeShort .GenesisTime }}</span>)
             <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ .GenesisTime.UTC }}" data-bind="attr: {'data-clipboard-text': $root.timestamp(genesis_time())}"></i>
           </div>
@@ -91,30 +91,99 @@
       <div class="row border-bottom p-2 mx-0">
         <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Name of the Network">Genesis Validators Root:</span></div>
         <div class="col-md-10">
-          <span data-bind="text: $root.hexstr(genesis_valroot())">0x{{ printf "%x" .GenesisValidatorsRoot }}</span>
+          <span class="text-monospace" data-bind="text: $root.hexstr(genesis_valroot())">0x{{ printf "%x" .GenesisValidatorsRoot }}</span>
           <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" .GenesisValidatorsRoot }}" data-bind="attr: {'data-clipboard-text': $root.hexstr(genesis_valroot())}"></i>
         </div>
       </div>
       <div class="row border-bottom p-2 mx-0">
-        <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Name of the Network">Genesis Fork Version:</span></div>
-        <div class="col-md-10">
-          <span data-bind="text: $root.hexstr(genesis_version())">0x{{ printf "%x" .GenesisForkVersion }}</span>
-          <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" .GenesisForkVersion }}" data-bind="attr: {'data-clipboard-text': $root.hexstr(genesis_version())}"></i>
+        <div class="col-md-2">
+          <span data-bs-toggle="tooltip" data-bs-placement="top" title="Network Forks">Network Forks:</span>
         </div>
-      </div>
-      <div class="row border-bottom p-2 mx-0">
-        <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Name of the Network">Network Forks:</span></div>
-        <div class="col-md-10 template-tbody">
-          {{ html "<!-- ko foreach: forks -->" }}
-            <span class="template-row badge rounded-pill" data-bs-toggle="tooltip" data-bs-placement="top" data-bind="css: {'text-bg-success': active, 'text-bg-secondary': !active }, attr: {title: 'Epoch: ' + epoch + ', Fork Version: ' + $root.hexstr(version)}, text: name"></span>
-          {{ html "<!-- /ko -->" }}
-          {{ range $i, $fork := .NetworkForks }}
-            {{ if $fork.Active }}
-              <span class="badge rounded-pill text-bg-success" data-bs-toggle="tooltip" data-bs-placement="top" title="Epoch: {{ $fork.Epoch }}, Fork Version: 0x{{ printf "%x" $fork.Version }}">{{ $fork.Name }}</span>
-            {{ else }}
-              <span class="badge rounded-pill text-bg-secondary" data-bs-toggle="tooltip" data-bs-placement="top" title="Epoch: {{ $fork.Epoch }}, Fork Version: 0x{{ printf "%x" $fork.Version }}">{{ $fork.Name }}</span>
-            {{ end }}
-          {{ end }}
+        <div class="col-md-10">
+          <div id="forkBadges" class="d-flex justify-content-between align-items-center">
+            <div class="template-tbody">
+              {{ html "<!-- ko foreach: forks -->" }}
+                <span class="template-row badge rounded-pill me-1 border fork-hover" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-html="true" data-bind="css: {'text-bg-success': active, 'text-bg-secondary': !active, 'border-warning': type === 'bpo'}, attr: {title: 'Epoch: ' + epoch + (version ? '<br>Fork Version: ' + $root.hexstr(version) : '') + (fork_digest ? '<br>Fork Digest: ' + $root.hexstr(fork_digest) : '') + '<br>Time: ' + $root.timestampUtc(new Date(time * 1000)) + (type === 'bpo' ? '<br>Type: Block-Parameter-Only' + (max_blobs_per_block ? '<br>Max Blobs Per Block: ' + max_blobs_per_block : '') : ''), 'data-fork-timestamp': time, 'data-fork-active': active}, text: name"></span>
+              {{ html "<!-- /ko -->" }}
+              {{ range $i, $fork := .NetworkForks }}
+                {{ if $fork.Active }}
+                  <span class="badge rounded-pill text-bg-success me-1 border fork-hover {{ if eq $fork.Type "bpo" }} border-warning{{ end }}" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-html="true" title="Epoch: {{ $fork.Epoch }}{{ if $fork.Version }}<br>Fork Version: 0x{{ printf "%x" $fork.Version }}{{ end }}{{ if $fork.ForkDigest }}<br>Fork Digest: 0x{{ printf "%x" $fork.ForkDigest }}{{ end }}<br>Time: {{ $fork.Time | uint64ToTime | date "2006-01-02 15:04:05 MST" }}{{ if eq $fork.Type "bpo" }}<br>Type: Block-Parameter-Only{{ if $fork.MaxBlobsPerBlock }}<br>Max Blobs Per Block: {{ $fork.MaxBlobsPerBlock }}{{ end }}{{ end }}" data-fork-timestamp="{{ $fork.Time }}" data-fork-active="true">{{ $fork.Name }}</span>
+                {{ else }}
+                  <span class="badge rounded-pill text-bg-secondary me-1 border fork-hover {{ if eq $fork.Type "bpo" }} border-warning{{ end }}" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-html="true" title="Epoch: {{ $fork.Epoch }}{{ if $fork.Version }}<br>Fork Version: 0x{{ printf "%x" $fork.Version }}{{ end }}{{ if $fork.ForkDigest }}<br>Fork Digest: 0x{{ printf "%x" $fork.ForkDigest }}{{ end }}<br>Time: {{ $fork.Time | uint64ToTime | date "2006-01-02 15:04:05 MST" }}{{ if eq $fork.Type "bpo" }}<br>Type: Block-Parameter-Only{{ if $fork.MaxBlobsPerBlock }}<br>Max Blobs Per Block: {{ $fork.MaxBlobsPerBlock }}{{ end }}{{ end }}" data-fork-timestamp="{{ $fork.Time }}" data-fork-active="false">{{ $fork.Name }}</span>
+                {{ end }}
+              {{ end }}
+            </div>
+            <i class="fas fa-chevron-down cursor-pointer text-muted toggle-fork-view"
+               onclick="toggleForkView(this);">
+            </i>
+          </div>
+          <div id="forkTable" class="d-none">
+            <div class="table-responsive">
+              <table class="table table-sm table-hover mb-0">
+                <thead>
+                  <tr>
+                    <th scope="col">Fork Name</th>
+                    <th scope="col">Epoch</th>
+                    <th scope="col">Activation Time</th>
+                    <th scope="col">Fork Version</th>
+                    <th scope="col">Fork Digest</th>
+                    <th scope="col" class="d-flex justify-content-between align-items-center">
+                      Status
+                      <i class="fas fa-chevron-up cursor-pointer text-muted toggle-fork-view"
+                         onclick="toggleForkView(this);">
+                      </i>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody class="template-tbody">
+                  {{ html "<!-- ko foreach: forks -->" }}
+                  <tr class="template-row">
+                    <td>
+                      <strong data-bind="text: name"></strong>
+                    </td>
+                    <td data-bind="text: epoch"></td>
+                    <td data-bind="text: $root.timestampUtc(new Date(time * 1000))"></td>
+                    <td>
+                      <span class="text-monospace small" data-bind="text: version ? $root.hexstr(version) : 'N/A'"></span>
+                    </td>
+                    <td>
+                      <span class="text-monospace small" data-bind="text: fork_digest ? $root.hexstr(fork_digest) : 'N/A'"></span>
+                    </td>
+                    <td>
+                      <span class="badge" data-bind="text: active ? 'Active' : 'Pending', css: {'text-bg-success': active, 'text-bg-secondary': !active}"></span>
+                    </td>
+                  </tr>
+                  {{ html "<!-- /ko -->" }}
+                  {{ range $i, $fork := .NetworkForks }}
+                    <tr>
+                      <td>
+                        <strong>{{ $fork.Name }}</strong>
+                      </td>
+                      <td>{{ $fork.Epoch }}</td>
+                      <td>{{ $fork.Time | uint64ToTime | date "2006-01-02 15:04:05 MST" }}</td>
+                      <td>
+                        <span class="text-monospace small">
+                          {{ if $fork.Version }}0x{{ printf "%x" $fork.Version }}{{ else }}N/A{{ end }}
+                        </span>
+                      </td>
+                      <td>
+                        <span class="text-monospace small">
+                          {{ if $fork.ForkDigest }}0x{{ printf "%x" $fork.ForkDigest }}{{ else }}N/A{{ end }}
+                        </span>
+                      </td>
+                      <td>
+                        {{ if $fork.Active }}
+                          <span class="badge text-bg-success">Active</span>
+                        {{ else }}
+                          <span class="badge text-bg-secondary">Pending</span>
+                        {{ end }}
+                      </td>
+                    </tr>
+                  {{ end }}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       </div>
     </div>

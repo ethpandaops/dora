@@ -16,6 +16,12 @@ type BlockStatus struct {
 	Status SlotStatus `db:"status"`
 }
 
+type BlockBlobCount struct {
+	Root         []byte `db:"root"`
+	EthBlockHash []byte `db:"eth_block_hash"`
+	BlobCount    uint64 `db:"blob_count"`
+}
+
 type BlockHead struct {
 	Slot       uint64 `db:"slot"`
 	Root       []byte `db:"root"`
@@ -37,12 +43,26 @@ type UnfinalizedBlockFilter struct {
 }
 
 type BlockFilter struct {
-	Graffiti      string
-	ExtraData     string
-	ProposerIndex *uint64
-	ProposerName  string
-	WithOrphaned  uint8
-	WithMissing   uint8
+	Graffiti             string
+	InvertGraffiti       bool
+	ExtraData            string
+	InvertExtraData      bool
+	ProposerIndex        *uint64
+	ProposerName         string
+	InvertProposer       bool
+	WithOrphaned         uint8
+	WithMissing          uint8
+	MinSyncParticipation *float32
+	MaxSyncParticipation *float32
+	MinExecTime          *uint32
+	MaxExecTime          *uint32
+	MinTxCount           *uint64
+	MaxTxCount           *uint64
+	MinBlobCount         *uint64
+	MaxBlobCount         *uint64
+	Slot                 *uint64  // Filter by specific slot number
+	BlockRoot            []byte   // Filter by specific block root
+	ForkIds              []uint64 // Filter by fork IDs
 }
 
 type MevBlockFilter struct {

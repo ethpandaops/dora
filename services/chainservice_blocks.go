@@ -623,6 +623,20 @@ func (bs *ChainService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageIdx
 				continue
 			}
 
+			// filter by specific slot number
+			if filter.Slot != nil {
+				if uint64(block.Slot) != *filter.Slot {
+					continue
+				}
+			}
+
+			// filter by specific block root
+			if len(filter.BlockRoot) > 0 {
+				if !bytes.Equal(block.Root[:], filter.BlockRoot) {
+					continue
+				}
+			}
+
 			isCanonical := bs.beaconIndexer.IsCanonicalBlockByHead(block, lastCanonicalBlock)
 			if isCanonical {
 				lastCanonicalBlock = block
@@ -647,16 +661,32 @@ func (bs *ChainService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageIdx
 			// filter by graffiti
 			if filter.Graffiti != "" {
 				blockGraffiti := string(blockIndex.Graffiti[:])
-				if !strings.Contains(blockGraffiti, filter.Graffiti) {
-					continue
+				graffitiMatches := strings.Contains(blockGraffiti, filter.Graffiti)
+				if filter.InvertGraffiti {
+					// For inverted filter, include empty/null graffiti AND non-matching graffiti
+					if blockGraffiti != "" && graffitiMatches {
+						continue
+					}
+				} else {
+					if !graffitiMatches {
+						continue
+					}
 				}
 			}
 
 			// filter by extra data
 			if filter.ExtraData != "" {
 				blockExtraData := string(blockIndex.ExecutionExtraData)
-				if !strings.Contains(blockExtraData, filter.ExtraData) {
-					continue
+				extraDataMatches := strings.Contains(blockExtraData, filter.ExtraData)
+				if filter.InvertExtraData {
+					// For inverted filter, include empty/null extra data AND non-matching extra data
+					if blockExtraData != "" && extraDataMatches {
+						continue
+					}
+				} else {
+					if !extraDataMatches {
+						continue
+					}
 				}
 			}
 
@@ -669,7 +699,74 @@ func (bs *ChainService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageIdx
 			}
 			if filter.ProposerName != "" {
 				proposerName := bs.validatorNames.GetValidatorName(proposer)
-				if !strings.Contains(proposerName, filter.ProposerName) {
+				nameMatches := strings.Contains(proposerName, filter.ProposerName)
+				if filter.InvertProposer {
+					// For inverted filter, include empty/null names AND non-matching names
+					if proposerName != "" && nameMatches {
+						continue
+					}
+				} else {
+					if !nameMatches {
+						continue
+					}
+				}
+			}
+
+			// filter by sync participation
+			if filter.MinSyncParticipation != nil || filter.MaxSyncParticipation != nil {
+				syncParticipation := blockIndex.SyncParticipation
+				if filter.MinSyncParticipation != nil && syncParticipation < *filter.MinSyncParticipation {
+					continue
+				}
+				if filter.MaxSyncParticipation != nil && syncParticipation > *filter.MaxSyncParticipation {
+					continue
+				}
+			}
+
+			// filter by execution time
+			if filter.MinExecTime != nil || filter.MaxExecTime != nil {
+				maxExecTime := block.GetMaxExecutionTime()
+				if filter.MinExecTime != nil && maxExecTime < *filter.MinExecTime {
+					continue
+				}
+				if filter.MaxExecTime != nil && maxExecTime > *filter.MaxExecTime {
+					continue
+				}
+			}
+
+			// filter by transaction count
+			if filter.MinTxCount != nil || filter.MaxTxCount != nil {
+				txCount := blockIndex.EthTransactionCount
+				if filter.MinTxCount != nil && txCount < *filter.MinTxCount {
+					continue
+				}
+				if filter.MaxTxCount != nil && txCount > *filter.MaxTxCount {
+					continue
+				}
+			}
+
+			// filter by blob count
+			if filter.MinBlobCount != nil || filter.MaxBlobCount != nil {
+				blobCount := blockIndex.BlobCount
+				if filter.MinBlobCount != nil && blobCount < *filter.MinBlobCount {
+					continue
+				}
+				if filter.MaxBlobCount != nil && blobCount > *filter.MaxBlobCount {
+					continue
+				}
+			}
+
+			// filter by fork IDs
+			if len(filter.ForkIds) > 0 {
+				blockForkId := uint64(block.GetForkId())
+				found := false
+				for _, forkId := range filter.ForkIds {
+					if blockForkId == forkId {
+						found = true
+						break
+					}
+				}
+				if !found {
 					continue
 				}
 			}
@@ -683,7 +780,20 @@ func (bs *ChainService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageIdx
 		}
 
 		// reconstruct missing blocks from epoch duties
-		if filter.WithMissing != 0 && filter.Graffiti == "" && filter.ExtraData == "" && filter.WithOrphaned != 2 {
+		// For slot/root filtering, we still need to check if we need missing blocks for that specific slot
+		shouldCheckMissing := filter.WithMissing != 0 && filter.Graffiti == "" && filter.ExtraData == "" && filter.WithOrphaned != 2 && filter.MinSyncParticipation == nil && filter.MaxSyncParticipation == nil && filter.MinExecTime == nil && filter.MaxExecTime == nil && filter.MinTxCount == nil && filter.MaxTxCount == nil && filter.MinBlobCount == nil && filter.MaxBlobCount == nil && len(filter.ForkIds) == 0
+
+		// If filtering by slot, only check missing for that specific slot
+		if filter.Slot != nil {
+			shouldCheckMissing = shouldCheckMissing && uint64(slot) == *filter.Slot
+		}
+
+		// If filtering by block root, don't check missing (missing blocks don't have roots)
+		if len(filter.BlockRoot) > 0 {
+			shouldCheckMissing = false
+		}
+
+		if shouldCheckMissing {
 			hasCanonicalProposer := false
 			canonicalProposer := getCanonicalProposer(slot)
 
@@ -719,8 +829,16 @@ func (bs *ChainService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageIdx
 				}
 				if filter.ProposerName != "" {
 					assignedName := bs.validatorNames.GetValidatorName(uint64(canonicalProposer))
-					if assignedName == "" || !strings.Contains(assignedName, filter.ProposerName) {
-						continue
+					nameMatches := assignedName != "" && strings.Contains(assignedName, filter.ProposerName)
+					if filter.InvertProposer {
+						// For inverted filter, include empty/null names AND non-matching names
+						if assignedName != "" && nameMatches {
+							continue
+						}
+					} else {
+						if !nameMatches {
+							continue
+						}
 					}
 				}
 
