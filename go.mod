@@ -7,7 +7,7 @@ toolchain go1.24.1
 require (
 	github.com/520MianXiangDuiXiang520/MapSize v0.0.0-20230414174449-030467540731
 	github.com/Masterminds/sprig/v3 v3.3.0
-	github.com/attestantio/go-eth2-client v0.26.0
+	github.com/attestantio/go-eth2-client v0.27.0
 	github.com/cockroachdb/pebble v1.1.5
 	github.com/coocood/freecache v1.2.4
 	github.com/ethereum/go-ethereum v1.16.3
@@ -263,5 +263,3 @@ require (
 	modernc.org/memory v1.11.0 // indirect
 	modernc.org/sqlite v1.38.2 // indirect
 )
-
-replace github.com/attestantio/go-eth2-client => github.com/attestantio/go-eth2-client v0.0.0-20250721122214-dc2928832acc
