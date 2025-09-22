@@ -9,7 +9,7 @@ import (
 
 	"github.com/attestantio/go-eth2-client/spec"
 	"github.com/attestantio/go-eth2-client/spec/deneb"
-	"github.com/attestantio/go-eth2-client/spec/eip7732"
+	"github.com/attestantio/go-eth2-client/spec/gloas"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 
 	"github.com/ethpandaops/dora/blockdb"
@@ -23,7 +23,7 @@ type CombinedBlockResponse struct {
 	Root     phase0.Root
 	Header   *phase0.SignedBeaconBlockHeader
 	Block    *spec.VersionedSignedBeaconBlock
-	Payload  *eip7732.SignedExecutionPayloadEnvelope
+	Payload  *gloas.SignedExecutionPayloadEnvelope
 	Orphaned bool
 }
 
@@ -136,7 +136,7 @@ func (bs *ChainService) GetSlotDetailsByBlockroot(ctx context.Context, blockroot
 		}
 
 		var block *spec.VersionedSignedBeaconBlock
-		var payload *eip7732.SignedExecutionPayloadEnvelope
+		var payload *gloas.SignedExecutionPayloadEnvelope
 		bodyRetry := 0
 		for ; bodyRetry < 3; bodyRetry++ {
 			client := clients[bodyRetry%len(clients)]
@@ -151,7 +151,7 @@ func (bs *ChainService) GetSlotDetailsByBlockroot(ctx context.Context, blockroot
 				}
 			}
 
-			if block.Version >= spec.DataVersionEIP7732 {
+			if block.Version >= spec.DataVersionGloas {
 				payload, err = beacon.LoadExecutionPayload(ctx, client, blockroot)
 				if payload != nil {
 					break
@@ -277,7 +277,7 @@ func (bs *ChainService) GetSlotDetailsBySlot(ctx context.Context, slot phase0.Sl
 
 		var err error
 		var block *spec.VersionedSignedBeaconBlock
-		var payload *eip7732.SignedExecutionPayloadEnvelope
+		var payload *gloas.SignedExecutionPayloadEnvelope
 		bodyRetry := 0
 		for ; bodyRetry < 3; bodyRetry++ {
 			client := clients[bodyRetry%len(clients)]
@@ -290,7 +290,7 @@ func (bs *ChainService) GetSlotDetailsBySlot(ctx context.Context, slot phase0.Sl
 				log.Warnf("Error loading block body for slot %v", slot)
 			}
 
-			if block.Version >= spec.DataVersionEIP7732 {
+			if block.Version >= spec.DataVersionGloas {
 				payload, err = beacon.LoadExecutionPayload(ctx, client, blockRoot)
 				if payload != nil {
 					break

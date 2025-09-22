@@ -10,7 +10,7 @@ import (
 
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
 	"github.com/attestantio/go-eth2-client/spec"
-	"github.com/attestantio/go-eth2-client/spec/eip7732"
+	"github.com/attestantio/go-eth2-client/spec/gloas"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/blockdb"
 	"github.com/ethpandaops/dora/db"
@@ -153,7 +153,7 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 			}
 
 			if chainState.IsEip7732Enabled(chainState.EpochOfSlot(block.Slot)) {
-				if _, err := block.EnsureExecutionPayload(func() (*eip7732.SignedExecutionPayloadEnvelope, error) {
+				if _, err := block.EnsureExecutionPayload(func() (*gloas.SignedExecutionPayloadEnvelope, error) {
 					return LoadExecutionPayload(client.getContext(), client, block.Root)
 				}); err != nil {
 					client.logger.Warnf("failed loading finalized execution payload %v (%v): %v", block.Slot, block.Root.String(), err)

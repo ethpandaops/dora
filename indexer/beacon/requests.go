@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/attestantio/go-eth2-client/spec"
-	"github.com/attestantio/go-eth2-client/spec/eip7732"
+	"github.com/attestantio/go-eth2-client/spec/gloas"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 )
 
@@ -81,7 +81,7 @@ func LoadBeaconState(ctx context.Context, client *Client, root phase0.Root) (*sp
 }
 
 // LoadExecutionPayload loads the execution payload from the client.
-func LoadExecutionPayload(ctx context.Context, client *Client, root phase0.Root) (*eip7732.SignedExecutionPayloadEnvelope, error) {
+func LoadExecutionPayload(ctx context.Context, client *Client, root phase0.Root) (*gloas.SignedExecutionPayloadEnvelope, error) {
 	ctx, cancel := context.WithTimeout(ctx, executionPayloadRequestTimeout)
 	defer cancel()
 

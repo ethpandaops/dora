@@ -398,7 +398,7 @@ func (cs *ChainState) IsEip7732Enabled(epoch phase0.Epoch) bool {
 		return false
 	}
 
-	return cs.specs.Eip7732ForkEpoch != nil && phase0.Epoch(*cs.specs.Eip7732ForkEpoch) <= epoch
+	return cs.specs.GloasForkEpoch != nil && phase0.Epoch(*cs.specs.GloasForkEpoch) <= epoch
 }
 
 func (cs *ChainState) GetBalanceChurnLimit(totalActiveBalance uint64) uint64 {

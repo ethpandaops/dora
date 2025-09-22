@@ -397,16 +397,22 @@ func (block *Block) setBlockIndex(body *spec.VersionedSignedBeaconBlock, payload
 		if execNumber, err := body.ExecutionBlockNumber(); err == nil {
 			blockIndex.ExecutionNumber = uint64(execNumber)
 		}
+		if transactions, err := body.ExecutionTransactions(); err == nil {
+			blockIndex.EthTransactionCount = uint64(len(transactions))
+		}
+		if blobKzgCommitments, err := body.BlobKZGCommitments(); err == nil {
+			blockIndex.BlobCount = uint64(len(blobKzgCommitments))
+		}
 	}
 	if payload != nil {
 		blockIndex.ExecutionNumber = uint64(payload.Message.Payload.BlockNumber)
 
 		// Calculate transaction count
-		executionTransactions, _ := payload.Transactions()
+		executionTransactions := payload.Message.Payload.Transactions
 		blockIndex.EthTransactionCount = uint64(len(executionTransactions))
 
 		// Calculate blob count
-		blobKzgCommitments, _ := body.BlobKZGCommitments()
+		blobKzgCommitments := payload.Message.BlobKZGCommitments
 		blockIndex.BlobCount = uint64(len(blobKzgCommitments))
 	}
 

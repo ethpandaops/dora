@@ -231,7 +231,7 @@ func MarshalVersionedSignedExecutionPayloadEnvelopeSSZ(dynSsz *dynssz.DynSsz, pa
 		version, ssz, err = marshalVersionedSignedExecutionPayloadEnvelopeJson(payload)
 	} else {
 		// SSZ encoding
-		version = uint64(spec.DataVersionEIP7732)
+		version = uint64(spec.DataVersionGloas)
 		ssz, err = dynSsz.MarshalSSZ(payload)
 	}
 
@@ -260,7 +260,7 @@ func UnmarshalVersionedSignedExecutionPayloadEnvelopeSSZ(dynSsz *dynssz.DynSsz, 
 		return unmarshalVersionedSignedExecutionPayloadEnvelopeJson(version, ssz)
 	}
 
-	if version != uint64(spec.DataVersionEIP7732) {
+	if version != uint64(spec.DataVersionGloas) {
 		return nil, fmt.Errorf("unknown version")
 	}
 
@@ -275,7 +275,7 @@ func UnmarshalVersionedSignedExecutionPayloadEnvelopeSSZ(dynSsz *dynssz.DynSsz, 
 
 // marshalVersionedSignedExecutionPayloadEnvelopeJson marshals a versioned signed execution payload envelope using JSON encoding.
 func marshalVersionedSignedExecutionPayloadEnvelopeJson(payload *gloas.SignedExecutionPayloadEnvelope) (version uint64, jsonRes []byte, err error) {
-	version = uint64(spec.DataVersionEIP7732)
+	version = uint64(spec.DataVersionGloas)
 	jsonRes, err = payload.MarshalJSON()
 
 	version |= jsonVersionFlag
@@ -289,7 +289,7 @@ func unmarshalVersionedSignedExecutionPayloadEnvelopeJson(version uint64, ssz []
 		return nil, fmt.Errorf("no json encoding")
 	}
 
-	if version-jsonVersionFlag != uint64(spec.DataVersionEIP7732) {
+	if version-jsonVersionFlag != uint64(spec.DataVersionGloas) {
 		return nil, fmt.Errorf("unknown version")
 	}
 
@@ -327,7 +327,7 @@ func getBlockExecutionExtraData(v *spec.VersionedSignedBeaconBlock) ([]byte, err
 		}
 
 		return v.Electra.Message.Body.ExecutionPayload.ExtraData, nil
-	case spec.DataVersionEIP7732:
+	case spec.DataVersionGloas:
 		return nil, nil
 	default:
 		return nil, errors.New("unknown version")

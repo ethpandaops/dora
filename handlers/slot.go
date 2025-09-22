@@ -753,7 +753,7 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 
 	if specs.ElectraForkEpoch != nil && uint64(epoch) >= *specs.ElectraForkEpoch {
 		var requests *electra.ExecutionRequests
-		if blockData.Block.Version >= spec.DataVersionEIP7732 {
+		if blockData.Block.Version >= spec.DataVersionGloas {
 			if blockData.Payload != nil {
 				requests = blockData.Payload.Message.ExecutionRequests
 			}

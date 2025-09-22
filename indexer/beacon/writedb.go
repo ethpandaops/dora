@@ -274,10 +274,12 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 	} else {
 		payloadStatus = dbtypes.PayloadStatusCanonical
 		executionBlockNumber, _ = blockBody.ExecutionBlockNumber()
-
-		executionExtraData, _ = getBlockExecutionExtraData(blockBody)
-		executionTransactions, _ = blockBody.ExecutionTransactions()
-		executionWithdrawals, _ = blockBody.Withdrawals()
+		executionPayload, _ := blockBody.ExecutionPayload()
+		if executionPayload != nil {
+			executionExtraData, _ = executionPayload.ExtraData()
+			executionTransactions, _ = executionPayload.Transactions()
+			executionWithdrawals, _ = executionPayload.Withdrawals()
+		}
 		blobKzgCommitments, _ = blockBody.BlobKZGCommitments()
 		executionRequests, _ := blockBody.ExecutionRequests()
 		if executionRequests != nil {
@@ -418,9 +420,9 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 				dbBlock.EthFeeRecipient = payload.FeeRecipient[:]
 			}
 		case spec.DataVersionGloas:
-			if blockBody.Gloas != nil && blockBody.Gloas.Message != nil &&
-				blockBody.Gloas.Message.Body != nil && blockBody.Gloas.Message.Body.ExecutionPayload != nil {
-				payload := blockBody.Gloas.Message.Body.ExecutionPayload
+			blockPayload := block.GetExecutionPayload()
+			if blockPayload != nil {
+				payload := blockPayload.Message.Payload
 				dbBlock.EthGasUsed = payload.GasUsed
 				dbBlock.EthGasLimit = payload.GasLimit
 				dbBlock.EthBaseFee = utils.GetBaseFeeAsUint64(payload.BaseFeePerGas)
@@ -596,9 +598,9 @@ func (dbw *dbWriter) buildDbEpoch(epoch phase0.Epoch, blocks []*Block, epochStat
 					dbEpoch.EthGasLimit += payload.GasLimit
 				}
 			case spec.DataVersionGloas:
-				if blockBody.Gloas != nil && blockBody.Gloas.Message != nil &&
-					blockBody.Gloas.Message.Body != nil && blockBody.Gloas.Message.Body.ExecutionPayload != nil {
-					payload := blockBody.Gloas.Message.Body.ExecutionPayload
+				blockPayload := block.GetExecutionPayload()
+				if blockPayload != nil {
+					payload := blockPayload.Message.Payload
 					dbEpoch.EthGasUsed += payload.GasUsed
 					dbEpoch.EthGasLimit += payload.GasLimit
 				}
