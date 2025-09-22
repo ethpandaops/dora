@@ -711,6 +711,22 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 		if transactions, err := executionPayload.Transactions(); err == nil {
 			getSlotPageTransactions(pageData, transactions)
 		}
+
+		// TODO: Extract block access list hash when available in execution payload (EIP-7928)
+		// if blockAccessListHash, err := executionPayload.BlockAccessListHash(); err == nil {
+		//     pageData.ExecutionData.BlockAccessListHash = blockAccessListHash[:]
+		//     pageData.ExecutionData.BlockAccessList = fetchBlockAccessList(blockAccessListHash)
+		// }
+		slotNum := uint64(blockData.Header.Message.Slot)
+		dbBlocks := services.GlobalBeaconService.GetDbBlocksByFilter(&dbtypes.BlockFilter{
+			Slot: &slotNum,
+		}, 0, 1, 0)
+		if len(dbBlocks) > 0 && dbBlocks[0].Block != nil && len(dbBlocks[0].Block.EthBlockAccessListHash) > 0 {
+			pageData.ExecutionData.BlockAccessListHash = dbBlocks[0].Block.EthBlockAccessListHash
+			// TODO: Fetch actual block access list from execution client
+			// For now, this is a placeholder that would be replaced with actual data from the execution client
+			// pageData.ExecutionData.BlockAccessList = fetchBlockAccessListFromExecutionClient(dbBlocks[0].Block.EthBlockAccessListHash)
+		}
 	}
 
 	if specs.CapellaForkEpoch != nil && uint64(epoch) >= *specs.CapellaForkEpoch {

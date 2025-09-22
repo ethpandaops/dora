@@ -1,0 +1,30 @@
+{{ define "block_access_list" }}
+  <div class="table-ellipsis">
+    <table id="block_access_list" class="table table-sm text-left">
+      <thead>
+        <tr>
+          <th class="border-0">Address</th>
+          <th class="border-0">Storage Slots</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{ range $i, $entry := .Block.ExecutionData.BlockAccessList }}
+          <tr>
+            <td>{{ ethAddressLink $entry.Address }}</td>
+            <td>
+              {{ if $entry.StorageSlots }}
+                <div class="text-monospace" style="max-height: 100px; overflow-y: auto;">
+                  {{ range $j, $slot := $entry.StorageSlots }}
+                    <div>0x{{ printf "%x" $slot }}</div>
+                  {{ end }}
+                </div>
+              {{ else }}
+                <span class="text-muted">No storage slots</span>
+              {{ end }}
+            </td>
+          </tr>
+        {{ end }}
+      </tbody>
+    </table>
+  </div>
+{{ end }}

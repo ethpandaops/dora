@@ -286,6 +286,15 @@
                   </div>
                 {{ end }}
 
+                {{ if .BlockAccessListHash }}
+                  <div class="row py-1">
+                    <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Block Access List Hash (EIP-7928)">BAL Hash:</span></div>
+                    <div class="col-md-10 text-monospace text-break">
+                      <span class="text-truncate">0x{{ printf "%x" .BlockAccessListHash }}</span>
+                    </div>
+                  </div>
+                {{ end }}
+
                 <div class="row py-1">
                   <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Transactions">Transactions:</span></div>
                   <div class="col-md-10 text-monospace text-break">{{ $block.TransactionsCount }}</div>
@@ -338,4 +347,7 @@
       {{ end }}
     {{ end }}
   </div>
+  
+
+  {{ end }}
 {{ end }}
