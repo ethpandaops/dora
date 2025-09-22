@@ -18,7 +18,7 @@
     "css-loader": "^7.1.2",
     "mini-css-extract-plugin": "^2.9.4",
     "postcss-loader": "^8.2.0",
-    "sass": "^1.92.1",
+    "sass": "^1.93.0",
     "sass-loader": "^16.0.5",
     "style-loader": "^4.0.0",
     "ts-loader": "^9.5.4",
@@ -32,15 +32,15 @@
     "@chainsafe/bls": "^8.2.0",
     "@chainsafe/ssz": "^1.2.2",
     "@rainbow-me/rainbowkit": "^2.2.8",
-    "@tanstack/react-query": "^5.87.4",
+    "@tanstack/react-query": "^5.90.1",
     "@types/react": "^19.1.13",
     "@types/react-dom": "^19.1.9",
     "react": "^19.1.1",
     "react-bootstrap": "^2.10.10",
     "react-dom": "^19.1.1",
     "react-select": "^5.10.2",
-    "viem": "^2.37.6",
-    "wagmi": "^2.16.9"
+    "viem": "^2.37.7",
+    "wagmi": "^2.17.1"
   },
   "scripts": {
     "build": "webpack",
