@@ -1,30 +1,249 @@
 {{ define "block_access_list" }}
-  <div class="table-ellipsis">
-    <table id="block_access_list" class="table table-sm text-left">
-      <thead>
-        <tr>
-          <th class="border-0">Address</th>
-          <th class="border-0">Storage Slots</th>
-        </tr>
-      </thead>
-      <tbody>
-        {{ range $i, $entry := .Block.ExecutionData.BlockAccessList }}
-          <tr>
-            <td>{{ ethAddressLink $entry.Address }}</td>
-            <td>
-              {{ if $entry.StorageSlots }}
-                <div class="text-monospace" style="max-height: 100px; overflow-y: auto;">
-                  {{ range $j, $slot := $entry.StorageSlots }}
-                    <div>0x{{ printf "%x" $slot }}</div>
+  <style>
+    .bal-section {
+      margin-bottom: 2rem;
+    }
+    .bal-section-header {
+      background-color: rgba(108, 117, 125, 0.1);
+      padding: 0.75rem 1rem;
+      border-radius: 0.375rem 0.375rem 0 0;
+      font-weight: 600;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .bal-section-content {
+      border: 1px solid rgba(108, 117, 125, 0.2);
+      border-top: none;
+      border-radius: 0 0 0.375rem 0.375rem;
+      padding: 1rem;
+    }
+    .bal-address-card {
+      border: 1px solid rgba(108, 117, 125, 0.2);
+      border-radius: 0.375rem;
+      margin-bottom: 1rem;
+      overflow: hidden;
+    }
+    .bal-address-header {
+      background-color: rgba(108, 117, 125, 0.05);
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid rgba(108, 117, 125, 0.2);
+      font-weight: 500;
+    }
+    .bal-address-content {
+      padding: 1rem;
+    }
+    .bal-change-item {
+      background-color: rgba(108, 117, 125, 0.05);
+      padding: 0.5rem;
+      border-radius: 0.25rem;
+      margin-bottom: 0.5rem;
+      font-family: monospace;
+      font-size: 0.875rem;
+    }
+    .bal-tx-index {
+      display: inline-block;
+      background-color: rgba(13, 110, 253, 0.2);
+      color: #0d6efd;
+      padding: 0.125rem 0.375rem;
+      border-radius: 0.25rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+      margin-right: 0.5rem;
+    }
+    .bal-value-text {
+      word-break: break-all;
+    }
+    .bal-empty {
+      color: #6c757d;
+      font-style: italic;
+    }
+    .bal-tab-content {
+      min-height: 200px;
+    }
+  </style>
+
+  <div class="bal-content">
+    {{ if .Block.ExecutionData.BlockAccessList }}
+      {{ range $i, $entry := .Block.ExecutionData.BlockAccessList }}
+        <div class="bal-address-card">
+          <div class="bal-address-header">
+            <i class="fas fa-wallet me-2"></i>
+            Address: {{ ethAddressLink $entry.Address }}
+          </div>
+          <div class="bal-address-content">
+            <!-- Nav tabs -->
+            <ul class="nav nav-tabs mb-3" role="tablist">
+              <li class="nav-item" role="presentation">
+                <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#storage-{{ $i }}" type="button">
+                  <i class="fas fa-database me-1"></i>
+                  Storage Changes 
+                  {{ if $entry.StorageChanges }}
+                    <span class="badge bg-primary ms-1">{{ len $entry.StorageChanges }}</span>
                   {{ end }}
-                </div>
-              {{ else }}
-                <span class="text-muted">No storage slots</span>
-              {{ end }}
-            </td>
-          </tr>
-        {{ end }}
-      </tbody>
-    </table>
+                </button>
+              </li>
+              <li class="nav-item" role="presentation">
+                <button class="nav-link" data-bs-toggle="tab" data-bs-target="#storage-reads-{{ $i }}" type="button">
+                  <i class="fas fa-eye me-1"></i>
+                  Storage Reads
+                  {{ if $entry.StorageReads }}
+                    <span class="badge bg-secondary ms-1">{{ len $entry.StorageReads }}</span>
+                  {{ end }}
+                </button>
+              </li>
+              <li class="nav-item" role="presentation">
+                <button class="nav-link" data-bs-toggle="tab" data-bs-target="#balance-{{ $i }}" type="button">
+                  <i class="fas fa-coins me-1"></i>
+                  Balance Changes
+                  {{ if $entry.BalanceChanges }}
+                    <span class="badge bg-warning text-dark ms-1">{{ len $entry.BalanceChanges }}</span>
+                  {{ end }}
+                </button>
+              </li>
+              <li class="nav-item" role="presentation">
+                <button class="nav-link" data-bs-toggle="tab" data-bs-target="#nonce-{{ $i }}" type="button">
+                  <i class="fas fa-hashtag me-1"></i>
+                  Nonce Changes
+                  {{ if $entry.NonceChanges }}
+                    <span class="badge bg-info text-dark ms-1">{{ len $entry.NonceChanges }}</span>
+                  {{ end }}
+                </button>
+              </li>
+              <li class="nav-item" role="presentation">
+                <button class="nav-link" data-bs-toggle="tab" data-bs-target="#code-{{ $i }}" type="button">
+                  <i class="fas fa-code me-1"></i>
+                  Code Changes
+                  {{ if $entry.CodeChanges }}
+                    <span class="badge bg-success ms-1">{{ len $entry.CodeChanges }}</span>
+                  {{ end }}
+                </button>
+              </li>
+            </ul>
+
+            <!-- Tab content -->
+            <div class="tab-content bal-tab-content">
+              <!-- Storage Changes Tab -->
+              <div class="tab-pane fade show active" id="storage-{{ $i }}" role="tabpanel">
+                {{ if $entry.StorageChanges }}
+                  <div class="table-responsive">
+                    <table class="table table-sm">
+                      <thead>
+                        <tr>
+                          <th>Storage Slot</th>
+                          <th>Changes</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {{ range $entry.StorageChanges }}
+                          <tr>
+                            <td class="text-monospace">0x{{ printf "%x" .Slot }}</td>
+                            <td>
+                              {{ range .Changes }}
+                                <div class="bal-change-item">
+                                  <span class="bal-tx-index">Tx {{ .BlockAccessIndex }}</span>
+                                  <span class="bal-value-text">0x{{ printf "%x" .Value }}</span>
+                                </div>
+                              {{ end }}
+                            </td>
+                          </tr>
+                        {{ end }}
+                      </tbody>
+                    </table>
+                  </div>
+                {{ else }}
+                  <p class="bal-empty">No storage changes recorded</p>
+                {{ end }}
+              </div>
+
+              <!-- Storage Reads Tab -->
+              <div class="tab-pane fade" id="storage-reads-{{ $i }}" role="tabpanel">
+                {{ if $entry.StorageReads }}
+                  <div class="text-monospace" style="max-height: 300px; overflow-y: auto;">
+                    {{ range $j, $slot := $entry.StorageReads }}
+                      <div class="bal-change-item">0x{{ printf "%x" $slot }}</div>
+                    {{ end }}
+                  </div>
+                {{ else }}
+                  <p class="bal-empty">No storage reads recorded</p>
+                {{ end }}
+              </div>
+
+              <!-- Balance Changes Tab -->
+              <div class="tab-pane fade" id="balance-{{ $i }}" role="tabpanel">
+                {{ if $entry.BalanceChanges }}
+                  <div>
+                    {{ range $entry.BalanceChanges }}
+                      <div class="bal-change-item">
+                        <span class="bal-tx-index">{{ if eq .BlockAccessIndex 0 }}Pre-execution{{ else if eq .BlockAccessIndex 65535 }}Post-execution{{ else }}Tx {{ .BlockAccessIndex }}{{ end }}</span>
+                        <span class="bal-value-text">0x{{ printf "%x" .Balance }}</span>
+                      </div>
+                    {{ end }}
+                  </div>
+                {{ else }}
+                  <p class="bal-empty">No balance changes recorded</p>
+                {{ end }}
+              </div>
+
+              <!-- Nonce Changes Tab -->
+              <div class="tab-pane fade" id="nonce-{{ $i }}" role="tabpanel">
+                {{ if $entry.NonceChanges }}
+                  <div>
+                    {{ range $entry.NonceChanges }}
+                      <div class="bal-change-item">
+                        <span class="bal-tx-index">{{ if eq .BlockAccessIndex 0 }}Pre-execution{{ else if eq .BlockAccessIndex 65535 }}Post-execution{{ else }}Tx {{ .BlockAccessIndex }}{{ end }}</span>
+                        <span class="bal-value-text">Nonce: {{ .Nonce }}</span>
+                      </div>
+                    {{ end }}
+                  </div>
+                {{ else }}
+                  <p class="bal-empty">No nonce changes recorded</p>
+                {{ end }}
+              </div>
+
+              <!-- Code Changes Tab -->
+              <div class="tab-pane fade" id="code-{{ $i }}" role="tabpanel">
+                {{ if $entry.CodeChanges }}
+                  <div>
+                    {{ range $entry.CodeChanges }}
+                      <div class="mb-3">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                          <span class="bal-tx-index">{{ if eq .BlockAccessIndex 0 }}Pre-execution{{ else if eq .BlockAccessIndex 65535 }}Post-execution{{ else }}Tx {{ .BlockAccessIndex }}{{ end }}</span>
+                          <span class="text-muted">{{ len .Code }} bytes</span>
+                        </div>
+                        <div class="bal-change-item text-break" style="max-height: 200px; overflow-y: auto;">
+                          {{ if .Code }}
+                            0x{{ printf "%x" .Code }}
+                          {{ else }}
+                            <span class="bal-empty">Empty code (self-destruct)</span>
+                          {{ end }}
+                        </div>
+                      </div>
+                    {{ end }}
+                  </div>
+                {{ else }}
+                  <p class="bal-empty">No code changes recorded</p>
+                {{ end }}
+              </div>
+            </div>
+          </div>
+        </div>
+      {{ end }}
+    {{ else }}
+      <div class="alert alert-info">
+        <i class="fas fa-info-circle me-2"></i>
+        No block access list data available for this slot.
+      </div>
+    {{ end }}
   </div>
+
+  <script>
+    // Initialize tooltips if needed
+    document.addEventListener('DOMContentLoaded', function() {
+      var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
+      var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl)
+      });
+    });
+  </script>
 {{ end }}

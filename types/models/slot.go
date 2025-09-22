@@ -85,27 +85,27 @@ type SlotPageBlockData struct {
 }
 
 type SlotPageExecutionData struct {
-	ParentHash          []byte                  `json:"parent_hash"`
-	FeeRecipient        []byte                  `json:"fee_recipient"`
-	StateRoot           []byte                  `json:"state_root"`
-	ReceiptsRoot        []byte                  `json:"receipts_root"`
-	LogsBloom           []byte                  `json:"logs_bloom"`
-	Random              []byte                  `json:"random"`
-	GasLimit            uint64                  `json:"gas_limit"`
-	GasUsed             uint64                  `json:"gas_used"`
-	Timestamp           uint64                  `json:"timestamp"`
-	Time                time.Time               `json:"time"`
-	ExtraData           []byte                  `json:"extra_data"`
-	BaseFeePerGas       uint64                  `json:"base_fee_per_gas"`
-	BlockHash           []byte                  `json:"block_hash"`
-	BlockNumber         uint64                  `json:"block_number"`
-	BlobGasUsed         *uint64                 `json:"blob_gas_used,omitempty"`
-	BlobLimit           *uint64                 `json:"blob_limit,omitempty"`
-	BlobGasLimit        *uint64                 `json:"blob_gas_limit,omitempty"`
-	ExcessBlobGas       *uint64                 `json:"excess_blob_gas,omitempty"`
-	BlobBaseFee         *uint64                 `json:"blob_base_fee,omitempty"`
-	BlockAccessListHash []byte                  `json:"block_access_list_hash,omitempty"` // EIP-7928
-	BlockAccessList     []*BlockAccessListEntry `json:"block_access_list,omitempty"`      // EIP-7928
+	ParentHash          []byte                          `json:"parent_hash"`
+	FeeRecipient        []byte                          `json:"fee_recipient"`
+	StateRoot           []byte                          `json:"state_root"`
+	ReceiptsRoot        []byte                          `json:"receipts_root"`
+	LogsBloom           []byte                          `json:"logs_bloom"`
+	Random              []byte                          `json:"random"`
+	GasLimit            uint64                          `json:"gas_limit"`
+	GasUsed             uint64                          `json:"gas_used"`
+	Timestamp           uint64                          `json:"timestamp"`
+	Time                time.Time                       `json:"time"`
+	ExtraData           []byte                          `json:"extra_data"`
+	BaseFeePerGas       uint64                          `json:"base_fee_per_gas"`
+	BlockHash           []byte                          `json:"block_hash"`
+	BlockNumber         uint64                          `json:"block_number"`
+	BlobGasUsed         *uint64                         `json:"blob_gas_used,omitempty"`
+	BlobLimit           *uint64                         `json:"blob_limit,omitempty"`
+	BlobGasLimit        *uint64                         `json:"blob_gas_limit,omitempty"`
+	ExcessBlobGas       *uint64                         `json:"excess_blob_gas,omitempty"`
+	BlobBaseFee         *uint64                         `json:"blob_base_fee,omitempty"`
+	BlockAccessListHash []byte                          `json:"block_access_list_hash,omitempty"` // EIP-7928
+	BlockAccessList     []*SlotPageBlockAccessListEntry `json:"block_access_list,omitempty"`      // EIP-7928
 }
 
 type SlotPageAttestation struct {
@@ -259,4 +259,39 @@ type SlotPageConsolidationRequest struct {
 	TargetIndex  uint64 `db:"target_index"`
 	TargetName   string `db:"target_name"`
 	Epoch        uint64 `db:"epoch"`
+}
+
+type SlotPageBlockAccessListEntry struct {
+	Address        []byte                              `json:"address"`
+	StorageChanges []*SlotPageBlockBALStorageChange    `json:"storage_changes,omitempty"`
+	StorageReads   [][]byte                            `json:"storage_reads,omitempty"`
+	BalanceChanges []*SlotPageBlockBALBalanceChange    `json:"balance_changes,omitempty"`
+	NonceChanges   []*SlotPageBlockBALNonceChange      `json:"nonce_changes,omitempty"`
+	CodeChanges    []*SlotPageBlockBALCodeChange       `json:"code_changes,omitempty"`
+}
+
+type SlotPageBlockBALStorageChange struct {
+	Slot    []byte                            `json:"slot"`
+	Changes []*SlotPageBlockBALStorageSlotChange `json:"changes"`
+}
+
+type SlotPageBlockBALStorageSlotChange struct {
+	BlockAccessIndex uint16 `json:"block_access_index"`
+	Value            []byte `json:"value"`
+}
+
+type SlotPageBlockBALBalanceChange struct {
+	BlockAccessIndex uint16 `json:"block_access_index"`
+	Balance          []byte `json:"balance"` // uint256 as bytes
+}
+
+type SlotPageBlockBALNonceChange struct {
+	BlockAccessIndex uint16 `json:"block_access_index"`
+	Nonce            uint64 `json:"nonce"`
+}
+
+type SlotPageBlockBALCodeChange struct {
+	BlockAccessIndex uint16 `json:"block_access_index"`
+	Code             []byte `json:"code"`
+	CodeHash         []byte `json:"code_hash,omitempty"`
 }
