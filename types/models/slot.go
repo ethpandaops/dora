@@ -262,16 +262,16 @@ type SlotPageConsolidationRequest struct {
 }
 
 type SlotPageBlockAccessListEntry struct {
-	Address        []byte                              `json:"address"`
-	StorageChanges []*SlotPageBlockBALStorageChange    `json:"storage_changes,omitempty"`
-	StorageReads   [][]byte                            `json:"storage_reads,omitempty"`
-	BalanceChanges []*SlotPageBlockBALBalanceChange    `json:"balance_changes,omitempty"`
-	NonceChanges   []*SlotPageBlockBALNonceChange      `json:"nonce_changes,omitempty"`
-	CodeChanges    []*SlotPageBlockBALCodeChange       `json:"code_changes,omitempty"`
+	Address        []byte                           `json:"address"`
+	StorageChanges []*SlotPageBlockBALStorageChange `json:"storage_changes,omitempty"`
+	StorageReads   [][]byte                         `json:"storage_reads,omitempty"`
+	BalanceChanges []*SlotPageBlockBALBalanceChange `json:"balance_changes,omitempty"`
+	NonceChanges   []*SlotPageBlockBALNonceChange   `json:"nonce_changes,omitempty"`
+	CodeChanges    []*SlotPageBlockBALCodeChange    `json:"code_changes,omitempty"`
 }
 
 type SlotPageBlockBALStorageChange struct {
-	Slot    []byte                            `json:"slot"`
+	Slot    []byte                               `json:"slot"`
 	Changes []*SlotPageBlockBALStorageSlotChange `json:"changes"`
 }
 
