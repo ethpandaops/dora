@@ -40,8 +40,10 @@ type ChainSpec struct {
 	DenebForkEpoch                        *uint64           `yaml:"DENEB_FORK_EPOCH"`
 	ElectraForkVersion                    phase0.Version    `yaml:"ELECTRA_FORK_VERSION" check-if-fork:"ElectraForkEpoch"`
 	ElectraForkEpoch                      *uint64           `yaml:"ELECTRA_FORK_EPOCH"   check-if-fork:"ElectraForkEpoch"`
-	FuluForkVersion                       phase0.Version    `yaml:"FULU_FORK_VERSION" check-if-fork:"FuluForkEpoch"`
-	FuluForkEpoch                         *uint64           `yaml:"FULU_FORK_EPOCH"`
+	FuluForkVersion                       phase0.Version    `yaml:"FULU_FORK_VERSION"    check-if-fork:"FuluForkEpoch"`
+	FuluForkEpoch                         *uint64           `yaml:"FULU_FORK_EPOCH"      check-if-fork:"FuluForkEpoch"`
+	GloasForkVersion                      phase0.Version    `yaml:"GLOAS_FORK_VERSION"   check-if-fork:"GloasForkEpoch"`
+	GloasForkEpoch                        *uint64           `yaml:"GLOAS_FORK_EPOCH"     check-if-fork:"GloasForkEpoch"`
 	SecondsPerSlot                        time.Duration     `yaml:"SECONDS_PER_SLOT"`
 	SlotsPerEpoch                         uint64            `yaml:"SLOTS_PER_EPOCH"`
 	EpochsPerHistoricalVector             uint64            `yaml:"EPOCHS_PER_HISTORICAL_VECTOR"`
@@ -65,6 +67,7 @@ type ChainSpec struct {
 	MinEpochsForDataColumnSidecars        uint64            `yaml:"MIN_EPOCHS_FOR_DATA_COLUMN_SIDECARS_REQUESTS"`
 	DepositChainId                        uint64            `yaml:"DEPOSIT_CHAIN_ID"`
 	MinActivationBalance                  uint64            `yaml:"MIN_ACTIVATION_BALANCE"`
+	MaxBlobsPerBlock                      uint64            `yaml:"MAX_BLOBS_PER_BLOCK"                        check-if-fork:"DenebForkEpoch"`
 	MaxPendingPartialsPerWithdrawalsSweep uint64            `yaml:"MAX_PENDING_PARTIALS_PER_WITHDRAWALS_SWEEP" check-if-fork:"ElectraForkEpoch"`
 	MaxPendingDepositsPerEpoch            uint64            `yaml:"MAX_PENDING_DEPOSITS_PER_EPOCH"             check-if-fork:"ElectraForkEpoch"`
 	PendingPartialWithdrawalsLimit        uint64            `yaml:"PENDING_PARTIAL_WITHDRAWALS_LIMIT"          check-if-fork:"ElectraForkEpoch"`
