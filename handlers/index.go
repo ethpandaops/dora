@@ -289,6 +289,19 @@ func buildIndexPageData() (*models.IndexPageData, time.Duration) {
 			ForkDigest: forkDigest[:],
 		})
 	}
+	if specs.GloasForkEpoch != nil && *specs.GloasForkEpoch < uint64(18446744073709551615) {
+		blobParams := chainState.GetBlobScheduleForEpoch(phase0.Epoch(*specs.GloasForkEpoch))
+		forkDigest := chainState.GetForkDigest(specs.GloasForkVersion, blobParams)
+		pageData.NetworkForks = append(pageData.NetworkForks, &models.IndexPageDataForks{
+			Name:       "Gloas",
+			Epoch:      *specs.GloasForkEpoch,
+			Version:    specs.GloasForkVersion[:],
+			Time:       uint64(chainState.EpochToTime(phase0.Epoch(*specs.GloasForkEpoch)).Unix()),
+			Active:     uint64(currentEpoch) >= *specs.GloasForkEpoch,
+			Type:       "consensus",
+			ForkDigest: forkDigest[:],
+		})
+	}
 
 	// Add BPO forks from BLOB_SCHEDULE
 	for i, blobSchedule := range specs.BlobSchedule {
@@ -376,14 +389,23 @@ func buildIndexPageRecentBlocksData(pageData *models.IndexPageData, recentBlockC
 		if blockData == nil {
 			continue
 		}
+
+		epoch := chainState.EpochOfSlot(phase0.Slot(blockData.Slot))
+
+		payloadStatus := blockData.PayloadStatus
+		if !chainState.IsEip7732Enabled(epoch) {
+			payloadStatus = dbtypes.PayloadStatusCanonical
+		}
+
 		blockModel := &models.IndexPageDataBlocks{
-			Epoch:        uint64(chainState.EpochOfSlot(phase0.Slot(blockData.Slot))),
-			Slot:         blockData.Slot,
-			Ts:           chainState.SlotToTime(phase0.Slot(blockData.Slot)),
-			Proposer:     blockData.Proposer,
-			ProposerName: services.GlobalBeaconService.GetValidatorName(blockData.Proposer),
-			Status:       uint64(blockData.Status),
-			BlockRoot:    blockData.Root,
+			Epoch:         uint64(epoch),
+			Slot:          blockData.Slot,
+			Ts:            chainState.SlotToTime(phase0.Slot(blockData.Slot)),
+			Proposer:      blockData.Proposer,
+			ProposerName:  services.GlobalBeaconService.GetValidatorName(blockData.Proposer),
+			Status:        uint64(blockData.Status),
+			PayloadStatus: uint8(payloadStatus),
+			BlockRoot:     blockData.Root,
 		}
 		if blockData.EthBlockNumber != nil {
 			blockModel.WithEthBlock = true
@@ -421,16 +443,24 @@ func buildIndexPageRecentSlotsData(pageData *models.IndexPageData, firstSlot pha
 			dbSlot := dbSlots[dbIdx]
 			dbIdx++
 
+			epoch := chainState.EpochOfSlot(phase0.Slot(dbSlot.Slot))
+
+			payloadStatus := dbSlot.PayloadStatus
+			if !chainState.IsEip7732Enabled(phase0.Epoch(epoch)) {
+				payloadStatus = dbtypes.PayloadStatusCanonical
+			}
+
 			slotData := &models.IndexPageDataSlots{
-				Slot:         slot,
-				Epoch:        uint64(chainState.EpochOfSlot(phase0.Slot(dbSlot.Slot))),
-				Ts:           chainState.SlotToTime(phase0.Slot(slot)),
-				Status:       uint64(dbSlot.Status),
-				Proposer:     dbSlot.Proposer,
-				ProposerName: services.GlobalBeaconService.GetValidatorName(dbSlot.Proposer),
-				BlockRoot:    dbSlot.Root,
-				ParentRoot:   dbSlot.ParentRoot,
-				ForkGraph:    make([]*models.IndexPageDataForkGraph, 0),
+				Slot:          slot,
+				Epoch:         uint64(epoch),
+				Ts:            chainState.SlotToTime(phase0.Slot(slot)),
+				Status:        uint64(dbSlot.Status),
+				PayloadStatus: uint8(payloadStatus),
+				Proposer:      dbSlot.Proposer,
+				ProposerName:  services.GlobalBeaconService.GetValidatorName(dbSlot.Proposer),
+				BlockRoot:     dbSlot.Root,
+				ParentRoot:    dbSlot.ParentRoot,
+				ForkGraph:     make([]*models.IndexPageDataForkGraph, 0),
 			}
 			pageData.RecentSlots = append(pageData.RecentSlots, slotData)
 			blockCount++

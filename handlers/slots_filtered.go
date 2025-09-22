@@ -446,12 +446,13 @@ func buildFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string
 			break
 		}
 		slot := phase0.Slot(dbBlock.Slot)
+		epoch := chainState.EpochOfSlot(slot)
 
 		slotData := &models.SlotsFilteredPageDataSlot{
 			Slot:         uint64(slot),
-			Epoch:        uint64(chainState.EpochOfSlot(slot)),
+			Epoch:        uint64(epoch),
 			Ts:           chainState.SlotToTime(slot),
-			Finalized:    finalizedEpoch >= chainState.EpochOfSlot(slot),
+			Finalized:    finalizedEpoch >= epoch,
 			Synchronized: true,
 			Scheduled:    slot >= currentSlot,
 			Proposer:     dbBlock.Proposer,
@@ -482,6 +483,12 @@ func buildFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string
 				slotData.WithEthBlock = true
 				slotData.EthBlockNumber = *dbBlock.Block.EthBlockNumber
 			}
+
+			payloadStatus := dbBlock.Block.PayloadStatus
+			if !chainState.IsEip7732Enabled(epoch) {
+				payloadStatus = dbtypes.PayloadStatusCanonical
+			}
+			slotData.PayloadStatus = uint8(payloadStatus)
 
 			if pageData.DisplayMevBlock && dbBlock.Block.EthBlockHash != nil {
 				if mevBlock, exists := mevBlocksMap[fmt.Sprintf("%x", dbBlock.Block.EthBlockHash)]; exists {
