@@ -597,8 +597,8 @@ github.com/pion/webrtc/v4 v4.0.10 h1:Hq/JLjhqLxi+NmCtE8lnRPDr8H4LcNvwg8OxVcdv56Q
 github.com/pion/webrtc/v4 v4.0.10/go.mod h1:ViHLVaNpiuvaH8pdiuQxuA9awuE6KVzAXx3vVWilOck=
 github.com/pk910/dynamic-ssz v1.0.2 h1:X3CKAz0Q9wgj+zZYoatkGOsd123F65ShNqPiArFpV7Q=
 github.com/pk910/dynamic-ssz v1.0.2/go.mod h1:J7iiJ98fRx1KBceJK/K4fGWV2l5ITVbrnjUgGZM4ths=
-github.com/pk910/go-eth2-client v0.0.0-20250922140412-4eaa365c06d3 h1:oKrALn2bR5MKXf9crVRnhWSMomKDdwWmBC58upI9I3w=
-github.com/pk910/go-eth2-client v0.0.0-20250922140412-4eaa365c06d3/go.mod h1:fvULSL9WtNskkOB4i+Yyr6BKpNHXvmpGZj9969fCrfY=
+github.com/pk910/go-eth2-client v0.0.0-20250922141624-ae7bd858be04 h1:9oQ9z3GK/89FJF9ALlsoEITESbAX6zK94rX1cG6B/Mk=
+github.com/pk910/go-eth2-client v0.0.0-20250922141624-ae7bd858be04/go.mod h1:fvULSL9WtNskkOB4i+Yyr6BKpNHXvmpGZj9969fCrfY=
 github.com/pkg/diff v0.0.0-20210226163009-20ebb0f2a09e/go.mod h1:pJLUxLENpZxwdsKMEsNbx1VGcRFpLqf3715MtcvvzbA=
 github.com/pkg/errors v0.8.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
 github.com/pkg/errors v0.9.1 h1:FEBLx1zS214owpjy7qsBeixbURkuhQAwrK5UwLGTwt4=
