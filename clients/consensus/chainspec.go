@@ -84,6 +84,11 @@ type ChainSpec struct {
 	CustodyRequirement           *uint64             `yaml:"CUSTODY_REQUIREMENT"              check-if-fork:"FuluForkEpoch"`
 	BlobSchedule                 []BlobScheduleEntry `yaml:"BLOB_SCHEDULE"                    check-if-fork:"FuluForkEpoch"`
 
+	// EIP7732: ePBS
+	PtcSize                uint64            `yaml:"PTC_SIZE" check-if-fork:"Eip7732ForkEpoch"`
+	MaxPayloadAttestations uint64            `yaml:"MAX_PAYLOAD_ATTESTATIONS" check-if-fork:"Eip7732ForkEpoch"`
+	DomainPtcAttester      phase0.DomainType `yaml:"DOMAIN_PTC_ATTESTER" check-if-fork:"Eip7732ForkEpoch"`
+
 	// additional dora specific specs
 	WhiskForkEpoch *uint64
 }

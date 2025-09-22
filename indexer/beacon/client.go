@@ -10,6 +10,7 @@ import (
 
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
 	"github.com/attestantio/go-eth2-client/spec"
+	"github.com/attestantio/go-eth2-client/spec/eip7732"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethpandaops/dora/clients/consensus"
@@ -32,8 +33,9 @@ type Client struct {
 	archive        bool
 	skipValidators bool
 
-	blockSubscription *utils.Subscription[*v1.BlockEvent]
-	headSubscription  *utils.Subscription[*v1.HeadEvent]
+	blockSubscription            *utils.Subscription[*v1.BlockEvent]
+	headSubscription             *utils.Subscription[*v1.HeadEvent]
+	executionPayloadSubscription *utils.Subscription[*v1.ExecutionPayloadEvent]
 
 	headRoot phase0.Root
 }
@@ -81,6 +83,7 @@ func (c *Client) startIndexing() {
 	// blocking block subscription with a buffer to ensure no blocks are missed
 	c.blockSubscription = c.client.SubscribeBlockEvent(100, true)
 	c.headSubscription = c.client.SubscribeHeadEvent(100, true)
+	c.executionPayloadSubscription = c.client.SubscribeExecutionPayloadEvent(100, true)
 
 	go c.startClientLoop()
 }
@@ -145,7 +148,7 @@ func (c *Client) runClientLoop() error {
 
 	c.headRoot = headRoot
 
-	headBlock, isNew, processingTimes, err := c.processBlock(headSlot, headRoot, nil, false)
+	headBlock, isNew, processingTimes, err := c.processBlock(headSlot, headRoot, nil, false, true)
 	if err != nil {
 		return fmt.Errorf("failed processing head block: %v", err)
 	}
@@ -178,6 +181,11 @@ func (c *Client) runClientLoop() error {
 			err := c.processHeadEvent(headEvent)
 			if err != nil {
 				c.logger.Errorf("failed processing head %v (%v): %v", headEvent.Slot, headEvent.Block.String(), err)
+			}
+		case executionPayloadEvent := <-c.executionPayloadSubscription.Channel():
+			err := c.processExecutionPayloadEvent(executionPayloadEvent)
+			if err != nil {
+				c.logger.Errorf("failed processing execution payload %v (%v): %v", executionPayloadEvent.Slot, executionPayloadEvent.BlockRoot.String(), err)
 			}
 		}
 	}
@@ -291,7 +299,7 @@ func (c *Client) processHeadEvent(headEvent *v1.HeadEvent) error {
 
 // processStreamBlock processes a block received from the stream (either via block or head events).
 func (c *Client) processStreamBlock(slot phase0.Slot, root phase0.Root) (*Block, error) {
-	block, isNew, processingTimes, err := c.processBlock(slot, root, nil, true)
+	block, isNew, processingTimes, err := c.processBlock(slot, root, nil, true, false)
 	if err != nil {
 		return nil, err
 	}
@@ -345,7 +353,7 @@ func (c *Client) processReorg(oldHead *Block, newHead *Block) error {
 }
 
 // processBlock processes a block (from stream & polling).
-func (c *Client) processBlock(slot phase0.Slot, root phase0.Root, header *phase0.SignedBeaconBlockHeader, trackRecvDelay bool) (block *Block, isNew bool, processingTimes []time.Duration, err error) {
+func (c *Client) processBlock(slot phase0.Slot, root phase0.Root, header *phase0.SignedBeaconBlockHeader, trackRecvDelay bool, loadPayload bool) (block *Block, isNew bool, processingTimes []time.Duration, err error) {
 	chainState := c.client.GetPool().GetChainState()
 	finalizedSlot := chainState.GetFinalizedSlot()
 	processingTimes = make([]time.Duration, 3)
@@ -401,6 +409,25 @@ func (c *Client) processBlock(slot phase0.Slot, root phase0.Root, header *phase0
 	})
 	if err != nil {
 		return
+	}
+
+	if loadPayload {
+		newPayload, _ := block.EnsureExecutionPayload(func() (*eip7732.SignedExecutionPayloadEnvelope, error) {
+			t1 := time.Now()
+			defer func() {
+				processingTimes[0] += time.Since(t1)
+			}()
+
+			return LoadExecutionPayload(c.getContext(), c, root)
+		})
+
+		if !isNew && newPayload {
+			// write payload to db
+			err = c.persistExecutionPayload(block)
+			if err != nil {
+				return
+			}
+		}
 	}
 
 	if slot >= finalizedSlot && isNew {
@@ -525,7 +552,7 @@ func (c *Client) backfillParentBlocks(headBlock *Block) error {
 		if parentBlock == nil {
 			var err error
 
-			parentBlock, isNewBlock, processingTimes, err = c.processBlock(parentSlot, parentRoot, parentHead, false)
+			parentBlock, isNewBlock, processingTimes, err = c.processBlock(parentSlot, parentRoot, parentHead, false, true)
 			if err != nil {
 				return fmt.Errorf("could not process block [0x%x]: %v", parentRoot, err)
 			}
@@ -551,4 +578,72 @@ func (c *Client) backfillParentBlocks(headBlock *Block) error {
 		}
 	}
 	return nil
+}
+
+// processExecutionPayloadEvent processes an execution payload event from the event stream.
+func (c *Client) processExecutionPayloadEvent(executionPayloadEvent *v1.ExecutionPayloadEvent) error {
+	if c.client.GetStatus() != consensus.ClientStatusOnline && c.client.GetStatus() != consensus.ClientStatusOptimistic {
+		// client is not ready, skip
+		return nil
+	}
+
+	chainState := c.client.GetPool().GetChainState()
+	finalizedSlot := chainState.GetFinalizedSlot()
+
+	var block *Block
+
+	if executionPayloadEvent.Slot < finalizedSlot {
+		// block is in finalized epoch
+		// known block or a new orphaned block
+
+		// don't add to cache, process this block right after loading the details
+		block = newBlock(c.indexer.dynSsz, executionPayloadEvent.BlockRoot, executionPayloadEvent.Slot)
+
+		dbBlockHead := db.GetBlockHeadByRoot(executionPayloadEvent.BlockRoot[:])
+		if dbBlockHead != nil {
+			block.isInFinalizedDb = true
+			block.parentRoot = (*phase0.Root)(dbBlockHead.ParentRoot)
+		}
+
+	} else {
+		block = c.indexer.blockCache.getBlockByRoot(executionPayloadEvent.BlockRoot)
+	}
+
+	if block == nil {
+		c.logger.Warnf("execution payload event for unknown block %v:%v [0x%x]", chainState.EpochOfSlot(executionPayloadEvent.Slot), executionPayloadEvent.Slot, executionPayloadEvent.BlockRoot)
+		return nil
+	}
+
+	newPayload, err := block.EnsureExecutionPayload(func() (*eip7732.SignedExecutionPayloadEnvelope, error) {
+		return LoadExecutionPayload(c.getContext(), c, executionPayloadEvent.BlockRoot)
+	})
+	if err != nil {
+		return err
+	}
+
+	if newPayload {
+		// write payload to db
+		err = c.persistExecutionPayload(block)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (c *Client) persistExecutionPayload(block *Block) error {
+	payloadVer, payloadSSZ, err := MarshalVersionedSignedExecutionPayloadEnvelopeSSZ(block.dynSsz, block.executionPayload, c.indexer.blockCompression)
+	if err != nil {
+		return fmt.Errorf("marshal execution payload ssz failed: %v", err)
+	}
+
+	return db.RunDBTransaction(func(tx *sqlx.Tx) error {
+		err := db.UpdateUnfinalizedBlockPayload(block.Root[:], payloadVer, payloadSSZ, tx)
+		if err != nil {
+			return err
+		}
+
+		return nil
+	})
 }

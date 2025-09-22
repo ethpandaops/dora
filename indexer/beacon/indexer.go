@@ -329,6 +329,7 @@ func (indexer *Indexer) StartIndexer() {
 	// restore unfinalized blocks from db
 	restoredBlockCount := 0
 	restoredBodyCount := 0
+	restoredPayloadCount := 0
 	t1 = time.Now()
 	err = db.StreamUnfinalizedBlocks(uint64(finalizedSlot), func(dbBlock *dbtypes.UnfinalizedBlock) {
 
@@ -366,8 +367,21 @@ func (indexer *Indexer) StartIndexer() {
 			block.SetBlock(blockBody)
 			restoredBodyCount++
 		} else {
-			block.setBlockIndex(blockBody)
+			block.setBlockIndex(blockBody, nil)
 			block.isInFinalizedDb = true
+		}
+
+		if len(dbBlock.PayloadSSZ) > 0 {
+			blockPayload, err := UnmarshalVersionedSignedExecutionPayloadEnvelopeSSZ(indexer.dynSsz, dbBlock.PayloadVer, dbBlock.PayloadSSZ)
+			if err != nil {
+				indexer.logger.Warnf("could not restore unfinalized block payload %v [%x] from db: %v", dbBlock.Slot, dbBlock.Root, err)
+			} else if block.processingStatus == 0 {
+				block.SetExecutionPayload(blockPayload)
+				restoredPayloadCount++
+			} else {
+				block.setBlockIndex(blockBody, blockPayload)
+				block.hasExecutionPayload = true
+			}
 		}
 
 		indexer.blockCache.addBlockToExecBlockMap(block)
