@@ -289,6 +289,14 @@ func buildIndexPageData() (*models.IndexPageData, time.Duration) {
 			ForkDigest: forkDigest[:],
 		})
 	}
+	if specs.Eip7805ForkEpoch != nil && *specs.Eip7805ForkEpoch < uint64(18446744073709551615) {
+		pageData.NetworkForks = append(pageData.NetworkForks, &models.IndexPageDataForks{
+			Name:    "eip7805",
+			Epoch:   *specs.Eip7805ForkEpoch,
+			Version: specs.Eip7805ForkVersion[:],
+			Active:  uint64(currentEpoch) >= *specs.Eip7805ForkEpoch,
+		})
+	}
 
 	// Add BPO forks from BLOB_SCHEDULE
 	for i, blobSchedule := range specs.BlobSchedule {

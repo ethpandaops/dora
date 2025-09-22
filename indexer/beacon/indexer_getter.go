@@ -208,6 +208,11 @@ func (indexer *Indexer) GetOrphanedBlockByRoot(blockRoot phase0.Root) (*Block, e
 	return block, nil
 }
 
+// GetInclusionListsBySlot returns a slice of inclusion lists with the given slot.
+func (indexer *Indexer) GetInclusionListsBySlot(slot phase0.Slot) []*v1.SignedInclusionList {
+	return indexer.inclusionListCache.getInclusionListsBySlot(slot)
+}
+
 // GetEpochStatsByEpoch returns the epoch stats for the given epoch.
 func (indexer *Indexer) GetEpochStatsByEpoch(epoch phase0.Epoch) []*EpochStats {
 	return indexer.epochCache.getEpochStatsByEpoch(epoch)
