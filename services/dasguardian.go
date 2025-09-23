@@ -21,8 +21,18 @@ type DasGuardian struct {
 
 func NewDasGuardian(ctx context.Context, logger logrus.FieldLogger) (*DasGuardian, error) {
 	guardianApi := &dasGuardianAPI{}
+
+	// Convert FieldLogger to *logrus.Logger
+	var concreteLogger *logrus.Logger
+	if l, ok := logger.(*logrus.Logger); ok {
+		concreteLogger = l
+	} else {
+		// Create a new logger with the same level as the field logger
+		concreteLogger = logrus.New()
+	}
+
 	opts := &dasguardian.DasGuardianConfig{
-		Logger:            logger,
+		Logger:            concreteLogger,
 		Libp2pHost:        "127.0.0.1",
 		BeaconAPI:         guardianApi,
 		ConnectionRetries: 3,
@@ -212,14 +222,34 @@ func (d *dasGuardianAPI) GetNodeIdentity(ctx context.Context) (*api.NodeIdentity
 	return nodeIdentity, nil
 }
 
-func (d *dasGuardianAPI) GetBeaconBlock(ctx context.Context, slot uint64) (*spec.VersionedSignedBeaconBlock, error) {
-	block, err := GlobalBeaconService.GetSlotDetailsBySlot(ctx, phase0.Slot(slot))
+func (d *dasGuardianAPI) GetBeaconBlock(ctx context.Context, slot any) (*spec.VersionedSignedBeaconBlock, error) {
+	// Convert slot parameter to uint64
+	var slotNum uint64
+	switch s := slot.(type) {
+	case uint64:
+		slotNum = s
+	case int:
+		slotNum = uint64(s)
+	case int64:
+		slotNum = uint64(s)
+	case string:
+		// Handle string representation of slot
+		parsed, err := hexutil.DecodeUint64(s)
+		if err != nil {
+			return nil, fmt.Errorf("invalid slot format: %v", err)
+		}
+		slotNum = parsed
+	default:
+		return nil, fmt.Errorf("unsupported slot type: %T", slot)
+	}
+
+	block, err := GlobalBeaconService.GetSlotDetailsBySlot(ctx, phase0.Slot(slotNum))
 	if err != nil {
 		return nil, err
 	}
 
 	if block == nil {
-		return nil, fmt.Errorf("block not found for slot %d", slot)
+		return nil, fmt.Errorf("block not found for slot %d", slotNum)
 	}
 
 	return block.Block, nil
