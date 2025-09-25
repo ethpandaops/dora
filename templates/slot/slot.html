@@ -96,6 +96,11 @@
             <a class="nav-link" id="consolidationRequests-tab" data-bs-toggle="tab" href="#consolidationRequests" role="tab" aria-controls="consolidationRequests" aria-selected="false">Consolidation Requests <span class="badge bg-secondary text-white">{{ .Block.ConsolidationRequestsCount }}</span></a>
           </li>
         {{ end }}
+        {{ if .Block.ExecutionData.BlockAccessList }}
+          <li class="nav-item">
+            <a class="nav-link" id="accessList-tab" data-bs-toggle="tab" href="#accessList" role="tab" aria-controls="accessList" aria-selected="false">Access List <span class="badge bg-secondary text-white">{{ len .Block.ExecutionData.BlockAccessList }}</span></a>
+          </li>
+        {{ end }}
         {{ if .Block }}
           <li class="nav-item ms-auto">
             <a class="nav-link" id="download-tab" data-bs-toggle="tab" href="#download" role="tab" aria-controls="download" aria-selected="false">
@@ -256,6 +261,18 @@
               </div>
             </div>
             {{ template "block_consolidation_requests" . }}
+          </div>
+        {{ end }}
+        {{ if .Block.ExecutionData.BlockAccessList }}
+          <div class="tab-pane fade" id="accessList" role="tabpanel" aria-labelledby="accessList-tab">
+            <div class="card block-card">
+              <div style="margin-bottom: -.25rem;" class="card-body px-0 py-1">
+                <div class="row p-1 mx-0">
+                  <h3 class="h5 col-md-12 text-center"><b>Block Access List (EIP-7928)</b></h3>
+                </div>
+              </div>
+              {{ template "block_access_list" . }}
+            </div>
           </div>
         {{ end }}
         {{ if .Block }}

@@ -19,6 +19,8 @@ import (
 	"github.com/attestantio/go-eth2-client/spec/electra"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/types/bal"
+	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
 
@@ -47,6 +49,7 @@ func Slot(w http.ResponseWriter, r *http.Request) {
 		"slot/deposit_requests.html",
 		"slot/withdrawal_requests.html",
 		"slot/consolidation_requests.html",
+		"slot/block_access_list.html",
 	)
 	var notfoundTemplateFiles = append(layoutTemplateFiles,
 		"slot/notfound.html",
@@ -710,6 +713,83 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 
 		if transactions, err := executionPayload.Transactions(); err == nil {
 			getSlotPageTransactions(pageData, transactions)
+		}
+
+		if blockAccessListRlp, err := executionPayload.BlockAccessList(); err == nil {
+			// decode RLP encoded block access list
+			var blockAccessList bal.BlockAccessList
+			err = blockAccessList.DecodeRLP(rlp.NewStream(bytes.NewReader(blockAccessListRlp), 0))
+			if err != nil {
+				logrus.Warnf("error decoding block access list: %v", err)
+			} else {
+				pageData.ExecutionData.BlockAccessList = make([]*models.SlotPageBlockAccessListEntry, len(blockAccessList))
+				for i, entry := range blockAccessList {
+					balEntry := &models.SlotPageBlockAccessListEntry{
+						Address: entry.Address[:],
+					}
+
+					// Convert storage changes
+					if len(entry.StorageChanges) > 0 {
+						balEntry.StorageChanges = make([]*models.SlotPageBlockBALStorageChange, len(entry.StorageChanges))
+						for j, storageChange := range entry.StorageChanges {
+							changes := make([]*models.SlotPageBlockBALStorageSlotChange, len(storageChange.Accesses))
+							for k, write := range storageChange.Accesses {
+								changes[k] = &models.SlotPageBlockBALStorageSlotChange{
+									BlockAccessIndex: write.TxIdx,
+									Value:            write.ValueAfter[:],
+								}
+							}
+							balEntry.StorageChanges[j] = &models.SlotPageBlockBALStorageChange{
+								Slot:    storageChange.Slot[:],
+								Changes: changes,
+							}
+						}
+					}
+
+					// Convert storage reads
+					if len(entry.StorageReads) > 0 {
+						balEntry.StorageReads = make([][]byte, len(entry.StorageReads))
+						for j, read := range entry.StorageReads {
+							balEntry.StorageReads[j] = read[:]
+						}
+					}
+
+					// Convert balance changes
+					if len(entry.BalanceChanges) > 0 {
+						balEntry.BalanceChanges = make([]*models.SlotPageBlockBALBalanceChange, len(entry.BalanceChanges))
+						for j, balanceChange := range entry.BalanceChanges {
+							balEntry.BalanceChanges[j] = &models.SlotPageBlockBALBalanceChange{
+								BlockAccessIndex: balanceChange.TxIdx,
+								Balance:          balanceChange.Balance.Bytes(),
+							}
+						}
+					}
+
+					// Convert nonce changes
+					if len(entry.NonceChanges) > 0 {
+						balEntry.NonceChanges = make([]*models.SlotPageBlockBALNonceChange, len(entry.NonceChanges))
+						for j, nonceChange := range entry.NonceChanges {
+							balEntry.NonceChanges[j] = &models.SlotPageBlockBALNonceChange{
+								BlockAccessIndex: nonceChange.TxIdx,
+								Nonce:            nonceChange.Nonce,
+							}
+						}
+					}
+
+					// Convert code changes
+					if len(entry.CodeChanges) > 0 {
+						balEntry.CodeChanges = make([]*models.SlotPageBlockBALCodeChange, len(entry.CodeChanges))
+						for j, codeChange := range entry.CodeChanges {
+							balEntry.CodeChanges[j] = &models.SlotPageBlockBALCodeChange{
+								BlockAccessIndex: codeChange.TxIdx,
+								Code:             codeChange.Code,
+							}
+						}
+					}
+
+					pageData.ExecutionData.BlockAccessList[i] = balEntry
+				}
+			}
 		}
 	}
 
