@@ -252,3 +252,21 @@ func (ec *ExecutionClient) GetTransactionReceipt(ctx context.Context, txHash com
 func (ec *ExecutionClient) SendTransaction(ctx context.Context, tx *types.Transaction) error {
 	return ec.ethClient.SendTransaction(ctx, tx)
 }
+
+// GetBlockAccessList fetches the block access list for a given block (EIP-7928)
+func (ec *ExecutionClient) GetBlockAccessList(ctx context.Context, blockHash common.Hash) ([]byte, error) {
+	var result string
+	err := ec.rpcClient.CallContext(ctx, &result, "debug_getBlockAccessList", blockHash.Hex())
+	if err != nil {
+		return nil, err
+	}
+	
+	// Convert hex string to bytes
+	if len(result) > 2 && result[:2] == "0x" {
+		result = result[2:]
+	}
+	
+	// Decode hex string to bytes
+	bytes := common.FromHex(result)
+	return bytes, nil
+}

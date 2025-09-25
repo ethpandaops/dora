@@ -18,6 +18,7 @@ import (
 	"github.com/attestantio/go-eth2-client/spec/deneb"
 	"github.com/attestantio/go-eth2-client/spec/electra"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
+	"github.com/ethereum/go-ethereum/common"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/types/bal"
 	"github.com/ethereum/go-ethereum/rlp"
@@ -715,10 +716,26 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 			getSlotPageTransactions(pageData, transactions)
 		}
 
-		if blockAccessListRlp, err := executionPayload.BlockAccessList(); err == nil {
+		// Fetch block access list from execution client (EIP-7928)
+		var blockAccessListRlp []byte
+		if blockHash, err := executionPayload.BlockHash(); err == nil {
+			// Try to get BAL from any available execution client
+			executionClients := services.GlobalBeaconService.GetExecutionClients()
+			for _, client := range executionClients {
+				if client.GetRPCClient() != nil {
+					blockHashCommon := common.BytesToHash(blockHash[:])
+					if balData, err := client.GetRPCClient().GetBlockAccessList(context.Background(), blockHashCommon); err == nil && len(balData) > 0 {
+						blockAccessListRlp = balData
+						break
+					}
+				}
+			}
+		}
+		
+		if len(blockAccessListRlp) > 0 {
 			// decode RLP encoded block access list
 			var blockAccessList bal.BlockAccessList
-			err = blockAccessList.DecodeRLP(rlp.NewStream(bytes.NewReader(blockAccessListRlp), 0))
+			err := blockAccessList.DecodeRLP(rlp.NewStream(bytes.NewReader(blockAccessListRlp), 0))
 			if err != nil {
 				logrus.Warnf("error decoding block access list: %v", err)
 			} else {
