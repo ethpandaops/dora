@@ -52,6 +52,7 @@ type BlockFilter struct {
 	InvertProposer       bool
 	WithOrphaned         uint8
 	WithMissing          uint8
+	WithMevBlock         uint8
 	MinSyncParticipation *float32
 	MaxSyncParticipation *float32
 	MinExecTime          *uint32
