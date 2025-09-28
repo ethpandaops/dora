@@ -24,7 +24,7 @@ require (
 	github.com/mashingan/smapping v0.1.19
 	github.com/minio/minio-go/v7 v7.0.95
 	github.com/mitchellh/mapstructure v1.5.0
-	github.com/pk910/dynamic-ssz v1.0.2
+	github.com/pk910/dynamic-ssz v1.0.3-0.20250928193621-b517e2f054d2
 	github.com/pressly/goose/v3 v3.25.0
 	github.com/probe-lab/eth-das-guardian v0.2.1
 	github.com/protolambda/bls12-381-util v0.1.0
@@ -199,7 +199,7 @@ require (
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/ethereum/go-verkle v0.2.2 // indirect
 	github.com/fatih/color v1.18.0 // indirect
-	github.com/ferranbt/fastssz v1.0.0
+	github.com/ferranbt/fastssz v1.0.0 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
