@@ -54,7 +54,7 @@ func ApiValidatorGetV1(w http.ResponseWriter, r *http.Request) {
 // @Success 200 {object} ApiResponse{data=[]ApiValidatorResponseV1}
 // @Failure 400 {object} ApiResponse
 // @Router /v1/validator [post]
-// @ID getValidator
+// @ID getValidatorPost
 func ApiValidatorPostV1(w http.ResponseWriter, r *http.Request) {
 	getApiValidator(w, r)
 }
