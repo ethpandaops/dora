@@ -38,6 +38,7 @@ type ApiValidatorDepositsResponseV1 struct {
 // @Success 200 {object} api.ApiResponse{data=[]api.ApiValidatorDepositsResponseV1}
 // @Failure 400 {object} api.ApiResponse
 // @Router /v1/validator/{indexOrPubkey}/deposits [get]
+// @ID getValidatorDeposits
 func ApiValidatorDepositsV1(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 

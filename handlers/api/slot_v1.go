@@ -60,6 +60,7 @@ type APISlotData struct {
 // @Failure 404 {object} map[string]string "Slot not found"
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Router /v1/slot/{slotOrHash} [get]
+// @ID getSlot
 func APISlotV1(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 

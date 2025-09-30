@@ -92,6 +92,7 @@ type APIQueueStats struct {
 // @Success 200 {object} APINetworkOverviewResponse
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Router /v1/network/overview [get]
+// @ID getNetworkOverview
 func APINetworkOverviewV1(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 

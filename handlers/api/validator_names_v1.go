@@ -55,6 +55,7 @@ type APIValidatorNamesRequest struct {
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Router /v1/validator_names [get]
 // @Router /v1/validator_names [post]
+// @ID getValidatorNames
 func APIValidatorNamesV1(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 

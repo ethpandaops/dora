@@ -88,6 +88,7 @@ type APIDasGuardianEvalResult struct {
 // @Failure 429 {object} map[string]string "Rate limit exceeded"
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Router /v1/das-guardian/scan [post]
+// @ID scanDasGuardian
 func APIDasGuardianScan(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 

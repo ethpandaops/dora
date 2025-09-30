@@ -32,6 +32,7 @@ type ApiValidatorEth1ResponseV1 struct {
 // @Success 200 {object} ApiResponse{data=[]ApiValidatorEth1ResponseV1}
 // @Failure 400 {object} ApiResponse
 // @Router /v1/validator/eth1/{eth1address} [get]
+// @ID getValidatorByEth1Address
 func ApiValidatorByEth1AddressV1(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	q := r.URL.Query()
