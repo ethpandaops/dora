@@ -73,6 +73,7 @@ type APIDepositQueueInfo struct {
 // @Failure 400 {object} map[string]string "Invalid parameters"
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Router /v1/deposits/queue [get]
+// @ID getDepositsQueue
 func APIDepositsQueueV1(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
