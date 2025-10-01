@@ -229,11 +229,21 @@ func APIDasGuardianMassScan(w http.ResponseWriter, r *http.Request) {
 
 					// Process per-slot results
 					nodeResult.SlotResults = make(map[uint64]*SlotResult)
+
+					// Extract valid column data from RangeResult and RootResult
+					var validColumnResults [][]bool
+					for _, rpcResult := range scanResult.EvalResult.RangeResult {
+						validColumnResults = append(validColumnResults, rpcResult.ValidColumn)
+					}
+					for _, rpcResult := range scanResult.EvalResult.RootResult {
+						validColumnResults = append(validColumnResults, rpcResult.ValidColumn)
+					}
+
 					nodeResult.ValidColumns = make([][]bool, len(scanResult.EvalResult.Slots))
 
 					for slotIdx, slot := range scanResult.EvalResult.Slots {
-						if slotIdx < len(scanResult.EvalResult.ValidColumn) {
-							validCols := scanResult.EvalResult.ValidColumn[slotIdx]
+						if slotIdx < len(validColumnResults) {
+							validCols := validColumnResults[slotIdx]
 							nodeResult.ValidColumns[slotIdx] = validCols
 							nodeResult.TotalColumns = len(validCols)
 
