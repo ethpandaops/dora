@@ -271,11 +271,11 @@ func (e *EpochStatsPacked) HashTreeRoot() ([32]byte, error) {
 
 // HashTreeRootWith ssz hashes the EpochStatsPacked object with a hasher
 func (e *EpochStatsPacked) HashTreeRootWith(hh ssz.HashWalker) (err error) {
-	indx := hh.Index()
+	index := hh.Index()
 
 	// Field (0) 'ActiveValidators'
 	{
-		subIndx := hh.Index()
+		subIndex := hh.Index()
 		num := uint64(len(e.ActiveValidators))
 		if num > 10000000 {
 			err = ssz.ErrIncorrectListSize
@@ -286,7 +286,7 @@ func (e *EpochStatsPacked) HashTreeRootWith(hh ssz.HashWalker) (err error) {
 				return
 			}
 		}
-		hh.MerkleizeWithMixin(subIndx, num, 10000000)
+		hh.MerkleizeWithMixin(subIndex, num, 10000000)
 	}
 
 	// Field (1) 'ProposerDuties'
@@ -295,13 +295,13 @@ func (e *EpochStatsPacked) HashTreeRootWith(hh ssz.HashWalker) (err error) {
 			err = ssz.ErrListTooBigFn("EpochStatsPacked.ProposerDuties", size, 100)
 			return
 		}
-		subIndx := hh.Index()
+		subIndex := hh.Index()
 		for _, i := range e.ProposerDuties {
 			hh.AppendUint64(uint64(i))
 		}
 		hh.FillUpTo32()
 		numItems := uint64(len(e.ProposerDuties))
-		hh.MerkleizeWithMixin(subIndx, numItems, ssz.CalculateLimit(100, numItems, 8))
+		hh.MerkleizeWithMixin(subIndex, numItems, ssz.CalculateLimit(100, numItems, 8))
 	}
 
 	// Field (2) 'SyncCommitteeDuties'
@@ -310,13 +310,13 @@ func (e *EpochStatsPacked) HashTreeRootWith(hh ssz.HashWalker) (err error) {
 			err = ssz.ErrListTooBigFn("EpochStatsPacked.SyncCommitteeDuties", size, 10000)
 			return
 		}
-		subIndx := hh.Index()
+		subIndex := hh.Index()
 		for _, i := range e.SyncCommitteeDuties {
 			hh.AppendUint64(uint64(i))
 		}
 		hh.FillUpTo32()
 		numItems := uint64(len(e.SyncCommitteeDuties))
-		hh.MerkleizeWithMixin(subIndx, numItems, ssz.CalculateLimit(10000, numItems, 8))
+		hh.MerkleizeWithMixin(subIndex, numItems, ssz.CalculateLimit(10000, numItems, 8))
 	}
 
 	// Field (3) 'RandaoMix'
@@ -336,7 +336,7 @@ func (e *EpochStatsPacked) HashTreeRootWith(hh ssz.HashWalker) (err error) {
 
 	// Field (8) 'PendingWithdrawals'
 	{
-		subIndx := hh.Index()
+		subIndex := hh.Index()
 		num := uint64(len(e.PendingWithdrawals))
 		if num > 10000000 {
 			err = ssz.ErrIncorrectListSize
@@ -347,12 +347,12 @@ func (e *EpochStatsPacked) HashTreeRootWith(hh ssz.HashWalker) (err error) {
 				return
 			}
 		}
-		hh.MerkleizeWithMixin(subIndx, num, 10000000)
+		hh.MerkleizeWithMixin(subIndex, num, 10000000)
 	}
 
 	// Field (9) 'PendingConsolidations'
 	{
-		subIndx := hh.Index()
+		subIndex := hh.Index()
 		num := uint64(len(e.PendingConsolidations))
 		if num > 10000000 {
 			err = ssz.ErrIncorrectListSize
@@ -363,13 +363,13 @@ func (e *EpochStatsPacked) HashTreeRootWith(hh ssz.HashWalker) (err error) {
 				return
 			}
 		}
-		hh.MerkleizeWithMixin(subIndx, num, 10000000)
+		hh.MerkleizeWithMixin(subIndex, num, 10000000)
 	}
 
 	// Field (10) 'ConsolidatingBalance'
 	hh.PutUint64(uint64(e.ConsolidatingBalance))
 
-	hh.Merkleize(indx)
+	hh.Merkleize(index)
 	return
 }
 
@@ -426,7 +426,7 @@ func (e *EpochStatsPackedValidator) HashTreeRoot() ([32]byte, error) {
 
 // HashTreeRootWith ssz hashes the EpochStatsPackedValidator object with a hasher
 func (e *EpochStatsPackedValidator) HashTreeRootWith(hh ssz.HashWalker) (err error) {
-	indx := hh.Index()
+	index := hh.Index()
 
 	// Field (0) 'ValidatorIndexOffset'
 	hh.PutUint32(e.ValidatorIndexOffset)
@@ -434,7 +434,7 @@ func (e *EpochStatsPackedValidator) HashTreeRootWith(hh ssz.HashWalker) (err err
 	// Field (1) 'EffectiveBalanceEth'
 	hh.PutUint32(e.EffectiveBalanceEth)
 
-	hh.Merkleize(indx)
+	hh.Merkleize(index)
 	return
 }
 
