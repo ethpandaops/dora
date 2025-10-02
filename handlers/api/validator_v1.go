@@ -40,6 +40,7 @@ type ApiValidatorRequestV1 struct {
 // @Success 200 {object} ApiResponse{data=[]ApiValidatorResponseV1}
 // @Failure 400 {object} ApiResponse
 // @Router /v1/validator/{indexOrPubkey} [get]
+// @ID getValidator
 func ApiValidatorGetV1(w http.ResponseWriter, r *http.Request) {
 	getApiValidator(w, r)
 }
@@ -53,6 +54,7 @@ func ApiValidatorGetV1(w http.ResponseWriter, r *http.Request) {
 // @Success 200 {object} ApiResponse{data=[]ApiValidatorResponseV1}
 // @Failure 400 {object} ApiResponse
 // @Router /v1/validator [post]
+// @ID getValidatorPost
 func ApiValidatorPostV1(w http.ResponseWriter, r *http.Request) {
 	getApiValidator(w, r)
 }

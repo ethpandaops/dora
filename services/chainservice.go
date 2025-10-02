@@ -477,7 +477,7 @@ func (bs *ChainService) GetConsensusClientForks() []*ConsensusClientFork {
 		for _, fork := range headForks {
 
 			if cHeadSlot < chainState.GetFinalizedSlot() && bytes.Equal(fork.Root[:], cHeadRoot[:]) {
-				// TODO: find a more elgant way to group forks for finalized blocks
+				// TODO: find a more elegant way to group forks for finalized blocks
 				matchingFork = fork
 				break
 			}

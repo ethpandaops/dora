@@ -28,6 +28,7 @@ type ApiWithdrawalCredentialsResponseV1 struct {
 // @Success 200 {object} ApiResponse{data=[]ApiWithdrawalCredentialsResponseV1}
 // @Failure 400 {object} ApiResponse
 // @Router /v1/validator/withdrawalCredentials/{withdrawalCredentialsOrEth1address} [get]
+// @ID getWithdrawalCredentialsValidators
 func ApiWithdrawalCredentialsValidatorsV1(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	q := r.URL.Query()
