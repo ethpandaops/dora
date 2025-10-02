@@ -119,7 +119,7 @@ $(for node in $EXECUTION_NODES; do
     if [ -z "$port" ]; then
       port="65535"
     fi
-    echo "    - { name: $name, url: http://$ip:$port }"
+    echo "    - { name: $name, url: http://$ip:$port, archive: true }"
 done)
 indexer:
   inMemoryEpochs: 8
@@ -134,7 +134,7 @@ database:
 EOF
 
 if [ -f ${__dir}/generated-dora-kt-config.yaml ]; then
-  fullcfg=$(yq eval-all 'select(fileIndex == 0) as $target | select(fileIndex == 1) as $source | $target.executionapi.endpoints = $source.executionapi.endpoints | $target' ${__dir}/generated-dora-config.yaml ${__dir}/generated-dora-kt-config.yaml)
+  fullcfg=$(yq eval-all 'select(fileIndex == 0) as $target | select(fileIndex == 1) as $source | $target * $source | $target' ${__dir}/generated-dora-config.yaml ${__dir}/generated-dora-kt-config.yaml)
   if [ ! -z "$fullcfg" ]; then
     echo "$fullcfg" > ${__dir}/generated-dora-config.yaml
     rm ${__dir}/generated-dora-kt-config.yaml
