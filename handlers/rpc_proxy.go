@@ -31,7 +31,7 @@ func InitRPCProxy() {
 	}
 
 	rpcProxy = services.NewRPCProxy(config)
-	
+
 	logrus.WithField("upstream", config.UpstreamURL).Info("RPC proxy initialized")
 }
 

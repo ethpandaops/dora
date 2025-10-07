@@ -111,7 +111,7 @@ func main() {
 
 		// Add RPC proxy endpoint (separate from API namespace)
 		if cfg.RpcProxy.Enabled {
-			router.HandleFunc("/_rpc", handlers.RPCProxyHandler).Methods("POST", "OPTIONS")
+			router.HandleFunc("/_rpc", handlers.RPCProxyHandler).Methods("POST")
 		}
 
 		if cfg.Frontend.Enabled {
