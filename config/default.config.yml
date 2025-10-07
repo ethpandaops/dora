@@ -152,3 +152,28 @@ blockDb:
     secretKey: ""
     path: "" # path prefix
 
+# Filtered RPC Proxy configuration (for deployments without public RPC access)
+rpcProxy:
+  enabled: false # Enable the filtered RPC proxy
+  upstreamUrl: "" # URL of the execution client to proxy to (e.g. http://localhost:8545)
+  requestsPerMinute: 30 # Rate limit per IP (requests per minute)
+  burstLimit: 10 # Maximum burst requests per IP
+  timeout: 30s # Timeout for upstream requests
+  logRequests: false # Log all RPC requests for monitoring
+  
+  # Whitelist of allowed RPC methods (security-critical)
+  allowedMethods:
+    - "eth_blockNumber"      # Get latest block number
+    - "eth_getStorageAt"     # Read contract storage (for queue lengths)
+    - "eth_getLogs"          # Get event logs (for fee calculations)
+    - "eth_call"             # Read-only contract calls
+    - "eth_estimateGas"      # Gas estimation
+    - "eth_gasPrice"         # Current gas price
+    - "eth_maxPriorityFeePerGas" # EIP-1559 fee data
+    - "eth_feeHistory"       # Historical fee data
+    - "eth_getBalance"       # Account balance
+    - "eth_getTransactionCount" # Nonce for sending transactions
+    - "eth_getCode"          # Contract code
+    - "eth_chainId"          # Network chain ID
+    - "net_version"          # Network version
+

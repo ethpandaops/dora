@@ -94,7 +94,7 @@ func buildSubmitWithdrawalPageData() (*models.SubmitWithdrawalPageData, time.Dur
 
 	pageData := &models.SubmitWithdrawalPageData{
 		NetworkName:         specs.ConfigName,
-		PublicRPCUrl:        utils.Config.Frontend.PublicRPCUrl,
+		PublicRPCUrl:        utils.GetFrontendRPCUrl(),
 		RainbowkitProjectId: utils.Config.Frontend.RainbowkitProjectId,
 		ChainId:             specs.DepositChainId,
 		WithdrawalContract:  withdrawalContract.String(),
