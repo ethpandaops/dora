@@ -84,16 +84,21 @@ func (client *Client) checkClient() error {
 		return fmt.Errorf("error while fetching specs: %v", err)
 	}
 
+	client.specs = specs
+
 	warning, err := client.pool.chainState.setClientSpecs(specs)
 	if err != nil {
+		client.hasBadSpecs = true
 		return fmt.Errorf("invalid chain specs: %v", err)
 	}
 
 	if warning != nil {
 		client.logger.Warnf("incomplete chain specs: %v", warning)
 		client.specWarnings = []string{warning.Error()}
+		client.hasBadSpecs = true
 	} else {
 		client.specWarnings = nil
+		client.hasBadSpecs = false
 	}
 
 	// init wallclock

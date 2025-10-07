@@ -147,8 +147,9 @@
                         <span class="badge rounded-pill text-bg-dark">{{ $client.Status }}</span>
                       {{ end }}
                       {{ if $client.ConfigWarnings }}
-                        <span class="text-warning" data-bs-toggle="tooltip" data-bs-placement="top" 
-                          title="{{ range $idx, $warning := $client.ConfigWarnings }}{{ if $idx }}, {{ end }}{{ $warning }}{{ end }}">
+                        <span class="text-warning config-mismatch-icon" role="button" data-client-index="{{ $i }}"
+                          data-bs-toggle="tooltip" data-bs-placement="top" 
+                          title="Config mismatch detected. Click for details.">
                           <i class="fas fa-exclamation-triangle"></i>
                         </span>
                       {{ end }}
@@ -385,6 +386,26 @@
     });
   </script>
 
+  <!-- Config Mismatch Modal -->
+  <div class="modal fade" id="configMismatchModal" tabindex="-1" role="dialog" aria-labelledby="configMismatchModalTitle" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="configMismatchModalTitle">
+            <i class="fas fa-exclamation-triangle text-warning"></i> Config Mismatch Details
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body" id="configMismatchModalBody">
+          <!-- Content will be populated dynamically -->
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
 {{ end }}
 
 {{ define "js" }}
@@ -470,6 +491,122 @@
       });
 
     })();
+  })();
+
+  // Config mismatch modal
+  (function() {
+    // Store client and expected config data
+    window.clientsData = {{ json .Clients }};
+    window.expectedConfig = {{ json .ExpectedEthConfig }};
+
+    // Click handler for config mismatch icons
+    $(document).on('click', '.config-mismatch-icon', function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      
+      var clientIndex = $(this).data('client-index');
+      var client = window.clientsData[clientIndex];
+      
+      if (client && client.ClientConfig) {
+        showConfigMismatchModal(client);
+      }
+    });
+
+    function showConfigMismatchModal(client) {
+      var modalBody = $('#configMismatchModalBody');
+      var html = '<h6>Client: ' + escapeHtml(client.Name) + '</h6>';
+      html += '<p class="text-muted">The following configuration values do not match the expected settings:</p>';
+      
+      // Create diff table
+      html += '<div class="table-responsive">';
+      html += '<table class="table table-bordered table-sm">';
+      html += '<thead><tr><th>Field</th><th>Expected</th><th>Client Value</th></tr></thead>';
+      html += '<tbody>';
+      
+      // Check each warning field
+      if (client.ConfigWarnings && client.ConfigWarnings.length > 0) {
+        client.ConfigWarnings.forEach(function(warning) {
+          // Parse warning to get field name
+          var match = warning.match(/config mismatch: (.+)/);
+          if (match && match[1]) {
+            var fields = match[1].split(', ');
+            fields.forEach(function(field) {
+              var expectedValue = getConfigValue(window.expectedConfig, field);
+              var clientValue = getConfigValue(client.ClientConfig, field);
+              
+              html += '<tr>';
+              html += '<td><code>' + escapeHtml(field) + '</code></td>';
+              html += '<td class="text-success">' + formatConfigValue(expectedValue) + '</td>';
+              html += '<td class="text-danger">' + formatConfigValue(clientValue) + '</td>';
+              html += '</tr>';
+            });
+          }
+        });
+      }
+      
+      html += '</tbody></table></div>';
+      
+      // Add raw config data section
+      html += '<div class="mt-4">';
+      html += '<h6>Full Configuration</h6>';
+      html += '<div class="row">';
+      html += '<div class="col-md-6">';
+      html += '<p class="text-muted">Current Fork:</p>';
+      html += '<pre class="bg-light p-2"><code>' + JSON.stringify(client.ClientConfig.current, null, 2) + '</code></pre>';
+      html += '</div>';
+      if (client.ClientConfig.next) {
+        html += '<div class="col-md-6">';
+        html += '<p class="text-muted">Next Fork:</p>';
+        html += '<pre class="bg-light p-2"><code>' + JSON.stringify(client.ClientConfig.next, null, 2) + '</code></pre>';
+        html += '</div>';
+      }
+      html += '</div>';
+      html += '</div>';
+      
+      modalBody.html(html);
+      $('#configMismatchModal').modal('show');
+    }
+
+    function getConfigValue(config, path) {
+      if (!config) return undefined;
+      
+      // Handle paths like "current.activationTime"
+      var parts = path.split('.');
+      var value = config;
+      
+      for (var i = 0; i < parts.length; i++) {
+        if (value && typeof value === 'object') {
+          value = value[parts[i]];
+        } else {
+          return undefined;
+        }
+      }
+      
+      return value;
+    }
+
+    function formatConfigValue(value) {
+      if (value === undefined || value === null) {
+        return '<span class="text-muted">N/A</span>';
+      }
+      
+      if (typeof value === 'object') {
+        return '<code>' + escapeHtml(JSON.stringify(value, null, 2)) + '</code>';
+      }
+      
+      return '<code>' + escapeHtml(String(value)) + '</code>';
+    }
+
+    function escapeHtml(text) {
+      var map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+      };
+      return text.replace(/[&<>"']/g, function(m) { return map[m]; });
+    }
   })();
 
   // Function to initialize peer collapse handlers for a specific container
@@ -575,6 +712,31 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Config mismatch icon styling */
+.config-mismatch-icon {
+  cursor: pointer;
+  margin-left: 5px;
+}
+
+.config-mismatch-icon:hover {
+  opacity: 0.8;
+}
+
+/* Config mismatch modal table styling */
+#configMismatchModal .table td {
+  vertical-align: middle;
+}
+
+#configMismatchModal .table code {
+  word-break: break-all;
+}
+
+#configMismatchModal pre {
+  max-height: 300px;
+  overflow-y: auto;
+  font-size: 0.875rem;
 }
 </style>
 {{ end }}

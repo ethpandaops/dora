@@ -333,8 +333,9 @@
                         <span class="badge rounded-pill text-bg-dark">{{ $client.Status }}</span>
                       {{ end }}
                       {{ if $client.SpecWarnings }}
-                        <span class="text-warning" data-bs-toggle="tooltip" data-bs-placement="top" 
-                          title="{{ range $idx, $warning := $client.SpecWarnings }}{{ if $idx }}, {{ end }}{{ $warning }}{{ end }}">
+                        <span class="text-warning spec-mismatch-icon" role="button" data-client-index="{{ $i }}"
+                          data-bs-toggle="tooltip" data-bs-placement="top" 
+                          title="Spec mismatch detected. Click for details.">
                           <i class="fas fa-exclamation-triangle"></i>
                         </span>
                       {{ end }}
@@ -886,6 +887,26 @@
         </div>
         {{ end }}
 
+        <!-- Spec Mismatch Modal -->
+        <div class="modal fade" id="specMismatchModal" tabindex="-1" role="dialog" aria-labelledby="specMismatchModalTitle" aria-hidden="true">
+          <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+            <div class="modal-content">
+              <div class="modal-header">
+                <h5 class="modal-title" id="specMismatchModalTitle">
+                  <i class="fas fa-exclamation-triangle text-warning"></i> Spec Mismatch Details
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+              </div>
+              <div class="modal-body" id="specMismatchModalBody">
+                <!-- Content will be populated dynamically -->
+              </div>
+              <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
       </div>
 
       <div id="footer-placeholder" style="height:30px;"></div>
@@ -1150,6 +1171,102 @@
       };
 
     })();
+  })();
+
+  // Spec mismatch modal
+  (function() {
+    // Store client and expected spec data
+    window.clientsData = {{ json .Clients }};
+    window.expectedSpec = {{ json .ExpectedChainSpec }};
+
+    // Click handler for spec mismatch icons
+    $(document).on('click', '.spec-mismatch-icon', function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      
+      var clientIndex = $(this).data('client-index');
+      var client = window.clientsData[clientIndex];
+      
+      if (client && client.ClientSpecs) {
+        showSpecMismatchModal(client);
+      }
+    });
+
+    function showSpecMismatchModal(client) {
+      var modalBody = $('#specMismatchModalBody');
+      var html = '<h6>Client: ' + escapeHtml(client.Name) + '</h6>';
+      html += '<p class="text-muted">The following spec values do not match the expected configuration:</p>';
+      
+      // Create diff table
+      html += '<div class="table-responsive">';
+      html += '<table class="table table-bordered table-sm">';
+      html += '<thead><tr><th>Field</th><th>Expected</th><th>Client Value</th></tr></thead>';
+      html += '<tbody>';
+      
+      // Check each warning field
+      if (client.SpecWarnings && client.SpecWarnings.length > 0) {
+        client.SpecWarnings.forEach(function(field) {
+          var expectedValue = getNestedValue(window.expectedSpec, field);
+          var clientValue = getNestedValue(client.ClientSpecs, field);
+          
+          html += '<tr>';
+          html += '<td><code>' + escapeHtml(field) + '</code></td>';
+          html += '<td class="text-success">' + formatSpecValue(expectedValue) + '</td>';
+          html += '<td class="text-danger">' + formatSpecValue(clientValue) + '</td>';
+          html += '</tr>';
+        });
+      }
+      
+      html += '</tbody></table></div>';
+      
+      modalBody.html(html);
+      $('#specMismatchModal').modal('show');
+    }
+
+    function getNestedValue(obj, path) {
+      if (!obj) return undefined;
+      
+      var value = obj;
+      var parts = path.split('.');
+      
+      for (var i = 0; i < parts.length; i++) {
+        if (value && typeof value === 'object') {
+          value = value[parts[i]];
+        } else {
+          return undefined;
+        }
+      }
+      
+      return value;
+    }
+
+    function formatSpecValue(value) {
+      if (value === undefined || value === null) {
+        return '<span class="text-muted">N/A</span>';
+      }
+      
+      if (typeof value === 'object') {
+        if (Array.isArray(value)) {
+          return '<code>0x' + Array.prototype.map.call(value, function(byte) {
+            return ('0' + (byte & 0xFF).toString(16)).slice(-2);
+          }).join('') + '</code>';
+        }
+        return '<code>' + escapeHtml(JSON.stringify(value)) + '</code>';
+      }
+      
+      return '<code>' + escapeHtml(String(value)) + '</code>';
+    }
+
+    function escapeHtml(text) {
+      var map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+      };
+      return text.replace(/[&<>"']/g, function(m) { return map[m]; });
+    }
   })();
 
   // Function to initialize peer collapse handlers for a specific container
@@ -2134,6 +2251,25 @@
 /* Ensure Bootstrap tooltips appear above modals */
 .bs-tooltip-top, .bs-tooltip-bottom, .bs-tooltip-start, .bs-tooltip-end {
   z-index: 9999 !important;
+}
+
+/* Spec mismatch icon styling */
+.spec-mismatch-icon {
+  cursor: pointer;
+  margin-left: 5px;
+}
+
+.spec-mismatch-icon:hover {
+  opacity: 0.8;
+}
+
+/* Spec mismatch modal table styling */
+#specMismatchModal .table td {
+  vertical-align: middle;
+}
+
+#specMismatchModal .table code {
+  word-break: break-all;
 }
 </style>
 {{ end }}

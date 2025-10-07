@@ -284,6 +284,7 @@ func buildELClientsPageData(sortOrder string) (*models.ClientsELPageData, time.D
 			LastRefresh:          client.GetLastEventTime(),
 			PeerID:               peerID,
 			ConfigWarnings:       client.GetConfigWarnings(),
+			ClientConfig:         buildForkConfig(client),
 		}
 
 		forkConfig := buildForkConfig(client)
@@ -401,6 +402,15 @@ func buildELClientsPageData(sortOrder string) (*models.ClientsELPageData, time.D
 	}
 	pageData.Sorting = sortOrder
 
+	// Add expected eth config from chain state
+	execChainState := services.GlobalBeaconService.GetExecutionChainState()
+	if execChainState != nil {
+		expectedConfig := execChainState.GetClientConfig()
+		if expectedConfig != nil {
+			pageData.ExpectedEthConfig = buildForkConfigFromEthConfig(expectedConfig)
+		}
+	}
+
 	return pageData, cacheTime
 }
 
@@ -424,6 +434,28 @@ func buildForkConfig(client *execution.Client) *models.ClientELPageDataForkConfi
 		forkConfig.Last = convertEthConfigFork(ethConfig.Last)
 	}
 
+	return forkConfig
+}
+
+func buildForkConfigFromEthConfig(ethConfig *execrpc.EthConfig) *models.ClientELPageDataForkConfig {
+	if ethConfig == nil {
+		return nil
+	}
+	
+	forkConfig := &models.ClientELPageDataForkConfig{}
+	
+	if ethConfig.Current != nil {
+		forkConfig.Current = convertEthConfigFork(ethConfig.Current)
+	}
+	
+	if ethConfig.Next != nil {
+		forkConfig.Next = convertEthConfigFork(ethConfig.Next)
+	}
+	
+	if ethConfig.Last != nil {
+		forkConfig.Last = convertEthConfigFork(ethConfig.Last)
+	}
+	
 	return forkConfig
 }
 

@@ -163,6 +163,12 @@ func (cache *ChainState) GetGenesisConfig() *core.Genesis {
 	return cache.config
 }
 
+func (cache *ChainState) GetClientConfig() *rpc.EthConfig {
+	cache.clientConfigMutex.RLock()
+	defer cache.clientConfigMutex.RUnlock()
+	return cache.clientConfig
+}
+
 func (cache *ChainState) GetBlobScheduleForTimestamp(timestamp time.Time) *rpc.EthConfigBlobSchedule {
 	forkSchedule := cache.getBlobScheduleForTimestampFromConfig(timestamp)
 	if forkSchedule == nil && cache.config != nil {

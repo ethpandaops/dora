@@ -10,6 +10,7 @@ import (
 
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
 	"github.com/ethereum/go-ethereum/p2p/enr"
+	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/dora/clients/consensus/rpc"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
@@ -405,6 +406,7 @@ func buildCLClientsPageData(sortOrder string) (*models.ClientsCLPageData, time.D
 			Status:               client.GetStatus().String(),
 			LastRefresh:          client.GetLastEventTime(),
 			SpecWarnings:         client.GetSpecWarnings(),
+			ClientSpecs:          client.GetSpecs(),
 		}
 
 		lastError := client.GetLastClientError()
@@ -685,5 +687,33 @@ func buildCLClientsPageData(sortOrder string) (*models.ClientsCLPageData, time.D
 		pageData.FuluActivationEpoch = ^uint64(0)
 	}
 
+	// Add expected chain spec for mismatch comparison (using client specs instead of chainspec)
+	pageData.ExpectedChainSpec = getCanonicalClientSpecs()
+
 	return pageData, cacheTime
+}
+
+func getCanonicalClientSpecs() map[string]interface{} {
+	// Get canonical specs from the first online client with specs
+	clients := services.GlobalBeaconService.GetConsensusClients()
+	
+	for _, client := range clients {
+		if client.GetStatus() == consensus.ClientStatusOnline {
+			specs := client.GetSpecs()
+			if specs != nil && len(specs) > 0 {
+				return specs
+			}
+		}
+	}
+	
+	// If no online client has specs, try any client with specs
+	for _, client := range clients {
+		specs := client.GetSpecs()
+		if specs != nil && len(specs) > 0 {
+			return specs
+		}
+	}
+	
+	// Return empty map if no client has specs
+	return make(map[string]interface{})
 }

@@ -13,6 +13,7 @@ type ClientsELPageData struct {
 	Nodes                  map[string]*ClientsELPageDataNode `json:"nodes"`
 	Sorting                string                            `json:"sorting"`
 	IsDefaultSorting       bool                              `json:"is_default_sorting"`
+	ExpectedEthConfig      *ClientELPageDataForkConfig       `json:"expected_eth_config"`
 }
 
 type ClientsELPageDataClient struct {
@@ -29,7 +30,8 @@ type ClientsELPageDataClient struct {
 	PeersInboundCounter  uint32    `json:"peers_inbound_counter"`
 	PeersOutboundCounter uint32    `json:"peers_outbound_counter"`
 	PeerID               string    `json:"peer_id"`
-	ConfigWarnings       []string  `json:"config_warnings"`
+	ConfigWarnings       []string                  `json:"config_warnings"`
+	ClientConfig         *ClientELPageDataForkConfig `json:"client_config"`
 }
 
 type ClientsELPageDataNode struct {
