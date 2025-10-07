@@ -1,10 +1,10 @@
-import React, { useEffect } from 'react';
-import { useAccount, useSendTransaction, useBlockNumber, usePublicClient } from 'wagmi';
-import { useStorageAt } from 'wagmi'
+import React, { useRef } from 'react';
+import { useAccount, useSendTransaction } from 'wagmi';
 import { useState } from 'react';
 import { IValidator } from './SubmitConsolidationsFormProps';
 import { toReadableAmount } from '../../utils/ReadableAmount';
 import { Modal } from 'react-bootstrap';
+import { useQueueDataCache } from '../../hooks/useQueueDataCache';
 
 interface IConsolidationReviewProps {
   sourceValidator: IValidator;
@@ -13,91 +13,17 @@ interface IConsolidationReviewProps {
   explorerUrl: string;
 }
 
-interface IConsolidationLogState {
-  lastBlock: bigint;
-  logCount: {[block: string]: number};
-}
 
 const ConsolidationReview = (props: IConsolidationReviewProps) => {
   const { address, chain } = useAccount();
-  const [logState, setLogState] = useState<IConsolidationLogState>({
-    lastBlock: 0n,
-    logCount: {},
-  });
   const [addExtraFee, setAddExtraFee] = useState(true);
   const [errorModal, setErrorModal] = useState<string | null>(null);
-
-  const blockNumber = useBlockNumber();
-  const client = usePublicClient({
-    chainId: chain?.id,
-  });
+  const componentRef = useRef<HTMLDivElement>(null);
 
   const logLookbackRange = 10;
-
-  useEffect(() => {
-    // log loader
-    if (!blockNumber.isFetched || !client || !addExtraFee) 
-      return;
-
-    if (!blockNumber.data || blockNumber.data <= logState.lastBlock) 
-      return;
-
-    let fromBlock = blockNumber.data - BigInt(logLookbackRange);
-    if (fromBlock < 0n) 
-      fromBlock = 0n;
-
-    let cancelUpdate = false;
-    let logsPromise = client.request({
-      method: 'eth_getLogs',
-      params: [
-        {
-          address: props.consolidationContract,
-          fromBlock: "0x"+fromBlock.toString(16),
-        },
-      ],
-    });
-    logsPromise.then((logs) => {
-      if (cancelUpdate) 
-        return;
-
-      let newLogState: IConsolidationLogState = {
-        lastBlock: blockNumber.data,
-        logCount: {},
-      };
-
-      (logs as any[]).forEach((log) => {
-        let blockNum = BigInt(log.blockNumber);
-        let blockStr = blockNum.toString();
-        if (!newLogState.logCount[blockStr]) 
-          newLogState.logCount[blockStr] = 0;
-        newLogState.logCount[blockStr]++;
-      });
-
-      setLogState(newLogState);
-    });
-
-    return function() {
-      cancelUpdate = true;
-    }
-  }, [blockNumber, client, addExtraFee]);
   
-  const consolidationQueueLengthCall = useStorageAt({
-    address: props.consolidationContract as `0x${string}`,
-    slot: "0x00",
-    chainId: chain?.id,
-	});
-
   const submitRequest = useSendTransaction();
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      consolidationQueueLengthCall.refetch();
-      blockNumber.refetch();
-    }, 15000);
-    return () => {
-      clearInterval(interval);
-    };
-  }, []);
+  const { queueData, logData: cachedLogData, refetch: refetchQueueData, isLoading: cacheLoading } = useQueueDataCache(props.consolidationContract, chain?.id);
 
   let queueLength = 0n;
   let avgRequestPerBlock = 0;
@@ -105,34 +31,42 @@ const ConsolidationReview = (props: IConsolidationReviewProps) => {
   let requiredFee = 0n;
   let requestFee = 0n;
   let failedQueueLength = false;
-  if (consolidationQueueLengthCall.isFetched && consolidationQueueLengthCall.data) {
-    var queueLenHex = consolidationQueueLengthCall.data as string;
-    if (!queueLenHex) {
-      failedQueueLength = true;
-    } else if (queueLenHex == "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff") {
-      isPreElectra = true;
-    } else {
-      queueLength = BigInt(queueLenHex);
-      requiredFee = getRequiredFee(queueLength);
-
-      if(addExtraFee) {
-        // add extra fee to avoid rejection due to other submissions
-        for(let block in logState.logCount) {
-          avgRequestPerBlock += logState.logCount[block];
-        }
-        avgRequestPerBlock /= logLookbackRange;
-
-        let extraFeeForRequest = avgRequestPerBlock;
-        if (extraFeeForRequest < 2) {
-          extraFeeForRequest = 3;
-        } else {
-          extraFeeForRequest++;
-        }
-
-        requestFee = getRequiredFee(queueLength + BigInt(Math.ceil(extraFeeForRequest)));
+  let isLoading = cacheLoading;
+  let error: Error | null = null;
+  
+  if (queueData) {
+    isLoading = queueData.isLoading;
+    error = queueData.error;
+    
+    if (!queueData.error && !queueData.isLoading) {
+      queueLength = queueData.queueLength;
+      
+      if (queueLength === 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffn) {
+        isPreElectra = true;
       } else {
-        requestFee = requiredFee;
+        requiredFee = getRequiredFee(queueLength);
+
+        if(addExtraFee && cachedLogData) {
+          // add extra fee to avoid rejection due to other submissions
+          for(let block in cachedLogData.logCount) {
+            avgRequestPerBlock += cachedLogData.logCount[block];
+          }
+          avgRequestPerBlock /= logLookbackRange;
+
+          let extraFeeForRequest = avgRequestPerBlock;
+          if (extraFeeForRequest < 2) {
+            extraFeeForRequest = 3;
+          } else {
+            extraFeeForRequest++;
+          }
+
+          requestFee = getRequiredFee(queueLength + BigInt(Math.ceil(extraFeeForRequest)));
+        } else {
+          requestFee = requiredFee;
+        }
       }
+    } else if (error) {
+      failedQueueLength = true;
     }
   }
 
@@ -148,12 +82,12 @@ const ConsolidationReview = (props: IConsolidationReviewProps) => {
   }
 
   return (
-    <div>
-      {consolidationQueueLengthCall.isError ?
+    <div ref={componentRef}>
+      {error ?
         <div className="alert alert-danger" role="alert">
           Error loading queue length from consolidation contract. <br />
-          {consolidationQueueLengthCall.error?.message} <br />
-          <button className="btn btn-primary mt-2" onClick={() => consolidationQueueLengthCall.refetch()}>
+          {error?.message} <br />
+          <button className="btn btn-primary mt-2" onClick={() => refetchQueueData()}>
             Retry
           </button>
         </div>
@@ -161,7 +95,7 @@ const ConsolidationReview = (props: IConsolidationReviewProps) => {
         <div className="alert alert-danger" role="alert">
           Error loading queue length from consolidation contract. (check contract address: {props.consolidationContract})
         </div>
-      : !consolidationQueueLengthCall.isFetched ?
+      : isLoading ?
         <p>Loading...</p>
       : isPreElectra ?
         <div className="alert alert-danger" role="alert">

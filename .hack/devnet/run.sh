@@ -91,6 +91,19 @@ api:
     - "*"
   authSecret: "test"
   defaultRateLimit: 60
+rpcProxy:
+  enabled: true
+  upstreamUrl: "$(
+  for node in $EXECUTION_NODES; do
+    ip=$(echo '127.0.0.1')
+    port=$(docker inspect --format='{{ (index (index .NetworkSettings.Ports "8545/tcp") 0).HostPort }}' $node)
+    if [ -z "$port" ]; then
+      continue
+    fi
+    echo "http://$ip:$port"
+    break
+  done
+  )"
 beaconapi:
   localCacheSize: 10
   redisCacheAddr: ""

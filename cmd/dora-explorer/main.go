@@ -96,12 +96,22 @@ func main() {
 		}
 	}
 
+	// Initialize RPC proxy if enabled
+	if cfg.RpcProxy.Enabled {
+		handlers.InitRPCProxy()
+	}
+
 	if webserver != nil {
 		router := mux.NewRouter()
 
 		if cfg.Api.Enabled {
 			apiRouter := router.PathPrefix("/api").Subrouter()
 			startApi(apiRouter)
+		}
+
+		// Add RPC proxy endpoint (separate from API namespace)
+		if cfg.RpcProxy.Enabled {
+			router.HandleFunc("/_rpc", handlers.RPCProxyHandler).Methods("POST")
 		}
 
 		if cfg.Frontend.Enabled {
