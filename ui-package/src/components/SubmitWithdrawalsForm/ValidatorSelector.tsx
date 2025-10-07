@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import Select, { createFilter, OptionProps } from 'react-select'
 import { IValidator } from './SubmitWithdrawalsFormProps';
 import { FilterOptionOption } from 'react-select/dist/declarations/src/filters';
@@ -10,7 +10,7 @@ interface IValidatorSelectorProps {
 }
 
 const ValidatorSelector = (props: IValidatorSelectorProps): React.ReactElement => {
-  const filterOptions = (option: FilterOptionOption<IValidator>, inputValue: string) => {
+  const filterOptions = useCallback((option: FilterOptionOption<IValidator>, inputValue: string) => {
     inputValue = inputValue.trim();
     if (inputValue) {
       if(inputValue.startsWith("0x") || !/^[0-9]+$/.test(inputValue)) {
@@ -20,7 +20,7 @@ const ValidatorSelector = (props: IValidatorSelectorProps): React.ReactElement =
       }
     }
     return true;
-  };
+  }, []);
 
   return (
     <Select<IValidator, false>
@@ -34,9 +34,7 @@ const ValidatorSelector = (props: IValidatorSelectorProps): React.ReactElement =
           </ValidatorOption>
         )
       }}
-      onChange={(e) => {
-        props.onChange(e);
-      }}
+      onChange={props.onChange}
       filterOption={filterOptions}
       isMulti={false}
       isOptionSelected={(o, v) => v.some((i) => i.index === o.index)}

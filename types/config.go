@@ -150,6 +150,16 @@ type Config struct {
 	} `yaml:"killSwitch"`
 
 	AuthGroups map[string]*AuthGroupConfig `yaml:"authGroups"`
+
+	RpcProxy struct {
+		Enabled           bool          `yaml:"enabled" envconfig:"RPC_PROXY_ENABLED"`
+		UpstreamURL       string        `yaml:"upstreamUrl" envconfig:"RPC_PROXY_UPSTREAM_URL"`
+		RequestsPerMinute int           `yaml:"requestsPerMinute" envconfig:"RPC_PROXY_REQUESTS_PER_MINUTE"`
+		BurstLimit        int           `yaml:"burstLimit" envconfig:"RPC_PROXY_BURST_LIMIT"`
+		Timeout           time.Duration `yaml:"timeout" envconfig:"RPC_PROXY_TIMEOUT"`
+		LogRequests       bool          `yaml:"logRequests" envconfig:"RPC_PROXY_LOG_REQUESTS"`
+		AllowedMethods    []string      `yaml:"allowedMethods" envconfig:"RPC_PROXY_ALLOWED_METHODS"`
+	} `yaml:"rpcProxy"`
 }
 
 type EndpointConfig struct {

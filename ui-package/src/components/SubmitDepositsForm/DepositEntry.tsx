@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useAccount, useWriteContract } from 'wagmi';
 import { useState } from 'react';
 import { Modal } from 'react-bootstrap';
@@ -19,9 +19,16 @@ const DepositEntry = (props: IDepositEntryProps): React.ReactElement => {
   const [showTxDetails, setShowTxDetails] = useState<boolean>(false);
 
   const depositRequest = useWriteContract();
-  window.setTimeout(() => {
-    (window as any).explorer.initControls();
-  }, 100);
+  
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      (window as any).explorer.initControls();
+    }, 100);
+    
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, []);
   
   return (
     <tr>
