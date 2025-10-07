@@ -1176,8 +1176,8 @@
   // Spec mismatch modal
   (function() {
     // Store client and expected spec data
-    window.clientsData = {{ json .Clients }};
-    window.expectedSpec = {{ json .ExpectedChainSpec }};
+    window.clientsData = {{ includeJSON .Clients }};
+    window.expectedSpec = {{ includeJSON .ExpectedChainSpec }};
 
     // Click handler for spec mismatch icons
     $(document).on('click', '.spec-mismatch-icon', function(e) {

@@ -496,8 +496,8 @@
   // Config mismatch modal
   (function() {
     // Store client and expected config data
-    window.clientsData = {{ json .Clients }};
-    window.expectedConfig = {{ json .ExpectedEthConfig }};
+    window.clientsData = {{ includeJSON .Clients }};
+    window.expectedConfig = {{ includeJSON .ExpectedEthConfig }};
 
     // Click handler for config mismatch icons
     $(document).on('click', '.config-mismatch-icon', function(e) {
