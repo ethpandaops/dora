@@ -101,6 +101,7 @@
                     <a href="/clients/execution?o=version-d" class="sort-link {{ if eq .Sorting "version-d" }}active{{ end }}"><i class="fas fa-arrow-down"></i></a>
                   </div>
                 </th>
+                <th>Actions</th>
               </tr>
             </thead>
               <tbody>
@@ -146,21 +147,27 @@
                       {{ else }}
                         <span class="badge rounded-pill text-bg-dark">{{ $client.Status }}</span>
                       {{ end }}
-                      {{ if $client.ConfigWarnings }}
-                        <span class="text-warning config-mismatch-icon" role="button" data-client-index="{{ $i }}"
-                          data-bs-toggle="tooltip" data-bs-placement="top" 
-                          title="Config mismatch detected. Click for details.">
-                          <i class="fas fa-exclamation-triangle"></i>
-                        </span>
-                      {{ end }}
+                      <span class="text-warning config-mismatch-icon" role="button" data-client-name="{{ $client.Name }}"
+                        data-bs-toggle="tooltip" data-bs-placement="top" data-bs-html="true"
+                        title="" style="display: none;">
+                        <i class="fas fa-exclamation-triangle"></i>
+                      </span>
                     </td>
                     <td>
                       <span class="text-truncate d-inline-block" style="max-width: 300px">{{ $client.Version }}</span>
                       <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $client.Version }}"></i>
                     </td>
+                    <td>
+                      <button class="btn btn-sm btn-outline-secondary show-config-btn" 
+                              data-client-name="{{ $client.Name }}"
+                              data-bs-toggle="tooltip" data-bs-html="true"
+                              title="">
+                        <i class="fa-solid fa-book"></i>
+                      </button>
+                    </td>
                   </tr>
                   <tr class="collapse peerInfo" style="transition:0s" id="peerInfo-{{ $client.PeerID }}">
-                    <td colspan="7" style="padding: 10px 0;" class="peer-details-container" data-peerid="{{ $client.PeerID }}">
+                    <td colspan="8" style="padding: 10px 0;" class="peer-details-container" data-peerid="{{ $client.PeerID }}">
 
                     </td>
                   </tr>
@@ -388,15 +395,15 @@
 
   <!-- Config Mismatch Modal -->
   <div class="modal fade" id="configMismatchModal" tabindex="-1" role="dialog" aria-labelledby="configMismatchModalTitle" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+    <div class="modal-dialog modal-dialog-centered" style="max-width: 1420px; width: 1420px;" role="document">
       <div class="modal-content">
         <div class="modal-header">
           <h5 class="modal-title" id="configMismatchModalTitle">
-            <i class="fas fa-exclamation-triangle text-warning"></i> Config Mismatch Details
+            <i class="fas fa-code-compare text-warning me-2"></i>Configuration Comparison
           </h5>
           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
         </div>
-        <div class="modal-body" id="configMismatchModalBody">
+        <div class="modal-body" id="configMismatchModalBody" style="max-height: 80vh; overflow-x: auto; overflow-y: auto;">
           <!-- Content will be populated dynamically -->
         </div>
         <div class="modal-footer">
@@ -495,76 +502,395 @@
 
   // Config mismatch modal
   (function() {
-    // Store client and expected config data
-    window.clientsData = {{ includeJSON .Clients }};
-    window.expectedConfig = {{ includeJSON .ExpectedEthConfig }};
+    // Store expected config data only
+    window.expectedConfig = JSON.parse({{ includeJSON .ExpectedEthConfig false }});
+
+    // Initialize tooltips for config mismatch icons and show config buttons
+    $(document).ready(function() {
+      $('.config-mismatch-icon, .show-config-btn').each(function() {
+        var clientName = $(this).data('client-name');
+        var client = null;
+        
+        // Find the client
+        for (var nodeId in nodes) {
+          if (nodes[nodeId].name === clientName) {
+            client = nodes[nodeId];
+            break;
+          }
+        }
+        
+        if (client && client.fork_config) {
+          var summary = calculateConfigSummary(window.expectedConfig, client.fork_config);
+          var tooltipContent = '';
+          
+          if ($(this).hasClass('config-mismatch-icon')) {
+            // Only show warning icon if there are missing or mismatched values
+            if (summary.missingCount > 0 || summary.mismatchCount > 0) {
+              $(this).show();
+              
+              tooltipContent = '<strong>Config Mismatch Detected</strong><br/>';
+              tooltipContent += summary.missingCount + ' missing, ';
+              tooltipContent += summary.mismatchCount + ' mismatched, ';
+              tooltipContent += summary.untrackedCount + ' additional untracked fields<br/>';
+              tooltipContent += '<em>Click for details.</em>';
+              
+              $(this).attr('title', tooltipContent);
+            }
+          } else {
+            tooltipContent = '<strong>Show config values</strong><br/>';
+            tooltipContent += summary.missingCount + ' missing, ';
+            tooltipContent += summary.mismatchCount + ' mismatched, ';
+            tooltipContent += summary.untrackedCount + ' additional untracked fields<br/>';
+            tooltipContent += '<em>Click for details.</em>';
+            
+            $(this).attr('title', tooltipContent);
+          }
+        }
+      });
+      
+      // Initialize Bootstrap tooltips
+      var tooltipTriggerList = [].slice.call(document.querySelectorAll('.config-mismatch-icon[data-bs-toggle="tooltip"], .show-config-btn[data-bs-toggle="tooltip"]'));
+      var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl);
+      });
+    });
 
     // Click handler for config mismatch icons
     $(document).on('click', '.config-mismatch-icon', function(e) {
       e.preventDefault();
       e.stopPropagation();
       
-      var clientIndex = $(this).data('client-index');
-      var client = window.clientsData[clientIndex];
+      var clientName = $(this).data('client-name');
+      var client = null;
       
-      if (client && client.ClientConfig) {
+      // First try to find by PeerID if it exists
+      for (var nodeId in nodes) {
+        if (nodes[nodeId].name === clientName) {
+          client = nodes[nodeId];
+          break;
+        }
+      }
+      
+      if (client && client.fork_config) {
         showConfigMismatchModal(client);
       }
     });
 
+    // Click handler for show config buttons
+    $(document).on('click', '.show-config-btn', function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      
+      var clientName = $(this).data('client-name');
+      var client = null;
+      
+      // First try to find by PeerID if it exists
+      for (var nodeId in nodes) {
+        if (nodes[nodeId].name === clientName) {
+          client = nodes[nodeId];
+          break;
+        }
+      }
+      
+      if (client && client.fork_config) {
+        showConfigMismatchModal(client);
+      }
+    });
+
+    // Calculate summary statistics for config comparison
+    function calculateConfigSummary(expectedConfig, clientConfig) {
+      var missingCount = 0;
+      var mismatchCount = 0;
+      var untrackedCount = 0;
+      
+      var sections = ['current', 'next', 'last'];
+      
+      sections.forEach(function(section) {
+        var expectedSection = expectedConfig ? expectedConfig[section] : undefined;
+        var clientSection = clientConfig ? clientConfig[section] : undefined;
+        
+        if (expectedSection) {
+          Object.keys(expectedSection).forEach(function(field) {
+            var expectedValue = expectedSection[field];
+            var clientValue = clientSection ? clientSection[field] : undefined;
+            
+            if (field === 'blobSchedule') {
+              // Special handling for blob schedule
+              if (!clientValue && expectedValue) {
+                missingCount++;
+              } else if (clientValue && expectedValue && JSON.stringify(clientValue) !== JSON.stringify(expectedValue)) {
+                mismatchCount++;
+              }
+            } else if (field === 'precompiles' || field === 'systemContracts') {
+              // Special handling for object fields
+              if (!clientValue && expectedValue) {
+                missingCount++;
+              } else if (clientValue && expectedValue && JSON.stringify(clientValue) !== JSON.stringify(expectedValue)) {
+                mismatchCount++;
+              }
+            } else {
+              // Simple field comparison
+              if (expectedValue !== undefined && (clientValue === undefined || clientValue === null)) {
+                missingCount++;
+              } else if (expectedValue !== undefined && clientValue !== undefined && expectedValue !== clientValue) {
+                mismatchCount++;
+              }
+            }
+          });
+        }
+        
+        // Count untracked fields
+        if (clientSection) {
+          Object.keys(clientSection).forEach(function(field) {
+            var isInExpected = expectedSection && expectedSection.hasOwnProperty(field);
+            if (!isInExpected) {
+              untrackedCount++;
+            }
+          });
+        }
+      });
+      
+      return {
+        missingCount: missingCount,
+        mismatchCount: mismatchCount,
+        untrackedCount: untrackedCount
+      };
+    }
+
     function showConfigMismatchModal(client) {
+      $('#configMismatchModalClientName').text(client.name);
       var modalBody = $('#configMismatchModalBody');
-      var html = '<h6>Client: ' + escapeHtml(client.Name) + '</h6>';
-      html += '<p class="text-muted">The following configuration values do not match the expected settings:</p>';
       
-      // Create diff table
-      html += '<div class="table-responsive">';
-      html += '<table class="table table-bordered table-sm">';
-      html += '<thead><tr><th>Field</th><th>Expected</th><th>Client Value</th></tr></thead>';
-      html += '<tbody>';
+      // Calculate summary statistics
+      var summary = calculateConfigSummary(window.expectedConfig, client.fork_config);
       
-      // Check each warning field
-      if (client.ConfigWarnings && client.ConfigWarnings.length > 0) {
-        client.ConfigWarnings.forEach(function(warning) {
-          // Parse warning to get field name
-          var match = warning.match(/config mismatch: (.+)/);
-          if (match && match[1]) {
-            var fields = match[1].split(', ');
-            fields.forEach(function(field) {
-              var expectedValue = getConfigValue(window.expectedConfig, field);
-              var clientValue = getConfigValue(client.ClientConfig, field);
-              
-              html += '<tr>';
-              html += '<td><code>' + escapeHtml(field) + '</code></td>';
-              html += '<td class="text-success">' + formatConfigValue(expectedValue) + '</td>';
-              html += '<td class="text-danger">' + formatConfigValue(clientValue) + '</td>';
-              html += '</tr>';
-            });
+      var html = '<h6>Configuration comparison between client and expected network settings:</h6>';
+      
+      // Add summary section
+      html += '<div class="alert alert-info" role="alert">';
+      html += '<i class="fas fa-info-circle me-2"></i>';
+      html += '<strong>Summary:</strong> ';
+      html += summary.missingCount + ' missing, ';
+      html += summary.mismatchCount + ' mismatched, ';
+      html += summary.untrackedCount + ' additional untracked fields';
+      html += '</div>';
+      
+      // Helper function to create comparison table for a fork section
+      function createComparisonTable(sectionName, expectedFork, clientFork) {
+        var sectionHtml = '<div class="mb-4">';
+        sectionHtml += '<h6 class="text-primary">' + sectionName + ' Fork Configuration</h6>';
+        sectionHtml += '<div class="table-responsive" style="min-width: 1350px;">';
+        sectionHtml += '<table class="table table-striped table-hover table-sm" style="table-layout: fixed; width: 1350px;">';
+        sectionHtml += '<thead class="table-dark"><tr><th style="width: 450px; min-width: 450px;">Field</th><th style="width: 450px; min-width: 450px;">Client</th><th style="width: 450px; min-width: 450px;">Expected</th></tr></thead>';
+        sectionHtml += '<tbody>';
+        
+        // Compare all fields in the fork config
+        var allFields = new Set();
+        
+        // Collect all fields from both expected and client configs
+        if (expectedFork) {
+          Object.keys(expectedFork).forEach(function(field) {
+            allFields.add(field);
+          });
+        }
+        if (clientFork) {
+          Object.keys(clientFork).forEach(function(field) {
+            allFields.add(field);
+          });
+        }
+        
+        // Define field order for better organization
+        var fieldOrder = ['activationTime', 'chainId', 'forkId', 'blobSchedule', 'precompiles', 'systemContracts'];
+        var orderedFields = [];
+        
+        // Add fields in preferred order
+        fieldOrder.forEach(function(field) {
+          if (allFields.has(field)) {
+            orderedFields.push(field);
+            allFields.delete(field);
           }
         });
+        
+        // Add remaining fields
+        allFields.forEach(function(field) {
+          orderedFields.push(field);
+        });
+        
+        // Compare each field
+        orderedFields.forEach(function(field) {
+          var expectedValue = expectedFork ? expectedFork[field] : undefined;
+          var clientValue = clientFork ? clientFork[field] : undefined;
+          
+          /* // Always show key fields, skip others only if they match exactly
+          var isKeyField = ['activationTime', 'chainId', 'forkId'].includes(field);
+          if (!isKeyField && JSON.stringify(expectedValue) === JSON.stringify(clientValue)) {
+            return;
+          }
+          */
+          
+          // Handle complex objects with sub-rows
+          if (field === 'blobSchedule') {
+            sectionHtml += createBlobScheduleRows(expectedValue, clientValue);
+          } else if (field === 'precompiles') {
+            sectionHtml += createPrecompilesRows(expectedValue, clientValue);
+          } else if (field === 'systemContracts') {
+            sectionHtml += createSystemContractsRows(expectedValue, clientValue);
+          } else {
+            // Handle simple fields
+            sectionHtml += '<tr>';
+            var readableFieldName = field.replace(/([A-Z])/g, ' $1').replace(/^./, function(str){ return str.toUpperCase(); });
+            sectionHtml += '<td>';
+            sectionHtml += '<strong>' + escapeHtml(readableFieldName) + '</strong>';
+            sectionHtml += '</td>';
+            sectionHtml += '<td>' + formatSimpleValue(clientValue, expectedValue) + '</td>';
+            sectionHtml += '<td>' + formatSimpleValue(expectedValue, true) + '</td>';
+            sectionHtml += '</tr>';
+          }
+        });
+        
+        sectionHtml += '</tbody></table></div></div>';
+        return sectionHtml;
       }
       
-      html += '</tbody></table></div>';
-      
-      // Add raw config data section
-      html += '<div class="mt-4">';
-      html += '<h6>Full Configuration</h6>';
-      html += '<div class="row">';
-      html += '<div class="col-md-6">';
-      html += '<p class="text-muted">Current Fork:</p>';
-      html += '<pre class="bg-light p-2"><code>' + JSON.stringify(client.ClientConfig.current, null, 2) + '</code></pre>';
-      html += '</div>';
-      if (client.ClientConfig.next) {
-        html += '<div class="col-md-6">';
-        html += '<p class="text-muted">Next Fork:</p>';
-        html += '<pre class="bg-light p-2"><code>' + JSON.stringify(client.ClientConfig.next, null, 2) + '</code></pre>';
-        html += '</div>';
+      // Create sub-rows for blob schedule
+      function createBlobScheduleRows(expectedBlob, clientBlob) {
+        var html = '';
+        var blobFields = ['max', 'target', 'baseFeeUpdateFraction'];
+        
+        // Header row for blob schedule
+        html += '<tr style="background-color: var(--bs-secondary-bg); border-top: 2px solid var(--bs-border-color);">';
+        html += '<td><strong>🔹 Blob Schedule</strong></td>';
+        html += '<td colspan="2"></td>';
+        html += '</tr>';
+        
+        blobFields.forEach(function(field) {
+          var expectedValue = expectedBlob ? expectedBlob[field] : undefined;
+          var clientValue = clientBlob ? clientBlob[field] : undefined;
+          
+          html += '<tr>';
+          html += '<td style="padding-left: 2rem;">';
+          html += '<span class="text-muted">├─</span> ' + escapeHtml(field);
+          html += '</td>';
+          html += '<td>' + formatSimpleValue(clientValue, expectedValue) + '</td>';
+          html += '<td>' + formatSimpleValue(expectedValue, true) + '</td>';
+          html += '</tr>';
+        });
+        
+        return html;
       }
-      html += '</div>';
-      html += '</div>';
+      
+      // Create sub-rows for precompiles
+      function createPrecompilesRows(expectedPrecompiles, clientPrecompiles) {
+        var html = '';
+        var allPrecompiles = new Set();
+        
+        if (expectedPrecompiles) Object.keys(expectedPrecompiles).forEach(function(key) { allPrecompiles.add(key); });
+        if (clientPrecompiles) Object.keys(clientPrecompiles).forEach(function(key) { allPrecompiles.add(key); });
+        
+        if (allPrecompiles.size === 0) return '';
+        
+        // Header row for precompiles
+        html += '<tr style="background-color: var(--bs-secondary-bg); border-top: 2px solid var(--bs-border-color);">';
+        html += '<td><strong>🔹 Precompiles</strong></td>';
+        html += '<td colspan="2"><em>' + allPrecompiles.size + ' precompiles</em></td>';
+        html += '</tr>';
+        
+        // Sort precompiles for consistent display
+        var sortedPrecompiles = Array.from(allPrecompiles).sort();
+        
+        sortedPrecompiles.forEach(function(precompile) {
+          var expectedValue = expectedPrecompiles ? expectedPrecompiles[precompile] : undefined;
+          var clientValue = clientPrecompiles ? clientPrecompiles[precompile] : undefined;
+          
+          html += '<tr>';
+          html += '<td style="padding-left: 2rem;">';
+          html += '<span class="text-muted">├─</span> ' + escapeHtml(precompile);
+          html += '</td>';
+          html += '<td>' + formatSimpleValue(clientValue, expectedValue) + '</td>';
+          html += '<td>' + formatSimpleValue(expectedValue, true) + '</td>';
+          html += '</tr>';
+        });
+        
+        return html;
+      }
+      
+      // Create sub-rows for system contracts
+      function createSystemContractsRows(expectedContracts, clientContracts) {
+        var html = '';
+        var allContracts = new Set();
+        
+        if (expectedContracts) Object.keys(expectedContracts).forEach(function(key) { allContracts.add(key); });
+        if (clientContracts) Object.keys(clientContracts).forEach(function(key) { allContracts.add(key); });
+        
+        if (allContracts.size === 0) return '';
+        
+        // Header row for system contracts
+        html += '<tr style="background-color: var(--bs-secondary-bg); border-top: 2px solid var(--bs-border-color);">';
+        html += '<td><strong>🔹 System Contracts</strong></td>';
+        html += '<td colspan="2"><em>' + allContracts.size + ' contracts</em></td>';
+        html += '</tr>';
+        
+        // Sort contracts for consistent display
+        var sortedContracts = Array.from(allContracts).sort();
+        
+        sortedContracts.forEach(function(contract) {
+          var expectedValue = expectedContracts ? expectedContracts[contract] : undefined;
+          var clientValue = clientContracts ? clientContracts[contract] : undefined;
+          
+          html += '<tr>';
+          html += '<td style="padding-left: 2rem;">';
+          html += '<span class="text-muted">├─</span> ' + escapeHtml(contract);
+          html += '</td>';
+          html += '<td>' + formatSimpleValue(clientValue, expectedValue) + '</td>';
+          html += '<td>' + formatSimpleValue(expectedValue, true) + '</td>';
+          html += '</tr>';
+        });
+        
+        return html;
+      }
+      
+      // Format simple values (non-objects)
+      function formatSimpleValue(value, expectedValue) {
+        if (value === undefined || value === null) {
+          return '<span class="text-muted">N/A</span>';
+        }
+        
+        // If expectedValue is boolean true, it means this is the expected column
+        if (expectedValue === true) {
+          return '<code class="text-success">' + escapeHtml(String(value)) + '</code>';
+        }
+        
+        // For client values, only show red if they don't match expected
+        var cssClass = 'text-success';
+        if (expectedValue !== undefined && JSON.stringify(value) !== JSON.stringify(expectedValue)) {
+          cssClass = 'text-danger';
+        }
+        
+        return '<code class="' + cssClass + '">' + escapeHtml(String(value)) + '</code>';
+      }
+      
+      // Compare current, next, and last configurations
+      if (window.expectedConfig && client.fork_config) {
+        // Current configuration
+        if (window.expectedConfig.current || client.fork_config.current) {
+          html += createComparisonTable('Current', window.expectedConfig.current, client.fork_config.current);
+        }
+        
+        // Next configuration
+        if (window.expectedConfig.next || client.fork_config.next) {
+          html += createComparisonTable('Next', window.expectedConfig.next, client.fork_config.next);
+        }
+        
+        // Last configuration
+        if (window.expectedConfig.last || client.fork_config.last) {
+          html += createComparisonTable('Last', window.expectedConfig.last, client.fork_config.last);
+        }
+      }
       
       modalBody.html(html);
-      $('#configMismatchModal').modal('show');
+      var modalElement = document.getElementById('configMismatchModal');
+      var modal = new bootstrap.Modal(modalElement);
+      modal.show();
     }
 
     function getConfigValue(config, path) {
@@ -585,19 +911,33 @@
       return value;
     }
 
-    function formatConfigValue(value) {
+    function formatConfigValue(value, isExpected) {
       if (value === undefined || value === null) {
         return '<span class="text-muted">N/A</span>';
       }
       
       if (typeof value === 'object') {
-        return '<code>' + escapeHtml(JSON.stringify(value, null, 2)) + '</code>';
+        // Format objects and arrays
+        return formatComplexValue(value, isExpected);
       }
       
-      return '<code>' + escapeHtml(String(value)) + '</code>';
+      // Format primitive values
+      var cssClass = isExpected ? 'text-success' : 'text-danger';
+      return '<code class="' + cssClass + '">' + escapeHtml(String(value)) + '</code>';
+    }
+    
+    function formatComplexValue(value, isExpected) {
+      var cssClass = isExpected ? 'text-success' : 'text-danger';
+      var formatted = '<div class="' + cssClass + '" style="font-family: monospace; white-space: pre-wrap; max-height: 300px; overflow-y: auto;">';
+      formatted += escapeHtml(JSON.stringify(value, null, 2));
+      formatted += '</div>';
+      return formatted;
     }
 
     function escapeHtml(text) {
+      if (text === undefined || text === null) {
+        return '';
+      }
       var map = {
         '&': '&amp;',
         '<': '&lt;',
@@ -605,7 +945,7 @@
         '"': '&quot;',
         "'": '&#039;'
       };
-      return text.replace(/[&<>"']/g, function(m) { return map[m]; });
+      return String(text).replace(/[&<>"']/g, function(m) { return map[m]; });
     }
   })();
 

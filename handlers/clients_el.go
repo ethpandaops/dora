@@ -187,12 +187,11 @@ func buildELClientsPageData(sortOrder string) (*models.ClientsELPageData, time.D
 	cacheTime := specs.SecondsPerSlot
 
 	aliases := map[string]string{}
-	for _, client := range services.GlobalBeaconService.GetExecutionClients() {
-
+	for idx, client := range services.GlobalBeaconService.GetExecutionClients() {
 		nodeInfo := client.GetNodeInfo()
 		if nodeInfo != nil && nodeInfo.Enode != "" {
 			en := parseEnodeRecord(nodeInfo.Enode)
-			nodeID := "unknown"
+			nodeID := fmt.Sprintf("unknown-%v", idx)
 			if en != nil {
 				nodeID = en.ID().String()
 			}
@@ -201,7 +200,7 @@ func buildELClientsPageData(sortOrder string) (*models.ClientsELPageData, time.D
 		}
 	}
 
-	for _, client := range services.GlobalBeaconService.GetExecutionClients() {
+	for idx, client := range services.GlobalBeaconService.GetExecutionClients() {
 		lastHeadSlot, lastHeadRoot := client.GetLastHead()
 
 		peers := client.GetNodePeers()
@@ -254,7 +253,7 @@ func buildELClientsPageData(sortOrder string) (*models.ClientsELPageData, time.D
 
 		nodeInfo := client.GetNodeInfo()
 
-		peerID := "unknown"
+		peerID := fmt.Sprintf("unknown-%v", idx)
 		peerName := "unknown"
 		enoderaw := "unknown"
 		ipAddr := "unknown"
@@ -420,42 +419,28 @@ func buildForkConfig(client *execution.Client) *models.ClientELPageDataForkConfi
 		return nil
 	}
 
-	forkConfig := &models.ClientELPageDataForkConfig{}
-
-	if ethConfig.Current != nil {
-		forkConfig.Current = convertEthConfigFork(ethConfig.Current)
-	}
-
-	if ethConfig.Next != nil {
-		forkConfig.Next = convertEthConfigFork(ethConfig.Next)
-	}
-
-	if ethConfig.Last != nil {
-		forkConfig.Last = convertEthConfigFork(ethConfig.Last)
-	}
-
-	return forkConfig
+	return buildForkConfigFromEthConfig(ethConfig)
 }
 
 func buildForkConfigFromEthConfig(ethConfig *execrpc.EthConfig) *models.ClientELPageDataForkConfig {
 	if ethConfig == nil {
 		return nil
 	}
-	
+
 	forkConfig := &models.ClientELPageDataForkConfig{}
-	
+
 	if ethConfig.Current != nil {
 		forkConfig.Current = convertEthConfigFork(ethConfig.Current)
 	}
-	
+
 	if ethConfig.Next != nil {
 		forkConfig.Next = convertEthConfigFork(ethConfig.Next)
 	}
-	
+
 	if ethConfig.Last != nil {
 		forkConfig.Last = convertEthConfigFork(ethConfig.Last)
 	}
-	
+
 	return forkConfig
 }
 

@@ -22,6 +22,9 @@ type ClientsCLPageData struct {
 	CurrentForkDigest         []byte                           `json:"current_fork_digest"`
 	FuluActivationEpoch       uint64                           `json:"fulu_activation_epoch"`
 	ExpectedChainSpec         map[string]interface{}           `json:"expected_chain_spec"`
+	ExpectedConfigFields      []string                         `json:"expected_config_fields"`
+	ExpectedPresetFields      []string                         `json:"expected_preset_fields"`
+	ExpectedDomainTypeFields  []string                         `json:"expected_domain_type_fields"`
 }
 
 // ## Peer graph data
@@ -89,11 +92,10 @@ type ClientsCLPageDataClient struct {
 	LastError            string    `json:"error"`
 	PeerID               string    `json:"peer_id"`
 	NodeENR              string    `json:"node_enr"`
-	PeerCount            uint32                 `json:"peer_count"`
-	PeersInboundCounter  uint32                 `json:"peers_inbound_counter"`
-	PeersOutboundCounter uint32                 `json:"peers_outbound_counter"`
-	SpecWarnings         []string               `json:"spec_warnings"`
-	ClientSpecs          map[string]interface{} `json:"client_specs"`
+	PeerCount            uint32    `json:"peer_count"`
+	PeersInboundCounter  uint32    `json:"peers_inbound_counter"`
+	PeersOutboundCounter uint32    `json:"peers_outbound_counter"`
+	SpecWarnings         []string  `json:"spec_warnings"`
 }
 
 // ClientCLPageDataNode represents a generic node on the CL network. Can be a client or a peer of a client
@@ -111,6 +113,7 @@ type ClientCLPageDataNode struct {
 	PeersIn           []string                        `json:"peers_in"`
 	PeersOut          []string                        `json:"peers_out"`
 	Metadata          *ClientCLPageDataNodeMetadata   `json:"metadata,omitempty"`
+	ClientSpecs       map[string]interface{}          `json:"client_specs"`
 }
 
 // ClientCLPageDataNodeMetadata represents the metadata from the node identity

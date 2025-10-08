@@ -332,19 +332,23 @@
                       {{ else }}
                         <span class="badge rounded-pill text-bg-dark">{{ $client.Status }}</span>
                       {{ end }}
-                      {{ if $client.SpecWarnings }}
-                        <span class="text-warning spec-mismatch-icon" role="button" data-client-index="{{ $i }}"
-                          data-bs-toggle="tooltip" data-bs-placement="top" 
-                          title="Spec mismatch detected. Click for details.">
-                          <i class="fas fa-exclamation-triangle"></i>
-                        </span>
-                      {{ end }}
+                      <span class="text-warning spec-mismatch-icon" role="button" data-client-name="{{ $client.Name }}"
+                        data-bs-toggle="tooltip" data-bs-placement="top" data-bs-html="true"
+                        title="" style="display: none;">
+                        <i class="fas fa-exclamation-triangle"></i>
+                      </span>
                     </td>
                     <td>
                       <span class="text-truncate d-inline-block" style="max-width: 300px">{{ $client.Version }}</span>
                       <i class="fa fa-copy text-muted p-1" role="button" data-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $client.Version }}"></i>
                     </td>
                     <td>
+                      <button class="btn btn-sm btn-outline-secondary show-specs-btn me-1" 
+                              data-client-name="{{ $client.Name }}"
+                              data-bs-toggle="tooltip" data-bs-html="true"
+                              title="">
+                        <i class="fa-solid fa-book"></i>
+                      </button>
                       {{ if and $client.NodeENR $root.ShowPeerDASInfos (not $root.DisableDasGuardianCheck) }}
                       <button class="btn btn-sm btn-outline-primary das-check-btn" 
                               data-enr="{{ $client.NodeENR }}" 
@@ -889,11 +893,11 @@
 
         <!-- Spec Mismatch Modal -->
         <div class="modal fade" id="specMismatchModal" tabindex="-1" role="dialog" aria-labelledby="specMismatchModalTitle" aria-hidden="true">
-          <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+          <div class="modal-dialog modal-dialog-centered" style="max-width: 1420px; width: 1420px;" role="document">
             <div class="modal-content">
               <div class="modal-header">
                 <h5 class="modal-title" id="specMismatchModalTitle">
-                  <i class="fas fa-exclamation-triangle text-warning"></i> Spec Mismatch Details
+                  <i class="fas fa-code-compare text-warning me-2"></i>Configuration Comparison: <span id="specMismatchModalClientName"></span>
                 </h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
               </div>
@@ -1175,52 +1179,392 @@
 
   // Spec mismatch modal
   (function() {
-    // Store client and expected spec data
-    window.clientsData = {{ includeJSON .Clients }};
-    window.expectedSpec = {{ includeJSON .ExpectedChainSpec }};
+    // Store expected spec data only
+    window.expectedSpec = JSON.parse({{ includeJSON .ExpectedChainSpec false }});
+    window.expectedConfigFields = JSON.parse({{ includeJSON .ExpectedConfigFields false }});
+    window.expectedPresetFields = JSON.parse({{ includeJSON .ExpectedPresetFields false }});
+    window.expectedDomainTypeFields = JSON.parse({{ includeJSON .ExpectedDomainTypeFields false }});
+
+    // Initialize tooltips for spec mismatch icons and show specs buttons
+    $(document).ready(function() {
+      $('.spec-mismatch-icon, .show-specs-btn').each(function() {
+        var clientName = $(this).data('client-name');
+        var client = null;
+        
+        // Find the client
+        for (var nodeId in nodes) {
+          if (nodes[nodeId].alias === clientName) {
+            client = nodes[nodeId];
+            break;
+          }
+        }
+        
+        if (client && client.client_specs) {
+          var summary = calculateSpecSummary(window.expectedSpec, client.client_specs);
+          var tooltipContent = '';
+          
+          if ($(this).hasClass('spec-mismatch-icon')) {
+            // Only show warning icon if there are missing or mismatched values
+            if (summary.missingCount > 0 || summary.mismatchCount > 0) {
+              $(this).show();
+              
+              tooltipContent = '<strong>Spec Mismatch Detected</strong><br/>';
+              tooltipContent += summary.missingCount + ' missing, ';
+              tooltipContent += summary.mismatchCount + ' mismatched, ';
+              tooltipContent += summary.untrackedCount + ' additional untracked fields<br/>';
+              tooltipContent += '<em>Click for details.</em>';
+              
+              $(this).attr('title', tooltipContent);
+            }
+          } else {
+            tooltipContent = '<strong>Show spec values</strong><br/>';
+            tooltipContent += summary.missingCount + ' missing, ';
+            tooltipContent += summary.mismatchCount + ' mismatched, ';
+            tooltipContent += summary.untrackedCount + ' additional untracked fields<br/>';
+            tooltipContent += '<em>Click for details.</em>';
+            
+            $(this).attr('title', tooltipContent);
+          }
+        }
+      });
+      
+      // Initialize Bootstrap tooltips
+      var tooltipTriggerList = [].slice.call(document.querySelectorAll('.spec-mismatch-icon[data-bs-toggle="tooltip"], .show-specs-btn[data-bs-toggle="tooltip"]'));
+      var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl);
+      });
+    });
 
     // Click handler for spec mismatch icons
     $(document).on('click', '.spec-mismatch-icon', function(e) {
       e.preventDefault();
       e.stopPropagation();
       
-      var clientIndex = $(this).data('client-index');
-      var client = window.clientsData[clientIndex];
+      var clientName = $(this).data('client-name');
+      var client = null;
       
-      if (client && client.ClientSpecs) {
+      // First try to find by PeerID if it exists
+      for (var nodeId in nodes) {
+        if (nodes[nodeId].alias === clientName) {
+          client = nodes[nodeId];
+          break;
+        }
+      }
+      
+      if (client && client.client_specs) {
+        showSpecMismatchModal(client);
+      }
+    });
+
+    // Click handler for show specs buttons
+    $(document).on('click', '.show-specs-btn', function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      
+      var clientName = $(this).data('client-name');
+      var client = null;
+      
+      // First try to find by PeerID if it exists
+      for (var nodeId in nodes) {
+        if (nodes[nodeId].alias === clientName) {
+          client = nodes[nodeId];
+          break;
+        }
+      }
+      
+      if (client && client.client_specs) {
         showSpecMismatchModal(client);
       }
     });
 
     function showSpecMismatchModal(client) {
+      $('#specMismatchModalClientName').text(client.alias);
       var modalBody = $('#specMismatchModalBody');
-      var html = '<h6>Client: ' + escapeHtml(client.Name) + '</h6>';
-      html += '<p class="text-muted">The following spec values do not match the expected configuration:</p>';
       
-      // Create diff table
-      html += '<div class="table-responsive">';
-      html += '<table class="table table-bordered table-sm">';
-      html += '<thead><tr><th>Field</th><th>Expected</th><th>Client Value</th></tr></thead>';
-      html += '<tbody>';
+      // Calculate summary statistics
+      var summary = calculateSpecSummary(window.expectedSpec, client.client_specs);
       
-      // Check each warning field
-      if (client.SpecWarnings && client.SpecWarnings.length > 0) {
-        client.SpecWarnings.forEach(function(field) {
-          var expectedValue = getNestedValue(window.expectedSpec, field);
-          var clientValue = getNestedValue(client.ClientSpecs, field);
-          
-          html += '<tr>';
-          html += '<td><code>' + escapeHtml(field) + '</code></td>';
-          html += '<td class="text-success">' + formatSpecValue(expectedValue) + '</td>';
-          html += '<td class="text-danger">' + formatSpecValue(clientValue) + '</td>';
-          html += '</tr>';
+      var html = '<h6>Configuration comparison between client and expected network settings:</h6>';
+      
+      // Add summary section
+      html += '<div class="alert alert-info" role="alert">';
+      html += '<i class="fas fa-info-circle me-2"></i>';
+      html += '<strong>Summary:</strong> ';
+      html += summary.missingCount + ' missing, ';
+      html += summary.mismatchCount + ' mismatched, ';
+      html += summary.untrackedCount + ' additional untracked fields';
+      html += '</div>';
+      
+      // Create comparison sections
+      if (window.expectedConfigFields && window.expectedConfigFields.length > 0) {
+        html += createSpecComparisonSection('Configuration', window.expectedConfigFields, window.expectedSpec, client.client_specs);
+      }
+      
+      if (window.expectedPresetFields && window.expectedPresetFields.length > 0) {
+        html += createSpecComparisonSection('Preset Values', window.expectedPresetFields, window.expectedSpec, client.client_specs);
+      }
+      
+      if (window.expectedDomainTypeFields && window.expectedDomainTypeFields.length > 0) {
+        html += createSpecComparisonSection('Domain Types', window.expectedDomainTypeFields, window.expectedSpec, client.client_specs);
+      }
+      
+      // Add untracked fields section
+      html += createUntrackedFieldsSection(window.expectedSpec, client.client_specs);
+      
+      modalBody.html(html);
+      var modalElement = document.getElementById('specMismatchModal');
+      var modal = new bootstrap.Modal(modalElement);
+      modal.show();
+    }
+    
+    // Calculate summary statistics for spec comparison
+    function calculateSpecSummary(expectedSpecs, clientSpecs) {
+      var missingCount = 0;
+      var mismatchCount = 0;
+      var untrackedCount = 0;
+      
+      // Count missing and mismatched values in config fields
+      if (window.expectedConfigFields) {
+        window.expectedConfigFields.forEach(function(field) {
+          if (field === 'BLOB_SCHEDULE') {
+            // Special handling for blob schedule - compare individual entries
+            var expectedSchedule = expectedSpecs ? expectedSpecs['BLOB_SCHEDULE'] : undefined;
+            var clientSchedule = clientSpecs ? clientSpecs['BLOB_SCHEDULE'] : undefined;
+            
+            if (!clientSchedule && expectedSchedule) {
+              missingCount++;
+            } else if (expectedSchedule && clientSchedule) {
+              // Compare each entry in the schedules
+              var maxLength = Math.max(
+                Array.isArray(expectedSchedule) ? expectedSchedule.length : 0,
+                Array.isArray(clientSchedule) ? clientSchedule.length : 0
+              );
+              
+              for (var i = 0; i < maxLength; i++) {
+                var expectedEntry = (Array.isArray(expectedSchedule) && i < expectedSchedule.length) ? expectedSchedule[i] : null;
+                var clientEntry = (Array.isArray(clientSchedule) && i < clientSchedule.length) ? clientSchedule[i] : null;
+                
+                // Check EPOCH
+                var expectedEpoch = expectedEntry ? expectedEntry.EPOCH : undefined;
+                var clientEpoch = clientEntry ? clientEntry.EPOCH : undefined;
+                
+                if (expectedEpoch !== undefined && (clientEpoch === undefined || clientEpoch === null)) {
+                  missingCount++;
+                } else if (expectedEpoch !== undefined && clientEpoch !== undefined && expectedEpoch !== clientEpoch) {
+                  mismatchCount++;
+                }
+                
+                // Check MAX_BLOBS_PER_BLOCK
+                var expectedBlobs = expectedEntry ? expectedEntry.MAX_BLOBS_PER_BLOCK : undefined;
+                var clientBlobs = clientEntry ? clientEntry.MAX_BLOBS_PER_BLOCK : undefined;
+                
+                if (expectedBlobs !== undefined && (clientBlobs === undefined || clientBlobs === null)) {
+                  missingCount++;
+                } else if (expectedBlobs !== undefined && clientBlobs !== undefined && expectedBlobs !== clientBlobs) {
+                  mismatchCount++;
+                }
+              }
+            }
+          } else {
+            var expectedValue = expectedSpecs ? expectedSpecs[field] : undefined;
+            var clientValue = clientSpecs ? clientSpecs[field] : undefined;
+            
+            if ((expectedValue !== undefined) && (clientValue === undefined || clientValue === null)) {
+              missingCount++;
+            } else if (expectedValue !== undefined && clientValue !== undefined && JSON.stringify(clientValue) !== JSON.stringify(expectedValue)) {
+              mismatchCount++;
+            }
+          }
         });
       }
       
-      html += '</tbody></table></div>';
+      // Count missing and mismatched values in preset fields
+      if (window.expectedPresetFields) {
+        window.expectedPresetFields.forEach(function(field) {
+          var expectedValue = expectedSpecs ? expectedSpecs[field] : undefined;
+          var clientValue = clientSpecs ? clientSpecs[field] : undefined;
+          
+          if ((expectedValue !== undefined) && (clientValue === undefined || clientValue === null)) {
+            missingCount++;
+          } else if (expectedValue !== undefined && clientValue !== undefined && JSON.stringify(clientValue) !== JSON.stringify(expectedValue)) {
+            mismatchCount++;
+          }
+        });
+      }
       
-      modalBody.html(html);
-      $('#specMismatchModal').modal('show');
+      // Count missing and mismatched values in domain type fields
+      if (window.expectedDomainTypeFields) {
+        window.expectedDomainTypeFields.forEach(function(field) {
+          var expectedValue = expectedSpecs ? expectedSpecs[field] : undefined;
+          var clientValue = clientSpecs ? clientSpecs[field] : undefined;
+          
+          if ((expectedValue !== undefined) && (clientValue === undefined || clientValue === null)) {
+            missingCount++;
+          } else if (expectedValue !== undefined && clientValue !== undefined && JSON.stringify(clientValue) !== JSON.stringify(expectedValue)) {
+            mismatchCount++;
+          }
+        });
+      }
+      
+      // Count untracked fields
+      if (clientSpecs) {
+        Object.keys(clientSpecs).forEach(function(field) {
+          var isInConfig = window.expectedConfigFields && window.expectedConfigFields.indexOf(field) !== -1;
+          var isInPreset = window.expectedPresetFields && window.expectedPresetFields.indexOf(field) !== -1;
+          var isInDomainTypes = window.expectedDomainTypeFields && window.expectedDomainTypeFields.indexOf(field) !== -1;
+          var isInExpected = expectedSpecs && expectedSpecs.hasOwnProperty(field);
+          
+          if (!isInConfig && !isInPreset && !isInDomainTypes && !isInExpected) {
+            untrackedCount++;
+          }
+        });
+      }
+      
+      return {
+        missingCount: missingCount,
+        mismatchCount: mismatchCount,
+        untrackedCount: untrackedCount
+      };
+    }
+    
+    // Create spec comparison section for ordered fields
+    function createSpecComparisonSection(sectionName, orderedFields, expectedSpecs, clientSpecs) {
+      var sectionHtml = '<div class="mb-4">';
+      sectionHtml += '<h6 class="text-primary">' + sectionName + '</h6>';
+      sectionHtml += '<div class="table-responsive" style="min-width: 1350px;">';
+      sectionHtml += '<table class="table table-striped table-hover table-sm" style="table-layout: fixed; width: 1350px;">';
+      sectionHtml += '<thead class="table-dark"><tr><th style="width: 450px; min-width: 450px;">Field</th><th style="width: 450px; min-width: 450px;">Client</th><th style="width: 450px; min-width: 450px;">Expected</th></tr></thead>';
+      sectionHtml += '<tbody>';
+      
+      // Show fields in the order provided
+      if (orderedFields && Array.isArray(orderedFields)) {
+        orderedFields.forEach(function(field) {
+          if (field === 'BLOB_SCHEDULE') {
+            // Handle blob schedule as special case
+            sectionHtml += createBlobScheduleSpecRows(expectedSpecs, clientSpecs);
+          } else {
+            var expectedValue = expectedSpecs ? expectedSpecs[field] : undefined;
+            var clientValue = clientSpecs ? clientSpecs[field] : undefined;
+            
+            sectionHtml += '<tr>';
+            sectionHtml += '<td>';
+            sectionHtml += '<strong>' + escapeHtml(field) + '</strong>';
+            sectionHtml += '</td>';
+            sectionHtml += '<td>' + formatSpecValue(clientValue, expectedValue) + '</td>';
+            sectionHtml += '<td>' + formatSpecValue(expectedValue, true) + '</td>';
+            sectionHtml += '</tr>';
+          }
+        });
+      }
+      
+      sectionHtml += '</tbody></table></div></div>';
+      return sectionHtml;
+    }
+    
+    // Create untracked fields section
+    function createUntrackedFieldsSection(expectedSpecs, clientSpecs) {
+      var sectionHtml = '<div class="mb-4">';
+      sectionHtml += '<h6 class="text-primary">Additional Untracked Fields</h6>';
+      
+      // Find additional fields that are only in client specs
+      var additionalFields = [];
+      if (clientSpecs) {
+        Object.keys(clientSpecs).forEach(function(field) {
+          // Skip fields that are in expected config, preset, or domain type fields
+          var isInConfig = window.expectedConfigFields && window.expectedConfigFields.indexOf(field) !== -1;
+          var isInPreset = window.expectedPresetFields && window.expectedPresetFields.indexOf(field) !== -1;
+          var isInDomainTypes = window.expectedDomainTypeFields && window.expectedDomainTypeFields.indexOf(field) !== -1;
+          var isInExpected = expectedSpecs && expectedSpecs.hasOwnProperty(field);
+          
+          if (!isInConfig && !isInPreset && !isInDomainTypes && !isInExpected) {
+            additionalFields.push(field);
+          }
+        });
+      }
+      
+      if (additionalFields.length === 0) {
+        sectionHtml += '<div class="alert alert-info" role="alert">';
+        sectionHtml += '<i class="fas fa-info-circle me-2"></i>';
+        sectionHtml += 'No additional untracked fields found.';
+        sectionHtml += '</div>';
+        sectionHtml += '</div>';
+        return sectionHtml;
+      }
+      
+      sectionHtml += '<div class="table-responsive" style="min-width: 900px;">';
+      sectionHtml += '<table class="table table-striped table-hover table-sm" style="table-layout: fixed; width: 900px;">';
+      sectionHtml += '<thead class="table-dark"><tr><th style="width: 450px; min-width: 450px;">Field</th><th style="width: 450px; min-width: 450px;">Client</th></tr></thead>';
+      sectionHtml += '<tbody>';
+      
+      // Sort additional fields alphabetically
+      additionalFields.sort();
+      
+      additionalFields.forEach(function(field) {
+        var clientValue = clientSpecs ? clientSpecs[field] : undefined;
+        
+        sectionHtml += '<tr>';
+        sectionHtml += '<td>';
+        sectionHtml += '<strong>' + escapeHtml(field) + '</strong>';
+        sectionHtml += '</td>';
+        sectionHtml += '<td>' + formatSpecValue(clientValue, undefined) + '</td>';
+        sectionHtml += '</tr>';
+      });
+      
+      sectionHtml += '</tbody></table></div></div>';
+      return sectionHtml;
+    }
+    
+    // Create sub-rows for blob schedule
+    function createBlobScheduleSpecRows(expectedSpecs, clientSpecs) {
+      var html = '';
+      
+      var expectedSchedule = expectedSpecs ? expectedSpecs['BLOB_SCHEDULE'] : undefined;
+      var clientSchedule = clientSpecs ? clientSpecs['BLOB_SCHEDULE'] : undefined;
+      
+      if (!expectedSchedule && !clientSchedule) return '';
+      
+      // Header row for blob schedule
+      html += '<tr style="background-color: var(--bs-secondary-bg); border-top: 2px solid var(--bs-border-color);">';
+      html += '<td><strong>🔹 BLOB_SCHEDULE</strong></td>';
+      html += '<td colspan="2"><em>Blob schedule epochs and limits</em></td>';
+      html += '</tr>';
+      
+      // Determine the longest schedule to iterate through
+      var maxLength = 0;
+      if (Array.isArray(expectedSchedule)) maxLength = Math.max(maxLength, expectedSchedule.length);
+      if (Array.isArray(clientSchedule)) maxLength = Math.max(maxLength, clientSchedule.length);
+      
+      // Render entries in original order as specified
+      for (var i = 0; i < maxLength; i++) {
+        var expectedEntry = (Array.isArray(expectedSchedule) && i < expectedSchedule.length) ? expectedSchedule[i] : null;
+        var clientEntry = (Array.isArray(clientSchedule) && i < clientSchedule.length) ? clientSchedule[i] : null;
+        
+        // Show EPOCH property
+        var expectedEpoch = expectedEntry ? expectedEntry.EPOCH : undefined;
+        var clientEpoch = clientEntry ? clientEntry.EPOCH : undefined;
+        
+        html += '<tr>';
+        html += '<td style="padding-left: 2rem;">';
+        html += '<span class="text-muted">├─</span> BPO' + (i+1) + ' EPOCH';
+        html += '</td>';
+        html += '<td>' + formatSpecValue(clientEpoch, expectedEpoch) + '</td>';
+        html += '<td>' + formatSpecValue(expectedEpoch, true) + '</td>';
+        html += '</tr>';
+        
+        // Show MAX_BLOBS_PER_BLOCK property
+        var expectedBlobs = expectedEntry ? expectedEntry.MAX_BLOBS_PER_BLOCK : undefined;
+        var clientBlobs = clientEntry ? clientEntry.MAX_BLOBS_PER_BLOCK : undefined;
+        
+        html += '<tr>';
+        html += '<td style="padding-left: 2rem;">';
+        html += '<span class="text-muted">├─</span> BPO' + (i+1) + ' MAX_BLOBS_PER_BLOCK';
+        html += '</td>';
+        html += '<td>' + formatSpecValue(clientBlobs, expectedBlobs) + '</td>';
+        html += '<td>' + formatSpecValue(expectedBlobs, true) + '</td>';
+        html += '</tr>';
+      }
+      
+      return html;
     }
 
     function getNestedValue(obj, path) {
@@ -1240,24 +1584,102 @@
       return value;
     }
 
-    function formatSpecValue(value) {
+    function formatSpecValue(value, expectedValue) {
       if (value === undefined || value === null) {
-        return '<span class="text-muted">N/A</span>';
+        return '<span class="text-danger">N/A</span>';
+      }
+      
+      // If expectedValue is boolean true, it means this is the expected column
+      if (expectedValue === true) {
+        if (typeof value === 'object') {
+          if (Array.isArray(value)) {
+            // Format byte arrays as hex
+            if (value.length > 0 && typeof value[0] === 'number') {
+              return '<code class="text-success">0x' + Array.prototype.map.call(value, function(byte) {
+                return ('0' + (byte & 0xFF).toString(16)).slice(-2);
+              }).join('') + '</code>';
+            }
+            // Format regular arrays
+            return formatComplexValue(value, true);
+          }
+          // Format objects
+          return formatComplexValue(value, true);
+        }
+        
+        // Try to decode base64 to hex for strings that look like base64
+        var formattedValue = formatBase64ToHex(value);
+        return '<code class="text-success">' + escapeHtml(formattedValue) + '</code>';
+      }
+      
+      // For client values, only show red if they don't match expected
+      var cssClass = 'text-success';
+      if (expectedValue !== undefined && JSON.stringify(value) !== JSON.stringify(expectedValue)) {
+        cssClass = 'text-danger';
+      } else if (expectedValue === undefined) {
+        cssClass = 'text-muted';
       }
       
       if (typeof value === 'object') {
         if (Array.isArray(value)) {
-          return '<code>0x' + Array.prototype.map.call(value, function(byte) {
-            return ('0' + (byte & 0xFF).toString(16)).slice(-2);
-          }).join('') + '</code>';
+          // Format byte arrays as hex
+          if (value.length > 0 && typeof value[0] === 'number') {
+            return '<code class="' + cssClass + '">0x' + Array.prototype.map.call(value, function(byte) {
+              return ('0' + (byte & 0xFF).toString(16)).slice(-2);
+            }).join('') + '</code>';
+          }
+          // Format regular arrays
+          return formatComplexValue(value, cssClass);
         }
-        return '<code>' + escapeHtml(JSON.stringify(value)) + '</code>';
+        // Format objects
+        return formatComplexValue(value, cssClass);
       }
       
-      return '<code>' + escapeHtml(String(value)) + '</code>';
+      // Try to decode base64 to hex for strings that look like base64
+      var formattedValue = formatBase64ToHex(value);
+      return '<code class="' + cssClass + '">' + escapeHtml(formattedValue) + '</code>';
+    }
+    
+    // Convert base64 strings to hex format
+    function formatBase64ToHex(value) {
+      if (typeof value !== 'string') {
+        return String(value);
+      }
+      
+      // Check if it looks like base64 (length multiple of 4, valid base64 chars)
+      if (value.length > 0 && value.length % 4 === 0 && /^[A-Za-z0-9+/]*={0,2}$/.test(value)) {
+        try {
+          // Try to decode base64
+          var binaryString = atob(value);
+          var hexString = '';
+          for (var i = 0; i < binaryString.length; i++) {
+            var hex = binaryString.charCodeAt(i).toString(16);
+            hexString += (hex.length === 1 ? '0' : '') + hex;
+          }
+          
+          // If we got a reasonable hex string, return it with 0x prefix
+          if (hexString.length > 0) {
+            return '0x' + hexString;
+          }
+        } catch (e) {
+          // If base64 decode fails, just return original value
+        }
+      }
+      
+      return String(value);
+    }
+    
+    function formatComplexValue(value, cssClass) {
+      if (cssClass === true) cssClass = 'text-success';
+      var formatted = '<div class="' + cssClass + '" style="font-family: monospace; white-space: pre-wrap; max-height: 300px; overflow-y: auto;">';
+      formatted += escapeHtml(JSON.stringify(value, null, 2));
+      formatted += '</div>';
+      return formatted;
     }
 
     function escapeHtml(text) {
+      if (text === undefined || text === null) {
+        return '';
+      }
       var map = {
         '&': '&amp;',
         '<': '&lt;',
@@ -1265,7 +1687,7 @@
         '"': '&quot;',
         "'": '&#039;'
       };
-      return text.replace(/[&<>"']/g, function(m) { return map[m]; });
+      return String(text).replace(/[&<>"']/g, function(m) { return map[m]; });
     }
   })();
 

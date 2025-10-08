@@ -3,6 +3,7 @@ package handlers
 import (
 	"fmt"
 	"net/http"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -312,6 +313,8 @@ func buildCLClientsPageData(sortOrder string) (*models.ClientsCLPageData, time.D
 			pageData.Nodes[peerId] = node
 		}
 
+		node.ClientSpecs = client.GetSpecs()
+
 		if id != nil {
 			if node.ENR == "" {
 				node.ENR = id.Enr
@@ -406,7 +409,6 @@ func buildCLClientsPageData(sortOrder string) (*models.ClientsCLPageData, time.D
 			Status:               client.GetStatus().String(),
 			LastRefresh:          client.GetLastEventTime(),
 			SpecWarnings:         client.GetSpecWarnings(),
-			ClientSpecs:          client.GetSpecs(),
 		}
 
 		lastError := client.GetLastClientError()
@@ -687,33 +689,104 @@ func buildCLClientsPageData(sortOrder string) (*models.ClientsCLPageData, time.D
 		pageData.FuluActivationEpoch = ^uint64(0)
 	}
 
-	// Add expected chain spec for mismatch comparison (using client specs instead of chainspec)
-	pageData.ExpectedChainSpec = getCanonicalClientSpecs()
+	// Extract field orders from ChainSpecConfig, ChainSpecPreset and ChainSpecDomainTypes structs via reflection
+	configOrder, presetOrder, domainTypeOrder, expectedSpecsMap := getChainSpecFieldOrders()
+	pageData.ExpectedConfigFields = configOrder
+	pageData.ExpectedPresetFields = presetOrder
+	pageData.ExpectedDomainTypeFields = domainTypeOrder
+	pageData.ExpectedChainSpec = expectedSpecsMap
 
 	return pageData, cacheTime
 }
 
-func getCanonicalClientSpecs() map[string]interface{} {
-	// Get canonical specs from the first online client with specs
-	clients := services.GlobalBeaconService.GetConsensusClients()
-	
-	for _, client := range clients {
-		if client.GetStatus() == consensus.ClientStatusOnline {
-			specs := client.GetSpecs()
-			if specs != nil && len(specs) > 0 {
-				return specs
+// getChainSpecFieldOrders extracts field names from ChainSpecConfig, ChainSpecPreset and ChainSpecDomainTypes structs
+func getChainSpecFieldOrders() (configFields []string, presetFields []string, domainTypeFields []string, expectedValues map[string]interface{}) {
+	chainState := services.GlobalBeaconService.GetChainState()
+	specs := chainState.GetSpecs()
+	expectedValues = map[string]interface{}{}
+
+	encodeValue := func(value interface{}) interface{} {
+		switch v := value.(type) {
+		case time.Duration:
+			return uint64(v.Seconds())
+		}
+		return value
+	}
+
+	encodeBlobSchedule := func(value []consensus.BlobScheduleEntry) []map[string]interface{} {
+		result := []map[string]interface{}{}
+		for _, v := range value {
+			configType := reflect.TypeOf(v)
+			configValues := reflect.ValueOf(v)
+			blobSchedule := map[string]interface{}{}
+			for i := 0; i < configType.NumField(); i++ {
+				field := configType.Field(i)
+				yamlTag := field.Tag.Get("yaml")
+
+				if yamlTag != "" && yamlTag != "-" {
+					tagParts := strings.Split(yamlTag, ",")
+					if len(tagParts) > 0 && tagParts[0] != "" {
+						blobSchedule[tagParts[0]] = encodeValue(configValues.Field(i).Interface())
+					}
+				}
+			}
+			result = append(result, blobSchedule)
+		}
+		return result
+	}
+
+	// Get config fields
+	configType := reflect.TypeOf(specs.ChainSpecConfig)
+	configValues := reflect.ValueOf(specs.ChainSpecConfig)
+	for i := 0; i < configType.NumField(); i++ {
+		field := configType.Field(i)
+		yamlTag := field.Tag.Get("yaml")
+
+		if yamlTag != "" && yamlTag != "-" {
+			tagParts := strings.Split(yamlTag, ",")
+			if len(tagParts) > 0 && tagParts[0] != "" {
+				configFields = append(configFields, tagParts[0])
+
+				if tagParts[0] == "BLOB_SCHEDULE" {
+					expectedValues[tagParts[0]] = encodeBlobSchedule(configValues.Field(i).Interface().([]consensus.BlobScheduleEntry))
+				} else {
+					expectedValues[tagParts[0]] = encodeValue(configValues.Field(i).Interface())
+				}
 			}
 		}
 	}
-	
-	// If no online client has specs, try any client with specs
-	for _, client := range clients {
-		specs := client.GetSpecs()
-		if specs != nil && len(specs) > 0 {
-			return specs
+
+	// Get preset fields
+	presetType := reflect.TypeOf(specs.ChainSpecPreset)
+	presetValues := reflect.ValueOf(specs.ChainSpecPreset)
+	for i := 0; i < presetType.NumField(); i++ {
+		field := presetType.Field(i)
+		yamlTag := field.Tag.Get("yaml")
+
+		if yamlTag != "" && yamlTag != "-" {
+			tagParts := strings.Split(yamlTag, ",")
+			if len(tagParts) > 0 && tagParts[0] != "" {
+				presetFields = append(presetFields, tagParts[0])
+				expectedValues[tagParts[0]] = encodeValue(presetValues.Field(i).Interface())
+			}
 		}
 	}
-	
-	// Return empty map if no client has specs
-	return make(map[string]interface{})
+
+	// Get domain type fields
+	domainTypeType := reflect.TypeOf(specs.ChainSpecDomainTypes)
+	domainTypeValues := reflect.ValueOf(specs.ChainSpecDomainTypes)
+	for i := 0; i < domainTypeType.NumField(); i++ {
+		field := domainTypeType.Field(i)
+		yamlTag := field.Tag.Get("yaml")
+
+		if yamlTag != "" && yamlTag != "-" {
+			tagParts := strings.Split(yamlTag, ",")
+			if len(tagParts) > 0 && tagParts[0] != "" {
+				domainTypeFields = append(domainTypeFields, tagParts[0])
+				expectedValues[tagParts[0]] = encodeValue(domainTypeValues.Field(i).Interface())
+			}
+		}
+	}
+
+	return configFields, presetFields, domainTypeFields, expectedValues
 }

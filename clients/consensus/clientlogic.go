@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"runtime/debug"
+	"strings"
 	"time"
 
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
@@ -84,9 +85,24 @@ func (client *Client) checkClient() error {
 		return fmt.Errorf("error while fetching specs: %v", err)
 	}
 
+	warning, err := client.pool.chainState.setClientSpecs(specs)
+
+	for key, val := range specs {
+		switch v := val.(type) {
+		case time.Duration:
+			specs[key] = uint64(v.Seconds())
+		}
+
+		if strings.HasPrefix(key, "MESSAGE_DOMAIN_") {
+			bval, ok := val.([]byte)
+			if ok {
+				specs[key] = phase0.DomainType(bval)
+			}
+		}
+	}
+
 	client.specs = specs
 
-	warning, err := client.pool.chainState.setClientSpecs(specs)
 	if err != nil {
 		client.hasBadSpecs = true
 		return fmt.Errorf("invalid chain specs: %v", err)

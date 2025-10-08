@@ -63,7 +63,8 @@ func (cache *ChainState) SetClientConfig(config *rpc.EthConfig) ([]error, error)
 
 		// check current config
 		mismatches := cache.clientConfig.Current.CheckMismatch(currentConfig)
-		if len(mismatches) > 0 && cache.clientConfig.Current.ActivationTime < currentConfig.ActivationTime && currentConfig.ActivationTime >= uint64(time.Now().Unix()) {
+		//fmt.Printf("mismatches: %v, cached current activation time: %d, current activation time: %d, now: %d\n", len(mismatches), cache.clientConfig.Current.ActivationTime, currentConfig.ActivationTime, uint64(time.Now().Unix()))
+		if len(mismatches) > 0 && cache.clientConfig.Current.ActivationTime < currentConfig.ActivationTime && currentConfig.ActivationTime <= uint64(time.Now().Unix()) {
 			// current config changed
 			cache.clientConfig.Last = cache.clientConfig.Current
 			cache.clientConfig.Current = currentConfig
@@ -195,7 +196,7 @@ func (cache *ChainState) getBlobScheduleForTimestampFromConfig(timestamp time.Ti
 	var forkSchedule *rpc.EthConfigBlobSchedule
 
 	if cache.clientConfig.Next != nil && !cache.clientConfig.Next.GetActivationTime().After(timestamp) {
-		forkSchedule = &cache.clientConfig.Current.BlobSchedule
+		forkSchedule = &cache.clientConfig.Next.BlobSchedule
 	} else if cache.clientConfig.Current != nil && !cache.clientConfig.Current.GetActivationTime().After(timestamp) {
 		forkSchedule = &cache.clientConfig.Current.BlobSchedule
 	} else if cache.clientConfig.Last != nil && !cache.clientConfig.Last.GetActivationTime().After(timestamp) {
