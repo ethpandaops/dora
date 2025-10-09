@@ -13,23 +13,25 @@ type ClientsELPageData struct {
 	Nodes                  map[string]*ClientsELPageDataNode `json:"nodes"`
 	Sorting                string                            `json:"sorting"`
 	IsDefaultSorting       bool                              `json:"is_default_sorting"`
+	ExpectedEthConfig      *ClientELPageDataForkConfig       `json:"expected_eth_config"`
 }
 
 type ClientsELPageDataClient struct {
-	Index                int       `json:"index"`
-	Name                 string    `json:"name"`
-	Version              string    `json:"version"`
-	HeadSlot             uint64    `json:"head_slot"`
-	HeadRoot             []byte    `json:"head_root"`
-	Status               string    `json:"status"`
-	LastRefresh          time.Time `json:"refresh"`
-	LastError            string    `json:"error"`
-	PeerCount            uint32    `json:"peer_count"`
-	DidFetchPeers        bool      `json:"peers_fetched"`
-	PeersInboundCounter  uint32    `json:"peers_inbound_counter"`
-	PeersOutboundCounter uint32    `json:"peers_outbound_counter"`
-	PeerID               string    `json:"peer_id"`
-	ConfigWarnings       []string  `json:"config_warnings"`
+	Index                int                         `json:"index"`
+	Name                 string                      `json:"name"`
+	Version              string                      `json:"version"`
+	HeadSlot             uint64                      `json:"head_slot"`
+	HeadRoot             []byte                      `json:"head_root"`
+	Status               string                      `json:"status"`
+	LastRefresh          time.Time                   `json:"refresh"`
+	LastError            string                      `json:"error"`
+	PeerCount            uint32                      `json:"peer_count"`
+	DidFetchPeers        bool                        `json:"peers_fetched"`
+	PeersInboundCounter  uint32                      `json:"peers_inbound_counter"`
+	PeersOutboundCounter uint32                      `json:"peers_outbound_counter"`
+	PeerID               string                      `json:"peer_id"`
+	ConfigWarnings       []string                    `json:"config_warnings"`
+	ClientConfig         *ClientELPageDataForkConfig `json:"client_config"`
 }
 
 type ClientsELPageDataNode struct {

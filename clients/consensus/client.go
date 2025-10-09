@@ -56,6 +56,8 @@ type Client struct {
 	checkpointDispatcher    utils.Dispatcher[*v1.Finality]
 
 	specWarnings []string // warnings from incomplete spec checks
+	specs        map[string]interface{}
+	hasBadSpecs  bool
 }
 
 func (pool *Pool) newPoolClient(clientIdx uint16, endpoint *ClientConfig) (*Client, error) {
@@ -180,4 +182,8 @@ func (client *Client) GetNodePeers() []*v1.Peer {
 
 func (client *Client) GetSpecWarnings() []string {
 	return client.specWarnings
+}
+
+func (client *Client) GetSpecs() map[string]interface{} {
+	return client.specs
 }

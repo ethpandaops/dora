@@ -2109,7 +2109,7 @@ const docTemplate = `{
                 "client_type": {
                     "type": "string"
                 },
-                "column_indexes": {
+                "data_columns": {
                     "type": "array",
                     "items": {
                         "type": "integer"
@@ -2154,9 +2154,6 @@ const docTemplate = `{
                 },
                 "status": {
                     "type": "string"
-                },
-                "supports_data_column": {
-                    "type": "boolean"
                 },
                 "version": {
                     "type": "string"
