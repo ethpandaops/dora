@@ -29,7 +29,7 @@ definitions:
         type: string
       client_type:
         type: string
-      column_indexes:
+      data_columns:
         items:
           type: integer
         type: array
@@ -60,8 +60,6 @@ definitions:
         type: integer
       status:
         type: string
-      supports_data_column:
-        type: boolean
       version:
         type: string
     type: object
