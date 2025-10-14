@@ -404,10 +404,7 @@ func buildELClientsPageData(sortOrder string) (*models.ClientsELPageData, time.D
 	// Add expected eth config from chain state
 	execChainState := services.GlobalBeaconService.GetExecutionChainState()
 	if execChainState != nil {
-		expectedConfig := execChainState.GetClientConfig()
-		if expectedConfig != nil {
-			pageData.ExpectedEthConfig = buildForkConfigFromEthConfig(expectedConfig)
-		}
+		pageData.ExpectedEthConfig = buildForkConfigFromEthConfig(execChainState.GetClientConfig())
 	}
 
 	return pageData, cacheTime
