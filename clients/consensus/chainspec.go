@@ -7,7 +7,6 @@ import (
 	"reflect"
 	"sort"
 	"sync"
-	"time"
 
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"gopkg.in/Knetic/govaluate.v3"
@@ -31,15 +30,15 @@ type ChainSpecConfig struct {
 	ConfigName string `yaml:"CONFIG_NAME" check-if:"false"`
 
 	// Transition
-	TerminalTotalDifficulty          uint64 `yaml:"TERMINAL_TOTAL_DIFFICULTY"`
-	TerminalBlockHash                []byte `yaml:"TERMINAL_BLOCK_HASH"`
-	TerminalBlockHashActivationEpoch uint64 `yaml:"TERMINAL_BLOCK_HASH_ACTIVATION_EPOCH"`
+	TerminalTotalDifficulty          uint64 `yaml:"TERMINAL_TOTAL_DIFFICULTY"            check-severity:"warning"`
+	TerminalBlockHash                []byte `yaml:"TERMINAL_BLOCK_HASH"                  check-severity:"warning"`
+	TerminalBlockHashActivationEpoch uint64 `yaml:"TERMINAL_BLOCK_HASH_ACTIVATION_EPOCH" check-severity:"warning"`
 
 	// Genesis
 	MinGenesisActiveValidatorCount uint64         `yaml:"MIN_GENESIS_ACTIVE_VALIDATOR_COUNT"`
-	MinGenesisTime                 time.Time      `yaml:"MIN_GENESIS_TIME"`
+	MinGenesisTime                 uint64         `yaml:"MIN_GENESIS_TIME"`
 	GenesisForkVersion             phase0.Version `yaml:"GENESIS_FORK_VERSION"`
-	GenesisDelay                   time.Duration  `yaml:"GENESIS_DELAY"`
+	GenesisDelay                   uint64         `yaml:"GENESIS_DELAY"`
 
 	// Forking
 	AltairForkVersion    phase0.Version `yaml:"ALTAIR_FORK_VERSION"    check-if-fork:"AltairForkEpoch"`
@@ -56,11 +55,11 @@ type ChainSpecConfig struct {
 	FuluForkEpoch        *uint64        `yaml:"FULU_FORK_EPOCH"        check-if-fork:"FuluForkEpoch"`
 
 	// Time parameters
-	SecondsPerSlot                  time.Duration `yaml:"SECONDS_PER_SLOT"`
-	SecondsPerEth1Block             time.Duration `yaml:"SECONDS_PER_ETH1_BLOCK"`
-	MinValidatorWithdrawbilityDelay uint64        `yaml:"MIN_VALIDATOR_WITHDRAWABILITY_DELAY"`
-	ShardCommitteePeriod            uint64        `yaml:"SHARD_COMMITTEE_PERIOD"`
-	Eth1FollowDistance              uint64        `yaml:"ETH1_FOLLOW_DISTANCE"`
+	SecondsPerSlot                  uint64 `yaml:"SECONDS_PER_SLOT"`
+	SecondsPerEth1Block             uint64 `yaml:"SECONDS_PER_ETH1_BLOCK"`
+	MinValidatorWithdrawbilityDelay uint64 `yaml:"MIN_VALIDATOR_WITHDRAWABILITY_DELAY"`
+	ShardCommitteePeriod            uint64 `yaml:"SHARD_COMMITTEE_PERIOD"`
+	Eth1FollowDistance              uint64 `yaml:"ETH1_FOLLOW_DISTANCE"`
 
 	// Validator cycle
 	InactivityScoreBias             uint64 `yaml:"INACTIVITY_SCORE_BIAS"`
@@ -101,8 +100,8 @@ type ChainSpecConfig struct {
 	MaxRequestBlocksDeneb            uint64 `yaml:"MAX_REQUEST_BLOCKS_DENEB"              check-if-fork:"DenebForkEpoch"`
 	MinEpochsForBlobSidecarsRequests uint64 `yaml:"MIN_EPOCHS_FOR_BLOB_SIDECARS_REQUESTS" check-if-fork:"DenebForkEpoch"`
 	BlobSidecarSubnetCount           uint64 `yaml:"BLOB_SIDECAR_SUBNET_COUNT"             check-if-fork:"DenebForkEpoch"`
-	MaxBlobsPerBlock                 uint64 `yaml:"MAX_BLOBS_PER_BLOCK"             check-if-fork:"DenebForkEpoch"`
-	MaxRequestBlobSidecars           uint64 `yaml:"MAX_REQUEST_BLOB_SIDECARS"              check-if-fork:"DenebForkEpoch"`
+	MaxBlobsPerBlock                 uint64 `yaml:"MAX_BLOBS_PER_BLOCK"                   check-if-fork:"DenebForkEpoch"`
+	MaxRequestBlobSidecars           uint64 `yaml:"MAX_REQUEST_BLOB_SIDECARS"             check-if-fork:"DenebForkEpoch"`
 
 	// Electra
 	MinPerEpochChurnLimitElectra        uint64 `yaml:"MIN_PER_EPOCH_CHURN_LIMIT_ELECTRA"         check-if-fork:"ElectraForkEpoch"`
@@ -253,8 +252,13 @@ func (chain *ChainSpec) ParseAdditive(values map[string]interface{}) error {
 	return nil
 }
 
-func (chain *ChainSpec) CheckMismatch(chain2 *ChainSpec) ([]string, error) {
-	mismatches := []string{}
+type SpecMismatch struct {
+	Name     string
+	Severity string
+}
+
+func (chain *ChainSpec) CheckMismatch(chain2 *ChainSpec) ([]SpecMismatch, error) {
+	mismatches := []SpecMismatch{}
 
 	genericSpecValues := map[string]any{}
 	specData, err := json.Marshal(chain)
@@ -276,6 +280,11 @@ func (chain *ChainSpec) CheckMismatch(chain2 *ChainSpec) ([]string, error) {
 			// Check both types of conditions
 			checkIfExpression := fieldT.Tag.Get("check-if")
 			checkIfFork := fieldT.Tag.Get("check-if-fork")
+			checkSeverity := fieldT.Tag.Get("check-severity")
+
+			if checkSeverity == "" {
+				checkSeverity = "error"
+			}
 
 			if checkIfFork != "" {
 				checkIfExpression = fmt.Sprintf("(%s ?? 18446744073709551615) < 18446744073709551615", checkIfFork)
@@ -309,7 +318,10 @@ func (chain *ChainSpec) CheckMismatch(chain2 *ChainSpec) ([]string, error) {
 				bytesB := field2V.Interface().([]byte)
 
 				if !bytes.Equal(bytesA, bytesB) {
-					mismatches = append(mismatches, chainT.Type().Field(i).Name)
+					mismatches = append(mismatches, SpecMismatch{
+						Name:     chainT.Type().Field(i).Name,
+						Severity: checkSeverity,
+					})
 				}
 			} else if fieldV.Type().Kind() == reflect.Slice && fieldV.Type().Elem() == reflect.TypeOf(BlobScheduleEntry{}) {
 				// compare blob schedule entries
@@ -327,7 +339,10 @@ func (chain *ChainSpec) CheckMismatch(chain2 *ChainSpec) ([]string, error) {
 				// compare each entry
 				for i := range blobScheduleA {
 					if len(blobScheduleB) > i && blobScheduleA[i] != blobScheduleB[i] {
-						mismatches = append(mismatches, fmt.Sprintf("%s[%d]", fieldT.Name, i))
+						mismatches = append(mismatches, SpecMismatch{
+							Name:     fmt.Sprintf("%s[%d]", fieldT.Name, i),
+							Severity: checkSeverity,
+						})
 						break
 					}
 				}
@@ -336,7 +351,10 @@ func (chain *ChainSpec) CheckMismatch(chain2 *ChainSpec) ([]string, error) {
 					// 0 value on chain side are allowed
 					continue
 				}
-				mismatches = append(mismatches, chainT.Type().Field(i).Name)
+				mismatches = append(mismatches, SpecMismatch{
+					Name:     chainT.Type().Field(i).Name,
+					Severity: checkSeverity,
+				})
 			}
 		}
 
