@@ -517,23 +517,23 @@ func GetSystemContractName(address []byte, systemContracts map[string]string) st
 func CalculateBalanceDiff(current []byte, previous []byte) template.HTML {
 	currentBig := new(big.Int).SetBytes(current)
 	previousBig := new(big.Int).SetBytes(previous)
-	
+
 	diff := new(big.Int).Sub(currentBig, previousBig)
-	
+
 	// If no difference, return empty
 	if diff.Sign() == 0 {
 		return template.HTML("")
 	}
-	
+
 	// Determine if positive or negative
 	isPositive := diff.Sign() > 0
-	
+
 	// Get absolute value for formatting
 	absDiff := new(big.Int).Abs(diff)
-	
+
 	// Format the difference
 	formattedDiff := FormatAmount(absDiff, "ETH", 18)
-	
+
 	// Add styling and sign
 	var class string
 	var sign string
@@ -544,7 +544,7 @@ func CalculateBalanceDiff(current []byte, previous []byte) template.HTML {
 		class = "negative"
 		sign = "-"
 	}
-	
-	return template.HTML(fmt.Sprintf(`<span class="bal-balance-diff %s">(%s%s)</span>`, 
+
+	return template.HTML(fmt.Sprintf(`<span class="bal-balance-diff %s">(%s%s)</span>`,
 		class, sign, formattedDiff))
 }
