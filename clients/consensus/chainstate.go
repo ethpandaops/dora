@@ -79,7 +79,21 @@ func (cs *ChainState) setClientSpecs(specValues map[string]interface{}) (error, 
 			return nil, err
 		}
 		if len(mismatches) > 0 {
-			return nil, fmt.Errorf("spec mismatch: %v", strings.Join(mismatches, ", "))
+			isError := false
+			mismatchesStr := []string{}
+			for _, mismatch := range mismatches {
+				if mismatch.Severity != "ignore" {
+					mismatchesStr = append(mismatchesStr, mismatch.Name)
+				}
+				if mismatch.Severity == "error" {
+					isError = true
+				}
+			}
+			if isError {
+				return nil, fmt.Errorf("spec mismatch: %v", strings.Join(mismatchesStr, ", "))
+			} else {
+				warning = fmt.Errorf("spec mismatch: %v", strings.Join(mismatchesStr, ", "))
+			}
 		}
 
 		newSpecs := &ChainSpec{}
@@ -93,7 +107,11 @@ func (cs *ChainState) setClientSpecs(specValues map[string]interface{}) (error, 
 			return nil, err
 		}
 		if len(mismatches) > 0 {
-			warning = fmt.Errorf("spec missing: %v", strings.Join(mismatches, ", "))
+			mismatchesStr := []string{}
+			for _, mismatch := range mismatches {
+				mismatchesStr = append(mismatchesStr, mismatch.Name)
+			}
+			warning = fmt.Errorf("spec missing: %v", strings.Join(mismatchesStr, ", "))
 		}
 	}
 
@@ -114,7 +132,7 @@ func (cs *ChainState) initWallclock() {
 		return
 	}
 
-	cs.wallclock = ethwallclock.NewEthereumBeaconChain(cs.genesis.GenesisTime, cs.specs.SecondsPerSlot, cs.specs.SlotsPerEpoch)
+	cs.wallclock = ethwallclock.NewEthereumBeaconChain(cs.genesis.GenesisTime, time.Duration(cs.specs.SecondsPerSlot)*time.Second, cs.specs.SlotsPerEpoch)
 	cs.wallclock.OnEpochChanged(func(current ethwallclock.Epoch) {
 		cs.wallclockEpochDispatcher.Fire(&current)
 	})
@@ -210,7 +228,7 @@ func (cs *ChainState) SlotToTime(slot phase0.Slot) time.Time {
 		return time.Time{}
 	}
 
-	return cs.genesis.GenesisTime.Add(time.Duration(slot) * cs.specs.SecondsPerSlot)
+	return cs.genesis.GenesisTime.Add(time.Duration(uint64(slot)*cs.specs.SecondsPerSlot) * time.Second)
 }
 
 func (cs *ChainState) EpochToTime(epoch phase0.Epoch) time.Time {
@@ -218,7 +236,7 @@ func (cs *ChainState) EpochToTime(epoch phase0.Epoch) time.Time {
 		return time.Time{}
 	}
 
-	return cs.genesis.GenesisTime.Add(time.Duration(cs.EpochToSlot(epoch)) * cs.specs.SecondsPerSlot)
+	return cs.genesis.GenesisTime.Add(time.Duration(uint64(cs.EpochToSlot(epoch))*cs.specs.SecondsPerSlot) * time.Second)
 }
 
 func (cs *ChainState) TimeToSlot(timestamp time.Time) phase0.Slot {
@@ -230,7 +248,7 @@ func (cs *ChainState) TimeToSlot(timestamp time.Time) phase0.Slot {
 		return 0
 	}
 
-	return phase0.Slot(uint64((timestamp.Sub(cs.genesis.GenesisTime)).Seconds()) / uint64(cs.specs.SecondsPerSlot.Seconds()))
+	return phase0.Slot(uint64((timestamp.Sub(cs.genesis.GenesisTime)).Seconds()) / cs.specs.SecondsPerSlot)
 }
 
 func (cs *ChainState) SlotToSlotIndex(slot phase0.Slot) phase0.Slot {

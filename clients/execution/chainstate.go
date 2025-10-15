@@ -24,7 +24,7 @@ type ChainState struct {
 	specMutex         sync.RWMutex
 	specs             *rpc.ChainSpec
 	clientConfigMutex sync.RWMutex
-	clientConfig      *rpc.EthConfig
+	clientConfig      rpc.EthConfig
 	config            *core.Genesis
 }
 
@@ -58,44 +58,58 @@ func (cache *ChainState) SetClientConfig(config *rpc.EthConfig) ([]error, error)
 
 	warnings := []error{}
 
-	if cache.clientConfig != nil {
-		currentConfig := config.Current
-		nextConfig := config.Next
-		lastConfig := config.Last
+	currentConfig := config.Current
+	nextConfig := config.Next
+	lastConfig := config.Last
 
+	if cache.clientConfig.Current != nil {
 		// check current config
 		mismatches := cache.clientConfig.Current.CheckMismatch(currentConfig)
-		//fmt.Printf("mismatches: %v, cached current activation time: %d, current activation time: %d, now: %d\n", len(mismatches), cache.clientConfig.Current.ActivationTime, currentConfig.ActivationTime, uint64(time.Now().Unix()))
 		if len(mismatches) > 0 && cache.clientConfig.Current.ActivationTime < currentConfig.ActivationTime && currentConfig.ActivationTime <= uint64(time.Now().Unix()) {
 			// current config changed
-			cache.clientConfig.Last = cache.clientConfig.Current
 			cache.clientConfig.Current = currentConfig
 			cache.clientConfig.Next = nextConfig
 		} else if len(mismatches) > 0 {
 			return nil, fmt.Errorf("client config mismatch: %v", strings.Join(mismatches, ", "))
 		}
+	} else {
+		cache.clientConfig.Current = currentConfig
+	}
 
-		if lastConfig == nil && cache.clientConfig.Last != nil {
-			warnings = append(warnings, fmt.Errorf("last config is nil"))
-		} else if lastConfig != nil && cache.clientConfig.Last == nil {
-			cache.clientConfig.Last = lastConfig
-		} else if lastConfig != nil {
-			if lastMismatches := cache.clientConfig.Last.CheckMismatch(lastConfig); len(lastMismatches) > 0 {
-				warnings = append(warnings, fmt.Errorf("last config mismatch: %v", strings.Join(lastMismatches, ", ")))
-			}
-		}
-
+	if cache.clientConfig.Next != nil {
 		if nextConfig == nil && cache.clientConfig.Next != nil {
 			warnings = append(warnings, fmt.Errorf("next config is nil"))
 		} else if nextConfig != nil && cache.clientConfig.Next == nil {
 			cache.clientConfig.Next = nextConfig
 		} else if nextConfig != nil {
 			if nextMismatches := cache.clientConfig.Next.CheckMismatch(nextConfig); len(nextMismatches) > 0 {
-				warnings = append(warnings, fmt.Errorf("next config mismatch: %v", strings.Join(nextMismatches, ", ")))
+				if nextConfig.ActivationTime < cache.clientConfig.Next.ActivationTime && nextConfig.ActivationTime > uint64(time.Now().Unix()) {
+					cache.clientConfig.Next = nextConfig
+				} else {
+					warnings = append(warnings, fmt.Errorf("next config mismatch: %v", strings.Join(nextMismatches, ", ")))
+				}
 			}
 		}
 	} else {
-		cache.clientConfig = config
+		cache.clientConfig.Next = nextConfig
+	}
+
+	if cache.clientConfig.Last != nil {
+		if lastConfig == nil && cache.clientConfig.Last != nil {
+			warnings = append(warnings, fmt.Errorf("last config is nil"))
+		} else if lastConfig != nil && cache.clientConfig.Last == nil {
+			cache.clientConfig.Last = lastConfig
+		} else if lastConfig != nil {
+			if lastMismatches := cache.clientConfig.Last.CheckMismatch(lastConfig); len(lastMismatches) > 0 {
+				if lastConfig.ActivationTime > cache.clientConfig.Last.ActivationTime {
+					cache.clientConfig.Last = lastConfig
+				} else {
+					warnings = append(warnings, fmt.Errorf("last config mismatch: %v", strings.Join(lastMismatches, ", ")))
+				}
+			}
+		}
+	} else {
+		cache.clientConfig.Last = lastConfig
 	}
 
 	return warnings, nil
@@ -130,7 +144,7 @@ func (cache *ChainState) getCurrentEthConfig() *rpc.EthConfigFork {
 	cache.clientConfigMutex.RLock()
 	defer cache.clientConfigMutex.RUnlock()
 
-	if cache.clientConfig == nil || cache.clientConfig.Current == nil {
+	if cache.clientConfig.Current == nil {
 		return nil
 	}
 
@@ -169,7 +183,7 @@ func (cache *ChainState) GetGenesisConfig() *core.Genesis {
 func (cache *ChainState) GetClientConfig() *rpc.EthConfig {
 	cache.clientConfigMutex.RLock()
 	defer cache.clientConfigMutex.RUnlock()
-	return cache.clientConfig
+	return &cache.clientConfig
 }
 
 func (cache *ChainState) GetBlobScheduleForTimestamp(timestamp time.Time) *rpc.EthConfigBlobSchedule {
@@ -191,7 +205,7 @@ func (cache *ChainState) getBlobScheduleForTimestampFromConfig(timestamp time.Ti
 	cache.clientConfigMutex.RLock()
 	defer cache.clientConfigMutex.RUnlock()
 
-	if cache.clientConfig == nil || cache.clientConfig.Current == nil {
+	if cache.clientConfig.Current == nil {
 		return nil
 	}
 
@@ -331,6 +345,10 @@ func (cache *ChainState) CalcBaseFeePerBlobGas(excessBlobGas uint64, updateFract
 	// result = base * (2^factor) * (updateFraction + remainder) / updateFraction
 
 	base := big.NewInt(MinBaseFeePerBlobGas)
+
+	if updateFraction == 0 {
+		return big.NewInt(0)
+	}
 
 	factor := new(big.Int).Div(new(big.Int).SetUint64(excessBlobGas), new(big.Int).SetUint64(updateFraction))
 	remainder := new(big.Int).Mod(new(big.Int).SetUint64(excessBlobGas), new(big.Int).SetUint64(updateFraction))

@@ -179,7 +179,7 @@ func buildCLClientsPageData(sortOrder string) (*models.ClientsCLPageData, time.D
 	var cacheTime time.Duration
 	specs := chainState.GetSpecs()
 	if specs != nil {
-		cacheTime = specs.SecondsPerSlot
+		cacheTime = time.Duration(specs.SecondsPerSlot) * time.Second
 	} else {
 		cacheTime = 1 * time.Second
 	}
