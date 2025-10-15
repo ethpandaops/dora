@@ -28,6 +28,7 @@ const docTemplate = `{
                     "clients"
                 ],
                 "summary": "Get consensus clients information",
+                "operationId": "getConsensusClients",
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -69,6 +70,7 @@ const docTemplate = `{
                     "clients"
                 ],
                 "summary": "Get execution clients information",
+                "operationId": "getExecutionClients",
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -110,6 +112,7 @@ const docTemplate = `{
                     "consolidation_requests"
                 ],
                 "summary": "Get consolidation requests list",
+                "operationId": "getConsolidationRequests",
                 "parameters": [
                     {
                         "type": "integer",
@@ -231,6 +234,7 @@ const docTemplate = `{
                     "das-guardian"
                 ],
                 "summary": "Scan all nodes using DAS Guardian",
+                "operationId": "massDasGuardianScan",
                 "parameters": [
                     {
                         "description": "Mass scan parameters",
@@ -292,6 +296,7 @@ const docTemplate = `{
                     "das-guardian"
                 ],
                 "summary": "Scan a node using DAS Guardian",
+                "operationId": "scanDasGuardian",
                 "parameters": [
                     {
                         "description": "Node ENR to scan",
@@ -353,6 +358,7 @@ const docTemplate = `{
                     "deposits"
                 ],
                 "summary": "Get deposits included in blocks",
+                "operationId": "getDepositsIncluded",
                 "parameters": [
                     {
                         "type": "integer",
@@ -462,6 +468,7 @@ const docTemplate = `{
                     "deposits"
                 ],
                 "summary": "Get deposit queue",
+                "operationId": "getDepositsQueue",
                 "parameters": [
                     {
                         "type": "integer",
@@ -547,6 +554,7 @@ const docTemplate = `{
                     "deposits"
                 ],
                 "summary": "Get deposit transactions",
+                "operationId": "getDepositsTransactions",
                 "parameters": [
                     {
                         "type": "integer",
@@ -659,6 +667,7 @@ const docTemplate = `{
                     "Epoch"
                 ],
                 "summary": "Get epoch by number, latest, finalized",
+                "operationId": "getEpoch",
                 "parameters": [
                     {
                         "type": "string",
@@ -715,6 +724,7 @@ const docTemplate = `{
                     "epochs"
                 ],
                 "summary": "Get epochs list",
+                "operationId": "getEpochs",
                 "parameters": [
                     {
                         "type": "integer",
@@ -770,6 +780,7 @@ const docTemplate = `{
                     "mev_blocks"
                 ],
                 "summary": "Get MEV blocks",
+                "operationId": "getMevBlocks",
                 "parameters": [
                     {
                         "type": "integer",
@@ -867,6 +878,7 @@ const docTemplate = `{
                     "network"
                 ],
                 "summary": "Get network forks",
+                "operationId": "getNetworkForks",
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -899,6 +911,7 @@ const docTemplate = `{
                     "network"
                 ],
                 "summary": "Get network overview",
+                "operationId": "getNetworkOverview",
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -931,6 +944,7 @@ const docTemplate = `{
                     "network"
                 ],
                 "summary": "Get network splits",
+                "operationId": "getNetworkSplits",
                 "parameters": [
                     {
                         "type": "boolean",
@@ -971,6 +985,7 @@ const docTemplate = `{
                     "slashings"
                 ],
                 "summary": "Get slashings list",
+                "operationId": "getSlashings",
                 "parameters": [
                     {
                         "type": "integer",
@@ -1071,6 +1086,7 @@ const docTemplate = `{
                     "Slot"
                 ],
                 "summary": "Get slot information",
+                "operationId": "getSlot",
                 "parameters": [
                     {
                         "type": "string",
@@ -1127,6 +1143,7 @@ const docTemplate = `{
                     "Slot"
                 ],
                 "summary": "Get filtered slots list",
+                "operationId": "getSlots",
                 "parameters": [
                     {
                         "type": "string",
@@ -1287,6 +1304,7 @@ const docTemplate = `{
                     "Validator"
                 ],
                 "summary": "Get up to 100 validators",
+                "operationId": "getValidatorPost",
                 "parameters": [
                     {
                         "description": "Up to 100 validator indicesOrPubkeys, comma separated",
@@ -1338,6 +1356,7 @@ const docTemplate = `{
                     "Validator"
                 ],
                 "summary": "Get all validators that belong to an eth1 address",
+                "operationId": "getValidatorByEth1Address",
                 "parameters": [
                     {
                         "type": "string",
@@ -1399,6 +1418,7 @@ const docTemplate = `{
                     "Validator"
                 ],
                 "summary": "Get all validators that have a specific withdrawal credentials",
+                "operationId": "getWithdrawalCredentialsValidators",
                 "parameters": [
                     {
                         "type": "string",
@@ -1463,6 +1483,7 @@ const docTemplate = `{
                     "Validator"
                 ],
                 "summary": "Get up to 100 validators",
+                "operationId": "getValidator",
                 "parameters": [
                     {
                         "type": "string",
@@ -1513,6 +1534,7 @@ const docTemplate = `{
                     "Validators"
                 ],
                 "summary": "Get validator execution layer deposits",
+                "operationId": "getValidatorDeposits",
                 "parameters": [
                     {
                         "type": "string",
@@ -1566,6 +1588,7 @@ const docTemplate = `{
                     "validator_names"
                 ],
                 "summary": "Get validator names",
+                "operationId": "getValidatorNames",
                 "parameters": [
                     {
                         "type": "string",
@@ -1627,6 +1650,7 @@ const docTemplate = `{
                     "validator_names"
                 ],
                 "summary": "Get validator names",
+                "operationId": "getValidatorNames",
                 "parameters": [
                     {
                         "type": "string",
@@ -1690,6 +1714,7 @@ const docTemplate = `{
                     "validators"
                 ],
                 "summary": "Get validators list",
+                "operationId": "getValidators",
                 "parameters": [
                     {
                         "type": "integer",
@@ -1775,6 +1800,7 @@ const docTemplate = `{
                     "validators"
                 ],
                 "summary": "Get validators activity statistics",
+                "operationId": "getValidatorsActivity",
                 "parameters": [
                     {
                         "type": "integer",
@@ -1848,6 +1874,7 @@ const docTemplate = `{
                     "voluntary_exits"
                 ],
                 "summary": "Get voluntary exits list",
+                "operationId": "getVoluntaryExits",
                 "parameters": [
                     {
                         "type": "integer",
@@ -1939,6 +1966,7 @@ const docTemplate = `{
                     "withdrawal_requests"
                 ],
                 "summary": "Get withdrawal requests list",
+                "operationId": "getWithdrawalRequests",
                 "parameters": [
                     {
                         "type": "integer",
@@ -2081,7 +2109,7 @@ const docTemplate = `{
                 "client_type": {
                     "type": "string"
                 },
-                "column_indexes": {
+                "data_columns": {
                     "type": "array",
                     "items": {
                         "type": "integer"
@@ -2126,9 +2154,6 @@ const docTemplate = `{
                 },
                 "status": {
                     "type": "string"
-                },
-                "supports_data_column": {
-                    "type": "boolean"
                 },
                 "version": {
                     "type": "string"

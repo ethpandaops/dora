@@ -98,7 +98,7 @@ func buildSubmitDepositPageData() (*models.SubmitDepositPageData, time.Duration)
 	pageData := &models.SubmitDepositPageData{
 		NetworkName:                specs.ConfigName,
 		DepositContract:            specs.DepositContractAddress,
-		PublicRPCUrl:               utils.Config.Frontend.PublicRPCUrl,
+		PublicRPCUrl:               utils.GetFrontendRPCUrl(),
 		RainbowkitProjectId:        utils.Config.Frontend.RainbowkitProjectId,
 		ChainId:                    specs.DepositChainId,
 		GenesisForkVersion:         specs.GenesisForkVersion[:],

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import Select, { createFilter, OptionProps } from 'react-select'
 import { IValidator } from './SubmitConsolidationsFormProps';
 import { FilterOptionOption } from 'react-select/dist/declarations/src/filters';
@@ -23,33 +23,58 @@ const ValidatorSelector = (props: IValidatorSelectorProps): React.ReactElement =
     setOptions(props.validators);
   }, [props.validators]);
 
-  const handleInputChange = (newValue: string) => {
+  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  
+  const handleInputChange = useCallback((newValue: string) => {
     setInputValue(newValue);
+    
+    // Clear existing debounce timer
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
     
     if (props.isLazyLoaded && props.searchValidatorsCallback) {
       const searchTerm = newValue.trim();
       
       if (searchTerm.length > 0) {
-        setIsLoading(true);
-        setIsSearching(true);
-        props.searchValidatorsCallback(searchTerm)
-          .then(results => {
-            setSearchResults(results);
-            setOptions(results);
-            setIsLoading(false);
-          })
-          .catch(() => {
-            setIsLoading(false);
-          });
+        // Only show loading after a small delay to avoid flickering
+        const loadingTimer = setTimeout(() => {
+          setIsLoading(true);
+        }, 100);
+        
+        // Debounce the search request
+        debounceTimerRef.current = setTimeout(() => {
+          clearTimeout(loadingTimer);
+          setIsLoading(true);
+          setIsSearching(true);
+          props.searchValidatorsCallback(searchTerm)
+            .then(results => {
+              setSearchResults(results);
+              setOptions(results);
+              setIsLoading(false);
+            })
+            .catch(() => {
+              setIsLoading(false);
+            });
+        }, 300); // 300ms debounce delay
       } else {
         // Reset to original validators list when search is cleared
         setIsSearching(false);
         setOptions(props.validators);
       }
     }
-  };
+  }, [props.isLazyLoaded, props.searchValidatorsCallback, props.validators]);
+  
+  // Cleanup debounce timer on unmount
+  useEffect(() => {
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
+  }, []);
 
-  const filterOptions = (option: FilterOptionOption<IValidator>, inputValue: string) => {
+  const filterOptions = useCallback((option: FilterOptionOption<IValidator>, inputValue: string) => {
     if (props.isLazyLoaded && isSearching) {
       return true; // Server-side filtering when actively searching
     }
@@ -63,7 +88,7 @@ const ValidatorSelector = (props: IValidatorSelectorProps): React.ReactElement =
       }
     }
     return true;
-  };
+  }, [props.isLazyLoaded, isSearching]);
 
   return (
     <div>
@@ -92,9 +117,7 @@ const ValidatorSelector = (props: IValidatorSelectorProps): React.ReactElement =
             </ValidatorOption>
           )
         }}
-        onChange={(e) => {
-          props.onChange(e);
-        }}
+        onChange={props.onChange}
         filterOption={filterOptions}
         isMulti={false}
         getOptionValue={(o) => o.pubkey}

@@ -49,6 +49,7 @@ type APINetworkForkInfo struct {
 // @Success 200 {object} APINetworkForksResponse
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Router /v1/network/forks [get]
+// @ID getNetworkForks
 func APINetworkForksV1(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
