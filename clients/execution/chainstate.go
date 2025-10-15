@@ -344,6 +344,10 @@ func (cache *ChainState) CalcBaseFeePerBlobGas(excessBlobGas uint64, updateFract
 
 	base := big.NewInt(MinBaseFeePerBlobGas)
 
+	if updateFraction == 0 {
+		return big.NewInt(0)
+	}
+
 	factor := new(big.Int).Div(new(big.Int).SetUint64(excessBlobGas), new(big.Int).SetUint64(updateFraction))
 	remainder := new(big.Int).Mod(new(big.Int).SetUint64(excessBlobGas), new(big.Int).SetUint64(updateFraction))
 
