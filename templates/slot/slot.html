@@ -326,7 +326,10 @@
       {{ end }}
     </div>
     <script type="text/javascript">
-      Array.prototype.forEach.call(document.getElementById("tabContent").querySelectorAll(".tab-pane"), function(paneEl, paneIdx) {
+      Array.prototype.forEach.call(document.getElementById("tabContent").children, function(paneEl, paneIdx) {
+        if(!paneEl.classList.contains("tab-pane")) {
+          return;
+        }
         if(paneIdx > 0) {
           paneEl.classList.remove("active");
           paneEl.classList.remove("show");

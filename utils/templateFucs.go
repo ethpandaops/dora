@@ -83,6 +83,7 @@ func GetTemplateFuncs() template.FuncMap {
 		"formatAlertNumber":            formatAlertNumber,
 		"isSystemContract":             IsSystemContract,
 		"getSystemContractName":        GetSystemContractName,
+		"calculateBalanceDiff":         CalculateBalanceDiff,
 	}
 
 	for k, v := range customFuncs {

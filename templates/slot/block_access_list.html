@@ -21,12 +21,12 @@
     .bal-address-card {
       border: 1px solid rgba(108, 117, 125, 0.2);
       border-radius: 0.375rem;
-      margin-bottom: 0.5rem;
+      margin: 0 0.5rem 0.5rem 0.5rem;
       overflow: hidden;
     }
     .bal-address-header {
       background-color: rgba(108, 117, 125, 0.05);
-      padding: 0.75rem 1rem;
+      padding: 0.25rem 0.5rem;
       font-weight: 500;
       cursor: pointer;
       transition: background-color 0.2s;
@@ -118,13 +118,26 @@
       margin-left: 0.25rem;
     }
     .bal-system-badge {
-      background-color: #ffc107;
-      color: #000;
+      background-color: #6c757d;
+      color: #fff;
       padding: 0.125rem 0.375rem;
       border-radius: 0.25rem;
       font-size: 0.75rem;
       font-weight: 500;
       margin-left: 0.5rem;
+    }
+    .bal-address-tab-header {
+      padding: 0.25rem 0.75rem;
+    }
+    .bal-balance-diff {
+      font-size: 0.75rem;
+      margin-left: 0.5rem;
+    }
+    .bal-balance-diff.positive {
+      color: #198754;
+    }
+    .bal-balance-diff.negative {
+      color: #dc3545;
     }
   </style>
 
@@ -180,64 +193,57 @@
             <div class="bal-address-content">
               <!-- Nav tabs -->
               <ul class="nav nav-tabs mb-0" role="tablist">
-                {{ $firstTab := true }}
                 {{ if $entry.StorageChanges }}
                   <li class="nav-item" role="presentation">
-                    <button class="nav-link{{ if $firstTab }} active{{ end }}" data-bs-toggle="tab" data-bs-target="#storage-{{ $i }}" type="button">
+                    <button class="nav-link active bal-address-tab-header" data-bs-toggle="tab" data-bs-target="#bal-storage-{{ $i }}" type="button">
                       <i class="fas fa-database me-1"></i>
                       Storage Changes 
                       <span class="badge bg-primary ms-1">{{ len $entry.StorageChanges }}</span>
                     </button>
                   </li>
-                  {{ $firstTab = false }}
                 {{ end }}
                 {{ if $entry.StorageReads }}
                   <li class="nav-item" role="presentation">
-                    <button class="nav-link{{ if $firstTab }} active{{ end }}" data-bs-toggle="tab" data-bs-target="#storage-reads-{{ $i }}" type="button">
+                    <button class="nav-link{{ if not $entry.StorageChanges }} active{{ end }} bal-address-tab-header" data-bs-toggle="tab" data-bs-target="#bal-storage-reads-{{ $i }}" type="button">
                       <i class="fas fa-eye me-1"></i>
                       Storage Reads
                       <span class="badge bg-secondary ms-1">{{ len $entry.StorageReads }}</span>
                     </button>
                   </li>
-                  {{ $firstTab = false }}
                 {{ end }}
                 {{ if $entry.BalanceChanges }}
                   <li class="nav-item" role="presentation">
-                    <button class="nav-link{{ if $firstTab }} active{{ end }}" data-bs-toggle="tab" data-bs-target="#balance-{{ $i }}" type="button">
+                    <button class="nav-link{{ if and (not $entry.StorageChanges) (not $entry.StorageReads) }} active{{ end }} bal-address-tab-header" data-bs-toggle="tab" data-bs-target="#bal-balance-{{ $i }}" type="button">
                       <i class="fas fa-coins me-1"></i>
                       Balance Changes
                       <span class="badge bg-warning text-dark ms-1">{{ len $entry.BalanceChanges }}</span>
                     </button>
                   </li>
-                  {{ $firstTab = false }}
                 {{ end }}
                 {{ if $entry.NonceChanges }}
                   <li class="nav-item" role="presentation">
-                    <button class="nav-link{{ if $firstTab }} active{{ end }}" data-bs-toggle="tab" data-bs-target="#nonce-{{ $i }}" type="button">
+                    <button class="nav-link{{ if and (not $entry.StorageChanges) (not $entry.StorageReads) (not $entry.BalanceChanges) }} active{{ end }} bal-address-tab-header" data-bs-toggle="tab" data-bs-target="#bal-nonce-{{ $i }}" type="button">
                       <i class="fas fa-hashtag me-1"></i>
                       Nonce Changes
                       <span class="badge bg-info text-dark ms-1">{{ len $entry.NonceChanges }}</span>
                     </button>
                   </li>
-                  {{ $firstTab = false }}
                 {{ end }}
                 {{ if $entry.CodeChanges }}
                   <li class="nav-item" role="presentation">
-                    <button class="nav-link{{ if $firstTab }} active{{ end }}" data-bs-toggle="tab" data-bs-target="#code-{{ $i }}" type="button">
+                    <button class="nav-link{{ if and (not $entry.StorageChanges) (not $entry.StorageReads) (not $entry.BalanceChanges) (not $entry.NonceChanges) }} active{{ end }} bal-address-tab-header" data-bs-toggle="tab" data-bs-target="#bal-code-{{ $i }}" type="button">
                       <i class="fas fa-code me-1"></i>
                       Code Changes
                       <span class="badge bg-success ms-1">{{ len $entry.CodeChanges }}</span>
                     </button>
                   </li>
-                  {{ $firstTab = false }}
                 {{ end }}
               </ul>
 
               <!-- Tab content -->
               <div class="tab-content bal-tab-content">
-                <!-- Storage Changes Tab -->
                 {{ if $entry.StorageChanges }}
-                <div class="tab-pane fade show active" id="storage-{{ $i }}" role="tabpanel">
+                <div class="tab-pane fade show active" id="bal-storage-{{ $i }}" role="tabpanel">
                   <div class="table-responsive">
                     <table class="table table-sm">
                       <thead>
@@ -264,65 +270,10 @@
                     </table>
                   </div>
                 </div>
-                {{ else if $entry.StorageReads }}
-                <!-- Storage Reads Tab -->
-                <div class="tab-pane fade show active" id="storage-reads-{{ $i }}" role="tabpanel">
-                  <div class="text-monospace" style="max-height: 300px; overflow-y: auto;">
-                    {{ range $j, $slot := $entry.StorageReads }}
-                      <div class="bal-change-item">0x{{ printf "%x" $slot }}</div>
-                    {{ end }}
-                  </div>
-                </div>
-                {{ else if $entry.BalanceChanges }}
-                <!-- Balance Changes Tab -->
-                <div class="tab-pane fade show active" id="balance-{{ $i }}" role="tabpanel">
-                  <div>
-                    {{ range $entry.BalanceChanges }}
-                      <div class="bal-change-item">
-                        <span class="bal-tx-index">{{ if eq .BlockAccessIndex 0 }}Pre-execution{{ else if eq .BlockAccessIndex 65535 }}Post-execution{{ else }}Tx {{ .BlockAccessIndex }}{{ end }}</span>
-                        <span class="bal-balance-value">{{ formatAmount .Balance "ETH" 18 }}</span>
-                      </div>
-                    {{ end }}
-                  </div>
-                </div>
-                {{ else if $entry.NonceChanges }}
-                <!-- Nonce Changes Tab -->
-                <div class="tab-pane fade show active" id="nonce-{{ $i }}" role="tabpanel">
-                  <div>
-                    {{ range $entry.NonceChanges }}
-                      <div class="bal-change-item">
-                        <span class="bal-tx-index">{{ if eq .BlockAccessIndex 0 }}Pre-execution{{ else if eq .BlockAccessIndex 65535 }}Post-execution{{ else }}Tx {{ .BlockAccessIndex }}{{ end }}</span>
-                        <span class="bal-value-text">Nonce: {{ .Nonce }}</span>
-                      </div>
-                    {{ end }}
-                  </div>
-                </div>
-                {{ else if $entry.CodeChanges }}
-                <!-- Code Changes Tab -->
-                <div class="tab-pane fade show active" id="code-{{ $i }}" role="tabpanel">
-                  <div>
-                    {{ range $entry.CodeChanges }}
-                      <div class="mb-3">
-                        <div class="d-flex justify-content-between align-items-center mb-2">
-                          <span class="bal-tx-index">{{ if eq .BlockAccessIndex 0 }}Pre-execution{{ else if eq .BlockAccessIndex 65535 }}Post-execution{{ else }}Tx {{ .BlockAccessIndex }}{{ end }}</span>
-                          <span class="text-muted">{{ len .Code }} bytes</span>
-                        </div>
-                        <div class="bal-change-item text-break" style="max-height: 200px; overflow-y: auto;">
-                          {{ if .Code }}
-                            0x{{ printf "%x" .Code }}
-                          {{ else }}
-                            <span class="bal-empty">Empty code (self-destruct)</span>
-                          {{ end }}
-                        </div>
-                      </div>
-                    {{ end }}
-                  </div>
-                </div>
                 {{ end }}
 
-                <!-- Additional non-first tabs -->
                 {{ if $entry.StorageReads }}
-                <div class="tab-pane fade{{ if not $entry.StorageChanges }} show active{{ end }}" id="storage-reads-{{ $i }}" role="tabpanel">
+                <div class="tab-pane fade{{ if not $entry.StorageChanges }} show active{{ end }}" id="bal-storage-reads-{{ $i }}" role="tabpanel">
                   <div class="text-monospace" style="max-height: 300px; overflow-y: auto;">
                     {{ range $j, $slot := $entry.StorageReads }}
                       <div class="bal-change-item">0x{{ printf "%x" $slot }}</div>
@@ -332,12 +283,16 @@
                 {{ end }}
 
                 {{ if $entry.BalanceChanges }}
-                <div class="tab-pane fade{{ if and (not $entry.StorageChanges) (not $entry.StorageReads) }} show active{{ end }}" id="balance-{{ $i }}" role="tabpanel">
+                <div class="tab-pane fade{{ if and (not $entry.StorageChanges) (not $entry.StorageReads) }} show active{{ end }}" id="bal-balance-{{ $i }}" role="tabpanel">
                   <div>
-                    {{ range $entry.BalanceChanges }}
+                    {{ range $j, $change := $entry.BalanceChanges }}
                       <div class="bal-change-item">
                         <span class="bal-tx-index">{{ if eq .BlockAccessIndex 0 }}Pre-execution{{ else if eq .BlockAccessIndex 65535 }}Post-execution{{ else }}Tx {{ .BlockAccessIndex }}{{ end }}</span>
-                        <span class="bal-balance-value">{{ formatAmount .Balance "ETH" 18 }}</span>
+                        <span class="bal-balance-value">{{ formatBytesAmount .Balance "ETH" 18 }}</span>
+                        {{ if gt $j 0 }}
+                          {{ $prevChange := index $entry.BalanceChanges (sub $j 1) }}
+                          {{ calculateBalanceDiff .Balance $prevChange.Balance }}
+                        {{ end }}
                       </div>
                     {{ end }}
                   </div>
@@ -345,7 +300,7 @@
                 {{ end }}
 
                 {{ if $entry.NonceChanges }}
-                <div class="tab-pane fade{{ if and (not $entry.StorageChanges) (not $entry.StorageReads) (not $entry.BalanceChanges) }} show active{{ end }}" id="nonce-{{ $i }}" role="tabpanel">
+                <div class="tab-pane fade{{ if and (not $entry.StorageChanges) (not $entry.StorageReads) (not $entry.BalanceChanges) }} show active{{ end }}" id="bal-nonce-{{ $i }}" role="tabpanel">
                   <div>
                     {{ range $entry.NonceChanges }}
                       <div class="bal-change-item">
@@ -358,7 +313,7 @@
                 {{ end }}
 
                 {{ if $entry.CodeChanges }}
-                <div class="tab-pane fade{{ if and (not $entry.StorageChanges) (not $entry.StorageReads) (not $entry.BalanceChanges) (not $entry.NonceChanges) }} show active{{ end }}" id="code-{{ $i }}" role="tabpanel">
+                <div class="tab-pane fade{{ if and (not $entry.StorageChanges) (not $entry.StorageReads) (not $entry.BalanceChanges) (not $entry.NonceChanges) }} show active{{ end }}" id="bal-code-{{ $i }}" role="tabpanel">
                   <div>
                     {{ range $entry.CodeChanges }}
                       <div class="mb-3">
