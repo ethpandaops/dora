@@ -21,6 +21,7 @@ type SlotPageData struct {
 	ProposerName           string                `json:"proposer_name"`
 	Block                  *SlotPageBlockData    `json:"block"`
 	Badges                 []*SlotPageBlockBadge `json:"badges"`
+	SystemContracts        map[string]string     `json:"system_contracts"`
 }
 
 type SlotPageBlockBadge struct {

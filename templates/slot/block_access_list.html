@@ -21,17 +21,65 @@
     .bal-address-card {
       border: 1px solid rgba(108, 117, 125, 0.2);
       border-radius: 0.375rem;
-      margin-bottom: 1rem;
+      margin-bottom: 0.5rem;
       overflow: hidden;
     }
     .bal-address-header {
       background-color: rgba(108, 117, 125, 0.05);
       padding: 0.75rem 1rem;
-      border-bottom: 1px solid rgba(108, 117, 125, 0.2);
       font-weight: 500;
+      cursor: pointer;
+      transition: background-color 0.2s;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .bal-address-header:hover {
+      background-color: rgba(108, 117, 125, 0.1);
+    }
+    .bal-address-header .chevron {
+      transition: transform 0.3s;
+    }
+    .bal-address-header.collapsed .chevron {
+      transform: rotate(-90deg);
+    }
+    .bal-address-summary {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .bal-summary-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.25rem 0.5rem;
+      border-radius: 0.25rem;
+      font-size: 0.75rem;
+      font-weight: 500;
+      gap: 0.25rem;
+    }
+    .bal-summary-badge.storage-write {
+      background-color: rgba(13, 110, 253, 0.15);
+      color: #0d6efd;
+    }
+    .bal-summary-badge.storage-read {
+      background-color: rgba(108, 117, 125, 0.15);
+      color: #6c757d;
+    }
+    .bal-summary-badge.balance-change {
+      background-color: rgba(255, 193, 7, 0.15);
+      color: #cc9a06;
+    }
+    .bal-summary-badge.nonce-change {
+      background-color: rgba(13, 202, 240, 0.15);
+      color: #0a97b9;
+    }
+    .bal-summary-badge.code-change {
+      background-color: rgba(25, 135, 84, 0.15);
+      color: #157347;
     }
     .bal-address-content {
-      padding: 1rem;
+      padding: 0;
     }
     .bal-change-item {
       background-color: rgba(108, 117, 125, 0.05);
@@ -61,71 +109,135 @@
     .bal-tab-content {
       min-height: 200px;
     }
+    .bal-balance-value {
+      font-family: monospace;
+    }
+    .bal-balance-unit {
+      font-size: 0.875rem;
+      color: #6c757d;
+      margin-left: 0.25rem;
+    }
+    .bal-system-badge {
+      background-color: #ffc107;
+      color: #000;
+      padding: 0.125rem 0.375rem;
+      border-radius: 0.25rem;
+      font-size: 0.75rem;
+      font-weight: 500;
+      margin-left: 0.5rem;
+    }
   </style>
 
   <div class="bal-content">
     {{ if .Block.ExecutionData.BlockAccessList }}
       {{ range $i, $entry := .Block.ExecutionData.BlockAccessList }}
         <div class="bal-address-card">
-          <div class="bal-address-header">
-            <i class="fas fa-wallet me-2"></i>
-            Address: {{ ethAddressLink $entry.Address }}
+          <div class="bal-address-header" data-bs-toggle="collapse" data-bs-target="#bal-collapse-{{ $i }}" aria-expanded="false" aria-controls="bal-collapse-{{ $i }}">
+            <div>
+              <i class="fas fa-chevron-down chevron me-2"></i>
+              <i class="fas fa-wallet me-2"></i>
+              {{ ethAddressLink $entry.Address }}
+              {{ if isSystemContract $entry.Address $.SystemContracts }}
+                <span class="bal-system-badge">
+                  <i class="fas fa-cog me-1"></i>{{ getSystemContractName $entry.Address $.SystemContracts }}
+                </span>
+              {{ end }}
+            </div>
+            <div class="bal-address-summary">
+              {{ if $entry.StorageChanges }}
+                <span class="bal-summary-badge storage-write">
+                  <i class="fas fa-database"></i>
+                  {{ len $entry.StorageChanges }} writes
+                </span>
+              {{ end }}
+              {{ if $entry.StorageReads }}
+                <span class="bal-summary-badge storage-read">
+                  <i class="fas fa-eye"></i>
+                  {{ len $entry.StorageReads }} reads
+                </span>
+              {{ end }}
+              {{ if $entry.BalanceChanges }}
+                <span class="bal-summary-badge balance-change">
+                  <i class="fas fa-coins"></i>
+                  {{ len $entry.BalanceChanges }} balance
+                </span>
+              {{ end }}
+              {{ if $entry.NonceChanges }}
+                <span class="bal-summary-badge nonce-change">
+                  <i class="fas fa-hashtag"></i>
+                  {{ len $entry.NonceChanges }} nonce
+                </span>
+              {{ end }}
+              {{ if $entry.CodeChanges }}
+                <span class="bal-summary-badge code-change">
+                  <i class="fas fa-code"></i>
+                  {{ len $entry.CodeChanges }} code
+                </span>
+              {{ end }}
+            </div>
           </div>
-          <div class="bal-address-content">
-            <!-- Nav tabs -->
-            <ul class="nav nav-tabs mb-3" role="tablist">
-              <li class="nav-item" role="presentation">
-                <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#storage-{{ $i }}" type="button">
-                  <i class="fas fa-database me-1"></i>
-                  Storage Changes 
-                  {{ if $entry.StorageChanges }}
-                    <span class="badge bg-primary ms-1">{{ len $entry.StorageChanges }}</span>
-                  {{ end }}
-                </button>
-              </li>
-              <li class="nav-item" role="presentation">
-                <button class="nav-link" data-bs-toggle="tab" data-bs-target="#storage-reads-{{ $i }}" type="button">
-                  <i class="fas fa-eye me-1"></i>
-                  Storage Reads
-                  {{ if $entry.StorageReads }}
-                    <span class="badge bg-secondary ms-1">{{ len $entry.StorageReads }}</span>
-                  {{ end }}
-                </button>
-              </li>
-              <li class="nav-item" role="presentation">
-                <button class="nav-link" data-bs-toggle="tab" data-bs-target="#balance-{{ $i }}" type="button">
-                  <i class="fas fa-coins me-1"></i>
-                  Balance Changes
-                  {{ if $entry.BalanceChanges }}
-                    <span class="badge bg-warning text-dark ms-1">{{ len $entry.BalanceChanges }}</span>
-                  {{ end }}
-                </button>
-              </li>
-              <li class="nav-item" role="presentation">
-                <button class="nav-link" data-bs-toggle="tab" data-bs-target="#nonce-{{ $i }}" type="button">
-                  <i class="fas fa-hashtag me-1"></i>
-                  Nonce Changes
-                  {{ if $entry.NonceChanges }}
-                    <span class="badge bg-info text-dark ms-1">{{ len $entry.NonceChanges }}</span>
-                  {{ end }}
-                </button>
-              </li>
-              <li class="nav-item" role="presentation">
-                <button class="nav-link" data-bs-toggle="tab" data-bs-target="#code-{{ $i }}" type="button">
-                  <i class="fas fa-code me-1"></i>
-                  Code Changes
-                  {{ if $entry.CodeChanges }}
-                    <span class="badge bg-success ms-1">{{ len $entry.CodeChanges }}</span>
-                  {{ end }}
-                </button>
-              </li>
-            </ul>
-
-            <!-- Tab content -->
-            <div class="tab-content bal-tab-content">
-              <!-- Storage Changes Tab -->
-              <div class="tab-pane fade show active" id="storage-{{ $i }}" role="tabpanel">
+          <div class="collapse" id="bal-collapse-{{ $i }}">
+            <div class="bal-address-content">
+              <!-- Nav tabs -->
+              <ul class="nav nav-tabs mb-0" role="tablist">
+                {{ $firstTab := true }}
                 {{ if $entry.StorageChanges }}
+                  <li class="nav-item" role="presentation">
+                    <button class="nav-link{{ if $firstTab }} active{{ end }}" data-bs-toggle="tab" data-bs-target="#storage-{{ $i }}" type="button">
+                      <i class="fas fa-database me-1"></i>
+                      Storage Changes 
+                      <span class="badge bg-primary ms-1">{{ len $entry.StorageChanges }}</span>
+                    </button>
+                  </li>
+                  {{ $firstTab = false }}
+                {{ end }}
+                {{ if $entry.StorageReads }}
+                  <li class="nav-item" role="presentation">
+                    <button class="nav-link{{ if $firstTab }} active{{ end }}" data-bs-toggle="tab" data-bs-target="#storage-reads-{{ $i }}" type="button">
+                      <i class="fas fa-eye me-1"></i>
+                      Storage Reads
+                      <span class="badge bg-secondary ms-1">{{ len $entry.StorageReads }}</span>
+                    </button>
+                  </li>
+                  {{ $firstTab = false }}
+                {{ end }}
+                {{ if $entry.BalanceChanges }}
+                  <li class="nav-item" role="presentation">
+                    <button class="nav-link{{ if $firstTab }} active{{ end }}" data-bs-toggle="tab" data-bs-target="#balance-{{ $i }}" type="button">
+                      <i class="fas fa-coins me-1"></i>
+                      Balance Changes
+                      <span class="badge bg-warning text-dark ms-1">{{ len $entry.BalanceChanges }}</span>
+                    </button>
+                  </li>
+                  {{ $firstTab = false }}
+                {{ end }}
+                {{ if $entry.NonceChanges }}
+                  <li class="nav-item" role="presentation">
+                    <button class="nav-link{{ if $firstTab }} active{{ end }}" data-bs-toggle="tab" data-bs-target="#nonce-{{ $i }}" type="button">
+                      <i class="fas fa-hashtag me-1"></i>
+                      Nonce Changes
+                      <span class="badge bg-info text-dark ms-1">{{ len $entry.NonceChanges }}</span>
+                    </button>
+                  </li>
+                  {{ $firstTab = false }}
+                {{ end }}
+                {{ if $entry.CodeChanges }}
+                  <li class="nav-item" role="presentation">
+                    <button class="nav-link{{ if $firstTab }} active{{ end }}" data-bs-toggle="tab" data-bs-target="#code-{{ $i }}" type="button">
+                      <i class="fas fa-code me-1"></i>
+                      Code Changes
+                      <span class="badge bg-success ms-1">{{ len $entry.CodeChanges }}</span>
+                    </button>
+                  </li>
+                  {{ $firstTab = false }}
+                {{ end }}
+              </ul>
+
+              <!-- Tab content -->
+              <div class="tab-content bal-tab-content">
+                <!-- Storage Changes Tab -->
+                {{ if $entry.StorageChanges }}
+                <div class="tab-pane fade show active" id="storage-{{ $i }}" role="tabpanel">
                   <div class="table-responsive">
                     <table class="table table-sm">
                       <thead>
@@ -151,43 +263,31 @@
                       </tbody>
                     </table>
                   </div>
-                {{ else }}
-                  <p class="bal-empty">No storage changes recorded</p>
-                {{ end }}
-              </div>
-
-              <!-- Storage Reads Tab -->
-              <div class="tab-pane fade" id="storage-reads-{{ $i }}" role="tabpanel">
-                {{ if $entry.StorageReads }}
+                </div>
+                {{ else if $entry.StorageReads }}
+                <!-- Storage Reads Tab -->
+                <div class="tab-pane fade show active" id="storage-reads-{{ $i }}" role="tabpanel">
                   <div class="text-monospace" style="max-height: 300px; overflow-y: auto;">
                     {{ range $j, $slot := $entry.StorageReads }}
                       <div class="bal-change-item">0x{{ printf "%x" $slot }}</div>
                     {{ end }}
                   </div>
-                {{ else }}
-                  <p class="bal-empty">No storage reads recorded</p>
-                {{ end }}
-              </div>
-
-              <!-- Balance Changes Tab -->
-              <div class="tab-pane fade" id="balance-{{ $i }}" role="tabpanel">
-                {{ if $entry.BalanceChanges }}
+                </div>
+                {{ else if $entry.BalanceChanges }}
+                <!-- Balance Changes Tab -->
+                <div class="tab-pane fade show active" id="balance-{{ $i }}" role="tabpanel">
                   <div>
                     {{ range $entry.BalanceChanges }}
                       <div class="bal-change-item">
                         <span class="bal-tx-index">{{ if eq .BlockAccessIndex 0 }}Pre-execution{{ else if eq .BlockAccessIndex 65535 }}Post-execution{{ else }}Tx {{ .BlockAccessIndex }}{{ end }}</span>
-                        <span class="bal-value-text">0x{{ printf "%x" .Balance }}</span>
+                        <span class="bal-balance-value">{{ formatAmount .Balance "ETH" 18 }}</span>
                       </div>
                     {{ end }}
                   </div>
-                {{ else }}
-                  <p class="bal-empty">No balance changes recorded</p>
-                {{ end }}
-              </div>
-
-              <!-- Nonce Changes Tab -->
-              <div class="tab-pane fade" id="nonce-{{ $i }}" role="tabpanel">
-                {{ if $entry.NonceChanges }}
+                </div>
+                {{ else if $entry.NonceChanges }}
+                <!-- Nonce Changes Tab -->
+                <div class="tab-pane fade show active" id="nonce-{{ $i }}" role="tabpanel">
                   <div>
                     {{ range $entry.NonceChanges }}
                       <div class="bal-change-item">
@@ -196,14 +296,10 @@
                       </div>
                     {{ end }}
                   </div>
-                {{ else }}
-                  <p class="bal-empty">No nonce changes recorded</p>
-                {{ end }}
-              </div>
-
-              <!-- Code Changes Tab -->
-              <div class="tab-pane fade" id="code-{{ $i }}" role="tabpanel">
-                {{ if $entry.CodeChanges }}
+                </div>
+                {{ else if $entry.CodeChanges }}
+                <!-- Code Changes Tab -->
+                <div class="tab-pane fade show active" id="code-{{ $i }}" role="tabpanel">
                   <div>
                     {{ range $entry.CodeChanges }}
                       <div class="mb-3">
@@ -221,8 +317,66 @@
                       </div>
                     {{ end }}
                   </div>
-                {{ else }}
-                  <p class="bal-empty">No code changes recorded</p>
+                </div>
+                {{ end }}
+
+                <!-- Additional non-first tabs -->
+                {{ if $entry.StorageReads }}
+                <div class="tab-pane fade{{ if not $entry.StorageChanges }} show active{{ end }}" id="storage-reads-{{ $i }}" role="tabpanel">
+                  <div class="text-monospace" style="max-height: 300px; overflow-y: auto;">
+                    {{ range $j, $slot := $entry.StorageReads }}
+                      <div class="bal-change-item">0x{{ printf "%x" $slot }}</div>
+                    {{ end }}
+                  </div>
+                </div>
+                {{ end }}
+
+                {{ if $entry.BalanceChanges }}
+                <div class="tab-pane fade{{ if and (not $entry.StorageChanges) (not $entry.StorageReads) }} show active{{ end }}" id="balance-{{ $i }}" role="tabpanel">
+                  <div>
+                    {{ range $entry.BalanceChanges }}
+                      <div class="bal-change-item">
+                        <span class="bal-tx-index">{{ if eq .BlockAccessIndex 0 }}Pre-execution{{ else if eq .BlockAccessIndex 65535 }}Post-execution{{ else }}Tx {{ .BlockAccessIndex }}{{ end }}</span>
+                        <span class="bal-balance-value">{{ formatAmount .Balance "ETH" 18 }}</span>
+                      </div>
+                    {{ end }}
+                  </div>
+                </div>
+                {{ end }}
+
+                {{ if $entry.NonceChanges }}
+                <div class="tab-pane fade{{ if and (not $entry.StorageChanges) (not $entry.StorageReads) (not $entry.BalanceChanges) }} show active{{ end }}" id="nonce-{{ $i }}" role="tabpanel">
+                  <div>
+                    {{ range $entry.NonceChanges }}
+                      <div class="bal-change-item">
+                        <span class="bal-tx-index">{{ if eq .BlockAccessIndex 0 }}Pre-execution{{ else if eq .BlockAccessIndex 65535 }}Post-execution{{ else }}Tx {{ .BlockAccessIndex }}{{ end }}</span>
+                        <span class="bal-value-text">Nonce: {{ .Nonce }}</span>
+                      </div>
+                    {{ end }}
+                  </div>
+                </div>
+                {{ end }}
+
+                {{ if $entry.CodeChanges }}
+                <div class="tab-pane fade{{ if and (not $entry.StorageChanges) (not $entry.StorageReads) (not $entry.BalanceChanges) (not $entry.NonceChanges) }} show active{{ end }}" id="code-{{ $i }}" role="tabpanel">
+                  <div>
+                    {{ range $entry.CodeChanges }}
+                      <div class="mb-3">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                          <span class="bal-tx-index">{{ if eq .BlockAccessIndex 0 }}Pre-execution{{ else if eq .BlockAccessIndex 65535 }}Post-execution{{ else }}Tx {{ .BlockAccessIndex }}{{ end }}</span>
+                          <span class="text-muted">{{ len .Code }} bytes</span>
+                        </div>
+                        <div class="bal-change-item text-break" style="max-height: 200px; overflow-y: auto;">
+                          {{ if .Code }}
+                            0x{{ printf "%x" .Code }}
+                          {{ else }}
+                            <span class="bal-empty">Empty code (self-destruct)</span>
+                          {{ end }}
+                        </div>
+                      </div>
+                    {{ end }}
+                  </div>
+                </div>
                 {{ end }}
               </div>
             </div>
@@ -238,11 +392,32 @@
   </div>
 
   <script>
-    // Initialize tooltips if needed
     document.addEventListener('DOMContentLoaded', function() {
+      // Initialize tooltips if needed
       var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
       var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
         return new bootstrap.Tooltip(tooltipTriggerEl)
+      });
+      
+      // Handle chevron rotation on collapse
+      document.querySelectorAll('.bal-address-header').forEach(function(header) {
+        const target = header.getAttribute('data-bs-target');
+        const collapse = document.querySelector(target);
+        
+        if (collapse) {
+          collapse.addEventListener('show.bs.collapse', function() {
+            header.classList.remove('collapsed');
+          });
+          
+          collapse.addEventListener('hide.bs.collapse', function() {
+            header.classList.add('collapsed');
+          });
+          
+          // Set initial state
+          if (!collapse.classList.contains('show')) {
+            header.classList.add('collapsed');
+          }
+        }
       });
     });
   </script>

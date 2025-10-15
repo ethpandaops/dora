@@ -18,12 +18,14 @@ import (
 	"github.com/attestantio/go-eth2-client/spec/deneb"
 	"github.com/attestantio/go-eth2-client/spec/electra"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
+	"github.com/ethereum/go-ethereum/common"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/types/bal"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
 
+	"github.com/ethpandaops/dora/clients/execution/rpc"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/indexer/beacon"
@@ -294,6 +296,33 @@ func buildSlotPageData(ctx context.Context, blockSlot int64, blockRoot []byte) (
 					ClassName:   "text-bg-warning",
 				})
 			}
+		}
+	}
+
+	// Add system contract addresses
+	pageData.SystemContracts = make(map[string]string)
+
+	// Get system contract addresses from execution chain state
+	if execChainState := services.GlobalBeaconService.GetExecutionChainState(); execChainState != nil {
+		// Add known system contracts
+		consolidationAddr := execChainState.GetSystemContractAddress(rpc.ConsolidationRequestContract)
+		pageData.SystemContracts[consolidationAddr.Hex()] = "Consolidation Request Contract (EIP-7251)"
+
+		withdrawalAddr := execChainState.GetSystemContractAddress(rpc.WithdrawalRequestContract)
+		pageData.SystemContracts[withdrawalAddr.Hex()] = "Withdrawal Request Contract (EIP-7002)"
+
+		beaconRootsAddr := execChainState.GetSystemContractAddress(rpc.BeaconRootsContract)
+		pageData.SystemContracts[beaconRootsAddr.Hex()] = "Beacon Roots Contract (EIP-4788)"
+
+		historyStorageAddr := execChainState.GetSystemContractAddress(rpc.HistoryStorageContract)
+		pageData.SystemContracts[historyStorageAddr.Hex()] = "History Storage Contract (EIP-2935)"
+	}
+
+	// Add deposit contract from beacon chain config
+	if chainState := services.GlobalBeaconService.GetChainState(); chainState != nil {
+		if specs := chainState.GetSpecs(); specs != nil && specs.DepositContractAddress != nil {
+			depositAddr := common.BytesToAddress(specs.DepositContractAddress)
+			pageData.SystemContracts[depositAddr.Hex()] = "Deposit Contract"
 		}
 	}
 

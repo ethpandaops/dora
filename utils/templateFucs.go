@@ -81,6 +81,8 @@ func GetTemplateFuncs() template.FuncMap {
 		"formatRecvDelay":              FormatRecvDelay,
 		"formatPercentageAlert":        formatPercentageAlert,
 		"formatAlertNumber":            formatAlertNumber,
+		"isSystemContract":             IsSystemContract,
+		"getSystemContractName":        GetSystemContractName,
 	}
 
 	for k, v := range customFuncs {

@@ -496,3 +496,19 @@ func formatAlertNumber(displayText string, value float64, yellowThreshold float6
 		return template.HTML(displayText)
 	}
 }
+
+// IsSystemContract checks if an address is a known system contract
+func IsSystemContract(address []byte, systemContracts map[string]string) bool {
+	addressStr := common.BytesToAddress(address).Hex()
+	_, isSystem := systemContracts[addressStr]
+	return isSystem
+}
+
+// GetSystemContractName returns the name of a system contract if it exists
+func GetSystemContractName(address []byte, systemContracts map[string]string) string {
+	addressStr := common.BytesToAddress(address).Hex()
+	if name, exists := systemContracts[addressStr]; exists {
+		return name
+	}
+	return ""
+}
