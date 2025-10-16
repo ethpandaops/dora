@@ -893,7 +893,7 @@
 
         <!-- Spec Mismatch Modal -->
         <div class="modal fade" id="specMismatchModal" tabindex="-1" role="dialog" aria-labelledby="specMismatchModalTitle" aria-hidden="true">
-          <div class="modal-dialog modal-dialog-centered" style="max-width: 1420px; width: 1420px;" role="document">
+          <div class="modal-dialog modal-dialog-centered config-modal-dialog" role="document">
             <div class="modal-content">
               <div class="modal-header">
                 <h5 class="modal-title" id="specMismatchModalTitle">
@@ -1431,9 +1431,9 @@
     function createSpecComparisonSection(sectionName, orderedFields, expectedSpecs, clientSpecs) {
       var sectionHtml = '<div class="mb-4">';
       sectionHtml += '<h6 class="text-primary">' + sectionName + '</h6>';
-      sectionHtml += '<div class="table-responsive" style="min-width: 1350px;">';
-      sectionHtml += '<table class="table table-striped table-hover table-sm" style="table-layout: fixed; width: 1350px;">';
-      sectionHtml += '<thead class="table-dark"><tr><th style="width: 450px; min-width: 450px;">Field</th><th style="width: 450px; min-width: 450px;">Client</th><th style="width: 450px; min-width: 450px;">Expected</th></tr></thead>';
+      sectionHtml += '<div class="table-responsive">';
+      sectionHtml += '<table class="table table-striped table-hover table-sm config-comparison-table">';
+      sectionHtml += '<thead class="table-dark"><tr><th class="config-field-col">Field</th><th class="config-client-col">Client</th><th class="config-expected-col">Expected</th></tr></thead>';
       sectionHtml += '<tbody>';
       
       // Show fields in the order provided
@@ -1491,9 +1491,9 @@
         return sectionHtml;
       }
       
-      sectionHtml += '<div class="table-responsive" style="min-width: 900px;">';
-      sectionHtml += '<table class="table table-striped table-hover table-sm" style="table-layout: fixed; width: 900px;">';
-      sectionHtml += '<thead class="table-dark"><tr><th style="width: 450px; min-width: 450px;">Field</th><th style="width: 450px; min-width: 450px;">Client</th></tr></thead>';
+      sectionHtml += '<div class="table-responsive">';
+      sectionHtml += '<table class="table table-striped table-hover table-sm config-comparison-table-2col">';
+      sectionHtml += '<thead class="table-dark"><tr><th class="config-field-col-2">Field</th><th class="config-client-col-2">Client</th></tr></thead>';
       sectionHtml += '<tbody>';
       
       // Sort additional fields alphabetically
