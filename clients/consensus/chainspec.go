@@ -30,7 +30,7 @@ type ChainSpecConfig struct {
 	ConfigName string `yaml:"CONFIG_NAME" check-if:"false"`
 
 	// Transition
-	TerminalTotalDifficulty          uint64 `yaml:"TERMINAL_TOTAL_DIFFICULTY"            check-severity:"warning"`
+	TerminalTotalDifficulty          string `yaml:"TERMINAL_TOTAL_DIFFICULTY"            check-severity:"warning"`
 	TerminalBlockHash                []byte `yaml:"TERMINAL_BLOCK_HASH"                  check-severity:"warning"`
 	TerminalBlockHashActivationEpoch uint64 `yaml:"TERMINAL_BLOCK_HASH_ACTIVATION_EPOCH" check-severity:"warning"`
 
