@@ -65,7 +65,6 @@ require (
 	github.com/davidlazar/go-crypto v0.0.0-20200604182044-b73af7476f6c // indirect
 	github.com/emicklei/dot v1.9.1 // indirect
 	github.com/ethereum/c-kzg-4844/v2 v2.1.3 // indirect
-	github.com/ethereum/go-bigmodexpfix v0.0.0-20250911101455-f9e208c548ab // indirect
 	github.com/filecoin-project/go-clock v0.1.0 // indirect
 	github.com/flynn/noise v1.1.0 // indirect
 	github.com/francoispqt/gojay v1.2.13 // indirect
@@ -257,3 +256,7 @@ require (
 	modernc.org/memory v1.11.0 // indirect
 	modernc.org/sqlite v1.38.2 // indirect
 )
+
+replace github.com/attestantio/go-eth2-client => github.com/pk910/go-eth2-client v0.0.0-20250925114125-8cac04566494
+
+replace github.com/ethereum/go-ethereum => github.com/jihoonsong/go-ethereum v0.0.0-20250919084946-f39c348dbf88
