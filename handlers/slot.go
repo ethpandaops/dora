@@ -88,6 +88,14 @@ func Slot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if urlArgs.Get("action") == "parse-access-list" {
+		if err := handleSlotParseAccessList(w, r); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		return
+	}
+
 	pageData, pageError := getSlotPageData(blockSlot, blockRootHash)
 	if pageError != nil {
 		handlePageError(w, r, pageError)
@@ -1094,4 +1102,104 @@ func handleSlotDownload(ctx context.Context, w http.ResponseWriter, blockSlot in
 	default:
 		return fmt.Errorf("unknown download type: %s", downloadType)
 	}
+}
+
+func handleSlotParseAccessList(w http.ResponseWriter, r *http.Request) error {
+	w.Header().Set("Content-Type", "application/json")
+
+	if r.Method != http.MethodPost {
+		return fmt.Errorf("method not allowed")
+	}
+
+	rlpHex := r.PostFormValue("rlp")
+	if rlpHex == "" {
+		return fmt.Errorf("missing rlp parameter")
+	}
+
+	// Remove 0x prefix if present
+	rlpHex = strings.TrimPrefix(rlpHex, "0x")
+
+	// Decode hex to bytes
+	rlpBytes, err := hex.DecodeString(rlpHex)
+	if err != nil {
+		return fmt.Errorf("invalid hex: %v", err)
+	}
+
+	// Parse RLP encoded access list
+	var blockAccessList bal.BlockAccessList
+	err = blockAccessList.DecodeRLP(rlp.NewStream(bytes.NewReader(rlpBytes), 0))
+	if err != nil {
+		return fmt.Errorf("invalid access list RLP: %v", err)
+	}
+
+	// Convert to our model format
+	result := make([]*models.SlotPageBlockAccessListEntry, len(blockAccessList))
+	for i, entry := range blockAccessList {
+		balEntry := &models.SlotPageBlockAccessListEntry{
+			Address: entry.Address[:],
+		}
+
+		// Convert storage changes
+		if len(entry.StorageChanges) > 0 {
+			balEntry.StorageChanges = make([]*models.SlotPageBlockBALStorageChange, len(entry.StorageChanges))
+			for j, storageChange := range entry.StorageChanges {
+				changes := make([]*models.SlotPageBlockBALStorageSlotChange, len(storageChange.Accesses))
+				for k, write := range storageChange.Accesses {
+					changes[k] = &models.SlotPageBlockBALStorageSlotChange{
+						BlockAccessIndex: write.TxIdx,
+						Value:            write.ValueAfter[:],
+					}
+				}
+				balEntry.StorageChanges[j] = &models.SlotPageBlockBALStorageChange{
+					Slot:    storageChange.Slot[:],
+					Changes: changes,
+				}
+			}
+		}
+
+		// Convert storage reads
+		if len(entry.StorageReads) > 0 {
+			balEntry.StorageReads = make([][]byte, len(entry.StorageReads))
+			for j, read := range entry.StorageReads {
+				balEntry.StorageReads[j] = read[:]
+			}
+		}
+
+		// Convert balance changes
+		if len(entry.BalanceChanges) > 0 {
+			balEntry.BalanceChanges = make([]*models.SlotPageBlockBALBalanceChange, len(entry.BalanceChanges))
+			for j, balanceChange := range entry.BalanceChanges {
+				balEntry.BalanceChanges[j] = &models.SlotPageBlockBALBalanceChange{
+					BlockAccessIndex: balanceChange.TxIdx,
+					Balance:          balanceChange.Balance.Bytes(),
+				}
+			}
+		}
+
+		// Convert nonce changes
+		if len(entry.NonceChanges) > 0 {
+			balEntry.NonceChanges = make([]*models.SlotPageBlockBALNonceChange, len(entry.NonceChanges))
+			for j, nonceChange := range entry.NonceChanges {
+				balEntry.NonceChanges[j] = &models.SlotPageBlockBALNonceChange{
+					BlockAccessIndex: nonceChange.TxIdx,
+					Nonce:            nonceChange.Nonce,
+				}
+			}
+		}
+
+		// Convert code changes
+		if len(entry.CodeChanges) > 0 {
+			balEntry.CodeChanges = make([]*models.SlotPageBlockBALCodeChange, len(entry.CodeChanges))
+			for j, codeChange := range entry.CodeChanges {
+				balEntry.CodeChanges[j] = &models.SlotPageBlockBALCodeChange{
+					BlockAccessIndex: codeChange.TxIdx,
+					Code:             codeChange.Code,
+				}
+			}
+		}
+
+		result[i] = balEntry
+	}
+
+	return json.NewEncoder(w).Encode(result)
 }
