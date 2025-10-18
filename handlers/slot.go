@@ -285,6 +285,14 @@ func buildSlotPageData(ctx context.Context, blockSlot int64, blockRoot []byte) (
 		pageData.ProposerName = services.GlobalBeaconService.GetValidatorName(pageData.Proposer)
 		pageData.Block = getSlotPageBlockData(blockData, epochStatsValues)
 
+		// Create transaction details map for access list UI
+		if pageData.Block != nil && pageData.Block.Transactions != nil {
+			pageData.TransactionDetails = make(map[uint64]*models.SlotPageTransaction)
+			for _, tx := range pageData.Block.Transactions {
+				pageData.TransactionDetails[tx.Index] = tx
+			}
+		}
+
 		// check mev block
 		if pageData.Block.ExecutionData != nil {
 			mevBlock := db.GetMevBlockByBlockHash(pageData.Block.ExecutionData.BlockHash)

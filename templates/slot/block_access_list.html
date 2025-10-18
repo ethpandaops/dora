@@ -139,6 +139,53 @@
     .bal-balance-diff.negative {
       color: #dc3545;
     }
+    .bal-tx-index:hover {
+      cursor: pointer;
+      background-color: rgba(13, 110, 253, 0.3);
+    }
+    .tx-callout {
+      position: absolute;
+      background: var(--bs-body-bg, white);
+      color: var(--bs-body-color, #212529);
+      border: 1px solid var(--bs-border-color, #dee2e6);
+      border-radius: 0.375rem;
+      padding: 1rem;
+      box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+      z-index: 1050;
+      min-width: 400px;
+      display: none;
+    }
+    .tx-callout-header {
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid var(--bs-border-color, #dee2e6);
+    }
+    .tx-callout-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.25rem 0;
+      font-size: 0.875rem;
+    }
+    .tx-callout-label {
+      color: var(--bs-secondary, #6c757d);
+      margin-right: 1rem;
+    }
+    .tx-callout-value {
+      font-family: monospace;
+      word-break: break-all;
+      flex: 1;
+      text-align: right;
+    }
+    .tx-callout-copy {
+      margin-left: 0.5rem;
+      cursor: pointer;
+      color: var(--bs-secondary, #6c757d);
+    }
+    .tx-callout-copy:hover {
+      color: var(--bs-body-color, #495057);
+    }
   </style>
 
   <div class="bal-content">
@@ -1436,6 +1483,209 @@
         
         return true;
       }
+    });
+
+    // Transaction details for callouts
+    const transactionDetails = JSON.parse({{ includeJSON .TransactionDetails false }});
+    
+    // Transaction callout functionality
+    let currentCallout = null;
+    
+    function showTransactionCallout(txIndex, event) {
+      // Close existing callout
+      if (currentCallout) {
+        currentCallout.remove();
+      }
+      
+      // TX 0 is system transaction, TX 1+ are actual transactions (0-based in array)
+      const tx = txIndex === 0 ? null : transactionDetails[txIndex - 1];
+      
+      // Create callout element
+      const callout = document.createElement('div');
+      callout.className = 'tx-callout';
+      
+      if (txIndex === 0) {
+        // System transaction
+        callout.innerHTML = `
+          <div class="tx-callout-header">
+            <i class="fas fa-cog me-2"></i>Transaction ${txIndex} Details
+          </div>
+          <div class="tx-callout-row">
+            <span class="tx-callout-label">Type:</span>
+            <span class="tx-callout-value">System Transaction</span>
+          </div>
+          <div class="tx-callout-row">
+            <span class="tx-callout-label">Description:</span>
+            <span class="tx-callout-value">Pre-execution state</span>
+          </div>
+        `;
+      } else if (!tx) {
+        // Transaction not found
+        callout.innerHTML = `
+          <div class="tx-callout-header">
+            <i class="fas fa-exclamation-triangle me-2"></i>Transaction ${txIndex} Details
+          </div>
+          <div class="tx-callout-row">
+            <span class="tx-callout-label">Status:</span>
+            <span class="tx-callout-value">Transaction not found</span>
+          </div>
+        `;
+      } else {
+        // Regular transaction
+        callout.innerHTML = `
+          <div class="tx-callout-header">
+            <i class="fas fa-receipt me-2"></i>Transaction ${txIndex} Details
+          </div>
+          <div class="tx-callout-row">
+            <span class="tx-callout-label">Hash:</span>
+            <span class="tx-callout-value">0x${bytesToHex(tx.hash)}</span>
+            <i class="fa fa-copy tx-callout-copy" onclick="copyToClipboard('0x${bytesToHex(tx.hash)}')" title="Copy to clipboard"></i>
+          </div>
+          <div class="tx-callout-row">
+            <span class="tx-callout-label">From:</span>
+            <span class="tx-callout-value">${tx.from}</span>
+            <i class="fa fa-copy tx-callout-copy" onclick="copyToClipboard('${tx.from}')" title="Copy to clipboard"></i>
+          </div>
+          <div class="tx-callout-row">
+            <span class="tx-callout-label">To:</span>
+            <span class="tx-callout-value">${tx.to}</span>
+            <i class="fa fa-copy tx-callout-copy" onclick="copyToClipboard('${tx.to}')" title="Copy to clipboard"></i>
+          </div>
+          <div class="tx-callout-row">
+            <span class="tx-callout-label">Value:</span>
+            <span class="tx-callout-value">${formatEthValue(tx.value)} ETH</span>
+          </div>
+          ${tx.func_name ? `
+          <div class="tx-callout-row">
+            <span class="tx-callout-label">Method:</span>
+            <span class="tx-callout-value">${tx.func_name}${tx.func_sig ? ` (${tx.func_sig})` : ''}</span>
+          </div>
+          ` : ''}
+          ${tx.datalen > 0 ? `
+          <div class="tx-callout-row">
+            <span class="tx-callout-label">Data:</span>
+            <span class="tx-callout-value">${tx.datalen} bytes</span>
+          </div>
+          ` : ''}
+        `;
+      }
+      
+      document.body.appendChild(callout);
+      currentCallout = callout;
+      
+      // Position callout near the clicked element
+      const rect = event.target.getBoundingClientRect();
+      const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+      const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
+      
+      // Initial position to the right of the badge
+      callout.style.display = 'block';
+      const calloutRect = callout.getBoundingClientRect();
+      
+      let left = rect.right + scrollLeft + 5;
+      let top = rect.top + scrollTop - (calloutRect.height / 2) + (rect.height / 2);
+      
+      // Adjust if callout goes off right edge
+      if (left + calloutRect.width > window.innerWidth + scrollLeft) {
+        // Position to the left of the badge instead
+        left = rect.left + scrollLeft - calloutRect.width - 5;
+      }
+      
+      // Adjust if callout goes off bottom edge
+      if (top + calloutRect.height > window.innerHeight + scrollTop) {
+        top = window.innerHeight + scrollTop - calloutRect.height - 10;
+      }
+      
+      // Adjust if callout goes off top edge
+      if (top < scrollTop) {
+        top = scrollTop + 10;
+      }
+      
+      callout.style.left = left + 'px';
+      callout.style.top = top + 'px';
+      
+      // Close callout when clicking outside
+      setTimeout(() => {
+        document.addEventListener('click', closeCallout);
+      }, 100);
+    }
+    
+    function closeCallout(event) {
+      if (currentCallout && !currentCallout.contains(event.target) && !event.target.classList.contains('bal-tx-index')) {
+        currentCallout.remove();
+        currentCallout = null;
+        document.removeEventListener('click', closeCallout);
+      }
+    }
+    
+    function bytesToHex(bytes) {
+      if (typeof bytes === 'string') {
+        // Check if it's a base64 string
+        if (bytes.match(/^[A-Za-z0-9+/]+=*$/)) {
+          // Decode base64 to bytes
+          const decoded = atob(bytes);
+          let hex = '';
+          for (let i = 0; i < decoded.length; i++) {
+            hex += decoded.charCodeAt(i).toString(16).padStart(2, '0');
+          }
+          return hex;
+        } else {
+          // Already a hex string, remove 0x prefix if present
+          return bytes.replace(/^0x/i, '');
+        }
+      } else if (Array.isArray(bytes)) {
+        return bytes.map(b => b.toString(16).padStart(2, '0')).join('');
+      }
+      return '';
+    }
+    
+    function formatEthValue(value) {
+      if (typeof value === 'number') {
+        if (value === 0) {
+          return '0';
+        } else if (value >= 1) {
+          return value.toFixed(6).replace(/\.?0+$/, '');
+        } else {
+          // For small values, use more decimal places
+          return value.toFixed(18).replace(/\.?0+$/, '');
+        }
+      }
+      return value.toString();
+    }
+    
+    function copyToClipboard(text) {
+      const textArea = document.createElement('textarea');
+      textArea.value = text;
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textArea);
+      
+      // Show tooltip
+      const tooltip = document.createElement('div');
+      tooltip.textContent = 'Copied!';
+      tooltip.style.cssText = 'position: absolute; background: #333; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px; z-index: 9999;';
+      document.body.appendChild(tooltip);
+      
+      const rect = event.target.getBoundingClientRect();
+      tooltip.style.left = rect.left + 'px';
+      tooltip.style.top = (rect.top - 25) + 'px';
+      
+      setTimeout(() => tooltip.remove(), 1000);
+    }
+    
+    // Add click handlers to all TX badges
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('.bal-tx-index').forEach(badge => {
+        badge.addEventListener('click', function(event) {
+          event.stopPropagation();
+          const match = this.textContent.match(/Tx (\d+)/);
+          if (match) {
+            const txIndex = parseInt(match[1]);
+            showTransactionCallout(txIndex, event);
+          }
+        });
+      });
     });
   </script>
 {{ end }}
