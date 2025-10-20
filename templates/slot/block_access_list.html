@@ -240,10 +240,28 @@
                   {{ len $entry.CodeChanges }} code
                 </span>
               {{ end }}
+              {{ if and (not $entry.StorageChanges) (not $entry.StorageReads) (not $entry.BalanceChanges) (not $entry.NonceChanges) (not $entry.CodeChanges) }}
+                <span class="bal-summary-badge text-muted">
+                  <i class="fas fa-ghost"></i>
+                  no changes
+                </span>
+              {{ end }}
             </div>
           </div>
           <div class="collapse" id="bal-collapse-{{ $i }}">
             <div class="bal-address-content">
+              {{ if and (not $entry.StorageChanges) (not $entry.StorageReads) (not $entry.BalanceChanges) (not $entry.NonceChanges) (not $entry.CodeChanges) }}
+                <!-- No changes entry -->
+                <div class="p-3 text-center text-muted">
+                  <i class="fas fa-info-circle fa-2x mb-3"></i>
+                  <p class="mb-0">
+                    This address was accessed during block execution but did not result in any state changes.
+                  </p>
+                  <p class="mt-2 mb-0 small">
+                    Common reasons: contract calls that only read state, zero-value transfers, or calls to pure functions.
+                  </p>
+                </div>
+              {{ else }}
               <!-- Nav tabs -->
               <ul class="nav nav-tabs mb-0" role="tablist">
                 {{ if $entry.StorageChanges }}
@@ -387,6 +405,7 @@
                 </div>
                 {{ end }}
               </div>
+              {{ end }}
             </div>
           </div>
         </div>
@@ -1497,26 +1516,56 @@
         currentCallout.remove();
       }
       
-      // TX 0 is system transaction, TX 1+ are actual transactions (0-based in array)
-      const tx = txIndex === 0 ? null : transactionDetails[txIndex - 1];
+      // Get transaction count from the transaction details
+      const txCount = Object.keys(transactionDetails).length;
+      
+      // TX 0 is pre-execution system transaction
+      // TX 1 to txCount are actual transactions (0-based in array)
+      // TX txCount+1 is post-execution system transaction
+      let tx = null;
+      let isPreSystemTx = false;
+      let isPostSystemTx = false;
+      
+      if (txIndex === 0) {
+        isPreSystemTx = true;
+      } else if (txIndex === txCount + 1) {
+        isPostSystemTx = true;
+      } else {
+        tx = transactionDetails[txIndex - 1];
+      }
       
       // Create callout element
       const callout = document.createElement('div');
       callout.className = 'tx-callout';
       
-      if (txIndex === 0) {
-        // System transaction
+      if (isPreSystemTx) {
+        // Pre-execution system transaction
         callout.innerHTML = `
           <div class="tx-callout-header">
             <i class="fas fa-cog me-2"></i>Transaction ${txIndex} Details
           </div>
           <div class="tx-callout-row">
             <span class="tx-callout-label">Type:</span>
-            <span class="tx-callout-value">System Transaction</span>
+            <span class="tx-callout-value">Pre-execution System Transaction</span>
           </div>
           <div class="tx-callout-row">
             <span class="tx-callout-label">Description:</span>
-            <span class="tx-callout-value">Pre-execution state</span>
+            <span class="tx-callout-value">State before block execution</span>
+          </div>
+        `;
+      } else if (isPostSystemTx) {
+        // Post-execution system transaction
+        callout.innerHTML = `
+          <div class="tx-callout-header">
+            <i class="fas fa-cogs me-2"></i>Transaction ${txIndex} Details
+          </div>
+          <div class="tx-callout-row">
+            <span class="tx-callout-label">Type:</span>
+            <span class="tx-callout-value">Post-execution System Transaction</span>
+          </div>
+          <div class="tx-callout-row">
+            <span class="tx-callout-label">Description:</span>
+            <span class="tx-callout-value">System operations (e.g., withdrawals)</span>
           </div>
         `;
       } else if (!tx) {
