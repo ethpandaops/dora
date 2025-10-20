@@ -51,20 +51,38 @@ func FormatFloat(num float64, precision int) string {
 func FormatBaseFee(weiValue uint64) template.HTML {
 	// Convert wei to gwei (1 gwei = 1e9 wei)
 	gweiValue := float64(weiValue) / 1e9
-
-	// If less than 0.1 gwei, show in wei
-	if gweiValue < 0.1 {
+	
+	// If less than 100,000 wei, show in wei
+	if weiValue < 100000 {
 		return template.HTML(string(FormatAddCommas(weiValue)) + " wei")
 	}
-
-	// Show in gwei with appropriate decimal places
-	if gweiValue < 1 {
-		return template.HTML(fmt.Sprintf("%.3f gwei", gweiValue))
-	} else if gweiValue < 100 {
-		return template.HTML(fmt.Sprintf("%.2f gwei", gweiValue))
-	} else {
-		return template.HTML(fmt.Sprintf("%.1f gwei", gweiValue))
+	
+	// If less than 100,000 gwei, show in gwei with 6 decimals, trimmed
+	if gweiValue < 100000 {
+		formatted := strings.TrimRight(strings.TrimRight(fmt.Sprintf("%.6f", gweiValue), "0"), ".")
+		return template.HTML(formatted + " gwei")
 	}
+	
+	// Show in ETH for very large values with 6 decimals, trimmed
+	ethValue := gweiValue / 1e9
+	formatted := strings.TrimRight(strings.TrimRight(fmt.Sprintf("%.6f", ethValue), "0"), ".")
+	return template.HTML(formatted + " ETH")
+}
+
+func FormatBlobFeeDifference(eip7918Value, originalValue uint64) template.HTML {
+	// Calculate the difference
+	difference := eip7918Value - originalValue
+	
+	// Use the same formatting logic as FormatBaseFee for consistency
+	return FormatBaseFee(difference)
+}
+
+func FormatTransactionValue(ethValue float64) template.HTML {
+	// Convert ETH value to wei (1 ETH = 1e18 wei)
+	weiValue := uint64(ethValue * 1e18)
+	
+	// Use the same formatting logic as FormatBaseFee
+	return FormatBaseFee(weiValue)
 }
 
 func formatPercentageAlert(num float64, precision int, warnBelow float64, errBelow float64) template.HTML {

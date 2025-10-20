@@ -102,8 +102,10 @@ type SlotPageExecutionData struct {
 	BlobGasUsed   *uint64   `json:"blob_gas_used,omitempty"`
 	BlobLimit     *uint64   `json:"blob_limit,omitempty"`
 	BlobGasLimit  *uint64   `json:"blob_gas_limit,omitempty"`
-	ExcessBlobGas *uint64   `json:"excess_blob_gas,omitempty"`
-	BlobBaseFee   *uint64   `json:"blob_base_fee,omitempty"`
+	ExcessBlobGas      *uint64 `json:"excess_blob_gas,omitempty"`
+	BlobBaseFee        *uint64 `json:"blob_base_fee,omitempty"`
+	BlobBaseFeeEIP7918 *uint64 `json:"blob_base_fee_eip7918,omitempty"`
+	IsEIP7918Active    bool    `json:"is_eip7918_active"`
 }
 
 type SlotPageAttestation struct {
