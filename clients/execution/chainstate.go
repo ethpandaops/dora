@@ -366,3 +366,24 @@ func (cache *ChainState) CalcBaseFeePerBlobGas(excessBlobGas uint64, updateFract
 	// return output // denominator
 	return output.Div(output, denominator)
 }
+
+// calculateEIP7918BlobBaseFee implements the EIP-7918 reserve price mechanism
+// It ensures blob base fee doesn't fall below a threshold based on execution costs
+func (cache *ChainState) CalculateEIP7918BlobBaseFee(baseFeePerGas uint64, blobBaseFee uint64) uint64 {
+	// EIP-7918 constants
+	const (
+		BLOB_BASE_COST = 8192   // 2^13
+		GAS_PER_BLOB   = 131072 // blob gas limit per blob (128KB)
+	)
+
+	// Calculate the reserve price threshold
+	// If BLOB_BASE_COST * base_fee_per_gas > GAS_PER_BLOB * base_fee_per_blob_gas
+	// then the blob base fee should be adjusted
+	reservePriceThreshold := (BLOB_BASE_COST * baseFeePerGas) / GAS_PER_BLOB
+
+	// Return the higher of the two values
+	if reservePriceThreshold > blobBaseFee {
+		return reservePriceThreshold
+	}
+	return blobBaseFee
+}

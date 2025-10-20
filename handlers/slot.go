@@ -708,7 +708,7 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 			pageData.ExecutionData.BlobBaseFee = &blobBaseFeeUint64
 
 			// EIP-7918: Calculate adjusted blob base fee if reserve price mechanism is active
-			eip7918BlobBaseFee := calculateEIP7918BlobBaseFee(pageData.ExecutionData.BaseFeePerGas, blobBaseFeeUint64, blobSchedule)
+			eip7918BlobBaseFee := executionChainState.CalculateEIP7918BlobBaseFee(pageData.ExecutionData.BaseFeePerGas, blobBaseFeeUint64)
 			if eip7918BlobBaseFee > blobBaseFeeUint64 {
 				// Store the original blob base fee in BlobBaseFee
 				// Store the EIP-7918 adjusted fee in BlobBaseFeeEIP7918
@@ -994,25 +994,4 @@ func handleSlotDownload(ctx context.Context, w http.ResponseWriter, blockSlot in
 	default:
 		return fmt.Errorf("unknown download type: %s", downloadType)
 	}
-}
-
-// calculateEIP7918BlobBaseFee implements the EIP-7918 reserve price mechanism
-// It ensures blob base fee doesn't fall below a threshold based on execution costs
-func calculateEIP7918BlobBaseFee(baseFeePerGas uint64, blobBaseFee uint64, blobSchedule interface{}) uint64 {
-	// EIP-7918 constants
-	const (
-		BLOB_BASE_COST = 8192     // 2^13
-		GAS_PER_BLOB   = 131072   // blob gas limit per blob (128KB)
-	)
-
-	// Calculate the reserve price threshold
-	// If BLOB_BASE_COST * base_fee_per_gas > GAS_PER_BLOB * base_fee_per_blob_gas
-	// then the blob base fee should be adjusted
-	reservePriceThreshold := (BLOB_BASE_COST * baseFeePerGas) / GAS_PER_BLOB
-
-	// Return the higher of the two values
-	if reservePriceThreshold > blobBaseFee {
-		return reservePriceThreshold
-	}
-	return blobBaseFee
 }
