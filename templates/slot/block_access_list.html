@@ -83,9 +83,9 @@
     }
     .bal-change-item {
       background-color: rgba(108, 117, 125, 0.05);
-      padding: 0.5rem;
+      padding: 0.25rem 0.5rem;
       border-radius: 0.25rem;
-      margin-bottom: 0.5rem;
+      margin-bottom: 0.25rem;
       font-family: monospace;
       font-size: 0.875rem;
     }
@@ -107,7 +107,8 @@
       font-style: italic;
     }
     .bal-tab-content {
-      min-height: 200px;
+      max-height: 400px;
+      overflow-y: auto;
     }
     .bal-balance-value {
       font-family: monospace;
@@ -248,164 +249,9 @@
               {{ end }}
             </div>
           </div>
-          <div class="collapse" id="bal-collapse-{{ $i }}">
-            <div class="bal-address-content">
-              {{ if and (not $entry.StorageChanges) (not $entry.StorageReads) (not $entry.BalanceChanges) (not $entry.NonceChanges) (not $entry.CodeChanges) }}
-                <!-- No changes entry -->
-                <div class="p-3 text-center text-muted">
-                  <i class="fas fa-info-circle fa-2x mb-3"></i>
-                  <p class="mb-0">
-                    This address was accessed during block execution but did not result in any state changes.
-                  </p>
-                  <p class="mt-2 mb-0 small">
-                    Common reasons: contract calls that only read state, zero-value transfers, or calls to pure functions.
-                  </p>
-                </div>
-              {{ else }}
-              <!-- Nav tabs -->
-              <ul class="nav nav-tabs mb-0" role="tablist">
-                {{ if $entry.StorageChanges }}
-                  <li class="nav-item" role="presentation">
-                    <button class="nav-link active bal-address-tab-header" data-bs-toggle="tab" data-bs-target="#bal-storage-{{ $i }}" type="button">
-                      <i class="fas fa-database me-1"></i>
-                      Storage Changes 
-                      <span class="badge bg-primary ms-1">{{ len $entry.StorageChanges }}</span>
-                    </button>
-                  </li>
-                {{ end }}
-                {{ if $entry.StorageReads }}
-                  <li class="nav-item" role="presentation">
-                    <button class="nav-link{{ if not $entry.StorageChanges }} active{{ end }} bal-address-tab-header" data-bs-toggle="tab" data-bs-target="#bal-storage-reads-{{ $i }}" type="button">
-                      <i class="fas fa-eye me-1"></i>
-                      Storage Reads
-                      <span class="badge bg-secondary ms-1">{{ len $entry.StorageReads }}</span>
-                    </button>
-                  </li>
-                {{ end }}
-                {{ if $entry.BalanceChanges }}
-                  <li class="nav-item" role="presentation">
-                    <button class="nav-link{{ if and (not $entry.StorageChanges) (not $entry.StorageReads) }} active{{ end }} bal-address-tab-header" data-bs-toggle="tab" data-bs-target="#bal-balance-{{ $i }}" type="button">
-                      <i class="fas fa-coins me-1"></i>
-                      Balance Changes
-                      <span class="badge bg-warning text-dark ms-1">{{ len $entry.BalanceChanges }}</span>
-                    </button>
-                  </li>
-                {{ end }}
-                {{ if $entry.NonceChanges }}
-                  <li class="nav-item" role="presentation">
-                    <button class="nav-link{{ if and (not $entry.StorageChanges) (not $entry.StorageReads) (not $entry.BalanceChanges) }} active{{ end }} bal-address-tab-header" data-bs-toggle="tab" data-bs-target="#bal-nonce-{{ $i }}" type="button">
-                      <i class="fas fa-hashtag me-1"></i>
-                      Nonce Changes
-                      <span class="badge bg-info text-dark ms-1">{{ len $entry.NonceChanges }}</span>
-                    </button>
-                  </li>
-                {{ end }}
-                {{ if $entry.CodeChanges }}
-                  <li class="nav-item" role="presentation">
-                    <button class="nav-link{{ if and (not $entry.StorageChanges) (not $entry.StorageReads) (not $entry.BalanceChanges) (not $entry.NonceChanges) }} active{{ end }} bal-address-tab-header" data-bs-toggle="tab" data-bs-target="#bal-code-{{ $i }}" type="button">
-                      <i class="fas fa-code me-1"></i>
-                      Code Changes
-                      <span class="badge bg-success ms-1">{{ len $entry.CodeChanges }}</span>
-                    </button>
-                  </li>
-                {{ end }}
-              </ul>
-
-              <!-- Tab content -->
-              <div class="tab-content bal-tab-content">
-                {{ if $entry.StorageChanges }}
-                <div class="tab-pane fade show active" id="bal-storage-{{ $i }}" role="tabpanel">
-                  <div class="table-responsive">
-                    <table class="table table-sm">
-                      <thead>
-                        <tr>
-                          <th>Storage Slot</th>
-                          <th>Changes</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {{ range $entry.StorageChanges }}
-                          <tr>
-                            <td class="text-monospace">0x{{ printf "%x" .Slot }}</td>
-                            <td>
-                              {{ range .Changes }}
-                                <div class="bal-change-item">
-                                  <span class="bal-tx-index">Tx {{ .BlockAccessIndex }}</span>
-                                  <span class="bal-value-text">0x{{ printf "%x" .Value }}</span>
-                                </div>
-                              {{ end }}
-                            </td>
-                          </tr>
-                        {{ end }}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-                {{ end }}
-
-                {{ if $entry.StorageReads }}
-                <div class="tab-pane fade{{ if not $entry.StorageChanges }} show active{{ end }}" id="bal-storage-reads-{{ $i }}" role="tabpanel">
-                  <div class="text-monospace" style="max-height: 300px; overflow-y: auto;">
-                    {{ range $j, $slot := $entry.StorageReads }}
-                      <div class="bal-change-item">0x{{ printf "%x" $slot }}</div>
-                    {{ end }}
-                  </div>
-                </div>
-                {{ end }}
-
-                {{ if $entry.BalanceChanges }}
-                <div class="tab-pane fade{{ if and (not $entry.StorageChanges) (not $entry.StorageReads) }} show active{{ end }}" id="bal-balance-{{ $i }}" role="tabpanel">
-                  <div>
-                    {{ range $j, $change := $entry.BalanceChanges }}
-                      <div class="bal-change-item">
-                        <span class="bal-tx-index">{{ if eq .BlockAccessIndex 0 }}Pre-execution{{ else if eq .BlockAccessIndex 65535 }}Post-execution{{ else }}Tx {{ .BlockAccessIndex }}{{ end }}</span>
-                        <span class="bal-balance-value">{{ formatBytesAmount .Balance "ETH" 18 }}</span>
-                        {{ if gt $j 0 }}
-                          {{ $prevChange := index $entry.BalanceChanges (sub $j 1) }}
-                          {{ calculateBalanceDiff .Balance $prevChange.Balance }}
-                        {{ end }}
-                      </div>
-                    {{ end }}
-                  </div>
-                </div>
-                {{ end }}
-
-                {{ if $entry.NonceChanges }}
-                <div class="tab-pane fade{{ if and (not $entry.StorageChanges) (not $entry.StorageReads) (not $entry.BalanceChanges) }} show active{{ end }}" id="bal-nonce-{{ $i }}" role="tabpanel">
-                  <div>
-                    {{ range $entry.NonceChanges }}
-                      <div class="bal-change-item">
-                        <span class="bal-tx-index">{{ if eq .BlockAccessIndex 0 }}Pre-execution{{ else if eq .BlockAccessIndex 65535 }}Post-execution{{ else }}Tx {{ .BlockAccessIndex }}{{ end }}</span>
-                        <span class="bal-value-text">Nonce: {{ .Nonce }}</span>
-                      </div>
-                    {{ end }}
-                  </div>
-                </div>
-                {{ end }}
-
-                {{ if $entry.CodeChanges }}
-                <div class="tab-pane fade{{ if and (not $entry.StorageChanges) (not $entry.StorageReads) (not $entry.BalanceChanges) (not $entry.NonceChanges) }} show active{{ end }}" id="bal-code-{{ $i }}" role="tabpanel">
-                  <div>
-                    {{ range $entry.CodeChanges }}
-                      <div class="mb-3">
-                        <div class="d-flex justify-content-between align-items-center mb-2">
-                          <span class="bal-tx-index">{{ if eq .BlockAccessIndex 0 }}Pre-execution{{ else if eq .BlockAccessIndex 65535 }}Post-execution{{ else }}Tx {{ .BlockAccessIndex }}{{ end }}</span>
-                          <span class="text-muted">{{ len .Code }} bytes</span>
-                        </div>
-                        <div class="bal-change-item text-break" style="max-height: 200px; overflow-y: auto;">
-                          {{ if .Code }}
-                            0x{{ printf "%x" .Code }}
-                          {{ else }}
-                            <span class="bal-empty">Empty code (self-destruct)</span>
-                          {{ end }}
-                        </div>
-                      </div>
-                    {{ end }}
-                  </div>
-                </div>
-                {{ end }}
-              </div>
-              {{ end }}
+          <div class="collapse" id="bal-collapse-{{ $i }}" data-address-index="{{ $i }}">
+            <div class="bal-address-content" data-rendered="false">
+              <!-- Content will be rendered on demand -->
             </div>
           </div>
         </div>
@@ -533,6 +379,389 @@
   </div>
 
   <script>
+    // On-demand rendering system
+    const accessListRenderer = {
+      openAddresses: new Set(),
+      renderedContent: new Map(),
+      
+      renderAddressContent(addressIndex) {
+        const collapseEl = document.getElementById(`bal-collapse-${addressIndex}`);
+        const contentEl = collapseEl.querySelector('.bal-address-content');
+        
+        // Skip if already rendered
+        if (contentEl.dataset.rendered === 'true') {
+          return;
+        }
+        
+        const entry = window.currentBlockAccessList[addressIndex];
+        if (!entry) return;
+        
+        // Check if this is a no-changes entry
+        const hasChanges = entry.storage_changes || entry.storage_reads || 
+                          entry.balance_changes || entry.nonce_changes || entry.code_changes;
+        
+        if (!hasChanges) {
+          contentEl.innerHTML = `
+            <div class="p-3 text-center text-muted">
+              <i class="fas fa-info-circle fa-2x mb-3"></i>
+              <p class="mb-0">
+                This address was accessed during block execution but did not result in any state changes.
+              </p>
+              <p class="mt-2 mb-0 small">
+                Common reasons: contract calls that only read state, zero-value transfers, or calls to pure functions.
+              </p>
+            </div>
+          `;
+        } else {
+          // Create nav tabs
+          let navHtml = '<ul class="nav nav-tabs mb-0" role="tablist">';
+          let contentHtml = '<div class="tab-content bal-tab-content">';
+          let hasActiveTab = false;
+          
+          // Storage Changes tab
+          if (entry.storage_changes && entry.storage_changes.length > 0) {
+            navHtml += `
+              <li class="nav-item" role="presentation">
+                <button class="nav-link${!hasActiveTab ? ' active' : ''} bal-address-tab-header" data-bs-toggle="tab" data-bs-target="#bal-storage-${addressIndex}" type="button" data-tab-type="storage">
+                  <i class="fas fa-database me-1"></i>
+                  Storage Changes 
+                  <span class="badge bg-primary ms-1">${entry.storage_changes.length}</span>
+                </button>
+              </li>
+            `;
+            contentHtml += `<div class="tab-pane fade${!hasActiveTab ? ' show active' : ''}" id="bal-storage-${addressIndex}" role="tabpanel" data-tab-type="storage"></div>`;
+            hasActiveTab = true;
+          }
+          
+          // Storage Reads tab
+          if (entry.storage_reads && entry.storage_reads.length > 0) {
+            navHtml += `
+              <li class="nav-item" role="presentation">
+                <button class="nav-link${!hasActiveTab ? ' active' : ''} bal-address-tab-header" data-bs-toggle="tab" data-bs-target="#bal-storage-reads-${addressIndex}" type="button" data-tab-type="storage-reads">
+                  <i class="fas fa-eye me-1"></i>
+                  Storage Reads
+                  <span class="badge bg-secondary ms-1">${entry.storage_reads.length}</span>
+                </button>
+              </li>
+            `;
+            contentHtml += `<div class="tab-pane fade${!hasActiveTab ? ' show active' : ''}" id="bal-storage-reads-${addressIndex}" role="tabpanel" data-tab-type="storage-reads"></div>`;
+            hasActiveTab = true;
+          }
+          
+          // Balance Changes tab
+          if (entry.balance_changes && entry.balance_changes.length > 0) {
+            navHtml += `
+              <li class="nav-item" role="presentation">
+                <button class="nav-link${!hasActiveTab ? ' active' : ''} bal-address-tab-header" data-bs-toggle="tab" data-bs-target="#bal-balance-${addressIndex}" type="button" data-tab-type="balance">
+                  <i class="fas fa-coins me-1"></i>
+                  Balance Changes
+                  <span class="badge bg-warning text-dark ms-1">${entry.balance_changes.length}</span>
+                </button>
+              </li>
+            `;
+            contentHtml += `<div class="tab-pane fade${!hasActiveTab ? ' show active' : ''}" id="bal-balance-${addressIndex}" role="tabpanel" data-tab-type="balance"></div>`;
+            hasActiveTab = true;
+          }
+          
+          // Nonce Changes tab
+          if (entry.nonce_changes && entry.nonce_changes.length > 0) {
+            navHtml += `
+              <li class="nav-item" role="presentation">
+                <button class="nav-link${!hasActiveTab ? ' active' : ''} bal-address-tab-header" data-bs-toggle="tab" data-bs-target="#bal-nonce-${addressIndex}" type="button" data-tab-type="nonce">
+                  <i class="fas fa-hashtag me-1"></i>
+                  Nonce Changes
+                  <span class="badge bg-info text-dark ms-1">${entry.nonce_changes.length}</span>
+                </button>
+              </li>
+            `;
+            contentHtml += `<div class="tab-pane fade${!hasActiveTab ? ' show active' : ''}" id="bal-nonce-${addressIndex}" role="tabpanel" data-tab-type="nonce"></div>`;
+            hasActiveTab = true;
+          }
+          
+          // Code Changes tab
+          if (entry.code_changes && entry.code_changes.length > 0) {
+            navHtml += `
+              <li class="nav-item" role="presentation">
+                <button class="nav-link${!hasActiveTab ? ' active' : ''} bal-address-tab-header" data-bs-toggle="tab" data-bs-target="#bal-code-${addressIndex}" type="button" data-tab-type="code">
+                  <i class="fas fa-code me-1"></i>
+                  Code Changes
+                  <span class="badge bg-success ms-1">${entry.code_changes.length}</span>
+                </button>
+              </li>
+            `;
+            contentHtml += `<div class="tab-pane fade${!hasActiveTab ? ' show active' : ''}" id="bal-code-${addressIndex}" role="tabpanel" data-tab-type="code"></div>`;
+            hasActiveTab = true;
+          }
+          
+          navHtml += '</ul>';
+          contentHtml += '</div>';
+          
+          contentEl.innerHTML = navHtml + contentHtml;
+          
+          // Set up tab event listeners for on-demand rendering
+          contentEl.querySelectorAll('.nav-link').forEach(tab => {
+            tab.addEventListener('shown.bs.tab', (e) => {
+              const tabType = e.target.dataset.tabType;
+              const tabPane = contentEl.querySelector(`.tab-pane[data-tab-type="${tabType}"]`);
+              if (tabPane && !tabPane.dataset.rendered) {
+                this.renderTabContent(addressIndex, tabType, tabPane);
+              }
+            });
+          });
+          
+          // Render the initially active tab
+          const activeTab = contentEl.querySelector('.tab-pane.active');
+          if (activeTab && activeTab.dataset.tabType) {
+            this.renderTabContent(addressIndex, activeTab.dataset.tabType, activeTab);
+          }
+        }
+        
+        contentEl.dataset.rendered = 'true';
+        this.openAddresses.add(addressIndex);
+      },
+      
+      renderTabContent(addressIndex, tabType, tabPane) {
+        const entry = window.currentBlockAccessList[addressIndex];
+        if (!entry) return;
+        
+        let html = '';
+        
+        switch(tabType) {
+          case 'storage':
+            html = this.renderStorageChanges(entry.storage_changes);
+            break;
+          case 'storage-reads':
+            html = this.renderStorageReads(entry.storage_reads);
+            break;
+          case 'balance':
+            html = this.renderBalanceChanges(entry.balance_changes);
+            break;
+          case 'nonce':
+            html = this.renderNonceChanges(entry.nonce_changes);
+            break;
+          case 'code':
+            html = this.renderCodeChanges(entry.code_changes);
+            break;
+        }
+        
+        tabPane.innerHTML = html;
+        tabPane.dataset.rendered = 'true';
+        
+        // Re-attach transaction callout handlers
+        tabPane.querySelectorAll('.bal-tx-index').forEach(badge => {
+          badge.addEventListener('click', function(event) {
+            event.stopPropagation();
+            const match = this.textContent.match(/Tx (\d+)/);
+            if (match) {
+              const txIndex = parseInt(match[1]);
+              showTransactionCallout(txIndex, event);
+            }
+          });
+        });
+      },
+      
+      renderStorageChanges(storageChanges) {
+        if (!storageChanges || storageChanges.length === 0) return '';
+        
+        let html = `
+          <div class="table-responsive">
+            <table class="table table-sm">
+              <thead>
+                <tr>
+                  <th>Storage Slot</th>
+                  <th>Changes</th>
+                </tr>
+              </thead>
+              <tbody>
+        `;
+        
+        storageChanges.forEach(storage => {
+          const slot = arrayToHex(storage.slot);
+          html += `
+            <tr>
+              <td class="text-monospace">${slot}</td>
+              <td>
+          `;
+          
+          if (storage.changes) {
+            storage.changes.forEach(change => {
+              const value = arrayToHex(change.value);
+              html += `
+                <div class="bal-change-item">
+                  <span class="bal-tx-index">Tx ${change.block_access_index}</span>
+                  <span class="bal-value-text">${value}</span>
+                </div>
+              `;
+            });
+          }
+          
+          html += `</td></tr>`;
+        });
+        
+        html += `</tbody></table></div>`;
+        return html;
+      },
+      
+      renderStorageReads(storageReads) {
+        if (!storageReads || storageReads.length === 0) return '';
+        
+        let html = '<div class="text-monospace" style="max-height: 300px; overflow-y: auto;">';
+        storageReads.forEach(slot => {
+          html += `<div class="bal-change-item">${arrayToHex(slot)}</div>`;
+        });
+        html += '</div>';
+        return html;
+      },
+      
+      renderBalanceChanges(balanceChanges) {
+        if (!balanceChanges || balanceChanges.length === 0) return '';
+        
+        let html = '<div>';
+        balanceChanges.forEach((change, index) => {
+          const txLabel = change.block_access_index === 0 ? 'Pre-execution' : 
+                          change.block_access_index === 65535 ? 'Post-execution' : 
+                          `Tx ${change.block_access_index}`;
+          
+          html += `
+            <div class="bal-change-item">
+              <span class="bal-tx-index">${txLabel}</span>
+              <span class="bal-balance-value">${formatBalance(change.balance)}</span>
+          `;
+          
+          if (index > 0) {
+            const prevBalance = balanceChanges[index - 1].balance;
+            html += renderBalanceDiff(change.balance, prevBalance);
+          }
+          
+          html += '</div>';
+        });
+        html += '</div>';
+        return html;
+      },
+      
+      renderNonceChanges(nonceChanges) {
+        if (!nonceChanges || nonceChanges.length === 0) return '';
+        
+        let html = '<div>';
+        nonceChanges.forEach(change => {
+          const txLabel = change.block_access_index === 0 ? 'Pre-execution' : 
+                          change.block_access_index === 65535 ? 'Post-execution' : 
+                          `Tx ${change.block_access_index}`;
+          
+          html += `
+            <div class="bal-change-item">
+              <span class="bal-tx-index">${txLabel}</span>
+              <span class="bal-value-text">Nonce: ${change.nonce}</span>
+            </div>
+          `;
+        });
+        html += '</div>';
+        return html;
+      },
+      
+      renderCodeChanges(codeChanges) {
+        if (!codeChanges || codeChanges.length === 0) return '';
+        
+        let html = '<div>';
+        codeChanges.forEach(change => {
+          const txLabel = change.block_access_index === 0 ? 'Pre-execution' : 
+                          change.block_access_index === 65535 ? 'Post-execution' : 
+                          `Tx ${change.block_access_index}`;
+          const codeHex = change.code ? arrayToHex(change.code) : '';
+          const codeLength = change.code ? change.code.length : 0;
+          
+          html += `
+            <div class="mb-3">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <span class="bal-tx-index">${txLabel}</span>
+                <span class="text-muted">${codeLength} bytes</span>
+              </div>
+              <div class="bal-change-item text-break" style="max-height: 200px; overflow-y: auto;">
+                ${codeHex ? codeHex : '<span class="bal-empty">Empty code (self-destruct)</span>'}
+              </div>
+            </div>
+          `;
+        });
+        html += '</div>';
+        return html;
+      },
+      
+      clearAddressContent(addressIndex) {
+        // Clear rendered content to free memory
+        const collapseEl = document.getElementById(`bal-collapse-${addressIndex}`);
+        if (collapseEl) {
+          const contentEl = collapseEl.querySelector('.bal-address-content');
+          if (contentEl) {
+            contentEl.innerHTML = '';
+            contentEl.dataset.rendered = 'false';
+          }
+        }
+        this.openAddresses.delete(addressIndex);
+      },
+      
+      getMemoryUsage() {
+        return {
+          openAddresses: this.openAddresses.size,
+          totalAddresses: window.currentBlockAccessList.length
+        };
+      }
+    };
+    
+    // Helper functions
+    function formatBalance(balanceData) {
+      // Convert balance to ETH (assuming balanceData is in wei)
+      if (!balanceData) return '0 ETH';
+      
+      const weiValue = BigInt(arrayToHex(balanceData));
+      const ethValue = Number(weiValue) / 1e18;
+      
+      if (ethValue === 0) {
+        return '0 ETH';
+      } else if (ethValue >= 1) {
+        return ethValue.toFixed(6).replace(/\.?0+$/, '') + ' ETH';
+      } else {
+        return ethValue.toFixed(18).replace(/\.?0+$/, '') + ' ETH';
+      }
+    }
+    
+    function renderBalanceDiff(currentBalance, previousBalance) {
+      // Calculate actual balance difference
+      const current = BigInt(arrayToHex(currentBalance));
+      const previous = BigInt(arrayToHex(previousBalance));
+      const diff = current - previous;
+      
+      if (diff === 0n) return '';
+      
+      const ethDiff = Number(diff) / 1e18;
+      const absEthDiff = Math.abs(ethDiff);
+      const formattedDiff = absEthDiff >= 1 ? 
+        absEthDiff.toFixed(6).replace(/\.?0+$/, '') : 
+        absEthDiff.toFixed(18).replace(/\.?0+$/, '');
+      
+      const cssClass = diff > 0n ? 'positive' : 'negative';
+      const sign = diff > 0n ? '+' : '-';
+      
+      return `<span class="bal-balance-diff ${cssClass}"> ${sign}${formattedDiff} ETH</span>`;
+    }
+    
+    function arrayToHex(input) {
+      if (!input) return '0x';
+      
+      if (typeof input === 'string') {
+        if (input.startsWith('0x') || input.startsWith('0X')) {
+          return input.toLowerCase();
+        }
+        return '0x' + input.toLowerCase();
+      }
+      
+      if (Array.isArray(input) && input.length === 0) return '0x';
+      if (Array.isArray(input)) {
+        return '0x' + Array.from(input, byte => ('0' + (byte & 0xFF).toString(16)).slice(-2)).join('');
+      }
+      
+      return '0x' + input.toString(16);
+    }
+    
     // Helper function to convert base64 to hex
     function base64ToHex(base64) {
       if (!base64) return null;
@@ -595,18 +824,30 @@
         return new bootstrap.Tooltip(tooltipTriggerEl)
       });
       
-      // Handle chevron rotation on collapse
+      // Handle chevron rotation and on-demand rendering
       document.querySelectorAll('.bal-address-header').forEach(function(header) {
         const target = header.getAttribute('data-bs-target');
         const collapse = document.querySelector(target);
         
         if (collapse) {
+          const addressIndex = parseInt(collapse.dataset.addressIndex);
+          
           collapse.addEventListener('show.bs.collapse', function() {
             header.classList.remove('collapsed');
+            // Render content on demand when expanding
+            accessListRenderer.renderAddressContent(addressIndex);
           });
           
           collapse.addEventListener('hide.bs.collapse', function() {
             header.classList.add('collapsed');
+          });
+          
+          collapse.addEventListener('hidden.bs.collapse', function() {
+            // Clear content after collapse animation completes to free memory
+            // Only clear if we have many addresses open to maintain good UX
+            if (accessListRenderer.openAddresses.size > 10) {
+              accessListRenderer.clearAddressContent(addressIndex);
+            }
           });
           
           // Set initial state
