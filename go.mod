@@ -10,7 +10,7 @@ require (
 	github.com/attestantio/go-eth2-client v0.27.1
 	github.com/cockroachdb/pebble v1.1.5
 	github.com/coocood/freecache v1.2.4
-	github.com/ethereum/go-ethereum v1.16.4
+	github.com/ethereum/go-ethereum v1.16.5
 	github.com/ethpandaops/ethwallclock v0.4.0
 	github.com/glebarez/go-sqlite v1.22.0
 	github.com/go-redis/redis/v8 v8.11.5
@@ -24,7 +24,7 @@ require (
 	github.com/mashingan/smapping v0.1.19
 	github.com/minio/minio-go/v7 v7.0.95
 	github.com/mitchellh/mapstructure v1.5.0
-	github.com/pk910/dynamic-ssz v1.1.0
+	github.com/pk910/dynamic-ssz v1.1.1
 	github.com/pressly/goose/v3 v3.26.0
 	github.com/probe-lab/eth-das-guardian v0.2.2
 	github.com/protolambda/bls12-381-util v0.1.0
@@ -52,7 +52,7 @@ require (
 	github.com/DataDog/zstd v1.5.6 // indirect
 	github.com/KyleBanks/depth v1.2.1 // indirect
 	github.com/OffchainLabs/hashtree v0.2.1-0.20250530191054-577f0b75c7f7 // indirect
-	github.com/VictoriaMetrics/fastcache v1.12.2 // indirect
+	github.com/VictoriaMetrics/fastcache v1.13.0 // indirect
 	github.com/benbjohnson/clock v1.3.5 // indirect
 	github.com/casbin/govaluate v1.10.0 // indirect
 	github.com/cockroachdb/errors v1.11.3 // indirect
