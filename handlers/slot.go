@@ -18,10 +18,14 @@ import (
 	"github.com/attestantio/go-eth2-client/spec/deneb"
 	"github.com/attestantio/go-eth2-client/spec/electra"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
+	"github.com/ethereum/go-ethereum/common"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/types/bal"
+	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
 
+	"github.com/ethpandaops/dora/clients/execution/rpc"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/indexer/beacon"
@@ -47,6 +51,7 @@ func Slot(w http.ResponseWriter, r *http.Request) {
 		"slot/deposit_requests.html",
 		"slot/withdrawal_requests.html",
 		"slot/consolidation_requests.html",
+		"slot/block_access_list.html",
 	)
 	var notfoundTemplateFiles = append(layoutTemplateFiles,
 		"slot/notfound.html",
@@ -77,6 +82,14 @@ func Slot(w http.ResponseWriter, r *http.Request) {
 	urlArgs := r.URL.Query()
 	if urlArgs.Has("download") {
 		if err := handleSlotDownload(r.Context(), w, blockSlot, blockRootHash, urlArgs.Get("download")); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		return
+	}
+
+	if urlArgs.Get("action") == "parse-access-list" {
+		if err := handleSlotParseAccessList(w, r); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
@@ -272,6 +285,14 @@ func buildSlotPageData(ctx context.Context, blockSlot int64, blockRoot []byte) (
 		pageData.ProposerName = services.GlobalBeaconService.GetValidatorName(pageData.Proposer)
 		pageData.Block = getSlotPageBlockData(blockData, epochStatsValues)
 
+		// Create transaction details map for access list UI
+		if pageData.Block != nil && pageData.Block.Transactions != nil {
+			pageData.TransactionDetails = make(map[uint64]*models.SlotPageTransaction)
+			for _, tx := range pageData.Block.Transactions {
+				pageData.TransactionDetails[tx.Index] = tx
+			}
+		}
+
 		// check mev block
 		if pageData.Block.ExecutionData != nil {
 			mevBlock := db.GetMevBlockByBlockHash(pageData.Block.ExecutionData.BlockHash)
@@ -291,6 +312,33 @@ func buildSlotPageData(ctx context.Context, blockSlot int64, blockRoot []byte) (
 					ClassName:   "text-bg-warning",
 				})
 			}
+		}
+	}
+
+	// Add system contract addresses
+	pageData.SystemContracts = make(map[string]string)
+
+	// Get system contract addresses from execution chain state
+	if execChainState := services.GlobalBeaconService.GetExecutionChainState(); execChainState != nil {
+		// Add known system contracts
+		consolidationAddr := execChainState.GetSystemContractAddress(rpc.ConsolidationRequestContract)
+		pageData.SystemContracts[consolidationAddr.Hex()] = "Consolidation Request Contract (EIP-7251)"
+
+		withdrawalAddr := execChainState.GetSystemContractAddress(rpc.WithdrawalRequestContract)
+		pageData.SystemContracts[withdrawalAddr.Hex()] = "Withdrawal Request Contract (EIP-7002)"
+
+		beaconRootsAddr := execChainState.GetSystemContractAddress(rpc.BeaconRootsContract)
+		pageData.SystemContracts[beaconRootsAddr.Hex()] = "Beacon Roots Contract (EIP-4788)"
+
+		historyStorageAddr := execChainState.GetSystemContractAddress(rpc.HistoryStorageContract)
+		pageData.SystemContracts[historyStorageAddr.Hex()] = "History Storage Contract (EIP-2935)"
+	}
+
+	// Add deposit contract from beacon chain config
+	if chainState := services.GlobalBeaconService.GetChainState(); chainState != nil {
+		if specs := chainState.GetSpecs(); specs != nil && specs.DepositContractAddress != nil {
+			depositAddr := common.BytesToAddress(specs.DepositContractAddress)
+			pageData.SystemContracts[depositAddr.Hex()] = "Deposit Contract"
 		}
 	}
 
@@ -711,6 +759,83 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 		if transactions, err := executionPayload.Transactions(); err == nil {
 			getSlotPageTransactions(pageData, transactions)
 		}
+
+		if blockAccessListRlp, err := executionPayload.BlockAccessList(); err == nil {
+			// decode RLP encoded block access list
+			var blockAccessList bal.BlockAccessList
+			err = blockAccessList.DecodeRLP(rlp.NewStream(bytes.NewReader(blockAccessListRlp), 0))
+			if err != nil {
+				logrus.Warnf("error decoding block access list: %v", err)
+			} else {
+				pageData.ExecutionData.BlockAccessList = make([]*models.SlotPageBlockAccessListEntry, len(blockAccessList))
+				for i, entry := range blockAccessList {
+					balEntry := &models.SlotPageBlockAccessListEntry{
+						Address: entry.Address[:],
+					}
+
+					// Convert storage changes
+					if len(entry.StorageChanges) > 0 {
+						balEntry.StorageChanges = make([]*models.SlotPageBlockBALStorageChange, len(entry.StorageChanges))
+						for j, storageChange := range entry.StorageChanges {
+							changes := make([]*models.SlotPageBlockBALStorageSlotChange, len(storageChange.Accesses))
+							for k, write := range storageChange.Accesses {
+								changes[k] = &models.SlotPageBlockBALStorageSlotChange{
+									BlockAccessIndex: write.TxIdx,
+									Value:            write.ValueAfter[:],
+								}
+							}
+							balEntry.StorageChanges[j] = &models.SlotPageBlockBALStorageChange{
+								Slot:    storageChange.Slot[:],
+								Changes: changes,
+							}
+						}
+					}
+
+					// Convert storage reads
+					if len(entry.StorageReads) > 0 {
+						balEntry.StorageReads = make([][]byte, len(entry.StorageReads))
+						for j, read := range entry.StorageReads {
+							balEntry.StorageReads[j] = read[:]
+						}
+					}
+
+					// Convert balance changes
+					if len(entry.BalanceChanges) > 0 {
+						balEntry.BalanceChanges = make([]*models.SlotPageBlockBALBalanceChange, len(entry.BalanceChanges))
+						for j, balanceChange := range entry.BalanceChanges {
+							balEntry.BalanceChanges[j] = &models.SlotPageBlockBALBalanceChange{
+								BlockAccessIndex: balanceChange.TxIdx,
+								Balance:          balanceChange.Balance.Bytes(),
+							}
+						}
+					}
+
+					// Convert nonce changes
+					if len(entry.NonceChanges) > 0 {
+						balEntry.NonceChanges = make([]*models.SlotPageBlockBALNonceChange, len(entry.NonceChanges))
+						for j, nonceChange := range entry.NonceChanges {
+							balEntry.NonceChanges[j] = &models.SlotPageBlockBALNonceChange{
+								BlockAccessIndex: nonceChange.TxIdx,
+								Nonce:            nonceChange.Nonce,
+							}
+						}
+					}
+
+					// Convert code changes
+					if len(entry.CodeChanges) > 0 {
+						balEntry.CodeChanges = make([]*models.SlotPageBlockBALCodeChange, len(entry.CodeChanges))
+						for j, codeChange := range entry.CodeChanges {
+							balEntry.CodeChanges[j] = &models.SlotPageBlockBALCodeChange{
+								BlockAccessIndex: codeChange.TxIdx,
+								Code:             codeChange.Code,
+							}
+						}
+					}
+
+					pageData.ExecutionData.BlockAccessList[i] = balEntry
+				}
+			}
+		}
 	}
 
 	if specs.CapellaForkEpoch != nil && uint64(epoch) >= *specs.CapellaForkEpoch {
@@ -985,4 +1110,104 @@ func handleSlotDownload(ctx context.Context, w http.ResponseWriter, blockSlot in
 	default:
 		return fmt.Errorf("unknown download type: %s", downloadType)
 	}
+}
+
+func handleSlotParseAccessList(w http.ResponseWriter, r *http.Request) error {
+	w.Header().Set("Content-Type", "application/json")
+
+	if r.Method != http.MethodPost {
+		return fmt.Errorf("method not allowed")
+	}
+
+	rlpHex := r.PostFormValue("rlp")
+	if rlpHex == "" {
+		return fmt.Errorf("missing rlp parameter")
+	}
+
+	// Remove 0x prefix if present
+	rlpHex = strings.TrimPrefix(rlpHex, "0x")
+
+	// Decode hex to bytes
+	rlpBytes, err := hex.DecodeString(rlpHex)
+	if err != nil {
+		return fmt.Errorf("invalid hex: %v", err)
+	}
+
+	// Parse RLP encoded access list
+	var blockAccessList bal.BlockAccessList
+	err = blockAccessList.DecodeRLP(rlp.NewStream(bytes.NewReader(rlpBytes), 0))
+	if err != nil {
+		return fmt.Errorf("invalid access list RLP: %v", err)
+	}
+
+	// Convert to our model format
+	result := make([]*models.SlotPageBlockAccessListEntry, len(blockAccessList))
+	for i, entry := range blockAccessList {
+		balEntry := &models.SlotPageBlockAccessListEntry{
+			Address: entry.Address[:],
+		}
+
+		// Convert storage changes
+		if len(entry.StorageChanges) > 0 {
+			balEntry.StorageChanges = make([]*models.SlotPageBlockBALStorageChange, len(entry.StorageChanges))
+			for j, storageChange := range entry.StorageChanges {
+				changes := make([]*models.SlotPageBlockBALStorageSlotChange, len(storageChange.Accesses))
+				for k, write := range storageChange.Accesses {
+					changes[k] = &models.SlotPageBlockBALStorageSlotChange{
+						BlockAccessIndex: write.TxIdx,
+						Value:            write.ValueAfter[:],
+					}
+				}
+				balEntry.StorageChanges[j] = &models.SlotPageBlockBALStorageChange{
+					Slot:    storageChange.Slot[:],
+					Changes: changes,
+				}
+			}
+		}
+
+		// Convert storage reads
+		if len(entry.StorageReads) > 0 {
+			balEntry.StorageReads = make([][]byte, len(entry.StorageReads))
+			for j, read := range entry.StorageReads {
+				balEntry.StorageReads[j] = read[:]
+			}
+		}
+
+		// Convert balance changes
+		if len(entry.BalanceChanges) > 0 {
+			balEntry.BalanceChanges = make([]*models.SlotPageBlockBALBalanceChange, len(entry.BalanceChanges))
+			for j, balanceChange := range entry.BalanceChanges {
+				balEntry.BalanceChanges[j] = &models.SlotPageBlockBALBalanceChange{
+					BlockAccessIndex: balanceChange.TxIdx,
+					Balance:          balanceChange.Balance.Bytes(),
+				}
+			}
+		}
+
+		// Convert nonce changes
+		if len(entry.NonceChanges) > 0 {
+			balEntry.NonceChanges = make([]*models.SlotPageBlockBALNonceChange, len(entry.NonceChanges))
+			for j, nonceChange := range entry.NonceChanges {
+				balEntry.NonceChanges[j] = &models.SlotPageBlockBALNonceChange{
+					BlockAccessIndex: nonceChange.TxIdx,
+					Nonce:            nonceChange.Nonce,
+				}
+			}
+		}
+
+		// Convert code changes
+		if len(entry.CodeChanges) > 0 {
+			balEntry.CodeChanges = make([]*models.SlotPageBlockBALCodeChange, len(entry.CodeChanges))
+			for j, codeChange := range entry.CodeChanges {
+				balEntry.CodeChanges[j] = &models.SlotPageBlockBALCodeChange{
+					BlockAccessIndex: codeChange.TxIdx,
+					Code:             codeChange.Code,
+				}
+			}
+		}
+
+		result[i] = balEntry
+	}
+
+	return json.NewEncoder(w).Encode(result)
 }
