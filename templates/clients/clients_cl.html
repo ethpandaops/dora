@@ -1317,6 +1317,39 @@
       modal.show();
     }
     
+    // Helper function to compare values with type normalization
+    function valuesMatch(value1, value2) {
+      if (value1 === value2) {
+        return true;
+      }
+
+      var isNumericString = function(val) {
+        return typeof val === 'string' && !isNaN(val) && !isNaN(parseFloat(val));
+      };
+
+      var normalizeValue = function(val) {
+        if (val === null || val === undefined) {
+          return val;
+        }
+        if (typeof val === 'number') {
+          return val;
+        }
+        if (isNumericString(val)) {
+          return parseFloat(val);
+        }
+        return val;
+      };
+
+      var normalized1 = normalizeValue(value1);
+      var normalized2 = normalizeValue(value2);
+
+      if (normalized1 === normalized2) {
+        return true;
+      }
+
+      return JSON.stringify(value1) === JSON.stringify(value2);
+    }
+
     // Calculate summary statistics for spec comparison
     function calculateSpecSummary(expectedSpecs, clientSpecs) {
       var missingCount = 0;
@@ -1371,7 +1404,7 @@
             
             if ((expectedValue !== undefined) && (clientValue === undefined || clientValue === null)) {
               missingCount++;
-            } else if (expectedValue !== undefined && clientValue !== undefined && JSON.stringify(clientValue) !== JSON.stringify(expectedValue)) {
+            } else if (expectedValue !== undefined && clientValue !== undefined && !valuesMatch(clientValue, expectedValue)) {
               mismatchCount++;
             }
           }
@@ -1383,10 +1416,10 @@
         window.expectedPresetFields.forEach(function(field) {
           var expectedValue = expectedSpecs ? expectedSpecs[field] : undefined;
           var clientValue = clientSpecs ? clientSpecs[field] : undefined;
-          
+
           if ((expectedValue !== undefined) && (clientValue === undefined || clientValue === null)) {
             missingCount++;
-          } else if (expectedValue !== undefined && clientValue !== undefined && JSON.stringify(clientValue) !== JSON.stringify(expectedValue)) {
+          } else if (expectedValue !== undefined && clientValue !== undefined && !valuesMatch(clientValue, expectedValue)) {
             mismatchCount++;
           }
         });
@@ -1397,10 +1430,10 @@
         window.expectedDomainTypeFields.forEach(function(field) {
           var expectedValue = expectedSpecs ? expectedSpecs[field] : undefined;
           var clientValue = clientSpecs ? clientSpecs[field] : undefined;
-          
+
           if ((expectedValue !== undefined) && (clientValue === undefined || clientValue === null)) {
             missingCount++;
-          } else if (expectedValue !== undefined && clientValue !== undefined && JSON.stringify(clientValue) !== JSON.stringify(expectedValue)) {
+          } else if (expectedValue !== undefined && clientValue !== undefined && !valuesMatch(clientValue, expectedValue)) {
             mismatchCount++;
           }
         });
@@ -1613,7 +1646,7 @@
       
       // For client values, only show red if they don't match expected
       var cssClass = 'text-success';
-      if (expectedValue !== undefined && JSON.stringify(value) !== JSON.stringify(expectedValue)) {
+      if (expectedValue !== undefined && !valuesMatch(value, expectedValue)) {
         cssClass = 'text-danger';
       } else if (expectedValue === undefined) {
         cssClass = 'text-muted';
