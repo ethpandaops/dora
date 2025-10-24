@@ -329,37 +329,61 @@ func (cache *ChainState) GetFullBlobSchedule() []BlobScheduleEntry {
 
 const MinBaseFeePerBlobGas = 1 // wei, per EIP-4844
 
-// CalcBaseFeePerBlobGas computes base_fee_per_blob_gas from excess_blob_gas and updateFraction.
-// Arguments:
-//   - excessBlobGas: from block header
-//   - blockTimestamp
-//
-// Returns base_fee_per_blob_gas as *big.Int
+// CalcBaseFeePerBlobGas computes base_fee_per_blob_gas from excess_blob_gas and updateFraction
+// according to EIP-4844 fake_exponential(MIN_BASE_FEE_PER_BLOB_GAS, excess_blob_gas, updateFraction).
+// Returns base_fee_per_blob_gas as *big.Int (>= MIN_BASE_FEE_PER_BLOB_GAS; 0 if updateFraction==0).
 func (cache *ChainState) CalcBaseFeePerBlobGas(excessBlobGas uint64, updateFraction uint64) *big.Int {
-	// fake_exponential(minBaseFee, excessBlobGas, updateFraction)
-	// base = minBaseFee
-	// factor = excessBlobGas / updateFraction
-	// remainder = excessBlobGas % updateFraction
-	// result = base * (2^factor) * (updateFraction + remainder) / updateFraction
-
-	base := big.NewInt(MinBaseFeePerBlobGas)
-
 	if updateFraction == 0 {
 		return big.NewInt(0)
 	}
 
-	factor := new(big.Int).Div(new(big.Int).SetUint64(excessBlobGas), new(big.Int).SetUint64(updateFraction))
-	remainder := new(big.Int).Mod(new(big.Int).SetUint64(excessBlobGas), new(big.Int).SetUint64(updateFraction))
+	minBase := big.NewInt(MinBaseFeePerBlobGas)           // EIP-4844: MIN_BASE_FEE_PER_BLOB_GAS = 1
+	numerator := new(big.Int).SetUint64(excessBlobGas)    // n
+	denominator := new(big.Int).SetUint64(updateFraction) // d
 
-	// base << factor (multiply by 2^factor)
-	base.Lsh(base, uint(factor.Uint64()))
+	i := big.NewInt(1)
+	output := new(big.Int) // 0
 
-	// multiply by (updateFraction + remainder)
-	num := new(big.Int).Add(new(big.Int).SetUint64(updateFraction), remainder)
-	base.Mul(base, num)
+	// numerator_accum = minBase * denominator
+	numeratorAccum := new(big.Int).Mul(minBase, denominator)
 
-	// divide by updateFraction
-	base.Div(base, new(big.Int).SetUint64(updateFraction))
+	tmp := new(big.Int)
+	for numeratorAccum.Sign() > 0 {
+		// output += numerator_accum
+		output.Add(output, numeratorAccum)
 
-	return base
+		// numerator_accum = (numerator_accum * numerator) // (denominator * i)
+		tmp.Mul(denominator, i) // tmp = d * i
+		if tmp.Sign() == 0 {    // defensive (shouldn't happen since updateFraction != 0)
+			break
+		}
+		numeratorAccum.Mul(numeratorAccum, numerator)
+		numeratorAccum.Div(numeratorAccum, tmp)
+
+		i.Add(i, big.NewInt(1))
+	}
+
+	// return output // denominator
+	return output.Div(output, denominator)
+}
+
+// calculateEIP7918BlobBaseFee implements the EIP-7918 reserve price mechanism
+// It ensures blob base fee doesn't fall below a threshold based on execution costs
+func (cache *ChainState) CalculateEIP7918BlobBaseFee(baseFeePerGas uint64, blobBaseFee uint64) uint64 {
+	// EIP-7918 constants
+	const (
+		BLOB_BASE_COST = 8192   // 2^13
+		GAS_PER_BLOB   = 131072 // blob gas limit per blob (128KB)
+	)
+
+	// Calculate the reserve price threshold
+	// If BLOB_BASE_COST * base_fee_per_gas > GAS_PER_BLOB * base_fee_per_blob_gas
+	// then the blob base fee should be adjusted
+	reservePriceThreshold := (BLOB_BASE_COST * baseFeePerGas) / GAS_PER_BLOB
+
+	// Return the higher of the two values
+	if reservePriceThreshold > blobBaseFee {
+		return reservePriceThreshold
+	}
+	return blobBaseFee
 }
