@@ -145,7 +145,7 @@ func buildFilteredMevBlocksPageData(pageIdx uint64, pageSize uint64, minSlot uin
 	}
 
 	withRelayIdx := []uint8{}
-	for _, relayIdStr := range strings.Split(withRelays, " ") {
+	for relayIdStr := range strings.SplitSeq(withRelays, " ") {
 		if relayIdStr == "" {
 			continue
 		}
@@ -162,7 +162,7 @@ func buildFilteredMevBlocksPageData(pageIdx uint64, pageSize uint64, minSlot uin
 	}
 
 	withProposedOpts := []uint8{}
-	for _, proposedStr := range strings.Split(withProposed, " ") {
+	for proposedStr := range strings.SplitSeq(withProposed, " ") {
 		if proposedStr == "" {
 			continue
 		}

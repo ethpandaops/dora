@@ -91,8 +91,8 @@ func GetTemplateFuncs() template.FuncMap {
 }
 
 func checkInList(item, list string) bool {
-	items := strings.Split(list, ",")
-	for _, i := range items {
+	items := strings.SplitSeq(list, ",")
+	for i := range items {
 		if i == item {
 			return true
 		}

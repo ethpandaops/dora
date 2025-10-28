@@ -140,7 +140,7 @@ func APIMevBlocksV1(w http.ResponseWriter, r *http.Request) {
 
 	// Parse relay IDs from comma-separated string
 	if relaysStr := query.Get("relays"); relaysStr != "" {
-		for _, relayStr := range strings.Split(relaysStr, ",") {
+		for relayStr := range strings.SplitSeq(relaysStr, ",") {
 			relayStr = strings.TrimSpace(relayStr)
 			if relayId, err := strconv.ParseUint(relayStr, 10, 8); err == nil {
 				relayIds = append(relayIds, uint8(relayId))
@@ -150,7 +150,7 @@ func APIMevBlocksV1(w http.ResponseWriter, r *http.Request) {
 
 	// Parse proposed statuses from comma-separated string
 	if proposedStr := query.Get("proposed"); proposedStr != "" {
-		for _, statusStr := range strings.Split(proposedStr, ",") {
+		for statusStr := range strings.SplitSeq(proposedStr, ",") {
 			statusStr = strings.TrimSpace(statusStr)
 			if status, err := strconv.ParseUint(statusStr, 10, 8); err == nil {
 				proposedStatuses = append(proposedStatuses, uint8(status))

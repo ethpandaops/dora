@@ -77,8 +77,8 @@ func APIValidatorNamesV1(w http.ResponseWriter, r *http.Request) {
 
 		// Parse indices from query string
 		if indicesStr != "" {
-			indexList := strings.Split(indicesStr, ",")
-			for _, indexStr := range indexList {
+			indexList := strings.SplitSeq(indicesStr, ",")
+			for indexStr := range indexList {
 				indexStr = strings.TrimSpace(indexStr)
 				if indexStr == "" {
 					continue
@@ -91,8 +91,8 @@ func APIValidatorNamesV1(w http.ResponseWriter, r *http.Request) {
 
 		// Parse pubkeys from query string
 		if pubkeysStr != "" {
-			pubkeyList := strings.Split(pubkeysStr, ",")
-			for _, pubkeyStr := range pubkeyList {
+			pubkeyList := strings.SplitSeq(pubkeysStr, ",")
+			for pubkeyStr := range pubkeyList {
 				pubkeyStr = strings.TrimSpace(pubkeyStr)
 				if pubkeyStr != "" {
 					pubkeys = append(pubkeys, pubkeyStr)

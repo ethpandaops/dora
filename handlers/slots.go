@@ -86,7 +86,7 @@ func buildSlotsPageData(firstSlot uint64, pageSize uint64, displayColumns string
 	displayMap := map[uint64]bool{}
 	displayList := []string{}
 	if displayColumns != "" {
-		for _, col := range strings.Split(displayColumns, " ") {
+		for col := range strings.SplitSeq(displayColumns, " ") {
 			colNum, err := strconv.ParseUint(col, 10, 64)
 			if err != nil {
 				continue
