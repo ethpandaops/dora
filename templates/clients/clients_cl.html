@@ -224,6 +224,13 @@
     <div class="card mt-2">
       <div class="card-body px-0 py-3">
         <div class="table-responsive table-sorting px-0 py-1">
+          <div style="margin-bottom: 15px; padding: 0 15px;">
+            <div class="input-group">
+              <span class="input-group-text"><i class="fas fa-search"></i></span>
+              <input type="text" class="form-control" id="clientSearchInput" placeholder="Search clients by name...">
+              <button class="btn btn-outline-secondary" type="button" id="clearClientSearch">Clear</button>
+            </div>
+          </div>
           <div style="text-align: right; margin-right: 15px;">
             {{ if and $root.ShowPeerDASInfos (not $root.DisableDasGuardianCheck) $root.EnableDasGuardianMassScan }}
             <button type="button" class="btn btn-outline-primary btn-sm me-3" id="massDasGuardianBtn">
@@ -1055,6 +1062,36 @@
     }
   });
 
+  // Client search functionality
+  $('#clientSearchInput').on('input', function() {
+    var searchText = $(this).val().trim().toLowerCase();
+
+    $('#clients tbody tr').each(function() {
+      if (!$(this).hasClass('peerInfo')) {
+        var clientName = $(this).find('.client-row a').text().toLowerCase();
+        var peerInfoRow = $(this).next('.peerInfo');
+
+        if (searchText === '' || clientName.includes(searchText)) {
+          $(this).show();
+          peerInfoRow.css('display', '');
+        } else {
+          $(this).hide();
+          peerInfoRow.css('display', 'none');
+        }
+      }
+    });
+  });
+
+  $('#clearClientSearch').click(function() {
+    $('#clientSearchInput').val('');
+    $('#clients tbody tr').each(function() {
+      if (!$(this).hasClass('peerInfo')) {
+        $(this).show();
+        $(this).next('.peerInfo').css('display', '');
+      }
+    });
+  });
+
   $('.client-row').on('click', function() {
     var peerId = $(this).data('peerid');
     if(peerGraph) {
@@ -1317,6 +1354,39 @@
       modal.show();
     }
     
+    // Helper function to compare values with type normalization
+    function valuesMatch(value1, value2) {
+      if (value1 === value2) {
+        return true;
+      }
+
+      var isNumericString = function(val) {
+        return typeof val === 'string' && !isNaN(val) && !isNaN(parseFloat(val));
+      };
+
+      var normalizeValue = function(val) {
+        if (val === null || val === undefined) {
+          return val;
+        }
+        if (typeof val === 'number') {
+          return val;
+        }
+        if (isNumericString(val)) {
+          return parseFloat(val);
+        }
+        return val;
+      };
+
+      var normalized1 = normalizeValue(value1);
+      var normalized2 = normalizeValue(value2);
+
+      if (normalized1 === normalized2) {
+        return true;
+      }
+
+      return JSON.stringify(value1) === JSON.stringify(value2);
+    }
+
     // Calculate summary statistics for spec comparison
     function calculateSpecSummary(expectedSpecs, clientSpecs) {
       var missingCount = 0;
@@ -1371,7 +1441,7 @@
             
             if ((expectedValue !== undefined) && (clientValue === undefined || clientValue === null)) {
               missingCount++;
-            } else if (expectedValue !== undefined && clientValue !== undefined && JSON.stringify(clientValue) !== JSON.stringify(expectedValue)) {
+            } else if (expectedValue !== undefined && clientValue !== undefined && !valuesMatch(clientValue, expectedValue)) {
               mismatchCount++;
             }
           }
@@ -1383,10 +1453,10 @@
         window.expectedPresetFields.forEach(function(field) {
           var expectedValue = expectedSpecs ? expectedSpecs[field] : undefined;
           var clientValue = clientSpecs ? clientSpecs[field] : undefined;
-          
+
           if ((expectedValue !== undefined) && (clientValue === undefined || clientValue === null)) {
             missingCount++;
-          } else if (expectedValue !== undefined && clientValue !== undefined && JSON.stringify(clientValue) !== JSON.stringify(expectedValue)) {
+          } else if (expectedValue !== undefined && clientValue !== undefined && !valuesMatch(clientValue, expectedValue)) {
             mismatchCount++;
           }
         });
@@ -1397,10 +1467,10 @@
         window.expectedDomainTypeFields.forEach(function(field) {
           var expectedValue = expectedSpecs ? expectedSpecs[field] : undefined;
           var clientValue = clientSpecs ? clientSpecs[field] : undefined;
-          
+
           if ((expectedValue !== undefined) && (clientValue === undefined || clientValue === null)) {
             missingCount++;
-          } else if (expectedValue !== undefined && clientValue !== undefined && JSON.stringify(clientValue) !== JSON.stringify(expectedValue)) {
+          } else if (expectedValue !== undefined && clientValue !== undefined && !valuesMatch(clientValue, expectedValue)) {
             mismatchCount++;
           }
         });
@@ -1613,7 +1683,7 @@
       
       // For client values, only show red if they don't match expected
       var cssClass = 'text-success';
-      if (expectedValue !== undefined && JSON.stringify(value) !== JSON.stringify(expectedValue)) {
+      if (expectedValue !== undefined && !valuesMatch(value, expectedValue)) {
         cssClass = 'text-danger';
       } else if (expectedValue === undefined) {
         cssClass = 'text-muted';
