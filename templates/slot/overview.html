@@ -275,8 +275,42 @@
                 {{ if .BlobBaseFee }}
                   <div class="row py-1">
                     <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Base fee per blob gas">Blob base fee:</span></div>
-                    <div class="col-md-10 text-monospace text-break">{{ formatBaseFee .BlobBaseFee }}</div>
+                    <div class="col-md-10 text-monospace text-break">
+                      {{ if .IsEIP7918Active }}
+                        {{ formatBaseFee .BlobBaseFeeEIP7918 }}
+                        <i class="fa fa-exclamation-triangle text-warning ms-1 eip7918-info-btn" 
+                           role="button"
+                           data-bs-toggle="tooltip" 
+                           data-bs-placement="top" 
+                           title="Click for details"></i>
+                      {{ else }}
+                        {{ formatBaseFee .BlobBaseFee }}
+                      {{ end }}
+                    </div>
                   </div>
+                  {{ if .IsEIP7918Active }}
+                    <div class="row py-1 d-none" id="eip7918-details">
+                      <div class="col-md-2"></div>
+                      <div class="col-md-10">
+                        <div class="alert alert-warning py-2 px-3 mt-2 mb-0">
+                          <div class="d-flex align-items-start">
+                            <i class="fas fa-exclamation-triangle me-2 mt-1"></i>
+                            <div class="flex-grow-1">
+                              <strong>EIP-7918 Reserve Price Active</strong>
+                              <div class="small mt-1">
+                                The blob base fee has been adjusted to prevent it from falling below the execution cost threshold.
+                                <ul class="mb-0 mt-1">
+                                  <li>Regular blob base fee: {{ formatBaseFee .BlobBaseFee }}</li>
+                                  <li>Reserve price adjustment: +{{ formatBlobFeeDifference .BlobBaseFeeEIP7918 .BlobBaseFee }}</li>
+                                  <li>Effective blob base fee: {{ formatBaseFee .BlobBaseFeeEIP7918 }}</li>
+                                </ul>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  {{ end }}
                 {{ end }}
 
                 {{ if .ExcessBlobGas }}
