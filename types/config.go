@@ -87,6 +87,7 @@ type Config struct {
 		Endpoint     string           `yaml:"endpoint" envconfig:"BEACONAPI_ENDPOINT"`
 		Endpoints    []EndpointConfig `yaml:"endpoints"`
 		EndpointsURL string           `yaml:"endpointsUrl" envconfig:"BEACONAPI_ENDPOINTS_URL"`
+		ClientIndex  int              `yaml:"clientIndex" envconfig:"BEACONAPI_CLIENT_INDEX"`
 
 		LocalCacheSize       int    `yaml:"localCacheSize" envconfig:"BEACONAPI_LOCAL_CACHE_SIZE"`
 		SkipFinalAssignments bool   `yaml:"skipFinalAssignments" envconfig:"BEACONAPI_SKIP_FINAL_ASSIGNMENTS"`

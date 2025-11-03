@@ -46,6 +46,9 @@
         <li class="nav-item">
           <a class="nav-link" id="attestations-tab" data-bs-toggle="tab" href="#attestations" role="tab" aria-controls="attestations" aria-selected="false">Attestations <span class="badge bg-secondary text-white">{{ .Block.AttestationsCount }}</span></a>
         </li>
+        <li class="nav-item">
+          <a class="nav-link" id="proofs-tab" data-bs-toggle="tab" href="#proofs" role="tab" aria-controls="proofs" aria-selected="false">Proofs</a>
+        </li>
         {{ if gt .Block.DepositsCount 0 }}
           <li class="nav-item">
             <a class="nav-link" id="deposits-tab" data-bs-toggle="tab" href="#deposits" role="tab" aria-controls="deposits" aria-selected="false">Deposits <span class="badge bg-secondary text-white">{{ .Block.DepositsCount }}</span></a>
@@ -137,6 +140,16 @@
             </div>
           </div>
           {{ template "block_attestations" . }}
+        </div>
+        <div class="tab-pane fade show active" id="proofs" role="tabpanel" aria-labelledby="proofs-tab">
+          <div class="card block-card">
+            <div style="margin-bottom: -.25rem;" class="card-body px-0 py-1">
+              <div class="row p-1 mx-0">
+                <h3 class="h5 col-md-12 text-center"><b>Proofs</b></h3>
+              </div>
+            </div>
+          </div>
+          {{ template "block_proofs" . }}
         </div>
         {{ if gt .Block.DepositsCount 0 }}
           <div class="tab-pane fade show active" id="deposits" role="tabpanel" aria-labelledby="deposits-tab">
