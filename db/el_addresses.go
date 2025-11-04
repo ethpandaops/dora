@@ -166,6 +166,16 @@ func UpdateENSName(address []byte, ensName string, timestamp uint64, tx *sqlx.Tx
 	return err
 }
 
+// UpdateElAddressENS updates the ENS name and last checked timestamp for an address
+func UpdateElAddressENS(address []byte, ensName *string, lastChecked *uint64, tx *sqlx.Tx) error {
+	_, err := tx.Exec(`
+		UPDATE el_addresses
+		SET ens_name = $1, ens_last_checked = $2
+		WHERE address = $3
+	`, ensName, lastChecked, address)
+	return err
+}
+
 // GetTopAddressesByBalance retrieves the richest addresses
 func GetTopAddressesByBalance(limit uint) ([]*dbtypes.ElAddress, error) {
 	addresses := []*dbtypes.ElAddress{}
