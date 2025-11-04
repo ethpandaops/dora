@@ -35,7 +35,7 @@ func NewTokenIndexer(indexerCtx *IndexerCtx, logger logrus.FieldLogger) *TokenIn
 }
 
 // ProcessLogs processes logs for token-related events
-func (ti *TokenIndexer) ProcessLogs(logs []*types.Log, txHash common.Hash, block *types.Block) error {
+func (ti *TokenIndexer) ProcessLogs(logs []*types.Log, txHash common.Hash, block *types.Block, forkId uint64) error {
 	for _, log := range logs {
 		if len(log.Topics) == 0 {
 			continue
@@ -45,7 +45,7 @@ func (ti *TokenIndexer) ProcessLogs(logs []*types.Log, txHash common.Hash, block
 
 		// Check if this is a Transfer event
 		if bytes.Equal(topic0.Bytes(), ti.transferEventSig.Bytes()) {
-			if err := ti.processTransferEvent(log, txHash, block); err != nil {
+			if err := ti.processTransferEvent(log, txHash, block, forkId); err != nil {
 				ti.logger.WithError(err).Error("Error processing transfer event")
 			}
 		}
@@ -60,7 +60,7 @@ func (ti *TokenIndexer) ProcessLogs(logs []*types.Log, txHash common.Hash, block
 }
 
 // processTransferEvent processes a Transfer event
-func (ti *TokenIndexer) processTransferEvent(log *types.Log, txHash common.Hash, block *types.Block) error {
+func (ti *TokenIndexer) processTransferEvent(log *types.Log, txHash common.Hash, block *types.Block, forkId uint64) error {
 	if len(log.Topics) < 3 {
 		return nil
 	}
@@ -83,6 +83,7 @@ func (ti *TokenIndexer) processTransferEvent(log *types.Log, txHash common.Hash,
 		FromAddress:     from.Bytes(),
 		ToAddress:       to.Bytes(),
 		Value:           log.Data,
+		ForkId:          forkId,
 	}
 
 	return db.RunDBTransaction(func(tx *sqlx.Tx) error {

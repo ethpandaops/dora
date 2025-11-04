@@ -20,7 +20,7 @@ func NewTraceIndexer(indexerCtx *IndexerCtx, logger logrus.FieldLogger) *TraceIn
 }
 
 // ProcessTransaction processes internal transactions for a transaction
-func (ti *TraceIndexer) ProcessTransaction(txHash common.Hash, blockNumber uint64) error {
+func (ti *TraceIndexer) ProcessTransaction(txHash common.Hash, blockNumber uint64, forkId uint64) error {
 	// TODO: Implement tracing using debug_traceTransaction or trace_transaction
 	// This requires execution client to support tracing APIs
 	// For now, this is a stub that can be implemented later

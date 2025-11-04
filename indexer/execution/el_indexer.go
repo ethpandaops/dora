@@ -13,6 +13,7 @@ import (
 
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
+	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/utils"
 )
 
@@ -29,7 +30,6 @@ type ElIndexer struct {
 	trackTokens       bool
 
 	// State
-	currentBlock       uint64
 	lastFinalizedBlock uint64
 	isRunning          bool
 
@@ -43,6 +43,28 @@ type ElIndexer struct {
 	processingMutex sync.Mutex
 	cleanupTicker   *time.Ticker
 	stopChan        chan struct{}
+
+	// Event channels for CL block notifications
+	blockChan           chan *CLBlockEvent
+	finalizationChan    chan *CLFinalizationEvent
+	catchupTicker       *time.Ticker
+}
+
+// CLBlockEvent represents a beacon chain block event
+type CLBlockEvent struct {
+	Slot           uint64
+	BlockHash      []byte // CL block hash
+	ELBlockNumber  uint64
+	ELBlockHash    []byte
+	ForkId         uint64
+	Timestamp      uint64
+}
+
+// CLFinalizationEvent represents a finalization event
+type CLFinalizationEvent struct {
+	Epoch              uint64
+	FinalizedSlot      uint64
+	FinalizedELBlock   uint64
 }
 
 // NewElIndexer creates a new execution layer indexer
@@ -56,6 +78,8 @@ func NewElIndexer(indexerCtx *IndexerCtx) *ElIndexer {
 		trackInternalTxs:  utils.Config.Indexer.ElTrackInternalTxs,
 		trackTokens:       utils.Config.Indexer.ElTrackTokens,
 		stopChan:          make(chan struct{}),
+		blockChan:         make(chan *CLBlockEvent, 100),
+		finalizationChan:  make(chan *CLFinalizationEvent, 10),
 	}
 
 	indexerCtx.elIndexer = ei
@@ -97,9 +121,13 @@ func (ei *ElIndexer) Start() error {
 		ei.startCleanupRoutine()
 	}
 
-	// Start main indexer loop
+	// Start catchup routine for missed blocks
+	ei.startCatchupRoutine()
+
+	// Start event processing loops
 	ei.isRunning = true
-	go ei.runIndexerLoop()
+	go ei.runBlockEventLoop()
+	go ei.runFinalizationEventLoop()
 
 	return nil
 }
@@ -117,21 +145,67 @@ func (ei *ElIndexer) Stop() {
 		ei.cleanupTicker.Stop()
 	}
 
+	if ei.catchupTicker != nil {
+		ei.catchupTicker.Stop()
+	}
+
 	ei.isRunning = false
 }
 
-// runIndexerLoop is the main indexing loop
-func (ei *ElIndexer) runIndexerLoop() {
-	defer utils.HandleSubroutinePanic("ElIndexer.runIndexerLoop", ei.runIndexerLoop)
+// OnCLBlockProcessed is called when the CL indexer processes a new block
+func (ei *ElIndexer) OnCLBlockProcessed(slot uint64, blockHash []byte, elBlockNumber uint64, elBlockHash []byte, forkId uint64, timestamp uint64) {
+	if !ei.enabled || !ei.isRunning {
+		return
+	}
 
-	ticker := time.NewTicker(12 * time.Second) // Poll every 12 seconds (2 slots)
-	defer ticker.Stop()
+	event := &CLBlockEvent{
+		Slot:          slot,
+		BlockHash:     blockHash,
+		ELBlockNumber: elBlockNumber,
+		ELBlockHash:   elBlockHash,
+		ForkId:        forkId,
+		Timestamp:     timestamp,
+	}
+
+	select {
+	case ei.blockChan <- event:
+	case <-ei.stopChan:
+		return
+	default:
+		ei.logger.Warn("Block event channel full, dropping event")
+	}
+}
+
+// OnCLFinalization is called when the CL chain finalizes an epoch
+func (ei *ElIndexer) OnCLFinalization(epoch, finalizedSlot, finalizedELBlock uint64) {
+	if !ei.enabled || !ei.isRunning {
+		return
+	}
+
+	event := &CLFinalizationEvent{
+		Epoch:            epoch,
+		FinalizedSlot:    finalizedSlot,
+		FinalizedELBlock: finalizedELBlock,
+	}
+
+	select {
+	case ei.finalizationChan <- event:
+	case <-ei.stopChan:
+		return
+	default:
+		ei.logger.Warn("Finalization event channel full, dropping event")
+	}
+}
+
+// runBlockEventLoop processes CL block events
+func (ei *ElIndexer) runBlockEventLoop() {
+	defer utils.HandleSubroutinePanic("ElIndexer.runBlockEventLoop", ei.runBlockEventLoop)
 
 	for {
 		select {
-		case <-ticker.C:
-			if err := ei.processNewBlocks(); err != nil {
-				ei.logger.WithError(err).Error("Error processing new blocks")
+		case event := <-ei.blockChan:
+			if err := ei.processCLBlockEvent(event); err != nil {
+				ei.logger.WithError(err).WithField("el_block", event.ELBlockNumber).Error("Error processing CL block event")
 			}
 		case <-ei.stopChan:
 			return
@@ -139,103 +213,116 @@ func (ei *ElIndexer) runIndexerLoop() {
 	}
 }
 
-// processNewBlocks processes new execution layer blocks
-func (ei *ElIndexer) processNewBlocks() error {
+// runFinalizationEventLoop processes finalization events
+func (ei *ElIndexer) runFinalizationEventLoop() {
+	defer utils.HandleSubroutinePanic("ElIndexer.runFinalizationEventLoop", ei.runFinalizationEventLoop)
+
+	for {
+		select {
+		case event := <-ei.finalizationChan:
+			if err := ei.processFinalizationEvent(event); err != nil {
+				ei.logger.WithError(err).Error("Error processing finalization event")
+			}
+		case <-ei.stopChan:
+			return
+		}
+	}
+}
+
+// processCLBlockEvent processes a CL block event and indexes the corresponding EL block
+func (ei *ElIndexer) processCLBlockEvent(event *CLBlockEvent) error {
 	ei.processingMutex.Lock()
 	defer ei.processingMutex.Unlock()
 
-	// Get the latest block from execution client
-	client := ei.indexerCtx.executionPool.GetReadyEndpoint(nil)
-	if client == nil {
-		return nil // No ready client
+	if event.ELBlockNumber == 0 || event.ELBlockHash == nil {
+		// No EL block in this CL block
+		return nil
 	}
 
-	ctx := context.Background()
-	latestBlockNum, err := client.GetRPC().BlockNumber(ctx)
-	if err != nil {
-		return err
-	}
-
-	// Get last indexed block from DB
-	state, err := db.GetElIndexerState(0) // Fork ID 0 for canonical chain
-	if err != nil {
-		// First time indexing
-		state = &dbtypes.ElIndexerState{
-			ForkId:               0,
-			LastIndexedBlock:     ei.startBlock - 1,
-			LastIndexedTimestamp: 0,
-		}
-	}
-
-	// Index blocks in batches
-	fromBlock := state.LastIndexedBlock + 1
-	toBlock := latestBlockNum
-
-	// Limit batch size to avoid overload
-	if toBlock-fromBlock > 100 {
-		toBlock = fromBlock + 100
-	}
-
-	if fromBlock > toBlock {
-		return nil // Already up to date
+	// Check if we've already indexed this block with this fork_id
+	existing, err := db.GetElBlock(event.ELBlockHash)
+	if err == nil && existing != nil && existing.ForkId == event.ForkId {
+		// Already indexed with correct fork_id
+		return nil
 	}
 
 	ei.logger.WithFields(logrus.Fields{
-		"from": fromBlock,
-		"to":   toBlock,
-	}).Info("Indexing execution layer blocks")
+		"el_block": event.ELBlockNumber,
+		"fork_id":  event.ForkId,
+		"cl_slot":  event.Slot,
+	}).Debug("Processing EL block from CL event")
 
-	for blockNum := fromBlock; blockNum <= toBlock; blockNum++ {
-		if err := ei.processBlock(blockNum); err != nil {
-			ei.logger.WithError(err).WithField("block", blockNum).Error("Error processing block")
-			return err
-		}
-	}
+	// Fetch and index the EL block
+	return ei.processBlock(event.ELBlockNumber, event.ELBlockHash, event.ForkId, event.Timestamp)
+}
 
-	return nil
+// processFinalizationEvent updates fork_id to 0 for finalized canonical blocks
+func (ei *ElIndexer) processFinalizationEvent(event *CLFinalizationEvent) error {
+	ei.logger.WithFields(logrus.Fields{
+		"epoch":               event.Epoch,
+		"finalized_el_block":  event.FinalizedELBlock,
+	}).Info("Processing finalization event")
+
+	// Get canonical fork IDs from beacon service
+	canonicalForkIds := services.GlobalBeaconService.GetCanonicalForkIds()
+
+	// Update all canonical blocks up to finalized block to have fork_id = 0
+	return db.RunDBTransaction(func(tx *sqlx.Tx) error {
+		return db.UpdateElBlocksForkIdForFinalized(event.FinalizedELBlock, canonicalForkIds, tx)
+	})
 }
 
 // processBlock processes a single execution layer block
-func (ei *ElIndexer) processBlock(blockNum uint64) error {
+func (ei *ElIndexer) processBlock(blockNum uint64, blockHash []byte, forkId uint64, timestamp uint64) error {
 	client := ei.indexerCtx.executionPool.GetReadyEndpoint(nil)
 	if client == nil {
+		ei.logger.Warn("No ready execution client available")
 		return nil
 	}
 
 	ctx := context.Background()
 
-	// Fetch block
-	block, err := client.GetRPC().BlockByNumber(ctx, big.NewInt(int64(blockNum)))
+	// Fetch block by hash to ensure we get the right fork
+	block, err := client.GetRPC().BlockByHash(ctx, common.BytesToHash(blockHash))
 	if err != nil {
 		return err
 	}
 
+	// Verify block number matches
+	if block.NumberU64() != blockNum {
+		ei.logger.WithFields(logrus.Fields{
+			"expected": blockNum,
+			"actual":   block.NumberU64(),
+		}).Warn("Block number mismatch")
+		return nil
+	}
+
 	// Process all transactions
 	for txIndex, tx := range block.Transactions() {
-		if err := ei.processTransaction(tx, block, uint(txIndex)); err != nil {
+		if err := ei.processTransaction(tx, block, uint(txIndex), forkId); err != nil {
 			ei.logger.WithError(err).WithField("tx", tx.Hash().Hex()).Error("Error processing transaction")
 			// Continue with other transactions
 		}
 	}
 
 	// Save block to DB
-	if err := ei.saveBlock(block); err != nil {
+	if err := ei.saveBlock(block, forkId); err != nil {
 		return err
 	}
 
-	// Update indexer state
-	return db.RunDBTransaction(func(tx interface{}) error {
+	// Update indexer state for this fork
+	return db.RunDBTransaction(func(tx *sqlx.Tx) error {
 		state := &dbtypes.ElIndexerState{
-			ForkId:               0,
+			ForkId:               forkId,
 			LastIndexedBlock:     blockNum,
 			LastIndexedTimestamp: block.Time(),
 		}
-		return db.SetElIndexerState(state, tx.(*db.WriterDataBase).Tx)
+		return db.SetElIndexerState(state, tx)
 	})
 }
 
 // processTransaction processes a single transaction
-func (ei *ElIndexer) processTransaction(tx *types.Transaction, block *types.Block, txIndex uint) error {
+func (ei *ElIndexer) processTransaction(tx *types.Transaction, block *types.Block, txIndex uint, forkId uint64) error {
 	client := ei.indexerCtx.executionPool.GetReadyEndpoint(nil)
 	if client == nil {
 		return nil
@@ -256,35 +343,39 @@ func (ei *ElIndexer) processTransaction(tx *types.Transaction, block *types.Bloc
 	}
 
 	// Build transaction data
-	dbTx := ei.buildTransactionData(tx, receipt, block, from, txIndex)
+	dbTx := ei.buildTransactionData(tx, receipt, block, from, txIndex, forkId)
 
 	// Save transaction
-	if err := db.RunDBTransaction(func(txDb interface{}) error {
-		return db.InsertElTransactions([]*dbtypes.ElTransaction{dbTx}, txDb.(*db.WriterDataBase).Tx)
+	if err := db.RunDBTransaction(func(txDb *sqlx.Tx) error {
+		return db.InsertElTransactions([]*dbtypes.ElTransaction{dbTx}, txDb)
 	}); err != nil {
 		return err
 	}
 
 	// Update address metadata
-	if err := ei.updateAddressMetadata(from.Bytes(), tx.To().Bytes(), block.NumberU64(), block.Time()); err != nil {
+	var toAddr []byte
+	if tx.To() != nil {
+		toAddr = tx.To().Bytes()
+	}
+	if err := ei.updateAddressMetadata(from.Bytes(), toAddr, block.NumberU64(), block.Time(), forkId); err != nil {
 		ei.logger.WithError(err).Error("Error updating address metadata")
 	}
 
 	// Process internal transactions if enabled
 	if ei.trackInternalTxs && ei.traceIndexer != nil {
-		if err := ei.traceIndexer.ProcessTransaction(tx.Hash(), block.NumberU64()); err != nil {
+		if err := ei.traceIndexer.ProcessTransaction(tx.Hash(), block.NumberU64(), forkId); err != nil {
 			ei.logger.WithError(err).Error("Error processing internal transactions")
 		}
 	}
 
 	// Process events/logs
-	if err := ei.processLogs(receipt.Logs, tx.Hash(), block); err != nil {
+	if err := ei.processLogs(receipt.Logs, tx.Hash(), block, forkId); err != nil {
 		ei.logger.WithError(err).Error("Error processing logs")
 	}
 
 	// Process token transfers if enabled
 	if ei.trackTokens && ei.tokenIndexer != nil {
-		if err := ei.tokenIndexer.ProcessLogs(receipt.Logs, tx.Hash(), block); err != nil {
+		if err := ei.tokenIndexer.ProcessLogs(receipt.Logs, tx.Hash(), block, forkId); err != nil {
 			ei.logger.WithError(err).Error("Error processing token transfers")
 		}
 	}
@@ -297,11 +388,19 @@ func (ei *ElIndexer) processTransaction(tx *types.Transaction, block *types.Bloc
 		}
 	}
 
+	// Queue ENS resolution
+	if ei.ensIndexer != nil {
+		ei.ensIndexer.QueueResolve(from, block.NumberU64())
+		if tx.To() != nil {
+			ei.ensIndexer.QueueResolve(*tx.To(), block.NumberU64())
+		}
+	}
+
 	return nil
 }
 
 // buildTransactionData builds a transaction database entry
-func (ei *ElIndexer) buildTransactionData(tx *types.Transaction, receipt *types.Receipt, block *types.Block, from common.Address, txIndex uint) *dbtypes.ElTransaction {
+func (ei *ElIndexer) buildTransactionData(tx *types.Transaction, receipt *types.Receipt, block *types.Block, from common.Address, txIndex uint, forkId uint64) *dbtypes.ElTransaction {
 	var toAddr []byte
 	if tx.To() != nil {
 		toAddr = tx.To().Bytes()
@@ -336,12 +435,12 @@ func (ei *ElIndexer) buildTransactionData(tx *types.Transaction, receipt *types.
 		GasUsed:          receipt.GasUsed,
 		InputData:        tx.Data(),
 		MethodId:         methodId,
-		TransactionType:  tx.Type(),
+		TxType:           tx.Type(),
 		Status:           uint8(receipt.Status),
 		ContractAddress:  contractAddr,
 		LogsCount:        uint(len(receipt.Logs)),
 		Orphaned:         false,
-		ForkId:           0,
+		ForkId:           forkId,
 	}
 
 	// Handle EIP-1559 fields
@@ -370,7 +469,7 @@ func (ei *ElIndexer) buildTransactionData(tx *types.Transaction, receipt *types.
 }
 
 // saveBlock saves a block to the database
-func (ei *ElIndexer) saveBlock(block *types.Block) error {
+func (ei *ElIndexer) saveBlock(block *types.Block, forkId uint64) error {
 	var baseFee *uint64
 	if block.BaseFee() != nil {
 		baseFeeVal := block.BaseFee().Uint64()
@@ -381,6 +480,10 @@ func (ei *ElIndexer) saveBlock(block *types.Block) error {
 	if difficulty == nil {
 		difficulty = []byte{0}
 	}
+
+	// Calculate total fees
+	totalFees := big.NewInt(0)
+	// This would require summing all transaction fees - skip for now
 
 	dbBlock := &dbtypes.ElBlock{
 		Number:           block.NumberU64(),
@@ -400,17 +503,18 @@ func (ei *ElIndexer) saveBlock(block *types.Block) error {
 		ExtraData:        block.Extra(),
 		Nonce:            block.Nonce[:],
 		TransactionCount: uint(len(block.Transactions())),
+		TotalFees:        totalFees.Bytes(),
 		Orphaned:         false,
-		ForkId:           0,
+		ForkId:           forkId,
 	}
 
-	return db.RunDBTransaction(func(tx interface{}) error {
-		return db.InsertElBlock(dbBlock, tx.(*db.WriterDataBase).Tx)
+	return db.RunDBTransaction(func(tx *sqlx.Tx) error {
+		return db.InsertElBlock(dbBlock, tx)
 	})
 }
 
 // processLogs processes transaction logs/events
-func (ei *ElIndexer) processLogs(logs []*types.Log, txHash common.Hash, block *types.Block) error {
+func (ei *ElIndexer) processLogs(logs []*types.Log, txHash common.Hash, block *types.Block, forkId uint64) error {
 	if len(logs) == 0 {
 		return nil
 	}
@@ -451,51 +555,84 @@ func (ei *ElIndexer) processLogs(logs []*types.Log, txHash common.Hash, block *t
 			Topic3:          topic3,
 			Data:            log.Data,
 			EventName:       eventName,
+			ForkId:          forkId,
 		}
 	}
 
-	return db.RunDBTransaction(func(tx interface{}) error {
-		return db.InsertElEvents(dbEvents, tx.(*db.WriterDataBase).Tx)
+	return db.RunDBTransaction(func(tx *sqlx.Tx) error {
+		return db.InsertElEvents(dbEvents, tx)
 	})
 }
 
 // updateAddressMetadata updates address metadata
-func (ei *ElIndexer) updateAddressMetadata(from, to []byte, blockNumber, timestamp uint64) error {
-	return db.RunDBTransaction(func(tx interface{}) error {
+func (ei *ElIndexer) updateAddressMetadata(from, to []byte, blockNumber, timestamp, forkId uint64) error {
+	return db.RunDBTransaction(func(tx *sqlx.Tx) error {
 		// Update from address
 		fromAddr := &dbtypes.ElAddress{
-			Address:            from,
-			FirstSeenBlock:     blockNumber,
-			FirstSeenTimestamp: timestamp,
-			LastSeenBlock:      blockNumber,
-			LastSeenTimestamp:  timestamp,
-			TxCount:            1,
-			OutTxCount:         1,
-			Balance:            []byte{0},
+			Address:       from,
+			FirstSeenBlock: &blockNumber,
+			FirstSeenTime: &timestamp,
+			LastSeenBlock: &blockNumber,
+			LastSeenTime:  &timestamp,
+			TxCount:       1,
+			OutTxCount:    1,
+			Balance:       []byte{0},
 		}
-		if err := db.UpsertElAddress(fromAddr, tx.(*db.WriterDataBase).Tx); err != nil {
+		if err := db.UpsertElAddress(fromAddr, tx); err != nil {
 			return err
 		}
 
 		// Update to address if present
 		if to != nil && len(to) > 0 {
 			toAddr := &dbtypes.ElAddress{
-				Address:            to,
-				FirstSeenBlock:     blockNumber,
-				FirstSeenTimestamp: timestamp,
-				LastSeenBlock:      blockNumber,
-				LastSeenTimestamp:  timestamp,
-				TxCount:            1,
-				InTxCount:          1,
-				Balance:            []byte{0},
+				Address:       to,
+				FirstSeenBlock: &blockNumber,
+				FirstSeenTime: &timestamp,
+				LastSeenBlock: &blockNumber,
+				LastSeenTime:  &timestamp,
+				TxCount:       1,
+				InTxCount:     1,
+				Balance:       []byte{0},
 			}
-			if err := db.UpsertElAddress(toAddr, tx.(*db.WriterDataBase).Tx); err != nil {
+			if err := db.UpsertElAddress(toAddr, tx); err != nil {
 				return err
 			}
 		}
 
 		return nil
 	})
+}
+
+// startCatchupRoutine starts a routine to catch up on missed blocks
+func (ei *ElIndexer) startCatchupRoutine() {
+	ei.catchupTicker = time.NewTicker(5 * time.Minute)
+
+	go func() {
+		defer utils.HandleSubroutinePanic("ElIndexer.catchupRoutine", func() {})
+
+		for {
+			select {
+			case <-ei.catchupTicker.C:
+				if err := ei.performCatchup(); err != nil {
+					ei.logger.WithError(err).Error("Error during catchup")
+				}
+			case <-ei.stopChan:
+				return
+			}
+		}
+	}()
+}
+
+// performCatchup catches up on blocks that were missed or not synced yet
+func (ei *ElIndexer) performCatchup() error {
+	// Get CL blocks that have EL block info but haven't been indexed yet
+	// This would require querying the CL database for blocks with EL info
+	// and checking if we have them in the EL database
+	ei.logger.Debug("Performing catchup check")
+
+	// TODO: Implement catchup logic by querying CL database
+	// For now, this is a placeholder
+	return nil
 }
 
 // startCleanupRoutine starts the data cleanup routine
@@ -508,6 +645,8 @@ func (ei *ElIndexer) startCleanupRoutine() {
 	ei.cleanupTicker = time.NewTicker(interval)
 
 	go func() {
+		defer utils.HandleSubroutinePanic("ElIndexer.cleanupRoutine", func() {})
+
 		for {
 			select {
 			case <-ei.cleanupTicker.C:
@@ -528,7 +667,7 @@ func (ei *ElIndexer) performCleanup() {
 	cutoffTimestamp := uint64(time.Now().AddDate(0, 0, -int(*ei.dataRetentionDays)).Unix())
 
 	ei.logger.WithFields(logrus.Fields{
-		"cutoff":        time.Unix(int64(cutoffTimestamp), 0),
+		"cutoff":         time.Unix(int64(cutoffTimestamp), 0),
 		"retention_days": *ei.dataRetentionDays,
 	}).Info("Performing data cleanup")
 

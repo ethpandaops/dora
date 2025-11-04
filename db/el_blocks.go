@@ -49,6 +49,61 @@ func GetElBlockByNumber(number uint64, forkIds []uint64) (*dbtypes.ElBlock, erro
 	return block, nil
 }
 
+// UpdateElBlocksForkIdForFinalized updates fork_id to 0 for all finalized canonical blocks and their related entities
+// Only updates blocks that are in the canonical chain (have a valid canonical fork_id from CL indexer)
+func UpdateElBlocksForkIdForFinalized(finalizedBlockNumber uint64, canonicalForkIds []uint64, tx *sqlx.Tx) error {
+	if len(canonicalForkIds) == 0 {
+		return nil // No canonical forks to update
+	}
+
+	// Update blocks (only canonical ones)
+	if _, err := tx.Exec(`
+		UPDATE el_blocks
+		SET fork_id = 0
+		WHERE number <= $1 AND fork_id = ANY($2) AND orphaned = false
+	`, finalizedBlockNumber, canonicalForkIds); err != nil {
+		return fmt.Errorf("failed to update el_blocks fork_id: %w", err)
+	}
+
+	// Update transactions (only those in canonical blocks)
+	if _, err := tx.Exec(`
+		UPDATE el_transactions
+		SET fork_id = 0
+		WHERE block_number <= $1 AND fork_id = ANY($2)
+	`, finalizedBlockNumber, canonicalForkIds); err != nil {
+		return fmt.Errorf("failed to update el_transactions fork_id: %w", err)
+	}
+
+	// Update internal transactions
+	if _, err := tx.Exec(`
+		UPDATE el_internal_txs
+		SET fork_id = 0
+		WHERE block_number <= $1 AND fork_id = ANY($2)
+	`, finalizedBlockNumber, canonicalForkIds); err != nil {
+		return fmt.Errorf("failed to update el_internal_txs fork_id: %w", err)
+	}
+
+	// Update events
+	if _, err := tx.Exec(`
+		UPDATE el_events
+		SET fork_id = 0
+		WHERE block_number <= $1 AND fork_id = ANY($2)
+	`, finalizedBlockNumber, canonicalForkIds); err != nil {
+		return fmt.Errorf("failed to update el_events fork_id: %w", err)
+	}
+
+	// Update token transfers
+	if _, err := tx.Exec(`
+		UPDATE el_token_transfers
+		SET fork_id = 0
+		WHERE block_number <= $1 AND fork_id = ANY($2)
+	`, finalizedBlockNumber, canonicalForkIds); err != nil {
+		return fmt.Errorf("failed to update el_token_transfers fork_id: %w", err)
+	}
+
+	return nil
+}
+
 // GetElBlocksFiltered retrieves blocks with optional filtering and pagination
 func GetElBlocksFiltered(offset uint, limit uint, forkIds []uint64, filter *dbtypes.ElBlockFilter) ([]*dbtypes.ElBlock, uint64, error) {
 	var sql strings.Builder

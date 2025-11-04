@@ -128,6 +128,8 @@ type Config struct {
 		ElTrackTokens             bool          `yaml:"elTrackTokens" envconfig:"INDEXER_EL_TRACK_TOKENS"`
 		ElTokenBalanceRefreshRate time.Duration `yaml:"elTokenBalanceRefreshRate" envconfig:"INDEXER_EL_TOKEN_BALANCE_REFRESH_RATE"`
 		ElCleanupInterval         time.Duration `yaml:"elCleanupInterval" envconfig:"INDEXER_EL_CLEANUP_INTERVAL"`
+		ElEnsResolver             string        `yaml:"elEnsResolver" envconfig:"INDEXER_EL_ENS_RESOLVER"`           // Custom ENS resolver address (optional)
+		ElEnsResolverUrl          string        `yaml:"elEnsResolverUrl" envconfig:"INDEXER_EL_ENS_RESOLVER_URL"`    // Custom ENS resolver RPC URL (optional)
 	} `yaml:"indexer"`
 
 	TxSignature struct {
@@ -181,6 +183,7 @@ type EndpointConfig struct {
 	Headers          map[string]string  `yaml:"headers"`
 	EngineSnooperUrl string             `yaml:"engineSnooperUrl"`
 	AuthGroup        string             `yaml:"authGroup"`
+	Trace            bool               `yaml:"trace"` // Enable debug_traceTransaction for this endpoint
 }
 
 type EndpointSshConfig struct {
