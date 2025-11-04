@@ -119,6 +119,15 @@ type Config struct {
 		PubkeyCachePath                 string `yaml:"pubkeyCachePath" envconfig:"INDEXER_PUBKEY_CACHE_PATH"`
 
 		BadChainRoots []string `yaml:"badChainRoots" envconfig:"INDEXER_BAD_CHAIN_ROOTS"`
+
+		// Execution Layer Indexer
+		ExecutionIndexer          bool          `yaml:"executionIndexer" envconfig:"INDEXER_EXECUTION_INDEXER"`
+		ElStartBlock              uint64        `yaml:"elStartBlock" envconfig:"INDEXER_EL_START_BLOCK"`
+		ElDataRetentionDays       *uint64       `yaml:"elDataRetentionDays" envconfig:"INDEXER_EL_DATA_RETENTION_DAYS"` // nil = keep all
+		ElTrackInternalTxs        bool          `yaml:"elTrackInternalTxs" envconfig:"INDEXER_EL_TRACK_INTERNAL_TXS"`
+		ElTrackTokens             bool          `yaml:"elTrackTokens" envconfig:"INDEXER_EL_TRACK_TOKENS"`
+		ElTokenBalanceRefreshRate time.Duration `yaml:"elTokenBalanceRefreshRate" envconfig:"INDEXER_EL_TOKEN_BALANCE_REFRESH_RATE"`
+		ElCleanupInterval         time.Duration `yaml:"elCleanupInterval" envconfig:"INDEXER_EL_CLEANUP_INTERVAL"`
 	} `yaml:"indexer"`
 
 	TxSignature struct {

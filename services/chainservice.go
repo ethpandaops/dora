@@ -38,6 +38,7 @@ type ChainService struct {
 	depositIndexer       *execindexer.DepositIndexer
 	consolidationIndexer *execindexer.ConsolidationIndexer
 	withdrawalIndexer    *execindexer.WithdrawalIndexer
+	elIndexer            *execindexer.ElIndexer
 	mevRelayIndexer      *mevrelay.MevIndexer
 	snooperManager       *snooper.SnooperManager
 	started              bool
@@ -309,6 +310,17 @@ func (cs *ChainService) StartService() error {
 	cs.consolidationIndexer = execindexer.NewConsolidationIndexer(executionIndexerCtx)
 	cs.withdrawalIndexer = execindexer.NewWithdrawalIndexer(executionIndexerCtx)
 
+	// Initialize EL indexer if enabled
+	if len(utils.Config.ExecutionApi.Endpoints) > 0 && utils.Config.Indexer.ExecutionIndexer {
+		cs.logger.Info("Execution layer indexer enabled")
+		cs.elIndexer = execindexer.NewElIndexer(executionIndexerCtx)
+		if err := cs.elIndexer.Start(); err != nil {
+			cs.logger.WithError(err).Error("failed to start EL indexer")
+		}
+	} else {
+		cs.logger.Info("Execution layer indexer disabled")
+	}
+
 	// start MEV relay indexer
 	cs.mevRelayIndexer.StartUpdater()
 
@@ -323,6 +335,11 @@ func (bs *ChainService) StopService() {
 	if bs.beaconIndexer != nil {
 		bs.beaconIndexer.StopIndexer()
 		bs.beaconIndexer = nil
+	}
+
+	if bs.elIndexer != nil {
+		bs.elIndexer.Stop()
+		bs.elIndexer = nil
 	}
 
 	if bs.snooperManager != nil {
@@ -345,6 +362,14 @@ func (bs *ChainService) GetConsolidationIndexer() *execindexer.ConsolidationInde
 
 func (bs *ChainService) GetWithdrawalIndexer() *execindexer.WithdrawalIndexer {
 	return bs.withdrawalIndexer
+}
+
+func (bs *ChainService) GetElIndexer() *execindexer.ElIndexer {
+	return bs.elIndexer
+}
+
+func (bs *ChainService) IsElIndexerEnabled() bool {
+	return bs.elIndexer != nil && bs.elIndexer.IsEnabled()
 }
 
 func (bs *ChainService) GetSnooperManager() *snooper.SnooperManager {
