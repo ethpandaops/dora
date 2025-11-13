@@ -39,6 +39,7 @@ func Slot(w http.ResponseWriter, r *http.Request) {
 		"slot/overview.html",
 		"slot/transactions.html",
 		"slot/attestations.html",
+		"slot/proofs.html",
 		"slot/deposits.html",
 		"slot/withdrawals.html",
 		"slot/voluntary_exits.html",
@@ -760,6 +761,9 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 		}
 	}
 
+	// Fetch execution proofs for this block
+	getSlotPageExecutionProofs(pageData, blockData.Root)
+
 	if requests, err := blockData.Block.ExecutionRequests(); err == nil && requests != nil {
 		getSlotPageDepositRequests(pageData, requests.Deposits)
 		getSlotPageWithdrawalRequests(pageData, requests.Withdrawals)
@@ -924,6 +928,72 @@ func getSlotPageConsolidationRequests(pageData *models.SlotPageBlockData, consol
 	}
 
 	pageData.ConsolidationRequestsCount = uint64(len(pageData.ConsolidationRequests))
+}
+
+func getSlotPageExecutionProofs(pageData *models.SlotPageBlockData, blockRoot phase0.Root) {
+	// Get a ready beacon client to fetch execution proofs
+	beaconIndexer := services.GlobalBeaconService.GetBeaconIndexer()
+	client := beaconIndexer.GetReadyClient(false)
+	if client == nil {
+		// No client available, return empty proofs
+		pageData.ExecutionProofsCount = 0
+		pageData.ExecutionProofs = []*models.SlotPageExecutionProof{}
+		return
+	}
+
+	// Fetch execution proofs from the beacon node
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	proofsResponse, err := client.GetClient().GetRPCClient().GetExecutionProofsByBlockroot(ctx, blockRoot[:])
+	if err != nil {
+		// Error fetching proofs, return empty list
+		logrus.WithError(err).WithField("blockRoot", fmt.Sprintf("0x%x", blockRoot)).Info("Error fetching execution proofs")
+		pageData.ExecutionProofsCount = 0
+		pageData.ExecutionProofs = []*models.SlotPageExecutionProof{}
+		return
+	}
+
+	// Log successful fetch
+	logrus.WithFields(logrus.Fields{
+		"blockRoot": fmt.Sprintf("0x%x", blockRoot),
+		"proofCount": len(proofsResponse.Data),
+	}).Info("Successfully fetched execution proofs")
+
+	// Convert RPC proofs to page data model
+	pageData.ExecutionProofsCount = uint64(len(proofsResponse.Data))
+	pageData.ExecutionProofs = make([]*models.SlotPageExecutionProof, pageData.ExecutionProofsCount)
+	for i, proof := range proofsResponse.Data {
+		// Parse slot from string
+		slot, err := strconv.ParseUint(proof.Slot, 10, 64)
+		if err != nil {
+			logrus.WithError(err).WithField("slot", proof.Slot).Warn("Error parsing proof slot")
+			continue
+		}
+
+		// Decode hex strings
+		blockHash, err := hex.DecodeString(strings.TrimPrefix(proof.BlockHash, "0x"))
+		if err != nil {
+			logrus.WithError(err).WithField("blockHash", proof.BlockHash).Warn("Error decoding block hash")
+			continue
+		}
+
+		blockRootBytes, err := hex.DecodeString(strings.TrimPrefix(proof.BlockRoot, "0x"))
+		if err != nil {
+			logrus.WithError(err).WithField("blockRoot", proof.BlockRoot).Warn("Error decoding block root")
+			continue
+		}
+
+		// proof.ProofData is already a byte array from JSON, no need to decode
+
+		pageData.ExecutionProofs[i] = &models.SlotPageExecutionProof{
+			ProofId:   proof.ProofId,
+			Slot:      slot,
+			BlockHash: blockHash,
+			BlockRoot: blockRootBytes,
+			ProofData: proof.ProofData,
+		}
+	}
 }
 
 func handleSlotDownload(ctx context.Context, w http.ResponseWriter, blockSlot int64, blockRoot []byte, downloadType string) error {
