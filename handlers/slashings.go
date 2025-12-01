@@ -189,7 +189,7 @@ func buildFilteredSlashingsPageData(pageIdx uint64, pageSize uint64, minSlot uin
 			ValidatorStatus: "",
 		}
 
-		validator := services.GlobalBeaconService.GetValidatorByIndex(phase0.ValidatorIndex(slashing.ValidatorIndex), false)
+		validator := services.GlobalBeaconService.GetValidatorByIndex(phase0.ValidatorIndex(slashing.ValidatorIndex), true)
 		if validator == nil {
 			slashingData.ValidatorStatus = "Unknown"
 		} else {
