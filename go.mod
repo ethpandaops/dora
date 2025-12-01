@@ -1,13 +1,11 @@
 module github.com/ethpandaops/dora
 
-go 1.24.0
-
-toolchain go1.24.1
+go 1.25
 
 require (
 	github.com/520MianXiangDuiXiang520/MapSize v0.0.0-20230414174449-030467540731
 	github.com/Masterminds/sprig/v3 v3.3.0
-	github.com/attestantio/go-eth2-client v0.27.1
+	github.com/attestantio/go-eth2-client v0.27.2
 	github.com/cockroachdb/pebble v1.1.5
 	github.com/coocood/freecache v1.2.4
 	github.com/ethereum/go-ethereum v1.16.7
