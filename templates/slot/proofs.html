@@ -1,0 +1,77 @@
+{{ define "block_proofs" }}
+  {{ if gt (len .Block.ExecutionProofs) 0 }}
+    {{ range $i, $proof := .Block.ExecutionProofs }}
+      <div class="card my-2">
+        <div class="card-body px-0 py-1">
+          <div class="row border-bottom p-1 mx-0">
+            <div class="col-md-12 text-center"><b>Execution Proof {{ $proof.ProofId }}</b></div>
+          </div>
+          <div class="row border-bottom p-1 mx-0">
+            <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Proof Type ID">Proof ID:</span></div>
+            <div class="col-md-10">
+              {{ $proof.ProofId }}
+              <span class="text-muted ms-2">
+                {{ if eq $proof.ProofId 0 }}(SP1+Reth)
+                {{ else if eq $proof.ProofId 1 }}(Risc0+Geth)
+                {{ else if eq $proof.ProofId 2 }}(SP1+Geth)
+                {{ else }}(zkVM+EL #{{ $proof.ProofId }})
+                {{ end }}
+              </span>
+            </div>
+          </div>
+          <div class="row border-bottom p-1 mx-0">
+            <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Slot Number">Slot:</span></div>
+            <div class="col-md-10">
+              {{ $proof.Slot }}
+            </div>
+          </div>
+          <div class="row border-bottom p-1 mx-0">
+            <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Execution Block Hash">Block Hash:</span></div>
+            <div class="col-md-10 text-monospace">
+              0x{{ printf "%x" $proof.BlockHash }}
+              <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $proof.BlockHash }}"></i>
+            </div>
+          </div>
+          <div class="row border-bottom p-1 mx-0">
+            <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Beacon Block Root">Block Root:</span></div>
+            <div class="col-md-10 text-monospace">
+              0x{{ printf "%x" $proof.BlockRoot }}
+              <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $proof.BlockRoot }}"></i>
+            </div>
+          </div>
+          <div class="row border-bottom p-1 mx-0">
+            <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Proof Data Size">Proof Size:</span></div>
+            <div class="col-md-10">
+              {{ len $proof.ProofData }} bytes
+              {{ if gt (len $proof.ProofData) 1024 }}
+                ({{ printf "%.2f" (div (len $proof.ProofData) 1024.0) }} KB)
+              {{ end }}
+            </div>
+          </div>
+          <div class="row border-bottom p-1 mx-0">
+            <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Proof Data (truncated)">Proof Data:</span></div>
+            <div class="col-md-10 text-monospace" style="word-break: break-all;">
+              {{ if gt (len $proof.ProofData) 128 }}
+                0x{{ printf "%x" (slice $proof.ProofData 0 128) }}...
+              {{ else }}
+                0x{{ printf "%x" $proof.ProofData }}
+              {{ end }}
+              <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $proof.ProofData }}"></i>
+            </div>
+          </div>
+        </div>
+      </div>
+    {{ end }}
+  {{ else }}
+    <div class="card my-2">
+      <div class="card-body px-0 py-1">
+        <div class="row border-bottom p-1 mx-0">
+          <div class="col-md-12 text-center">
+            <p class="text-muted my-3">No execution proofs available for this block.</p>
+            <p class="text-muted small">Execution proofs are cryptographic proofs that validate the execution payload was computed correctly by a specific zkVM+EL combination.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  {{ end }}
+{{ end }}
