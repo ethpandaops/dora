@@ -10,13 +10,14 @@ import (
 
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
 
+	"github.com/sirupsen/logrus"
+
 	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/dora/clients/execution"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
-	"github.com/sirupsen/logrus"
 )
 
 // ValidatorsSummary will return the validators summary page with client distribution matrix
@@ -253,8 +254,8 @@ func buildValidatorsSummaryPageData() (*models.ValidatorsSummaryPageData, time.D
 	pageData.ExecutionClients = elClientListStrings
 	pageData.ConsensusClients = clClientListStrings
 	pageData.TotalValidators = activeValidators
-	pageData.TotalEffectiveETH = totalEffectiveBalance / 1000000000 // Convert to ETH as whole numbers
-	pageData.OverallHealthy = onlineEffectiveBalance / 1000000000   // Convert online EB to ETH
+	pageData.TotalEffectiveETH = totalEffectiveBalance / 1000000000 // Convert to LYX as whole numbers
+	pageData.OverallHealthy = onlineEffectiveBalance / 1000000000   // Convert online EB to LYX
 	pageData.ClientBreakdown = clientBreakdown
 	pageData.NetworkHealthScore = (float64(onlineEffectiveBalance) / float64(totalEffectiveBalance)) * 100
 

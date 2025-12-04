@@ -120,7 +120,7 @@ const SubmitConsolidationsForm = (props: ISubmitConsolidationsFormProps): React.
                   <b>Balance:</b>
                 </div>
                 <div className="col-9 col-lg-10">
-                  {formatBalance(sourceValidator.balance, "ETH")}
+                  {formatBalance(sourceValidator.balance, "LYX")}
                 </div>
               </div>
             </div>
@@ -184,7 +184,7 @@ const SubmitConsolidationsForm = (props: ISubmitConsolidationsFormProps): React.
                   <b>Balance:</b>
                 </div>
                 <div className="col-9 col-lg-10">
-                  {formatBalance(targetValidator.balance, "ETH")}
+                  {formatBalance(targetValidator.balance, "LYX")}
                 </div>
               </div>
             </div>

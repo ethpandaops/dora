@@ -11,12 +11,13 @@ import (
 
 	"github.com/attestantio/go-eth2-client/spec/electra"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
+	"github.com/jmoiron/sqlx"
+	"github.com/mashingan/smapping"
+
 	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/indexer/beacon/duties"
-	"github.com/jmoiron/sqlx"
-	"github.com/mashingan/smapping"
 )
 
 // EpochStats holds the epoch-specific information based on the underlying dependent beacon state.

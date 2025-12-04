@@ -34,7 +34,7 @@ import (
 
 // Index will return the main "index" page using a go template
 func Slot(w http.ResponseWriter, r *http.Request) {
-	var slotTemplateFiles = append(layoutTemplateFiles,
+	slotTemplateFiles := append(layoutTemplateFiles,
 		"slot/slot.html",
 		"slot/overview.html",
 		"slot/transactions.html",
@@ -48,7 +48,7 @@ func Slot(w http.ResponseWriter, r *http.Request) {
 		"slot/withdrawal_requests.html",
 		"slot/consolidation_requests.html",
 	)
-	var notfoundTemplateFiles = append(layoutTemplateFiles,
+	notfoundTemplateFiles := append(layoutTemplateFiles,
 		"slot/notfound.html",
 	)
 
@@ -312,7 +312,7 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 	syncAggregate, _ := blockData.Block.SyncAggregate()
 	executionWithdrawals, _ := blockData.Block.Withdrawals()
 	blobKzgCommitments, _ := blockData.Block.BlobKZGCommitments()
-	//consolidations, _ := blockData.Block.Consolidations()
+	// consolidations, _ := blockData.Block.Consolidations()
 
 	pageData := &models.SlotPageBlockData{
 		BlockRoot:              blockData.Root[:],
