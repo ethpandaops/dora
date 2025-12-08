@@ -94,8 +94,7 @@ func buildBlobsPageData() (*models.BlobsPageData, time.Duration) {
 		pageData.LatestBlobBlocks = make([]*models.LatestBlobBlock, 0, len(latestBlocks))
 		for _, block := range latestBlocks {
 			blockSlot := phase0.Slot(block.Slot)
-			blockEpoch := chainState.EpochOfSlot(blockSlot)
-			finalized := finalizedEpoch >= 0 && phase0.Epoch(finalizedEpoch) >= blockEpoch
+			finalized := finalizedEpoch > 0 && finalizedEpoch >= chainState.EpochOfSlot(blockSlot)
 
 			pageData.LatestBlobBlocks = append(pageData.LatestBlobBlocks, &models.LatestBlobBlock{
 				Slot:         block.Slot,
