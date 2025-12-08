@@ -31,8 +31,8 @@
   "dependencies": {
     "@chainsafe/bls": "^8.2.0",
     "@chainsafe/ssz": "^1.3.0",
-    "@rainbow-me/rainbowkit": "^2.2.9",
-    "@tanstack/react-query": "^5.90.11",
+    "@rainbow-me/rainbowkit": "^2.2.10",
+    "@tanstack/react-query": "^5.90.12",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
     "react": "^19.2.1",
