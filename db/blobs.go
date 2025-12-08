@@ -74,14 +74,23 @@ func GetLatestBlobAssignment(commitment []byte) *dbtypes.BlobAssignment {
 }
 
 type BlobStatistics struct {
-	TotalBlobs         uint64
-	TotalBlobsInBlocks uint64
-	AvgBlobsPerBlock   float64
-	BlobsLast24h       uint64
-	BlobsLast7d        uint64
-	BlobsLast30d       uint64
-	TotalBlobGasUsed   uint64
-	AvgBlobGasPerBlock uint64
+	TotalBlobs             uint64
+	TotalBlobsInBlocks     uint64
+	AvgBlobsPerBlock       float64
+	BlobsLast1h            uint64
+	BlobsLast24h           uint64
+	BlobsLast7d            uint64
+	BlobsLast18d           uint64
+	BlocksWithBlobsLast1h  uint64
+	BlocksWithBlobsLast24h uint64
+	BlocksWithBlobsLast7d  uint64
+	BlocksWithBlobsLast18d uint64
+	BlobGasLast1h          uint64
+	BlobGasLast24h         uint64
+	BlobGasLast7d          uint64
+	BlobGasLast18d         uint64
+	TotalBlobGasUsed       uint64
+	AvgBlobGasPerBlock     uint64
 }
 
 func GetBlobStatistics(currentSlot uint64) (*BlobStatistics, error) {
@@ -119,6 +128,19 @@ func GetBlobStatistics(currentSlot uint64) (*BlobStatistics, error) {
 		stats.AvgBlobsPerBlock = avgBlobs.Float64
 	}
 
+	slot1h := uint64(0)
+	if currentSlot > 300 {
+		slot1h = currentSlot - 300
+	}
+	err = ReaderDb.Get(&stats.BlobsLast1h, `
+		SELECT COALESCE(SUM(blob_count), 0)
+		FROM slots
+		WHERE status != 0 AND slot >= $1
+	`, slot1h)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get blobs last 1h: %w", err)
+	}
+
 	slot24h := uint64(0)
 	if currentSlot > 7200 {
 		slot24h = currentSlot - 7200
@@ -145,17 +167,90 @@ func GetBlobStatistics(currentSlot uint64) (*BlobStatistics, error) {
 		return nil, fmt.Errorf("failed to get blobs last 7d: %w", err)
 	}
 
-	slot30d := uint64(0)
-	if currentSlot > 216000 {
-		slot30d = currentSlot - 216000
+	slot18d := uint64(0)
+	retentionSlots := uint64(4096 * 32)
+	if currentSlot > retentionSlots {
+		slot18d = currentSlot - retentionSlots
 	}
-	err = ReaderDb.Get(&stats.BlobsLast30d, `
+	err = ReaderDb.Get(&stats.BlobsLast18d, `
 		SELECT COALESCE(SUM(blob_count), 0)
 		FROM slots
 		WHERE status != 0 AND slot >= $1
-	`, slot30d)
+	`, slot18d)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get blobs last 30d: %w", err)
+		return nil, fmt.Errorf("failed to get blobs last 18d: %w", err)
+	}
+
+	err = ReaderDb.Get(&stats.BlocksWithBlobsLast1h, `
+		SELECT COUNT(*)
+		FROM slots
+		WHERE status != 0 AND blob_count > 0 AND slot >= $1
+	`, slot1h)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get blocks with blobs last 1h: %w", err)
+	}
+
+	err = ReaderDb.Get(&stats.BlocksWithBlobsLast24h, `
+		SELECT COUNT(*)
+		FROM slots
+		WHERE status != 0 AND blob_count > 0 AND slot >= $1
+	`, slot24h)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get blocks with blobs last 24h: %w", err)
+	}
+
+	err = ReaderDb.Get(&stats.BlocksWithBlobsLast7d, `
+		SELECT COUNT(*)
+		FROM slots
+		WHERE status != 0 AND blob_count > 0 AND slot >= $1
+	`, slot7d)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get blocks with blobs last 7d: %w", err)
+	}
+
+	err = ReaderDb.Get(&stats.BlocksWithBlobsLast18d, `
+		SELECT COUNT(*)
+		FROM slots
+		WHERE status != 0 AND blob_count > 0 AND slot >= $1
+	`, slot18d)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get blocks with blobs last 18d: %w", err)
+	}
+
+	err = ReaderDb.Get(&stats.BlobGasLast1h, `
+		SELECT COALESCE(SUM(eth_gas_used), 0)
+		FROM slots
+		WHERE status != 0 AND blob_count > 0 AND slot >= $1
+	`, slot1h)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get blob gas last 1h: %w", err)
+	}
+
+	err = ReaderDb.Get(&stats.BlobGasLast24h, `
+		SELECT COALESCE(SUM(eth_gas_used), 0)
+		FROM slots
+		WHERE status != 0 AND blob_count > 0 AND slot >= $1
+	`, slot24h)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get blob gas last 24h: %w", err)
+	}
+
+	err = ReaderDb.Get(&stats.BlobGasLast7d, `
+		SELECT COALESCE(SUM(eth_gas_used), 0)
+		FROM slots
+		WHERE status != 0 AND blob_count > 0 AND slot >= $1
+	`, slot7d)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get blob gas last 7d: %w", err)
+	}
+
+	err = ReaderDb.Get(&stats.BlobGasLast18d, `
+		SELECT COALESCE(SUM(eth_gas_used), 0)
+		FROM slots
+		WHERE status != 0 AND blob_count > 0 AND slot >= $1
+	`, slot18d)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get blob gas last 18d: %w", err)
 	}
 
 	err = ReaderDb.Get(&stats.TotalBlobGasUsed, `

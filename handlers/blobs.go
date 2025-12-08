@@ -6,6 +6,7 @@ import (
 
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/db"
+	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types/models"
@@ -80,33 +81,50 @@ func buildBlobsPageData() (*models.BlobsPageData, time.Duration) {
 		pageData.TotalBlobs = stats.TotalBlobs
 		pageData.TotalBlobsInBlocks = stats.TotalBlobsInBlocks
 		pageData.AvgBlobsPerBlock = stats.AvgBlobsPerBlock
+		pageData.BlobsLast1h = stats.BlobsLast1h
 		pageData.BlobsLast24h = stats.BlobsLast24h
 		pageData.BlobsLast7d = stats.BlobsLast7d
-		pageData.BlobsLast30d = stats.BlobsLast30d
+		pageData.BlobsLast30d = stats.BlobsLast18d
+		pageData.BlocksWithBlobsLast1h = stats.BlocksWithBlobsLast1h
+		pageData.BlocksWithBlobsLast24h = stats.BlocksWithBlobsLast24h
+		pageData.BlocksWithBlobsLast7d = stats.BlocksWithBlobsLast7d
+		pageData.BlocksWithBlobsLast18d = stats.BlocksWithBlobsLast18d
+		pageData.BlobGasLast1h = stats.BlobGasLast1h
+		pageData.BlobGasLast24h = stats.BlobGasLast24h
+		pageData.BlobGasLast7d = stats.BlobGasLast7d
+		pageData.BlobGasLast18d = stats.BlobGasLast18d
 		pageData.TotalBlobGasUsed = stats.TotalBlobGasUsed
 		pageData.AvgBlobGasPerBlock = stats.AvgBlobGasPerBlock
 	}
 
-	latestBlocks, err := db.GetLatestBlobBlocks(20)
-	if err != nil {
-		logrus.WithError(err).Error("error getting latest blob blocks")
-	} else {
-		pageData.LatestBlobBlocks = make([]*models.LatestBlobBlock, 0, len(latestBlocks))
-		for _, block := range latestBlocks {
-			blockSlot := phase0.Slot(block.Slot)
-			finalized := finalizedEpoch > 0 && finalizedEpoch >= chainState.EpochOfSlot(blockSlot)
+	minBlobCount := uint64(1)
+	blocksData := services.GlobalBeaconService.GetDbBlocksByFilter(&dbtypes.BlockFilter{
+		WithOrphaned: 0,
+		WithMissing:  0,
+		MinBlobCount: &minBlobCount,
+	}, 0, 20, 0)
 
-			pageData.LatestBlobBlocks = append(pageData.LatestBlobBlocks, &models.LatestBlobBlock{
-				Slot:         block.Slot,
-				BlockNumber:  block.BlockNumber,
-				Timestamp:    chainState.SlotToTime(blockSlot),
-				BlobCount:    block.BlobCount,
-				Proposer:     block.Proposer,
-				ProposerName: services.GlobalBeaconService.GetValidatorName(block.Proposer),
-				BlockRoot:    block.Root,
-				Finalized:    finalized,
-			})
+	pageData.LatestBlobBlocks = make([]*models.LatestBlobBlock, 0, len(blocksData))
+	for _, blockData := range blocksData {
+		block := blockData.Block
+		blockSlot := phase0.Slot(block.Slot)
+		finalized := finalizedEpoch > 0 && finalizedEpoch >= chainState.EpochOfSlot(blockSlot)
+
+		var blockNumber uint64
+		if block.EthBlockNumber != nil {
+			blockNumber = *block.EthBlockNumber
 		}
+
+		pageData.LatestBlobBlocks = append(pageData.LatestBlobBlocks, &models.LatestBlobBlock{
+			Slot:         block.Slot,
+			BlockNumber:  blockNumber,
+			Timestamp:    chainState.SlotToTime(blockSlot),
+			BlobCount:    block.BlobCount,
+			Proposer:     block.Proposer,
+			ProposerName: services.GlobalBeaconService.GetValidatorName(block.Proposer),
+			BlockRoot:    block.Root,
+			Finalized:    finalized,
+		})
 	}
 
 	cacheTimeout := 12 * time.Second
