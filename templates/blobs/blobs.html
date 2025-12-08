@@ -1,0 +1,373 @@
+{{ define "page" }}
+<div class="container mt-2">
+  <div class="d-md-flex py-2 justify-content-md-between">
+    <h1 class="h4 mb-1 mb-md-0"><i class="fas fa-database mx-2"></i>Blobs</h1>
+    <nav aria-label="breadcrumb">
+      <ol class="breadcrumb font-size-1 mb-0" style="padding:0; background-color:transparent;">
+        <li class="breadcrumb-item"><a href="/" title="Home">Home</a></li>
+        <li class="breadcrumb-item active" aria-current="page">Blobs</li>
+      </ol>
+    </nav>
+  </div>
+
+  <div class="row mt-4">
+    <div class="col-md-3 mb-3">
+      <div class="card stat-card h-100">
+        <div class="card-body text-center">
+          <h6 class="text-muted mb-2">Total Blobs</h6>
+          <h3 class="mb-0">{{ formatAddCommas .TotalBlobs }}</h3>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3 mb-3">
+      <div class="card stat-card h-100">
+        <div class="card-body text-center">
+          <h6 class="text-muted mb-2">Blocks with Blobs</h6>
+          <h3 class="mb-0">{{ formatAddCommas .TotalBlobsInBlocks }}</h3>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3 mb-3">
+      <div class="card stat-card h-100">
+        <div class="card-body text-center">
+          <h6 class="text-muted mb-2">Avg Blobs/Block</h6>
+          <h3 class="mb-0">{{ formatFloat .AvgBlobsPerBlock 2 }}</h3>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3 mb-3">
+      <div class="card stat-card h-100">
+        <div class="card-body text-center">
+          <h6 class="text-muted mb-2">Avg Blob Gas/Block</h6>
+          <h3 class="mb-0">{{ formatAddCommas .AvgBlobGasPerBlock }}</h3>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="col-md-4 mb-3">
+      <div class="card h-100">
+        <div class="card-body text-center">
+          <h6 class="text-muted mb-2">Blobs (Last 24h)</h6>
+          <h4 class="mb-0 text-primary">{{ formatAddCommas .BlobsLast24h }}</h4>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-4 mb-3">
+      <div class="card h-100">
+        <div class="card-body text-center">
+          <h6 class="text-muted mb-2">Blobs (Last 7d)</h6>
+          <h4 class="mb-0 text-primary">{{ formatAddCommas .BlobsLast7d }}</h4>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-4 mb-3">
+      <div class="card h-100">
+        <div class="card-body text-center">
+          <h6 class="text-muted mb-2">Blobs (Last 30d)</h6>
+          <h4 class="mb-0 text-primary">{{ formatAddCommas .BlobsLast30d }}</h4>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card mt-4">
+    <div class="card-header bg-primary text-white">
+      <h5 class="mb-0"><i class="fas fa-calculator"></i> Blob Storage Calculator (PeerDAS)</h5>
+    </div>
+    <div class="card-body">
+      <div class="row">
+        <div class="col-md-12">
+          <p class="mb-3">
+            Calculate storage requirements based on PeerDAS custody model.
+            <a href="https://ethereum.org/roadmap/fusaka/#peerdas" target="_blank" class="text-decoration-none">
+              Learn more about PeerDAS <i class="fas fa-external-link-alt fa-xs"></i>
+            </a>
+          </p>
+
+          <div class="mb-4">
+            <label for="ethSlider" class="form-label">
+              <span>ETH Staked:</span>
+            </label>
+            <div class="row g-3 align-items-center mb-2">
+              <div class="col-md-9">
+                <input type="range" class="form-range" id="ethSlider"
+                       min="{{ .StorageCalculator.MinEth }}"
+                       max="{{ .StorageCalculator.MaxEth }}"
+                       value="{{ .StorageCalculator.DefaultEth }}"
+                       step="32">
+              </div>
+              <div class="col-md-3">
+                <div class="input-group">
+                  <input type="number" class="form-control" id="ethInput"
+                         min="{{ .StorageCalculator.MinEth }}"
+                         max="{{ .StorageCalculator.MaxEth }}"
+                         value="{{ .StorageCalculator.DefaultEth }}"
+                         step="1">
+                  <span class="input-group-text">ETH</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="row mb-3">
+            <div class="col-md-4">
+              <div class="p-3 bg-primary bg-opacity-10 rounded border border-primary">
+                <small class="text-muted d-block mb-1">Validators</small>
+                <div class="fs-4 fw-bold text-primary" id="validatorsCount">8</div>
+              </div>
+            </div>
+            <div class="col-md-4">
+              <div class="p-3 bg-info bg-opacity-10 rounded border border-info">
+                <small class="text-muted d-block mb-1">Custody Columns</small>
+                <div class="fs-4 fw-bold text-info" id="custodyColumns">8</div>
+              </div>
+            </div>
+            <div class="col-md-4">
+              <div class="p-3 bg-success bg-opacity-10 rounded border border-success">
+                <small class="text-muted d-block mb-1">Custody %</small>
+                <div class="fs-4 fw-bold text-success" id="custodyPercent">6.25%</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="alert alert-success p-4 text-center border-2">
+            <h4 class="mb-2 text-success">Current Storage Required</h4>
+            <h1 class="mb-0 display-4 fw-bold text-success" id="storageResult">Loading...</h1>
+            <small class="text-muted d-block mt-2">Based on {{ formatAddCommas .TotalBlobs }} blobs currently in database</small>
+          </div>
+
+          <div class="mt-3">
+            <h6 class="d-inline-flex align-items-center">
+              How it works:
+              <a href="#" class="ms-2 text-decoration-none" data-bs-toggle="collapse" data-bs-target="#howItWorksCollapse" aria-expanded="false" aria-controls="howItWorksCollapse">
+                <i class="fas fa-question-circle text-muted"></i>
+              </a>
+            </h6>
+            <div class="collapse" id="howItWorksCollapse">
+              <ul class="small mb-0 mt-2">
+                <li>Non-validating nodes: <strong>4 columns minimum</strong></li>
+                <li>Validating nodes (0-256 ETH): <strong>8 columns (free threshold)</strong></li>
+                <li>256-4096 ETH: <strong>+1 column per additional 32 ETH</strong></li>
+                <li>4096+ ETH: <strong>128 columns (full custody)</strong></li>
+                <li>Blob retention: <strong>8192 epochs (~18 days)</strong></li>
+                <li>Column size: <strong>~2 KB per blob</strong></li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {{ if .LatestBlobBlocks }}
+  <div class="card mt-4">
+    <div class="card-header">
+      <h5 class="mb-0"><i class="fas fa-list"></i> Latest Blob Transactions</h5>
+    </div>
+    <div class="card-body px-0 py-3">
+      <div class="table-responsive">
+        <table class="table table-hover mb-0">
+          <thead>
+            <tr>
+              <th>Slot</th>
+              <th>Block Number</th>
+              <th>Time</th>
+              <th>Blob Count</th>
+              <th>Proposer</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{ range $i, $block := .LatestBlobBlocks }}
+            <tr>
+              <td><a href="/slot/{{ $block.Slot }}">{{ formatAddCommas $block.Slot }}</a></td>
+              <td>{{ ethBlockLink $block.BlockNumber }}</td>
+              <td data-timer="{{ $block.Timestamp.Unix }}">
+                <span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $block.Timestamp }}">
+                  {{ formatRecentTimeShort $block.Timestamp }}
+                </span>
+              </td>
+              <td>
+                <span class="badge rounded-pill text-bg-primary">{{ $block.BlobCount }}</span>
+              </td>
+              <td>{{ formatValidator $block.Proposer $block.ProposerName }}</td>
+              <td>
+                {{ if $block.Finalized }}
+                <span class="badge rounded-pill text-bg-success">Finalized</span>
+                {{ else }}
+                <span class="badge rounded-pill text-bg-warning">Pending</span>
+                {{ end }}
+              </td>
+            </tr>
+            {{ end }}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  {{ end }}
+
+  <div id="footer-placeholder" style="height:71px;"></div>
+</div>
+{{ end }}
+
+{{ define "js" }}
+<script type="text/javascript">
+const RETENTION_EPOCHS = 8192;
+const SLOTS_PER_EPOCH = 32;
+const RETENTION_SLOTS = RETENTION_EPOCHS * SLOTS_PER_EPOCH;
+const COLUMN_SIZE_KB = 2;
+const TOTAL_COLUMNS = {{ .StorageCalculator.TotalColumns }};
+const BLOB_SIZE_KB = 128;
+
+const totalBlobsInDb = {{ .TotalBlobs }};
+const blobsLast24h = {{ .BlobsLast24h }};
+const blobsLast7d = {{ .BlobsLast7d }};
+const blobsLast30d = {{ .BlobsLast30d }};
+
+function calculateCustodyColumns(eth) {
+  if (eth < 32) {
+    return 4;
+  } else if (eth <= 256) {
+    return 8;
+  } else if (eth <= 4096) {
+    return 8 + Math.floor((eth - 256) / 32);
+  } else {
+    return 128;
+  }
+}
+
+function calculateStorage(eth) {
+  const validators = Math.floor(eth / 32);
+  const columns = calculateCustodyColumns(eth);
+  const custodyPercent = ((columns / TOTAL_COLUMNS) * 100).toFixed(2);
+
+  const custodyRatio = columns / TOTAL_COLUMNS;
+
+  const blobsToStore = totalBlobsInDb > 0 ? totalBlobsInDb : 0;
+
+  const storageMB = (blobsToStore * BLOB_SIZE_KB * custodyRatio) / 1024;
+  const storageGB = storageMB / 1024;
+  const storageTB = storageGB / 1024;
+
+  return {
+    validators: validators,
+    columns: columns,
+    custodyPercent: custodyPercent,
+    storageGB: storageGB.toFixed(2),
+    storageTB: storageTB.toFixed(3),
+    storageMB: storageMB.toFixed(2)
+  };
+}
+
+function updateCalculator(ethValue, fromSlider) {
+  if (ethValue === undefined) {
+    ethValue = parseInt(document.getElementById('ethSlider').value);
+  }
+
+  ethValue = Math.max({{ .StorageCalculator.MinEth }}, Math.min({{ .StorageCalculator.MaxEth }}, ethValue));
+
+  if (fromSlider) {
+    ethValue = Math.round(ethValue / 32) * 32;
+  }
+
+  if (fromSlider) {
+    document.getElementById('ethInput').value = ethValue;
+  }
+  document.getElementById('ethSlider').value = Math.round(ethValue / 32) * 32;
+
+  const result = calculateStorage(ethValue);
+
+  document.getElementById('validatorsCount').textContent = result.validators;
+  document.getElementById('custodyColumns').textContent = result.columns + ' / ' + TOTAL_COLUMNS;
+  document.getElementById('custodyPercent').textContent = result.custodyPercent + '%';
+
+  let storageText;
+  if (parseFloat(result.storageMB) < 1024) {
+    storageText = result.storageMB + ' MB';
+  } else if (parseFloat(result.storageGB) < 1000) {
+    storageText = result.storageGB + ' GB';
+  } else {
+    storageText = result.storageTB + ' TB';
+  }
+
+  document.getElementById('storageResult').textContent = storageText;
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  const ethSlider = document.getElementById('ethSlider');
+  const ethInput = document.getElementById('ethInput');
+
+  ethSlider.addEventListener('input', function() {
+    updateCalculator(parseInt(this.value), true);
+  });
+
+  ethInput.addEventListener('input', function() {
+    let value = parseInt(this.value);
+    if (!isNaN(value)) {
+      updateCalculator(value, false);
+    }
+  });
+
+  ethInput.addEventListener('blur', function() {
+    let value = parseInt(this.value);
+    if (isNaN(value) || value < {{ .StorageCalculator.MinEth }}) {
+      value = {{ .StorageCalculator.MinEth }};
+    } else if (value > {{ .StorageCalculator.MaxEth }}) {
+      value = {{ .StorageCalculator.MaxEth }};
+    }
+    this.value = value;
+    updateCalculator(value, false);
+  });
+
+  updateCalculator(undefined, true);
+});
+</script>
+{{ end }}
+
+{{ define "css" }}
+<style>
+  .stat-card {
+    transition: transform 0.2s, box-shadow 0.2s;
+    border: none;
+    box-shadow: 0 0.125rem 0.25rem rgba(0,0,0,0.075);
+  }
+  .stat-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 0.5rem 1rem rgba(0,0,0,0.15);
+  }
+  .form-range {
+    height: 0.5rem;
+  }
+  .form-range::-webkit-slider-thumb {
+    width: 1.5rem;
+    height: 1.5rem;
+    background-color: #0d6efd;
+    cursor: pointer;
+  }
+  .form-range::-moz-range-thumb {
+    width: 1.5rem;
+    height: 1.5rem;
+    background-color: #0d6efd;
+    cursor: pointer;
+  }
+  #ethInput {
+    font-size: 1.1rem;
+    font-weight: 600;
+    text-align: right;
+  }
+  #ethInput::-webkit-outer-spin-button,
+  #ethInput::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  #ethInput[type=number] {
+    -moz-appearance: textfield;
+  }
+  .bg-opacity-10 {
+    --bs-bg-opacity: 0.1;
+  }
+</style>
+{{ end }}

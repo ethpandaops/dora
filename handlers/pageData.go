@@ -125,6 +125,11 @@ func createMenuItems(active string) []types.MainMenuItem {
 				Path:  "/blocks",
 				Icon:  "fa-cube",
 			},
+			{
+				Label: "Blobs",
+				Path:  "/blobs",
+				Icon:  "fa-database",
+			},
 			/*
 				{
 					Label: "Chain Forks",

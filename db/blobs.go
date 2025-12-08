@@ -1,6 +1,7 @@
 package db
 
 import (
+	"database/sql"
 	"fmt"
 	"strings"
 
@@ -70,4 +71,140 @@ func GetLatestBlobAssignment(commitment []byte) *dbtypes.BlobAssignment {
 		return nil
 	}
 	return &blobAssignment
+}
+
+type BlobStatistics struct {
+	TotalBlobs         uint64
+	TotalBlobsInBlocks uint64
+	AvgBlobsPerBlock   float64
+	BlobsLast24h       uint64
+	BlobsLast7d        uint64
+	BlobsLast30d       uint64
+	TotalBlobGasUsed   uint64
+	AvgBlobGasPerBlock uint64
+}
+
+func GetBlobStatistics(currentSlot uint64) (*BlobStatistics, error) {
+	stats := &BlobStatistics{}
+
+	var err error
+	err = ReaderDb.Get(&stats.TotalBlobs, `
+		SELECT COALESCE(SUM(blob_count), 0)
+		FROM slots
+		WHERE status != 0
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get total blobs: %w", err)
+	}
+
+	err = ReaderDb.Get(&stats.TotalBlobsInBlocks, `
+		SELECT COUNT(*)
+		FROM slots
+		WHERE status != 0 AND blob_count > 0
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get total blocks with blobs: %w", err)
+	}
+
+	var avgBlobs sql.NullFloat64
+	err = ReaderDb.Get(&avgBlobs, `
+		SELECT AVG(blob_count)
+		FROM slots
+		WHERE status != 0 AND blob_count > 0
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get average blobs per block: %w", err)
+	}
+	if avgBlobs.Valid {
+		stats.AvgBlobsPerBlock = avgBlobs.Float64
+	}
+
+	slot24h := uint64(0)
+	if currentSlot > 7200 {
+		slot24h = currentSlot - 7200
+	}
+	err = ReaderDb.Get(&stats.BlobsLast24h, `
+		SELECT COALESCE(SUM(blob_count), 0)
+		FROM slots
+		WHERE status != 0 AND slot >= $1
+	`, slot24h)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get blobs last 24h: %w", err)
+	}
+
+	slot7d := uint64(0)
+	if currentSlot > 50400 {
+		slot7d = currentSlot - 50400
+	}
+	err = ReaderDb.Get(&stats.BlobsLast7d, `
+		SELECT COALESCE(SUM(blob_count), 0)
+		FROM slots
+		WHERE status != 0 AND slot >= $1
+	`, slot7d)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get blobs last 7d: %w", err)
+	}
+
+	slot30d := uint64(0)
+	if currentSlot > 216000 {
+		slot30d = currentSlot - 216000
+	}
+	err = ReaderDb.Get(&stats.BlobsLast30d, `
+		SELECT COALESCE(SUM(blob_count), 0)
+		FROM slots
+		WHERE status != 0 AND slot >= $1
+	`, slot30d)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get blobs last 30d: %w", err)
+	}
+
+	err = ReaderDb.Get(&stats.TotalBlobGasUsed, `
+		SELECT COALESCE(SUM(eth_gas_used), 0)
+		FROM slots
+		WHERE status != 0 AND blob_count > 0
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get total blob gas used: %w", err)
+	}
+
+	var avgGas sql.NullFloat64
+	err = ReaderDb.Get(&avgGas, `
+		SELECT AVG(eth_gas_used)
+		FROM slots
+		WHERE status != 0 AND blob_count > 0
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get average blob gas per block: %w", err)
+	}
+	if avgGas.Valid {
+		stats.AvgBlobGasPerBlock = uint64(avgGas.Float64)
+	}
+
+	return stats, nil
+}
+
+type LatestBlobBlockDB struct {
+	Slot        uint64 `db:"slot"`
+	BlockNumber uint64 `db:"eth_block_number"`
+	BlobCount   uint64 `db:"blob_count"`
+	Proposer    uint64 `db:"proposer"`
+	Root        []byte `db:"root"`
+}
+
+func GetLatestBlobBlocks(limit uint64) ([]*LatestBlobBlockDB, error) {
+	blocks := make([]*LatestBlobBlockDB, 0, limit)
+
+	err := ReaderDb.Select(&blocks, `
+		SELECT slot, eth_block_number, blob_count, proposer, root
+		FROM slots
+		WHERE status != 0 AND blob_count > 0
+		ORDER BY slot DESC
+		LIMIT $1
+	`, limit)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to get latest blob blocks: %w", err)
+	}
+
+	return blocks, nil
 }
