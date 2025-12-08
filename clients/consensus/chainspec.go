@@ -30,7 +30,7 @@ type ChainSpecConfig struct {
 	ConfigName string `yaml:"CONFIG_NAME" check-if:"false"`
 
 	// Transition
-	TerminalTotalDifficulty          uint64 `yaml:"TERMINAL_TOTAL_DIFFICULTY"            check-severity:"warning"`
+	TerminalTotalDifficulty          string `yaml:"TERMINAL_TOTAL_DIFFICULTY"            check-severity:"warning"`
 	TerminalBlockHash                []byte `yaml:"TERMINAL_BLOCK_HASH"                  check-severity:"warning"`
 	TerminalBlockHashActivationEpoch uint64 `yaml:"TERMINAL_BLOCK_HASH_ACTIVATION_EPOCH" check-severity:"warning"`
 
@@ -87,8 +87,6 @@ type ChainSpecConfig struct {
 	MaxRequestBlocks                 uint64            `yaml:"MAX_REQUEST_BLOCKS"`
 	EpochsPerSubnetSubscription      uint64            `yaml:"EPOCHS_PER_SUBNET_SUBSCRIPTION"`
 	MinEpochsForBlockRequests        uint64            `yaml:"MIN_EPOCHS_FOR_BLOCK_REQUESTS"`
-	TtfbTimeout                      uint64            `yaml:"TTFB_TIMEOUT"`
-	RespTimeout                      uint64            `yaml:"RESP_TIMEOUT"`
 	AttestationPropoagationSlotRange uint64            `yaml:"ATTESTATION_PROPAGATION_SLOT_RANGE"`
 	MaximumGossipClockDisparity      uint64            `yaml:"MAXIMUM_GOSSIP_CLOCK_DISPARITY"`
 	MessageDomainInvalidSnappy       phase0.DomainType `yaml:"MESSAGE_DOMAIN_INVALID_SNAPPY"`

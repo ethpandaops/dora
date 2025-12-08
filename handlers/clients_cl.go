@@ -702,8 +702,12 @@ func buildCLClientsPageData(sortOrder string) (*models.ClientsCLPageData, time.D
 // getChainSpecFieldOrders extracts field names from ChainSpecConfig, ChainSpecPreset and ChainSpecDomainTypes structs
 func getChainSpecFieldOrders() (configFields []string, presetFields []string, domainTypeFields []string, expectedValues map[string]interface{}) {
 	chainState := services.GlobalBeaconService.GetChainState()
-	specs := chainState.GetSpecs()
 	expectedValues = map[string]interface{}{}
+
+	specs := chainState.GetSpecs()
+	if specs == nil {
+		return []string{}, []string{}, []string{}, map[string]interface{}{}
+	}
 
 	encodeValue := func(value interface{}) interface{} {
 		switch v := value.(type) {

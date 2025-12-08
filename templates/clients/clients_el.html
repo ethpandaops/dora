@@ -41,6 +41,13 @@
     <div class="card mt-2">
       <div class="card-body px-0 py-3">
         <div class="table-responsive table-sorting px-0 py-1">
+          <div style="margin-bottom: 15px; padding: 0 15px;">
+            <div class="input-group">
+              <span class="input-group-text"><i class="fas fa-search"></i></span>
+              <input type="text" class="form-control" id="clientSearchInput" placeholder="Search clients by name...">
+              <button class="btn btn-outline-secondary" type="button" id="clearClientSearch">Clear</button>
+            </div>
+          </div>
           <div style="text-align: right; margin-right: 15px;">
             Peer infos:
             <i class="fa fa-refresh text-muted p-1 mx-1" role="button" data-bs-toggle="tooltip" data-bs-placement="top" title="Refresh peer information" onclick="refreshPeerInfos()" style="cursor: pointer;"></i>
@@ -395,7 +402,7 @@
 
   <!-- Config Mismatch Modal -->
   <div class="modal fade" id="configMismatchModal" tabindex="-1" role="dialog" aria-labelledby="configMismatchModalTitle" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered" style="max-width: 1420px; width: 1420px;" role="document">
+    <div class="modal-dialog modal-dialog-centered config-modal-dialog" role="document">
       <div class="modal-content">
         <div class="modal-header">
           <h5 class="modal-title" id="configMismatchModalTitle">
@@ -403,7 +410,7 @@
           </h5>
           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
         </div>
-        <div class="modal-body" id="configMismatchModalBody" style="max-height: 80vh; overflow-x: auto; overflow-y: auto;">
+        <div class="modal-body" id="configMismatchModalBody" style="max-height: 80vh; overflow-y: auto;">
           <!-- Content will be populated dynamically -->
         </div>
         <div class="modal-footer">
@@ -447,6 +454,36 @@
     }
     $('.collapse.peerInfo').collapse('hide');
     $('#peerInfo-' + peerId).collapse('show');
+  });
+
+  // Client search functionality
+  $('#clientSearchInput').on('input', function() {
+    var searchText = $(this).val().trim().toLowerCase();
+
+    $('#clients tbody tr').each(function() {
+      if (!$(this).hasClass('peerInfo')) {
+        var clientName = $(this).find('.client-row a').text().toLowerCase();
+        var peerInfoRow = $(this).next('.peerInfo');
+
+        if (searchText === '' || clientName.includes(searchText)) {
+          $(this).show();
+          peerInfoRow.css('display', '');
+        } else {
+          $(this).hide();
+          peerInfoRow.css('display', 'none');
+        }
+      }
+    });
+  });
+
+  $('#clearClientSearch').click(function() {
+    $('#clientSearchInput').val('');
+    $('#clients tbody tr').each(function() {
+      if (!$(this).hasClass('peerInfo')) {
+        $(this).show();
+        $(this).next('.peerInfo').css('display', '');
+      }
+    });
   });
 
   (function() {
@@ -679,9 +716,9 @@
       function createComparisonTable(sectionName, expectedFork, clientFork) {
         var sectionHtml = '<div class="mb-4">';
         sectionHtml += '<h6 class="text-primary">' + sectionName + ' Fork Configuration</h6>';
-        sectionHtml += '<div class="table-responsive" style="min-width: 1350px;">';
-        sectionHtml += '<table class="table table-striped table-hover table-sm" style="table-layout: fixed; width: 1350px;">';
-        sectionHtml += '<thead class="table-dark"><tr><th style="width: 450px; min-width: 450px;">Field</th><th style="width: 450px; min-width: 450px;">Client</th><th style="width: 450px; min-width: 450px;">Expected</th></tr></thead>';
+        sectionHtml += '<div class="table-responsive">';
+        sectionHtml += '<table class="table table-striped table-hover table-sm config-comparison-table">';
+        sectionHtml += '<thead class="table-dark"><tr><th class="config-field-col">Field</th><th class="config-client-col">Client</th><th class="config-expected-col">Expected</th></tr></thead>';
         sectionHtml += '<tbody>';
         
         // Compare all fields in the fork config
