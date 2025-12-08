@@ -78,9 +78,6 @@ func buildBlobsPageData() (*models.BlobsPageData, time.Duration) {
 	if err != nil {
 		logrus.WithError(err).Error("error getting blob statistics")
 	} else {
-		pageData.TotalBlobs = stats.TotalBlobs
-		pageData.TotalBlobsInBlocks = stats.TotalBlobsInBlocks
-		pageData.AvgBlobsPerBlock = stats.AvgBlobsPerBlock
 		pageData.BlobsLast1h = stats.BlobsLast1h
 		pageData.BlobsLast24h = stats.BlobsLast24h
 		pageData.BlobsLast7d = stats.BlobsLast7d
@@ -93,8 +90,6 @@ func buildBlobsPageData() (*models.BlobsPageData, time.Duration) {
 		pageData.BlobGasLast24h = stats.BlobGasLast24h
 		pageData.BlobGasLast7d = stats.BlobGasLast7d
 		pageData.BlobGasLast18d = stats.BlobGasLast18d
-		pageData.TotalBlobGasUsed = stats.TotalBlobGasUsed
-		pageData.AvgBlobGasPerBlock = stats.AvgBlobGasPerBlock
 	}
 
 	minBlobCount := uint64(1)

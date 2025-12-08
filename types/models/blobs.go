@@ -5,9 +5,6 @@ import (
 )
 
 type BlobsPageData struct {
-	TotalBlobs             uint64                 `json:"total_blobs"`
-	TotalBlobsInBlocks     uint64                 `json:"total_blobs_in_blocks"`
-	AvgBlobsPerBlock       float64                `json:"avg_blobs_per_block"`
 	BlobsLast1h            uint64                 `json:"blobs_last_1h"`
 	BlobsLast24h           uint64                 `json:"blobs_last_24h"`
 	BlobsLast7d            uint64                 `json:"blobs_last_7d"`
@@ -20,11 +17,8 @@ type BlobsPageData struct {
 	BlobGasLast24h         uint64                 `json:"blob_gas_last_24h"`
 	BlobGasLast7d          uint64                 `json:"blob_gas_last_7d"`
 	BlobGasLast18d         uint64                 `json:"blob_gas_last_18d"`
-	TotalBlobGasUsed       uint64                 `json:"total_blob_gas_used"`
-	AvgBlobGasPerBlock     uint64                 `json:"avg_blob_gas_per_block"`
 	LatestBlobBlocks       []*LatestBlobBlock     `json:"latest_blob_blocks"`
 	StorageCalculator      *StorageCalculatorData `json:"storage_calculator"`
-	DataLimitationNote     string                 `json:"data_limitation_note"`
 }
 
 type LatestBlobBlock struct {
