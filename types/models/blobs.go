@@ -33,12 +33,15 @@ type LatestBlobBlock struct {
 }
 
 type StorageCalculatorData struct {
-	MinEth             uint32  `json:"min_eth"`
-	MaxEth             uint32  `json:"max_eth"`
-	DefaultEth         uint32  `json:"default_eth"`
-	ColumnSize         float64 `json:"column_size"`
-	TotalColumns       uint32  `json:"total_columns"`
-	MinColumnsNonVal   uint32  `json:"min_columns_non_val"`
-	MinColumnsVal      uint32  `json:"min_columns_val"`
-	FreeValidatorCount uint32  `json:"free_validator_count"`
+	MinEth                           uint32  `json:"min_eth"`
+	MaxEth                           uint32  `json:"max_eth"`
+	DefaultEth                       uint32  `json:"default_eth"`
+	ColumnSize                       float64 `json:"column_size"`
+	TotalColumns                     uint32  `json:"total_columns"`
+	MinColumnsNonVal                 uint32  `json:"min_columns_non_val"`
+	MinColumnsVal                    uint32  `json:"min_columns_val"`
+	FreeValidatorCount               uint32  `json:"free_validator_count"`
+	BlobSizeKB                       uint32  `json:"blob_size_kb"`
+	SlotsPerEpoch                    uint64  `json:"slots_per_epoch"`
+	MinEpochsForBlobSidecarsRequests uint64  `json:"min_epochs_for_blob_sidecars_requests"`
 }

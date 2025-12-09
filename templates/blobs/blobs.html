@@ -138,9 +138,13 @@
                 <li>Validating nodes (0-256 ETH): <strong>8 columns (free threshold)</strong></li>
                 <li>256-4096 ETH: <strong>+1 column per additional 32 ETH</strong></li>
                 <li>4096+ ETH: <strong>128 columns (full custody)</strong></li>
-                <li>Blob retention: <strong>4096 epochs (~18 days)</strong></li>
-                <li>Column size: <strong>~2 KB per blob</strong></li>
+                <li>Blob retention: <strong>{{ .StorageCalculator.MinEpochsForBlobSidecarsRequests }} epochs (~18 days)</strong></li>
+                <li>Blobs are erasure coded: <strong>128 KB → 256 KB (128 columns × 2 KB each)</strong></li>
+                <li>Storage per blob: <strong>2 KB × columns custodied</strong></li>
               </ul>
+              <p class="small text-muted mt-2 mb-0">
+                Learn more: <a href="https://ethereum.org/roadmap/fusaka/#peerdas" target="_blank" rel="noopener">PeerDAS on ethereum.org</a>
+              </p>
             </div>
           </div>
         </div>
@@ -202,12 +206,12 @@
 
 {{ define "js" }}
 <script type="text/javascript">
-const RETENTION_EPOCHS = 4096;
-const SLOTS_PER_EPOCH = 32;
+const RETENTION_EPOCHS = {{ .StorageCalculator.MinEpochsForBlobSidecarsRequests }};
+const SLOTS_PER_EPOCH = {{ .StorageCalculator.SlotsPerEpoch }};
 const RETENTION_SLOTS = RETENTION_EPOCHS * SLOTS_PER_EPOCH;
-const COLUMN_SIZE_KB = 2;
+const COLUMN_SIZE_KB = {{ .StorageCalculator.ColumnSize }};
 const TOTAL_COLUMNS = {{ .StorageCalculator.TotalColumns }};
-const BLOB_SIZE_KB = 128;
+const BLOB_SIZE_KB = {{ .StorageCalculator.BlobSizeKB }};
 
 const blobsInRetentionWindow = {{ .BlobsLast30d }};
 const blobsLast24h = {{ .BlobsLast24h }};
@@ -283,11 +287,10 @@ function calculateStorage(eth) {
   const columns = calculateCustodyColumns(eth);
   const custodyPercent = ((columns / TOTAL_COLUMNS) * 100).toFixed(2);
 
-  const custodyRatio = columns / TOTAL_COLUMNS;
-
   const blobsToStore = currentBlobCount > 0 ? currentBlobCount : 0;
 
-  const storageMB = (blobsToStore * BLOB_SIZE_KB * custodyRatio) / 1024;
+  const storageKB = blobsToStore * columns * COLUMN_SIZE_KB;
+  const storageMB = storageKB / 1024;
   const storageGB = storageMB / 1024;
   const storageTB = storageGB / 1024;
 

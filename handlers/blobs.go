@@ -58,19 +58,23 @@ func buildBlobsPageData() (*models.BlobsPageData, time.Duration) {
 	logrus.Debugf("blobs page called")
 
 	chainState := services.GlobalBeaconService.GetChainState()
+	specs := chainState.GetSpecs()
 	currentSlot := chainState.CurrentSlot()
 	finalizedEpoch, _ := services.GlobalBeaconService.GetFinalizedEpoch()
 
 	pageData := &models.BlobsPageData{
 		StorageCalculator: &models.StorageCalculatorData{
-			MinEth:             32,
-			MaxEth:             4196,
-			DefaultEth:         256,
-			ColumnSize:         2.0,
-			TotalColumns:       128,
-			MinColumnsNonVal:   4,
-			MinColumnsVal:      8,
-			FreeValidatorCount: 8,
+			MinEth:                           32,
+			MaxEth:                           4196,
+			DefaultEth:                       256,
+			ColumnSize:                       2.0,
+			TotalColumns:                     128,
+			MinColumnsNonVal:                 4,
+			MinColumnsVal:                    8,
+			FreeValidatorCount:               8,
+			BlobSizeKB:                       256,
+			SlotsPerEpoch:                    specs.SlotsPerEpoch,
+			MinEpochsForBlobSidecarsRequests: specs.MinEpochsForBlobSidecarsRequests,
 		},
 	}
 
