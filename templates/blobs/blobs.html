@@ -134,13 +134,13 @@
             </h6>
             <div class="collapse" id="howItWorksCollapse">
               <ul class="small mb-0 mt-2">
-                <li>Non-validating nodes: <strong>4 columns minimum</strong></li>
-                <li>Validating nodes (0-256 ETH): <strong>8 columns (free threshold)</strong></li>
-                <li>256-4096 ETH: <strong>+1 column per additional 32 ETH</strong></li>
-                <li>4096+ ETH: <strong>128 columns (full custody)</strong></li>
+                <li>Non-validating nodes: <strong>{{ .StorageCalculator.MinColumnsNonVal }} columns minimum</strong></li>
+                <li>Validating nodes ({{ .StorageCalculator.MaxEffectiveBalanceEth }}-{{ mul .StorageCalculator.MinColumnsVal .StorageCalculator.MaxEffectiveBalanceEth }} ETH): <strong>{{ .StorageCalculator.MinColumnsVal }} columns (free threshold)</strong></li>
+                <li>{{ mul .StorageCalculator.MinColumnsVal .StorageCalculator.MaxEffectiveBalanceEth }}-{{ .StorageCalculator.MaxEth }} ETH: <strong>+1 column per additional {{ .StorageCalculator.MaxEffectiveBalanceEth }} ETH</strong></li>
+                <li>{{ .StorageCalculator.MaxEth }}+ ETH: <strong>{{ .StorageCalculator.TotalColumns }} columns (full custody)</strong></li>
                 <li>Blob retention: <strong>{{ .StorageCalculator.MinEpochsForBlobSidecarsRequests }} epochs (~18 days)</strong></li>
-                <li>Blobs are erasure coded: <strong>128 KB → 256 KB (128 columns × 2 KB each)</strong></li>
-                <li>Storage per blob: <strong>2 KB × columns custodied</strong></li>
+                <li>Blobs are erasure coded: <strong>128 KB → 256 KB ({{ .StorageCalculator.TotalColumns }} columns × {{ div .StorageCalculator.ColumnSizeBytes 1024 }} KB each)</strong></li>
+                <li>Storage per blob: <strong>{{ div .StorageCalculator.ColumnSizeBytes 1024 }} KB × columns custodied</strong></li>
               </ul>
               <p class="small text-muted mt-2 mb-0">
                 Learn more: <a href="https://ethereum.org/roadmap/fusaka/#peerdas" target="_blank" rel="noopener">PeerDAS on ethereum.org</a>
@@ -211,7 +211,11 @@ const SLOTS_PER_EPOCH = {{ .StorageCalculator.SlotsPerEpoch }};
 const RETENTION_SLOTS = RETENTION_EPOCHS * SLOTS_PER_EPOCH;
 const COLUMN_SIZE_BYTES = {{ .StorageCalculator.ColumnSizeBytes }};
 const TOTAL_COLUMNS = {{ .StorageCalculator.TotalColumns }};
-const BLOB_SIZE_KB = {{ .StorageCalculator.BlobSizeKB }};
+const MAX_EFFECTIVE_BALANCE_ETH = {{ .StorageCalculator.MaxEffectiveBalanceEth }};
+const MIN_COLUMNS_NON_VAL = {{ .StorageCalculator.MinColumnsNonVal }};
+const MIN_COLUMNS_VAL = {{ .StorageCalculator.MinColumnsVal }};
+const FREE_THRESHOLD_ETH = MIN_COLUMNS_VAL * MAX_EFFECTIVE_BALANCE_ETH;
+const MAX_ETH = {{ .StorageCalculator.MaxEth }};
 
 const blobsInRetentionWindow = {{ .BlobsLast30d }};
 const blobsLast24h = {{ .BlobsLast24h }};
@@ -271,19 +275,19 @@ function updateTimeStats(period) {
 }
 
 function calculateCustodyColumns(eth) {
-  if (eth < 32) {
-    return 4;
-  } else if (eth <= 256) {
-    return 8;
-  } else if (eth <= 4096) {
-    return 8 + Math.floor((eth - 256) / 32);
+  if (eth < MAX_EFFECTIVE_BALANCE_ETH) {
+    return MIN_COLUMNS_NON_VAL;
+  } else if (eth <= FREE_THRESHOLD_ETH) {
+    return MIN_COLUMNS_VAL;
+  } else if (eth <= MAX_ETH) {
+    return MIN_COLUMNS_VAL + Math.floor((eth - FREE_THRESHOLD_ETH) / MAX_EFFECTIVE_BALANCE_ETH);
   } else {
-    return 128;
+    return TOTAL_COLUMNS;
   }
 }
 
 function calculateStorage(eth) {
-  const validators = Math.floor(eth / 32);
+  const validators = Math.floor(eth / MAX_EFFECTIVE_BALANCE_ETH);
   const columns = calculateCustodyColumns(eth);
   const custodyPercent = ((columns / TOTAL_COLUMNS) * 100).toFixed(2);
 
