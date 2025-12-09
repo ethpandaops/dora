@@ -62,15 +62,37 @@ func buildBlobsPageData() (*models.BlobsPageData, time.Duration) {
 	currentSlot := chainState.CurrentSlot()
 	finalizedEpoch, _ := services.GlobalBeaconService.GetFinalizedEpoch()
 
+	// Get spec values with defaults
+	totalColumns := uint64(128)
+	if specs.NumberOfColumns != nil {
+		totalColumns = *specs.NumberOfColumns
+	}
+
+	minColumnsNonVal := uint64(4)
+	if specs.DataColumnSidecarSubnetCount != nil {
+		minColumnsNonVal = *specs.DataColumnSidecarSubnetCount
+	}
+
+	minColumnsVal := uint64(8)
+	if specs.CustodyRequirement != nil {
+		minColumnsVal = *specs.CustodyRequirement
+	}
+
+	// Calculate column size: FIELD_ELEMENTS_PER_CELL * 32 bytes = 64 * 32 = 2048 bytes
+	columnSizeBytes := uint64(2048)
+	if specs.FieldElementsPerCell > 0 {
+		columnSizeBytes = specs.FieldElementsPerCell * 32
+	}
+
 	pageData := &models.BlobsPageData{
 		StorageCalculator: &models.StorageCalculatorData{
 			MinEth:                           32,
 			MaxEth:                           4196,
 			DefaultEth:                       256,
-			ColumnSize:                       2.0,
-			TotalColumns:                     128,
-			MinColumnsNonVal:                 4,
-			MinColumnsVal:                    8,
+			ColumnSizeBytes:                  columnSizeBytes,
+			TotalColumns:                     totalColumns,
+			MinColumnsNonVal:                 minColumnsNonVal,
+			MinColumnsVal:                    minColumnsVal,
 			FreeValidatorCount:               8,
 			BlobSizeKB:                       256,
 			SlotsPerEpoch:                    specs.SlotsPerEpoch,

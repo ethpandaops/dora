@@ -209,7 +209,7 @@
 const RETENTION_EPOCHS = {{ .StorageCalculator.MinEpochsForBlobSidecarsRequests }};
 const SLOTS_PER_EPOCH = {{ .StorageCalculator.SlotsPerEpoch }};
 const RETENTION_SLOTS = RETENTION_EPOCHS * SLOTS_PER_EPOCH;
-const COLUMN_SIZE_KB = {{ .StorageCalculator.ColumnSize }};
+const COLUMN_SIZE_BYTES = {{ .StorageCalculator.ColumnSizeBytes }};
 const TOTAL_COLUMNS = {{ .StorageCalculator.TotalColumns }};
 const BLOB_SIZE_KB = {{ .StorageCalculator.BlobSizeKB }};
 
@@ -289,7 +289,8 @@ function calculateStorage(eth) {
 
   const blobsToStore = currentBlobCount > 0 ? currentBlobCount : 0;
 
-  const storageKB = blobsToStore * columns * COLUMN_SIZE_KB;
+  const storageBytes = blobsToStore * columns * COLUMN_SIZE_BYTES;
+  const storageKB = storageBytes / 1024;
   const storageMB = storageKB / 1024;
   const storageGB = storageMB / 1024;
   const storageTB = storageGB / 1024;
