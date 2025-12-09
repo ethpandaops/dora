@@ -63,23 +63,24 @@ func buildBlobsPageData() (*models.BlobsPageData, time.Duration) {
 	finalizedEpoch, _ := services.GlobalBeaconService.GetFinalizedEpoch()
 
 	// Calculate thresholds based on MAX_EFFECTIVE_BALANCE
-	// MinEth = 1 validator (32 ETH)
+	// MinEth = 0 (allow non-validators)
 	// MaxEth = full custody at TotalColumns validators
 	// Each validator (32 ETH) = 1 column after the free threshold
-	minEth := uint32(specs.MaxEffectiveBalance / 1e9)
-	maxEth := uint32(*specs.NumberOfColumns * specs.MaxEffectiveBalance / 1e9)
-	defaultEth := uint32(*specs.CustodyRequirement * specs.MaxEffectiveBalance / 1e9)
+	minEth := uint64(0)
+	maxEffectiveBalanceEth := specs.MaxEffectiveBalance / 1e9
+	maxEth := *specs.NumberOfColumns * specs.MaxEffectiveBalance / 1e9
+	defaultEth := maxEffectiveBalanceEth
 
 	pageData := &models.BlobsPageData{
 		StorageCalculator: &models.StorageCalculatorData{
 			MinEth:                           minEth,
 			MaxEth:                           maxEth,
 			DefaultEth:                       defaultEth,
-			MaxEffectiveBalanceEth:           minEth,
-			ColumnSizeBytes:                  specs.FieldElementsPerCell * 32,
+			MaxEffectiveBalanceEth:           float64(maxEffectiveBalanceEth),
+			ColumnSizeBytes:                  float64(specs.FieldElementsPerCell * 32),
 			TotalColumns:                     *specs.NumberOfColumns,
-			MinColumnsNonVal:                 *specs.DataColumnSidecarSubnetCount,
-			MinColumnsVal:                    *specs.CustodyRequirement,
+			CustodyRequirement:               float64(*specs.CustodyRequirement),
+			ValidatorCustodyRequirement:      float64(*specs.ValidatorCustodyRequirement),
 			SlotsPerEpoch:                    specs.SlotsPerEpoch,
 			MinEpochsForBlobSidecarsRequests: specs.MinEpochsForBlobSidecarsRequests,
 		},

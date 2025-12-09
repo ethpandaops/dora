@@ -33,14 +33,14 @@ type LatestBlobBlock struct {
 }
 
 type StorageCalculatorData struct {
-	MinEth                           uint32 `json:"min_eth"`
-	MaxEth                           uint32 `json:"max_eth"`
-	DefaultEth                       uint32 `json:"default_eth"`
-	MaxEffectiveBalanceEth           uint32 `json:"max_effective_balance_eth"`
-	ColumnSizeBytes                  uint64 `json:"column_size_bytes"`
-	TotalColumns                     uint64 `json:"total_columns"`
-	MinColumnsNonVal                 uint64 `json:"min_columns_non_val"`
-	MinColumnsVal                    uint64 `json:"min_columns_val"`
-	SlotsPerEpoch                    uint64 `json:"slots_per_epoch"`
-	MinEpochsForBlobSidecarsRequests uint64 `json:"min_epochs_for_blob_sidecars_requests"`
+	MinEth                           uint64  `json:"min_eth"`
+	MaxEth                           uint64  `json:"max_eth"`
+	DefaultEth                       uint64  `json:"default_eth"`
+	MaxEffectiveBalanceEth           float64 `json:"max_effective_balance_eth"`
+	ColumnSizeBytes                  float64 `json:"column_size_bytes"`
+	TotalColumns                     uint64  `json:"total_columns"`
+	CustodyRequirement               float64 `json:"custody_requirement"`
+	ValidatorCustodyRequirement      float64 `json:"validator_custody_requirement"`
+	SlotsPerEpoch                    uint64  `json:"slots_per_epoch"`
+	MinEpochsForBlobSidecarsRequests uint64  `json:"min_epochs_for_blob_sidecars_requests"`
 }

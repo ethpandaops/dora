@@ -134,9 +134,9 @@
             </h6>
             <div class="collapse" id="howItWorksCollapse">
               <ul class="small mb-0 mt-2">
-                <li>Non-validating nodes: <strong>{{ .StorageCalculator.MinColumnsNonVal }} columns minimum</strong></li>
-                <li>Validating nodes ({{ .StorageCalculator.MaxEffectiveBalanceEth }}-{{ mul .StorageCalculator.MinColumnsVal .StorageCalculator.MaxEffectiveBalanceEth }} ETH): <strong>{{ .StorageCalculator.MinColumnsVal }} columns (free threshold)</strong></li>
-                <li>{{ mul .StorageCalculator.MinColumnsVal .StorageCalculator.MaxEffectiveBalanceEth }}-{{ .StorageCalculator.MaxEth }} ETH: <strong>+1 column per additional {{ .StorageCalculator.MaxEffectiveBalanceEth }} ETH</strong></li>
+                <li>Non-validating nodes (0 ETH): <strong>{{ .StorageCalculator.CustodyRequirement }} columns minimum</strong></li>
+                <li>Validating nodes ({{ .StorageCalculator.MaxEffectiveBalanceEth }}-{{ mul .StorageCalculator.ValidatorCustodyRequirement .StorageCalculator.MaxEffectiveBalanceEth }} ETH): <strong>{{ .StorageCalculator.ValidatorCustodyRequirement }} columns (free threshold)</strong></li>
+                <li>{{ mul .StorageCalculator.ValidatorCustodyRequirement .StorageCalculator.MaxEffectiveBalanceEth }}-{{ .StorageCalculator.MaxEth }} ETH: <strong>+1 column per additional {{ .StorageCalculator.MaxEffectiveBalanceEth }} ETH</strong></li>
                 <li>{{ .StorageCalculator.MaxEth }}+ ETH: <strong>{{ .StorageCalculator.TotalColumns }} columns (full custody)</strong></li>
                 <li>Blob retention: <strong>{{ .StorageCalculator.MinEpochsForBlobSidecarsRequests }} epochs (~18 days)</strong></li>
                 <li>Blobs are erasure coded: <strong>128 KB → 256 KB ({{ .StorageCalculator.TotalColumns }} columns × {{ div .StorageCalculator.ColumnSizeBytes 1024 }} KB each)</strong></li>
@@ -212,9 +212,9 @@ const RETENTION_SLOTS = RETENTION_EPOCHS * SLOTS_PER_EPOCH;
 const COLUMN_SIZE_BYTES = {{ .StorageCalculator.ColumnSizeBytes }};
 const TOTAL_COLUMNS = {{ .StorageCalculator.TotalColumns }};
 const MAX_EFFECTIVE_BALANCE_ETH = {{ .StorageCalculator.MaxEffectiveBalanceEth }};
-const MIN_COLUMNS_NON_VAL = {{ .StorageCalculator.MinColumnsNonVal }};
-const MIN_COLUMNS_VAL = {{ .StorageCalculator.MinColumnsVal }};
-const FREE_THRESHOLD_ETH = MIN_COLUMNS_VAL * MAX_EFFECTIVE_BALANCE_ETH;
+const CUSTODY_REQUIREMENT = {{ .StorageCalculator.CustodyRequirement }};
+const VALIDATOR_CUSTODY_REQUIREMENT = {{ .StorageCalculator.ValidatorCustodyRequirement }};
+const FREE_THRESHOLD_ETH = VALIDATOR_CUSTODY_REQUIREMENT * MAX_EFFECTIVE_BALANCE_ETH;
 const MAX_ETH = {{ .StorageCalculator.MaxEth }};
 
 const blobsInRetentionWindow = {{ .BlobsLast30d }};
@@ -275,12 +275,14 @@ function updateTimeStats(period) {
 }
 
 function calculateCustodyColumns(eth) {
-  if (eth < MAX_EFFECTIVE_BALANCE_ETH) {
-    return MIN_COLUMNS_NON_VAL;
+  if (eth === 0) {
+    return CUSTODY_REQUIREMENT;
+  } else if (eth < MAX_EFFECTIVE_BALANCE_ETH) {
+    return CUSTODY_REQUIREMENT;
   } else if (eth <= FREE_THRESHOLD_ETH) {
-    return MIN_COLUMNS_VAL;
+    return VALIDATOR_CUSTODY_REQUIREMENT;
   } else if (eth <= MAX_ETH) {
-    return MIN_COLUMNS_VAL + Math.floor((eth - FREE_THRESHOLD_ETH) / MAX_EFFECTIVE_BALANCE_ETH);
+    return VALIDATOR_CUSTODY_REQUIREMENT + Math.floor((eth - FREE_THRESHOLD_ETH) / MAX_EFFECTIVE_BALANCE_ETH);
   } else {
     return TOTAL_COLUMNS;
   }
