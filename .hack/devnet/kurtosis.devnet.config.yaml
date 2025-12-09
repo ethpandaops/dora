@@ -4,15 +4,14 @@ participants_matrix:
 
   cl:
     - cl_type: lighthouse
-    - cl_type: prysm
-    - cl_type: teku
-    - cl_type: nimbus
-    - cl_type: grandine
-    - cl_type: lodestar
+    # - cl_type: prysm
+    # - cl_type: teku
+    # - cl_type: nimbus
+    # - cl_type: grandine
+    # - cl_type: lodestar
 
 network_params:
   preset: minimal
-  fulu_fork_epoch: 0
 
 additional_services:
   - dora # needed for config exctraction
