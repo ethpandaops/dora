@@ -58,19 +58,31 @@ func buildBlobsPageData() (*models.BlobsPageData, time.Duration) {
 	logrus.Debugf("blobs page called")
 
 	chainState := services.GlobalBeaconService.GetChainState()
+	specs := chainState.GetSpecs()
 	currentSlot := chainState.CurrentSlot()
 	finalizedEpoch, _ := services.GlobalBeaconService.GetFinalizedEpoch()
 
+	// Calculate thresholds based on MAX_EFFECTIVE_BALANCE
+	// MinEth = 0 (allow non-validators)
+	// MaxEth = full custody at TotalColumns validators
+	// Each validator (32 ETH) = 1 column after the free threshold
+	minEth := uint64(0)
+	maxEffectiveBalanceEth := specs.MaxEffectiveBalance / 1e9
+	maxEth := *specs.NumberOfColumns * specs.MaxEffectiveBalance / 1e9
+	defaultEth := maxEffectiveBalanceEth
+
 	pageData := &models.BlobsPageData{
 		StorageCalculator: &models.StorageCalculatorData{
-			MinEth:             32,
-			MaxEth:             4196,
-			DefaultEth:         256,
-			ColumnSize:         2.0,
-			TotalColumns:       128,
-			MinColumnsNonVal:   4,
-			MinColumnsVal:      8,
-			FreeValidatorCount: 8,
+			MinEth:                           minEth,
+			MaxEth:                           maxEth,
+			DefaultEth:                       defaultEth,
+			MaxEffectiveBalanceEth:           float64(maxEffectiveBalanceEth),
+			ColumnSizeBytes:                  float64(specs.FieldElementsPerCell * 32),
+			TotalColumns:                     *specs.NumberOfColumns,
+			CustodyRequirement:               float64(*specs.CustodyRequirement),
+			ValidatorCustodyRequirement:      float64(*specs.ValidatorCustodyRequirement),
+			SlotsPerEpoch:                    specs.SlotsPerEpoch,
+			MinEpochsForBlobSidecarsRequests: specs.MinEpochsForBlobSidecarsRequests,
 		},
 	}
 

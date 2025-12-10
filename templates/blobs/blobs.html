@@ -66,13 +66,6 @@
     <div class="card-body">
       <div class="row">
         <div class="col-md-12">
-          <p class="mb-3">
-            Calculate storage requirements based on PeerDAS custody model.
-            <a href="https://ethereum.org/roadmap/fusaka/#peerdas" target="_blank" class="text-decoration-none">
-              Learn more about PeerDAS <i class="fas fa-external-link-alt fa-xs"></i>
-            </a>
-          </p>
-
           <div class="mb-4">
             <label for="ethSlider" class="form-label">
               <span>ETH Staked:</span>
@@ -134,13 +127,17 @@
             </h6>
             <div class="collapse" id="howItWorksCollapse">
               <ul class="small mb-0 mt-2">
-                <li>Non-validating nodes: <strong>4 columns minimum</strong></li>
-                <li>Validating nodes (0-256 ETH): <strong>8 columns (free threshold)</strong></li>
-                <li>256-4096 ETH: <strong>+1 column per additional 32 ETH</strong></li>
-                <li>4096+ ETH: <strong>128 columns (full custody)</strong></li>
-                <li>Blob retention: <strong>4096 epochs (~18 days)</strong></li>
-                <li>Column size: <strong>~2 KB per blob</strong></li>
+                <li>Non-validating nodes (0 ETH): <strong>{{ .StorageCalculator.CustodyRequirement }} columns minimum</strong></li>
+                <li>Validating nodes ({{ .StorageCalculator.MaxEffectiveBalanceEth }}-{{ mul .StorageCalculator.ValidatorCustodyRequirement .StorageCalculator.MaxEffectiveBalanceEth }} ETH): <strong>{{ .StorageCalculator.ValidatorCustodyRequirement }} columns (free threshold)</strong></li>
+                <li>{{ mul .StorageCalculator.ValidatorCustodyRequirement .StorageCalculator.MaxEffectiveBalanceEth }}-{{ .StorageCalculator.MaxEth }} ETH: <strong>+1 column per additional {{ .StorageCalculator.MaxEffectiveBalanceEth }} ETH</strong></li>
+                <li>{{ .StorageCalculator.MaxEth }}+ ETH: <strong>{{ .StorageCalculator.TotalColumns }} columns (full custody)</strong></li>
+                <li>Blob retention: <strong>{{ .StorageCalculator.MinEpochsForBlobSidecarsRequests }} epochs (~18 days)</strong></li>
+                <li>Blobs are erasure coded: <strong>128 KiB → 256 KiB ({{ .StorageCalculator.TotalColumns }} columns × {{ div .StorageCalculator.ColumnSizeBytes 1024 }} KiB each)</strong></li>
+                <li>Storage per blob: <strong>{{ div .StorageCalculator.ColumnSizeBytes 1024 }} KiB × columns custodied</strong></li>
               </ul>
+              <p class="small text-muted mt-2 mb-0">
+                Learn more: <a href="https://ethereum.org/roadmap/fusaka/#peerdas" target="_blank" rel="noopener">PeerDAS on ethereum.org</a>
+              </p>
             </div>
           </div>
         </div>
@@ -202,12 +199,16 @@
 
 {{ define "js" }}
 <script type="text/javascript">
-const RETENTION_EPOCHS = 4096;
-const SLOTS_PER_EPOCH = 32;
+const RETENTION_EPOCHS = {{ .StorageCalculator.MinEpochsForBlobSidecarsRequests }};
+const SLOTS_PER_EPOCH = {{ .StorageCalculator.SlotsPerEpoch }};
 const RETENTION_SLOTS = RETENTION_EPOCHS * SLOTS_PER_EPOCH;
-const COLUMN_SIZE_KB = 2;
+const COLUMN_SIZE_BYTES = {{ .StorageCalculator.ColumnSizeBytes }};
 const TOTAL_COLUMNS = {{ .StorageCalculator.TotalColumns }};
-const BLOB_SIZE_KB = 128;
+const MAX_EFFECTIVE_BALANCE_ETH = {{ .StorageCalculator.MaxEffectiveBalanceEth }};
+const CUSTODY_REQUIREMENT = {{ .StorageCalculator.CustodyRequirement }};
+const VALIDATOR_CUSTODY_REQUIREMENT = {{ .StorageCalculator.ValidatorCustodyRequirement }};
+const FREE_THRESHOLD_ETH = VALIDATOR_CUSTODY_REQUIREMENT * MAX_EFFECTIVE_BALANCE_ETH;
+const MAX_ETH = {{ .StorageCalculator.MaxEth }};
 
 const blobsInRetentionWindow = {{ .BlobsLast30d }};
 const blobsLast24h = {{ .BlobsLast24h }};
@@ -267,37 +268,39 @@ function updateTimeStats(period) {
 }
 
 function calculateCustodyColumns(eth) {
-  if (eth < 32) {
-    return 4;
-  } else if (eth <= 256) {
-    return 8;
-  } else if (eth <= 4096) {
-    return 8 + Math.floor((eth - 256) / 32);
+  if (eth === 0) {
+    return CUSTODY_REQUIREMENT;
+  } else if (eth < MAX_EFFECTIVE_BALANCE_ETH) {
+    return CUSTODY_REQUIREMENT;
+  } else if (eth <= FREE_THRESHOLD_ETH) {
+    return VALIDATOR_CUSTODY_REQUIREMENT;
+  } else if (eth <= MAX_ETH) {
+    return VALIDATOR_CUSTODY_REQUIREMENT + Math.floor((eth - FREE_THRESHOLD_ETH) / MAX_EFFECTIVE_BALANCE_ETH);
   } else {
-    return 128;
+    return TOTAL_COLUMNS;
   }
 }
 
 function calculateStorage(eth) {
-  const validators = Math.floor(eth / 32);
+  const validators = Math.floor(eth / MAX_EFFECTIVE_BALANCE_ETH);
   const columns = calculateCustodyColumns(eth);
   const custodyPercent = ((columns / TOTAL_COLUMNS) * 100).toFixed(2);
 
-  const custodyRatio = columns / TOTAL_COLUMNS;
-
   const blobsToStore = currentBlobCount > 0 ? currentBlobCount : 0;
 
-  const storageMB = (blobsToStore * BLOB_SIZE_KB * custodyRatio) / 1024;
-  const storageGB = storageMB / 1024;
-  const storageTB = storageGB / 1024;
+  const storageBytes = blobsToStore * columns * COLUMN_SIZE_BYTES;
+  const storageKiB = storageBytes / 1024;
+  const storageMiB = storageKiB / 1024;
+  const storageGiB = storageMiB / 1024;
+  const storageTiB = storageGiB / 1024;
 
   return {
     validators: validators,
     columns: columns,
     custodyPercent: custodyPercent,
-    storageGB: storageGB.toFixed(2),
-    storageTB: storageTB.toFixed(3),
-    storageMB: storageMB.toFixed(2)
+    storageGiB: storageGiB.toFixed(2),
+    storageTiB: storageTiB.toFixed(3),
+    storageMiB: storageMiB.toFixed(2)
   };
 }
 
@@ -324,12 +327,12 @@ function updateCalculator(ethValue, fromSlider) {
   document.getElementById('custodyPercent').textContent = result.custodyPercent + '%';
 
   let storageText;
-  if (parseFloat(result.storageMB) < 1024) {
-    storageText = result.storageMB + ' MB';
-  } else if (parseFloat(result.storageGB) < 1000) {
-    storageText = result.storageGB + ' GB';
+  if (parseFloat(result.storageMiB) < 1024) {
+    storageText = result.storageMiB + ' MiB';
+  } else if (parseFloat(result.storageGiB) < 1024) {
+    storageText = result.storageGiB + ' GiB';
   } else {
-    storageText = result.storageTB + ' TB';
+    storageText = result.storageTiB + ' TiB';
   }
 
   document.getElementById('storageResult').textContent = storageText;
