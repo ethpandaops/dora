@@ -303,8 +303,11 @@ func buildIndexPageData() (*models.IndexPageData, time.Duration) {
 			bpoIdx++
 
 			bpoEpoch := phase0.Epoch(0)
+			bpoTime := blobSchedule.Timestamp
 			if blobSchedule.Timestamp.After(networkGenesis.GenesisTime) {
 				bpoEpoch = chainState.EpochOfSlot(chainState.TimeToSlot(blobSchedule.Timestamp))
+			} else {
+				bpoTime = networkGenesis.GenesisTime
 			}
 
 			forkVersion := chainState.GetForkVersionAtEpoch(bpoEpoch)
@@ -318,7 +321,7 @@ func buildIndexPageData() (*models.IndexPageData, time.Duration) {
 				Name:             fmt.Sprintf("BPO%d", bpoIdx),
 				Epoch:            uint64(bpoEpoch),
 				Version:          nil,
-				Time:             uint64(blobSchedule.Timestamp.Unix()),
+				Time:             uint64(bpoTime.Unix()),
 				Active:           currentEpoch >= bpoEpoch,
 				Type:             "bpo",
 				MaxBlobsPerBlock: &blobSchedule.Schedule.Max,
