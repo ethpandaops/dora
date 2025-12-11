@@ -93,7 +93,7 @@ func buildBlobsPageData() (*models.BlobsPageData, time.Duration) {
 		pageData.BlobsLast1h = stats.BlobsLast1h
 		pageData.BlobsLast24h = stats.BlobsLast24h
 		pageData.BlobsLast7d = stats.BlobsLast7d
-		pageData.BlobsLast30d = stats.BlobsLast18d
+		pageData.BlobsLast18d = stats.BlobsLast18d
 		pageData.BlocksWithBlobsLast1h = stats.BlocksWithBlobsLast1h
 		pageData.BlocksWithBlobsLast24h = stats.BlocksWithBlobsLast24h
 		pageData.BlocksWithBlobsLast7d = stats.BlocksWithBlobsLast7d

@@ -18,13 +18,13 @@
           <input type="radio" class="btn-check" name="timePeriod" id="time1h" value="1h">
           <label class="btn btn-outline-primary btn-sm" for="time1h">1h</label>
 
-          <input type="radio" class="btn-check" name="timePeriod" id="time1d" value="1d">
+          <input type="radio" class="btn-check" name="timePeriod" id="time1d" value="1d" checked>
           <label class="btn btn-outline-primary btn-sm" for="time1d">1d</label>
 
           <input type="radio" class="btn-check" name="timePeriod" id="time7d" value="7d">
           <label class="btn btn-outline-primary btn-sm" for="time7d">7d</label>
 
-          <input type="radio" class="btn-check" name="timePeriod" id="time18d" value="18d" checked>
+          <input type="radio" class="btn-check" name="timePeriod" id="time18d" value="18d">
           <label class="btn btn-outline-primary btn-sm" for="time18d">18d</label>
         </div>
       </div>
@@ -115,7 +115,7 @@
           <div class="alert alert-success p-4 text-center border-2">
             <h4 class="mb-2 text-success">Current Storage Required</h4>
             <h1 class="mb-0 display-4 fw-bold text-success" id="storageResult">Loading...</h1>
-            <small class="text-muted d-block mt-2" id="storageDescription">Based on {{ formatAddCommas .BlobsLast30d }} blobs in last 1d</small>
+            <small class="text-muted d-block mt-2" id="storageDescription">Based on {{ formatAddCommas .BlobsLast18d }} blobs in last 18d</small>
           </div>
 
           <div class="mt-3">
@@ -210,10 +210,10 @@ const VALIDATOR_CUSTODY_REQUIREMENT = {{ .StorageCalculator.ValidatorCustodyRequ
 const FREE_THRESHOLD_ETH = VALIDATOR_CUSTODY_REQUIREMENT * MAX_EFFECTIVE_BALANCE_ETH;
 const MAX_ETH = {{ .StorageCalculator.MaxEth }};
 
-const blobsInRetentionWindow = {{ .BlobsLast30d }};
+const blobsInRetentionWindow = {{ .BlobsLast18d }};
 const blobsLast24h = {{ .BlobsLast24h }};
 const blobsLast7d = {{ .BlobsLast7d }};
-const blobsLast18d = {{ .BlobsLast30d }};
+const blobsLast18d = {{ .BlobsLast18d }};
 
 const timeStats = {
   '1h': {
@@ -235,15 +235,16 @@ const timeStats = {
     label: '7d'
   },
   '18d': {
-    blobs: {{ .BlobsLast30d }},
+    blobs: {{ .BlobsLast18d }},
     blocksWithBlobs: {{ .BlocksWithBlobsLast18d }},
     blobGas: {{ .BlobGasLast18d }},
     label: '18d'
   }
 };
 
-let currentPeriod = '18d';
-let currentBlobCount = {{ .BlobsLast30d }};
+let currentPeriod = '1d';
+let currentBlobCount = {{ .BlobsLast24h }};
+const calculatorBlobCount = {{ .BlobsLast18d }};
 
 function updateTimeStats(period) {
   const stats = timeStats[period];
@@ -262,9 +263,6 @@ function updateTimeStats(period) {
 
   const avgGas = blocks > 0 ? Math.round(gas / blocks).toLocaleString() : '0';
   document.getElementById('timeAvgGas').textContent = avgGas;
-
-  const ethValue = parseInt(document.getElementById('ethSlider').value);
-  updateCalculator(ethValue, false);
 }
 
 function calculateCustodyColumns(eth) {
@@ -286,7 +284,7 @@ function calculateStorage(eth) {
   const columns = calculateCustodyColumns(eth);
   const custodyPercent = ((columns / TOTAL_COLUMNS) * 100).toFixed(2);
 
-  const blobsToStore = currentBlobCount > 0 ? currentBlobCount : 0;
+  const blobsToStore = calculatorBlobCount > 0 ? calculatorBlobCount : 0;
 
   const storageBytes = blobsToStore * columns * COLUMN_SIZE_BYTES;
   const storageKiB = storageBytes / 1024;
@@ -337,7 +335,7 @@ function updateCalculator(ethValue, fromSlider) {
 
   document.getElementById('storageResult').textContent = storageText;
 
-  const descText = 'Based on ' + currentBlobCount.toLocaleString() + ' blobs in last ' + currentPeriod;
+  const descText = 'Based on ' + calculatorBlobCount.toLocaleString() + ' blobs in last 18d';
   document.getElementById('storageDescription').textContent = descText;
 }
 
@@ -375,7 +373,7 @@ document.addEventListener('DOMContentLoaded', function() {
   });
 
   updateCalculator(undefined, true);
-  updateTimeStats('18d');
+  updateTimeStats('1d');
 });
 </script>
 {{ end }}

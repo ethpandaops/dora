@@ -8,7 +8,7 @@ type BlobsPageData struct {
 	BlobsLast1h            uint64                 `json:"blobs_last_1h"`
 	BlobsLast24h           uint64                 `json:"blobs_last_24h"`
 	BlobsLast7d            uint64                 `json:"blobs_last_7d"`
-	BlobsLast30d           uint64                 `json:"blobs_last_30d"`
+	BlobsLast18d           uint64                 `json:"blobs_last_18d"`
 	BlocksWithBlobsLast1h  uint64                 `json:"blocks_with_blobs_last_1h"`
 	BlocksWithBlobsLast24h uint64                 `json:"blocks_with_blobs_last_24h"`
 	BlocksWithBlobsLast7d  uint64                 `json:"blocks_with_blobs_last_7d"`
