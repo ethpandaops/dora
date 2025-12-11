@@ -18,13 +18,13 @@
           <input type="radio" class="btn-check" name="timePeriod" id="time1h" value="1h">
           <label class="btn btn-outline-primary btn-sm" for="time1h">1h</label>
 
-          <input type="radio" class="btn-check" name="timePeriod" id="time1d" value="1d" checked>
+          <input type="radio" class="btn-check" name="timePeriod" id="time1d" value="1d">
           <label class="btn btn-outline-primary btn-sm" for="time1d">1d</label>
 
           <input type="radio" class="btn-check" name="timePeriod" id="time7d" value="7d">
           <label class="btn btn-outline-primary btn-sm" for="time7d">7d</label>
 
-          <input type="radio" class="btn-check" name="timePeriod" id="time18d" value="18d">
+          <input type="radio" class="btn-check" name="timePeriod" id="time18d" value="18d" checked>
           <label class="btn btn-outline-primary btn-sm" for="time18d">18d</label>
         </div>
       </div>
@@ -242,8 +242,8 @@ const timeStats = {
   }
 };
 
-let currentPeriod = '1d';
-let currentBlobCount = {{ .BlobsLast24h }};
+let currentPeriod = '18d';
+let currentBlobCount = {{ .BlobsLast30d }};
 
 function updateTimeStats(period) {
   const stats = timeStats[period];
@@ -375,7 +375,7 @@ document.addEventListener('DOMContentLoaded', function() {
   });
 
   updateCalculator(undefined, true);
-  updateTimeStats('1d');
+  updateTimeStats('18d');
 });
 </script>
 {{ end }}
