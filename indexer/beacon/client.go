@@ -32,8 +32,9 @@ type Client struct {
 	archive        bool
 	skipValidators bool
 
-	blockSubscription *utils.Subscription[*v1.BlockEvent]
-	headSubscription  *utils.Subscription[*v1.HeadEvent]
+	blockSubscription         *utils.Subscription[*v1.BlockEvent]
+	headSubscription          *utils.Subscription[*v1.HeadEvent]
+	inclusionListSubscription *utils.Subscription[*v1.InclusionListEvent]
 
 	headRoot phase0.Root
 }
@@ -81,6 +82,7 @@ func (c *Client) startIndexing() {
 	// blocking block subscription with a buffer to ensure no blocks are missed
 	c.blockSubscription = c.client.SubscribeBlockEvent(100, true)
 	c.headSubscription = c.client.SubscribeHeadEvent(100, true)
+	c.inclusionListSubscription = c.client.SubscribeInclusionListEvent(100, true)
 
 	go c.startClientLoop()
 }
@@ -178,6 +180,11 @@ func (c *Client) runClientLoop() error {
 			err := c.processHeadEvent(headEvent)
 			if err != nil {
 				c.logger.Errorf("failed processing head %v (%v): %v", headEvent.Slot, headEvent.Block.String(), err)
+			}
+		case inclusionListEvent := <-c.inclusionListSubscription.Channel():
+			err := c.processInclusionListEvent(inclusionListEvent)
+			if err != nil {
+				c.logger.Errorf("failed processing inclusion list %v (%v): %v", inclusionListEvent.Data.Message.Slot, inclusionListEvent.Data.Message.ValidatorIndex, err)
 			}
 		}
 	}
@@ -286,6 +293,12 @@ func (c *Client) processHeadEvent(headEvent *v1.HeadEvent) error {
 	}
 
 	c.headRoot = block.Root
+	return nil
+}
+
+func (c *Client) processInclusionListEvent(inclusionListEvent *v1.InclusionListEvent) error {
+	c.indexer.inclusionListCache.addInclusionList(inclusionListEvent.Data)
+
 	return nil
 }
 

@@ -54,6 +54,7 @@ type Client struct {
 	blockDispatcher         utils.Dispatcher[*v1.BlockEvent]
 	headDispatcher          utils.Dispatcher[*v1.HeadEvent]
 	checkpointDispatcher    utils.Dispatcher[*v1.Finality]
+	inclusionListDispatcher utils.Dispatcher[*v1.InclusionListEvent]
 
 	specWarnings []string // warnings from incomplete spec checks
 	specs        map[string]interface{}
@@ -100,6 +101,10 @@ func (client *Client) SubscribeHeadEvent(capacity int, blocking bool) *utils.Sub
 
 func (client *Client) SubscribeFinalizedEvent(capacity int) *utils.Subscription[*v1.Finality] {
 	return client.checkpointDispatcher.Subscribe(capacity, false)
+}
+
+func (client *Client) SubscribeInclusionListEvent(capacity int, blocking bool) *utils.Subscription[*v1.InclusionListEvent] {
+	return client.inclusionListDispatcher.Subscribe(capacity, blocking)
 }
 
 func (client *Client) GetPool() *Pool {

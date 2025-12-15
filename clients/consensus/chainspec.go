@@ -53,6 +53,8 @@ type ChainSpecConfig struct {
 	ElectraForkEpoch     *uint64        `yaml:"ELECTRA_FORK_EPOCH"     check-if-fork:"ElectraForkEpoch"`
 	FuluForkVersion      phase0.Version `yaml:"FULU_FORK_VERSION"      check-if-fork:"FuluForkEpoch"`
 	FuluForkEpoch        *uint64        `yaml:"FULU_FORK_EPOCH"        check-if-fork:"FuluForkEpoch"`
+	Eip7805ForkVersion   phase0.Version `yaml:"EIP7805_FORK_VERSION"   check-if-fork:"Eip7805ForkEpoch"`
+	Eip7805ForkEpoch     *uint64        `yaml:"EIP7805_FORK_EPOCH"     check-if-fork:"Eip7805ForkEpoch"`
 
 	// Time parameters
 	SecondsPerSlot                  uint64 `yaml:"SECONDS_PER_SLOT"`

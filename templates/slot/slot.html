@@ -37,6 +37,11 @@
       <li class="nav-item">
         <a class="nav-link active" id="overview-tab" data-bs-toggle="tab" href="#overview" role="tab" aria-controls="overview" aria-selected="true">Overview</a>
       </li>
+      {{ if gt .InclusionListsCount 0 }}
+      <li class="nav-item">
+        <a class="nav-link" id="inclusion-lists-tab" data-bs-toggle="tab" href="#inclusion-lists" role="tab" aria-controls="inclusion-lists" aria-selected="false">Inclusion Lists <span class="badge bg-secondary text-white">{{ .InclusionListsCount }}</span></a>
+      </li>
+      {{ end }}
       {{ if .Block }}
         {{ if gt .Block.TransactionsCount 0 }}
           <li class="nav-item">
@@ -112,6 +117,21 @@
           {{ template "block_overview" $ }}
         </div>
       </div>
+      {{ if gt .InclusionListsCount 0 }}
+        <div class="tab-pane fade show active" id="inclusion-lists" role="tabpanel" aria-labelledby="inclusion-lists-tab">
+          <div class="card block-card">
+            <div style="margin-bottom: -.25rem;" class="card-body px-0 py-1">
+              <div class="row p-1 mx-0">
+                <div class="d-none d-md-block col-md-4"></div>
+                <h3 class="h5 col-12 col-md-4 text-center">
+                  <b>Showing {{ .InclusionListsCount }} Inclusion Lists</b>
+                </h3>
+              </div>
+            </div>
+          </div>
+          {{ template "inclusion_lists" . }}
+        </div>
+      {{ end }}
       {{ if .Block }}
         {{ if gt .Block.TransactionsCount 0 }}
           <div class="tab-pane fade show active" id="transactions" role="tabpanel" aria-labelledby="transactions-tab">
