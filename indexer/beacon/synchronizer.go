@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/attestantio/go-eth2-client/spec"
+	"github.com/attestantio/go-eth2-client/spec/gloas"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/blockdb"
 	"github.com/ethpandaops/dora/clients/consensus"
@@ -263,9 +264,15 @@ func (s *synchronizer) loadBlockHeader(client *Client, slot phase0.Slot) (*phase
 }
 
 func (s *synchronizer) loadBlockBody(client *Client, root phase0.Root) (*spec.VersionedSignedBeaconBlock, error) {
-	ctx, cancel := context.WithTimeout(s.syncCtx, beaconHeaderRequestTimeout)
+	ctx, cancel := context.WithTimeout(s.syncCtx, beaconBodyRequestTimeout)
 	defer cancel()
 	return LoadBeaconBlock(ctx, client, root)
+}
+
+func (s *synchronizer) loadBlockPayload(client *Client, root phase0.Root) (*gloas.SignedExecutionPayloadEnvelope, error) {
+	ctx, cancel := context.WithTimeout(s.syncCtx, executionPayloadRequestTimeout)
+	defer cancel()
+	return LoadExecutionPayload(ctx, client, root)
 }
 
 func (s *synchronizer) syncEpoch(syncEpoch phase0.Epoch, client *Client, lastTry bool) (bool, error) {
@@ -311,6 +318,17 @@ func (s *synchronizer) syncEpoch(syncEpoch phase0.Epoch, client *Client, lastTry
 				}
 
 				block.SetBlock(blockBody)
+			}
+
+			if slot > 0 && chainState.IsEip7732Enabled(chainState.EpochOfSlot(slot)) {
+				blockPayload, err := s.loadBlockPayload(client, phase0.Root(blockRoot))
+				if err != nil && !lastTry {
+					return false, fmt.Errorf("error fetching slot %v execution payload: %v", slot, err)
+				}
+
+				if blockPayload != nil {
+					block.SetExecutionPayload(blockPayload)
+				}
 			}
 
 			s.cachedBlocks[slot] = block

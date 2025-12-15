@@ -10,6 +10,7 @@ import (
 	"github.com/attestantio/go-eth2-client/spec/capella"
 	"github.com/attestantio/go-eth2-client/spec/deneb"
 	"github.com/attestantio/go-eth2-client/spec/electra"
+	"github.com/attestantio/go-eth2-client/spec/gloas"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/utils"
 	dynssz "github.com/pk910/dynamic-ssz"
@@ -47,6 +48,9 @@ func MarshalVersionedSignedBeaconBlockSSZ(dynSsz *dynssz.DynSsz, block *spec.Ver
 		case spec.DataVersionFulu:
 			version = uint64(block.Version)
 			ssz, err = dynSsz.MarshalSSZ(block.Fulu)
+		case spec.DataVersionGloas:
+			version = uint64(block.Version)
+			ssz, err = dynSsz.MarshalSSZ(block.Gloas)
 		default:
 			err = fmt.Errorf("unknown block version")
 		}
@@ -118,6 +122,11 @@ func UnmarshalVersionedSignedBeaconBlockSSZ(dynSsz *dynssz.DynSsz, version uint6
 		if err := dynSsz.UnmarshalSSZ(block.Fulu, ssz); err != nil {
 			return nil, fmt.Errorf("failed to decode fulu signed beacon block: %v", err)
 		}
+	case spec.DataVersionGloas:
+		block.Gloas = &gloas.SignedBeaconBlock{}
+		if err := dynSsz.UnmarshalSSZ(block.Gloas, ssz); err != nil {
+			return nil, fmt.Errorf("failed to decode gloas signed beacon block: %v", err)
+		}
 	default:
 		return nil, fmt.Errorf("unknown block version")
 	}
@@ -148,6 +157,9 @@ func MarshalVersionedSignedBeaconBlockJson(block *spec.VersionedSignedBeaconBloc
 	case spec.DataVersionFulu:
 		version = uint64(block.Version)
 		jsonRes, err = block.Fulu.MarshalJSON()
+	case spec.DataVersionGloas:
+		version = uint64(block.Version)
+		jsonRes, err = block.Gloas.MarshalJSON()
 	default:
 		err = fmt.Errorf("unknown block version")
 	}
@@ -201,10 +213,125 @@ func unmarshalVersionedSignedBeaconBlockJson(version uint64, ssz []byte) (*spec.
 		if err := block.Fulu.UnmarshalJSON(ssz); err != nil {
 			return nil, fmt.Errorf("failed to decode fulu signed beacon block: %v", err)
 		}
+	case spec.DataVersionGloas:
+		block.Gloas = &gloas.SignedBeaconBlock{}
+		if err := block.Gloas.UnmarshalJSON(ssz); err != nil {
+			return nil, fmt.Errorf("failed to decode gloas signed beacon block: %v", err)
+		}
 	default:
 		return nil, fmt.Errorf("unknown block version")
 	}
 	return block, nil
+}
+
+// MarshalVersionedSignedExecutionPayloadEnvelopeSSZ marshals a signed execution payload envelope using SSZ encoding.
+func MarshalVersionedSignedExecutionPayloadEnvelopeSSZ(dynSsz *dynssz.DynSsz, payload *gloas.SignedExecutionPayloadEnvelope, compress bool) (version uint64, ssz []byte, err error) {
+	if utils.Config.KillSwitch.DisableSSZEncoding {
+		// SSZ encoding disabled, use json instead
+		version, ssz, err = marshalVersionedSignedExecutionPayloadEnvelopeJson(payload)
+	} else {
+		// SSZ encoding
+		version = uint64(spec.DataVersionGloas)
+		ssz, err = dynSsz.MarshalSSZ(payload)
+	}
+
+	if compress {
+		ssz = compressBytes(ssz)
+		version |= compressionFlag
+	}
+
+	return
+}
+
+// UnmarshalVersionedSignedExecutionPayloadEnvelopeSSZ unmarshals a versioned signed execution payload envelope using SSZ encoding.
+func UnmarshalVersionedSignedExecutionPayloadEnvelopeSSZ(dynSsz *dynssz.DynSsz, version uint64, ssz []byte) (*gloas.SignedExecutionPayloadEnvelope, error) {
+	if (version & compressionFlag) != 0 {
+		// decompress
+		if d, err := decompressBytes(ssz); err != nil {
+			return nil, fmt.Errorf("failed to decompress: %v", err)
+		} else {
+			ssz = d
+			version &= ^compressionFlag
+		}
+	}
+
+	if (version & jsonVersionFlag) != 0 {
+		// JSON encoding
+		return unmarshalVersionedSignedExecutionPayloadEnvelopeJson(version, ssz)
+	}
+
+	if version != uint64(spec.DataVersionGloas) {
+		return nil, fmt.Errorf("unknown version")
+	}
+
+	// SSZ encoding
+	payload := &gloas.SignedExecutionPayloadEnvelope{}
+	if err := dynSsz.UnmarshalSSZ(payload, ssz); err != nil {
+		return nil, fmt.Errorf("failed to decode gloas signed execution payload envelope: %v", err)
+	}
+
+	return payload, nil
+}
+
+// marshalVersionedSignedExecutionPayloadEnvelopeJson marshals a versioned signed execution payload envelope using JSON encoding.
+func marshalVersionedSignedExecutionPayloadEnvelopeJson(payload *gloas.SignedExecutionPayloadEnvelope) (version uint64, jsonRes []byte, err error) {
+	version = uint64(spec.DataVersionGloas)
+	jsonRes, err = payload.MarshalJSON()
+
+	version |= jsonVersionFlag
+
+	return
+}
+
+// unmarshalVersionedSignedExecutionPayloadEnvelopeJson unmarshals a versioned signed execution payload envelope using JSON encoding.
+func unmarshalVersionedSignedExecutionPayloadEnvelopeJson(version uint64, ssz []byte) (*gloas.SignedExecutionPayloadEnvelope, error) {
+	if version&jsonVersionFlag == 0 {
+		return nil, fmt.Errorf("no json encoding")
+	}
+
+	if version-jsonVersionFlag != uint64(spec.DataVersionGloas) {
+		return nil, fmt.Errorf("unknown version")
+	}
+
+	payload := &gloas.SignedExecutionPayloadEnvelope{}
+	if err := payload.UnmarshalJSON(ssz); err != nil {
+		return nil, fmt.Errorf("failed to decode gloas signed execution payload envelope: %v", err)
+	}
+	return payload, nil
+}
+
+// getBlockExecutionExtraData returns the extra data from the execution payload of a versioned signed beacon block.
+func getBlockExecutionExtraData(v *spec.VersionedSignedBeaconBlock) ([]byte, error) {
+	switch v.Version {
+	case spec.DataVersionBellatrix:
+		if v.Bellatrix == nil || v.Bellatrix.Message == nil || v.Bellatrix.Message.Body == nil || v.Bellatrix.Message.Body.ExecutionPayload == nil {
+			return nil, errors.New("no bellatrix block")
+		}
+
+		return v.Bellatrix.Message.Body.ExecutionPayload.ExtraData, nil
+	case spec.DataVersionCapella:
+		if v.Capella == nil || v.Capella.Message == nil || v.Capella.Message.Body == nil || v.Capella.Message.Body.ExecutionPayload == nil {
+			return nil, errors.New("no capella block")
+		}
+
+		return v.Capella.Message.Body.ExecutionPayload.ExtraData, nil
+	case spec.DataVersionDeneb:
+		if v.Deneb == nil || v.Deneb.Message == nil || v.Deneb.Message.Body == nil || v.Deneb.Message.Body.ExecutionPayload == nil {
+			return nil, errors.New("no deneb block")
+		}
+
+		return v.Deneb.Message.Body.ExecutionPayload.ExtraData, nil
+	case spec.DataVersionElectra:
+		if v.Electra == nil || v.Electra.Message == nil || v.Electra.Message.Body == nil || v.Electra.Message.Body.ExecutionPayload == nil {
+			return nil, errors.New("no electra block")
+		}
+
+		return v.Electra.Message.Body.ExecutionPayload.ExtraData, nil
+	case spec.DataVersionGloas:
+		return nil, nil
+	default:
+		return nil, errors.New("unknown version")
+	}
 }
 
 // getStateRandaoMixes returns the RANDAO mixes from a versioned beacon state.
@@ -252,6 +379,12 @@ func getStateRandaoMixes(v *spec.VersionedBeaconState) ([]phase0.Root, error) {
 		}
 
 		return v.Fulu.RANDAOMixes, nil
+	case spec.DataVersionGloas:
+		if v.Gloas == nil || v.Gloas.RANDAOMixes == nil {
+			return nil, errors.New("no gloas block")
+		}
+
+		return v.Gloas.RANDAOMixes, nil
 	default:
 		return nil, errors.New("unknown version")
 	}
@@ -274,6 +407,8 @@ func getStateDepositIndex(state *spec.VersionedBeaconState) uint64 {
 		return state.Electra.ETH1DepositIndex
 	case spec.DataVersionFulu:
 		return state.Fulu.ETH1DepositIndex
+	case spec.DataVersionGloas:
+		return state.Gloas.ETH1DepositIndex
 	}
 	return 0
 }
@@ -319,6 +454,12 @@ func getStateCurrentSyncCommittee(v *spec.VersionedBeaconState) ([]phase0.BLSPub
 		}
 
 		return v.Fulu.CurrentSyncCommittee.Pubkeys, nil
+	case spec.DataVersionGloas:
+		if v.Gloas == nil || v.Gloas.CurrentSyncCommittee == nil {
+			return nil, errors.New("no gloas block")
+		}
+
+		return v.Gloas.CurrentSyncCommittee.Pubkeys, nil
 	default:
 		return nil, errors.New("unknown version")
 	}
@@ -349,6 +490,12 @@ func getStateDepositBalanceToConsume(v *spec.VersionedBeaconState) (phase0.Gwei,
 		}
 
 		return v.Fulu.DepositBalanceToConsume, nil
+	case spec.DataVersionGloas:
+		if v.Gloas == nil {
+			return 0, errors.New("no gloas block")
+		}
+
+		return v.Gloas.DepositBalanceToConsume, nil
 	default:
 		return 0, errors.New("unknown version")
 	}
@@ -379,6 +526,12 @@ func getStatePendingDeposits(v *spec.VersionedBeaconState) ([]*electra.PendingDe
 		}
 
 		return v.Fulu.PendingDeposits, nil
+	case spec.DataVersionGloas:
+		if v.Gloas == nil || v.Gloas.PendingDeposits == nil {
+			return nil, errors.New("no gloas block")
+		}
+
+		return v.Gloas.PendingDeposits, nil
 	default:
 		return nil, errors.New("unknown version")
 	}
@@ -409,6 +562,12 @@ func getStatePendingWithdrawals(v *spec.VersionedBeaconState) ([]*electra.Pendin
 		}
 
 		return v.Fulu.PendingPartialWithdrawals, nil
+	case spec.DataVersionGloas:
+		if v.Gloas == nil || v.Gloas.PendingPartialWithdrawals == nil {
+			return nil, errors.New("no gloas block")
+		}
+
+		return v.Gloas.PendingPartialWithdrawals, nil
 	default:
 		return nil, errors.New("unknown version")
 	}
@@ -439,6 +598,12 @@ func getStatePendingConsolidations(v *spec.VersionedBeaconState) ([]*electra.Pen
 		}
 
 		return v.Fulu.PendingConsolidations, nil
+	case spec.DataVersionGloas:
+		if v.Gloas == nil || v.Gloas.PendingConsolidations == nil {
+			return nil, errors.New("no gloas block")
+		}
+
+		return v.Gloas.PendingConsolidations, nil
 	default:
 		return nil, errors.New("unknown version")
 	}
@@ -465,6 +630,12 @@ func getStateProposerLookahead(v *spec.VersionedBeaconState) ([]phase0.Validator
 		}
 
 		return v.Fulu.ProposerLookahead, nil
+	case spec.DataVersionGloas:
+		if v.Gloas == nil || v.Gloas.ProposerLookahead == nil {
+			return nil, errors.New("no gloas block")
+		}
+
+		return v.Gloas.ProposerLookahead, nil
 	default:
 		return nil, errors.New("unknown version")
 	}
@@ -487,6 +658,8 @@ func getBlockSize(dynSsz *dynssz.DynSsz, block *spec.VersionedSignedBeaconBlock)
 		return dynSsz.SizeSSZ(block.Electra)
 	case spec.DataVersionFulu:
 		return dynSsz.SizeSSZ(block.Fulu)
+	case spec.DataVersionGloas:
+		return dynSsz.SizeSSZ(block.Gloas)
 	default:
 		return 0, errors.New("unknown version")
 	}

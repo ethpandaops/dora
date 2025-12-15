@@ -760,10 +760,21 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 		}
 	}
 
-	if requests, err := blockData.Block.ExecutionRequests(); err == nil && requests != nil {
-		getSlotPageDepositRequests(pageData, requests.Deposits)
-		getSlotPageWithdrawalRequests(pageData, requests.Withdrawals)
-		getSlotPageConsolidationRequests(pageData, requests.Consolidations)
+	if specs.ElectraForkEpoch != nil && uint64(epoch) >= *specs.ElectraForkEpoch {
+		var requests *electra.ExecutionRequests
+		if blockData.Block.Version >= spec.DataVersionGloas {
+			if blockData.Payload != nil {
+				requests = blockData.Payload.Message.ExecutionRequests
+			}
+		} else {
+			requests, _ = blockData.Block.ExecutionRequests()
+		}
+
+		if requests != nil {
+			getSlotPageDepositRequests(pageData, requests.Deposits)
+			getSlotPageWithdrawalRequests(pageData, requests.Withdrawals)
+			getSlotPageConsolidationRequests(pageData, requests.Consolidations)
+		}
 	}
 
 	return pageData
