@@ -44,7 +44,7 @@
                 <span class="badge rounded-pill text-bg-secondary" style="font-size: 12px; font-weight: 500;" data-bs-toggle="tooltip" data-bs-placement="bottom" data-bs-title="call {{ $transaction.FuncBytes }}">{{ $transaction.FuncName }}</span>
               {{ end }}
             </td>
-            <td>{{ $transaction.Value }} ETH</td>
+            <td>{{ formatTransactionValue $transaction.Value }}</td>
             <td>
               {{ if gt $transaction.DataLen 0 }}
                 <span class="badge rounded-pill text-bg-secondary" style="font-size: 12px; font-weight: 500;">{{ $transaction.DataLen }} B</span>

@@ -25,6 +25,7 @@
                     "clients"
                 ],
                 "summary": "Get consensus clients information",
+                "operationId": "getConsensusClients",
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -66,6 +67,7 @@
                     "clients"
                 ],
                 "summary": "Get execution clients information",
+                "operationId": "getExecutionClients",
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -107,6 +109,7 @@
                     "consolidation_requests"
                 ],
                 "summary": "Get consolidation requests list",
+                "operationId": "getConsolidationRequests",
                 "parameters": [
                     {
                         "type": "integer",
@@ -228,6 +231,7 @@
                     "das-guardian"
                 ],
                 "summary": "Scan all nodes using DAS Guardian",
+                "operationId": "massDasGuardianScan",
                 "parameters": [
                     {
                         "description": "Mass scan parameters",
@@ -289,6 +293,7 @@
                     "das-guardian"
                 ],
                 "summary": "Scan a node using DAS Guardian",
+                "operationId": "scanDasGuardian",
                 "parameters": [
                     {
                         "description": "Node ENR to scan",
@@ -350,6 +355,7 @@
                     "deposits"
                 ],
                 "summary": "Get deposits included in blocks",
+                "operationId": "getDepositsIncluded",
                 "parameters": [
                     {
                         "type": "integer",
@@ -459,6 +465,7 @@
                     "deposits"
                 ],
                 "summary": "Get deposit queue",
+                "operationId": "getDepositsQueue",
                 "parameters": [
                     {
                         "type": "integer",
@@ -544,6 +551,7 @@
                     "deposits"
                 ],
                 "summary": "Get deposit transactions",
+                "operationId": "getDepositsTransactions",
                 "parameters": [
                     {
                         "type": "integer",
@@ -656,6 +664,7 @@
                     "Epoch"
                 ],
                 "summary": "Get epoch by number, latest, finalized",
+                "operationId": "getEpoch",
                 "parameters": [
                     {
                         "type": "string",
@@ -712,6 +721,7 @@
                     "epochs"
                 ],
                 "summary": "Get epochs list",
+                "operationId": "getEpochs",
                 "parameters": [
                     {
                         "type": "integer",
@@ -767,6 +777,7 @@
                     "mev_blocks"
                 ],
                 "summary": "Get MEV blocks",
+                "operationId": "getMevBlocks",
                 "parameters": [
                     {
                         "type": "integer",
@@ -864,6 +875,7 @@
                     "network"
                 ],
                 "summary": "Get network forks",
+                "operationId": "getNetworkForks",
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -896,6 +908,7 @@
                     "network"
                 ],
                 "summary": "Get network overview",
+                "operationId": "getNetworkOverview",
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -928,6 +941,7 @@
                     "network"
                 ],
                 "summary": "Get network splits",
+                "operationId": "getNetworkSplits",
                 "parameters": [
                     {
                         "type": "boolean",
@@ -968,6 +982,7 @@
                     "slashings"
                 ],
                 "summary": "Get slashings list",
+                "operationId": "getSlashings",
                 "parameters": [
                     {
                         "type": "integer",
@@ -1068,6 +1083,7 @@
                     "Slot"
                 ],
                 "summary": "Get slot information",
+                "operationId": "getSlot",
                 "parameters": [
                     {
                         "type": "string",
@@ -1124,6 +1140,7 @@
                     "Slot"
                 ],
                 "summary": "Get filtered slots list",
+                "operationId": "getSlots",
                 "parameters": [
                     {
                         "type": "string",
@@ -1284,6 +1301,7 @@
                     "Validator"
                 ],
                 "summary": "Get up to 100 validators",
+                "operationId": "getValidatorPost",
                 "parameters": [
                     {
                         "description": "Up to 100 validator indicesOrPubkeys, comma separated",
@@ -1335,6 +1353,7 @@
                     "Validator"
                 ],
                 "summary": "Get all validators that belong to an eth1 address",
+                "operationId": "getValidatorByEth1Address",
                 "parameters": [
                     {
                         "type": "string",
@@ -1396,6 +1415,7 @@
                     "Validator"
                 ],
                 "summary": "Get all validators that have a specific withdrawal credentials",
+                "operationId": "getWithdrawalCredentialsValidators",
                 "parameters": [
                     {
                         "type": "string",
@@ -1460,6 +1480,7 @@
                     "Validator"
                 ],
                 "summary": "Get up to 100 validators",
+                "operationId": "getValidator",
                 "parameters": [
                     {
                         "type": "string",
@@ -1510,6 +1531,7 @@
                     "Validators"
                 ],
                 "summary": "Get validator execution layer deposits",
+                "operationId": "getValidatorDeposits",
                 "parameters": [
                     {
                         "type": "string",
@@ -1563,6 +1585,7 @@
                     "validator_names"
                 ],
                 "summary": "Get validator names",
+                "operationId": "getValidatorNames",
                 "parameters": [
                     {
                         "type": "string",
@@ -1624,6 +1647,7 @@
                     "validator_names"
                 ],
                 "summary": "Get validator names",
+                "operationId": "getValidatorNames",
                 "parameters": [
                     {
                         "type": "string",
@@ -1687,6 +1711,7 @@
                     "validators"
                 ],
                 "summary": "Get validators list",
+                "operationId": "getValidators",
                 "parameters": [
                     {
                         "type": "integer",
@@ -1772,6 +1797,7 @@
                     "validators"
                 ],
                 "summary": "Get validators activity statistics",
+                "operationId": "getValidatorsActivity",
                 "parameters": [
                     {
                         "type": "integer",
@@ -1845,6 +1871,7 @@
                     "voluntary_exits"
                 ],
                 "summary": "Get voluntary exits list",
+                "operationId": "getVoluntaryExits",
                 "parameters": [
                     {
                         "type": "integer",
@@ -1936,6 +1963,7 @@
                     "withdrawal_requests"
                 ],
                 "summary": "Get withdrawal requests list",
+                "operationId": "getWithdrawalRequests",
                 "parameters": [
                     {
                         "type": "integer",
@@ -2078,7 +2106,7 @@
                 "client_type": {
                     "type": "string"
                 },
-                "column_indexes": {
+                "data_columns": {
                     "type": "array",
                     "items": {
                         "type": "integer"
@@ -2123,9 +2151,6 @@
                 },
                 "status": {
                     "type": "string"
-                },
-                "supports_data_column": {
-                    "type": "boolean"
                 },
                 "version": {
                     "type": "string"

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"sort"
 	"strconv"
 	"strings"
 
@@ -38,9 +37,9 @@ func SlotsFiltered(w http.ResponseWriter, r *http.Request) {
 	if urlArgs.Has("s") {
 		pageIdx, _ = strconv.ParseUint(urlArgs.Get("s"), 10, 64)
 	}
-	var displayColumns string = ""
+	var displayColumns uint64 = 0
 	if urlArgs.Has("d") {
-		displayColumns = urlArgs.Get("d")
+		displayColumns = utils.DecodeUint64BitfieldFromQuery(r.URL.RawQuery, "d")
 	}
 
 	var graffiti string
@@ -136,7 +135,7 @@ func SlotsFiltered(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func getFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string, invertgraffiti bool, extradata string, invertextradata bool, proposer string, pname string, invertproposer bool, withOrphaned uint8, withMissing uint8, minSyncAgg string, maxSyncAgg string, minExecTime string, maxExecTime string, minTxCount string, maxTxCount string, minBlobCount string, maxBlobCount string, forkIds string, displayColumns string) (*models.SlotsFilteredPageData, error) {
+func getFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string, invertgraffiti bool, extradata string, invertextradata bool, proposer string, pname string, invertproposer bool, withOrphaned uint8, withMissing uint8, minSyncAgg string, maxSyncAgg string, minExecTime string, maxExecTime string, minTxCount string, maxTxCount string, minBlobCount string, maxBlobCount string, forkIds string, displayColumns uint64) (*models.SlotsFilteredPageData, error) {
 	pageData := &models.SlotsFilteredPageData{}
 	pageCacheKey := fmt.Sprintf("slots_filtered:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v", pageIdx, pageSize, graffiti, invertgraffiti, extradata, invertextradata, proposer, pname, invertproposer, withOrphaned, withMissing, minSyncAgg, maxSyncAgg, minExecTime, maxExecTime, minTxCount, maxTxCount, minBlobCount, maxBlobCount, forkIds, displayColumns)
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(_ *services.FrontendCacheProcessingPage) interface{} {
@@ -152,7 +151,7 @@ func getFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string, 
 	return pageData, pageErr
 }
 
-func buildFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string, invertgraffiti bool, extradata string, invertextradata bool, proposer string, pname string, invertproposer bool, withOrphaned uint8, withMissing uint8, minSyncAgg string, maxSyncAgg string, minExecTime string, maxExecTime string, minTxCount string, maxTxCount string, minBlobCount string, maxBlobCount string, forkIds string, displayColumns string) *models.SlotsFilteredPageData {
+func buildFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string, invertgraffiti bool, extradata string, invertextradata bool, proposer string, pname string, invertproposer bool, withOrphaned uint8, withMissing uint8, minSyncAgg string, maxSyncAgg string, minExecTime string, maxExecTime string, minTxCount string, maxTxCount string, minBlobCount string, maxBlobCount string, forkIds string, displayColumns uint64) *models.SlotsFilteredPageData {
 	chainState := services.GlobalBeaconService.GetChainState()
 	filterArgs := url.Values{}
 	if graffiti != "" {
@@ -217,17 +216,14 @@ func buildFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string
 	}
 
 	displayMap := map[uint64]bool{}
-	if displayColumns != "" {
-		for _, col := range strings.Split(displayColumns, " ") {
-			colNum, err := strconv.ParseUint(col, 10, 64)
-			if err != nil {
-				continue
+	if displayColumns != 0 {
+		for i := 0; i < 64; i++ {
+			if displayColumns&(1<<i) != 0 {
+				displayMap[uint64(i+1)] = true
 			}
-			displayMap[colNum] = true
 		}
 	}
 	if len(displayMap) == 0 {
-
 		displayMap = map[uint64]bool{
 			1:  true,
 			2:  true,
@@ -249,20 +245,14 @@ func buildFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string
 			18: hasSnooperClients,  // Enable exec time if snooper clients exist
 		}
 	} else {
-		displayList := make([]uint64, len(displayMap))
-		displayIdx := 0
+		displayMask := uint64(0)
 		for col := range displayMap {
-			displayList[displayIdx] = col
-			displayIdx++
+			if col == 0 || col > 64 {
+				continue
+			}
+			displayMask |= 1 << (col - 1)
 		}
-		sort.Slice(displayList, func(a, b int) bool {
-			return displayList[a] < displayList[b]
-		})
-		displayStr := make([]string, len(displayMap))
-		for idx, col := range displayList {
-			displayStr[idx] = fmt.Sprintf("%v", col)
-		}
-		filterArgs.Add("d", strings.Join(displayStr, " "))
+		filterArgs.Add("d", fmt.Sprintf("%v", displayMask))
 	}
 
 	pageData := &models.SlotsFilteredPageData{

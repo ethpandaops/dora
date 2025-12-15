@@ -21,6 +21,10 @@ type ClientsCLPageData struct {
 	IsDefaultSorting          bool                             `json:"is_default_sorting"`
 	CurrentForkDigest         []byte                           `json:"current_fork_digest"`
 	FuluActivationEpoch       uint64                           `json:"fulu_activation_epoch"`
+	ExpectedChainSpec         map[string]interface{}           `json:"expected_chain_spec"`
+	ExpectedConfigFields      []string                         `json:"expected_config_fields"`
+	ExpectedPresetFields      []string                         `json:"expected_preset_fields"`
+	ExpectedDomainTypeFields  []string                         `json:"expected_domain_type_fields"`
 }
 
 // ## Peer graph data
@@ -109,6 +113,7 @@ type ClientCLPageDataNode struct {
 	PeersIn           []string                        `json:"peers_in"`
 	PeersOut          []string                        `json:"peers_out"`
 	Metadata          *ClientCLPageDataNodeMetadata   `json:"metadata,omitempty"`
+	ClientSpecs       map[string]interface{}          `json:"client_specs"`
 }
 
 // ClientCLPageDataNodeMetadata represents the metadata from the node identity

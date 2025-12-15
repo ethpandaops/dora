@@ -43,7 +43,7 @@ jobs:
     needs: [build_binaries]
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+    - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
       with:
         fetch-depth: 100
         ref: ${{ github.sha }}
@@ -75,14 +75,14 @@ jobs:
 
     # download build artifacts
     - name: "Download build artifacts"
-      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
 
     # create draft release
     - name: Create latest release
       uses: actions/create-release@0cb9c9b65d5d1901c1f53e5e66eaf4afd303e70e # v1.1.4
       id: create_release
       with:
-        draft: true
+        draft: false
         prerelease: false
         release_name: "v${{ inputs.version }}"
         tag_name: "v${{ inputs.version }}"

@@ -12,12 +12,12 @@ import (
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/utils"
 	"github.com/ethpandaops/ethwallclock"
-	"gopkg.in/yaml.v2"
 )
 
 type ChainState struct {
-	specMutex sync.RWMutex
-	specs     *ChainSpec
+	specMutex   sync.RWMutex
+	specs       *ChainSpec
+	clientSpecs map[*Client]map[string]interface{}
 
 	genesisMutex sync.Mutex
 	genesis      *v1.Genesis
@@ -34,7 +34,9 @@ type ChainState struct {
 }
 
 func newChainState() *ChainState {
-	return &ChainState{}
+	return &ChainState{
+		clientSpecs: make(map[*Client]map[string]interface{}),
+	}
 }
 
 func (cs *ChainState) setGenesis(genesis *v1.Genesis) error {
@@ -56,56 +58,133 @@ func (cs *ChainState) setGenesis(genesis *v1.Genesis) error {
 	return nil
 }
 
-func (cs *ChainState) setClientSpecs(specValues map[string]interface{}) (error, error) {
+func (cs *ChainState) updateClientSpecs(client *Client, specValues map[string]interface{}) error {
 	cs.specMutex.Lock()
 	defer cs.specMutex.Unlock()
 
-	specs := cs.specs
-	if specs == nil {
-		specs = &ChainSpec{}
-	} else {
-		specs = specs.Clone()
+	// Store this client's specs
+	cs.clientSpecs[client] = specValues
+
+	// Compute the majority-based global specs
+	majoritySpecs, err := cs.computeMajoritySpecs()
+	if err != nil {
+		return err
 	}
 
-	specValuesYaml, err := yaml.Marshal(specValues)
+	cs.specs = majoritySpecs
+
+	// Update warnings for all clients against the new majority spec
+	if majoritySpecs != nil {
+		for c, specs := range cs.clientSpecs {
+			warnings := cs.checkClientSpecWarnings(majoritySpecs, specs)
+			c.specWarnings = warnings
+			c.hasBadSpecs = len(warnings) > 0
+		}
+	}
+
+	return nil
+}
+
+// checkClientSpecWarnings compares a client's specs against the majority and returns any warnings.
+// Must be called with specMutex held.
+func (cs *ChainState) checkClientSpecWarnings(majoritySpecs *ChainSpec, specValues map[string]interface{}) []string {
+	warnings := []string{}
+
+	clientSpec := &ChainSpec{}
+	err := clientSpec.ParseAdditive(specValues)
+	if err != nil {
+		return []string{fmt.Sprintf("failed to parse specs: %v", err)}
+	}
+
+	// Check for mismatches: client has different values than majority
+	mismatches, err := majoritySpecs.CheckMismatch(clientSpec)
+	if err != nil {
+		return []string{fmt.Sprintf("failed to check mismatches: %v", err)}
+	}
+
+	if len(mismatches) > 0 {
+		mismatchesStr := []string{}
+		for _, mismatch := range mismatches {
+			if mismatch.Severity != "ignore" {
+				mismatchesStr = append(mismatchesStr, mismatch.Name)
+			}
+		}
+		if len(mismatchesStr) > 0 {
+			warnings = append(warnings, fmt.Sprintf("spec mismatch with majority: %v", strings.Join(mismatchesStr, ", ")))
+		}
+	}
+
+	// Check for missing specs: client doesn't have values that majority has
+	// (by reversing the check - client's zero values are ignored, so we find majority values client doesn't have)
+	mismatches, err = clientSpec.CheckMismatch(majoritySpecs)
+	if err != nil {
+		return warnings
+	}
+	if len(mismatches) > 0 {
+		missingStr := []string{}
+		for _, mismatch := range mismatches {
+			missingStr = append(missingStr, mismatch.Name)
+		}
+		if len(missingStr) > 0 {
+			warnings = append(warnings, fmt.Sprintf("spec missing: %v", strings.Join(missingStr, ", ")))
+		}
+	}
+
+	return warnings
+}
+
+// computeMajoritySpecs computes the global spec by taking the majority value for each spec setting.
+// Must be called with specMutex held.
+func (cs *ChainState) computeMajoritySpecs() (*ChainSpec, error) {
+	if len(cs.clientSpecs) == 0 {
+		return nil, nil
+	}
+
+	// Build a map of spec key -> value -> count
+	valueCounts := make(map[string]map[string]int)
+	valueStore := make(map[string]map[string]interface{})
+
+	for _, clientSpec := range cs.clientSpecs {
+		for key, value := range clientSpec {
+			if valueCounts[key] == nil {
+				valueCounts[key] = make(map[string]int)
+				valueStore[key] = make(map[string]interface{})
+			}
+
+			// Convert value to string for counting (handles different types)
+			valueStr := fmt.Sprintf("%v", value)
+			valueCounts[key][valueStr]++
+			valueStore[key][valueStr] = value
+		}
+	}
+
+	// Build the majority spec values
+	majorityValues := make(map[string]interface{})
+
+	for key, counts := range valueCounts {
+		// Find the value with the highest count
+		var maxCount int
+		var maxValueStr string
+
+		for valueStr, count := range counts {
+			if count > maxCount {
+				maxCount = count
+				maxValueStr = valueStr
+			}
+		}
+
+		// Use the actual value (not the string representation)
+		majorityValues[key] = valueStore[key][maxValueStr]
+	}
+
+	// Parse into ChainSpec
+	majoritySpec := &ChainSpec{}
+	err := majoritySpec.ParseAdditive(majorityValues)
 	if err != nil {
 		return nil, err
 	}
 
-	err = yaml.Unmarshal(specValuesYaml, specs)
-	if err != nil {
-		return nil, err
-	}
-
-	var warning error
-
-	if cs.specs != nil {
-		mismatches, err := cs.specs.CheckMismatch(specs)
-		if err != nil {
-			return nil, err
-		}
-		if len(mismatches) > 0 {
-			return nil, fmt.Errorf("spec mismatch: %v", strings.Join(mismatches, ", "))
-		}
-
-		newSpecs := &ChainSpec{}
-		err = yaml.Unmarshal(specValuesYaml, newSpecs)
-		if err != nil {
-			return nil, err
-		}
-
-		mismatches, err = cs.specs.CheckMismatch(newSpecs)
-		if err != nil {
-			return nil, err
-		}
-		if len(mismatches) > 0 {
-			warning = fmt.Errorf("spec missing: %v", strings.Join(mismatches, ", "))
-		}
-	}
-
-	cs.specs = specs
-
-	return warning, nil
+	return majoritySpec, nil
 }
 
 func (cs *ChainState) initWallclock() {
@@ -120,7 +199,7 @@ func (cs *ChainState) initWallclock() {
 		return
 	}
 
-	cs.wallclock = ethwallclock.NewEthereumBeaconChain(cs.genesis.GenesisTime, cs.specs.SecondsPerSlot, cs.specs.SlotsPerEpoch)
+	cs.wallclock = ethwallclock.NewEthereumBeaconChain(cs.genesis.GenesisTime, time.Duration(cs.specs.SecondsPerSlot)*time.Second, cs.specs.SlotsPerEpoch)
 	cs.wallclock.OnEpochChanged(func(current ethwallclock.Epoch) {
 		cs.wallclockEpochDispatcher.Fire(&current)
 	})
@@ -216,7 +295,7 @@ func (cs *ChainState) SlotToTime(slot phase0.Slot) time.Time {
 		return time.Time{}
 	}
 
-	return cs.genesis.GenesisTime.Add(time.Duration(slot) * cs.specs.SecondsPerSlot)
+	return cs.genesis.GenesisTime.Add(time.Duration(uint64(slot)*cs.specs.SecondsPerSlot) * time.Second)
 }
 
 func (cs *ChainState) EpochToTime(epoch phase0.Epoch) time.Time {
@@ -224,7 +303,7 @@ func (cs *ChainState) EpochToTime(epoch phase0.Epoch) time.Time {
 		return time.Time{}
 	}
 
-	return cs.genesis.GenesisTime.Add(time.Duration(cs.EpochToSlot(epoch)) * cs.specs.SecondsPerSlot)
+	return cs.genesis.GenesisTime.Add(time.Duration(uint64(cs.EpochToSlot(epoch))*cs.specs.SecondsPerSlot) * time.Second)
 }
 
 func (cs *ChainState) TimeToSlot(timestamp time.Time) phase0.Slot {
@@ -236,7 +315,7 @@ func (cs *ChainState) TimeToSlot(timestamp time.Time) phase0.Slot {
 		return 0
 	}
 
-	return phase0.Slot(uint64((timestamp.Sub(cs.genesis.GenesisTime)).Seconds()) / uint64(cs.specs.SecondsPerSlot.Seconds()))
+	return phase0.Slot(uint64((timestamp.Sub(cs.genesis.GenesisTime)).Seconds()) / cs.specs.SecondsPerSlot)
 }
 
 func (cs *ChainState) SlotToSlotIndex(slot phase0.Slot) phase0.Slot {

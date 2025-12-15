@@ -22,9 +22,6 @@ fi
 # Get validator ranges
 kurtosis files inspect "$ENCLAVE_NAME" validator-ranges validator-ranges.yaml | tail -n +2 > "${__dir}/generated-validator-ranges.yaml"
 
-# Get dora config
-kurtosis files inspect "$ENCLAVE_NAME" dora-config dora-config.yaml | tail -n +2 > "${__dir}/generated-dora-kt-config.yaml"
-
 # Get el genesis config
 kurtosis files inspect "$ENCLAVE_NAME" el_cl_genesis_data "./genesis.json" | tail -n +1 > "${__dir}/generated-el-genesis.json"
 
@@ -91,6 +88,19 @@ api:
     - "*"
   authSecret: "test"
   defaultRateLimit: 60
+rpcProxy:
+  enabled: true
+  upstreamUrl: "$(
+  for node in $EXECUTION_NODES; do
+    ip=$(echo '127.0.0.1')
+    port=$(docker inspect --format='{{ (index (index .NetworkSettings.Ports "8545/tcp") 0).HostPort }}' $node)
+    if [ -z "$port" ]; then
+      continue
+    fi
+    echo "http://$ip:$port"
+    break
+  done
+  )"
 beaconapi:
   localCacheSize: 10
   redisCacheAddr: ""
@@ -119,7 +129,17 @@ $(for node in $EXECUTION_NODES; do
     if [ -z "$port" ]; then
       port="65535"
     fi
-    echo "    - { name: $name, url: http://$ip:$port }"
+    echo "    - name: $name"
+    echo "      url: http://$ip:$port"
+
+    # extract engine snooper url
+    IFS='-' read -r -a name_parts <<< "$name"
+    trimmed_name="${name_parts[1]}-${name_parts[3]}-${name_parts[2]}"
+    snooper_container=$(docker ps -aq -f "label=kurtosis_enclave_uuid=$ENCLAVE_UUID" -f "label=com.kurtosistech.app-id=kurtosis" -f "label=com.kurtosistech.id=snooper-engine-$trimmed_name")
+    if [ ! -z "$snooper_container" ]; then
+      snooper_port=$(docker inspect --format='{{ (index (index .NetworkSettings.Ports "8561/tcp") 0).HostPort }}' $snooper_container)
+      echo "      engineSnooperUrl: http://$ip:$snooper_port"
+    fi
 done)
 indexer:
   inMemoryEpochs: 8
@@ -132,14 +152,6 @@ database:
   sqlite:
     file: "${__dir}/generated-database.sqlite"
 EOF
-
-if [ -f ${__dir}/generated-dora-kt-config.yaml ]; then
-  fullcfg=$(yq eval-all 'select(fileIndex == 0) as $target | select(fileIndex == 1) as $source | $target.executionapi.endpoints = $source.executionapi.endpoints | $target' ${__dir}/generated-dora-config.yaml ${__dir}/generated-dora-kt-config.yaml)
-  if [ ! -z "$fullcfg" ]; then
-    echo "$fullcfg" > ${__dir}/generated-dora-config.yaml
-    rm ${__dir}/generated-dora-kt-config.yaml
-  fi
-fi
 
 
 cat <<EOF

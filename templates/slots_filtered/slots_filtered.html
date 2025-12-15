@@ -448,9 +448,13 @@ $('#slotsFilterForm').submit(function () {
     return el.selected;
   }).map(function(el) {
     return el.value;
-  }).join(" ");
+  });
   if(displayColumns.length > 0) {
-    $(this).find("#displayColumnsField").prop('name', 'd').val(displayColumns);
+    var displayMask = 0;
+    displayColumns.forEach(function(col) {
+      displayMask |= 1 << (parseInt(col) - 1);
+    });
+    $(this).find("#displayColumnsField").prop('name', 'd').val("0x" + displayMask.toString(16));
   }
 });
 $(function() {

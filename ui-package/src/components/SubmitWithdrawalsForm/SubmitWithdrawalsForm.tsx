@@ -23,11 +23,17 @@ const SubmitWithdrawalsForm = (props: ISubmitWithdrawalsFormProps): React.ReactE
     } else {
       setValidators(null)
     }
-  }, [walletAddress]);
+  }, [walletAddress, props.loadValidatorsCallback]);
 
-  window.setTimeout(() => {
-    (window as any).explorer.initControls();
-  }, 100);
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      (window as any).explorer.initControls();
+    }, 100);
+    
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, []);
 
   return (
     <div className="submit-deposits">
@@ -257,7 +263,7 @@ const SubmitWithdrawalsForm = (props: ISubmitWithdrawalsFormProps): React.ReactE
                 </div>
               </div>
               <WithdrawalReview
-                key={`${validator.index}-${withdrawalType}-${withdrawalAmount}`}
+                key={`${validator.index}-${withdrawalType}`}
                 validator={validator}
                 withdrawalAmount={withdrawalType == 0 ? withdrawalAmount : 0}
                 withdrawalContract={props.withdrawalContract}

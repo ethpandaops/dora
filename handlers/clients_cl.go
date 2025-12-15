@@ -3,6 +3,7 @@ package handlers
 import (
 	"fmt"
 	"net/http"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -10,6 +11,7 @@ import (
 
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
 	"github.com/ethereum/go-ethereum/p2p/enr"
+	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/dora/clients/consensus/rpc"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
@@ -177,7 +179,7 @@ func buildCLClientsPageData(sortOrder string) (*models.ClientsCLPageData, time.D
 	var cacheTime time.Duration
 	specs := chainState.GetSpecs()
 	if specs != nil {
-		cacheTime = specs.SecondsPerSlot
+		cacheTime = time.Duration(specs.SecondsPerSlot) * time.Second
 	} else {
 		cacheTime = 1 * time.Second
 	}
@@ -310,6 +312,8 @@ func buildCLClientsPageData(sortOrder string) (*models.ClientsCLPageData, time.D
 			}
 			pageData.Nodes[peerId] = node
 		}
+
+		node.ClientSpecs = client.GetSpecs()
 
 		if id != nil {
 			if node.ENR == "" {
@@ -685,5 +689,108 @@ func buildCLClientsPageData(sortOrder string) (*models.ClientsCLPageData, time.D
 		pageData.FuluActivationEpoch = ^uint64(0)
 	}
 
+	// Extract field orders from ChainSpecConfig, ChainSpecPreset and ChainSpecDomainTypes structs via reflection
+	configOrder, presetOrder, domainTypeOrder, expectedSpecsMap := getChainSpecFieldOrders()
+	pageData.ExpectedConfigFields = configOrder
+	pageData.ExpectedPresetFields = presetOrder
+	pageData.ExpectedDomainTypeFields = domainTypeOrder
+	pageData.ExpectedChainSpec = expectedSpecsMap
+
 	return pageData, cacheTime
+}
+
+// getChainSpecFieldOrders extracts field names from ChainSpecConfig, ChainSpecPreset and ChainSpecDomainTypes structs
+func getChainSpecFieldOrders() (configFields []string, presetFields []string, domainTypeFields []string, expectedValues map[string]interface{}) {
+	chainState := services.GlobalBeaconService.GetChainState()
+	expectedValues = map[string]interface{}{}
+
+	specs := chainState.GetSpecs()
+	if specs == nil {
+		return []string{}, []string{}, []string{}, map[string]interface{}{}
+	}
+
+	encodeValue := func(value interface{}) interface{} {
+		switch v := value.(type) {
+		case time.Duration:
+			return uint64(v.Seconds())
+		}
+		return value
+	}
+
+	encodeBlobSchedule := func(value []consensus.BlobScheduleEntry) []map[string]interface{} {
+		result := []map[string]interface{}{}
+		for _, v := range value {
+			configType := reflect.TypeOf(v)
+			configValues := reflect.ValueOf(v)
+			blobSchedule := map[string]interface{}{}
+			for i := 0; i < configType.NumField(); i++ {
+				field := configType.Field(i)
+				yamlTag := field.Tag.Get("yaml")
+
+				if yamlTag != "" && yamlTag != "-" {
+					tagParts := strings.Split(yamlTag, ",")
+					if len(tagParts) > 0 && tagParts[0] != "" {
+						blobSchedule[tagParts[0]] = encodeValue(configValues.Field(i).Interface())
+					}
+				}
+			}
+			result = append(result, blobSchedule)
+		}
+		return result
+	}
+
+	// Get config fields
+	configType := reflect.TypeOf(specs.ChainSpecConfig)
+	configValues := reflect.ValueOf(specs.ChainSpecConfig)
+	for i := 0; i < configType.NumField(); i++ {
+		field := configType.Field(i)
+		yamlTag := field.Tag.Get("yaml")
+
+		if yamlTag != "" && yamlTag != "-" {
+			tagParts := strings.Split(yamlTag, ",")
+			if len(tagParts) > 0 && tagParts[0] != "" {
+				configFields = append(configFields, tagParts[0])
+
+				if tagParts[0] == "BLOB_SCHEDULE" {
+					expectedValues[tagParts[0]] = encodeBlobSchedule(configValues.Field(i).Interface().([]consensus.BlobScheduleEntry))
+				} else {
+					expectedValues[tagParts[0]] = encodeValue(configValues.Field(i).Interface())
+				}
+			}
+		}
+	}
+
+	// Get preset fields
+	presetType := reflect.TypeOf(specs.ChainSpecPreset)
+	presetValues := reflect.ValueOf(specs.ChainSpecPreset)
+	for i := 0; i < presetType.NumField(); i++ {
+		field := presetType.Field(i)
+		yamlTag := field.Tag.Get("yaml")
+
+		if yamlTag != "" && yamlTag != "-" {
+			tagParts := strings.Split(yamlTag, ",")
+			if len(tagParts) > 0 && tagParts[0] != "" {
+				presetFields = append(presetFields, tagParts[0])
+				expectedValues[tagParts[0]] = encodeValue(presetValues.Field(i).Interface())
+			}
+		}
+	}
+
+	// Get domain type fields
+	domainTypeType := reflect.TypeOf(specs.ChainSpecDomainTypes)
+	domainTypeValues := reflect.ValueOf(specs.ChainSpecDomainTypes)
+	for i := 0; i < domainTypeType.NumField(); i++ {
+		field := domainTypeType.Field(i)
+		yamlTag := field.Tag.Get("yaml")
+
+		if yamlTag != "" && yamlTag != "-" {
+			tagParts := strings.Split(yamlTag, ",")
+			if len(tagParts) > 0 && tagParts[0] != "" {
+				domainTypeFields = append(domainTypeFields, tagParts[0])
+				expectedValues[tagParts[0]] = encodeValue(domainTypeValues.Field(i).Interface())
+			}
+		}
+	}
+
+	return configFields, presetFields, domainTypeFields, expectedValues
 }
