@@ -10,4 +10,4 @@ tmp-*
 
 .hack/devnet/generated-**
 .hack/devnet/custom-**
-dora-explorer
+
