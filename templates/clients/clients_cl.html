@@ -227,7 +227,7 @@
           <div style="margin-bottom: 15px; padding: 0 15px;">
             <div class="input-group">
               <span class="input-group-text"><i class="fas fa-search"></i></span>
-              <input type="text" class="form-control" id="clientSearchInput" placeholder="Search clients by name...">
+              <input type="text" class="form-control" id="clientSearchInput" placeholder="Search by name, peer ID, or ENR...">
               <button class="btn btn-outline-secondary" type="button" id="clearClientSearch">Clear</button>
             </div>
           </div>
@@ -1069,9 +1069,17 @@
     $('#clients tbody tr').each(function() {
       if (!$(this).hasClass('peerInfo')) {
         var clientName = $(this).find('.client-row a').text().toLowerCase();
+        var peerId = $(this).find('.client-row').data('peerid') || '';
         var peerInfoRow = $(this).next('.peerInfo');
+        var node = nodes[peerId] || {};
+        var enr = (node.enr || '').toLowerCase();
 
-        if (searchText === '' || clientName.includes(searchText)) {
+        var matches = searchText === '' ||
+          clientName.includes(searchText) ||
+          peerId.toLowerCase().includes(searchText) ||
+          enr.includes(searchText);
+
+        if (matches) {
           $(this).show();
           peerInfoRow.css('display', '');
         } else {

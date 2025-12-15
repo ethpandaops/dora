@@ -111,10 +111,15 @@ type ChainSpecConfig struct {
 	MaxRequestBlobSidecarsElectra       uint64 `yaml:"MAX_REQUEST_BLOB_SIDECARS_ELECTRA"         check-if-fork:"ElectraForkEpoch"`
 
 	// Fulu
-	MinEpochsForDataColumnSidecars uint64              `yaml:"MIN_EPOCHS_FOR_DATA_COLUMN_SIDECARS_REQUESTS" check-if-fork:"FuluForkEpoch"`
-	DataColumnSidecarSubnetCount   *uint64             `yaml:"DATA_COLUMN_SIDECAR_SUBNET_COUNT"             check-if-fork:"FuluForkEpoch"`
-	CustodyRequirement             *uint64             `yaml:"CUSTODY_REQUIREMENT"                          check-if-fork:"FuluForkEpoch"`
-	BlobSchedule                   []BlobScheduleEntry `yaml:"BLOB_SCHEDULE"                                check-if-fork:"FuluForkEpoch"`
+	MinEpochsForDataColumnSidecars   uint64              `yaml:"MIN_EPOCHS_FOR_DATA_COLUMN_SIDECARS_REQUESTS"  check-if-fork:"FuluForkEpoch"`
+	NumberOfCustodyGroups            *uint64             `yaml:"NUMBER_OF_CUSTODY_GROUPS"                      check-if-fork:"FuluForkEpoch"`
+	DataColumnSidecarSubnetCount     *uint64             `yaml:"DATA_COLUMN_SIDECAR_SUBNET_COUNT"              check-if-fork:"FuluForkEpoch"`
+	MaxRequestDataColumnSidecars     uint64              `yaml:"MAX_REQUEST_DATA_COLUMN_SIDECARS"              check-if-fork:"FuluForkEpoch"`
+	SamplesPerSlot                   uint64              `yaml:"SAMPLES_PER_SLOT"                              check-if-fork:"FuluForkEpoch"`
+	CustodyRequirement               *uint64             `yaml:"CUSTODY_REQUIREMENT"                           check-if-fork:"FuluForkEpoch"`
+	ValidatorCustodyRequirement      *uint64             `yaml:"VALIDATOR_CUSTODY_REQUIREMENT"                 check-if-fork:"FuluForkEpoch"`
+	BalancePerAdditionalCustodyGroup *uint64             `yaml:"BALANCE_PER_ADDITIONAL_CUSTODY_GROUP"          check-if-fork:"FuluForkEpoch"`
+	BlobSchedule                     []BlobScheduleEntry `yaml:"BLOB_SCHEDULE"                                 check-if-fork:"FuluForkEpoch"`
 }
 
 type ChainSpecPreset struct {

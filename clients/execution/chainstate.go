@@ -225,6 +225,7 @@ func (cache *ChainState) getBlobScheduleForTimestampFromConfig(timestamp time.Ti
 type BlobScheduleEntry struct {
 	Timestamp time.Time
 	Schedule  rpc.EthConfigBlobSchedule
+	IsBpo     bool
 }
 
 func (cache *ChainState) GetFullBlobSchedule() []BlobScheduleEntry {
@@ -275,6 +276,7 @@ func (cache *ChainState) GetFullBlobSchedule() []BlobScheduleEntry {
 				Target:                uint64(cache.config.Config.BlobScheduleConfig.BPO1.Target),
 				BaseFeeUpdateFraction: uint64(cache.config.Config.BlobScheduleConfig.BPO1.UpdateFraction),
 			},
+			IsBpo: true,
 		})
 	}
 
@@ -286,6 +288,7 @@ func (cache *ChainState) GetFullBlobSchedule() []BlobScheduleEntry {
 				Target:                uint64(cache.config.Config.BlobScheduleConfig.BPO2.Target),
 				BaseFeeUpdateFraction: uint64(cache.config.Config.BlobScheduleConfig.BPO2.UpdateFraction),
 			},
+			IsBpo: true,
 		})
 	}
 
@@ -297,6 +300,7 @@ func (cache *ChainState) GetFullBlobSchedule() []BlobScheduleEntry {
 				Target:                uint64(cache.config.Config.BlobScheduleConfig.BPO3.Target),
 				BaseFeeUpdateFraction: uint64(cache.config.Config.BlobScheduleConfig.BPO3.UpdateFraction),
 			},
+			IsBpo: true,
 		})
 	}
 
@@ -308,6 +312,7 @@ func (cache *ChainState) GetFullBlobSchedule() []BlobScheduleEntry {
 				Target:                uint64(cache.config.Config.BlobScheduleConfig.BPO4.Target),
 				BaseFeeUpdateFraction: uint64(cache.config.Config.BlobScheduleConfig.BPO4.UpdateFraction),
 			},
+			IsBpo: true,
 		})
 	}
 
@@ -319,6 +324,7 @@ func (cache *ChainState) GetFullBlobSchedule() []BlobScheduleEntry {
 				Target:                uint64(cache.config.Config.BlobScheduleConfig.BPO5.Target),
 				BaseFeeUpdateFraction: uint64(cache.config.Config.BlobScheduleConfig.BPO5.UpdateFraction),
 			},
+			IsBpo: true,
 		})
 	}
 

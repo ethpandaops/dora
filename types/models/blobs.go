@@ -8,7 +8,7 @@ type BlobsPageData struct {
 	BlobsLast1h            uint64                 `json:"blobs_last_1h"`
 	BlobsLast24h           uint64                 `json:"blobs_last_24h"`
 	BlobsLast7d            uint64                 `json:"blobs_last_7d"`
-	BlobsLast30d           uint64                 `json:"blobs_last_30d"`
+	BlobsLast18d           uint64                 `json:"blobs_last_18d"`
 	BlocksWithBlobsLast1h  uint64                 `json:"blocks_with_blobs_last_1h"`
 	BlocksWithBlobsLast24h uint64                 `json:"blocks_with_blobs_last_24h"`
 	BlocksWithBlobsLast7d  uint64                 `json:"blocks_with_blobs_last_7d"`
@@ -33,12 +33,14 @@ type LatestBlobBlock struct {
 }
 
 type StorageCalculatorData struct {
-	MinEth             uint32  `json:"min_eth"`
-	MaxEth             uint32  `json:"max_eth"`
-	DefaultEth         uint32  `json:"default_eth"`
-	ColumnSize         float64 `json:"column_size"`
-	TotalColumns       uint32  `json:"total_columns"`
-	MinColumnsNonVal   uint32  `json:"min_columns_non_val"`
-	MinColumnsVal      uint32  `json:"min_columns_val"`
-	FreeValidatorCount uint32  `json:"free_validator_count"`
+	MinEth                           uint64  `json:"min_eth"`
+	MaxEth                           uint64  `json:"max_eth"`
+	DefaultEth                       uint64  `json:"default_eth"`
+	MaxEffectiveBalanceEth           float64 `json:"max_effective_balance_eth"`
+	ColumnSizeBytes                  float64 `json:"column_size_bytes"`
+	TotalColumns                     uint64  `json:"total_columns"`
+	CustodyRequirement               float64 `json:"custody_requirement"`
+	ValidatorCustodyRequirement      float64 `json:"validator_custody_requirement"`
+	SlotsPerEpoch                    uint64  `json:"slots_per_epoch"`
+	MinEpochsForBlobSidecarsRequests uint64  `json:"min_epochs_for_blob_sidecars_requests"`
 }

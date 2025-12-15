@@ -304,25 +304,65 @@ func buildIndexPageData() (*models.IndexPageData, time.Duration) {
 	}
 
 	// Add BPO forks from BLOB_SCHEDULE
-	for i, blobSchedule := range specs.BlobSchedule {
-		// BPO forks use the fork version that's active at the time of BPO activation
-		forkVersion := chainState.GetForkVersionAtEpoch(phase0.Epoch(blobSchedule.Epoch))
-		blobParams := &consensus.BlobScheduleEntry{
-			Epoch:            blobSchedule.Epoch,
-			MaxBlobsPerBlock: blobSchedule.MaxBlobsPerBlock,
-		}
-		forkDigest := chainState.GetForkDigest(forkVersion, blobParams)
+	elBlobSchedule := services.GlobalBeaconService.GetExecutionChainState().GetFullBlobSchedule()
+	if len(elBlobSchedule) > 0 {
+		// get blob schedule from el config (we have the full blob schedule available)
+		bpoIdx := 0
+		for _, blobSchedule := range elBlobSchedule {
+			if !blobSchedule.IsBpo {
+				continue
+			}
 
-		pageData.NetworkForks = append(pageData.NetworkForks, &models.IndexPageDataForks{
-			Name:             fmt.Sprintf("BPO%d", i+1),
-			Epoch:            blobSchedule.Epoch,
-			Version:          nil, // BPO forks don't have fork versions
-			Time:             uint64(chainState.EpochToTime(phase0.Epoch(blobSchedule.Epoch)).Unix()),
-			Active:           uint64(currentEpoch) >= blobSchedule.Epoch,
-			Type:             "bpo",
-			MaxBlobsPerBlock: &blobSchedule.MaxBlobsPerBlock,
-			ForkDigest:       forkDigest[:],
-		})
+			bpoIdx++
+
+			bpoEpoch := phase0.Epoch(0)
+			bpoTime := blobSchedule.Timestamp
+			if blobSchedule.Timestamp.After(networkGenesis.GenesisTime) {
+				bpoEpoch = chainState.EpochOfSlot(chainState.TimeToSlot(blobSchedule.Timestamp))
+			} else {
+				bpoTime = networkGenesis.GenesisTime
+			}
+
+			forkVersion := chainState.GetForkVersionAtEpoch(bpoEpoch)
+			blobParams := &consensus.BlobScheduleEntry{
+				Epoch:            uint64(bpoEpoch),
+				MaxBlobsPerBlock: blobSchedule.Schedule.Max,
+			}
+			forkDigest := chainState.GetForkDigest(forkVersion, blobParams)
+
+			pageData.NetworkForks = append(pageData.NetworkForks, &models.IndexPageDataForks{
+				Name:             fmt.Sprintf("BPO%d", bpoIdx),
+				Epoch:            uint64(bpoEpoch),
+				Version:          nil,
+				Time:             uint64(bpoTime.Unix()),
+				Active:           currentEpoch >= bpoEpoch,
+				Type:             "bpo",
+				MaxBlobsPerBlock: &blobSchedule.Schedule.Max,
+				ForkDigest:       forkDigest[:],
+			})
+		}
+	} else {
+		// get blob schedule from cl specs (no el config available, so we only get the deduplicated blob schedule from the cl specs)
+		for i, blobSchedule := range specs.BlobSchedule {
+			// BPO forks use the fork version that's active at the time of BPO activation
+			forkVersion := chainState.GetForkVersionAtEpoch(phase0.Epoch(blobSchedule.Epoch))
+			blobParams := &consensus.BlobScheduleEntry{
+				Epoch:            blobSchedule.Epoch,
+				MaxBlobsPerBlock: blobSchedule.MaxBlobsPerBlock,
+			}
+			forkDigest := chainState.GetForkDigest(forkVersion, blobParams)
+
+			pageData.NetworkForks = append(pageData.NetworkForks, &models.IndexPageDataForks{
+				Name:             fmt.Sprintf("BPO%d", i+1),
+				Epoch:            blobSchedule.Epoch,
+				Version:          nil, // BPO forks don't have fork versions
+				Time:             uint64(chainState.EpochToTime(phase0.Epoch(blobSchedule.Epoch)).Unix()),
+				Active:           uint64(currentEpoch) >= blobSchedule.Epoch,
+				Type:             "bpo",
+				MaxBlobsPerBlock: &blobSchedule.MaxBlobsPerBlock,
+				ForkDigest:       forkDigest[:],
+			})
+		}
 	}
 
 	// Sort all forks by epoch
