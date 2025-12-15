@@ -79,7 +79,7 @@ func buildForksPageData() (*models.ForksPageData, time.Duration) {
 	headForks := services.GlobalBeaconService.GetConsensusClientForks()
 	chainState := services.GlobalBeaconService.GetChainState()
 	specs := chainState.GetSpecs()
-	cacheTime := specs.SecondsPerSlot
+	cacheTime := time.Duration(specs.SecondsPerSlot) * time.Second
 
 	// check each fork if it's really a fork and not just a syncing/stuck client
 	finalizedEpoch, _ := services.GlobalBeaconService.GetBeaconIndexer().GetBlockCacheState()

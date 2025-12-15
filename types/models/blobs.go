@@ -1,0 +1,46 @@
+package models
+
+import (
+	"time"
+)
+
+type BlobsPageData struct {
+	BlobsLast1h            uint64                 `json:"blobs_last_1h"`
+	BlobsLast24h           uint64                 `json:"blobs_last_24h"`
+	BlobsLast7d            uint64                 `json:"blobs_last_7d"`
+	BlobsLast18d           uint64                 `json:"blobs_last_18d"`
+	BlocksWithBlobsLast1h  uint64                 `json:"blocks_with_blobs_last_1h"`
+	BlocksWithBlobsLast24h uint64                 `json:"blocks_with_blobs_last_24h"`
+	BlocksWithBlobsLast7d  uint64                 `json:"blocks_with_blobs_last_7d"`
+	BlocksWithBlobsLast18d uint64                 `json:"blocks_with_blobs_last_18d"`
+	BlobGasLast1h          uint64                 `json:"blob_gas_last_1h"`
+	BlobGasLast24h         uint64                 `json:"blob_gas_last_24h"`
+	BlobGasLast7d          uint64                 `json:"blob_gas_last_7d"`
+	BlobGasLast18d         uint64                 `json:"blob_gas_last_18d"`
+	LatestBlobBlocks       []*LatestBlobBlock     `json:"latest_blob_blocks"`
+	StorageCalculator      *StorageCalculatorData `json:"storage_calculator"`
+}
+
+type LatestBlobBlock struct {
+	Slot         uint64    `json:"slot"`
+	BlockNumber  uint64    `json:"block_number"`
+	Timestamp    time.Time `json:"timestamp"`
+	BlobCount    uint64    `json:"blob_count"`
+	Proposer     uint64    `json:"proposer"`
+	ProposerName string    `json:"proposer_name"`
+	BlockRoot    []byte    `json:"block_root"`
+	Finalized    bool      `json:"finalized"`
+}
+
+type StorageCalculatorData struct {
+	MinEth                           uint64  `json:"min_eth"`
+	MaxEth                           uint64  `json:"max_eth"`
+	DefaultEth                       uint64  `json:"default_eth"`
+	MaxEffectiveBalanceEth           float64 `json:"max_effective_balance_eth"`
+	ColumnSizeBytes                  float64 `json:"column_size_bytes"`
+	TotalColumns                     uint64  `json:"total_columns"`
+	CustodyRequirement               float64 `json:"custody_requirement"`
+	ValidatorCustodyRequirement      float64 `json:"validator_custody_requirement"`
+	SlotsPerEpoch                    uint64  `json:"slots_per_epoch"`
+	MinEpochsForBlobSidecarsRequests uint64  `json:"min_epochs_for_blob_sidecars_requests"`
+}

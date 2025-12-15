@@ -710,6 +710,15 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 			blobBaseFee := executionChainState.CalcBaseFeePerBlobGas(*pageData.ExecutionData.ExcessBlobGas, blobSchedule.BaseFeeUpdateFraction)
 			blobBaseFeeUint64 := blobBaseFee.Uint64()
 			pageData.ExecutionData.BlobBaseFee = &blobBaseFeeUint64
+
+			// EIP-7918: Calculate adjusted blob base fee if reserve price mechanism is active
+			eip7918BlobBaseFee := executionChainState.CalculateEIP7918BlobBaseFee(pageData.ExecutionData.BaseFeePerGas, blobBaseFeeUint64)
+			if eip7918BlobBaseFee > blobBaseFeeUint64 {
+				// Store the original blob base fee in BlobBaseFee
+				// Store the EIP-7918 adjusted fee in BlobBaseFeeEIP7918
+				pageData.ExecutionData.BlobBaseFeeEIP7918 = &eip7918BlobBaseFee
+				pageData.ExecutionData.IsEIP7918Active = true
+			}
 		}
 
 		if transactions, err := executionPayload.Transactions(); err == nil {

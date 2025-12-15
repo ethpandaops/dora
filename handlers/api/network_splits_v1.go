@@ -49,6 +49,7 @@ type APINetworkSplitInfo struct {
 // @Success 200 {object} APINetworkSplitsResponse
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Router /v1/network/splits [get]
+// @ID getNetworkSplits
 func APINetworkSplitsV1(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 

@@ -96,12 +96,22 @@ func main() {
 		}
 	}
 
+	// Initialize RPC proxy if enabled
+	if cfg.RpcProxy.Enabled {
+		handlers.InitRPCProxy()
+	}
+
 	if webserver != nil {
 		router := mux.NewRouter()
 
 		if cfg.Api.Enabled {
 			apiRouter := router.PathPrefix("/api").Subrouter()
 			startApi(apiRouter)
+		}
+
+		// Add RPC proxy endpoint (separate from API namespace)
+		if cfg.RpcProxy.Enabled {
+			router.HandleFunc("/_rpc", handlers.RPCProxyHandler).Methods("POST")
 		}
 
 		if cfg.Frontend.Enabled {
@@ -178,6 +188,7 @@ func startFrontend(router *mux.Router) {
 	router.HandleFunc("/clients/execution", handlers.ClientsEl).Methods("GET")
 	router.HandleFunc("/clients/execution/refresh", handlers.ClientsELRefresh).Methods("POST")
 	router.HandleFunc("/clients/execution/refresh/status", handlers.ClientsELRefreshStatus).Methods("GET")
+	router.HandleFunc("/clients/execution/status/{clientName}", handlers.ClientsElStatus).Methods("GET")
 	router.HandleFunc("/forks", handlers.Forks).Methods("GET")
 	router.HandleFunc("/chain-forks", handlers.ChainForks).Methods("GET")
 	router.HandleFunc("/epochs", handlers.Epochs).Methods("GET")
@@ -187,6 +198,7 @@ func startFrontend(router *mux.Router) {
 	router.HandleFunc("/slot/{slotOrHash}", handlers.Slot).Methods("GET")
 	router.HandleFunc("/slot/{root}/blob/{commitment}", handlers.SlotBlob).Methods("GET")
 	router.HandleFunc("/blocks", handlers.Blocks).Methods("GET")
+	router.HandleFunc("/blobs", handlers.Blobs).Methods("GET")
 	router.HandleFunc("/mev/blocks", handlers.MevBlocks).Methods("GET")
 
 	router.HandleFunc("/search", handlers.Search).Methods("GET")

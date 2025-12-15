@@ -338,6 +338,12 @@
       $(function() {
         if(location.hash)
           $('.nav-tabs a[href="' + location.hash + '"]').tab('show');
+        
+        // Handle EIP-7918 info button click
+        $('.eip7918-info-btn').on('click', function(e) {
+          e.preventDefault();
+          $('#eip7918-details').toggleClass('d-none');
+        });
       });
     </script>
     <div id="footer-placeholder" style="height:71px;"></div>
@@ -346,4 +352,13 @@
 {{ define "js" }}
 {{ end }}
 {{ define "css" }}
+<style>
+  .eip7918-info-btn {
+    cursor: pointer;
+    transition: opacity 0.2s;
+  }
+  .eip7918-info-btn:hover {
+    opacity: 0.8;
+  }
+</style>
 {{ end }}

@@ -22,7 +22,7 @@ type ChainState struct {
 	specMutex         sync.RWMutex
 	specs             *rpc.ChainSpec
 	clientConfigMutex sync.RWMutex
-	clientConfig      *rpc.EthConfig
+	clientConfig      rpc.EthConfig
 	config            *core.Genesis
 }
 
@@ -56,43 +56,58 @@ func (cache *ChainState) SetClientConfig(config *rpc.EthConfig) ([]error, error)
 
 	warnings := []error{}
 
-	if cache.clientConfig != nil {
-		currentConfig := config.Current
-		nextConfig := config.Next
-		lastConfig := config.Last
+	currentConfig := config.Current
+	nextConfig := config.Next
+	lastConfig := config.Last
 
+	if cache.clientConfig.Current != nil {
 		// check current config
 		mismatches := cache.clientConfig.Current.CheckMismatch(currentConfig)
-		if len(mismatches) > 0 && cache.clientConfig.Current.ActivationTime < currentConfig.ActivationTime && currentConfig.ActivationTime >= uint64(time.Now().Unix()) {
+		if len(mismatches) > 0 && cache.clientConfig.Current.ActivationTime < currentConfig.ActivationTime && currentConfig.ActivationTime <= uint64(time.Now().Unix()) {
 			// current config changed
-			cache.clientConfig.Last = cache.clientConfig.Current
 			cache.clientConfig.Current = currentConfig
 			cache.clientConfig.Next = nextConfig
 		} else if len(mismatches) > 0 {
 			return nil, fmt.Errorf("client config mismatch: %v", strings.Join(mismatches, ", "))
 		}
+	} else {
+		cache.clientConfig.Current = currentConfig
+	}
 
-		if lastConfig == nil && cache.clientConfig.Last != nil {
-			warnings = append(warnings, fmt.Errorf("last config is nil"))
-		} else if lastConfig != nil && cache.clientConfig.Last == nil {
-			cache.clientConfig.Last = lastConfig
-		} else if lastConfig != nil {
-			if lastMismatches := cache.clientConfig.Last.CheckMismatch(lastConfig); len(lastMismatches) > 0 {
-				warnings = append(warnings, fmt.Errorf("last config mismatch: %v", strings.Join(lastMismatches, ", ")))
-			}
-		}
-
+	if cache.clientConfig.Next != nil {
 		if nextConfig == nil && cache.clientConfig.Next != nil {
 			warnings = append(warnings, fmt.Errorf("next config is nil"))
 		} else if nextConfig != nil && cache.clientConfig.Next == nil {
 			cache.clientConfig.Next = nextConfig
 		} else if nextConfig != nil {
 			if nextMismatches := cache.clientConfig.Next.CheckMismatch(nextConfig); len(nextMismatches) > 0 {
-				warnings = append(warnings, fmt.Errorf("next config mismatch: %v", strings.Join(nextMismatches, ", ")))
+				if nextConfig.ActivationTime < cache.clientConfig.Next.ActivationTime && nextConfig.ActivationTime > uint64(time.Now().Unix()) {
+					cache.clientConfig.Next = nextConfig
+				} else {
+					warnings = append(warnings, fmt.Errorf("next config mismatch: %v", strings.Join(nextMismatches, ", ")))
+				}
 			}
 		}
 	} else {
-		cache.clientConfig = config
+		cache.clientConfig.Next = nextConfig
+	}
+
+	if cache.clientConfig.Last != nil {
+		if lastConfig == nil && cache.clientConfig.Last != nil {
+			warnings = append(warnings, fmt.Errorf("last config is nil"))
+		} else if lastConfig != nil && cache.clientConfig.Last == nil {
+			cache.clientConfig.Last = lastConfig
+		} else if lastConfig != nil {
+			if lastMismatches := cache.clientConfig.Last.CheckMismatch(lastConfig); len(lastMismatches) > 0 {
+				if lastConfig.ActivationTime > cache.clientConfig.Last.ActivationTime {
+					cache.clientConfig.Last = lastConfig
+				} else {
+					warnings = append(warnings, fmt.Errorf("last config mismatch: %v", strings.Join(lastMismatches, ", ")))
+				}
+			}
+		}
+	} else {
+		cache.clientConfig.Last = lastConfig
 	}
 
 	return warnings, nil
@@ -127,7 +142,7 @@ func (cache *ChainState) getCurrentEthConfig() *rpc.EthConfigFork {
 	cache.clientConfigMutex.RLock()
 	defer cache.clientConfigMutex.RUnlock()
 
-	if cache.clientConfig == nil || cache.clientConfig.Current == nil {
+	if cache.clientConfig.Current == nil {
 		return nil
 	}
 
@@ -163,6 +178,12 @@ func (cache *ChainState) GetGenesisConfig() *core.Genesis {
 	return cache.config
 }
 
+func (cache *ChainState) GetClientConfig() *rpc.EthConfig {
+	cache.clientConfigMutex.RLock()
+	defer cache.clientConfigMutex.RUnlock()
+	return &cache.clientConfig
+}
+
 func (cache *ChainState) GetBlobScheduleForTimestamp(timestamp time.Time) *rpc.EthConfigBlobSchedule {
 	forkSchedule := cache.getBlobScheduleForTimestampFromConfig(timestamp)
 	if forkSchedule == nil && cache.config != nil {
@@ -182,14 +203,14 @@ func (cache *ChainState) getBlobScheduleForTimestampFromConfig(timestamp time.Ti
 	cache.clientConfigMutex.RLock()
 	defer cache.clientConfigMutex.RUnlock()
 
-	if cache.clientConfig == nil || cache.clientConfig.Current == nil {
+	if cache.clientConfig.Current == nil {
 		return nil
 	}
 
 	var forkSchedule *rpc.EthConfigBlobSchedule
 
 	if cache.clientConfig.Next != nil && !cache.clientConfig.Next.GetActivationTime().After(timestamp) {
-		forkSchedule = &cache.clientConfig.Current.BlobSchedule
+		forkSchedule = &cache.clientConfig.Next.BlobSchedule
 	} else if cache.clientConfig.Current != nil && !cache.clientConfig.Current.GetActivationTime().After(timestamp) {
 		forkSchedule = &cache.clientConfig.Current.BlobSchedule
 	} else if cache.clientConfig.Last != nil && !cache.clientConfig.Last.GetActivationTime().After(timestamp) {
@@ -202,6 +223,7 @@ func (cache *ChainState) getBlobScheduleForTimestampFromConfig(timestamp time.Ti
 type BlobScheduleEntry struct {
 	Timestamp time.Time
 	Schedule  rpc.EthConfigBlobSchedule
+	IsBpo     bool
 }
 
 func (cache *ChainState) GetFullBlobSchedule() []BlobScheduleEntry {
@@ -252,6 +274,7 @@ func (cache *ChainState) GetFullBlobSchedule() []BlobScheduleEntry {
 				Target:                uint64(cache.config.Config.BlobScheduleConfig.BPO1.Target),
 				BaseFeeUpdateFraction: uint64(cache.config.Config.BlobScheduleConfig.BPO1.UpdateFraction),
 			},
+			IsBpo: true,
 		})
 	}
 
@@ -263,6 +286,7 @@ func (cache *ChainState) GetFullBlobSchedule() []BlobScheduleEntry {
 				Target:                uint64(cache.config.Config.BlobScheduleConfig.BPO2.Target),
 				BaseFeeUpdateFraction: uint64(cache.config.Config.BlobScheduleConfig.BPO2.UpdateFraction),
 			},
+			IsBpo: true,
 		})
 	}
 
@@ -274,6 +298,7 @@ func (cache *ChainState) GetFullBlobSchedule() []BlobScheduleEntry {
 				Target:                uint64(cache.config.Config.BlobScheduleConfig.BPO3.Target),
 				BaseFeeUpdateFraction: uint64(cache.config.Config.BlobScheduleConfig.BPO3.UpdateFraction),
 			},
+			IsBpo: true,
 		})
 	}
 
@@ -285,6 +310,7 @@ func (cache *ChainState) GetFullBlobSchedule() []BlobScheduleEntry {
 				Target:                uint64(cache.config.Config.BlobScheduleConfig.BPO4.Target),
 				BaseFeeUpdateFraction: uint64(cache.config.Config.BlobScheduleConfig.BPO4.UpdateFraction),
 			},
+			IsBpo: true,
 		})
 	}
 
@@ -296,6 +322,7 @@ func (cache *ChainState) GetFullBlobSchedule() []BlobScheduleEntry {
 				Target:                uint64(cache.config.Config.BlobScheduleConfig.BPO5.Target),
 				BaseFeeUpdateFraction: uint64(cache.config.Config.BlobScheduleConfig.BPO5.UpdateFraction),
 			},
+			IsBpo: true,
 		})
 	}
 
@@ -308,33 +335,61 @@ func (cache *ChainState) GetFullBlobSchedule() []BlobScheduleEntry {
 
 const MinBaseFeePerBlobGas = 1 // wei, per EIP-4844
 
-// CalcBaseFeePerBlobGas computes base_fee_per_blob_gas from excess_blob_gas and updateFraction.
-// Arguments:
-//   - excessBlobGas: from block header
-//   - blockTimestamp
-//
-// Returns base_fee_per_blob_gas as *big.Int
+// CalcBaseFeePerBlobGas computes base_fee_per_blob_gas from excess_blob_gas and updateFraction
+// according to EIP-4844 fake_exponential(MIN_BASE_FEE_PER_BLOB_GAS, excess_blob_gas, updateFraction).
+// Returns base_fee_per_blob_gas as *big.Int (>= MIN_BASE_FEE_PER_BLOB_GAS; 0 if updateFraction==0).
 func (cache *ChainState) CalcBaseFeePerBlobGas(excessBlobGas uint64, updateFraction uint64) *big.Int {
-	// fake_exponential(minBaseFee, excessBlobGas, updateFraction)
-	// base = minBaseFee
-	// factor = excessBlobGas / updateFraction
-	// remainder = excessBlobGas % updateFraction
-	// result = base * (2^factor) * (updateFraction + remainder) / updateFraction
+	if updateFraction == 0 {
+		return big.NewInt(0)
+	}
 
-	base := big.NewInt(MinBaseFeePerBlobGas)
+	minBase := big.NewInt(MinBaseFeePerBlobGas)           // EIP-4844: MIN_BASE_FEE_PER_BLOB_GAS = 1
+	numerator := new(big.Int).SetUint64(excessBlobGas)    // n
+	denominator := new(big.Int).SetUint64(updateFraction) // d
 
-	factor := new(big.Int).Div(new(big.Int).SetUint64(excessBlobGas), new(big.Int).SetUint64(updateFraction))
-	remainder := new(big.Int).Mod(new(big.Int).SetUint64(excessBlobGas), new(big.Int).SetUint64(updateFraction))
+	i := big.NewInt(1)
+	output := new(big.Int) // 0
 
-	// base << factor (multiply by 2^factor)
-	base.Lsh(base, uint(factor.Uint64()))
+	// numerator_accum = minBase * denominator
+	numeratorAccum := new(big.Int).Mul(minBase, denominator)
 
-	// multiply by (updateFraction + remainder)
-	num := new(big.Int).Add(new(big.Int).SetUint64(updateFraction), remainder)
-	base.Mul(base, num)
+	tmp := new(big.Int)
+	for numeratorAccum.Sign() > 0 {
+		// output += numerator_accum
+		output.Add(output, numeratorAccum)
 
-	// divide by updateFraction
-	base.Div(base, new(big.Int).SetUint64(updateFraction))
+		// numerator_accum = (numerator_accum * numerator) // (denominator * i)
+		tmp.Mul(denominator, i) // tmp = d * i
+		if tmp.Sign() == 0 {    // defensive (shouldn't happen since updateFraction != 0)
+			break
+		}
+		numeratorAccum.Mul(numeratorAccum, numerator)
+		numeratorAccum.Div(numeratorAccum, tmp)
 
-	return base
+		i.Add(i, big.NewInt(1))
+	}
+
+	// return output // denominator
+	return output.Div(output, denominator)
+}
+
+// calculateEIP7918BlobBaseFee implements the EIP-7918 reserve price mechanism
+// It ensures blob base fee doesn't fall below a threshold based on execution costs
+func (cache *ChainState) CalculateEIP7918BlobBaseFee(baseFeePerGas uint64, blobBaseFee uint64) uint64 {
+	// EIP-7918 constants
+	const (
+		BLOB_BASE_COST = 8192   // 2^13
+		GAS_PER_BLOB   = 131072 // blob gas limit per blob (128KB)
+	)
+
+	// Calculate the reserve price threshold
+	// If BLOB_BASE_COST * base_fee_per_gas > GAS_PER_BLOB * base_fee_per_blob_gas
+	// then the blob base fee should be adjusted
+	reservePriceThreshold := (BLOB_BASE_COST * baseFeePerGas) / GAS_PER_BLOB
+
+	// Return the higher of the two values
+	if reservePriceThreshold > blobBaseFee {
+		return reservePriceThreshold
+	}
+	return blobBaseFee
 }
