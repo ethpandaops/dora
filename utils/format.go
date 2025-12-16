@@ -21,11 +21,11 @@ import (
 
 func FormatETH(num string) string {
 	floatNum, _ := strconv.ParseFloat(num, 64)
-	return fmt.Sprintf("%.4f", floatNum/math.Pow10(18)) + " ETH"
+	return fmt.Sprintf("%.4f", floatNum/math.Pow10(18)) + " LYX"
 }
 
 func FormatETHFromGwei(gwei uint64) string {
-	return fmt.Sprintf("%.4f", float64(gwei)/math.Pow10(9)) + " ETH"
+	return fmt.Sprintf("%.4f", float64(gwei)/math.Pow10(9)) + " LYX"
 }
 
 func FormatETHFromGweiShort(gwei uint64) string {
@@ -33,7 +33,7 @@ func FormatETHFromGweiShort(gwei uint64) string {
 }
 
 func FormatFullEthFromGwei(gwei uint64) string {
-	return fmt.Sprintf("%v ETH", uint64(float64(gwei)/math.Pow10(9)))
+	return fmt.Sprintf("%v LYX", uint64(float64(gwei)/math.Pow10(9)))
 }
 
 func FormatETHAddCommasFromGwei(gwei uint64) template.HTML {
@@ -63,10 +63,10 @@ func FormatBaseFee(weiValue uint64) template.HTML {
 		return template.HTML(formatted + " gwei")
 	}
 
-	// Show in ETH for very large values with 6 decimals, trimmed
+	// Show in LYX for very large values with 6 decimals, trimmed
 	ethValue := gweiValue / 1e9
 	formatted := strings.TrimRight(strings.TrimRight(fmt.Sprintf("%.6f", ethValue), "0"), ".")
-	return template.HTML(formatted + " ETH")
+	return template.HTML(formatted + " LYX")
 }
 
 func FormatBlobFeeDifference(eip7918Value, originalValue uint64) template.HTML {
@@ -78,7 +78,7 @@ func FormatBlobFeeDifference(eip7918Value, originalValue uint64) template.HTML {
 }
 
 func FormatTransactionValue(ethValue float64) template.HTML {
-	// Convert ETH value to wei (1 ETH = 1e18 wei)
+	// Convert LYX value to wei (1 LYX = 1e18 wei)
 	weiValue := uint64(ethValue * 1e18)
 
 	// Use the same formatting logic as FormatBaseFee
@@ -224,7 +224,7 @@ func formatAmount(amount *big.Int, unit string, digits int, maxPreCommaDigitsBef
 	// define display unit & digits used per unit max
 	displayUnit := " " + unit
 	var unitDigits int
-	if unit == "ETH" || unit == "Ether" {
+	if unit == "LYX" || unit == "Ether" {
 		unitDigits = 18
 	} else if unit == "GWei" {
 		unitDigits = 9

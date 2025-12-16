@@ -35,9 +35,9 @@ const TopupDepositForm = (props: ITopupDepositFormProps): React.ReactElement => 
   const [validators, setValidators] = useState<IValidator[]>([]);
   const [loadingError, setLoadingError] = useState<string | null>(null);
   const [selectedValidator, setSelectedValidator] = useState<IValidator | null>(null);
-  const [topupAmount, setTopupAmount] = useState<number>(1); // UI input in ETH (float)
+  const [topupAmount, setTopupAmount] = useState<number>(1); // UI input in LYX (float)
   const [topupAmountGwei, setTopupAmountGwei] = useState<bigint>(BigInt(1e9)); // Actual amount in Gwei (BigInt)
-  const [maxTopupAmount, setMaxTopupAmount] = useState<number>(0); // UI max in ETH (float)
+  const [maxTopupAmount, setMaxTopupAmount] = useState<number>(0); // UI max in LYX (float)
   const [walletBalance, setWalletBalance] = useState<bigint>(BigInt(100) * GWEI_PER_ETH); // Wallet balance in Gwei
   const [errorModal, setErrorModal] = useState<string | null>(null);
 
@@ -97,15 +97,15 @@ const TopupDepositForm = (props: ITopupDepositFormProps): React.ReactElement => 
         ? effectiveMaxBalance - validatorBalanceGwei
         : BigInt(0);
       
-      // Calculate max topup amount in ETH for UI (limited by wallet balance)
+      // Calculate max topup amount in LYX for UI (limited by wallet balance)
       const maxTopupEth = Number(remainingBalanceGwei / GWEI_PER_ETH);
       
       // Set max topup amount for UI slider/input
       setMaxTopupAmount(maxTopupEth);
       
-      // Reset topup amount to 1 ETH when validator changes
+      // Reset topup amount to 1 LYX when validator changes
       setTopupAmount(1);
-      setTopupAmountGwei(GWEI_PER_ETH); // 1 ETH in Gwei
+      setTopupAmountGwei(GWEI_PER_ETH); // 1 LYX in Gwei
     }
   }, [selectedValidator, walletBalance, maxEffectiveBalance, maxEffectiveBalanceElectra]);
 
@@ -183,7 +183,7 @@ const TopupDepositForm = (props: ITopupDepositFormProps): React.ReactElement => 
         </div>
         <div className="col-12">
           <div className="form-text">
-            Select the validator you want to add more ETH to. The validator must be active on the network.
+            Select the validator you want to add more LYX to. The validator must be active on the network.
           </div>
         </div>
         <div className="col-12 col-lg-11">
@@ -232,7 +232,7 @@ const TopupDepositForm = (props: ITopupDepositFormProps): React.ReactElement => 
                 <b>Balance:</b>
               </div>
               <div className="col-9 col-lg-10">
-                {formatBalance(selectedValidator.balance, "ETH")}
+                {formatBalance(selectedValidator.balance, "LYX")}
               </div>
             </div>
             <div className="row">
@@ -255,7 +255,7 @@ const TopupDepositForm = (props: ITopupDepositFormProps): React.ReactElement => 
             </div>
             <div className="col-12">
               <div className="form-text">
-                Enter an amount of at least 1 ETH. Maximum amount is limited by your wallet balance and the validator's remaining space up to the effective balance limit.
+                Enter an amount of at least 1 LYX. Maximum amount is limited by your wallet balance and the validator's remaining space up to the effective balance limit.
               </div>
 
               <div className="row mt-3 withdrawal-details">
@@ -263,14 +263,14 @@ const TopupDepositForm = (props: ITopupDepositFormProps): React.ReactElement => 
                   Max Effective Balance:
                 </div>
                 <div className="col-7 col-md-6 col-lg-4">
-                  {toReadableAmount(Number(getMaxEffectiveBalance()), 9, "ETH", 0)}
+                  {toReadableAmount(Number(getMaxEffectiveBalance()), 9, "LYX", 0)}
                   {selectedValidator && selectedValidator.credtype !== "02" && (
                     <span 
                       className="text-info ms-2" 
                       style={{fontSize: "0.9em", cursor: "help"}} 
                       data-bs-toggle="tooltip" 
                       data-bs-placement="top" 
-                      title={`This validator can be upgraded to the higher Electra limit of ${toReadableAmount(Number(maxEffectiveBalanceElectra), 9, "ETH", 0)} by switching to a compounding validator (0x02 credentials) via self-consolidation.`}
+                      title={`This validator can be upgraded to the higher Electra limit of ${toReadableAmount(Number(maxEffectiveBalanceElectra), 9, "LYX", 0)} by switching to a compounding validator (0x02 credentials) via self-consolidation.`}
                     >
                       <i className="fa fa-info-circle"></i>
                     </span>
@@ -282,7 +282,7 @@ const TopupDepositForm = (props: ITopupDepositFormProps): React.ReactElement => 
                   Max Topup Possible:
                 </div>
                 <div className="col-7 col-md-6 col-lg-4">
-                  {toReadableAmount(Number(maxTopupAmount), 0, "ETH", 3)}
+                  {toReadableAmount(Number(maxTopupAmount), 0, "LYX", 3)}
                 </div>
               </div>
               <div className="row mt-1 withdrawal-details">
@@ -302,7 +302,7 @@ const TopupDepositForm = (props: ITopupDepositFormProps): React.ReactElement => 
                   />
                 </div>
                 <div className="col-1">
-                  ETH
+                  LYX
                 </div>
                 <div className="col-4 col-md-3 d-lg-none"></div>
                 <div className="col-6 col-md-5 col-lg-3">
@@ -338,7 +338,7 @@ const TopupDepositForm = (props: ITopupDepositFormProps): React.ReactElement => 
                   }
                 </button>
                 {topupAmount < 1 && (
-                  <div className="text-danger mt-1">Amount must be at least 1 ETH</div>
+                  <div className="text-danger mt-1">Amount must be at least 1 LYX</div>
                 )}
                 {topupAmount > maxTopupAmount && (
                   <div className="text-danger mt-1">Amount exceeds available limit</div>

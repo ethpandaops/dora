@@ -147,7 +147,7 @@ func (indexer *Indexer) computeCanonicalChain() bool {
 			}
 
 			indexer.logger.Infof(
-				"fork %v: votes in last 2 epochs: %v ETH (%v), head: %v (%v)",
+				"fork %v: votes in last 2 epochs: %v LYX (%v), head: %v (%v)",
 				fork.ForkId,
 				forkVotes/EtherGweiFactor,
 				strings.Join(participationStr, ", "),
@@ -194,7 +194,7 @@ func (indexer *Indexer) computeCanonicalChain() bool {
 			}
 
 			indexer.logger.Infof(
-				"fallback fork %v votes in last %v epochs: %v ETH (%v), head: %v (%v)",
+				"fallback fork %v votes in last %v epochs: %v LYX (%v), head: %v (%v)",
 				block.forkId,
 				aggregateEpochs,
 				forkVotes/EtherGweiFactor,

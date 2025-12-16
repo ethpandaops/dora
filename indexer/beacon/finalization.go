@@ -555,9 +555,9 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 	indexer.logger.Infof("completed epoch %v finalization (process: %v ms, load: %v s, write: %v ms, blockdb: %v ms, clean: %v ms)", epoch, t1dur.Milliseconds(), t1loading.Seconds(), t2dur.Milliseconds(), t3dur.Milliseconds(), time.Since(t1).Milliseconds())
 	indexer.logger.Infof("epoch %v blocks: %v canonical, %v orphaned", epoch, len(canonicalBlocks), len(orphanedBlocks))
 	if epochStatsValues != nil {
-		indexer.logger.Infof("epoch %v stats: %v validators (%v ETH)", epoch, epochStatsValues.ActiveValidators, epochStatsValues.EffectiveBalance/EtherGweiFactor)
+		indexer.logger.Infof("epoch %v stats: %v validators (%v LYX)", epoch, epochStatsValues.ActiveValidators, epochStatsValues.EffectiveBalance/EtherGweiFactor)
 		indexer.logger.Infof(
-			"epoch %v votes: target %v + %v = %v ETH (%.2f%%)",
+			"epoch %v votes: target %v + %v = %v LYX (%.2f%%)",
 			epoch,
 			epochVotes.CurrentEpoch.TargetVoteAmount/EtherGweiFactor,
 			epochVotes.NextEpoch.TargetVoteAmount/EtherGweiFactor,
@@ -565,7 +565,7 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 			epochVotes.TargetVotePercent,
 		)
 		indexer.logger.Infof(
-			"epoch %v votes: head %v + %v = %v ETH (%.2f%%)",
+			"epoch %v votes: head %v + %v = %v LYX (%.2f%%)",
 			epoch,
 			epochVotes.CurrentEpoch.HeadVoteAmount/EtherGweiFactor,
 			epochVotes.NextEpoch.HeadVoteAmount/EtherGweiFactor,
@@ -573,7 +573,7 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 			epochVotes.HeadVotePercent,
 		)
 		indexer.logger.Infof(
-			"epoch %v votes: total %v + %v = %v ETH (%.2f%%)",
+			"epoch %v votes: total %v + %v = %v LYX (%.2f%%)",
 			epoch,
 			epochVotes.CurrentEpoch.TotalVoteAmount/EtherGweiFactor,
 			epochVotes.NextEpoch.TotalVoteAmount/EtherGweiFactor,
