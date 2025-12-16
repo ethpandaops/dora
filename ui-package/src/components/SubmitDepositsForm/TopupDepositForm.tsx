@@ -183,7 +183,7 @@ const TopupDepositForm = (props: ITopupDepositFormProps): React.ReactElement => 
         </div>
         <div className="col-12">
           <div className="form-text">
-            Select the validator you want to add more LYX to. The validator must be active on the network.
+            Select the validator you want to add more {{ tokenSymbol }} to. The validator must be active on the network.
           </div>
         </div>
         <div className="col-12 col-lg-11">
@@ -232,7 +232,7 @@ const TopupDepositForm = (props: ITopupDepositFormProps): React.ReactElement => 
                 <b>Balance:</b>
               </div>
               <div className="col-9 col-lg-10">
-                {formatBalance(selectedValidator.balance, "LYX")}
+                {formatBalance(selectedValidator.balance, "{{ tokenSymbol }}")}
               </div>
             </div>
             <div className="row">
@@ -255,7 +255,7 @@ const TopupDepositForm = (props: ITopupDepositFormProps): React.ReactElement => 
             </div>
             <div className="col-12">
               <div className="form-text">
-                Enter an amount of at least 1 LYX. Maximum amount is limited by your wallet balance and the validator's remaining space up to the effective balance limit.
+                Enter an amount of at least 1 {{ tokenSymbol }}. Maximum amount is limited by your wallet balance and the validator's remaining space up to the effective balance limit.
               </div>
 
               <div className="row mt-3 withdrawal-details">

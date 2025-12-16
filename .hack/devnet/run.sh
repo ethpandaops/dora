@@ -82,6 +82,8 @@ frontend:
   disableDasGuardianCheck: false
   enableDasGuardianMassScan: true
   showValidatorSummary: true
+chain:
+  tokenSymbol: "LYX"
 api:
   enabled: true
   corsOrigins:

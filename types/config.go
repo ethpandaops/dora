@@ -22,6 +22,7 @@ type Config struct {
 
 		// optional features
 		WhiskForkEpoch *uint64 `yaml:"whiskForkEpoch" envconfig:"WHISK_FORK_EPOCH"`
+		TokenSymbol    string  `yaml:"tokenSymbol" envconfig:"CHAIN_TOKEN_SYMBOL"`
 	} `yaml:"chain"`
 
 	Frontend struct {

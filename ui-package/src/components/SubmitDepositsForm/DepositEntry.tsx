@@ -45,9 +45,9 @@ const DepositEntry = (props: IDepositEntryProps): React.ReactElement => {
         {formatWithdrawalHash(props.deposit.withdrawal_credentials)}
       </td>
       <td>
-        {formatAmount(props.deposit.amount, chain?.nativeCurrency?.symbol || "LYX")}
+        {formatAmount(props.deposit.amount, chain?.nativeCurrency?.symbol || "{{ tokenSymbol }}")}
         {props.deposit.amount > 32000000000 && props.deposit.withdrawal_credentials.substring(0, 2) === "01" && (
-          <span className="text-warning ms-2" style={{fontSize: "0.9em"}} data-bs-toggle="tooltip" data-bs-placement="top" title="You're trying to submit a validator key with >32 LYX and 0x01 withdrawal credentials. Please note, that your validator will be running with a max effective balance of 32 LYX. The excess Balance will almost immediately be withdrawn.">
+          <span className="text-warning ms-2" style={{fontSize: "0.9em"}} data-bs-toggle="tooltip" data-bs-placement="top" title="You're trying to submit a validator key with >32 {{ tokenSymbol }} and 0x01 withdrawal credentials. Please note, that your validator will be running with a max effective balance of 32 {{ tokenSymbol }}. The excess Balance will almost immediately be withdrawn.">
             <i className="fa fa-exclamation-triangle"></i>
           </span>
         )}
@@ -183,7 +183,7 @@ const DepositEntry = (props: IDepositEntryProps): React.ReactElement => {
                     </div>
                     <div className="tx-details-value">
                       <div className="d-flex">
-                        <span className="flex-grow-1 text-truncate">{toReadableAmount(tx.amount, 9, "LYX", 0)}</span>
+                        <span className="flex-grow-1 text-truncate">{toReadableAmount(tx.amount, 9, "{{ tokenSymbol }}", 0)}</span>
                       </div>
                     </div>
                   </div>

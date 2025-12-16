@@ -77,8 +77,8 @@
           <div class="col-md-3">Correct Target Votes:</div>
           <div class="col-md-9">
             <div>
-              {{ formatEthAddCommasFromGwei .TargetVoted }} LYX of
-              {{ formatEthAddCommasFromGwei .EligibleEther }} LYX
+              {{ formatEthAddCommasFromGwei .TargetVoted }} {{ tokenSymbol }} of
+              {{ formatEthAddCommasFromGwei .EligibleEther }} {{ tokenSymbol }}
               <small class="text-muted ml-1">({{ formatFloat .TargetVoteParticipation 2 }}%)</small>
             </div>
             <div class="progress" style="height: 5px; width: 250px;">
@@ -90,8 +90,8 @@
           <div class="col-md-3">Correct Head Votes:</div>
           <div class="col-md-9">
             <div>
-              {{ formatEthAddCommasFromGwei .HeadVoted }} LYX of
-              {{ formatEthAddCommasFromGwei .EligibleEther }} LYX
+              {{ formatEthAddCommasFromGwei .HeadVoted }} {{ tokenSymbol }} of
+              {{ formatEthAddCommasFromGwei .EligibleEther }} {{ tokenSymbol }}
               <small class="text-muted ml-1">({{ formatFloat .HeadVoteParticipation 2 }}%)</small>
             </div>
             <div class="progress" style="height: 5px; width: 250px;">
@@ -103,8 +103,8 @@
           <div class="col-md-3">Total Votes:</div>
           <div class="col-md-9">
             <div>
-              {{ formatEthAddCommasFromGwei .TotalVoted }} LYX of
-              {{ formatEthAddCommasFromGwei .EligibleEther }} LYX
+              {{ formatEthAddCommasFromGwei .TotalVoted }} {{ tokenSymbol }} of
+              {{ formatEthAddCommasFromGwei .EligibleEther }} {{ tokenSymbol }}
               <small class="text-muted ml-1">({{ formatFloat .TotalVoteParticipation 2 }}%)</small>
             </div>
             <div class="progress" style="height: 5px; width: 250px;">

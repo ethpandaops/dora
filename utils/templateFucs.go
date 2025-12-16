@@ -49,6 +49,7 @@ func GetTemplateFuncs() template.FuncMap {
 		"uint64ToTime":                 func(i uint64) time.Time { return time.Unix(int64(i), 0).UTC() },
 		"percent":                      func(i float64) float64 { return i * 100 },
 		"contains":                     strings.Contains,
+		"tokenSymbol":                  tokenSymbol,
 		"formatAddCommas":              FormatAddCommas,
 		"formatFloat":                  FormatFloat,
 		"formatBaseFee":                FormatBaseFee,

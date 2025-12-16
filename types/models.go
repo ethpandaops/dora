@@ -13,6 +13,7 @@ type PageData struct {
 	ExplorerLogo          string
 	ExplorerTitle         string
 	ExplorerSubtitle      string
+	TokenSymbol           string
 	ChainSlotsPerEpoch    uint64
 	ChainSecondsPerSlot   uint64
 	ChainGenesisTimestamp uint64
@@ -68,8 +69,7 @@ type Meta struct {
 	Templates   string
 }
 
-type Empty struct {
-}
+type Empty struct{}
 
 type NamedValidator struct {
 	Index uint64 `json:"index"`

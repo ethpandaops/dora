@@ -43,8 +43,8 @@
             <div class="text-end p-2">
               <div class="text-secondary mb-0">
                 <span data-bs-toggle="tooltip" data-bs-placement="top"
-                  data-bs-original-title="{{ if eq .EnteringValidatorCount 0 }}Currently there are no pending Validators{{ if .EtherChurnPerEpoch }} (churn limit is {{ formatEthAddCommasFromGwei .EtherChurnPerEpoch }} LYX per epoch or {{ formatEthAddCommasFromGwei .EtherChurnPerDay }} LYX per day){{ end }}{{ else }}{{ if .EtherChurnPerEpoch }}It should take at least {{ .NewDepositProcessAfter }} for {{ formatEthAddCommasFromGwei .EnteringEtherAmount }} LYX in pending deposits to be processed (churn limit is {{ formatEthAddCommasFromGwei .EtherChurnPerEpoch }} LYX per epoch or {{ formatEthAddCommasFromGwei .EtherChurnPerDay }} LYX per day){{ else }}Currently there are no pending Validators (churn limit is {{ .ValidatorsPerEpoch }} per epoch or {{ .ValidatorsPerDay }} per day with {{ .ActiveValidatorCount }} validators){{ end }}{{ end }}"
-                  data-bind="attr: {'data-bs-original-title': entering_val() > 0 ? (churn_ether() ? 'It should take at least ' + queue_delay() + ' for ' + $root.formatEth(entering_ether()) + ' LYX in pending deposits to be processed (churn limit is ' + $root.formatEth(churn_ether()) + ' LYX per epoch or ' + $root.formatEth(churn_ether_day()) + ' LYX per day)' : 'Currently there are no pending Validators (churn limit is ' + churn_epoch() + ' per epoch or ' + churn_day() + ' per day with ' + active_val() + ' validators)') : 'Currently there are no pending Validators' + (churn_ether() ? ' (churn limit is ' + $root.formatEth(churn_ether()) + ' LYX per epoch or ' + $root.formatEth(churn_ether_day()) + ' LYX per day)' : '')}">
+                  data-bs-original-title="{{ if eq .EnteringValidatorCount 0 }}Currently there are no pending Validators{{ if .EtherChurnPerEpoch }} (churn limit is {{ formatEthAddCommasFromGwei .EtherChurnPerEpoch }} {{ tokenSymbol }} per epoch or {{ formatEthAddCommasFromGwei .EtherChurnPerDay }} {{ tokenSymbol }} per day){{ end }}{{ else }}{{ if .EtherChurnPerEpoch }}It should take at least {{ .NewDepositProcessAfter }} for {{ formatEthAddCommasFromGwei .EnteringEtherAmount }} {{ tokenSymbol }} in pending deposits to be processed (churn limit is {{ formatEthAddCommasFromGwei .EtherChurnPerEpoch }} {{ tokenSymbol }} per epoch or {{ formatEthAddCommasFromGwei .EtherChurnPerDay }} {{ tokenSymbol }} per day){{ else }}Currently there are no pending Validators (churn limit is {{ .ValidatorsPerEpoch }} per epoch or {{ .ValidatorsPerDay }} per day with {{ .ActiveValidatorCount }} validators){{ end }}{{ end }}"
+                  data-bind="attr: {'data-bs-original-title': entering_val() > 0 ? (churn_ether() ? 'It should take at least ' + queue_delay() + ' for ' + $root.formatEth(entering_ether()) + ' {{ tokenSymbol }} in pending deposits to be processed (churn limit is ' + $root.formatEth(churn_ether()) + ' {{ tokenSymbol }} per epoch or ' + $root.formatEth(churn_ether_day()) + ' {{ tokenSymbol }} per day)' : 'Currently there are no pending Validators (churn limit is ' + churn_epoch() + ' per epoch or ' + churn_day() + ' per day with ' + active_val() + ' validators)') : 'Currently there are no pending Validators' + (churn_ether() ? ' (churn limit is ' + $root.formatEth(churn_ether()) + ' {{ tokenSymbol }} per epoch or ' + $root.formatEth(churn_ether_day()) + ' {{ tokenSymbol }} per day)' : '')}">
                   Pending Validators
                 </span>
               </div>
@@ -58,15 +58,15 @@
         <div class="col-md-4">
           <div class="d-flex justify-content-between">
             <div class="p-2">
-              <div class="text-secondary mb-0">Staked LYX</div>
+              <div class="text-secondary mb-0">Staked {{ tokenSymbol }}</div>
               <h5 class="font-weight-normal mb-0">
-                <span data-bs-toggle="tooltip" data-bs-placement="top" title="The sum of all effective balances" data-bind="text: $root.formatEth(eligible()) + ' LYX'">{{ formatEthAddCommasFromGwei .TotalEligibleEther }} LYX</span>
+                <span data-bs-toggle="tooltip" data-bs-placement="top" title="The sum of all effective balances" data-bind="text: $root.formatEth(eligible()) + ' {{ tokenSymbol }}'">{{ formatEthAddCommasFromGwei .TotalEligibleEther }} {{ tokenSymbol }}</span>
               </h5>
             </div>
             <div class="text-end p-2">
               <div class="text-secondary mb-0">Average Balance</div>
               <h5 class="font-weight-normal mb-0">
-                <span data-bs-toggle="tooltip" data-bs-placement="top" title="The average current balance of all validators staked" data-bind="text: $root.formatEth(avg_balance()) + ' LYX'">{{ formatEthFromGwei .AverageValidatorBalance }}</span>
+                <span data-bs-toggle="tooltip" data-bs-placement="top" title="The average current balance of all validators staked" data-bind="text: $root.formatEth(avg_balance()) + ' {{ tokenSymbol }}'">{{ formatEthFromGwei .AverageValidatorBalance }}</span>
               </h5>
             </div>
           </div>

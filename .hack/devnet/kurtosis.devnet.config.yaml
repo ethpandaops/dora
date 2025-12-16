@@ -1,11 +1,9 @@
 participants_matrix:
   el:
     - el_type: geth
-      el_image: ethpandaops/geth:master
 
   cl:
     - cl_type: lighthouse
-      cl_image: ethpandaops/lighthouse:unstable
     # - cl_type: prysm
     # - cl_type: teku
     # - cl_type: nimbus
@@ -13,7 +11,7 @@ participants_matrix:
     # - cl_type: lodestar
 
 network_params:
-  network: fusaka-devnet-3
+  preset: minimal
 
 additional_services:
   - dora # needed for config exctraction

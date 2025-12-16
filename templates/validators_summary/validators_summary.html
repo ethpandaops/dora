@@ -25,7 +25,7 @@
         <div class="card">
           <div class="card-body text-center">
             <h5 class="card-title">Total Effective Balance</h5>
-            <h3 class="text-info">{{ formatAddCommas .TotalEffectiveETH }} LYX</h3>
+            <h3 class="text-info">{{ formatAddCommas .TotalEffectiveETH }} {{ tokenSymbol }}</h3>
           </div>
         </div>
       </div>
@@ -33,7 +33,7 @@
         <div class="card">
           <div class="card-body text-center">
             <h5 class="card-title">Online Stake</h5>
-            <h3 class="text-success">{{ formatAddCommas .OverallHealthy }} LYX</h3>
+            <h3 class="text-success">{{ formatAddCommas .OverallHealthy }} {{ tokenSymbol }}</h3>
           </div>
         </div>
       </div>
@@ -122,7 +122,7 @@
               <tr>
                 <th>Client</th>
                 <th class="text-end">Online/Offline</th>
-                <th class="text-end">Effective Balance (LYX)</th>
+                <th class="text-end">Effective Balance ({{ tokenSymbol }})</th>
                 <th class="text-end">Network Share</th>
                 <th class="text-end">Online Rate</th>
                 <th class="text-center">Status</th>
@@ -179,7 +179,7 @@
               <tr>
                 <th>Client</th>
                 <th class="text-end">Online/Offline</th>
-                <th class="text-end">Effective Balance (LYX)</th>
+                <th class="text-end">Effective Balance ({{ tokenSymbol }})</th>
                 <th class="text-end">Network Share</th>
                 <th class="text-end">Online Rate</th>
                 <th class="text-center">Status</th>
@@ -243,7 +243,7 @@
           <div class="col-md-4">
             <div class="text-center">
               <h6>Effective Balance</h6>
-              <h4 class="text-muted">{{ formatEthAddCommasFromGwei .EffectiveBalance }} LYX</h4>
+              <h4 class="text-muted">{{ formatEthAddCommasFromGwei .EffectiveBalance }} {{ tokenSymbol }}</h4>
             </div>
           </div>
           <div class="col-md-4">

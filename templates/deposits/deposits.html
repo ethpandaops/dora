@@ -28,8 +28,8 @@
           <div class="col-md-4">
             <div class="card">
               <div class="card-body text-center">
-                <h6 class="card-title text-muted mb-1">Queued LYX</h6>
-                <h4 class="mb-0" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ formatFullEthFromGwei .EnteringEtherAmount }} LYX queued for deposit (including TopUp deposits)">{{ formatFullEthFromGwei .EnteringEtherAmount }}</h4>
+                <h6 class="card-title text-muted mb-1">Queued {{ tokenSymbol }}</h6>
+                <h4 class="mb-0" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ formatFullEthFromGwei .EnteringEtherAmount }} {{ tokenSymbol }} queued for deposit (including TopUp deposits)">{{ formatFullEthFromGwei .EnteringEtherAmount }}</h4>
               </div>
             </div>
           </div>

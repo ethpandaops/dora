@@ -134,7 +134,7 @@
         <div class="row border-bottom p-2 mx-0">
           <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Represents the full balance for this validator (Epoch {{ .CurrentEpoch }})">Effective Balance:</span></div>
           <div class="col-md-10">
-            {{ formatEthAddCommasFromGwei .EffectiveBalance }} LYX
+            {{ formatEthAddCommasFromGwei .EffectiveBalance }} {{ tokenSymbol }}
           </div>
         </div>
         <div class="row border-bottom p-2 mx-0">

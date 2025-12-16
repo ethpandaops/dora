@@ -13,19 +13,20 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethpandaops/dora/types"
 	"github.com/prysmaticlabs/go-bitfield"
 	"golang.org/x/text/language"
 	"golang.org/x/text/message"
+
+	"github.com/ethpandaops/dora/types"
 )
 
 func FormatETH(num string) string {
 	floatNum, _ := strconv.ParseFloat(num, 64)
-	return fmt.Sprintf("%.4f", floatNum/math.Pow10(18)) + " LYX"
+	return fmt.Sprintf("%.4f", floatNum/math.Pow10(18)) + " " + Config.Chain.TokenSymbol
 }
 
 func FormatETHFromGwei(gwei uint64) string {
-	return fmt.Sprintf("%.4f", float64(gwei)/math.Pow10(9)) + " LYX"
+	return fmt.Sprintf("%.4f", float64(gwei)/math.Pow10(9)) + " " + Config.Chain.TokenSymbol
 }
 
 func FormatETHFromGweiShort(gwei uint64) string {
@@ -211,15 +212,19 @@ func FormatParticipation(v float64) template.HTML {
 func FormatAmountFormatted(amount *big.Int, unit string, digits int, maxPreCommaDigitsBeforeTrim int, fullAmountTooltip bool, smallUnit bool, newLineForUnit bool) template.HTML {
 	return formatAmount(amount, unit, digits, maxPreCommaDigitsBeforeTrim, fullAmountTooltip, smallUnit, newLineForUnit)
 }
+
 func FormatAmount(amount *big.Int, unit string, digits int) template.HTML {
 	return formatAmount(amount, unit, digits, 0, true, false, false)
 }
+
 func FormatBigAmount(amount *hexutil.Big, unit string, digits int) template.HTML {
 	return FormatAmount((*big.Int)(amount), unit, digits)
 }
+
 func FormatBytesAmount(amount []byte, unit string, digits int) template.HTML {
 	return FormatAmount(new(big.Int).SetBytes(amount), unit, digits)
 }
+
 func formatAmount(amount *big.Int, unit string, digits int, maxPreCommaDigitsBeforeTrim int, fullAmountTooltip bool, smallUnit bool, newLineForUnit bool) template.HTML {
 	// define display unit & digits used per unit max
 	displayUnit := " " + unit

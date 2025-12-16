@@ -51,6 +51,7 @@ func InitPageData(w http.ResponseWriter, r *http.Request, active, path, title st
 		ExplorerTitle:    utils.Config.Frontend.SiteName,
 		ExplorerSubtitle: utils.Config.Frontend.SiteSubtitle,
 		ExplorerLogo:     utils.Config.Frontend.SiteLogo,
+		TokenSymbol:      utils.Config.Chain.TokenSymbol,
 		Lang:             "en-US",
 		Debug:            utils.Config.Frontend.Debug,
 		MainMenuItems:    createMenuItems(active),

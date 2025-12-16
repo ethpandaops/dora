@@ -102,7 +102,7 @@
                   <tr>
                     <td><a href="/validator/{{ $validator.Index }}">{{ formatValidatorNameWithIndex $validator.Index $validator.Name }}</a></td>
                     <td><a href="/validator/0x{{ printf "%x" $validator.PublicKey }}" class="text-truncate d-inline-block" style="max-width: 200px">0x{{ printf "%x" $validator.PublicKey }}</a></td>
-                    <td>{{ formatEthFromGwei $validator.Balance }} ({{ formatEthAddCommasFromGwei $validator.EffectiveBalance }} LYX)</td>
+                    <td>{{ formatEthFromGwei $validator.Balance }} ({{ formatEthAddCommasFromGwei $validator.EffectiveBalance }} {{ tokenSymbol }})</td>
                     <td>
                       {{- $validator.State -}}
                       {{- if $validator.ShowUpcheck -}}
