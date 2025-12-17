@@ -788,13 +788,15 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 						for j, storageChange := range entry.StorageChanges {
 							changes := make([]*models.SlotPageBlockBALStorageSlotChange, len(storageChange.Accesses))
 							for k, write := range storageChange.Accesses {
+								valueAfter := write.ValueAfter.ToHash()
 								changes[k] = &models.SlotPageBlockBALStorageSlotChange{
 									BlockAccessIndex: write.TxIdx,
-									Value:            write.ValueAfter[:],
+									Value:            valueAfter[:],
 								}
 							}
+							slot := storageChange.Slot.ToHash()
 							balEntry.StorageChanges[j] = &models.SlotPageBlockBALStorageChange{
-								Slot:    storageChange.Slot[:],
+								Slot:    slot[:],
 								Changes: changes,
 							}
 						}
@@ -804,7 +806,8 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 					if len(entry.StorageReads) > 0 {
 						balEntry.StorageReads = make([][]byte, len(entry.StorageReads))
 						for j, read := range entry.StorageReads {
-							balEntry.StorageReads[j] = read[:]
+							slot := read.ToHash()
+							balEntry.StorageReads[j] = slot[:]
 						}
 					}
 
@@ -1162,13 +1165,15 @@ func handleSlotParseAccessList(w http.ResponseWriter, r *http.Request) error {
 			for j, storageChange := range entry.StorageChanges {
 				changes := make([]*models.SlotPageBlockBALStorageSlotChange, len(storageChange.Accesses))
 				for k, write := range storageChange.Accesses {
+					valueAfter := write.ValueAfter.ToHash()
 					changes[k] = &models.SlotPageBlockBALStorageSlotChange{
 						BlockAccessIndex: write.TxIdx,
-						Value:            write.ValueAfter[:],
+						Value:            valueAfter[:],
 					}
 				}
+				slot := storageChange.Slot.ToHash()
 				balEntry.StorageChanges[j] = &models.SlotPageBlockBALStorageChange{
-					Slot:    storageChange.Slot[:],
+					Slot:    slot[:],
 					Changes: changes,
 				}
 			}
@@ -1178,7 +1183,8 @@ func handleSlotParseAccessList(w http.ResponseWriter, r *http.Request) error {
 		if len(entry.StorageReads) > 0 {
 			balEntry.StorageReads = make([][]byte, len(entry.StorageReads))
 			for j, read := range entry.StorageReads {
-				balEntry.StorageReads[j] = read[:]
+				slot := read.ToHash()
+				balEntry.StorageReads[j] = slot[:]
 			}
 		}
 
