@@ -18,13 +18,13 @@
     "css-loader": "^7.1.2",
     "mini-css-extract-plugin": "^2.9.4",
     "postcss-loader": "^8.2.0",
-    "sass": "^1.96.0",
+    "sass": "^1.97.1",
     "sass-loader": "^16.0.6",
     "style-loader": "^4.0.0",
     "ts-loader": "^9.5.4",
     "typescript": "^5.9.3",
     "url-loader": "^4.1.1",
-    "webpack": "^5.103.0",
+    "webpack": "^5.104.1",
     "webpack-cli": "^6.0.1",
     "webpack-visualizer-plugin2": "^2.0.0"
   },
@@ -39,7 +39,7 @@
     "react-bootstrap": "^2.10.10",
     "react-dom": "^19.2.3",
     "react-select": "^5.10.2",
-    "viem": "^2.42.1",
+    "viem": "^2.43.3",
     "wagmi": "^2.19.5"
   },
   "scripts": {
