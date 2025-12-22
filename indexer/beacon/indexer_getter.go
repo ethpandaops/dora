@@ -56,8 +56,6 @@ func (indexer *Indexer) GetReadyClientsByCheckpoint(finalizedEpoch phase0.Epoch,
 				// block is not in the canonical chain, so client is on a different fork
 				continue
 			}
-
-			fmt.Println("client is ready for epoch", finalizedEpoch, "with block", block.Slot)
 		}
 
 		clients = append(clients, client)
