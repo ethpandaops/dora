@@ -92,6 +92,7 @@ type APIQueueStats struct {
 // @Success 200 {object} APINetworkOverviewResponse
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Router /v1/network/overview [get]
+// @ID getNetworkOverview
 func APINetworkOverviewV1(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
@@ -184,8 +185,8 @@ func buildNetworkOverviewData() (*APINetworkOverviewData, time.Duration) {
 		CurrentEpoch:         uint64(currentEpoch),
 		CurrentEpochProgress: float64(100) * float64(currentSlotIndex) / float64(specs.SlotsPerEpoch),
 		SlotsPerEpoch:        specs.SlotsPerEpoch,
-		SecondsPerSlot:       uint64(specs.SecondsPerSlot.Seconds()),
-		SecondsPerEpoch:      uint64(specs.SecondsPerSlot.Seconds() * float64(specs.SlotsPerEpoch)),
+		SecondsPerSlot:       uint64(specs.SecondsPerSlot),
+		SecondsPerEpoch:      uint64(specs.SecondsPerSlot * specs.SlotsPerEpoch),
 	}
 
 	// Checkpoints
@@ -278,6 +279,6 @@ func buildNetworkOverviewData() (*APINetworkOverviewData, time.Duration) {
 	}
 
 	// Cache for SecondsPerSlot duration
-	cacheTimeout := time.Duration(specs.SecondsPerSlot.Seconds()) * time.Second
+	cacheTimeout := time.Duration(specs.SecondsPerSlot) * time.Second
 	return data, cacheTimeout
 }

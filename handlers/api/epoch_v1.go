@@ -46,6 +46,7 @@ type APIEpochResponseV1 struct {
 // @Failure 400 {object} ApiResponse "Failure"
 // @Failure 500 {object} ApiResponse "Server Error"
 // @Router /v1/epoch/{epoch} [get]
+// @ID getEpoch
 func ApiEpochV1(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 

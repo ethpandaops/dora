@@ -25,6 +25,7 @@ import (
 	"golang.org/x/crypto/ssh"
 
 	"github.com/ethpandaops/dora/clients/sshtunnel"
+	"github.com/ethpandaops/dora/utils"
 )
 
 type BeaconClient struct {
@@ -287,21 +288,20 @@ func (bc *BeaconClient) GetNodeVersion(ctx context.Context) (string, error) {
 }
 
 func (bc *BeaconClient) GetConfigSpecs(ctx context.Context) (map[string]interface{}, error) {
-	provider, isProvider := bc.clientSvc.(eth2client.SpecProvider)
-	if !isProvider {
-		return nil, fmt.Errorf("get specs not supported")
-	}
+	specs := map[string]interface{}{}
 
-	result, err := provider.Spec(ctx, &api.SpecOpts{
-		Common: api.CommonOpts{
-			Timeout: 0,
-		},
-	})
+	err := bc.getJSON(ctx, fmt.Sprintf("%s/eth/v1/config/spec", bc.endpoint), &specs)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error retrieving specs: %v", err)
 	}
 
-	return result.Data, nil
+	if specs["data"] == nil {
+		return nil, fmt.Errorf("specs data is nil")
+	}
+
+	parsedSpecs := utils.ParseSpecMap(specs["data"].(map[string]interface{}))
+
+	return parsedSpecs, nil
 }
 
 func (bc *BeaconClient) GetLatestBlockHead(ctx context.Context) (*v1.BeaconBlockHeader, error) {

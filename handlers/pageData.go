@@ -54,14 +54,14 @@ func InitPageData(w http.ResponseWriter, r *http.Request, active, path, title st
 		Lang:             "en-US",
 		Debug:            utils.Config.Frontend.Debug,
 		MainMenuItems:    createMenuItems(active),
-		ApiEnabled:       utils.Config.Api.Enabled,
+		ApiEnabled:       utils.Config.Api.Enabled && !utils.Config.Api.RequireAuth,
 	}
 
 	chainState := services.GlobalBeaconService.GetChainState()
 	if specs := chainState.GetSpecs(); specs != nil {
 		data.IsReady = true
 		data.ChainSlotsPerEpoch = specs.SlotsPerEpoch
-		data.ChainSecondsPerSlot = uint64(specs.SecondsPerSlot.Seconds())
+		data.ChainSecondsPerSlot = uint64(specs.SecondsPerSlot)
 		data.ChainGenesisTimestamp = uint64(chainState.GetGenesis().GenesisTime.Unix())
 		data.DepositContract = common.BytesToAddress(specs.DepositContractAddress).String()
 		data.Mainnet = specs.ConfigName == "mainnet"
@@ -124,6 +124,11 @@ func createMenuItems(active string) []types.MainMenuItem {
 				Label: "Blocks",
 				Path:  "/blocks",
 				Icon:  "fa-cube",
+			},
+			{
+				Label: "Blobs",
+				Path:  "/blobs",
+				Icon:  "fa-database",
 			},
 			/*
 				{

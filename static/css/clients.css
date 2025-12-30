@@ -216,3 +216,86 @@ code.enr-text-container {
 .modal-body .client-table-info td {
   max-width: calc(100vw - 300px);
 }
+
+/* Config/Spec comparison modal styling */
+.config-modal-dialog {
+  max-width: 1420px;
+  width: 1420px;
+}
+
+/* Consistent column widths for config comparison tables */
+.config-comparison-table {
+  table-layout: fixed;
+  width: 1350px;
+}
+
+.config-field-col {
+  width: 450px;
+  min-width: 450px;
+}
+
+.config-client-col {
+  width: 450px;
+  min-width: 450px;
+}
+
+.config-expected-col {
+  width: 450px;
+  min-width: 450px;
+}
+
+/* 2-column table for untracked fields */
+.config-comparison-table-2col {
+  table-layout: fixed;
+  width: 900px;
+}
+
+.config-field-col-2 {
+  width: 450px;
+  min-width: 450px;
+}
+
+.config-client-col-2 {
+  width: 450px;
+  min-width: 450px;
+}
+
+/* Mobile responsiveness - keep wide design but enable horizontal scrolling */
+@media (max-width: 768px) {
+  /* On mobile, make modal take most of screen width but allow horizontal scroll */
+  .config-modal-dialog {
+    max-width: 95vw;
+    width: 95vw;
+    margin: 0.5rem auto;
+  }
+  
+  /* Enable horizontal scrolling in modal body */
+  #configMismatchModal .modal-body,
+  #specMismatchModal .modal-body {
+    overflow-x: auto;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  /* Keep table structure intact but enable smooth scrolling */
+  #configMismatchModal .table-responsive,
+  #specMismatchModal .table-responsive {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  /* Preserve table and column widths on mobile for consistency */
+  .config-comparison-table {
+    min-width: 1350px; /* Keep original width for consistency */
+  }
+  
+  .config-comparison-table-2col {
+    min-width: 900px; /* Keep original width for consistency */
+  }
+  
+  /* Adjust modal padding for mobile */
+  #configMismatchModal .modal-body,
+  #specMismatchModal .modal-body {
+    padding: 1rem 0.5rem;
+  }
+}

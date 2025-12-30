@@ -184,15 +184,14 @@ func buildELClientsPageData(sortOrder string) (*models.ClientsELPageData, time.D
 	}
 	chainState := services.GlobalBeaconService.GetChainState()
 	specs := chainState.GetSpecs()
-	cacheTime := specs.SecondsPerSlot
+	cacheTime := time.Duration(specs.SecondsPerSlot) * time.Second
 
 	aliases := map[string]string{}
-	for _, client := range services.GlobalBeaconService.GetExecutionClients() {
-
+	for idx, client := range services.GlobalBeaconService.GetExecutionClients() {
 		nodeInfo := client.GetNodeInfo()
 		if nodeInfo != nil && nodeInfo.Enode != "" {
 			en := parseEnodeRecord(nodeInfo.Enode)
-			nodeID := "unknown"
+			nodeID := fmt.Sprintf("unknown-%v", idx)
 			if en != nil {
 				nodeID = en.ID().String()
 			}
@@ -201,7 +200,7 @@ func buildELClientsPageData(sortOrder string) (*models.ClientsELPageData, time.D
 		}
 	}
 
-	for _, client := range services.GlobalBeaconService.GetExecutionClients() {
+	for idx, client := range services.GlobalBeaconService.GetExecutionClients() {
 		lastHeadSlot, lastHeadRoot := client.GetLastHead()
 
 		peers := client.GetNodePeers()
@@ -254,7 +253,7 @@ func buildELClientsPageData(sortOrder string) (*models.ClientsELPageData, time.D
 
 		nodeInfo := client.GetNodeInfo()
 
-		peerID := "unknown"
+		peerID := fmt.Sprintf("unknown-%v", idx)
 		peerName := "unknown"
 		enoderaw := "unknown"
 		ipAddr := "unknown"
@@ -284,6 +283,7 @@ func buildELClientsPageData(sortOrder string) (*models.ClientsELPageData, time.D
 			LastRefresh:          client.GetLastEventTime(),
 			PeerID:               peerID,
 			ConfigWarnings:       client.GetConfigWarnings(),
+			ClientConfig:         buildForkConfig(client),
 		}
 
 		forkConfig := buildForkConfig(client)
@@ -401,11 +401,25 @@ func buildELClientsPageData(sortOrder string) (*models.ClientsELPageData, time.D
 	}
 	pageData.Sorting = sortOrder
 
+	// Add expected eth config from chain state
+	execChainState := services.GlobalBeaconService.GetExecutionChainState()
+	if execChainState != nil {
+		pageData.ExpectedEthConfig = buildForkConfigFromEthConfig(execChainState.GetClientConfig())
+	}
+
 	return pageData, cacheTime
 }
 
 func buildForkConfig(client *execution.Client) *models.ClientELPageDataForkConfig {
 	ethConfig := client.GetEthConfig()
+	if ethConfig == nil {
+		return nil
+	}
+
+	return buildForkConfigFromEthConfig(ethConfig)
+}
+
+func buildForkConfigFromEthConfig(ethConfig *execrpc.EthConfig) *models.ClientELPageDataForkConfig {
 	if ethConfig == nil {
 		return nil
 	}

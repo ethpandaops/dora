@@ -29,7 +29,7 @@ definitions:
         type: string
       client_type:
         type: string
-      column_indexes:
+      data_columns:
         items:
           type: integer
         type: array
@@ -60,8 +60,6 @@ definitions:
         type: integer
       status:
         type: string
-      supports_data_column:
-        type: boolean
       version:
         type: string
     type: object
@@ -1494,6 +1492,7 @@ paths:
       description: Returns a list of all connected consensus clients with their node
         information, including PeerDAS support. Sensitive information (PeerID, NodeID,
         ENR) is only included if ShowSensitivePeerInfos is enabled in the configuration.
+      operationId: getConsensusClients
       produces:
       - application/json
       responses:
@@ -1523,6 +1522,7 @@ paths:
       description: Returns a list of all connected execution clients with their node
         information. Sensitive information (IP addresses, ports, enode) is only included
         if ShowSensitivePeerInfos is enabled in the configuration.
+      operationId: getExecutionClients
       produces:
       - application/json
       responses:
@@ -1551,6 +1551,7 @@ paths:
       - application/json
       description: Returns a list of consolidation requests (EL triggered) with detailed
         information and filtering options
+      operationId: getConsolidationRequests
       parameters:
       - description: Number of consolidation requests to return (max 100)
         in: query
@@ -1633,6 +1634,7 @@ paths:
       - application/json
       description: Performs DAS Guardian scans on all available consensus client nodes
         in parallel
+      operationId: massDasGuardianScan
       parameters:
       - description: Mass scan parameters
         in: body
@@ -1675,6 +1677,7 @@ paths:
       description: Performs a comprehensive scan of a beacon node using eth-das-guardian
         to check P2P connectivity, fork digest validity, head accuracy, and custody
         information
+      operationId: scanDasGuardian
       parameters:
       - description: Node ENR to scan
         in: body
@@ -1716,6 +1719,7 @@ paths:
       - application/json
       description: Returns a list of deposits that have been successfully included
         in beacon chain blocks with comprehensive filtering
+      operationId: getDepositsIncluded
       parameters:
       - description: Number of deposits to return (max 100)
         in: query
@@ -1790,6 +1794,7 @@ paths:
       - application/json
       description: Returns a list of deposits in the queue waiting to be processed
         (Electra only) with comprehensive filtering
+      operationId: getDepositsQueue
       parameters:
       - description: Number of deposits to return (max 100)
         in: query
@@ -1847,6 +1852,7 @@ paths:
       - application/json
       description: Returns a list of deposit transactions that have been initiated
         on the execution layer with comprehensive filtering
+      operationId: getDepositsTransactions
       parameters:
       - description: Number of deposits to return (max 100)
         in: query
@@ -1923,6 +1929,7 @@ paths:
     get:
       description: Returns information for a specified epoch by the epoch number or
         an epoch tag (can be latest or finalized)
+      operationId: getEpoch
       parameters:
       - description: Epoch number, the string latest or the string finalized
         in: path
@@ -1957,6 +1964,7 @@ paths:
       consumes:
       - application/json
       description: Returns a list of epochs with detailed information and statistics
+      operationId: getEpochs
       parameters:
       - description: First epoch to display
         in: query
@@ -1994,6 +2002,7 @@ paths:
       - application/json
       description: Returns a list of MEV blocks with relay information and comprehensive
         filtering
+      operationId: getMevBlocks
       parameters:
       - description: Number of MEV blocks to return (max 100)
         in: query
@@ -2061,6 +2070,7 @@ paths:
       description: Returns comprehensive information about past, current, and future
         network forks including consensus forks and BPO (Block Parameter Override)
         forks with fork digests
+      operationId: getNetworkForks
       produces:
       - application/json
       responses:
@@ -2083,6 +2093,7 @@ paths:
       - application/json
       description: Returns comprehensive network state information including network
         info, current state, checkpoints, validator stats, queue stats, and fork information
+      operationId: getNetworkOverview
       produces:
       - application/json
       responses:
@@ -2105,6 +2116,7 @@ paths:
       - application/json
       description: Returns information about active network forks/splits, their participation
         rates, and head blocks
+      operationId: getNetworkSplits
       parameters:
       - description: 'Include stale forks with no voting weight (default: false)'
         in: query
@@ -2132,6 +2144,7 @@ paths:
       - application/json
       description: Returns a list of slashings with detailed information and filtering
         options
+      operationId: getSlashings
       parameters:
       - description: Number of slashings to return (max 100)
         in: query
@@ -2199,6 +2212,7 @@ paths:
     get:
       description: Returns detailed information about a specific slot from the database.
         Accepts either slot number or block root (0x-prefixed hex)
+      operationId: getSlot
       parameters:
       - description: Slot number or block root (0x-prefixed hex)
         in: path
@@ -2237,6 +2251,7 @@ paths:
     get:
       description: Returns a list of slots with various filtering options, sorted
         by slot number descending
+      operationId: getSlots
       parameters:
       - description: Filter by graffiti
         in: query
@@ -2345,6 +2360,7 @@ paths:
       description: This POST endpoint exists because the GET endpoint can lead to
         a "URI too long" error when searching for too many validators based on their
         pubkeys.
+      operationId: getValidatorPost
       parameters:
       - description: Up to 100 validator indicesOrPubkeys, comma separated
         in: body
@@ -2377,6 +2393,7 @@ paths:
     get:
       description: Searching for too many validators based on their pubkeys will lead
         to a "URI too long" error
+      operationId: getValidator
       parameters:
       - description: Up to 100 validator indicesOrPubkeys, comma separated
         in: path
@@ -2407,6 +2424,7 @@ paths:
   /v1/validator/{indexOrPubkey}/deposits:
     get:
       description: Get all eth1 deposits for up to 100 validators
+      operationId: getValidatorDeposits
       parameters:
       - description: Up to 100 validator indicesOrPubkeys, comma separated
         in: path
@@ -2436,6 +2454,7 @@ paths:
       - Validators
   /v1/validator/eth1/{eth1address}:
     get:
+      operationId: getValidatorByEth1Address
       parameters:
       - description: Eth1 address from which the validator deposits were sent
         in: path
@@ -2473,6 +2492,7 @@ paths:
       - Validator
   /v1/validator/withdrawalCredentials/{withdrawalCredentialsOrEth1address}:
     get:
+      operationId: getWithdrawalCredentialsValidators
       parameters:
       - description: Provide a withdrawal credential or an eth1 address with an optional
           0x prefix
@@ -2517,6 +2537,7 @@ paths:
       - application/json
       description: Returns validator names for given validator indices or public keys.
         Supports GET with query params or POST with JSON body for large lists.
+      operationId: getValidatorNames
       parameters:
       - description: Comma-separated list of validator indices (GET only)
         in: query
@@ -2559,6 +2580,7 @@ paths:
       - application/json
       description: Returns validator names for given validator indices or public keys.
         Supports GET with query params or POST with JSON body for large lists.
+      operationId: getValidatorNames
       parameters:
       - description: Comma-separated list of validator indices (GET only)
         in: query
@@ -2602,6 +2624,7 @@ paths:
       - application/json
       description: Returns a list of validators with detailed information and filtering
         options
+      operationId: getValidators
       parameters:
       - description: Number of validators to return (max 1000)
         in: query
@@ -2660,6 +2683,7 @@ paths:
       - application/json
       description: Returns aggregated validator activity statistics with grouping
         and filtering options
+      operationId: getValidatorsActivity
       parameters:
       - description: Number of groups to return (max 1000, default 50)
         in: query
@@ -2712,6 +2736,7 @@ paths:
       - application/json
       description: Returns a list of voluntary exits with detailed information and
         filtering options
+      operationId: getVoluntaryExits
       parameters:
       - description: Number of voluntary exits to return (max 100)
         in: query
@@ -2773,6 +2798,7 @@ paths:
       - application/json
       description: Returns a list of withdrawal requests (EL triggered) with detailed
         information and filtering options
+      operationId: getWithdrawalRequests
       parameters:
       - description: Number of withdrawal requests to return (max 100)
         in: query

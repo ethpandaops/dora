@@ -88,6 +88,7 @@ type APIDasGuardianEvalResult struct {
 // @Failure 429 {object} map[string]string "Rate limit exceeded"
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Router /v1/das-guardian/scan [post]
+// @ID scanDasGuardian
 func APIDasGuardianScan(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
@@ -199,13 +200,32 @@ func APIDasGuardianScan(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Map evaluation result (always present since it's not a pointer)
+		// Extract data from RangeResult and RootResult arrays
+		var downloadedResult [][]string
+		var validKzg [][]string
+		var validColumn [][]bool
+
+		// Process RangeResult
+		for _, rpcResult := range scanResult.EvalResult.RangeResult {
+			downloadedResult = append(downloadedResult, rpcResult.DownloadResult)
+			validKzg = append(validKzg, rpcResult.ValidKzg)
+			validColumn = append(validColumn, rpcResult.ValidColumn)
+		}
+
+		// Process RootResult
+		for _, rpcResult := range scanResult.EvalResult.RootResult {
+			downloadedResult = append(downloadedResult, rpcResult.DownloadResult)
+			validKzg = append(validKzg, rpcResult.ValidKzg)
+			validColumn = append(validColumn, rpcResult.ValidColumn)
+		}
+
 		result.EvalResult = &APIDasGuardianEvalResult{
 			NodeID:           scanResult.EvalResult.NodeID,
 			Slots:            scanResult.EvalResult.Slots,
 			ColumnIdx:        scanResult.EvalResult.ColumnIdx,
-			DownloadedResult: scanResult.EvalResult.DownloadedResult,
-			ValidKzg:         scanResult.EvalResult.ValidKzg,
-			ValidColumn:      scanResult.EvalResult.ValidColumn,
+			DownloadedResult: downloadedResult,
+			ValidKzg:         validKzg,
+			ValidColumn:      validColumn,
 			ValidSlot:        scanResult.EvalResult.ValidSlot,
 		}
 		if scanResult.EvalResult.Error != nil {

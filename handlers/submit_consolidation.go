@@ -97,7 +97,7 @@ func buildSubmitConsolidationPageData() (*models.SubmitConsolidationPageData, ti
 
 	pageData := &models.SubmitConsolidationPageData{
 		NetworkName:           specs.ConfigName,
-		PublicRPCUrl:          utils.Config.Frontend.PublicRPCUrl,
+		PublicRPCUrl:          utils.GetFrontendRPCUrl(),
 		RainbowkitProjectId:   utils.Config.Frontend.RainbowkitProjectId,
 		ChainId:               specs.DepositChainId,
 		ConsolidationContract: consolidationContract.String(),

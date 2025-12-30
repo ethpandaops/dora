@@ -46,18 +46,18 @@ jobs:
     name: Build UI package
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+    - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
       with:
         ref: ${{ inputs.ref }}
 
     # setup node & npm
     - name: Set up node
-      uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f # v6.1.0
       with:
         node-version: 20.x
     - name: Cache node-modules for UI package
       id: cache-npm
-      uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
       with:
         path: ./ui-package/node_modules
         key: uipackage-npm-${{ runner.os }}-${{ hashFiles('./ui-package/package-lock.json') }}
@@ -72,7 +72,7 @@ jobs:
 
     # upload artifacts
     - name: "Upload artifact: ui-package"
-      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
       with:
         path: ./ui-package/dist/*
         name: ui-package
@@ -82,15 +82,15 @@ jobs:
     needs: [build_ui_package]
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+    - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
       with:
         ref: ${{ inputs.ref }}
 
     # setup global dependencies
     - name: Set up go
-      uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+      uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6.1.0
       with:
-        go-version: 1.24.x
+        go-version: 1.25.x
     
     # setup project dependencies
     - name: Get dependencies
@@ -99,7 +99,7 @@ jobs:
 
     # download UI build artifacts
     - name: Download UI build artifacts
-      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
       with:
         name: ui-package
         path: ./ui-package/dist
@@ -113,7 +113,7 @@ jobs:
 
     # upload artifacts
     - name: "Upload artifact: explorer_linux_amd64"
-      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
       with:
         path: ./bin/*
         name: explorer_linux_amd64
@@ -123,15 +123,15 @@ jobs:
     needs: [build_ui_package]
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+    - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
       with:
         ref: ${{ inputs.ref }}
 
     # setup global dependencies
     - name: Set up go
-      uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+      uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6.1.0
       with:
-        go-version: 1.24.x
+        go-version: 1.25.x
 
     # setup cross build libs
     - name: Get cross build dependencies
@@ -146,7 +146,7 @@ jobs:
 
     # download UI build artifacts
     - name: Download UI build artifacts
-      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
       with:
         name: ui-package
         path: ./ui-package/dist
@@ -160,7 +160,7 @@ jobs:
 
     # upload artifacts
     - name: "Upload artifact: explorer_linux_arm64"
-      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
       with:
         path: ./bin/*
         name: explorer_linux_arm64
@@ -170,15 +170,15 @@ jobs:
     needs: [build_ui_package]
     runs-on: windows-latest
     steps:
-    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+    - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
       with:
         ref: ${{ inputs.ref }}
 
     # setup global dependencies
     - name: Set up go
-      uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+      uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6.1.0
       with:
-        go-version: 1.24.x
+        go-version: 1.25.x
 
     # setup project dependencies
     - name: Get dependencies
@@ -187,7 +187,7 @@ jobs:
 
     # download UI build artifacts
     - name: Download UI build artifacts
-      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
       with:
         name: ui-package
         path: ./ui-package/dist
@@ -201,7 +201,7 @@ jobs:
 
     # upload artifacts
     - name: "Upload artifact: explorer_windows_amd64"
-      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
       with:
         path: ./bin/*
         name: explorer_windows_amd64
@@ -211,15 +211,15 @@ jobs:
     needs: [build_ui_package]
     runs-on: macos-latest
     steps:
-    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+    - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
       with:
         ref: ${{ inputs.ref }}
 
     # setup global dependencies
     - name: Set up go
-      uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+      uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6.1.0
       with:
-        go-version: 1.24.x
+        go-version: 1.25.x
 
     # setup project dependencies
     - name: Get dependencies
@@ -228,7 +228,7 @@ jobs:
 
     # download UI build artifacts
     - name: Download UI build artifacts
-      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
       with:
         name: ui-package
         path: ./ui-package/dist
@@ -242,7 +242,7 @@ jobs:
 
     # upload artifacts
     - name: "Upload artifact: explorer_darwin_amd64"
-      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
       with:
         path: ./bin/*
         name: explorer_darwin_amd64
@@ -252,15 +252,15 @@ jobs:
     needs: [build_ui_package]
     runs-on: macos-latest
     steps:
-    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+    - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
       with:
         ref: ${{ inputs.ref }}
 
     # setup global dependencies
     - name: Set up go
-      uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+      uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6.1.0
       with:
-        go-version: 1.24.x
+        go-version: 1.25.x
 
     # setup project dependencies
     - name: Get dependencies
@@ -269,7 +269,7 @@ jobs:
 
     # download UI build artifacts
     - name: Download UI build artifacts
-      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
       with:
         name: ui-package
         path: ./ui-package/dist
@@ -283,7 +283,7 @@ jobs:
 
     # upload artifacts
     - name: "Upload artifact: explorer_darwin_arm64"
-      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
       with:
         path: ./bin/*
         name: explorer_darwin_arm64
@@ -294,7 +294,7 @@ jobs:
     if: ${{ inputs.docker }}
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+    - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
       with:
         ref: ${{ inputs.ref }}
 
@@ -306,19 +306,19 @@ jobs:
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
     - name: Login to Docker Hub
-      uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
+      uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
       with:
         username: ${{ secrets.DOCKERHUB_USERNAME }}
         password: ${{ secrets.DOCKERHUB_TOKEN }}
 
     # download build artifacts
     - name: Download UI build artifacts
-      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
       with:
         name: ui-package
         path: ./ui-package/dist
     - name: Download build artifacts
-      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
       with:
         name: explorer_linux_amd64
         path: ./bin
@@ -347,7 +347,7 @@ jobs:
     if: ${{ inputs.docker }}
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+    - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
       with:
         ref: ${{ inputs.ref }}
     - name: Get build version
@@ -356,23 +356,23 @@ jobs:
 
     # prepare docker
     - name: Set up Docker QEMU
-      uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392 # v3.6.0
+      uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
     - name: Login to Docker Hub
-      uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
+      uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
       with:
         username: ${{ secrets.DOCKERHUB_USERNAME }}
         password: ${{ secrets.DOCKERHUB_TOKEN }}
 
     # download build artifacts
     - name: Download UI build artifacts
-      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
       with:
         name: ui-package
         path: ./ui-package/dist
     - name: Download build artifacts
-      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
       with:
         name: explorer_linux_arm64
         path: ./bin
@@ -401,7 +401,7 @@ jobs:
     if: ${{ inputs.docker }}
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+    - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
       with:
         ref: ${{ inputs.ref }}
     - name: Get build version
@@ -412,7 +412,7 @@ jobs:
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
     - name: Login to Docker Hub
-      uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
+      uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
       with:
         username: ${{ secrets.DOCKERHUB_USERNAME }}
         password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -436,7 +436,7 @@ jobs:
       matrix:
         tag: ${{ fromJSON(inputs.additional_tags) }}
     steps:
-    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+    - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
       with:
         ref: ${{ inputs.ref }}
     - name: Get build version
@@ -447,7 +447,7 @@ jobs:
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
     - name: Login to Docker Hub
-      uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
+      uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
       with:
         username: ${{ secrets.DOCKERHUB_USERNAME }}
         password: ${{ secrets.DOCKERHUB_TOKEN }}

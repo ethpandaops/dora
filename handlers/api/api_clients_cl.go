@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
+	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/utils"
 	"github.com/sirupsen/logrus"
@@ -13,24 +15,23 @@ import (
 
 // APIConsensusClientNodeInfo represents the response structure for consensus client node info
 type APIConsensusClientNodeInfo struct {
-	ClientName         string                      `json:"client_name"`
-	ClientType         string                      `json:"client_type"`
-	Version            string                      `json:"version"`
-	PeerID             string                      `json:"peer_id"`
-	NodeID             string                      `json:"node_id"`
-	ENR                string                      `json:"enr"`
-	ENRDecoded         map[string]interface{}      `json:"enr_decoded,omitempty"`
-	HeadSlot           uint64                      `json:"head_slot"`
-	HeadRoot           string                      `json:"head_root"`
-	Status             string                      `json:"status"`
-	PeerCount          uint32                      `json:"peer_count"`
-	PeersInbound       uint32                      `json:"peers_inbound"`
-	PeersOutbound      uint32                      `json:"peers_outbound"`
-	LastRefresh        time.Time                   `json:"last_refresh"`
-	LastError          string                      `json:"last_error,omitempty"`
-	SupportsDataColumn bool                        `json:"supports_data_column"`
-	ColumnIndexes      []uint64                    `json:"column_indexes,omitempty"`
-	Metadata           *APIConsensusClientMetadata `json:"metadata,omitempty"`
+	ClientName    string                      `json:"client_name"`
+	ClientType    string                      `json:"client_type"`
+	Version       string                      `json:"version"`
+	PeerID        string                      `json:"peer_id"`
+	NodeID        string                      `json:"node_id"`
+	ENR           string                      `json:"enr"`
+	ENRDecoded    map[string]interface{}      `json:"enr_decoded,omitempty"`
+	HeadSlot      uint64                      `json:"head_slot"`
+	HeadRoot      string                      `json:"head_root"`
+	Status        string                      `json:"status"`
+	PeerCount     uint32                      `json:"peer_count"`
+	PeersInbound  uint32                      `json:"peers_inbound"`
+	PeersOutbound uint32                      `json:"peers_outbound"`
+	LastRefresh   time.Time                   `json:"last_refresh"`
+	LastError     string                      `json:"last_error,omitempty"`
+	DataColumns   []uint64                    `json:"data_columns"`
+	Metadata      *APIConsensusClientMetadata `json:"metadata,omitempty"`
 }
 
 // APIConsensusClientMetadata represents the metadata from the node identity
@@ -57,6 +58,7 @@ type APIConsensusClientsResponse struct {
 // @Failure 429 {object} map[string]string "Rate limit exceeded"
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Router /v1/clients/consensus [get]
+// @ID getConsensusClients
 func APIConsensusClients(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
@@ -85,22 +87,21 @@ func getConsensusClientNodeInfo() ([]APIConsensusClientNodeInfo, error) {
 
 	for _, client := range services.GlobalBeaconService.GetConsensusClients() {
 		clientInfo := APIConsensusClientNodeInfo{
-			ClientName:         client.GetName(),
-			ClientType:         client.GetClientType().String(),
-			Version:            client.GetVersion(),
-			PeerID:             "unknown",
-			NodeID:             "unknown",
-			ENR:                "",
-			HeadSlot:           0,
-			HeadRoot:           "",
-			Status:             client.GetStatus().String(),
-			PeerCount:          0,
-			PeersInbound:       0,
-			PeersOutbound:      0,
-			LastRefresh:        time.Now(),
-			LastError:          "",
-			SupportsDataColumn: false,
-			ColumnIndexes:      []uint64{},
+			ClientName:    client.GetName(),
+			ClientType:    client.GetClientType().String(),
+			Version:       client.GetVersion(),
+			PeerID:        "unknown",
+			NodeID:        "unknown",
+			ENR:           "",
+			HeadSlot:      0,
+			HeadRoot:      "",
+			Status:        client.GetStatus().String(),
+			PeerCount:     0,
+			PeersInbound:  0,
+			PeersOutbound: 0,
+			LastRefresh:   time.Now(),
+			LastError:     "",
+			DataColumns:   []uint64{},
 		}
 
 		// Get error information
@@ -165,11 +166,85 @@ func getConsensusClientNodeInfo() ([]APIConsensusClientNodeInfo, error) {
 			}
 		}
 
-		// Note: PeerDAS information not available in the current interface
-		// This would need to be implemented separately if needed
+		// Get PeerDAS custody columns from existing calculation
+		clientInfo.DataColumns = getPeerDASColumnsForClient(client)
 
 		clients = append(clients, clientInfo)
 	}
 
 	return clients, nil
+}
+
+// getPeerDASColumnsForClient gets the PeerDAS custody columns for a client using existing logic
+func getPeerDASColumnsForClient(client *consensus.Client) []uint64 {
+	// Get node identity
+	nodeIdentity := client.GetNodeIdentity()
+	if nodeIdentity == nil || nodeIdentity.Enr == "" {
+		return []uint64{}
+	}
+
+	// Get chain specs for PeerDAS parameters
+	chainState := services.GlobalBeaconService.GetChainState()
+	if chainState == nil {
+		return []uint64{}
+	}
+
+	specs := chainState.GetSpecs()
+	if specs == nil {
+		return []uint64{}
+	}
+
+	// Use default values if spec values are missing
+	numberOfColumns := uint64(128)
+	dataColumnSidecarSubnetCount := uint64(128)
+	custodyRequirement := uint64(4)
+
+	if specs.NumberOfColumns != nil {
+		numberOfColumns = *specs.NumberOfColumns
+	}
+	if specs.DataColumnSidecarSubnetCount != nil {
+		dataColumnSidecarSubnetCount = *specs.DataColumnSidecarSubnetCount
+	}
+	if specs.CustodyRequirement != nil {
+		custodyRequirement = *specs.CustodyRequirement
+	}
+
+	// Parse ENR to get node ID and custody group count
+	enrRecord, err := utils.DecodeENR(nodeIdentity.Enr)
+	if err != nil {
+		logrus.WithError(err).Debug("failed to decode ENR for PeerDAS calculation")
+		return []uint64{}
+	}
+
+	// Get node ID from peer ID
+	nodeID, err := utils.ConvertPeerIDStringToEnodeID(nodeIdentity.PeerID)
+	if err != nil {
+		logrus.WithError(err).Debug("failed to convert peer ID to enode ID")
+		return []uint64{}
+	}
+
+	// Get custody subnet count from ENR or use default
+	custodySubnetCount := custodyRequirement
+	enrValues := utils.GetKeyValuesFromENR(enrRecord)
+	if cgcHex, ok := enrValues["cgc"]; ok {
+		if cgcStr, ok := cgcHex.(string); ok {
+			if val, err := strconv.ParseUint(cgcStr, 0, 64); err == nil {
+				custodySubnetCount = val
+			}
+		}
+	}
+
+	// Calculate custody columns using PeerDAS utility
+	columns, err := utils.CustodyColumnsSlice(
+		nodeID,
+		custodySubnetCount,
+		numberOfColumns,
+		dataColumnSidecarSubnetCount,
+	)
+	if err != nil {
+		logrus.WithError(err).Debug("failed to calculate custody columns")
+		return []uint64{}
+	}
+
+	return columns
 }

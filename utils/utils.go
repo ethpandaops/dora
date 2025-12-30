@@ -69,3 +69,13 @@ func SyncCommitteeParticipation(bits []byte, syncCommitteeSize uint64) float64 {
 	}
 	return float64(participating) / float64(syncCommitteeSize)
 }
+
+// GetFrontendRPCUrl returns the appropriate RPC URL for the frontend.
+// If RPC proxy is enabled, it returns the local proxy endpoint.
+// Otherwise, it returns the configured public RPC URL.
+func GetFrontendRPCUrl() string {
+	if Config.RpcProxy.Enabled {
+		return "/_rpc" // Relative URL to local proxy
+	}
+	return Config.Frontend.PublicRPCUrl
+}
