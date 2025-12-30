@@ -1,0 +1,28 @@
+
+name: Build Release
+
+on:
+  push:
+    branches:
+      - 'lukas/test-build'
+#   workflow_dispatch:
+#     inputs:
+#       version:
+#         description: "Version Number ('0.x.y')"
+#         required: true
+
+permissions:
+  contents: write
+
+env:
+  DOCKER_REGISTRY: europe-docker.pkg.dev
+  DOCKER_IMAGE_NAME: lks-lz-artifacts/docker-network-dora-explorer/dora
+
+jobs:
+  build_binaries:
+    name: "Build Dora"
+    uses: ./.github/workflows/_shared-build-lukso.yaml
+    with:
+      ref: ${{ github.sha }}
+      release: "v${{ inputs.version }}"
+      container: true

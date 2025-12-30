@@ -1,0 +1,277 @@
+
+name: Reusable build workflow
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: 'The branch, tag or SHA to build'
+        required: true
+        type: string
+      release:
+        description: 'Release version tag for this build'
+        default: ''
+        required: false
+        type: string
+      container:
+        description: 'Build container images'
+        default: false
+        required: true
+        type: boolean
+      container_repository:
+        description: 'Container Registry Repository'
+        default: ''
+        required: false
+        type: string
+      container_tag_prefix:
+        description: 'Container Image Tag Prefix'
+        default: ''
+        required: false
+        type: string
+      additional_tags:
+        description: 'Additional Container Image Tags (comma-separated list, e.g. "latest,stable")'
+        default: ''
+        required: false
+        type: string
+
+env:
+  CONTAINER_REGISTRY: europe-docker.pkg.dev
+  CONTAINER_IMAGE_NAME: lks-lz-artifacts/docker-network-dora-explorer/dora
+
+# shared build jobs
+jobs:
+  build_ui_package:
+    name: Build UI package
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      with:
+        ref: ${{ inputs.ref }}
+
+    # setup node & npm
+    - name: Set up node
+      uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      with:
+        node-version: 20.x
+    - name: Cache node-modules for UI package
+      id: cache-npm
+      uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+      with:
+        path: ./ui-package/node_modules
+        key: uipackage-npm-${{ runner.os }}-${{ hashFiles('./ui-package/package-lock.json') }}
+        restore-keys: |
+          uipackage-npm-${{ runner.os }}-
+          uipackage-npm-
+    
+    # build UI package
+    - name: Build UI package
+      run: |
+        make build-ui
+
+    # upload artifacts
+    - name: "Upload artifact: ui-package"
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      with:
+        path: ./ui-package/dist/*
+        name: ui-package
+
+  build_linux_amd64_binary:
+    name: Build linux/amd64 binary
+    needs: [build_ui_package]
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      with:
+        ref: ${{ inputs.ref }}
+
+    # setup global dependencies
+    - name: Set up go
+      uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+      with:
+        go-version: 1.24.x
+    
+    # setup project dependencies
+    - name: Get dependencies
+      run: |
+        go get -v -t -d ./...
+
+    # download UI build artifacts
+    - name: Download UI build artifacts
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      with:
+        name: ui-package
+        path: ./ui-package/dist
+
+    # build binaries
+    - name: Build linux amd64 binary
+      run: |
+        make build
+      env:
+        RELEASE: ${{ inputs.release }}
+
+    # upload artifacts
+    - name: "Upload artifact: explorer_linux_amd64"
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      with:
+        path: ./bin/*
+        name: explorer_linux_amd64
+  
+  build_linux_arm64_binary:
+    name: Build linux/arm64 binary
+    needs: [build_ui_package]
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      with:
+        ref: ${{ inputs.ref }}
+
+    # setup global dependencies
+    - name: Set up go
+      uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+      with:
+        go-version: 1.24.x
+
+    # setup cross build libs
+    - name: Get cross build dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get -y install gcc-aarch64-linux-gnu
+    
+    # setup project dependencies
+    - name: Get dependencies
+      run: |
+        go get -v -t -d ./...
+
+    # download UI build artifacts
+    - name: Download UI build artifacts
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      with:
+        name: ui-package
+        path: ./ui-package/dist
+
+    # build binaries
+    - name: Build linux arm64 binary
+      run: |
+        make build GOARCH=arm64 CC=/usr/bin/aarch64-linux-gnu-gcc
+      env:
+        RELEASE: ${{ inputs.release }}
+
+    # upload artifacts
+    - name: "Upload artifact: explorer_linux_arm64"
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      with:
+        path: ./bin/*
+        name: explorer_linux_arm64
+
+  build_container_images:
+    name: Build container images (matrix)
+    needs: [build_linux_amd64_binary, build_linux_arm64_binary]
+    if: ${{ inputs.container }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [amd64, arm64]
+    steps:
+    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      with:
+        ref: ${{ inputs.ref }}
+
+    - name: Get build version
+      id: vars
+      run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+    # prepare docker and qemu only for arm64
+    - name: Set up Docker QEMU (arm64 only)
+      if: ${{ matrix.arch == 'arm64' }}
+      uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392 # v3.6.0
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+
+    - name: Authenticate to Google Cloud
+      id: gcpauth
+      uses: google-github-actions/auth@v1
+      with:
+        create_credentials_file: "true"
+        workload_identity_provider: "projects/311968610280/locations/global/workloadIdentityPools/github/providers/github"
+        service_account: "artifact-deployer@lks-lz-management.iam.gserviceaccount.com"
+
+    - name: login
+      run: |-
+        gcloud auth login --brief --cred-file="${{ steps.gcpauth.outputs.credentials_file_path }}"
+        gcloud auth configure-docker ${{ env.CONTAINER_REGISTRY }}
+
+    # download build artifacts
+    - name: Download UI build artifacts
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      with:
+        name: ui-package
+        path: ./ui-package/dist
+    - name: Download build artifacts
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      with:
+        name: explorer_linux_${{ matrix.arch }}
+        path: ./bin
+
+    # prepare environment
+    - name: Prepare build environment
+      run: |
+        chmod +x ./bin/*
+        ls -lach ./bin
+    
+    - name: Build and push ${{ matrix.arch }} container image
+      uses: docker/build-push-action@v4
+      with:
+        context: .
+        file: Dockerfile-stub
+        platforms: linux/${{ matrix.arch }}
+        push: true
+        tags: |
+          ${{ inputs.container_repository }}:${{ inputs.container_tag_prefix }}-${{ matrix.arch }}
+          ${{ inputs.container_repository }}:${{ inputs.container_tag_prefix }}-${{ steps.vars.outputs.sha_short }}-${{ matrix.arch }}
+        cache-from: type=registry,ref=${{ inputs.container_repository }}:buildcache
+        cache-to: type=registry,ref=${{ inputs.container_repository }}:buildcache,mode=max
+
+  build_multi_and_extra:
+    name: Build multi-arch image and create extra tags
+    needs: [build_container_images]
+    if: ${{ inputs.container }}
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      with:
+        ref: ${{ inputs.ref }}
+
+    - name: Get build version
+      id: vars
+      run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+    - name: Authenticate to Google Cloud
+      id: gcpauth
+      uses: google-github-actions/auth@v1
+      with:
+        create_credentials_file: "true"
+        workload_identity_provider: "projects/311968610280/locations/global/workloadIdentityPools/github/providers/github"
+        service_account: "artifact-deployer@lks-lz-management.iam.gserviceaccount.com"
+
+    - name: login
+      run: |-
+        gcloud auth login --brief --cred-file="${{ steps.gcpauth.outputs.credentials_file_path }}"
+        gcloud auth configure-docker ${{ env.CONTAINER_REGISTRY }}
+
+    - name: Create and push sha multi-arch image
+      run: |
+        docker buildx imagetools create --tag ${{ inputs.container_repository }}:${{ inputs.container_tag_prefix }}-${{ steps.vars.outputs.sha_short }} \
+          ${{ inputs.container_repository }}:${{ inputs.container_tag_prefix }}-${{ steps.vars.outputs.sha_short }}-amd64 \
+          ${{ inputs.container_repository }}:${{ inputs.container_tag_prefix }}-${{ steps.vars.outputs.sha_short }}-arm64
+
+    - name: Create additional tags (if any)
+      if: ${{ inputs.additional_tags }}
+      run: |
+        # inputs.additional_tags is expected to be a comma-separated list like "latest,stable"
+        IFS=',' read -ra TAGS <<< "${{ inputs.additional_tags }}"
+        for tag in "${TAGS[@]}"; do
+          tag_trimmed=$(echo "$tag" | xargs)
+          if [ -n "$tag_trimmed" ]; then
+            echo "Creating multi-arch tag: ${{ inputs.container_repository }}:$tag_trimmed -> sha"
+            docker buildx imagetools create --tag ${{ inputs.container_repository }}:${tag_trimmed} ${{ inputs.container_repository }}:${{ inputs.container_tag_prefix }}-${{ steps.vars.outputs.sha_short }}
+          fi
+        done
