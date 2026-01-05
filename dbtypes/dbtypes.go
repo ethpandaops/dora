@@ -58,6 +58,7 @@ type Slot struct {
 	MinExecTime           uint32     `db:"min_exec_time"`
 	MaxExecTime           uint32     `db:"max_exec_time"`
 	ExecTimes             []byte     `db:"exec_times"`
+	BlockUid              uint64     `db:"block_uid"`
 }
 
 type Epoch struct {
@@ -91,6 +92,7 @@ type OrphanedBlock struct {
 	HeaderSSZ []byte `db:"header_ssz"`
 	BlockVer  uint64 `db:"block_ver"`
 	BlockSSZ  []byte `db:"block_ssz"`
+	BlockUid  uint64 `db:"block_uid"`
 }
 
 type SlotAssignment struct {
@@ -125,6 +127,7 @@ type UnfinalizedBlock struct {
 	MinExecTime uint32                 `db:"min_exec_time"`
 	MaxExecTime uint32                 `db:"max_exec_time"`
 	ExecTimes   []byte                 `db:"exec_times"`
+	BlockUid    uint64                 `db:"block_uid"`
 }
 
 type UnfinalizedEpoch struct {
@@ -425,4 +428,73 @@ type Validator struct {
 	ActivationEpoch            int64  `db:"activation_epoch"`
 	ExitEpoch                  int64  `db:"exit_epoch"`
 	WithdrawableEpoch          int64  `db:"withdrawable_epoch"`
+}
+
+// EL Explorer types
+
+type ElBlock struct {
+	BlockUid     uint64 `db:"block_uid"`
+	Status       uint32 `db:"status"`
+	Events       uint32 `db:"events"`
+	Transactions uint32 `db:"transactions"`
+	Transfers    uint32 `db:"transfers"`
+}
+
+type ElTransaction struct {
+	BlockUid    uint64 `db:"block_uid"`
+	TxHash      []byte `db:"tx_hash"`
+	From        []byte `db:"tx_from"`
+	To          []byte `db:"tx_to"`
+	Reverted    bool   `db:"reverted"`
+	Amount      []byte `db:"amount"`
+	Data        []byte `db:"data"`
+	GasUsed     uint64 `db:"gas_used"`
+	BlockNumber uint64 `db:"block_number"`
+}
+
+type ElTxEvent struct {
+	BlockUid   uint64 `db:"block_uid"`
+	TxHash     []byte `db:"tx_hash"`
+	EventIndex uint32 `db:"event_index"`
+	Source     []byte `db:"source"`
+	Topic1     []byte `db:"topic1"`
+	Topic2     []byte `db:"topic2"`
+	Topic3     []byte `db:"topic3"`
+	Topic4     []byte `db:"topic4"`
+	Topic5     []byte `db:"topic5"`
+	Data       []byte `db:"data"`
+}
+
+type ElAccount struct {
+	Address    []byte `db:"address"`
+	Funder     []byte `db:"funder"`
+	Funded     uint64 `db:"funded"`
+	IsContract bool   `db:"is_contract"`
+}
+
+type ElToken struct {
+	ID       uint64 `db:"id"`
+	Contract []byte `db:"contract"`
+	Name     string `db:"name"`
+	Symbol   string `db:"symbol"`
+	Decimals uint8  `db:"decimals"`
+}
+
+type ElBalance struct {
+	Account    []byte  `db:"account"`
+	TokenID    uint64  `db:"token_id"`
+	Balance    float64 `db:"balance"`
+	BalanceRaw []byte  `db:"balance_raw"`
+	Updated    uint64  `db:"updated"`
+}
+
+type ElTokenTransfer struct {
+	BlockUid  uint64  `db:"block_uid"`
+	TxHash    []byte  `db:"tx_hash"`
+	TxIdx     uint32  `db:"tx_idx"`
+	TokenID   uint64  `db:"token_id"`
+	From      []byte  `db:"tx_from"`
+	To        []byte  `db:"tx_to"`
+	Amount    float64 `db:"amount"`
+	AmountRaw []byte  `db:"amount_raw"`
 }

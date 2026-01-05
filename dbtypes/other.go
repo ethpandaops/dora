@@ -27,6 +27,7 @@ type BlockHead struct {
 	Root       []byte `db:"root"`
 	ParentRoot []byte `db:"parent_root"`
 	ForkId     uint64 `db:"fork_id"`
+	BlockUid   uint64 `db:"block_uid"`
 }
 
 type AssignedBlob struct {
@@ -205,4 +206,49 @@ type ValidatorFilter struct {
 	OrderBy ValidatorOrder
 	Limit   uint64
 	Offset  uint64
+}
+
+// EL Explorer filters
+
+type ElTransactionFilter struct {
+	From       []byte
+	To         []byte
+	Reverted   *bool
+	MinGasUsed *uint64
+	MaxGasUsed *uint64
+}
+
+type ElTxEventFilter struct {
+	TxHash []byte
+	Source []byte
+	Topic1 []byte
+	Topic2 []byte
+	Topic3 []byte
+}
+
+type ElAccountFilter struct {
+	Funder     []byte
+	IsContract *bool
+	MinFunded  uint64
+	MaxFunded  uint64
+}
+
+type ElTokenFilter struct {
+	Contract []byte
+	Name     string
+	Symbol   string
+}
+
+type ElBalanceFilter struct {
+	TokenID    *uint64
+	MinBalance *float64
+	MaxBalance *float64
+}
+
+type ElTokenTransferFilter struct {
+	TokenID   *uint64
+	From      []byte
+	To        []byte
+	MinAmount *float64
+	MaxAmount *float64
 }

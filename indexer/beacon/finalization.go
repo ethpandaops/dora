@@ -239,7 +239,7 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 			if canonicalBlock == nil {
 				blockHead := db.GetBlockHeadByRoot((*parentRoot)[:])
 				if blockHead != nil {
-					canonicalBlock = newBlock(indexer.dynSsz, phase0.Root(blockHead.Root), phase0.Slot(blockHead.Slot))
+					canonicalBlock = newBlock(indexer.dynSsz, phase0.Root(blockHead.Root), phase0.Slot(blockHead.Slot), blockHead.BlockUid)
 					canonicalBlock.isInFinalizedDb = true
 					parentRootVal := phase0.Root(blockHead.ParentRoot)
 					canonicalBlock.parentRoot = &parentRootVal
@@ -249,7 +249,7 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 				dependentHead, _ := LoadBeaconHeader(client.getContext(), client, *parentRoot)
 
 				if dependentHead != nil {
-					canonicalBlock = newBlock(indexer.dynSsz, phase0.Root(*parentRoot), phase0.Slot(dependentHead.Message.Slot))
+					canonicalBlock = newBlock(indexer.dynSsz, phase0.Root(*parentRoot), phase0.Slot(dependentHead.Message.Slot), 0)
 					canonicalBlock.isInFinalizedDb = true
 					parentRootVal := phase0.Root(dependentHead.Message.ParentRoot)
 					canonicalBlock.parentRoot = &parentRootVal

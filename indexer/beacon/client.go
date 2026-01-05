@@ -355,7 +355,7 @@ func (c *Client) processBlock(slot phase0.Slot, root phase0.Root, header *phase0
 		// known block or a new orphaned block
 
 		// don't add to cache, process this block right after loading the details
-		block = newBlock(c.indexer.dynSsz, root, slot)
+		block = newBlock(c.indexer.dynSsz, root, slot, 0)
 
 		dbBlockHead := db.GetBlockHeadByRoot(root[:])
 		if dbBlockHead != nil {
@@ -468,6 +468,7 @@ func (c *Client) processBlock(slot phase0.Slot, root phase0.Root, header *phase0
 
 		block.isInUnfinalizedDb = true
 		c.indexer.blockCache.latestBlock = block
+		c.indexer.blockDispatcher.Fire(block)
 	}
 
 	if slot < finalizedSlot && !block.isInFinalizedDb {

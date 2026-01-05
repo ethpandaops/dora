@@ -106,7 +106,7 @@ func (cache *forkCache) processBlock(block *Block) error {
 					continue
 				}
 
-				otherChildren = append(otherChildren, newBlock(cache.indexer.dynSsz, phase0.Root(child.Root), phase0.Slot(child.Slot)))
+				otherChildren = append(otherChildren, newBlock(cache.indexer.dynSsz, phase0.Root(child.Root), phase0.Slot(child.Slot), child.BlockUid))
 			}
 		}
 

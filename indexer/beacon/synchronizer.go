@@ -1,6 +1,7 @@
 package beacon
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"math/rand/v2"
@@ -284,6 +285,8 @@ func (s *synchronizer) syncEpoch(syncEpoch phase0.Epoch, client *Client, lastTry
 	canonicalBlockHashes := [][]byte{}
 	nextEpochCanonicalBlocks := []*Block{}
 
+	blockHeads := db.GetBlockHeadBySlotRange(uint64(firstSlot), uint64(lastSlot))
+
 	var firstBlock *Block
 	for slot := firstSlot; slot <= lastSlot; slot++ {
 		if s.cachedSlot < slot || s.cachedBlocks[slot] == nil {
@@ -298,7 +301,18 @@ func (s *synchronizer) syncEpoch(syncEpoch phase0.Epoch, client *Client, lastTry
 				return false, nil
 			}
 
-			block := newBlock(s.indexer.dynSsz, blockRoot, slot)
+			blockUid := uint64(slot) << 16
+			for _, blockHead := range blockHeads {
+				if bytes.Equal(blockHead.Root, blockRoot[:]) {
+					blockUid = blockHead.BlockUid
+					break
+				}
+				if blockHead.BlockUid >= blockUid {
+					blockUid = blockHead.BlockUid + 1
+				}
+			}
+
+			block := newBlock(s.indexer.dynSsz, blockRoot, slot, blockUid)
 			block.SetHeader(blockHeader)
 
 			if slot > 0 {
