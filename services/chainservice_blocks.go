@@ -637,6 +637,13 @@ func (bs *ChainService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageIdx
 				}
 			}
 
+			// filter by specific block UID
+			if filter.BlockUid != nil {
+				if block.BlockUID != *filter.BlockUid {
+					continue
+				}
+			}
+
 			isCanonical := bs.beaconIndexer.IsCanonicalBlockByHead(block, lastCanonicalBlock)
 			if isCanonical {
 				lastCanonicalBlock = block
@@ -790,6 +797,11 @@ func (bs *ChainService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageIdx
 
 		// If filtering by block root, don't check missing (missing blocks don't have roots)
 		if len(filter.BlockRoot) > 0 {
+			shouldCheckMissing = false
+		}
+
+		// If filtering by block UID, don't check missing (missing blocks don't have UIDs)
+		if filter.BlockUid != nil {
 			shouldCheckMissing = false
 		}
 

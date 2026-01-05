@@ -13,6 +13,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethpandaops/dora/types"
 	"github.com/prysmaticlabs/go-bitfield"
 	"golang.org/x/text/language"
@@ -46,6 +47,16 @@ func FormatFloat(num float64, precision int) string {
 	s := strings.TrimRight(strings.TrimRight(p.Sprintf(f, num), "0"), ".")
 	r := []rune(p.Sprintf(s, num))
 	return string(r)
+}
+
+// FormatTokenAmount formats a token amount with full precision, trimming trailing zeros
+func FormatTokenAmount(amount float64, symbol string) string {
+	// Format with high precision and trim trailing zeros
+	formatted := strings.TrimRight(strings.TrimRight(fmt.Sprintf("%.18f", amount), "0"), ".")
+	if symbol != "" {
+		return formatted + " " + symbol
+	}
+	return formatted
 }
 
 func FormatBaseFee(weiValue uint64) template.HTML {
@@ -379,6 +390,111 @@ func FormatEthTransactionLink(hash []byte, width uint64) template.HTML {
 func FormatEthAddress(address []byte) template.HTML {
 	caption := common.BytesToAddress(address).String()
 	return template.HTML(caption)
+}
+
+// FormatEthAddressShort formats an Ethereum address in short form: 0xcBA360df…60ebC2d32
+// The bytes parameter specifies how many bytes (hex char pairs) to show on each side (default 4)
+func FormatEthAddressShort(address []byte, byteCount ...int) template.HTML {
+	if len(address) == 0 {
+		return template.HTML("")
+	}
+
+	fullAddr := common.BytesToAddress(address).Hex()
+	showBytes := 4 // default: 4 bytes = 8 hex chars
+	if len(byteCount) > 0 && byteCount[0] > 0 {
+		showBytes = byteCount[0]
+	}
+
+	// Hex chars to show on each side (2 hex chars per byte)
+	hexChars := showBytes * 2
+
+	// fullAddr is like "0x1234567890abcdef1234567890abcdef12345678" (42 chars)
+	// We want "0x" + first hexChars + "…" + last hexChars
+	if len(fullAddr) <= 2+hexChars*2+1 {
+		return template.HTML(template.HTMLEscapeString(fullAddr))
+	}
+
+	return template.HTML(template.HTMLEscapeString(fullAddr[:2+hexChars]) + "…" + template.HTMLEscapeString(fullAddr[len(fullAddr)-hexChars:]))
+}
+
+// FormatEthAddressShortLink formats an Ethereum address as a short link with optional contract icon
+// isContract: whether to show the contract icon prefix
+// byteCount: how many bytes (hex char pairs) to show on each side (default 4)
+func FormatEthAddressShortLink(address []byte, isContract bool, byteCount ...int) template.HTML {
+	if len(address) == 0 {
+		return template.HTML(`<span class="text-muted">-</span>`)
+	}
+
+	fullAddr := common.BytesToAddress(address).Hex()
+	showBytes := 4 // default: 4 bytes = 8 hex chars
+	if len(byteCount) > 0 && byteCount[0] > 0 {
+		showBytes = byteCount[0]
+	}
+
+	// Format the short address
+	hexChars := showBytes * 2
+	shortAddr := fullAddr
+	if len(fullAddr) > 2+hexChars*2+1 {
+		shortAddr = fullAddr[:2+hexChars] + "…" + fullAddr[len(fullAddr)-hexChars:]
+	}
+
+	// Build the HTML
+	var result string
+	if isContract {
+		result = `<i class="fas fa-file-contract text-muted" style="font-size:0.8rem;margin-right:0.2rem" data-bs-toggle="tooltip" title="Contract"></i>`
+	}
+	result += fmt.Sprintf(`<a href="/address/%s" data-bs-toggle="tooltip" title="%s">%s</a>`,
+		fullAddr, fullAddr, shortAddr)
+
+	return template.HTML(result)
+}
+
+// FormatHexBytes formats a byte slice as a 0x-prefixed hex string
+func FormatHexBytes(data []byte) string {
+	if len(data) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("0x%x", data)
+}
+
+// FormatEthAddressFull returns the full 0x-prefixed Ethereum address from bytes
+func FormatEthAddressFull(address []byte) string {
+	if len(address) == 0 {
+		return ""
+	}
+	return common.BytesToAddress(address).Hex()
+}
+
+// FormatEthHashShort formats an Ethereum hash (tx hash, block hash) in short form
+func FormatEthHashShort(hash []byte, byteCount ...int) template.HTML {
+	if len(hash) == 0 {
+		return template.HTML("")
+	}
+
+	fullHash := fmt.Sprintf("0x%x", hash)
+	showBytes := 6 // default: 6 bytes = 12 hex chars for hashes
+	if len(byteCount) > 0 && byteCount[0] > 0 {
+		showBytes = byteCount[0]
+	}
+
+	hexChars := showBytes * 2
+	if len(fullHash) <= 2+hexChars*2+1 {
+		return template.HTML(template.HTMLEscapeString(fullHash))
+	}
+
+	return template.HTML(template.HTMLEscapeString(fullHash[:2+hexChars]) + "…" + template.HTMLEscapeString(fullHash[len(fullHash)-hexChars:]))
+}
+
+// FormatContractCreationLink formats a link for a contract creation transaction
+// Shows "New Contract" badge linking to the created contract address
+func FormatContractCreationLink(fromAddr []byte, nonce uint64) template.HTML {
+	createdAddr := crypto.CreateAddress(common.BytesToAddress(fromAddr), nonce)
+	fullAddr := createdAddr.Hex()
+	shortAddr := fullAddr[:2+8] + "…" + fullAddr[len(fullAddr)-8:]
+
+	return template.HTML(fmt.Sprintf(
+		`<i class="fas fa-plus-circle text-success" style="font-size:0.8rem;margin-right:0.2rem" data-bs-toggle="tooltip" title="Contract Creation"></i><a href="/address/%s" data-bs-toggle="tooltip" title="%s">%s</a>`,
+		fullAddr, fullAddr, shortAddr))
 }
 
 func FormatValidator(index uint64, name string) template.HTML {

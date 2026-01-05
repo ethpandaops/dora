@@ -1,0 +1,92 @@
+{{ define "erc20Transfers" }}
+<div class="card">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead>
+          <tr>
+            <th>Txn Hash</th>
+            <th data-timecol="duration">Age</th>
+            <th>From</th>
+            <th></th>
+            <th>To</th>
+            <th>Value</th>
+            <th>Token Name</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{ if gt .ERC20TransferCount 0 }}
+            {{ range .ERC20Transfers }}
+              <tr>
+                <td class="text-monospace">
+                  <a href="/tx/{{ formatHexBytes .TxHash }}" data-bs-toggle="tooltip" title="{{ formatHexBytes .TxHash }}">{{ formatEthHashShort .TxHash 6 }}</a>
+                </td>
+                <td data-timer="{{ .BlockTime.Unix }}">
+                  <span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ .BlockTime }}">{{ formatRecentTimeShort .BlockTime }}</span>
+                </td>
+                <td class="text-monospace">
+                  {{ formatEthAddressShortLink .FromAddr .FromIsContract }}
+                </td>
+                <td class="text-center">
+                  {{ if .IsOutgoing }}
+                    <span class="badge text-bg-warning">OUT</span>
+                  {{ else }}
+                    <span class="badge text-bg-success">IN</span>
+                  {{ end }}
+                </td>
+                <td class="text-monospace">
+                  {{ formatEthAddressShortLink .ToAddr .ToIsContract }}
+                </td>
+                <td>{{ formatTokenAmount .Amount .TokenSymbol }}</td>
+                <td>
+                  <a href="/address/{{ formatEthAddressFull .Contract }}" data-bs-toggle="tooltip" title="{{ formatEthAddressFull .Contract }}">
+                    {{ if .TokenName }}{{ .TokenName }}{{ else if .TokenSymbol }}{{ .TokenSymbol }}{{ else }}Unknown{{ end }}
+                  </a>
+                </td>
+              </tr>
+            {{ end }}
+          {{ else }}
+            <tr>
+              <td colspan="7" class="text-center py-4 text-muted">
+                <i class="fas fa-coins fa-2x mb-2"></i>
+                <br>No ERC20 transfers found
+              </td>
+            </tr>
+          {{ end }}
+        </tbody>
+      </table>
+    </div>
+
+    {{ if gt .ERC20TotalPages 1 }}
+    <div class="card-footer d-flex justify-content-between align-items-center">
+      <div>
+        Showing {{ formatAddCommas .ERC20FirstItem }} - {{ formatAddCommas .ERC20LastItem }} of {{ formatAddCommas .ERC20TransferCount }}
+      </div>
+      <nav aria-label="ERC20 transfer pagination">
+        <ul class="pagination pagination-sm mb-0">
+          {{ if gt .ERC20PageIndex 1 }}
+            <li class="page-item">
+              <a class="page-link" href="?v=erc20&p=1&c={{ .ERC20PageSize }}">&laquo;</a>
+            </li>
+            <li class="page-item">
+              <a class="page-link" href="?v=erc20&p={{ subUI64 .ERC20PageIndex 1 }}&c={{ .ERC20PageSize }}">&lsaquo;</a>
+            </li>
+          {{ end }}
+          <li class="page-item disabled">
+            <span class="page-link">{{ .ERC20PageIndex }} / {{ .ERC20TotalPages }}</span>
+          </li>
+          {{ if lt .ERC20PageIndex .ERC20TotalPages }}
+            <li class="page-item">
+              <a class="page-link" href="?v=erc20&p={{ addUI64 .ERC20PageIndex 1 }}&c={{ .ERC20PageSize }}">&rsaquo;</a>
+            </li>
+            <li class="page-item">
+              <a class="page-link" href="?v=erc20&p={{ .ERC20TotalPages }}&c={{ .ERC20PageSize }}">&raquo;</a>
+            </li>
+          {{ end }}
+        </ul>
+      </nav>
+    </div>
+    {{ end }}
+  </div>
+</div>
+{{ end }}

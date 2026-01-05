@@ -1,0 +1,25 @@
+{{ define "page" }}
+  <div class="container mt-2">
+    <div class="d-md-flex py-2 justify-content-md-between">
+      <h1 class="h4 mb-1 mb-md-0"><i class="fas fa-wallet mx-2"></i> Address</h1>
+      <nav aria-label="breadcrumb">
+        <ol class="breadcrumb font-size-1 mb-0" style="padding:0; background-color:transparent;">
+          <li class="breadcrumb-item"><a href="/" title="Home">Home</a></li>
+          <li class="breadcrumb-item active" aria-current="page">Address</li>
+        </ol>
+      </nav>
+    </div>
+
+    <div class="card mt-2">
+      <div class="card-body text-center py-5">
+        <i class="fas fa-exclamation-triangle fa-3x text-warning mb-3"></i>
+        <h4>Invalid Address</h4>
+        <p class="text-muted">The address format is invalid. Please check and try again.</p>
+      </div>
+    </div>
+  </div>
+{{ end }}
+{{ define "js" }}
+{{ end }}
+{{ define "css" }}
+{{ end }}

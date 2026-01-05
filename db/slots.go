@@ -358,6 +358,11 @@ func GetFilteredSlots(filter *dbtypes.BlockFilter, firstSlot uint64, offset uint
 		fmt.Fprintf(&sql, ` AND slots.root = $%v `, argIdx)
 		args = append(args, filter.BlockRoot)
 	}
+	if filter.BlockUid != nil {
+		argIdx++
+		fmt.Fprintf(&sql, ` AND slots.block_uid = $%v `, argIdx)
+		args = append(args, *filter.BlockUid)
+	}
 	if filter.ProposerIndex != nil {
 		argIdx++
 		fmt.Fprintf(&sql, ` AND slots.proposer = $%v `, argIdx)

@@ -456,6 +456,9 @@ type ElTransaction struct {
 	TipPrice    float64 `db:"tip_price"`
 	BlobCount   uint32  `db:"blob_count"`
 	BlockNumber uint64  `db:"block_number"`
+	TxType      uint8   `db:"tx_type"`
+	TxIndex     uint32  `db:"tx_index"`
+	MaxFee      float64 `db:"max_fee"`
 }
 
 type ElTxEvent struct {

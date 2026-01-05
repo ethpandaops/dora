@@ -157,6 +157,12 @@ func (ctx *txProcessingContext) processTransaction(
 		tipPrice = weiToFloat(tx.GasTipCap(), 9)
 	}
 
+	// Max fee for EIP-1559+ transactions
+	maxFee := 0.0
+	if tx.GasFeeCap() != nil {
+		maxFee = weiToFloat(tx.GasFeeCap(), 9)
+	}
+
 	// Count blobs (EIP-4844)
 	blobCount := uint32(len(tx.BlobHashes()))
 
@@ -176,6 +182,9 @@ func (ctx *txProcessingContext) processTransaction(
 		TipPrice:    tipPrice,
 		BlobCount:   blobCount,
 		BlockNumber: receipt.BlockNumber.Uint64(),
+		TxType:      tx.Type(),
+		TxIndex:     uint32(receipt.TransactionIndex),
+		MaxFee:      maxFee,
 	}
 
 	// Store pending accounts for resolving IDs at commit time

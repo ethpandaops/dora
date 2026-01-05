@@ -46,6 +46,9 @@ CREATE TABLE IF NOT EXISTS public."el_transactions" (
     tip_price DOUBLE PRECISION NOT NULL DEFAULT 0,
     blob_count INT NOT NULL DEFAULT 0,
     block_number BIGINT NOT NULL DEFAULT 0,
+    tx_type SMALLINT NOT NULL DEFAULT 0,
+    tx_index INT NOT NULL DEFAULT 0,
+    max_fee DOUBLE PRECISION NOT NULL DEFAULT 0,
     CONSTRAINT el_transactions_pkey PRIMARY KEY (block_uid, tx_hash)
 );
 

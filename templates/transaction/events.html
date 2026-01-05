@@ -1,0 +1,83 @@
+{{ define "events" }}
+<div class="card mt-0 border-top-0 rounded-top-0">
+  <div class="card-body p-0">
+    {{ if gt (len .Events) 0 }}
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead>
+          <tr>
+            <th class="px-3 text-center" style="width: 60px;">#</th>
+            <th class="px-3">Event Data</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{ range .Events }}
+          <tr>
+            <td class="px-3 text-center align-top">
+              <span class="badge text-bg-secondary">{{ .EventIndex }}</span>
+            </td>
+            <td class="px-3 py-2">
+              <div class="mb-2">
+                <span class="text-muted small me-2">Address:</span>
+                {{ formatEthAddressShortLink .SourceAddr .SourceIsContract }}
+                {{ if gt (len .SourceAddr) 0 }}
+                <i class="fa fa-copy text-muted ms-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ formatEthAddressFull .SourceAddr }}" style="font-size: 0.75rem;"></i>
+                {{ end }}
+              </div>
+              {{ if gt (len .Topic0) 0 }}
+              <div class="mb-1">
+                <span class="badge text-bg-primary me-1" style="font-size: 0.7rem;">Topic 0</span>
+                <span class="text-monospace text-break small">{{ formatHexBytes .Topic0 }}</span>
+                <i class="fa fa-copy text-muted ms-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ formatHexBytes .Topic0 }}" style="font-size: 0.75rem;"></i>
+              </div>
+              {{ end }}
+              {{ if gt (len .Topic1) 0 }}
+              <div class="mb-1">
+                <span class="badge text-bg-secondary me-1" style="font-size: 0.7rem;">Topic 1</span>
+                <span class="text-monospace text-break small">{{ formatHexBytes .Topic1 }}</span>
+                <i class="fa fa-copy text-muted ms-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ formatHexBytes .Topic1 }}" style="font-size: 0.75rem;"></i>
+              </div>
+              {{ end }}
+              {{ if gt (len .Topic2) 0 }}
+              <div class="mb-1">
+                <span class="badge text-bg-secondary me-1" style="font-size: 0.7rem;">Topic 2</span>
+                <span class="text-monospace text-break small">{{ formatHexBytes .Topic2 }}</span>
+                <i class="fa fa-copy text-muted ms-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ formatHexBytes .Topic2 }}" style="font-size: 0.75rem;"></i>
+              </div>
+              {{ end }}
+              {{ if gt (len .Topic3) 0 }}
+              <div class="mb-1">
+                <span class="badge text-bg-secondary me-1" style="font-size: 0.7rem;">Topic 3</span>
+                <span class="text-monospace text-break small">{{ formatHexBytes .Topic3 }}</span>
+                <i class="fa fa-copy text-muted ms-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ formatHexBytes .Topic3 }}" style="font-size: 0.75rem;"></i>
+              </div>
+              {{ end }}
+              {{ if gt (len .Topic4) 0 }}
+              <div class="mb-1">
+                <span class="badge text-bg-secondary me-1" style="font-size: 0.7rem;">Topic 4</span>
+                <span class="text-monospace text-break small">{{ formatHexBytes .Topic4 }}</span>
+                <i class="fa fa-copy text-muted ms-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ formatHexBytes .Topic4 }}" style="font-size: 0.75rem;"></i>
+              </div>
+              {{ end }}
+              {{ if gt (len .Data) 0 }}
+              <div>
+                <span class="badge text-bg-info me-1" style="font-size: 0.7rem;">Data</span>
+                <span class="text-monospace text-break small">{{ formatHexBytes .Data }}</span>
+                <i class="fa fa-copy text-muted ms-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ formatHexBytes .Data }}" style="font-size: 0.75rem;"></i>
+              </div>
+              {{ end }}
+            </td>
+          </tr>
+          {{ end }}
+        </tbody>
+      </table>
+    </div>
+    {{ else }}
+    <div class="p-4 text-center text-muted">
+      <i class="fas fa-inbox fa-2x mb-2"></i>
+      <p>No events found for this transaction</p>
+    </div>
+    {{ end }}
+  </div>
+</div>
+{{ end }}

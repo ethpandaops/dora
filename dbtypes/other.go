@@ -63,6 +63,7 @@ type BlockFilter struct {
 	MaxBlobCount         *uint64
 	Slot                 *uint64  // Filter by specific slot number
 	BlockRoot            []byte   // Filter by specific block root
+	BlockUid             *uint64  // Filter by specific block UID (slot << 16 | unique_index)
 	ForkIds              []uint64 // Filter by fork IDs
 }
 

@@ -173,3 +173,31 @@ func DeleteElToken(id uint64, dbTx *sqlx.Tx) error {
 	_, err := dbTx.Exec("DELETE FROM el_tokens WHERE id = $1", id)
 	return err
 }
+
+// GetElTokensByIDs retrieves multiple tokens by their IDs in a single query.
+func GetElTokensByIDs(ids []uint64) ([]*dbtypes.ElToken, error) {
+	if len(ids) == 0 {
+		return []*dbtypes.ElToken{}, nil
+	}
+
+	var sql strings.Builder
+	args := make([]any, len(ids))
+
+	fmt.Fprint(&sql, "SELECT id, contract, name, symbol, decimals, name_synced FROM el_tokens WHERE id IN (")
+	for i, id := range ids {
+		if i > 0 {
+			fmt.Fprint(&sql, ", ")
+		}
+		fmt.Fprintf(&sql, "$%d", i+1)
+		args[i] = id
+	}
+	fmt.Fprint(&sql, ")")
+
+	tokens := []*dbtypes.ElToken{}
+	err := ReaderDb.Select(&tokens, sql.String(), args...)
+	if err != nil {
+		logger.Errorf("Error while fetching el tokens by IDs: %v", err)
+		return nil, err
+	}
+	return tokens, nil
+}

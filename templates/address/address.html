@@ -1,0 +1,198 @@
+{{ define "page" }}
+  <div class="container mt-2">
+    <div class="d-md-flex py-2 justify-content-md-between">
+      <h1 class="h4 mb-1 mb-md-0"><i class="fas fa-wallet mx-2"></i> Address {{ formatEthAddressFull .Address }}</h1>
+      <nav aria-label="breadcrumb">
+        <ol class="breadcrumb font-size-1 mb-0" style="padding:0; background-color:transparent;">
+          <li class="breadcrumb-item"><a href="/" title="Home">Home</a></li>
+          <li class="breadcrumb-item active" aria-current="page">Address</li>
+        </ol>
+      </nav>
+    </div>
+
+    <div class="row mt-2">
+      <div class="col-lg-8">
+        <div class="card">
+          <div class="card-body px-0 py-3">
+            <div class="row border-bottom p-2 mx-0">
+              <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="The address">Address:</span></div>
+              <div class="col-md-9 text-monospace">
+                {{ formatEthAddressFull .Address }}
+                <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ formatEthAddressFull .Address }}"></i>
+              </div>
+            </div>
+            {{ if .IsContract }}
+            <div class="row border-bottom p-2 mx-0">
+              <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Type of address">Type:</span></div>
+              <div class="col-md-9">
+                <span class="badge rounded-pill text-bg-info">Contract</span>
+              </div>
+            </div>
+            {{ end }}
+            <div class="row border-bottom p-2 mx-0">
+              <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Current ETH balance">Balance:</span></div>
+              <div class="col-md-9">
+                {{ formatFloat .EthBalance 6 }} ETH
+              </div>
+            </div>
+            {{ if gt .FirstFunded 0 }}
+            <div class="row border-bottom p-2 mx-0">
+              <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="First seen in slot">First Seen:</span></div>
+              <div class="col-md-9">
+                Slot <a href="/slot/{{ .FirstFunded }}">{{ formatAddCommas .FirstFunded }}</a>
+              </div>
+            </div>
+            {{ end }}
+            {{ if gt (len .FundedBy) 0 }}
+            <div class="row border-bottom p-2 mx-0">
+              <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Address that first funded this account">Funded By:</span></div>
+              <div class="col-md-9 text-monospace">
+                {{ formatEthAddressShortLink .FundedBy .FundedByIsContract }}
+              </div>
+            </div>
+            {{ end }}
+            {{ if not .IsContract }}
+            <div class="row p-2 mx-0">
+              <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Latest transaction nonce">Nonce:</span></div>
+              <div class="col-md-9">
+                {{ formatAddCommas .LastNonce }}
+              </div>
+            </div>
+            {{ end }}
+          </div>
+        </div>
+      </div>
+
+      <div class="col-lg-4 mt-3 mt-lg-0">
+        <div class="card">
+          <div class="card-header">
+            <h5 class="mb-0"><i class="fas fa-coins me-2"></i>Token Holdings ({{ .TokenBalanceCount }})</h5>
+          </div>
+          <div class="card-body p-0" style="max-height: 300px; overflow-y: auto;">
+            {{ if gt (len .TokenBalances) 0 }}
+            <table class="table table-sm table-hover mb-0">
+              <tbody>
+                {{ range .TokenBalances }}
+                <tr>
+                  <td class="text-truncate" style="max-width: 150px;">
+                    {{ if .Symbol }}{{ .Symbol }}{{ else if .Name }}{{ .Name }}{{ else }}Unknown{{ end }}
+                  </td>
+                  <td class="text-end">{{ formatFloat .Balance 4 }}</td>
+                </tr>
+                {{ end }}
+              </tbody>
+            </table>
+            {{ else }}
+            <div class="p-3 text-center text-muted">
+              No token holdings
+            </div>
+            {{ end }}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <ul class="nav nav-tabs justify-content-start mt-3" id="tab" role="tablist">
+      <li class="nav-item">
+        <a class="nav-link{{ if eq .TabView "transactions" }} active{{ end }}" id="transactions-tab" data-lazy-tab="transactions" data-bs-toggle="tab" data-bs-target="#transactions" href="?v=transactions" role="tab" aria-controls="transactions" aria-selected="{{ if eq .TabView "transactions" }}true{{ else }}false{{ end }}">
+          <i class="fa fa-exchange-alt me-2"></i> Transactions
+        </a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link{{ if eq .TabView "erc20" }} active{{ end }}" id="erc20-tab" data-lazy-tab="erc20" data-bs-toggle="tab" data-bs-target="#erc20" href="?v=erc20" role="tab" aria-controls="erc20" aria-selected="{{ if eq .TabView "erc20" }}true{{ else }}false{{ end }}">
+          <i class="fa fa-coins me-2"></i> Token Transfers (ERC20)
+        </a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link{{ if eq .TabView "nft" }} active{{ end }}" id="nft-tab" data-lazy-tab="nft" data-bs-toggle="tab" data-bs-target="#nft" href="?v=nft" role="tab" aria-controls="nft" aria-selected="{{ if eq .TabView "nft" }}true{{ else }}false{{ end }}">
+          <i class="fa fa-image me-2"></i> NFT Transfers
+        </a>
+      </li>
+    </ul>
+
+    <div class="tab-content" id="tabContent">
+      <div class="tab-pane fade{{ if eq .TabView "transactions" }} show active{{ end }}" id="transactions" role="tabpanel" aria-labelledby="transactions-tab" data-loaded="{{ if eq .TabView "transactions" }}true{{ else }}false{{ end }}">
+        {{ if eq .TabView "transactions" }}
+          {{ template "transactions" . }}
+        {{ end }}
+      </div>
+      <div class="tab-pane fade{{ if eq .TabView "erc20" }} show active{{ end }}" id="erc20" role="tabpanel" aria-labelledby="erc20-tab" data-loaded="{{ if eq .TabView "erc20" }}true{{ else }}false{{ end }}">
+        {{ if eq .TabView "erc20" }}
+          {{ template "erc20Transfers" . }}
+        {{ end }}
+      </div>
+      <div class="tab-pane fade{{ if eq .TabView "nft" }} show active{{ end }}" id="nft" role="tabpanel" aria-labelledby="nft-tab" data-loaded="{{ if eq .TabView "nft" }}true{{ else }}false{{ end }}">
+        {{ if eq .TabView "nft" }}
+          {{ template "nftTransfers" . }}
+        {{ end }}
+      </div>
+    </div>
+  </div>
+{{ end }}
+{{ define "lazyPage" }}
+  {{ if eq .TabView "transactions" }}
+    {{ template "transactions" . }}
+  {{ else if eq .TabView "erc20" }}
+    {{ template "erc20Transfers" . }}
+  {{ else if eq .TabView "nft" }}
+    {{ template "nftTransfers" . }}
+  {{ else }}
+    Unknown tab
+  {{ end }}
+{{ end }}
+{{ define "js" }}
+<script type="text/javascript">
+  $(document).ready(function() {
+    var currentTab = "{{ .TabView }}";
+    var addressStr = "{{ formatEthAddressFull .Address }}";
+
+    // Handle tab selection
+    const tabLinks = document.querySelectorAll('a[data-lazy-tab]');
+    Array.from(tabLinks).forEach(el => {
+      el.addEventListener('click', onTabSelected);
+    });
+
+    function onTabSelected(event) {
+      event.preventDefault();
+      var tabId = event.target.getAttribute('data-lazy-tab');
+      var tabEl = document.getElementById(tabId);
+      currentTab = tabId;
+
+      if (!$(tabEl).data("loaded")) {
+        loadTabContent(tabEl, event.target.getAttribute('href'));
+      }
+
+      var tab = new bootstrap.Tab(event.target);
+      tab.show();
+
+      window.history.replaceState(null, document.title, "/address/" + addressStr + event.target.getAttribute('href'));
+    }
+
+    function loadTabContent(tabEl, url) {
+      $(tabEl).html('<div class="text-center p-4"><i class="fas fa-spinner fa-spin fa-2x"></i></div>');
+      $.get(url + "&lazy=true", function(data) {
+        $(tabEl).html(data);
+        $(tabEl).data("loaded", true);
+        bindPaginationLinks(tabEl);
+        explorer.initControls();
+      });
+    }
+
+    // Handle pagination within tabs via AJAX
+    function bindPaginationLinks(container) {
+      $(container).find('.pagination a.page-link').on('click', function(event) {
+        event.preventDefault();
+        var url = $(this).attr('href');
+        var tabEl = $(this).closest('.tab-pane');
+        loadTabContent(tabEl, url);
+        window.history.replaceState(null, document.title, "/address/" + addressStr + url);
+      });
+    }
+
+    // Bind pagination for initially loaded tab
+    bindPaginationLinks($('#' + currentTab));
+  });
+</script>
+{{ end }}
+{{ define "css" }}
+{{ end }}

@@ -19,11 +19,11 @@ func InsertElTransactions(txs []*dbtypes.ElTransaction, dbTx *sqlx.Tx) error {
 			dbtypes.DBEnginePgsql:  "INSERT INTO el_transactions ",
 			dbtypes.DBEngineSqlite: "INSERT OR REPLACE INTO el_transactions ",
 		}),
-		"(block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw, data, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number)",
+		"(block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw, data, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number, tx_type, tx_index, max_fee)",
 		" VALUES ",
 	)
 	argIdx := 0
-	fieldCount := 15
+	fieldCount := 18
 
 	args := make([]any, len(txs)*fieldCount)
 	for i, tx := range txs {
@@ -54,10 +54,13 @@ func InsertElTransactions(txs []*dbtypes.ElTransaction, dbTx *sqlx.Tx) error {
 		args[argIdx+12] = tx.TipPrice
 		args[argIdx+13] = tx.BlobCount
 		args[argIdx+14] = tx.BlockNumber
+		args[argIdx+15] = tx.TxType
+		args[argIdx+16] = tx.TxIndex
+		args[argIdx+17] = tx.MaxFee
 		argIdx += fieldCount
 	}
 	fmt.Fprint(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
-		dbtypes.DBEnginePgsql:  " ON CONFLICT (block_uid, tx_hash) DO UPDATE SET from_id = excluded.from_id, to_id = excluded.to_id, nonce = excluded.nonce, reverted = excluded.reverted, amount = excluded.amount, amount_raw = excluded.amount_raw, data = excluded.data, gas_limit = excluded.gas_limit, gas_used = excluded.gas_used, gas_price = excluded.gas_price, tip_price = excluded.tip_price, blob_count = excluded.blob_count, block_number = excluded.block_number",
+		dbtypes.DBEnginePgsql:  " ON CONFLICT (block_uid, tx_hash) DO UPDATE SET from_id = excluded.from_id, to_id = excluded.to_id, nonce = excluded.nonce, reverted = excluded.reverted, amount = excluded.amount, amount_raw = excluded.amount_raw, data = excluded.data, gas_limit = excluded.gas_limit, gas_used = excluded.gas_used, gas_price = excluded.gas_price, tip_price = excluded.tip_price, blob_count = excluded.blob_count, block_number = excluded.block_number, tx_type = excluded.tx_type, tx_index = excluded.tx_index, max_fee = excluded.max_fee",
 		dbtypes.DBEngineSqlite: "",
 	}))
 
@@ -70,7 +73,7 @@ func InsertElTransactions(txs []*dbtypes.ElTransaction, dbTx *sqlx.Tx) error {
 
 func GetElTransaction(blockUid uint64, txHash []byte) (*dbtypes.ElTransaction, error) {
 	tx := &dbtypes.ElTransaction{}
-	err := ReaderDb.Get(tx, "SELECT block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw, data, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number FROM el_transactions WHERE block_uid = $1 AND tx_hash = $2", blockUid, txHash)
+	err := ReaderDb.Get(tx, "SELECT block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw, data, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number, tx_type, tx_index, max_fee FROM el_transactions WHERE block_uid = $1 AND tx_hash = $2", blockUid, txHash)
 	if err != nil {
 		return nil, err
 	}
@@ -79,7 +82,7 @@ func GetElTransaction(blockUid uint64, txHash []byte) (*dbtypes.ElTransaction, e
 
 func GetElTransactionsByHash(txHash []byte) ([]*dbtypes.ElTransaction, error) {
 	txs := []*dbtypes.ElTransaction{}
-	err := ReaderDb.Select(&txs, "SELECT block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw, data, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number FROM el_transactions WHERE tx_hash = $1 ORDER BY block_uid DESC", txHash)
+	err := ReaderDb.Select(&txs, "SELECT block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw, data, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number, tx_type, tx_index, max_fee FROM el_transactions WHERE tx_hash = $1 ORDER BY block_uid DESC", txHash)
 	if err != nil {
 		return nil, err
 	}
@@ -88,7 +91,7 @@ func GetElTransactionsByHash(txHash []byte) ([]*dbtypes.ElTransaction, error) {
 
 func GetElTransactionsByBlockUid(blockUid uint64) ([]*dbtypes.ElTransaction, error) {
 	txs := []*dbtypes.ElTransaction{}
-	err := ReaderDb.Select(&txs, "SELECT block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw, data, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number FROM el_transactions WHERE block_uid = $1", blockUid)
+	err := ReaderDb.Select(&txs, "SELECT block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw, data, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number, tx_type, tx_index, max_fee FROM el_transactions WHERE block_uid = $1", blockUid)
 	if err != nil {
 		return nil, err
 	}
@@ -106,7 +109,7 @@ func GetElTransactionsByAccountID(accountID uint64, isFrom bool, offset uint64, 
 
 	fmt.Fprint(&sql, `
 	WITH cte AS (
-		SELECT block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw, data, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number
+		SELECT block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw, data, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number, tx_type, tx_index, max_fee
 		FROM el_transactions
 		WHERE `, column, ` = $1
 	)`)
@@ -128,7 +131,10 @@ func GetElTransactionsByAccountID(accountID uint64, isFrom bool, offset uint64, 
 		0 AS gas_price,
 		0 AS tip_price,
 		0 AS blob_count,
-		0 AS block_number
+		0 AS block_number,
+		0 AS tx_type,
+		0 AS tx_index,
+		0 AS max_fee
 	FROM cte
 	UNION ALL SELECT * FROM (
 	SELECT * FROM cte
@@ -163,7 +169,7 @@ func GetElTransactionsFiltered(offset uint64, limit uint32, filter *dbtypes.ElTr
 
 	fmt.Fprint(&sql, `
 	WITH cte AS (
-		SELECT block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw, data, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number
+		SELECT block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw, data, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number, tx_type, tx_index, max_fee
 		FROM el_transactions
 	`)
 
@@ -213,7 +219,10 @@ func GetElTransactionsFiltered(offset uint64, limit uint32, filter *dbtypes.ElTr
 		0 AS gas_price,
 		0 AS tip_price,
 		0 AS blob_count,
-		0 AS block_number
+		0 AS block_number,
+		0 AS tx_type,
+		0 AS tx_index,
+		0 AS max_fee
 	FROM cte
 	UNION ALL SELECT * FROM (
 	SELECT * FROM cte

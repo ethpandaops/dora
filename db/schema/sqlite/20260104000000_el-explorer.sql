@@ -40,6 +40,9 @@ CREATE TABLE IF NOT EXISTS "el_transactions" (
     tip_price REAL NOT NULL DEFAULT 0,
     blob_count INTEGER NOT NULL DEFAULT 0,
     block_number INTEGER NOT NULL DEFAULT 0,
+    tx_type INTEGER NOT NULL DEFAULT 0,
+    tx_index INTEGER NOT NULL DEFAULT 0,
+    max_fee REAL NOT NULL DEFAULT 0,
     CONSTRAINT el_transactions_pkey PRIMARY KEY (block_uid, tx_hash)
 );
 

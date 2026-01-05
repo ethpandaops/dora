@@ -200,3 +200,31 @@ func DeleteElAccount(id uint64, dbTx *sqlx.Tx) error {
 	_, err := dbTx.Exec("DELETE FROM el_accounts WHERE id = $1", id)
 	return err
 }
+
+// GetElAccountsByIDs retrieves multiple accounts by their IDs in a single query.
+func GetElAccountsByIDs(ids []uint64) ([]*dbtypes.ElAccount, error) {
+	if len(ids) == 0 {
+		return []*dbtypes.ElAccount{}, nil
+	}
+
+	var sql strings.Builder
+	args := make([]any, len(ids))
+
+	fmt.Fprint(&sql, "SELECT id, address, funder_id, funded, is_contract, last_nonce, last_block_uid FROM el_accounts WHERE id IN (")
+	for i, id := range ids {
+		if i > 0 {
+			fmt.Fprint(&sql, ", ")
+		}
+		fmt.Fprintf(&sql, "$%d", i+1)
+		args[i] = id
+	}
+	fmt.Fprint(&sql, ")")
+
+	accounts := []*dbtypes.ElAccount{}
+	err := ReaderDb.Select(&accounts, sql.String(), args...)
+	if err != nil {
+		logger.Errorf("Error while fetching el accounts by IDs: %v", err)
+		return nil, err
+	}
+	return accounts, nil
+}

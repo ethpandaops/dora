@@ -92,7 +92,7 @@ func GetElTxEventsByBlockUid(blockUid uint64) ([]*dbtypes.ElTxEvent, error) {
 
 func GetElTxEventsByBlockUidAndTxHash(blockUid uint64, txHash []byte) ([]*dbtypes.ElTxEvent, error) {
 	events := []*dbtypes.ElTxEvent{}
-	err := ReaderDb.Select(&events, "SELECT block_uid, tx_hash, event_index, source_id, topic1, topic2, topic3, topic4, topic5, data FROM el_tx_events WHERE block_uid = $1 AND tx_hash = $2 ORDER BY event_index ASC", blockUid, txHash)
+	err := ReaderDb.Select(&events, "SELECT block_uid, tx_hash, event_index, source_id, topic1, topic2, topic3, topic4, topic5, data FROM el_tx_events WHERE block_uid = $1 AND tx_hash = $2 ORDER BY event_index DESC", blockUid, txHash)
 	if err != nil {
 		return nil, err
 	}

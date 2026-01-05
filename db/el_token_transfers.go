@@ -90,6 +90,15 @@ func GetElTokenTransfersByBlockUid(blockUid uint64) ([]*dbtypes.ElTokenTransfer,
 	return transfers, nil
 }
 
+func GetElTokenTransfersByBlockUidAndTxHash(blockUid uint64, txHash []byte) ([]*dbtypes.ElTokenTransfer, error) {
+	transfers := []*dbtypes.ElTokenTransfer{}
+	err := ReaderDb.Select(&transfers, "SELECT block_uid, tx_hash, tx_idx, token_id, token_type, token_index, from_id, to_id, amount, amount_raw FROM el_token_transfers WHERE block_uid = $1 AND tx_hash = $2 ORDER BY tx_idx DESC", blockUid, txHash)
+	if err != nil {
+		return nil, err
+	}
+	return transfers, nil
+}
+
 func GetElTokenTransfersByTokenID(tokenID uint64, offset uint64, limit uint32) ([]*dbtypes.ElTokenTransfer, uint64, error) {
 	var sql strings.Builder
 	args := []any{tokenID}
