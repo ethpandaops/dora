@@ -122,6 +122,10 @@ mevIndexer:
       url: https://boost-relay.flashbots.net/
   refreshInterval: 10m
 
+executionIndexer:
+  enabled: false # enable execution data indexing
+  retention: 4368h # 4368 hours = 6 months
+
 # Filtered RPC Proxy configuration (for deployments without public RPC access)
 rpcProxy:
   enabled: false # Enable the filtered RPC proxy at /_rpc

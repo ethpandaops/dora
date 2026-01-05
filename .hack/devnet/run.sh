@@ -147,6 +147,9 @@ indexer:
   cachePersistenceDelay: 8
   disableIndexWriter: false
   syncEpochCooldown: 1
+executionIndexer:
+  enabled: true
+  retention: 4368h
 database:
   engine: "sqlite"
   sqlite:

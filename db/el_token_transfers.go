@@ -19,11 +19,11 @@ func InsertElTokenTransfers(transfers []*dbtypes.ElTokenTransfer, dbTx *sqlx.Tx)
 			dbtypes.DBEnginePgsql:  "INSERT INTO el_token_transfers ",
 			dbtypes.DBEngineSqlite: "INSERT OR REPLACE INTO el_token_transfers ",
 		}),
-		"(block_uid, tx_hash, tx_idx, token_id, tx_from, tx_to, amount, amount_raw)",
+		"(block_uid, tx_hash, tx_idx, token_id, token_type, token_index, tx_from, tx_to, amount, amount_raw)",
 		" VALUES ",
 	)
 	argIdx := 0
-	fieldCount := 8
+	fieldCount := 10
 
 	args := make([]any, len(transfers)*fieldCount)
 	for i, transfer := range transfers {
@@ -43,14 +43,16 @@ func InsertElTokenTransfers(transfers []*dbtypes.ElTokenTransfer, dbTx *sqlx.Tx)
 		args[argIdx+1] = transfer.TxHash
 		args[argIdx+2] = transfer.TxIdx
 		args[argIdx+3] = transfer.TokenID
-		args[argIdx+4] = transfer.From
-		args[argIdx+5] = transfer.To
-		args[argIdx+6] = transfer.Amount
-		args[argIdx+7] = transfer.AmountRaw
+		args[argIdx+4] = transfer.TokenType
+		args[argIdx+5] = transfer.TokenIndex
+		args[argIdx+6] = transfer.From
+		args[argIdx+7] = transfer.To
+		args[argIdx+8] = transfer.Amount
+		args[argIdx+9] = transfer.AmountRaw
 		argIdx += fieldCount
 	}
 	fmt.Fprint(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
-		dbtypes.DBEnginePgsql:  " ON CONFLICT (block_uid, tx_hash, tx_idx) DO UPDATE SET token_id = excluded.token_id, tx_from = excluded.tx_from, tx_to = excluded.tx_to, amount = excluded.amount, amount_raw = excluded.amount_raw",
+		dbtypes.DBEnginePgsql:  " ON CONFLICT (block_uid, tx_hash, tx_idx) DO UPDATE SET token_id = excluded.token_id, token_type = excluded.token_type, token_index = excluded.token_index, tx_from = excluded.tx_from, tx_to = excluded.tx_to, amount = excluded.amount, amount_raw = excluded.amount_raw",
 		dbtypes.DBEngineSqlite: "",
 	}))
 
@@ -63,7 +65,7 @@ func InsertElTokenTransfers(transfers []*dbtypes.ElTokenTransfer, dbTx *sqlx.Tx)
 
 func GetElTokenTransfer(blockUid uint64, txHash []byte, txIdx uint32) (*dbtypes.ElTokenTransfer, error) {
 	transfer := &dbtypes.ElTokenTransfer{}
-	err := ReaderDb.Get(transfer, "SELECT block_uid, tx_hash, tx_idx, token_id, tx_from, tx_to, amount, amount_raw FROM el_token_transfers WHERE block_uid = $1 AND tx_hash = $2 AND tx_idx = $3", blockUid, txHash, txIdx)
+	err := ReaderDb.Get(transfer, "SELECT block_uid, tx_hash, tx_idx, token_id, token_type, token_index, tx_from, tx_to, amount, amount_raw FROM el_token_transfers WHERE block_uid = $1 AND tx_hash = $2 AND tx_idx = $3", blockUid, txHash, txIdx)
 	if err != nil {
 		return nil, err
 	}
@@ -72,7 +74,7 @@ func GetElTokenTransfer(blockUid uint64, txHash []byte, txIdx uint32) (*dbtypes.
 
 func GetElTokenTransfersByTxHash(txHash []byte) ([]*dbtypes.ElTokenTransfer, error) {
 	transfers := []*dbtypes.ElTokenTransfer{}
-	err := ReaderDb.Select(&transfers, "SELECT block_uid, tx_hash, tx_idx, token_id, tx_from, tx_to, amount, amount_raw FROM el_token_transfers WHERE tx_hash = $1 ORDER BY block_uid DESC, tx_idx ASC", txHash)
+	err := ReaderDb.Select(&transfers, "SELECT block_uid, tx_hash, tx_idx, token_id, token_type, token_index, tx_from, tx_to, amount, amount_raw FROM el_token_transfers WHERE tx_hash = $1 ORDER BY block_uid DESC, tx_idx ASC", txHash)
 	if err != nil {
 		return nil, err
 	}
@@ -81,7 +83,7 @@ func GetElTokenTransfersByTxHash(txHash []byte) ([]*dbtypes.ElTokenTransfer, err
 
 func GetElTokenTransfersByBlockUid(blockUid uint64) ([]*dbtypes.ElTokenTransfer, error) {
 	transfers := []*dbtypes.ElTokenTransfer{}
-	err := ReaderDb.Select(&transfers, "SELECT block_uid, tx_hash, tx_idx, token_id, tx_from, tx_to, amount, amount_raw FROM el_token_transfers WHERE block_uid = $1 ORDER BY tx_hash ASC, tx_idx ASC", blockUid)
+	err := ReaderDb.Select(&transfers, "SELECT block_uid, tx_hash, tx_idx, token_id, token_type, token_index, tx_from, tx_to, amount, amount_raw FROM el_token_transfers WHERE block_uid = $1 ORDER BY tx_hash ASC, tx_idx ASC", blockUid)
 	if err != nil {
 		return nil, err
 	}
@@ -94,7 +96,7 @@ func GetElTokenTransfersByTokenID(tokenID uint64, offset uint64, limit uint32) (
 
 	fmt.Fprint(&sql, `
 	WITH cte AS (
-		SELECT block_uid, tx_hash, tx_idx, token_id, tx_from, tx_to, amount, amount_raw
+		SELECT block_uid, tx_hash, tx_idx, token_id, token_type, token_index, tx_from, tx_to, amount, amount_raw
 		FROM el_token_transfers
 		WHERE token_id = $1
 	)`)
@@ -106,6 +108,8 @@ func GetElTokenTransfersByTokenID(tokenID uint64, offset uint64, limit uint32) (
 		null AS tx_hash,
 		0 AS tx_idx,
 		0 AS token_id,
+		0 AS token_type,
+		null AS token_index,
 		null AS tx_from,
 		null AS tx_to,
 		0 AS amount,
@@ -148,7 +152,7 @@ func GetElTokenTransfersByAddress(address []byte, isFrom bool, offset uint64, li
 
 	fmt.Fprint(&sql, `
 	WITH cte AS (
-		SELECT block_uid, tx_hash, tx_idx, token_id, tx_from, tx_to, amount, amount_raw
+		SELECT block_uid, tx_hash, tx_idx, token_id, token_type, token_index, tx_from, tx_to, amount, amount_raw
 		FROM el_token_transfers
 		WHERE `, column, ` = $1
 	)`)
@@ -161,6 +165,8 @@ func GetElTokenTransfersByAddress(address []byte, isFrom bool, offset uint64, li
 		null AS tx_hash,
 		0 AS tx_idx,
 		0 AS token_id,
+		0 AS token_type,
+		null AS token_index,
 		null AS tx_from,
 		null AS tx_to,
 		0 AS amount,
@@ -198,7 +204,7 @@ func GetElTokenTransfersFiltered(offset uint64, limit uint32, filter *dbtypes.El
 
 	fmt.Fprint(&sql, `
 	WITH cte AS (
-		SELECT block_uid, tx_hash, tx_idx, token_id, tx_from, tx_to, amount, amount_raw
+		SELECT block_uid, tx_hash, tx_idx, token_id, token_type, token_index, tx_from, tx_to, amount, amount_raw
 		FROM el_token_transfers
 	`)
 
@@ -238,6 +244,8 @@ func GetElTokenTransfersFiltered(offset uint64, limit uint32, filter *dbtypes.El
 		null AS tx_hash,
 		0 AS tx_idx,
 		0 AS token_id,
+		0 AS token_type,
+		null AS token_index,
 		null AS tx_from,
 		null AS tx_to,
 		0 AS amount,

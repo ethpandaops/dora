@@ -2,6 +2,7 @@ package execution
 
 import (
 	"math/rand/v2"
+	"slices"
 	"sort"
 
 	"github.com/attestantio/go-eth2-client/spec/phase0"
@@ -67,8 +68,27 @@ func (ictx *IndexerCtx) GetFinalizedClients(clientType execution.ClientType) []*
 	return finalizedClients
 }
 
-// sortClients sorts clients by priority, but randomizes the order for equal priority
-func (ictx *IndexerCtx) sortClients(clientA *execution.Client, clientB *execution.Client, preferArchive bool) bool {
+// getFinalizedClients returns a list of clients that have reached the finalized el block
+func (ictx *IndexerCtx) GetClientsOnFork(forkId beacon.ForkKey, clientType execution.ClientType) []*execution.Client {
+	clients := make([]*execution.Client, 0)
+	for _, client := range ictx.ExecutionPool.GetReadyEndpoints(clientType) {
+		_, blockHash := client.GetLastHead()
+		for _, block := range ictx.BeaconIndexer.GetBlocksByExecutionBlockHash(phase0.Hash32(blockHash)) {
+
+			parentForkIds := ictx.BeaconIndexer.GetParentForkIds(block.GetForkId())
+			if !slices.Contains(parentForkIds, forkId) {
+				continue
+			}
+			clients = append(clients, client)
+		}
+	}
+
+	return clients
+}
+
+// SortClients sorts clients by priority, but randomizes the order for equal priority.
+// Returns true if clientA should come before clientB.
+func (ictx *IndexerCtx) SortClients(clientA *execution.Client, clientB *execution.Client, preferArchive bool) bool {
 	clientAInfo := ictx.executionClients[clientA]
 	clientBInfo := ictx.executionClients[clientB]
 
@@ -130,7 +150,7 @@ func (ictx *IndexerCtx) GetForksWithClients(clientType execution.ClientType) []*
 		forkWithClients.Canonical = canonicalHead != nil && canonicalHead.GetForkId() == forkWithClients.ForkId
 
 		sort.Slice(forkWithClients.Clients, func(i, j int) bool {
-			return ictx.sortClients(forkWithClients.Clients[i], forkWithClients.Clients[j], true)
+			return ictx.SortClients(forkWithClients.Clients[i], forkWithClients.Clients[j], true)
 		})
 	}
 

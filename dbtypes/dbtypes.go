@@ -489,12 +489,14 @@ type ElBalance struct {
 }
 
 type ElTokenTransfer struct {
-	BlockUid  uint64  `db:"block_uid"`
-	TxHash    []byte  `db:"tx_hash"`
-	TxIdx     uint32  `db:"tx_idx"`
-	TokenID   uint64  `db:"token_id"`
-	From      []byte  `db:"tx_from"`
-	To        []byte  `db:"tx_to"`
-	Amount    float64 `db:"amount"`
-	AmountRaw []byte  `db:"amount_raw"`
+	BlockUid   uint64  `db:"block_uid"`
+	TxHash     []byte  `db:"tx_hash"`
+	TxIdx      uint32  `db:"tx_idx"`
+	TokenID    uint64  `db:"token_id"`
+	TokenType  uint8   `db:"token_type"`
+	TokenIndex []byte  `db:"token_index"`
+	From       []byte  `db:"tx_from"`
+	To         []byte  `db:"tx_to"`
+	Amount     float64 `db:"amount"`
+	AmountRaw  []byte  `db:"amount_raw"`
 }

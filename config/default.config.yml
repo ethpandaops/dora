@@ -111,6 +111,10 @@ indexer:
   # maximum number of parallel beacon state requests (might cause high memory usage)
   maxParallelValidatorSetRequests: 1
 
+executionIndexer:
+  enabled: false # enable execution data indexing
+  retention: 4368h # 4368 hours = 6 months
+
 # database configuration
 database:
   engine: "sqlite" # sqlite / pgsql

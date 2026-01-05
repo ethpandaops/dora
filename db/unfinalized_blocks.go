@@ -144,7 +144,7 @@ func StreamUnfinalizedBlocks(slot uint64, cb func(block *dbtypes.UnfinalizedBloc
 		block := dbtypes.UnfinalizedBlock{}
 		err := rows.Scan(
 			&block.Root, &block.Slot, &block.HeaderVer, &block.HeaderSSZ, &block.BlockVer, &block.BlockSSZ, &block.Status, &block.ForkId, &block.RecvDelay,
-			&block.MinExecTime, &block.MaxExecTime, &block.ExecTimes,
+			&block.MinExecTime, &block.MaxExecTime, &block.ExecTimes, &block.BlockUid,
 		)
 		if err != nil {
 			logger.Errorf("Error while scanning unfinalized block: %v", err)

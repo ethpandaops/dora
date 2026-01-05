@@ -133,6 +133,8 @@ CREATE TABLE IF NOT EXISTS public."el_token_transfers" (
     tx_hash bytea NOT NULL,
     tx_idx INT NOT NULL,
     token_id BIGINT NOT NULL,
+    token_type SMALLINT NOT NULL DEFAULT 0,
+    token_index bytea NULL,
     tx_from bytea NOT NULL,
     tx_to bytea NOT NULL,
     amount DOUBLE PRECISION NOT NULL DEFAULT 0,
@@ -151,6 +153,14 @@ CREATE INDEX IF NOT EXISTS "el_token_transfers_tx_hash_idx"
 CREATE INDEX IF NOT EXISTS "el_token_transfers_token_id_idx"
     ON public."el_token_transfers"
     ("token_id" ASC NULLS FIRST);
+
+CREATE INDEX IF NOT EXISTS "el_token_transfers_token_type_idx"
+    ON public."el_token_transfers"
+    ("token_type" ASC NULLS FIRST);
+
+CREATE INDEX IF NOT EXISTS "el_token_transfers_token_index_idx"
+    ON public."el_token_transfers"
+    ("token_index" ASC NULLS FIRST);
 
 CREATE INDEX IF NOT EXISTS "el_token_transfers_from_idx"
     ON public."el_token_transfers"

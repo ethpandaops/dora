@@ -126,6 +126,8 @@ CREATE TABLE IF NOT EXISTS "el_token_transfers" (
     tx_hash BLOB NOT NULL,
     tx_idx INTEGER NOT NULL,
     token_id INTEGER NOT NULL,
+    token_type INTEGER NOT NULL DEFAULT 0,
+    token_index BLOB NULL,
     tx_from BLOB NOT NULL,
     tx_to BLOB NOT NULL,
     amount REAL NOT NULL DEFAULT 0,
@@ -144,6 +146,14 @@ CREATE INDEX IF NOT EXISTS "el_token_transfers_tx_hash_idx"
 CREATE INDEX IF NOT EXISTS "el_token_transfers_token_id_idx"
     ON "el_token_transfers"
     ("token_id" ASC);
+
+CREATE INDEX IF NOT EXISTS "el_token_transfers_token_type_idx"
+    ON "el_token_transfers"
+    ("token_type" ASC);
+
+CREATE INDEX IF NOT EXISTS "el_token_transfers_token_index_idx"
+    ON "el_token_transfers"
+    ("token_index" ASC);
 
 CREATE INDEX IF NOT EXISTS "el_token_transfers_from_idx"
     ON "el_token_transfers"

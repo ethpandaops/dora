@@ -23,6 +23,7 @@ import (
 	"github.com/ethpandaops/dora/indexer/beacon"
 	execindexer "github.com/ethpandaops/dora/indexer/execution"
 	syscontracts "github.com/ethpandaops/dora/indexer/execution/system_contracts"
+	"github.com/ethpandaops/dora/indexer/execution/txindexer"
 	"github.com/ethpandaops/dora/indexer/mevrelay"
 	"github.com/ethpandaops/dora/indexer/snooper"
 	"github.com/ethpandaops/dora/types"
@@ -41,6 +42,7 @@ type ChainService struct {
 	withdrawalIndexer    *syscontracts.WithdrawalIndexer
 	mevRelayIndexer      *mevrelay.MevIndexer
 	snooperManager       *snooper.SnooperManager
+	txIndexer            *txindexer.TxIndexer
 	started              bool
 }
 
@@ -310,6 +312,14 @@ func (cs *ChainService) StartService() error {
 	cs.consolidationIndexer = syscontracts.NewConsolidationIndexer(executionIndexerCtx)
 	cs.withdrawalIndexer = syscontracts.NewWithdrawalIndexer(executionIndexerCtx)
 
+	// start EL transaction indexer if enabled
+	if utils.Config.ExecutionIndexer.Enabled {
+		cs.txIndexer = txindexer.NewTxIndexer(cs.logger.WithField("service", "tx-indexer"), executionIndexerCtx)
+		if err := cs.txIndexer.Start(); err != nil {
+			cs.logger.WithError(err).Error("failed to start tx indexer")
+		}
+	}
+
 	// start MEV relay indexer
 	cs.mevRelayIndexer.StartUpdater()
 
@@ -319,6 +329,11 @@ func (cs *ChainService) StartService() error {
 func (bs *ChainService) StopService() {
 	if !bs.started {
 		return
+	}
+
+	if bs.txIndexer != nil {
+		bs.txIndexer.Stop()
+		bs.txIndexer = nil
 	}
 
 	if bs.beaconIndexer != nil {
@@ -338,6 +353,10 @@ func (bs *ChainService) StopService() {
 
 func (bs *ChainService) GetBeaconIndexer() *beacon.Indexer {
 	return bs.beaconIndexer
+}
+
+func (bs *ChainService) GetTxIndexer() *txindexer.TxIndexer {
+	return bs.txIndexer
 }
 
 func (bs *ChainService) GetConsolidationIndexer() *syscontracts.ConsolidationIndexer {
