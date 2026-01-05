@@ -33,12 +33,18 @@ CREATE TABLE IF NOT EXISTS public."el_blocks" (
 CREATE TABLE IF NOT EXISTS public."el_transactions" (
     block_uid BIGINT NOT NULL,
     tx_hash bytea NOT NULL,
-    tx_from bytea NOT NULL,
-    tx_to bytea NULL,
+    from_id BIGINT NOT NULL,
+    to_id BIGINT NOT NULL,
+    nonce BIGINT NOT NULL DEFAULT 0,
     reverted bool NOT NULL DEFAULT FALSE,
-    amount bytea NOT NULL,
+    amount DOUBLE PRECISION NOT NULL DEFAULT 0,
+    amount_raw bytea NOT NULL,
     data bytea NULL,
-    gas_used BIGINT NOT NULL,
+    gas_limit BIGINT NOT NULL DEFAULT 0,
+    gas_used BIGINT NOT NULL DEFAULT 0,
+    gas_price DOUBLE PRECISION NOT NULL DEFAULT 0,
+    tip_price DOUBLE PRECISION NOT NULL DEFAULT 0,
+    blob_count INT NOT NULL DEFAULT 0,
     block_number BIGINT NOT NULL DEFAULT 0,
     CONSTRAINT el_transactions_pkey PRIMARY KEY (block_uid, tx_hash)
 );
@@ -53,18 +59,18 @@ CREATE INDEX IF NOT EXISTS "el_transactions_tx_hash_idx"
 
 CREATE INDEX IF NOT EXISTS "el_transactions_from_idx"
     ON public."el_transactions"
-    ("tx_from" ASC NULLS FIRST);
+    ("from_id" ASC NULLS FIRST);
 
 CREATE INDEX IF NOT EXISTS "el_transactions_to_idx"
     ON public."el_transactions"
-    ("tx_to" ASC NULLS FIRST);
+    ("to_id" ASC NULLS FIRST);
 
 -- Table for EL transaction events (logs)
 CREATE TABLE IF NOT EXISTS public."el_tx_events" (
     block_uid BIGINT NOT NULL,
     tx_hash bytea NOT NULL,
     event_index INT NOT NULL,
-    source bytea NOT NULL,
+    source_id BIGINT NOT NULL,
     topic1 bytea NOT NULL,
     topic2 bytea NULL,
     topic3 bytea NULL,
@@ -82,18 +88,29 @@ CREATE INDEX IF NOT EXISTS "el_tx_events_tx_hash_idx"
     ON public."el_tx_events"
     ("tx_hash" ASC NULLS FIRST);
 
+CREATE INDEX IF NOT EXISTS "el_tx_events_source_idx"
+    ON public."el_tx_events"
+    ("source_id" ASC NULLS FIRST);
+
 CREATE INDEX IF NOT EXISTS "el_tx_events_topic1_idx"
     ON public."el_tx_events"
     ("topic1" ASC NULLS FIRST);
 
 -- Table for EL accounts
 CREATE TABLE IF NOT EXISTS public."el_accounts" (
+    id BIGSERIAL NOT NULL,
     address bytea NOT NULL,
-    funder bytea NULL,
+    funder_id BIGINT NOT NULL DEFAULT 0,
     funded BIGINT NOT NULL DEFAULT 0,
     is_contract bool NOT NULL DEFAULT FALSE,
-    CONSTRAINT el_accounts_pkey PRIMARY KEY (address)
+    last_nonce BIGINT NOT NULL DEFAULT 0,
+    last_block_uid BIGINT NOT NULL DEFAULT 0,
+    CONSTRAINT el_accounts_pkey PRIMARY KEY (id)
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS "el_accounts_address_idx"
+    ON public."el_accounts"
+    ("address" ASC NULLS FIRST);
 
 -- Table for detected tokens
 CREATE TABLE IF NOT EXISTS public."el_tokens" (
@@ -102,6 +119,7 @@ CREATE TABLE IF NOT EXISTS public."el_tokens" (
     name TEXT NOT NULL DEFAULT '',
     symbol TEXT NOT NULL DEFAULT '',
     decimals SMALLINT NOT NULL DEFAULT 0,
+    name_synced BIGINT NOT NULL DEFAULT 0,
     CONSTRAINT el_tokens_pkey PRIMARY KEY (id)
 );
 
@@ -111,17 +129,17 @@ CREATE INDEX IF NOT EXISTS "el_tokens_contract_idx"
 
 -- Table for per-wallet balances per token
 CREATE TABLE IF NOT EXISTS public."el_balances" (
-    account bytea NOT NULL,
+    account_id BIGINT NOT NULL,
     token_id BIGINT NOT NULL,
     balance DOUBLE PRECISION NOT NULL DEFAULT 0,
     balance_raw bytea NOT NULL,
     updated BIGINT NOT NULL DEFAULT 0,
-    CONSTRAINT el_balances_pkey PRIMARY KEY (account, token_id)
+    CONSTRAINT el_balances_pkey PRIMARY KEY (account_id, token_id)
 );
 
 CREATE INDEX IF NOT EXISTS "el_balances_account_idx"
     ON public."el_balances"
-    ("account" ASC NULLS FIRST);
+    ("account_id" ASC NULLS FIRST);
 
 CREATE INDEX IF NOT EXISTS "el_balances_token_id_idx"
     ON public."el_balances"
@@ -135,8 +153,8 @@ CREATE TABLE IF NOT EXISTS public."el_token_transfers" (
     token_id BIGINT NOT NULL,
     token_type SMALLINT NOT NULL DEFAULT 0,
     token_index bytea NULL,
-    tx_from bytea NOT NULL,
-    tx_to bytea NOT NULL,
+    from_id BIGINT NOT NULL,
+    to_id BIGINT NOT NULL,
     amount DOUBLE PRECISION NOT NULL DEFAULT 0,
     amount_raw bytea NOT NULL,
     CONSTRAINT el_token_transfers_pkey PRIMARY KEY (block_uid, tx_hash, tx_idx)
@@ -164,11 +182,11 @@ CREATE INDEX IF NOT EXISTS "el_token_transfers_token_index_idx"
 
 CREATE INDEX IF NOT EXISTS "el_token_transfers_from_idx"
     ON public."el_token_transfers"
-    ("tx_from" ASC NULLS FIRST);
+    ("from_id" ASC NULLS FIRST);
 
 CREATE INDEX IF NOT EXISTS "el_token_transfers_to_idx"
     ON public."el_token_transfers"
-    ("tx_to" ASC NULLS FIRST);
+    ("to_id" ASC NULLS FIRST);
 
 -- +goose StatementEnd
 -- +goose Down

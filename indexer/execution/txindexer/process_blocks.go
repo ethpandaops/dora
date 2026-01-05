@@ -47,7 +47,7 @@ func (t *TxIndexer) processElBlock(ref *BlockRef) error {
 	defer cancel()
 
 	// Fetch block data (transactions and receipts)
-	data, err := t.fetchBlockData(ctx, ref)
+	data, client, err := t.fetchBlockData(ctx, ref)
 	if err != nil {
 		return fmt.Errorf("failed to fetch block data: %w", err)
 	}
@@ -71,6 +71,9 @@ func (t *TxIndexer) processElBlock(ref *BlockRef) error {
 		"receipts":     len(data.Receipts),
 	}).Debug("fetched EL block data")
 
+	// Create processing context for this block (shared across all transactions)
+	procCtx := newTxProcessingContext(ctx, client, t, ref, data)
+
 	receiptIdx := 0
 	dbCommitCallbacks := make([]dbCommitCallback, 0, len(data.Transactions))
 	for _, tx := range data.Transactions {
@@ -87,7 +90,7 @@ func (t *TxIndexer) processElBlock(ref *BlockRef) error {
 			break
 		}
 
-		dbCommitCallback, err := t.processElTransaction(ref, tx, receipt)
+		dbCommitCallback, err := procCtx.processTransaction(tx, receipt)
 		if err != nil {
 			return fmt.Errorf("failed to process EL transaction: %w", err)
 		}
@@ -95,6 +98,9 @@ func (t *TxIndexer) processElBlock(ref *BlockRef) error {
 			dbCommitCallbacks = append(dbCommitCallbacks, dbCommitCallback)
 		}
 	}
+
+	// Get account nonce updates (done after all transactions processed)
+	accountNonceUpdates := procCtx.getAccountNonceUpdates()
 
 	return db.RunDBTransaction(func(tx *sqlx.Tx) error {
 		for _, dbCommitCallback := range dbCommitCallbacks {
@@ -104,19 +110,19 @@ func (t *TxIndexer) processElBlock(ref *BlockRef) error {
 			}
 		}
 
-		db.InsertElBlock(&dbtypes.ElBlock{
+		// Batch update account nonces at the end of block processing
+		if len(accountNonceUpdates) > 0 {
+			if err := db.UpdateElAccountsLastNonce(accountNonceUpdates, tx); err != nil {
+				return err
+			}
+		}
+
+		return db.InsertElBlock(&dbtypes.ElBlock{
 			BlockUid:     ref.BlockUID,
 			Status:       0x01,
 			Events:       data.Stats.Events,
 			Transactions: data.Stats.Transactions,
 			Transfers:    data.Stats.Transfers,
 		}, tx)
-		return nil
 	})
-}
-
-// processElBlock processes a single block reference for EL transaction indexing.
-func (t *TxIndexer) processElTransaction(block *BlockRef, tx *types.Transaction, receipt *types.Receipt) (dbCommitCallback, error) {
-
-	return nil, nil
 }

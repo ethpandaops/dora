@@ -19,7 +19,7 @@ func InsertElTxEvents(events []*dbtypes.ElTxEvent, dbTx *sqlx.Tx) error {
 			dbtypes.DBEnginePgsql:  "INSERT INTO el_tx_events ",
 			dbtypes.DBEngineSqlite: "INSERT OR REPLACE INTO el_tx_events ",
 		}),
-		"(block_uid, tx_hash, event_index, source, topic1, topic2, topic3, topic4, topic5, data)",
+		"(block_uid, tx_hash, event_index, source_id, topic1, topic2, topic3, topic4, topic5, data)",
 		" VALUES ",
 	)
 	argIdx := 0
@@ -42,7 +42,7 @@ func InsertElTxEvents(events []*dbtypes.ElTxEvent, dbTx *sqlx.Tx) error {
 		args[argIdx+0] = event.BlockUid
 		args[argIdx+1] = event.TxHash
 		args[argIdx+2] = event.EventIndex
-		args[argIdx+3] = event.Source
+		args[argIdx+3] = event.SourceID
 		args[argIdx+4] = event.Topic1
 		args[argIdx+5] = event.Topic2
 		args[argIdx+6] = event.Topic3
@@ -52,7 +52,7 @@ func InsertElTxEvents(events []*dbtypes.ElTxEvent, dbTx *sqlx.Tx) error {
 		argIdx += fieldCount
 	}
 	fmt.Fprint(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
-		dbtypes.DBEnginePgsql:  " ON CONFLICT (block_uid, tx_hash, event_index) DO UPDATE SET source = excluded.source, topic1 = excluded.topic1, topic2 = excluded.topic2, topic3 = excluded.topic3, topic4 = excluded.topic4, topic5 = excluded.topic5, data = excluded.data",
+		dbtypes.DBEnginePgsql:  " ON CONFLICT (block_uid, tx_hash, event_index) DO UPDATE SET source_id = excluded.source_id, topic1 = excluded.topic1, topic2 = excluded.topic2, topic3 = excluded.topic3, topic4 = excluded.topic4, topic5 = excluded.topic5, data = excluded.data",
 		dbtypes.DBEngineSqlite: "",
 	}))
 
@@ -65,7 +65,7 @@ func InsertElTxEvents(events []*dbtypes.ElTxEvent, dbTx *sqlx.Tx) error {
 
 func GetElTxEvent(blockUid uint64, txHash []byte, eventIndex uint32) (*dbtypes.ElTxEvent, error) {
 	event := &dbtypes.ElTxEvent{}
-	err := ReaderDb.Get(event, "SELECT block_uid, tx_hash, event_index, source, topic1, topic2, topic3, topic4, topic5, data FROM el_tx_events WHERE block_uid = $1 AND tx_hash = $2 AND event_index = $3", blockUid, txHash, eventIndex)
+	err := ReaderDb.Get(event, "SELECT block_uid, tx_hash, event_index, source_id, topic1, topic2, topic3, topic4, topic5, data FROM el_tx_events WHERE block_uid = $1 AND tx_hash = $2 AND event_index = $3", blockUid, txHash, eventIndex)
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +74,7 @@ func GetElTxEvent(blockUid uint64, txHash []byte, eventIndex uint32) (*dbtypes.E
 
 func GetElTxEventsByTxHash(txHash []byte) ([]*dbtypes.ElTxEvent, error) {
 	events := []*dbtypes.ElTxEvent{}
-	err := ReaderDb.Select(&events, "SELECT block_uid, tx_hash, event_index, source, topic1, topic2, topic3, topic4, topic5, data FROM el_tx_events WHERE tx_hash = $1 ORDER BY block_uid DESC, event_index ASC", txHash)
+	err := ReaderDb.Select(&events, "SELECT block_uid, tx_hash, event_index, source_id, topic1, topic2, topic3, topic4, topic5, data FROM el_tx_events WHERE tx_hash = $1 ORDER BY block_uid DESC, event_index ASC", txHash)
 	if err != nil {
 		return nil, err
 	}
@@ -83,7 +83,7 @@ func GetElTxEventsByTxHash(txHash []byte) ([]*dbtypes.ElTxEvent, error) {
 
 func GetElTxEventsByBlockUid(blockUid uint64) ([]*dbtypes.ElTxEvent, error) {
 	events := []*dbtypes.ElTxEvent{}
-	err := ReaderDb.Select(&events, "SELECT block_uid, tx_hash, event_index, source, topic1, topic2, topic3, topic4, topic5, data FROM el_tx_events WHERE block_uid = $1 ORDER BY tx_hash ASC, event_index ASC", blockUid)
+	err := ReaderDb.Select(&events, "SELECT block_uid, tx_hash, event_index, source_id, topic1, topic2, topic3, topic4, topic5, data FROM el_tx_events WHERE block_uid = $1 ORDER BY tx_hash ASC, event_index ASC", blockUid)
 	if err != nil {
 		return nil, err
 	}
@@ -92,7 +92,7 @@ func GetElTxEventsByBlockUid(blockUid uint64) ([]*dbtypes.ElTxEvent, error) {
 
 func GetElTxEventsByBlockUidAndTxHash(blockUid uint64, txHash []byte) ([]*dbtypes.ElTxEvent, error) {
 	events := []*dbtypes.ElTxEvent{}
-	err := ReaderDb.Select(&events, "SELECT block_uid, tx_hash, event_index, source, topic1, topic2, topic3, topic4, topic5, data FROM el_tx_events WHERE block_uid = $1 AND tx_hash = $2 ORDER BY event_index ASC", blockUid, txHash)
+	err := ReaderDb.Select(&events, "SELECT block_uid, tx_hash, event_index, source_id, topic1, topic2, topic3, topic4, topic5, data FROM el_tx_events WHERE block_uid = $1 AND tx_hash = $2 ORDER BY event_index ASC", blockUid, txHash)
 	if err != nil {
 		return nil, err
 	}
@@ -105,7 +105,7 @@ func GetElTxEventsByTopic1(topic1 []byte, offset uint64, limit uint32) ([]*dbtyp
 
 	fmt.Fprint(&sql, `
 	WITH cte AS (
-		SELECT block_uid, tx_hash, event_index, source, topic1, topic2, topic3, topic4, topic5, data
+		SELECT block_uid, tx_hash, event_index, source_id, topic1, topic2, topic3, topic4, topic5, data
 		FROM el_tx_events
 		WHERE topic1 = $1
 	)`)
@@ -116,7 +116,7 @@ func GetElTxEventsByTopic1(topic1 []byte, offset uint64, limit uint32) ([]*dbtyp
 		count(*) AS block_uid,
 		null AS tx_hash,
 		0 AS event_index,
-		null AS source,
+		0 AS source_id,
 		null AS topic1,
 		null AS topic2,
 		null AS topic3,
@@ -156,7 +156,7 @@ func GetElTxEventsFiltered(offset uint64, limit uint32, filter *dbtypes.ElTxEven
 
 	fmt.Fprint(&sql, `
 	WITH cte AS (
-		SELECT block_uid, tx_hash, event_index, source, topic1, topic2, topic3, topic4, topic5, data
+		SELECT block_uid, tx_hash, event_index, source_id, topic1, topic2, topic3, topic4, topic5, data
 		FROM el_tx_events
 	`)
 
@@ -166,9 +166,9 @@ func GetElTxEventsFiltered(offset uint64, limit uint32, filter *dbtypes.ElTxEven
 		fmt.Fprintf(&sql, " %v tx_hash = $%v", filterOp, len(args))
 		filterOp = "AND"
 	}
-	if len(filter.Source) > 0 {
-		args = append(args, filter.Source)
-		fmt.Fprintf(&sql, " %v source = $%v", filterOp, len(args))
+	if filter.SourceID > 0 {
+		args = append(args, filter.SourceID)
+		fmt.Fprintf(&sql, " %v source_id = $%v", filterOp, len(args))
 		filterOp = "AND"
 	}
 	if len(filter.Topic1) > 0 {
@@ -195,7 +195,7 @@ func GetElTxEventsFiltered(offset uint64, limit uint32, filter *dbtypes.ElTxEven
 		count(*) AS block_uid,
 		null AS tx_hash,
 		0 AS event_index,
-		null AS source,
+		0 AS source_id,
 		null AS topic1,
 		null AS topic2,
 		null AS topic3,

@@ -19,7 +19,7 @@ func InsertElBalances(balances []*dbtypes.ElBalance, dbTx *sqlx.Tx) error {
 			dbtypes.DBEnginePgsql:  "INSERT INTO el_balances ",
 			dbtypes.DBEngineSqlite: "INSERT OR REPLACE INTO el_balances ",
 		}),
-		"(account, token_id, balance, balance_raw, updated)",
+		"(account_id, token_id, balance, balance_raw, updated)",
 		" VALUES ",
 	)
 	argIdx := 0
@@ -39,7 +39,7 @@ func InsertElBalances(balances []*dbtypes.ElBalance, dbTx *sqlx.Tx) error {
 		}
 		fmt.Fprint(&sql, ")")
 
-		args[argIdx+0] = balance.Account
+		args[argIdx+0] = balance.AccountID
 		args[argIdx+1] = balance.TokenID
 		args[argIdx+2] = balance.Balance
 		args[argIdx+3] = balance.BalanceRaw
@@ -47,7 +47,7 @@ func InsertElBalances(balances []*dbtypes.ElBalance, dbTx *sqlx.Tx) error {
 		argIdx += fieldCount
 	}
 	fmt.Fprint(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
-		dbtypes.DBEnginePgsql:  " ON CONFLICT (account, token_id) DO UPDATE SET balance = excluded.balance, balance_raw = excluded.balance_raw, updated = excluded.updated",
+		dbtypes.DBEnginePgsql:  " ON CONFLICT (account_id, token_id) DO UPDATE SET balance = excluded.balance, balance_raw = excluded.balance_raw, updated = excluded.updated",
 		dbtypes.DBEngineSqlite: "",
 	}))
 
@@ -58,30 +58,30 @@ func InsertElBalances(balances []*dbtypes.ElBalance, dbTx *sqlx.Tx) error {
 	return nil
 }
 
-func GetElBalance(account []byte, tokenID uint64) (*dbtypes.ElBalance, error) {
+func GetElBalance(accountID uint64, tokenID uint64) (*dbtypes.ElBalance, error) {
 	balance := &dbtypes.ElBalance{}
-	err := ReaderDb.Get(balance, "SELECT account, token_id, balance, balance_raw, updated FROM el_balances WHERE account = $1 AND token_id = $2", account, tokenID)
+	err := ReaderDb.Get(balance, "SELECT account_id, token_id, balance, balance_raw, updated FROM el_balances WHERE account_id = $1 AND token_id = $2", accountID, tokenID)
 	if err != nil {
 		return nil, err
 	}
 	return balance, nil
 }
 
-func GetElBalancesByAccount(account []byte, offset uint64, limit uint32) ([]*dbtypes.ElBalance, uint64, error) {
+func GetElBalancesByAccountID(accountID uint64, offset uint64, limit uint32) ([]*dbtypes.ElBalance, uint64, error) {
 	var sql strings.Builder
-	args := []any{account}
+	args := []any{accountID}
 
 	fmt.Fprint(&sql, `
 	WITH cte AS (
-		SELECT account, token_id, balance, balance_raw, updated
+		SELECT account_id, token_id, balance, balance_raw, updated
 		FROM el_balances
-		WHERE account = $1
+		WHERE account_id = $1
 	)`)
 
 	args = append(args, limit)
 	fmt.Fprintf(&sql, `
 	SELECT
-		null AS account,
+		0 AS account_id,
 		count(*) AS token_id,
 		0 AS balance,
 		null AS balance_raw,
@@ -119,7 +119,7 @@ func GetElBalancesByTokenID(tokenID uint64, offset uint64, limit uint32) ([]*dbt
 
 	fmt.Fprint(&sql, `
 	WITH cte AS (
-		SELECT account, token_id, balance, balance_raw, updated
+		SELECT account_id, token_id, balance, balance_raw, updated
 		FROM el_balances
 		WHERE token_id = $1
 	)`)
@@ -127,7 +127,7 @@ func GetElBalancesByTokenID(tokenID uint64, offset uint64, limit uint32) ([]*dbt
 	args = append(args, limit)
 	fmt.Fprintf(&sql, `
 	SELECT
-		null AS account,
+		0 AS account_id,
 		count(*) AS token_id,
 		0 AS balance,
 		null AS balance_raw,
@@ -159,20 +159,20 @@ func GetElBalancesByTokenID(tokenID uint64, offset uint64, limit uint32) ([]*dbt
 	return balances[1:], count, nil
 }
 
-func GetElBalancesFiltered(offset uint64, limit uint32, account []byte, filter *dbtypes.ElBalanceFilter) ([]*dbtypes.ElBalance, uint64, error) {
+func GetElBalancesFiltered(offset uint64, limit uint32, accountID uint64, filter *dbtypes.ElBalanceFilter) ([]*dbtypes.ElBalance, uint64, error) {
 	var sql strings.Builder
 	args := []any{}
 
 	fmt.Fprint(&sql, `
 	WITH cte AS (
-		SELECT account, token_id, balance, balance_raw, updated
+		SELECT account_id, token_id, balance, balance_raw, updated
 		FROM el_balances
 	`)
 
 	filterOp := "WHERE"
-	if len(account) > 0 {
-		args = append(args, account)
-		fmt.Fprintf(&sql, " %v account = $%v", filterOp, len(args))
+	if accountID > 0 {
+		args = append(args, accountID)
+		fmt.Fprintf(&sql, " %v account_id = $%v", filterOp, len(args))
 		filterOp = "AND"
 	}
 	if filter.TokenID != nil {
@@ -196,7 +196,7 @@ func GetElBalancesFiltered(offset uint64, limit uint32, account []byte, filter *
 	args = append(args, limit)
 	fmt.Fprintf(&sql, `
 	SELECT
-		null AS account,
+		0 AS account_id,
 		count(*) AS token_id,
 		0 AS balance,
 		null AS balance_raw,
@@ -229,18 +229,18 @@ func GetElBalancesFiltered(offset uint64, limit uint32, account []byte, filter *
 }
 
 func UpdateElBalance(balance *dbtypes.ElBalance, dbTx *sqlx.Tx) error {
-	_, err := dbTx.Exec("UPDATE el_balances SET balance = $1, balance_raw = $2, updated = $3 WHERE account = $4 AND token_id = $5",
-		balance.Balance, balance.BalanceRaw, balance.Updated, balance.Account, balance.TokenID)
+	_, err := dbTx.Exec("UPDATE el_balances SET balance = $1, balance_raw = $2, updated = $3 WHERE account_id = $4 AND token_id = $5",
+		balance.Balance, balance.BalanceRaw, balance.Updated, balance.AccountID, balance.TokenID)
 	return err
 }
 
-func DeleteElBalance(account []byte, tokenID uint64, dbTx *sqlx.Tx) error {
-	_, err := dbTx.Exec("DELETE FROM el_balances WHERE account = $1 AND token_id = $2", account, tokenID)
+func DeleteElBalance(accountID uint64, tokenID uint64, dbTx *sqlx.Tx) error {
+	_, err := dbTx.Exec("DELETE FROM el_balances WHERE account_id = $1 AND token_id = $2", accountID, tokenID)
 	return err
 }
 
-func DeleteElBalancesByAccount(account []byte, dbTx *sqlx.Tx) error {
-	_, err := dbTx.Exec("DELETE FROM el_balances WHERE account = $1", account)
+func DeleteElBalancesByAccountID(accountID uint64, dbTx *sqlx.Tx) error {
+	_, err := dbTx.Exec("DELETE FROM el_balances WHERE account_id = $1", accountID)
 	return err
 }
 

@@ -17,7 +17,7 @@ import (
 )
 
 // fetchBlockData fetches transactions and receipts for a block with retry logic.
-func (t *TxIndexer) fetchBlockData(ctx context.Context, ref *BlockRef) (*blockData, error) {
+func (t *TxIndexer) fetchBlockData(ctx context.Context, ref *BlockRef) (*blockData, *execution.Client, error) {
 	var transactions []*types.Transaction
 	var blockNumber uint64
 	var blockHash common.Hash
@@ -35,7 +35,7 @@ func (t *TxIndexer) fetchBlockData(ctx context.Context, ref *BlockRef) (*blockDa
 	// Get clients for data fetching
 	clients := t.getClientsForBlock(ref)
 	if len(clients) == 0 {
-		return nil, fmt.Errorf("no available EL clients")
+		return nil, nil, fmt.Errorf("no available EL clients")
 	}
 
 	// Sort clients by priority
@@ -65,7 +65,7 @@ func (t *TxIndexer) fetchBlockData(ctx context.Context, ref *BlockRef) (*blockDa
 
 			if txs == nil {
 				// Block not found, might be pre-merge or not yet propagated
-				return nil, nil
+				return nil, nil, nil
 			}
 
 			transactions = txs
@@ -91,10 +91,10 @@ func (t *TxIndexer) fetchBlockData(ctx context.Context, ref *BlockRef) (*blockDa
 			BlockHash:    blockHash,
 			Transactions: transactions,
 			Receipts:     receipts,
-		}, nil
+		}, client, nil
 	}
 
-	return nil, fmt.Errorf("all retries failed: %w", lastErr)
+	return nil, nil, fmt.Errorf("all retries failed: %w", lastErr)
 }
 
 // getClientsForBlock returns appropriate EL clients for fetching block data.

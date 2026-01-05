@@ -19,11 +19,11 @@ func InsertElTransactions(txs []*dbtypes.ElTransaction, dbTx *sqlx.Tx) error {
 			dbtypes.DBEnginePgsql:  "INSERT INTO el_transactions ",
 			dbtypes.DBEngineSqlite: "INSERT OR REPLACE INTO el_transactions ",
 		}),
-		"(block_uid, tx_hash, tx_from, tx_to, reverted, amount, data, gas_used, block_number)",
+		"(block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw, data, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number)",
 		" VALUES ",
 	)
 	argIdx := 0
-	fieldCount := 9
+	fieldCount := 15
 
 	args := make([]any, len(txs)*fieldCount)
 	for i, tx := range txs {
@@ -41,17 +41,23 @@ func InsertElTransactions(txs []*dbtypes.ElTransaction, dbTx *sqlx.Tx) error {
 
 		args[argIdx+0] = tx.BlockUid
 		args[argIdx+1] = tx.TxHash
-		args[argIdx+2] = tx.From
-		args[argIdx+3] = tx.To
-		args[argIdx+4] = tx.Reverted
-		args[argIdx+5] = tx.Amount
-		args[argIdx+6] = tx.Data
-		args[argIdx+7] = tx.GasUsed
-		args[argIdx+8] = tx.BlockNumber
+		args[argIdx+2] = tx.FromID
+		args[argIdx+3] = tx.ToID
+		args[argIdx+4] = tx.Nonce
+		args[argIdx+5] = tx.Reverted
+		args[argIdx+6] = tx.Amount
+		args[argIdx+7] = tx.AmountRaw
+		args[argIdx+8] = tx.Data
+		args[argIdx+9] = tx.GasLimit
+		args[argIdx+10] = tx.GasUsed
+		args[argIdx+11] = tx.GasPrice
+		args[argIdx+12] = tx.TipPrice
+		args[argIdx+13] = tx.BlobCount
+		args[argIdx+14] = tx.BlockNumber
 		argIdx += fieldCount
 	}
 	fmt.Fprint(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
-		dbtypes.DBEnginePgsql:  " ON CONFLICT (block_uid, tx_hash) DO UPDATE SET tx_from = excluded.tx_from, tx_to = excluded.tx_to, reverted = excluded.reverted, amount = excluded.amount, data = excluded.data, gas_used = excluded.gas_used, block_number = excluded.block_number",
+		dbtypes.DBEnginePgsql:  " ON CONFLICT (block_uid, tx_hash) DO UPDATE SET from_id = excluded.from_id, to_id = excluded.to_id, nonce = excluded.nonce, reverted = excluded.reverted, amount = excluded.amount, amount_raw = excluded.amount_raw, data = excluded.data, gas_limit = excluded.gas_limit, gas_used = excluded.gas_used, gas_price = excluded.gas_price, tip_price = excluded.tip_price, blob_count = excluded.blob_count, block_number = excluded.block_number",
 		dbtypes.DBEngineSqlite: "",
 	}))
 
@@ -64,7 +70,7 @@ func InsertElTransactions(txs []*dbtypes.ElTransaction, dbTx *sqlx.Tx) error {
 
 func GetElTransaction(blockUid uint64, txHash []byte) (*dbtypes.ElTransaction, error) {
 	tx := &dbtypes.ElTransaction{}
-	err := ReaderDb.Get(tx, "SELECT block_uid, tx_hash, tx_from, tx_to, reverted, amount, data, gas_used, block_number FROM el_transactions WHERE block_uid = $1 AND tx_hash = $2", blockUid, txHash)
+	err := ReaderDb.Get(tx, "SELECT block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw, data, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number FROM el_transactions WHERE block_uid = $1 AND tx_hash = $2", blockUid, txHash)
 	if err != nil {
 		return nil, err
 	}
@@ -73,7 +79,7 @@ func GetElTransaction(blockUid uint64, txHash []byte) (*dbtypes.ElTransaction, e
 
 func GetElTransactionsByHash(txHash []byte) ([]*dbtypes.ElTransaction, error) {
 	txs := []*dbtypes.ElTransaction{}
-	err := ReaderDb.Select(&txs, "SELECT block_uid, tx_hash, tx_from, tx_to, reverted, amount, data, gas_used, block_number FROM el_transactions WHERE tx_hash = $1 ORDER BY block_uid DESC", txHash)
+	err := ReaderDb.Select(&txs, "SELECT block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw, data, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number FROM el_transactions WHERE tx_hash = $1 ORDER BY block_uid DESC", txHash)
 	if err != nil {
 		return nil, err
 	}
@@ -82,40 +88,46 @@ func GetElTransactionsByHash(txHash []byte) ([]*dbtypes.ElTransaction, error) {
 
 func GetElTransactionsByBlockUid(blockUid uint64) ([]*dbtypes.ElTransaction, error) {
 	txs := []*dbtypes.ElTransaction{}
-	err := ReaderDb.Select(&txs, "SELECT block_uid, tx_hash, tx_from, tx_to, reverted, amount, data, gas_used, block_number FROM el_transactions WHERE block_uid = $1", blockUid)
+	err := ReaderDb.Select(&txs, "SELECT block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw, data, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number FROM el_transactions WHERE block_uid = $1", blockUid)
 	if err != nil {
 		return nil, err
 	}
 	return txs, nil
 }
 
-func GetElTransactionsByAddress(address []byte, isFrom bool, offset uint64, limit uint32) ([]*dbtypes.ElTransaction, uint64, error) {
+func GetElTransactionsByAccountID(accountID uint64, isFrom bool, offset uint64, limit uint32) ([]*dbtypes.ElTransaction, uint64, error) {
 	var sql strings.Builder
 	args := []any{}
 
-	column := "tx_to"
+	column := "to_id"
 	if isFrom {
-		column = "tx_from"
+		column = "from_id"
 	}
 
 	fmt.Fprint(&sql, `
 	WITH cte AS (
-		SELECT block_uid, tx_hash, tx_from, tx_to, reverted, amount, data, gas_used, block_number
+		SELECT block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw, data, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number
 		FROM el_transactions
 		WHERE `, column, ` = $1
 	)`)
-	args = append(args, address)
+	args = append(args, accountID)
 
 	fmt.Fprintf(&sql, `
 	SELECT
 		count(*) AS block_uid,
 		null AS tx_hash,
-		null AS tx_from,
-		null AS tx_to,
+		0 AS from_id,
+		0 AS to_id,
+		0 AS nonce,
 		false AS reverted,
-		null AS amount,
+		0 AS amount,
+		null AS amount_raw,
 		null AS data,
+		0 AS gas_limit,
 		0 AS gas_used,
+		0 AS gas_price,
+		0 AS tip_price,
+		0 AS blob_count,
 		0 AS block_number
 	FROM cte
 	UNION ALL SELECT * FROM (
@@ -133,7 +145,7 @@ func GetElTransactionsByAddress(address []byte, isFrom bool, offset uint64, limi
 	txs := []*dbtypes.ElTransaction{}
 	err := ReaderDb.Select(&txs, sql.String(), args...)
 	if err != nil {
-		logger.Errorf("Error while fetching el transactions by address: %v", err)
+		logger.Errorf("Error while fetching el transactions by account id: %v", err)
 		return nil, 0, err
 	}
 
@@ -151,19 +163,19 @@ func GetElTransactionsFiltered(offset uint64, limit uint32, filter *dbtypes.ElTr
 
 	fmt.Fprint(&sql, `
 	WITH cte AS (
-		SELECT block_uid, tx_hash, tx_from, tx_to, reverted, amount, data, gas_used, block_number
+		SELECT block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw, data, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number
 		FROM el_transactions
 	`)
 
 	filterOp := "WHERE"
-	if len(filter.From) > 0 {
-		args = append(args, filter.From)
-		fmt.Fprintf(&sql, " %v tx_from = $%v", filterOp, len(args))
+	if filter.FromID > 0 {
+		args = append(args, filter.FromID)
+		fmt.Fprintf(&sql, " %v from_id = $%v", filterOp, len(args))
 		filterOp = "AND"
 	}
-	if len(filter.To) > 0 {
-		args = append(args, filter.To)
-		fmt.Fprintf(&sql, " %v tx_to = $%v", filterOp, len(args))
+	if filter.ToID > 0 {
+		args = append(args, filter.ToID)
+		fmt.Fprintf(&sql, " %v to_id = $%v", filterOp, len(args))
 		filterOp = "AND"
 	}
 	if filter.Reverted != nil {
@@ -189,12 +201,18 @@ func GetElTransactionsFiltered(offset uint64, limit uint32, filter *dbtypes.ElTr
 	SELECT
 		count(*) AS block_uid,
 		null AS tx_hash,
-		null AS tx_from,
-		null AS tx_to,
+		0 AS from_id,
+		0 AS to_id,
+		0 AS nonce,
 		false AS reverted,
-		null AS amount,
+		0 AS amount,
+		null AS amount_raw,
 		null AS data,
+		0 AS gas_limit,
 		0 AS gas_used,
+		0 AS gas_price,
+		0 AS tip_price,
+		0 AS blob_count,
 		0 AS block_number
 	FROM cte
 	UNION ALL SELECT * FROM (

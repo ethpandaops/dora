@@ -8,82 +8,71 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-func InsertElAccounts(accounts []*dbtypes.ElAccount, dbTx *sqlx.Tx) error {
-	if len(accounts) == 0 {
-		return nil
-	}
+func InsertElAccount(account *dbtypes.ElAccount, dbTx *sqlx.Tx) (uint64, error) {
+	var id uint64
+	query := EngineQuery(map[dbtypes.DBEngineType]string{
+		dbtypes.DBEnginePgsql:  "INSERT INTO el_accounts (address, funder_id, funded, is_contract, last_nonce, last_block_uid) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id",
+		dbtypes.DBEngineSqlite: "INSERT INTO el_accounts (address, funder_id, funded, is_contract, last_nonce, last_block_uid) VALUES ($1, $2, $3, $4, $5, $6)",
+	})
 
-	var sql strings.Builder
-	fmt.Fprint(&sql,
-		EngineQuery(map[dbtypes.DBEngineType]string{
-			dbtypes.DBEnginePgsql:  "INSERT INTO el_accounts ",
-			dbtypes.DBEngineSqlite: "INSERT OR REPLACE INTO el_accounts ",
-		}),
-		"(address, funder, funded, is_contract)",
-		" VALUES ",
-	)
-	argIdx := 0
-	fieldCount := 4
-
-	args := make([]any, len(accounts)*fieldCount)
-	for i, account := range accounts {
-		if i > 0 {
-			fmt.Fprint(&sql, ", ")
+	if DbEngine == dbtypes.DBEnginePgsql {
+		err := dbTx.QueryRow(query, account.Address, account.FunderID, account.Funded, account.IsContract, account.LastNonce, account.LastBlockUid).Scan(&id)
+		if err != nil {
+			return 0, err
 		}
-		fmt.Fprint(&sql, "(")
-		for f := 0; f < fieldCount; f++ {
-			if f > 0 {
-				fmt.Fprint(&sql, ", ")
-			}
-			fmt.Fprintf(&sql, "$%v", argIdx+f+1)
+	} else {
+		result, err := dbTx.Exec(query, account.Address, account.FunderID, account.Funded, account.IsContract, account.LastNonce, account.LastBlockUid)
+		if err != nil {
+			return 0, err
 		}
-		fmt.Fprint(&sql, ")")
-
-		args[argIdx+0] = account.Address
-		args[argIdx+1] = account.Funder
-		args[argIdx+2] = account.Funded
-		args[argIdx+3] = account.IsContract
-		argIdx += fieldCount
+		lastID, err := result.LastInsertId()
+		if err != nil {
+			return 0, err
+		}
+		id = uint64(lastID)
 	}
-	fmt.Fprint(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
-		dbtypes.DBEnginePgsql:  " ON CONFLICT (address) DO UPDATE SET funder = excluded.funder, funded = excluded.funded, is_contract = excluded.is_contract",
-		dbtypes.DBEngineSqlite: "",
-	}))
-
-	_, err := dbTx.Exec(sql.String(), args...)
-	if err != nil {
-		return err
-	}
-	return nil
+	return id, nil
 }
 
-func GetElAccountByAddress(address []byte) (*dbtypes.ElAccount, error) {
+func GetElAccountByID(id uint64) (*dbtypes.ElAccount, error) {
 	account := &dbtypes.ElAccount{}
-	err := ReaderDb.Get(account, "SELECT address, funder, funded, is_contract FROM el_accounts WHERE address = $1", address)
+	err := ReaderDb.Get(account, "SELECT id, address, funder_id, funded, is_contract, last_nonce, last_block_uid FROM el_accounts WHERE id = $1", id)
 	if err != nil {
 		return nil, err
 	}
 	return account, nil
 }
 
-func GetElAccountsByFunder(funder []byte, offset uint64, limit uint32) ([]*dbtypes.ElAccount, uint64, error) {
+func GetElAccountByAddress(address []byte) (*dbtypes.ElAccount, error) {
+	account := &dbtypes.ElAccount{}
+	err := ReaderDb.Get(account, "SELECT id, address, funder_id, funded, is_contract, last_nonce, last_block_uid FROM el_accounts WHERE address = $1", address)
+	if err != nil {
+		return nil, err
+	}
+	return account, nil
+}
+
+func GetElAccountsByFunder(funderID uint64, offset uint64, limit uint32) ([]*dbtypes.ElAccount, uint64, error) {
 	var sql strings.Builder
-	args := []any{funder}
+	args := []any{funderID}
 
 	fmt.Fprint(&sql, `
 	WITH cte AS (
-		SELECT address, funder, funded, is_contract
+		SELECT id, address, funder_id, funded, is_contract, last_nonce, last_block_uid
 		FROM el_accounts
-		WHERE funder = $1
+		WHERE funder_id = $1
 	)`)
 
 	args = append(args, limit)
 	fmt.Fprintf(&sql, `
 	SELECT
+		count(*) AS id,
 		null AS address,
-		count(*) AS funder,
+		0 AS funder_id,
 		0 AS funded,
-		false AS is_contract
+		false AS is_contract,
+		0 AS last_nonce,
+		0 AS last_block_uid
 	FROM cte
 	UNION ALL SELECT * FROM (
 	SELECT * FROM cte
@@ -107,11 +96,7 @@ func GetElAccountsByFunder(funder []byte, offset uint64, limit uint32) ([]*dbtyp
 		return []*dbtypes.ElAccount{}, 0, nil
 	}
 
-	count := uint64(0)
-	if len(accounts[0].Funder) > 0 {
-		count = uint64(accounts[0].Funder[0])
-	}
-
+	count := accounts[0].ID
 	return accounts[1:], count, nil
 }
 
@@ -121,14 +106,14 @@ func GetElAccountsFiltered(offset uint64, limit uint32, filter *dbtypes.ElAccoun
 
 	fmt.Fprint(&sql, `
 	WITH cte AS (
-		SELECT address, funder, funded, is_contract
+		SELECT id, address, funder_id, funded, is_contract, last_nonce, last_block_uid
 		FROM el_accounts
 	`)
 
 	filterOp := "WHERE"
-	if len(filter.Funder) > 0 {
-		args = append(args, filter.Funder)
-		fmt.Fprintf(&sql, " %v funder = $%v", filterOp, len(args))
+	if filter.FunderID > 0 {
+		args = append(args, filter.FunderID)
+		fmt.Fprintf(&sql, " %v funder_id = $%v", filterOp, len(args))
 		filterOp = "AND"
 	}
 	if filter.IsContract != nil {
@@ -152,10 +137,13 @@ func GetElAccountsFiltered(offset uint64, limit uint32, filter *dbtypes.ElAccoun
 	args = append(args, limit)
 	fmt.Fprintf(&sql, `
 	SELECT
+		count(*) AS id,
 		null AS address,
-		count(*) AS funder,
+		0 AS funder_id,
 		0 AS funded,
-		false AS is_contract
+		false AS is_contract,
+		0 AS last_nonce,
+		0 AS last_block_uid
 	FROM cte
 	UNION ALL SELECT * FROM (
 	SELECT * FROM cte
@@ -179,21 +167,36 @@ func GetElAccountsFiltered(offset uint64, limit uint32, filter *dbtypes.ElAccoun
 		return []*dbtypes.ElAccount{}, 0, nil
 	}
 
-	count := uint64(0)
-	if len(accounts[0].Funder) > 0 {
-		count = uint64(accounts[0].Funder[0])
-	}
-
+	count := accounts[0].ID
 	return accounts[1:], count, nil
 }
 
 func UpdateElAccount(account *dbtypes.ElAccount, dbTx *sqlx.Tx) error {
-	_, err := dbTx.Exec("UPDATE el_accounts SET funder = $1, funded = $2, is_contract = $3 WHERE address = $4",
-		account.Funder, account.Funded, account.IsContract, account.Address)
+	_, err := dbTx.Exec("UPDATE el_accounts SET funder_id = $1, funded = $2, is_contract = $3, last_nonce = $4, last_block_uid = $5 WHERE id = $6",
+		account.FunderID, account.Funded, account.IsContract, account.LastNonce, account.LastBlockUid, account.ID)
 	return err
 }
 
-func DeleteElAccount(address []byte, dbTx *sqlx.Tx) error {
-	_, err := dbTx.Exec("DELETE FROM el_accounts WHERE address = $1", address)
+// UpdateElAccountsLastNonce batch updates last_nonce and last_block_uid for multiple accounts by ID.
+func UpdateElAccountsLastNonce(accounts []*dbtypes.ElAccount, dbTx *sqlx.Tx) error {
+	if len(accounts) == 0 {
+		return nil
+	}
+
+	for _, account := range accounts {
+		if account.ID == 0 {
+			continue // Skip if ID not set
+		}
+		_, err := dbTx.Exec("UPDATE el_accounts SET last_nonce = $1, last_block_uid = $2 WHERE id = $3",
+			account.LastNonce, account.LastBlockUid, account.ID)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func DeleteElAccount(id uint64, dbTx *sqlx.Tx) error {
+	_, err := dbTx.Exec("DELETE FROM el_accounts WHERE id = $1", id)
 	return err
 }

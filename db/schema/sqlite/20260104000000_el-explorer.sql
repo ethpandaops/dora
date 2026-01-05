@@ -27,12 +27,18 @@ CREATE TABLE IF NOT EXISTS "el_blocks" (
 CREATE TABLE IF NOT EXISTS "el_transactions" (
     block_uid INTEGER NOT NULL,
     tx_hash BLOB NOT NULL,
-    tx_from BLOB NOT NULL,
-    tx_to BLOB NULL,
+    from_id INTEGER NOT NULL,
+    to_id INTEGER NOT NULL,
+    nonce INTEGER NOT NULL DEFAULT 0,
     reverted INTEGER NOT NULL DEFAULT 0,
-    amount BLOB NOT NULL,
+    amount REAL NOT NULL DEFAULT 0,
+    amount_raw BLOB NOT NULL,
     data BLOB NULL,
-    gas_used INTEGER NOT NULL,
+    gas_limit INTEGER NOT NULL DEFAULT 0,
+    gas_used INTEGER NOT NULL DEFAULT 0,
+    gas_price REAL NOT NULL DEFAULT 0,
+    tip_price REAL NOT NULL DEFAULT 0,
+    blob_count INTEGER NOT NULL DEFAULT 0,
     block_number INTEGER NOT NULL DEFAULT 0,
     CONSTRAINT el_transactions_pkey PRIMARY KEY (block_uid, tx_hash)
 );
@@ -47,18 +53,18 @@ CREATE INDEX IF NOT EXISTS "el_transactions_tx_hash_idx"
 
 CREATE INDEX IF NOT EXISTS "el_transactions_from_idx"
     ON "el_transactions"
-    ("tx_from" ASC);
+    ("from_id" ASC);
 
 CREATE INDEX IF NOT EXISTS "el_transactions_to_idx"
     ON "el_transactions"
-    ("tx_to" ASC);
+    ("to_id" ASC);
 
 -- Table for EL transaction events (logs)
 CREATE TABLE IF NOT EXISTS "el_tx_events" (
     block_uid INTEGER NOT NULL,
     tx_hash BLOB NOT NULL,
     event_index INTEGER NOT NULL,
-    source BLOB NOT NULL,
+    source_id INTEGER NOT NULL,
     topic1 BLOB NOT NULL,
     topic2 BLOB NULL,
     topic3 BLOB NULL,
@@ -76,18 +82,28 @@ CREATE INDEX IF NOT EXISTS "el_tx_events_tx_hash_idx"
     ON "el_tx_events"
     ("tx_hash" ASC);
 
+CREATE INDEX IF NOT EXISTS "el_tx_events_source_idx"
+    ON "el_tx_events"
+    ("source_id" ASC);
+
 CREATE INDEX IF NOT EXISTS "el_tx_events_topic1_idx"
     ON "el_tx_events"
     ("topic1" ASC);
 
 -- Table for EL accounts
 CREATE TABLE IF NOT EXISTS "el_accounts" (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
     address BLOB NOT NULL,
-    funder BLOB NULL,
+    funder_id INTEGER NOT NULL DEFAULT 0,
     funded INTEGER NOT NULL DEFAULT 0,
     is_contract INTEGER NOT NULL DEFAULT 0,
-    CONSTRAINT el_accounts_pkey PRIMARY KEY (address)
+    last_nonce INTEGER NOT NULL DEFAULT 0,
+    last_block_uid INTEGER NOT NULL DEFAULT 0
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS "el_accounts_address_idx"
+    ON "el_accounts"
+    ("address" ASC);
 
 -- Table for detected tokens
 CREATE TABLE IF NOT EXISTS "el_tokens" (
@@ -95,7 +111,8 @@ CREATE TABLE IF NOT EXISTS "el_tokens" (
     contract BLOB NOT NULL,
     name TEXT NOT NULL DEFAULT '',
     symbol TEXT NOT NULL DEFAULT '',
-    decimals INTEGER NOT NULL DEFAULT 0
+    decimals INTEGER NOT NULL DEFAULT 0,
+    name_synced INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS "el_tokens_contract_idx"
@@ -104,17 +121,17 @@ CREATE INDEX IF NOT EXISTS "el_tokens_contract_idx"
 
 -- Table for per-wallet balances per token
 CREATE TABLE IF NOT EXISTS "el_balances" (
-    account BLOB NOT NULL,
+    account_id INTEGER NOT NULL,
     token_id INTEGER NOT NULL,
     balance REAL NOT NULL DEFAULT 0,
     balance_raw BLOB NOT NULL,
     updated INTEGER NOT NULL DEFAULT 0,
-    CONSTRAINT el_balances_pkey PRIMARY KEY (account, token_id)
+    CONSTRAINT el_balances_pkey PRIMARY KEY (account_id, token_id)
 );
 
 CREATE INDEX IF NOT EXISTS "el_balances_account_idx"
     ON "el_balances"
-    ("account" ASC);
+    ("account_id" ASC);
 
 CREATE INDEX IF NOT EXISTS "el_balances_token_id_idx"
     ON "el_balances"
@@ -128,8 +145,8 @@ CREATE TABLE IF NOT EXISTS "el_token_transfers" (
     token_id INTEGER NOT NULL,
     token_type INTEGER NOT NULL DEFAULT 0,
     token_index BLOB NULL,
-    tx_from BLOB NOT NULL,
-    tx_to BLOB NOT NULL,
+    from_id INTEGER NOT NULL,
+    to_id INTEGER NOT NULL,
     amount REAL NOT NULL DEFAULT 0,
     amount_raw BLOB NOT NULL,
     CONSTRAINT el_token_transfers_pkey PRIMARY KEY (block_uid, tx_hash, tx_idx)
@@ -157,11 +174,11 @@ CREATE INDEX IF NOT EXISTS "el_token_transfers_token_index_idx"
 
 CREATE INDEX IF NOT EXISTS "el_token_transfers_from_idx"
     ON "el_token_transfers"
-    ("tx_from" ASC);
+    ("from_id" ASC);
 
 CREATE INDEX IF NOT EXISTS "el_token_transfers_to_idx"
     ON "el_token_transfers"
-    ("tx_to" ASC);
+    ("to_id" ASC);
 
 -- +goose StatementEnd
 -- +goose Down

@@ -211,23 +211,23 @@ type ValidatorFilter struct {
 // EL Explorer filters
 
 type ElTransactionFilter struct {
-	From       []byte
-	To         []byte
+	FromID     uint64
+	ToID       uint64
 	Reverted   *bool
 	MinGasUsed *uint64
 	MaxGasUsed *uint64
 }
 
 type ElTxEventFilter struct {
-	TxHash []byte
-	Source []byte
-	Topic1 []byte
-	Topic2 []byte
-	Topic3 []byte
+	TxHash   []byte
+	SourceID uint64
+	Topic1   []byte
+	Topic2   []byte
+	Topic3   []byte
 }
 
 type ElAccountFilter struct {
-	Funder     []byte
+	FunderID   uint64
 	IsContract *bool
 	MinFunded  uint64
 	MaxFunded  uint64
@@ -247,8 +247,8 @@ type ElBalanceFilter struct {
 
 type ElTokenTransferFilter struct {
 	TokenID   *uint64
-	From      []byte
-	To        []byte
+	FromID    uint64
+	ToID      uint64
 	MinAmount *float64
 	MaxAmount *float64
 }

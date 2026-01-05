@@ -441,22 +441,28 @@ type ElBlock struct {
 }
 
 type ElTransaction struct {
-	BlockUid    uint64 `db:"block_uid"`
-	TxHash      []byte `db:"tx_hash"`
-	From        []byte `db:"tx_from"`
-	To          []byte `db:"tx_to"`
-	Reverted    bool   `db:"reverted"`
-	Amount      []byte `db:"amount"`
-	Data        []byte `db:"data"`
-	GasUsed     uint64 `db:"gas_used"`
-	BlockNumber uint64 `db:"block_number"`
+	BlockUid    uint64  `db:"block_uid"`
+	TxHash      []byte  `db:"tx_hash"`
+	FromID      uint64  `db:"from_id"`
+	ToID        uint64  `db:"to_id"`
+	Nonce       uint64  `db:"nonce"`
+	Reverted    bool    `db:"reverted"`
+	Amount      float64 `db:"amount"`
+	AmountRaw   []byte  `db:"amount_raw"`
+	Data        []byte  `db:"data"`
+	GasLimit    uint64  `db:"gas_limit"`
+	GasUsed     uint64  `db:"gas_used"`
+	GasPrice    float64 `db:"gas_price"`
+	TipPrice    float64 `db:"tip_price"`
+	BlobCount   uint32  `db:"blob_count"`
+	BlockNumber uint64  `db:"block_number"`
 }
 
 type ElTxEvent struct {
 	BlockUid   uint64 `db:"block_uid"`
 	TxHash     []byte `db:"tx_hash"`
 	EventIndex uint32 `db:"event_index"`
-	Source     []byte `db:"source"`
+	SourceID   uint64 `db:"source_id"`
 	Topic1     []byte `db:"topic1"`
 	Topic2     []byte `db:"topic2"`
 	Topic3     []byte `db:"topic3"`
@@ -466,22 +472,26 @@ type ElTxEvent struct {
 }
 
 type ElAccount struct {
-	Address    []byte `db:"address"`
-	Funder     []byte `db:"funder"`
-	Funded     uint64 `db:"funded"`
-	IsContract bool   `db:"is_contract"`
+	ID           uint64 `db:"id"`
+	Address      []byte `db:"address"`
+	FunderID     uint64 `db:"funder_id"`
+	Funded       uint64 `db:"funded"`
+	IsContract   bool   `db:"is_contract"`
+	LastNonce    uint64 `db:"last_nonce"`
+	LastBlockUid uint64 `db:"last_block_uid"`
 }
 
 type ElToken struct {
-	ID       uint64 `db:"id"`
-	Contract []byte `db:"contract"`
-	Name     string `db:"name"`
-	Symbol   string `db:"symbol"`
-	Decimals uint8  `db:"decimals"`
+	ID         uint64 `db:"id"`
+	Contract   []byte `db:"contract"`
+	Name       string `db:"name"`
+	Symbol     string `db:"symbol"`
+	Decimals   uint8  `db:"decimals"`
+	NameSynced uint64 `db:"name_synced"`
 }
 
 type ElBalance struct {
-	Account    []byte  `db:"account"`
+	AccountID  uint64  `db:"account_id"`
 	TokenID    uint64  `db:"token_id"`
 	Balance    float64 `db:"balance"`
 	BalanceRaw []byte  `db:"balance_raw"`
@@ -495,8 +505,8 @@ type ElTokenTransfer struct {
 	TokenID    uint64  `db:"token_id"`
 	TokenType  uint8   `db:"token_type"`
 	TokenIndex []byte  `db:"token_index"`
-	From       []byte  `db:"tx_from"`
-	To         []byte  `db:"tx_to"`
+	FromID     uint64  `db:"from_id"`
+	ToID       uint64  `db:"to_id"`
 	Amount     float64 `db:"amount"`
 	AmountRaw  []byte  `db:"amount_raw"`
 }
