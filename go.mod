@@ -258,6 +258,6 @@ require (
 	modernc.org/sqlite v1.38.2 // indirect
 )
 
-replace github.com/attestantio/go-eth2-client => github.com/pk910/go-eth2-client v0.0.0-20250925114125-8cac04566494
+replace github.com/attestantio/go-eth2-client => github.com/pk910/go-eth2-client v0.0.0-20260105163749-315f81992d43
 
 replace github.com/ethereum/go-ethereum => github.com/ethereum/go-ethereum v0.0.0-20251217020005-abaef48d549a
