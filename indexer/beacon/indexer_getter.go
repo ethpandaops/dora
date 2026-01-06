@@ -28,8 +28,10 @@ func (indexer *Indexer) GetAllClients() []*Client {
 }
 
 // GetReadyClientsByCheckpoint returns a slice of clients that are ready for processing based on the finalized root and preference for archive clients.
-func (indexer *Indexer) GetReadyClientsByCheckpoint(finalizedRoot phase0.Root, preferArchive bool) []*Client {
+func (indexer *Indexer) GetReadyClientsByCheckpoint(finalizedEpoch phase0.Epoch, finalizedRoot phase0.Root, preferArchive bool) []*Client {
 	clients := make([]*Client, 0)
+
+	finalizedSlot := indexer.consensusPool.GetChainState().EpochToSlot(finalizedEpoch)
 
 	for _, client := range indexer.clients {
 		if client.client.GetStatus() != consensus.ClientStatusOnline {
@@ -37,8 +39,23 @@ func (indexer *Indexer) GetReadyClientsByCheckpoint(finalizedRoot phase0.Root, p
 		}
 
 		_, root, _, _ := client.client.GetFinalityCheckpoint()
-		if !bytes.Equal(root[:], finalizedRoot[:]) && !bytes.Equal(root[:], consensus.NullRoot[:]) {
-			continue
+		if !bytes.Equal(root[:], finalizedRoot[:]) {
+			block := indexer.blockCache.getBlockByRoot(root)
+			if block == nil {
+				// block is not in the cache, probably a very old block before the finalizatio checkpoint
+				continue
+			}
+
+			if block.Slot < finalizedSlot {
+				// block is before the finalized slot, so client is lagging behind
+				continue
+			}
+
+			isInChain, _ := indexer.blockCache.getCanonicalDistance(finalizedRoot, root, 0)
+			if !isInChain {
+				// block is not in the canonical chain, so client is on a different fork
+				continue
+			}
 		}
 
 		clients = append(clients, client)
@@ -101,10 +118,10 @@ func (indexer *Indexer) GetReadyClientByBlockRoot(blockRoot phase0.Root, preferA
 
 // GetReadyClients returns a slice of clients that are on the finalized chain and preference for archive clients.
 func (indexer *Indexer) GetReadyClients(preferArchive bool) []*Client {
-	_, finalizedRoot := indexer.consensusPool.GetChainState().GetFinalizedCheckpoint()
-	clients := indexer.GetReadyClientsByCheckpoint(finalizedRoot, preferArchive)
+	finalizedEpoch, finalizedRoot := indexer.consensusPool.GetChainState().GetFinalizedCheckpoint()
+	clients := indexer.GetReadyClientsByCheckpoint(finalizedEpoch, finalizedRoot, preferArchive)
 	if len(clients) == 0 {
-		clients = indexer.GetReadyClientsByCheckpoint(consensus.NullRoot, preferArchive)
+		clients = indexer.GetReadyClientsByCheckpoint(finalizedEpoch, consensus.NullRoot, preferArchive)
 	}
 	return clients
 }
