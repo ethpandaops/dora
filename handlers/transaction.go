@@ -26,6 +26,7 @@ import (
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types"
 	"github.com/ethpandaops/dora/types/models"
+	"github.com/ethpandaops/dora/utils"
 )
 
 // Transaction type names
@@ -48,6 +49,15 @@ func Transaction(w http.ResponseWriter, r *http.Request) {
 	notfoundTemplateFiles := append(layoutTemplateFiles,
 		"transaction/notfound.html",
 	)
+
+	// Check if execution indexer is enabled
+	if !utils.Config.ExecutionIndexer.Enabled {
+		data := InitPageData(w, r, "blockchain", "/tx", "Feature Disabled", notfoundTemplateFiles)
+		data.Data = "disabled"
+		w.Header().Set("Content-Type", "text/html")
+		handleTemplateError(w, r, "transaction.go", "Transaction", "disabled", templates.GetTemplate(notfoundTemplateFiles...).ExecuteTemplate(w, "layout", data))
+		return
+	}
 
 	vars := mux.Vars(r)
 	txHashHex := strings.TrimPrefix(vars["hash"], "0x")

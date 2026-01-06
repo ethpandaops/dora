@@ -312,6 +312,29 @@ func (t *TxIndexer) processSync() {
 		lowestEpoch = syncHead
 	}
 
+	// Calculate minimum epoch based on retention period
+	// Skip indexing blocks older than retention period
+	minEpoch := phase0.Epoch(0)
+	retention := utils.Config.ExecutionIndexer.Retention
+	if retention > 0 {
+		cutoffTime := time.Now().Add(-retention)
+		cutoffSlot := chainState.TimeToSlot(cutoffTime)
+		if cutoffSlot > 0 {
+			minEpoch = chainState.EpochOfSlot(cutoffSlot)
+		}
+	}
+
+	// Advance sync epoch if it's older than retention period
+	if currentSyncEpoch < minEpoch {
+		t.logger.WithFields(logrus.Fields{
+			"currentSyncEpoch": currentSyncEpoch,
+			"minEpoch":         minEpoch,
+		}).Info("skipping epochs older than retention period")
+		currentSyncEpoch = minEpoch
+		t.setLocalSyncEpoch(currentSyncEpoch)
+		t.saveSyncState(currentSyncEpoch)
+	}
+
 	// Nothing to sync if we're already caught up
 	if currentSyncEpoch >= lowestEpoch {
 		return

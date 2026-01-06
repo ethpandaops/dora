@@ -482,8 +482,24 @@ func FormatEthAddressShortLink(address []byte, isContract bool, byteCount ...int
 	if isContract {
 		result = `<i class="fas fa-file-contract text-muted" style="font-size:0.8rem;margin-right:0.2rem" data-bs-toggle="tooltip" title="Contract"></i>`
 	}
-	result += fmt.Sprintf(`<a href="/address/%s" data-bs-toggle="tooltip" title="%s">%s</a>`,
-		fullAddr, fullAddr, shortAddr)
+
+	// Use local link when execution indexer is enabled
+	if Config.ExecutionIndexer.Enabled {
+		result += fmt.Sprintf(`<a href="/address/%s" data-bs-toggle="tooltip" title="%s">%s</a>`,
+			fullAddr, fullAddr, shortAddr)
+	} else if Config.Frontend.EthExplorerLink != "" {
+		// Fall back to external explorer link
+		link, err := url.JoinPath(Config.Frontend.EthExplorerLink, "address", fullAddr)
+		if err == nil {
+			result += fmt.Sprintf(`<a href="%v" data-bs-toggle="tooltip" title="%s">%v</a>`,
+				link, fullAddr, shortAddr)
+		} else {
+			result += fmt.Sprintf(`<span data-bs-toggle="tooltip" title="%s">%s</span>`, fullAddr, shortAddr)
+		}
+	} else {
+		// No link available
+		result += fmt.Sprintf(`<span data-bs-toggle="tooltip" title="%s">%s</span>`, fullAddr, shortAddr)
+	}
 
 	return template.HTML(result)
 }
@@ -555,9 +571,26 @@ func FormatContractCreationLink(fromAddr []byte, nonce uint64) template.HTML {
 	fullAddr := createdAddr.Hex()
 	shortAddr := fullAddr[:2+8] + "…" + fullAddr[len(fullAddr)-8:]
 
-	return template.HTML(fmt.Sprintf(
-		`<i class="fas fa-plus-circle text-success" style="font-size:0.8rem;margin-right:0.2rem" data-bs-toggle="tooltip" title="Contract Creation"></i><a href="/address/%s" data-bs-toggle="tooltip" title="%s">%s</a>`,
-		fullAddr, fullAddr, shortAddr))
+	icon := `<i class="fas fa-plus-circle text-success" style="font-size:0.8rem;margin-right:0.2rem" data-bs-toggle="tooltip" title="Contract Creation"></i>`
+
+	// Use local link when execution indexer is enabled
+	if Config.ExecutionIndexer.Enabled {
+		return template.HTML(fmt.Sprintf(`%s<a href="/address/%s" data-bs-toggle="tooltip" title="%s">%s</a>`,
+			icon, fullAddr, fullAddr, shortAddr))
+	}
+
+	// Fall back to external explorer link
+	if Config.Frontend.EthExplorerLink != "" {
+		link, err := url.JoinPath(Config.Frontend.EthExplorerLink, "address", fullAddr)
+		if err == nil {
+			return template.HTML(fmt.Sprintf(`%s<a href="%v" data-bs-toggle="tooltip" title="%s">%v</a>`,
+				icon, link, fullAddr, shortAddr))
+		}
+	}
+
+	// No link available
+	return template.HTML(fmt.Sprintf(`%s<span data-bs-toggle="tooltip" title="%s">%s</span>`,
+		icon, fullAddr, shortAddr))
 }
 
 func FormatValidator(index uint64, name string) template.HTML {

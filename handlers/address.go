@@ -23,6 +23,7 @@ import (
 	"github.com/ethpandaops/dora/templates"
 	"github.com/ethpandaops/dora/types"
 	"github.com/ethpandaops/dora/types/models"
+	"github.com/ethpandaops/dora/utils"
 )
 
 const (
@@ -45,6 +46,15 @@ func Address(w http.ResponseWriter, r *http.Request) {
 	notfoundTemplateFiles := append(layoutTemplateFiles,
 		"address/notfound.html",
 	)
+
+	// Check if execution indexer is enabled
+	if !utils.Config.ExecutionIndexer.Enabled {
+		data := InitPageData(w, r, "blockchain", "/address", "Feature Disabled", notfoundTemplateFiles)
+		data.Data = "disabled"
+		w.Header().Set("Content-Type", "text/html")
+		handleTemplateError(w, r, "address.go", "Address", "disabled", templates.GetTemplate(notfoundTemplateFiles...).ExecuteTemplate(w, "layout", data))
+		return
+	}
 
 	vars := mux.Vars(r)
 	addressHex := strings.TrimPrefix(vars["address"], "0x")

@@ -769,10 +769,22 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 	return pageData
 }
 
+// Transaction type names for display
+var slotTxTypeNames = map[uint8]string{
+	0: "Legacy",
+	1: "EIP-2930",
+	2: "EIP-1559",
+	3: "Blob",
+	4: "EIP-7702",
+}
+
 func getSlotPageTransactions(pageData *models.SlotPageBlockData, transactions []bellatrix.Transaction) {
 	pageData.Transactions = make([]*models.SlotPageTransaction, 0)
 	sigLookupBytes := []types.TxSignatureBytes{}
 	sigLookupMap := map[types.TxSignatureBytes][]*models.SlotPageTransaction{}
+
+	// Build a map of tx hash to tx data for EL enrichment
+	txHashMap := make(map[string]*models.SlotPageTransaction, len(transactions))
 
 	for idx, txBytes := range transactions {
 		var tx ethtypes.Transaction
@@ -788,12 +800,20 @@ func getSlotPageTransactions(pageData *models.SlotPageBlockData, transactions []
 		ethFloat, _ := utils.ETH.Float64()
 		txValue = txValue / ethFloat
 
+		txType := uint8(tx.Type())
+		typeName := slotTxTypeNames[txType]
+		if typeName == "" {
+			typeName = fmt.Sprintf("Type %d", txType)
+		}
+
 		txData := &models.SlotPageTransaction{
-			Index: uint64(idx),
-			Hash:  txHash[:],
-			Value: txValue,
-			Data:  tx.Data(),
-			Type:  uint64(tx.Type()),
+			Index:    uint64(idx),
+			Hash:     txHash[:],
+			Value:    txValue,
+			Data:     tx.Data(),
+			Type:     uint64(txType),
+			TypeName: typeName,
+			GasLimit: tx.Gas(),
 		}
 		txData.DataLen = uint64(len(txData.Data))
 
@@ -813,6 +833,7 @@ func getSlotPageTransactions(pageData *models.SlotPageBlockData, transactions []
 		}
 
 		pageData.Transactions = append(pageData.Transactions, txData)
+		txHashMap[string(txHash[:])] = txData
 
 		// check call fn signature
 		if txData.DataLen >= 4 {
@@ -843,6 +864,33 @@ func getSlotPageTransactions(pageData *models.SlotPageBlockData, transactions []
 					txData.FuncName = sigLookup.Name
 				} else {
 					txData.FuncName = "call?"
+				}
+			}
+		}
+	}
+
+	// Enrich with EL data if execution indexer is enabled
+	if utils.Config.ExecutionIndexer.Enabled && len(pageData.Transactions) > 0 {
+		// Get block UID from database to lookup EL transactions
+		dbSlot := db.GetSlotByRoot(pageData.BlockRoot)
+		if dbSlot != nil && dbSlot.BlockUid > 0 {
+			elTxs, err := db.GetElTransactionsByBlockUid(dbSlot.BlockUid)
+			if err == nil && len(elTxs) > 0 {
+				for _, elTx := range elTxs {
+					txData := txHashMap[string(elTx.TxHash)]
+					if txData == nil {
+						continue
+					}
+
+					txData.HasElData = true
+					txData.Reverted = elTx.Reverted
+					txData.GasUsed = elTx.GasUsed
+					txData.EffGasPrice = elTx.EffGasPrice
+
+					// Calculate tx fee in ETH: gas_used * eff_gas_price (Gwei) / 1e9
+					if elTx.GasUsed > 0 && elTx.EffGasPrice > 0 {
+						txData.TxFee = float64(elTx.GasUsed) * elTx.EffGasPrice / 1e9
+					}
 				}
 			}
 		}
