@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS public."el_transactions" (
     reverted bool NOT NULL DEFAULT FALSE,
     amount DOUBLE PRECISION NOT NULL DEFAULT 0,
     amount_raw bytea NOT NULL,
-    data bytea NULL,
+    method_id bytea NULL,
     gas_limit BIGINT NOT NULL DEFAULT 0,
     gas_used BIGINT NOT NULL DEFAULT 0,
     gas_price DOUBLE PRECISION NOT NULL DEFAULT 0,
@@ -48,7 +48,7 @@ CREATE TABLE IF NOT EXISTS public."el_transactions" (
     block_number BIGINT NOT NULL DEFAULT 0,
     tx_type SMALLINT NOT NULL DEFAULT 0,
     tx_index INT NOT NULL DEFAULT 0,
-    max_fee DOUBLE PRECISION NOT NULL DEFAULT 0,
+    eff_gas_price DOUBLE PRECISION NOT NULL DEFAULT 0,
     CONSTRAINT el_transactions_pkey PRIMARY KEY (block_uid, tx_hash)
 );
 

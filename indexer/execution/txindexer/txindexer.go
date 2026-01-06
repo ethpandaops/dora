@@ -10,6 +10,7 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/sirupsen/logrus"
 
+	elclients "github.com/ethpandaops/dora/clients/execution"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/indexer/beacon"
@@ -103,6 +104,12 @@ func (t *TxIndexer) GetSyncEpoch() phase0.Epoch {
 	t.queueMutex.Lock()
 	defer t.queueMutex.Unlock()
 	return t.syncEpoch
+}
+
+// GetReadyClients returns a list of ready EL clients that have reached the finalized block.
+// Prefers archive clients if available.
+func (t *TxIndexer) GetReadyClients() []*elclients.Client {
+	return t.indexerCtx.GetFinalizedClients(elclients.AnyClient)
 }
 
 // setLocalSyncEpoch updates only the local sync epoch (not persisted to DB).

@@ -467,13 +467,13 @@ func loadTransactionsTab(pageData *models.AddressPageData, account *dbtypes.ElAc
 			}
 		}
 
-		// Extract method ID from data
-		if len(tx.Data) >= 4 {
-			txData.MethodID = tx.Data[:4]
+		// Extract method ID from stored method_id field (first 4 bytes only)
+		if len(tx.MethodID) >= 4 {
+			txData.MethodID = tx.MethodID[:4]
 
 			// Collect function signature for lookup
 			var sigBytes types.TxSignatureBytes
-			copy(sigBytes[:], tx.Data[0:4])
+			copy(sigBytes[:], tx.MethodID[0:4])
 			if sigLookupMap[sigBytes] == nil {
 				sigLookupMap[sigBytes] = []*models.AddressPageDataTransaction{txData}
 				sigLookupBytes = append(sigLookupBytes, sigBytes)
@@ -568,18 +568,18 @@ func loadTokenTransfersTab(pageData *models.AddressPageData, account *dbtypes.El
 		txHashSet[txHashKey] = true
 	}
 
-	// Look up transaction data for method signatures
+	// Look up transaction method IDs for method signatures
 	txHashList := make([][]byte, 0, len(txHashSet))
 	for txHashKey := range txHashSet {
 		txHashList = append(txHashList, []byte(txHashKey))
 	}
 
-	// Get transaction data for signature lookup
-	txDataMap := make(map[string][]byte) // tx_hash -> tx_data
+	// Get transaction method_id for signature lookup
+	txMethodIDMap := make(map[string][]byte) // tx_hash -> method_id (4 bytes)
 	if len(txHashList) > 0 {
 		for _, txHash := range txHashList {
 			if txs, err := db.GetElTransactionsByHash(txHash); err == nil && len(txs) > 0 {
-				txDataMap[string(txHash)] = txs[0].Data
+				txMethodIDMap[string(txHash)] = txs[0].MethodID
 			}
 		}
 	}
@@ -587,10 +587,10 @@ func loadTokenTransfersTab(pageData *models.AddressPageData, account *dbtypes.El
 	// Collect function signatures for batch lookup
 	sigLookupBytes := []types.TxSignatureBytes{}
 	sigLookupMap := make(map[types.TxSignatureBytes][]string) // signature -> tx_hashes
-	for txHashKey, txData := range txDataMap {
-		if len(txData) >= 4 {
+	for txHashKey, methodID := range txMethodIDMap {
+		if len(methodID) >= 4 {
 			var sigBytes types.TxSignatureBytes
-			copy(sigBytes[:], txData[0:4])
+			copy(sigBytes[:], methodID[0:4])
 			if sigLookupMap[sigBytes] == nil {
 				sigLookupMap[sigBytes] = []string{txHashKey}
 				sigLookupBytes = append(sigLookupBytes, sigBytes)
@@ -616,8 +616,8 @@ func loadTokenTransfersTab(pageData *models.AddressPageData, account *dbtypes.El
 	}
 
 	// Set default method name for transactions without data
-	for txHashKey, txData := range txDataMap {
-		if len(txData) < 4 && methodNameMap[txHashKey] == "" {
+	for txHashKey, methodID := range txMethodIDMap {
+		if len(methodID) < 4 && methodNameMap[txHashKey] == "" {
 			methodNameMap[txHashKey] = "transfer"
 		}
 	}

@@ -13,6 +13,12 @@ CREATE INDEX IF NOT EXISTS "unfinalized_blocks_block_uid_idx"
     ON "unfinalized_blocks"
     ("block_uid" ASC);
 
+-- Add block_uid to orphaned_blocks table
+ALTER TABLE "orphaned_blocks" ADD COLUMN block_uid INTEGER NOT NULL DEFAULT 0;
+CREATE INDEX IF NOT EXISTS "orphaned_blocks_block_uid_idx"
+    ON "orphaned_blocks"
+    ("block_uid" ASC);
+
 -- Table for EL block sync status
 CREATE TABLE IF NOT EXISTS "el_blocks" (
     block_uid INTEGER NOT NULL,
@@ -33,7 +39,7 @@ CREATE TABLE IF NOT EXISTS "el_transactions" (
     reverted INTEGER NOT NULL DEFAULT 0,
     amount REAL NOT NULL DEFAULT 0,
     amount_raw BLOB NOT NULL,
-    data BLOB NULL,
+    method_id BLOB NULL,
     gas_limit INTEGER NOT NULL DEFAULT 0,
     gas_used INTEGER NOT NULL DEFAULT 0,
     gas_price REAL NOT NULL DEFAULT 0,
@@ -42,7 +48,7 @@ CREATE TABLE IF NOT EXISTS "el_transactions" (
     block_number INTEGER NOT NULL DEFAULT 0,
     tx_type INTEGER NOT NULL DEFAULT 0,
     tx_index INTEGER NOT NULL DEFAULT 0,
-    max_fee REAL NOT NULL DEFAULT 0,
+    eff_gas_price REAL NOT NULL DEFAULT 0,
     CONSTRAINT el_transactions_pkey PRIMARY KEY (block_uid, tx_hash)
 );
 

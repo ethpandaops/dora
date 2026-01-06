@@ -1,0 +1,100 @@
+{{ define "blobs" }}
+<div class="card mt-0 border-top-0 rounded-top-0">
+  <div class="card-body p-0">
+    {{/* Blob Gas Summary */}}
+    <div class="p-3 border-bottom">
+      <div class="row g-3">
+        <div class="col-md-4">
+          <div class="border rounded p-2">
+            <div class="text-muted small">Blob Gas Used</div>
+            <div class="fw-bold">{{ formatAddCommas .BlobGasUsed }}</div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="border rounded p-2">
+            <div class="text-muted small">Blob Fee</div>
+            <div class="fw-bold">{{ formatFloat .BlobFee 18 }} ETH</div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="border rounded p-2">
+            <div class="text-muted small">Blob Gas Price</div>
+            <div class="fw-bold">{{ printf "%.9f" .BlobGasPrice }} Gwei</div>
+          </div>
+        </div>
+      </div>
+      {{ if gt .BlobGasFeeCap 0.0 }}
+      <div class="row g-3 mt-1">
+        <div class="col-md-4">
+          <div class="border rounded p-2">
+            <div class="text-muted small">Max Blob Fee per Gas</div>
+            <div class="fw-bold">{{ printf "%.9f" .BlobGasFeeCap }} Gwei</div>
+          </div>
+        </div>
+        {{ if gt .BlobFeeSavings 0.0 }}
+        <div class="col-md-4">
+          <div class="border rounded p-2">
+            <div class="text-muted small">Fee Savings</div>
+            <div class="fw-bold">
+              <span class="text-success">{{ printf "%.2f" .BlobFeeSavings }}% saved</span>
+            </div>
+          </div>
+        </div>
+        {{ end }}
+      </div>
+      {{ end }}
+    </div>
+
+    {{/* Blob List */}}
+    {{ if gt (len .Blobs) 0 }}
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead>
+          <tr>
+            <th class="px-3 text-center" style="width: 60px;">#</th>
+            <th class="px-3">Blob Data</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{ range .Blobs }}
+          <tr>
+            <td class="px-3 text-center align-top">
+              <span class="badge text-bg-secondary">{{ .Index }}</span>
+            </td>
+            <td class="px-3 py-2">
+              {{ if gt (len .VersionedHash) 0 }}
+              <div class="mb-2">
+                <span class="badge text-bg-primary me-1" style="font-size: 0.7rem;">Versioned Hash</span>
+                <span class="text-monospace text-break small">{{ formatHexBytes .VersionedHash }}</span>
+                <i class="fa fa-copy text-muted ms-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ formatHexBytes .VersionedHash }}" style="font-size: 0.75rem;"></i>
+              </div>
+              {{ end }}
+              {{ if gt (len .KzgCommitment) 0 }}
+              <div class="mb-1">
+                <span class="badge text-bg-secondary me-1" style="font-size: 0.7rem;">KZG Commitment</span>
+                <span class="text-monospace text-break small">{{ formatHexBytes .KzgCommitment }}</span>
+                <i class="fa fa-copy text-muted ms-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ formatHexBytes .KzgCommitment }}" style="font-size: 0.75rem;"></i>
+              </div>
+              {{ end }}
+              {{ if gt (len .KzgProof) 0 }}
+              <div class="mb-1">
+                <span class="badge text-bg-info me-1" style="font-size: 0.7rem;">KZG Proof</span>
+                <span class="text-monospace text-break small">{{ formatHexBytes .KzgProof }}</span>
+                <i class="fa fa-copy text-muted ms-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ formatHexBytes .KzgProof }}" style="font-size: 0.75rem;"></i>
+              </div>
+              {{ end }}
+            </td>
+          </tr>
+          {{ end }}
+        </tbody>
+      </table>
+    </div>
+    {{ else }}
+    <div class="p-4 text-center text-muted">
+      <i class="fas fa-database fa-2x mb-2"></i>
+      <p>No blobs found for this transaction</p>
+    </div>
+    {{ end }}
+  </div>
+</div>
+{{ end }}

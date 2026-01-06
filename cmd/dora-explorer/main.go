@@ -203,7 +203,6 @@ func startFrontend(router *mux.Router) {
 	router.HandleFunc("/address/{address}", handlers.Address).Methods("GET")
 	router.HandleFunc("/address/{address}/balances", handlers.AddressBalances).Methods("GET")
 	router.HandleFunc("/tx/{hash}", handlers.Transaction).Methods("GET")
-	router.HandleFunc("/tx/{hash}/rlp", handlers.TransactionRLP).Methods("GET")
 	router.HandleFunc("/mev/blocks", handlers.MevBlocks).Methods("GET")
 
 	router.HandleFunc("/search", handlers.Search).Methods("GET")

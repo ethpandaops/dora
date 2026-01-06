@@ -202,14 +202,20 @@ func (ctx *txProcessingContext) processTransaction(
 		tipPrice = weiToFloat(tx.GasTipCap(), 9)
 	}
 
-	// Max fee for EIP-1559+ transactions
-	maxFee := 0.0
-	if tx.GasFeeCap() != nil {
-		maxFee = weiToFloat(tx.GasFeeCap(), 9)
+	// Effective gas price from receipt (actual price paid)
+	effGasPrice := 0.0
+	if receipt.EffectiveGasPrice != nil {
+		effGasPrice = weiToFloat(receipt.EffectiveGasPrice, 9)
 	}
 
 	// Count blobs (EIP-4844)
 	blobCount := uint32(len(tx.BlobHashes()))
+
+	// Extract method ID (first 4 bytes of tx data)
+	var methodID []byte
+	if len(tx.Data()) >= 4 {
+		methodID = tx.Data()[:4]
+	}
 
 	result.transaction = &dbtypes.ElTransaction{
 		BlockUid:    ctx.block.BlockUID,
@@ -220,7 +226,7 @@ func (ctx *txProcessingContext) processTransaction(
 		Reverted:    receipt.Status == 0,
 		Amount:      weiToFloat(txValue, 18), // ETH uses 18 decimals
 		AmountRaw:   txValue.Bytes(),
-		Data:        tx.Data(),
+		MethodID:    methodID,
 		GasLimit:    tx.Gas(),
 		GasUsed:     receipt.GasUsed,
 		GasPrice:    gasPrice,
@@ -229,7 +235,7 @@ func (ctx *txProcessingContext) processTransaction(
 		BlockNumber: receipt.BlockNumber.Uint64(),
 		TxType:      tx.Type(),
 		TxIndex:     uint32(receipt.TransactionIndex),
-		MaxFee:      maxFee,
+		EffGasPrice: effGasPrice,
 	}
 
 	// Store pending accounts for resolving IDs at commit time
@@ -252,10 +258,16 @@ func (ctx *txProcessingContext) processTransaction(
 	}
 
 	// Track tx fee deduction from sender (fee is always paid regardless of tx success)
-	// Fee = gasUsed * effectiveGasPrice (tx.GasPrice() returns wei)
+	// Fee = gasUsed * effectiveGasPrice
+	var effectiveGasPrice *big.Int
+	if receipt.EffectiveGasPrice != nil {
+		effectiveGasPrice = receipt.EffectiveGasPrice
+	} else {
+		effectiveGasPrice = tx.GasPrice() // Fallback for legacy transactions
+	}
 	txFeeWei := new(big.Int).Mul(
 		big.NewInt(int64(receipt.GasUsed)),
-		tx.GasPrice(),
+		effectiveGasPrice,
 	)
 	if txFeeWei.Sign() > 0 {
 		ctx.pendingTransfers = append(ctx.pendingTransfers, &pendingBalanceTransfer{

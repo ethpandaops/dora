@@ -449,16 +449,16 @@ type ElTransaction struct {
 	Reverted    bool    `db:"reverted"`
 	Amount      float64 `db:"amount"`
 	AmountRaw   []byte  `db:"amount_raw"`
-	Data        []byte  `db:"data"`
+	MethodID    []byte  `db:"method_id"`
 	GasLimit    uint64  `db:"gas_limit"`
 	GasUsed     uint64  `db:"gas_used"`
-	GasPrice    float64 `db:"gas_price"`
-	TipPrice    float64 `db:"tip_price"`
+	GasPrice    float64 `db:"gas_price"` // Legacy: gas price; EIP-1559+: maxFeePerGas (in Gwei)
+	TipPrice    float64 `db:"tip_price"` // maxPriorityFeePerGas (in Gwei)
 	BlobCount   uint32  `db:"blob_count"`
 	BlockNumber uint64  `db:"block_number"`
 	TxType      uint8   `db:"tx_type"`
 	TxIndex     uint32  `db:"tx_index"`
-	MaxFee      float64 `db:"max_fee"`
+	EffGasPrice float64 `db:"eff_gas_price"` // Effective gas price actually paid (in Gwei)
 }
 
 type ElTxEvent struct {

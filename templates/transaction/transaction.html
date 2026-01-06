@@ -13,9 +13,18 @@
     <div class="card mt-2">
       <div class="card-header d-flex justify-content-between align-items-center">
         <h5 class="mb-0"><i class="fas fa-info-circle me-2"></i>Overview</h5>
-        <a href="/tx/{{ formatHexBytes .TxHash }}/rlp" class="btn btn-sm btn-outline-primary" download>
-          <i class="fas fa-download me-1"></i>Download RLP
-        </a>
+        <div class="btn-group btn-group-sm" role="group">
+          {{ if .TxRLP }}
+          <button type="button" class="btn btn-outline-primary" onclick="copyRLP()" data-bs-toggle="tooltip" title="Copy transaction RLP">
+            <i class="fas fa-copy me-1"></i>Copy RLP
+          </button>
+          {{ end }}
+          {{ if .TxJSON }}
+          <button type="button" class="btn btn-outline-primary" onclick="copyJSON()" data-bs-toggle="tooltip" title="Copy transaction JSON">
+            <i class="fas fa-code me-1"></i>Copy JSON
+          </button>
+          {{ end }}
+        </div>
       </div>
       <div class="card-body px-0 py-3">
         <div class="row border-bottom p-2 mx-0">
@@ -25,16 +34,31 @@
             <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ formatHexBytes .TxHash }}"></i>
           </div>
         </div>
+        {{ if gt (len .InclusionBlocks) 1 }}
         <div class="row border-bottom p-2 mx-0">
-          <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Transaction status">Status:</span></div>
+          <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="All blocks that included this transaction (click to view result from that block)">Inclusion Blocks:</span></div>
           <div class="col-md-9">
-            {{ if .Status }}
-            <span class="badge rounded-pill text-bg-success"><i class="fas fa-check me-1"></i>{{ .StatusText }}</span>
-            {{ else }}
-            <span class="badge rounded-pill text-bg-danger"><i class="fas fa-times me-1"></i>{{ .StatusText }}</span>
-            {{ end }}
+            <div class="d-flex flex-wrap gap-2">
+              {{ $txHash := formatHexBytes $.TxHash }}
+              {{ range .InclusionBlocks }}
+              <a href="/tx/{{ $txHash }}{{ if not .IsSelected }}?b={{ .BlockUid }}{{ end }}" class="text-decoration-none">
+                <div class="border rounded px-2 py-1{{ if .IsSelected }} bg-primary bg-opacity-10 border-primary{{ end }}" style="font-size: 0.85rem; cursor: pointer;" data-bs-toggle="tooltip" title="Click to view transaction result from slot {{ formatAddCommas .Slot }}">
+                  {{ formatAddCommas .BlockNumber }}
+                  {{ if .IsCanonical }}
+                  <span class="badge rounded-pill text-bg-success ms-1">canonical</span>
+                  {{ else if .IsOrphaned }}
+                  <span class="badge rounded-pill text-bg-secondary ms-1">orphaned</span>
+                  {{ end }}
+                  {{ if .IsSelected }}
+                  <i class="fas fa-check-circle text-primary ms-1"></i>
+                  {{ end }}
+                </div>
+              </a>
+              {{ end }}
+            </div>
           </div>
         </div>
+        {{ end }}
         <div class="row border-bottom p-2 mx-0">
           <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Block containing this transaction">Block:</span></div>
           <div class="col-md-9">
@@ -50,7 +74,16 @@
             {{ else }}
             <span class="badge rounded-pill text-bg-warning ms-2" data-bs-toggle="tooltip" title="Transaction is in a canonical block">Unfinalized</span>
             {{ end }}
-            {{ if .TxMultiple }}<span class="badge rounded-pill text-bg-info ms-2">Multiple Versions</span>{{ end }}
+          </div>
+        </div>
+        <div class="row border-bottom p-2 mx-0">
+          <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Transaction status">Status:</span></div>
+          <div class="col-md-9">
+            {{ if .Status }}
+            <span class="badge rounded-pill text-bg-success"><i class="fas fa-check me-1"></i>{{ .StatusText }}</span>
+            {{ else }}
+            <span class="badge rounded-pill text-bg-danger"><i class="fas fa-times me-1"></i>{{ .StatusText }}</span>
+            {{ end }}
           </div>
         </div>
         <div class="row border-bottom p-2 mx-0">
@@ -122,6 +155,13 @@
         </a>
       </li>
       {{ end }}
+      {{ if gt .BlobCount 0 }}
+      <li class="nav-item">
+        <a class="nav-link{{ if eq .TabView "blobs" }} active{{ end }}" id="blobs-tab" data-lazy-tab="blobs" data-bs-toggle="tab" data-bs-target="#blobs" href="?v=blobs" role="tab" aria-controls="blobs" aria-selected="{{ if eq .TabView "blobs" }}true{{ else }}false{{ end }}">
+          <i class="fa fa-database me-2"></i> Blobs ({{ .BlobCount }})
+        </a>
+      </li>
+      {{ end }}
     </ul>
 
     <div class="tab-content" id="tabContent">
@@ -143,20 +183,34 @@
                 </div>
               </div>
             </div>
+            {{ if ge .TxType 2 }}
+            {{/* EIP-1559+ transaction */}}
             <div class="row border-bottom p-2 mx-0">
-              <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Effective gas price">Gas Price:</span></div>
+              <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Maximum fee per gas the sender is willing to pay (maxFeePerGas)">Max Fee per Gas:</span></div>
               <div class="col-md-9">{{ printf "%.9f" .GasPrice }} Gwei</div>
             </div>
-            {{ if gt .MaxFee 0.0 }}
-            <div class="row border-bottom p-2 mx-0">
-              <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Maximum fee per gas">Max Fee:</span></div>
-              <div class="col-md-9">{{ printf "%.9f" .MaxFee }} Gwei</div>
-            </div>
-            {{ end }}
             {{ if gt .TipPrice 0.0 }}
             <div class="row border-bottom p-2 mx-0">
-              <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Priority fee (tip)">Max Priority Fee:</span></div>
+              <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Maximum priority fee (tip) per gas (maxPriorityFeePerGas)">Max Priority Fee:</span></div>
               <div class="col-md-9">{{ printf "%.9f" .TipPrice }} Gwei</div>
+            </div>
+            {{ end }}
+            {{ if gt .EffGasPrice 0.0 }}
+            <div class="row border-bottom p-2 mx-0">
+              <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Actual gas price paid per unit of gas">Effective Gas Price:</span></div>
+              <div class="col-md-9">
+                {{ printf "%.9f" .EffGasPrice }} Gwei
+                {{ if gt .FeeSavingsPct 0.0 }}
+                <span class="badge rounded-pill text-bg-success ms-2" data-bs-toggle="tooltip" title="Savings compared to max fee">{{ printf "%.2f" .FeeSavingsPct }}% saved</span>
+                {{ end }}
+              </div>
+            </div>
+            {{ end }}
+            {{ else }}
+            {{/* Legacy transaction */}}
+            <div class="row border-bottom p-2 mx-0">
+              <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Gas price per unit of gas">Gas Price:</span></div>
+              <div class="col-md-9">{{ printf "%.9f" .GasPrice }} Gwei</div>
             </div>
             {{ end }}
             <div class="row border-bottom p-2 mx-0">
@@ -214,6 +268,13 @@
         {{ end }}
       </div>
       {{ end }}
+      {{ if gt .BlobCount 0 }}
+      <div class="tab-pane fade{{ if eq .TabView "blobs" }} show active{{ end }}" id="blobs" role="tabpanel" aria-labelledby="blobs-tab" data-loaded="{{ if eq .TabView "blobs" }}true{{ else }}false{{ end }}">
+        {{ if eq .TabView "blobs" }}
+          {{ template "blobs" . }}
+        {{ end }}
+      </div>
+      {{ end }}
     </div>
   </div>
 {{ end }}
@@ -222,6 +283,8 @@
     {{ template "events" . }}
   {{ else if eq .TabView "transfers" }}
     {{ template "transfers" . }}
+  {{ else if eq .TabView "blobs" }}
+    {{ template "blobs" . }}
   {{ else }}
     <!-- Details tab is not lazy loaded -->
   {{ end }}
@@ -230,6 +293,40 @@
 <script type="text/javascript">
   var inputDataHex = "{{ formatHexBytes .InputData }}";
   var inputDataAscii = null;
+  var txRLP = {{ if .TxRLP }}"{{ .TxRLP }}"{{ else }}null{{ end }};
+  var txJSON = {{ if .TxJSON }}`{{ .TxJSON }}`{{ else }}null{{ end }};
+
+  function copyRLP() {
+    if (txRLP) {
+      navigator.clipboard.writeText(txRLP).then(function() {
+        showCopySuccess('RLP copied to clipboard!');
+      }).catch(function(err) {
+        console.error('Failed to copy RLP: ', err);
+      });
+    }
+  }
+
+  function copyJSON() {
+    if (txJSON) {
+      navigator.clipboard.writeText(txJSON).then(function() {
+        showCopySuccess('JSON copied to clipboard!');
+      }).catch(function(err) {
+        console.error('Failed to copy JSON: ', err);
+      });
+    }
+  }
+
+  function showCopySuccess(message) {
+    // Create a toast notification
+    var toast = document.createElement('div');
+    toast.className = 'position-fixed bottom-0 end-0 p-3';
+    toast.style.zIndex = '11';
+    toast.innerHTML = '<div class="toast show align-items-center text-white bg-success border-0" role="alert"><div class="d-flex"><div class="toast-body">' + message + '</div><button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div></div>';
+    document.body.appendChild(toast);
+    setTimeout(function() {
+      toast.remove();
+    }, 2000);
+  }
 
   function hexToAscii(hex) {
     // Remove 0x prefix if present
