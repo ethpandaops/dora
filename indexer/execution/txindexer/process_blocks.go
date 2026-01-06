@@ -28,11 +28,15 @@ type blockData struct {
 	FeeRecipient      common.Address   // Fee recipient from beacon block
 	Withdrawals       []WithdrawalData // Withdrawals from beacon block
 	TotalPriorityFees *big.Int         // Total priority fees in the block
-	Stats             struct {
-		Events       uint32
-		Transactions uint32
-		Transfers    uint32
-	}
+	Stats             *blockStats
+}
+
+// processing stats
+type blockStats struct {
+	events       uint32
+	transactions uint32
+	transfers    uint32
+	processing   []time.Duration
 }
 
 // WithdrawalData represents a withdrawal from the beacon chain
@@ -46,23 +50,17 @@ type WithdrawalData struct {
 type dbCommitCallback func(tx *sqlx.Tx) error
 
 // processElBlock processes a single block reference for EL transaction indexing.
-func (t *TxIndexer) processElBlock(ref *BlockRef) error {
+func (t *TxIndexer) processElBlock(ref *BlockRef) (*blockStats, error) {
 	t1 := time.Now()
+	t2 := t1
+	stats := &blockStats{}
+
 	defer func() {
+		stats.processing = append(stats.processing, time.Since(t2))
+
 		// sleep to keep the processing rate at max 1 block per second to avoid overwhelming the db
 		if diff := time.Since(t1); diff < time.Second {
 			time.Sleep(time.Second - diff)
-		}
-
-		// Process pending balance lookups after block processing
-		// This is done outside the main transaction since it involves RPC calls
-		if t.balanceLookup != nil && t.balanceLookup.HasPendingLookups() {
-			balanceCtx, balanceCancel := context.WithTimeout(t.ctx, 30*time.Second)
-			_, err := t.balanceLookup.ProcessPendingLookups(balanceCtx)
-			balanceCancel()
-			if err != nil {
-				t.logger.WithError(err).Debug("failed to process pending balance lookups")
-			}
 		}
 	}()
 
@@ -72,8 +70,10 @@ func (t *TxIndexer) processElBlock(ref *BlockRef) error {
 	// Fetch block data (transactions and receipts)
 	data, client, err := t.fetchBlockData(ctx, ref)
 	if err != nil {
-		return fmt.Errorf("failed to fetch block data: %w", err)
+		return nil, fmt.Errorf("failed to fetch block data: %w", err)
 	}
+
+	data.Stats = stats
 
 	if data == nil {
 		// No data to process (e.g., pre-merge block)
@@ -82,7 +82,7 @@ func (t *TxIndexer) processElBlock(ref *BlockRef) error {
 			"blockUid":  ref.BlockUID,
 			"blockHash": fmt.Sprintf("%x", ref.BlockHash),
 		}).Debug("no EL data for block")
-		return nil
+		return stats, nil
 	}
 
 	t.logger.WithFields(logrus.Fields{
@@ -115,7 +115,7 @@ func (t *TxIndexer) processElBlock(ref *BlockRef) error {
 
 		dbCommitCallback, err := procCtx.processTransaction(tx, receipt)
 		if err != nil {
-			return fmt.Errorf("failed to process EL transaction: %w", err)
+			return stats, fmt.Errorf("failed to process EL transaction: %w", err)
 		}
 		if dbCommitCallback != nil {
 			dbCommitCallbacks = append(dbCommitCallbacks, dbCommitCallback)
@@ -127,10 +127,27 @@ func (t *TxIndexer) processElBlock(ref *BlockRef) error {
 
 	// Process fee recipient and withdrawals if beacon block data is available
 	if err := t.processBlockRewards(procCtx, data); err != nil {
-		return fmt.Errorf("failed to process block rewards: %w", err)
+		return stats, fmt.Errorf("failed to process block rewards: %w", err)
 	}
 
-	return db.RunDBTransaction(func(tx *sqlx.Tx) error {
+	// Process pending balance lookups after block processing
+	if t.balanceLookup != nil && t.balanceLookup.HasPendingLookups() {
+		balanceCtx, balanceCancel := context.WithTimeout(t.ctx, 30*time.Second)
+		balanceCommitCallback, err := t.balanceLookup.ProcessPendingLookups(balanceCtx)
+		balanceCancel()
+		if err != nil {
+			t.logger.WithError(err).Debug("failed to process pending balance lookups")
+		}
+
+		if balanceCommitCallback != nil {
+			dbCommitCallbacks = append(dbCommitCallbacks, balanceCommitCallback)
+		}
+	}
+
+	stats.processing = append(stats.processing, time.Since(t2))
+	t2 = time.Now()
+
+	err = db.RunDBTransaction(func(tx *sqlx.Tx) error {
 		for _, dbCommitCallback := range dbCommitCallbacks {
 			err := dbCommitCallback(tx)
 			if err != nil {
@@ -193,11 +210,17 @@ func (t *TxIndexer) processElBlock(ref *BlockRef) error {
 		return db.InsertElBlock(&dbtypes.ElBlock{
 			BlockUid:     ref.BlockUID,
 			Status:       0x01,
-			Events:       data.Stats.Events,
-			Transactions: data.Stats.Transactions,
-			Transfers:    data.Stats.Transfers,
+			Events:       data.Stats.events,
+			Transactions: data.Stats.transactions,
+			Transfers:    data.Stats.transfers,
 		}, tx)
 	})
+
+	if err != nil {
+		return stats, fmt.Errorf("failed to insert block: %w", err)
+	}
+
+	return stats, nil
 }
 
 // processBlockRewards processes fee recipient rewards and withdrawals from beacon block data.

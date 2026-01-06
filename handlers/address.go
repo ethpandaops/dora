@@ -380,9 +380,10 @@ func buildAddressPageData(account *dbtypes.ElAccount, tabView string, pageIdx, p
 
 func loadTransactionsTab(pageData *models.AddressPageData, account *dbtypes.ElAccount, chainState *consensus.ChainState, offset uint64, limit uint32, pageIdx uint64) {
 	// Get transactions using combined query (sorted by block_uid DESC, tx_index DESC)
-	dbTxs, totalCount, _ := db.GetElTransactionsByAccountIDCombined(account.ID, offset, limit)
+	dbTxs, totalCount, countCapped, _ := db.GetElTransactionsByAccountIDCombined(account.ID, offset, limit)
 
 	pageData.TransactionCount = totalCount
+	pageData.TxCountCapped = countCapped
 	pageData.TxPageIndex = pageIdx
 	pageData.TxPageSize = uint64(limit)
 	pageData.TxTotalPages = uint64(math.Ceil(float64(totalCount) / float64(limit)))
@@ -532,15 +533,21 @@ func loadTokenTransfersTab(pageData *models.AddressPageData, account *dbtypes.El
 	}
 
 	// Get token transfers using combined query (sorted by block_uid DESC, tx_pos DESC, tx_idx DESC)
-	dbTransfers, totalCount, _ := db.GetElTokenTransfersByAccountIDCombined(account.ID, tokenTypes, offset, limit)
+	dbTransfers, totalCount, countCapped, _ := db.GetElTokenTransfersByAccountIDCombined(account.ID, tokenTypes, offset, limit)
 
 	// Collect IDs for batch lookup
 	accountIDs := make(map[uint64]bool, len(dbTransfers)*2)
 	tokenIDs := make(map[uint64]bool, len(dbTransfers))
+	blockUids := make([]uint64, 0, len(dbTransfers))
+	blockUidSet := make(map[uint64]bool, len(dbTransfers))
 	for _, t := range dbTransfers {
 		accountIDs[t.FromID] = true
 		accountIDs[t.ToID] = true
 		tokenIDs[t.TokenID] = true
+		if !blockUidSet[t.BlockUid] {
+			blockUidSet[t.BlockUid] = true
+			blockUids = append(blockUids, t.BlockUid)
+		}
 	}
 
 	// Batch lookup accounts
@@ -567,6 +574,21 @@ func loadTokenTransfersTab(pageData *models.AddressPageData, account *dbtypes.El
 		if tokens, err := db.GetElTokensByIDs(tokenIDList); err == nil {
 			for _, t := range tokens {
 				tokenMap[t.ID] = t
+			}
+		}
+	}
+
+	// Batch lookup blocks using GetDbBlocksByFilter (includes cached blocks)
+	blockMap := make(map[uint64]*dbtypes.AssignedSlot, len(blockUids))
+	if len(blockUids) > 0 {
+		filter := &dbtypes.BlockFilter{
+			BlockUids:    blockUids,
+			WithOrphaned: 1, // Include both canonical and orphaned
+		}
+		blocks := services.GlobalBeaconService.GetDbBlocksByFilter(filter, 0, uint32(len(blockUids)), 0)
+		for _, b := range blocks {
+			if b.Block != nil {
+				blockMap[b.Block.BlockUid] = b
 			}
 		}
 	}
@@ -640,6 +662,7 @@ func loadTokenTransfersTab(pageData *models.AddressPageData, account *dbtypes.El
 
 		transfer := &models.AddressPageDataTokenTransfer{
 			TxHash:     t.TxHash,
+			BlockUid:   t.BlockUid,
 			BlockTime:  blockTime,
 			FromID:     t.FromID,
 			ToID:       t.ToID,
@@ -650,6 +673,15 @@ func loadTokenTransfersTab(pageData *models.AddressPageData, account *dbtypes.El
 			Amount:     t.Amount,
 			AmountRaw:  t.AmountRaw,
 			MethodName: methodNameMap[string(t.TxHash)],
+		}
+
+		// Set block root and orphaned status from block lookup
+		if blockInfo, ok := blockMap[t.BlockUid]; ok && blockInfo.Block != nil {
+			transfer.BlockRoot = blockInfo.Block.Root
+			transfer.BlockOrphaned = blockInfo.Block.Status == dbtypes.Orphaned
+			if blockInfo.Block.EthBlockNumber != nil {
+				transfer.BlockNumber = *blockInfo.Block.EthBlockNumber
+			}
 		}
 
 		// Set addresses from account map
@@ -679,6 +711,7 @@ func loadTokenTransfersTab(pageData *models.AddressPageData, account *dbtypes.El
 	if isERC20 {
 		pageData.ERC20Transfers = transfers
 		pageData.ERC20TransferCount = totalCount
+		pageData.ERC20CountCapped = countCapped
 		pageData.ERC20PageIndex = pageIdx
 		pageData.ERC20PageSize = uint64(limit)
 		pageData.ERC20TotalPages = uint64(math.Ceil(float64(totalCount) / float64(limit)))
@@ -687,6 +720,7 @@ func loadTokenTransfersTab(pageData *models.AddressPageData, account *dbtypes.El
 	} else {
 		pageData.NFTTransfers = transfers
 		pageData.NFTTransferCount = totalCount
+		pageData.NFTCountCapped = countCapped
 		pageData.NFTPageIndex = pageIdx
 		pageData.NFTPageSize = uint64(limit)
 		pageData.NFTTotalPages = uint64(math.Ceil(float64(totalCount) / float64(limit)))

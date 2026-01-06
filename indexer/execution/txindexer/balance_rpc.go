@@ -76,7 +76,7 @@ func (s *BalanceLookupService) FetchTokenBalance(ctx context.Context, address co
 
 // ProcessPendingLookups processes pending balance lookups and returns updated balances.
 // RPC lookups set the Updated timestamp to mark them as verified.
-func (s *BalanceLookupService) ProcessPendingLookups(ctx context.Context) ([]*dbtypes.ElBalance, error) {
+func (s *BalanceLookupService) ProcessPendingLookups(ctx context.Context) (dbCommitCallback, error) {
 	requests := s.GetPendingLookups(maxBalanceLookupsPerBlock)
 	if len(requests) == 0 {
 		return nil, nil
@@ -116,15 +116,11 @@ func (s *BalanceLookupService) ProcessPendingLookups(ctx context.Context) ([]*db
 	}
 
 	// Insert updated balances to DB
-	if len(updatedBalances) > 0 {
-		err := db.RunDBTransaction(func(tx *sqlx.Tx) error {
-			return db.InsertElBalances(updatedBalances, tx)
-		})
-		if err != nil {
-			s.logger.WithError(err).Warn("failed to insert updated balances")
-			return nil, err
-		}
+	if len(updatedBalances) == 0 {
+		return nil, nil
 	}
 
-	return updatedBalances, nil
+	return func(tx *sqlx.Tx) error {
+		return db.InsertElBalances(updatedBalances, tx)
+	}, nil
 }

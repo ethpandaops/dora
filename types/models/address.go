@@ -32,6 +32,7 @@ type AddressPageData struct {
 	// Transactions tab
 	Transactions     []*AddressPageDataTransaction `json:"transactions"`
 	TransactionCount uint64                        `json:"transaction_count"`
+	TxCountCapped    bool                          `json:"tx_count_capped"`
 	TxPageIndex      uint64                        `json:"tx_page_index"`
 	TxPageSize       uint64                        `json:"tx_page_size"`
 	TxTotalPages     uint64                        `json:"tx_total_pages"`
@@ -41,6 +42,7 @@ type AddressPageData struct {
 	// ERC20 Token Transfers tab
 	ERC20Transfers     []*AddressPageDataTokenTransfer `json:"erc20_transfers"`
 	ERC20TransferCount uint64                          `json:"erc20_transfer_count"`
+	ERC20CountCapped   bool                            `json:"erc20_count_capped"`
 	ERC20PageIndex     uint64                          `json:"erc20_page_index"`
 	ERC20PageSize      uint64                          `json:"erc20_page_size"`
 	ERC20TotalPages    uint64                          `json:"erc20_total_pages"`
@@ -50,6 +52,7 @@ type AddressPageData struct {
 	// NFT Transfers tab (ERC721/ERC1155)
 	NFTTransfers     []*AddressPageDataTokenTransfer `json:"nft_transfers"`
 	NFTTransferCount uint64                          `json:"nft_transfer_count"`
+	NFTCountCapped   bool                            `json:"nft_count_capped"`
 	NFTPageIndex     uint64                          `json:"nft_page_index"`
 	NFTPageSize      uint64                          `json:"nft_page_size"`
 	NFTTotalPages    uint64                          `json:"nft_total_pages"`
@@ -107,6 +110,9 @@ type AddressPageDataTokenTransfer struct {
 	TxHash         []byte    `json:"tx_hash"`
 	TxHashRowspan  int       `json:"tx_hash_rowspan"` // >0 means render with rowspan, 0 means skip cell
 	BlockNumber    uint64    `json:"block_number"`
+	BlockUid       uint64    `json:"block_uid"`
+	BlockRoot      []byte    `json:"block_root"`     // For linking to /slot/{root}
+	BlockOrphaned  bool      `json:"block_orphaned"` // True if block is orphaned
 	BlockTime      time.Time `json:"block_time"`
 	FromAddr       []byte    `json:"from_addr"`
 	FromID         uint64    `json:"from_id"`

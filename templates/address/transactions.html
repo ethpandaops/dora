@@ -100,7 +100,7 @@
     {{ if gt .TxTotalPages 1 }}
     <div class="card-footer d-flex justify-content-between align-items-center">
       <div>
-        Showing {{ formatAddCommas .TxFirstItem }} - {{ formatAddCommas .TxLastItem }} of {{ formatAddCommas .TransactionCount }}
+        Showing {{ formatAddCommas .TxFirstItem }} - {{ formatAddCommas .TxLastItem }} of {{ if .TxCountCapped }}more than {{ end }}{{ formatAddCommas .TransactionCount }}
       </div>
       <nav aria-label="Transaction pagination">
         <ul class="pagination pagination-sm mb-0">

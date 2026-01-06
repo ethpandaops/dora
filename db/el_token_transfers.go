@@ -283,36 +283,48 @@ func GetElTokenTransfersFiltered(offset uint64, limit uint32, filter *dbtypes.El
 	return transfers[1:], count, nil
 }
 
+// MaxAccountTokenTransferCount is the maximum count returned for address token transfer queries.
+// If the actual count exceeds this, the query returns this limit and sets the "more" flag.
+const MaxAccountTokenTransferCount = 100000
+
 // GetElTokenTransfersByAccountIDCombined returns all token transfers where the account is either sender or receiver.
 // Results are sorted by block_uid DESC, tx_pos DESC, tx_idx DESC.
 // tokenTypes filters by token type (empty = all types).
-func GetElTokenTransfersByAccountIDCombined(accountID uint64, tokenTypes []uint8, offset uint64, limit uint32) ([]*dbtypes.ElTokenTransfer, uint64, error) {
+// Returns transfers, total count (capped at MaxAccountTokenTransferCount), whether count is capped, and error.
+func GetElTokenTransfersByAccountIDCombined(accountID uint64, tokenTypes []uint8, offset uint64, limit uint32) ([]*dbtypes.ElTokenTransfer, uint64, bool, error) {
+	// Use UNION ALL instead of OR for better index usage.
+	// The second query excludes rows where from_id = accountID to avoid duplicates.
 	var sql strings.Builder
-	args := []any{accountID, accountID}
+	args := []any{accountID, accountID, accountID}
 
-	fmt.Fprint(&sql, `
-		SELECT 
-			block_uid, tx_hash, tx_pos, tx_idx, token_id, token_type, token_index, 
-			from_id, to_id, amount, amount_raw,
-			COUNT(*) OVER() AS total_count
-		FROM el_token_transfers
-		WHERE (from_id = $1 OR to_id = $2)`)
-
+	// Build token type filter clause
+	tokenTypeFilter := ""
 	if len(tokenTypes) > 0 {
-		fmt.Fprint(&sql, " AND token_type IN (")
+		var tokenTypeArgs strings.Builder
 		for i, tt := range tokenTypes {
 			if i > 0 {
-				fmt.Fprint(&sql, ", ")
+				fmt.Fprint(&tokenTypeArgs, ", ")
 			}
 			args = append(args, tt)
-			fmt.Fprintf(&sql, "$%v", len(args))
+			fmt.Fprintf(&tokenTypeArgs, "$%v", len(args))
 		}
-		fmt.Fprint(&sql, ")")
+		tokenTypeFilter = fmt.Sprintf(" AND token_type IN (%s)", tokenTypeArgs.String())
 	}
 
 	fmt.Fprintf(&sql, `
+		SELECT block_uid, tx_hash, tx_pos, tx_idx, token_id, token_type, token_index,
+			from_id, to_id, amount, amount_raw
+		FROM (
+			SELECT block_uid, tx_hash, tx_pos, tx_idx, token_id, token_type, token_index,
+				from_id, to_id, amount, amount_raw
+			FROM el_token_transfers WHERE from_id = $1%s
+			UNION ALL
+			SELECT block_uid, tx_hash, tx_pos, tx_idx, token_id, token_type, token_index,
+				from_id, to_id, amount, amount_raw
+			FROM el_token_transfers WHERE to_id = $2 AND from_id != $3%s
+		) combined
 		ORDER BY block_uid DESC, tx_pos DESC, tx_idx DESC
-		LIMIT $%d`, len(args)+1)
+		LIMIT $%d`, tokenTypeFilter, tokenTypeFilter, len(args)+1)
 	args = append(args, limit)
 
 	if offset > 0 {
@@ -320,32 +332,48 @@ func GetElTokenTransfersByAccountIDCombined(accountID uint64, tokenTypes []uint8
 		fmt.Fprintf(&sql, " OFFSET $%v", len(args))
 	}
 
-	type resultRow struct {
-		dbtypes.ElTokenTransfer
-		TotalCount uint64 `db:"total_count"`
-	}
-
-	rows := []resultRow{}
-	err := ReaderDb.Select(&rows, sql.String(), args...)
+	transfers := []*dbtypes.ElTokenTransfer{}
+	err := ReaderDb.Select(&transfers, sql.String(), args...)
 	if err != nil {
 		logger.Errorf("Error while fetching el token transfers by account id combined: %v", err)
-		return nil, 0, err
+		return nil, 0, false, err
 	}
 
-	if len(rows) == 0 {
-		return []*dbtypes.ElTokenTransfer{}, 0, nil
-	}
-
-	transfers := make([]*dbtypes.ElTokenTransfer, len(rows))
-	var totalCount uint64
-	for i, row := range rows {
-		transfers[i] = &row.ElTokenTransfer
-		if i == 0 {
-			totalCount = row.TotalCount
+	// Get count with a separate query, capped at MaxAccountTokenTransferCount
+	// Build count query with same token type filter
+	countArgs := []any{accountID, accountID, accountID}
+	countTokenTypeFilter := ""
+	if len(tokenTypes) > 0 {
+		var tokenTypeArgs strings.Builder
+		for i, tt := range tokenTypes {
+			if i > 0 {
+				fmt.Fprint(&tokenTypeArgs, ", ")
+			}
+			countArgs = append(countArgs, tt)
+			fmt.Fprintf(&tokenTypeArgs, "$%v", len(countArgs))
 		}
+		countTokenTypeFilter = fmt.Sprintf(" AND token_type IN (%s)", tokenTypeArgs.String())
 	}
 
-	return transfers, totalCount, nil
+	countSQL := fmt.Sprintf(`
+		SELECT COUNT(*) FROM (
+			SELECT 1 FROM el_token_transfers WHERE from_id = $1%s
+			UNION ALL
+			SELECT 1 FROM el_token_transfers WHERE to_id = $2 AND from_id != $3%s
+			LIMIT $%d
+		) limited`, countTokenTypeFilter, countTokenTypeFilter, len(countArgs)+1)
+	countArgs = append(countArgs, MaxAccountTokenTransferCount)
+
+	var totalCount uint64
+	err = ReaderDb.Get(&totalCount, countSQL, countArgs...)
+	if err != nil {
+		logger.Errorf("Error while counting el token transfers by account id combined: %v", err)
+		return nil, 0, false, err
+	}
+
+	moreAvailable := totalCount >= MaxAccountTokenTransferCount
+
+	return transfers, totalCount, moreAvailable, nil
 }
 
 func DeleteElTokenTransfer(blockUid uint64, txHash []byte, txIdx uint32, dbTx *sqlx.Tx) error {

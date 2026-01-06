@@ -31,9 +31,9 @@
             </td>
             <td class="text-end text-nowrap">
               {{ if eq .TokenType 2 }}
-              {{ if gt (len .TokenIndex) 0 }}#{{ formatHexBytes .TokenIndex }}{{ else }}#1{{ end }}
+              {{ if .TokenSymbol }}{{ .TokenSymbol }}{{ else }}NFT{{ end }} #{{ if gt (len .TokenIndex) 0 }}{{ formatNFTTokenID .TokenIndex }}{{ else }}0{{ end }}
               {{ else if eq .TokenType 3 }}
-              {{ formatFloat .Amount 0 }}{{ if .TokenSymbol }} {{ .TokenSymbol }}{{ end }}{{ if gt (len .TokenIndex) 0 }} (#{{ formatHexBytes .TokenIndex }}){{ end }}
+              {{ formatNFTTokenID .AmountRaw }}x {{ if .TokenSymbol }}{{ .TokenSymbol }}{{ else }}NFT{{ end }} #{{ if gt (len .TokenIndex) 0 }}{{ formatNFTTokenID .TokenIndex }}{{ else }}0{{ end }}
               {{ else }}
               {{ formatTokenAmount .Amount .TokenSymbol }}
               {{ end }}

@@ -295,9 +295,9 @@ func (ctx *txProcessingContext) processTransaction(
 	}
 
 	// Update block stats
-	ctx.blockData.Stats.Transactions++
-	ctx.blockData.Stats.Events += uint32(len(result.events))
-	ctx.blockData.Stats.Transfers += uint32(len(result.tokenTransfers))
+	ctx.blockData.Stats.transactions++
+	ctx.blockData.Stats.events += uint32(len(result.events))
+	ctx.blockData.Stats.transfers += uint32(len(result.tokenTransfers))
 
 	// Return commit callback
 	return func(dbTx *sqlx.Tx) error {
@@ -634,6 +634,14 @@ func (ctx *txProcessingContext) createTokenTransfer(
 	// Get or create token (always returns a pendingToken)
 	pendingToken := ctx.ensureToken(tokenAddress)
 
+	// Use token decimals if set, otherwise default based on token type
+	decimals := pendingToken.token.Decimals
+	if decimals == 0 && tokenType == TokenTypeERC20 {
+		// ERC20 tokens default to 18 decimals if not set
+		decimals = 18
+	}
+	// NFTs (ERC721/ERC1155) default to 0 decimals if not set, which is already the case
+
 	transfer := &dbtypes.ElTokenTransfer{
 		BlockUid:   ctx.block.BlockUID,
 		TxHash:     make([]byte, 32), // Will be set in commit
@@ -644,7 +652,7 @@ func (ctx *txProcessingContext) createTokenTransfer(
 		TokenIndex: tokenIndex,
 		FromID:     fromAccount.id,
 		ToID:       toAccount.id,
-		Amount:     weiToFloat(amount, pendingToken.token.Decimals),
+		Amount:     weiToFloat(amount, decimals),
 		AmountRaw:  amount.Bytes(),
 	}
 

@@ -279,7 +279,14 @@ func buildSlotPageData(ctx context.Context, blockSlot int64, blockRoot []byte) (
 		}
 		pageData.Proposer = uint64(blockData.Header.Message.ProposerIndex)
 		pageData.ProposerName = services.GlobalBeaconService.GetValidatorName(pageData.Proposer)
-		pageData.Block = getSlotPageBlockData(blockData, epochStatsValues)
+
+		blockUid := uint64(blockData.Header.Message.Slot)<<16 | 0xffff
+		if cacheBlock := services.GlobalBeaconService.GetBeaconIndexer().GetBlockByRoot(blockData.Root); cacheBlock != nil {
+			blockUid = cacheBlock.BlockUID
+		} else if dbBlock := db.GetBlockHeadByRoot(blockData.Root[:]); dbBlock != nil {
+			blockUid = dbBlock.BlockUid
+		}
+		pageData.Block = getSlotPageBlockData(blockData, epochStatsValues, blockUid)
 
 		// check mev block
 		if pageData.Block.ExecutionData != nil {
@@ -306,7 +313,7 @@ func buildSlotPageData(ctx context.Context, blockSlot int64, blockRoot []byte) (
 	return pageData, cacheTimeout
 }
 
-func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsValues *beacon.EpochStatsValues) *models.SlotPageBlockData {
+func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsValues *beacon.EpochStatsValues, blockUid uint64) *models.SlotPageBlockData {
 	chainState := services.GlobalBeaconService.GetChainState()
 	specs := chainState.GetSpecs()
 	graffiti, _ := blockData.Block.Graffiti()
@@ -727,7 +734,7 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 		}
 
 		if transactions, err := executionPayload.Transactions(); err == nil {
-			getSlotPageTransactions(pageData, transactions)
+			getSlotPageTransactions(pageData, transactions, blockUid)
 		}
 	}
 
@@ -787,7 +794,7 @@ var slotTxTypeNames = map[uint8]string{
 	4: "EIP-7702",
 }
 
-func getSlotPageTransactions(pageData *models.SlotPageBlockData, transactions []bellatrix.Transaction) {
+func getSlotPageTransactions(pageData *models.SlotPageBlockData, transactions []bellatrix.Transaction, blockUid uint64) {
 	pageData.Transactions = make([]*models.SlotPageTransaction, 0)
 	sigLookupBytes := []types.TxSignatureBytes{}
 	sigLookupMap := map[types.TxSignatureBytes][]*models.SlotPageTransaction{}
@@ -880,26 +887,22 @@ func getSlotPageTransactions(pageData *models.SlotPageBlockData, transactions []
 
 	// Enrich with EL data if execution indexer is enabled
 	if utils.Config.ExecutionIndexer.Enabled && len(pageData.Transactions) > 0 {
-		// Get block UID from database to lookup EL transactions
-		dbSlot := db.GetSlotByRoot(pageData.BlockRoot)
-		if dbSlot != nil && dbSlot.BlockUid > 0 {
-			elTxs, err := db.GetElTransactionsByBlockUid(dbSlot.BlockUid)
-			if err == nil && len(elTxs) > 0 {
-				for _, elTx := range elTxs {
-					txData := txHashMap[string(elTx.TxHash)]
-					if txData == nil {
-						continue
-					}
+		elTxs, err := db.GetElTransactionsByBlockUid(blockUid)
+		if err == nil && len(elTxs) > 0 {
+			for _, elTx := range elTxs {
+				txData := txHashMap[string(elTx.TxHash)]
+				if txData == nil {
+					continue
+				}
 
-					txData.HasElData = true
-					txData.Reverted = elTx.Reverted
-					txData.GasUsed = elTx.GasUsed
-					txData.EffGasPrice = elTx.EffGasPrice
+				txData.HasElData = true
+				txData.Reverted = elTx.Reverted
+				txData.GasUsed = elTx.GasUsed
+				txData.EffGasPrice = elTx.EffGasPrice
 
-					// Calculate tx fee in ETH: gas_used * eff_gas_price (Gwei) / 1e9
-					if elTx.GasUsed > 0 && elTx.EffGasPrice > 0 {
-						txData.TxFee = float64(elTx.GasUsed) * elTx.EffGasPrice / 1e9
-					}
+				// Calculate tx fee in ETH: gas_used * eff_gas_price (Gwei) / 1e9
+				if elTx.GasUsed > 0 && elTx.EffGasPrice > 0 {
+					txData.TxFee = float64(elTx.GasUsed) * elTx.EffGasPrice / 1e9
 				}
 			}
 		}

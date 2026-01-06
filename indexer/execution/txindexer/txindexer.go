@@ -51,6 +51,7 @@ type BlockRef struct {
 	Block           *beacon.Block // optional, may be nil for historical blocks
 	ProcessTime     time.Time     // earliest time this block can be processed (zero means immediate)
 	UpdateSyncEpoch *phase0.Epoch // if set, update DB sync state to this epoch after processing
+	IsRecent        bool
 }
 
 // TxIndexer is responsible for indexing EL transactions from beacon blocks.
@@ -274,6 +275,7 @@ func (t *TxIndexer) enqueueBeaconBlock(block *beacon.Block, highPriority bool) {
 		BlockUID:  block.BlockUID,
 		BlockHash: blockIndex.ExecutionHash[:],
 		Block:     block,
+		IsRecent:  highPriority,
 	}
 
 	// For high priority blocks (from subscription), delay processing by SecondsPerSlot + 2 seconds
@@ -486,12 +488,27 @@ func (t *TxIndexer) runProcessingLoop() {
 			}
 		}
 
-		err := t.processElBlock(ref)
+		stats, err := t.processElBlock(ref)
+		logger := t.logger.WithFields(logrus.Fields{
+			"slot":     ref.Slot,
+			"blockUid": ref.BlockUID,
+		})
+
+		if stats != nil {
+			if len(stats.processing) > 1 {
+				logger = logger.WithField("commit", stats.processing[1])
+			}
+			logger = logger.WithFields(logrus.Fields{
+				"load": stats.processing[0],
+				"txs":  stats.transactions,
+				"logs": stats.events,
+			})
+		}
+
 		if err != nil {
-			t.logger.WithFields(logrus.Fields{
-				"slot":     ref.Slot,
-				"blockUid": ref.BlockUID,
-			}).WithError(err).Error("failed to process EL block")
+			logger.WithError(err).Error("failed to process EL block")
+		} else if ref.IsRecent {
+			logger.Info("processed el block")
 		}
 
 		// Persist sync epoch to DB if this was the last block of an epoch

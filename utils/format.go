@@ -512,6 +512,15 @@ func FormatHexBytes(data []byte) string {
 	return fmt.Sprintf("0x%x", data)
 }
 
+// FormatNFTTokenID formats a byte slice as a decimal NFT token ID
+func FormatNFTTokenID(data []byte) string {
+	if len(data) == 0 {
+		return "0"
+	}
+	tokenID := new(big.Int).SetBytes(data)
+	return tokenID.String()
+}
+
 // FormatEthAddressFull returns the full 0x-prefixed Ethereum address from bytes
 func FormatEthAddressFull(address []byte) string {
 	if len(address) == 0 {

@@ -240,24 +240,37 @@ func GetElTransactionsFiltered(offset uint64, limit uint32, filter *dbtypes.ElTr
 	return txs[1:], count, nil
 }
 
+// MaxAccountTransactionCount is the maximum count returned for address transaction queries.
+// If the actual count exceeds this, the query returns this limit and sets the "more" flag.
+const MaxAccountTransactionCount = 100000
+
 // GetElTransactionsByAccountIDCombined fetches transactions where the account is either
 // sender (from_id) or receiver (to_id). Results are sorted by block_uid DESC, tx_index DESC.
-// Returns transactions, total count, and error.
-func GetElTransactionsByAccountIDCombined(accountID uint64, offset uint64, limit uint32) ([]*dbtypes.ElTransaction, uint64, error) {
+// Returns transactions, total count (capped at MaxAccountTransactionCount), whether count is capped, and error.
+func GetElTransactionsByAccountIDCombined(accountID uint64, offset uint64, limit uint32) ([]*dbtypes.ElTransaction, uint64, bool, error) {
+	// Use UNION ALL instead of OR for better index usage.
+	// The second query excludes rows where from_id = accountID to avoid duplicates
+	// (handles self-transfers where from_id = to_id = accountID).
 	var sql strings.Builder
-	args := []any{accountID, accountID}
+	args := []any{accountID, accountID, accountID}
 
-	// Use window function for count - avoids double scan
 	fmt.Fprint(&sql, `
-		SELECT
-			block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw,
+		SELECT block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw,
 			method_id, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number,
-			tx_type, tx_index, eff_gas_price,
-			COUNT(*) OVER() AS total_count
-		FROM el_transactions
-		WHERE (from_id = $1 OR to_id = $2)
+			tx_type, tx_index, eff_gas_price
+		FROM (
+			SELECT block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw,
+				method_id, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number,
+				tx_type, tx_index, eff_gas_price
+			FROM el_transactions WHERE from_id = $1
+			UNION ALL
+			SELECT block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw,
+				method_id, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number,
+				tx_type, tx_index, eff_gas_price
+			FROM el_transactions WHERE to_id = $2 AND from_id != $3
+		) combined
 		ORDER BY block_uid DESC, tx_index DESC
-		LIMIT $3`)
+		LIMIT $4`)
 	args = append(args, limit)
 
 	if offset > 0 {
@@ -265,32 +278,32 @@ func GetElTransactionsByAccountIDCombined(accountID uint64, offset uint64, limit
 		fmt.Fprintf(&sql, " OFFSET $%v", len(args))
 	}
 
-	type resultRow struct {
-		dbtypes.ElTransaction
-		TotalCount uint64 `db:"total_count"`
-	}
-
-	rows := []resultRow{}
-	err := ReaderDb.Select(&rows, sql.String(), args...)
+	txs := []*dbtypes.ElTransaction{}
+	err := ReaderDb.Select(&txs, sql.String(), args...)
 	if err != nil {
 		logger.Errorf("Error while fetching el transactions by account id (combined): %v", err)
-		return nil, 0, err
+		return nil, 0, false, err
 	}
 
-	if len(rows) == 0 {
-		return []*dbtypes.ElTransaction{}, 0, nil
-	}
-
-	txs := make([]*dbtypes.ElTransaction, len(rows))
+	// Get count with a separate query, capped at MaxAccountTransactionCount
+	// Using UNION ALL with LIMIT for efficient counting
+	countSQL := `
+		SELECT COUNT(*) FROM (
+			SELECT 1 FROM el_transactions WHERE from_id = $1
+			UNION ALL
+			SELECT 1 FROM el_transactions WHERE to_id = $2 AND from_id != $3
+			LIMIT $4
+		) limited`
 	var totalCount uint64
-	for i, row := range rows {
-		txs[i] = &row.ElTransaction
-		if i == 0 {
-			totalCount = row.TotalCount
-		}
+	err = ReaderDb.Get(&totalCount, countSQL, accountID, accountID, accountID, MaxAccountTransactionCount)
+	if err != nil {
+		logger.Errorf("Error while counting el transactions by account id (combined): %v", err)
+		return nil, 0, false, err
 	}
 
-	return txs, totalCount, nil
+	moreAvailable := totalCount >= MaxAccountTransactionCount
+
+	return txs, totalCount, moreAvailable, nil
 }
 
 func DeleteElTransaction(blockUid uint64, txHash []byte, dbTx *sqlx.Tx) error {

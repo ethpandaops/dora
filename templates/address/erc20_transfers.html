@@ -6,6 +6,7 @@
         <thead>
           <tr>
             <th>Txn Hash</th>
+            <th>Block</th>
             <th data-timecol="duration">Age</th>
             <th>Method</th>
             <th>From</th>
@@ -13,6 +14,7 @@
             <th>To</th>
             <th>Value</th>
             <th>Token Name</th>
+            <th>Status</th>
           </tr>
         </thead>
         <tbody>
@@ -23,6 +25,13 @@
                 <td class="text-monospace align-top"{{ if gt .TxHashRowspan 1 }} rowspan="{{ .TxHashRowspan }}"{{ end }}>
                   <a href="/tx/{{ formatHexBytes .TxHash }}" data-bs-toggle="tooltip" title="{{ formatHexBytes .TxHash }}">{{ formatEthHashShort .TxHash 6 }}</a>
                   <i class="fa fa-copy text-muted ms-1" role="button" data-bs-toggle="tooltip" title="Copy transaction hash" data-clipboard-text="{{ formatHexBytes .TxHash }}"></i>
+                </td>
+                <td class="align-top"{{ if gt .TxHashRowspan 1 }} rowspan="{{ .TxHashRowspan }}"{{ end }}>
+                  {{ if gt (len .BlockRoot) 0 }}
+                    <a href="/slot/0x{{ printf "%x" .BlockRoot }}">{{ formatAddCommas .BlockNumber }}</a>
+                  {{ else }}
+                    {{ formatAddCommas .BlockNumber }}
+                  {{ end }}
                 </td>
                 <td class="align-top" data-timer="{{ .BlockTime.Unix }}"{{ if gt .TxHashRowspan 1 }} rowspan="{{ .TxHashRowspan }}"{{ end }}>
                   <span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ .BlockTime }}">{{ formatRecentTimeShort .BlockTime }}</span>
@@ -64,11 +73,20 @@
                     {{ if .TokenName }}{{ .TokenName }}{{ else if .TokenSymbol }}{{ .TokenSymbol }}{{ else }}Unknown{{ end }}
                   </a>
                 </td>
+                {{ if gt .TxHashRowspan 0 }}
+                <td class="text-nowrap align-top"{{ if gt .TxHashRowspan 1 }} rowspan="{{ .TxHashRowspan }}"{{ end }}>
+                  {{ if .BlockOrphaned }}
+                    <span class="badge text-bg-info" data-bs-toggle="tooltip" title="Block was orphaned">Orphaned</span>
+                  {{ else }}
+                    <span class="badge text-bg-success" data-bs-toggle="tooltip" title="Block is canonical">Included</span>
+                  {{ end }}
+                </td>
+                {{ end }}
               </tr>
             {{ end }}
           {{ else }}
             <tr>
-              <td colspan="8" class="text-center py-4 text-muted">
+              <td colspan="10" class="text-center py-4 text-muted">
                 <i class="fas fa-coins fa-2x mb-2"></i>
                 <br>No ERC20 transfers found
               </td>
@@ -81,7 +99,7 @@
     {{ if gt .ERC20TotalPages 1 }}
     <div class="card-footer d-flex justify-content-between align-items-center">
       <div>
-        Showing {{ formatAddCommas .ERC20FirstItem }} - {{ formatAddCommas .ERC20LastItem }} of {{ formatAddCommas .ERC20TransferCount }}
+        Showing {{ formatAddCommas .ERC20FirstItem }} - {{ formatAddCommas .ERC20LastItem }} of {{ if .ERC20CountCapped }}more than {{ end }}{{ formatAddCommas .ERC20TransferCount }}
       </div>
       <nav aria-label="ERC20 transfer pagination">
         <ul class="pagination pagination-sm mb-0">
