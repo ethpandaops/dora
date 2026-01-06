@@ -24,11 +24,22 @@ const (
 
 	// syncStateKey is the key used to store sync state in the explorer_state table.
 	syncStateKey = "txindexer.syncstate"
+
+	// cleanupStateKey is the key used to store cleanup state in the explorer_state table.
+	cleanupStateKey = "txindexer.cleanup"
+
+	// defaultCleanupInterval is the default cleanup interval.
+	defaultCleanupInterval = 24 * time.Hour
 )
 
 // syncState represents the persisted sync state.
 type syncState struct {
 	CurrentEpoch uint64 `json:"current_epoch"`
+}
+
+// cleanupState represents the persisted cleanup state.
+type cleanupState struct {
+	LastCleanup int64 `json:"last_cleanup"` // Unix timestamp
 }
 
 // BlockRef represents a reference to a block for EL indexing.
@@ -60,6 +71,9 @@ type TxIndexer struct {
 
 	// sync state
 	syncEpoch phase0.Epoch
+
+	// cleanup state
+	lastCleanup time.Time
 
 	// balance lookup service
 	balanceLookup *BalanceLookupService
@@ -114,14 +128,14 @@ func (t *TxIndexer) Start() error {
 	// Load sync state from database
 	t.loadSyncState()
 
+	// Load cleanup state from database
+	t.loadCleanupState()
+
 	// Start the processing loop (goroutine 1)
 	go t.runProcessingLoop()
 
 	// Start the queue filler (goroutine 2)
 	go t.runQueueFiller()
-
-	// Start the cleanup routine (goroutine 3)
-	go t.runCleanupLoop()
 
 	t.logger.Info("tx indexer started")
 	return nil
@@ -171,6 +185,34 @@ func (t *TxIndexer) saveSyncState(epoch phase0.Epoch) {
 	})
 	if err != nil {
 		t.logger.WithError(err).Error("failed to save sync state")
+	}
+}
+
+// loadCleanupState loads the cleanup state from the database.
+func (t *TxIndexer) loadCleanupState() {
+	state := cleanupState{}
+	_, err := db.GetExplorerState(cleanupStateKey, &state)
+	if err != nil {
+		t.logger.WithError(err).Debug("no existing cleanup state found, starting fresh")
+		t.lastCleanup = time.Time{} // Zero time means never cleaned up
+		return
+	}
+
+	t.lastCleanup = time.Unix(state.LastCleanup, 0)
+	t.logger.WithField("lastCleanup", t.lastCleanup).Info("restored cleanup state from database")
+}
+
+// saveCleanupState saves the cleanup state to the database.
+func (t *TxIndexer) saveCleanupState() {
+	state := cleanupState{
+		LastCleanup: t.lastCleanup.Unix(),
+	}
+
+	err := db.RunDBTransaction(func(tx *sqlx.Tx) error {
+		return db.SetExplorerState(cleanupStateKey, &state, tx)
+	})
+	if err != nil {
+		t.logger.WithError(err).Error("failed to save cleanup state")
 	}
 }
 
@@ -426,6 +468,9 @@ func (t *TxIndexer) runProcessingLoop() {
 		if ref.UpdateSyncEpoch != nil {
 			t.saveSyncState(*ref.UpdateSyncEpoch)
 		}
+
+		// Check if cleanup is needed (avoid running during active processing)
+		t.checkAndRunCleanup()
 	}
 }
 
@@ -507,4 +552,140 @@ func (t *TxIndexer) GetBalanceLookupStats() (highPrio, lowPrio int) {
 // GetBalanceLookupService returns the balance lookup service for direct access.
 func (t *TxIndexer) GetBalanceLookupService() *BalanceLookupService {
 	return t.balanceLookup
+}
+
+// checkAndRunCleanup checks if cleanup is needed and runs it if the interval has passed.
+func (t *TxIndexer) checkAndRunCleanup() {
+	// Get cleanup interval from config
+	cleanupInterval := utils.Config.ExecutionIndexer.CleanupInterval
+	if cleanupInterval == 0 {
+		cleanupInterval = defaultCleanupInterval
+	}
+
+	// Check if enough time has passed since last cleanup
+	now := time.Now()
+	if !t.lastCleanup.IsZero() && now.Sub(t.lastCleanup) < cleanupInterval {
+		return // Not time for cleanup yet
+	}
+
+	t.logger.Debug("starting cleanup routine")
+	t.lastCleanup = now
+
+	// 1. Delete zero balances
+	zeroBalancesDeleted := t.cleanupZeroBalances()
+
+	// 2. Delete old EL data based on retention period
+	retentionStats := t.cleanupRetentionData()
+
+	// Save cleanup state
+	t.saveCleanupState()
+
+	// Log summary
+	if zeroBalancesDeleted > 0 || retentionStats != nil {
+		fields := logrus.Fields{
+			"zeroBalances": zeroBalancesDeleted,
+		}
+		if retentionStats != nil {
+			fields["transactions"] = retentionStats.TransactionsDeleted
+			fields["events"] = retentionStats.EventsDeleted
+			fields["transfers"] = retentionStats.TokenTransfersDeleted
+			fields["withdrawals"] = retentionStats.WithdrawalsDeleted
+			fields["blocks"] = retentionStats.BlocksDeleted
+		}
+		t.logger.WithFields(fields).Info("execution indexer cleanup completed")
+	} else {
+		t.logger.Debug("cleanup completed, no items deleted")
+	}
+}
+
+// cleanupZeroBalances deletes all balance entries with zero balance.
+func (t *TxIndexer) cleanupZeroBalances() int64 {
+	var deleted int64
+
+	err := db.RunDBTransaction(func(tx *sqlx.Tx) error {
+		var err error
+		deleted, err = db.DeleteElZeroBalances(tx)
+		return err
+	})
+
+	if err != nil {
+		t.logger.WithError(err).Warn("failed to delete zero balances")
+		return 0
+	}
+
+	if deleted > 0 {
+		t.logger.WithField("count", deleted).Debug("deleted zero balances")
+	}
+
+	return deleted
+}
+
+// cleanupRetentionData deletes EL data older than the retention period.
+func (t *TxIndexer) cleanupRetentionData() *db.CleanupStats {
+	retention := utils.Config.ExecutionIndexer.Retention
+	if retention == 0 {
+		// No retention configured, skip cleanup
+		return nil
+	}
+
+	chainState := t.indexerCtx.ChainState
+	if chainState == nil {
+		t.logger.Warn("chain state not available for retention cleanup")
+		return nil
+	}
+
+	// Calculate cutoff time
+	cutoffTime := time.Now().Add(-retention)
+
+	// Convert cutoff time to slot
+	cutoffSlot := chainState.TimeToSlot(cutoffTime)
+	if cutoffSlot == 0 {
+		t.logger.Debug("cutoff slot is 0, skipping retention cleanup")
+		return nil
+	}
+
+	// Calculate block_uid threshold: (slot << 16)
+	// All block_uids with slot < cutoffSlot should be deleted
+	blockUidThreshold := uint64(cutoffSlot) << 16
+
+	t.logger.WithFields(logrus.Fields{
+		"retention":         retention,
+		"cutoffTime":        cutoffTime,
+		"cutoffSlot":        cutoffSlot,
+		"blockUidThreshold": blockUidThreshold,
+	}).Debug("calculating retention cleanup threshold")
+
+	// Check if we have any data to delete
+	oldestBlockUid, err := db.GetOldestElBlockUid()
+	if err != nil {
+		t.logger.WithError(err).Warn("failed to get oldest block uid")
+		return nil
+	}
+
+	if oldestBlockUid == 0 || oldestBlockUid >= blockUidThreshold {
+		// No data older than threshold
+		return nil
+	}
+
+	oldestSlot := phase0.Slot(oldestBlockUid >> 16)
+	t.logger.WithFields(logrus.Fields{
+		"oldestBlockUid": oldestBlockUid,
+		"oldestSlot":     oldestSlot,
+		"cutoffSlot":     cutoffSlot,
+	}).Info("deleting EL data older than retention period")
+
+	var stats *db.CleanupStats
+
+	err = db.RunDBTransaction(func(tx *sqlx.Tx) error {
+		var err error
+		stats, err = db.DeleteElDataBeforeBlockUid(blockUidThreshold, tx)
+		return err
+	})
+
+	if err != nil {
+		t.logger.WithError(err).Error("failed to delete old EL data")
+		return nil
+	}
+
+	return stats
 }

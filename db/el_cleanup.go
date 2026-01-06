@@ -10,6 +10,7 @@ type CleanupStats struct {
 	TransactionsDeleted   int64
 	EventsDeleted         int64
 	TokenTransfersDeleted int64
+	WithdrawalsDeleted    int64
 	BlocksDeleted         int64
 }
 
@@ -39,6 +40,13 @@ func DeleteElDataBeforeBlockUid(blockUidThreshold uint64, dbTx *sqlx.Tx) (*Clean
 		return stats, err
 	}
 	stats.TokenTransfersDeleted, _ = result.RowsAffected()
+
+	// Delete withdrawals
+	result, err = dbTx.Exec("DELETE FROM el_withdrawals WHERE block_uid < $1", blockUidThreshold)
+	if err != nil {
+		return stats, err
+	}
+	stats.WithdrawalsDeleted, _ = result.RowsAffected()
 
 	// Delete blocks
 	result, err = dbTx.Exec("DELETE FROM el_blocks WHERE block_uid < $1", blockUidThreshold)

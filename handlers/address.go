@@ -39,6 +39,7 @@ func Address(w http.ResponseWriter, r *http.Request) {
 		"address/transactions.html",
 		"address/erc20_transfers.html",
 		"address/nft_transfers.html",
+		"address/system_deposits.html",
 	)
 	notfoundTemplateFiles := append(layoutTemplateFiles,
 		"address/notfound.html",
@@ -340,6 +341,13 @@ func buildAddressPageData(account *dbtypes.ElAccount, tabView string, pageIdx, p
 		pageData.TokenBalanceCount = uint64(len(pageData.TokenBalances))
 	}
 
+	// Check if address has any system deposits (for tab visibility)
+	if account.ID > 0 {
+		if _, count, err := db.GetElWithdrawalsByAccountID(account.ID, 0, 1); err == nil && count > 0 {
+			pageData.HasSystemDeposits = true
+		}
+	}
+
 	offset := (pageIdx - 1) * pageSize
 
 	// Load tab-specific data
@@ -350,6 +358,8 @@ func buildAddressPageData(account *dbtypes.ElAccount, tabView string, pageIdx, p
 		loadERC20TransfersTab(pageData, account, chainState, offset, uint32(pageSize), pageIdx)
 	case "nft":
 		loadNFTTransfersTab(pageData, account, chainState, offset, uint32(pageSize), pageIdx)
+	case "system":
+		loadSystemDepositsTab(pageData, account, chainState, offset, uint32(pageSize), pageIdx)
 	default:
 		loadTransactionsTab(pageData, account, chainState, offset, uint32(pageSize), pageIdx)
 	}
@@ -612,5 +622,69 @@ func calculateTxHashRowspans(transfers []*models.AddressPageDataTokenTransfer) {
 
 		// Move to the previous group
 		i = groupStart - 1
+	}
+}
+
+func loadSystemDepositsTab(pageData *models.AddressPageData, account *dbtypes.ElAccount, chainState *consensus.ChainState, offset uint64, limit uint32, pageIdx uint64) {
+	// Get system deposits (withdrawals and fee recipient rewards)
+	dbDeposits, totalCount, _ := db.GetElWithdrawalsByAccountID(account.ID, offset, limit)
+
+	pageData.SystemDepositCount = totalCount
+	pageData.SystemPageIndex = pageIdx
+	pageData.SystemPageSize = uint64(limit)
+	pageData.SystemTotalPages = uint64(math.Ceil(float64(totalCount) / float64(limit)))
+	pageData.SystemFirstItem = (pageIdx-1)*uint64(limit) + 1
+	pageData.SystemLastItem = min(pageIdx*uint64(limit), totalCount)
+
+	// Collect block UIDs for batch lookup
+	blockUids := make([]uint64, 0, len(dbDeposits))
+	blockUidSet := make(map[uint64]bool, len(dbDeposits))
+	for _, deposit := range dbDeposits {
+		if !blockUidSet[deposit.BlockUid] {
+			blockUidSet[deposit.BlockUid] = true
+			blockUids = append(blockUids, deposit.BlockUid)
+		}
+	}
+
+	// Batch lookup blocks using GetDbBlocksByFilter (includes cached blocks)
+	blockMap := make(map[uint64]*dbtypes.AssignedSlot, len(blockUids))
+	if len(blockUids) > 0 {
+		filter := &dbtypes.BlockFilter{
+			BlockUids:    blockUids,
+			WithOrphaned: 1, // Include both canonical and orphaned
+		}
+		blocks := services.GlobalBeaconService.GetDbBlocksByFilter(filter, 0, uint32(len(blockUids)), 0)
+		for _, b := range blocks {
+			if b.Block != nil {
+				blockMap[b.Block.BlockUid] = b
+			}
+		}
+	}
+
+	// Build system deposits list
+	pageData.SystemDeposits = make([]*models.AddressPageDataSystemDeposit, 0, len(dbDeposits))
+	for _, deposit := range dbDeposits {
+		slot := deposit.BlockUid >> 16
+		blockTime := chainState.SlotToTime(phase0.Slot(slot))
+
+		systemDeposit := &models.AddressPageDataSystemDeposit{
+			BlockUid:  deposit.BlockUid,
+			BlockTime: blockTime,
+			Type:      deposit.Type,
+			Amount:    deposit.Amount,
+			AmountRaw: deposit.AmountRaw,
+			Validator: deposit.Validator,
+		}
+
+		// Set block info from block lookup
+		if blockInfo, ok := blockMap[deposit.BlockUid]; ok && blockInfo.Block != nil {
+			systemDeposit.BlockRoot = blockInfo.Block.Root
+			systemDeposit.BlockOrphaned = blockInfo.Block.Status == dbtypes.Orphaned
+			if blockInfo.Block.EthBlockNumber != nil {
+				systemDeposit.BlockNumber = *blockInfo.Block.EthBlockNumber
+			}
+		}
+
+		pageData.SystemDeposits = append(pageData.SystemDeposits, systemDeposit)
 	}
 }

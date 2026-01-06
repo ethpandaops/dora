@@ -56,6 +56,18 @@ type txProcessingContext struct {
 
 	// Pending balance transfers (resolved to deltas after account IDs are set)
 	pendingTransfers []*pendingBalanceTransfer
+
+	// System deposits (withdrawals and fee recipient rewards)
+	systemDeposits []*pendingSystemDeposit
+}
+
+// pendingSystemDeposit represents a system deposit before account IDs are resolved.
+type pendingSystemDeposit struct {
+	depositType uint8
+	account     *pendingAccount
+	amount      float64
+	amountRaw   []byte
+	validator   *uint64
 }
 
 // balanceDelta tracks cumulative balance changes for an account/token pair within a block.
@@ -137,6 +149,7 @@ func newTxProcessingContext(
 		senderNonces:     make(map[common.Address]uint64, 32),
 		balanceDeltas:    make(map[uint64]*balanceDelta, 64),
 		pendingTransfers: make([]*pendingBalanceTransfer, 0, 64),
+		systemDeposits:   make([]*pendingSystemDeposit, 0, 16),
 	}
 }
 

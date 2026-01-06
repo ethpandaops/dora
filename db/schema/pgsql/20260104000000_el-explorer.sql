@@ -192,6 +192,33 @@ CREATE INDEX IF NOT EXISTS "el_token_transfers_to_idx"
     ON public."el_token_transfers"
     ("to_id" ASC NULLS FIRST);
 
+-- Table for system deposits (withdrawals and fee recipient rewards)
+CREATE TABLE IF NOT EXISTS public."el_withdrawals" (
+    block_uid BIGINT NOT NULL,
+    account_id BIGINT NOT NULL,
+    type SMALLINT NOT NULL DEFAULT 0, -- 0=withdrawal, 1=fee_recipient
+    amount DOUBLE PRECISION NOT NULL DEFAULT 0,
+    amount_raw bytea NOT NULL,
+    validator BIGINT NULL, -- validator index for withdrawals, null for fee recipient
+    CONSTRAINT el_withdrawals_pkey PRIMARY KEY (block_uid, account_id, type)
+);
+
+CREATE INDEX IF NOT EXISTS "el_withdrawals_block_uid_idx"
+    ON public."el_withdrawals"
+    ("block_uid" ASC NULLS FIRST);
+
+CREATE INDEX IF NOT EXISTS "el_withdrawals_account_id_idx"
+    ON public."el_withdrawals"
+    ("account_id" ASC NULLS FIRST);
+
+CREATE INDEX IF NOT EXISTS "el_withdrawals_type_idx"
+    ON public."el_withdrawals"
+    ("type" ASC NULLS FIRST);
+
+CREATE INDEX IF NOT EXISTS "el_withdrawals_validator_idx"
+    ON public."el_withdrawals"
+    ("validator" ASC NULLS FIRST);
+
 -- +goose StatementEnd
 -- +goose Down
 -- +goose StatementBegin

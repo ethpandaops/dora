@@ -3,6 +3,7 @@ package txindexer
 import (
 	"context"
 	"fmt"
+	"math/big"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -20,15 +21,26 @@ const (
 
 // blockData holds the fetched EL block data.
 type blockData struct {
-	BlockNumber  uint64
-	BlockHash    common.Hash
-	Transactions []*types.Transaction
-	Receipts     []*types.Receipt
-	Stats        struct {
+	BlockNumber       uint64
+	BlockHash         common.Hash
+	Transactions      []*types.Transaction
+	Receipts          []*types.Receipt
+	FeeRecipient      common.Address   // Fee recipient from beacon block
+	Withdrawals       []WithdrawalData // Withdrawals from beacon block
+	TotalPriorityFees *big.Int         // Total priority fees in the block
+	Stats             struct {
 		Events       uint32
 		Transactions uint32
 		Transfers    uint32
 	}
+}
+
+// WithdrawalData represents a withdrawal from the beacon chain
+type WithdrawalData struct {
+	Index     uint64
+	Validator uint64
+	Address   common.Address
+	Amount    uint64 // Amount in Gwei
 }
 
 type dbCommitCallback func(tx *sqlx.Tx) error
@@ -113,6 +125,11 @@ func (t *TxIndexer) processElBlock(ref *BlockRef) error {
 	// Get account nonce updates (done after all transactions processed)
 	accountNonceUpdates := procCtx.getAccountNonceUpdates()
 
+	// Process fee recipient and withdrawals if beacon block data is available
+	if err := t.processBlockRewards(procCtx, data); err != nil {
+		return fmt.Errorf("failed to process block rewards: %w", err)
+	}
+
 	return db.RunDBTransaction(func(tx *sqlx.Tx) error {
 		for _, dbCommitCallback := range dbCommitCallbacks {
 			err := dbCommitCallback(tx)
@@ -148,6 +165,31 @@ func (t *TxIndexer) processElBlock(ref *BlockRef) error {
 			}
 		}
 
+		// Insert system deposits (withdrawals and fee recipient rewards)
+		if len(procCtx.systemDeposits) > 0 {
+			// Resolve account IDs and create final withdrawal records
+			systemWithdrawals := make([]*dbtypes.ElWithdrawal, 0, len(procCtx.systemDeposits))
+			for _, pending := range procCtx.systemDeposits {
+				if pending.account.id == 0 {
+					continue // Skip if account ID not resolved
+				}
+				systemWithdrawals = append(systemWithdrawals, &dbtypes.ElWithdrawal{
+					BlockUid:  ref.BlockUID,
+					AccountID: pending.account.id,
+					Type:      pending.depositType,
+					Amount:    pending.amount,
+					AmountRaw: pending.amountRaw,
+					Validator: pending.validator,
+				})
+			}
+
+			if len(systemWithdrawals) > 0 {
+				if err := db.InsertElWithdrawals(systemWithdrawals, tx); err != nil {
+					return fmt.Errorf("failed to insert system deposits: %w", err)
+				}
+			}
+		}
+
 		return db.InsertElBlock(&dbtypes.ElBlock{
 			BlockUid:     ref.BlockUID,
 			Status:       0x01,
@@ -156,4 +198,44 @@ func (t *TxIndexer) processElBlock(ref *BlockRef) error {
 			Transfers:    data.Stats.Transfers,
 		}, tx)
 	})
+}
+
+// processBlockRewards processes fee recipient rewards and withdrawals from beacon block data.
+func (t *TxIndexer) processBlockRewards(procCtx *txProcessingContext, data *blockData) error {
+	// Process fee recipient if we have priority fees
+	if data.TotalPriorityFees != nil && data.TotalPriorityFees.Sign() > 0 {
+		// Ensure fee recipient account exists
+		feeRecipientAccount := procCtx.ensureAccount(data.FeeRecipient, nil, false)
+
+		// Create fee recipient withdrawal record (account ID will be resolved later)
+		feeAmount := weiToFloat(data.TotalPriorityFees, 18) // ETH uses 18 decimals
+		procCtx.systemDeposits = append(procCtx.systemDeposits, &pendingSystemDeposit{
+			depositType: dbtypes.WithdrawalTypeFeeRecipient,
+			account:     feeRecipientAccount,
+			amount:      feeAmount,
+			amountRaw:   data.TotalPriorityFees.Bytes(),
+			validator:   nil,
+		})
+	}
+
+	// Process withdrawals if available
+	for _, withdrawal := range data.Withdrawals {
+		// Convert Gwei to Wei (1 Gwei = 10^9 Wei)
+		amountWei := new(big.Int).Mul(big.NewInt(int64(withdrawal.Amount)), big.NewInt(1e9))
+
+		// Ensure withdrawal address account exists
+		withdrawalAccount := procCtx.ensureAccount(withdrawal.Address, nil, false)
+
+		// Create withdrawal record (account ID will be resolved later)
+		withdrawalAmount := weiToFloat(amountWei, 18) // ETH uses 18 decimals
+		procCtx.systemDeposits = append(procCtx.systemDeposits, &pendingSystemDeposit{
+			depositType: dbtypes.WithdrawalTypeBeaconWithdrawal,
+			account:     withdrawalAccount,
+			amount:      withdrawalAmount,
+			amountRaw:   amountWei.Bytes(),
+			validator:   &withdrawal.Validator,
+		})
+	}
+
+	return nil
 }

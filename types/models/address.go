@@ -26,6 +26,9 @@ type AddressPageData struct {
 	// Tab view
 	TabView string `json:"tab_view"`
 
+	// System deposits availability
+	HasSystemDeposits bool `json:"has_system_deposits"`
+
 	// Transactions tab
 	Transactions     []*AddressPageDataTransaction `json:"transactions"`
 	TransactionCount uint64                        `json:"transaction_count"`
@@ -52,6 +55,15 @@ type AddressPageData struct {
 	NFTTotalPages    uint64                          `json:"nft_total_pages"`
 	NFTFirstItem     uint64                          `json:"nft_first_item"`
 	NFTLastItem      uint64                          `json:"nft_last_item"`
+
+	// System Deposits tab (withdrawals and fee recipient rewards)
+	SystemDeposits     []*AddressPageDataSystemDeposit `json:"system_deposits"`
+	SystemDepositCount uint64                          `json:"system_deposit_count"`
+	SystemPageIndex    uint64                          `json:"system_page_index"`
+	SystemPageSize     uint64                          `json:"system_page_size"`
+	SystemTotalPages   uint64                          `json:"system_total_pages"`
+	SystemFirstItem    uint64                          `json:"system_first_item"`
+	SystemLastItem     uint64                          `json:"system_last_item"`
 }
 
 // AddressPageDataTokenBalance represents a token balance in the sidebar
@@ -112,4 +124,17 @@ type AddressPageDataTokenTransfer struct {
 	TokenIndex     []byte    `json:"token_index"` // NFT token ID
 	Amount         float64   `json:"amount"`      // For ERC20
 	AmountRaw      []byte    `json:"amount_raw"`  // Raw amount
+}
+
+// AddressPageDataSystemDeposit represents a system deposit (withdrawal or fee recipient reward)
+type AddressPageDataSystemDeposit struct {
+	BlockUid      uint64    `json:"block_uid"`
+	BlockNumber   uint64    `json:"block_number"`
+	BlockRoot     []byte    `json:"block_root"`     // For linking to /slot/{root}
+	BlockOrphaned bool      `json:"block_orphaned"` // True if block is orphaned
+	BlockTime     time.Time `json:"block_time"`
+	Type          uint8     `json:"type"`      // 0=withdrawal, 1=fee_recipient
+	Amount        float64   `json:"amount"`    // Amount in ETH
+	AmountRaw     []byte    `json:"amount_raw"`
+	Validator     *uint64   `json:"validator"` // validator index for withdrawals, null for fee recipient
 }

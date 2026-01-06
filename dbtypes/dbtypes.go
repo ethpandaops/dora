@@ -514,3 +514,18 @@ type ElTokenTransfer struct {
 	Amount     float64 `db:"amount"`
 	AmountRaw  []byte  `db:"amount_raw"`
 }
+
+// Withdrawal types
+const (
+	WithdrawalTypeBeaconWithdrawal = 0
+	WithdrawalTypeFeeRecipient     = 1
+)
+
+type ElWithdrawal struct {
+	BlockUid  uint64   `db:"block_uid"`
+	AccountID uint64   `db:"account_id"`
+	Type      uint8    `db:"type"` // 0=withdrawal, 1=fee_recipient
+	Amount    float64  `db:"amount"`
+	AmountRaw []byte   `db:"amount_raw"`
+	Validator *uint64  `db:"validator"` // validator index for withdrawals, null for fee recipient
+}

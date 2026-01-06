@@ -106,6 +106,13 @@
           <i class="fa fa-image me-2"></i> NFT Transfers
         </a>
       </li>
+      {{ if .HasSystemDeposits }}
+      <li class="nav-item">
+        <a class="nav-link{{ if eq .TabView "system" }} active{{ end }}" id="system-tab" data-lazy-tab="system" data-bs-toggle="tab" data-bs-target="#system" href="?v=system" role="tab" aria-controls="system" aria-selected="{{ if eq .TabView "system" }}true{{ else }}false{{ end }}">
+          <i class="fa fa-university me-2"></i> System Deposits
+        </a>
+      </li>
+      {{ end }}
     </ul>
 
     <div class="tab-content" id="tabContent">
@@ -124,6 +131,13 @@
           {{ template "nftTransfers" . }}
         {{ end }}
       </div>
+      {{ if .HasSystemDeposits }}
+      <div class="tab-pane fade{{ if eq .TabView "system" }} show active{{ end }}" id="system" role="tabpanel" aria-labelledby="system-tab" data-loaded="{{ if eq .TabView "system" }}true{{ else }}false{{ end }}">
+        {{ if eq .TabView "system" }}
+          {{ template "systemDeposits" . }}
+        {{ end }}
+      </div>
+      {{ end }}
     </div>
   </div>
 {{ end }}
@@ -134,6 +148,8 @@
     {{ template "erc20Transfers" . }}
   {{ else if eq .TabView "nft" }}
     {{ template "nftTransfers" . }}
+  {{ else if eq .TabView "system" }}
+    {{ template "systemDeposits" . }}
   {{ else }}
     Unknown tab
   {{ end }}
@@ -244,4 +260,21 @@
 </script>
 {{ end }}
 {{ define "css" }}
+<style>
+/* Fix time column width to prevent table resizing when time updates */
+td[data-timer], th[data-timecol] {
+  width: 130px;
+  min-width: 130px;
+  max-width: 130px;
+}
+
+/* Ensure time content doesn't overflow */
+td[data-timer] span {
+  display: inline-block;
+  width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+</style>
 {{ end }}
