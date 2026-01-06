@@ -25,12 +25,9 @@ type CombinedBlockResponse struct {
 	Orphaned bool
 }
 
-// GetBlockBlob retrieves the blob sidecar for a given block root and commitment.
-// It first tries to find a client that has the block root in its cache, and if not found,
-// it falls back to a random ready client. It then retrieves the blob sidecars for the block root
-// and checks if any of them match the given commitment. If a match is found, it returns the blob sidecar,
-// otherwise it returns nil.
-func (bs *ChainService) GetBlockBlob(ctx context.Context, blockroot phase0.Root, commitment deneb.KZGCommitment) (*deneb.BlobSidecar, error) {
+// GetBlockBlob retrieves the blob data for a given block root and blob index.
+// It uses GetBlobsByBlockroot which works for both pre-Fulu and Fulu+ blocks.
+func (bs *ChainService) GetBlockBlob(ctx context.Context, blockroot phase0.Root, blobIndex uint64) (*deneb.Blob, error) {
 	client := bs.beaconIndexer.GetReadyClientByBlockRoot(blockroot, true)
 	if client == nil {
 		client = bs.beaconIndexer.GetReadyClient(true)
@@ -40,18 +37,16 @@ func (bs *ChainService) GetBlockBlob(ctx context.Context, blockroot phase0.Root,
 		return nil, fmt.Errorf("no clients available")
 	}
 
-	blobs, err := client.GetClient().GetRPCClient().GetBlobSidecarsByBlockroot(ctx, blockroot[:])
+	blobs, err := client.GetClient().GetRPCClient().GetBlobsByBlockroot(ctx, blockroot[:])
 	if err != nil {
 		return nil, err
 	}
 
-	for _, blob := range blobs {
-		if bytes.Equal(blob.KZGCommitment[:], commitment[:]) {
-			return blob, nil
-		}
+	if int(blobIndex) >= len(blobs) {
+		return nil, nil
 	}
 
-	return nil, nil
+	return blobs[blobIndex], nil
 }
 
 // GetSlotDetailsByBlockroot retrieves the combined block details for a given block root.
