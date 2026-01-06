@@ -63,8 +63,7 @@ type Indexer struct {
 	wallclockSubscription *utils.Subscription[*ethwallclock.Slot]
 
 	// dispatchers
-	blockDispatcher    *utils.Dispatcher[*Block]
-	finalityDispatcher *utils.Dispatcher[*v1.Finality]
+	blockDispatcher *utils.Dispatcher[*Block]
 
 	// canonical head state
 	canonicalHeadMutex   sync.Mutex

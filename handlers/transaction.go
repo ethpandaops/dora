@@ -259,6 +259,7 @@ func buildTransactionPageDataFromDB(pageData *models.TransactionPageData, txs []
 		// User selected a specific block
 		tx = selectedTx
 		displayBlock = selectedBlock
+		pageData.SelectedBlockUid = selectedBlockUid
 	} else {
 		// Auto-select canonical, or fall back to first tx if all orphaned
 		tx = canonicalTx
@@ -277,6 +278,7 @@ func buildTransactionPageDataFromDB(pageData *models.TransactionPageData, txs []
 				break
 			}
 		}
+		// SelectedBlockUid stays 0 for canonical selection
 	}
 
 	// Basic info from selected transaction

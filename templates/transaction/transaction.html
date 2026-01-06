@@ -40,8 +40,9 @@
           <div class="col-md-9">
             <div class="d-flex flex-wrap gap-2">
               {{ $txHash := formatHexBytes $.TxHash }}
+              {{ $tabView := $.TabView }}
               {{ range .InclusionBlocks }}
-              <a href="/tx/{{ $txHash }}{{ if not .IsSelected }}?b={{ .BlockUid }}{{ end }}" class="text-decoration-none">
+              <a href="/tx/{{ $txHash }}?v={{ $tabView }}{{ if not .IsSelected }}&b={{ .BlockUid }}{{ end }}" class="text-decoration-none inclusion-block-link" data-block-uid="{{ .BlockUid }}" data-selected="{{ .IsSelected }}">
                 <div class="border rounded px-2 py-1{{ if .IsSelected }} bg-primary bg-opacity-10 border-primary{{ end }}" style="font-size: 0.85rem; cursor: pointer;" data-bs-toggle="tooltip" title="Click to view transaction result from slot {{ formatAddCommas .Slot }}">
                   {{ formatAddCommas .BlockNumber }}
                   {{ if .IsCanonical }}
@@ -89,7 +90,8 @@
         <div class="row border-bottom p-2 mx-0">
           <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Timestamp of the block">Timestamp:</span></div>
           <div class="col-md-9">
-            <span data-timer="{{ .BlockTime.Unix }}">{{ .BlockTime }}</span>
+            {{ .BlockTime.UTC }} (<span data-timer="{{ .BlockTime.Unix }}">{{ formatRecentTimeShort .BlockTime }}</span>)
+            <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ .BlockTime.UTC }}"></i>
           </div>
         </div>
         <div class="row border-bottom p-2 mx-0">
@@ -137,27 +139,27 @@
 
     <ul class="nav nav-tabs justify-content-start mt-3" id="tab" role="tablist">
       <li class="nav-item">
-        <a class="nav-link{{ if eq .TabView "overview" }} active{{ end }}" id="details-tab" data-lazy-tab="details" data-bs-toggle="tab" data-bs-target="#details" href="?v=overview" role="tab" aria-controls="details" aria-selected="{{ if eq .TabView "overview" }}true{{ else }}false{{ end }}">
+        <a class="nav-link{{ if eq .TabView "overview" }} active{{ end }}" id="details-tab" data-lazy-tab="details" data-bs-toggle="tab" data-bs-target="#details" href="?v=overview{{ if gt .SelectedBlockUid 0 }}&b={{ .SelectedBlockUid }}{{ end }}" role="tab" aria-controls="details" aria-selected="{{ if eq .TabView "overview" }}true{{ else }}false{{ end }}">
           <i class="fa fa-cog me-2"></i> Details
         </a>
       </li>
       {{ if gt .EventCount 0 }}
       <li class="nav-item">
-        <a class="nav-link{{ if eq .TabView "events" }} active{{ end }}" id="events-tab" data-lazy-tab="events" data-bs-toggle="tab" data-bs-target="#events" href="?v=events" role="tab" aria-controls="events" aria-selected="{{ if eq .TabView "events" }}true{{ else }}false{{ end }}">
+        <a class="nav-link{{ if eq .TabView "events" }} active{{ end }}" id="events-tab" data-lazy-tab="events" data-bs-toggle="tab" data-bs-target="#events" href="?v=events{{ if gt .SelectedBlockUid 0 }}&b={{ .SelectedBlockUid }}{{ end }}" role="tab" aria-controls="events" aria-selected="{{ if eq .TabView "events" }}true{{ else }}false{{ end }}">
           <i class="fa fa-list me-2"></i> Events ({{ .EventCount }})
         </a>
       </li>
       {{ end }}
       {{ if gt .TokenTransferCount 0 }}
       <li class="nav-item">
-        <a class="nav-link{{ if eq .TabView "transfers" }} active{{ end }}" id="transfers-tab" data-lazy-tab="transfers" data-bs-toggle="tab" data-bs-target="#transfers" href="?v=transfers" role="tab" aria-controls="transfers" aria-selected="{{ if eq .TabView "transfers" }}true{{ else }}false{{ end }}">
+        <a class="nav-link{{ if eq .TabView "transfers" }} active{{ end }}" id="transfers-tab" data-lazy-tab="transfers" data-bs-toggle="tab" data-bs-target="#transfers" href="?v=transfers{{ if gt .SelectedBlockUid 0 }}&b={{ .SelectedBlockUid }}{{ end }}" role="tab" aria-controls="transfers" aria-selected="{{ if eq .TabView "transfers" }}true{{ else }}false{{ end }}">
           <i class="fa fa-coins me-2"></i> Token Transfers ({{ .TokenTransferCount }})
         </a>
       </li>
       {{ end }}
       {{ if gt .BlobCount 0 }}
       <li class="nav-item">
-        <a class="nav-link{{ if eq .TabView "blobs" }} active{{ end }}" id="blobs-tab" data-lazy-tab="blobs" data-bs-toggle="tab" data-bs-target="#blobs" href="?v=blobs" role="tab" aria-controls="blobs" aria-selected="{{ if eq .TabView "blobs" }}true{{ else }}false{{ end }}">
+        <a class="nav-link{{ if eq .TabView "blobs" }} active{{ end }}" id="blobs-tab" data-lazy-tab="blobs" data-bs-toggle="tab" data-bs-target="#blobs" href="?v=blobs{{ if gt .SelectedBlockUid 0 }}&b={{ .SelectedBlockUid }}{{ end }}" role="tab" aria-controls="blobs" aria-selected="{{ if eq .TabView "blobs" }}true{{ else }}false{{ end }}">
           <i class="fa fa-database me-2"></i> Blobs ({{ .BlobCount }})
         </a>
       </li>
@@ -366,6 +368,14 @@
     var currentTab = "{{ .TabView }}";
     var txHashStr = "{{ formatHexBytes .TxHash }}";
 
+    // Map tab IDs to view parameter values
+    var tabToView = {
+      'details': 'overview',
+      'events': 'events',
+      'transfers': 'transfers',
+      'blobs': 'blobs'
+    };
+
     // Handle tab selection
     const tabLinks = document.querySelectorAll('a[data-lazy-tab]');
     Array.from(tabLinks).forEach(el => {
@@ -386,6 +396,9 @@
       tab.show();
 
       window.history.replaceState(null, document.title, "/tx/" + txHashStr + event.target.getAttribute('href'));
+
+      // Update inclusion block links with new tab view
+      updateInclusionBlockLinks(tabToView[tabId] || 'overview');
     }
 
     function loadTabContent(tabEl, url) {
@@ -394,6 +407,19 @@
         $(tabEl).html(data);
         $(tabEl).data("loaded", true);
         explorer.initControls();
+      });
+    }
+
+    function updateInclusionBlockLinks(viewName) {
+      // Update all inclusion block links to use the new tab view
+      document.querySelectorAll('.inclusion-block-link').forEach(function(link) {
+        var blockUid = link.getAttribute('data-block-uid');
+        var isSelected = link.getAttribute('data-selected') === 'true';
+        var newHref = '/tx/' + txHashStr + '?v=' + viewName;
+        if (!isSelected && blockUid) {
+          newHref += '&b=' + blockUid;
+        }
+        link.setAttribute('href', newHref);
       });
     }
   });

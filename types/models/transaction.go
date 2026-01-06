@@ -54,7 +54,8 @@ type TransactionPageData struct {
 	Slot        uint64    `json:"slot"`
 
 	// All blocks that include this transaction
-	InclusionBlocks []*TransactionPageDataBlock `json:"inclusion_blocks"`
+	InclusionBlocks  []*TransactionPageDataBlock `json:"inclusion_blocks"`
+	SelectedBlockUid uint64                      `json:"selected_block_uid"` // Currently selected block UID (0 = canonical)
 
 	// Addresses
 	FromAddr       []byte `json:"from_addr"`
