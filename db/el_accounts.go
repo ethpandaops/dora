@@ -178,7 +178,7 @@ func UpdateElAccount(account *dbtypes.ElAccount, dbTx *sqlx.Tx) error {
 }
 
 // UpdateElAccountsLastNonce batch updates last_nonce and last_block_uid for multiple accounts by ID.
-// Uses VALUES clause for efficient batch update - 10-50x faster than individual UPDATEs.
+// Uses VALUES clause for efficient batch update - 10-50x faster than individual updates.
 func UpdateElAccountsLastNonce(accounts []*dbtypes.ElAccount, dbTx *sqlx.Tx) error {
 	if len(accounts) == 0 {
 		return nil
