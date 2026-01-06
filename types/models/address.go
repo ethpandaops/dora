@@ -124,6 +124,7 @@ type AddressPageDataTokenTransfer struct {
 	TokenIndex     []byte    `json:"token_index"` // NFT token ID
 	Amount         float64   `json:"amount"`      // For ERC20
 	AmountRaw      []byte    `json:"amount_raw"`  // Raw amount
+	MethodName     string    `json:"method_name"` // Function name if known
 }
 
 // AddressPageDataSystemDeposit represents a system deposit (withdrawal or fee recipient reward)

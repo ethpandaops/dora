@@ -21,6 +21,7 @@ import (
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
+	"github.com/ethpandaops/dora/types"
 	"github.com/ethpandaops/dora/types/models"
 )
 
@@ -420,8 +421,11 @@ func loadTransactionsTab(pageData *models.AddressPageData, account *dbtypes.ElAc
 		}
 	}
 
-	// Build transaction list
+	// Build transaction list and collect function signatures
 	pageData.Transactions = make([]*models.AddressPageDataTransaction, 0, len(dbTxs))
+	sigLookupBytes := []types.TxSignatureBytes{}
+	sigLookupMap := map[types.TxSignatureBytes][]*models.AddressPageDataTransaction{}
+
 	for _, tx := range dbTxs {
 		slot := tx.BlockUid >> 16
 		blockTime := chainState.SlotToTime(phase0.Slot(slot))
@@ -466,9 +470,36 @@ func loadTransactionsTab(pageData *models.AddressPageData, account *dbtypes.ElAc
 		// Extract method ID from data
 		if len(tx.Data) >= 4 {
 			txData.MethodID = tx.Data[:4]
+
+			// Collect function signature for lookup
+			var sigBytes types.TxSignatureBytes
+			copy(sigBytes[:], tx.Data[0:4])
+			if sigLookupMap[sigBytes] == nil {
+				sigLookupMap[sigBytes] = []*models.AddressPageDataTransaction{txData}
+				sigLookupBytes = append(sigLookupBytes, sigBytes)
+			} else {
+				sigLookupMap[sigBytes] = append(sigLookupMap[sigBytes], txData)
+			}
+		} else {
+			// No data or insufficient data for method signature
+			txData.MethodName = "transfer"
 		}
 
 		pageData.Transactions = append(pageData.Transactions, txData)
+	}
+
+	// Lookup function signatures
+	if len(sigLookupBytes) > 0 {
+		sigLookups := services.GlobalTxSignaturesService.LookupSignatures(sigLookupBytes)
+		for sigBytes, sigLookup := range sigLookups {
+			for _, txData := range sigLookupMap[sigBytes] {
+				if sigLookup.Status == types.TxSigStatusFound {
+					txData.MethodName = sigLookup.Name
+				} else {
+					txData.MethodName = "call?"
+				}
+			}
+		}
 	}
 }
 
@@ -530,6 +561,67 @@ func loadTokenTransfersTab(pageData *models.AddressPageData, account *dbtypes.El
 		}
 	}
 
+	// Collect unique transaction hashes for method signature lookup
+	txHashSet := make(map[string]bool)
+	for _, t := range dbTransfers {
+		txHashKey := string(t.TxHash)
+		txHashSet[txHashKey] = true
+	}
+
+	// Look up transaction data for method signatures
+	txHashList := make([][]byte, 0, len(txHashSet))
+	for txHashKey := range txHashSet {
+		txHashList = append(txHashList, []byte(txHashKey))
+	}
+
+	// Get transaction data for signature lookup
+	txDataMap := make(map[string][]byte) // tx_hash -> tx_data
+	if len(txHashList) > 0 {
+		for _, txHash := range txHashList {
+			if txs, err := db.GetElTransactionsByHash(txHash); err == nil && len(txs) > 0 {
+				txDataMap[string(txHash)] = txs[0].Data
+			}
+		}
+	}
+
+	// Collect function signatures for batch lookup
+	sigLookupBytes := []types.TxSignatureBytes{}
+	sigLookupMap := make(map[types.TxSignatureBytes][]string) // signature -> tx_hashes
+	for txHashKey, txData := range txDataMap {
+		if len(txData) >= 4 {
+			var sigBytes types.TxSignatureBytes
+			copy(sigBytes[:], txData[0:4])
+			if sigLookupMap[sigBytes] == nil {
+				sigLookupMap[sigBytes] = []string{txHashKey}
+				sigLookupBytes = append(sigLookupBytes, sigBytes)
+			} else {
+				sigLookupMap[sigBytes] = append(sigLookupMap[sigBytes], txHashKey)
+			}
+		}
+	}
+
+	// Lookup function signatures
+	methodNameMap := make(map[string]string) // tx_hash -> method_name
+	if len(sigLookupBytes) > 0 {
+		sigLookups := services.GlobalTxSignaturesService.LookupSignatures(sigLookupBytes)
+		for sigBytes, sigLookup := range sigLookups {
+			methodName := "call?"
+			if sigLookup.Status == types.TxSigStatusFound {
+				methodName = sigLookup.Name
+			}
+			for _, txHashKey := range sigLookupMap[sigBytes] {
+				methodNameMap[txHashKey] = methodName
+			}
+		}
+	}
+
+	// Set default method name for transactions without data
+	for txHashKey, txData := range txDataMap {
+		if len(txData) < 4 && methodNameMap[txHashKey] == "" {
+			methodNameMap[txHashKey] = "transfer"
+		}
+	}
+
 	// Build transfer list
 	transfers := make([]*models.AddressPageDataTokenTransfer, 0, len(dbTransfers))
 	for _, t := range dbTransfers {
@@ -547,6 +639,7 @@ func loadTokenTransfersTab(pageData *models.AddressPageData, account *dbtypes.El
 			TokenIndex: t.TokenIndex,
 			Amount:     t.Amount,
 			AmountRaw:  t.AmountRaw,
+			MethodName: methodNameMap[string(t.TxHash)],
 		}
 
 		// Set addresses from account map

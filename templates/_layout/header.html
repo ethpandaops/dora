@@ -54,7 +54,7 @@
             {{ if .IsReady }}
             <form action="/search">
               <div class="main-search-wrapper">
-                <input id="explorer-search" name="q" type="search" class="form-control form-control-dark search-input" placeholder="Slots / Epochs / Roots / EL-Blocks / Graffitis / Validators" aria-label="Search" autocomplete="off">
+                <input id="explorer-search" name="q" type="search" class="form-control form-control-dark search-input" placeholder="Slots / Epochs / Roots / EL-Blocks / Graffitis / Validators{{ if .ExecutionIndexerEnabled }} / Addresses / Transactions{{ end }}" aria-label="Search" autocomplete="off" data-execution-indexer-enabled="{{ .ExecutionIndexerEnabled }}">
               </div>
             </form>
             {{ end }}

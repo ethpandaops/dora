@@ -1,6 +1,9 @@
 package db
 
 import (
+	"time"
+
+	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -17,43 +20,226 @@ type CleanupStats struct {
 // DeleteElDataBeforeBlockUid deletes all EL data (transactions, events, transfers, blocks)
 // with block_uid less than the specified threshold.
 // Returns statistics about deleted rows.
+// Uses batched deletes to avoid long locks - deletes in chunks and commits between batches.
+// Note: dbTx parameter is ignored as batching requires managing its own transactions.
+// Uses default batch size of 50000 rows per batch.
 func DeleteElDataBeforeBlockUid(blockUidThreshold uint64, dbTx *sqlx.Tx) (*CleanupStats, error) {
+	batchSize := int64(50000) // Default batch size
 	stats := &CleanupStats{}
 
-	// Delete transactions
-	result, err := dbTx.Exec("DELETE FROM el_transactions WHERE block_uid < $1", blockUidThreshold)
-	if err != nil {
-		return stats, err
-	}
-	stats.TransactionsDeleted, _ = result.RowsAffected()
+	// Delete transactions in batches
+	for {
+		var deleted int64
+		err := RunDBTransaction(func(tx *sqlx.Tx) error {
+			var query string
+			if DbEngine == dbtypes.DBEnginePgsql {
+				// PostgreSQL: use ctid for efficient row selection
+				query = `
+					DELETE FROM el_transactions 
+					WHERE block_uid < $1 
+					AND ctid IN (
+						SELECT ctid FROM el_transactions 
+						WHERE block_uid < $1 
+						LIMIT $2
+					)`
+			} else {
+				// SQLite: use ROWID for efficient row selection
+				query = `
+					DELETE FROM el_transactions 
+					WHERE block_uid < $1 
+					AND rowid IN (
+						SELECT rowid FROM el_transactions 
+						WHERE block_uid < $1 
+						LIMIT $2
+					)`
+			}
+			result, err := tx.Exec(query, blockUidThreshold, batchSize)
+			if err != nil {
+				return err
+			}
+			deleted, err = result.RowsAffected()
+			return err
+		})
+		if err != nil {
+			return stats, err
+		}
+		stats.TransactionsDeleted += deleted
 
-	// Delete events
-	result, err = dbTx.Exec("DELETE FROM el_tx_events WHERE block_uid < $1", blockUidThreshold)
-	if err != nil {
-		return stats, err
-	}
-	stats.EventsDeleted, _ = result.RowsAffected()
+		if deleted < batchSize {
+			break // No more rows to delete
+		}
 
-	// Delete token transfers
-	result, err = dbTx.Exec("DELETE FROM el_token_transfers WHERE block_uid < $1", blockUidThreshold)
-	if err != nil {
-		return stats, err
+		// Small delay to allow other operations
+		time.Sleep(100 * time.Millisecond)
 	}
-	stats.TokenTransfersDeleted, _ = result.RowsAffected()
 
-	// Delete withdrawals
-	result, err = dbTx.Exec("DELETE FROM el_withdrawals WHERE block_uid < $1", blockUidThreshold)
-	if err != nil {
-		return stats, err
-	}
-	stats.WithdrawalsDeleted, _ = result.RowsAffected()
+	// Delete events in batches
+	for {
+		var deleted int64
+		err := RunDBTransaction(func(tx *sqlx.Tx) error {
+			var query string
+			if DbEngine == dbtypes.DBEnginePgsql {
+				query = `
+					DELETE FROM el_tx_events 
+					WHERE block_uid < $1 
+					AND ctid IN (
+						SELECT ctid FROM el_tx_events 
+						WHERE block_uid < $1 
+						LIMIT $2
+					)`
+			} else {
+				query = `
+					DELETE FROM el_tx_events 
+					WHERE block_uid < $1 
+					AND rowid IN (
+						SELECT rowid FROM el_tx_events 
+						WHERE block_uid < $1 
+						LIMIT $2
+					)`
+			}
+			result, err := tx.Exec(query, blockUidThreshold, batchSize)
+			if err != nil {
+				return err
+			}
+			deleted, err = result.RowsAffected()
+			return err
+		})
+		if err != nil {
+			return stats, err
+		}
+		stats.EventsDeleted += deleted
 
-	// Delete blocks
-	result, err = dbTx.Exec("DELETE FROM el_blocks WHERE block_uid < $1", blockUidThreshold)
-	if err != nil {
-		return stats, err
+		if deleted < batchSize {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
 	}
-	stats.BlocksDeleted, _ = result.RowsAffected()
+
+	// Delete token transfers in batches
+	for {
+		var deleted int64
+		err := RunDBTransaction(func(tx *sqlx.Tx) error {
+			var query string
+			if DbEngine == dbtypes.DBEnginePgsql {
+				query = `
+					DELETE FROM el_token_transfers 
+					WHERE block_uid < $1 
+					AND ctid IN (
+						SELECT ctid FROM el_token_transfers 
+						WHERE block_uid < $1 
+						LIMIT $2
+					)`
+			} else {
+				query = `
+					DELETE FROM el_token_transfers 
+					WHERE block_uid < $1 
+					AND rowid IN (
+						SELECT rowid FROM el_token_transfers 
+						WHERE block_uid < $1 
+						LIMIT $2
+					)`
+			}
+			result, err := tx.Exec(query, blockUidThreshold, batchSize)
+			if err != nil {
+				return err
+			}
+			deleted, err = result.RowsAffected()
+			return err
+		})
+		if err != nil {
+			return stats, err
+		}
+		stats.TokenTransfersDeleted += deleted
+
+		if deleted < batchSize {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	// Delete withdrawals in batches
+	for {
+		var deleted int64
+		err := RunDBTransaction(func(tx *sqlx.Tx) error {
+			var query string
+			if DbEngine == dbtypes.DBEnginePgsql {
+				query = `
+					DELETE FROM el_withdrawals 
+					WHERE block_uid < $1 
+					AND ctid IN (
+						SELECT ctid FROM el_withdrawals 
+						WHERE block_uid < $1 
+						LIMIT $2
+					)`
+			} else {
+				query = `
+					DELETE FROM el_withdrawals 
+					WHERE block_uid < $1 
+					AND rowid IN (
+						SELECT rowid FROM el_withdrawals 
+						WHERE block_uid < $1 
+						LIMIT $2
+					)`
+			}
+			result, err := tx.Exec(query, blockUidThreshold, batchSize)
+			if err != nil {
+				return err
+			}
+			deleted, err = result.RowsAffected()
+			return err
+		})
+		if err != nil {
+			return stats, err
+		}
+		stats.WithdrawalsDeleted += deleted
+
+		if deleted < batchSize {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	// Delete blocks in batches
+	for {
+		var deleted int64
+		err := RunDBTransaction(func(tx *sqlx.Tx) error {
+			var query string
+			if DbEngine == dbtypes.DBEnginePgsql {
+				query = `
+					DELETE FROM el_blocks 
+					WHERE block_uid < $1 
+					AND ctid IN (
+						SELECT ctid FROM el_blocks 
+						WHERE block_uid < $1 
+						LIMIT $2
+					)`
+			} else {
+				query = `
+					DELETE FROM el_blocks 
+					WHERE block_uid < $1 
+					AND rowid IN (
+						SELECT rowid FROM el_blocks 
+						WHERE block_uid < $1 
+						LIMIT $2
+					)`
+			}
+			result, err := tx.Exec(query, blockUidThreshold, batchSize)
+			if err != nil {
+				return err
+			}
+			deleted, err = result.RowsAffected()
+			return err
+		})
+		if err != nil {
+			return stats, err
+		}
+		stats.BlocksDeleted += deleted
+
+		if deleted < batchSize {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
 
 	return stats, nil
 }

@@ -104,110 +104,103 @@ func GetElTokenTransfersByTokenID(tokenID uint64, offset uint64, limit uint32) (
 	var sql strings.Builder
 	args := []any{tokenID}
 
+	// Use window function for count - avoids double scan
 	fmt.Fprint(&sql, `
-	WITH cte AS (
-		SELECT block_uid, tx_hash, tx_pos, tx_idx, token_id, token_type, token_index, from_id, to_id, amount, amount_raw
+		SELECT 
+			block_uid, tx_hash, tx_pos, tx_idx, token_id, token_type, token_index, 
+			from_id, to_id, amount, amount_raw,
+			COUNT(*) OVER() AS total_count
 		FROM el_token_transfers
 		WHERE token_id = $1
-	)`)
-
+		ORDER BY block_uid DESC, tx_pos DESC, tx_idx DESC
+		LIMIT $2`)
 	args = append(args, limit)
-	fmt.Fprintf(&sql, `
-	SELECT
-		count(*) AS block_uid,
-		null AS tx_hash,
-		0 AS tx_pos,
-		0 AS tx_idx,
-		0 AS token_id,
-		0 AS token_type,
-		null AS token_index,
-		0 AS from_id,
-		0 AS to_id,
-		0 AS amount,
-		null AS amount_raw
-	FROM cte
-	UNION ALL SELECT * FROM (
-	SELECT * FROM cte
-	ORDER BY block_uid DESC, tx_pos DESC, tx_idx DESC
-	LIMIT $%v`, len(args))
 
 	if offset > 0 {
 		args = append(args, offset)
 		fmt.Fprintf(&sql, " OFFSET $%v", len(args))
 	}
-	fmt.Fprint(&sql, ") AS t1")
 
-	transfers := []*dbtypes.ElTokenTransfer{}
-	err := ReaderDb.Select(&transfers, sql.String(), args...)
+	type resultRow struct {
+		dbtypes.ElTokenTransfer
+		TotalCount uint64 `db:"total_count"`
+	}
+
+	rows := []resultRow{}
+	err := ReaderDb.Select(&rows, sql.String(), args...)
 	if err != nil {
 		logger.Errorf("Error while fetching el token transfers by token id: %v", err)
 		return nil, 0, err
 	}
 
-	if len(transfers) == 0 {
+	if len(rows) == 0 {
 		return []*dbtypes.ElTokenTransfer{}, 0, nil
 	}
 
-	count := transfers[0].BlockUid
-	return transfers[1:], count, nil
+	transfers := make([]*dbtypes.ElTokenTransfer, len(rows))
+	var totalCount uint64
+	for i, row := range rows {
+		transfers[i] = &row.ElTokenTransfer
+		if i == 0 {
+			totalCount = row.TotalCount
+		}
+	}
+
+	return transfers, totalCount, nil
 }
 
 func GetElTokenTransfersByAccountID(accountID uint64, isFrom bool, offset uint64, limit uint32) ([]*dbtypes.ElTokenTransfer, uint64, error) {
 	var sql strings.Builder
-	args := []any{}
+	args := []any{accountID}
 
 	column := "to_id"
 	if isFrom {
 		column = "from_id"
 	}
 
-	fmt.Fprint(&sql, `
-	WITH cte AS (
-		SELECT block_uid, tx_hash, tx_pos, tx_idx, token_id, token_type, token_index, from_id, to_id, amount, amount_raw
-		FROM el_token_transfers
-		WHERE `, column, ` = $1
-	)`)
-	args = append(args, accountID)
-
-	args = append(args, limit)
+	// Use window function for count - avoids double scan
 	fmt.Fprintf(&sql, `
-	SELECT
-		count(*) AS block_uid,
-		null AS tx_hash,
-		0 AS tx_pos,
-		0 AS tx_idx,
-		0 AS token_id,
-		0 AS token_type,
-		null AS token_index,
-		0 AS from_id,
-		0 AS to_id,
-		0 AS amount,
-		null AS amount_raw
-	FROM cte
-	UNION ALL SELECT * FROM (
-	SELECT * FROM cte
-	ORDER BY block_uid DESC, tx_pos DESC, tx_idx DESC
-	LIMIT $%v`, len(args))
+		SELECT 
+			block_uid, tx_hash, tx_pos, tx_idx, token_id, token_type, token_index, 
+			from_id, to_id, amount, amount_raw,
+			COUNT(*) OVER() AS total_count
+		FROM el_token_transfers
+		WHERE %s = $1
+		ORDER BY block_uid DESC, tx_pos DESC, tx_idx DESC
+		LIMIT $2`, column)
+	args = append(args, limit)
 
 	if offset > 0 {
 		args = append(args, offset)
 		fmt.Fprintf(&sql, " OFFSET $%v", len(args))
 	}
-	fmt.Fprint(&sql, ") AS t1")
 
-	transfers := []*dbtypes.ElTokenTransfer{}
-	err := ReaderDb.Select(&transfers, sql.String(), args...)
+	type resultRow struct {
+		dbtypes.ElTokenTransfer
+		TotalCount uint64 `db:"total_count"`
+	}
+
+	rows := []resultRow{}
+	err := ReaderDb.Select(&rows, sql.String(), args...)
 	if err != nil {
 		logger.Errorf("Error while fetching el token transfers by account id: %v", err)
 		return nil, 0, err
 	}
 
-	if len(transfers) == 0 {
+	if len(rows) == 0 {
 		return []*dbtypes.ElTokenTransfer{}, 0, nil
 	}
 
-	count := transfers[0].BlockUid
-	return transfers[1:], count, nil
+	transfers := make([]*dbtypes.ElTokenTransfer, len(rows))
+	var totalCount uint64
+	for i, row := range rows {
+		transfers[i] = &row.ElTokenTransfer
+		if i == 0 {
+			totalCount = row.TotalCount
+		}
+	}
+
+	return transfers, totalCount, nil
 }
 
 func GetElTokenTransfersFiltered(offset uint64, limit uint32, filter *dbtypes.ElTokenTransferFilter) ([]*dbtypes.ElTokenTransfer, uint64, error) {
@@ -298,8 +291,10 @@ func GetElTokenTransfersByAccountIDCombined(accountID uint64, tokenTypes []uint8
 	args := []any{accountID, accountID}
 
 	fmt.Fprint(&sql, `
-	WITH cte AS (
-		SELECT block_uid, tx_hash, tx_pos, tx_idx, token_id, token_type, token_index, from_id, to_id, amount, amount_raw
+		SELECT 
+			block_uid, tx_hash, tx_pos, tx_idx, token_id, token_type, token_index, 
+			from_id, to_id, amount, amount_raw,
+			COUNT(*) OVER() AS total_count
 		FROM el_token_transfers
 		WHERE (from_id = $1 OR to_id = $2)`)
 
@@ -315,47 +310,42 @@ func GetElTokenTransfersByAccountIDCombined(accountID uint64, tokenTypes []uint8
 		fmt.Fprint(&sql, ")")
 	}
 
-	fmt.Fprint(&sql, ")")
-
-	args = append(args, limit)
 	fmt.Fprintf(&sql, `
-	SELECT
-		count(*) AS block_uid,
-		null AS tx_hash,
-		0 AS tx_pos,
-		0 AS tx_idx,
-		0 AS token_id,
-		0 AS token_type,
-		null AS token_index,
-		0 AS from_id,
-		0 AS to_id,
-		0 AS amount,
-		null AS amount_raw
-	FROM cte
-	UNION ALL SELECT * FROM (
-	SELECT * FROM cte
-	ORDER BY block_uid DESC, tx_pos DESC, tx_idx DESC
-	LIMIT $%v`, len(args))
+		ORDER BY block_uid DESC, tx_pos DESC, tx_idx DESC
+		LIMIT $%d`, len(args)+1)
+	args = append(args, limit)
 
 	if offset > 0 {
 		args = append(args, offset)
 		fmt.Fprintf(&sql, " OFFSET $%v", len(args))
 	}
-	fmt.Fprint(&sql, ") AS t1")
 
-	transfers := []*dbtypes.ElTokenTransfer{}
-	err := ReaderDb.Select(&transfers, sql.String(), args...)
+	type resultRow struct {
+		dbtypes.ElTokenTransfer
+		TotalCount uint64 `db:"total_count"`
+	}
+
+	rows := []resultRow{}
+	err := ReaderDb.Select(&rows, sql.String(), args...)
 	if err != nil {
 		logger.Errorf("Error while fetching el token transfers by account id combined: %v", err)
 		return nil, 0, err
 	}
 
-	if len(transfers) == 0 {
+	if len(rows) == 0 {
 		return []*dbtypes.ElTokenTransfer{}, 0, nil
 	}
 
-	count := transfers[0].BlockUid
-	return transfers[1:], count, nil
+	transfers := make([]*dbtypes.ElTokenTransfer, len(rows))
+	var totalCount uint64
+	for i, row := range rows {
+		transfers[i] = &row.ElTokenTransfer
+		if i == 0 {
+			totalCount = row.TotalCount
+		}
+	}
+
+	return transfers, totalCount, nil
 }
 
 func DeleteElTokenTransfer(blockUid uint64, txHash []byte, txIdx uint32, dbTx *sqlx.Tx) error {

@@ -7,6 +7,7 @@
           <tr>
             <th>Txn Hash</th>
             <th data-timecol="duration">Age</th>
+            <th>Method</th>
             <th>From</th>
             <th></th>
             <th>To</th>
@@ -21,11 +22,19 @@
                 {{ if gt .TxHashRowspan 0 }}
                 <td class="text-monospace align-top"{{ if gt .TxHashRowspan 1 }} rowspan="{{ .TxHashRowspan }}"{{ end }}>
                   <a href="/tx/{{ formatHexBytes .TxHash }}" data-bs-toggle="tooltip" title="{{ formatHexBytes .TxHash }}">{{ formatEthHashShort .TxHash 6 }}</a>
+                  <i class="fa fa-copy text-muted ms-1" role="button" data-bs-toggle="tooltip" title="Copy transaction hash" data-clipboard-text="{{ formatHexBytes .TxHash }}"></i>
                 </td>
-                {{ end }}
-                <td data-timer="{{ .BlockTime.Unix }}">
+                <td class="align-top" data-timer="{{ .BlockTime.Unix }}"{{ if gt .TxHashRowspan 1 }} rowspan="{{ .TxHashRowspan }}"{{ end }}>
                   <span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ .BlockTime }}">{{ formatRecentTimeShort .BlockTime }}</span>
                 </td>
+                <td class="align-top"{{ if gt .TxHashRowspan 1 }} rowspan="{{ .TxHashRowspan }}"{{ end }}>
+                  {{ if .MethodName }}
+                    <span class="badge text-bg-secondary">{{ .MethodName }}</span>
+                  {{ else }}
+                    <span class="text-muted">-</span>
+                  {{ end }}
+                </td>
+                {{ end }}
                 <td class="text-monospace">
                   {{ if eq (printf "%x" .FromAddr) (printf "%x" $.Address) }}
                     {{ formatEthAddressShort .FromAddr }}
@@ -59,7 +68,7 @@
             {{ end }}
           {{ else }}
             <tr>
-              <td colspan="7" class="text-center py-4 text-muted">
+              <td colspan="8" class="text-center py-4 text-muted">
                 <i class="fas fa-coins fa-2x mb-2"></i>
                 <br>No ERC20 transfers found
               </td>
@@ -102,3 +111,4 @@
   </div>
 </div>
 {{ end }}
+

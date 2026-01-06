@@ -68,6 +68,15 @@ CREATE INDEX IF NOT EXISTS "el_transactions_to_idx"
     ON public."el_transactions"
     ("to_id" ASC NULLS FIRST);
 
+-- Composite indexes for common query patterns (from_id/to_id + block_uid for sorting)
+CREATE INDEX IF NOT EXISTS "el_transactions_from_block_idx"
+    ON public."el_transactions"
+    ("from_id" ASC NULLS FIRST, "block_uid" DESC NULLS LAST);
+
+CREATE INDEX IF NOT EXISTS "el_transactions_to_block_idx"
+    ON public."el_transactions"
+    ("to_id" ASC NULLS FIRST, "block_uid" DESC NULLS LAST);
+
 -- Table for EL transaction events (logs)
 CREATE TABLE IF NOT EXISTS public."el_tx_events" (
     block_uid BIGINT NOT NULL,
@@ -191,6 +200,19 @@ CREATE INDEX IF NOT EXISTS "el_token_transfers_from_idx"
 CREATE INDEX IF NOT EXISTS "el_token_transfers_to_idx"
     ON public."el_token_transfers"
     ("to_id" ASC NULLS FIRST);
+
+-- Composite indexes for common query patterns
+CREATE INDEX IF NOT EXISTS "el_token_transfers_token_block_idx"
+    ON public."el_token_transfers"
+    ("token_id" ASC NULLS FIRST, "block_uid" DESC NULLS LAST);
+
+CREATE INDEX IF NOT EXISTS "el_token_transfers_from_block_idx"
+    ON public."el_token_transfers"
+    ("from_id" ASC NULLS FIRST, "block_uid" DESC NULLS LAST);
+
+CREATE INDEX IF NOT EXISTS "el_token_transfers_to_block_idx"
+    ON public."el_token_transfers"
+    ("to_id" ASC NULLS FIRST, "block_uid" DESC NULLS LAST);
 
 -- Table for system deposits (withdrawals and fee recipient rewards)
 CREATE TABLE IF NOT EXISTS public."el_withdrawals" (

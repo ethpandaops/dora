@@ -100,67 +100,57 @@ func GetElTransactionsByBlockUid(blockUid uint64) ([]*dbtypes.ElTransaction, err
 
 func GetElTransactionsByAccountID(accountID uint64, isFrom bool, offset uint64, limit uint32) ([]*dbtypes.ElTransaction, uint64, error) {
 	var sql strings.Builder
-	args := []any{}
+	args := []any{accountID}
 
 	column := "to_id"
 	if isFrom {
 		column = "from_id"
 	}
 
-	fmt.Fprint(&sql, `
-	WITH cte AS (
-		SELECT block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw, data, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number, tx_type, tx_index, max_fee
-		FROM el_transactions
-		WHERE `, column, ` = $1
-	)`)
-	args = append(args, accountID)
-
+	// Use window function for count (PostgreSQL 9.5+) - avoids double scan
 	fmt.Fprintf(&sql, `
-	SELECT
-		count(*) AS block_uid,
-		null AS tx_hash,
-		0 AS from_id,
-		0 AS to_id,
-		0 AS nonce,
-		false AS reverted,
-		0 AS amount,
-		null AS amount_raw,
-		null AS data,
-		0 AS gas_limit,
-		0 AS gas_used,
-		0 AS gas_price,
-		0 AS tip_price,
-		0 AS blob_count,
-		0 AS block_number,
-		0 AS tx_type,
-		0 AS tx_index,
-		0 AS max_fee
-	FROM cte
-	UNION ALL SELECT * FROM (
-	SELECT * FROM cte
-	ORDER BY block_uid DESC, tx_hash DESC
-	LIMIT $%v`, len(args)+1)
+		SELECT 
+			block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw, 
+			data, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number, 
+			tx_type, tx_index, max_fee,
+			COUNT(*) OVER() AS total_count
+		FROM el_transactions
+		WHERE %s = $1
+		ORDER BY block_uid DESC, tx_hash DESC
+		LIMIT $2`, column)
 	args = append(args, limit)
 
 	if offset > 0 {
 		args = append(args, offset)
 		fmt.Fprintf(&sql, " OFFSET $%v", len(args))
 	}
-	fmt.Fprint(&sql, ") AS t1")
 
-	txs := []*dbtypes.ElTransaction{}
-	err := ReaderDb.Select(&txs, sql.String(), args...)
+	type resultRow struct {
+		dbtypes.ElTransaction
+		TotalCount uint64 `db:"total_count"`
+	}
+
+	rows := []resultRow{}
+	err := ReaderDb.Select(&rows, sql.String(), args...)
 	if err != nil {
 		logger.Errorf("Error while fetching el transactions by account id: %v", err)
 		return nil, 0, err
 	}
 
-	if len(txs) == 0 {
+	if len(rows) == 0 {
 		return []*dbtypes.ElTransaction{}, 0, nil
 	}
 
-	count := txs[0].BlockUid
-	return txs[1:], count, nil
+	txs := make([]*dbtypes.ElTransaction, len(rows))
+	var totalCount uint64
+	for i, row := range rows {
+		txs[i] = &row.ElTransaction
+		if i == 0 {
+			totalCount = row.TotalCount
+		}
+	}
+
+	return txs, totalCount, nil
 }
 
 func GetElTransactionsFiltered(offset uint64, limit uint32, filter *dbtypes.ElTransactionFilter) ([]*dbtypes.ElTransaction, uint64, error) {
@@ -257,59 +247,50 @@ func GetElTransactionsByAccountIDCombined(accountID uint64, offset uint64, limit
 	var sql strings.Builder
 	args := []any{accountID, accountID}
 
+	// Use window function for count - avoids double scan
 	fmt.Fprint(&sql, `
-	WITH cte AS (
-		SELECT block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw, data, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number, tx_type, tx_index, max_fee
+		SELECT 
+			block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw, 
+			data, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number, 
+			tx_type, tx_index, max_fee,
+			COUNT(*) OVER() AS total_count
 		FROM el_transactions
 		WHERE (from_id = $1 OR to_id = $2)
-	)`)
-
-	fmt.Fprintf(&sql, `
-	SELECT
-		count(*) AS block_uid,
-		null AS tx_hash,
-		0 AS from_id,
-		0 AS to_id,
-		0 AS nonce,
-		false AS reverted,
-		0 AS amount,
-		null AS amount_raw,
-		null AS data,
-		0 AS gas_limit,
-		0 AS gas_used,
-		0 AS gas_price,
-		0 AS tip_price,
-		0 AS blob_count,
-		0 AS block_number,
-		0 AS tx_type,
-		0 AS tx_index,
-		0 AS max_fee
-	FROM cte
-	UNION ALL SELECT * FROM (
-	SELECT * FROM cte
-	ORDER BY block_uid DESC, tx_index DESC
-	LIMIT $%v`, len(args)+1)
+		ORDER BY block_uid DESC, tx_index DESC
+		LIMIT $3`)
 	args = append(args, limit)
 
 	if offset > 0 {
 		args = append(args, offset)
 		fmt.Fprintf(&sql, " OFFSET $%v", len(args))
 	}
-	fmt.Fprint(&sql, ") AS t1")
 
-	txs := []*dbtypes.ElTransaction{}
-	err := ReaderDb.Select(&txs, sql.String(), args...)
+	type resultRow struct {
+		dbtypes.ElTransaction
+		TotalCount uint64 `db:"total_count"`
+	}
+
+	rows := []resultRow{}
+	err := ReaderDb.Select(&rows, sql.String(), args...)
 	if err != nil {
 		logger.Errorf("Error while fetching el transactions by account id (combined): %v", err)
 		return nil, 0, err
 	}
 
-	if len(txs) == 0 {
+	if len(rows) == 0 {
 		return []*dbtypes.ElTransaction{}, 0, nil
 	}
 
-	count := txs[0].BlockUid
-	return txs[1:], count, nil
+	txs := make([]*dbtypes.ElTransaction, len(rows))
+	var totalCount uint64
+	for i, row := range rows {
+		txs[i] = &row.ElTransaction
+		if i == 0 {
+			totalCount = row.TotalCount
+		}
+	}
+
+	return txs, totalCount, nil
 }
 
 func DeleteElTransaction(blockUid uint64, txHash []byte, dbTx *sqlx.Tx) error {

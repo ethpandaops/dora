@@ -16,6 +16,7 @@ import (
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/services"
 	"github.com/ethpandaops/dora/templates"
+	"github.com/ethpandaops/dora/types"
 	"github.com/ethpandaops/dora/types/models"
 )
 
@@ -284,6 +285,21 @@ func buildTransactionPageData(txHash []byte, tabView string) (*models.Transactio
 	pageData.InputData = tx.Data
 	if len(tx.Data) >= 4 {
 		pageData.MethodID = tx.Data[:4]
+
+		// Lookup function signature
+		var sigBytes types.TxSignatureBytes
+		copy(sigBytes[:], tx.Data[0:4])
+		sigLookups := services.GlobalTxSignaturesService.LookupSignatures([]types.TxSignatureBytes{sigBytes})
+		if sigLookup, found := sigLookups[sigBytes]; found {
+			if sigLookup.Status == types.TxSigStatusFound {
+				pageData.MethodName = sigLookup.Name
+			} else {
+				pageData.MethodName = "call?"
+			}
+		}
+	} else {
+		// No data or insufficient data for method signature
+		pageData.MethodName = "transfer"
 	}
 
 	// Blobs

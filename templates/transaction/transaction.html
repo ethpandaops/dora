@@ -39,9 +39,9 @@
           <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Block containing this transaction">Block:</span></div>
           <div class="col-md-9">
             {{ if gt (len .BlockRoot) 0 }}
-            <a href="/slot/0x{{ printf "%x" .BlockRoot }}">{{ formatAddCommas .BlockNumber }}</a> (Slot {{ formatAddCommas .Slot }})
+            <a href="/slot/0x{{ printf "%x" .BlockRoot }}">{{ formatAddCommas .BlockNumber }}</a>
             {{ else }}
-            <a href="/slot/{{ .Slot }}">{{ formatAddCommas .BlockNumber }}</a> (Slot {{ formatAddCommas .Slot }})
+            <a href="/slot/{{ .Slot }}">{{ formatAddCommas .BlockNumber }}</a>
             {{ end }}
             {{ if .TxFinalized }}
             <span class="badge rounded-pill text-bg-success ms-2" data-bs-toggle="tooltip" title="Transaction is in a finalized block">Finalized</span>
@@ -63,8 +63,10 @@
           <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Sending address">From:</span></div>
           <div class="col-md-9 text-monospace text-break">
             {{ if gt (len .FromAddr) 0 }}
-            {{ formatEthAddressFullLink .FromAddr }}
-            <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ formatEthAddressFull .FromAddr }}"></i>
+            {{ $fromAddr := formatEthAddressFull .FromAddr }}
+            {{ if .FromIsContract }}<i class="fas fa-file-contract text-muted" style="font-size:0.8rem;margin-right:0.2rem" data-bs-toggle="tooltip" title="Contract"></i>{{ end }}
+            <a href="/address/{{ $fromAddr }}">{{ $fromAddr }}</a>
+            <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $fromAddr }}"></i>
             {{ else }}
             <span class="text-muted">Unknown</span>
             {{ end }}
@@ -74,8 +76,10 @@
           <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Receiving address">{{ if .IsCreate }}Created Contract:{{ else }}To:{{ end }}</span></div>
           <div class="col-md-9 text-monospace text-break">
             {{ if .HasTo }}
-            {{ formatEthAddressFullLink .ToAddr }}
-            <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ formatEthAddressFull .ToAddr }}"></i>
+            {{ $toAddr := formatEthAddressFull .ToAddr }}
+            {{ if .ToIsContract }}<i class="fas fa-file-contract text-muted" style="font-size:0.8rem;margin-right:0.2rem" data-bs-toggle="tooltip" title="Contract"></i>{{ end }}
+            <a href="/address/{{ $toAddr }}">{{ $toAddr }}</a>
+            <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $toAddr }}"></i>
             {{ else if .IsCreate }}
             {{ formatContractCreationLink .FromAddr .Nonce }}
             {{ else }}
@@ -131,7 +135,12 @@
             <div class="row border-bottom p-2 mx-0">
               <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Actual gas used">Gas Used:</span></div>
               <div class="col-md-9">
-                {{ formatAddCommas .GasUsed }} ({{ printf "%.2f" .GasUsedPct }}%)
+                <div style="position:relative;width:200px;height:inherit;">
+                  {{ formatAddCommas .GasUsed }} <small class="text-muted ml-3">({{ printf "%.2f" .GasUsedPct }}%)</small>
+                  <div class="progress" style="position:absolute;bottom:-6px;width:200px;height:4px;">
+                    <div class="progress-bar" role="progressbar" style="width: {{ .GasUsedPct }}%;" aria-valuenow="{{ .GasUsed }}" aria-valuemin="0" aria-valuemax="{{ .GasLimit }}"></div>
+                  </div>
+                </div>
               </div>
             </div>
             <div class="row border-bottom p-2 mx-0">

@@ -8,6 +8,7 @@
             <th>Txn Hash</th>
             <th>Block</th>
             <th data-timecol="duration">Age</th>
+            <th>Method</th>
             <th>From</th>
             <th></th>
             <th>To</th>
@@ -22,6 +23,7 @@
               <tr>
                 <td class="text-monospace">
                   <a href="/tx/{{ formatHexBytes .TxHash }}" data-bs-toggle="tooltip" title="{{ formatHexBytes .TxHash }}">{{ formatEthHashShort .TxHash 6 }}</a>
+                  <i class="fa fa-copy text-muted ms-1" role="button" data-bs-toggle="tooltip" title="Copy transaction hash" data-clipboard-text="{{ formatHexBytes .TxHash }}"></i>
                 </td>
                 <td>
                   {{ if gt (len .BlockRoot) 0 }}
@@ -32,6 +34,13 @@
                 </td>
                 <td data-timer="{{ .BlockTime.Unix }}">
                   <span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ .BlockTime }}">{{ formatRecentTimeShort .BlockTime }}</span>
+                </td>
+                <td>
+                  {{ if .MethodName }}
+                    <span class="badge text-bg-secondary">{{ .MethodName }}</span>
+                  {{ else }}
+                    <span class="text-muted">-</span>
+                  {{ end }}
                 </td>
                 <td class="text-monospace">
                   {{ if eq (printf "%x" .FromAddr) (printf "%x" $.Address) }}
@@ -78,7 +87,7 @@
             {{ end }}
           {{ else }}
             <tr>
-              <td colspan="9" class="text-center py-4 text-muted">
+              <td colspan="10" class="text-center py-4 text-muted">
                 <i class="fas fa-inbox fa-2x mb-2"></i>
                 <br>No transactions found
               </td>
