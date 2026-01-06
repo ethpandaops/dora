@@ -29,7 +29,7 @@ func (indexer *Indexer) processFinalityEvent(finalityEvent *v1.Finality) error {
 	oldLastFinalizedEpoch := indexer.lastFinalizedEpoch
 
 	for finalizeEpoch := indexer.lastFinalizedEpoch; finalizeEpoch < finalityEvent.Finalized.Epoch; finalizeEpoch++ {
-		readyClients := indexer.GetReadyClientsByCheckpoint(finalityEvent.Finalized.Root, true)
+		readyClients := indexer.GetReadyClientsByCheckpoint(finalityEvent.Finalized.Epoch, finalityEvent.Finalized.Root, true)
 		retryCount := 5
 
 		for {
