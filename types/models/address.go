@@ -134,8 +134,8 @@ type AddressPageDataSystemDeposit struct {
 	BlockRoot     []byte    `json:"block_root"`     // For linking to /slot/{root}
 	BlockOrphaned bool      `json:"block_orphaned"` // True if block is orphaned
 	BlockTime     time.Time `json:"block_time"`
-	Type          uint8     `json:"type"`      // 0=withdrawal, 1=fee_recipient
-	Amount        float64   `json:"amount"`    // Amount in ETH
+	Type          uint8     `json:"type"`   // 0=withdrawal, 1=fee_recipient
+	Amount        float64   `json:"amount"` // Amount in ETH
 	AmountRaw     []byte    `json:"amount_raw"`
 	Validator     *uint64   `json:"validator"` // validator index for withdrawals, null for fee recipient
 }
