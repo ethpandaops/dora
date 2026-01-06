@@ -358,10 +358,14 @@ func GetFilteredSlots(filter *dbtypes.BlockFilter, firstSlot uint64, offset uint
 		fmt.Fprintf(&sql, ` AND slots.root = $%v `, argIdx)
 		args = append(args, filter.BlockRoot)
 	}
-	if filter.BlockUid != nil {
-		argIdx++
-		fmt.Fprintf(&sql, ` AND slots.block_uid = $%v `, argIdx)
-		args = append(args, *filter.BlockUid)
+	if len(filter.BlockUids) > 0 {
+		blockUidPlaceholders := make([]string, len(filter.BlockUids))
+		for i, blockUid := range filter.BlockUids {
+			argIdx++
+			blockUidPlaceholders[i] = fmt.Sprintf("$%v", argIdx)
+			args = append(args, blockUid)
+		}
+		fmt.Fprintf(&sql, ` AND slots.block_uid IN (%s) `, strings.Join(blockUidPlaceholders, ", "))
 	}
 	if filter.ProposerIndex != nil {
 		argIdx++
@@ -461,6 +465,16 @@ func GetFilteredSlots(filter *dbtypes.BlockFilter, firstSlot uint64, offset uint
 			args = append(args, forkId)
 		}
 		fmt.Fprintf(&sql, ` AND slots.fork_id IN (%s) `, strings.Join(forkIdPlaceholders, ", "))
+	}
+	if filter.EthBlockNumber != nil {
+		argIdx++
+		fmt.Fprintf(&sql, ` AND slots.eth_block_number = $%v `, argIdx)
+		args = append(args, *filter.EthBlockNumber)
+	}
+	if len(filter.EthBlockHash) > 0 {
+		argIdx++
+		fmt.Fprintf(&sql, ` AND slots.eth_block_hash = $%v `, argIdx)
+		args = append(args, filter.EthBlockHash)
 	}
 
 	fmt.Fprintf(&sql, `	ORDER BY slots.slot DESC `)

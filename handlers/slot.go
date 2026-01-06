@@ -803,16 +803,13 @@ func getSlotPageTransactions(pageData *models.SlotPageBlockData, transactions []
 		}
 		txFrom, err := ethtypes.Sender(ethtypes.LatestSignerForChainID(chainId), &tx)
 		if err != nil {
-			txData.From = "unknown"
 			logrus.Warnf("error decoding transaction sender 0x%x.%v: %v\n", pageData.BlockRoot, idx, err)
 		} else {
-			txData.From = txFrom.String()
+			txData.From = txFrom.Bytes()
 		}
 		txTo := tx.To()
-		if txTo == nil {
-			txData.To = "new contract"
-		} else {
-			txData.To = txTo.String()
+		if txTo != nil {
+			txData.To = txTo.Bytes()
 		}
 
 		pageData.Transactions = append(pageData.Transactions, txData)

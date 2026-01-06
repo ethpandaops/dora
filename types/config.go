@@ -136,8 +136,9 @@ type Config struct {
 	} `yaml:"mevIndexer"`
 
 	ExecutionIndexer struct {
-		Enabled   bool          `yaml:"enabled" envconfig:"EXECUTIONINDEXER_ENABLED"`
-		Retention time.Duration `yaml:"retention" envconfig:"EXECUTIONINDEXER_RETENTION"`
+		Enabled         bool          `yaml:"enabled" envconfig:"EXECUTIONINDEXER_ENABLED"`
+		Retention       time.Duration `yaml:"retention" envconfig:"EXECUTIONINDEXER_RETENTION"`
+		CleanupInterval time.Duration `yaml:"cleanupInterval" envconfig:"EXECUTIONINDEXER_CLEANUP_INTERVAL"`
 	} `yaml:"executionIndexer"`
 
 	Database DatabaseConfig `yaml:"database"`

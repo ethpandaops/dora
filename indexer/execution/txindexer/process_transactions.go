@@ -49,6 +49,36 @@ type txProcessingContext struct {
 
 	// Track sender nonces for batch update at end of block
 	senderNonces map[common.Address]uint64
+
+	// Track balance changes for this block
+	// Key: (accountID << 32) | tokenID
+	balanceDeltas map[uint64]*balanceDelta
+
+	// Pending balance transfers (resolved to deltas after account IDs are set)
+	pendingTransfers []*pendingBalanceTransfer
+}
+
+// balanceDelta tracks cumulative balance changes for an account/token pair within a block.
+type balanceDelta struct {
+	accountID uint64
+	tokenID   uint64
+	address   common.Address
+	contract  common.Address // Token contract (zero for native ETH)
+	decimals  uint8
+	deltaRaw  *big.Int // Positive for incoming, negative for outgoing
+}
+
+// pendingBalanceTransfer tracks a balance transfer before account IDs are resolved.
+type pendingBalanceTransfer struct {
+	fromAddr    common.Address
+	toAddr      common.Address
+	tokenAddr   common.Address // Zero address for native ETH
+	amount      *big.Int
+	isERC20     bool
+	tokenID     uint64 // Set for token transfers (from pendingToken.id after commit)
+	fromAccount *pendingAccount
+	toAccount   *pendingAccount
+	token       *pendingToken // nil for ETH transfers
 }
 
 // pendingAccount represents an account that may need insertion.
@@ -97,14 +127,16 @@ func newTxProcessingContext(
 	blockData *blockData,
 ) *txProcessingContext {
 	return &txProcessingContext{
-		ctx:          ctx,
-		client:       client,
-		indexer:      indexer,
-		block:        block,
-		blockData:    blockData,
-		accounts:     make(map[common.Address]*pendingAccount, 32),
-		tokens:       make(map[common.Address]*pendingToken, 16),
-		senderNonces: make(map[common.Address]uint64, 32),
+		ctx:              ctx,
+		client:           client,
+		indexer:          indexer,
+		block:            block,
+		blockData:        blockData,
+		accounts:         make(map[common.Address]*pendingAccount, 32),
+		tokens:           make(map[common.Address]*pendingToken, 16),
+		senderNonces:     make(map[common.Address]uint64, 32),
+		balanceDeltas:    make(map[uint64]*balanceDelta, 64),
+		pendingTransfers: make([]*pendingBalanceTransfer, 0, 64),
 	}
 }
 
@@ -191,13 +223,49 @@ func (ctx *txProcessingContext) processTransaction(
 	result.fromAccount = fromAccount
 	result.toAccount = toAccount
 
+	// Track ETH transfer for balance updates (only if successful and value > 0)
+	if receipt.Status == 1 && txValue.Sign() > 0 {
+		ctx.pendingTransfers = append(ctx.pendingTransfers, &pendingBalanceTransfer{
+			fromAddr:    from,
+			toAddr:      toAddr,
+			tokenAddr:   common.Address{}, // Zero address = native ETH
+			amount:      txValue,
+			isERC20:     false,
+			tokenID:     0, // Native ETH
+			fromAccount: fromAccount,
+			toAccount:   toAccount,
+			token:       nil,
+		})
+	}
+
+	// Track tx fee deduction from sender (fee is always paid regardless of tx success)
+	// Fee = gasUsed * effectiveGasPrice (tx.GasPrice() returns wei)
+	txFeeWei := new(big.Int).Mul(
+		big.NewInt(int64(receipt.GasUsed)),
+		tx.GasPrice(),
+	)
+	if txFeeWei.Sign() > 0 {
+		ctx.pendingTransfers = append(ctx.pendingTransfers, &pendingBalanceTransfer{
+			fromAddr:    from,
+			toAddr:      common.Address{}, // No receiver - fee goes to validator/burned
+			tokenAddr:   common.Address{}, // Native ETH
+			amount:      txFeeWei,
+			isERC20:     false,
+			tokenID:     0, // Native ETH
+			fromAccount: fromAccount,
+			toAccount:   nil, // nil indicates fee-only deduction
+			token:       nil,
+		})
+	}
+
 	// 4. Process events (logs)
+	txPos := uint32(receipt.TransactionIndex)
 	for i, log := range receipt.Logs {
 		event := ctx.processEvent(uint32(i), log, fromAccount)
 		result.events = append(result.events, event)
 
 		// 5. Check for token transfers
-		transfers := ctx.detectTokenTransfers(uint32(i), log, fromAccount)
+		transfers := ctx.detectTokenTransfers(uint32(i), txPos, log, fromAccount)
 		result.tokenTransfers = append(result.tokenTransfers, transfers...)
 	}
 
@@ -360,6 +428,7 @@ func (ctx *txProcessingContext) processEvent(index uint32, log *types.Log, funde
 // detectTokenTransfers checks if a log represents a token transfer.
 func (ctx *txProcessingContext) detectTokenTransfers(
 	eventIndex uint32,
+	txPos uint32,
 	log *types.Log,
 	funderAccount *pendingAccount,
 ) []*pendingTokenTransfer {
@@ -373,21 +442,21 @@ func (ctx *txProcessingContext) detectTokenTransfers(
 	switch topic0 {
 	case topicTransfer:
 		// ERC20 or ERC721 Transfer
-		transfer := ctx.parseERC20or721Transfer(eventIndex, log, funderAccount)
+		transfer := ctx.parseERC20or721Transfer(eventIndex, txPos, log, funderAccount)
 		if transfer != nil {
 			transfers = append(transfers, transfer)
 		}
 
 	case topicTransferSingle:
 		// ERC1155 TransferSingle
-		transfer := ctx.parseERC1155TransferSingle(eventIndex, log, funderAccount)
+		transfer := ctx.parseERC1155TransferSingle(eventIndex, txPos, log, funderAccount)
 		if transfer != nil {
 			transfers = append(transfers, transfer)
 		}
 
 	case topicTransferBatch:
 		// ERC1155 TransferBatch
-		batchTransfers := ctx.parseERC1155TransferBatch(eventIndex, log, funderAccount)
+		batchTransfers := ctx.parseERC1155TransferBatch(eventIndex, txPos, log, funderAccount)
 		transfers = append(transfers, batchTransfers...)
 	}
 
@@ -399,6 +468,7 @@ func (ctx *txProcessingContext) detectTokenTransfers(
 // ERC721: Transfer(address indexed from, address indexed to, uint256 indexed tokenId) - tokenId in topic3
 func (ctx *txProcessingContext) parseERC20or721Transfer(
 	eventIndex uint32,
+	txPos uint32,
 	log *types.Log,
 	funderAccount *pendingAccount,
 ) *pendingTokenTransfer {
@@ -431,13 +501,14 @@ func (ctx *txProcessingContext) parseERC20or721Transfer(
 		return nil
 	}
 
-	return ctx.createTokenTransfer(eventIndex, log.Address, tokenType, fromAccount, toAccount, amount, tokenIndex)
+	return ctx.createTokenTransfer(eventIndex, txPos, log.Address, tokenType, fromAccount, toAccount, amount, tokenIndex)
 }
 
 // parseERC1155TransferSingle parses ERC1155 TransferSingle event.
 // TransferSingle(address indexed operator, address indexed from, address indexed to, uint256 id, uint256 value)
 func (ctx *txProcessingContext) parseERC1155TransferSingle(
 	eventIndex uint32,
+	txPos uint32,
 	log *types.Log,
 	funderAccount *pendingAccount,
 ) *pendingTokenTransfer {
@@ -456,13 +527,14 @@ func (ctx *txProcessingContext) parseERC1155TransferSingle(
 	tokenIndex := log.Data[:32]
 	amount := new(big.Int).SetBytes(log.Data[32:64])
 
-	return ctx.createTokenTransfer(eventIndex, log.Address, TokenTypeERC1155, fromAccount, toAccount, amount, tokenIndex)
+	return ctx.createTokenTransfer(eventIndex, txPos, log.Address, TokenTypeERC1155, fromAccount, toAccount, amount, tokenIndex)
 }
 
 // parseERC1155TransferBatch parses ERC1155 TransferBatch event.
 // TransferBatch(address indexed operator, address indexed from, address indexed to, uint256[] ids, uint256[] values)
 func (ctx *txProcessingContext) parseERC1155TransferBatch(
 	eventIndex uint32,
+	txPos uint32,
 	log *types.Log,
 	funderAccount *pendingAccount,
 ) []*pendingTokenTransfer {
@@ -515,7 +587,7 @@ func (ctx *txProcessingContext) parseERC1155TransferBatch(
 
 		// Use eventIndex + sub-index for batch transfers
 		subIndex := eventIndex<<16 | uint32(i)
-		transfer := ctx.createTokenTransfer(subIndex, log.Address, TokenTypeERC1155, fromAccount, toAccount, amount, tokenIndex)
+		transfer := ctx.createTokenTransfer(subIndex, txPos, log.Address, TokenTypeERC1155, fromAccount, toAccount, amount, tokenIndex)
 		if transfer != nil {
 			transfers = append(transfers, transfer)
 		}
@@ -527,6 +599,7 @@ func (ctx *txProcessingContext) parseERC1155TransferBatch(
 // createTokenTransfer creates a pending token transfer, ensuring the token exists.
 func (ctx *txProcessingContext) createTokenTransfer(
 	eventIndex uint32,
+	txPos uint32,
 	tokenAddress common.Address,
 	tokenType uint8,
 	fromAccount, toAccount *pendingAccount,
@@ -539,6 +612,7 @@ func (ctx *txProcessingContext) createTokenTransfer(
 	transfer := &dbtypes.ElTokenTransfer{
 		BlockUid:   ctx.block.BlockUID,
 		TxHash:     make([]byte, 32), // Will be set in commit
+		TxPos:      txPos,
 		TxIdx:      eventIndex,
 		TokenID:    0, // Will be set in commit from pendingToken.id
 		TokenType:  tokenType,
@@ -547,6 +621,21 @@ func (ctx *txProcessingContext) createTokenTransfer(
 		ToID:       toAccount.id,
 		Amount:     weiToFloat(amount, pendingToken.token.Decimals),
 		AmountRaw:  amount.Bytes(),
+	}
+
+	// Track ERC20 transfers for balance updates
+	if tokenType == TokenTypeERC20 && amount.Sign() > 0 {
+		ctx.pendingTransfers = append(ctx.pendingTransfers, &pendingBalanceTransfer{
+			fromAddr:    common.BytesToAddress(fromAccount.account.Address),
+			toAddr:      common.BytesToAddress(toAccount.account.Address),
+			tokenAddr:   tokenAddress,
+			amount:      new(big.Int).Set(amount), // Copy to avoid mutation
+			isERC20:     true,
+			tokenID:     0, // Will be resolved from pendingToken.id after commit
+			fromAccount: fromAccount,
+			toAccount:   toAccount,
+			token:       pendingToken,
+		})
 	}
 
 	return &pendingTokenTransfer{
@@ -586,6 +675,174 @@ func (ctx *txProcessingContext) getAccountNonceUpdates() []*dbtypes.ElAccount {
 		})
 	}
 	return accounts
+}
+
+// buildBalanceDeltas converts pending transfers into balance deltas.
+// This must be called after all commit callbacks have run (account/token IDs are resolved).
+func (ctx *txProcessingContext) buildBalanceDeltas() {
+	for _, transfer := range ctx.pendingTransfers {
+		// Skip if from account ID is not resolved
+		if transfer.fromAccount == nil || transfer.fromAccount.id == 0 {
+			continue
+		}
+
+		var tokenID uint64
+		var decimals uint8
+		var contract common.Address
+
+		if transfer.token != nil {
+			// ERC20 token transfer
+			tokenID = transfer.token.id
+			decimals = transfer.token.token.Decimals
+			contract = transfer.tokenAddr
+		} else {
+			// Native ETH transfer
+			tokenID = 0
+			decimals = 18
+			contract = common.Address{}
+		}
+
+		// Track outgoing from sender
+		ctx.trackBalanceChange(
+			transfer.fromAccount.id,
+			tokenID,
+			transfer.fromAddr,
+			contract,
+			decimals,
+			transfer.amount,
+			false, // outgoing
+		)
+
+		// Track incoming to receiver (skip for fee-only deductions where toAccount is nil)
+		if transfer.toAccount != nil && transfer.toAccount.id != 0 {
+			ctx.trackBalanceChange(
+				transfer.toAccount.id,
+				tokenID,
+				transfer.toAddr,
+				contract,
+				decimals,
+				transfer.amount,
+				true, // incoming
+			)
+		}
+	}
+}
+
+// trackBalanceChange records a balance change for an account/token pair.
+// This accumulates changes within the block - multiple transfers to/from the same account
+// are combined into a single delta.
+// Note: accountID must be resolved before calling this method.
+func (ctx *txProcessingContext) trackBalanceChange(
+	accountID uint64,
+	tokenID uint64,
+	address common.Address,
+	contract common.Address,
+	decimals uint8,
+	amount *big.Int,
+	isIncoming bool,
+) {
+	if accountID == 0 || amount == nil || amount.Sign() == 0 {
+		return
+	}
+
+	key := (accountID << 32) | tokenID
+
+	delta, exists := ctx.balanceDeltas[key]
+	if !exists {
+		delta = &balanceDelta{
+			accountID: accountID,
+			tokenID:   tokenID,
+			address:   address,
+			contract:  contract,
+			decimals:  decimals,
+			deltaRaw:  big.NewInt(0),
+		}
+		ctx.balanceDeltas[key] = delta
+	}
+
+	if isIncoming {
+		delta.deltaRaw.Add(delta.deltaRaw, amount)
+	} else {
+		delta.deltaRaw.Sub(delta.deltaRaw, amount)
+	}
+}
+
+// getBalanceUpdates returns balance updates to commit and lookup requests to queue.
+// This processes the accumulated deltas and determines which balances to update.
+// Only updates balances if the block's timestamp > existing balance's Updated timestamp.
+// Note: Must be called after accounts and tokens have been inserted (IDs resolved).
+func (ctx *txProcessingContext) getBalanceUpdates() ([]*dbtypes.ElBalance, []*BalanceLookupRequest) {
+	const maxBalanceUpdatesPerBlock = 100
+
+	if len(ctx.balanceDeltas) == 0 {
+		return nil, nil
+	}
+
+	blockTime := ctx.indexer.indexerCtx.ChainState.SlotToTime(ctx.block.Slot)
+	blockTimestamp := uint64(blockTime.Unix())
+
+	updates := make([]*dbtypes.ElBalance, 0, len(ctx.balanceDeltas))
+	lookupRequests := make([]*BalanceLookupRequest, 0, len(ctx.balanceDeltas))
+
+	count := 0
+	for _, delta := range ctx.balanceDeltas {
+		if count >= maxBalanceUpdatesPerBlock {
+			break
+		}
+
+		// Check if balance exists in DB
+		existingBalance, err := db.GetElBalance(delta.accountID, delta.tokenID)
+		isNew := err != nil || existingBalance == nil
+
+		if isNew {
+			// Create new balance entry with delta as initial value (only if positive)
+			if delta.deltaRaw.Sign() > 0 {
+				updates = append(updates, &dbtypes.ElBalance{
+					AccountID:  delta.accountID,
+					TokenID:    delta.tokenID,
+					Balance:    weiToFloat(delta.deltaRaw, delta.decimals),
+					BalanceRaw: delta.deltaRaw.Bytes(),
+					Updated:    0, // 0 = not RPC verified, delta-based
+				})
+				count++
+			}
+
+			// Queue for full RPC lookup to verify
+			lookupRequests = append(lookupRequests, &BalanceLookupRequest{
+				AccountID: delta.accountID,
+				TokenID:   delta.tokenID,
+				Address:   delta.address,
+				Contract:  delta.contract,
+				Decimals:  delta.decimals,
+				Priority:  LowPriority,
+			})
+		} else {
+			// Only update if block is newer than last update (or if never RPC-verified)
+			if existingBalance.Updated > blockTimestamp && existingBalance.Updated != 0 {
+				continue
+			}
+
+			// Apply delta to existing balance
+			currentRaw := new(big.Int).SetBytes(existingBalance.BalanceRaw)
+			newRaw := new(big.Int).Add(currentRaw, delta.deltaRaw)
+
+			// Don't allow negative balances - floor at 0
+			if newRaw.Sign() < 0 {
+				newRaw = big.NewInt(0)
+			}
+
+			updates = append(updates, &dbtypes.ElBalance{
+				AccountID:  delta.accountID,
+				TokenID:    delta.tokenID,
+				Balance:    weiToFloat(newRaw, delta.decimals),
+				BalanceRaw: newRaw.Bytes(),
+				Updated:    0, // 0 = delta-based, not RPC verified
+			})
+			count++
+		}
+	}
+
+	return updates, lookupRequests
 }
 
 // commitTransaction commits the transaction processing result to the database.

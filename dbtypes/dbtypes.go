@@ -504,7 +504,8 @@ type ElBalance struct {
 type ElTokenTransfer struct {
 	BlockUid   uint64  `db:"block_uid"`
 	TxHash     []byte  `db:"tx_hash"`
-	TxIdx      uint32  `db:"tx_idx"`
+	TxPos      uint32  `db:"tx_pos"` // Transaction index in block
+	TxIdx      uint32  `db:"tx_idx"` // Transfer index within transaction
 	TokenID    uint64  `db:"token_id"`
 	TokenType  uint8   `db:"token_type"`
 	TokenIndex []byte  `db:"token_index"`

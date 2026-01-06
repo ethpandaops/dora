@@ -60,6 +60,9 @@ type TxIndexer struct {
 
 	// sync state
 	syncEpoch phase0.Epoch
+
+	// balance lookup service
+	balanceLookup *BalanceLookupService
 }
 
 // NewTxIndexer creates a new TxIndexer instance.
@@ -74,6 +77,9 @@ func NewTxIndexer(
 		lowPrioQueue:  make([]*BlockRef, 0, 256),
 	}
 	txIndexer.queueCond = sync.NewCond(&txIndexer.queueMutex)
+
+	// Initialize balance lookup service
+	txIndexer.balanceLookup = NewBalanceLookupService(logger, txIndexer)
 
 	return txIndexer
 }
@@ -113,6 +119,9 @@ func (t *TxIndexer) Start() error {
 
 	// Start the queue filler (goroutine 2)
 	go t.runQueueFiller()
+
+	// Start the cleanup routine (goroutine 3)
+	go t.runCleanupLoop()
 
 	t.logger.Info("tx indexer started")
 	return nil
@@ -476,4 +485,26 @@ func (t *TxIndexer) dequeueBlockRef() *BlockRef {
 		// No items in either queue, wait for signal
 		t.queueCond.Wait()
 	}
+}
+
+// QueueAddressBalanceLookups queues all balance lookups for an address page view.
+// This is called by the address handler when a user views an address page.
+// The lookups are rate-limited to prevent excessive RPC calls.
+func (t *TxIndexer) QueueAddressBalanceLookups(accountID uint64, address []byte) {
+	if t.balanceLookup != nil {
+		t.balanceLookup.QueueAddressPageLookups(accountID, address)
+	}
+}
+
+// GetBalanceLookupStats returns the current balance lookup queue statistics.
+func (t *TxIndexer) GetBalanceLookupStats() (highPrio, lowPrio int) {
+	if t.balanceLookup != nil {
+		return t.balanceLookup.GetQueueStats()
+	}
+	return 0, 0
+}
+
+// GetBalanceLookupService returns the balance lookup service for direct access.
+func (t *TxIndexer) GetBalanceLookupService() *BalanceLookupService {
+	return t.balanceLookup
 }

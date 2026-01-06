@@ -77,6 +77,7 @@ func GetTemplateFuncs() template.FuncMap {
 		"formatEthAddressShort":        FormatEthAddressShort,
 		"formatEthAddressShortLink":    FormatEthAddressShortLink,
 		"formatEthAddressFull":         FormatEthAddressFull,
+		"formatEthAddressFullLink":     FormatEthAddressFullLink,
 		"formatHexBytes":               FormatHexBytes,
 		"formatEthHashShort":           FormatEthHashShort,
 		"formatContractCreationLink":   FormatContractCreationLink,

@@ -111,7 +111,7 @@ func TransactionRLP(w http.ResponseWriter, r *http.Request) {
 
 	// Get block by BlockUid using the filter
 	filter := &dbtypes.BlockFilter{
-		BlockUid:     &tx.BlockUid,
+		BlockUids:    []uint64{tx.BlockUid},
 		WithOrphaned: 1, // Include orphaned blocks
 	}
 	blocks := services.GlobalBeaconService.GetDbBlocksByFilter(filter, 0, 1, 0)
@@ -209,14 +209,23 @@ func buildTransactionPageData(txHash []byte, tabView string) (*models.Transactio
 	pageData.Slot = slot
 	pageData.BlockTime = blockTime
 
-	// Get block hash from database using BlockUid filter
-	filter := &dbtypes.BlockFilter{
-		BlockUid:     &tx.BlockUid,
-		WithOrphaned: 1, // Include orphaned blocks
+	// Get block info using GetDbBlocksByFilter (includes cached blocks)
+	blockFilter := &dbtypes.BlockFilter{
+		BlockUids:    []uint64{tx.BlockUid},
+		WithOrphaned: 1,
 	}
-	dbBlocks := services.GlobalBeaconService.GetDbBlocksByFilter(filter, 0, 1, 0)
-	if len(dbBlocks) > 0 && dbBlocks[0].Block != nil {
-		pageData.BlockHash = dbBlocks[0].Block.EthBlockHash
+	blocks := services.GlobalBeaconService.GetDbBlocksByFilter(blockFilter, 0, 1, 0)
+	if len(blocks) > 0 && blocks[0].Block != nil {
+		slotInfo := blocks[0].Block
+		pageData.BlockHash = slotInfo.EthBlockHash
+		pageData.BlockRoot = slotInfo.Root
+		pageData.TxOrphaned = slotInfo.Status == dbtypes.Orphaned
+
+		// Check if finalized (slot <= finalized slot and not orphaned)
+		finalizedSlot := chainState.GetFinalizedSlot()
+		if !pageData.TxOrphaned && phase0.Slot(slotInfo.Slot) <= finalizedSlot {
+			pageData.TxFinalized = true
+		}
 	}
 
 	// Get from/to addresses

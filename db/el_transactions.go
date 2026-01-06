@@ -250,6 +250,68 @@ func GetElTransactionsFiltered(offset uint64, limit uint32, filter *dbtypes.ElTr
 	return txs[1:], count, nil
 }
 
+// GetElTransactionsByAccountIDCombined fetches transactions where the account is either
+// sender (from_id) or receiver (to_id). Results are sorted by block_uid DESC, tx_index DESC.
+// Returns transactions, total count, and error.
+func GetElTransactionsByAccountIDCombined(accountID uint64, offset uint64, limit uint32) ([]*dbtypes.ElTransaction, uint64, error) {
+	var sql strings.Builder
+	args := []any{accountID, accountID}
+
+	fmt.Fprint(&sql, `
+	WITH cte AS (
+		SELECT block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw, data, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number, tx_type, tx_index, max_fee
+		FROM el_transactions
+		WHERE (from_id = $1 OR to_id = $2)
+	)`)
+
+	fmt.Fprintf(&sql, `
+	SELECT
+		count(*) AS block_uid,
+		null AS tx_hash,
+		0 AS from_id,
+		0 AS to_id,
+		0 AS nonce,
+		false AS reverted,
+		0 AS amount,
+		null AS amount_raw,
+		null AS data,
+		0 AS gas_limit,
+		0 AS gas_used,
+		0 AS gas_price,
+		0 AS tip_price,
+		0 AS blob_count,
+		0 AS block_number,
+		0 AS tx_type,
+		0 AS tx_index,
+		0 AS max_fee
+	FROM cte
+	UNION ALL SELECT * FROM (
+	SELECT * FROM cte
+	ORDER BY block_uid DESC, tx_index DESC
+	LIMIT $%v`, len(args)+1)
+	args = append(args, limit)
+
+	if offset > 0 {
+		args = append(args, offset)
+		fmt.Fprintf(&sql, " OFFSET $%v", len(args))
+	}
+	fmt.Fprint(&sql, ") AS t1")
+
+	txs := []*dbtypes.ElTransaction{}
+	err := ReaderDb.Select(&txs, sql.String(), args...)
+	if err != nil {
+		logger.Errorf("Error while fetching el transactions by account id (combined): %v", err)
+		return nil, 0, err
+	}
+
+	if len(txs) == 0 {
+		return []*dbtypes.ElTransaction{}, 0, nil
+	}
+
+	count := txs[0].BlockUid
+	return txs[1:], count, nil
+}
+
 func DeleteElTransaction(blockUid uint64, txHash []byte, dbTx *sqlx.Tx) error {
 	_, err := dbTx.Exec("DELETE FROM el_transactions WHERE block_uid = $1 AND tx_hash = $2", blockUid, txHash)
 	return err

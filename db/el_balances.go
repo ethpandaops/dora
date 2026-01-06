@@ -248,3 +248,13 @@ func DeleteElBalancesByTokenID(tokenID uint64, dbTx *sqlx.Tx) error {
 	_, err := dbTx.Exec("DELETE FROM el_balances WHERE token_id = $1", tokenID)
 	return err
 }
+
+// DeleteElZeroBalances deletes all balance entries with zero balance.
+// Returns the number of deleted rows.
+func DeleteElZeroBalances(dbTx *sqlx.Tx) (int64, error) {
+	result, err := dbTx.Exec("DELETE FROM el_balances WHERE balance = 0")
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}

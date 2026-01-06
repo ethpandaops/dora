@@ -6,10 +6,11 @@ import (
 
 // TransactionPageData is a struct to hold info for the transaction page
 type TransactionPageData struct {
-	TxHash     []byte `json:"tx_hash"`
-	TxNotFound bool   `json:"tx_not_found"`
-	TxMultiple bool   `json:"tx_multiple"` // If there are multiple versions (due to reorg)
-	TxOrphaned bool   `json:"tx_orphaned"` // If the tx is from an orphaned block
+	TxHash      []byte `json:"tx_hash"`
+	TxNotFound  bool   `json:"tx_not_found"`
+	TxMultiple  bool   `json:"tx_multiple"`  // If there are multiple versions (due to reorg)
+	TxOrphaned  bool   `json:"tx_orphaned"`  // If the tx is from an orphaned block
+	TxFinalized bool   `json:"tx_finalized"` // If the tx is in a finalized block
 
 	// Status
 	Status     bool   `json:"status"` // true = success, false = reverted
@@ -18,6 +19,7 @@ type TransactionPageData struct {
 	// Block info
 	BlockNumber uint64    `json:"block_number"`
 	BlockHash   []byte    `json:"block_hash"`
+	BlockRoot   []byte    `json:"block_root"` // Beacon block root for linking
 	BlockTime   time.Time `json:"block_time"`
 	Slot        uint64    `json:"slot"`
 

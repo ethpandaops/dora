@@ -13,6 +13,7 @@
             <th>To</th>
             <th>Value</th>
             <th>Txn Fee</th>
+            <th>Status</th>
           </tr>
         </thead>
         <tbody>
@@ -20,13 +21,14 @@
             {{ range .Transactions }}
               <tr>
                 <td class="text-monospace">
-                  {{ if .Reverted }}
-                    <span class="badge text-bg-danger me-1" data-bs-toggle="tooltip" title="Transaction failed">!</span>
-                  {{ end }}
                   <a href="/tx/{{ formatHexBytes .TxHash }}" data-bs-toggle="tooltip" title="{{ formatHexBytes .TxHash }}">{{ formatEthHashShort .TxHash 6 }}</a>
                 </td>
                 <td>
-                  <a href="/block/{{ .BlockNumber }}">{{ formatAddCommas .BlockNumber }}</a>
+                  {{ if gt (len .BlockRoot) 0 }}
+                    <a href="/slot/0x{{ printf "%x" .BlockRoot }}">{{ formatAddCommas .BlockNumber }}</a>
+                  {{ else }}
+                    {{ formatAddCommas .BlockNumber }}
+                  {{ end }}
                 </td>
                 <td data-timer="{{ .BlockTime.Unix }}">
                   <span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ .BlockTime }}">{{ formatRecentTimeShort .BlockTime }}</span>
@@ -50,11 +52,23 @@
                 </td>
                 <td>{{ formatTransactionValue .Amount }}</td>
                 <td>{{ formatTransactionValue .TxFee }}</td>
+                <td class="text-nowrap">
+                  {{ if .Reverted }}
+                    <span class="badge text-bg-danger" data-bs-toggle="tooltip" title="Transaction execution failed">Reverted</span>
+                  {{ else }}
+                    <span class="badge text-bg-success" data-bs-toggle="tooltip" title="Transaction executed successfully">Success</span>
+                  {{ end }}
+                  {{ if .BlockOrphaned }}
+                    <span class="badge text-bg-info" data-bs-toggle="tooltip" title="Block was orphaned">Orphaned</span>
+                  {{ else }}
+                    <span class="badge text-bg-success" data-bs-toggle="tooltip" title="Block is canonical">Included</span>
+                  {{ end }}
+                </td>
               </tr>
             {{ end }}
           {{ else }}
             <tr>
-              <td colspan="8" class="text-center py-4 text-muted">
+              <td colspan="9" class="text-center py-4 text-muted">
                 <i class="fas fa-inbox fa-2x mb-2"></i>
                 <br>No transactions found
               </td>

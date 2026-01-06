@@ -35,7 +35,7 @@
               {{ else if eq .TokenType 3 }}
               {{ formatFloat .Amount 0 }}{{ if .TokenSymbol }} {{ .TokenSymbol }}{{ end }}{{ if gt (len .TokenIndex) 0 }} (#{{ formatHexBytes .TokenIndex }}){{ end }}
               {{ else }}
-              {{ formatFloat .Amount 6 }}{{ if .TokenSymbol }} {{ .TokenSymbol }}{{ end }}
+              {{ formatTokenAmount .Amount .TokenSymbol }}
               {{ end }}
             </td>
             <td class="text-center px-3">

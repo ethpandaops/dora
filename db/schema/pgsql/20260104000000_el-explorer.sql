@@ -152,6 +152,7 @@ CREATE INDEX IF NOT EXISTS "el_balances_token_id_idx"
 CREATE TABLE IF NOT EXISTS public."el_token_transfers" (
     block_uid BIGINT NOT NULL,
     tx_hash bytea NOT NULL,
+    tx_pos INT NOT NULL DEFAULT 0,
     tx_idx INT NOT NULL,
     token_id BIGINT NOT NULL,
     token_type SMALLINT NOT NULL DEFAULT 0,

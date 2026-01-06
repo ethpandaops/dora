@@ -340,8 +340,13 @@ func trimAmount(amount *big.Int, unitDigits int, maxPreCommaDigitsBeforeTrim int
 
 func FormatEthBlockLink(blockNum uint64) template.HTML {
 	caption := FormatAddCommas(blockNum)
+	// Use local link when execution indexer is enabled
+	if Config.ExecutionIndexer.Enabled {
+		return template.HTML(fmt.Sprintf(`<a href="/block/%d">%v</a>`, blockNum, caption))
+	}
+	// Fall back to external explorer link
 	if Config.Frontend.EthExplorerLink != "" {
-		link, err := url.JoinPath(Config.Frontend.EthExplorerLink, "block", strconv.FormatUint(uint64(blockNum), 10))
+		link, err := url.JoinPath(Config.Frontend.EthExplorerLink, "block", strconv.FormatUint(blockNum, 10))
 		if err == nil {
 			return template.HTML(fmt.Sprintf(`<a href="%v">%v</a>`, link, caption))
 		}
@@ -351,6 +356,11 @@ func FormatEthBlockLink(blockNum uint64) template.HTML {
 
 func FormatEthBlockHashLink(blockHash []byte) template.HTML {
 	caption := fmt.Sprintf("0x%x", blockHash)
+	// Use local link when execution indexer is enabled
+	if Config.ExecutionIndexer.Enabled {
+		return template.HTML(fmt.Sprintf(`<a href="/block/%s">%s</a>`, caption, caption))
+	}
+	// Fall back to external explorer link
 	if Config.Frontend.EthExplorerLink != "" {
 		link, err := url.JoinPath(Config.Frontend.EthExplorerLink, "block", caption)
 		if err == nil {
@@ -361,30 +371,59 @@ func FormatEthBlockHashLink(blockHash []byte) template.HTML {
 }
 
 func FormatEthAddressLink(address []byte) template.HTML {
-	caption := common.BytesToAddress(address).String()
+	if len(address) == 0 {
+		return template.HTML("")
+	}
+
+	fullAddr := common.BytesToAddress(address).Hex()
+	// Short format: 4 bytes on each side (0x + 8 chars + … + 8 chars)
+	shortAddr := fullAddr[:10] + "…" + fullAddr[len(fullAddr)-8:]
+
+	// Use local link when execution indexer is enabled
+	if Config.ExecutionIndexer.Enabled {
+		return template.HTML(fmt.Sprintf(`<a href="/address/%s" data-bs-toggle="tooltip" title="%s">%s</a>`,
+			fullAddr, fullAddr, shortAddr))
+	}
+
+	// Fall back to external explorer link
 	if Config.Frontend.EthExplorerLink != "" {
-		link, err := url.JoinPath(Config.Frontend.EthExplorerLink, "address", caption)
+		link, err := url.JoinPath(Config.Frontend.EthExplorerLink, "address", fullAddr)
 		if err == nil {
-			return template.HTML(fmt.Sprintf(`<a href="%v">%v</a>`, link, caption))
+			return template.HTML(fmt.Sprintf(`<a href="%v" data-bs-toggle="tooltip" title="%s">%v</a>`,
+				link, fullAddr, shortAddr))
 		}
 	}
-	return template.HTML(caption)
+
+	return template.HTML(fmt.Sprintf(`<span data-bs-toggle="tooltip" title="%s">%s</span>`, fullAddr, shortAddr))
 }
 
 func FormatEthTransactionLink(hash []byte, width uint64) template.HTML {
-	txhash := common.Hash(hash).String()
-	caption := txhash
-	if width > 0 {
-		caption = caption[:width] + "…"
+	if len(hash) == 0 {
+		return template.HTML("")
 	}
 
+	txhash := common.Hash(hash).String()
+	caption := txhash
+	if width > 0 && len(txhash) > int(width)+1 {
+		caption = txhash[:width] + "…"
+	}
+
+	// Use local link when execution indexer is enabled
+	if Config.ExecutionIndexer.Enabled {
+		return template.HTML(fmt.Sprintf(`<a href="/tx/%s" data-bs-toggle="tooltip" title="%s">%s</a>`,
+			txhash, txhash, caption))
+	}
+
+	// Fall back to external explorer link
 	if Config.Frontend.EthExplorerLink != "" {
 		link, err := url.JoinPath(Config.Frontend.EthExplorerLink, "tx", txhash)
 		if err == nil {
-			return template.HTML(fmt.Sprintf(`<a href="%v">%v</a>`, link, caption))
+			return template.HTML(fmt.Sprintf(`<a href="%v" data-bs-toggle="tooltip" title="%s">%v</a>`,
+				link, txhash, caption))
 		}
 	}
-	return template.HTML(caption)
+
+	return template.HTML(fmt.Sprintf(`<span data-bs-toggle="tooltip" title="%s">%s</span>`, txhash, caption))
 }
 
 func FormatEthAddress(address []byte) template.HTML {
@@ -463,6 +502,30 @@ func FormatEthAddressFull(address []byte) string {
 		return ""
 	}
 	return common.BytesToAddress(address).Hex()
+}
+
+// FormatEthAddressFullLink returns the full Ethereum address with a link
+func FormatEthAddressFullLink(address []byte) template.HTML {
+	if len(address) == 0 {
+		return template.HTML("")
+	}
+
+	fullAddr := common.BytesToAddress(address).Hex()
+
+	// Use local link when execution indexer is enabled
+	if Config.ExecutionIndexer.Enabled {
+		return template.HTML(fmt.Sprintf(`<a href="/address/%s">%s</a>`, fullAddr, fullAddr))
+	}
+
+	// Fall back to external explorer link
+	if Config.Frontend.EthExplorerLink != "" {
+		link, err := url.JoinPath(Config.Frontend.EthExplorerLink, "address", fullAddr)
+		if err == nil {
+			return template.HTML(fmt.Sprintf(`<a href="%v">%v</a>`, link, fullAddr))
+		}
+	}
+
+	return template.HTML(fullAddr)
 }
 
 // FormatEthHashShort formats an Ethereum hash (tx hash, block hash) in short form
@@ -575,10 +638,21 @@ func FormatWithdawalCredentials(hash []byte) template.HTML {
 		return "INVALID CREDENTIALS"
 	}
 
-	if (hash[0] == 0x01 || hash[0] == 0x02) && Config.Frontend.EthExplorerLink != "" {
-		link, err := url.JoinPath(Config.Frontend.EthExplorerLink, "address", fmt.Sprintf("0x%x", hash[12:]))
-		if err == nil {
-			return template.HTML(fmt.Sprintf(`<a href="%v">%v</a>`, link, formatWithdrawalHash(hash)))
+	// For 0x01 or 0x02 credentials, link to the address
+	if hash[0] == 0x01 || hash[0] == 0x02 {
+		addr := fmt.Sprintf("0x%x", hash[12:])
+
+		// Use local link when execution indexer is enabled
+		if Config.ExecutionIndexer.Enabled {
+			return template.HTML(fmt.Sprintf(`<a href="/address/%s">%v</a>`, addr, formatWithdrawalHash(hash)))
+		}
+
+		// Fall back to external explorer link
+		if Config.Frontend.EthExplorerLink != "" {
+			link, err := url.JoinPath(Config.Frontend.EthExplorerLink, "address", addr)
+			if err == nil {
+				return template.HTML(fmt.Sprintf(`<a href="%v">%v</a>`, link, formatWithdrawalHash(hash)))
+			}
 		}
 	}
 

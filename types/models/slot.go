@@ -216,8 +216,8 @@ type SlotPageBlobDetails struct {
 type SlotPageTransaction struct {
 	Index         uint64  `json:"index"`
 	Hash          []byte  `json:"hash"`
-	From          string  `json:"from"`
-	To            string  `json:"to"`
+	From          []byte  `json:"from"`
+	To            []byte  `json:"to"`
 	Value         float64 `json:"value"`
 	Data          []byte  `json:"data"`
 	DataLen       uint64  `json:"datalen"`

@@ -41,6 +41,17 @@ func (t *TxIndexer) processElBlock(ref *BlockRef) error {
 		if diff := time.Since(t1); diff < time.Second {
 			time.Sleep(time.Second - diff)
 		}
+
+		// Process pending balance lookups after block processing
+		// This is done outside the main transaction since it involves RPC calls
+		if t.balanceLookup != nil && t.balanceLookup.HasPendingLookups() {
+			balanceCtx, balanceCancel := context.WithTimeout(t.ctx, 30*time.Second)
+			_, err := t.balanceLookup.ProcessPendingLookups(balanceCtx)
+			balanceCancel()
+			if err != nil {
+				t.logger.WithError(err).Debug("failed to process pending balance lookups")
+			}
+		}
 	}()
 
 	ctx, cancel := context.WithTimeout(t.ctx, 60*time.Second)
@@ -114,6 +125,26 @@ func (t *TxIndexer) processElBlock(ref *BlockRef) error {
 		if len(accountNonceUpdates) > 0 {
 			if err := db.UpdateElAccountsLastNonce(accountNonceUpdates, tx); err != nil {
 				return err
+			}
+		}
+
+		// Build balance deltas from pending transfers (IDs are now resolved)
+		procCtx.buildBalanceDeltas()
+
+		// Get balance updates and lookup requests
+		balanceUpdates, lookupRequests := procCtx.getBalanceUpdates()
+
+		// Insert balance updates
+		if len(balanceUpdates) > 0 {
+			if err := db.InsertElBalances(balanceUpdates, tx); err != nil {
+				t.logger.WithError(err).Warn("failed to insert balance updates")
+			}
+		}
+
+		// Queue lookup requests for verification (outside transaction)
+		if t.balanceLookup != nil && len(lookupRequests) > 0 {
+			for _, req := range lookupRequests {
+				t.balanceLookup.QueueBalanceLookup(req)
 			}
 		}
 

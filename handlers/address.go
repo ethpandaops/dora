@@ -1,7 +1,9 @@
 package handlers
 
 import (
+	"bytes"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"math"
 	"net/http"
@@ -26,6 +28,8 @@ const (
 	defaultAddressPageSize = 25
 	maxAddressPageSize     = 100
 	tokenTypeERC20         = 1
+	tokenTypeERC721        = 2
+	tokenTypeERC1155       = 3
 )
 
 // Address handles the /address/{address} page
@@ -109,6 +113,129 @@ func Address(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// AddressBalances handles the /address/{address}/balances AJAX endpoint
+// Returns JSON balance data for auto-refresh functionality
+func AddressBalances(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	addressHex := strings.TrimPrefix(vars["address"], "0x")
+
+	addressBytes, err := hex.DecodeString(addressHex)
+	if err != nil || len(addressBytes) != 20 {
+		http.Error(w, "Invalid address", http.StatusBadRequest)
+		return
+	}
+
+	// Rate limit check
+	if err := services.GlobalCallRateLimiter.CheckCallLimit(r, 1); err != nil {
+		http.Error(w, "Rate limit exceeded", http.StatusTooManyRequests)
+		return
+	}
+
+	// Try to get the account from the database
+	account, _ := db.GetElAccountByAddress(addressBytes)
+	if account == nil {
+		// Create a placeholder account
+		account = &dbtypes.ElAccount{
+			ID:      0,
+			Address: addressBytes,
+		}
+	}
+
+	// Queue balance lookups (rate limited to 10min per account)
+	if account.ID > 0 {
+		if txIndexer := services.GlobalBeaconService.GetTxIndexer(); txIndexer != nil {
+			txIndexer.QueueAddressBalanceLookups(account.ID, account.Address)
+		}
+	}
+
+	// Build response
+	response := buildBalancesResponse(account)
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		logrus.WithError(err).Error("failed to encode balance response")
+	}
+}
+
+// AddressBalancesResponse is the JSON response for the balances endpoint
+type AddressBalancesResponse struct {
+	EthBalance    float64                        `json:"eth_balance"`
+	EthBalanceRaw string                         `json:"eth_balance_raw"`
+	TokenBalances []*AddressBalanceTokenResponse `json:"token_balances"`
+}
+
+// AddressBalanceTokenResponse represents a single token balance in the response
+type AddressBalanceTokenResponse struct {
+	TokenID    uint64  `json:"token_id"`
+	Contract   string  `json:"contract"`
+	Name       string  `json:"name"`
+	Symbol     string  `json:"symbol"`
+	Decimals   uint8   `json:"decimals"`
+	Balance    float64 `json:"balance"`
+	BalanceRaw string  `json:"balance_raw"`
+}
+
+func buildBalancesResponse(account *dbtypes.ElAccount) *AddressBalancesResponse {
+	response := &AddressBalancesResponse{
+		TokenBalances: make([]*AddressBalanceTokenResponse, 0),
+	}
+
+	if account.ID == 0 {
+		return response
+	}
+
+	// Get ETH balance (token_id = 0 is native token)
+	if ethBalance, err := db.GetElBalance(account.ID, 0); err == nil {
+		response.EthBalance = ethBalance.Balance
+		response.EthBalanceRaw = hex.EncodeToString(ethBalance.BalanceRaw)
+	}
+
+	// Get token balances
+	if balances, _, err := db.GetElBalancesByAccountID(account.ID, 0, 50); err == nil {
+		// Collect token IDs for batch lookup
+		tokenIDs := make([]uint64, 0, len(balances))
+		for _, b := range balances {
+			if b.TokenID > 0 { // Skip native token
+				tokenIDs = append(tokenIDs, b.TokenID)
+			}
+		}
+
+		// Batch lookup tokens
+		tokenMap := make(map[uint64]*dbtypes.ElToken)
+		if len(tokenIDs) > 0 {
+			if tokens, err := db.GetElTokensByIDs(tokenIDs); err == nil {
+				for _, t := range tokens {
+					tokenMap[t.ID] = t
+				}
+			}
+		}
+
+		// Build token balance list (skip zero balances)
+		for _, b := range balances {
+			if b.TokenID == 0 {
+				continue // Skip native token in token list
+			}
+			if b.Balance == 0 {
+				continue // Skip zero balances
+			}
+			tb := &AddressBalanceTokenResponse{
+				TokenID:    b.TokenID,
+				Balance:    b.Balance,
+				BalanceRaw: hex.EncodeToString(b.BalanceRaw),
+			}
+			if token, ok := tokenMap[b.TokenID]; ok {
+				tb.Contract = hex.EncodeToString(token.Contract)
+				tb.Name = token.Name
+				tb.Symbol = token.Symbol
+				tb.Decimals = token.Decimals
+			}
+			response.TokenBalances = append(response.TokenBalances, tb)
+		}
+	}
+
+	return response
+}
+
 func getAddressPageData(account *dbtypes.ElAccount, tabView string, pageIdx, pageSize uint64) (*models.AddressPageData, error) {
 	pageData := &models.AddressPageData{}
 	pageCacheKey := fmt.Sprintf("address:%v:%v:%v:%v", account.ID, tabView, pageIdx, pageSize)
@@ -129,6 +256,13 @@ func getAddressPageData(account *dbtypes.ElAccount, tabView string, pageIdx, pag
 
 func buildAddressPageData(account *dbtypes.ElAccount, tabView string, pageIdx, pageSize uint64) (*models.AddressPageData, time.Duration) {
 	logrus.Debugf("address page called: %v (tab: %v)", account.ID, tabView)
+
+	// Queue balance lookups when page is viewed (rate limited to 10min per account)
+	if account.ID > 0 {
+		if txIndexer := services.GlobalBeaconService.GetTxIndexer(); txIndexer != nil {
+			txIndexer.QueueAddressBalanceLookups(account.ID, account.Address)
+		}
+	}
 
 	chainState := services.GlobalBeaconService.GetChainState()
 
@@ -161,10 +295,8 @@ func buildAddressPageData(account *dbtypes.ElAccount, tabView string, pageIdx, p
 	}
 
 	// Get token balances for sidebar (limit to 50 for the sidebar)
-	if balances, count, err := db.GetElBalancesByAccountID(account.ID, 0, 50); err == nil {
-		pageData.TokenBalanceCount = count
-
-		// Collect token IDs for batch lookup
+	if balances, _, err := db.GetElBalancesByAccountID(account.ID, 0, 50); err == nil {
+		// Collect token IDs for batch lookup (skip native token)
 		tokenIDs := make([]uint64, 0, len(balances))
 		for _, b := range balances {
 			if b.TokenID > 0 { // Skip native token
@@ -182,11 +314,14 @@ func buildAddressPageData(account *dbtypes.ElAccount, tabView string, pageIdx, p
 			}
 		}
 
-		// Build token balance list
+		// Build token balance list (skip zero balances)
 		pageData.TokenBalances = make([]*models.AddressPageDataTokenBalance, 0, len(balances))
 		for _, b := range balances {
 			if b.TokenID == 0 {
 				continue // Skip native token in token list
+			}
+			if b.Balance == 0 {
+				continue // Skip zero balances
 			}
 			tb := &models.AddressPageDataTokenBalance{
 				TokenID:    b.TokenID,
@@ -201,6 +336,8 @@ func buildAddressPageData(account *dbtypes.ElAccount, tabView string, pageIdx, p
 			}
 			pageData.TokenBalances = append(pageData.TokenBalances, tb)
 		}
+		// Update count to reflect actual non-zero tokens displayed
+		pageData.TokenBalanceCount = uint64(len(pageData.TokenBalances))
 	}
 
 	offset := (pageIdx - 1) * pageSize
@@ -221,13 +358,9 @@ func buildAddressPageData(account *dbtypes.ElAccount, tabView string, pageIdx, p
 }
 
 func loadTransactionsTab(pageData *models.AddressPageData, account *dbtypes.ElAccount, chainState *consensus.ChainState, offset uint64, limit uint32, pageIdx uint64) {
-	// Get sent transactions
-	sentTxs, sentCount, _ := db.GetElTransactionsByAccountID(account.ID, true, 0, 10000)
-	// Get received transactions
-	recvTxs, recvCount, _ := db.GetElTransactionsByAccountID(account.ID, false, 0, 10000)
+	// Get transactions using combined query (sorted by block_uid DESC, tx_index DESC)
+	dbTxs, totalCount, _ := db.GetElTransactionsByAccountIDCombined(account.ID, offset, limit)
 
-	// Merge and sort by block_uid descending (we'll use a combined approach with pagination)
-	totalCount := sentCount + recvCount
 	pageData.TransactionCount = totalCount
 	pageData.TxPageIndex = pageIdx
 	pageData.TxPageSize = uint64(limit)
@@ -235,48 +368,17 @@ func loadTransactionsTab(pageData *models.AddressPageData, account *dbtypes.ElAc
 	pageData.TxFirstItem = (pageIdx-1)*uint64(limit) + 1
 	pageData.TxLastItem = min(pageIdx*uint64(limit), totalCount)
 
-	// For simplicity, we'll fetch both directions with pagination
-	// This is a simplified approach - for better performance, consider a combined DB query
-	var txs []*dbtypes.ElTransaction
-	var txDirections []bool // true = outgoing
-
-	// Collect all from both directions into a combined list
-	for _, tx := range sentTxs {
-		txs = append(txs, tx)
-		txDirections = append(txDirections, true)
-	}
-	for _, tx := range recvTxs {
-		txs = append(txs, tx)
-		txDirections = append(txDirections, false)
-	}
-
-	// Sort by block_uid descending
-	for i := 0; i < len(txs)-1; i++ {
-		for j := i + 1; j < len(txs); j++ {
-			if txs[j].BlockUid > txs[i].BlockUid {
-				txs[i], txs[j] = txs[j], txs[i]
-				txDirections[i], txDirections[j] = txDirections[j], txDirections[i]
-			}
-		}
-	}
-
-	// Apply pagination
-	start := int(offset)
-	end := start + int(limit)
-	if start > len(txs) {
-		start = len(txs)
-	}
-	if end > len(txs) {
-		end = len(txs)
-	}
-	paginatedTxs := txs[start:end]
-	paginatedDirections := txDirections[start:end]
-
-	// Collect account IDs for batch lookup
-	accountIDs := make(map[uint64]bool)
-	for _, tx := range paginatedTxs {
+	// Collect account IDs and block UIDs for batch lookup
+	accountIDs := make(map[uint64]bool, len(dbTxs)*2)
+	blockUids := make([]uint64, 0, len(dbTxs))
+	blockUidSet := make(map[uint64]bool, len(dbTxs))
+	for _, tx := range dbTxs {
 		accountIDs[tx.FromID] = true
 		accountIDs[tx.ToID] = true
+		if !blockUidSet[tx.BlockUid] {
+			blockUidSet[tx.BlockUid] = true
+			blockUids = append(blockUids, tx.BlockUid)
+		}
 	}
 
 	// Batch lookup accounts
@@ -284,7 +386,7 @@ func loadTransactionsTab(pageData *models.AddressPageData, account *dbtypes.ElAc
 	for id := range accountIDs {
 		accountIDList = append(accountIDList, id)
 	}
-	accountMap := make(map[uint64]*dbtypes.ElAccount)
+	accountMap := make(map[uint64]*dbtypes.ElAccount, len(accountIDList))
 	if len(accountIDList) > 0 {
 		if accounts, err := db.GetElAccountsByIDs(accountIDList); err == nil {
 			for _, a := range accounts {
@@ -293,9 +395,24 @@ func loadTransactionsTab(pageData *models.AddressPageData, account *dbtypes.ElAc
 		}
 	}
 
+	// Batch lookup blocks using GetDbBlocksByFilter (includes cached blocks)
+	blockMap := make(map[uint64]*dbtypes.AssignedSlot, len(blockUids))
+	if len(blockUids) > 0 {
+		filter := &dbtypes.BlockFilter{
+			BlockUids:    blockUids,
+			WithOrphaned: 1, // Include both canonical and orphaned
+		}
+		blocks := services.GlobalBeaconService.GetDbBlocksByFilter(filter, 0, uint32(len(blockUids)), 0)
+		for _, b := range blocks {
+			if b.Block != nil {
+				blockMap[b.Block.BlockUid] = b
+			}
+		}
+	}
+
 	// Build transaction list
-	pageData.Transactions = make([]*models.AddressPageDataTransaction, 0, len(paginatedTxs))
-	for i, tx := range paginatedTxs {
+	pageData.Transactions = make([]*models.AddressPageDataTransaction, 0, len(dbTxs))
+	for _, tx := range dbTxs {
 		slot := tx.BlockUid >> 16
 		blockTime := chainState.SlotToTime(phase0.Slot(slot))
 
@@ -305,15 +422,22 @@ func loadTransactionsTab(pageData *models.AddressPageData, account *dbtypes.ElAc
 		txData := &models.AddressPageDataTransaction{
 			TxHash:      tx.TxHash,
 			BlockNumber: tx.BlockNumber,
+			BlockUid:    tx.BlockUid,
 			BlockTime:   blockTime,
 			FromID:      tx.FromID,
 			ToID:        tx.ToID,
-			IsOutgoing:  paginatedDirections[i],
+			IsOutgoing:  tx.FromID == account.ID,
 			Nonce:       tx.Nonce,
 			Amount:      tx.Amount,
 			AmountRaw:   tx.AmountRaw,
 			TxFee:       txFee,
 			Reverted:    tx.Reverted,
+		}
+
+		// Set block root and orphaned status from block lookup
+		if blockInfo, ok := blockMap[tx.BlockUid]; ok && blockInfo.Block != nil {
+			txData.BlockRoot = blockInfo.Block.Root
+			txData.BlockOrphaned = blockInfo.Block.Status == dbtypes.Orphaned
 		}
 
 		// Set addresses from account map
@@ -347,66 +471,22 @@ func loadNFTTransfersTab(pageData *models.AddressPageData, account *dbtypes.ElAc
 }
 
 func loadTokenTransfersTab(pageData *models.AddressPageData, account *dbtypes.ElAccount, chainState *consensus.ChainState, offset uint64, limit uint32, pageIdx uint64, filterTokenType uint8, isERC20 bool) {
-	// Get sent token transfers
-	sentTransfers, sentCount, _ := db.GetElTokenTransfersByAccountID(account.ID, true, 0, 10000)
-	// Get received token transfers
-	recvTransfers, recvCount, _ := db.GetElTokenTransfersByAccountID(account.ID, false, 0, 10000)
-
-	// Merge all transfers
-	var allTransfers []*dbtypes.ElTokenTransfer
-	var transferDirections []bool
-
-	for _, t := range sentTransfers {
-		// Filter by token type
-		if filterTokenType > 0 && t.TokenType != filterTokenType {
-			continue
-		}
-		if filterTokenType == 0 && t.TokenType == tokenTypeERC20 {
-			continue // For NFT tab, skip ERC20
-		}
-		allTransfers = append(allTransfers, t)
-		transferDirections = append(transferDirections, true)
-	}
-	for _, t := range recvTransfers {
-		// Filter by token type
-		if filterTokenType > 0 && t.TokenType != filterTokenType {
-			continue
-		}
-		if filterTokenType == 0 && t.TokenType == tokenTypeERC20 {
-			continue // For NFT tab, skip ERC20
-		}
-		allTransfers = append(allTransfers, t)
-		transferDirections = append(transferDirections, false)
+	// Build token type filter
+	var tokenTypes []uint8
+	if filterTokenType > 0 {
+		tokenTypes = []uint8{filterTokenType}
+	} else {
+		// NFT tab: ERC721 + ERC1155
+		tokenTypes = []uint8{tokenTypeERC721, tokenTypeERC1155}
 	}
 
-	// Sort by block_uid descending
-	for i := 0; i < len(allTransfers)-1; i++ {
-		for j := i + 1; j < len(allTransfers); j++ {
-			if allTransfers[j].BlockUid > allTransfers[i].BlockUid {
-				allTransfers[i], allTransfers[j] = allTransfers[j], allTransfers[i]
-				transferDirections[i], transferDirections[j] = transferDirections[j], transferDirections[i]
-			}
-		}
-	}
-
-	totalCount := uint64(len(allTransfers))
-
-	// Apply pagination
-	start := int(offset)
-	end := start + int(limit)
-	if start > len(allTransfers) {
-		start = len(allTransfers)
-	}
-	if end > len(allTransfers) {
-		end = len(allTransfers)
-	}
-	paginatedTransfers := allTransfers[start:end]
-	paginatedDirections := transferDirections[start:end]
+	// Get token transfers using combined query (sorted by block_uid DESC, tx_pos DESC, tx_idx DESC)
+	dbTransfers, totalCount, _ := db.GetElTokenTransfersByAccountIDCombined(account.ID, tokenTypes, offset, limit)
 
 	// Collect IDs for batch lookup
-	accountIDs := make(map[uint64]bool)
-	tokenIDs := make(map[uint64]bool)
-	for _, t := range paginatedTransfers {
+	accountIDs := make(map[uint64]bool, len(dbTransfers)*2)
+	tokenIDs := make(map[uint64]bool, len(dbTransfers))
+	for _, t := range dbTransfers {
 		accountIDs[t.FromID] = true
 		accountIDs[t.ToID] = true
 		tokenIDs[t.TokenID] = true
@@ -417,7 +497,7 @@ func loadTokenTransfersTab(pageData *models.AddressPageData, account *dbtypes.El
 	for id := range accountIDs {
 		accountIDList = append(accountIDList, id)
 	}
-	accountMap := make(map[uint64]*dbtypes.ElAccount)
+	accountMap := make(map[uint64]*dbtypes.ElAccount, len(accountIDList))
 	if len(accountIDList) > 0 {
 		if accounts, err := db.GetElAccountsByIDs(accountIDList); err == nil {
 			for _, a := range accounts {
@@ -431,7 +511,7 @@ func loadTokenTransfersTab(pageData *models.AddressPageData, account *dbtypes.El
 	for id := range tokenIDs {
 		tokenIDList = append(tokenIDList, id)
 	}
-	tokenMap := make(map[uint64]*dbtypes.ElToken)
+	tokenMap := make(map[uint64]*dbtypes.ElToken, len(tokenIDList))
 	if len(tokenIDList) > 0 {
 		if tokens, err := db.GetElTokensByIDs(tokenIDList); err == nil {
 			for _, t := range tokens {
@@ -441,8 +521,8 @@ func loadTokenTransfersTab(pageData *models.AddressPageData, account *dbtypes.El
 	}
 
 	// Build transfer list
-	transfers := make([]*models.AddressPageDataTokenTransfer, 0, len(paginatedTransfers))
-	for i, t := range paginatedTransfers {
+	transfers := make([]*models.AddressPageDataTokenTransfer, 0, len(dbTransfers))
+	for _, t := range dbTransfers {
 		slot := t.BlockUid >> 16
 		blockTime := chainState.SlotToTime(phase0.Slot(slot))
 
@@ -451,7 +531,7 @@ func loadTokenTransfersTab(pageData *models.AddressPageData, account *dbtypes.El
 			BlockTime:  blockTime,
 			FromID:     t.FromID,
 			ToID:       t.ToID,
-			IsOutgoing: paginatedDirections[i],
+			IsOutgoing: t.FromID == account.ID,
 			TokenID:    t.TokenID,
 			TokenType:  t.TokenType,
 			TokenIndex: t.TokenIndex,
@@ -480,14 +560,12 @@ func loadTokenTransfersTab(pageData *models.AddressPageData, account *dbtypes.El
 		transfers = append(transfers, transfer)
 	}
 
+	// Calculate TxHashRowspan for consecutive transfers with same txhash
+	calculateTxHashRowspans(transfers)
+
 	if isERC20 {
 		pageData.ERC20Transfers = transfers
 		pageData.ERC20TransferCount = totalCount
-		if filterTokenType > 0 {
-			pageData.ERC20TransferCount = totalCount
-		} else {
-			pageData.ERC20TransferCount = sentCount + recvCount
-		}
 		pageData.ERC20PageIndex = pageIdx
 		pageData.ERC20PageSize = uint64(limit)
 		pageData.ERC20TotalPages = uint64(math.Ceil(float64(totalCount) / float64(limit)))
@@ -501,5 +579,38 @@ func loadTokenTransfersTab(pageData *models.AddressPageData, account *dbtypes.El
 		pageData.NFTTotalPages = uint64(math.Ceil(float64(totalCount) / float64(limit)))
 		pageData.NFTFirstItem = (pageIdx-1)*uint64(limit) + 1
 		pageData.NFTLastItem = min(pageIdx*uint64(limit), totalCount)
+	}
+}
+
+// calculateTxHashRowspans sets TxHashRowspan for consecutive transfers with the same txhash.
+// The first occurrence gets the rowspan count, subsequent occurrences get 0 (meaning skip rendering the cell).
+func calculateTxHashRowspans(transfers []*models.AddressPageDataTokenTransfer) {
+	if len(transfers) == 0 {
+		return
+	}
+
+	// Process from the end to count consecutive same txhashes
+	i := len(transfers) - 1
+	for i >= 0 {
+		// Find the start of the current txhash group
+		currentTxHash := transfers[i].TxHash
+		groupStart := i
+
+		// Look backwards to find all consecutive rows with the same txhash
+		for groupStart > 0 && bytes.Equal(transfers[groupStart-1].TxHash, currentTxHash) {
+			groupStart--
+		}
+
+		// Calculate rowspan for this group
+		rowspan := i - groupStart + 1
+
+		// Set rowspan on first row of group, 0 on subsequent rows
+		transfers[groupStart].TxHashRowspan = rowspan
+		for j := groupStart + 1; j <= i; j++ {
+			transfers[j].TxHashRowspan = 0
+		}
+
+		// Move to the previous group
+		i = groupStart - 1
 	}
 }

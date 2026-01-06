@@ -38,8 +38,18 @@
         <div class="row border-bottom p-2 mx-0">
           <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Block containing this transaction">Block:</span></div>
           <div class="col-md-9">
-            <a href="/slot/{{ .Slot }}">{{ formatAddCommas .BlockNumber }}</a>
-            {{ if .TxOrphaned }}<span class="badge rounded-pill text-bg-warning ms-2">Orphaned</span>{{ end }}
+            {{ if gt (len .BlockRoot) 0 }}
+            <a href="/slot/0x{{ printf "%x" .BlockRoot }}">{{ formatAddCommas .BlockNumber }}</a> (Slot {{ formatAddCommas .Slot }})
+            {{ else }}
+            <a href="/slot/{{ .Slot }}">{{ formatAddCommas .BlockNumber }}</a> (Slot {{ formatAddCommas .Slot }})
+            {{ end }}
+            {{ if .TxFinalized }}
+            <span class="badge rounded-pill text-bg-success ms-2" data-bs-toggle="tooltip" title="Transaction is in a finalized block">Finalized</span>
+            {{ else if .TxOrphaned }}
+            <span class="badge rounded-pill text-bg-info ms-2" data-bs-toggle="tooltip" title="Transaction is in an orphaned block">Orphaned</span>
+            {{ else }}
+            <span class="badge rounded-pill text-bg-warning ms-2" data-bs-toggle="tooltip" title="Transaction is in a canonical block">Unfinalized</span>
+            {{ end }}
             {{ if .TxMultiple }}<span class="badge rounded-pill text-bg-info ms-2">Multiple Versions</span>{{ end }}
           </div>
         </div>
@@ -53,10 +63,8 @@
           <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Sending address">From:</span></div>
           <div class="col-md-9 text-monospace text-break">
             {{ if gt (len .FromAddr) 0 }}
-            {{ $fromAddr := formatEthAddressFull .FromAddr }}
-            {{ if .FromIsContract }}<i class="fas fa-file-contract text-muted" style="font-size:0.8rem;margin-right:0.2rem" data-bs-toggle="tooltip" title="Contract"></i>{{ end }}
-            <a href="/address/{{ $fromAddr }}">{{ $fromAddr }}</a>
-            <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $fromAddr }}"></i>
+            {{ formatEthAddressFullLink .FromAddr }}
+            <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ formatEthAddressFull .FromAddr }}"></i>
             {{ else }}
             <span class="text-muted">Unknown</span>
             {{ end }}
@@ -66,10 +74,8 @@
           <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Receiving address">{{ if .IsCreate }}Created Contract:{{ else }}To:{{ end }}</span></div>
           <div class="col-md-9 text-monospace text-break">
             {{ if .HasTo }}
-            {{ $toAddr := formatEthAddressFull .ToAddr }}
-            {{ if .ToIsContract }}<i class="fas fa-file-contract text-muted" style="font-size:0.8rem;margin-right:0.2rem" data-bs-toggle="tooltip" title="Contract"></i>{{ end }}
-            <a href="/address/{{ $toAddr }}">{{ $toAddr }}</a>
-            <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $toAddr }}"></i>
+            {{ formatEthAddressFullLink .ToAddr }}
+            <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ formatEthAddressFull .ToAddr }}"></i>
             {{ else if .IsCreate }}
             {{ formatContractCreationLink .FromAddr .Nonce }}
             {{ else }}

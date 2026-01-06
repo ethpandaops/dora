@@ -32,7 +32,7 @@
             <div class="row border-bottom p-2 mx-0">
               <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Current ETH balance">Balance:</span></div>
               <div class="col-md-9">
-                {{ formatFloat .EthBalance 6 }} ETH
+                <span id="eth-balance-value">{{ formatFloat .EthBalance 6 }}</span> ETH
               </div>
             </div>
             {{ if gt .FirstFunded 0 }}
@@ -68,22 +68,20 @@
           <div class="card-header">
             <h5 class="mb-0"><i class="fas fa-coins me-2"></i>Token Holdings ({{ .TokenBalanceCount }})</h5>
           </div>
-          <div class="card-body p-0" style="max-height: 300px; overflow-y: auto;">
+          <div class="card-body p-0" style="max-height: 250px; overflow-y: auto;">
             {{ if gt (len .TokenBalances) 0 }}
-            <table class="table table-sm table-hover mb-0">
-              <tbody>
-                {{ range .TokenBalances }}
-                <tr>
-                  <td class="text-truncate" style="max-width: 150px;">
-                    {{ if .Symbol }}{{ .Symbol }}{{ else if .Name }}{{ .Name }}{{ else }}Unknown{{ end }}
-                  </td>
-                  <td class="text-end">{{ formatFloat .Balance 4 }}</td>
-                </tr>
-                {{ end }}
-              </tbody>
-            </table>
+            <div class="list-group list-group-flush">
+              {{ range .TokenBalances }}
+              <div class="list-group-item py-2 px-3 d-flex justify-content-between align-items-center">
+                <span class="text-monospace small" id="token-balance-{{ .TokenID }}">{{ formatTokenAmount .Balance .Symbol }}</span>
+                <a href="/address/0x{{ printf "%x" .Contract }}" class="text-truncate ms-2" style="max-width: 100px;" title="{{ if .Name }}{{ .Name }}{{ else }}Unknown{{ end }}">
+                  {{ if .Name }}{{ .Name }}{{ else }}Unknown{{ end }}
+                </a>
+              </div>
+              {{ end }}
+            </div>
             {{ else }}
-            <div class="p-3 text-center text-muted">
+            <div class="p-3 text-center text-muted small">
               No token holdings
             </div>
             {{ end }}
@@ -145,6 +143,57 @@
   $(document).ready(function() {
     var currentTab = "{{ .TabView }}";
     var addressStr = "{{ formatEthAddressFull .Address }}";
+
+    // Balance auto-refresh (every 60 seconds)
+    var balanceRefreshInterval = 60000;
+    var isRefreshingBalances = false;
+
+    setInterval(function() {
+      if (!isRefreshingBalances) {
+        refreshBalances();
+      }
+    }, balanceRefreshInterval);
+
+    function refreshBalances() {
+      isRefreshingBalances = true;
+      $.get('/address/' + addressStr + '/balances')
+        .done(function(data) {
+          // Update ETH balance
+          if (data.eth_balance !== undefined) {
+            $('#eth-balance-value').text(formatEthBalance(data.eth_balance));
+          }
+          // Update token balances
+          if (data.token_balances) {
+            data.token_balances.forEach(function(token) {
+              var el = $('#token-balance-' + token.token_id);
+              if (el.length) {
+                el.text(formatTokenBalance(token.balance, token.symbol));
+              }
+            });
+          }
+        })
+        .fail(function(err) {
+          console.error('Balance refresh failed:', err);
+        })
+        .always(function() {
+          isRefreshingBalances = false;
+        });
+    }
+
+    // Format ETH balance with 6 decimal places, trimming trailing zeros
+    function formatEthBalance(balance) {
+      return balance.toFixed(6).replace(/\.?0+$/, '');
+    }
+
+    // Format token balance with full precision, trimming trailing zeros
+    function formatTokenBalance(balance, symbol) {
+      // Use high precision and trim trailing zeros
+      var formatted = balance.toFixed(18).replace(/\.?0+$/, '');
+      if (symbol) {
+        return formatted + ' ' + symbol;
+      }
+      return formatted;
+    }
 
     // Handle tab selection
     const tabLinks = document.querySelectorAll('a[data-lazy-tab]');

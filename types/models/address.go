@@ -69,6 +69,9 @@ type AddressPageDataTokenBalance struct {
 type AddressPageDataTransaction struct {
 	TxHash         []byte    `json:"tx_hash"`
 	BlockNumber    uint64    `json:"block_number"`
+	BlockUid       uint64    `json:"block_uid"`
+	BlockRoot      []byte    `json:"block_root"`     // For linking to /slot/{root}
+	BlockOrphaned  bool      `json:"block_orphaned"` // True if block is orphaned
 	BlockTime      time.Time `json:"block_time"`
 	FromAddr       []byte    `json:"from_addr"`
 	FromID         uint64    `json:"from_id"`
@@ -90,6 +93,7 @@ type AddressPageDataTransaction struct {
 // AddressPageDataTokenTransfer represents a token transfer
 type AddressPageDataTokenTransfer struct {
 	TxHash         []byte    `json:"tx_hash"`
+	TxHashRowspan  int       `json:"tx_hash_rowspan"` // >0 means render with rowspan, 0 means skip cell
 	BlockNumber    uint64    `json:"block_number"`
 	BlockTime      time.Time `json:"block_time"`
 	FromAddr       []byte    `json:"from_addr"`

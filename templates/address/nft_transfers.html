@@ -19,9 +19,11 @@
           {{ if gt .NFTTransferCount 0 }}
             {{ range .NFTTransfers }}
               <tr>
-                <td class="text-monospace">
+                {{ if gt .TxHashRowspan 0 }}
+                <td class="text-monospace align-top"{{ if gt .TxHashRowspan 1 }} rowspan="{{ .TxHashRowspan }}"{{ end }}>
                   <a href="/tx/{{ formatHexBytes .TxHash }}" data-bs-toggle="tooltip" title="{{ formatHexBytes .TxHash }}">{{ formatEthHashShort .TxHash 6 }}</a>
                 </td>
+                {{ end }}
                 <td data-timer="{{ .BlockTime.Unix }}">
                   <span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ .BlockTime }}">{{ formatRecentTimeShort .BlockTime }}</span>
                 </td>

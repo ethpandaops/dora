@@ -144,6 +144,7 @@ CREATE INDEX IF NOT EXISTS "el_balances_token_id_idx"
 CREATE TABLE IF NOT EXISTS "el_token_transfers" (
     block_uid INTEGER NOT NULL,
     tx_hash BLOB NOT NULL,
+    tx_pos INTEGER NOT NULL DEFAULT 0,
     tx_idx INTEGER NOT NULL,
     token_id INTEGER NOT NULL,
     token_type INTEGER NOT NULL DEFAULT 0,

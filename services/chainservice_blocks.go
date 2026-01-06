@@ -638,8 +638,29 @@ func (bs *ChainService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageIdx
 			}
 
 			// filter by specific block UID
-			if filter.BlockUid != nil {
-				if block.BlockUID != *filter.BlockUid {
+			if len(filter.BlockUids) > 0 {
+				found := false
+				for _, blockUid := range filter.BlockUids {
+					if blockUid == block.BlockUID {
+						found = true
+						break
+					}
+				}
+				if !found {
+					continue
+				}
+			}
+
+			// filter by EL block number
+			if filter.EthBlockNumber != nil {
+				if blockIndex.ExecutionNumber != *filter.EthBlockNumber {
+					continue
+				}
+			}
+
+			// filter by EL block hash
+			if len(filter.EthBlockHash) > 0 {
+				if !bytes.Equal(blockIndex.ExecutionHash[:], filter.EthBlockHash) {
 					continue
 				}
 			}
@@ -801,7 +822,7 @@ func (bs *ChainService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageIdx
 		}
 
 		// If filtering by block UID, don't check missing (missing blocks don't have UIDs)
-		if filter.BlockUid != nil {
+		if len(filter.BlockUids) > 0 {
 			shouldCheckMissing = false
 		}
 

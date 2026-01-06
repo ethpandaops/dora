@@ -63,8 +63,10 @@ type BlockFilter struct {
 	MaxBlobCount         *uint64
 	Slot                 *uint64  // Filter by specific slot number
 	BlockRoot            []byte   // Filter by specific block root
-	BlockUid             *uint64  // Filter by specific block UID (slot << 16 | unique_index)
+	BlockUids            []uint64 // Filter by specific block UIDs (slot << 16 | unique_index)
 	ForkIds              []uint64 // Filter by fork IDs
+	EthBlockNumber       *uint64  // Filter by EL block number
+	EthBlockHash         []byte   // Filter by EL block hash
 }
 
 type MevBlockFilter struct {
