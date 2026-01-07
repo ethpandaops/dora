@@ -221,7 +221,7 @@
                 <div class="row py-1">
                   <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Fee recipient">Fee Recipient:</span></div>
                   <div class="col-md-10 text-monospace text-break">
-                    {{ ethAddressLink .FeeRecipient }}
+                    {{ formatEthAddressFullLink .FeeRecipient }}
                     <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" .FeeRecipient }}"></i>
                   </div>
                 </div>

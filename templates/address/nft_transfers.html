@@ -1,0 +1,138 @@
+{{ define "nftTransfers" }}
+<div class="card">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead>
+          <tr>
+            <th>Txn Hash</th>
+            <th>Block</th>
+            <th data-timecol="duration">Age</th>
+            <th>Method</th>
+            <th>From</th>
+            <th></th>
+            <th>To</th>
+            <th>Item</th>
+            <th>Type</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{ if gt .NFTTransferCount 0 }}
+            {{ range .NFTTransfers }}
+              <tr>
+                {{ if gt .TxHashRowspan 0 }}
+                <td class="text-monospace align-top"{{ if gt .TxHashRowspan 1 }} rowspan="{{ .TxHashRowspan }}"{{ end }}>
+                  <a href="/tx/{{ formatHexBytes .TxHash }}" data-bs-toggle="tooltip" title="{{ formatHexBytes .TxHash }}">{{ formatEthHashShort .TxHash 6 }}</a>
+                  <i class="fa fa-copy text-muted ms-1" role="button" data-bs-toggle="tooltip" title="Copy transaction hash" data-clipboard-text="{{ formatHexBytes .TxHash }}"></i>
+                </td>
+                <td class="align-top"{{ if gt .TxHashRowspan 1 }} rowspan="{{ .TxHashRowspan }}"{{ end }}>
+                  {{ if gt (len .BlockRoot) 0 }}
+                    <a href="/slot/0x{{ printf "%x" .BlockRoot }}">{{ formatAddCommas .BlockNumber }}</a>
+                  {{ else }}
+                    {{ formatAddCommas .BlockNumber }}
+                  {{ end }}
+                </td>
+                <td class="align-top" data-timer="{{ .BlockTime.Unix }}"{{ if gt .TxHashRowspan 1 }} rowspan="{{ .TxHashRowspan }}"{{ end }}>
+                  <span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ .BlockTime }}">{{ formatRecentTimeShort .BlockTime }}</span>
+                </td>
+                <td class="align-top"{{ if gt .TxHashRowspan 1 }} rowspan="{{ .TxHashRowspan }}"{{ end }}>
+                  {{ if .MethodName }}
+                    <span class="badge text-bg-secondary">{{ .MethodName }}</span>
+                  {{ else }}
+                    <span class="text-muted">-</span>
+                  {{ end }}
+                </td>
+                {{ end }}
+                <td class="text-monospace">
+                  {{ if eq (printf "%x" .FromAddr) (printf "%x" $.Address) }}
+                    {{ formatEthAddressShort .FromAddr }}
+                  {{ else }}
+                    {{ formatEthAddressShortLink .FromAddr .FromIsContract }}
+                  {{ end }}
+                  <i class="fa fa-copy text-muted ms-1" role="button" data-bs-toggle="tooltip" title="Copy address" data-clipboard-text="{{ formatEthAddressFull .FromAddr }}"></i>
+                </td>
+                <td class="text-center">
+                  {{ if .IsOutgoing }}
+                    <span class="badge text-bg-warning">OUT</span>
+                  {{ else }}
+                    <span class="badge text-bg-success">IN</span>
+                  {{ end }}
+                </td>
+                <td class="text-monospace">
+                  {{ if eq (printf "%x" .ToAddr) (printf "%x" $.Address) }}
+                    {{ formatEthAddressShort .ToAddr }}
+                  {{ else }}
+                    {{ formatEthAddressShortLink .ToAddr .ToIsContract }}
+                  {{ end }}
+                  <i class="fa fa-copy text-muted ms-1" role="button" data-bs-toggle="tooltip" title="Copy address" data-clipboard-text="{{ formatEthAddressFull .ToAddr }}"></i>
+                </td>
+                <td class="text-nowrap">
+                  {{ if gt .TokenType 2 }}{{ formatNFTTokenID .AmountRaw }}x {{ end }}<a href="/address/{{ formatEthAddressFull .Contract }}" data-bs-toggle="tooltip" title="{{ formatEthAddressFull .Contract }}">{{ if .TokenSymbol }}{{ .TokenSymbol }}{{ else if .TokenName }}{{ .TokenName }}{{ else }}NFT{{ end }}</a> #{{ if gt (len .TokenIndex) 0 }}{{ formatNFTTokenID .TokenIndex }}{{ else }}0{{ end }}
+                </td>
+                <td>
+                  {{ if eq .TokenType 2 }}
+                    <span class="badge text-bg-primary">ERC721</span>
+                  {{ else if eq .TokenType 3 }}
+                    <span class="badge text-bg-info">ERC1155</span>
+                  {{ else }}
+                    <span class="badge text-bg-secondary">Unknown</span>
+                  {{ end }}
+                </td>
+                {{ if gt .TxHashRowspan 0 }}
+                <td class="text-nowrap align-top"{{ if gt .TxHashRowspan 1 }} rowspan="{{ .TxHashRowspan }}"{{ end }}>
+                  {{ if .BlockOrphaned }}
+                    <span class="badge text-bg-info" data-bs-toggle="tooltip" title="Block was orphaned">Orphaned</span>
+                  {{ else }}
+                    <span class="badge text-bg-success" data-bs-toggle="tooltip" title="Block is canonical">Included</span>
+                  {{ end }}
+                </td>
+                {{ end }}
+              </tr>
+            {{ end }}
+          {{ else }}
+            <tr>
+              <td colspan="10" class="text-center py-4 text-muted">
+                <i class="fas fa-image fa-2x mb-2"></i>
+                <br>No NFT transfers found
+              </td>
+            </tr>
+          {{ end }}
+        </tbody>
+      </table>
+    </div>
+
+    {{ if gt .NFTTotalPages 1 }}
+    <div class="card-footer d-flex justify-content-between align-items-center">
+      <div>
+        Showing {{ formatAddCommas .NFTFirstItem }} - {{ formatAddCommas .NFTLastItem }} of {{ if .NFTCountCapped }}more than {{ end }}{{ formatAddCommas .NFTTransferCount }}
+      </div>
+      <nav aria-label="NFT transfer pagination">
+        <ul class="pagination pagination-sm mb-0">
+          {{ if gt .NFTPageIndex 1 }}
+            <li class="page-item">
+              <a class="page-link" href="?v=nft&p=1&c={{ .NFTPageSize }}">&laquo;</a>
+            </li>
+            <li class="page-item">
+              <a class="page-link" href="?v=nft&p={{ subUI64 .NFTPageIndex 1 }}&c={{ .NFTPageSize }}">&lsaquo;</a>
+            </li>
+          {{ end }}
+          <li class="page-item disabled">
+            <span class="page-link">{{ .NFTPageIndex }} / {{ .NFTTotalPages }}</span>
+          </li>
+          {{ if lt .NFTPageIndex .NFTTotalPages }}
+            <li class="page-item">
+              <a class="page-link" href="?v=nft&p={{ addUI64 .NFTPageIndex 1 }}&c={{ .NFTPageSize }}">&rsaquo;</a>
+            </li>
+            <li class="page-item">
+              <a class="page-link" href="?v=nft&p={{ .NFTTotalPages }}&c={{ .NFTPageSize }}">&raquo;</a>
+            </li>
+          {{ end }}
+        </ul>
+      </nav>
+    </div>
+    {{ end }}
+  </div>
+</div>
+{{ end }}
+

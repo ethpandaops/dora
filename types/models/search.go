@@ -53,3 +53,17 @@ type SearchAheadValidatorResult struct {
 	Pubkey string `json:"pubkey,omitempty"`
 	Name   string `json:"name,omitempty"`
 }
+
+// SearchAheadAddressResult is a struct to hold the search ahead address results
+type SearchAheadAddressResult struct {
+	Address    string `json:"address,omitempty"`
+	IsContract bool   `json:"is_contract,omitempty"`
+	HasData    bool   `json:"has_data,omitempty"`
+}
+
+// SearchAheadTransactionResult is a struct to hold the search ahead transaction results
+type SearchAheadTransactionResult struct {
+	TxHash      string `json:"tx_hash,omitempty"`
+	BlockNumber uint64 `json:"block_number,omitempty"`
+	Reverted    bool   `json:"reverted,omitempty"`
+}

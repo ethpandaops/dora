@@ -22,6 +22,8 @@ import (
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/indexer/beacon"
 	execindexer "github.com/ethpandaops/dora/indexer/execution"
+	syscontracts "github.com/ethpandaops/dora/indexer/execution/system_contracts"
+	"github.com/ethpandaops/dora/indexer/execution/txindexer"
 	"github.com/ethpandaops/dora/indexer/mevrelay"
 	"github.com/ethpandaops/dora/indexer/snooper"
 	"github.com/ethpandaops/dora/types"
@@ -35,11 +37,12 @@ type ChainService struct {
 	executionPool        *execution.Pool
 	beaconIndexer        *beacon.Indexer
 	validatorNames       *ValidatorNames
-	depositIndexer       *execindexer.DepositIndexer
-	consolidationIndexer *execindexer.ConsolidationIndexer
-	withdrawalIndexer    *execindexer.WithdrawalIndexer
+	depositIndexer       *syscontracts.DepositIndexer
+	consolidationIndexer *syscontracts.ConsolidationIndexer
+	withdrawalIndexer    *syscontracts.WithdrawalIndexer
 	mevRelayIndexer      *mevrelay.MevIndexer
 	snooperManager       *snooper.SnooperManager
+	txIndexer            *txindexer.TxIndexer
 	started              bool
 }
 
@@ -305,9 +308,17 @@ func (cs *ChainService) StartService() error {
 	cs.beaconIndexer.StartIndexer()
 
 	// add execution indexers
-	cs.depositIndexer = execindexer.NewDepositIndexer(executionIndexerCtx)
-	cs.consolidationIndexer = execindexer.NewConsolidationIndexer(executionIndexerCtx)
-	cs.withdrawalIndexer = execindexer.NewWithdrawalIndexer(executionIndexerCtx)
+	cs.depositIndexer = syscontracts.NewDepositIndexer(executionIndexerCtx)
+	cs.consolidationIndexer = syscontracts.NewConsolidationIndexer(executionIndexerCtx)
+	cs.withdrawalIndexer = syscontracts.NewWithdrawalIndexer(executionIndexerCtx)
+
+	// start EL transaction indexer if enabled
+	if utils.Config.ExecutionIndexer.Enabled {
+		cs.txIndexer = txindexer.NewTxIndexer(cs.logger.WithField("service", "tx-indexer"), executionIndexerCtx)
+		if err := cs.txIndexer.Start(); err != nil {
+			cs.logger.WithError(err).Error("failed to start tx indexer")
+		}
+	}
 
 	// start MEV relay indexer
 	cs.mevRelayIndexer.StartUpdater()
@@ -318,6 +329,11 @@ func (cs *ChainService) StartService() error {
 func (bs *ChainService) StopService() {
 	if !bs.started {
 		return
+	}
+
+	if bs.txIndexer != nil {
+		bs.txIndexer.Stop()
+		bs.txIndexer = nil
 	}
 
 	if bs.beaconIndexer != nil {
@@ -339,11 +355,15 @@ func (bs *ChainService) GetBeaconIndexer() *beacon.Indexer {
 	return bs.beaconIndexer
 }
 
-func (bs *ChainService) GetConsolidationIndexer() *execindexer.ConsolidationIndexer {
+func (bs *ChainService) GetTxIndexer() *txindexer.TxIndexer {
+	return bs.txIndexer
+}
+
+func (bs *ChainService) GetConsolidationIndexer() *syscontracts.ConsolidationIndexer {
 	return bs.consolidationIndexer
 }
 
-func (bs *ChainService) GetWithdrawalIndexer() *execindexer.WithdrawalIndexer {
+func (bs *ChainService) GetWithdrawalIndexer() *syscontracts.WithdrawalIndexer {
 	return bs.withdrawalIndexer
 }
 
