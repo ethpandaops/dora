@@ -200,7 +200,7 @@ func UpdateElAccountsLastNonce(accounts []*dbtypes.ElAccount, dbTx *sqlx.Tx) err
 	args := make([]any, 0, len(validAccounts)*3)
 
 	if DbEngine == dbtypes.DBEnginePgsql {
-		// PostgreSQL: use UPDATE ... FROM VALUES
+		// PostgreSQL: use UPDATE ... FROM VALUES with explicit type casts
 		fmt.Fprint(&sql, `
 			UPDATE el_accounts AS a SET
 				last_nonce = v.last_nonce,
@@ -212,7 +212,7 @@ func UpdateElAccountsLastNonce(accounts []*dbtypes.ElAccount, dbTx *sqlx.Tx) err
 				fmt.Fprint(&sql, ", ")
 			}
 			argIdx := len(args) + 1
-			fmt.Fprintf(&sql, "($%d, $%d, $%d)", argIdx, argIdx+1, argIdx+2)
+			fmt.Fprintf(&sql, "($%d::bigint, $%d::bigint, $%d::bigint)", argIdx, argIdx+1, argIdx+2)
 			args = append(args, account.ID, account.LastNonce, account.LastBlockUid)
 		}
 
