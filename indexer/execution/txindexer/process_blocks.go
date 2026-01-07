@@ -73,8 +73,6 @@ func (t *TxIndexer) processElBlock(ref *BlockRef) (*blockStats, error) {
 		return nil, fmt.Errorf("failed to fetch block data: %w", err)
 	}
 
-	data.Stats = stats
-
 	if data == nil {
 		// No data to process (e.g., pre-merge block)
 		t.logger.WithFields(logrus.Fields{
@@ -84,6 +82,8 @@ func (t *TxIndexer) processElBlock(ref *BlockRef) (*blockStats, error) {
 		}).Debug("no EL data for block")
 		return stats, nil
 	}
+
+	data.Stats = stats
 
 	t.logger.WithFields(logrus.Fields{
 		"slot":         ref.Slot,
