@@ -128,9 +128,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS "el_accounts_address_idx"
 CREATE TABLE IF NOT EXISTS public."el_tokens" (
     id BIGSERIAL NOT NULL,
     contract bytea NOT NULL,
+    token_type SMALLINT NOT NULL DEFAULT 0,
     name TEXT NOT NULL DEFAULT '',
     symbol TEXT NOT NULL DEFAULT '',
     decimals SMALLINT NOT NULL DEFAULT 0,
+    flags SMALLINT NOT NULL DEFAULT 0,
+    metadata_uri TEXT NOT NULL DEFAULT '',
     name_synced BIGINT NOT NULL DEFAULT 0,
     CONSTRAINT el_tokens_pkey PRIMARY KEY (id)
 );

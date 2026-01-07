@@ -14,13 +14,6 @@ import (
 	"github.com/ethpandaops/dora/dbtypes"
 )
 
-// Token type constants
-const (
-	TokenTypeERC20   = 1
-	TokenTypeERC721  = 2
-	TokenTypeERC1155 = 3
-)
-
 // Event topic signatures for token transfers
 var (
 	// Transfer(address indexed from, address indexed to, uint256 value)
@@ -376,7 +369,8 @@ func (ctx *txProcessingContext) checkAddressIsContract(address common.Address) b
 
 // ensureToken ensures a token is tracked, checking DB only once per block.
 // Always returns a pendingToken with the ID set (either from DB or to be assigned after insert).
-func (ctx *txProcessingContext) ensureToken(address common.Address) *pendingToken {
+// tokenType specifies the token standard (ERC20=1, ERC721=2, ERC1155=3).
+func (ctx *txProcessingContext) ensureToken(address common.Address, tokenType uint8) *pendingToken {
 	// Check if already tracked in this block
 	if pending, exists := ctx.tokens[address]; exists {
 		return pending
@@ -395,13 +389,14 @@ func (ctx *txProcessingContext) ensureToken(address common.Address) *pendingToke
 		return pending
 	}
 
-	// Create new token
+	// Create new token with type (don't set default decimals - will be handled in createTokenTransfer)
 	pending := &pendingToken{
 		token: &dbtypes.ElToken{
-			Contract: address[:],
-			Name:     "",
-			Symbol:   "",
-			Decimals: 18, // Default to 18
+			Contract:  address[:],
+			TokenType: tokenType,
+			Name:      "",
+			Symbol:    "",
+			Decimals:  0, // Will be fetched from metadata or defaulted based on flags
 		},
 		id:    0, // Will be set after insertion
 		isNew: true,
@@ -515,12 +510,12 @@ func (ctx *txProcessingContext) parseERC20or721Transfer(
 
 	if len(log.Topics) >= 4 {
 		// ERC721: tokenId is in topic3
-		tokenType = TokenTypeERC721
+		tokenType = dbtypes.TokenTypeERC721
 		amount = big.NewInt(1)
 		tokenIndex = log.Topics[3][:]
 	} else if len(log.Data) >= 32 {
 		// ERC20: value is in data
-		tokenType = TokenTypeERC20
+		tokenType = dbtypes.TokenTypeERC20
 		amount = new(big.Int).SetBytes(log.Data[:32])
 	} else {
 		return nil
@@ -552,7 +547,7 @@ func (ctx *txProcessingContext) parseERC1155TransferSingle(
 	tokenIndex := log.Data[:32]
 	amount := new(big.Int).SetBytes(log.Data[32:64])
 
-	return ctx.createTokenTransfer(eventIndex, txPos, log.Address, TokenTypeERC1155, fromAccount, toAccount, amount, tokenIndex)
+	return ctx.createTokenTransfer(eventIndex, txPos, log.Address, dbtypes.TokenTypeERC1155, fromAccount, toAccount, amount, tokenIndex)
 }
 
 // parseERC1155TransferBatch parses ERC1155 TransferBatch event.
@@ -612,7 +607,7 @@ func (ctx *txProcessingContext) parseERC1155TransferBatch(
 
 		// Use eventIndex + sub-index for batch transfers
 		subIndex := eventIndex<<16 | uint32(i)
-		transfer := ctx.createTokenTransfer(subIndex, txPos, log.Address, TokenTypeERC1155, fromAccount, toAccount, amount, tokenIndex)
+		transfer := ctx.createTokenTransfer(subIndex, txPos, log.Address, dbtypes.TokenTypeERC1155, fromAccount, toAccount, amount, tokenIndex)
 		if transfer != nil {
 			transfers = append(transfers, transfer)
 		}
@@ -631,16 +626,19 @@ func (ctx *txProcessingContext) createTokenTransfer(
 	amount *big.Int,
 	tokenIndex []byte,
 ) *pendingTokenTransfer {
-	// Get or create token (always returns a pendingToken)
-	pendingToken := ctx.ensureToken(tokenAddress)
+	// Get or create token with type (always returns a pendingToken)
+	pendingToken := ctx.ensureToken(tokenAddress, tokenType)
 
-	// Use token decimals if set, otherwise default based on token type
+	// Determine decimals based on metadata status
 	decimals := pendingToken.token.Decimals
-	if decimals == 0 && tokenType == TokenTypeERC20 {
-		// ERC20 tokens default to 18 decimals if not set
-		decimals = 18
+	if pendingToken.token.Flags&dbtypes.TokenFlagMetadataLoaded == 0 {
+		// Metadata not loaded yet, apply defaults based on token type
+		if tokenType == dbtypes.TokenTypeERC20 {
+			decimals = 18
+		}
+		// NFTs (ERC721/ERC1155) stay at 0 when metadata not loaded
 	}
-	// NFTs (ERC721/ERC1155) default to 0 decimals if not set, which is already the case
+	// If metadata IS loaded, use the actual decimals value (even if 0)
 
 	transfer := &dbtypes.ElTokenTransfer{
 		BlockUid:   ctx.block.BlockUID,
@@ -657,7 +655,7 @@ func (ctx *txProcessingContext) createTokenTransfer(
 	}
 
 	// Track ERC20 transfers for balance updates
-	if tokenType == TokenTypeERC20 && amount.Sign() > 0 {
+	if tokenType == dbtypes.TokenTypeERC20 && amount.Sign() > 0 {
 		ctx.pendingTransfers = append(ctx.pendingTransfers, &pendingBalanceTransfer{
 			fromAddr:    common.BytesToAddress(fromAccount.account.Address),
 			toAddr:      common.BytesToAddress(toAccount.account.Address),

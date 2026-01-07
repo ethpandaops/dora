@@ -2,7 +2,11 @@ package txindexer
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"io"
 	"math/big"
+	"net/http"
 	"strings"
 	"time"
 
@@ -14,15 +18,26 @@ import (
 	"github.com/ethpandaops/dora/dbtypes"
 )
 
-// ERC20 function selectors
+// ERC20/ERC721 function selectors
 var (
 	selectorName     = common.Hex2Bytes("06fdde03") // name()
 	selectorSymbol   = common.Hex2Bytes("95d89b41") // symbol()
 	selectorDecimals = common.Hex2Bytes("313ce567") // decimals()
+	selectorURI      = common.Hex2Bytes("0e89341c") // uri(uint256)
 )
 
+// erc1155Metadata represents the JSON metadata returned by ERC1155 URI.
+type erc1155Metadata struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Image       string `json:"image"`
+	Decimals    int    `json:"decimals"`
+}
+
 // fetchTokenMetadata fetches the name, symbol, and decimals for a token contract.
-// Returns updated token with NameSynced set to current timestamp.
+// For ERC20/ERC721: fetches on-chain via name(), symbol(), decimals() calls.
+// For ERC1155: fetches via uri(0) and parses JSON metadata.
+// Sets TokenFlagMetadataLoaded flag when metadata is successfully fetched.
 func (t *TxIndexer) fetchTokenMetadata(ctx context.Context, token *dbtypes.ElToken) {
 	contractAddr := common.BytesToAddress(token.Contract)
 
@@ -40,6 +55,25 @@ func (t *TxIndexer) fetchTokenMetadata(ctx context.Context, token *dbtypes.ElTok
 		return
 	}
 
+	// Fetch metadata based on token type
+	if token.TokenType == dbtypes.TokenTypeERC1155 {
+		t.fetchERC1155Metadata(ctx, rpcClient, contractAddr, token)
+	} else {
+		t.fetchOnChainMetadata(ctx, rpcClient, contractAddr, token)
+	}
+
+	// Mark as synced and set metadata loaded flag
+	token.NameSynced = uint64(time.Now().Unix())
+	token.Flags |= dbtypes.TokenFlagMetadataLoaded
+}
+
+// fetchOnChainMetadata fetches ERC20/ERC721 metadata via on-chain calls.
+func (t *TxIndexer) fetchOnChainMetadata(
+	ctx context.Context,
+	rpcClient *exerpc.ExecutionClient,
+	contractAddr common.Address,
+	token *dbtypes.ElToken,
+) {
 	// Try to fetch name
 	name := t.callTokenMethod(ctx, rpcClient, contractAddr, selectorName)
 	if name != "" {
@@ -57,9 +91,111 @@ func (t *TxIndexer) fetchTokenMetadata(ctx context.Context, token *dbtypes.ElTok
 	if decimals > 0 {
 		token.Decimals = decimals
 	}
+}
 
-	// Mark as synced
-	token.NameSynced = uint64(time.Now().Unix())
+// fetchERC1155Metadata fetches ERC1155 metadata via URI and parses JSON.
+func (t *TxIndexer) fetchERC1155Metadata(
+	ctx context.Context,
+	rpcClient *exerpc.ExecutionClient,
+	contractAddr common.Address,
+	token *dbtypes.ElToken,
+) {
+	ethClient := rpcClient.GetEthClient()
+	if ethClient == nil {
+		return
+	}
+
+	// Call uri(0) - ERC1155 uses token ID 0 for collection-level metadata
+	// Selector: 0e89341c + uint256(0)
+	data := make([]byte, 36)
+	copy(data[:4], selectorURI)
+	// Remaining 32 bytes are already zero (token ID = 0)
+
+	msg := ethereum.CallMsg{
+		To:   &contractAddr,
+		Data: data,
+	}
+
+	result, err := ethClient.CallContract(ctx, msg, nil)
+	if err != nil {
+		t.logger.WithField("contract", contractAddr.Hex()).Debug("failed to call uri(0)")
+		return
+	}
+
+	uri := decodeString(result)
+	if uri == "" {
+		return
+	}
+
+	// Replace {id} placeholder with 0 (64-char hex, no 0x prefix)
+	uri = strings.ReplaceAll(uri, "{id}", fmt.Sprintf("%064x", 0))
+
+	// Store the URI
+	token.MetadataURI = uri
+
+	// Fetch and parse JSON metadata
+	metadata := t.fetchMetadataFromURI(ctx, uri)
+	if metadata == nil {
+		return
+	}
+
+	// Apply metadata to token
+	if metadata.Name != "" {
+		token.Name = metadata.Name
+		// ERC1155 doesn't have symbol, use name as symbol too
+		token.Symbol = metadata.Name
+	}
+	if metadata.Decimals >= 0 && metadata.Decimals <= 255 {
+		token.Decimals = uint8(metadata.Decimals)
+	}
+}
+
+// fetchMetadataFromURI fetches JSON metadata from a URI.
+// Handles IPFS URIs by converting to public gateway.
+func (t *TxIndexer) fetchMetadataFromURI(ctx context.Context, uri string) *erc1155Metadata {
+	// Convert IPFS URIs to public gateway
+	if strings.HasPrefix(uri, "ipfs://") {
+		uri = "https://ipfs.io/ipfs/" + strings.TrimPrefix(uri, "ipfs://")
+	}
+
+	// Only fetch HTTP(S) URLs
+	if !strings.HasPrefix(uri, "http://") && !strings.HasPrefix(uri, "https://") {
+		return nil
+	}
+
+	// Create HTTP client with 10 second timeout
+	httpClient := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, uri, nil)
+	if err != nil {
+		return nil
+	}
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		t.logger.WithField("uri", uri).Debug("failed to fetch metadata URI")
+		return nil
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil
+	}
+
+	// Limit response size to 1MB
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1024*1024))
+	if err != nil {
+		return nil
+	}
+
+	var metadata erc1155Metadata
+	if err := json.Unmarshal(body, &metadata); err != nil {
+		return nil
+	}
+
+	return &metadata
 }
 
 // callTokenMethod calls a string-returning method on a token contract.

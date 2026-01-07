@@ -484,13 +484,28 @@ type ElAccount struct {
 	LastBlockUid uint64 `db:"last_block_uid"`
 }
 
+// Token type constants
+const (
+	TokenTypeERC20   = 1
+	TokenTypeERC721  = 2
+	TokenTypeERC1155 = 3
+)
+
+// Token flag constants
+const (
+	TokenFlagMetadataLoaded = 0x01
+)
+
 type ElToken struct {
-	ID         uint64 `db:"id"`
-	Contract   []byte `db:"contract"`
-	Name       string `db:"name"`
-	Symbol     string `db:"symbol"`
-	Decimals   uint8  `db:"decimals"`
-	NameSynced uint64 `db:"name_synced"`
+	ID          uint64 `db:"id"`
+	Contract    []byte `db:"contract"`
+	TokenType   uint8  `db:"token_type"`
+	Name        string `db:"name"`
+	Symbol      string `db:"symbol"`
+	Decimals    uint8  `db:"decimals"`
+	Flags       uint8  `db:"flags"`
+	MetadataURI string `db:"metadata_uri"`
+	NameSynced  uint64 `db:"name_synced"`
 }
 
 type ElBalance struct {

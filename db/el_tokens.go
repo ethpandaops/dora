@@ -11,17 +11,17 @@ import (
 func InsertElToken(token *dbtypes.ElToken, dbTx *sqlx.Tx) (uint64, error) {
 	var id uint64
 	query := EngineQuery(map[dbtypes.DBEngineType]string{
-		dbtypes.DBEnginePgsql:  "INSERT INTO el_tokens (contract, name, symbol, decimals, name_synced) VALUES ($1, $2, $3, $4, $5) RETURNING id",
-		dbtypes.DBEngineSqlite: "INSERT INTO el_tokens (contract, name, symbol, decimals, name_synced) VALUES ($1, $2, $3, $4, $5)",
+		dbtypes.DBEnginePgsql:  "INSERT INTO el_tokens (contract, token_type, name, symbol, decimals, flags, metadata_uri, name_synced) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id",
+		dbtypes.DBEngineSqlite: "INSERT INTO el_tokens (contract, token_type, name, symbol, decimals, flags, metadata_uri, name_synced) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
 	})
 
 	if DbEngine == dbtypes.DBEnginePgsql {
-		err := dbTx.QueryRow(query, token.Contract, token.Name, token.Symbol, token.Decimals, token.NameSynced).Scan(&id)
+		err := dbTx.QueryRow(query, token.Contract, token.TokenType, token.Name, token.Symbol, token.Decimals, token.Flags, token.MetadataURI, token.NameSynced).Scan(&id)
 		if err != nil {
 			return 0, err
 		}
 	} else {
-		result, err := dbTx.Exec(query, token.Contract, token.Name, token.Symbol, token.Decimals, token.NameSynced)
+		result, err := dbTx.Exec(query, token.Contract, token.TokenType, token.Name, token.Symbol, token.Decimals, token.Flags, token.MetadataURI, token.NameSynced)
 		if err != nil {
 			return 0, err
 		}
@@ -36,7 +36,7 @@ func InsertElToken(token *dbtypes.ElToken, dbTx *sqlx.Tx) (uint64, error) {
 
 func GetElTokenByID(id uint64) (*dbtypes.ElToken, error) {
 	token := &dbtypes.ElToken{}
-	err := ReaderDb.Get(token, "SELECT id, contract, name, symbol, decimals, name_synced FROM el_tokens WHERE id = $1", id)
+	err := ReaderDb.Get(token, "SELECT id, contract, token_type, name, symbol, decimals, flags, metadata_uri, name_synced FROM el_tokens WHERE id = $1", id)
 	if err != nil {
 		return nil, err
 	}
@@ -45,7 +45,7 @@ func GetElTokenByID(id uint64) (*dbtypes.ElToken, error) {
 
 func GetElTokenByContract(contract []byte) (*dbtypes.ElToken, error) {
 	token := &dbtypes.ElToken{}
-	err := ReaderDb.Get(token, "SELECT id, contract, name, symbol, decimals, name_synced FROM el_tokens WHERE contract = $1", contract)
+	err := ReaderDb.Get(token, "SELECT id, contract, token_type, name, symbol, decimals, flags, metadata_uri, name_synced FROM el_tokens WHERE contract = $1", contract)
 	if err != nil {
 		return nil, err
 	}
@@ -58,7 +58,7 @@ func GetElTokens(offset uint64, limit uint32) ([]*dbtypes.ElToken, uint64, error
 
 	fmt.Fprint(&sql, `
 	WITH cte AS (
-		SELECT id, contract, name, symbol, decimals, name_synced
+		SELECT id, contract, token_type, name, symbol, decimals, flags, metadata_uri, name_synced
 		FROM el_tokens
 	)`)
 
@@ -67,9 +67,12 @@ func GetElTokens(offset uint64, limit uint32) ([]*dbtypes.ElToken, uint64, error
 	SELECT
 		count(*) AS id,
 		null AS contract,
+		0 AS token_type,
 		'' AS name,
 		'' AS symbol,
 		0 AS decimals,
+		0 AS flags,
+		'' AS metadata_uri,
 		0 AS name_synced
 	FROM cte
 	UNION ALL SELECT * FROM (
@@ -104,7 +107,7 @@ func GetElTokensFiltered(offset uint64, limit uint32, filter *dbtypes.ElTokenFil
 
 	fmt.Fprint(&sql, `
 	WITH cte AS (
-		SELECT id, contract, name, symbol, decimals, name_synced
+		SELECT id, contract, token_type, name, symbol, decimals, flags, metadata_uri, name_synced
 		FROM el_tokens
 	`)
 
@@ -132,9 +135,12 @@ func GetElTokensFiltered(offset uint64, limit uint32, filter *dbtypes.ElTokenFil
 	SELECT
 		count(*) AS id,
 		null AS contract,
+		0 AS token_type,
 		'' AS name,
 		'' AS symbol,
 		0 AS decimals,
+		0 AS flags,
+		'' AS metadata_uri,
 		0 AS name_synced
 	FROM cte
 	UNION ALL SELECT * FROM (
@@ -164,8 +170,8 @@ func GetElTokensFiltered(offset uint64, limit uint32, filter *dbtypes.ElTokenFil
 }
 
 func UpdateElToken(token *dbtypes.ElToken, dbTx *sqlx.Tx) error {
-	_, err := dbTx.Exec("UPDATE el_tokens SET contract = $1, name = $2, symbol = $3, decimals = $4, name_synced = $5 WHERE id = $6",
-		token.Contract, token.Name, token.Symbol, token.Decimals, token.NameSynced, token.ID)
+	_, err := dbTx.Exec("UPDATE el_tokens SET contract = $1, token_type = $2, name = $3, symbol = $4, decimals = $5, flags = $6, metadata_uri = $7, name_synced = $8 WHERE id = $9",
+		token.Contract, token.TokenType, token.Name, token.Symbol, token.Decimals, token.Flags, token.MetadataURI, token.NameSynced, token.ID)
 	return err
 }
 
@@ -183,7 +189,7 @@ func GetElTokensByIDs(ids []uint64) ([]*dbtypes.ElToken, error) {
 	var sql strings.Builder
 	args := make([]any, len(ids))
 
-	fmt.Fprint(&sql, "SELECT id, contract, name, symbol, decimals, name_synced FROM el_tokens WHERE id IN (")
+	fmt.Fprint(&sql, "SELECT id, contract, token_type, name, symbol, decimals, flags, metadata_uri, name_synced FROM el_tokens WHERE id IN (")
 	for i, id := range ids {
 		if i > 0 {
 			fmt.Fprint(&sql, ", ")
