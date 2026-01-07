@@ -74,8 +74,15 @@ func (s *BalanceLookupService) FetchTokenBalance(ctx context.Context, address co
 	return new(big.Int).SetBytes(result), nil
 }
 
+// newAccountUpdate holds info for creating a new account with balance.
+type newAccountUpdate struct {
+	address []byte
+	balance *big.Int
+}
+
 // ProcessPendingLookups processes pending balance lookups and returns updated balances.
-// RPC lookups set the Updated timestamp to mark them as verified.
+// For known accounts (AccountID > 0), updates the balance directly.
+// For unknown accounts (AccountID == 0), creates the account if balance > 0.
 func (s *BalanceLookupService) ProcessPendingLookups(ctx context.Context) (dbCommitCallback, error) {
 	requests := s.GetPendingLookups(maxBalanceLookupsPerBlock)
 	if len(requests) == 0 {
@@ -84,7 +91,8 @@ func (s *BalanceLookupService) ProcessPendingLookups(ctx context.Context) (dbCom
 
 	s.logger.WithField("count", len(requests)).Debug("processing balance lookups")
 
-	updatedBalances := make([]*dbtypes.ElBalance, 0, len(requests))
+	knownUpdates := make([]*dbtypes.ElBalance, 0, len(requests))
+	newAccounts := make([]*newAccountUpdate, 0)
 	currentTime := uint64(time.Now().Unix())
 
 	for _, req := range requests {
@@ -106,21 +114,72 @@ func (s *BalanceLookupService) ProcessPendingLookups(ctx context.Context) (dbCom
 			continue
 		}
 
-		updatedBalances = append(updatedBalances, &dbtypes.ElBalance{
-			AccountID:  req.AccountID,
-			TokenID:    req.TokenID,
-			Balance:    weiToFloat(balance, req.Decimals),
-			BalanceRaw: balance.Bytes(),
-			Updated:    currentTime, // RPC lookups set the Updated timestamp
-		})
+		if req.AccountID > 0 {
+			// Known account - update balance directly
+			knownUpdates = append(knownUpdates, &dbtypes.ElBalance{
+				AccountID:  req.AccountID,
+				TokenID:    req.TokenID,
+				Balance:    weiToFloat(balance, req.Decimals),
+				BalanceRaw: balance.Bytes(),
+				Updated:    currentTime,
+			})
+		} else if balance.Sign() > 0 {
+			// Unknown account with positive balance - need to create account
+			newAccounts = append(newAccounts, &newAccountUpdate{
+				address: req.Address.Bytes(),
+				balance: balance,
+			})
+		}
+		// Unknown accounts with zero balance are ignored
 	}
 
-	// Insert updated balances to DB
-	if len(updatedBalances) == 0 {
+	// If nothing to update, return nil
+	if len(knownUpdates) == 0 && len(newAccounts) == 0 {
 		return nil, nil
 	}
 
 	return func(tx *sqlx.Tx) error {
-		return db.InsertElBalances(updatedBalances, tx)
+		// Insert known account balance updates
+		if len(knownUpdates) > 0 {
+			if err := db.InsertElBalances(knownUpdates, tx); err != nil {
+				return fmt.Errorf("failed to insert balance updates: %w", err)
+			}
+		}
+
+		// Create new accounts and their balances
+		for _, acc := range newAccounts {
+			newAccount := &dbtypes.ElAccount{
+				Address: acc.address,
+			}
+
+			accountID, err := db.InsertElAccount(newAccount, tx)
+			if err != nil {
+				s.logger.WithError(err).WithField("address", common.BytesToAddress(acc.address).Hex()).
+					Warn("failed to create account for unknown address with balance")
+				continue
+			}
+
+			balanceRecord := &dbtypes.ElBalance{
+				AccountID:  accountID,
+				TokenID:    nativeTokenID,
+				Balance:    weiToFloat(acc.balance, 18),
+				BalanceRaw: acc.balance.Bytes(),
+				Updated:    currentTime,
+			}
+
+			if err := db.InsertElBalances([]*dbtypes.ElBalance{balanceRecord}, tx); err != nil {
+				s.logger.WithError(err).WithField("address", common.BytesToAddress(acc.address).Hex()).
+					Warn("failed to insert balance for new account")
+				continue
+			}
+
+			s.logger.WithFields(logrus.Fields{
+				"address":   common.BytesToAddress(acc.address).Hex(),
+				"accountID": accountID,
+				"balance":   weiToFloat(acc.balance, 18),
+			}).Debug("created account and balance for unknown address")
+		}
+
+		return nil
 	}, nil
 }
