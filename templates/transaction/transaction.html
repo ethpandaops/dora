@@ -1,0 +1,429 @@
+{{ define "page" }}
+  <div class="container mt-2">
+    <div class="d-md-flex py-2 justify-content-md-between">
+      <h1 class="h4 mb-1 mb-md-0"><i class="fas fa-exchange-alt mx-2"></i> Transaction Details</h1>
+      <nav aria-label="breadcrumb">
+        <ol class="breadcrumb font-size-1 mb-0" style="padding:0; background-color:transparent;">
+          <li class="breadcrumb-item"><a href="/" title="Home">Home</a></li>
+          <li class="breadcrumb-item active" aria-current="page">Transaction</li>
+        </ol>
+      </nav>
+    </div>
+
+    <div class="card mt-2">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="fas fa-info-circle me-2"></i>Overview</h5>
+        <div class="btn-group btn-group-sm" role="group">
+          {{ if .TxRLP }}
+          <button type="button" class="btn btn-outline-primary" onclick="copyRLP()" data-bs-toggle="tooltip" title="Copy transaction RLP">
+            <i class="fas fa-copy me-1"></i>Copy RLP
+          </button>
+          {{ end }}
+          {{ if .TxJSON }}
+          <button type="button" class="btn btn-outline-primary" onclick="copyJSON()" data-bs-toggle="tooltip" title="Copy transaction JSON">
+            <i class="fas fa-code me-1"></i>Copy JSON
+          </button>
+          {{ end }}
+        </div>
+      </div>
+      <div class="card-body px-0 py-3">
+        <div class="row border-bottom p-2 mx-0">
+          <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Transaction hash">Transaction Hash:</span></div>
+          <div class="col-md-9 text-monospace text-break">
+            {{ formatHexBytes .TxHash }}
+            <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ formatHexBytes .TxHash }}"></i>
+          </div>
+        </div>
+        {{ if gt (len .InclusionBlocks) 1 }}
+        <div class="row border-bottom p-2 mx-0">
+          <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="All blocks that included this transaction (click to view result from that block)">Inclusion Blocks:</span></div>
+          <div class="col-md-9">
+            <div class="d-flex flex-wrap gap-2">
+              {{ $txHash := formatHexBytes $.TxHash }}
+              {{ $tabView := $.TabView }}
+              {{ range .InclusionBlocks }}
+              <a href="/tx/{{ $txHash }}?v={{ $tabView }}{{ if not .IsSelected }}&b={{ .BlockUid }}{{ end }}" class="text-decoration-none inclusion-block-link" data-block-uid="{{ .BlockUid }}" data-selected="{{ .IsSelected }}">
+                <div class="border rounded px-2 py-1{{ if .IsSelected }} bg-primary bg-opacity-10 border-primary{{ end }}" style="font-size: 0.85rem; cursor: pointer;" data-bs-toggle="tooltip" title="Click to view transaction result from slot {{ formatAddCommas .Slot }}">
+                  {{ formatAddCommas .BlockNumber }}
+                  {{ if .IsCanonical }}
+                  <span class="badge rounded-pill text-bg-success ms-1">canonical</span>
+                  {{ else if .IsOrphaned }}
+                  <span class="badge rounded-pill text-bg-secondary ms-1">orphaned</span>
+                  {{ end }}
+                  {{ if .IsSelected }}
+                  <i class="fas fa-check-circle text-primary ms-1"></i>
+                  {{ end }}
+                </div>
+              </a>
+              {{ end }}
+            </div>
+          </div>
+        </div>
+        {{ end }}
+        <div class="row border-bottom p-2 mx-0">
+          <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Block containing this transaction">Block:</span></div>
+          <div class="col-md-9">
+            {{ if gt (len .BlockRoot) 0 }}
+            <a href="/slot/0x{{ printf "%x" .BlockRoot }}">{{ formatAddCommas .BlockNumber }}</a>
+            {{ else }}
+            <a href="/slot/{{ .Slot }}">{{ formatAddCommas .BlockNumber }}</a>
+            {{ end }}
+            {{ if .TxFinalized }}
+            <span class="badge rounded-pill text-bg-success ms-2" data-bs-toggle="tooltip" title="Transaction is in a finalized block">Finalized</span>
+            {{ else if .TxOrphaned }}
+            <span class="badge rounded-pill text-bg-info ms-2" data-bs-toggle="tooltip" title="Transaction is in an orphaned block">Orphaned</span>
+            {{ else }}
+            <span class="badge rounded-pill text-bg-warning ms-2" data-bs-toggle="tooltip" title="Transaction is in a canonical block">Unfinalized</span>
+            {{ end }}
+          </div>
+        </div>
+        <div class="row border-bottom p-2 mx-0">
+          <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Transaction status">Status:</span></div>
+          <div class="col-md-9">
+            {{ if .Status }}
+            <span class="badge rounded-pill text-bg-success"><i class="fas fa-check me-1"></i>{{ .StatusText }}</span>
+            {{ else }}
+            <span class="badge rounded-pill text-bg-danger"><i class="fas fa-times me-1"></i>{{ .StatusText }}</span>
+            {{ end }}
+          </div>
+        </div>
+        <div class="row border-bottom p-2 mx-0">
+          <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Timestamp of the block">Timestamp:</span></div>
+          <div class="col-md-9">
+            {{ .BlockTime.UTC }} (<span data-timer="{{ .BlockTime.Unix }}">{{ formatRecentTimeShort .BlockTime }}</span>)
+            <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ .BlockTime.UTC }}"></i>
+          </div>
+        </div>
+        <div class="row border-bottom p-2 mx-0">
+          <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Sending address">From:</span></div>
+          <div class="col-md-9 text-monospace text-break">
+            {{ if gt (len .FromAddr) 0 }}
+            {{ $fromAddr := formatEthAddressFull .FromAddr }}
+            {{ if .FromIsContract }}<i class="fas fa-file-contract text-muted" style="font-size:0.8rem;margin-right:0.2rem" data-bs-toggle="tooltip" title="Contract"></i>{{ end }}
+            <a href="/address/{{ $fromAddr }}">{{ $fromAddr }}</a>
+            <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $fromAddr }}"></i>
+            {{ else }}
+            <span class="text-muted">Unknown</span>
+            {{ end }}
+          </div>
+        </div>
+        <div class="row border-bottom p-2 mx-0">
+          <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Receiving address">{{ if .IsCreate }}Created Contract:{{ else }}To:{{ end }}</span></div>
+          <div class="col-md-9 text-monospace text-break">
+            {{ if .HasTo }}
+            {{ $toAddr := formatEthAddressFull .ToAddr }}
+            {{ if .ToIsContract }}<i class="fas fa-file-contract text-muted" style="font-size:0.8rem;margin-right:0.2rem" data-bs-toggle="tooltip" title="Contract"></i>{{ end }}
+            <a href="/address/{{ $toAddr }}">{{ $toAddr }}</a>
+            <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $toAddr }}"></i>
+            {{ else if .IsCreate }}
+            {{ formatContractCreationLink .FromAddr .Nonce }}
+            {{ else }}
+            <span class="text-muted">None</span>
+            {{ end }}
+          </div>
+        </div>
+        <div class="row border-bottom p-2 mx-0">
+          <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Value transferred">Value:</span></div>
+          <div class="col-md-9">
+            {{ formatFloat .Amount 18 }} ETH
+          </div>
+        </div>
+        <div class="row p-2 mx-0">
+          <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Transaction fee">Transaction Fee:</span></div>
+          <div class="col-md-9">
+            {{ formatFloat .TxFee 18 }} ETH
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <ul class="nav nav-tabs justify-content-start mt-3" id="tab" role="tablist">
+      <li class="nav-item">
+        <a class="nav-link{{ if eq .TabView "overview" }} active{{ end }}" id="details-tab" data-lazy-tab="details" data-bs-toggle="tab" data-bs-target="#details" href="?v=overview{{ if gt .SelectedBlockUid 0 }}&b={{ .SelectedBlockUid }}{{ end }}" role="tab" aria-controls="details" aria-selected="{{ if eq .TabView "overview" }}true{{ else }}false{{ end }}">
+          <i class="fa fa-cog me-2"></i> Details
+        </a>
+      </li>
+      {{ if gt .EventCount 0 }}
+      <li class="nav-item">
+        <a class="nav-link{{ if eq .TabView "events" }} active{{ end }}" id="events-tab" data-lazy-tab="events" data-bs-toggle="tab" data-bs-target="#events" href="?v=events{{ if gt .SelectedBlockUid 0 }}&b={{ .SelectedBlockUid }}{{ end }}" role="tab" aria-controls="events" aria-selected="{{ if eq .TabView "events" }}true{{ else }}false{{ end }}">
+          <i class="fa fa-list me-2"></i> Events ({{ .EventCount }})
+        </a>
+      </li>
+      {{ end }}
+      {{ if gt .TokenTransferCount 0 }}
+      <li class="nav-item">
+        <a class="nav-link{{ if eq .TabView "transfers" }} active{{ end }}" id="transfers-tab" data-lazy-tab="transfers" data-bs-toggle="tab" data-bs-target="#transfers" href="?v=transfers{{ if gt .SelectedBlockUid 0 }}&b={{ .SelectedBlockUid }}{{ end }}" role="tab" aria-controls="transfers" aria-selected="{{ if eq .TabView "transfers" }}true{{ else }}false{{ end }}">
+          <i class="fa fa-coins me-2"></i> Token Transfers ({{ .TokenTransferCount }})
+        </a>
+      </li>
+      {{ end }}
+      {{ if gt .BlobCount 0 }}
+      <li class="nav-item">
+        <a class="nav-link{{ if eq .TabView "blobs" }} active{{ end }}" id="blobs-tab" data-lazy-tab="blobs" data-bs-toggle="tab" data-bs-target="#blobs" href="?v=blobs{{ if gt .SelectedBlockUid 0 }}&b={{ .SelectedBlockUid }}{{ end }}" role="tab" aria-controls="blobs" aria-selected="{{ if eq .TabView "blobs" }}true{{ else }}false{{ end }}">
+          <i class="fa fa-database me-2"></i> Blobs ({{ .BlobCount }})
+        </a>
+      </li>
+      {{ end }}
+    </ul>
+
+    <div class="tab-content" id="tabContent">
+      <div class="tab-pane fade{{ if eq .TabView "overview" }} show active{{ end }}" id="details" role="tabpanel" aria-labelledby="details-tab" data-loaded="true">
+        <div class="card mt-0 border-top-0 rounded-top-0">
+          <div class="card-body px-0 py-3">
+            <div class="row border-bottom p-2 mx-0">
+              <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Gas limit set for transaction">Gas Limit:</span></div>
+              <div class="col-md-9">{{ formatAddCommas .GasLimit }}</div>
+            </div>
+            <div class="row border-bottom p-2 mx-0">
+              <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Actual gas used">Gas Used:</span></div>
+              <div class="col-md-9">
+                <div style="position:relative;width:200px;height:inherit;">
+                  {{ formatAddCommas .GasUsed }} <small class="text-muted ml-3">({{ printf "%.2f" .GasUsedPct }}%)</small>
+                  <div class="progress" style="position:absolute;bottom:-6px;width:200px;height:4px;">
+                    <div class="progress-bar" role="progressbar" style="width: {{ .GasUsedPct }}%;" aria-valuenow="{{ .GasUsed }}" aria-valuemin="0" aria-valuemax="{{ .GasLimit }}"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            {{ if ge .TxType 2 }}
+            {{/* EIP-1559+ transaction */}}
+            <div class="row border-bottom p-2 mx-0">
+              <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Maximum fee per gas the sender is willing to pay (maxFeePerGas)">Max Fee per Gas:</span></div>
+              <div class="col-md-9">{{ printf "%.9f" .GasPrice }} Gwei</div>
+            </div>
+            {{ if gt .TipPrice 0.0 }}
+            <div class="row border-bottom p-2 mx-0">
+              <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Maximum priority fee (tip) per gas (maxPriorityFeePerGas)">Max Priority Fee:</span></div>
+              <div class="col-md-9">{{ printf "%.9f" .TipPrice }} Gwei</div>
+            </div>
+            {{ end }}
+            {{ if gt .EffGasPrice 0.0 }}
+            <div class="row border-bottom p-2 mx-0">
+              <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Actual gas price paid per unit of gas">Effective Gas Price:</span></div>
+              <div class="col-md-9">
+                {{ printf "%.9f" .EffGasPrice }} Gwei
+                {{ if gt .FeeSavingsPct 0.0 }}
+                <span class="badge rounded-pill text-bg-success ms-2" data-bs-toggle="tooltip" title="Savings compared to max fee">{{ printf "%.2f" .FeeSavingsPct }}% saved</span>
+                {{ end }}
+              </div>
+            </div>
+            {{ end }}
+            {{ else }}
+            {{/* Legacy transaction */}}
+            <div class="row border-bottom p-2 mx-0">
+              <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Gas price per unit of gas">Gas Price:</span></div>
+              <div class="col-md-9">{{ printf "%.9f" .GasPrice }} Gwei</div>
+            </div>
+            {{ end }}
+            <div class="row border-bottom p-2 mx-0">
+              <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Transaction type">Type:</span></div>
+              <div class="col-md-9">{{ .TxTypeName }} ({{ .TxType }})</div>
+            </div>
+            <div class="row border-bottom p-2 mx-0">
+              <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Transaction nonce">Nonce:</span></div>
+              <div class="col-md-9">{{ formatAddCommas .Nonce }}</div>
+            </div>
+            <div class="row border-bottom p-2 mx-0">
+              <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Position in block">Position in Block:</span></div>
+              <div class="col-md-9">{{ .TxIndex }}</div>
+            </div>
+            {{ if gt .BlobCount 0 }}
+            <div class="row border-bottom p-2 mx-0">
+              <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Number of blobs">Blob Count:</span></div>
+              <div class="col-md-9">{{ .BlobCount }}</div>
+            </div>
+            {{ end }}
+            {{ if gt (len .InputData) 0 }}
+            <div class="row p-2 mx-0">
+              <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Transaction input data">Input Data:</span></div>
+              <div class="col-md-9">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                  {{ if gt (len .MethodID) 0 }}
+                  <span class="badge rounded-pill text-bg-secondary">Method: {{ formatHexBytes .MethodID }}{{ if .MethodName }} ({{ .MethodName }}){{ end }}</span>
+                  {{ else }}
+                  <span></span>
+                  {{ end }}
+                  <div class="btn-group btn-group-sm" role="group">
+                    <button type="button" class="btn btn-outline-secondary active" id="input-hex-btn" onclick="showInputHex()">Hex</button>
+                    <button type="button" class="btn btn-outline-secondary" id="input-ascii-btn" onclick="showInputAscii()">ASCII</button>
+                  </div>
+                </div>
+                <div id="input-data-hex" class="border rounded p-2 text-monospace text-break" style="max-height: 200px; overflow-y: auto; font-size: 0.85rem; background-color: var(--bs-tertiary-bg);">{{ formatHexBytes .InputData }}</div>
+                <div id="input-data-ascii" class="border rounded p-2 text-monospace text-break" style="max-height: 200px; overflow-y: auto; font-size: 0.85rem; background-color: var(--bs-tertiary-bg); display: none; white-space: pre-wrap;"></div>
+              </div>
+            </div>
+            {{ end }}
+          </div>
+        </div>
+      </div>
+      {{ if gt .EventCount 0 }}
+      <div class="tab-pane fade{{ if eq .TabView "events" }} show active{{ end }}" id="events" role="tabpanel" aria-labelledby="events-tab" data-loaded="{{ if eq .TabView "events" }}true{{ else }}false{{ end }}">
+        {{ if eq .TabView "events" }}
+          {{ template "events" . }}
+        {{ end }}
+      </div>
+      {{ end }}
+      {{ if gt .TokenTransferCount 0 }}
+      <div class="tab-pane fade{{ if eq .TabView "transfers" }} show active{{ end }}" id="transfers" role="tabpanel" aria-labelledby="transfers-tab" data-loaded="{{ if eq .TabView "transfers" }}true{{ else }}false{{ end }}">
+        {{ if eq .TabView "transfers" }}
+          {{ template "transfers" . }}
+        {{ end }}
+      </div>
+      {{ end }}
+      {{ if gt .BlobCount 0 }}
+      <div class="tab-pane fade{{ if eq .TabView "blobs" }} show active{{ end }}" id="blobs" role="tabpanel" aria-labelledby="blobs-tab" data-loaded="{{ if eq .TabView "blobs" }}true{{ else }}false{{ end }}">
+        {{ if eq .TabView "blobs" }}
+          {{ template "blobs" . }}
+        {{ end }}
+      </div>
+      {{ end }}
+    </div>
+  </div>
+{{ end }}
+{{ define "lazyPage" }}
+  {{ if eq .TabView "events" }}
+    {{ template "events" . }}
+  {{ else if eq .TabView "transfers" }}
+    {{ template "transfers" . }}
+  {{ else if eq .TabView "blobs" }}
+    {{ template "blobs" . }}
+  {{ else }}
+    <!-- Details tab is not lazy loaded -->
+  {{ end }}
+{{ end }}
+{{ define "js" }}
+<script type="text/javascript">
+  var inputDataHex = "{{ formatHexBytes .InputData }}";
+  var inputDataAscii = null;
+  var txRLP = {{ if .TxRLP }}"{{ .TxRLP }}"{{ else }}null{{ end }};
+  var txJSON = {{ if .TxJSON }}`{{ .TxJSON }}`{{ else }}null{{ end }};
+
+  function copyRLP() {
+    if (txRLP) {
+      navigator.clipboard.writeText(txRLP).then(function() {
+        showCopySuccess('RLP copied to clipboard!');
+      }).catch(function(err) {
+        console.error('Failed to copy RLP: ', err);
+      });
+    }
+  }
+
+  function copyJSON() {
+    if (txJSON) {
+      navigator.clipboard.writeText(txJSON).then(function() {
+        showCopySuccess('JSON copied to clipboard!');
+      }).catch(function(err) {
+        console.error('Failed to copy JSON: ', err);
+      });
+    }
+  }
+
+  function showCopySuccess(message) {
+    // Create a toast notification
+    var toast = document.createElement('div');
+    toast.className = 'position-fixed bottom-0 end-0 p-3';
+    toast.style.zIndex = '11';
+    toast.innerHTML = '<div class="toast show align-items-center text-white bg-success border-0" role="alert"><div class="d-flex"><div class="toast-body">' + message + '</div><button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div></div>';
+    document.body.appendChild(toast);
+    setTimeout(function() {
+      toast.remove();
+    }, 2000);
+  }
+
+  function hexToAscii(hex) {
+    // Remove 0x prefix if present
+    hex = hex.replace(/^0x/, '');
+    var str = '';
+    for (var i = 0; i < hex.length; i += 2) {
+      var charCode = parseInt(hex.substr(i, 2), 16);
+      // Replace non-printable characters with dots
+      if (charCode >= 32 && charCode <= 126) {
+        str += String.fromCharCode(charCode);
+      } else {
+        str += '.';
+      }
+    }
+    return str;
+  }
+
+  function showInputHex() {
+    document.getElementById('input-data-hex').style.display = 'block';
+    document.getElementById('input-data-ascii').style.display = 'none';
+    document.getElementById('input-hex-btn').classList.add('active');
+    document.getElementById('input-ascii-btn').classList.remove('active');
+  }
+
+  function showInputAscii() {
+    if (inputDataAscii === null) {
+      inputDataAscii = hexToAscii(inputDataHex);
+      document.getElementById('input-data-ascii').textContent = inputDataAscii;
+    }
+    document.getElementById('input-data-hex').style.display = 'none';
+    document.getElementById('input-data-ascii').style.display = 'block';
+    document.getElementById('input-hex-btn').classList.remove('active');
+    document.getElementById('input-ascii-btn').classList.add('active');
+  }
+
+  $(document).ready(function() {
+    var currentTab = "{{ .TabView }}";
+    var txHashStr = "{{ formatHexBytes .TxHash }}";
+
+    // Map tab IDs to view parameter values
+    var tabToView = {
+      'details': 'overview',
+      'events': 'events',
+      'transfers': 'transfers',
+      'blobs': 'blobs'
+    };
+
+    // Handle tab selection
+    const tabLinks = document.querySelectorAll('a[data-lazy-tab]');
+    Array.from(tabLinks).forEach(el => {
+      el.addEventListener('click', onTabSelected);
+    });
+
+    function onTabSelected(event) {
+      event.preventDefault();
+      var tabId = event.target.getAttribute('data-lazy-tab');
+      var tabEl = document.getElementById(tabId);
+      currentTab = tabId;
+
+      if (tabId !== 'details' && !$(tabEl).data("loaded")) {
+        loadTabContent(tabEl, event.target.getAttribute('href'));
+      }
+
+      var tab = new bootstrap.Tab(event.target);
+      tab.show();
+
+      window.history.replaceState(null, document.title, "/tx/" + txHashStr + event.target.getAttribute('href'));
+
+      // Update inclusion block links with new tab view
+      updateInclusionBlockLinks(tabToView[tabId] || 'overview');
+    }
+
+    function loadTabContent(tabEl, url) {
+      $(tabEl).html('<div class="text-center p-4"><i class="fas fa-spinner fa-spin fa-2x"></i></div>');
+      $.get(url + "&lazy=true", function(data) {
+        $(tabEl).html(data);
+        $(tabEl).data("loaded", true);
+        explorer.initControls();
+      });
+    }
+
+    function updateInclusionBlockLinks(viewName) {
+      // Update all inclusion block links to use the new tab view
+      document.querySelectorAll('.inclusion-block-link').forEach(function(link) {
+        var blockUid = link.getAttribute('data-block-uid');
+        var isSelected = link.getAttribute('data-selected') === 'true';
+        var newHref = '/tx/' + txHashStr + '?v=' + viewName;
+        if (!isSelected && blockUid) {
+          newHref += '&b=' + blockUid;
+        }
+        link.setAttribute('href', newHref);
+      });
+    }
+  });
+</script>
+{{ end }}
+{{ define "css" }}
+{{ end }}

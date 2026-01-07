@@ -1,4 +1,4 @@
-package execution
+package system_contracts
 
 import (
 	"fmt"
@@ -15,12 +15,13 @@ import (
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/indexer/beacon"
+	"github.com/ethpandaops/dora/indexer/execution"
 	"github.com/ethpandaops/dora/utils"
 )
 
 // WithdrawalIndexer is the indexer for the eip-7002 consolidation system contract
 type WithdrawalIndexer struct {
-	indexerCtx *IndexerCtx
+	indexerCtx *execution.IndexerCtx
 	logger     logrus.FieldLogger
 	indexer    *contractIndexer[dbtypes.WithdrawalRequestTx]
 	matcher    *transactionMatcher[withdrawalRequestMatch]
@@ -33,7 +34,7 @@ type withdrawalRequestMatch struct {
 }
 
 // NewWithdrawalIndexer creates a new withdrawal contract indexer
-func NewWithdrawalIndexer(indexer *IndexerCtx) *WithdrawalIndexer {
+func NewWithdrawalIndexer(indexer *execution.IndexerCtx) *WithdrawalIndexer {
 	batchSize := utils.Config.ExecutionApi.LogBatchSize
 	if batchSize == 0 {
 		batchSize = 1000
@@ -41,15 +42,15 @@ func NewWithdrawalIndexer(indexer *IndexerCtx) *WithdrawalIndexer {
 
 	wi := &WithdrawalIndexer{
 		indexerCtx: indexer,
-		logger:     indexer.logger.WithField("indexer", "withdrawals"),
+		logger:     indexer.Logger.WithField("indexer", "withdrawals"),
 	}
 
-	specs := indexer.chainState.GetSpecs()
+	specs := indexer.ChainState.GetSpecs()
 
 	// create contract indexer for the withdrawal contract
 	wi.indexer = newContractIndexer(
 		indexer,
-		indexer.logger.WithField("contract-indexer", "withdrawals"),
+		indexer.Logger.WithField("contract-indexer", "withdrawals"),
 		&contractIndexerOptions[dbtypes.WithdrawalRequestTx]{
 			stateKey:        "indexer.withdrawalindexer",
 			batchSize:       batchSize,
@@ -66,7 +67,7 @@ func NewWithdrawalIndexer(indexer *IndexerCtx) *WithdrawalIndexer {
 	// create transaction matcher for the withdrawal contract
 	wi.matcher = newTransactionMatcher(
 		indexer,
-		indexer.logger.WithField("contract-matcher", "withdrawals"),
+		indexer.Logger.WithField("contract-matcher", "withdrawals"),
 		&transactionMatcherOptions[withdrawalRequestMatch]{
 			stateKey:    "indexer.withdrawalmatcher",
 			deployBlock: uint64(utils.Config.ExecutionApi.ElectraDeployBlock),
@@ -127,7 +128,7 @@ func (wi *WithdrawalIndexer) processFinalTx(log *types.Log, tx *types.Transactio
 
 // processRecentTx is the callback for the contract indexer to process recent transactions
 // it parses the transaction and returns the corresponding withdrawal transaction
-func (wi *WithdrawalIndexer) processRecentTx(log *types.Log, tx *types.Transaction, header *types.Header, txFrom common.Address, dequeueBlock uint64, fork *forkWithClients, _ []*dbtypes.WithdrawalRequestTx) (*dbtypes.WithdrawalRequestTx, error) {
+func (wi *WithdrawalIndexer) processRecentTx(log *types.Log, tx *types.Transaction, header *types.Header, txFrom common.Address, dequeueBlock uint64, fork *execution.ForkWithClients, _ []*dbtypes.WithdrawalRequestTx) (*dbtypes.WithdrawalRequestTx, error) {
 	requestTx := wi.parseRequestLog(log)
 	if requestTx == nil {
 		return nil, fmt.Errorf("invalid withdrawal log")
@@ -140,11 +141,11 @@ func (wi *WithdrawalIndexer) processRecentTx(log *types.Log, tx *types.Transacti
 	requestTx.TxTarget = txTo[:]
 	requestTx.DequeueBlock = dequeueBlock
 
-	clBlock := wi.indexerCtx.beaconIndexer.GetBlocksByExecutionBlockHash(phase0.Hash32(log.BlockHash))
+	clBlock := wi.indexerCtx.BeaconIndexer.GetBlocksByExecutionBlockHash(phase0.Hash32(log.BlockHash))
 	if len(clBlock) > 0 {
 		requestTx.ForkId = uint64(clBlock[0].GetForkId())
 	} else {
-		requestTx.ForkId = uint64(fork.forkId)
+		requestTx.ForkId = uint64(fork.ForkId)
 	}
 
 	return requestTx, nil
@@ -167,7 +168,7 @@ func (wi *WithdrawalIndexer) parseRequestLog(log *types.Log) *dbtypes.Withdrawal
 	amount := big.NewInt(0).SetBytes(log.Data[68:76]).Uint64()
 
 	var validatorIndex *uint64
-	if index, found := wi.indexerCtx.beaconIndexer.GetValidatorIndexByPubkey(phase0.BLSPubKey(validatorPubkey)); found {
+	if index, found := wi.indexerCtx.BeaconIndexer.GetValidatorIndexByPubkey(phase0.BLSPubKey(validatorPubkey)); found {
 		indexNum := uint64(index)
 		validatorIndex = &indexNum
 	}
@@ -218,7 +219,7 @@ func (wi *WithdrawalIndexer) matchBlockRange(fromBlock uint64, toBlock uint64) (
 				continue
 			}
 
-			parentForkIds := wi.indexerCtx.beaconIndexer.GetParentForkIds(beacon.ForkKey(withdrawalRequest.ForkId))
+			parentForkIds := wi.indexerCtx.BeaconIndexer.GetParentForkIds(beacon.ForkKey(withdrawalRequest.ForkId))
 			isParentFork := func(forkId uint64) bool {
 				if forkId == withdrawalRequest.ForkId {
 					return true

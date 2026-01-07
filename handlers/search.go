@@ -73,6 +73,18 @@ func Search(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	} else if len(hashQuery) == 64 {
+		// Check if it's a transaction hash first (if execution indexing is enabled)
+		if utils.Config.ExecutionIndexer.Enabled {
+			txHashBytes, err := hex.DecodeString(hashQuery)
+			if err == nil && len(txHashBytes) == 32 {
+				txs, err := db.GetElTransactionsByHash(txHashBytes)
+				if err == nil && len(txs) > 0 {
+					http.Redirect(w, r, fmt.Sprintf("/tx/0x%x", txHashBytes), http.StatusMovedPermanently)
+					return
+				}
+			}
+		}
+		// Check if it's a block hash
 		blockHash, err := hex.DecodeString(hashQuery)
 		if err == nil {
 			blockResult := &dbtypes.SearchBlockResult{}
@@ -90,6 +102,14 @@ func Search(w http.ResponseWriter, r *http.Request) {
 				}
 				return
 			}
+		}
+	} else if len(hashQuery) == 40 && utils.Config.ExecutionIndexer.Enabled {
+		// Check if it's an address (20 bytes = 40 hex chars)
+		addressBytes, err := hex.DecodeString(hashQuery)
+		if err == nil && len(addressBytes) == 20 {
+			// Always redirect to address page, even if not in DB
+			http.Redirect(w, r, fmt.Sprintf("/address/0x%x", addressBytes), http.StatusMovedPermanently)
+			return
 		}
 	}
 
@@ -451,6 +471,125 @@ func SearchAhead(w http.ResponseWriter, r *http.Request) {
 						Index:  fmt.Sprintf("%v", entry.Index),
 						Pubkey: fmt.Sprintf("0x%x", entry.Pubkey),
 						Name:   services.GlobalBeaconService.GetValidatorName(entry.Index),
+					}
+				}
+				result = model
+			}
+		}
+	case "addresses":
+		// Only enable if execution indexing is enabled
+		if !utils.Config.ExecutionIndexer.Enabled {
+			http.Error(w, "Not found", 404)
+			return
+		}
+		if len(search) == 0 {
+			break
+		}
+		if !searchLikeRE.MatchString(search) {
+			break
+		}
+		if len(search) == 40 {
+			// Full 20-byte address - always recognize even if not in DB
+			addressBytes, err := hex.DecodeString(search)
+			if err == nil && len(addressBytes) == 20 {
+				// Try to get from DB first
+				account, _ := db.GetElAccountByAddress(addressBytes)
+				result = &[]models.SearchAheadAddressResult{
+					{
+						Address:    fmt.Sprintf("0x%x", addressBytes),
+						IsContract: account != nil && account.IsContract,
+						HasData:    account != nil && account.ID > 0,
+					},
+				}
+			}
+		} else if len(search) >= 2 && len(search) < 40 {
+			// Search by address prefix in DB
+			addresses := &dbtypes.SearchAheadAddressResult{}
+			err = db.ReaderDb.Select(addresses, db.EngineQuery(map[dbtypes.DBEngineType]string{
+				dbtypes.DBEnginePgsql: `
+					SELECT address, is_contract
+					FROM el_accounts
+					WHERE ENCODE(address, 'hex') ILIKE $1
+					ORDER BY funded DESC, id ASC
+					LIMIT 10`,
+				dbtypes.DBEngineSqlite: `
+					SELECT address, is_contract
+					FROM el_accounts
+					WHERE HEX(address) LIKE UPPER($1)
+					ORDER BY funded DESC, id ASC
+					LIMIT 10`,
+			}), search+"%")
+			if err == nil {
+				model := make([]models.SearchAheadAddressResult, len(*addresses))
+				for i, entry := range *addresses {
+					model[i] = models.SearchAheadAddressResult{
+						Address:    fmt.Sprintf("0x%x", entry.Address),
+						IsContract: entry.IsContract,
+						HasData:    true,
+					}
+				}
+				result = model
+			}
+		}
+	case "transactions":
+		// Only enable if execution indexing is enabled
+		if !utils.Config.ExecutionIndexer.Enabled {
+			http.Error(w, "Not found", 404)
+			return
+		}
+		if len(search) == 0 {
+			break
+		}
+		if !searchLikeRE.MatchString(search) {
+			break
+		}
+		if len(search) == 64 {
+			// Full 32-byte transaction hash
+			txHashBytes, err := hex.DecodeString(search)
+			if err == nil && len(txHashBytes) == 32 {
+				txs, err := db.GetElTransactionsByHash(txHashBytes)
+				if err == nil && len(txs) > 0 {
+					// Use the first (canonical) transaction
+					tx := txs[0]
+					result = &[]models.SearchAheadTransactionResult{
+						{
+							TxHash:      fmt.Sprintf("0x%x", txHashBytes),
+							BlockNumber: tx.BlockNumber,
+							Reverted:    tx.Reverted,
+						},
+					}
+				}
+			}
+		} else if len(search) >= 2 && len(search) < 64 {
+			// Search by transaction hash prefix in DB
+			transactions := &dbtypes.SearchAheadTransactionResult{}
+			err = db.ReaderDb.Select(transactions, db.EngineQuery(map[dbtypes.DBEngineType]string{
+				dbtypes.DBEnginePgsql: `
+					SELECT DISTINCT ON (tx_hash) tx_hash, block_number, reverted
+					FROM el_transactions
+					WHERE ENCODE(tx_hash, 'hex') ILIKE $1
+					ORDER BY tx_hash, block_number DESC
+					LIMIT 10`,
+				dbtypes.DBEngineSqlite: `
+					SELECT t1.tx_hash, t1.block_number, t1.reverted
+					FROM el_transactions t1
+					INNER JOIN (
+						SELECT tx_hash, MAX(block_number) as max_block_number
+						FROM el_transactions
+						WHERE HEX(tx_hash) LIKE UPPER($1)
+						GROUP BY tx_hash
+					) t2 ON t1.tx_hash = t2.tx_hash AND t1.block_number = t2.max_block_number
+					WHERE HEX(t1.tx_hash) LIKE UPPER($1)
+					ORDER BY t1.block_number DESC
+					LIMIT 10`,
+			}), search+"%")
+			if err == nil {
+				model := make([]models.SearchAheadTransactionResult, len(*transactions))
+				for i, entry := range *transactions {
+					model[i] = models.SearchAheadTransactionResult{
+						TxHash:      fmt.Sprintf("0x%x", entry.TxHash),
+						BlockNumber: entry.BlockNumber,
+						Reverted:    entry.Reverted,
 					}
 				}
 				result = model

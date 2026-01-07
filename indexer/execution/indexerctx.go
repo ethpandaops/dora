@@ -2,6 +2,7 @@ package execution
 
 import (
 	"math/rand/v2"
+	"slices"
 	"sort"
 
 	"github.com/attestantio/go-eth2-client/spec/phase0"
@@ -14,11 +15,11 @@ import (
 
 // IndexerCtx is the context for the execution indexer
 type IndexerCtx struct {
-	logger           logrus.FieldLogger
-	beaconIndexer    *beacon.Indexer
-	executionPool    *execution.Pool
-	consensusPool    *consensus.Pool
-	chainState       *consensus.ChainState
+	Logger           logrus.FieldLogger
+	BeaconIndexer    *beacon.Indexer
+	ExecutionPool    *execution.Pool
+	ConsensusPool    *consensus.Pool
+	ChainState       *consensus.ChainState
 	executionClients map[*execution.Client]*indexerElClientInfo
 }
 
@@ -31,11 +32,11 @@ type indexerElClientInfo struct {
 // NewIndexerCtx creates a new IndexerCtx
 func NewIndexerCtx(logger logrus.FieldLogger, executionPool *execution.Pool, consensusPool *consensus.Pool, beaconIndexer *beacon.Indexer) *IndexerCtx {
 	return &IndexerCtx{
-		logger:           logger,
-		executionPool:    executionPool,
-		consensusPool:    consensusPool,
-		beaconIndexer:    beaconIndexer,
-		chainState:       consensusPool.GetChainState(),
+		Logger:           logger,
+		ExecutionPool:    executionPool,
+		ConsensusPool:    consensusPool,
+		BeaconIndexer:    beaconIndexer,
+		ChainState:       consensusPool.GetChainState(),
 		executionClients: map[*execution.Client]*indexerElClientInfo{},
 	}
 }
@@ -49,14 +50,14 @@ func (ictx *IndexerCtx) AddClientInfo(client *execution.Client, priority int, ar
 }
 
 // getFinalizedClients returns a list of clients that have reached the finalized el block
-func (ictx *IndexerCtx) getFinalizedClients(clientType execution.ClientType) []*execution.Client {
-	_, finalizedRoot := ictx.consensusPool.GetChainState().GetJustifiedCheckpoint()
+func (ictx *IndexerCtx) GetFinalizedClients(clientType execution.ClientType) []*execution.Client {
+	_, finalizedRoot := ictx.ConsensusPool.GetChainState().GetJustifiedCheckpoint()
 
 	finalizedClients := make([]*execution.Client, 0)
-	for _, client := range ictx.executionPool.GetReadyEndpoints(clientType) {
+	for _, client := range ictx.ExecutionPool.GetReadyEndpoints(clientType) {
 		_, blockHash := client.GetLastHead()
-		for _, beaconBlock := range ictx.beaconIndexer.GetBlocksByExecutionBlockHash(phase0.Hash32(blockHash)) {
-			isInChain, _ := ictx.beaconIndexer.GetBlockDistance(finalizedRoot, beaconBlock.Root)
+		for _, beaconBlock := range ictx.BeaconIndexer.GetBlocksByExecutionBlockHash(phase0.Hash32(blockHash)) {
+			isInChain, _ := ictx.BeaconIndexer.GetBlockDistance(finalizedRoot, beaconBlock.Root)
 			if isInChain {
 				finalizedClients = append(finalizedClients, client)
 				break
@@ -67,8 +68,27 @@ func (ictx *IndexerCtx) getFinalizedClients(clientType execution.ClientType) []*
 	return finalizedClients
 }
 
-// sortClients sorts clients by priority, but randomizes the order for equal priority
-func (ictx *IndexerCtx) sortClients(clientA *execution.Client, clientB *execution.Client, preferArchive bool) bool {
+// getFinalizedClients returns a list of clients that have reached the finalized el block
+func (ictx *IndexerCtx) GetClientsOnFork(forkId beacon.ForkKey, clientType execution.ClientType) []*execution.Client {
+	clients := make([]*execution.Client, 0)
+	for _, client := range ictx.ExecutionPool.GetReadyEndpoints(clientType) {
+		_, blockHash := client.GetLastHead()
+		for _, block := range ictx.BeaconIndexer.GetBlocksByExecutionBlockHash(phase0.Hash32(blockHash)) {
+
+			parentForkIds := ictx.BeaconIndexer.GetParentForkIds(block.GetForkId())
+			if !slices.Contains(parentForkIds, forkId) {
+				continue
+			}
+			clients = append(clients, client)
+		}
+	}
+
+	return clients
+}
+
+// SortClients sorts clients by priority, but randomizes the order for equal priority.
+// Returns true if clientA should come before clientB.
+func (ictx *IndexerCtx) SortClients(clientA *execution.Client, clientB *execution.Client, preferArchive bool) bool {
 	clientAInfo := ictx.executionClients[clientA]
 	clientBInfo := ictx.executionClients[clientB]
 
@@ -84,64 +104,64 @@ func (ictx *IndexerCtx) sortClients(clientA *execution.Client, clientB *executio
 }
 
 // forkWithClients holds information about a fork and the clients following it
-type forkWithClients struct {
-	canonical bool
-	forkId    beacon.ForkKey
-	forkHead  *beacon.ForkHead
-	clients   []*execution.Client
+type ForkWithClients struct {
+	Canonical bool
+	ForkId    beacon.ForkKey
+	ForkHead  *beacon.ForkHead
+	Clients   []*execution.Client
 }
 
 // getForksWithClients returns a list of forks with their clients
 // the list is sorted by the canonical head and the number of clients
-func (ictx *IndexerCtx) getForksWithClients(clientType execution.ClientType) []*forkWithClients {
-	forksWithClients := make([]*forkWithClients, 0)
+func (ictx *IndexerCtx) GetForksWithClients(clientType execution.ClientType) []*ForkWithClients {
+	forksWithClients := make([]*ForkWithClients, 0)
 	forkHeadMap := map[beacon.ForkKey]*beacon.ForkHead{}
-	for _, forkHead := range ictx.beaconIndexer.GetForkHeads() {
+	for _, forkHead := range ictx.BeaconIndexer.GetForkHeads() {
 		forkHeadMap[forkHead.ForkId] = forkHead
 	}
 
-	for _, client := range ictx.executionPool.GetReadyEndpoints(clientType) {
+	for _, client := range ictx.ExecutionPool.GetReadyEndpoints(clientType) {
 		_, blockHash := client.GetLastHead()
-		for _, block := range ictx.beaconIndexer.GetBlocksByExecutionBlockHash(phase0.Hash32(blockHash)) {
+		for _, block := range ictx.BeaconIndexer.GetBlocksByExecutionBlockHash(phase0.Hash32(blockHash)) {
 
-			var matchingForkWithClients *forkWithClients
+			var matchingForkWithClients *ForkWithClients
 			for _, forkWithClients := range forksWithClients {
-				if forkWithClients.forkId == block.GetForkId() {
+				if forkWithClients.ForkId == block.GetForkId() {
 					matchingForkWithClients = forkWithClients
 					break
 				}
 			}
 
 			if matchingForkWithClients == nil {
-				matchingForkWithClients = &forkWithClients{
-					forkId:   block.GetForkId(),
-					forkHead: forkHeadMap[block.GetForkId()],
+				matchingForkWithClients = &ForkWithClients{
+					ForkId:   block.GetForkId(),
+					ForkHead: forkHeadMap[block.GetForkId()],
 				}
 				forksWithClients = append(forksWithClients, matchingForkWithClients)
 			}
 
-			matchingForkWithClients.clients = append(matchingForkWithClients.clients, client)
+			matchingForkWithClients.Clients = append(matchingForkWithClients.Clients, client)
 		}
 	}
 
-	canonicalHead := ictx.beaconIndexer.GetCanonicalHead(nil)
+	canonicalHead := ictx.BeaconIndexer.GetCanonicalHead(nil)
 
 	for _, forkWithClients := range forksWithClients {
-		forkWithClients.canonical = canonicalHead != nil && canonicalHead.GetForkId() == forkWithClients.forkId
+		forkWithClients.Canonical = canonicalHead != nil && canonicalHead.GetForkId() == forkWithClients.ForkId
 
-		sort.Slice(forkWithClients.clients, func(i, j int) bool {
-			return ictx.sortClients(forkWithClients.clients[i], forkWithClients.clients[j], true)
+		sort.Slice(forkWithClients.Clients, func(i, j int) bool {
+			return ictx.SortClients(forkWithClients.Clients[i], forkWithClients.Clients[j], true)
 		})
 	}
 
 	sort.Slice(forksWithClients, func(i, j int) bool {
 		cliA := forksWithClients[i]
 		cliB := forksWithClients[j]
-		if cliA.canonical != cliB.canonical {
-			return cliA.canonical
+		if cliA.Canonical != cliB.Canonical {
+			return cliA.Canonical
 		}
 
-		return len(cliA.clients) > len(cliB.clients)
+		return len(cliA.Clients) > len(cliB.Clients)
 	})
 
 	return forksWithClients
@@ -149,5 +169,5 @@ func (ictx *IndexerCtx) getForksWithClients(clientType execution.ClientType) []*
 
 // GetSystemContractAddress returns the address of a system contract from the first available client's config
 func (ictx *IndexerCtx) GetSystemContractAddress(contractType string) common.Address {
-	return ictx.executionPool.GetChainState().GetSystemContractAddress(contractType)
+	return ictx.ExecutionPool.GetChainState().GetSystemContractAddress(contractType)
 }

@@ -218,7 +218,7 @@ func (indexer *Indexer) GetOrphanedBlockByRoot(blockRoot phase0.Root) (*Block, e
 		return nil, fmt.Errorf("could not restore orphaned block body %v [%x] from db: %v", header.Message.Slot, orphanedBlock.Root, err)
 	}
 
-	block := newBlock(indexer.dynSsz, blockRoot, header.Message.Slot)
+	block := newBlock(indexer.dynSsz, blockRoot, header.Message.Slot, orphanedBlock.BlockUid)
 	block.SetHeader(header)
 	block.SetBlock(blockBody)
 
@@ -258,7 +258,7 @@ func (indexer *Indexer) GetEpochStats(epoch phase0.Epoch, overrideForkId *ForkKe
 			if dependentBlock == nil {
 				blockHead := db.GetBlockHeadByRoot(stats.dependentRoot[:])
 				if blockHead != nil {
-					dependentBlock = newBlock(indexer.dynSsz, phase0.Root(blockHead.Root), phase0.Slot(blockHead.Slot))
+					dependentBlock = newBlock(indexer.dynSsz, phase0.Root(blockHead.Root), phase0.Slot(blockHead.Slot), blockHead.BlockUid)
 					dependentBlock.isInFinalizedDb = true
 					parentRootVal := phase0.Root(blockHead.ParentRoot)
 					dependentBlock.parentRoot = &parentRootVal

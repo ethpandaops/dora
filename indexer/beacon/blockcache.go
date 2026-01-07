@@ -46,7 +46,14 @@ func (cache *blockCache) createOrGetBlock(root phase0.Root, slot phase0.Slot) (*
 		return cache.rootMap[root], false
 	}
 
-	cacheBlock := newBlock(cache.indexer.dynSsz, root, slot)
+	blockUid := uint64(slot) << 16
+	for _, b2 := range cache.slotMap[slot] {
+		if b2.BlockUID >= blockUid {
+			blockUid = b2.BlockUID + 1
+		}
+	}
+
+	cacheBlock := newBlock(cache.indexer.dynSsz, root, slot, blockUid)
 	cache.rootMap[root] = cacheBlock
 
 	if cache.slotMap[slot] == nil {
@@ -426,7 +433,7 @@ func (cache *blockCache) getDependentBlock(chainState *consensus.ChainState, blo
 		if dependentBlock == nil {
 			blockHead := db.GetBlockHeadByRoot((*block.dependentRoot)[:])
 			if blockHead != nil {
-				dependentBlock = newBlock(cache.indexer.dynSsz, phase0.Root(blockHead.Root), phase0.Slot(blockHead.Slot))
+				dependentBlock = newBlock(cache.indexer.dynSsz, phase0.Root(blockHead.Root), phase0.Slot(blockHead.Slot), blockHead.BlockUid)
 				dependentBlock.isInFinalizedDb = true
 				parentRootVal := phase0.Root(blockHead.ParentRoot)
 				dependentBlock.parentRoot = &parentRootVal
@@ -436,7 +443,7 @@ func (cache *blockCache) getDependentBlock(chainState *consensus.ChainState, blo
 		if dependentBlock == nil && client != nil {
 			blockHead, _ := LoadBeaconHeader(client.getContext(), client, *block.dependentRoot)
 			if blockHead != nil {
-				dependentBlock = newBlock(cache.indexer.dynSsz, *block.dependentRoot, phase0.Slot(blockHead.Message.Slot))
+				dependentBlock = newBlock(cache.indexer.dynSsz, *block.dependentRoot, phase0.Slot(blockHead.Message.Slot), 0)
 				parentRootVal := phase0.Root(blockHead.Message.ParentRoot)
 				dependentBlock.parentRoot = &parentRootVal
 			}
@@ -461,7 +468,7 @@ func (cache *blockCache) getDependentBlock(chainState *consensus.ChainState, blo
 		if parentBlock == nil {
 			blockHead := db.GetBlockHeadByRoot((*parentRoot)[:])
 			if blockHead != nil {
-				parentBlock = newBlock(cache.indexer.dynSsz, phase0.Root(blockHead.Root), phase0.Slot(blockHead.Slot))
+				parentBlock = newBlock(cache.indexer.dynSsz, phase0.Root(blockHead.Root), phase0.Slot(blockHead.Slot), blockHead.BlockUid)
 				parentBlock.isInFinalizedDb = true
 				parentRootVal := phase0.Root(blockHead.ParentRoot)
 				parentBlock.parentRoot = &parentRootVal
@@ -472,7 +479,7 @@ func (cache *blockCache) getDependentBlock(chainState *consensus.ChainState, blo
 			blockHead, _ := LoadBeaconHeader(client.getContext(), client, *parentRoot)
 			client = nil // only load one header, that's probably the dependent root block (last block of previous epoch)
 			if blockHead != nil {
-				parentBlock = newBlock(cache.indexer.dynSsz, *parentRoot, phase0.Slot(blockHead.Message.Slot))
+				parentBlock = newBlock(cache.indexer.dynSsz, *parentRoot, phase0.Slot(blockHead.Message.Slot), 0)
 				parentRootVal := phase0.Root(blockHead.Message.ParentRoot)
 				parentBlock.parentRoot = &parentRootVal
 			}
