@@ -598,7 +598,7 @@ func (c *Client) processExecutionPayloadEvent(executionPayloadEvent *v1.Executio
 		// known block or a new orphaned block
 
 		// don't add to cache, process this block right after loading the details
-		block = newBlock(c.indexer.dynSsz, executionPayloadEvent.BlockRoot, executionPayloadEvent.Slot)
+		block = newBlock(c.indexer.dynSsz, executionPayloadEvent.BlockRoot, executionPayloadEvent.Slot, 0)
 
 		dbBlockHead := db.GetBlockHeadByRoot(executionPayloadEvent.BlockRoot[:])
 		if dbBlockHead != nil {
