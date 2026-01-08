@@ -47,3 +47,14 @@ type SearchAheadValidatorResult []struct {
 	Pubkey []byte `db:"pubkey"`
 	Name   string `db:"name"`
 }
+
+type SearchAheadAddressResult []struct {
+	Address    []byte `db:"address"`
+	IsContract bool   `db:"is_contract"`
+}
+
+type SearchAheadTransactionResult []struct {
+	TxHash      []byte `db:"tx_hash"`
+	BlockNumber uint64 `db:"block_number"`
+	Reverted    bool   `db:"reverted"`
+}

@@ -1,0 +1,132 @@
+{{ define "erc20Transfers" }}
+<div class="card">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead>
+          <tr>
+            <th>Txn Hash</th>
+            <th>Block</th>
+            <th data-timecol="duration">Age</th>
+            <th>Method</th>
+            <th>From</th>
+            <th></th>
+            <th>To</th>
+            <th>Value</th>
+            <th>Token Name</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{ if gt .ERC20TransferCount 0 }}
+            {{ range .ERC20Transfers }}
+              <tr>
+                {{ if gt .TxHashRowspan 0 }}
+                <td class="text-monospace align-top"{{ if gt .TxHashRowspan 1 }} rowspan="{{ .TxHashRowspan }}"{{ end }}>
+                  <a href="/tx/{{ formatHexBytes .TxHash }}" data-bs-toggle="tooltip" title="{{ formatHexBytes .TxHash }}">{{ formatEthHashShort .TxHash 6 }}</a>
+                  <i class="fa fa-copy text-muted ms-1" role="button" data-bs-toggle="tooltip" title="Copy transaction hash" data-clipboard-text="{{ formatHexBytes .TxHash }}"></i>
+                </td>
+                <td class="align-top"{{ if gt .TxHashRowspan 1 }} rowspan="{{ .TxHashRowspan }}"{{ end }}>
+                  {{ if gt (len .BlockRoot) 0 }}
+                    <a href="/slot/0x{{ printf "%x" .BlockRoot }}">{{ formatAddCommas .BlockNumber }}</a>
+                  {{ else }}
+                    {{ formatAddCommas .BlockNumber }}
+                  {{ end }}
+                </td>
+                <td class="align-top" data-timer="{{ .BlockTime.Unix }}"{{ if gt .TxHashRowspan 1 }} rowspan="{{ .TxHashRowspan }}"{{ end }}>
+                  <span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ .BlockTime }}">{{ formatRecentTimeShort .BlockTime }}</span>
+                </td>
+                <td class="align-top"{{ if gt .TxHashRowspan 1 }} rowspan="{{ .TxHashRowspan }}"{{ end }}>
+                  {{ if .MethodName }}
+                    <span class="badge text-bg-secondary">{{ .MethodName }}</span>
+                  {{ else }}
+                    <span class="text-muted">-</span>
+                  {{ end }}
+                </td>
+                {{ end }}
+                <td class="text-monospace">
+                  {{ if eq (printf "%x" .FromAddr) (printf "%x" $.Address) }}
+                    {{ formatEthAddressShort .FromAddr }}
+                  {{ else }}
+                    {{ formatEthAddressShortLink .FromAddr .FromIsContract }}
+                  {{ end }}
+                  <i class="fa fa-copy text-muted ms-1" role="button" data-bs-toggle="tooltip" title="Copy address" data-clipboard-text="{{ formatEthAddressFull .FromAddr }}"></i>
+                </td>
+                <td class="text-center">
+                  {{ if .IsOutgoing }}
+                    <span class="badge text-bg-warning">OUT</span>
+                  {{ else }}
+                    <span class="badge text-bg-success">IN</span>
+                  {{ end }}
+                </td>
+                <td class="text-monospace">
+                  {{ if eq (printf "%x" .ToAddr) (printf "%x" $.Address) }}
+                    {{ formatEthAddressShort .ToAddr }}
+                  {{ else }}
+                    {{ formatEthAddressShortLink .ToAddr .ToIsContract }}
+                  {{ end }}
+                  <i class="fa fa-copy text-muted ms-1" role="button" data-bs-toggle="tooltip" title="Copy address" data-clipboard-text="{{ formatEthAddressFull .ToAddr }}"></i>
+                </td>
+                <td>{{ formatTokenAmount .Amount .TokenSymbol }}</td>
+                <td>
+                  <a href="/address/{{ formatEthAddressFull .Contract }}" data-bs-toggle="tooltip" title="{{ formatEthAddressFull .Contract }}">
+                    {{ if .TokenName }}{{ .TokenName }}{{ else if .TokenSymbol }}{{ .TokenSymbol }}{{ else }}Unknown{{ end }}
+                  </a>
+                </td>
+                {{ if gt .TxHashRowspan 0 }}
+                <td class="text-nowrap align-top"{{ if gt .TxHashRowspan 1 }} rowspan="{{ .TxHashRowspan }}"{{ end }}>
+                  {{ if .BlockOrphaned }}
+                    <span class="badge text-bg-info" data-bs-toggle="tooltip" title="Block was orphaned">Orphaned</span>
+                  {{ else }}
+                    <span class="badge text-bg-success" data-bs-toggle="tooltip" title="Block is canonical">Included</span>
+                  {{ end }}
+                </td>
+                {{ end }}
+              </tr>
+            {{ end }}
+          {{ else }}
+            <tr>
+              <td colspan="10" class="text-center py-4 text-muted">
+                <i class="fas fa-coins fa-2x mb-2"></i>
+                <br>No ERC20 transfers found
+              </td>
+            </tr>
+          {{ end }}
+        </tbody>
+      </table>
+    </div>
+
+    {{ if gt .ERC20TotalPages 1 }}
+    <div class="card-footer d-flex justify-content-between align-items-center">
+      <div>
+        Showing {{ formatAddCommas .ERC20FirstItem }} - {{ formatAddCommas .ERC20LastItem }} of {{ if .ERC20CountCapped }}more than {{ end }}{{ formatAddCommas .ERC20TransferCount }}
+      </div>
+      <nav aria-label="ERC20 transfer pagination">
+        <ul class="pagination pagination-sm mb-0">
+          {{ if gt .ERC20PageIndex 1 }}
+            <li class="page-item">
+              <a class="page-link" href="?v=erc20&p=1&c={{ .ERC20PageSize }}">&laquo;</a>
+            </li>
+            <li class="page-item">
+              <a class="page-link" href="?v=erc20&p={{ subUI64 .ERC20PageIndex 1 }}&c={{ .ERC20PageSize }}">&lsaquo;</a>
+            </li>
+          {{ end }}
+          <li class="page-item disabled">
+            <span class="page-link">{{ .ERC20PageIndex }} / {{ .ERC20TotalPages }}</span>
+          </li>
+          {{ if lt .ERC20PageIndex .ERC20TotalPages }}
+            <li class="page-item">
+              <a class="page-link" href="?v=erc20&p={{ addUI64 .ERC20PageIndex 1 }}&c={{ .ERC20PageSize }}">&rsaquo;</a>
+            </li>
+            <li class="page-item">
+              <a class="page-link" href="?v=erc20&p={{ .ERC20TotalPages }}&c={{ .ERC20PageSize }}">&raquo;</a>
+            </li>
+          {{ end }}
+        </ul>
+      </nav>
+    </div>
+    {{ end }}
+  </div>
+</div>
+{{ end }}
+

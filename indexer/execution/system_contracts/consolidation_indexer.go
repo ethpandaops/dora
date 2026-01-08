@@ -1,4 +1,4 @@
-package execution
+package system_contracts
 
 import (
 	"fmt"
@@ -14,12 +14,13 @@ import (
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/indexer/beacon"
+	"github.com/ethpandaops/dora/indexer/execution"
 	"github.com/ethpandaops/dora/utils"
 )
 
 // ConsolidationIndexer is the indexer for the eip-7251 consolidation system contract
 type ConsolidationIndexer struct {
-	indexerCtx *IndexerCtx
+	indexerCtx *execution.IndexerCtx
 	logger     logrus.FieldLogger
 	indexer    *contractIndexer[dbtypes.ConsolidationRequestTx]
 	matcher    *transactionMatcher[consolidationRequestMatch]
@@ -32,7 +33,7 @@ type consolidationRequestMatch struct {
 }
 
 // NewConsolidationIndexer creates a new consolidation system contract indexer
-func NewConsolidationIndexer(indexer *IndexerCtx) *ConsolidationIndexer {
+func NewConsolidationIndexer(indexer *execution.IndexerCtx) *ConsolidationIndexer {
 	batchSize := utils.Config.ExecutionApi.LogBatchSize
 	if batchSize == 0 {
 		batchSize = 1000
@@ -40,15 +41,15 @@ func NewConsolidationIndexer(indexer *IndexerCtx) *ConsolidationIndexer {
 
 	ci := &ConsolidationIndexer{
 		indexerCtx: indexer,
-		logger:     indexer.logger.WithField("indexer", "consolidations"),
+		logger:     indexer.Logger.WithField("indexer", "consolidations"),
 	}
 
-	specs := indexer.chainState.GetSpecs()
+	specs := indexer.ChainState.GetSpecs()
 
 	// create contract indexer for the consolidation contract
 	ci.indexer = newContractIndexer(
 		indexer,
-		indexer.logger.WithField("contract-indexer", "consolidations"),
+		indexer.Logger.WithField("contract-indexer", "consolidations"),
 		&contractIndexerOptions[dbtypes.ConsolidationRequestTx]{
 			stateKey:        "indexer.consolidationindexer",
 			batchSize:       batchSize,
@@ -65,7 +66,7 @@ func NewConsolidationIndexer(indexer *IndexerCtx) *ConsolidationIndexer {
 	// create transaction matcher for the consolidation contract
 	ci.matcher = newTransactionMatcher(
 		indexer,
-		indexer.logger.WithField("contract-matcher", "consolidations"),
+		indexer.Logger.WithField("contract-matcher", "consolidations"),
 		&transactionMatcherOptions[consolidationRequestMatch]{
 			stateKey:    "indexer.consolidationmatcher",
 			deployBlock: uint64(utils.Config.ExecutionApi.ElectraDeployBlock),
@@ -126,7 +127,7 @@ func (ci *ConsolidationIndexer) processFinalTx(log *types.Log, tx *types.Transac
 
 // processRecentTx is the callback for the contract indexer for recent transactions
 // it parses the transaction and returns the corresponding consolidation request transaction
-func (ci *ConsolidationIndexer) processRecentTx(log *types.Log, tx *types.Transaction, header *types.Header, txFrom common.Address, dequeueBlock uint64, fork *forkWithClients, _ []*dbtypes.ConsolidationRequestTx) (*dbtypes.ConsolidationRequestTx, error) {
+func (ci *ConsolidationIndexer) processRecentTx(log *types.Log, tx *types.Transaction, header *types.Header, txFrom common.Address, dequeueBlock uint64, fork *execution.ForkWithClients, _ []*dbtypes.ConsolidationRequestTx) (*dbtypes.ConsolidationRequestTx, error) {
 	requestTx := ci.parseRequestLog(log)
 	if requestTx == nil {
 		return nil, fmt.Errorf("invalid consolidation log")
@@ -139,11 +140,11 @@ func (ci *ConsolidationIndexer) processRecentTx(log *types.Log, tx *types.Transa
 	requestTx.TxTarget = txTo[:]
 	requestTx.DequeueBlock = dequeueBlock
 
-	clBlock := ci.indexerCtx.beaconIndexer.GetBlocksByExecutionBlockHash(phase0.Hash32(log.BlockHash))
+	clBlock := ci.indexerCtx.BeaconIndexer.GetBlocksByExecutionBlockHash(phase0.Hash32(log.BlockHash))
 	if len(clBlock) > 0 {
 		requestTx.ForkId = uint64(clBlock[0].GetForkId())
 	} else {
-		requestTx.ForkId = uint64(fork.forkId)
+		requestTx.ForkId = uint64(fork.ForkId)
 	}
 
 	return requestTx, nil
@@ -168,12 +169,12 @@ func (ci *ConsolidationIndexer) parseRequestLog(log *types.Log) *dbtypes.Consoli
 	// get the validator indices for the source and target pubkeys
 	var sourceIndex, targetIndex *uint64
 
-	if index, found := ci.indexerCtx.beaconIndexer.GetValidatorIndexByPubkey(phase0.BLSPubKey(sourcePubkey)); found {
+	if index, found := ci.indexerCtx.BeaconIndexer.GetValidatorIndexByPubkey(phase0.BLSPubKey(sourcePubkey)); found {
 		indexNum := uint64(index)
 		sourceIndex = &indexNum
 	}
 
-	if index, found := ci.indexerCtx.beaconIndexer.GetValidatorIndexByPubkey(phase0.BLSPubKey(targetPubkey)); found {
+	if index, found := ci.indexerCtx.BeaconIndexer.GetValidatorIndexByPubkey(phase0.BLSPubKey(targetPubkey)); found {
 		indexNum := uint64(index)
 		targetIndex = &indexNum
 	}
@@ -228,7 +229,7 @@ func (ds *ConsolidationIndexer) matchBlockRange(fromBlock uint64, toBlock uint64
 			}
 
 			// check if the consolidation request is from a parent fork
-			parentForkIds := ds.indexerCtx.beaconIndexer.GetParentForkIds(beacon.ForkKey(consolidationRequest.ForkId))
+			parentForkIds := ds.indexerCtx.BeaconIndexer.GetParentForkIds(beacon.ForkKey(consolidationRequest.ForkId))
 			isParentFork := func(forkId uint64) bool {
 				if forkId == consolidationRequest.ForkId {
 					return true

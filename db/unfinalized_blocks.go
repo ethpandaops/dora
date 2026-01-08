@@ -12,16 +12,16 @@ func InsertUnfinalizedBlock(block *dbtypes.UnfinalizedBlock, tx *sqlx.Tx) error 
 	_, err := tx.Exec(EngineQuery(map[dbtypes.DBEngineType]string{
 		dbtypes.DBEnginePgsql: `
 			INSERT INTO unfinalized_blocks (
-				root, slot, header_ver, header_ssz, block_ver, block_ssz, payload_ver, payload_ssz, status, fork_id, recv_delay, min_exec_time, max_exec_time, exec_times
-			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+				root, slot, header_ver, header_ssz, block_ver, block_ssz, payload_ver, payload_ssz, status, fork_id, recv_delay, min_exec_time, max_exec_time, exec_times, block_uid
+			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 			ON CONFLICT (root) DO NOTHING`,
 		dbtypes.DBEngineSqlite: `
 			INSERT OR IGNORE INTO unfinalized_blocks (
-				root, slot, header_ver, header_ssz, block_ver, block_ssz, payload_ver, payload_ssz, status, fork_id, recv_delay, min_exec_time, max_exec_time, exec_times
-			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+				root, slot, header_ver, header_ssz, block_ver, block_ssz, payload_ver, payload_ssz, status, fork_id, recv_delay, min_exec_time, max_exec_time, exec_times, block_uid
+			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
 	}),
 		block.Root, block.Slot, block.HeaderVer, block.HeaderSSZ, block.BlockVer, block.BlockSSZ, block.PayloadVer, block.PayloadSSZ, block.Status, block.ForkId, block.RecvDelay,
-		block.MinExecTime, block.MaxExecTime, block.ExecTimes,
+		block.MinExecTime, block.MaxExecTime, block.ExecTimes, block.BlockUid,
 	)
 	if err != nil {
 		return err
@@ -101,7 +101,7 @@ func GetUnfinalizedBlocks(filter *dbtypes.UnfinalizedBlockFilter) []*dbtypes.Unf
 	var sql strings.Builder
 	args := []any{}
 
-	fmt.Fprint(&sql, `SELECT root, slot, status, fork_id, header_ver, header_ssz, recv_delay, min_exec_time, max_exec_time, exec_times`)
+	fmt.Fprint(&sql, `SELECT root, slot, status, fork_id, header_ver, header_ssz, recv_delay, min_exec_time, max_exec_time, exec_times, block_uid`)
 
 	if filter == nil || filter.WithBody {
 		fmt.Fprint(&sql, `, block_ver, block_ssz`)
@@ -138,7 +138,7 @@ func StreamUnfinalizedBlocks(slot uint64, cb func(block *dbtypes.UnfinalizedBloc
 	var sql strings.Builder
 	args := []any{slot}
 
-	fmt.Fprint(&sql, `SELECT root, slot, header_ver, header_ssz, block_ver, block_ssz, payload_ver, payload_ssz, status, fork_id, recv_delay, min_exec_time, max_exec_time, exec_times FROM unfinalized_blocks WHERE slot >= $1`)
+	fmt.Fprint(&sql, `SELECT root, slot, header_ver, header_ssz, block_ver, block_ssz, payload_ver, payload_ssz, status, fork_id, recv_delay, min_exec_time, max_exec_time, exec_times, block_uid FROM unfinalized_blocks WHERE slot >= $1`)
 
 	rows, err := ReaderDb.Query(sql.String(), args...)
 	if err != nil {
@@ -150,7 +150,7 @@ func StreamUnfinalizedBlocks(slot uint64, cb func(block *dbtypes.UnfinalizedBloc
 		block := dbtypes.UnfinalizedBlock{}
 		err := rows.Scan(
 			&block.Root, &block.Slot, &block.HeaderVer, &block.HeaderSSZ, &block.BlockVer, &block.BlockSSZ, &block.PayloadVer, &block.PayloadSSZ, &block.Status, &block.ForkId, &block.RecvDelay,
-			&block.MinExecTime, &block.MaxExecTime, &block.ExecTimes,
+			&block.MinExecTime, &block.MaxExecTime, &block.ExecTimes, &block.BlockUid,
 		)
 		if err != nil {
 			logger.Errorf("Error while scanning unfinalized block: %v", err)
@@ -178,7 +178,7 @@ func GetUnfinalizedBlock(root []byte, withHeader bool, withBody bool, withPayloa
 		fmt.Fprint(&sql, `, payload_ver, payload_ssz`)
 	}
 
-	fmt.Fprint(&sql, `, status, fork_id, recv_delay, min_exec_time, max_exec_time, exec_times`)
+	fmt.Fprint(&sql, `, status, fork_id, recv_delay, min_exec_time, max_exec_time, exec_times, block_uid`)
 
 	fmt.Fprint(&sql, `FROM unfinalized_blocks WHERE root = $1`)
 

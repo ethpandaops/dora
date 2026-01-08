@@ -456,6 +456,20 @@ func (bc *BeaconClient) GetBlobSidecarsByBlockroot(ctx context.Context, blockroo
 	return result.Data, nil
 }
 
+func (bc *BeaconClient) GetBlobsByBlockroot(ctx context.Context, blockroot []byte) ([]*deneb.Blob, error) {
+	provider, isProvider := bc.clientSvc.(eth2client.BlobsProvider)
+	if !isProvider {
+		return nil, fmt.Errorf("get beacon block blobs not supported")
+	}
+	result, err := provider.Blobs(ctx, &api.BlobsOpts{
+		Block: fmt.Sprintf("0x%x", blockroot),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result.Data, nil
+}
+
 func (bc *BeaconClient) GetForkState(ctx context.Context, stateRef string) (*phase0.Fork, error) {
 	provider, isProvider := bc.clientSvc.(eth2client.ForkProvider)
 	if !isProvider {

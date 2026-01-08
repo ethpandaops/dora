@@ -23,6 +23,7 @@ import (
 type Block struct {
 	Root                  phase0.Root
 	Slot                  phase0.Slot
+	BlockUID              uint64
 	dynSsz                *dynssz.DynSsz
 	parentRoot            *phase0.Root
 	dependentRoot         *phase0.Root
@@ -69,10 +70,11 @@ type BlockBodyIndex struct {
 }
 
 // newBlock creates a new Block instance.
-func newBlock(dynSsz *dynssz.DynSsz, root phase0.Root, slot phase0.Slot) *Block {
+func newBlock(dynSsz *dynssz.DynSsz, root phase0.Root, slot phase0.Slot, blockUID uint64) *Block {
 	return &Block{
 		Root:                 root,
 		Slot:                 slot,
+		BlockUID:             blockUID,
 		dynSsz:               dynSsz,
 		seenMap:              make(map[uint16]*Client),
 		headerChan:           make(chan bool),
@@ -486,6 +488,7 @@ func (block *Block) buildUnfinalizedBlock(compress bool) (*dbtypes.UnfinalizedBl
 		MinExecTime: uint32(block.minExecutionTime),
 		MaxExecTime: uint32(block.maxExecutionTime),
 		ExecTimes:   execTimesSSZ,
+		BlockUid:    block.BlockUID,
 	}, nil
 }
 
@@ -511,6 +514,7 @@ func (block *Block) buildOrphanedBlock(compress bool) (*dbtypes.OrphanedBlock, e
 		HeaderSSZ: headerSSZ,
 		BlockVer:  blockVer,
 		BlockSSZ:  blockSSZ,
+		BlockUid:  block.BlockUID,
 	}
 
 	if block.executionPayload != nil {

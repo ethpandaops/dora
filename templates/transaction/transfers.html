@@ -1,0 +1,65 @@
+{{ define "transfers" }}
+<div class="card mt-0 border-top-0 rounded-top-0">
+  <div class="card-body p-0">
+    {{ if gt (len .TokenTransfers) 0 }}
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead>
+          <tr>
+            <th class="px-3">Token Address</th>
+            <th>Token Name</th>
+            <th>From</th>
+            <th>To</th>
+            <th class="text-end">Amount</th>
+            <th class="text-center px-3">Type</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{ range .TokenTransfers }}
+          <tr>
+            <td class="text-monospace px-3">
+              {{ formatEthAddressShortLink .Contract true }}
+            </td>
+            <td>
+              {{ if .TokenName }}{{ .TokenName }}{{ else if .TokenSymbol }}{{ .TokenSymbol }}{{ else }}<span class="text-muted">-</span>{{ end }}
+            </td>
+            <td class="text-monospace">
+              {{ formatEthAddressShortLink .FromAddr .FromIsContract }}
+            </td>
+            <td class="text-monospace">
+              {{ formatEthAddressShortLink .ToAddr .ToIsContract }}
+            </td>
+            <td class="text-end text-nowrap">
+              {{ if eq .TokenType 2 }}
+              {{ if .TokenSymbol }}{{ .TokenSymbol }}{{ else }}NFT{{ end }} #{{ if gt (len .TokenIndex) 0 }}{{ formatNFTTokenID .TokenIndex }}{{ else }}0{{ end }}
+              {{ else if eq .TokenType 3 }}
+              {{ formatNFTTokenID .AmountRaw }}x {{ if .TokenSymbol }}{{ .TokenSymbol }}{{ else }}NFT{{ end }} #{{ if gt (len .TokenIndex) 0 }}{{ formatNFTTokenID .TokenIndex }}{{ else }}0{{ end }}
+              {{ else }}
+              {{ formatTokenAmount .Amount .TokenSymbol }}
+              {{ end }}
+            </td>
+            <td class="text-center px-3">
+              {{ if eq .TokenType 1 }}
+              <span class="badge text-bg-primary">ERC20</span>
+              {{ else if eq .TokenType 2 }}
+              <span class="badge text-bg-info">ERC721</span>
+              {{ else if eq .TokenType 3 }}
+              <span class="badge text-bg-warning">ERC1155</span>
+              {{ else }}
+              <span class="badge text-bg-secondary">Unknown</span>
+              {{ end }}
+            </td>
+          </tr>
+          {{ end }}
+        </tbody>
+      </table>
+    </div>
+    {{ else }}
+    <div class="p-4 text-center text-muted">
+      <i class="fas fa-inbox fa-2x mb-2"></i>
+      <p>No token transfers found for this transaction</p>
+    </div>
+    {{ end }}
+  </div>
+</div>
+{{ end }}

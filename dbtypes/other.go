@@ -27,6 +27,7 @@ type BlockHead struct {
 	Root       []byte `db:"root"`
 	ParentRoot []byte `db:"parent_root"`
 	ForkId     uint64 `db:"fork_id"`
+	BlockUid   uint64 `db:"block_uid"`
 }
 
 type AssignedBlob struct {
@@ -62,7 +63,10 @@ type BlockFilter struct {
 	MaxBlobCount         *uint64
 	Slot                 *uint64  // Filter by specific slot number
 	BlockRoot            []byte   // Filter by specific block root
+	BlockUids            []uint64 // Filter by specific block UIDs (slot << 16 | unique_index)
 	ForkIds              []uint64 // Filter by fork IDs
+	EthBlockNumber       *uint64  // Filter by EL block number
+	EthBlockHash         []byte   // Filter by EL block hash
 }
 
 type MevBlockFilter struct {
@@ -205,4 +209,57 @@ type ValidatorFilter struct {
 	OrderBy ValidatorOrder
 	Limit   uint64
 	Offset  uint64
+}
+
+// EL Explorer filters
+
+type ElTransactionFilter struct {
+	FromID     uint64
+	ToID       uint64
+	Reverted   *bool
+	MinGasUsed *uint64
+	MaxGasUsed *uint64
+}
+
+type ElTxEventFilter struct {
+	TxHash   []byte
+	SourceID uint64
+	Topic1   []byte
+	Topic2   []byte
+	Topic3   []byte
+}
+
+type ElAccountFilter struct {
+	FunderID   uint64
+	IsContract *bool
+	MinFunded  uint64
+	MaxFunded  uint64
+}
+
+type ElTokenFilter struct {
+	Contract []byte
+	Name     string
+	Symbol   string
+}
+
+type ElBalanceFilter struct {
+	TokenID    *uint64
+	MinBalance *float64
+	MaxBalance *float64
+}
+
+type ElTokenTransferFilter struct {
+	TokenID   *uint64
+	FromID    uint64
+	ToID      uint64
+	MinAmount *float64
+	MaxAmount *float64
+}
+
+type ElWithdrawalFilter struct {
+	AccountID uint64
+	Type      *uint8 // 0=withdrawal, 1=fee_recipient
+	Validator *uint64
+	MinAmount *float64
+	MaxAmount *float64
 }

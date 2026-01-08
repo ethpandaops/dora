@@ -224,6 +224,7 @@
   function initHeaderSearch() {
     var searchEl = jQuery("#explorer-search");
     let requestNum = 9
+    var executionIndexerEnabled = searchEl.data("execution-indexer-enabled") === true || searchEl.attr("data-execution-indexer-enabled") === "true" || searchEl.data("executionIndexerEnabled") === true;
 
     var prepareQueryFn = function(query, settings) {
       settings.url += encodeURIComponent(query);
@@ -302,15 +303,37 @@
         maxPendingRequests: requestNum,
       },
     });
+    var bhAddresses = null;
+    var bhTransactions = null;
+    if (executionIndexerEnabled) {
+      bhAddresses = new Bloodhound({
+        datumTokenizer: Bloodhound.tokenizers.whitespace,
+        queryTokenizer: Bloodhound.tokenizers.whitespace,
+        identify: function (obj) {
+          return obj.address
+        },
+        remote: {
+          url: "/search/addresses?q=",
+          prepare: prepareQueryFn,
+          maxPendingRequests: requestNum,
+        },
+      });
+      bhTransactions = new Bloodhound({
+        datumTokenizer: Bloodhound.tokenizers.whitespace,
+        queryTokenizer: Bloodhound.tokenizers.whitespace,
+        identify: function (obj) {
+          return obj.tx_hash
+        },
+        remote: {
+          url: "/search/transactions?q=",
+          prepare: prepareQueryFn,
+          maxPendingRequests: requestNum,
+        },
+      });
+    }
 
-
-    searchEl.typeahead(
-      {
-        minLength: 1,
-        highlight: true,
-        hint: false,
-        autoselect: false,
-      },
+    // Build datasets array conditionally
+    var datasets = [
       {
         limit: 5,
         name: "slot",
@@ -392,7 +415,57 @@
           },
         },
       }
-    )
+    ];
+
+    // Add execution indexer datasets conditionally
+    if (executionIndexerEnabled && bhAddresses && bhTransactions) {
+      datasets.push({
+        limit: 5,
+        name: "address",
+        source: bhAddresses,
+        display: "address",
+        templates: {
+          header: '<h3 class="h5">Addresses:</h3>',
+          suggestion: function (data) {
+            var badges = "";
+            if (data.is_contract) {
+              badges += `<span class="search-cell"><span class="badge rounded-pill text-bg-warning">Contract</span></span>`;
+            }
+            if (!data.has_data) {
+              badges += `<span class="search-cell"><span class="badge rounded-pill text-bg-secondary">New</span></span>`;
+            }
+            return `<div class="text-monospace"><div class="search-table"><span class="search-cell search-truncate">${data.address}</span>${badges}</div></div>`;
+          },
+        },
+      });
+      datasets.push({
+        limit: 5,
+        name: "transaction",
+        source: bhTransactions,
+        display: "tx_hash",
+        templates: {
+          header: '<h3 class="h5">Transactions:</h3>',
+          suggestion: function (data) {
+            var status = "";
+            if (data.reverted) {
+              status = `<span class="search-cell"><span class="badge rounded-pill text-bg-danger">Failed</span></span>`;
+            }
+            var blockInfo = data.block_number ? `<span class="search-cell text-muted">Block ${data.block_number}</span>` : "";
+            return `<div class="text-monospace"><div class="search-table"><span class="search-cell search-truncate">${data.tx_hash}</span>${blockInfo}${status}</div></div>`;
+          },
+        },
+      });
+    }
+
+    // Initialize typeahead with all datasets
+    searchEl.typeahead.apply(searchEl, [
+      {
+        minLength: 1,
+        highlight: true,
+        hint: false,
+        autoselect: false,
+      }
+    ].concat(datasets))
 
     searchEl.on("input", function (input) {
       $(".tt-suggestion").first().addClass("tt-cursor")
@@ -427,6 +500,10 @@
           var el = document.createElement("textarea")
           el.innerHTML = sug.name
           window.location = "/slots/filtered?f&f.missing=1&f.orphaned=1&f.pname=" + encodeURIComponent(el.value)
+      } else if (sug.address !== undefined) {
+        window.location = "/address/" + sug.address
+      } else if (sug.tx_hash !== undefined) {
+        window.location = "/tx/" + sug.tx_hash
       } else {
         console.log("invalid typeahead-selection", sug)
       }

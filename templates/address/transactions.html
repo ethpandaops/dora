@@ -1,0 +1,132 @@
+{{ define "transactions" }}
+<div class="card">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead>
+          <tr>
+            <th>Txn Hash</th>
+            <th>Block</th>
+            <th data-timecol="duration">Age</th>
+            <th>Method</th>
+            <th>From</th>
+            <th></th>
+            <th>To</th>
+            <th>Value</th>
+            <th>Txn Fee</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{ if gt .TransactionCount 0 }}
+            {{ range .Transactions }}
+              <tr>
+                <td class="text-monospace">
+                  <a href="/tx/{{ formatHexBytes .TxHash }}" data-bs-toggle="tooltip" title="{{ formatHexBytes .TxHash }}">{{ formatEthHashShort .TxHash 6 }}</a>
+                  <i class="fa fa-copy text-muted ms-1" role="button" data-bs-toggle="tooltip" title="Copy transaction hash" data-clipboard-text="{{ formatHexBytes .TxHash }}"></i>
+                </td>
+                <td>
+                  {{ if gt (len .BlockRoot) 0 }}
+                    <a href="/slot/0x{{ printf "%x" .BlockRoot }}">{{ formatAddCommas .BlockNumber }}</a>
+                  {{ else }}
+                    {{ formatAddCommas .BlockNumber }}
+                  {{ end }}
+                </td>
+                <td data-timer="{{ .BlockTime.Unix }}">
+                  <span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ .BlockTime }}">{{ formatRecentTimeShort .BlockTime }}</span>
+                </td>
+                <td>
+                  {{ if .MethodName }}
+                    <span class="badge text-bg-secondary">{{ .MethodName }}</span>
+                  {{ else }}
+                    <span class="text-muted">-</span>
+                  {{ end }}
+                </td>
+                <td class="text-monospace">
+                  {{ if eq (printf "%x" .FromAddr) (printf "%x" $.Address) }}
+                    {{ formatEthAddressShort .FromAddr }}
+                  {{ else }}
+                    {{ formatEthAddressShortLink .FromAddr .FromIsContract }}
+                  {{ end }}
+                  <i class="fa fa-copy text-muted ms-1" role="button" data-bs-toggle="tooltip" title="Copy address" data-clipboard-text="{{ formatEthAddressFull .FromAddr }}"></i>
+                </td>
+                <td class="text-center">
+                  {{ if .IsOutgoing }}
+                    <span class="badge text-bg-warning">OUT</span>
+                  {{ else }}
+                    <span class="badge text-bg-success">IN</span>
+                  {{ end }}
+                </td>
+                <td class="text-monospace">
+                  {{ if .HasTo }}
+                    {{ if eq (printf "%x" .ToAddr) (printf "%x" $.Address) }}
+                      {{ formatEthAddressShort .ToAddr }}
+                    {{ else }}
+                      {{ formatEthAddressShortLink .ToAddr .ToIsContract }}
+                    {{ end }}
+                    <i class="fa fa-copy text-muted ms-1" role="button" data-bs-toggle="tooltip" title="Copy address" data-clipboard-text="{{ formatEthAddressFull .ToAddr }}"></i>
+                  {{ else }}
+                    {{ formatContractCreationLink .FromAddr .Nonce }}
+                  {{ end }}
+                </td>
+                <td>{{ formatTransactionValue .Amount }}</td>
+                <td>{{ formatTransactionValue .TxFee }}</td>
+                <td class="text-nowrap">
+                  {{ if .Reverted }}
+                    <span class="badge text-bg-danger" data-bs-toggle="tooltip" title="Transaction execution failed">Reverted</span>
+                  {{ else }}
+                    <span class="badge text-bg-success" data-bs-toggle="tooltip" title="Transaction executed successfully">Success</span>
+                  {{ end }}
+                  {{ if .BlockOrphaned }}
+                    <span class="badge text-bg-info" data-bs-toggle="tooltip" title="Block was orphaned">Orphaned</span>
+                  {{ else }}
+                    <span class="badge text-bg-success" data-bs-toggle="tooltip" title="Block is canonical">Included</span>
+                  {{ end }}
+                </td>
+              </tr>
+            {{ end }}
+          {{ else }}
+            <tr>
+              <td colspan="10" class="text-center py-4 text-muted">
+                <i class="fas fa-inbox fa-2x mb-2"></i>
+                <br>No transactions found
+              </td>
+            </tr>
+          {{ end }}
+        </tbody>
+      </table>
+    </div>
+
+    {{ if gt .TxTotalPages 1 }}
+    <div class="card-footer d-flex justify-content-between align-items-center">
+      <div>
+        Showing {{ formatAddCommas .TxFirstItem }} - {{ formatAddCommas .TxLastItem }} of {{ if .TxCountCapped }}more than {{ end }}{{ formatAddCommas .TransactionCount }}
+      </div>
+      <nav aria-label="Transaction pagination">
+        <ul class="pagination pagination-sm mb-0">
+          {{ if gt .TxPageIndex 1 }}
+            <li class="page-item">
+              <a class="page-link" href="?v=transactions&p=1&c={{ .TxPageSize }}">&laquo;</a>
+            </li>
+            <li class="page-item">
+              <a class="page-link" href="?v=transactions&p={{ subUI64 .TxPageIndex 1 }}&c={{ .TxPageSize }}">&lsaquo;</a>
+            </li>
+          {{ end }}
+          <li class="page-item disabled">
+            <span class="page-link">{{ .TxPageIndex }} / {{ .TxTotalPages }}</span>
+          </li>
+          {{ if lt .TxPageIndex .TxTotalPages }}
+            <li class="page-item">
+              <a class="page-link" href="?v=transactions&p={{ addUI64 .TxPageIndex 1 }}&c={{ .TxPageSize }}">&rsaquo;</a>
+            </li>
+            <li class="page-item">
+              <a class="page-link" href="?v=transactions&p={{ .TxTotalPages }}&c={{ .TxPageSize }}">&raquo;</a>
+            </li>
+          {{ end }}
+        </ul>
+      </nav>
+    </div>
+    {{ end }}
+  </div>
+</div>
+{{ end }}

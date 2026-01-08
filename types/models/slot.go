@@ -232,8 +232,8 @@ type SlotPageBlobDetails struct {
 type SlotPageTransaction struct {
 	Index         uint64  `json:"index"`
 	Hash          []byte  `json:"hash"`
-	From          string  `json:"from"`
-	To            string  `json:"to"`
+	From          []byte  `json:"from"`
+	To            []byte  `json:"to"`
 	Value         float64 `json:"value"`
 	Data          []byte  `json:"data"`
 	DataLen       uint64  `json:"datalen"`
@@ -242,6 +242,15 @@ type SlotPageTransaction struct {
 	FuncName      string  `json:"func_name"`
 	FuncSig       string  `json:"func_sig"`
 	Type          uint64  `json:"type"`
+	TypeName      string  `json:"type_name"`
+
+	// EL-enriched data (only available when execution indexer is enabled)
+	HasElData   bool    `json:"has_el_data"`
+	Reverted    bool    `json:"reverted"`
+	GasUsed     uint64  `json:"gas_used"`
+	GasLimit    uint64  `json:"gas_limit"`
+	TxFee       float64 `json:"tx_fee"`        // Transaction fee in ETH
+	EffGasPrice float64 `json:"eff_gas_price"` // Effective gas price in Gwei
 }
 
 type SlotPageDepositRequest struct {

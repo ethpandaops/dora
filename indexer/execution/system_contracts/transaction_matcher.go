@@ -1,4 +1,4 @@
-package execution
+package system_contracts
 
 import (
 	"fmt"
@@ -8,11 +8,12 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/ethpandaops/dora/db"
+	"github.com/ethpandaops/dora/indexer/execution"
 )
 
 // transactionMatcher is used to match transactions to requests in the database
 type transactionMatcher[MatchType any] struct {
-	indexer *IndexerCtx
+	indexer *execution.IndexerCtx
 	logger  logrus.FieldLogger
 	options *transactionMatcherOptions[MatchType]
 	state   *transactionMatcherState
@@ -34,7 +35,7 @@ type transactionMatcherState struct {
 }
 
 // newTransactionMatcher creates a new transaction matcher
-func newTransactionMatcher[MatchType any](indexer *IndexerCtx, logger logrus.FieldLogger, options *transactionMatcherOptions[MatchType]) *transactionMatcher[MatchType] {
+func newTransactionMatcher[MatchType any](indexer *execution.IndexerCtx, logger logrus.FieldLogger, options *transactionMatcherOptions[MatchType]) *transactionMatcher[MatchType] {
 	ci := &transactionMatcher[MatchType]{
 		indexer: indexer,
 		logger:  logger,
@@ -68,11 +69,11 @@ func (ds *transactionMatcher[MatchType]) runTransactionMatcher(indexerBlock uint
 	}
 
 	// check if the synchronization is running and if so, if its ahead of the block range we want to match
-	_, syncEpoch := ds.indexer.beaconIndexer.GetSynchronizerState()
-	indexerFinalizedEpoch, _ := ds.indexer.beaconIndexer.GetBlockCacheState()
+	_, syncEpoch := ds.indexer.BeaconIndexer.GetSynchronizerState()
+	indexerFinalizedEpoch, _ := ds.indexer.BeaconIndexer.GetBlockCacheState()
 	if syncEpoch < indexerFinalizedEpoch {
 		// synchronization is behind head, check if our block range is synced
-		syncSlot := ds.indexer.chainState.EpochToSlot(syncEpoch)
+		syncSlot := ds.indexer.ChainState.EpochToSlot(syncEpoch)
 		syncBlockRoot := db.GetHighestRootBeforeSlot(uint64(syncSlot), false)
 		if syncBlockRoot == nil {
 			// no block found, not synced at all
@@ -167,8 +168,8 @@ func (ds *transactionMatcher[_]) persistState(tx *sqlx.Tx) error {
 func (ds *transactionMatcher[_]) getFinalizedBlockNumber() uint64 {
 	var finalizedBlockNumber uint64
 
-	finalizedEpoch, finalizedRoot := ds.indexer.chainState.GetFinalizedCheckpoint()
-	if finalizedBlock := ds.indexer.beaconIndexer.GetBlockByRoot(finalizedRoot); finalizedBlock != nil {
+	finalizedEpoch, finalizedRoot := ds.indexer.ChainState.GetFinalizedCheckpoint()
+	if finalizedBlock := ds.indexer.BeaconIndexer.GetBlockByRoot(finalizedRoot); finalizedBlock != nil {
 		if indexVals := finalizedBlock.GetBlockIndex(); indexVals != nil {
 			finalizedBlockNumber = indexVals.ExecutionNumber
 		}
@@ -182,7 +183,7 @@ func (ds *transactionMatcher[_]) getFinalizedBlockNumber() uint64 {
 	}
 
 	for {
-		indexerFinalizedEpoch, _ := ds.indexer.beaconIndexer.GetBlockCacheState()
+		indexerFinalizedEpoch, _ := ds.indexer.BeaconIndexer.GetBlockCacheState()
 		if indexerFinalizedEpoch >= finalizedEpoch {
 			break
 		}

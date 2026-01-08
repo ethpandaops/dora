@@ -4,33 +4,34 @@ import "html/template"
 
 // PageData is a struct to hold web page data
 type PageData struct {
-	Active                string
-	Meta                  *Meta
-	Data                  interface{}
-	Version               string
-	BuildTime             string
-	Year                  int
-	ExplorerLogo          string
-	ExplorerTitle         string
-	ExplorerSubtitle      string
-	ChainSlotsPerEpoch    uint64
-	ChainSecondsPerSlot   uint64
-	ChainGenesisTimestamp uint64
-	CurrentEpoch          uint64
-	LatestFinalizedEpoch  uint64
-	CurrentSlot           uint64
-	FinalizationDelay     uint64
-	IsReady               bool
-	Mainnet               bool
-	DepositContract       string
-	InfoBanner            *template.HTML
-	ClientsUpdated        bool
-	Lang                  string
-	NoAds                 bool
-	Debug                 bool
-	DebugTemplates        []string
-	MainMenuItems         []MainMenuItem
-	ApiEnabled            bool
+	Active                  string
+	Meta                    *Meta
+	Data                    interface{}
+	Version                 string
+	BuildTime               string
+	Year                    int
+	ExplorerLogo            string
+	ExplorerTitle           string
+	ExplorerSubtitle        string
+	ChainSlotsPerEpoch      uint64
+	ChainSecondsPerSlot     uint64
+	ChainGenesisTimestamp   uint64
+	CurrentEpoch            uint64
+	LatestFinalizedEpoch    uint64
+	CurrentSlot             uint64
+	FinalizationDelay       uint64
+	IsReady                 bool
+	Mainnet                 bool
+	DepositContract         string
+	InfoBanner              *template.HTML
+	ClientsUpdated          bool
+	Lang                    string
+	NoAds                   bool
+	Debug                   bool
+	DebugTemplates          []string
+	MainMenuItems           []MainMenuItem
+	ApiEnabled              bool
+	ExecutionIndexerEnabled bool
 }
 
 type MainMenuItem struct {

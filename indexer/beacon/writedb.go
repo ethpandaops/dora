@@ -306,6 +306,7 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 		BlobCount:             uint64(len(blobKzgCommitments)),
 		RecvDelay:             block.recvDelay,
 		PayloadStatus:         payloadStatus,
+		BlockUid:              block.BlockUID,
 	}
 
 	blockSize, err := getBlockSize(block.dynSsz, blockBody)

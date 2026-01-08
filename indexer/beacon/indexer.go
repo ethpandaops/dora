@@ -62,6 +62,9 @@ type Indexer struct {
 	finalitySubscription  *utils.Subscription[*v1.Finality]
 	wallclockSubscription *utils.Subscription[*ethwallclock.Slot]
 
+	// dispatchers
+	blockDispatcher *utils.Dispatcher[*Block]
+
 	// canonical head state
 	canonicalHeadMutex   sync.Mutex
 	canonicalHead        *Block
@@ -103,6 +106,8 @@ func NewIndexer(logger logrus.FieldLogger, consensusPool *consensus.Pool) *Index
 
 		clients:              make([]*Client, 0),
 		backfillCompleteChan: make(chan bool),
+
+		blockDispatcher: &utils.Dispatcher[*Block]{},
 	}
 
 	indexer.blockCache = newBlockCache(indexer)
@@ -129,6 +134,10 @@ func (indexer *Indexer) SetExecutionTimeProvider(executionTimeProvider Execution
 
 func (indexer *Indexer) GetActivityHistoryLength() uint16 {
 	return indexer.activityHistoryLength
+}
+
+func (indexer *Indexer) SubscribeBlockEvent(capacity int, blocking bool) *utils.Subscription[*Block] {
+	return indexer.blockDispatcher.Subscribe(capacity, blocking)
 }
 
 func (indexer *Indexer) getMinInMemoryEpoch() phase0.Epoch {
@@ -332,8 +341,8 @@ func (indexer *Indexer) StartIndexer() {
 	restoredPayloadCount := 0
 	t1 = time.Now()
 	err = db.StreamUnfinalizedBlocks(uint64(finalizedSlot), func(dbBlock *dbtypes.UnfinalizedBlock) {
-
 		block, _ := indexer.blockCache.createOrGetBlock(phase0.Root(dbBlock.Root), phase0.Slot(dbBlock.Slot))
+		block.BlockUID = dbBlock.BlockUid
 		block.forkId = ForkKey(dbBlock.ForkId)
 		block.forkChecked = true
 		block.processingStatus = dbBlock.Status

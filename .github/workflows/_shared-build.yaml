@@ -57,7 +57,7 @@ jobs:
         node-version: 20.x
     - name: Cache node-modules for UI package
       id: cache-npm
-      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      uses: actions/cache@9255dc7a253b0ccc959486e2bca901246202afeb # v5.0.1
       with:
         path: ./ui-package/node_modules
         key: uipackage-npm-${{ runner.os }}-${{ hashFiles('./ui-package/package-lock.json') }}
@@ -72,7 +72,7 @@ jobs:
 
     # upload artifacts
     - name: "Upload artifact: ui-package"
-      uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+      uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
       with:
         path: ./ui-package/dist/*
         name: ui-package
@@ -99,7 +99,7 @@ jobs:
 
     # download UI build artifacts
     - name: Download UI build artifacts
-      uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+      uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
       with:
         name: ui-package
         path: ./ui-package/dist
@@ -113,7 +113,7 @@ jobs:
 
     # upload artifacts
     - name: "Upload artifact: explorer_linux_amd64"
-      uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+      uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
       with:
         path: ./bin/*
         name: explorer_linux_amd64
@@ -146,7 +146,7 @@ jobs:
 
     # download UI build artifacts
     - name: Download UI build artifacts
-      uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+      uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
       with:
         name: ui-package
         path: ./ui-package/dist
@@ -160,7 +160,7 @@ jobs:
 
     # upload artifacts
     - name: "Upload artifact: explorer_linux_arm64"
-      uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+      uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
       with:
         path: ./bin/*
         name: explorer_linux_arm64
@@ -187,7 +187,7 @@ jobs:
 
     # download UI build artifacts
     - name: Download UI build artifacts
-      uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+      uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
       with:
         name: ui-package
         path: ./ui-package/dist
@@ -201,7 +201,7 @@ jobs:
 
     # upload artifacts
     - name: "Upload artifact: explorer_windows_amd64"
-      uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+      uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
       with:
         path: ./bin/*
         name: explorer_windows_amd64
@@ -228,7 +228,7 @@ jobs:
 
     # download UI build artifacts
     - name: Download UI build artifacts
-      uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+      uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
       with:
         name: ui-package
         path: ./ui-package/dist
@@ -242,7 +242,7 @@ jobs:
 
     # upload artifacts
     - name: "Upload artifact: explorer_darwin_amd64"
-      uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+      uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
       with:
         path: ./bin/*
         name: explorer_darwin_amd64
@@ -269,7 +269,7 @@ jobs:
 
     # download UI build artifacts
     - name: Download UI build artifacts
-      uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+      uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
       with:
         name: ui-package
         path: ./ui-package/dist
@@ -283,7 +283,7 @@ jobs:
 
     # upload artifacts
     - name: "Upload artifact: explorer_darwin_arm64"
-      uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+      uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
       with:
         path: ./bin/*
         name: explorer_darwin_arm64
@@ -304,7 +304,7 @@ jobs:
 
     # prepare docker
     - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+      uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
     - name: Login to Docker Hub
       uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
       with:
@@ -313,12 +313,12 @@ jobs:
 
     # download build artifacts
     - name: Download UI build artifacts
-      uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+      uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
       with:
         name: ui-package
         path: ./ui-package/dist
     - name: Download build artifacts
-      uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+      uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
       with:
         name: explorer_linux_amd64
         path: ./bin
@@ -358,7 +358,7 @@ jobs:
     - name: Set up Docker QEMU
       uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
     - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+      uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
     - name: Login to Docker Hub
       uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
       with:
@@ -367,12 +367,12 @@ jobs:
 
     # download build artifacts
     - name: Download UI build artifacts
-      uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+      uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
       with:
         name: ui-package
         path: ./ui-package/dist
     - name: Download build artifacts
-      uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+      uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
       with:
         name: explorer_linux_arm64
         path: ./bin
@@ -410,7 +410,7 @@ jobs:
 
     # prepare docker
     - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+      uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
     - name: Login to Docker Hub
       uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
       with:
@@ -445,7 +445,7 @@ jobs:
 
     # prepare docker
     - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+      uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
     - name: Login to Docker Hub
       uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
       with:
