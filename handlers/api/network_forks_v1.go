@@ -112,7 +112,8 @@ func buildNetworkForks(chainState *consensus.ChainState) []*APINetworkForkInfo {
 	// Helper function to add consensus fork
 	addConsensusFork := func(name string, forkEpoch *uint64, forkVersion phase0.Version) {
 		if forkEpoch != nil && *forkEpoch < uint64(18446744073709551615) {
-			forkDigest := chainState.GetForkDigest(forkVersion, nil)
+			blobParams := chainState.GetBlobScheduleForEpoch(phase0.Epoch(*forkEpoch))
+			forkDigest := chainState.GetForkDigest(forkVersion, blobParams)
 			version := fmt.Sprintf("0x%x", forkVersion)
 			epoch := *forkEpoch
 			forks = append(forks, &APINetworkForkInfo{
@@ -135,6 +136,7 @@ func buildNetworkForks(chainState *consensus.ChainState) []*APINetworkForkInfo {
 	addConsensusFork("Deneb", specs.DenebForkEpoch, specs.DenebForkVersion)
 	addConsensusFork("Electra", specs.ElectraForkEpoch, specs.ElectraForkVersion)
 	addConsensusFork("Fulu", specs.FuluForkEpoch, specs.FuluForkVersion)
+	addConsensusFork("Gloas", specs.GloasForkEpoch, specs.GloasForkVersion)
 
 	// Add BPO forks from BLOB_SCHEDULE
 	for i, blobSchedule := range specs.BlobSchedule {

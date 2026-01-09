@@ -55,6 +55,7 @@ func GetTemplateFuncs() template.FuncMap {
 		"formatBaseFee":                FormatBaseFee,
 		"formatBlobFeeDifference":      FormatBlobFeeDifference,
 		"formatTransactionValue":       FormatTransactionValue,
+		"formatTransactionFee":         FormatTransactionFee,
 		"formatBitlist":                FormatBitlist,
 		"formatBitvectorValidators":    formatBitvectorValidators,
 		"formatParticipation":          FormatParticipation,
@@ -92,6 +93,9 @@ func GetTemplateFuncs() template.FuncMap {
 		"formatRecvDelay":              FormatRecvDelay,
 		"formatPercentageAlert":        formatPercentageAlert,
 		"formatAlertNumber":            formatAlertNumber,
+		"isSystemContract":             IsSystemContract,
+		"getSystemContractName":        GetSystemContractName,
+		"calculateBalanceDiff":         CalculateBalanceDiff,
 	}
 
 	for k, v := range customFuncs {
