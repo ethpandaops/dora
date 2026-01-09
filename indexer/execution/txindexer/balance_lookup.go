@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/lru"
 	"github.com/sirupsen/logrus"
 
 	"github.com/ethpandaops/dora/db"
@@ -19,6 +20,9 @@ const (
 
 	// balanceLookupCooldown is the minimum time between full RPC lookups for the same account.
 	balanceLookupCooldown = 10 * time.Minute
+
+	// lastLookupCacheSize is the size of the LRU cache for rate limiting.
+	lastLookupCacheSize = 1000
 )
 
 // BalanceLookupPriority defines the priority level for balance lookups.
@@ -32,14 +36,24 @@ const (
 )
 
 // BalanceLookupRequest represents a request to look up a balance.
+// AccountID can be 0 for addresses not yet in the database.
 type BalanceLookupRequest struct {
-	AccountID uint64
-	TokenID   uint64
-	Address   common.Address // Cached for RPC calls
+	AccountID uint64         // 0 if address not in DB
+	TokenID   uint64         // 0 for native ETH
+	Address   common.Address // Required for RPC calls
 	Contract  common.Address // Token contract (zero for native ETH)
 	Decimals  uint8          // Token decimals
 	Priority  BalanceLookupPriority
 	Timestamp time.Time // When request was added
+}
+
+// pendingKey is used to deduplicate pending lookups.
+// For known accounts (AccountID > 0), uses accountID + tokenID.
+// For unknown accounts (AccountID = 0), uses address + tokenID.
+type pendingKey struct {
+	accountID uint64
+	address   common.Address
+	tokenID   uint64
 }
 
 // BalanceLookupService manages balance lookup requests with priority queuing.
@@ -50,8 +64,8 @@ type BalanceLookupService struct {
 	mu             sync.Mutex
 	highPrioQueue  []*BalanceLookupRequest
 	lowPrioQueue   []*BalanceLookupRequest
-	pendingLookups map[uint64]map[uint64]*BalanceLookupRequest // [accountID][tokenID]
-	lastLookupTime map[uint64]time.Time                        // Rate limit: accountID -> last full lookup time
+	pendingLookups map[pendingKey]*BalanceLookupRequest
+	lastLookupTime *lru.Cache[common.Address, time.Time] // LRU cache for rate limiting by address
 }
 
 // NewBalanceLookupService creates a new balance lookup service.
@@ -61,35 +75,41 @@ func NewBalanceLookupService(logger logrus.FieldLogger, indexer *TxIndexer) *Bal
 		indexer:        indexer,
 		highPrioQueue:  make([]*BalanceLookupRequest, 0, 64),
 		lowPrioQueue:   make([]*BalanceLookupRequest, 0, 256),
-		pendingLookups: make(map[uint64]map[uint64]*BalanceLookupRequest, 128),
-		lastLookupTime: make(map[uint64]time.Time, 128),
+		pendingLookups: make(map[pendingKey]*BalanceLookupRequest, 128),
+		lastLookupTime: lru.NewCache[common.Address, time.Time](lastLookupCacheSize),
+	}
+}
+
+// makePendingKey creates a dedup key for a request.
+func makePendingKey(req *BalanceLookupRequest) pendingKey {
+	return pendingKey{
+		accountID: req.AccountID,
+		address:   req.Address,
+		tokenID:   req.TokenID,
 	}
 }
 
 // QueueBalanceLookup adds a balance lookup request to the queue.
 // High priority requests are processed before low priority ones.
-// Duplicate requests for the same account/token pair are deduplicated,
-// with priority being upgraded if the new request has higher priority.
+// Duplicate requests are deduplicated, with priority upgraded if needed.
 func (s *BalanceLookupService) QueueBalanceLookup(req *BalanceLookupRequest) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	key := makePendingKey(req)
+
 	// Check for duplicate - skip if already pending
-	if accountLookups, exists := s.pendingLookups[req.AccountID]; exists {
-		if existing, exists := accountLookups[req.TokenID]; exists {
-			// Upgrade priority if needed
-			if req.Priority > existing.Priority {
-				s.upgradePriority(existing, req.Priority)
-			}
-			return
+	if existing, exists := s.pendingLookups[key]; exists {
+		// Upgrade priority if needed
+		if req.Priority > existing.Priority {
+			s.upgradePriority(existing, req.Priority)
 		}
-	} else {
-		s.pendingLookups[req.AccountID] = make(map[uint64]*BalanceLookupRequest, 8)
+		return
 	}
 
 	// Add to appropriate queue
 	req.Timestamp = time.Now()
-	s.pendingLookups[req.AccountID][req.TokenID] = req
+	s.pendingLookups[key] = req
 
 	if req.Priority == HighPriority {
 		s.highPrioQueue = append(s.highPrioQueue, req)
@@ -98,14 +118,15 @@ func (s *BalanceLookupService) QueueBalanceLookup(req *BalanceLookupRequest) {
 	}
 }
 
-// QueueAddressPageLookups queues all balance lookups for an address page view.
-// This includes ETH + all known token balances for the account.
-// Rate limited to prevent excessive RPC calls - skips if last lookup was within cooldown period.
-func (s *BalanceLookupService) QueueAddressPageLookups(accountID uint64, address []byte) {
-	s.mu.Lock()
+// QueueAddressBalanceLookups queues balance lookups for an address page view.
+// accountID should be 0 if the address is not in the database.
+// Rate limited to prevent excessive RPC calls.
+func (s *BalanceLookupService) QueueAddressBalanceLookups(accountID uint64, address []byte) {
+	addr := common.BytesToAddress(address)
 
-	// Check rate limit for this account
-	if lastTime, exists := s.lastLookupTime[accountID]; exists {
+	s.mu.Lock()
+	// Check rate limit for this address
+	if lastTime, ok := s.lastLookupTime.Get(addr); ok {
 		if time.Since(lastTime) < balanceLookupCooldown {
 			s.mu.Unlock()
 			return
@@ -113,10 +134,8 @@ func (s *BalanceLookupService) QueueAddressPageLookups(accountID uint64, address
 	}
 
 	// Update last lookup time
-	s.lastLookupTime[accountID] = time.Now()
+	s.lastLookupTime.Add(addr, time.Now())
 	s.mu.Unlock()
-
-	addr := common.BytesToAddress(address)
 
 	// Queue ETH balance lookup (high priority)
 	s.QueueBalanceLookup(&BalanceLookupRequest{
@@ -128,31 +147,33 @@ func (s *BalanceLookupService) QueueAddressPageLookups(accountID uint64, address
 		Priority:  HighPriority,
 	})
 
-	// Get all known token balances for this account and queue them
-	balances, _, err := db.GetElBalancesByAccountID(accountID, 0, 100)
-	if err != nil {
-		s.logger.WithError(err).Debug("failed to get balances for address page lookups")
-		return
-	}
-
-	for _, balance := range balances {
-		if balance.TokenID == nativeTokenID {
-			continue
+	// For known accounts, also queue token balance lookups
+	if accountID > 0 {
+		balances, _, err := db.GetElBalancesByAccountID(accountID, 0, 100)
+		if err != nil {
+			s.logger.WithError(err).Debug("failed to get balances for address page lookups")
+			return
 		}
 
-		token, err := db.GetElTokenByID(balance.TokenID)
-		if err != nil || token == nil {
-			continue
-		}
+		for _, balance := range balances {
+			if balance.TokenID == nativeTokenID {
+				continue
+			}
 
-		s.QueueBalanceLookup(&BalanceLookupRequest{
-			AccountID: accountID,
-			TokenID:   balance.TokenID,
-			Address:   addr,
-			Contract:  common.BytesToAddress(token.Contract),
-			Decimals:  token.Decimals,
-			Priority:  HighPriority,
-		})
+			token, err := db.GetElTokenByID(balance.TokenID)
+			if err != nil || token == nil {
+				continue
+			}
+
+			s.QueueBalanceLookup(&BalanceLookupRequest{
+				AccountID: accountID,
+				TokenID:   balance.TokenID,
+				Address:   addr,
+				Contract:  common.BytesToAddress(token.Contract),
+				Decimals:  token.Decimals,
+				Priority:  HighPriority,
+			})
+		}
 	}
 }
 
@@ -191,12 +212,7 @@ func (s *BalanceLookupService) GetPendingLookups(maxCount int) []*BalanceLookupR
 		result = append(result, req)
 
 		// Remove from pending map
-		if accountLookups, exists := s.pendingLookups[req.AccountID]; exists {
-			delete(accountLookups, req.TokenID)
-			if len(accountLookups) == 0 {
-				delete(s.pendingLookups, req.AccountID)
-			}
-		}
+		delete(s.pendingLookups, makePendingKey(req))
 	}
 
 	// Fill remainder from low priority
@@ -206,12 +222,7 @@ func (s *BalanceLookupService) GetPendingLookups(maxCount int) []*BalanceLookupR
 		result = append(result, req)
 
 		// Remove from pending map
-		if accountLookups, exists := s.pendingLookups[req.AccountID]; exists {
-			delete(accountLookups, req.TokenID)
-			if len(accountLookups) == 0 {
-				delete(s.pendingLookups, req.AccountID)
-			}
-		}
+		delete(s.pendingLookups, makePendingKey(req))
 	}
 
 	return result

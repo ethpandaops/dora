@@ -55,6 +55,7 @@ func GetTemplateFuncs() template.FuncMap {
 		"formatBaseFee":                FormatBaseFee,
 		"formatBlobFeeDifference":      FormatBlobFeeDifference,
 		"formatTransactionValue":       FormatTransactionValue,
+		"formatTransactionFee":         FormatTransactionFee,
 		"formatBitlist":                FormatBitlist,
 		"formatBitvectorValidators":    formatBitvectorValidators,
 		"formatParticipation":          FormatParticipation,

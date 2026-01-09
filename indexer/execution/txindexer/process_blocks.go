@@ -122,13 +122,24 @@ func (t *TxIndexer) processElBlock(ref *BlockRef) (*blockStats, error) {
 		}
 	}
 
-	// Get account nonce updates (done after all transactions processed)
-	accountNonceUpdates := procCtx.getAccountNonceUpdates()
-
 	// Process fee recipient and withdrawals if beacon block data is available
+	// (this must happen before batch resolution so these accounts are included)
 	if err := t.processBlockRewards(procCtx, data); err != nil {
 		return stats, fmt.Errorf("failed to process block rewards: %w", err)
 	}
+
+	// Batch resolve all pending accounts from DB (single query instead of per-account)
+	if err := procCtx.resolveAccountsFromDB(); err != nil {
+		return stats, fmt.Errorf("failed to resolve accounts: %w", err)
+	}
+
+	// Batch resolve all pending tokens from DB (single query instead of per-token)
+	if err := procCtx.resolveTokensFromDB(); err != nil {
+		return stats, fmt.Errorf("failed to resolve tokens: %w", err)
+	}
+
+	// Get account nonce updates (done after batch resolution so IDs are available)
+	accountNonceUpdates := procCtx.getAccountNonceUpdates()
 
 	// Process pending balance lookups after block processing
 	if t.balanceLookup != nil && t.balanceLookup.HasPendingLookups() {

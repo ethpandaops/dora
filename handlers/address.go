@@ -154,10 +154,9 @@ func AddressBalances(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Queue balance lookups (rate limited to 10min per account)
-	if account.ID > 0 {
-		if txIndexer := services.GlobalBeaconService.GetTxIndexer(); txIndexer != nil {
-			txIndexer.QueueAddressBalanceLookups(account.ID, account.Address)
-		}
+	// Even for unknown addresses (ID=0), we queue to check if they have balance
+	if txIndexer := services.GlobalBeaconService.GetTxIndexer(); txIndexer != nil {
+		txIndexer.QueueAddressBalanceLookups(account.ID, account.Address)
 	}
 
 	// Build response
@@ -270,10 +269,9 @@ func buildAddressPageData(account *dbtypes.ElAccount, tabView string, pageIdx, p
 	logrus.Debugf("address page called: %v (tab: %v)", account.ID, tabView)
 
 	// Queue balance lookups when page is viewed (rate limited to 10min per account)
-	if account.ID > 0 {
-		if txIndexer := services.GlobalBeaconService.GetTxIndexer(); txIndexer != nil {
-			txIndexer.QueueAddressBalanceLookups(account.ID, account.Address)
-		}
+	// Even for unknown addresses (ID=0), we queue to check if they have balance
+	if txIndexer := services.GlobalBeaconService.GetTxIndexer(); txIndexer != nil {
+		txIndexer.QueueAddressBalanceLookups(account.ID, account.Address)
 	}
 
 	chainState := services.GlobalBeaconService.GetChainState()
