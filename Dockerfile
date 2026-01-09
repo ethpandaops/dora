@@ -7,7 +7,7 @@ COPY ui-package /app
 RUN npm run build
 
 # go build env
-FROM golang:1.25.0 AS go-env
+FROM golang:1.25.1 AS go-env
 COPY go.mod go.sum /src/
 WORKDIR /src
 RUN go mod download
