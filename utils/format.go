@@ -96,6 +96,73 @@ func FormatTransactionValue(ethValue float64) template.HTML {
 	return FormatBaseFee(weiValue)
 }
 
+// FormatTransactionFee formats a transaction fee in ETH with intelligent rounding.
+// Cuts off decimals after 3 non-zero decimals, with min 6 decimals.
+// Examples: 0.123456789 => 0.123456, 0.000023456244 => 0.0000234
+// Does not include the unit (designed for table columns where space is limited).
+func FormatTransactionFee(ethValue float64) template.HTML {
+	formatted := formatWithIntelligentRounding(ethValue)
+	return template.HTML(formatted)
+}
+
+// formatWithIntelligentRounding formats a float with intelligent rounding:
+// - Minimum 6 decimal places
+// - Cut off after 3 non-zero decimals (counting from first non-zero)
+// Examples: 0.123456789 => 0.123456, 0.000023456244 => 0.0000234
+func formatWithIntelligentRounding(value float64) string {
+	if value == 0 {
+		return "0"
+	}
+
+	// Format with high precision first
+	fullStr := fmt.Sprintf("%.18f", value)
+
+	// Find the decimal point
+	dotIdx := strings.Index(fullStr, ".")
+	if dotIdx == -1 {
+		return strings.TrimRight(fullStr, "0")
+	}
+
+	intPart := fullStr[:dotIdx]
+	decPart := fullStr[dotIdx+1:]
+
+	// Find position of first non-zero digit in decimal part
+	firstNonZero := -1
+	for i, c := range decPart {
+		if c != '0' {
+			firstNonZero = i
+			break
+		}
+	}
+
+	// If no non-zero decimals, return integer part
+	if firstNonZero == -1 {
+		return intPart
+	}
+
+	// Calculate how many decimals to keep:
+	// - At least 6 decimal places
+	// - Or position of first non-zero + 3 significant digits
+	minDecimals := 6
+	significantEnd := firstNonZero + 3 // 3 significant digits after first non-zero
+
+	decimalsToKeep := minDecimals
+	if significantEnd > decimalsToKeep {
+		decimalsToKeep = significantEnd
+	}
+
+	// Ensure we don't exceed available decimals
+	if decimalsToKeep > len(decPart) {
+		decimalsToKeep = len(decPart)
+	}
+
+	// Trim and format
+	result := intPart + "." + decPart[:decimalsToKeep]
+	result = strings.TrimRight(strings.TrimRight(result, "0"), ".")
+
+	return result
+}
+
 func formatPercentageAlert(num float64, precision int, warnBelow float64, errBelow float64) template.HTML {
 	p := message.NewPrinter(language.English)
 	f := fmt.Sprintf("%%.%vf", precision)

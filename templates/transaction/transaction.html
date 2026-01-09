@@ -426,4 +426,29 @@
 </script>
 {{ end }}
 {{ define "css" }}
+<style>
+/* Smaller font size for data tables */
+.el-data-table {
+  font-size: 0.9rem;
+}
+.el-data-table th {
+  font-size: 0.85rem;
+}
+
+/* Address cells - no line break, keep icon inline */
+.el-data-table .addr-cell {
+  white-space: nowrap;
+}
+.el-data-table .addr-cell a,
+.el-data-table .addr-cell span {
+  white-space: nowrap;
+}
+
+/* Smaller margin on copy buttons in tables */
+.el-data-table .fa-copy {
+  margin-left: 0.15rem !important;
+  margin-right: 0;
+  padding: 0.1rem;
+}
+</style>
 {{ end }}
