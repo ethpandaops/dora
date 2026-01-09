@@ -199,6 +199,12 @@ func (cs *ChainService) StartService() error {
 
 	// add execution clients
 	for _, endpoint := range utils.Config.ExecutionApi.Endpoints {
+		// Skip dummy execution clients (they don't respond to RPC calls)
+		if strings.Contains(strings.ToLower(endpoint.Name), "dummy") {
+			cs.logger.Debugf("skipping dummy execution client '%v'", endpoint.Name)
+			continue
+		}
+
 		// Apply authGroup settings if configured
 		processedEndpoint, err := applyAuthGroupToEndpoint(&endpoint)
 		if err != nil {
