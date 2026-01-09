@@ -68,6 +68,7 @@ type SlotPageBlockData struct {
 	DepositRequestsCount       uint64                 `json:"deposit_receipts_count"`
 	WithdrawalRequestsCount    uint64                 `json:"withdrawal_requests_count"`
 	ConsolidationRequestsCount uint64                 `json:"consolidation_requests_count"`
+	BidsCount                  uint64                 `json:"bids_count"`
 
 	PayloadHeader *SlotPagePayloadHeader `json:"payload_header"`
 	ExecutionData *SlotPageExecutionData `json:"execution_data"`
@@ -84,6 +85,7 @@ type SlotPageBlockData struct {
 	DepositRequests       []*SlotPageDepositRequest       `json:"deposit_receipts"`       // DepositRequests included in this block
 	WithdrawalRequests    []*SlotPageWithdrawalRequest    `json:"withdrawal_requests"`    // WithdrawalRequests included in this block
 	ConsolidationRequests []*SlotPageConsolidationRequest `json:"consolidation_requests"` // ConsolidationRequests included in this block
+	Bids                  []*SlotPageBid                  `json:"bids"`                   // Execution payload bids for this block (ePBS)
 }
 
 type SlotPageExecutionData struct {
@@ -284,4 +286,19 @@ type SlotPageConsolidationRequest struct {
 	TargetIndex  uint64 `db:"target_index"`
 	TargetName   string `db:"target_name"`
 	Epoch        uint64 `db:"epoch"`
+}
+
+type SlotPageBid struct {
+	ParentRoot   []byte `json:"parent_root"`
+	ParentHash   []byte `json:"parent_hash"`
+	BlockHash    []byte `json:"block_hash"`
+	FeeRecipient []byte `json:"fee_recipient"`
+	GasLimit     uint64 `json:"gas_limit"`
+	BuilderIndex uint64 `json:"builder_index"`
+	BuilderName  string `json:"builder_name"`
+	Slot         uint64 `json:"slot"`
+	Value        uint64 `json:"value"`
+	ElPayment    uint64 `json:"el_payment"`
+	TotalValue   uint64 `json:"total_value"`
+	IsWinning    bool   `json:"is_winning"`
 }

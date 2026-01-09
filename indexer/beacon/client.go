@@ -33,9 +33,10 @@ type Client struct {
 	archive        bool
 	skipValidators bool
 
-	blockSubscription            *utils.Subscription[*v1.BlockEvent]
-	headSubscription             *utils.Subscription[*v1.HeadEvent]
-	executionPayloadSubscription *utils.Subscription[*v1.ExecutionPayloadEvent]
+	blockSubscription               *utils.Subscription[*v1.BlockEvent]
+	headSubscription                *utils.Subscription[*v1.HeadEvent]
+	executionPayloadSubscription    *utils.Subscription[*v1.ExecutionPayloadAvailableEvent]
+	executionPayloadBidSubscription *utils.Subscription[*gloas.SignedExecutionPayloadBid]
 
 	headRoot phase0.Root
 }
@@ -83,7 +84,8 @@ func (c *Client) startIndexing() {
 	// blocking block subscription with a buffer to ensure no blocks are missed
 	c.blockSubscription = c.client.SubscribeBlockEvent(100, true)
 	c.headSubscription = c.client.SubscribeHeadEvent(100, true)
-	c.executionPayloadSubscription = c.client.SubscribeExecutionPayloadEvent(100, true)
+	c.executionPayloadSubscription = c.client.SubscribeExecutionPayloadAvailableEvent(100, true)
+	c.executionPayloadBidSubscription = c.client.SubscribeExecutionPayloadBidEvent(100, true)
 
 	go c.startClientLoop()
 }
@@ -183,9 +185,14 @@ func (c *Client) runClientLoop() error {
 				c.logger.Errorf("failed processing head %v (%v): %v", headEvent.Slot, headEvent.Block.String(), err)
 			}
 		case executionPayloadEvent := <-c.executionPayloadSubscription.Channel():
-			err := c.processExecutionPayloadEvent(executionPayloadEvent)
+			err := c.processExecutionPayloadAvailableEvent(executionPayloadEvent)
 			if err != nil {
 				c.logger.Errorf("failed processing execution payload %v (%v): %v", executionPayloadEvent.Slot, executionPayloadEvent.BlockRoot.String(), err)
+			}
+		case executionPayloadBidEvent := <-c.executionPayloadBidSubscription.Channel():
+			err := c.processExecutionPayloadBidEvent(executionPayloadBidEvent)
+			if err != nil {
+				c.logger.Errorf("failed processing execution payload bid %v (%v): %v", executionPayloadBidEvent.Message.Slot, executionPayloadBidEvent.Message.ParentBlockRoot.String(), err)
 			}
 		}
 	}
@@ -582,7 +589,7 @@ func (c *Client) backfillParentBlocks(headBlock *Block) error {
 }
 
 // processExecutionPayloadEvent processes an execution payload event from the event stream.
-func (c *Client) processExecutionPayloadEvent(executionPayloadEvent *v1.ExecutionPayloadEvent) error {
+func (c *Client) processExecutionPayloadAvailableEvent(executionPayloadEvent *v1.ExecutionPayloadAvailableEvent) error {
 	if c.client.GetStatus() != consensus.ClientStatusOnline && c.client.GetStatus() != consensus.ClientStatusOptimistic {
 		// client is not ready, skip
 		return nil
@@ -647,4 +654,20 @@ func (c *Client) persistExecutionPayload(block *Block) error {
 
 		return nil
 	})
+}
+
+func (c *Client) processExecutionPayloadBidEvent(executionPayloadBidEvent *gloas.SignedExecutionPayloadBid) error {
+	bid := &dbtypes.BlockBid{
+		ParentRoot:   executionPayloadBidEvent.Message.ParentBlockRoot[:],
+		ParentHash:   executionPayloadBidEvent.Message.ParentBlockHash[:],
+		BlockHash:    executionPayloadBidEvent.Message.BlockHash[:],
+		FeeRecipient: executionPayloadBidEvent.Message.FeeRecipient[:],
+		GasLimit:     uint64(executionPayloadBidEvent.Message.GasLimit),
+		BuilderIndex: uint64(executionPayloadBidEvent.Message.BuilderIndex),
+		Slot:         uint64(executionPayloadBidEvent.Message.Slot),
+		Value:        uint64(executionPayloadBidEvent.Message.Value),
+		ElPayment:    uint64(executionPayloadBidEvent.Message.ExecutionPayment),
+	}
+	c.indexer.blockBidCache.AddBid(bid)
+	return nil
 }

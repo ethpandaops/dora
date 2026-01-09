@@ -6,6 +6,7 @@ import (
 	"time"
 
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
+	"github.com/attestantio/go-eth2-client/spec/gloas"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/sirupsen/logrus"
 
@@ -23,38 +24,39 @@ type ClientConfig struct {
 }
 
 type Client struct {
-	pool                       *Pool
-	clientIdx                  uint16
-	endpointConfig             *ClientConfig
-	clientCtx                  context.Context
-	clientCtxCancel            context.CancelFunc
-	rpcClient                  *rpc.BeaconClient
-	logger                     *logrus.Entry
-	isOnline                   bool
-	isSyncing                  bool
-	isOptimistic               bool
-	versionStr                 string
-	nodeIdentity               *rpc.NodeIdentity
-	clientType                 ClientType
-	lastEvent                  time.Time
-	retryCounter               uint64
-	lastError                  error
-	headMutex                  sync.RWMutex
-	headRoot                   phase0.Root
-	headSlot                   phase0.Slot
-	justifiedRoot              phase0.Root
-	justifiedEpoch             phase0.Epoch
-	finalizedRoot              phase0.Root
-	finalizedEpoch             phase0.Epoch
-	lastFinalityUpdateEpoch    phase0.Epoch
-	lastMetadataUpdateEpoch    phase0.Epoch
-	lastMetadataUpdateTime     time.Time
-	lastSyncUpdateEpoch        phase0.Epoch
-	peers                      []*v1.Peer
-	blockDispatcher            utils.Dispatcher[*v1.BlockEvent]
-	headDispatcher             utils.Dispatcher[*v1.HeadEvent]
-	checkpointDispatcher       utils.Dispatcher[*v1.Finality]
-	executionPayloadDispatcher utils.Dispatcher[*v1.ExecutionPayloadEvent]
+	pool                          *Pool
+	clientIdx                     uint16
+	endpointConfig                *ClientConfig
+	clientCtx                     context.Context
+	clientCtxCancel               context.CancelFunc
+	rpcClient                     *rpc.BeaconClient
+	logger                        *logrus.Entry
+	isOnline                      bool
+	isSyncing                     bool
+	isOptimistic                  bool
+	versionStr                    string
+	nodeIdentity                  *rpc.NodeIdentity
+	clientType                    ClientType
+	lastEvent                     time.Time
+	retryCounter                  uint64
+	lastError                     error
+	headMutex                     sync.RWMutex
+	headRoot                      phase0.Root
+	headSlot                      phase0.Slot
+	justifiedRoot                 phase0.Root
+	justifiedEpoch                phase0.Epoch
+	finalizedRoot                 phase0.Root
+	finalizedEpoch                phase0.Epoch
+	lastFinalityUpdateEpoch       phase0.Epoch
+	lastMetadataUpdateEpoch       phase0.Epoch
+	lastMetadataUpdateTime        time.Time
+	lastSyncUpdateEpoch           phase0.Epoch
+	peers                         []*v1.Peer
+	blockDispatcher               utils.Dispatcher[*v1.BlockEvent]
+	headDispatcher                utils.Dispatcher[*v1.HeadEvent]
+	checkpointDispatcher          utils.Dispatcher[*v1.Finality]
+	executionPayloadDispatcher    utils.Dispatcher[*v1.ExecutionPayloadAvailableEvent]
+	executionPayloadBidDispatcher utils.Dispatcher[*gloas.SignedExecutionPayloadBid]
 
 	specWarnings []string // warnings from incomplete spec checks
 	specs        map[string]interface{}
@@ -103,8 +105,12 @@ func (client *Client) SubscribeFinalizedEvent(capacity int) *utils.Subscription[
 	return client.checkpointDispatcher.Subscribe(capacity, false)
 }
 
-func (client *Client) SubscribeExecutionPayloadEvent(capacity int, blocking bool) *utils.Subscription[*v1.ExecutionPayloadEvent] {
+func (client *Client) SubscribeExecutionPayloadAvailableEvent(capacity int, blocking bool) *utils.Subscription[*v1.ExecutionPayloadAvailableEvent] {
 	return client.executionPayloadDispatcher.Subscribe(capacity, blocking)
+}
+
+func (client *Client) SubscribeExecutionPayloadBidEvent(capacity int, blocking bool) *utils.Subscription[*gloas.SignedExecutionPayloadBid] {
+	return client.executionPayloadBidDispatcher.Subscribe(capacity, blocking)
 }
 
 func (client *Client) GetPool() *Pool {

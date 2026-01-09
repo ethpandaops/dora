@@ -45,6 +45,7 @@ func Slot(w http.ResponseWriter, r *http.Request) {
 		"slot/deposit_requests.html",
 		"slot/withdrawal_requests.html",
 		"slot/consolidation_requests.html",
+		"slot/bids.html",
 	)
 	var notfoundTemplateFiles = append(layoutTemplateFiles,
 		"slot/notfound.html",
@@ -793,6 +794,11 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 		}
 	}
 
+	// Load execution payload bids for ePBS (gloas+) blocks
+	if blockData.Block.Version >= spec.DataVersionGloas {
+		getSlotPageBids(pageData)
+	}
+
 	return pageData
 }
 
@@ -992,6 +998,60 @@ func getSlotPageConsolidationRequests(pageData *models.SlotPageBlockData, consol
 	}
 
 	pageData.ConsolidationRequestsCount = uint64(len(pageData.ConsolidationRequests))
+}
+
+func getSlotPageBids(pageData *models.SlotPageBlockData) {
+	beaconIndexer := services.GlobalBeaconService.GetBeaconIndexer()
+	bids := beaconIndexer.GetBlockBids(phase0.Root(pageData.ParentRoot))
+
+	pageData.Bids = make([]*models.SlotPageBid, 0, len(bids))
+
+	// Get the winning block hash for comparison
+	var winningBlockHash []byte
+	if pageData.ExecutionData != nil {
+		winningBlockHash = pageData.ExecutionData.BlockHash
+	}
+
+	for _, bid := range bids {
+		bidData := &models.SlotPageBid{
+			ParentRoot:   bid.ParentRoot,
+			ParentHash:   bid.ParentHash,
+			BlockHash:    bid.BlockHash,
+			FeeRecipient: bid.FeeRecipient,
+			GasLimit:     bid.GasLimit,
+			BuilderIndex: bid.BuilderIndex,
+			BuilderName:  services.GlobalBeaconService.GetValidatorName(bid.BuilderIndex),
+			Slot:         bid.Slot,
+			Value:        bid.Value,
+			ElPayment:    bid.ElPayment,
+			TotalValue:   bid.Value + bid.ElPayment,
+		}
+
+		// Check if this is the winning bid
+		if winningBlockHash != nil && len(bid.BlockHash) == len(winningBlockHash) {
+			isWinning := true
+			for i := range bid.BlockHash {
+				if bid.BlockHash[i] != winningBlockHash[i] {
+					isWinning = false
+					break
+				}
+			}
+			bidData.IsWinning = isWinning
+		}
+
+		pageData.Bids = append(pageData.Bids, bidData)
+	}
+
+	// Sort by total value (value + el_payment) descending
+	for i := 0; i < len(pageData.Bids)-1; i++ {
+		for j := i + 1; j < len(pageData.Bids); j++ {
+			if pageData.Bids[j].TotalValue > pageData.Bids[i].TotalValue {
+				pageData.Bids[i], pageData.Bids[j] = pageData.Bids[j], pageData.Bids[i]
+			}
+		}
+	}
+
+	pageData.BidsCount = uint64(len(pageData.Bids))
 }
 
 func handleSlotDownload(ctx context.Context, w http.ResponseWriter, blockSlot int64, blockRoot []byte, downloadType string) error {

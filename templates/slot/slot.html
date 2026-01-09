@@ -96,6 +96,11 @@
             <a class="nav-link" id="consolidationRequests-tab" data-bs-toggle="tab" href="#consolidationRequests" role="tab" aria-controls="consolidationRequests" aria-selected="false">Consolidation Requests <span class="badge bg-secondary text-white">{{ .Block.ConsolidationRequestsCount }}</span></a>
           </li>
         {{ end }}
+        {{ if gt .Block.BidsCount 0 }}
+          <li class="nav-item">
+            <a class="nav-link" id="bids-tab" data-bs-toggle="tab" href="#bids" role="tab" aria-controls="bids" aria-selected="false">Bids <span class="badge bg-secondary text-white">{{ .Block.BidsCount }}</span></a>
+          </li>
+        {{ end }}
         {{ if .Block }}
           <li class="nav-item ms-auto">
             <a class="nav-link" id="download-tab" data-bs-toggle="tab" href="#download" role="tab" aria-controls="download" aria-selected="false">
@@ -256,6 +261,18 @@
               </div>
             </div>
             {{ template "block_consolidation_requests" . }}
+          </div>
+        {{ end }}
+        {{ if gt .Block.BidsCount 0 }}
+          <div class="tab-pane fade show active" id="bids" role="tabpanel" aria-labelledby="bids-tab">
+            <div class="card block-card">
+              <div style="margin-bottom: -.25rem;" class="card-body px-0 py-1">
+                <div class="row p-1 mx-0">
+                  <h3 class="h5 col-md-12 text-center"><b>Showing {{ .Block.BidsCount }} Execution Payload Bids</b></h3>
+                </div>
+              </div>
+              {{ template "block_bids" . }}
+            </div>
           </div>
         {{ end }}
         {{ if .Block }}

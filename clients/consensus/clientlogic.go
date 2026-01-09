@@ -8,6 +8,7 @@ import (
 	"time"
 
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
+	"github.com/attestantio/go-eth2-client/spec/gloas"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/sirupsen/logrus"
 
@@ -177,10 +178,10 @@ func (client *Client) runClientLogic() error {
 				}
 
 			case rpc.StreamExecutionPayloadEvent:
-				err := client.processExecutionPayloadEvent(evt.Data.(*v1.ExecutionPayloadEvent))
-				if err != nil {
-					client.logger.Warnf("failed processing execution payload event: %v", err)
-				}
+				client.executionPayloadDispatcher.Fire(evt.Data.(*v1.ExecutionPayloadAvailableEvent))
+
+			case rpc.StreamExecutionPayloadBidEvent:
+				client.executionPayloadBidDispatcher.Fire(evt.Data.(*gloas.SignedExecutionPayloadBid))
 			}
 
 			client.logger.Tracef("event (%v) processing time: %v ms", evt.Event, time.Since(now).Milliseconds())
@@ -416,12 +417,6 @@ func (client *Client) pollClientHead() error {
 	if err != nil {
 		return fmt.Errorf("could not get finality checkpoint: %v", err)
 	}
-
-	return nil
-}
-
-func (client *Client) processExecutionPayloadEvent(evt *v1.ExecutionPayloadEvent) error {
-	client.executionPayloadDispatcher.Fire(evt)
 
 	return nil
 }
