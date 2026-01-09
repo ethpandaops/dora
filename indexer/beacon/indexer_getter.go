@@ -12,6 +12,7 @@ import (
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/dora/db"
+	"github.com/ethpandaops/dora/dbtypes"
 	dynssz "github.com/pk910/dynamic-ssz"
 )
 
@@ -221,6 +222,14 @@ func (indexer *Indexer) GetOrphanedBlockByRoot(blockRoot phase0.Root) (*Block, e
 	block := newBlock(indexer.dynSsz, blockRoot, header.Message.Slot, orphanedBlock.BlockUid)
 	block.SetHeader(header)
 	block.SetBlock(blockBody)
+
+	if len(orphanedBlock.PayloadSSZ) > 0 {
+		payload, err := UnmarshalVersionedSignedExecutionPayloadEnvelopeSSZ(indexer.dynSsz, orphanedBlock.PayloadVer, orphanedBlock.PayloadSSZ)
+		if err != nil {
+			return nil, fmt.Errorf("could not restore orphaned block payload %v [%x] from db: %v", header.Message.Slot, orphanedBlock.Root, err)
+		}
+		block.SetExecutionPayload(payload)
+	}
 
 	return block, nil
 }
@@ -498,4 +507,17 @@ func (indexer *Indexer) GetFullValidatorByIndex(validatorIndex phase0.ValidatorI
 	}
 
 	return validatorData
+}
+
+// GetBlockBids returns the execution payload bids for a given parent block root.
+// It first checks the in-memory cache, then falls back to the database.
+func (indexer *Indexer) GetBlockBids(parentBlockRoot phase0.Root) []*dbtypes.BlockBid {
+	// First check the in-memory cache
+	bids := indexer.blockBidCache.GetBidsForBlockRoot(parentBlockRoot)
+	if len(bids) > 0 {
+		return bids
+	}
+
+	// Fall back to database
+	return db.GetBidsForBlockRoot(parentBlockRoot[:])
 }

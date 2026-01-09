@@ -1,0 +1,33 @@
+{{ define "block_bids" }}
+  <div class="table-ellipsis">
+    <table id="block_bids" class="table table-sm text-left">
+      <thead>
+        <tr>
+          <th class="border-0">Builder</th>
+          <th class="border-0">Block Hash</th>
+          <th class="border-0">Fee Recipient</th>
+          <th class="border-0">Gas Limit</th>
+          <th class="border-0">Value</th>
+          <th class="border-0">EL Payment</th>
+          <th class="border-0">Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{ range $i, $bid := .Block.Bids }}
+          <tr{{ if $bid.IsWinning }} class="table-success"{{ end }}>
+            <td>
+              {{ formatValidatorWithIndex $bid.BuilderIndex $bid.BuilderName }}
+              {{ if $bid.IsWinning }}<span class="badge bg-success ms-1">Winner</span>{{ end }}
+            </td>
+            <td><span class="text-monospace">0x{{ printf "%.16x" $bid.BlockHash }}...</span></td>
+            <td>{{ ethAddressLink $bid.FeeRecipient }}</td>
+            <td>{{ formatAddCommas $bid.GasLimit }}</td>
+            <td>{{ formatEthFromGwei $bid.Value }}</td>
+            <td>{{ formatEthFromGwei $bid.ElPayment }}</td>
+            <td><strong>{{ formatEthFromGwei $bid.TotalValue }}</strong></td>
+          </tr>
+        {{ end }}
+      </tbody>
+    </table>
+  </div>
+{{ end }}
