@@ -261,6 +261,45 @@
 {{ end }}
 {{ define "css" }}
 <style>
+/* Smaller font size for data tables */
+.el-data-table {
+  font-size: 0.9rem;
+}
+.el-data-table th {
+  font-size: 0.85rem;
+}
+
+/* Even smaller font for fee/value columns */
+.el-data-table .fee-value {
+  font-size: 0.8rem;
+}
+
+/* Method badge with ellipsis */
+.el-data-table .method-badge {
+  display: inline-block;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+/* Address cells - no line break, keep icon inline */
+.el-data-table .addr-cell {
+  white-space: nowrap;
+}
+.el-data-table .addr-cell a,
+.el-data-table .addr-cell span {
+  white-space: nowrap;
+}
+
+/* Smaller margin on copy buttons in tables */
+.el-data-table .fa-copy {
+  margin-left: 0.15rem !important;
+  margin-right: 0;
+  padding: 0.1rem;
+}
+
 /* Fix time column width to prevent table resizing when time updates */
 td[data-timer], th[data-timecol] {
   width: 130px;

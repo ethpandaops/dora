@@ -3,7 +3,7 @@
   <div class="card-body p-0">
     {{ if gt (len .TokenTransfers) 0 }}
     <div class="table-responsive">
-      <table class="table table-hover mb-0">
+      <table class="table table-hover mb-0 el-data-table">
         <thead>
           <tr>
             <th class="px-3">Token Address</th>
@@ -17,16 +17,16 @@
         <tbody>
           {{ range .TokenTransfers }}
           <tr>
-            <td class="text-monospace px-3">
+            <td class="text-monospace px-3 addr-cell">
               {{ formatEthAddressShortLink .Contract true }}
             </td>
             <td>
               {{ if .TokenName }}{{ .TokenName }}{{ else if .TokenSymbol }}{{ .TokenSymbol }}{{ else }}<span class="text-muted">-</span>{{ end }}
             </td>
-            <td class="text-monospace">
+            <td class="text-monospace addr-cell">
               {{ formatEthAddressShortLink .FromAddr .FromIsContract }}
             </td>
-            <td class="text-monospace">
+            <td class="text-monospace addr-cell">
               {{ formatEthAddressShortLink .ToAddr .ToIsContract }}
             </td>
             <td class="text-end text-nowrap">

@@ -128,7 +128,7 @@ func buildSlotsPageData(firstSlot uint64, pageSize uint64, displayColumns uint64
 		displayMask |= 1 << (col - 1)
 	}
 	displayColumnsParam := ""
-	if displayMask != 0 {
+	if displayColumns != 0 {
 		displayColumnsParam = fmt.Sprintf("&d=0x%x", displayMask)
 	}
 
@@ -191,7 +191,7 @@ func buildSlotsPageData(firstSlot uint64, pageSize uint64, displayColumns uint64
 	// Populate UrlParams for page jump functionality
 	pageData.UrlParams = make(map[string]string)
 	pageData.UrlParams["c"] = fmt.Sprintf("%v", pageData.PageSize)
-	if displayMask != 0 {
+	if displayColumns != 0 {
 		pageData.UrlParams["d"] = fmt.Sprintf("0x%x", displayMask)
 	}
 	pageData.MaxSlot = uint64(maxSlot)

@@ -259,6 +259,10 @@ func buildSlotPageData(ctx context.Context, blockSlot int64, blockRoot []byte) (
 		cacheTimeout = 10 * time.Second
 	}
 
+	// Get all blocks for this slot (used for multi-block display and proposer fallback)
+	slotBlocks, slotBlockProposers := getSlotBlocks(slot, blockRoot, blockData)
+	pageData.SlotBlocks = slotBlocks
+
 	if blockData == nil {
 		pageData.Status = uint16(models.SlotStatusMissed)
 		pageData.Proposer = math.MaxInt64
@@ -269,6 +273,10 @@ func buildSlotPageData(ctx context.Context, blockSlot int64, blockRoot []byte) (
 		}
 		if pageData.Proposer == math.MaxInt64 {
 			pageData.Proposer = db.GetSlotAssignment(uint64(slot))
+		}
+		// If proposer is still unknown, check if there's exactly one orphaned block and use its proposer
+		if pageData.Proposer == math.MaxInt64 && len(slotBlockProposers) == 1 {
+			pageData.Proposer = slotBlockProposers[0]
 		}
 		pageData.ProposerName = services.GlobalBeaconService.GetValidatorName(pageData.Proposer)
 	} else {
@@ -311,6 +319,79 @@ func buildSlotPageData(ctx context.Context, blockSlot int64, blockRoot []byte) (
 	}
 
 	return pageData, cacheTimeout
+}
+
+// getSlotBlocks retrieves all blocks for a given slot and builds the SlotBlocks slice
+// for the multi-block display. Uses GetDbBlocksByFilter which handles both cache and database.
+// Also returns a list of proposers from orphaned blocks (used as fallback when proposer is unknown).
+func getSlotBlocks(slot phase0.Slot, currentBlockRoot []byte, currentBlockData *services.CombinedBlockResponse) ([]*models.SlotPageSlotBlock, []uint64) {
+	slotBlocks := make([]*models.SlotPageSlotBlock, 0)
+	orphanedProposers := make([]uint64, 0)
+	hasCanonicalOrMissed := false
+
+	// Get all blocks for the slot (from cache and database)
+	slotNum := uint64(slot)
+	dbBlocks := services.GlobalBeaconService.GetDbBlocksByFilter(&dbtypes.BlockFilter{
+		Slot:         &slotNum,
+		WithOrphaned: 1, // include both canonical and orphaned
+		WithMissing:  1, // include missing slots
+	}, 0, 100, 0)
+
+	for _, dbBlock := range dbBlocks {
+		if dbBlock.Block == nil {
+			// This is a missed slot row (canonical proposer info without a block)
+			hasCanonicalOrMissed = true
+			slotBlocks = append(slotBlocks, &models.SlotPageSlotBlock{
+				BlockRoot: nil, // nil indicates missed
+				Status:    uint16(models.SlotStatusMissed),
+				IsCurrent: currentBlockData == nil,
+			})
+			continue
+		}
+
+		var blockRoot phase0.Root
+		copy(blockRoot[:], dbBlock.Block.Root)
+
+		isCanonical := dbBlock.Block.Status == dbtypes.Canonical
+		if isCanonical {
+			hasCanonicalOrMissed = true
+		} else {
+			// Track orphaned block proposers for fallback
+			orphanedProposers = append(orphanedProposers, dbBlock.Block.Proposer)
+		}
+
+		isCurrent := false
+		if currentBlockData != nil && blockRoot == currentBlockData.Root {
+			isCurrent = true
+		} else if len(currentBlockRoot) == 32 && blockRoot == phase0.Root(currentBlockRoot) {
+			isCurrent = true
+		}
+
+		status := uint16(models.SlotStatusOrphaned)
+		if isCanonical {
+			status = uint16(models.SlotStatusFound)
+		}
+
+		slotBlocks = append(slotBlocks, &models.SlotPageSlotBlock{
+			BlockRoot: blockRoot[:],
+			Status:    status,
+			IsCurrent: isCurrent,
+		})
+	}
+
+	// If no canonical or missed block was returned but there are orphaned blocks,
+	// add a "missed (canonical)" entry (fallback for edge cases)
+	if !hasCanonicalOrMissed && len(slotBlocks) > 0 {
+		missedBlock := &models.SlotPageSlotBlock{
+			BlockRoot: nil, // nil indicates missed
+			Status:    uint16(models.SlotStatusMissed),
+			IsCurrent: currentBlockData == nil,
+		}
+		// Insert missed block at the beginning
+		slotBlocks = append([]*models.SlotPageSlotBlock{missedBlock}, slotBlocks...)
+	}
+
+	return slotBlocks, orphanedProposers
 }
 
 func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsValues *beacon.EpochStatsValues, blockUid uint64) *models.SlotPageBlockData {
