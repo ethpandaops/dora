@@ -62,6 +62,7 @@ func Address(w http.ResponseWriter, r *http.Request) {
 	addressBytes, err := hex.DecodeString(addressHex)
 	if err != nil || len(addressBytes) != 20 {
 		data := InitPageData(w, r, "blockchain", "/address", "Address not found", notfoundTemplateFiles)
+		data.Data = "invalid"
 		w.Header().Set("Content-Type", "text/html")
 		handleTemplateError(w, r, "address.go", "Address", "invalidAddress", templates.GetTemplate(notfoundTemplateFiles...).ExecuteTemplate(w, "layout", data))
 		return
