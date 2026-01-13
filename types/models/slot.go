@@ -21,8 +21,16 @@ type SlotPageData struct {
 	ProposerName           string                          `json:"proposer_name"`
 	Block                  *SlotPageBlockData              `json:"block"`
 	Badges                 []*SlotPageBlockBadge           `json:"badges"`
+	SlotBlocks             []*SlotPageSlotBlock            `json:"slot_blocks"`
 	SystemContracts        map[string]string               `json:"system_contracts"`
 	TransactionDetails     map[uint64]*SlotPageTransaction `json:"transaction_details"`
+}
+
+// SlotPageSlotBlock represents a block entry for the slot (for multi-block display)
+type SlotPageSlotBlock struct {
+	BlockRoot []byte `json:"block_root"`
+	Status    uint16 `json:"status"` // 0: missed, 1: canonical, 2: orphaned
+	IsCurrent bool   `json:"is_current"`
 }
 
 type SlotPageBlockBadge struct {
