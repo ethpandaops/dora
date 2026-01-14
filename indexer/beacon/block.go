@@ -534,7 +534,7 @@ func (block *Block) writeToBlockDb() error {
 		return nil
 	}
 
-	_, err := blockdb.GlobalBlockDb.AddBlockWithCallback(context.Background(), uint64(block.Slot), block.Root[:], func() (*btypes.BlockData, error) {
+	_, _, err := blockdb.GlobalBlockDb.AddBlockWithCallback(context.Background(), uint64(block.Slot), block.Root[:], func() (*btypes.BlockData, error) {
 		headerSSZ, err := block.header.MarshalSSZ()
 		if err != nil {
 			return nil, fmt.Errorf("marshal header ssz failed: %v", err)

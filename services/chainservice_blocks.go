@@ -13,6 +13,7 @@ import (
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 
 	"github.com/ethpandaops/dora/blockdb"
+	btypes "github.com/ethpandaops/dora/blockdb/types"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/indexer/beacon"
@@ -174,12 +175,14 @@ func (bs *ChainService) GetSlotDetailsByBlockroot(ctx context.Context, blockroot
 
 	// try loading from block db
 	if result == nil && header != nil && blockdb.GlobalBlockDb != nil {
-		blockData, err := blockdb.GlobalBlockDb.GetBlock(ctx, uint64(header.Message.Slot), blockroot[:], func(version uint64, block []byte) (interface{}, error) {
-			return beacon.UnmarshalVersionedSignedBeaconBlockSSZ(bs.beaconIndexer.GetDynSSZ(), version, block)
-		}, func(version uint64, payload []byte) (interface{}, error) {
-			return beacon.UnmarshalVersionedSignedExecutionPayloadEnvelopeSSZ(bs.beaconIndexer.GetDynSSZ(), version, payload)
-		})
-		if err == nil && blockData != nil {
+		blockData, err := blockdb.GlobalBlockDb.GetBlock(ctx, uint64(header.Message.Slot), blockroot[:],
+			btypes.BlockDataFlagBody|btypes.BlockDataFlagPayload,
+			func(version uint64, block []byte) (any, error) {
+				return beacon.UnmarshalVersionedSignedBeaconBlockSSZ(bs.beaconIndexer.GetDynSSZ(), version, block)
+			}, func(version uint64, payload []byte) (any, error) {
+				return beacon.UnmarshalVersionedSignedExecutionPayloadEnvelopeSSZ(bs.beaconIndexer.GetDynSSZ(), version, payload)
+			})
+		if err == nil && blockData != nil && blockData.Body != nil {
 			result = &CombinedBlockResponse{
 				Root:     blockroot,
 				Header:   header,
@@ -313,12 +316,14 @@ func (bs *ChainService) GetSlotDetailsBySlot(ctx context.Context, slot phase0.Sl
 
 	// try loading from block db
 	if result == nil && header != nil && blockdb.GlobalBlockDb != nil {
-		blockData, err := blockdb.GlobalBlockDb.GetBlock(ctx, uint64(slot), blockRoot[:], func(version uint64, block []byte) (interface{}, error) {
-			return beacon.UnmarshalVersionedSignedBeaconBlockSSZ(bs.beaconIndexer.GetDynSSZ(), version, block)
-		}, func(version uint64, payload []byte) (interface{}, error) {
-			return beacon.UnmarshalVersionedSignedExecutionPayloadEnvelopeSSZ(bs.beaconIndexer.GetDynSSZ(), version, payload)
-		})
-		if err == nil && blockData != nil {
+		blockData, err := blockdb.GlobalBlockDb.GetBlock(ctx, uint64(slot), blockRoot[:],
+			btypes.BlockDataFlagHeader|btypes.BlockDataFlagBody|btypes.BlockDataFlagPayload,
+			func(version uint64, block []byte) (any, error) {
+				return beacon.UnmarshalVersionedSignedBeaconBlockSSZ(bs.beaconIndexer.GetDynSSZ(), version, block)
+			}, func(version uint64, payload []byte) (any, error) {
+				return beacon.UnmarshalVersionedSignedExecutionPayloadEnvelopeSSZ(bs.beaconIndexer.GetDynSSZ(), version, payload)
+			})
+		if err == nil && blockData != nil && blockData.Body != nil {
 			header := &phase0.SignedBeaconBlockHeader{}
 			err = header.UnmarshalSSZ(blockData.HeaderData)
 			if err != nil {
