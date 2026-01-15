@@ -10,6 +10,7 @@ import (
 	"time"
 
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
+	"github.com/attestantio/go-eth2-client/spec/gloas"
 	"github.com/donovanhide/eventsource"
 	"github.com/sirupsen/logrus"
 
@@ -17,9 +18,11 @@ import (
 )
 
 const (
-	StreamBlockEvent     uint16 = 0x01
-	StreamHeadEvent      uint16 = 0x02
-	StreamFinalizedEvent uint16 = 0x04
+	StreamBlockEvent               uint16 = 0x01
+	StreamHeadEvent                uint16 = 0x02
+	StreamFinalizedEvent           uint16 = 0x04
+	StreamExecutionPayloadEvent    uint16 = 0x08
+	StreamExecutionPayloadBidEvent uint16 = 0x10
 )
 
 type BeaconStreamEvent struct {
@@ -87,6 +90,10 @@ func (bs *BeaconStream) startStream() {
 					bs.processHeadEvent(evt)
 				case "finalized_checkpoint":
 					bs.processFinalizedEvent(evt)
+				case "execution_payload_available":
+					bs.processExecutionPayloadAvailableEvent(evt)
+				case "execution_payload_bid":
+					bs.processExecutionPayloadBidEvent(evt)
 				}
 			case <-stream.Ready:
 				bs.ReadyChan <- &BeaconStreamStatus{
@@ -144,6 +151,26 @@ func (bs *BeaconStream) subscribeStream(endpoint string, events uint16) *eventst
 		}
 
 		fmt.Fprintf(&topics, "finalized_checkpoint")
+
+		topicsCount++
+	}
+
+	if events&StreamExecutionPayloadEvent > 0 {
+		if topicsCount > 0 {
+			fmt.Fprintf(&topics, ",")
+		}
+
+		fmt.Fprintf(&topics, "execution_payload_available")
+
+		topicsCount++
+	}
+
+	if events&StreamExecutionPayloadBidEvent > 0 {
+		if topicsCount > 0 {
+			fmt.Fprintf(&topics, ",")
+		}
+
+		fmt.Fprintf(&topics, "execution_payload_bid")
 
 		topicsCount++
 	}
@@ -221,6 +248,36 @@ func (bs *BeaconStream) processFinalizedEvent(evt eventsource.Event) {
 
 	bs.EventChan <- &BeaconStreamEvent{
 		Event: StreamFinalizedEvent,
+		Data:  &parsed,
+	}
+}
+
+func (bs *BeaconStream) processExecutionPayloadAvailableEvent(evt eventsource.Event) {
+	var parsed v1.ExecutionPayloadAvailableEvent
+
+	err := json.Unmarshal([]byte(evt.Data()), &parsed)
+	if err != nil {
+		bs.logger.Warnf("beacon block stream failed to decode execution_payload event: %v", err)
+		return
+	}
+
+	bs.EventChan <- &BeaconStreamEvent{
+		Event: StreamExecutionPayloadEvent,
+		Data:  &parsed,
+	}
+}
+
+func (bs *BeaconStream) processExecutionPayloadBidEvent(evt eventsource.Event) {
+	var parsed gloas.SignedExecutionPayloadBid
+
+	err := json.Unmarshal([]byte(evt.Data()), &parsed)
+	if err != nil {
+		bs.logger.Warnf("beacon block stream failed to decode execution_payload_bid event: %v", err)
+		return
+	}
+
+	bs.EventChan <- &BeaconStreamEvent{
+		Event: StreamExecutionPayloadBidEvent,
 		Data:  &parsed,
 	}
 }

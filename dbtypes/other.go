@@ -211,6 +211,43 @@ type ValidatorFilter struct {
 	Offset  uint64
 }
 
+// Builder filter types
+
+type BuilderOrder uint8
+
+const (
+	BuilderOrderIndexAsc BuilderOrder = iota
+	BuilderOrderIndexDesc
+	BuilderOrderPubKeyAsc
+	BuilderOrderPubKeyDesc
+	BuilderOrderBalanceAsc
+	BuilderOrderBalanceDesc
+	BuilderOrderDepositEpochAsc
+	BuilderOrderDepositEpochDesc
+	BuilderOrderWithdrawableEpochAsc
+	BuilderOrderWithdrawableEpochDesc
+)
+
+type BuilderStatus uint8
+
+const (
+	BuilderStatusActiveFilter BuilderStatus = iota
+	BuilderStatusExitedFilter
+	BuilderStatusSupersededFilter
+)
+
+type BuilderFilter struct {
+	MinIndex         *uint64
+	MaxIndex         *uint64
+	PubKey           []byte
+	ExecutionAddress []byte
+	Status           []BuilderStatus
+
+	OrderBy BuilderOrder
+	Limit   uint64
+	Offset  uint64
+}
+
 // EL Explorer filters
 
 type ElTransactionFilter struct {

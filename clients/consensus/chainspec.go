@@ -53,6 +53,8 @@ type ChainSpecConfig struct {
 	ElectraForkEpoch     *uint64        `yaml:"ELECTRA_FORK_EPOCH"     check-if-fork:"ElectraForkEpoch"`
 	FuluForkVersion      phase0.Version `yaml:"FULU_FORK_VERSION"      check-if-fork:"FuluForkEpoch"`
 	FuluForkEpoch        *uint64        `yaml:"FULU_FORK_EPOCH"        check-if-fork:"FuluForkEpoch"`
+	GloasForkVersion     phase0.Version `yaml:"GLOAS_FORK_VERSION"   check-if-fork:"GloasForkEpoch"`
+	GloasForkEpoch       *uint64        `yaml:"GLOAS_FORK_EPOCH"     check-if-fork:"GloasForkEpoch"`
 
 	// Time parameters
 	SecondsPerSlot                  uint64 `yaml:"SECONDS_PER_SLOT"`
@@ -118,6 +120,11 @@ type ChainSpecConfig struct {
 	ValidatorCustodyRequirement      *uint64             `yaml:"VALIDATOR_CUSTODY_REQUIREMENT"                 check-if-fork:"FuluForkEpoch"`
 	BalancePerAdditionalCustodyGroup *uint64             `yaml:"BALANCE_PER_ADDITIONAL_CUSTODY_GROUP"          check-if-fork:"FuluForkEpoch"`
 	BlobSchedule                     []BlobScheduleEntry `yaml:"BLOB_SCHEDULE"                                 check-if-fork:"FuluForkEpoch"`
+
+	// Gloas
+	PtcSize                uint64            `yaml:"PTC_SIZE" check-if-fork:"GloasForkEpoch"`
+	MaxPayloadAttestations uint64            `yaml:"MAX_PAYLOAD_ATTESTATIONS" check-if-fork:"GloasForkEpoch"`
+	DomainPtcAttester      phase0.DomainType `yaml:"DOMAIN_PTC_ATTESTER" check-if-fork:"GloasForkEpoch"`
 }
 
 type ChainSpecPreset struct {
