@@ -559,6 +559,16 @@ type BlockBid struct {
 	ElPayment    uint64 `db:"el_payment"`
 }
 
+type Builder struct {
+	Pubkey            []byte `db:"pubkey"`
+	BuilderIndex      uint64 `db:"builder_index"`
+	Version           uint8  `db:"version"`
+	ExecutionAddress  []byte `db:"execution_address"`
+	DepositEpoch      int64  `db:"deposit_epoch"`
+	WithdrawableEpoch int64  `db:"withdrawable_epoch"`
+	Superseded        bool   `db:"superseded"`
+}
+
 // Withdrawal types
 const (
 	WithdrawalTypeBeaconWithdrawal = 0

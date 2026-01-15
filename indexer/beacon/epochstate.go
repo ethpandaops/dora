@@ -25,6 +25,7 @@ type epochState struct {
 
 	stateSlot                 phase0.Slot
 	validatorBalances         []phase0.Gwei
+	builderBalances           []phase0.Gwei
 	randaoMixes               []phase0.Root
 	depositIndex              uint64
 	syncCommittee             []phase0.ValidatorIndex
@@ -159,6 +160,20 @@ func (s *epochState) processState(state *spec.VersionedBeaconState, cache *epoch
 
 	if cache != nil {
 		cache.indexer.validatorCache.updateValidatorSet(slot, s.slotRoot, validatorList)
+	}
+
+	// Process builder set for Gloas
+	if state.Version >= spec.DataVersionGloas && state.Gloas != nil {
+		if cache != nil {
+			cache.indexer.builderCache.updateBuilderSet(slot, s.slotRoot, state.Gloas.Builders)
+		}
+
+		// Extract builder balances
+		builderBalances := make([]phase0.Gwei, len(state.Gloas.Builders))
+		for i, builder := range state.Gloas.Builders {
+			builderBalances[i] = builder.Balance
+		}
+		s.builderBalances = builderBalances
 	}
 
 	validatorPubkeyMap := make(map[phase0.BLSPubKey]phase0.ValidatorIndex)

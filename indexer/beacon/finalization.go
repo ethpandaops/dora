@@ -542,6 +542,7 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 	// update validator cache
 	if len(canonicalBlocks) > 0 {
 		indexer.validatorCache.setFinalizedEpoch(epoch, canonicalBlocks[len(canonicalBlocks)-1].Root)
+		indexer.builderCache.setFinalizedEpoch(epoch, canonicalBlocks[len(canonicalBlocks)-1].Root)
 	}
 
 	// clean fork cache

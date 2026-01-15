@@ -231,6 +231,7 @@ func startFrontend(router *mux.Router) {
 	router.HandleFunc("/validators/submit_withdrawals", handlers.SubmitWithdrawal).Methods("GET")
 	router.HandleFunc("/validator/{idxOrPubKey}", handlers.Validator).Methods("GET")
 	router.HandleFunc("/validator/{index}/slots", handlers.ValidatorSlots).Methods("GET")
+	router.HandleFunc("/builders", handlers.Builders).Methods("GET")
 
 	if utils.Config.Frontend.Pprof {
 		// add pprof handler

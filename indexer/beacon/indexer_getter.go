@@ -521,3 +521,53 @@ func (indexer *Indexer) GetBlockBids(parentBlockRoot phase0.Root) []*dbtypes.Blo
 	// Fall back to database
 	return db.GetBidsForBlockRoot(parentBlockRoot[:])
 }
+
+// StreamActiveBuilderDataForRoot streams the available builder set data for a given blockRoot.
+func (indexer *Indexer) StreamActiveBuilderDataForRoot(blockRoot phase0.Root, activeOnly bool, epoch *phase0.Epoch, cb BuilderSetStreamer) error {
+	return indexer.builderCache.streamBuilderSetForRoot(blockRoot, activeOnly, epoch, cb)
+}
+
+// GetBuilderSetSize returns the size of the builder set cache.
+func (indexer *Indexer) GetBuilderSetSize() uint64 {
+	return indexer.builderCache.getBuilderSetSize()
+}
+
+// GetRecentBuilderBalances returns the most recent builder balances for the given fork.
+func (indexer *Indexer) GetRecentBuilderBalances(overrideForkId *ForkKey) []phase0.Gwei {
+	chainState := indexer.consensusPool.GetChainState()
+
+	canonicalHead := indexer.GetCanonicalHead(overrideForkId)
+	if canonicalHead == nil {
+		return nil
+	}
+
+	headEpoch := chainState.EpochOfSlot(canonicalHead.Slot)
+
+	var epochStats *EpochStats
+	for {
+		cEpoch := chainState.EpochOfSlot(canonicalHead.Slot)
+		if headEpoch-cEpoch > 2 {
+			return nil
+		}
+
+		dependentBlock := indexer.blockCache.getDependentBlock(chainState, canonicalHead, nil)
+		if dependentBlock == nil {
+			return nil
+		}
+		canonicalHead = dependentBlock
+
+		stats := indexer.epochCache.getEpochStats(cEpoch, dependentBlock.Root)
+		if cEpoch > 0 && (stats == nil || stats.dependentState == nil || stats.dependentState.loadingStatus != 2) {
+			continue // retry previous state
+		}
+
+		epochStats = stats
+		break
+	}
+
+	if epochStats == nil || epochStats.dependentState == nil {
+		return nil
+	}
+
+	return epochStats.dependentState.builderBalances
+}

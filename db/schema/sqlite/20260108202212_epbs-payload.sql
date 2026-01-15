@@ -34,6 +34,21 @@ CREATE INDEX IF NOT EXISTS "block_bids_builder_index_idx" ON "block_bids" ("buil
 
 CREATE INDEX IF NOT EXISTS "block_bids_slot_idx" ON "block_bids" ("slot" ASC);
 
+CREATE TABLE IF NOT EXISTS "builders" (
+    "pubkey" BLOB NOT NULL,
+    "builder_index" BIGINT NOT NULL,
+    "version" SMALLINT NOT NULL,
+    "execution_address" BLOB NOT NULL,
+    "deposit_epoch" BIGINT NOT NULL,
+    "withdrawable_epoch" BIGINT NOT NULL,
+    "superseded" BOOLEAN NOT NULL DEFAULT false,
+    PRIMARY KEY (pubkey)
+);
+
+CREATE INDEX IF NOT EXISTS "builders_builder_index_idx" ON "builders" ("builder_index" ASC);
+
+CREATE INDEX IF NOT EXISTS "builders_execution_address_idx" ON "builders" ("execution_address" ASC);
+
 -- +goose StatementEnd
 -- +goose Down
 -- +goose StatementBegin

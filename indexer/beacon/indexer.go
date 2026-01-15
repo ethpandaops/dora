@@ -47,6 +47,7 @@ type Indexer struct {
 	validatorCache    *validatorCache
 	validatorActivity *validatorActivityCache
 	blockBidCache     *blockBidCache
+	builderCache      *builderCache
 
 	// indexer state
 	clients               []*Client
@@ -118,6 +119,7 @@ func NewIndexer(logger logrus.FieldLogger, consensusPool *consensus.Pool) *Index
 	indexer.validatorCache = newValidatorCache(indexer)
 	indexer.validatorActivity = newValidatorActivityCache(indexer)
 	indexer.blockBidCache = newBlockBidCache(indexer)
+	indexer.builderCache = newBuilderCache(indexer)
 	indexer.dbWriter = newDbWriter(indexer)
 
 	badChainRoots := utils.Config.Indexer.BadChainRoots
@@ -273,6 +275,14 @@ func (indexer *Indexer) StartIndexer() {
 		indexer.logger.WithError(err).Errorf("failed loading validator set")
 	} else {
 		indexer.logger.Infof("restored %v validators from DB (%.3f sec)", validatorCount, time.Since(t1).Seconds())
+	}
+
+	// restore finalized builder set from db
+	t1 = time.Now()
+	if builderCount, err := indexer.builderCache.prepopulateFromDB(); err != nil {
+		indexer.logger.WithError(err).Errorf("failed loading builder set")
+	} else if builderCount > 0 {
+		indexer.logger.Infof("restored %v builders from DB (%.3f sec)", builderCount, time.Since(t1).Seconds())
 	}
 
 	// restore unfinalized epoch stats from db
