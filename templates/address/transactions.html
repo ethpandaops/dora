@@ -2,7 +2,7 @@
 <div class="card">
   <div class="card-body p-0">
     <div class="table-responsive">
-      <table class="table table-hover mb-0">
+      <table class="table table-hover mb-0 el-data-table">
         <thead>
           <tr>
             <th>Txn Hash</th>
@@ -21,7 +21,7 @@
           {{ if gt .TransactionCount 0 }}
             {{ range .Transactions }}
               <tr>
-                <td class="text-monospace">
+                <td class="text-monospace addr-cell">
                   <a href="/tx/{{ formatHexBytes .TxHash }}" data-bs-toggle="tooltip" title="{{ formatHexBytes .TxHash }}">{{ formatEthHashShort .TxHash 6 }}</a>
                   <i class="fa fa-copy text-muted ms-1" role="button" data-bs-toggle="tooltip" title="Copy transaction hash" data-clipboard-text="{{ formatHexBytes .TxHash }}"></i>
                 </td>
@@ -37,12 +37,12 @@
                 </td>
                 <td>
                   {{ if .MethodName }}
-                    <span class="badge text-bg-secondary">{{ .MethodName }}</span>
+                    <span class="badge text-bg-secondary method-badge" data-bs-toggle="tooltip" title="{{ .MethodName }}">{{ .MethodName }}</span>
                   {{ else }}
                     <span class="text-muted">-</span>
                   {{ end }}
                 </td>
-                <td class="text-monospace">
+                <td class="text-monospace addr-cell">
                   {{ if eq (printf "%x" .FromAddr) (printf "%x" $.Address) }}
                     {{ formatEthAddressShort .FromAddr }}
                   {{ else }}
@@ -57,7 +57,7 @@
                     <span class="badge text-bg-success">IN</span>
                   {{ end }}
                 </td>
-                <td class="text-monospace">
+                <td class="text-monospace addr-cell">
                   {{ if .HasTo }}
                     {{ if eq (printf "%x" .ToAddr) (printf "%x" $.Address) }}
                       {{ formatEthAddressShort .ToAddr }}
@@ -69,8 +69,8 @@
                     {{ formatContractCreationLink .FromAddr .Nonce }}
                   {{ end }}
                 </td>
-                <td>{{ formatTransactionValue .Amount }}</td>
-                <td>{{ formatTransactionValue .TxFee }}</td>
+                <td class="text-nowrap">{{ formatTransactionValue .Amount }}</td>
+                <td class="text-nowrap fee-value">{{ formatTransactionFee .TxFee }}</td>
                 <td class="text-nowrap">
                   {{ if .Reverted }}
                     <span class="badge text-bg-danger" data-bs-toggle="tooltip" title="Transaction execution failed">Reverted</span>

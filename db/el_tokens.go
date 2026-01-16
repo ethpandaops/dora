@@ -180,6 +180,43 @@ func DeleteElToken(id uint64, dbTx *sqlx.Tx) error {
 	return err
 }
 
+// GetElTokensByContracts retrieves multiple tokens by their contract addresses in a single query.
+// Returns a map from contract address (as hex string) to token for efficient lookup.
+func GetElTokensByContracts(contracts [][]byte) (map[string]*dbtypes.ElToken, error) {
+	if len(contracts) == 0 {
+		return make(map[string]*dbtypes.ElToken), nil
+	}
+
+	var sql strings.Builder
+	args := make([]any, len(contracts))
+
+	fmt.Fprint(&sql, "SELECT id, contract, token_type, name, symbol, decimals, flags, metadata_uri, name_synced FROM el_tokens WHERE contract IN (")
+	for i, contract := range contracts {
+		if i > 0 {
+			fmt.Fprint(&sql, ", ")
+		}
+		fmt.Fprintf(&sql, "$%d", i+1)
+		args[i] = contract
+	}
+	fmt.Fprint(&sql, ")")
+
+	tokens := []*dbtypes.ElToken{}
+	err := ReaderDb.Select(&tokens, sql.String(), args...)
+	if err != nil {
+		logger.Errorf("Error while fetching el tokens by contracts: %v", err)
+		return nil, err
+	}
+
+	// Build map from contract to token
+	result := make(map[string]*dbtypes.ElToken, len(tokens))
+	for _, token := range tokens {
+		// Use hex string of contract address as key for efficient lookup
+		key := fmt.Sprintf("%x", token.Contract)
+		result[key] = token
+	}
+	return result, nil
+}
+
 // GetElTokensByIDs retrieves multiple tokens by their IDs in a single query.
 func GetElTokensByIDs(ids []uint64) ([]*dbtypes.ElToken, error) {
 	if len(ids) == 0 {
