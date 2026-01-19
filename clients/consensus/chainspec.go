@@ -122,9 +122,7 @@ type ChainSpecConfig struct {
 	BlobSchedule                     []BlobScheduleEntry `yaml:"BLOB_SCHEDULE"                                 check-if-fork:"FuluForkEpoch"`
 
 	// Gloas
-	PtcSize                uint64            `yaml:"PTC_SIZE" check-if-fork:"GloasForkEpoch"`
-	MaxPayloadAttestations uint64            `yaml:"MAX_PAYLOAD_ATTESTATIONS" check-if-fork:"GloasForkEpoch"`
-	DomainPtcAttester      phase0.DomainType `yaml:"DOMAIN_PTC_ATTESTER" check-if-fork:"GloasForkEpoch"`
+	MinBuilderWithdrawabilityDelay uint64 `yaml:"MIN_BUILDER_WITHDRAWABILITY_DELAY" check-if-fork:"GloasForkEpoch"`
 }
 
 type ChainSpecPreset struct {
@@ -212,6 +210,13 @@ type ChainSpecPreset struct {
 	FieldElementsPerExtBlob           uint64  `yaml:"FIELD_ELEMENTS_PER_EXT_BLOB" check-if-fork:"FuluForkEpoch"`
 	CellsPerExtBlob                   uint64  `yaml:"CELLS_PER_EXT_BLOB" check-if-fork:"FuluForkEpoch"`
 	NumberOfColumns                   *uint64 `yaml:"NUMBER_OF_COLUMNS" check-if-fork:"FuluForkEpoch"`
+
+	// Gloas
+	PtcSize                        uint64 `yaml:"PTC_SIZE" check-if-fork:"GloasForkEpoch"`
+	MaxPayloadAttestations         uint64 `yaml:"MAX_PAYLOAD_ATTESTATIONS" check-if-fork:"GloasForkEpoch"`
+	BuilderRegistryLimit           uint64 `yaml:"BUILDER_REGISTRY_LIMIT" check-if-fork:"GloasForkEpoch"`
+	BuilderPendingWithdrawalsLimit uint64 `yaml:"BUILDER_PENDING_WITHDRAWALS_LIMIT" check-if-fork:"GloasForkEpoch"`
+	MaxBuildersPerWithdrawalsSweep uint64 `yaml:"MAX_BUILDERS_PER_WITHDRAWALS_SWEEP" check-if-fork:"GloasForkEpoch"`
 }
 
 type ChainSpecDomainTypes struct {
@@ -226,6 +231,11 @@ type ChainSpecDomainTypes struct {
 	DomainSyncCommitteeSelectionProof phase0.DomainType `yaml:"DOMAIN_SYNC_COMMITTEE_SELECTION_PROOF"`
 	DomainContributionAndProof        phase0.DomainType `yaml:"DOMAIN_CONTRIBUTION_AND_PROOF"`
 	DomainBlsToExecutionChange        phase0.DomainType `yaml:"DOMAIN_BLS_TO_EXECUTION_CHANGE"`
+
+	// Gloas
+	DomainBeaconBuilder       phase0.DomainType `yaml:"DOMAIN_BEACON_BUILDER" check-if-fork:"GloasForkEpoch"`
+	DomainPtcAttester         phase0.DomainType `yaml:"DOMAIN_PTC_ATTESTER" check-if-fork:"GloasForkEpoch"`
+	DomainProposerPreferences phase0.DomainType `yaml:"DOMAIN_PROPOSER_PREFERENCES" check-if-fork:"GloasForkEpoch"`
 }
 
 type ChainSpec struct {
