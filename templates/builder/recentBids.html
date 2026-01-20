@@ -1,0 +1,57 @@
+{{ define "recentBids" }}
+<div class="card block-card">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-nobr" id="recent-bids">
+        <thead>
+          <tr>
+            <th>Slot</th>
+            <th data-timecol="duration">Time</th>
+            <th>Block Hash</th>
+            <th>Gas Limit</th>
+            <th>Value</th>
+            <th>EL Payment</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{ if gt (len .RecentBids) 0 }}
+            {{ range $i, $bid := .RecentBids }}
+              <tr>
+                <td><a href="/slot/{{ $bid.Slot }}">{{ formatAddCommas $bid.Slot }}</a></td>
+                <td data-timer="{{ $bid.Ts.Unix }}"><span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $bid.Ts }}">{{ formatRecentTimeShort $bid.Ts }}</span></td>
+                <td class="text-monospace">
+                  <span class="text-truncate d-inline-block" style="max-width: 150px;">
+                    0x{{ printf "%x" $bid.BlockHash }}
+                  </span>
+                  <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $bid.BlockHash }}"></i>
+                </td>
+                <td>{{ formatAddCommas $bid.GasLimit }}</td>
+                <td>{{ formatEthFromGwei $bid.Value }}</td>
+                <td>{{ formatEthFromGwei $bid.ElPayment }}</td>
+                <td>
+                  {{ if $bid.IsWinning }}
+                    <span class="badge rounded-pill text-bg-success">Won</span>
+                  {{ else }}
+                    <span class="badge rounded-pill text-bg-secondary">-</span>
+                  {{ end }}
+                </td>
+              </tr>
+            {{ end }}
+          {{ else }}
+            <tr style="height: 430px;">
+              <td></td>
+              <td style="vertical-align: middle;" colspan="5">
+                <div class="img-fluid mx-auto p-3 d-flex align-items-center" style="max-height: 400px; max-width: 400px; overflow: hidden;">
+                  {{ template "timeline_svg" }}
+                </div>
+              </td>
+              <td></td>
+            </tr>
+          {{ end }}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{{ end }}

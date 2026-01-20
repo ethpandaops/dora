@@ -111,3 +111,40 @@ func DeleteBidsBeforeSlot(minSlot uint64, tx *sqlx.Tx) error {
 	_, err := tx.Exec(`DELETE FROM block_bids WHERE slot < $1`, minSlot)
 	return err
 }
+
+// GetBidsByBuilderIndex returns bids submitted by a specific builder, ordered by slot descending
+func GetBidsByBuilderIndex(builderIndex uint64, offset uint64, limit uint32) ([]*dbtypes.BlockBid, uint64) {
+	var sql strings.Builder
+	args := []any{
+		builderIndex,
+	}
+	fmt.Fprint(&sql, `
+	SELECT
+		parent_root, parent_hash, block_hash, fee_recipient, gas_limit, builder_index, slot, value, el_payment
+	FROM block_bids
+	WHERE builder_index = $1
+	ORDER BY slot DESC, value DESC
+	`)
+
+	if limit > 0 {
+		fmt.Fprintf(&sql, " LIMIT $%d OFFSET $%d", len(args)+1, len(args)+2)
+		args = append(args, limit, offset)
+	}
+
+	bids := []*dbtypes.BlockBid{}
+	err := ReaderDb.Select(&bids, sql.String(), args...)
+	if err != nil {
+		logger.Errorf("Error while fetching bids for builder index %d: %v", builderIndex, err)
+		return nil, 0
+	}
+
+	// Get total count
+	var totalCount uint64
+	err = ReaderDb.Get(&totalCount, `SELECT COUNT(*) FROM block_bids WHERE builder_index = $1`, builderIndex)
+	if err != nil {
+		logger.Errorf("Error while counting bids for builder index %d: %v", builderIndex, err)
+		return bids, 0
+	}
+
+	return bids, totalCount
+}
