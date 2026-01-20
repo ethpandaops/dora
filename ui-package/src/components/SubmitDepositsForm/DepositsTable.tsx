@@ -1,16 +1,20 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { useState } from 'react';
 import {ContainerType, ByteVectorType, UintNumberType, ValueOf} from "@chainsafe/ssz";
 import bls from "@chainsafe/bls/herumi";
 
 import DepositEntry from './DepositEntry';
 import { IDepositTx } from './SubmitDepositsFormProps';
+import { GatingContractData, PREFIX_TO_DEPOSIT_TYPE } from './GatingContract';
+import { GatingDepositTypeStatus } from './GatingStatusBanner';
 
 interface IDepositsTableProps {
   file: File;
   genesisForkVersion: string;
   depositContract: string;
   loadDepositTxs(pubkeys: string[]): Promise<{deposits: IDepositTx[], count: number, havemore: boolean}>;
+  explorerUrl?: string;
+  gatingData?: GatingContractData | null;
 }
 
 export interface IDeposit {
@@ -60,6 +64,23 @@ const DepositsTable = (props: IDepositsTableProps): React.ReactElement => {
   const [loadDepositsError, setLoadDepositsError] = useState<string | null>(null);
   const [depositTxStats, setDepositTxStats] = useState<IDepositTxStats | null>(null);
 
+  // Get unique deposit types from withdrawal credential prefixes
+  const getUniqueDepositTypes = (depositsList: IDeposit[]): number[] => {
+    const prefixes = new Set<string>();
+    for (const deposit of depositsList) {
+      const prefix = deposit.withdrawal_credentials.substring(0, 2);
+      prefixes.add(prefix);
+    }
+    const depositTypes: number[] = [];
+    for (const prefix of prefixes) {
+      const depositType = PREFIX_TO_DEPOSIT_TYPE[prefix];
+      if (depositType !== undefined) {
+        depositTypes.push(depositType);
+      }
+    }
+    return depositTypes;
+  };
+
   useEffect(() => {
     parseDeposits().then((res) => {
       setDeposits(res.deposits);
@@ -108,11 +129,19 @@ const DepositsTable = (props: IDepositsTableProps): React.ReactElement => {
             </div> 
           : null}
 
-          {depositTxStats && depositTxStats.count > 0 ? 
+          {depositTxStats && depositTxStats.count > 0 ?
             <div className="alert alert-warning mt-2">
               We've found {depositTxStats.havemore ? "more than " : ""}{depositTxStats.count} deposit transactions matching your validator pubkeys. Double check each deposit to avoid double deposits.
-            </div> 
+            </div>
           : null}
+
+          {/* Gating status for deposit types in the file */}
+          {props.gatingData && deposits && deposits.length > 0 && (
+            <GatingDepositTypeStatus
+              gatingData={props.gatingData}
+              depositTypes={getUniqueDepositTypes(deposits)}
+            />
+          )}
 
           {!deposits ? <p>Loading...</p> : deposits.length === 0 ? <p>No deposits found</p> : (
             <div className="table-ellipsis mt-1">
@@ -128,7 +157,15 @@ const DepositsTable = (props: IDepositsTableProps): React.ReactElement => {
                 </thead>
                 <tbody>
                   {deposits.map((deposit: IDeposit) => {
-                    return <DepositEntry deposit={deposit} depositContract={props.depositContract} key={deposit.pubkey} />;
+                    return (
+                      <DepositEntry
+                        deposit={deposit}
+                        depositContract={props.depositContract}
+                        explorerUrl={props.explorerUrl}
+                        gatingData={props.gatingData}
+                        key={deposit.pubkey}
+                      />
+                    );
                   })}
                 </tbody>
               </table>
