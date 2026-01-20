@@ -290,18 +290,6 @@ func (cache *builderCache) getBuilderSetSize() uint64 {
 	return uint64(len(cache.builderSetCache))
 }
 
-// getBuilderFlags returns the status flags for a specific builder
-func (cache *builderCache) getBuilderFlags(builderIndex gloas.BuilderIndex) uint16 {
-	cache.cacheMutex.RLock()
-	defer cache.cacheMutex.RUnlock()
-
-	if uint64(builderIndex) >= uint64(len(cache.builderSetCache)) || cache.builderSetCache[builderIndex] == nil {
-		return 0
-	}
-
-	return cache.builderSetCache[builderIndex].statusFlags
-}
-
 // setFinalizedEpoch updates the builder cache when a new epoch is finalized
 func (cache *builderCache) setFinalizedEpoch(epoch phase0.Epoch, nextEpochDependentRoot phase0.Root) {
 	cache.cacheMutex.Lock()
