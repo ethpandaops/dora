@@ -153,3 +153,54 @@
         }
     }
 }
+
+// Deposit Generator Modal Styles
+.deposit-generator-modal {
+    .security-warning {
+        background-color: rgba(var(--bs-danger-rgb), 0.15);
+        border: 2px solid var(--bs-danger);
+        border-radius: var(--bs-border-radius);
+
+        .warning-icon {
+            color: var(--bs-danger);
+        }
+    }
+
+    .mnemonic-input {
+        font-family: var(--bs-font-monospace);
+        min-height: 80px;
+        resize: vertical;
+    }
+
+    .mnemonic-toggle {
+        font-size: 0.85em;
+    }
+
+    .nav-tabs {
+        .nav-link {
+            cursor: pointer;
+
+            &.active {
+                font-weight: 600;
+            }
+        }
+    }
+
+    .validator-override-table {
+        th, td {
+            vertical-align: middle;
+        }
+
+        .override-active {
+            background-color: rgba(var(--bs-primary-rgb), 0.1);
+        }
+
+        .form-control-sm {
+            font-size: 0.85em;
+        }
+
+        .form-select-sm {
+            font-size: 0.85em;
+        }
+    }
+}

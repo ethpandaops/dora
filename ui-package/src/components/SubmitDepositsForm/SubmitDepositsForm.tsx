@@ -4,20 +4,23 @@ import { useAccount } from 'wagmi';
 import { useState } from 'react';
 
 import { ISubmitDepositsFormProps } from './SubmitDepositsFormProps';
-import DepositsTable from './DepositsTable';
+import DepositsTable, { IDeposit } from './DepositsTable';
 import TopupDepositForm from './TopupDepositForm';
 import { useGatingContract } from '../../hooks/useGatingContract';
 import { GatingStatusBanner } from './GatingStatusBanner';
 import GatingManageModal from './GatingManageModal';
+import DepositGeneratorModal from './DepositGeneratorModal';
 import './SubmitDepositsForm.scss';
 
 const SubmitDepositsForm = (props: ISubmitDepositsFormProps): React.ReactElement => {
   const { address: walletAddress, isConnected, chain } = useAccount();
 
   const [file, setFile] = useState<File | null>(null);
+  const [generatedDeposits, setGeneratedDeposits] = useState<IDeposit[] | null>(null);
   const [refreshIdx, setRefreshIdx] = useState<number>(0);
   const [activeTab, setActiveTab] = useState<'initial' | 'topup'>('initial');
   const [showManageModal, setShowManageModal] = useState(false);
+  const [showGeneratorModal, setShowGeneratorModal] = useState(false);
 
   // Fetch gating contract data
   const { gatingData, refetch: refetchGating, isLoading: isGatingLoading } = useGatingContract(
@@ -102,30 +105,43 @@ const SubmitDepositsForm = (props: ISubmitDepositsFormProps): React.ReactElement
             <label htmlFor="formFile" className="form-label">
               <b>Step 2: Upload deposit data file</b>
             </label>
-            <input
-              type="file"
-              className="form-control"
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                if (e.target.files) {
-                  setFile(e.target.files[0]);
-                  setRefreshIdx(refreshIdx + 1);
-                }
-              }}
-            />
+            <div className="d-flex gap-2 align-items-center">
+              <input
+                type="file"
+                className="form-control"
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                  if (e.target.files) {
+                    setFile(e.target.files[0]);
+                    setGeneratedDeposits(null);
+                    setRefreshIdx(refreshIdx + 1);
+                  }
+                }}
+              />
+              <span className="text-muted">or</span>
+              <button
+                className="btn btn-outline-secondary text-nowrap"
+                onClick={() => setShowGeneratorModal(true)}
+                title="Generate deposits for devnet testing"
+              >
+                <i className="fa fa-magic me-1"></i>
+                Generate
+              </button>
+            </div>
             <p className="text-secondary-emphasis mt-2">The deposit data file is usually called <code>deposit_data-[timestamp].json</code> and is located in your <code>/staking-deposit-cli/validator_keys</code> directory.</p>
           </div>
 
-          {file ?
+          {(file || generatedDeposits) && (
             <DepositsTable
               key={refreshIdx}
               file={file}
+              deposits={generatedDeposits}
               genesisForkVersion={props.genesisForkVersion}
               depositContract={props.depositContract}
               loadDepositTxs={props.loadDepositTxs}
               explorerUrl={props.explorerLink}
               gatingData={gatingData}
             />
-          : null}
+          )}
         </div>
       )}
 
@@ -149,6 +165,20 @@ const SubmitDepositsForm = (props: ISubmitDepositsFormProps): React.ReactElement
           chainId={chain.id}
           onClose={() => setShowManageModal(false)}
           onSuccess={() => refetchGating()}
+        />
+      )}
+
+      {/* Deposit Generator Modal */}
+      {showGeneratorModal && (
+        <DepositGeneratorModal
+          genesisForkVersion={props.genesisForkVersion}
+          onClose={() => setShowGeneratorModal(false)}
+          onGenerate={(deposits) => {
+            setGeneratedDeposits(deposits);
+            setFile(null);
+            setShowGeneratorModal(false);
+            setRefreshIdx(refreshIdx + 1);
+          }}
         />
       )}
     </div>
