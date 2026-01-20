@@ -9,6 +9,7 @@ import (
 
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
 	"github.com/attestantio/go-eth2-client/spec/electra"
+	"github.com/attestantio/go-eth2-client/spec/gloas"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/dora/db"
@@ -530,6 +531,11 @@ func (indexer *Indexer) StreamActiveBuilderDataForRoot(blockRoot phase0.Root, ac
 // GetBuilderSetSize returns the size of the builder set cache.
 func (indexer *Indexer) GetBuilderSetSize() uint64 {
 	return indexer.builderCache.getBuilderSetSize()
+}
+
+// GetBuilderByIndex returns the builder by index for the canonical head.
+func (indexer *Indexer) GetBuilderByIndex(index gloas.BuilderIndex, overrideForkId *ForkKey) *gloas.Builder {
+	return indexer.builderCache.getBuilderByIndex(index, overrideForkId)
 }
 
 // GetRecentBuilderBalances returns the most recent builder balances for the given fork.

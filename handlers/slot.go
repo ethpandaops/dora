@@ -529,9 +529,16 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 
 	pageData.VoluntaryExits = make([]*models.SlotPageVoluntaryExit, pageData.VoluntaryExitsCount)
 	for i, exit := range voluntaryExits {
+		validatorIndex := uint64(exit.Message.ValidatorIndex)
+		isBuilder := validatorIndex&services.BuilderIndexFlag != 0
+		displayIndex := validatorIndex
+		if isBuilder {
+			displayIndex = validatorIndex &^ services.BuilderIndexFlag
+		}
 		pageData.VoluntaryExits[i] = &models.SlotPageVoluntaryExit{
-			ValidatorIndex: uint64(exit.Message.ValidatorIndex),
-			ValidatorName:  services.GlobalBeaconService.GetValidatorName(uint64(exit.Message.ValidatorIndex)),
+			ValidatorIndex: displayIndex,
+			ValidatorName:  services.GlobalBeaconService.GetValidatorName(validatorIndex),
+			IsBuilder:      isBuilder,
 			Epoch:          uint64(exit.Message.Epoch),
 			Signature:      exit.Signature[:],
 		}
@@ -647,7 +654,36 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 		pageData.SyncAggParticipation = utils.SyncCommitteeParticipation(pageData.SyncAggregateBits, specs.SyncCommitteeSize)
 	}
 
-	if executionPayload, _ := blockData.Block.ExecutionPayload(); executionPayload != nil {
+	if payloadBid, err := blockData.Block.SignedExecutionPayloadBid(); err == nil {
+		pageData.PayloadHeader = &models.SlotPagePayloadHeader{
+			PayloadStatus:          uint16(0),
+			ParentBlockHash:        payloadBid.Message.ParentBlockHash[:],
+			ParentBlockRoot:        payloadBid.Message.ParentBlockRoot[:],
+			BlockHash:              payloadBid.Message.BlockHash[:],
+			GasLimit:               uint64(payloadBid.Message.GasLimit),
+			BuilderIndex:           uint64(payloadBid.Message.BuilderIndex),
+			BuilderName:            services.GlobalBeaconService.GetValidatorName(uint64(payloadBid.Message.BuilderIndex) | services.BuilderIndexFlag),
+			Slot:                   uint64(payloadBid.Message.Slot),
+			Value:                  uint64(payloadBid.Message.Value),
+			BlobKzgCommitmentsRoot: payloadBid.Message.BlobKZGCommitmentsRoot[:],
+			Signature:              payloadBid.Signature[:],
+		}
+	}
+
+	var executionPayload *spec.VersionedExecutionPayload
+	if blockData.Block.Version >= spec.DataVersionGloas && blockData.Payload != nil {
+		blobKzgCommitments = blockData.Payload.Message.BlobKZGCommitments
+		executionPayload = &spec.VersionedExecutionPayload{
+			Version: spec.DataVersionGloas,
+			Gloas:   blockData.Payload.Message.Payload,
+		}
+
+		pageData.PayloadHeader.PayloadStatus = uint16(1)
+	} else {
+		executionPayload, _ = blockData.Block.ExecutionPayload()
+	}
+
+	if executionPayload != nil {
 		pageData.ExecutionData = &models.SlotPageExecutionData{}
 
 		if parentHash, err := executionPayload.ParentHash(); err == nil {

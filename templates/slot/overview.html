@@ -201,9 +201,9 @@
                 </div>
 
                 <div class="row py-1">
-                  <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Parent Execution Block Hash">Builder Index:</span></div>
+                  <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="The builder who created this execution payload">Builder:</span></div>
                   <div class="col-md-10 text-monospace text-break">
-                    {{ formatValidator .BuilderIndex .BuilderName }}
+                    {{ formatBuilderWithIndex .BuilderIndex .BuilderName }}
                   </div>
                 </div>
 

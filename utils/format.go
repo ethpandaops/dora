@@ -636,6 +636,29 @@ func FormatValidatorNameWithIndex(index uint64, name string) template.HTML {
 	return template.HTML(fmt.Sprintf("<span class=\"validator-label validator-index\">%v</span>", index))
 }
 
+func FormatBuilder(index uint64, name string) template.HTML {
+	return formatBuilder(index, name, "fa-hard-hat mr-2", false)
+}
+
+func FormatBuilderWithIndex(index uint64, name string) template.HTML {
+	return formatBuilder(index, name, "fa-hard-hat mr-2", true)
+}
+
+func formatBuilder(index uint64, name string, icon string, withIndex bool) template.HTML {
+	if index == math.MaxInt64 {
+		return template.HTML(fmt.Sprintf("<span class=\"builder-label builder-index\"><i class=\"fas %v\"></i> unknown</span>", icon))
+	} else if name != "" {
+		var nameLabel string
+		if withIndex {
+			nameLabel = fmt.Sprintf("%v (%v)", html.EscapeString(name), index)
+		} else {
+			nameLabel = html.EscapeString(name)
+		}
+		return template.HTML(fmt.Sprintf("<span class=\"builder-label builder-name\" data-bs-toggle=\"tooltip\" data-bs-placement=\"top\" data-bs-title=\"%v\"><i class=\"fas %v\"></i> <a href=\"/builder/%v\">%v</a></span>", index, icon, index, nameLabel))
+	}
+	return template.HTML(fmt.Sprintf("<span class=\"builder-label builder-index\"><i class=\"fas %v\"></i> <a href=\"/builder/%v\">%v</a></span>", icon, index, index))
+}
+
 func FormatRecentTimeShort(ts time.Time) template.HTML {
 	duration := time.Until(ts)
 	var timeStr string

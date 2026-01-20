@@ -13,6 +13,10 @@ import (
 	"github.com/ethpandaops/dora/indexer/beacon"
 )
 
+// BuilderIndexFlag separates builder indices from validator indices
+// A validator/builder index with this flag set is a builder index
+const BuilderIndexFlag = beacon.BuilderIndexFlag
+
 type BuilderWithIndex struct {
 	Index      gloas.BuilderIndex
 	Builder    *gloas.Builder
@@ -239,6 +243,11 @@ func (bs *ChainService) GetFilteredBuilderSet(filter *dbtypes.BuilderFilter, wit
 	matchingCount += remainingDbCount
 
 	return result, matchingCount
+}
+
+// GetBuilderByIndex returns the builder by index
+func (bs *ChainService) GetBuilderByIndex(index gloas.BuilderIndex) *gloas.Builder {
+	return bs.beaconIndexer.GetBuilderByIndex(index, nil)
 }
 
 // getBuilderStatus determines the status of a builder

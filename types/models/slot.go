@@ -155,6 +155,7 @@ type SlotPageDeposit struct {
 type SlotPageVoluntaryExit struct {
 	ValidatorIndex uint64 `json:"validatorindex"`
 	ValidatorName  string `json:"validatorname"`
+	IsBuilder      bool   `json:"is_builder"`
 	Epoch          uint64 `json:"epoch"`
 	Signature      []byte `json:"signature"`
 }
