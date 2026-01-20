@@ -170,6 +170,7 @@ export interface DepositGateConfig {
 export interface GatingContractData {
   gatingContractAddress: string;
   isAdmin: boolean;
+  isLegacy: boolean; // Legacy: deposit contract itself is the ERC20 token (no admin, no configs)
   tokenBalance: bigint;
   tokenName: string;
   tokenSymbol: string;

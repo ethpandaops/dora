@@ -16,6 +16,7 @@ import {
 
 interface IDepositGeneratorModalProps {
   genesisForkVersion: string;
+  defaultWithdrawalAddress?: string;
   onClose: () => void;
   onGenerate: (deposits: IDeposit[]) => void;
 }
@@ -36,7 +37,7 @@ interface IValidatorOverrideState {
 }
 
 const DepositGeneratorModal: React.FC<IDepositGeneratorModalProps> = (props) => {
-  const { genesisForkVersion, onClose, onGenerate } = props;
+  const { genesisForkVersion, defaultWithdrawalAddress, onClose, onGenerate } = props;
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('basic');
   const [isGenerating, setIsGenerating] = useState(false);
@@ -51,7 +52,7 @@ const DepositGeneratorModal: React.FC<IDepositGeneratorModalProps> = (props) => 
   const [amountEth, setAmountEth] = useState('32');
   const [credentialInputMode, setCredentialInputMode] = useState<CredentialInputMode>('type');
   const [credentialType, setCredentialType] = useState<CredentialType>('01');
-  const [withdrawalAddress, setWithdrawalAddress] = useState('');
+  const [withdrawalAddress, setWithdrawalAddress] = useState(defaultWithdrawalAddress || '');
   const [rawCredentials, setRawCredentials] = useState('');
 
   // Per-validator overrides

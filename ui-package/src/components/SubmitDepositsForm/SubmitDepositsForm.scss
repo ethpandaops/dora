@@ -156,6 +156,10 @@
 
 // Deposit Generator Modal Styles
 .deposit-generator-modal {
+    .modal-dialog {
+        max-width: 900px;
+    }
+
     .security-warning {
         background-color: rgba(var(--bs-danger-rgb), 0.15);
         border: 2px solid var(--bs-danger);

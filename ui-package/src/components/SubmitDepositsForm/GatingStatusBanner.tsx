@@ -15,12 +15,10 @@ interface IGatingStatusBannerProps {
 export const GatingStatusBanner: React.FC<IGatingStatusBannerProps> = (props) => {
   const { gatingData, depositType, showDepositStatus = true, isLoading = false, onManageClick } = props;
 
-  const formatTokenBalance = (balance: bigint, decimals: number, symbol: string): string => {
+  // Format as whole tokens (deposits possible), rounded down
+  const formatDepositTokens = (balance: bigint, decimals: number): bigint => {
     const divisor = BigInt(10 ** decimals);
-    const whole = balance / divisor;
-    const fraction = balance % divisor;
-    const fractionStr = fraction.toString().padStart(decimals, '0').slice(0, 4);
-    return `${whole}.${fractionStr} ${symbol}`;
+    return balance / divisor; // Integer division rounds down
   };
 
   // Show loading indicator
@@ -42,6 +40,37 @@ export const GatingStatusBanner: React.FC<IGatingStatusBannerProps> = (props) =>
 
   // Get config for specific deposit type if provided
   const config = depositType !== undefined ? gatingData.depositConfigs.get(depositType) : null;
+
+  // Legacy gating contract: simpler UI (no admin, no per-type configs)
+  if (gatingData.isLegacy) {
+    return (
+      <div className="gating-status-banner alert alert-info mb-3">
+        <div className="d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <div className="d-flex align-items-center gap-3">
+            <div>
+              <i className="fa fa-shield-halved me-2"></i>
+              <strong>Gated Deposits Active</strong>
+              <span className="ms-2 text-muted" style={{ fontSize: '0.85em' }}>(legacy)</span>
+            </div>
+          </div>
+          <div className="d-flex align-items-center gap-3">
+            <span className="token-balance">
+              <i className="fa fa-coins me-1"></i>
+              {formatDepositTokens(gatingData.tokenBalance, gatingData.tokenDecimals).toString()} deposits possible
+            </span>
+          </div>
+        </div>
+        {showDepositStatus && formatDepositTokens(gatingData.tokenBalance, gatingData.tokenDecimals) === 0n && (
+          <div className="mt-2 pt-2 border-top">
+            <span className="text-warning">
+              <i className="fa fa-lock me-1"></i>
+              Token required for deposits (insufficient balance)
+            </span>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="gating-status-banner alert alert-info mb-3">
@@ -69,7 +98,7 @@ export const GatingStatusBanner: React.FC<IGatingStatusBannerProps> = (props) =>
         <div className="d-flex align-items-center gap-3">
           <span className="token-balance">
             <i className="fa fa-coins me-1"></i>
-            Balance: {formatTokenBalance(gatingData.tokenBalance, gatingData.tokenDecimals, gatingData.tokenSymbol)}
+            {formatDepositTokens(gatingData.tokenBalance, gatingData.tokenDecimals).toString()} deposits possible
           </span>
         </div>
       </div>
@@ -85,7 +114,7 @@ export const GatingStatusBanner: React.FC<IGatingStatusBannerProps> = (props) =>
             <span className="ms-2 text-success">
               <i className="fa fa-check-circle me-1"></i>Allowed (no token required)
             </span>
-          ) : gatingData.tokenBalance > 0n ? (
+          ) : formatDepositTokens(gatingData.tokenBalance, gatingData.tokenDecimals) > 0n ? (
             <span className="ms-2 text-success">
               <i className="fa fa-check-circle me-1"></i>Allowed (token will be burned)
             </span>
@@ -108,6 +137,25 @@ interface IGatingDepositTypeStatusProps {
 export const GatingDepositTypeStatus: React.FC<IGatingDepositTypeStatusProps> = (props) => {
   const { gatingData, depositTypes } = props;
 
+  // Helper to get whole token count (deposits possible)
+  const depositsAvailable = gatingData.tokenBalance / BigInt(10 ** gatingData.tokenDecimals);
+
+  // Legacy contracts have no per-type configs - just check token balance
+  if (gatingData.isLegacy) {
+    if (depositsAvailable === 0n) {
+      return (
+        <div className="alert alert-warning mt-2">
+          <i className="fa fa-lock me-2"></i>
+          <strong>Token required for deposits</strong>
+          <p className="mb-0 mt-1">
+            You need at least 1 {gatingData.tokenSymbol} token per deposit. Current balance: 0
+          </p>
+        </div>
+      );
+    }
+    return null;
+  }
+
   const blockedTypes = depositTypes.filter(type => {
     const config = gatingData.depositConfigs.get(type);
     return config?.blocked;
@@ -115,7 +163,7 @@ export const GatingDepositTypeStatus: React.FC<IGatingDepositTypeStatusProps> = 
 
   const tokenRequiredTypes = depositTypes.filter(type => {
     const config = gatingData.depositConfigs.get(type);
-    return !config?.blocked && !config?.noToken && gatingData.tokenBalance === 0n;
+    return !config?.blocked && !config?.noToken && depositsAvailable === 0n;
   });
 
   if (blockedTypes.length === 0 && tokenRequiredTypes.length === 0) {

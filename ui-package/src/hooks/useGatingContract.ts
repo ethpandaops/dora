@@ -67,6 +67,64 @@ export const useGatingContract = (
     };
   }, []);
 
+  // Check if deposit contract itself is a legacy ERC20 token (old gating version)
+  // If walletAddress is provided, also fetches and caches the user's balance
+  const checkLegacyGating = async (contractAddress: `0x${string}`, userAddress?: string): Promise<Omit<GatingContractData, 'tokenBalance'> | null> => {
+    if (!client || !chainId) return null;
+
+    // Need a wallet address to check balance - if not connected, can't detect legacy gating
+    if (!userAddress) return null;
+
+    try {
+      // Try balanceOf with user's address to check if it's an ERC20 token
+      // This also gives us the user's balance, which we can cache
+      const balanceCallData = encodeCall(GatingContractAbi, 'balanceOf', [userAddress]);
+
+      const balanceResult = await queuedEthCall(chainId, client as RpcClient, contractAddress, balanceCallData);
+
+      // Try to decode as uint256 - if this fails or returns invalid data, it's not an ERC20
+      let userBalance: bigint;
+      try {
+        userBalance = decodeCallResult<bigint>(GatingContractAbi, 'balanceOf', balanceResult);
+      } catch {
+        return null;
+      }
+
+      // Cache the balance we just fetched (so fetchBalance can skip the initial call)
+      balanceCache.set(balanceCacheKey, { balance: userBalance, timestamp: Date.now() });
+
+      // balanceOf succeeded - now fetch token metadata
+      const metadataCalls: Array<{ target: `0x${string}`; callData: `0x${string}` }> = [
+        { target: contractAddress, callData: encodeCall(GatingContractAbi, 'name') },
+        { target: contractAddress, callData: encodeCall(GatingContractAbi, 'symbol') },
+        { target: contractAddress, callData: encodeCall(GatingContractAbi, 'decimals') },
+        { target: contractAddress, callData: encodeCall(GatingContractAbi, 'totalSupply') },
+      ];
+
+      const results = await batchedEthCalls(chainId, client as RpcClient, metadataCalls);
+
+      // Parse metadata with fallbacks
+      const tokenName = results[0].success ? decodeCallResult<string>(GatingContractAbi, 'name', results[0].data) : 'Unknown';
+      const tokenSymbol = results[1].success ? decodeCallResult<string>(GatingContractAbi, 'symbol', results[1].data) : '???';
+      const tokenDecimals = results[2].success ? Number(decodeCallResult<number>(GatingContractAbi, 'decimals', results[2].data)) : 0;
+      const totalSupply = results[3].success ? decodeCallResult<bigint>(GatingContractAbi, 'totalSupply', results[3].data) : 0n;
+
+      // Legacy contract: deposit contract is the token, no admin, no deposit configs
+      return {
+        gatingContractAddress: contractAddress,
+        isAdmin: false, // Legacy has no admin role
+        isLegacy: true,
+        tokenName,
+        tokenSymbol,
+        tokenDecimals,
+        totalSupply,
+        depositConfigs: new Map(), // Legacy has no per-type configs
+      };
+    } catch {
+      return null;
+    }
+  };
+
   // Fetch static data (admin status, configs, token metadata) - cached for 10 minutes
   const fetchStaticData = useCallback(async (): Promise<Omit<GatingContractData, 'tokenBalance'> | null> => {
     if (!client || !depositContract || !chainId) return null;
@@ -96,10 +154,25 @@ export const useGatingContract = (
         storageSlotPadded
       );
 
-      if (!storageResult || storageResult === '0x0000000000000000000000000000000000000000000000000000000000000000') {
-        // No gating contract configured
-        staticCache.set(staticCacheKey, { data: null, timestamp: Date.now() });
-        return null;
+      // Validate storage result is a properly formatted address
+      // A valid address in storage has 12 bytes of zero padding followed by 20 bytes of address
+      // Format: 0x000000000000000000000000XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+      const isValidAddressStorage = (value: string | undefined): boolean => {
+        if (!value || value.length !== 66) return false; // 0x + 64 hex chars
+        // Check first 24 hex chars (12 bytes) are zeros
+        const padding = value.slice(2, 26);
+        if (padding !== '000000000000000000000000') return false;
+        // Check the address part is not all zeros
+        const addressPart = value.slice(26);
+        if (addressPart === '0000000000000000000000000000000000000000') return false;
+        return true;
+      };
+
+      if (!isValidAddressStorage(storageResult)) {
+        // No valid gating contract in storage - check if deposit contract itself is a legacy ERC20 token
+        const legacyData = await checkLegacyGating(depositContract as `0x${string}`, walletAddress);
+        staticCache.set(staticCacheKey, { data: legacyData, timestamp: Date.now() });
+        return legacyData;
       }
 
       // Extract address from storage data (last 20 bytes = 40 hex chars)
@@ -173,6 +246,7 @@ export const useGatingContract = (
       const staticData = {
         gatingContractAddress,
         isAdmin,
+        isLegacy: false,
         tokenName,
         tokenSymbol,
         tokenDecimals,

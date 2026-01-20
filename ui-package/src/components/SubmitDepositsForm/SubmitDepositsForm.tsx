@@ -172,6 +172,7 @@ const SubmitDepositsForm = (props: ISubmitDepositsFormProps): React.ReactElement
       {showGeneratorModal && (
         <DepositGeneratorModal
           genesisForkVersion={props.genesisForkVersion}
+          defaultWithdrawalAddress={walletAddress}
           onClose={() => setShowGeneratorModal(false)}
           onGenerate={(deposits) => {
             setGeneratedDeposits(deposits);
