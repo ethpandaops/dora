@@ -61,6 +61,10 @@ type Config struct {
 		// DAS Guardian configuration
 		DisableDasGuardianCheck   bool `yaml:"disableDasGuardianCheck" envconfig:"FRONTEND_DISABLE_DAS_GUARDIAN_CHECK"`
 		EnableDasGuardianMassScan bool `yaml:"enableDasGuardianMassScan" envconfig:"FRONTEND_ENABLE_DAS_GUARDIAN_MASS_SCAN"`
+
+		// Tracoor configuration
+		TracoorUrl     string `yaml:"tracoorUrl" envconfig:"FRONTEND_TRACOOR_URL"`
+		TracoorNetwork string `yaml:"tracoorNetwork" envconfig:"FRONTEND_TRACOOR_NETWORK"`
 	} `yaml:"frontend"`
 
 	Api struct {
