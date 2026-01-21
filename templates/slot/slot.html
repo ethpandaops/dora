@@ -359,12 +359,11 @@
 
         function loadTracoorData() {
           var params = new URLSearchParams();
-          if (blockRoot) params.append('blockRoot', blockRoot);
           if (stateRoot) params.append('stateRoot', stateRoot);
           if (executionBlockHash) params.append('executionBlockHash', executionBlockHash);
 
           $.ajax({
-            url: '/slot/{{ .Slot }}/tracoor?' + params.toString(),
+            url: '/slot/' + blockRoot + '/tracoor?' + params.toString(),
             method: 'GET',
             dataType: 'json',
             success: function(data) {

@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
 
 	"github.com/ethpandaops/dora/types/models"
@@ -34,17 +35,20 @@ func SlotTracoor(w http.ResponseWriter, r *http.Request) {
 		tracoorNetwork = "mainnet"
 	}
 
-	// Get parameters from query string
-	query := r.URL.Query()
-	blockRoot := query.Get("blockRoot")
-	stateRoot := query.Get("stateRoot")
-	executionBlockHash := query.Get("executionBlockHash")
+	// Get block root from URL path
+	vars := mux.Vars(r)
+	blockRoot := vars["slotOrHash"]
 
-	// Validate input - at least one of the parameters should be provided
-	if blockRoot == "" && stateRoot == "" && executionBlockHash == "" {
-		http.Error(w, `{"error": "missing required parameters"}`, http.StatusBadRequest)
+	// Validate block root - must be a 0x-prefixed hex string (66 chars for 32 bytes)
+	if !strings.HasPrefix(blockRoot, "0x") || len(blockRoot) != 66 {
+		http.Error(w, `{"error": "block root required (not slot number)"}`, http.StatusBadRequest)
 		return
 	}
+
+	// Get state root and execution block hash from query string
+	query := r.URL.Query()
+	stateRoot := query.Get("stateRoot")
+	executionBlockHash := query.Get("executionBlockHash")
 
 	result := models.SlotTracoorData{
 		TracoorUrl:           tracoorUrl,
