@@ -98,7 +98,7 @@
         {{ end }}
         {{ if .Block }}
           <li class="nav-item ms-auto">
-            <a class="nav-link" id="download-tab" data-bs-toggle="tab" href="#download" role="tab" aria-controls="download" aria-selected="false">
+            <a class="nav-link" id="download-tab" data-bs-toggle="tab" href="#download" role="tab" aria-controls="download" aria-selected="false" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Download">
               <i class="fas fa-download"></i>
             </a>
           </li>
@@ -263,7 +263,7 @@
             <div class="card block-card">
               <div class="card-body">
                 <h3 class="h5 mb-4">Download Block Data</h3>
-                
+
                 <div class="row g-4">
                   <div class="col-md-6">
                     <div class="card h-100">
@@ -300,8 +300,20 @@
                       </div>
                     </div>
                   </div>
-
                 </div>
+
+                {{ if .TracoorUrl }}
+                <hr class="my-4">
+                <h3 class="h5 mb-4">Tracoor Traces</h3>
+                <div id="tracoor-content">
+                  <div class="text-center py-4">
+                    <div class="spinner-border text-primary" role="status">
+                      <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-3 text-muted mb-0">Loading Tracoor traces...</p>
+                  </div>
+                </div>
+                {{ end }}
               </div>
             </div>
           </div>
@@ -318,12 +330,164 @@
       $(function() {
         if(location.hash)
           $('.nav-tabs a[href="' + location.hash + '"]').tab('show');
-        
+
         // Handle EIP-7918 info button click
         $('.eip7918-info-btn').on('click', function(e) {
           e.preventDefault();
           $('#eip7918-details').toggleClass('d-none');
         });
+
+        {{ if and .Block .TracoorUrl }}
+        // Tracoor lazy loading
+        var tracoorLoaded = false;
+        var tracoorUrl = "{{ .TracoorUrl }}";
+        var blockRoot = "0x{{ printf "%x" .Block.BlockRoot }}";
+        var stateRoot = "0x{{ printf "%x" .Block.StateRoot }}";
+        var executionBlockHash = {{ if .Block.ExecutionData }}"0x{{ printf "%x" .Block.ExecutionData.BlockHash }}"{{ else }}""{{ end }};
+
+        $('#download-tab').on('shown.bs.tab', function() {
+          if (tracoorLoaded) return;
+          tracoorLoaded = true;
+          loadTracoorData();
+        });
+
+        // Also load if URL hash is #download on page load
+        if (location.hash === '#download') {
+          loadTracoorData();
+          tracoorLoaded = true;
+        }
+
+        function loadTracoorData() {
+          var params = new URLSearchParams();
+          if (stateRoot) params.append('stateRoot', stateRoot);
+          if (executionBlockHash) params.append('executionBlockHash', executionBlockHash);
+
+          $.ajax({
+            url: '/slot/' + blockRoot + '/tracoor?' + params.toString(),
+            method: 'GET',
+            dataType: 'json',
+            success: function(data) {
+              renderTracoorData(data);
+            },
+            error: function(xhr, status, error) {
+              $('#tracoor-content').html('<div class="alert alert-danger">Failed to load Tracoor data: ' + error + '</div>');
+            }
+          });
+        }
+
+        function renderTracoorData(data) {
+          var html = '<div class="row">';
+
+          // Beacon Block Traces
+          html += '<div class="col-12 mb-4">';
+          html += '<h5 class="mb-3"><i class="fas fa-cube me-2"></i>Beacon Block Traces';
+          if (data.beacon_blocks && data.beacon_blocks.length > 0) {
+            html += ' <span class="badge bg-secondary">' + data.beacon_blocks.length + '</span>';
+          }
+          html += '</h5>';
+          if (data.beacon_blocks_error) {
+            html += '<div class="alert alert-warning mb-0"><i class="fas fa-exclamation-triangle me-2"></i>' + escapeHtml(data.beacon_blocks_error) + '</div>';
+          } else if (data.beacon_blocks && data.beacon_blocks.length > 0) {
+            html += renderTracoorTable(data.beacon_blocks, 'beacon_block', data.tracoor_url);
+          } else {
+            html += '<p class="text-muted mb-0"><i class="fas fa-info-circle me-2"></i>No beacon block traces available.</p>';
+          }
+          html += '</div>';
+
+          // Beacon State Traces
+          html += '<div class="col-12 mb-4">';
+          html += '<h5 class="mb-3"><i class="fas fa-database me-2"></i>Beacon State Traces';
+          if (data.beacon_states && data.beacon_states.length > 0) {
+            html += ' <span class="badge bg-secondary">' + data.beacon_states.length + '</span>';
+          }
+          html += '</h5>';
+          if (data.beacon_states_error) {
+            html += '<div class="alert alert-warning mb-0"><i class="fas fa-exclamation-triangle me-2"></i>' + escapeHtml(data.beacon_states_error) + '</div>';
+          } else if (data.beacon_states && data.beacon_states.length > 0) {
+            html += renderTracoorTable(data.beacon_states, 'beacon_state', data.tracoor_url);
+          } else {
+            html += '<p class="text-muted mb-0"><i class="fas fa-info-circle me-2"></i>No beacon state traces available.</p>';
+          }
+          html += '</div>';
+
+          // Execution Block Traces
+          html += '<div class="col-12">';
+          html += '<h5 class="mb-3"><i class="fas fa-microchip me-2"></i>Execution Block Traces';
+          if (data.execution_block_traces && data.execution_block_traces.length > 0) {
+            html += ' <span class="badge bg-secondary">' + data.execution_block_traces.length + '</span>';
+          }
+          html += '</h5>';
+          if (data.execution_block_trace_error) {
+            html += '<div class="alert alert-warning mb-0"><i class="fas fa-exclamation-triangle me-2"></i>' + escapeHtml(data.execution_block_trace_error) + '</div>';
+          } else if (data.execution_block_traces && data.execution_block_traces.length > 0) {
+            html += renderTracoorTable(data.execution_block_traces, 'execution_block_trace', data.tracoor_url);
+          } else {
+            html += '<p class="text-muted mb-0"><i class="fas fa-info-circle me-2"></i>No execution block traces available.</p>';
+          }
+          html += '</div>';
+
+          html += '</div>';
+          $('#tracoor-content').html(html);
+        }
+
+        function getClientBadgeClass(client) {
+          var clientLower = (client || '').toLowerCase();
+          var badgeClasses = {
+            'lighthouse': 'bg-primary',
+            'prysm': 'bg-success',
+            'teku': 'bg-info',
+            'nimbus': 'bg-warning text-dark',
+            'lodestar': 'bg-danger',
+            'grandine': 'bg-secondary',
+            'geth': 'bg-primary',
+            'nethermind': 'bg-success',
+            'besu': 'bg-info',
+            'erigon': 'bg-warning text-dark',
+            'reth': 'bg-danger'
+          };
+          return badgeClasses[clientLower] || 'bg-secondary';
+        }
+
+        function renderTracoorTable(items, type, tracoorBaseUrl) {
+          var isExecution = type === 'execution_block_trace';
+          var implField = isExecution ? 'execution_implementation' : 'beacon_implementation';
+
+          var html = '<div class="table-responsive"><table class="table table-sm table-hover align-middle mb-0">';
+          html += '<thead><tr>';
+          html += '<th style="width: 30%;">Node</th>';
+          html += '<th style="width: 12%;">Client</th>';
+          html += '<th style="width: 35%;">Version</th>';
+          html += '<th style="width: 18%;">Fetched At</th>';
+          html += '<th style="width: 5%;" class="text-center">Download</th>';
+          html += '</tr></thead><tbody>';
+
+          for (var i = 0; i < items.length; i++) {
+            var item = items[i];
+            var impl = item[implField] || '-';
+            var fetchedAt = new Date(item.fetched_at).toLocaleString();
+            var downloadUrl = tracoorBaseUrl + '/download/' + type + '/' + item.id;
+            var badgeClass = getClientBadgeClass(impl);
+
+            html += '<tr>';
+            html += '<td class="text-truncate font-monospace small" style="max-width: 0;" title="' + escapeHtml(item.node) + '">' + escapeHtml(item.node) + '</td>';
+            html += '<td><span class="badge ' + badgeClass + '">' + escapeHtml(impl) + '</span></td>';
+            html += '<td class="text-truncate small" style="max-width: 0;" title="' + escapeHtml(item.node_version) + '">' + escapeHtml(item.node_version) + '</td>';
+            html += '<td class="small">' + escapeHtml(fetchedAt) + '</td>';
+            html += '<td class="text-center"><a href="' + escapeHtml(downloadUrl) + '" class="btn btn-sm btn-outline-primary" target="_blank" title="Download trace"><i class="fas fa-download"></i></a></td>';
+            html += '</tr>';
+          }
+
+          html += '</tbody></table></div>';
+          return html;
+        }
+
+        function escapeHtml(text) {
+          if (!text) return '';
+          var div = document.createElement('div');
+          div.textContent = text;
+          return div.innerHTML;
+        }
+        {{ end }}
       });
     </script>
     <div id="footer-placeholder" style="height:71px;"></div>

@@ -22,6 +22,7 @@ type SlotPageData struct {
 	Block                  *SlotPageBlockData    `json:"block"`
 	Badges                 []*SlotPageBlockBadge `json:"badges"`
 	SlotBlocks             []*SlotPageSlotBlock  `json:"slot_blocks"`
+	TracoorUrl             string                `json:"tracoor_url"`
 }
 
 // SlotPageSlotBlock represents a block entry for the slot (for multi-block display)
