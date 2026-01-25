@@ -60,6 +60,10 @@ frontend:
   disableDasGuardianCheck: false     # Disable DAS Guardian completely (default: false - enabled)
   enableDasGuardianMassScan: true    # Enable mass DAS Guardian scanning (default: false - disabled)
 
+  # Tracoor cross references
+  #tracoorUrl: "https://tracoor.sepolia.ethpandaops.io/"
+  #tracoorNetwork: "sepolia"
+
   
 beaconapi:
   # beacon node rpc endpoints

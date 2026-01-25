@@ -247,6 +247,7 @@ func buildSlotPageData(ctx context.Context, blockSlot int64, blockRoot []byte) (
 		Future:         slot >= currentSlot,
 		EpochFinalized: finalizedEpoch >= chainState.EpochOfSlot(slot),
 		Badges:         []*models.SlotPageBlockBadge{},
+		TracoorUrl:     utils.Config.Frontend.TracoorUrl,
 	}
 
 	var epochStatsValues *beacon.EpochStatsValues

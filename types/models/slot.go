@@ -22,6 +22,7 @@ type SlotPageData struct {
 	Block                  *SlotPageBlockData              `json:"block"`
 	Badges                 []*SlotPageBlockBadge           `json:"badges"`
 	SlotBlocks             []*SlotPageSlotBlock            `json:"slot_blocks"`
+	TracoorUrl             string                          `json:"tracoor_url"`
 	SystemContracts        map[string]string               `json:"system_contracts"`
 	TransactionDetails     map[uint64]*SlotPageTransaction `json:"transaction_details"`
 }

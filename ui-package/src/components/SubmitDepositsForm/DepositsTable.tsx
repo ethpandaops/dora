@@ -1,16 +1,21 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { useState } from 'react';
 import {ContainerType, ByteVectorType, UintNumberType, ValueOf} from "@chainsafe/ssz";
 import bls from "@chainsafe/bls/herumi";
 
 import DepositEntry from './DepositEntry';
 import { IDepositTx } from './SubmitDepositsFormProps';
+import { GatingContractData, PREFIX_TO_DEPOSIT_TYPE } from './GatingContract';
+import { GatingDepositTypeStatus } from './GatingStatusBanner';
 
 interface IDepositsTableProps {
-  file: File;
+  file?: File | null;
+  deposits?: IDeposit[] | null;
   genesisForkVersion: string;
   depositContract: string;
   loadDepositTxs(pubkeys: string[]): Promise<{deposits: IDepositTx[], count: number, havemore: boolean}>;
+  explorerUrl?: string;
+  gatingData?: GatingContractData | null;
 }
 
 export interface IDeposit {
@@ -60,7 +65,30 @@ const DepositsTable = (props: IDepositsTableProps): React.ReactElement => {
   const [loadDepositsError, setLoadDepositsError] = useState<string | null>(null);
   const [depositTxStats, setDepositTxStats] = useState<IDepositTxStats | null>(null);
 
+  // Get unique deposit types from withdrawal credential prefixes
+  const getUniqueDepositTypes = (depositsList: IDeposit[]): number[] => {
+    const prefixes = new Set<string>();
+    for (const deposit of depositsList) {
+      const prefix = deposit.withdrawal_credentials.substring(0, 2);
+      prefixes.add(prefix);
+    }
+    const depositTypes: number[] = [];
+    for (const prefix of prefixes) {
+      const depositType = PREFIX_TO_DEPOSIT_TYPE[prefix];
+      if (depositType !== undefined) {
+        depositTypes.push(depositType);
+      }
+    }
+    return depositTypes;
+  };
+
+  // Determine data source
+  const dataSource = props.deposits ? 'generated' : props.file ? 'file' : null;
+  const dataSourceKey = props.deposits ? 'generated' : props.file?.name;
+
   useEffect(() => {
+    if (!dataSource) return;
+
     parseDeposits().then((res) => {
       setDeposits(res.deposits);
       setParseError(null);
@@ -72,7 +100,7 @@ const DepositsTable = (props: IDepositsTableProps): React.ReactElement => {
       setLoadDepositsError(null);
       setDepositTxStats(null);
     });
-  }, [props.file]);
+  }, [dataSourceKey]);
 
   return (
     <div>
@@ -82,8 +110,10 @@ const DepositsTable = (props: IDepositsTableProps): React.ReactElement => {
         </div>
       </div>
       <div className="row mt-2">
-        <div className="col-lg-2 col-sm-3 font-weight-bold">Deposit Data File:</div>
-        <div className="col-lg-10 col-sm-9">{props.file.name}</div>
+        <div className="col-lg-2 col-sm-3 font-weight-bold">Deposit Source:</div>
+        <div className="col-lg-10 col-sm-9">
+          {props.file ? props.file.name : <span className="text-warning"><i className="fa fa-magic me-1"></i>Generated (devnet only)</span>}
+        </div>
       </div>
       {parseError ?
         <div className="alert alert-danger">The provided file is not a valid deposit data file! ({parseError})</div> :
@@ -108,11 +138,19 @@ const DepositsTable = (props: IDepositsTableProps): React.ReactElement => {
             </div> 
           : null}
 
-          {depositTxStats && depositTxStats.count > 0 ? 
+          {depositTxStats && depositTxStats.count > 0 ?
             <div className="alert alert-warning mt-2">
               We've found {depositTxStats.havemore ? "more than " : ""}{depositTxStats.count} deposit transactions matching your validator pubkeys. Double check each deposit to avoid double deposits.
-            </div> 
+            </div>
           : null}
+
+          {/* Gating status for deposit types in the file */}
+          {props.gatingData && deposits && deposits.length > 0 && (
+            <GatingDepositTypeStatus
+              gatingData={props.gatingData}
+              depositTypes={getUniqueDepositTypes(deposits)}
+            />
+          )}
 
           {!deposits ? <p>Loading...</p> : deposits.length === 0 ? <p>No deposits found</p> : (
             <div className="table-ellipsis mt-1">
@@ -128,7 +166,15 @@ const DepositsTable = (props: IDepositsTableProps): React.ReactElement => {
                 </thead>
                 <tbody>
                   {deposits.map((deposit: IDeposit) => {
-                    return <DepositEntry deposit={deposit} depositContract={props.depositContract} key={deposit.pubkey} />;
+                    return (
+                      <DepositEntry
+                        deposit={deposit}
+                        depositContract={props.depositContract}
+                        explorerUrl={props.explorerUrl}
+                        gatingData={props.gatingData}
+                        key={deposit.pubkey}
+                      />
+                    );
                   })}
                 </tbody>
               </table>
@@ -139,15 +185,26 @@ const DepositsTable = (props: IDepositsTableProps): React.ReactElement => {
     </div>
   );
 
-  async function parseDeposits(): Promise<{deposits: IDeposit[], loadDepositsErr: string, depositStats: IDepositTxStats}> {
+  async function parseDeposits(): Promise<{deposits: IDeposit[], loadDepositsErr: string | null, depositStats: IDepositTxStats | null}> {
     try {
-      const text = await props.file.text();
-      const json: IDeposit[] = JSON.parse(text);
+      let json: IDeposit[];
+
+      // Get deposits from either file or generated deposits prop
+      if (props.deposits) {
+        // Use pre-generated deposits (already validated during generation)
+        json = props.deposits;
+      } else if (props.file) {
+        // Parse from file
+        const text = await props.file.text();
+        json = JSON.parse(text);
+      } else {
+        throw new Error("No deposit data provided");
+      }
 
       let pubkeys = json.map((deposit: IDeposit) => deposit.pubkey);
-      let depositTxs = [];
-      let loadDepositsErr = null;
-      let depositStats: IDepositTxStats = null;
+      let depositTxs: IDepositTx[] = [];
+      let loadDepositsErr: string | null = null;
+      let depositStats: IDepositTxStats | null = null;
       try {
         let depositsRes = await props.loadDepositTxs(pubkeys);
         depositTxs = depositsRes.deposits;
@@ -159,7 +216,21 @@ const DepositsTable = (props: IDepositsTableProps): React.ReactElement => {
         loadDepositsErr = error.toString();
       }
 
-      // compute signing domain
+      // For generated deposits, validity is already set to true
+      // For file deposits, we need to verify signatures
+      if (props.deposits) {
+        // Generated deposits - just attach deposit transactions
+        return {
+          deposits: json.map((deposit: IDeposit) => {
+            deposit.depositTxs = depositTxs.filter((tx: IDepositTx) => tx.pubkey === "0x" + deposit.pubkey);
+            return deposit;
+          }),
+          loadDepositsErr: loadDepositsErr,
+          depositStats: depositStats
+        };
+      }
+
+      // File deposits - compute signing domain and verify signatures
       const forkData: ForkData = ForkData.fromJson({
         current_version: props.genesisForkVersion, // genesis fork version of the target network
         genesis_validators_root: "0x0000000000000000000000000000000000000000000000000000000000000000", // hardcoded zero hash for deposits as they are valid even before genesis
@@ -168,7 +239,7 @@ const DepositsTable = (props: IDepositsTableProps): React.ReactElement => {
       let signingDomain = new Uint8Array(32);
       signingDomain.set([0x03, 0x00, 0x00, 0x00]);
       signingDomain.set(forkDataRoot.slice(0, 28), 4);
-      
+
       return {
         deposits: json.map((deposit: IDeposit) => {
           deposit.validity = verifyDeposit(deposit, signingDomain);
