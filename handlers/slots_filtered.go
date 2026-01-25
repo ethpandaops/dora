@@ -252,7 +252,7 @@ func buildFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string
 			}
 			displayMask |= 1 << (col - 1)
 		}
-		filterArgs.Add("d", fmt.Sprintf("%v", displayMask))
+		filterArgs.Add("d", fmt.Sprintf("0x%x", displayMask))
 	}
 
 	pageData := &models.SlotsFilteredPageData{

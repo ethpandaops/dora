@@ -265,6 +265,43 @@ func DeleteElAccount(id uint64, dbTx *sqlx.Tx) error {
 	return err
 }
 
+// GetElAccountsByAddresses retrieves multiple accounts by their addresses in a single query.
+// Returns a map from address (as hex string) to account for efficient lookup.
+func GetElAccountsByAddresses(addresses [][]byte) (map[string]*dbtypes.ElAccount, error) {
+	if len(addresses) == 0 {
+		return make(map[string]*dbtypes.ElAccount), nil
+	}
+
+	var sql strings.Builder
+	args := make([]any, len(addresses))
+
+	fmt.Fprint(&sql, "SELECT id, address, funder_id, funded, is_contract, last_nonce, last_block_uid FROM el_accounts WHERE address IN (")
+	for i, addr := range addresses {
+		if i > 0 {
+			fmt.Fprint(&sql, ", ")
+		}
+		fmt.Fprintf(&sql, "$%d", i+1)
+		args[i] = addr
+	}
+	fmt.Fprint(&sql, ")")
+
+	accounts := []*dbtypes.ElAccount{}
+	err := ReaderDb.Select(&accounts, sql.String(), args...)
+	if err != nil {
+		logger.Errorf("Error while fetching el accounts by addresses: %v", err)
+		return nil, err
+	}
+
+	// Build map from address to account
+	result := make(map[string]*dbtypes.ElAccount, len(accounts))
+	for _, account := range accounts {
+		// Use hex string of address as key for efficient lookup
+		key := fmt.Sprintf("%x", account.Address)
+		result[key] = account
+	}
+	return result, nil
+}
+
 // GetElAccountsByIDs retrieves multiple accounts by their IDs in a single query.
 func GetElAccountsByIDs(ids []uint64) ([]*dbtypes.ElAccount, error) {
 	if len(ids) == 0 {

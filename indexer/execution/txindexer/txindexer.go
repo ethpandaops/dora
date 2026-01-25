@@ -584,7 +584,7 @@ func (t *TxIndexer) dequeueBlockRef() *BlockRef {
 // The lookups are rate-limited to prevent excessive RPC calls.
 func (t *TxIndexer) QueueAddressBalanceLookups(accountID uint64, address []byte) {
 	if t.balanceLookup != nil {
-		t.balanceLookup.QueueAddressPageLookups(accountID, address)
+		t.balanceLookup.QueueAddressBalanceLookups(accountID, address)
 	}
 }
 

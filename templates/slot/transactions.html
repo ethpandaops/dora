@@ -64,7 +64,7 @@
             </td>
             <td>
               <span data-bs-toggle="tooltip" title="{{ printf "%.9f" $transaction.EffGasPrice }} Gwei">
-                {{ formatFloat $transaction.TxFee 6 }} ETH
+                {{ formatTransactionFee $transaction.TxFee }}
               </span>
             </td>
             {{ else }}

@@ -2,7 +2,9 @@ package txindexer
 
 import (
 	"context"
+	"fmt"
 	"math/big"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -88,16 +90,22 @@ type pendingBalanceTransfer struct {
 
 // pendingAccount represents an account that may need insertion.
 type pendingAccount struct {
-	account *dbtypes.ElAccount
-	id      uint64 // Set from DB lookup or after insertion
-	isNew   bool   // true if this account needs to be inserted
+	account       *dbtypes.ElAccount
+	id            uint64          // Set from DB lookup or after insertion
+	isNew         bool            // true if this account needs to be inserted
+	needsLookup   bool            // true if DB lookup hasn't been performed yet
+	funderAccount *pendingAccount // Reference to funder (for deferred ID resolution)
+	isContract    bool            // true if known to be contract creation
 }
 
 // pendingToken represents a token that may need insertion.
 type pendingToken struct {
-	token *dbtypes.ElToken
-	id    uint64 // Set from DB lookup or after insertion
-	isNew bool   // true if this token needs to be inserted
+	token           *dbtypes.ElToken
+	id              uint64 // Set from DB lookup or after insertion
+	isNew           bool   // true if this token needs to be inserted
+	needsLookup     bool   // true if DB lookup hasn't been performed yet
+	needsMetaUpdate bool   // true if existing token needs metadata update in DB
+	tokenType       uint8  // Token type to apply if new
 }
 
 // txProcessingResult holds the result of processing a single transaction.
@@ -157,7 +165,11 @@ func (ctx *txProcessingContext) processTransaction(
 	}
 
 	txHash := tx.Hash()
-	from, err := types.Sender(types.LatestSignerForChainID(tx.ChainId()), tx)
+	chainID := tx.ChainId()
+	if chainID.Cmp(big.NewInt(0)) == 0 {
+		chainID = nil
+	}
+	from, err := types.Sender(types.LatestSignerForChainID(chainID), tx)
 	if err != nil {
 		return nil, err
 	}
@@ -298,10 +310,12 @@ func (ctx *txProcessingContext) processTransaction(
 	}, nil
 }
 
-// ensureAccount ensures an account is tracked, checking DB only once per block.
+// ensureAccount ensures an account is tracked for later batch resolution.
+// This does NOT query the database - it only creates a pending entry.
+// The actual DB lookup and ID resolution happens in resolveAccountsFromDB.
 // For new accounts, isContract determines behavior:
 // - If true (contract creation tx): account is marked as contract without checking
-// - If false: checks eth_getCode to determine if address is a contract
+// - If false: checks eth_getCode to determine if address is a contract (deferred)
 // funderAccount can be nil for accounts that don't have a known funder.
 func (ctx *txProcessingContext) ensureAccount(
 	address common.Address,
@@ -313,39 +327,19 @@ func (ctx *txProcessingContext) ensureAccount(
 		return pending
 	}
 
-	// Check if exists in database (only done once per address per block)
-	existing, _ := db.GetElAccountByAddress(address[:])
-	if existing != nil {
-		// Account exists - track it but don't insert
-		pending := &pendingAccount{
-			account: existing,
-			id:      existing.ID,
-			isNew:   false,
-		}
-		ctx.accounts[address] = pending
-		return pending
-	}
-
-	// For non-contract-creation transactions, check if address has code
-	if !isContract {
-		isContract = ctx.checkAddressIsContract(address)
-	}
-
-	// Create new account
-	var funderID uint64
-	if funderAccount != nil {
-		funderID = funderAccount.id
-	}
-
+	// Create pending account entry - DB lookup will be done in batch later
 	pending := &pendingAccount{
 		account: &dbtypes.ElAccount{
 			Address:    address[:],
-			FunderID:   funderID,
+			FunderID:   0, // Will be resolved after batch lookup
 			Funded:     ctx.block.BlockUID,
 			IsContract: isContract,
 		},
-		id:    0, // Will be set after insertion
-		isNew: true,
+		id:            0,             // Will be set from DB lookup or after insertion
+		isNew:         false,         // Will be determined after batch lookup
+		needsLookup:   true,          // Mark for batch resolution
+		funderAccount: funderAccount, // Store reference for deferred ID resolution
+		isContract:    isContract,    // Store for later contract check if needed
 	}
 
 	ctx.accounts[address] = pending
@@ -367,8 +361,9 @@ func (ctx *txProcessingContext) checkAddressIsContract(address common.Address) b
 	return len(code) > 0
 }
 
-// ensureToken ensures a token is tracked, checking DB only once per block.
-// Always returns a pendingToken with the ID set (either from DB or to be assigned after insert).
+// ensureToken ensures a token is tracked for later batch resolution.
+// This does NOT query the database - it only creates a pending entry.
+// The actual DB lookup and ID resolution happens in resolveTokensFromDB.
 // tokenType specifies the token standard (ERC20=1, ERC721=2, ERC1155=3).
 func (ctx *txProcessingContext) ensureToken(address common.Address, tokenType uint8) *pendingToken {
 	// Check if already tracked in this block
@@ -376,20 +371,7 @@ func (ctx *txProcessingContext) ensureToken(address common.Address, tokenType ui
 		return pending
 	}
 
-	// Check if exists in database (only done once per address per block)
-	existing, _ := db.GetElTokenByContract(address[:])
-	if existing != nil {
-		// Token exists - track it with existing ID
-		pending := &pendingToken{
-			token: existing,
-			id:    existing.ID,
-			isNew: false,
-		}
-		ctx.tokens[address] = pending
-		return pending
-	}
-
-	// Create new token with type (don't set default decimals - will be handled in createTokenTransfer)
+	// Create pending token entry - DB lookup will be done in batch later
 	pending := &pendingToken{
 		token: &dbtypes.ElToken{
 			Contract:  address[:],
@@ -398,15 +380,135 @@ func (ctx *txProcessingContext) ensureToken(address common.Address, tokenType ui
 			Symbol:    "",
 			Decimals:  0, // Will be fetched from metadata or defaulted based on flags
 		},
-		id:    0, // Will be set after insertion
-		isNew: true,
+		id:          0,         // Will be set from DB lookup or after insertion
+		isNew:       false,     // Will be determined after batch lookup
+		needsLookup: true,      // Mark for batch resolution
+		tokenType:   tokenType, // Store for later use if new
 	}
-
-	// Fetch token metadata (name, symbol, decimals) from the network
-	ctx.indexer.fetchTokenMetadata(ctx.ctx, pending.token)
 
 	ctx.tokens[address] = pending
 	return pending
+}
+
+// resolveAccountsFromDB performs batch lookup of all pending accounts and resolves their IDs.
+// This should be called after all transactions in a block have been processed.
+func (ctx *txProcessingContext) resolveAccountsFromDB() error {
+	// Collect all addresses that need lookup
+	addresses := make([][]byte, 0, len(ctx.accounts))
+	for addr, pending := range ctx.accounts {
+		if pending.needsLookup {
+			addresses = append(addresses, addr[:])
+		}
+	}
+
+	if len(addresses) == 0 {
+		return nil
+	}
+
+	// Batch lookup all accounts from DB
+	existingAccounts, err := db.GetElAccountsByAddresses(addresses)
+	if err != nil {
+		return fmt.Errorf("failed to batch lookup accounts: %w", err)
+	}
+
+	// Process each pending account
+	for addr, pending := range ctx.accounts {
+		if !pending.needsLookup {
+			continue
+		}
+		pending.needsLookup = false
+
+		// Check if account exists in DB
+		key := fmt.Sprintf("%x", addr[:])
+		if existing, found := existingAccounts[key]; found {
+			// Account exists - use existing data
+			pending.account = existing
+			pending.id = existing.ID
+			pending.isNew = false
+		} else {
+			// New account - check if it's a contract (if not already known)
+			if !pending.isContract {
+				pending.account.IsContract = ctx.checkAddressIsContract(addr)
+			}
+			pending.isNew = true
+		}
+	}
+
+	// Second pass: resolve funder IDs now that we know which accounts exist
+	for _, pending := range ctx.accounts {
+		if pending.isNew && pending.funderAccount != nil {
+			pending.account.FunderID = pending.funderAccount.id
+		}
+	}
+
+	return nil
+}
+
+// metadataRefreshInterval is the duration after which token metadata should be re-fetched.
+const metadataRefreshInterval = 7 * 24 * 60 * 60 // 7 days in seconds
+
+// resolveTokensFromDB performs batch lookup of all pending tokens and resolves their IDs.
+// This should be called after all transactions in a block have been processed.
+// For existing tokens, it also checks if metadata needs to be re-fetched (stale or never loaded).
+func (ctx *txProcessingContext) resolveTokensFromDB() error {
+	// Collect all contract addresses that need lookup
+	contracts := make([][]byte, 0, len(ctx.tokens))
+	for addr, pending := range ctx.tokens {
+		if pending.needsLookup {
+			contracts = append(contracts, addr[:])
+		}
+	}
+
+	if len(contracts) == 0 {
+		return nil
+	}
+
+	// Batch lookup all tokens from DB
+	existingTokens, err := db.GetElTokensByContracts(contracts)
+	if err != nil {
+		return fmt.Errorf("failed to batch lookup tokens: %w", err)
+	}
+
+	now := uint64(time.Now().Unix())
+
+	// Process each pending token
+	for addr, pending := range ctx.tokens {
+		if !pending.needsLookup {
+			continue
+		}
+		pending.needsLookup = false
+
+		// Check if token exists in DB
+		key := fmt.Sprintf("%x", addr[:])
+		if existing, found := existingTokens[key]; found {
+			// Token exists - use existing data
+			pending.token = existing
+			pending.id = existing.ID
+			pending.isNew = false
+
+			// Check if metadata needs refresh:
+			// 1. Metadata flag not set (never successfully loaded)
+			// 2. NameSynced timestamp is older than 7 days
+			needsRefresh := false
+			if existing.Flags&dbtypes.TokenFlagMetadataLoaded == 0 {
+				needsRefresh = true
+			} else if existing.NameSynced > 0 && now-existing.NameSynced > metadataRefreshInterval {
+				needsRefresh = true
+			}
+
+			if needsRefresh {
+				// Re-fetch metadata from network
+				ctx.indexer.fetchTokenMetadata(ctx.ctx, pending.token)
+				pending.needsMetaUpdate = true
+			}
+		} else {
+			// New token - fetch metadata from network
+			ctx.indexer.fetchTokenMetadata(ctx.ctx, pending.token)
+			pending.isNew = true
+		}
+	}
+
+	return nil
 }
 
 // processEvent creates an event entity from a log.
@@ -891,7 +993,7 @@ func (ctx *txProcessingContext) commitTransaction(dbTx *sqlx.Tx, result *txProce
 		}
 	}
 
-	// 2. Insert new tokens and get their IDs (collect from block-level map, only new ones)
+	// 2. Insert new tokens and get their IDs, or update existing tokens with refreshed metadata
 	for _, pending := range ctx.tokens {
 		if pending.isNew {
 			id, err := db.InsertElToken(pending.token, dbTx)
@@ -900,6 +1002,12 @@ func (ctx *txProcessingContext) commitTransaction(dbTx *sqlx.Tx, result *txProce
 			}
 			pending.id = id
 			pending.isNew = false // Mark as inserted to avoid duplicates
+		} else if pending.needsMetaUpdate {
+			// Update existing token with refreshed metadata
+			if err := db.UpdateElToken(pending.token, dbTx); err != nil {
+				return err
+			}
+			pending.needsMetaUpdate = false // Mark as updated to avoid duplicates
 		}
 	}
 
