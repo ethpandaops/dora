@@ -165,7 +165,11 @@ func (ctx *txProcessingContext) processTransaction(
 	}
 
 	txHash := tx.Hash()
-	from, err := types.Sender(types.LatestSignerForChainID(tx.ChainId()), tx)
+	chainID := tx.ChainId()
+	if chainID.Cmp(big.NewInt(0)) == 0 {
+		chainID = nil
+	}
+	from, err := types.Sender(types.LatestSignerForChainID(chainID), tx)
 	if err != nil {
 		return nil, err
 	}
