@@ -43,9 +43,19 @@
             <a class="nav-link" id="transactions-tab" data-bs-toggle="tab" href="#transactions" role="tab" aria-controls="transactions" aria-selected="false">Transactions <span class="badge bg-secondary text-white">{{ .Block.TransactionsCount }}</span></a>
           </li>
         {{ end }}
+        {{ if gt .Block.BidsCount 0 }}
+          <li class="nav-item">
+            <a class="nav-link" id="bids-tab" data-bs-toggle="tab" href="#bids" role="tab" aria-controls="bids" aria-selected="false">Bids <span class="badge bg-secondary text-white">{{ .Block.BidsCount }}</span></a>
+          </li>
+        {{ end }}
         <li class="nav-item">
           <a class="nav-link" id="attestations-tab" data-bs-toggle="tab" href="#attestations" role="tab" aria-controls="attestations" aria-selected="false">Attestations <span class="badge bg-secondary text-white">{{ .Block.AttestationsCount }}</span></a>
         </li>
+        {{ if gt .Block.PtcVotesCount 0 }}
+          <li class="nav-item">
+            <a class="nav-link" id="ptcVotes-tab" data-bs-toggle="tab" href="#ptcVotes" role="tab" aria-controls="ptcVotes" aria-selected="false">PTC Votes <span class="badge bg-secondary text-white">{{ .Block.PtcVotesCount }}</span></a>
+          </li>
+        {{ end }}
         {{ if gt .Block.DepositsCount 0 }}
           <li class="nav-item">
             <a class="nav-link" id="deposits-tab" data-bs-toggle="tab" href="#deposits" role="tab" aria-controls="deposits" aria-selected="false">Deposits <span class="badge bg-secondary text-white">{{ .Block.DepositsCount }}</span></a>
@@ -256,6 +266,30 @@
               </div>
             </div>
             {{ template "block_consolidation_requests" . }}
+          </div>
+        {{ end }}
+        {{ if gt .Block.BidsCount 0 }}
+          <div class="tab-pane fade show active" id="bids" role="tabpanel" aria-labelledby="bids-tab">
+            <div class="card block-card">
+              <div style="margin-bottom: -.25rem;" class="card-body px-0 py-1">
+                <div class="row p-1 mx-0">
+                  <h3 class="h5 col-md-12 text-center"><b>Showing {{ .Block.BidsCount }} Execution Payload Bids</b></h3>
+                </div>
+              </div>
+              {{ template "block_bids" . }}
+            </div>
+          </div>
+        {{ end }}
+        {{ if gt .Block.PtcVotesCount 0 }}
+          <div class="tab-pane fade show active" id="ptcVotes" role="tabpanel" aria-labelledby="ptcVotes-tab">
+            <div class="card block-card">
+              <div style="margin-bottom: -.25rem;" class="card-body px-0 py-1">
+                <div class="row p-1 mx-0">
+                  <h3 class="h5 col-md-12 text-center"><b>Showing {{ .Block.PtcVotesCount }} PTC Votes (for slot {{ .Block.PtcVotes.VotedSlot }})</b></h3>
+                </div>
+              </div>
+              {{ template "block_ptc_votes" . }}
+            </div>
           </div>
         {{ end }}
         {{ if .Block }}

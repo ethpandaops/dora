@@ -175,6 +175,8 @@ func buildFilteredInitiatedDepositsPageData(pageIdx uint64, pageSize uint64, add
 	}
 
 	for _, depositTx := range dbDepositTxs {
+		isBuilder := len(depositTx.WithdrawalCredentials) > 0 && depositTx.WithdrawalCredentials[0] == 0x03
+
 		depositTxData := &models.InitiatedDepositsPageDataDeposit{
 			Index:                 depositTx.Index,
 			Address:               depositTx.TxSender,
@@ -187,6 +189,7 @@ func buildFilteredInitiatedDepositsPageData(pageIdx uint64, pageSize uint64, add
 			Orphaned:              depositTx.Orphaned,
 			Valid:                 depositTx.ValidSignature == 1 || depositTx.ValidSignature == 2,
 			ValidatorStatus:       "",
+			IsBuilder:             isBuilder,
 		}
 
 		if validatorIdx, found := services.GlobalBeaconService.GetValidatorIndexByPubkey(phase0.BLSPubKey(depositTx.PublicKey)); !found {
