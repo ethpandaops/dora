@@ -1,0 +1,106 @@
+{{ define "block_ptc_votes" }}
+  <div class="p-3">
+    {{ if .Block.PtcVotes }}
+      <div class="alert alert-info mb-3">
+        <i class="fas fa-info-circle me-2"></i>
+        PTC (Payload Timeliness Committee) votes included in this block are for
+        <a href="/slot/{{ .Block.PtcVotes.VotedSlot }}">slot {{ .Block.PtcVotes.VotedSlot }}</a> (the previous slot).
+        {{ if .Block.PtcVotes.VotedBlockRoot }}
+          <br>Voted block root: <span class="text-monospace">0x{{ printf "%x" .Block.PtcVotes.VotedBlockRoot }}</span>
+        {{ end }}
+      </div>
+
+      <div class="row mb-3">
+        <div class="col-md-4">
+          <div class="card">
+            <div class="card-body text-center">
+              <h5 class="card-title mb-0">{{ formatParticipation .Block.PtcVotes.Participation }}</h5>
+              <small class="text-muted">Participation</small>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="card">
+            <div class="card-body text-center">
+              <h5 class="card-title mb-0">{{ len .Block.PtcVotes.Aggregates }}</h5>
+              <small class="text-muted">Aggregates</small>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="card">
+            <div class="card-body text-center">
+              <h5 class="card-title mb-0">{{ .Block.PtcVotes.TotalPtcSize }}</h5>
+              <small class="text-muted">Committee Size</small>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <h5 class="mb-3">Vote Aggregates</h5>
+      {{ range $i, $agg := .Block.PtcVotes.Aggregates }}
+        <div class="card mb-3">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <div>
+              <span class="badge {{ if and $agg.PayloadPresent $agg.BlobDataAvailable }}bg-success{{ else if $agg.PayloadPresent }}bg-warning text-dark{{ else if $agg.BlobDataAvailable }}bg-info{{ else }}bg-danger{{ end }} me-2">
+                {{ if and $agg.PayloadPresent $agg.BlobDataAvailable }}
+                  Payload + Blob Available
+                {{ else if $agg.PayloadPresent }}
+                  Payload Only
+                {{ else if $agg.BlobDataAvailable }}
+                  Blob Only
+                {{ else }}
+                  Unavailable
+                {{ end }}
+              </span>
+              <span class="text-muted">
+                {{ $agg.VoteCount }} vote{{ if ne $agg.VoteCount 1 }}s{{ end }}
+              </span>
+            </div>
+            <div>
+              <span class="badge bg-secondary">
+                PayloadPresent: {{ if $agg.PayloadPresent }}Yes{{ else }}No{{ end }}
+              </span>
+              <span class="badge bg-secondary ms-1">
+                BlobDataAvailable: {{ if $agg.BlobDataAvailable }}Yes{{ else }}No{{ end }}
+              </span>
+            </div>
+          </div>
+          <div class="card-body">
+            {{ if gt (len $agg.Validators) 0 }}
+              <div class="mb-2">
+                <strong>Participating Validators ({{ len $agg.Validators }}):</strong>
+              </div>
+              <div class="validator-list" style="max-height: 200px; overflow-y: auto;">
+                {{ range $j, $vidx := $agg.Validators }}
+                  <span class="badge bg-light text-dark me-1 mb-1">
+                    {{ formatValidator $vidx (index $.Block.ValidatorNames $vidx) }}
+                  </span>
+                {{ end }}
+              </div>
+            {{ else }}
+              <p class="text-muted mb-0">No validators in this aggregate</p>
+            {{ end }}
+          </div>
+        </div>
+      {{ end }}
+
+      {{ if gt (len .Block.PtcVotes.PtcCommittee) 0 }}
+        <h5 class="mb-3 mt-4">Full PTC Committee</h5>
+        <div class="card">
+          <div class="card-body">
+            <div class="ptc-committee-grid" style="max-height: 300px; overflow-y: auto;">
+              {{ range $i, $member := .Block.PtcVotes.PtcCommittee }}
+                <span class="badge bg-light text-dark me-1 mb-1">
+                  {{ formatValidator $member.Index $member.Name }}
+                </span>
+              {{ end }}
+            </div>
+          </div>
+        </div>
+      {{ end }}
+    {{ else }}
+      <p class="text-muted">No PTC vote data available.</p>
+    {{ end }}
+  </div>
+{{ end }}

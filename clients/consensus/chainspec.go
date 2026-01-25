@@ -231,11 +231,9 @@ type ChainSpecDomainTypes struct {
 	DomainSyncCommitteeSelectionProof phase0.DomainType `yaml:"DOMAIN_SYNC_COMMITTEE_SELECTION_PROOF"`
 	DomainContributionAndProof        phase0.DomainType `yaml:"DOMAIN_CONTRIBUTION_AND_PROOF"`
 	DomainBlsToExecutionChange        phase0.DomainType `yaml:"DOMAIN_BLS_TO_EXECUTION_CHANGE"`
-
-	// Gloas
-	DomainBeaconBuilder       phase0.DomainType `yaml:"DOMAIN_BEACON_BUILDER" check-if-fork:"GloasForkEpoch"`
-	DomainPtcAttester         phase0.DomainType `yaml:"DOMAIN_PTC_ATTESTER" check-if-fork:"GloasForkEpoch"`
-	DomainProposerPreferences phase0.DomainType `yaml:"DOMAIN_PROPOSER_PREFERENCES" check-if-fork:"GloasForkEpoch"`
+	DomainBeaconBuilder               phase0.DomainType `yaml:"DOMAIN_BEACON_BUILDER" check-if-fork:"GloasForkEpoch"`
+	DomainPtcAttester                 phase0.DomainType `yaml:"DOMAIN_PTC_ATTESTER" check-if-fork:"GloasForkEpoch"`
+	DomainProposerPreferences         phase0.DomainType `yaml:"DOMAIN_PROPOSER_PREFERENCES" check-if-fork:"GloasForkEpoch"`
 }
 
 type ChainSpec struct {

@@ -78,6 +78,7 @@ type SlotPageBlockData struct {
 	WithdrawalRequestsCount    uint64                 `json:"withdrawal_requests_count"`
 	ConsolidationRequestsCount uint64                 `json:"consolidation_requests_count"`
 	BidsCount                  uint64                 `json:"bids_count"`
+	PtcVotesCount              uint64                 `json:"ptc_votes_count"`
 
 	PayloadHeader *SlotPagePayloadHeader `json:"payload_header"`
 	ExecutionData *SlotPageExecutionData `json:"execution_data"`
@@ -95,6 +96,7 @@ type SlotPageBlockData struct {
 	WithdrawalRequests    []*SlotPageWithdrawalRequest    `json:"withdrawal_requests"`    // WithdrawalRequests included in this block
 	ConsolidationRequests []*SlotPageConsolidationRequest `json:"consolidation_requests"` // ConsolidationRequests included in this block
 	Bids                  []*SlotPageBid                  `json:"bids"`                   // Execution payload bids for this block (ePBS)
+	PtcVotes              *SlotPagePtcVotes               `json:"ptc_votes"`              // PTC votes included in this block (for previous slot)
 }
 
 type SlotPageExecutionData struct {
@@ -311,4 +313,25 @@ type SlotPageBid struct {
 	ElPayment    uint64 `json:"el_payment"`
 	TotalValue   uint64 `json:"total_value"`
 	IsWinning    bool   `json:"is_winning"`
+}
+
+// SlotPagePtcVotes holds PTC (Payload Timeliness Committee) vote information for a slot.
+// These are payload attestations included in this block for the PREVIOUS slot.
+type SlotPagePtcVotes struct {
+	VotedSlot      uint64                  `json:"voted_slot"`       // The slot the votes are for (previous slot)
+	VotedBlockRoot []byte                  `json:"voted_block_root"` // The block root being voted on
+	TotalPtcSize   uint64                  `json:"total_ptc_size"`   // Total PTC committee size
+	Aggregates     []*SlotPagePtcAggregate `json:"aggregates"`       // Up to 4 aggregates for different vote flag combinations
+	PtcCommittee   []types.NamedValidator  `json:"ptc_committee"`    // Full PTC committee with participation status
+	Participation  float64                 `json:"participation"`    // Overall participation rate
+}
+
+// SlotPagePtcAggregate represents a single PTC vote aggregate for a specific vote flag combination.
+type SlotPagePtcAggregate struct {
+	PayloadPresent    bool     `json:"payload_present"`     // Whether the payload was present
+	BlobDataAvailable bool     `json:"blob_data_available"` // Whether blob data was available
+	AggregationBits   []byte   `json:"aggregation_bits"`    // Bitfield of participating validators
+	Validators        []uint64 `json:"validators"`          // Validator indices that voted
+	Signature         []byte   `json:"signature"`           // Aggregate signature
+	VoteCount         uint64   `json:"vote_count"`          // Number of votes in this aggregate
 }
