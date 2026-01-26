@@ -252,7 +252,6 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 	var executionBlockHash phase0.Hash32
 	var executionTransactions []bellatrix.Transaction
 	var executionWithdrawals []*capella.Withdrawal
-	var executionBlockAccessListHash []byte
 
 	executionPayload, _ := blockBody.ExecutionPayload()
 	if executionPayload != nil {
@@ -261,8 +260,6 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 		executionBlockNumber, _ = executionPayload.BlockNumber()
 		executionTransactions, _ = executionPayload.Transactions()
 		executionWithdrawals, _ = executionPayload.Withdrawals()
-
-		// TODO: executionBlockAccessListHash = executionPayload.BlockAccessListHash()
 	}
 
 	var depositRequests []*electra.DepositRequest
@@ -328,7 +325,6 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 		dbBlock.EthBlockHash = executionBlockHash[:]
 		dbBlock.EthBlockExtra = executionExtraData
 		dbBlock.EthBlockExtraText = utils.GraffitiToString(executionExtraData[:])
-		dbBlock.EthBlockAccessListHash = executionBlockAccessListHash
 		dbBlock.WithdrawCount = uint64(len(executionWithdrawals))
 
 		// Get execution times from the block
