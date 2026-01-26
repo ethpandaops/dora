@@ -67,6 +67,19 @@ type AddressPageData struct {
 	SystemTotalPages   uint64                          `json:"system_total_pages"`
 	SystemFirstItem    uint64                          `json:"system_first_item"`
 	SystemLastItem     uint64                          `json:"system_last_item"`
+
+	// Internal Transactions tab (EIP-7708 internal ETH transfers)
+	InternalTransactions           []*AddressPageDataInternalTransaction `json:"internal_transactions"`
+	InternalTransactionCount       uint64                                `json:"internal_transaction_count"`
+	InternalTransactionCountCapped bool                                  `json:"internal_transaction_count_capped"`
+	InternalTxPageIndex            uint64                                `json:"internal_tx_page_index"`
+	InternalTxPageSize             uint64                                `json:"internal_tx_page_size"`
+	InternalTxTotalPages           uint64                                `json:"internal_tx_total_pages"`
+	InternalTxFirstItem            uint64                                `json:"internal_tx_first_item"`
+	InternalTxLastItem             uint64                                `json:"internal_tx_last_item"`
+
+	// Internal transactions availability
+	HasInternalTransactions bool `json:"has_internal_transactions"`
 }
 
 // AddressPageDataTokenBalance represents a token balance in the sidebar
@@ -144,4 +157,24 @@ type AddressPageDataSystemDeposit struct {
 	Amount        float64   `json:"amount"` // Amount in ETH
 	AmountRaw     []byte    `json:"amount_raw"`
 	Validator     *uint64   `json:"validator"` // validator index for withdrawals, null for fee recipient
+}
+
+// AddressPageDataInternalTransaction represents an internal ETH transfer (EIP-7708)
+type AddressPageDataInternalTransaction struct {
+	TxHash         []byte    `json:"tx_hash"`
+	TxHashRowspan  int       `json:"tx_hash_rowspan"` // >0 means render with rowspan, 0 means skip cell
+	BlockNumber    uint64    `json:"block_number"`
+	BlockUid       uint64    `json:"block_uid"`
+	BlockRoot      []byte    `json:"block_root"`     // For linking to /slot/{root}
+	BlockOrphaned  bool      `json:"block_orphaned"` // True if block is orphaned
+	BlockTime      time.Time `json:"block_time"`
+	FromAddr       []byte    `json:"from_addr"`
+	FromID         uint64    `json:"from_id"`
+	FromIsContract bool      `json:"from_is_contract"`
+	ToAddr         []byte    `json:"to_addr"`
+	ToID           uint64    `json:"to_id"`
+	ToIsContract   bool      `json:"to_is_contract"`
+	IsOutgoing     bool      `json:"is_outgoing"`
+	Amount         float64   `json:"amount"`
+	AmountRaw      []byte    `json:"amount_raw"`
 }

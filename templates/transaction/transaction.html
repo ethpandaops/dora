@@ -150,6 +150,13 @@
         </a>
       </li>
       {{ end }}
+      {{ if gt .InternalTransactionCount 0 }}
+      <li class="nav-item">
+        <a class="nav-link{{ if eq .TabView "internal" }} active{{ end }}" id="internal-tab" data-lazy-tab="internal" data-bs-toggle="tab" data-bs-target="#internal" href="?v=internal{{ if gt .SelectedBlockUid 0 }}&b={{ .SelectedBlockUid }}{{ end }}" role="tab" aria-controls="internal" aria-selected="{{ if eq .TabView "internal" }}true{{ else }}false{{ end }}">
+          <i class="fa fa-exchange-alt me-2"></i> Internal Txns ({{ .InternalTransactionCount }})
+        </a>
+      </li>
+      {{ end }}
       {{ if gt .TokenTransferCount 0 }}
       <li class="nav-item">
         <a class="nav-link{{ if eq .TabView "transfers" }} active{{ end }}" id="transfers-tab" data-lazy-tab="transfers" data-bs-toggle="tab" data-bs-target="#transfers" href="?v=transfers{{ if gt .SelectedBlockUid 0 }}&b={{ .SelectedBlockUid }}{{ end }}" role="tab" aria-controls="transfers" aria-selected="{{ if eq .TabView "transfers" }}true{{ else }}false{{ end }}">
@@ -263,6 +270,13 @@
         {{ end }}
       </div>
       {{ end }}
+      {{ if gt .InternalTransactionCount 0 }}
+      <div class="tab-pane fade{{ if eq .TabView "internal" }} show active{{ end }}" id="internal" role="tabpanel" aria-labelledby="internal-tab" data-loaded="{{ if eq .TabView "internal" }}true{{ else }}false{{ end }}">
+        {{ if eq .TabView "internal" }}
+          {{ template "internal_transactions" . }}
+        {{ end }}
+      </div>
+      {{ end }}
       {{ if gt .TokenTransferCount 0 }}
       <div class="tab-pane fade{{ if eq .TabView "transfers" }} show active{{ end }}" id="transfers" role="tabpanel" aria-labelledby="transfers-tab" data-loaded="{{ if eq .TabView "transfers" }}true{{ else }}false{{ end }}">
         {{ if eq .TabView "transfers" }}
@@ -285,6 +299,8 @@
     {{ template "events" . }}
   {{ else if eq .TabView "transfers" }}
     {{ template "transfers" . }}
+  {{ else if eq .TabView "internal" }}
+    {{ template "internal_transactions" . }}
   {{ else if eq .TabView "blobs" }}
     {{ template "blobs" . }}
   {{ else }}
@@ -373,6 +389,7 @@
       'details': 'overview',
       'events': 'events',
       'transfers': 'transfers',
+      'internal': 'internal',
       'blobs': 'blobs'
     };
 
