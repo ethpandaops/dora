@@ -267,7 +267,9 @@ func (es *EpochStats) parsePackedSSZ(chainState *consensus.ChainState, ssz []byt
 			proposerDuties = append(proposerDuties, proposerIndex)
 		}
 
-		values.ProposerDuties = proposerDuties
+		if len(values.ProposerDuties) == 0 {
+			values.ProposerDuties = proposerDuties
+		}
 		if beaconState.RandaoMix != nil {
 			values.RandaoMix = *beaconState.RandaoMix
 		}
@@ -438,7 +440,7 @@ func (es *EpochStats) processState(indexer *Indexer, validatorSet []*phase0.Vali
 			offset = slotsPerEpoch
 		}
 
-		values.ProposerDuties = dependentState.proposerLookahead[offset : offset+slotsPerEpoch]
+		values.ProposerDuties = dependentState.proposerLookahead[offset:]
 	} else {
 		proposerDuties := []phase0.ValidatorIndex{}
 		for slot := chainState.EpochToSlot(es.epoch); slot < chainState.EpochToSlot(es.epoch+1); slot++ {
@@ -584,14 +586,20 @@ func (es *EpochStats) precomputeFromParentState(indexer *Indexer, parentState *E
 
 		// compute proposers
 		proposerDuties := []phase0.ValidatorIndex{}
-		for slot := chainState.EpochToSlot(es.epoch); slot < chainState.EpochToSlot(es.epoch+1); slot++ {
-			proposer, err := duties.GetProposerIndex(chainState.GetSpecs(), beaconState, slot)
-			proposerIndex := phase0.ValidatorIndex(math.MaxInt64)
-			if err == nil {
-				proposerIndex = values.ActiveIndices[proposer]
-			}
 
-			proposerDuties = append(proposerDuties, proposerIndex)
+		specs := chainState.GetSpecs()
+		if uint64(len(parentState.dependentState.proposerLookahead)) > specs.SlotsPerEpoch {
+			proposerDuties = parentState.dependentState.proposerLookahead[specs.SlotsPerEpoch:]
+		} else {
+			for slot := chainState.EpochToSlot(es.epoch); slot < chainState.EpochToSlot(es.epoch+1); slot++ {
+				proposer, err := duties.GetProposerIndex(chainState.GetSpecs(), beaconState, slot)
+				proposerIndex := phase0.ValidatorIndex(math.MaxInt64)
+				if err == nil {
+					proposerIndex = values.ActiveIndices[proposer]
+				}
+
+				proposerDuties = append(proposerDuties, proposerIndex)
+			}
 		}
 
 		values.ProposerDuties = proposerDuties
