@@ -217,6 +217,10 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 			}
 		}
 
+		if firstBlock.Slot == 0 {
+			dependentRoot = phase0.Root{}
+		}
+
 		if !isValid {
 			return false, fmt.Errorf("first canonical block %v (%v) is not the first block of epoch %v", firstBlock.Slot, firstBlock.Root.String(), epoch)
 		}
@@ -279,7 +283,7 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 		// if the state is not yet loaded, we set it to high priority and wait for it to be loaded
 		if !epochStats.ready {
 			if epochStats.dependentState == nil {
-				indexer.epochCache.addEpochStateRequest(epochStats)
+				indexer.epochCache.ensureEpochDependentState(epochStats, canonicalBlocks[0].Root)
 			}
 			if epochStats.dependentState != nil && epochStats.dependentState.loadingStatus != 2 && epochStats.dependentState.retryCount < 10 {
 				indexer.logger.Infof("epoch %d state (%v) not yet loaded, waiting for state to be loaded", epoch, dependentRoot.String())

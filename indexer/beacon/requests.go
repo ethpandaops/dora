@@ -72,7 +72,13 @@ func LoadBeaconState(ctx context.Context, client *Client, root phase0.Root) (*sp
 	ctx, cancel := context.WithTimeout(ctx, beaconStateRequestTimeout)
 	defer cancel()
 
-	resState, err := client.client.GetRPCClient().GetState(ctx, fmt.Sprintf("0x%x", root[:]))
+	stateRef := fmt.Sprintf("0x%x", root[:])
+	nullRoot := phase0.Root{}
+	if root == nullRoot {
+		stateRef = "genesis"
+	}
+
+	resState, err := client.client.GetRPCClient().GetState(ctx, stateRef)
 	if err != nil {
 		return nil, err
 	}

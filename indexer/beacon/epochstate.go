@@ -91,7 +91,6 @@ func (s *epochState) loadState(ctx context.Context, client *Client, cache *epoch
 	}
 
 	s.loadingStatus = 1
-	client.logger.Debugf("loading state for slot %v", s.slotRoot.String())
 
 	ctx, cancel := context.WithTimeout(ctx, beaconStateRequestTimeout+(beaconHeaderRequestTimeout*2))
 	s.loadingCancel = cancel
@@ -105,29 +104,38 @@ func (s *epochState) loadState(ctx context.Context, client *Client, cache *epoch
 		}
 	}()
 
-	var blockHeader *phase0.SignedBeaconBlockHeader
+	var beaconBlock *spec.VersionedSignedBeaconBlock
 
 	block := client.indexer.blockCache.getBlockByRoot(s.slotRoot)
 	if block != nil {
-		blockHeader = block.AwaitHeader(ctx, beaconHeaderRequestTimeout)
+		beaconBlock = block.AwaitBlock(ctx, beaconHeaderRequestTimeout)
 	}
 
-	if blockHeader == nil {
+	if beaconBlock == nil {
 		var err error
-		blockHeader, err = LoadBeaconHeader(ctx, client, s.slotRoot)
+		beaconBlock, err = LoadBeaconBlock(ctx, client, s.slotRoot)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	s.stateRoot = blockHeader.Message.StateRoot
+	if beaconBlock != nil {
+		slot, _ := beaconBlock.Slot()
+		client.logger.Infof("loading state for block root %v (slot %v)", s.slotRoot.String(), slot)
 
-	resState, err := LoadBeaconState(ctx, client, blockHeader.Message.StateRoot)
+		var err error
+		s.stateRoot, err = beaconBlock.StateRoot()
+		if err != nil {
+			return nil, fmt.Errorf("error getting state root from beacon block %v: %v", s.slotRoot.String(), err)
+		}
+	}
+
+	resState, err := LoadBeaconState(ctx, client, s.stateRoot)
 	if err != nil {
 		return nil, err
 	}
 
-	err = s.processState(resState, cache)
+	err = s.processState(resState, beaconBlock, cache)
 	if err != nil {
 		return nil, err
 	}
@@ -145,7 +153,7 @@ func (s *epochState) loadState(ctx context.Context, client *Client, cache *epoch
 
 // processState processes the state and updates the epochState instance.
 // the function extracts and unifies all relevant information from the beacon state, so the full beacon state can be dropped from memory afterwards.
-func (s *epochState) processState(state *spec.VersionedBeaconState, cache *epochCache) error {
+func (s *epochState) processState(state *spec.VersionedBeaconState, beaconBlock *spec.VersionedSignedBeaconBlock, cache *epochCache) error {
 	slot, err := state.Slot()
 	if err != nil {
 		return fmt.Errorf("error getting slot from state %v: %v", s.slotRoot.String(), err)
@@ -153,19 +161,30 @@ func (s *epochState) processState(state *spec.VersionedBeaconState, cache *epoch
 
 	s.stateSlot = slot
 
+	dependentRoot := s.slotRoot
+	if state.Version >= spec.DataVersionFulu {
+		blockRoots, err := getStateBlockRoots(state)
+		if err != nil {
+			return fmt.Errorf("error getting block roots from state %v: %v", s.slotRoot.String(), err)
+		}
+
+		specs := cache.indexer.consensusPool.GetChainState().GetSpecs()
+		dependentRoot = blockRoots[slot%phase0.Slot(specs.SlotsPerHistoricalRoot)]
+	}
+
 	validatorList, err := state.Validators()
 	if err != nil {
 		return fmt.Errorf("error getting validators from state %v: %v", s.slotRoot.String(), err)
 	}
 
 	if cache != nil {
-		cache.indexer.validatorCache.updateValidatorSet(slot, s.slotRoot, validatorList)
+		cache.indexer.validatorCache.updateValidatorSet(slot, dependentRoot, validatorList)
 	}
 
 	// Process builder set for Gloas
 	if state.Version >= spec.DataVersionGloas && state.Gloas != nil {
 		if cache != nil {
-			cache.indexer.builderCache.updateBuilderSet(slot, s.slotRoot, state.Gloas.Builders)
+			cache.indexer.builderCache.updateBuilderSet(slot, dependentRoot, state.Gloas.Builders)
 		}
 
 		// Extract builder balances
@@ -194,7 +213,22 @@ func (s *epochState) processState(state *spec.VersionedBeaconState, cache *epoch
 	}
 
 	s.randaoMixes = randaoMixes
-	s.depositIndex = getStateDepositIndex(state)
+
+	if state.Version >= spec.DataVersionFulu {
+		// subtract the deposit indexes from the current block
+		blockRequests, err := beaconBlock.ExecutionRequests()
+		if err != nil {
+			return fmt.Errorf("error getting execution requests from block %v: %v", s.slotRoot.String(), err)
+		}
+
+		if len(blockRequests.Deposits) > 0 {
+			s.depositIndex = blockRequests.Deposits[0].Index
+		} else {
+			s.depositIndex = getStateDepositIndex(state)
+		}
+	} else {
+		s.depositIndex = getStateDepositIndex(state)
+	}
 
 	if state.Version >= spec.DataVersionAltair {
 		currentSyncCommittee, err := getStateCurrentSyncCommittee(state)

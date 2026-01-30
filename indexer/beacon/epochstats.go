@@ -23,6 +23,7 @@ import (
 type EpochStats struct {
 	epoch          phase0.Epoch
 	dependentRoot  phase0.Root
+	firstBlockRoot phase0.Root
 	dependentState *epochState
 
 	requestedMutex  sync.Mutex
@@ -47,7 +48,7 @@ type EpochStatsValues struct {
 	RandaoMix             phase0.Hash32
 	NextRandaoMix         phase0.Hash32
 	ActiveIndices         []phase0.ValidatorIndex
-	EffectiveBalances     []uint32
+	EffectiveBalances     []uint32 // effective balance in full ETH of last epoch for pre-fulu stats, effective balance in full ETH of current epoch for fulu+ stats
 	ProposerDuties        []phase0.ValidatorIndex
 	AttesterDuties        [][][]duties.ActiveIndiceIndex
 	SyncCommitteeDuties   []phase0.ValidatorIndex
@@ -335,7 +336,7 @@ func (es *EpochStats) loadValuesFromDb(chainState *consensus.ChainState) *EpochS
 }
 
 // processState processes the epoch state and computes proposer and attester duties.
-func (es *EpochStats) processState(indexer *Indexer, validatorSet []*phase0.Validator) {
+func (es *EpochStats) processState(indexer *Indexer, validatorSet []*phase0.Validator, loadDuration time.Duration) {
 	if es.dependentState == nil || es.dependentState.loadingStatus != 2 {
 		return
 	}
@@ -502,12 +503,13 @@ func (es *EpochStats) processState(indexer *Indexer, validatorSet []*phase0.Vali
 	es.isInDb = true
 
 	indexer.logger.Infof(
-		"processed epoch %v stats (root: %v / state: %v, validators: %v/%v, %v ms), %v bytes",
+		"processed epoch %v stats (root: %v / state: %v, validators: %v/%v, load: %v ms, process: %v ms), %v bytes",
 		es.epoch,
 		es.dependentRoot.String(),
 		dependentState.stateRoot.String(),
 		values.ActiveValidators,
 		len(validatorSet),
+		loadDuration.Milliseconds(),
 		time.Since(t1).Milliseconds(),
 		len(packedSsz),
 	)

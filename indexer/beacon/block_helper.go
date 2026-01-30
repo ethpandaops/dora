@@ -515,19 +515,19 @@ func getStatePendingDeposits(v *spec.VersionedBeaconState) ([]*electra.PendingDe
 	case spec.DataVersionDeneb:
 		return nil, errors.New("no pending deposits in deneb")
 	case spec.DataVersionElectra:
-		if v.Electra == nil || v.Electra.PendingDeposits == nil {
+		if v.Electra == nil {
 			return nil, errors.New("no electra block")
 		}
 
 		return v.Electra.PendingDeposits, nil
 	case spec.DataVersionFulu:
-		if v.Fulu == nil || v.Fulu.PendingDeposits == nil {
+		if v.Fulu == nil {
 			return nil, errors.New("no fulu block")
 		}
 
 		return v.Fulu.PendingDeposits, nil
 	case spec.DataVersionGloas:
-		if v.Gloas == nil || v.Gloas.PendingDeposits == nil {
+		if v.Gloas == nil {
 			return nil, errors.New("no gloas block")
 		}
 
@@ -551,19 +551,19 @@ func getStatePendingWithdrawals(v *spec.VersionedBeaconState) ([]*electra.Pendin
 	case spec.DataVersionDeneb:
 		return nil, errors.New("no pending withdrawals in deneb")
 	case spec.DataVersionElectra:
-		if v.Electra == nil || v.Electra.PendingPartialWithdrawals == nil {
+		if v.Electra == nil {
 			return nil, errors.New("no electra block")
 		}
 
 		return v.Electra.PendingPartialWithdrawals, nil
 	case spec.DataVersionFulu:
-		if v.Fulu == nil || v.Fulu.PendingPartialWithdrawals == nil {
+		if v.Fulu == nil {
 			return nil, errors.New("no fulu block")
 		}
 
 		return v.Fulu.PendingPartialWithdrawals, nil
 	case spec.DataVersionGloas:
-		if v.Gloas == nil || v.Gloas.PendingPartialWithdrawals == nil {
+		if v.Gloas == nil {
 			return nil, errors.New("no gloas block")
 		}
 
@@ -587,19 +587,19 @@ func getStatePendingConsolidations(v *spec.VersionedBeaconState) ([]*electra.Pen
 	case spec.DataVersionDeneb:
 		return nil, errors.New("no pending consolidations in deneb")
 	case spec.DataVersionElectra:
-		if v.Electra == nil || v.Electra.PendingConsolidations == nil {
+		if v.Electra == nil {
 			return nil, errors.New("no electra block")
 		}
 
 		return v.Electra.PendingConsolidations, nil
 	case spec.DataVersionFulu:
-		if v.Fulu == nil || v.Fulu.PendingConsolidations == nil {
+		if v.Fulu == nil {
 			return nil, errors.New("no fulu block")
 		}
 
 		return v.Fulu.PendingConsolidations, nil
 	case spec.DataVersionGloas:
-		if v.Gloas == nil || v.Gloas.PendingConsolidations == nil {
+		if v.Gloas == nil {
 			return nil, errors.New("no gloas block")
 		}
 
@@ -625,17 +625,74 @@ func getStateProposerLookahead(v *spec.VersionedBeaconState) ([]phase0.Validator
 	case spec.DataVersionElectra:
 		return nil, errors.New("no proposer lookahead in electra")
 	case spec.DataVersionFulu:
-		if v.Fulu == nil || v.Fulu.ProposerLookahead == nil {
+		if v.Fulu == nil {
 			return nil, errors.New("no fulu block")
 		}
 
 		return v.Fulu.ProposerLookahead, nil
 	case spec.DataVersionGloas:
-		if v.Gloas == nil || v.Gloas.ProposerLookahead == nil {
+		if v.Gloas == nil {
 			return nil, errors.New("no gloas block")
 		}
 
 		return v.Gloas.ProposerLookahead, nil
+	default:
+		return nil, errors.New("unknown version")
+	}
+}
+
+// getStateProposerLookahead returns the proposer lookahead from a versioned beacon state.
+func getStateBlockRoots(v *spec.VersionedBeaconState) ([]phase0.Root, error) {
+	switch v.Version {
+
+	case spec.DataVersionPhase0:
+		if v.Phase0 == nil || v.Phase0.BlockRoots == nil {
+			return nil, errors.New("no phase0 block")
+		}
+
+		return v.Phase0.BlockRoots, nil
+	case spec.DataVersionAltair:
+		if v.Altair == nil || v.Altair.BlockRoots == nil {
+			return nil, errors.New("no altair block")
+		}
+
+		return v.Altair.BlockRoots, nil
+	case spec.DataVersionBellatrix:
+		if v.Bellatrix == nil || v.Bellatrix.BlockRoots == nil {
+			return nil, errors.New("no bellatrix block")
+		}
+
+		return v.Bellatrix.BlockRoots, nil
+	case spec.DataVersionCapella:
+		if v.Capella == nil || v.Capella.BlockRoots == nil {
+			return nil, errors.New("no capella block")
+		}
+
+		return v.Capella.BlockRoots, nil
+	case spec.DataVersionDeneb:
+		if v.Deneb == nil || v.Deneb.BlockRoots == nil {
+			return nil, errors.New("no deneb block")
+		}
+
+		return v.Deneb.BlockRoots, nil
+	case spec.DataVersionElectra:
+		if v.Electra == nil || v.Electra.BlockRoots == nil {
+			return nil, errors.New("no electra block")
+		}
+
+		return v.Electra.BlockRoots, nil
+	case spec.DataVersionFulu:
+		if v.Fulu == nil || v.Fulu.BlockRoots == nil {
+			return nil, errors.New("no fulu block")
+		}
+
+		return v.Fulu.BlockRoots, nil
+	case spec.DataVersionGloas:
+		if v.Gloas == nil || v.Gloas.BlockRoots == nil {
+			return nil, errors.New("no gloas block")
+		}
+
+		return v.Gloas.BlockRoots, nil
 	default:
 		return nil, errors.New("unknown version")
 	}

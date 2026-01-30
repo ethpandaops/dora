@@ -254,50 +254,54 @@ func (c *Client) processHeadEvent(headEvent *v1.HeadEvent) error {
 
 	chainState := c.client.GetPool().GetChainState()
 	dependentRoot := headEvent.CurrentDutyDependentRoot
-
-	var dependentBlock *Block
 	if !bytes.Equal(dependentRoot[:], consensus.NullRoot[:]) {
 		block.dependentRoot = &dependentRoot
-
-		dependentBlock = c.indexer.blockCache.getBlockByRoot(dependentRoot)
-		if dependentBlock == nil {
-			c.logger.Warnf("dependent block (%v) not found after backfilling", dependentRoot.String())
-		}
-	} else {
-		dependentBlock = c.indexer.blockCache.getDependentBlock(chainState, block, c)
 	}
 
 	// walk back the chain of epoch stats to ensure we have all duties & epoch specific data for the clients chain
 	currentBlock := block
-	currentEpoch := chainState.EpochOfSlot(currentBlock.Slot)
+	headEpoch := chainState.EpochOfSlot(currentBlock.Slot)
+	currentEpoch := headEpoch
 	minInMemorySlot := c.indexer.getMinInMemorySlot()
 	absoluteMinInMemoryEpoch := c.indexer.getAbsoluteMinInMemoryEpoch()
 	for {
-		if dependentBlock != nil && currentBlock.Slot >= minInMemorySlot {
-			epoch := chainState.EpochOfSlot(currentBlock.Slot)
-
-			// only request state for epochs that are allowed in memory by configuration
-			// we accept some gaps here, these will be fixed by the pruning/finalization process
-			requestState := epoch >= absoluteMinInMemoryEpoch
-
-			// ensure epoch stats for the epoch
-			epochStats := c.indexer.epochCache.createOrGetEpochStats(epoch, dependentBlock.Root, requestState)
-			if !epochStats.addRequestedBy(c) {
-				break
-			}
-			if epochStats.dependentState == nil && epoch == currentEpoch {
-				// always load most recent dependent state to ensure we have the latest validator set
-				c.indexer.epochCache.addEpochStateRequest(epochStats)
-			}
-		} else {
-			if dependentBlock == nil {
-				c.logger.Debugf("epoch stats check failed: dependent block for %v:%v (%v) not found", currentBlock.Slot, chainState.EpochOfSlot(currentBlock.Slot), currentBlock.Root.String())
-			}
+		parentRoot := currentBlock.GetParentRoot()
+		if parentRoot == nil {
 			break
 		}
 
-		currentBlock = dependentBlock
-		dependentBlock = c.indexer.blockCache.getDependentBlock(chainState, currentBlock, c)
+		isEpochStart := false
+		parentBlock := c.indexer.blockCache.getBlockByRoot(*parentRoot)
+
+		if currentBlock.Slot == 0 {
+			isEpochStart = true
+		} else if currentBlock.dependentRoot != nil && *parentRoot == *currentBlock.dependentRoot && (parentBlock == nil || parentBlock.Slot > 0) {
+			isEpochStart = true
+		} else if parentBlock != nil && chainState.EpochOfSlot(parentBlock.Slot) < currentEpoch {
+			isEpochStart = true
+		}
+
+		if isEpochStart {
+			epoch := chainState.EpochOfSlot(currentBlock.Slot)
+			dependentRoot := *parentRoot
+
+			// ensure epoch stats for the epoch
+			epochStats := c.indexer.epochCache.createOrGetEpochStats(epoch, dependentRoot)
+
+			if epoch >= absoluteMinInMemoryEpoch {
+				c.indexer.epochCache.ensureEpochDependentState(epochStats, currentBlock.Root)
+			}
+			if !epochStats.addRequestedBy(c) {
+				break
+			}
+		}
+
+		if parentBlock == nil || parentBlock.Slot < minInMemorySlot {
+			break
+		}
+
+		currentBlock = parentBlock
+		currentEpoch = chainState.EpochOfSlot(currentBlock.Slot)
 	}
 
 	c.headRoot = block.Root

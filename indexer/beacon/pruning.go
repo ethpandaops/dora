@@ -118,7 +118,7 @@ func (indexer *Indexer) processEpochPruning(pruneEpoch phase0.Epoch) (uint64, ui
 		// if the state is not yet loaded, we set it to high priority and wait for it to be loaded
 		if epochStats != nil && !epochStats.ready {
 			if epochStats.dependentState == nil {
-				indexer.epochCache.addEpochStateRequest(epochStats)
+				indexer.epochCache.ensureEpochDependentState(epochStats, blocks[0].Root)
 			}
 			if epochStats.dependentState != nil && epochStats.dependentState.loadingStatus != 2 && epochStats.dependentState.retryCount < 10 {
 				indexer.logger.Infof("epoch %d state (%v) not yet loaded, waiting for state to be loaded", pruneEpoch, dependentRoot.String())

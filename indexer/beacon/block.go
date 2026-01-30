@@ -185,6 +185,10 @@ func (block *Block) AwaitBlock(ctx context.Context, timeout time.Duration) *spec
 		return nil
 	}
 
+	if block.block != nil {
+		return block.block
+	}
+
 	if ctx == nil {
 		ctx = context.Background()
 	}

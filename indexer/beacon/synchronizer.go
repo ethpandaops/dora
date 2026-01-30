@@ -383,7 +383,9 @@ func (s *synchronizer) syncEpoch(syncEpoch phase0.Epoch, client *Client, lastTry
 	}
 
 	epochState := newEpochState(dependentRoot)
+	t1 := time.Now()
 	state, err := epochState.loadState(s.syncCtx, client, nil)
+	loadDuration := time.Since(t1)
 	if (err != nil || epochState.loadingStatus != 2) && !lastTry {
 		return false, fmt.Errorf("error fetching epoch %v state: %v", syncEpoch, err)
 	}
@@ -403,7 +405,7 @@ func (s *synchronizer) syncEpoch(syncEpoch phase0.Epoch, client *Client, lastTry
 	if epochState != nil && epochState.loadingStatus == 2 {
 		epochStats = newEpochStats(syncEpoch, dependentRoot)
 		epochStats.dependentState = epochState
-		epochStats.processState(s.indexer, validatorSet)
+		epochStats.processState(s.indexer, validatorSet, loadDuration)
 		epochStatsValues = epochStats.GetValues(false)
 	}
 
