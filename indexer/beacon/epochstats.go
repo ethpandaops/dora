@@ -23,7 +23,6 @@ import (
 type EpochStats struct {
 	epoch          phase0.Epoch
 	dependentRoot  phase0.Root
-	firstBlockRoot phase0.Root
 	dependentState *epochState
 
 	requestedMutex  sync.Mutex
