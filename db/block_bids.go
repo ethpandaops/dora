@@ -112,6 +112,48 @@ func DeleteBidsBeforeSlot(minSlot uint64, tx *sqlx.Tx) error {
 	return err
 }
 
+// GetBidsByBlockHashes returns bids for multiple block hashes and a specific builder index
+// Returns a map keyed by block hash (hex string) for easy lookup
+func GetBidsByBlockHashes(blockHashes [][]byte, builderIndex uint64) map[string]*dbtypes.BlockBid {
+	result := make(map[string]*dbtypes.BlockBid, len(blockHashes))
+	if len(blockHashes) == 0 {
+		return result
+	}
+
+	var sql strings.Builder
+	args := make([]any, 0, len(blockHashes)+1)
+
+	fmt.Fprint(&sql, `
+	SELECT
+		parent_root, parent_hash, block_hash, fee_recipient, gas_limit, builder_index, slot, value, el_payment
+	FROM block_bids
+	WHERE builder_index = $1 AND block_hash IN (`)
+
+	args = append(args, builderIndex)
+	for i, hash := range blockHashes {
+		if i > 0 {
+			fmt.Fprint(&sql, ", ")
+		}
+		fmt.Fprintf(&sql, "$%d", i+2)
+		args = append(args, hash)
+	}
+	fmt.Fprint(&sql, ")")
+
+	bids := []*dbtypes.BlockBid{}
+	err := ReaderDb.Select(&bids, sql.String(), args...)
+	if err != nil {
+		logger.Errorf("Error while fetching bids by block hashes: %v", err)
+		return result
+	}
+
+	for _, bid := range bids {
+		key := fmt.Sprintf("%x", bid.BlockHash)
+		result[key] = bid
+	}
+
+	return result
+}
+
 // GetBidsByBuilderIndex returns bids submitted by a specific builder, ordered by slot descending
 func GetBidsByBuilderIndex(builderIndex uint64, offset uint64, limit uint32) ([]*dbtypes.BlockBid, uint64) {
 	var sql strings.Builder

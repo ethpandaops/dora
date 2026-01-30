@@ -197,30 +197,63 @@ func buildBuilderPageData(builderIndex uint64, superseded bool, tabView string) 
 }
 
 func buildBuilderRecentBlocks(builderIndex uint64, chainState *consensus.ChainState) []*models.BuilderPageDataBlock {
-	// Get recent bids from this builder that have been included (winning bids)
-	bids, _ := db.GetBidsByBuilderIndex(builderIndex, 0, 20)
+	// Filter blocks by builder index using the new DB filter
+	builderIndexInt64 := int64(builderIndex)
+	filter := &dbtypes.BlockFilter{
+		BuilderIndex: &builderIndexInt64,
+		WithOrphaned: 1, // Include both canonical and orphaned
+		WithMissing:  0, // Exclude missing blocks
+	}
 
-	blocks := make([]*models.BuilderPageDataBlock, 0, len(bids))
-	for _, bid := range bids {
-		// Check if this bid was actually included (payload status)
-		slots := db.GetSlotsByBlockHash(bid.BlockHash)
-		for _, slot := range slots {
-			if slot.PayloadStatus == dbtypes.PayloadStatusCanonical || slot.PayloadStatus == dbtypes.PayloadStatusOrphaned {
-				blocks = append(blocks, &models.BuilderPageDataBlock{
-					Epoch:        uint64(chainState.EpochOfSlot(phase0.Slot(slot.Slot))),
-					Slot:         slot.Slot,
-					Ts:           chainState.SlotToTime(phase0.Slot(slot.Slot)),
-					BlockRoot:    slot.Root,
-					BlockHash:    bid.BlockHash,
-					Status:       uint16(slot.PayloadStatus),
-					FeeRecipient: bid.FeeRecipient,
-					GasLimit:     bid.GasLimit,
-					Value:        bid.Value,
-					ElPayment:    bid.ElPayment,
-				})
-				break
-			}
+	// Get blocks built by this builder
+	dbBlocks := services.GlobalBeaconService.GetDbBlocksByFilter(filter, 0, 20, 0)
+
+	// Collect block hashes for batch bid lookup
+	blockHashes := make([][]byte, 0, len(dbBlocks))
+	validBlocks := make([]*dbtypes.Slot, 0, len(dbBlocks))
+
+	for _, assignedSlot := range dbBlocks {
+		if assignedSlot.Block == nil {
+			continue
 		}
+		slot := assignedSlot.Block
+
+		// Only include blocks with actual payloads
+		if slot.PayloadStatus != dbtypes.PayloadStatusCanonical && slot.PayloadStatus != dbtypes.PayloadStatusOrphaned {
+			continue
+		}
+
+		if len(slot.EthBlockHash) > 0 {
+			blockHashes = append(blockHashes, slot.EthBlockHash)
+			validBlocks = append(validBlocks, slot)
+		}
+	}
+
+	// Batch fetch all bids for these block hashes
+	bidsMap := db.GetBidsByBlockHashes(blockHashes, builderIndex)
+
+	// Build result
+	blocks := make([]*models.BuilderPageDataBlock, 0, len(validBlocks))
+	for _, slot := range validBlocks {
+		block := &models.BuilderPageDataBlock{
+			Epoch:        uint64(chainState.EpochOfSlot(phase0.Slot(slot.Slot))),
+			Slot:         slot.Slot,
+			Ts:           chainState.SlotToTime(phase0.Slot(slot.Slot)),
+			BlockRoot:    slot.Root,
+			BlockHash:    slot.EthBlockHash,
+			Status:       uint16(slot.PayloadStatus),
+			FeeRecipient: slot.EthFeeRecipient,
+			GasLimit:     slot.EthGasLimit,
+		}
+
+		// Look up bid info for Value and ElPayment from the batch result
+		blockHashKey := fmt.Sprintf("%x", slot.EthBlockHash)
+		if bid, ok := bidsMap[blockHashKey]; ok {
+			block.Value = bid.Value
+			block.ElPayment = bid.ElPayment
+		}
+
+		blocks = append(blocks, block)
 	}
 
 	return blocks

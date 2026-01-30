@@ -67,6 +67,7 @@ type BlockFilter struct {
 	ForkIds              []uint64 // Filter by fork IDs
 	EthBlockNumber       *uint64  // Filter by EL block number
 	EthBlockHash         []byte   // Filter by EL block hash
+	BuilderIndex         *int64   // Filter by builder index (-1 for self-built blocks)
 }
 
 type MevBlockFilter struct {

@@ -134,7 +134,7 @@
           <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="The epoch when this builder was deposited">Deposit Epoch:</span></div>
           <div class="col-md-10">
             <a href="/epoch/{{ .DepositEpoch }}">{{ formatAddCommas .DepositEpoch }}</a>
-            <span class="text-muted ms-2">({{ formatTimestamp .DepositTs }})</span>
+            <span class="text-muted ms-2">({{ formatRecentTimeShort .DepositTs }})</span>
           </div>
         </div>
         {{ end }}
@@ -143,7 +143,7 @@
           <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="The epoch when this builder can withdraw">Withdrawable Epoch:</span></div>
           <div class="col-md-10">
             <a href="/epoch/{{ .WithdrawableEpoch }}">{{ formatAddCommas .WithdrawableEpoch }}</a>
-            <span class="text-muted ms-2">({{ formatTimestamp .WithdrawableTs }})</span>
+            <span class="text-muted ms-2">({{ formatRecentTimeShort .WithdrawableTs }})</span>
           </div>
         </div>
         {{ end }}

@@ -287,6 +287,16 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 		}
 	}
 
+	// Get builder index from block, default to -1 (self-built/MaxUint64)
+	var builderIndexInt64 int64 = -1
+	if blockIndex := block.GetBlockIndex(); blockIndex != nil {
+		if blockIndex.BuilderIndex == math.MaxUint64 {
+			builderIndexInt64 = -1
+		} else {
+			builderIndexInt64 = int64(blockIndex.BuilderIndex)
+		}
+	}
+
 	dbBlock := dbtypes.Slot{
 		Slot:                  uint64(block.header.Message.Slot),
 		Proposer:              uint64(block.header.Message.ProposerIndex),
@@ -307,6 +317,7 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 		RecvDelay:             block.recvDelay,
 		PayloadStatus:         payloadStatus,
 		BlockUid:              block.BlockUID,
+		BuilderIndex:          builderIndexInt64,
 	}
 
 	blockSize, err := getBlockSize(block.dynSsz, blockBody)

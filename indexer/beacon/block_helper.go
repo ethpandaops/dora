@@ -334,6 +334,32 @@ func getBlockExecutionExtraData(v *spec.VersionedSignedBeaconBlock) ([]byte, err
 	}
 }
 
+// getBlockPayloadBuilderIndex returns the builder index from the execution payload of a versioned signed beacon block.
+func getBlockPayloadBuilderIndex(v *spec.VersionedSignedBeaconBlock) (gloas.BuilderIndex, error) {
+	switch v.Version {
+	case spec.DataVersionPhase0:
+		return 0, errors.New("no builder index in phase0 block")
+	case spec.DataVersionAltair:
+		return 0, errors.New("no builder index in altair block")
+	case spec.DataVersionBellatrix:
+		return 0, errors.New("no builder index in bellatrix block")
+	case spec.DataVersionCapella:
+		return 0, errors.New("no builder index in capella block")
+	case spec.DataVersionDeneb:
+		return 0, errors.New("no builder index in deneb block")
+	case spec.DataVersionElectra:
+		return 0, errors.New("no builder index in electra block")
+	case spec.DataVersionGloas:
+		if v.Gloas == nil || v.Gloas.Message == nil || v.Gloas.Message.Body == nil || v.Gloas.Message.Body.SignedExecutionPayloadBid == nil || v.Gloas.Message.Body.SignedExecutionPayloadBid.Message == nil {
+			return 0, errors.New("no gloas block")
+		}
+
+		return v.Gloas.Message.Body.SignedExecutionPayloadBid.Message.BuilderIndex, nil
+	default:
+		return 0, errors.New("unknown version")
+	}
+}
+
 // getStateRandaoMixes returns the RANDAO mixes from a versioned beacon state.
 func getStateRandaoMixes(v *spec.VersionedBeaconState) ([]phase0.Root, error) {
 	switch v.Version {

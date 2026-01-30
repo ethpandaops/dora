@@ -68,6 +68,7 @@ type Slot struct {
 	ExecTimes             []byte        `db:"exec_times"`
 	PayloadStatus         PayloadStatus `db:"payload_status"`
 	BlockUid              uint64        `db:"block_uid"`
+	BuilderIndex          int64         `db:"builder_index"` // Builder index, -1 for self-built blocks (MaxUint64)
 }
 
 type Epoch struct {

@@ -712,8 +712,8 @@ func FormatBuilderWithIndex(index uint64, name string) template.HTML {
 }
 
 func formatBuilder(index uint64, name string, icon string, withIndex bool) template.HTML {
-	if index == math.MaxInt64 {
-		return template.HTML(fmt.Sprintf("<span class=\"builder-label builder-index\"><i class=\"fas %v\"></i> unknown</span>", icon))
+	if index == math.MaxUint64 {
+		return template.HTML(fmt.Sprintf("<span class=\"builder-label builder-index\"><i class=\"fas %v\"></i> Self-built</span>", icon))
 	} else if name != "" {
 		var nameLabel string
 		if withIndex {

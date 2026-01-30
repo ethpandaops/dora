@@ -3,6 +3,7 @@ package beacon
 import (
 	"context"
 	"fmt"
+	"math"
 	"math/rand/v2"
 	"sync"
 	"time"
@@ -67,6 +68,7 @@ type BlockBodyIndex struct {
 	SyncParticipation   float32
 	EthTransactionCount uint64
 	BlobCount           uint64
+	BuilderIndex        uint64
 }
 
 // newBlock creates a new Block instance.
@@ -408,6 +410,11 @@ func (block *Block) setBlockIndex(body *spec.VersionedSignedBeaconBlock, payload
 		}
 		if blobKzgCommitments, err := body.BlobKZGCommitments(); err == nil {
 			blockIndex.BlobCount = uint64(len(blobKzgCommitments))
+		}
+		if builderIndex, err := getBlockPayloadBuilderIndex(body); err == nil {
+			blockIndex.BuilderIndex = uint64(builderIndex)
+		} else {
+			blockIndex.BuilderIndex = math.MaxUint64
 		}
 	}
 	if payload != nil {
