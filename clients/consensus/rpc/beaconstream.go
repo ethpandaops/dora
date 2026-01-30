@@ -11,7 +11,6 @@ import (
 
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
 	"github.com/attestantio/go-eth2-client/spec/gloas"
-	"github.com/donovanhide/eventsource"
 	"github.com/sirupsen/logrus"
 
 	"github.com/ethpandaops/dora/clients/consensus/rpc/eventstream"
@@ -74,49 +73,123 @@ func (bs *BeaconStream) startStream() {
 		bs.running = false
 	}()
 
-	stream := bs.subscribeStream(bs.client.endpoint, bs.events)
-	if stream != nil {
-		defer stream.Close()
+	// Subscribe to basic events (block, head, finalized_checkpoint)
+	basicEvents := bs.events & (StreamBlockEvent | StreamHeadEvent | StreamFinalizedEvent)
+	basicStream := bs.subscribeStream(bs.client.endpoint, basicEvents)
+	if basicStream != nil {
+		defer basicStream.Close()
+	}
 
-		for {
+	// Subscribe to advanced events (execution_payload_available, execution_payload_bid)
+	// These are in a separate stream because clients may not support them yet,
+	// and subscribing to unsupported topics can cause the entire subscription to fail.
+	// Run in a separate goroutine so it doesn't block the basic stream.
+	advancedEvents := bs.events & (StreamExecutionPayloadEvent | StreamExecutionPayloadBidEvent)
+	advancedStreamChan := make(chan *eventstream.Stream, 1)
+	if advancedEvents > 0 {
+		go func() {
+			stream := bs.subscribeStream(bs.client.endpoint, advancedEvents)
 			select {
+			case advancedStreamChan <- stream:
 			case <-bs.ctx.Done():
-				return
-			case evt := <-stream.Events:
-				switch evt.Event() {
-				case "block":
-					bs.processBlockEvent(evt)
-				case "head":
-					bs.processHeadEvent(evt)
-				case "finalized_checkpoint":
-					bs.processFinalizedEvent(evt)
-				case "execution_payload_available":
-					bs.processExecutionPayloadAvailableEvent(evt)
-				case "execution_payload_bid":
-					bs.processExecutionPayloadBidEvent(evt)
-				}
-			case <-stream.Ready:
-				bs.ReadyChan <- &BeaconStreamStatus{
-					Ready: true,
-				}
-			case err := <-stream.Errors:
-				if strings.Contains(err.Error(), "INTERNAL_ERROR; received from peer") {
-					// this seems to be a go bug, silently reconnect to the stream
-					time.Sleep(10 * time.Millisecond)
-					stream.RetryNow()
-				} else {
-					bs.logger.Warnf("beacon block stream error: %v", err)
-				}
-
-				select {
-				case bs.ReadyChan <- &BeaconStreamStatus{
-					Ready: false,
-					Error: err,
-				}:
-				case <-bs.ctx.Done():
+				if stream != nil {
+					stream.Close()
 				}
 			}
+		}()
+	}
+
+	var advancedStream *eventstream.Stream
+	defer func() {
+		if advancedStream != nil {
+			advancedStream.Close()
 		}
+	}()
+
+	for {
+		select {
+		case <-bs.ctx.Done():
+			return
+
+		// Basic stream events
+		case evt := <-basicStream.Events:
+			switch evt.Event() {
+			case "block":
+				bs.processBlockEvent(evt)
+			case "head":
+				bs.processHeadEvent(evt)
+			case "finalized_checkpoint":
+				bs.processFinalizedEvent(evt)
+			}
+		case <-basicStream.Ready:
+			bs.ReadyChan <- &BeaconStreamStatus{
+				Ready: true,
+			}
+		case err := <-basicStream.Errors:
+			bs.handleStreamError(basicStream, err)
+
+		// Advanced stream connection established
+		case stream := <-advancedStreamChan:
+			advancedStream = stream
+
+		// Advanced stream events (no Ready/Error forwarding)
+		case evt := <-bs.getAdvancedStreamEvents(advancedStream):
+			switch evt.Event() {
+			case "execution_payload_available":
+				bs.processExecutionPayloadAvailableEvent(evt)
+			case "execution_payload_bid":
+				bs.processExecutionPayloadBidEvent(evt)
+			}
+		case <-bs.getAdvancedStreamReady(advancedStream):
+			// Don't forward ready events from advanced stream
+		case <-bs.getAdvancedStreamErrors(advancedStream):
+			// Silently retry - clients may not support these events yet
+			time.Sleep(10 * time.Millisecond)
+			advancedStream.RetryNow()
+		}
+	}
+}
+
+// getAdvancedStreamEvents returns the events channel or a nil channel if stream is nil.
+func (bs *BeaconStream) getAdvancedStreamEvents(stream *eventstream.Stream) chan eventstream.StreamEvent {
+	if stream == nil {
+		return nil
+	}
+	return stream.Events
+}
+
+// getAdvancedStreamReady returns the ready channel or a nil channel if stream is nil.
+func (bs *BeaconStream) getAdvancedStreamReady(stream *eventstream.Stream) chan bool {
+	if stream == nil {
+		return nil
+	}
+	return stream.Ready
+}
+
+// getAdvancedStreamErrors returns the errors channel or a nil channel if stream is nil.
+func (bs *BeaconStream) getAdvancedStreamErrors(stream *eventstream.Stream) chan error {
+	if stream == nil {
+		return nil
+	}
+	return stream.Errors
+}
+
+// handleStreamError handles stream errors and forwards them to the ReadyChan.
+func (bs *BeaconStream) handleStreamError(stream *eventstream.Stream, err error) {
+	if strings.Contains(err.Error(), "INTERNAL_ERROR; received from peer") {
+		// this seems to be a go bug, silently reconnect to the stream
+		time.Sleep(10 * time.Millisecond)
+		stream.RetryNow()
+	} else {
+		bs.logger.Warnf("beacon block stream error: %v", err)
+	}
+
+	select {
+	case bs.ReadyChan <- &BeaconStreamStatus{
+		Ready: false,
+		Error: err,
+	}:
+	case <-bs.ctx.Done():
 	}
 }
 
@@ -206,7 +279,7 @@ func (bs *BeaconStream) subscribeStream(endpoint string, events uint16) *eventst
 	}
 }
 
-func (bs *BeaconStream) processBlockEvent(evt eventsource.Event) {
+func (bs *BeaconStream) processBlockEvent(evt eventstream.StreamEvent) {
 	var parsed v1.BlockEvent
 
 	err := json.Unmarshal([]byte(evt.Data()), &parsed)
@@ -221,7 +294,7 @@ func (bs *BeaconStream) processBlockEvent(evt eventsource.Event) {
 	}
 }
 
-func (bs *BeaconStream) processHeadEvent(evt eventsource.Event) {
+func (bs *BeaconStream) processHeadEvent(evt eventstream.StreamEvent) {
 	var parsed v1.HeadEvent
 
 	err := json.Unmarshal([]byte(evt.Data()), &parsed)
@@ -237,7 +310,7 @@ func (bs *BeaconStream) processHeadEvent(evt eventsource.Event) {
 	}
 }
 
-func (bs *BeaconStream) processFinalizedEvent(evt eventsource.Event) {
+func (bs *BeaconStream) processFinalizedEvent(evt eventstream.StreamEvent) {
 	var parsed v1.FinalizedCheckpointEvent
 
 	err := json.Unmarshal([]byte(evt.Data()), &parsed)
@@ -252,7 +325,7 @@ func (bs *BeaconStream) processFinalizedEvent(evt eventsource.Event) {
 	}
 }
 
-func (bs *BeaconStream) processExecutionPayloadAvailableEvent(evt eventsource.Event) {
+func (bs *BeaconStream) processExecutionPayloadAvailableEvent(evt eventstream.StreamEvent) {
 	var parsed v1.ExecutionPayloadAvailableEvent
 
 	err := json.Unmarshal([]byte(evt.Data()), &parsed)
@@ -267,7 +340,7 @@ func (bs *BeaconStream) processExecutionPayloadAvailableEvent(evt eventsource.Ev
 	}
 }
 
-func (bs *BeaconStream) processExecutionPayloadBidEvent(evt eventsource.Event) {
+func (bs *BeaconStream) processExecutionPayloadBidEvent(evt eventstream.StreamEvent) {
 	var parsed gloas.SignedExecutionPayloadBid
 
 	err := json.Unmarshal([]byte(evt.Data()), &parsed)

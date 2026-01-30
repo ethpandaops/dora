@@ -137,7 +137,7 @@ func (client *Client) runClientLogic() error {
 	blockStream := client.rpcClient.NewBlockStream(
 		client.clientCtx,
 		client.logger,
-		rpc.StreamBlockEvent|rpc.StreamHeadEvent|rpc.StreamFinalizedEvent|rpc.StreamExecutionPayloadEvent,
+		rpc.StreamBlockEvent|rpc.StreamHeadEvent|rpc.StreamFinalizedEvent|rpc.StreamExecutionPayloadEvent|rpc.StreamExecutionPayloadBidEvent,
 	)
 	defer blockStream.Close()
 
