@@ -53,6 +53,7 @@ type BlockFilter struct {
 	InvertProposer       bool
 	WithOrphaned         uint8
 	WithMissing          uint8
+	WithPayloadOrphaned  uint8 // 0: only canonical payloads, 1: all, 2: only orphaned payloads
 	MinSyncParticipation *float32
 	MaxSyncParticipation *float32
 	MinExecTime          *uint32
@@ -67,6 +68,7 @@ type BlockFilter struct {
 	ForkIds              []uint64 // Filter by fork IDs
 	EthBlockNumber       *uint64  // Filter by EL block number
 	EthBlockHash         []byte   // Filter by EL block hash
+	EthBlockParentHash   []byte   // Filter by EL block parent hash
 	BuilderIndex         *int64   // Filter by builder index (-1 for self-built blocks)
 }
 

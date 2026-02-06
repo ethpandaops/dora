@@ -72,6 +72,11 @@ func (dbw *dbWriter) persistBlockData(tx *sqlx.Tx, block *Block, epochStats *Epo
 		dbBlock.Status = dbtypes.Orphaned
 	}
 
+	// Apply payload orphaned status from block flag (set during finalization/sync)
+	if block.isPayloadOrphaned {
+		dbBlock.PayloadStatus = dbtypes.PayloadStatusOrphaned
+	}
+
 	err := db.InsertSlot(dbBlock, tx)
 	if err != nil {
 		return nil, fmt.Errorf("error inserting slot: %v", err)
@@ -251,6 +256,7 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 	executionBlockHash, _ := blockBody.ExecutionBlockHash()
 
 	var executionBlockNumber uint64
+	var executionBlockParentHash []byte
 	var executionExtraData []byte
 	var executionTransactions []bellatrix.Transaction
 	var executionWithdrawals []*capella.Withdrawal
@@ -262,6 +268,7 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 		blockPayload := block.GetExecutionPayload()
 		if blockPayload != nil {
 			executionBlockNumber = blockPayload.Message.Payload.BlockNumber
+			executionBlockParentHash = blockPayload.Message.Payload.ParentHash[:]
 			executionExtraData = blockPayload.Message.Payload.ExtraData
 			executionTransactions = blockPayload.Message.Payload.Transactions
 			executionWithdrawals = blockPayload.Message.Payload.Withdrawals
@@ -279,6 +286,9 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 			executionExtraData, _ = executionPayload.ExtraData()
 			executionTransactions, _ = executionPayload.Transactions()
 			executionWithdrawals, _ = executionPayload.Withdrawals()
+			if parentHash, err := executionPayload.ParentHash(); err == nil {
+				executionBlockParentHash = parentHash[:]
+			}
 		}
 		blobKzgCommitments, _ = blockBody.BlobKZGCommitments()
 		executionRequests, _ := blockBody.ExecutionRequests()
@@ -353,6 +363,7 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 		dbBlock.EthTransactionCount = uint64(len(executionTransactions))
 		dbBlock.EthBlockNumber = &executionBlockNumber
 		dbBlock.EthBlockHash = executionBlockHash[:]
+		dbBlock.EthBlockParentHash = executionBlockParentHash
 		dbBlock.EthBlockExtra = executionExtraData
 		dbBlock.EthBlockExtraText = utils.GraffitiToString(executionExtraData[:])
 		dbBlock.WithdrawCount = uint64(len(executionWithdrawals))

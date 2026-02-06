@@ -430,6 +430,36 @@ func (s *synchronizer) syncEpoch(syncEpoch phase0.Epoch, client *Client, lastTry
 		sim.validatorSet = validatorSet
 	}
 
+	// Determine payload status for canonical blocks (ePBS only)
+	// A payload is orphaned if the next canonical block doesn't build on it
+	allCanonicalBlocks := append(canonicalBlocks, nextEpochCanonicalBlocks...)
+	for i, block := range canonicalBlocks {
+		if !chainState.IsEip7732Enabled(chainState.EpochOfSlot(block.Slot)) {
+			continue
+		}
+
+		blockIndex := block.GetBlockIndex()
+		if blockIndex == nil || blockIndex.ExecutionNumber == 0 {
+			continue // no execution payload
+		}
+
+		// Find the next canonical block
+		var nextBlock *Block
+		if i+1 < len(allCanonicalBlocks) {
+			nextBlock = allCanonicalBlocks[i+1]
+		}
+
+		if nextBlock != nil {
+			nextBlockIndex := nextBlock.GetBlockIndex()
+			if nextBlockIndex != nil {
+				// Check if next block builds on this block's payload
+				if !bytes.Equal(nextBlockIndex.ExecutionParentHash[:], blockIndex.ExecutionHash[:]) {
+					block.isPayloadOrphaned = true
+				}
+			}
+		}
+	}
+
 	// save blocks
 	err = db.RunDBTransaction(func(tx *sqlx.Tx) error {
 		err = s.indexer.dbWriter.persistEpochData(tx, syncEpoch, canonicalBlocks, epochStats, epochVotes, sim)

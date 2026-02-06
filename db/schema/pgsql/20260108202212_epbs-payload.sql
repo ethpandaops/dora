@@ -11,11 +11,16 @@ ALTER TABLE public."orphaned_blocks" ADD
 
 ALTER TABLE public."slots" ADD
  "payload_status" smallint NOT NULL DEFAULT 0,
- "builder_index" bigint NOT NULL DEFAULT -1;
+ "builder_index" bigint NOT NULL DEFAULT -1,
+ "eth_block_parent_hash" bytea NULL;
 
 CREATE INDEX IF NOT EXISTS "slots_payload_status_idx"
     ON public."slots"
     ("payload_status" ASC NULLS LAST);
+
+CREATE INDEX IF NOT EXISTS "slots_eth_block_parent_hash_idx"
+    ON public."slots"
+    ("eth_block_parent_hash" ASC NULLS LAST);
 
 CREATE INDEX IF NOT EXISTS "slots_builder_index_idx"
     ON public."slots"

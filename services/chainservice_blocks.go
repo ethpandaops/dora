@@ -855,6 +855,51 @@ func (bs *ChainService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageIdx
 				}
 			}
 
+			// filter by EL block parent hash
+			if len(filter.EthBlockParentHash) > 0 {
+				if !bytes.Equal(blockIndex.ExecutionParentHash[:], filter.EthBlockParentHash) {
+					continue
+				}
+			}
+
+			// filter by payload status (runtime computation for unfinalized blocks)
+			if filter.WithPayloadOrphaned != 1 {
+				// Compute payload status by checking if any child block in the canonical chain
+				// builds on this block's execution payload
+				payloadIsCanonical := false
+				if blockIndex.ExecutionNumber > 0 {
+					// Get child blocks and check if any canonical child builds on this payload
+					childBlocks := bs.beaconIndexer.GetBlockByParentRoot(block.Root)
+					for _, child := range childBlocks {
+						childIndex := child.GetBlockIndex()
+						if childIndex == nil {
+							continue
+						}
+						// Check if child is in the canonical chain
+						if !bs.beaconIndexer.IsCanonicalBlockByHead(child, lastCanonicalBlock) {
+							continue
+						}
+						// Check if child builds on this block's execution payload
+						if bytes.Equal(childIndex.ExecutionParentHash[:], blockIndex.ExecutionHash[:]) {
+							payloadIsCanonical = true
+							break
+						}
+					}
+				} else {
+					// No execution payload, treat as canonical for filtering purposes
+					payloadIsCanonical = true
+				}
+
+				if filter.WithPayloadOrphaned == 0 && !payloadIsCanonical {
+					// only canonical payloads, skip orphaned
+					continue
+				}
+				if filter.WithPayloadOrphaned == 2 && payloadIsCanonical {
+					// only orphaned payloads, skip canonical
+					continue
+				}
+			}
+
 			cachedMatches = append(cachedMatches, cachedDbBlock{
 				slot:     uint64(block.Slot),
 				proposer: uint64(blockHeader.Message.ProposerIndex),
@@ -865,7 +910,7 @@ func (bs *ChainService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageIdx
 
 		// reconstruct missing blocks from epoch duties
 		// For slot/root filtering, we still need to check if we need missing blocks for that specific slot
-		shouldCheckMissing := filter.WithMissing != 0 && filter.Graffiti == "" && filter.ExtraData == "" && filter.WithOrphaned != 2 && filter.MinSyncParticipation == nil && filter.MaxSyncParticipation == nil && filter.MinExecTime == nil && filter.MaxExecTime == nil && filter.MinTxCount == nil && filter.MaxTxCount == nil && filter.MinBlobCount == nil && filter.MaxBlobCount == nil && len(filter.ForkIds) == 0 && filter.BuilderIndex == nil
+		shouldCheckMissing := filter.WithMissing != 0 && filter.Graffiti == "" && filter.ExtraData == "" && filter.WithOrphaned != 2 && filter.MinSyncParticipation == nil && filter.MaxSyncParticipation == nil && filter.MinExecTime == nil && filter.MaxExecTime == nil && filter.MinTxCount == nil && filter.MaxTxCount == nil && filter.MinBlobCount == nil && filter.MaxBlobCount == nil && len(filter.ForkIds) == 0 && filter.BuilderIndex == nil && filter.WithPayloadOrphaned != 2 && len(filter.EthBlockParentHash) == 0
 
 		// If filtering by slot, only check missing for that specific slot
 		if filter.Slot != nil {

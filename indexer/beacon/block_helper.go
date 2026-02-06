@@ -360,6 +360,48 @@ func getBlockPayloadBuilderIndex(v *spec.VersionedSignedBeaconBlock) (gloas.Buil
 	}
 }
 
+// getBlockExecutionParentHash returns the parent hash from the execution payload of a versioned signed beacon block.
+func getBlockExecutionParentHash(v *spec.VersionedSignedBeaconBlock) (phase0.Hash32, error) {
+	switch v.Version {
+	case spec.DataVersionPhase0:
+		return phase0.Hash32{}, errors.New("no parent hash in phase0 block")
+	case spec.DataVersionAltair:
+		return phase0.Hash32{}, errors.New("no parent hash in altair block")
+	case spec.DataVersionBellatrix:
+		if v.Bellatrix == nil || v.Bellatrix.Message == nil || v.Bellatrix.Message.Body == nil || v.Bellatrix.Message.Body.ExecutionPayload == nil {
+			return phase0.Hash32{}, errors.New("no bellatrix block")
+		}
+
+		return v.Bellatrix.Message.Body.ExecutionPayload.ParentHash, nil
+	case spec.DataVersionCapella:
+		if v.Capella == nil || v.Capella.Message == nil || v.Capella.Message.Body == nil || v.Capella.Message.Body.ExecutionPayload == nil {
+			return phase0.Hash32{}, errors.New("no capella block")
+		}
+
+		return v.Capella.Message.Body.ExecutionPayload.ParentHash, nil
+	case spec.DataVersionDeneb:
+		if v.Deneb == nil || v.Deneb.Message == nil || v.Deneb.Message.Body == nil || v.Deneb.Message.Body.ExecutionPayload == nil {
+			return phase0.Hash32{}, errors.New("no deneb block")
+		}
+
+		return v.Deneb.Message.Body.ExecutionPayload.ParentHash, nil
+	case spec.DataVersionElectra:
+		if v.Electra == nil || v.Electra.Message == nil || v.Electra.Message.Body == nil || v.Electra.Message.Body.ExecutionPayload == nil {
+			return phase0.Hash32{}, errors.New("no electra block")
+		}
+
+		return v.Electra.Message.Body.ExecutionPayload.ParentHash, nil
+	case spec.DataVersionGloas:
+		if v.Gloas == nil || v.Gloas.Message == nil || v.Gloas.Message.Body == nil || v.Gloas.Message.Body.SignedExecutionPayloadBid == nil || v.Gloas.Message.Body.SignedExecutionPayloadBid.Message == nil {
+			return phase0.Hash32{}, errors.New("no gloas block")
+		}
+
+		return v.Gloas.Message.Body.SignedExecutionPayloadBid.Message.ParentBlockHash, nil
+	default:
+		return phase0.Hash32{}, errors.New("unknown version")
+	}
+}
+
 // getStateRandaoMixes returns the RANDAO mixes from a versioned beacon state.
 func getStateRandaoMixes(v *spec.VersionedBeaconState) ([]phase0.Root, error) {
 	switch v.Version {

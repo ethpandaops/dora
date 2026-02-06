@@ -9,8 +9,10 @@ ALTER TABLE "orphaned_blocks" ADD "payload_ssz" BLOB NULL;
 
 ALTER TABLE "slots" ADD "payload_status" smallint NOT NULL DEFAULT 0;
 ALTER TABLE "slots" ADD "builder_index" BIGINT NOT NULL DEFAULT -1;
+ALTER TABLE "slots" ADD "eth_block_parent_hash" BLOB NULL;
 
 CREATE INDEX IF NOT EXISTS "slots_payload_status_idx" ON "slots" ("payload_status" ASC);
+CREATE INDEX IF NOT EXISTS "slots_eth_block_parent_hash_idx" ON "slots" ("eth_block_parent_hash" ASC);
 CREATE INDEX IF NOT EXISTS "slots_builder_index_idx" ON "slots" ("builder_index" ASC);
 
 ALTER TABLE "epochs" ADD "payload_count" int NOT NULL DEFAULT 0;

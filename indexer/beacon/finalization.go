@@ -329,6 +329,36 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 		finalizedForkIds[block.GetForkId()] = true
 	}
 
+	// Determine payload status for canonical blocks (ePBS only)
+	// A payload is orphaned if the next canonical block doesn't build on it
+	allCanonicalBlocks := append(canonicalBlocks, nextEpochCanonicalBlocks...)
+	for i, block := range canonicalBlocks {
+		if !chainState.IsEip7732Enabled(chainState.EpochOfSlot(block.Slot)) {
+			continue
+		}
+
+		blockIndex := block.GetBlockIndex()
+		if blockIndex == nil || blockIndex.ExecutionNumber == 0 {
+			continue // no execution payload
+		}
+
+		// Find the next canonical block
+		var nextBlock *Block
+		if i+1 < len(allCanonicalBlocks) {
+			nextBlock = allCanonicalBlocks[i+1]
+		}
+
+		if nextBlock != nil {
+			nextBlockIndex := nextBlock.GetBlockIndex()
+			if nextBlockIndex != nil {
+				// Check if next block builds on this block's payload
+				if !bytes.Equal(nextBlockIndex.ExecutionParentHash[:], blockIndex.ExecutionHash[:]) {
+					block.isPayloadOrphaned = true
+				}
+			}
+		}
+	}
+
 	dependentGroups := map[phase0.Root][]*Block{}
 	for _, block := range orphanedBlocks {
 		var dependentRoot phase0.Root
@@ -395,6 +425,36 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 				if parentRoot != nil && bytes.Equal((*parentRoot)[:], nextParentRoot[:]) {
 					nextBlocks = append(nextBlocks, block)
 					nextParentRoot = block.Root
+				}
+			}
+
+			// Determine payload status for orphaned chain blocks (ePBS only)
+			// A payload is orphaned if the next block in the chain doesn't build on it
+			allChainBlocks := append(chain, nextBlocks...)
+			for i, block := range chain {
+				if !chainState.IsEip7732Enabled(chainState.EpochOfSlot(block.Slot)) {
+					continue
+				}
+
+				blockIndex := block.GetBlockIndex()
+				if blockIndex == nil || blockIndex.ExecutionNumber == 0 {
+					continue // no execution payload
+				}
+
+				// Find the next block in this orphaned chain
+				var nextBlock *Block
+				if i+1 < len(allChainBlocks) {
+					nextBlock = allChainBlocks[i+1]
+				}
+
+				if nextBlock != nil {
+					nextBlockIndex := nextBlock.GetBlockIndex()
+					if nextBlockIndex != nil {
+						// Check if next block builds on this block's payload
+						if !bytes.Equal(nextBlockIndex.ExecutionParentHash[:], blockIndex.ExecutionHash[:]) {
+							block.isPayloadOrphaned = true
+						}
+					}
 				}
 			}
 

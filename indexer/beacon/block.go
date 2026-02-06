@@ -49,6 +49,7 @@ type Block struct {
 	isInFinalizedDb       bool // block is in finalized table (slots)
 	isInUnfinalizedDb     bool // block is in unfinalized table (unfinalized_blocks)
 	hasExecutionPayload   bool // block has an execution payload (either in cache or db)
+	isPayloadOrphaned     bool // payload is orphaned (next block doesn't build on it)
 	isDisposed            bool // block is disposed
 	processingStatus      dbtypes.UnfinalizedBlockStatus
 	seenMutex             sync.RWMutex
@@ -64,6 +65,7 @@ type BlockBodyIndex struct {
 	Graffiti            [32]byte
 	ExecutionExtraData  []byte
 	ExecutionHash       phase0.Hash32
+	ExecutionParentHash phase0.Hash32
 	ExecutionNumber     uint64
 	SyncParticipation   float32
 	EthTransactionCount uint64
@@ -416,9 +418,13 @@ func (block *Block) setBlockIndex(body *spec.VersionedSignedBeaconBlock, payload
 		} else {
 			blockIndex.BuilderIndex = math.MaxUint64
 		}
+		if parentHash, err := getBlockExecutionParentHash(body); err == nil {
+			blockIndex.ExecutionParentHash = parentHash
+		}
 	}
 	if payload != nil {
 		blockIndex.ExecutionNumber = uint64(payload.Message.Payload.BlockNumber)
+		blockIndex.ExecutionParentHash = payload.Message.Payload.ParentHash
 
 		// Calculate transaction count
 		executionTransactions := payload.Message.Payload.Transactions
