@@ -29,7 +29,8 @@ type APISlotsResponse struct {
 type APISlotsData struct {
 	Slots      []*APISlotListItem `json:"slots"`
 	TotalCount int                `json:"total_count"`
-	NextSlot   *uint64            `json:"next_slot,omitempty"`
+	Page       uint64             `json:"page"`
+	NextPage   *uint64            `json:"next_page,omitempty"`
 }
 
 // APISlotListItem represents a single slot in the list
@@ -93,7 +94,7 @@ type APISlotListItem struct {
 // @Param min_blob_count query int false "Minimum blob count"
 // @Param max_blob_count query int false "Maximum blob count"
 // @Param fork_ids query string false "Comma-separated list of fork IDs"
-// @Param start_slot query int false "Start slot for pagination (inclusive)"
+// @Param page query int false "Page number for pagination (0-indexed, default 0)"
 // @Param limit query int false "Number of results to return (max 100, default 100)"
 // @Success 200 {object} APISlotsResponse
 // @Failure 400 {object} map[string]string "Invalid parameters"
@@ -107,14 +108,14 @@ func APISlotsV1(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
 
 	// Pagination parameters
-	var startSlot *uint64
-	if query.Has("start_slot") {
-		slot, err := strconv.ParseUint(query.Get("start_slot"), 10, 64)
+	pageIdx := uint64(0)
+	if query.Has("page") {
+		page, err := strconv.ParseUint(query.Get("page"), 10, 64)
 		if err != nil {
-			http.Error(w, `{"status": "ERROR: invalid start_slot"}`, http.StatusBadRequest)
+			http.Error(w, `{"status": "ERROR: invalid page"}`, http.StatusBadRequest)
 			return
 		}
-		startSlot = &slot
+		pageIdx = page
 	}
 
 	limit := uint64(100)
@@ -266,18 +267,6 @@ func APISlotsV1(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Calculate page index based on start slot
-	pageIdx := uint64(0)
-	if startSlot != nil {
-		// The page index is calculated based on how many pages would be before this slot
-		// Since slots are sorted descending, we need to know how many slots are after this one
-		chainState := services.GlobalBeaconService.GetChainState()
-		currentSlot := uint64(chainState.CurrentSlot())
-		if *startSlot <= currentSlot {
-			pageIdx = currentSlot - *startSlot
-		}
-	}
-
 	// Get blocks from database
 	dbBlocks := services.GlobalBeaconService.GetDbBlocksByFilter(blockFilter, pageIdx, uint32(limit+1), 0)
 
@@ -300,18 +289,13 @@ func APISlotsV1(w http.ResponseWriter, r *http.Request) {
 
 	// Process results
 	slots := make([]*APISlotListItem, 0, limit)
-	var nextSlot *uint64
+	var nextPage *uint64
 
 	for idx, dbBlock := range dbBlocks {
 		if idx >= int(limit) {
-			// We have more results, set next slot for pagination
-			if dbBlock.Block != nil {
-				next := dbBlock.Block.Slot
-				nextSlot = &next
-			} else {
-				next := dbBlock.Slot
-				nextSlot = &next
-			}
+			// We have more results, set next page for pagination
+			next := pageIdx + 1
+			nextPage = &next
 			break
 		}
 
@@ -442,7 +426,8 @@ func APISlotsV1(w http.ResponseWriter, r *http.Request) {
 		Data: &APISlotsData{
 			Slots:      slots,
 			TotalCount: len(slots),
-			NextSlot:   nextSlot,
+			Page:       pageIdx,
+			NextPage:   nextPage,
 		},
 	}
 
