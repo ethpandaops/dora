@@ -121,7 +121,7 @@ jobs:
   build_linux_arm64_binary:
     name: Build linux/arm64 binary
     needs: [build_ui_package]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     steps:
     - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
       with:
@@ -133,12 +133,6 @@ jobs:
       with:
         go-version: 1.25.x
 
-    # setup cross build libs
-    - name: Get cross build dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get -y install gcc-aarch64-linux-gnu
-    
     # setup project dependencies
     - name: Get dependencies
       run: |
@@ -154,7 +148,7 @@ jobs:
     # build binaries
     - name: Build linux arm64 binary
       run: |
-        make build GOARCH=arm64 CC=/usr/bin/aarch64-linux-gnu-gcc
+        make build
       env:
         RELEASE: ${{ inputs.release }}
 
@@ -209,7 +203,7 @@ jobs:
   build_darwin_amd64_binary:
     name: Build macos/amd64 binary
     needs: [build_ui_package]
-    runs-on: macos-latest
+    runs-on: macos-15-intel
     steps:
     - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
       with:
@@ -250,7 +244,7 @@ jobs:
   build_darwin_arm64_binary:
     name: Build macos/arm64 binary
     needs: [build_ui_package]
-    runs-on: macos-latest
+    runs-on: macos-26
     steps:
     - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
       with:
@@ -277,7 +271,7 @@ jobs:
     # build binaries
     - name: Build macos arm64 binary
       run: |
-        make build GOARCH=arm64
+        make build
       env:
         RELEASE: ${{ inputs.release }}
 
@@ -345,7 +339,7 @@ jobs:
     name: Build arm64 docker image
     needs: [build_linux_arm64_binary]
     if: ${{ inputs.docker }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     steps:
     - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
       with:
@@ -355,8 +349,6 @@ jobs:
       run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
 
     # prepare docker
-    - name: Set up Docker QEMU
-      uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
     - name: Login to Docker Hub
