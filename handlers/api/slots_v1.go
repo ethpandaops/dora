@@ -95,6 +95,7 @@ type APISlotListItem struct {
 // @Param min_blob_count query int false "Minimum blob count"
 // @Param max_blob_count query int false "Maximum blob count"
 // @Param fork_ids query string false "Comma-separated list of fork IDs"
+// @Param min_slot query int false "Minimum slot number to return (inclusive)"
 // @Param max_slot query int false "Maximum slot number to return (inclusive)"
 // @Param page query int false "Page number for pagination (0-indexed, default 0)"
 // @Param limit query int false "Number of results to return (max 1000, default 100)"
@@ -269,7 +270,15 @@ func APISlotsV1(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Max slot filter
+	// Slot range filters
+	if query.Has("min_slot") {
+		minSlot, err := strconv.ParseUint(query.Get("min_slot"), 10, 64)
+		if err != nil {
+			http.Error(w, `{"status": "ERROR: invalid min_slot"}`, http.StatusBadRequest)
+			return
+		}
+		blockFilter.MinSlot = &minSlot
+	}
 	if query.Has("max_slot") {
 		maxSlot, err := strconv.ParseUint(query.Get("max_slot"), 10, 64)
 		if err != nil {
