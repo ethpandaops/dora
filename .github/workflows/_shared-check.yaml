@@ -36,6 +36,21 @@ jobs:
     - name: Verify dependencies
       run: go mod verify
 
+    - name: Verify API docs are up to date
+      run: |
+        make api-docs
+        if [ -n "$(git status --porcelain docs/)" ]; then
+          echo "Error: API docs are out of date!"
+          echo "Please run 'make api-docs' and commit the changes."
+          echo ""
+          echo "Changed files:"
+          git status --porcelain docs/
+          echo ""
+          echo "Diff:"
+          git diff docs/
+          exit 1
+        fi
+
     - name: Run go vet
       run: go vet ./...
 
