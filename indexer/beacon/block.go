@@ -304,6 +304,10 @@ func (block *Block) EnsureBlock(loadBlock func() (*spec.VersionedSignedBeaconBlo
 
 // setBlockIndex sets the block index of this block.
 func (block *Block) setBlockIndex(body *spec.VersionedSignedBeaconBlock) {
+	if body == nil {
+		return
+	}
+
 	blockIndex := &BlockBodyIndex{}
 	blockIndex.Graffiti, _ = body.Graffiti()
 

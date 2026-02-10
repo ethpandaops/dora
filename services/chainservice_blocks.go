@@ -601,11 +601,37 @@ func (bs *ChainService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageIdx
 		return proposer
 	}
 
+	// Convert epoch filters to slot filters for use in DB query
+	if filter.MinEpoch != nil && filter.MinSlot == nil {
+		minSlot := uint64(chainState.EpochToSlot(phase0.Epoch(*filter.MinEpoch)))
+		filter.MinSlot = &minSlot
+	}
+	if filter.MaxEpoch != nil && filter.MaxSlot == nil {
+		maxSlot := uint64(chainState.EpochToSlot(phase0.Epoch(*filter.MaxEpoch+1))) - 1
+		filter.MaxSlot = &maxSlot
+	}
+
 	// get blocks from cache
 	// iterate from current slot to finalized slot
 	lastCanonicalBlock := bs.beaconIndexer.GetCanonicalHead(nil)
 
-	for slotIdx := int64(startSlot); slotIdx >= int64(finalizedSlot); slotIdx-- {
+	// apply epoch filter to slot range
+	cacheStartSlot := startSlot
+	cacheFinalizedSlot := finalizedSlot
+	if filter.MaxSlot != nil {
+		maxSlotVal := phase0.Slot(*filter.MaxSlot)
+		if maxSlotVal < cacheStartSlot {
+			cacheStartSlot = maxSlotVal
+		}
+	}
+	if filter.MinSlot != nil {
+		minSlotVal := phase0.Slot(*filter.MinSlot)
+		if minSlotVal > cacheFinalizedSlot {
+			cacheFinalizedSlot = minSlotVal
+		}
+	}
+
+	for slotIdx := int64(cacheStartSlot); slotIdx >= int64(cacheFinalizedSlot); slotIdx-- {
 		slot := phase0.Slot(slotIdx)
 		blocks := bs.beaconIndexer.GetBlocksBySlot(slot)
 		for _, block := range blocks {
@@ -794,6 +820,10 @@ func (bs *ChainService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageIdx
 				}
 			}
 
+			// Note: gas used, gas limit, and block size filters are not applied here
+			// because BlockBodyIndex doesn't have these fields - they only exist in the database.
+			// These filters will only work for finalized blocks from the database.
+
 			cachedMatches = append(cachedMatches, cachedDbBlock{
 				slot:     uint64(block.Slot),
 				proposer: uint64(blockHeader.Message.ProposerIndex),
@@ -804,7 +834,7 @@ func (bs *ChainService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageIdx
 
 		// reconstruct missing blocks from epoch duties
 		// For slot/root filtering, we still need to check if we need missing blocks for that specific slot
-		shouldCheckMissing := filter.WithMissing != 0 && filter.Graffiti == "" && filter.ExtraData == "" && filter.WithOrphaned != 2 && filter.MinSyncParticipation == nil && filter.MaxSyncParticipation == nil && filter.MinExecTime == nil && filter.MaxExecTime == nil && filter.MinTxCount == nil && filter.MaxTxCount == nil && filter.MinBlobCount == nil && filter.MaxBlobCount == nil && len(filter.ForkIds) == 0
+		shouldCheckMissing := filter.WithMissing != 0 && filter.Graffiti == "" && filter.ExtraData == "" && filter.WithOrphaned != 2 && filter.MinSyncParticipation == nil && filter.MaxSyncParticipation == nil && filter.MinExecTime == nil && filter.MaxExecTime == nil && filter.MinTxCount == nil && filter.MaxTxCount == nil && filter.MinBlobCount == nil && filter.MaxBlobCount == nil && len(filter.ForkIds) == 0 && filter.MinGasUsed == nil && filter.MaxGasUsed == nil && filter.MinGasLimit == nil && filter.MaxGasLimit == nil && filter.MinBlockSize == nil && filter.MaxBlockSize == nil && filter.WithMevBlock == 0
 
 		// If filtering by slot, only check missing for that specific slot
 		if filter.Slot != nil {

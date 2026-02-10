@@ -32,6 +32,10 @@ func InsertUnfinalizedBlock(block *dbtypes.UnfinalizedBlock, tx *sqlx.Tx) error 
 }
 
 func UpdateUnfinalizedBlockStatus(roots [][]byte, blockStatus dbtypes.UnfinalizedBlockStatus, tx *sqlx.Tx) error {
+	if len(roots) == 0 {
+		return nil
+	}
+
 	var sql strings.Builder
 	args := []any{}
 
@@ -57,6 +61,10 @@ func UpdateUnfinalizedBlockStatus(roots [][]byte, blockStatus dbtypes.Unfinalize
 }
 
 func UpdateUnfinalizedBlockForkId(roots [][]byte, forkId uint64, tx *sqlx.Tx) error {
+	if len(roots) == 0 {
+		return nil
+	}
+
 	var sql strings.Builder
 	args := []any{}
 
