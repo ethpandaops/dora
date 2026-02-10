@@ -31,6 +31,7 @@ type APISlotsData struct {
 	TotalCount int                `json:"total_count"`
 	Page       uint64             `json:"page"`
 	NextPage   *uint64            `json:"next_page,omitempty"`
+	NextSlot   *uint64            `json:"next_slot,omitempty"` // Use with max_slot for cursor-based pagination
 }
 
 // APISlotListItem represents a single slot in the list
@@ -94,6 +95,7 @@ type APISlotListItem struct {
 // @Param min_blob_count query int false "Minimum blob count"
 // @Param max_blob_count query int false "Maximum blob count"
 // @Param fork_ids query string false "Comma-separated list of fork IDs"
+// @Param max_slot query int false "Maximum slot number to return (inclusive)"
 // @Param page query int false "Page number for pagination (0-indexed, default 0)"
 // @Param limit query int false "Number of results to return (max 100, default 100)"
 // @Success 200 {object} APISlotsResponse
@@ -267,6 +269,16 @@ func APISlotsV1(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Max slot filter
+	if query.Has("max_slot") {
+		maxSlot, err := strconv.ParseUint(query.Get("max_slot"), 10, 64)
+		if err != nil {
+			http.Error(w, `{"status": "ERROR: invalid max_slot"}`, http.StatusBadRequest)
+			return
+		}
+		blockFilter.MaxSlot = &maxSlot
+	}
+
 	// Get blocks from database
 	dbBlocks := services.GlobalBeaconService.GetDbBlocksByFilter(blockFilter, pageIdx, uint32(limit+1), 0)
 
@@ -290,12 +302,20 @@ func APISlotsV1(w http.ResponseWriter, r *http.Request) {
 	// Process results
 	slots := make([]*APISlotListItem, 0, limit)
 	var nextPage *uint64
+	var nextSlot *uint64
 
 	for idx, dbBlock := range dbBlocks {
 		if idx >= int(limit) {
-			// We have more results, set next page for pagination
+			// We have more results, set next page/slot for pagination
 			next := pageIdx + 1
 			nextPage = &next
+
+			// Set next_slot for cursor-based pagination with max_slot
+			if dbBlock.Block != nil {
+				nextSlot = &dbBlock.Block.Slot
+			} else {
+				nextSlot = &dbBlock.Slot
+			}
 			break
 		}
 
@@ -428,6 +448,7 @@ func APISlotsV1(w http.ResponseWriter, r *http.Request) {
 			TotalCount: len(slots),
 			Page:       pageIdx,
 			NextPage:   nextPage,
+			NextSlot:   nextSlot,
 		},
 	}
 
