@@ -619,7 +619,7 @@ func (bs *ChainService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageIdx
 	cacheStartSlot := startSlot
 	cacheFinalizedSlot := finalizedSlot
 	if filter.MaxSlot != nil {
-		maxSlotVal := phase0.Slot(*filter.MaxSlot + 1)
+		maxSlotVal := phase0.Slot(*filter.MaxSlot)
 		if maxSlotVal < cacheStartSlot {
 			cacheStartSlot = maxSlotVal
 		}
