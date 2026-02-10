@@ -62,6 +62,9 @@ type BlockBodyIndex struct {
 	SyncParticipation   float32
 	EthTransactionCount uint64
 	BlobCount           uint64
+	GasUsed             uint64
+	GasLimit            uint64
+	BlockSize           uint64
 }
 
 // newBlock creates a new Block instance.
@@ -325,6 +328,18 @@ func (block *Block) setBlockIndex(body *spec.VersionedSignedBeaconBlock) {
 		blobKzgCommitments, _ := body.BlobKZGCommitments()
 		blockIndex.BlobCount = uint64(len(blobKzgCommitments))
 
+		// Get gas used and gas limit
+		gasUsed, _ := executionPayload.GasUsed()
+		blockIndex.GasUsed = gasUsed
+
+		gasLimit, _ := executionPayload.GasLimit()
+		blockIndex.GasLimit = gasLimit
+	}
+
+	// Calculate block size
+	blockSize, err := getBlockSize(block.dynSsz, body)
+	if err == nil {
+		blockIndex.BlockSize = uint64(blockSize)
 	}
 
 	// Calculate sync participation
