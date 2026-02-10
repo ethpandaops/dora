@@ -70,6 +70,17 @@ type BlockFilter struct {
 	EthBlockHash         []byte   // Filter by EL block hash
 	EthBlockParentHash   []byte   // Filter by EL block parent hash
 	BuilderIndex         *int64   // Filter by builder index (-1 for self-built blocks)
+	MinGasUsed           *uint64  // Filter by minimum gas used
+	MaxGasUsed           *uint64  // Filter by maximum gas used
+	MinGasLimit          *uint64  // Filter by minimum gas limit
+	MaxGasLimit          *uint64  // Filter by maximum gas limit
+	MinBlockSize         *uint64  // Filter by minimum block size (bytes)
+	MaxBlockSize         *uint64  // Filter by maximum block size (bytes)
+	WithMevBlock         uint8    // 0=hide mev, 1=show all, 2=mev only
+	MinEpoch             *uint64  // Filter by minimum epoch
+	MaxEpoch             *uint64  // Filter by maximum epoch
+	MinSlot              *uint64  // Filter by minimum slot (derived from MinEpoch)
+	MaxSlot              *uint64  // Filter by maximum slot (derived from MaxEpoch)
 }
 
 type MevBlockFilter struct {

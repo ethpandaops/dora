@@ -395,6 +395,10 @@ func (block *Block) EnsureExecutionPayload(loadExecutionPayload func() (*gloas.S
 
 // setBlockIndex sets the block index of this block.
 func (block *Block) setBlockIndex(body *spec.VersionedSignedBeaconBlock, payload *gloas.SignedExecutionPayloadEnvelope) {
+	if body == nil {
+		return
+	}
+
 	blockIndex := block.blockIndex
 	if blockIndex == nil {
 		blockIndex = &BlockBodyIndex{}

@@ -492,6 +492,46 @@ func GetFilteredSlots(filter *dbtypes.BlockFilter, firstSlot uint64, offset uint
 		fmt.Fprintf(&sql, ` AND slots.eth_block_parent_hash = $%v `, argIdx)
 		args = append(args, filter.EthBlockParentHash)
 	}
+	if filter.MinGasUsed != nil {
+		argIdx++
+		fmt.Fprintf(&sql, ` AND slots.eth_gas_used >= $%v `, argIdx)
+		args = append(args, *filter.MinGasUsed)
+	}
+	if filter.MaxGasUsed != nil {
+		argIdx++
+		fmt.Fprintf(&sql, ` AND slots.eth_gas_used <= $%v `, argIdx)
+		args = append(args, *filter.MaxGasUsed)
+	}
+	if filter.MinGasLimit != nil {
+		argIdx++
+		fmt.Fprintf(&sql, ` AND slots.eth_gas_limit >= $%v `, argIdx)
+		args = append(args, *filter.MinGasLimit)
+	}
+	if filter.MaxGasLimit != nil {
+		argIdx++
+		fmt.Fprintf(&sql, ` AND slots.eth_gas_limit <= $%v `, argIdx)
+		args = append(args, *filter.MaxGasLimit)
+	}
+	if filter.MinBlockSize != nil {
+		argIdx++
+		fmt.Fprintf(&sql, ` AND slots.block_size >= $%v `, argIdx)
+		args = append(args, *filter.MinBlockSize)
+	}
+	if filter.MaxBlockSize != nil {
+		argIdx++
+		fmt.Fprintf(&sql, ` AND slots.block_size <= $%v `, argIdx)
+		args = append(args, *filter.MaxBlockSize)
+	}
+	if filter.MinSlot != nil {
+		argIdx++
+		fmt.Fprintf(&sql, ` AND slots.slot >= $%v `, argIdx)
+		args = append(args, *filter.MinSlot)
+	}
+	if filter.MaxSlot != nil {
+		argIdx++
+		fmt.Fprintf(&sql, ` AND slots.slot <= $%v `, argIdx)
+		args = append(args, *filter.MaxSlot)
+	}
 
 	fmt.Fprintf(&sql, `	ORDER BY slots.slot DESC `)
 	fmt.Fprintf(&sql, ` LIMIT $%v OFFSET $%v `, argIdx+1, argIdx+2)
