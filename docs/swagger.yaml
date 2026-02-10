@@ -1069,7 +1069,9 @@ definitions:
     type: object
   api.APISlotsData:
     properties:
-      next_slot:
+      next_page:
+        type: integer
+      page:
         type: integer
       slots:
         items:
@@ -2325,9 +2327,9 @@ paths:
         in: query
         name: fork_ids
         type: string
-      - description: Start slot for pagination (inclusive)
+      - description: Page number for pagination (0-indexed, default 0)
         in: query
-        name: start_slot
+        name: page
         type: integer
       - description: Number of results to return (max 100, default 100)
         in: query

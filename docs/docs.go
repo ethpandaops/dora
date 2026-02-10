@@ -1255,8 +1255,8 @@ const docTemplate = `{
                     },
                     {
                         "type": "integer",
-                        "description": "Start slot for pagination (inclusive)",
-                        "name": "start_slot",
+                        "description": "Page number for pagination (0-indexed, default 0)",
+                        "name": "page",
                         "in": "query"
                     },
                     {
@@ -3689,7 +3689,10 @@ const docTemplate = `{
         "api.APISlotsData": {
             "type": "object",
             "properties": {
-                "next_slot": {
+                "next_page": {
+                    "type": "integer"
+                },
+                "page": {
                     "type": "integer"
                 },
                 "slots": {
