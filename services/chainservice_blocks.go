@@ -820,9 +820,38 @@ func (bs *ChainService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageIdx
 				}
 			}
 
-			// Note: gas used, gas limit, and block size filters are not applied here
-			// because BlockBodyIndex doesn't have these fields - they only exist in the database.
-			// These filters will only work for finalized blocks from the database.
+			// filter by gas used
+			if filter.MinGasUsed != nil || filter.MaxGasUsed != nil {
+				gasUsed := blockIndex.GasUsed
+				if filter.MinGasUsed != nil && gasUsed < *filter.MinGasUsed {
+					continue
+				}
+				if filter.MaxGasUsed != nil && gasUsed > *filter.MaxGasUsed {
+					continue
+				}
+			}
+
+			// filter by gas limit
+			if filter.MinGasLimit != nil || filter.MaxGasLimit != nil {
+				gasLimit := blockIndex.GasLimit
+				if filter.MinGasLimit != nil && gasLimit < *filter.MinGasLimit {
+					continue
+				}
+				if filter.MaxGasLimit != nil && gasLimit > *filter.MaxGasLimit {
+					continue
+				}
+			}
+
+			// filter by block size
+			if filter.MinBlockSize != nil || filter.MaxBlockSize != nil {
+				blockSize := blockIndex.BlockSize
+				if filter.MinBlockSize != nil && blockSize < *filter.MinBlockSize {
+					continue
+				}
+				if filter.MaxBlockSize != nil && blockSize > *filter.MaxBlockSize {
+					continue
+				}
+			}
 
 			cachedMatches = append(cachedMatches, cachedDbBlock{
 				slot:     uint64(block.Slot),
