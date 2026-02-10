@@ -97,7 +97,7 @@ type APISlotListItem struct {
 // @Param fork_ids query string false "Comma-separated list of fork IDs"
 // @Param max_slot query int false "Maximum slot number to return (inclusive)"
 // @Param page query int false "Page number for pagination (0-indexed, default 0)"
-// @Param limit query int false "Number of results to return (max 100, default 100)"
+// @Param limit query int false "Number of results to return (max 1000, default 100)"
 // @Success 200 {object} APISlotsResponse
 // @Failure 400 {object} map[string]string "Invalid parameters"
 // @Failure 500 {object} map[string]string "Internal server error"
@@ -127,8 +127,8 @@ func APISlotsV1(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, `{"status": "ERROR: invalid limit"}`, http.StatusBadRequest)
 			return
 		}
-		if parsedLimit > 100 {
-			parsedLimit = 100
+		if parsedLimit > 1000 {
+			parsedLimit = 1000
 		}
 		limit = parsedLimit
 	}
