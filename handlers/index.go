@@ -373,6 +373,7 @@ func buildIndexPageRecentEpochsData(pageData *models.IndexPageData, currentEpoch
 	pageData.RecentEpochs = make([]*models.IndexPageDataEpochs, 0)
 
 	chainState := services.GlobalBeaconService.GetChainState()
+	specs := chainState.GetSpecs()
 
 	epochsData := services.GlobalBeaconService.GetDbEpochs(uint64(currentEpoch), uint32(recentEpochCount))
 	for i := 0; i < len(epochsData); i++ {
@@ -384,14 +385,21 @@ func buildIndexPageRecentEpochsData(pageData *models.IndexPageData, currentEpoch
 		if epochData.Eligible > 0 {
 			voteParticipation = float64(epochData.VotedTarget) * 100.0 / float64(epochData.Eligible)
 		}
+		proposalParticipation := float64(0)
+		if specs.SlotsPerEpoch > 0 {
+			proposalParticipation = float64(epochData.BlockCount) * 100.0 / float64(specs.SlotsPerEpoch)
+		}
 		pageData.RecentEpochs = append(pageData.RecentEpochs, &models.IndexPageDataEpochs{
-			Epoch:             epochData.Epoch,
-			Ts:                chainState.EpochToTime(phase0.Epoch(epochData.Epoch)),
-			Finalized:         uint64(finalizedEpoch) > 0 && uint64(finalizedEpoch) >= epochData.Epoch,
-			Justified:         uint64(justifiedEpoch) > 0 && uint64(justifiedEpoch) >= epochData.Epoch,
-			EligibleEther:     epochData.Eligible,
-			TargetVoted:       epochData.VotedTarget,
-			VoteParticipation: voteParticipation,
+			Epoch:                 epochData.Epoch,
+			Ts:                    chainState.EpochToTime(phase0.Epoch(epochData.Epoch)),
+			Finalized:             uint64(finalizedEpoch) > 0 && uint64(finalizedEpoch) >= epochData.Epoch,
+			Justified:             uint64(justifiedEpoch) > 0 && uint64(justifiedEpoch) >= epochData.Epoch,
+			EligibleEther:         epochData.Eligible,
+			TargetVoted:           epochData.VotedTarget,
+			VoteParticipation:     voteParticipation,
+			BlockCount:            uint64(epochData.BlockCount),
+			SlotsPerEpoch:         specs.SlotsPerEpoch,
+			ProposalParticipation: proposalParticipation,
 		})
 	}
 	pageData.RecentEpochCount = uint64(len(pageData.RecentEpochs))
