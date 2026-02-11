@@ -118,7 +118,17 @@ func applyAuthGroupToEndpoint(endpoint *types.EndpointConfig) (*types.EndpointCo
 				return nil, fmt.Errorf("failed to parse snooper URL: %v", err)
 			}
 
-			snooperUrlObj.User = url.UserPassword(authGroup.Credentials.Username, authGroup.Credentials.Password)
+			if authGroup.Credentials.Username != "" && authGroup.Credentials.Password != "" {
+				snooperUrlObj.User = url.UserPassword(authGroup.Credentials.Username, authGroup.Credentials.Password)
+			} else if authGroup.Credentials.Username != "" {
+				snooperUrlObj.User = url.User(authGroup.Credentials.Username)
+			} else if authGroup.Credentials.Password != "" {
+				credParts := strings.SplitN(authGroup.Credentials.Password, ":", 2)
+				if len(credParts) == 2 {
+					snooperUrlObj.User = url.UserPassword(credParts[0], credParts[1])
+				}
+			}
+
 			endpointCopy.EngineSnooperUrl = snooperUrlObj.String()
 		}
 	}
