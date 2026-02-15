@@ -282,6 +282,8 @@ func parseClientTypesFromName(validatorName string) (execution.ClientType, conse
 		executionClient = execution.RethClient
 	} else if strings.Contains(name, "erigon") {
 		executionClient = execution.ErigonClient
+	} else if strings.Contains(name, "ethrex") {
+		executionClient = execution.EthrexClient
 	}
 
 	// Parse consensus client - use exact word matching to avoid nimbus/nimbusel conflicts
