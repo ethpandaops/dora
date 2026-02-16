@@ -183,12 +183,16 @@ func (bs *ChainService) GetSlotDetailsByBlockroot(ctx context.Context, blockroot
 				return beacon.UnmarshalVersionedSignedExecutionPayloadEnvelopeSSZ(bs.beaconIndexer.GetDynSSZ(), version, payload)
 			})
 		if err == nil && blockData != nil && blockData.Body != nil {
-			result = &CombinedBlockResponse{
+			resp := &CombinedBlockResponse{
 				Root:     blockroot,
 				Header:   header,
 				Block:    blockData.Body.(*spec.VersionedSignedBeaconBlock),
 				Orphaned: false,
 			}
+			if blockData.Payload != nil {
+				resp.Payload = blockData.Payload.(*gloas.SignedExecutionPayloadEnvelope)
+			}
+			result = resp
 		}
 	}
 
@@ -330,12 +334,16 @@ func (bs *ChainService) GetSlotDetailsBySlot(ctx context.Context, slot phase0.Sl
 				return nil, err
 			}
 
-			result = &CombinedBlockResponse{
+			resp := &CombinedBlockResponse{
 				Root:     blockRoot,
 				Header:   header,
 				Block:    blockData.Body.(*spec.VersionedSignedBeaconBlock),
 				Orphaned: false,
 			}
+			if blockData.Payload != nil {
+				resp.Payload = blockData.Payload.(*gloas.SignedExecutionPayloadEnvelope)
+			}
+			result = resp
 		}
 	}
 

@@ -310,7 +310,10 @@ func (c *Client) processHeadEvent(headEvent *v1.HeadEvent) error {
 
 // processStreamBlock processes a block received from the stream (either via block or head events).
 func (c *Client) processStreamBlock(slot phase0.Slot, root phase0.Root) (*Block, error) {
-	block, isNew, processingTimes, err := c.processBlock(slot, root, nil, true, false)
+	chainState := c.client.GetPool().GetChainState()
+	loadPayload := chainState.IsEip7732Enabled(chainState.EpochOfSlot(slot))
+
+	block, isNew, processingTimes, err := c.processBlock(slot, root, nil, true, loadPayload)
 	if err != nil {
 		return nil, err
 	}
