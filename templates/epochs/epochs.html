@@ -59,6 +59,7 @@
                 <th>Txs / Blobs</th>
                 <th>Finalized</th>
                 <th class="d-none d-md-table-cell">Eligible</th>
+                <th class="d-none d-lg-table-cell">Proposals</th>
                 <th>Target Vote</th>
                 <th class="d-none d-lg-table-cell">Head Vote</th>
                 <th class="d-none d-lg-table-cell">Total Vote</th>
@@ -90,9 +91,17 @@
                       {{ end }}
                     </td>
                     <td class="d-none d-md-table-cell">{{ formatEthAddCommasFromGwei $epoch.EligibleEther }}</td>
+                    <td class="d-none d-lg-table-cell">
+                      <div style="position:relative;width:inherit;height:inherit;">
+                        {{ $epoch.CanonicalBlockCount }}/{{ $epoch.SlotsPerEpoch }} <small class="text-muted">({{ formatFloat $epoch.ProposalParticipation 1 }}%)</small>
+                        <div class="progress" style="position:absolute;bottom:-6px;width:100%;height:4px;">
+                        <div class="progress-bar" role="progressbar" style="width: {{ formatFloat $epoch.ProposalParticipation 1 }}%;" aria-valuenow="{{ formatFloat $epoch.ProposalParticipation 1 }}%" aria-valuemin="0" aria-valuemax="100"></div>
+                        </div>
+                      </div>
+                    </td>
                     <td>
                       <div style="position:relative;width:inherit;height:inherit;">
-                        {{ formatEthAddCommasFromGwei $epoch.TargetVoted }} <small class="text-muted ml-3">({{ formatFloat $epoch.TargetVoteParticipation 2 }}%)</small>
+                        <small>{{ formatFloat $epoch.TargetVoteParticipation 2 }}%</small>
                         <div class="progress" style="position:absolute;bottom:-6px;width:100%;height:4px;">
                         <div class="progress-bar" role="progressbar" style="width: {{ formatFloat $epoch.TargetVoteParticipation 2 }}%;" aria-valuenow="{{ formatFloat $epoch.TargetVoteParticipation 2 }}%" aria-valuemin="0" aria-valuemax="100"></div>
                         </div>
@@ -100,7 +109,7 @@
                     </td>
                     <td class="d-none d-lg-table-cell">
                       <div style="position:relative;width:inherit;height:inherit;">
-                        {{ formatEthAddCommasFromGwei $epoch.HeadVoted }} <small class="text-muted ml-3">({{ formatFloat $epoch.HeadVoteParticipation 2 }}%)</small>
+                        <small>{{ formatFloat $epoch.HeadVoteParticipation 2 }}%</small>
                         <div class="progress" style="position:absolute;bottom:-6px;width:100%;height:4px;">
                         <div class="progress-bar" role="progressbar" style="width: {{ formatFloat $epoch.HeadVoteParticipation 2 }}%;" aria-valuenow="{{ formatFloat $epoch.HeadVoteParticipation 2 }}%" aria-valuemin="0" aria-valuemax="100"></div>
                         </div>
@@ -108,7 +117,7 @@
                     </td>
                     <td class="d-none d-lg-table-cell">
                       <div style="position:relative;width:inherit;height:inherit;">
-                        {{ formatEthAddCommasFromGwei $epoch.TotalVoted }} <small class="text-muted ml-3">({{ formatFloat $epoch.TotalVoteParticipation 2 }}%)</small>
+                        <small>{{ formatFloat $epoch.TotalVoteParticipation 2 }}%</small>
                         <div class="progress" style="position:absolute;bottom:-6px;width:100%;height:4px;">
                         <div class="progress-bar" role="progressbar" style="width: {{ formatFloat $epoch.TotalVoteParticipation 2 }}%;" aria-valuenow="{{ formatFloat $epoch.TotalVoteParticipation 2 }}%" aria-valuemin="0" aria-valuemax="100"></div>
                         </div>
