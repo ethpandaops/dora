@@ -150,12 +150,21 @@ indexer:
 executionIndexer:
   enabled: true
   retention: 4368h
+  detailsEnabled: true
+  tracesEnabled: true
+  detailsMaxSize: "100GB"
 database:
   engine: "sqlite"
   sqlite:
     file: "${__dir}/generated-database.sqlite"
 EOF
 
+# Inject blockdb settings from custom-blockdb-settings.yaml if available
+if [ -f "${__dir}/custom-blockdb-settings.yaml" ]; then
+  echo "" >> "${__dir}/generated-dora-config.yaml"
+  cat "${__dir}/custom-blockdb-settings.yaml" >> "${__dir}/generated-dora-config.yaml"
+  echo "BlockDB settings injected from custom-blockdb-settings.yaml"
+fi
 
 cat <<EOF
 ============================================================================================================
