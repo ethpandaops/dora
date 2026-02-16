@@ -143,6 +143,13 @@
           <i class="fa fa-cog me-2"></i> Details
         </a>
       </li>
+      {{ if gt .InternalTxCount 0 }}
+      <li class="nav-item">
+        <a class="nav-link{{ if eq .TabView "internaltxs" }} active{{ end }}" id="internaltxs-tab" data-lazy-tab="internaltxs" data-bs-toggle="tab" data-bs-target="#internaltxs" href="?v=internaltxs{{ if gt .SelectedBlockUid 0 }}&b={{ .SelectedBlockUid }}{{ end }}" role="tab" aria-controls="internaltxs" aria-selected="{{ if eq .TabView "internaltxs" }}true{{ else }}false{{ end }}">
+          <i class="fa fa-sitemap me-2"></i> Internal Txs ({{ .InternalTxCount }})
+        </a>
+      </li>
+      {{ end }}
       {{ if gt .EventCount 0 }}
       <li class="nav-item">
         <a class="nav-link{{ if eq .TabView "events" }} active{{ end }}" id="events-tab" data-lazy-tab="events" data-bs-toggle="tab" data-bs-target="#events" href="?v=events{{ if gt .SelectedBlockUid 0 }}&b={{ .SelectedBlockUid }}{{ end }}" role="tab" aria-controls="events" aria-selected="{{ if eq .TabView "events" }}true{{ else }}false{{ end }}">
@@ -154,13 +161,6 @@
       <li class="nav-item">
         <a class="nav-link{{ if eq .TabView "transfers" }} active{{ end }}" id="transfers-tab" data-lazy-tab="transfers" data-bs-toggle="tab" data-bs-target="#transfers" href="?v=transfers{{ if gt .SelectedBlockUid 0 }}&b={{ .SelectedBlockUid }}{{ end }}" role="tab" aria-controls="transfers" aria-selected="{{ if eq .TabView "transfers" }}true{{ else }}false{{ end }}">
           <i class="fa fa-coins me-2"></i> Token Transfers ({{ .TokenTransferCount }})
-        </a>
-      </li>
-      {{ end }}
-      {{ if gt .InternalTxCount 0 }}
-      <li class="nav-item">
-        <a class="nav-link{{ if eq .TabView "internaltxs" }} active{{ end }}" id="internaltxs-tab" data-lazy-tab="internaltxs" data-bs-toggle="tab" data-bs-target="#internaltxs" href="?v=internaltxs{{ if gt .SelectedBlockUid 0 }}&b={{ .SelectedBlockUid }}{{ end }}" role="tab" aria-controls="internaltxs" aria-selected="{{ if eq .TabView "internaltxs" }}true{{ else }}false{{ end }}">
-          <i class="fa fa-sitemap me-2"></i> Internal Txs ({{ .InternalTxCount }})
         </a>
       </li>
       {{ end }}
@@ -263,6 +263,13 @@
           </div>
         </div>
       </div>
+      {{ if gt .InternalTxCount 0 }}
+      <div class="tab-pane fade{{ if eq .TabView "internaltxs" }} show active{{ end }}" id="internaltxs" role="tabpanel" aria-labelledby="internaltxs-tab" data-loaded="{{ if eq .TabView "internaltxs" }}true{{ else }}false{{ end }}">
+        {{ if eq .TabView "internaltxs" }}
+          {{ template "internaltxs" . }}
+        {{ end }}
+      </div>
+      {{ end }}
       {{ if gt .EventCount 0 }}
       <div class="tab-pane fade{{ if eq .TabView "events" }} show active{{ end }}" id="events" role="tabpanel" aria-labelledby="events-tab" data-loaded="{{ if eq .TabView "events" }}true{{ else }}false{{ end }}">
         {{ if eq .TabView "events" }}
@@ -274,13 +281,6 @@
       <div class="tab-pane fade{{ if eq .TabView "transfers" }} show active{{ end }}" id="transfers" role="tabpanel" aria-labelledby="transfers-tab" data-loaded="{{ if eq .TabView "transfers" }}true{{ else }}false{{ end }}">
         {{ if eq .TabView "transfers" }}
           {{ template "transfers" . }}
-        {{ end }}
-      </div>
-      {{ end }}
-      {{ if gt .InternalTxCount 0 }}
-      <div class="tab-pane fade{{ if eq .TabView "internaltxs" }} show active{{ end }}" id="internaltxs" role="tabpanel" aria-labelledby="internaltxs-tab" data-loaded="{{ if eq .TabView "internaltxs" }}true{{ else }}false{{ end }}">
-        {{ if eq .TabView "internaltxs" }}
-          {{ template "internaltxs" . }}
         {{ end }}
       </div>
       {{ end }}

@@ -270,7 +270,7 @@ func (t *TxIndexer) processElBlock(ref *BlockRef) (*blockStats, error) {
 		if execData != nil && blockdb.GlobalBlockDb != nil && blockdb.GlobalBlockDb.SupportsExecData() {
 			blockdbCtx, blockdbCancel := context.WithTimeout(t.ctx, 30*time.Second)
 			dataSize, writeErr := blockdb.GlobalBlockDb.AddExecData(
-				blockdbCtx, uint64(ref.Slot), ref.BlockHash, execData,
+				blockdbCtx, uint64(ref.Slot), ref.BlockRoot, execData,
 			)
 			blockdbCancel()
 

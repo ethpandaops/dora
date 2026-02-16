@@ -91,43 +91,52 @@ func (db *BlockDb) SupportsExecData() bool {
 }
 
 // AddExecData stores execution data for a block. Returns stored size.
-func (db *BlockDb) AddExecData(ctx context.Context, slot uint64, blockHash []byte, data []byte) (int64, error) {
+func (db *BlockDb) AddExecData(ctx context.Context, slot uint64, blockRoot []byte, data []byte) (int64, error) {
 	if db.execEngine == nil {
 		return 0, fmt.Errorf("exec data not supported by engine")
 	}
-	return db.execEngine.AddExecData(ctx, slot, blockHash, data)
+	return db.execEngine.AddExecData(ctx, slot, blockRoot, data)
 }
 
 // GetExecData retrieves full execution data for a block.
-func (db *BlockDb) GetExecData(ctx context.Context, slot uint64, blockHash []byte) ([]byte, error) {
+func (db *BlockDb) GetExecData(ctx context.Context, slot uint64, blockRoot []byte) ([]byte, error) {
 	if db.execEngine == nil {
 		return nil, fmt.Errorf("exec data not supported by engine")
 	}
-	return db.execEngine.GetExecData(ctx, slot, blockHash)
+	return db.execEngine.GetExecData(ctx, slot, blockRoot)
 }
 
 // GetExecDataRange retrieves a byte range of execution data.
-func (db *BlockDb) GetExecDataRange(ctx context.Context, slot uint64, blockHash []byte, offset int64, length int64) ([]byte, error) {
+func (db *BlockDb) GetExecDataRange(ctx context.Context, slot uint64, blockRoot []byte, offset int64, length int64) ([]byte, error) {
 	if db.execEngine == nil {
 		return nil, fmt.Errorf("exec data not supported by engine")
 	}
-	return db.execEngine.GetExecDataRange(ctx, slot, blockHash, offset, length)
+	return db.execEngine.GetExecDataRange(ctx, slot, blockRoot, offset, length)
+}
+
+// GetExecDataTxSections retrieves compressed section data for a single
+// transaction. sections is a bitmask selecting which sections to return.
+func (db *BlockDb) GetExecDataTxSections(ctx context.Context, slot uint64, blockRoot []byte, txHash []byte, sections uint32) (*types.ExecDataTxSections, error) {
+	if db.execEngine == nil {
+		return nil, fmt.Errorf("exec data not supported by engine")
+	}
+	return db.execEngine.GetExecDataTxSections(ctx, slot, blockRoot, txHash, sections)
 }
 
 // HasExecData checks if execution data exists for a block.
-func (db *BlockDb) HasExecData(ctx context.Context, slot uint64, blockHash []byte) (bool, error) {
+func (db *BlockDb) HasExecData(ctx context.Context, slot uint64, blockRoot []byte) (bool, error) {
 	if db.execEngine == nil {
 		return false, nil
 	}
-	return db.execEngine.HasExecData(ctx, slot, blockHash)
+	return db.execEngine.HasExecData(ctx, slot, blockRoot)
 }
 
 // DeleteExecData deletes execution data for a specific block.
-func (db *BlockDb) DeleteExecData(ctx context.Context, slot uint64, blockHash []byte) error {
+func (db *BlockDb) DeleteExecData(ctx context.Context, slot uint64, blockRoot []byte) error {
 	if db.execEngine == nil {
 		return fmt.Errorf("exec data not supported by engine")
 	}
-	return db.execEngine.DeleteExecData(ctx, slot, blockHash)
+	return db.execEngine.DeleteExecData(ctx, slot, blockRoot)
 }
 
 // PruneExecDataBefore deletes execution data for all slots before maxSlot.

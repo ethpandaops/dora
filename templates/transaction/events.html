@@ -1,7 +1,25 @@
 {{ define "events" }}
 <div class="card mt-0 border-top-0 rounded-top-0">
   <div class="card-body p-0">
-    {{ if gt (len .Events) 0 }}
+    {{ if .EventsNotAvailable }}
+    <div class="p-4 text-center text-muted">
+      <i class="fas fa-archive fa-2x mb-2"></i>
+      <p>Detailed event data is not available for this block (data may have been pruned).</p>
+    </div>
+    {{ else if gt (len .Events) 0 }}
+    <style>
+      .evt-data-wrap { max-height: 80px; overflow: hidden; position: relative; transition: max-height 0.2s; }
+      .evt-data-wrap.expanded { max-height: none; }
+      .evt-data-wrap.truncated::after { content:''; position: absolute; bottom: 0; left: 0; right: 0; height: 24px; background: linear-gradient(transparent, var(--bs-body-bg)); pointer-events: none; }
+      .evt-data-wrap.expanded::after { display: none; }
+      .evt-toggle { cursor: pointer; color: var(--bs-primary); font-size: 0.78rem; text-decoration: none; }
+      .evt-toggle:hover { text-decoration: underline; }
+    </style>
+    <div class="px-3 py-2 border-bottom d-flex align-items-center gap-2">
+      <i class="fas fa-filter text-muted" style="font-size: 0.8rem;"></i>
+      <input type="text" id="evtTopicFilter" class="form-control form-control-sm" style="max-width: 400px; font-size: 0.82rem;" placeholder="Filter by topic0 (event signature)..." oninput="filterEvents()">
+      <span id="evtFilterCount" class="text-muted small"></span>
+    </div>
     <div class="table-responsive">
       <table class="table table-hover mb-0">
         <thead>
@@ -10,60 +28,73 @@
             <th class="px-3">Event Data</th>
           </tr>
         </thead>
-        <tbody>
-          {{ range .Events }}
-          <tr>
+        <tbody id="evtTableBody">
+          {{ range $idx, $evt := .Events }}
+          <tr data-topic0="{{ formatHexBytes $evt.Topic0 }}">
             <td class="px-3 text-center align-top">
-              <span class="badge text-bg-secondary">{{ .EventIndex }}</span>
+              <span class="badge text-bg-secondary">{{ $evt.EventIndex }}</span>
             </td>
             <td class="px-3 py-2">
               <div class="mb-2">
                 <span class="text-muted small me-2">Address:</span>
-                {{ formatEthAddressShortLink .SourceAddr .SourceIsContract }}
-                {{ if gt (len .SourceAddr) 0 }}
-                <i class="fa fa-copy text-muted ms-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ formatEthAddressFull .SourceAddr }}" style="font-size: 0.75rem;"></i>
+                {{ if gt (len $evt.SourceAddr) 0 }}
+                  {{ $addr := formatEthAddressFull $evt.SourceAddr }}
+                  {{ if $evt.SourceIsContract }}<i class="fas fa-file-contract text-muted" style="font-size:0.8rem;margin-right:0.2rem" data-bs-toggle="tooltip" title="Contract"></i>{{ end }}
+                  <a href="/address/{{ $addr }}" class="text-monospace text-break">{{ $addr }}</a>
+                {{ else }}
+                  <span class="text-muted">Unknown</span>
+                {{ end }}
+                {{ if gt (len $evt.SourceAddr) 0 }}
+                <i class="fa fa-copy text-muted ms-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ formatEthAddressFull $evt.SourceAddr }}" style="font-size: 0.75rem;"></i>
                 {{ end }}
               </div>
-              {{ if gt (len .Topic0) 0 }}
+              {{ if gt (len $evt.Topic0) 0 }}
               <div class="mb-1">
                 <span class="badge text-bg-primary me-1" style="font-size: 0.7rem;">Topic 0</span>
-                <span class="text-monospace text-break small">{{ formatHexBytes .Topic0 }}</span>
-                <i class="fa fa-copy text-muted ms-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ formatHexBytes .Topic0 }}" style="font-size: 0.75rem;"></i>
+                <span class="text-monospace text-break small">{{ formatHexBytes $evt.Topic0 }}</span>
+                <i class="fa fa-copy text-muted ms-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ formatHexBytes $evt.Topic0 }}" style="font-size: 0.75rem;"></i>
               </div>
               {{ end }}
-              {{ if gt (len .Topic1) 0 }}
+              {{ if gt (len $evt.Topic1) 0 }}
               <div class="mb-1">
                 <span class="badge text-bg-secondary me-1" style="font-size: 0.7rem;">Topic 1</span>
-                <span class="text-monospace text-break small">{{ formatHexBytes .Topic1 }}</span>
-                <i class="fa fa-copy text-muted ms-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ formatHexBytes .Topic1 }}" style="font-size: 0.75rem;"></i>
+                <span class="text-monospace text-break small">{{ formatHexBytes $evt.Topic1 }}</span>
+                <i class="fa fa-copy text-muted ms-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ formatHexBytes $evt.Topic1 }}" style="font-size: 0.75rem;"></i>
               </div>
               {{ end }}
-              {{ if gt (len .Topic2) 0 }}
+              {{ if gt (len $evt.Topic2) 0 }}
               <div class="mb-1">
                 <span class="badge text-bg-secondary me-1" style="font-size: 0.7rem;">Topic 2</span>
-                <span class="text-monospace text-break small">{{ formatHexBytes .Topic2 }}</span>
-                <i class="fa fa-copy text-muted ms-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ formatHexBytes .Topic2 }}" style="font-size: 0.75rem;"></i>
+                <span class="text-monospace text-break small">{{ formatHexBytes $evt.Topic2 }}</span>
+                <i class="fa fa-copy text-muted ms-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ formatHexBytes $evt.Topic2 }}" style="font-size: 0.75rem;"></i>
               </div>
               {{ end }}
-              {{ if gt (len .Topic3) 0 }}
+              {{ if gt (len $evt.Topic3) 0 }}
               <div class="mb-1">
                 <span class="badge text-bg-secondary me-1" style="font-size: 0.7rem;">Topic 3</span>
-                <span class="text-monospace text-break small">{{ formatHexBytes .Topic3 }}</span>
-                <i class="fa fa-copy text-muted ms-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ formatHexBytes .Topic3 }}" style="font-size: 0.75rem;"></i>
+                <span class="text-monospace text-break small">{{ formatHexBytes $evt.Topic3 }}</span>
+                <i class="fa fa-copy text-muted ms-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ formatHexBytes $evt.Topic3 }}" style="font-size: 0.75rem;"></i>
               </div>
               {{ end }}
-              {{ if gt (len .Topic4) 0 }}
+              {{ if gt (len $evt.Topic4) 0 }}
               <div class="mb-1">
                 <span class="badge text-bg-secondary me-1" style="font-size: 0.7rem;">Topic 4</span>
-                <span class="text-monospace text-break small">{{ formatHexBytes .Topic4 }}</span>
-                <i class="fa fa-copy text-muted ms-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ formatHexBytes .Topic4 }}" style="font-size: 0.75rem;"></i>
+                <span class="text-monospace text-break small">{{ formatHexBytes $evt.Topic4 }}</span>
+                <i class="fa fa-copy text-muted ms-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ formatHexBytes $evt.Topic4 }}" style="font-size: 0.75rem;"></i>
               </div>
               {{ end }}
-              {{ if gt (len .Data) 0 }}
+              {{ if gt (len $evt.Data) 0 }}
               <div>
                 <span class="badge text-bg-info me-1" style="font-size: 0.7rem;">Data</span>
-                <span class="text-monospace text-break small">{{ formatHexBytes .Data }}</span>
-                <i class="fa fa-copy text-muted ms-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ formatHexBytes .Data }}" style="font-size: 0.75rem;"></i>
+                <div class="btn-group btn-group-sm ms-1" style="vertical-align: middle;">
+                  <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-1 active" style="font-size: 0.7rem;" onclick="evtShowHex({{ $idx }}, this)">Hex</button>
+                  <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-1" style="font-size: 0.7rem;" onclick="evtShowAscii({{ $idx }}, this)">ASCII</button>
+                </div>
+                <i class="fa fa-copy text-muted ms-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ formatHexBytes $evt.Data }}" style="font-size: 0.75rem;"></i>
+                <div class="evt-data-wrap mt-1" id="evt-data-{{ $idx }}" data-hex="{{ formatHexBytes $evt.Data }}">
+                  <span class="text-monospace text-break small" id="evt-data-content-{{ $idx }}">{{ formatHexBytes $evt.Data }}</span>
+                </div>
+                <a class="evt-toggle" id="evt-data-toggle-{{ $idx }}" style="display:none;" onclick="toggleEvtData({{ $idx }})">[show more]</a>
               </div>
               {{ end }}
             </td>
@@ -72,6 +103,83 @@
         </tbody>
       </table>
     </div>
+    <script>
+    (function() {
+      // Check truncation on all data wrappers
+      document.querySelectorAll('.evt-data-wrap').forEach(function(el) {
+        if (el.scrollHeight > el.offsetHeight + 2) {
+          el.classList.add('truncated');
+          var idx = el.id.replace('evt-data-', '');
+          var toggle = document.getElementById('evt-data-toggle-' + idx);
+          if (toggle) toggle.style.display = 'inline';
+        }
+      });
+    })();
+
+    function toggleEvtData(idx) {
+      var wrap = document.getElementById('evt-data-' + idx);
+      var toggle = document.getElementById('evt-data-toggle-' + idx);
+      if (!wrap || !toggle) return;
+      if (wrap.classList.contains('expanded')) {
+        wrap.classList.remove('expanded');
+        wrap.classList.add('truncated');
+        toggle.textContent = '[show more]';
+      } else {
+        wrap.classList.add('expanded');
+        wrap.classList.remove('truncated');
+        toggle.textContent = '[show less]';
+      }
+    }
+
+    function evtHexToAscii(hex) {
+      hex = hex.replace(/^0x/, '');
+      var str = '';
+      for (var i = 0; i < hex.length; i += 2) {
+        var code = parseInt(hex.substr(i, 2), 16);
+        str += (code >= 32 && code <= 126) ? String.fromCharCode(code) : '.';
+      }
+      return str;
+    }
+
+    function evtShowHex(idx, btn) {
+      var wrap = document.getElementById('evt-data-' + idx);
+      var content = document.getElementById('evt-data-content-' + idx);
+      if (!wrap || !content) return;
+      content.textContent = wrap.dataset.hex;
+      btn.parentElement.querySelectorAll('button').forEach(function(b) { b.classList.remove('active'); });
+      btn.classList.add('active');
+    }
+
+    function evtShowAscii(idx, btn) {
+      var wrap = document.getElementById('evt-data-' + idx);
+      var content = document.getElementById('evt-data-content-' + idx);
+      if (!wrap || !content) return;
+      content.textContent = evtHexToAscii(wrap.dataset.hex);
+      btn.parentElement.querySelectorAll('button').forEach(function(b) { b.classList.remove('active'); });
+      btn.classList.add('active');
+    }
+
+    function filterEvents() {
+      var filter = document.getElementById('evtTopicFilter').value.toLowerCase().trim();
+      var rows = document.querySelectorAll('#evtTableBody tr');
+      var shown = 0;
+      rows.forEach(function(row) {
+        var topic0 = (row.getAttribute('data-topic0') || '').toLowerCase();
+        if (!filter || topic0.indexOf(filter) !== -1) {
+          row.style.display = '';
+          shown++;
+        } else {
+          row.style.display = 'none';
+        }
+      });
+      var countEl = document.getElementById('evtFilterCount');
+      if (filter) {
+        countEl.textContent = shown + ' / ' + rows.length + ' events';
+      } else {
+        countEl.textContent = '';
+      }
+    }
+    </script>
     {{ else }}
     <div class="p-4 text-center text-muted">
       <i class="fas fa-inbox fa-2x mb-2"></i>

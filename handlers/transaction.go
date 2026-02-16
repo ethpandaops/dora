@@ -429,7 +429,7 @@ func buildTransactionPageDataFromDB(pageData *models.TransactionPageData, txs []
 	case "transfers":
 		loadTransactionTransfersFromData(pageData, transfers)
 	case "internaltxs":
-		loadTransactionInternalTxs(pageData, internalTxs)
+		loadTransactionInternalTxsFromBlockdb(pageData, internalTxs, tx.BlockUid)
 	}
 }
 
@@ -730,35 +730,40 @@ func loadTransactionEventsFromBlockdb(pageData *models.TransactionPageData, even
 		return
 	}
 
-	// Try to load full event data from blockdb
-	if blockdb.GlobalBlockDb != nil && blockdb.GlobalBlockDb.SupportsExecData() && pageData.DataStatus&0x01 != 0 {
-		slot := blockUid >> 16
-		blockHash := pageData.BlockHash
+	// If the block says events data is unavailable (pruned / not stored), show the
+	// "not available" state instead of silently degrading to index-only view.
+	if pageData.DataStatus&dbtypes.ElBlockDataEvents == 0 {
+		pageData.EventsNotAvailable = true
+		return
+	}
 
-		if len(blockHash) > 0 {
+	// Try to load full event data from blockdb
+	if blockdb.GlobalBlockDb != nil && blockdb.GlobalBlockDb.SupportsExecData() {
+		slot := blockUid >> 16
+		blockRoot := pageData.BlockRoot
+
+		if len(blockRoot) > 0 {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 
-			objectData, err := blockdb.GlobalBlockDb.GetExecData(ctx, slot, blockHash)
-			if err == nil && objectData != nil {
-				obj, err := blockdb.ParseExecDataIndex(objectData)
-				if err == nil {
-					txEntry := obj.FindTxEntry(pageData.TxHash)
-					if txEntry != nil && txEntry.SectionsBitmap&blockdb.ExecDataSectionEvents != 0 {
-						compData, err := blockdb.ExtractSectionData(
-							objectData, uint32(len(obj.Transactions)),
-							txEntry.EventsOffset, txEntry.EventsCompLen,
-						)
-						if err == nil && compData != nil {
-							uncompData, err := snappy.Decode(nil, compData)
-							if err == nil {
-								decodedEvents, err := blockdb.DecodeEventsSection(uncompData)
-								if err == nil {
-									pageData.Events = buildEventsFromBlockdb(decodedEvents)
-									return
-								}
-							}
-						}
+			sections, err := blockdb.GlobalBlockDb.GetExecDataTxSections(
+				ctx, slot, blockRoot, pageData.TxHash,
+				blockdb.ExecDataSectionEvents,
+			)
+			if err != nil {
+				logrus.WithError(err).WithField("slot", slot).Debug("failed to get exec data tx sections for events")
+			}
+			if err == nil && sections != nil && sections.EventsData != nil {
+				uncompData, err := snappy.Decode(nil, sections.EventsData)
+				if err != nil {
+					logrus.WithError(err).Debug("failed to decompress events section")
+				} else {
+					decodedEvents, err := blockdb.DecodeEventsSection(uncompData)
+					if err != nil {
+						logrus.WithError(err).Debug("failed to decode events section")
+					} else {
+						pageData.Events = buildEventsFromBlockdb(decodedEvents)
+						return
 					}
 				}
 			}
@@ -802,8 +807,148 @@ func buildEventsFromBlockdb(events []blockdb.EventData) []*models.TransactionPag
 	return result
 }
 
-// loadTransactionInternalTxs populates the internal transactions tab from DB data.
-func loadTransactionInternalTxs(pageData *models.TransactionPageData, entries []*dbtypes.ElTransactionInternal) {
+// callTypeNames maps call type constants to display names.
+var callTypeNames = map[uint8]string{
+	0: "CALL",
+	1: "STATICCALL",
+	2: "DELEGATECALL",
+	3: "CREATE",
+	4: "CREATE2",
+	5: "SELFDESTRUCT",
+}
+
+// loadTransactionInternalTxsFromBlockdb populates the internal transactions tab
+// with rich call trace data from blockdb (depth, input, output, gas, status).
+// Falls back to DB-only data if blockdb data is unavailable.
+func loadTransactionInternalTxsFromBlockdb(pageData *models.TransactionPageData, entries []*dbtypes.ElTransactionInternal, blockUid uint64) {
+	if len(entries) == 0 {
+		return
+	}
+
+	// If the block says call trace data is unavailable (pruned / not stored),
+	// show the "not available" state instead of the DB-only fallback.
+	if pageData.DataStatus&dbtypes.ElBlockDataCallTraces == 0 {
+		pageData.InternalTxsNotAvailable = true
+		return
+	}
+
+	// Try to load rich call trace from blockdb
+	if blockdb.GlobalBlockDb != nil && blockdb.GlobalBlockDb.SupportsExecData() {
+		slot := blockUid >> 16
+		blockRoot := pageData.BlockRoot
+
+		if len(blockRoot) > 0 {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+
+			sections, err := blockdb.GlobalBlockDb.GetExecDataTxSections(
+				ctx, slot, blockRoot, pageData.TxHash,
+				blockdb.ExecDataSectionCallTrace,
+			)
+			if err != nil {
+				logrus.WithError(err).WithField("slot", slot).Debug("failed to get exec data tx sections for call trace")
+			}
+			if err == nil && sections != nil && sections.CallTraceData != nil {
+				uncompData, err := snappy.Decode(nil, sections.CallTraceData)
+				if err != nil {
+					logrus.WithError(err).Debug("failed to decompress call trace section")
+				} else {
+					frames, err := blockdb.DecodeCallTraceSection(uncompData)
+					if err != nil {
+						logrus.WithError(err).Debug("failed to decode call trace section")
+					} else {
+						buildInternalTxsFromBlockdb(pageData, frames)
+						return
+					}
+				}
+			}
+		}
+	}
+
+	// Fallback: use DB-only data (no depth/input/output)
+	loadTransactionInternalTxsFromDB(pageData, entries)
+}
+
+// buildInternalTxsFromBlockdb converts decoded blockdb call frames to page
+// model internal transactions with full trace data.
+func buildInternalTxsFromBlockdb(pageData *models.TransactionPageData, frames []blockdb.FlatCallFrame) {
+	pageData.InternalTxs = make([]*models.TransactionPageDataInternalTx, 0, len(frames))
+
+	// Collect unique 4-byte method selectors for batch lookup
+	sigSet := make(map[types.TxSignatureBytes]struct{}, len(frames))
+	for i := range frames {
+		if len(frames[i].Input) >= 4 {
+			var sig types.TxSignatureBytes
+			copy(sig[:], frames[i].Input[:4])
+			sigSet[sig] = struct{}{}
+		}
+	}
+
+	sigBytes := make([]types.TxSignatureBytes, 0, len(sigSet))
+	for sig := range sigSet {
+		sigBytes = append(sigBytes, sig)
+	}
+
+	var sigLookups map[types.TxSignatureBytes]*services.TxSignaturesLookup
+	if len(sigBytes) > 0 {
+		sigLookups = services.GlobalTxSignaturesService.LookupSignatures(sigBytes)
+	}
+
+	for i := range frames {
+		f := &frames[i]
+
+		var valueFloat float64
+		var valueRaw []byte
+		if f.Value != nil && f.Value.Sign() > 0 {
+			vFloat, _ := new(big.Float).SetInt(f.Value).Float64()
+			valueFloat = vFloat / 1e18
+			valueRaw = f.Value.Bytes()
+		}
+
+		itx := &models.TransactionPageDataInternalTx{
+			CallIndex:    uint32(i),
+			Depth:        f.Depth,
+			CallType:     f.Type,
+			FromAddr:     f.From[:],
+			ToAddr:       f.To[:],
+			Amount:       valueFloat,
+			AmountRaw:    valueRaw,
+			Gas:          f.Gas,
+			GasUsed:      f.GasUsed,
+			Status:       f.Status,
+			ErrorText:    f.Error,
+			Input:        f.Input,
+			Output:       f.Output,
+			HasTraceData: true,
+		}
+
+		if name, ok := callTypeNames[f.Type]; ok {
+			itx.TypeName = name
+		} else {
+			itx.TypeName = fmt.Sprintf("TYPE_%d", f.Type)
+		}
+
+		// Method ID and name from input data
+		if len(f.Input) >= 4 {
+			itx.MethodID = f.Input[:4]
+			var sig types.TxSignatureBytes
+			copy(sig[:], f.Input[:4])
+			if sigLookups != nil {
+				if lookup, found := sigLookups[sig]; found {
+					if lookup.Status == types.TxSigStatusFound {
+						itx.MethodName = lookup.Name
+					}
+				}
+			}
+		}
+
+		pageData.InternalTxs = append(pageData.InternalTxs, itx)
+	}
+}
+
+// loadTransactionInternalTxsFromDB populates internal transactions from DB data
+// only (no depth/input/output trace data).
+func loadTransactionInternalTxsFromDB(pageData *models.TransactionPageData, entries []*dbtypes.ElTransactionInternal) {
 	if len(entries) == 0 {
 		return
 	}
@@ -827,16 +972,6 @@ func loadTransactionInternalTxs(pageData *models.TransactionPageData, entries []
 				accountMap[a.ID] = a
 			}
 		}
-	}
-
-	// Call type names
-	callTypeNames := map[uint8]string{
-		0: "CALL",
-		1: "STATICCALL",
-		2: "DELEGATECALL",
-		3: "CREATE",
-		4: "CREATE2",
-		5: "SELFDESTRUCT",
 	}
 
 	// Build internal tx list

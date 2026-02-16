@@ -5,10 +5,51 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 )
+
+// LenientHexBytes is like hexutil.Bytes, but accepts hex strings with or without
+// a 0x prefix (some clients return revertReason without 0x).
+type LenientHexBytes []byte
+
+func (b *LenientHexBytes) UnmarshalJSON(input []byte) error {
+	// null
+	if len(input) == 4 && string(input) == "null" {
+		*b = nil
+		return nil
+	}
+
+	// Typically encoded as JSON string
+	var s string
+	if err := json.Unmarshal(input, &s); err != nil {
+		// Fall back to strict hexutil.Bytes
+		var hb hexutil.Bytes
+		if err2 := json.Unmarshal(input, &hb); err2 != nil {
+			return err
+		}
+		*b = LenientHexBytes(hb)
+		return nil
+	}
+
+	if s == "" {
+		*b = nil
+		return nil
+	}
+
+	if !strings.HasPrefix(s, "0x") && !strings.HasPrefix(s, "0X") {
+		s = "0x" + s
+	}
+
+	decoded, err := hexutil.Decode(s)
+	if err != nil {
+		return err
+	}
+	*b = LenientHexBytes(decoded)
+	return nil
+}
 
 // CallTracerConfig is the configuration for the callTracer.
 type CallTracerConfig struct {
@@ -43,7 +84,7 @@ type CallTraceCall struct {
 	Logs    []CallTraceLog  `json:"logs,omitempty"`
 
 	// Revert reason (some clients include this separately)
-	RevertReason hexutil.Bytes `json:"revertReason,omitempty"`
+	RevertReason LenientHexBytes `json:"revertReason,omitempty"`
 }
 
 // CallTraceLog is a log emitted within a call frame (when withLog: true).

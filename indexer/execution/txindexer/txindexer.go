@@ -66,7 +66,8 @@ type cleanupState struct {
 type BlockRef struct {
 	Slot            phase0.Slot
 	BlockUID        uint64
-	BlockHash       []byte
+	BlockHash       []byte        // EL block hash
+	BlockRoot       []byte        // Beacon block root (used as key for exec data in blockdb)
 	Block           *beacon.Block // optional, may be nil for historical blocks
 	ProcessTime     time.Time     // earliest time this block can be processed (zero means immediate)
 	UpdateSyncEpoch *phase0.Epoch // if set, update DB sync state to this epoch after processing
@@ -323,6 +324,7 @@ func (t *TxIndexer) enqueueBeaconBlock(block *beacon.Block, highPriority bool) {
 		Slot:      block.Slot,
 		BlockUID:  block.BlockUID,
 		BlockHash: blockIndex.ExecutionHash[:],
+		BlockRoot: block.Root[:],
 		Block:     block,
 		IsRecent:  highPriority,
 	}
@@ -501,6 +503,7 @@ func (t *TxIndexer) createBlockRefFromSlot(slot *dbtypes.AssignedSlot) *BlockRef
 		Slot:      phase0.Slot(slot.Block.Slot),
 		BlockUID:  slot.Block.BlockUid,
 		BlockHash: slot.Block.EthBlockHash,
+		BlockRoot: slot.Block.Root,
 		Block:     t.indexerCtx.BeaconIndexer.GetBlockByRoot(phase0.Root(slot.Block.Root)),
 	}
 

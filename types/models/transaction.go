@@ -119,10 +119,11 @@ type TransactionPageData struct {
 	TokenTransferCount uint64                              `json:"token_transfer_count"`
 
 	// Internal transactions tab
-	InternalTxs      []*TransactionPageDataInternalTx `json:"internal_txs"`
-	InternalTxCount  uint64                           `json:"internal_tx_count"`
-	DataStatus       uint16                           `json:"data_status"` // blockdb data availability flags
-	DataNotAvailable bool                             `json:"data_not_available"`
+	InternalTxs             []*TransactionPageDataInternalTx `json:"internal_txs"`
+	InternalTxCount         uint64                           `json:"internal_tx_count"`
+	DataStatus              uint16                           `json:"data_status"` // blockdb data availability flags
+	EventsNotAvailable      bool                             `json:"events_not_available"`
+	InternalTxsNotAvailable bool                             `json:"internal_txs_not_available"`
 }
 
 // TransactionPageDataEvent represents an event/log in the transaction
@@ -176,6 +177,7 @@ type TransactionPageDataTokenTransfer struct {
 // TransactionPageDataInternalTx represents an internal transaction (call trace frame)
 type TransactionPageDataInternalTx struct {
 	CallIndex uint32 `json:"call_index"`
+	Depth     uint16 `json:"depth"`
 	CallType  uint8  `json:"call_type"`
 	TypeName  string `json:"type_name"`
 
@@ -188,6 +190,23 @@ type TransactionPageDataInternalTx struct {
 	// Value
 	Amount    float64 `json:"amount"`
 	AmountRaw []byte  `json:"amount_raw"`
+
+	// Gas
+	Gas     uint64 `json:"gas"`
+	GasUsed uint64 `json:"gas_used"`
+
+	// Status
+	Status    uint8  `json:"status"` // 0=success, 1=reverted, 2=error
+	ErrorText string `json:"error_text"`
+
+	// Input/Output (from blockdb call trace, empty for DB-only fallback)
+	Input      []byte `json:"input"`
+	Output     []byte `json:"output"`
+	MethodID   []byte `json:"method_id"`
+	MethodName string `json:"method_name"`
+
+	// Whether this entry has full trace data (from blockdb)
+	HasTraceData bool `json:"has_trace_data"`
 }
 
 // TransactionPageDataBlob represents a blob in a blob transaction
