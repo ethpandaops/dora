@@ -226,6 +226,10 @@
 
                     <script type="text/javascript">
                       (function () {
+                        // Ensure we only register once per page load.
+                        if (window.__doraStateChangesMiddleEllipsisRegistered) return;
+                        window.__doraStateChangesMiddleEllipsisRegistered = true;
+
                         function middleEllipsize(str, maxChars) {
                           if (!str || str.length <= maxChars) return str;
                           var keep = Math.max(6, Math.floor((maxChars - 1) / 2));
@@ -255,6 +259,9 @@
                             els.forEach(function (el) {
                               var full = el.getAttribute('data-sc-full') || '';
                               if (!full) return;
+                              // If the element isn't laid out yet (e.g. inside a hidden
+                              // accordion panel), we'll catch it on shown.bs.collapse.
+                              if (el.clientWidth <= 0) return;
                               if (el.scrollWidth > el.clientWidth + 1) {
                                 el.textContent = middleEllipsize(full, estimateMaxChars(el));
                               }
@@ -268,12 +275,22 @@
                           t = window.setTimeout(apply, 120);
                         }
 
-                        if (document.readyState === 'loading') {
-                          document.addEventListener('DOMContentLoaded', apply);
-                        } else {
-                          apply();
-                        }
                         window.addEventListener('resize', schedule);
+
+                        // Re-run when an accordion panel is shown (width becomes measurable).
+                        document.addEventListener('shown.bs.collapse', function (ev) {
+                          if (ev && ev.target && typeof ev.target.id === 'string' && ev.target.id.indexOf('statechanges-c-') === 0) {
+                            apply();
+                          }
+                        });
+
+                        // Re-run when the State Changes tab is shown.
+                        document.addEventListener('shown.bs.tab', function (ev) {
+                          var t = ev && ev.target;
+                          if (t && t.id === 'statechanges-tab') {
+                            apply();
+                          }
+                        });
                       })();
                     </script>
                   </div>
