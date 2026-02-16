@@ -9,11 +9,15 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/golang/snappy"
 	"github.com/jmoiron/sqlx"
 
+	"github.com/ethpandaops/dora/blockdb"
 	"github.com/ethpandaops/dora/clients/execution"
+	exerpc "github.com/ethpandaops/dora/clients/execution/rpc"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
+	"github.com/ethpandaops/dora/utils"
 )
 
 // Event topic signatures for token transfers
@@ -54,6 +58,9 @@ type txProcessingContext struct {
 
 	// System deposits (withdrawals and fee recipient rewards)
 	systemDeposits []*pendingSystemDeposit
+
+	// Per-transaction results for blockdb object building (Mode Full only)
+	txResults []*txProcessingResult
 }
 
 // pendingSystemDeposit represents a system deposit before account IDs are resolved.
@@ -115,15 +122,34 @@ type txProcessingResult struct {
 	tokenTransfers []*pendingTokenTransfer
 	fromAccount    *pendingAccount
 	toAccount      *pendingAccount
+
+	// Call trace data (populated in Mode Full + tracesEnabled)
+	internalCalls []*pendingInternalCall
+	callTraceData []blockdb.FlatCallFrame // Flattened call trace for blockdb serialization
 }
 
 // pendingTxEvent represents an event collected in-memory for event index
-// population (DB) and blockdb storage (Phase 3).
+// population (DB) and blockdb storage.
 type pendingTxEvent struct {
 	txHash        []byte
 	eventIndex    uint32
 	sourceAccount *pendingAccount
 	topic1        []byte // event signature (first topic, nil for anonymous events)
+
+	// Full event data for blockdb serialization (Mode Full only)
+	sourceAddr [20]byte
+	topics     [][]byte // All topics (each 32 bytes)
+	data       []byte   // Event data
+}
+
+// pendingInternalCall represents an internal call extracted from a call trace.
+type pendingInternalCall struct {
+	txCallIdx   uint32
+	callType    uint8
+	fromAccount *pendingAccount
+	toAccount   *pendingAccount
+	value       float64
+	valueRaw    []byte
 }
 
 // pendingTokenTransfer represents a token transfer with references to its token and accounts.
@@ -158,9 +184,11 @@ func newTxProcessingContext(
 }
 
 // processTransaction processes a single transaction within the context.
+// callTrace may be nil if traces are not available or not configured.
 func (ctx *txProcessingContext) processTransaction(
 	tx *types.Transaction,
 	receipt *types.Receipt,
+	callTrace *exerpc.CallTraceCall,
 ) (dbCommitCallback, error) {
 	result := &txProcessingResult{
 		events:         make([]*pendingTxEvent, 0, len(receipt.Logs)),
@@ -302,10 +330,20 @@ func (ctx *txProcessingContext) processTransaction(
 		result.tokenTransfers = append(result.tokenTransfers, transfers...)
 	}
 
+	// 6. Process call trace if available (Mode Full + tracesEnabled)
+	if callTrace != nil {
+		result.callTraceData, result.internalCalls = ctx.processCallTrace(callTrace, fromAccount)
+	}
+
 	// Update block stats
 	ctx.blockData.Stats.transactions++
 	ctx.blockData.Stats.events += uint32(len(result.events))
 	ctx.blockData.Stats.transfers += uint32(len(result.tokenTransfers))
+
+	// Store result for blockdb object building (Mode Full)
+	if ctx.indexer.mode == ModeFull {
+		ctx.txResults = append(ctx.txResults, result)
+	}
 
 	// Return commit callback
 	return func(dbTx *sqlx.Tx) error {
@@ -514,8 +552,7 @@ func (ctx *txProcessingContext) resolveTokensFromDB() error {
 	return nil
 }
 
-// processEvent collects lightweight event data for the event index.
-// Full event data (topics, data) will be stored in blockdb in Phase 3.
+// processEvent collects event data for the event index (DB) and blockdb storage.
 func (ctx *txProcessingContext) processEvent(
 	index uint32,
 	log *types.Log,
@@ -529,12 +566,27 @@ func (ctx *txProcessingContext) processEvent(
 		topic1 = log.Topics[0][:]
 	}
 
-	return &pendingTxEvent{
+	event := &pendingTxEvent{
 		txHash:        log.TxHash[:],
 		eventIndex:    index,
 		sourceAccount: sourceAccount,
 		topic1:        topic1,
 	}
+
+	// Collect full event data for blockdb serialization (Mode Full only)
+	if ctx.indexer.mode == ModeFull {
+		copy(event.sourceAddr[:], log.Address[:])
+		event.topics = make([][]byte, len(log.Topics))
+		for i, t := range log.Topics {
+			topic := make([]byte, 32)
+			copy(topic, t[:])
+			event.topics[i] = topic
+		}
+		event.data = make([]byte, len(log.Data))
+		copy(event.data, log.Data)
+	}
+
+	return event
 }
 
 // detectTokenTransfers checks if a log represents a token transfer.
@@ -1055,5 +1107,195 @@ func (ctx *txProcessingContext) commitTransaction(dbTx *sqlx.Tx, result *txProce
 		}
 	}
 
+	// 6. Insert internal call index entries (Mode Full + tracesEnabled)
+	if ctx.indexer.mode == ModeFull && utils.Config.ExecutionIndexer.TracesEnabled && len(result.internalCalls) > 0 {
+		internalEntries := make([]*dbtypes.ElTransactionInternal, 0, len(result.internalCalls))
+		for _, ic := range result.internalCalls {
+			internalEntries = append(internalEntries, &dbtypes.ElTransactionInternal{
+				BlockUid:  ctx.block.BlockUID,
+				TxHash:    result.transaction.TxHash,
+				TxCallIdx: ic.txCallIdx,
+				CallType:  ic.callType,
+				FromID:    ic.fromAccount.id,
+				ToID:      ic.toAccount.id,
+				Value:     ic.value,
+				ValueRaw:  ic.valueRaw,
+			})
+		}
+
+		if err := db.InsertElTransactionsInternal(internalEntries, dbTx); err != nil {
+			return err
+		}
+	}
+
 	return nil
+}
+
+// processCallTrace processes a call trace result for a single transaction.
+// It flattens the nested call tree depth-first for blockdb serialization
+// and extracts internal calls (sub-calls, skipping index 0) for the DB index.
+func (ctx *txProcessingContext) processCallTrace(
+	traceResult *exerpc.CallTraceCall,
+	funderAccount *pendingAccount,
+) ([]blockdb.FlatCallFrame, []*pendingInternalCall) {
+	if traceResult == nil {
+		return nil, nil
+	}
+
+	frames := make([]blockdb.FlatCallFrame, 0, 16)
+	internalCalls := make([]*pendingInternalCall, 0, 16)
+	callIdx := uint32(0)
+
+	var walkTrace func(call *exerpc.CallTraceCall, depth uint16)
+	walkTrace = func(call *exerpc.CallTraceCall, depth uint16) {
+		currentIdx := callIdx
+		callIdx++
+
+		// Determine call status
+		status := uint8(blockdb.CallStatusSuccess)
+		if call.Error != "" {
+			if call.Error == "execution reverted" {
+				status = blockdb.CallStatusReverted
+			} else {
+				status = blockdb.CallStatusError
+			}
+		}
+
+		// Build flat call frame for blockdb
+		frame := blockdb.FlatCallFrame{
+			Depth:   depth,
+			Type:    exerpc.CallTypeFromString(call.Type),
+			Gas:     uint64(call.Gas),
+			GasUsed: uint64(call.GasUsed),
+			Status:  status,
+			Input:   call.Input,
+			Output:  call.Output,
+			Error:   call.Error,
+		}
+		copy(frame.From[:], call.From[:])
+		copy(frame.To[:], call.To[:])
+
+		value := exerpc.CallTraceCallValue(call)
+		if value.Sign() > 0 {
+			frame.Value = value
+		}
+
+		// Convert logs
+		if len(call.Logs) > 0 {
+			frame.Logs = make([]blockdb.CallFrameLog, 0, len(call.Logs))
+			for _, log := range call.Logs {
+				fl := blockdb.CallFrameLog{
+					Data: log.Data,
+				}
+				copy(fl.Address[:], log.Address[:])
+				fl.Topics = make([][]byte, len(log.Topics))
+				for j, t := range log.Topics {
+					topic := make([]byte, 32)
+					copy(topic, t[:])
+					fl.Topics[j] = topic
+				}
+				frame.Logs = append(frame.Logs, fl)
+			}
+		}
+
+		frames = append(frames, frame)
+
+		// Extract internal call for DB index (skip index 0 = top-level call,
+		// which duplicates el_transactions)
+		if currentIdx > 0 {
+			fromAccount := ctx.ensureAccount(call.From, funderAccount, false)
+			toAccount := ctx.ensureAccount(call.To, fromAccount, false)
+
+			ic := &pendingInternalCall{
+				txCallIdx:   currentIdx,
+				callType:    exerpc.CallTypeFromString(call.Type),
+				fromAccount: fromAccount,
+				toAccount:   toAccount,
+			}
+
+			if value.Sign() > 0 {
+				ic.value = weiToFloat(value, 18)
+				ic.valueRaw = value.Bytes()
+			}
+
+			internalCalls = append(internalCalls, ic)
+		}
+
+		// Recurse into child calls
+		for i := range call.Calls {
+			walkTrace(&call.Calls[i], depth+1)
+		}
+	}
+
+	walkTrace(traceResult, 0)
+	return frames, internalCalls
+}
+
+// buildExecDataObject builds the per-block execution data object from collected
+// transaction results. Returns the serialized object bytes and the data_status bitmap.
+// Returns nil, 0 if not in ModeFull or no data to store.
+func (ctx *txProcessingContext) buildExecDataObject() ([]byte, uint16) {
+	if ctx.indexer.mode != ModeFull || len(ctx.txResults) == 0 {
+		return nil, 0
+	}
+
+	var blockDataStatus uint16
+	txSections := make([]blockdb.ExecDataTxSectionData, 0, len(ctx.txResults))
+
+	for _, result := range ctx.txResults {
+		if result.transaction == nil {
+			continue
+		}
+
+		var section blockdb.ExecDataTxSectionData
+		copy(section.TxHash[:], result.transaction.TxHash)
+
+		// Encode events section
+		if len(result.events) > 0 {
+			eventDataList := make([]blockdb.EventData, 0, len(result.events))
+			for _, ev := range result.events {
+				if ev.topics == nil {
+					continue // No full event data (not in ModeFull)
+				}
+				eventDataList = append(eventDataList, blockdb.EventData{
+					EventIndex: ev.eventIndex,
+					Source:     ev.sourceAddr,
+					Topics:     ev.topics,
+					Data:       ev.data,
+				})
+			}
+			if len(eventDataList) > 0 {
+				raw := blockdb.EncodeEventsSection(eventDataList)
+				compressed := snappy.Encode(nil, raw)
+				section.EventsData = compressed
+				section.EventsUncompLen = uint32(len(raw))
+				blockDataStatus |= dbtypes.ElBlockDataEvents
+			}
+		}
+
+		// Encode call trace section
+		if len(result.callTraceData) > 0 {
+			raw := blockdb.EncodeCallTraceSection(result.callTraceData)
+			compressed := snappy.Encode(nil, raw)
+			section.CallTraceData = compressed
+			section.CallTraceUncompLen = uint32(len(raw))
+			blockDataStatus |= dbtypes.ElBlockDataCallTraces
+		}
+
+		// StateChanges section: deferred (not populated)
+
+		txSections = append(txSections, section)
+	}
+
+	if len(txSections) == 0 {
+		return nil, 0
+	}
+
+	objectData := blockdb.BuildExecDataObject(
+		uint64(ctx.block.Slot),
+		ctx.blockData.BlockNumber,
+		txSections,
+	)
+
+	return objectData, blockDataStatus
 }

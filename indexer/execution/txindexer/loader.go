@@ -14,6 +14,7 @@ import (
 	"github.com/ethpandaops/dora/clients/execution"
 	exerpc "github.com/ethpandaops/dora/clients/execution/rpc"
 	"github.com/ethpandaops/dora/indexer/beacon"
+	"github.com/ethpandaops/dora/utils"
 	"github.com/sirupsen/logrus"
 )
 
@@ -354,4 +355,29 @@ func (t *TxIndexer) calculateTotalPriorityFees(transactions []*types.Transaction
 	}
 
 	return totalPriorityFees
+}
+
+// fetchBlockTraces fetches call traces for a block using debug_traceBlockByHash.
+// Returns nil (no error) if traces are not configured or if the RPC call fails,
+// allowing the block to proceed with events only.
+func (t *TxIndexer) fetchBlockTraces(
+	ctx context.Context,
+	client *execution.Client,
+	blockHash common.Hash,
+) ([]exerpc.CallTraceResult, error) {
+	if !utils.Config.ExecutionIndexer.TracesEnabled {
+		return nil, nil
+	}
+
+	rpcClient := client.GetRPCClient()
+
+	results, err := rpcClient.TraceBlockByHash(ctx, blockHash)
+	if err != nil {
+		t.logger.WithError(err).WithField("blockHash", blockHash.Hex()).Warn(
+			"failed to fetch block traces, proceeding without traces",
+		)
+		return nil, nil //nolint:nilerr // Graceful degradation: proceed without traces
+	}
+
+	return results, nil
 }

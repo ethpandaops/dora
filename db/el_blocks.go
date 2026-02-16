@@ -145,6 +145,16 @@ func GetOldestElBlocksWithData(limit uint32) ([]*dbtypes.ElBlock, error) {
 	return blocks, nil
 }
 
+// UpdateElBlockDataStatus updates the data_status and data_size for a block
+// after writing execution data to blockdb.
+func UpdateElBlockDataStatus(blockUid uint64, dataStatus uint16, dataSize int64, dbTx *sqlx.Tx) error {
+	_, err := dbTx.Exec(
+		"UPDATE el_blocks SET data_status = $1, data_size = $2 WHERE block_uid = $3",
+		dataStatus, dataSize, blockUid,
+	)
+	return err
+}
+
 func DeleteElBlock(blockUid uint64, dbTx *sqlx.Tx) error {
 	_, err := dbTx.Exec("DELETE FROM el_blocks WHERE block_uid = $1", blockUid)
 	return err
