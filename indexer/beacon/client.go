@@ -14,6 +14,7 @@ import (
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethpandaops/dora/clients/consensus"
+	"github.com/ethpandaops/dora/clients/consensus/rpc"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/utils"
@@ -33,8 +34,7 @@ type Client struct {
 	archive        bool
 	skipValidators bool
 
-	blockSubscription               *utils.Subscription[*v1.BlockEvent]
-	headSubscription                *utils.Subscription[*v1.HeadEvent]
+	streamSubscription              *utils.Subscription[*rpc.BeaconStreamEvent]
 	executionPayloadSubscription    *utils.Subscription[*v1.ExecutionPayloadAvailableEvent]
 	executionPayloadBidSubscription *utils.Subscription[*gloas.SignedExecutionPayloadBid]
 
@@ -81,9 +81,8 @@ func (c *Client) startIndexing() {
 
 	c.indexing = true
 
-	// blocking block subscription with a buffer to ensure no blocks are missed
-	c.blockSubscription = c.client.SubscribeBlockEvent(100, true)
-	c.headSubscription = c.client.SubscribeHeadEvent(100, true)
+	// single ordered subscription for block & head events to preserve SSE ordering
+	c.streamSubscription = c.client.SubscribeStreamEvent(100, true)
 	c.executionPayloadSubscription = c.client.SubscribeExecutionPayloadAvailableEvent(100, true)
 	c.executionPayloadBidSubscription = c.client.SubscribeExecutionPayloadBidEvent(100, true)
 
@@ -169,20 +168,27 @@ func (c *Client) runClientLoop() error {
 		c.logger.Errorf("failed backfilling slots: %v", err)
 	}
 
-	// 3 - listen to block / head events
+	// 3 - listen to block / head events via single ordered channel
 	for {
 		select {
 		case <-c.client.GetContext().Done():
 			return nil
-		case blockEvent := <-c.blockSubscription.Channel():
-			err := c.processBlockEvent(blockEvent)
-			if err != nil {
-				c.logger.Errorf("failed processing block %v (%v): %v", blockEvent.Slot, blockEvent.Block.String(), err)
-			}
-		case headEvent := <-c.headSubscription.Channel():
-			err := c.processHeadEvent(headEvent)
-			if err != nil {
-				c.logger.Errorf("failed processing head %v (%v): %v", headEvent.Slot, headEvent.Block.String(), err)
+		case event := <-c.streamSubscription.Channel():
+			switch event.Event {
+			case rpc.StreamBlockEvent:
+				blockEvent := event.Data.(*v1.BlockEvent)
+				err := c.processBlockEvent(blockEvent)
+				if err != nil {
+					c.logger.Errorf("failed processing block %v (%v): %v",
+						blockEvent.Slot, blockEvent.Block.String(), err)
+				}
+			case rpc.StreamHeadEvent:
+				headEvent := event.Data.(*v1.HeadEvent)
+				err := c.processHeadEvent(headEvent)
+				if err != nil {
+					c.logger.Errorf("failed processing head %v (%v): %v",
+						headEvent.Slot, headEvent.Block.String(), err)
+				}
 			}
 		case executionPayloadEvent := <-c.executionPayloadSubscription.Channel():
 			err := c.processExecutionPayloadAvailableEvent(executionPayloadEvent)
@@ -618,7 +624,7 @@ func (c *Client) processExecutionPayloadAvailableEvent(executionPayloadEvent *v1
 		}
 
 	} else {
-		block = c.indexer.blockCache.getBlockByRoot(executionPayloadEvent.BlockRoot)
+		block, _ = c.indexer.blockCache.createOrGetBlock(executionPayloadEvent.BlockRoot, executionPayloadEvent.Slot)
 	}
 
 	if block == nil {

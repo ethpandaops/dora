@@ -159,12 +159,6 @@ func (client *Client) runClientLogic() error {
 			now := time.Now()
 
 			switch evt.Event {
-			case rpc.StreamBlockEvent:
-				err := client.processBlockEvent(evt.Data.(*v1.BlockEvent))
-				if err != nil {
-					client.logger.Warnf("failed processing block event: %v", err)
-				}
-
 			case rpc.StreamHeadEvent:
 				err := client.processHeadEvent(evt.Data.(*v1.HeadEvent))
 				if err != nil {
@@ -183,6 +177,9 @@ func (client *Client) runClientLogic() error {
 			case rpc.StreamExecutionPayloadBidEvent:
 				client.executionPayloadBidDispatcher.Fire(evt.Data.(*gloas.SignedExecutionPayloadBid))
 			}
+
+			// fire through stream dispatcher first to preserve SSE ordering
+			client.streamDispatcher.Fire(evt)
 
 			client.logger.Tracef("event (%v) processing time: %v ms", evt.Event, time.Since(now).Milliseconds())
 			client.lastEvent = time.Now()
@@ -337,23 +334,11 @@ func (client *Client) updateFinalityCheckpoints(ctx context.Context) (phase0.Roo
 	return finalizedCheckpoints.Finalized.Root, nil
 }
 
-func (client *Client) processBlockEvent(evt *v1.BlockEvent) error {
-	client.blockDispatcher.Fire(evt)
-
-	//client.logger.Infof("BLOCK: %v %v", evt.Slot, evt.Block.String())
-
-	return nil
-}
-
 func (client *Client) processHeadEvent(evt *v1.HeadEvent) error {
 	client.headMutex.Lock()
 	client.headSlot = evt.Slot
 	client.headRoot = evt.Block
 	client.headMutex.Unlock()
-
-	client.headDispatcher.Fire(evt)
-
-	//client.logger.Infof("HEAD: %v %v %v", evt.Slot, evt.Block.String(), evt.EpochTransition)
 
 	return nil
 }
@@ -401,15 +386,23 @@ func (client *Client) pollClientHead() error {
 	client.headRoot = latestHeader.Root
 	client.headMutex.Unlock()
 
-	client.blockDispatcher.Fire(&v1.BlockEvent{
+	blockEvt := &v1.BlockEvent{
 		Slot:  latestHeader.Header.Message.Slot,
 		Block: latestHeader.Root,
-	})
-
-	client.headDispatcher.Fire(&v1.HeadEvent{
+	}
+	headEvt := &v1.HeadEvent{
 		Slot:  latestHeader.Header.Message.Slot,
 		Block: latestHeader.Root,
 		State: latestHeader.Header.Message.StateRoot,
+	}
+
+	client.streamDispatcher.Fire(&rpc.BeaconStreamEvent{
+		Event: rpc.StreamBlockEvent,
+		Data:  blockEvt,
+	})
+	client.streamDispatcher.Fire(&rpc.BeaconStreamEvent{
+		Event: rpc.StreamHeadEvent,
+		Data:  headEvt,
 	})
 
 	// update finality checkpoint

@@ -8,6 +8,7 @@ import (
 
 	"github.com/attestantio/go-eth2-client/spec"
 	"github.com/attestantio/go-eth2-client/spec/electra"
+	"github.com/attestantio/go-eth2-client/spec/gloas"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 )
 
@@ -135,7 +136,17 @@ func (s *epochState) loadState(ctx context.Context, client *Client, cache *epoch
 		return nil, err
 	}
 
-	err = s.processState(resState, beaconBlock, cache)
+	var executionPayload *gloas.SignedExecutionPayloadEnvelope
+	if beaconBlock != nil && beaconBlock.Version >= spec.DataVersionGloas {
+		if block != nil {
+			executionPayload = block.GetExecutionPayload()
+		}
+		if executionPayload == nil {
+			executionPayload, _ = LoadExecutionPayload(ctx, client, s.slotRoot)
+		}
+	}
+
+	err = s.processState(resState, beaconBlock, executionPayload, cache)
 	if err != nil {
 		return nil, err
 	}
@@ -153,7 +164,7 @@ func (s *epochState) loadState(ctx context.Context, client *Client, cache *epoch
 
 // processState processes the state and updates the epochState instance.
 // the function extracts and unifies all relevant information from the beacon state, so the full beacon state can be dropped from memory afterwards.
-func (s *epochState) processState(state *spec.VersionedBeaconState, beaconBlock *spec.VersionedSignedBeaconBlock, cache *epochCache) error {
+func (s *epochState) processState(state *spec.VersionedBeaconState, beaconBlock *spec.VersionedSignedBeaconBlock, executionPayload *gloas.SignedExecutionPayloadEnvelope, cache *epochCache) error {
 	slot, err := state.Slot()
 	if err != nil {
 		return fmt.Errorf("error getting slot from state %v: %v", s.slotRoot.String(), err)
@@ -215,16 +226,27 @@ func (s *epochState) processState(state *spec.VersionedBeaconState, beaconBlock 
 	s.randaoMixes = randaoMixes
 
 	if state.Version >= spec.DataVersionFulu {
-		// subtract the deposit indexes from the current block
-		blockRequests, err := beaconBlock.ExecutionRequests()
-		if err != nil {
-			return fmt.Errorf("error getting execution requests from block %v: %v", s.slotRoot.String(), err)
-		}
-
-		if len(blockRequests.Deposits) > 0 {
-			s.depositIndex = blockRequests.Deposits[0].Index
+		if state.Version >= spec.DataVersionGloas {
+			isPostPayload := isGloasPostPayloadState(state, slot)
+			if isPostPayload && executionPayload != nil &&
+				executionPayload.Message != nil &&
+				executionPayload.Message.ExecutionRequests != nil &&
+				len(executionPayload.Message.ExecutionRequests.Deposits) > 0 {
+				s.depositIndex = executionPayload.Message.ExecutionRequests.Deposits[0].Index
+			} else {
+				s.depositIndex = getStateDepositIndex(state)
+			}
 		} else {
-			s.depositIndex = getStateDepositIndex(state)
+			blockRequests, err := beaconBlock.ExecutionRequests()
+			if err != nil {
+				return fmt.Errorf("error getting execution requests from block %v: %v",
+					s.slotRoot.String(), err)
+			}
+			if len(blockRequests.Deposits) > 0 {
+				s.depositIndex = blockRequests.Deposits[0].Index
+			} else {
+				s.depositIndex = getStateDepositIndex(state)
+			}
 		}
 	} else {
 		s.depositIndex = getStateDepositIndex(state)
@@ -280,4 +302,18 @@ func (s *epochState) processState(state *spec.VersionedBeaconState, beaconBlock 
 	s.proposerLookahead = proposerLookahead
 
 	return nil
+}
+
+// isGloasPostPayloadState checks whether the Gloas state is post-payload
+// (i.e. execution payload deposits have been applied) for the given slot.
+func isGloasPostPayloadState(state *spec.VersionedBeaconState, slot phase0.Slot) bool {
+	if state.Gloas == nil {
+		return false
+	}
+	bitfieldLen := uint64(len(state.Gloas.ExecutionPayloadAvailability)) * 8
+	if bitfieldLen == 0 {
+		return false
+	}
+	idx := uint64(slot) % bitfieldLen
+	return state.Gloas.ExecutionPayloadAvailability[idx/8]&(1<<(idx%8)) != 0
 }

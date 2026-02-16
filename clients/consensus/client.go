@@ -52,8 +52,7 @@ type Client struct {
 	lastMetadataUpdateTime        time.Time
 	lastSyncUpdateEpoch           phase0.Epoch
 	peers                         []*v1.Peer
-	blockDispatcher               utils.Dispatcher[*v1.BlockEvent]
-	headDispatcher                utils.Dispatcher[*v1.HeadEvent]
+	streamDispatcher              utils.Dispatcher[*rpc.BeaconStreamEvent]
 	checkpointDispatcher          utils.Dispatcher[*v1.Finality]
 	executionPayloadDispatcher    utils.Dispatcher[*v1.ExecutionPayloadAvailableEvent]
 	executionPayloadBidDispatcher utils.Dispatcher[*gloas.SignedExecutionPayloadBid]
@@ -93,12 +92,10 @@ func (client *Client) resetContext() {
 	client.clientCtx, client.clientCtxCancel = context.WithCancel(client.pool.ctx)
 }
 
-func (client *Client) SubscribeBlockEvent(capacity int, blocking bool) *utils.Subscription[*v1.BlockEvent] {
-	return client.blockDispatcher.Subscribe(capacity, blocking)
-}
-
-func (client *Client) SubscribeHeadEvent(capacity int, blocking bool) *utils.Subscription[*v1.HeadEvent] {
-	return client.headDispatcher.Subscribe(capacity, blocking)
+// SubscribeStreamEvent subscribes to the unified stream dispatcher
+// that preserves SSE event ordering (block before head for each slot).
+func (client *Client) SubscribeStreamEvent(capacity int, blocking bool) *utils.Subscription[*rpc.BeaconStreamEvent] {
+	return client.streamDispatcher.Subscribe(capacity, blocking)
 }
 
 func (client *Client) SubscribeFinalizedEvent(capacity int) *utils.Subscription[*v1.Finality] {
