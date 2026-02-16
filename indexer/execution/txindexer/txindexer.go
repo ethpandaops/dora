@@ -10,12 +10,29 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/sirupsen/logrus"
 
+	"github.com/ethpandaops/dora/blockdb"
 	elclients "github.com/ethpandaops/dora/clients/execution"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/indexer/beacon"
 	"github.com/ethpandaops/dora/indexer/execution"
 	"github.com/ethpandaops/dora/utils"
+)
+
+// IndexingMode represents the execution indexer operating mode.
+type IndexingMode uint8
+
+const (
+	// ModeDisabled means no EL indexing at all.
+	ModeDisabled IndexingMode = iota
+
+	// ModeLightweight is DB-only indexing: transactions, token transfers,
+	// accounts, tokens, balances, withdrawals. No event storage, no blockdb.
+	ModeLightweight
+
+	// ModeFull is everything from ModeLightweight plus per-block detail
+	// objects in blockdb (events, call traces). Requires blockdb.
+	ModeFull
 )
 
 const (
@@ -59,6 +76,9 @@ type TxIndexer struct {
 	indexerCtx *execution.IndexerCtx
 	logger     logrus.FieldLogger
 
+	// indexing mode
+	mode IndexingMode
+
 	// state
 	running   bool
 	runMutex  sync.Mutex
@@ -81,14 +101,29 @@ type TxIndexer struct {
 	balanceLookup *BalanceLookupService
 }
 
+// getIndexingMode determines the indexing mode from config and runtime state.
+func getIndexingMode() IndexingMode {
+	cfg := utils.Config.ExecutionIndexer
+	if !cfg.Enabled {
+		return ModeDisabled
+	}
+	if !cfg.DetailsEnabled || blockdb.GlobalBlockDb == nil {
+		return ModeLightweight
+	}
+	return ModeFull
+}
+
 // NewTxIndexer creates a new TxIndexer instance.
 func NewTxIndexer(
 	logger logrus.FieldLogger,
 	indexerCtx *execution.IndexerCtx,
 ) *TxIndexer {
+	mode := getIndexingMode()
+
 	txIndexer := &TxIndexer{
 		indexerCtx:    indexerCtx,
 		logger:        logger.WithField("component", "txindexer"),
+		mode:          mode,
 		highPrioQueue: make([]*BlockRef, 0, 16),
 		lowPrioQueue:  make([]*BlockRef, 0, 256),
 	}
@@ -98,6 +133,11 @@ func NewTxIndexer(
 	txIndexer.balanceLookup = NewBalanceLookupService(logger, txIndexer)
 
 	return txIndexer
+}
+
+// GetMode returns the current indexing mode.
+func (t *TxIndexer) GetMode() IndexingMode {
+	return t.mode
 }
 
 // GetSyncEpoch returns the current sync epoch.
@@ -145,7 +185,14 @@ func (t *TxIndexer) Start() error {
 	// Start the queue filler (goroutine 2)
 	go t.runQueueFiller()
 
-	t.logger.Info("tx indexer started")
+	modeName := "lightweight"
+	if t.mode == ModeFull {
+		modeName = "full"
+		if utils.Config.ExecutionIndexer.TracesEnabled {
+			modeName = "full+traces"
+		}
+	}
+	t.logger.WithField("mode", modeName).Info("tx indexer started")
 	return nil
 }
 
@@ -634,7 +681,8 @@ func (t *TxIndexer) checkAndRunCleanup() {
 		}
 		if retentionStats != nil {
 			fields["transactions"] = retentionStats.TransactionsDeleted
-			fields["events"] = retentionStats.EventsDeleted
+			fields["internalTxs"] = retentionStats.InternalTxsDeleted
+			fields["eventIndices"] = retentionStats.EventIndicesDeleted
 			fields["transfers"] = retentionStats.TokenTransfersDeleted
 			fields["withdrawals"] = retentionStats.WithdrawalsDeleted
 			fields["blocks"] = retentionStats.BlocksDeleted

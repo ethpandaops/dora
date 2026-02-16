@@ -403,9 +403,9 @@ func buildTransactionPageDataFromDB(pageData *models.TransactionPageData, txs []
 	// Blobs
 	pageData.BlobCount = tx.BlobCount
 
-	// Always load counts for tab badges
-	events, _ := db.GetElTxEventsByBlockUidAndTxHash(tx.BlockUid, pageData.TxHash)
-	pageData.EventCount = uint64(len(events))
+	// Load event count from event index
+	eventIndices, _ := db.GetElEventIndicesByTxHash(pageData.TxHash)
+	pageData.EventCount = uint64(len(eventIndices))
 
 	transfers, _ := db.GetElTokenTransfersByBlockUidAndTxHash(tx.BlockUid, pageData.TxHash)
 	pageData.TokenTransferCount = uint64(len(transfers))
@@ -413,7 +413,9 @@ func buildTransactionPageDataFromDB(pageData *models.TransactionPageData, txs []
 	// Load tab-specific detailed data
 	switch tabView {
 	case "events":
-		loadTransactionEventsFromData(pageData, events)
+		// Full event data (topics, data) will be loaded from blockdb in Phase 5.
+		// For now, show event index entries without full data.
+		loadTransactionEventsFromIndex(pageData, eventIndices)
 	case "transfers":
 		loadTransactionTransfersFromData(pageData, transfers)
 	}
@@ -657,13 +659,17 @@ func generateTxJSON(pageData *models.TransactionPageData, ethTx *ethtypes.Transa
 	}
 }
 
-func loadTransactionEventsFromData(pageData *models.TransactionPageData, events []*dbtypes.ElTxEvent) {
+// loadTransactionEventsFromIndex populates event tab from the lightweight
+// event index. Full event data (all topics + data blob) will be loaded from
+// blockdb in a future phase. For now, only source address and topic1 (event
+// signature) are shown.
+func loadTransactionEventsFromIndex(pageData *models.TransactionPageData, events []*dbtypes.ElEventIndex) {
 	if len(events) == 0 {
 		return
 	}
 
 	// Collect account IDs for batch lookup
-	accountIDs := make(map[uint64]bool)
+	accountIDs := make(map[uint64]bool, len(events))
 	for _, e := range events {
 		accountIDs[e.SourceID] = true
 	}
@@ -673,7 +679,7 @@ func loadTransactionEventsFromData(pageData *models.TransactionPageData, events 
 	for id := range accountIDs {
 		accountIDList = append(accountIDList, id)
 	}
-	accountMap := make(map[uint64]*dbtypes.ElAccount)
+	accountMap := make(map[uint64]*dbtypes.ElAccount, len(accountIDList))
 	if len(accountIDList) > 0 {
 		if accounts, err := db.GetElAccountsByIDs(accountIDList); err == nil {
 			for _, a := range accounts {
@@ -682,12 +688,11 @@ func loadTransactionEventsFromData(pageData *models.TransactionPageData, events 
 		}
 	}
 
-	// Build events list
+	// Build events list from index entries
 	pageData.Events = make([]*models.TransactionPageDataEvent, 0, len(events))
 	for _, e := range events {
 		event := &models.TransactionPageDataEvent{
 			EventIndex: e.EventIndex,
-			Data:       e.Data,
 		}
 
 		// Source address
@@ -696,21 +701,9 @@ func loadTransactionEventsFromData(pageData *models.TransactionPageData, events 
 			event.SourceIsContract = source.IsContract
 		}
 
-		// Topics
+		// Only topic1 (event signature) is available from the index
 		if len(e.Topic1) > 0 {
 			event.Topic0 = e.Topic1
-		}
-		if len(e.Topic2) > 0 {
-			event.Topic1 = e.Topic2
-		}
-		if len(e.Topic3) > 0 {
-			event.Topic2 = e.Topic3
-		}
-		if len(e.Topic4) > 0 {
-			event.Topic3 = e.Topic4
-		}
-		if len(e.Topic5) > 0 {
-			event.Topic4 = e.Topic5
 		}
 
 		pageData.Events = append(pageData.Events, event)

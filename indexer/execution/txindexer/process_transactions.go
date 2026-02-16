@@ -117,10 +117,13 @@ type txProcessingResult struct {
 	toAccount      *pendingAccount
 }
 
-// pendingTxEvent represents an event with a reference to its source account.
+// pendingTxEvent represents an event collected in-memory for event index
+// population (DB) and blockdb storage (Phase 3).
 type pendingTxEvent struct {
-	event         *dbtypes.ElTxEvent
+	txHash        []byte
+	eventIndex    uint32
 	sourceAccount *pendingAccount
+	topic1        []byte // event signature (first topic, nil for anonymous events)
 }
 
 // pendingTokenTransfer represents a token transfer with references to its token and accounts.
@@ -511,39 +514,26 @@ func (ctx *txProcessingContext) resolveTokensFromDB() error {
 	return nil
 }
 
-// processEvent creates an event entity from a log.
-func (ctx *txProcessingContext) processEvent(index uint32, log *types.Log, funderAccount *pendingAccount) *pendingTxEvent {
+// processEvent collects lightweight event data for the event index.
+// Full event data (topics, data) will be stored in blockdb in Phase 3.
+func (ctx *txProcessingContext) processEvent(
+	index uint32,
+	log *types.Log,
+	funderAccount *pendingAccount,
+) *pendingTxEvent {
 	// Ensure source account exists
 	sourceAccount := ctx.ensureAccount(log.Address, funderAccount, false)
 
-	event := &dbtypes.ElTxEvent{
-		BlockUid:   ctx.block.BlockUID,
-		TxHash:     log.TxHash[:],
-		EventIndex: index,
-		SourceID:   sourceAccount.id,
-		Data:       log.Data,
-	}
-
-	// Copy topics
+	var topic1 []byte
 	if len(log.Topics) > 0 {
-		event.Topic1 = log.Topics[0][:]
-	}
-	if len(log.Topics) > 1 {
-		event.Topic2 = log.Topics[1][:]
-	}
-	if len(log.Topics) > 2 {
-		event.Topic3 = log.Topics[2][:]
-	}
-	if len(log.Topics) > 3 {
-		event.Topic4 = log.Topics[3][:]
-	}
-	if len(log.Topics) > 4 {
-		event.Topic5 = log.Topics[4][:]
+		topic1 = log.Topics[0][:]
 	}
 
 	return &pendingTxEvent{
-		event:         event,
+		txHash:        log.TxHash[:],
+		eventIndex:    index,
 		sourceAccount: sourceAccount,
+		topic1:        topic1,
 	}
 }
 
@@ -1021,15 +1011,20 @@ func (ctx *txProcessingContext) commitTransaction(dbTx *sqlx.Tx, result *txProce
 		}
 	}
 
-	// 4. Insert events (resolve source account IDs)
-	if len(result.events) > 0 {
-		events := make([]*dbtypes.ElTxEvent, 0, len(result.events))
+	// 4. Insert event index entries (Mode 3 only - lightweight index for search)
+	if ctx.indexer.mode == ModeFull && len(result.events) > 0 {
+		eventIndices := make([]*dbtypes.ElEventIndex, 0, len(result.events))
 		for _, pe := range result.events {
-			pe.event.SourceID = pe.sourceAccount.id
-			events = append(events, pe.event)
+			eventIndices = append(eventIndices, &dbtypes.ElEventIndex{
+				BlockUid:   ctx.block.BlockUID,
+				TxHash:     pe.txHash,
+				EventIndex: pe.eventIndex,
+				SourceID:   pe.sourceAccount.id,
+				Topic1:     pe.topic1,
+			})
 		}
 
-		if err := db.InsertElTxEvents(events, dbTx); err != nil {
+		if err := db.InsertElEventIndices(eventIndices, dbTx); err != nil {
 			return err
 		}
 	}

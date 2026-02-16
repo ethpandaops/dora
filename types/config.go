@@ -143,6 +143,11 @@ type Config struct {
 		Enabled         bool          `yaml:"enabled" envconfig:"EXECUTIONINDEXER_ENABLED"`
 		Retention       time.Duration `yaml:"retention" envconfig:"EXECUTIONINDEXER_RETENTION"`
 		CleanupInterval time.Duration `yaml:"cleanupInterval" envconfig:"EXECUTIONINDEXER_CLEANUP_INTERVAL"`
+
+		// Detail storage (Mode 3 features)
+		DetailsEnabled bool   `yaml:"detailsEnabled" envconfig:"EXECUTIONINDEXER_DETAILS_ENABLED"`
+		TracesEnabled  bool   `yaml:"tracesEnabled" envconfig:"EXECUTIONINDEXER_TRACES_ENABLED"`
+		DetailsMaxSize string `yaml:"detailsMaxSize" envconfig:"EXECUTIONINDEXER_DETAILS_MAX_SIZE"`
 	} `yaml:"executionIndexer"`
 
 	Database DatabaseConfig `yaml:"database"`
