@@ -310,10 +310,7 @@ func (c *Client) processHeadEvent(headEvent *v1.HeadEvent) error {
 
 // processStreamBlock processes a block received from the stream (either via block or head events).
 func (c *Client) processStreamBlock(slot phase0.Slot, root phase0.Root) (*Block, error) {
-	chainState := c.client.GetPool().GetChainState()
-	loadPayload := chainState.IsEip7732Enabled(chainState.EpochOfSlot(slot))
-
-	block, isNew, processingTimes, err := c.processBlock(slot, root, nil, true, loadPayload)
+	block, isNew, processingTimes, err := c.processBlock(slot, root, nil, true, false)
 	if err != nil {
 		return nil, err
 	}
@@ -621,7 +618,7 @@ func (c *Client) processExecutionPayloadAvailableEvent(executionPayloadEvent *v1
 		}
 
 	} else {
-		block = c.indexer.blockCache.getBlockByRoot(executionPayloadEvent.BlockRoot)
+		block, _ = c.indexer.blockCache.createOrGetBlock(executionPayloadEvent.BlockRoot, executionPayloadEvent.Slot)
 	}
 
 	if block == nil {
