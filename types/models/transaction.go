@@ -124,6 +124,47 @@ type TransactionPageData struct {
 	DataStatus              uint16                           `json:"data_status"` // blockdb data availability flags
 	EventsNotAvailable      bool                             `json:"events_not_available"`
 	InternalTxsNotAvailable bool                             `json:"internal_txs_not_available"`
+
+	// State changes tab (prestateTracer diffMode)
+	StateChanges             []*TransactionPageDataStateChangeAccount `json:"state_changes"`
+	StateChangesNotAvailable bool                                     `json:"state_changes_not_available"`
+}
+
+// TransactionPageDataStateChangeAccount represents state changes for a single account.
+type TransactionPageDataStateChangeAccount struct {
+	Address []byte `json:"address"`
+
+	// High level flags (precomputed from the binary flags)
+	AccountCreated bool `json:"account_created"`
+	AccountKilled  bool `json:"account_killed"`
+
+	BalanceChanged bool   `json:"balance_changed"`
+	PreBalance     []byte `json:"pre_balance"`
+	PostBalance    []byte `json:"post_balance"`
+	PreBalanceWei  string `json:"pre_balance_wei"`
+	PostBalanceWei string `json:"post_balance_wei"`
+	BalanceDiffWei string `json:"balance_diff_wei"` // post - pre (signed base-10)
+
+	NonceChanged bool   `json:"nonce_changed"`
+	PreNonce     uint64 `json:"pre_nonce"`
+	PostNonce    uint64 `json:"post_nonce"`
+
+	CodeChanged bool   `json:"code_changed"`
+	PreCode     []byte `json:"pre_code"`
+	PostCode    []byte `json:"post_code"`
+	PreCodeLen  int    `json:"pre_code_len"`
+	PostCodeLen int    `json:"post_code_len"`
+
+	StorageChanged bool                                  `json:"storage_changed"`
+	Slots          []*TransactionPageDataStateChangeSlot `json:"slots"`
+}
+
+// TransactionPageDataStateChangeSlot represents a storage slot diff.
+type TransactionPageDataStateChangeSlot struct {
+	Slot       []byte `json:"slot"`
+	ChangeType string `json:"change_type"` // created/modified/deleted
+	PreValue   []byte `json:"pre_value"`
+	PostValue  []byte `json:"post_value"`
 }
 
 // TransactionPageDataEvent represents an event/log in the transaction

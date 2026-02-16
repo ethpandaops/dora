@@ -45,6 +45,7 @@ func Transaction(w http.ResponseWriter, r *http.Request) {
 	txTemplateFiles := append(layoutTemplateFiles,
 		"transaction/transaction.html",
 		"transaction/events.html",
+		"transaction/statechanges.html",
 		"transaction/transfers.html",
 		"transaction/internaltxs.html",
 		"transaction/blobs.html",
@@ -430,6 +431,8 @@ func buildTransactionPageDataFromDB(pageData *models.TransactionPageData, txs []
 		loadTransactionTransfersFromData(pageData, transfers)
 	case "internaltxs":
 		loadTransactionInternalTxsFromBlockdb(pageData, internalTxs, tx.BlockUid)
+	case "statechanges":
+		loadTransactionStateChangesFromBlockdb(pageData, tx.BlockUid)
 	}
 }
 
@@ -804,6 +807,135 @@ func buildEventsFromBlockdb(events []blockdb.EventData) []*models.TransactionPag
 
 		result = append(result, event)
 	}
+	return result
+}
+
+// loadTransactionStateChangesFromBlockdb populates the state changes tab with
+// per-account storage/balance/nonce/code diffs from blockdb.
+func loadTransactionStateChangesFromBlockdb(pageData *models.TransactionPageData, blockUid uint64) {
+	// If the block says state change data is unavailable (pruned / not stored),
+	// show the "not available" state.
+	if pageData.DataStatus&dbtypes.ElBlockDataStateChanges == 0 {
+		pageData.StateChangesNotAvailable = true
+		return
+	}
+
+	if blockdb.GlobalBlockDb == nil || !blockdb.GlobalBlockDb.SupportsExecData() {
+		pageData.StateChangesNotAvailable = true
+		return
+	}
+
+	slot := blockUid >> 16
+	blockRoot := pageData.BlockRoot
+	if len(blockRoot) == 0 {
+		pageData.StateChangesNotAvailable = true
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	sections, err := blockdb.GlobalBlockDb.GetExecDataTxSections(
+		ctx, slot, blockRoot, pageData.TxHash,
+		blockdb.ExecDataSectionStateChange,
+	)
+	if err != nil {
+		logrus.WithError(err).WithField("slot", slot).Debug("failed to get exec data tx sections for state changes")
+		pageData.StateChangesNotAvailable = true
+		return
+	}
+	if sections == nil || sections.StateChangeData == nil {
+		pageData.StateChangesNotAvailable = true
+		return
+	}
+
+	uncompData, err := snappy.Decode(nil, sections.StateChangeData)
+	if err != nil {
+		logrus.WithError(err).Debug("failed to decompress state changes section")
+		pageData.StateChangesNotAvailable = true
+		return
+	}
+
+	accounts, err := blockdb.DecodeStateChangesSection(uncompData)
+	if err != nil {
+		logrus.WithError(err).Debug("failed to decode state changes section")
+		pageData.StateChangesNotAvailable = true
+		return
+	}
+
+	pageData.StateChanges = buildStateChangesFromBlockdb(accounts)
+}
+
+func buildStateChangesFromBlockdb(accounts []blockdb.StateChangeAccount) []*models.TransactionPageDataStateChangeAccount {
+	result := make([]*models.TransactionPageDataStateChangeAccount, 0, len(accounts))
+
+	for i := range accounts {
+		a := &accounts[i]
+
+		preBal := new(big.Int)
+		postBal := new(big.Int)
+		if len(a.PreBalance) > 0 {
+			preBal.SetBytes(a.PreBalance)
+		}
+		if len(a.PostBalance) > 0 {
+			postBal.SetBytes(a.PostBalance)
+		}
+		balDiff := new(big.Int).Sub(postBal, preBal)
+
+		acct := &models.TransactionPageDataStateChangeAccount{
+			Address: a.Address[:],
+
+			AccountCreated: (a.Flags & blockdb.StateChangeFlagAccountCreated) != 0,
+			AccountKilled:  (a.Flags & blockdb.StateChangeFlagAccountKilled) != 0,
+
+			BalanceChanged: (a.Flags & blockdb.StateChangeFlagBalanceChanged) != 0,
+			PreBalance:     a.PreBalance,
+			PostBalance:    a.PostBalance,
+			PreBalanceWei:  preBal.String(),
+			PostBalanceWei: postBal.String(),
+			BalanceDiffWei: balDiff.String(),
+
+			NonceChanged: (a.Flags & blockdb.StateChangeFlagNonceChanged) != 0,
+			PreNonce:     a.PreNonce,
+			PostNonce:    a.PostNonce,
+
+			CodeChanged: (a.Flags & blockdb.StateChangeFlagCodeChanged) != 0,
+			PreCode:     a.PreCode,
+			PostCode:    a.PostCode,
+			PreCodeLen:  len(a.PreCode),
+			PostCodeLen: len(a.PostCode),
+
+			StorageChanged: (a.Flags & blockdb.StateChangeFlagStorageChanged) != 0,
+		}
+
+		if acct.StorageChanged && len(a.Slots) > 0 {
+			acct.Slots = make([]*models.TransactionPageDataStateChangeSlot, 0, len(a.Slots))
+			for j := range a.Slots {
+				s := &a.Slots[j]
+
+				slot := &models.TransactionPageDataStateChangeSlot{
+					Slot: s.Slot[:],
+				}
+				switch s.ChangeType {
+				case blockdb.StorageChangeCreated:
+					slot.ChangeType = "created"
+					slot.PostValue = s.PostValue[:]
+				case blockdb.StorageChangeDeleted:
+					slot.ChangeType = "deleted"
+					slot.PreValue = s.PreValue[:]
+				default:
+					slot.ChangeType = "modified"
+					slot.PreValue = s.PreValue[:]
+					slot.PostValue = s.PostValue[:]
+				}
+
+				acct.Slots = append(acct.Slots, slot)
+			}
+		}
+
+		result = append(result, acct)
+	}
+
 	return result
 }
 

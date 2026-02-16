@@ -1,0 +1,289 @@
+{{ define "statechanges" }}
+  <div class="card mt-0 border-top-0 rounded-top-0">
+    <div class="card-body px-0 py-3">
+      <style>
+        /* State changes: show full hex by default, ellipsize only on overflow */
+        .sc-val {
+          display: flex;
+          align-items: center;
+          gap: .35rem;
+          min-width: 0; /* allow ellipsis inside flex */
+        }
+        .sc-hex {
+          flex: 1 1 auto;
+          min-width: 0;
+          max-width: 100%;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          vertical-align: bottom;
+        }
+      </style>
+      {{ if .StateChangesNotAvailable }}
+        <div class="alert alert-secondary mx-3 mb-0">
+          Detailed state change data is not available for this block (pruned or not indexed).
+        </div>
+      {{ else if eq (len .StateChanges) 0 }}
+        <div class="text-muted mx-3 mb-0">
+          No state changes recorded for this transaction.
+        </div>
+      {{ else }}
+        <div class="mx-3">
+          <div class="accordion" id="statechanges-acc">
+            {{ range $idx, $a := .StateChanges }}
+              <div class="accordion-item">
+                <h2 class="accordion-header" id="statechanges-h-{{ $idx }}">
+                  <button class="accordion-button collapsed py-2" type="button" data-bs-toggle="collapse" data-bs-target="#statechanges-c-{{ $idx }}" aria-expanded="false" aria-controls="statechanges-c-{{ $idx }}">
+                    <span class="text-monospace me-2">
+                      {{ formatEthAddressShortLink $a.Address false 6 }}
+                    </span>
+                    <i class="fa fa-copy text-muted ms-1" role="button" data-bs-toggle="tooltip" title="Copy address" data-clipboard-text="{{ formatEthAddressFull $a.Address }}" style="font-size: 0.85rem;"></i>
+
+                    {{ if $a.AccountCreated }}<span class="badge rounded-pill text-bg-success ms-2">created</span>{{ end }}
+                    {{ if $a.AccountKilled }}<span class="badge rounded-pill text-bg-danger ms-1">killed</span>{{ end }}
+
+                    <span class="ms-3">
+                      {{ if $a.BalanceChanged }}<span class="badge text-bg-light border">balance</span>{{ end }}
+                      {{ if $a.NonceChanged }}<span class="badge text-bg-light border ms-1">nonce</span>{{ end }}
+                      {{ if $a.CodeChanged }}<span class="badge text-bg-light border ms-1">code</span>{{ end }}
+                      {{ if $a.StorageChanged }}<span class="badge text-bg-light border ms-1">storage</span>{{ end }}
+                      {{ if $a.StorageChanged }}<span class="text-muted ms-2">({{ len $a.Slots }} slot(s))</span>{{ end }}
+                    </span>
+                  </button>
+                </h2>
+
+                <div id="statechanges-c-{{ $idx }}" class="accordion-collapse collapse" aria-labelledby="statechanges-h-{{ $idx }}" data-bs-parent="#statechanges-acc">
+                  <div class="accordion-body">
+                    <div class="table-responsive">
+                      <table class="table table-sm mb-0">
+                        <thead>
+                          <tr>
+                            <th style="width: 140px;">Field</th>
+                            <th style="width: 35%;">Pre</th>
+                            <th style="width: 35%;">Post</th>
+                            <th style="width: 30%;">Diff</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {{ if $a.BalanceChanged }}
+                            <tr>
+                              <td><span class="badge text-bg-light border">balance</span></td>
+                              <td class="text-danger">
+                                <div class="sc-val">
+                                  <span data-bs-toggle="tooltip" title="{{ $a.PreBalanceWei }} wei">{{ formatWeiAmount $a.PreBalanceWei }}</span>
+                                  <i class="fa fa-copy text-muted" role="button" data-bs-toggle="tooltip" title="Copy pre (wei)" data-clipboard-text="{{ $a.PreBalanceWei }}" style="font-size: 0.75rem; flex: 0 0 auto;"></i>
+                                </div>
+                              </td>
+                              <td class="text-success">
+                                <div class="sc-val">
+                                  <span data-bs-toggle="tooltip" title="{{ $a.PostBalanceWei }} wei">{{ formatWeiAmount $a.PostBalanceWei }}</span>
+                                  <i class="fa fa-copy text-muted" role="button" data-bs-toggle="tooltip" title="Copy post (wei)" data-clipboard-text="{{ $a.PostBalanceWei }}" style="font-size: 0.75rem; flex: 0 0 auto;"></i>
+                                </div>
+                              </td>
+                              <td>
+                                <div class="sc-val">
+                                  <span data-bs-toggle="tooltip" title="{{ $a.BalanceDiffWei }} wei">{{ formatWeiDeltaAmount $a.BalanceDiffWei }}</span>
+                                  <i class="fa fa-copy text-muted" role="button" data-bs-toggle="tooltip" title="Copy diff (wei)" data-clipboard-text="{{ $a.BalanceDiffWei }}" style="font-size: 0.75rem; flex: 0 0 auto;"></i>
+                                </div>
+                              </td>
+                            </tr>
+                          {{ end }}
+
+                          {{ if $a.NonceChanged }}
+                            <tr>
+                              <td><span class="badge text-bg-light border">nonce</span></td>
+                              <td class="text-danger">{{ $a.PreNonce }}</td>
+                              <td class="text-success">{{ $a.PostNonce }}</td>
+                              <td>
+                                {{ if gt $a.PostNonce $a.PreNonce }}
+                                  +{{ subUI64 $a.PostNonce $a.PreNonce }}
+                                {{ else if lt $a.PostNonce $a.PreNonce }}
+                                  -{{ subUI64 $a.PreNonce $a.PostNonce }}
+                                {{ else }}
+                                  0
+                                {{ end }}
+                              </td>
+                            </tr>
+                          {{ end }}
+
+                          {{ if $a.CodeChanged }}
+                            <tr>
+                              <td><span class="badge text-bg-light border">code</span></td>
+                              <td class="text-monospace text-break text-danger">
+                                <span class="text-muted">len</span> {{ $a.PreCodeLen }}
+                                <i class="fa fa-copy text-muted ms-1" role="button" data-bs-toggle="tooltip" title="Copy pre code" data-clipboard-text="{{ if gt (len $a.PreCode) 0 }}{{ formatHexBytes $a.PreCode }}{{ else }}0x{{ end }}" style="font-size: 0.75rem;"></i>
+                              </td>
+                              <td class="text-monospace text-break text-success">
+                                <span class="text-muted">len</span> {{ $a.PostCodeLen }}
+                                <i class="fa fa-copy text-muted ms-1" role="button" data-bs-toggle="tooltip" title="Copy post code" data-clipboard-text="{{ if gt (len $a.PostCode) 0 }}{{ formatHexBytes $a.PostCode }}{{ else }}0x{{ end }}" style="font-size: 0.75rem;"></i>
+                              </td>
+                              <td></td>
+                            </tr>
+                            <tr>
+                              <td></td>
+                              <td colspan="3">
+                                <details>
+                                  <summary class="text-muted">show code bytes</summary>
+                                  <div class="row mt-2">
+                                    <div class="col-md-6">
+                                      <div class="text-muted small mb-1">pre</div>
+                                      <div class="border rounded p-2 text-monospace text-break" style="max-height: 240px; overflow-y:auto; font-size: 0.85rem; background-color: var(--bs-tertiary-bg);">
+                                        {{ if gt (len $a.PreCode) 0 }}{{ formatHexBytes $a.PreCode }}{{ else }}0x{{ end }}
+                                      </div>
+                                    </div>
+                                    <div class="col-md-6 mt-2 mt-md-0">
+                                      <div class="text-muted small mb-1">post</div>
+                                      <div class="border rounded p-2 text-monospace text-break" style="max-height: 240px; overflow-y:auto; font-size: 0.85rem; background-color: var(--bs-tertiary-bg);">
+                                        {{ if gt (len $a.PostCode) 0 }}{{ formatHexBytes $a.PostCode }}{{ else }}0x{{ end }}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </details>
+                              </td>
+                            </tr>
+                          {{ end }}
+
+                          {{ if $a.StorageChanged }}
+                            <tr>
+                              <td><span class="badge text-bg-light border">storage</span></td>
+                              <td colspan="3">
+                                {{ if eq (len $a.Slots) 0 }}
+                                  <span class="text-muted">no slots</span>
+                                {{ else }}
+                                  <div class="table-responsive">
+                                    <table class="table table-sm table-hover mb-0" style="table-layout: fixed; width: 100%;">
+                                      <colgroup>
+                                        <col style="width: 96px;">
+                                        <col style="width: 340px;">
+                                        <col style="width: 60px;">
+                                        <col>
+                                      </colgroup>
+                                      <thead>
+                                        <tr>
+                                          <th>Type</th>
+                                          <th>Slot</th>
+                                          <th></th>
+                                          <th>Value</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {{ range $s := $a.Slots }}
+                                          <tr>
+                                            <td rowspan="2">
+                                              {{ if eq $s.ChangeType "created" }}
+                                                <span class="badge text-bg-success">created</span>
+                                              {{ else if eq $s.ChangeType "deleted" }}
+                                                <span class="badge text-bg-danger">deleted</span>
+                                              {{ else }}
+                                                <span class="badge text-bg-secondary">modified</span>
+                                              {{ end }}
+                                            </td>
+                                            <td rowspan="2" class="text-monospace text-nowrap" style="min-width: 340px;">
+                                              <div class="sc-val">
+                                                {{ $slotHex := formatHexBytes $s.Slot }}
+                                                <span class="sc-hex" data-sc-full="{{ $slotHex }}" data-bs-toggle="tooltip" title="{{ $slotHex }}">{{ $slotHex }}</span>
+                                                <i class="fa fa-copy text-muted" role="button" data-bs-toggle="tooltip" title="Copy slot" data-clipboard-text="{{ $slotHex }}" style="font-size: 0.75rem; flex: 0 0 auto;"></i>
+                                              </div>
+                                            </td>
+                                            <td class="text-muted small">pre</td>
+                                            <td class="text-monospace text-break text-danger">
+                                              {{ if eq $s.ChangeType "created" }}
+                                                <span class="text-muted">-</span>
+                                              {{ else }}
+                                                <div class="sc-val">
+                                                  {{ $preHex := formatHexBytes $s.PreValue }}
+                                                  <span class="sc-hex" data-sc-full="{{ $preHex }}" data-bs-toggle="tooltip" title="{{ $preHex }}">{{ $preHex }}</span>
+                                                  <i class="fa fa-copy text-muted" role="button" data-bs-toggle="tooltip" title="Copy pre value" data-clipboard-text="{{ $preHex }}" style="font-size: 0.75rem; flex: 0 0 auto;"></i>
+                                                </div>
+                                              {{ end }}
+                                            </td>
+                                          </tr>
+                                          <tr>
+                                            <td class="text-muted small">post</td>
+                                            <td class="text-monospace text-break text-success">
+                                              {{ if eq $s.ChangeType "deleted" }}
+                                                <span class="text-muted">-</span>
+                                              {{ else }}
+                                                <div class="sc-val">
+                                                  {{ $postHex := formatHexBytes $s.PostValue }}
+                                                  <span class="sc-hex" data-sc-full="{{ $postHex }}" data-bs-toggle="tooltip" title="{{ $postHex }}">{{ $postHex }}</span>
+                                                  <i class="fa fa-copy text-muted" role="button" data-bs-toggle="tooltip" title="Copy post value" data-clipboard-text="{{ $postHex }}" style="font-size: 0.75rem; flex: 0 0 auto;"></i>
+                                                </div>
+                                              {{ end }}
+                                            </td>
+                                          </tr>
+                                        {{ end }}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                {{ end }}
+                              </td>
+                            </tr>
+                          {{ end }}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <script type="text/javascript">
+                      (function () {
+                        function middleEllipsize(str, maxChars) {
+                          if (!str || str.length <= maxChars) return str;
+                          var keep = Math.max(6, Math.floor((maxChars - 1) / 2));
+                          if (keep * 2 + 1 >= str.length) return str;
+                          return str.slice(0, keep) + "…" + str.slice(str.length - keep);
+                        }
+
+                        function estimateMaxChars(el) {
+                          var style = window.getComputedStyle(el);
+                          var fontSize = parseFloat(style.fontSize || "14") || 14;
+                          var width = el.clientWidth || 0;
+                          var approxCharWidth = fontSize * 0.60; // monospace-ish
+                          return Math.max(12, Math.floor(width / approxCharWidth));
+                        }
+
+                        function apply() {
+                          var els = document.querySelectorAll('[data-sc-full]');
+                          if (!els || els.length === 0) return;
+
+                          // reset to full first
+                          els.forEach(function (el) {
+                            var full = el.getAttribute('data-sc-full') || '';
+                            el.textContent = full;
+                          });
+
+                          window.requestAnimationFrame(function () {
+                            els.forEach(function (el) {
+                              var full = el.getAttribute('data-sc-full') || '';
+                              if (!full) return;
+                              if (el.scrollWidth > el.clientWidth + 1) {
+                                el.textContent = middleEllipsize(full, estimateMaxChars(el));
+                              }
+                            });
+                          });
+                        }
+
+                        var t = null;
+                        function schedule() {
+                          if (t) window.clearTimeout(t);
+                          t = window.setTimeout(apply, 120);
+                        }
+
+                        if (document.readyState === 'loading') {
+                          document.addEventListener('DOMContentLoaded', apply);
+                        } else {
+                          apply();
+                        }
+                        window.addEventListener('resize', schedule);
+                      })();
+                    </script>
+                  </div>
+                </div>
+              </div>
+            {{ end }}
+          </div>
+        </div>
+      {{ end }}
+    </div>
+  </div>
+{{ end }}
+

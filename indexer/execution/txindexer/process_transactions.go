@@ -126,6 +126,9 @@ type txProcessingResult struct {
 	// Call trace data (populated in Mode Full + tracesEnabled)
 	internalCalls []*pendingInternalCall
 	callTraceData []blockdb.FlatCallFrame // Flattened call trace for blockdb serialization
+
+	// State changes data (populated in Mode Full + tracesEnabled)
+	stateChangesData []blockdb.StateChangeAccount
 }
 
 // pendingTxEvent represents an event collected in-memory for event index
@@ -189,6 +192,7 @@ func (ctx *txProcessingContext) processTransaction(
 	tx *types.Transaction,
 	receipt *types.Receipt,
 	callTrace *exerpc.CallTraceCall,
+	stateDiff *exerpc.StateDiff,
 ) (dbCommitCallback, error) {
 	result := &txProcessingResult{
 		events:         make([]*pendingTxEvent, 0, len(receipt.Logs)),
@@ -333,6 +337,11 @@ func (ctx *txProcessingContext) processTransaction(
 	// 6. Process call trace if available (Mode Full + tracesEnabled)
 	if callTrace != nil {
 		result.callTraceData, result.internalCalls = ctx.processCallTrace(callTrace, fromAccount)
+	}
+
+	// 7. Process state diffs (storage changes) if available (Mode Full + tracesEnabled)
+	if stateDiff != nil {
+		result.stateChangesData = convertStateDiffToStateChanges(stateDiff)
 	}
 
 	// Update block stats
@@ -1282,7 +1291,14 @@ func (ctx *txProcessingContext) buildExecDataObject() ([]byte, uint16) {
 			blockDataStatus |= dbtypes.ElBlockDataCallTraces
 		}
 
-		// StateChanges section: deferred (not populated)
+		// Encode state changes section
+		if len(result.stateChangesData) > 0 {
+			raw := blockdb.EncodeStateChangesSection(result.stateChangesData)
+			compressed := snappy.Encode(nil, raw)
+			section.StateChangeData = compressed
+			section.StateChangeUncompLen = uint32(len(raw))
+			blockDataStatus |= dbtypes.ElBlockDataStateChanges
+		}
 
 		txSections = append(txSections, section)
 	}

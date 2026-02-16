@@ -37,6 +37,10 @@ type blockData struct {
 	// Call traces per transaction (Mode Full + tracesEnabled only, nil otherwise).
 	// Indexed by position matching Transactions slice.
 	TraceResults []exerpc.CallTraceResult
+
+	// State diffs per transaction (Mode Full + tracesEnabled only, nil otherwise).
+	// Indexed by position matching Transactions slice.
+	StateDiffResults []exerpc.StateDiffResult
 }
 
 // processing stats
@@ -113,6 +117,15 @@ func (t *TxIndexer) processElBlock(ref *BlockRef) (*blockStats, error) {
 		} else if traceResults != nil {
 			data.TraceResults = traceResults
 		}
+
+		stateCtx, stateCancel := context.WithTimeout(t.ctx, 5*time.Minute)
+		stateResults, stateErr := t.fetchBlockStateDiffs(stateCtx, client, data.BlockHash)
+		stateCancel()
+		if stateErr != nil {
+			t.logger.WithError(stateErr).Debug("state diff fetch failed, proceeding without state diffs")
+		} else if stateResults != nil {
+			data.StateDiffResults = stateResults
+		}
 	}
 
 	// Build trace lookup map (txHash → call trace) for O(1) access per tx
@@ -121,6 +134,15 @@ func (t *TxIndexer) processElBlock(ref *BlockRef) (*blockStats, error) {
 		tr := &data.TraceResults[i]
 		if tr.Result != nil {
 			traceMap[tr.TxHash] = tr.Result
+		}
+	}
+
+	// Build state diff lookup map (txHash → state diff) for O(1) access per tx
+	stateDiffMap := make(map[common.Hash]*exerpc.StateDiff, len(data.StateDiffResults))
+	for i := range data.StateDiffResults {
+		dr := &data.StateDiffResults[i]
+		if dr.Result != nil {
+			stateDiffMap[dr.TxHash] = dr.Result
 		}
 	}
 
@@ -145,8 +167,9 @@ func (t *TxIndexer) processElBlock(ref *BlockRef) (*blockStats, error) {
 
 		// Look up trace for this transaction (may be nil)
 		callTrace := traceMap[tx.Hash()]
+		stateDiff := stateDiffMap[tx.Hash()]
 
-		dbCommitCallback, err := procCtx.processTransaction(tx, receipt, callTrace)
+		dbCommitCallback, err := procCtx.processTransaction(tx, receipt, callTrace, stateDiff)
 		if err != nil {
 			return stats, fmt.Errorf("failed to process EL transaction: %w", err)
 		}

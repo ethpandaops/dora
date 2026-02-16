@@ -164,6 +164,13 @@
         </a>
       </li>
       {{ end }}
+      {{ if ne (bitwiseAnd (int .DataStatus) 4) 0 }}
+      <li class="nav-item">
+        <a class="nav-link{{ if eq .TabView "statechanges" }} active{{ end }}" id="statechanges-tab" data-lazy-tab="statechanges" data-bs-toggle="tab" data-bs-target="#statechanges" href="?v=statechanges{{ if gt .SelectedBlockUid 0 }}&b={{ .SelectedBlockUid }}{{ end }}" role="tab" aria-controls="statechanges" aria-selected="{{ if eq .TabView "statechanges" }}true{{ else }}false{{ end }}">
+          <i class="fa fa-exchange-alt me-2"></i> State Changes
+        </a>
+      </li>
+      {{ end }}
       {{ if gt .BlobCount 0 }}
       <li class="nav-item">
         <a class="nav-link{{ if eq .TabView "blobs" }} active{{ end }}" id="blobs-tab" data-lazy-tab="blobs" data-bs-toggle="tab" data-bs-target="#blobs" href="?v=blobs{{ if gt .SelectedBlockUid 0 }}&b={{ .SelectedBlockUid }}{{ end }}" role="tab" aria-controls="blobs" aria-selected="{{ if eq .TabView "blobs" }}true{{ else }}false{{ end }}">
@@ -284,6 +291,13 @@
         {{ end }}
       </div>
       {{ end }}
+      {{ if ne (bitwiseAnd (int .DataStatus) 4) 0 }}
+      <div class="tab-pane fade{{ if eq .TabView "statechanges" }} show active{{ end }}" id="statechanges" role="tabpanel" aria-labelledby="statechanges-tab" data-loaded="{{ if eq .TabView "statechanges" }}true{{ else }}false{{ end }}">
+        {{ if eq .TabView "statechanges" }}
+          {{ template "statechanges" . }}
+        {{ end }}
+      </div>
+      {{ end }}
       {{ if gt .BlobCount 0 }}
       <div class="tab-pane fade{{ if eq .TabView "blobs" }} show active{{ end }}" id="blobs" role="tabpanel" aria-labelledby="blobs-tab" data-loaded="{{ if eq .TabView "blobs" }}true{{ else }}false{{ end }}">
         {{ if eq .TabView "blobs" }}
@@ -297,6 +311,8 @@
 {{ define "lazyPage" }}
   {{ if eq .TabView "events" }}
     {{ template "events" . }}
+  {{ else if eq .TabView "statechanges" }}
+    {{ template "statechanges" . }}
   {{ else if eq .TabView "transfers" }}
     {{ template "transfers" . }}
   {{ else if eq .TabView "internaltxs" }}
@@ -388,6 +404,7 @@
     var tabToView = {
       'details': 'overview',
       'events': 'events',
+      'statechanges': 'statechanges',
       'transfers': 'transfers',
       'internaltxs': 'internaltxs',
       'blobs': 'blobs'

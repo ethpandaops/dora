@@ -1,9 +1,11 @@
 package blockdb
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"math/big"
+	"sort"
 )
 
 // Call type constants matching the callTracer output.
@@ -495,4 +497,337 @@ func bigIntCompactBytes(v *big.Int) []byte {
 		return nil
 	}
 	return v.Bytes()
+}
+
+// -----------------------------------------------------------------------------
+// State Changes (Storage Diffs) Section
+// -----------------------------------------------------------------------------
+
+// State change section version.
+const (
+	StateChangesVersion1 = 1
+)
+
+// State change flags per account (bitmask).
+const (
+	StateChangeFlagBalanceChanged = 0x01
+	StateChangeFlagNonceChanged   = 0x02
+	StateChangeFlagCodeChanged    = 0x04
+	StateChangeFlagStorageChanged = 0x08
+	StateChangeFlagAccountCreated = 0x10 // exists only in post
+	StateChangeFlagAccountKilled  = 0x20 // exists only in pre
+)
+
+// Storage slot change type.
+const (
+	StorageChangeModified uint8 = 0
+	StorageChangeCreated  uint8 = 1
+	StorageChangeDeleted  uint8 = 2
+)
+
+// StateChangeSlot is a single changed storage slot.
+type StateChangeSlot struct {
+	Slot       [32]byte
+	ChangeType uint8
+	PreValue   [32]byte // used for modified/deleted
+	PostValue  [32]byte // used for modified/created
+}
+
+// StateChangeAccount is the normalized per-account state diff representation
+// used by EncodeStateChangesSection.
+type StateChangeAccount struct {
+	Address [20]byte
+	Flags   uint8
+
+	// Balance (compact big-endian, omitted unless StateChangeFlagBalanceChanged)
+	PreBalance  []byte
+	PostBalance []byte
+
+	// Nonce (omitted unless StateChangeFlagNonceChanged)
+	PreNonce  uint64
+	PostNonce uint64
+
+	// Code (omitted unless StateChangeFlagCodeChanged)
+	PreCode  []byte
+	PostCode []byte
+
+	// Storage (omitted unless StateChangeFlagStorageChanged)
+	Slots []StateChangeSlot
+}
+
+// EncodeStateChangesSection encodes per-tx state diffs into the binary state
+// changes section format described in S3TX_PLAN.md (StateChanges section).
+// Returned bytes are uncompressed; caller must snappy-compress.
+func EncodeStateChangesSection(accounts []StateChangeAccount) []byte {
+	// Deterministic order: sort by address then slot.
+	sort.Slice(accounts, func(i, j int) bool {
+		return bytes.Compare(accounts[i].Address[:], accounts[j].Address[:]) < 0
+	})
+	for i := range accounts {
+		sort.Slice(accounts[i].Slots, func(a, b int) bool {
+			return bytes.Compare(accounts[i].Slots[a].Slot[:], accounts[i].Slots[b].Slot[:]) < 0
+		})
+	}
+
+	// Calculate total size
+	size := 2 + 4 // version + accountCount
+	for i := range accounts {
+		a := &accounts[i]
+		size += 20 + 1 // address + flags
+
+		if a.Flags&StateChangeFlagBalanceChanged != 0 {
+			size += 1 + len(a.PreBalance) // pre len + bytes
+			size += 1 + len(a.PostBalance)
+		}
+		if a.Flags&StateChangeFlagNonceChanged != 0 {
+			size += 8 + 8
+		}
+		if a.Flags&StateChangeFlagCodeChanged != 0 {
+			size += 4 + len(a.PreCode)
+			size += 4 + len(a.PostCode)
+		}
+		if a.Flags&StateChangeFlagStorageChanged != 0 {
+			size += 4 // slot count
+			for j := range a.Slots {
+				s := &a.Slots[j]
+				size += 32 + 1 // slot + changeType
+				switch s.ChangeType {
+				case StorageChangeModified:
+					size += 32 + 32
+				case StorageChangeCreated:
+					size += 32
+				case StorageChangeDeleted:
+					size += 32
+				default:
+					// Unknown: encode nothing extra
+				}
+			}
+		}
+	}
+
+	buf := make([]byte, size)
+	off := 0
+
+	binary.BigEndian.PutUint16(buf[off:off+2], StateChangesVersion1)
+	off += 2
+	binary.BigEndian.PutUint32(buf[off:off+4], uint32(len(accounts)))
+	off += 4
+
+	for i := range accounts {
+		a := &accounts[i]
+
+		copy(buf[off:off+20], a.Address[:])
+		off += 20
+		buf[off] = a.Flags
+		off++
+
+		if a.Flags&StateChangeFlagBalanceChanged != 0 {
+			buf[off] = uint8(len(a.PreBalance))
+			off++
+			copy(buf[off:off+len(a.PreBalance)], a.PreBalance)
+			off += len(a.PreBalance)
+
+			buf[off] = uint8(len(a.PostBalance))
+			off++
+			copy(buf[off:off+len(a.PostBalance)], a.PostBalance)
+			off += len(a.PostBalance)
+		}
+
+		if a.Flags&StateChangeFlagNonceChanged != 0 {
+			binary.BigEndian.PutUint64(buf[off:off+8], a.PreNonce)
+			off += 8
+			binary.BigEndian.PutUint64(buf[off:off+8], a.PostNonce)
+			off += 8
+		}
+
+		if a.Flags&StateChangeFlagCodeChanged != 0 {
+			binary.BigEndian.PutUint32(buf[off:off+4], uint32(len(a.PreCode)))
+			off += 4
+			copy(buf[off:off+len(a.PreCode)], a.PreCode)
+			off += len(a.PreCode)
+
+			binary.BigEndian.PutUint32(buf[off:off+4], uint32(len(a.PostCode)))
+			off += 4
+			copy(buf[off:off+len(a.PostCode)], a.PostCode)
+			off += len(a.PostCode)
+		}
+
+		if a.Flags&StateChangeFlagStorageChanged != 0 {
+			binary.BigEndian.PutUint32(buf[off:off+4], uint32(len(a.Slots)))
+			off += 4
+
+			for j := range a.Slots {
+				s := &a.Slots[j]
+				copy(buf[off:off+32], s.Slot[:])
+				off += 32
+				buf[off] = s.ChangeType
+				off++
+
+				switch s.ChangeType {
+				case StorageChangeModified:
+					copy(buf[off:off+32], s.PreValue[:])
+					off += 32
+					copy(buf[off:off+32], s.PostValue[:])
+					off += 32
+				case StorageChangeCreated:
+					copy(buf[off:off+32], s.PostValue[:])
+					off += 32
+				case StorageChangeDeleted:
+					copy(buf[off:off+32], s.PreValue[:])
+					off += 32
+				}
+			}
+		}
+	}
+
+	return buf[:off]
+}
+
+// DecodeStateChangesSection decodes the binary state changes section format.
+func DecodeStateChangesSection(data []byte) ([]StateChangeAccount, error) {
+	if len(data) < 6 {
+		return nil, fmt.Errorf("state changes section too short: %d bytes", len(data))
+	}
+
+	version := binary.BigEndian.Uint16(data[0:2])
+	if version != StateChangesVersion1 {
+		return nil, fmt.Errorf("unsupported state changes version: %d", version)
+	}
+
+	accountCount := binary.BigEndian.Uint32(data[2:6])
+	off := 6
+
+	accounts := make([]StateChangeAccount, 0, accountCount)
+	for range accountCount {
+		if off+21 > len(data) {
+			return nil, fmt.Errorf("state changes truncated at account header")
+		}
+
+		var a StateChangeAccount
+		copy(a.Address[:], data[off:off+20])
+		off += 20
+		a.Flags = data[off]
+		off++
+
+		if a.Flags&StateChangeFlagBalanceChanged != 0 {
+			if off+1 > len(data) {
+				return nil, fmt.Errorf("state changes truncated at pre balance len")
+			}
+			preLen := int(data[off])
+			off++
+			if off+preLen > len(data) {
+				return nil, fmt.Errorf("state changes truncated at pre balance")
+			}
+			if preLen > 0 {
+				a.PreBalance = make([]byte, preLen)
+				copy(a.PreBalance, data[off:off+preLen])
+			}
+			off += preLen
+
+			if off+1 > len(data) {
+				return nil, fmt.Errorf("state changes truncated at post balance len")
+			}
+			postLen := int(data[off])
+			off++
+			if off+postLen > len(data) {
+				return nil, fmt.Errorf("state changes truncated at post balance")
+			}
+			if postLen > 0 {
+				a.PostBalance = make([]byte, postLen)
+				copy(a.PostBalance, data[off:off+postLen])
+			}
+			off += postLen
+		}
+
+		if a.Flags&StateChangeFlagNonceChanged != 0 {
+			if off+16 > len(data) {
+				return nil, fmt.Errorf("state changes truncated at nonce fields")
+			}
+			a.PreNonce = binary.BigEndian.Uint64(data[off : off+8])
+			off += 8
+			a.PostNonce = binary.BigEndian.Uint64(data[off : off+8])
+			off += 8
+		}
+
+		if a.Flags&StateChangeFlagCodeChanged != 0 {
+			if off+4 > len(data) {
+				return nil, fmt.Errorf("state changes truncated at pre code len")
+			}
+			preLen := int(binary.BigEndian.Uint32(data[off : off+4]))
+			off += 4
+			if off+preLen > len(data) {
+				return nil, fmt.Errorf("state changes truncated at pre code")
+			}
+			if preLen > 0 {
+				a.PreCode = make([]byte, preLen)
+				copy(a.PreCode, data[off:off+preLen])
+			}
+			off += preLen
+
+			if off+4 > len(data) {
+				return nil, fmt.Errorf("state changes truncated at post code len")
+			}
+			postLen := int(binary.BigEndian.Uint32(data[off : off+4]))
+			off += 4
+			if off+postLen > len(data) {
+				return nil, fmt.Errorf("state changes truncated at post code")
+			}
+			if postLen > 0 {
+				a.PostCode = make([]byte, postLen)
+				copy(a.PostCode, data[off:off+postLen])
+			}
+			off += postLen
+		}
+
+		if a.Flags&StateChangeFlagStorageChanged != 0 {
+			if off+4 > len(data) {
+				return nil, fmt.Errorf("state changes truncated at slot count")
+			}
+			slotCount := int(binary.BigEndian.Uint32(data[off : off+4]))
+			off += 4
+
+			a.Slots = make([]StateChangeSlot, 0, slotCount)
+			for range slotCount {
+				if off+33 > len(data) {
+					return nil, fmt.Errorf("state changes truncated at slot header")
+				}
+				var s StateChangeSlot
+				copy(s.Slot[:], data[off:off+32])
+				off += 32
+				s.ChangeType = data[off]
+				off++
+
+				switch s.ChangeType {
+				case StorageChangeModified:
+					if off+64 > len(data) {
+						return nil, fmt.Errorf("state changes truncated at modified slot values")
+					}
+					copy(s.PreValue[:], data[off:off+32])
+					off += 32
+					copy(s.PostValue[:], data[off:off+32])
+					off += 32
+				case StorageChangeCreated:
+					if off+32 > len(data) {
+						return nil, fmt.Errorf("state changes truncated at created slot value")
+					}
+					copy(s.PostValue[:], data[off:off+32])
+					off += 32
+				case StorageChangeDeleted:
+					if off+32 > len(data) {
+						return nil, fmt.Errorf("state changes truncated at deleted slot value")
+					}
+					copy(s.PreValue[:], data[off:off+32])
+					off += 32
+				default:
+					return nil, fmt.Errorf("unknown storage change type: %d", s.ChangeType)
+				}
+
+				a.Slots = append(a.Slots, s)
+			}
+		}
+
+		accounts = append(accounts, a)
+	}
+
+	return accounts, nil
 }
