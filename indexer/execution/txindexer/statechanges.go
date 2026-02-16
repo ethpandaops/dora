@@ -53,13 +53,6 @@ func balanceBytes(a *exerpc.PrestateAccount) []byte {
 	return b
 }
 
-func nonceVal(a *exerpc.PrestateAccount) uint64 {
-	if a == nil || a.Nonce == nil {
-		return 0
-	}
-	return uint64(*a.Nonce)
-}
-
 func nonceValPresent(a *exerpc.PrestateAccount) (uint64, bool) {
 	if a == nil || a.Nonce == nil {
 		return 0, false
