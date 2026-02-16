@@ -71,6 +71,9 @@ type BlockBodyIndex struct {
 	EthTransactionCount uint64
 	BlobCount           uint64
 	BuilderIndex        uint64
+	GasUsed             uint64
+	GasLimit            uint64
+	BlockSize           uint64
 }
 
 // newBlock creates a new Block instance.
@@ -425,6 +428,13 @@ func (block *Block) setBlockIndex(body *spec.VersionedSignedBeaconBlock, payload
 		if parentHash, err := getBlockExecutionParentHash(body); err == nil {
 			blockIndex.ExecutionParentHash = parentHash
 		}
+		if executionPayload, err := body.ExecutionPayload(); err == nil {
+			gasUsed, _ := executionPayload.GasUsed()
+			blockIndex.GasUsed = gasUsed
+
+			gasLimit, _ := executionPayload.GasLimit()
+			blockIndex.GasLimit = gasLimit
+		}
 	}
 	if payload != nil {
 		blockIndex.ExecutionNumber = uint64(payload.Message.Payload.BlockNumber)
@@ -437,6 +447,16 @@ func (block *Block) setBlockIndex(body *spec.VersionedSignedBeaconBlock, payload
 		// Calculate blob count
 		blobKzgCommitments := payload.Message.BlobKZGCommitments
 		blockIndex.BlobCount = uint64(len(blobKzgCommitments))
+
+		// Get gas used and gas limit
+		blockIndex.GasUsed = payload.Message.Payload.GasUsed
+		blockIndex.GasLimit = payload.Message.Payload.GasLimit
+	}
+
+	// Calculate block size
+	blockSize, err := getBlockSize(block.dynSsz, body)
+	if err == nil {
+		blockIndex.BlockSize = uint64(blockSize)
 	}
 
 	// Calculate sync participation

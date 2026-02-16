@@ -888,6 +888,39 @@ func (bs *ChainService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageIdx
 				}
 			}
 
+			// filter by gas used
+			if filter.MinGasUsed != nil || filter.MaxGasUsed != nil {
+				gasUsed := blockIndex.GasUsed
+				if filter.MinGasUsed != nil && gasUsed < *filter.MinGasUsed {
+					continue
+				}
+				if filter.MaxGasUsed != nil && gasUsed > *filter.MaxGasUsed {
+					continue
+				}
+			}
+
+			// filter by gas limit
+			if filter.MinGasLimit != nil || filter.MaxGasLimit != nil {
+				gasLimit := blockIndex.GasLimit
+				if filter.MinGasLimit != nil && gasLimit < *filter.MinGasLimit {
+					continue
+				}
+				if filter.MaxGasLimit != nil && gasLimit > *filter.MaxGasLimit {
+					continue
+				}
+			}
+
+			// filter by block size
+			if filter.MinBlockSize != nil || filter.MaxBlockSize != nil {
+				blockSize := blockIndex.BlockSize
+				if filter.MinBlockSize != nil && blockSize < *filter.MinBlockSize {
+					continue
+				}
+				if filter.MaxBlockSize != nil && blockSize > *filter.MaxBlockSize {
+					continue
+				}
+			}
+
 			// filter by payload status (runtime computation for unfinalized blocks)
 			if filter.WithPayloadOrphaned != 1 {
 				// Compute payload status by checking if any child block in the canonical chain
@@ -926,10 +959,6 @@ func (bs *ChainService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageIdx
 				}
 			}
 
-			// Note: gas used, gas limit, and block size filters are not applied here
-			// because BlockBodyIndex doesn't have these fields - they only exist in the database.
-			// These filters will only work for finalized blocks from the database.
-
 			cachedMatches = append(cachedMatches, cachedDbBlock{
 				slot:     uint64(block.Slot),
 				proposer: uint64(blockHeader.Message.ProposerIndex),
@@ -940,7 +969,7 @@ func (bs *ChainService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageIdx
 
 		// reconstruct missing blocks from epoch duties
 		// For slot/root filtering, we still need to check if we need missing blocks for that specific slot
-		shouldCheckMissing := filter.WithMissing != 0 && filter.Graffiti == "" && filter.ExtraData == "" && filter.WithOrphaned != 2 && filter.MinSyncParticipation == nil && filter.MaxSyncParticipation == nil && filter.MinExecTime == nil && filter.MaxExecTime == nil && filter.MinTxCount == nil && filter.MaxTxCount == nil && filter.MinBlobCount == nil && filter.MaxBlobCount == nil && len(filter.ForkIds) == 0 && filter.BuilderIndex == nil && filter.WithPayloadOrphaned != 2 && len(filter.EthBlockParentHash) == 0 && filter.MinGasUsed == nil && filter.MaxGasUsed == nil && filter.MinGasLimit == nil && filter.MaxGasLimit == nil && filter.MinBlockSize == nil && filter.MaxBlockSize == nil && filter.WithMevBlock == 0 && filter.ProposerIndex == nil && filter.ProposerName == "" && filter.MinGasUsed == nil && filter.MaxGasUsed == nil && filter.MinGasLimit == nil && filter.MaxGasLimit == nil && filter.MinBlockSize == nil && filter.MaxBlockSize == nil && filter.WithMevBlock == 0 && filter.ProposerIndex == nil && filter.ProposerName == ""
+		shouldCheckMissing := filter.WithMissing != 0 && filter.Graffiti == "" && filter.ExtraData == "" && filter.WithOrphaned != 2 && filter.MinSyncParticipation == nil && filter.MaxSyncParticipation == nil && filter.MinExecTime == nil && filter.MaxExecTime == nil && filter.MinTxCount == nil && filter.MaxTxCount == nil && filter.MinBlobCount == nil && filter.MaxBlobCount == nil && len(filter.ForkIds) == 0 && filter.BuilderIndex == nil && filter.WithPayloadOrphaned != 2 && len(filter.EthBlockParentHash) == 0 && filter.MinGasUsed == nil && filter.MaxGasUsed == nil && filter.MinGasLimit == nil && filter.MaxGasLimit == nil && filter.MinBlockSize == nil && filter.MaxBlockSize == nil && filter.WithMevBlock == 0 && filter.ProposerIndex == nil && filter.ProposerName == ""
 
 		// If filtering by slot, only check missing for that specific slot
 		if filter.Slot != nil {
