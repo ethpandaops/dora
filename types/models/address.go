@@ -59,6 +59,16 @@ type AddressPageData struct {
 	NFTFirstItem     uint64                          `json:"nft_first_item"`
 	NFTLastItem      uint64                          `json:"nft_last_item"`
 
+	// Internal Transactions tab
+	HasInternalTxs       bool                                  `json:"has_internal_txs"`
+	InternalTxs          []*AddressPageDataInternalTransaction `json:"internal_txs"`
+	InternalTxCount      uint64                                `json:"internal_tx_count"`
+	InternalTxPageIndex  uint64                                `json:"internal_tx_page_index"`
+	InternalTxPageSize   uint64                                `json:"internal_tx_page_size"`
+	InternalTxTotalPages uint64                                `json:"internal_tx_total_pages"`
+	InternalTxFirstItem  uint64                                `json:"internal_tx_first_item"`
+	InternalTxLastItem   uint64                                `json:"internal_tx_last_item"`
+
 	// System Deposits tab (withdrawals and fee recipient rewards)
 	SystemDeposits     []*AddressPageDataSystemDeposit `json:"system_deposits"`
 	SystemDepositCount uint64                          `json:"system_deposit_count"`
@@ -131,6 +141,28 @@ type AddressPageDataTokenTransfer struct {
 	Amount         float64   `json:"amount"`      // For ERC20
 	AmountRaw      []byte    `json:"amount_raw"`  // Raw amount
 	MethodName     string    `json:"method_name"` // Function name if known
+}
+
+// AddressPageDataInternalTransaction represents an internal transaction for the address page
+type AddressPageDataInternalTransaction struct {
+	TxHash         []byte    `json:"tx_hash"`
+	BlockNumber    uint64    `json:"block_number"`
+	BlockUid       uint64    `json:"block_uid"`
+	BlockRoot      []byte    `json:"block_root"`
+	BlockOrphaned  bool      `json:"block_orphaned"`
+	BlockTime      time.Time `json:"block_time"`
+	CallIndex      uint32    `json:"call_index"`
+	CallType       uint8     `json:"call_type"`
+	TypeName       string    `json:"type_name"`
+	FromAddr       []byte    `json:"from_addr"`
+	FromID         uint64    `json:"from_id"`
+	FromIsContract bool      `json:"from_is_contract"`
+	ToAddr         []byte    `json:"to_addr"`
+	ToID           uint64    `json:"to_id"`
+	ToIsContract   bool      `json:"to_is_contract"`
+	IsOutgoing     bool      `json:"is_outgoing"`
+	Amount         float64   `json:"amount"`
+	AmountRaw      []byte    `json:"amount_raw"`
 }
 
 // AddressPageDataSystemDeposit represents a system deposit (withdrawal or fee recipient reward)

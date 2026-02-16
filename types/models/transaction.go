@@ -117,6 +117,12 @@ type TransactionPageData struct {
 	// Token transfers tab
 	TokenTransfers     []*TransactionPageDataTokenTransfer `json:"token_transfers"`
 	TokenTransferCount uint64                              `json:"token_transfer_count"`
+
+	// Internal transactions tab
+	InternalTxs      []*TransactionPageDataInternalTx `json:"internal_txs"`
+	InternalTxCount  uint64                           `json:"internal_tx_count"`
+	DataStatus       uint16                           `json:"data_status"` // blockdb data availability flags
+	DataNotAvailable bool                             `json:"data_not_available"`
 }
 
 // TransactionPageDataEvent represents an event/log in the transaction
@@ -165,6 +171,23 @@ type TransactionPageDataTokenTransfer struct {
 
 	// NFT token index
 	TokenIndex []byte `json:"token_index"`
+}
+
+// TransactionPageDataInternalTx represents an internal transaction (call trace frame)
+type TransactionPageDataInternalTx struct {
+	CallIndex uint32 `json:"call_index"`
+	CallType  uint8  `json:"call_type"`
+	TypeName  string `json:"type_name"`
+
+	// From/To
+	FromAddr       []byte `json:"from_addr"`
+	FromIsContract bool   `json:"from_is_contract"`
+	ToAddr         []byte `json:"to_addr"`
+	ToIsContract   bool   `json:"to_is_contract"`
+
+	// Value
+	Amount    float64 `json:"amount"`
+	AmountRaw []byte  `json:"amount_raw"`
 }
 
 // TransactionPageDataBlob represents a blob in a blob transaction

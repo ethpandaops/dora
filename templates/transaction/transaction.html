@@ -157,6 +157,13 @@
         </a>
       </li>
       {{ end }}
+      {{ if gt .InternalTxCount 0 }}
+      <li class="nav-item">
+        <a class="nav-link{{ if eq .TabView "internaltxs" }} active{{ end }}" id="internaltxs-tab" data-lazy-tab="internaltxs" data-bs-toggle="tab" data-bs-target="#internaltxs" href="?v=internaltxs{{ if gt .SelectedBlockUid 0 }}&b={{ .SelectedBlockUid }}{{ end }}" role="tab" aria-controls="internaltxs" aria-selected="{{ if eq .TabView "internaltxs" }}true{{ else }}false{{ end }}">
+          <i class="fa fa-sitemap me-2"></i> Internal Txs ({{ .InternalTxCount }})
+        </a>
+      </li>
+      {{ end }}
       {{ if gt .BlobCount 0 }}
       <li class="nav-item">
         <a class="nav-link{{ if eq .TabView "blobs" }} active{{ end }}" id="blobs-tab" data-lazy-tab="blobs" data-bs-toggle="tab" data-bs-target="#blobs" href="?v=blobs{{ if gt .SelectedBlockUid 0 }}&b={{ .SelectedBlockUid }}{{ end }}" role="tab" aria-controls="blobs" aria-selected="{{ if eq .TabView "blobs" }}true{{ else }}false{{ end }}">
@@ -270,6 +277,13 @@
         {{ end }}
       </div>
       {{ end }}
+      {{ if gt .InternalTxCount 0 }}
+      <div class="tab-pane fade{{ if eq .TabView "internaltxs" }} show active{{ end }}" id="internaltxs" role="tabpanel" aria-labelledby="internaltxs-tab" data-loaded="{{ if eq .TabView "internaltxs" }}true{{ else }}false{{ end }}">
+        {{ if eq .TabView "internaltxs" }}
+          {{ template "internaltxs" . }}
+        {{ end }}
+      </div>
+      {{ end }}
       {{ if gt .BlobCount 0 }}
       <div class="tab-pane fade{{ if eq .TabView "blobs" }} show active{{ end }}" id="blobs" role="tabpanel" aria-labelledby="blobs-tab" data-loaded="{{ if eq .TabView "blobs" }}true{{ else }}false{{ end }}">
         {{ if eq .TabView "blobs" }}
@@ -285,6 +299,8 @@
     {{ template "events" . }}
   {{ else if eq .TabView "transfers" }}
     {{ template "transfers" . }}
+  {{ else if eq .TabView "internaltxs" }}
+    {{ template "internaltxs" . }}
   {{ else if eq .TabView "blobs" }}
     {{ template "blobs" . }}
   {{ else }}
@@ -373,6 +389,7 @@
       'details': 'overview',
       'events': 'events',
       'transfers': 'transfers',
+      'internaltxs': 'internaltxs',
       'blobs': 'blobs'
     };
 

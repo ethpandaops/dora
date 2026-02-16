@@ -3,6 +3,8 @@ package txindexer
 import (
 	"context"
 	"slices"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -671,11 +673,17 @@ func (t *TxIndexer) checkAndRunCleanup() {
 	// 2. Delete old EL data based on retention period
 	retentionStats := t.cleanupRetentionData()
 
+	// 3. Time-based blockdb pruning (Mode 3 only)
+	blockdbPruned := t.cleanupBlockdbRetention()
+
+	// 4. Size-based blockdb eviction (Mode 3 only)
+	blockdbEvicted := t.cleanupBlockdbSize()
+
 	// Save cleanup state
 	t.saveCleanupState()
 
 	// Log summary
-	if zeroBalancesDeleted > 0 || retentionStats != nil {
+	if zeroBalancesDeleted > 0 || retentionStats != nil || blockdbPruned > 0 || blockdbEvicted > 0 {
 		fields := logrus.Fields{
 			"zeroBalances": zeroBalancesDeleted,
 		}
@@ -686,6 +694,12 @@ func (t *TxIndexer) checkAndRunCleanup() {
 			fields["transfers"] = retentionStats.TokenTransfersDeleted
 			fields["withdrawals"] = retentionStats.WithdrawalsDeleted
 			fields["blocks"] = retentionStats.BlocksDeleted
+		}
+		if blockdbPruned > 0 {
+			fields["blockdbPruned"] = blockdbPruned
+		}
+		if blockdbEvicted > 0 {
+			fields["blockdbEvicted"] = blockdbEvicted
 		}
 		t.logger.WithFields(fields).Info("execution indexer cleanup completed")
 	} else {
@@ -783,4 +797,210 @@ func (t *TxIndexer) cleanupRetentionData() *db.CleanupStats {
 	}
 
 	return stats
+}
+
+// cleanupBlockdbRetention prunes blockdb exec data older than the retention period.
+// Also resets data_status and data_size in the DB for pruned blocks.
+// Returns the number of blockdb objects pruned.
+func (t *TxIndexer) cleanupBlockdbRetention() int64 {
+	if t.mode != ModeFull {
+		return 0
+	}
+
+	if blockdb.GlobalBlockDb == nil || !blockdb.GlobalBlockDb.SupportsExecData() {
+		return 0
+	}
+
+	retention := utils.Config.ExecutionIndexer.Retention
+	if retention == 0 {
+		return 0
+	}
+
+	chainState := t.indexerCtx.ChainState
+	if chainState == nil {
+		return 0
+	}
+
+	cutoffTime := time.Now().Add(-retention)
+	cutoffSlot := chainState.TimeToSlot(cutoffTime)
+	if cutoffSlot == 0 {
+		return 0
+	}
+
+	blockUidThreshold := uint64(cutoffSlot) << 16
+
+	// Prune blockdb exec data for all slots before cutoff
+	ctx, cancel := context.WithTimeout(t.ctx, 5*time.Minute)
+	defer cancel()
+
+	pruned, err := blockdb.GlobalBlockDb.PruneExecDataBefore(ctx, uint64(cutoffSlot))
+	if err != nil {
+		t.logger.WithError(err).Warn("failed to prune blockdb exec data")
+		return 0
+	}
+
+	if pruned == 0 {
+		return 0
+	}
+
+	// Reset data_status and data_size in DB for pruned blocks
+	err = db.RunDBTransaction(func(tx *sqlx.Tx) error {
+		_, err := db.ResetElBlockDataStatusBefore(blockUidThreshold, tx)
+		return err
+	})
+	if err != nil {
+		t.logger.WithError(err).Warn("failed to reset data status for pruned blocks")
+	}
+
+	t.logger.WithFields(logrus.Fields{
+		"pruned":     pruned,
+		"cutoffSlot": cutoffSlot,
+	}).Info("pruned blockdb exec data by retention")
+
+	return pruned
+}
+
+// cleanupBlockdbSize enforces the detailsMaxSize limit by evicting
+// the oldest blocks' exec data from blockdb when total size exceeds the limit.
+// Uses slot-based batch pruning to avoid needing individual block hash lookups.
+// Returns the number of DB blocks whose data_status was reset.
+func (t *TxIndexer) cleanupBlockdbSize() int64 {
+	if t.mode != ModeFull {
+		return 0
+	}
+
+	if blockdb.GlobalBlockDb == nil || !blockdb.GlobalBlockDb.SupportsExecData() {
+		return 0
+	}
+
+	maxSize := parseByteSize(utils.Config.ExecutionIndexer.DetailsMaxSize)
+	if maxSize == 0 {
+		return 0 // Unlimited
+	}
+
+	// Get total current size from DB
+	totalSize, err := db.GetTotalElBlockDataSize()
+	if err != nil {
+		t.logger.WithError(err).Warn("failed to get total exec data size")
+		return 0
+	}
+
+	if totalSize <= maxSize {
+		return 0 // Within limit
+	}
+
+	bytesToFree := totalSize - maxSize
+	t.logger.WithFields(logrus.Fields{
+		"totalSize":   totalSize,
+		"maxSize":     maxSize,
+		"bytesToFree": bytesToFree,
+	}).Info("exec data exceeds size limit, evicting oldest blocks")
+
+	// Find the oldest blocks with data until we've accumulated enough to free.
+	// We fetch in batches and find the cutoff slot.
+	var cutoffBlockUid uint64
+	var accumulated int64
+
+	for accumulated < bytesToFree {
+		blocks, getErr := db.GetOldestElBlocksWithData(500)
+		if getErr != nil {
+			t.logger.WithError(getErr).Warn("failed to get oldest blocks for eviction")
+			break
+		}
+		if len(blocks) == 0 {
+			break
+		}
+
+		for _, block := range blocks {
+			accumulated += block.DataSize
+			cutoffBlockUid = block.BlockUid
+
+			if accumulated >= bytesToFree {
+				break
+			}
+		}
+	}
+
+	if cutoffBlockUid == 0 {
+		return 0
+	}
+
+	// Prune all blockdb exec data up to the cutoff slot (inclusive).
+	// PruneExecDataBefore deletes data for slots < maxSlot, so add 1.
+	cutoffSlot := (cutoffBlockUid >> 16) + 1
+
+	ctx, cancel := context.WithTimeout(t.ctx, 5*time.Minute)
+	pruned, pruneErr := blockdb.GlobalBlockDb.PruneExecDataBefore(ctx, cutoffSlot)
+	cancel()
+
+	if pruneErr != nil {
+		t.logger.WithError(pruneErr).Warn("failed to prune blockdb exec data for size eviction")
+		return 0
+	}
+
+	// Reset data_status and data_size for all blocks up to the cutoff
+	blockUidThreshold := cutoffSlot << 16
+	var dbReset int64
+
+	err = db.RunDBTransaction(func(tx *sqlx.Tx) error {
+		var resetErr error
+		dbReset, resetErr = db.ResetElBlockDataStatusBefore(blockUidThreshold, tx)
+		return resetErr
+	})
+	if err != nil {
+		t.logger.WithError(err).Warn("failed to reset data status for evicted blocks")
+	}
+
+	t.logger.WithFields(logrus.Fields{
+		"blockdbPruned": pruned,
+		"dbReset":       dbReset,
+		"cutoffSlot":    cutoffSlot,
+	}).Info("evicted blockdb exec data for size limit")
+
+	return dbReset
+}
+
+// parseByteSize parses a human-readable byte size string (e.g., "100GB", "50MB", "1TB")
+// into bytes. Returns 0 for empty or invalid strings (meaning unlimited).
+func parseByteSize(s string) int64 {
+	s = strings.TrimSpace(s)
+	if s == "" || s == "0" {
+		return 0
+	}
+
+	// Find where the numeric part ends
+	numEnd := 0
+	for numEnd < len(s) && (s[numEnd] >= '0' && s[numEnd] <= '9' || s[numEnd] == '.') {
+		numEnd++
+	}
+
+	if numEnd == 0 {
+		return 0
+	}
+
+	numStr := s[:numEnd]
+	suffix := strings.ToUpper(strings.TrimSpace(s[numEnd:]))
+
+	val, err := strconv.ParseFloat(numStr, 64)
+	if err != nil {
+		return 0
+	}
+
+	var multiplier float64
+	switch suffix {
+	case "", "B":
+		multiplier = 1
+	case "K", "KB":
+		multiplier = 1024
+	case "M", "MB":
+		multiplier = 1024 * 1024
+	case "G", "GB":
+		multiplier = 1024 * 1024 * 1024
+	case "T", "TB":
+		multiplier = 1024 * 1024 * 1024 * 1024
+	default:
+		return 0
+	}
+
+	return int64(val * multiplier)
 }

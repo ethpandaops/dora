@@ -16,9 +16,11 @@ import (
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethereum/go-ethereum/common"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
+	"github.com/golang/snappy"
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
 
+	"github.com/ethpandaops/dora/blockdb"
 	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
@@ -44,6 +46,7 @@ func Transaction(w http.ResponseWriter, r *http.Request) {
 		"transaction/transaction.html",
 		"transaction/events.html",
 		"transaction/transfers.html",
+		"transaction/internaltxs.html",
 		"transaction/blobs.html",
 	)
 	notfoundTemplateFiles := append(layoutTemplateFiles,
@@ -410,14 +413,23 @@ func buildTransactionPageDataFromDB(pageData *models.TransactionPageData, txs []
 	transfers, _ := db.GetElTokenTransfersByBlockUidAndTxHash(tx.BlockUid, pageData.TxHash)
 	pageData.TokenTransferCount = uint64(len(transfers))
 
+	// Load internal transaction count
+	internalTxs, _ := db.GetElTransactionsInternalByTxHash(pageData.TxHash)
+	pageData.InternalTxCount = uint64(len(internalTxs))
+
+	// Check data_status for this block (for blockdb availability)
+	if elBlock, err := db.GetElBlock(tx.BlockUid); err == nil {
+		pageData.DataStatus = elBlock.DataStatus
+	}
+
 	// Load tab-specific detailed data
 	switch tabView {
 	case "events":
-		// Full event data (topics, data) will be loaded from blockdb in Phase 5.
-		// For now, show event index entries without full data.
-		loadTransactionEventsFromIndex(pageData, eventIndices)
+		loadTransactionEventsFromBlockdb(pageData, eventIndices, tx.BlockUid)
 	case "transfers":
 		loadTransactionTransfersFromData(pageData, transfers)
+	case "internaltxs":
+		loadTransactionInternalTxs(pageData, internalTxs)
 	}
 }
 
@@ -707,6 +719,152 @@ func loadTransactionEventsFromIndex(pageData *models.TransactionPageData, events
 		}
 
 		pageData.Events = append(pageData.Events, event)
+	}
+}
+
+// loadTransactionEventsFromBlockdb populates the events tab with full event
+// data from blockdb (all topics + data blob). Falls back to index-only display
+// if blockdb data is unavailable (pruned or not in Full mode).
+func loadTransactionEventsFromBlockdb(pageData *models.TransactionPageData, events []*dbtypes.ElEventIndex, blockUid uint64) {
+	if len(events) == 0 {
+		return
+	}
+
+	// Try to load full event data from blockdb
+	if blockdb.GlobalBlockDb != nil && blockdb.GlobalBlockDb.SupportsExecData() && pageData.DataStatus&0x01 != 0 {
+		slot := blockUid >> 16
+		blockHash := pageData.BlockHash
+
+		if len(blockHash) > 0 {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+
+			objectData, err := blockdb.GlobalBlockDb.GetExecData(ctx, slot, blockHash)
+			if err == nil && objectData != nil {
+				obj, err := blockdb.ParseExecDataIndex(objectData)
+				if err == nil {
+					txEntry := obj.FindTxEntry(pageData.TxHash)
+					if txEntry != nil && txEntry.SectionsBitmap&blockdb.ExecDataSectionEvents != 0 {
+						compData, err := blockdb.ExtractSectionData(
+							objectData, uint32(len(obj.Transactions)),
+							txEntry.EventsOffset, txEntry.EventsCompLen,
+						)
+						if err == nil && compData != nil {
+							uncompData, err := snappy.Decode(nil, compData)
+							if err == nil {
+								decodedEvents, err := blockdb.DecodeEventsSection(uncompData)
+								if err == nil {
+									pageData.Events = buildEventsFromBlockdb(decodedEvents)
+									return
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Fallback: use index-only data
+	loadTransactionEventsFromIndex(pageData, events)
+}
+
+// buildEventsFromBlockdb converts decoded blockdb events to page model events.
+func buildEventsFromBlockdb(events []blockdb.EventData) []*models.TransactionPageDataEvent {
+	result := make([]*models.TransactionPageDataEvent, 0, len(events))
+	for i := range events {
+		ev := &events[i]
+		event := &models.TransactionPageDataEvent{
+			EventIndex: ev.EventIndex,
+			SourceAddr: ev.Source[:],
+			Data:       ev.Data,
+		}
+
+		// Map topics to fixed fields
+		if len(ev.Topics) > 0 {
+			event.Topic0 = ev.Topics[0]
+		}
+		if len(ev.Topics) > 1 {
+			event.Topic1 = ev.Topics[1]
+		}
+		if len(ev.Topics) > 2 {
+			event.Topic2 = ev.Topics[2]
+		}
+		if len(ev.Topics) > 3 {
+			event.Topic3 = ev.Topics[3]
+		}
+		if len(ev.Topics) > 4 {
+			event.Topic4 = ev.Topics[4]
+		}
+
+		result = append(result, event)
+	}
+	return result
+}
+
+// loadTransactionInternalTxs populates the internal transactions tab from DB data.
+func loadTransactionInternalTxs(pageData *models.TransactionPageData, entries []*dbtypes.ElTransactionInternal) {
+	if len(entries) == 0 {
+		return
+	}
+
+	// Collect account IDs for batch lookup
+	accountIDs := make(map[uint64]bool, len(entries)*2)
+	for _, e := range entries {
+		accountIDs[e.FromID] = true
+		accountIDs[e.ToID] = true
+	}
+
+	// Batch lookup accounts
+	accountIDList := make([]uint64, 0, len(accountIDs))
+	for id := range accountIDs {
+		accountIDList = append(accountIDList, id)
+	}
+	accountMap := make(map[uint64]*dbtypes.ElAccount, len(accountIDList))
+	if len(accountIDList) > 0 {
+		if accounts, err := db.GetElAccountsByIDs(accountIDList); err == nil {
+			for _, a := range accounts {
+				accountMap[a.ID] = a
+			}
+		}
+	}
+
+	// Call type names
+	callTypeNames := map[uint8]string{
+		0: "CALL",
+		1: "STATICCALL",
+		2: "DELEGATECALL",
+		3: "CREATE",
+		4: "CREATE2",
+		5: "SELFDESTRUCT",
+	}
+
+	// Build internal tx list
+	pageData.InternalTxs = make([]*models.TransactionPageDataInternalTx, 0, len(entries))
+	for _, e := range entries {
+		itx := &models.TransactionPageDataInternalTx{
+			CallIndex: e.TxCallIdx,
+			CallType:  e.CallType,
+			Amount:    e.Value,
+			AmountRaw: e.ValueRaw,
+		}
+
+		if name, ok := callTypeNames[e.CallType]; ok {
+			itx.TypeName = name
+		} else {
+			itx.TypeName = fmt.Sprintf("TYPE_%d", e.CallType)
+		}
+
+		if from, ok := accountMap[e.FromID]; ok {
+			itx.FromAddr = from.Address
+			itx.FromIsContract = from.IsContract
+		}
+		if to, ok := accountMap[e.ToID]; ok {
+			itx.ToAddr = to.Address
+			itx.ToIsContract = to.IsContract
+		}
+
+		pageData.InternalTxs = append(pageData.InternalTxs, itx)
 	}
 }
 
