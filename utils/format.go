@@ -89,11 +89,31 @@ func FormatBlobFeeDifference(eip7918Value, originalValue uint64) template.HTML {
 }
 
 func FormatTransactionValue(ethValue float64) template.HTML {
-	// Convert ETH value to wei (1 ETH = 1e18 wei)
-	weiValue := uint64(ethValue * 1e18)
+	// Convert ETH value to wei using big.Float to avoid uint64 overflow
+	weiBigFloat := new(big.Float).SetFloat64(ethValue)
+	weiBigFloat.Mul(weiBigFloat, new(big.Float).SetFloat64(1e18))
 
-	// Use the same formatting logic as FormatBaseFee
-	return FormatBaseFee(weiValue)
+	// If less than 100,000 wei, show in wei
+	if weiBigFloat.Cmp(new(big.Float).SetFloat64(100000)) < 0 {
+		weiInt, _ := weiBigFloat.Int(nil)
+		return template.HTML(string(FormatAddCommas(weiInt.Uint64())) + " wei")
+	}
+
+	// Convert to gwei
+	gweiFloat, _ := new(big.Float).Quo(
+		new(big.Float).Copy(weiBigFloat),
+		new(big.Float).SetFloat64(1e9),
+	).Float64()
+
+	// If less than 100,000 gwei, show in gwei with 6 decimals, trimmed
+	if gweiFloat < 100000 {
+		formatted := strings.TrimRight(strings.TrimRight(fmt.Sprintf("%.6f", gweiFloat), "0"), ".")
+		return template.HTML(formatted + " gwei")
+	}
+
+	// Show in ETH for large values with 6 decimals, trimmed
+	formatted := strings.TrimRight(strings.TrimRight(fmt.Sprintf("%.6f", ethValue), "0"), ".")
+	return template.HTML(formatted + " ETH")
 }
 
 // FormatTransactionFee formats a transaction fee in ETH with intelligent rounding.
@@ -577,6 +597,117 @@ func FormatHexBytes(data []byte) string {
 		return ""
 	}
 	return fmt.Sprintf("0x%x", data)
+}
+
+// FormatWeiAmount formats a wei amount (passed as a base-10 string) into
+// wei/gwei/ETH depending on magnitude, keeping precision (no float rounding).
+//
+// Heuristics mirror FormatBaseFee:
+// - < 100000 wei -> show in wei
+// - < 100000 gwei -> show in gwei (6 decimals, trimmed)
+// - otherwise -> show in ETH (6 decimals, trimmed)
+func FormatWeiAmount(weiStr string) template.HTML {
+	weiStr = strings.TrimSpace(weiStr)
+	if weiStr == "" {
+		return template.HTML("0 wei")
+	}
+
+	wei := new(big.Int)
+	if _, ok := wei.SetString(weiStr, 10); !ok {
+		return template.HTML(template.HTMLEscapeString(weiStr))
+	}
+
+	// < 100000 wei
+	if wei.Cmp(big.NewInt(100000)) < 0 {
+		return template.HTML(template.HTMLEscapeString(wei.String()) + " wei")
+	}
+
+	// gwei = wei / 1e9
+	gweiDen := big.NewInt(1_000_000_000)
+	gweiRat := new(big.Rat).SetFrac(wei, gweiDen)
+	// < 100000 gwei
+	if gweiRat.Cmp(new(big.Rat).SetInt64(100000)) < 0 {
+		s := gweiRat.FloatString(6)
+		s = strings.TrimRight(strings.TrimRight(s, "0"), ".")
+		return template.HTML(template.HTMLEscapeString(s) + " gwei")
+	}
+
+	// eth = wei / 1e18
+	ethDen := new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil)
+	ethRat := new(big.Rat).SetFrac(wei, ethDen)
+	s := ethRat.FloatString(6)
+	s = strings.TrimRight(strings.TrimRight(s, "0"), ".")
+	return template.HTML(template.HTMLEscapeString(s) + " ETH")
+}
+
+// FormatWeiDeltaAmount formats a signed wei delta (base-10 string) into
+// wei/gwei/ETH with a + or - prefix (no float rounding).
+func FormatWeiDeltaAmount(diffWeiStr string) template.HTML {
+	diffWeiStr = strings.TrimSpace(diffWeiStr)
+	if diffWeiStr == "" {
+		return template.HTML("0 wei")
+	}
+
+	diff := new(big.Int)
+	if _, ok := diff.SetString(diffWeiStr, 10); !ok {
+		return template.HTML(template.HTMLEscapeString(diffWeiStr))
+	}
+
+	if diff.Sign() == 0 {
+		return template.HTML("0 wei")
+	}
+
+	sign := "+"
+	if diff.Sign() < 0 {
+		sign = "-"
+	}
+
+	abs := new(big.Int).Abs(diff)
+
+	// reuse the same unit heuristics as FormatWeiAmount
+	if abs.Cmp(big.NewInt(100000)) < 0 {
+		return template.HTML(sign + template.HTMLEscapeString(abs.String()) + " wei")
+	}
+
+	gweiDen := big.NewInt(1_000_000_000)
+	gweiRat := new(big.Rat).SetFrac(abs, gweiDen)
+	if gweiRat.Cmp(new(big.Rat).SetInt64(100000)) < 0 {
+		s := gweiRat.FloatString(6)
+		s = strings.TrimRight(strings.TrimRight(s, "0"), ".")
+		return template.HTML(sign + template.HTMLEscapeString(s) + " gwei")
+	}
+
+	ethDen := new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil)
+	ethRat := new(big.Rat).SetFrac(abs, ethDen)
+	s := ethRat.FloatString(6)
+	s = strings.TrimRight(strings.TrimRight(s, "0"), ".")
+	return template.HTML(sign + template.HTMLEscapeString(s) + " ETH")
+}
+
+// FormatHexBytesShort formats bytes as a 0x-prefixed hex string truncated in the middle:
+// e.g. 0x1234abcd…c0ffee. The bytes parameter specifies how many bytes (hex pairs)
+// to show on each side (default 4).
+func FormatHexBytesShort(data []byte, byteCount ...int) template.HTML {
+	if len(data) == 0 {
+		return template.HTML(`<span class="text-muted">-</span>`)
+	}
+
+	full := FormatHexBytes(data)
+	showBytes := 4
+	if len(byteCount) > 0 && byteCount[0] > 0 {
+		showBytes = byteCount[0]
+	}
+	hexChars := showBytes * 2
+
+	// full is like "0x..." with 2+2*len(data) chars
+	if len(full) <= 2+hexChars*2+1 {
+		return template.HTML(fmt.Sprintf(`<span data-bs-toggle="tooltip" title="%s">%s</span>`,
+			template.HTMLEscapeString(full), template.HTMLEscapeString(full)))
+	}
+
+	short := full[:2+hexChars] + "…" + full[len(full)-hexChars:]
+	return template.HTML(fmt.Sprintf(`<span data-bs-toggle="tooltip" title="%s">%s</span>`,
+		template.HTMLEscapeString(full), template.HTMLEscapeString(short)))
 }
 
 // FormatNFTTokenID formats a byte slice as a decimal NFT token ID

@@ -117,6 +117,7 @@ type SlotPageExecutionData struct {
 	BlobBaseFee        *uint64   `json:"blob_base_fee,omitempty"`
 	BlobBaseFeeEIP7918 *uint64   `json:"blob_base_fee_eip7918,omitempty"`
 	IsEIP7918Active    bool      `json:"is_eip7918_active"`
+	HasExecData        bool      `json:"has_exec_data"`
 
 	// EIP-7928
 	BlockAccessListHash []byte                          `json:"block_access_list_hash,omitempty"`

@@ -24,6 +24,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
 
+	"github.com/ethpandaops/dora/blockdb"
 	"github.com/ethpandaops/dora/clients/execution/rpc"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
@@ -947,6 +948,16 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 				}
 			}
 		}
+
+		// Check if execution data exists in blockdb for receipt downloads
+		if blockdb.GlobalBlockDb != nil && blockdb.GlobalBlockDb.SupportsExecData() {
+			hasExecData, _ := blockdb.GlobalBlockDb.HasExecData(
+				context.Background(),
+				uint64(blockData.Header.Message.Slot),
+				blockData.Root[:],
+			)
+			pageData.ExecutionData.HasExecData = hasExecData
+		}
 	}
 
 	if specs.CapellaForkEpoch != nil && uint64(epoch) >= *specs.CapellaForkEpoch {
@@ -1023,9 +1034,9 @@ func getSlotPageTransactions(pageData *models.SlotPageBlockData, transactions []
 		}
 
 		txHash := tx.Hash()
-		txValue, _ := tx.Value().Float64()
-		ethFloat, _ := utils.ETH.Float64()
-		txValue = txValue / ethFloat
+		txBigFloat := new(big.Float).SetInt(tx.Value())
+		txBigFloat.Quo(txBigFloat, new(big.Float).SetInt(utils.ETH))
+		txValue, _ := txBigFloat.Float64()
 
 		txType := uint8(tx.Type())
 		typeName := slotTxTypeNames[txType]
@@ -1192,76 +1203,6 @@ func getSlotPageConsolidationRequests(pageData *models.SlotPageBlockData, consol
 	}
 
 	pageData.ConsolidationRequestsCount = uint64(len(pageData.ConsolidationRequests))
-}
-
-func handleSlotDownload(ctx context.Context, w http.ResponseWriter, blockSlot int64, blockRoot []byte, downloadType string) error {
-	chainState := services.GlobalBeaconService.GetChainState()
-	currentSlot := chainState.CurrentSlot()
-	var blockData *services.CombinedBlockResponse
-	var err error
-	if blockSlot > -1 {
-		if phase0.Slot(blockSlot) <= currentSlot {
-			blockData, err = services.GlobalBeaconService.GetSlotDetailsBySlot(ctx, phase0.Slot(blockSlot))
-		}
-	} else {
-		blockData, err = services.GlobalBeaconService.GetSlotDetailsByBlockroot(ctx, phase0.Root(blockRoot))
-	}
-
-	if err != nil {
-		return fmt.Errorf("error getting block data: %v", err)
-	}
-
-	if blockData == nil || blockData.Block == nil {
-		return fmt.Errorf("block not found")
-	}
-
-	switch downloadType {
-	case "block-ssz":
-		w.Header().Set("Content-Type", "application/octet-stream")
-		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=block-%d-%x.ssz", blockData.Header.Message.Slot, blockData.Root[:]))
-
-		dynSsz := services.GlobalBeaconService.GetBeaconIndexer().GetDynSSZ()
-		_, blockSSZ, err := beacon.MarshalVersionedSignedBeaconBlockSSZ(dynSsz, blockData.Block, false, true)
-		if err != nil {
-			return fmt.Errorf("error serializing block: %v", err)
-		}
-		w.Write(blockSSZ)
-		return nil
-
-	case "block-json":
-		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=block-%d-%x.json", blockData.Header.Message.Slot, blockData.Root[:]))
-
-		_, jsonRes, err := beacon.MarshalVersionedSignedBeaconBlockJson(blockData.Block)
-		if err != nil {
-			return fmt.Errorf("error serializing block: %v", err)
-		}
-		w.Write(jsonRes)
-		return nil
-
-	case "header-ssz":
-		w.Header().Set("Content-Type", "application/octet-stream")
-		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=header-%d-%x.ssz", blockData.Header.Message.Slot, blockData.Root[:]))
-		headerSSZ, err := blockData.Header.MarshalSSZ()
-		if err != nil {
-			return fmt.Errorf("error serializing header: %v", err)
-		}
-		w.Write(headerSSZ)
-		return nil
-
-	case "header-json":
-		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=header-%d-%x.json", blockData.Header.Message.Slot, blockData.Root[:]))
-		jsonRes, err := blockData.Header.MarshalJSON()
-		if err != nil {
-			return fmt.Errorf("error serializing header: %v", err)
-		}
-		w.Write(jsonRes)
-		return nil
-
-	default:
-		return fmt.Errorf("unknown download type: %s", downloadType)
-	}
 }
 
 func handleSlotParseAccessList(w http.ResponseWriter, r *http.Request) error {

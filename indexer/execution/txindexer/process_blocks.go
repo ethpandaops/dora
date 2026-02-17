@@ -8,10 +8,14 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethpandaops/dora/db"
-	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/jmoiron/sqlx"
 	"github.com/sirupsen/logrus"
+
+	"github.com/ethpandaops/dora/blockdb"
+	exerpc "github.com/ethpandaops/dora/clients/execution/rpc"
+	"github.com/ethpandaops/dora/db"
+	"github.com/ethpandaops/dora/dbtypes"
+	"github.com/ethpandaops/dora/utils"
 )
 
 const (
@@ -29,6 +33,14 @@ type blockData struct {
 	Withdrawals       []WithdrawalData // Withdrawals from beacon block
 	TotalPriorityFees *big.Int         // Total priority fees in the block
 	Stats             *blockStats
+
+	// Call traces per transaction (Mode Full + tracesEnabled only, nil otherwise).
+	// Indexed by position matching Transactions slice.
+	TraceResults []exerpc.CallTraceResult
+
+	// State diffs per transaction (Mode Full + tracesEnabled only, nil otherwise).
+	// Indexed by position matching Transactions slice.
+	StateDiffResults []exerpc.StateDiffResult
 }
 
 // processing stats
@@ -94,6 +106,46 @@ func (t *TxIndexer) processElBlock(ref *BlockRef) (*blockStats, error) {
 		"receipts":     len(data.Receipts),
 	}).Debug("fetched EL block data")
 
+	// Fetch call traces if in Full mode with traces enabled
+	if t.mode == ModeFull && utils.Config.ExecutionIndexer.TracesEnabled {
+		traceCtx, traceCancel := context.WithTimeout(t.ctx, 5*time.Minute)
+		traceResults, traceErr := t.fetchBlockTraces(traceCtx, client, data.BlockHash)
+		traceCancel()
+
+		if traceErr != nil {
+			t.logger.WithError(traceErr).Debug("trace fetch failed, proceeding without traces")
+		} else if traceResults != nil {
+			data.TraceResults = traceResults
+		}
+
+		stateCtx, stateCancel := context.WithTimeout(t.ctx, 5*time.Minute)
+		stateResults, stateErr := t.fetchBlockStateDiffs(stateCtx, client, data.BlockHash)
+		stateCancel()
+		if stateErr != nil {
+			t.logger.WithError(stateErr).Debug("state diff fetch failed, proceeding without state diffs")
+		} else if stateResults != nil {
+			data.StateDiffResults = stateResults
+		}
+	}
+
+	// Build trace lookup map (txHash → call trace) for O(1) access per tx
+	traceMap := make(map[common.Hash]*exerpc.CallTraceCall, len(data.TraceResults))
+	for i := range data.TraceResults {
+		tr := &data.TraceResults[i]
+		if tr.Result != nil {
+			traceMap[tr.TxHash] = tr.Result
+		}
+	}
+
+	// Build state diff lookup map (txHash → state diff) for O(1) access per tx
+	stateDiffMap := make(map[common.Hash]*exerpc.StateDiff, len(data.StateDiffResults))
+	for i := range data.StateDiffResults {
+		dr := &data.StateDiffResults[i]
+		if dr.Result != nil {
+			stateDiffMap[dr.TxHash] = dr.Result
+		}
+	}
+
 	// Create processing context for this block (shared across all transactions)
 	procCtx := newTxProcessingContext(ctx, client, t, ref, data)
 
@@ -113,7 +165,11 @@ func (t *TxIndexer) processElBlock(ref *BlockRef) (*blockStats, error) {
 			break
 		}
 
-		dbCommitCallback, err := procCtx.processTransaction(tx, receipt)
+		// Look up trace for this transaction (may be nil)
+		callTrace := traceMap[tx.Hash()]
+		stateDiff := stateDiffMap[tx.Hash()]
+
+		dbCommitCallback, err := procCtx.processTransaction(tx, receipt, callTrace, stateDiff)
 		if err != nil {
 			return stats, fmt.Errorf("failed to process EL transaction: %w", err)
 		}
@@ -229,6 +285,33 @@ func (t *TxIndexer) processElBlock(ref *BlockRef) (*blockStats, error) {
 
 	if err != nil {
 		return stats, fmt.Errorf("failed to insert block: %w", err)
+	}
+
+	// Build and write execution data object to blockdb (Mode Full only)
+	if t.mode == ModeFull {
+		execData, dataStatus := procCtx.buildExecDataObject()
+		if execData != nil && blockdb.GlobalBlockDb != nil && blockdb.GlobalBlockDb.SupportsExecData() {
+			blockdbCtx, blockdbCancel := context.WithTimeout(t.ctx, 30*time.Second)
+			dataSize, writeErr := blockdb.GlobalBlockDb.AddExecData(
+				blockdbCtx, uint64(ref.Slot), ref.BlockRoot, execData,
+			)
+			blockdbCancel()
+
+			if writeErr != nil {
+				t.logger.WithError(writeErr).WithFields(logrus.Fields{
+					"slot":     ref.Slot,
+					"blockUid": ref.BlockUID,
+				}).Warn("failed to write exec data to blockdb")
+			} else {
+				// Update el_block with data_status and data_size
+				updateErr := db.RunDBTransaction(func(tx *sqlx.Tx) error {
+					return db.UpdateElBlockDataStatus(ref.BlockUID, dataStatus, dataSize, tx)
+				})
+				if updateErr != nil {
+					t.logger.WithError(updateErr).Warn("failed to update block data status")
+				}
+			}
+		}
 	}
 
 	return stats, nil
