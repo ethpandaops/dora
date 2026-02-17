@@ -89,11 +89,31 @@ func FormatBlobFeeDifference(eip7918Value, originalValue uint64) template.HTML {
 }
 
 func FormatTransactionValue(ethValue float64) template.HTML {
-	// Convert ETH value to wei (1 ETH = 1e18 wei)
-	weiValue := uint64(ethValue * 1e18)
+	// Convert ETH value to wei using big.Float to avoid uint64 overflow
+	weiBigFloat := new(big.Float).SetFloat64(ethValue)
+	weiBigFloat.Mul(weiBigFloat, new(big.Float).SetFloat64(1e18))
 
-	// Use the same formatting logic as FormatBaseFee
-	return FormatBaseFee(weiValue)
+	// If less than 100,000 wei, show in wei
+	if weiBigFloat.Cmp(new(big.Float).SetFloat64(100000)) < 0 {
+		weiInt, _ := weiBigFloat.Int(nil)
+		return template.HTML(string(FormatAddCommas(weiInt.Uint64())) + " wei")
+	}
+
+	// Convert to gwei
+	gweiFloat, _ := new(big.Float).Quo(
+		new(big.Float).Copy(weiBigFloat),
+		new(big.Float).SetFloat64(1e9),
+	).Float64()
+
+	// If less than 100,000 gwei, show in gwei with 6 decimals, trimmed
+	if gweiFloat < 100000 {
+		formatted := strings.TrimRight(strings.TrimRight(fmt.Sprintf("%.6f", gweiFloat), "0"), ".")
+		return template.HTML(formatted + " gwei")
+	}
+
+	// Show in ETH for large values with 6 decimals, trimmed
+	formatted := strings.TrimRight(strings.TrimRight(fmt.Sprintf("%.6f", ethValue), "0"), ".")
+	return template.HTML(formatted + " ETH")
 }
 
 // FormatTransactionFee formats a transaction fee in ETH with intelligent rounding.

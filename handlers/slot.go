@@ -894,9 +894,9 @@ func getSlotPageTransactions(pageData *models.SlotPageBlockData, transactions []
 		}
 
 		txHash := tx.Hash()
-		txValue, _ := tx.Value().Float64()
-		ethFloat, _ := utils.ETH.Float64()
-		txValue = txValue / ethFloat
+		txBigFloat := new(big.Float).SetInt(tx.Value())
+		txBigFloat.Quo(txBigFloat, new(big.Float).SetInt(utils.ETH))
+		txValue, _ := txBigFloat.Float64()
 
 		txType := uint8(tx.Type())
 		typeName := slotTxTypeNames[txType]
