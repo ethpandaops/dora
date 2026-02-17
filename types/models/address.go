@@ -146,6 +146,7 @@ type AddressPageDataTokenTransfer struct {
 // AddressPageDataInternalTransaction represents an internal transaction for the address page
 type AddressPageDataInternalTransaction struct {
 	TxHash         []byte    `json:"tx_hash"`
+	TxHashRowspan  int       `json:"tx_hash_rowspan"` // >0 means render with rowspan, 0 means skip cell
 	BlockNumber    uint64    `json:"block_number"`
 	BlockUid       uint64    `json:"block_uid"`
 	BlockRoot      []byte    `json:"block_root"`

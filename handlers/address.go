@@ -880,6 +880,35 @@ func loadInternalTxsTab(pageData *models.AddressPageData, account *dbtypes.ElAcc
 
 		pageData.InternalTxs = append(pageData.InternalTxs, itx)
 	}
+
+	// Calculate TxHashRowspan for consecutive internal txs with same txhash
+	calculateInternalTxHashRowspans(pageData.InternalTxs)
+}
+
+// calculateInternalTxHashRowspans sets TxHashRowspan for consecutive internal txs with the same txhash.
+// The first occurrence gets the rowspan count, subsequent occurrences get 0 (meaning skip rendering the cell).
+func calculateInternalTxHashRowspans(txs []*models.AddressPageDataInternalTransaction) {
+	if len(txs) == 0 {
+		return
+	}
+
+	i := len(txs) - 1
+	for i >= 0 {
+		currentTxHash := txs[i].TxHash
+		groupStart := i
+
+		for groupStart > 0 && bytes.Equal(txs[groupStart-1].TxHash, currentTxHash) {
+			groupStart--
+		}
+
+		rowspan := i - groupStart + 1
+		txs[groupStart].TxHashRowspan = rowspan
+		for j := groupStart + 1; j <= i; j++ {
+			txs[j].TxHashRowspan = 0
+		}
+
+		i = groupStart - 1
+	}
 }
 
 func loadSystemDepositsTab(pageData *models.AddressPageData, account *dbtypes.ElAccount, chainState *consensus.ChainState, offset uint64, limit uint32, pageIdx uint64) {

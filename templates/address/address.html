@@ -96,6 +96,13 @@
           <i class="fa fa-exchange-alt me-2"></i> Transactions
         </a>
       </li>
+      {{ if .HasInternalTxs }}
+      <li class="nav-item">
+        <a class="nav-link{{ if eq .TabView "internaltxs" }} active{{ end }}" id="internaltxs-tab" data-lazy-tab="internaltxs" data-bs-toggle="tab" data-bs-target="#internaltxs" href="?v=internaltxs" role="tab" aria-controls="internaltxs" aria-selected="{{ if eq .TabView "internaltxs" }}true{{ else }}false{{ end }}">
+          <i class="fa fa-sitemap me-2"></i> Internal Txs
+        </a>
+      </li>
+      {{ end }}
       <li class="nav-item">
         <a class="nav-link{{ if eq .TabView "erc20" }} active{{ end }}" id="erc20-tab" data-lazy-tab="erc20" data-bs-toggle="tab" data-bs-target="#erc20" href="?v=erc20" role="tab" aria-controls="erc20" aria-selected="{{ if eq .TabView "erc20" }}true{{ else }}false{{ end }}">
           <i class="fa fa-coins me-2"></i> Token Transfers (ERC20)
@@ -106,13 +113,6 @@
           <i class="fa fa-image me-2"></i> NFT Transfers
         </a>
       </li>
-      {{ if .HasInternalTxs }}
-      <li class="nav-item">
-        <a class="nav-link{{ if eq .TabView "internaltxs" }} active{{ end }}" id="internaltxs-tab" data-lazy-tab="internaltxs" data-bs-toggle="tab" data-bs-target="#internaltxs" href="?v=internaltxs" role="tab" aria-controls="internaltxs" aria-selected="{{ if eq .TabView "internaltxs" }}true{{ else }}false{{ end }}">
-          <i class="fa fa-sitemap me-2"></i> Internal Txs
-        </a>
-      </li>
-      {{ end }}
       {{ if .HasSystemDeposits }}
       <li class="nav-item">
         <a class="nav-link{{ if eq .TabView "system" }} active{{ end }}" id="system-tab" data-lazy-tab="system" data-bs-toggle="tab" data-bs-target="#system" href="?v=system" role="tab" aria-controls="system" aria-selected="{{ if eq .TabView "system" }}true{{ else }}false{{ end }}">
@@ -128,6 +128,13 @@
           {{ template "transactions" . }}
         {{ end }}
       </div>
+      {{ if .HasInternalTxs }}
+      <div class="tab-pane fade{{ if eq .TabView "internaltxs" }} show active{{ end }}" id="internaltxs" role="tabpanel" aria-labelledby="internaltxs-tab" data-loaded="{{ if eq .TabView "internaltxs" }}true{{ else }}false{{ end }}">
+        {{ if eq .TabView "internaltxs" }}
+          {{ template "internalTxs" . }}
+        {{ end }}
+      </div>
+      {{ end }}
       <div class="tab-pane fade{{ if eq .TabView "erc20" }} show active{{ end }}" id="erc20" role="tabpanel" aria-labelledby="erc20-tab" data-loaded="{{ if eq .TabView "erc20" }}true{{ else }}false{{ end }}">
         {{ if eq .TabView "erc20" }}
           {{ template "erc20Transfers" . }}
@@ -138,13 +145,6 @@
           {{ template "nftTransfers" . }}
         {{ end }}
       </div>
-      {{ if .HasInternalTxs }}
-      <div class="tab-pane fade{{ if eq .TabView "internaltxs" }} show active{{ end }}" id="internaltxs" role="tabpanel" aria-labelledby="internaltxs-tab" data-loaded="{{ if eq .TabView "internaltxs" }}true{{ else }}false{{ end }}">
-        {{ if eq .TabView "internaltxs" }}
-          {{ template "internalTxs" . }}
-        {{ end }}
-      </div>
-      {{ end }}
       {{ if .HasSystemDeposits }}
       <div class="tab-pane fade{{ if eq .TabView "system" }} show active{{ end }}" id="system" role="tabpanel" aria-labelledby="system-tab" data-loaded="{{ if eq .TabView "system" }}true{{ else }}false{{ end }}">
         {{ if eq .TabView "system" }}

@@ -19,20 +19,22 @@
           {{ if gt .InternalTxCount 0 }}
             {{ range .InternalTxs }}
               <tr>
-                <td class="text-monospace addr-cell">
+                {{ if gt .TxHashRowspan 0 }}
+                <td class="text-monospace align-top addr-cell"{{ if gt .TxHashRowspan 1 }} rowspan="{{ .TxHashRowspan }}"{{ end }}>
                   <a href="/tx/{{ formatHexBytes .TxHash }}" data-bs-toggle="tooltip" title="{{ formatHexBytes .TxHash }}">{{ formatEthHashShort .TxHash 6 }}</a>
                   <i class="fa fa-copy text-muted ms-1" role="button" data-bs-toggle="tooltip" title="Copy transaction hash" data-clipboard-text="{{ formatHexBytes .TxHash }}"></i>
                 </td>
-                <td>
+                <td class="align-top"{{ if gt .TxHashRowspan 1 }} rowspan="{{ .TxHashRowspan }}"{{ end }}>
                   {{ if gt (len .BlockRoot) 0 }}
                     <a href="/slot/0x{{ printf "%x" .BlockRoot }}">{{ formatAddCommas .BlockNumber }}</a>
                   {{ else }}
                     {{ formatAddCommas .BlockNumber }}
                   {{ end }}
                 </td>
-                <td data-timer="{{ .BlockTime.Unix }}">
+                <td class="align-top" data-timer="{{ .BlockTime.Unix }}"{{ if gt .TxHashRowspan 1 }} rowspan="{{ .TxHashRowspan }}"{{ end }}>
                   <span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ .BlockTime }}">{{ formatRecentTimeShort .BlockTime }}</span>
                 </td>
+                {{ end }}
                 <td>
                   {{ if eq .CallType 0 }}
                   <span class="badge text-bg-primary">{{ .TypeName }}</span>
