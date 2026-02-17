@@ -46,7 +46,7 @@ type FlatCallFrame struct {
 	Input   []byte
 	Output  []byte
 	Error   string
-	Logs    []CallFrameLog
+	Logs    []CallFrameLog // deprecated - but still included for backward compatibility with indexed data
 }
 
 // CallFrameLog is a log emitted within a call frame.

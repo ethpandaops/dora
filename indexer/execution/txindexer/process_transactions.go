@@ -1221,24 +1221,6 @@ func (ctx *txProcessingContext) processCallTrace(
 
 		frame.Value = exerpc.CallTraceCallValue(call)
 
-		// Convert logs
-		if len(call.Logs) > 0 {
-			frame.Logs = make([]bdbtypes.CallFrameLog, 0, len(call.Logs))
-			for _, log := range call.Logs {
-				fl := bdbtypes.CallFrameLog{
-					Data: log.Data,
-				}
-				copy(fl.Address[:], log.Address[:])
-				fl.Topics = make([][]byte, len(log.Topics))
-				for j, t := range log.Topics {
-					topic := make([]byte, 32)
-					copy(topic, t[:])
-					fl.Topics[j] = topic
-				}
-				frame.Logs = append(frame.Logs, fl)
-			}
-		}
-
 		frames = append(frames, frame)
 
 		// Extract internal call for DB index (skip index 0 = top-level call,
