@@ -99,3 +99,40 @@ type StateChangeAccount struct {
 	// Storage
 	Slots []StateChangeSlot
 }
+
+// Block receipt metadata version. Bump when adding new block-wide fields.
+const (
+	BlockReceiptMetaVersion1 = 1
+)
+
+// BlockReceiptMeta holds block-wide receipt metadata needed to reconstruct
+// full receipts. Stored as a versioned section so new fields can be added
+// without changing the DXTX format version.
+type BlockReceiptMeta struct {
+	Version      uint16 // Schema version for forward compatibility
+	BlobGasPrice uint64 // Block-wide blob gas price in wei (EIP-4844), 0 if not applicable
+}
+
+// Receipt metadata version. Bump when adding new fields.
+const (
+	ReceiptMetaVersion1 = 1
+)
+
+// ReceiptMetaData holds per-transaction receipt metadata needed to
+// reconstruct a full eth_getTransactionReceipt JSON response.
+// Stored in the ReceiptMeta section (bitmap flag 0x08) of the execution
+// data object.
+type ReceiptMetaData struct {
+	Version           uint16      // Schema version for forward compatibility
+	Status            uint8       // 0=failure, 1=success
+	TxType            uint8       // Transaction type (0=legacy, 1=access list, 2=dynamic fee, 3=blob, 4=set code)
+	CumulativeGasUsed uint64      // Cumulative gas used in block up to and including this tx
+	GasUsed           uint64      // Gas used by this specific transaction
+	EffectiveGasPrice uint256.Int // Actual gas price paid (in wei)
+	BlobGasUsed       uint64      // Blob gas used (EIP-4844), 0 otherwise
+	LogsBloom         [256]byte   // Bloom filter for this receipt's logs
+	From              [20]byte    // Sender address
+	To                [20]byte    // Receiver address (zero for contract creation)
+	ContractAddress   [20]byte    // Created contract address (zero if not creation)
+	HasContractAddr   bool        // Whether ContractAddress is valid (contract creation tx)
+}

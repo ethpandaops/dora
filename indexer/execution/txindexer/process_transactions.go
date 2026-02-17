@@ -132,6 +132,9 @@ type txProcessingResult struct {
 
 	// State changes data (populated in Mode Full + tracesEnabled)
 	stateChangesData []bdbtypes.StateChangeAccount
+
+	// Receipt metadata (populated in Mode Full for receipt reconstruction)
+	receiptMeta *bdbtypes.ReceiptMetaData
 }
 
 // pendingTxEvent represents an event collected in-memory for event index
@@ -345,6 +348,35 @@ func (ctx *txProcessingContext) processTransaction(
 	// 7. Process state diffs (storage changes) if available (Mode Full + tracesEnabled)
 	if stateDiff != nil {
 		result.stateChangesData = convertStateDiffToStateChanges(stateDiff)
+	}
+
+	// 8. Collect receipt metadata (Mode Full, for receipt reconstruction)
+	if ctx.indexer.mode == ModeFull {
+		meta := &bdbtypes.ReceiptMetaData{
+			Version:           bdbtypes.ReceiptMetaVersion1,
+			Status:            uint8(receipt.Status),
+			TxType:            tx.Type(),
+			CumulativeGasUsed: receipt.CumulativeGasUsed,
+			GasUsed:           receipt.GasUsed,
+			BlobGasUsed:       receipt.BlobGasUsed,
+		}
+
+		if receipt.EffectiveGasPrice != nil {
+			meta.EffectiveGasPrice.SetFromBig(receipt.EffectiveGasPrice)
+		}
+
+		// Compute and store logsBloom from the receipt's bloom filter
+		copy(meta.LogsBloom[:], receipt.Bloom[:])
+
+		copy(meta.From[:], from.Bytes())
+		copy(meta.To[:], toAddr.Bytes())
+
+		if isContractCreation {
+			meta.HasContractAddr = true
+			copy(meta.ContractAddress[:], receipt.ContractAddress.Bytes())
+		}
+
+		result.receiptMeta = meta
 	}
 
 	// Update block stats
@@ -1288,6 +1320,19 @@ func (ctx *txProcessingContext) buildExecDataObject() ([]byte, uint16) {
 			}
 		}
 
+		// Encode receipt metadata section
+		if result.receiptMeta != nil {
+			raw, err := ds.MarshalSSZ(result.receiptMeta)
+			if err != nil {
+				return nil, 0
+			}
+
+			compressed := snappy.Encode(nil, raw)
+			section.ReceiptMetaData = compressed
+			section.ReceiptMetaUncompLen = uint32(len(raw))
+			blockDataStatus |= dbtypes.ElBlockDataReceiptMeta
+		}
+
 		// Encode call trace section
 		if len(result.callTraceData) > 0 {
 			raw, err := ds.MarshalSSZ(result.callTraceData)
@@ -1331,9 +1376,32 @@ func (ctx *txProcessingContext) buildExecDataObject() ([]byte, uint16) {
 		return nil, 0
 	}
 
+	// Build block-level receipt metadata section.
+	var blockMetaCompressed []byte
+	var blockMetaUncompLen uint32
+
+	blockReceiptMeta := &bdbtypes.BlockReceiptMeta{
+		Version: bdbtypes.BlockReceiptMetaVersion1,
+	}
+
+	for _, r := range ctx.blockData.Receipts {
+		if r.BlobGasPrice != nil {
+			blockReceiptMeta.BlobGasPrice = r.BlobGasPrice.Uint64()
+
+			break
+		}
+	}
+
+	if raw, err := ds.MarshalSSZ(blockReceiptMeta); err == nil {
+		blockMetaCompressed = snappy.Encode(nil, raw)
+		blockMetaUncompLen = uint32(len(raw))
+	}
+
 	objectData := bdbtypes.BuildExecDataObject(
 		uint64(ctx.block.Slot),
 		ctx.blockData.BlockNumber,
+		blockMetaCompressed,
+		blockMetaUncompLen,
 		txSections,
 	)
 

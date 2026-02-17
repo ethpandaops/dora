@@ -16,6 +16,7 @@ type BlockData struct {
 // in one call (backed by a single range read for S3, single key lookup
 // for Pebble).
 type ExecDataTxSections struct {
+	ReceiptMetaData []byte // snappy-compressed, nil if section not present
 	EventsData      []byte // snappy-compressed, nil if section not present
 	CallTraceData   []byte // snappy-compressed, nil if section not present
 	StateChangeData []byte // snappy-compressed, nil if section not present

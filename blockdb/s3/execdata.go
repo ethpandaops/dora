@@ -149,11 +149,12 @@ func (e *S3Engine) GetExecDataTxSections(ctx context.Context, slot uint64, block
 	}
 
 	// Slice individual sections from the contiguous chunk
-	events, callTrace, stateChange := txEntry.SliceTxSections(
+	events, callTrace, stateChange, receiptMeta := txEntry.SliceTxSections(
 		chunk, spanOffset, effectiveMask,
 	)
 
 	return &types.ExecDataTxSections{
+		ReceiptMetaData: receiptMeta,
 		EventsData:      events,
 		CallTraceData:   callTrace,
 		StateChangeData: stateChange,

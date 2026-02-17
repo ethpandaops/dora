@@ -444,9 +444,10 @@ type ElBlock struct {
 
 // ElBlock DataStatus bit flags
 const (
-	ElBlockDataEvents       = 0x01
-	ElBlockDataCallTraces   = 0x02
-	ElBlockDataStateChanges = 0x04
+	ElBlockDataReceiptMeta  = 0x01
+	ElBlockDataEvents       = 0x02
+	ElBlockDataCallTraces   = 0x04
+	ElBlockDataStateChanges = 0x08
 )
 
 type ElTransaction struct {

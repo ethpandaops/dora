@@ -1,29 +1,31 @@
 // Package types provides the per-block execution data binary format (DXTX).
 //
-// The format stores events, call traces, and state changes for all transactions
-// in a block. Each section is independently snappy-compressed for efficient
-// selective decompression.
+// The format stores events, call traces, state changes, and receipt metadata
+// for all transactions in a block. Each section is independently
+// snappy-compressed for efficient selective decompression.
 //
 // Object layout:
 //
-//	OBJECT HEADER (24 bytes)
-//	├── Magic:           [4]byte  = "DXTX"
-//	├── Format Version:  uint16
-//	├── Flags:           uint16   (reserved, 0)
-//	├── Block Slot:      uint64
-//	├── Block Number:    uint64
+//	OBJECT HEADER (40 bytes)
+//	├── Magic:              [4]byte  = "DXTX"
+//	├── Format Version:     uint16
+//	├── Flags:              uint16   (reserved, 0)
+//	├── Block Slot:         uint64
+//	├── Block Number:       uint64
+//	├── BlockMeta Section:  offset(8) + compLen(4) + uncompLen(4)
 //	TX COUNT (4 bytes)
-//	├── TX Count:        uint32
+//	├── TX Count:           uint32
 //	TX INDEX TABLE (100 bytes per tx)
 //	For each TX:
-//	├── TX Hash:         [32]byte
-//	├── Sections Bitmap: uint32   (0x01=Events, 0x02=CallTrace, 0x04=StateChanges)
-//	├── Events Section:  offset(8) + compLen(4) + uncompLen(4)
-//	├── CallTrace Section: offset(8) + compLen(4) + uncompLen(4)
-//	├── StateChanges Section: offset(8) + compLen(4) + uncompLen(4)
-//	└── Reserved:        [16]byte
+//	├── TX Hash:            [32]byte
+//	├── Sections Bitmap:    uint32   (0x01=ReceiptMeta, 0x02=Events, 0x04=CallTrace, 0x08=StateChanges)
+//	├── ReceiptMeta Section: offset(8) + compLen(4) + uncompLen(4)
+//	├── Events Section:     offset(8) + compLen(4) + uncompLen(4)
+//	├── CallTrace Section:  offset(8) + compLen(4) + uncompLen(4)
+//	└── StateChanges Section: offset(8) + compLen(4) + uncompLen(4)
 //	DATA AREA
-//	├── [Snappy-compressed section blobs]
+//	├── [BlockMeta section blob (snappy-compressed)]
+//	├── [Per-TX snappy-compressed section blobs]
 package types
 
 import (
@@ -37,19 +39,20 @@ var ExecDataMagic = [4]byte{'D', 'X', 'T', 'X'}
 const (
 	ExecDataFormatVersion = 1
 
-	// Object header: 4 magic + 2 version + 2 flags + 8 slot + 8 blockNumber = 24
-	ExecDataHeaderSize = 24
+	// Object header: 4 magic + 2 version + 2 flags + 8 slot + 8 blockNumber + 16 blockMeta ptr = 40
+	ExecDataHeaderSize = 40
 
 	// TX count field: 4 bytes
 	ExecDataTxCountSize = 4
 
-	// Per-TX index entry: 32 hash + 4 bitmap + 3*(8+4+4) sections + 16 reserved = 100
+	// Per-TX index entry: 32 hash + 4 bitmap + 4*(8+4+4) sections = 100
 	ExecDataTxEntrySize = 100
 
 	// Section bitmap flags
-	ExecDataSectionEvents      = 0x01
-	ExecDataSectionCallTrace   = 0x02
-	ExecDataSectionStateChange = 0x04
+	ExecDataSectionReceiptMeta = 0x01
+	ExecDataSectionEvents      = 0x02
+	ExecDataSectionCallTrace   = 0x04
+	ExecDataSectionStateChange = 0x08
 )
 
 // ExecDataObject represents the decoded index of a per-block execution data object.
@@ -59,13 +62,23 @@ type ExecDataObject struct {
 	Flags         uint16
 	BlockSlot     uint64
 	BlockNumber   uint64
-	Transactions  []ExecDataTxEntry
+
+	// Block-level metadata section pointer.
+	BlockMetaOffset    uint64
+	BlockMetaCompLen   uint32
+	BlockMetaUncompLen uint32
+
+	Transactions []ExecDataTxEntry
 }
 
 // ExecDataTxEntry is the index entry for a single transaction.
 type ExecDataTxEntry struct {
 	TxHash         [32]byte
 	SectionsBitmap uint32
+
+	ReceiptMetaOffset    uint64
+	ReceiptMetaCompLen   uint32
+	ReceiptMetaUncompLen uint32
 
 	EventsOffset    uint64
 	EventsCompLen   uint32
@@ -86,21 +99,26 @@ type ExecDataTxSectionData struct {
 	TxHash [32]byte
 
 	// Compressed section data (nil if section not present)
+	ReceiptMetaData []byte
 	EventsData      []byte
 	CallTraceData   []byte
 	StateChangeData []byte
 
 	// Uncompressed lengths (for the index)
+	ReceiptMetaUncompLen uint32
 	EventsUncompLen      uint32
 	CallTraceUncompLen   uint32
 	StateChangeUncompLen uint32
 }
 
 // BuildExecDataObject serializes a per-block execution data object.
+// blockMeta is the pre-compressed block-level metadata section (nil if none).
 // txSections contains pre-compressed section data for each transaction.
 func BuildExecDataObject(
 	blockSlot uint64,
 	blockNumber uint64,
+	blockMeta []byte,
+	blockMetaUncompLen uint32,
 	txSections []ExecDataTxSectionData,
 ) []byte {
 	txCount := uint32(len(txSections))
@@ -108,8 +126,9 @@ func BuildExecDataObject(
 	indexSize := ExecDataHeaderSize + ExecDataTxCountSize + int(txCount)*ExecDataTxEntrySize
 
 	// Calculate total data area size
-	dataSize := 0
+	dataSize := len(blockMeta)
 	for i := range txSections {
+		dataSize += len(txSections[i].ReceiptMetaData)
 		dataSize += len(txSections[i].EventsData)
 		dataSize += len(txSections[i].CallTraceData)
 		dataSize += len(txSections[i].StateChangeData)
@@ -124,11 +143,22 @@ func BuildExecDataObject(
 	binary.BigEndian.PutUint64(buf[8:16], blockSlot)
 	binary.BigEndian.PutUint64(buf[16:24], blockNumber)
 
-	// Write TX count
-	binary.BigEndian.PutUint32(buf[24:28], txCount)
+	// Data area offset tracker (relative to start of DATA AREA)
+	dataOffset := uint64(0)
 
-	// Write TX index entries and data area
-	dataOffset := uint64(0) // relative to start of DATA AREA
+	// Write block meta section at start of data area
+	binary.BigEndian.PutUint64(buf[24:32], 0)
+	binary.BigEndian.PutUint32(buf[32:36], uint32(len(blockMeta)))
+	binary.BigEndian.PutUint32(buf[36:40], blockMetaUncompLen)
+	if len(blockMeta) > 0 {
+		copy(buf[indexSize:], blockMeta)
+		dataOffset += uint64(len(blockMeta))
+	}
+
+	// Write TX count
+	binary.BigEndian.PutUint32(buf[40:44], txCount)
+
+	// Write TX index entries and section data
 	for i := range txSections {
 		tx := &txSections[i]
 		entryOffset := ExecDataHeaderSize + ExecDataTxCountSize + i*ExecDataTxEntrySize
@@ -139,6 +169,9 @@ func BuildExecDataObject(
 
 		// Build bitmap
 		var bitmap uint32
+		if len(tx.ReceiptMetaData) > 0 {
+			bitmap |= ExecDataSectionReceiptMeta
+		}
 		if len(tx.EventsData) > 0 {
 			bitmap |= ExecDataSectionEvents
 		}
@@ -150,6 +183,16 @@ func BuildExecDataObject(
 		}
 		binary.BigEndian.PutUint32(buf[entryOffset:entryOffset+4], bitmap)
 		entryOffset += 4
+
+		// ReceiptMeta section
+		binary.BigEndian.PutUint64(buf[entryOffset:entryOffset+8], dataOffset)
+		binary.BigEndian.PutUint32(buf[entryOffset+8:entryOffset+12], uint32(len(tx.ReceiptMetaData)))
+		binary.BigEndian.PutUint32(buf[entryOffset+12:entryOffset+16], tx.ReceiptMetaUncompLen)
+		entryOffset += 16
+		if len(tx.ReceiptMetaData) > 0 {
+			copy(buf[indexSize+int(dataOffset):], tx.ReceiptMetaData)
+			dataOffset += uint64(len(tx.ReceiptMetaData))
+		}
 
 		// Events section
 		binary.BigEndian.PutUint64(buf[entryOffset:entryOffset+8], dataOffset)
@@ -179,8 +222,6 @@ func BuildExecDataObject(
 			copy(buf[indexSize+int(dataOffset):], tx.StateChangeData)
 			dataOffset += uint64(len(tx.StateChangeData))
 		}
-
-		// Reserved 16 bytes (already zeroed from make)
 	}
 
 	return buf
@@ -201,17 +242,20 @@ func ParseExecDataIndex(data []byte) (*ExecDataObject, error) {
 	}
 
 	obj := &ExecDataObject{
-		FormatVersion: binary.BigEndian.Uint16(data[4:6]),
-		Flags:         binary.BigEndian.Uint16(data[6:8]),
-		BlockSlot:     binary.BigEndian.Uint64(data[8:16]),
-		BlockNumber:   binary.BigEndian.Uint64(data[16:24]),
+		FormatVersion:      binary.BigEndian.Uint16(data[4:6]),
+		Flags:              binary.BigEndian.Uint16(data[6:8]),
+		BlockSlot:          binary.BigEndian.Uint64(data[8:16]),
+		BlockNumber:        binary.BigEndian.Uint64(data[16:24]),
+		BlockMetaOffset:    binary.BigEndian.Uint64(data[24:32]),
+		BlockMetaCompLen:   binary.BigEndian.Uint32(data[32:36]),
+		BlockMetaUncompLen: binary.BigEndian.Uint32(data[36:40]),
 	}
 
 	if obj.FormatVersion != ExecDataFormatVersion {
 		return nil, fmt.Errorf("unsupported exec data version: %d", obj.FormatVersion)
 	}
 
-	txCount := binary.BigEndian.Uint32(data[24:28])
+	txCount := binary.BigEndian.Uint32(data[40:44])
 
 	expectedIndexSize := ExecDataHeaderSize + ExecDataTxCountSize + int(txCount)*ExecDataTxEntrySize
 	if len(data) < expectedIndexSize {
@@ -226,20 +270,25 @@ func ParseExecDataIndex(data []byte) (*ExecDataObject, error) {
 		copy(entry.TxHash[:], data[offset:offset+32])
 		entry.SectionsBitmap = binary.BigEndian.Uint32(data[offset+32 : offset+36])
 
+		// ReceiptMeta
+		entry.ReceiptMetaOffset = binary.BigEndian.Uint64(data[offset+36 : offset+44])
+		entry.ReceiptMetaCompLen = binary.BigEndian.Uint32(data[offset+44 : offset+48])
+		entry.ReceiptMetaUncompLen = binary.BigEndian.Uint32(data[offset+48 : offset+52])
+
 		// Events
-		entry.EventsOffset = binary.BigEndian.Uint64(data[offset+36 : offset+44])
-		entry.EventsCompLen = binary.BigEndian.Uint32(data[offset+44 : offset+48])
-		entry.EventsUncompLen = binary.BigEndian.Uint32(data[offset+48 : offset+52])
+		entry.EventsOffset = binary.BigEndian.Uint64(data[offset+52 : offset+60])
+		entry.EventsCompLen = binary.BigEndian.Uint32(data[offset+60 : offset+64])
+		entry.EventsUncompLen = binary.BigEndian.Uint32(data[offset+64 : offset+68])
 
 		// CallTrace
-		entry.CallTraceOffset = binary.BigEndian.Uint64(data[offset+52 : offset+60])
-		entry.CallTraceCompLen = binary.BigEndian.Uint32(data[offset+60 : offset+64])
-		entry.CallTraceUncompLen = binary.BigEndian.Uint32(data[offset+64 : offset+68])
+		entry.CallTraceOffset = binary.BigEndian.Uint64(data[offset+68 : offset+76])
+		entry.CallTraceCompLen = binary.BigEndian.Uint32(data[offset+76 : offset+80])
+		entry.CallTraceUncompLen = binary.BigEndian.Uint32(data[offset+80 : offset+84])
 
 		// StateChanges
-		entry.StateChangeOffset = binary.BigEndian.Uint64(data[offset+68 : offset+76])
-		entry.StateChangeCompLen = binary.BigEndian.Uint32(data[offset+76 : offset+80])
-		entry.StateChangeUncompLen = binary.BigEndian.Uint32(data[offset+80 : offset+84])
+		entry.StateChangeOffset = binary.BigEndian.Uint64(data[offset+84 : offset+92])
+		entry.StateChangeCompLen = binary.BigEndian.Uint32(data[offset+92 : offset+96])
+		entry.StateChangeUncompLen = binary.BigEndian.Uint32(data[offset+96 : offset+100])
 	}
 
 	return obj, nil
@@ -258,7 +307,8 @@ func ExecDataMinHeaderSize() int {
 
 // ParseExecDataTxCount parses the minimum header bytes needed to extract the
 // transaction count from an execution data object. This is intended for partial
-// reads (e.g., S3 range reads) where only the first 28 bytes are available.
+// reads (e.g., S3 range reads) where only the first ExecDataMinHeaderSize bytes
+// are available.
 func ParseExecDataTxCount(header []byte) (uint32, error) {
 	if len(header) < ExecDataMinHeaderSize() {
 		return 0, fmt.Errorf("exec data header too short: %d bytes", len(header))
@@ -275,7 +325,7 @@ func ParseExecDataTxCount(header []byte) (uint32, error) {
 		return 0, fmt.Errorf("unsupported exec data version: %d", ver)
 	}
 
-	return binary.BigEndian.Uint32(header[24:28]), nil
+	return binary.BigEndian.Uint32(header[40:44]), nil
 }
 
 // ExtractSectionData extracts a specific compressed section from raw object data.
@@ -298,6 +348,15 @@ func ExtractSectionData(objectData []byte, txCount uint32, sectionOffset uint64,
 	}
 
 	return objectData[start:end], nil
+}
+
+// ExtractBlockMeta extracts the compressed block metadata section from raw
+// object data. Returns nil if no block meta section is present.
+func (obj *ExecDataObject) ExtractBlockMeta(objectData []byte) ([]byte, error) {
+	return ExtractSectionData(
+		objectData, uint32(len(obj.Transactions)),
+		obj.BlockMetaOffset, obj.BlockMetaCompLen,
+	)
 }
 
 // FindTxEntry finds the index entry for a specific transaction hash.
@@ -324,6 +383,7 @@ func (entry *ExecDataTxEntry) GetTxSectionSpan(mask uint32) (offset uint64, leng
 	}
 
 	sections := []sec{
+		{ExecDataSectionReceiptMeta, entry.ReceiptMetaOffset, entry.ReceiptMetaCompLen},
 		{ExecDataSectionEvents, entry.EventsOffset, entry.EventsCompLen},
 		{ExecDataSectionCallTrace, entry.CallTraceOffset, entry.CallTraceCompLen},
 		{ExecDataSectionStateChange, entry.StateChangeOffset, entry.StateChangeCompLen},
@@ -364,7 +424,9 @@ func (entry *ExecDataTxEntry) GetTxSectionSpan(mask uint32) (offset uint64, leng
 // chunk that was read starting at spanOffset in the data area. mask
 // selects which sections to extract. The chunk must cover the span
 // returned by GetTxSectionSpan with the same mask.
-func (entry *ExecDataTxEntry) SliceTxSections(chunk []byte, spanOffset uint64, mask uint32) (events, callTrace, stateChange []byte) {
+func (entry *ExecDataTxEntry) SliceTxSections(
+	chunk []byte, spanOffset uint64, mask uint32,
+) (events, callTrace, stateChange, receiptMeta []byte) {
 	slice := func(flag uint32, off uint64, compLen uint32) []byte {
 		if mask&flag == 0 || compLen == 0 {
 			return nil
@@ -379,6 +441,7 @@ func (entry *ExecDataTxEntry) SliceTxSections(chunk []byte, spanOffset uint64, m
 		return out
 	}
 
+	receiptMeta = slice(ExecDataSectionReceiptMeta, entry.ReceiptMetaOffset, entry.ReceiptMetaCompLen)
 	events = slice(ExecDataSectionEvents, entry.EventsOffset, entry.EventsCompLen)
 	callTrace = slice(ExecDataSectionCallTrace, entry.CallTraceOffset, entry.CallTraceCompLen)
 	stateChange = slice(ExecDataSectionStateChange, entry.StateChangeOffset, entry.StateChangeCompLen)
