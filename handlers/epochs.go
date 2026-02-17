@@ -106,6 +106,7 @@ func buildEpochsPageData(firstEpoch uint64, pageSize uint64) (*models.EpochsPage
 	pageData.UrlParams["count"] = fmt.Sprintf("%v", pageData.PageSize)
 	pageData.MaxEpoch = uint64(currentEpoch)
 
+	specs := chainState.GetSpecs()
 	finalizedEpoch, _ := chainState.GetFinalizedCheckpoint()
 	justifiedEpoch, _ := chainState.GetJustifiedCheckpoint()
 	epochLimit := pageSize
@@ -149,6 +150,10 @@ func buildEpochsPageData(firstEpoch uint64, pageSize uint64) (*models.EpochsPage
 				epochData.TargetVoteParticipation = float64(dbEpoch.VotedTarget) * 100.0 / float64(dbEpoch.Eligible)
 				epochData.HeadVoteParticipation = float64(dbEpoch.VotedHead) * 100.0 / float64(dbEpoch.Eligible)
 				epochData.TotalVoteParticipation = float64(dbEpoch.VotedTotal) * 100.0 / float64(dbEpoch.Eligible)
+			}
+			epochData.SlotsPerEpoch = specs.SlotsPerEpoch
+			if specs.SlotsPerEpoch > 0 {
+				epochData.ProposalParticipation = float64(dbEpoch.BlockCount) * 100.0 / float64(specs.SlotsPerEpoch)
 			}
 			epochData.EthTransactionCount = dbEpoch.EthTransactionCount
 			epochData.BlobCount = dbEpoch.BlobCount

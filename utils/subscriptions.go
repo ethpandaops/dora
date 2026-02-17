@@ -2,13 +2,13 @@ package utils
 
 import "sync"
 
-type Subscription[T interface{}] struct {
+type Subscription[T any] struct {
 	channel    chan T
 	blocking   bool
 	dispatcher *Dispatcher[T]
 }
 
-type Dispatcher[T interface{}] struct {
+type Dispatcher[T any] struct {
 	mutex         sync.Mutex
 	subscriptions []*Subscription[T]
 }
@@ -42,7 +42,7 @@ func (d *Dispatcher[T]) Unsubscribe(subscription *Subscription[T]) {
 	d.mutex.Lock()
 	defer d.mutex.Unlock()
 
-	if subscription.dispatcher != nil {
+	if subscription.dispatcher == nil {
 		return
 	}
 

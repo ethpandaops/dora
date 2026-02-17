@@ -412,12 +412,9 @@ jobs:
     # build multiarch image
     - name: Build multiarch docker manifest
       run: |
-        docker manifest create ${{ inputs.docker_repository }}:${{ inputs.docker_tag_prefix }}-${{ steps.vars.outputs.sha_short }} \
-        --amend ${{ inputs.docker_repository }}:${{ inputs.docker_tag_prefix }}-${{ steps.vars.outputs.sha_short }}-amd64 \
-        --amend ${{ inputs.docker_repository }}:${{ inputs.docker_tag_prefix }}-${{ steps.vars.outputs.sha_short }}-arm64
-    - name: Push multiarch docker manifest
-      run: |
-        docker manifest push ${{ inputs.docker_repository }}:${{ inputs.docker_tag_prefix }}-${{ steps.vars.outputs.sha_short }}
+        docker buildx imagetools create -t ${{ inputs.docker_repository }}:${{ inputs.docker_tag_prefix }}-${{ steps.vars.outputs.sha_short }} \
+        ${{ inputs.docker_repository }}:${{ inputs.docker_tag_prefix }}-${{ steps.vars.outputs.sha_short }}-amd64 \
+        ${{ inputs.docker_repository }}:${{ inputs.docker_tag_prefix }}-${{ steps.vars.outputs.sha_short }}-arm64
 
   build_extra_image:
     name: Build additional docker manifests
@@ -447,18 +444,12 @@ jobs:
     # build multiarch image
     - name: "Build additional docker manifest: ${{ matrix.tag }}"
       run: |
-        docker manifest create ${{ inputs.docker_repository }}:${{ matrix.tag }}-amd64 \
-        --amend ${{ inputs.docker_repository }}:${{ inputs.docker_tag_prefix }}-${{ steps.vars.outputs.sha_short }}-amd64
+        docker buildx imagetools create -t ${{ inputs.docker_repository }}:${{ matrix.tag }}-amd64 \
+        ${{ inputs.docker_repository }}:${{ inputs.docker_tag_prefix }}-${{ steps.vars.outputs.sha_short }}-amd64
 
-        docker manifest create ${{ inputs.docker_repository }}:${{ matrix.tag }}-arm64 \
-        --amend ${{ inputs.docker_repository }}:${{ inputs.docker_tag_prefix }}-${{ steps.vars.outputs.sha_short }}-arm64
+        docker buildx imagetools create -t ${{ inputs.docker_repository }}:${{ matrix.tag }}-arm64 \
+        ${{ inputs.docker_repository }}:${{ inputs.docker_tag_prefix }}-${{ steps.vars.outputs.sha_short }}-arm64
 
-        docker manifest create ${{ inputs.docker_repository }}:${{ matrix.tag }} \
-        --amend ${{ inputs.docker_repository }}:${{ inputs.docker_tag_prefix }}-${{ steps.vars.outputs.sha_short }}-amd64 \
-        --amend ${{ inputs.docker_repository }}:${{ inputs.docker_tag_prefix }}-${{ steps.vars.outputs.sha_short }}-arm64
-
-    - name: "Push additional docker manifest: ${{ matrix.tag }}"
-      run: |
-        docker manifest push ${{ inputs.docker_repository }}:${{ matrix.tag }}-amd64
-        docker manifest push ${{ inputs.docker_repository }}:${{ matrix.tag }}-arm64
-        docker manifest push ${{ inputs.docker_repository }}:${{ matrix.tag }}
+        docker buildx imagetools create -t ${{ inputs.docker_repository }}:${{ matrix.tag }} \
+        ${{ inputs.docker_repository }}:${{ inputs.docker_tag_prefix }}-${{ steps.vars.outputs.sha_short }}-amd64 \
+        ${{ inputs.docker_repository }}:${{ inputs.docker_tag_prefix }}-${{ steps.vars.outputs.sha_short }}-arm64
