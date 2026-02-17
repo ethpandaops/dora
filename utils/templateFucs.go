@@ -24,6 +24,37 @@ func GetTemplateFuncs() template.FuncMap {
 		fm[k] = v
 	}
 
+	toInt64 := func(v interface{}) int64 {
+		switch x := v.(type) {
+		case int:
+			return int64(x)
+		case int8:
+			return int64(x)
+		case int16:
+			return int64(x)
+		case int32:
+			return int64(x)
+		case int64:
+			return x
+		case uint:
+			return int64(x)
+		case uint8:
+			return int64(x)
+		case uint16:
+			return int64(x)
+		case uint32:
+			return int64(x)
+		case uint64:
+			return int64(x)
+		case float32:
+			return int64(x)
+		case float64:
+			return int64(x)
+		default:
+			return 0
+		}
+	}
+
 	customFuncs := template.FuncMap{
 		"includeHTML": IncludeHTML,
 		"includeJSON": IncludeJSON,
@@ -80,6 +111,9 @@ func GetTemplateFuncs() template.FuncMap {
 		"formatEthAddressFull":         FormatEthAddressFull,
 		"formatEthAddressFullLink":     FormatEthAddressFullLink,
 		"formatHexBytes":               FormatHexBytes,
+		"formatHexBytesShort":          FormatHexBytesShort,
+		"formatWeiAmount":              FormatWeiAmount,
+		"formatWeiDeltaAmount":         FormatWeiDeltaAmount,
 		"formatNFTTokenID":             FormatNFTTokenID,
 		"formatEthHashShort":           FormatEthHashShort,
 		"formatContractCreationLink":   FormatContractCreationLink,
@@ -93,6 +127,7 @@ func GetTemplateFuncs() template.FuncMap {
 		"formatRecvDelay":              FormatRecvDelay,
 		"formatPercentageAlert":        formatPercentageAlert,
 		"formatAlertNumber":            formatAlertNumber,
+		"bitwiseAnd":                   func(a, b interface{}) int64 { return toInt64(a) & toInt64(b) },
 	}
 
 	for k, v := range customFuncs {

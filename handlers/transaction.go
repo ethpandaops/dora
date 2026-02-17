@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -16,9 +17,13 @@ import (
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethereum/go-ethereum/common"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
+	"github.com/golang/snappy"
 	"github.com/gorilla/mux"
+	dynssz "github.com/pk910/dynamic-ssz"
 	"github.com/sirupsen/logrus"
 
+	"github.com/ethpandaops/dora/blockdb"
+	bdbtypes "github.com/ethpandaops/dora/blockdb/types"
 	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
@@ -43,7 +48,9 @@ func Transaction(w http.ResponseWriter, r *http.Request) {
 	txTemplateFiles := append(layoutTemplateFiles,
 		"transaction/transaction.html",
 		"transaction/events.html",
+		"transaction/statechanges.html",
 		"transaction/transfers.html",
+		"transaction/internaltxs.html",
 		"transaction/blobs.html",
 	)
 	notfoundTemplateFiles := append(layoutTemplateFiles,
@@ -403,19 +410,32 @@ func buildTransactionPageDataFromDB(pageData *models.TransactionPageData, txs []
 	// Blobs
 	pageData.BlobCount = tx.BlobCount
 
-	// Always load counts for tab badges
-	events, _ := db.GetElTxEventsByBlockUidAndTxHash(tx.BlockUid, pageData.TxHash)
-	pageData.EventCount = uint64(len(events))
+	// Load event count from event index
+	eventIndices, _ := db.GetElEventIndicesByTxHash(pageData.TxHash)
+	pageData.EventCount = uint64(len(eventIndices))
 
 	transfers, _ := db.GetElTokenTransfersByBlockUidAndTxHash(tx.BlockUid, pageData.TxHash)
 	pageData.TokenTransferCount = uint64(len(transfers))
 
+	// Load internal transaction count
+	internalTxs, _ := db.GetElTransactionsInternalByTxHash(pageData.TxHash)
+	pageData.InternalTxCount = uint64(len(internalTxs))
+
+	// Check data_status for this block (for blockdb availability)
+	if elBlock, err := db.GetElBlock(tx.BlockUid); err == nil {
+		pageData.DataStatus = elBlock.DataStatus
+	}
+
 	// Load tab-specific detailed data
 	switch tabView {
 	case "events":
-		loadTransactionEventsFromData(pageData, events)
+		loadTransactionEventsFromBlockdb(pageData, eventIndices, tx.BlockUid)
 	case "transfers":
 		loadTransactionTransfersFromData(pageData, transfers)
+	case "internaltxs":
+		loadTransactionInternalTxsFromBlockdb(pageData, internalTxs, tx.BlockUid)
+	case "statechanges":
+		loadTransactionStateChangesFromBlockdb(pageData, tx.BlockUid)
 	}
 }
 
@@ -479,8 +499,11 @@ func buildTransactionPageDataFromEL(pageData *models.TransactionPageData, txHash
 
 	// Value
 	if ethTx.Value() != nil {
-		valueFloat, _ := new(big.Float).SetInt(ethTx.Value()).Float64()
-		pageData.Amount = valueFloat / 1e18
+		bigFloat := new(big.Float).SetInt(ethTx.Value())
+		bigFloat.Quo(bigFloat, big.NewFloat(1e18))
+		valueFloat, _ := bigFloat.Float64()
+
+		pageData.Amount = valueFloat
 		pageData.AmountRaw = ethTx.Value().Bytes()
 	}
 
@@ -657,13 +680,17 @@ func generateTxJSON(pageData *models.TransactionPageData, ethTx *ethtypes.Transa
 	}
 }
 
-func loadTransactionEventsFromData(pageData *models.TransactionPageData, events []*dbtypes.ElTxEvent) {
+// loadTransactionEventsFromIndex populates event tab from the lightweight
+// event index. Full event data (all topics + data blob) will be loaded from
+// blockdb in a future phase. For now, only source address and topic1 (event
+// signature) are shown.
+func loadTransactionEventsFromIndex(pageData *models.TransactionPageData, events []*dbtypes.ElEventIndex) {
 	if len(events) == 0 {
 		return
 	}
 
 	// Collect account IDs for batch lookup
-	accountIDs := make(map[uint64]bool)
+	accountIDs := make(map[uint64]bool, len(events))
 	for _, e := range events {
 		accountIDs[e.SourceID] = true
 	}
@@ -673,7 +700,7 @@ func loadTransactionEventsFromData(pageData *models.TransactionPageData, events 
 	for id := range accountIDs {
 		accountIDList = append(accountIDList, id)
 	}
-	accountMap := make(map[uint64]*dbtypes.ElAccount)
+	accountMap := make(map[uint64]*dbtypes.ElAccount, len(accountIDList))
 	if len(accountIDList) > 0 {
 		if accounts, err := db.GetElAccountsByIDs(accountIDList); err == nil {
 			for _, a := range accounts {
@@ -682,12 +709,11 @@ func loadTransactionEventsFromData(pageData *models.TransactionPageData, events 
 		}
 	}
 
-	// Build events list
+	// Build events list from index entries
 	pageData.Events = make([]*models.TransactionPageDataEvent, 0, len(events))
 	for _, e := range events {
 		event := &models.TransactionPageDataEvent{
 			EventIndex: e.EventIndex,
-			Data:       e.Data,
 		}
 
 		// Source address
@@ -696,24 +722,426 @@ func loadTransactionEventsFromData(pageData *models.TransactionPageData, events 
 			event.SourceIsContract = source.IsContract
 		}
 
-		// Topics
+		// Only topic1 (event signature) is available from the index
 		if len(e.Topic1) > 0 {
 			event.Topic0 = e.Topic1
 		}
-		if len(e.Topic2) > 0 {
-			event.Topic1 = e.Topic2
-		}
-		if len(e.Topic3) > 0 {
-			event.Topic2 = e.Topic3
-		}
-		if len(e.Topic4) > 0 {
-			event.Topic3 = e.Topic4
-		}
-		if len(e.Topic5) > 0 {
-			event.Topic4 = e.Topic5
-		}
 
 		pageData.Events = append(pageData.Events, event)
+	}
+}
+
+// loadTransactionEventsFromBlockdb populates the events tab with full event
+// data from blockdb (all topics + data blob). Falls back to index-only display
+// if blockdb data is unavailable (pruned or not in Full mode).
+func loadTransactionEventsFromBlockdb(pageData *models.TransactionPageData, events []*dbtypes.ElEventIndex, blockUid uint64) {
+	if len(events) == 0 {
+		return
+	}
+
+	// If the block says events data is unavailable (pruned / not stored), show the
+	// "not available" state instead of silently degrading to index-only view.
+	if pageData.DataStatus&dbtypes.ElBlockDataEvents == 0 {
+		pageData.EventsNotAvailable = true
+		return
+	}
+
+	// Try to load full event data from blockdb
+	if blockdb.GlobalBlockDb != nil && blockdb.GlobalBlockDb.SupportsExecData() {
+		slot := blockUid >> 16
+		blockRoot := pageData.BlockRoot
+
+		if len(blockRoot) > 0 {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+
+			sections, err := blockdb.GlobalBlockDb.GetExecDataTxSections(
+				ctx, slot, blockRoot, pageData.TxHash,
+				bdbtypes.ExecDataSectionEvents,
+			)
+			if err != nil {
+				logrus.WithError(err).WithField("slot", slot).Debug("failed to get exec data tx sections for events")
+			}
+			if err == nil && sections != nil && sections.EventsData != nil {
+				uncompData, err := snappy.Decode(nil, sections.EventsData)
+				if err != nil {
+					logrus.WithError(err).Debug("failed to decompress events section")
+				} else {
+					var events bdbtypes.EventDataList
+
+					err := dynssz.GetGlobalDynSsz().UnmarshalSSZ(&events, uncompData)
+					if err != nil {
+						logrus.WithError(err).Debug("failed to decode events section")
+					} else {
+						pageData.Events = buildEventsFromBlockdb(events)
+						return
+					}
+				}
+			}
+		}
+	}
+
+	// Fallback: use index-only data
+	loadTransactionEventsFromIndex(pageData, events)
+}
+
+// buildEventsFromBlockdb converts decoded blockdb events to page model events.
+func buildEventsFromBlockdb(events bdbtypes.EventDataList) []*models.TransactionPageDataEvent {
+	result := make([]*models.TransactionPageDataEvent, 0, len(events))
+	for i := range events {
+		ev := &events[i]
+		event := &models.TransactionPageDataEvent{
+			EventIndex: ev.EventIndex,
+			SourceAddr: ev.Source[:],
+			Data:       ev.Data,
+		}
+
+		// Map topics to fixed fields
+		if len(ev.Topics) > 0 {
+			event.Topic0 = ev.Topics[0]
+		}
+		if len(ev.Topics) > 1 {
+			event.Topic1 = ev.Topics[1]
+		}
+		if len(ev.Topics) > 2 {
+			event.Topic2 = ev.Topics[2]
+		}
+		if len(ev.Topics) > 3 {
+			event.Topic3 = ev.Topics[3]
+		}
+		if len(ev.Topics) > 4 {
+			event.Topic4 = ev.Topics[4]
+		}
+
+		result = append(result, event)
+	}
+	return result
+}
+
+// loadTransactionStateChangesFromBlockdb populates the state changes tab with
+// per-account storage/balance/nonce/code diffs from blockdb.
+func loadTransactionStateChangesFromBlockdb(pageData *models.TransactionPageData, blockUid uint64) {
+	// If the block says state change data is unavailable (pruned / not stored),
+	// show the "not available" state.
+	if pageData.DataStatus&dbtypes.ElBlockDataStateChanges == 0 {
+		pageData.StateChangesNotAvailable = true
+		return
+	}
+
+	if blockdb.GlobalBlockDb == nil || !blockdb.GlobalBlockDb.SupportsExecData() {
+		pageData.StateChangesNotAvailable = true
+		return
+	}
+
+	slot := blockUid >> 16
+	blockRoot := pageData.BlockRoot
+	if len(blockRoot) == 0 {
+		pageData.StateChangesNotAvailable = true
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	sections, err := blockdb.GlobalBlockDb.GetExecDataTxSections(
+		ctx, slot, blockRoot, pageData.TxHash,
+		bdbtypes.ExecDataSectionStateChange,
+	)
+	if err != nil {
+		logrus.WithError(err).WithField("slot", slot).Debug("failed to get exec data tx sections for state changes")
+		pageData.StateChangesNotAvailable = true
+		return
+	}
+	if sections == nil || sections.StateChangeData == nil {
+		pageData.StateChangesNotAvailable = true
+		return
+	}
+
+	uncompData, err := snappy.Decode(nil, sections.StateChangeData)
+	if err != nil {
+		logrus.WithError(err).Debug("failed to decompress state changes section")
+		pageData.StateChangesNotAvailable = true
+		return
+	}
+
+	var accounts []bdbtypes.StateChangeAccount
+
+	err = dynssz.GetGlobalDynSsz().UnmarshalSSZ(&accounts, uncompData)
+	if err != nil {
+		logrus.WithError(err).Debug("failed to decode state changes section")
+		pageData.StateChangesNotAvailable = true
+		return
+	}
+
+	pageData.StateChanges = buildStateChangesFromBlockdb(accounts)
+}
+
+func buildStateChangesFromBlockdb(accounts []bdbtypes.StateChangeAccount) []*models.TransactionPageDataStateChangeAccount {
+	result := make([]*models.TransactionPageDataStateChangeAccount, 0, len(accounts))
+
+	for i := range accounts {
+		a := &accounts[i]
+
+		preBal := new(big.Int)
+		postBal := new(big.Int)
+		if len(a.PreBalance) > 0 {
+			preBal.SetBytes(a.PreBalance.Bytes())
+		}
+		if len(a.PostBalance) > 0 {
+			postBal.SetBytes(a.PostBalance.Bytes())
+		}
+		balDiff := new(big.Int).Sub(postBal, preBal)
+
+		acct := &models.TransactionPageDataStateChangeAccount{
+			Address: a.Address[:],
+
+			AccountCreated: (a.Flags & bdbtypes.StateChangeFlagAccountCreated) != 0,
+			AccountKilled:  (a.Flags & bdbtypes.StateChangeFlagAccountKilled) != 0,
+
+			BalanceChanged: (a.Flags & bdbtypes.StateChangeFlagBalanceChanged) != 0,
+			PreBalance:     a.PreBalance.Bytes(),
+			PostBalance:    a.PostBalance.Bytes(),
+			PreBalanceWei:  preBal.String(),
+			PostBalanceWei: postBal.String(),
+			BalanceDiffWei: balDiff.String(),
+
+			NonceChanged: (a.Flags & bdbtypes.StateChangeFlagNonceChanged) != 0,
+			PreNonce:     a.PreNonce,
+			PostNonce:    a.PostNonce,
+
+			CodeChanged: (a.Flags & bdbtypes.StateChangeFlagCodeChanged) != 0,
+			PreCode:     a.PreCode,
+			PostCode:    a.PostCode,
+			PreCodeLen:  len(a.PreCode),
+			PostCodeLen: len(a.PostCode),
+
+			StorageChanged: (a.Flags & bdbtypes.StateChangeFlagStorageChanged) != 0,
+		}
+
+		if acct.StorageChanged && len(a.Slots) > 0 {
+			acct.Slots = make([]*models.TransactionPageDataStateChangeSlot, 0, len(a.Slots))
+
+			zeroValue := [32]byte{}
+			for j := range a.Slots {
+				s := &a.Slots[j]
+
+				slot := &models.TransactionPageDataStateChangeSlot{
+					Slot: s.Slot[:],
+				}
+
+				if bytes.Equal(s.PreValue[:], zeroValue[:]) {
+					slot.ChangeType = "created"
+					slot.PostValue = s.PostValue[:]
+				} else if bytes.Equal(s.PostValue[:], zeroValue[:]) {
+					slot.ChangeType = "deleted"
+					slot.PreValue = s.PreValue[:]
+				} else {
+					slot.ChangeType = "modified"
+					slot.PreValue = s.PreValue[:]
+					slot.PostValue = s.PostValue[:]
+				}
+
+				acct.Slots = append(acct.Slots, slot)
+			}
+		}
+
+		result = append(result, acct)
+	}
+
+	return result
+}
+
+// callTypeNames maps call type constants to display names.
+var callTypeNames = map[uint8]string{
+	0: "CALL",
+	1: "STATICCALL",
+	2: "DELEGATECALL",
+	3: "CREATE",
+	4: "CREATE2",
+	5: "SELFDESTRUCT",
+}
+
+// loadTransactionInternalTxsFromBlockdb populates the internal transactions tab
+// with rich call trace data from blockdb (depth, input, output, gas, status).
+// Falls back to DB-only data if blockdb data is unavailable.
+func loadTransactionInternalTxsFromBlockdb(pageData *models.TransactionPageData, entries []*dbtypes.ElTransactionInternal, blockUid uint64) {
+	if len(entries) == 0 {
+		return
+	}
+
+	// If the block says call trace data is unavailable (pruned / not stored),
+	// show the "not available" state instead of the DB-only fallback.
+	if pageData.DataStatus&dbtypes.ElBlockDataCallTraces == 0 {
+		pageData.InternalTxsNotAvailable = true
+		return
+	}
+
+	// Try to load rich call trace from blockdb
+	if blockdb.GlobalBlockDb != nil && blockdb.GlobalBlockDb.SupportsExecData() {
+		slot := blockUid >> 16
+		blockRoot := pageData.BlockRoot
+
+		if len(blockRoot) > 0 {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+
+			sections, err := blockdb.GlobalBlockDb.GetExecDataTxSections(
+				ctx, slot, blockRoot, pageData.TxHash,
+				bdbtypes.ExecDataSectionCallTrace,
+			)
+			if err != nil {
+				logrus.WithError(err).WithField("slot", slot).Debug("failed to get exec data tx sections for call trace")
+			}
+			if err == nil && sections != nil && sections.CallTraceData != nil {
+				uncompData, err := snappy.Decode(nil, sections.CallTraceData)
+				if err != nil {
+					logrus.WithError(err).Debug("failed to decompress call trace section")
+				} else {
+					var frames []bdbtypes.FlatCallFrame
+					err = dynssz.GetGlobalDynSsz().UnmarshalSSZ(&frames, uncompData)
+					if err != nil {
+						logrus.WithError(err).Debug("failed to decode call trace section")
+					} else {
+						buildInternalTxsFromBlockdb(pageData, frames)
+						return
+					}
+				}
+			}
+		}
+	}
+
+	// Fallback: use DB-only data (no depth/input/output)
+	loadTransactionInternalTxsFromDB(pageData, entries)
+}
+
+// buildInternalTxsFromBlockdb converts decoded blockdb call frames to page
+// model internal transactions with full trace data.
+func buildInternalTxsFromBlockdb(pageData *models.TransactionPageData, frames []bdbtypes.FlatCallFrame) {
+	pageData.InternalTxs = make([]*models.TransactionPageDataInternalTx, 0, len(frames))
+
+	// Collect unique 4-byte method selectors for batch lookup
+	sigSet := make(map[types.TxSignatureBytes]struct{}, len(frames))
+	for i := range frames {
+		if len(frames[i].Input) >= 4 {
+			var sig types.TxSignatureBytes
+			copy(sig[:], frames[i].Input[:4])
+			sigSet[sig] = struct{}{}
+		}
+	}
+
+	sigBytes := make([]types.TxSignatureBytes, 0, len(sigSet))
+	for sig := range sigSet {
+		sigBytes = append(sigBytes, sig)
+	}
+
+	var sigLookups map[types.TxSignatureBytes]*services.TxSignaturesLookup
+	if len(sigBytes) > 0 {
+		sigLookups = services.GlobalTxSignaturesService.LookupSignatures(sigBytes)
+	}
+
+	for i := range frames {
+		f := &frames[i]
+
+		bigFloat := new(big.Float).SetInt(f.Value.ToBig())
+		bigFloat.Quo(bigFloat, big.NewFloat(1e18))
+		valueFloat, _ := bigFloat.Float64()
+		valueRaw := f.Value.Bytes()
+
+		itx := &models.TransactionPageDataInternalTx{
+			CallIndex:    uint32(i),
+			Depth:        f.Depth,
+			CallType:     f.Type,
+			FromAddr:     f.From[:],
+			ToAddr:       f.To[:],
+			Amount:       valueFloat,
+			AmountRaw:    valueRaw,
+			Gas:          f.Gas,
+			GasUsed:      f.GasUsed,
+			Status:       f.Status,
+			ErrorText:    f.Error,
+			Input:        f.Input,
+			Output:       f.Output,
+			HasTraceData: true,
+		}
+
+		if name, ok := callTypeNames[f.Type]; ok {
+			itx.TypeName = name
+		} else {
+			itx.TypeName = fmt.Sprintf("TYPE_%d", f.Type)
+		}
+
+		// Method ID and name from input data
+		if len(f.Input) >= 4 {
+			itx.MethodID = f.Input[:4]
+			var sig types.TxSignatureBytes
+			copy(sig[:], f.Input[:4])
+			if sigLookups != nil {
+				if lookup, found := sigLookups[sig]; found {
+					if lookup.Status == types.TxSigStatusFound {
+						itx.MethodName = lookup.Name
+					}
+				}
+			}
+		}
+
+		pageData.InternalTxs = append(pageData.InternalTxs, itx)
+	}
+}
+
+// loadTransactionInternalTxsFromDB populates internal transactions from DB data
+// only (no depth/input/output trace data).
+func loadTransactionInternalTxsFromDB(pageData *models.TransactionPageData, entries []*dbtypes.ElTransactionInternal) {
+	if len(entries) == 0 {
+		return
+	}
+
+	// Collect account IDs for batch lookup
+	accountIDs := make(map[uint64]bool, len(entries)*2)
+	for _, e := range entries {
+		accountIDs[e.FromID] = true
+		accountIDs[e.ToID] = true
+	}
+
+	// Batch lookup accounts
+	accountIDList := make([]uint64, 0, len(accountIDs))
+	for id := range accountIDs {
+		accountIDList = append(accountIDList, id)
+	}
+	accountMap := make(map[uint64]*dbtypes.ElAccount, len(accountIDList))
+	if len(accountIDList) > 0 {
+		if accounts, err := db.GetElAccountsByIDs(accountIDList); err == nil {
+			for _, a := range accounts {
+				accountMap[a.ID] = a
+			}
+		}
+	}
+
+	// Build internal tx list
+	pageData.InternalTxs = make([]*models.TransactionPageDataInternalTx, 0, len(entries))
+	for _, e := range entries {
+		itx := &models.TransactionPageDataInternalTx{
+			CallIndex: e.TxCallIdx,
+			CallType:  e.CallType,
+			Amount:    e.Value,
+			AmountRaw: e.ValueRaw,
+		}
+
+		if name, ok := callTypeNames[e.CallType]; ok {
+			itx.TypeName = name
+		} else {
+			itx.TypeName = fmt.Sprintf("TYPE_%d", e.CallType)
+		}
+
+		if from, ok := accountMap[e.FromID]; ok {
+			itx.FromAddr = from.Address
+			itx.FromIsContract = from.IsContract
+		}
+		if to, ok := accountMap[e.ToID]; ok {
+			itx.ToAddr = to.Address
+			itx.ToIsContract = to.IsContract
+		}
+
+		pageData.InternalTxs = append(pageData.InternalTxs, itx)
 	}
 }
 

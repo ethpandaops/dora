@@ -1,6 +1,10 @@
 package types
 
-import "time"
+import (
+	"fmt"
+	"strings"
+	"time"
+)
 
 // Config is a struct to hold the configuration data
 type Config struct {
@@ -143,6 +147,11 @@ type Config struct {
 		Enabled         bool          `yaml:"enabled" envconfig:"EXECUTIONINDEXER_ENABLED"`
 		Retention       time.Duration `yaml:"retention" envconfig:"EXECUTIONINDEXER_RETENTION"`
 		CleanupInterval time.Duration `yaml:"cleanupInterval" envconfig:"EXECUTIONINDEXER_CLEANUP_INTERVAL"`
+
+		// Detail storage (Mode 3 features)
+		DetailsEnabled bool   `yaml:"detailsEnabled" envconfig:"EXECUTIONINDEXER_DETAILS_ENABLED"`
+		TracesEnabled  bool   `yaml:"tracesEnabled" envconfig:"EXECUTIONINDEXER_TRACES_ENABLED"`
+		DetailsMaxSize string `yaml:"detailsMaxSize" envconfig:"EXECUTIONINDEXER_DETAILS_MAX_SIZE"`
 	} `yaml:"executionIndexer"`
 
 	Database DatabaseConfig `yaml:"database"`
@@ -248,13 +257,39 @@ type PebbleBlockDBConfig struct {
 }
 
 type S3BlockDBConfig struct {
-	Endpoint             string `yaml:"endpoint" envconfig:"BLOCKDB_S3_ENDPOINT"`
-	Secure               bool   `yaml:"secure" envconfig:"BLOCKDB_S3_SECURE"`
-	Bucket               string `yaml:"bucket" envconfig:"BLOCKDB_S3_BUCKET"`
-	Region               string `yaml:"region" envconfig:"BLOCKDB_S3_REGION"`
-	AccessKey            string `yaml:"accessKey" envconfig:"BLOCKDB_S3_ACCESS_KEY"`
-	SecretKey            string `yaml:"secretKey" envconfig:"BLOCKDB_S3_SECRET_KEY"`
-	Path                 string `yaml:"path" envconfig:"BLOCKDB_S3_PATH"`
-	MaxConcurrentUploads uint   `yaml:"maxConcurrentUploads" envconfig:"BLOCKDB_S3_MAX_CONCURRENT_UPLOADS"`
-	UploadQueueSize      uint   `yaml:"uploadQueueSize" envconfig:"BLOCKDB_S3_UPLOAD_QUEUE_SIZE"`
+	Endpoint  string   `yaml:"endpoint" envconfig:"BLOCKDB_S3_ENDPOINT"`
+	Secure    YamlBool `yaml:"secure" envconfig:"BLOCKDB_S3_SECURE"`
+	Bucket    string   `yaml:"bucket" envconfig:"BLOCKDB_S3_BUCKET"`
+	Region    string   `yaml:"region" envconfig:"BLOCKDB_S3_REGION"`
+	AccessKey string   `yaml:"accessKey" envconfig:"BLOCKDB_S3_ACCESS_KEY"`
+	SecretKey string   `yaml:"secretKey" envconfig:"BLOCKDB_S3_SECRET_KEY"`
+	Path      string   `yaml:"path" envconfig:"BLOCKDB_S3_PATH"`
+}
+
+// YamlBool is a bool type that can be unmarshalled from both
+// YAML booleans (true/false) and strings ("true"/"false").
+type YamlBool bool
+
+func (b *YamlBool) UnmarshalYAML(unmarshal func(any) error) error {
+	var boolVal bool
+	if err := unmarshal(&boolVal); err == nil {
+		*b = YamlBool(boolVal)
+		return nil
+	}
+
+	var strVal string
+	if err := unmarshal(&strVal); err != nil {
+		return fmt.Errorf("cannot unmarshal into bool: %w", err)
+	}
+
+	switch strings.ToLower(strVal) {
+	case "true", "yes", "1":
+		*b = true
+	case "false", "no", "0":
+		*b = false
+	default:
+		return fmt.Errorf("cannot parse %q as bool", strVal)
+	}
+
+	return nil
 }

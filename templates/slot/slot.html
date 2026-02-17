@@ -302,6 +302,43 @@
                   </div>
                 </div>
 
+                {{ if .Block.ExecutionData }}
+                <hr class="my-4">
+                <h3 class="h5 mb-4">Execution Data</h3>
+                <div class="row g-4">
+                  <div class="col-md-6">
+                    <div class="card h-100">
+                      <div class="card-header">
+                        <h4 class="h6 mb-0">Execution Block</h4>
+                      </div>
+                      <div class="card-body">
+                        <div class="d-grid gap-2">
+                          <a href="?download=block-body-json" class="btn btn-outline-primary">
+                            <i class="fas fa-file-download me-2"></i>Download as JSON
+                          </a>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  {{ if .Block.ExecutionData.HasExecData }}
+                  <div class="col-md-6">
+                    <div class="card h-100">
+                      <div class="card-header">
+                        <h4 class="h6 mb-0">Block Receipts</h4>
+                      </div>
+                      <div class="card-body">
+                        <div class="d-grid gap-2">
+                          <a href="?download=receipts-json" class="btn btn-outline-primary">
+                            <i class="fas fa-file-download me-2"></i>Download as JSON
+                          </a>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  {{ end }}
+                </div>
+                {{ end }}
+
                 {{ if .TracoorUrl }}
                 <hr class="my-4">
                 <h3 class="h5 mb-4">Tracoor Traces</h3>

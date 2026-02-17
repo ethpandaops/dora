@@ -41,6 +41,7 @@ func Address(w http.ResponseWriter, r *http.Request) {
 		"address/transactions.html",
 		"address/erc20_transfers.html",
 		"address/nft_transfers.html",
+		"address/internal_txs.html",
 		"address/system_deposits.html",
 	)
 	notfoundTemplateFiles := append(layoutTemplateFiles,
@@ -351,6 +352,13 @@ func buildAddressPageData(account *dbtypes.ElAccount, tabView string, pageIdx, p
 		pageData.TokenBalanceCount = uint64(len(pageData.TokenBalances))
 	}
 
+	// Check if address has any internal transactions (for tab visibility)
+	if account.ID > 0 {
+		if _, count, err := db.GetElTransactionsInternalByAccount(account.ID, 0, 1); err == nil && count > 0 {
+			pageData.HasInternalTxs = true
+		}
+	}
+
 	// Check if address has any system deposits (for tab visibility)
 	if account.ID > 0 {
 		if _, count, err := db.GetElWithdrawalsByAccountID(account.ID, 0, 1); err == nil && count > 0 {
@@ -368,6 +376,8 @@ func buildAddressPageData(account *dbtypes.ElAccount, tabView string, pageIdx, p
 		loadERC20TransfersTab(pageData, account, chainState, offset, uint32(pageSize), pageIdx)
 	case "nft":
 		loadNFTTransfersTab(pageData, account, chainState, offset, uint32(pageSize), pageIdx)
+	case "internaltxs":
+		loadInternalTxsTab(pageData, account, chainState, offset, uint32(pageSize), pageIdx)
 	case "system":
 		loadSystemDepositsTab(pageData, account, chainState, offset, uint32(pageSize), pageIdx)
 	default:
@@ -757,6 +767,146 @@ func calculateTxHashRowspans(transfers []*models.AddressPageDataTokenTransfer) {
 		}
 
 		// Move to the previous group
+		i = groupStart - 1
+	}
+}
+
+func loadInternalTxsTab(pageData *models.AddressPageData, account *dbtypes.ElAccount, chainState *consensus.ChainState, offset uint64, limit uint32, pageIdx uint64) {
+	// Get internal transactions for this account
+	dbEntries, totalCount, _ := db.GetElTransactionsInternalByAccount(account.ID, offset, limit)
+
+	pageData.InternalTxCount = totalCount
+	pageData.InternalTxPageIndex = pageIdx
+	pageData.InternalTxPageSize = uint64(limit)
+	pageData.InternalTxTotalPages = uint64(math.Ceil(float64(totalCount) / float64(limit)))
+	pageData.InternalTxFirstItem = (pageIdx-1)*uint64(limit) + 1
+	pageData.InternalTxLastItem = min(pageIdx*uint64(limit), totalCount)
+
+	// Collect account IDs and block UIDs for batch lookup
+	accountIDs := make(map[uint64]bool, len(dbEntries)*2)
+	blockUids := make([]uint64, 0, len(dbEntries))
+	blockUidSet := make(map[uint64]bool, len(dbEntries))
+	for _, e := range dbEntries {
+		accountIDs[e.FromID] = true
+		accountIDs[e.ToID] = true
+		if !blockUidSet[e.BlockUid] {
+			blockUidSet[e.BlockUid] = true
+			blockUids = append(blockUids, e.BlockUid)
+		}
+	}
+
+	// Batch lookup accounts
+	accountIDList := make([]uint64, 0, len(accountIDs))
+	for id := range accountIDs {
+		accountIDList = append(accountIDList, id)
+	}
+	accountMap := make(map[uint64]*dbtypes.ElAccount, len(accountIDList))
+	if len(accountIDList) > 0 {
+		if accounts, err := db.GetElAccountsByIDs(accountIDList); err == nil {
+			for _, a := range accounts {
+				accountMap[a.ID] = a
+			}
+		}
+	}
+
+	// Batch lookup blocks
+	blockMap := make(map[uint64]*dbtypes.AssignedSlot, len(blockUids))
+	if len(blockUids) > 0 {
+		filter := &dbtypes.BlockFilter{
+			BlockUids:    blockUids,
+			WithOrphaned: 1,
+		}
+		blocks := services.GlobalBeaconService.GetDbBlocksByFilter(filter, 0, uint32(len(blockUids)), 0)
+		for _, b := range blocks {
+			if b.Block != nil {
+				blockMap[b.Block.BlockUid] = b
+			}
+		}
+	}
+
+	// Call type names
+	callTypeNames := map[uint8]string{
+		0: "CALL",
+		1: "STATICCALL",
+		2: "DELEGATECALL",
+		3: "CREATE",
+		4: "CREATE2",
+		5: "SELFDESTRUCT",
+	}
+
+	// Build internal transaction list
+	pageData.InternalTxs = make([]*models.AddressPageDataInternalTransaction, 0, len(dbEntries))
+	for _, e := range dbEntries {
+		slot := e.BlockUid >> 16
+		blockTime := chainState.SlotToTime(phase0.Slot(slot))
+
+		itx := &models.AddressPageDataInternalTransaction{
+			TxHash:     e.TxHash,
+			BlockUid:   e.BlockUid,
+			BlockTime:  blockTime,
+			CallIndex:  e.TxCallIdx,
+			CallType:   e.CallType,
+			FromID:     e.FromID,
+			ToID:       e.ToID,
+			IsOutgoing: e.FromID == account.ID,
+			Amount:     e.Value,
+			AmountRaw:  e.ValueRaw,
+		}
+
+		if name, ok := callTypeNames[e.CallType]; ok {
+			itx.TypeName = name
+		} else {
+			itx.TypeName = fmt.Sprintf("TYPE_%d", e.CallType)
+		}
+
+		// Set block info
+		if blockInfo, ok := blockMap[e.BlockUid]; ok && blockInfo.Block != nil {
+			itx.BlockRoot = blockInfo.Block.Root
+			itx.BlockOrphaned = blockInfo.Block.Status == dbtypes.Orphaned
+			if blockInfo.Block.EthBlockNumber != nil {
+				itx.BlockNumber = *blockInfo.Block.EthBlockNumber
+			}
+		}
+
+		// Set addresses
+		if from, ok := accountMap[e.FromID]; ok {
+			itx.FromAddr = from.Address
+			itx.FromIsContract = from.IsContract
+		}
+		if to, ok := accountMap[e.ToID]; ok {
+			itx.ToAddr = to.Address
+			itx.ToIsContract = to.IsContract
+		}
+
+		pageData.InternalTxs = append(pageData.InternalTxs, itx)
+	}
+
+	// Calculate TxHashRowspan for consecutive internal txs with same txhash
+	calculateInternalTxHashRowspans(pageData.InternalTxs)
+}
+
+// calculateInternalTxHashRowspans sets TxHashRowspan for consecutive internal txs with the same txhash.
+// The first occurrence gets the rowspan count, subsequent occurrences get 0 (meaning skip rendering the cell).
+func calculateInternalTxHashRowspans(txs []*models.AddressPageDataInternalTransaction) {
+	if len(txs) == 0 {
+		return
+	}
+
+	i := len(txs) - 1
+	for i >= 0 {
+		currentTxHash := txs[i].TxHash
+		groupStart := i
+
+		for groupStart > 0 && bytes.Equal(txs[groupStart-1].TxHash, currentTxHash) {
+			groupStart--
+		}
+
+		rowspan := i - groupStart + 1
+		txs[groupStart].TxHashRowspan = rowspan
+		for j := groupStart + 1; j <= i; j++ {
+			txs[j].TxHashRowspan = 0
+		}
+
 		i = groupStart - 1
 	}
 }
