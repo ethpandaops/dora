@@ -72,7 +72,7 @@ func runS3Clear(cmd *cobra.Command, _ []string) error {
 
 	client, err := minio.New(s3Cfg.Endpoint, &minio.Options{
 		Creds:  credentials.NewStaticV4(s3Cfg.AccessKey, s3Cfg.SecretKey, ""),
-		Secure: s3Cfg.Secure,
+		Secure: bool(s3Cfg.Secure),
 		Region: s3Cfg.Region,
 	})
 	if err != nil {
