@@ -1,0 +1,123 @@
+{{ define "internalTxs" }}
+<div class="card">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0 el-data-table">
+        <thead>
+          <tr>
+            <th>Txn Hash</th>
+            <th>Block</th>
+            <th data-timecol="duration">Age</th>
+            <th>Type</th>
+            <th>From</th>
+            <th></th>
+            <th>To</th>
+            <th>Value</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{ if gt .InternalTxCount 0 }}
+            {{ range .InternalTxs }}
+              <tr>
+                {{ if gt .TxHashRowspan 0 }}
+                <td class="text-monospace align-top addr-cell"{{ if gt .TxHashRowspan 1 }} rowspan="{{ .TxHashRowspan }}"{{ end }}>
+                  <a href="/tx/{{ formatHexBytes .TxHash }}" data-bs-toggle="tooltip" title="{{ formatHexBytes .TxHash }}">{{ formatEthHashShort .TxHash 6 }}</a>
+                  <i class="fa fa-copy text-muted ms-1" role="button" data-bs-toggle="tooltip" title="Copy transaction hash" data-clipboard-text="{{ formatHexBytes .TxHash }}"></i>
+                </td>
+                <td class="align-top"{{ if gt .TxHashRowspan 1 }} rowspan="{{ .TxHashRowspan }}"{{ end }}>
+                  {{ if gt (len .BlockRoot) 0 }}
+                    <a href="/slot/0x{{ printf "%x" .BlockRoot }}">{{ formatAddCommas .BlockNumber }}</a>
+                  {{ else }}
+                    {{ formatAddCommas .BlockNumber }}
+                  {{ end }}
+                </td>
+                <td class="align-top" data-timer="{{ .BlockTime.Unix }}"{{ if gt .TxHashRowspan 1 }} rowspan="{{ .TxHashRowspan }}"{{ end }}>
+                  <span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ .BlockTime }}">{{ formatRecentTimeShort .BlockTime }}</span>
+                </td>
+                {{ end }}
+                <td>
+                  {{ if eq .CallType 0 }}
+                  <span class="badge text-bg-primary">{{ .TypeName }}</span>
+                  {{ else if eq .CallType 1 }}
+                  <span class="badge text-bg-info">{{ .TypeName }}</span>
+                  {{ else if eq .CallType 2 }}
+                  <span class="badge text-bg-warning">{{ .TypeName }}</span>
+                  {{ else if or (eq .CallType 3) (eq .CallType 4) }}
+                  <span class="badge text-bg-success">{{ .TypeName }}</span>
+                  {{ else if eq .CallType 5 }}
+                  <span class="badge text-bg-danger">{{ .TypeName }}</span>
+                  {{ else }}
+                  <span class="badge text-bg-secondary">{{ .TypeName }}</span>
+                  {{ end }}
+                </td>
+                <td class="text-monospace addr-cell">
+                  {{ if eq (printf "%x" .FromAddr) (printf "%x" $.Address) }}
+                    {{ formatEthAddressShort .FromAddr }}
+                  {{ else }}
+                    {{ formatEthAddressShortLink .FromAddr .FromIsContract }}
+                  {{ end }}
+                  <i class="fa fa-copy text-muted ms-1" role="button" data-bs-toggle="tooltip" title="Copy address" data-clipboard-text="{{ formatEthAddressFull .FromAddr }}"></i>
+                </td>
+                <td class="text-center">
+                  {{ if .IsOutgoing }}
+                    <span class="badge text-bg-warning">OUT</span>
+                  {{ else }}
+                    <span class="badge text-bg-success">IN</span>
+                  {{ end }}
+                </td>
+                <td class="text-monospace addr-cell">
+                  {{ if eq (printf "%x" .ToAddr) (printf "%x" $.Address) }}
+                    {{ formatEthAddressShort .ToAddr }}
+                  {{ else }}
+                    {{ formatEthAddressShortLink .ToAddr .ToIsContract }}
+                  {{ end }}
+                  <i class="fa fa-copy text-muted ms-1" role="button" data-bs-toggle="tooltip" title="Copy address" data-clipboard-text="{{ formatEthAddressFull .ToAddr }}"></i>
+                </td>
+                <td class="text-nowrap">{{ formatTransactionValue .Amount }}</td>
+              </tr>
+            {{ end }}
+          {{ else }}
+            <tr>
+              <td colspan="8" class="text-center py-4 text-muted">
+                <i class="fas fa-inbox fa-2x mb-2"></i>
+                <br>No internal transactions found
+              </td>
+            </tr>
+          {{ end }}
+        </tbody>
+      </table>
+    </div>
+
+    {{ if gt .InternalTxTotalPages 1 }}
+    <div class="card-footer d-flex justify-content-between align-items-center">
+      <div>
+        Showing {{ formatAddCommas .InternalTxFirstItem }} - {{ formatAddCommas .InternalTxLastItem }} of {{ formatAddCommas .InternalTxCount }}
+      </div>
+      <nav aria-label="Internal transaction pagination">
+        <ul class="pagination pagination-sm mb-0">
+          {{ if gt .InternalTxPageIndex 1 }}
+            <li class="page-item">
+              <a class="page-link" href="?v=internaltxs&p=1&c={{ .InternalTxPageSize }}">&laquo;</a>
+            </li>
+            <li class="page-item">
+              <a class="page-link" href="?v=internaltxs&p={{ subUI64 .InternalTxPageIndex 1 }}&c={{ .InternalTxPageSize }}">&lsaquo;</a>
+            </li>
+          {{ end }}
+          <li class="page-item disabled">
+            <span class="page-link">{{ .InternalTxPageIndex }} / {{ .InternalTxTotalPages }}</span>
+          </li>
+          {{ if lt .InternalTxPageIndex .InternalTxTotalPages }}
+            <li class="page-item">
+              <a class="page-link" href="?v=internaltxs&p={{ addUI64 .InternalTxPageIndex 1 }}&c={{ .InternalTxPageSize }}">&rsaquo;</a>
+            </li>
+            <li class="page-item">
+              <a class="page-link" href="?v=internaltxs&p={{ .InternalTxTotalPages }}&c={{ .InternalTxPageSize }}">&raquo;</a>
+            </li>
+          {{ end }}
+        </ul>
+      </nav>
+    </div>
+    {{ end }}
+  </div>
+</div>
+{{ end }}

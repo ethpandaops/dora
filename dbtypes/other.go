@@ -272,12 +272,14 @@ type ElTransactionFilter struct {
 	MaxGasUsed *uint64
 }
 
-type ElTxEventFilter struct {
-	TxHash   []byte
+type ElEventIndexFilter struct {
 	SourceID uint64
 	Topic1   []byte
-	Topic2   []byte
-	Topic3   []byte
+}
+
+type ElTransactionInternalFilter struct {
+	FromID uint64
+	ToID   uint64
 }
 
 type ElAccountFilter struct {

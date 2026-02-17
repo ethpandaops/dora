@@ -29,7 +29,7 @@ type S3Engine struct {
 func NewS3Engine(config dtypes.S3BlockDBConfig) (types.BlockDbEngine, error) {
 	client, err := minio.New(config.Endpoint, &minio.Options{
 		Creds:  credentials.NewStaticV4(config.AccessKey, config.SecretKey, ""),
-		Secure: config.Secure,
+		Secure: bool(config.Secure),
 		Region: config.Region,
 	})
 	if err != nil {

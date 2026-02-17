@@ -117,6 +117,54 @@ type TransactionPageData struct {
 	// Token transfers tab
 	TokenTransfers     []*TransactionPageDataTokenTransfer `json:"token_transfers"`
 	TokenTransferCount uint64                              `json:"token_transfer_count"`
+
+	// Internal transactions tab
+	InternalTxs             []*TransactionPageDataInternalTx `json:"internal_txs"`
+	InternalTxCount         uint64                           `json:"internal_tx_count"`
+	DataStatus              uint16                           `json:"data_status"` // blockdb data availability flags
+	EventsNotAvailable      bool                             `json:"events_not_available"`
+	InternalTxsNotAvailable bool                             `json:"internal_txs_not_available"`
+
+	// State changes tab (prestateTracer diffMode)
+	StateChanges             []*TransactionPageDataStateChangeAccount `json:"state_changes"`
+	StateChangesNotAvailable bool                                     `json:"state_changes_not_available"`
+}
+
+// TransactionPageDataStateChangeAccount represents state changes for a single account.
+type TransactionPageDataStateChangeAccount struct {
+	Address []byte `json:"address"`
+
+	// High level flags (precomputed from the binary flags)
+	AccountCreated bool `json:"account_created"`
+	AccountKilled  bool `json:"account_killed"`
+
+	BalanceChanged bool   `json:"balance_changed"`
+	PreBalance     []byte `json:"pre_balance"`
+	PostBalance    []byte `json:"post_balance"`
+	PreBalanceWei  string `json:"pre_balance_wei"`
+	PostBalanceWei string `json:"post_balance_wei"`
+	BalanceDiffWei string `json:"balance_diff_wei"` // post - pre (signed base-10)
+
+	NonceChanged bool   `json:"nonce_changed"`
+	PreNonce     uint64 `json:"pre_nonce"`
+	PostNonce    uint64 `json:"post_nonce"`
+
+	CodeChanged bool   `json:"code_changed"`
+	PreCode     []byte `json:"pre_code"`
+	PostCode    []byte `json:"post_code"`
+	PreCodeLen  int    `json:"pre_code_len"`
+	PostCodeLen int    `json:"post_code_len"`
+
+	StorageChanged bool                                  `json:"storage_changed"`
+	Slots          []*TransactionPageDataStateChangeSlot `json:"slots"`
+}
+
+// TransactionPageDataStateChangeSlot represents a storage slot diff.
+type TransactionPageDataStateChangeSlot struct {
+	Slot       []byte `json:"slot"`
+	ChangeType string `json:"change_type"` // created/modified/deleted
+	PreValue   []byte `json:"pre_value"`
+	PostValue  []byte `json:"post_value"`
 }
 
 // TransactionPageDataEvent represents an event/log in the transaction
@@ -165,6 +213,41 @@ type TransactionPageDataTokenTransfer struct {
 
 	// NFT token index
 	TokenIndex []byte `json:"token_index"`
+}
+
+// TransactionPageDataInternalTx represents an internal transaction (call trace frame)
+type TransactionPageDataInternalTx struct {
+	CallIndex uint32 `json:"call_index"`
+	Depth     uint16 `json:"depth"`
+	CallType  uint8  `json:"call_type"`
+	TypeName  string `json:"type_name"`
+
+	// From/To
+	FromAddr       []byte `json:"from_addr"`
+	FromIsContract bool   `json:"from_is_contract"`
+	ToAddr         []byte `json:"to_addr"`
+	ToIsContract   bool   `json:"to_is_contract"`
+
+	// Value
+	Amount    float64 `json:"amount"`
+	AmountRaw []byte  `json:"amount_raw"`
+
+	// Gas
+	Gas     uint64 `json:"gas"`
+	GasUsed uint64 `json:"gas_used"`
+
+	// Status
+	Status    uint8  `json:"status"` // 0=success, 1=reverted, 2=error
+	ErrorText string `json:"error_text"`
+
+	// Input/Output (from blockdb call trace, empty for DB-only fallback)
+	Input      []byte `json:"input"`
+	Output     []byte `json:"output"`
+	MethodID   []byte `json:"method_id"`
+	MethodName string `json:"method_name"`
+
+	// Whether this entry has full trace data (from blockdb)
+	HasTraceData bool `json:"has_trace_data"`
 }
 
 // TransactionPageDataBlob represents a blob in a blob transaction
