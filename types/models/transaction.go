@@ -117,10 +117,6 @@ type TransactionPageData struct {
 	// Token transfers tab
 	TokenTransfers     []*TransactionPageDataTokenTransfer `json:"token_transfers"`
 	TokenTransferCount uint64                              `json:"token_transfer_count"`
-
-	// Internal transactions tab (EIP-7708)
-	InternalTransactions     []*TransactionPageDataInternalTransaction `json:"internal_transactions"`
-	InternalTransactionCount uint64                                    `json:"internal_transaction_count"`
 }
 
 // TransactionPageDataEvent represents an event/log in the transaction
@@ -179,19 +175,4 @@ type TransactionPageDataBlob struct {
 	KzgProof      []byte `json:"kzg_proof"`      // KZG proof (if available)
 	HaveData      bool   `json:"have_data"`      // Whether full blob data is available
 	BlobShort     []byte `json:"blob_short"`     // First bytes of blob data (preview)
-}
-
-// TransactionPageDataInternalTransaction represents an internal ETH transfer (EIP-7708)
-type TransactionPageDataInternalTransaction struct {
-	TransferIndex uint32 `json:"transfer_index"`
-
-	// From/To
-	FromAddr       []byte `json:"from_addr"`
-	FromIsContract bool   `json:"from_is_contract"`
-	ToAddr         []byte `json:"to_addr"`
-	ToIsContract   bool   `json:"to_is_contract"`
-
-	// Amount
-	Amount    float64 `json:"amount"`
-	AmountRaw []byte  `json:"amount_raw"`
 }

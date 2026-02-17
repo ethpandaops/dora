@@ -44,7 +44,6 @@ func Transaction(w http.ResponseWriter, r *http.Request) {
 		"transaction/transaction.html",
 		"transaction/events.html",
 		"transaction/transfers.html",
-		"transaction/internal_transactions.html",
 		"transaction/blobs.html",
 	)
 	notfoundTemplateFiles := append(layoutTemplateFiles,
@@ -411,17 +410,12 @@ func buildTransactionPageDataFromDB(pageData *models.TransactionPageData, txs []
 	transfers, _ := db.GetElTokenTransfersByBlockUidAndTxHash(tx.BlockUid, pageData.TxHash)
 	pageData.TokenTransferCount = uint64(len(transfers))
 
-	internalTxs, _ := db.GetElInternalTransactionsByBlockUidAndTxHash(tx.BlockUid, pageData.TxHash)
-	pageData.InternalTransactionCount = uint64(len(internalTxs))
-
 	// Load tab-specific detailed data
 	switch tabView {
 	case "events":
 		loadTransactionEventsFromData(pageData, events)
 	case "transfers":
 		loadTransactionTransfersFromData(pageData, transfers)
-	case "internal":
-		loadTransactionInternalTransactionsFromData(pageData, internalTxs)
 	}
 }
 
@@ -796,55 +790,6 @@ func loadTransactionTransfersFromData(pageData *models.TransactionPageData, tran
 		}
 
 		pageData.TokenTransfers = append(pageData.TokenTransfers, transfer)
-	}
-}
-
-func loadTransactionInternalTransactionsFromData(pageData *models.TransactionPageData, internalTxs []*dbtypes.ElInternalTransaction) {
-	if len(internalTxs) == 0 {
-		return
-	}
-
-	// Collect account IDs for batch lookup
-	accountIDs := make(map[uint64]bool)
-	for _, itx := range internalTxs {
-		accountIDs[itx.FromID] = true
-		accountIDs[itx.ToID] = true
-	}
-
-	// Batch lookup accounts
-	accountIDList := make([]uint64, 0, len(accountIDs))
-	for id := range accountIDs {
-		accountIDList = append(accountIDList, id)
-	}
-	accountMap := make(map[uint64]*dbtypes.ElAccount)
-	if len(accountIDList) > 0 {
-		if accounts, err := db.GetElAccountsByIDs(accountIDList); err == nil {
-			for _, a := range accounts {
-				accountMap[a.ID] = a
-			}
-		}
-	}
-
-	// Build internal transactions list
-	pageData.InternalTransactions = make([]*models.TransactionPageDataInternalTransaction, 0, len(internalTxs))
-	for i, itx := range internalTxs {
-		internalTx := &models.TransactionPageDataInternalTransaction{
-			TransferIndex: uint32(i),
-			Amount:        itx.Amount,
-			AmountRaw:     itx.AmountRaw,
-		}
-
-		// From/To addresses
-		if from, ok := accountMap[itx.FromID]; ok {
-			internalTx.FromAddr = from.Address
-			internalTx.FromIsContract = from.IsContract
-		}
-		if to, ok := accountMap[itx.ToID]; ok {
-			internalTx.ToAddr = to.Address
-			internalTx.ToIsContract = to.IsContract
-		}
-
-		pageData.InternalTransactions = append(pageData.InternalTransactions, internalTx)
 	}
 }
 

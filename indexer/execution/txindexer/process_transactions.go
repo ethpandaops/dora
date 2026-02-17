@@ -27,9 +27,6 @@ var (
 
 	// TransferBatch(address indexed operator, address indexed from, address indexed to, uint256[] ids, uint256[] values)
 	topicTransferBatch = common.HexToHash("0x4a39dc06d4c0dbc64b70af90fd698a233a518aa5d07e595d983b8c0526c8f7fb")
-
-	// EIP-7708 system address that emits internal Transfer events
-	systemAddress = common.HexToAddress("0xfffffffffffffffffffffffffffffffffffffffe")
 )
 
 // txProcessingContext holds state for processing a block's transactions.
@@ -113,12 +110,11 @@ type pendingToken struct {
 
 // txProcessingResult holds the result of processing a single transaction.
 type txProcessingResult struct {
-	transaction          *dbtypes.ElTransaction
-	events               []*pendingTxEvent
-	tokenTransfers       []*pendingTokenTransfer
-	internalTransactions []*pendingInternalTransaction
-	fromAccount          *pendingAccount
-	toAccount            *pendingAccount
+	transaction    *dbtypes.ElTransaction
+	events         []*pendingTxEvent
+	tokenTransfers []*pendingTokenTransfer
+	fromAccount    *pendingAccount
+	toAccount      *pendingAccount
 }
 
 // pendingTxEvent represents an event with a reference to its source account.
@@ -131,13 +127,6 @@ type pendingTxEvent struct {
 type pendingTokenTransfer struct {
 	transfer    *dbtypes.ElTokenTransfer
 	token       *pendingToken
-	fromAccount *pendingAccount
-	toAccount   *pendingAccount
-}
-
-// pendingInternalTransaction represents an internal ETH transfer (EIP-7708) with account references.
-type pendingInternalTransaction struct {
-	tx          *dbtypes.ElInternalTransaction
 	fromAccount *pendingAccount
 	toAccount   *pendingAccount
 }
@@ -301,7 +290,6 @@ func (ctx *txProcessingContext) processTransaction(
 
 	// 4. Process events (logs)
 	txPos := uint32(receipt.TransactionIndex)
-	rootTxSkipped := false // Track if we've already skipped the root tx's internal transfer
 	for i, log := range receipt.Logs {
 		event := ctx.processEvent(uint32(i), log, fromAccount)
 		result.events = append(result.events, event)
@@ -309,18 +297,6 @@ func (ctx *txProcessingContext) processTransaction(
 		// 5. Check for token transfers
 		transfers := ctx.detectTokenTransfers(uint32(i), txPos, log, fromAccount)
 		result.tokenTransfers = append(result.tokenTransfers, transfers...)
-
-		// 6. Check for internal ETH transfers (EIP-7708)
-		// Skip the first internal transfer that matches the root transaction's from, to, and value
-		internalTx, isRootTx := ctx.detectInternalTransaction(uint32(i), log, fromAccount, from, toAddr, txValue)
-		if internalTx != nil {
-			// Skip only ONE transfer that matches the root tx (the initial value transfer)
-			if isRootTx && !rootTxSkipped {
-				rootTxSkipped = true
-				continue
-			}
-			result.internalTransactions = append(result.internalTransactions, internalTx)
-		}
 	}
 
 	// Update block stats
@@ -607,65 +583,6 @@ func (ctx *txProcessingContext) detectTokenTransfers(
 	}
 
 	return transfers
-}
-
-// detectInternalTransaction checks if a log represents an internal ETH transfer (EIP-7708).
-// Internal ETH transfers are emitted by the system address (0xfffffffffffffffffffffffffffffffffffffffe)
-// with the Transfer(address,address,uint256) event signature.
-// Returns the internal transaction (if detected) and whether it matches the root transaction's transfer.
-func (ctx *txProcessingContext) detectInternalTransaction(
-	logIdx uint32,
-	log *types.Log,
-	funderAccount *pendingAccount,
-	rootFrom common.Address,
-	rootTo common.Address,
-	rootValue *big.Int,
-) (*pendingInternalTransaction, bool) {
-	// Must be from system address
-	if log.Address != systemAddress {
-		return nil, false
-	}
-
-	// Must have Transfer event signature and at least 3 topics
-	if len(log.Topics) < 3 || log.Topics[0] != topicTransfer {
-		return nil, false
-	}
-
-	// Must have 32 bytes of data for the amount
-	if len(log.Data) < 32 {
-		return nil, false
-	}
-
-	// Parse from and to addresses from topics (padded to 32 bytes)
-	from := common.BytesToAddress(log.Topics[1][:])
-	to := common.BytesToAddress(log.Topics[2][:])
-
-	// Parse amount from data (big endian uint256)
-	amount := new(big.Int).SetBytes(log.Data[:32])
-
-	// Check if this matches the root transaction's transfer (from, to, value all match)
-	isRootTx := from == rootFrom && to == rootTo && amount.Cmp(rootValue) == 0
-
-	// Ensure accounts exist
-	fromAccount := ctx.ensureAccount(from, funderAccount, false)
-	toAccount := ctx.ensureAccount(to, fromAccount, false)
-
-	// Create internal transaction record
-	internalTx := &dbtypes.ElInternalTransaction{
-		BlockUid:  ctx.block.BlockUID,
-		TxHash:    make([]byte, 32), // Will be set in commit
-		TxIdx:     logIdx,
-		FromID:    0,                      // Will be set in commit
-		ToID:      0,                      // Will be set in commit
-		Amount:    weiToFloat(amount, 18), // ETH uses 18 decimals
-		AmountRaw: amount.Bytes(),
-	}
-
-	return &pendingInternalTransaction{
-		tx:          internalTx,
-		fromAccount: fromAccount,
-		toAccount:   toAccount,
-	}, isRootTx
 }
 
 // parseERC20or721Transfer parses ERC20 or ERC721 Transfer event.
@@ -1138,29 +1055,6 @@ func (ctx *txProcessingContext) commitTransaction(dbTx *sqlx.Tx, result *txProce
 
 		if len(transfers) > 0 {
 			if err := db.InsertElTokenTransfers(transfers, dbTx); err != nil {
-				return err
-			}
-		}
-	}
-
-	// 6. Insert internal transactions with resolved account IDs (EIP-7708)
-	if len(result.internalTransactions) > 0 {
-		internalTxs := make([]*dbtypes.ElInternalTransaction, 0, len(result.internalTransactions))
-		for _, pit := range result.internalTransactions {
-			// Set tx hash from result
-			if result.transaction != nil {
-				pit.tx.TxHash = result.transaction.TxHash
-			}
-
-			// Resolve account IDs
-			pit.tx.FromID = pit.fromAccount.id
-			pit.tx.ToID = pit.toAccount.id
-
-			internalTxs = append(internalTxs, pit.tx)
-		}
-
-		if len(internalTxs) > 0 {
-			if err := db.InsertElInternalTransactions(internalTxs, dbTx); err != nil {
 				return err
 			}
 		}

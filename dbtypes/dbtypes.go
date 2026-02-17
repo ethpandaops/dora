@@ -544,14 +544,3 @@ type ElWithdrawal struct {
 	AmountRaw []byte  `db:"amount_raw"`
 	Validator *uint64 `db:"validator"` // validator index for withdrawals, null for fee recipient
 }
-
-// ElInternalTransaction represents an internal ETH transfer (EIP-7708)
-type ElInternalTransaction struct {
-	BlockUid  uint64  `db:"block_uid"`
-	TxHash    []byte  `db:"tx_hash"`
-	TxIdx     uint32  `db:"tx_idx"` // Relative index within the transaction
-	FromID    uint64  `db:"from_id"`
-	ToID      uint64  `db:"to_id"`
-	Amount    float64 `db:"amount"`
-	AmountRaw []byte  `db:"amount_raw"`
-}
