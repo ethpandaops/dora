@@ -12,7 +12,8 @@ import (
 )
 
 // LenientHexBytes is like hexutil.Bytes, but accepts hex strings with or without
-// a 0x prefix (some clients return revertReason without 0x).
+// a 0x prefix (some clients return revertReason without 0x) and also accepts
+// plain-text strings (some clients return revertReason as human-readable text).
 type LenientHexBytes []byte
 
 func (b *LenientHexBytes) UnmarshalJSON(input []byte) error {
@@ -39,13 +40,16 @@ func (b *LenientHexBytes) UnmarshalJSON(input []byte) error {
 		return nil
 	}
 
-	if !strings.HasPrefix(s, "0x") && !strings.HasPrefix(s, "0X") {
-		s = "0x" + s
+	hexStr := s
+	if !strings.HasPrefix(hexStr, "0x") && !strings.HasPrefix(hexStr, "0X") {
+		hexStr = "0x" + hexStr
 	}
 
-	decoded, err := hexutil.Decode(s)
+	decoded, err := hexutil.Decode(hexStr)
 	if err != nil {
-		return err
+		// Not valid hex; treat as raw UTF-8 text (e.g. plain-text revert reasons).
+		*b = []byte(s)
+		return nil
 	}
 	*b = LenientHexBytes(decoded)
 	return nil
@@ -53,13 +57,7 @@ func (b *LenientHexBytes) UnmarshalJSON(input []byte) error {
 
 // CallTracerConfig is the configuration for the callTracer.
 type CallTracerConfig struct {
-	Tracer       string                `json:"tracer"`
-	TracerConfig CallTracerConfigInner `json:"tracerConfig"`
-}
-
-// CallTracerConfigInner holds the callTracer-specific options.
-type CallTracerConfigInner struct {
-	WithLog bool `json:"withLog"`
+	Tracer string `json:"tracer"`
 }
 
 // CallTraceResult is the JSON result for one transaction from
@@ -81,17 +79,9 @@ type CallTraceCall struct {
 	Output  hexutil.Bytes   `json:"output"`
 	Error   string          `json:"error,omitempty"`
 	Calls   []CallTraceCall `json:"calls,omitempty"`
-	Logs    []CallTraceLog  `json:"logs,omitempty"`
 
 	// Revert reason (some clients include this separately)
 	RevertReason LenientHexBytes `json:"revertReason,omitempty"`
-}
-
-// CallTraceLog is a log emitted within a call frame (when withLog: true).
-type CallTraceLog struct {
-	Address common.Address `json:"address"`
-	Topics  []common.Hash  `json:"topics"`
-	Data    hexutil.Bytes  `json:"data"`
 }
 
 // CallTypeFromString converts a callTracer type string to a numeric call type.
@@ -133,9 +123,6 @@ func (ec *ExecutionClient) TraceBlockByHash(
 ) ([]CallTraceResult, error) {
 	tracerConfig := CallTracerConfig{
 		Tracer: "callTracer",
-		TracerConfig: CallTracerConfigInner{
-			WithLog: true,
-		},
 	}
 
 	var raw json.RawMessage

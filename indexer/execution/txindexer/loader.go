@@ -358,52 +358,108 @@ func (t *TxIndexer) calculateTotalPriorityFees(transactions []*types.Transaction
 }
 
 // fetchBlockTraces fetches call traces for a block using debug_traceBlockByHash.
-// Returns nil (no error) if traces are not configured or if the RPC call fails,
+// Tries the primary client first, then retries with up to 2 other clients on failure.
+// Returns nil (no error) if traces are not configured or if all clients fail,
 // allowing the block to proceed with events only.
 func (t *TxIndexer) fetchBlockTraces(
 	ctx context.Context,
-	client *execution.Client,
+	primaryClient *execution.Client,
+	ref *BlockRef,
 	blockHash common.Hash,
 ) ([]exerpc.CallTraceResult, error) {
 	if !utils.Config.ExecutionIndexer.TracesEnabled {
 		return nil, nil
 	}
 
-	rpcClient := client.GetRPCClient()
+	clients := t.getTraceClients(primaryClient, ref)
 
-	results, err := rpcClient.TraceBlockByHash(ctx, blockHash)
-	if err != nil {
-		t.logger.WithError(err).WithField("blockHash", blockHash.Hex()).Warn(
-			"failed to fetch block traces, proceeding without traces",
-		)
-		return nil, nil //nolint:nilerr // Graceful degradation: proceed without traces
+	for i, client := range clients {
+		results, err := client.GetRPCClient().TraceBlockByHash(ctx, blockHash)
+		if err != nil {
+			t.logger.WithError(err).WithFields(logrus.Fields{
+				"blockHash": blockHash.Hex(),
+				"client":    client.GetName(),
+				"attempt":   i + 1,
+			}).Debug("failed to fetch block traces, trying next client")
+
+			continue
+		}
+
+		return results, nil
 	}
 
-	return results, nil
+	t.logger.WithField("blockHash", blockHash.Hex()).Warn(
+		"all clients failed to fetch block traces, proceeding without traces",
+	)
+
+	return nil, nil
 }
 
 // fetchBlockStateDiffs fetches per-tx state diffs (storage changes) for a block
 // using debug_traceBlockByHash with prestateTracer in diffMode.
-// Returns nil (no error) if traces are not configured or if the RPC call fails,
+// Tries the primary client first, then retries with up to 2 other clients on failure.
+// Returns nil (no error) if traces are not configured or if all clients fail,
 // allowing the block to proceed without state diffs.
 func (t *TxIndexer) fetchBlockStateDiffs(
 	ctx context.Context,
-	client *execution.Client,
+	primaryClient *execution.Client,
+	ref *BlockRef,
 	blockHash common.Hash,
 ) ([]exerpc.StateDiffResult, error) {
 	if !utils.Config.ExecutionIndexer.TracesEnabled {
 		return nil, nil
 	}
 
-	rpcClient := client.GetRPCClient()
+	clients := t.getTraceClients(primaryClient, ref)
 
-	results, err := rpcClient.TraceBlockStateDiffsByHash(ctx, blockHash)
-	if err != nil {
-		t.logger.WithError(err).WithField("blockHash", blockHash.Hex()).Warn(
-			"failed to fetch block state diffs, proceeding without state diffs",
-		)
-		return nil, nil //nolint:nilerr // Graceful degradation
+	for i, client := range clients {
+		results, err := client.GetRPCClient().TraceBlockStateDiffsByHash(ctx, blockHash)
+		if err != nil {
+			t.logger.WithError(err).WithFields(logrus.Fields{
+				"blockHash": blockHash.Hex(),
+				"client":    client.GetName(),
+				"attempt":   i + 1,
+			}).Debug("failed to fetch block state diffs, trying next client")
+
+			continue
+		}
+
+		return results, nil
 	}
 
-	return results, nil
+	t.logger.WithField("blockHash", blockHash.Hex()).Warn(
+		"all clients failed to fetch block state diffs, proceeding without state diffs",
+	)
+
+	return nil, nil
+}
+
+// getTraceClients returns clients to try for trace fetching: the primary client
+// first, then up to 2 additional clients sorted by priority.
+func (t *TxIndexer) getTraceClients(
+	primaryClient *execution.Client,
+	ref *BlockRef,
+) []*execution.Client {
+	const maxTraceClients = 3
+
+	allClients := t.getClientsForBlock(ref)
+
+	sort.Slice(allClients, func(i, j int) bool {
+		return t.indexerCtx.SortClients(allClients[i], allClients[j], false)
+	})
+
+	clients := make([]*execution.Client, 0, maxTraceClients)
+	clients = append(clients, primaryClient)
+
+	for _, c := range allClients {
+		if len(clients) >= maxTraceClients {
+			break
+		}
+
+		if c != primaryClient {
+			clients = append(clients, c)
+		}
+	}
+
+	return clients
 }

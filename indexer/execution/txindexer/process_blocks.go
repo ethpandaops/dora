@@ -109,7 +109,7 @@ func (t *TxIndexer) processElBlock(ref *BlockRef) (*blockStats, error) {
 	// Fetch call traces if in Full mode with traces enabled
 	if t.mode == ModeFull && utils.Config.ExecutionIndexer.TracesEnabled {
 		traceCtx, traceCancel := context.WithTimeout(t.ctx, 5*time.Minute)
-		traceResults, traceErr := t.fetchBlockTraces(traceCtx, client, data.BlockHash)
+		traceResults, traceErr := t.fetchBlockTraces(traceCtx, client, ref, data.BlockHash)
 		traceCancel()
 
 		if traceErr != nil {
@@ -119,7 +119,7 @@ func (t *TxIndexer) processElBlock(ref *BlockRef) (*blockStats, error) {
 		}
 
 		stateCtx, stateCancel := context.WithTimeout(t.ctx, 5*time.Minute)
-		stateResults, stateErr := t.fetchBlockStateDiffs(stateCtx, client, data.BlockHash)
+		stateResults, stateErr := t.fetchBlockStateDiffs(stateCtx, client, ref, data.BlockHash)
 		stateCancel()
 		if stateErr != nil {
 			t.logger.WithError(stateErr).Debug("state diff fetch failed, proceeding without state diffs")
