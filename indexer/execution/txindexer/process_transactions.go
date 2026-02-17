@@ -1,9 +1,11 @@
 package txindexer
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"math/big"
+	"sort"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -11,8 +13,9 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/golang/snappy"
 	"github.com/jmoiron/sqlx"
+	dynssz "github.com/pk910/dynamic-ssz"
 
-	"github.com/ethpandaops/dora/blockdb"
+	bdbtypes "github.com/ethpandaops/dora/blockdb/types"
 	"github.com/ethpandaops/dora/clients/execution"
 	exerpc "github.com/ethpandaops/dora/clients/execution/rpc"
 	"github.com/ethpandaops/dora/db"
@@ -125,10 +128,10 @@ type txProcessingResult struct {
 
 	// Call trace data (populated in Mode Full + tracesEnabled)
 	internalCalls []*pendingInternalCall
-	callTraceData []blockdb.FlatCallFrame // Flattened call trace for blockdb serialization
+	callTraceData []bdbtypes.FlatCallFrame // Flattened call trace for blockdb serialization
 
 	// State changes data (populated in Mode Full + tracesEnabled)
-	stateChangesData []blockdb.StateChangeAccount
+	stateChangesData []bdbtypes.StateChangeAccount
 }
 
 // pendingTxEvent represents an event collected in-memory for event index
@@ -1146,12 +1149,12 @@ func (ctx *txProcessingContext) commitTransaction(dbTx *sqlx.Tx, result *txProce
 func (ctx *txProcessingContext) processCallTrace(
 	traceResult *exerpc.CallTraceCall,
 	funderAccount *pendingAccount,
-) ([]blockdb.FlatCallFrame, []*pendingInternalCall) {
+) ([]bdbtypes.FlatCallFrame, []*pendingInternalCall) {
 	if traceResult == nil {
 		return nil, nil
 	}
 
-	frames := make([]blockdb.FlatCallFrame, 0, 16)
+	frames := make([]bdbtypes.FlatCallFrame, 0, 16)
 	internalCalls := make([]*pendingInternalCall, 0, 16)
 	callIdx := uint32(0)
 
@@ -1161,17 +1164,17 @@ func (ctx *txProcessingContext) processCallTrace(
 		callIdx++
 
 		// Determine call status
-		status := uint8(blockdb.CallStatusSuccess)
+		status := uint8(bdbtypes.CallStatusSuccess)
 		if call.Error != "" {
 			if call.Error == "execution reverted" {
-				status = blockdb.CallStatusReverted
+				status = bdbtypes.CallStatusReverted
 			} else {
-				status = blockdb.CallStatusError
+				status = bdbtypes.CallStatusError
 			}
 		}
 
 		// Build flat call frame for blockdb
-		frame := blockdb.FlatCallFrame{
+		frame := bdbtypes.FlatCallFrame{
 			Depth:   depth,
 			Type:    exerpc.CallTypeFromString(call.Type),
 			Gas:     uint64(call.Gas),
@@ -1184,16 +1187,13 @@ func (ctx *txProcessingContext) processCallTrace(
 		copy(frame.From[:], call.From[:])
 		copy(frame.To[:], call.To[:])
 
-		value := exerpc.CallTraceCallValue(call)
-		if value.Sign() > 0 {
-			frame.Value = value
-		}
+		frame.Value = exerpc.CallTraceCallValue(call)
 
 		// Convert logs
 		if len(call.Logs) > 0 {
-			frame.Logs = make([]blockdb.CallFrameLog, 0, len(call.Logs))
+			frame.Logs = make([]bdbtypes.CallFrameLog, 0, len(call.Logs))
 			for _, log := range call.Logs {
-				fl := blockdb.CallFrameLog{
+				fl := bdbtypes.CallFrameLog{
 					Data: log.Data,
 				}
 				copy(fl.Address[:], log.Address[:])
@@ -1222,9 +1222,9 @@ func (ctx *txProcessingContext) processCallTrace(
 				toAccount:   toAccount,
 			}
 
-			if value.Sign() > 0 {
-				ic.value = weiToFloat(value, 18)
-				ic.valueRaw = value.Bytes()
+			if frame.Value.Sign() > 0 {
+				ic.value = weiToFloat(frame.Value.ToBig(), 18)
+				ic.valueRaw = frame.Value.Bytes()
 			}
 
 			internalCalls = append(internalCalls, ic)
@@ -1248,25 +1248,27 @@ func (ctx *txProcessingContext) buildExecDataObject() ([]byte, uint16) {
 		return nil, 0
 	}
 
+	ds := dynssz.GetGlobalDynSsz()
+
 	var blockDataStatus uint16
-	txSections := make([]blockdb.ExecDataTxSectionData, 0, len(ctx.txResults))
+	txSections := make([]bdbtypes.ExecDataTxSectionData, 0, len(ctx.txResults))
 
 	for _, result := range ctx.txResults {
 		if result.transaction == nil {
 			continue
 		}
 
-		var section blockdb.ExecDataTxSectionData
+		var section bdbtypes.ExecDataTxSectionData
 		copy(section.TxHash[:], result.transaction.TxHash)
 
 		// Encode events section
 		if len(result.events) > 0 {
-			eventDataList := make([]blockdb.EventData, 0, len(result.events))
+			eventDataList := make(bdbtypes.EventDataList, 0, len(result.events))
 			for _, ev := range result.events {
 				if ev.topics == nil {
 					continue // No full event data (not in ModeFull)
 				}
-				eventDataList = append(eventDataList, blockdb.EventData{
+				eventDataList = append(eventDataList, bdbtypes.EventData{
 					EventIndex: ev.eventIndex,
 					Source:     ev.sourceAddr,
 					Topics:     ev.topics,
@@ -1274,7 +1276,11 @@ func (ctx *txProcessingContext) buildExecDataObject() ([]byte, uint16) {
 				})
 			}
 			if len(eventDataList) > 0 {
-				raw := blockdb.EncodeEventsSection(eventDataList)
+				raw, err := ds.MarshalSSZ(eventDataList)
+				if err != nil {
+					return nil, 0
+				}
+
 				compressed := snappy.Encode(nil, raw)
 				section.EventsData = compressed
 				section.EventsUncompLen = uint32(len(raw))
@@ -1284,7 +1290,11 @@ func (ctx *txProcessingContext) buildExecDataObject() ([]byte, uint16) {
 
 		// Encode call trace section
 		if len(result.callTraceData) > 0 {
-			raw := blockdb.EncodeCallTraceSection(result.callTraceData)
+			raw, err := ds.MarshalSSZ(result.callTraceData)
+			if err != nil {
+				return nil, 0
+			}
+
 			compressed := snappy.Encode(nil, raw)
 			section.CallTraceData = compressed
 			section.CallTraceUncompLen = uint32(len(raw))
@@ -1293,7 +1303,21 @@ func (ctx *txProcessingContext) buildExecDataObject() ([]byte, uint16) {
 
 		// Encode state changes section
 		if len(result.stateChangesData) > 0 {
-			raw := blockdb.EncodeStateChangesSection(result.stateChangesData)
+			// Deterministic order: sort by address then slot.
+			sort.Slice(result.stateChangesData, func(i, j int) bool {
+				return bytes.Compare(result.stateChangesData[i].Address[:], result.stateChangesData[j].Address[:]) < 0
+			})
+			for i := range result.stateChangesData {
+				sort.Slice(result.stateChangesData[i].Slots, func(a, b int) bool {
+					return bytes.Compare(result.stateChangesData[i].Slots[a].Slot[:], result.stateChangesData[i].Slots[b].Slot[:]) < 0
+				})
+			}
+
+			raw, err := ds.MarshalSSZ(result.stateChangesData)
+			if err != nil {
+				return nil, 0
+			}
+
 			compressed := snappy.Encode(nil, raw)
 			section.StateChangeData = compressed
 			section.StateChangeUncompLen = uint32(len(raw))
@@ -1307,7 +1331,7 @@ func (ctx *txProcessingContext) buildExecDataObject() ([]byte, uint16) {
 		return nil, 0
 	}
 
-	objectData := blockdb.BuildExecDataObject(
+	objectData := bdbtypes.BuildExecDataObject(
 		uint64(ctx.block.Slot),
 		ctx.blockData.BlockNumber,
 		txSections,

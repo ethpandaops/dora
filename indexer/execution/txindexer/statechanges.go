@@ -6,8 +6,9 @@ import (
 	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/holiman/uint256"
 
-	"github.com/ethpandaops/dora/blockdb"
+	bdbtypes "github.com/ethpandaops/dora/blockdb/types"
 	exerpc "github.com/ethpandaops/dora/clients/execution/rpc"
 )
 
@@ -90,7 +91,7 @@ func storageMap(a *exerpc.PrestateAccount) map[string][]byte {
 
 // convertStateDiffToStateChanges normalizes the prestateTracer diffMode output
 // into the canonical binary format input (accounts + slot diffs).
-func convertStateDiffToStateChanges(diff *exerpc.StateDiff) []blockdb.StateChangeAccount {
+func convertStateDiffToStateChanges(diff *exerpc.StateDiff) []bdbtypes.StateChangeAccount {
 	if diff == nil {
 		return nil
 	}
@@ -129,7 +130,7 @@ func convertStateDiffToStateChanges(diff *exerpc.StateDiff) []blockdb.StateChang
 		return bytes.Compare(addrs[i][:], addrs[j][:]) < 0
 	})
 
-	out := make([]blockdb.StateChangeAccount, 0, len(addrs))
+	out := make([]bdbtypes.StateChangeAccount, 0, len(addrs))
 
 	for _, addr := range addrs {
 		preAcc, preOk := pre[addr]
@@ -157,14 +158,14 @@ func convertStateDiffToStateChanges(diff *exerpc.StateDiff) []blockdb.StateChang
 
 		var flags uint8
 		if created {
-			flags |= blockdb.StateChangeFlagAccountCreated
+			flags |= bdbtypes.StateChangeFlagAccountCreated
 		}
 		if killed {
-			flags |= blockdb.StateChangeFlagAccountKilled
+			flags |= bdbtypes.StateChangeFlagAccountKilled
 		}
 
 		if !bytes.Equal(preBal, postBal) || (preOk != postOk && (len(preBal) > 0 || len(postBal) > 0)) {
-			flags |= blockdb.StateChangeFlagBalanceChanged
+			flags |= bdbtypes.StateChangeFlagBalanceChanged
 		}
 		// Nonce diffs: only consider changes when nonce was explicitly present in
 		// the tracer output for BOTH sides (unless account was created/killed).
@@ -173,17 +174,17 @@ func convertStateDiffToStateChanges(diff *exerpc.StateDiff) []blockdb.StateChang
 		switch {
 		case created:
 			if postNoncePresent && (postNonce != 0 || preNoncePresent) {
-				flags |= blockdb.StateChangeFlagNonceChanged
+				flags |= bdbtypes.StateChangeFlagNonceChanged
 			}
 		case killed:
 			if preNoncePresent && preNonce != 0 {
-				flags |= blockdb.StateChangeFlagNonceChanged
+				flags |= bdbtypes.StateChangeFlagNonceChanged
 			}
 		default:
 			if preNoncePresent && postNoncePresent && preNonce != postNonce {
 				// Sanity: nonces must not decrease.
 				if postNonce >= preNonce {
-					flags |= blockdb.StateChangeFlagNonceChanged
+					flags |= bdbtypes.StateChangeFlagNonceChanged
 				}
 			}
 		}
@@ -195,16 +196,16 @@ func convertStateDiffToStateChanges(diff *exerpc.StateDiff) []blockdb.StateChang
 		case created:
 			// If account was created, allow post-only code snapshot as a change.
 			if postCodePresent && (len(postCode) > 0 || preCodePresent) {
-				flags |= blockdb.StateChangeFlagCodeChanged
+				flags |= bdbtypes.StateChangeFlagCodeChanged
 			}
 		case killed:
 			// If account was killed, allow pre-only code snapshot as a change.
 			if preCodePresent && len(preCode) > 0 {
-				flags |= blockdb.StateChangeFlagCodeChanged
+				flags |= bdbtypes.StateChangeFlagCodeChanged
 			}
 		default:
 			if preCodePresent && postCodePresent && !bytes.Equal(preCode, postCode) {
-				flags |= blockdb.StateChangeFlagCodeChanged
+				flags |= bdbtypes.StateChangeFlagCodeChanged
 			}
 		}
 
@@ -227,43 +228,26 @@ func convertStateDiffToStateChanges(diff *exerpc.StateDiff) []blockdb.StateChang
 			return bytes.Compare(si[:], sj[:]) < 0
 		})
 
-		slotDiffs := make([]blockdb.StateChangeSlot, 0, len(slots))
+		slotDiffs := make([]bdbtypes.StateChangeSlot, 0, len(slots))
 		for _, sk := range slots {
-			preV, preHas := preStor[sk]
-			postV, postHas := postStor[sk]
+			preV := preStor[sk]
+			postV := postStor[sk]
 
 			// Normalize to 32-byte words
 			preWord := to32Bytes(preV)
 			postWord := to32Bytes(postV)
 
-			switch {
-			case preHas && postHas:
-				if bytes.Equal(preWord[:], postWord[:]) {
-					continue
-				}
-				slotDiffs = append(slotDiffs, blockdb.StateChangeSlot{
-					Slot:       parse32Key(sk),
-					ChangeType: blockdb.StorageChangeModified,
-					PreValue:   preWord,
-					PostValue:  postWord,
-				})
-			case !preHas && postHas:
-				slotDiffs = append(slotDiffs, blockdb.StateChangeSlot{
-					Slot:       parse32Key(sk),
-					ChangeType: blockdb.StorageChangeCreated,
-					PostValue:  postWord,
-				})
-			case preHas && !postHas:
-				slotDiffs = append(slotDiffs, blockdb.StateChangeSlot{
-					Slot:       parse32Key(sk),
-					ChangeType: blockdb.StorageChangeDeleted,
-					PreValue:   preWord,
+			if !bytes.Equal(preWord[:], postWord[:]) {
+				slotDiffs = append(slotDiffs, bdbtypes.StateChangeSlot{
+					Slot:      parse32Key(sk),
+					PreValue:  preWord,
+					PostValue: postWord,
 				})
 			}
 		}
 
 		if len(slotDiffs) > 0 {
-			flags |= blockdb.StateChangeFlagStorageChanged
+			flags |= bdbtypes.StateChangeFlagStorageChanged
 		}
 
 		// Drop accounts with no effective changes.
@@ -271,24 +255,24 @@ func convertStateDiffToStateChanges(diff *exerpc.StateDiff) []blockdb.StateChang
 			continue
 		}
 
-		var acc blockdb.StateChangeAccount
+		var acc bdbtypes.StateChangeAccount
 		copy(acc.Address[:], addr[:])
 		acc.Flags = flags
 
-		if flags&blockdb.StateChangeFlagBalanceChanged != 0 {
+		if flags&bdbtypes.StateChangeFlagBalanceChanged != 0 {
 			// If account created/killed, missing side is encoded as len=0 (nil slice).
-			acc.PreBalance = preBal
-			acc.PostBalance = postBal
+			acc.PreBalance = *uint256.NewInt(0).SetBytes(preBal)
+			acc.PostBalance = *uint256.NewInt(0).SetBytes(postBal)
 		}
-		if flags&blockdb.StateChangeFlagNonceChanged != 0 {
+		if flags&bdbtypes.StateChangeFlagNonceChanged != 0 {
 			acc.PreNonce = preNonce
 			acc.PostNonce = postNonce
 		}
-		if flags&blockdb.StateChangeFlagCodeChanged != 0 {
+		if flags&bdbtypes.StateChangeFlagCodeChanged != 0 {
 			acc.PreCode = preCode
 			acc.PostCode = postCode
 		}
-		if flags&blockdb.StateChangeFlagStorageChanged != 0 {
+		if flags&bdbtypes.StateChangeFlagStorageChanged != 0 {
 			acc.Slots = slotDiffs
 		}
 

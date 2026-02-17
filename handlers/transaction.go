@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -18,9 +19,11 @@ import (
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/golang/snappy"
 	"github.com/gorilla/mux"
+	dynssz "github.com/pk910/dynamic-ssz"
 	"github.com/sirupsen/logrus"
 
 	"github.com/ethpandaops/dora/blockdb"
+	bdbtypes "github.com/ethpandaops/dora/blockdb/types"
 	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
@@ -496,8 +499,11 @@ func buildTransactionPageDataFromEL(pageData *models.TransactionPageData, txHash
 
 	// Value
 	if ethTx.Value() != nil {
-		valueFloat, _ := new(big.Float).SetInt(ethTx.Value()).Float64()
-		pageData.Amount = valueFloat / 1e18
+		bigFloat := new(big.Float).SetInt(ethTx.Value())
+		bigFloat.Quo(bigFloat, big.NewFloat(1e18))
+		valueFloat, _ := bigFloat.Float64()
+
+		pageData.Amount = valueFloat
 		pageData.AmountRaw = ethTx.Value().Bytes()
 	}
 
@@ -751,7 +757,7 @@ func loadTransactionEventsFromBlockdb(pageData *models.TransactionPageData, even
 
 			sections, err := blockdb.GlobalBlockDb.GetExecDataTxSections(
 				ctx, slot, blockRoot, pageData.TxHash,
-				blockdb.ExecDataSectionEvents,
+				bdbtypes.ExecDataSectionEvents,
 			)
 			if err != nil {
 				logrus.WithError(err).WithField("slot", slot).Debug("failed to get exec data tx sections for events")
@@ -761,11 +767,13 @@ func loadTransactionEventsFromBlockdb(pageData *models.TransactionPageData, even
 				if err != nil {
 					logrus.WithError(err).Debug("failed to decompress events section")
 				} else {
-					decodedEvents, err := blockdb.DecodeEventsSection(uncompData)
+					var events bdbtypes.EventDataList
+
+					err := dynssz.GetGlobalDynSsz().UnmarshalSSZ(&events, uncompData)
 					if err != nil {
 						logrus.WithError(err).Debug("failed to decode events section")
 					} else {
-						pageData.Events = buildEventsFromBlockdb(decodedEvents)
+						pageData.Events = buildEventsFromBlockdb(events)
 						return
 					}
 				}
@@ -778,7 +786,7 @@ func loadTransactionEventsFromBlockdb(pageData *models.TransactionPageData, even
 }
 
 // buildEventsFromBlockdb converts decoded blockdb events to page model events.
-func buildEventsFromBlockdb(events []blockdb.EventData) []*models.TransactionPageDataEvent {
+func buildEventsFromBlockdb(events bdbtypes.EventDataList) []*models.TransactionPageDataEvent {
 	result := make([]*models.TransactionPageDataEvent, 0, len(events))
 	for i := range events {
 		ev := &events[i]
@@ -837,7 +845,7 @@ func loadTransactionStateChangesFromBlockdb(pageData *models.TransactionPageData
 
 	sections, err := blockdb.GlobalBlockDb.GetExecDataTxSections(
 		ctx, slot, blockRoot, pageData.TxHash,
-		blockdb.ExecDataSectionStateChange,
+		bdbtypes.ExecDataSectionStateChange,
 	)
 	if err != nil {
 		logrus.WithError(err).WithField("slot", slot).Debug("failed to get exec data tx sections for state changes")
@@ -856,7 +864,9 @@ func loadTransactionStateChangesFromBlockdb(pageData *models.TransactionPageData
 		return
 	}
 
-	accounts, err := blockdb.DecodeStateChangesSection(uncompData)
+	var accounts []bdbtypes.StateChangeAccount
+
+	err = dynssz.GetGlobalDynSsz().UnmarshalSSZ(&accounts, uncompData)
 	if err != nil {
 		logrus.WithError(err).Debug("failed to decode state changes section")
 		pageData.StateChangesNotAvailable = true
@@ -866,7 +876,7 @@ func loadTransactionStateChangesFromBlockdb(pageData *models.TransactionPageData
 	pageData.StateChanges = buildStateChangesFromBlockdb(accounts)
 }
 
-func buildStateChangesFromBlockdb(accounts []blockdb.StateChangeAccount) []*models.TransactionPageDataStateChangeAccount {
+func buildStateChangesFromBlockdb(accounts []bdbtypes.StateChangeAccount) []*models.TransactionPageDataStateChangeAccount {
 	result := make([]*models.TransactionPageDataStateChangeAccount, 0, len(accounts))
 
 	for i := range accounts {
@@ -875,55 +885,57 @@ func buildStateChangesFromBlockdb(accounts []blockdb.StateChangeAccount) []*mode
 		preBal := new(big.Int)
 		postBal := new(big.Int)
 		if len(a.PreBalance) > 0 {
-			preBal.SetBytes(a.PreBalance)
+			preBal.SetBytes(a.PreBalance.Bytes())
 		}
 		if len(a.PostBalance) > 0 {
-			postBal.SetBytes(a.PostBalance)
+			postBal.SetBytes(a.PostBalance.Bytes())
 		}
 		balDiff := new(big.Int).Sub(postBal, preBal)
 
 		acct := &models.TransactionPageDataStateChangeAccount{
 			Address: a.Address[:],
 
-			AccountCreated: (a.Flags & blockdb.StateChangeFlagAccountCreated) != 0,
-			AccountKilled:  (a.Flags & blockdb.StateChangeFlagAccountKilled) != 0,
+			AccountCreated: (a.Flags & bdbtypes.StateChangeFlagAccountCreated) != 0,
+			AccountKilled:  (a.Flags & bdbtypes.StateChangeFlagAccountKilled) != 0,
 
-			BalanceChanged: (a.Flags & blockdb.StateChangeFlagBalanceChanged) != 0,
-			PreBalance:     a.PreBalance,
-			PostBalance:    a.PostBalance,
+			BalanceChanged: (a.Flags & bdbtypes.StateChangeFlagBalanceChanged) != 0,
+			PreBalance:     a.PreBalance.Bytes(),
+			PostBalance:    a.PostBalance.Bytes(),
 			PreBalanceWei:  preBal.String(),
 			PostBalanceWei: postBal.String(),
 			BalanceDiffWei: balDiff.String(),
 
-			NonceChanged: (a.Flags & blockdb.StateChangeFlagNonceChanged) != 0,
+			NonceChanged: (a.Flags & bdbtypes.StateChangeFlagNonceChanged) != 0,
 			PreNonce:     a.PreNonce,
 			PostNonce:    a.PostNonce,
 
-			CodeChanged: (a.Flags & blockdb.StateChangeFlagCodeChanged) != 0,
+			CodeChanged: (a.Flags & bdbtypes.StateChangeFlagCodeChanged) != 0,
 			PreCode:     a.PreCode,
 			PostCode:    a.PostCode,
 			PreCodeLen:  len(a.PreCode),
 			PostCodeLen: len(a.PostCode),
 
-			StorageChanged: (a.Flags & blockdb.StateChangeFlagStorageChanged) != 0,
+			StorageChanged: (a.Flags & bdbtypes.StateChangeFlagStorageChanged) != 0,
 		}
 
 		if acct.StorageChanged && len(a.Slots) > 0 {
 			acct.Slots = make([]*models.TransactionPageDataStateChangeSlot, 0, len(a.Slots))
+
+			zeroValue := [32]byte{}
 			for j := range a.Slots {
 				s := &a.Slots[j]
 
 				slot := &models.TransactionPageDataStateChangeSlot{
 					Slot: s.Slot[:],
 				}
-				switch s.ChangeType {
-				case blockdb.StorageChangeCreated:
+
+				if bytes.Equal(s.PreValue[:], zeroValue[:]) {
 					slot.ChangeType = "created"
 					slot.PostValue = s.PostValue[:]
-				case blockdb.StorageChangeDeleted:
+				} else if bytes.Equal(s.PostValue[:], zeroValue[:]) {
 					slot.ChangeType = "deleted"
 					slot.PreValue = s.PreValue[:]
-				default:
+				} else {
 					slot.ChangeType = "modified"
 					slot.PreValue = s.PreValue[:]
 					slot.PostValue = s.PostValue[:]
@@ -975,7 +987,7 @@ func loadTransactionInternalTxsFromBlockdb(pageData *models.TransactionPageData,
 
 			sections, err := blockdb.GlobalBlockDb.GetExecDataTxSections(
 				ctx, slot, blockRoot, pageData.TxHash,
-				blockdb.ExecDataSectionCallTrace,
+				bdbtypes.ExecDataSectionCallTrace,
 			)
 			if err != nil {
 				logrus.WithError(err).WithField("slot", slot).Debug("failed to get exec data tx sections for call trace")
@@ -985,7 +997,8 @@ func loadTransactionInternalTxsFromBlockdb(pageData *models.TransactionPageData,
 				if err != nil {
 					logrus.WithError(err).Debug("failed to decompress call trace section")
 				} else {
-					frames, err := blockdb.DecodeCallTraceSection(uncompData)
+					var frames []bdbtypes.FlatCallFrame
+					err = dynssz.GetGlobalDynSsz().UnmarshalSSZ(&frames, uncompData)
 					if err != nil {
 						logrus.WithError(err).Debug("failed to decode call trace section")
 					} else {
@@ -1003,7 +1016,7 @@ func loadTransactionInternalTxsFromBlockdb(pageData *models.TransactionPageData,
 
 // buildInternalTxsFromBlockdb converts decoded blockdb call frames to page
 // model internal transactions with full trace data.
-func buildInternalTxsFromBlockdb(pageData *models.TransactionPageData, frames []blockdb.FlatCallFrame) {
+func buildInternalTxsFromBlockdb(pageData *models.TransactionPageData, frames []bdbtypes.FlatCallFrame) {
 	pageData.InternalTxs = make([]*models.TransactionPageDataInternalTx, 0, len(frames))
 
 	// Collect unique 4-byte method selectors for batch lookup
@@ -1029,13 +1042,10 @@ func buildInternalTxsFromBlockdb(pageData *models.TransactionPageData, frames []
 	for i := range frames {
 		f := &frames[i]
 
-		var valueFloat float64
-		var valueRaw []byte
-		if f.Value != nil && f.Value.Sign() > 0 {
-			vFloat, _ := new(big.Float).SetInt(f.Value).Float64()
-			valueFloat = vFloat / 1e18
-			valueRaw = f.Value.Bytes()
-		}
+		bigFloat := new(big.Float).SetInt(f.Value.ToBig())
+		bigFloat.Quo(bigFloat, big.NewFloat(1e18))
+		valueFloat, _ := bigFloat.Float64()
+		valueRaw := f.Value.Bytes()
 
 		itx := &models.TransactionPageDataInternalTx{
 			CallIndex:    uint32(i),

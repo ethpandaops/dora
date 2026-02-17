@@ -4,11 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"math/big"
 	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/holiman/uint256"
 )
 
 // LenientHexBytes is like hexutil.Bytes, but accepts hex strings with or without
@@ -116,11 +116,11 @@ func CallTypeFromString(s string) uint8 {
 }
 
 // CallTraceCallValue returns the big.Int value from a CallTraceCall, or zero if nil.
-func CallTraceCallValue(c *CallTraceCall) *big.Int {
+func CallTraceCallValue(c *CallTraceCall) uint256.Int {
 	if c.Value == nil {
-		return big.NewInt(0)
+		return uint256.Int{}
 	}
-	return c.Value.ToInt()
+	return *uint256.MustFromBig(c.Value.ToInt())
 }
 
 // TraceBlockByHash calls debug_traceBlockByHash with the callTracer configuration.
