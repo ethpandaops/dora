@@ -253,13 +253,11 @@ type PebbleBlockDBConfig struct {
 }
 
 type S3BlockDBConfig struct {
-	Endpoint             string `yaml:"endpoint" envconfig:"BLOCKDB_S3_ENDPOINT"`
-	Secure               bool   `yaml:"secure" envconfig:"BLOCKDB_S3_SECURE"`
-	Bucket               string `yaml:"bucket" envconfig:"BLOCKDB_S3_BUCKET"`
-	Region               string `yaml:"region" envconfig:"BLOCKDB_S3_REGION"`
-	AccessKey            string `yaml:"accessKey" envconfig:"BLOCKDB_S3_ACCESS_KEY"`
-	SecretKey            string `yaml:"secretKey" envconfig:"BLOCKDB_S3_SECRET_KEY"`
-	Path                 string `yaml:"path" envconfig:"BLOCKDB_S3_PATH"`
-	MaxConcurrentUploads uint   `yaml:"maxConcurrentUploads" envconfig:"BLOCKDB_S3_MAX_CONCURRENT_UPLOADS"`
-	UploadQueueSize      uint   `yaml:"uploadQueueSize" envconfig:"BLOCKDB_S3_UPLOAD_QUEUE_SIZE"`
+	Endpoint  string `yaml:"endpoint" envconfig:"BLOCKDB_S3_ENDPOINT"`
+	Secure    bool   `yaml:"secure" envconfig:"BLOCKDB_S3_SECURE"`
+	Bucket    string `yaml:"bucket" envconfig:"BLOCKDB_S3_BUCKET"`
+	Region    string `yaml:"region" envconfig:"BLOCKDB_S3_REGION"`
+	AccessKey string `yaml:"accessKey" envconfig:"BLOCKDB_S3_ACCESS_KEY"`
+	SecretKey string `yaml:"secretKey" envconfig:"BLOCKDB_S3_SECRET_KEY"`
+	Path      string `yaml:"path" envconfig:"BLOCKDB_S3_PATH"`
 }
