@@ -950,6 +950,8 @@ func getSlotPageTransactions(pageData *models.SlotPageBlockData, transactions []
 	// Build a map of tx hash to tx data for EL enrichment
 	txHashMap := make(map[string]*models.SlotPageTransaction, len(transactions))
 
+	sysContracts := services.GlobalBeaconService.GetSystemContractAddresses()
+
 	for idx, txBytes := range transactions {
 		var tx ethtypes.Transaction
 
@@ -1000,15 +1002,22 @@ func getSlotPageTransactions(pageData *models.SlotPageBlockData, transactions []
 		txHashMap[string(txHash[:])] = txData
 
 		// check call fn signature
+		isCreate := txTo == nil
 		if txData.DataLen >= 4 {
-			sigBytes := types.TxSignatureBytes(txData.Data[0:4])
-			if sigLookupMap[sigBytes] == nil {
-				sigLookupMap[sigBytes] = []*models.SlotPageTransaction{
-					txData,
-				}
-				sigLookupBytes = append(sigLookupBytes, sigBytes)
+			// Skip fn signature lookup for deployments, precompiles, and system contracts
+			if skip, altName := utils.ShouldSkipSignatureLookup(txData.To, isCreate, sysContracts); skip {
+				txData.FuncSigStatus = 10
+				txData.FuncName = altName
 			} else {
-				sigLookupMap[sigBytes] = append(sigLookupMap[sigBytes], txData)
+				sigBytes := types.TxSignatureBytes(txData.Data[0:4])
+				if sigLookupMap[sigBytes] == nil {
+					sigLookupMap[sigBytes] = []*models.SlotPageTransaction{
+						txData,
+					}
+					sigLookupBytes = append(sigLookupBytes, sigBytes)
+				} else {
+					sigLookupMap[sigBytes] = append(sigLookupMap[sigBytes], txData)
+				}
 			}
 		} else {
 			txData.FuncSigStatus = 10

@@ -89,6 +89,34 @@ func GetElTransactionsByHash(txHash []byte) ([]*dbtypes.ElTransaction, error) {
 	return txs, nil
 }
 
+// GetElTransactionsByHashes returns all transaction records matching the given
+// tx hashes. May return multiple records per hash if the tx appears in multiple
+// blocks (reorgs).
+func GetElTransactionsByHashes(txHashes [][]byte) ([]*dbtypes.ElTransaction, error) {
+	if len(txHashes) == 0 {
+		return []*dbtypes.ElTransaction{}, nil
+	}
+
+	var sql strings.Builder
+	args := make([]any, len(txHashes))
+
+	fmt.Fprint(&sql, "SELECT block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw, method_id, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number, tx_type, tx_index, eff_gas_price FROM el_transactions WHERE tx_hash IN (")
+	for i, h := range txHashes {
+		if i > 0 {
+			fmt.Fprint(&sql, ", ")
+		}
+		fmt.Fprintf(&sql, "$%d", i+1)
+		args[i] = h
+	}
+	fmt.Fprint(&sql, ")")
+
+	txs := []*dbtypes.ElTransaction{}
+	if err := ReaderDb.Select(&txs, sql.String(), args...); err != nil {
+		return nil, err
+	}
+	return txs, nil
+}
+
 func GetElTransactionsByBlockUid(blockUid uint64) ([]*dbtypes.ElTransaction, error) {
 	txs := []*dbtypes.ElTransaction{}
 	err := ReaderDb.Select(&txs, "SELECT block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw, method_id, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number, tx_type, tx_index, eff_gas_price FROM el_transactions WHERE block_uid = $1", blockUid)

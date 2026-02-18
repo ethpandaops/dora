@@ -252,17 +252,48 @@
               <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Transaction input data">Input Data:</span></div>
               <div class="col-md-9">
                 <div class="d-flex justify-content-between align-items-center mb-2">
-                  {{ if gt (len .MethodID) 0 }}
+                  {{ if eq .TargetCallType "deploy" }}
+                  <span class="badge rounded-pill text-bg-warning">Contract Creation</span>
+                  {{ else if eq .TargetCallType "precompile" }}
+                  <span class="badge rounded-pill text-bg-info">Precompile: {{ .TargetCallName }}</span>
+                  {{ else if eq .TargetCallType "system" }}
+                  <span class="badge rounded-pill text-bg-info">System: {{ .TargetCallName }}</span>
+                  {{ else if gt (len .MethodID) 0 }}
                   <span class="badge rounded-pill text-bg-secondary">Method: {{ formatHexBytes .MethodID }}{{ if .MethodName }} ({{ .MethodName }}){{ end }}</span>
                   {{ else }}
                   <span></span>
                   {{ end }}
                   <div class="btn-group btn-group-sm" role="group">
-                    <button type="button" class="btn btn-outline-secondary active" id="input-hex-btn" onclick="showInputHex()">Hex</button>
-                    <button type="button" class="btn btn-outline-secondary" id="input-ascii-btn" onclick="showInputAscii()">ASCII</button>
+                    <button type="button" class="btn btn-outline-secondary active" id="input-hex-btn" onclick="showInputView('hex')">Hex</button>
+                    {{ if .DecodedCalldata }}
+                    <button type="button" class="btn btn-outline-secondary" id="input-decoded-btn" onclick="showInputView('decoded')">Decoded</button>
+                    {{ end }}
+                    <button type="button" class="btn btn-outline-secondary" id="input-ascii-btn" onclick="showInputView('ascii')">ASCII</button>
                   </div>
                 </div>
                 <div id="input-data-hex" class="border rounded p-2 text-monospace text-break" style="max-height: 200px; overflow-y: auto; font-size: 0.85rem; background-color: var(--bs-tertiary-bg);">{{ formatHexBytes .InputData }}</div>
+                {{ if .DecodedCalldata }}
+                <div id="input-data-decoded" class="border rounded p-2" style="max-height: 300px; overflow-y: auto; font-size: 0.85rem; background-color: var(--bs-tertiary-bg); display: none;">
+                  {{ if .MethodSignature }}
+                  <div class="mb-2 text-muted small">{{ .MethodSignature }}</div>
+                  {{ end }}
+                  <table class="table table-sm table-bordered mb-0" style="font-size: 0.85rem;">
+                    <thead>
+                      <tr><th style="width: 30px;">#</th><th style="width: 140px;">Name</th><th style="width: 100px;">Type</th><th>Value</th></tr>
+                    </thead>
+                    <tbody>
+                      {{ range $i, $param := .DecodedCalldata }}
+                      <tr>
+                        <td class="text-muted">{{ $i }}</td>
+                        <td><code>{{ $param.Name }}</code></td>
+                        <td><code class="text-muted">{{ $param.Type }}</code></td>
+                        <td class="text-monospace text-break" style="word-break: break-all;">{{ $param.Value }}</td>
+                      </tr>
+                      {{ end }}
+                    </tbody>
+                  </table>
+                </div>
+                {{ end }}
                 <div id="input-data-ascii" class="border rounded p-2 text-monospace text-break" style="max-height: 200px; overflow-y: auto; font-size: 0.85rem; background-color: var(--bs-tertiary-bg); display: none; white-space: pre-wrap;"></div>
               </div>
             </div>
@@ -378,22 +409,39 @@
     return str;
   }
 
-  function showInputHex() {
-    document.getElementById('input-data-hex').style.display = 'block';
-    document.getElementById('input-data-ascii').style.display = 'none';
-    document.getElementById('input-hex-btn').classList.add('active');
-    document.getElementById('input-ascii-btn').classList.remove('active');
-  }
+  function showInputView(view) {
+    var hexEl = document.getElementById('input-data-hex');
+    var asciiEl = document.getElementById('input-data-ascii');
+    var decodedEl = document.getElementById('input-data-decoded');
+    var hexBtn = document.getElementById('input-hex-btn');
+    var asciiBtn = document.getElementById('input-ascii-btn');
+    var decodedBtn = document.getElementById('input-decoded-btn');
 
-  function showInputAscii() {
-    if (inputDataAscii === null) {
-      inputDataAscii = hexToAscii(inputDataHex);
-      document.getElementById('input-data-ascii').textContent = inputDataAscii;
+    // Hide all views
+    if (hexEl) hexEl.style.display = 'none';
+    if (asciiEl) asciiEl.style.display = 'none';
+    if (decodedEl) decodedEl.style.display = 'none';
+
+    // Deactivate all buttons
+    if (hexBtn) hexBtn.classList.remove('active');
+    if (asciiBtn) asciiBtn.classList.remove('active');
+    if (decodedBtn) decodedBtn.classList.remove('active');
+
+    // Show selected view
+    if (view === 'hex') {
+      if (hexEl) hexEl.style.display = 'block';
+      if (hexBtn) hexBtn.classList.add('active');
+    } else if (view === 'decoded') {
+      if (decodedEl) decodedEl.style.display = 'block';
+      if (decodedBtn) decodedBtn.classList.add('active');
+    } else if (view === 'ascii') {
+      if (inputDataAscii === null) {
+        inputDataAscii = hexToAscii(inputDataHex);
+        if (asciiEl) asciiEl.textContent = inputDataAscii;
+      }
+      if (asciiEl) asciiEl.style.display = 'block';
+      if (asciiBtn) asciiBtn.classList.add('active');
     }
-    document.getElementById('input-data-hex').style.display = 'none';
-    document.getElementById('input-data-ascii').style.display = 'block';
-    document.getElementById('input-hex-btn').classList.remove('active');
-    document.getElementById('input-ascii-btn').classList.add('active');
   }
 
   $(document).ready(function() {

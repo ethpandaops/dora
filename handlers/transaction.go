@@ -3,7 +3,6 @@ package handlers
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -13,7 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/attestantio/go-eth2-client/spec/deneb"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethereum/go-ethereum/common"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
@@ -381,24 +379,8 @@ func buildTransactionPageDataFromDB(pageData *models.TransactionPageData, txs []
 	pageData.Nonce = tx.Nonce
 	pageData.TxIndex = tx.TxIndex
 
-	// Method ID from stored data
-	if len(tx.MethodID) >= 4 {
-		pageData.MethodID = tx.MethodID[:4]
-		var sigBytes types.TxSignatureBytes
-		copy(sigBytes[:], tx.MethodID[0:4])
-		sigLookups := services.GlobalTxSignaturesService.LookupSignatures([]types.TxSignatureBytes{sigBytes})
-		if sigLookup, found := sigLookups[sigBytes]; found {
-			if sigLookup.Status == types.TxSigStatusFound {
-				pageData.MethodName = sigLookup.Name
-			} else {
-				pageData.MethodName = "call?"
-			}
-		}
-	} else {
-		pageData.MethodName = "transfer"
-	}
-
-	// Load full transaction data from selected beacon block
+	// Load full transaction data from selected beacon block (must come before
+	// method resolution so InputData is available for calldata decoding).
 	if displayBlock != nil {
 		blockFilter := &dbtypes.BlockFilter{
 			BlockUids:    []uint64{tx.BlockUid},
@@ -406,6 +388,9 @@ func buildTransactionPageDataFromDB(pageData *models.TransactionPageData, txs []
 		}
 		loadFullTransactionData(pageData, tx, blockFilter)
 	}
+
+	// Resolve call target type and method info
+	applyCallTargetResolution(pageData, tx.MethodID)
 
 	// Blobs
 	pageData.BlobCount = tx.BlobCount
@@ -534,21 +519,11 @@ func buildTransactionPageDataFromEL(pageData *models.TransactionPageData, txHash
 
 	// Input data
 	pageData.InputData = ethTx.Data()
+	methodID := []byte(nil)
 	if len(ethTx.Data()) >= 4 {
-		pageData.MethodID = ethTx.Data()[:4]
-		var sigBytes types.TxSignatureBytes
-		copy(sigBytes[:], ethTx.Data()[0:4])
-		sigLookups := services.GlobalTxSignaturesService.LookupSignatures([]types.TxSignatureBytes{sigBytes})
-		if sigLookup, found := sigLookups[sigBytes]; found {
-			if sigLookup.Status == types.TxSigStatusFound {
-				pageData.MethodName = sigLookup.Name
-			} else {
-				pageData.MethodName = "call?"
-			}
-		}
-	} else {
-		pageData.MethodName = "transfer"
+		methodID = ethTx.Data()[:4]
 	}
+	applyCallTargetResolution(pageData, methodID)
 
 	// Blob hashes
 	pageData.BlobCount = uint32(len(ethTx.BlobHashes()))
@@ -1019,14 +994,25 @@ func loadTransactionInternalTxsFromBlockdb(pageData *models.TransactionPageData,
 func buildInternalTxsFromBlockdb(pageData *models.TransactionPageData, frames []bdbtypes.FlatCallFrame) {
 	pageData.InternalTxs = make([]*models.TransactionPageDataInternalTx, 0, len(frames))
 
-	// Collect unique 4-byte method selectors for batch lookup
+	sysContracts := services.GlobalBeaconService.GetSystemContractAddresses()
+
+	// Collect unique 4-byte method selectors for batch lookup,
+	// but skip lookups for CREATE/CREATE2, precompiles, and system contracts.
 	sigSet := make(map[types.TxSignatureBytes]struct{}, len(frames))
 	for i := range frames {
-		if len(frames[i].Input) >= 4 {
-			var sig types.TxSignatureBytes
-			copy(sig[:], frames[i].Input[:4])
-			sigSet[sig] = struct{}{}
+		f := &frames[i]
+		if len(f.Input) < 4 {
+			continue
 		}
+		// Skip CREATE/CREATE2, precompiles, non-deposit system contracts
+		isCreate := f.Type == 3 || f.Type == 4
+		if skip, _ := utils.ShouldSkipSignatureLookup(f.To[:], isCreate, sysContracts); skip {
+			continue
+		}
+
+		var sig types.TxSignatureBytes
+		copy(sig[:], f.Input[:4])
+		sigSet[sig] = struct{}{}
 	}
 
 	sigBytes := make([]types.TxSignatureBytes, 0, len(sigSet))
@@ -1070,15 +1056,38 @@ func buildInternalTxsFromBlockdb(pageData *models.TransactionPageData, frames []
 			itx.TypeName = fmt.Sprintf("TYPE_%d", f.Type)
 		}
 
-		// Method ID and name from input data
+		// Method ID, name, and decoded calldata from input data
 		if len(f.Input) >= 4 {
-			itx.MethodID = f.Input[:4]
-			var sig types.TxSignatureBytes
-			copy(sig[:], f.Input[:4])
-			if sigLookups != nil {
-				if lookup, found := sigLookups[sig]; found {
-					if lookup.Status == types.TxSigStatusFound {
+			isCreate := f.Type == 3 || f.Type == 4
+			precompileInfo := utils.GetPrecompileInfo(f.To[:])
+			sysName, isSysContract := sysContracts[f.To]
+			isNonDepositSys := isSysContract && sysName != "Deposit"
+
+			if isCreate {
+				itx.MethodName = "deploy"
+			} else if precompileInfo != nil {
+				itx.MethodName = precompileInfo.Name
+				itx.DecodedCalldata = utils.DecodePrecompileInput(precompileInfo.Index, f.Input)
+			} else if isNonDepositSys {
+				itx.MethodName = sysName
+				switch sysName {
+				case "Withdrawal Request":
+					itx.DecodedCalldata = utils.DecodeWithdrawalRequestInput(f.Input)
+				case "Consolidation Request":
+					itx.DecodedCalldata = utils.DecodeConsolidationRequestInput(f.Input)
+				}
+			} else {
+				// Normal call: use fn signature lookup
+				itx.MethodID = f.Input[:4]
+				var sig types.TxSignatureBytes
+				copy(sig[:], f.Input[:4])
+				if sigLookups != nil {
+					if lookup, found := sigLookups[sig]; found && lookup.Status == types.TxSigStatusFound {
 						itx.MethodName = lookup.Name
+						itx.MethodSignature = lookup.Signature
+						if len(f.Input) > 4 && lookup.Signature != "" {
+							itx.DecodedCalldata = utils.DecodeCalldata(lookup.Signature, f.Input)
+						}
 					}
 				}
 			}
@@ -1295,7 +1304,7 @@ func loadBlobData(pageData *models.TransactionPageData, ethTx *ethtypes.Transact
 		if err == nil {
 			// Find the commitments that correspond to this transaction's blobs
 			// by matching versioned hashes
-			kzgCommitments = matchBlobCommitments(blobHashes, commitments)
+			kzgCommitments = utils.MatchBlobCommitments(blobHashes, commitments)
 		}
 	}
 
@@ -1361,33 +1370,32 @@ func loadBlobData(pageData *models.TransactionPageData, ethTx *ethtypes.Transact
 	}
 }
 
-// matchBlobCommitments finds the KZG commitments from the block that match
-// the given versioned hashes from a transaction.
-// Since blob commitments in the block are ordered across all transactions,
-// we need to find the ones belonging to this transaction by matching versioned hashes.
-func matchBlobCommitments(versionedHashes []common.Hash, allCommitments []deneb.KZGCommitment) [][]byte {
-	result := make([][]byte, len(versionedHashes))
-
-	// For each versioned hash, find matching commitment
-	// A versioned hash is SHA256(commitment) with version byte prefix
-	for i, hash := range versionedHashes {
-		for _, commitment := range allCommitments {
-			// Compute versioned hash from commitment
-			computedHash := computeVersionedHash(commitment[:])
-			if computedHash == hash {
-				result[i] = commitment[:]
-				break
+// applyCallTargetResolution resolves the call target type and method info
+// for the transaction, then maps the result to the page data.
+func applyCallTargetResolution(pageData *models.TransactionPageData, methodID []byte) {
+	sysContracts := services.GlobalBeaconService.GetSystemContractAddresses()
+	lookupFn := func(sigBytes [4]byte) *utils.SignatureLookupResult {
+		var tbytes types.TxSignatureBytes
+		copy(tbytes[:], sigBytes[:])
+		sigLookups := services.GlobalTxSignaturesService.LookupSignatures([]types.TxSignatureBytes{tbytes})
+		if sigLookup, found := sigLookups[tbytes]; found {
+			return &utils.SignatureLookupResult{
+				Name:      sigLookup.Name,
+				Signature: sigLookup.Signature,
+				Found:     sigLookup.Status == types.TxSigStatusFound,
 			}
 		}
+		return nil
 	}
 
-	return result
-}
+	res := utils.ResolveCallTargetAndMethod(pageData.ToAddr, pageData.IsCreate, pageData.InputData, methodID, sysContracts, lookupFn)
 
-// computeVersionedHash computes the versioned hash from a KZG commitment.
-// Per EIP-4844: versioned_hash = 0x01 || SHA256(commitment)[1:]
-func computeVersionedHash(commitment []byte) common.Hash {
-	hash := sha256.Sum256(commitment)
-	hash[0] = 0x01 // Version byte for blob commitments
-	return common.Hash(hash)
+	pageData.TargetCallType = res.CallType
+	pageData.TargetCallName = res.CallName
+	pageData.MethodName = res.MethodName
+	pageData.MethodSignature = res.MethodSignature
+	pageData.DecodedCalldata = res.DecodedCalldata
+	if res.MethodID != nil {
+		pageData.MethodID = res.MethodID
+	}
 }

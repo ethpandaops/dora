@@ -12,6 +12,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/ethpandaops/dora/blockdb"
+	"github.com/ethpandaops/dora/clients/execution"
 	exerpc "github.com/ethpandaops/dora/clients/execution/rpc"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
@@ -45,6 +46,7 @@ type blockData struct {
 
 // processing stats
 type blockStats struct {
+	client       *execution.Client
 	events       uint32
 	transactions uint32
 	transfers    uint32
@@ -63,17 +65,11 @@ type dbCommitCallback func(tx *sqlx.Tx) error
 
 // processElBlock processes a single block reference for EL transaction indexing.
 func (t *TxIndexer) processElBlock(ref *BlockRef) (*blockStats, error) {
-	t1 := time.Now()
-	t2 := t1
+	t2 := time.Now()
 	stats := &blockStats{}
 
 	defer func() {
 		stats.processing = append(stats.processing, time.Since(t2))
-
-		// sleep to keep the processing rate at max 1 block per second to avoid overwhelming the db
-		if diff := time.Since(t1); diff < time.Second {
-			time.Sleep(time.Second - diff)
-		}
 	}()
 
 	ctx, cancel := context.WithTimeout(t.ctx, 60*time.Second)
@@ -84,6 +80,8 @@ func (t *TxIndexer) processElBlock(ref *BlockRef) (*blockStats, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch block data: %w", err)
 	}
+
+	stats.client = client
 
 	if data == nil {
 		// No data to process (e.g., pre-merge block)
@@ -250,20 +248,32 @@ func (t *TxIndexer) processElBlock(ref *BlockRef) (*blockStats, error) {
 		}
 
 		// Insert system deposits (withdrawals and fee recipient rewards)
+		// BlockIndex 0 is reserved for fee recipients, withdrawals use 1+.
 		if len(procCtx.systemDeposits) > 0 {
 			// Resolve account IDs and create final withdrawal records
 			systemWithdrawals := make([]*dbtypes.ElWithdrawal, 0, len(procCtx.systemDeposits))
+			withdrawalIdx := uint16(1)
 			for _, pending := range procCtx.systemDeposits {
 				if pending.account.id == 0 {
 					continue // Skip if account ID not resolved
 				}
+
+				var blockIndex uint16
+				if pending.depositType == dbtypes.WithdrawalTypeFeeRecipient {
+					blockIndex = 0
+				} else {
+					blockIndex = withdrawalIdx
+					withdrawalIdx++
+				}
+
 				systemWithdrawals = append(systemWithdrawals, &dbtypes.ElWithdrawal{
-					BlockUid:  ref.BlockUID,
-					AccountID: pending.account.id,
-					Type:      pending.depositType,
-					Amount:    pending.amount,
-					AmountRaw: pending.amountRaw,
-					Validator: pending.validator,
+					BlockUid:   ref.BlockUID,
+					BlockIndex: blockIndex,
+					AccountID:  pending.account.id,
+					Type:       pending.depositType,
+					Amount:     pending.amount,
+					AmountRaw:  pending.amountRaw,
+					Validator:  pending.validator,
 				})
 			}
 

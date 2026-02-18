@@ -17,6 +17,14 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
+// clampInt64 caps a uint64 value at math.MaxInt64 to fit PostgreSQL BIGINT.
+func clampInt64(v uint64) uint64 {
+	if v >= math.MaxInt64 {
+		return math.MaxInt64
+	}
+	return v
+}
+
 type dbWriter struct {
 	indexer *Indexer
 }
@@ -476,14 +484,14 @@ func (dbw *dbWriter) buildDbEpoch(epoch phase0.Epoch, blocks []*Block, epochStat
 		Epoch: uint64(epoch),
 	}
 	if epochVotes != nil {
-		dbEpoch.VotedTarget = uint64(epochVotes.CurrentEpoch.TargetVoteAmount + epochVotes.NextEpoch.TargetVoteAmount)
-		dbEpoch.VotedHead = uint64(epochVotes.CurrentEpoch.HeadVoteAmount + epochVotes.NextEpoch.HeadVoteAmount)
-		dbEpoch.VotedTotal = uint64(epochVotes.CurrentEpoch.TotalVoteAmount + epochVotes.NextEpoch.TotalVoteAmount)
+		dbEpoch.VotedTarget = clampInt64(uint64(epochVotes.CurrentEpoch.TargetVoteAmount + epochVotes.NextEpoch.TargetVoteAmount))
+		dbEpoch.VotedHead = clampInt64(uint64(epochVotes.CurrentEpoch.HeadVoteAmount + epochVotes.NextEpoch.HeadVoteAmount))
+		dbEpoch.VotedTotal = clampInt64(uint64(epochVotes.CurrentEpoch.TotalVoteAmount + epochVotes.NextEpoch.TotalVoteAmount))
 	}
 	if epochStatsValues != nil {
 		dbEpoch.ValidatorCount = epochStatsValues.ActiveValidators
-		dbEpoch.ValidatorBalance = uint64(epochStatsValues.ActiveBalance)
-		dbEpoch.Eligible = uint64(epochStatsValues.EffectiveBalance)
+		dbEpoch.ValidatorBalance = clampInt64(uint64(epochStatsValues.ActiveBalance))
+		dbEpoch.Eligible = clampInt64(uint64(epochStatsValues.EffectiveBalance))
 		depositIndexField := epochStatsValues.FirstDepositIndex
 		depositIndex = &depositIndexField
 	}

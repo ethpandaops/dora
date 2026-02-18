@@ -19,11 +19,11 @@ func InsertElWithdrawals(withdrawals []*dbtypes.ElWithdrawal, dbTx *sqlx.Tx) err
 			dbtypes.DBEnginePgsql:  "INSERT INTO el_withdrawals ",
 			dbtypes.DBEngineSqlite: "INSERT OR REPLACE INTO el_withdrawals ",
 		}),
-		"(block_uid, account_id, type, amount, amount_raw, validator)",
+		"(block_uid, block_index, account_id, type, amount, amount_raw, validator)",
 		" VALUES ",
 	)
 	argIdx := 0
-	fieldCount := 6
+	fieldCount := 7
 
 	args := make([]any, len(withdrawals)*fieldCount)
 	for i, w := range withdrawals {
@@ -40,15 +40,21 @@ func InsertElWithdrawals(withdrawals []*dbtypes.ElWithdrawal, dbTx *sqlx.Tx) err
 		fmt.Fprint(&sql, ")")
 
 		args[argIdx+0] = w.BlockUid
-		args[argIdx+1] = w.AccountID
-		args[argIdx+2] = w.Type
-		args[argIdx+3] = w.Amount
-		args[argIdx+4] = w.AmountRaw
-		args[argIdx+5] = w.Validator
+		args[argIdx+1] = w.BlockIndex
+		args[argIdx+2] = w.AccountID
+		args[argIdx+3] = w.Type
+		args[argIdx+4] = w.Amount
+		args[argIdx+5] = w.AmountRaw
+		args[argIdx+6] = w.Validator
 		argIdx += fieldCount
 	}
 	fmt.Fprint(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
-		dbtypes.DBEnginePgsql:  " ON CONFLICT (block_uid, account_id, type) DO UPDATE SET amount = excluded.amount, amount_raw = excluded.amount_raw, validator = excluded.validator",
+		dbtypes.DBEnginePgsql: " ON CONFLICT (block_uid, block_index) DO UPDATE SET" +
+			" account_id = excluded.account_id," +
+			" type = excluded.type," +
+			" amount = excluded.amount," +
+			" amount_raw = excluded.amount_raw," +
+			" validator = excluded.validator",
 		dbtypes.DBEngineSqlite: "",
 	}))
 
@@ -59,9 +65,12 @@ func InsertElWithdrawals(withdrawals []*dbtypes.ElWithdrawal, dbTx *sqlx.Tx) err
 	return nil
 }
 
-func GetElWithdrawal(blockUid uint64, accountID uint64, withdrawalType uint8) (*dbtypes.ElWithdrawal, error) {
+func GetElWithdrawal(blockUid uint64, blockIndex uint16) (*dbtypes.ElWithdrawal, error) {
 	w := &dbtypes.ElWithdrawal{}
-	err := ReaderDb.Get(w, "SELECT block_uid, account_id, type, amount, amount_raw, validator FROM el_withdrawals WHERE block_uid = $1 AND account_id = $2 AND type = $3", blockUid, accountID, withdrawalType)
+	err := ReaderDb.Get(w,
+		"SELECT block_uid, block_index, account_id, type, amount, amount_raw, validator"+
+			" FROM el_withdrawals WHERE block_uid = $1 AND block_index = $2",
+		blockUid, blockIndex)
 	if err != nil {
 		return nil, err
 	}
@@ -70,7 +79,10 @@ func GetElWithdrawal(blockUid uint64, accountID uint64, withdrawalType uint8) (*
 
 func GetElWithdrawalsByBlockUid(blockUid uint64) ([]*dbtypes.ElWithdrawal, error) {
 	withdrawals := []*dbtypes.ElWithdrawal{}
-	err := ReaderDb.Select(&withdrawals, "SELECT block_uid, account_id, type, amount, amount_raw, validator FROM el_withdrawals WHERE block_uid = $1 ORDER BY type ASC, validator ASC", blockUid)
+	err := ReaderDb.Select(&withdrawals,
+		"SELECT block_uid, block_index, account_id, type, amount, amount_raw, validator"+
+			" FROM el_withdrawals WHERE block_uid = $1 ORDER BY block_index ASC",
+		blockUid)
 	if err != nil {
 		return nil, err
 	}
@@ -83,7 +95,7 @@ func GetElWithdrawalsByAccountID(accountID uint64, offset uint64, limit uint32) 
 
 	fmt.Fprint(&sql, `
 	WITH cte AS (
-		SELECT block_uid, account_id, type, amount, amount_raw, validator
+		SELECT block_uid, block_index, account_id, type, amount, amount_raw, validator
 		FROM el_withdrawals
 		WHERE account_id = $1
 	)`)
@@ -91,6 +103,7 @@ func GetElWithdrawalsByAccountID(accountID uint64, offset uint64, limit uint32) 
 	fmt.Fprintf(&sql, `
 	SELECT
 		count(*) AS block_uid,
+		0 AS block_index,
 		0 AS account_id,
 		0 AS type,
 		0 AS amount,
@@ -99,7 +112,7 @@ func GetElWithdrawalsByAccountID(accountID uint64, offset uint64, limit uint32) 
 	FROM cte
 	UNION ALL SELECT * FROM (
 	SELECT * FROM cte
-	ORDER BY block_uid DESC
+	ORDER BY block_uid DESC, block_index ASC
 	LIMIT $%v`, len(args)+1)
 	args = append(args, limit)
 
@@ -130,7 +143,7 @@ func GetElWithdrawalsFiltered(offset uint64, limit uint32, filter *dbtypes.ElWit
 
 	fmt.Fprint(&sql, `
 	WITH cte AS (
-		SELECT block_uid, account_id, type, amount, amount_raw, validator
+		SELECT block_uid, block_index, account_id, type, amount, amount_raw, validator
 		FROM el_withdrawals
 	`)
 
@@ -167,6 +180,7 @@ func GetElWithdrawalsFiltered(offset uint64, limit uint32, filter *dbtypes.ElWit
 	fmt.Fprintf(&sql, `
 	SELECT
 		count(*) AS block_uid,
+		0 AS block_index,
 		0 AS account_id,
 		0 AS type,
 		0 AS amount,
@@ -175,7 +189,7 @@ func GetElWithdrawalsFiltered(offset uint64, limit uint32, filter *dbtypes.ElWit
 	FROM cte
 	UNION ALL SELECT * FROM (
 	SELECT * FROM cte
-	ORDER BY block_uid DESC
+	ORDER BY block_uid DESC, block_index ASC
 	LIMIT $%v`, len(args))
 
 	if offset > 0 {
@@ -199,8 +213,8 @@ func GetElWithdrawalsFiltered(offset uint64, limit uint32, filter *dbtypes.ElWit
 	return withdrawals[1:], count, nil
 }
 
-func DeleteElWithdrawal(blockUid uint64, accountID uint64, withdrawalType uint8, dbTx *sqlx.Tx) error {
-	_, err := dbTx.Exec("DELETE FROM el_withdrawals WHERE block_uid = $1 AND account_id = $2 AND type = $3", blockUid, accountID, withdrawalType)
+func DeleteElWithdrawal(blockUid uint64, blockIndex uint16, dbTx *sqlx.Tx) error {
+	_, err := dbTx.Exec("DELETE FROM el_withdrawals WHERE block_uid = $1 AND block_index = $2", blockUid, blockIndex)
 	return err
 }
 

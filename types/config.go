@@ -135,6 +135,8 @@ type Config struct {
 		LookupBatchSize   uint64        `yaml:"lookupBatchSize" envconfig:"TXSIG_LOOKUP_INTERVAL"`
 		ConcurrencyLimit  uint64        `yaml:"concurrencyLimit" envconfig:"TXSIG_CONCURRENCY_LIMIT"`
 		Disable4Bytes     bool          `yaml:"disable4Bytes" envconfig:"TXSIG_DISABLE_4BYTES"`
+		DisableSourcify   bool          `yaml:"disableSourcify" envconfig:"TXSIG_DISABLE_SOURCIFY"`
+		CbtBaseUrl        string        `yaml:"cbtBaseUrl" envconfig:"TXSIG_CBT_BASE_URL"`
 		RecheckTimeout    time.Duration `yaml:"recheckTimeout" envconfig:"TXSIG_RECHECK_TIMEOUT"`
 	} `yaml:"txsig"`
 
@@ -145,6 +147,7 @@ type Config struct {
 
 	ExecutionIndexer struct {
 		Enabled         bool          `yaml:"enabled" envconfig:"EXECUTIONINDEXER_ENABLED"`
+		ParallelBlocks  int           `yaml:"parallelBlocks" envconfig:"EXECUTIONINDEXER_PARALLEL_BLOCKS"`
 		Retention       time.Duration `yaml:"retention" envconfig:"EXECUTIONINDEXER_RETENTION"`
 		CleanupInterval time.Duration `yaml:"cleanupInterval" envconfig:"EXECUTIONINDEXER_CLEANUP_INTERVAL"`
 
