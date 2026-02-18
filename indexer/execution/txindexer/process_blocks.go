@@ -248,20 +248,32 @@ func (t *TxIndexer) processElBlock(ref *BlockRef) (*blockStats, error) {
 		}
 
 		// Insert system deposits (withdrawals and fee recipient rewards)
+		// BlockIndex 0 is reserved for fee recipients, withdrawals use 1+.
 		if len(procCtx.systemDeposits) > 0 {
 			// Resolve account IDs and create final withdrawal records
 			systemWithdrawals := make([]*dbtypes.ElWithdrawal, 0, len(procCtx.systemDeposits))
+			withdrawalIdx := uint16(1)
 			for _, pending := range procCtx.systemDeposits {
 				if pending.account.id == 0 {
 					continue // Skip if account ID not resolved
 				}
+
+				var blockIndex uint16
+				if pending.depositType == dbtypes.WithdrawalTypeFeeRecipient {
+					blockIndex = 0
+				} else {
+					blockIndex = withdrawalIdx
+					withdrawalIdx++
+				}
+
 				systemWithdrawals = append(systemWithdrawals, &dbtypes.ElWithdrawal{
-					BlockUid:  ref.BlockUID,
-					AccountID: pending.account.id,
-					Type:      pending.depositType,
-					Amount:    pending.amount,
-					AmountRaw: pending.amountRaw,
-					Validator: pending.validator,
+					BlockUid:   ref.BlockUID,
+					BlockIndex: blockIndex,
+					AccountID:  pending.account.id,
+					Type:       pending.depositType,
+					Amount:     pending.amount,
+					AmountRaw:  pending.amountRaw,
+					Validator:  pending.validator,
 				})
 			}
 
