@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/attestantio/go-eth2-client/spec/phase0"
@@ -64,14 +65,18 @@ type cleanupState struct {
 
 // BlockRef represents a reference to a block for EL indexing.
 type BlockRef struct {
-	Slot            phase0.Slot
-	BlockUID        uint64
-	BlockHash       []byte        // EL block hash
-	BlockRoot       []byte        // Beacon block root (used as key for exec data in blockdb)
-	Block           *beacon.Block // optional, may be nil for historical blocks
-	ProcessTime     time.Time     // earliest time this block can be processed (zero means immediate)
-	UpdateSyncEpoch *phase0.Epoch // if set, update DB sync state to this epoch after processing
-	IsRecent        bool
+	Slot        phase0.Slot
+	BlockUID    uint64
+	BlockHash   []byte        // EL block hash
+	BlockRoot   []byte        // Beacon block root (used as key for exec data in blockdb)
+	Block       *beacon.Block // optional, may be nil for historical blocks
+	ProcessTime time.Time     // earliest time this block can be processed (zero means immediate)
+	IsRecent    bool
+
+	// onCompletion is called after this block has been processed.
+	// Used by epoch sync batches to persist sync state once all blocks
+	// in the batch are done (via a shared atomic counter).
+	onCompletion func()
 }
 
 // TxIndexer is responsible for indexing EL transactions from beacon blocks.
@@ -464,8 +469,8 @@ func (t *TxIndexer) processSync() {
 			}
 		}
 
-		// Queue unsynced blocks with low priority
-		var lastQueuedRef *BlockRef
+		// Collect unsynced blocks for this epoch.
+		refsToQueue := make([]*BlockRef, 0, len(blocks))
 		for _, slot := range blocks {
 			if syncedBlockMap[slot.Block.BlockUid] {
 				continue
@@ -473,20 +478,32 @@ func (t *TxIndexer) processSync() {
 
 			ref := t.createBlockRefFromSlot(slot)
 			if ref != nil {
-				t.enqueueBlockRef(ref, false)
-				lastQueuedRef = ref
+				refsToQueue = append(refsToQueue, ref)
 			}
 		}
 
-		// Update local sync epoch to prevent re-queuing
+		// Update local sync epoch to prevent re-queuing.
 		nextEpoch := epoch + 1
 		t.setLocalSyncEpoch(nextEpoch)
 
-		// If blocks were queued, set UpdateSyncEpoch on the last one to persist after processing.
-		// If no blocks were queued (all synced), persist immediately.
-		if lastQueuedRef != nil {
-			lastQueuedRef.UpdateSyncEpoch = &nextEpoch
+		if len(refsToQueue) > 0 {
+			// Set up a shared completion counter so the sync state is
+			// persisted only after ALL blocks in this batch are done,
+			// regardless of finishing order.
+			var remaining atomic.Int32
+			remaining.Store(int32(len(refsToQueue)))
+			saveEpoch := nextEpoch
+
+			for _, ref := range refsToQueue {
+				ref.onCompletion = func() {
+					if remaining.Add(-1) == 0 {
+						t.saveSyncState(saveEpoch)
+					}
+				}
+				t.enqueueBlockRef(ref, false)
+			}
 		} else {
+			// All blocks already synced, persist immediately.
 			t.saveSyncState(nextEpoch)
 		}
 	}
@@ -524,14 +541,38 @@ func (t *TxIndexer) enqueueBlockRef(ref *BlockRef, highPriority bool) {
 	t.queueCond.Signal()
 }
 
-// runProcessingLoop is the main single-threaded processing loop.
+// getMaxParallelBlocks returns the maximum number of blocks to process
+// concurrently. If not configured, defaults to el_client_count / 5,
+// clamped to [2, 5].
+func (t *TxIndexer) getMaxParallelBlocks() int {
+	if n := utils.Config.ExecutionIndexer.ParallelBlocks; n > 0 {
+		return n
+	}
+
+	n := min(max(len(t.indexerCtx.ExecutionPool.GetAllEndpoints())/5, 2), 5)
+
+	return n
+}
+
+// runProcessingLoop dequeues blocks and dispatches them to up to N parallel
+// workers. A minimum 1-second gap is enforced between each new dispatch to
+// avoid overwhelming EL clients and the database.
 func (t *TxIndexer) runProcessingLoop() {
 	defer utils.HandleSubroutinePanic("TxIndexer.runProcessingLoop", t.runProcessingLoop)
+
+	maxWorkers := t.getMaxParallelBlocks()
+	t.logger.WithField("maxWorkers", maxWorkers).Info("starting block processing loop")
+
+	workerSem := make(chan struct{}, maxWorkers)
+	var wg sync.WaitGroup
+
+	defer wg.Wait()
+
+	var lastDispatch time.Time
 
 	for {
 		ref := t.dequeueBlockRef()
 		if ref == nil {
-			// Check if we should exit
 			select {
 			case <-t.ctx.Done():
 				return
@@ -540,36 +581,73 @@ func (t *TxIndexer) runProcessingLoop() {
 			}
 		}
 
-		stats, err := t.processElBlock(ref)
-		logger := t.logger.WithFields(logrus.Fields{
-			"slot":     ref.Slot,
-			"blockUid": ref.BlockUID,
+		// Run cleanup when due. Wait for all active workers to finish
+		// first so that cleanup doesn't interfere with in-flight blocks.
+		if t.isCleanupDue() {
+			wg.Wait()
+			t.checkAndRunCleanup()
+		}
+
+		// Enforce at least 1-second gap between dispatches.
+		if !lastDispatch.IsZero() {
+			if elapsed := time.Since(lastDispatch); elapsed < time.Second {
+				time.Sleep(time.Second - elapsed)
+			}
+		}
+
+		// Acquire a worker slot (blocks when N workers are already busy).
+		select {
+		case workerSem <- struct{}{}:
+		case <-t.ctx.Done():
+			return
+		}
+
+		lastDispatch = time.Now()
+		wg.Add(1)
+
+		go func(ref *BlockRef) {
+			defer wg.Done()
+			defer func() { <-workerSem }()
+
+			t.processAndFinalize(ref)
+		}(ref)
+	}
+}
+
+// processAndFinalize runs processElBlock for a single ref, logs the result,
+// persists the sync epoch when applicable, and triggers cleanup checks.
+func (t *TxIndexer) processAndFinalize(ref *BlockRef) {
+	stats, err := t.processElBlock(ref)
+
+	logger := t.logger.WithFields(logrus.Fields{
+		"slot":     ref.Slot,
+		"blockUid": ref.BlockUID,
+	})
+
+	if stats != nil {
+		if len(stats.processing) > 1 {
+			logger = logger.WithField("commit", stats.processing[1])
+		}
+		logger = logger.WithFields(logrus.Fields{
+			"load": stats.processing[0],
+			"txs":  stats.transactions,
+			"logs": stats.events,
 		})
 
-		if stats != nil {
-			if len(stats.processing) > 1 {
-				logger = logger.WithField("commit", stats.processing[1])
-			}
-			logger = logger.WithFields(logrus.Fields{
-				"load": stats.processing[0],
-				"txs":  stats.transactions,
-				"logs": stats.events,
-			})
+		if stats.client != nil {
+			logger = logger.WithField("client", stats.client.GetName())
 		}
+	}
 
-		if err != nil {
-			logger.WithError(err).Error("failed to process EL block")
-		} else if ref.IsRecent {
-			logger.Info("processed el block")
-		}
+	if err != nil {
+		logger.WithError(err).Error("failed to process EL block")
+	} else if ref.IsRecent {
+		logger.Info("processed el block")
+	}
 
-		// Persist sync epoch to DB if this was the last block of an epoch
-		if ref.UpdateSyncEpoch != nil {
-			t.saveSyncState(*ref.UpdateSyncEpoch)
-		}
-
-		// Check if cleanup is needed (avoid running during active processing)
-		t.checkAndRunCleanup()
+	// Invoke completion callback (e.g. sync epoch persistence for batch).
+	if ref.onCompletion != nil {
+		ref.onCompletion()
 	}
 }
 
@@ -651,6 +729,18 @@ func (t *TxIndexer) GetBalanceLookupStats() (highPrio, lowPrio int) {
 // GetBalanceLookupService returns the balance lookup service for direct access.
 func (t *TxIndexer) GetBalanceLookupService() *BalanceLookupService {
 	return t.balanceLookup
+}
+
+// isCleanupDue returns true when enough time has passed since the last
+// cleanup run. This is a cheap check intended to be called frequently so
+// the caller can decide when to actually run the (expensive) cleanup.
+func (t *TxIndexer) isCleanupDue() bool {
+	cleanupInterval := utils.Config.ExecutionIndexer.CleanupInterval
+	if cleanupInterval == 0 {
+		cleanupInterval = defaultCleanupInterval
+	}
+
+	return t.lastCleanup.IsZero() || time.Since(t.lastCleanup) >= cleanupInterval
 }
 
 // checkAndRunCleanup checks if cleanup is needed and runs it if the interval has passed.
