@@ -12,6 +12,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/ethpandaops/dora/blockdb"
+	"github.com/ethpandaops/dora/clients/execution"
 	exerpc "github.com/ethpandaops/dora/clients/execution/rpc"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
@@ -45,6 +46,7 @@ type blockData struct {
 
 // processing stats
 type blockStats struct {
+	client       *execution.Client
 	events       uint32
 	transactions uint32
 	transfers    uint32
@@ -63,17 +65,11 @@ type dbCommitCallback func(tx *sqlx.Tx) error
 
 // processElBlock processes a single block reference for EL transaction indexing.
 func (t *TxIndexer) processElBlock(ref *BlockRef) (*blockStats, error) {
-	t1 := time.Now()
-	t2 := t1
+	t2 := time.Now()
 	stats := &blockStats{}
 
 	defer func() {
 		stats.processing = append(stats.processing, time.Since(t2))
-
-		// sleep to keep the processing rate at max 1 block per second to avoid overwhelming the db
-		if diff := time.Since(t1); diff < time.Second {
-			time.Sleep(time.Second - diff)
-		}
 	}()
 
 	ctx, cancel := context.WithTimeout(t.ctx, 60*time.Second)
@@ -84,6 +80,8 @@ func (t *TxIndexer) processElBlock(ref *BlockRef) (*blockStats, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch block data: %w", err)
 	}
+
+	stats.client = client
 
 	if data == nil {
 		// No data to process (e.g., pre-merge block)
