@@ -16,6 +16,10 @@
       .itx-gas { white-space: nowrap; font-family: monospace; font-size: 0.82rem; color: var(--bs-secondary); }
       .itx-io { background: var(--bs-tertiary-bg); }
       .itx-data-box { border: 1px solid var(--bs-border-color); border-radius: 4px; padding: 6px 8px; background: var(--bs-body-bg); font-family: monospace; font-size: 0.82rem; word-break: break-all; max-height: 140px; overflow-y: auto; margin-top: 4px; }
+      .itx-decoded-table { font-size: 0.82rem; margin: 4px 0 0 0; }
+      .itx-decoded-table td, .itx-decoded-table th { padding: 2px 8px; vertical-align: top; }
+      .itx-decoded-table th { font-weight: 600; white-space: nowrap; }
+      .itx-decoded-table td.itx-decoded-val { word-break: break-all; font-family: monospace; }
       .itx-toggle { cursor: pointer; color: var(--bs-primary); font-size: 0.78rem; text-decoration: none; }
       .itx-toggle:hover { text-decoration: underline; }
       .itx-error { color: var(--bs-danger); font-size: 0.82rem; margin-top: 2px; }
@@ -111,9 +115,36 @@
             <td colspan="6" style="padding-left: {{ mul (float64 $itx.Depth) 18 }}px;">
               {{ if gt (len $itx.Input) 0 }}
               <div class="mb-2">
-                <span class="text-muted small me-1">Input ({{ len $itx.Input }} bytes):</span>
-                <i class="fa fa-copy text-muted" role="button" data-bs-toggle="tooltip" title="Copy input data" data-clipboard-text="{{ formatHexBytes $itx.Input }}" style="font-size: 0.75rem;"></i>
-                <div class="itx-data-box">{{ formatHexBytes $itx.Input }}</div>
+                <div class="d-flex align-items-center flex-wrap gap-1 mb-1">
+                  <span class="text-muted small me-1">Input ({{ len $itx.Input }} bytes):</span>
+                  <i class="fa fa-copy text-muted" role="button" data-bs-toggle="tooltip" title="Copy input data" data-clipboard-text="{{ formatHexBytes $itx.Input }}" style="font-size: 0.75rem;"></i>
+                  <div class="btn-group btn-group-sm ms-auto" role="group">
+                    {{ if $itx.DecodedCalldata }}
+                    <button type="button" class="btn btn-outline-secondary btn-xs active" onclick="showItxInputView({{ $idx }}, 'decoded')">Decoded</button>
+                    <button type="button" class="btn btn-outline-secondary btn-xs" onclick="showItxInputView({{ $idx }}, 'hex')">Hex</button>
+                    {{ else }}
+                    <button type="button" class="btn btn-outline-secondary btn-xs active" onclick="showItxInputView({{ $idx }}, 'hex')">Hex</button>
+                    {{ end }}
+                    <button type="button" class="btn btn-outline-secondary btn-xs" onclick="showItxInputView({{ $idx }}, 'ascii')">ASCII</button>
+                  </div>
+                </div>
+                {{ if $itx.DecodedCalldata }}
+                <div id="itx-input-decoded-{{ $idx }}">
+                  {{ if $itx.MethodSignature }}<code class="small">{{ $itx.MethodSignature }}</code>{{ end }}
+                  <table class="table table-sm table-bordered itx-decoded-table">
+                    <thead><tr><th>#</th><th>Name</th><th>Type</th><th>Value</th></tr></thead>
+                    <tbody>
+                    {{ range $pi, $p := $itx.DecodedCalldata }}
+                      <tr><td>{{ $pi }}</td><td>{{ $p.Name }}</td><td><code>{{ $p.Type }}</code></td><td class="itx-decoded-val">{{ $p.Value }}</td></tr>
+                    {{ end }}
+                    </tbody>
+                  </table>
+                </div>
+                <div id="itx-input-hex-{{ $idx }}" class="itx-data-box" style="display:none;">{{ formatHexBytes $itx.Input }}</div>
+                {{ else }}
+                <div id="itx-input-hex-{{ $idx }}" class="itx-data-box">{{ formatHexBytes $itx.Input }}</div>
+                {{ end }}
+                <div id="itx-input-ascii-{{ $idx }}" class="itx-data-box" style="display:none; white-space:pre-wrap;"></div>
               </div>
               {{ end }}
               {{ if gt (len $itx.Output) 0 }}
@@ -135,6 +166,51 @@
       var el = document.getElementById('itx-data-row-' + idx);
       if (el) {
         el.style.display = el.style.display === 'none' ? 'table-row' : 'none';
+      }
+    }
+
+    var itxAsciiCache = {};
+    function itxHexToAscii(hex) {
+      if (hex.startsWith('0x')) hex = hex.substring(2);
+      var str = '';
+      for (var i = 0; i < hex.length; i += 2) {
+        var code = parseInt(hex.substring(i, i + 2), 16);
+        str += (code >= 32 && code <= 126) ? String.fromCharCode(code) : '.';
+      }
+      return str;
+    }
+
+    function showItxInputView(idx, view) {
+      var views = ['decoded', 'hex', 'ascii'];
+      var row = document.getElementById('itx-data-row-' + idx);
+      if (!row) return;
+
+      // Hide all input views
+      for (var i = 0; i < views.length; i++) {
+        var el = document.getElementById('itx-input-' + views[i] + '-' + idx);
+        if (el) el.style.display = 'none';
+      }
+
+      // Update button states
+      var btns = row.querySelectorAll('.btn-group .btn');
+      for (var i = 0; i < btns.length; i++) {
+        btns[i].classList.remove('active');
+        if (btns[i].textContent.trim().toLowerCase() === view) {
+          btns[i].classList.add('active');
+        }
+      }
+
+      // Show selected view
+      var target = document.getElementById('itx-input-' + view + '-' + idx);
+      if (target) {
+        if (view === 'ascii' && !itxAsciiCache[idx]) {
+          var hexEl = document.getElementById('itx-input-hex-' + idx);
+          if (hexEl) {
+            itxAsciiCache[idx] = itxHexToAscii(hexEl.textContent.trim());
+            target.textContent = itxAsciiCache[idx];
+          }
+        }
+        target.style.display = 'block';
       }
     }
     </script>

@@ -118,6 +118,28 @@ func (t *TxIndexer) getClientsForBlock(ref *BlockRef) []*execution.Client {
 		if len(clients) > 0 {
 			return clients
 		}
+
+		// use clients that saw the block (match by name)
+		clClients := ref.Block.GetSeenBy()
+		if len(clClients) > 0 {
+			allElClients := t.indexerCtx.ExecutionPool.GetAllEndpoints()
+			elClientMap := make(map[string]*execution.Client)
+			for _, client := range allElClients {
+				elClientMap[client.GetName()] = client
+			}
+
+			elClients := make([]*execution.Client, 0, len(clClients))
+			for _, client := range clClients {
+				elClient, ok := elClientMap[client.GetClient().GetName()]
+				if ok {
+					elClients = append(elClients, elClient)
+				}
+			}
+
+			if len(elClients) > 0 {
+				return elClients
+			}
+		}
 	}
 
 	// Fall back to finalized clients
