@@ -445,6 +445,7 @@ func loadTransactionsTab(pageData *models.AddressPageData, account *dbtypes.ElAc
 	pageData.Transactions = make([]*models.AddressPageDataTransaction, 0, len(dbTxs))
 	sigLookupBytes := []types.TxSignatureBytes{}
 	sigLookupMap := map[types.TxSignatureBytes][]*models.AddressPageDataTransaction{}
+	sysContracts := services.GlobalBeaconService.GetSystemContractAddresses()
 
 	for _, tx := range dbTxs {
 		slot := tx.BlockUid >> 16
@@ -488,17 +489,23 @@ func loadTransactionsTab(pageData *models.AddressPageData, account *dbtypes.ElAc
 		}
 
 		// Extract method ID from stored method_id field (first 4 bytes only)
+		isCreate := !txData.HasTo
 		if len(tx.MethodID) >= 4 {
 			txData.MethodID = tx.MethodID[:4]
 
-			// Collect function signature for lookup
-			var sigBytes types.TxSignatureBytes
-			copy(sigBytes[:], tx.MethodID[0:4])
-			if sigLookupMap[sigBytes] == nil {
-				sigLookupMap[sigBytes] = []*models.AddressPageDataTransaction{txData}
-				sigLookupBytes = append(sigLookupBytes, sigBytes)
+			// Skip fn signature lookup for deployments, precompiles, and system contracts
+			if skip, altName := utils.ShouldSkipSignatureLookup(txData.ToAddr, isCreate, sysContracts); skip {
+				txData.MethodName = altName
 			} else {
-				sigLookupMap[sigBytes] = append(sigLookupMap[sigBytes], txData)
+				// Collect function signature for lookup
+				var sigBytes types.TxSignatureBytes
+				copy(sigBytes[:], tx.MethodID[0:4])
+				if sigLookupMap[sigBytes] == nil {
+					sigLookupMap[sigBytes] = []*models.AddressPageDataTransaction{txData}
+					sigLookupBytes = append(sigLookupBytes, sigBytes)
+				} else {
+					sigLookupMap[sigBytes] = append(sigLookupMap[sigBytes], txData)
+				}
 			}
 		} else {
 			// No data or insufficient data for method signature
@@ -615,34 +622,73 @@ func loadTokenTransfersTab(pageData *models.AddressPageData, account *dbtypes.El
 		txHashList = append(txHashList, []byte(txHashKey))
 	}
 
-	// Get transaction method_id for signature lookup
-	txMethodIDMap := make(map[string][]byte) // tx_hash -> method_id (4 bytes)
+	// Batch fetch transaction data for signature lookup
+	type txInfo struct {
+		MethodID []byte
+		ToID     uint64
+	}
+	txInfoMap := make(map[string]*txInfo, len(txHashList))
 	if len(txHashList) > 0 {
-		for _, txHash := range txHashList {
-			if txs, err := db.GetElTransactionsByHash(txHash); err == nil && len(txs) > 0 {
-				txMethodIDMap[string(txHash)] = txs[0].MethodID
+		if txs, err := db.GetElTransactionsByHashes(txHashList); err == nil {
+			for _, tx := range txs {
+				txInfoMap[string(tx.TxHash)] = &txInfo{
+					MethodID: tx.MethodID,
+					ToID:     tx.ToID,
+				}
+			}
+		}
+	}
+
+	// Supplementary account lookup for transaction ToIDs not already in accountMap
+	var extraAccountIDs []uint64
+	for _, info := range txInfoMap {
+		if info.ToID > 0 && accountMap[info.ToID] == nil {
+			extraAccountIDs = append(extraAccountIDs, info.ToID)
+		}
+	}
+	if len(extraAccountIDs) > 0 {
+		if accounts, err := db.GetElAccountsByIDs(extraAccountIDs); err == nil {
+			for _, a := range accounts {
+				accountMap[a.ID] = a
 			}
 		}
 	}
 
 	// Collect function signatures for batch lookup
+	sysContracts := services.GlobalBeaconService.GetSystemContractAddresses()
 	sigLookupBytes := []types.TxSignatureBytes{}
 	sigLookupMap := make(map[types.TxSignatureBytes][]string) // signature -> tx_hashes
-	for txHashKey, methodID := range txMethodIDMap {
-		if len(methodID) >= 4 {
-			var sigBytes types.TxSignatureBytes
-			copy(sigBytes[:], methodID[0:4])
-			if sigLookupMap[sigBytes] == nil {
-				sigLookupMap[sigBytes] = []string{txHashKey}
-				sigLookupBytes = append(sigLookupBytes, sigBytes)
-			} else {
-				sigLookupMap[sigBytes] = append(sigLookupMap[sigBytes], txHashKey)
-			}
+	methodNameMap := make(map[string]string)                  // tx_hash -> method_name
+	for txHashKey, info := range txInfoMap {
+		if len(info.MethodID) < 4 {
+			methodNameMap[txHashKey] = "transfer"
+			continue
+		}
+
+		// Determine to address for skip check
+		isCreate := info.ToID == 0
+		var toAddr []byte
+		if acc, ok := accountMap[info.ToID]; ok {
+			toAddr = acc.Address
+		}
+
+		// Skip fn signature lookup for deployments, precompiles, and system contracts
+		if skip, altName := utils.ShouldSkipSignatureLookup(toAddr, isCreate, sysContracts); skip {
+			methodNameMap[txHashKey] = altName
+			continue
+		}
+
+		var sigBytes types.TxSignatureBytes
+		copy(sigBytes[:], info.MethodID[0:4])
+		if sigLookupMap[sigBytes] == nil {
+			sigLookupMap[sigBytes] = []string{txHashKey}
+			sigLookupBytes = append(sigLookupBytes, sigBytes)
+		} else {
+			sigLookupMap[sigBytes] = append(sigLookupMap[sigBytes], txHashKey)
 		}
 	}
 
 	// Lookup function signatures
-	methodNameMap := make(map[string]string) // tx_hash -> method_name
 	if len(sigLookupBytes) > 0 {
 		sigLookups := services.GlobalTxSignaturesService.LookupSignatures(sigLookupBytes)
 		for sigBytes, sigLookup := range sigLookups {
@@ -653,13 +699,6 @@ func loadTokenTransfersTab(pageData *models.AddressPageData, account *dbtypes.El
 			for _, txHashKey := range sigLookupMap[sigBytes] {
 				methodNameMap[txHashKey] = methodName
 			}
-		}
-	}
-
-	// Set default method name for transactions without data
-	for txHashKey, methodID := range txMethodIDMap {
-		if len(methodID) < 4 && methodNameMap[txHashKey] == "" {
-			methodNameMap[txHashKey] = "transfer"
 		}
 	}
 

@@ -2,6 +2,8 @@ package models
 
 import (
 	"time"
+
+	"github.com/ethpandaops/dora/utils"
 )
 
 // TransactionViewMode represents the data availability mode for a transaction
@@ -88,9 +90,13 @@ type TransactionPageData struct {
 	TxIndex    uint32 `json:"tx_index"` // Position in block
 
 	// Input data
-	InputData  []byte `json:"input_data"`
-	MethodID   []byte `json:"method_id"`
-	MethodName string `json:"method_name"` // If known
+	InputData       []byte                        `json:"input_data"`
+	MethodID        []byte                        `json:"method_id"`
+	MethodName      string                        `json:"method_name"`      // If known
+	MethodSignature string                        `json:"method_signature"` // Full fn signature (e.g., "transfer(address,uint256)")
+	TargetCallType  string                        `json:"target_call_type"` // "call", "deploy", "precompile", "system"
+	TargetCallName  string                        `json:"target_call_name"` // Precompile or system contract name
+	DecodedCalldata []*utils.DecodedCalldataParam `json:"decoded_calldata"` // Decoded params (nil if not available)
 
 	// Full transaction data (loaded from beacon block)
 	TxRLP  string `json:"tx_rlp"`  // Hex-encoded RLP for copy button
@@ -241,10 +247,12 @@ type TransactionPageDataInternalTx struct {
 	ErrorText string `json:"error_text"`
 
 	// Input/Output (from blockdb call trace, empty for DB-only fallback)
-	Input      []byte `json:"input"`
-	Output     []byte `json:"output"`
-	MethodID   []byte `json:"method_id"`
-	MethodName string `json:"method_name"`
+	Input           []byte                        `json:"input"`
+	Output          []byte                        `json:"output"`
+	MethodID        []byte                        `json:"method_id"`
+	MethodName      string                        `json:"method_name"`
+	MethodSignature string                        `json:"method_signature"`
+	DecodedCalldata []*utils.DecodedCalldataParam `json:"decoded_calldata"`
 
 	// Whether this entry has full trace data (from blockdb)
 	HasTraceData bool `json:"has_trace_data"`
