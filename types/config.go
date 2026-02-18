@@ -135,6 +135,8 @@ type Config struct {
 		LookupBatchSize   uint64        `yaml:"lookupBatchSize" envconfig:"TXSIG_LOOKUP_INTERVAL"`
 		ConcurrencyLimit  uint64        `yaml:"concurrencyLimit" envconfig:"TXSIG_CONCURRENCY_LIMIT"`
 		Disable4Bytes     bool          `yaml:"disable4Bytes" envconfig:"TXSIG_DISABLE_4BYTES"`
+		DisableSourcify   bool          `yaml:"disableSourcify" envconfig:"TXSIG_DISABLE_SOURCIFY"`
+		CbtBaseUrl        string        `yaml:"cbtBaseUrl" envconfig:"TXSIG_CBT_BASE_URL"`
 		RecheckTimeout    time.Duration `yaml:"recheckTimeout" envconfig:"TXSIG_RECHECK_TIMEOUT"`
 	} `yaml:"txsig"`
 

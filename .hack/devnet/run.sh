@@ -153,6 +153,8 @@ executionIndexer:
   detailsEnabled: true
   tracesEnabled: true
   detailsMaxSize: "100GB"
+txsig:
+  cbtBaseUrl: "https://cbt-api-mainnet.analytics.production.platform.ethpandaops.io/api/v1/dim_function_signature"
 database:
   engine: "sqlite"
   sqlite:

@@ -268,12 +268,36 @@ func (tss *TxSignaturesService) processPendingSignatures() {
 }
 
 func (tss *TxSignaturesService) lookupSignature(lookup *TxSignaturesLookup) error {
-	var resErr error
+	var lastErr error
 
+	// Priority 1: CBT (if configured)
+	if utils.Config.TxSignature.CbtBaseUrl != "" {
+		err := tss.lookupCBT(lookup)
+		if err != nil {
+			logger_tss.Debugf("CBT lookup for 0x%x failed: %v", lookup.Bytes, err)
+			lastErr = err
+		} else if lookup.Status == types.TxSigStatusFound {
+			return nil
+		}
+	}
+
+	// Priority 2: Sourcify
+	if !utils.Config.TxSignature.DisableSourcify {
+		err := tss.lookupSourcify(lookup)
+		if err != nil {
+			logger_tss.Debugf("Sourcify lookup for 0x%x failed: %v", lookup.Bytes, err)
+			lastErr = err
+		} else if lookup.Status == types.TxSigStatusFound {
+			return nil
+		}
+	}
+
+	// Priority 3: 4bytes
 	if !utils.Config.TxSignature.Disable4Bytes {
 		err := tss.lookup4Bytes(lookup)
 		if err != nil {
-			resErr = fmt.Errorf("4bytes lookup failed: %w", err)
+			logger_tss.Debugf("4bytes lookup for 0x%x failed: %v", lookup.Bytes, err)
+			lastErr = err
 		} else if lookup.Status == types.TxSigStatusFound {
 			return nil
 		}
@@ -281,7 +305,131 @@ func (tss *TxSignaturesService) lookupSignature(lookup *TxSignaturesLookup) erro
 
 	logger_tss.Debugf("lookup fn signature 0x%x (%v): %v", lookup.Bytes[:], lookup.Status, lookup.Signature)
 
-	return resErr
+	return lastErr
+}
+
+// lookupCBT looks up a function signature via the CBT internal API.
+func (tss *TxSignaturesService) lookupCBT(lookup *TxSignaturesLookup) error {
+	baseUrl := utils.Config.TxSignature.CbtBaseUrl
+
+	separator := "?"
+	if strings.Contains(baseUrl, "?") {
+		separator = "&"
+	}
+
+	url := fmt.Sprintf(
+		"%s%sselector_eq=0x%x&page_size=1",
+		baseUrl, separator, lookup.Bytes,
+	)
+
+	req, err := nethttp.NewRequest("GET", url, nil)
+	if err != nil {
+		return err
+	}
+
+	client := &nethttp.Client{Timeout: time.Second * 10}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+
+	defer resp.Body.Close()
+
+	if resp.StatusCode != nethttp.StatusOK {
+		data, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("url: %v, code: %v, error-response: %s", url, resp.StatusCode, data)
+	}
+
+	var returnValue struct {
+		DimFunctionSignatures []struct {
+			Selector string `json:"selector"`
+			Name     string `json:"name"`
+		} `json:"dim_function_signatures"`
+	}
+
+	dec := json.NewDecoder(resp.Body)
+	if err = dec.Decode(&returnValue); err != nil {
+		return fmt.Errorf("error parsing CBT json response: %w", err)
+	}
+
+	if len(returnValue.DimFunctionSignatures) == 0 {
+		lookup.Status = types.TxSigStatusUnknown
+	} else {
+		lookup.Status = types.TxSigStatusFound
+		lookup.Signature = returnValue.DimFunctionSignatures[0].Name
+		sigparts := strings.Split(lookup.Signature, "(")
+		lookup.Name = sigparts[0]
+	}
+
+	return nil
+}
+
+// lookupSourcify looks up a function signature via the Sourcify signature database.
+func (tss *TxSignaturesService) lookupSourcify(lookup *TxSignaturesLookup) error {
+	hex := fmt.Sprintf("0x%x", lookup.Bytes)
+	url := fmt.Sprintf(
+		"https://api.4byte.sourcify.dev/signature-database/v1/lookup?function=%s&filter=true",
+		hex,
+	)
+
+	req, err := nethttp.NewRequest("GET", url, nil)
+	if err != nil {
+		return err
+	}
+
+	client := &nethttp.Client{Timeout: time.Second * 10}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+
+	defer resp.Body.Close()
+
+	if resp.StatusCode != nethttp.StatusOK {
+		data, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("url: %v, code: %v, error-response: %s", url, resp.StatusCode, data)
+	}
+
+	var returnValue struct {
+		Ok     bool `json:"ok"`
+		Result struct {
+			Function map[string][]struct {
+				Name                string `json:"name"`
+				Filtered            bool   `json:"filtered"`
+				HasVerifiedContract bool   `json:"hasVerifiedContract"`
+			} `json:"function"`
+		} `json:"result"`
+	}
+
+	dec := json.NewDecoder(resp.Body)
+	if err = dec.Decode(&returnValue); err != nil {
+		return fmt.Errorf("error parsing Sourcify json response: %w", err)
+	}
+
+	if !returnValue.Ok {
+		return fmt.Errorf("Sourcify API returned error")
+	}
+
+	results := returnValue.Result.Function[hex]
+	if len(results) == 0 {
+		lookup.Status = types.TxSigStatusUnknown
+	} else {
+		// prefer results from verified contracts
+		best := results[0]
+		for _, r := range results {
+			if r.HasVerifiedContract && !r.Filtered {
+				best = r
+				break
+			}
+		}
+
+		lookup.Status = types.TxSigStatusFound
+		lookup.Signature = best.Name
+		sigparts := strings.Split(lookup.Signature, "(")
+		lookup.Name = sigparts[0]
+	}
+
+	return nil
 }
 
 type txSigLookup_4bytesResponse struct {
