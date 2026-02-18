@@ -407,7 +407,7 @@ func (tss *TxSignaturesService) lookupSourcify(lookup *TxSignaturesLookup) error
 	}
 
 	if !returnValue.Ok {
-		return fmt.Errorf("Sourcify API returned error")
+		return fmt.Errorf("sourcify api returned error")
 	}
 
 	results := returnValue.Result.Function[hex]

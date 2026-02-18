@@ -379,28 +379,24 @@ func (t *StateChangeAccount) UnmarshalSSZ(buf []byte) (err error) {
 	}
 	{ // Field #6 'PreCode' (dynamic)
 		buf := buf[offset6:offset7]
-		val3 := t.PreCode
-		val3 = sszutils.ExpandSlice(val3, len(buf))
-		copy(val3[:], buf)
-		t.PreCode = val3
+		t.PreCode = sszutils.ExpandSlice(t.PreCode, len(buf))
+		copy(t.PreCode[:], buf)
 	}
 	{ // Field #7 'PostCode' (dynamic)
 		buf := buf[offset7:offset8]
-		val4 := t.PostCode
-		val4 = sszutils.ExpandSlice(val4, len(buf))
-		copy(val4[:], buf)
-		t.PostCode = val4
+		t.PostCode = sszutils.ExpandSlice(t.PostCode, len(buf))
+		copy(t.PostCode[:], buf)
 	}
 	{ // Field #8 'Slots' (dynamic)
 		buf := buf[offset8:]
-		val5 := t.Slots
+		val3 := t.Slots
 		itemCount := len(buf) / 96
 		if len(buf)%96 != 0 {
 			return sszutils.ErrUnexpectedEOF
 		}
-		val5 = sszutils.ExpandSlice(val5, itemCount)
+		val3 = sszutils.ExpandSlice(val3, itemCount)
 		for i := range itemCount {
-			val6 := val5[i]
+			val4 := val3[i]
 			buf := buf[96*i : 96*(i+1)]
 			buflen := len(buf)
 			if buflen < 96 {
@@ -408,19 +404,19 @@ func (t *StateChangeAccount) UnmarshalSSZ(buf []byte) (err error) {
 			}
 			{ // Field #0 'Slot' (static)
 				buf := buf[0:32]
-				copy(val6.Slot[:], buf)
+				copy(val4.Slot[:], buf)
 			}
 			{ // Field #1 'PreValue' (static)
 				buf := buf[32:64]
-				copy(val6.PreValue[:], buf)
+				copy(val4.PreValue[:], buf)
 			}
 			{ // Field #2 'PostValue' (static)
 				buf := buf[64:96]
-				copy(val6.PostValue[:], buf)
+				copy(val4.PostValue[:], buf)
 			}
-			val5[i] = val6
+			val3[i] = val4
 		}
-		t.Slots = val5
+		t.Slots = val3
 	}
 	return nil
 }
@@ -647,23 +643,17 @@ func (t *FlatCallFrame) UnmarshalSSZ(buf []byte) (err error) {
 	}
 	{ // Field #8 'Input' (dynamic)
 		buf := buf[offset8:offset9]
-		val2 := t.Input
-		val2 = sszutils.ExpandSlice(val2, len(buf))
-		copy(val2[:], buf)
-		t.Input = val2
+		t.Input = sszutils.ExpandSlice(t.Input, len(buf))
+		copy(t.Input[:], buf)
 	}
 	{ // Field #9 'Output' (dynamic)
 		buf := buf[offset9:offset10]
-		val3 := t.Output
-		val3 = sszutils.ExpandSlice(val3, len(buf))
-		copy(val3[:], buf)
-		t.Output = val3
+		t.Output = sszutils.ExpandSlice(t.Output, len(buf))
+		copy(t.Output[:], buf)
 	}
 	{ // Field #10 'Error' (dynamic)
 		buf := buf[offset10:]
-		val4 := t.Error
-		val4 = string(buf)
-		t.Error = val4
+		t.Error = string(buf)
 	}
 	return nil
 }
@@ -845,10 +835,8 @@ func (t *EventData) UnmarshalSSZ(buf []byte) (err error) {
 	}
 	{ // Field #3 'Data' (dynamic)
 		buf := buf[offset3:]
-		val2 := t.Data
-		val2 = sszutils.ExpandSlice(val2, len(buf))
-		copy(val2[:], buf)
-		t.Data = val2
+		t.Data = sszutils.ExpandSlice(t.Data, len(buf))
+		copy(t.Data[:], buf)
 	}
 	return nil
 }
