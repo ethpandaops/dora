@@ -309,6 +309,7 @@ type SlotPageBid struct {
 	GasLimit     uint64 `json:"gas_limit"`
 	BuilderIndex uint64 `json:"builder_index"`
 	BuilderName  string `json:"builder_name"`
+	IsSelfBuilt  bool   `json:"is_self_built"`
 	Slot         uint64 `json:"slot"`
 	Value        uint64 `json:"value"`
 	ElPayment    uint64 `json:"el_payment"`

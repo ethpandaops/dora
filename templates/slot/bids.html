@@ -14,12 +14,21 @@
       </thead>
       <tbody>
         {{ range $i, $bid := .Block.Bids }}
-          <tr{{ if $bid.IsWinning }} class="table-success"{{ end }}>
+          <tr{{ if $bid.IsWinning }} style="border-left: 3px solid var(--bs-success);"{{ end }}>
             <td>
-              {{ formatValidatorWithIndex $bid.BuilderIndex $bid.BuilderName }}
+              {{ if $bid.IsSelfBuilt }}
+                <span class="validator-label validator-index"><i class="fas fa-male mr-2"></i> Self-built</span>
+              {{ else }}
+                {{ formatValidatorWithIndex $bid.BuilderIndex $bid.BuilderName }}
+              {{ end }}
               {{ if $bid.IsWinning }}<span class="badge bg-success ms-1">Winner</span>{{ end }}
             </td>
-            <td><span class="text-monospace">0x{{ printf "%.16x" $bid.BlockHash }}...</span></td>
+            <td>
+              <div class="d-flex align-items-center">
+                <span class="text-monospace text-truncate">0x{{ printf "%x" $bid.BlockHash }}</span>
+                <i class="fa fa-copy text-muted p-1 flex-shrink-0" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $bid.BlockHash }}"></i>
+              </div>
+            </td>
             <td>{{ ethAddressLink $bid.FeeRecipient }}</td>
             <td>{{ formatAddCommas $bid.GasLimit }}</td>
             <td>{{ formatEthFromGwei $bid.Value }}</td>

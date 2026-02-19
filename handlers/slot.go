@@ -1165,6 +1165,7 @@ func getSlotPageBids(pageData *models.SlotPageBlockData) {
 			GasLimit:     bid.GasLimit,
 			BuilderIndex: uint64(bid.BuilderIndex),
 			BuilderName:  services.GlobalBeaconService.GetValidatorName(uint64(bid.BuilderIndex)),
+			IsSelfBuilt:  bid.BuilderIndex < 0,
 			Slot:         bid.Slot,
 			Value:        bid.Value,
 			ElPayment:    bid.ElPayment,
