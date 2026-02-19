@@ -65,7 +65,7 @@ func newEpochCache(indexer *Indexer) *epochCache {
 }
 
 // createOrGetEpochStats gets an existing EpochStats entry for the given epoch and dependentRoot or creates a new instance if not found.
-func (cache *epochCache) createOrGetEpochStats(epoch phase0.Epoch, dependentRoot phase0.Root, createStateRequest bool) *EpochStats {
+func (cache *epochCache) createOrGetEpochStats(epoch phase0.Epoch, dependentRoot phase0.Root) *EpochStats {
 	cache.cacheMutex.Lock()
 	defer cache.cacheMutex.Unlock()
 
@@ -77,13 +77,30 @@ func (cache *epochCache) createOrGetEpochStats(epoch phase0.Epoch, dependentRoot
 		cache.statsMap[statsKey] = epochStats
 	}
 
-	// get or create beacon state which the epoch status depends on (dependentRoot beacon state)
-	epochState := cache.stateMap[dependentRoot]
-	if epochState == nil && !epochStats.ready && createStateRequest {
-		epochState = newEpochState(dependentRoot)
-		cache.stateMap[dependentRoot] = epochState
+	return epochStats
+}
 
-		cache.indexer.logger.Infof("added epoch state request for epoch %v (%v) to queue", epoch, dependentRoot.String())
+func (cache *epochCache) ensureEpochDependentState(epochStats *EpochStats, firstBlockRoot phase0.Root) {
+	cache.cacheMutex.Lock()
+	defer cache.cacheMutex.Unlock()
+
+	if epochStats.dependentState != nil {
+		return
+	}
+
+	// get or create beacon state which the epoch status depends on (dependentRoot beacon state)
+	epochState := cache.stateMap[epochStats.dependentRoot]
+	if epochState == nil && !epochStats.ready {
+		stateRoot := epochStats.dependentRoot
+		chainState := cache.indexer.consensusPool.GetChainState()
+		if chainState.IsFuluEnabled(epochStats.epoch) {
+			stateRoot = firstBlockRoot
+		}
+
+		epochState = newEpochState(stateRoot)
+		cache.stateMap[epochStats.dependentRoot] = epochState
+
+		cache.indexer.logger.Infof("added epoch state request for epoch %v (%v) to queue", epochStats.epoch, epochStats.dependentRoot.String())
 	}
 
 	if epochState != nil {
@@ -91,29 +108,9 @@ func (cache *epochCache) createOrGetEpochStats(epoch phase0.Epoch, dependentRoot
 
 		if epochState.loadingStatus == 2 && !epochStats.ready {
 			// dependent state is already loaded, process it
-			go epochStats.processState(cache.indexer, nil)
+			go epochStats.processState(cache.indexer, nil, 0)
 		}
 	}
-
-	return epochStats
-}
-
-func (cache *epochCache) addEpochStateRequest(epochStats *EpochStats) {
-	if epochStats.dependentState != nil {
-		return
-	}
-
-	cache.cacheMutex.Lock()
-	defer cache.cacheMutex.Unlock()
-
-	epochState := cache.stateMap[epochStats.dependentRoot]
-	if epochState == nil {
-		epochState = newEpochState(epochStats.dependentRoot)
-		cache.stateMap[epochStats.dependentRoot] = epochState
-
-		cache.indexer.logger.Infof("added epoch state request for epoch %v (%v) to queue", epochStats.epoch, epochStats.dependentRoot.String())
-	}
-	epochStats.dependentState = epochState
 }
 
 func (cache *epochCache) getEpochStats(epoch phase0.Epoch, dependentRoot phase0.Root) *EpochStats {
@@ -468,10 +465,13 @@ func (cache *epochCache) loadEpochStats(epochStats *EpochStats) bool {
 
 	log.Infof("loading epoch %v stats (dep: %v, req: %v)", epochStats.epoch, epochStats.dependentRoot.String(), len(epochStats.requestedBy))
 
+	t1 := time.Now()
 	state, err := epochStats.dependentState.loadState(client.getContext(), client, cache)
 	if err != nil && epochStats.dependentState.loadingStatus == 0 {
 		client.logger.Warnf("failed loading epoch %v stats (dep: %v): %v", epochStats.epoch, epochStats.dependentRoot.String(), err)
 	}
+
+	loadDuration := time.Since(t1)
 
 	if epochStats.dependentState.loadingStatus != 2 {
 		// epoch state could not be loaded
@@ -497,7 +497,7 @@ func (cache *epochCache) loadEpochStats(epochStats *EpochStats) bool {
 	cache.cacheMutex.Unlock()
 
 	for _, stats := range dependentStats {
-		go stats.processState(cache.indexer, validatorSet)
+		go stats.processState(cache.indexer, validatorSet, loadDuration)
 	}
 
 	return true

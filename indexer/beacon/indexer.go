@@ -46,6 +46,8 @@ type Indexer struct {
 	pubkeyCache       *pubkeyCache
 	validatorCache    *validatorCache
 	validatorActivity *validatorActivityCache
+	blockBidCache     *blockBidCache
+	builderCache      *builderCache
 
 	// indexer state
 	clients               []*Client
@@ -116,6 +118,8 @@ func NewIndexer(logger logrus.FieldLogger, consensusPool *consensus.Pool) *Index
 	indexer.pubkeyCache = newPubkeyCache(indexer, utils.Config.Indexer.PubkeyCachePath)
 	indexer.validatorCache = newValidatorCache(indexer)
 	indexer.validatorActivity = newValidatorActivityCache(indexer)
+	indexer.blockBidCache = newBlockBidCache(indexer)
+	indexer.builderCache = newBuilderCache(indexer)
 	indexer.dbWriter = newDbWriter(indexer)
 
 	badChainRoots := utils.Config.Indexer.BadChainRoots
@@ -273,6 +277,14 @@ func (indexer *Indexer) StartIndexer() {
 		indexer.logger.Infof("restored %v validators from DB (%.3f sec)", validatorCount, time.Since(t1).Seconds())
 	}
 
+	// restore finalized builder set from db
+	t1 = time.Now()
+	if builderCount, err := indexer.builderCache.prepopulateFromDB(); err != nil {
+		indexer.logger.WithError(err).Errorf("failed loading builder set")
+	} else if builderCount > 0 {
+		indexer.logger.Infof("restored %v builders from DB (%.3f sec)", builderCount, time.Since(t1).Seconds())
+	}
+
 	// restore unfinalized epoch stats from db
 	restoredEpochStats := 0
 	t1 = time.Now()
@@ -290,7 +302,7 @@ func (indexer *Indexer) StartIndexer() {
 				processingWaitGroup.Done()
 			}()
 
-			epochStats := indexer.epochCache.createOrGetEpochStats(phase0.Epoch(dbDuty.Epoch), phase0.Root(dbDuty.DependentRoot), false)
+			epochStats := indexer.epochCache.createOrGetEpochStats(phase0.Epoch(dbDuty.Epoch), phase0.Root(dbDuty.DependentRoot))
 			pruneStats := dbDuty.Epoch < uint64(indexer.lastPrunedEpoch)
 
 			err := epochStats.restoreFromDb(dbDuty, chainState, !pruneStats)
@@ -338,6 +350,7 @@ func (indexer *Indexer) StartIndexer() {
 	// restore unfinalized blocks from db
 	restoredBlockCount := 0
 	restoredBodyCount := 0
+	restoredPayloadCount := 0
 	t1 = time.Now()
 	err = db.StreamUnfinalizedBlocks(uint64(finalizedSlot), func(dbBlock *dbtypes.UnfinalizedBlock) {
 		block, _ := indexer.blockCache.createOrGetBlock(phase0.Root(dbBlock.Root), phase0.Slot(dbBlock.Slot))
@@ -375,8 +388,21 @@ func (indexer *Indexer) StartIndexer() {
 			block.SetBlock(blockBody)
 			restoredBodyCount++
 		} else {
-			block.setBlockIndex(blockBody)
+			block.setBlockIndex(blockBody, nil)
 			block.isInFinalizedDb = true
+		}
+
+		if len(dbBlock.PayloadSSZ) > 0 {
+			blockPayload, err := UnmarshalVersionedSignedExecutionPayloadEnvelopeSSZ(indexer.dynSsz, dbBlock.PayloadVer, dbBlock.PayloadSSZ)
+			if err != nil {
+				indexer.logger.Warnf("could not restore unfinalized block payload %v [%x] from db: %v", dbBlock.Slot, dbBlock.Root, err)
+			} else if block.processingStatus == 0 {
+				block.SetExecutionPayload(blockPayload)
+				restoredPayloadCount++
+			} else {
+				block.setBlockIndex(blockBody, blockPayload)
+				block.hasExecutionPayload = true
+			}
 		}
 
 		indexer.blockCache.addBlockToExecBlockMap(block)
@@ -402,6 +428,9 @@ func (indexer *Indexer) StartIndexer() {
 		indexer.logger.Infof("restored %v unfinalized blocks from DB (%v with bodies, %.3f sec)", restoredBlockCount, restoredBodyCount, time.Since(t1).Seconds())
 	}
 
+	// restore block bids from db
+	indexer.blockBidCache.loadFromDB(chainState.CurrentSlot())
+
 	// start indexing for all clients
 	for _, client := range indexer.clients {
 		client.startIndexing()
@@ -422,7 +451,8 @@ func (indexer *Indexer) StartIndexer() {
 			if len(genesisBlock) == 0 {
 				indexer.logger.Warnf("genesis block not found in cache")
 			} else {
-				indexer.epochCache.createOrGetEpochStats(0, genesisBlock[0].Root, true)
+				epochStats := indexer.epochCache.createOrGetEpochStats(0, genesisBlock[0].Root)
+				indexer.epochCache.ensureEpochDependentState(epochStats, genesisBlock[0].Root)
 			}
 		}
 
@@ -436,6 +466,11 @@ func (indexer *Indexer) StartIndexer() {
 }
 
 func (indexer *Indexer) StopIndexer() {
+	// flush block bids to db before shutdown
+	if err := indexer.blockBidCache.flushAll(); err != nil {
+		indexer.logger.WithError(err).Errorf("error flushing block bids on shutdown")
+	}
+
 	indexer.pubkeyCache.Close()
 }
 
@@ -486,6 +521,11 @@ func (indexer *Indexer) runIndexerLoop() {
 			epoch := chainState.EpochOfSlot(phase0.Slot(slotEvent.Number()))
 			slotIndex := chainState.SlotToSlotIndex(phase0.Slot(slotEvent.Number()))
 			slotProgress := uint8(100 / chainState.GetSpecs().SlotsPerEpoch * uint64(slotIndex))
+
+			// flush old block bids if needed
+			if err := indexer.blockBidCache.checkAndFlush(); err != nil {
+				indexer.logger.WithError(err).Errorf("failed flushing block bids")
+			}
 
 			// precalc next canonical duties on epoch start
 			if epoch >= indexer.lastPrecalcRunEpoch {

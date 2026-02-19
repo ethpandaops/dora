@@ -162,7 +162,11 @@
                 <div class="d-flex">
                   <span class="flex-grow-1 text-truncate" style="max-width: 150px;">
                     {{ if $deposit.ValidatorExists }}
-                      {{ formatValidatorWithIndex $deposit.ValidatorIndex $deposit.ValidatorName }}
+                      {{ if $deposit.IsBuilder }}
+                        {{ formatBuilderWithIndex $deposit.ValidatorIndex $deposit.ValidatorName }}
+                      {{ else }}
+                        {{ formatValidatorWithIndex $deposit.ValidatorIndex $deposit.ValidatorName }}
+                      {{ end }}
                     {{ else }}
                       0x{{ printf "%x" $deposit.PublicKey }}
                     {{ end }}
@@ -187,18 +191,18 @@
                 {{ end }}
 
                 {{ if $deposit.IsQueued }}
-                  <span class="badge rounded-pill text-bg-warning" 
-                        data-bs-toggle="tooltip" 
-                        data-bs-placement="top" 
+                  <span class="badge rounded-pill text-bg-warning"
+                        data-bs-toggle="tooltip"
+                        data-bs-placement="top"
                         data-bs-title="Queue Position: {{ $deposit.QueuePosition }} (Est. Time: {{ formatRecentTimeShort $deposit.EstimatedTime }})">
                     Queued
                   </span>
                 {{ end }}
 
                 {{ if $deposit.InvalidSignature }}
-                  <span class="badge rounded-pill text-bg-danger" 
-                        data-bs-toggle="tooltip" 
-                        data-bs-placement="top" 
+                  <span class="badge rounded-pill text-bg-danger"
+                        data-bs-toggle="tooltip"
+                        data-bs-placement="top"
                         data-bs-title="The deposit signature is invalid. This could indicate a potential issue with the deposit transaction.">
                     <i class="fas fa-exclamation-triangle"></i>
                   </span>
@@ -295,7 +299,11 @@
                 <div class="d-flex">
                   <span class="flex-grow-1 text-truncate" style="max-width: 150px;">
                     {{ if $deposit.ValidatorExists }}
-                      {{ formatValidatorWithIndex $deposit.ValidatorIndex $deposit.ValidatorName }}
+                      {{ if $deposit.IsBuilder }}
+                        {{ formatBuilderWithIndex $deposit.ValidatorIndex $deposit.ValidatorName }}
+                      {{ else }}
+                        {{ formatValidatorWithIndex $deposit.ValidatorIndex $deposit.ValidatorName }}
+                      {{ end }}
                     {{ else }}
                       0x{{ printf "%x" $deposit.PublicKey }}
                     {{ end }}
@@ -410,7 +418,11 @@
                 <div class="d-flex">
                   <span class="flex-grow-1 text-truncate" style="max-width: 200px;">
                     {{ if $deposit.ValidatorExists }}
-                      {{ formatValidatorWithIndex $deposit.ValidatorIndex $deposit.ValidatorName }}
+                      {{ if $deposit.IsBuilder }}
+                        {{ formatBuilderWithIndex $deposit.ValidatorIndex $deposit.ValidatorName }}
+                      {{ else }}
+                        {{ formatValidatorWithIndex $deposit.ValidatorIndex $deposit.ValidatorName }}
+                      {{ end }}
                     {{ else }}
                       0x{{ printf "%x" $deposit.PublicKey }}
                     {{ end }}

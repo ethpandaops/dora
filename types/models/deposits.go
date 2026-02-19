@@ -43,6 +43,7 @@ type DepositsPageDataInitiatedDeposit struct {
 	ValidatorExists       bool      `json:"validator_exists"`
 	ValidatorIndex        uint64    `json:"validator_index"`
 	ValidatorName         string    `json:"validator_name"`
+	IsBuilder             bool      `json:"is_builder"`
 }
 
 type DepositsPageDataIncludedDeposit struct {
@@ -69,6 +70,7 @@ type DepositsPageDataIncludedDeposit struct {
 	ValidatorExists       bool                                      `json:"validator_exists"`
 	ValidatorIndex        uint64                                    `json:"validator_index"`
 	ValidatorName         string                                    `json:"validator_name"`
+	IsBuilder             bool                                      `json:"is_builder"`
 }
 
 type DepositsPageDataIncludedDepositTxDetails struct {
@@ -98,6 +100,7 @@ type DepositsPageDataQueuedDeposit struct {
 	ValidatorExists       bool                                    `json:"validator_exists"`
 	ValidatorIndex        uint64                                  `json:"validator_index"`
 	ValidatorName         string                                  `json:"validator_name"`
+	IsBuilder             bool                                    `json:"is_builder"`
 }
 
 type DepositsPageDataQueuedDepositTxDetails struct {

@@ -361,6 +361,34 @@ func (cs *ChainState) GetForkDigestForEpoch(epoch phase0.Epoch) phase0.ForkDiges
 	return cs.GetForkDigest(currentForkVersion, currentBlobParams)
 }
 
+func (cs *ChainState) GetBlobScheduleForEpoch(epoch phase0.Epoch) *BlobScheduleEntry {
+	if cs.specs == nil {
+		return nil
+	}
+
+	var blobSchedule *BlobScheduleEntry
+
+	if cs.specs.ElectraForkEpoch != nil && epoch >= phase0.Epoch(*cs.specs.ElectraForkEpoch) {
+		blobSchedule = &BlobScheduleEntry{
+			Epoch:            *cs.specs.ElectraForkEpoch,
+			MaxBlobsPerBlock: cs.specs.MaxBlobsPerBlockElectra,
+		}
+	} else if cs.specs.DenebForkEpoch != nil && epoch >= phase0.Epoch(*cs.specs.DenebForkEpoch) {
+		blobSchedule = &BlobScheduleEntry{
+			Epoch:            *cs.specs.DenebForkEpoch,
+			MaxBlobsPerBlock: cs.specs.MaxBlobsPerBlock,
+		}
+	}
+
+	for i, blobScheduleEntry := range cs.specs.BlobSchedule {
+		if blobScheduleEntry.Epoch <= uint64(epoch) {
+			blobSchedule = &cs.specs.BlobSchedule[i]
+		}
+	}
+
+	return blobSchedule
+}
+
 func (cs *ChainState) GetForkDigest(forkVersion phase0.Version, blobParams *BlobScheduleEntry) phase0.ForkDigest {
 	if cs.specs == nil || cs.genesis == nil {
 		return phase0.ForkDigest{}
@@ -442,6 +470,22 @@ func (cs *ChainState) GetValidatorChurnLimit(validatorCount uint64) uint64 {
 	}
 
 	return adaptable
+}
+
+func (cs *ChainState) IsEip7732Enabled(epoch phase0.Epoch) bool {
+	if cs.specs == nil {
+		return false
+	}
+
+	return cs.specs.GloasForkEpoch != nil && phase0.Epoch(*cs.specs.GloasForkEpoch) <= epoch
+}
+
+func (cs *ChainState) IsFuluEnabled(epoch phase0.Epoch) bool {
+	if cs.specs == nil {
+		return false
+	}
+
+	return cs.specs.FuluForkEpoch != nil && phase0.Epoch(*cs.specs.FuluForkEpoch) <= epoch
 }
 
 func (cs *ChainState) GetBalanceChurnLimit(totalActiveBalance uint64) uint64 {
