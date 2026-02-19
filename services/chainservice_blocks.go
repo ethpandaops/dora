@@ -667,7 +667,8 @@ func (bs *ChainService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageIdx
 
 	// get blocks from cache
 	// iterate from current slot to finalized slot
-	lastCanonicalBlock := bs.beaconIndexer.GetCanonicalHead(nil)
+	canonicalHead := bs.beaconIndexer.GetCanonicalHead(nil)
+	lastCanonicalBlock := canonicalHead
 
 	// apply epoch filter to slot range
 	cacheStartSlot := startSlot
@@ -930,7 +931,9 @@ func (bs *ChainService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageIdx
 			}
 
 			// filter by payload status (runtime computation for unfinalized blocks)
-			if filter.WithPayloadOrphaned != 1 {
+			// Only applies to gloas/ePBS blocks where payloads are separate from beacon blocks
+			blockEpoch := chainState.EpochOfSlot(block.Slot)
+			if filter.WithPayloadOrphaned != 1 && chainState.IsEip7732Enabled(blockEpoch) {
 				// Compute payload status by checking if any child block in the canonical chain
 				// builds on this block's execution payload
 				payloadIsCanonical := false
@@ -942,8 +945,9 @@ func (bs *ChainService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageIdx
 						if childIndex == nil {
 							continue
 						}
-						// Check if child is in the canonical chain
-						if !bs.beaconIndexer.IsCanonicalBlockByHead(child, lastCanonicalBlock) {
+						// Check if child is in the canonical chain (use original head since
+						// children are at higher slots than the updated lastCanonicalBlock)
+						if !bs.beaconIndexer.IsCanonicalBlockByHead(child, canonicalHead) {
 							continue
 						}
 						// Check if child builds on this block's execution payload
