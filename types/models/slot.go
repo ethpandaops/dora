@@ -125,17 +125,17 @@ type SlotPageExecutionData struct {
 }
 
 type SlotPagePayloadHeader struct {
-	PayloadStatus          uint16 `json:"payload_status"`
-	ParentBlockHash        []byte `json:"parent_block_hash"`
-	ParentBlockRoot        []byte `json:"parent_block_root"`
-	BlockHash              []byte `json:"block_hash"`
-	GasLimit               uint64 `json:"gas_limit"`
-	BuilderIndex           uint64 `json:"builder_index"`
-	BuilderName            string `json:"builder_name"`
-	Slot                   uint64 `json:"slot"`
-	Value                  uint64 `json:"value"`
-	BlobKzgCommitmentsRoot []byte `json:"blob_kzg_commitments_root"`
-	Signature              []byte `json:"signature"`
+	PayloadStatus      uint16   `json:"payload_status"`
+	ParentBlockHash    []byte   `json:"parent_block_hash"`
+	ParentBlockRoot    []byte   `json:"parent_block_root"`
+	BlockHash          []byte   `json:"block_hash"`
+	GasLimit           uint64   `json:"gas_limit"`
+	BuilderIndex       uint64   `json:"builder_index"`
+	BuilderName        string   `json:"builder_name"`
+	Slot               uint64   `json:"slot"`
+	Value              uint64   `json:"value"`
+	BlobKZGCommitments [][]byte `json:"blob_kzg_commitments"`
+	Signature          []byte   `json:"signature"`
 }
 
 type SlotPageAttestation struct {

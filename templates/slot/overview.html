@@ -265,10 +265,23 @@
                 </div>
 
                 <div class="row py-1">
-                  <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Parent Execution Block Hash">Blob KZG Root:</span></div>
+                  <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Blob KZG Commitments included in the payload bid">Blob KZG Commitments:</span></div>
                   <div class="col-md-10 text-monospace text-break">
-                    0x{{ printf "%x" .BlobKzgCommitmentsRoot }}
-                    <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" .BlobKzgCommitmentsRoot }}"></i>
+                    {{ len .BlobKZGCommitments }} blob{{ if ne (len .BlobKZGCommitments) 1 }}s{{ end }}
+                    {{ if .BlobKZGCommitments }}
+                      <a class="ms-2 text-decoration-none" data-bs-toggle="collapse" href="#blobKzgCommitmentsList" role="button" aria-expanded="false" aria-controls="blobKzgCommitmentsList">
+                        <i class="fa fa-chevron-down"></i> Show commitments
+                      </a>
+                      <div class="collapse mt-1" id="blobKzgCommitmentsList">
+                        {{ range $i, $c := .BlobKZGCommitments }}
+                          <div class="small py-1{{ if $i }} border-top{{ end }}">
+                            <span class="text-muted">{{ $i }}:</span>
+                            0x{{ printf "%x" $c }}
+                            <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $c }}"></i>
+                          </div>
+                        {{ end }}
+                      </div>
+                    {{ end }}
                   </div>
                 </div>
               </div>

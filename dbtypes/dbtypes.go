@@ -573,7 +573,7 @@ type BlockBid struct {
 	BlockHash    []byte `db:"block_hash"`
 	FeeRecipient []byte `db:"fee_recipient"`
 	GasLimit     uint64 `db:"gas_limit"`
-	BuilderIndex uint64 `db:"builder_index"`
+	BuilderIndex int64  `db:"builder_index"`
 	Slot         uint64 `db:"slot"`
 	Value        uint64 `db:"value"`
 	ElPayment    uint64 `db:"el_payment"`

@@ -673,7 +673,7 @@ func (c *Client) processExecutionPayloadBidEvent(executionPayloadBidEvent *gloas
 		BlockHash:    executionPayloadBidEvent.Message.BlockHash[:],
 		FeeRecipient: executionPayloadBidEvent.Message.FeeRecipient[:],
 		GasLimit:     uint64(executionPayloadBidEvent.Message.GasLimit),
-		BuilderIndex: uint64(executionPayloadBidEvent.Message.BuilderIndex),
+		BuilderIndex: int64(executionPayloadBidEvent.Message.BuilderIndex),
 		Slot:         uint64(executionPayloadBidEvent.Message.Slot),
 		Value:        uint64(executionPayloadBidEvent.Message.Value),
 		ElPayment:    uint64(executionPayloadBidEvent.Message.ExecutionPayment),

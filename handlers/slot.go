@@ -739,24 +739,28 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 	}
 
 	if payloadBid, err := blockData.Block.SignedExecutionPayloadBid(); err == nil {
+		commitments := make([][]byte, len(payloadBid.Message.BlobKZGCommitments))
+		for i := range payloadBid.Message.BlobKZGCommitments {
+			commitments[i] = payloadBid.Message.BlobKZGCommitments[i][:]
+		}
+
 		pageData.PayloadHeader = &models.SlotPagePayloadHeader{
-			PayloadStatus:          uint16(0),
-			ParentBlockHash:        payloadBid.Message.ParentBlockHash[:],
-			ParentBlockRoot:        payloadBid.Message.ParentBlockRoot[:],
-			BlockHash:              payloadBid.Message.BlockHash[:],
-			GasLimit:               uint64(payloadBid.Message.GasLimit),
-			BuilderIndex:           uint64(payloadBid.Message.BuilderIndex),
-			BuilderName:            services.GlobalBeaconService.GetValidatorName(uint64(payloadBid.Message.BuilderIndex) | services.BuilderIndexFlag),
-			Slot:                   uint64(payloadBid.Message.Slot),
-			Value:                  uint64(payloadBid.Message.Value),
-			BlobKzgCommitmentsRoot: payloadBid.Message.BlobKZGCommitmentsRoot[:],
-			Signature:              payloadBid.Signature[:],
+			PayloadStatus:      uint16(0),
+			ParentBlockHash:    payloadBid.Message.ParentBlockHash[:],
+			ParentBlockRoot:    payloadBid.Message.ParentBlockRoot[:],
+			BlockHash:          payloadBid.Message.BlockHash[:],
+			GasLimit:           uint64(payloadBid.Message.GasLimit),
+			BuilderIndex:       uint64(payloadBid.Message.BuilderIndex),
+			BuilderName:        services.GlobalBeaconService.GetValidatorName(uint64(payloadBid.Message.BuilderIndex) | services.BuilderIndexFlag),
+			Slot:               uint64(payloadBid.Message.Slot),
+			Value:              uint64(payloadBid.Message.Value),
+			BlobKZGCommitments: commitments,
+			Signature:          payloadBid.Signature[:],
 		}
 	}
 
 	var executionPayload *spec.VersionedExecutionPayload
 	if blockData.Block.Version >= spec.DataVersionGloas && blockData.Payload != nil {
-		blobKzgCommitments = blockData.Payload.Message.BlobKZGCommitments
 		executionPayload = &spec.VersionedExecutionPayload{
 			Version: spec.DataVersionGloas,
 			Gloas:   blockData.Payload.Message.Payload,
@@ -1159,8 +1163,8 @@ func getSlotPageBids(pageData *models.SlotPageBlockData) {
 			BlockHash:    bid.BlockHash,
 			FeeRecipient: bid.FeeRecipient,
 			GasLimit:     bid.GasLimit,
-			BuilderIndex: bid.BuilderIndex,
-			BuilderName:  services.GlobalBeaconService.GetValidatorName(bid.BuilderIndex),
+			BuilderIndex: uint64(bid.BuilderIndex),
+			BuilderName:  services.GlobalBeaconService.GetValidatorName(uint64(bid.BuilderIndex)),
 			Slot:         bid.Slot,
 			Value:        bid.Value,
 			ElPayment:    bid.ElPayment,

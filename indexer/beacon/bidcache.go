@@ -23,7 +23,7 @@ type bidCacheKey struct {
 	ParentRoot   phase0.Root
 	ParentHash   phase0.Hash32
 	BlockHash    phase0.Hash32
-	BuilderIndex uint64
+	BuilderIndex int64
 }
 
 // blockBidCache caches execution payload bids for recent blocks.

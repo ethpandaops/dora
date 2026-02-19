@@ -444,10 +444,6 @@ func (block *Block) setBlockIndex(body *spec.VersionedSignedBeaconBlock, payload
 		executionTransactions := payload.Message.Payload.Transactions
 		blockIndex.EthTransactionCount = uint64(len(executionTransactions))
 
-		// Calculate blob count
-		blobKzgCommitments := payload.Message.BlobKZGCommitments
-		blockIndex.BlobCount = uint64(len(blobKzgCommitments))
-
 		// Get gas used and gas limit
 		blockIndex.GasUsed = payload.Message.Payload.GasUsed
 		blockIndex.GasLimit = payload.Message.Payload.GasLimit
