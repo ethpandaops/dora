@@ -175,7 +175,7 @@ func APIDepositsIncludedV1(w http.ResponseWriter, r *http.Request) {
 		Filter: depositFilter,
 	}
 
-	dbDeposits, totalCount := services.GlobalBeaconService.GetDepositRequestsByFilter(combinedFilter, offset, limit)
+	dbDeposits, totalCount := services.GlobalBeaconService.GetDepositRequestsByFilter(r.Context(), combinedFilter, offset, limit)
 
 	var deposits []*APIDepositIncludedInfo
 	for _, deposit := range dbDeposits {

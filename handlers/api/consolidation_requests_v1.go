@@ -189,7 +189,7 @@ func APIConsolidationRequestsV1(w http.ResponseWriter, r *http.Request) {
 
 	// Get consolidation requests from service
 	dbElConsolidations, totalPendingTxRows, totalRequests := services.GlobalBeaconService.GetConsolidationRequestsByFilter(
-		consolidationRequestFilter, offset, uint32(limit))
+		r.Context(), consolidationRequestFilter, offset, uint32(limit))
 
 	chainState := services.GlobalBeaconService.GetChainState()
 	headBlock := services.GlobalBeaconService.GetBeaconIndexer().GetCanonicalHead(nil)

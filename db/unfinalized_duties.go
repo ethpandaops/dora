@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -8,8 +9,8 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-func InsertUnfinalizedDuty(duty *dbtypes.UnfinalizedDuty, tx *sqlx.Tx) error {
-	_, err := tx.Exec(EngineQuery(map[dbtypes.DBEngineType]string{
+func InsertUnfinalizedDuty(ctx context.Context, tx *sqlx.Tx, duty *dbtypes.UnfinalizedDuty) error {
+	_, err := tx.ExecContext(ctx, EngineQuery(map[dbtypes.DBEngineType]string{
 		dbtypes.DBEnginePgsql: `
 			INSERT INTO unfinalized_duties (
 				epoch, dependent_root, duties
@@ -26,13 +27,13 @@ func InsertUnfinalizedDuty(duty *dbtypes.UnfinalizedDuty, tx *sqlx.Tx) error {
 	return nil
 }
 
-func StreamUnfinalizedDuties(epoch uint64, cb func(duty *dbtypes.UnfinalizedDuty)) error {
+func StreamUnfinalizedDuties(ctx context.Context, epoch uint64, cb func(duty *dbtypes.UnfinalizedDuty)) error {
 	var sql strings.Builder
 	args := []any{epoch}
 
 	fmt.Fprint(&sql, `SELECT epoch, dependent_root, duties FROM unfinalized_duties WHERE epoch >= $1`)
 
-	rows, err := ReaderDb.Query(sql.String(), args...)
+	rows, err := ReaderDb.QueryContext(ctx, sql.String(), args...)
 	if err != nil {
 		logger.Errorf("Error while fetching unfinalized duties: %v", err)
 		return nil
@@ -51,9 +52,9 @@ func StreamUnfinalizedDuties(epoch uint64, cb func(duty *dbtypes.UnfinalizedDuty
 	return nil
 }
 
-func GetUnfinalizedDuty(epoch uint64, dependentRoot []byte) *dbtypes.UnfinalizedDuty {
+func GetUnfinalizedDuty(ctx context.Context, epoch uint64, dependentRoot []byte) *dbtypes.UnfinalizedDuty {
 	duty := dbtypes.UnfinalizedDuty{}
-	err := ReaderDb.Get(&duty, `
+	err := ReaderDb.GetContext(ctx, &duty, `
 	SELECT epoch, dependent_root, duties
 	FROM unfinalized_duties
 	WHERE epoch = $1 AND dependent_root = $2
@@ -65,8 +66,8 @@ func GetUnfinalizedDuty(epoch uint64, dependentRoot []byte) *dbtypes.Unfinalized
 	return &duty
 }
 
-func DeleteUnfinalizedDutiesBefore(epoch uint64, tx *sqlx.Tx) error {
-	_, err := tx.Exec(`DELETE FROM unfinalized_duties WHERE epoch < $1`, epoch)
+func DeleteUnfinalizedDutiesBefore(ctx context.Context, tx *sqlx.Tx, epoch uint64) error {
+	_, err := tx.ExecContext(ctx, `DELETE FROM unfinalized_duties WHERE epoch < $1`, epoch)
 	if err != nil {
 		return err
 	}

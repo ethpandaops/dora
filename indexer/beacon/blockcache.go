@@ -2,6 +2,7 @@ package beacon
 
 import (
 	"bytes"
+	"context"
 	"sort"
 	"sync"
 
@@ -431,7 +432,7 @@ func (cache *blockCache) getDependentBlock(chainState *consensus.ChainState, blo
 	if block.dependentRoot != nil {
 		dependentBlock := cache.getBlockByRoot(*block.dependentRoot)
 		if dependentBlock == nil {
-			blockHead := db.GetBlockHeadByRoot((*block.dependentRoot)[:])
+			blockHead := db.GetBlockHeadByRoot(context.Background(), (*block.dependentRoot)[:])
 			if blockHead != nil {
 				dependentBlock = newBlock(cache.indexer.dynSsz, phase0.Root(blockHead.Root), phase0.Slot(blockHead.Slot), blockHead.BlockUid)
 				dependentBlock.isInFinalizedDb = true
@@ -466,7 +467,7 @@ func (cache *blockCache) getDependentBlock(chainState *consensus.ChainState, blo
 
 		parentBlock := cache.getBlockByRoot(*parentRoot)
 		if parentBlock == nil {
-			blockHead := db.GetBlockHeadByRoot((*parentRoot)[:])
+			blockHead := db.GetBlockHeadByRoot(context.Background(), (*parentRoot)[:])
 			if blockHead != nil {
 				parentBlock = newBlock(cache.indexer.dynSsz, phase0.Root(blockHead.Root), phase0.Slot(blockHead.Slot), blockHead.BlockUid)
 				parentBlock.isInFinalizedDb = true

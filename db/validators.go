@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"strings"
@@ -11,8 +12,8 @@ import (
 )
 
 // InsertValidator inserts a single validator into the database
-func InsertValidator(validator *dbtypes.Validator, tx *sqlx.Tx) error {
-	_, err := tx.Exec(EngineQuery(map[dbtypes.DBEngineType]string{
+func InsertValidator(ctx context.Context, tx *sqlx.Tx, validator *dbtypes.Validator) error {
+	_, err := tx.ExecContext(ctx, EngineQuery(map[dbtypes.DBEngineType]string{
 		dbtypes.DBEnginePgsql: `
 			INSERT INTO validators (
 				validator_index, pubkey, withdrawal_credentials, effective_balance,
@@ -51,7 +52,7 @@ func InsertValidator(validator *dbtypes.Validator, tx *sqlx.Tx) error {
 }
 
 // InsertValidatorBatch inserts multiple validators in a batch
-func InsertValidatorBatch(validators []*dbtypes.Validator, tx *sqlx.Tx) error {
+func InsertValidatorBatch(ctx context.Context, tx *sqlx.Tx, validators []*dbtypes.Validator) error {
 	if len(validators) == 0 {
 		return nil
 	}
@@ -96,7 +97,7 @@ func InsertValidatorBatch(validators []*dbtypes.Validator, tx *sqlx.Tx) error {
 			) VALUES %s`,
 	}), strings.Join(valueStrings, ","))
 
-	_, err := tx.Exec(stmt, valueArgs...)
+	_, err := tx.ExecContext(ctx, stmt, valueArgs...)
 	if err != nil {
 		return fmt.Errorf("error inserting validator batch: %v", err)
 	}
@@ -105,9 +106,9 @@ func InsertValidatorBatch(validators []*dbtypes.Validator, tx *sqlx.Tx) error {
 }
 
 // GetValidatorByIndex returns a validator by index
-func GetValidatorByIndex(index phase0.ValidatorIndex) *dbtypes.Validator {
+func GetValidatorByIndex(ctx context.Context, index phase0.ValidatorIndex) *dbtypes.Validator {
 	validator := dbtypes.Validator{}
-	err := ReaderDb.Get(&validator, `
+	err := ReaderDb.GetContext(ctx, &validator, `
 		SELECT * FROM validators WHERE validator_index = $1
 	`, index)
 	if err != nil {
@@ -117,9 +118,9 @@ func GetValidatorByIndex(index phase0.ValidatorIndex) *dbtypes.Validator {
 }
 
 // GetValidatorByPubkey returns a validator by pubkey
-func GetValidatorByPubkey(pubkey []byte) *dbtypes.Validator {
+func GetValidatorByPubkey(ctx context.Context, pubkey []byte) *dbtypes.Validator {
 	validator := dbtypes.Validator{}
-	err := ReaderDb.Get(&validator, `
+	err := ReaderDb.GetContext(ctx, &validator, `
 		SELECT * FROM validators WHERE pubkey = $1
 	`, pubkey)
 	if err != nil {
@@ -129,9 +130,9 @@ func GetValidatorByPubkey(pubkey []byte) *dbtypes.Validator {
 }
 
 // GetValidatorRange returns validators in a given index range
-func GetValidatorRange(startIndex uint64, endIndex uint64) []*dbtypes.Validator {
+func GetValidatorRange(ctx context.Context, startIndex uint64, endIndex uint64) []*dbtypes.Validator {
 	validators := []*dbtypes.Validator{}
-	err := ReaderDb.Select(&validators, `
+	err := ReaderDb.SelectContext(ctx, &validators, `
 		SELECT * FROM validators 
 		WHERE validator_index >= $1 AND validator_index <= $2
 		ORDER BY validator_index ASC
@@ -144,9 +145,9 @@ func GetValidatorRange(startIndex uint64, endIndex uint64) []*dbtypes.Validator 
 }
 
 // GetMaxValidatorIndex returns the highest validator index in the database
-func GetMaxValidatorIndex() (uint64, error) {
+func GetMaxValidatorIndex(ctx context.Context) (uint64, error) {
 	var maxIndex uint64
-	err := ReaderDb.Get(&maxIndex, "SELECT COALESCE(MAX(validator_index), 0) FROM validators")
+	err := ReaderDb.GetContext(ctx, &maxIndex, "SELECT COALESCE(MAX(validator_index), 0) FROM validators")
 	if err != nil {
 		return 0, fmt.Errorf("error getting max validator index: %v", err)
 	}
@@ -154,7 +155,7 @@ func GetMaxValidatorIndex() (uint64, error) {
 }
 
 // GetValidatorIndexesByFilter returns validator indexes matching a filter
-func GetValidatorIndexesByFilter(filter dbtypes.ValidatorFilter, currentEpoch uint64) ([]uint64, error) {
+func GetValidatorIndexesByFilter(ctx context.Context, filter dbtypes.ValidatorFilter, currentEpoch uint64) ([]uint64, error) {
 	var sql strings.Builder
 	args := []interface{}{}
 	fmt.Fprint(&sql, `
@@ -193,7 +194,7 @@ func GetValidatorIndexesByFilter(filter dbtypes.ValidatorFilter, currentEpoch ui
 	}
 
 	validatorIds := []uint64{}
-	err := ReaderDb.Select(&validatorIds, sql.String(), args...)
+	err := ReaderDb.SelectContext(ctx, &validatorIds, sql.String(), args...)
 	if err != nil {
 		logger.Errorf("Error while fetching validators by filter: %v", err)
 		return nil, err
@@ -294,7 +295,7 @@ func buildValidatorStatusSql(currentEpoch uint64) string {
 	`, math.MaxInt64, ConvertUint64ToInt64(currentEpoch), math.MaxInt64, ConvertUint64ToInt64(currentEpoch), ConvertUint64ToInt64(currentEpoch))
 }
 
-func StreamValidatorsByIndexes(indexes []uint64, cb func(validator *dbtypes.Validator) bool) error {
+func StreamValidatorsByIndexes(ctx context.Context, indexes []uint64, cb func(validator *dbtypes.Validator) bool) error {
 	const batchSize = 1000
 
 	// Process in batches
@@ -332,7 +333,7 @@ func StreamValidatorsByIndexes(indexes []uint64, cb func(validator *dbtypes.Vali
 
 		// Fetch all validators for this batch
 		validators := make([]*dbtypes.Validator, len(batch))
-		rows, err := ReaderDb.Query(sql.String(), args...)
+		rows, err := ReaderDb.QueryContext(ctx, sql.String(), args...)
 		if err != nil {
 			return fmt.Errorf("error querying validators: %v", err)
 		}

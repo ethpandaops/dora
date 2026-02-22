@@ -24,6 +24,7 @@ type FrontendCacheService struct {
 	tieredCache          *cache.TieredCache
 	processingMutex      sync.Mutex
 	processingDict       map[string]*FrontendCacheProcessingPage
+	concurrencySem       chan struct{}
 	callStackMutex       sync.RWMutex
 	callStackBuffer      []byte
 }
@@ -69,11 +70,17 @@ func StartFrontendCache() error {
 		return err
 	}
 
+	var concurrencySem chan struct{}
+	if utils.Config.Frontend.MaxConcurrentPages > 0 {
+		concurrencySem = make(chan struct{}, utils.Config.Frontend.MaxConcurrentPages)
+	}
+
 	GlobalFrontendCache = &FrontendCacheService{
 		tieredCache:     tieredCache,
 		processingDict:  make(map[string]*FrontendCacheProcessingPage),
 		callStackBuffer: make([]byte, 1024*1024*5),
 		cachingEnabled:  !utils.Config.Frontend.DisablePageCache && !utils.Config.Frontend.Debug,
+		concurrencySem:  concurrencySem,
 	}
 	return nil
 }
@@ -136,6 +143,20 @@ func (fc *FrontendCacheService) processPageCall(pageKey string, caching bool, pa
 		}()
 
 		callGoId = routine.Goid()
+
+		// acquire concurrency semaphore if configured
+		if fc.concurrencySem != nil {
+			select {
+			case fc.concurrencySem <- struct{}{}:
+				defer func() { <-fc.concurrencySem }()
+			case <-callCtx.Done():
+				errorChan <- &FrontendCachePageError{
+					name: "page cancelled",
+					err:  fmt.Errorf("page call %v cancelled while waiting for concurrency slot", callIdx),
+				}
+				return
+			}
+		}
 
 		// check cache
 		if fc.cachingEnabled && caching && fc.getFrontendCache(pageKey, pageData) == nil {

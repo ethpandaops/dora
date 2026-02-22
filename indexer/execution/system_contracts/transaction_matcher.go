@@ -1,6 +1,7 @@
 package system_contracts
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -74,13 +75,13 @@ func (ds *transactionMatcher[MatchType]) runTransactionMatcher(indexerBlock uint
 	if syncEpoch < indexerFinalizedEpoch {
 		// synchronization is behind head, check if our block range is synced
 		syncSlot := ds.indexer.ChainState.EpochToSlot(syncEpoch)
-		syncBlockRoot := db.GetHighestRootBeforeSlot(uint64(syncSlot), false)
+		syncBlockRoot := db.GetHighestRootBeforeSlot(context.Background(), uint64(syncSlot), false)
 		if syncBlockRoot == nil {
 			// no block found, not synced at all
 			return nil
 		}
 
-		syncBlock := db.GetSlotByRoot(syncBlockRoot)
+		syncBlock := db.GetSlotByRoot(context.Background(), syncBlockRoot)
 		if syncBlock == nil {
 			// block not found, not synced at all
 			return nil
@@ -145,7 +146,7 @@ func (ds *transactionMatcher[MatchType]) runTransactionMatcher(indexerBlock uint
 // loadState loads the state of the transaction matcher from the database
 func (ds *transactionMatcher[_]) loadState() {
 	syncState := transactionMatcherState{}
-	db.GetExplorerState(ds.options.stateKey, &syncState)
+	db.GetExplorerState(context.Background(), ds.options.stateKey, &syncState)
 	ds.state = &syncState
 
 	if ds.state.MatchHeight == 0 {
@@ -155,7 +156,7 @@ func (ds *transactionMatcher[_]) loadState() {
 
 // persistState persists the state of the transaction matcher to the database
 func (ds *transactionMatcher[_]) persistState(tx *sqlx.Tx) error {
-	err := db.SetExplorerState(ds.options.stateKey, ds.state, tx)
+	err := db.SetExplorerState(context.Background(), tx, ds.options.stateKey, ds.state)
 	if err != nil {
 		return fmt.Errorf("error while updating tx matcher state: %v", err)
 	}
@@ -177,7 +178,7 @@ func (ds *transactionMatcher[_]) getFinalizedBlockNumber() uint64 {
 
 	if finalizedBlockNumber == 0 {
 		// load from db
-		if finalizedBlock := db.GetSlotByRoot(finalizedRoot[:]); finalizedBlock != nil && finalizedBlock.EthBlockNumber != nil {
+		if finalizedBlock := db.GetSlotByRoot(context.Background(), finalizedRoot[:]); finalizedBlock != nil && finalizedBlock.EthBlockNumber != nil {
 			finalizedBlockNumber = *finalizedBlock.EthBlockNumber
 		}
 	}

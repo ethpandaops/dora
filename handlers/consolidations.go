@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"net/http"
@@ -66,7 +67,7 @@ func getConsolidationsPageData(firstEpoch uint64, pageSize uint64, tabView strin
 	pageData := &models.ConsolidationsPageData{}
 	pageCacheKey := fmt.Sprintf("consolidations:%v:%v:%v", firstEpoch, pageSize, tabView)
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
-		pageData, cacheTimeout := buildConsolidationsPageData(firstEpoch, pageSize, tabView)
+		pageData, cacheTimeout := buildConsolidationsPageData(pageCall.CallCtx, firstEpoch, pageSize, tabView)
 		pageCall.CacheTimeout = cacheTimeout
 		return pageData
 	})
@@ -80,7 +81,7 @@ func getConsolidationsPageData(firstEpoch uint64, pageSize uint64, tabView strin
 	return pageData, pageErr
 }
 
-func buildConsolidationsPageData(firstEpoch uint64, pageSize uint64, tabView string) (*models.ConsolidationsPageData, time.Duration) {
+func buildConsolidationsPageData(ctx context.Context, firstEpoch uint64, pageSize uint64, tabView string) (*models.ConsolidationsPageData, time.Duration) {
 	logrus.Debugf("consolidations page called: %v:%v:%v", firstEpoch, pageSize, tabView)
 	chainState := services.GlobalBeaconService.GetChainState()
 	epochStats, _ := services.GlobalBeaconService.GetRecentEpochStats(nil)
@@ -97,14 +98,14 @@ func buildConsolidationsPageData(firstEpoch uint64, pageSize uint64, tabView str
 	}
 
 	// Get total consolidation count
-	_, _, totalConsolidations := services.GlobalBeaconService.GetConsolidationRequestsByFilter(consolidationRequestFilter, 0, 1)
+	_, _, totalConsolidations := services.GlobalBeaconService.GetConsolidationRequestsByFilter(ctx, consolidationRequestFilter, 0, 1)
 	pageData.TotalConsolidationCount = totalConsolidations
 
 	// Get consolidation queue data for stats
 	queueFilter := &services.ConsolidationQueueFilter{
 		ReverseOrder: true,
 	}
-	queuedConsolidations, queuedConsolidationCount := services.GlobalBeaconService.GetConsolidationQueueByFilter(queueFilter, 0, 1)
+	queuedConsolidations, queuedConsolidationCount := services.GlobalBeaconService.GetConsolidationQueueByFilter(ctx, queueFilter, 0, 1)
 	pageData.QueuedConsolidationCount = queuedConsolidationCount
 
 	// Calculate consolidating validator count and amount
@@ -133,7 +134,7 @@ func buildConsolidationsPageData(firstEpoch uint64, pageSize uint64, tabView str
 			},
 		}
 
-		dbConsolidations, _, _ := services.GlobalBeaconService.GetConsolidationRequestsByFilter(consolidationFilter, 0, uint32(20))
+		dbConsolidations, _, _ := services.GlobalBeaconService.GetConsolidationRequestsByFilter(ctx, consolidationFilter, 0, uint32(20))
 		for _, consolidation := range dbConsolidations {
 			consolidationData := &models.ConsolidationsPageDataRecentConsolidation{
 				SourceAddr:      consolidation.SourceAddress(),
@@ -178,7 +179,7 @@ func buildConsolidationsPageData(firstEpoch uint64, pageSize uint64, tabView str
 
 	case "queue":
 		// Load consolidation queue
-		queueConsolidations, _ := services.GlobalBeaconService.GetConsolidationQueueByFilter(&services.ConsolidationQueueFilter{}, 0, 20)
+		queueConsolidations, _ := services.GlobalBeaconService.GetConsolidationQueueByFilter(ctx, &services.ConsolidationQueueFilter{}, 0, 20)
 		for _, queueEntry := range queueConsolidations {
 			queueData := &models.ConsolidationsPageDataQueuedConsolidation{}
 

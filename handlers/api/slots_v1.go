@@ -289,7 +289,7 @@ func APISlotsV1(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get blocks from database
-	dbBlocks := services.GlobalBeaconService.GetDbBlocksByFilter(blockFilter, pageIdx, uint32(limit+1), 0)
+	dbBlocks := services.GlobalBeaconService.GetDbBlocksByFilter(r.Context(), blockFilter, pageIdx, uint32(limit+1), 0)
 
 	// Check if we have MEV blocks to fetch
 	var mevBlocksMap map[string]*dbtypes.MevBlock
@@ -300,7 +300,7 @@ func APISlotsV1(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if len(execBlockHashes) > 0 {
-		mevBlocksMap = db.GetMevBlocksByBlockHashes(execBlockHashes)
+		mevBlocksMap = db.GetMevBlocksByBlockHashes(r.Context(), execBlockHashes)
 	}
 
 	// Get chain state for finalization check

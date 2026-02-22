@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -94,8 +95,8 @@ func Slashings(w http.ResponseWriter, r *http.Request) {
 func getFilteredSlashingsPageData(pageIdx uint64, pageSize uint64, minSlot uint64, maxSlot uint64, minIndex uint64, maxIndex uint64, vname string, sname string, withReason uint8, withOrphaned uint8) (*models.SlashingsPageData, error) {
 	pageData := &models.SlashingsPageData{}
 	pageCacheKey := fmt.Sprintf("slashings:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v", pageIdx, pageSize, minSlot, maxSlot, minIndex, maxIndex, vname, sname, withReason, withOrphaned)
-	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(_ *services.FrontendCacheProcessingPage) interface{} {
-		return buildFilteredSlashingsPageData(pageIdx, pageSize, minSlot, maxSlot, minIndex, maxIndex, vname, sname, withReason, withOrphaned)
+	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
+		return buildFilteredSlashingsPageData(pageCall.CallCtx, pageIdx, pageSize, minSlot, maxSlot, minIndex, maxIndex, vname, sname, withReason, withOrphaned)
 	})
 	if pageErr == nil && pageRes != nil {
 		resData, resOk := pageRes.(*models.SlashingsPageData)
@@ -107,7 +108,7 @@ func getFilteredSlashingsPageData(pageIdx uint64, pageSize uint64, minSlot uint6
 	return pageData, pageErr
 }
 
-func buildFilteredSlashingsPageData(pageIdx uint64, pageSize uint64, minSlot uint64, maxSlot uint64, minIndex uint64, maxIndex uint64, vname string, sname string, withReason uint8, withOrphaned uint8) *models.SlashingsPageData {
+func buildFilteredSlashingsPageData(ctx context.Context, pageIdx uint64, pageSize uint64, minSlot uint64, maxSlot uint64, minIndex uint64, maxIndex uint64, vname string, sname string, withReason uint8, withOrphaned uint8) *models.SlashingsPageData {
 	filterArgs := url.Values{}
 	if minSlot != 0 {
 		filterArgs.Add("f.mins", fmt.Sprintf("%v", minSlot))
@@ -171,7 +172,7 @@ func buildFilteredSlashingsPageData(pageIdx uint64, pageSize uint64, minSlot uin
 		WithOrphaned:  withOrphaned,
 	}
 
-	dbSlashings, totalRows := services.GlobalBeaconService.GetSlashingsByFilter(slashingFilter, pageIdx-1, uint32(pageSize))
+	dbSlashings, totalRows := services.GlobalBeaconService.GetSlashingsByFilter(ctx, slashingFilter, pageIdx-1, uint32(pageSize))
 
 	chainState := services.GlobalBeaconService.GetChainState()
 

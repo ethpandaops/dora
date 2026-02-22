@@ -273,7 +273,7 @@ func (cs *ChainService) StartService() error {
 			syncState := &dbtypes.IndexerSyncState{
 				Epoch: *utils.Config.Indexer.ResyncFromEpoch,
 			}
-			return db.SetExplorerState("indexer.syncstate", syncState, tx)
+			return db.SetExplorerState(context.Background(), tx, "indexer.syncstate", syncState)
 		})
 		if err != nil {
 			return fmt.Errorf("failed resetting sync state: %v", err)
@@ -311,7 +311,7 @@ func (cs *ChainService) StartService() error {
 	<-validatorNamesLoading
 
 	go func() {
-		cs.validatorNames.UpdateDb()
+		cs.validatorNames.UpdateDb(context.Background())
 		cs.validatorNames.StartUpdater()
 	}()
 

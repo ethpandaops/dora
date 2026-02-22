@@ -170,7 +170,7 @@ func (block *Block) GetBlock() *spec.VersionedSignedBeaconBlock {
 	}
 
 	if block.isInUnfinalizedDb {
-		dbBlock := db.GetUnfinalizedBlock(block.Root[:])
+		dbBlock := db.GetUnfinalizedBlock(context.Background(), block.Root[:])
 		if dbBlock != nil {
 			blockBody, err := UnmarshalVersionedSignedBeaconBlockSSZ(block.dynSsz, dbBlock.BlockVer, dbBlock.BlockSSZ)
 			if err == nil {
@@ -478,7 +478,7 @@ func (block *Block) unpruneBlockBody() {
 		return
 	}
 
-	dbBlock := db.GetUnfinalizedBlock(block.Root[:])
+	dbBlock := db.GetUnfinalizedBlock(context.Background(), block.Root[:])
 	if dbBlock != nil {
 		block.block, _ = UnmarshalVersionedSignedBeaconBlockSSZ(block.dynSsz, dbBlock.BlockVer, dbBlock.BlockSSZ)
 	}
@@ -618,7 +618,7 @@ func (block *Block) AddExecutionTime(execTime ExecutionTime) {
 			}
 
 			db.RunDBTransaction(func(tx *sqlx.Tx) error {
-				return db.UpdateUnfinalizedBlockExecutionTimes(block.Root[:], uint32(block.minExecutionTime), uint32(block.maxExecutionTime), execTimesSSZ, tx)
+				return db.UpdateUnfinalizedBlockExecutionTimes(context.Background(), tx, block.Root[:], uint32(block.minExecutionTime), uint32(block.maxExecutionTime), execTimesSSZ)
 			})
 		}()
 	}

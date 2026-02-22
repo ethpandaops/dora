@@ -2,6 +2,7 @@ package services
 
 import (
 	"bytes"
+	"context"
 	"strings"
 
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
@@ -77,7 +78,7 @@ func (ccr *CombinedConsolidationRequest) TargetPubkey() []byte {
 	return nil
 }
 
-func (bs *ChainService) GetConsolidationRequestsByFilter(filter *CombinedConsolidationRequestFilter, pageOffset uint64, pageSize uint32) ([]*CombinedConsolidationRequest, uint64, uint64) {
+func (bs *ChainService) GetConsolidationRequestsByFilter(ctx context.Context, filter *CombinedConsolidationRequestFilter, pageOffset uint64, pageSize uint32) ([]*CombinedConsolidationRequest, uint64, uint64) {
 	totalPendingTxResults := uint64(0)
 	totalReqResults := uint64(0)
 
@@ -85,7 +86,7 @@ func (bs *ChainService) GetConsolidationRequestsByFilter(filter *CombinedConsoli
 	canonicalForkIds := bs.GetCanonicalForkIds()
 
 	initiatedFilter := &dbtypes.ConsolidationRequestTxFilter{
-		MinDequeue:       bs.GetHighestElBlockNumber(nil) + 1,
+		MinDequeue:       bs.GetHighestElBlockNumber(ctx, nil) + 1,
 		PublicKey:        filter.Filter.PublicKey,
 		SourceAddress:    filter.Filter.SourceAddress,
 		MinSrcIndex:      filter.Filter.MinSrcIndex,
@@ -98,7 +99,7 @@ func (bs *ChainService) GetConsolidationRequestsByFilter(filter *CombinedConsoli
 	}
 
 	if filter.Request != 2 {
-		dbTransactions, totalDbTransactions, _ := db.GetConsolidationRequestTxsFiltered(pageOffset, pageSize, canonicalForkIds, initiatedFilter)
+		dbTransactions, totalDbTransactions, _ := db.GetConsolidationRequestTxsFiltered(ctx, pageOffset, pageSize, canonicalForkIds, initiatedFilter)
 		totalPendingTxResults = totalDbTransactions
 
 		for _, consolidation := range dbTransactions {
@@ -117,7 +118,7 @@ func (bs *ChainService) GetConsolidationRequestsByFilter(filter *CombinedConsoli
 			page2Offset = pageOffset - totalPendingTxResults
 		}
 
-		dbOperations, totalReqResults = bs.GetConsolidationRequestOperationsByFilter(filter.Filter, page2Offset, pageSize)
+		dbOperations, totalReqResults = bs.GetConsolidationRequestOperationsByFilter(ctx, filter.Filter, page2Offset, pageSize)
 
 		for _, dbOperation := range dbOperations {
 			if len(combinedResults) >= int(pageSize) {
@@ -133,7 +134,7 @@ func (bs *ChainService) GetConsolidationRequestsByFilter(filter *CombinedConsoli
 				requestTxDetailsFor = append(requestTxDetailsFor, dbOperation.TxHash)
 			} else if matcherHeight := bs.GetConsolidationIndexer().GetMatcherHeight(); dbOperation.BlockNumber > matcherHeight {
 				// consolidation request has not been matched with a tx yet, try to find the tx on the fly
-				requestTxs := db.GetConsolidationRequestTxsByDequeueRange(dbOperation.BlockNumber, dbOperation.BlockNumber)
+				requestTxs := db.GetConsolidationRequestTxsByDequeueRange(ctx, dbOperation.BlockNumber, dbOperation.BlockNumber)
 				if len(requestTxs) > 1 {
 					forkIds := bs.GetParentForkIds(beacon.ForkKey(dbOperation.ForkId))
 					isParentFork := func(forkId uint64) bool {
@@ -168,7 +169,7 @@ func (bs *ChainService) GetConsolidationRequestsByFilter(filter *CombinedConsoli
 
 		// load tx details for consolidation requests
 		if len(requestTxDetailsFor) > 0 {
-			for _, txDetails := range db.GetConsolidationRequestTxsByTxHashes(requestTxDetailsFor) {
+			for _, txDetails := range db.GetConsolidationRequestTxsByTxHashes(ctx, requestTxDetailsFor) {
 				for _, combinedResult := range combinedResults {
 					if combinedResult.Request != nil && bytes.Equal(combinedResult.Request.TxHash, txDetails.TxHash) {
 						combinedResult.Transaction = txDetails
@@ -182,7 +183,7 @@ func (bs *ChainService) GetConsolidationRequestsByFilter(filter *CombinedConsoli
 	return combinedResults, totalPendingTxResults, totalReqResults
 }
 
-func (bs *ChainService) GetConsolidationRequestOperationsByFilter(filter *dbtypes.ConsolidationRequestFilter, pageOffset uint64, pageSize uint32) ([]*dbtypes.ConsolidationRequest, uint64) {
+func (bs *ChainService) GetConsolidationRequestOperationsByFilter(ctx context.Context, filter *dbtypes.ConsolidationRequestFilter, pageOffset uint64, pageSize uint32) ([]*dbtypes.ConsolidationRequest, uint64) {
 	chainState := bs.consensusPool.GetChainState()
 	_, prunedEpoch := bs.beaconIndexer.GetBlockCacheState()
 	idxMinSlot := chainState.EpochToSlot(prunedEpoch)
@@ -287,7 +288,7 @@ func (bs *ChainService) GetConsolidationRequestOperationsByFilter(filter *dbtype
 
 	if cachedEnd <= cachedMatchesLen {
 		// all results from cache, just get result count from db
-		_, dbCount, err = db.GetConsolidationRequestsFiltered(0, 1, canonicalForkIds, filter)
+		_, dbCount, err = db.GetConsolidationRequestsFiltered(ctx, 0, 1, canonicalForkIds, filter)
 	} else {
 		dbSliceStart := uint64(0)
 		if cachedStart > cachedMatchesLen {
@@ -295,7 +296,7 @@ func (bs *ChainService) GetConsolidationRequestOperationsByFilter(filter *dbtype
 		}
 
 		dbSliceLimit := pageSize - uint32(resIdx)
-		dbObjects, dbCount, err = db.GetConsolidationRequestsFiltered(dbSliceStart, dbSliceLimit, canonicalForkIds, filter)
+		dbObjects, dbCount, err = db.GetConsolidationRequestsFiltered(ctx, dbSliceStart, dbSliceLimit, canonicalForkIds, filter)
 	}
 
 	if err != nil {
@@ -340,7 +341,7 @@ type ConsolidationQueueFilter struct {
 	ReverseOrder  bool
 }
 
-func (bs *ChainService) GetConsolidationQueueByFilter(filter *ConsolidationQueueFilter, offset uint64, limit uint64) ([]*ConsolidationQueueEntry, uint64) {
+func (bs *ChainService) GetConsolidationQueueByFilter(ctx context.Context, filter *ConsolidationQueueFilter, offset uint64, limit uint64) ([]*ConsolidationQueueEntry, uint64) {
 	epochStats, _ := bs.GetRecentEpochStats(nil)
 	if epochStats == nil {
 		return nil, 0
@@ -409,7 +410,7 @@ func (bs *ChainService) GetConsolidationQueueByFilter(filter *ConsolidationQueue
 		return []*ConsolidationQueueEntry{}, 0
 	}
 
-	validators, _ := bs.GetFilteredValidatorSet(&dbtypes.ValidatorFilter{
+	validators, _ := bs.GetFilteredValidatorSet(ctx, &dbtypes.ValidatorFilter{
 		Indices: validatorIndexes,
 	}, false)
 

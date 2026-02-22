@@ -53,7 +53,7 @@ func newSynchronizer(indexer *Indexer, logger logrus.FieldLogger) *synchronizer 
 
 	// restore sync state
 	syncState := &dbtypes.IndexerSyncState{}
-	if _, err := db.GetExplorerState("indexer.syncstate", syncState); err == nil {
+	if _, err := db.GetExplorerState(context.Background(), "indexer.syncstate", syncState); err == nil {
 		sync.currentEpoch = phase0.Epoch(syncState.Epoch)
 	}
 
@@ -198,9 +198,9 @@ func (s *synchronizer) runSync() {
 	if isComplete {
 		s.logger.Infof("synchronization complete. Head epoch: %v", s.currentEpoch)
 		db.RunDBTransaction(func(tx *sqlx.Tx) error {
-			return db.SetExplorerState("indexer.syncstate", &dbtypes.IndexerSyncState{
+			return db.SetExplorerState(s.syncCtx, tx, "indexer.syncstate", &dbtypes.IndexerSyncState{
 				Epoch: uint64(s.currentEpoch),
-			}, tx)
+			})
 		})
 	} else {
 		s.logger.Infof("synchronization aborted. Head epoch: %v", s.currentEpoch)
@@ -270,7 +270,7 @@ func (s *synchronizer) loadBlockBody(client *Client, root phase0.Root) (*spec.Ve
 }
 
 func (s *synchronizer) syncEpoch(syncEpoch phase0.Epoch, client *Client, lastTry bool) (bool, error) {
-	if !utils.Config.Indexer.ResyncForceUpdate && db.IsEpochSynchronized(uint64(syncEpoch)) {
+	if !utils.Config.Indexer.ResyncForceUpdate && db.IsEpochSynchronized(s.syncCtx, uint64(syncEpoch)) {
 		return true, nil
 	}
 
@@ -285,7 +285,7 @@ func (s *synchronizer) syncEpoch(syncEpoch phase0.Epoch, client *Client, lastTry
 	canonicalBlockHashes := [][]byte{}
 	nextEpochCanonicalBlocks := []*Block{}
 
-	blockHeads := db.GetBlockHeadBySlotRange(uint64(firstSlot), uint64(lastSlot))
+	blockHeads := db.GetBlockHeadBySlotRange(s.syncCtx, uint64(firstSlot), uint64(lastSlot))
 
 	var firstBlock *Block
 	for slot := firstSlot; slot <= lastSlot; slot++ {
@@ -360,7 +360,7 @@ func (s *synchronizer) syncEpoch(syncEpoch phase0.Epoch, client *Client, lastTry
 		}
 	} else {
 		// get from db
-		depRoot := db.GetHighestRootBeforeSlot(uint64(firstSlot), false)
+		depRoot := db.GetHighestRootBeforeSlot(s.syncCtx, uint64(firstSlot), false)
 		dependentRoot = phase0.Root(depRoot)
 	}
 
@@ -422,28 +422,28 @@ func (s *synchronizer) syncEpoch(syncEpoch phase0.Epoch, client *Client, lastTry
 			return fmt.Errorf("error persisting sync committee assignments to db: %v", err)
 		}
 
-		if err := db.UpdateMevBlockByEpoch(uint64(syncEpoch), specs.SlotsPerEpoch, canonicalBlockHashes, tx); err != nil {
+		if err := db.UpdateMevBlockByEpoch(s.syncCtx, tx, uint64(syncEpoch), specs.SlotsPerEpoch, canonicalBlockHashes); err != nil {
 			return fmt.Errorf("error while updating mev block proposal state: %v", err)
 		}
 
 		// delete unfinalized epoch aggregations in epoch
-		if err := db.DeleteUnfinalizedEpochsBefore(uint64(syncEpoch+1), tx); err != nil {
+		if err := db.DeleteUnfinalizedEpochsBefore(s.syncCtx, tx, uint64(syncEpoch+1)); err != nil {
 			return fmt.Errorf("failed deleting unfinalized epoch aggregations <= epoch %v: %v", syncEpoch, err)
 		}
 
 		// delete unfinalized forks for canonical roots
 		if len(canonicalBlockRoots) > 0 {
-			if err := db.UpdateFinalizedForkParents(canonicalBlockRoots, tx); err != nil {
+			if err := db.UpdateFinalizedForkParents(s.syncCtx, tx, canonicalBlockRoots); err != nil {
 				return fmt.Errorf("failed updating finalized fork parents: %v", err)
 			}
-			if err := db.DeleteFinalizedForks(canonicalBlockRoots, tx); err != nil {
+			if err := db.DeleteFinalizedForks(s.syncCtx, tx, canonicalBlockRoots); err != nil {
 				return fmt.Errorf("failed deleting finalized forks: %v", err)
 			}
 		}
 
-		err = db.SetExplorerState("indexer.syncstate", &dbtypes.IndexerSyncState{
+		err = db.SetExplorerState(s.syncCtx, tx, "indexer.syncstate", &dbtypes.IndexerSyncState{
 			Epoch: uint64(syncEpoch),
-		}, tx)
+		})
 		if err != nil {
 			return fmt.Errorf("error while updating sync state: %v", err)
 		}

@@ -2,6 +2,7 @@ package services
 
 import (
 	"bytes"
+	"context"
 	"strings"
 
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
@@ -65,7 +66,7 @@ func (cwr *CombinedWithdrawalRequest) Amount() uint64 {
 	return 0
 }
 
-func (bs *ChainService) GetWithdrawalRequestsByFilter(filter *CombinedWithdrawalRequestFilter, pageOffset uint64, pageSize uint32) ([]*CombinedWithdrawalRequest, uint64, uint64) {
+func (bs *ChainService) GetWithdrawalRequestsByFilter(ctx context.Context, filter *CombinedWithdrawalRequestFilter, pageOffset uint64, pageSize uint32) ([]*CombinedWithdrawalRequest, uint64, uint64) {
 	totalPendingTxResults := uint64(0)
 	totalReqResults := uint64(0)
 
@@ -73,7 +74,7 @@ func (bs *ChainService) GetWithdrawalRequestsByFilter(filter *CombinedWithdrawal
 	canonicalForkIds := bs.GetCanonicalForkIds()
 
 	initiatedFilter := &dbtypes.WithdrawalRequestTxFilter{
-		MinDequeue:    bs.GetHighestElBlockNumber(nil) + 1,
+		MinDequeue:    bs.GetHighestElBlockNumber(ctx, nil) + 1,
 		PublicKey:     filter.Filter.PublicKey,
 		MinIndex:      filter.Filter.MinIndex,
 		MaxIndex:      filter.Filter.MaxIndex,
@@ -82,7 +83,7 @@ func (bs *ChainService) GetWithdrawalRequestsByFilter(filter *CombinedWithdrawal
 	}
 
 	if filter.Request != 2 {
-		dbTransactions, totalDbTransactions, _ := db.GetWithdrawalRequestTxsFiltered(pageOffset, pageSize, canonicalForkIds, initiatedFilter)
+		dbTransactions, totalDbTransactions, _ := db.GetWithdrawalRequestTxsFiltered(ctx, pageOffset, pageSize, canonicalForkIds, initiatedFilter)
 		totalPendingTxResults = totalDbTransactions
 
 		for _, withdrawal := range dbTransactions {
@@ -101,7 +102,7 @@ func (bs *ChainService) GetWithdrawalRequestsByFilter(filter *CombinedWithdrawal
 			page2Offset = pageOffset - totalPendingTxResults
 		}
 
-		dbOperations, totalReqResults = bs.GetWithdrawalRequestOperationsByFilter(filter.Filter, page2Offset, pageSize)
+		dbOperations, totalReqResults = bs.GetWithdrawalRequestOperationsByFilter(ctx, filter.Filter, page2Offset, pageSize)
 
 		for _, dbOperation := range dbOperations {
 			if len(combinedResults) >= int(pageSize) {
@@ -117,7 +118,7 @@ func (bs *ChainService) GetWithdrawalRequestsByFilter(filter *CombinedWithdrawal
 				requestTxDetailsFor = append(requestTxDetailsFor, dbOperation.TxHash)
 			} else if matcherHeight := bs.GetWithdrawalIndexer().GetMatcherHeight(); dbOperation.BlockNumber > matcherHeight {
 				// withdrawal request has not been matched with a tx yet, try to find the tx on the fly
-				requestTxs := db.GetWithdrawalRequestTxsByDequeueRange(dbOperation.BlockNumber, dbOperation.BlockNumber)
+				requestTxs := db.GetWithdrawalRequestTxsByDequeueRange(ctx, dbOperation.BlockNumber, dbOperation.BlockNumber)
 				if len(requestTxs) > 1 {
 					forkIds := bs.GetParentForkIds(beacon.ForkKey(dbOperation.ForkId))
 					isParentFork := func(forkId uint64) bool {
@@ -152,7 +153,7 @@ func (bs *ChainService) GetWithdrawalRequestsByFilter(filter *CombinedWithdrawal
 
 		// load tx details for withdrawal requests
 		if len(requestTxDetailsFor) > 0 {
-			for _, txDetails := range db.GetWithdrawalRequestTxsByTxHashes(requestTxDetailsFor) {
+			for _, txDetails := range db.GetWithdrawalRequestTxsByTxHashes(ctx, requestTxDetailsFor) {
 				for _, combinedResult := range combinedResults {
 					if combinedResult.Request != nil && bytes.Equal(combinedResult.Request.TxHash, txDetails.TxHash) {
 						combinedResult.Transaction = txDetails
@@ -166,7 +167,7 @@ func (bs *ChainService) GetWithdrawalRequestsByFilter(filter *CombinedWithdrawal
 	return combinedResults, totalPendingTxResults, totalReqResults
 }
 
-func (bs *ChainService) GetWithdrawalRequestOperationsByFilter(filter *dbtypes.WithdrawalRequestFilter, pageOffset uint64, pageSize uint32) ([]*dbtypes.WithdrawalRequest, uint64) {
+func (bs *ChainService) GetWithdrawalRequestOperationsByFilter(ctx context.Context, filter *dbtypes.WithdrawalRequestFilter, pageOffset uint64, pageSize uint32) ([]*dbtypes.WithdrawalRequest, uint64) {
 	chainState := bs.consensusPool.GetChainState()
 	_, prunedEpoch := bs.beaconIndexer.GetBlockCacheState()
 	idxMinSlot := chainState.EpochToSlot(prunedEpoch)
@@ -255,7 +256,7 @@ func (bs *ChainService) GetWithdrawalRequestOperationsByFilter(filter *dbtypes.W
 
 	if cachedEnd <= cachedMatchesLen {
 		// all results from cache, just get result count from db
-		_, dbCount, err = db.GetWithdrawalRequestsFiltered(0, 1, canonicalForkIds, filter)
+		_, dbCount, err = db.GetWithdrawalRequestsFiltered(ctx, 0, 1, canonicalForkIds, filter)
 	} else {
 		dbSliceStart := uint64(0)
 		if cachedStart > cachedMatchesLen {
@@ -263,7 +264,7 @@ func (bs *ChainService) GetWithdrawalRequestOperationsByFilter(filter *dbtypes.W
 		}
 
 		dbSliceLimit := pageSize - uint32(resIdx)
-		dbObjects, dbCount, err = db.GetWithdrawalRequestsFiltered(dbSliceStart, dbSliceLimit, canonicalForkIds, filter)
+		dbObjects, dbCount, err = db.GetWithdrawalRequestsFiltered(ctx, dbSliceStart, dbSliceLimit, canonicalForkIds, filter)
 	}
 
 	if err != nil {
@@ -304,7 +305,7 @@ type WithdrawalQueueFilter struct {
 	PublicKey         []byte
 }
 
-func (bs *ChainService) GetWithdrawalQueueByFilter(filter *WithdrawalQueueFilter, pageOffset uint64, pageSize uint32) ([]*WithdrawalQueueEntry, uint64, phase0.Gwei) {
+func (bs *ChainService) GetWithdrawalQueueByFilter(ctx context.Context, filter *WithdrawalQueueFilter, pageOffset uint64, pageSize uint32) ([]*WithdrawalQueueEntry, uint64, phase0.Gwei) {
 	chainState := bs.consensusPool.GetChainState()
 	epochStats, epochStatsEpoch := bs.GetRecentEpochStats(nil)
 
@@ -363,7 +364,7 @@ func (bs *ChainService) GetWithdrawalQueueByFilter(filter *WithdrawalQueueFilter
 	}
 
 	// Bulk load all validators
-	validators, _ := bs.GetFilteredValidatorSet(&dbtypes.ValidatorFilter{
+	validators, _ := bs.GetFilteredValidatorSet(ctx, &dbtypes.ValidatorFilter{
 		Indices: validatorIndexes,
 	}, false)
 

@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -8,7 +9,7 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-func InsertElToken(token *dbtypes.ElToken, dbTx *sqlx.Tx) (uint64, error) {
+func InsertElToken(ctx context.Context, dbTx *sqlx.Tx, token *dbtypes.ElToken) (uint64, error) {
 	var id uint64
 	query := EngineQuery(map[dbtypes.DBEngineType]string{
 		dbtypes.DBEnginePgsql:  "INSERT INTO el_tokens (contract, token_type, name, symbol, decimals, flags, metadata_uri, name_synced) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id",
@@ -16,12 +17,12 @@ func InsertElToken(token *dbtypes.ElToken, dbTx *sqlx.Tx) (uint64, error) {
 	})
 
 	if DbEngine == dbtypes.DBEnginePgsql {
-		err := dbTx.QueryRow(query, token.Contract, token.TokenType, token.Name, token.Symbol, token.Decimals, token.Flags, token.MetadataURI, token.NameSynced).Scan(&id)
+		err := dbTx.QueryRowContext(ctx, query, token.Contract, token.TokenType, token.Name, token.Symbol, token.Decimals, token.Flags, token.MetadataURI, token.NameSynced).Scan(&id)
 		if err != nil {
 			return 0, err
 		}
 	} else {
-		result, err := dbTx.Exec(query, token.Contract, token.TokenType, token.Name, token.Symbol, token.Decimals, token.Flags, token.MetadataURI, token.NameSynced)
+		result, err := dbTx.ExecContext(ctx, query, token.Contract, token.TokenType, token.Name, token.Symbol, token.Decimals, token.Flags, token.MetadataURI, token.NameSynced)
 		if err != nil {
 			return 0, err
 		}
@@ -34,25 +35,25 @@ func InsertElToken(token *dbtypes.ElToken, dbTx *sqlx.Tx) (uint64, error) {
 	return id, nil
 }
 
-func GetElTokenByID(id uint64) (*dbtypes.ElToken, error) {
+func GetElTokenByID(ctx context.Context, id uint64) (*dbtypes.ElToken, error) {
 	token := &dbtypes.ElToken{}
-	err := ReaderDb.Get(token, "SELECT id, contract, token_type, name, symbol, decimals, flags, metadata_uri, name_synced FROM el_tokens WHERE id = $1", id)
+	err := ReaderDb.GetContext(ctx, token, "SELECT id, contract, token_type, name, symbol, decimals, flags, metadata_uri, name_synced FROM el_tokens WHERE id = $1", id)
 	if err != nil {
 		return nil, err
 	}
 	return token, nil
 }
 
-func GetElTokenByContract(contract []byte) (*dbtypes.ElToken, error) {
+func GetElTokenByContract(ctx context.Context, contract []byte) (*dbtypes.ElToken, error) {
 	token := &dbtypes.ElToken{}
-	err := ReaderDb.Get(token, "SELECT id, contract, token_type, name, symbol, decimals, flags, metadata_uri, name_synced FROM el_tokens WHERE contract = $1", contract)
+	err := ReaderDb.GetContext(ctx, token, "SELECT id, contract, token_type, name, symbol, decimals, flags, metadata_uri, name_synced FROM el_tokens WHERE contract = $1", contract)
 	if err != nil {
 		return nil, err
 	}
 	return token, nil
 }
 
-func GetElTokens(offset uint64, limit uint32) ([]*dbtypes.ElToken, uint64, error) {
+func GetElTokens(ctx context.Context, offset uint64, limit uint32) ([]*dbtypes.ElToken, uint64, error) {
 	var sql strings.Builder
 	args := []any{}
 
@@ -87,7 +88,7 @@ func GetElTokens(offset uint64, limit uint32) ([]*dbtypes.ElToken, uint64, error
 	fmt.Fprint(&sql, ") AS t1")
 
 	tokens := []*dbtypes.ElToken{}
-	err := ReaderDb.Select(&tokens, sql.String(), args...)
+	err := ReaderDb.SelectContext(ctx, &tokens, sql.String(), args...)
 	if err != nil {
 		logger.Errorf("Error while fetching el tokens: %v", err)
 		return nil, 0, err
@@ -101,7 +102,7 @@ func GetElTokens(offset uint64, limit uint32) ([]*dbtypes.ElToken, uint64, error
 	return tokens[1:], count, nil
 }
 
-func GetElTokensFiltered(offset uint64, limit uint32, filter *dbtypes.ElTokenFilter) ([]*dbtypes.ElToken, uint64, error) {
+func GetElTokensFiltered(ctx context.Context, offset uint64, limit uint32, filter *dbtypes.ElTokenFilter) ([]*dbtypes.ElToken, uint64, error) {
 	var sql strings.Builder
 	args := []any{}
 
@@ -155,7 +156,7 @@ func GetElTokensFiltered(offset uint64, limit uint32, filter *dbtypes.ElTokenFil
 	fmt.Fprint(&sql, ") AS t1")
 
 	tokens := []*dbtypes.ElToken{}
-	err := ReaderDb.Select(&tokens, sql.String(), args...)
+	err := ReaderDb.SelectContext(ctx, &tokens, sql.String(), args...)
 	if err != nil {
 		logger.Errorf("Error while fetching filtered el tokens: %v", err)
 		return nil, 0, err
@@ -169,20 +170,20 @@ func GetElTokensFiltered(offset uint64, limit uint32, filter *dbtypes.ElTokenFil
 	return tokens[1:], count, nil
 }
 
-func UpdateElToken(token *dbtypes.ElToken, dbTx *sqlx.Tx) error {
-	_, err := dbTx.Exec("UPDATE el_tokens SET contract = $1, token_type = $2, name = $3, symbol = $4, decimals = $5, flags = $6, metadata_uri = $7, name_synced = $8 WHERE id = $9",
+func UpdateElToken(ctx context.Context, dbTx *sqlx.Tx, token *dbtypes.ElToken) error {
+	_, err := dbTx.ExecContext(ctx, "UPDATE el_tokens SET contract = $1, token_type = $2, name = $3, symbol = $4, decimals = $5, flags = $6, metadata_uri = $7, name_synced = $8 WHERE id = $9",
 		token.Contract, token.TokenType, token.Name, token.Symbol, token.Decimals, token.Flags, token.MetadataURI, token.NameSynced, token.ID)
 	return err
 }
 
-func DeleteElToken(id uint64, dbTx *sqlx.Tx) error {
-	_, err := dbTx.Exec("DELETE FROM el_tokens WHERE id = $1", id)
+func DeleteElToken(ctx context.Context, dbTx *sqlx.Tx, id uint64) error {
+	_, err := dbTx.ExecContext(ctx, "DELETE FROM el_tokens WHERE id = $1", id)
 	return err
 }
 
 // GetElTokensByContracts retrieves multiple tokens by their contract addresses in a single query.
 // Returns a map from contract address (as hex string) to token for efficient lookup.
-func GetElTokensByContracts(contracts [][]byte) (map[string]*dbtypes.ElToken, error) {
+func GetElTokensByContracts(ctx context.Context, contracts [][]byte) (map[string]*dbtypes.ElToken, error) {
 	if len(contracts) == 0 {
 		return make(map[string]*dbtypes.ElToken), nil
 	}
@@ -201,7 +202,7 @@ func GetElTokensByContracts(contracts [][]byte) (map[string]*dbtypes.ElToken, er
 	fmt.Fprint(&sql, ")")
 
 	tokens := []*dbtypes.ElToken{}
-	err := ReaderDb.Select(&tokens, sql.String(), args...)
+	err := ReaderDb.SelectContext(ctx, &tokens, sql.String(), args...)
 	if err != nil {
 		logger.Errorf("Error while fetching el tokens by contracts: %v", err)
 		return nil, err
@@ -218,7 +219,7 @@ func GetElTokensByContracts(contracts [][]byte) (map[string]*dbtypes.ElToken, er
 }
 
 // GetElTokensByIDs retrieves multiple tokens by their IDs in a single query.
-func GetElTokensByIDs(ids []uint64) ([]*dbtypes.ElToken, error) {
+func GetElTokensByIDs(ctx context.Context, ids []uint64) ([]*dbtypes.ElToken, error) {
 	if len(ids) == 0 {
 		return []*dbtypes.ElToken{}, nil
 	}
@@ -237,7 +238,7 @@ func GetElTokensByIDs(ids []uint64) ([]*dbtypes.ElToken, error) {
 	fmt.Fprint(&sql, ")")
 
 	tokens := []*dbtypes.ElToken{}
-	err := ReaderDb.Select(&tokens, sql.String(), args...)
+	err := ReaderDb.SelectContext(ctx, &tokens, sql.String(), args...)
 	if err != nil {
 		logger.Errorf("Error while fetching el tokens by IDs: %v", err)
 		return nil, err

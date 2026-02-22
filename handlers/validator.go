@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -99,7 +100,7 @@ func getValidatorPageData(validatorIndex uint64, tabView string) (*models.Valida
 	pageData := &models.ValidatorPageData{}
 	pageCacheKey := fmt.Sprintf("validator:%v:%v", validatorIndex, tabView)
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
-		pageData, cacheTimeout := buildValidatorPageData(validatorIndex, tabView)
+		pageData, cacheTimeout := buildValidatorPageData(pageCall.CallCtx, validatorIndex, tabView)
 		pageCall.CacheTimeout = cacheTimeout
 		return pageData
 	})
@@ -113,7 +114,7 @@ func getValidatorPageData(validatorIndex uint64, tabView string) (*models.Valida
 	return pageData, pageErr
 }
 
-func buildValidatorPageData(validatorIndex uint64, tabView string) (*models.ValidatorPageData, time.Duration) {
+func buildValidatorPageData(ctx context.Context, validatorIndex uint64, tabView string) (*models.ValidatorPageData, time.Duration) {
 	logrus.Debugf("validator page called: %v", validatorIndex)
 
 	chainState := services.GlobalBeaconService.GetChainState()
@@ -137,7 +138,7 @@ func buildValidatorPageData(validatorIndex uint64, tabView string) (*models.Vali
 	}
 
 	// Check for queued deposits
-	filteredQueue := services.GlobalBeaconService.GetFilteredQueuedDeposits(&services.QueuedDepositFilter{
+	filteredQueue := services.GlobalBeaconService.GetFilteredQueuedDeposits(ctx, &services.QueuedDepositFilter{
 		PublicKey: validator.Validator.PublicKey[:],
 		NoIndex:   true,
 	})
@@ -192,7 +193,7 @@ func buildValidatorPageData(validatorIndex uint64, tabView string) (*models.Vali
 	// load latest blocks
 	if pageData.TabView == "blocks" {
 		pageData.RecentBlocks = make([]*models.ValidatorPageDataBlock, 0)
-		blocksData := services.GlobalBeaconService.GetDbBlocksByFilter(&dbtypes.BlockFilter{
+		blocksData := services.GlobalBeaconService.GetDbBlocksByFilter(ctx, &dbtypes.BlockFilter{
 			ProposerIndex: &validatorIndex,
 			WithOrphaned:  1,
 			WithMissing:   1,
@@ -254,7 +255,7 @@ func buildValidatorPageData(validatorIndex uint64, tabView string) (*models.Vali
 					InclusionSlot:  uint64(vote.VoteBlock.Slot),
 					InclusionRoot:  vote.VoteBlock.Root[:],
 					Time:           chainState.SlotToTime(vote.VoteBlock.Slot - phase0.Slot(vote.VoteDelay)),
-					Status:         uint64(services.GlobalBeaconService.CheckBlockOrphanedStatus(vote.VoteBlock.Root)),
+					Status:         uint64(services.GlobalBeaconService.CheckBlockOrphanedStatus(ctx, vote.VoteBlock.Root)),
 					InclusionDelay: uint64(vote.VoteDelay),
 					HasDuty:        true,
 				}
@@ -317,7 +318,7 @@ func buildValidatorPageData(validatorIndex uint64, tabView string) (*models.Vali
 		// first get recent included deposits
 		pageData.RecentDeposits = make([]*models.ValidatorPageDataDeposit, 0)
 
-		depositsData, totalIncludedDeposits := services.GlobalBeaconService.GetDepositRequestsByFilter(&services.CombinedDepositRequestFilter{
+		depositsData, totalIncludedDeposits := services.GlobalBeaconService.GetDepositRequestsByFilter(ctx, &services.CombinedDepositRequestFilter{
 			Filter: &dbtypes.DepositTxFilter{
 				PublicKey:    validator.Validator.PublicKey[:],
 				WithValid:    1,
@@ -417,7 +418,7 @@ func buildValidatorPageData(validatorIndex uint64, tabView string) (*models.Vali
 
 	// load recent withdrawal requests
 	if pageData.TabView == "withdrawalrequests" {
-		dbElWithdrawals, totalPendingWithdrawalTxs, totalWithdrawalReqs := services.GlobalBeaconService.GetWithdrawalRequestsByFilter(&services.CombinedWithdrawalRequestFilter{
+		dbElWithdrawals, totalPendingWithdrawalTxs, totalWithdrawalReqs := services.GlobalBeaconService.GetWithdrawalRequestsByFilter(ctx, &services.CombinedWithdrawalRequestFilter{
 			Filter: &dbtypes.WithdrawalRequestFilter{
 				PublicKey: validator.Validator.PublicKey[:],
 			},
@@ -493,7 +494,7 @@ func buildValidatorPageData(validatorIndex uint64, tabView string) (*models.Vali
 
 	// load recent consolidation requests
 	if pageData.TabView == "consolidationrequests" {
-		dbConsolidations, totalPendingConsolidationTxs, totalConsolidationReqs := services.GlobalBeaconService.GetConsolidationRequestsByFilter(&services.CombinedConsolidationRequestFilter{
+		dbConsolidations, totalPendingConsolidationTxs, totalConsolidationReqs := services.GlobalBeaconService.GetConsolidationRequestsByFilter(ctx, &services.CombinedConsolidationRequestFilter{
 			Filter: &dbtypes.ConsolidationRequestFilter{
 				PublicKey: validator.Validator.PublicKey[:],
 			},
@@ -586,7 +587,7 @@ func buildValidatorPageData(validatorIndex uint64, tabView string) (*models.Vali
 		exitSlot := uint64(chainState.EpochToSlot(validator.Validator.ExitEpoch))
 
 		// Check for slashing
-		if slashings, totalSlashings := services.GlobalBeaconService.GetSlashingsByFilter(&dbtypes.SlashingFilter{
+		if slashings, totalSlashings := services.GlobalBeaconService.GetSlashingsByFilter(ctx, &dbtypes.SlashingFilter{
 			MinIndex: validatorIndex,
 			MaxIndex: validatorIndex,
 		}, 0, 1); totalSlashings > 0 && len(slashings) > 0 {
@@ -596,7 +597,7 @@ func buildValidatorPageData(validatorIndex uint64, tabView string) (*models.Vali
 			pageData.ExitReasonSlashingReason = uint64(slashings[0].Reason)
 
 			// Check for voluntary exit
-		} else if exits, totalExits := services.GlobalBeaconService.GetVoluntaryExitsByFilter(&dbtypes.VoluntaryExitFilter{
+		} else if exits, totalExits := services.GlobalBeaconService.GetVoluntaryExitsByFilter(ctx, &dbtypes.VoluntaryExitFilter{
 			MinIndex: validatorIndex,
 			MaxIndex: validatorIndex,
 		}, 0, 1); totalExits > 0 && len(exits) > 0 {
@@ -605,7 +606,7 @@ func buildValidatorPageData(validatorIndex uint64, tabView string) (*models.Vali
 			pageData.ExitReasonSlot = exits[0].SlotNumber
 
 			// Check for full withdrawal request
-		} else if withdrawals, totalPendingWithdrawalTxs, totalWithdrawalReqs := services.GlobalBeaconService.GetWithdrawalRequestsByFilter(&services.CombinedWithdrawalRequestFilter{
+		} else if withdrawals, totalPendingWithdrawalTxs, totalWithdrawalReqs := services.GlobalBeaconService.GetWithdrawalRequestsByFilter(ctx, &services.CombinedWithdrawalRequestFilter{
 			Filter: &dbtypes.WithdrawalRequestFilter{
 				PublicKey:     validator.Validator.PublicKey[:],
 				SourceAddress: pageData.WithdrawAddress,
@@ -630,7 +631,7 @@ func buildValidatorPageData(validatorIndex uint64, tabView string) (*models.Vali
 				}
 			}
 			// Check for consolidation request
-		} else if consolidations, totalPendingConsolidationTxs, totalConsolidationReqs := services.GlobalBeaconService.GetConsolidationRequestsByFilter(&services.CombinedConsolidationRequestFilter{
+		} else if consolidations, totalPendingConsolidationTxs, totalConsolidationReqs := services.GlobalBeaconService.GetConsolidationRequestsByFilter(ctx, &services.CombinedConsolidationRequestFilter{
 			Filter: &dbtypes.ConsolidationRequestFilter{
 				PublicKey:     validator.Validator.PublicKey[:],
 				SourceAddress: pageData.WithdrawAddress,

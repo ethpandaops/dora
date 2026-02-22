@@ -1,6 +1,7 @@
 package system_contracts
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -203,7 +204,7 @@ func (ci *ConsolidationIndexer) persistConsolidationTxs(tx *sqlx.Tx, requests []
 			endIdx = requestCount
 		}
 
-		err := db.InsertConsolidationRequestTxs(requests[requestIdx:endIdx], tx)
+		err := db.InsertConsolidationRequestTxs(context.Background(), tx, requests[requestIdx:endIdx])
 		if err != nil {
 			return fmt.Errorf("error while inserting consolidation txs: %v", err)
 		}
@@ -217,13 +218,13 @@ func (ds *ConsolidationIndexer) matchBlockRange(fromBlock uint64, toBlock uint64
 	requestMatches := []*consolidationRequestMatch{}
 
 	// get all consolidation request transactions that are dequeued in the block range
-	dequeueConsolidationTxs := db.GetConsolidationRequestTxsByDequeueRange(fromBlock, toBlock)
+	dequeueConsolidationTxs := db.GetConsolidationRequestTxsByDequeueRange(context.Background(), fromBlock, toBlock)
 	if len(dequeueConsolidationTxs) > 0 {
 		firstBlock := dequeueConsolidationTxs[0].DequeueBlock
 		lastBlock := dequeueConsolidationTxs[len(dequeueConsolidationTxs)-1].DequeueBlock
 
 		// get all consolidation requests that are in the block range
-		for _, consolidationRequest := range db.GetConsolidationRequestsByElBlockRange(firstBlock, lastBlock) {
+		for _, consolidationRequest := range db.GetConsolidationRequestsByElBlockRange(context.Background(), firstBlock, lastBlock) {
 			if len(consolidationRequest.TxHash) > 0 {
 				continue
 			}
@@ -280,7 +281,7 @@ func (ds *ConsolidationIndexer) matchBlockRange(fromBlock uint64, toBlock uint64
 // persistMatches is the callback for the transaction matcher to persist matches to the database
 func (ds *ConsolidationIndexer) persistMatches(tx *sqlx.Tx, matches []*consolidationRequestMatch) error {
 	for _, match := range matches {
-		err := db.UpdateConsolidationRequestTxHash(match.slotRoot, match.slotIndex, match.txHash, tx)
+		err := db.UpdateConsolidationRequestTxHash(context.Background(), tx, match.slotRoot, match.slotIndex, match.txHash)
 		if err != nil {
 			return err
 		}

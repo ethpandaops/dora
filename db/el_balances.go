@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -8,7 +9,7 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-func InsertElBalances(balances []*dbtypes.ElBalance, dbTx *sqlx.Tx) error {
+func InsertElBalances(ctx context.Context, dbTx *sqlx.Tx, balances []*dbtypes.ElBalance) error {
 	if len(balances) == 0 {
 		return nil
 	}
@@ -51,23 +52,23 @@ func InsertElBalances(balances []*dbtypes.ElBalance, dbTx *sqlx.Tx) error {
 		dbtypes.DBEngineSqlite: "",
 	}))
 
-	_, err := dbTx.Exec(sql.String(), args...)
+	_, err := dbTx.ExecContext(ctx, sql.String(), args...)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func GetElBalance(accountID uint64, tokenID uint64) (*dbtypes.ElBalance, error) {
+func GetElBalance(ctx context.Context, accountID uint64, tokenID uint64) (*dbtypes.ElBalance, error) {
 	balance := &dbtypes.ElBalance{}
-	err := ReaderDb.Get(balance, "SELECT account_id, token_id, balance, balance_raw, updated FROM el_balances WHERE account_id = $1 AND token_id = $2", accountID, tokenID)
+	err := ReaderDb.GetContext(ctx, balance, "SELECT account_id, token_id, balance, balance_raw, updated FROM el_balances WHERE account_id = $1 AND token_id = $2", accountID, tokenID)
 	if err != nil {
 		return nil, err
 	}
 	return balance, nil
 }
 
-func GetElBalancesByAccountID(accountID uint64, offset uint64, limit uint32) ([]*dbtypes.ElBalance, uint64, error) {
+func GetElBalancesByAccountID(ctx context.Context, accountID uint64, offset uint64, limit uint32) ([]*dbtypes.ElBalance, uint64, error) {
 	var sql strings.Builder
 	args := []any{accountID}
 
@@ -99,7 +100,7 @@ func GetElBalancesByAccountID(accountID uint64, offset uint64, limit uint32) ([]
 	fmt.Fprint(&sql, ") AS t1")
 
 	balances := []*dbtypes.ElBalance{}
-	err := ReaderDb.Select(&balances, sql.String(), args...)
+	err := ReaderDb.SelectContext(ctx, &balances, sql.String(), args...)
 	if err != nil {
 		logger.Errorf("Error while fetching el balances by account: %v", err)
 		return nil, 0, err
@@ -113,7 +114,7 @@ func GetElBalancesByAccountID(accountID uint64, offset uint64, limit uint32) ([]
 	return balances[1:], count, nil
 }
 
-func GetElBalancesByTokenID(tokenID uint64, offset uint64, limit uint32) ([]*dbtypes.ElBalance, uint64, error) {
+func GetElBalancesByTokenID(ctx context.Context, tokenID uint64, offset uint64, limit uint32) ([]*dbtypes.ElBalance, uint64, error) {
 	var sql strings.Builder
 	args := []any{tokenID}
 
@@ -145,7 +146,7 @@ func GetElBalancesByTokenID(tokenID uint64, offset uint64, limit uint32) ([]*dbt
 	fmt.Fprint(&sql, ") AS t1")
 
 	balances := []*dbtypes.ElBalance{}
-	err := ReaderDb.Select(&balances, sql.String(), args...)
+	err := ReaderDb.SelectContext(ctx, &balances, sql.String(), args...)
 	if err != nil {
 		logger.Errorf("Error while fetching el balances by token id: %v", err)
 		return nil, 0, err
@@ -159,7 +160,7 @@ func GetElBalancesByTokenID(tokenID uint64, offset uint64, limit uint32) ([]*dbt
 	return balances[1:], count, nil
 }
 
-func GetElBalancesFiltered(offset uint64, limit uint32, accountID uint64, filter *dbtypes.ElBalanceFilter) ([]*dbtypes.ElBalance, uint64, error) {
+func GetElBalancesFiltered(ctx context.Context, offset uint64, limit uint32, accountID uint64, filter *dbtypes.ElBalanceFilter) ([]*dbtypes.ElBalance, uint64, error) {
 	var sql strings.Builder
 	args := []any{}
 
@@ -214,7 +215,7 @@ func GetElBalancesFiltered(offset uint64, limit uint32, accountID uint64, filter
 	fmt.Fprint(&sql, ") AS t1")
 
 	balances := []*dbtypes.ElBalance{}
-	err := ReaderDb.Select(&balances, sql.String(), args...)
+	err := ReaderDb.SelectContext(ctx, &balances, sql.String(), args...)
 	if err != nil {
 		logger.Errorf("Error while fetching filtered el balances: %v", err)
 		return nil, 0, err
@@ -228,31 +229,31 @@ func GetElBalancesFiltered(offset uint64, limit uint32, accountID uint64, filter
 	return balances[1:], count, nil
 }
 
-func UpdateElBalance(balance *dbtypes.ElBalance, dbTx *sqlx.Tx) error {
-	_, err := dbTx.Exec("UPDATE el_balances SET balance = $1, balance_raw = $2, updated = $3 WHERE account_id = $4 AND token_id = $5",
+func UpdateElBalance(ctx context.Context, dbTx *sqlx.Tx, balance *dbtypes.ElBalance) error {
+	_, err := dbTx.ExecContext(ctx, "UPDATE el_balances SET balance = $1, balance_raw = $2, updated = $3 WHERE account_id = $4 AND token_id = $5",
 		balance.Balance, balance.BalanceRaw, balance.Updated, balance.AccountID, balance.TokenID)
 	return err
 }
 
-func DeleteElBalance(accountID uint64, tokenID uint64, dbTx *sqlx.Tx) error {
-	_, err := dbTx.Exec("DELETE FROM el_balances WHERE account_id = $1 AND token_id = $2", accountID, tokenID)
+func DeleteElBalance(ctx context.Context, dbTx *sqlx.Tx, accountID uint64, tokenID uint64) error {
+	_, err := dbTx.ExecContext(ctx, "DELETE FROM el_balances WHERE account_id = $1 AND token_id = $2", accountID, tokenID)
 	return err
 }
 
-func DeleteElBalancesByAccountID(accountID uint64, dbTx *sqlx.Tx) error {
-	_, err := dbTx.Exec("DELETE FROM el_balances WHERE account_id = $1", accountID)
+func DeleteElBalancesByAccountID(ctx context.Context, dbTx *sqlx.Tx, accountID uint64) error {
+	_, err := dbTx.ExecContext(ctx, "DELETE FROM el_balances WHERE account_id = $1", accountID)
 	return err
 }
 
-func DeleteElBalancesByTokenID(tokenID uint64, dbTx *sqlx.Tx) error {
-	_, err := dbTx.Exec("DELETE FROM el_balances WHERE token_id = $1", tokenID)
+func DeleteElBalancesByTokenID(ctx context.Context, dbTx *sqlx.Tx, tokenID uint64) error {
+	_, err := dbTx.ExecContext(ctx, "DELETE FROM el_balances WHERE token_id = $1", tokenID)
 	return err
 }
 
 // DeleteElZeroBalances deletes all balance entries with zero balance.
 // Returns the number of deleted rows.
-func DeleteElZeroBalances(dbTx *sqlx.Tx) (int64, error) {
-	result, err := dbTx.Exec("DELETE FROM el_balances WHERE balance = 0")
+func DeleteElZeroBalances(ctx context.Context, dbTx *sqlx.Tx) (int64, error) {
+	result, err := dbTx.ExecContext(ctx, "DELETE FROM el_balances WHERE balance = 0")
 	if err != nil {
 		return 0, err
 	}

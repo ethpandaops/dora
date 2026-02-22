@@ -2,6 +2,7 @@ package services
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -51,7 +52,7 @@ func StartTxSignaturesService() error {
 	return nil
 }
 
-func (tss *TxSignaturesService) LookupSignatures(sigBytes []types.TxSignatureBytes) map[types.TxSignatureBytes]*TxSignaturesLookup {
+func (tss *TxSignaturesService) LookupSignatures(ctx context.Context, sigBytes []types.TxSignatureBytes) map[types.TxSignatureBytes]*TxSignaturesLookup {
 	lookups := map[types.TxSignatureBytes]*TxSignaturesLookup{}
 	unresolvedLookups := make([]*TxSignaturesLookup, 0)
 	unresolvedLookupBytes := make([]types.TxSignatureBytes, 0)
@@ -70,7 +71,7 @@ func (tss *TxSignaturesService) LookupSignatures(sigBytes []types.TxSignatureByt
 
 	// check known signatures in DB
 	if len(unresolvedLookups) > 0 {
-		for _, dbSigEntry := range db.GetTxFunctionSignaturesByBytes(unresolvedLookupBytes) {
+		for _, dbSigEntry := range db.GetTxFunctionSignaturesByBytes(ctx, unresolvedLookupBytes) {
 			var lookup *TxSignaturesLookup
 			for i, l := range unresolvedLookups {
 				if l == nil {
@@ -110,7 +111,7 @@ func (tss *TxSignaturesService) LookupSignatures(sigBytes []types.TxSignatureByt
 		}
 		checkTimeout := time.Now().Unix() - recheckTime
 
-		for _, unknownSigEntry := range db.GetUnknownFunctionSignatures(unresolvedLookupBytes) {
+		for _, unknownSigEntry := range db.GetUnknownFunctionSignatures(ctx, unresolvedLookupBytes) {
 			if unknownSigEntry.LastCheck < uint64(checkTimeout) {
 				break
 			}
@@ -155,7 +156,7 @@ func (tss *TxSignaturesService) LookupSignatures(sigBytes []types.TxSignatureByt
 
 		//logger_tss.Infof("starting db transaction (pending sig)")
 		db.RunDBTransaction(func(tx *sqlx.Tx) error {
-			err := db.InsertPendingFunctionSignatures(pendingLookups, tx)
+			err := db.InsertPendingFunctionSignatures(ctx, tx, pendingLookups)
 			if err != nil {
 				logger_tss.Warnf("error saving pending signature: %v", err)
 			}
@@ -192,7 +193,7 @@ func (tss *TxSignaturesService) processPendingSignatures() {
 	if batchLimit == 0 {
 		batchLimit = 10
 	}
-	pendingSigs := db.GetPendingFunctionSignatures(batchLimit)
+	pendingSigs := db.GetPendingFunctionSignatures(context.Background(), batchLimit)
 
 	wg := sync.WaitGroup{}
 	lookups := make([]*TxSignaturesLookup, 0)
@@ -241,19 +242,19 @@ func (tss *TxSignaturesService) processPendingSignatures() {
 
 	if len(pendingSigBytes) > 0 {
 		err := db.RunDBTransaction(func(tx *sqlx.Tx) error {
-			err := db.DeletePendingFunctionSignatures(pendingSigBytes, tx)
+			err := db.DeletePendingFunctionSignatures(context.Background(), tx, pendingSigBytes)
 			if err != nil {
 				logger_tss.Warnf("error deleting pending signature: %v", err)
 			}
 
 			if len(unknownSigs) > 0 {
-				err := db.InsertUnknownFunctionSignatures(unknownSigs, tx)
+				err := db.InsertUnknownFunctionSignatures(context.Background(), tx, unknownSigs)
 				if err != nil {
 					logger_tss.Warnf("error saving unknown signature: %v", err)
 				}
 			}
 			for _, fnsig := range resolvedSigs {
-				err := db.InsertTxFunctionSignature(fnsig, tx)
+				err := db.InsertTxFunctionSignature(context.Background(), tx, fnsig)
 				if err != nil {
 					logger_tss.Warnf("error saving resolved signature: %v", err)
 				}
