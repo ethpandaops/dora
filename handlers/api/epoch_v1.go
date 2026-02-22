@@ -84,7 +84,7 @@ func ApiEpochV1(w http.ResponseWriter, r *http.Request) {
 		Finalized: finalizedEpoch >= phase0.Epoch(epoch),
 	}
 
-	dbEpochs := services.GlobalBeaconService.GetDbEpochs(uint64(epoch), 1)
+	dbEpochs := services.GlobalBeaconService.GetDbEpochs(r.Context(), uint64(epoch), 1)
 	dbEpoch := dbEpochs[0]
 	if dbEpoch != nil {
 		data.AttestationsCount = dbEpoch.AttestationCount

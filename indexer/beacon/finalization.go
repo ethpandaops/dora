@@ -107,9 +107,9 @@ func (indexer *Indexer) processFinalityEvent(finalityEvent *v1.Finality) error {
 	} else if !indexer.synchronizer.running && indexer.synchronizer.currentEpoch >= oldLastFinalizedEpoch && indexer.lastFinalizedEpoch > oldLastFinalizedEpoch {
 		indexer.synchronizer.currentEpoch = indexer.lastFinalizedEpoch
 		err := db.RunDBTransaction(func(tx *sqlx.Tx) error {
-			return db.SetExplorerState("indexer.syncstate", &dbtypes.IndexerSyncState{
+			return db.SetExplorerState(context.Background(), tx, "indexer.syncstate", &dbtypes.IndexerSyncState{
 				Epoch: uint64(indexer.lastFinalizedEpoch),
-			}, tx)
+			})
 		})
 		if err != nil {
 			indexer.logger.WithError(err).Errorf("failed updating sync state")
@@ -237,7 +237,7 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 
 			canonicalBlock = indexer.blockCache.getBlockByRoot(*parentRoot)
 			if canonicalBlock == nil {
-				blockHead := db.GetBlockHeadByRoot((*parentRoot)[:])
+				blockHead := db.GetBlockHeadByRoot(context.Background(), (*parentRoot)[:])
 				if blockHead != nil {
 					canonicalBlock = newBlock(indexer.dynSsz, phase0.Root(blockHead.Root), phase0.Slot(blockHead.Slot), blockHead.BlockUid)
 					canonicalBlock.isInFinalizedDb = true
@@ -435,7 +435,7 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 				return fmt.Errorf("failed building orphaned block %v (%v): %v", block.Slot, block.Root.String(), err)
 			}
 
-			if err := db.InsertOrphanedBlock(orphanedBlock, tx); err != nil {
+			if err := db.InsertOrphanedBlock(context.Background(), tx, orphanedBlock); err != nil {
 				return fmt.Errorf("failed persisting orphaned slot %v (%v): %v", block.Slot, block.Root.String(), err)
 			}
 		}
@@ -457,7 +457,7 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 			dbOrphanedEpoch.EpochHeadRoot = epochData.chainHead.Root[:]
 			dbOrphanedEpoch.EpochHeadForkId = uint64(epochData.chainHead.forkId)
 
-			err = db.InsertOrphanedEpoch(&dbOrphanedEpoch, tx)
+			err = db.InsertOrphanedEpoch(context.Background(), tx, &dbOrphanedEpoch)
 			if err != nil {
 				indexer.logger.Errorf("error persisting orphaned epoch %v: %v", dbOrphanedEpoch.Epoch, err)
 			}
@@ -468,31 +468,31 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 			return fmt.Errorf("error persisting sync committee assignments to db: %v", err)
 		}
 
-		if err := db.UpdateMevBlockByEpoch(uint64(epoch), specs.SlotsPerEpoch, canonicalBlockHashes, tx); err != nil {
+		if err := db.UpdateMevBlockByEpoch(context.Background(), tx, uint64(epoch), specs.SlotsPerEpoch, canonicalBlockHashes); err != nil {
 			return fmt.Errorf("error while updating mev block proposal state: %v", err)
 		}
 
 		// delete unfinalized duties before epoch
-		if err := db.DeleteUnfinalizedDutiesBefore(uint64(epoch+1), tx); err != nil {
+		if err := db.DeleteUnfinalizedDutiesBefore(context.Background(), tx, uint64(epoch+1)); err != nil {
 			return fmt.Errorf("failed deleting unfinalized duties <= epoch %v: %v", epoch, err)
 		}
 
 		// delete unfinalized blocks before epoch
-		if err := db.DeleteUnfinalizedBlocksBefore(uint64(deleteBeforeSlot), tx); err != nil {
+		if err := db.DeleteUnfinalizedBlocksBefore(context.Background(), tx, uint64(deleteBeforeSlot)); err != nil {
 			return fmt.Errorf("failed deleting unfinalized duties < slot %v: %v", deleteBeforeSlot, err)
 		}
 
 		// delete unfinalized epoch aggregations in epoch
-		if err := db.DeleteUnfinalizedEpochsBefore(uint64(epoch+1), tx); err != nil {
+		if err := db.DeleteUnfinalizedEpochsBefore(context.Background(), tx, uint64(epoch+1)); err != nil {
 			return fmt.Errorf("failed deleting unfinalized epoch aggregations <= epoch %v: %v", epoch, err)
 		}
 
 		// delete unfinalized forks for canonical roots
 		if len(canonicalRoots) > 0 {
-			if err := db.UpdateFinalizedForkParents(canonicalRoots, tx); err != nil {
+			if err := db.UpdateFinalizedForkParents(context.Background(), tx, canonicalRoots); err != nil {
 				return fmt.Errorf("failed updating finalized fork parents: %v", err)
 			}
-			if err := db.DeleteFinalizedForks(canonicalRoots, tx); err != nil {
+			if err := db.DeleteFinalizedForks(context.Background(), tx, canonicalRoots); err != nil {
 				return fmt.Errorf("failed deleting finalized forks: %v", err)
 			}
 		}

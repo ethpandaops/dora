@@ -2,6 +2,7 @@ package beacon
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"fmt"
 	"hash/crc64"
@@ -620,7 +621,7 @@ func (cache *validatorCache) getValidatorByIndexAndRoot(index phase0.ValidatorIn
 
 	// fallback to db if validator is not found in cache
 	if validator == nil {
-		if dbValidator := db.GetValidatorByIndex(index); dbValidator != nil {
+		if dbValidator := db.GetValidatorByIndex(context.Background(), index); dbValidator != nil {
 			validator = UnwrapDbValidator(dbValidator)
 		}
 	} else {
@@ -677,7 +678,7 @@ func (cache *validatorCache) prepopulateFromDB() (uint64, error) {
 	defer cache.cacheMutex.Unlock()
 
 	// Get max validator index to pre-allocate slice
-	maxIndex, err := db.GetMaxValidatorIndex()
+	maxIndex, err := db.GetMaxValidatorIndex(context.Background())
 	if err != nil {
 		return 0, fmt.Errorf("error getting max validator index: %v", err)
 	}
@@ -696,7 +697,7 @@ func (cache *validatorCache) prepopulateFromDB() (uint64, error) {
 			end = maxIndex
 		}
 
-		validators := db.GetValidatorRange(start, end)
+		validators := db.GetValidatorRange(context.Background(), start, end)
 		for _, dbVal := range validators {
 			// Convert db validator to phase0.Validator
 			val := UnwrapDbValidator(dbVal)
@@ -804,7 +805,7 @@ func (cache *validatorCache) persistValidators(tx *sqlx.Tx) (bool, error) {
 		entry.finalValidator = nil
 
 		if len(batch) >= 1000 {
-			err := db.InsertValidatorBatch(batch, tx)
+			err := db.InsertValidatorBatch(context.Background(), tx, batch)
 			if err != nil {
 				return false, fmt.Errorf("error persisting validator batch: %v", err)
 			}
@@ -820,7 +821,7 @@ func (cache *validatorCache) persistValidators(tx *sqlx.Tx) (bool, error) {
 
 	// Insert remaining batch
 	if len(batch) > 0 {
-		err := db.InsertValidatorBatch(batch, tx)
+		err := db.InsertValidatorBatch(context.Background(), tx, batch)
 		if err != nil {
 			return false, fmt.Errorf("error persisting final validator batch: %v", err)
 		}

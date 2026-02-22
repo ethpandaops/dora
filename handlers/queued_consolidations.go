@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"net/http"
@@ -86,8 +87,8 @@ func QueuedConsolidations(w http.ResponseWriter, r *http.Request) {
 func getFilteredQueuedConsolidationsPageData(pageIdx uint64, pageSize uint64, minSrcIndex uint64, maxSrcIndex uint64, minTgtIndex uint64, maxTgtIndex uint64, validatorName string, pubkey string) (*models.QueuedConsolidationsPageData, error) {
 	pageData := &models.QueuedConsolidationsPageData{}
 	pageCacheKey := fmt.Sprintf("queued_consolidations:%v:%v:%v:%v:%v:%v:%v:%v", pageIdx, pageSize, minSrcIndex, maxSrcIndex, minTgtIndex, maxTgtIndex, validatorName, pubkey)
-	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(_ *services.FrontendCacheProcessingPage) interface{} {
-		return buildFilteredQueuedConsolidationsPageData(pageIdx, pageSize, minSrcIndex, maxSrcIndex, minTgtIndex, maxTgtIndex, validatorName, pubkey)
+	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
+		return buildFilteredQueuedConsolidationsPageData(pageCall.CallCtx, pageIdx, pageSize, minSrcIndex, maxSrcIndex, minTgtIndex, maxTgtIndex, validatorName, pubkey)
 	})
 	if pageErr == nil && pageRes != nil {
 		resData, resOk := pageRes.(*models.QueuedConsolidationsPageData)
@@ -99,7 +100,7 @@ func getFilteredQueuedConsolidationsPageData(pageIdx uint64, pageSize uint64, mi
 	return pageData, pageErr
 }
 
-func buildFilteredQueuedConsolidationsPageData(pageIdx uint64, pageSize uint64, minSrcIndex uint64, maxSrcIndex uint64, minTgtIndex uint64, maxTgtIndex uint64, validatorName string, pubkey string) *models.QueuedConsolidationsPageData {
+func buildFilteredQueuedConsolidationsPageData(ctx context.Context, pageIdx uint64, pageSize uint64, minSrcIndex uint64, maxSrcIndex uint64, minTgtIndex uint64, maxTgtIndex uint64, validatorName string, pubkey string) *models.QueuedConsolidationsPageData {
 	filterArgs := url.Values{}
 	if minSrcIndex != 0 {
 		filterArgs.Add("f.minsi", fmt.Sprintf("%v", minSrcIndex))
@@ -162,7 +163,7 @@ func buildFilteredQueuedConsolidationsPageData(pageIdx uint64, pageSize uint64, 
 		queueFilter.MaxTgtIndex = &maxTgtIndex
 	}
 
-	dbQueuedConsolidations, totalQueuedConsolidations := services.GlobalBeaconService.GetConsolidationQueueByFilter(queueFilter, (pageIdx-1)*pageSize, pageSize)
+	dbQueuedConsolidations, totalQueuedConsolidations := services.GlobalBeaconService.GetConsolidationQueueByFilter(ctx, queueFilter, (pageIdx-1)*pageSize, pageSize)
 	chainState := services.GlobalBeaconService.GetChainState()
 
 	for _, queueEntry := range dbQueuedConsolidations {

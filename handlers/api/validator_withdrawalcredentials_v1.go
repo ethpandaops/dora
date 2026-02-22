@@ -69,7 +69,7 @@ func ApiWithdrawalCredentialsValidatorsV1(w http.ResponseWriter, r *http.Request
 		filter.WithdrawalCreds = searchBytes
 	}
 
-	relevantValidators, _ := services.GlobalBeaconService.GetFilteredValidatorSet(filter, true)
+	relevantValidators, _ := services.GlobalBeaconService.GetFilteredValidatorSet(r.Context(), filter, true)
 
 	if offset > 0 {
 		if int(offset) > len(relevantValidators) {

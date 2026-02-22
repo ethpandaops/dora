@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -125,8 +126,8 @@ func BlocksFiltered(w http.ResponseWriter, r *http.Request) {
 func getFilteredBlocksPageData(pageIdx uint64, pageSize uint64, extradata string, invertextradata bool, minGasUsed string, maxGasUsed string, minGasLimit string, maxGasLimit string, minBlockSize string, maxBlockSize string, withMevBlock uint8, minTxCount string, maxTxCount string, minBlobCount string, maxBlobCount string, minEpoch string, maxEpoch string, displayColumns uint64) (*models.BlocksFilteredPageData, error) {
 	pageData := &models.BlocksFilteredPageData{}
 	pageCacheKey := fmt.Sprintf("blocks_filtered:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v", pageIdx, pageSize, extradata, invertextradata, minGasUsed, maxGasUsed, minGasLimit, maxGasLimit, minBlockSize, maxBlockSize, withMevBlock, minTxCount, maxTxCount, minBlobCount, maxBlobCount, minEpoch, maxEpoch, displayColumns)
-	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(_ *services.FrontendCacheProcessingPage) interface{} {
-		return buildFilteredBlocksPageData(pageIdx, pageSize, extradata, invertextradata, minGasUsed, maxGasUsed, minGasLimit, maxGasLimit, minBlockSize, maxBlockSize, withMevBlock, minTxCount, maxTxCount, minBlobCount, maxBlobCount, minEpoch, maxEpoch, displayColumns)
+	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
+		return buildFilteredBlocksPageData(pageCall.CallCtx, pageIdx, pageSize, extradata, invertextradata, minGasUsed, maxGasUsed, minGasLimit, maxGasLimit, minBlockSize, maxBlockSize, withMevBlock, minTxCount, maxTxCount, minBlobCount, maxBlobCount, minEpoch, maxEpoch, displayColumns)
 	})
 	if pageErr == nil && pageRes != nil {
 		resData, resOk := pageRes.(*models.BlocksFilteredPageData)
@@ -138,7 +139,7 @@ func getFilteredBlocksPageData(pageIdx uint64, pageSize uint64, extradata string
 	return pageData, pageErr
 }
 
-func buildFilteredBlocksPageData(pageIdx uint64, pageSize uint64, extradata string, invertextradata bool, minGasUsed string, maxGasUsed string, minGasLimit string, maxGasLimit string, minBlockSize string, maxBlockSize string, withMevBlock uint8, minTxCount string, maxTxCount string, minBlobCount string, maxBlobCount string, minEpoch string, maxEpoch string, displayColumns uint64) *models.BlocksFilteredPageData {
+func buildFilteredBlocksPageData(ctx context.Context, pageIdx uint64, pageSize uint64, extradata string, invertextradata bool, minGasUsed string, maxGasUsed string, minGasLimit string, maxGasLimit string, minBlockSize string, maxBlockSize string, withMevBlock uint8, minTxCount string, maxTxCount string, minBlobCount string, maxBlobCount string, minEpoch string, maxEpoch string, displayColumns uint64) *models.BlocksFilteredPageData {
 	chainState := services.GlobalBeaconService.GetChainState()
 	filterArgs := url.Values{}
 
@@ -361,7 +362,7 @@ func buildFilteredBlocksPageData(pageIdx uint64, pageSize uint64, extradata stri
 
 	withScheduledCount := uint64(0)
 
-	dbBlocks := services.GlobalBeaconService.GetDbBlocksByFilter(blockFilter, pageIdx, uint32(pageSize), withScheduledCount)
+	dbBlocks := services.GlobalBeaconService.GetDbBlocksByFilter(ctx, blockFilter, pageIdx, uint32(pageSize), withScheduledCount)
 	mevBlocksMap := make(map[string]*dbtypes.MevBlock)
 
 	if pageData.DisplayMevBlock || withMevBlock == 2 {
@@ -374,7 +375,7 @@ func buildFilteredBlocksPageData(pageIdx uint64, pageSize uint64, extradata stri
 		}
 
 		if len(execBlockHashes) > 0 {
-			mevBlocksMap = db.GetMevBlocksByBlockHashes(execBlockHashes)
+			mevBlocksMap = db.GetMevBlocksByBlockHashes(ctx, execBlockHashes)
 		}
 	}
 

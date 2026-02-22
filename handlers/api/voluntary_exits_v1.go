@@ -148,7 +148,7 @@ func APIVoluntaryExitsV1(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get voluntary exits from service
-	dbVoluntaryExits, totalRows := services.GlobalBeaconService.GetVoluntaryExitsByFilter(voluntaryExitFilter, pageIdx-1, uint32(limit))
+	dbVoluntaryExits, totalRows := services.GlobalBeaconService.GetVoluntaryExitsByFilter(r.Context(), voluntaryExitFilter, pageIdx-1, uint32(limit))
 	chainState := services.GlobalBeaconService.GetChainState()
 
 	var voluntaryExits []*APIVoluntaryExitInfo

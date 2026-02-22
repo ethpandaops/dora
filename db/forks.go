@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -8,8 +9,8 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-func InsertFork(fork *dbtypes.Fork, tx *sqlx.Tx) error {
-	_, err := tx.Exec(EngineQuery(map[dbtypes.DBEngineType]string{
+func InsertFork(ctx context.Context, tx *sqlx.Tx, fork *dbtypes.Fork) error {
+	_, err := tx.ExecContext(ctx, EngineQuery(map[dbtypes.DBEngineType]string{
 		dbtypes.DBEnginePgsql: `
 			INSERT INTO forks (
 				fork_id, base_slot, base_root, leaf_slot, leaf_root, parent_fork
@@ -33,10 +34,10 @@ func InsertFork(fork *dbtypes.Fork, tx *sqlx.Tx) error {
 	return nil
 }
 
-func GetUnfinalizedForks(finalizedSlot uint64) []*dbtypes.Fork {
+func GetUnfinalizedForks(ctx context.Context, finalizedSlot uint64) []*dbtypes.Fork {
 	forks := []*dbtypes.Fork{}
 
-	err := ReaderDb.Select(&forks, `SELECT fork_id, base_slot, base_root, leaf_slot, leaf_root, parent_fork
+	err := ReaderDb.SelectContext(ctx, &forks, `SELECT fork_id, base_slot, base_root, leaf_slot, leaf_root, parent_fork
 		FROM forks
 		WHERE base_slot >= $1
 		ORDER BY base_slot ASC
@@ -49,7 +50,7 @@ func GetUnfinalizedForks(finalizedSlot uint64) []*dbtypes.Fork {
 	return forks
 }
 
-func DeleteFinalizedForks(finalizedRoots [][]byte, tx *sqlx.Tx) error {
+func DeleteFinalizedForks(ctx context.Context, tx *sqlx.Tx, finalizedRoots [][]byte) error {
 	var sql strings.Builder
 	args := []any{}
 
@@ -66,7 +67,7 @@ func DeleteFinalizedForks(finalizedRoots [][]byte, tx *sqlx.Tx) error {
 
 	fmt.Fprint(&sql, ")")
 
-	_, err := tx.Exec(sql.String(), args...)
+	_, err := tx.ExecContext(ctx, sql.String(), args...)
 	if err != nil {
 		return err
 	}
@@ -87,7 +88,7 @@ func DeleteFinalizedForks(finalizedRoots [][]byte, tx *sqlx.Tx) error {
 
 	fmt.Fprint(&sql, ")")
 
-	_, err = tx.Exec(sql.String(), args...)
+	_, err = tx.ExecContext(ctx, sql.String(), args...)
 	if err != nil {
 		return err
 	}
@@ -95,7 +96,7 @@ func DeleteFinalizedForks(finalizedRoots [][]byte, tx *sqlx.Tx) error {
 	return nil
 }
 
-func UpdateFinalizedForkParents(finalizedRoots [][]byte, tx *sqlx.Tx) error {
+func UpdateFinalizedForkParents(ctx context.Context, tx *sqlx.Tx, finalizedRoots [][]byte) error {
 	var sql strings.Builder
 	args := []any{}
 
@@ -117,7 +118,7 @@ func UpdateFinalizedForkParents(finalizedRoots [][]byte, tx *sqlx.Tx) error {
 
 	fmt.Fprint(&sql, "))")
 
-	_, err := tx.Exec(sql.String(), args...)
+	_, err := tx.ExecContext(ctx, sql.String(), args...)
 	if err != nil {
 		return err
 	}
@@ -125,8 +126,8 @@ func UpdateFinalizedForkParents(finalizedRoots [][]byte, tx *sqlx.Tx) error {
 	return nil
 }
 
-func UpdateForkParent(parentRoot []byte, parentForkId uint64, tx *sqlx.Tx) error {
-	_, err := tx.Exec(`
+func UpdateForkParent(ctx context.Context, tx *sqlx.Tx, parentRoot []byte, parentForkId uint64) error {
+	_, err := tx.ExecContext(ctx, `
 		UPDATE forks 
 		SET parent_fork = $1 
 		WHERE base_root = $2
@@ -138,10 +139,10 @@ func UpdateForkParent(parentRoot []byte, parentForkId uint64, tx *sqlx.Tx) error
 	return nil
 }
 
-func GetForkById(forkId uint64) *dbtypes.Fork {
+func GetForkById(ctx context.Context, forkId uint64) *dbtypes.Fork {
 	var fork dbtypes.Fork
 
-	err := ReaderDb.Get(&fork, `SELECT fork_id, base_slot, base_root, leaf_slot, leaf_root, parent_fork
+	err := ReaderDb.GetContext(ctx, &fork, `SELECT fork_id, base_slot, base_root, leaf_slot, leaf_root, parent_fork
 		FROM forks
 		WHERE fork_id = $1
 	`, forkId)
@@ -152,11 +153,11 @@ func GetForkById(forkId uint64) *dbtypes.Fork {
 	return &fork
 }
 
-func GetForkVisualizationData(startSlot uint64, endSlot uint64) ([]*dbtypes.Fork, error) {
+func GetForkVisualizationData(ctx context.Context, startSlot uint64, endSlot uint64) ([]*dbtypes.Fork, error) {
 	forks := []*dbtypes.Fork{}
 
 	// Get forks that overlap with our time window and their direct parents/children
-	err := ReaderDb.Select(&forks, `
+	err := ReaderDb.SelectContext(ctx, &forks, `
 		SELECT DISTINCT fork_id, base_slot, base_root, leaf_slot, leaf_root, parent_fork
 		FROM (
 			-- Forks that overlap with our time window
@@ -190,7 +191,7 @@ func GetForkVisualizationData(startSlot uint64, endSlot uint64) ([]*dbtypes.Fork
 }
 
 // GetForkBlockCounts returns the number of blocks for each fork ID
-func GetForkBlockCounts(startSlot uint64, endSlot uint64) (map[uint64]uint64, error) {
+func GetForkBlockCounts(ctx context.Context, startSlot uint64, endSlot uint64) (map[uint64]uint64, error) {
 	args := []any{startSlot, endSlot}
 
 	query := `
@@ -201,7 +202,7 @@ func GetForkBlockCounts(startSlot uint64, endSlot uint64) (map[uint64]uint64, er
 		GROUP BY fork_id
 	`
 
-	rows, err := ReaderDb.Query(query, args...)
+	rows, err := ReaderDb.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -219,7 +220,7 @@ func GetForkBlockCounts(startSlot uint64, endSlot uint64) (map[uint64]uint64, er
 	return blockCounts, nil
 }
 
-func GetSyncCommitteeParticipation(slot uint64) (float64, error) {
+func GetSyncCommitteeParticipation(ctx context.Context, slot uint64) (float64, error) {
 	var participation float64
 
 	// Handle potential overflow by using int64
@@ -231,7 +232,7 @@ func GetSyncCommitteeParticipation(slot uint64) (float64, error) {
 		startSlot = 0
 	}
 
-	err := ReaderDb.Get(&participation, `
+	err := ReaderDb.GetContext(ctx, &participation, `
 		SELECT 
 			COALESCE(AVG(CASE WHEN sync_participation IS NOT NULL 
 				THEN sync_participation ELSE 0 END), 0) as avg_participation
@@ -256,7 +257,7 @@ type ForkParticipationByEpoch struct {
 
 // GetForkParticipationByEpoch gets average participation per fork per epoch for the given epoch range
 // This is optimized to fetch all data in one query to avoid expensive repeated queries
-func GetForkParticipationByEpoch(startEpoch, endEpoch uint64, forkIds []uint64) ([]*ForkParticipationByEpoch, error) {
+func GetForkParticipationByEpoch(ctx context.Context, startEpoch, endEpoch uint64, forkIds []uint64) ([]*ForkParticipationByEpoch, error) {
 	if len(forkIds) == 0 {
 		return []*ForkParticipationByEpoch{}, nil
 	}
@@ -293,7 +294,7 @@ func GetForkParticipationByEpoch(startEpoch, endEpoch uint64, forkIds []uint64) 
 	`, forkPlaceholders.String(), startEpochParam, endEpochParam)
 
 	var results []*ForkParticipationByEpoch
-	err := ReaderDb.Select(&results, query, args...)
+	err := ReaderDb.SelectContext(ctx, &results, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("error fetching fork participation by epoch: %w", err)
 	}

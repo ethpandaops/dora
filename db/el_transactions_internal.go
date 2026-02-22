@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -9,7 +10,7 @@ import (
 )
 
 // InsertElTransactionsInternal inserts internal transaction index entries in batch.
-func InsertElTransactionsInternal(entries []*dbtypes.ElTransactionInternal, dbTx *sqlx.Tx) error {
+func InsertElTransactionsInternal(ctx context.Context, dbTx *sqlx.Tx, entries []*dbtypes.ElTransactionInternal) error {
 	if len(entries) == 0 {
 		return nil
 	}
@@ -62,13 +63,14 @@ func InsertElTransactionsInternal(entries []*dbtypes.ElTransactionInternal, dbTx
 		dbtypes.DBEngineSqlite: "",
 	}))
 
-	_, err := dbTx.Exec(sql.String(), args...)
+	_, err := dbTx.ExecContext(ctx, sql.String(), args...)
 	return err
 }
 
 // GetElTransactionsInternalByAccount returns internal transactions
 // involving the given account (as sender or receiver), ordered by block_uid DESC.
 func GetElTransactionsInternalByAccount(
+	ctx context.Context,
 	accountID uint64,
 	offset uint64,
 	limit uint32,
@@ -107,7 +109,7 @@ func GetElTransactionsInternalByAccount(
 	fmt.Fprint(&sql, ") AS t1")
 
 	entries := []*dbtypes.ElTransactionInternal{}
-	err := ReaderDb.Select(&entries, sql.String(), args...)
+	err := ReaderDb.SelectContext(ctx, &entries, sql.String(), args...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -122,9 +124,9 @@ func GetElTransactionsInternalByAccount(
 
 // GetElTransactionsInternalByTxHash returns all internal transactions
 // for a given transaction hash.
-func GetElTransactionsInternalByTxHash(txHash []byte) ([]*dbtypes.ElTransactionInternal, error) {
+func GetElTransactionsInternalByTxHash(ctx context.Context, txHash []byte) ([]*dbtypes.ElTransactionInternal, error) {
 	entries := []*dbtypes.ElTransactionInternal{}
-	err := ReaderDb.Select(&entries,
+	err := ReaderDb.SelectContext(ctx, &entries,
 		"SELECT block_uid, tx_hash, tx_callidx, call_type, from_id, to_id, value, value_raw"+
 			" FROM el_transactions_internal WHERE tx_hash = $1 ORDER BY tx_callidx ASC",
 		txHash,

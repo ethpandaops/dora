@@ -308,7 +308,7 @@ func (es *EpochStats) loadValuesFromDb(chainState *consensus.ChainState) *EpochS
 		return nil
 	}
 
-	dbDuty := db.GetUnfinalizedDuty(uint64(es.epoch), es.dependentRoot[:])
+	dbDuty := db.GetUnfinalizedDuty(context.Background(), uint64(es.epoch), es.dependentRoot[:])
 	if dbDuty == nil {
 		return nil
 	}
@@ -466,7 +466,7 @@ func (es *EpochStats) processState(indexer *Indexer, validatorSet []*phase0.Vali
 	}
 
 	err = db.RunDBTransaction(func(tx *sqlx.Tx) error {
-		return db.InsertUnfinalizedDuty(dbDuty, tx)
+		return db.InsertUnfinalizedDuty(context.Background(), tx, dbDuty)
 	})
 	if err != nil {
 		indexer.logger.WithError(err).Errorf("failed storing epoch %v stats (%v / %v) to unfinalized duties", es.epoch, es.dependentRoot.String(), dependentState.stateRoot.String())

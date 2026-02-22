@@ -102,7 +102,7 @@ func APISlotV1(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get slot data using ChainService with filter
-	assignedSlots := services.GlobalBeaconService.GetDbBlocksByFilter(filter, 0, 1, 0)
+	assignedSlots := services.GlobalBeaconService.GetDbBlocksByFilter(r.Context(), filter, 0, 1, 0)
 
 	// Handle case where slot is not found
 	if len(assignedSlots) == 0 {

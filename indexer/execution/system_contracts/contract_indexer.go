@@ -74,7 +74,7 @@ func newContractIndexer[TxType any](indexer *exectx.IndexerCtx, logger logrus.Fi
 // loadState loads the contract indexer state from the database
 func (ci *contractIndexer[_]) loadState() {
 	syncState := contractIndexerState{}
-	db.GetExplorerState(ci.options.stateKey, &syncState)
+	db.GetExplorerState(context.Background(), ci.options.stateKey, &syncState)
 	ci.state = &syncState
 
 	if ci.state.ForkStates == nil {
@@ -95,7 +95,7 @@ func (ci *contractIndexer[_]) persistState(tx *sqlx.Tx) error {
 		}
 	}
 
-	err := db.SetExplorerState(ci.options.stateKey, ci.state, tx)
+	err := db.SetExplorerState(context.Background(), tx, ci.options.stateKey, ci.state)
 	if err != nil {
 		return fmt.Errorf("error while updating contract indexer state: %v", err)
 	}
@@ -148,7 +148,7 @@ func (ci *contractIndexer[_]) getFinalizedBlockNumber() uint64 {
 
 	if finalizedBlockNumber == 0 {
 		// load from db
-		if finalizedBlock := db.GetSlotByRoot(finalizedRoot[:]); finalizedBlock != nil && finalizedBlock.EthBlockNumber != nil {
+		if finalizedBlock := db.GetSlotByRoot(context.Background(), finalizedRoot[:]); finalizedBlock != nil && finalizedBlock.EthBlockNumber != nil {
 			finalizedBlockNumber = *finalizedBlock.EthBlockNumber
 		}
 	}

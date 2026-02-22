@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -8,7 +9,7 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-func InsertConsolidationRequestTxs(consolidationTxs []*dbtypes.ConsolidationRequestTx, tx *sqlx.Tx) error {
+func InsertConsolidationRequestTxs(ctx context.Context, tx *sqlx.Tx, consolidationTxs []*dbtypes.ConsolidationRequestTx) error {
 	var sql strings.Builder
 	fmt.Fprint(&sql,
 		EngineQuery(map[dbtypes.DBEngineType]string{
@@ -57,17 +58,17 @@ func InsertConsolidationRequestTxs(consolidationTxs []*dbtypes.ConsolidationRequ
 		dbtypes.DBEngineSqlite: "",
 	}))
 
-	_, err := tx.Exec(sql.String(), args...)
+	_, err := tx.ExecContext(ctx, sql.String(), args...)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func GetConsolidationRequestTxsByDequeueRange(dequeueFirst uint64, dequeueLast uint64) []*dbtypes.ConsolidationRequestTx {
+func GetConsolidationRequestTxsByDequeueRange(ctx context.Context, dequeueFirst uint64, dequeueLast uint64) []*dbtypes.ConsolidationRequestTx {
 	consolidationTxs := []*dbtypes.ConsolidationRequestTx{}
 
-	err := ReaderDb.Select(&consolidationTxs, `SELECT consolidation_request_txs.*
+	err := ReaderDb.SelectContext(ctx, &consolidationTxs, `SELECT consolidation_request_txs.*
 		FROM consolidation_request_txs
 		WHERE dequeue_block >= $1 AND dequeue_block <= $2
 		ORDER BY dequeue_block ASC, block_number ASC, block_index ASC
@@ -80,7 +81,7 @@ func GetConsolidationRequestTxsByDequeueRange(dequeueFirst uint64, dequeueLast u
 	return consolidationTxs
 }
 
-func GetConsolidationRequestTxsByTxHashes(txHashes [][]byte) []*dbtypes.ConsolidationRequestTx {
+func GetConsolidationRequestTxsByTxHashes(ctx context.Context, txHashes [][]byte) []*dbtypes.ConsolidationRequestTx {
 	var sql strings.Builder
 	args := []interface{}{}
 
@@ -99,7 +100,7 @@ func GetConsolidationRequestTxsByTxHashes(txHashes [][]byte) []*dbtypes.Consolid
 	fmt.Fprintf(&sql, ")")
 
 	consolidationTxs := []*dbtypes.ConsolidationRequestTx{}
-	err := ReaderDb.Select(&consolidationTxs, sql.String(), args...)
+	err := ReaderDb.SelectContext(ctx, &consolidationTxs, sql.String(), args...)
 	if err != nil {
 		logger.Errorf("Error while fetching consolidation request txs: %v", err)
 		return nil
@@ -108,7 +109,7 @@ func GetConsolidationRequestTxsByTxHashes(txHashes [][]byte) []*dbtypes.Consolid
 	return consolidationTxs
 }
 
-func GetConsolidationRequestTxsFiltered(offset uint64, limit uint32, canonicalForkIds []uint64, filter *dbtypes.ConsolidationRequestTxFilter) ([]*dbtypes.ConsolidationRequestTx, uint64, error) {
+func GetConsolidationRequestTxsFiltered(ctx context.Context, offset uint64, limit uint32, canonicalForkIds []uint64, filter *dbtypes.ConsolidationRequestTxFilter) ([]*dbtypes.ConsolidationRequestTx, uint64, error) {
 	var sql strings.Builder
 	args := []interface{}{}
 	fmt.Fprint(&sql, `
@@ -238,7 +239,7 @@ func GetConsolidationRequestTxsFiltered(offset uint64, limit uint32, canonicalFo
 	fmt.Fprintf(&sql, ") AS t1")
 
 	consolidationRequestTxs := []*dbtypes.ConsolidationRequestTx{}
-	err := ReaderDb.Select(&consolidationRequestTxs, sql.String(), args...)
+	err := ReaderDb.SelectContext(ctx, &consolidationRequestTxs, sql.String(), args...)
 	if err != nil {
 		logger.Errorf("Error while fetching filtered consolidation request txs: %v", err)
 		return nil, 0, err

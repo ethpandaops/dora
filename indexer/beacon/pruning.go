@@ -50,9 +50,9 @@ func (indexer *Indexer) runCachePruning() error {
 }
 
 func (indexer *Indexer) updatePruningState(tx *sqlx.Tx, epoch phase0.Epoch) error {
-	err := db.SetExplorerState("indexer.prunestate", &dbtypes.IndexerPruneState{
+	err := db.SetExplorerState(context.Background(), tx, "indexer.prunestate", &dbtypes.IndexerPruneState{
 		Epoch: uint64(epoch),
-	}, tx)
+	})
 	if err != nil {
 		return fmt.Errorf("error while updating pruning state: %v", err)
 	}
@@ -228,13 +228,13 @@ func (indexer *Indexer) processEpochPruning(pruneEpoch phase0.Epoch) (uint64, ui
 				epochData.epochStats.prunedEpochAggregations = append(epochData.epochStats.prunedEpochAggregations, &dbUnfinalizedEpoch)
 			}
 
-			err = db.InsertUnfinalizedEpoch(&dbUnfinalizedEpoch, tx)
+			err = db.InsertUnfinalizedEpoch(context.Background(), tx, &dbUnfinalizedEpoch)
 			if err != nil {
 				indexer.logger.Errorf("error persisting unfinalized epoch %v: %v", dbUnfinalizedEpoch.Epoch, err)
 			}
 		}
 
-		err := db.UpdateUnfinalizedBlockStatus(pruningBlockRoots, dbtypes.UnfinalizedBlockStatusPruned, tx)
+		err := db.UpdateUnfinalizedBlockStatus(context.Background(), tx, pruningBlockRoots, dbtypes.UnfinalizedBlockStatusPruned)
 		if err != nil {
 			indexer.logger.Errorf("error updating block status to pruned: %v", err)
 		}
@@ -351,7 +351,7 @@ func (indexer *Indexer) processCachePruning(prunedEpochStats, prunedEpochStates 
 				}
 			}
 
-			err := db.UpdateUnfinalizedBlockStatus(pruningBlockRoots, dbtypes.UnfinalizedBlockStatusPruned, tx)
+			err := db.UpdateUnfinalizedBlockStatus(context.Background(), tx, pruningBlockRoots, dbtypes.UnfinalizedBlockStatusPruned)
 			if err != nil {
 				indexer.logger.Errorf("error updating block status to pruned: %v", err)
 			}

@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -8,7 +9,7 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-func InsertConsolidationRequests(consolidations []*dbtypes.ConsolidationRequest, tx *sqlx.Tx) error {
+func InsertConsolidationRequests(ctx context.Context, tx *sqlx.Tx, consolidations []*dbtypes.ConsolidationRequest) error {
 	var sql strings.Builder
 	fmt.Fprint(&sql,
 		EngineQuery(map[dbtypes.DBEngineType]string{
@@ -54,14 +55,14 @@ func InsertConsolidationRequests(consolidations []*dbtypes.ConsolidationRequest,
 		dbtypes.DBEnginePgsql:  " ON CONFLICT (slot_root, slot_index) DO UPDATE SET orphaned = excluded.orphaned, fork_id = excluded.fork_id, result = excluded.result",
 		dbtypes.DBEngineSqlite: "",
 	}))
-	_, err := tx.Exec(sql.String(), args...)
+	_, err := tx.ExecContext(ctx, sql.String(), args...)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func GetConsolidationRequestsFiltered(offset uint64, limit uint32, canonicalForkIds []uint64, filter *dbtypes.ConsolidationRequestFilter) ([]*dbtypes.ConsolidationRequest, uint64, error) {
+func GetConsolidationRequestsFiltered(ctx context.Context, offset uint64, limit uint32, canonicalForkIds []uint64, filter *dbtypes.ConsolidationRequestFilter) ([]*dbtypes.ConsolidationRequest, uint64, error) {
 	var sql strings.Builder
 	args := []interface{}{}
 	fmt.Fprint(&sql, `
@@ -190,7 +191,7 @@ func GetConsolidationRequestsFiltered(offset uint64, limit uint32, canonicalFork
 	fmt.Fprintf(&sql, ") AS t1")
 
 	consolidationRequests := []*dbtypes.ConsolidationRequest{}
-	err := ReaderDb.Select(&consolidationRequests, sql.String(), args...)
+	err := ReaderDb.SelectContext(ctx, &consolidationRequests, sql.String(), args...)
 	if err != nil {
 		logger.Errorf("Error while fetching filtered consolidation requests: %v", err)
 		return nil, 0, err
@@ -199,10 +200,10 @@ func GetConsolidationRequestsFiltered(offset uint64, limit uint32, canonicalFork
 	return consolidationRequests[1:], consolidationRequests[0].SlotNumber, nil
 }
 
-func GetConsolidationRequestsByElBlockRange(firstSlot uint64, lastSlot uint64) []*dbtypes.ConsolidationRequest {
+func GetConsolidationRequestsByElBlockRange(ctx context.Context, firstSlot uint64, lastSlot uint64) []*dbtypes.ConsolidationRequest {
 	consolidationRequests := []*dbtypes.ConsolidationRequest{}
 
-	err := ReaderDb.Select(&consolidationRequests, `
+	err := ReaderDb.SelectContext(ctx, &consolidationRequests, `
 		SELECT consolidation_requests.*
 		FROM consolidation_requests
 		WHERE block_number >= $1 AND block_number <= $2
@@ -216,8 +217,8 @@ func GetConsolidationRequestsByElBlockRange(firstSlot uint64, lastSlot uint64) [
 	return consolidationRequests
 }
 
-func UpdateConsolidationRequestTxHash(slotRoot []byte, slotIndex uint64, txHash []byte, tx *sqlx.Tx) error {
-	_, err := tx.Exec(`UPDATE consolidation_requests SET tx_hash = $1 WHERE slot_root = $2 AND slot_index = $3`, txHash, slotRoot, slotIndex)
+func UpdateConsolidationRequestTxHash(ctx context.Context, tx *sqlx.Tx, slotRoot []byte, slotIndex uint64, txHash []byte) error {
+	_, err := tx.ExecContext(ctx, `UPDATE consolidation_requests SET tx_hash = $1 WHERE slot_root = $2 AND slot_index = $3`, txHash, slotRoot, slotIndex)
 	if err != nil {
 		return err
 	}

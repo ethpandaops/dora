@@ -2,6 +2,7 @@ package beacon
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"slices"
 	"sort"
@@ -43,7 +44,7 @@ func newForkCache(indexer *Indexer) *forkCache {
 // loadForkState loads the fork state from the database.
 func (cache *forkCache) loadForkState() error {
 	forkState := dbtypes.IndexerForkState{}
-	db.GetExplorerState("indexer.forkstate", &forkState)
+	db.GetExplorerState(context.Background(), "indexer.forkstate", &forkState)
 
 	if forkState.ForkId == 0 {
 		forkState.ForkId = 1
@@ -60,10 +61,10 @@ func (cache *forkCache) loadForkState() error {
 
 // updateForkState updates the fork state in the database.
 func (cache *forkCache) updateForkState(tx *sqlx.Tx) error {
-	err := db.SetExplorerState("indexer.forkstate", &dbtypes.IndexerForkState{
+	err := db.SetExplorerState(context.Background(), tx, "indexer.forkstate", &dbtypes.IndexerForkState{
 		ForkId:    uint64(cache.lastForkId),
 		Finalized: uint64(cache.finalizedForkId),
-	}, tx)
+	})
 	if err != nil {
 		return fmt.Errorf("error while updating fork state: %v", err)
 	}
@@ -140,7 +141,7 @@ func (cache *forkCache) getParentForkIds(forkId ForkKey) []ForkKey {
 			parentForkId = cachedParent
 		} else if parentFork := cache.getForkById(parentForkId); parentFork != nil {
 			parentForkId = parentFork.parentFork
-		} else if dbFork := db.GetForkById(uint64(parentForkId)); dbFork != nil {
+		} else if dbFork := db.GetForkById(context.Background(), uint64(parentForkId)); dbFork != nil {
 			cache.parentIdCache.Add(ForkKey(parentForkId), ForkKey(dbFork.ParentFork))
 			parentForkId = ForkKey(dbFork.ParentFork)
 			cache.parentIdCacheMiss++

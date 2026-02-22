@@ -1,6 +1,7 @@
 package beacon
 
 import (
+	"context"
 	"fmt"
 	"math"
 
@@ -60,7 +61,7 @@ func (dbw *dbWriter) persistMissedSlots(tx *sqlx.Tx, epoch phase0.Epoch, blocks 
 			Status:   dbtypes.Missing,
 		}
 
-		err := db.InsertMissingSlot(missedSlot, tx)
+		err := db.InsertMissingSlot(context.Background(), tx, missedSlot)
 		if err != nil {
 			return fmt.Errorf("error while adding missed slot to db: %w", err)
 		}
@@ -79,7 +80,7 @@ func (dbw *dbWriter) persistBlockData(tx *sqlx.Tx, block *Block, epochStats *Epo
 		dbBlock.Status = dbtypes.Orphaned
 	}
 
-	err := db.InsertSlot(dbBlock, tx)
+	err := db.InsertSlot(context.Background(), tx, dbBlock)
 	if err != nil {
 		return nil, fmt.Errorf("error inserting slot: %v", err)
 	}
@@ -165,7 +166,7 @@ func (dbw *dbWriter) persistEpochData(tx *sqlx.Tx, epoch phase0.Epoch, blocks []
 	}
 
 	// insert epoch
-	err = db.InsertEpoch(dbEpoch, tx)
+	err = db.InsertEpoch(context.Background(), tx, dbEpoch)
 	if err != nil {
 		return fmt.Errorf("error while saving epoch to db: %w", err)
 	}
@@ -192,7 +193,7 @@ func (dbw *dbWriter) persistSyncAssignments(tx *sqlx.Tx, epoch phase0.Epoch, epo
 
 	period := epoch / phase0.Epoch(specs.EpochsPerSyncCommitteePeriod)
 	isStartOfPeriod := epoch == period*phase0.Epoch(specs.EpochsPerSyncCommitteePeriod)
-	if !isStartOfPeriod && db.IsSyncCommitteeSynchronized(uint64(period)) {
+	if !isStartOfPeriod && db.IsSyncCommitteeSynchronized(context.Background(), uint64(period)) {
 		// already synchronized
 		return nil
 	}
@@ -205,7 +206,7 @@ func (dbw *dbWriter) persistSyncAssignments(tx *sqlx.Tx, epoch phase0.Epoch, epo
 			Validator: uint64(val),
 		})
 	}
-	return db.InsertSyncAssignments(syncAssignments, tx)
+	return db.InsertSyncAssignments(context.Background(), tx, syncAssignments)
 }
 
 func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, overrideForkId *ForkKey) *dbtypes.Slot {
@@ -601,7 +602,7 @@ func (dbw *dbWriter) persistBlockDeposits(tx *sqlx.Tx, block *Block, depositInde
 	}
 
 	if len(dbDeposits) > 0 {
-		err := db.InsertDeposits(dbDeposits, tx)
+		err := db.InsertDeposits(context.Background(), tx, dbDeposits)
 		if err != nil {
 			return fmt.Errorf("error inserting deposits: %v", err)
 		}
@@ -658,7 +659,7 @@ func (dbw *dbWriter) persistBlockDepositRequests(tx *sqlx.Tx, block *Block, orph
 	}
 
 	if len(dbDeposits) > 0 {
-		err := db.InsertDeposits(dbDeposits, tx)
+		err := db.InsertDeposits(context.Background(), tx, dbDeposits)
 		if err != nil {
 			return fmt.Errorf("error inserting deposit requests: %v", err)
 		}
@@ -707,7 +708,7 @@ func (dbw *dbWriter) persistBlockVoluntaryExits(tx *sqlx.Tx, block *Block, orpha
 	// insert voluntary exits
 	dbVoluntaryExits := dbw.buildDbVoluntaryExits(block, orphaned, overrideForkId)
 	if len(dbVoluntaryExits) > 0 {
-		err := db.InsertVoluntaryExits(dbVoluntaryExits, tx)
+		err := db.InsertVoluntaryExits(context.Background(), tx, dbVoluntaryExits)
 		if err != nil {
 			return fmt.Errorf("error inserting voluntary exits: %v", err)
 		}
@@ -751,7 +752,7 @@ func (dbw *dbWriter) persistBlockSlashings(tx *sqlx.Tx, block *Block, orphaned b
 	// insert slashings
 	dbSlashings := dbw.buildDbSlashings(block, orphaned, overrideForkId)
 	if len(dbSlashings) > 0 {
-		err := db.InsertSlashings(dbSlashings, tx)
+		err := db.InsertSlashings(context.Background(), tx, dbSlashings)
 		if err != nil {
 			return fmt.Errorf("error inserting slashings: %v", err)
 		}
@@ -845,7 +846,7 @@ func (dbw *dbWriter) persistBlockConsolidationRequests(tx *sqlx.Tx, block *Block
 	}
 
 	if len(dbConsolidations) > 0 {
-		err := db.InsertConsolidationRequests(dbConsolidations, tx)
+		err := db.InsertConsolidationRequests(context.Background(), tx, dbConsolidations)
 		if err != nil {
 			return fmt.Errorf("error inserting consolidation requests: %v", err)
 		}
@@ -926,7 +927,7 @@ func (dbw *dbWriter) persistBlockWithdrawalRequests(tx *sqlx.Tx, block *Block, o
 	dbWithdrawalRequests := dbw.buildDbWithdrawalRequests(block, orphaned, overrideForkId, sim)
 
 	if len(dbWithdrawalRequests) > 0 {
-		err := db.InsertWithdrawalRequests(dbWithdrawalRequests, tx)
+		err := db.InsertWithdrawalRequests(context.Background(), tx, dbWithdrawalRequests)
 		if err != nil {
 			return fmt.Errorf("error inserting withdrawal requests: %v", err)
 		}

@@ -2,6 +2,7 @@ package services
 
 import (
 	"bytes"
+	"context"
 	"slices"
 	"sort"
 	"strings"
@@ -71,7 +72,7 @@ type ValidatorWithIndex struct {
 }
 
 // getValidatorsByWithdrawalAddressForRoot returns validators with a specific withdrawal address for a given blockRoot
-func (bs *ChainService) GetFilteredValidatorSet(filter *dbtypes.ValidatorFilter, withBalance bool) ([]v1.Validator, uint64) {
+func (bs *ChainService) GetFilteredValidatorSet(ctx context.Context, filter *dbtypes.ValidatorFilter, withBalance bool) ([]v1.Validator, uint64) {
 	var overrideForkId *beacon.ForkKey
 
 	canonicalHead := bs.beaconIndexer.GetCanonicalHead(overrideForkId)
@@ -150,7 +151,7 @@ func (bs *ChainService) GetFilteredValidatorSet(filter *dbtypes.ValidatorFilter,
 	})
 
 	// get matching entries from DB
-	dbIndexes, err := db.GetValidatorIndexesByFilter(*filter, uint64(currentEpoch))
+	dbIndexes, err := db.GetValidatorIndexesByFilter(ctx, *filter, uint64(currentEpoch))
 	if err != nil {
 		bs.logger.Warnf("error getting validator indexes by filter: %v", err)
 		return nil, 0
@@ -242,7 +243,7 @@ func (bs *ChainService) GetFilteredValidatorSet(filter *dbtypes.ValidatorFilter,
 	resultCount := uint64(0)
 	dbEntryCount := uint64(0)
 
-	db.StreamValidatorsByIndexes(dbIndexes, func(validator *dbtypes.Validator) bool {
+	db.StreamValidatorsByIndexes(ctx, dbIndexes, func(validator *dbtypes.Validator) bool {
 		dbEntryCount++
 		validatorWithIndex := ValidatorWithIndex{
 			Index:     phase0.ValidatorIndex(validator.ValidatorIndex),

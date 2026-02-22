@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -9,7 +10,7 @@ import (
 )
 
 // InsertElEventIndices inserts event index entries in batch.
-func InsertElEventIndices(entries []*dbtypes.ElEventIndex, dbTx *sqlx.Tx) error {
+func InsertElEventIndices(ctx context.Context, dbTx *sqlx.Tx, entries []*dbtypes.ElEventIndex) error {
 	if len(entries) == 0 {
 		return nil
 	}
@@ -56,13 +57,14 @@ func InsertElEventIndices(entries []*dbtypes.ElEventIndex, dbTx *sqlx.Tx) error 
 		dbtypes.DBEngineSqlite: "",
 	}))
 
-	_, err := dbTx.Exec(sql.String(), args...)
+	_, err := dbTx.ExecContext(ctx, sql.String(), args...)
 	return err
 }
 
 // GetElEventIndicesBySource returns event index entries for a given
 // source contract, ordered by block_uid DESC.
 func GetElEventIndicesBySource(
+	ctx context.Context,
 	sourceID uint64,
 	offset uint64,
 	limit uint32,
@@ -98,7 +100,7 @@ func GetElEventIndicesBySource(
 	fmt.Fprint(&sql, ") AS t1")
 
 	entries := []*dbtypes.ElEventIndex{}
-	err := ReaderDb.Select(&entries, sql.String(), args...)
+	err := ReaderDb.SelectContext(ctx, &entries, sql.String(), args...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -114,6 +116,7 @@ func GetElEventIndicesBySource(
 // GetElEventIndicesByTopic1 returns event index entries for a given
 // event signature (topic1), ordered by block_uid DESC.
 func GetElEventIndicesByTopic1(
+	ctx context.Context,
 	topic1 []byte,
 	offset uint64,
 	limit uint32,
@@ -149,7 +152,7 @@ func GetElEventIndicesByTopic1(
 	fmt.Fprint(&sql, ") AS t1")
 
 	entries := []*dbtypes.ElEventIndex{}
-	err := ReaderDb.Select(&entries, sql.String(), args...)
+	err := ReaderDb.SelectContext(ctx, &entries, sql.String(), args...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -164,9 +167,9 @@ func GetElEventIndicesByTopic1(
 
 // GetElEventIndicesByTxHash returns all event index entries for a
 // given transaction hash.
-func GetElEventIndicesByTxHash(txHash []byte) ([]*dbtypes.ElEventIndex, error) {
+func GetElEventIndicesByTxHash(ctx context.Context, txHash []byte) ([]*dbtypes.ElEventIndex, error) {
 	entries := []*dbtypes.ElEventIndex{}
-	err := ReaderDb.Select(&entries,
+	err := ReaderDb.SelectContext(ctx, &entries,
 		"SELECT block_uid, tx_hash, event_index, source_id, topic1"+
 			" FROM el_event_index WHERE tx_hash = $1 ORDER BY event_index ASC",
 		txHash,

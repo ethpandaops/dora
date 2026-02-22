@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -146,7 +147,7 @@ func getChainForksDiagramData(startSlot uint64, pageSizeEpochs uint64, cacheSlot
 	diagramData := &models.ChainForksDiagramData{}
 
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(diagramCacheKey, true, diagramData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
-		diagramData, cacheTimeout := buildChainForksDiagramData(startSlot, pageSizeEpochs, originalStart, originalPageSizeEpochs)
+		diagramData, cacheTimeout := buildChainForksDiagramData(pageCall.CallCtx, startSlot, pageSizeEpochs, originalStart, originalPageSizeEpochs)
 		pageCall.CacheTimeout = cacheTimeout
 		return diagramData
 	})
@@ -161,7 +162,7 @@ func getChainForksDiagramData(startSlot uint64, pageSizeEpochs uint64, cacheSlot
 	return diagramData, pageErr
 }
 
-func buildChainForksDiagramData(startSlot uint64, pageSizeEpochs uint64, originalStart uint64, originalPageSizeEpochs uint64) (*models.ChainForksDiagramData, time.Duration) {
+func buildChainForksDiagramData(ctx context.Context, startSlot uint64, pageSizeEpochs uint64, originalStart uint64, originalPageSizeEpochs uint64) (*models.ChainForksDiagramData, time.Duration) {
 	chainState := services.GlobalBeaconService.GetChainState()
 	specs := chainState.GetSpecs()
 	currentSlot := uint64(chainState.CurrentSlot())
@@ -189,7 +190,7 @@ func buildChainForksDiagramData(startSlot uint64, pageSizeEpochs uint64, origina
 	}
 
 	// Get fork data from database
-	dbForks, err := db.GetForkVisualizationData(actualStartSlot, endSlot)
+	dbForks, err := db.GetForkVisualizationData(ctx, actualStartSlot, endSlot)
 	if err != nil {
 		logrus.Errorf("Error fetching fork visualization data: %v", err)
 		return &models.ChainForksDiagramData{
@@ -209,7 +210,7 @@ func buildChainForksDiagramData(startSlot uint64, pageSizeEpochs uint64, origina
 
 	// Process forks with epoch-based participation data
 	indexer := services.GlobalBeaconService.GetBeaconIndexer()
-	forks, err := processForksWithEpochData(dbForks, indexer, startEpoch, endEpoch)
+	forks, err := processForksWithEpochData(ctx, dbForks, indexer, startEpoch, endEpoch)
 	if err != nil {
 		logrus.Errorf("Error processing forks with epoch-based participation data: %v", err)
 		return &models.ChainForksDiagramData{
@@ -414,7 +415,7 @@ func buildChainDiagram(forks []*models.ChainFork, startEpoch, endEpoch uint64, i
 }
 
 // processForksWithEpochData converts database forks to page data with epoch-based participation
-func processForksWithEpochData(dbForks []*dbtypes.Fork, indexer *beacon.Indexer, startEpoch, endEpoch uint64) ([]*models.ChainFork, error) {
+func processForksWithEpochData(ctx context.Context, dbForks []*dbtypes.Fork, indexer *beacon.Indexer, startEpoch, endEpoch uint64) ([]*models.ChainFork, error) {
 	forks := make([]*models.ChainFork, 0, len(dbForks)+1)
 
 	// Build child fork map
@@ -467,7 +468,7 @@ func processForksWithEpochData(dbForks []*dbtypes.Fork, indexer *beacon.Indexer,
 			finalizedEndEpoch = uint64(finalizedEpoch)
 		}
 
-		finalizedData, err := db.GetFinalizedEpochParticipation(startEpoch, finalizedEndEpoch)
+		finalizedData, err := db.GetFinalizedEpochParticipation(ctx, startEpoch, finalizedEndEpoch)
 		if err != nil {
 			return nil, err
 		}
@@ -498,7 +499,7 @@ func processForksWithEpochData(dbForks []*dbtypes.Fork, indexer *beacon.Indexer,
 		}
 
 		if unfinalizedStartEpoch <= unfinalizedEndEpoch {
-			unfinalizedData, err := db.GetUnfinalizedEpochParticipation(unfinalizedStartEpoch, unfinalizedEndEpoch)
+			unfinalizedData, err := db.GetUnfinalizedEpochParticipation(ctx, unfinalizedStartEpoch, unfinalizedEndEpoch)
 			if err != nil {
 				return nil, err
 			}
@@ -518,7 +519,7 @@ func processForksWithEpochData(dbForks []*dbtypes.Fork, indexer *beacon.Indexer,
 	}
 
 	// 3. Fetch orphaned epoch participation data for non-canonical finalized epochs
-	orphanedEpochData, err := db.GetOrphanedEpochParticipation(startEpoch, endEpoch)
+	orphanedEpochData, err := db.GetOrphanedEpochParticipation(ctx, startEpoch, endEpoch)
 	if err != nil {
 		return nil, err
 	}
@@ -634,7 +635,7 @@ func processForksWithEpochData(dbForks []*dbtypes.Fork, indexer *beacon.Indexer,
 	if endEpoch > uint64(finalizedEpoch) {
 		blockCountEndSlot = finalizedSlot
 	}
-	blockCounts, err := db.GetForkBlockCounts(uint64(blockCountStartSlot), uint64(blockCountEndSlot))
+	blockCounts, err := db.GetForkBlockCounts(ctx, uint64(blockCountStartSlot), uint64(blockCountEndSlot))
 	if err != nil {
 		return nil, err
 	}
