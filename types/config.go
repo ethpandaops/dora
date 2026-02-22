@@ -49,13 +49,14 @@ type Config struct {
 		ValidatorNamesRefreshInterval time.Duration `yaml:"validatorNamesRefreshInterval" envconfig:"FRONTEND_VALIDATOR_REFRESH_INTERVAL"`
 		ValidatorNamesResolveInterval time.Duration `yaml:"validatorNamesResolveInterval" envconfig:"FRONTEND_VALIDATOR_RESOLVE_INTERVAL"`
 
-		PageCallTimeout    time.Duration `yaml:"pageCallTimeout" envconfig:"FRONTEND_PAGE_CALL_TIMEOUT"`
-		MaxConcurrentPages int           `yaml:"maxConcurrentPages" envconfig:"FRONTEND_MAX_CONCURRENT_PAGES"`
-		HttpReadTimeout    time.Duration `yaml:"httpReadTimeout" envconfig:"FRONTEND_HTTP_READ_TIMEOUT"`
-		HttpWriteTimeout   time.Duration `yaml:"httpWriteTimeout" envconfig:"FRONTEND_HTTP_WRITE_TIMEOUT"`
-		HttpIdleTimeout    time.Duration `yaml:"httpIdleTimeout" envconfig:"FRONTEND_HTTP_IDLE_TIMEOUT"`
-		AllowDutyLoading   bool          `yaml:"allowDutyLoading" envconfig:"FRONTEND_ALLOW_DUTY_LOADING"`
-		DisablePageCache   bool          `yaml:"disablePageCache" envconfig:"FRONTEND_DISABLE_PAGE_CACHE"`
+		PageCallTimeout       time.Duration `yaml:"pageCallTimeout" envconfig:"FRONTEND_PAGE_CALL_TIMEOUT"`
+		MaxConcurrentPages    *int          `yaml:"maxConcurrentPages" envconfig:"FRONTEND_MAX_CONCURRENT_PAGES"`
+		MaxConcurrentPageType *int          `yaml:"maxConcurrentPageType" envconfig:"FRONTEND_MAX_CONCURRENT_PAGE_TYPE"`
+		HttpReadTimeout       time.Duration `yaml:"httpReadTimeout" envconfig:"FRONTEND_HTTP_READ_TIMEOUT"`
+		HttpWriteTimeout      time.Duration `yaml:"httpWriteTimeout" envconfig:"FRONTEND_HTTP_WRITE_TIMEOUT"`
+		HttpIdleTimeout       time.Duration `yaml:"httpIdleTimeout" envconfig:"FRONTEND_HTTP_IDLE_TIMEOUT"`
+		AllowDutyLoading      bool          `yaml:"allowDutyLoading" envconfig:"FRONTEND_ALLOW_DUTY_LOADING"`
+		DisablePageCache      bool          `yaml:"disablePageCache" envconfig:"FRONTEND_DISABLE_PAGE_CACHE"`
 
 		ShowSensitivePeerInfos bool `yaml:"showSensitivePeerInfos" envconfig:"FRONTEND_SHOW_SENSITIVE_PEER_INFOS"`
 		ShowPeerDASInfos       bool `yaml:"showPeerDASInfos" envconfig:"FRONTEND_SHOW_PEER_DAS_INFOS"`
