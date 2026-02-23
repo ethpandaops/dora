@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"time"
 
 	"github.com/ethpandaops/dora/dbtypes"
@@ -24,47 +25,47 @@ type CleanupStats struct {
 // Returns statistics about deleted rows.
 // Uses batched deletes to avoid long locks - deletes in chunks and commits
 // between batches. Uses default batch size of 50000 rows per batch.
-func DeleteElDataBeforeBlockUid(blockUidThreshold uint64, _ *sqlx.Tx) (*CleanupStats, error) {
+func DeleteElDataBeforeBlockUid(ctx context.Context, blockUidThreshold uint64, _ *sqlx.Tx) (*CleanupStats, error) {
 	batchSize := int64(50000)
 	stats := &CleanupStats{}
 
 	// Delete transactions in batches
-	deleted, err := batchDeleteBeforeBlockUid("el_transactions", blockUidThreshold, batchSize)
+	deleted, err := batchDeleteBeforeBlockUid(ctx, "el_transactions", blockUidThreshold, batchSize)
 	if err != nil {
 		return stats, err
 	}
 	stats.TransactionsDeleted = deleted
 
 	// Delete internal transactions in batches
-	deleted, err = batchDeleteBeforeBlockUid("el_transactions_internal", blockUidThreshold, batchSize)
+	deleted, err = batchDeleteBeforeBlockUid(ctx, "el_transactions_internal", blockUidThreshold, batchSize)
 	if err != nil {
 		return stats, err
 	}
 	stats.InternalTxsDeleted = deleted
 
 	// Delete event index entries in batches
-	deleted, err = batchDeleteBeforeBlockUid("el_event_index", blockUidThreshold, batchSize)
+	deleted, err = batchDeleteBeforeBlockUid(ctx, "el_event_index", blockUidThreshold, batchSize)
 	if err != nil {
 		return stats, err
 	}
 	stats.EventIndicesDeleted = deleted
 
 	// Delete token transfers in batches
-	deleted, err = batchDeleteBeforeBlockUid("el_token_transfers", blockUidThreshold, batchSize)
+	deleted, err = batchDeleteBeforeBlockUid(ctx, "el_token_transfers", blockUidThreshold, batchSize)
 	if err != nil {
 		return stats, err
 	}
 	stats.TokenTransfersDeleted = deleted
 
 	// Delete withdrawals in batches
-	deleted, err = batchDeleteBeforeBlockUid("el_withdrawals", blockUidThreshold, batchSize)
+	deleted, err = batchDeleteBeforeBlockUid(ctx, "el_withdrawals", blockUidThreshold, batchSize)
 	if err != nil {
 		return stats, err
 	}
 	stats.WithdrawalsDeleted = deleted
 
 	// Delete blocks in batches
-	deleted, err = batchDeleteBeforeBlockUid("el_blocks", blockUidThreshold, batchSize)
+	deleted, err = batchDeleteBeforeBlockUid(ctx, "el_blocks", blockUidThreshold, batchSize)
 	if err != nil {
 		return stats, err
 	}
@@ -75,7 +76,7 @@ func DeleteElDataBeforeBlockUid(blockUidThreshold uint64, _ *sqlx.Tx) (*CleanupS
 
 // batchDeleteBeforeBlockUid deletes rows from a table where block_uid < threshold,
 // in batches of batchSize to avoid long locks.
-func batchDeleteBeforeBlockUid(table string, blockUidThreshold uint64, batchSize int64) (int64, error) {
+func batchDeleteBeforeBlockUid(ctx context.Context, table string, blockUidThreshold uint64, batchSize int64) (int64, error) {
 	var totalDeleted int64
 
 	for {
@@ -99,7 +100,7 @@ func batchDeleteBeforeBlockUid(table string, blockUidThreshold uint64, batchSize
 						LIMIT $2
 					)`
 			}
-			result, err := tx.Exec(query, blockUidThreshold, batchSize)
+			result, err := tx.ExecContext(ctx, query, blockUidThreshold, batchSize)
 			if err != nil {
 				return err
 			}
@@ -124,9 +125,9 @@ func batchDeleteBeforeBlockUid(table string, blockUidThreshold uint64, batchSize
 
 // GetOldestElBlockUid returns the oldest (minimum) block_uid in the el_blocks table.
 // Returns 0 if no blocks exist.
-func GetOldestElBlockUid() (uint64, error) {
+func GetOldestElBlockUid(ctx context.Context) (uint64, error) {
 	var blockUid uint64
-	err := ReaderDb.Get(&blockUid, "SELECT COALESCE(MIN(block_uid), 0) FROM el_blocks")
+	err := ReaderDb.GetContext(ctx, &blockUid, "SELECT COALESCE(MIN(block_uid), 0) FROM el_blocks")
 	if err != nil {
 		return 0, err
 	}
@@ -135,9 +136,9 @@ func GetOldestElBlockUid() (uint64, error) {
 
 // GetNewestElBlockUid returns the newest (maximum) block_uid in the el_blocks table.
 // Returns 0 if no blocks exist.
-func GetNewestElBlockUid() (uint64, error) {
+func GetNewestElBlockUid(ctx context.Context) (uint64, error) {
 	var blockUid uint64
-	err := ReaderDb.Get(&blockUid, "SELECT COALESCE(MAX(block_uid), 0) FROM el_blocks")
+	err := ReaderDb.GetContext(ctx, &blockUid, "SELECT COALESCE(MAX(block_uid), 0) FROM el_blocks")
 	if err != nil {
 		return 0, err
 	}

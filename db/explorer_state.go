@@ -1,15 +1,16 @@
 package db
 
 import (
+	"context"
 	"encoding/json"
 
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/jmoiron/sqlx"
 )
 
-func GetExplorerState(key string, returnValue interface{}) (interface{}, error) {
+func GetExplorerState(ctx context.Context, key string, returnValue interface{}) (interface{}, error) {
 	entry := dbtypes.ExplorerState{}
-	err := ReaderDb.Get(&entry, `SELECT key, value FROM explorer_state WHERE key = $1`, key)
+	err := ReaderDb.GetContext(ctx, &entry, `SELECT key, value FROM explorer_state WHERE key = $1`, key)
 	if err != nil {
 		return nil, err
 	}
@@ -20,12 +21,12 @@ func GetExplorerState(key string, returnValue interface{}) (interface{}, error) 
 	return returnValue, nil
 }
 
-func SetExplorerState(key string, value interface{}, tx *sqlx.Tx) error {
+func SetExplorerState(ctx context.Context, tx *sqlx.Tx, key string, value interface{}) error {
 	valueMarshal, err := json.Marshal(value)
 	if err != nil {
 		return err
 	}
-	_, err = tx.Exec(EngineQuery(map[dbtypes.DBEngineType]string{
+	_, err = tx.ExecContext(ctx, EngineQuery(map[dbtypes.DBEngineType]string{
 		dbtypes.DBEnginePgsql: `
 			INSERT INTO explorer_state (key, value)
 			VALUES ($1, $2)

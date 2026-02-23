@@ -179,7 +179,7 @@ func (ci *DepositIndexer) persistDepositTxs(tx *sqlx.Tx, requests []*dbtypes.Dep
 			endIdx = requestCount
 		}
 
-		err := db.InsertDepositTxs(requests[requestIdx:endIdx], tx)
+		err := db.InsertDepositTxs(ci.indexerCtx.Ctx, tx, requests[requestIdx:endIdx])
 		if err != nil {
 			return fmt.Errorf("error while inserting deposit txs: %v", err)
 		}
@@ -217,7 +217,7 @@ func (ds *DepositIndexer) checkDepositValidity(depositTx *dbtypes.DepositTx, par
 			parentForkIdsUint[i] = uint64(forkId)
 		}
 
-		dbDepositTxs, _, err := db.GetDepositTxsFiltered(0, 1, parentForkIdsUint, &dbtypes.DepositTxFilter{
+		dbDepositTxs, _, err := db.GetDepositTxsFiltered(ds.indexerCtx.Ctx, 0, 1, parentForkIdsUint, &dbtypes.DepositTxFilter{
 			PublicKey:    depositTx.PublicKey,
 			WithValid:    0,
 			WithOrphaned: 0,

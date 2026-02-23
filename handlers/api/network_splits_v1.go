@@ -103,7 +103,7 @@ func APINetworkSplitsV1(w http.ResponseWriter, r *http.Request) {
 		var blockHash string
 		var executionNumber uint64
 
-		if blockIndex := block.GetBlockIndex(); blockIndex != nil {
+		if blockIndex := block.GetBlockIndex(r.Context()); blockIndex != nil {
 			blockHash = fmt.Sprintf("0x%x", blockIndex.ExecutionHash)
 			executionNumber = blockIndex.ExecutionNumber
 		}

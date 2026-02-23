@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"math"
 	"net/http"
@@ -64,7 +65,7 @@ func getBlocksPageData(firstSlot uint64, pageSize uint64, displayColumns uint64)
 	pageData := &models.BlocksPageData{}
 	pageCacheKey := fmt.Sprintf("blocks:%v:%v:%v", firstSlot, pageSize, displayColumns)
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
-		pageData, cacheTimeout := buildBlocksPageData(firstSlot, pageSize, displayColumns)
+		pageData, cacheTimeout := buildBlocksPageData(pageCall.CallCtx, firstSlot, pageSize, displayColumns)
 		pageCall.CacheTimeout = cacheTimeout
 		return pageData
 	})
@@ -78,7 +79,7 @@ func getBlocksPageData(firstSlot uint64, pageSize uint64, displayColumns uint64)
 	return pageData, pageErr
 }
 
-func buildBlocksPageData(firstSlot uint64, pageSize uint64, displayColumns uint64) (*models.BlocksPageData, time.Duration) {
+func buildBlocksPageData(ctx context.Context, firstSlot uint64, pageSize uint64, displayColumns uint64) (*models.BlocksPageData, time.Duration) {
 	logrus.Debugf("blocks page called: %v:%v", firstSlot, pageSize)
 	pageData := &models.BlocksPageData{}
 
@@ -211,7 +212,7 @@ func buildBlocksPageData(firstSlot uint64, pageSize uint64, displayColumns uint6
 
 	// load blocks
 	pageData.Blocks = make([]*models.BlocksPageDataSlot, 0)
-	dbBlocks := services.GlobalBeaconService.GetDbBlocksForSlots(firstSlot, uint32(pageSize), false, true)
+	dbBlocks := services.GlobalBeaconService.GetDbBlocksForSlots(ctx, firstSlot, uint32(pageSize), false, true)
 	dbIdx := 0
 	dbCnt := len(dbBlocks)
 	blockCount := uint64(0)
@@ -233,7 +234,7 @@ func buildBlocksPageData(firstSlot uint64, pageSize uint64, displayColumns uint6
 		}
 
 		if len(execBlockHashes) > 0 {
-			mevBlocksMap = db.GetMevBlocksByBlockHashes(execBlockHashes)
+			mevBlocksMap = db.GetMevBlocksByBlockHashes(ctx, execBlockHashes)
 		}
 	}
 
@@ -336,7 +337,7 @@ func buildBlocksPageData(firstSlot uint64, pageSize uint64, displayColumns uint6
 
 			pageData.Blocks = append(pageData.Blocks, slotData)
 			blockCount++
-			buildBlocksPageSlotGraph(pageData, slotData, &maxOpenFork, openForks, isFirstPage)
+			buildBlocksPageSlotGraph(ctx, pageData, slotData, &maxOpenFork, openForks, isFirstPage)
 		}
 	}
 	pageData.SlotCount = uint64(blockCount)
@@ -366,7 +367,7 @@ func getClientTypeName(clientType uint8) string {
 	return fmt.Sprintf("Unknown(%d)", clientType)
 }
 
-func buildBlocksPageSlotGraph(pageData *models.BlocksPageData, slotData *models.BlocksPageDataSlot, maxOpenFork *int, openForks map[int][]byte, isFirstPage bool) {
+func buildBlocksPageSlotGraph(ctx context.Context, pageData *models.BlocksPageData, slotData *models.BlocksPageDataSlot, maxOpenFork *int, openForks map[int][]byte, isFirstPage bool) {
 	// fork tree
 	var forkGraphIdx int = -1
 	var freeForkIdx int = -1
@@ -431,7 +432,7 @@ func buildBlocksPageSlotGraph(pageData *models.BlocksPageData, slotData *models.
 		hasForks := false
 		if !isFirstPage {
 			// get blocks that build on top of this
-			refBlocks := services.GlobalBeaconService.GetDbBlocksByParentRoot(phase0.Root(slotData.BlockRoot))
+			refBlocks := services.GlobalBeaconService.GetDbBlocksByParentRoot(ctx, phase0.Root(slotData.BlockRoot))
 			refBlockCount := len(refBlocks)
 			if refBlockCount > 0 {
 				freeForkIdx = *maxOpenFork

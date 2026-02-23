@@ -179,7 +179,7 @@ func (t *TxIndexer) Start() error {
 	}
 
 	t.running = true
-	t.ctx, t.ctxCancel = context.WithCancel(context.Background())
+	t.ctx, t.ctxCancel = context.WithCancel(t.indexerCtx.Ctx)
 
 	// Load sync state from database
 	t.loadSyncState()
@@ -226,7 +226,7 @@ func (t *TxIndexer) Stop() error {
 // loadSyncState loads the sync state from the database.
 func (t *TxIndexer) loadSyncState() {
 	state := syncState{}
-	_, err := db.GetExplorerState(syncStateKey, &state)
+	_, err := db.GetExplorerState(t.ctx, syncStateKey, &state)
 	if err != nil {
 		t.logger.WithError(err).Debug("no existing sync state found, starting from epoch 0")
 		t.syncEpoch = 0
@@ -244,7 +244,7 @@ func (t *TxIndexer) saveSyncState(epoch phase0.Epoch) {
 	}
 
 	err := db.RunDBTransaction(func(tx *sqlx.Tx) error {
-		return db.SetExplorerState(syncStateKey, &state, tx)
+		return db.SetExplorerState(t.ctx, tx, syncStateKey, &state)
 	})
 	if err != nil {
 		t.logger.WithError(err).Error("failed to save sync state")
@@ -254,7 +254,7 @@ func (t *TxIndexer) saveSyncState(epoch phase0.Epoch) {
 // loadCleanupState loads the cleanup state from the database.
 func (t *TxIndexer) loadCleanupState() {
 	state := cleanupState{}
-	_, err := db.GetExplorerState(cleanupStateKey, &state)
+	_, err := db.GetExplorerState(t.ctx, cleanupStateKey, &state)
 	if err != nil {
 		t.logger.WithError(err).Debug("no existing cleanup state found, starting fresh")
 		t.lastCleanup = time.Time{} // Zero time means never cleaned up
@@ -272,7 +272,7 @@ func (t *TxIndexer) saveCleanupState() {
 	}
 
 	err := db.RunDBTransaction(func(tx *sqlx.Tx) error {
-		return db.SetExplorerState(cleanupStateKey, &state, tx)
+		return db.SetExplorerState(t.ctx, tx, cleanupStateKey, &state)
 	})
 	if err != nil {
 		t.logger.WithError(err).Error("failed to save cleanup state")
@@ -320,7 +320,7 @@ func (t *TxIndexer) runQueueFiller() {
 
 // enqueueBeaconBlock converts a beacon.Block to BlockRef and enqueues it.
 func (t *TxIndexer) enqueueBeaconBlock(block *beacon.Block, highPriority bool) {
-	blockIndex := block.GetBlockIndex()
+	blockIndex := block.GetBlockIndex(t.ctx)
 	if blockIndex == nil {
 		return
 	}
@@ -425,7 +425,7 @@ func (t *TxIndexer) processSync() {
 		lastSlot := uint64(chainState.EpochToSlot(epoch+1)) - 1
 
 		// Query blocks from database for this epoch
-		slots := db.GetSlotsRange(lastSlot, firstSlot, false, false)
+		slots := db.GetSlotsRange(t.ctx, lastSlot, firstSlot, false, false)
 		if len(slots) == 0 {
 			// No slots in this epoch, persist immediately
 			nextEpoch := epoch + 1
@@ -455,7 +455,7 @@ func (t *TxIndexer) processSync() {
 		}
 
 		// Check which blocks are already synced in el_blocks
-		syncedBlocks, err := db.GetElBlocksByUids(blockUids)
+		syncedBlocks, err := db.GetElBlocksByUids(t.ctx, blockUids)
 		if err != nil {
 			t.logger.WithError(err).Error("failed to get el blocks by uids")
 			continue
@@ -806,7 +806,7 @@ func (t *TxIndexer) cleanupZeroBalances() int64 {
 
 	err := db.RunDBTransaction(func(tx *sqlx.Tx) error {
 		var err error
-		deleted, err = db.DeleteElZeroBalances(tx)
+		deleted, err = db.DeleteElZeroBalances(t.ctx, tx)
 		return err
 	})
 
@@ -858,7 +858,7 @@ func (t *TxIndexer) cleanupRetentionData() *db.CleanupStats {
 	}).Debug("calculating retention cleanup threshold")
 
 	// Check if we have any data to delete
-	oldestBlockUid, err := db.GetOldestElBlockUid()
+	oldestBlockUid, err := db.GetOldestElBlockUid(t.ctx)
 	if err != nil {
 		t.logger.WithError(err).Warn("failed to get oldest block uid")
 		return nil
@@ -880,7 +880,7 @@ func (t *TxIndexer) cleanupRetentionData() *db.CleanupStats {
 
 	err = db.RunDBTransaction(func(tx *sqlx.Tx) error {
 		var err error
-		stats, err = db.DeleteElDataBeforeBlockUid(blockUidThreshold, tx)
+		stats, err = db.DeleteElDataBeforeBlockUid(t.ctx, blockUidThreshold, tx)
 		return err
 	})
 
@@ -938,7 +938,7 @@ func (t *TxIndexer) cleanupBlockdbRetention() int64 {
 
 	// Reset data_status and data_size in DB for pruned blocks
 	err = db.RunDBTransaction(func(tx *sqlx.Tx) error {
-		_, err := db.ResetElBlockDataStatusBefore(blockUidThreshold, tx)
+		_, err := db.ResetElBlockDataStatusBefore(t.ctx, tx, blockUidThreshold)
 		return err
 	})
 	if err != nil {
@@ -972,7 +972,7 @@ func (t *TxIndexer) cleanupBlockdbSize() int64 {
 	}
 
 	// Get total current size from DB
-	totalSize, err := db.GetTotalElBlockDataSize()
+	totalSize, err := db.GetTotalElBlockDataSize(t.ctx)
 	if err != nil {
 		t.logger.WithError(err).Warn("failed to get total exec data size")
 		return 0
@@ -995,7 +995,7 @@ func (t *TxIndexer) cleanupBlockdbSize() int64 {
 	var accumulated int64
 
 	for accumulated < bytesToFree {
-		blocks, getErr := db.GetOldestElBlocksWithData(500)
+		blocks, getErr := db.GetOldestElBlocksWithData(t.ctx, 500)
 		if getErr != nil {
 			t.logger.WithError(getErr).Warn("failed to get oldest blocks for eviction")
 			break
@@ -1037,7 +1037,7 @@ func (t *TxIndexer) cleanupBlockdbSize() int64 {
 
 	err = db.RunDBTransaction(func(tx *sqlx.Tx) error {
 		var resetErr error
-		dbReset, resetErr = db.ResetElBlockDataStatusBefore(blockUidThreshold, tx)
+		dbReset, resetErr = db.ResetElBlockDataStatusBefore(t.ctx, tx, blockUidThreshold)
 		return resetErr
 	})
 	if err != nil {

@@ -149,7 +149,7 @@ func (t *TxIndexer) getClientsForBlock(ref *BlockRef) []*execution.Client {
 // extractTransactionsFromBeaconBlock extracts transactions from a beacon block's execution payload.
 // Returns nil if the block has no execution payload (pre-merge) or transactions cannot be extracted.
 func (t *TxIndexer) extractTransactionsFromBeaconBlock(block *beacon.Block) ([]*types.Transaction, uint64, common.Hash) {
-	beaconBlock := block.GetBlock()
+	beaconBlock := block.GetBlock(t.ctx)
 	if beaconBlock == nil {
 		return nil, 0, common.Hash{}
 	}
@@ -310,7 +310,7 @@ func (t *TxIndexer) extractBeaconBlockData(block *beacon.Block) (common.Address,
 		return common.Address{}, nil
 	}
 
-	beaconBlock := block.GetBlock()
+	beaconBlock := block.GetBlock(t.ctx)
 	if beaconBlock == nil {
 		return common.Address{}, nil
 	}

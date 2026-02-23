@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"math"
@@ -12,8 +13,8 @@ import (
 	"github.com/mitchellh/mapstructure"
 )
 
-func InsertSlot(slot *dbtypes.Slot, tx *sqlx.Tx) error {
-	_, err := tx.Exec(EngineQuery(map[dbtypes.DBEngineType]string{
+func InsertSlot(ctx context.Context, tx *sqlx.Tx, slot *dbtypes.Slot) error {
+	_, err := tx.ExecContext(ctx, EngineQuery(map[dbtypes.DBEngineType]string{
 		dbtypes.DBEnginePgsql: `
 			INSERT INTO slots (
 				slot, proposer, status, root, parent_root, state_root, graffiti, graffiti_text,
@@ -48,7 +49,7 @@ func InsertSlot(slot *dbtypes.Slot, tx *sqlx.Tx) error {
 		return err
 	}
 
-	_, err = tx.Exec("DELETE FROM slots WHERE slot = $1 AND proposer = $2 AND status = 0", slot.Slot, slot.Proposer)
+	_, err = tx.ExecContext(ctx, "DELETE FROM slots WHERE slot = $1 AND proposer = $2 AND status = 0", slot.Slot, slot.Proposer)
 	if err != nil {
 		return err
 	}
@@ -56,9 +57,9 @@ func InsertSlot(slot *dbtypes.Slot, tx *sqlx.Tx) error {
 	return nil
 }
 
-func InsertMissingSlot(block *dbtypes.SlotHeader, tx *sqlx.Tx) error {
+func InsertMissingSlot(ctx context.Context, tx *sqlx.Tx, block *dbtypes.SlotHeader) error {
 	var blockCount int
-	err := ReaderDb.Get(&blockCount, `
+	err := ReaderDb.GetContext(ctx, &blockCount, `
 		SELECT
 			COUNT(*)
 		FROM slots
@@ -72,7 +73,7 @@ func InsertMissingSlot(block *dbtypes.SlotHeader, tx *sqlx.Tx) error {
 		return nil
 	}
 
-	_, err = tx.Exec(EngineQuery(map[dbtypes.DBEngineType]string{
+	_, err = tx.ExecContext(ctx, EngineQuery(map[dbtypes.DBEngineType]string{
 		dbtypes.DBEnginePgsql: `
 			INSERT INTO slots (
 				slot, proposer, status, root
@@ -91,7 +92,7 @@ func InsertMissingSlot(block *dbtypes.SlotHeader, tx *sqlx.Tx) error {
 	return nil
 }
 
-func GetSlotsRange(firstSlot uint64, lastSlot uint64, withMissing bool, withOrphaned bool) []*dbtypes.AssignedSlot {
+func GetSlotsRange(ctx context.Context, firstSlot uint64, lastSlot uint64, withMissing bool, withOrphaned bool) []*dbtypes.AssignedSlot {
 	var sql strings.Builder
 	fmt.Fprintf(&sql, `SELECT slots.slot, slots.proposer`)
 	blockFields := []string{
@@ -116,7 +117,7 @@ func GetSlotsRange(firstSlot uint64, lastSlot uint64, withMissing bool, withOrph
 	}
 	fmt.Fprintf(&sql, ` ORDER BY slot DESC `)
 
-	rows, err := ReaderDb.Query(sql.String(), firstSlot, lastSlot)
+	rows, err := ReaderDb.QueryContext(ctx, sql.String(), firstSlot, lastSlot)
 	if err != nil {
 		logger.WithError(err).Errorf("Error while fetching slots range: %v", sql.String())
 		return nil
@@ -125,9 +126,9 @@ func GetSlotsRange(firstSlot uint64, lastSlot uint64, withMissing bool, withOrph
 	return parseAssignedSlots(rows, blockFields, 2)
 }
 
-func GetSlotsByParentRoot(parentRoot []byte) []*dbtypes.Slot {
+func GetSlotsByParentRoot(ctx context.Context, parentRoot []byte) []*dbtypes.Slot {
 	slots := []*dbtypes.Slot{}
-	err := ReaderDb.Select(&slots, `
+	err := ReaderDb.SelectContext(ctx, &slots, `
 	SELECT
 		slot, proposer, status, root, parent_root, state_root, graffiti, graffiti_text,
 		attestation_count, deposit_count, exit_count, withdraw_count, withdraw_amount, attester_slashing_count,
@@ -146,9 +147,9 @@ func GetSlotsByParentRoot(parentRoot []byte) []*dbtypes.Slot {
 	return slots
 }
 
-func GetSlotByRoot(root []byte) *dbtypes.Slot {
+func GetSlotByRoot(ctx context.Context, root []byte) *dbtypes.Slot {
 	block := dbtypes.Slot{}
-	err := ReaderDb.Get(&block, `
+	err := ReaderDb.GetContext(ctx, &block, `
 	SELECT
 		root, slot, parent_root, state_root, status, proposer, graffiti, graffiti_text,
 		attestation_count, deposit_count, exit_count, withdraw_count, withdraw_amount, attester_slashing_count,
@@ -166,7 +167,7 @@ func GetSlotByRoot(root []byte) *dbtypes.Slot {
 	return &block
 }
 
-func GetSlotsByRoots(roots [][]byte) map[phase0.Root]*dbtypes.Slot {
+func GetSlotsByRoots(ctx context.Context, roots [][]byte) map[phase0.Root]*dbtypes.Slot {
 	argIdx := 0
 	args := make([]any, len(roots))
 	plcList := make([]string, len(roots))
@@ -191,7 +192,7 @@ func GetSlotsByRoots(roots [][]byte) map[phase0.Root]*dbtypes.Slot {
 	)
 
 	slots := []*dbtypes.Slot{}
-	err := ReaderDb.Select(&slots, sql, args...)
+	err := ReaderDb.SelectContext(ctx, &slots, sql, args...)
 	if err != nil {
 		logger.Errorf("Error while fetching block by roots: %v", err)
 		return nil
@@ -205,9 +206,9 @@ func GetSlotsByRoots(roots [][]byte) map[phase0.Root]*dbtypes.Slot {
 	return slotMap
 }
 
-func GetBlockHeadByRoot(root []byte) *dbtypes.BlockHead {
+func GetBlockHeadByRoot(ctx context.Context, root []byte) *dbtypes.BlockHead {
 	blockHead := dbtypes.BlockHead{}
-	err := ReaderDb.Get(&blockHead, `
+	err := ReaderDb.GetContext(ctx, &blockHead, `
 	SELECT
 		root, slot, parent_root, fork_id, block_uid
 	FROM slots
@@ -219,9 +220,9 @@ func GetBlockHeadByRoot(root []byte) *dbtypes.BlockHead {
 	return &blockHead
 }
 
-func GetBlockHeadBySlot(slot uint64) *dbtypes.BlockHead {
+func GetBlockHeadBySlot(ctx context.Context, slot uint64) *dbtypes.BlockHead {
 	blockHead := dbtypes.BlockHead{}
-	err := ReaderDb.Get(&blockHead, `
+	err := ReaderDb.GetContext(ctx, &blockHead, `
 	SELECT
 		root, slot, parent_root, fork_id, block_uid
 	FROM slots
@@ -235,9 +236,9 @@ func GetBlockHeadBySlot(slot uint64) *dbtypes.BlockHead {
 	return &blockHead
 }
 
-func GetBlockHeadBySlotRange(startSlot uint64, endSlot uint64) []*dbtypes.BlockHead {
+func GetBlockHeadBySlotRange(ctx context.Context, startSlot uint64, endSlot uint64) []*dbtypes.BlockHead {
 	blockHeads := []*dbtypes.BlockHead{}
-	err := ReaderDb.Select(&blockHeads, `
+	err := ReaderDb.SelectContext(ctx, &blockHeads, `
 	SELECT
 		root, slot, parent_root, fork_id, block_uid
 	FROM slots
@@ -250,9 +251,9 @@ func GetBlockHeadBySlotRange(startSlot uint64, endSlot uint64) []*dbtypes.BlockH
 	return blockHeads
 }
 
-func GetSlotsByBlockHash(blockHash []byte) []*dbtypes.Slot {
+func GetSlotsByBlockHash(ctx context.Context, blockHash []byte) []*dbtypes.Slot {
 	slots := []*dbtypes.Slot{}
-	err := ReaderDb.Select(&slots, `
+	err := ReaderDb.SelectContext(ctx, &slots, `
 	SELECT
 		slot, proposer, status, root, parent_root, state_root, graffiti, graffiti_text,
 		attestation_count, deposit_count, exit_count, withdraw_count, withdraw_amount, attester_slashing_count,
@@ -312,7 +313,7 @@ func parseAssignedSlots(rows *sql.Rows, fields []string, fieldsOffset int) []*db
 	return blockAssignments
 }
 
-func GetFilteredSlots(filter *dbtypes.BlockFilter, firstSlot uint64, offset uint64, limit uint32) []*dbtypes.AssignedSlot {
+func GetFilteredSlots(ctx context.Context, filter *dbtypes.BlockFilter, firstSlot uint64, offset uint64, limit uint32) []*dbtypes.AssignedSlot {
 	var sql strings.Builder
 	fmt.Fprintf(&sql, `SELECT slots.slot, slots.proposer`)
 	blockFields := []string{
@@ -524,7 +525,7 @@ func GetFilteredSlots(filter *dbtypes.BlockFilter, firstSlot uint64, offset uint
 	args = append(args, offset)
 
 	//fmt.Printf("sql: %v, args: %v\n", sql.String(), args)
-	rows, err := ReaderDb.Query(sql.String(), args...)
+	rows, err := ReaderDb.QueryContext(ctx, sql.String(), args...)
 	if err != nil {
 		logger.WithError(err).Errorf("Error while fetching filtered slots: %v", sql.String())
 		return nil
@@ -533,7 +534,7 @@ func GetFilteredSlots(filter *dbtypes.BlockFilter, firstSlot uint64, offset uint
 	return parseAssignedSlots(rows, blockFields, 2)
 }
 
-func GetSlotStatus(blockRoots [][]byte) []*dbtypes.BlockStatus {
+func GetSlotStatus(ctx context.Context, blockRoots [][]byte) []*dbtypes.BlockStatus {
 	orphanedRefs := []*dbtypes.BlockStatus{}
 	if len(blockRoots) == 0 {
 		return orphanedRefs
@@ -555,7 +556,7 @@ func GetSlotStatus(blockRoots [][]byte) []*dbtypes.BlockStatus {
 		argIdx += 1
 	}
 	fmt.Fprintf(&sql, ")")
-	err := ReaderDb.Select(&orphanedRefs, sql.String(), args...)
+	err := ReaderDb.SelectContext(ctx, &orphanedRefs, sql.String(), args...)
 	if err != nil {
 		logger.Errorf("Error while fetching orphaned status: %v", err)
 		return nil
@@ -563,7 +564,7 @@ func GetSlotStatus(blockRoots [][]byte) []*dbtypes.BlockStatus {
 	return orphanedRefs
 }
 
-func GetSlotBlobCountByExecutionHashes(blockHashes [][]byte) []*dbtypes.BlockBlobCount {
+func GetSlotBlobCountByExecutionHashes(ctx context.Context, blockHashes [][]byte) []*dbtypes.BlockBlobCount {
 	blockBlockCounts := []*dbtypes.BlockBlobCount{}
 	if len(blockHashes) == 0 {
 		return blockBlockCounts
@@ -585,7 +586,7 @@ func GetSlotBlobCountByExecutionHashes(blockHashes [][]byte) []*dbtypes.BlockBlo
 		argIdx += 1
 	}
 	fmt.Fprintf(&sql, ")")
-	err := ReaderDb.Select(&blockBlockCounts, sql.String(), args...)
+	err := ReaderDb.SelectContext(ctx, &blockBlockCounts, sql.String(), args...)
 	if err != nil {
 		logger.Errorf("Error while fetching block blob counts: %v", err)
 		return nil
@@ -593,14 +594,14 @@ func GetSlotBlobCountByExecutionHashes(blockHashes [][]byte) []*dbtypes.BlockBlo
 	return blockBlockCounts
 }
 
-func GetHighestRootBeforeSlot(slot uint64, withOrphaned bool) []byte {
+func GetHighestRootBeforeSlot(ctx context.Context, slot uint64, withOrphaned bool) []byte {
 	var result []byte
 	statusFilter := ""
 	if !withOrphaned {
 		statusFilter = "AND status != 2"
 	}
 
-	err := ReaderDb.Get(&result, `
+	err := ReaderDb.GetContext(ctx, &result, `
 	SELECT root FROM slots WHERE slot < $1 `+statusFilter+` AND status != 0 ORDER BY slot DESC LIMIT 1
 	`, slot)
 	if err != nil {
@@ -609,9 +610,9 @@ func GetHighestRootBeforeSlot(slot uint64, withOrphaned bool) []byte {
 	return result
 }
 
-func GetSlotAssignment(slot uint64) uint64 {
+func GetSlotAssignment(ctx context.Context, slot uint64) uint64 {
 	proposer := uint64(math.MaxInt64)
-	err := ReaderDb.Get(&proposer, `
+	err := ReaderDb.GetContext(ctx, &proposer, `
 	SELECT
 		proposer
 	FROM slots

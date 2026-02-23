@@ -332,7 +332,7 @@ func (sim *stateSimulator) applyBlock(block *Block) [][]uint8 {
 		return nil
 	}
 
-	blockBody := block.GetBlock()
+	blockBody := block.GetBlock(sim.indexer.ctx)
 	if blockBody == nil {
 		return nil
 	}

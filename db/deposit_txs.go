@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -9,7 +10,7 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-func InsertDepositTxs(depositTxs []*dbtypes.DepositTx, tx *sqlx.Tx) error {
+func InsertDepositTxs(ctx context.Context, tx *sqlx.Tx, depositTxs []*dbtypes.DepositTx) error {
 	var sql strings.Builder
 	fmt.Fprint(&sql,
 		EngineQuery(map[dbtypes.DBEngineType]string{
@@ -58,14 +59,14 @@ func InsertDepositTxs(depositTxs []*dbtypes.DepositTx, tx *sqlx.Tx) error {
 		dbtypes.DBEngineSqlite: "",
 	}))
 
-	_, err := tx.Exec(sql.String(), args...)
+	_, err := tx.ExecContext(ctx, sql.String(), args...)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func GetDepositTxs(firstIndex uint64, limit uint32) []*dbtypes.DepositTx {
+func GetDepositTxs(ctx context.Context, firstIndex uint64, limit uint32) []*dbtypes.DepositTx {
 	var sql strings.Builder
 	args := []any{}
 	fmt.Fprint(&sql, `
@@ -85,7 +86,7 @@ func GetDepositTxs(firstIndex uint64, limit uint32) []*dbtypes.DepositTx {
 	`, len(args))
 
 	depositTxs := []*dbtypes.DepositTx{}
-	err := ReaderDb.Select(&depositTxs, sql.String(), args...)
+	err := ReaderDb.SelectContext(ctx, &depositTxs, sql.String(), args...)
 	if err != nil {
 		logger.Errorf("Error while fetching deposit txs: %v", err)
 		return nil
@@ -93,7 +94,7 @@ func GetDepositTxs(firstIndex uint64, limit uint32) []*dbtypes.DepositTx {
 	return depositTxs
 }
 
-func GetDepositTxsByIndexes(indexes []uint64) []*dbtypes.DepositTx {
+func GetDepositTxsByIndexes(ctx context.Context, indexes []uint64) []*dbtypes.DepositTx {
 	depositTxs := []*dbtypes.DepositTx{}
 	if len(indexes) == 0 {
 		return depositTxs
@@ -116,7 +117,7 @@ func GetDepositTxsByIndexes(indexes []uint64) []*dbtypes.DepositTx {
 	}
 	fmt.Fprintf(&sql, ")")
 
-	err := ReaderDb.Select(&depositTxs, sql.String(), args...)
+	err := ReaderDb.SelectContext(ctx, &depositTxs, sql.String(), args...)
 	if err != nil {
 		logger.Errorf("Error while fetching deposit txs by indexes: %v", err)
 		return nil
@@ -125,7 +126,7 @@ func GetDepositTxsByIndexes(indexes []uint64) []*dbtypes.DepositTx {
 	return depositTxs
 }
 
-func GetDepositTxsFiltered(offset uint64, limit uint32, canonicalForkIds []uint64, filter *dbtypes.DepositTxFilter) ([]*dbtypes.DepositTx, uint64, error) {
+func GetDepositTxsFiltered(ctx context.Context, offset uint64, limit uint32, canonicalForkIds []uint64, filter *dbtypes.DepositTxFilter) ([]*dbtypes.DepositTx, uint64, error) {
 	var sql strings.Builder
 	args := []any{}
 	fmt.Fprint(&sql, `
@@ -252,7 +253,7 @@ func GetDepositTxsFiltered(offset uint64, limit uint32, canonicalForkIds []uint6
 	fmt.Fprintf(&sql, ") AS t1")
 
 	depositTxs := []*dbtypes.DepositTx{}
-	err := ReaderDb.Select(&depositTxs, sql.String(), args...)
+	err := ReaderDb.SelectContext(ctx, &depositTxs, sql.String(), args...)
 	if err != nil {
 		logger.Errorf("Error while fetching filtered deposit txs: %v", err)
 		return nil, 0, err

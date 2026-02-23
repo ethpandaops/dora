@@ -2,8 +2,8 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"math"
 	"net/http"
@@ -69,17 +69,6 @@ func Address(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Try to get the account from the database, but don't error if not found
-	// Addresses not in DB will show as empty addresses with zero balance
-	account, _ := db.GetElAccountByAddress(addressBytes)
-	if account == nil {
-		// Create a placeholder account for display purposes
-		account = &dbtypes.ElAccount{
-			ID:      0,
-			Address: addressBytes,
-		}
-	}
-
 	tabView := "transactions"
 	if r.URL.Query().Has("v") {
 		tabView = r.URL.Query().Get("v")
@@ -107,7 +96,7 @@ func Address(w http.ResponseWriter, r *http.Request) {
 
 	var pageData *models.AddressPageData
 	if pageError == nil {
-		pageData, pageError = getAddressPageData(account, tabView, pageIdx, pageSize)
+		pageData, pageError = getAddressPageData(addressBytes, tabView, pageIdx, pageSize)
 	}
 
 	if pageError != nil {
@@ -127,133 +116,11 @@ func Address(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// AddressBalances handles the /address/{address}/balances AJAX endpoint
-// Returns JSON balance data for auto-refresh functionality
-func AddressBalances(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	addressHex := strings.TrimPrefix(vars["address"], "0x")
-
-	addressBytes, err := hex.DecodeString(addressHex)
-	if err != nil || len(addressBytes) != 20 {
-		http.Error(w, "Invalid address", http.StatusBadRequest)
-		return
-	}
-
-	// Rate limit check
-	if err := services.GlobalCallRateLimiter.CheckCallLimit(r, 1); err != nil {
-		http.Error(w, "Rate limit exceeded", http.StatusTooManyRequests)
-		return
-	}
-
-	// Try to get the account from the database
-	account, _ := db.GetElAccountByAddress(addressBytes)
-	if account == nil {
-		// Create a placeholder account
-		account = &dbtypes.ElAccount{
-			ID:      0,
-			Address: addressBytes,
-		}
-	}
-
-	// Queue balance lookups (rate limited to 10min per account)
-	// Even for unknown addresses (ID=0), we queue to check if they have balance
-	if txIndexer := services.GlobalBeaconService.GetTxIndexer(); txIndexer != nil {
-		txIndexer.QueueAddressBalanceLookups(account.ID, account.Address)
-	}
-
-	// Build response
-	response := buildBalancesResponse(account)
-
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		logrus.WithError(err).Error("failed to encode balance response")
-	}
-}
-
-// AddressBalancesResponse is the JSON response for the balances endpoint
-type AddressBalancesResponse struct {
-	EthBalance    float64                        `json:"eth_balance"`
-	EthBalanceRaw string                         `json:"eth_balance_raw"`
-	TokenBalances []*AddressBalanceTokenResponse `json:"token_balances"`
-}
-
-// AddressBalanceTokenResponse represents a single token balance in the response
-type AddressBalanceTokenResponse struct {
-	TokenID    uint64  `json:"token_id"`
-	Contract   string  `json:"contract"`
-	Name       string  `json:"name"`
-	Symbol     string  `json:"symbol"`
-	Decimals   uint8   `json:"decimals"`
-	Balance    float64 `json:"balance"`
-	BalanceRaw string  `json:"balance_raw"`
-}
-
-func buildBalancesResponse(account *dbtypes.ElAccount) *AddressBalancesResponse {
-	response := &AddressBalancesResponse{
-		TokenBalances: make([]*AddressBalanceTokenResponse, 0),
-	}
-
-	if account.ID == 0 {
-		return response
-	}
-
-	// Get ETH balance (token_id = 0 is native token)
-	if ethBalance, err := db.GetElBalance(account.ID, 0); err == nil {
-		response.EthBalance = ethBalance.Balance
-		response.EthBalanceRaw = hex.EncodeToString(ethBalance.BalanceRaw)
-	}
-
-	// Get token balances
-	if balances, _, err := db.GetElBalancesByAccountID(account.ID, 0, 50); err == nil {
-		// Collect token IDs for batch lookup
-		tokenIDs := make([]uint64, 0, len(balances))
-		for _, b := range balances {
-			if b.TokenID > 0 { // Skip native token
-				tokenIDs = append(tokenIDs, b.TokenID)
-			}
-		}
-
-		// Batch lookup tokens
-		tokenMap := make(map[uint64]*dbtypes.ElToken)
-		if len(tokenIDs) > 0 {
-			if tokens, err := db.GetElTokensByIDs(tokenIDs); err == nil {
-				for _, t := range tokens {
-					tokenMap[t.ID] = t
-				}
-			}
-		}
-
-		// Build token balance list (skip zero balances)
-		for _, b := range balances {
-			if b.TokenID == 0 {
-				continue // Skip native token in token list
-			}
-			if b.Balance == 0 {
-				continue // Skip zero balances
-			}
-			tb := &AddressBalanceTokenResponse{
-				TokenID:    b.TokenID,
-				Balance:    b.Balance,
-				BalanceRaw: hex.EncodeToString(b.BalanceRaw),
-			}
-			if token, ok := tokenMap[b.TokenID]; ok {
-				tb.Contract = hex.EncodeToString(token.Contract)
-				tb.Name = token.Name
-				tb.Symbol = token.Symbol
-				tb.Decimals = token.Decimals
-			}
-			response.TokenBalances = append(response.TokenBalances, tb)
-		}
-	}
-
-	return response
-}
-
-func getAddressPageData(account *dbtypes.ElAccount, tabView string, pageIdx, pageSize uint64) (*models.AddressPageData, error) {
+func getAddressPageData(addressBytes []byte, tabView string, pageIdx, pageSize uint64) (*models.AddressPageData, error) {
 	pageData := &models.AddressPageData{}
-	pageCacheKey := fmt.Sprintf("address:%v:%v:%v:%v", account.ID, tabView, pageIdx, pageSize)
-	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(_ *services.FrontendCacheProcessingPage) interface{} {
-		pageData, cacheTimeout := buildAddressPageData(account, tabView, pageIdx, pageSize)
+	pageCacheKey := fmt.Sprintf("address:%x:%v:%v:%v", addressBytes, tabView, pageIdx, pageSize)
+	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
+		pageData, cacheTimeout := buildAddressPageData(pageCall.CallCtx, addressBytes, tabView, pageIdx, pageSize)
 		_ = cacheTimeout
 		return pageData
 	})
@@ -267,8 +134,19 @@ func getAddressPageData(account *dbtypes.ElAccount, tabView string, pageIdx, pag
 	return pageData, pageErr
 }
 
-func buildAddressPageData(account *dbtypes.ElAccount, tabView string, pageIdx, pageSize uint64) (*models.AddressPageData, time.Duration) {
-	logrus.Debugf("address page called: %v (tab: %v)", account.ID, tabView)
+func buildAddressPageData(ctx context.Context, addressBytes []byte, tabView string, pageIdx, pageSize uint64) (*models.AddressPageData, time.Duration) {
+	logrus.Debugf("address page called: 0x%x (tab: %v)", addressBytes, tabView)
+
+	// Try to get the account from the database, but don't error if not found
+	// Addresses not in DB will show as empty addresses with zero balance
+	account, _ := db.GetElAccountByAddress(ctx, addressBytes)
+	if account == nil {
+		// Create a placeholder account for display purposes
+		account = &dbtypes.ElAccount{
+			ID:      0,
+			Address: addressBytes,
+		}
+	}
 
 	// Queue balance lookups when page is viewed (rate limited to 10min per account)
 	// Even for unknown addresses (ID=0), we queue to check if they have balance
@@ -293,103 +171,101 @@ func buildAddressPageData(account *dbtypes.ElAccount, tabView string, pageIdx, p
 
 	// Get funder info
 	if account.FunderID > 0 {
-		if funder, err := db.GetElAccountByID(account.FunderID); err == nil {
+		if funder, err := db.GetElAccountByID(ctx, account.FunderID); err == nil {
 			pageData.FundedBy = funder.Address
 			pageData.FundedByID = funder.ID
 			pageData.FundedByIsContract = funder.IsContract
 		}
 	}
 
-	// Get ETH balance (token_id = 0 is native token)
-	if ethBalance, err := db.GetElBalance(account.ID, 0); err == nil {
-		pageData.EthBalance = ethBalance.Balance
-		pageData.EthBalanceRaw = ethBalance.BalanceRaw
-	}
-
-	// Get token balances for sidebar (limit to 50 for the sidebar)
-	if balances, _, err := db.GetElBalancesByAccountID(account.ID, 0, 50); err == nil {
-		// Collect token IDs for batch lookup (skip native token)
-		tokenIDs := make([]uint64, 0, len(balances))
-		for _, b := range balances {
-			if b.TokenID > 0 { // Skip native token
-				tokenIDs = append(tokenIDs, b.TokenID)
-			}
+	if account.ID > 0 {
+		// Get ETH balance (token_id = 0 is native token)
+		if ethBalance, err := db.GetElBalance(ctx, account.ID, 0); err == nil {
+			pageData.EthBalance = ethBalance.Balance
+			pageData.EthBalanceRaw = ethBalance.BalanceRaw
 		}
 
-		// Batch lookup tokens
-		tokenMap := make(map[uint64]*dbtypes.ElToken)
-		if len(tokenIDs) > 0 {
-			if tokens, err := db.GetElTokensByIDs(tokenIDs); err == nil {
-				for _, t := range tokens {
-					tokenMap[t.ID] = t
+		// Get token balances for sidebar (limit to 50 for the sidebar)
+		if balances, _, err := db.GetElBalancesByAccountID(ctx, account.ID, 0, 50); err == nil {
+			// Collect token IDs for batch lookup (skip native token)
+			tokenIDs := make([]uint64, 0, len(balances))
+			for _, b := range balances {
+				if b.TokenID > 0 { // Skip native token
+					tokenIDs = append(tokenIDs, b.TokenID)
 				}
 			}
+
+			// Batch lookup tokens
+			tokenMap := make(map[uint64]*dbtypes.ElToken)
+			if len(tokenIDs) > 0 {
+				if tokens, err := db.GetElTokensByIDs(ctx, tokenIDs); err == nil {
+					for _, t := range tokens {
+						tokenMap[t.ID] = t
+					}
+				}
+			}
+
+			// Build token balance list (skip zero balances)
+			pageData.TokenBalances = make([]*models.AddressPageDataTokenBalance, 0, len(balances))
+			for _, b := range balances {
+				if b.TokenID == 0 {
+					continue // Skip native token in token list
+				}
+				if b.Balance == 0 {
+					continue // Skip zero balances
+				}
+				tb := &models.AddressPageDataTokenBalance{
+					TokenID:    b.TokenID,
+					Balance:    b.Balance,
+					BalanceRaw: b.BalanceRaw,
+				}
+				if token, ok := tokenMap[b.TokenID]; ok {
+					tb.Contract = token.Contract
+					tb.Name = token.Name
+					tb.Symbol = token.Symbol
+					tb.Decimals = token.Decimals
+				}
+				pageData.TokenBalances = append(pageData.TokenBalances, tb)
+			}
+			// Update count to reflect actual non-zero tokens displayed
+			pageData.TokenBalanceCount = uint64(len(pageData.TokenBalances))
 		}
 
-		// Build token balance list (skip zero balances)
-		pageData.TokenBalances = make([]*models.AddressPageDataTokenBalance, 0, len(balances))
-		for _, b := range balances {
-			if b.TokenID == 0 {
-				continue // Skip native token in token list
-			}
-			if b.Balance == 0 {
-				continue // Skip zero balances
-			}
-			tb := &models.AddressPageDataTokenBalance{
-				TokenID:    b.TokenID,
-				Balance:    b.Balance,
-				BalanceRaw: b.BalanceRaw,
-			}
-			if token, ok := tokenMap[b.TokenID]; ok {
-				tb.Contract = token.Contract
-				tb.Name = token.Name
-				tb.Symbol = token.Symbol
-				tb.Decimals = token.Decimals
-			}
-			pageData.TokenBalances = append(pageData.TokenBalances, tb)
-		}
-		// Update count to reflect actual non-zero tokens displayed
-		pageData.TokenBalanceCount = uint64(len(pageData.TokenBalances))
-	}
-
-	// Check if address has any internal transactions (for tab visibility)
-	if account.ID > 0 {
-		if _, count, err := db.GetElTransactionsInternalByAccount(account.ID, 0, 1); err == nil && count > 0 {
+		// Check if address has any internal transactions (for tab visibility)
+		if _, count, err := db.GetElTransactionsInternalByAccount(ctx, account.ID, 0, 1); err == nil && count > 0 {
 			pageData.HasInternalTxs = true
 		}
-	}
 
-	// Check if address has any system deposits (for tab visibility)
-	if account.ID > 0 {
-		if _, count, err := db.GetElWithdrawalsByAccountID(account.ID, 0, 1); err == nil && count > 0 {
+		// Check if address has any system deposits (for tab visibility)
+		if _, count, err := db.GetElWithdrawalsByAccountID(ctx, account.ID, 0, 1); err == nil && count > 0 {
 			pageData.HasSystemDeposits = true
 		}
-	}
 
-	offset := (pageIdx - 1) * pageSize
+		offset := (pageIdx - 1) * pageSize
 
-	// Load tab-specific data
-	switch tabView {
-	case "transactions":
-		loadTransactionsTab(pageData, account, chainState, offset, uint32(pageSize), pageIdx)
-	case "erc20":
-		loadERC20TransfersTab(pageData, account, chainState, offset, uint32(pageSize), pageIdx)
-	case "nft":
-		loadNFTTransfersTab(pageData, account, chainState, offset, uint32(pageSize), pageIdx)
-	case "internaltxs":
-		loadInternalTxsTab(pageData, account, chainState, offset, uint32(pageSize), pageIdx)
-	case "system":
-		loadSystemDepositsTab(pageData, account, chainState, offset, uint32(pageSize), pageIdx)
-	default:
-		loadTransactionsTab(pageData, account, chainState, offset, uint32(pageSize), pageIdx)
+		// Load tab-specific data
+		switch tabView {
+		case "transactions":
+			loadTransactionsTab(ctx, pageData, account, chainState, offset, uint32(pageSize), pageIdx)
+		case "erc20":
+			loadERC20TransfersTab(ctx, pageData, account, chainState, offset, uint32(pageSize), pageIdx)
+		case "nft":
+			loadNFTTransfersTab(ctx, pageData, account, chainState, offset, uint32(pageSize), pageIdx)
+		case "internaltxs":
+			loadInternalTxsTab(ctx, pageData, account, chainState, offset, uint32(pageSize), pageIdx)
+		case "system":
+			loadSystemDepositsTab(ctx, pageData, account, chainState, offset, uint32(pageSize), pageIdx)
+		default:
+			loadTransactionsTab(ctx, pageData, account, chainState, offset, uint32(pageSize), pageIdx)
+		}
 	}
 
 	return pageData, 2 * time.Minute
 }
 
-func loadTransactionsTab(pageData *models.AddressPageData, account *dbtypes.ElAccount, chainState *consensus.ChainState, offset uint64, limit uint32, pageIdx uint64) {
+func loadTransactionsTab(ctx context.Context, pageData *models.AddressPageData, account *dbtypes.ElAccount, chainState *consensus.ChainState, offset uint64, limit uint32, pageIdx uint64) {
 	// Get transactions using combined query (sorted by block_uid DESC, tx_index DESC)
-	dbTxs, totalCount, countCapped, _ := db.GetElTransactionsByAccountIDCombined(account.ID, offset, limit)
+	dbTxs, totalCount, countCapped, _ := db.GetElTransactionsByAccountIDCombined(ctx, account.ID, offset, limit)
 
 	pageData.TransactionCount = totalCount
 	pageData.TxCountCapped = countCapped
@@ -419,7 +295,7 @@ func loadTransactionsTab(pageData *models.AddressPageData, account *dbtypes.ElAc
 	}
 	accountMap := make(map[uint64]*dbtypes.ElAccount, len(accountIDList))
 	if len(accountIDList) > 0 {
-		if accounts, err := db.GetElAccountsByIDs(accountIDList); err == nil {
+		if accounts, err := db.GetElAccountsByIDs(ctx, accountIDList); err == nil {
 			for _, a := range accounts {
 				accountMap[a.ID] = a
 			}
@@ -433,7 +309,7 @@ func loadTransactionsTab(pageData *models.AddressPageData, account *dbtypes.ElAc
 			BlockUids:    blockUids,
 			WithOrphaned: 1, // Include both canonical and orphaned
 		}
-		blocks := services.GlobalBeaconService.GetDbBlocksByFilter(filter, 0, uint32(len(blockUids)), 0)
+		blocks := services.GlobalBeaconService.GetDbBlocksByFilter(ctx, filter, 0, uint32(len(blockUids)), 0)
 		for _, b := range blocks {
 			if b.Block != nil {
 				blockMap[b.Block.BlockUid] = b
@@ -517,7 +393,7 @@ func loadTransactionsTab(pageData *models.AddressPageData, account *dbtypes.ElAc
 
 	// Lookup function signatures
 	if len(sigLookupBytes) > 0 {
-		sigLookups := services.GlobalTxSignaturesService.LookupSignatures(sigLookupBytes)
+		sigLookups := services.GlobalTxSignaturesService.LookupSignatures(ctx, sigLookupBytes)
 		for sigBytes, sigLookup := range sigLookups {
 			for _, txData := range sigLookupMap[sigBytes] {
 				if sigLookup.Status == types.TxSigStatusFound {
@@ -530,15 +406,15 @@ func loadTransactionsTab(pageData *models.AddressPageData, account *dbtypes.ElAc
 	}
 }
 
-func loadERC20TransfersTab(pageData *models.AddressPageData, account *dbtypes.ElAccount, chainState *consensus.ChainState, offset uint64, limit uint32, pageIdx uint64) {
-	loadTokenTransfersTab(pageData, account, chainState, offset, limit, pageIdx, tokenTypeERC20, true)
+func loadERC20TransfersTab(ctx context.Context, pageData *models.AddressPageData, account *dbtypes.ElAccount, chainState *consensus.ChainState, offset uint64, limit uint32, pageIdx uint64) {
+	loadTokenTransfersTab(ctx, pageData, account, chainState, offset, limit, pageIdx, tokenTypeERC20, true)
 }
 
-func loadNFTTransfersTab(pageData *models.AddressPageData, account *dbtypes.ElAccount, chainState *consensus.ChainState, offset uint64, limit uint32, pageIdx uint64) {
-	loadTokenTransfersTab(pageData, account, chainState, offset, limit, pageIdx, 0, false) // 0 means ERC721 + ERC1155
+func loadNFTTransfersTab(ctx context.Context, pageData *models.AddressPageData, account *dbtypes.ElAccount, chainState *consensus.ChainState, offset uint64, limit uint32, pageIdx uint64) {
+	loadTokenTransfersTab(ctx, pageData, account, chainState, offset, limit, pageIdx, 0, false) // 0 means ERC721 + ERC1155
 }
 
-func loadTokenTransfersTab(pageData *models.AddressPageData, account *dbtypes.ElAccount, chainState *consensus.ChainState, offset uint64, limit uint32, pageIdx uint64, filterTokenType uint8, isERC20 bool) {
+func loadTokenTransfersTab(ctx context.Context, pageData *models.AddressPageData, account *dbtypes.ElAccount, chainState *consensus.ChainState, offset uint64, limit uint32, pageIdx uint64, filterTokenType uint8, isERC20 bool) {
 	// Build token type filter
 	var tokenTypes []uint8
 	if filterTokenType > 0 {
@@ -549,7 +425,7 @@ func loadTokenTransfersTab(pageData *models.AddressPageData, account *dbtypes.El
 	}
 
 	// Get token transfers using combined query (sorted by block_uid DESC, tx_pos DESC, tx_idx DESC)
-	dbTransfers, totalCount, countCapped, _ := db.GetElTokenTransfersByAccountIDCombined(account.ID, tokenTypes, offset, limit)
+	dbTransfers, totalCount, countCapped, _ := db.GetElTokenTransfersByAccountIDCombined(ctx, account.ID, tokenTypes, offset, limit)
 
 	// Collect IDs for batch lookup
 	accountIDs := make(map[uint64]bool, len(dbTransfers)*2)
@@ -573,7 +449,7 @@ func loadTokenTransfersTab(pageData *models.AddressPageData, account *dbtypes.El
 	}
 	accountMap := make(map[uint64]*dbtypes.ElAccount, len(accountIDList))
 	if len(accountIDList) > 0 {
-		if accounts, err := db.GetElAccountsByIDs(accountIDList); err == nil {
+		if accounts, err := db.GetElAccountsByIDs(ctx, accountIDList); err == nil {
 			for _, a := range accounts {
 				accountMap[a.ID] = a
 			}
@@ -587,7 +463,7 @@ func loadTokenTransfersTab(pageData *models.AddressPageData, account *dbtypes.El
 	}
 	tokenMap := make(map[uint64]*dbtypes.ElToken, len(tokenIDList))
 	if len(tokenIDList) > 0 {
-		if tokens, err := db.GetElTokensByIDs(tokenIDList); err == nil {
+		if tokens, err := db.GetElTokensByIDs(ctx, tokenIDList); err == nil {
 			for _, t := range tokens {
 				tokenMap[t.ID] = t
 			}
@@ -601,7 +477,7 @@ func loadTokenTransfersTab(pageData *models.AddressPageData, account *dbtypes.El
 			BlockUids:    blockUids,
 			WithOrphaned: 1, // Include both canonical and orphaned
 		}
-		blocks := services.GlobalBeaconService.GetDbBlocksByFilter(filter, 0, uint32(len(blockUids)), 0)
+		blocks := services.GlobalBeaconService.GetDbBlocksByFilter(ctx, filter, 0, uint32(len(blockUids)), 0)
 		for _, b := range blocks {
 			if b.Block != nil {
 				blockMap[b.Block.BlockUid] = b
@@ -629,7 +505,7 @@ func loadTokenTransfersTab(pageData *models.AddressPageData, account *dbtypes.El
 	}
 	txInfoMap := make(map[string]*txInfo, len(txHashList))
 	if len(txHashList) > 0 {
-		if txs, err := db.GetElTransactionsByHashes(txHashList); err == nil {
+		if txs, err := db.GetElTransactionsByHashes(ctx, txHashList); err == nil {
 			for _, tx := range txs {
 				txInfoMap[string(tx.TxHash)] = &txInfo{
 					MethodID: tx.MethodID,
@@ -647,7 +523,7 @@ func loadTokenTransfersTab(pageData *models.AddressPageData, account *dbtypes.El
 		}
 	}
 	if len(extraAccountIDs) > 0 {
-		if accounts, err := db.GetElAccountsByIDs(extraAccountIDs); err == nil {
+		if accounts, err := db.GetElAccountsByIDs(ctx, extraAccountIDs); err == nil {
 			for _, a := range accounts {
 				accountMap[a.ID] = a
 			}
@@ -690,7 +566,7 @@ func loadTokenTransfersTab(pageData *models.AddressPageData, account *dbtypes.El
 
 	// Lookup function signatures
 	if len(sigLookupBytes) > 0 {
-		sigLookups := services.GlobalTxSignaturesService.LookupSignatures(sigLookupBytes)
+		sigLookups := services.GlobalTxSignaturesService.LookupSignatures(ctx, sigLookupBytes)
 		for sigBytes, sigLookup := range sigLookups {
 			methodName := "call?"
 			if sigLookup.Status == types.TxSigStatusFound {
@@ -810,9 +686,9 @@ func calculateTxHashRowspans(transfers []*models.AddressPageDataTokenTransfer) {
 	}
 }
 
-func loadInternalTxsTab(pageData *models.AddressPageData, account *dbtypes.ElAccount, chainState *consensus.ChainState, offset uint64, limit uint32, pageIdx uint64) {
+func loadInternalTxsTab(ctx context.Context, pageData *models.AddressPageData, account *dbtypes.ElAccount, chainState *consensus.ChainState, offset uint64, limit uint32, pageIdx uint64) {
 	// Get internal transactions for this account
-	dbEntries, totalCount, _ := db.GetElTransactionsInternalByAccount(account.ID, offset, limit)
+	dbEntries, totalCount, _ := db.GetElTransactionsInternalByAccount(ctx, account.ID, offset, limit)
 
 	pageData.InternalTxCount = totalCount
 	pageData.InternalTxPageIndex = pageIdx
@@ -841,7 +717,7 @@ func loadInternalTxsTab(pageData *models.AddressPageData, account *dbtypes.ElAcc
 	}
 	accountMap := make(map[uint64]*dbtypes.ElAccount, len(accountIDList))
 	if len(accountIDList) > 0 {
-		if accounts, err := db.GetElAccountsByIDs(accountIDList); err == nil {
+		if accounts, err := db.GetElAccountsByIDs(ctx, accountIDList); err == nil {
 			for _, a := range accounts {
 				accountMap[a.ID] = a
 			}
@@ -855,7 +731,7 @@ func loadInternalTxsTab(pageData *models.AddressPageData, account *dbtypes.ElAcc
 			BlockUids:    blockUids,
 			WithOrphaned: 1,
 		}
-		blocks := services.GlobalBeaconService.GetDbBlocksByFilter(filter, 0, uint32(len(blockUids)), 0)
+		blocks := services.GlobalBeaconService.GetDbBlocksByFilter(ctx, filter, 0, uint32(len(blockUids)), 0)
 		for _, b := range blocks {
 			if b.Block != nil {
 				blockMap[b.Block.BlockUid] = b
@@ -950,9 +826,9 @@ func calculateInternalTxHashRowspans(txs []*models.AddressPageDataInternalTransa
 	}
 }
 
-func loadSystemDepositsTab(pageData *models.AddressPageData, account *dbtypes.ElAccount, chainState *consensus.ChainState, offset uint64, limit uint32, pageIdx uint64) {
+func loadSystemDepositsTab(ctx context.Context, pageData *models.AddressPageData, account *dbtypes.ElAccount, chainState *consensus.ChainState, offset uint64, limit uint32, pageIdx uint64) {
 	// Get system deposits (withdrawals and fee recipient rewards)
-	dbDeposits, totalCount, _ := db.GetElWithdrawalsByAccountID(account.ID, offset, limit)
+	dbDeposits, totalCount, _ := db.GetElWithdrawalsByAccountID(ctx, account.ID, offset, limit)
 
 	pageData.SystemDepositCount = totalCount
 	pageData.SystemPageIndex = pageIdx
@@ -978,7 +854,7 @@ func loadSystemDepositsTab(pageData *models.AddressPageData, account *dbtypes.El
 			BlockUids:    blockUids,
 			WithOrphaned: 1, // Include both canonical and orphaned
 		}
-		blocks := services.GlobalBeaconService.GetDbBlocksByFilter(filter, 0, uint32(len(blockUids)), 0)
+		blocks := services.GlobalBeaconService.GetDbBlocksByFilter(ctx, filter, 0, uint32(len(blockUids)), 0)
 		for _, b := range blocks {
 			if b.Block != nil {
 				blockMap[b.Block.BlockUid] = b

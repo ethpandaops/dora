@@ -89,7 +89,7 @@ func getApiValidator(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	relevantValidators, _ := services.GlobalBeaconService.GetFilteredValidatorSet(&dbtypes.ValidatorFilter{
+	relevantValidators, _ := services.GlobalBeaconService.GetFilteredValidatorSet(r.Context(), &dbtypes.ValidatorFilter{
 		Indices: queryIndices,
 	}, true)
 

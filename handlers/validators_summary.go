@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"regexp"
@@ -59,7 +60,7 @@ func getValidatorsSummaryPageData() (*models.ValidatorsSummaryPageData, error) {
 	pageData := &models.ValidatorsSummaryPageData{}
 	pageCacheKey := "validators_summary"
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
-		pageData, cacheTimeout := buildValidatorsSummaryPageData()
+		pageData, cacheTimeout := buildValidatorsSummaryPageData(pageCall.CallCtx)
 		pageCall.CacheTimeout = cacheTimeout
 		return pageData
 	})
@@ -78,7 +79,7 @@ type validatorsSummaryClientBalances struct {
 	offline uint64
 }
 
-func buildValidatorsSummaryPageData() (*models.ValidatorsSummaryPageData, time.Duration) {
+func buildValidatorsSummaryPageData(ctx context.Context) (*models.ValidatorsSummaryPageData, time.Duration) {
 	logrus.Debugf("validators summary page called")
 	pageData := &models.ValidatorsSummaryPageData{}
 
@@ -97,7 +98,7 @@ func buildValidatorsSummaryPageData() (*models.ValidatorsSummaryPageData, time.D
 			v1.ValidatorStateActiveSlashed,
 		},
 	}
-	validators, _ := services.GlobalBeaconService.GetFilteredValidatorSet(&validatorFilter, false)
+	validators, _ := services.GlobalBeaconService.GetFilteredValidatorSet(ctx, &validatorFilter, false)
 
 	if len(validators) == 0 {
 		return pageData, cacheTime

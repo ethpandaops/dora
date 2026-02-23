@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"net/http"
 	"time"
 
@@ -40,7 +41,7 @@ func getBlobsPageData() (*models.BlobsPageData, error) {
 	pageData := &models.BlobsPageData{}
 	pageCacheKey := "blobs"
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) any {
-		pageData, cacheTimeout := buildBlobsPageData()
+		pageData, cacheTimeout := buildBlobsPageData(pageCall.CallCtx)
 		pageCall.CacheTimeout = cacheTimeout
 		return pageData
 	})
@@ -54,7 +55,7 @@ func getBlobsPageData() (*models.BlobsPageData, error) {
 	return pageData, pageErr
 }
 
-func buildBlobsPageData() (*models.BlobsPageData, time.Duration) {
+func buildBlobsPageData(ctx context.Context) (*models.BlobsPageData, time.Duration) {
 	logrus.Debugf("blobs page called")
 
 	chainState := services.GlobalBeaconService.GetChainState()
@@ -86,7 +87,7 @@ func buildBlobsPageData() (*models.BlobsPageData, time.Duration) {
 		},
 	}
 
-	stats, err := db.GetBlobStatistics(uint64(currentSlot))
+	stats, err := db.GetBlobStatistics(ctx, uint64(currentSlot))
 	if err != nil {
 		logrus.WithError(err).Error("error getting blob statistics")
 	} else {
@@ -105,7 +106,7 @@ func buildBlobsPageData() (*models.BlobsPageData, time.Duration) {
 	}
 
 	minBlobCount := uint64(1)
-	blocksData := services.GlobalBeaconService.GetDbBlocksByFilter(&dbtypes.BlockFilter{
+	blocksData := services.GlobalBeaconService.GetDbBlocksByFilter(ctx, &dbtypes.BlockFilter{
 		WithOrphaned: 0,
 		WithMissing:  0,
 		MinBlobCount: &minBlobCount,
