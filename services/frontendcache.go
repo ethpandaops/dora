@@ -61,6 +61,9 @@ func (e FrontendCachePageError) Stack() string {
 	return e.stack
 }
 
+// ErrTooManyPageRequests is returned when the concurrency limit is reached.
+var ErrTooManyPageRequests = fmt.Errorf("too many concurrent page requests")
+
 // StartFrontendCache is used to start the global frontend cache service
 func StartFrontendCache() error {
 	if GlobalFrontendCache != nil {
@@ -167,21 +170,18 @@ func (fc *FrontendCacheService) processPageCall(pageKey string, caching bool, pa
 
 		callGoId = routine.Goid()
 
-		// acquire global concurrency semaphore if configured
+		// acquire global concurrency semaphore if configured (non-blocking)
 		if fc.concurrencySem != nil {
 			select {
 			case fc.concurrencySem <- struct{}{}:
 				defer func() { <-fc.concurrencySem }()
-			case <-callCtx.Done():
-				errorChan <- &FrontendCachePageError{
-					name: "page cancelled",
-					err:  fmt.Errorf("page call %v cancelled while waiting for concurrency slot", callIdx),
-				}
+			default:
+				errorChan <- ErrTooManyPageRequests
 				return
 			}
 		}
 
-		// acquire per-page-type concurrency semaphore if configured
+		// acquire per-page-type concurrency semaphore if configured (non-blocking)
 		if fc.pageTypeSemLimit > 0 {
 			pageType := pageKey
 			if idx := strings.IndexByte(pageKey, ':'); idx >= 0 {
@@ -192,11 +192,8 @@ func (fc *FrontendCacheService) processPageCall(pageKey string, caching bool, pa
 			select {
 			case typeSem <- struct{}{}:
 				defer func() { <-typeSem }()
-			case <-callCtx.Done():
-				errorChan <- &FrontendCachePageError{
-					name: "page cancelled",
-					err:  fmt.Errorf("page call %v cancelled while waiting for page type %q concurrency slot", callIdx, pageType),
-				}
+			default:
+				errorChan <- ErrTooManyPageRequests
 				return
 			}
 		}

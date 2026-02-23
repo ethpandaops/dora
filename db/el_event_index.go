@@ -90,7 +90,7 @@ func GetElEventIndicesBySource(
 	FROM cte
 	UNION ALL SELECT * FROM (
 	SELECT * FROM cte
-	ORDER BY block_uid DESC, tx_hash DESC, event_index ASC
+	ORDER BY block_uid DESC NULLS LAST, tx_hash DESC, event_index ASC
 	LIMIT $%v`, len(args))
 
 	if offset > 0 {
@@ -142,7 +142,7 @@ func GetElEventIndicesByTopic1(
 	FROM cte
 	UNION ALL SELECT * FROM (
 	SELECT * FROM cte
-	ORDER BY block_uid DESC, tx_hash DESC, event_index ASC
+	ORDER BY block_uid DESC NULLS LAST, tx_hash DESC, event_index ASC
 	LIMIT $%v`, len(args))
 
 	if offset > 0 {
@@ -163,6 +163,20 @@ func GetElEventIndicesByTopic1(
 
 	count := entries[0].BlockUid
 	return entries[1:], count, nil
+}
+
+// GetElEventIndexCountByTxHash returns the number of event index entries
+// for a given transaction hash. Uses an index-only scan for fast counting.
+func GetElEventIndexCountByTxHash(ctx context.Context, txHash []byte) (uint64, error) {
+	var count uint64
+	err := ReaderDb.GetContext(ctx, &count,
+		"SELECT COUNT(*) FROM el_event_index WHERE tx_hash = $1",
+		txHash,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
 }
 
 // GetElEventIndicesByTxHash returns all event index entries for a
