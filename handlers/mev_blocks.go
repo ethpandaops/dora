@@ -216,7 +216,7 @@ func buildFilteredMevBlocksPageData(ctx context.Context, pageIdx uint64, pageSiz
 	for _, mevBlock := range dbMevBlocks {
 		block := services.GlobalBeaconService.GetBeaconIndexer().GetBlocksByExecutionBlockHash(phase0.Hash32(mevBlock.BlockHash))
 		if len(block) > 0 {
-			blockIndex := block[0].GetBlockIndex()
+			blockIndex := block[0].GetBlockIndex(ctx)
 			blockBlobCountMap[string(blockIndex.ExecutionHash[:])] = blockIndex.BlobCount
 		} else {
 			blockRoots = append(blockRoots, mevBlock.BlockHash)

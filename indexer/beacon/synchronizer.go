@@ -53,7 +53,7 @@ func newSynchronizer(indexer *Indexer, logger logrus.FieldLogger) *synchronizer 
 
 	// restore sync state
 	syncState := &dbtypes.IndexerSyncState{}
-	if _, err := db.GetExplorerState(context.Background(), "indexer.syncstate", syncState); err == nil {
+	if _, err := db.GetExplorerState(indexer.ctx, "indexer.syncstate", syncState); err == nil {
 		sync.currentEpoch = phase0.Epoch(syncState.Epoch)
 	}
 
@@ -86,7 +86,7 @@ func (s *synchronizer) startSync(startEpoch phase0.Epoch) {
 	}
 	s.running = true
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(s.indexer.ctx)
 	s.syncCtx = ctx
 	s.syncCtxCancel = cancel
 
@@ -337,7 +337,7 @@ func (s *synchronizer) syncEpoch(syncEpoch phase0.Epoch, client *Client, lastTry
 		if chainState.EpochOfSlot(slot) == syncEpoch {
 			canonicalBlocks = append(canonicalBlocks, s.cachedBlocks[slot])
 			canonicalBlockRoots = append(canonicalBlockRoots, s.cachedBlocks[slot].Root[:])
-			if blockIndex := s.cachedBlocks[slot].GetBlockIndex(); blockIndex != nil {
+			if blockIndex := s.cachedBlocks[slot].GetBlockIndex(s.indexer.ctx); blockIndex != nil {
 				canonicalBlockHashes = append(canonicalBlockHashes, blockIndex.ExecutionHash[:])
 			}
 		} else {
@@ -461,7 +461,7 @@ func (s *synchronizer) syncEpoch(syncEpoch phase0.Epoch, client *Client, lastTry
 			wg.Add(1)
 			go func(b *Block) {
 				defer wg.Done()
-				if err := b.writeToBlockDb(); err != nil {
+				if err := b.writeToBlockDb(s.indexer.ctx); err != nil {
 					s.logger.Errorf("error writing block %v to blockdb: %v", b.Root.String(), err)
 				}
 			}(block)

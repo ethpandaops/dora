@@ -2,7 +2,6 @@ package beacon
 
 import (
 	"bytes"
-	"context"
 	"sort"
 	"sync"
 
@@ -98,7 +97,7 @@ func (cache *blockCache) addBlockToExecBlockMap(block *Block) {
 	cache.cacheMutex.Lock()
 	defer cache.cacheMutex.Unlock()
 
-	blockIndex := block.GetBlockIndex()
+	blockIndex := block.GetBlockIndex(cache.indexer.ctx)
 	if blockIndex == nil {
 		return
 	}
@@ -342,7 +341,7 @@ func (cache *blockCache) removeBlock(block *Block) {
 	}
 
 	// remove the block from the execution block map.
-	if blockIndex := block.GetBlockIndex(); blockIndex != nil && !bytes.Equal(blockIndex.ExecutionHash[:], zeroHash[:]) {
+	if blockIndex := block.GetBlockIndex(cache.indexer.ctx); blockIndex != nil && !bytes.Equal(blockIndex.ExecutionHash[:], zeroHash[:]) {
 		execBlocks := cache.execBlockMap[blockIndex.ExecutionHash]
 		if len(execBlocks) == 1 && execBlocks[0] == block {
 			delete(cache.execBlockMap, blockIndex.ExecutionHash)
@@ -432,7 +431,7 @@ func (cache *blockCache) getDependentBlock(chainState *consensus.ChainState, blo
 	if block.dependentRoot != nil {
 		dependentBlock := cache.getBlockByRoot(*block.dependentRoot)
 		if dependentBlock == nil {
-			blockHead := db.GetBlockHeadByRoot(context.Background(), (*block.dependentRoot)[:])
+			blockHead := db.GetBlockHeadByRoot(cache.indexer.ctx, (*block.dependentRoot)[:])
 			if blockHead != nil {
 				dependentBlock = newBlock(cache.indexer.dynSsz, phase0.Root(blockHead.Root), phase0.Slot(blockHead.Slot), blockHead.BlockUid)
 				dependentBlock.isInFinalizedDb = true
@@ -467,7 +466,7 @@ func (cache *blockCache) getDependentBlock(chainState *consensus.ChainState, blo
 
 		parentBlock := cache.getBlockByRoot(*parentRoot)
 		if parentBlock == nil {
-			blockHead := db.GetBlockHeadByRoot(context.Background(), (*parentRoot)[:])
+			blockHead := db.GetBlockHeadByRoot(cache.indexer.ctx, (*parentRoot)[:])
 			if blockHead != nil {
 				parentBlock = newBlock(cache.indexer.dynSsz, phase0.Root(blockHead.Root), phase0.Slot(blockHead.Slot), blockHead.BlockUid)
 				parentBlock.isInFinalizedDb = true

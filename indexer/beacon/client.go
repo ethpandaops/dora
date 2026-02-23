@@ -414,7 +414,7 @@ func (c *Client) processBlock(slot phase0.Slot, root phase0.Root, header *phase0
 		c.indexer.blockCache.addBlockToExecBlockMap(block)
 
 		// Check for cached execution times and add them to the block
-		blockIndex := block.GetBlockIndex()
+		blockIndex := block.GetBlockIndex(c.indexer.ctx)
 		if blockIndex != nil && !bytes.Equal(blockIndex.ExecutionHash[:], zeroHash[:]) {
 			executionHash := common.Hash(blockIndex.ExecutionHash)
 			cachedTimes := c.indexer.executionTimeProvider.GetAndDeleteExecutionTimes(executionHash)
@@ -428,7 +428,7 @@ func (c *Client) processBlock(slot phase0.Slot, root phase0.Root, header *phase0
 					AvgTime:    cachedTime.GetTime(),
 					Count:      1,
 				}
-				block.AddExecutionTime(execTime)
+				block.AddExecutionTime(c.indexer.ctx, execTime)
 			}
 			if len(cachedTimes) > 0 {
 				c.logger.WithFields(map[string]interface{}{
@@ -449,7 +449,7 @@ func (c *Client) processBlock(slot phase0.Slot, root phase0.Root, header *phase0
 
 		// insert into unfinalized blocks
 		var dbBlock *dbtypes.UnfinalizedBlock
-		dbBlock, err = block.buildUnfinalizedBlock(c.indexer.blockCompression)
+		dbBlock, err = block.buildUnfinalizedBlock(c.indexer.ctx, c.indexer.blockCompression)
 		if err != nil {
 			return
 		}

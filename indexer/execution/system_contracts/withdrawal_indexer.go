@@ -1,7 +1,6 @@
 package system_contracts
 
 import (
-	"context"
 	"fmt"
 	"math/big"
 	"time"
@@ -197,7 +196,7 @@ func (wi *WithdrawalIndexer) persistWithdrawalTxs(tx *sqlx.Tx, requests []*dbtyp
 			endIdx = requestCount
 		}
 
-		err := db.InsertWithdrawalRequestTxs(context.Background(), tx, requests[requestIdx:endIdx])
+		err := db.InsertWithdrawalRequestTxs(wi.indexerCtx.Ctx, tx, requests[requestIdx:endIdx])
 		if err != nil {
 			return fmt.Errorf("error while inserting withdrawal txs: %v", err)
 		}
@@ -210,12 +209,12 @@ func (wi *WithdrawalIndexer) persistWithdrawalTxs(tx *sqlx.Tx, requests []*dbtyp
 func (wi *WithdrawalIndexer) matchBlockRange(fromBlock uint64, toBlock uint64) ([]*withdrawalRequestMatch, error) {
 	requestMatches := []*withdrawalRequestMatch{}
 
-	dequeueWithdrawalTxs := db.GetWithdrawalRequestTxsByDequeueRange(context.Background(), fromBlock, toBlock)
+	dequeueWithdrawalTxs := db.GetWithdrawalRequestTxsByDequeueRange(wi.indexerCtx.Ctx, fromBlock, toBlock)
 	if len(dequeueWithdrawalTxs) > 0 {
 		firstBlock := dequeueWithdrawalTxs[0].DequeueBlock
 		lastBlock := dequeueWithdrawalTxs[len(dequeueWithdrawalTxs)-1].DequeueBlock
 
-		for _, withdrawalRequest := range db.GetWithdrawalRequestsByElBlockRange(context.Background(), firstBlock, lastBlock) {
+		for _, withdrawalRequest := range db.GetWithdrawalRequestsByElBlockRange(wi.indexerCtx.Ctx, firstBlock, lastBlock) {
 			if len(withdrawalRequest.TxHash) > 0 {
 				continue
 			}
@@ -269,7 +268,7 @@ func (wi *WithdrawalIndexer) matchBlockRange(fromBlock uint64, toBlock uint64) (
 // persistMatches is the callback for the transaction matcher to persist matches to the database
 func (wi *WithdrawalIndexer) persistMatches(tx *sqlx.Tx, matches []*withdrawalRequestMatch) error {
 	for _, match := range matches {
-		err := db.UpdateWithdrawalRequestTxHash(context.Background(), tx, match.slotRoot, match.slotIndex, match.txHash)
+		err := db.UpdateWithdrawalRequestTxHash(wi.indexerCtx.Ctx, tx, match.slotRoot, match.slotIndex, match.txHash)
 		if err != nil {
 			return err
 		}

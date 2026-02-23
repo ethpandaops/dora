@@ -371,7 +371,7 @@ func buildSearchAheadResult(ctx context.Context, searchType, search string) (*se
 				res := make([]*models.SearchAheadExecBlocksResult, len(cachedBlocks))
 				for idx, cachedBlock := range cachedBlocks {
 					header := cachedBlock.GetHeader()
-					index := cachedBlock.GetBlockIndex()
+					index := cachedBlock.GetBlockIndex(ctx)
 					res[idx] = &models.SearchAheadExecBlocksResult{
 						Slot:       fmt.Sprintf("%v", uint64(header.Message.Slot)),
 						Root:       phase0.Root(cachedBlock.Root),
@@ -410,7 +410,7 @@ func buildSearchAheadResult(ctx context.Context, searchType, search string) (*se
 				res := make([]*models.SearchAheadExecBlocksResult, 0)
 				for _, cachedBlock := range cachedBlocks {
 					header := cachedBlock.GetHeader()
-					index := cachedBlock.GetBlockIndex()
+					index := cachedBlock.GetBlockIndex(ctx)
 					res = append(res, &models.SearchAheadExecBlocksResult{
 						Slot:       fmt.Sprintf("%v", uint64(header.Message.Slot)),
 						Root:       phase0.Root(cachedBlock.Root),

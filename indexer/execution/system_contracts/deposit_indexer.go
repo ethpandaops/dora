@@ -2,7 +2,6 @@ package system_contracts
 
 import (
 	"bytes"
-	"context"
 	"encoding/binary"
 	"fmt"
 	"log"
@@ -180,7 +179,7 @@ func (ci *DepositIndexer) persistDepositTxs(tx *sqlx.Tx, requests []*dbtypes.Dep
 			endIdx = requestCount
 		}
 
-		err := db.InsertDepositTxs(context.Background(), tx, requests[requestIdx:endIdx])
+		err := db.InsertDepositTxs(ci.indexerCtx.Ctx, tx, requests[requestIdx:endIdx])
 		if err != nil {
 			return fmt.Errorf("error while inserting deposit txs: %v", err)
 		}
@@ -218,7 +217,7 @@ func (ds *DepositIndexer) checkDepositValidity(depositTx *dbtypes.DepositTx, par
 			parentForkIdsUint[i] = uint64(forkId)
 		}
 
-		dbDepositTxs, _, err := db.GetDepositTxsFiltered(context.Background(), 0, 1, parentForkIdsUint, &dbtypes.DepositTxFilter{
+		dbDepositTxs, _, err := db.GetDepositTxsFiltered(ds.indexerCtx.Ctx, 0, 1, parentForkIdsUint, &dbtypes.DepositTxFilter{
 			PublicKey:    depositTx.PublicKey,
 			WithValid:    0,
 			WithOrphaned: 0,

@@ -30,6 +30,7 @@ import (
 var logger_vn = logrus.StandardLogger().WithField("module", "validator_names")
 
 type ValidatorNames struct {
+	ctx                   context.Context
 	beaconIndexer         *beacon.Indexer
 	chainState            *consensus.ChainState
 	loadingMutex          sync.Mutex
@@ -49,8 +50,9 @@ type validatorNameEntry struct {
 	name string
 }
 
-func NewValidatorNames(beaconIndexer *beacon.Indexer, chainState *consensus.ChainState) *ValidatorNames {
+func NewValidatorNames(ctx context.Context, beaconIndexer *beacon.Indexer, chainState *consensus.ChainState) *ValidatorNames {
 	validatorNames := &ValidatorNames{
+		ctx:           ctx,
 		beaconIndexer: beaconIndexer,
 		chainState:    chainState,
 	}
@@ -108,7 +110,7 @@ func (vn *ValidatorNames) runUpdater() error {
 	}
 
 	if needUpdate {
-		err := vn.UpdateDb(context.Background())
+		err := vn.UpdateDb(vn.ctx)
 		if err != nil {
 			return err
 		}
@@ -157,7 +159,7 @@ func (vn *ValidatorNames) resolveNames() (bool, error) {
 			continue
 		}
 
-		validators, _ := GlobalBeaconService.GetFilteredValidatorSet(context.Background(), &dbtypes.ValidatorFilter{
+		validators, _ := GlobalBeaconService.GetFilteredValidatorSet(vn.ctx, &dbtypes.ValidatorFilter{
 			WithdrawalAddress: wdAddr[:],
 		}, false)
 		for _, validator := range validators {
@@ -171,7 +173,7 @@ func (vn *ValidatorNames) resolveNames() (bool, error) {
 		pageSize := uint64(5000)
 
 		for {
-			deposits, depositCount, _ := db.GetDepositTxsFiltered(context.Background(), offset, uint32(pageSize), canonicalForkIds, &dbtypes.DepositTxFilter{
+			deposits, depositCount, _ := db.GetDepositTxsFiltered(vn.ctx, offset, uint32(pageSize), canonicalForkIds, &dbtypes.DepositTxFilter{
 				Address: address[:],
 			})
 			for _, deposit := range deposits {
@@ -194,7 +196,7 @@ func (vn *ValidatorNames) resolveNames() (bool, error) {
 		pageSize := uint64(5000)
 
 		for {
-			deposits, depositCount, _ := db.GetDepositTxsFiltered(context.Background(), offset, uint32(pageSize), canonicalForkIds, &dbtypes.DepositTxFilter{
+			deposits, depositCount, _ := db.GetDepositTxsFiltered(vn.ctx, offset, uint32(pageSize), canonicalForkIds, &dbtypes.DepositTxFilter{
 				TargetAddress: address[:],
 			})
 			for _, deposit := range deposits {

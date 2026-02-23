@@ -179,7 +179,7 @@ func (t *TxIndexer) Start() error {
 	}
 
 	t.running = true
-	t.ctx, t.ctxCancel = context.WithCancel(context.Background())
+	t.ctx, t.ctxCancel = context.WithCancel(t.indexerCtx.Ctx)
 
 	// Load sync state from database
 	t.loadSyncState()
@@ -226,7 +226,7 @@ func (t *TxIndexer) Stop() error {
 // loadSyncState loads the sync state from the database.
 func (t *TxIndexer) loadSyncState() {
 	state := syncState{}
-	_, err := db.GetExplorerState(context.Background(), syncStateKey, &state)
+	_, err := db.GetExplorerState(t.ctx, syncStateKey, &state)
 	if err != nil {
 		t.logger.WithError(err).Debug("no existing sync state found, starting from epoch 0")
 		t.syncEpoch = 0
@@ -244,7 +244,7 @@ func (t *TxIndexer) saveSyncState(epoch phase0.Epoch) {
 	}
 
 	err := db.RunDBTransaction(func(tx *sqlx.Tx) error {
-		return db.SetExplorerState(context.Background(), tx, syncStateKey, &state)
+		return db.SetExplorerState(t.ctx, tx, syncStateKey, &state)
 	})
 	if err != nil {
 		t.logger.WithError(err).Error("failed to save sync state")
@@ -254,7 +254,7 @@ func (t *TxIndexer) saveSyncState(epoch phase0.Epoch) {
 // loadCleanupState loads the cleanup state from the database.
 func (t *TxIndexer) loadCleanupState() {
 	state := cleanupState{}
-	_, err := db.GetExplorerState(context.Background(), cleanupStateKey, &state)
+	_, err := db.GetExplorerState(t.ctx, cleanupStateKey, &state)
 	if err != nil {
 		t.logger.WithError(err).Debug("no existing cleanup state found, starting fresh")
 		t.lastCleanup = time.Time{} // Zero time means never cleaned up
@@ -272,7 +272,7 @@ func (t *TxIndexer) saveCleanupState() {
 	}
 
 	err := db.RunDBTransaction(func(tx *sqlx.Tx) error {
-		return db.SetExplorerState(context.Background(), tx, cleanupStateKey, &state)
+		return db.SetExplorerState(t.ctx, tx, cleanupStateKey, &state)
 	})
 	if err != nil {
 		t.logger.WithError(err).Error("failed to save cleanup state")
@@ -320,7 +320,7 @@ func (t *TxIndexer) runQueueFiller() {
 
 // enqueueBeaconBlock converts a beacon.Block to BlockRef and enqueues it.
 func (t *TxIndexer) enqueueBeaconBlock(block *beacon.Block, highPriority bool) {
-	blockIndex := block.GetBlockIndex()
+	blockIndex := block.GetBlockIndex(t.ctx)
 	if blockIndex == nil {
 		return
 	}

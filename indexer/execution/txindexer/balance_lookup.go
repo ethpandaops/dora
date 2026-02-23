@@ -1,7 +1,6 @@
 package txindexer
 
 import (
-	"context"
 	"sync"
 	"time"
 
@@ -150,7 +149,7 @@ func (s *BalanceLookupService) QueueAddressBalanceLookups(accountID uint64, addr
 
 	// For known accounts, also queue token balance lookups
 	if accountID > 0 {
-		balances, _, err := db.GetElBalancesByAccountID(context.Background(), accountID, 0, 100)
+		balances, _, err := db.GetElBalancesByAccountID(s.indexer.ctx, accountID, 0, 100)
 		if err != nil {
 			s.logger.WithError(err).Debug("failed to get balances for address page lookups")
 			return
@@ -161,7 +160,7 @@ func (s *BalanceLookupService) QueueAddressBalanceLookups(accountID uint64, addr
 				continue
 			}
 
-			token, err := db.GetElTokenByID(context.Background(), balance.TokenID)
+			token, err := db.GetElTokenByID(s.indexer.ctx, balance.TokenID)
 			if err != nil || token == nil {
 				continue
 			}
