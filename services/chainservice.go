@@ -33,6 +33,7 @@ import (
 )
 
 type ChainService struct {
+	ctx                  context.Context
 	logger               logrus.FieldLogger
 	consensusPool        *consensus.Pool
 	executionPool        *execution.Pool
@@ -58,16 +59,17 @@ func InitChainService(ctx context.Context, logger logrus.FieldLogger) {
 	// initialize client pools & indexers
 	consensusPool := consensus.NewPool(ctx, logger.WithField("service", "cl-pool"))
 	executionPool := execution.NewPool(ctx, logger.WithField("service", "el-pool"))
-	beaconIndexer := beacon.NewIndexer(logger.WithField("service", "cl-indexer"), consensusPool)
+	beaconIndexer := beacon.NewIndexer(ctx, logger.WithField("service", "cl-indexer"), consensusPool)
 	chainState := consensusPool.GetChainState()
-	validatorNames := NewValidatorNames(beaconIndexer, chainState)
-	mevRelayIndexer := mevrelay.NewMevIndexer(logger.WithField("service", "mev-relay"), beaconIndexer, chainState)
-	snooperManager := snooper.NewSnooperManager(logger.WithField("service", "snooper-manager"), beaconIndexer)
+	validatorNames := NewValidatorNames(ctx, beaconIndexer, chainState)
+	mevRelayIndexer := mevrelay.NewMevIndexer(ctx, logger.WithField("service", "mev-relay"), beaconIndexer, chainState)
+	snooperManager := snooper.NewSnooperManager(ctx, logger.WithField("service", "snooper-manager"), beaconIndexer)
 
 	// Set execution time provider
 	beaconIndexer.SetExecutionTimeProvider(snooper.NewExecutionTimeProvider(snooperManager.GetCache()))
 
 	GlobalBeaconService = &ChainService{
+		ctx:             ctx,
 		logger:          logger,
 		consensusPool:   consensusPool,
 		executionPool:   executionPool,
@@ -156,7 +158,7 @@ func (cs *ChainService) StartService() error {
 	}
 	cs.started = true
 
-	executionIndexerCtx := execindexer.NewIndexerCtx(cs.logger.WithField("service", "el-indexer"), cs.executionPool, cs.consensusPool, cs.beaconIndexer)
+	executionIndexerCtx := execindexer.NewIndexerCtx(cs.ctx, cs.logger.WithField("service", "el-indexer"), cs.executionPool, cs.consensusPool, cs.beaconIndexer)
 
 	// load genesis config if configured
 	if utils.Config.ExecutionApi.GenesisConfig != "" {
@@ -280,7 +282,7 @@ func (cs *ChainService) StartService() error {
 			syncState := &dbtypes.IndexerSyncState{
 				Epoch: *utils.Config.Indexer.ResyncFromEpoch,
 			}
-			return db.SetExplorerState("indexer.syncstate", syncState, tx)
+			return db.SetExplorerState(cs.ctx, tx, "indexer.syncstate", syncState)
 		})
 		if err != nil {
 			return fmt.Errorf("failed resetting sync state: %v", err)
@@ -318,7 +320,7 @@ func (cs *ChainService) StartService() error {
 	<-validatorNamesLoading
 
 	go func() {
-		cs.validatorNames.UpdateDb()
+		cs.validatorNames.UpdateDb(cs.ctx)
 		cs.validatorNames.StartUpdater()
 	}()
 

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -94,8 +95,8 @@ func InitiatedDeposits(w http.ResponseWriter, r *http.Request) {
 func getFilteredInitiatedDepositsPageData(pageIdx uint64, pageSize uint64, address string, publickey string, vname string, minAmount uint64, maxAmount uint64, withOrphaned uint8, withValid uint8) (*models.InitiatedDepositsPageData, error) {
 	pageData := &models.InitiatedDepositsPageData{}
 	pageCacheKey := fmt.Sprintf("initiated_deposits:%v:%v:%v:%v:%v:%v:%v:%v:%v", pageIdx, pageSize, address, publickey, vname, minAmount, maxAmount, withOrphaned, withValid)
-	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(_ *services.FrontendCacheProcessingPage) interface{} {
-		return buildFilteredInitiatedDepositsPageData(pageIdx, pageSize, address, publickey, vname, minAmount, maxAmount, withOrphaned, withValid)
+	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
+		return buildFilteredInitiatedDepositsPageData(pageCall.CallCtx, pageIdx, pageSize, address, publickey, vname, minAmount, maxAmount, withOrphaned, withValid)
 	})
 	if pageErr == nil && pageRes != nil {
 		resData, resOk := pageRes.(*models.InitiatedDepositsPageData)
@@ -107,7 +108,7 @@ func getFilteredInitiatedDepositsPageData(pageIdx uint64, pageSize uint64, addre
 	return pageData, pageErr
 }
 
-func buildFilteredInitiatedDepositsPageData(pageIdx uint64, pageSize uint64, address string, publickey string, vname string, minAmount uint64, maxAmount uint64, withOrphaned uint8, withValid uint8) *models.InitiatedDepositsPageData {
+func buildFilteredInitiatedDepositsPageData(ctx context.Context, pageIdx uint64, pageSize uint64, address string, publickey string, vname string, minAmount uint64, maxAmount uint64, withOrphaned uint8, withValid uint8) *models.InitiatedDepositsPageData {
 	filterArgs := url.Values{}
 	if address != "" {
 		filterArgs.Add("f.address", address)
@@ -169,7 +170,7 @@ func buildFilteredInitiatedDepositsPageData(pageIdx uint64, pageSize uint64, add
 	offset := (pageIdx - 1) * pageSize
 	canonicalForkIds := services.GlobalBeaconService.GetCanonicalForkIds()
 
-	dbDepositTxs, totalRows, err := db.GetDepositTxsFiltered(offset, uint32(pageSize), canonicalForkIds, depositFilter)
+	dbDepositTxs, totalRows, err := db.GetDepositTxsFiltered(ctx, offset, uint32(pageSize), canonicalForkIds, depositFilter)
 	if err != nil {
 		panic(err)
 	}

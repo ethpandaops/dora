@@ -93,7 +93,7 @@ func (indexer *Indexer) aggregateEpochVotesAndActivity(epoch phase0.Epoch, chain
 	votesWithPrecalc := false
 	votesWithValues := false
 	if epochStats != nil {
-		epochStatsValues = epochStats.GetOrLoadValues(indexer, true, false)
+		epochStatsValues = epochStats.GetOrLoadValues(indexer.ctx, indexer, true, false)
 		votesWithPrecalc = epochStats.precalcValues != nil
 		votesWithValues = epochStats.ready
 	}
@@ -112,7 +112,7 @@ func (indexer *Indexer) aggregateEpochVotesAndActivity(epoch phase0.Epoch, chain
 	deduplicationMap := map[voteDeduplicationKey]bool{}
 
 	for _, block := range blocks {
-		blockBody := block.GetBlock()
+		blockBody := block.GetBlock(indexer.ctx)
 		if blockBody == nil {
 			continue
 		}

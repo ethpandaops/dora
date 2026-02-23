@@ -382,7 +382,7 @@ func (c *Client) processBlock(slot phase0.Slot, root phase0.Root, header *phase0
 		// don't add to cache, process this block right after loading the details
 		block = newBlock(c.indexer.dynSsz, root, slot, 0)
 
-		dbBlockHead := db.GetBlockHeadByRoot(root[:])
+		dbBlockHead := db.GetBlockHeadByRoot(c.getContext(), root[:])
 		if dbBlockHead != nil {
 			block.isInFinalizedDb = true
 			block.parentRoot = (*phase0.Root)(dbBlockHead.ParentRoot)
@@ -452,7 +452,7 @@ func (c *Client) processBlock(slot phase0.Slot, root phase0.Root, header *phase0
 		c.indexer.blockCache.addBlockToExecBlockMap(block)
 
 		// Check for cached execution times and add them to the block
-		blockIndex := block.GetBlockIndex()
+		blockIndex := block.GetBlockIndex(c.indexer.ctx)
 		if blockIndex != nil && !bytes.Equal(blockIndex.ExecutionHash[:], zeroHash[:]) {
 			executionHash := common.Hash(blockIndex.ExecutionHash)
 			cachedTimes := c.indexer.executionTimeProvider.GetAndDeleteExecutionTimes(executionHash)
@@ -466,7 +466,7 @@ func (c *Client) processBlock(slot phase0.Slot, root phase0.Root, header *phase0
 					AvgTime:    cachedTime.GetTime(),
 					Count:      1,
 				}
-				block.AddExecutionTime(execTime)
+				block.AddExecutionTime(c.indexer.ctx, execTime)
 			}
 			if len(cachedTimes) > 0 {
 				c.logger.WithFields(map[string]interface{}{
@@ -487,7 +487,7 @@ func (c *Client) processBlock(slot phase0.Slot, root phase0.Root, header *phase0
 
 		// insert into unfinalized blocks
 		var dbBlock *dbtypes.UnfinalizedBlock
-		dbBlock, err = block.buildUnfinalizedBlock(c.indexer.blockCompression)
+		dbBlock, err = block.buildUnfinalizedBlock(c.indexer.ctx, c.indexer.blockCompression)
 		if err != nil {
 			return
 		}
@@ -497,7 +497,7 @@ func (c *Client) processBlock(slot phase0.Slot, root phase0.Root, header *phase0
 
 		// write to db
 		err = db.RunDBTransaction(func(tx *sqlx.Tx) error {
-			err := db.InsertUnfinalizedBlock(dbBlock, tx)
+			err := db.InsertUnfinalizedBlock(c.getContext(), tx, dbBlock)
 			if err != nil {
 				return err
 			}
@@ -617,7 +617,7 @@ func (c *Client) processExecutionPayloadAvailableEvent(executionPayloadEvent *v1
 		// don't add to cache, process this block right after loading the details
 		block = newBlock(c.indexer.dynSsz, executionPayloadEvent.BlockRoot, executionPayloadEvent.Slot, 0)
 
-		dbBlockHead := db.GetBlockHeadByRoot(executionPayloadEvent.BlockRoot[:])
+		dbBlockHead := db.GetBlockHeadByRoot(c.getContext(), executionPayloadEvent.BlockRoot[:])
 		if dbBlockHead != nil {
 			block.isInFinalizedDb = true
 			block.parentRoot = (*phase0.Root)(dbBlockHead.ParentRoot)
@@ -657,7 +657,7 @@ func (c *Client) persistExecutionPayload(block *Block) error {
 	}
 
 	return db.RunDBTransaction(func(tx *sqlx.Tx) error {
-		err := db.UpdateUnfinalizedBlockPayload(block.Root[:], payloadVer, payloadSSZ, tx)
+		err := db.UpdateUnfinalizedBlockPayload(c.getContext(), tx, block.Root[:], payloadVer, payloadSSZ)
 		if err != nil {
 			return err
 		}

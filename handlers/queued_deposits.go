@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -89,8 +90,8 @@ func getQueuedDepositsPageData(pageIdx uint64, pageSize uint64, minIndex uint64,
 		FilterMaxAmount: maxAmount,
 	}
 	pageCacheKey := fmt.Sprintf("queued_deposits:%v:%v:%v:%v:%v:%v:%v", pageIdx, pageSize, minIndex, maxIndex, publickey, minAmount, maxAmount)
-	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(_ *services.FrontendCacheProcessingPage) interface{} {
-		return buildQueuedDepositsPageData(pageIdx, pageSize, minIndex, maxIndex, publickey, minAmount, maxAmount)
+	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
+		return buildQueuedDepositsPageData(pageCall.CallCtx, pageIdx, pageSize, minIndex, maxIndex, publickey, minAmount, maxAmount)
 	})
 	if pageErr == nil && pageRes != nil {
 		resData, resOk := pageRes.(*models.QueuedDepositsPageData)
@@ -102,7 +103,7 @@ func getQueuedDepositsPageData(pageIdx uint64, pageSize uint64, minIndex uint64,
 	return pageData, pageErr
 }
 
-func buildQueuedDepositsPageData(pageIdx uint64, pageSize uint64, minIndex uint64, maxIndex uint64, publickey string, minAmount uint64, maxAmount uint64) *models.QueuedDepositsPageData {
+func buildQueuedDepositsPageData(ctx context.Context, pageIdx uint64, pageSize uint64, minIndex uint64, maxIndex uint64, publickey string, minAmount uint64, maxAmount uint64) *models.QueuedDepositsPageData {
 	chainState := services.GlobalBeaconService.GetChainState()
 	specs := chainState.GetSpecs()
 	pageData := &models.QueuedDepositsPageData{
@@ -127,7 +128,7 @@ func buildQueuedDepositsPageData(pageIdx uint64, pageSize uint64, minIndex uint6
 		pageData.PrevPageIndex = pageIdx - 1
 	}
 
-	filteredQueue := services.GlobalBeaconService.GetFilteredQueuedDeposits(&services.QueuedDepositFilter{
+	filteredQueue := services.GlobalBeaconService.GetFilteredQueuedDeposits(ctx, &services.QueuedDepositFilter{
 		MinIndex:  minIndex,
 		MaxIndex:  maxIndex,
 		PublicKey: common.FromHex(publickey),
@@ -195,7 +196,7 @@ func buildQueuedDepositsPageData(pageIdx uint64, pageSize uint64, minIndex uint6
 	}
 
 	txDetailsMap := map[uint64]*dbtypes.DepositTx{}
-	for _, txDetail := range db.GetDepositTxsByIndexes(depositIndexes) {
+	for _, txDetail := range db.GetDepositTxsByIndexes(ctx, depositIndexes) {
 		txDetailsMap[txDetail.Index] = txDetail
 	}
 

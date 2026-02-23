@@ -49,7 +49,7 @@ func ApiValidatorDepositsV1(w http.ResponseWriter, r *http.Request) {
 		param = vars["indexOrPubkey"]
 	}
 
-	pubkeys, err := parseValidatorParamsToPubkeys(param, 100)
+	pubkeys, err := parseValidatorParamsToPubkeys(r.Context(), param, 100)
 	if err != nil {
 		sendBadRequestResponse(w, r.URL.String(), err.Error())
 		return
@@ -57,7 +57,7 @@ func ApiValidatorDepositsV1(w http.ResponseWriter, r *http.Request) {
 
 	canonicalForkIds := services.GlobalBeaconService.GetCanonicalForkIds()
 
-	deposits, _, err := db.GetDepositTxsFiltered(0, 1000, canonicalForkIds, &dbtypes.DepositTxFilter{
+	deposits, _, err := db.GetDepositTxsFiltered(r.Context(), 0, 1000, canonicalForkIds, &dbtypes.DepositTxFilter{
 		PublicKeys:   pubkeys,
 		WithOrphaned: 0,
 	})

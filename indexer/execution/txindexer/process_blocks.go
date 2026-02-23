@@ -222,7 +222,7 @@ func (t *TxIndexer) processElBlock(ref *BlockRef) (*blockStats, error) {
 
 		// Batch update account nonces at the end of block processing
 		if len(accountNonceUpdates) > 0 {
-			if err := db.UpdateElAccountsLastNonce(accountNonceUpdates, tx); err != nil {
+			if err := db.UpdateElAccountsLastNonce(ctx, tx, accountNonceUpdates); err != nil {
 				return err
 			}
 		}
@@ -235,7 +235,7 @@ func (t *TxIndexer) processElBlock(ref *BlockRef) (*blockStats, error) {
 
 		// Insert balance updates
 		if len(balanceUpdates) > 0 {
-			if err := db.InsertElBalances(balanceUpdates, tx); err != nil {
+			if err := db.InsertElBalances(ctx, tx, balanceUpdates); err != nil {
 				t.logger.WithError(err).Warn("failed to insert balance updates")
 			}
 		}
@@ -278,19 +278,19 @@ func (t *TxIndexer) processElBlock(ref *BlockRef) (*blockStats, error) {
 			}
 
 			if len(systemWithdrawals) > 0 {
-				if err := db.InsertElWithdrawals(systemWithdrawals, tx); err != nil {
+				if err := db.InsertElWithdrawals(ctx, tx, systemWithdrawals); err != nil {
 					return fmt.Errorf("failed to insert system deposits: %w", err)
 				}
 			}
 		}
 
-		return db.InsertElBlock(&dbtypes.ElBlock{
+		return db.InsertElBlock(ctx, tx, &dbtypes.ElBlock{
 			BlockUid:     ref.BlockUID,
 			Status:       0x01,
 			Events:       data.Stats.events,
 			Transactions: data.Stats.transactions,
 			Transfers:    data.Stats.transfers,
-		}, tx)
+		})
 	})
 
 	if err != nil {
@@ -315,7 +315,7 @@ func (t *TxIndexer) processElBlock(ref *BlockRef) (*blockStats, error) {
 			} else {
 				// Update el_block with data_status and data_size
 				updateErr := db.RunDBTransaction(func(tx *sqlx.Tx) error {
-					return db.UpdateElBlockDataStatus(ref.BlockUID, dataStatus, dataSize, tx)
+					return db.UpdateElBlockDataStatus(ctx, tx, ref.BlockUID, dataStatus, dataSize)
 				})
 				if updateErr != nil {
 					t.logger.WithError(updateErr).Warn("failed to update block data status")

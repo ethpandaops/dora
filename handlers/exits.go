@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"net/http"
@@ -67,7 +68,7 @@ func getExitsPageData(firstEpoch uint64, pageSize uint64, tabView string) (*mode
 	pageData := &models.ExitsPageData{}
 	pageCacheKey := fmt.Sprintf("exits:%v:%v:%v", firstEpoch, pageSize, tabView)
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
-		pageData, cacheTimeout := buildExitsPageData(firstEpoch, pageSize, tabView)
+		pageData, cacheTimeout := buildExitsPageData(pageCall.CallCtx, firstEpoch, pageSize, tabView)
 		pageCall.CacheTimeout = cacheTimeout
 		return pageData
 	})
@@ -81,7 +82,7 @@ func getExitsPageData(firstEpoch uint64, pageSize uint64, tabView string) (*mode
 	return pageData, pageErr
 }
 
-func buildExitsPageData(firstEpoch uint64, pageSize uint64, tabView string) (*models.ExitsPageData, time.Duration) {
+func buildExitsPageData(ctx context.Context, firstEpoch uint64, pageSize uint64, tabView string) (*models.ExitsPageData, time.Duration) {
 	logrus.Debugf("exits page called: %v:%v:%v", firstEpoch, pageSize, tabView)
 	chainState := services.GlobalBeaconService.GetChainState()
 
@@ -93,7 +94,7 @@ func buildExitsPageData(firstEpoch uint64, pageSize uint64, tabView string) (*mo
 	voluntaryExitFilter := &dbtypes.VoluntaryExitFilter{
 		WithOrphaned: 0, // Only canonical exits
 	}
-	_, totalExits := services.GlobalBeaconService.GetVoluntaryExitsByFilter(voluntaryExitFilter, 0, 1)
+	_, totalExits := services.GlobalBeaconService.GetVoluntaryExitsByFilter(ctx, voluntaryExitFilter, 0, 1)
 	pageData.TotalVoluntaryExitCount = totalExits
 
 	// Get total exit count from requested exits
@@ -104,7 +105,7 @@ func buildExitsPageData(firstEpoch uint64, pageSize uint64, tabView string) (*mo
 			WithOrphaned: 0,
 		},
 	}
-	_, _, totalRequestedExits := services.GlobalBeaconService.GetWithdrawalRequestsByFilter(requestedExitFilter, 0, 1)
+	_, _, totalRequestedExits := services.GlobalBeaconService.GetWithdrawalRequestsByFilter(ctx, requestedExitFilter, 0, 1)
 	pageData.TotalRequestedExitCount = totalRequestedExits
 
 	// Get exiting validators (excluding consolidating validators)
@@ -114,7 +115,7 @@ func buildExitsPageData(firstEpoch uint64, pageSize uint64, tabView string) (*mo
 		},
 	}
 
-	exitingValidators, _ := services.GlobalBeaconService.GetFilteredValidatorSet(validatorFilter, false)
+	exitingValidators, _ := services.GlobalBeaconService.GetFilteredValidatorSet(ctx, validatorFilter, false)
 
 	// Filter out consolidating validators and calculate stats
 	nonConsolidatingValidators := make([]*v1.Validator, 0)
@@ -156,7 +157,7 @@ func buildExitsPageData(firstEpoch uint64, pageSize uint64, tabView string) (*mo
 	switch tabView {
 	case "recent":
 		// Load recent exits (canonical only)
-		dbVoluntaryExits, _ := services.GlobalBeaconService.GetVoluntaryExitsByFilter(voluntaryExitFilter, 0, uint32(20))
+		dbVoluntaryExits, _ := services.GlobalBeaconService.GetVoluntaryExitsByFilter(ctx, voluntaryExitFilter, 0, uint32(20))
 		for _, voluntaryExit := range dbVoluntaryExits {
 			exitData := &models.ExitsPageDataRecentExit{
 				SlotNumber: voluntaryExit.SlotNumber,

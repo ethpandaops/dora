@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"context"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -118,6 +120,8 @@ func handleSubmitDepositPageDataAjax(w http.ResponseWriter, r *http.Request) err
 	query := r.URL.Query()
 	var pageData interface{}
 
+	ctx := r.Context()
+
 	switch query.Get("ajax") {
 	case "load_deposits":
 		if r.Method != http.MethodPost {
@@ -136,77 +140,47 @@ func handleSubmitDepositPageDataAjax(w http.ResponseWriter, r *http.Request) err
 			if len(pubkey) != 48 {
 				return fmt.Errorf("invalid pubkey length (%d) for pubkey %v", len(pubkey), i)
 			}
-
 			pubkeys = append(pubkeys, pubkey)
 		}
 
-		canonicalForkIds := services.GlobalBeaconService.GetCanonicalForkIds()
-
-		deposits, depositCount, err := db.GetDepositTxsFiltered(0, 1000, canonicalForkIds, &dbtypes.DepositTxFilter{
-			PublicKeys:   pubkeys,
-			WithOrphaned: 0,
+		h := sha256.Sum256([]byte(fmt.Sprintf("%v", hexPubkeys)))
+		pageCacheKey := fmt.Sprintf("submit_deposit:load_deposits:%x", h[:16])
+		var cached models.SubmitDepositPageDataDeposits
+		pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, &cached, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
+			result, buildErr := buildSubmitDepositLoadDeposits(pageCall.CallCtx, pubkeys)
+			if buildErr != nil {
+				pageCall.CacheTimeout = -1
+				return nil
+			}
+			pageCall.CacheTimeout = 1 * time.Minute
+			return result
 		})
-		if err != nil {
-			return fmt.Errorf("failed to get deposits: %v", err)
+		if pageErr != nil {
+			return pageErr
 		}
-
-		result := models.SubmitDepositPageDataDeposits{
-			Deposits: make([]models.SubmitDepositPageDataDeposit, 0, len(deposits)),
-			Count:    depositCount,
-			HaveMore: depositCount > 1000,
+		if pageRes == nil {
+			result, buildErr := buildSubmitDepositLoadDeposits(ctx, pubkeys)
+			if buildErr != nil {
+				return buildErr
+			}
+			pageData = result
+		} else {
+			pageData = pageRes
 		}
-
-		for _, deposit := range deposits {
-			result.Deposits = append(result.Deposits, models.SubmitDepositPageDataDeposit{
-				Pubkey:      fmt.Sprintf("0x%x", deposit.PublicKey),
-				Amount:      deposit.Amount,
-				BlockNumber: deposit.BlockNumber,
-				BlockHash:   fmt.Sprintf("0x%x", deposit.BlockRoot),
-				BlockTime:   deposit.BlockTime,
-				TxOrigin:    common.BytesToAddress(deposit.TxSender).String(),
-				TxTarget:    common.BytesToAddress(deposit.TxTarget).String(),
-				TxHash:      fmt.Sprintf("0x%x", deposit.TxHash),
-			})
-		}
-
-		pageData = result
 
 	case "load_validators":
 		address := query.Get("address")
-		addressBytes := common.HexToAddress(address)
-		validators, _ := services.GlobalBeaconService.GetFilteredValidatorSet(&dbtypes.ValidatorFilter{
-			WithdrawalAddress: addressBytes[:],
-		}, true)
-
-		result := []models.SubmitDepositPageDataValidator{}
-		for _, validator := range validators {
-			var status string
-			if strings.HasPrefix(validator.Status.String(), "pending") {
-				status = "Pending"
-			} else if validator.Status == v1.ValidatorStateActiveOngoing {
-				status = "Active"
-			} else if validator.Status == v1.ValidatorStateActiveExiting {
-				status = "Exiting"
-			} else if validator.Status == v1.ValidatorStateActiveSlashed {
-				status = "Slashed"
-			} else if validator.Status == v1.ValidatorStateExitedUnslashed {
-				status = "Exited"
-			} else if validator.Status == v1.ValidatorStateExitedSlashed {
-				status = "Slashed"
-			} else {
-				status = validator.Status.String()
-			}
-
-			result = append(result, models.SubmitDepositPageDataValidator{
-				Index:    uint64(validator.Index),
-				Pubkey:   validator.Validator.PublicKey.String(),
-				Balance:  uint64(validator.Balance),
-				CredType: fmt.Sprintf("%02x", validator.Validator.WithdrawalCredentials[0]),
-				Status:   status,
-			})
+		pageCacheKey := fmt.Sprintf("submit_deposit:load_validators:%s", address)
+		var cached []models.SubmitDepositPageDataValidator
+		pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, &cached, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
+			result := buildSubmitDepositLoadValidators(pageCall.CallCtx, address)
+			pageCall.CacheTimeout = 1 * time.Minute
+			return result
+		})
+		if pageErr != nil {
+			return pageErr
 		}
-
-		pageData = result
+		pageData = pageRes
 
 	case "search_validators":
 		searchTerm := query.Get("search")
@@ -217,69 +191,17 @@ func handleSubmitDepositPageDataAjax(w http.ResponseWriter, r *http.Request) err
 				limit = 100
 			}
 		}
-
-		var validators []v1.Validator
-		// Check if search term is a pubkey or index
-		if searchTerm == "" {
-			// If no search term, return empty result
-			validators = []v1.Validator{}
-		} else if index, err := strconv.ParseUint(searchTerm, 10, 64); err == nil {
-			// Search by index
-			validators, _ = services.GlobalBeaconService.GetFilteredValidatorSet(&dbtypes.ValidatorFilter{
-				MinIndex: &index,
-				MaxIndex: &index,
-				Limit:    uint64(limit),
-			}, true)
-		} else if regexp.MustCompile(`^(0x)?[0-9a-fA-F]+$`).MatchString(searchTerm) {
-			// Search by pubkey
-			pubkey := searchTerm
-			if !strings.HasPrefix(pubkey, "0x") {
-				pubkey = "0x" + pubkey
-			}
-			pubkeyBytes, err := hex.DecodeString(strings.TrimPrefix(pubkey, "0x"))
-			if err == nil {
-				validators, _ = services.GlobalBeaconService.GetFilteredValidatorSet(&dbtypes.ValidatorFilter{
-					PubKey: pubkeyBytes,
-					Limit:  uint64(limit),
-				}, true)
-			}
-		} else {
-			// Search by name
-			validators, _ = services.GlobalBeaconService.GetFilteredValidatorSet(&dbtypes.ValidatorFilter{
-				ValidatorName: searchTerm,
-				Limit:         uint64(limit),
-			}, true)
+		pageCacheKey := fmt.Sprintf("submit_deposit:search_validators:%s:%d", searchTerm, limit)
+		var cached []models.SubmitDepositPageDataValidator
+		pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, &cached, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
+			result := buildSubmitDepositSearchValidators(pageCall.CallCtx, searchTerm, limit)
+			pageCall.CacheTimeout = 1 * time.Minute
+			return result
+		})
+		if pageErr != nil {
+			return pageErr
 		}
-
-		result := []models.SubmitDepositPageDataValidator{}
-		for _, validator := range validators {
-			var status string
-			if strings.HasPrefix(validator.Status.String(), "pending") {
-				status = "Pending"
-			} else if validator.Status == v1.ValidatorStateActiveOngoing {
-				status = "Active"
-			} else if validator.Status == v1.ValidatorStateActiveExiting {
-				status = "Exiting"
-			} else if validator.Status == v1.ValidatorStateActiveSlashed {
-				status = "Slashed"
-			} else if validator.Status == v1.ValidatorStateExitedUnslashed {
-				status = "Exited"
-			} else if validator.Status == v1.ValidatorStateExitedSlashed {
-				status = "Slashed"
-			} else {
-				status = validator.Status.String()
-			}
-
-			result = append(result, models.SubmitDepositPageDataValidator{
-				Index:    uint64(validator.Index),
-				Pubkey:   validator.Validator.PublicKey.String(),
-				Balance:  uint64(validator.Balance),
-				CredType: fmt.Sprintf("%02x", validator.Validator.WithdrawalCredentials[0]),
-				Status:   status,
-			})
-		}
-
-		pageData = result
+		pageData = pageRes
 
 	default:
 		return errors.New("invalid ajax request")
@@ -292,4 +214,102 @@ func handleSubmitDepositPageDataAjax(w http.ResponseWriter, r *http.Request) err
 		http.Error(w, "Internal server error", http.StatusServiceUnavailable)
 	}
 	return nil
+}
+
+func buildSubmitDepositLoadDeposits(ctx context.Context, pubkeys [][]byte) (models.SubmitDepositPageDataDeposits, error) {
+	canonicalForkIds := services.GlobalBeaconService.GetCanonicalForkIds()
+	deposits, depositCount, err := db.GetDepositTxsFiltered(ctx, 0, 1000, canonicalForkIds, &dbtypes.DepositTxFilter{
+		PublicKeys:   pubkeys,
+		WithOrphaned: 0,
+	})
+	if err != nil {
+		return models.SubmitDepositPageDataDeposits{}, fmt.Errorf("failed to get deposits: %v", err)
+	}
+	result := models.SubmitDepositPageDataDeposits{
+		Deposits: make([]models.SubmitDepositPageDataDeposit, 0, len(deposits)),
+		Count:    depositCount,
+		HaveMore: depositCount > 1000,
+	}
+	for _, deposit := range deposits {
+		result.Deposits = append(result.Deposits, models.SubmitDepositPageDataDeposit{
+			Pubkey:      fmt.Sprintf("0x%x", deposit.PublicKey),
+			Amount:      deposit.Amount,
+			BlockNumber: deposit.BlockNumber,
+			BlockHash:   fmt.Sprintf("0x%x", deposit.BlockRoot),
+			BlockTime:   deposit.BlockTime,
+			TxOrigin:    common.BytesToAddress(deposit.TxSender).String(),
+			TxTarget:    common.BytesToAddress(deposit.TxTarget).String(),
+			TxHash:      fmt.Sprintf("0x%x", deposit.TxHash),
+		})
+	}
+	return result, nil
+}
+
+func buildSubmitDepositLoadValidators(ctx context.Context, address string) []models.SubmitDepositPageDataValidator {
+	addressBytes := common.HexToAddress(address)
+	validators, _ := services.GlobalBeaconService.GetFilteredValidatorSet(ctx, &dbtypes.ValidatorFilter{
+		WithdrawalAddress: addressBytes[:],
+	}, true)
+	result := make([]models.SubmitDepositPageDataValidator, 0, len(validators))
+	for _, validator := range validators {
+		result = append(result, buildSubmitDepositValidatorModel(validator))
+	}
+	return result
+}
+
+func buildSubmitDepositSearchValidators(ctx context.Context, searchTerm string, limit int) []models.SubmitDepositPageDataValidator {
+	var validators []v1.Validator
+	if searchTerm == "" {
+		validators = []v1.Validator{}
+	} else if index, err := strconv.ParseUint(searchTerm, 10, 64); err == nil {
+		validators, _ = services.GlobalBeaconService.GetFilteredValidatorSet(ctx, &dbtypes.ValidatorFilter{
+			MinIndex: &index, MaxIndex: &index, Limit: uint64(limit),
+		}, true)
+	} else if regexp.MustCompile(`^(0x)?[0-9a-fA-F]+$`).MatchString(searchTerm) {
+		pubkey := searchTerm
+		if !strings.HasPrefix(pubkey, "0x") {
+			pubkey = "0x" + pubkey
+		}
+		pubkeyBytes, err := hex.DecodeString(strings.TrimPrefix(pubkey, "0x"))
+		if err == nil {
+			validators, _ = services.GlobalBeaconService.GetFilteredValidatorSet(ctx, &dbtypes.ValidatorFilter{
+				PubKey: pubkeyBytes, Limit: uint64(limit),
+			}, true)
+		}
+	} else {
+		validators, _ = services.GlobalBeaconService.GetFilteredValidatorSet(ctx, &dbtypes.ValidatorFilter{
+			ValidatorName: searchTerm, Limit: uint64(limit),
+		}, true)
+	}
+	result := make([]models.SubmitDepositPageDataValidator, 0, len(validators))
+	for _, validator := range validators {
+		result = append(result, buildSubmitDepositValidatorModel(validator))
+	}
+	return result
+}
+
+func buildSubmitDepositValidatorModel(validator v1.Validator) models.SubmitDepositPageDataValidator {
+	var status string
+	if strings.HasPrefix(validator.Status.String(), "pending") {
+		status = "Pending"
+	} else if validator.Status == v1.ValidatorStateActiveOngoing {
+		status = "Active"
+	} else if validator.Status == v1.ValidatorStateActiveExiting {
+		status = "Exiting"
+	} else if validator.Status == v1.ValidatorStateActiveSlashed {
+		status = "Slashed"
+	} else if validator.Status == v1.ValidatorStateExitedUnslashed {
+		status = "Exited"
+	} else if validator.Status == v1.ValidatorStateExitedSlashed {
+		status = "Slashed"
+	} else {
+		status = validator.Status.String()
+	}
+	return models.SubmitDepositPageDataValidator{
+		Index:    uint64(validator.Index),
+		Pubkey:   validator.Validator.PublicKey.String(),
+		Balance:  uint64(validator.Balance),
+		CredType: fmt.Sprintf("%02x", validator.Validator.WithdrawalCredentials[0]),
+		Status:   status,
+	}
 }

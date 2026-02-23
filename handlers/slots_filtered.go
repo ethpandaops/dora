@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -146,8 +147,8 @@ func SlotsFiltered(w http.ResponseWriter, r *http.Request) {
 func getFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string, invertgraffiti bool, extradata string, invertextradata bool, proposer string, pname string, invertproposer bool, withOrphaned uint8, withMissing uint8, minSyncAgg string, maxSyncAgg string, minExecTime string, maxExecTime string, minTxCount string, maxTxCount string, minBlobCount string, maxBlobCount string, forkIds string, minEpoch string, maxEpoch string, displayColumns uint64) (*models.SlotsFilteredPageData, error) {
 	pageData := &models.SlotsFilteredPageData{}
 	pageCacheKey := fmt.Sprintf("slots_filtered:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v", pageIdx, pageSize, graffiti, invertgraffiti, extradata, invertextradata, proposer, pname, invertproposer, withOrphaned, withMissing, minSyncAgg, maxSyncAgg, minExecTime, maxExecTime, minTxCount, maxTxCount, minBlobCount, maxBlobCount, forkIds, minEpoch, maxEpoch, displayColumns)
-	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(_ *services.FrontendCacheProcessingPage) interface{} {
-		return buildFilteredSlotsPageData(pageIdx, pageSize, graffiti, invertgraffiti, extradata, invertextradata, proposer, pname, invertproposer, withOrphaned, withMissing, minSyncAgg, maxSyncAgg, minExecTime, maxExecTime, minTxCount, maxTxCount, minBlobCount, maxBlobCount, forkIds, minEpoch, maxEpoch, displayColumns)
+	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
+		return buildFilteredSlotsPageData(pageCall.CallCtx, pageIdx, pageSize, graffiti, invertgraffiti, extradata, invertextradata, proposer, pname, invertproposer, withOrphaned, withMissing, minSyncAgg, maxSyncAgg, minExecTime, maxExecTime, minTxCount, maxTxCount, minBlobCount, maxBlobCount, forkIds, minEpoch, maxEpoch, displayColumns)
 	})
 	if pageErr == nil && pageRes != nil {
 		resData, resOk := pageRes.(*models.SlotsFilteredPageData)
@@ -159,7 +160,7 @@ func getFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string, 
 	return pageData, pageErr
 }
 
-func buildFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string, invertgraffiti bool, extradata string, invertextradata bool, proposer string, pname string, invertproposer bool, withOrphaned uint8, withMissing uint8, minSyncAgg string, maxSyncAgg string, minExecTime string, maxExecTime string, minTxCount string, maxTxCount string, minBlobCount string, maxBlobCount string, forkIds string, minEpoch string, maxEpoch string, displayColumns uint64) *models.SlotsFilteredPageData {
+func buildFilteredSlotsPageData(ctx context.Context, pageIdx uint64, pageSize uint64, graffiti string, invertgraffiti bool, extradata string, invertextradata bool, proposer string, pname string, invertproposer bool, withOrphaned uint8, withMissing uint8, minSyncAgg string, maxSyncAgg string, minExecTime string, maxExecTime string, minTxCount string, maxTxCount string, minBlobCount string, maxBlobCount string, forkIds string, minEpoch string, maxEpoch string, displayColumns uint64) *models.SlotsFilteredPageData {
 	chainState := services.GlobalBeaconService.GetChainState()
 	filterArgs := url.Values{}
 	if graffiti != "" {
@@ -440,7 +441,7 @@ func buildFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string
 		withScheduledCount = 16
 	}
 
-	dbBlocks := services.GlobalBeaconService.GetDbBlocksByFilter(blockFilter, pageIdx, uint32(pageSize), withScheduledCount)
+	dbBlocks := services.GlobalBeaconService.GetDbBlocksByFilter(ctx, blockFilter, pageIdx, uint32(pageSize), withScheduledCount)
 	mevBlocksMap := make(map[string]*dbtypes.MevBlock)
 
 	if pageData.DisplayMevBlock {
@@ -453,7 +454,7 @@ func buildFilteredSlotsPageData(pageIdx uint64, pageSize uint64, graffiti string
 		}
 
 		if len(execBlockHashes) > 0 {
-			mevBlocksMap = db.GetMevBlocksByBlockHashes(execBlockHashes)
+			mevBlocksMap = db.GetMevBlocksByBlockHashes(ctx, execBlockHashes)
 		}
 	}
 

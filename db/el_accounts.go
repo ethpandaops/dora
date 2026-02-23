@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -8,7 +9,7 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-func InsertElAccount(account *dbtypes.ElAccount, dbTx *sqlx.Tx) (uint64, error) {
+func InsertElAccount(ctx context.Context, dbTx *sqlx.Tx, account *dbtypes.ElAccount) (uint64, error) {
 	var id uint64
 	query := EngineQuery(map[dbtypes.DBEngineType]string{
 		dbtypes.DBEnginePgsql:  "INSERT INTO el_accounts (address, funder_id, funded, is_contract, last_nonce, last_block_uid) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id",
@@ -16,12 +17,12 @@ func InsertElAccount(account *dbtypes.ElAccount, dbTx *sqlx.Tx) (uint64, error) 
 	})
 
 	if DbEngine == dbtypes.DBEnginePgsql {
-		err := dbTx.QueryRow(query, account.Address, account.FunderID, account.Funded, account.IsContract, account.LastNonce, account.LastBlockUid).Scan(&id)
+		err := dbTx.QueryRowContext(ctx, query, account.Address, account.FunderID, account.Funded, account.IsContract, account.LastNonce, account.LastBlockUid).Scan(&id)
 		if err != nil {
 			return 0, err
 		}
 	} else {
-		result, err := dbTx.Exec(query, account.Address, account.FunderID, account.Funded, account.IsContract, account.LastNonce, account.LastBlockUid)
+		result, err := dbTx.ExecContext(ctx, query, account.Address, account.FunderID, account.Funded, account.IsContract, account.LastNonce, account.LastBlockUid)
 		if err != nil {
 			return 0, err
 		}
@@ -34,25 +35,25 @@ func InsertElAccount(account *dbtypes.ElAccount, dbTx *sqlx.Tx) (uint64, error) 
 	return id, nil
 }
 
-func GetElAccountByID(id uint64) (*dbtypes.ElAccount, error) {
+func GetElAccountByID(ctx context.Context, id uint64) (*dbtypes.ElAccount, error) {
 	account := &dbtypes.ElAccount{}
-	err := ReaderDb.Get(account, "SELECT id, address, funder_id, funded, is_contract, last_nonce, last_block_uid FROM el_accounts WHERE id = $1", id)
+	err := ReaderDb.GetContext(ctx, account, "SELECT id, address, funder_id, funded, is_contract, last_nonce, last_block_uid FROM el_accounts WHERE id = $1", id)
 	if err != nil {
 		return nil, err
 	}
 	return account, nil
 }
 
-func GetElAccountByAddress(address []byte) (*dbtypes.ElAccount, error) {
+func GetElAccountByAddress(ctx context.Context, address []byte) (*dbtypes.ElAccount, error) {
 	account := &dbtypes.ElAccount{}
-	err := ReaderDb.Get(account, "SELECT id, address, funder_id, funded, is_contract, last_nonce, last_block_uid FROM el_accounts WHERE address = $1", address)
+	err := ReaderDb.GetContext(ctx, account, "SELECT id, address, funder_id, funded, is_contract, last_nonce, last_block_uid FROM el_accounts WHERE address = $1", address)
 	if err != nil {
 		return nil, err
 	}
 	return account, nil
 }
 
-func GetElAccountsByFunder(funderID uint64, offset uint64, limit uint32) ([]*dbtypes.ElAccount, uint64, error) {
+func GetElAccountsByFunder(ctx context.Context, funderID uint64, offset uint64, limit uint32) ([]*dbtypes.ElAccount, uint64, error) {
 	var sql strings.Builder
 	args := []any{funderID}
 
@@ -86,7 +87,7 @@ func GetElAccountsByFunder(funderID uint64, offset uint64, limit uint32) ([]*dbt
 	fmt.Fprint(&sql, ") AS t1")
 
 	accounts := []*dbtypes.ElAccount{}
-	err := ReaderDb.Select(&accounts, sql.String(), args...)
+	err := ReaderDb.SelectContext(ctx, &accounts, sql.String(), args...)
 	if err != nil {
 		logger.Errorf("Error while fetching el accounts by funder: %v", err)
 		return nil, 0, err
@@ -100,7 +101,7 @@ func GetElAccountsByFunder(funderID uint64, offset uint64, limit uint32) ([]*dbt
 	return accounts[1:], count, nil
 }
 
-func GetElAccountsFiltered(offset uint64, limit uint32, filter *dbtypes.ElAccountFilter) ([]*dbtypes.ElAccount, uint64, error) {
+func GetElAccountsFiltered(ctx context.Context, offset uint64, limit uint32, filter *dbtypes.ElAccountFilter) ([]*dbtypes.ElAccount, uint64, error) {
 	var sql strings.Builder
 	args := []any{}
 
@@ -157,7 +158,7 @@ func GetElAccountsFiltered(offset uint64, limit uint32, filter *dbtypes.ElAccoun
 	fmt.Fprint(&sql, ") AS t1")
 
 	accounts := []*dbtypes.ElAccount{}
-	err := ReaderDb.Select(&accounts, sql.String(), args...)
+	err := ReaderDb.SelectContext(ctx, &accounts, sql.String(), args...)
 	if err != nil {
 		logger.Errorf("Error while fetching filtered el accounts: %v", err)
 		return nil, 0, err
@@ -171,15 +172,15 @@ func GetElAccountsFiltered(offset uint64, limit uint32, filter *dbtypes.ElAccoun
 	return accounts[1:], count, nil
 }
 
-func UpdateElAccount(account *dbtypes.ElAccount, dbTx *sqlx.Tx) error {
-	_, err := dbTx.Exec("UPDATE el_accounts SET funder_id = $1, funded = $2, is_contract = $3, last_nonce = $4, last_block_uid = $5 WHERE id = $6",
+func UpdateElAccount(ctx context.Context, dbTx *sqlx.Tx, account *dbtypes.ElAccount) error {
+	_, err := dbTx.ExecContext(ctx, "UPDATE el_accounts SET funder_id = $1, funded = $2, is_contract = $3, last_nonce = $4, last_block_uid = $5 WHERE id = $6",
 		account.FunderID, account.Funded, account.IsContract, account.LastNonce, account.LastBlockUid, account.ID)
 	return err
 }
 
 // UpdateElAccountsLastNonce batch updates last_nonce and last_block_uid for multiple accounts by ID.
 // Uses VALUES clause for efficient batch update - 10-50x faster than individual updates.
-func UpdateElAccountsLastNonce(accounts []*dbtypes.ElAccount, dbTx *sqlx.Tx) error {
+func UpdateElAccountsLastNonce(ctx context.Context, dbTx *sqlx.Tx, accounts []*dbtypes.ElAccount) error {
 	if len(accounts) == 0 {
 		return nil
 	}
@@ -256,18 +257,18 @@ func UpdateElAccountsLastNonce(accounts []*dbtypes.ElAccount, dbTx *sqlx.Tx) err
 		}
 	}
 
-	_, err := dbTx.Exec(sql.String(), args...)
+	_, err := dbTx.ExecContext(ctx, sql.String(), args...)
 	return err
 }
 
-func DeleteElAccount(id uint64, dbTx *sqlx.Tx) error {
-	_, err := dbTx.Exec("DELETE FROM el_accounts WHERE id = $1", id)
+func DeleteElAccount(ctx context.Context, dbTx *sqlx.Tx, id uint64) error {
+	_, err := dbTx.ExecContext(ctx, "DELETE FROM el_accounts WHERE id = $1", id)
 	return err
 }
 
 // GetElAccountsByAddresses retrieves multiple accounts by their addresses in a single query.
 // Returns a map from address (as hex string) to account for efficient lookup.
-func GetElAccountsByAddresses(addresses [][]byte) (map[string]*dbtypes.ElAccount, error) {
+func GetElAccountsByAddresses(ctx context.Context, addresses [][]byte) (map[string]*dbtypes.ElAccount, error) {
 	if len(addresses) == 0 {
 		return make(map[string]*dbtypes.ElAccount), nil
 	}
@@ -286,7 +287,7 @@ func GetElAccountsByAddresses(addresses [][]byte) (map[string]*dbtypes.ElAccount
 	fmt.Fprint(&sql, ")")
 
 	accounts := []*dbtypes.ElAccount{}
-	err := ReaderDb.Select(&accounts, sql.String(), args...)
+	err := ReaderDb.SelectContext(ctx, &accounts, sql.String(), args...)
 	if err != nil {
 		logger.Errorf("Error while fetching el accounts by addresses: %v", err)
 		return nil, err
@@ -303,7 +304,7 @@ func GetElAccountsByAddresses(addresses [][]byte) (map[string]*dbtypes.ElAccount
 }
 
 // GetElAccountsByIDs retrieves multiple accounts by their IDs in a single query.
-func GetElAccountsByIDs(ids []uint64) ([]*dbtypes.ElAccount, error) {
+func GetElAccountsByIDs(ctx context.Context, ids []uint64) ([]*dbtypes.ElAccount, error) {
 	if len(ids) == 0 {
 		return []*dbtypes.ElAccount{}, nil
 	}
@@ -322,7 +323,7 @@ func GetElAccountsByIDs(ids []uint64) ([]*dbtypes.ElAccount, error) {
 	fmt.Fprint(&sql, ")")
 
 	accounts := []*dbtypes.ElAccount{}
-	err := ReaderDb.Select(&accounts, sql.String(), args...)
+	err := ReaderDb.SelectContext(ctx, &accounts, sql.String(), args...)
 	if err != nil {
 		logger.Errorf("Error while fetching el accounts by IDs: %v", err)
 		return nil, err

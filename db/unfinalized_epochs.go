@@ -1,12 +1,14 @@
 package db
 
 import (
+	"context"
+
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/jmoiron/sqlx"
 )
 
-func InsertUnfinalizedEpoch(epoch *dbtypes.UnfinalizedEpoch, tx *sqlx.Tx) error {
-	_, err := tx.Exec(EngineQuery(map[dbtypes.DBEngineType]string{
+func InsertUnfinalizedEpoch(ctx context.Context, tx *sqlx.Tx, epoch *dbtypes.UnfinalizedEpoch) error {
+	_, err := tx.ExecContext(ctx, EngineQuery(map[dbtypes.DBEngineType]string{
 		dbtypes.DBEnginePgsql: `
 			INSERT INTO unfinalized_epochs (
 				epoch, dependent_root, epoch_head_root, epoch_head_fork_id, validator_count, validator_balance, eligible, voted_target, 
@@ -57,8 +59,8 @@ func InsertUnfinalizedEpoch(epoch *dbtypes.UnfinalizedEpoch, tx *sqlx.Tx) error 
 	return nil
 }
 
-func StreamUnfinalizedEpochs(epoch uint64, cb func(duty *dbtypes.UnfinalizedEpoch)) error {
-	rows, err := ReaderDb.Query(`
+func StreamUnfinalizedEpochs(ctx context.Context, epoch uint64, cb func(duty *dbtypes.UnfinalizedEpoch)) error {
+	rows, err := ReaderDb.QueryContext(ctx, `
 	SELECT
 		epoch, dependent_root, epoch_head_root, epoch_head_fork_id, validator_count, validator_balance, eligible, voted_target,
 		voted_head, voted_total, block_count, orphaned_count, attestation_count, deposit_count, exit_count, withdraw_count,
@@ -89,9 +91,9 @@ func StreamUnfinalizedEpochs(epoch uint64, cb func(duty *dbtypes.UnfinalizedEpoc
 	return nil
 }
 
-func GetUnfinalizedEpoch(epoch uint64, headRoot []byte) *dbtypes.UnfinalizedEpoch {
+func GetUnfinalizedEpoch(ctx context.Context, epoch uint64, headRoot []byte) *dbtypes.UnfinalizedEpoch {
 	unfinalizedEpoch := dbtypes.UnfinalizedEpoch{}
-	err := ReaderDb.Get(&unfinalizedEpoch, `
+	err := ReaderDb.GetContext(ctx, &unfinalizedEpoch, `
 	SELECT
 		epoch, dependent_root, epoch_head_root, epoch_head_fork_id, validator_count, validator_balance, eligible, voted_target,
 		voted_head, voted_total, block_count, orphaned_count, attestation_count, deposit_count, exit_count, withdraw_count,
@@ -106,8 +108,8 @@ func GetUnfinalizedEpoch(epoch uint64, headRoot []byte) *dbtypes.UnfinalizedEpoc
 	return &unfinalizedEpoch
 }
 
-func DeleteUnfinalizedEpochsBefore(epoch uint64, tx *sqlx.Tx) error {
-	_, err := tx.Exec(`DELETE FROM unfinalized_epochs WHERE epoch < $1`, epoch)
+func DeleteUnfinalizedEpochsBefore(ctx context.Context, tx *sqlx.Tx, epoch uint64) error {
+	_, err := tx.ExecContext(ctx, `DELETE FROM unfinalized_epochs WHERE epoch < $1`, epoch)
 	if err != nil {
 		return err
 	}
@@ -127,10 +129,10 @@ type UnfinalizedEpochParticipation struct {
 
 // GetUnfinalizedEpochParticipation gets participation data for unfinalized epochs in the given range
 // This is used for pruned epochs that are stored in the database
-func GetUnfinalizedEpochParticipation(startEpoch, endEpoch uint64) ([]*UnfinalizedEpochParticipation, error) {
+func GetUnfinalizedEpochParticipation(ctx context.Context, startEpoch, endEpoch uint64) ([]*UnfinalizedEpochParticipation, error) {
 	var results []*UnfinalizedEpochParticipation
 
-	err := ReaderDb.Select(&results, `
+	err := ReaderDb.SelectContext(ctx, &results, `
 		SELECT 
 			epoch,
 			epoch_head_fork_id,

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -87,8 +88,8 @@ func VoluntaryExits(w http.ResponseWriter, r *http.Request) {
 func getFilteredVoluntaryExitsPageData(pageIdx uint64, pageSize uint64, minSlot uint64, maxSlot uint64, minIndex uint64, maxIndex uint64, vname string, withOrphaned uint8) (*models.VoluntaryExitsPageData, error) {
 	pageData := &models.VoluntaryExitsPageData{}
 	pageCacheKey := fmt.Sprintf("voluntary_exits:%v:%v:%v:%v:%v:%v:%v:%v", pageIdx, pageSize, minSlot, maxSlot, minIndex, maxIndex, vname, withOrphaned)
-	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(_ *services.FrontendCacheProcessingPage) interface{} {
-		return buildFilteredVoluntaryExitsPageData(pageIdx, pageSize, minSlot, maxSlot, minIndex, maxIndex, vname, withOrphaned)
+	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
+		return buildFilteredVoluntaryExitsPageData(pageCall.CallCtx, pageIdx, pageSize, minSlot, maxSlot, minIndex, maxIndex, vname, withOrphaned)
 	})
 	if pageErr == nil && pageRes != nil {
 		resData, resOk := pageRes.(*models.VoluntaryExitsPageData)
@@ -100,7 +101,7 @@ func getFilteredVoluntaryExitsPageData(pageIdx uint64, pageSize uint64, minSlot 
 	return pageData, pageErr
 }
 
-func buildFilteredVoluntaryExitsPageData(pageIdx uint64, pageSize uint64, minSlot uint64, maxSlot uint64, minIndex uint64, maxIndex uint64, vname string, withOrphaned uint8) *models.VoluntaryExitsPageData {
+func buildFilteredVoluntaryExitsPageData(ctx context.Context, pageIdx uint64, pageSize uint64, minSlot uint64, maxSlot uint64, minIndex uint64, maxIndex uint64, vname string, withOrphaned uint8) *models.VoluntaryExitsPageData {
 	filterArgs := url.Values{}
 	if minSlot != 0 {
 		filterArgs.Add("f.mins", fmt.Sprintf("%v", minSlot))
@@ -154,7 +155,7 @@ func buildFilteredVoluntaryExitsPageData(pageIdx uint64, pageSize uint64, minSlo
 		WithOrphaned:  withOrphaned,
 	}
 
-	dbVoluntaryExits, totalRows := services.GlobalBeaconService.GetVoluntaryExitsByFilter(voluntaryExitFilter, pageIdx-1, uint32(pageSize))
+	dbVoluntaryExits, totalRows := services.GlobalBeaconService.GetVoluntaryExitsByFilter(ctx, voluntaryExitFilter, pageIdx-1, uint32(pageSize))
 
 	chainState := services.GlobalBeaconService.GetChainState()
 

@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -9,7 +10,7 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-func InsertDeposits(deposits []*dbtypes.Deposit, tx *sqlx.Tx) error {
+func InsertDeposits(ctx context.Context, tx *sqlx.Tx, deposits []*dbtypes.Deposit) error {
 	var sql strings.Builder
 	fmt.Fprint(&sql,
 		EngineQuery(map[dbtypes.DBEngineType]string{
@@ -52,14 +53,14 @@ func InsertDeposits(deposits []*dbtypes.Deposit, tx *sqlx.Tx) error {
 		dbtypes.DBEnginePgsql:  " ON CONFLICT (slot_index, slot_root) DO UPDATE SET deposit_index = excluded.deposit_index, orphaned = excluded.orphaned, fork_id = excluded.fork_id",
 		dbtypes.DBEngineSqlite: "",
 	}))
-	_, err := tx.Exec(sql.String(), args...)
+	_, err := tx.ExecContext(ctx, sql.String(), args...)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func GetDepositsFiltered(offset uint64, limit uint32, canonicalForkIds []uint64, filter *dbtypes.DepositFilter, txFilter *dbtypes.DepositTxFilter) ([]*dbtypes.DepositWithTx, uint64, error) {
+func GetDepositsFiltered(ctx context.Context, offset uint64, limit uint32, canonicalForkIds []uint64, filter *dbtypes.DepositFilter, txFilter *dbtypes.DepositTxFilter) ([]*dbtypes.DepositWithTx, uint64, error) {
 	var sql strings.Builder
 	args := []any{}
 	fmt.Fprint(&sql, `
@@ -206,7 +207,7 @@ func GetDepositsFiltered(offset uint64, limit uint32, canonicalForkIds []uint64,
 	fmt.Fprintf(&sql, ") AS t1")
 
 	deposits := []*dbtypes.DepositWithTx{}
-	err := ReaderDb.Select(&deposits, sql.String(), args...)
+	err := ReaderDb.SelectContext(ctx, &deposits, sql.String(), args...)
 	if err != nil {
 		logger.Errorf("Error while fetching filtered deposits: %v", err)
 		return nil, 0, err

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -75,7 +76,7 @@ func getIndexPageData() (*models.IndexPageData, error) {
 	pageData := &models.IndexPageData{}
 	pageCacheKey := "index"
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
-		pageData, cacheTimeout := buildIndexPageData()
+		pageData, cacheTimeout := buildIndexPageData(pageCall.CallCtx)
 		pageCall.CacheTimeout = cacheTimeout
 		return pageData
 	})
@@ -89,7 +90,7 @@ func getIndexPageData() (*models.IndexPageData, error) {
 	return pageData, pageErr
 }
 
-func buildIndexPageData() (*models.IndexPageData, time.Duration) {
+func buildIndexPageData(ctx context.Context) (*models.IndexPageData, time.Duration) {
 	logrus.Debugf("index page called")
 
 	recentEpochCount := 7
@@ -107,7 +108,7 @@ func buildIndexPageData() (*models.IndexPageData, time.Duration) {
 	justifiedEpoch, _ := chainState.GetJustifiedCheckpoint()
 
 	syncState := dbtypes.IndexerSyncState{}
-	db.GetExplorerState("indexer.syncstate", &syncState)
+	db.GetExplorerState(ctx, "indexer.syncstate", &syncState)
 	var isSynced bool
 	if finalizedEpoch >= 1 {
 		isSynced = syncState.Epoch >= uint64(finalizedEpoch-1)
@@ -371,24 +372,24 @@ func buildIndexPageData() (*models.IndexPageData, time.Duration) {
 	})
 
 	// load recent epochs
-	buildIndexPageRecentEpochsData(pageData, currentEpoch, finalizedEpoch, justifiedEpoch, recentEpochCount)
+	buildIndexPageRecentEpochsData(ctx, pageData, currentEpoch, finalizedEpoch, justifiedEpoch, recentEpochCount)
 
 	// load recent blocks
-	buildIndexPageRecentBlocksData(pageData, recentBlockCount)
+	buildIndexPageRecentBlocksData(ctx, pageData, recentBlockCount)
 
 	// load recent slots
-	buildIndexPageRecentSlotsData(pageData, currentSlot, recentSlotsCount)
+	buildIndexPageRecentSlotsData(ctx, pageData, currentSlot, recentSlotsCount)
 
 	return pageData, 12 * time.Second
 }
 
-func buildIndexPageRecentEpochsData(pageData *models.IndexPageData, currentEpoch phase0.Epoch, finalizedEpoch phase0.Epoch, justifiedEpoch phase0.Epoch, recentEpochCount int) {
+func buildIndexPageRecentEpochsData(ctx context.Context, pageData *models.IndexPageData, currentEpoch phase0.Epoch, finalizedEpoch phase0.Epoch, justifiedEpoch phase0.Epoch, recentEpochCount int) {
 	pageData.RecentEpochs = make([]*models.IndexPageDataEpochs, 0)
 
 	chainState := services.GlobalBeaconService.GetChainState()
 	specs := chainState.GetSpecs()
 
-	epochsData := services.GlobalBeaconService.GetDbEpochs(uint64(currentEpoch), uint32(recentEpochCount))
+	epochsData := services.GlobalBeaconService.GetDbEpochs(ctx, uint64(currentEpoch), uint32(recentEpochCount))
 	for i := 0; i < len(epochsData); i++ {
 		epochData := epochsData[i]
 		if epochData == nil {
@@ -418,12 +419,12 @@ func buildIndexPageRecentEpochsData(pageData *models.IndexPageData, currentEpoch
 	pageData.RecentEpochCount = uint64(len(pageData.RecentEpochs))
 }
 
-func buildIndexPageRecentBlocksData(pageData *models.IndexPageData, recentBlockCount int) {
+func buildIndexPageRecentBlocksData(ctx context.Context, pageData *models.IndexPageData, recentBlockCount int) {
 	pageData.RecentBlocks = make([]*models.IndexPageDataBlocks, 0)
 
 	chainState := services.GlobalBeaconService.GetChainState()
 
-	blocksData := services.GlobalBeaconService.GetDbBlocksByFilter(&dbtypes.BlockFilter{
+	blocksData := services.GlobalBeaconService.GetDbBlocksByFilter(ctx, &dbtypes.BlockFilter{
 		WithOrphaned: 0,
 		WithMissing:  0,
 	}, 0, uint32(recentBlockCount), 0)
@@ -467,7 +468,7 @@ func buildIndexPageRecentBlocksData(pageData *models.IndexPageData, recentBlockC
 	pageData.RecentBlockCount = uint64(len(pageData.RecentBlocks))
 }
 
-func buildIndexPageRecentSlotsData(pageData *models.IndexPageData, firstSlot phase0.Slot, slotLimit int) {
+func buildIndexPageRecentSlotsData(ctx context.Context, pageData *models.IndexPageData, firstSlot phase0.Slot, slotLimit int) {
 	var lastSlot uint64
 	if uint64(firstSlot) >= uint64(slotLimit) {
 		lastSlot = uint64(firstSlot) - uint64(slotLimit)
@@ -479,7 +480,7 @@ func buildIndexPageRecentSlotsData(pageData *models.IndexPageData, firstSlot pha
 
 	// load slots
 	pageData.RecentSlots = make([]*models.IndexPageDataSlots, 0)
-	dbSlots := services.GlobalBeaconService.GetDbBlocksForSlots(uint64(firstSlot), uint32(slotLimit), true, true)
+	dbSlots := services.GlobalBeaconService.GetDbBlocksForSlots(ctx, uint64(firstSlot), uint32(slotLimit), true, true)
 	dbIdx := 0
 	dbCnt := len(dbSlots)
 	blockCount := uint64(0)

@@ -243,7 +243,7 @@ func buildSlotPageData(ctx context.Context, blockSlot int64, blockRoot []byte) (
 	if chainState.EpochOfSlot(slot) >= finalizedEpoch {
 		beaconIndexer := services.GlobalBeaconService.GetBeaconIndexer()
 		if epochStats := beaconIndexer.GetEpochStats(epoch, nil); epochStats != nil {
-			epochStatsValues = epochStats.GetOrLoadValues(beaconIndexer, true, false)
+			epochStatsValues = epochStats.GetOrLoadValues(ctx, beaconIndexer, true, false)
 		}
 	}
 
@@ -264,7 +264,7 @@ func buildSlotPageData(ctx context.Context, blockSlot int64, blockRoot []byte) (
 	}
 
 	// Get all blocks for this slot (used for multi-block display and proposer fallback)
-	slotBlocks, slotBlockProposers := getSlotBlocks(slot, blockRoot, blockData)
+	slotBlocks, slotBlockProposers := getSlotBlocks(ctx, slot, blockRoot, blockData)
 	pageData.SlotBlocks = slotBlocks
 
 	if blockData == nil {
@@ -276,7 +276,7 @@ func buildSlotPageData(ctx context.Context, blockSlot int64, blockRoot []byte) (
 			}
 		}
 		if pageData.Proposer == math.MaxInt64 {
-			pageData.Proposer = db.GetSlotAssignment(uint64(slot))
+			pageData.Proposer = db.GetSlotAssignment(ctx, uint64(slot))
 		}
 		// If proposer is still unknown, check if there's exactly one orphaned block and use its proposer
 		if pageData.Proposer == math.MaxInt64 && len(slotBlockProposers) == 1 {
@@ -295,14 +295,14 @@ func buildSlotPageData(ctx context.Context, blockSlot int64, blockRoot []byte) (
 		blockUid := uint64(blockData.Header.Message.Slot)<<16 | 0xffff
 		if cacheBlock := services.GlobalBeaconService.GetBeaconIndexer().GetBlockByRoot(blockData.Root); cacheBlock != nil {
 			blockUid = cacheBlock.BlockUID
-		} else if dbBlock := db.GetBlockHeadByRoot(blockData.Root[:]); dbBlock != nil {
+		} else if dbBlock := db.GetBlockHeadByRoot(ctx, blockData.Root[:]); dbBlock != nil {
 			blockUid = dbBlock.BlockUid
 		}
-		pageData.Block = getSlotPageBlockData(blockData, epochStatsValues, blockUid)
+		pageData.Block = getSlotPageBlockData(ctx, blockData, epochStatsValues, blockUid)
 
 		// check mev block
 		if pageData.Block.ExecutionData != nil {
-			mevBlock := db.GetMevBlockByBlockHash(pageData.Block.ExecutionData.BlockHash)
+			mevBlock := db.GetMevBlockByBlockHash(ctx, pageData.Block.ExecutionData.BlockHash)
 			if mevBlock != nil {
 				relays := []string{}
 				for _, relay := range utils.Config.MevIndexer.Relays {
@@ -328,14 +328,14 @@ func buildSlotPageData(ctx context.Context, blockSlot int64, blockRoot []byte) (
 // getSlotBlocks retrieves all blocks for a given slot and builds the SlotBlocks slice
 // for the multi-block display. Uses GetDbBlocksByFilter which handles both cache and database.
 // Also returns a list of proposers from orphaned blocks (used as fallback when proposer is unknown).
-func getSlotBlocks(slot phase0.Slot, currentBlockRoot []byte, currentBlockData *services.CombinedBlockResponse) ([]*models.SlotPageSlotBlock, []uint64) {
+func getSlotBlocks(ctx context.Context, slot phase0.Slot, currentBlockRoot []byte, currentBlockData *services.CombinedBlockResponse) ([]*models.SlotPageSlotBlock, []uint64) {
 	slotBlocks := make([]*models.SlotPageSlotBlock, 0)
 	orphanedProposers := make([]uint64, 0)
 	hasCanonicalOrMissed := false
 
 	// Get all blocks for the slot (from cache and database)
 	slotNum := uint64(slot)
-	dbBlocks := services.GlobalBeaconService.GetDbBlocksByFilter(&dbtypes.BlockFilter{
+	dbBlocks := services.GlobalBeaconService.GetDbBlocksByFilter(ctx, &dbtypes.BlockFilter{
 		Slot:         &slotNum,
 		WithOrphaned: 1, // include both canonical and orphaned
 		WithMissing:  1, // include missing slots
@@ -398,7 +398,7 @@ func getSlotBlocks(slot phase0.Slot, currentBlockRoot []byte, currentBlockData *
 	return slotBlocks, orphanedProposers
 }
 
-func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsValues *beacon.EpochStatsValues, blockUid uint64) *models.SlotPageBlockData {
+func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlockResponse, epochStatsValues *beacon.EpochStatsValues, blockUid uint64) *models.SlotPageBlockData {
 	chainState := services.GlobalBeaconService.GetChainState()
 	specs := chainState.GetSpecs()
 	graffiti, _ := blockData.Block.Graffiti()
@@ -474,7 +474,7 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 			assignmentsLoaded[attEpoch] = true
 			beaconIndexer := services.GlobalBeaconService.GetBeaconIndexer()
 			if epochStats := beaconIndexer.GetEpochStats(epoch, nil); epochStats != nil {
-				epochStatsValues := epochStats.GetOrLoadValues(beaconIndexer, true, false)
+				epochStatsValues := epochStats.GetOrLoadValues(ctx, beaconIndexer, true, false)
 
 				assignmentsMap[attEpoch] = epochStatsValues
 			}
@@ -485,7 +485,7 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 		} else {
 			if !dbEpochLoaded[attEpoch] {
 				dbEpochLoaded[attEpoch] = true
-				dbEpochs := db.GetEpochs(uint64(attEpoch), 1)
+				dbEpochs := db.GetEpochs(ctx, uint64(attEpoch), 1)
 				if len(dbEpochs) > 0 && dbEpochs[0].Epoch == uint64(attEpoch) {
 					dbEpochMap[attEpoch] = dbEpochs[0]
 				}
@@ -511,7 +511,7 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 		if slot, ok := attHeadBlocks[attData.BeaconBlockRoot]; ok {
 			attPageData.BeaconBlockSlot = uint64(slot)
 		} else {
-			beaconBlocks := services.GlobalBeaconService.GetDbBlocksByFilter(&dbtypes.BlockFilter{
+			beaconBlocks := services.GlobalBeaconService.GetDbBlocksByFilter(ctx, &dbtypes.BlockFilter{
 				BlockRoot: attData.BeaconBlockRoot[:],
 			}, 0, 1, 0)
 			if len(beaconBlocks) > 0 {
@@ -721,7 +721,7 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 		}
 		if len(syncAssignments) == 0 {
 			syncPeriod := uint64(epoch) / specs.EpochsPerSyncCommitteePeriod
-			syncAssignments = db.GetSyncAssignmentsForPeriod(syncPeriod)
+			syncAssignments = db.GetSyncAssignmentsForPeriod(ctx, syncPeriod)
 		}
 
 		if len(syncAssignments) != 0 {
@@ -859,13 +859,13 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 		}
 
 		if transactions, err := executionPayload.Transactions(); err == nil {
-			getSlotPageTransactions(pageData, transactions, blockUid)
+			getSlotPageTransactions(ctx, pageData, transactions, blockUid)
 		}
 
 		// Check if execution data exists in blockdb for receipt downloads
 		if blockdb.GlobalBlockDb != nil && blockdb.GlobalBlockDb.SupportsExecData() {
 			hasExecData, _ := blockdb.GlobalBlockDb.HasExecData(
-				context.Background(),
+				ctx,
 				uint64(blockData.Header.Message.Slot),
 				blockData.Root[:],
 			)
@@ -946,7 +946,7 @@ var slotTxTypeNames = map[uint8]string{
 	4: "EIP-7702",
 }
 
-func getSlotPageTransactions(pageData *models.SlotPageBlockData, transactions []bellatrix.Transaction, blockUid uint64) {
+func getSlotPageTransactions(ctx context.Context, pageData *models.SlotPageBlockData, transactions []bellatrix.Transaction, blockUid uint64) {
 	pageData.Transactions = make([]*models.SlotPageTransaction, 0)
 	sigLookupBytes := []types.TxSignatureBytes{}
 	sigLookupMap := map[types.TxSignatureBytes][]*models.SlotPageTransaction{}
@@ -1031,7 +1031,7 @@ func getSlotPageTransactions(pageData *models.SlotPageBlockData, transactions []
 	pageData.TransactionsCount = uint64(len(transactions))
 
 	if len(sigLookupBytes) > 0 {
-		sigLookups := services.GlobalTxSignaturesService.LookupSignatures(sigLookupBytes)
+		sigLookups := services.GlobalTxSignaturesService.LookupSignatures(ctx, sigLookupBytes)
 		for _, sigLookup := range sigLookups {
 			for _, txData := range sigLookupMap[sigLookup.Bytes] {
 				txData.FuncSigStatus = uint64(sigLookup.Status)
@@ -1048,7 +1048,7 @@ func getSlotPageTransactions(pageData *models.SlotPageBlockData, transactions []
 
 	// Enrich with EL data if execution indexer is enabled
 	if utils.Config.ExecutionIndexer.Enabled && len(pageData.Transactions) > 0 {
-		elTxs, err := db.GetElTransactionsByBlockUid(blockUid)
+		elTxs, err := db.GetElTransactionsByBlockUid(ctx, blockUid)
 		if err == nil && len(elTxs) > 0 {
 			for _, elTx := range elTxs {
 				txData := txHashMap[string(elTx.TxHash)]

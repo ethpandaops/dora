@@ -2,6 +2,7 @@ package services
 
 import (
 	"bytes"
+	"context"
 	"math"
 	"slices"
 	"strings"
@@ -76,7 +77,7 @@ func (ccr *CombinedDepositRequest) Amount() uint64 {
 	return 0
 }
 
-func (bs *ChainService) GetDepositRequestsByFilter(filter *CombinedDepositRequestFilter, pageOffset uint64, pageSize uint32) ([]*CombinedDepositRequest, uint64) {
+func (bs *ChainService) GetDepositRequestsByFilter(ctx context.Context, filter *CombinedDepositRequestFilter, pageOffset uint64, pageSize uint32) ([]*CombinedDepositRequest, uint64) {
 	combinedResults := make([]*CombinedDepositRequest, 0)
 	canonicalForkIds := bs.GetCanonicalForkIds()
 
@@ -84,7 +85,7 @@ func (bs *ChainService) GetDepositRequestsByFilter(filter *CombinedDepositReques
 
 	canonicalHead := bs.beaconIndexer.GetCanonicalHead(nil)
 	if canonicalHead != nil {
-		indexedQueue := bs.GetIndexedDepositQueue(canonicalHead)
+		indexedQueue := bs.GetIndexedDepositQueue(ctx, canonicalHead)
 		if indexedQueue != nil {
 			for _, queueEntry := range indexedQueue.Queue {
 				depositIndex := queueEntry.DepositIndex
@@ -125,7 +126,7 @@ func (bs *ChainService) GetDepositRequestsByFilter(filter *CombinedDepositReques
 		WithValid:     filter.Filter.WithValid,
 	}
 
-	dbOperations, totalReqResults := bs.GetDepositOperationsByFilter(operationFilter, txFilter, pageOffset, pageSize)
+	dbOperations, totalReqResults := bs.GetDepositOperationsByFilter(ctx, operationFilter, txFilter, pageOffset, pageSize)
 
 	for _, dbOperation := range dbOperations {
 		if len(combinedResults) >= int(pageSize) {
@@ -168,7 +169,7 @@ func (bs *ChainService) GetDepositRequestsByFilter(filter *CombinedDepositReques
 	return combinedResults, totalReqResults
 }
 
-func (bs *ChainService) GetDepositOperationsByFilter(filter *dbtypes.DepositFilter, txFilter *dbtypes.DepositTxFilter, pageOffset uint64, pageSize uint32) ([]*dbtypes.DepositWithTx, uint64) {
+func (bs *ChainService) GetDepositOperationsByFilter(ctx context.Context, filter *dbtypes.DepositFilter, txFilter *dbtypes.DepositTxFilter, pageOffset uint64, pageSize uint32) ([]*dbtypes.DepositWithTx, uint64) {
 	chainState := bs.consensusPool.GetChainState()
 	_, prunedEpoch := bs.beaconIndexer.GetBlockCacheState()
 	idxMinSlot := chainState.EpochToSlot(prunedEpoch)
@@ -273,7 +274,7 @@ func (bs *ChainService) GetDepositOperationsByFilter(filter *dbtypes.DepositFilt
 			}
 		}
 
-		for _, txDetail := range db.GetDepositTxsByIndexes(detailsForIndex) {
+		for _, txDetail := range db.GetDepositTxsByIndexes(ctx, detailsForIndex) {
 			for _, depositWithTx := range cachedMatches {
 				if depositWithTx.Index != nil && *depositWithTx.Index == txDetail.Index && bytes.Equal(depositWithTx.PublicKey[:], txDetail.PublicKey[:]) {
 					depositWithTx.BlockNumber = &txDetail.BlockNumber
@@ -345,7 +346,7 @@ func (bs *ChainService) GetDepositOperationsByFilter(filter *dbtypes.DepositFilt
 
 	if cachedEnd <= cachedMatchesLen {
 		// all results from cache, just get result count from db
-		_, dbCount, err = db.GetDepositsFiltered(0, 1, canonicalForkIds, filter, txFilter)
+		_, dbCount, err = db.GetDepositsFiltered(ctx, 0, 1, canonicalForkIds, filter, txFilter)
 	} else {
 		dbSliceStart := uint64(0)
 		if cachedStart > cachedMatchesLen {
@@ -353,7 +354,7 @@ func (bs *ChainService) GetDepositOperationsByFilter(filter *dbtypes.DepositFilt
 		}
 
 		dbSliceLimit := pageSize - uint32(resIdx)
-		dbObjects, dbCount, err = db.GetDepositsFiltered(dbSliceStart, dbSliceLimit, canonicalForkIds, filter, txFilter)
+		dbObjects, dbCount, err = db.GetDepositsFiltered(ctx, dbSliceStart, dbSliceLimit, canonicalForkIds, filter, txFilter)
 	}
 
 	if err != nil {
@@ -392,10 +393,10 @@ type IndexedDepositQueue struct {
 	QueueEstimation phase0.Epoch
 }
 
-func (bs *ChainService) GetIndexedDepositQueue(headBlock *beacon.Block) *IndexedDepositQueue {
+func (bs *ChainService) GetIndexedDepositQueue(ctx context.Context, headBlock *beacon.Block) *IndexedDepositQueue {
 	forkId := headBlock.GetForkId()
 	queueBlockRoot, queueSlot, queueBalance, queue := bs.beaconIndexer.GetLatestDepositQueueByBlockRoot(headBlock.Root)
-	lastIncludedDeposit := bs.getLastIncludedDeposit(queueBlockRoot)
+	lastIncludedDeposit := bs.getLastIncludedDeposit(ctx, queueBlockRoot)
 	if lastIncludedDeposit == nil || lastIncludedDeposit.Index == nil {
 		return &IndexedDepositQueue{
 			Queue: []*IndexedDepositQueueEntry{},
@@ -537,7 +538,7 @@ func (bs *ChainService) GetIndexedDepositQueue(headBlock *beacon.Block) *Indexed
 	return indexedQueue
 }
 
-func (bs *ChainService) getLastIncludedDeposit(headRoot phase0.Root) *dbtypes.Deposit {
+func (bs *ChainService) getLastIncludedDeposit(ctx context.Context, headRoot phase0.Root) *dbtypes.Deposit {
 	headBlock := bs.beaconIndexer.GetBlockByRoot(headRoot)
 	if headBlock == nil {
 		return nil
@@ -620,7 +621,7 @@ func (bs *ChainService) getLastIncludedDeposit(headRoot phase0.Root) *dbtypes.De
 		return lastDeposit
 	} else {
 		// get last deposit from db
-		dbDeposits, _, err := db.GetDepositsFiltered(0, 1, canonicalForkIdsUint64, &dbtypes.DepositFilter{
+		dbDeposits, _, err := db.GetDepositsFiltered(ctx, 0, 1, canonicalForkIdsUint64, &dbtypes.DepositFilter{
 			WithOrphaned: 0,
 		}, nil)
 		if err != nil {
@@ -642,13 +643,13 @@ type QueuedDepositFilter struct {
 	MaxAmount uint64
 }
 
-func (bs *ChainService) GetFilteredQueuedDeposits(filter *QueuedDepositFilter) []*IndexedDepositQueueEntry {
+func (bs *ChainService) GetFilteredQueuedDeposits(ctx context.Context, filter *QueuedDepositFilter) []*IndexedDepositQueueEntry {
 	canonicalHead := bs.beaconIndexer.GetCanonicalHead(nil)
 	if canonicalHead == nil {
 		return nil
 	}
 
-	queue := bs.GetIndexedDepositQueue(canonicalHead)
+	queue := bs.GetIndexedDepositQueue(ctx, canonicalHead)
 	if queue == nil {
 		return nil
 	}

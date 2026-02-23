@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -101,8 +102,8 @@ func IncludedDeposits(w http.ResponseWriter, r *http.Request) {
 func getFilteredIncludedDepositsPageData(pageIdx uint64, pageSize uint64, minIndex uint64, maxIndex uint64, publickey string, vname string, minAmount uint64, maxAmount uint64, withOrphaned uint8, address string, withValid uint8) (*models.IncludedDepositsPageData, error) {
 	pageData := &models.IncludedDepositsPageData{}
 	pageCacheKey := fmt.Sprintf("included_deposits:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v", pageIdx, pageSize, minIndex, maxIndex, publickey, vname, minAmount, maxAmount, withOrphaned, address, withValid)
-	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(_ *services.FrontendCacheProcessingPage) interface{} {
-		return buildFilteredIncludedDepositsPageData(pageIdx, pageSize, minIndex, maxIndex, publickey, vname, minAmount, maxAmount, withOrphaned, address, withValid)
+	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
+		return buildFilteredIncludedDepositsPageData(pageCall.CallCtx, pageIdx, pageSize, minIndex, maxIndex, publickey, vname, minAmount, maxAmount, withOrphaned, address, withValid)
 	})
 	if pageErr == nil && pageRes != nil {
 		resData, resOk := pageRes.(*models.IncludedDepositsPageData)
@@ -114,7 +115,7 @@ func getFilteredIncludedDepositsPageData(pageIdx uint64, pageSize uint64, minInd
 	return pageData, pageErr
 }
 
-func buildFilteredIncludedDepositsPageData(pageIdx uint64, pageSize uint64, minIndex uint64, maxIndex uint64, publickey string, vname string, minAmount uint64, maxAmount uint64, withOrphaned uint8, address string, withValid uint8) *models.IncludedDepositsPageData {
+func buildFilteredIncludedDepositsPageData(ctx context.Context, pageIdx uint64, pageSize uint64, minIndex uint64, maxIndex uint64, publickey string, vname string, minAmount uint64, maxAmount uint64, withOrphaned uint8, address string, withValid uint8) *models.IncludedDepositsPageData {
 	filterArgs := url.Values{}
 	if minIndex != 0 {
 		filterArgs.Add("f.mini", fmt.Sprintf("%v", minIndex))
@@ -189,7 +190,7 @@ func buildFilteredIncludedDepositsPageData(pageIdx uint64, pageSize uint64, minI
 	}
 
 	// Get deposits using new service function with offset
-	dbDeposits, totalRows := services.GlobalBeaconService.GetDepositRequestsByFilter(depositFilter, pageOffset, uint32(pageSize))
+	dbDeposits, totalRows := services.GlobalBeaconService.GetDepositRequestsByFilter(ctx, depositFilter, pageOffset, uint32(pageSize))
 
 	chainState := services.GlobalBeaconService.GetChainState()
 

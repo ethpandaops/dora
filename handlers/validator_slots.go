@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -58,7 +59,7 @@ func getValidatorSlotsPageData(validator uint64, pageIdx uint64, pageSize uint64
 	pageData := &models.ValidatorSlotsPageData{}
 	pageCacheKey := fmt.Sprintf("valslots:%v:%v:%v", validator, pageIdx, pageSize)
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
-		pageData, cacheTimeout := buildValidatorSlotsPageData(validator, pageIdx, pageSize)
+		pageData, cacheTimeout := buildValidatorSlotsPageData(pageCall.CallCtx, validator, pageIdx, pageSize)
 		pageCall.CacheTimeout = cacheTimeout
 		return pageData
 	})
@@ -72,7 +73,7 @@ func getValidatorSlotsPageData(validator uint64, pageIdx uint64, pageSize uint64
 	return pageData, pageErr
 }
 
-func buildValidatorSlotsPageData(validator uint64, pageIdx uint64, pageSize uint64) (*models.ValidatorSlotsPageData, time.Duration) {
+func buildValidatorSlotsPageData(ctx context.Context, validator uint64, pageIdx uint64, pageSize uint64) (*models.ValidatorSlotsPageData, time.Duration) {
 	pageData := &models.ValidatorSlotsPageData{
 		Index: validator,
 		Name:  services.GlobalBeaconService.GetValidatorName(validator),
@@ -100,7 +101,7 @@ func buildValidatorSlotsPageData(validator uint64, pageIdx uint64, pageSize uint
 
 	// load slots
 	pageData.Slots = make([]*models.ValidatorSlotsPageDataSlot, 0)
-	dbBlocks := services.GlobalBeaconService.GetDbBlocksByFilter(&dbtypes.BlockFilter{
+	dbBlocks := services.GlobalBeaconService.GetDbBlocksByFilter(ctx, &dbtypes.BlockFilter{
 		ProposerIndex: &validator,
 		WithOrphaned:  1,
 		WithMissing:   1,

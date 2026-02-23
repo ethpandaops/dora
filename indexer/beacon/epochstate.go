@@ -139,7 +139,7 @@ func (s *epochState) loadState(ctx context.Context, client *Client, cache *epoch
 	var executionPayload *gloas.SignedExecutionPayloadEnvelope
 	if beaconBlock != nil && beaconBlock.Version >= spec.DataVersionGloas {
 		if block != nil {
-			executionPayload = block.GetExecutionPayload()
+			executionPayload = block.GetExecutionPayload(ctx)
 		}
 		if executionPayload == nil {
 			executionPayload, _ = LoadExecutionPayload(ctx, client, s.slotRoot)

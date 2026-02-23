@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"net/http"
@@ -69,7 +70,7 @@ func getDepositsPageData(firstEpoch uint64, pageSize uint64, tabView string) (*m
 	pageData := &models.DepositsPageData{}
 	pageCacheKey := fmt.Sprintf("deposits:%v:%v:%v", firstEpoch, pageSize, tabView)
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
-		pageData, cacheTimeout := buildDepositsPageData(firstEpoch, pageSize, tabView)
+		pageData, cacheTimeout := buildDepositsPageData(pageCall.CallCtx, firstEpoch, pageSize, tabView)
 		pageCall.CacheTimeout = cacheTimeout
 		return pageData
 	})
@@ -83,7 +84,7 @@ func getDepositsPageData(firstEpoch uint64, pageSize uint64, tabView string) (*m
 	return pageData, pageErr
 }
 
-func buildDepositsPageData(firstEpoch uint64, pageSize uint64, tabView string) (*models.DepositsPageData, time.Duration) {
+func buildDepositsPageData(ctx context.Context, firstEpoch uint64, pageSize uint64, tabView string) (*models.DepositsPageData, time.Duration) {
 	logrus.Debugf("deposits page called: %v:%v:%v", firstEpoch, pageSize, tabView)
 	chainState := services.GlobalBeaconService.GetChainState()
 	specs := chainState.GetSpecs()
@@ -126,7 +127,7 @@ func buildDepositsPageData(firstEpoch uint64, pageSize uint64, tabView string) (
 	if specs.ElectraForkEpoch != nil && *specs.ElectraForkEpoch <= uint64(currentEpoch) {
 		// electra deposit queue
 		headBlock := services.GlobalBeaconService.GetBeaconIndexer().GetCanonicalHead(nil)
-		queuedDeposits = services.GlobalBeaconService.GetIndexedDepositQueue(headBlock)
+		queuedDeposits = services.GlobalBeaconService.GetIndexedDepositQueue(ctx, headBlock)
 		if queuedDeposits == nil {
 			queuedDeposits = &services.IndexedDepositQueue{
 				Queue: make([]*services.IndexedDepositQueueEntry, 0),
@@ -152,7 +153,7 @@ func buildDepositsPageData(firstEpoch uint64, pageSize uint64, tabView string) (
 	switch tabView {
 	case "transactions":
 		// load initiated deposits
-		dbDepositTxs := db.GetDepositTxs(0, 20)
+		dbDepositTxs := db.GetDepositTxs(ctx, 0, 20)
 		for _, depositTx := range dbDepositTxs {
 			// Check if this is a builder deposit (0x03 withdrawal credentials)
 			isBuilder := len(depositTx.WithdrawalCredentials) > 0 && depositTx.WithdrawalCredentials[0] == 0x03
@@ -217,7 +218,7 @@ func buildDepositsPageData(firstEpoch uint64, pageSize uint64, tabView string) (
 			},
 		}
 
-		dbDeposits, _ := services.GlobalBeaconService.GetDepositRequestsByFilter(depositFilter, 0, uint32(20))
+		dbDeposits, _ := services.GlobalBeaconService.GetDepositRequestsByFilter(ctx, depositFilter, 0, uint32(20))
 		for _, deposit := range dbDeposits {
 			// Check if this is a builder deposit (0x03 withdrawal credentials)
 			wdCreds := deposit.WithdrawalCredentials()
@@ -317,7 +318,7 @@ func buildDepositsPageData(firstEpoch uint64, pageSize uint64, tabView string) (
 			}
 
 			txDetailsMap := map[uint64]*dbtypes.DepositTx{}
-			for _, txDetail := range db.GetDepositTxsByIndexes(depositIndexes) {
+			for _, txDetail := range db.GetDepositTxsByIndexes(ctx, depositIndexes) {
 				txDetailsMap[txDetail.Index] = txDetail
 			}
 

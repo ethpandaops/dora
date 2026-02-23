@@ -183,7 +183,7 @@ func APIDepositsTransactionsV1(w http.ResponseWriter, r *http.Request) {
 
 	// Get deposit transactions
 	canonicalForkIds := services.GlobalBeaconService.GetCanonicalForkIds()
-	depositTxs, totalCountTx, err := db.GetDepositTxsFiltered(offset, uint32(limit), canonicalForkIds, depositFilter)
+	depositTxs, totalCountTx, err := db.GetDepositTxsFiltered(r.Context(), offset, uint32(limit), canonicalForkIds, depositFilter)
 	if err != nil {
 		logrus.WithError(err).Error("failed to get deposit transactions")
 		http.Error(w, `{"status": "ERROR: failed to get deposit transactions"}`, http.StatusInternalServerError)

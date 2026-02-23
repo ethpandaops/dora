@@ -1,16 +1,18 @@
 package services
 
 import (
+	"context"
+
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 )
 
-func (bs *ChainService) GetDbEpochs(firstEpoch uint64, limit uint32) []*dbtypes.Epoch {
+func (bs *ChainService) GetDbEpochs(ctx context.Context, firstEpoch uint64, limit uint32) []*dbtypes.Epoch {
 	resEpochs := make([]*dbtypes.Epoch, limit)
 	resIdx := 0
 
-	dbEpochs := db.GetEpochs(firstEpoch, limit)
+	dbEpochs := db.GetEpochs(ctx, firstEpoch, limit)
 	dbIdx := 0
 	dbCnt := len(dbEpochs)
 

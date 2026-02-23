@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -112,7 +113,7 @@ func getBuilderPageData(builderIndex uint64, superseded bool, tabView string) (*
 	pageData := &models.BuilderPageData{}
 	pageCacheKey := fmt.Sprintf("builder:%v:%v", builderIndex, tabView)
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
-		pageData, cacheTimeout := buildBuilderPageData(builderIndex, superseded, tabView)
+		pageData, cacheTimeout := buildBuilderPageData(pageCall.CallCtx, builderIndex, superseded, tabView)
 		pageCall.CacheTimeout = cacheTimeout
 		return pageData
 	})
@@ -126,7 +127,7 @@ func getBuilderPageData(builderIndex uint64, superseded bool, tabView string) (*
 	return pageData, pageErr
 }
 
-func buildBuilderPageData(builderIndex uint64, superseded bool, tabView string) (*models.BuilderPageData, time.Duration) {
+func buildBuilderPageData(ctx context.Context, builderIndex uint64, superseded bool, tabView string) (*models.BuilderPageData, time.Duration) {
 	logrus.Debugf("builder page called: %v", builderIndex)
 
 	chainState := services.GlobalBeaconService.GetChainState()
@@ -186,17 +187,17 @@ func buildBuilderPageData(builderIndex uint64, superseded bool, tabView string) 
 	// Load tab-specific data
 	switch tabView {
 	case "blocks":
-		pageData.RecentBlocks = buildBuilderRecentBlocks(builderIndex, chainState)
+		pageData.RecentBlocks = buildBuilderRecentBlocks(ctx, builderIndex, chainState)
 	case "bids":
-		pageData.RecentBids = buildBuilderRecentBids(builderIndex, chainState)
+		pageData.RecentBids = buildBuilderRecentBids(ctx, builderIndex, chainState)
 	case "deposits":
-		pageData.RecentDeposits = buildBuilderRecentDeposits(builderIndex, chainState)
+		pageData.RecentDeposits = buildBuilderRecentDeposits(ctx, builderIndex, chainState)
 	}
 
 	return pageData, 10 * time.Minute
 }
 
-func buildBuilderRecentBlocks(builderIndex uint64, chainState *consensus.ChainState) []*models.BuilderPageDataBlock {
+func buildBuilderRecentBlocks(ctx context.Context, builderIndex uint64, chainState *consensus.ChainState) []*models.BuilderPageDataBlock {
 	// Filter blocks by builder index using the new DB filter
 	builderIndexInt64 := int64(builderIndex)
 	filter := &dbtypes.BlockFilter{
@@ -206,7 +207,7 @@ func buildBuilderRecentBlocks(builderIndex uint64, chainState *consensus.ChainSt
 	}
 
 	// Get blocks built by this builder
-	dbBlocks := services.GlobalBeaconService.GetDbBlocksByFilter(filter, 0, 20, 0)
+	dbBlocks := services.GlobalBeaconService.GetDbBlocksByFilter(ctx, filter, 0, 20, 0)
 
 	// Collect block hashes for batch bid lookup
 	blockHashes := make([][]byte, 0, len(dbBlocks))
@@ -259,7 +260,7 @@ func buildBuilderRecentBlocks(builderIndex uint64, chainState *consensus.ChainSt
 	return blocks
 }
 
-func buildBuilderRecentBids(builderIndex uint64, chainState *consensus.ChainState) []*models.BuilderPageDataBid {
+func buildBuilderRecentBids(ctx context.Context, builderIndex uint64, chainState *consensus.ChainState) []*models.BuilderPageDataBid {
 	bids, _ := db.GetBidsByBuilderIndex(builderIndex, 0, 20)
 
 	result := make([]*models.BuilderPageDataBid, 0, len(bids))
@@ -278,7 +279,7 @@ func buildBuilderRecentBids(builderIndex uint64, chainState *consensus.ChainStat
 		}
 
 		// Check if this bid won (payload was included)
-		slots := db.GetSlotsByBlockHash(bid.BlockHash)
+		slots := db.GetSlotsByBlockHash(ctx, bid.BlockHash)
 		for _, slot := range slots {
 			if slot.PayloadStatus == dbtypes.PayloadStatusCanonical {
 				bidData.IsWinning = true
@@ -292,7 +293,7 @@ func buildBuilderRecentBids(builderIndex uint64, chainState *consensus.ChainStat
 	return result
 }
 
-func buildBuilderRecentDeposits(builderIndex uint64, chainState *consensus.ChainState) []*models.BuilderPageDataDeposit {
+func buildBuilderRecentDeposits(ctx context.Context, builderIndex uint64, chainState *consensus.ChainState) []*models.BuilderPageDataDeposit {
 	// Builder exits are tracked as voluntary exits with BuilderIndexFlag set
 	builderIndexWithFlag := builderIndex | services.BuilderIndexFlag
 	filter := &dbtypes.VoluntaryExitFilter{
@@ -300,7 +301,7 @@ func buildBuilderRecentDeposits(builderIndex uint64, chainState *consensus.Chain
 		MaxIndex: builderIndexWithFlag,
 	}
 
-	exits, _ := services.GlobalBeaconService.GetVoluntaryExitsByFilter(filter, 0, 20)
+	exits, _ := services.GlobalBeaconService.GetVoluntaryExitsByFilter(ctx, filter, 0, 20)
 
 	result := make([]*models.BuilderPageDataDeposit, 0, len(exits))
 	for _, exit := range exits {

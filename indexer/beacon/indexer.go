@@ -25,6 +25,7 @@ const EtherGweiFactor = 1_000_000_000
 
 // Indexer is responsible for indexing the ethereum beacon chain.
 type Indexer struct {
+	ctx                   context.Context
 	logger                logrus.FieldLogger
 	consensusPool         *consensus.Pool
 	dynSsz                *dynssz.DynSsz
@@ -76,7 +77,7 @@ type Indexer struct {
 }
 
 // NewIndexer creates a new instance of the Indexer.
-func NewIndexer(logger logrus.FieldLogger, consensusPool *consensus.Pool) *Indexer {
+func NewIndexer(ctx context.Context, logger logrus.FieldLogger, consensusPool *consensus.Pool) *Indexer {
 	// Initialize the indexer with default values from the configuration.
 	inMemoryEpochs := utils.Config.Indexer.InMemoryEpochs
 	if inMemoryEpochs < 2 {
@@ -97,6 +98,7 @@ func NewIndexer(logger logrus.FieldLogger, consensusPool *consensus.Pool) *Index
 
 	// Create the indexer instance.
 	indexer := &Indexer{
+		ctx:                   ctx,
 		logger:                logger,
 		consensusPool:         consensusPool,
 		disableSync:           utils.Config.Indexer.DisableSynchronizer,
@@ -244,7 +246,7 @@ func (indexer *Indexer) StartIndexer() {
 	indexer.lastPrecalcRunEpoch = chainState.CurrentEpoch()
 
 	pruneState := dbtypes.IndexerPruneState{}
-	db.GetExplorerState("indexer.prunestate", &pruneState)
+	db.GetExplorerState(indexer.ctx, "indexer.prunestate", &pruneState)
 	indexer.lastPrunedEpoch = phase0.Epoch(pruneState.Epoch)
 
 	if indexer.lastPrunedEpoch < finalizedEpoch {
@@ -260,7 +262,7 @@ func (indexer *Indexer) StartIndexer() {
 	indexer.lastPruneRunEpoch = chainState.CurrentEpoch()
 
 	// restore unfinalized forks from db
-	for _, dbFork := range db.GetUnfinalizedForks(uint64(finalizedSlot)) {
+	for _, dbFork := range db.GetUnfinalizedForks(indexer.ctx, uint64(finalizedSlot)) {
 		fork := newForkFromDb(dbFork)
 		indexer.forkCache.addFork(fork)
 	}
@@ -290,7 +292,7 @@ func (indexer *Indexer) StartIndexer() {
 	t1 = time.Now()
 	processingLimiter := make(chan bool, 10)
 	processingWaitGroup := sync.WaitGroup{}
-	err = db.StreamUnfinalizedDuties(uint64(finalizedEpoch), func(dbDuty *dbtypes.UnfinalizedDuty) {
+	err = db.StreamUnfinalizedDuties(indexer.ctx, uint64(finalizedEpoch), func(dbDuty *dbtypes.UnfinalizedDuty) {
 		// restoring epoch stats can be slow as all duties are recomputed
 		// parallelize the processing to speed up the restore
 		processingWaitGroup.Add(1)
@@ -329,7 +331,7 @@ func (indexer *Indexer) StartIndexer() {
 	// restore unfinalized epoch aggregations from db
 	restoredEpochAggregations := 0
 	t1 = time.Now()
-	err = db.StreamUnfinalizedEpochs(uint64(finalizedEpoch), func(unfinalizedEpoch *dbtypes.UnfinalizedEpoch) {
+	err = db.StreamUnfinalizedEpochs(indexer.ctx, uint64(finalizedEpoch), func(unfinalizedEpoch *dbtypes.UnfinalizedEpoch) {
 		epochStats := indexer.epochCache.getEpochStats(phase0.Epoch(unfinalizedEpoch.Epoch), phase0.Root(unfinalizedEpoch.DependentRoot))
 		if epochStats == nil {
 			indexer.logger.Debugf("failed restoring epoch aggregations for epoch %v [%x] from db: epoch stats not found", unfinalizedEpoch.Epoch, unfinalizedEpoch.DependentRoot)
@@ -352,7 +354,7 @@ func (indexer *Indexer) StartIndexer() {
 	restoredBodyCount := 0
 	restoredPayloadCount := 0
 	t1 = time.Now()
-	err = db.StreamUnfinalizedBlocks(uint64(finalizedSlot), func(dbBlock *dbtypes.UnfinalizedBlock) {
+	err = db.StreamUnfinalizedBlocks(indexer.ctx, uint64(finalizedSlot), func(dbBlock *dbtypes.UnfinalizedBlock) {
 		block, _ := indexer.blockCache.createOrGetBlock(phase0.Root(dbBlock.Root), phase0.Slot(dbBlock.Slot))
 		block.BlockUID = dbBlock.BlockUid
 		block.forkId = ForkKey(dbBlock.ForkId)
@@ -443,7 +445,7 @@ func (indexer *Indexer) StartIndexer() {
 	go func() {
 		// start processing a bit delayed to allow clients to complete initial block backfill
 		if chainState.CurrentEpoch() > 0 {
-			indexer.awaitBackfillComplete(context.Background(), 5*time.Minute)
+			indexer.awaitBackfillComplete(indexer.ctx, 5*time.Minute)
 			time.Sleep(10 * time.Second)
 		} else {
 			// load initial state if launched in/pre epoch 0
