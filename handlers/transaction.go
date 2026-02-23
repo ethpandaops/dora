@@ -395,30 +395,34 @@ func buildTransactionPageDataFromDB(ctx context.Context, pageData *models.Transa
 	// Blobs
 	pageData.BlobCount = tx.BlobCount
 
-	// Load event count from event index
-	eventIndices, _ := db.GetElEventIndicesByTxHash(ctx, pageData.TxHash)
-	pageData.EventCount = uint64(len(eventIndices))
-
-	transfers, _ := db.GetElTokenTransfersByBlockUidAndTxHash(ctx, tx.BlockUid, pageData.TxHash)
-	pageData.TokenTransferCount = uint64(len(transfers))
-
-	// Load internal transaction count
-	internalTxs, _ := db.GetElTransactionsInternalByTxHash(ctx, pageData.TxHash)
-	pageData.InternalTxCount = uint64(len(internalTxs))
-
 	// Check data_status for this block (for blockdb availability)
 	if elBlock, err := db.GetElBlock(ctx, tx.BlockUid); err == nil {
 		pageData.DataStatus = elBlock.DataStatus
 	}
 
-	// Load tab-specific detailed data
+	// Load tab badge counts using lightweight COUNT queries instead of
+	// loading all rows. This avoids multi-second sequential scans for
+	// transactions with many events or internal calls.
+	eventCount, _ := db.GetElEventIndexCountByTxHash(ctx, pageData.TxHash)
+	pageData.EventCount = eventCount
+
+	transferCount, _ := db.GetElTokenTransferCountByBlockUidAndTxHash(ctx, tx.BlockUid, pageData.TxHash)
+	pageData.TokenTransferCount = transferCount
+
+	internalTxCount, _ := db.GetElTransactionsInternalCountByTxHash(ctx, pageData.TxHash)
+	pageData.InternalTxCount = internalTxCount
+
+	// Load tab-specific detailed data. Full row data is only loaded for
+	// the active tab to avoid unnecessary I/O. Events and internal txs
+	// are loaded from blockdb when available, falling back to DB.
 	switch tabView {
 	case "events":
-		loadTransactionEventsFromBlockdb(ctx, pageData, eventIndices, tx.BlockUid)
+		loadTransactionEventsFromBlockdb(ctx, pageData, tx.BlockUid)
 	case "transfers":
+		transfers, _ := db.GetElTokenTransfersByBlockUidAndTxHash(ctx, tx.BlockUid, pageData.TxHash)
 		loadTransactionTransfersFromData(ctx, pageData, transfers)
 	case "internaltxs":
-		loadTransactionInternalTxsFromBlockdb(ctx, pageData, internalTxs, tx.BlockUid)
+		loadTransactionInternalTxsFromBlockdb(ctx, pageData, tx.BlockUid)
 	case "statechanges":
 		loadTransactionStateChangesFromBlockdb(ctx, pageData, tx.BlockUid)
 	}
@@ -707,10 +711,10 @@ func loadTransactionEventsFromIndex(ctx context.Context, pageData *models.Transa
 }
 
 // loadTransactionEventsFromBlockdb populates the events tab with full event
-// data from blockdb (all topics + data blob). Falls back to index-only display
-// if blockdb data is unavailable (pruned or not in Full mode).
-func loadTransactionEventsFromBlockdb(ctx context.Context, pageData *models.TransactionPageData, events []*dbtypes.ElEventIndex, blockUid uint64) {
-	if len(events) == 0 {
+// data from blockdb (all topics + data blob). Falls back to loading from
+// the DB event index if blockdb data is unavailable (pruned or not stored).
+func loadTransactionEventsFromBlockdb(ctx context.Context, pageData *models.TransactionPageData, blockUid uint64) {
+	if pageData.EventCount == 0 {
 		return
 	}
 
@@ -749,6 +753,7 @@ func loadTransactionEventsFromBlockdb(ctx context.Context, pageData *models.Tran
 						logrus.WithError(err).Debug("failed to decode events section")
 					} else {
 						pageData.Events = buildEventsFromBlockdb(events)
+						pageData.EventCount = uint64(len(pageData.Events))
 						return
 					}
 				}
@@ -756,8 +761,9 @@ func loadTransactionEventsFromBlockdb(ctx context.Context, pageData *models.Tran
 		}
 	}
 
-	// Fallback: use index-only data
-	loadTransactionEventsFromIndex(ctx, pageData, events)
+	// Fallback: load from DB event index (only when blockdb is unavailable)
+	eventIndices, _ := db.GetElEventIndicesByTxHash(ctx, pageData.TxHash)
+	loadTransactionEventsFromIndex(ctx, pageData, eventIndices)
 }
 
 // buildEventsFromBlockdb converts decoded blockdb events to page model events.
@@ -938,9 +944,9 @@ var callTypeNames = map[uint8]string{
 
 // loadTransactionInternalTxsFromBlockdb populates the internal transactions tab
 // with rich call trace data from blockdb (depth, input, output, gas, status).
-// Falls back to DB-only data if blockdb data is unavailable.
-func loadTransactionInternalTxsFromBlockdb(ctx context.Context, pageData *models.TransactionPageData, entries []*dbtypes.ElTransactionInternal, blockUid uint64) {
-	if len(entries) == 0 {
+// Falls back to loading from the DB index if blockdb data is unavailable.
+func loadTransactionInternalTxsFromBlockdb(ctx context.Context, pageData *models.TransactionPageData, blockUid uint64) {
+	if pageData.InternalTxCount == 0 {
 		return
 	}
 
@@ -978,6 +984,7 @@ func loadTransactionInternalTxsFromBlockdb(ctx context.Context, pageData *models
 						logrus.WithError(err).Debug("failed to decode call trace section")
 					} else {
 						buildInternalTxsFromBlockdb(ctx, pageData, frames)
+						pageData.InternalTxCount = uint64(len(pageData.InternalTxs))
 						return
 					}
 				}
@@ -985,7 +992,8 @@ func loadTransactionInternalTxsFromBlockdb(ctx context.Context, pageData *models
 		}
 	}
 
-	// Fallback: use DB-only data (no depth/input/output)
+	// Fallback: load from DB index (only when blockdb is unavailable)
+	entries, _ := db.GetElTransactionsInternalByTxHash(ctx, pageData.TxHash)
 	loadTransactionInternalTxsFromDB(ctx, pageData, entries)
 }
 

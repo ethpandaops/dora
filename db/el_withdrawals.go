@@ -113,7 +113,7 @@ func GetElWithdrawalsByAccountID(ctx context.Context, accountID uint64, offset u
 	FROM cte
 	UNION ALL SELECT * FROM (
 	SELECT * FROM cte
-	ORDER BY block_uid DESC, block_index ASC
+	ORDER BY block_uid DESC NULLS LAST, block_index ASC
 	LIMIT $%v`, len(args)+1)
 	args = append(args, limit)
 
@@ -190,7 +190,7 @@ func GetElWithdrawalsFiltered(ctx context.Context, offset uint64, limit uint32, 
 	FROM cte
 	UNION ALL SELECT * FROM (
 	SELECT * FROM cte
-	ORDER BY block_uid DESC, block_index ASC
+	ORDER BY block_uid DESC NULLS LAST, block_index ASC
 	LIMIT $%v`, len(args))
 
 	if offset > 0 {

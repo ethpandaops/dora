@@ -137,6 +137,7 @@ func GetElTransactionsByAccountID(ctx context.Context, accountID uint64, isFrom 
 	}
 
 	// Use window function for count (PostgreSQL 9.5+) - avoids double scan
+	// NULLS LAST matches the composite index definition to enable index scans.
 	fmt.Fprintf(&sql, `
 		SELECT
 			block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw,
@@ -145,7 +146,7 @@ func GetElTransactionsByAccountID(ctx context.Context, accountID uint64, isFrom 
 			COUNT(*) OVER() AS total_count
 		FROM el_transactions
 		WHERE %s = $1
-		ORDER BY block_uid DESC, tx_hash DESC
+		ORDER BY block_uid DESC NULLS LAST, tx_hash DESC
 		LIMIT $2`, column)
 	args = append(args, limit)
 
@@ -245,7 +246,7 @@ func GetElTransactionsFiltered(ctx context.Context, offset uint64, limit uint32,
 	FROM cte
 	UNION ALL SELECT * FROM (
 	SELECT * FROM cte
-	ORDER BY block_uid DESC, tx_hash DESC
+	ORDER BY block_uid DESC NULLS LAST, tx_hash DESC
 	LIMIT $%v`, len(args))
 
 	if offset > 0 {
@@ -280,26 +281,34 @@ func GetElTransactionsByAccountIDCombined(ctx context.Context, accountID uint64,
 	// Use UNION ALL instead of OR for better index usage.
 	// The second query excludes rows where from_id = accountID to avoid duplicates
 	// (handles self-transfers where from_id = to_id = accountID).
+	// Push LIMIT into each UNION branch so PG can use composite indexes
+	// (from_id, block_uid DESC) and (to_id, block_uid DESC) efficiently.
+	// NULLS LAST is required to match the index definition and enable index scans.
 	var sql strings.Builder
-	args := []any{accountID, accountID, accountID}
+	innerLimit := offset + uint64(limit)
+	args := []any{accountID, accountID, accountID, innerLimit}
 
 	fmt.Fprint(&sql, `
 		SELECT block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw,
 			method_id, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number,
 			tx_type, tx_index, eff_gas_price
 		FROM (
-			SELECT block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw,
+			(SELECT block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw,
 				method_id, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number,
 				tx_type, tx_index, eff_gas_price
 			FROM el_transactions WHERE from_id = $1
+			ORDER BY block_uid DESC NULLS LAST
+			LIMIT $4)
 			UNION ALL
-			SELECT block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw,
+			(SELECT block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw,
 				method_id, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number,
 				tx_type, tx_index, eff_gas_price
 			FROM el_transactions WHERE to_id = $2 AND from_id != $3
+			ORDER BY block_uid DESC NULLS LAST
+			LIMIT $4)
 		) combined
 		ORDER BY block_uid DESC, tx_index DESC
-		LIMIT $4`)
+		LIMIT $5`)
 	args = append(args, limit)
 
 	if offset > 0 {
