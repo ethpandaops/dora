@@ -82,6 +82,11 @@ func NotFound(w http.ResponseWriter, r *http.Request) {
 }
 
 func handlePageError(w http.ResponseWriter, r *http.Request, pageError error) {
+	if errors.Is(pageError, services.ErrTooManyPageRequests) {
+		handleTooManyRequestsError(w, r)
+		return
+	}
+
 	templateFiles := append(layoutTemplateFiles, "_layout/500.html")
 	notFoundTemplate := templates.GetTemplate(templateFiles...)
 	w.Header().Set("Content-Type", "text/html")
@@ -101,5 +106,19 @@ func handlePageError(w http.ResponseWriter, r *http.Request, pageError error) {
 	if err != nil {
 		logrus.Errorf("error executing page error template for %v route: %v", r.URL.String(), err)
 		http.Error(w, "Internal server error", http.StatusServiceUnavailable)
+	}
+}
+
+func handleTooManyRequestsError(w http.ResponseWriter, r *http.Request) {
+	templateFiles := append(layoutTemplateFiles, "_layout/429.html")
+	tooManyTemplate := templates.GetTemplate(templateFiles...)
+	w.Header().Set("Content-Type", "text/html")
+	w.Header().Set("Retry-After", "5")
+	w.WriteHeader(http.StatusTooManyRequests)
+	data := InitPageData(w, r, "blockchain", r.URL.Path, "Too Many Requests", templateFiles)
+	err := tooManyTemplate.ExecuteTemplate(w, "layout", data)
+	if err != nil {
+		logrus.Errorf("error executing too-many-requests template for %v route: %v", r.URL.String(), err)
+		http.Error(w, "Too many requests, please try again later", http.StatusTooManyRequests)
 	}
 }
