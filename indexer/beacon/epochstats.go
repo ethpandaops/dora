@@ -303,12 +303,12 @@ func (es *EpochStats) pruneValues() {
 	es.values = nil
 }
 
-func (es *EpochStats) loadValuesFromDb(chainState *consensus.ChainState) *EpochStatsValues {
+func (es *EpochStats) loadValuesFromDb(ctx context.Context, chainState *consensus.ChainState) *EpochStatsValues {
 	if !es.isInDb {
 		return nil
 	}
 
-	dbDuty := db.GetUnfinalizedDuty(context.Background(), uint64(es.epoch), es.dependentRoot[:])
+	dbDuty := db.GetUnfinalizedDuty(ctx, uint64(es.epoch), es.dependentRoot[:])
 	if dbDuty == nil {
 		return nil
 	}
@@ -466,7 +466,7 @@ func (es *EpochStats) processState(indexer *Indexer, validatorSet []*phase0.Vali
 	}
 
 	err = db.RunDBTransaction(func(tx *sqlx.Tx) error {
-		return db.InsertUnfinalizedDuty(context.Background(), tx, dbDuty)
+		return db.InsertUnfinalizedDuty(indexer.ctx, tx, dbDuty)
 	})
 	if err != nil {
 		indexer.logger.WithError(err).Errorf("failed storing epoch %v stats (%v / %v) to unfinalized duties", es.epoch, es.dependentRoot.String(), dependentState.stateRoot.String())
@@ -633,7 +633,7 @@ func (es *EpochStats) GetValues(withPrecalc bool) *EpochStatsValues {
 }
 
 // GetOrLoadValues returns the EpochStats values, loading them from the database if necessary.
-func (es *EpochStats) GetOrLoadValues(indexer *Indexer, withPrecalc bool, keepInCache bool) *EpochStatsValues {
+func (es *EpochStats) GetOrLoadValues(ctx context.Context, indexer *Indexer, withPrecalc bool, keepInCache bool) *EpochStatsValues {
 	if es == nil {
 		return nil
 	}
@@ -643,7 +643,7 @@ func (es *EpochStats) GetOrLoadValues(indexer *Indexer, withPrecalc bool, keepIn
 	}
 
 	if es.isInDb {
-		values := es.loadValuesFromDb(indexer.consensusPool.GetChainState())
+		values := es.loadValuesFromDb(ctx, indexer.consensusPool.GetChainState())
 		if values != nil {
 			if keepInCache {
 				es.values = values

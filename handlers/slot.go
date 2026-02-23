@@ -241,7 +241,7 @@ func buildSlotPageData(ctx context.Context, blockSlot int64, blockRoot []byte) (
 	if chainState.EpochOfSlot(slot) >= finalizedEpoch {
 		beaconIndexer := services.GlobalBeaconService.GetBeaconIndexer()
 		if epochStats := beaconIndexer.GetEpochStats(epoch, nil); epochStats != nil {
-			epochStatsValues = epochStats.GetOrLoadValues(beaconIndexer, true, false)
+			epochStatsValues = epochStats.GetOrLoadValues(ctx, beaconIndexer, true, false)
 		}
 	}
 
@@ -472,7 +472,7 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 			assignmentsLoaded[attEpoch] = true
 			beaconIndexer := services.GlobalBeaconService.GetBeaconIndexer()
 			if epochStats := beaconIndexer.GetEpochStats(epoch, nil); epochStats != nil {
-				epochStatsValues := epochStats.GetOrLoadValues(beaconIndexer, true, false)
+				epochStatsValues := epochStats.GetOrLoadValues(ctx, beaconIndexer, true, false)
 
 				assignmentsMap[attEpoch] = epochStatsValues
 			}

@@ -1,7 +1,6 @@
 package system_contracts
 
 import (
-	"context"
 	"fmt"
 	"time"
 
@@ -75,13 +74,13 @@ func (ds *transactionMatcher[MatchType]) runTransactionMatcher(indexerBlock uint
 	if syncEpoch < indexerFinalizedEpoch {
 		// synchronization is behind head, check if our block range is synced
 		syncSlot := ds.indexer.ChainState.EpochToSlot(syncEpoch)
-		syncBlockRoot := db.GetHighestRootBeforeSlot(context.Background(), uint64(syncSlot), false)
+		syncBlockRoot := db.GetHighestRootBeforeSlot(ds.indexer.Ctx, uint64(syncSlot), false)
 		if syncBlockRoot == nil {
 			// no block found, not synced at all
 			return nil
 		}
 
-		syncBlock := db.GetSlotByRoot(context.Background(), syncBlockRoot)
+		syncBlock := db.GetSlotByRoot(ds.indexer.Ctx, syncBlockRoot)
 		if syncBlock == nil {
 			// block not found, not synced at all
 			return nil
@@ -146,7 +145,7 @@ func (ds *transactionMatcher[MatchType]) runTransactionMatcher(indexerBlock uint
 // loadState loads the state of the transaction matcher from the database
 func (ds *transactionMatcher[_]) loadState() {
 	syncState := transactionMatcherState{}
-	db.GetExplorerState(context.Background(), ds.options.stateKey, &syncState)
+	db.GetExplorerState(ds.indexer.Ctx, ds.options.stateKey, &syncState)
 	ds.state = &syncState
 
 	if ds.state.MatchHeight == 0 {
@@ -156,7 +155,7 @@ func (ds *transactionMatcher[_]) loadState() {
 
 // persistState persists the state of the transaction matcher to the database
 func (ds *transactionMatcher[_]) persistState(tx *sqlx.Tx) error {
-	err := db.SetExplorerState(context.Background(), tx, ds.options.stateKey, ds.state)
+	err := db.SetExplorerState(ds.indexer.Ctx, tx, ds.options.stateKey, ds.state)
 	if err != nil {
 		return fmt.Errorf("error while updating tx matcher state: %v", err)
 	}
@@ -171,14 +170,14 @@ func (ds *transactionMatcher[_]) getFinalizedBlockNumber() uint64 {
 
 	finalizedEpoch, finalizedRoot := ds.indexer.ChainState.GetFinalizedCheckpoint()
 	if finalizedBlock := ds.indexer.BeaconIndexer.GetBlockByRoot(finalizedRoot); finalizedBlock != nil {
-		if indexVals := finalizedBlock.GetBlockIndex(); indexVals != nil {
+		if indexVals := finalizedBlock.GetBlockIndex(ds.indexer.Ctx); indexVals != nil {
 			finalizedBlockNumber = indexVals.ExecutionNumber
 		}
 	}
 
 	if finalizedBlockNumber == 0 {
 		// load from db
-		if finalizedBlock := db.GetSlotByRoot(context.Background(), finalizedRoot[:]); finalizedBlock != nil && finalizedBlock.EthBlockNumber != nil {
+		if finalizedBlock := db.GetSlotByRoot(ds.indexer.Ctx, finalizedRoot[:]); finalizedBlock != nil && finalizedBlock.EthBlockNumber != nil {
 			finalizedBlockNumber = *finalizedBlock.EthBlockNumber
 		}
 	}

@@ -2,7 +2,6 @@ package beacon
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"runtime"
 	"sort"
@@ -50,7 +49,7 @@ func (indexer *Indexer) runCachePruning() error {
 }
 
 func (indexer *Indexer) updatePruningState(tx *sqlx.Tx, epoch phase0.Epoch) error {
-	err := db.SetExplorerState(context.Background(), tx, "indexer.prunestate", &dbtypes.IndexerPruneState{
+	err := db.SetExplorerState(indexer.ctx, tx, "indexer.prunestate", &dbtypes.IndexerPruneState{
 		Epoch: uint64(epoch),
 	})
 	if err != nil {
@@ -124,10 +123,10 @@ func (indexer *Indexer) processEpochPruning(pruneEpoch phase0.Epoch) (uint64, ui
 				indexer.logger.Infof("epoch %d state (%v) not yet loaded, waiting for state to be loaded", pruneEpoch, dependentRoot.String())
 				t2 := time.Now()
 				epochStats.dependentState.highPriority = true
-				loaded := epochStats.dependentState.awaitStateLoaded(context.Background(), beaconStateRequestTimeout)
+				loaded := epochStats.dependentState.awaitStateLoaded(indexer.ctx, beaconStateRequestTimeout)
 				if loaded {
 					// wait for async duty computation to be completed
-					epochStats.awaitStatsReady(context.Background(), 30*time.Second)
+					epochStats.awaitStatsReady(indexer.ctx, 30*time.Second)
 				}
 				t1loading += time.Since(t2)
 			}
@@ -228,13 +227,13 @@ func (indexer *Indexer) processEpochPruning(pruneEpoch phase0.Epoch) (uint64, ui
 				epochData.epochStats.prunedEpochAggregations = append(epochData.epochStats.prunedEpochAggregations, &dbUnfinalizedEpoch)
 			}
 
-			err = db.InsertUnfinalizedEpoch(context.Background(), tx, &dbUnfinalizedEpoch)
+			err = db.InsertUnfinalizedEpoch(indexer.ctx, tx, &dbUnfinalizedEpoch)
 			if err != nil {
 				indexer.logger.Errorf("error persisting unfinalized epoch %v: %v", dbUnfinalizedEpoch.Epoch, err)
 			}
 		}
 
-		err := db.UpdateUnfinalizedBlockStatus(context.Background(), tx, pruningBlockRoots, dbtypes.UnfinalizedBlockStatusPruned)
+		err := db.UpdateUnfinalizedBlockStatus(indexer.ctx, tx, pruningBlockRoots, dbtypes.UnfinalizedBlockStatusPruned)
 		if err != nil {
 			indexer.logger.Errorf("error updating block status to pruned: %v", err)
 		}
@@ -351,7 +350,7 @@ func (indexer *Indexer) processCachePruning(prunedEpochStats, prunedEpochStates 
 				}
 			}
 
-			err := db.UpdateUnfinalizedBlockStatus(context.Background(), tx, pruningBlockRoots, dbtypes.UnfinalizedBlockStatusPruned)
+			err := db.UpdateUnfinalizedBlockStatus(indexer.ctx, tx, pruningBlockRoots, dbtypes.UnfinalizedBlockStatusPruned)
 			if err != nil {
 				indexer.logger.Errorf("error updating block status to pruned: %v", err)
 			}

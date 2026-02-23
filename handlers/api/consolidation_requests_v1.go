@@ -194,8 +194,8 @@ func APIConsolidationRequestsV1(w http.ResponseWriter, r *http.Request) {
 	chainState := services.GlobalBeaconService.GetChainState()
 	headBlock := services.GlobalBeaconService.GetBeaconIndexer().GetCanonicalHead(nil)
 	headBlockNum := uint64(0)
-	if headBlock != nil && headBlock.GetBlockIndex() != nil {
-		headBlockNum = uint64(headBlock.GetBlockIndex().ExecutionNumber)
+	if headBlock != nil && headBlock.GetBlockIndex(r.Context()) != nil {
+		headBlockNum = uint64(headBlock.GetBlockIndex(r.Context()).ExecutionNumber)
 	}
 
 	var consolidationRequests []*APIConsolidationRequestInfo

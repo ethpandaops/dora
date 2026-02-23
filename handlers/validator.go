@@ -444,8 +444,8 @@ func buildValidatorPageData(ctx context.Context, validatorIndex uint64, tabView 
 		// get head block number to calculate queue timing
 		headBlock := services.GlobalBeaconService.GetBeaconIndexer().GetCanonicalHead(nil)
 		headBlockNum := uint64(0)
-		if headBlock != nil && headBlock.GetBlockIndex() != nil {
-			headBlockNum = uint64(headBlock.GetBlockIndex().ExecutionNumber)
+		if headBlock != nil && headBlock.GetBlockIndex(ctx) != nil {
+			headBlockNum = uint64(headBlock.GetBlockIndex(ctx).ExecutionNumber)
 		}
 
 		for _, elWithdrawal := range dbElWithdrawals {
@@ -520,8 +520,8 @@ func buildValidatorPageData(ctx context.Context, validatorIndex uint64, tabView 
 		// get head block number to calculate queue timing
 		headBlock := services.GlobalBeaconService.GetBeaconIndexer().GetCanonicalHead(nil)
 		headBlockNum := uint64(0)
-		if headBlock != nil && headBlock.GetBlockIndex() != nil {
-			headBlockNum = uint64(headBlock.GetBlockIndex().ExecutionNumber)
+		if headBlock != nil && headBlock.GetBlockIndex(ctx) != nil {
+			headBlockNum = uint64(headBlock.GetBlockIndex(ctx).ExecutionNumber)
 		}
 
 		for _, consolidation := range dbConsolidations {

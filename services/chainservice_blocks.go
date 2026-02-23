@@ -97,12 +97,12 @@ func (bs *ChainService) GetSlotDetailsByBlockroot(ctx context.Context, blockroot
 	// try loading from cache
 	if blockInfo := bs.beaconIndexer.GetBlockByRoot(blockroot); blockInfo != nil {
 		blockHeader := blockInfo.GetHeader()
-		blockBody := blockInfo.GetBlock()
+		blockBody := blockInfo.GetBlock(ctx)
 		if blockHeader != nil && blockBody != nil {
 			result = &CombinedBlockResponse{
 				Root:     blockInfo.Root,
 				Header:   blockInfo.GetHeader(),
-				Block:    blockInfo.GetBlock(),
+				Block:    blockInfo.GetBlock(ctx),
 				Orphaned: !bs.beaconIndexer.IsCanonicalBlock(blockInfo, nil),
 			}
 		}
@@ -114,7 +114,7 @@ func (bs *ChainService) GetSlotDetailsByBlockroot(ctx context.Context, blockroot
 		result = &CombinedBlockResponse{
 			Root:     blockInfo.Root,
 			Header:   blockInfo.GetHeader(),
-			Block:    blockInfo.GetBlock(),
+			Block:    blockInfo.GetBlock(ctx),
 			Orphaned: true,
 		}
 	}
@@ -226,7 +226,7 @@ func (bs *ChainService) GetSlotDetailsBySlot(ctx context.Context, slot phase0.Sl
 		}
 
 		blockHeader := cachedBlock.GetHeader()
-		blockBody := cachedBlock.GetBlock()
+		blockBody := cachedBlock.GetBlock(ctx)
 		if blockHeader != nil && blockBody != nil {
 			result = &CombinedBlockResponse{
 				Root:     cachedBlock.Root,
@@ -639,7 +639,7 @@ func (bs *ChainService) GetDbBlocksByFilter(ctx context.Context, filter *dbtypes
 			if blockHeader == nil {
 				continue
 			}
-			blockIndex := block.GetBlockIndex()
+			blockIndex := block.GetBlockIndex(ctx)
 			if blockIndex == nil {
 				continue
 			}
@@ -1062,8 +1062,8 @@ func (bs *ChainService) GetHighestElBlockNumber(ctx context.Context, overrideFor
 		if canonicalHead == nil {
 			break
 		}
-		if canonicalHead.GetBlockIndex() != nil {
-			return canonicalHead.GetBlockIndex().ExecutionNumber
+		if canonicalHead.GetBlockIndex(ctx) != nil {
+			return canonicalHead.GetBlockIndex(ctx).ExecutionNumber
 		}
 
 		parentRoot := canonicalHead.GetParentRoot()

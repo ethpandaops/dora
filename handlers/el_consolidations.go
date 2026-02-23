@@ -204,8 +204,8 @@ func buildFilteredElConsolidationsPageData(ctx context.Context, pageIdx uint64, 
 	chainState := services.GlobalBeaconService.GetChainState()
 	headBlock := services.GlobalBeaconService.GetBeaconIndexer().GetCanonicalHead(nil)
 	headBlockNum := uint64(0)
-	if headBlock != nil && headBlock.GetBlockIndex() != nil {
-		headBlockNum = uint64(headBlock.GetBlockIndex().ExecutionNumber)
+	if headBlock != nil && headBlock.GetBlockIndex(ctx) != nil {
+		headBlockNum = uint64(headBlock.GetBlockIndex(ctx).ExecutionNumber)
 	}
 
 	for _, consolidation := range dbElConsolidations {
