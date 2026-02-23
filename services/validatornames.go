@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -29,6 +30,7 @@ import (
 var logger_vn = logrus.StandardLogger().WithField("module", "validator_names")
 
 type ValidatorNames struct {
+	ctx                   context.Context
 	beaconIndexer         *beacon.Indexer
 	chainState            *consensus.ChainState
 	loadingMutex          sync.Mutex
@@ -48,8 +50,9 @@ type validatorNameEntry struct {
 	name string
 }
 
-func NewValidatorNames(beaconIndexer *beacon.Indexer, chainState *consensus.ChainState) *ValidatorNames {
+func NewValidatorNames(ctx context.Context, beaconIndexer *beacon.Indexer, chainState *consensus.ChainState) *ValidatorNames {
 	validatorNames := &ValidatorNames{
+		ctx:           ctx,
 		beaconIndexer: beaconIndexer,
 		chainState:    chainState,
 	}
@@ -107,7 +110,7 @@ func (vn *ValidatorNames) runUpdater() error {
 	}
 
 	if needUpdate {
-		err := vn.UpdateDb()
+		err := vn.UpdateDb(vn.ctx)
 		if err != nil {
 			return err
 		}
@@ -156,7 +159,7 @@ func (vn *ValidatorNames) resolveNames() (bool, error) {
 			continue
 		}
 
-		validators, _ := GlobalBeaconService.GetFilteredValidatorSet(&dbtypes.ValidatorFilter{
+		validators, _ := GlobalBeaconService.GetFilteredValidatorSet(vn.ctx, &dbtypes.ValidatorFilter{
 			WithdrawalAddress: wdAddr[:],
 		}, false)
 		for _, validator := range validators {
@@ -170,7 +173,7 @@ func (vn *ValidatorNames) resolveNames() (bool, error) {
 		pageSize := uint64(5000)
 
 		for {
-			deposits, depositCount, _ := db.GetDepositTxsFiltered(offset, uint32(pageSize), canonicalForkIds, &dbtypes.DepositTxFilter{
+			deposits, depositCount, _ := db.GetDepositTxsFiltered(vn.ctx, offset, uint32(pageSize), canonicalForkIds, &dbtypes.DepositTxFilter{
 				Address: address[:],
 			})
 			for _, deposit := range deposits {
@@ -193,7 +196,7 @@ func (vn *ValidatorNames) resolveNames() (bool, error) {
 		pageSize := uint64(5000)
 
 		for {
-			deposits, depositCount, _ := db.GetDepositTxsFiltered(offset, uint32(pageSize), canonicalForkIds, &dbtypes.DepositTxFilter{
+			deposits, depositCount, _ := db.GetDepositTxsFiltered(vn.ctx, offset, uint32(pageSize), canonicalForkIds, &dbtypes.DepositTxFilter{
 				TargetAddress: address[:],
 			})
 			for _, deposit := range deposits {
@@ -444,7 +447,7 @@ func (vn *ValidatorNames) loadFromRangesApi(apiUrl string) error {
 	return nil
 }
 
-func (vn *ValidatorNames) UpdateDb() error {
+func (vn *ValidatorNames) UpdateDb(ctx context.Context) error {
 	vn.namesMutex.RLock()
 	nameRows := make([]*dbtypes.ValidatorName, 0)
 	hasName := map[uint64]bool{}
@@ -486,7 +489,7 @@ func (vn *ValidatorNames) UpdateDb() error {
 
 		// get existing db entries
 		dbNamesMap := map[uint64]string{}
-		for _, dbName := range db.GetValidatorNames(lastIndex, maxIndex) {
+		for _, dbName := range db.GetValidatorNames(ctx, lastIndex, maxIndex) {
 			dbNamesMap[dbName.Index] = dbName.Name
 		}
 
@@ -508,14 +511,14 @@ func (vn *ValidatorNames) UpdateDb() error {
 
 		err := db.RunDBTransaction(func(tx *sqlx.Tx) error {
 			if len(updateNames) > 0 {
-				err := db.InsertValidatorNames(updateNames, tx)
+				err := db.InsertValidatorNames(ctx, tx, updateNames)
 				if err != nil {
 					logger_vn.WithError(err).Errorf("error while adding validator names to db")
 				}
 			}
 
 			if len(removeIndexes) > 0 {
-				err := db.DeleteValidatorNames(removeIndexes, tx)
+				err := db.DeleteValidatorNames(ctx, tx, removeIndexes)
 				if err != nil {
 					logger_vn.WithError(err).Errorf("error while deleting validator names from db")
 				}

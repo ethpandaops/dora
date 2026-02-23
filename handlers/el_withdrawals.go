@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -98,8 +99,8 @@ func ElWithdrawals(w http.ResponseWriter, r *http.Request) {
 func getFilteredElWithdrawalsPageData(pageIdx uint64, pageSize uint64, minSlot uint64, maxSlot uint64, sourceAddr string, minIndex uint64, maxIndex uint64, vname string, withOrphaned uint8, withType uint8, pubkey string) (*models.ElWithdrawalsPageData, error) {
 	pageData := &models.ElWithdrawalsPageData{}
 	pageCacheKey := fmt.Sprintf("el_withdrawals:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v", pageIdx, pageSize, minSlot, maxSlot, sourceAddr, minIndex, maxIndex, vname, withOrphaned, withType, pubkey)
-	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(_ *services.FrontendCacheProcessingPage) interface{} {
-		return buildFilteredElWithdrawalsPageData(pageIdx, pageSize, minSlot, maxSlot, sourceAddr, minIndex, maxIndex, vname, withOrphaned, withType, pubkey)
+	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
+		return buildFilteredElWithdrawalsPageData(pageCall.CallCtx, pageIdx, pageSize, minSlot, maxSlot, sourceAddr, minIndex, maxIndex, vname, withOrphaned, withType, pubkey)
 	})
 	if pageErr == nil && pageRes != nil {
 		resData, resOk := pageRes.(*models.ElWithdrawalsPageData)
@@ -111,7 +112,7 @@ func getFilteredElWithdrawalsPageData(pageIdx uint64, pageSize uint64, minSlot u
 	return pageData, pageErr
 }
 
-func buildFilteredElWithdrawalsPageData(pageIdx uint64, pageSize uint64, minSlot uint64, maxSlot uint64, sourceAddr string, minIndex uint64, maxIndex uint64, vname string, withOrphaned uint8, withType uint8, pubkey string) *models.ElWithdrawalsPageData {
+func buildFilteredElWithdrawalsPageData(ctx context.Context, pageIdx uint64, pageSize uint64, minSlot uint64, maxSlot uint64, sourceAddr string, minIndex uint64, maxIndex uint64, vname string, withOrphaned uint8, withType uint8, pubkey string) *models.ElWithdrawalsPageData {
 	filterArgs := url.Values{}
 	if minSlot != 0 {
 		filterArgs.Add("f.mins", fmt.Sprintf("%v", minSlot))
@@ -190,12 +191,12 @@ func buildFilteredElWithdrawalsPageData(pageIdx uint64, pageSize uint64, minSlot
 		withdrawalRequestFilter.Filter.MaxAmount = &maxAmount
 	}
 
-	dbElWithdrawals, totalPendingTxRows, totalRequests := services.GlobalBeaconService.GetWithdrawalRequestsByFilter(withdrawalRequestFilter, (pageIdx-1)*pageSize, uint32(pageSize))
+	dbElWithdrawals, totalPendingTxRows, totalRequests := services.GlobalBeaconService.GetWithdrawalRequestsByFilter(ctx, withdrawalRequestFilter, (pageIdx-1)*pageSize, uint32(pageSize))
 	chainState := services.GlobalBeaconService.GetChainState()
 	headBlock := services.GlobalBeaconService.GetBeaconIndexer().GetCanonicalHead(nil)
 	headBlockNum := uint64(0)
-	if headBlock != nil && headBlock.GetBlockIndex() != nil {
-		headBlockNum = uint64(headBlock.GetBlockIndex().ExecutionNumber)
+	if headBlock != nil && headBlock.GetBlockIndex(ctx) != nil {
+		headBlockNum = uint64(headBlock.GetBlockIndex(ctx).ExecutionNumber)
 	}
 
 	for _, elWithdrawal := range dbElWithdrawals {

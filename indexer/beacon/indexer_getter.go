@@ -198,7 +198,7 @@ func (indexer *Indexer) GetBlockDistance(baseRoot phase0.Root, headRoot phase0.R
 
 // GetOrphanedBlockByRoot returns the orphaned block with the given block root.
 func (indexer *Indexer) GetOrphanedBlockByRoot(blockRoot phase0.Root) (*Block, error) {
-	orphanedBlock := db.GetOrphanedBlock(blockRoot[:])
+	orphanedBlock := db.GetOrphanedBlock(indexer.ctx, blockRoot[:])
 	if orphanedBlock == nil {
 		return nil, nil
 	}
@@ -256,7 +256,7 @@ func (indexer *Indexer) GetEpochStats(epoch phase0.Epoch, overrideForkId *ForkKe
 
 			dependentBlock := indexer.blockCache.getBlockByRoot(stats.dependentRoot)
 			if dependentBlock == nil {
-				blockHead := db.GetBlockHeadByRoot(stats.dependentRoot[:])
+				blockHead := db.GetBlockHeadByRoot(indexer.ctx, stats.dependentRoot[:])
 				if blockHead != nil {
 					dependentBlock = newBlock(indexer.dynSsz, phase0.Root(blockHead.Root), phase0.Slot(blockHead.Slot), blockHead.BlockUid)
 					dependentBlock.isInFinalizedDb = true

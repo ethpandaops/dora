@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -58,7 +59,7 @@ func getForksPageData() (*models.ForksPageData, error) {
 	pageData := &models.ForksPageData{}
 	pageCacheKey := "forks"
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
-		pageData, cacheTimeout := buildForksPageData()
+		pageData, cacheTimeout := buildForksPageData(pageCall.CallCtx)
 		pageCall.CacheTimeout = cacheTimeout
 		return pageData
 	})
@@ -72,7 +73,7 @@ func getForksPageData() (*models.ForksPageData, error) {
 	return pageData, pageErr
 }
 
-func buildForksPageData() (*models.ForksPageData, time.Duration) {
+func buildForksPageData(ctx context.Context) (*models.ForksPageData, time.Duration) {
 	logrus.Debugf("forks page called")
 	pageData := &models.ForksPageData{}
 
@@ -89,7 +90,7 @@ func buildForksPageData() (*models.ForksPageData, time.Duration) {
 		}
 		if fork.Slot < chainState.EpochToSlot(finalizedEpoch) {
 			// check block
-			dbBlock := db.GetSlotByRoot(fork.Root[:])
+			dbBlock := db.GetSlotByRoot(ctx, fork.Root[:])
 			if dbBlock != nil && dbBlock.Status == dbtypes.Canonical {
 				headForks[0].AllClients = append(headForks[0].AllClients, fork.AllClients...)
 				headForks[idx] = nil

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -97,7 +98,7 @@ func getValidatorsPageData(pageNumber uint64, pageSize uint64, sortOrder string,
 	pageData := &models.ValidatorsPageData{}
 	pageCacheKey := fmt.Sprintf("validators:%v:%v:%v:%v:%v:%v:%v", pageNumber, pageSize, sortOrder, filterPubKey, filterIndex, filterName, filterStatus)
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
-		pageData, cacheTimeout := buildValidatorsPageData(pageNumber, pageSize, sortOrder, filterPubKey, filterIndex, filterName, filterStatus)
+		pageData, cacheTimeout := buildValidatorsPageData(pageCall.CallCtx, pageNumber, pageSize, sortOrder, filterPubKey, filterIndex, filterName, filterStatus)
 		pageCall.CacheTimeout = cacheTimeout
 		return pageData
 	})
@@ -111,7 +112,7 @@ func getValidatorsPageData(pageNumber uint64, pageSize uint64, sortOrder string,
 	return pageData, pageErr
 }
 
-func buildValidatorsPageData(pageNumber uint64, pageSize uint64, sortOrder string, filterPubKey string, filterIndex string, filterName string, filterStatus string) (*models.ValidatorsPageData, time.Duration) {
+func buildValidatorsPageData(ctx context.Context, pageNumber uint64, pageSize uint64, sortOrder string, filterPubKey string, filterIndex string, filterName string, filterStatus string) (*models.ValidatorsPageData, time.Duration) {
 	logrus.Debugf("validators page called: %v:%v:%v:%v:%v:%v:%v", pageNumber, pageSize, sortOrder, filterPubKey, filterIndex, filterName, filterStatus)
 	pageData := &models.ValidatorsPageData{}
 	cacheTime := 10 * time.Minute
@@ -187,7 +188,7 @@ func buildValidatorsPageData(pageNumber uint64, pageSize uint64, sortOrder strin
 
 	// get latest validator set
 	var validatorSet []v1.Validator
-	validatorSetRsp, validatorSetLen := services.GlobalBeaconService.GetFilteredValidatorSet(&validatorFilter, true)
+	validatorSetRsp, validatorSetLen := services.GlobalBeaconService.GetFilteredValidatorSet(ctx, &validatorFilter, true)
 	if len(validatorSetRsp) == 0 {
 		cacheTime = 5 * time.Minute
 		validatorSet = []v1.Validator{}

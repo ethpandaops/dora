@@ -67,7 +67,7 @@ func ApiValidatorByEth1AddressV1(w http.ResponseWriter, r *http.Request) {
 
 	canonicalForkIds := services.GlobalBeaconService.GetCanonicalForkIds()
 
-	deposits, _, err := db.GetDepositTxsFiltered(uint64(offset), uint32(limit), canonicalForkIds, &dbtypes.DepositTxFilter{
+	deposits, _, err := db.GetDepositTxsFiltered(r.Context(), uint64(offset), uint32(limit), canonicalForkIds, &dbtypes.DepositTxFilter{
 		Address: eth1Address,
 	})
 	if err != nil {

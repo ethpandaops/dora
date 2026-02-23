@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -8,7 +9,7 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-func InsertElTransactions(txs []*dbtypes.ElTransaction, dbTx *sqlx.Tx) error {
+func InsertElTransactions(ctx context.Context, dbTx *sqlx.Tx, txs []*dbtypes.ElTransaction) error {
 	if len(txs) == 0 {
 		return nil
 	}
@@ -64,25 +65,25 @@ func InsertElTransactions(txs []*dbtypes.ElTransaction, dbTx *sqlx.Tx) error {
 		dbtypes.DBEngineSqlite: "",
 	}))
 
-	_, err := dbTx.Exec(sql.String(), args...)
+	_, err := dbTx.ExecContext(ctx, sql.String(), args...)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func GetElTransaction(blockUid uint64, txHash []byte) (*dbtypes.ElTransaction, error) {
+func GetElTransaction(ctx context.Context, blockUid uint64, txHash []byte) (*dbtypes.ElTransaction, error) {
 	tx := &dbtypes.ElTransaction{}
-	err := ReaderDb.Get(tx, "SELECT block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw, method_id, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number, tx_type, tx_index, eff_gas_price FROM el_transactions WHERE block_uid = $1 AND tx_hash = $2", blockUid, txHash)
+	err := ReaderDb.GetContext(ctx, tx, "SELECT block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw, method_id, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number, tx_type, tx_index, eff_gas_price FROM el_transactions WHERE block_uid = $1 AND tx_hash = $2", blockUid, txHash)
 	if err != nil {
 		return nil, err
 	}
 	return tx, nil
 }
 
-func GetElTransactionsByHash(txHash []byte) ([]*dbtypes.ElTransaction, error) {
+func GetElTransactionsByHash(ctx context.Context, txHash []byte) ([]*dbtypes.ElTransaction, error) {
 	txs := []*dbtypes.ElTransaction{}
-	err := ReaderDb.Select(&txs, "SELECT block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw, method_id, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number, tx_type, tx_index, eff_gas_price FROM el_transactions WHERE tx_hash = $1 ORDER BY block_uid DESC", txHash)
+	err := ReaderDb.SelectContext(ctx, &txs, "SELECT block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw, method_id, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number, tx_type, tx_index, eff_gas_price FROM el_transactions WHERE tx_hash = $1 ORDER BY block_uid DESC", txHash)
 	if err != nil {
 		return nil, err
 	}
@@ -92,7 +93,7 @@ func GetElTransactionsByHash(txHash []byte) ([]*dbtypes.ElTransaction, error) {
 // GetElTransactionsByHashes returns all transaction records matching the given
 // tx hashes. May return multiple records per hash if the tx appears in multiple
 // blocks (reorgs).
-func GetElTransactionsByHashes(txHashes [][]byte) ([]*dbtypes.ElTransaction, error) {
+func GetElTransactionsByHashes(ctx context.Context, txHashes [][]byte) ([]*dbtypes.ElTransaction, error) {
 	if len(txHashes) == 0 {
 		return []*dbtypes.ElTransaction{}, nil
 	}
@@ -111,22 +112,22 @@ func GetElTransactionsByHashes(txHashes [][]byte) ([]*dbtypes.ElTransaction, err
 	fmt.Fprint(&sql, ")")
 
 	txs := []*dbtypes.ElTransaction{}
-	if err := ReaderDb.Select(&txs, sql.String(), args...); err != nil {
+	if err := ReaderDb.SelectContext(ctx, &txs, sql.String(), args...); err != nil {
 		return nil, err
 	}
 	return txs, nil
 }
 
-func GetElTransactionsByBlockUid(blockUid uint64) ([]*dbtypes.ElTransaction, error) {
+func GetElTransactionsByBlockUid(ctx context.Context, blockUid uint64) ([]*dbtypes.ElTransaction, error) {
 	txs := []*dbtypes.ElTransaction{}
-	err := ReaderDb.Select(&txs, "SELECT block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw, method_id, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number, tx_type, tx_index, eff_gas_price FROM el_transactions WHERE block_uid = $1", blockUid)
+	err := ReaderDb.SelectContext(ctx, &txs, "SELECT block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw, method_id, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number, tx_type, tx_index, eff_gas_price FROM el_transactions WHERE block_uid = $1", blockUid)
 	if err != nil {
 		return nil, err
 	}
 	return txs, nil
 }
 
-func GetElTransactionsByAccountID(accountID uint64, isFrom bool, offset uint64, limit uint32) ([]*dbtypes.ElTransaction, uint64, error) {
+func GetElTransactionsByAccountID(ctx context.Context, accountID uint64, isFrom bool, offset uint64, limit uint32) ([]*dbtypes.ElTransaction, uint64, error) {
 	var sql strings.Builder
 	args := []any{accountID}
 
@@ -136,6 +137,7 @@ func GetElTransactionsByAccountID(accountID uint64, isFrom bool, offset uint64, 
 	}
 
 	// Use window function for count (PostgreSQL 9.5+) - avoids double scan
+	// NULLS LAST matches the composite index definition to enable index scans.
 	fmt.Fprintf(&sql, `
 		SELECT
 			block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw,
@@ -144,7 +146,7 @@ func GetElTransactionsByAccountID(accountID uint64, isFrom bool, offset uint64, 
 			COUNT(*) OVER() AS total_count
 		FROM el_transactions
 		WHERE %s = $1
-		ORDER BY block_uid DESC, tx_hash DESC
+		ORDER BY block_uid DESC NULLS LAST, tx_hash DESC
 		LIMIT $2`, column)
 	args = append(args, limit)
 
@@ -159,7 +161,7 @@ func GetElTransactionsByAccountID(accountID uint64, isFrom bool, offset uint64, 
 	}
 
 	rows := []resultRow{}
-	err := ReaderDb.Select(&rows, sql.String(), args...)
+	err := ReaderDb.SelectContext(ctx, &rows, sql.String(), args...)
 	if err != nil {
 		logger.Errorf("Error while fetching el transactions by account id: %v", err)
 		return nil, 0, err
@@ -181,7 +183,7 @@ func GetElTransactionsByAccountID(accountID uint64, isFrom bool, offset uint64, 
 	return txs, totalCount, nil
 }
 
-func GetElTransactionsFiltered(offset uint64, limit uint32, filter *dbtypes.ElTransactionFilter) ([]*dbtypes.ElTransaction, uint64, error) {
+func GetElTransactionsFiltered(ctx context.Context, offset uint64, limit uint32, filter *dbtypes.ElTransactionFilter) ([]*dbtypes.ElTransaction, uint64, error) {
 	var sql strings.Builder
 	args := []any{}
 
@@ -244,7 +246,7 @@ func GetElTransactionsFiltered(offset uint64, limit uint32, filter *dbtypes.ElTr
 	FROM cte
 	UNION ALL SELECT * FROM (
 	SELECT * FROM cte
-	ORDER BY block_uid DESC, tx_hash DESC
+	ORDER BY block_uid DESC NULLS LAST, tx_hash DESC
 	LIMIT $%v`, len(args))
 
 	if offset > 0 {
@@ -254,7 +256,7 @@ func GetElTransactionsFiltered(offset uint64, limit uint32, filter *dbtypes.ElTr
 	fmt.Fprint(&sql, ") AS t1")
 
 	txs := []*dbtypes.ElTransaction{}
-	err := ReaderDb.Select(&txs, sql.String(), args...)
+	err := ReaderDb.SelectContext(ctx, &txs, sql.String(), args...)
 	if err != nil {
 		logger.Errorf("Error while fetching filtered el transactions: %v", err)
 		return nil, 0, err
@@ -275,30 +277,38 @@ const MaxAccountTransactionCount = 100000
 // GetElTransactionsByAccountIDCombined fetches transactions where the account is either
 // sender (from_id) or receiver (to_id). Results are sorted by block_uid DESC, tx_index DESC.
 // Returns transactions, total count (capped at MaxAccountTransactionCount), whether count is capped, and error.
-func GetElTransactionsByAccountIDCombined(accountID uint64, offset uint64, limit uint32) ([]*dbtypes.ElTransaction, uint64, bool, error) {
+func GetElTransactionsByAccountIDCombined(ctx context.Context, accountID uint64, offset uint64, limit uint32) ([]*dbtypes.ElTransaction, uint64, bool, error) {
 	// Use UNION ALL instead of OR for better index usage.
 	// The second query excludes rows where from_id = accountID to avoid duplicates
 	// (handles self-transfers where from_id = to_id = accountID).
+	// Push LIMIT into each UNION branch so PG can use composite indexes
+	// (from_id, block_uid DESC) and (to_id, block_uid DESC) efficiently.
+	// NULLS LAST is required to match the index definition and enable index scans.
 	var sql strings.Builder
-	args := []any{accountID, accountID, accountID}
+	innerLimit := offset + uint64(limit)
+	args := []any{accountID, accountID, accountID, innerLimit}
 
 	fmt.Fprint(&sql, `
 		SELECT block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw,
 			method_id, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number,
 			tx_type, tx_index, eff_gas_price
 		FROM (
-			SELECT block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw,
+			(SELECT block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw,
 				method_id, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number,
 				tx_type, tx_index, eff_gas_price
 			FROM el_transactions WHERE from_id = $1
+			ORDER BY block_uid DESC NULLS LAST
+			LIMIT $4)
 			UNION ALL
-			SELECT block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw,
+			(SELECT block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw,
 				method_id, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number,
 				tx_type, tx_index, eff_gas_price
 			FROM el_transactions WHERE to_id = $2 AND from_id != $3
+			ORDER BY block_uid DESC NULLS LAST
+			LIMIT $4)
 		) combined
 		ORDER BY block_uid DESC, tx_index DESC
-		LIMIT $4`)
+		LIMIT $5`)
 	args = append(args, limit)
 
 	if offset > 0 {
@@ -307,7 +317,7 @@ func GetElTransactionsByAccountIDCombined(accountID uint64, offset uint64, limit
 	}
 
 	txs := []*dbtypes.ElTransaction{}
-	err := ReaderDb.Select(&txs, sql.String(), args...)
+	err := ReaderDb.SelectContext(ctx, &txs, sql.String(), args...)
 	if err != nil {
 		logger.Errorf("Error while fetching el transactions by account id (combined): %v", err)
 		return nil, 0, false, err
@@ -323,7 +333,7 @@ func GetElTransactionsByAccountIDCombined(accountID uint64, offset uint64, limit
 			LIMIT $4
 		) limited`
 	var totalCount uint64
-	err = ReaderDb.Get(&totalCount, countSQL, accountID, accountID, accountID, MaxAccountTransactionCount)
+	err = ReaderDb.GetContext(ctx, &totalCount, countSQL, accountID, accountID, accountID, MaxAccountTransactionCount)
 	if err != nil {
 		logger.Errorf("Error while counting el transactions by account id (combined): %v", err)
 		return nil, 0, false, err
@@ -334,12 +344,12 @@ func GetElTransactionsByAccountIDCombined(accountID uint64, offset uint64, limit
 	return txs, totalCount, moreAvailable, nil
 }
 
-func DeleteElTransaction(blockUid uint64, txHash []byte, dbTx *sqlx.Tx) error {
-	_, err := dbTx.Exec("DELETE FROM el_transactions WHERE block_uid = $1 AND tx_hash = $2", blockUid, txHash)
+func DeleteElTransaction(ctx context.Context, dbTx *sqlx.Tx, blockUid uint64, txHash []byte) error {
+	_, err := dbTx.ExecContext(ctx, "DELETE FROM el_transactions WHERE block_uid = $1 AND tx_hash = $2", blockUid, txHash)
 	return err
 }
 
-func DeleteElTransactionsByBlockUid(blockUid uint64, dbTx *sqlx.Tx) error {
-	_, err := dbTx.Exec("DELETE FROM el_transactions WHERE block_uid = $1", blockUid)
+func DeleteElTransactionsByBlockUid(ctx context.Context, dbTx *sqlx.Tx, blockUid uint64) error {
+	_, err := dbTx.ExecContext(ctx, "DELETE FROM el_transactions WHERE block_uid = $1", blockUid)
 	return err
 }

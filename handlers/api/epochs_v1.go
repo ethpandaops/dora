@@ -153,7 +153,7 @@ func APIEpochsV1(w http.ResponseWriter, r *http.Request) {
 		firstSlot := epoch * specs.SlotsPerEpoch
 
 		// Get blocks for this epoch
-		blocks := services.GlobalBeaconService.GetDbBlocksForSlots(firstSlot, uint32(specs.SlotsPerEpoch), true, true)
+		blocks := services.GlobalBeaconService.GetDbBlocksForSlots(r.Context(), firstSlot, uint32(specs.SlotsPerEpoch), true, true)
 
 		for _, slot := range blocks {
 			if slot.Status == dbtypes.Missing {

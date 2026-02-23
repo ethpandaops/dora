@@ -1,12 +1,14 @@
 package db
 
 import (
+	"context"
+
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/jmoiron/sqlx"
 )
 
-func InsertEpoch(epoch *dbtypes.Epoch, tx *sqlx.Tx) error {
-	_, err := tx.Exec(EngineQuery(map[dbtypes.DBEngineType]string{
+func InsertEpoch(ctx context.Context, tx *sqlx.Tx, epoch *dbtypes.Epoch) error {
+	_, err := tx.ExecContext(ctx, EngineQuery(map[dbtypes.DBEngineType]string{
 		dbtypes.DBEnginePgsql: `
 			INSERT INTO epochs (
 				epoch, validator_count, validator_balance, eligible, voted_target, voted_head, voted_total, block_count, orphaned_count,
@@ -53,18 +55,18 @@ func InsertEpoch(epoch *dbtypes.Epoch, tx *sqlx.Tx) error {
 	return nil
 }
 
-func IsEpochSynchronized(epoch uint64) bool {
+func IsEpochSynchronized(ctx context.Context, epoch uint64) bool {
 	var count uint64
-	err := ReaderDb.Get(&count, `SELECT COUNT(*) FROM epochs WHERE epoch = $1`, epoch)
+	err := ReaderDb.GetContext(ctx, &count, `SELECT COUNT(*) FROM epochs WHERE epoch = $1`, epoch)
 	if err != nil {
 		return false
 	}
 	return count > 0
 }
 
-func GetEpochs(firstEpoch uint64, limit uint32) []*dbtypes.Epoch {
+func GetEpochs(ctx context.Context, firstEpoch uint64, limit uint32) []*dbtypes.Epoch {
 	epochs := []*dbtypes.Epoch{}
-	err := ReaderDb.Select(&epochs, `
+	err := ReaderDb.SelectContext(ctx, &epochs, `
 	SELECT
 		epoch, validator_count, validator_balance, eligible, voted_target, voted_head, voted_total, block_count, orphaned_count,
 		attestation_count, deposit_count, exit_count, withdraw_count, withdraw_amount, attester_slashing_count,
@@ -93,10 +95,10 @@ type EpochParticipation struct {
 }
 
 // GetFinalizedEpochParticipation gets participation data for finalized canonical epochs in the given range
-func GetFinalizedEpochParticipation(startEpoch, endEpoch uint64) ([]*EpochParticipation, error) {
+func GetFinalizedEpochParticipation(ctx context.Context, startEpoch, endEpoch uint64) ([]*EpochParticipation, error) {
 	var results []*EpochParticipation
 
-	err := ReaderDb.Select(&results, `
+	err := ReaderDb.SelectContext(ctx, &results, `
 		SELECT 
 			epoch,
 			block_count,

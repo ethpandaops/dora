@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -8,16 +9,16 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-func IsSyncCommitteeSynchronized(period uint64) bool {
+func IsSyncCommitteeSynchronized(ctx context.Context, period uint64) bool {
 	var count uint64
-	err := ReaderDb.Get(&count, `SELECT COUNT(*) FROM sync_assignments WHERE period = $1`, period)
+	err := ReaderDb.GetContext(ctx, &count, `SELECT COUNT(*) FROM sync_assignments WHERE period = $1`, period)
 	if err != nil {
 		return false
 	}
 	return count > 0
 }
 
-func InsertSyncAssignments(syncAssignments []*dbtypes.SyncAssignment, tx *sqlx.Tx) error {
+func InsertSyncAssignments(ctx context.Context, tx *sqlx.Tx, syncAssignments []*dbtypes.SyncAssignment) error {
 	var sql strings.Builder
 	fmt.Fprint(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
 		dbtypes.DBEnginePgsql:  `INSERT INTO sync_assignments (period, "index", validator) VALUES `,
@@ -39,16 +40,16 @@ func InsertSyncAssignments(syncAssignments []*dbtypes.SyncAssignment, tx *sqlx.T
 		dbtypes.DBEnginePgsql:  ` ON CONFLICT (period, "index") DO UPDATE SET validator = excluded.validator`,
 		dbtypes.DBEngineSqlite: "",
 	}))
-	_, err := tx.Exec(sql.String(), args...)
+	_, err := tx.ExecContext(ctx, sql.String(), args...)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func GetSyncAssignmentsForPeriod(period uint64) []uint64 {
+func GetSyncAssignmentsForPeriod(ctx context.Context, period uint64) []uint64 {
 	assignments := []uint64{}
-	err := ReaderDb.Select(&assignments, `
+	err := ReaderDb.SelectContext(ctx, &assignments, `
 	SELECT
 		validator
 	FROM sync_assignments

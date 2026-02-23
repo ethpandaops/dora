@@ -42,8 +42,8 @@ type snooperClientInfo struct {
 }
 
 // NewSnooperManager creates a new snooper manager
-func NewSnooperManager(logger logrus.FieldLogger, indexer *beacon.Indexer) *SnooperManager {
-	ctx, cancel := context.WithCancel(context.Background())
+func NewSnooperManager(parentCtx context.Context, logger logrus.FieldLogger, indexer *beacon.Indexer) *SnooperManager {
+	ctx, cancel := context.WithCancel(parentCtx)
 
 	return &SnooperManager{
 		logger:           logger.WithField("component", "snooper-manager"),
@@ -205,7 +205,7 @@ func (sm *SnooperManager) HandleExecutionTimeEvent(event *ExecutionTimeEvent) {
 	} else {
 		// Update block execution times
 		for _, b := range block {
-			b.AddExecutionTime(beacon.ExecutionTime{
+			b.AddExecutionTime(sm.ctx, beacon.ExecutionTime{
 				ClientType: clientInfo.execution.GetClientType().Uint8(),
 				MinTime:    uint16(event.ExecutionTime.Milliseconds()),
 				MaxTime:    uint16(event.ExecutionTime.Milliseconds()),

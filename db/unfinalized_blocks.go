@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -8,8 +9,8 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-func InsertUnfinalizedBlock(block *dbtypes.UnfinalizedBlock, tx *sqlx.Tx) error {
-	_, err := tx.Exec(EngineQuery(map[dbtypes.DBEngineType]string{
+func InsertUnfinalizedBlock(ctx context.Context, tx *sqlx.Tx, block *dbtypes.UnfinalizedBlock) error {
+	_, err := tx.ExecContext(ctx, EngineQuery(map[dbtypes.DBEngineType]string{
 		dbtypes.DBEnginePgsql: `
 			INSERT INTO unfinalized_blocks (
 				root, slot, header_ver, header_ssz, block_ver, block_ssz, status, fork_id, recv_delay, min_exec_time, max_exec_time, exec_times, 
@@ -31,7 +32,7 @@ func InsertUnfinalizedBlock(block *dbtypes.UnfinalizedBlock, tx *sqlx.Tx) error 
 	return nil
 }
 
-func UpdateUnfinalizedBlockStatus(roots [][]byte, blockStatus dbtypes.UnfinalizedBlockStatus, tx *sqlx.Tx) error {
+func UpdateUnfinalizedBlockStatus(ctx context.Context, tx *sqlx.Tx, roots [][]byte, blockStatus dbtypes.UnfinalizedBlockStatus) error {
 	if len(roots) == 0 {
 		return nil
 	}
@@ -53,14 +54,14 @@ func UpdateUnfinalizedBlockStatus(roots [][]byte, blockStatus dbtypes.Unfinalize
 
 	fmt.Fprint(&sql, ")")
 
-	_, err := tx.Exec(sql.String(), args...)
+	_, err := tx.ExecContext(ctx, sql.String(), args...)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func UpdateUnfinalizedBlockForkId(roots [][]byte, forkId uint64, tx *sqlx.Tx) error {
+func UpdateUnfinalizedBlockForkId(ctx context.Context, tx *sqlx.Tx, roots [][]byte, forkId uint64) error {
 	if len(roots) == 0 {
 		return nil
 	}
@@ -82,22 +83,22 @@ func UpdateUnfinalizedBlockForkId(roots [][]byte, forkId uint64, tx *sqlx.Tx) er
 
 	fmt.Fprint(&sql, ")")
 
-	_, err := tx.Exec(sql.String(), args...)
+	_, err := tx.ExecContext(ctx, sql.String(), args...)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func UpdateUnfinalizedBlockExecutionTimes(root []byte, minExecTime uint32, maxExecTime uint32, execTimes []byte, tx *sqlx.Tx) error {
-	_, err := tx.Exec(`UPDATE unfinalized_blocks SET min_exec_time = $1, max_exec_time = $2, exec_times = $3 WHERE root = $4`, minExecTime, maxExecTime, execTimes, root)
+func UpdateUnfinalizedBlockExecutionTimes(ctx context.Context, tx *sqlx.Tx, root []byte, minExecTime uint32, maxExecTime uint32, execTimes []byte) error {
+	_, err := tx.ExecContext(ctx, `UPDATE unfinalized_blocks SET min_exec_time = $1, max_exec_time = $2, exec_times = $3 WHERE root = $4`, minExecTime, maxExecTime, execTimes, root)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func GetUnfinalizedBlocks(filter *dbtypes.UnfinalizedBlockFilter) []*dbtypes.UnfinalizedBlock {
+func GetUnfinalizedBlocks(ctx context.Context, filter *dbtypes.UnfinalizedBlockFilter) []*dbtypes.UnfinalizedBlock {
 	blockRefs := []*dbtypes.UnfinalizedBlock{}
 
 	var sql strings.Builder
@@ -128,7 +129,7 @@ func GetUnfinalizedBlocks(filter *dbtypes.UnfinalizedBlockFilter) []*dbtypes.Unf
 		}
 	}
 
-	err := ReaderDb.Select(&blockRefs, sql.String(), args...)
+	err := ReaderDb.SelectContext(ctx, &blockRefs, sql.String(), args...)
 	if err != nil {
 		logger.Errorf("Error while fetching unfinalized blocks: %v", err)
 		return nil
@@ -136,13 +137,13 @@ func GetUnfinalizedBlocks(filter *dbtypes.UnfinalizedBlockFilter) []*dbtypes.Unf
 	return blockRefs
 }
 
-func StreamUnfinalizedBlocks(slot uint64, cb func(block *dbtypes.UnfinalizedBlock)) error {
+func StreamUnfinalizedBlocks(ctx context.Context, slot uint64, cb func(block *dbtypes.UnfinalizedBlock)) error {
 	var sql strings.Builder
 	args := []any{slot}
 
 	fmt.Fprint(&sql, `SELECT root, slot, header_ver, header_ssz, block_ver, block_ssz, status, fork_id, recv_delay, min_exec_time, max_exec_time, exec_times, block_uid FROM unfinalized_blocks WHERE slot >= $1`)
 
-	rows, err := ReaderDb.Query(sql.String(), args...)
+	rows, err := ReaderDb.QueryContext(ctx, sql.String(), args...)
 	if err != nil {
 		logger.Errorf("Error while fetching unfinalized blocks: %v", err)
 		return nil
@@ -164,9 +165,9 @@ func StreamUnfinalizedBlocks(slot uint64, cb func(block *dbtypes.UnfinalizedBloc
 	return nil
 }
 
-func GetUnfinalizedBlock(root []byte) *dbtypes.UnfinalizedBlock {
+func GetUnfinalizedBlock(ctx context.Context, root []byte) *dbtypes.UnfinalizedBlock {
 	block := dbtypes.UnfinalizedBlock{}
-	err := ReaderDb.Get(&block, `
+	err := ReaderDb.GetContext(ctx, &block, `
 	SELECT root, slot, header_ver, header_ssz, block_ver, block_ssz, status, fork_id, recv_delay, min_exec_time, max_exec_time, exec_times, block_uid
 	FROM unfinalized_blocks
 	WHERE root = $1
@@ -178,8 +179,8 @@ func GetUnfinalizedBlock(root []byte) *dbtypes.UnfinalizedBlock {
 	return &block
 }
 
-func DeleteUnfinalizedBlocksBefore(slot uint64, tx *sqlx.Tx) error {
-	_, err := tx.Exec(`DELETE FROM unfinalized_blocks WHERE slot < $1`, slot)
+func DeleteUnfinalizedBlocksBefore(ctx context.Context, tx *sqlx.Tx, slot uint64) error {
+	_, err := tx.ExecContext(ctx, `DELETE FROM unfinalized_blocks WHERE slot < $1`, slot)
 	if err != nil {
 		return err
 	}

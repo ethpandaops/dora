@@ -124,8 +124,8 @@ func Transaction(w http.ResponseWriter, r *http.Request) {
 func getTransactionPageData(txHash []byte, tabView string, selectedBlockUid uint64) (*models.TransactionPageData, error) {
 	pageData := &models.TransactionPageData{}
 	pageCacheKey := fmt.Sprintf("tx:%x:%v:%v", txHash, tabView, selectedBlockUid)
-	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(_ *services.FrontendCacheProcessingPage) interface{} {
-		pageData, cacheTimeout := buildTransactionPageData(txHash, tabView, selectedBlockUid)
+	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
+		pageData, cacheTimeout := buildTransactionPageData(pageCall.CallCtx, txHash, tabView, selectedBlockUid)
 		_ = cacheTimeout
 		return pageData
 	})
@@ -139,7 +139,7 @@ func getTransactionPageData(txHash []byte, tabView string, selectedBlockUid uint
 	return pageData, pageErr
 }
 
-func buildTransactionPageData(txHash []byte, tabView string, selectedBlockUid uint64) (*models.TransactionPageData, time.Duration) {
+func buildTransactionPageData(ctx context.Context, txHash []byte, tabView string, selectedBlockUid uint64) (*models.TransactionPageData, time.Duration) {
 	logrus.Debugf("transaction page called: %x (tab: %v, block: %v)", txHash, tabView, selectedBlockUid)
 
 	chainState := services.GlobalBeaconService.GetChainState()
@@ -151,10 +151,10 @@ func buildTransactionPageData(txHash []byte, tabView string, selectedBlockUid ui
 	}
 
 	// Try to get transaction from DB first
-	txs, err := db.GetElTransactionsByHash(txHash)
+	txs, err := db.GetElTransactionsByHash(ctx, txHash)
 	if err == nil && len(txs) > 0 {
 		// Found in DB - build page data from DB entries
-		buildTransactionPageDataFromDB(pageData, txs, tabView, chainState, selectedBlockUid)
+		buildTransactionPageDataFromDB(ctx, pageData, txs, tabView, chainState, selectedBlockUid)
 		blockSlot := txs[0].BlockUid >> 16
 		blockTime := chainState.SlotToTime(phase0.Slot(blockSlot))
 		cacheTimeout := 1 * time.Minute
@@ -165,7 +165,7 @@ func buildTransactionPageData(txHash []byte, tabView string, selectedBlockUid ui
 	}
 
 	// Not in DB - try to fetch from EL client
-	if buildTransactionPageDataFromEL(pageData, txHash, chainState) {
+	if buildTransactionPageDataFromEL(ctx, pageData, txHash, chainState) {
 		return pageData, 30 * time.Minute
 	}
 
@@ -177,7 +177,7 @@ func buildTransactionPageData(txHash []byte, tabView string, selectedBlockUid ui
 
 // buildTransactionPageDataFromDB builds page data from database entries.
 // selectedBlockUid: 0 = auto-select canonical, otherwise use the specified block.
-func buildTransactionPageDataFromDB(pageData *models.TransactionPageData, txs []*dbtypes.ElTransaction, tabView string, chainState *consensus.ChainState, selectedBlockUid uint64) {
+func buildTransactionPageDataFromDB(ctx context.Context, pageData *models.TransactionPageData, txs []*dbtypes.ElTransaction, tabView string, chainState *consensus.ChainState, selectedBlockUid uint64) {
 	pageData.ViewMode = models.TxViewModeFull
 	pageData.HasReceipt = true
 
@@ -197,7 +197,7 @@ func buildTransactionPageDataFromDB(pageData *models.TransactionPageData, txs []
 		BlockUids:    blockUids,
 		WithOrphaned: 1,
 	}
-	allBlocks := services.GlobalBeaconService.GetDbBlocksByFilter(blockFilter, 0, uint32(len(blockUids)), 0)
+	allBlocks := services.GlobalBeaconService.GetDbBlocksByFilter(ctx, blockFilter, 0, uint32(len(blockUids)), 0)
 
 	// Build block map for quick lookup by slot
 	blockMap := make(map[uint64][]*dbtypes.Slot)
@@ -324,13 +324,13 @@ func buildTransactionPageDataFromDB(pageData *models.TransactionPageData, txs []
 
 	// Get from/to addresses
 	if tx.FromID > 0 {
-		if fromAccount, err := db.GetElAccountByID(tx.FromID); err == nil {
+		if fromAccount, err := db.GetElAccountByID(ctx, tx.FromID); err == nil {
 			pageData.FromAddr = fromAccount.Address
 			pageData.FromIsContract = fromAccount.IsContract
 		}
 	}
 	if tx.ToID > 0 {
-		if toAccount, err := db.GetElAccountByID(tx.ToID); err == nil {
+		if toAccount, err := db.GetElAccountByID(ctx, tx.ToID); err == nil {
 			pageData.ToAddr = toAccount.Address
 			pageData.ToIsContract = toAccount.IsContract
 			pageData.HasTo = true
@@ -386,47 +386,51 @@ func buildTransactionPageDataFromDB(pageData *models.TransactionPageData, txs []
 			BlockUids:    []uint64{tx.BlockUid},
 			WithOrphaned: 1,
 		}
-		loadFullTransactionData(pageData, tx, blockFilter)
+		loadFullTransactionData(ctx, pageData, tx, blockFilter)
 	}
 
 	// Resolve call target type and method info
-	applyCallTargetResolution(pageData, tx.MethodID)
+	applyCallTargetResolution(ctx, pageData, tx.MethodID)
 
 	// Blobs
 	pageData.BlobCount = tx.BlobCount
 
-	// Load event count from event index
-	eventIndices, _ := db.GetElEventIndicesByTxHash(pageData.TxHash)
-	pageData.EventCount = uint64(len(eventIndices))
-
-	transfers, _ := db.GetElTokenTransfersByBlockUidAndTxHash(tx.BlockUid, pageData.TxHash)
-	pageData.TokenTransferCount = uint64(len(transfers))
-
-	// Load internal transaction count
-	internalTxs, _ := db.GetElTransactionsInternalByTxHash(pageData.TxHash)
-	pageData.InternalTxCount = uint64(len(internalTxs))
-
 	// Check data_status for this block (for blockdb availability)
-	if elBlock, err := db.GetElBlock(tx.BlockUid); err == nil {
+	if elBlock, err := db.GetElBlock(ctx, tx.BlockUid); err == nil {
 		pageData.DataStatus = elBlock.DataStatus
 	}
 
-	// Load tab-specific detailed data
+	// Load tab badge counts using lightweight COUNT queries instead of
+	// loading all rows. This avoids multi-second sequential scans for
+	// transactions with many events or internal calls.
+	eventCount, _ := db.GetElEventIndexCountByTxHash(ctx, pageData.TxHash)
+	pageData.EventCount = eventCount
+
+	transferCount, _ := db.GetElTokenTransferCountByBlockUidAndTxHash(ctx, tx.BlockUid, pageData.TxHash)
+	pageData.TokenTransferCount = transferCount
+
+	internalTxCount, _ := db.GetElTransactionsInternalCountByTxHash(ctx, pageData.TxHash)
+	pageData.InternalTxCount = internalTxCount
+
+	// Load tab-specific detailed data. Full row data is only loaded for
+	// the active tab to avoid unnecessary I/O. Events and internal txs
+	// are loaded from blockdb when available, falling back to DB.
 	switch tabView {
 	case "events":
-		loadTransactionEventsFromBlockdb(pageData, eventIndices, tx.BlockUid)
+		loadTransactionEventsFromBlockdb(ctx, pageData, tx.BlockUid)
 	case "transfers":
-		loadTransactionTransfersFromData(pageData, transfers)
+		transfers, _ := db.GetElTokenTransfersByBlockUidAndTxHash(ctx, tx.BlockUid, pageData.TxHash)
+		loadTransactionTransfersFromData(ctx, pageData, transfers)
 	case "internaltxs":
-		loadTransactionInternalTxsFromBlockdb(pageData, internalTxs, tx.BlockUid)
+		loadTransactionInternalTxsFromBlockdb(ctx, pageData, tx.BlockUid)
 	case "statechanges":
-		loadTransactionStateChangesFromBlockdb(pageData, tx.BlockUid)
+		loadTransactionStateChangesFromBlockdb(ctx, pageData, tx.BlockUid)
 	}
 }
 
 // buildTransactionPageDataFromEL builds page data by fetching from EL client.
 // Returns true if transaction was found, false otherwise.
-func buildTransactionPageDataFromEL(pageData *models.TransactionPageData, txHash []byte, chainState *consensus.ChainState) bool {
+func buildTransactionPageDataFromEL(ctx context.Context, pageData *models.TransactionPageData, txHash []byte, chainState *consensus.ChainState) bool {
 	txIndexer := services.GlobalBeaconService.GetTxIndexer()
 	if txIndexer == nil {
 		return false
@@ -437,7 +441,7 @@ func buildTransactionPageDataFromEL(pageData *models.TransactionPageData, txHash
 		return false
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
 	// Try to fetch transaction from EL client
@@ -523,7 +527,7 @@ func buildTransactionPageDataFromEL(pageData *models.TransactionPageData, txHash
 	if len(ethTx.Data()) >= 4 {
 		methodID = ethTx.Data()[:4]
 	}
-	applyCallTargetResolution(pageData, methodID)
+	applyCallTargetResolution(ctx, pageData, methodID)
 
 	// Blob hashes
 	pageData.BlobCount = uint32(len(ethTx.BlobHashes()))
@@ -597,7 +601,7 @@ func buildTransactionPageDataFromEL(pageData *models.TransactionPageData, txHash
 				EthBlockHash: receipt.BlockHash.Bytes(),
 				WithOrphaned: 1,
 			}
-			dbBlocks := services.GlobalBeaconService.GetDbBlocksByFilter(blockFilter, 0, 10, 0)
+			dbBlocks := services.GlobalBeaconService.GetDbBlocksByFilter(ctx, blockFilter, 0, 10, 0)
 			if len(dbBlocks) > 0 && dbBlocks[0].Block != nil {
 				block := dbBlocks[0].Block
 				pageData.BlockRoot = block.Root
@@ -659,7 +663,7 @@ func generateTxJSON(pageData *models.TransactionPageData, ethTx *ethtypes.Transa
 // event index. Full event data (all topics + data blob) will be loaded from
 // blockdb in a future phase. For now, only source address and topic1 (event
 // signature) are shown.
-func loadTransactionEventsFromIndex(pageData *models.TransactionPageData, events []*dbtypes.ElEventIndex) {
+func loadTransactionEventsFromIndex(ctx context.Context, pageData *models.TransactionPageData, events []*dbtypes.ElEventIndex) {
 	if len(events) == 0 {
 		return
 	}
@@ -677,7 +681,7 @@ func loadTransactionEventsFromIndex(pageData *models.TransactionPageData, events
 	}
 	accountMap := make(map[uint64]*dbtypes.ElAccount, len(accountIDList))
 	if len(accountIDList) > 0 {
-		if accounts, err := db.GetElAccountsByIDs(accountIDList); err == nil {
+		if accounts, err := db.GetElAccountsByIDs(ctx, accountIDList); err == nil {
 			for _, a := range accounts {
 				accountMap[a.ID] = a
 			}
@@ -707,10 +711,10 @@ func loadTransactionEventsFromIndex(pageData *models.TransactionPageData, events
 }
 
 // loadTransactionEventsFromBlockdb populates the events tab with full event
-// data from blockdb (all topics + data blob). Falls back to index-only display
-// if blockdb data is unavailable (pruned or not in Full mode).
-func loadTransactionEventsFromBlockdb(pageData *models.TransactionPageData, events []*dbtypes.ElEventIndex, blockUid uint64) {
-	if len(events) == 0 {
+// data from blockdb (all topics + data blob). Falls back to loading from
+// the DB event index if blockdb data is unavailable (pruned or not stored).
+func loadTransactionEventsFromBlockdb(ctx context.Context, pageData *models.TransactionPageData, blockUid uint64) {
+	if pageData.EventCount == 0 {
 		return
 	}
 
@@ -727,7 +731,7 @@ func loadTransactionEventsFromBlockdb(pageData *models.TransactionPageData, even
 		blockRoot := pageData.BlockRoot
 
 		if len(blockRoot) > 0 {
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 			defer cancel()
 
 			sections, err := blockdb.GlobalBlockDb.GetExecDataTxSections(
@@ -749,6 +753,7 @@ func loadTransactionEventsFromBlockdb(pageData *models.TransactionPageData, even
 						logrus.WithError(err).Debug("failed to decode events section")
 					} else {
 						pageData.Events = buildEventsFromBlockdb(events)
+						pageData.EventCount = uint64(len(pageData.Events))
 						return
 					}
 				}
@@ -756,8 +761,9 @@ func loadTransactionEventsFromBlockdb(pageData *models.TransactionPageData, even
 		}
 	}
 
-	// Fallback: use index-only data
-	loadTransactionEventsFromIndex(pageData, events)
+	// Fallback: load from DB event index (only when blockdb is unavailable)
+	eventIndices, _ := db.GetElEventIndicesByTxHash(ctx, pageData.TxHash)
+	loadTransactionEventsFromIndex(ctx, pageData, eventIndices)
 }
 
 // buildEventsFromBlockdb converts decoded blockdb events to page model events.
@@ -795,7 +801,7 @@ func buildEventsFromBlockdb(events bdbtypes.EventDataList) []*models.Transaction
 
 // loadTransactionStateChangesFromBlockdb populates the state changes tab with
 // per-account storage/balance/nonce/code diffs from blockdb.
-func loadTransactionStateChangesFromBlockdb(pageData *models.TransactionPageData, blockUid uint64) {
+func loadTransactionStateChangesFromBlockdb(ctx context.Context, pageData *models.TransactionPageData, blockUid uint64) {
 	// If the block says state change data is unavailable (pruned / not stored),
 	// show the "not available" state.
 	if pageData.DataStatus&dbtypes.ElBlockDataStateChanges == 0 {
@@ -815,7 +821,7 @@ func loadTransactionStateChangesFromBlockdb(pageData *models.TransactionPageData
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
 	sections, err := blockdb.GlobalBlockDb.GetExecDataTxSections(
@@ -938,9 +944,9 @@ var callTypeNames = map[uint8]string{
 
 // loadTransactionInternalTxsFromBlockdb populates the internal transactions tab
 // with rich call trace data from blockdb (depth, input, output, gas, status).
-// Falls back to DB-only data if blockdb data is unavailable.
-func loadTransactionInternalTxsFromBlockdb(pageData *models.TransactionPageData, entries []*dbtypes.ElTransactionInternal, blockUid uint64) {
-	if len(entries) == 0 {
+// Falls back to loading from the DB index if blockdb data is unavailable.
+func loadTransactionInternalTxsFromBlockdb(ctx context.Context, pageData *models.TransactionPageData, blockUid uint64) {
+	if pageData.InternalTxCount == 0 {
 		return
 	}
 
@@ -957,7 +963,7 @@ func loadTransactionInternalTxsFromBlockdb(pageData *models.TransactionPageData,
 		blockRoot := pageData.BlockRoot
 
 		if len(blockRoot) > 0 {
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 			defer cancel()
 
 			sections, err := blockdb.GlobalBlockDb.GetExecDataTxSections(
@@ -977,7 +983,8 @@ func loadTransactionInternalTxsFromBlockdb(pageData *models.TransactionPageData,
 					if err != nil {
 						logrus.WithError(err).Debug("failed to decode call trace section")
 					} else {
-						buildInternalTxsFromBlockdb(pageData, frames)
+						buildInternalTxsFromBlockdb(ctx, pageData, frames)
+						pageData.InternalTxCount = uint64(len(pageData.InternalTxs))
 						return
 					}
 				}
@@ -985,13 +992,14 @@ func loadTransactionInternalTxsFromBlockdb(pageData *models.TransactionPageData,
 		}
 	}
 
-	// Fallback: use DB-only data (no depth/input/output)
-	loadTransactionInternalTxsFromDB(pageData, entries)
+	// Fallback: load from DB index (only when blockdb is unavailable)
+	entries, _ := db.GetElTransactionsInternalByTxHash(ctx, pageData.TxHash)
+	loadTransactionInternalTxsFromDB(ctx, pageData, entries)
 }
 
 // buildInternalTxsFromBlockdb converts decoded blockdb call frames to page
 // model internal transactions with full trace data.
-func buildInternalTxsFromBlockdb(pageData *models.TransactionPageData, frames []bdbtypes.FlatCallFrame) {
+func buildInternalTxsFromBlockdb(ctx context.Context, pageData *models.TransactionPageData, frames []bdbtypes.FlatCallFrame) {
 	pageData.InternalTxs = make([]*models.TransactionPageDataInternalTx, 0, len(frames))
 
 	sysContracts := services.GlobalBeaconService.GetSystemContractAddresses()
@@ -1022,7 +1030,7 @@ func buildInternalTxsFromBlockdb(pageData *models.TransactionPageData, frames []
 
 	var sigLookups map[types.TxSignatureBytes]*services.TxSignaturesLookup
 	if len(sigBytes) > 0 {
-		sigLookups = services.GlobalTxSignaturesService.LookupSignatures(sigBytes)
+		sigLookups = services.GlobalTxSignaturesService.LookupSignatures(ctx, sigBytes)
 	}
 
 	for i := range frames {
@@ -1099,7 +1107,7 @@ func buildInternalTxsFromBlockdb(pageData *models.TransactionPageData, frames []
 
 // loadTransactionInternalTxsFromDB populates internal transactions from DB data
 // only (no depth/input/output trace data).
-func loadTransactionInternalTxsFromDB(pageData *models.TransactionPageData, entries []*dbtypes.ElTransactionInternal) {
+func loadTransactionInternalTxsFromDB(ctx context.Context, pageData *models.TransactionPageData, entries []*dbtypes.ElTransactionInternal) {
 	if len(entries) == 0 {
 		return
 	}
@@ -1118,7 +1126,7 @@ func loadTransactionInternalTxsFromDB(pageData *models.TransactionPageData, entr
 	}
 	accountMap := make(map[uint64]*dbtypes.ElAccount, len(accountIDList))
 	if len(accountIDList) > 0 {
-		if accounts, err := db.GetElAccountsByIDs(accountIDList); err == nil {
+		if accounts, err := db.GetElAccountsByIDs(ctx, accountIDList); err == nil {
 			for _, a := range accounts {
 				accountMap[a.ID] = a
 			}
@@ -1154,7 +1162,7 @@ func loadTransactionInternalTxsFromDB(pageData *models.TransactionPageData, entr
 	}
 }
 
-func loadTransactionTransfersFromData(pageData *models.TransactionPageData, transfers []*dbtypes.ElTokenTransfer) {
+func loadTransactionTransfersFromData(ctx context.Context, pageData *models.TransactionPageData, transfers []*dbtypes.ElTokenTransfer) {
 	if len(transfers) == 0 {
 		return
 	}
@@ -1175,7 +1183,7 @@ func loadTransactionTransfersFromData(pageData *models.TransactionPageData, tran
 	}
 	accountMap := make(map[uint64]*dbtypes.ElAccount)
 	if len(accountIDList) > 0 {
-		if accounts, err := db.GetElAccountsByIDs(accountIDList); err == nil {
+		if accounts, err := db.GetElAccountsByIDs(ctx, accountIDList); err == nil {
 			for _, a := range accounts {
 				accountMap[a.ID] = a
 			}
@@ -1189,7 +1197,7 @@ func loadTransactionTransfersFromData(pageData *models.TransactionPageData, tran
 	}
 	tokenMap := make(map[uint64]*dbtypes.ElToken)
 	if len(tokenIDList) > 0 {
-		if tokens, err := db.GetElTokensByIDs(tokenIDList); err == nil {
+		if tokens, err := db.GetElTokensByIDs(ctx, tokenIDList); err == nil {
 			for _, t := range tokens {
 				tokenMap[t.ID] = t
 			}
@@ -1232,9 +1240,9 @@ func loadTransactionTransfersFromData(pageData *models.TransactionPageData, tran
 
 // loadFullTransactionData loads the full transaction data from the beacon block.
 // This retrieves the full input data, RLP, and JSON representation for display.
-func loadFullTransactionData(pageData *models.TransactionPageData, tx *dbtypes.ElTransaction, blockFilter *dbtypes.BlockFilter) {
+func loadFullTransactionData(ctx context.Context, pageData *models.TransactionPageData, tx *dbtypes.ElTransaction, blockFilter *dbtypes.BlockFilter) {
 	// Get block info
-	blocks := services.GlobalBeaconService.GetDbBlocksByFilter(blockFilter, 0, 1, 0)
+	blocks := services.GlobalBeaconService.GetDbBlocksByFilter(ctx, blockFilter, 0, 1, 0)
 	if len(blocks) == 0 || blocks[0].Block == nil {
 		return
 	}
@@ -1243,7 +1251,7 @@ func loadFullTransactionData(pageData *models.TransactionPageData, tx *dbtypes.E
 	var blockRoot phase0.Root
 	copy(blockRoot[:], blocks[0].Block.Root)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
 	blockData, err := services.GlobalBeaconService.GetSlotDetailsByBlockroot(ctx, blockRoot)
@@ -1372,12 +1380,12 @@ func loadBlobData(pageData *models.TransactionPageData, ethTx *ethtypes.Transact
 
 // applyCallTargetResolution resolves the call target type and method info
 // for the transaction, then maps the result to the page data.
-func applyCallTargetResolution(pageData *models.TransactionPageData, methodID []byte) {
+func applyCallTargetResolution(ctx context.Context, pageData *models.TransactionPageData, methodID []byte) {
 	sysContracts := services.GlobalBeaconService.GetSystemContractAddresses()
 	lookupFn := func(sigBytes [4]byte) *utils.SignatureLookupResult {
 		var tbytes types.TxSignatureBytes
 		copy(tbytes[:], sigBytes[:])
-		sigLookups := services.GlobalTxSignaturesService.LookupSignatures([]types.TxSignatureBytes{tbytes})
+		sigLookups := services.GlobalTxSignaturesService.LookupSignatures(ctx, []types.TxSignatureBytes{tbytes})
 		if sigLookup, found := sigLookups[tbytes]; found {
 			return &utils.SignatureLookupResult{
 				Name:      sigLookup.Name,

@@ -491,7 +491,7 @@ func (ctx *txProcessingContext) resolveAccountsFromDB() error {
 	}
 
 	// Batch lookup all accounts from DB
-	existingAccounts, err := db.GetElAccountsByAddresses(addresses)
+	existingAccounts, err := db.GetElAccountsByAddresses(ctx.ctx, addresses)
 	if err != nil {
 		return fmt.Errorf("failed to batch lookup accounts: %w", err)
 	}
@@ -549,7 +549,7 @@ func (ctx *txProcessingContext) resolveTokensFromDB() error {
 	}
 
 	// Batch lookup all tokens from DB
-	existingTokens, err := db.GetElTokensByContracts(contracts)
+	existingTokens, err := db.GetElTokensByContracts(ctx.ctx, contracts)
 	if err != nil {
 		return fmt.Errorf("failed to batch lookup tokens: %w", err)
 	}
@@ -1010,7 +1010,7 @@ func (ctx *txProcessingContext) getBalanceUpdates() ([]*dbtypes.ElBalance, []*Ba
 		}
 
 		// Check if balance exists in DB
-		existingBalance, err := db.GetElBalance(delta.accountID, delta.tokenID)
+		existingBalance, err := db.GetElBalance(ctx.ctx, delta.accountID, delta.tokenID)
 		isNew := err != nil || existingBalance == nil
 
 		if isNew {
@@ -1069,7 +1069,7 @@ func (ctx *txProcessingContext) commitTransaction(dbTx *sqlx.Tx, result *txProce
 	// 1. Insert new accounts and get their IDs (collect from block-level map, only new ones)
 	for _, pending := range ctx.accounts {
 		if pending.isNew {
-			id, err := db.InsertElAccount(pending.account, dbTx)
+			id, err := db.InsertElAccount(ctx.ctx, dbTx, pending.account)
 			if err != nil {
 				return err
 			}
@@ -1082,7 +1082,7 @@ func (ctx *txProcessingContext) commitTransaction(dbTx *sqlx.Tx, result *txProce
 	// 2. Insert new tokens and get their IDs, or update existing tokens with refreshed metadata
 	for _, pending := range ctx.tokens {
 		if pending.isNew {
-			id, err := db.InsertElToken(pending.token, dbTx)
+			id, err := db.InsertElToken(ctx.ctx, dbTx, pending.token)
 			if err != nil {
 				return err
 			}
@@ -1090,7 +1090,7 @@ func (ctx *txProcessingContext) commitTransaction(dbTx *sqlx.Tx, result *txProce
 			pending.isNew = false // Mark as inserted to avoid duplicates
 		} else if pending.needsMetaUpdate {
 			// Update existing token with refreshed metadata
-			if err := db.UpdateElToken(pending.token, dbTx); err != nil {
+			if err := db.UpdateElToken(ctx.ctx, dbTx, pending.token); err != nil {
 				return err
 			}
 			pending.needsMetaUpdate = false // Mark as updated to avoid duplicates
@@ -1102,7 +1102,7 @@ func (ctx *txProcessingContext) commitTransaction(dbTx *sqlx.Tx, result *txProce
 		result.transaction.FromID = result.fromAccount.id
 		result.transaction.ToID = result.toAccount.id
 
-		if err := db.InsertElTransactions([]*dbtypes.ElTransaction{result.transaction}, dbTx); err != nil {
+		if err := db.InsertElTransactions(ctx.ctx, dbTx, []*dbtypes.ElTransaction{result.transaction}); err != nil {
 			return err
 		}
 	}
@@ -1120,7 +1120,7 @@ func (ctx *txProcessingContext) commitTransaction(dbTx *sqlx.Tx, result *txProce
 			})
 		}
 
-		if err := db.InsertElEventIndices(eventIndices, dbTx); err != nil {
+		if err := db.InsertElEventIndices(ctx.ctx, dbTx, eventIndices); err != nil {
 			return err
 		}
 	}
@@ -1145,7 +1145,7 @@ func (ctx *txProcessingContext) commitTransaction(dbTx *sqlx.Tx, result *txProce
 		}
 
 		if len(transfers) > 0 {
-			if err := db.InsertElTokenTransfers(transfers, dbTx); err != nil {
+			if err := db.InsertElTokenTransfers(ctx.ctx, dbTx, transfers); err != nil {
 				return err
 			}
 		}
@@ -1167,7 +1167,7 @@ func (ctx *txProcessingContext) commitTransaction(dbTx *sqlx.Tx, result *txProce
 			})
 		}
 
-		if err := db.InsertElTransactionsInternal(internalEntries, dbTx); err != nil {
+		if err := db.InsertElTransactionsInternal(ctx.ctx, dbTx, internalEntries); err != nil {
 			return err
 		}
 	}

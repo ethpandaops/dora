@@ -74,7 +74,7 @@ func newContractIndexer[TxType any](indexer *exectx.IndexerCtx, logger logrus.Fi
 // loadState loads the contract indexer state from the database
 func (ci *contractIndexer[_]) loadState() {
 	syncState := contractIndexerState{}
-	db.GetExplorerState(ci.options.stateKey, &syncState)
+	db.GetExplorerState(ci.indexer.Ctx, ci.options.stateKey, &syncState)
 	ci.state = &syncState
 
 	if ci.state.ForkStates == nil {
@@ -95,7 +95,7 @@ func (ci *contractIndexer[_]) persistState(tx *sqlx.Tx) error {
 		}
 	}
 
-	err := db.SetExplorerState(ci.options.stateKey, ci.state, tx)
+	err := db.SetExplorerState(ci.indexer.Ctx, tx, ci.options.stateKey, ci.state)
 	if err != nil {
 		return fmt.Errorf("error while updating contract indexer state: %v", err)
 	}
@@ -141,14 +141,14 @@ func (ci *contractIndexer[_]) getFinalizedBlockNumber() uint64 {
 
 	_, finalizedRoot := ci.indexer.ChainState.GetFinalizedCheckpoint()
 	if finalizedBlock := ci.indexer.BeaconIndexer.GetBlockByRoot(finalizedRoot); finalizedBlock != nil {
-		if indexVals := finalizedBlock.GetBlockIndex(); indexVals != nil {
+		if indexVals := finalizedBlock.GetBlockIndex(ci.indexer.Ctx); indexVals != nil {
 			finalizedBlockNumber = indexVals.ExecutionNumber
 		}
 	}
 
 	if finalizedBlockNumber == 0 {
 		// load from db
-		if finalizedBlock := db.GetSlotByRoot(finalizedRoot[:]); finalizedBlock != nil && finalizedBlock.EthBlockNumber != nil {
+		if finalizedBlock := db.GetSlotByRoot(ci.indexer.Ctx, finalizedRoot[:]); finalizedBlock != nil && finalizedBlock.EthBlockNumber != nil {
 			finalizedBlockNumber = *finalizedBlock.EthBlockNumber
 		}
 	}
@@ -189,7 +189,7 @@ func (ci *contractIndexer[TxType]) processFinalizedBlocks(finalizedBlockNumber u
 		return fmt.Errorf("no ready execution client found")
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(ci.indexer.Ctx)
 	defer cancel()
 
 	retryCount := 0
@@ -368,7 +368,7 @@ func (ci *contractIndexer[TxType]) processRecentBlocksForFork(headFork *exectx.F
 		return fmt.Errorf("head block not found")
 	}
 
-	elHeadBlockIndex := elHeadBlock.GetBlockIndex()
+	elHeadBlockIndex := elHeadBlock.GetBlockIndex(ci.indexer.Ctx)
 	if elHeadBlockIndex == nil {
 		return fmt.Errorf("head block index not found")
 	}
@@ -440,7 +440,7 @@ func (ci *contractIndexer[TxType]) processRecentBlocksForFork(headFork *exectx.F
 			if ctxCancel != nil {
 				ctxCancel()
 			}
-			ctx, cancel := context.WithTimeout(context.Background(), 600*time.Second)
+			ctx, cancel := context.WithTimeout(ci.indexer.Ctx, 600*time.Second)
 			ctxCancel = cancel
 
 			// fetch logs from the execution client

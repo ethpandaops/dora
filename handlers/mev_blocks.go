@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -89,8 +90,8 @@ func MevBlocks(w http.ResponseWriter, r *http.Request) {
 func getFilteredMevBlocksPageData(pageIdx uint64, pageSize uint64, minSlot uint64, maxSlot uint64, minIndex uint64, maxIndex uint64, vname string, withRelays string, withProposed string) (*models.MevBlocksPageData, error) {
 	pageData := &models.MevBlocksPageData{}
 	pageCacheKey := fmt.Sprintf("mev_blocks:%v:%v:%v:%v:%v:%v:%v:%v:%v", pageIdx, pageSize, minSlot, maxSlot, minIndex, maxIndex, vname, withRelays, withProposed)
-	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(_ *services.FrontendCacheProcessingPage) interface{} {
-		return buildFilteredMevBlocksPageData(pageIdx, pageSize, minSlot, maxSlot, minIndex, maxIndex, vname, withRelays, withProposed)
+	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
+		return buildFilteredMevBlocksPageData(pageCall.CallCtx, pageIdx, pageSize, minSlot, maxSlot, minIndex, maxIndex, vname, withRelays, withProposed)
 	})
 	if pageErr == nil && pageRes != nil {
 		resData, resOk := pageRes.(*models.MevBlocksPageData)
@@ -102,7 +103,7 @@ func getFilteredMevBlocksPageData(pageIdx uint64, pageSize uint64, minSlot uint6
 	return pageData, pageErr
 }
 
-func buildFilteredMevBlocksPageData(pageIdx uint64, pageSize uint64, minSlot uint64, maxSlot uint64, minIndex uint64, maxIndex uint64, vname string, withRelays string, withProposed string) *models.MevBlocksPageData {
+func buildFilteredMevBlocksPageData(ctx context.Context, pageIdx uint64, pageSize uint64, minSlot uint64, maxSlot uint64, minIndex uint64, maxIndex uint64, vname string, withRelays string, withProposed string) *models.MevBlocksPageData {
 	filterArgs := url.Values{}
 	if minSlot != 0 {
 		filterArgs.Add("f.mins", fmt.Sprintf("%v", minSlot))
@@ -205,7 +206,7 @@ func buildFilteredMevBlocksPageData(pageIdx uint64, pageSize uint64, minSlot uin
 	}
 
 	offset := (pageIdx - 1) * pageSize
-	dbMevBlocks, totalRows, err := db.GetMevBlocksFiltered(offset, uint32(pageSize), mevBlockFilter)
+	dbMevBlocks, totalRows, err := db.GetMevBlocksFiltered(ctx, offset, uint32(pageSize), mevBlockFilter)
 	if err != nil {
 		panic(err)
 	}
@@ -215,13 +216,13 @@ func buildFilteredMevBlocksPageData(pageIdx uint64, pageSize uint64, minSlot uin
 	for _, mevBlock := range dbMevBlocks {
 		block := services.GlobalBeaconService.GetBeaconIndexer().GetBlocksByExecutionBlockHash(phase0.Hash32(mevBlock.BlockHash))
 		if len(block) > 0 {
-			blockIndex := block[0].GetBlockIndex()
+			blockIndex := block[0].GetBlockIndex(ctx)
 			blockBlobCountMap[string(blockIndex.ExecutionHash[:])] = blockIndex.BlobCount
 		} else {
 			blockRoots = append(blockRoots, mevBlock.BlockHash)
 		}
 	}
-	blockBlobCounts := db.GetSlotBlobCountByExecutionHashes(blockRoots)
+	blockBlobCounts := db.GetSlotBlobCountByExecutionHashes(ctx, blockRoots)
 
 	for _, blockBlobCount := range blockBlobCounts {
 		blockBlobCountMap[string(blockBlobCount.EthBlockHash)] = blockBlobCount.BlobCount

@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -8,7 +9,7 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-func InsertElWithdrawals(withdrawals []*dbtypes.ElWithdrawal, dbTx *sqlx.Tx) error {
+func InsertElWithdrawals(ctx context.Context, dbTx *sqlx.Tx, withdrawals []*dbtypes.ElWithdrawal) error {
 	if len(withdrawals) == 0 {
 		return nil
 	}
@@ -58,16 +59,16 @@ func InsertElWithdrawals(withdrawals []*dbtypes.ElWithdrawal, dbTx *sqlx.Tx) err
 		dbtypes.DBEngineSqlite: "",
 	}))
 
-	_, err := dbTx.Exec(sql.String(), args...)
+	_, err := dbTx.ExecContext(ctx, sql.String(), args...)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func GetElWithdrawal(blockUid uint64, blockIndex uint16) (*dbtypes.ElWithdrawal, error) {
+func GetElWithdrawal(ctx context.Context, blockUid uint64, blockIndex uint16) (*dbtypes.ElWithdrawal, error) {
 	w := &dbtypes.ElWithdrawal{}
-	err := ReaderDb.Get(w,
+	err := ReaderDb.GetContext(ctx, w,
 		"SELECT block_uid, block_index, account_id, type, amount, amount_raw, validator"+
 			" FROM el_withdrawals WHERE block_uid = $1 AND block_index = $2",
 		blockUid, blockIndex)
@@ -77,9 +78,9 @@ func GetElWithdrawal(blockUid uint64, blockIndex uint16) (*dbtypes.ElWithdrawal,
 	return w, nil
 }
 
-func GetElWithdrawalsByBlockUid(blockUid uint64) ([]*dbtypes.ElWithdrawal, error) {
+func GetElWithdrawalsByBlockUid(ctx context.Context, blockUid uint64) ([]*dbtypes.ElWithdrawal, error) {
 	withdrawals := []*dbtypes.ElWithdrawal{}
-	err := ReaderDb.Select(&withdrawals,
+	err := ReaderDb.SelectContext(ctx, &withdrawals,
 		"SELECT block_uid, block_index, account_id, type, amount, amount_raw, validator"+
 			" FROM el_withdrawals WHERE block_uid = $1 ORDER BY block_index ASC",
 		blockUid)
@@ -89,7 +90,7 @@ func GetElWithdrawalsByBlockUid(blockUid uint64) ([]*dbtypes.ElWithdrawal, error
 	return withdrawals, nil
 }
 
-func GetElWithdrawalsByAccountID(accountID uint64, offset uint64, limit uint32) ([]*dbtypes.ElWithdrawal, uint64, error) {
+func GetElWithdrawalsByAccountID(ctx context.Context, accountID uint64, offset uint64, limit uint32) ([]*dbtypes.ElWithdrawal, uint64, error) {
 	var sql strings.Builder
 	args := []any{accountID}
 
@@ -112,7 +113,7 @@ func GetElWithdrawalsByAccountID(accountID uint64, offset uint64, limit uint32) 
 	FROM cte
 	UNION ALL SELECT * FROM (
 	SELECT * FROM cte
-	ORDER BY block_uid DESC, block_index ASC
+	ORDER BY block_uid DESC NULLS LAST, block_index ASC
 	LIMIT $%v`, len(args)+1)
 	args = append(args, limit)
 
@@ -123,7 +124,7 @@ func GetElWithdrawalsByAccountID(accountID uint64, offset uint64, limit uint32) 
 	fmt.Fprint(&sql, ") AS t1")
 
 	withdrawals := []*dbtypes.ElWithdrawal{}
-	err := ReaderDb.Select(&withdrawals, sql.String(), args...)
+	err := ReaderDb.SelectContext(ctx, &withdrawals, sql.String(), args...)
 	if err != nil {
 		logger.Errorf("Error while fetching el withdrawals by account id: %v", err)
 		return nil, 0, err
@@ -137,7 +138,7 @@ func GetElWithdrawalsByAccountID(accountID uint64, offset uint64, limit uint32) 
 	return withdrawals[1:], count, nil
 }
 
-func GetElWithdrawalsFiltered(offset uint64, limit uint32, filter *dbtypes.ElWithdrawalFilter) ([]*dbtypes.ElWithdrawal, uint64, error) {
+func GetElWithdrawalsFiltered(ctx context.Context, offset uint64, limit uint32, filter *dbtypes.ElWithdrawalFilter) ([]*dbtypes.ElWithdrawal, uint64, error) {
 	var sql strings.Builder
 	args := []any{}
 
@@ -189,7 +190,7 @@ func GetElWithdrawalsFiltered(offset uint64, limit uint32, filter *dbtypes.ElWit
 	FROM cte
 	UNION ALL SELECT * FROM (
 	SELECT * FROM cte
-	ORDER BY block_uid DESC, block_index ASC
+	ORDER BY block_uid DESC NULLS LAST, block_index ASC
 	LIMIT $%v`, len(args))
 
 	if offset > 0 {
@@ -199,7 +200,7 @@ func GetElWithdrawalsFiltered(offset uint64, limit uint32, filter *dbtypes.ElWit
 	fmt.Fprint(&sql, ") AS t1")
 
 	withdrawals := []*dbtypes.ElWithdrawal{}
-	err := ReaderDb.Select(&withdrawals, sql.String(), args...)
+	err := ReaderDb.SelectContext(ctx, &withdrawals, sql.String(), args...)
 	if err != nil {
 		logger.Errorf("Error while fetching filtered el withdrawals: %v", err)
 		return nil, 0, err
@@ -213,12 +214,12 @@ func GetElWithdrawalsFiltered(offset uint64, limit uint32, filter *dbtypes.ElWit
 	return withdrawals[1:], count, nil
 }
 
-func DeleteElWithdrawal(blockUid uint64, blockIndex uint16, dbTx *sqlx.Tx) error {
-	_, err := dbTx.Exec("DELETE FROM el_withdrawals WHERE block_uid = $1 AND block_index = $2", blockUid, blockIndex)
+func DeleteElWithdrawal(ctx context.Context, dbTx *sqlx.Tx, blockUid uint64, blockIndex uint16) error {
+	_, err := dbTx.ExecContext(ctx, "DELETE FROM el_withdrawals WHERE block_uid = $1 AND block_index = $2", blockUid, blockIndex)
 	return err
 }
 
-func DeleteElWithdrawalsByBlockUid(blockUid uint64, dbTx *sqlx.Tx) error {
-	_, err := dbTx.Exec("DELETE FROM el_withdrawals WHERE block_uid = $1", blockUid)
+func DeleteElWithdrawalsByBlockUid(ctx context.Context, dbTx *sqlx.Tx, blockUid uint64) error {
+	_, err := dbTx.ExecContext(ctx, "DELETE FROM el_withdrawals WHERE block_uid = $1", blockUid)
 	return err
 }
