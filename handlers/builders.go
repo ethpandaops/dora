@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -96,7 +97,7 @@ func getBuildersPageData(pageNumber uint64, pageSize uint64, sortOrder string, f
 	pageData := &models.BuildersPageData{}
 	pageCacheKey := fmt.Sprintf("builders:%v:%v:%v:%v:%v:%v:%v", pageNumber, pageSize, sortOrder, filterPubKey, filterIndex, filterExecutionAddr, filterStatus)
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
-		pageData, cacheTimeout := buildBuildersPageData(pageNumber, pageSize, sortOrder, filterPubKey, filterIndex, filterExecutionAddr, filterStatus)
+		pageData, cacheTimeout := buildBuildersPageData(pageCall.CallCtx, pageNumber, pageSize, sortOrder, filterPubKey, filterIndex, filterExecutionAddr, filterStatus)
 		pageCall.CacheTimeout = cacheTimeout
 		return pageData
 	})
@@ -110,7 +111,7 @@ func getBuildersPageData(pageNumber uint64, pageSize uint64, sortOrder string, f
 	return pageData, pageErr
 }
 
-func buildBuildersPageData(pageNumber uint64, pageSize uint64, sortOrder string, filterPubKey string, filterIndex string, filterExecutionAddr string, filterStatus string) (*models.BuildersPageData, time.Duration) {
+func buildBuildersPageData(ctx context.Context, pageNumber uint64, pageSize uint64, sortOrder string, filterPubKey string, filterIndex string, filterExecutionAddr string, filterStatus string) (*models.BuildersPageData, time.Duration) {
 	logrus.Debugf("builders page called: %v:%v:%v:%v:%v:%v:%v", pageNumber, pageSize, sortOrder, filterPubKey, filterIndex, filterExecutionAddr, filterStatus)
 	pageData := &models.BuildersPageData{}
 	cacheTime := 10 * time.Minute
@@ -189,7 +190,7 @@ func buildBuildersPageData(pageNumber uint64, pageSize uint64, sortOrder string,
 	pageData.Sorting = sortOrder
 
 	// get latest builder set
-	builderSetRsp, builderSetLen := services.GlobalBeaconService.GetFilteredBuilderSet(&builderFilter, true)
+	builderSetRsp, builderSetLen := services.GlobalBeaconService.GetFilteredBuilderSet(ctx, &builderFilter, true)
 	if len(builderSetRsp) == 0 {
 		cacheTime = 5 * time.Minute
 	}

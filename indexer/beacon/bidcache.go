@@ -55,7 +55,7 @@ func (cache *blockBidCache) loadFromDB(currentSlot phase0.Slot) {
 		minSlot = currentSlot - bidCacheRetainSlots
 	}
 
-	dbBids := db.GetBidsForSlotRange(uint64(minSlot))
+	dbBids := db.GetBidsForSlotRange(cache.indexer.ctx, uint64(minSlot))
 	for _, bid := range dbBids {
 		key := bidCacheKey{
 			ParentRoot:   phase0.Root(bid.ParentRoot),

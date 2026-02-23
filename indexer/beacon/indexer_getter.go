@@ -520,7 +520,7 @@ func (indexer *Indexer) GetBlockBids(parentBlockRoot phase0.Root) []*dbtypes.Blo
 	}
 
 	// Fall back to database
-	return db.GetBidsForBlockRoot(parentBlockRoot[:])
+	return db.GetBidsForBlockRoot(indexer.ctx, parentBlockRoot[:])
 }
 
 // StreamActiveBuilderDataForRoot streams the available builder set data for a given blockRoot.

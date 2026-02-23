@@ -480,7 +480,7 @@ func (cache *builderCache) getBuilderByIndexAndRoot(index gloas.BuilderIndex, bl
 
 	// Fallback to db if builder is not found in cache
 	if builder == nil {
-		if dbBuilder := db.GetActiveBuilderByIndex(uint64(index)); dbBuilder != nil {
+		if dbBuilder := db.GetActiveBuilderByIndex(cache.indexer.ctx, uint64(index)); dbBuilder != nil {
 			builder = UnwrapDbBuilder(dbBuilder)
 		}
 	} else {
@@ -519,7 +519,7 @@ func (cache *builderCache) prepopulateFromDB() (uint64, error) {
 	cache.cacheMutex.Lock()
 	defer cache.cacheMutex.Unlock()
 
-	maxIndex, err := db.GetMaxBuilderIndex()
+	maxIndex, err := db.GetMaxBuilderIndex(cache.indexer.ctx)
 	if err != nil {
 		return 0, fmt.Errorf("error getting max builder index: %w", err)
 	}
@@ -536,7 +536,7 @@ func (cache *builderCache) prepopulateFromDB() (uint64, error) {
 	for start := uint64(0); start <= maxIndex; start += batchSize {
 		end := min(start+batchSize, maxIndex)
 
-		builders := db.GetBuilderRange(start, end)
+		builders := db.GetBuilderRange(cache.indexer.ctx, start, end)
 		for _, dbBuilder := range builders {
 			if dbBuilder.Superseded {
 				continue
@@ -713,7 +713,7 @@ func (cache *builderCache) persistBuilderBatch(tx *sqlx.Tx, batch []*dbtypes.Bui
 	}
 
 	// Fetch existing builders in this batch's range
-	existingBuilders := db.GetBuilderRange(minIndex, maxIndex)
+	existingBuilders := db.GetBuilderRange(cache.indexer.ctx, minIndex, maxIndex)
 	existingByIndex := make(map[uint64]*dbtypes.Builder, len(existingBuilders))
 	for _, b := range existingBuilders {
 		existingByIndex[b.BuilderIndex] = b

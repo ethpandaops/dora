@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -63,7 +64,7 @@ func InsertBids(bids []*dbtypes.BlockBid, tx *sqlx.Tx) error {
 	return nil
 }
 
-func GetBidsForBlockRoot(blockRoot []byte) []*dbtypes.BlockBid {
+func GetBidsForBlockRoot(ctx context.Context, blockRoot []byte) []*dbtypes.BlockBid {
 	var sql strings.Builder
 	args := []any{
 		blockRoot,
@@ -77,7 +78,7 @@ func GetBidsForBlockRoot(blockRoot []byte) []*dbtypes.BlockBid {
 	`)
 
 	bids := []*dbtypes.BlockBid{}
-	err := ReaderDb.Select(&bids, sql.String(), args...)
+	err := ReaderDb.SelectContext(ctx, &bids, sql.String(), args...)
 	if err != nil {
 		logger.Errorf("Error while fetching bids for block root: %v", err)
 		return nil
@@ -85,7 +86,7 @@ func GetBidsForBlockRoot(blockRoot []byte) []*dbtypes.BlockBid {
 	return bids
 }
 
-func GetBidsForSlotRange(minSlot uint64) []*dbtypes.BlockBid {
+func GetBidsForSlotRange(ctx context.Context, minSlot uint64) []*dbtypes.BlockBid {
 	var sql strings.Builder
 	args := []any{
 		minSlot,
@@ -99,7 +100,7 @@ func GetBidsForSlotRange(minSlot uint64) []*dbtypes.BlockBid {
 	`)
 
 	bids := []*dbtypes.BlockBid{}
-	err := ReaderDb.Select(&bids, sql.String(), args...)
+	err := ReaderDb.SelectContext(ctx, &bids, sql.String(), args...)
 	if err != nil {
 		logger.Errorf("Error while fetching bids for slot range: %v", err)
 		return nil
@@ -114,7 +115,7 @@ func DeleteBidsBeforeSlot(minSlot uint64, tx *sqlx.Tx) error {
 
 // GetBidsByBlockHashes returns bids for multiple block hashes and a specific builder index
 // Returns a map keyed by block hash (hex string) for easy lookup
-func GetBidsByBlockHashes(blockHashes [][]byte, builderIndex uint64) map[string]*dbtypes.BlockBid {
+func GetBidsByBlockHashes(ctx context.Context, blockHashes [][]byte, builderIndex uint64) map[string]*dbtypes.BlockBid {
 	result := make(map[string]*dbtypes.BlockBid, len(blockHashes))
 	if len(blockHashes) == 0 {
 		return result
@@ -140,7 +141,7 @@ func GetBidsByBlockHashes(blockHashes [][]byte, builderIndex uint64) map[string]
 	fmt.Fprint(&sql, ")")
 
 	bids := []*dbtypes.BlockBid{}
-	err := ReaderDb.Select(&bids, sql.String(), args...)
+	err := ReaderDb.SelectContext(ctx, &bids, sql.String(), args...)
 	if err != nil {
 		logger.Errorf("Error while fetching bids by block hashes: %v", err)
 		return result
@@ -155,7 +156,7 @@ func GetBidsByBlockHashes(blockHashes [][]byte, builderIndex uint64) map[string]
 }
 
 // GetBidsByBuilderIndex returns bids submitted by a specific builder, ordered by slot descending
-func GetBidsByBuilderIndex(builderIndex uint64, offset uint64, limit uint32) ([]*dbtypes.BlockBid, uint64) {
+func GetBidsByBuilderIndex(ctx context.Context, builderIndex uint64, offset uint64, limit uint32) ([]*dbtypes.BlockBid, uint64) {
 	var sql strings.Builder
 	args := []any{
 		builderIndex,
@@ -174,7 +175,7 @@ func GetBidsByBuilderIndex(builderIndex uint64, offset uint64, limit uint32) ([]
 	}
 
 	bids := []*dbtypes.BlockBid{}
-	err := ReaderDb.Select(&bids, sql.String(), args...)
+	err := ReaderDb.SelectContext(ctx, &bids, sql.String(), args...)
 	if err != nil {
 		logger.Errorf("Error while fetching bids for builder index %d: %v", builderIndex, err)
 		return nil, 0
@@ -182,7 +183,7 @@ func GetBidsByBuilderIndex(builderIndex uint64, offset uint64, limit uint32) ([]
 
 	// Get total count
 	var totalCount uint64
-	err = ReaderDb.Get(&totalCount, `SELECT COUNT(*) FROM block_bids WHERE builder_index = $1`, builderIndex)
+	err = ReaderDb.GetContext(ctx, &totalCount, `SELECT COUNT(*) FROM block_bids WHERE builder_index = $1`, builderIndex)
 	if err != nil {
 		logger.Errorf("Error while counting bids for builder index %d: %v", builderIndex, err)
 		return bids, 0

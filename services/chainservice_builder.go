@@ -2,6 +2,7 @@ package services
 
 import (
 	"bytes"
+	"context"
 	"slices"
 	"sort"
 
@@ -24,7 +25,7 @@ type BuilderWithIndex struct {
 }
 
 // GetFilteredBuilderSet returns builders matching the filter criteria
-func (bs *ChainService) GetFilteredBuilderSet(filter *dbtypes.BuilderFilter, withBalance bool) ([]BuilderWithIndex, uint64) {
+func (bs *ChainService) GetFilteredBuilderSet(ctx context.Context, filter *dbtypes.BuilderFilter, withBalance bool) ([]BuilderWithIndex, uint64) {
 	var overrideForkId *beacon.ForkKey
 
 	canonicalHead := bs.beaconIndexer.GetCanonicalHead(overrideForkId)
@@ -81,7 +82,7 @@ func (bs *ChainService) GetFilteredBuilderSet(filter *dbtypes.BuilderFilter, wit
 	})
 
 	// Get matching entries from DB
-	dbIndexes, err := db.GetBuilderIndexesByFilter(*filter, uint64(currentEpoch))
+	dbIndexes, err := db.GetBuilderIndexesByFilter(ctx, *filter, uint64(currentEpoch))
 	if err != nil {
 		bs.logger.Warnf("error getting builder indexes by filter: %v", err)
 		return nil, 0
@@ -171,7 +172,7 @@ func (bs *ChainService) GetFilteredBuilderSet(filter *dbtypes.BuilderFilter, wit
 	resultCount := uint64(0)
 	dbEntryCount := uint64(0)
 
-	db.StreamBuildersByIndexes(dbIndexes, func(dbBuilder *dbtypes.Builder) bool {
+	db.StreamBuildersByIndexes(ctx, dbIndexes, func(dbBuilder *dbtypes.Builder) bool {
 		dbEntryCount++
 		builderWithIndex := BuilderWithIndex{
 			Index:      gloas.BuilderIndex(dbBuilder.BuilderIndex),

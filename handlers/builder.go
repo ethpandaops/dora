@@ -55,7 +55,7 @@ func BuilderDetail(w http.ResponseWriter, r *http.Request) {
 			builder = services.GlobalBeaconService.GetBuilderByIndex(gloas.BuilderIndex(idx))
 			if builder == nil {
 				// Try from DB
-				dbBuilder := db.GetActiveBuilderByIndex(idx)
+				dbBuilder := db.GetActiveBuilderByIndex(r.Context(), idx)
 				if dbBuilder != nil {
 					builder = beacon.UnwrapDbBuilder(dbBuilder)
 					superseded = dbBuilder.Superseded
@@ -64,7 +64,7 @@ func BuilderDetail(w http.ResponseWriter, r *http.Request) {
 		}
 	} else {
 		// search by pubkey
-		dbBuilder := db.GetBuilderByPubkey(builderPubKey)
+		dbBuilder := db.GetBuilderByPubkey(r.Context(), builderPubKey)
 		if dbBuilder != nil {
 			builderIndex = dbBuilder.BuilderIndex
 			superseded = dbBuilder.Superseded
@@ -138,7 +138,7 @@ func buildBuilderPageData(ctx context.Context, builderIndex uint64, superseded b
 	builder := services.GlobalBeaconService.GetBuilderByIndex(gloas.BuilderIndex(builderIndex))
 	if builder == nil {
 		// Try from DB
-		dbBuilder := db.GetActiveBuilderByIndex(builderIndex)
+		dbBuilder := db.GetActiveBuilderByIndex(ctx, builderIndex)
 		if dbBuilder != nil {
 			builder = beacon.UnwrapDbBuilder(dbBuilder)
 			superseded = dbBuilder.Superseded
@@ -231,7 +231,7 @@ func buildBuilderRecentBlocks(ctx context.Context, builderIndex uint64, chainSta
 	}
 
 	// Batch fetch all bids for these block hashes
-	bidsMap := db.GetBidsByBlockHashes(blockHashes, builderIndex)
+	bidsMap := db.GetBidsByBlockHashes(ctx, blockHashes, builderIndex)
 
 	// Build result
 	blocks := make([]*models.BuilderPageDataBlock, 0, len(validBlocks))
@@ -261,7 +261,7 @@ func buildBuilderRecentBlocks(ctx context.Context, builderIndex uint64, chainSta
 }
 
 func buildBuilderRecentBids(ctx context.Context, builderIndex uint64, chainState *consensus.ChainState) []*models.BuilderPageDataBid {
-	bids, _ := db.GetBidsByBuilderIndex(builderIndex, 0, 20)
+	bids, _ := db.GetBidsByBuilderIndex(ctx, builderIndex, 0, 20)
 
 	result := make([]*models.BuilderPageDataBid, 0, len(bids))
 	for _, bid := range bids {

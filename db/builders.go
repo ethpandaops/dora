@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -93,9 +94,9 @@ func InsertBuilderBatch(builders []*dbtypes.Builder, tx *sqlx.Tx) error {
 }
 
 // GetBuilderByPubkey returns a builder by pubkey (primary key)
-func GetBuilderByPubkey(pubkey []byte) *dbtypes.Builder {
+func GetBuilderByPubkey(ctx context.Context, pubkey []byte) *dbtypes.Builder {
 	builder := dbtypes.Builder{}
-	err := ReaderDb.Get(&builder, `
+	err := ReaderDb.GetContext(ctx, &builder, `
 		SELECT * FROM builders WHERE pubkey = $1
 	`, pubkey)
 	if err != nil {
@@ -105,9 +106,9 @@ func GetBuilderByPubkey(pubkey []byte) *dbtypes.Builder {
 }
 
 // GetActiveBuilderByIndex returns the active (non-superseded) builder for a given index
-func GetActiveBuilderByIndex(index uint64) *dbtypes.Builder {
+func GetActiveBuilderByIndex(ctx context.Context, index uint64) *dbtypes.Builder {
 	builder := dbtypes.Builder{}
-	err := ReaderDb.Get(&builder, `
+	err := ReaderDb.GetContext(ctx, &builder, `
 		SELECT * FROM builders WHERE builder_index = $1 AND superseded = false
 	`, index)
 	if err != nil {
@@ -117,9 +118,9 @@ func GetActiveBuilderByIndex(index uint64) *dbtypes.Builder {
 }
 
 // GetBuildersByIndex returns all builders (including superseded) for a given index
-func GetBuildersByIndex(index uint64) []*dbtypes.Builder {
+func GetBuildersByIndex(ctx context.Context, index uint64) []*dbtypes.Builder {
 	builders := []*dbtypes.Builder{}
-	err := ReaderDb.Select(&builders, `
+	err := ReaderDb.SelectContext(ctx, &builders, `
 		SELECT * FROM builders WHERE builder_index = $1 ORDER BY superseded ASC
 	`, index)
 	if err != nil {
@@ -130,9 +131,9 @@ func GetBuildersByIndex(index uint64) []*dbtypes.Builder {
 }
 
 // GetBuilderRange returns builders in a given index range (only active builders)
-func GetBuilderRange(startIndex uint64, endIndex uint64) []*dbtypes.Builder {
+func GetBuilderRange(ctx context.Context, startIndex uint64, endIndex uint64) []*dbtypes.Builder {
 	builders := []*dbtypes.Builder{}
-	err := ReaderDb.Select(&builders, `
+	err := ReaderDb.SelectContext(ctx, &builders, `
 		SELECT * FROM builders
 		WHERE builder_index >= $1 AND builder_index <= $2 AND superseded = false
 		ORDER BY builder_index ASC
@@ -145,9 +146,9 @@ func GetBuilderRange(startIndex uint64, endIndex uint64) []*dbtypes.Builder {
 }
 
 // GetMaxBuilderIndex returns the highest builder index in the database
-func GetMaxBuilderIndex() (uint64, error) {
+func GetMaxBuilderIndex(ctx context.Context) (uint64, error) {
 	var maxIndex uint64
-	err := ReaderDb.Get(&maxIndex, "SELECT COALESCE(MAX(builder_index), 0) FROM builders")
+	err := ReaderDb.GetContext(ctx, &maxIndex, "SELECT COALESCE(MAX(builder_index), 0) FROM builders")
 	if err != nil {
 		return 0, fmt.Errorf("error getting max builder index: %w", err)
 	}
@@ -155,13 +156,13 @@ func GetMaxBuilderIndex() (uint64, error) {
 }
 
 // GetBuilderCount returns the count of builders (optionally only active)
-func GetBuilderCount(activeOnly bool) (uint64, error) {
+func GetBuilderCount(ctx context.Context, activeOnly bool) (uint64, error) {
 	var count uint64
 	var err error
 	if activeOnly {
-		err = ReaderDb.Get(&count, "SELECT COUNT(*) FROM builders WHERE superseded = false")
+		err = ReaderDb.GetContext(ctx, &count, "SELECT COUNT(*) FROM builders WHERE superseded = false")
 	} else {
-		err = ReaderDb.Get(&count, "SELECT COUNT(*) FROM builders")
+		err = ReaderDb.GetContext(ctx, &count, "SELECT COUNT(*) FROM builders")
 	}
 	if err != nil {
 		return 0, fmt.Errorf("error getting builder count: %w", err)
@@ -207,7 +208,7 @@ func SetBuildersSuperseded(pubkeys [][]byte, tx *sqlx.Tx) error {
 }
 
 // StreamBuildersByPubkeys streams builders by pubkeys in batches
-func StreamBuildersByPubkeys(pubkeys [][]byte, cb func(builder *dbtypes.Builder) bool) error {
+func StreamBuildersByPubkeys(ctx context.Context, pubkeys [][]byte, cb func(builder *dbtypes.Builder) bool) error {
 	const batchSize = 1000
 
 	for i := 0; i < len(pubkeys); i += batchSize {
@@ -240,7 +241,7 @@ func StreamBuildersByPubkeys(pubkeys [][]byte, cb func(builder *dbtypes.Builder)
 
 		// Fetch all builders for this batch
 		builders := make([]*dbtypes.Builder, len(batch))
-		rows, err := ReaderDb.Query(sql.String(), args...)
+		rows, err := ReaderDb.QueryContext(ctx, sql.String(), args...)
 		if err != nil {
 			return fmt.Errorf("error querying builders: %w", err)
 		}
@@ -280,9 +281,9 @@ func StreamBuildersByPubkeys(pubkeys [][]byte, cb func(builder *dbtypes.Builder)
 }
 
 // GetBuildersByExecutionAddress returns builders with a specific execution address
-func GetBuildersByExecutionAddress(address []byte) []*dbtypes.Builder {
+func GetBuildersByExecutionAddress(ctx context.Context, address []byte) []*dbtypes.Builder {
 	builders := []*dbtypes.Builder{}
-	err := ReaderDb.Select(&builders, `
+	err := ReaderDb.SelectContext(ctx, &builders, `
 		SELECT * FROM builders WHERE execution_address = $1 ORDER BY builder_index ASC
 	`, address)
 	if err != nil {
@@ -293,7 +294,7 @@ func GetBuildersByExecutionAddress(address []byte) []*dbtypes.Builder {
 }
 
 // GetBuilderIndexesByFilter returns builder indexes matching a filter
-func GetBuilderIndexesByFilter(filter dbtypes.BuilderFilter, currentEpoch uint64) ([]uint64, error) {
+func GetBuilderIndexesByFilter(ctx context.Context, filter dbtypes.BuilderFilter, currentEpoch uint64) ([]uint64, error) {
 	var sql strings.Builder
 	args := []interface{}{}
 	fmt.Fprint(&sql, `
@@ -324,7 +325,7 @@ func GetBuilderIndexesByFilter(filter dbtypes.BuilderFilter, currentEpoch uint64
 	}
 
 	builderIds := []uint64{}
-	err := ReaderDb.Select(&builderIds, sql.String(), args...)
+	err := ReaderDb.SelectContext(ctx, &builderIds, sql.String(), args...)
 	if err != nil {
 		logger.Errorf("Error while fetching builders by filter: %v", err)
 		return nil, err
@@ -379,7 +380,7 @@ func buildBuilderFilterSql(filter dbtypes.BuilderFilter, currentEpoch uint64, sq
 }
 
 // StreamBuildersByIndexes streams builders by indexes
-func StreamBuildersByIndexes(indexes []uint64, cb func(builder *dbtypes.Builder) bool) {
+func StreamBuildersByIndexes(ctx context.Context, indexes []uint64, cb func(builder *dbtypes.Builder) bool) {
 	const batchSize = 1000
 
 	for i := 0; i < len(indexes); i += batchSize {
@@ -412,7 +413,7 @@ func StreamBuildersByIndexes(indexes []uint64, cb func(builder *dbtypes.Builder)
 
 		// Fetch all builders for this batch
 		builders := make([]*dbtypes.Builder, len(batch))
-		rows, err := ReaderDb.Query(sql.String(), args...)
+		rows, err := ReaderDb.QueryContext(ctx, sql.String(), args...)
 		if err != nil {
 			logger.Errorf("Error querying builders: %v", err)
 			return
