@@ -195,11 +195,15 @@ func (t *TxIndexer) processElBlock(ref *BlockRef) (*blockStats, error) {
 	// Get account nonce updates (done after batch resolution so IDs are available)
 	accountNonceUpdates := procCtx.getAccountNonceUpdates()
 
-	// Process pending balance lookups after block processing
+	// Process pending balance lookups after block processing.
+	// The callback returned by ProcessPendingLookups captures the context
+	// in its closure for DB operations, so we must not cancel it until
+	// after the DB transaction commits.
+	var balanceCancel context.CancelFunc
 	if t.balanceLookup != nil && t.balanceLookup.HasPendingLookups() {
-		balanceCtx, balanceCancel := context.WithTimeout(t.ctx, 30*time.Second)
+		var balanceCtx context.Context
+		balanceCtx, balanceCancel = context.WithTimeout(t.ctx, 30*time.Second)
 		balanceCommitCallback, err := t.balanceLookup.ProcessPendingLookups(balanceCtx)
-		balanceCancel()
 		if err != nil {
 			t.logger.WithError(err).Debug("failed to process pending balance lookups")
 		}
@@ -211,6 +215,10 @@ func (t *TxIndexer) processElBlock(ref *BlockRef) (*blockStats, error) {
 
 	stats.processing = append(stats.processing, time.Since(t2))
 	t2 = time.Now()
+
+	if balanceCancel != nil {
+		defer balanceCancel()
+	}
 
 	err = db.RunDBTransaction(func(tx *sqlx.Tx) error {
 		for _, dbCommitCallback := range dbCommitCallbacks {
