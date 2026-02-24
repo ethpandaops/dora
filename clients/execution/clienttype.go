@@ -26,7 +26,7 @@ var clientTypePatterns = map[ClientType]*regexp.Regexp{
 	GethClient:       regexp.MustCompile("(?i)^Geth/.*"),
 	NethermindClient: regexp.MustCompile("(?i)^Nethermind/.*"),
 	RethClient:       regexp.MustCompile("(?i)^Reth/.*"),
-	NimbusELClient:   regexp.MustCompile("(?i)^nimbus-eth1/.*"),
+	NimbusELClient:   regexp.MustCompile("(?i)^(nimbus-eth1|NimbusExecutionClient)/.*"),
 	EthrexClient:     regexp.MustCompile("(?i)^ethrex/.*"),
 }
 
