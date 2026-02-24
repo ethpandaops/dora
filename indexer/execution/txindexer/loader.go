@@ -213,32 +213,29 @@ func (t *TxIndexer) fetchBlockTransactions(
 		return nil, 0, common.Hash{}, common.Address{}, nil, fmt.Errorf("block not found")
 	}
 
-	// Parse header to get block number
-	var header struct {
-		Number      *hexutil.Big        `json:"number"`
-		Hash        common.Hash         `json:"hash"`
-		GasLimit    *hexutil.Big        `json:"gasLimit"`
-		Coinbase    common.Address      `json:"miner"`
-		Withdrawals []*types.Withdrawal `json:"withdrawals"`
+	// Parse header fields and transactions in a single pass to avoid
+	// unmarshaling the (potentially large) raw JSON twice.
+	var block struct {
+		Number       *hexutil.Big        `json:"number"`
+		Hash         common.Hash         `json:"hash"`
+		GasLimit     *hexutil.Big        `json:"gasLimit"`
+		Coinbase     common.Address      `json:"miner"`
+		Withdrawals  []*types.Withdrawal `json:"withdrawals"`
+		Transactions []json.RawMessage   `json:"transactions"`
 	}
-	if err := json.Unmarshal(raw, &header); err != nil {
-		return nil, 0, common.Hash{}, common.Address{}, nil, fmt.Errorf("unmarshal block header: %w", err)
+	if err := json.Unmarshal(raw, &block); err != nil {
+		return nil, 0, common.Hash{}, common.Address{}, nil, fmt.Errorf("unmarshal block: %w", err)
 	}
 
-	if header.Number == nil {
+	// Free the raw JSON now that we've parsed what we need.
+	raw = nil
+
+	if block.Number == nil {
 		return nil, 0, common.Hash{}, common.Address{}, nil, fmt.Errorf("block number is nil")
 	}
 
-	// Parse transactions
-	var body struct {
-		Transactions []json.RawMessage `json:"transactions"`
-	}
-	if err := json.Unmarshal(raw, &body); err != nil {
-		return nil, 0, common.Hash{}, common.Address{}, nil, fmt.Errorf("unmarshal block body: %w", err)
-	}
-
-	transactions := make([]*types.Transaction, 0, len(body.Transactions))
-	for idx, rawTx := range body.Transactions {
+	transactions := make([]*types.Transaction, 0, len(block.Transactions))
+	for idx, rawTx := range block.Transactions {
 		// Check transaction type for compatibility
 		var txHeader struct {
 			Type hexutil.Uint64 `json:"type"`
@@ -270,8 +267,8 @@ func (t *TxIndexer) fetchBlockTransactions(
 		transactions = append(transactions, &tx)
 	}
 
-	withdrawals := make([]WithdrawalData, 0, len(header.Withdrawals))
-	for _, w := range header.Withdrawals {
+	withdrawals := make([]WithdrawalData, 0, len(block.Withdrawals))
+	for _, w := range block.Withdrawals {
 		withdrawals = append(withdrawals, WithdrawalData{
 			Index:     uint64(w.Index),
 			Validator: uint64(w.Validator),
@@ -280,7 +277,7 @@ func (t *TxIndexer) fetchBlockTransactions(
 		})
 	}
 
-	return transactions, header.Number.ToInt().Uint64(), header.Hash, header.Coinbase, withdrawals, nil
+	return transactions, block.Number.ToInt().Uint64(), block.Hash, block.Coinbase, withdrawals, nil
 }
 
 // fetchBlockReceipts fetches receipts for a block from an EL client.

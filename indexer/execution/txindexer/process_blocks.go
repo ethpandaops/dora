@@ -145,6 +145,12 @@ func (t *TxIndexer) processElBlock(ref *BlockRef) (*blockStats, error) {
 		}
 	}
 
+	// Release original trace/state-diff slices now that the lookup maps
+	// hold references to the inner result pointers. This allows GC to
+	// collect the slice backing arrays and wrapper structs.
+	data.TraceResults = nil
+	data.StateDiffResults = nil
+
 	// Phase 2: Process transactions (pure computation, no I/O)
 	procCtx := newTxProcessingContext(t.ctx, client, t, ref, data)
 

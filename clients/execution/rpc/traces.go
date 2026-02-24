@@ -115,8 +115,8 @@ func CallTraceCallValue(c *CallTraceCall) uint256.Int {
 
 // TraceBlockByHash calls debug_traceBlockByHash with the callTracer configuration.
 // Returns one CallTraceResult per transaction in the block.
-// The response can be very large for complex blocks; this implementation uses
-// json.RawMessage to avoid buffering the entire decoded structure at once.
+// Uses streaming JSON decoding to avoid buffering the entire (potentially
+// hundreds of MB) response as an intermediate json.RawMessage.
 func (ec *ExecutionClient) TraceBlockByHash(
 	ctx context.Context,
 	blockHash common.Hash,
@@ -125,15 +125,14 @@ func (ec *ExecutionClient) TraceBlockByHash(
 		Tracer: "callTracer",
 	}
 
-	var raw json.RawMessage
-	err := ec.rpcClient.CallContext(ctx, &raw, "debug_traceBlockByHash", blockHash, tracerConfig)
+	var results []CallTraceResult
+
+	err := ec.streamRPCCall(ctx, "debug_traceBlockByHash",
+		streamDecodeArray(&results),
+		blockHash, tracerConfig,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("debug_traceBlockByHash failed: %w", err)
-	}
-
-	var results []CallTraceResult
-	if err := json.Unmarshal(raw, &results); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal trace results: %w", err)
 	}
 
 	return results, nil
