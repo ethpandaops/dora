@@ -61,9 +61,10 @@ type WithdrawalData struct {
 	Amount    uint64 // Amount in Gwei
 }
 
-type dbCommitCallback func(tx *sqlx.Tx) error
+type dbCommitCallback func(ctx context.Context, tx *sqlx.Tx) error
 
 // processElBlock processes a single block reference for EL transaction indexing.
+// Each processing phase uses its own context to prevent cascading timeouts.
 func (t *TxIndexer) processElBlock(ref *BlockRef) (*blockStats, error) {
 	t2 := time.Now()
 	stats := &blockStats{}
@@ -72,11 +73,11 @@ func (t *TxIndexer) processElBlock(ref *BlockRef) (*blockStats, error) {
 		stats.processing = append(stats.processing, time.Since(t2))
 	}()
 
-	ctx, cancel := context.WithTimeout(t.ctx, 60*time.Second)
-	defer cancel()
+	// Phase 1: Fetch block data (transactions and receipts)
+	fetchCtx, fetchCancel := context.WithTimeout(t.ctx, 60*time.Second)
+	data, client, err := t.fetchBlockData(fetchCtx, ref)
+	fetchCancel()
 
-	// Fetch block data (transactions and receipts)
-	data, client, err := t.fetchBlockData(ctx, ref)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch block data: %w", err)
 	}
@@ -144,8 +145,14 @@ func (t *TxIndexer) processElBlock(ref *BlockRef) (*blockStats, error) {
 		}
 	}
 
-	// Create processing context for this block (shared across all transactions)
-	procCtx := newTxProcessingContext(ctx, client, t, ref, data)
+	// Release original trace/state-diff slices now that the lookup maps
+	// hold references to the inner result pointers. This allows GC to
+	// collect the slice backing arrays and wrapper structs.
+	data.TraceResults = nil
+	data.StateDiffResults = nil
+
+	// Phase 2: Process transactions (pure computation, no I/O)
+	procCtx := newTxProcessingContext(t.ctx, client, t, ref, data)
 
 	receiptIdx := 0
 	dbCommitCallbacks := make([]dbCommitCallback, 0, len(data.Transactions))
@@ -182,47 +189,85 @@ func (t *TxIndexer) processElBlock(ref *BlockRef) (*blockStats, error) {
 		return stats, fmt.Errorf("failed to process block rewards: %w", err)
 	}
 
-	// Batch resolve all pending accounts from DB (single query instead of per-account)
+	// Phase 3: Resolve accounts and tokens (DB + RPC lookups, own context)
+	resolveCtx, resolveCancel := context.WithTimeout(t.ctx, 60*time.Second)
+	procCtx.ctx = resolveCtx
+
+	var blockErr error
 	if err := procCtx.resolveAccountsFromDB(); err != nil {
-		return stats, fmt.Errorf("failed to resolve accounts: %w", err)
+		blockErr = fmt.Errorf("failed to resolve accounts: %w", err)
 	}
 
-	// Batch resolve all pending tokens from DB (single query instead of per-token)
-	if err := procCtx.resolveTokensFromDB(); err != nil {
-		return stats, fmt.Errorf("failed to resolve tokens: %w", err)
+	if blockErr == nil {
+		if err := procCtx.resolveTokensFromDB(); err != nil {
+			blockErr = fmt.Errorf("failed to resolve tokens: %w", err)
+		}
+	}
+	resolveCancel()
+
+	// Get account nonce updates (only meaningful if resolve succeeded)
+	var accountNonceUpdates []*dbtypes.ElAccount
+	if blockErr == nil {
+		accountNonceUpdates = procCtx.getAccountNonceUpdates()
 	}
 
-	// Get account nonce updates (done after batch resolution so IDs are available)
-	accountNonceUpdates := procCtx.getAccountNonceUpdates()
-
-	// Process pending balance lookups after block processing
+	// Phase 4: Process pending balance lookups (independent of block resolution).
+	// These are balance verification requests queued from previous blocks.
+	// They must be committed even if the current block's resolution failed.
+	var balanceCommitCallback dbCommitCallback
 	if t.balanceLookup != nil && t.balanceLookup.HasPendingLookups() {
 		balanceCtx, balanceCancel := context.WithTimeout(t.ctx, 30*time.Second)
-		balanceCommitCallback, err := t.balanceLookup.ProcessPendingLookups(balanceCtx)
+		callback, balanceErr := t.balanceLookup.ProcessPendingLookups(balanceCtx)
 		balanceCancel()
-		if err != nil {
-			t.logger.WithError(err).Debug("failed to process pending balance lookups")
-		}
 
-		if balanceCommitCallback != nil {
-			dbCommitCallbacks = append(dbCommitCallbacks, balanceCommitCallback)
+		if balanceErr != nil {
+			t.logger.WithError(balanceErr).Debug("failed to process pending balance lookups")
 		}
+		balanceCommitCallback = callback
 	}
 
 	stats.processing = append(stats.processing, time.Since(t2))
 	t2 = time.Now()
 
+	// If block resolution failed, still commit pending balance lookups, then return error
+	if blockErr != nil {
+		if balanceCommitCallback != nil {
+			balCommitCtx, balCommitCancel := context.WithTimeout(t.ctx, 30*time.Second)
+			commitErr := db.RunDBTransaction(func(tx *sqlx.Tx) error {
+				return balanceCommitCallback(balCommitCtx, tx)
+			})
+			balCommitCancel()
+
+			if commitErr != nil {
+				t.logger.WithError(commitErr).Warn("failed to commit balance lookups after block error")
+			}
+		}
+		return stats, blockErr
+	}
+
+	// Phase 5: Commit to database (fresh context, independent of earlier phases)
+	commitCtx, commitCancel := context.WithTimeout(t.ctx, 30*time.Second)
+	defer commitCancel()
+
+	// Update procCtx to use commit context for getBalanceUpdates (reads from DB)
+	procCtx.ctx = commitCtx
+
 	err = db.RunDBTransaction(func(tx *sqlx.Tx) error {
-		for _, dbCommitCallback := range dbCommitCallbacks {
-			err := dbCommitCallback(tx)
-			if err != nil {
+		for _, cb := range dbCommitCallbacks {
+			if err := cb(commitCtx, tx); err != nil {
+				return err
+			}
+		}
+
+		if balanceCommitCallback != nil {
+			if err := balanceCommitCallback(commitCtx, tx); err != nil {
 				return err
 			}
 		}
 
 		// Batch update account nonces at the end of block processing
 		if len(accountNonceUpdates) > 0 {
-			if err := db.UpdateElAccountsLastNonce(ctx, tx, accountNonceUpdates); err != nil {
+			if err := db.UpdateElAccountsLastNonce(commitCtx, tx, accountNonceUpdates); err != nil {
 				return err
 			}
 		}
@@ -235,7 +280,7 @@ func (t *TxIndexer) processElBlock(ref *BlockRef) (*blockStats, error) {
 
 		// Insert balance updates
 		if len(balanceUpdates) > 0 {
-			if err := db.InsertElBalances(ctx, tx, balanceUpdates); err != nil {
+			if err := db.InsertElBalances(commitCtx, tx, balanceUpdates); err != nil {
 				t.logger.WithError(err).Warn("failed to insert balance updates")
 			}
 		}
@@ -278,13 +323,13 @@ func (t *TxIndexer) processElBlock(ref *BlockRef) (*blockStats, error) {
 			}
 
 			if len(systemWithdrawals) > 0 {
-				if err := db.InsertElWithdrawals(ctx, tx, systemWithdrawals); err != nil {
+				if err := db.InsertElWithdrawals(commitCtx, tx, systemWithdrawals); err != nil {
 					return fmt.Errorf("failed to insert system deposits: %w", err)
 				}
 			}
 		}
 
-		return db.InsertElBlock(ctx, tx, &dbtypes.ElBlock{
+		return db.InsertElBlock(commitCtx, tx, &dbtypes.ElBlock{
 			BlockUid:     ref.BlockUID,
 			Status:       0x01,
 			Events:       data.Stats.events,
@@ -314,9 +359,11 @@ func (t *TxIndexer) processElBlock(ref *BlockRef) (*blockStats, error) {
 				}).Warn("failed to write exec data to blockdb")
 			} else {
 				// Update el_block with data_status and data_size
+				updateCtx, updateCancel := context.WithTimeout(t.ctx, 30*time.Second)
 				updateErr := db.RunDBTransaction(func(tx *sqlx.Tx) error {
-					return db.UpdateElBlockDataStatus(ctx, tx, ref.BlockUID, dataStatus, dataSize)
+					return db.UpdateElBlockDataStatus(updateCtx, tx, ref.BlockUID, dataStatus, dataSize)
 				})
+				updateCancel()
 				if updateErr != nil {
 					t.logger.WithError(updateErr).Warn("failed to update block data status")
 				}
