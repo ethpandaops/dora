@@ -127,6 +127,9 @@ func GetTemplateFuncs() template.FuncMap {
 		"formatRecvDelay":              FormatRecvDelay,
 		"formatPercentageAlert":        formatPercentageAlert,
 		"formatAlertNumber":            formatAlertNumber,
+		"isSystemContract":             IsSystemContract,
+		"getSystemContractName":        GetSystemContractName,
+		"calculateBalanceDiff":         CalculateBalanceDiff,
 		"bitwiseAnd":                   func(a, b interface{}) int64 { return toInt64(a) & toInt64(b) },
 	}
 

@@ -409,6 +409,15 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 				dbBlock.EthBaseFee = utils.GetBaseFeeAsUint64(payload.BaseFeePerGas)
 				dbBlock.EthFeeRecipient = payload.FeeRecipient[:]
 			}
+		case spec.DataVersionGloas:
+			if blockBody.Gloas != nil && blockBody.Gloas.Message != nil &&
+				blockBody.Gloas.Message.Body != nil && blockBody.Gloas.Message.Body.ExecutionPayload != nil {
+				payload := blockBody.Gloas.Message.Body.ExecutionPayload
+				dbBlock.EthGasUsed = payload.GasUsed
+				dbBlock.EthGasLimit = payload.GasLimit
+				dbBlock.EthBaseFee = utils.GetBaseFeeAsUint64(payload.BaseFeePerGas)
+				dbBlock.EthFeeRecipient = payload.FeeRecipient[:]
+			}
 		}
 	}
 
@@ -561,6 +570,13 @@ func (dbw *dbWriter) buildDbEpoch(epoch phase0.Epoch, blocks []*Block, epochStat
 				if blockBody.Fulu != nil && blockBody.Fulu.Message != nil &&
 					blockBody.Fulu.Message.Body != nil && blockBody.Fulu.Message.Body.ExecutionPayload != nil {
 					payload := blockBody.Fulu.Message.Body.ExecutionPayload
+					dbEpoch.EthGasUsed += payload.GasUsed
+					dbEpoch.EthGasLimit += payload.GasLimit
+				}
+			case spec.DataVersionGloas:
+				if blockBody.Gloas != nil && blockBody.Gloas.Message != nil &&
+					blockBody.Gloas.Message.Body != nil && blockBody.Gloas.Message.Body.ExecutionPayload != nil {
+					payload := blockBody.Gloas.Message.Body.ExecutionPayload
 					dbEpoch.EthGasUsed += payload.GasUsed
 					dbEpoch.EthGasLimit += payload.GasLimit
 				}

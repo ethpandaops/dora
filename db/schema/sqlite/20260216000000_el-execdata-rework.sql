@@ -4,6 +4,9 @@
 -- Drop el_tx_events table (event data moves to blockdb in Mode 3)
 DROP TABLE IF EXISTS "el_tx_events";
 
+-- Drop el_internal_transactions table (replaced by trace-based el_transactions_internal)
+DROP TABLE IF EXISTS "el_internal_transactions";
+
 -- Add data tracking columns to el_blocks for blockdb data availability
 -- data_status bit flags: 0x01=events, 0x02=call traces, 0x04=state changes
 -- data_size: compressed size in bytes of blockdb object (0 = no data)
