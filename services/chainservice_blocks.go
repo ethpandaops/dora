@@ -292,7 +292,7 @@ func (bs *ChainService) GetSlotDetailsBySlot(ctx context.Context, slot phase0.Sl
 				log.Warnf("Error loading block body for slot %v", slot)
 			}
 
-			if block.Version >= spec.DataVersionGloas {
+			if block != nil && block.Version >= spec.DataVersionGloas {
 				payload, err = beacon.LoadExecutionPayload(ctx, client, blockRoot)
 				if payload != nil {
 					break
