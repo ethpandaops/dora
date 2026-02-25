@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -8,7 +9,7 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-func InsertMevBlocks(mevBlocks []*dbtypes.MevBlock, tx *sqlx.Tx) error {
+func InsertMevBlocks(ctx context.Context, tx *sqlx.Tx, mevBlocks []*dbtypes.MevBlock) error {
 	var sql strings.Builder
 	fmt.Fprint(&sql,
 		EngineQuery(map[dbtypes.DBEngineType]string{
@@ -55,14 +56,14 @@ func InsertMevBlocks(mevBlocks []*dbtypes.MevBlock, tx *sqlx.Tx) error {
 		dbtypes.DBEngineSqlite: "",
 	}))
 
-	_, err := tx.Exec(sql.String(), args...)
+	_, err := tx.ExecContext(ctx, sql.String(), args...)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func UpdateMevBlockByEpoch(epoch uint64, slotsPerEpoch uint64, canonicalHashes [][]byte, tx *sqlx.Tx) error {
+func UpdateMevBlockByEpoch(ctx context.Context, tx *sqlx.Tx, epoch uint64, slotsPerEpoch uint64, canonicalHashes [][]byte) error {
 	var sql strings.Builder
 	var sqlArgs strings.Builder
 
@@ -98,16 +99,16 @@ func UpdateMevBlockByEpoch(epoch uint64, slotsPerEpoch uint64, canonicalHashes [
 		"WHERE slot_number >= $1 AND slot_number <= $2",
 	)
 
-	_, err := tx.Exec(sql.String(), args...)
+	_, err := tx.ExecContext(ctx, sql.String(), args...)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func GetHighestMevBlockSlotByRelay(relayId uint8) (uint64, error) {
+func GetHighestMevBlockSlotByRelay(ctx context.Context, relayId uint8) (uint64, error) {
 	highestSlot := uint64(0)
-	err := ReaderDb.Get(&highestSlot, `
+	err := ReaderDb.GetContext(ctx, &highestSlot, `
 	SELECT
 		MAX(slot_number)
 	FROM mev_blocks
@@ -119,9 +120,9 @@ func GetHighestMevBlockSlotByRelay(relayId uint8) (uint64, error) {
 	return highestSlot, nil
 }
 
-func GetMevBlockByBlockHash(blockHash []byte) *dbtypes.MevBlock {
+func GetMevBlockByBlockHash(ctx context.Context, blockHash []byte) *dbtypes.MevBlock {
 	mevBlock := dbtypes.MevBlock{}
-	err := ReaderDb.Get(&mevBlock, `
+	err := ReaderDb.GetContext(ctx, &mevBlock, `
 	SELECT
 		slot_number, block_hash, block_number, builder_pubkey, proposer_index, proposed, seenby_relays, fee_recipient, tx_count, gas_used, block_value, block_value_gwei
 	FROM mev_blocks
@@ -134,7 +135,7 @@ func GetMevBlockByBlockHash(blockHash []byte) *dbtypes.MevBlock {
 }
 
 // GetMevBlocksByBlockHashes retrieves multiple MEV blocks in a single database query for better performance
-func GetMevBlocksByBlockHashes(blockHashes [][]byte) map[string]*dbtypes.MevBlock {
+func GetMevBlocksByBlockHashes(ctx context.Context, blockHashes [][]byte) map[string]*dbtypes.MevBlock {
 	if len(blockHashes) == 0 {
 		return map[string]*dbtypes.MevBlock{}
 	}
@@ -156,7 +157,7 @@ func GetMevBlocksByBlockHashes(blockHashes [][]byte) map[string]*dbtypes.MevBloc
 	`, strings.Join(placeholders, ", "))
 
 	mevBlocks := []*dbtypes.MevBlock{}
-	err := ReaderDb.Select(&mevBlocks, query, queryArgs...)
+	err := ReaderDb.SelectContext(ctx, &mevBlocks, query, queryArgs...)
 	if err != nil {
 		logger.Errorf("Error while fetching MEV blocks by hashes: %v", err)
 		return map[string]*dbtypes.MevBlock{}
@@ -171,7 +172,7 @@ func GetMevBlocksByBlockHashes(blockHashes [][]byte) map[string]*dbtypes.MevBloc
 	return result
 }
 
-func GetMevBlocksFiltered(offset uint64, limit uint32, filter *dbtypes.MevBlockFilter) ([]*dbtypes.MevBlock, uint64, error) {
+func GetMevBlocksFiltered(ctx context.Context, offset uint64, limit uint32, filter *dbtypes.MevBlockFilter) ([]*dbtypes.MevBlock, uint64, error) {
 	var sql strings.Builder
 	args := []any{}
 	fmt.Fprint(&sql, `
@@ -277,7 +278,7 @@ func GetMevBlocksFiltered(offset uint64, limit uint32, filter *dbtypes.MevBlockF
 	fmt.Fprintf(&sql, ") AS t1")
 
 	mevBlocks := []*dbtypes.MevBlock{}
-	err := ReaderDb.Select(&mevBlocks, sql.String(), args...)
+	err := ReaderDb.SelectContext(ctx, &mevBlocks, sql.String(), args...)
 	if err != nil {
 		logger.Errorf("Error while fetching filtered mev blocks: %v", err)
 		return nil, 0, err

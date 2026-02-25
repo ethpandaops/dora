@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -8,6 +9,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/gorilla/mux"
@@ -23,6 +25,11 @@ import (
 
 var searchLikeRE = regexp.MustCompile(`^[0-9a-fA-F]{0,96}$`)
 
+// searchResolverResult is the cached outcome of resolving a search query (redirect URL or empty = not found).
+type searchResolverResult struct {
+	RedirectURL string `json:"redirect_url"`
+}
+
 // Search will return the main "search" page using a go template
 func Search(w http.ResponseWriter, r *http.Request) {
 	var notfoundTemplateFiles = append(layoutTemplateFiles,
@@ -30,7 +37,48 @@ func Search(w http.ResponseWriter, r *http.Request) {
 	)
 
 	urlArgs := r.URL.Query()
-	searchQuery := urlArgs.Get("q")
+	searchQuery := strings.TrimSpace(urlArgs.Get("q"))
+
+	var result searchResolverResult
+	var pageErr error
+	if searchQuery != "" {
+		pageCacheKey := fmt.Sprintf("search:%s", searchQuery)
+		result, pageErr = getSearchResolverResult(pageCacheKey, searchQuery)
+	}
+	if pageErr != nil {
+		handlePageError(w, r, pageErr)
+		return
+	}
+	if result.RedirectURL != "" {
+		http.Redirect(w, r, result.RedirectURL, http.StatusMovedPermanently)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html")
+	data := InitPageData(w, r, "search", "/search", fmt.Sprintf("Search: %v", searchQuery), notfoundTemplateFiles)
+	if handleTemplateError(w, r, "search.go", "Search", "", templates.GetTemplate(notfoundTemplateFiles...).ExecuteTemplate(w, "layout", data)) != nil {
+		return
+	}
+}
+
+func getSearchResolverResult(pageCacheKey, searchQuery string) (searchResolverResult, error) {
+	pageData := searchResolverResult{}
+	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
+		res, cacheTimeout := buildSearchResolverResult(pageCall.CallCtx, searchQuery)
+		pageCall.CacheTimeout = cacheTimeout
+		return res
+	})
+	if pageErr != nil {
+		return searchResolverResult{}, pageErr
+	}
+	if res, ok := pageRes.(searchResolverResult); ok {
+		return res, nil
+	}
+	return searchResolverResult{}, ErrInvalidPageModel
+}
+
+func buildSearchResolverResult(ctx context.Context, searchQuery string) (searchResolverResult, time.Duration) {
+	cacheTimeout := 2 * time.Minute
 
 	_, err := strconv.Atoi(searchQuery)
 	if err == nil {
@@ -39,12 +87,10 @@ func Search(w http.ResponseWriter, r *http.Request) {
 		if err == nil {
 			validator := services.GlobalBeaconService.GetValidatorByIndex(phase0.ValidatorIndex(validatorIndex), false)
 			if validator != nil {
-				http.Redirect(w, r, fmt.Sprintf("/validator/%v", validatorIndex), http.StatusMovedPermanently)
-				return
+				return searchResolverResult{RedirectURL: fmt.Sprintf("/validator/%v", validatorIndex)}, cacheTimeout
 			}
 		}
 
-		// If not a validator, check for slot
 		blockResult := &dbtypes.SearchBlockResult{}
 		err = db.ReaderDb.Get(blockResult, `
 			SELECT slot, root, status 
@@ -53,38 +99,32 @@ func Search(w http.ResponseWriter, r *http.Request) {
 			LIMIT 1`, searchQuery)
 		if err == nil {
 			if blockResult.Status == dbtypes.Orphaned {
-				http.Redirect(w, r, fmt.Sprintf("/slot/0x%x", blockResult.Root), http.StatusMovedPermanently)
-			} else {
-				http.Redirect(w, r, fmt.Sprintf("/slot/%v", blockResult.Slot), http.StatusMovedPermanently)
+				return searchResolverResult{RedirectURL: fmt.Sprintf("/slot/0x%x", blockResult.Root)}, cacheTimeout
 			}
-			return
+			return searchResolverResult{RedirectURL: fmt.Sprintf("/slot/%v", blockResult.Slot)}, cacheTimeout
 		}
 	}
 
 	hashQuery := strings.Replace(searchQuery, "0x", "", -1)
+	hashQuery = strings.Replace(hashQuery, "0X", "", -1)
 	if len(hashQuery) == 96 {
-		// Check if it's a validator pubkey (48 bytes = 96 hex chars)
 		validatorPubkey, err := hex.DecodeString(hashQuery)
 		if err == nil && len(validatorPubkey) == 48 {
 			validatorIndex, found := services.GlobalBeaconService.GetValidatorIndexByPubkey(phase0.BLSPubKey(validatorPubkey))
 			if found {
-				http.Redirect(w, r, fmt.Sprintf("/validator/%v", validatorIndex), http.StatusMovedPermanently)
-				return
+				return searchResolverResult{RedirectURL: fmt.Sprintf("/validator/%v", validatorIndex)}, cacheTimeout
 			}
 		}
 	} else if len(hashQuery) == 64 {
-		// Check if it's a transaction hash first (if execution indexing is enabled)
 		if utils.Config.ExecutionIndexer.Enabled {
 			txHashBytes, err := hex.DecodeString(hashQuery)
 			if err == nil && len(txHashBytes) == 32 {
-				txs, err := db.GetElTransactionsByHash(txHashBytes)
+				txs, err := db.GetElTransactionsByHash(ctx, txHashBytes)
 				if err == nil && len(txs) > 0 {
-					http.Redirect(w, r, fmt.Sprintf("/tx/0x%x", txHashBytes), http.StatusMovedPermanently)
-					return
+					return searchResolverResult{RedirectURL: fmt.Sprintf("/tx/0x%x", txHashBytes)}, cacheTimeout
 				}
 			}
 		}
-		// Check if it's a block hash
 		blockHash, err := hex.DecodeString(hashQuery)
 		if err == nil {
 			blockResult := &dbtypes.SearchBlockResult{}
@@ -96,20 +136,15 @@ func Search(w http.ResponseWriter, r *http.Request) {
 			LIMIT 1`, blockHash)
 			if err == nil {
 				if blockResult.Status == dbtypes.Orphaned {
-					http.Redirect(w, r, fmt.Sprintf("/slot/0x%x", blockResult.Root), http.StatusMovedPermanently)
-				} else {
-					http.Redirect(w, r, fmt.Sprintf("/slot/%v", blockResult.Slot), http.StatusMovedPermanently)
+					return searchResolverResult{RedirectURL: fmt.Sprintf("/slot/0x%x", blockResult.Root)}, cacheTimeout
 				}
-				return
+				return searchResolverResult{RedirectURL: fmt.Sprintf("/slot/%v", blockResult.Slot)}, cacheTimeout
 			}
 		}
 	} else if len(hashQuery) == 40 && utils.Config.ExecutionIndexer.Enabled {
-		// Check if it's an address (20 bytes = 40 hex chars)
 		addressBytes, err := hex.DecodeString(hashQuery)
 		if err == nil && len(addressBytes) == 20 {
-			// Always redirect to address page, even if not in DB
-			http.Redirect(w, r, fmt.Sprintf("/address/0x%x", addressBytes), http.StatusMovedPermanently)
-			return
+			return searchResolverResult{RedirectURL: fmt.Sprintf("/address/0x%x", addressBytes)}, cacheTimeout
 		}
 	}
 
@@ -127,8 +162,7 @@ func Search(w http.ResponseWriter, r *http.Request) {
 			LIMIT 1`,
 	}), "%"+searchQuery+"%")
 	if err == nil {
-		http.Redirect(w, r, "/slots/filtered?f&f.missing=1&f.orphaned=1&f.pname="+searchQuery, http.StatusMovedPermanently)
-		return
+		return searchResolverResult{RedirectURL: "/slots/filtered?f&f.missing=1&f.orphaned=1&f.pname=" + searchQuery}, cacheTimeout
 	}
 
 	graffiti := &dbtypes.SearchGraffitiResult{}
@@ -145,15 +179,16 @@ func Search(w http.ResponseWriter, r *http.Request) {
 			LIMIT 1`,
 	}), "%"+searchQuery+"%")
 	if err == nil {
-		http.Redirect(w, r, "/slots/filtered?f&f.missing=1&f.orphaned=1&f.graffiti="+searchQuery, http.StatusMovedPermanently)
-		return
+		return searchResolverResult{RedirectURL: "/slots/filtered?f&f.missing=1&f.orphaned=1&f.graffiti=" + searchQuery}, cacheTimeout
 	}
 
-	w.Header().Set("Content-Type", "text/html")
-	data := InitPageData(w, r, "search", "/search", fmt.Sprintf("Search: %v", searchQuery), notfoundTemplateFiles)
-	if handleTemplateError(w, r, "search.go", "Search", "", templates.GetTemplate(notfoundTemplateFiles...).ExecuteTemplate(w, "layout", data)) != nil {
-		return // an error has occurred and was processed
-	}
+	return searchResolverResult{}, cacheTimeout
+}
+
+// searchAheadCached wraps the JSON result and an optional error for cache/demux.
+type searchAheadCached struct {
+	Data interface{} `json:"-"`
+	Err  string      `json:"-"`
 }
 
 // SearchAhead handles responses for the frontend search boxes
@@ -163,13 +198,60 @@ func SearchAhead(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	searchType := vars["type"]
 	urlArgs := r.URL.Query()
-	search := urlArgs.Get("q")
-	search = strings.Trim(search, " \t")
+	search := strings.Trim(urlArgs.Get("q"), " \t")
 	search = strings.Replace(search, "0x", "", -1)
 	search = strings.Replace(search, "0X", "", -1)
-	var err error
-	logger := logrus.WithField("searchType", searchType)
+
+	// 404 before cache so we don't cache disabled/unknown types
+	allowedTypes := map[string]bool{
+		"epochs":       true,
+		"slots":        true,
+		"execblocks":   true,
+		"graffiti":     true,
+		"valname":      true,
+		"validator":    true,
+		"addresses":    utils.Config.ExecutionIndexer.Enabled,
+		"transactions": utils.Config.ExecutionIndexer.Enabled,
+	}
+	if !allowedTypes[searchType] {
+		http.Error(w, "Not found", 404)
+		return
+	}
+
+	pageCacheKey := fmt.Sprintf("search_ahead:%s:%s", searchType, search)
+	var pageData searchAheadCached
+	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, &pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
+		out, cacheTimeout := buildSearchAheadResult(pageCall.CallCtx, searchType, search)
+		pageCall.CacheTimeout = cacheTimeout
+		return out
+	})
+	if pageErr != nil {
+		logrus.WithError(pageErr).WithField("searchType", searchType).Error("search ahead error")
+		http.Error(w, "Internal server error", http.StatusServiceUnavailable)
+		return
+	}
+	var res searchAheadCached
+	if pageRes, ok := pageRes.(*searchAheadCached); ok {
+		res = *pageRes
+	} else {
+		http.Error(w, "Internal server error", http.StatusServiceUnavailable)
+		return
+	}
+	if res.Err != "" {
+		logrus.WithField("searchType", searchType).WithField("err", res.Err).Error("search ahead build error")
+		http.Error(w, "Internal server error", http.StatusServiceUnavailable)
+		return
+	}
+	if err := json.NewEncoder(w).Encode(res.Data); err != nil {
+		logrus.WithError(err).Error("error encoding searchAhead")
+		http.Error(w, "Internal server error", http.StatusServiceUnavailable)
+	}
+}
+
+func buildSearchAheadResult(ctx context.Context, searchType, search string) (*searchAheadCached, time.Duration) {
+	cacheTimeout := 30 * time.Second
 	var result interface{}
+	var err error
 
 	indexer := services.GlobalBeaconService.GetBeaconIndexer()
 	_, pruneEpoch := indexer.GetBlockCacheState()
@@ -197,11 +279,9 @@ func SearchAhead(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 		if len(search) == 64 {
-			blockHash, err := hex.DecodeString(search)
-			if err != nil {
-				logger.Errorf("error parsing blockHash to int: %v", err)
-				http.Error(w, "Internal server error", http.StatusServiceUnavailable)
-				return
+			blockHash, decErr := hex.DecodeString(search)
+			if decErr != nil {
+				return &searchAheadCached{Err: decErr.Error()}, cacheTimeout
 			}
 
 			cachedBlock := indexer.GetBlockByRoot(phase0.Root(blockHash))
@@ -225,9 +305,7 @@ func SearchAhead(w http.ResponseWriter, r *http.Request) {
 				WHERE slot < $1 AND (root = $2 OR state_root = $2)
 				ORDER BY slot LIMIT 1`, minSlotIdx, blockHash)
 				if err != nil {
-					logger.Errorf("error reading block root: %v", err)
-					http.Error(w, "Internal server error", http.StatusServiceUnavailable)
-					return
+					return &searchAheadCached{Err: err.Error()}, cacheTimeout
 				}
 				if len(*dbres) > 0 {
 					result = &[]models.SearchAheadSlotsResult{
@@ -238,7 +316,6 @@ func SearchAhead(w http.ResponseWriter, r *http.Request) {
 						},
 					}
 				}
-
 			}
 		} else if blockNumber, convertErr := strconv.ParseUint(search, 10, 32); convertErr == nil {
 			cachedBlocks := indexer.GetBlocksBySlot(phase0.Slot(blockNumber))
@@ -284,11 +361,9 @@ func SearchAhead(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 		if len(search) == 64 {
-			blockHash, err := hex.DecodeString(search)
-			if err != nil {
-				logger.Errorf("error parsing blockHash to int: %v", err)
-				http.Error(w, "Internal server error", http.StatusServiceUnavailable)
-				return
+			blockHash, decErr := hex.DecodeString(search)
+			if decErr != nil {
+				return &searchAheadCached{Err: decErr.Error()}, cacheTimeout
 			}
 
 			cachedBlocks := indexer.GetBlocksByExecutionBlockHash(phase0.Hash32(blockHash))
@@ -296,7 +371,7 @@ func SearchAhead(w http.ResponseWriter, r *http.Request) {
 				res := make([]*models.SearchAheadExecBlocksResult, len(cachedBlocks))
 				for idx, cachedBlock := range cachedBlocks {
 					header := cachedBlock.GetHeader()
-					index := cachedBlock.GetBlockIndex()
+					index := cachedBlock.GetBlockIndex(ctx)
 					res[idx] = &models.SearchAheadExecBlocksResult{
 						Slot:       fmt.Sprintf("%v", uint64(header.Message.Slot)),
 						Root:       phase0.Root(cachedBlock.Root),
@@ -314,9 +389,7 @@ func SearchAhead(w http.ResponseWriter, r *http.Request) {
 				WHERE slot < $1 AND eth_block_hash = $2
 				ORDER BY slot LIMIT 10`, minSlotIdx, blockHash)
 				if err != nil {
-					logger.Errorf("error reading block: %v", err)
-					http.Error(w, "Internal server error", http.StatusServiceUnavailable)
-					return
+					return &searchAheadCached{Err: err.Error()}, cacheTimeout
 				}
 				if len(*dbres) > 0 {
 					result = &[]models.SearchAheadExecBlocksResult{
@@ -337,7 +410,7 @@ func SearchAhead(w http.ResponseWriter, r *http.Request) {
 				res := make([]*models.SearchAheadExecBlocksResult, 0)
 				for _, cachedBlock := range cachedBlocks {
 					header := cachedBlock.GetHeader()
-					index := cachedBlock.GetBlockIndex()
+					index := cachedBlock.GetBlockIndex(ctx)
 					res = append(res, &models.SearchAheadExecBlocksResult{
 						Slot:       fmt.Sprintf("%v", uint64(header.Message.Slot)),
 						Root:       phase0.Root(cachedBlock.Root),
@@ -477,11 +550,6 @@ func SearchAhead(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	case "addresses":
-		// Only enable if execution indexing is enabled
-		if !utils.Config.ExecutionIndexer.Enabled {
-			http.Error(w, "Not found", 404)
-			return
-		}
 		if len(search) == 0 {
 			break
 		}
@@ -493,7 +561,7 @@ func SearchAhead(w http.ResponseWriter, r *http.Request) {
 			addressBytes, err := hex.DecodeString(search)
 			if err == nil && len(addressBytes) == 20 {
 				// Try to get from DB first
-				account, _ := db.GetElAccountByAddress(addressBytes)
+				account, _ := db.GetElAccountByAddress(ctx, addressBytes)
 				result = &[]models.SearchAheadAddressResult{
 					{
 						Address:    fmt.Sprintf("0x%x", addressBytes),
@@ -532,11 +600,6 @@ func SearchAhead(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	case "transactions":
-		// Only enable if execution indexing is enabled
-		if !utils.Config.ExecutionIndexer.Enabled {
-			http.Error(w, "Not found", 404)
-			return
-		}
 		if len(search) == 0 {
 			break
 		}
@@ -547,7 +610,7 @@ func SearchAhead(w http.ResponseWriter, r *http.Request) {
 			// Full 32-byte transaction hash
 			txHashBytes, err := hex.DecodeString(search)
 			if err == nil && len(txHashBytes) == 32 {
-				txs, err := db.GetElTransactionsByHash(txHashBytes)
+				txs, err := db.GetElTransactionsByHash(ctx, txHashBytes)
 				if err == nil && len(txs) > 0 {
 					// Use the first (canonical) transaction
 					tx := txs[0]
@@ -595,20 +658,10 @@ func SearchAhead(w http.ResponseWriter, r *http.Request) {
 				result = model
 			}
 		}
-
-	default:
-		http.Error(w, "Not found", 404)
-		return
 	}
 
 	if err != nil {
-		logger.WithError(err).WithField("searchType", searchType).Error("error doing query for searchAhead")
-		http.Error(w, "Internal server error", http.StatusServiceUnavailable)
-		return
+		return &searchAheadCached{Err: err.Error()}, cacheTimeout
 	}
-	err = json.NewEncoder(w).Encode(result)
-	if err != nil {
-		logger.WithError(err).Error("error encoding searchAhead")
-		http.Error(w, "Internal server error", http.StatusServiceUnavailable)
-	}
+	return &searchAheadCached{Data: result}, cacheTimeout
 }

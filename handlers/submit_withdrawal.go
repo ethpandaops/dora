@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -115,49 +116,18 @@ func handleSubmitWithdrawalPageDataAjax(w http.ResponseWriter, r *http.Request) 
 
 	switch query.Get("ajax") {
 	case "load_validators":
-		chainState := services.GlobalBeaconService.GetChainState()
-		chainSpecs := chainState.GetSpecs()
 		address := query.Get("address")
-		addressBytes := common.HexToAddress(address)
-		validators, _ := services.GlobalBeaconService.GetFilteredValidatorSet(&dbtypes.ValidatorFilter{
-			WithdrawalAddress: addressBytes[:],
-		}, true)
-
-		result := []models.SubmitWithdrawalPageDataValidator{}
-		for _, validator := range validators {
-			var status string
-			if strings.HasPrefix(validator.Status.String(), "pending") {
-				status = "Pending"
-			} else if validator.Status == v1.ValidatorStateActiveOngoing {
-				status = "Active"
-			} else if validator.Status == v1.ValidatorStateActiveExiting {
-				status = "Exiting"
-			} else if validator.Status == v1.ValidatorStateActiveSlashed {
-				status = "Slashed"
-			} else if validator.Status == v1.ValidatorStateExitedUnslashed {
-				status = "Exited"
-			} else if validator.Status == v1.ValidatorStateExitedSlashed {
-				status = "Slashed"
-			} else {
-				status = validator.Status.String()
-			}
-
-			withdrawable := false
-			if validator.Validator.ActivationEpoch < beacon.FarFutureEpoch && validator.Validator.ActivationEpoch+phase0.Epoch(chainSpecs.ShardCommitteePeriod) < chainState.CurrentEpoch() {
-				withdrawable = true
-			}
-
-			result = append(result, models.SubmitWithdrawalPageDataValidator{
-				Index:          uint64(validator.Index),
-				Pubkey:         validator.Validator.PublicKey.String(),
-				Balance:        uint64(validator.Balance),
-				CredType:       fmt.Sprintf("%02x", validator.Validator.WithdrawalCredentials[0]),
-				Status:         status,
-				IsWithdrawable: withdrawable,
-			})
+		pageCacheKey := fmt.Sprintf("submit_withdrawal:load_validators:%s", address)
+		var cached []models.SubmitWithdrawalPageDataValidator
+		pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, &cached, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
+			result := buildSubmitWithdrawalLoadValidators(pageCall.CallCtx, address)
+			pageCall.CacheTimeout = 1 * time.Minute
+			return result
+		})
+		if pageErr != nil {
+			return pageErr
 		}
-
-		pageData = result
+		pageData = pageRes
 	default:
 		return errors.New("invalid ajax request")
 	}
@@ -169,4 +139,45 @@ func handleSubmitWithdrawalPageDataAjax(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "Internal server error", http.StatusServiceUnavailable)
 	}
 	return nil
+}
+
+func buildSubmitWithdrawalLoadValidators(ctx context.Context, address string) []models.SubmitWithdrawalPageDataValidator {
+	chainState := services.GlobalBeaconService.GetChainState()
+	chainSpecs := chainState.GetSpecs()
+	addressBytes := common.HexToAddress(address)
+	validators, _ := services.GlobalBeaconService.GetFilteredValidatorSet(ctx, &dbtypes.ValidatorFilter{
+		WithdrawalAddress: addressBytes[:],
+	}, true)
+	result := make([]models.SubmitWithdrawalPageDataValidator, 0, len(validators))
+	for _, validator := range validators {
+		var status string
+		if strings.HasPrefix(validator.Status.String(), "pending") {
+			status = "Pending"
+		} else if validator.Status == v1.ValidatorStateActiveOngoing {
+			status = "Active"
+		} else if validator.Status == v1.ValidatorStateActiveExiting {
+			status = "Exiting"
+		} else if validator.Status == v1.ValidatorStateActiveSlashed {
+			status = "Slashed"
+		} else if validator.Status == v1.ValidatorStateExitedUnslashed {
+			status = "Exited"
+		} else if validator.Status == v1.ValidatorStateExitedSlashed {
+			status = "Slashed"
+		} else {
+			status = validator.Status.String()
+		}
+		withdrawable := validator.Validator.ActivationEpoch < beacon.FarFutureEpoch &&
+			validator.Validator.ActivationEpoch+phase0.Epoch(chainSpecs.ShardCommitteePeriod) < chainState.CurrentEpoch()
+		model := models.SubmitWithdrawalPageDataValidator{
+			Index:          uint64(validator.Index),
+			Pubkey:         validator.Validator.PublicKey.String(),
+			Balance:        uint64(validator.Balance),
+			CredType:       fmt.Sprintf("%02x", validator.Validator.WithdrawalCredentials[0]),
+			Status:         status,
+			IsWithdrawable: withdrawable,
+		}
+
+		result = append(result, model)
+	}
+	return result
 }

@@ -170,7 +170,7 @@ func APIMevBlocksV1(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get MEV blocks from database
-	dbMevBlocks, totalCount, err := db.GetMevBlocksFiltered(offset, limit, mevBlockFilter)
+	dbMevBlocks, totalCount, err := db.GetMevBlocksFiltered(r.Context(), offset, limit, mevBlockFilter)
 	if err != nil {
 		logrus.WithError(err).Error("failed to get MEV blocks")
 		http.Error(w, `{"status": "ERROR: failed to get MEV blocks"}`, http.StatusInternalServerError)
@@ -184,7 +184,7 @@ func APIMevBlocksV1(w http.ResponseWriter, r *http.Request) {
 		for _, mevBlock := range dbMevBlocks {
 			blockHashes = append(blockHashes, mevBlock.BlockHash)
 		}
-		blobCounts := db.GetSlotBlobCountByExecutionHashes(blockHashes)
+		blobCounts := db.GetSlotBlobCountByExecutionHashes(r.Context(), blockHashes)
 		for i, blobCount := range blobCounts {
 			if i < len(blockHashes) && blobCount != nil {
 				blockBlobCountMap[string(blockHashes[i])] = blobCount.BlobCount

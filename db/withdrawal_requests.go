@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -8,7 +9,7 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-func InsertWithdrawalRequests(elRequests []*dbtypes.WithdrawalRequest, tx *sqlx.Tx) error {
+func InsertWithdrawalRequests(ctx context.Context, tx *sqlx.Tx, elRequests []*dbtypes.WithdrawalRequest) error {
 	var sql strings.Builder
 	fmt.Fprint(&sql,
 		EngineQuery(map[dbtypes.DBEngineType]string{
@@ -55,14 +56,14 @@ func InsertWithdrawalRequests(elRequests []*dbtypes.WithdrawalRequest, tx *sqlx.
 		dbtypes.DBEngineSqlite: "",
 	}))
 
-	_, err := tx.Exec(sql.String(), args...)
+	_, err := tx.ExecContext(ctx, sql.String(), args...)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func GetWithdrawalRequestsFiltered(offset uint64, limit uint32, canonicalForkIds []uint64, filter *dbtypes.WithdrawalRequestFilter) ([]*dbtypes.WithdrawalRequest, uint64, error) {
+func GetWithdrawalRequestsFiltered(ctx context.Context, offset uint64, limit uint32, canonicalForkIds []uint64, filter *dbtypes.WithdrawalRequestFilter) ([]*dbtypes.WithdrawalRequest, uint64, error) {
 	var sql strings.Builder
 	args := []interface{}{}
 	fmt.Fprint(&sql, `
@@ -176,7 +177,7 @@ func GetWithdrawalRequestsFiltered(offset uint64, limit uint32, canonicalForkIds
 	fmt.Fprintf(&sql, ") AS t1")
 
 	withdrawalRequests := []*dbtypes.WithdrawalRequest{}
-	err := ReaderDb.Select(&withdrawalRequests, sql.String(), args...)
+	err := ReaderDb.SelectContext(ctx, &withdrawalRequests, sql.String(), args...)
 	if err != nil {
 		logger.Errorf("Error while fetching filtered withdrawal requests: %v", err)
 		return nil, 0, err
@@ -185,10 +186,10 @@ func GetWithdrawalRequestsFiltered(offset uint64, limit uint32, canonicalForkIds
 	return withdrawalRequests[1:], withdrawalRequests[0].SlotNumber, nil
 }
 
-func GetWithdrawalRequestsByElBlockRange(firstSlot uint64, lastSlot uint64) []*dbtypes.WithdrawalRequest {
+func GetWithdrawalRequestsByElBlockRange(ctx context.Context, firstSlot uint64, lastSlot uint64) []*dbtypes.WithdrawalRequest {
 	withdrawalRequests := []*dbtypes.WithdrawalRequest{}
 
-	err := ReaderDb.Select(&withdrawalRequests, `
+	err := ReaderDb.SelectContext(ctx, &withdrawalRequests, `
 		SELECT withdrawal_requests.*
 		FROM withdrawal_requests
 		WHERE block_number >= $1 AND block_number <= $2
@@ -202,8 +203,8 @@ func GetWithdrawalRequestsByElBlockRange(firstSlot uint64, lastSlot uint64) []*d
 	return withdrawalRequests
 }
 
-func UpdateWithdrawalRequestTxHash(slotRoot []byte, slotIndex uint64, txHash []byte, tx *sqlx.Tx) error {
-	_, err := tx.Exec(`UPDATE withdrawal_requests SET tx_hash = $1 WHERE slot_root = $2 AND slot_index = $3`, txHash, slotRoot, slotIndex)
+func UpdateWithdrawalRequestTxHash(ctx context.Context, tx *sqlx.Tx, slotRoot []byte, slotIndex uint64, txHash []byte) error {
+	_, err := tx.ExecContext(ctx, `UPDATE withdrawal_requests SET tx_hash = $1 WHERE slot_root = $2 AND slot_index = $3`, txHash, slotRoot, slotIndex)
 	if err != nil {
 		return err
 	}

@@ -138,10 +138,10 @@ func (s *BalanceLookupService) ProcessPendingLookups(ctx context.Context) (dbCom
 		return nil, nil
 	}
 
-	return func(tx *sqlx.Tx) error {
+	return func(commitCtx context.Context, tx *sqlx.Tx) error {
 		// Insert known account balance updates
 		if len(knownUpdates) > 0 {
-			if err := db.InsertElBalances(knownUpdates, tx); err != nil {
+			if err := db.InsertElBalances(commitCtx, tx, knownUpdates); err != nil {
 				return fmt.Errorf("failed to insert balance updates: %w", err)
 			}
 		}
@@ -152,7 +152,7 @@ func (s *BalanceLookupService) ProcessPendingLookups(ctx context.Context) (dbCom
 				Address: acc.address,
 			}
 
-			accountID, err := db.InsertElAccount(newAccount, tx)
+			accountID, err := db.InsertElAccount(commitCtx, tx, newAccount)
 			if err != nil {
 				s.logger.WithError(err).WithField("address", common.BytesToAddress(acc.address).Hex()).
 					Warn("failed to create account for unknown address with balance")
@@ -167,7 +167,7 @@ func (s *BalanceLookupService) ProcessPendingLookups(ctx context.Context) (dbCom
 				Updated:    currentTime,
 			}
 
-			if err := db.InsertElBalances([]*dbtypes.ElBalance{balanceRecord}, tx); err != nil {
+			if err := db.InsertElBalances(commitCtx, tx, []*dbtypes.ElBalance{balanceRecord}); err != nil {
 				s.logger.WithError(err).WithField("address", common.BytesToAddress(acc.address).Hex()).
 					Warn("failed to insert balance for new account")
 				continue

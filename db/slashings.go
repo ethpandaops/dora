@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -8,7 +9,7 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-func InsertSlashings(slashings []*dbtypes.Slashing, tx *sqlx.Tx) error {
+func InsertSlashings(ctx context.Context, tx *sqlx.Tx, slashings []*dbtypes.Slashing) error {
 	var sql strings.Builder
 	fmt.Fprint(&sql,
 		EngineQuery(map[dbtypes.DBEngineType]string{
@@ -51,14 +52,14 @@ func InsertSlashings(slashings []*dbtypes.Slashing, tx *sqlx.Tx) error {
 		dbtypes.DBEngineSqlite: "",
 	}))
 
-	_, err := tx.Exec(sql.String(), args...)
+	_, err := tx.ExecContext(ctx, sql.String(), args...)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func GetSlashingForValidator(validator uint64) *dbtypes.Slashing {
+func GetSlashingForValidator(ctx context.Context, validator uint64) *dbtypes.Slashing {
 	var sql strings.Builder
 	args := []any{
 		validator,
@@ -71,14 +72,14 @@ func GetSlashingForValidator(validator uint64) *dbtypes.Slashing {
 	`)
 
 	slashing := &dbtypes.Slashing{}
-	err := ReaderDb.Get(&slashing, sql.String(), args...)
+	err := ReaderDb.GetContext(ctx, &slashing, sql.String(), args...)
 	if err != nil {
 		return nil
 	}
 	return slashing
 }
 
-func GetSlashingsFiltered(offset uint64, limit uint32, finalizedBlock uint64, filter *dbtypes.SlashingFilter) ([]*dbtypes.Slashing, uint64, error) {
+func GetSlashingsFiltered(ctx context.Context, offset uint64, limit uint32, finalizedBlock uint64, filter *dbtypes.SlashingFilter) ([]*dbtypes.Slashing, uint64, error) {
 	var sql strings.Builder
 	args := []any{}
 	fmt.Fprint(&sql, `
@@ -180,7 +181,7 @@ func GetSlashingsFiltered(offset uint64, limit uint32, finalizedBlock uint64, fi
 	fmt.Fprintf(&sql, ") AS t1")
 
 	slashings := []*dbtypes.Slashing{}
-	err := ReaderDb.Select(&slashings, sql.String(), args...)
+	err := ReaderDb.SelectContext(ctx, &slashings, sql.String(), args...)
 	if err != nil {
 		logger.Errorf("Error while fetching filtered slashings: %v", err)
 		return nil, 0, err

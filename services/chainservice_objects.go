@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"slices"
 	"strings"
 
@@ -12,7 +13,7 @@ import (
 	"github.com/ethpandaops/dora/indexer/beacon"
 )
 
-func (bs *ChainService) GetVoluntaryExitsByFilter(filter *dbtypes.VoluntaryExitFilter, pageIdx uint64, pageSize uint32) ([]*dbtypes.VoluntaryExit, uint64) {
+func (bs *ChainService) GetVoluntaryExitsByFilter(ctx context.Context, filter *dbtypes.VoluntaryExitFilter, pageIdx uint64, pageSize uint32) ([]*dbtypes.VoluntaryExit, uint64) {
 	chainState := bs.consensusPool.GetChainState()
 	finalizedBlock, prunedEpoch := bs.beaconIndexer.GetBlockCacheState()
 	idxMinSlot := chainState.EpochToSlot(prunedEpoch)
@@ -94,12 +95,12 @@ func (bs *ChainService) GetVoluntaryExitsByFilter(filter *dbtypes.VoluntaryExitF
 
 	if resIdx >= int(pageSize) {
 		// all results from cache, just get result count from db
-		_, dbCount, err = db.GetVoluntaryExitsFiltered(0, 1, uint64(finalizedBlock), filter)
+		_, dbCount, err = db.GetVoluntaryExitsFiltered(ctx, 0, 1, uint64(finalizedBlock), filter)
 	} else if dbPage == 0 {
 		// first page, load first `pagesize-cachedResults` items from db
-		dbObjects, dbCount, err = db.GetVoluntaryExitsFiltered(0, uint32(dbCacheOffset), uint64(finalizedBlock), filter)
+		dbObjects, dbCount, err = db.GetVoluntaryExitsFiltered(ctx, 0, uint32(dbCacheOffset), uint64(finalizedBlock), filter)
 	} else {
-		dbObjects, dbCount, err = db.GetVoluntaryExitsFiltered((dbPage-1)*uint64(pageSize)+dbCacheOffset, pageSize, uint64(finalizedBlock), filter)
+		dbObjects, dbCount, err = db.GetVoluntaryExitsFiltered(ctx, (dbPage-1)*uint64(pageSize)+dbCacheOffset, pageSize, uint64(finalizedBlock), filter)
 	}
 
 	if err != nil {
@@ -127,7 +128,7 @@ func (bs *ChainService) GetVoluntaryExitsByFilter(filter *dbtypes.VoluntaryExitF
 	return resObjs, cachedMatchesLen + dbCount
 }
 
-func (bs *ChainService) GetSlashingsByFilter(filter *dbtypes.SlashingFilter, pageIdx uint64, pageSize uint32) ([]*dbtypes.Slashing, uint64) {
+func (bs *ChainService) GetSlashingsByFilter(ctx context.Context, filter *dbtypes.SlashingFilter, pageIdx uint64, pageSize uint32) ([]*dbtypes.Slashing, uint64) {
 	chainState := bs.consensusPool.GetChainState()
 	finalizedBlock, prunedEpoch := bs.beaconIndexer.GetBlockCacheState()
 	idxMinSlot := chainState.EpochToSlot(prunedEpoch)
@@ -211,12 +212,12 @@ func (bs *ChainService) GetSlashingsByFilter(filter *dbtypes.SlashingFilter, pag
 
 	if resIdx > int(pageSize) {
 		// all results from cache, just get result count from db
-		_, dbCount, err = db.GetSlashingsFiltered(0, 1, uint64(finalizedBlock), filter)
+		_, dbCount, err = db.GetSlashingsFiltered(ctx, 0, 1, uint64(finalizedBlock), filter)
 	} else if dbPage == 0 {
 		// first page, load first `pagesize-cachedResults` items from db
-		dbObjects, dbCount, err = db.GetSlashingsFiltered(0, uint32(dbCacheOffset), uint64(finalizedBlock), filter)
+		dbObjects, dbCount, err = db.GetSlashingsFiltered(ctx, 0, uint32(dbCacheOffset), uint64(finalizedBlock), filter)
 	} else {
-		dbObjects, dbCount, err = db.GetSlashingsFiltered((dbPage-1)*uint64(pageSize)+dbCacheOffset, pageSize, uint64(finalizedBlock), filter)
+		dbObjects, dbCount, err = db.GetSlashingsFiltered(ctx, (dbPage-1)*uint64(pageSize)+dbCacheOffset, pageSize, uint64(finalizedBlock), filter)
 	}
 
 	if err != nil {

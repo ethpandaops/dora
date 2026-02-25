@@ -24,6 +24,10 @@ type FrontendCacheService struct {
 	tieredCache          *cache.TieredCache
 	processingMutex      sync.Mutex
 	processingDict       map[string]*FrontendCacheProcessingPage
+	concurrencySem       chan struct{}
+	pageTypeSemMutex     sync.Mutex
+	pageTypeSemaphores   map[string]chan struct{}
+	pageTypeSemLimit     int
 	callStackMutex       sync.RWMutex
 	callStackBuffer      []byte
 }
@@ -57,6 +61,9 @@ func (e FrontendCachePageError) Stack() string {
 	return e.stack
 }
 
+// ErrTooManyPageRequests is returned when the concurrency limit is reached.
+var ErrTooManyPageRequests = fmt.Errorf("too many concurrent page requests")
+
 // StartFrontendCache is used to start the global frontend cache service
 func StartFrontendCache() error {
 	if GlobalFrontendCache != nil {
@@ -69,11 +76,37 @@ func StartFrontendCache() error {
 		return err
 	}
 
+	// Resolve global concurrency limit: nil → default 50, explicit 0 → no limit
+	maxConcurrentPages := 50
+	if utils.Config.Frontend.MaxConcurrentPages != nil {
+		maxConcurrentPages = *utils.Config.Frontend.MaxConcurrentPages
+	}
+
+	var concurrencySem chan struct{}
+	if maxConcurrentPages > 0 {
+		concurrencySem = make(chan struct{}, maxConcurrentPages)
+	}
+
+	// Resolve per-page-type concurrency limit: nil → derive from global, explicit 0 → no limit
+	var pageTypeSemLimit int
+	if utils.Config.Frontend.MaxConcurrentPageType != nil {
+		pageTypeSemLimit = *utils.Config.Frontend.MaxConcurrentPageType
+	} else if maxConcurrentPages > 0 {
+		// Default to 1/5 of global limit, minimum 5
+		pageTypeSemLimit = maxConcurrentPages / 5
+		if pageTypeSemLimit < 5 {
+			pageTypeSemLimit = 5
+		}
+	}
+
 	GlobalFrontendCache = &FrontendCacheService{
-		tieredCache:     tieredCache,
-		processingDict:  make(map[string]*FrontendCacheProcessingPage),
-		callStackBuffer: make([]byte, 1024*1024*5),
-		cachingEnabled:  !utils.Config.Frontend.DisablePageCache && !utils.Config.Frontend.Debug,
+		tieredCache:        tieredCache,
+		processingDict:     make(map[string]*FrontendCacheProcessingPage),
+		callStackBuffer:    make([]byte, 1024*1024*5),
+		cachingEnabled:     !utils.Config.Frontend.DisablePageCache && !utils.Config.Frontend.Debug,
+		concurrencySem:     concurrencySem,
+		pageTypeSemLimit:   pageTypeSemLimit,
+		pageTypeSemaphores: make(map[string]chan struct{}, 16),
 	}
 	return nil
 }
@@ -137,6 +170,34 @@ func (fc *FrontendCacheService) processPageCall(pageKey string, caching bool, pa
 
 		callGoId = routine.Goid()
 
+		// acquire global concurrency semaphore if configured (non-blocking)
+		if fc.concurrencySem != nil {
+			select {
+			case fc.concurrencySem <- struct{}{}:
+				defer func() { <-fc.concurrencySem }()
+			default:
+				errorChan <- ErrTooManyPageRequests
+				return
+			}
+		}
+
+		// acquire per-page-type concurrency semaphore if configured (non-blocking)
+		if fc.pageTypeSemLimit > 0 {
+			pageType := pageKey
+			if idx := strings.IndexByte(pageKey, ':'); idx >= 0 {
+				pageType = pageKey[:idx]
+			}
+
+			typeSem := fc.getPageTypeSemaphore(pageType)
+			select {
+			case typeSem <- struct{}{}:
+				defer func() { <-typeSem }()
+			default:
+				errorChan <- ErrTooManyPageRequests
+				return
+			}
+		}
+
 		// check cache
 		if fc.cachingEnabled && caching && fc.getFrontendCache(pageKey, pageData) == nil {
 			logrus.Debugf("page served from cache: %v", pageKey)
@@ -179,6 +240,19 @@ func (fc *FrontendCacheService) processPageCall(pageKey string, caching bool, pa
 			stack: fc.extractPageCallStack(callGoId),
 		}
 	}
+}
+
+func (fc *FrontendCacheService) getPageTypeSemaphore(pageType string) chan struct{} {
+	fc.pageTypeSemMutex.Lock()
+	defer fc.pageTypeSemMutex.Unlock()
+
+	sem, ok := fc.pageTypeSemaphores[pageType]
+	if !ok {
+		sem = make(chan struct{}, fc.pageTypeSemLimit)
+		fc.pageTypeSemaphores[pageType] = sem
+	}
+
+	return sem
 }
 
 func (fc *FrontendCacheService) getFrontendCache(pageKey string, returnValue interface{}) error {

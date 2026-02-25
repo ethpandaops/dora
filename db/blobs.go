@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -8,8 +9,8 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-func InsertBlob(blob *dbtypes.Blob, tx *sqlx.Tx) error {
-	_, err := tx.Exec(EngineQuery(map[dbtypes.DBEngineType]string{
+func InsertBlob(ctx context.Context, tx *sqlx.Tx, blob *dbtypes.Blob) error {
+	_, err := tx.ExecContext(ctx, EngineQuery(map[dbtypes.DBEngineType]string{
 		dbtypes.DBEnginePgsql: `
 			INSERT INTO blobs (
 				commitment, proof, size, blob
@@ -29,8 +30,8 @@ func InsertBlob(blob *dbtypes.Blob, tx *sqlx.Tx) error {
 	return nil
 }
 
-func InsertBlobAssignment(blobAssignment *dbtypes.BlobAssignment, tx *sqlx.Tx) error {
-	_, err := tx.Exec(EngineQuery(map[dbtypes.DBEngineType]string{
+func InsertBlobAssignment(ctx context.Context, tx *sqlx.Tx, blobAssignment *dbtypes.BlobAssignment) error {
+	_, err := tx.ExecContext(ctx, EngineQuery(map[dbtypes.DBEngineType]string{
 		dbtypes.DBEnginePgsql: `
 			INSERT INTO blob_assignments (
 				root, commitment, slot
@@ -48,7 +49,7 @@ func InsertBlobAssignment(blobAssignment *dbtypes.BlobAssignment, tx *sqlx.Tx) e
 	return nil
 }
 
-func GetBlob(commitment []byte, withData bool) *dbtypes.Blob {
+func GetBlob(ctx context.Context, commitment []byte, withData bool) *dbtypes.Blob {
 	blob := dbtypes.Blob{}
 	var sql strings.Builder
 	fmt.Fprintf(&sql, `SELECT commitment, proof, size`)
@@ -56,16 +57,16 @@ func GetBlob(commitment []byte, withData bool) *dbtypes.Blob {
 		fmt.Fprintf(&sql, `, blob`)
 	}
 	fmt.Fprintf(&sql, ` FROM blobs WHERE commitment = $1`)
-	err := ReaderDb.Get(&blob, sql.String(), commitment)
+	err := ReaderDb.GetContext(ctx, &blob, sql.String(), commitment)
 	if err != nil {
 		return nil
 	}
 	return &blob
 }
 
-func GetLatestBlobAssignment(commitment []byte) *dbtypes.BlobAssignment {
+func GetLatestBlobAssignment(ctx context.Context, commitment []byte) *dbtypes.BlobAssignment {
 	blobAssignment := dbtypes.BlobAssignment{}
-	err := ReaderDb.Get(&blobAssignment, "SELECT root, commitment, slot FROM blob_assignments WHERE commitment = $1 ORDER BY slot DESC LIMIT 1", commitment)
+	err := ReaderDb.GetContext(ctx, &blobAssignment, "SELECT root, commitment, slot FROM blob_assignments WHERE commitment = $1 ORDER BY slot DESC LIMIT 1", commitment)
 	if err != nil {
 		return nil
 	}
@@ -87,7 +88,7 @@ type BlobStatistics struct {
 	BlobGasLast18d         uint64
 }
 
-func GetBlobStatistics(currentSlot uint64) (*BlobStatistics, error) {
+func GetBlobStatistics(ctx context.Context, currentSlot uint64) (*BlobStatistics, error) {
 	stats := &BlobStatistics{}
 
 	type periodStats struct {
@@ -103,7 +104,7 @@ func GetBlobStatistics(currentSlot uint64) (*BlobStatistics, error) {
 		slot1h = currentSlot - 300
 	}
 	var stats1h periodStats
-	err = ReaderDb.Get(&stats1h, `
+	err = ReaderDb.GetContext(ctx, &stats1h, `
 		SELECT
 			COALESCE(SUM(blob_count), 0) as total_blobs,
 			COUNT(CASE WHEN blob_count > 0 THEN 1 END) as blocks_with_blobs,
@@ -123,7 +124,7 @@ func GetBlobStatistics(currentSlot uint64) (*BlobStatistics, error) {
 		slot24h = currentSlot - 7200
 	}
 	var stats24h periodStats
-	err = ReaderDb.Get(&stats24h, `
+	err = ReaderDb.GetContext(ctx, &stats24h, `
 		SELECT
 			COALESCE(SUM(blob_count), 0) as total_blobs,
 			COUNT(CASE WHEN blob_count > 0 THEN 1 END) as blocks_with_blobs,
@@ -143,7 +144,7 @@ func GetBlobStatistics(currentSlot uint64) (*BlobStatistics, error) {
 		slot7d = currentSlot - 50400
 	}
 	var stats7d periodStats
-	err = ReaderDb.Get(&stats7d, `
+	err = ReaderDb.GetContext(ctx, &stats7d, `
 		SELECT
 			COALESCE(SUM(blob_count), 0) as total_blobs,
 			COUNT(CASE WHEN blob_count > 0 THEN 1 END) as blocks_with_blobs,
@@ -164,7 +165,7 @@ func GetBlobStatistics(currentSlot uint64) (*BlobStatistics, error) {
 		slot18d = currentSlot - retentionSlots
 	}
 	var stats18d periodStats
-	err = ReaderDb.Get(&stats18d, `
+	err = ReaderDb.GetContext(ctx, &stats18d, `
 		SELECT
 			COALESCE(SUM(blob_count), 0) as total_blobs,
 			COUNT(CASE WHEN blob_count > 0 THEN 1 END) as blocks_with_blobs,

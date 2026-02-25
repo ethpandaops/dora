@@ -161,7 +161,7 @@ func APISlashingsV1(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get slashings from service
-	dbSlashings, totalRows := services.GlobalBeaconService.GetSlashingsByFilter(slashingFilter, pageIdx-1, uint32(limit))
+	dbSlashings, totalRows := services.GlobalBeaconService.GetSlashingsByFilter(r.Context(), slashingFilter, pageIdx-1, uint32(limit))
 	chainState := services.GlobalBeaconService.GetChainState()
 
 	var slashings []*APISlashingInfo

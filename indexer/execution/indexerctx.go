@@ -1,6 +1,7 @@
 package execution
 
 import (
+	"context"
 	"math/rand/v2"
 	"slices"
 	"sort"
@@ -15,6 +16,7 @@ import (
 
 // IndexerCtx is the context for the execution indexer
 type IndexerCtx struct {
+	Ctx              context.Context
 	Logger           logrus.FieldLogger
 	BeaconIndexer    *beacon.Indexer
 	ExecutionPool    *execution.Pool
@@ -30,8 +32,9 @@ type indexerElClientInfo struct {
 }
 
 // NewIndexerCtx creates a new IndexerCtx
-func NewIndexerCtx(logger logrus.FieldLogger, executionPool *execution.Pool, consensusPool *consensus.Pool, beaconIndexer *beacon.Indexer) *IndexerCtx {
+func NewIndexerCtx(ctx context.Context, logger logrus.FieldLogger, executionPool *execution.Pool, consensusPool *consensus.Pool, beaconIndexer *beacon.Indexer) *IndexerCtx {
 	return &IndexerCtx{
+		Ctx:              ctx,
 		Logger:           logger,
 		ExecutionPool:    executionPool,
 		ConsensusPool:    consensusPool,

@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -8,7 +9,7 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-func InsertVoluntaryExits(voluntaryExits []*dbtypes.VoluntaryExit, tx *sqlx.Tx) error {
+func InsertVoluntaryExits(ctx context.Context, tx *sqlx.Tx, voluntaryExits []*dbtypes.VoluntaryExit) error {
 	var sql strings.Builder
 	fmt.Fprint(&sql,
 		EngineQuery(map[dbtypes.DBEngineType]string{
@@ -48,14 +49,14 @@ func InsertVoluntaryExits(voluntaryExits []*dbtypes.VoluntaryExit, tx *sqlx.Tx) 
 		dbtypes.DBEngineSqlite: "",
 	}))
 
-	_, err := tx.Exec(sql.String(), args...)
+	_, err := tx.ExecContext(ctx, sql.String(), args...)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func GetVoluntaryExitForValidator(validator uint64) *dbtypes.VoluntaryExit {
+func GetVoluntaryExitForValidator(ctx context.Context, validator uint64) *dbtypes.VoluntaryExit {
 	var sql strings.Builder
 	args := []any{
 		validator,
@@ -68,14 +69,14 @@ func GetVoluntaryExitForValidator(validator uint64) *dbtypes.VoluntaryExit {
 	`)
 
 	voluntaryExit := &dbtypes.VoluntaryExit{}
-	err := ReaderDb.Get(&voluntaryExit, sql.String(), args...)
+	err := ReaderDb.GetContext(ctx, &voluntaryExit, sql.String(), args...)
 	if err != nil {
 		return nil
 	}
 	return voluntaryExit
 }
 
-func GetVoluntaryExitsFiltered(offset uint64, limit uint32, finalizedBlock uint64, filter *dbtypes.VoluntaryExitFilter) ([]*dbtypes.VoluntaryExit, uint64, error) {
+func GetVoluntaryExitsFiltered(ctx context.Context, offset uint64, limit uint32, finalizedBlock uint64, filter *dbtypes.VoluntaryExitFilter) ([]*dbtypes.VoluntaryExit, uint64, error) {
 	var sql strings.Builder
 	args := []any{}
 	fmt.Fprint(&sql, `
@@ -154,7 +155,7 @@ func GetVoluntaryExitsFiltered(offset uint64, limit uint32, finalizedBlock uint6
 	fmt.Fprintf(&sql, ") AS t1")
 
 	voluntaryExits := []*dbtypes.VoluntaryExit{}
-	err := ReaderDb.Select(&voluntaryExits, sql.String(), args...)
+	err := ReaderDb.SelectContext(ctx, &voluntaryExits, sql.String(), args...)
 	if err != nil {
 		logger.Errorf("Error while fetching filtered voluntary exits: %v", err)
 		return nil, 0, err
