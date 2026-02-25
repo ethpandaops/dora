@@ -2,7 +2,6 @@ package rpc
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -42,6 +41,8 @@ type StateDiffResult struct {
 
 // TraceBlockStateDiffsByHash calls debug_traceBlockByHash with prestateTracer in
 // diffMode, returning one diff result per transaction.
+// Uses streaming JSON decoding to avoid buffering the entire (potentially
+// hundreds of MB) response as an intermediate json.RawMessage.
 func (ec *ExecutionClient) TraceBlockStateDiffsByHash(
 	ctx context.Context,
 	blockHash common.Hash,
@@ -53,14 +54,14 @@ func (ec *ExecutionClient) TraceBlockStateDiffsByHash(
 		},
 	}
 
-	var raw json.RawMessage
-	if err := ec.rpcClient.CallContext(ctx, &raw, "debug_traceBlockByHash", blockHash, tracerConfig); err != nil {
-		return nil, fmt.Errorf("debug_traceBlockByHash(prestateTracer) failed: %w", err)
-	}
-
 	var results []StateDiffResult
-	if err := json.Unmarshal(raw, &results); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal prestate trace results: %w", err)
+
+	err := ec.streamRPCCall(ctx, "debug_traceBlockByHash",
+		streamDecodeArray(&results),
+		blockHash, tracerConfig,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("debug_traceBlockByHash(prestateTracer) failed: %w", err)
 	}
 
 	return results, nil
