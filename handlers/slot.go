@@ -46,6 +46,8 @@ func Slot(w http.ResponseWriter, r *http.Request) {
 		"slot/deposit_requests.html",
 		"slot/withdrawal_requests.html",
 		"slot/consolidation_requests.html",
+		"slot/bids.html",
+		"slot/ptc_votes.html",
 	)
 	var notfoundTemplateFiles = append(layoutTemplateFiles,
 		"slot/notfound.html",
@@ -611,9 +613,16 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 
 	pageData.VoluntaryExits = make([]*models.SlotPageVoluntaryExit, pageData.VoluntaryExitsCount)
 	for i, exit := range voluntaryExits {
+		validatorIndex := uint64(exit.Message.ValidatorIndex)
+		isBuilder := validatorIndex&services.BuilderIndexFlag != 0
+		displayIndex := validatorIndex
+		if isBuilder {
+			displayIndex = validatorIndex &^ services.BuilderIndexFlag
+		}
 		pageData.VoluntaryExits[i] = &models.SlotPageVoluntaryExit{
-			ValidatorIndex: uint64(exit.Message.ValidatorIndex),
-			ValidatorName:  services.GlobalBeaconService.GetValidatorName(uint64(exit.Message.ValidatorIndex)),
+			ValidatorIndex: displayIndex,
+			ValidatorName:  services.GlobalBeaconService.GetValidatorName(validatorIndex),
+			IsBuilder:      isBuilder,
 			Epoch:          uint64(exit.Message.Epoch),
 			Signature:      exit.Signature[:],
 		}
@@ -729,7 +738,40 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 		pageData.SyncAggParticipation = utils.SyncCommitteeParticipation(pageData.SyncAggregateBits, specs.SyncCommitteeSize)
 	}
 
-	if executionPayload, _ := blockData.Block.ExecutionPayload(); executionPayload != nil {
+	if payloadBid, err := blockData.Block.SignedExecutionPayloadBid(); err == nil {
+		commitments := make([][]byte, len(payloadBid.Message.BlobKZGCommitments))
+		for i := range payloadBid.Message.BlobKZGCommitments {
+			commitments[i] = payloadBid.Message.BlobKZGCommitments[i][:]
+		}
+
+		pageData.PayloadHeader = &models.SlotPagePayloadHeader{
+			PayloadStatus:      uint16(0),
+			ParentBlockHash:    payloadBid.Message.ParentBlockHash[:],
+			ParentBlockRoot:    payloadBid.Message.ParentBlockRoot[:],
+			BlockHash:          payloadBid.Message.BlockHash[:],
+			GasLimit:           uint64(payloadBid.Message.GasLimit),
+			BuilderIndex:       uint64(payloadBid.Message.BuilderIndex),
+			BuilderName:        services.GlobalBeaconService.GetValidatorName(uint64(payloadBid.Message.BuilderIndex) | services.BuilderIndexFlag),
+			Slot:               uint64(payloadBid.Message.Slot),
+			Value:              uint64(payloadBid.Message.Value),
+			BlobKZGCommitments: commitments,
+			Signature:          payloadBid.Signature[:],
+		}
+	}
+
+	var executionPayload *spec.VersionedExecutionPayload
+	if blockData.Block.Version >= spec.DataVersionGloas && blockData.Payload != nil {
+		executionPayload = &spec.VersionedExecutionPayload{
+			Version: spec.DataVersionGloas,
+			Gloas:   blockData.Payload.Message.Payload,
+		}
+
+		pageData.PayloadHeader.PayloadStatus = uint16(1)
+	} else {
+		executionPayload, _ = blockData.Block.ExecutionPayload()
+	}
+
+	if executionPayload != nil {
 		pageData.ExecutionData = &models.SlotPageExecutionData{}
 
 		if parentHash, err := executionPayload.ParentHash(); err == nil {
@@ -869,10 +911,27 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 		}
 	}
 
-	if requests, err := blockData.Block.ExecutionRequests(); err == nil && requests != nil {
-		getSlotPageDepositRequests(pageData, requests.Deposits)
-		getSlotPageWithdrawalRequests(pageData, requests.Withdrawals)
-		getSlotPageConsolidationRequests(pageData, requests.Consolidations)
+	if specs.ElectraForkEpoch != nil && uint64(epoch) >= *specs.ElectraForkEpoch {
+		var requests *electra.ExecutionRequests
+		if blockData.Block.Version >= spec.DataVersionGloas {
+			if blockData.Payload != nil {
+				requests = blockData.Payload.Message.ExecutionRequests
+			}
+		} else {
+			requests, _ = blockData.Block.ExecutionRequests()
+		}
+
+		if requests != nil {
+			getSlotPageDepositRequests(pageData, requests.Deposits)
+			getSlotPageWithdrawalRequests(pageData, requests.Withdrawals)
+			getSlotPageConsolidationRequests(pageData, requests.Consolidations)
+		}
+	}
+
+	// Load execution payload bids for ePBS (gloas+) blocks
+	if blockData.Block.Version >= spec.DataVersionGloas {
+		getSlotPageBids(pageData)
+		getSlotPagePtcVotes(pageData, blockData, blockData.Header.Message.Slot)
 	}
 
 	return pageData
@@ -1083,4 +1142,172 @@ func getSlotPageConsolidationRequests(pageData *models.SlotPageBlockData, consol
 	}
 
 	pageData.ConsolidationRequestsCount = uint64(len(pageData.ConsolidationRequests))
+}
+
+func getSlotPageBids(pageData *models.SlotPageBlockData) {
+	beaconIndexer := services.GlobalBeaconService.GetBeaconIndexer()
+	bids := beaconIndexer.GetBlockBids(phase0.Root(pageData.ParentRoot))
+
+	pageData.Bids = make([]*models.SlotPageBid, 0, len(bids))
+
+	// Get the winning block hash for comparison
+	var winningBlockHash []byte
+	if pageData.ExecutionData != nil {
+		winningBlockHash = pageData.ExecutionData.BlockHash
+	}
+
+	for _, bid := range bids {
+		bidData := &models.SlotPageBid{
+			ParentRoot:   bid.ParentRoot,
+			ParentHash:   bid.ParentHash,
+			BlockHash:    bid.BlockHash,
+			FeeRecipient: bid.FeeRecipient,
+			GasLimit:     bid.GasLimit,
+			BuilderIndex: uint64(bid.BuilderIndex),
+			BuilderName:  services.GlobalBeaconService.GetValidatorName(uint64(bid.BuilderIndex)),
+			IsSelfBuilt:  bid.BuilderIndex < 0,
+			Slot:         bid.Slot,
+			Value:        bid.Value,
+			ElPayment:    bid.ElPayment,
+			TotalValue:   bid.Value + bid.ElPayment,
+		}
+
+		// Check if this is the winning bid
+		if winningBlockHash != nil && len(bid.BlockHash) == len(winningBlockHash) {
+			isWinning := true
+			for i := range bid.BlockHash {
+				if bid.BlockHash[i] != winningBlockHash[i] {
+					isWinning = false
+					break
+				}
+			}
+			bidData.IsWinning = isWinning
+		}
+
+		pageData.Bids = append(pageData.Bids, bidData)
+	}
+
+	// Sort by total value (value + el_payment) descending
+	for i := 0; i < len(pageData.Bids)-1; i++ {
+		for j := i + 1; j < len(pageData.Bids); j++ {
+			if pageData.Bids[j].TotalValue > pageData.Bids[i].TotalValue {
+				pageData.Bids[i], pageData.Bids[j] = pageData.Bids[j], pageData.Bids[i]
+			}
+		}
+	}
+
+	pageData.BidsCount = uint64(len(pageData.Bids))
+}
+
+// getSlotPagePtcVotes extracts PTC (Payload Timeliness Committee) votes from a Gloas block.
+// PTC votes are included in blocks as payload attestations for the PREVIOUS slot.
+func getSlotPagePtcVotes(pageData *models.SlotPageBlockData, blockData *services.CombinedBlockResponse, blockSlot phase0.Slot) {
+	// Only Gloas+ blocks have payload attestations
+	if blockData.Block.Version < spec.DataVersionGloas || blockData.Block.Gloas == nil {
+		return
+	}
+
+	payloadAttestations := blockData.Block.Gloas.Message.Body.PayloadAttestations
+	if len(payloadAttestations) == 0 {
+		return
+	}
+
+	chainState := services.GlobalBeaconService.GetChainState()
+	specs := chainState.GetSpecs()
+
+	// PTC votes are for the previous slot
+	votedSlot := blockSlot - 1
+	votedEpoch := chainState.EpochOfSlot(votedSlot)
+
+	// Get epoch stats for the voted slot to retrieve PTC duties
+	var ptcDuties []phase0.ValidatorIndex
+	beaconIndexer := services.GlobalBeaconService.GetBeaconIndexer()
+	epochStats := beaconIndexer.GetEpochStatsByEpoch(votedEpoch)
+	for _, es := range epochStats {
+		values := es.GetValues(true)
+		if values != nil && values.PtcDuties != nil {
+			slotInEpoch := uint64(votedSlot) % specs.SlotsPerEpoch
+			if slotInEpoch < uint64(len(values.PtcDuties)) && values.PtcDuties[slotInEpoch] != nil {
+				// Convert from active indice indices to validator indices
+				ptcDuties = make([]phase0.ValidatorIndex, len(values.PtcDuties[slotInEpoch]))
+				for i, activeIdx := range values.PtcDuties[slotInEpoch] {
+					if int(activeIdx) < len(values.ActiveIndices) {
+						ptcDuties[i] = values.ActiveIndices[activeIdx]
+					}
+				}
+				break
+			}
+		}
+	}
+
+	// Build PTC votes structure
+	ptcVotes := &models.SlotPagePtcVotes{
+		VotedSlot:    uint64(votedSlot),
+		TotalPtcSize: specs.PtcSize,
+		Aggregates:   make([]*models.SlotPagePtcAggregate, 0, len(payloadAttestations)),
+	}
+
+	// Track participating validators across all aggregates
+	participatingValidators := make(map[uint64]bool)
+	totalVotes := uint64(0)
+
+	for _, pa := range payloadAttestations {
+		if pa == nil || pa.Data == nil {
+			continue
+		}
+
+		// Set voted block root from first attestation
+		if ptcVotes.VotedBlockRoot == nil {
+			ptcVotes.VotedBlockRoot = pa.Data.BeaconBlockRoot[:]
+		}
+
+		aggregate := &models.SlotPagePtcAggregate{
+			PayloadPresent:    pa.Data.PayloadPresent,
+			BlobDataAvailable: pa.Data.BlobDataAvailable,
+			AggregationBits:   pa.AggregationBits,
+			Signature:         pa.Signature[:],
+			Validators:        make([]uint64, 0),
+		}
+
+		// Map aggregation bits to validator indices
+		if len(ptcDuties) > 0 {
+			for i := 0; i < len(ptcDuties) && i < len(pa.AggregationBits)*8; i++ {
+				byteIdx := i / 8
+				bitIdx := i % 8
+				if byteIdx < len(pa.AggregationBits) && (pa.AggregationBits[byteIdx]>>bitIdx)&1 == 1 {
+					validatorIdx := uint64(ptcDuties[i])
+					aggregate.Validators = append(aggregate.Validators, validatorIdx)
+					participatingValidators[validatorIdx] = true
+				}
+			}
+		}
+
+		aggregate.VoteCount = uint64(len(aggregate.Validators))
+		totalVotes += aggregate.VoteCount
+
+		ptcVotes.Aggregates = append(ptcVotes.Aggregates, aggregate)
+	}
+
+	// Build PTC committee list
+	ptcVotes.PtcCommittee = make([]types.NamedValidator, len(ptcDuties))
+	for i, vidx := range ptcDuties {
+		ptcVotes.PtcCommittee[i] = types.NamedValidator{
+			Index: uint64(vidx),
+			Name:  services.GlobalBeaconService.GetValidatorName(uint64(vidx)),
+		}
+
+		// Add to validator names map
+		if pageData.ValidatorNames == nil {
+			pageData.ValidatorNames = make(map[uint64]string)
+		}
+		pageData.ValidatorNames[uint64(vidx)] = ptcVotes.PtcCommittee[i].Name
+	}
+
+	// Calculate participation rate
+	if specs.PtcSize > 0 {
+		ptcVotes.Participation = float64(len(participatingValidators)) / float64(specs.PtcSize)
+	}
+
+	pageData.PtcVotes = ptcVotes
+	pageData.PtcVotesCount = totalVotes
 }

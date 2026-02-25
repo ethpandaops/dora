@@ -1,0 +1,58 @@
+{{ define "recentBlocks" }}
+<div class="card block-card">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-nobr" id="recent-blocks">
+        <thead>
+          <tr>
+            <th>Epoch</th>
+            <th>Slot</th>
+            <th>Block Hash</th>
+            <th>Status</th>
+            <th data-timecol="duration">Time</th>
+            <th>Value</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{ if gt (len .RecentBlocks) 0 }}
+            {{ range $i, $block := .RecentBlocks }}
+              <tr>
+                <td><a href="/epoch/{{ $block.Epoch }}">{{ formatAddCommas $block.Epoch }}</a></td>
+                <td><a href="/slot/{{ $block.Slot }}">{{ formatAddCommas $block.Slot }}</a></td>
+                <td class="text-monospace">
+                  <span class="text-truncate d-inline-block" style="max-width: 200px;">
+                    0x{{ printf "%x" $block.BlockHash }}
+                  </span>
+                </td>
+                <td>
+                  {{ if eq $block.Status 0 }}
+                    <span class="badge rounded-pill text-bg-warning">Missing</span>
+                  {{ else if eq $block.Status 1 }}
+                    <span class="badge rounded-pill text-bg-success">Canonical</span>
+                  {{ else if eq $block.Status 2 }}
+                    <span class="badge rounded-pill text-bg-secondary">Orphaned</span>
+                  {{ else }}
+                    <span class="badge rounded-pill text-bg-dark">Unknown</span>
+                  {{ end }}
+                </td>
+                <td data-timer="{{ $block.Ts.Unix }}"><span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $block.Ts }}">{{ formatRecentTimeShort $block.Ts }}</span></td>
+                <td>{{ formatEthFromGwei $block.Value }}</td>
+              </tr>
+            {{ end }}
+          {{ else }}
+            <tr style="height: 430px;">
+              <td></td>
+              <td style="vertical-align: middle;" colspan="4">
+                <div class="img-fluid mx-auto p-3 d-flex align-items-center" style="max-height: 400px; max-width: 400px; overflow: hidden;">
+                  {{ template "timeline_svg" }}
+                </div>
+              </td>
+              <td></td>
+            </tr>
+          {{ end }}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{{ end }}

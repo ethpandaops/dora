@@ -357,3 +357,62 @@ func swapOrNot(buf []byte, byteV byte, i ActiveIndiceIndex, input []ActiveIndice
 	}
 	return byteV, source
 }
+
+// GetPtcDuties returns the Payload Timeliness Committee (PTC) members for a given slot.
+// The PTC is selected from the concatenated attestation committees for the slot using
+// balance-weighted selection without shuffling.
+func GetPtcDuties(
+	spec *consensus.ChainSpec,
+	state *BeaconState,
+	attesterDuties [][]ActiveIndiceIndex,
+	slot phase0.Slot,
+) ([]ActiveIndiceIndex, error) {
+	if spec.PtcSize == 0 {
+		return nil, nil
+	}
+
+	epoch := phase0.Epoch(slot / phase0.Slot(spec.SlotsPerEpoch))
+
+	// Derive PTC seed: hash(get_seed(state, epoch, DOMAIN_PTC_ATTESTER) + uint_to_bytes(slot))
+	seedData := []byte{}
+	seedHash := GetSeed(spec, state, epoch, spec.DomainPtcAttester)
+	seedData = append(seedData, seedHash[:]...)
+	seedData = append(seedData, UintToBytes(uint64(slot))...)
+	seed := Hash(seedData)
+
+	// Concatenate all committee indices for the slot (in order)
+	indices := make([]ActiveIndiceIndex, 0)
+	for _, committee := range attesterDuties {
+		indices = append(indices, committee...)
+	}
+
+	if len(indices) == 0 {
+		return nil, errors.New("empty committee indices")
+	}
+
+	// Balance-weighted selection without shuffling (shuffle_indices=false)
+	// Uses same acceptance logic as GetProposerIndex (Electra-style 16-bit random values)
+	maxRandomValue := uint64(1<<16 - 1)
+	total := uint64(len(indices))
+	selected := make([]ActiveIndiceIndex, 0, spec.PtcSize)
+
+	for i := uint64(0); uint64(len(selected)) < spec.PtcSize; i++ {
+		// No shuffling - traverse indices in order
+		nextIndex := i % total
+		candidateIndex := indices[nextIndex]
+
+		// Balance-weighted acceptance check (same as proposer selection)
+		b := append(seed[:], UintToBytes(i/16)...)
+		offset := (i % 16) * 2
+		hash := Hash(b)
+		randomValue := BytesToUint(hash[offset : offset+2])
+
+		effectiveBal := uint64(state.GetEffectiveBalance(candidateIndex))
+
+		if effectiveBal*maxRandomValue >= spec.MaxEffectiveBalanceElectra*randomValue {
+			selected = append(selected, candidateIndex)
+		}
+	}
+
+	return selected, nil
+}

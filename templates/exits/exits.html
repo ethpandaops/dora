@@ -138,7 +138,11 @@
               </td>
               <td data-timer="{{ $exit.Time.Unix }}"><span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $exit.Time }}">{{ formatRecentTimeShort $exit.Time }}</span></td>
               <td>
-                {{ formatValidatorWithIndex $exit.ValidatorIndex $exit.ValidatorName }}
+                {{ if $exit.IsBuilder }}
+                  {{ formatBuilderWithIndex $exit.ValidatorIndex $exit.ValidatorName }}
+                {{ else }}
+                  {{ formatValidatorWithIndex $exit.ValidatorIndex $exit.ValidatorName }}
+                {{ end }}
               </td>
               <td>
                 <div class="d-flex">

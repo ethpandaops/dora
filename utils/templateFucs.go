@@ -121,6 +121,8 @@ func GetTemplateFuncs() template.FuncMap {
 		"formatValidatorWithIndex":     FormatValidatorWithIndex,
 		"formatValidatorNameWithIndex": FormatValidatorNameWithIndex,
 		"formatSlashedValidator":       FormatSlashedValidator,
+		"formatBuilder":                FormatBuilder,
+		"formatBuilderWithIndex":       FormatBuilderWithIndex,
 		"formatWithdawalCredentials":   FormatWithdawalCredentials,
 		"formatRecentTimeShort":        FormatRecentTimeShort,
 		"formatGraffiti":               FormatGraffiti,

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
+	"github.com/attestantio/go-eth2-client/spec/gloas"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/sirupsen/logrus"
 
@@ -133,7 +134,11 @@ func (client *Client) runClientLogic() error {
 	}
 
 	// start event stream
-	blockStream := client.rpcClient.NewBlockStream(client.clientCtx, client.logger, rpc.StreamBlockEvent|rpc.StreamHeadEvent|rpc.StreamFinalizedEvent)
+	blockStream := client.rpcClient.NewBlockStream(
+		client.clientCtx,
+		client.logger,
+		rpc.StreamBlockEvent|rpc.StreamHeadEvent|rpc.StreamFinalizedEvent|rpc.StreamExecutionPayloadEvent|rpc.StreamExecutionPayloadBidEvent,
+	)
 	defer blockStream.Close()
 
 	// process events
@@ -165,6 +170,12 @@ func (client *Client) runClientLogic() error {
 				if err != nil {
 					client.logger.Warnf("failed processing finalized event: %v", err)
 				}
+
+			case rpc.StreamExecutionPayloadEvent:
+				client.executionPayloadDispatcher.Fire(evt.Data.(*v1.ExecutionPayloadAvailableEvent))
+
+			case rpc.StreamExecutionPayloadBidEvent:
+				client.executionPayloadBidDispatcher.Fire(evt.Data.(*gloas.SignedExecutionPayloadBid))
 			}
 
 			// fire through stream dispatcher first to preserve SSE ordering

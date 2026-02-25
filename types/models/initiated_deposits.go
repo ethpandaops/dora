@@ -53,4 +53,5 @@ type InitiatedDepositsPageDataDeposit struct {
 	ValidatorExists       bool      `json:"validator_exists"`
 	ValidatorIndex        uint64    `json:"validator_index"`
 	ValidatorName         string    `json:"validator_name"`
+	IsBuilder             bool      `json:"is_builder"`
 }

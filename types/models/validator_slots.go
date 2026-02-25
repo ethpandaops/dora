@@ -34,6 +34,7 @@ type ValidatorSlotsPageDataSlot struct {
 	Finalized             bool      `json:"scheduled"`
 	Scheduled             bool      `json:"finalized"`
 	Status                uint8     `json:"status"`
+	PayloadStatus         uint8     `json:"payload_status"`
 	Proposer              uint64    `json:"proposer"`
 	ProposerName          string    `json:"proposer_name"`
 	AttestationCount      uint64    `json:"attestation_count"`
