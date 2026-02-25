@@ -9,7 +9,7 @@ require (
 	github.com/cockroachdb/pebble v1.1.5
 	github.com/coocood/freecache v1.2.5
 	github.com/ethereum/go-ethereum v1.17.0
-	github.com/ethpandaops/ethcore v0.0.0-20251209022721-8a6a91f46524
+	github.com/ethpandaops/ethcore v0.0.0-20260225052739-1d2ffa8e298c
 	github.com/ethpandaops/ethwallclock v0.4.0
 	github.com/glebarez/go-sqlite v1.22.0
 	github.com/go-redis/redis/v8 v8.11.5
