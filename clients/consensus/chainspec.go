@@ -55,6 +55,8 @@ type ChainSpecConfig struct {
 	FuluForkEpoch        *uint64        `yaml:"FULU_FORK_EPOCH"        check-if-fork:"FuluForkEpoch"`
 	GloasForkVersion     phase0.Version `yaml:"GLOAS_FORK_VERSION"   check-if-fork:"GloasForkEpoch"`
 	GloasForkEpoch       *uint64        `yaml:"GLOAS_FORK_EPOCH"     check-if-fork:"GloasForkEpoch"`
+	HezeForkVersion      phase0.Version `yaml:"HEZE_FORK_VERSION"    check-if-fork:"HezeForkEpoch"`
+	HezeForkEpoch        *uint64        `yaml:"HEZE_FORK_EPOCH"      check-if-fork:"HezeForkEpoch"`
 
 	// Time parameters
 	SecondsPerSlot                  uint64 `yaml:"SECONDS_PER_SLOT"`

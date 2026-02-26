@@ -37,6 +37,7 @@ type Client struct {
 	streamSubscription              *utils.Subscription[*rpc.BeaconStreamEvent]
 	executionPayloadSubscription    *utils.Subscription[*v1.ExecutionPayloadAvailableEvent]
 	executionPayloadBidSubscription *utils.Subscription[*gloas.SignedExecutionPayloadBid]
+	inclusionListSubscription       *utils.Subscription[*v1.InclusionListEvent]
 
 	headRoot phase0.Root
 }
@@ -85,6 +86,7 @@ func (c *Client) startIndexing() {
 	c.streamSubscription = c.client.SubscribeStreamEvent(100, true)
 	c.executionPayloadSubscription = c.client.SubscribeExecutionPayloadAvailableEvent(100, true)
 	c.executionPayloadBidSubscription = c.client.SubscribeExecutionPayloadBidEvent(100, true)
+	c.inclusionListSubscription = c.client.SubscribeInclusionListEvent(100, true)
 
 	go c.startClientLoop()
 }
@@ -200,6 +202,8 @@ func (c *Client) runClientLoop() error {
 			if err != nil {
 				c.logger.Errorf("failed processing execution payload bid %v (%v): %v", executionPayloadBidEvent.Message.Slot, executionPayloadBidEvent.Message.ParentBlockRoot.String(), err)
 			}
+		case inclusionListEvent := <-c.inclusionListSubscription.Channel():
+			c.processInclusionListEvent(inclusionListEvent)
 		}
 	}
 
@@ -664,6 +668,14 @@ func (c *Client) persistExecutionPayload(block *Block) error {
 
 		return nil
 	})
+}
+
+func (c *Client) processInclusionListEvent(inclusionListEvent *v1.InclusionListEvent) {
+	if inclusionListEvent.Data == nil {
+		return
+	}
+
+	c.indexer.inclusionListCache.addInclusionList(inclusionListEvent.Data)
 }
 
 func (c *Client) processExecutionPayloadBidEvent(executionPayloadBidEvent *gloas.SignedExecutionPayloadBid) error {

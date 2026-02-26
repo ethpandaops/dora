@@ -192,18 +192,27 @@ func (s *epochState) processState(state *spec.VersionedBeaconState, beaconBlock 
 		cache.indexer.validatorCache.updateValidatorSet(slot, dependentRoot, validatorList)
 	}
 
-	// Process builder set for Gloas
-	if state.Version >= spec.DataVersionGloas && state.Gloas != nil {
-		if cache != nil {
-			cache.indexer.builderCache.updateBuilderSet(slot, dependentRoot, state.Gloas.Builders)
+	// Process builder set for Gloas/Heze
+	if state.Version >= spec.DataVersionGloas {
+		var gloasState *gloas.BeaconState
+		if state.Gloas != nil {
+			gloasState = state.Gloas
+		} else if state.Heze != nil {
+			gloasState = state.Heze
 		}
 
-		// Extract builder balances
-		builderBalances := make([]phase0.Gwei, len(state.Gloas.Builders))
-		for i, builder := range state.Gloas.Builders {
-			builderBalances[i] = builder.Balance
+		if gloasState != nil {
+			if cache != nil {
+				cache.indexer.builderCache.updateBuilderSet(slot, dependentRoot, gloasState.Builders)
+			}
+
+			// Extract builder balances
+			builderBalances := make([]phase0.Gwei, len(gloasState.Builders))
+			for i, builder := range gloasState.Builders {
+				builderBalances[i] = builder.Balance
+			}
+			s.builderBalances = builderBalances
 		}
-		s.builderBalances = builderBalances
 	}
 
 	validatorPubkeyMap := make(map[phase0.BLSPubKey]phase0.ValidatorIndex)
@@ -304,16 +313,25 @@ func (s *epochState) processState(state *spec.VersionedBeaconState, beaconBlock 
 	return nil
 }
 
-// isGloasPostPayloadState checks whether the Gloas state is post-payload
+// isGloasPostPayloadState checks whether the Gloas/Heze state is post-payload
 // (i.e. execution payload deposits have been applied) for the given slot.
 func isGloasPostPayloadState(state *spec.VersionedBeaconState, slot phase0.Slot) bool {
-	if state.Gloas == nil {
+	var gloasState *gloas.BeaconState
+	if state.Gloas != nil {
+		gloasState = state.Gloas
+	} else if state.Heze != nil {
+		gloasState = state.Heze
+	}
+
+	if gloasState == nil {
 		return false
 	}
-	bitfieldLen := uint64(len(state.Gloas.ExecutionPayloadAvailability)) * 8
+
+	bitfieldLen := uint64(len(gloasState.ExecutionPayloadAvailability)) * 8
 	if bitfieldLen == 0 {
 		return false
 	}
+
 	idx := uint64(slot) % bitfieldLen
-	return state.Gloas.ExecutionPayloadAvailability[idx/8]&(1<<(idx%8)) != 0
+	return gloasState.ExecutionPayloadAvailability[idx/8]&(1<<(idx%8)) != 0
 }

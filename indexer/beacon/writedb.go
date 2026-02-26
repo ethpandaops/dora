@@ -447,7 +447,7 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 				dbBlock.EthBaseFee = utils.GetBaseFeeAsUint64(payload.BaseFeePerGas)
 				dbBlock.EthFeeRecipient = payload.FeeRecipient[:]
 			}
-		case spec.DataVersionGloas:
+		case spec.DataVersionGloas, spec.DataVersionHeze:
 			blockPayload := block.GetExecutionPayload(dbw.indexer.ctx)
 			if blockPayload != nil {
 				payload := blockPayload.Message.Payload
@@ -623,7 +623,7 @@ func (dbw *dbWriter) buildDbEpoch(epoch phase0.Epoch, blocks []*Block, epochStat
 					dbEpoch.EthGasUsed += payload.GasUsed
 					dbEpoch.EthGasLimit += payload.GasLimit
 				}
-			case spec.DataVersionGloas:
+			case spec.DataVersionGloas, spec.DataVersionHeze:
 				blockPayload := block.GetExecutionPayload(dbw.indexer.ctx)
 				if blockPayload != nil {
 					payload := blockPayload.Message.Payload

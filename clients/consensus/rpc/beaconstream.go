@@ -22,6 +22,7 @@ const (
 	StreamFinalizedEvent           uint16 = 0x04
 	StreamExecutionPayloadEvent    uint16 = 0x08
 	StreamExecutionPayloadBidEvent uint16 = 0x10
+	StreamInclusionListEvent       uint16 = 0x20
 )
 
 type BeaconStreamEvent struct {
@@ -80,11 +81,11 @@ func (bs *BeaconStream) startStream() {
 		defer basicStream.Close()
 	}
 
-	// Subscribe to advanced events (execution_payload_available, execution_payload_bid)
+	// Subscribe to advanced events (execution_payload_available, execution_payload_bid, inclusion_list)
 	// These are in a separate stream because clients may not support them yet,
 	// and subscribing to unsupported topics can cause the entire subscription to fail.
 	// Run in a separate goroutine so it doesn't block the basic stream.
-	advancedEvents := bs.events & (StreamExecutionPayloadEvent | StreamExecutionPayloadBidEvent)
+	advancedEvents := bs.events & (StreamExecutionPayloadEvent | StreamExecutionPayloadBidEvent | StreamInclusionListEvent)
 	advancedStreamChan := make(chan *eventstream.Stream, 1)
 	if advancedEvents > 0 {
 		go func() {
@@ -139,6 +140,8 @@ func (bs *BeaconStream) startStream() {
 				bs.processExecutionPayloadAvailableEvent(evt)
 			case "execution_payload_bid":
 				bs.processExecutionPayloadBidEvent(evt)
+			case "inclusion_list":
+				bs.processInclusionListEvent(evt)
 			}
 		case <-bs.getAdvancedStreamReady(advancedStream):
 			// Don't forward ready events from advanced stream
@@ -248,6 +251,16 @@ func (bs *BeaconStream) subscribeStream(endpoint string, events uint16) *eventst
 		topicsCount++
 	}
 
+	if events&StreamInclusionListEvent > 0 {
+		if topicsCount > 0 {
+			fmt.Fprintf(&topics, ",")
+		}
+
+		fmt.Fprintf(&topics, "inclusion_list")
+
+		topicsCount++
+	}
+
 	if topicsCount == 0 {
 		return nil
 	}
@@ -351,6 +364,21 @@ func (bs *BeaconStream) processExecutionPayloadBidEvent(evt eventstream.StreamEv
 
 	bs.EventChan <- &BeaconStreamEvent{
 		Event: StreamExecutionPayloadBidEvent,
+		Data:  &parsed,
+	}
+}
+
+func (bs *BeaconStream) processInclusionListEvent(evt eventstream.StreamEvent) {
+	var parsed v1.InclusionListEvent
+
+	err := json.Unmarshal([]byte(evt.Data()), &parsed)
+	if err != nil {
+		bs.logger.Warnf("beacon block stream failed to decode inclusion_list event: %v", err)
+		return
+	}
+
+	bs.EventChan <- &BeaconStreamEvent{
+		Event: StreamInclusionListEvent,
 		Data:  &parsed,
 	}
 }

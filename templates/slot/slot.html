@@ -106,6 +106,11 @@
             <a class="nav-link" id="consolidationRequests-tab" data-bs-toggle="tab" href="#consolidationRequests" role="tab" aria-controls="consolidationRequests" aria-selected="false">Consolidation Requests <span class="badge bg-secondary text-white">{{ .Block.ConsolidationRequestsCount }}</span></a>
           </li>
         {{ end }}
+        {{ if gt .Block.InclusionListsCount 0 }}
+          <li class="nav-item">
+            <a class="nav-link" id="inclusionLists-tab" data-bs-toggle="tab" href="#inclusionLists" role="tab" aria-controls="inclusionLists" aria-selected="false">Inclusion Lists <span class="badge bg-secondary text-white">{{ .Block.InclusionListsCount }}</span></a>
+          </li>
+        {{ end }}
         {{ if .Block }}
           <li class="nav-item ms-auto">
             <a class="nav-link" id="download-tab" data-bs-toggle="tab" href="#download" role="tab" aria-controls="download" aria-selected="false" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Download">
@@ -289,6 +294,18 @@
                 </div>
               </div>
               {{ template "block_ptc_votes" . }}
+            </div>
+          </div>
+        {{ end }}
+        {{ if gt .Block.InclusionListsCount 0 }}
+          <div class="tab-pane fade show active" id="inclusionLists" role="tabpanel" aria-labelledby="inclusionLists-tab">
+            <div class="card block-card">
+              <div style="margin-bottom: -.25rem;" class="card-body px-0 py-1">
+                <div class="row p-1 mx-0">
+                  <h3 class="h5 col-md-12 text-center"><b>Showing {{ .Block.InclusionListsCount }} Inclusion Lists</b></h3>
+                </div>
+              </div>
+              {{ template "block_inclusion_lists" . }}
             </div>
           </div>
         {{ end }}

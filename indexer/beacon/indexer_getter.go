@@ -510,6 +510,11 @@ func (indexer *Indexer) GetFullValidatorByIndex(validatorIndex phase0.ValidatorI
 	return validatorData
 }
 
+// GetInclusionListsBySlot returns the cached inclusion lists for a given slot.
+func (indexer *Indexer) GetInclusionListsBySlot(slot phase0.Slot) []*v1.SignedInclusionList {
+	return indexer.inclusionListCache.getInclusionListsBySlot(slot)
+}
+
 // GetBlockBids returns the execution payload bids for a given parent block root.
 // It first checks the in-memory cache, then falls back to the database.
 func (indexer *Indexer) GetBlockBids(parentBlockRoot phase0.Root) []*dbtypes.BlockBid {

@@ -304,6 +304,20 @@ func buildIndexPageData(ctx context.Context) (*models.IndexPageData, time.Durati
 		})
 	}
 
+	if specs.HezeForkEpoch != nil && *specs.HezeForkEpoch < uint64(18446744073709551615) {
+		blobParams := chainState.GetBlobScheduleForEpoch(phase0.Epoch(*specs.HezeForkEpoch))
+		forkDigest := chainState.GetForkDigest(specs.HezeForkVersion, blobParams)
+		pageData.NetworkForks = append(pageData.NetworkForks, &models.IndexPageDataForks{
+			Name:       "Heze",
+			Epoch:      *specs.HezeForkEpoch,
+			Version:    specs.HezeForkVersion[:],
+			Time:       uint64(chainState.EpochToTime(phase0.Epoch(*specs.HezeForkEpoch)).Unix()),
+			Active:     uint64(currentEpoch) >= *specs.HezeForkEpoch,
+			Type:       "consensus",
+			ForkDigest: forkDigest[:],
+		})
+	}
+
 	// Add BPO forks from BLOB_SCHEDULE
 	elBlobSchedule := services.GlobalBeaconService.GetExecutionChainState().GetFullBlobSchedule()
 	if len(elBlobSchedule) > 0 {

@@ -437,6 +437,8 @@ func (cs *ChainState) GetForkVersionAtEpoch(epoch phase0.Epoch) phase0.Version {
 	}
 
 	switch {
+	case cs.specs.HezeForkEpoch != nil && epoch >= phase0.Epoch(*cs.specs.HezeForkEpoch):
+		return cs.specs.HezeForkVersion
 	case cs.specs.FuluForkEpoch != nil && epoch >= phase0.Epoch(*cs.specs.FuluForkEpoch):
 		return cs.specs.FuluForkVersion
 	case cs.specs.ElectraForkEpoch != nil && epoch >= phase0.Epoch(*cs.specs.ElectraForkEpoch):
@@ -478,6 +480,14 @@ func (cs *ChainState) IsEip7732Enabled(epoch phase0.Epoch) bool {
 	}
 
 	return cs.specs.GloasForkEpoch != nil && phase0.Epoch(*cs.specs.GloasForkEpoch) <= epoch
+}
+
+func (cs *ChainState) IsEip7805Enabled(epoch phase0.Epoch) bool {
+	if cs.specs == nil {
+		return false
+	}
+
+	return cs.specs.HezeForkEpoch != nil && phase0.Epoch(*cs.specs.HezeForkEpoch) <= epoch
 }
 
 func (cs *ChainState) IsFuluEnabled(epoch phase0.Epoch) bool {

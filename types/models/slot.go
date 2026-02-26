@@ -97,6 +97,8 @@ type SlotPageBlockData struct {
 	ConsolidationRequests []*SlotPageConsolidationRequest `json:"consolidation_requests"` // ConsolidationRequests included in this block
 	Bids                  []*SlotPageBid                  `json:"bids"`                   // Execution payload bids for this block (ePBS)
 	PtcVotes              *SlotPagePtcVotes               `json:"ptc_votes"`              // PTC votes included in this block (for previous slot)
+	InclusionLists        []*SlotPageInclusionList        `json:"inclusion_lists"`        // Inclusion lists for this slot (EIP-7805)
+	InclusionListsCount   uint64                          `json:"inclusion_lists_count"`
 }
 
 type SlotPageExecutionData struct {
@@ -336,4 +338,14 @@ type SlotPagePtcAggregate struct {
 	Validators        []uint64 `json:"validators"`          // Validator indices that voted
 	Signature         []byte   `json:"signature"`           // Aggregate signature
 	VoteCount         uint64   `json:"vote_count"`          // Number of votes in this aggregate
+}
+
+// SlotPageInclusionList holds data for an inclusion list entry on the slot page.
+type SlotPageInclusionList struct {
+	Validator                  types.NamedValidator   `json:"validator"`
+	InclusionListCommitteeRoot []byte                 `json:"inclusion_list_committee_root"`
+	Transactions               []*SlotPageTransaction `json:"transactions"`
+	TransactionsCount          uint64                 `json:"transactions_count"`
+	TransactionsIncluded       []bool                 `json:"transactions_included"`
+	Signature                  []byte                 `json:"signature"`
 }
