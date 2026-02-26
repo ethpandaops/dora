@@ -14,8 +14,8 @@ func InsertEpoch(ctx context.Context, tx *sqlx.Tx, epoch *dbtypes.Epoch) error {
 				epoch, validator_count, validator_balance, eligible, voted_target, voted_head, voted_total, block_count, orphaned_count,
 				attestation_count, deposit_count, exit_count, withdraw_count, withdraw_amount, attester_slashing_count, 
 				proposer_slashing_count, bls_change_count, eth_transaction_count, sync_participation, blob_count,
-				eth_gas_used, eth_gas_limit
-			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
+				eth_gas_used, eth_gas_limit, payload_count
+			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
 			ON CONFLICT (epoch) DO UPDATE SET
 				validator_count = excluded.validator_count,
 				validator_balance = excluded.validator_balance,
@@ -37,18 +37,19 @@ func InsertEpoch(ctx context.Context, tx *sqlx.Tx, epoch *dbtypes.Epoch) error {
 				sync_participation = excluded.sync_participation,
 				blob_count = excluded.blob_count,
 				eth_gas_used = excluded.eth_gas_used,
-				eth_gas_limit = excluded.eth_gas_limit`,
+				eth_gas_limit = excluded.eth_gas_limit,
+				payload_count = excluded.payload_count`,
 		dbtypes.DBEngineSqlite: `
 			INSERT OR REPLACE INTO epochs (
 				epoch, validator_count, validator_balance, eligible, voted_target, voted_head, voted_total, block_count, orphaned_count,
 				attestation_count, deposit_count, exit_count, withdraw_count, withdraw_amount, attester_slashing_count, 
 				proposer_slashing_count, bls_change_count, eth_transaction_count, sync_participation, blob_count,
-				eth_gas_used, eth_gas_limit
-			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)`,
+				eth_gas_used, eth_gas_limit, payload_count
+			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)`,
 	}),
 		epoch.Epoch, epoch.ValidatorCount, epoch.ValidatorBalance, epoch.Eligible, epoch.VotedTarget, epoch.VotedHead, epoch.VotedTotal, epoch.BlockCount, epoch.OrphanedCount,
 		epoch.AttestationCount, epoch.DepositCount, epoch.ExitCount, epoch.WithdrawCount, epoch.WithdrawAmount, epoch.AttesterSlashingCount, epoch.ProposerSlashingCount,
-		epoch.BLSChangeCount, epoch.EthTransactionCount, epoch.SyncParticipation, epoch.BlobCount, epoch.EthGasUsed, epoch.EthGasLimit)
+		epoch.BLSChangeCount, epoch.EthTransactionCount, epoch.SyncParticipation, epoch.BlobCount, epoch.EthGasUsed, epoch.EthGasLimit, epoch.PayloadCount)
 	if err != nil {
 		return err
 	}
@@ -71,7 +72,7 @@ func GetEpochs(ctx context.Context, firstEpoch uint64, limit uint32) []*dbtypes.
 		epoch, validator_count, validator_balance, eligible, voted_target, voted_head, voted_total, block_count, orphaned_count,
 		attestation_count, deposit_count, exit_count, withdraw_count, withdraw_amount, attester_slashing_count,
 		proposer_slashing_count, bls_change_count, eth_transaction_count, sync_participation, blob_count,
-		eth_gas_used, eth_gas_limit
+		eth_gas_used, eth_gas_limit, payload_count
 	FROM epochs
 	WHERE epoch <= $1
 	ORDER BY epoch DESC

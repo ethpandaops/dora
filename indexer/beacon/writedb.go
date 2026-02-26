@@ -79,6 +79,11 @@ func (dbw *dbWriter) persistBlockData(tx *sqlx.Tx, block *Block, epochStats *Epo
 		dbBlock.Status = dbtypes.Orphaned
 	}
 
+	// Apply payload orphaned status from block flag (set during finalization/sync)
+	if block.isPayloadOrphaned {
+		dbBlock.PayloadStatus = dbtypes.PayloadStatusOrphaned
+	}
+
 	err := db.InsertSlot(dbw.indexer.ctx, tx, dbBlock)
 	if err != nil {
 		return nil, fmt.Errorf("error inserting slot: %v", err)
@@ -245,6 +250,8 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 		epochStatsValues = epochStats.GetValues(true)
 	}
 
+	chainState := dbw.indexer.consensusPool.GetChainState()
+
 	graffiti, _ := blockBody.Graffiti()
 	attestations, _ := blockBody.Attestations()
 	deposits, _ := blockBody.Deposits()
@@ -253,28 +260,56 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 	proposerSlashings, _ := blockBody.ProposerSlashings()
 	blsToExecChanges, _ := blockBody.BLSToExecutionChanges()
 	syncAggregate, _ := blockBody.SyncAggregate()
+	executionBlockHash, _ := blockBody.ExecutionBlockHash()
 	blobKzgCommitments, _ := blockBody.BlobKZGCommitments()
 
-	var executionExtraData []byte
 	var executionBlockNumber uint64
-	var executionBlockHash phase0.Hash32
+	var executionBlockParentHash []byte
+	var executionExtraData []byte
 	var executionTransactions []bellatrix.Transaction
 	var executionWithdrawals []*capella.Withdrawal
+	var depositRequests []*electra.DepositRequest
+	var payloadStatus dbtypes.PayloadStatus
 
-	executionPayload, _ := blockBody.ExecutionPayload()
-	if executionPayload != nil {
-		executionExtraData, _ = executionPayload.ExtraData()
-		executionBlockHash, _ = executionPayload.BlockHash()
-		executionBlockNumber, _ = executionPayload.BlockNumber()
-		executionTransactions, _ = executionPayload.Transactions()
-		executionWithdrawals, _ = executionPayload.Withdrawals()
+	if chainState.IsEip7732Enabled(chainState.EpochOfSlot(block.Slot)) {
+		blockPayload := block.GetExecutionPayload(dbw.indexer.ctx)
+		if blockPayload != nil {
+			executionBlockNumber = blockPayload.Message.Payload.BlockNumber
+			executionBlockParentHash = blockPayload.Message.Payload.ParentHash[:]
+			executionExtraData = blockPayload.Message.Payload.ExtraData
+			executionTransactions = blockPayload.Message.Payload.Transactions
+			executionWithdrawals = blockPayload.Message.Payload.Withdrawals
+			depositRequests = blockPayload.Message.ExecutionRequests.Deposits
+			payloadStatus = dbtypes.PayloadStatusCanonical
+		} else {
+			payloadStatus = dbtypes.PayloadStatusMissing
+		}
+	} else {
+		payloadStatus = dbtypes.PayloadStatusCanonical
+		executionBlockNumber, _ = blockBody.ExecutionBlockNumber()
+		executionPayload, _ := blockBody.ExecutionPayload()
+		if executionPayload != nil {
+			executionExtraData, _ = executionPayload.ExtraData()
+			executionTransactions, _ = executionPayload.Transactions()
+			executionWithdrawals, _ = executionPayload.Withdrawals()
+			if parentHash, err := executionPayload.ParentHash(); err == nil {
+				executionBlockParentHash = parentHash[:]
+			}
+		}
+		executionRequests, _ := blockBody.ExecutionRequests()
+		if executionRequests != nil {
+			depositRequests = executionRequests.Deposits
+		}
 	}
 
-	var depositRequests []*electra.DepositRequest
-
-	executionRequests, _ := blockBody.ExecutionRequests()
-	if executionRequests != nil {
-		depositRequests = executionRequests.Deposits
+	// Get builder index from block, default to -1 (self-built/MaxUint64)
+	var builderIndexInt64 int64 = -1
+	if blockIndex := block.GetBlockIndex(dbw.indexer.ctx); blockIndex != nil {
+		if blockIndex.BuilderIndex == math.MaxUint64 {
+			builderIndexInt64 = -1
+		} else {
+			builderIndexInt64 = int64(blockIndex.BuilderIndex)
+		}
 	}
 
 	dbBlock := dbtypes.Slot{
@@ -295,7 +330,9 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 		BLSChangeCount:        uint64(len(blsToExecChanges)),
 		BlobCount:             uint64(len(blobKzgCommitments)),
 		RecvDelay:             block.recvDelay,
+		PayloadStatus:         payloadStatus,
 		BlockUid:              block.BlockUID,
+		BuilderIndex:          builderIndexInt64,
 	}
 
 	blockSize, err := getBlockSize(block.dynSsz, blockBody)
@@ -331,6 +368,7 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 		dbBlock.EthTransactionCount = uint64(len(executionTransactions))
 		dbBlock.EthBlockNumber = &executionBlockNumber
 		dbBlock.EthBlockHash = executionBlockHash[:]
+		dbBlock.EthBlockParentHash = executionBlockParentHash
 		dbBlock.EthBlockExtra = executionExtraData
 		dbBlock.EthBlockExtraText = utils.GraffitiToString(executionExtraData[:])
 		dbBlock.WithdrawCount = uint64(len(executionWithdrawals))
@@ -409,6 +447,15 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 				dbBlock.EthBaseFee = utils.GetBaseFeeAsUint64(payload.BaseFeePerGas)
 				dbBlock.EthFeeRecipient = payload.FeeRecipient[:]
 			}
+		case spec.DataVersionGloas, spec.DataVersionHeze:
+			blockPayload := block.GetExecutionPayload(dbw.indexer.ctx)
+			if blockPayload != nil {
+				payload := blockPayload.Message.Payload
+				dbBlock.EthGasUsed = payload.GasUsed
+				dbBlock.EthGasLimit = payload.GasLimit
+				dbBlock.EthBaseFee = utils.GetBaseFeeAsUint64(payload.BaseFeePerGas)
+				dbBlock.EthFeeRecipient = payload.FeeRecipient[:]
+			}
 		}
 	}
 
@@ -482,15 +529,27 @@ func (dbw *dbWriter) buildDbEpoch(epoch phase0.Epoch, blocks []*Block, epochStat
 			proposerSlashings, _ := blockBody.ProposerSlashings()
 			blsToExecChanges, _ := blockBody.BLSToExecutionChanges()
 			syncAggregate, _ := blockBody.SyncAggregate()
-			executionTransactions, _ := blockBody.ExecutionTransactions()
-			executionWithdrawals, _ := blockBody.Withdrawals()
 			blobKzgCommitments, _ := blockBody.BlobKZGCommitments()
 
+			var executionTransactions []bellatrix.Transaction
+			var executionWithdrawals []*capella.Withdrawal
 			var depositRequests []*electra.DepositRequest
 
-			executionRequests, _ := blockBody.ExecutionRequests()
-			if executionRequests != nil {
-				depositRequests = executionRequests.Deposits
+			if chainState.IsEip7732Enabled(chainState.EpochOfSlot(block.Slot)) {
+				blockPayload := block.GetExecutionPayload(dbw.indexer.ctx)
+				if blockPayload != nil {
+					dbEpoch.PayloadCount++
+					executionTransactions = blockPayload.Message.Payload.Transactions
+					executionWithdrawals = blockPayload.Message.Payload.Withdrawals
+					depositRequests = blockPayload.Message.ExecutionRequests.Deposits
+				}
+			} else {
+				executionTransactions, _ = blockBody.ExecutionTransactions()
+				executionWithdrawals, _ = blockBody.Withdrawals()
+				executionRequests, _ := blockBody.ExecutionRequests()
+				if executionRequests != nil {
+					depositRequests = executionRequests.Deposits
+				}
 			}
 
 			dbEpoch.AttestationCount += uint64(len(attestations))
@@ -561,6 +620,13 @@ func (dbw *dbWriter) buildDbEpoch(epoch phase0.Epoch, blocks []*Block, epochStat
 				if blockBody.Fulu != nil && blockBody.Fulu.Message != nil &&
 					blockBody.Fulu.Message.Body != nil && blockBody.Fulu.Message.Body.ExecutionPayload != nil {
 					payload := blockBody.Fulu.Message.Body.ExecutionPayload
+					dbEpoch.EthGasUsed += payload.GasUsed
+					dbEpoch.EthGasLimit += payload.GasLimit
+				}
+			case spec.DataVersionGloas, spec.DataVersionHeze:
+				blockPayload := block.GetExecutionPayload(dbw.indexer.ctx)
+				if blockPayload != nil {
+					payload := blockPayload.Message.Payload
 					dbEpoch.EthGasUsed += payload.GasUsed
 					dbEpoch.EthGasLimit += payload.GasLimit
 				}
@@ -652,14 +718,26 @@ func (dbw *dbWriter) persistBlockDepositRequests(tx *sqlx.Tx, block *Block, orph
 }
 
 func (dbw *dbWriter) buildDbDepositRequests(block *Block, orphaned bool, overrideForkId *ForkKey) []*dbtypes.Deposit {
-	blockBody := block.GetBlock(dbw.indexer.ctx)
-	if blockBody == nil {
-		return nil
+	chainState := dbw.indexer.consensusPool.GetChainState()
+
+	var requests *electra.ExecutionRequests
+
+	if chainState.IsEip7732Enabled(chainState.EpochOfSlot(block.Slot)) {
+		payload := block.GetExecutionPayload(dbw.indexer.ctx)
+		if payload != nil {
+			requests = payload.Message.ExecutionRequests
+		}
+	} else {
+		blockBody := block.GetBlock(dbw.indexer.ctx)
+		if blockBody == nil {
+			return nil
+		}
+
+		requests, _ = blockBody.ExecutionRequests()
 	}
 
-	requests, err := blockBody.ExecutionRequests()
-	if err != nil {
-		return nil
+	if requests == nil {
+		return []*dbtypes.Deposit{}
 	}
 
 	deposits := requests.Deposits
@@ -839,14 +917,29 @@ func (dbw *dbWriter) persistBlockConsolidationRequests(tx *sqlx.Tx, block *Block
 }
 
 func (dbw *dbWriter) buildDbConsolidationRequests(block *Block, orphaned bool, overrideForkId *ForkKey, sim *stateSimulator) []*dbtypes.ConsolidationRequest {
-	blockBody := block.GetBlock(dbw.indexer.ctx)
-	if blockBody == nil {
-		return nil
+	chainState := dbw.indexer.consensusPool.GetChainState()
+
+	var requests *electra.ExecutionRequests
+	var blockNumber uint64
+
+	if chainState.IsEip7732Enabled(chainState.EpochOfSlot(block.Slot)) {
+		payload := block.GetExecutionPayload(dbw.indexer.ctx)
+		if payload != nil {
+			requests = payload.Message.ExecutionRequests
+			blockNumber = payload.Message.Payload.BlockNumber
+		}
+	} else {
+		blockBody := block.GetBlock(dbw.indexer.ctx)
+		if blockBody == nil {
+			return nil
+		}
+
+		requests, _ = blockBody.ExecutionRequests()
+		blockNumber, _ = blockBody.ExecutionBlockNumber()
 	}
 
-	requests, err := blockBody.ExecutionRequests()
-	if err != nil {
-		return nil
+	if requests == nil {
+		return []*dbtypes.ConsolidationRequest{}
 	}
 
 	if sim == nil {
@@ -867,8 +960,6 @@ func (dbw *dbWriter) buildDbConsolidationRequests(block *Block, orphaned bool, o
 	if sim != nil {
 		blockResults = sim.replayBlockResults(block)
 	}
-
-	blockNumber, _ := blockBody.ExecutionBlockNumber()
 
 	dbConsolidations := make([]*dbtypes.ConsolidationRequest, len(consolidations))
 	for idx, consolidation := range consolidations {
@@ -920,14 +1011,29 @@ func (dbw *dbWriter) persistBlockWithdrawalRequests(tx *sqlx.Tx, block *Block, o
 }
 
 func (dbw *dbWriter) buildDbWithdrawalRequests(block *Block, orphaned bool, overrideForkId *ForkKey, sim *stateSimulator) []*dbtypes.WithdrawalRequest {
-	blockBody := block.GetBlock(dbw.indexer.ctx)
-	if blockBody == nil {
-		return nil
+	chainState := dbw.indexer.consensusPool.GetChainState()
+
+	var requests *electra.ExecutionRequests
+	var blockNumber uint64
+
+	if chainState.IsEip7732Enabled(chainState.EpochOfSlot(block.Slot)) {
+		payload := block.GetExecutionPayload(dbw.indexer.ctx)
+		if payload != nil {
+			requests = payload.Message.ExecutionRequests
+			blockNumber = payload.Message.Payload.BlockNumber
+		}
+	} else {
+		blockBody := block.GetBlock(dbw.indexer.ctx)
+		if blockBody == nil {
+			return nil
+		}
+
+		requests, _ = blockBody.ExecutionRequests()
+		blockNumber, _ = blockBody.ExecutionBlockNumber()
 	}
 
-	requests, err := blockBody.ExecutionRequests()
-	if err != nil {
-		return nil
+	if requests == nil {
+		return []*dbtypes.WithdrawalRequest{}
 	}
 
 	if sim == nil {
@@ -948,8 +1054,6 @@ func (dbw *dbWriter) buildDbWithdrawalRequests(block *Block, orphaned bool, over
 	if sim != nil {
 		blockResults = sim.replayBlockResults(block)
 	}
-
-	blockNumber, _ := blockBody.ExecutionBlockNumber()
 
 	dbWithdrawalRequests := make([]*dbtypes.WithdrawalRequest, len(withdrawalRequests))
 	for idx, withdrawalRequest := range withdrawalRequests {

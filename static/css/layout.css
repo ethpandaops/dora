@@ -329,6 +329,26 @@ span.validator-label {
   padding: 1px .25rem;
 }
 
+.badge.split-warning {
+  background: linear-gradient(
+    90deg,
+    rgba(255,255,255,0) 0%,
+    rgba(255,255,255,0) 50%,
+    rgba(255,193,7,1) 50%,
+    rgba(255,193,7,1) 100%
+  );
+}
+
+.badge.split-info {
+  background: linear-gradient(
+    90deg,
+    rgba(255,255,255,0) 0%,
+    rgba(255,255,255,0) 50%,
+    rgba(13,202,240,1) 50%,
+    rgba(13,202,240,1) 100%
+  );
+}
+
 .text-monospace {
   font-family: var(--bs-font-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace) !important;
 }

@@ -47,10 +47,11 @@ type EpochStatsValues struct {
 	RandaoMix             phase0.Hash32
 	NextRandaoMix         phase0.Hash32
 	ActiveIndices         []phase0.ValidatorIndex
-	EffectiveBalances     []uint32
+	EffectiveBalances     []uint32 // effective balance in full ETH of last epoch for pre-fulu stats, effective balance in full ETH of current epoch for fulu+ stats
 	ProposerDuties        []phase0.ValidatorIndex
 	AttesterDuties        [][][]duties.ActiveIndiceIndex
 	SyncCommitteeDuties   []phase0.ValidatorIndex
+	PtcDuties             [][]duties.ActiveIndiceIndex // [slot_index][ptc_member_index] - PTC duties for Gloas+ epochs
 	ActiveValidators      uint64
 	TotalBalance          phase0.Gwei
 	ActiveBalance         phase0.Gwei
@@ -265,7 +266,9 @@ func (es *EpochStats) parsePackedSSZ(chainState *consensus.ChainState, ssz []byt
 			proposerDuties = append(proposerDuties, proposerIndex)
 		}
 
-		values.ProposerDuties = proposerDuties
+		if len(values.ProposerDuties) == 0 {
+			values.ProposerDuties = proposerDuties
+		}
 		if beaconState.RandaoMix != nil {
 			values.RandaoMix = *beaconState.RandaoMix
 		}
@@ -273,6 +276,17 @@ func (es *EpochStats) parsePackedSSZ(chainState *consensus.ChainState, ssz []byt
 		// compute committees
 		attesterDuties, _ := duties.GetAttesterDuties(chainState.GetSpecs(), beaconState, es.epoch)
 		values.AttesterDuties = attesterDuties
+
+		// compute PTC duties (Gloas+ only)
+		if chainState.IsEip7732Enabled(es.epoch) && attesterDuties != nil {
+			ptcDuties := make([][]duties.ActiveIndiceIndex, chainState.GetSpecs().SlotsPerEpoch)
+			for slotIndex := uint64(0); slotIndex < chainState.GetSpecs().SlotsPerEpoch; slotIndex++ {
+				slot := chainState.EpochToSlot(es.epoch) + phase0.Slot(slotIndex)
+				ptc, _ := duties.GetPtcDuties(chainState.GetSpecs(), beaconState, attesterDuties[slotIndex], slot)
+				ptcDuties[slotIndex] = ptc
+			}
+			values.PtcDuties = ptcDuties
+		}
 	}
 
 	return values, nil
@@ -291,6 +305,7 @@ func (es *EpochStats) pruneValues() {
 		ProposerDuties:        es.values.ProposerDuties,
 		AttesterDuties:        nil, // prune
 		SyncCommitteeDuties:   es.values.SyncCommitteeDuties,
+		PtcDuties:             nil, // prune - only needed for recent epochs
 		ActiveValidators:      es.values.ActiveValidators,
 		TotalBalance:          es.values.TotalBalance,
 		ActiveBalance:         es.values.ActiveBalance,
@@ -322,7 +337,7 @@ func (es *EpochStats) loadValuesFromDb(ctx context.Context, chainState *consensu
 }
 
 // processState processes the epoch state and computes proposer and attester duties.
-func (es *EpochStats) processState(indexer *Indexer, validatorSet []*phase0.Validator) {
+func (es *EpochStats) processState(indexer *Indexer, validatorSet []*phase0.Validator, loadDuration time.Duration) {
 	if es.dependentState == nil || es.dependentState.loadingStatus != 2 {
 		return
 	}
@@ -424,7 +439,7 @@ func (es *EpochStats) processState(indexer *Indexer, validatorSet []*phase0.Vali
 			offset = slotsPerEpoch
 		}
 
-		values.ProposerDuties = dependentState.proposerLookahead[offset : offset+slotsPerEpoch]
+		values.ProposerDuties = dependentState.proposerLookahead[offset:]
 	} else {
 		proposerDuties := []phase0.ValidatorIndex{}
 		for slot := chainState.EpochToSlot(es.epoch); slot < chainState.EpochToSlot(es.epoch+1); slot++ {
@@ -449,6 +464,20 @@ func (es *EpochStats) processState(indexer *Indexer, validatorSet []*phase0.Vali
 		indexer.logger.Warnf("failed computing attester duties for epoch %v: %v", es.epoch, err)
 	}
 	values.AttesterDuties = attesterDuties
+
+	// compute PTC duties (Gloas+ only)
+	if chainState.IsEip7732Enabled(es.epoch) && attesterDuties != nil {
+		ptcDuties := make([][]duties.ActiveIndiceIndex, chainState.GetSpecs().SlotsPerEpoch)
+		for slotIndex := uint64(0); slotIndex < chainState.GetSpecs().SlotsPerEpoch; slotIndex++ {
+			slot := chainState.EpochToSlot(es.epoch) + phase0.Slot(slotIndex)
+			ptc, ptcErr := duties.GetPtcDuties(chainState.GetSpecs(), beaconState, attesterDuties[slotIndex], slot)
+			if ptcErr != nil {
+				indexer.logger.Warnf("failed computing PTC duties for slot %v: %v", slot, ptcErr)
+			}
+			ptcDuties[slotIndex] = ptc
+		}
+		values.PtcDuties = ptcDuties
+	}
 
 	if beaconState.RandaoMix != nil {
 		values.RandaoMix = *beaconState.RandaoMix
@@ -475,12 +504,13 @@ func (es *EpochStats) processState(indexer *Indexer, validatorSet []*phase0.Vali
 	es.isInDb = true
 
 	indexer.logger.Infof(
-		"processed epoch %v stats (root: %v / state: %v, validators: %v/%v, %v ms), %v bytes",
+		"processed epoch %v stats (root: %v / state: %v, validators: %v/%v, load: %v ms, process: %v ms), %v bytes",
 		es.epoch,
 		es.dependentRoot.String(),
 		dependentState.stateRoot.String(),
 		values.ActiveValidators,
 		len(validatorSet),
+		loadDuration.Milliseconds(),
 		time.Since(t1).Milliseconds(),
 		len(packedSsz),
 	)
@@ -555,14 +585,20 @@ func (es *EpochStats) precomputeFromParentState(indexer *Indexer, parentState *E
 
 		// compute proposers
 		proposerDuties := []phase0.ValidatorIndex{}
-		for slot := chainState.EpochToSlot(es.epoch); slot < chainState.EpochToSlot(es.epoch+1); slot++ {
-			proposer, err := duties.GetProposerIndex(chainState.GetSpecs(), beaconState, slot)
-			proposerIndex := phase0.ValidatorIndex(math.MaxInt64)
-			if err == nil {
-				proposerIndex = values.ActiveIndices[proposer]
-			}
 
-			proposerDuties = append(proposerDuties, proposerIndex)
+		specs := chainState.GetSpecs()
+		if uint64(len(parentState.dependentState.proposerLookahead)) > specs.SlotsPerEpoch {
+			proposerDuties = parentState.dependentState.proposerLookahead[specs.SlotsPerEpoch:]
+		} else {
+			for slot := chainState.EpochToSlot(es.epoch); slot < chainState.EpochToSlot(es.epoch+1); slot++ {
+				proposer, err := duties.GetProposerIndex(chainState.GetSpecs(), beaconState, slot)
+				proposerIndex := phase0.ValidatorIndex(math.MaxInt64)
+				if err == nil {
+					proposerIndex = values.ActiveIndices[proposer]
+				}
+
+				proposerDuties = append(proposerDuties, proposerIndex)
+			}
 		}
 
 		values.ProposerDuties = proposerDuties
@@ -570,6 +606,17 @@ func (es *EpochStats) precomputeFromParentState(indexer *Indexer, parentState *E
 		// compute committees
 		attesterDuties, _ := duties.GetAttesterDuties(chainState.GetSpecs(), beaconState, es.epoch)
 		values.AttesterDuties = attesterDuties
+
+		// compute PTC duties (Gloas+ only)
+		if chainState.IsEip7732Enabled(es.epoch) && attesterDuties != nil {
+			ptcDuties := make([][]duties.ActiveIndiceIndex, chainState.GetSpecs().SlotsPerEpoch)
+			for slotIndex := uint64(0); slotIndex < chainState.GetSpecs().SlotsPerEpoch; slotIndex++ {
+				slot := chainState.EpochToSlot(es.epoch) + phase0.Slot(slotIndex)
+				ptc, _ := duties.GetPtcDuties(chainState.GetSpecs(), beaconState, attesterDuties[slotIndex], slot)
+				ptcDuties[slotIndex] = ptc
+			}
+			values.PtcDuties = ptcDuties
+		}
 
 		es.precalcValues = values
 

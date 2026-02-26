@@ -41,9 +41,9 @@
               <td>
                 <span data-bind="if: slot == 0" class="badge rounded-pill text-bg-info">Genesis</span>
                 <span data-bind="if: slot > 0 && status == 0" class="badge rounded-pill text-bg-warning">Missed</span>
-                <span data-bind="if: slot > 0 && status == 1" class="badge rounded-pill text-bg-success">Proposed</span>
-                <span data-bind="if: slot > 0 && status == 2" class="badge rounded-pill text-bg-info">Missed (Orphaned)</span>
-                <span data-bind="if: slot > 0 && status > 2" class="badge rounded-pill text-bg-dark">Unknown</span>
+                <span data-bind="if: slot > 0 && status == 1, css: {'split-warning': payload_status == 0, 'split-info': payload_status == 2}" class="badge rounded-pill text-bg-success">Proposed</span>
+                <span data-bind="if: slot > 0 && status == 2, css: {'split-warning': payload_status == 0, 'split-info': payload_status == 2}" class="badge rounded-pill text-bg-info">Missed (Orphaned)</span>
+                <span data-bind="if: slot > 0 && status > 2, css: {'split-warning': payload_status == 0, 'split-info': payload_status == 2}" class="badge rounded-pill text-bg-dark">Unknown</span>
               </td>
               <td data-bind="attr: {'data-timer': $root.unixtime(ts)}">
                 <span data-bs-toggle="tooltip" data-bs-placement="top" data-bind="attr: {'data-bs-title': $root.timestamp(ts)}, text: $root.formatRecentTimeShort(ts)"></span>
@@ -74,11 +74,11 @@
                     {{ else if eq .Status 0 }}
                       <span class="badge rounded-pill text-bg-warning">Missed</span>
                     {{ else if eq .Status 1 }}
-                      <span class="badge rounded-pill text-bg-success">Proposed</span>
+                      <span class="badge rounded-pill text-bg-success {{ if eq $block.PayloadStatus 0 }}split-warning{{ else if eq $block.PayloadStatus 2 }}split-info{{ end }}">Proposed</span>
                     {{ else if eq .Status 2 }}
-                      <span class="badge rounded-pill text-bg-info">Missed (Orphaned)</span>
+                      <span class="badge rounded-pill text-bg-info {{ if eq $block.PayloadStatus 0 }}split-warning{{ else if eq $block.PayloadStatus 2 }}split-info{{ end }}">Missed (Orphaned)</span>
                     {{ else }}
-                      <span class="badge rounded-pill text-bg-dark">Unknown</span>
+                      <span class="badge rounded-pill text-bg-dark {{ if eq $block.PayloadStatus 0 }}split-warning{{ else if eq $block.PayloadStatus 2 }}split-info{{ end }}">Unknown</span>
                     {{ end }}
                   </td>
                   <td data-timer="{{ $block.Ts.Unix }}"><span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $block.Ts }}">{{ formatRecentTimeShort $block.Ts }}</span></td>

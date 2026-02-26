@@ -1,0 +1,235 @@
+{{ define "page" }}
+  <div class="container mt-2">
+    <div class="d-md-flex py-2 justify-content-md-between">
+      <h1 class="h4 mb-1 mb-md-0"><i class="fas fa-hard-hat mx-2"></i> Builder {{ formatBuilderWithIndex .Index .Name }}</h1>
+      <nav aria-label="breadcrumb">
+        <ol class="breadcrumb font-size-1 mb-0" style="padding:0; background-color:transparent;">
+          <li class="breadcrumb-item"><a href="/" title="Home">Home</a></li>
+          <li class="breadcrumb-item"><a href="/builders" title="Builders">Builders</a></li>
+          <li class="breadcrumb-item active" aria-current="page">Builder details</li>
+        </ol>
+      </nav>
+    </div>
+
+    <div class="card mt-2">
+      <div class="card-body px-0 py-3">
+
+        <div class="row border-bottom p-2 mx-0">
+          <div class="col-md-2 d-flex" style="flex-direction: column; justify-content: flex-end;">
+            <span data-bs-toggle="tooltip" data-bs-placement="top" title="Builder Lifecycle Status">Status:</span>
+          </div>
+          <div class="col-md-10">
+            <!-- Builder lifecycle -->
+            <div class="validator__lifecycle-container">
+              <div class="validator__lifecycle-content">
+                <div id="lifecycle-deposited" class="validator__lifecycle-node-container validator__lifecycle-deposited {{ if .ShowDeposit }}done{{ else }}active{{ end }}">
+                  <div class="validator__lifecycle-node-header">Deposited</div>
+                  <div class="validator__lifecycle-node" data-bs-toggle="tooltip" title="Builder deposit has been processed">
+                    <i class="fas fa-check deposit-success"></i>
+                    <i class="fas fa-times fail deposit-fail"></i>
+                    <div class="spinner">
+                      <div class="double-bounce1"></div>
+                      <div class="double-bounce2"></div>
+                    </div>
+                  </div>
+                </div>
+                <div class="validator__lifecycle-progress validator__lifecycle-deposited text-white">
+                  <div class="validator__lifecycle-progress-epoch">
+                    {{ if .ShowDeposit }}
+                    <div data-bs-toggle="tooltip" title="The deposit epoch is when the builder was registered.">
+                      <a href="/epoch/{{ .DepositEpoch }}">{{ if eq .DepositEpoch 0 }}genesis{{ else }}{{ .DepositEpoch }}{{ end }}</a>
+                    </div>
+                    {{ end }}
+                  </div>
+                </div>
+                <div id="lifecycle-active" class="validator__lifecycle-node-container validator__lifecycle-active {{ if eq .State "Active" }}online{{ else if or (eq .State "Exited") (eq .State "Superseded") }}done{{ end }}">
+                  <div class="validator__lifecycle-node-container">
+                    <div class="validator__lifecycle-node-header">Active</div>
+                    <div class="validator__lifecycle-node" data-bs-toggle="tooltip" title="Builder is active and can submit bids">
+                      <i class="fas fa-power-off online"></i>
+                      <i class="fas fa-power-off offline"></i>
+                      <i class="fas fa-check"></i>
+                      <div class="spinner">
+                        <div class="double-bounce1"></div>
+                        <div class="double-bounce2"></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="validator__lifecycle-progress validator__lifecycle-active">
+                  <div class="validator__lifecycle-progress-epoch">
+                    {{ if .ShowWithdrawable }}
+                      <div data-bs-toggle="tooltip" title="The withdrawable epoch is when the builder can exit">
+                        <a href="/epoch/{{ .WithdrawableEpoch }}">{{ .WithdrawableEpoch }}</a>
+                      </div>
+                    {{ end }}
+                  </div>
+                </div>
+                <div id="lifecycle-exited" class="validator__lifecycle-node-container validator__lifecycle-exited {{ if or (eq .State "Exited") (eq .State "Superseded") }}done{{ else if .ShowWithdrawable }}active{{ end }}">
+                  <div class="validator__lifecycle-node-container">
+                    <div class="validator__lifecycle-node-header">Exited</div>
+                    <div class="validator__lifecycle-node" data-bs-toggle="tooltip" title="Builder has exited or been superseded">
+                      <i class="fas fa-door-open"></i>
+                      <div class="spinner">
+                        <div class="double-bounce1"></div>
+                        <div class="double-bounce2"></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="row border-bottom p-2 mx-0">
+          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Represents the index for this builder">Index:</span></div>
+          <div class="col-md-10">
+            {{ formatBuilderWithIndex .Index .Name }}
+            <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ .Index }}"></i>
+          </div>
+        </div>
+        <div class="row border-bottom p-2 mx-0">
+          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Represents the public key for this builder">Public Key:</span></div>
+          <div class="col-md-10 text-monospace">
+            0x{{ printf "%x" .PublicKey }}
+            <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" .PublicKey }}"></i>
+          </div>
+        </div>
+        <div class="row border-bottom p-2 mx-0">
+          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="The execution layer address for this builder">Execution Address:</span></div>
+          <div class="col-md-10">
+            {{ ethAddressLink .ExecutionAddress }}
+          </div>
+        </div>
+        <div class="row border-bottom p-2 mx-0">
+          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="The current status for this builder">Status:</span></div>
+          <div class="col-md-10">
+            {{ if eq .State "Active" }}
+              <span class="badge rounded-pill text-bg-success">Active</span>
+            {{ else if eq .State "Exited" }}
+              <span class="badge rounded-pill text-bg-warning">Exited</span>
+            {{ else if eq .State "Superseded" }}
+              <span class="badge rounded-pill text-bg-secondary">Superseded</span>
+            {{ else }}
+              <span class="badge rounded-pill text-bg-dark">{{ .State }}</span>
+            {{ end }}
+          </div>
+        </div>
+        <div class="row border-bottom p-2 mx-0">
+          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Represents the balance for this builder (Epoch {{ .CurrentEpoch }})">Balance:</span></div>
+          <div class="col-md-10">
+            {{ formatEthFromGwei .Balance }}
+            <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ formatEthFromGwei .Balance }}"></i>
+          </div>
+        </div>
+        <div class="row border-bottom p-2 mx-0">
+          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Builder version">Version:</span></div>
+          <div class="col-md-10">
+            {{ .Version }}
+          </div>
+        </div>
+        {{ if .ShowDeposit }}
+        <div class="row border-bottom p-2 mx-0">
+          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="The epoch when this builder was deposited">Deposit Epoch:</span></div>
+          <div class="col-md-10">
+            <a href="/epoch/{{ .DepositEpoch }}">{{ formatAddCommas .DepositEpoch }}</a>
+            <span class="text-muted ms-2">({{ formatRecentTimeShort .DepositTs }})</span>
+          </div>
+        </div>
+        {{ end }}
+        {{ if .ShowWithdrawable }}
+        <div class="row border-bottom p-2 mx-0">
+          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="The epoch when this builder can withdraw">Withdrawable Epoch:</span></div>
+          <div class="col-md-10">
+            <a href="/epoch/{{ .WithdrawableEpoch }}">{{ formatAddCommas .WithdrawableEpoch }}</a>
+            <span class="text-muted ms-2">({{ formatRecentTimeShort .WithdrawableTs }})</span>
+          </div>
+        </div>
+        {{ end }}
+
+      </div>
+    </div>
+
+
+    <ul class="nav nav-tabs justify-content-start mt-3" id="tab" role="tablist">
+      <li class="nav-item">
+        <a class="nav-link{{ if eq .TabView "blocks" }} active{{ end }}" id="recentBlocks-tab" data-lazy-tab="recentBlocks" data-bs-toggle="tab" data-bs-target="#recentBlocks" href="?v=blocks" role="tab" aria-controls="recentBlocks" aria-selected="{{ if eq .TabView "blocks" }}true{{ else }}false{{ end }}">
+          <i class="fa fa-cubes me-2"></i> Recent Blocks
+        </a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link{{ if eq .TabView "bids" }} active{{ end }}" id="recentBids-tab" data-lazy-tab="recentBids" data-bs-toggle="tab" data-bs-target="#recentBids" href="?v=bids" role="tab" aria-controls="recentBids" aria-selected="{{ if eq .TabView "bids" }}true{{ else }}false{{ end }}">
+          <i class="fa fa-gavel me-2"></i> Recent Bids
+        </a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link{{ if eq .TabView "deposits" }} active{{ end }}" id="recentDeposits-tab" data-lazy-tab="recentDeposits" data-bs-toggle="tab" data-bs-target="#recentDeposits" href="?v=deposits" role="tab" aria-controls="recentDeposits" aria-selected="{{ if eq .TabView "deposits" }}true{{ else }}false{{ end }}">
+          <i class="fa fa-wallet me-2"></i> Deposits
+        </a>
+      </li>
+    </ul>
+
+    <div class="tab-content" id="tabContent">
+      <div class="tab-pane fade{{ if eq .TabView "blocks" }} show active{{ end }}" id="recentBlocks" role="tabpanel" aria-labelledby="recentBlocks-tab" data-loaded="{{ if eq .TabView "blocks" }}true{{ else }}false{{ end }}">
+        {{ if eq .TabView "blocks" }}
+          {{ template "recentBlocks" . }}
+        {{ end }}
+      </div>
+      <div class="tab-pane fade{{ if eq .TabView "bids" }} show active{{ end }}" id="recentBids" role="tabpanel" aria-labelledby="recentBids-tab" data-loaded="{{ if eq .TabView "bids" }}true{{ else }}false{{ end }}">
+        {{ if eq .TabView "bids" }}
+          {{ template "recentBids" . }}
+        {{ end }}
+      </div>
+      <div class="tab-pane fade{{ if eq .TabView "deposits" }} show active{{ end }}" id="recentDeposits" role="tabpanel" aria-labelledby="recentDeposits-tab" data-loaded="{{ if eq .TabView "deposits" }}true{{ else }}false{{ end }}">
+        {{ if eq .TabView "deposits" }}
+          {{ template "recentDeposits" . }}
+        {{ end }}
+      </div>
+    </div>
+
+  </div>
+{{ end }}
+{{ define "lazyPage" }}
+  {{ if eq .TabView "blocks" }}
+    {{ template "recentBlocks" . }}
+  {{ else if eq .TabView "bids" }}
+    {{ template "recentBids" . }}
+  {{ else if eq .TabView "deposits" }}
+    {{ template "recentDeposits" . }}
+  {{ else }}
+    Unknown tab
+  {{ end }}
+{{ end }}
+{{ define "js" }}
+<script type="text/javascript">
+  $(document).ready(function() {
+    const tabEl = document.querySelectorAll('a[data-lazy-tab]')
+    Array.from(tabEl).forEach(el => {
+      el.addEventListener('click', onTabSelected);
+    });
+
+    function onTabSelected(event) {
+      event.preventDefault();
+      var tabId = event.target.getAttribute('data-lazy-tab');
+      var tabEl = document.getElementById(tabId);
+      if (!$(tabEl).data("loaded")) {
+        $.get(event.target.getAttribute('href') + "&lazy=true", function(data) {
+          $(tabEl).html(data);
+          $(tabEl).data("loaded", true);
+          explorer.initControls();
+        });
+      }
+
+      var tab = new bootstrap.Tab(tabEl);
+      tab.show();
+
+      window.history.replaceState(null, document.title, "/builder/{{ .Index }}" + event.target.getAttribute('href'));
+    }
+
+  });
+</script>
+{{ end }}
+{{ define "css" }}
+<link rel="stylesheet" href="/css/validator.css" />
+{{ end }}

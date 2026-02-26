@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/attestantio/go-eth2-client/spec"
+	"github.com/attestantio/go-eth2-client/spec/gloas"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/blockdb"
 	"github.com/ethpandaops/dora/clients/consensus"
@@ -264,9 +265,15 @@ func (s *synchronizer) loadBlockHeader(client *Client, slot phase0.Slot) (*phase
 }
 
 func (s *synchronizer) loadBlockBody(client *Client, root phase0.Root) (*spec.VersionedSignedBeaconBlock, error) {
-	ctx, cancel := context.WithTimeout(s.syncCtx, beaconHeaderRequestTimeout)
+	ctx, cancel := context.WithTimeout(s.syncCtx, beaconBodyRequestTimeout)
 	defer cancel()
 	return LoadBeaconBlock(ctx, client, root)
+}
+
+func (s *synchronizer) loadBlockPayload(client *Client, root phase0.Root) (*gloas.SignedExecutionPayloadEnvelope, error) {
+	ctx, cancel := context.WithTimeout(s.syncCtx, executionPayloadRequestTimeout)
+	defer cancel()
+	return LoadExecutionPayload(ctx, client, root)
 }
 
 func (s *synchronizer) syncEpoch(syncEpoch phase0.Epoch, client *Client, lastTry bool) (bool, error) {
@@ -327,6 +334,17 @@ func (s *synchronizer) syncEpoch(syncEpoch phase0.Epoch, client *Client, lastTry
 				block.SetBlock(blockBody)
 			}
 
+			if slot > 0 && chainState.IsEip7732Enabled(chainState.EpochOfSlot(slot)) {
+				blockPayload, err := s.loadBlockPayload(client, phase0.Root(blockRoot))
+				if err != nil && !lastTry {
+					return false, fmt.Errorf("error fetching slot %v execution payload: %v", slot, err)
+				}
+
+				if blockPayload != nil {
+					block.SetExecutionPayload(blockPayload)
+				}
+			}
+
 			s.cachedBlocks[slot] = block
 		}
 
@@ -365,7 +383,9 @@ func (s *synchronizer) syncEpoch(syncEpoch phase0.Epoch, client *Client, lastTry
 	}
 
 	epochState := newEpochState(dependentRoot)
+	t1 := time.Now()
 	state, err := epochState.loadState(s.syncCtx, client, nil)
+	loadDuration := time.Since(t1)
 	if (err != nil || epochState.loadingStatus != 2) && !lastTry {
 		return false, fmt.Errorf("error fetching epoch %v state: %v", syncEpoch, err)
 	}
@@ -385,7 +405,7 @@ func (s *synchronizer) syncEpoch(syncEpoch phase0.Epoch, client *Client, lastTry
 	if epochState != nil && epochState.loadingStatus == 2 {
 		epochStats = newEpochStats(syncEpoch, dependentRoot)
 		epochStats.dependentState = epochState
-		epochStats.processState(s.indexer, validatorSet)
+		epochStats.processState(s.indexer, validatorSet, loadDuration)
 		epochStatsValues = epochStats.GetValues(false)
 	}
 
@@ -408,6 +428,36 @@ func (s *synchronizer) syncEpoch(syncEpoch phase0.Epoch, client *Client, lastTry
 	sim := newStateSimulator(s.indexer, epochStats)
 	if sim != nil {
 		sim.validatorSet = validatorSet
+	}
+
+	// Determine payload status for canonical blocks (ePBS only)
+	// A payload is orphaned if the next canonical block doesn't build on it
+	allCanonicalBlocks := append(canonicalBlocks, nextEpochCanonicalBlocks...)
+	for i, block := range canonicalBlocks {
+		if !chainState.IsEip7732Enabled(chainState.EpochOfSlot(block.Slot)) {
+			continue
+		}
+
+		blockIndex := block.GetBlockIndex(s.indexer.ctx)
+		if blockIndex == nil || blockIndex.ExecutionNumber == 0 {
+			continue // no execution payload
+		}
+
+		// Find the next canonical block
+		var nextBlock *Block
+		if i+1 < len(allCanonicalBlocks) {
+			nextBlock = allCanonicalBlocks[i+1]
+		}
+
+		if nextBlock != nil {
+			nextBlockIndex := nextBlock.GetBlockIndex(s.indexer.ctx)
+			if nextBlockIndex != nil {
+				// Check if next block builds on this block's payload
+				if !bytes.Equal(nextBlockIndex.ExecutionParentHash[:], blockIndex.ExecutionHash[:]) {
+					block.isPayloadOrphaned = true
+				}
+			}
+		}
 	}
 
 	// save blocks

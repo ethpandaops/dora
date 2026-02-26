@@ -1,0 +1,52 @@
+{{ define "recentDeposits" }}
+<div class="card block-card">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-nobr" id="recent-deposits">
+        <thead>
+          <tr>
+            <th>Type</th>
+            <th>Slot</th>
+            <th data-timecol="duration">Time</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{ if gt (len .RecentDeposits) 0 }}
+            {{ range $i, $deposit := .RecentDeposits }}
+              <tr>
+                <td>
+                  {{ if eq $deposit.Type "exit" }}
+                    <span class="badge rounded-pill text-bg-warning">Voluntary Exit</span>
+                  {{ else }}
+                    <span class="badge rounded-pill text-bg-info">{{ $deposit.Type }}</span>
+                  {{ end }}
+                </td>
+                <td><a href="/slot/{{ $deposit.SlotNumber }}">{{ formatAddCommas $deposit.SlotNumber }}</a></td>
+                <td data-timer="{{ $deposit.Time.Unix }}"><span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $deposit.Time }}">{{ formatRecentTimeShort $deposit.Time }}</span></td>
+                <td>
+                  {{ if $deposit.Orphaned }}
+                    <span class="badge rounded-pill text-bg-secondary">Orphaned</span>
+                  {{ else }}
+                    <span class="badge rounded-pill text-bg-success">Included</span>
+                  {{ end }}
+                </td>
+              </tr>
+            {{ end }}
+          {{ else }}
+            <tr style="height: 430px;">
+              <td></td>
+              <td style="vertical-align: middle;" colspan="2">
+                <div class="img-fluid mx-auto p-3 d-flex align-items-center" style="max-height: 400px; max-width: 400px; overflow: hidden;">
+                  {{ template "timeline_svg" }}
+                </div>
+              </td>
+              <td></td>
+            </tr>
+          {{ end }}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{{ end }}

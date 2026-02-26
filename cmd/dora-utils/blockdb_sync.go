@@ -271,7 +271,7 @@ func processSlot(ctx context.Context, pool *consensus.Pool, dynSsz *dynssz.DynSs
 		return slotResult{slot: slot, err: fmt.Errorf("failed to marshal block header for slot %d: %v", slot, err), time: time.Since(t1)}
 	}
 
-	added, err := blockdb.GlobalBlockDb.AddBlockWithCallback(ctx, slot, blockHeader.Root[:], func() (*btypes.BlockData, error) {
+	added, _, err := blockdb.GlobalBlockDb.AddBlockWithCallback(ctx, slot, blockHeader.Root[:], func() (*btypes.BlockData, error) {
 		blockBody, err := client.GetRPCClient().GetBlockBodyByBlockroot(ctx, blockHeader.Root)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get block body for slot %d: %v", slot, err)
@@ -282,11 +282,29 @@ func processSlot(ctx context.Context, pool *consensus.Pool, dynSsz *dynssz.DynSs
 			return nil, fmt.Errorf("failed to marshal block body for slot %d: %v", slot, err)
 		}
 
+		var payloadVersion uint64
+		var payloadBytes []byte
+
+		chainState := pool.GetChainState()
+		if chainState.IsEip7732Enabled(chainState.EpochOfSlot(phase0.Slot(slot))) {
+			blockPayload, err := client.GetRPCClient().GetExecutionPayloadByBlockroot(ctx, blockHeader.Root)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get block execution payload for slot %d: %v", slot, err)
+			}
+
+			payloadVersion, payloadBytes, err = beacon.MarshalVersionedSignedExecutionPayloadEnvelopeSSZ(dynSsz, blockPayload, true)
+			if err != nil {
+				return nil, fmt.Errorf("failed to marshal block execution payload for slot %d: %v", slot, err)
+			}
+		}
+
 		return &btypes.BlockData{
-			HeaderVersion: 1,
-			HeaderData:    headerBytes,
-			BodyVersion:   version,
-			BodyData:      bodyBytes,
+			HeaderVersion:  1,
+			HeaderData:     headerBytes,
+			BodyVersion:    version,
+			BodyData:       bodyBytes,
+			PayloadVersion: payloadVersion,
+			PayloadData:    payloadBytes,
 		}, nil
 	})
 	if err != nil {
