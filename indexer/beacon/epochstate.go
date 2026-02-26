@@ -194,25 +194,18 @@ func (s *epochState) processState(state *spec.VersionedBeaconState, beaconBlock 
 
 	// Process builder set for Gloas/Heze
 	if state.Version >= spec.DataVersionGloas {
-		var gloasState *gloas.BeaconState
-		if state.Gloas != nil {
-			gloasState = state.Gloas
-		} else if state.Heze != nil {
-			gloasState = state.Heze
+		builders, _ := state.Builders()
+
+		if cache != nil {
+			cache.indexer.builderCache.updateBuilderSet(slot, dependentRoot, builders)
 		}
 
-		if gloasState != nil {
-			if cache != nil {
-				cache.indexer.builderCache.updateBuilderSet(slot, dependentRoot, gloasState.Builders)
-			}
-
-			// Extract builder balances
-			builderBalances := make([]phase0.Gwei, len(gloasState.Builders))
-			for i, builder := range gloasState.Builders {
-				builderBalances[i] = builder.Balance
-			}
-			s.builderBalances = builderBalances
+		// Extract builder balances
+		builderBalances := make([]phase0.Gwei, len(builders))
+		for i, builder := range builders {
+			builderBalances[i] = builder.Balance
 		}
+		s.builderBalances = builderBalances
 	}
 
 	validatorPubkeyMap := make(map[phase0.BLSPubKey]phase0.ValidatorIndex)
@@ -316,22 +309,16 @@ func (s *epochState) processState(state *spec.VersionedBeaconState, beaconBlock 
 // isGloasPostPayloadState checks whether the Gloas/Heze state is post-payload
 // (i.e. execution payload deposits have been applied) for the given slot.
 func isGloasPostPayloadState(state *spec.VersionedBeaconState, slot phase0.Slot) bool {
-	var gloasState *gloas.BeaconState
-	if state.Gloas != nil {
-		gloasState = state.Gloas
-	} else if state.Heze != nil {
-		gloasState = state.Heze
-	}
-
-	if gloasState == nil {
+	executionPayloadAvailability, err := state.ExecutionPayloadAvailability()
+	if err != nil {
 		return false
 	}
 
-	bitfieldLen := uint64(len(gloasState.ExecutionPayloadAvailability)) * 8
+	bitfieldLen := uint64(len(executionPayloadAvailability)) * 8
 	if bitfieldLen == 0 {
 		return false
 	}
 
 	idx := uint64(slot) % bitfieldLen
-	return gloasState.ExecutionPayloadAvailability[idx/8]&(1<<(idx%8)) != 0
+	return executionPayloadAvailability[idx/8]&(1<<(idx%8)) != 0
 }
