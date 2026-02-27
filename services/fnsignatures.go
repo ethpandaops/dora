@@ -2,6 +2,7 @@ package services
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -20,6 +21,7 @@ import (
 )
 
 type TxSignaturesService struct {
+	ctx context.Context
 }
 
 var GlobalTxSignaturesService *TxSignaturesService
@@ -43,7 +45,9 @@ func StartTxSignaturesService() error {
 		concurrencyLimit = 10
 	}
 
-	GlobalTxSignaturesService = &TxSignaturesService{}
+	GlobalTxSignaturesService = &TxSignaturesService{
+		ctx: GlobalBeaconService.ctx,
+	}
 
 	if !utils.Config.TxSignature.DisableLookupLoop {
 		go GlobalTxSignaturesService.runLookupLoop()
@@ -51,7 +55,7 @@ func StartTxSignaturesService() error {
 	return nil
 }
 
-func (tss *TxSignaturesService) LookupSignatures(sigBytes []types.TxSignatureBytes) map[types.TxSignatureBytes]*TxSignaturesLookup {
+func (tss *TxSignaturesService) LookupSignatures(ctx context.Context, sigBytes []types.TxSignatureBytes) map[types.TxSignatureBytes]*TxSignaturesLookup {
 	lookups := map[types.TxSignatureBytes]*TxSignaturesLookup{}
 	unresolvedLookups := make([]*TxSignaturesLookup, 0)
 	unresolvedLookupBytes := make([]types.TxSignatureBytes, 0)
@@ -70,7 +74,7 @@ func (tss *TxSignaturesService) LookupSignatures(sigBytes []types.TxSignatureByt
 
 	// check known signatures in DB
 	if len(unresolvedLookups) > 0 {
-		for _, dbSigEntry := range db.GetTxFunctionSignaturesByBytes(unresolvedLookupBytes) {
+		for _, dbSigEntry := range db.GetTxFunctionSignaturesByBytes(ctx, unresolvedLookupBytes) {
 			var lookup *TxSignaturesLookup
 			for i, l := range unresolvedLookups {
 				if l == nil {
@@ -110,7 +114,7 @@ func (tss *TxSignaturesService) LookupSignatures(sigBytes []types.TxSignatureByt
 		}
 		checkTimeout := time.Now().Unix() - recheckTime
 
-		for _, unknownSigEntry := range db.GetUnknownFunctionSignatures(unresolvedLookupBytes) {
+		for _, unknownSigEntry := range db.GetUnknownFunctionSignatures(ctx, unresolvedLookupBytes) {
 			if unknownSigEntry.LastCheck < uint64(checkTimeout) {
 				break
 			}
@@ -155,7 +159,7 @@ func (tss *TxSignaturesService) LookupSignatures(sigBytes []types.TxSignatureByt
 
 		//logger_tss.Infof("starting db transaction (pending sig)")
 		db.RunDBTransaction(func(tx *sqlx.Tx) error {
-			err := db.InsertPendingFunctionSignatures(pendingLookups, tx)
+			err := db.InsertPendingFunctionSignatures(ctx, tx, pendingLookups)
 			if err != nil {
 				logger_tss.Warnf("error saving pending signature: %v", err)
 			}
@@ -192,7 +196,7 @@ func (tss *TxSignaturesService) processPendingSignatures() {
 	if batchLimit == 0 {
 		batchLimit = 10
 	}
-	pendingSigs := db.GetPendingFunctionSignatures(batchLimit)
+	pendingSigs := db.GetPendingFunctionSignatures(tss.ctx, batchLimit)
 
 	wg := sync.WaitGroup{}
 	lookups := make([]*TxSignaturesLookup, 0)
@@ -241,19 +245,19 @@ func (tss *TxSignaturesService) processPendingSignatures() {
 
 	if len(pendingSigBytes) > 0 {
 		err := db.RunDBTransaction(func(tx *sqlx.Tx) error {
-			err := db.DeletePendingFunctionSignatures(pendingSigBytes, tx)
+			err := db.DeletePendingFunctionSignatures(tss.ctx, tx, pendingSigBytes)
 			if err != nil {
 				logger_tss.Warnf("error deleting pending signature: %v", err)
 			}
 
 			if len(unknownSigs) > 0 {
-				err := db.InsertUnknownFunctionSignatures(unknownSigs, tx)
+				err := db.InsertUnknownFunctionSignatures(tss.ctx, tx, unknownSigs)
 				if err != nil {
 					logger_tss.Warnf("error saving unknown signature: %v", err)
 				}
 			}
 			for _, fnsig := range resolvedSigs {
-				err := db.InsertTxFunctionSignature(fnsig, tx)
+				err := db.InsertTxFunctionSignature(tss.ctx, tx, fnsig)
 				if err != nil {
 					logger_tss.Warnf("error saving resolved signature: %v", err)
 				}
@@ -268,12 +272,36 @@ func (tss *TxSignaturesService) processPendingSignatures() {
 }
 
 func (tss *TxSignaturesService) lookupSignature(lookup *TxSignaturesLookup) error {
-	var resErr error
+	var lastErr error
 
+	// Priority 1: CBT (if configured)
+	if utils.Config.TxSignature.CbtBaseUrl != "" {
+		err := tss.lookupCBT(lookup)
+		if err != nil {
+			logger_tss.Debugf("CBT lookup for 0x%x failed: %v", lookup.Bytes, err)
+			lastErr = err
+		} else if lookup.Status == types.TxSigStatusFound {
+			return nil
+		}
+	}
+
+	// Priority 2: Sourcify
+	if !utils.Config.TxSignature.DisableSourcify {
+		err := tss.lookupSourcify(lookup)
+		if err != nil {
+			logger_tss.Debugf("Sourcify lookup for 0x%x failed: %v", lookup.Bytes, err)
+			lastErr = err
+		} else if lookup.Status == types.TxSigStatusFound {
+			return nil
+		}
+	}
+
+	// Priority 3: 4bytes
 	if !utils.Config.TxSignature.Disable4Bytes {
 		err := tss.lookup4Bytes(lookup)
 		if err != nil {
-			resErr = fmt.Errorf("4bytes lookup failed: %w", err)
+			logger_tss.Debugf("4bytes lookup for 0x%x failed: %v", lookup.Bytes, err)
+			lastErr = err
 		} else if lookup.Status == types.TxSigStatusFound {
 			return nil
 		}
@@ -281,7 +309,131 @@ func (tss *TxSignaturesService) lookupSignature(lookup *TxSignaturesLookup) erro
 
 	logger_tss.Debugf("lookup fn signature 0x%x (%v): %v", lookup.Bytes[:], lookup.Status, lookup.Signature)
 
-	return resErr
+	return lastErr
+}
+
+// lookupCBT looks up a function signature via the CBT internal API.
+func (tss *TxSignaturesService) lookupCBT(lookup *TxSignaturesLookup) error {
+	baseUrl := utils.Config.TxSignature.CbtBaseUrl
+
+	separator := "?"
+	if strings.Contains(baseUrl, "?") {
+		separator = "&"
+	}
+
+	url := fmt.Sprintf(
+		"%s%sselector_eq=0x%x&page_size=1",
+		baseUrl, separator, lookup.Bytes,
+	)
+
+	req, err := nethttp.NewRequest("GET", url, nil)
+	if err != nil {
+		return err
+	}
+
+	client := &nethttp.Client{Timeout: time.Second * 10}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+
+	defer resp.Body.Close()
+
+	if resp.StatusCode != nethttp.StatusOK {
+		data, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("url: %v, code: %v, error-response: %s", url, resp.StatusCode, data)
+	}
+
+	var returnValue struct {
+		DimFunctionSignatures []struct {
+			Selector string `json:"selector"`
+			Name     string `json:"name"`
+		} `json:"dim_function_signatures"`
+	}
+
+	dec := json.NewDecoder(resp.Body)
+	if err = dec.Decode(&returnValue); err != nil {
+		return fmt.Errorf("error parsing CBT json response: %w", err)
+	}
+
+	if len(returnValue.DimFunctionSignatures) == 0 {
+		lookup.Status = types.TxSigStatusUnknown
+	} else {
+		lookup.Status = types.TxSigStatusFound
+		lookup.Signature = returnValue.DimFunctionSignatures[0].Name
+		sigparts := strings.Split(lookup.Signature, "(")
+		lookup.Name = sigparts[0]
+	}
+
+	return nil
+}
+
+// lookupSourcify looks up a function signature via the Sourcify signature database.
+func (tss *TxSignaturesService) lookupSourcify(lookup *TxSignaturesLookup) error {
+	hex := fmt.Sprintf("0x%x", lookup.Bytes)
+	url := fmt.Sprintf(
+		"https://api.4byte.sourcify.dev/signature-database/v1/lookup?function=%s&filter=true",
+		hex,
+	)
+
+	req, err := nethttp.NewRequest("GET", url, nil)
+	if err != nil {
+		return err
+	}
+
+	client := &nethttp.Client{Timeout: time.Second * 10}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+
+	defer resp.Body.Close()
+
+	if resp.StatusCode != nethttp.StatusOK {
+		data, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("url: %v, code: %v, error-response: %s", url, resp.StatusCode, data)
+	}
+
+	var returnValue struct {
+		Ok     bool `json:"ok"`
+		Result struct {
+			Function map[string][]struct {
+				Name                string `json:"name"`
+				Filtered            bool   `json:"filtered"`
+				HasVerifiedContract bool   `json:"hasVerifiedContract"`
+			} `json:"function"`
+		} `json:"result"`
+	}
+
+	dec := json.NewDecoder(resp.Body)
+	if err = dec.Decode(&returnValue); err != nil {
+		return fmt.Errorf("error parsing Sourcify json response: %w", err)
+	}
+
+	if !returnValue.Ok {
+		return fmt.Errorf("sourcify api returned error")
+	}
+
+	results := returnValue.Result.Function[hex]
+	if len(results) == 0 {
+		lookup.Status = types.TxSigStatusUnknown
+	} else {
+		// prefer results from verified contracts
+		best := results[0]
+		for _, r := range results {
+			if r.HasVerifiedContract && !r.Filtered {
+				best = r
+				break
+			}
+		}
+
+		lookup.Status = types.TxSigStatusFound
+		lookup.Signature = best.Name
+		sigparts := strings.Split(lookup.Signature, "(")
+		lookup.Name = sigparts[0]
+	}
+
+	return nil
 }
 
 type txSigLookup_4bytesResponse struct {

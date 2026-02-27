@@ -156,7 +156,7 @@ func APIDepositsQueueV1(w http.ResponseWriter, r *http.Request) {
 	if isElectra {
 		// Get queued deposits for Electra
 		headBlock := services.GlobalBeaconService.GetBeaconIndexer().GetCanonicalHead(nil)
-		queuedDeposits := services.GlobalBeaconService.GetIndexedDepositQueue(headBlock)
+		queuedDeposits := services.GlobalBeaconService.GetIndexedDepositQueue(r.Context(), headBlock)
 
 		if queuedDeposits != nil && len(queuedDeposits.Queue) > 0 {
 			totalNewValidators = queuedDeposits.TotalNew
@@ -219,7 +219,7 @@ func APIDepositsQueueV1(w http.ResponseWriter, r *http.Request) {
 
 				// Get transaction details for these deposits
 				txDetailsMap := map[uint64]*dbtypes.DepositTx{}
-				for _, txDetail := range db.GetDepositTxsByIndexes(depositIndexes) {
+				for _, txDetail := range db.GetDepositTxsByIndexes(r.Context(), depositIndexes) {
 					txDetailsMap[txDetail.Index] = txDetail
 				}
 

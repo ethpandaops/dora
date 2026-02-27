@@ -185,7 +185,7 @@ func APIValidatorsV1(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get validators from service
-	validatorSet, validatorSetLen := services.GlobalBeaconService.GetFilteredValidatorSet(&validatorFilter, true)
+	validatorSet, validatorSetLen := services.GlobalBeaconService.GetFilteredValidatorSet(r.Context(), &validatorFilter, true)
 
 	var validators []*APIValidatorInfo
 	for _, validator := range validatorSet {

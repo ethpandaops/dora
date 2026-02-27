@@ -50,7 +50,7 @@ func (cache *forkCache) processBlock(block *Block) error {
 		parentIsFinalized = true
 	} else if parentBlock := cache.indexer.blockCache.getBlockByRoot(*parentRoot); parentBlock == nil {
 		// parent block might already be finalized, check if it's in the database
-		blockHead := db.GetBlockHeadByRoot((*parentRoot)[:])
+		blockHead := db.GetBlockHeadByRoot(cache.indexer.ctx, (*parentRoot)[:])
 		if blockHead != nil {
 			parentForkId = ForkKey(blockHead.ForkId)
 			parentSlot = phase0.Slot(blockHead.Slot)
@@ -101,12 +101,12 @@ func (cache *forkCache) processBlock(block *Block) error {
 		if parentIsFinalized {
 			// parent is finalized, so blocks building on top of it might be finalized as well.
 			// check if we have other finalized blocks building on top of the parent in the database
-			for _, child := range db.GetSlotsByParentRoot((*parentRoot)[:]) {
+			for _, child := range db.GetSlotsByParentRoot(cache.indexer.ctx, (*parentRoot)[:]) {
 				if bytes.Equal(child.Root, block.Root[:]) {
 					continue
 				}
 
-				otherChildren = append(otherChildren, newBlock(cache.indexer.dynSsz, phase0.Root(child.Root), phase0.Slot(child.Slot)))
+				otherChildren = append(otherChildren, newBlock(cache.indexer.dynSsz, phase0.Root(child.Root), phase0.Slot(child.Slot), child.BlockUid))
 			}
 		}
 
@@ -271,7 +271,7 @@ func (cache *forkCache) processBlock(block *Block) error {
 
 					batchRoots := updateRoots[start:end]
 
-					err := db.UpdateUnfinalizedBlockForkId(batchRoots, uint64(forkId), tx)
+					err := db.UpdateUnfinalizedBlockForkId(cache.indexer.ctx, tx, batchRoots, uint64(forkId))
 					if err != nil {
 						return err
 					}
@@ -282,7 +282,7 @@ func (cache *forkCache) processBlock(block *Block) error {
 
 			// add new forks
 			for _, newFork := range newForks {
-				err := db.InsertFork(newFork.fork.toDbFork(), tx)
+				err := db.InsertFork(cache.indexer.ctx, tx, newFork.fork.toDbFork())
 				if err != nil {
 					return err
 				}
@@ -308,7 +308,7 @@ func (cache *forkCache) processBlock(block *Block) error {
 			// update parents of forks building on top of current blocks chain segment
 			if len(updateForks) > 0 {
 				for _, updatedFork := range updateForks {
-					err := db.UpdateForkParent(updatedFork.baseRoot, uint64(updatedFork.parent), tx)
+					err := db.UpdateForkParent(cache.indexer.ctx, tx, updatedFork.baseRoot, uint64(updatedFork.parent))
 					if err != nil {
 						return err
 					}

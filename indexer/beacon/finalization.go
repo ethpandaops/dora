@@ -2,7 +2,6 @@ package beacon
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"sort"
 	"sync"
@@ -29,7 +28,7 @@ func (indexer *Indexer) processFinalityEvent(finalityEvent *v1.Finality) error {
 	oldLastFinalizedEpoch := indexer.lastFinalizedEpoch
 
 	for finalizeEpoch := indexer.lastFinalizedEpoch; finalizeEpoch < finalityEvent.Finalized.Epoch; finalizeEpoch++ {
-		readyClients := indexer.GetReadyClientsByCheckpoint(finalityEvent.Finalized.Root, true)
+		readyClients := indexer.GetReadyClientsByCheckpoint(finalityEvent.Finalized.Epoch, finalityEvent.Finalized.Root, true)
 		retryCount := 5
 
 		for {
@@ -107,9 +106,9 @@ func (indexer *Indexer) processFinalityEvent(finalityEvent *v1.Finality) error {
 	} else if !indexer.synchronizer.running && indexer.synchronizer.currentEpoch >= oldLastFinalizedEpoch && indexer.lastFinalizedEpoch > oldLastFinalizedEpoch {
 		indexer.synchronizer.currentEpoch = indexer.lastFinalizedEpoch
 		err := db.RunDBTransaction(func(tx *sqlx.Tx) error {
-			return db.SetExplorerState("indexer.syncstate", &dbtypes.IndexerSyncState{
+			return db.SetExplorerState(indexer.ctx, tx, "indexer.syncstate", &dbtypes.IndexerSyncState{
 				Epoch: uint64(indexer.lastFinalizedEpoch),
-			}, tx)
+			})
 		})
 		if err != nil {
 			indexer.logger.WithError(err).Errorf("failed updating sync state")
@@ -138,7 +137,7 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 	for _, block := range epochBlocks {
 		// restore block body from db as we gonna use it a lot for the epoch & voting aggregations
 		// block is wiped from cache after processing anyway, so no need to prune it again
-		block.unpruneBlockBody()
+		block.unpruneBlockBody(indexer.ctx)
 
 		if indexer.blockCache.isCanonicalBlock(block.Root, justifiedRoot) {
 			if _, err := block.EnsureBlock(func() (*spec.VersionedSignedBeaconBlock, error) {
@@ -162,7 +161,7 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 	}
 
 	for _, block := range nextEpochBlocks {
-		block.unpruneBlockBody()
+		block.unpruneBlockBody(indexer.ctx)
 		if indexer.blockCache.isCanonicalBlock(block.Root, justifiedRoot) {
 			nextEpochCanonicalBlocks = append(nextEpochCanonicalBlocks, block)
 		} else {
@@ -237,9 +236,9 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 
 			canonicalBlock = indexer.blockCache.getBlockByRoot(*parentRoot)
 			if canonicalBlock == nil {
-				blockHead := db.GetBlockHeadByRoot((*parentRoot)[:])
+				blockHead := db.GetBlockHeadByRoot(indexer.ctx, (*parentRoot)[:])
 				if blockHead != nil {
-					canonicalBlock = newBlock(indexer.dynSsz, phase0.Root(blockHead.Root), phase0.Slot(blockHead.Slot))
+					canonicalBlock = newBlock(indexer.dynSsz, phase0.Root(blockHead.Root), phase0.Slot(blockHead.Slot), blockHead.BlockUid)
 					canonicalBlock.isInFinalizedDb = true
 					parentRootVal := phase0.Root(blockHead.ParentRoot)
 					canonicalBlock.parentRoot = &parentRootVal
@@ -249,7 +248,7 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 				dependentHead, _ := LoadBeaconHeader(client.getContext(), client, *parentRoot)
 
 				if dependentHead != nil {
-					canonicalBlock = newBlock(indexer.dynSsz, phase0.Root(*parentRoot), phase0.Slot(dependentHead.Message.Slot))
+					canonicalBlock = newBlock(indexer.dynSsz, phase0.Root(*parentRoot), phase0.Slot(dependentHead.Message.Slot), 0)
 					canonicalBlock.isInFinalizedDb = true
 					parentRootVal := phase0.Root(dependentHead.Message.ParentRoot)
 					canonicalBlock.parentRoot = &parentRootVal
@@ -275,16 +274,16 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 				indexer.logger.Infof("epoch %d state (%v) not yet loaded, waiting for state to be loaded", epoch, dependentRoot.String())
 				t1 := time.Now()
 				epochStats.dependentState.highPriority = true
-				loaded := epochStats.dependentState.awaitStateLoaded(context.Background(), beaconStateRequestTimeout)
+				loaded := epochStats.dependentState.awaitStateLoaded(indexer.ctx, beaconStateRequestTimeout)
 				if loaded {
 					// wait for async duty computation to be completed
-					epochStats.awaitStatsReady(context.Background(), 30*time.Second)
+					epochStats.awaitStatsReady(indexer.ctx, 30*time.Second)
 				}
 				t1loading += time.Since(t1)
 			}
 		}
 
-		epochStatsValues = epochStats.GetOrLoadValues(indexer, false, true)
+		epochStatsValues = epochStats.GetOrLoadValues(indexer.ctx, indexer, false, true)
 	}
 
 	if epochStatsValues == nil {
@@ -307,7 +306,7 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 	finalizedForkIds := map[ForkKey]bool{}
 	for i, block := range canonicalBlocks {
 		canonicalRoots[i] = block.Root[:]
-		if blockIndex := block.GetBlockIndex(); blockIndex != nil {
+		if blockIndex := block.GetBlockIndex(indexer.ctx); blockIndex != nil {
 			canonicalBlockHashes[i] = blockIndex.ExecutionHash[:]
 		}
 
@@ -430,12 +429,12 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 				return fmt.Errorf("failed persisting orphaned slot %v (%v): %v", block.Slot, block.Root.String(), err)
 			}
 
-			orphanedBlock, err := block.buildOrphanedBlock(indexer.blockCompression)
+			orphanedBlock, err := block.buildOrphanedBlock(indexer.ctx, indexer.blockCompression)
 			if err != nil {
 				return fmt.Errorf("failed building orphaned block %v (%v): %v", block.Slot, block.Root.String(), err)
 			}
 
-			if err := db.InsertOrphanedBlock(orphanedBlock, tx); err != nil {
+			if err := db.InsertOrphanedBlock(indexer.ctx, tx, orphanedBlock); err != nil {
 				return fmt.Errorf("failed persisting orphaned slot %v (%v): %v", block.Slot, block.Root.String(), err)
 			}
 		}
@@ -457,7 +456,7 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 			dbOrphanedEpoch.EpochHeadRoot = epochData.chainHead.Root[:]
 			dbOrphanedEpoch.EpochHeadForkId = uint64(epochData.chainHead.forkId)
 
-			err = db.InsertOrphanedEpoch(&dbOrphanedEpoch, tx)
+			err = db.InsertOrphanedEpoch(indexer.ctx, tx, &dbOrphanedEpoch)
 			if err != nil {
 				indexer.logger.Errorf("error persisting orphaned epoch %v: %v", dbOrphanedEpoch.Epoch, err)
 			}
@@ -468,31 +467,31 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 			return fmt.Errorf("error persisting sync committee assignments to db: %v", err)
 		}
 
-		if err := db.UpdateMevBlockByEpoch(uint64(epoch), specs.SlotsPerEpoch, canonicalBlockHashes, tx); err != nil {
+		if err := db.UpdateMevBlockByEpoch(indexer.ctx, tx, uint64(epoch), specs.SlotsPerEpoch, canonicalBlockHashes); err != nil {
 			return fmt.Errorf("error while updating mev block proposal state: %v", err)
 		}
 
 		// delete unfinalized duties before epoch
-		if err := db.DeleteUnfinalizedDutiesBefore(uint64(epoch+1), tx); err != nil {
+		if err := db.DeleteUnfinalizedDutiesBefore(indexer.ctx, tx, uint64(epoch+1)); err != nil {
 			return fmt.Errorf("failed deleting unfinalized duties <= epoch %v: %v", epoch, err)
 		}
 
 		// delete unfinalized blocks before epoch
-		if err := db.DeleteUnfinalizedBlocksBefore(uint64(deleteBeforeSlot), tx); err != nil {
+		if err := db.DeleteUnfinalizedBlocksBefore(indexer.ctx, tx, uint64(deleteBeforeSlot)); err != nil {
 			return fmt.Errorf("failed deleting unfinalized duties < slot %v: %v", deleteBeforeSlot, err)
 		}
 
 		// delete unfinalized epoch aggregations in epoch
-		if err := db.DeleteUnfinalizedEpochsBefore(uint64(epoch+1), tx); err != nil {
+		if err := db.DeleteUnfinalizedEpochsBefore(indexer.ctx, tx, uint64(epoch+1)); err != nil {
 			return fmt.Errorf("failed deleting unfinalized epoch aggregations <= epoch %v: %v", epoch, err)
 		}
 
 		// delete unfinalized forks for canonical roots
 		if len(canonicalRoots) > 0 {
-			if err := db.UpdateFinalizedForkParents(canonicalRoots, tx); err != nil {
+			if err := db.UpdateFinalizedForkParents(indexer.ctx, tx, canonicalRoots); err != nil {
 				return fmt.Errorf("failed updating finalized fork parents: %v", err)
 			}
-			if err := db.DeleteFinalizedForks(canonicalRoots, tx); err != nil {
+			if err := db.DeleteFinalizedForks(indexer.ctx, tx, canonicalRoots); err != nil {
 				return fmt.Errorf("failed deleting finalized forks: %v", err)
 			}
 		}
@@ -513,7 +512,7 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 			wg.Add(1)
 			go func(b *Block) {
 				defer wg.Done()
-				if err := b.writeToBlockDb(); err != nil {
+				if err := b.writeToBlockDb(indexer.ctx); err != nil {
 					indexer.logger.Errorf("error writing block %v to blockdb: %v", b.Root.String(), err)
 				}
 			}(block)

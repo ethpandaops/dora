@@ -1,0 +1,1099 @@
+package txindexer
+
+import (
+	"context"
+	"slices"
+	"strconv"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"github.com/attestantio/go-eth2-client/spec/phase0"
+	"github.com/jmoiron/sqlx"
+	"github.com/sirupsen/logrus"
+
+	"github.com/ethpandaops/dora/blockdb"
+	elclients "github.com/ethpandaops/dora/clients/execution"
+	"github.com/ethpandaops/dora/db"
+	"github.com/ethpandaops/dora/dbtypes"
+	"github.com/ethpandaops/dora/indexer/beacon"
+	"github.com/ethpandaops/dora/indexer/execution"
+	"github.com/ethpandaops/dora/utils"
+)
+
+// IndexingMode represents the execution indexer operating mode.
+type IndexingMode uint8
+
+const (
+	// ModeDisabled means no EL indexing at all.
+	ModeDisabled IndexingMode = iota
+
+	// ModeLightweight is DB-only indexing: transactions, token transfers,
+	// accounts, tokens, balances, withdrawals. No event storage, no blockdb.
+	ModeLightweight
+
+	// ModeFull is everything from ModeLightweight plus per-block detail
+	// objects in blockdb (events, call traces). Requires blockdb.
+	ModeFull
+)
+
+const (
+	// lowPrioQueueLimit is the maximum number of items in the low priority queue
+	// before sync processing is paused.
+	lowPrioQueueLimit = 100
+
+	// syncStateKey is the key used to store sync state in the explorer_state table.
+	syncStateKey = "txindexer.syncstate"
+
+	// cleanupStateKey is the key used to store cleanup state in the explorer_state table.
+	cleanupStateKey = "txindexer.cleanup"
+
+	// defaultCleanupInterval is the default cleanup interval.
+	defaultCleanupInterval = 24 * time.Hour
+)
+
+// syncState represents the persisted sync state.
+type syncState struct {
+	CurrentEpoch uint64 `json:"current_epoch"`
+}
+
+// cleanupState represents the persisted cleanup state.
+type cleanupState struct {
+	LastCleanup int64 `json:"last_cleanup"` // Unix timestamp
+}
+
+// BlockRef represents a reference to a block for EL indexing.
+type BlockRef struct {
+	Slot        phase0.Slot
+	BlockUID    uint64
+	BlockHash   []byte        // EL block hash
+	BlockRoot   []byte        // Beacon block root (used as key for exec data in blockdb)
+	Block       *beacon.Block // optional, may be nil for historical blocks
+	ProcessTime time.Time     // earliest time this block can be processed (zero means immediate)
+	IsRecent    bool
+
+	// onCompletion is called after this block has been processed.
+	// Used by epoch sync batches to persist sync state once all blocks
+	// in the batch are done (via a shared atomic counter).
+	onCompletion func()
+}
+
+// TxIndexer is responsible for indexing EL transactions from beacon blocks.
+type TxIndexer struct {
+	indexerCtx *execution.IndexerCtx
+	logger     logrus.FieldLogger
+
+	// indexing mode
+	mode IndexingMode
+
+	// state
+	running   bool
+	runMutex  sync.Mutex
+	ctx       context.Context
+	ctxCancel context.CancelFunc
+
+	// processing queue
+	queueMutex    sync.Mutex
+	queueCond     *sync.Cond
+	highPrioQueue []*BlockRef
+	lowPrioQueue  []*BlockRef
+
+	// sync state
+	syncEpoch phase0.Epoch
+
+	// cleanup state
+	lastCleanup time.Time
+
+	// balance lookup service
+	balanceLookup *BalanceLookupService
+}
+
+// getIndexingMode determines the indexing mode from config and runtime state.
+func getIndexingMode() IndexingMode {
+	cfg := utils.Config.ExecutionIndexer
+	if !cfg.Enabled {
+		return ModeDisabled
+	}
+	if !cfg.DetailsEnabled || blockdb.GlobalBlockDb == nil {
+		return ModeLightweight
+	}
+	return ModeFull
+}
+
+// NewTxIndexer creates a new TxIndexer instance.
+func NewTxIndexer(
+	logger logrus.FieldLogger,
+	indexerCtx *execution.IndexerCtx,
+) *TxIndexer {
+	mode := getIndexingMode()
+
+	txIndexer := &TxIndexer{
+		indexerCtx:    indexerCtx,
+		logger:        logger.WithField("component", "txindexer"),
+		mode:          mode,
+		highPrioQueue: make([]*BlockRef, 0, 16),
+		lowPrioQueue:  make([]*BlockRef, 0, 256),
+	}
+	txIndexer.queueCond = sync.NewCond(&txIndexer.queueMutex)
+
+	// Initialize balance lookup service
+	txIndexer.balanceLookup = NewBalanceLookupService(logger, txIndexer)
+
+	return txIndexer
+}
+
+// GetMode returns the current indexing mode.
+func (t *TxIndexer) GetMode() IndexingMode {
+	return t.mode
+}
+
+// GetSyncEpoch returns the current sync epoch.
+func (t *TxIndexer) GetSyncEpoch() phase0.Epoch {
+	t.queueMutex.Lock()
+	defer t.queueMutex.Unlock()
+	return t.syncEpoch
+}
+
+// GetReadyClients returns a list of ready EL clients that have reached the finalized block.
+// Prefers archive clients if available.
+func (t *TxIndexer) GetReadyClients() []*elclients.Client {
+	return t.indexerCtx.GetFinalizedClients(elclients.AnyClient)
+}
+
+// setLocalSyncEpoch updates only the local sync epoch (not persisted to DB).
+// This prevents re-queuing of epochs while processing is in progress.
+func (t *TxIndexer) setLocalSyncEpoch(epoch phase0.Epoch) {
+	t.queueMutex.Lock()
+	t.syncEpoch = epoch
+	t.queueMutex.Unlock()
+}
+
+// Start begins the tx indexer processing.
+func (t *TxIndexer) Start() error {
+	t.runMutex.Lock()
+	defer t.runMutex.Unlock()
+
+	if t.running {
+		return nil
+	}
+
+	t.running = true
+	t.ctx, t.ctxCancel = context.WithCancel(t.indexerCtx.Ctx)
+
+	// Load sync state from database
+	t.loadSyncState()
+
+	// Load cleanup state from database
+	t.loadCleanupState()
+
+	// Start the processing loop (goroutine 1)
+	go t.runProcessingLoop()
+
+	// Start the queue filler (goroutine 2)
+	go t.runQueueFiller()
+
+	modeName := "lightweight"
+	if t.mode == ModeFull {
+		modeName = "full"
+		if utils.Config.ExecutionIndexer.TracesEnabled {
+			modeName = "full+traces"
+		}
+	}
+	t.logger.WithField("mode", modeName).Info("tx indexer started")
+	return nil
+}
+
+// Stop halts the tx indexer processing.
+func (t *TxIndexer) Stop() error {
+	t.runMutex.Lock()
+	defer t.runMutex.Unlock()
+
+	if !t.running {
+		return nil
+	}
+
+	t.running = false
+	t.ctxCancel()
+
+	// Wake up the processing loop so it can exit
+	t.queueCond.Broadcast()
+
+	t.logger.Info("tx indexer stopped")
+	return nil
+}
+
+// loadSyncState loads the sync state from the database.
+func (t *TxIndexer) loadSyncState() {
+	state := syncState{}
+	_, err := db.GetExplorerState(t.ctx, syncStateKey, &state)
+	if err != nil {
+		t.logger.WithError(err).Debug("no existing sync state found, starting from epoch 0")
+		t.syncEpoch = 0
+		return
+	}
+
+	t.syncEpoch = phase0.Epoch(state.CurrentEpoch)
+	t.logger.WithField("epoch", t.syncEpoch).Info("restored sync state from database")
+}
+
+// saveSyncState saves the sync state to the database.
+func (t *TxIndexer) saveSyncState(epoch phase0.Epoch) {
+	state := syncState{
+		CurrentEpoch: uint64(epoch),
+	}
+
+	err := db.RunDBTransaction(func(tx *sqlx.Tx) error {
+		return db.SetExplorerState(t.ctx, tx, syncStateKey, &state)
+	})
+	if err != nil {
+		t.logger.WithError(err).Error("failed to save sync state")
+	}
+}
+
+// loadCleanupState loads the cleanup state from the database.
+func (t *TxIndexer) loadCleanupState() {
+	state := cleanupState{}
+	_, err := db.GetExplorerState(t.ctx, cleanupStateKey, &state)
+	if err != nil {
+		t.logger.WithError(err).Debug("no existing cleanup state found, starting fresh")
+		t.lastCleanup = time.Time{} // Zero time means never cleaned up
+		return
+	}
+
+	t.lastCleanup = time.Unix(state.LastCleanup, 0)
+	t.logger.WithField("lastCleanup", t.lastCleanup).Info("restored cleanup state from database")
+}
+
+// saveCleanupState saves the cleanup state to the database.
+func (t *TxIndexer) saveCleanupState() {
+	state := cleanupState{
+		LastCleanup: t.lastCleanup.Unix(),
+	}
+
+	err := db.RunDBTransaction(func(tx *sqlx.Tx) error {
+		return db.SetExplorerState(t.ctx, tx, cleanupStateKey, &state)
+	})
+	if err != nil {
+		t.logger.WithError(err).Error("failed to save cleanup state")
+	}
+}
+
+// runQueueFiller handles both block subscription and epoch sync in a single goroutine.
+func (t *TxIndexer) runQueueFiller() {
+	defer utils.HandleSubroutinePanic("TxIndexer.runQueueFiller", t.runQueueFiller)
+
+	// Subscribe to block events
+	subscription := t.indexerCtx.BeaconIndexer.SubscribeBlockEvent(100, false)
+	defer subscription.Unsubscribe()
+
+	// Ticker for sync processing
+	syncTicker := time.NewTicker(10 * time.Second)
+	defer syncTicker.Stop()
+
+	// Initial delay before starting sync
+	initialDelay := time.After(30 * time.Second)
+	syncStarted := false
+
+	for {
+		select {
+		case <-t.ctx.Done():
+			return
+
+		case block := <-subscription.Channel():
+			if block == nil {
+				continue
+			}
+			t.enqueueBeaconBlock(block, true)
+
+		case <-initialDelay:
+			syncStarted = true
+			t.processSync()
+
+		case <-syncTicker.C:
+			if syncStarted {
+				t.processSync()
+			}
+		}
+	}
+}
+
+// enqueueBeaconBlock converts a beacon.Block to BlockRef and enqueues it.
+func (t *TxIndexer) enqueueBeaconBlock(block *beacon.Block, highPriority bool) {
+	blockIndex := block.GetBlockIndex(t.ctx)
+	if blockIndex == nil {
+		return
+	}
+
+	ref := &BlockRef{
+		Slot:      block.Slot,
+		BlockUID:  block.BlockUID,
+		BlockHash: blockIndex.ExecutionHash[:],
+		BlockRoot: block.Root[:],
+		Block:     block,
+		IsRecent:  highPriority,
+	}
+
+	// For high priority blocks (from subscription), delay processing by SecondsPerSlot + 2 seconds
+	// to allow for potential reorgs to settle.
+	if highPriority {
+		specs := t.indexerCtx.ChainState.GetSpecs()
+		delay := time.Duration(specs.SecondsPerSlot+2) * time.Second
+		ref.ProcessTime = time.Now().Add(delay)
+	}
+
+	t.enqueueBlockRef(ref, highPriority)
+}
+
+// processSync checks for unsynced epochs and queues blocks for processing.
+func (t *TxIndexer) processSync() {
+	// Check if low priority queue is too full
+	t.queueMutex.Lock()
+	queueLen := len(t.lowPrioQueue)
+	currentSyncEpoch := t.syncEpoch
+	t.queueMutex.Unlock()
+
+	if queueLen >= lowPrioQueueLimit {
+		t.logger.WithField("queueLen", queueLen).Debug("skipping sync, low priority queue is full")
+		return
+	}
+
+	chainState := t.indexerCtx.ChainState
+
+	// Get synchronizer and block cache states from beacon indexer
+	syncRunning, syncHead := t.indexerCtx.BeaconIndexer.GetSynchronizerState()
+	finalizedEpoch, _ := t.indexerCtx.BeaconIndexer.GetBlockCacheState()
+
+	// Determine the lowest epoch we can sync from
+	lowestEpoch := finalizedEpoch
+	if syncRunning && syncHead < lowestEpoch {
+		lowestEpoch = syncHead
+	}
+
+	// Calculate minimum epoch based on retention period
+	// Skip indexing blocks older than retention period
+	minEpoch := phase0.Epoch(0)
+	retention := utils.Config.ExecutionIndexer.Retention
+	if retention > 0 {
+		cutoffTime := time.Now().Add(-retention)
+		cutoffSlot := chainState.TimeToSlot(cutoffTime)
+		if cutoffSlot > 0 {
+			minEpoch = chainState.EpochOfSlot(cutoffSlot)
+		}
+	}
+
+	// Advance sync epoch if it's older than retention period
+	if currentSyncEpoch < minEpoch {
+		t.logger.WithFields(logrus.Fields{
+			"currentSyncEpoch": currentSyncEpoch,
+			"minEpoch":         minEpoch,
+		}).Info("skipping epochs older than retention period")
+		currentSyncEpoch = minEpoch
+		t.setLocalSyncEpoch(currentSyncEpoch)
+		t.saveSyncState(currentSyncEpoch)
+	}
+
+	// Nothing to sync if we're already caught up
+	if currentSyncEpoch >= lowestEpoch {
+		return
+	}
+
+	t.logger.WithFields(logrus.Fields{
+		"currentSyncEpoch": currentSyncEpoch,
+		"lowestEpoch":      lowestEpoch,
+	}).Debug("starting epoch sync")
+
+	// Process epochs from current sync position to lowest epoch
+	for epoch := currentSyncEpoch; epoch <= lowestEpoch; epoch++ {
+		select {
+		case <-t.ctx.Done():
+			return
+		default:
+		}
+
+		// Check queue limit again before processing more
+		t.queueMutex.Lock()
+		queueLen = len(t.lowPrioQueue)
+		t.queueMutex.Unlock()
+
+		if queueLen >= lowPrioQueueLimit {
+			t.logger.WithField("queueLen", queueLen).Debug("pausing sync, low priority queue is full")
+			return
+		}
+
+		firstSlot := uint64(chainState.EpochToSlot(epoch))
+		lastSlot := uint64(chainState.EpochToSlot(epoch+1)) - 1
+
+		// Query blocks from database for this epoch
+		slots := db.GetSlotsRange(t.ctx, lastSlot, firstSlot, false, false)
+		if len(slots) == 0 {
+			// No slots in this epoch, persist immediately
+			nextEpoch := epoch + 1
+			t.setLocalSyncEpoch(nextEpoch)
+			t.saveSyncState(nextEpoch)
+			continue
+		}
+
+		// Collect block UIDs to check which need processing
+		blockUids := make([]uint64, 0, len(slots))
+		blocks := make([]*dbtypes.AssignedSlot, 0, len(slots))
+
+		slices.Reverse(slots)
+		for _, slot := range slots {
+			if slot.Block != nil && slot.Block.BlockUid != 0 {
+				blockUids = append(blockUids, slot.Block.BlockUid)
+				blocks = append(blocks, slot)
+			}
+		}
+
+		if len(blockUids) == 0 {
+			// No valid blocks in this epoch, persist immediately
+			nextEpoch := epoch + 1
+			t.setLocalSyncEpoch(nextEpoch)
+			t.saveSyncState(nextEpoch)
+			continue
+		}
+
+		// Check which blocks are already synced in el_blocks
+		syncedBlocks, err := db.GetElBlocksByUids(t.ctx, blockUids)
+		if err != nil {
+			t.logger.WithError(err).Error("failed to get el blocks by uids")
+			continue
+		}
+
+		syncedBlockMap := make(map[uint64]bool, len(syncedBlocks))
+		for _, elBlock := range syncedBlocks {
+			// Consider a block synced if it has a non-zero status
+			if elBlock.Status > 0 {
+				syncedBlockMap[elBlock.BlockUid] = true
+			}
+		}
+
+		// Collect unsynced blocks for this epoch.
+		refsToQueue := make([]*BlockRef, 0, len(blocks))
+		for _, slot := range blocks {
+			if syncedBlockMap[slot.Block.BlockUid] {
+				continue
+			}
+
+			ref := t.createBlockRefFromSlot(slot)
+			if ref != nil {
+				refsToQueue = append(refsToQueue, ref)
+			}
+		}
+
+		// Update local sync epoch to prevent re-queuing.
+		nextEpoch := epoch + 1
+		t.setLocalSyncEpoch(nextEpoch)
+
+		if len(refsToQueue) > 0 {
+			// Set up a shared completion counter so the sync state is
+			// persisted only after ALL blocks in this batch are done,
+			// regardless of finishing order.
+			var remaining atomic.Int32
+			remaining.Store(int32(len(refsToQueue)))
+			saveEpoch := nextEpoch
+
+			for _, ref := range refsToQueue {
+				ref.onCompletion = func() {
+					if remaining.Add(-1) == 0 {
+						t.saveSyncState(saveEpoch)
+					}
+				}
+				t.enqueueBlockRef(ref, false)
+			}
+		} else {
+			// All blocks already synced, persist immediately.
+			t.saveSyncState(nextEpoch)
+		}
+	}
+}
+
+// createBlockRefFromSlot creates a BlockRef from a database slot.
+// The Block field may be nil if the block is not in cache.
+func (t *TxIndexer) createBlockRefFromSlot(slot *dbtypes.AssignedSlot) *BlockRef {
+	if slot.Block == nil {
+		return nil
+	}
+
+	ref := &BlockRef{
+		Slot:      phase0.Slot(slot.Block.Slot),
+		BlockUID:  slot.Block.BlockUid,
+		BlockHash: slot.Block.EthBlockHash,
+		BlockRoot: slot.Block.Root,
+		Block:     t.indexerCtx.BeaconIndexer.GetBlockByRoot(phase0.Root(slot.Block.Root)),
+	}
+
+	return ref
+}
+
+// enqueueBlockRef adds a block reference to the processing queue.
+func (t *TxIndexer) enqueueBlockRef(ref *BlockRef, highPriority bool) {
+	t.queueMutex.Lock()
+	defer t.queueMutex.Unlock()
+
+	if highPriority {
+		t.highPrioQueue = append(t.highPrioQueue, ref)
+	} else {
+		t.lowPrioQueue = append(t.lowPrioQueue, ref)
+	}
+
+	t.queueCond.Signal()
+}
+
+// getMaxParallelBlocks returns the maximum number of blocks to process
+// concurrently. If not configured, defaults to el_client_count / 5,
+// clamped to [2, 5].
+func (t *TxIndexer) getMaxParallelBlocks() int {
+	if n := utils.Config.ExecutionIndexer.ParallelBlocks; n > 0 {
+		return n
+	}
+
+	n := min(max(len(t.indexerCtx.ExecutionPool.GetAllEndpoints())/5, 2), 5)
+
+	return n
+}
+
+// runProcessingLoop dequeues blocks and dispatches them to up to N parallel
+// workers. A minimum 1-second gap is enforced between each new dispatch to
+// avoid overwhelming EL clients and the database.
+func (t *TxIndexer) runProcessingLoop() {
+	defer utils.HandleSubroutinePanic("TxIndexer.runProcessingLoop", t.runProcessingLoop)
+
+	maxWorkers := t.getMaxParallelBlocks()
+	t.logger.WithField("maxWorkers", maxWorkers).Info("starting block processing loop")
+
+	workerSem := make(chan struct{}, maxWorkers)
+	var wg sync.WaitGroup
+
+	defer wg.Wait()
+
+	var lastDispatch time.Time
+
+	for {
+		ref := t.dequeueBlockRef()
+		if ref == nil {
+			select {
+			case <-t.ctx.Done():
+				return
+			default:
+				continue
+			}
+		}
+
+		// Run cleanup when due. Wait for all active workers to finish
+		// first so that cleanup doesn't interfere with in-flight blocks.
+		if t.isCleanupDue() {
+			wg.Wait()
+			t.checkAndRunCleanup()
+		}
+
+		// Enforce at least 1-second gap between dispatches.
+		if !lastDispatch.IsZero() {
+			if elapsed := time.Since(lastDispatch); elapsed < time.Second {
+				time.Sleep(time.Second - elapsed)
+			}
+		}
+
+		// Acquire a worker slot (blocks when N workers are already busy).
+		select {
+		case workerSem <- struct{}{}:
+		case <-t.ctx.Done():
+			return
+		}
+
+		lastDispatch = time.Now()
+		wg.Add(1)
+
+		go func(ref *BlockRef) {
+			defer wg.Done()
+			defer func() { <-workerSem }()
+
+			t.processAndFinalize(ref)
+		}(ref)
+	}
+}
+
+// processAndFinalize runs processElBlock for a single ref, logs the result,
+// persists the sync epoch when applicable, and triggers cleanup checks.
+func (t *TxIndexer) processAndFinalize(ref *BlockRef) {
+	stats, err := t.processElBlock(ref)
+
+	logger := t.logger.WithFields(logrus.Fields{
+		"slot":     ref.Slot,
+		"blockUid": ref.BlockUID,
+	})
+
+	if stats != nil {
+		if len(stats.processing) > 1 {
+			logger = logger.WithField("commit", stats.processing[1])
+		}
+		logger = logger.WithFields(logrus.Fields{
+			"load": stats.processing[0],
+			"txs":  stats.transactions,
+			"logs": stats.events,
+		})
+
+		if stats.client != nil {
+			logger = logger.WithField("client", stats.client.GetName())
+		}
+	}
+
+	if err != nil {
+		logger.WithError(err).Error("failed to process EL block")
+	} else if ref.IsRecent {
+		logger.Info("processed el block")
+	}
+
+	// Invoke completion callback (e.g. sync epoch persistence for batch).
+	if ref.onCompletion != nil {
+		ref.onCompletion()
+	}
+}
+
+// dequeueBlockRef retrieves the next block reference from the queue, prioritizing high priority entries.
+// High priority entries are only returned after their ProcessTime has been reached.
+func (t *TxIndexer) dequeueBlockRef() *BlockRef {
+	t.queueMutex.Lock()
+	defer t.queueMutex.Unlock()
+
+	for {
+		// Check if we should exit
+		select {
+		case <-t.ctx.Done():
+			return nil
+		default:
+		}
+
+		now := time.Now()
+
+		// Check if high priority queue has a ready item
+		if len(t.highPrioQueue) > 0 {
+			ref := t.highPrioQueue[0]
+			if ref.ProcessTime.IsZero() || !ref.ProcessTime.After(now) {
+				// Item is ready, dequeue it
+				t.highPrioQueue = t.highPrioQueue[1:]
+				return ref
+			}
+		}
+
+		// High priority not ready or empty, try low priority
+		if len(t.lowPrioQueue) > 0 {
+			ref := t.lowPrioQueue[0]
+			t.lowPrioQueue = t.lowPrioQueue[1:]
+			return ref
+		}
+
+		// Both queues empty or only high priority with pending process time
+		if len(t.highPrioQueue) > 0 {
+			// Wait until the first high priority item is ready
+			waitDuration := time.Until(t.highPrioQueue[0].ProcessTime)
+			if waitDuration > 0 {
+				// Release lock while waiting
+				t.queueMutex.Unlock()
+
+				select {
+				case <-t.ctx.Done():
+					t.queueMutex.Lock()
+					return nil
+				case <-time.After(waitDuration):
+					// Time elapsed, re-acquire lock and retry
+					t.queueMutex.Lock()
+					continue
+				}
+			}
+		}
+
+		// No items in either queue, wait for signal
+		t.queueCond.Wait()
+	}
+}
+
+// QueueAddressBalanceLookups queues all balance lookups for an address page view.
+// This is called by the address handler when a user views an address page.
+// The lookups are rate-limited to prevent excessive RPC calls.
+func (t *TxIndexer) QueueAddressBalanceLookups(accountID uint64, address []byte) {
+	if t.balanceLookup != nil {
+		t.balanceLookup.QueueAddressBalanceLookups(accountID, address)
+	}
+}
+
+// GetBalanceLookupStats returns the current balance lookup queue statistics.
+func (t *TxIndexer) GetBalanceLookupStats() (highPrio, lowPrio int) {
+	if t.balanceLookup != nil {
+		return t.balanceLookup.GetQueueStats()
+	}
+	return 0, 0
+}
+
+// GetBalanceLookupService returns the balance lookup service for direct access.
+func (t *TxIndexer) GetBalanceLookupService() *BalanceLookupService {
+	return t.balanceLookup
+}
+
+// isCleanupDue returns true when enough time has passed since the last
+// cleanup run. This is a cheap check intended to be called frequently so
+// the caller can decide when to actually run the (expensive) cleanup.
+func (t *TxIndexer) isCleanupDue() bool {
+	cleanupInterval := utils.Config.ExecutionIndexer.CleanupInterval
+	if cleanupInterval == 0 {
+		cleanupInterval = defaultCleanupInterval
+	}
+
+	return t.lastCleanup.IsZero() || time.Since(t.lastCleanup) >= cleanupInterval
+}
+
+// checkAndRunCleanup checks if cleanup is needed and runs it if the interval has passed.
+func (t *TxIndexer) checkAndRunCleanup() {
+	// Get cleanup interval from config
+	cleanupInterval := utils.Config.ExecutionIndexer.CleanupInterval
+	if cleanupInterval == 0 {
+		cleanupInterval = defaultCleanupInterval
+	}
+
+	// Check if enough time has passed since last cleanup
+	now := time.Now()
+	if !t.lastCleanup.IsZero() && now.Sub(t.lastCleanup) < cleanupInterval {
+		return // Not time for cleanup yet
+	}
+
+	t.logger.Debug("starting cleanup routine")
+	t.lastCleanup = now
+
+	// 1. Delete zero balances
+	zeroBalancesDeleted := t.cleanupZeroBalances()
+
+	// 2. Delete old EL data based on retention period
+	retentionStats := t.cleanupRetentionData()
+
+	// 3. Time-based blockdb pruning (Mode 3 only)
+	blockdbPruned := t.cleanupBlockdbRetention()
+
+	// 4. Size-based blockdb eviction (Mode 3 only)
+	blockdbEvicted := t.cleanupBlockdbSize()
+
+	// Save cleanup state
+	t.saveCleanupState()
+
+	// Log summary
+	if zeroBalancesDeleted > 0 || retentionStats != nil || blockdbPruned > 0 || blockdbEvicted > 0 {
+		fields := logrus.Fields{
+			"zeroBalances": zeroBalancesDeleted,
+		}
+		if retentionStats != nil {
+			fields["transactions"] = retentionStats.TransactionsDeleted
+			fields["internalTxs"] = retentionStats.InternalTxsDeleted
+			fields["eventIndices"] = retentionStats.EventIndicesDeleted
+			fields["transfers"] = retentionStats.TokenTransfersDeleted
+			fields["withdrawals"] = retentionStats.WithdrawalsDeleted
+			fields["blocks"] = retentionStats.BlocksDeleted
+		}
+		if blockdbPruned > 0 {
+			fields["blockdbPruned"] = blockdbPruned
+		}
+		if blockdbEvicted > 0 {
+			fields["blockdbEvicted"] = blockdbEvicted
+		}
+		t.logger.WithFields(fields).Info("execution indexer cleanup completed")
+	} else {
+		t.logger.Debug("cleanup completed, no items deleted")
+	}
+}
+
+// cleanupZeroBalances deletes all balance entries with zero balance.
+func (t *TxIndexer) cleanupZeroBalances() int64 {
+	var deleted int64
+
+	err := db.RunDBTransaction(func(tx *sqlx.Tx) error {
+		var err error
+		deleted, err = db.DeleteElZeroBalances(t.ctx, tx)
+		return err
+	})
+
+	if err != nil {
+		t.logger.WithError(err).Warn("failed to delete zero balances")
+		return 0
+	}
+
+	if deleted > 0 {
+		t.logger.WithField("count", deleted).Debug("deleted zero balances")
+	}
+
+	return deleted
+}
+
+// cleanupRetentionData deletes EL data older than the retention period.
+func (t *TxIndexer) cleanupRetentionData() *db.CleanupStats {
+	retention := utils.Config.ExecutionIndexer.Retention
+	if retention == 0 {
+		// No retention configured, skip cleanup
+		return nil
+	}
+
+	chainState := t.indexerCtx.ChainState
+	if chainState == nil {
+		t.logger.Warn("chain state not available for retention cleanup")
+		return nil
+	}
+
+	// Calculate cutoff time
+	cutoffTime := time.Now().Add(-retention)
+
+	// Convert cutoff time to slot
+	cutoffSlot := chainState.TimeToSlot(cutoffTime)
+	if cutoffSlot == 0 {
+		t.logger.Debug("cutoff slot is 0, skipping retention cleanup")
+		return nil
+	}
+
+	// Calculate block_uid threshold: (slot << 16)
+	// All block_uids with slot < cutoffSlot should be deleted
+	blockUidThreshold := uint64(cutoffSlot) << 16
+
+	t.logger.WithFields(logrus.Fields{
+		"retention":         retention,
+		"cutoffTime":        cutoffTime,
+		"cutoffSlot":        cutoffSlot,
+		"blockUidThreshold": blockUidThreshold,
+	}).Debug("calculating retention cleanup threshold")
+
+	// Check if we have any data to delete
+	oldestBlockUid, err := db.GetOldestElBlockUid(t.ctx)
+	if err != nil {
+		t.logger.WithError(err).Warn("failed to get oldest block uid")
+		return nil
+	}
+
+	if oldestBlockUid == 0 || oldestBlockUid >= blockUidThreshold {
+		// No data older than threshold
+		return nil
+	}
+
+	oldestSlot := phase0.Slot(oldestBlockUid >> 16)
+	t.logger.WithFields(logrus.Fields{
+		"oldestBlockUid": oldestBlockUid,
+		"oldestSlot":     oldestSlot,
+		"cutoffSlot":     cutoffSlot,
+	}).Info("deleting EL data older than retention period")
+
+	var stats *db.CleanupStats
+
+	err = db.RunDBTransaction(func(tx *sqlx.Tx) error {
+		var err error
+		stats, err = db.DeleteElDataBeforeBlockUid(t.ctx, blockUidThreshold, tx)
+		return err
+	})
+
+	if err != nil {
+		t.logger.WithError(err).Error("failed to delete old EL data")
+		return nil
+	}
+
+	return stats
+}
+
+// cleanupBlockdbRetention prunes blockdb exec data older than the retention period.
+// Also resets data_status and data_size in the DB for pruned blocks.
+// Returns the number of blockdb objects pruned.
+func (t *TxIndexer) cleanupBlockdbRetention() int64 {
+	if t.mode != ModeFull {
+		return 0
+	}
+
+	if blockdb.GlobalBlockDb == nil || !blockdb.GlobalBlockDb.SupportsExecData() {
+		return 0
+	}
+
+	retention := utils.Config.ExecutionIndexer.Retention
+	if retention == 0 {
+		return 0
+	}
+
+	chainState := t.indexerCtx.ChainState
+	if chainState == nil {
+		return 0
+	}
+
+	cutoffTime := time.Now().Add(-retention)
+	cutoffSlot := chainState.TimeToSlot(cutoffTime)
+	if cutoffSlot == 0 {
+		return 0
+	}
+
+	blockUidThreshold := uint64(cutoffSlot) << 16
+
+	// Prune blockdb exec data for all slots before cutoff
+	ctx, cancel := context.WithTimeout(t.ctx, 5*time.Minute)
+	defer cancel()
+
+	pruned, err := blockdb.GlobalBlockDb.PruneExecDataBefore(ctx, uint64(cutoffSlot))
+	if err != nil {
+		t.logger.WithError(err).Warn("failed to prune blockdb exec data")
+		return 0
+	}
+
+	if pruned == 0 {
+		return 0
+	}
+
+	// Reset data_status and data_size in DB for pruned blocks
+	err = db.RunDBTransaction(func(tx *sqlx.Tx) error {
+		_, err := db.ResetElBlockDataStatusBefore(t.ctx, tx, blockUidThreshold)
+		return err
+	})
+	if err != nil {
+		t.logger.WithError(err).Warn("failed to reset data status for pruned blocks")
+	}
+
+	t.logger.WithFields(logrus.Fields{
+		"pruned":     pruned,
+		"cutoffSlot": cutoffSlot,
+	}).Info("pruned blockdb exec data by retention")
+
+	return pruned
+}
+
+// cleanupBlockdbSize enforces the detailsMaxSize limit by evicting
+// the oldest blocks' exec data from blockdb when total size exceeds the limit.
+// Uses slot-based batch pruning to avoid needing individual block hash lookups.
+// Returns the number of DB blocks whose data_status was reset.
+func (t *TxIndexer) cleanupBlockdbSize() int64 {
+	if t.mode != ModeFull {
+		return 0
+	}
+
+	if blockdb.GlobalBlockDb == nil || !blockdb.GlobalBlockDb.SupportsExecData() {
+		return 0
+	}
+
+	maxSize := parseByteSize(utils.Config.ExecutionIndexer.DetailsMaxSize)
+	if maxSize == 0 {
+		return 0 // Unlimited
+	}
+
+	// Get total current size from DB
+	totalSize, err := db.GetTotalElBlockDataSize(t.ctx)
+	if err != nil {
+		t.logger.WithError(err).Warn("failed to get total exec data size")
+		return 0
+	}
+
+	if totalSize <= maxSize {
+		return 0 // Within limit
+	}
+
+	bytesToFree := totalSize - maxSize
+	t.logger.WithFields(logrus.Fields{
+		"totalSize":   totalSize,
+		"maxSize":     maxSize,
+		"bytesToFree": bytesToFree,
+	}).Info("exec data exceeds size limit, evicting oldest blocks")
+
+	// Find the oldest blocks with data until we've accumulated enough to free.
+	// We fetch in batches and find the cutoff slot.
+	var cutoffBlockUid uint64
+	var accumulated int64
+
+	for accumulated < bytesToFree {
+		blocks, getErr := db.GetOldestElBlocksWithData(t.ctx, 500)
+		if getErr != nil {
+			t.logger.WithError(getErr).Warn("failed to get oldest blocks for eviction")
+			break
+		}
+		if len(blocks) == 0 {
+			break
+		}
+
+		for _, block := range blocks {
+			accumulated += block.DataSize
+			cutoffBlockUid = block.BlockUid
+
+			if accumulated >= bytesToFree {
+				break
+			}
+		}
+	}
+
+	if cutoffBlockUid == 0 {
+		return 0
+	}
+
+	// Prune all blockdb exec data up to the cutoff slot (inclusive).
+	// PruneExecDataBefore deletes data for slots < maxSlot, so add 1.
+	cutoffSlot := (cutoffBlockUid >> 16) + 1
+
+	ctx, cancel := context.WithTimeout(t.ctx, 5*time.Minute)
+	pruned, pruneErr := blockdb.GlobalBlockDb.PruneExecDataBefore(ctx, cutoffSlot)
+	cancel()
+
+	if pruneErr != nil {
+		t.logger.WithError(pruneErr).Warn("failed to prune blockdb exec data for size eviction")
+		return 0
+	}
+
+	// Reset data_status and data_size for all blocks up to the cutoff
+	blockUidThreshold := cutoffSlot << 16
+	var dbReset int64
+
+	err = db.RunDBTransaction(func(tx *sqlx.Tx) error {
+		var resetErr error
+		dbReset, resetErr = db.ResetElBlockDataStatusBefore(t.ctx, tx, blockUidThreshold)
+		return resetErr
+	})
+	if err != nil {
+		t.logger.WithError(err).Warn("failed to reset data status for evicted blocks")
+	}
+
+	t.logger.WithFields(logrus.Fields{
+		"blockdbPruned": pruned,
+		"dbReset":       dbReset,
+		"cutoffSlot":    cutoffSlot,
+	}).Info("evicted blockdb exec data for size limit")
+
+	return dbReset
+}
+
+// parseByteSize parses a human-readable byte size string (e.g., "100GB", "50MB", "1TB")
+// into bytes. Returns 0 for empty or invalid strings (meaning unlimited).
+func parseByteSize(s string) int64 {
+	s = strings.TrimSpace(s)
+	if s == "" || s == "0" {
+		return 0
+	}
+
+	// Find where the numeric part ends
+	numEnd := 0
+	for numEnd < len(s) && (s[numEnd] >= '0' && s[numEnd] <= '9' || s[numEnd] == '.') {
+		numEnd++
+	}
+
+	if numEnd == 0 {
+		return 0
+	}
+
+	numStr := s[:numEnd]
+	suffix := strings.ToUpper(strings.TrimSpace(s[numEnd:]))
+
+	val, err := strconv.ParseFloat(numStr, 64)
+	if err != nil {
+		return 0
+	}
+
+	var multiplier float64
+	switch suffix {
+	case "", "B":
+		multiplier = 1
+	case "K", "KB":
+		multiplier = 1024
+	case "M", "MB":
+		multiplier = 1024 * 1024
+	case "G", "GB":
+		multiplier = 1024 * 1024 * 1024
+	case "T", "TB":
+		multiplier = 1024 * 1024 * 1024 * 1024
+	default:
+		return 0
+	}
+
+	return int64(val * multiplier)
+}

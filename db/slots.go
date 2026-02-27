@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"math"
@@ -12,16 +13,17 @@ import (
 	"github.com/mitchellh/mapstructure"
 )
 
-func InsertSlot(slot *dbtypes.Slot, tx *sqlx.Tx) error {
-	_, err := tx.Exec(EngineQuery(map[dbtypes.DBEngineType]string{
+func InsertSlot(ctx context.Context, tx *sqlx.Tx, slot *dbtypes.Slot) error {
+	_, err := tx.ExecContext(ctx, EngineQuery(map[dbtypes.DBEngineType]string{
 		dbtypes.DBEnginePgsql: `
 			INSERT INTO slots (
 				slot, proposer, status, root, parent_root, state_root, graffiti, graffiti_text,
 				attestation_count, deposit_count, exit_count, withdraw_count, withdraw_amount, attester_slashing_count,
 				proposer_slashing_count, bls_change_count, eth_transaction_count, eth_block_number, eth_block_hash,
 				eth_block_extra, eth_block_extra_text, sync_participation, fork_id, blob_count, eth_gas_used,
-				eth_gas_limit, eth_base_fee, eth_fee_recipient, block_size, recv_delay, min_exec_time, max_exec_time, exec_times
-			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33)
+				eth_gas_limit, eth_base_fee, eth_fee_recipient, block_size, recv_delay, min_exec_time, max_exec_time, exec_times, 
+				block_uid
+			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34)
 			ON CONFLICT (slot, root) DO UPDATE SET
 				status = excluded.status,
 				eth_block_extra = excluded.eth_block_extra,
@@ -33,19 +35,21 @@ func InsertSlot(slot *dbtypes.Slot, tx *sqlx.Tx) error {
 				attestation_count, deposit_count, exit_count, withdraw_count, withdraw_amount, attester_slashing_count,
 				proposer_slashing_count, bls_change_count, eth_transaction_count, eth_block_number, eth_block_hash,
 				eth_block_extra, eth_block_extra_text, sync_participation, fork_id, blob_count, eth_gas_used,
-				eth_gas_limit, eth_base_fee, eth_fee_recipient, block_size, recv_delay, min_exec_time, max_exec_time, exec_times
-			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33)`,
+				eth_gas_limit, eth_base_fee, eth_fee_recipient, block_size, recv_delay, min_exec_time, max_exec_time, exec_times,
+				block_uid
+			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34)`,
 	}),
 		slot.Slot, slot.Proposer, slot.Status, slot.Root, slot.ParentRoot, slot.StateRoot, slot.Graffiti, slot.GraffitiText,
 		slot.AttestationCount, slot.DepositCount, slot.ExitCount, slot.WithdrawCount, slot.WithdrawAmount, slot.AttesterSlashingCount,
 		slot.ProposerSlashingCount, slot.BLSChangeCount, slot.EthTransactionCount, slot.EthBlockNumber, slot.EthBlockHash,
 		slot.EthBlockExtra, slot.EthBlockExtraText, slot.SyncParticipation, slot.ForkId, slot.BlobCount, slot.EthGasUsed,
-		slot.EthGasLimit, slot.EthBaseFee, slot.EthFeeRecipient, slot.BlockSize, slot.RecvDelay, slot.MinExecTime, slot.MaxExecTime, slot.ExecTimes)
+		slot.EthGasLimit, slot.EthBaseFee, slot.EthFeeRecipient, slot.BlockSize, slot.RecvDelay, slot.MinExecTime, slot.MaxExecTime,
+		slot.ExecTimes, slot.BlockUid)
 	if err != nil {
 		return err
 	}
 
-	_, err = tx.Exec("DELETE FROM slots WHERE slot = $1 AND proposer = $2 AND status = 0", slot.Slot, slot.Proposer)
+	_, err = tx.ExecContext(ctx, "DELETE FROM slots WHERE slot = $1 AND proposer = $2 AND status = 0", slot.Slot, slot.Proposer)
 	if err != nil {
 		return err
 	}
@@ -53,9 +57,9 @@ func InsertSlot(slot *dbtypes.Slot, tx *sqlx.Tx) error {
 	return nil
 }
 
-func InsertMissingSlot(block *dbtypes.SlotHeader, tx *sqlx.Tx) error {
+func InsertMissingSlot(ctx context.Context, tx *sqlx.Tx, block *dbtypes.SlotHeader) error {
 	var blockCount int
-	err := ReaderDb.Get(&blockCount, `
+	err := ReaderDb.GetContext(ctx, &blockCount, `
 		SELECT
 			COUNT(*)
 		FROM slots
@@ -69,7 +73,7 @@ func InsertMissingSlot(block *dbtypes.SlotHeader, tx *sqlx.Tx) error {
 		return nil
 	}
 
-	_, err = tx.Exec(EngineQuery(map[dbtypes.DBEngineType]string{
+	_, err = tx.ExecContext(ctx, EngineQuery(map[dbtypes.DBEngineType]string{
 		dbtypes.DBEnginePgsql: `
 			INSERT INTO slots (
 				slot, proposer, status, root
@@ -88,7 +92,7 @@ func InsertMissingSlot(block *dbtypes.SlotHeader, tx *sqlx.Tx) error {
 	return nil
 }
 
-func GetSlotsRange(firstSlot uint64, lastSlot uint64, withMissing bool, withOrphaned bool) []*dbtypes.AssignedSlot {
+func GetSlotsRange(ctx context.Context, firstSlot uint64, lastSlot uint64, withMissing bool, withOrphaned bool) []*dbtypes.AssignedSlot {
 	var sql strings.Builder
 	fmt.Fprintf(&sql, `SELECT slots.slot, slots.proposer`)
 	blockFields := []string{
@@ -97,6 +101,7 @@ func GetSlotsRange(firstSlot uint64, lastSlot uint64, withMissing bool, withOrph
 		"proposer_slashing_count", "bls_change_count", "eth_transaction_count", "eth_block_number", "eth_block_hash",
 		"eth_block_extra", "eth_block_extra_text", "sync_participation", "fork_id", "blob_count", "eth_gas_used",
 		"eth_gas_limit", "eth_base_fee", "eth_fee_recipient", "block_size", "recv_delay", "min_exec_time", "max_exec_time", "exec_times",
+		"block_uid",
 	}
 	for _, blockField := range blockFields {
 		fmt.Fprintf(&sql, ", slots.%v AS \"block.%v\"", blockField, blockField)
@@ -112,7 +117,7 @@ func GetSlotsRange(firstSlot uint64, lastSlot uint64, withMissing bool, withOrph
 	}
 	fmt.Fprintf(&sql, ` ORDER BY slot DESC `)
 
-	rows, err := ReaderDb.Query(sql.String(), firstSlot, lastSlot)
+	rows, err := ReaderDb.QueryContext(ctx, sql.String(), firstSlot, lastSlot)
 	if err != nil {
 		logger.WithError(err).Errorf("Error while fetching slots range: %v", sql.String())
 		return nil
@@ -121,15 +126,16 @@ func GetSlotsRange(firstSlot uint64, lastSlot uint64, withMissing bool, withOrph
 	return parseAssignedSlots(rows, blockFields, 2)
 }
 
-func GetSlotsByParentRoot(parentRoot []byte) []*dbtypes.Slot {
+func GetSlotsByParentRoot(ctx context.Context, parentRoot []byte) []*dbtypes.Slot {
 	slots := []*dbtypes.Slot{}
-	err := ReaderDb.Select(&slots, `
+	err := ReaderDb.SelectContext(ctx, &slots, `
 	SELECT
 		slot, proposer, status, root, parent_root, state_root, graffiti, graffiti_text,
 		attestation_count, deposit_count, exit_count, withdraw_count, withdraw_amount, attester_slashing_count,
 		proposer_slashing_count, bls_change_count, eth_transaction_count, eth_block_number, eth_block_hash,
 		eth_block_extra, eth_block_extra_text, sync_participation, fork_id, blob_count, eth_gas_used,
-		eth_gas_limit, eth_base_fee, eth_fee_recipient, block_size, recv_delay, min_exec_time, max_exec_time, exec_times
+		eth_gas_limit, eth_base_fee, eth_fee_recipient, block_size, recv_delay, min_exec_time, max_exec_time, exec_times,
+		block_uid
 	FROM slots
 	WHERE parent_root = $1
 	ORDER BY slot DESC
@@ -141,15 +147,16 @@ func GetSlotsByParentRoot(parentRoot []byte) []*dbtypes.Slot {
 	return slots
 }
 
-func GetSlotByRoot(root []byte) *dbtypes.Slot {
+func GetSlotByRoot(ctx context.Context, root []byte) *dbtypes.Slot {
 	block := dbtypes.Slot{}
-	err := ReaderDb.Get(&block, `
+	err := ReaderDb.GetContext(ctx, &block, `
 	SELECT
 		root, slot, parent_root, state_root, status, proposer, graffiti, graffiti_text,
 		attestation_count, deposit_count, exit_count, withdraw_count, withdraw_amount, attester_slashing_count,
 		proposer_slashing_count, bls_change_count, eth_transaction_count, eth_block_number, eth_block_hash,
 		eth_block_extra, eth_block_extra_text, sync_participation, fork_id, blob_count, eth_gas_used,
-		eth_gas_limit, eth_base_fee, eth_fee_recipient, block_size, recv_delay, min_exec_time, max_exec_time, exec_times
+		eth_gas_limit, eth_base_fee, eth_fee_recipient, block_size, recv_delay, min_exec_time, max_exec_time, exec_times,
+		block_uid
 	FROM slots
 	WHERE root = $1
 	`, root)
@@ -160,7 +167,7 @@ func GetSlotByRoot(root []byte) *dbtypes.Slot {
 	return &block
 }
 
-func GetSlotsByRoots(roots [][]byte) map[phase0.Root]*dbtypes.Slot {
+func GetSlotsByRoots(ctx context.Context, roots [][]byte) map[phase0.Root]*dbtypes.Slot {
 	argIdx := 0
 	args := make([]any, len(roots))
 	plcList := make([]string, len(roots))
@@ -176,7 +183,8 @@ func GetSlotsByRoots(roots [][]byte) map[phase0.Root]*dbtypes.Slot {
 			attestation_count, deposit_count, exit_count, withdraw_count, withdraw_amount, attester_slashing_count,
 			proposer_slashing_count, bls_change_count, eth_transaction_count, eth_block_number, eth_block_hash,
 			eth_block_extra, eth_block_extra_text, sync_participation, fork_id, blob_count, eth_gas_used,
-			eth_gas_limit, eth_base_fee, eth_fee_recipient, block_size, recv_delay, min_exec_time, max_exec_time, exec_times
+			eth_gas_limit, eth_base_fee, eth_fee_recipient, block_size, recv_delay, min_exec_time, max_exec_time, exec_times,
+			block_uid
 		FROM slots
 		WHERE root IN (%v)
 		ORDER BY slot DESC`,
@@ -184,7 +192,7 @@ func GetSlotsByRoots(roots [][]byte) map[phase0.Root]*dbtypes.Slot {
 	)
 
 	slots := []*dbtypes.Slot{}
-	err := ReaderDb.Select(&slots, sql, args...)
+	err := ReaderDb.SelectContext(ctx, &slots, sql, args...)
 	if err != nil {
 		logger.Errorf("Error while fetching block by roots: %v", err)
 		return nil
@@ -198,11 +206,11 @@ func GetSlotsByRoots(roots [][]byte) map[phase0.Root]*dbtypes.Slot {
 	return slotMap
 }
 
-func GetBlockHeadByRoot(root []byte) *dbtypes.BlockHead {
+func GetBlockHeadByRoot(ctx context.Context, root []byte) *dbtypes.BlockHead {
 	blockHead := dbtypes.BlockHead{}
-	err := ReaderDb.Get(&blockHead, `
+	err := ReaderDb.GetContext(ctx, &blockHead, `
 	SELECT
-		root, slot, parent_root, fork_id
+		root, slot, parent_root, fork_id, block_uid
 	FROM slots
 	WHERE root = $1
 	`, root)
@@ -212,11 +220,11 @@ func GetBlockHeadByRoot(root []byte) *dbtypes.BlockHead {
 	return &blockHead
 }
 
-func GetBlockHeadBySlot(slot uint64) *dbtypes.BlockHead {
+func GetBlockHeadBySlot(ctx context.Context, slot uint64) *dbtypes.BlockHead {
 	blockHead := dbtypes.BlockHead{}
-	err := ReaderDb.Get(&blockHead, `
+	err := ReaderDb.GetContext(ctx, &blockHead, `
 	SELECT
-		root, slot, parent_root, fork_id
+		root, slot, parent_root, fork_id, block_uid
 	FROM slots
 	ORDER BY status ASC
 	WHERE status != 0 AND slot = $1
@@ -228,15 +236,31 @@ func GetBlockHeadBySlot(slot uint64) *dbtypes.BlockHead {
 	return &blockHead
 }
 
-func GetSlotsByBlockHash(blockHash []byte) []*dbtypes.Slot {
+func GetBlockHeadBySlotRange(ctx context.Context, startSlot uint64, endSlot uint64) []*dbtypes.BlockHead {
+	blockHeads := []*dbtypes.BlockHead{}
+	err := ReaderDb.SelectContext(ctx, &blockHeads, `
+	SELECT
+		root, slot, parent_root, fork_id, block_uid
+	FROM slots
+	WHERE status != 0 AND slot >= $1 AND slot <= $2
+	ORDER BY slot DESC
+	`, startSlot, endSlot)
+	if err != nil {
+		return nil
+	}
+	return blockHeads
+}
+
+func GetSlotsByBlockHash(ctx context.Context, blockHash []byte) []*dbtypes.Slot {
 	slots := []*dbtypes.Slot{}
-	err := ReaderDb.Select(&slots, `
+	err := ReaderDb.SelectContext(ctx, &slots, `
 	SELECT
 		slot, proposer, status, root, parent_root, state_root, graffiti, graffiti_text,
 		attestation_count, deposit_count, exit_count, withdraw_count, withdraw_amount, attester_slashing_count,
 		proposer_slashing_count, bls_change_count, eth_transaction_count, eth_block_number, eth_block_hash,
 		eth_block_extra, eth_block_extra_text, sync_participation, fork_id, blob_count, eth_gas_used,
-		eth_gas_limit, eth_base_fee, eth_fee_recipient, block_size, recv_delay, min_exec_time, max_exec_time, exec_times
+		eth_gas_limit, eth_base_fee, eth_fee_recipient, block_size, recv_delay, min_exec_time, max_exec_time, exec_times,
+		block_uid
 	FROM slots
 	WHERE eth_block_hash = $1
 	ORDER BY slot DESC
@@ -289,7 +313,7 @@ func parseAssignedSlots(rows *sql.Rows, fields []string, fieldsOffset int) []*db
 	return blockAssignments
 }
 
-func GetFilteredSlots(filter *dbtypes.BlockFilter, firstSlot uint64, offset uint64, limit uint32) []*dbtypes.AssignedSlot {
+func GetFilteredSlots(ctx context.Context, filter *dbtypes.BlockFilter, firstSlot uint64, offset uint64, limit uint32) []*dbtypes.AssignedSlot {
 	var sql strings.Builder
 	fmt.Fprintf(&sql, `SELECT slots.slot, slots.proposer`)
 	blockFields := []string{
@@ -298,6 +322,7 @@ func GetFilteredSlots(filter *dbtypes.BlockFilter, firstSlot uint64, offset uint
 		"proposer_slashing_count", "bls_change_count", "eth_transaction_count", "eth_block_number", "eth_block_hash",
 		"eth_block_extra", "eth_block_extra_text", "sync_participation", "fork_id", "blob_count", "eth_gas_used",
 		"eth_gas_limit", "eth_base_fee", "eth_fee_recipient", "block_size", "recv_delay", "min_exec_time", "max_exec_time", "exec_times",
+		"block_uid",
 	}
 	for _, blockField := range blockFields {
 		fmt.Fprintf(&sql, ", slots.%v AS \"block.%v\"", blockField, blockField)
@@ -333,6 +358,15 @@ func GetFilteredSlots(filter *dbtypes.BlockFilter, firstSlot uint64, offset uint
 		argIdx++
 		fmt.Fprintf(&sql, ` AND slots.root = $%v `, argIdx)
 		args = append(args, filter.BlockRoot)
+	}
+	if len(filter.BlockUids) > 0 {
+		blockUidPlaceholders := make([]string, len(filter.BlockUids))
+		for i, blockUid := range filter.BlockUids {
+			argIdx++
+			blockUidPlaceholders[i] = fmt.Sprintf("$%v", argIdx)
+			args = append(args, blockUid)
+		}
+		fmt.Fprintf(&sql, ` AND slots.block_uid IN (%s) `, strings.Join(blockUidPlaceholders, ", "))
 	}
 	if filter.ProposerIndex != nil {
 		argIdx++
@@ -433,6 +467,56 @@ func GetFilteredSlots(filter *dbtypes.BlockFilter, firstSlot uint64, offset uint
 		}
 		fmt.Fprintf(&sql, ` AND slots.fork_id IN (%s) `, strings.Join(forkIdPlaceholders, ", "))
 	}
+	if filter.EthBlockNumber != nil {
+		argIdx++
+		fmt.Fprintf(&sql, ` AND slots.eth_block_number = $%v `, argIdx)
+		args = append(args, *filter.EthBlockNumber)
+	}
+	if len(filter.EthBlockHash) > 0 {
+		argIdx++
+		fmt.Fprintf(&sql, ` AND slots.eth_block_hash = $%v `, argIdx)
+		args = append(args, filter.EthBlockHash)
+	}
+	if filter.MinGasUsed != nil {
+		argIdx++
+		fmt.Fprintf(&sql, ` AND slots.eth_gas_used >= $%v `, argIdx)
+		args = append(args, *filter.MinGasUsed)
+	}
+	if filter.MaxGasUsed != nil {
+		argIdx++
+		fmt.Fprintf(&sql, ` AND slots.eth_gas_used <= $%v `, argIdx)
+		args = append(args, *filter.MaxGasUsed)
+	}
+	if filter.MinGasLimit != nil {
+		argIdx++
+		fmt.Fprintf(&sql, ` AND slots.eth_gas_limit >= $%v `, argIdx)
+		args = append(args, *filter.MinGasLimit)
+	}
+	if filter.MaxGasLimit != nil {
+		argIdx++
+		fmt.Fprintf(&sql, ` AND slots.eth_gas_limit <= $%v `, argIdx)
+		args = append(args, *filter.MaxGasLimit)
+	}
+	if filter.MinBlockSize != nil {
+		argIdx++
+		fmt.Fprintf(&sql, ` AND slots.block_size >= $%v `, argIdx)
+		args = append(args, *filter.MinBlockSize)
+	}
+	if filter.MaxBlockSize != nil {
+		argIdx++
+		fmt.Fprintf(&sql, ` AND slots.block_size <= $%v `, argIdx)
+		args = append(args, *filter.MaxBlockSize)
+	}
+	if filter.MinSlot != nil {
+		argIdx++
+		fmt.Fprintf(&sql, ` AND slots.slot >= $%v `, argIdx)
+		args = append(args, *filter.MinSlot)
+	}
+	if filter.MaxSlot != nil {
+		argIdx++
+		fmt.Fprintf(&sql, ` AND slots.slot <= $%v `, argIdx)
+		args = append(args, *filter.MaxSlot)
+	}
 
 	fmt.Fprintf(&sql, `	ORDER BY slots.slot DESC `)
 	fmt.Fprintf(&sql, ` LIMIT $%v OFFSET $%v `, argIdx+1, argIdx+2)
@@ -441,7 +525,7 @@ func GetFilteredSlots(filter *dbtypes.BlockFilter, firstSlot uint64, offset uint
 	args = append(args, offset)
 
 	//fmt.Printf("sql: %v, args: %v\n", sql.String(), args)
-	rows, err := ReaderDb.Query(sql.String(), args...)
+	rows, err := ReaderDb.QueryContext(ctx, sql.String(), args...)
 	if err != nil {
 		logger.WithError(err).Errorf("Error while fetching filtered slots: %v", sql.String())
 		return nil
@@ -450,7 +534,7 @@ func GetFilteredSlots(filter *dbtypes.BlockFilter, firstSlot uint64, offset uint
 	return parseAssignedSlots(rows, blockFields, 2)
 }
 
-func GetSlotStatus(blockRoots [][]byte) []*dbtypes.BlockStatus {
+func GetSlotStatus(ctx context.Context, blockRoots [][]byte) []*dbtypes.BlockStatus {
 	orphanedRefs := []*dbtypes.BlockStatus{}
 	if len(blockRoots) == 0 {
 		return orphanedRefs
@@ -472,7 +556,7 @@ func GetSlotStatus(blockRoots [][]byte) []*dbtypes.BlockStatus {
 		argIdx += 1
 	}
 	fmt.Fprintf(&sql, ")")
-	err := ReaderDb.Select(&orphanedRefs, sql.String(), args...)
+	err := ReaderDb.SelectContext(ctx, &orphanedRefs, sql.String(), args...)
 	if err != nil {
 		logger.Errorf("Error while fetching orphaned status: %v", err)
 		return nil
@@ -480,7 +564,7 @@ func GetSlotStatus(blockRoots [][]byte) []*dbtypes.BlockStatus {
 	return orphanedRefs
 }
 
-func GetSlotBlobCountByExecutionHashes(blockHashes [][]byte) []*dbtypes.BlockBlobCount {
+func GetSlotBlobCountByExecutionHashes(ctx context.Context, blockHashes [][]byte) []*dbtypes.BlockBlobCount {
 	blockBlockCounts := []*dbtypes.BlockBlobCount{}
 	if len(blockHashes) == 0 {
 		return blockBlockCounts
@@ -502,7 +586,7 @@ func GetSlotBlobCountByExecutionHashes(blockHashes [][]byte) []*dbtypes.BlockBlo
 		argIdx += 1
 	}
 	fmt.Fprintf(&sql, ")")
-	err := ReaderDb.Select(&blockBlockCounts, sql.String(), args...)
+	err := ReaderDb.SelectContext(ctx, &blockBlockCounts, sql.String(), args...)
 	if err != nil {
 		logger.Errorf("Error while fetching block blob counts: %v", err)
 		return nil
@@ -510,14 +594,14 @@ func GetSlotBlobCountByExecutionHashes(blockHashes [][]byte) []*dbtypes.BlockBlo
 	return blockBlockCounts
 }
 
-func GetHighestRootBeforeSlot(slot uint64, withOrphaned bool) []byte {
+func GetHighestRootBeforeSlot(ctx context.Context, slot uint64, withOrphaned bool) []byte {
 	var result []byte
 	statusFilter := ""
 	if !withOrphaned {
 		statusFilter = "AND status != 2"
 	}
 
-	err := ReaderDb.Get(&result, `
+	err := ReaderDb.GetContext(ctx, &result, `
 	SELECT root FROM slots WHERE slot < $1 `+statusFilter+` AND status != 0 ORDER BY slot DESC LIMIT 1
 	`, slot)
 	if err != nil {
@@ -526,9 +610,9 @@ func GetHighestRootBeforeSlot(slot uint64, withOrphaned bool) []byte {
 	return result
 }
 
-func GetSlotAssignment(slot uint64) uint64 {
+func GetSlotAssignment(ctx context.Context, slot uint64) uint64 {
 	proposer := uint64(math.MaxInt64)
-	err := ReaderDb.Get(&proposer, `
+	err := ReaderDb.GetContext(ctx, &proposer, `
 	SELECT
 		proposer
 	FROM slots

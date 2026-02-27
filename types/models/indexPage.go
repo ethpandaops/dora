@@ -55,13 +55,16 @@ type IndexPageDataForks struct {
 }
 
 type IndexPageDataEpochs struct {
-	Epoch             uint64    `json:"epoch"`
-	Ts                time.Time `json:"ts"`
-	Finalized         bool      `json:"finalized"`
-	Justified         bool      `json:"justified"`
-	EligibleEther     uint64    `json:"eligible"`
-	TargetVoted       uint64    `json:"voted"`
-	VoteParticipation float64   `json:"votep"`
+	Epoch                 uint64    `json:"epoch"`
+	Ts                    time.Time `json:"ts"`
+	Finalized             bool      `json:"finalized"`
+	Justified             bool      `json:"justified"`
+	EligibleEther         uint64    `json:"eligible"`
+	TargetVoted           uint64    `json:"voted"`
+	VoteParticipation     float64   `json:"votep"`
+	BlockCount            uint64    `json:"blocks"`
+	SlotsPerEpoch         uint64    `json:"slots_per_epoch"`
+	ProposalParticipation float64   `json:"proposalp"`
 }
 
 type IndexPageDataBlocks struct {

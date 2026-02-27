@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"bytes"
 	"context"
 	"encoding/hex"
 	"encoding/json"
@@ -15,13 +14,13 @@ import (
 
 	"github.com/attestantio/go-eth2-client/spec"
 	"github.com/attestantio/go-eth2-client/spec/bellatrix"
-	"github.com/attestantio/go-eth2-client/spec/deneb"
 	"github.com/attestantio/go-eth2-client/spec/electra"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
 
+	"github.com/ethpandaops/dora/blockdb"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/indexer/beacon"
@@ -100,20 +99,13 @@ func Slot(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if urlArgs.Has("blob") && pageData.Block != nil {
-		commitment, err1 := hex.DecodeString(strings.Replace(urlArgs.Get("blob"), "0x", "", -1))
-		blobData, err2 := services.GlobalBeaconService.GetBlockBlob(r.Context(), phase0.Root(pageData.Block.BlockRoot), deneb.KZGCommitment(commitment))
+		blobIndex, err1 := strconv.ParseUint(urlArgs.Get("blob"), 10, 64)
+		blobData, err2 := services.GlobalBeaconService.GetBlockBlob(r.Context(), phase0.Root(pageData.Block.BlockRoot), blobIndex)
 		if err1 == nil && err2 == nil && blobData != nil {
-			var blobModel *models.SlotPageBlob
-			for _, blob := range pageData.Block.Blobs {
-				if bytes.Equal(blob.KzgCommitment, commitment) {
-					blobModel = blob
-					break
-				}
-			}
-			if blobModel != nil {
-				blobModel.KzgProof = blobData.KZGProof[:]
+			if int(blobIndex) < len(pageData.Block.Blobs) {
+				blobModel := pageData.Block.Blobs[blobIndex]
 				blobModel.HaveData = true
-				blobModel.Blob = blobData.Blob[:]
+				blobModel.Blob = blobData[:]
 				if len(blobModel.Blob) > 512 {
 					blobModel.BlobShort = blobModel.Blob[0:512]
 					blobModel.IsShort = true
@@ -138,32 +130,50 @@ func SlotBlob(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	vars := mux.Vars(r)
-	commitment, err := hex.DecodeString(strings.Replace(vars["commitment"], "0x", "", -1))
-	if err != nil || len(commitment) != 48 {
-		http.Error(w, "Internal server error", http.StatusServiceUnavailable)
+	blobIndex, err := strconv.ParseUint(vars["index"], 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid blob index", http.StatusBadRequest)
 		return
 	}
 
 	blockRoot, err := hex.DecodeString(strings.Replace(vars["root"], "0x", "", -1))
 	if err != nil || len(blockRoot) != 32 {
-		http.Error(w, "Internal server error", http.StatusServiceUnavailable)
+		http.Error(w, "Invalid block root", http.StatusBadRequest)
 		return
 	}
 
-	blobData, err := services.GlobalBeaconService.GetBlockBlob(r.Context(), phase0.Root(blockRoot), deneb.KZGCommitment(commitment))
+	// Get the block to retrieve the KZG commitment
+	blockData, err := services.GlobalBeaconService.GetSlotDetailsByBlockroot(r.Context(), phase0.Root(blockRoot))
+	if err != nil || blockData == nil || blockData.Block == nil {
+		http.Error(w, "Block not found", http.StatusNotFound)
+		return
+	}
+
+	commitments, err := blockData.Block.BlobKZGCommitments()
+	if err != nil || int(blobIndex) >= len(commitments) {
+		http.Error(w, "Blob index out of range", http.StatusBadRequest)
+		return
+	}
+
+	blobData, err := services.GlobalBeaconService.GetBlockBlob(r.Context(), phase0.Root(blockRoot), blobIndex)
 	if err != nil {
 		logrus.WithError(err).Error("error loading blob data")
 		http.Error(w, "Internal server error", http.StatusServiceUnavailable)
 		return
 	}
+	if blobData == nil {
+		http.Error(w, "Blob not found", http.StatusNotFound)
+		return
+	}
+
 	result := &models.SlotPageBlobDetails{
-		KzgCommitment: fmt.Sprintf("%x", blobData.KZGCommitment),
-		KzgProof:      fmt.Sprintf("%x", blobData.KZGProof),
-		Blob:          fmt.Sprintf("%x", blobData.Blob),
+		Index:         blobIndex,
+		KzgCommitment: fmt.Sprintf("%x", commitments[blobIndex][:]),
+		Blob:          fmt.Sprintf("%x", blobData[:]),
 	}
 	err = json.NewEncoder(w).Encode(result)
 	if err != nil {
-		logrus.WithError(err).Error("error encoding blob sidecar")
+		logrus.WithError(err).Error("error encoding blob data")
 		http.Error(w, "Internal server error", http.StatusServiceUnavailable)
 	}
 }
@@ -225,13 +235,14 @@ func buildSlotPageData(ctx context.Context, blockSlot int64, blockRoot []byte) (
 		Future:         slot >= currentSlot,
 		EpochFinalized: finalizedEpoch >= chainState.EpochOfSlot(slot),
 		Badges:         []*models.SlotPageBlockBadge{},
+		TracoorUrl:     utils.Config.Frontend.TracoorUrl,
 	}
 
 	var epochStatsValues *beacon.EpochStatsValues
 	if chainState.EpochOfSlot(slot) >= finalizedEpoch {
 		beaconIndexer := services.GlobalBeaconService.GetBeaconIndexer()
 		if epochStats := beaconIndexer.GetEpochStats(epoch, nil); epochStats != nil {
-			epochStatsValues = epochStats.GetOrLoadValues(beaconIndexer, true, false)
+			epochStatsValues = epochStats.GetOrLoadValues(ctx, beaconIndexer, true, false)
 		}
 	}
 
@@ -251,6 +262,10 @@ func buildSlotPageData(ctx context.Context, blockSlot int64, blockRoot []byte) (
 		cacheTimeout = 10 * time.Second
 	}
 
+	// Get all blocks for this slot (used for multi-block display and proposer fallback)
+	slotBlocks, slotBlockProposers := getSlotBlocks(ctx, slot, blockRoot, blockData)
+	pageData.SlotBlocks = slotBlocks
+
 	if blockData == nil {
 		pageData.Status = uint16(models.SlotStatusMissed)
 		pageData.Proposer = math.MaxInt64
@@ -260,7 +275,11 @@ func buildSlotPageData(ctx context.Context, blockSlot int64, blockRoot []byte) (
 			}
 		}
 		if pageData.Proposer == math.MaxInt64 {
-			pageData.Proposer = db.GetSlotAssignment(uint64(slot))
+			pageData.Proposer = db.GetSlotAssignment(ctx, uint64(slot))
+		}
+		// If proposer is still unknown, check if there's exactly one orphaned block and use its proposer
+		if pageData.Proposer == math.MaxInt64 && len(slotBlockProposers) == 1 {
+			pageData.Proposer = slotBlockProposers[0]
 		}
 		pageData.ProposerName = services.GlobalBeaconService.GetValidatorName(pageData.Proposer)
 	} else {
@@ -271,11 +290,18 @@ func buildSlotPageData(ctx context.Context, blockSlot int64, blockRoot []byte) (
 		}
 		pageData.Proposer = uint64(blockData.Header.Message.ProposerIndex)
 		pageData.ProposerName = services.GlobalBeaconService.GetValidatorName(pageData.Proposer)
-		pageData.Block = getSlotPageBlockData(blockData, epochStatsValues)
+
+		blockUid := uint64(blockData.Header.Message.Slot)<<16 | 0xffff
+		if cacheBlock := services.GlobalBeaconService.GetBeaconIndexer().GetBlockByRoot(blockData.Root); cacheBlock != nil {
+			blockUid = cacheBlock.BlockUID
+		} else if dbBlock := db.GetBlockHeadByRoot(ctx, blockData.Root[:]); dbBlock != nil {
+			blockUid = dbBlock.BlockUid
+		}
+		pageData.Block = getSlotPageBlockData(ctx, blockData, epochStatsValues, blockUid)
 
 		// check mev block
 		if pageData.Block.ExecutionData != nil {
-			mevBlock := db.GetMevBlockByBlockHash(pageData.Block.ExecutionData.BlockHash)
+			mevBlock := db.GetMevBlockByBlockHash(ctx, pageData.Block.ExecutionData.BlockHash)
 			if mevBlock != nil {
 				relays := []string{}
 				for _, relay := range utils.Config.MevIndexer.Relays {
@@ -298,7 +324,80 @@ func buildSlotPageData(ctx context.Context, blockSlot int64, blockRoot []byte) (
 	return pageData, cacheTimeout
 }
 
-func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsValues *beacon.EpochStatsValues) *models.SlotPageBlockData {
+// getSlotBlocks retrieves all blocks for a given slot and builds the SlotBlocks slice
+// for the multi-block display. Uses GetDbBlocksByFilter which handles both cache and database.
+// Also returns a list of proposers from orphaned blocks (used as fallback when proposer is unknown).
+func getSlotBlocks(ctx context.Context, slot phase0.Slot, currentBlockRoot []byte, currentBlockData *services.CombinedBlockResponse) ([]*models.SlotPageSlotBlock, []uint64) {
+	slotBlocks := make([]*models.SlotPageSlotBlock, 0)
+	orphanedProposers := make([]uint64, 0)
+	hasCanonicalOrMissed := false
+
+	// Get all blocks for the slot (from cache and database)
+	slotNum := uint64(slot)
+	dbBlocks := services.GlobalBeaconService.GetDbBlocksByFilter(ctx, &dbtypes.BlockFilter{
+		Slot:         &slotNum,
+		WithOrphaned: 1, // include both canonical and orphaned
+		WithMissing:  1, // include missing slots
+	}, 0, 100, 0)
+
+	for _, dbBlock := range dbBlocks {
+		if dbBlock.Block == nil {
+			// This is a missed slot row (canonical proposer info without a block)
+			hasCanonicalOrMissed = true
+			slotBlocks = append(slotBlocks, &models.SlotPageSlotBlock{
+				BlockRoot: nil, // nil indicates missed
+				Status:    uint16(models.SlotStatusMissed),
+				IsCurrent: currentBlockData == nil,
+			})
+			continue
+		}
+
+		var blockRoot phase0.Root
+		copy(blockRoot[:], dbBlock.Block.Root)
+
+		isCanonical := dbBlock.Block.Status == dbtypes.Canonical
+		if isCanonical {
+			hasCanonicalOrMissed = true
+		} else {
+			// Track orphaned block proposers for fallback
+			orphanedProposers = append(orphanedProposers, dbBlock.Block.Proposer)
+		}
+
+		isCurrent := false
+		if currentBlockData != nil && blockRoot == currentBlockData.Root {
+			isCurrent = true
+		} else if len(currentBlockRoot) == 32 && blockRoot == phase0.Root(currentBlockRoot) {
+			isCurrent = true
+		}
+
+		status := uint16(models.SlotStatusOrphaned)
+		if isCanonical {
+			status = uint16(models.SlotStatusFound)
+		}
+
+		slotBlocks = append(slotBlocks, &models.SlotPageSlotBlock{
+			BlockRoot: blockRoot[:],
+			Status:    status,
+			IsCurrent: isCurrent,
+		})
+	}
+
+	// If no canonical or missed block was returned but there are orphaned blocks,
+	// add a "missed (canonical)" entry (fallback for edge cases)
+	if !hasCanonicalOrMissed && len(slotBlocks) > 0 {
+		missedBlock := &models.SlotPageSlotBlock{
+			BlockRoot: nil, // nil indicates missed
+			Status:    uint16(models.SlotStatusMissed),
+			IsCurrent: currentBlockData == nil,
+		}
+		// Insert missed block at the beginning
+		slotBlocks = append([]*models.SlotPageSlotBlock{missedBlock}, slotBlocks...)
+	}
+
+	return slotBlocks, orphanedProposers
+}
+
+func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlockResponse, epochStatsValues *beacon.EpochStatsValues, blockUid uint64) *models.SlotPageBlockData {
 	chainState := services.GlobalBeaconService.GetChainState()
 	specs := chainState.GetSpecs()
 	graffiti, _ := blockData.Block.Graffiti()
@@ -374,7 +473,7 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 			assignmentsLoaded[attEpoch] = true
 			beaconIndexer := services.GlobalBeaconService.GetBeaconIndexer()
 			if epochStats := beaconIndexer.GetEpochStats(epoch, nil); epochStats != nil {
-				epochStatsValues := epochStats.GetOrLoadValues(beaconIndexer, true, false)
+				epochStatsValues := epochStats.GetOrLoadValues(ctx, beaconIndexer, true, false)
 
 				assignmentsMap[attEpoch] = epochStatsValues
 			}
@@ -385,7 +484,7 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 		} else {
 			if !dbEpochLoaded[attEpoch] {
 				dbEpochLoaded[attEpoch] = true
-				dbEpochs := db.GetEpochs(uint64(attEpoch), 1)
+				dbEpochs := db.GetEpochs(ctx, uint64(attEpoch), 1)
 				if len(dbEpochs) > 0 && dbEpochs[0].Epoch == uint64(attEpoch) {
 					dbEpochMap[attEpoch] = dbEpochs[0]
 				}
@@ -411,7 +510,7 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 		if slot, ok := attHeadBlocks[attData.BeaconBlockRoot]; ok {
 			attPageData.BeaconBlockSlot = uint64(slot)
 		} else {
-			beaconBlocks := services.GlobalBeaconService.GetDbBlocksByFilter(&dbtypes.BlockFilter{
+			beaconBlocks := services.GlobalBeaconService.GetDbBlocksByFilter(ctx, &dbtypes.BlockFilter{
 				BlockRoot: attData.BeaconBlockRoot[:],
 			}, 0, 1, 0)
 			if len(beaconBlocks) > 0 {
@@ -614,7 +713,7 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 		}
 		if len(syncAssignments) == 0 {
 			syncPeriod := uint64(epoch) / specs.EpochsPerSyncCommitteePeriod
-			syncAssignments = db.GetSyncAssignmentsForPeriod(syncPeriod)
+			syncAssignments = db.GetSyncAssignmentsForPeriod(ctx, syncPeriod)
 		}
 
 		if len(syncAssignments) != 0 {
@@ -719,7 +818,17 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 		}
 
 		if transactions, err := executionPayload.Transactions(); err == nil {
-			getSlotPageTransactions(pageData, transactions)
+			getSlotPageTransactions(ctx, pageData, transactions, blockUid)
+		}
+
+		// Check if execution data exists in blockdb for receipt downloads
+		if blockdb.GlobalBlockDb != nil && blockdb.GlobalBlockDb.SupportsExecData() {
+			hasExecData, _ := blockdb.GlobalBlockDb.HasExecData(
+				ctx,
+				uint64(blockData.Header.Message.Slot),
+				blockData.Root[:],
+			)
+			pageData.ExecutionData.HasExecData = hasExecData
 		}
 	}
 
@@ -773,10 +882,24 @@ func getSlotPageBlockData(blockData *services.CombinedBlockResponse, epochStatsV
 	return pageData
 }
 
-func getSlotPageTransactions(pageData *models.SlotPageBlockData, transactions []bellatrix.Transaction) {
+// Transaction type names for display
+var slotTxTypeNames = map[uint8]string{
+	0: "Legacy",
+	1: "EIP-2930",
+	2: "EIP-1559",
+	3: "Blob",
+	4: "EIP-7702",
+}
+
+func getSlotPageTransactions(ctx context.Context, pageData *models.SlotPageBlockData, transactions []bellatrix.Transaction, blockUid uint64) {
 	pageData.Transactions = make([]*models.SlotPageTransaction, 0)
 	sigLookupBytes := []types.TxSignatureBytes{}
 	sigLookupMap := map[types.TxSignatureBytes][]*models.SlotPageTransaction{}
+
+	// Build a map of tx hash to tx data for EL enrichment
+	txHashMap := make(map[string]*models.SlotPageTransaction, len(transactions))
+
+	sysContracts := services.GlobalBeaconService.GetSystemContractAddresses()
 
 	for idx, txBytes := range transactions {
 		var tx ethtypes.Transaction
@@ -788,16 +911,24 @@ func getSlotPageTransactions(pageData *models.SlotPageBlockData, transactions []
 		}
 
 		txHash := tx.Hash()
-		txValue, _ := tx.Value().Float64()
-		ethFloat, _ := utils.ETH.Float64()
-		txValue = txValue / ethFloat
+		txBigFloat := new(big.Float).SetInt(tx.Value())
+		txBigFloat.Quo(txBigFloat, new(big.Float).SetInt(utils.ETH))
+		txValue, _ := txBigFloat.Float64()
+
+		txType := uint8(tx.Type())
+		typeName := slotTxTypeNames[txType]
+		if typeName == "" {
+			typeName = fmt.Sprintf("Type %d", txType)
+		}
 
 		txData := &models.SlotPageTransaction{
-			Index: uint64(idx),
-			Hash:  txHash[:],
-			Value: txValue,
-			Data:  tx.Data(),
-			Type:  uint64(tx.Type()),
+			Index:    uint64(idx),
+			Hash:     txHash[:],
+			Value:    txValue,
+			Data:     tx.Data(),
+			Type:     uint64(txType),
+			TypeName: typeName,
+			GasLimit: tx.Gas(),
 		}
 		txData.DataLen = uint64(len(txData.Data))
 
@@ -807,30 +938,35 @@ func getSlotPageTransactions(pageData *models.SlotPageBlockData, transactions []
 		}
 		txFrom, err := ethtypes.Sender(ethtypes.LatestSignerForChainID(chainId), &tx)
 		if err != nil {
-			txData.From = "unknown"
 			logrus.Warnf("error decoding transaction sender 0x%x.%v: %v\n", pageData.BlockRoot, idx, err)
 		} else {
-			txData.From = txFrom.String()
+			txData.From = txFrom.Bytes()
 		}
 		txTo := tx.To()
-		if txTo == nil {
-			txData.To = "new contract"
-		} else {
-			txData.To = txTo.String()
+		if txTo != nil {
+			txData.To = txTo.Bytes()
 		}
 
 		pageData.Transactions = append(pageData.Transactions, txData)
+		txHashMap[string(txHash[:])] = txData
 
 		// check call fn signature
+		isCreate := txTo == nil
 		if txData.DataLen >= 4 {
-			sigBytes := types.TxSignatureBytes(txData.Data[0:4])
-			if sigLookupMap[sigBytes] == nil {
-				sigLookupMap[sigBytes] = []*models.SlotPageTransaction{
-					txData,
-				}
-				sigLookupBytes = append(sigLookupBytes, sigBytes)
+			// Skip fn signature lookup for deployments, precompiles, and system contracts
+			if skip, altName := utils.ShouldSkipSignatureLookup(txData.To, isCreate, sysContracts); skip {
+				txData.FuncSigStatus = 10
+				txData.FuncName = altName
 			} else {
-				sigLookupMap[sigBytes] = append(sigLookupMap[sigBytes], txData)
+				sigBytes := types.TxSignatureBytes(txData.Data[0:4])
+				if sigLookupMap[sigBytes] == nil {
+					sigLookupMap[sigBytes] = []*models.SlotPageTransaction{
+						txData,
+					}
+					sigLookupBytes = append(sigLookupBytes, sigBytes)
+				} else {
+					sigLookupMap[sigBytes] = append(sigLookupMap[sigBytes], txData)
+				}
 			}
 		} else {
 			txData.FuncSigStatus = 10
@@ -840,7 +976,7 @@ func getSlotPageTransactions(pageData *models.SlotPageBlockData, transactions []
 	pageData.TransactionsCount = uint64(len(transactions))
 
 	if len(sigLookupBytes) > 0 {
-		sigLookups := services.GlobalTxSignaturesService.LookupSignatures(sigLookupBytes)
+		sigLookups := services.GlobalTxSignaturesService.LookupSignatures(ctx, sigLookupBytes)
 		for _, sigLookup := range sigLookups {
 			for _, txData := range sigLookupMap[sigLookup.Bytes] {
 				txData.FuncSigStatus = uint64(sigLookup.Status)
@@ -850,6 +986,29 @@ func getSlotPageTransactions(pageData *models.SlotPageBlockData, transactions []
 					txData.FuncName = sigLookup.Name
 				} else {
 					txData.FuncName = "call?"
+				}
+			}
+		}
+	}
+
+	// Enrich with EL data if execution indexer is enabled
+	if utils.Config.ExecutionIndexer.Enabled && len(pageData.Transactions) > 0 {
+		elTxs, err := db.GetElTransactionsByBlockUid(ctx, blockUid)
+		if err == nil && len(elTxs) > 0 {
+			for _, elTx := range elTxs {
+				txData := txHashMap[string(elTx.TxHash)]
+				if txData == nil {
+					continue
+				}
+
+				txData.HasElData = true
+				txData.Reverted = elTx.Reverted
+				txData.GasUsed = elTx.GasUsed
+				txData.EffGasPrice = elTx.EffGasPrice
+
+				// Calculate tx fee in ETH: gas_used * eff_gas_price (Gwei) / 1e9
+				if elTx.GasUsed > 0 && elTx.EffGasPrice > 0 {
+					txData.TxFee = float64(elTx.GasUsed) * elTx.EffGasPrice / 1e9
 				}
 			}
 		}
@@ -956,7 +1115,7 @@ func getSlotPageExecutionProofs(pageData *models.SlotPageBlockData, blockRoot ph
 
 	// Log successful fetch
 	logrus.WithFields(logrus.Fields{
-		"blockRoot": fmt.Sprintf("0x%x", blockRoot),
+		"blockRoot":  fmt.Sprintf("0x%x", blockRoot),
 		"proofCount": len(proofsResponse.Data),
 	}).Info("Successfully fetched execution proofs")
 
@@ -993,75 +1152,5 @@ func getSlotPageExecutionProofs(pageData *models.SlotPageBlockData, blockRoot ph
 			BlockRoot: blockRootBytes,
 			ProofData: proof.ProofData,
 		}
-	}
-}
-
-func handleSlotDownload(ctx context.Context, w http.ResponseWriter, blockSlot int64, blockRoot []byte, downloadType string) error {
-	chainState := services.GlobalBeaconService.GetChainState()
-	currentSlot := chainState.CurrentSlot()
-	var blockData *services.CombinedBlockResponse
-	var err error
-	if blockSlot > -1 {
-		if phase0.Slot(blockSlot) <= currentSlot {
-			blockData, err = services.GlobalBeaconService.GetSlotDetailsBySlot(ctx, phase0.Slot(blockSlot))
-		}
-	} else {
-		blockData, err = services.GlobalBeaconService.GetSlotDetailsByBlockroot(ctx, phase0.Root(blockRoot))
-	}
-
-	if err != nil {
-		return fmt.Errorf("error getting block data: %v", err)
-	}
-
-	if blockData == nil || blockData.Block == nil {
-		return fmt.Errorf("block not found")
-	}
-
-	switch downloadType {
-	case "block-ssz":
-		w.Header().Set("Content-Type", "application/octet-stream")
-		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=block-%d-%x.ssz", blockData.Header.Message.Slot, blockData.Root[:]))
-
-		dynSsz := services.GlobalBeaconService.GetBeaconIndexer().GetDynSSZ()
-		_, blockSSZ, err := beacon.MarshalVersionedSignedBeaconBlockSSZ(dynSsz, blockData.Block, false, true)
-		if err != nil {
-			return fmt.Errorf("error serializing block: %v", err)
-		}
-		w.Write(blockSSZ)
-		return nil
-
-	case "block-json":
-		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=block-%d-%x.json", blockData.Header.Message.Slot, blockData.Root[:]))
-
-		_, jsonRes, err := beacon.MarshalVersionedSignedBeaconBlockJson(blockData.Block)
-		if err != nil {
-			return fmt.Errorf("error serializing block: %v", err)
-		}
-		w.Write(jsonRes)
-		return nil
-
-	case "header-ssz":
-		w.Header().Set("Content-Type", "application/octet-stream")
-		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=header-%d-%x.ssz", blockData.Header.Message.Slot, blockData.Root[:]))
-		headerSSZ, err := blockData.Header.MarshalSSZ()
-		if err != nil {
-			return fmt.Errorf("error serializing header: %v", err)
-		}
-		w.Write(headerSSZ)
-		return nil
-
-	case "header-json":
-		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=header-%d-%x.json", blockData.Header.Message.Slot, blockData.Root[:]))
-		jsonRes, err := blockData.Header.MarshalJSON()
-		if err != nil {
-			return fmt.Errorf("error serializing header: %v", err)
-		}
-		w.Write(jsonRes)
-		return nil
-
-	default:
-		return fmt.Errorf("unknown download type: %s", downloadType)
 	}
 }

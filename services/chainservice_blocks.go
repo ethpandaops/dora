@@ -25,12 +25,9 @@ type CombinedBlockResponse struct {
 	Orphaned bool
 }
 
-// GetBlockBlob retrieves the blob sidecar for a given block root and commitment.
-// It first tries to find a client that has the block root in its cache, and if not found,
-// it falls back to a random ready client. It then retrieves the blob sidecars for the block root
-// and checks if any of them match the given commitment. If a match is found, it returns the blob sidecar,
-// otherwise it returns nil.
-func (bs *ChainService) GetBlockBlob(ctx context.Context, blockroot phase0.Root, commitment deneb.KZGCommitment) (*deneb.BlobSidecar, error) {
+// GetBlockBlob retrieves the blob data for a given block root and blob index.
+// It uses GetBlobsByBlockroot which works for both pre-Fulu and Fulu+ blocks.
+func (bs *ChainService) GetBlockBlob(ctx context.Context, blockroot phase0.Root, blobIndex uint64) (*deneb.Blob, error) {
 	client := bs.beaconIndexer.GetReadyClientByBlockRoot(blockroot, true)
 	if client == nil {
 		client = bs.beaconIndexer.GetReadyClient(true)
@@ -40,18 +37,16 @@ func (bs *ChainService) GetBlockBlob(ctx context.Context, blockroot phase0.Root,
 		return nil, fmt.Errorf("no clients available")
 	}
 
-	blobs, err := client.GetClient().GetRPCClient().GetBlobSidecarsByBlockroot(ctx, blockroot[:])
+	blobs, err := client.GetClient().GetRPCClient().GetBlobsByBlockroot(ctx, blockroot[:])
 	if err != nil {
 		return nil, err
 	}
 
-	for _, blob := range blobs {
-		if bytes.Equal(blob.KZGCommitment[:], commitment[:]) {
-			return blob, nil
-		}
+	if int(blobIndex) >= len(blobs) {
+		return nil, nil
 	}
 
-	return nil, nil
+	return blobs[blobIndex], nil
 }
 
 // GetSlotDetailsByBlockroot retrieves the combined block details for a given block root.
@@ -102,12 +97,12 @@ func (bs *ChainService) GetSlotDetailsByBlockroot(ctx context.Context, blockroot
 	// try loading from cache
 	if blockInfo := bs.beaconIndexer.GetBlockByRoot(blockroot); blockInfo != nil {
 		blockHeader := blockInfo.GetHeader()
-		blockBody := blockInfo.GetBlock()
+		blockBody := blockInfo.GetBlock(ctx)
 		if blockHeader != nil && blockBody != nil {
 			result = &CombinedBlockResponse{
 				Root:     blockInfo.Root,
 				Header:   blockInfo.GetHeader(),
-				Block:    blockInfo.GetBlock(),
+				Block:    blockInfo.GetBlock(ctx),
 				Orphaned: !bs.beaconIndexer.IsCanonicalBlock(blockInfo, nil),
 			}
 		}
@@ -119,7 +114,7 @@ func (bs *ChainService) GetSlotDetailsByBlockroot(ctx context.Context, blockroot
 		result = &CombinedBlockResponse{
 			Root:     blockInfo.Root,
 			Header:   blockInfo.GetHeader(),
-			Block:    blockInfo.GetBlock(),
+			Block:    blockInfo.GetBlock(ctx),
 			Orphaned: true,
 		}
 	}
@@ -231,7 +226,7 @@ func (bs *ChainService) GetSlotDetailsBySlot(ctx context.Context, slot phase0.Sl
 		}
 
 		blockHeader := cachedBlock.GetHeader()
-		blockBody := cachedBlock.GetBlock()
+		blockBody := cachedBlock.GetBlock(ctx)
 		if blockHeader != nil && blockBody != nil {
 			result = &CombinedBlockResponse{
 				Root:     cachedBlock.Root,
@@ -320,7 +315,7 @@ func (bs *ChainService) GetBlobSidecarsByBlockRoot(ctx context.Context, blockroo
 // The withMissing parameter indicates whether to include missing blocks.
 // The withOrphaned parameter indicates whether to include orphaned blocks.
 // The returned slice contains the retrieved blocks.
-func (bs *ChainService) GetDbBlocksForSlots(firstSlot uint64, slotLimit uint32, withMissing bool, withOrphaned bool) []*dbtypes.Slot {
+func (bs *ChainService) GetDbBlocksForSlots(ctx context.Context, firstSlot uint64, slotLimit uint32, withMissing bool, withOrphaned bool) []*dbtypes.Slot {
 	resBlocks := make([]*dbtypes.Slot, 0)
 
 	chainState := bs.consensusPool.GetChainState()
@@ -495,7 +490,7 @@ func (bs *ChainService) GetDbBlocksForSlots(firstSlot uint64, slotLimit uint32, 
 
 		// load selected blocks from db
 		if len(blockRoots) > 0 {
-			blockMap := db.GetSlotsByRoots(blockRoots)
+			blockMap := db.GetSlotsByRoots(ctx, blockRoots)
 			if blockMap != nil {
 				for idx, blockRoot := range blockRoots {
 					if dbBlock, ok := blockMap[phase0.Root(blockRoot)]; ok {
@@ -513,7 +508,7 @@ func (bs *ChainService) GetDbBlocksForSlots(firstSlot uint64, slotLimit uint32, 
 
 	// get finalized blocks from db
 	if uint64(slot) > lastSlot {
-		dbBlocks := db.GetSlotsRange(uint64(slot), uint64(lastSlot), withMissing, withOrphaned)
+		dbBlocks := db.GetSlotsRange(ctx, uint64(slot), uint64(lastSlot), withMissing, withOrphaned)
 		for _, dbBlock := range dbBlocks {
 			if withMissing {
 				for ; uint64(slot) > dbBlock.Slot+1; slot-- {
@@ -566,7 +561,7 @@ type cachedDbBlock struct {
 // The pageSize parameter specifies the page size.
 // The withScheduledCount parameter specifies the number of scheduled slots to include.
 // The returned slice contains the retrieved blocks.
-func (bs *ChainService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageIdx uint64, pageSize uint32, withScheduledCount uint64) []*dbtypes.AssignedSlot {
+func (bs *ChainService) GetDbBlocksByFilter(ctx context.Context, filter *dbtypes.BlockFilter, pageIdx uint64, pageSize uint32, withScheduledCount uint64) []*dbtypes.AssignedSlot {
 	cachedMatches := make([]cachedDbBlock, 0)
 
 	chainState := bs.consensusPool.GetChainState()
@@ -606,11 +601,37 @@ func (bs *ChainService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageIdx
 		return proposer
 	}
 
+	// Convert epoch filters to slot filters for use in DB query
+	if filter.MinEpoch != nil && filter.MinSlot == nil {
+		minSlot := uint64(chainState.EpochToSlot(phase0.Epoch(*filter.MinEpoch)))
+		filter.MinSlot = &minSlot
+	}
+	if filter.MaxEpoch != nil && filter.MaxSlot == nil {
+		maxSlot := uint64(chainState.EpochToSlot(phase0.Epoch(*filter.MaxEpoch+1))) - 1
+		filter.MaxSlot = &maxSlot
+	}
+
 	// get blocks from cache
 	// iterate from current slot to finalized slot
 	lastCanonicalBlock := bs.beaconIndexer.GetCanonicalHead(nil)
 
-	for slotIdx := int64(startSlot); slotIdx >= int64(finalizedSlot); slotIdx-- {
+	// apply epoch filter to slot range
+	cacheStartSlot := startSlot
+	cacheFinalizedSlot := finalizedSlot
+	if filter.MaxSlot != nil {
+		maxSlotVal := phase0.Slot(*filter.MaxSlot)
+		if maxSlotVal < cacheStartSlot {
+			cacheStartSlot = maxSlotVal
+		}
+	}
+	if filter.MinSlot != nil {
+		minSlotVal := phase0.Slot(*filter.MinSlot)
+		if minSlotVal > cacheFinalizedSlot {
+			cacheFinalizedSlot = minSlotVal
+		}
+	}
+
+	for slotIdx := int64(cacheStartSlot); slotIdx >= int64(cacheFinalizedSlot); slotIdx-- {
 		slot := phase0.Slot(slotIdx)
 		blocks := bs.beaconIndexer.GetBlocksBySlot(slot)
 		for _, block := range blocks {
@@ -618,7 +639,7 @@ func (bs *ChainService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageIdx
 			if blockHeader == nil {
 				continue
 			}
-			blockIndex := block.GetBlockIndex()
+			blockIndex := block.GetBlockIndex(ctx)
 			if blockIndex == nil {
 				continue
 			}
@@ -633,6 +654,34 @@ func (bs *ChainService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageIdx
 			// filter by specific block root
 			if len(filter.BlockRoot) > 0 {
 				if !bytes.Equal(block.Root[:], filter.BlockRoot) {
+					continue
+				}
+			}
+
+			// filter by specific block UID
+			if len(filter.BlockUids) > 0 {
+				found := false
+				for _, blockUid := range filter.BlockUids {
+					if blockUid == block.BlockUID {
+						found = true
+						break
+					}
+				}
+				if !found {
+					continue
+				}
+			}
+
+			// filter by EL block number
+			if filter.EthBlockNumber != nil {
+				if blockIndex.ExecutionNumber != *filter.EthBlockNumber {
+					continue
+				}
+			}
+
+			// filter by EL block hash
+			if len(filter.EthBlockHash) > 0 {
+				if !bytes.Equal(blockIndex.ExecutionHash[:], filter.EthBlockHash) {
 					continue
 				}
 			}
@@ -771,6 +820,39 @@ func (bs *ChainService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageIdx
 				}
 			}
 
+			// filter by gas used
+			if filter.MinGasUsed != nil || filter.MaxGasUsed != nil {
+				gasUsed := blockIndex.GasUsed
+				if filter.MinGasUsed != nil && gasUsed < *filter.MinGasUsed {
+					continue
+				}
+				if filter.MaxGasUsed != nil && gasUsed > *filter.MaxGasUsed {
+					continue
+				}
+			}
+
+			// filter by gas limit
+			if filter.MinGasLimit != nil || filter.MaxGasLimit != nil {
+				gasLimit := blockIndex.GasLimit
+				if filter.MinGasLimit != nil && gasLimit < *filter.MinGasLimit {
+					continue
+				}
+				if filter.MaxGasLimit != nil && gasLimit > *filter.MaxGasLimit {
+					continue
+				}
+			}
+
+			// filter by block size
+			if filter.MinBlockSize != nil || filter.MaxBlockSize != nil {
+				blockSize := blockIndex.BlockSize
+				if filter.MinBlockSize != nil && blockSize < *filter.MinBlockSize {
+					continue
+				}
+				if filter.MaxBlockSize != nil && blockSize > *filter.MaxBlockSize {
+					continue
+				}
+			}
+
 			cachedMatches = append(cachedMatches, cachedDbBlock{
 				slot:     uint64(block.Slot),
 				proposer: uint64(blockHeader.Message.ProposerIndex),
@@ -781,7 +863,7 @@ func (bs *ChainService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageIdx
 
 		// reconstruct missing blocks from epoch duties
 		// For slot/root filtering, we still need to check if we need missing blocks for that specific slot
-		shouldCheckMissing := filter.WithMissing != 0 && filter.Graffiti == "" && filter.ExtraData == "" && filter.WithOrphaned != 2 && filter.MinSyncParticipation == nil && filter.MaxSyncParticipation == nil && filter.MinExecTime == nil && filter.MaxExecTime == nil && filter.MinTxCount == nil && filter.MaxTxCount == nil && filter.MinBlobCount == nil && filter.MaxBlobCount == nil && len(filter.ForkIds) == 0
+		shouldCheckMissing := filter.WithMissing != 0 && filter.Graffiti == "" && filter.ExtraData == "" && filter.WithOrphaned != 2 && filter.MinSyncParticipation == nil && filter.MaxSyncParticipation == nil && filter.MinExecTime == nil && filter.MaxExecTime == nil && filter.MinTxCount == nil && filter.MaxTxCount == nil && filter.MinBlobCount == nil && filter.MaxBlobCount == nil && len(filter.ForkIds) == 0 && filter.MinGasUsed == nil && filter.MaxGasUsed == nil && filter.MinGasLimit == nil && filter.MaxGasLimit == nil && filter.MinBlockSize == nil && filter.MaxBlockSize == nil && filter.WithMevBlock == 0
 
 		// If filtering by slot, only check missing for that specific slot
 		if filter.Slot != nil {
@@ -790,6 +872,11 @@ func (bs *ChainService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageIdx
 
 		// If filtering by block root, don't check missing (missing blocks don't have roots)
 		if len(filter.BlockRoot) > 0 {
+			shouldCheckMissing = false
+		}
+
+		// If filtering by block UID, don't check missing (missing blocks don't have UIDs)
+		if len(filter.BlockUids) > 0 {
 			shouldCheckMissing = false
 		}
 
@@ -901,7 +988,7 @@ func (bs *ChainService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageIdx
 
 	// load pruned blocks from database
 	if len(blockRoots) > 0 {
-		blockMap := db.GetSlotsByRoots(blockRoots)
+		blockMap := db.GetSlotsByRoots(ctx, blockRoots)
 		if blockMap != nil {
 			for idx, blockRoot := range blockRoots {
 				if dbBlock, ok := blockMap[phase0.Root(blockRoot)]; ok {
@@ -929,16 +1016,16 @@ func (bs *ChainService) GetDbBlocksByFilter(filter *dbtypes.BlockFilter, pageIdx
 	dbCacheOffset := uint64(pageSize) - (cachedMatchesLen % uint64(pageSize))
 	var dbBlocks []*dbtypes.AssignedSlot
 	if dbPage == 0 {
-		dbBlocks = db.GetFilteredSlots(filter, uint64(finalizedSlot), 0, uint32(dbCacheOffset)+1)
+		dbBlocks = db.GetFilteredSlots(ctx, filter, uint64(finalizedSlot), 0, uint32(dbCacheOffset)+1)
 	} else {
-		dbBlocks = db.GetFilteredSlots(filter, uint64(finalizedSlot), (dbPage-1)*uint64(pageSize)+dbCacheOffset, pageSize+1)
+		dbBlocks = db.GetFilteredSlots(ctx, filter, uint64(finalizedSlot), (dbPage-1)*uint64(pageSize)+dbCacheOffset, pageSize+1)
 	}
 	resBlocks = append(resBlocks, dbBlocks...)
 
 	return resBlocks
 }
 
-func (bs *ChainService) GetDbBlocksByParentRoot(parentRoot phase0.Root) []*dbtypes.Slot {
+func (bs *ChainService) GetDbBlocksByParentRoot(ctx context.Context, parentRoot phase0.Root) []*dbtypes.Slot {
 	parentBlock := bs.beaconIndexer.GetBlockByRoot(parentRoot)
 	cachedMatches := bs.beaconIndexer.GetBlockByParentRoot(parentRoot)
 	resBlocks := make([]*dbtypes.Slot, len(cachedMatches))
@@ -947,12 +1034,12 @@ func (bs *ChainService) GetDbBlocksByParentRoot(parentRoot phase0.Root) []*dbtyp
 		resBlocks[idx] = block.GetDbBlock(bs.beaconIndexer, isCanonical)
 	}
 	if parentBlock == nil {
-		resBlocks = append(resBlocks, db.GetSlotsByParentRoot(parentRoot[:])...)
+		resBlocks = append(resBlocks, db.GetSlotsByParentRoot(ctx, parentRoot[:])...)
 	}
 	return resBlocks
 }
 
-func (bs *ChainService) CheckBlockOrphanedStatus(blockRoot phase0.Root) dbtypes.SlotStatus {
+func (bs *ChainService) CheckBlockOrphanedStatus(ctx context.Context, blockRoot phase0.Root) dbtypes.SlotStatus {
 	cachedBlock := bs.beaconIndexer.GetBlockByRoot(blockRoot)
 	if cachedBlock != nil {
 		if bs.beaconIndexer.IsCanonicalBlock(cachedBlock, nil) {
@@ -961,7 +1048,7 @@ func (bs *ChainService) CheckBlockOrphanedStatus(blockRoot phase0.Root) dbtypes.
 			return dbtypes.Orphaned
 		}
 	}
-	dbRefs := db.GetSlotStatus([][]byte{blockRoot[:]})
+	dbRefs := db.GetSlotStatus(ctx, [][]byte{blockRoot[:]})
 	if len(dbRefs) > 0 {
 		return dbRefs[0].Status
 	}
@@ -969,14 +1056,14 @@ func (bs *ChainService) CheckBlockOrphanedStatus(blockRoot phase0.Root) dbtypes.
 	return dbtypes.Missing
 }
 
-func (bs *ChainService) GetHighestElBlockNumber(overrideForkId *beacon.ForkKey) uint64 {
+func (bs *ChainService) GetHighestElBlockNumber(ctx context.Context, overrideForkId *beacon.ForkKey) uint64 {
 	canonicalHead := bs.beaconIndexer.GetCanonicalHead(overrideForkId)
 	for {
 		if canonicalHead == nil {
 			break
 		}
-		if canonicalHead.GetBlockIndex() != nil {
-			return canonicalHead.GetBlockIndex().ExecutionNumber
+		if canonicalHead.GetBlockIndex(ctx) != nil {
+			return canonicalHead.GetBlockIndex(ctx).ExecutionNumber
 		}
 
 		parentRoot := canonicalHead.GetParentRoot()

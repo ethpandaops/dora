@@ -72,6 +72,25 @@
                     </div>
                   </div>
                 </div>
+                <div class="row mt-1">
+                  <div class="col-sm-12 col-md-6 col-lg-4">
+                    <nobr>Epoch</nobr>
+                  </div>
+                  <div class="col-sm-12 col-md-6 col-lg-8 d-flex">
+                    <div class="flex-grow-1">
+                      <input name="f.minepoch" type="number" class="form-control" placeholder="Min" aria-label="Min Epoch" min="0" value="{{ .FilterMinEpoch }}">
+                    </div>
+                    <div class="text-center filter-separator">
+                      -
+                    </div>
+                    <div class="flex-grow-1">
+                      <input name="f.maxepoch" type="number" class="form-control" placeholder="Max" aria-label="Max Epoch" min="0" value="{{ .FilterMaxEpoch }}">
+                    </div>
+                    <div class="text-center" style="width: 30px;">
+
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
             <div class="col-sm-12 col-md-6">
@@ -174,7 +193,7 @@
                       <input name="f.maxblob" type="number" class="form-control" placeholder="Max" aria-label="Max Blob Count" min="0" value="{{ .FilterMaxBlobCount }}">
                     </div>
                     <div class="text-center" style="width: 30px;">
-                      
+
                     </div>
                   </div>
                 </div>
@@ -448,9 +467,13 @@ $('#slotsFilterForm').submit(function () {
     return el.selected;
   }).map(function(el) {
     return el.value;
-  }).join(" ");
+  });
   if(displayColumns.length > 0) {
-    $(this).find("#displayColumnsField").prop('name', 'd').val(displayColumns);
+    var displayMask = 0;
+    displayColumns.forEach(function(col) {
+      displayMask |= 1 << (parseInt(col) - 1);
+    });
+    $(this).find("#displayColumnsField").prop('name', 'd').val("0x" + displayMask.toString(16));
   }
 });
 $(function() {

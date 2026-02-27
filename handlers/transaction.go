@@ -1,0 +1,1409 @@
+package handlers
+
+import (
+	"bytes"
+	"context"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"math/big"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/attestantio/go-eth2-client/spec/phase0"
+	"github.com/ethereum/go-ethereum/common"
+	ethtypes "github.com/ethereum/go-ethereum/core/types"
+	"github.com/golang/snappy"
+	"github.com/gorilla/mux"
+	dynssz "github.com/pk910/dynamic-ssz"
+	"github.com/sirupsen/logrus"
+
+	"github.com/ethpandaops/dora/blockdb"
+	bdbtypes "github.com/ethpandaops/dora/blockdb/types"
+	"github.com/ethpandaops/dora/clients/consensus"
+	"github.com/ethpandaops/dora/db"
+	"github.com/ethpandaops/dora/dbtypes"
+	"github.com/ethpandaops/dora/services"
+	"github.com/ethpandaops/dora/templates"
+	"github.com/ethpandaops/dora/types"
+	"github.com/ethpandaops/dora/types/models"
+	"github.com/ethpandaops/dora/utils"
+)
+
+// Transaction type names
+var txTypeNames = map[uint8]string{
+	0: "Legacy",
+	1: "Access List (EIP-2930)",
+	2: "Dynamic Fee (EIP-1559)",
+	3: "Blob (EIP-4844)",
+	4: "Set Code (EIP-7702)",
+}
+
+// Transaction handles the /tx/{hash} page
+func Transaction(w http.ResponseWriter, r *http.Request) {
+	txTemplateFiles := append(layoutTemplateFiles,
+		"transaction/transaction.html",
+		"transaction/events.html",
+		"transaction/statechanges.html",
+		"transaction/transfers.html",
+		"transaction/internaltxs.html",
+		"transaction/blobs.html",
+	)
+	notfoundTemplateFiles := append(layoutTemplateFiles,
+		"transaction/notfound.html",
+	)
+
+	// Check if execution indexer is enabled
+	if !utils.Config.ExecutionIndexer.Enabled {
+		data := InitPageData(w, r, "blockchain", "/tx", "Feature Disabled", notfoundTemplateFiles)
+		data.Data = "disabled"
+		w.Header().Set("Content-Type", "text/html")
+		handleTemplateError(w, r, "transaction.go", "Transaction", "disabled", templates.GetTemplate(notfoundTemplateFiles...).ExecuteTemplate(w, "layout", data))
+		return
+	}
+
+	vars := mux.Vars(r)
+	txHashHex := strings.TrimPrefix(vars["hash"], "0x")
+
+	txHashBytes, err := hex.DecodeString(txHashHex)
+	if err != nil || len(txHashBytes) != 32 {
+		data := InitPageData(w, r, "blockchain", "/tx", "Transaction not found", notfoundTemplateFiles)
+		w.Header().Set("Content-Type", "text/html")
+		handleTemplateError(w, r, "transaction.go", "Transaction", "invalidHash", templates.GetTemplate(notfoundTemplateFiles...).ExecuteTemplate(w, "layout", data))
+		return
+	}
+
+	tabView := "overview"
+	if r.URL.Query().Has("v") {
+		tabView = r.URL.Query().Get("v")
+	}
+
+	// Parse selected block UID (0 = auto-select canonical)
+	var selectedBlockUid uint64
+	if r.URL.Query().Has("b") {
+		if uid, err := strconv.ParseUint(r.URL.Query().Get("b"), 10, 64); err == nil {
+			selectedBlockUid = uid
+		}
+	}
+
+	var pageError error
+	pageError = services.GlobalCallRateLimiter.CheckCallLimit(r, 1)
+
+	var pageData *models.TransactionPageData
+	if pageError == nil {
+		pageData, pageError = getTransactionPageData(txHashBytes, tabView, selectedBlockUid)
+	}
+
+	if pageError != nil {
+		handlePageError(w, r, pageError)
+		return
+	}
+
+	if pageData.TxNotFound {
+		data := InitPageData(w, r, "blockchain", "/tx", "Transaction not found", notfoundTemplateFiles)
+		data.Data = pageData
+		w.Header().Set("Content-Type", "text/html")
+		handleTemplateError(w, r, "transaction.go", "Transaction", "notFound", templates.GetTemplate(notfoundTemplateFiles...).ExecuteTemplate(w, "layout", data))
+		return
+	}
+
+	pageTemplate := templates.GetTemplate(txTemplateFiles...)
+	data := InitPageData(w, r, "blockchain", "/tx", fmt.Sprintf("Transaction 0x%x", pageData.TxHash), txTemplateFiles)
+	data.Data = pageData
+	w.Header().Set("Content-Type", "text/html")
+
+	if r.URL.Query().Has("lazy") {
+		handleTemplateError(w, r, "transaction.go", "Transaction", "", pageTemplate.ExecuteTemplate(w, "lazyPage", data.Data))
+	} else {
+		handleTemplateError(w, r, "transaction.go", "Transaction", "", pageTemplate.ExecuteTemplate(w, "layout", data))
+	}
+}
+
+func getTransactionPageData(txHash []byte, tabView string, selectedBlockUid uint64) (*models.TransactionPageData, error) {
+	pageData := &models.TransactionPageData{}
+	pageCacheKey := fmt.Sprintf("tx:%x:%v:%v", txHash, tabView, selectedBlockUid)
+	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
+		pageData, cacheTimeout := buildTransactionPageData(pageCall.CallCtx, txHash, tabView, selectedBlockUid)
+		_ = cacheTimeout
+		return pageData
+	})
+	if pageErr == nil && pageRes != nil {
+		resData, resOk := pageRes.(*models.TransactionPageData)
+		if !resOk {
+			return nil, ErrInvalidPageModel
+		}
+		pageData = resData
+	}
+	return pageData, pageErr
+}
+
+func buildTransactionPageData(ctx context.Context, txHash []byte, tabView string, selectedBlockUid uint64) (*models.TransactionPageData, time.Duration) {
+	logrus.Debugf("transaction page called: %x (tab: %v, block: %v)", txHash, tabView, selectedBlockUid)
+
+	chainState := services.GlobalBeaconService.GetChainState()
+
+	pageData := &models.TransactionPageData{
+		TxHash:   txHash,
+		TabView:  tabView,
+		ViewMode: models.TxViewModeNone,
+	}
+
+	// Try to get transaction from DB first
+	txs, err := db.GetElTransactionsByHash(ctx, txHash)
+	if err == nil && len(txs) > 0 {
+		// Found in DB - build page data from DB entries
+		buildTransactionPageDataFromDB(ctx, pageData, txs, tabView, chainState, selectedBlockUid)
+		blockSlot := txs[0].BlockUid >> 16
+		blockTime := chainState.SlotToTime(phase0.Slot(blockSlot))
+		cacheTimeout := 1 * time.Minute
+		if time.Since(blockTime) > 5*time.Minute {
+			cacheTimeout = 15 * time.Minute
+		}
+		return pageData, cacheTimeout
+	}
+
+	// Not in DB - try to fetch from EL client
+	if buildTransactionPageDataFromEL(ctx, pageData, txHash, chainState) {
+		return pageData, 30 * time.Minute
+	}
+
+	// Transaction not found anywhere
+	pageData.TxNotFound = true
+	pageData.ViewMode = models.TxViewModeNone
+	return pageData, 1 * time.Minute
+}
+
+// buildTransactionPageDataFromDB builds page data from database entries.
+// selectedBlockUid: 0 = auto-select canonical, otherwise use the specified block.
+func buildTransactionPageDataFromDB(ctx context.Context, pageData *models.TransactionPageData, txs []*dbtypes.ElTransaction, tabView string, chainState *consensus.ChainState, selectedBlockUid uint64) {
+	pageData.ViewMode = models.TxViewModeFull
+	pageData.HasReceipt = true
+
+	// Check for multiple versions (reorgs)
+	if len(txs) > 1 {
+		pageData.TxMultiple = true
+	}
+
+	// Collect all block UIDs for loading inclusion blocks
+	blockUids := make([]uint64, 0, len(txs))
+	for _, tx := range txs {
+		blockUids = append(blockUids, tx.BlockUid)
+	}
+
+	// Load all inclusion blocks
+	blockFilter := &dbtypes.BlockFilter{
+		BlockUids:    blockUids,
+		WithOrphaned: 1,
+	}
+	allBlocks := services.GlobalBeaconService.GetDbBlocksByFilter(ctx, blockFilter, 0, uint32(len(blockUids)), 0)
+
+	// Build block map for quick lookup by slot
+	blockMap := make(map[uint64][]*dbtypes.Slot)
+	for _, b := range allBlocks {
+		if b.Block != nil {
+			blockMap[b.Block.Slot] = append(blockMap[b.Block.Slot], b.Block)
+		}
+	}
+
+	// Build inclusion blocks list and find canonical/selected block
+	var canonicalTx *dbtypes.ElTransaction
+	var canonicalBlock *dbtypes.Slot
+	var selectedTx *dbtypes.ElTransaction
+	var selectedBlock *dbtypes.Slot
+	pageData.InclusionBlocks = make([]*models.TransactionPageDataBlock, 0, len(txs))
+
+	finalizedSlot := chainState.GetFinalizedSlot()
+
+	for _, tx := range txs {
+		slot := tx.BlockUid >> 16
+		blocks := blockMap[slot]
+		if len(blocks) == 0 {
+			continue
+		}
+
+		// Find the matching block by block index within slot
+		blockIdx := tx.BlockUid & 0xFFFF
+		var block *dbtypes.Slot
+		if int(blockIdx) < len(blocks) {
+			block = blocks[blockIdx]
+		} else if len(blocks) > 0 {
+			block = blocks[0]
+		}
+		if block == nil {
+			continue
+		}
+
+		blockTime := chainState.SlotToTime(phase0.Slot(slot))
+		isOrphaned := block.Status == dbtypes.Orphaned
+		isCanonical := !isOrphaned
+
+		inclusionBlock := &models.TransactionPageDataBlock{
+			BlockUid:    tx.BlockUid,
+			BlockNumber: tx.BlockNumber,
+			BlockHash:   block.EthBlockHash,
+			BlockRoot:   block.Root,
+			Slot:        slot,
+			BlockTime:   blockTime,
+			IsOrphaned:  isOrphaned,
+			IsCanonical: isCanonical,
+			TxIndex:     tx.TxIndex,
+		}
+		pageData.InclusionBlocks = append(pageData.InclusionBlocks, inclusionBlock)
+
+		// Track canonical block (first non-orphaned)
+		if isCanonical && canonicalTx == nil {
+			canonicalTx = tx
+			canonicalBlock = block
+		}
+
+		// Track selected block if specified
+		if selectedBlockUid != 0 && tx.BlockUid == selectedBlockUid {
+			selectedTx = tx
+			selectedBlock = block
+			inclusionBlock.IsSelected = true
+		}
+	}
+
+	// Determine which tx/block to use for display
+	var tx *dbtypes.ElTransaction
+	var displayBlock *dbtypes.Slot
+
+	if selectedBlockUid != 0 && selectedTx != nil {
+		// User selected a specific block
+		tx = selectedTx
+		displayBlock = selectedBlock
+		pageData.SelectedBlockUid = selectedBlockUid
+	} else {
+		// Auto-select canonical, or fall back to first tx if all orphaned
+		tx = canonicalTx
+		displayBlock = canonicalBlock
+		if tx == nil {
+			tx = txs[0]
+			slot := tx.BlockUid >> 16
+			if blocks := blockMap[slot]; len(blocks) > 0 {
+				displayBlock = blocks[0]
+			}
+		}
+		// Mark canonical/first as selected if no explicit selection
+		for _, ib := range pageData.InclusionBlocks {
+			if ib.BlockUid == tx.BlockUid {
+				ib.IsSelected = true
+				break
+			}
+		}
+		// SelectedBlockUid stays 0 for canonical selection
+	}
+
+	// Basic info from selected transaction
+	slot := tx.BlockUid >> 16
+	blockTime := chainState.SlotToTime(phase0.Slot(slot))
+
+	pageData.Status = !tx.Reverted
+	if tx.Reverted {
+		pageData.StatusText = "Failed"
+	} else {
+		pageData.StatusText = "Success"
+	}
+
+	pageData.BlockNumber = tx.BlockNumber
+	pageData.Slot = slot
+	pageData.BlockTime = blockTime
+
+	if displayBlock != nil {
+		pageData.BlockHash = displayBlock.EthBlockHash
+		pageData.BlockRoot = displayBlock.Root
+		pageData.TxOrphaned = displayBlock.Status == dbtypes.Orphaned
+
+		// Check if finalized
+		if !pageData.TxOrphaned && phase0.Slot(displayBlock.Slot) <= finalizedSlot {
+			pageData.TxFinalized = true
+		}
+	}
+
+	// Get from/to addresses
+	if tx.FromID > 0 {
+		if fromAccount, err := db.GetElAccountByID(ctx, tx.FromID); err == nil {
+			pageData.FromAddr = fromAccount.Address
+			pageData.FromIsContract = fromAccount.IsContract
+		}
+	}
+	if tx.ToID > 0 {
+		if toAccount, err := db.GetElAccountByID(ctx, tx.ToID); err == nil {
+			pageData.ToAddr = toAccount.Address
+			pageData.ToIsContract = toAccount.IsContract
+			pageData.HasTo = true
+		}
+	} else {
+		pageData.IsCreate = true
+	}
+
+	// Value and fees
+	pageData.Amount = tx.Amount
+	pageData.AmountRaw = tx.AmountRaw
+	pageData.GasPrice = tx.GasPrice
+	pageData.TipPrice = tx.TipPrice
+	pageData.EffGasPrice = tx.EffGasPrice
+
+	// Calculate fee savings for EIP-1559+ transactions
+	if tx.TxType >= 2 && tx.GasPrice > 0 && tx.EffGasPrice > 0 && tx.GasPrice > tx.EffGasPrice {
+		pageData.FeeSavingsPct = (tx.GasPrice - tx.EffGasPrice) / tx.GasPrice * 100
+	}
+
+	// Calculate transaction fee using effective gas price
+	effectivePrice := tx.EffGasPrice
+	if effectivePrice == 0 {
+		effectivePrice = tx.GasPrice // Fallback for legacy or missing data
+	}
+	txFee := float64(tx.GasUsed) * effectivePrice / 1e9
+	pageData.TxFee = txFee
+	gasPriceWei := new(big.Int).Mul(big.NewInt(int64(effectivePrice*1e9)), big.NewInt(1))
+	txFeeWei := new(big.Int).Mul(gasPriceWei, big.NewInt(int64(tx.GasUsed)))
+	pageData.TxFeeRaw = txFeeWei.Bytes()
+
+	// Gas info
+	pageData.GasLimit = tx.GasLimit
+	pageData.GasUsed = tx.GasUsed
+	if tx.GasLimit > 0 {
+		pageData.GasUsedPct = float64(tx.GasUsed) / float64(tx.GasLimit) * 100
+	}
+
+	// Transaction details
+	pageData.TxType = tx.TxType
+	if name, ok := txTypeNames[tx.TxType]; ok {
+		pageData.TxTypeName = name
+	} else {
+		pageData.TxTypeName = fmt.Sprintf("Type %d", tx.TxType)
+	}
+	pageData.Nonce = tx.Nonce
+	pageData.TxIndex = tx.TxIndex
+
+	// Load full transaction data from selected beacon block (must come before
+	// method resolution so InputData is available for calldata decoding).
+	if displayBlock != nil {
+		blockFilter := &dbtypes.BlockFilter{
+			BlockUids:    []uint64{tx.BlockUid},
+			WithOrphaned: 1,
+		}
+		loadFullTransactionData(ctx, pageData, tx, blockFilter)
+	}
+
+	// Resolve call target type and method info
+	applyCallTargetResolution(ctx, pageData, tx.MethodID)
+
+	// Blobs
+	pageData.BlobCount = tx.BlobCount
+
+	// Check data_status for this block (for blockdb availability)
+	if elBlock, err := db.GetElBlock(ctx, tx.BlockUid); err == nil {
+		pageData.DataStatus = elBlock.DataStatus
+	}
+
+	// Load tab badge counts using lightweight COUNT queries instead of
+	// loading all rows. This avoids multi-second sequential scans for
+	// transactions with many events or internal calls.
+	eventCount, _ := db.GetElEventIndexCountByTxHash(ctx, pageData.TxHash)
+	pageData.EventCount = eventCount
+
+	transferCount, _ := db.GetElTokenTransferCountByBlockUidAndTxHash(ctx, tx.BlockUid, pageData.TxHash)
+	pageData.TokenTransferCount = transferCount
+
+	internalTxCount, _ := db.GetElTransactionsInternalCountByTxHash(ctx, pageData.TxHash)
+	pageData.InternalTxCount = internalTxCount
+
+	// Load tab-specific detailed data. Full row data is only loaded for
+	// the active tab to avoid unnecessary I/O. Events and internal txs
+	// are loaded from blockdb when available, falling back to DB.
+	switch tabView {
+	case "events":
+		loadTransactionEventsFromBlockdb(ctx, pageData, tx.BlockUid)
+	case "transfers":
+		transfers, _ := db.GetElTokenTransfersByBlockUidAndTxHash(ctx, tx.BlockUid, pageData.TxHash)
+		loadTransactionTransfersFromData(ctx, pageData, transfers)
+	case "internaltxs":
+		loadTransactionInternalTxsFromBlockdb(ctx, pageData, tx.BlockUid)
+	case "statechanges":
+		loadTransactionStateChangesFromBlockdb(ctx, pageData, tx.BlockUid)
+	}
+}
+
+// buildTransactionPageDataFromEL builds page data by fetching from EL client.
+// Returns true if transaction was found, false otherwise.
+func buildTransactionPageDataFromEL(ctx context.Context, pageData *models.TransactionPageData, txHash []byte, chainState *consensus.ChainState) bool {
+	txIndexer := services.GlobalBeaconService.GetTxIndexer()
+	if txIndexer == nil {
+		return false
+	}
+
+	clients := txIndexer.GetReadyClients()
+	if len(clients) == 0 {
+		return false
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	// Try to fetch transaction from EL client
+	var ethTx *ethtypes.Transaction
+	var isPending bool
+	var err error
+
+	txHashCommon := common.BytesToHash(txHash)
+
+	for _, client := range clients {
+		rpcClient := client.GetRPCClient()
+		if rpcClient == nil {
+			continue
+		}
+
+		ethClient := rpcClient.GetEthClient()
+		if ethClient == nil {
+			continue
+		}
+
+		ethTx, isPending, err = ethClient.TransactionByHash(ctx, txHashCommon)
+		if err == nil && ethTx != nil {
+			break
+		}
+	}
+
+	if ethTx == nil {
+		return false
+	}
+
+	// Transaction found - populate basic fields
+	pageData.ViewMode = models.TxViewModePartial // Start with partial, upgrade if receipt found
+
+	// Basic transaction info from ethTx
+	pageData.TxType = ethTx.Type()
+	if name, ok := txTypeNames[ethTx.Type()]; ok {
+		pageData.TxTypeName = name
+	} else {
+		pageData.TxTypeName = fmt.Sprintf("Type %d", ethTx.Type())
+	}
+
+	pageData.Nonce = ethTx.Nonce()
+	pageData.GasLimit = ethTx.Gas()
+
+	// Value
+	if ethTx.Value() != nil {
+		bigFloat := new(big.Float).SetInt(ethTx.Value())
+		bigFloat.Quo(bigFloat, big.NewFloat(1e18))
+		valueFloat, _ := bigFloat.Float64()
+
+		pageData.Amount = valueFloat
+		pageData.AmountRaw = ethTx.Value().Bytes()
+	}
+
+	// Gas price
+	if ethTx.GasPrice() != nil {
+		gasPriceFloat, _ := new(big.Float).SetInt(ethTx.GasPrice()).Float64()
+		pageData.GasPrice = gasPriceFloat / 1e9 // Convert to Gwei
+	}
+
+	// EIP-1559 tip price
+	if ethTx.Type() >= 2 && ethTx.GasTipCap() != nil {
+		tipFloat, _ := new(big.Float).SetInt(ethTx.GasTipCap()).Float64()
+		pageData.TipPrice = tipFloat / 1e9
+	}
+
+	// From address (need to derive from signature)
+	if from, err := ethtypes.Sender(ethtypes.LatestSignerForChainID(ethTx.ChainId()), ethTx); err == nil {
+		pageData.FromAddr = from.Bytes()
+	}
+
+	// To address
+	if ethTx.To() != nil {
+		pageData.ToAddr = ethTx.To().Bytes()
+		pageData.HasTo = true
+	} else {
+		pageData.IsCreate = true
+	}
+
+	// Input data
+	pageData.InputData = ethTx.Data()
+	methodID := []byte(nil)
+	if len(ethTx.Data()) >= 4 {
+		methodID = ethTx.Data()[:4]
+	}
+	applyCallTargetResolution(ctx, pageData, methodID)
+
+	// Blob hashes
+	pageData.BlobCount = uint32(len(ethTx.BlobHashes()))
+
+	// Generate RLP and JSON
+	if rlpData, err := ethTx.MarshalBinary(); err == nil {
+		pageData.TxRLP = "0x" + hex.EncodeToString(rlpData)
+	}
+	generateTxJSON(pageData, ethTx)
+
+	// If pending, we're done
+	if isPending {
+		pageData.StatusText = "Pending"
+		return true
+	}
+
+	// Try to fetch receipt for full data
+	for _, client := range clients {
+		rpcClient := client.GetRPCClient()
+		if rpcClient == nil {
+			continue
+		}
+
+		ethClient := rpcClient.GetEthClient()
+		if ethClient == nil {
+			continue
+		}
+
+		receipt, err := ethClient.TransactionReceipt(ctx, txHashCommon)
+		if err == nil && receipt != nil {
+			// Receipt found - upgrade to full view mode
+			pageData.ViewMode = models.TxViewModeFull
+			pageData.HasReceipt = true
+
+			// Status
+			pageData.Status = receipt.Status == 1
+			if pageData.Status {
+				pageData.StatusText = "Success"
+			} else {
+				pageData.StatusText = "Failed"
+			}
+
+			// Gas used
+			pageData.GasUsed = receipt.GasUsed
+			if pageData.GasLimit > 0 {
+				pageData.GasUsedPct = float64(receipt.GasUsed) / float64(pageData.GasLimit) * 100
+			}
+
+			// Calculate tx fee using effective gas price
+			if receipt.EffectiveGasPrice != nil {
+				effectiveGasPrice, _ := new(big.Float).SetInt(receipt.EffectiveGasPrice).Float64()
+				pageData.EffGasPrice = effectiveGasPrice / 1e9
+				txFee := float64(receipt.GasUsed) * effectiveGasPrice / 1e18
+				pageData.TxFee = txFee
+				txFeeWei := new(big.Int).Mul(receipt.EffectiveGasPrice, big.NewInt(int64(receipt.GasUsed)))
+				pageData.TxFeeRaw = txFeeWei.Bytes()
+
+				// Calculate fee savings for EIP-1559+ transactions
+				if pageData.TxType >= 2 && pageData.GasPrice > 0 && pageData.EffGasPrice > 0 && pageData.GasPrice > pageData.EffGasPrice {
+					pageData.FeeSavingsPct = (pageData.GasPrice - pageData.EffGasPrice) / pageData.GasPrice * 100
+				}
+			}
+
+			// Block info
+			pageData.BlockNumber = receipt.BlockNumber.Uint64()
+			pageData.BlockHash = receipt.BlockHash.Bytes()
+			pageData.TxIndex = uint32(receipt.TransactionIndex)
+
+			// Try to find beacon block for this execution block using GetDbBlocksByFilter
+			blockFilter := &dbtypes.BlockFilter{
+				EthBlockHash: receipt.BlockHash.Bytes(),
+				WithOrphaned: 1,
+			}
+			dbBlocks := services.GlobalBeaconService.GetDbBlocksByFilter(ctx, blockFilter, 0, 10, 0)
+			if len(dbBlocks) > 0 && dbBlocks[0].Block != nil {
+				block := dbBlocks[0].Block
+				pageData.BlockRoot = block.Root
+				pageData.Slot = block.Slot
+				pageData.BlockTime = chainState.SlotToTime(phase0.Slot(block.Slot))
+
+				// Check if finalized
+				finalizedSlot := chainState.GetFinalizedSlot()
+				if phase0.Slot(block.Slot) <= finalizedSlot {
+					pageData.TxFinalized = true
+				}
+
+				// Build inclusion blocks list from all found blocks
+				pageData.InclusionBlocks = make([]*models.TransactionPageDataBlock, 0, len(dbBlocks))
+				for _, dbBlock := range dbBlocks {
+					if dbBlock.Block == nil {
+						continue
+					}
+					b := dbBlock.Block
+					isOrphaned := b.Status == dbtypes.Orphaned
+					pageData.InclusionBlocks = append(pageData.InclusionBlocks, &models.TransactionPageDataBlock{
+						BlockNumber: pageData.BlockNumber,
+						BlockHash:   b.EthBlockHash,
+						BlockRoot:   b.Root,
+						Slot:        b.Slot,
+						BlockTime:   chainState.SlotToTime(phase0.Slot(b.Slot)),
+						IsOrphaned:  isOrphaned,
+						IsCanonical: !isOrphaned,
+						TxIndex:     pageData.TxIndex,
+					})
+				}
+			}
+
+			break
+		}
+	}
+
+	return true
+}
+
+// generateTxJSON creates a JSON representation of the transaction using proper marshaling.
+func generateTxJSON(pageData *models.TransactionPageData, ethTx *ethtypes.Transaction) {
+	// Use the transaction's built-in MarshalJSON for standardized format
+	jsonBytes, err := ethTx.MarshalJSON()
+	if err != nil {
+		return
+	}
+
+	// Pretty-print the JSON
+	var prettyJSON map[string]any
+	if err := json.Unmarshal(jsonBytes, &prettyJSON); err == nil {
+		if prettyBytes, err := json.MarshalIndent(prettyJSON, "", "  "); err == nil {
+			pageData.TxJSON = string(prettyBytes)
+		}
+	}
+}
+
+// loadTransactionEventsFromIndex populates event tab from the lightweight
+// event index. Full event data (all topics + data blob) will be loaded from
+// blockdb in a future phase. For now, only source address and topic1 (event
+// signature) are shown.
+func loadTransactionEventsFromIndex(ctx context.Context, pageData *models.TransactionPageData, events []*dbtypes.ElEventIndex) {
+	if len(events) == 0 {
+		return
+	}
+
+	// Collect account IDs for batch lookup
+	accountIDs := make(map[uint64]bool, len(events))
+	for _, e := range events {
+		accountIDs[e.SourceID] = true
+	}
+
+	// Batch lookup accounts
+	accountIDList := make([]uint64, 0, len(accountIDs))
+	for id := range accountIDs {
+		accountIDList = append(accountIDList, id)
+	}
+	accountMap := make(map[uint64]*dbtypes.ElAccount, len(accountIDList))
+	if len(accountIDList) > 0 {
+		if accounts, err := db.GetElAccountsByIDs(ctx, accountIDList); err == nil {
+			for _, a := range accounts {
+				accountMap[a.ID] = a
+			}
+		}
+	}
+
+	// Build events list from index entries
+	pageData.Events = make([]*models.TransactionPageDataEvent, 0, len(events))
+	for _, e := range events {
+		event := &models.TransactionPageDataEvent{
+			EventIndex: e.EventIndex,
+		}
+
+		// Source address
+		if source, ok := accountMap[e.SourceID]; ok {
+			event.SourceAddr = source.Address
+			event.SourceIsContract = source.IsContract
+		}
+
+		// Only topic1 (event signature) is available from the index
+		if len(e.Topic1) > 0 {
+			event.Topic0 = e.Topic1
+		}
+
+		pageData.Events = append(pageData.Events, event)
+	}
+}
+
+// loadTransactionEventsFromBlockdb populates the events tab with full event
+// data from blockdb (all topics + data blob). Falls back to loading from
+// the DB event index if blockdb data is unavailable (pruned or not stored).
+func loadTransactionEventsFromBlockdb(ctx context.Context, pageData *models.TransactionPageData, blockUid uint64) {
+	if pageData.EventCount == 0 {
+		return
+	}
+
+	// If the block says events data is unavailable (pruned / not stored), show the
+	// "not available" state instead of silently degrading to index-only view.
+	if pageData.DataStatus&dbtypes.ElBlockDataEvents == 0 {
+		pageData.EventsNotAvailable = true
+		return
+	}
+
+	// Try to load full event data from blockdb
+	if blockdb.GlobalBlockDb != nil && blockdb.GlobalBlockDb.SupportsExecData() {
+		slot := blockUid >> 16
+		blockRoot := pageData.BlockRoot
+
+		if len(blockRoot) > 0 {
+			ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+			defer cancel()
+
+			sections, err := blockdb.GlobalBlockDb.GetExecDataTxSections(
+				ctx, slot, blockRoot, pageData.TxHash,
+				bdbtypes.ExecDataSectionEvents,
+			)
+			if err != nil {
+				logrus.WithError(err).WithField("slot", slot).Debug("failed to get exec data tx sections for events")
+			}
+			if err == nil && sections != nil && sections.EventsData != nil {
+				uncompData, err := snappy.Decode(nil, sections.EventsData)
+				if err != nil {
+					logrus.WithError(err).Debug("failed to decompress events section")
+				} else {
+					var events bdbtypes.EventDataList
+
+					err := dynssz.GetGlobalDynSsz().UnmarshalSSZ(&events, uncompData)
+					if err != nil {
+						logrus.WithError(err).Debug("failed to decode events section")
+					} else {
+						pageData.Events = buildEventsFromBlockdb(events)
+						pageData.EventCount = uint64(len(pageData.Events))
+						return
+					}
+				}
+			}
+		}
+	}
+
+	// Fallback: load from DB event index (only when blockdb is unavailable)
+	eventIndices, _ := db.GetElEventIndicesByTxHash(ctx, pageData.TxHash)
+	loadTransactionEventsFromIndex(ctx, pageData, eventIndices)
+}
+
+// buildEventsFromBlockdb converts decoded blockdb events to page model events.
+func buildEventsFromBlockdb(events bdbtypes.EventDataList) []*models.TransactionPageDataEvent {
+	result := make([]*models.TransactionPageDataEvent, 0, len(events))
+	for i := range events {
+		ev := &events[i]
+		event := &models.TransactionPageDataEvent{
+			EventIndex: ev.EventIndex,
+			SourceAddr: ev.Source[:],
+			Data:       ev.Data,
+		}
+
+		// Map topics to fixed fields
+		if len(ev.Topics) > 0 {
+			event.Topic0 = ev.Topics[0]
+		}
+		if len(ev.Topics) > 1 {
+			event.Topic1 = ev.Topics[1]
+		}
+		if len(ev.Topics) > 2 {
+			event.Topic2 = ev.Topics[2]
+		}
+		if len(ev.Topics) > 3 {
+			event.Topic3 = ev.Topics[3]
+		}
+		if len(ev.Topics) > 4 {
+			event.Topic4 = ev.Topics[4]
+		}
+
+		result = append(result, event)
+	}
+	return result
+}
+
+// loadTransactionStateChangesFromBlockdb populates the state changes tab with
+// per-account storage/balance/nonce/code diffs from blockdb.
+func loadTransactionStateChangesFromBlockdb(ctx context.Context, pageData *models.TransactionPageData, blockUid uint64) {
+	// If the block says state change data is unavailable (pruned / not stored),
+	// show the "not available" state.
+	if pageData.DataStatus&dbtypes.ElBlockDataStateChanges == 0 {
+		pageData.StateChangesNotAvailable = true
+		return
+	}
+
+	if blockdb.GlobalBlockDb == nil || !blockdb.GlobalBlockDb.SupportsExecData() {
+		pageData.StateChangesNotAvailable = true
+		return
+	}
+
+	slot := blockUid >> 16
+	blockRoot := pageData.BlockRoot
+	if len(blockRoot) == 0 {
+		pageData.StateChangesNotAvailable = true
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	sections, err := blockdb.GlobalBlockDb.GetExecDataTxSections(
+		ctx, slot, blockRoot, pageData.TxHash,
+		bdbtypes.ExecDataSectionStateChange,
+	)
+	if err != nil {
+		logrus.WithError(err).WithField("slot", slot).Debug("failed to get exec data tx sections for state changes")
+		pageData.StateChangesNotAvailable = true
+		return
+	}
+	if sections == nil || sections.StateChangeData == nil {
+		pageData.StateChangesNotAvailable = true
+		return
+	}
+
+	uncompData, err := snappy.Decode(nil, sections.StateChangeData)
+	if err != nil {
+		logrus.WithError(err).Debug("failed to decompress state changes section")
+		pageData.StateChangesNotAvailable = true
+		return
+	}
+
+	var accounts []bdbtypes.StateChangeAccount
+
+	err = dynssz.GetGlobalDynSsz().UnmarshalSSZ(&accounts, uncompData)
+	if err != nil {
+		logrus.WithError(err).Debug("failed to decode state changes section")
+		pageData.StateChangesNotAvailable = true
+		return
+	}
+
+	pageData.StateChanges = buildStateChangesFromBlockdb(accounts)
+}
+
+func buildStateChangesFromBlockdb(accounts []bdbtypes.StateChangeAccount) []*models.TransactionPageDataStateChangeAccount {
+	result := make([]*models.TransactionPageDataStateChangeAccount, 0, len(accounts))
+
+	for i := range accounts {
+		a := &accounts[i]
+
+		preBal := new(big.Int)
+		postBal := new(big.Int)
+		if len(a.PreBalance) > 0 {
+			preBal.SetBytes(a.PreBalance.Bytes())
+		}
+		if len(a.PostBalance) > 0 {
+			postBal.SetBytes(a.PostBalance.Bytes())
+		}
+		balDiff := new(big.Int).Sub(postBal, preBal)
+
+		acct := &models.TransactionPageDataStateChangeAccount{
+			Address: a.Address[:],
+
+			AccountCreated: (a.Flags & bdbtypes.StateChangeFlagAccountCreated) != 0,
+			AccountKilled:  (a.Flags & bdbtypes.StateChangeFlagAccountKilled) != 0,
+
+			BalanceChanged: (a.Flags & bdbtypes.StateChangeFlagBalanceChanged) != 0,
+			PreBalance:     a.PreBalance.Bytes(),
+			PostBalance:    a.PostBalance.Bytes(),
+			PreBalanceWei:  preBal.String(),
+			PostBalanceWei: postBal.String(),
+			BalanceDiffWei: balDiff.String(),
+
+			NonceChanged: (a.Flags & bdbtypes.StateChangeFlagNonceChanged) != 0,
+			PreNonce:     a.PreNonce,
+			PostNonce:    a.PostNonce,
+
+			CodeChanged: (a.Flags & bdbtypes.StateChangeFlagCodeChanged) != 0,
+			PreCode:     a.PreCode,
+			PostCode:    a.PostCode,
+			PreCodeLen:  len(a.PreCode),
+			PostCodeLen: len(a.PostCode),
+
+			StorageChanged: (a.Flags & bdbtypes.StateChangeFlagStorageChanged) != 0,
+		}
+
+		if acct.StorageChanged && len(a.Slots) > 0 {
+			acct.Slots = make([]*models.TransactionPageDataStateChangeSlot, 0, len(a.Slots))
+
+			zeroValue := [32]byte{}
+			for j := range a.Slots {
+				s := &a.Slots[j]
+
+				slot := &models.TransactionPageDataStateChangeSlot{
+					Slot: s.Slot[:],
+				}
+
+				if bytes.Equal(s.PreValue[:], zeroValue[:]) {
+					slot.ChangeType = "created"
+					slot.PostValue = s.PostValue[:]
+				} else if bytes.Equal(s.PostValue[:], zeroValue[:]) {
+					slot.ChangeType = "deleted"
+					slot.PreValue = s.PreValue[:]
+				} else {
+					slot.ChangeType = "modified"
+					slot.PreValue = s.PreValue[:]
+					slot.PostValue = s.PostValue[:]
+				}
+
+				acct.Slots = append(acct.Slots, slot)
+			}
+		}
+
+		result = append(result, acct)
+	}
+
+	return result
+}
+
+// callTypeNames maps call type constants to display names.
+var callTypeNames = map[uint8]string{
+	0: "CALL",
+	1: "STATICCALL",
+	2: "DELEGATECALL",
+	3: "CREATE",
+	4: "CREATE2",
+	5: "SELFDESTRUCT",
+}
+
+// loadTransactionInternalTxsFromBlockdb populates the internal transactions tab
+// with rich call trace data from blockdb (depth, input, output, gas, status).
+// Falls back to loading from the DB index if blockdb data is unavailable.
+func loadTransactionInternalTxsFromBlockdb(ctx context.Context, pageData *models.TransactionPageData, blockUid uint64) {
+	if pageData.InternalTxCount == 0 {
+		return
+	}
+
+	// If the block says call trace data is unavailable (pruned / not stored),
+	// show the "not available" state instead of the DB-only fallback.
+	if pageData.DataStatus&dbtypes.ElBlockDataCallTraces == 0 {
+		pageData.InternalTxsNotAvailable = true
+		return
+	}
+
+	// Try to load rich call trace from blockdb
+	if blockdb.GlobalBlockDb != nil && blockdb.GlobalBlockDb.SupportsExecData() {
+		slot := blockUid >> 16
+		blockRoot := pageData.BlockRoot
+
+		if len(blockRoot) > 0 {
+			ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+			defer cancel()
+
+			sections, err := blockdb.GlobalBlockDb.GetExecDataTxSections(
+				ctx, slot, blockRoot, pageData.TxHash,
+				bdbtypes.ExecDataSectionCallTrace,
+			)
+			if err != nil {
+				logrus.WithError(err).WithField("slot", slot).Debug("failed to get exec data tx sections for call trace")
+			}
+			if err == nil && sections != nil && sections.CallTraceData != nil {
+				uncompData, err := snappy.Decode(nil, sections.CallTraceData)
+				if err != nil {
+					logrus.WithError(err).Debug("failed to decompress call trace section")
+				} else {
+					var frames []bdbtypes.FlatCallFrame
+					err = dynssz.GetGlobalDynSsz().UnmarshalSSZ(&frames, uncompData)
+					if err != nil {
+						logrus.WithError(err).Debug("failed to decode call trace section")
+					} else {
+						buildInternalTxsFromBlockdb(ctx, pageData, frames)
+						pageData.InternalTxCount = uint64(len(pageData.InternalTxs))
+						return
+					}
+				}
+			}
+		}
+	}
+
+	// Fallback: load from DB index (only when blockdb is unavailable)
+	entries, _ := db.GetElTransactionsInternalByTxHash(ctx, pageData.TxHash)
+	loadTransactionInternalTxsFromDB(ctx, pageData, entries)
+}
+
+// buildInternalTxsFromBlockdb converts decoded blockdb call frames to page
+// model internal transactions with full trace data.
+func buildInternalTxsFromBlockdb(ctx context.Context, pageData *models.TransactionPageData, frames []bdbtypes.FlatCallFrame) {
+	pageData.InternalTxs = make([]*models.TransactionPageDataInternalTx, 0, len(frames))
+
+	sysContracts := services.GlobalBeaconService.GetSystemContractAddresses()
+
+	// Collect unique 4-byte method selectors for batch lookup,
+	// but skip lookups for CREATE/CREATE2, precompiles, and system contracts.
+	sigSet := make(map[types.TxSignatureBytes]struct{}, len(frames))
+	for i := range frames {
+		f := &frames[i]
+		if len(f.Input) < 4 {
+			continue
+		}
+		// Skip CREATE/CREATE2, precompiles, non-deposit system contracts
+		isCreate := f.Type == 3 || f.Type == 4
+		if skip, _ := utils.ShouldSkipSignatureLookup(f.To[:], isCreate, sysContracts); skip {
+			continue
+		}
+
+		var sig types.TxSignatureBytes
+		copy(sig[:], f.Input[:4])
+		sigSet[sig] = struct{}{}
+	}
+
+	sigBytes := make([]types.TxSignatureBytes, 0, len(sigSet))
+	for sig := range sigSet {
+		sigBytes = append(sigBytes, sig)
+	}
+
+	var sigLookups map[types.TxSignatureBytes]*services.TxSignaturesLookup
+	if len(sigBytes) > 0 {
+		sigLookups = services.GlobalTxSignaturesService.LookupSignatures(ctx, sigBytes)
+	}
+
+	for i := range frames {
+		f := &frames[i]
+
+		bigFloat := new(big.Float).SetInt(f.Value.ToBig())
+		bigFloat.Quo(bigFloat, big.NewFloat(1e18))
+		valueFloat, _ := bigFloat.Float64()
+		valueRaw := f.Value.Bytes()
+
+		itx := &models.TransactionPageDataInternalTx{
+			CallIndex:    uint32(i),
+			Depth:        f.Depth,
+			CallType:     f.Type,
+			FromAddr:     f.From[:],
+			ToAddr:       f.To[:],
+			Amount:       valueFloat,
+			AmountRaw:    valueRaw,
+			Gas:          f.Gas,
+			GasUsed:      f.GasUsed,
+			Status:       f.Status,
+			ErrorText:    f.Error,
+			Input:        f.Input,
+			Output:       f.Output,
+			HasTraceData: true,
+		}
+
+		if name, ok := callTypeNames[f.Type]; ok {
+			itx.TypeName = name
+		} else {
+			itx.TypeName = fmt.Sprintf("TYPE_%d", f.Type)
+		}
+
+		// Method ID, name, and decoded calldata from input data
+		if len(f.Input) >= 4 {
+			isCreate := f.Type == 3 || f.Type == 4
+			precompileInfo := utils.GetPrecompileInfo(f.To[:])
+			sysName, isSysContract := sysContracts[f.To]
+			isNonDepositSys := isSysContract && sysName != "Deposit"
+
+			if isCreate {
+				itx.MethodName = "deploy"
+			} else if precompileInfo != nil {
+				itx.MethodName = precompileInfo.Name
+				itx.DecodedCalldata = utils.DecodePrecompileInput(precompileInfo.Index, f.Input)
+			} else if isNonDepositSys {
+				itx.MethodName = sysName
+				switch sysName {
+				case "Withdrawal Request":
+					itx.DecodedCalldata = utils.DecodeWithdrawalRequestInput(f.Input)
+				case "Consolidation Request":
+					itx.DecodedCalldata = utils.DecodeConsolidationRequestInput(f.Input)
+				}
+			} else {
+				// Normal call: use fn signature lookup
+				itx.MethodID = f.Input[:4]
+				var sig types.TxSignatureBytes
+				copy(sig[:], f.Input[:4])
+				if sigLookups != nil {
+					if lookup, found := sigLookups[sig]; found && lookup.Status == types.TxSigStatusFound {
+						itx.MethodName = lookup.Name
+						itx.MethodSignature = lookup.Signature
+						if len(f.Input) > 4 && lookup.Signature != "" {
+							itx.DecodedCalldata = utils.DecodeCalldata(lookup.Signature, f.Input)
+						}
+					}
+				}
+			}
+		}
+
+		pageData.InternalTxs = append(pageData.InternalTxs, itx)
+	}
+}
+
+// loadTransactionInternalTxsFromDB populates internal transactions from DB data
+// only (no depth/input/output trace data).
+func loadTransactionInternalTxsFromDB(ctx context.Context, pageData *models.TransactionPageData, entries []*dbtypes.ElTransactionInternal) {
+	if len(entries) == 0 {
+		return
+	}
+
+	// Collect account IDs for batch lookup
+	accountIDs := make(map[uint64]bool, len(entries)*2)
+	for _, e := range entries {
+		accountIDs[e.FromID] = true
+		accountIDs[e.ToID] = true
+	}
+
+	// Batch lookup accounts
+	accountIDList := make([]uint64, 0, len(accountIDs))
+	for id := range accountIDs {
+		accountIDList = append(accountIDList, id)
+	}
+	accountMap := make(map[uint64]*dbtypes.ElAccount, len(accountIDList))
+	if len(accountIDList) > 0 {
+		if accounts, err := db.GetElAccountsByIDs(ctx, accountIDList); err == nil {
+			for _, a := range accounts {
+				accountMap[a.ID] = a
+			}
+		}
+	}
+
+	// Build internal tx list
+	pageData.InternalTxs = make([]*models.TransactionPageDataInternalTx, 0, len(entries))
+	for _, e := range entries {
+		itx := &models.TransactionPageDataInternalTx{
+			CallIndex: e.TxCallIdx,
+			CallType:  e.CallType,
+			Amount:    e.Value,
+			AmountRaw: e.ValueRaw,
+		}
+
+		if name, ok := callTypeNames[e.CallType]; ok {
+			itx.TypeName = name
+		} else {
+			itx.TypeName = fmt.Sprintf("TYPE_%d", e.CallType)
+		}
+
+		if from, ok := accountMap[e.FromID]; ok {
+			itx.FromAddr = from.Address
+			itx.FromIsContract = from.IsContract
+		}
+		if to, ok := accountMap[e.ToID]; ok {
+			itx.ToAddr = to.Address
+			itx.ToIsContract = to.IsContract
+		}
+
+		pageData.InternalTxs = append(pageData.InternalTxs, itx)
+	}
+}
+
+func loadTransactionTransfersFromData(ctx context.Context, pageData *models.TransactionPageData, transfers []*dbtypes.ElTokenTransfer) {
+	if len(transfers) == 0 {
+		return
+	}
+
+	// Collect IDs for batch lookup
+	accountIDs := make(map[uint64]bool)
+	tokenIDs := make(map[uint64]bool)
+	for _, t := range transfers {
+		accountIDs[t.FromID] = true
+		accountIDs[t.ToID] = true
+		tokenIDs[t.TokenID] = true
+	}
+
+	// Batch lookup accounts
+	accountIDList := make([]uint64, 0, len(accountIDs))
+	for id := range accountIDs {
+		accountIDList = append(accountIDList, id)
+	}
+	accountMap := make(map[uint64]*dbtypes.ElAccount)
+	if len(accountIDList) > 0 {
+		if accounts, err := db.GetElAccountsByIDs(ctx, accountIDList); err == nil {
+			for _, a := range accounts {
+				accountMap[a.ID] = a
+			}
+		}
+	}
+
+	// Batch lookup tokens
+	tokenIDList := make([]uint64, 0, len(tokenIDs))
+	for id := range tokenIDs {
+		tokenIDList = append(tokenIDList, id)
+	}
+	tokenMap := make(map[uint64]*dbtypes.ElToken)
+	if len(tokenIDList) > 0 {
+		if tokens, err := db.GetElTokensByIDs(ctx, tokenIDList); err == nil {
+			for _, t := range tokens {
+				tokenMap[t.ID] = t
+			}
+		}
+	}
+
+	// Build transfers list
+	pageData.TokenTransfers = make([]*models.TransactionPageDataTokenTransfer, 0, len(transfers))
+	for i, t := range transfers {
+		transfer := &models.TransactionPageDataTokenTransfer{
+			TransferIndex: uint32(i),
+			TokenID:       t.TokenID,
+			TokenType:     t.TokenType,
+			Amount:        t.Amount,
+			AmountRaw:     t.AmountRaw,
+			TokenIndex:    t.TokenIndex,
+		}
+
+		// From/To addresses
+		if from, ok := accountMap[t.FromID]; ok {
+			transfer.FromAddr = from.Address
+			transfer.FromIsContract = from.IsContract
+		}
+		if to, ok := accountMap[t.ToID]; ok {
+			transfer.ToAddr = to.Address
+			transfer.ToIsContract = to.IsContract
+		}
+
+		// Token info
+		if token, ok := tokenMap[t.TokenID]; ok {
+			transfer.Contract = token.Contract
+			transfer.TokenName = token.Name
+			transfer.TokenSymbol = token.Symbol
+			transfer.Decimals = token.Decimals
+		}
+
+		pageData.TokenTransfers = append(pageData.TokenTransfers, transfer)
+	}
+}
+
+// loadFullTransactionData loads the full transaction data from the beacon block.
+// This retrieves the full input data, RLP, and JSON representation for display.
+func loadFullTransactionData(ctx context.Context, pageData *models.TransactionPageData, tx *dbtypes.ElTransaction, blockFilter *dbtypes.BlockFilter) {
+	// Get block info
+	blocks := services.GlobalBeaconService.GetDbBlocksByFilter(ctx, blockFilter, 0, 1, 0)
+	if len(blocks) == 0 || blocks[0].Block == nil {
+		return
+	}
+
+	// Get the block root and load the full beacon block
+	var blockRoot phase0.Root
+	copy(blockRoot[:], blocks[0].Block.Root)
+
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	blockData, err := services.GlobalBeaconService.GetSlotDetailsByBlockroot(ctx, blockRoot)
+	if err != nil || blockData == nil || blockData.Block == nil {
+		logrus.WithError(err).Debug("failed to load beacon block for transaction details")
+		return
+	}
+
+	// Get execution transactions from the block
+	execTxs, err := blockData.Block.ExecutionTransactions()
+	if err != nil {
+		logrus.WithError(err).Debug("failed to get execution transactions")
+		return
+	}
+
+	if int(tx.TxIndex) >= len(execTxs) {
+		logrus.Debug("transaction index out of range")
+		return
+	}
+
+	rlpData := execTxs[tx.TxIndex]
+
+	// Store RLP as hex string for copy button
+	pageData.TxRLP = "0x" + hex.EncodeToString(rlpData)
+
+	// Parse the transaction to get input data and JSON representation
+	var ethTx ethtypes.Transaction
+	if err := ethTx.UnmarshalBinary(rlpData); err != nil {
+		logrus.WithError(err).Debug("failed to parse transaction RLP")
+		return
+	}
+
+	// Set input data from parsed transaction
+	pageData.InputData = ethTx.Data()
+
+	// Generate JSON using proper marshaling
+	generateTxJSON(pageData, &ethTx)
+
+	// Load blob data for type 3 transactions
+	if ethTx.Type() == 3 && len(ethTx.BlobHashes()) > 0 {
+		loadBlobData(pageData, &ethTx, blockData)
+	}
+}
+
+// loadBlobData populates blob-related data for type 3 (blob) transactions.
+// It extracts versioned hashes from the transaction, KZG commitments from the beacon block,
+// and calculates blob gas fees.
+func loadBlobData(pageData *models.TransactionPageData, ethTx *ethtypes.Transaction, blockData *services.CombinedBlockResponse) {
+	blobHashes := ethTx.BlobHashes()
+	if len(blobHashes) == 0 {
+		return
+	}
+
+	// Get KZG commitments from beacon block
+	var kzgCommitments [][]byte
+	if blockData != nil && blockData.Block != nil {
+		commitments, err := blockData.Block.BlobKZGCommitments()
+		if err == nil {
+			// Find the commitments that correspond to this transaction's blobs
+			// by matching versioned hashes
+			kzgCommitments = utils.MatchBlobCommitments(blobHashes, commitments)
+		}
+	}
+
+	// Build blob list
+	pageData.Blobs = make([]*models.TransactionPageDataBlob, len(blobHashes))
+	for i, hash := range blobHashes {
+		blob := &models.TransactionPageDataBlob{
+			Index:         uint64(i),
+			VersionedHash: hash[:],
+		}
+
+		// Add KZG commitment if available
+		if i < len(kzgCommitments) && len(kzgCommitments[i]) > 0 {
+			blob.KzgCommitment = kzgCommitments[i]
+		}
+
+		pageData.Blobs[i] = blob
+	}
+
+	// Calculate blob gas info
+	const blobGasPerBlob = 131072 // EIP-4844 constant
+	blobCount := uint32(len(blobHashes))
+	pageData.BlobCount = blobCount
+	pageData.BlobGasUsed = uint64(blobCount) * blobGasPerBlob
+	pageData.BlobGasLimit = pageData.BlobGasUsed // For a transaction, limit = used
+
+	// Get blob gas fee cap from transaction
+	if ethTx.BlobGasFeeCap() != nil {
+		blobFeeCapFloat, _ := new(big.Float).SetInt(ethTx.BlobGasFeeCap()).Float64()
+		pageData.BlobGasFeeCap = blobFeeCapFloat / 1e9 // Convert to Gwei
+	}
+
+	// Calculate actual blob gas price from block's excess_blob_gas
+	if blockData != nil && blockData.Block != nil {
+		executionPayload, err := blockData.Block.ExecutionPayload()
+		if err == nil && executionPayload != nil {
+			excessBlobGas, err := executionPayload.ExcessBlobGas()
+			if err == nil {
+				timestamp, _ := executionPayload.Timestamp()
+				executionChainState := services.GlobalBeaconService.GetExecutionChainState()
+				blobSchedule := executionChainState.GetBlobScheduleForTimestamp(time.Unix(int64(timestamp), 0))
+
+				if blobSchedule != nil {
+					blobBaseFee := executionChainState.CalcBaseFeePerBlobGas(excessBlobGas, blobSchedule.BaseFeeUpdateFraction)
+
+					// Convert to Gwei for display
+					blobBaseFeeFloat, _ := new(big.Float).SetInt(blobBaseFee).Float64()
+					pageData.BlobGasPrice = blobBaseFeeFloat / 1e9
+
+					// Calculate total blob fee in ETH
+					blobFeeWei := new(big.Int).Mul(blobBaseFee, big.NewInt(int64(pageData.BlobGasUsed)))
+					blobFeeFloat, _ := new(big.Float).SetInt(blobFeeWei).Float64()
+					pageData.BlobFee = blobFeeFloat / 1e18
+					pageData.BlobFeeRaw = blobFeeWei.Bytes()
+
+					// Calculate savings percentage
+					if pageData.BlobGasFeeCap > 0 && pageData.BlobGasPrice > 0 && pageData.BlobGasFeeCap > pageData.BlobGasPrice {
+						pageData.BlobFeeSavings = (pageData.BlobGasFeeCap - pageData.BlobGasPrice) / pageData.BlobGasFeeCap * 100
+					}
+				}
+			}
+		}
+	}
+}
+
+// applyCallTargetResolution resolves the call target type and method info
+// for the transaction, then maps the result to the page data.
+func applyCallTargetResolution(ctx context.Context, pageData *models.TransactionPageData, methodID []byte) {
+	sysContracts := services.GlobalBeaconService.GetSystemContractAddresses()
+	lookupFn := func(sigBytes [4]byte) *utils.SignatureLookupResult {
+		var tbytes types.TxSignatureBytes
+		copy(tbytes[:], sigBytes[:])
+		sigLookups := services.GlobalTxSignaturesService.LookupSignatures(ctx, []types.TxSignatureBytes{tbytes})
+		if sigLookup, found := sigLookups[tbytes]; found {
+			return &utils.SignatureLookupResult{
+				Name:      sigLookup.Name,
+				Signature: sigLookup.Signature,
+				Found:     sigLookup.Status == types.TxSigStatusFound,
+			}
+		}
+		return nil
+	}
+
+	res := utils.ResolveCallTargetAndMethod(pageData.ToAddr, pageData.IsCreate, pageData.InputData, methodID, sysContracts, lookupFn)
+
+	pageData.TargetCallType = res.CallType
+	pageData.TargetCallName = res.CallName
+	pageData.MethodName = res.MethodName
+	pageData.MethodSignature = res.MethodSignature
+	pageData.DecodedCalldata = res.DecodedCalldata
+	if res.MethodID != nil {
+		pageData.MethodID = res.MethodID
+	}
+}

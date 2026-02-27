@@ -43,18 +43,19 @@ func InitPageData(w http.ResponseWriter, r *http.Request, active, path, title st
 			Path:        path,
 			Templates:   strings.Join(mainTemplates, ","),
 		},
-		Active:           active,
-		Data:             &types.Empty{},
-		Version:          utils.GetExplorerVersion(),
-		BuildTime:        fmt.Sprintf("%v", buildTime.Unix()),
-		Year:             time.Now().UTC().Year(),
-		ExplorerTitle:    utils.Config.Frontend.SiteName,
-		ExplorerSubtitle: utils.Config.Frontend.SiteSubtitle,
-		ExplorerLogo:     utils.Config.Frontend.SiteLogo,
-		Lang:             "en-US",
-		Debug:            utils.Config.Frontend.Debug,
-		MainMenuItems:    createMenuItems(active),
-		ApiEnabled:       utils.Config.Api.Enabled && !utils.Config.Api.RequireAuth,
+		Active:                  active,
+		Data:                    &types.Empty{},
+		Version:                 utils.GetExplorerVersion(),
+		BuildTime:               fmt.Sprintf("%v", buildTime.Unix()),
+		Year:                    time.Now().UTC().Year(),
+		ExplorerTitle:           utils.Config.Frontend.SiteName,
+		ExplorerSubtitle:        utils.Config.Frontend.SiteSubtitle,
+		ExplorerLogo:            utils.Config.Frontend.SiteLogo,
+		Lang:                    "en-US",
+		Debug:                   utils.Config.Frontend.Debug,
+		MainMenuItems:           createMenuItems(active),
+		ApiEnabled:              utils.Config.Api.Enabled && !utils.Config.Api.RequireAuth,
+		ExecutionIndexerEnabled: utils.Config.ExecutionIndexer.Enabled,
 	}
 
 	chainState := services.GlobalBeaconService.GetChainState()
@@ -124,6 +125,11 @@ func createMenuItems(active string) []types.MainMenuItem {
 				Label: "Blocks",
 				Path:  "/blocks",
 				Icon:  "fa-cube",
+			},
+			{
+				Label: "Blobs",
+				Path:  "/blobs",
+				Icon:  "fa-database",
 			},
 			/*
 				{

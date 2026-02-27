@@ -9,6 +9,8 @@ import { formatBalance, formatStatus } from '../SubmitConsolidationsForm/Validat
 import { DepositContractAbi } from './DepositContract';
 import { toReadableAmount } from '../../utils/ReadableAmount';
 import { topupRoot } from './TopUpRoot';
+import { GatingContractData, DEPOSIT_TYPES } from './GatingContract';
+import { GatingStatusBanner } from './GatingStatusBanner';
 
 // Define SSZ types for deposit data root calculation
 const DepositMessage = new ContainerType({
@@ -27,6 +29,8 @@ interface ITopupDepositFormProps {
   depositContract: string;
   maxEffectiveBalance?: string;
   maxEffectiveBalanceElectra?: string;
+  gatingData?: GatingContractData | null;
+  isGatingLoading?: boolean;
 }
 
 const TopupDepositForm = (props: ITopupDepositFormProps): React.ReactElement => {
@@ -173,8 +177,29 @@ const TopupDepositForm = (props: ITopupDepositFormProps): React.ReactElement => 
     return selectedValidator.credtype === "02" ? maxEffectiveBalanceElectra : maxEffectiveBalance;
   };
 
+  // Check gating status for topup deposits
+  const topupConfig = props.gatingData?.depositConfigs.get(DEPOSIT_TYPES.TOPUP);
+  const isTopupBlocked = topupConfig?.blocked ?? false;
+  const topupRequiresToken = !(topupConfig?.noToken ?? true);
+  const hasToken = (props.gatingData?.tokenBalance ?? 0n) > 0n;
+  const canSubmitTopup = !isTopupBlocked && (!topupRequiresToken || hasToken);
+
   return (
     <>
+      {/* Gating Status for Topup Deposits */}
+      {(props.gatingData || props.isGatingLoading) && (
+        <div className="row mt-3">
+          <div className="col-12">
+            <GatingStatusBanner
+              gatingData={props.gatingData ?? null}
+              depositType={DEPOSIT_TYPES.TOPUP}
+              showDepositStatus={true}
+              isLoading={props.isGatingLoading}
+            />
+          </div>
+        </div>
+      )}
+
       <div className="row mt-3">
         <div className="col-12">
           <label className="form-label">
@@ -319,9 +344,9 @@ const TopupDepositForm = (props: ITopupDepositFormProps): React.ReactElement => 
               </div>
               
               <div className="mt-3">
-                <button 
+                <button
                   className="btn btn-primary"
-                  disabled={!selectedValidator || topupAmount < 1 || topupAmount > maxTopupAmount || topupRequest.isPending || topupRequest.isSuccess}
+                  disabled={!selectedValidator || topupAmount < 1 || topupAmount > maxTopupAmount || topupRequest.isPending || topupRequest.isSuccess || !canSubmitTopup}
                   onClick={handleTopupSubmit}
                 >
                   {topupRequest.isSuccess ?
@@ -331,6 +356,10 @@ const TopupDepositForm = (props: ITopupDepositFormProps): React.ReactElement => 
                       ) : (
                         topupRequest.isError ? (
                           <span className="text-nowrap"><i className="fa-solid fa-repeat me-1"></i> Retry</span>
+                        ) : isTopupBlocked ? (
+                          <span className="text-nowrap"><i className="fa fa-ban me-1"></i> Blocked</span>
+                        ) : topupRequiresToken && !hasToken ? (
+                          <span className="text-nowrap"><i className="fa fa-lock me-1"></i> Token Required</span>
                         ) : (
                           "Submit Topup"
                         )

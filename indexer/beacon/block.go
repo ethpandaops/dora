@@ -22,6 +22,7 @@ import (
 type Block struct {
 	Root              phase0.Root
 	Slot              phase0.Slot
+	BlockUID          uint64
 	dynSsz            *dynssz.DynSsz
 	parentRoot        *phase0.Root
 	dependentRoot     *phase0.Root
@@ -61,13 +62,21 @@ type BlockBodyIndex struct {
 	SyncParticipation   float32
 	EthTransactionCount uint64
 	BlobCount           uint64
+	GasUsed             uint64
+	GasLimit            uint64
+	BlockSize           uint64
 }
 
 // newBlock creates a new Block instance.
-func newBlock(dynSsz *dynssz.DynSsz, root phase0.Root, slot phase0.Slot) *Block {
+func newBlock(dynSsz *dynssz.DynSsz, root phase0.Root, slot phase0.Slot, blockUID uint64) *Block {
+	if blockUID == 0 {
+		// use highest possible block UID as default
+		blockUID = (uint64(slot) << 16) | 0xffff
+	}
 	block := &Block{
 		Root:       root,
 		Slot:       slot,
+		BlockUID:   blockUID,
 		dynSsz:     dynSsz,
 		seenMap:    make(map[uint16]*Client),
 		headerChan: make(chan bool),
@@ -151,7 +160,7 @@ func (block *Block) AwaitHeader(ctx context.Context, timeout time.Duration) *pha
 }
 
 // GetBlock returns the versioned signed beacon block of this block.
-func (block *Block) GetBlock() *spec.VersionedSignedBeaconBlock {
+func (block *Block) GetBlock(ctx context.Context) *spec.VersionedSignedBeaconBlock {
 	if block.isDisposed {
 		return nil
 	}
@@ -161,7 +170,7 @@ func (block *Block) GetBlock() *spec.VersionedSignedBeaconBlock {
 	}
 
 	if block.isInUnfinalizedDb {
-		dbBlock := db.GetUnfinalizedBlock(block.Root[:])
+		dbBlock := db.GetUnfinalizedBlock(ctx, block.Root[:])
 		if dbBlock != nil {
 			blockBody, err := UnmarshalVersionedSignedBeaconBlockSSZ(block.dynSsz, dbBlock.BlockVer, dbBlock.BlockSSZ)
 			if err == nil {
@@ -298,6 +307,10 @@ func (block *Block) EnsureBlock(loadBlock func() (*spec.VersionedSignedBeaconBlo
 
 // setBlockIndex sets the block index of this block.
 func (block *Block) setBlockIndex(body *spec.VersionedSignedBeaconBlock) {
+	if body == nil {
+		return
+	}
+
 	blockIndex := &BlockBodyIndex{}
 	blockIndex.Graffiti, _ = body.Graffiti()
 
@@ -315,6 +328,18 @@ func (block *Block) setBlockIndex(body *spec.VersionedSignedBeaconBlock) {
 		blobKzgCommitments, _ := body.BlobKZGCommitments()
 		blockIndex.BlobCount = uint64(len(blobKzgCommitments))
 
+		// Get gas used and gas limit
+		gasUsed, _ := executionPayload.GasUsed()
+		blockIndex.GasUsed = gasUsed
+
+		gasLimit, _ := executionPayload.GasLimit()
+		blockIndex.GasLimit = gasLimit
+	}
+
+	// Calculate block size
+	blockSize, err := getBlockSize(block.dynSsz, body)
+	if err == nil {
+		blockIndex.BlockSize = uint64(blockSize)
 	}
 
 	// Calculate sync participation
@@ -336,7 +361,7 @@ func (block *Block) setBlockIndex(body *spec.VersionedSignedBeaconBlock) {
 }
 
 // GetBlockIndex returns the block index of this block.
-func (block *Block) GetBlockIndex() *BlockBodyIndex {
+func (block *Block) GetBlockIndex(ctx context.Context) *BlockBodyIndex {
 	if block.isDisposed {
 		return nil
 	}
@@ -345,7 +370,7 @@ func (block *Block) GetBlockIndex() *BlockBodyIndex {
 		return block.blockIndex
 	}
 
-	blockBody := block.GetBlock()
+	blockBody := block.GetBlock(ctx)
 	if blockBody != nil {
 		block.setBlockIndex(blockBody)
 	}
@@ -354,7 +379,7 @@ func (block *Block) GetBlockIndex() *BlockBodyIndex {
 }
 
 // buildUnfinalizedBlock builds an unfinalized block from the block data.
-func (block *Block) buildUnfinalizedBlock(compress bool) (*dbtypes.UnfinalizedBlock, error) {
+func (block *Block) buildUnfinalizedBlock(ctx context.Context, compress bool) (*dbtypes.UnfinalizedBlock, error) {
 	if block.isDisposed {
 		return nil, fmt.Errorf("block is disposed")
 	}
@@ -364,7 +389,7 @@ func (block *Block) buildUnfinalizedBlock(compress bool) (*dbtypes.UnfinalizedBl
 		return nil, fmt.Errorf("marshal header ssz failed: %v", err)
 	}
 
-	blockVer, blockSSZ, err := MarshalVersionedSignedBeaconBlockSSZ(block.dynSsz, block.GetBlock(), compress, false)
+	blockVer, blockSSZ, err := MarshalVersionedSignedBeaconBlockSSZ(block.dynSsz, block.GetBlock(ctx), compress, false)
 	if err != nil {
 		return nil, fmt.Errorf("marshal block ssz failed: %v", err)
 	}
@@ -387,11 +412,12 @@ func (block *Block) buildUnfinalizedBlock(compress bool) (*dbtypes.UnfinalizedBl
 		MinExecTime: uint32(block.minExecutionTime),
 		MaxExecTime: uint32(block.maxExecutionTime),
 		ExecTimes:   execTimesSSZ,
+		BlockUid:    block.BlockUID,
 	}, nil
 }
 
 // buildOrphanedBlock builds an orphaned block from the block data.
-func (block *Block) buildOrphanedBlock(compress bool) (*dbtypes.OrphanedBlock, error) {
+func (block *Block) buildOrphanedBlock(ctx context.Context, compress bool) (*dbtypes.OrphanedBlock, error) {
 	if block.isDisposed {
 		return nil, fmt.Errorf("block is disposed")
 	}
@@ -401,7 +427,7 @@ func (block *Block) buildOrphanedBlock(compress bool) (*dbtypes.OrphanedBlock, e
 		return nil, fmt.Errorf("marshal header ssz failed: %v", err)
 	}
 
-	blockVer, blockSSZ, err := MarshalVersionedSignedBeaconBlockSSZ(block.dynSsz, block.GetBlock(), compress, false)
+	blockVer, blockSSZ, err := MarshalVersionedSignedBeaconBlockSSZ(block.dynSsz, block.GetBlock(ctx), compress, false)
 	if err != nil {
 		return nil, fmt.Errorf("marshal block ssz failed: %v", err)
 	}
@@ -412,15 +438,16 @@ func (block *Block) buildOrphanedBlock(compress bool) (*dbtypes.OrphanedBlock, e
 		HeaderSSZ: headerSSZ,
 		BlockVer:  blockVer,
 		BlockSSZ:  blockSSZ,
+		BlockUid:  block.BlockUID,
 	}, nil
 }
 
-func (block *Block) writeToBlockDb() error {
+func (block *Block) writeToBlockDb(ctx context.Context) error {
 	if block.isDisposed || block.header == nil || block.block == nil || blockdb.GlobalBlockDb == nil {
 		return nil
 	}
 
-	_, err := blockdb.GlobalBlockDb.AddBlockWithCallback(context.Background(), uint64(block.Slot), block.Root[:], func() (*btypes.BlockData, error) {
+	_, err := blockdb.GlobalBlockDb.AddBlockWithCallback(ctx, uint64(block.Slot), block.Root[:], func() (*btypes.BlockData, error) {
 		headerSSZ, err := block.header.MarshalSSZ()
 		if err != nil {
 			return nil, fmt.Errorf("marshal header ssz failed: %v", err)
@@ -446,12 +473,12 @@ func (block *Block) writeToBlockDb() error {
 }
 
 // unpruneBlockBody retrieves the block body from the database if it is not already present.
-func (block *Block) unpruneBlockBody() {
+func (block *Block) unpruneBlockBody(ctx context.Context) {
 	if block.isDisposed || block.block != nil || !block.isInUnfinalizedDb {
 		return
 	}
 
-	dbBlock := db.GetUnfinalizedBlock(block.Root[:])
+	dbBlock := db.GetUnfinalizedBlock(ctx, block.Root[:])
 	if dbBlock != nil {
 		block.block, _ = UnmarshalVersionedSignedBeaconBlockSSZ(block.dynSsz, dbBlock.BlockVer, dbBlock.BlockSSZ)
 	}
@@ -535,7 +562,7 @@ func (block *Block) GetForkId() ForkKey {
 }
 
 // AddExecutionTime adds an execution time to this block
-func (block *Block) AddExecutionTime(execTime ExecutionTime) {
+func (block *Block) AddExecutionTime(ctx context.Context, execTime ExecutionTime) {
 	block.executionTimesMux.Lock()
 	defer block.executionTimesMux.Unlock()
 
@@ -591,7 +618,7 @@ func (block *Block) AddExecutionTime(execTime ExecutionTime) {
 			}
 
 			db.RunDBTransaction(func(tx *sqlx.Tx) error {
-				return db.UpdateUnfinalizedBlockExecutionTimes(block.Root[:], uint32(block.minExecutionTime), uint32(block.maxExecutionTime), execTimesSSZ, tx)
+				return db.UpdateUnfinalizedBlockExecutionTimes(ctx, tx, block.Root[:], uint32(block.minExecutionTime), uint32(block.maxExecutionTime), execTimesSSZ)
 			})
 		}()
 	}

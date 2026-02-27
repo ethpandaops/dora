@@ -63,6 +63,10 @@ frontend:
   # DAS Guardian configuration
   #disableDasGuardianCheck: false     # Disable DAS Guardian completely (default: false - enabled)
   #enableDasGuardianMassScan: false   # Enable mass DAS Guardian scanning (default: false - disabled)
+
+  # Tracoor cross references
+  #tracoorUrl: "https://tracoor.sepolia.ethpandaops.io/"
+  #tracoorNetwork: "sepolia"
   
 beaconapi:
   # beacon node rpc endpoints
@@ -110,6 +114,10 @@ indexer:
 
   # maximum number of parallel beacon state requests (might cause high memory usage)
   maxParallelValidatorSetRequests: 1
+
+executionIndexer:
+  enabled: false # enable execution data indexing
+  retention: 4368h # 4368 hours = 6 months
 
 # database configuration
 database:

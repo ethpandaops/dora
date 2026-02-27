@@ -17,6 +17,7 @@ var (
 	NethermindClient ClientType = 5
 	RethClient       ClientType = 6
 	NimbusELClient   ClientType = 7
+	EthrexClient     ClientType = 8
 )
 var clientTypePatterns = map[ClientType]*regexp.Regexp{
 	BesuClient:       regexp.MustCompile("(?i)^Besu/.*"),
@@ -25,7 +26,8 @@ var clientTypePatterns = map[ClientType]*regexp.Regexp{
 	GethClient:       regexp.MustCompile("(?i)^Geth/.*"),
 	NethermindClient: regexp.MustCompile("(?i)^Nethermind/.*"),
 	RethClient:       regexp.MustCompile("(?i)^Reth/.*"),
-	NimbusELClient:   regexp.MustCompile("(?i)^nimbus-eth1/.*"),
+	NimbusELClient:   regexp.MustCompile("(?i)^(nimbus-eth1|NimbusExecutionClient)/.*"),
+	EthrexClient:     regexp.MustCompile("(?i)^ethrex/.*"),
 }
 
 func (t ClientType) Uint8() uint8 {
@@ -63,6 +65,8 @@ func ParseClientType(name string) ClientType {
 		return RethClient
 	case "nimbusel":
 		return NimbusELClient
+	case "ethrex":
+		return EthrexClient
 	default:
 		return UnknownClient
 	}
@@ -88,6 +92,8 @@ func (clientType ClientType) String() string {
 		return "reth"
 	case NimbusELClient:
 		return "nimbusel"
+	case EthrexClient:
+		return "ethrex"
 	default:
 		return fmt.Sprintf("unknown: %d", clientType)
 	}

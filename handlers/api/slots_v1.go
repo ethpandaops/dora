@@ -29,7 +29,9 @@ type APISlotsResponse struct {
 type APISlotsData struct {
 	Slots      []*APISlotListItem `json:"slots"`
 	TotalCount int                `json:"total_count"`
-	NextSlot   *uint64            `json:"next_slot,omitempty"`
+	Page       uint64             `json:"page"`
+	NextPage   *uint64            `json:"next_page,omitempty"`
+	NextSlot   *uint64            `json:"next_slot,omitempty"` // Use with max_slot for cursor-based pagination
 }
 
 // APISlotListItem represents a single slot in the list
@@ -93,8 +95,10 @@ type APISlotListItem struct {
 // @Param min_blob_count query int false "Minimum blob count"
 // @Param max_blob_count query int false "Maximum blob count"
 // @Param fork_ids query string false "Comma-separated list of fork IDs"
-// @Param start_slot query int false "Start slot for pagination (inclusive)"
-// @Param limit query int false "Number of results to return (max 100, default 100)"
+// @Param min_slot query int false "Minimum slot number to return (inclusive)"
+// @Param max_slot query int false "Maximum slot number to return (inclusive)"
+// @Param page query int false "Page number for pagination (0-indexed, default 0)"
+// @Param limit query int false "Number of results to return (max 1000, default 100)"
 // @Success 200 {object} APISlotsResponse
 // @Failure 400 {object} map[string]string "Invalid parameters"
 // @Failure 500 {object} map[string]string "Internal server error"
@@ -107,14 +111,14 @@ func APISlotsV1(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
 
 	// Pagination parameters
-	var startSlot *uint64
-	if query.Has("start_slot") {
-		slot, err := strconv.ParseUint(query.Get("start_slot"), 10, 64)
+	pageIdx := uint64(0)
+	if query.Has("page") {
+		page, err := strconv.ParseUint(query.Get("page"), 10, 64)
 		if err != nil {
-			http.Error(w, `{"status": "ERROR: invalid start_slot"}`, http.StatusBadRequest)
+			http.Error(w, `{"status": "ERROR: invalid page"}`, http.StatusBadRequest)
 			return
 		}
-		startSlot = &slot
+		pageIdx = page
 	}
 
 	limit := uint64(100)
@@ -124,8 +128,8 @@ func APISlotsV1(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, `{"status": "ERROR: invalid limit"}`, http.StatusBadRequest)
 			return
 		}
-		if parsedLimit > 100 {
-			parsedLimit = 100
+		if parsedLimit > 1000 {
+			parsedLimit = 1000
 		}
 		limit = parsedLimit
 	}
@@ -266,20 +270,26 @@ func APISlotsV1(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Calculate page index based on start slot
-	pageIdx := uint64(0)
-	if startSlot != nil {
-		// The page index is calculated based on how many pages would be before this slot
-		// Since slots are sorted descending, we need to know how many slots are after this one
-		chainState := services.GlobalBeaconService.GetChainState()
-		currentSlot := uint64(chainState.CurrentSlot())
-		if *startSlot <= currentSlot {
-			pageIdx = currentSlot - *startSlot
+	// Slot range filters
+	if query.Has("min_slot") {
+		minSlot, err := strconv.ParseUint(query.Get("min_slot"), 10, 64)
+		if err != nil {
+			http.Error(w, `{"status": "ERROR: invalid min_slot"}`, http.StatusBadRequest)
+			return
 		}
+		blockFilter.MinSlot = &minSlot
+	}
+	if query.Has("max_slot") {
+		maxSlot, err := strconv.ParseUint(query.Get("max_slot"), 10, 64)
+		if err != nil {
+			http.Error(w, `{"status": "ERROR: invalid max_slot"}`, http.StatusBadRequest)
+			return
+		}
+		blockFilter.MaxSlot = &maxSlot
 	}
 
 	// Get blocks from database
-	dbBlocks := services.GlobalBeaconService.GetDbBlocksByFilter(blockFilter, pageIdx, uint32(limit+1), 0)
+	dbBlocks := services.GlobalBeaconService.GetDbBlocksByFilter(r.Context(), blockFilter, pageIdx, uint32(limit+1), 0)
 
 	// Check if we have MEV blocks to fetch
 	var mevBlocksMap map[string]*dbtypes.MevBlock
@@ -290,7 +300,7 @@ func APISlotsV1(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if len(execBlockHashes) > 0 {
-		mevBlocksMap = db.GetMevBlocksByBlockHashes(execBlockHashes)
+		mevBlocksMap = db.GetMevBlocksByBlockHashes(r.Context(), execBlockHashes)
 	}
 
 	// Get chain state for finalization check
@@ -300,17 +310,20 @@ func APISlotsV1(w http.ResponseWriter, r *http.Request) {
 
 	// Process results
 	slots := make([]*APISlotListItem, 0, limit)
+	var nextPage *uint64
 	var nextSlot *uint64
 
 	for idx, dbBlock := range dbBlocks {
 		if idx >= int(limit) {
-			// We have more results, set next slot for pagination
+			// We have more results, set next page/slot for pagination
+			next := pageIdx + 1
+			nextPage = &next
+
+			// Set next_slot for cursor-based pagination with max_slot
 			if dbBlock.Block != nil {
-				next := dbBlock.Block.Slot
-				nextSlot = &next
+				nextSlot = &dbBlock.Block.Slot
 			} else {
-				next := dbBlock.Slot
-				nextSlot = &next
+				nextSlot = &dbBlock.Slot
 			}
 			break
 		}
@@ -442,6 +455,8 @@ func APISlotsV1(w http.ResponseWriter, r *http.Request) {
 		Data: &APISlotsData{
 			Slots:      slots,
 			TotalCount: len(slots),
+			Page:       pageIdx,
+			NextPage:   nextPage,
 			NextSlot:   nextSlot,
 		},
 	}

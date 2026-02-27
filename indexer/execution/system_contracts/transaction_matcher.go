@@ -1,4 +1,4 @@
-package execution
+package system_contracts
 
 import (
 	"fmt"
@@ -8,11 +8,12 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/ethpandaops/dora/db"
+	"github.com/ethpandaops/dora/indexer/execution"
 )
 
 // transactionMatcher is used to match transactions to requests in the database
 type transactionMatcher[MatchType any] struct {
-	indexer *IndexerCtx
+	indexer *execution.IndexerCtx
 	logger  logrus.FieldLogger
 	options *transactionMatcherOptions[MatchType]
 	state   *transactionMatcherState
@@ -34,7 +35,7 @@ type transactionMatcherState struct {
 }
 
 // newTransactionMatcher creates a new transaction matcher
-func newTransactionMatcher[MatchType any](indexer *IndexerCtx, logger logrus.FieldLogger, options *transactionMatcherOptions[MatchType]) *transactionMatcher[MatchType] {
+func newTransactionMatcher[MatchType any](indexer *execution.IndexerCtx, logger logrus.FieldLogger, options *transactionMatcherOptions[MatchType]) *transactionMatcher[MatchType] {
 	ci := &transactionMatcher[MatchType]{
 		indexer: indexer,
 		logger:  logger,
@@ -68,18 +69,18 @@ func (ds *transactionMatcher[MatchType]) runTransactionMatcher(indexerBlock uint
 	}
 
 	// check if the synchronization is running and if so, if its ahead of the block range we want to match
-	_, syncEpoch := ds.indexer.beaconIndexer.GetSynchronizerState()
-	indexerFinalizedEpoch, _ := ds.indexer.beaconIndexer.GetBlockCacheState()
+	_, syncEpoch := ds.indexer.BeaconIndexer.GetSynchronizerState()
+	indexerFinalizedEpoch, _ := ds.indexer.BeaconIndexer.GetBlockCacheState()
 	if syncEpoch < indexerFinalizedEpoch {
 		// synchronization is behind head, check if our block range is synced
-		syncSlot := ds.indexer.chainState.EpochToSlot(syncEpoch)
-		syncBlockRoot := db.GetHighestRootBeforeSlot(uint64(syncSlot), false)
+		syncSlot := ds.indexer.ChainState.EpochToSlot(syncEpoch)
+		syncBlockRoot := db.GetHighestRootBeforeSlot(ds.indexer.Ctx, uint64(syncSlot), false)
 		if syncBlockRoot == nil {
 			// no block found, not synced at all
 			return nil
 		}
 
-		syncBlock := db.GetSlotByRoot(syncBlockRoot)
+		syncBlock := db.GetSlotByRoot(ds.indexer.Ctx, syncBlockRoot)
 		if syncBlock == nil {
 			// block not found, not synced at all
 			return nil
@@ -144,7 +145,7 @@ func (ds *transactionMatcher[MatchType]) runTransactionMatcher(indexerBlock uint
 // loadState loads the state of the transaction matcher from the database
 func (ds *transactionMatcher[_]) loadState() {
 	syncState := transactionMatcherState{}
-	db.GetExplorerState(ds.options.stateKey, &syncState)
+	db.GetExplorerState(ds.indexer.Ctx, ds.options.stateKey, &syncState)
 	ds.state = &syncState
 
 	if ds.state.MatchHeight == 0 {
@@ -154,7 +155,7 @@ func (ds *transactionMatcher[_]) loadState() {
 
 // persistState persists the state of the transaction matcher to the database
 func (ds *transactionMatcher[_]) persistState(tx *sqlx.Tx) error {
-	err := db.SetExplorerState(ds.options.stateKey, ds.state, tx)
+	err := db.SetExplorerState(ds.indexer.Ctx, tx, ds.options.stateKey, ds.state)
 	if err != nil {
 		return fmt.Errorf("error while updating tx matcher state: %v", err)
 	}
@@ -167,22 +168,22 @@ func (ds *transactionMatcher[_]) persistState(tx *sqlx.Tx) error {
 func (ds *transactionMatcher[_]) getFinalizedBlockNumber() uint64 {
 	var finalizedBlockNumber uint64
 
-	finalizedEpoch, finalizedRoot := ds.indexer.chainState.GetFinalizedCheckpoint()
-	if finalizedBlock := ds.indexer.beaconIndexer.GetBlockByRoot(finalizedRoot); finalizedBlock != nil {
-		if indexVals := finalizedBlock.GetBlockIndex(); indexVals != nil {
+	finalizedEpoch, finalizedRoot := ds.indexer.ChainState.GetFinalizedCheckpoint()
+	if finalizedBlock := ds.indexer.BeaconIndexer.GetBlockByRoot(finalizedRoot); finalizedBlock != nil {
+		if indexVals := finalizedBlock.GetBlockIndex(ds.indexer.Ctx); indexVals != nil {
 			finalizedBlockNumber = indexVals.ExecutionNumber
 		}
 	}
 
 	if finalizedBlockNumber == 0 {
 		// load from db
-		if finalizedBlock := db.GetSlotByRoot(finalizedRoot[:]); finalizedBlock != nil && finalizedBlock.EthBlockNumber != nil {
+		if finalizedBlock := db.GetSlotByRoot(ds.indexer.Ctx, finalizedRoot[:]); finalizedBlock != nil && finalizedBlock.EthBlockNumber != nil {
 			finalizedBlockNumber = *finalizedBlock.EthBlockNumber
 		}
 	}
 
 	for {
-		indexerFinalizedEpoch, _ := ds.indexer.beaconIndexer.GetBlockCacheState()
+		indexerFinalizedEpoch, _ := ds.indexer.BeaconIndexer.GetBlockCacheState()
 		if indexerFinalizedEpoch >= finalizedEpoch {
 			break
 		}

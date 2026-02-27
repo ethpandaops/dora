@@ -1,4 +1,4 @@
-package execution
+package system_contracts
 
 import (
 	"bytes"
@@ -17,12 +17,13 @@ import (
 	"github.com/ethpandaops/dora/clients/execution"
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/indexer/beacon"
+	exectx "github.com/ethpandaops/dora/indexer/execution"
 )
 
 // contractIndexer handles the indexing of contract events for a specific system contract
 // it crawls logs in order and tracks the queue length to precalculate the dequeue block number where the request will be sent to the beacon chain
 type contractIndexer[TxType any] struct {
-	indexer *IndexerCtx
+	indexer *exectx.IndexerCtx
 	logger  logrus.FieldLogger
 	options *contractIndexerOptions[TxType]
 	state   *contractIndexerState
@@ -40,7 +41,7 @@ type contractIndexerOptions[TxType any] struct {
 	processFinalTx func(log *types.Log, tx *types.Transaction, header *types.Header, txFrom common.Address, dequeueBlock uint64, parentTxs []*TxType) (*TxType, error)
 
 	// processRecentTx processes a recent (non-finalized) transaction log
-	processRecentTx func(log *types.Log, tx *types.Transaction, header *types.Header, txFrom common.Address, dequeueBlock uint64, fork *forkWithClients, parentTxs []*TxType) (*TxType, error)
+	processRecentTx func(log *types.Log, tx *types.Transaction, header *types.Header, txFrom common.Address, dequeueBlock uint64, fork *exectx.ForkWithClients, parentTxs []*TxType) (*TxType, error)
 
 	// persistTxs persists processed transactions to the database
 	persistTxs func(tx *sqlx.Tx, txs []*TxType) error
@@ -60,7 +61,7 @@ type contractIndexerForkState struct {
 }
 
 // newContractIndexer creates a new contract indexer with the given options
-func newContractIndexer[TxType any](indexer *IndexerCtx, logger logrus.FieldLogger, options *contractIndexerOptions[TxType]) *contractIndexer[TxType] {
+func newContractIndexer[TxType any](indexer *exectx.IndexerCtx, logger logrus.FieldLogger, options *contractIndexerOptions[TxType]) *contractIndexer[TxType] {
 	ci := &contractIndexer[TxType]{
 		indexer: indexer,
 		logger:  logger,
@@ -73,7 +74,7 @@ func newContractIndexer[TxType any](indexer *IndexerCtx, logger logrus.FieldLogg
 // loadState loads the contract indexer state from the database
 func (ci *contractIndexer[_]) loadState() {
 	syncState := contractIndexerState{}
-	db.GetExplorerState(ci.options.stateKey, &syncState)
+	db.GetExplorerState(ci.indexer.Ctx, ci.options.stateKey, &syncState)
 	ci.state = &syncState
 
 	if ci.state.ForkStates == nil {
@@ -94,7 +95,7 @@ func (ci *contractIndexer[_]) persistState(tx *sqlx.Tx) error {
 		}
 	}
 
-	err := db.SetExplorerState(ci.options.stateKey, ci.state, tx)
+	err := db.SetExplorerState(ci.indexer.Ctx, tx, ci.options.stateKey, ci.state)
 	if err != nil {
 		return fmt.Errorf("error while updating contract indexer state: %v", err)
 	}
@@ -109,7 +110,7 @@ func (ci *contractIndexer[_]) runContractIndexer() error {
 		ci.loadState()
 	}
 
-	finalizedEpoch, _ := ci.indexer.chainState.GetFinalizedCheckpoint()
+	finalizedEpoch, _ := ci.indexer.ChainState.GetFinalizedCheckpoint()
 	if finalizedEpoch > 0 {
 		finalizedBlockNumber := ci.getFinalizedBlockNumber()
 
@@ -138,16 +139,16 @@ func (ci *contractIndexer[_]) runContractIndexer() error {
 func (ci *contractIndexer[_]) getFinalizedBlockNumber() uint64 {
 	var finalizedBlockNumber uint64
 
-	_, finalizedRoot := ci.indexer.chainState.GetFinalizedCheckpoint()
-	if finalizedBlock := ci.indexer.beaconIndexer.GetBlockByRoot(finalizedRoot); finalizedBlock != nil {
-		if indexVals := finalizedBlock.GetBlockIndex(); indexVals != nil {
+	_, finalizedRoot := ci.indexer.ChainState.GetFinalizedCheckpoint()
+	if finalizedBlock := ci.indexer.BeaconIndexer.GetBlockByRoot(finalizedRoot); finalizedBlock != nil {
+		if indexVals := finalizedBlock.GetBlockIndex(ci.indexer.Ctx); indexVals != nil {
 			finalizedBlockNumber = indexVals.ExecutionNumber
 		}
 	}
 
 	if finalizedBlockNumber == 0 {
 		// load from db
-		if finalizedBlock := db.GetSlotByRoot(finalizedRoot[:]); finalizedBlock != nil && finalizedBlock.EthBlockNumber != nil {
+		if finalizedBlock := db.GetSlotByRoot(ci.indexer.Ctx, finalizedRoot[:]); finalizedBlock != nil && finalizedBlock.EthBlockNumber != nil {
 			finalizedBlockNumber = *finalizedBlock.EthBlockNumber
 		}
 	}
@@ -183,12 +184,12 @@ func (ci *contractIndexer[_]) loadHeaderByHash(ctx context.Context, client *exec
 // processFinalizedBlocks processes contract events from finalized block ranges
 // it fetches logs in batches and calls the provided processFinalTx function to process each log
 func (ci *contractIndexer[TxType]) processFinalizedBlocks(finalizedBlockNumber uint64) error {
-	clients := ci.indexer.getFinalizedClients(execution.AnyClient)
+	clients := ci.indexer.GetFinalizedClients(execution.AnyClient)
 	if len(clients) == 0 {
 		return fmt.Errorf("no ready execution client found")
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(ci.indexer.Ctx)
 	defer cancel()
 
 	retryCount := 0
@@ -345,14 +346,14 @@ func (ci *contractIndexer[TxType]) processFinalizedBlocks(finalizedBlockNumber u
 
 // processRecentBlocks processes contract events from recent (non-finalized) blocks across all forks
 func (ci *contractIndexer[_]) processRecentBlocks() error {
-	headForks := ci.indexer.getForksWithClients(execution.AnyClient)
+	headForks := ci.indexer.GetForksWithClients(execution.AnyClient)
 	for _, headFork := range headForks {
 		err := ci.processRecentBlocksForFork(headFork)
 		if err != nil {
-			if headFork.canonical {
-				ci.logger.Errorf("could not process recent events from canonical fork %v: %v", headFork.forkId, err)
+			if headFork.Canonical {
+				ci.logger.Errorf("could not process recent events from canonical fork %v: %v", headFork.ForkId, err)
 			} else {
-				ci.logger.Warnf("could not process recent events from fork %v: %v", headFork.forkId, err)
+				ci.logger.Warnf("could not process recent events from fork %v: %v", headFork.ForkId, err)
 			}
 		}
 	}
@@ -360,14 +361,14 @@ func (ci *contractIndexer[_]) processRecentBlocks() error {
 }
 
 // processRecentBlocksForFork processes contract events from recent blocks for a specific fork
-func (ci *contractIndexer[TxType]) processRecentBlocksForFork(headFork *forkWithClients) error {
+func (ci *contractIndexer[TxType]) processRecentBlocksForFork(headFork *exectx.ForkWithClients) error {
 	// get the head el block number for the fork
-	elHeadBlock := ci.indexer.beaconIndexer.GetCanonicalHead(&headFork.forkId)
+	elHeadBlock := ci.indexer.BeaconIndexer.GetCanonicalHead(&headFork.ForkId)
 	if elHeadBlock == nil {
 		return fmt.Errorf("head block not found")
 	}
 
-	elHeadBlockIndex := elHeadBlock.GetBlockIndex()
+	elHeadBlockIndex := elHeadBlock.GetBlockIndex(ci.indexer.Ctx)
 	if elHeadBlockIndex == nil {
 		return fmt.Errorf("head block index not found")
 	}
@@ -381,7 +382,7 @@ func (ci *contractIndexer[TxType]) processRecentBlocksForFork(headFork *forkWith
 	queueLength := ci.state.FinalQueueLen
 
 	// get last processed block for this fork
-	if forkState := ci.state.ForkStates[headFork.forkId]; forkState != nil && forkState.Block <= elHeadBlockNumber {
+	if forkState := ci.state.ForkStates[headFork.ForkId]; forkState != nil && forkState.Block <= elHeadBlockNumber {
 		if forkState.Block == elHeadBlockNumber {
 			return nil // already processed
 		}
@@ -390,7 +391,7 @@ func (ci *contractIndexer[TxType]) processRecentBlocksForFork(headFork *forkWith
 		queueLength = forkState.QueueLen
 	} else {
 		// seems we haven't seen this fork before, check if we can continue from a parent fork
-		for parentForkId := range ci.indexer.beaconIndexer.GetParentForkIds(headFork.forkId) {
+		for parentForkId := range ci.indexer.BeaconIndexer.GetParentForkIds(headFork.ForkId) {
 			if parentForkState := ci.state.ForkStates[beacon.ForkKey(parentForkId)]; parentForkState != nil && parentForkState.Block <= elHeadBlockNumber {
 				startBlockNumber = parentForkState.Block + 1
 				queueLength = parentForkState.QueueLen
@@ -420,7 +421,7 @@ func (ci *contractIndexer[TxType]) processRecentBlocksForFork(headFork *forkWith
 		requestTxs := []*TxType{}
 
 		for retryCount := 0; retryCount < 3; retryCount++ {
-			client := headFork.clients[retryCount%len(headFork.clients)]
+			client := headFork.Clients[retryCount%len(headFork.Clients)]
 
 			batchSize := uint64(ci.options.batchSize)
 			if retryCount > 0 {
@@ -439,7 +440,7 @@ func (ci *contractIndexer[TxType]) processRecentBlocksForFork(headFork *forkWith
 			if ctxCancel != nil {
 				ctxCancel()
 			}
-			ctx, cancel := context.WithTimeout(context.Background(), 600*time.Second)
+			ctx, cancel := context.WithTimeout(ci.indexer.Ctx, 600*time.Second)
 			ctxCancel = cancel
 
 			// fetch logs from the execution client
@@ -453,7 +454,7 @@ func (ci *contractIndexer[TxType]) processRecentBlocksForFork(headFork *forkWith
 
 			logs, reqError = ci.loadFilteredLogs(ctx, client, query)
 			if reqError != nil {
-				ci.logger.Warnf("error fetching contract logs for fork %v (%v-%v): %v", headFork.forkId, startBlockNumber, toBlock, reqError)
+				ci.logger.Warnf("error fetching contract logs for fork %v (%v-%v): %v", headFork.ForkId, startBlockNumber, toBlock, reqError)
 				continue
 			}
 
@@ -542,11 +543,11 @@ func (ci *contractIndexer[TxType]) processRecentBlocksForFork(headFork *forkWith
 			queueBlock = toBlock
 
 			if len(requestTxs) > 0 {
-				ci.logger.Infof("crawled recent contract logs for fork %v (%v-%v): %v events", headFork.forkId, startBlockNumber, toBlock, len(requestTxs))
+				ci.logger.Infof("crawled recent contract logs for fork %v (%v-%v): %v events", headFork.ForkId, startBlockNumber, toBlock, len(requestTxs))
 			}
 
 			// persist the processed transactions and update the indexer state
-			err := ci.persistRecentRequestTxs(headFork.forkId, queueBlock, queueLength, requestTxs)
+			err := ci.persistRecentRequestTxs(headFork.ForkId, queueBlock, queueLength, requestTxs)
 			if err != nil {
 				return fmt.Errorf("could not persist contract logs: %v", err)
 			}
@@ -558,7 +559,7 @@ func (ci *contractIndexer[TxType]) processRecentBlocksForFork(headFork *forkWith
 		}
 
 		if reqError != nil {
-			return fmt.Errorf("error fetching contract logs for fork %v (%v-%v): %v", headFork.forkId, startBlockNumber, toBlock, reqError)
+			return fmt.Errorf("error fetching contract logs for fork %v (%v-%v): %v", headFork.ForkId, startBlockNumber, toBlock, reqError)
 		}
 
 		startBlockNumber = toBlock + 1

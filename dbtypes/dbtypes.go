@@ -58,6 +58,7 @@ type Slot struct {
 	MinExecTime           uint32     `db:"min_exec_time"`
 	MaxExecTime           uint32     `db:"max_exec_time"`
 	ExecTimes             []byte     `db:"exec_times"`
+	BlockUid              uint64     `db:"block_uid"`
 }
 
 type Epoch struct {
@@ -91,6 +92,7 @@ type OrphanedBlock struct {
 	HeaderSSZ []byte `db:"header_ssz"`
 	BlockVer  uint64 `db:"block_ver"`
 	BlockSSZ  []byte `db:"block_ssz"`
+	BlockUid  uint64 `db:"block_uid"`
 }
 
 type SlotAssignment struct {
@@ -125,6 +127,7 @@ type UnfinalizedBlock struct {
 	MinExecTime uint32                 `db:"min_exec_time"`
 	MaxExecTime uint32                 `db:"max_exec_time"`
 	ExecTimes   []byte                 `db:"exec_times"`
+	BlockUid    uint64                 `db:"block_uid"`
 }
 
 type UnfinalizedEpoch struct {
@@ -425,4 +428,138 @@ type Validator struct {
 	ActivationEpoch            int64  `db:"activation_epoch"`
 	ExitEpoch                  int64  `db:"exit_epoch"`
 	WithdrawableEpoch          int64  `db:"withdrawable_epoch"`
+}
+
+// EL Explorer types
+
+type ElBlock struct {
+	BlockUid     uint64 `db:"block_uid"`
+	Status       uint32 `db:"status"`
+	Events       uint32 `db:"events"`
+	Transactions uint32 `db:"transactions"`
+	Transfers    uint32 `db:"transfers"`
+	DataStatus   uint16 `db:"data_status"` // bit flags: 0x01=events, 0x02=call traces, 0x04=state changes
+	DataSize     int64  `db:"data_size"`   // compressed size in bytes of blockdb object
+}
+
+// ElBlock DataStatus bit flags
+const (
+	ElBlockDataReceiptMeta  = 0x01
+	ElBlockDataEvents       = 0x02
+	ElBlockDataCallTraces   = 0x04
+	ElBlockDataStateChanges = 0x08
+)
+
+type ElTransaction struct {
+	BlockUid    uint64  `db:"block_uid"`
+	TxHash      []byte  `db:"tx_hash"`
+	FromID      uint64  `db:"from_id"`
+	ToID        uint64  `db:"to_id"`
+	Nonce       uint64  `db:"nonce"`
+	Reverted    bool    `db:"reverted"`
+	Amount      float64 `db:"amount"`
+	AmountRaw   []byte  `db:"amount_raw"`
+	MethodID    []byte  `db:"method_id"`
+	GasLimit    uint64  `db:"gas_limit"`
+	GasUsed     uint64  `db:"gas_used"`
+	GasPrice    float64 `db:"gas_price"` // Legacy: gas price; EIP-1559+: maxFeePerGas (in Gwei)
+	TipPrice    float64 `db:"tip_price"` // maxPriorityFeePerGas (in Gwei)
+	BlobCount   uint32  `db:"blob_count"`
+	BlockNumber uint64  `db:"block_number"`
+	TxType      uint8   `db:"tx_type"`
+	TxIndex     uint32  `db:"tx_index"`
+	EffGasPrice float64 `db:"eff_gas_price"` // Effective gas price actually paid (in Gwei)
+}
+
+// ElTransactionInternal is a lightweight index of internal calls from call traces.
+type ElTransactionInternal struct {
+	BlockUid  uint64  `db:"block_uid"`
+	TxHash    []byte  `db:"tx_hash"`
+	TxCallIdx uint32  `db:"tx_callidx"` // Depth-first traversal index (0=top-level, skipped)
+	CallType  uint8   `db:"call_type"`  // 0=CALL, 1=STATICCALL, 2=DELEGATECALL, 3=CREATE, 4=CREATE2, 5=SELFDESTRUCT
+	FromID    uint64  `db:"from_id"`
+	ToID      uint64  `db:"to_id"`
+	Value     float64 `db:"value"`
+	ValueRaw  []byte  `db:"value_raw"`
+}
+
+// ElEventIndex is a lightweight searchable index for events (full data in blockdb).
+type ElEventIndex struct {
+	BlockUid   uint64 `db:"block_uid"`
+	TxHash     []byte `db:"tx_hash"`
+	EventIndex uint32 `db:"event_index"`
+	SourceID   uint64 `db:"source_id"`
+	Topic1     []byte `db:"topic1"`
+}
+
+type ElAccount struct {
+	ID           uint64 `db:"id"`
+	Address      []byte `db:"address"`
+	FunderID     uint64 `db:"funder_id"`
+	Funded       uint64 `db:"funded"`
+	IsContract   bool   `db:"is_contract"`
+	LastNonce    uint64 `db:"last_nonce"`
+	LastBlockUid uint64 `db:"last_block_uid"`
+}
+
+// Token type constants
+const (
+	TokenTypeERC20   = 1
+	TokenTypeERC721  = 2
+	TokenTypeERC1155 = 3
+)
+
+// Token flag constants
+const (
+	TokenFlagMetadataLoaded = 0x01
+)
+
+type ElToken struct {
+	ID          uint64 `db:"id"`
+	Contract    []byte `db:"contract"`
+	TokenType   uint8  `db:"token_type"`
+	Name        string `db:"name"`
+	Symbol      string `db:"symbol"`
+	Decimals    uint8  `db:"decimals"`
+	Flags       uint8  `db:"flags"`
+	MetadataURI string `db:"metadata_uri"`
+	NameSynced  uint64 `db:"name_synced"`
+}
+
+type ElBalance struct {
+	AccountID  uint64  `db:"account_id"`
+	TokenID    uint64  `db:"token_id"`
+	Balance    float64 `db:"balance"`
+	BalanceRaw []byte  `db:"balance_raw"`
+	Updated    uint64  `db:"updated"`
+}
+
+type ElTokenTransfer struct {
+	BlockUid   uint64  `db:"block_uid"`
+	TxHash     []byte  `db:"tx_hash"`
+	TxPos      uint32  `db:"tx_pos"` // Transaction index in block
+	TxIdx      uint32  `db:"tx_idx"` // Transfer index within transaction
+	TokenID    uint64  `db:"token_id"`
+	TokenType  uint8   `db:"token_type"`
+	TokenIndex []byte  `db:"token_index"`
+	FromID     uint64  `db:"from_id"`
+	ToID       uint64  `db:"to_id"`
+	Amount     float64 `db:"amount"`
+	AmountRaw  []byte  `db:"amount_raw"`
+}
+
+// Withdrawal types
+const (
+	WithdrawalTypeBeaconWithdrawal = 0
+	WithdrawalTypeFeeRecipient     = 1
+)
+
+type ElWithdrawal struct {
+	BlockUid   uint64  `db:"block_uid"`
+	BlockIndex uint16  `db:"block_index"`
+	AccountID  uint64  `db:"account_id"`
+	Type       uint8   `db:"type"` // 0=withdrawal, 1=fee_recipient
+	Amount     float64 `db:"amount"`
+	AmountRaw  []byte  `db:"amount_raw"`
+	Validator  *uint64 `db:"validator"` // validator index for withdrawals, null for fee recipient
 }

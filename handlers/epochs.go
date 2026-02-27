@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"net/http"
@@ -53,7 +54,7 @@ func getEpochsPageData(firstEpoch uint64, pageSize uint64) (*models.EpochsPageDa
 	pageData := &models.EpochsPageData{}
 	pageCacheKey := fmt.Sprintf("epochs:%v:%v", firstEpoch, pageSize)
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
-		pageData, cacheTimeout := buildEpochsPageData(firstEpoch, pageSize)
+		pageData, cacheTimeout := buildEpochsPageData(pageCall.CallCtx, firstEpoch, pageSize)
 		pageCall.CacheTimeout = cacheTimeout
 		return pageData
 	})
@@ -67,7 +68,7 @@ func getEpochsPageData(firstEpoch uint64, pageSize uint64) (*models.EpochsPageDa
 	return pageData, pageErr
 }
 
-func buildEpochsPageData(firstEpoch uint64, pageSize uint64) (*models.EpochsPageData, time.Duration) {
+func buildEpochsPageData(ctx context.Context, firstEpoch uint64, pageSize uint64) (*models.EpochsPageData, time.Duration) {
 	logrus.Debugf("epochs page called: %v:%v", firstEpoch, pageSize)
 	pageData := &models.EpochsPageData{}
 
@@ -106,13 +107,14 @@ func buildEpochsPageData(firstEpoch uint64, pageSize uint64) (*models.EpochsPage
 	pageData.UrlParams["count"] = fmt.Sprintf("%v", pageData.PageSize)
 	pageData.MaxEpoch = uint64(currentEpoch)
 
+	specs := chainState.GetSpecs()
 	finalizedEpoch, _ := chainState.GetFinalizedCheckpoint()
 	justifiedEpoch, _ := chainState.GetJustifiedCheckpoint()
 	epochLimit := pageSize
 
 	// load epochs
 	pageData.Epochs = make([]*models.EpochsPageDataEpoch, 0)
-	dbEpochs := services.GlobalBeaconService.GetDbEpochs(uint64(firstEpoch), uint32(epochLimit))
+	dbEpochs := services.GlobalBeaconService.GetDbEpochs(ctx, uint64(firstEpoch), uint32(epochLimit))
 	dbIdx := 0
 	dbCnt := len(dbEpochs)
 	epochCount := uint64(0)
@@ -149,6 +151,10 @@ func buildEpochsPageData(firstEpoch uint64, pageSize uint64) (*models.EpochsPage
 				epochData.TargetVoteParticipation = float64(dbEpoch.VotedTarget) * 100.0 / float64(dbEpoch.Eligible)
 				epochData.HeadVoteParticipation = float64(dbEpoch.VotedHead) * 100.0 / float64(dbEpoch.Eligible)
 				epochData.TotalVoteParticipation = float64(dbEpoch.VotedTotal) * 100.0 / float64(dbEpoch.Eligible)
+			}
+			epochData.SlotsPerEpoch = specs.SlotsPerEpoch
+			if specs.SlotsPerEpoch > 0 {
+				epochData.ProposalParticipation = float64(dbEpoch.BlockCount) * 100.0 / float64(specs.SlotsPerEpoch)
 			}
 			epochData.EthTransactionCount = dbEpoch.EthTransactionCount
 			epochData.BlobCount = dbEpoch.BlobCount

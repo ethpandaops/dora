@@ -16,6 +16,14 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
+// clampInt64 caps a uint64 value at math.MaxInt64 to fit PostgreSQL BIGINT.
+func clampInt64(v uint64) uint64 {
+	if v >= math.MaxInt64 {
+		return math.MaxInt64
+	}
+	return v
+}
+
 type dbWriter struct {
 	indexer *Indexer
 }
@@ -52,7 +60,7 @@ func (dbw *dbWriter) persistMissedSlots(tx *sqlx.Tx, epoch phase0.Epoch, blocks 
 			Status:   dbtypes.Missing,
 		}
 
-		err := db.InsertMissingSlot(missedSlot, tx)
+		err := db.InsertMissingSlot(dbw.indexer.ctx, tx, missedSlot)
 		if err != nil {
 			return fmt.Errorf("error while adding missed slot to db: %w", err)
 		}
@@ -71,7 +79,7 @@ func (dbw *dbWriter) persistBlockData(tx *sqlx.Tx, block *Block, epochStats *Epo
 		dbBlock.Status = dbtypes.Orphaned
 	}
 
-	err := db.InsertSlot(dbBlock, tx)
+	err := db.InsertSlot(dbw.indexer.ctx, tx, dbBlock)
 	if err != nil {
 		return nil, fmt.Errorf("error inserting slot: %v", err)
 	}
@@ -157,7 +165,7 @@ func (dbw *dbWriter) persistEpochData(tx *sqlx.Tx, epoch phase0.Epoch, blocks []
 	}
 
 	// insert epoch
-	err = db.InsertEpoch(dbEpoch, tx)
+	err = db.InsertEpoch(dbw.indexer.ctx, tx, dbEpoch)
 	if err != nil {
 		return fmt.Errorf("error while saving epoch to db: %w", err)
 	}
@@ -184,7 +192,7 @@ func (dbw *dbWriter) persistSyncAssignments(tx *sqlx.Tx, epoch phase0.Epoch, epo
 
 	period := epoch / phase0.Epoch(specs.EpochsPerSyncCommitteePeriod)
 	isStartOfPeriod := epoch == period*phase0.Epoch(specs.EpochsPerSyncCommitteePeriod)
-	if !isStartOfPeriod && db.IsSyncCommitteeSynchronized(uint64(period)) {
+	if !isStartOfPeriod && db.IsSyncCommitteeSynchronized(dbw.indexer.ctx, uint64(period)) {
 		// already synchronized
 		return nil
 	}
@@ -197,7 +205,7 @@ func (dbw *dbWriter) persistSyncAssignments(tx *sqlx.Tx, epoch phase0.Epoch, epo
 			Validator: uint64(val),
 		})
 	}
-	return db.InsertSyncAssignments(syncAssignments, tx)
+	return db.InsertSyncAssignments(dbw.indexer.ctx, tx, syncAssignments)
 }
 
 func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, overrideForkId *ForkKey) *dbtypes.Slot {
@@ -226,7 +234,7 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 		}
 	}
 
-	blockBody := block.GetBlock()
+	blockBody := block.GetBlock(dbw.indexer.ctx)
 	if blockBody == nil {
 		dbw.indexer.logger.Warnf("error while building db blocks: block body not found: %v", block.Slot)
 		return nil
@@ -287,6 +295,7 @@ func (dbw *dbWriter) buildDbBlock(block *Block, epochStats *EpochStats, override
 		BLSChangeCount:        uint64(len(blsToExecChanges)),
 		BlobCount:             uint64(len(blobKzgCommitments)),
 		RecvDelay:             block.recvDelay,
+		BlockUid:              block.BlockUID,
 	}
 
 	blockSize, err := getBlockSize(block.dynSsz, blockBody)
@@ -425,14 +434,14 @@ func (dbw *dbWriter) buildDbEpoch(epoch phase0.Epoch, blocks []*Block, epochStat
 		Epoch: uint64(epoch),
 	}
 	if epochVotes != nil {
-		dbEpoch.VotedTarget = uint64(epochVotes.CurrentEpoch.TargetVoteAmount + epochVotes.NextEpoch.TargetVoteAmount)
-		dbEpoch.VotedHead = uint64(epochVotes.CurrentEpoch.HeadVoteAmount + epochVotes.NextEpoch.HeadVoteAmount)
-		dbEpoch.VotedTotal = uint64(epochVotes.CurrentEpoch.TotalVoteAmount + epochVotes.NextEpoch.TotalVoteAmount)
+		dbEpoch.VotedTarget = clampInt64(uint64(epochVotes.CurrentEpoch.TargetVoteAmount + epochVotes.NextEpoch.TargetVoteAmount))
+		dbEpoch.VotedHead = clampInt64(uint64(epochVotes.CurrentEpoch.HeadVoteAmount + epochVotes.NextEpoch.HeadVoteAmount))
+		dbEpoch.VotedTotal = clampInt64(uint64(epochVotes.CurrentEpoch.TotalVoteAmount + epochVotes.NextEpoch.TotalVoteAmount))
 	}
 	if epochStatsValues != nil {
 		dbEpoch.ValidatorCount = epochStatsValues.ActiveValidators
-		dbEpoch.ValidatorBalance = uint64(epochStatsValues.ActiveBalance)
-		dbEpoch.Eligible = uint64(epochStatsValues.EffectiveBalance)
+		dbEpoch.ValidatorBalance = clampInt64(uint64(epochStatsValues.ActiveBalance))
+		dbEpoch.Eligible = clampInt64(uint64(epochStatsValues.EffectiveBalance))
 		depositIndexField := epochStatsValues.FirstDepositIndex
 		depositIndex = &depositIndexField
 	}
@@ -457,7 +466,7 @@ func (dbw *dbWriter) buildDbEpoch(epoch phase0.Epoch, blocks []*Block, epochStat
 				continue
 			}
 
-			blockBody := block.GetBlock()
+			blockBody := block.GetBlock(dbw.indexer.ctx)
 			if blockBody == nil {
 				dbw.indexer.logger.Warnf("error while building db epoch: block body not found for aggregation: %v", block.Slot)
 				continue
@@ -576,7 +585,7 @@ func (dbw *dbWriter) persistBlockDeposits(tx *sqlx.Tx, block *Block, depositInde
 	}
 
 	if len(dbDeposits) > 0 {
-		err := db.InsertDeposits(dbDeposits, tx)
+		err := db.InsertDeposits(dbw.indexer.ctx, tx, dbDeposits)
 		if err != nil {
 			return fmt.Errorf("error inserting deposits: %v", err)
 		}
@@ -586,7 +595,7 @@ func (dbw *dbWriter) persistBlockDeposits(tx *sqlx.Tx, block *Block, depositInde
 }
 
 func (dbw *dbWriter) buildDbDeposits(block *Block, depositIndex *uint64, orphaned bool, overrideForkId *ForkKey) []*dbtypes.Deposit {
-	blockBody := block.GetBlock()
+	blockBody := block.GetBlock(dbw.indexer.ctx)
 	if blockBody == nil {
 		return nil
 	}
@@ -633,7 +642,7 @@ func (dbw *dbWriter) persistBlockDepositRequests(tx *sqlx.Tx, block *Block, orph
 	}
 
 	if len(dbDeposits) > 0 {
-		err := db.InsertDeposits(dbDeposits, tx)
+		err := db.InsertDeposits(dbw.indexer.ctx, tx, dbDeposits)
 		if err != nil {
 			return fmt.Errorf("error inserting deposit requests: %v", err)
 		}
@@ -643,7 +652,7 @@ func (dbw *dbWriter) persistBlockDepositRequests(tx *sqlx.Tx, block *Block, orph
 }
 
 func (dbw *dbWriter) buildDbDepositRequests(block *Block, orphaned bool, overrideForkId *ForkKey) []*dbtypes.Deposit {
-	blockBody := block.GetBlock()
+	blockBody := block.GetBlock(dbw.indexer.ctx)
 	if blockBody == nil {
 		return nil
 	}
@@ -682,7 +691,7 @@ func (dbw *dbWriter) persistBlockVoluntaryExits(tx *sqlx.Tx, block *Block, orpha
 	// insert voluntary exits
 	dbVoluntaryExits := dbw.buildDbVoluntaryExits(block, orphaned, overrideForkId)
 	if len(dbVoluntaryExits) > 0 {
-		err := db.InsertVoluntaryExits(dbVoluntaryExits, tx)
+		err := db.InsertVoluntaryExits(dbw.indexer.ctx, tx, dbVoluntaryExits)
 		if err != nil {
 			return fmt.Errorf("error inserting voluntary exits: %v", err)
 		}
@@ -692,7 +701,7 @@ func (dbw *dbWriter) persistBlockVoluntaryExits(tx *sqlx.Tx, block *Block, orpha
 }
 
 func (dbw *dbWriter) buildDbVoluntaryExits(block *Block, orphaned bool, overrideForkId *ForkKey) []*dbtypes.VoluntaryExit {
-	blockBody := block.GetBlock()
+	blockBody := block.GetBlock(dbw.indexer.ctx)
 	if blockBody == nil {
 		return nil
 	}
@@ -726,7 +735,7 @@ func (dbw *dbWriter) persistBlockSlashings(tx *sqlx.Tx, block *Block, orphaned b
 	// insert slashings
 	dbSlashings := dbw.buildDbSlashings(block, orphaned, overrideForkId)
 	if len(dbSlashings) > 0 {
-		err := db.InsertSlashings(dbSlashings, tx)
+		err := db.InsertSlashings(dbw.indexer.ctx, tx, dbSlashings)
 		if err != nil {
 			return fmt.Errorf("error inserting slashings: %v", err)
 		}
@@ -736,7 +745,7 @@ func (dbw *dbWriter) persistBlockSlashings(tx *sqlx.Tx, block *Block, orphaned b
 }
 
 func (dbw *dbWriter) buildDbSlashings(block *Block, orphaned bool, overrideForkId *ForkKey) []*dbtypes.Slashing {
-	blockBody := block.GetBlock()
+	blockBody := block.GetBlock(dbw.indexer.ctx)
 	if blockBody == nil {
 		return nil
 	}
@@ -820,7 +829,7 @@ func (dbw *dbWriter) persistBlockConsolidationRequests(tx *sqlx.Tx, block *Block
 	}
 
 	if len(dbConsolidations) > 0 {
-		err := db.InsertConsolidationRequests(dbConsolidations, tx)
+		err := db.InsertConsolidationRequests(dbw.indexer.ctx, tx, dbConsolidations)
 		if err != nil {
 			return fmt.Errorf("error inserting consolidation requests: %v", err)
 		}
@@ -830,7 +839,7 @@ func (dbw *dbWriter) persistBlockConsolidationRequests(tx *sqlx.Tx, block *Block
 }
 
 func (dbw *dbWriter) buildDbConsolidationRequests(block *Block, orphaned bool, overrideForkId *ForkKey, sim *stateSimulator) []*dbtypes.ConsolidationRequest {
-	blockBody := block.GetBlock()
+	blockBody := block.GetBlock(dbw.indexer.ctx)
 	if blockBody == nil {
 		return nil
 	}
@@ -901,7 +910,7 @@ func (dbw *dbWriter) persistBlockWithdrawalRequests(tx *sqlx.Tx, block *Block, o
 	dbWithdrawalRequests := dbw.buildDbWithdrawalRequests(block, orphaned, overrideForkId, sim)
 
 	if len(dbWithdrawalRequests) > 0 {
-		err := db.InsertWithdrawalRequests(dbWithdrawalRequests, tx)
+		err := db.InsertWithdrawalRequests(dbw.indexer.ctx, tx, dbWithdrawalRequests)
 		if err != nil {
 			return fmt.Errorf("error inserting withdrawal requests: %v", err)
 		}
@@ -911,7 +920,7 @@ func (dbw *dbWriter) persistBlockWithdrawalRequests(tx *sqlx.Tx, block *Block, o
 }
 
 func (dbw *dbWriter) buildDbWithdrawalRequests(block *Block, orphaned bool, overrideForkId *ForkKey, sim *stateSimulator) []*dbtypes.WithdrawalRequest {
-	blockBody := block.GetBlock()
+	blockBody := block.GetBlock(dbw.indexer.ctx)
 	if blockBody == nil {
 		return nil
 	}

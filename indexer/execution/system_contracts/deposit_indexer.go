@@ -1,4 +1,4 @@
-package execution
+package system_contracts
 
 import (
 	"bytes"
@@ -22,6 +22,7 @@ import (
 	"github.com/ethpandaops/dora/db"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/indexer/beacon"
+	"github.com/ethpandaops/dora/indexer/execution"
 	"github.com/ethpandaops/dora/utils"
 )
 
@@ -29,7 +30,7 @@ const depositContractAbi = `[{"inputs":[],"stateMutability":"nonpayable","type":
 
 // DepositIndexer is the indexer for the deposit contract
 type DepositIndexer struct {
-	indexerCtx *IndexerCtx
+	indexerCtx *execution.IndexerCtx
 	logger     logrus.FieldLogger
 	indexer    *contractIndexer[dbtypes.DepositTx]
 
@@ -39,7 +40,7 @@ type DepositIndexer struct {
 }
 
 // NewDepositIndexer creates a new deposit contract indexer
-func NewDepositIndexer(indexer *IndexerCtx) *DepositIndexer {
+func NewDepositIndexer(indexer *execution.IndexerCtx) *DepositIndexer {
 	batchSize := utils.Config.ExecutionApi.LogBatchSize
 	if batchSize == 0 {
 		batchSize = 1000
@@ -52,13 +53,13 @@ func NewDepositIndexer(indexer *IndexerCtx) *DepositIndexer {
 
 	depositEventTopic := crypto.Keccak256Hash([]byte(contractAbi.Events["DepositEvent"].Sig))
 
-	specs := indexer.chainState.GetSpecs()
+	specs := indexer.ChainState.GetSpecs()
 	genesisForkVersion := specs.GenesisForkVersion
 	depositSigDomain := zrnt_common.ComputeDomain(zrnt_common.DOMAIN_DEPOSIT, zrnt_common.Version(genesisForkVersion), zrnt_common.Root{})
 
 	ds := &DepositIndexer{
 		indexerCtx:         indexer,
-		logger:             indexer.logger.WithField("indexer", "deposit"),
+		logger:             indexer.Logger.WithField("indexer", "deposit"),
 		depositContractAbi: &contractAbi,
 		depositEventTopic:  depositEventTopic[:],
 		depositSigDomain:   depositSigDomain,
@@ -120,9 +121,9 @@ func (ci *DepositIndexer) processFinalTx(log *types.Log, tx *types.Transaction, 
 
 // processRecentTx is the callback for the contract indexer to process recent transactions
 // it parses the transaction and returns the corresponding deposit transaction
-func (ci *DepositIndexer) processRecentTx(log *types.Log, tx *types.Transaction, header *types.Header, txFrom common.Address, dequeueBlock uint64, fork *forkWithClients, parentTxs []*dbtypes.DepositTx) (*dbtypes.DepositTx, error) {
-	forkId := uint64(fork.forkId)
-	clBlock := ci.indexerCtx.beaconIndexer.GetBlocksByExecutionBlockHash(phase0.Hash32(log.BlockHash))
+func (ci *DepositIndexer) processRecentTx(log *types.Log, tx *types.Transaction, header *types.Header, txFrom common.Address, dequeueBlock uint64, fork *execution.ForkWithClients, parentTxs []*dbtypes.DepositTx) (*dbtypes.DepositTx, error) {
+	forkId := uint64(fork.ForkId)
+	clBlock := ci.indexerCtx.BeaconIndexer.GetBlocksByExecutionBlockHash(phase0.Hash32(log.BlockHash))
 	if len(clBlock) > 0 {
 		forkId = uint64(clBlock[0].GetForkId())
 	}
@@ -178,7 +179,7 @@ func (ci *DepositIndexer) persistDepositTxs(tx *sqlx.Tx, requests []*dbtypes.Dep
 			endIdx = requestCount
 		}
 
-		err := db.InsertDepositTxs(requests[requestIdx:endIdx], tx)
+		err := db.InsertDepositTxs(ci.indexerCtx.Ctx, tx, requests[requestIdx:endIdx])
 		if err != nil {
 			return fmt.Errorf("error while inserting deposit txs: %v", err)
 		}
@@ -199,9 +200,9 @@ func (ds *DepositIndexer) checkDepositValidity(depositTx *dbtypes.DepositTx, par
 	}
 
 	if !isTopUp {
-		validator, isFound := ds.indexerCtx.beaconIndexer.GetValidatorIndexByPubkey(phase0.BLSPubKey(depositTx.PublicKey))
+		validator, isFound := ds.indexerCtx.BeaconIndexer.GetValidatorIndexByPubkey(phase0.BLSPubKey(depositTx.PublicKey))
 		if isFound {
-			validator := ds.indexerCtx.beaconIndexer.GetValidatorByIndex(validator, nil)
+			validator := ds.indexerCtx.BeaconIndexer.GetValidatorByIndex(validator, nil)
 			if validator != nil && validator.ActivationEpoch == 0 {
 				// genesis validator won't have a successful deposit, these are always top-ups
 				isTopUp = true
@@ -210,13 +211,13 @@ func (ds *DepositIndexer) checkDepositValidity(depositTx *dbtypes.DepositTx, par
 	}
 
 	if !isTopUp {
-		parentForkIds := ds.indexerCtx.beaconIndexer.GetParentForkIds(beacon.ForkKey(forkId))
+		parentForkIds := ds.indexerCtx.BeaconIndexer.GetParentForkIds(beacon.ForkKey(forkId))
 		parentForkIdsUint := make([]uint64, len(parentForkIds))
 		for i, forkId := range parentForkIds {
 			parentForkIdsUint[i] = uint64(forkId)
 		}
 
-		dbDepositTxs, _, err := db.GetDepositTxsFiltered(0, 1, parentForkIdsUint, &dbtypes.DepositTxFilter{
+		dbDepositTxs, _, err := db.GetDepositTxsFiltered(ds.indexerCtx.Ctx, 0, 1, parentForkIdsUint, &dbtypes.DepositTxFilter{
 			PublicKey:    depositTx.PublicKey,
 			WithValid:    0,
 			WithOrphaned: 0,

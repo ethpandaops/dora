@@ -1,5 +1,5 @@
 {{ define "block_transactions" }}
-  <div class="table-ellipsis px-0">
+  <div class="px-0">
     <table class="table" id="block_transactions">
       <thead>
         <tr>
@@ -9,8 +9,14 @@
           <th>To</th>
           <th>Method</th>
           <th>Value</th>
-          <th>Call Data</th>
-          <th></th>
+          {{ if and (gt (len .Block.Transactions) 0) (index .Block.Transactions 0).HasElData }}
+          <th>Status</th>
+          <th>Gas Used</th>
+          <th>Fee</th>
+          {{ else }}
+          <th>Data</th>
+          {{ end }}
+          <th>Type</th>
         </tr>
       </thead>
       <tbody>
@@ -18,22 +24,20 @@
           <tr>
             <td>{{ $i }}</td>
             <td class="text-monospace">
-              <div class="ellipsis-copy-btn">
-                <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $transaction.Hash }}"></i>
-              </div>
-              0x{{ printf "%x" $transaction.Hash }}
+              {{ ethTransactionLink $transaction.Hash 16 }}
+              <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $transaction.Hash }}"></i>
             </td>
             <td class="text-monospace">
-              <div class="ellipsis-copy-btn">
-                <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $transaction.From }}"></i>
-              </div>
-              {{ $transaction.From }}
+              {{ formatEthAddressShortLink $transaction.From false }}
+              <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ formatEthAddressFull $transaction.From }}"></i>
             </td>
             <td class="text-monospace">
-              <div class="ellipsis-copy-btn">
-                <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ $transaction.To }}"></i>
-              </div>
-              {{ $transaction.To }}
+              {{ if gt (len $transaction.To) 0 }}
+                {{ formatEthAddressShortLink $transaction.To false }}
+                <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ formatEthAddressFull $transaction.To }}"></i>
+              {{ else }}
+                <span class="text-muted">Contract Creation</span>
+              {{ end }}
             </td>
             <td>
               {{ if eq $transaction.FuncSigStatus 10 }}
@@ -45,16 +49,46 @@
               {{ end }}
             </td>
             <td>{{ formatTransactionValue $transaction.Value }}</td>
+            {{ if $transaction.HasElData }}
+            <td>
+              {{ if $transaction.Reverted }}
+              <span class="badge text-bg-danger" style="font-size: 11px;"><i class="fas fa-times me-1"></i>Failed</span>
+              {{ else }}
+              <span class="badge text-bg-success" style="font-size: 11px;"><i class="fas fa-check me-1"></i>Success</span>
+              {{ end }}
+            </td>
+            <td>
+              <span data-bs-toggle="tooltip" title="{{ formatAddCommas $transaction.GasUsed }} / {{ formatAddCommas $transaction.GasLimit }}">
+                {{ formatAddCommas $transaction.GasUsed }}
+              </span>
+            </td>
+            <td>
+              <span data-bs-toggle="tooltip" title="{{ printf "%.9f" $transaction.EffGasPrice }} Gwei">
+                {{ formatTransactionFee $transaction.TxFee }}
+              </span>
+            </td>
+            {{ else }}
             <td>
               {{ if gt $transaction.DataLen 0 }}
                 <span class="badge rounded-pill text-bg-secondary" style="font-size: 12px; font-weight: 500;">{{ $transaction.DataLen }} B</span>
                 <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $transaction.Data }}"></i>
               {{ end }}
             </td>
+            {{ end }}
             <td>
-              <i class="fa fa-circle-info text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" data-bs-html="true" data-bs-title="{{ "" -}}
-                TX Type: {{ $transaction.Type }}<br>
-              {{- "" }}"></i>
+              {{ if eq $transaction.Type 0 }}
+              <span class="badge" style="font-size: 11px; background-color: #6c757d; color: white;" data-bs-toggle="tooltip" title="Legacy Transaction">Legacy</span>
+              {{ else if eq $transaction.Type 1 }}
+              <span class="badge" style="font-size: 11px; background-color: #5a6268; color: white;" data-bs-toggle="tooltip" title="Access List (EIP-2930)">2930</span>
+              {{ else if eq $transaction.Type 2 }}
+              <span class="badge" style="font-size: 11px; background-color: #495057; color: white;" data-bs-toggle="tooltip" title="Dynamic Fee (EIP-1559)">1559</span>
+              {{ else if eq $transaction.Type 3 }}
+              <span class="badge" style="font-size: 11px; background-color: #343a40; color: white;" data-bs-toggle="tooltip" title="Blob (EIP-4844)">Blob</span>
+              {{ else if eq $transaction.Type 4 }}
+              <span class="badge" style="font-size: 11px; background-color: #212529; color: white;" data-bs-toggle="tooltip" title="Set Code (EIP-7702)">7702</span>
+              {{ else }}
+              <span class="badge" style="font-size: 11px; background-color: #868e96; color: white;">{{ $transaction.TypeName }}</span>
+              {{ end }}
             </td>
           </tr>
         {{ end }}

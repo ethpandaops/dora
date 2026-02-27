@@ -21,6 +21,15 @@ type SlotPageData struct {
 	ProposerName           string                `json:"proposer_name"`
 	Block                  *SlotPageBlockData    `json:"block"`
 	Badges                 []*SlotPageBlockBadge `json:"badges"`
+	SlotBlocks             []*SlotPageSlotBlock  `json:"slot_blocks"`
+	TracoorUrl             string                `json:"tracoor_url"`
+}
+
+// SlotPageSlotBlock represents a block entry for the slot (for multi-block display)
+type SlotPageSlotBlock struct {
+	BlockRoot []byte `json:"block_root"`
+	Status    uint16 `json:"status"` // 0: missed, 1: canonical, 2: orphaned
+	IsCurrent bool   `json:"is_current"`
 }
 
 type SlotPageBlockBadge struct {
@@ -108,6 +117,7 @@ type SlotPageExecutionData struct {
 	BlobBaseFee        *uint64   `json:"blob_base_fee,omitempty"`
 	BlobBaseFeeEIP7918 *uint64   `json:"blob_base_fee_eip7918,omitempty"`
 	IsEIP7918Active    bool      `json:"is_eip7918_active"`
+	HasExecData        bool      `json:"has_exec_data"`
 }
 
 type SlotPageAttestation struct {
@@ -218,8 +228,8 @@ type SlotPageBlobDetails struct {
 type SlotPageTransaction struct {
 	Index         uint64  `json:"index"`
 	Hash          []byte  `json:"hash"`
-	From          string  `json:"from"`
-	To            string  `json:"to"`
+	From          []byte  `json:"from"`
+	To            []byte  `json:"to"`
 	Value         float64 `json:"value"`
 	Data          []byte  `json:"data"`
 	DataLen       uint64  `json:"datalen"`
@@ -228,6 +238,15 @@ type SlotPageTransaction struct {
 	FuncName      string  `json:"func_name"`
 	FuncSig       string  `json:"func_sig"`
 	Type          uint64  `json:"type"`
+	TypeName      string  `json:"type_name"`
+
+	// EL-enriched data (only available when execution indexer is enabled)
+	HasElData   bool    `json:"has_el_data"`
+	Reverted    bool    `json:"reverted"`
+	GasUsed     uint64  `json:"gas_used"`
+	GasLimit    uint64  `json:"gas_limit"`
+	TxFee       float64 `json:"tx_fee"`        // Transaction fee in ETH
+	EffGasPrice float64 `json:"eff_gas_price"` // Effective gas price in Gwei
 }
 
 type SlotPageDepositRequest struct {

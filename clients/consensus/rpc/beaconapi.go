@@ -466,9 +466,9 @@ func (bc *BeaconClient) GetExecutionProofsByBlockroot(ctx context.Context, block
 		// If endpoint doesn't exist or block has no proofs, return empty response
 		if resp.StatusCode == nethttp.StatusNotFound {
 			return &ExecutionProofsResponse{
-				Data:               []ExecutionProof{},
+				Data:                []ExecutionProof{},
 				ExecutionOptimistic: false,
-				Finalized:          false,
+				Finalized:           false,
 			}, nil
 		}
 		data, _ := io.ReadAll(resp.Body)
@@ -481,6 +481,20 @@ func (bc *BeaconClient) GetExecutionProofsByBlockroot(ctx context.Context, block
 	}
 
 	return &response, nil
+}
+
+func (bc *BeaconClient) GetBlobsByBlockroot(ctx context.Context, blockroot []byte) ([]*deneb.Blob, error) {
+	provider, isProvider := bc.clientSvc.(eth2client.BlobsProvider)
+	if !isProvider {
+		return nil, fmt.Errorf("get beacon block blobs not supported")
+	}
+	result, err := provider.Blobs(ctx, &api.BlobsOpts{
+		Block: fmt.Sprintf("0x%x", blockroot),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result.Data, nil
 }
 
 func (bc *BeaconClient) GetForkState(ctx context.Context, stateRef string) (*phase0.Fork, error) {

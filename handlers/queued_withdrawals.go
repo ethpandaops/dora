@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -76,8 +77,8 @@ func QueuedWithdrawals(w http.ResponseWriter, r *http.Request) {
 func getFilteredQueuedWithdrawalsPageData(pageIdx uint64, pageSize uint64, minIndex uint64, maxIndex uint64, validatorName string, pubkey string) (*models.QueuedWithdrawalsPageData, error) {
 	pageData := &models.QueuedWithdrawalsPageData{}
 	pageCacheKey := fmt.Sprintf("queued_withdrawals:%v:%v:%v:%v:%v:%v", pageIdx, pageSize, minIndex, maxIndex, validatorName, pubkey)
-	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(_ *services.FrontendCacheProcessingPage) interface{} {
-		return buildFilteredQueuedWithdrawalsPageData(pageIdx, pageSize, minIndex, maxIndex, validatorName, pubkey)
+	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
+		return buildFilteredQueuedWithdrawalsPageData(pageCall.CallCtx, pageIdx, pageSize, minIndex, maxIndex, validatorName, pubkey)
 	})
 	if pageErr == nil && pageRes != nil {
 		resData, resOk := pageRes.(*models.QueuedWithdrawalsPageData)
@@ -89,7 +90,7 @@ func getFilteredQueuedWithdrawalsPageData(pageIdx uint64, pageSize uint64, minIn
 	return pageData, pageErr
 }
 
-func buildFilteredQueuedWithdrawalsPageData(pageIdx uint64, pageSize uint64, minIndex uint64, maxIndex uint64, validatorName string, pubkey string) *models.QueuedWithdrawalsPageData {
+func buildFilteredQueuedWithdrawalsPageData(ctx context.Context, pageIdx uint64, pageSize uint64, minIndex uint64, maxIndex uint64, validatorName string, pubkey string) *models.QueuedWithdrawalsPageData {
 	filterArgs := url.Values{}
 	if minIndex != 0 {
 		filterArgs.Add("f.mini", fmt.Sprintf("%v", minIndex))
@@ -138,7 +139,7 @@ func buildFilteredQueuedWithdrawalsPageData(pageIdx uint64, pageSize uint64, min
 		queueFilter.MaxValidatorIndex = &maxIndex
 	}
 
-	dbQueuedWithdrawals, totalQueuedWithdrawals, _ := services.GlobalBeaconService.GetWithdrawalQueueByFilter(queueFilter, (pageIdx-1)*pageSize, uint32(pageSize))
+	dbQueuedWithdrawals, totalQueuedWithdrawals, _ := services.GlobalBeaconService.GetWithdrawalQueueByFilter(ctx, queueFilter, (pageIdx-1)*pageSize, uint32(pageSize))
 	chainState := services.GlobalBeaconService.GetChainState()
 
 	for _, queueEntry := range dbQueuedWithdrawals {

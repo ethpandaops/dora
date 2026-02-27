@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -75,7 +76,7 @@ func getIndexPageData() (*models.IndexPageData, error) {
 	pageData := &models.IndexPageData{}
 	pageCacheKey := "index"
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
-		pageData, cacheTimeout := buildIndexPageData()
+		pageData, cacheTimeout := buildIndexPageData(pageCall.CallCtx)
 		pageCall.CacheTimeout = cacheTimeout
 		return pageData
 	})
@@ -89,7 +90,7 @@ func getIndexPageData() (*models.IndexPageData, error) {
 	return pageData, pageErr
 }
 
-func buildIndexPageData() (*models.IndexPageData, time.Duration) {
+func buildIndexPageData(ctx context.Context) (*models.IndexPageData, time.Duration) {
 	logrus.Debugf("index page called")
 
 	recentEpochCount := 7
@@ -107,7 +108,7 @@ func buildIndexPageData() (*models.IndexPageData, time.Duration) {
 	justifiedEpoch, _ := chainState.GetJustifiedCheckpoint()
 
 	syncState := dbtypes.IndexerSyncState{}
-	db.GetExplorerState("indexer.syncstate", &syncState)
+	db.GetExplorerState(ctx, "indexer.syncstate", &syncState)
 	var isSynced bool
 	if finalizedEpoch >= 1 {
 		isSynced = syncState.Epoch >= uint64(finalizedEpoch-1)
@@ -291,25 +292,65 @@ func buildIndexPageData() (*models.IndexPageData, time.Duration) {
 	}
 
 	// Add BPO forks from BLOB_SCHEDULE
-	for i, blobSchedule := range specs.BlobSchedule {
-		// BPO forks use the fork version that's active at the time of BPO activation
-		forkVersion := chainState.GetForkVersionAtEpoch(phase0.Epoch(blobSchedule.Epoch))
-		blobParams := &consensus.BlobScheduleEntry{
-			Epoch:            blobSchedule.Epoch,
-			MaxBlobsPerBlock: blobSchedule.MaxBlobsPerBlock,
-		}
-		forkDigest := chainState.GetForkDigest(forkVersion, blobParams)
+	elBlobSchedule := services.GlobalBeaconService.GetExecutionChainState().GetFullBlobSchedule()
+	if len(elBlobSchedule) > 0 {
+		// get blob schedule from el config (we have the full blob schedule available)
+		bpoIdx := 0
+		for _, blobSchedule := range elBlobSchedule {
+			if !blobSchedule.IsBpo {
+				continue
+			}
 
-		pageData.NetworkForks = append(pageData.NetworkForks, &models.IndexPageDataForks{
-			Name:             fmt.Sprintf("BPO%d", i+1),
-			Epoch:            blobSchedule.Epoch,
-			Version:          nil, // BPO forks don't have fork versions
-			Time:             uint64(chainState.EpochToTime(phase0.Epoch(blobSchedule.Epoch)).Unix()),
-			Active:           uint64(currentEpoch) >= blobSchedule.Epoch,
-			Type:             "bpo",
-			MaxBlobsPerBlock: &blobSchedule.MaxBlobsPerBlock,
-			ForkDigest:       forkDigest[:],
-		})
+			bpoIdx++
+
+			bpoEpoch := phase0.Epoch(0)
+			bpoTime := blobSchedule.Timestamp
+			if blobSchedule.Timestamp.After(networkGenesis.GenesisTime) {
+				bpoEpoch = chainState.EpochOfSlot(chainState.TimeToSlot(blobSchedule.Timestamp))
+			} else {
+				bpoTime = networkGenesis.GenesisTime
+			}
+
+			forkVersion := chainState.GetForkVersionAtEpoch(bpoEpoch)
+			blobParams := &consensus.BlobScheduleEntry{
+				Epoch:            uint64(bpoEpoch),
+				MaxBlobsPerBlock: blobSchedule.Schedule.Max,
+			}
+			forkDigest := chainState.GetForkDigest(forkVersion, blobParams)
+
+			pageData.NetworkForks = append(pageData.NetworkForks, &models.IndexPageDataForks{
+				Name:             fmt.Sprintf("BPO%d", bpoIdx),
+				Epoch:            uint64(bpoEpoch),
+				Version:          nil,
+				Time:             uint64(bpoTime.Unix()),
+				Active:           currentEpoch >= bpoEpoch,
+				Type:             "bpo",
+				MaxBlobsPerBlock: &blobSchedule.Schedule.Max,
+				ForkDigest:       forkDigest[:],
+			})
+		}
+	} else {
+		// get blob schedule from cl specs (no el config available, so we only get the deduplicated blob schedule from the cl specs)
+		for i, blobSchedule := range specs.BlobSchedule {
+			// BPO forks use the fork version that's active at the time of BPO activation
+			forkVersion := chainState.GetForkVersionAtEpoch(phase0.Epoch(blobSchedule.Epoch))
+			blobParams := &consensus.BlobScheduleEntry{
+				Epoch:            blobSchedule.Epoch,
+				MaxBlobsPerBlock: blobSchedule.MaxBlobsPerBlock,
+			}
+			forkDigest := chainState.GetForkDigest(forkVersion, blobParams)
+
+			pageData.NetworkForks = append(pageData.NetworkForks, &models.IndexPageDataForks{
+				Name:             fmt.Sprintf("BPO%d", i+1),
+				Epoch:            blobSchedule.Epoch,
+				Version:          nil, // BPO forks don't have fork versions
+				Time:             uint64(chainState.EpochToTime(phase0.Epoch(blobSchedule.Epoch)).Unix()),
+				Active:           uint64(currentEpoch) >= blobSchedule.Epoch,
+				Type:             "bpo",
+				MaxBlobsPerBlock: &blobSchedule.MaxBlobsPerBlock,
+				ForkDigest:       forkDigest[:],
+			})
+		}
 	}
 
 	// Sort all forks by epoch
@@ -318,23 +359,24 @@ func buildIndexPageData() (*models.IndexPageData, time.Duration) {
 	})
 
 	// load recent epochs
-	buildIndexPageRecentEpochsData(pageData, currentEpoch, finalizedEpoch, justifiedEpoch, recentEpochCount)
+	buildIndexPageRecentEpochsData(ctx, pageData, currentEpoch, finalizedEpoch, justifiedEpoch, recentEpochCount)
 
 	// load recent blocks
-	buildIndexPageRecentBlocksData(pageData, recentBlockCount)
+	buildIndexPageRecentBlocksData(ctx, pageData, recentBlockCount)
 
 	// load recent slots
-	buildIndexPageRecentSlotsData(pageData, currentSlot, recentSlotsCount)
+	buildIndexPageRecentSlotsData(ctx, pageData, currentSlot, recentSlotsCount)
 
 	return pageData, 12 * time.Second
 }
 
-func buildIndexPageRecentEpochsData(pageData *models.IndexPageData, currentEpoch phase0.Epoch, finalizedEpoch phase0.Epoch, justifiedEpoch phase0.Epoch, recentEpochCount int) {
+func buildIndexPageRecentEpochsData(ctx context.Context, pageData *models.IndexPageData, currentEpoch phase0.Epoch, finalizedEpoch phase0.Epoch, justifiedEpoch phase0.Epoch, recentEpochCount int) {
 	pageData.RecentEpochs = make([]*models.IndexPageDataEpochs, 0)
 
 	chainState := services.GlobalBeaconService.GetChainState()
+	specs := chainState.GetSpecs()
 
-	epochsData := services.GlobalBeaconService.GetDbEpochs(uint64(currentEpoch), uint32(recentEpochCount))
+	epochsData := services.GlobalBeaconService.GetDbEpochs(ctx, uint64(currentEpoch), uint32(recentEpochCount))
 	for i := 0; i < len(epochsData); i++ {
 		epochData := epochsData[i]
 		if epochData == nil {
@@ -344,25 +386,32 @@ func buildIndexPageRecentEpochsData(pageData *models.IndexPageData, currentEpoch
 		if epochData.Eligible > 0 {
 			voteParticipation = float64(epochData.VotedTarget) * 100.0 / float64(epochData.Eligible)
 		}
+		proposalParticipation := float64(0)
+		if specs.SlotsPerEpoch > 0 {
+			proposalParticipation = float64(epochData.BlockCount) * 100.0 / float64(specs.SlotsPerEpoch)
+		}
 		pageData.RecentEpochs = append(pageData.RecentEpochs, &models.IndexPageDataEpochs{
-			Epoch:             epochData.Epoch,
-			Ts:                chainState.EpochToTime(phase0.Epoch(epochData.Epoch)),
-			Finalized:         uint64(finalizedEpoch) > 0 && uint64(finalizedEpoch) >= epochData.Epoch,
-			Justified:         uint64(justifiedEpoch) > 0 && uint64(justifiedEpoch) >= epochData.Epoch,
-			EligibleEther:     epochData.Eligible,
-			TargetVoted:       epochData.VotedTarget,
-			VoteParticipation: voteParticipation,
+			Epoch:                 epochData.Epoch,
+			Ts:                    chainState.EpochToTime(phase0.Epoch(epochData.Epoch)),
+			Finalized:             uint64(finalizedEpoch) > 0 && uint64(finalizedEpoch) >= epochData.Epoch,
+			Justified:             uint64(justifiedEpoch) > 0 && uint64(justifiedEpoch) >= epochData.Epoch,
+			EligibleEther:         epochData.Eligible,
+			TargetVoted:           epochData.VotedTarget,
+			VoteParticipation:     voteParticipation,
+			BlockCount:            uint64(epochData.BlockCount),
+			SlotsPerEpoch:         specs.SlotsPerEpoch,
+			ProposalParticipation: proposalParticipation,
 		})
 	}
 	pageData.RecentEpochCount = uint64(len(pageData.RecentEpochs))
 }
 
-func buildIndexPageRecentBlocksData(pageData *models.IndexPageData, recentBlockCount int) {
+func buildIndexPageRecentBlocksData(ctx context.Context, pageData *models.IndexPageData, recentBlockCount int) {
 	pageData.RecentBlocks = make([]*models.IndexPageDataBlocks, 0)
 
 	chainState := services.GlobalBeaconService.GetChainState()
 
-	blocksData := services.GlobalBeaconService.GetDbBlocksByFilter(&dbtypes.BlockFilter{
+	blocksData := services.GlobalBeaconService.GetDbBlocksByFilter(ctx, &dbtypes.BlockFilter{
 		WithOrphaned: 0,
 		WithMissing:  0,
 	}, 0, uint32(recentBlockCount), 0)
@@ -397,7 +446,7 @@ func buildIndexPageRecentBlocksData(pageData *models.IndexPageData, recentBlockC
 	pageData.RecentBlockCount = uint64(len(pageData.RecentBlocks))
 }
 
-func buildIndexPageRecentSlotsData(pageData *models.IndexPageData, firstSlot phase0.Slot, slotLimit int) {
+func buildIndexPageRecentSlotsData(ctx context.Context, pageData *models.IndexPageData, firstSlot phase0.Slot, slotLimit int) {
 	var lastSlot uint64
 	if uint64(firstSlot) >= uint64(slotLimit) {
 		lastSlot = uint64(firstSlot) - uint64(slotLimit)
@@ -409,7 +458,7 @@ func buildIndexPageRecentSlotsData(pageData *models.IndexPageData, firstSlot pha
 
 	// load slots
 	pageData.RecentSlots = make([]*models.IndexPageDataSlots, 0)
-	dbSlots := services.GlobalBeaconService.GetDbBlocksForSlots(uint64(firstSlot), uint32(slotLimit), true, true)
+	dbSlots := services.GlobalBeaconService.GetDbBlocksForSlots(ctx, uint64(firstSlot), uint32(slotLimit), true, true)
 	dbIdx := 0
 	dbCnt := len(dbSlots)
 	blockCount := uint64(0)

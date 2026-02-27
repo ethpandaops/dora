@@ -1,0 +1,225 @@
+{{ define "internaltxs" }}
+<div class="card mt-0 border-top-0 rounded-top-0">
+  <div class="card-body p-0">
+    {{ if .InternalTxsNotAvailable }}
+    <div class="p-4 text-center text-muted">
+      <i class="fas fa-archive fa-2x mb-2"></i>
+      <p>Detailed internal transaction data is not available for this block (data may have been pruned).</p>
+    </div>
+    {{ else if gt (len .InternalTxs) 0 }}
+    <style>
+      .itx-wrap { overflow-x: auto; }
+      .itx-table { font-size: 0.88rem; margin-bottom: 0; }
+      .itx-table td, .itx-table th { vertical-align: top; }
+      .itx-callcell { white-space: nowrap; }
+      .itx-addr { white-space: nowrap; font-family: monospace; font-size: 0.86rem; }
+      .itx-gas { white-space: nowrap; font-family: monospace; font-size: 0.82rem; color: var(--bs-secondary); }
+      .itx-io { background: var(--bs-tertiary-bg); }
+      .itx-data-box { border: 1px solid var(--bs-border-color); border-radius: 4px; padding: 6px 8px; background: var(--bs-body-bg); font-family: monospace; font-size: 0.82rem; word-break: break-all; max-height: 140px; overflow-y: auto; margin-top: 4px; }
+      .itx-decoded-table { font-size: 0.82rem; margin: 4px 0 0 0; }
+      .itx-decoded-table td, .itx-decoded-table th { padding: 2px 8px; vertical-align: top; }
+      .itx-decoded-table th { font-weight: 600; white-space: nowrap; }
+      .itx-decoded-table td.itx-decoded-val { word-break: break-all; font-family: monospace; }
+      .itx-toggle { cursor: pointer; color: var(--bs-primary); font-size: 0.78rem; text-decoration: none; }
+      .itx-toggle:hover { text-decoration: underline; }
+      .itx-error { color: var(--bs-danger); font-size: 0.82rem; margin-top: 2px; }
+    </style>
+    <div class="itx-wrap">
+      <table class="table table-hover table-sm itx-table">
+        <thead>
+          <tr>
+            <th style="min-width: 220px;">Call</th>
+            <th style="min-width: 360px;">From</th>
+            <th style="min-width: 360px;">To</th>
+            <th style="min-width: 140px;">Value</th>
+            <th style="min-width: 170px;">Gas</th>
+            <th style="min-width: 70px;"></th>
+          </tr>
+        </thead>
+        <tbody>
+        {{ range $idx, $itx := .InternalTxs }}
+          <tr>
+            <td class="itx-callcell">
+              <span style="padding-left: {{ mul (float64 $itx.Depth) 18 }}px; display:inline-block;">
+                {{ if eq $itx.CallType 0 }}
+                <span class="badge text-bg-primary">{{ $itx.TypeName }}</span>
+                {{ else if eq $itx.CallType 1 }}
+                <span class="badge text-bg-info">{{ $itx.TypeName }}</span>
+                {{ else if eq $itx.CallType 2 }}
+                <span class="badge text-bg-warning">{{ $itx.TypeName }}</span>
+                {{ else if or (eq $itx.CallType 3) (eq $itx.CallType 4) }}
+                <span class="badge text-bg-success">{{ $itx.TypeName }}</span>
+                {{ else if eq $itx.CallType 5 }}
+                <span class="badge text-bg-danger">{{ $itx.TypeName }}</span>
+                {{ else }}
+                <span class="badge text-bg-secondary">{{ $itx.TypeName }}</span>
+                {{ end }}
+
+                {{ if $itx.HasTraceData }}
+                  {{ if eq $itx.Status 1 }} <span class="badge text-bg-danger ms-1" data-bs-toggle="tooltip" title="Reverted">REVERT</span>{{ end }}
+                  {{ if eq $itx.Status 2 }} <span class="badge text-bg-danger ms-1" data-bs-toggle="tooltip" title="Error">ERROR</span>{{ end }}
+                {{ end }}
+
+                {{ if gt (len $itx.MethodID) 0 }}
+                <span class="badge text-bg-secondary ms-1" style="font-size: 0.75rem;" data-bs-toggle="tooltip" title="Method: {{ formatHexBytes $itx.MethodID }}">
+                  {{ if $itx.MethodName }}{{ $itx.MethodName }}{{ else }}{{ formatHexBytes $itx.MethodID }}{{ end }}
+                </span>
+                {{ end }}
+
+                {{ if and $itx.HasTraceData (gt (len $itx.ErrorText) 0) }}
+                <div class="itx-error"><i class="fas fa-exclamation-triangle me-1"></i>{{ $itx.ErrorText }}</div>
+                {{ end }}
+              </span>
+            </td>
+            <td class="itx-addr">
+              {{ if gt (len $itx.FromAddr) 0 }}
+                {{ $from := formatEthAddressFull $itx.FromAddr }}
+                {{ if $itx.FromIsContract }}<i class="fas fa-file-contract text-muted" style="font-size:0.8rem;margin-right:0.2rem" data-bs-toggle="tooltip" title="Contract"></i>{{ end }}
+                <a href="/address/{{ $from }}">{{ $from }}</a>
+              {{ else }}
+                <span class="text-muted">Unknown</span>
+              {{ end }}
+            </td>
+            <td class="itx-addr">
+              {{ if gt (len $itx.ToAddr) 0 }}
+                {{ $to := formatEthAddressFull $itx.ToAddr }}
+                {{ if $itx.ToIsContract }}<i class="fas fa-file-contract text-muted" style="font-size:0.8rem;margin-right:0.2rem" data-bs-toggle="tooltip" title="Contract"></i>{{ end }}
+                <a href="/address/{{ $to }}">{{ $to }}</a>
+              {{ else }}
+                <span class="text-muted">None</span>
+              {{ end }}
+            </td>
+            <td>
+              {{ if gt $itx.Amount 0.0 }}
+                <span class="text-nowrap">{{ formatFloat $itx.Amount 18 }} ETH</span>
+              {{ else }}
+                <span class="text-muted">0</span>
+              {{ end }}
+            </td>
+            <td class="itx-gas">
+              {{ if $itx.HasTraceData }}
+                {{ formatAddCommas $itx.GasUsed }}{{ if gt $itx.Gas 0 }} / {{ formatAddCommas $itx.Gas }}{{ end }}
+              {{ else }}
+                <span class="text-muted">-</span>
+              {{ end }}
+            </td>
+            <td class="text-end">
+              {{ if and $itx.HasTraceData (or (gt (len $itx.Input) 0) (gt (len $itx.Output) 0)) }}
+                <a class="itx-toggle" onclick="toggleItxData({{ $idx }})">[data]</a>
+              {{ end }}
+            </td>
+          </tr>
+
+          {{ if and $itx.HasTraceData (or (gt (len $itx.Input) 0) (gt (len $itx.Output) 0)) }}
+          <tr class="itx-io" id="itx-data-row-{{ $idx }}" style="display:none;">
+            <td colspan="6" style="padding-left: {{ mul (float64 $itx.Depth) 18 }}px;">
+              {{ if gt (len $itx.Input) 0 }}
+              <div class="mb-2">
+                <div class="d-flex align-items-center flex-wrap gap-1 mb-1">
+                  <span class="text-muted small me-1">Input ({{ len $itx.Input }} bytes):</span>
+                  <i class="fa fa-copy text-muted" role="button" data-bs-toggle="tooltip" title="Copy input data" data-clipboard-text="{{ formatHexBytes $itx.Input }}" style="font-size: 0.75rem;"></i>
+                  <div class="btn-group btn-group-sm ms-auto" role="group">
+                    {{ if $itx.DecodedCalldata }}
+                    <button type="button" class="btn btn-outline-secondary btn-xs active" onclick="showItxInputView({{ $idx }}, 'decoded')">Decoded</button>
+                    <button type="button" class="btn btn-outline-secondary btn-xs" onclick="showItxInputView({{ $idx }}, 'hex')">Hex</button>
+                    {{ else }}
+                    <button type="button" class="btn btn-outline-secondary btn-xs active" onclick="showItxInputView({{ $idx }}, 'hex')">Hex</button>
+                    {{ end }}
+                    <button type="button" class="btn btn-outline-secondary btn-xs" onclick="showItxInputView({{ $idx }}, 'ascii')">ASCII</button>
+                  </div>
+                </div>
+                {{ if $itx.DecodedCalldata }}
+                <div id="itx-input-decoded-{{ $idx }}">
+                  {{ if $itx.MethodSignature }}<code class="small">{{ $itx.MethodSignature }}</code>{{ end }}
+                  <table class="table table-sm table-bordered itx-decoded-table">
+                    <thead><tr><th>#</th><th>Name</th><th>Type</th><th>Value</th></tr></thead>
+                    <tbody>
+                    {{ range $pi, $p := $itx.DecodedCalldata }}
+                      <tr><td>{{ $pi }}</td><td>{{ $p.Name }}</td><td><code>{{ $p.Type }}</code></td><td class="itx-decoded-val">{{ $p.Value }}</td></tr>
+                    {{ end }}
+                    </tbody>
+                  </table>
+                </div>
+                <div id="itx-input-hex-{{ $idx }}" class="itx-data-box" style="display:none;">{{ formatHexBytes $itx.Input }}</div>
+                {{ else }}
+                <div id="itx-input-hex-{{ $idx }}" class="itx-data-box">{{ formatHexBytes $itx.Input }}</div>
+                {{ end }}
+                <div id="itx-input-ascii-{{ $idx }}" class="itx-data-box" style="display:none; white-space:pre-wrap;"></div>
+              </div>
+              {{ end }}
+              {{ if gt (len $itx.Output) 0 }}
+              <div>
+                <span class="text-muted small me-1">Output ({{ len $itx.Output }} bytes):</span>
+                <i class="fa fa-copy text-muted" role="button" data-bs-toggle="tooltip" title="Copy output data" data-clipboard-text="{{ formatHexBytes $itx.Output }}" style="font-size: 0.75rem;"></i>
+                <div class="itx-data-box">{{ formatHexBytes $itx.Output }}</div>
+              </div>
+              {{ end }}
+            </td>
+          </tr>
+          {{ end }}
+        {{ end }}
+        </tbody>
+      </table>
+    </div>
+    <script>
+    function toggleItxData(idx) {
+      var el = document.getElementById('itx-data-row-' + idx);
+      if (el) {
+        el.style.display = el.style.display === 'none' ? 'table-row' : 'none';
+      }
+    }
+
+    var itxAsciiCache = {};
+    function itxHexToAscii(hex) {
+      if (hex.startsWith('0x')) hex = hex.substring(2);
+      var str = '';
+      for (var i = 0; i < hex.length; i += 2) {
+        var code = parseInt(hex.substring(i, i + 2), 16);
+        str += (code >= 32 && code <= 126) ? String.fromCharCode(code) : '.';
+      }
+      return str;
+    }
+
+    function showItxInputView(idx, view) {
+      var views = ['decoded', 'hex', 'ascii'];
+      var row = document.getElementById('itx-data-row-' + idx);
+      if (!row) return;
+
+      // Hide all input views
+      for (var i = 0; i < views.length; i++) {
+        var el = document.getElementById('itx-input-' + views[i] + '-' + idx);
+        if (el) el.style.display = 'none';
+      }
+
+      // Update button states
+      var btns = row.querySelectorAll('.btn-group .btn');
+      for (var i = 0; i < btns.length; i++) {
+        btns[i].classList.remove('active');
+        if (btns[i].textContent.trim().toLowerCase() === view) {
+          btns[i].classList.add('active');
+        }
+      }
+
+      // Show selected view
+      var target = document.getElementById('itx-input-' + view + '-' + idx);
+      if (target) {
+        if (view === 'ascii' && !itxAsciiCache[idx]) {
+          var hexEl = document.getElementById('itx-input-hex-' + idx);
+          if (hexEl) {
+            itxAsciiCache[idx] = itxHexToAscii(hexEl.textContent.trim());
+            target.textContent = itxAsciiCache[idx];
+          }
+        }
+        target.style.display = 'block';
+      }
+    }
+    </script>
+    {{ else }}
+    <div class="p-4 text-center text-muted">
+      <i class="fas fa-inbox fa-2x mb-2"></i>
+      <p>No internal transactions found for this transaction</p>
+    </div>
+    {{ end }}
+  </div>
+</div>
+{{ end }}

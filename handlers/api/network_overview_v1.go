@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -100,7 +101,7 @@ func APINetworkOverviewV1(w http.ResponseWriter, r *http.Request) {
 	var pageData *APINetworkOverviewData
 	pageCacheKey := "api_network_overview"
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
-		data, cacheTimeout := buildNetworkOverviewData()
+		data, cacheTimeout := buildNetworkOverviewData(pageCall.CallCtx)
 		pageCall.CacheTimeout = cacheTimeout
 		return data
 	})
@@ -134,7 +135,7 @@ func APINetworkOverviewV1(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func buildNetworkOverviewData() (*APINetworkOverviewData, time.Duration) {
+func buildNetworkOverviewData(ctx context.Context) (*APINetworkOverviewData, time.Duration) {
 	chainState := services.GlobalBeaconService.GetChainState()
 	specs := chainState.GetSpecs()
 	currentEpoch := chainState.CurrentEpoch()
@@ -151,7 +152,7 @@ func buildNetworkOverviewData() (*APINetworkOverviewData, time.Duration) {
 
 	// Check sync state
 	syncState := dbtypes.IndexerSyncState{}
-	db.GetExplorerState("indexer.syncstate", &syncState)
+	db.GetExplorerState(ctx, "indexer.syncstate", &syncState)
 	var isSynced bool
 	if finalizedEpoch >= 1 {
 		isSynced = syncState.Epoch >= uint64(finalizedEpoch-1)

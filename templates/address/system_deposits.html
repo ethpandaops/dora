@@ -1,0 +1,101 @@
+{{ define "systemDeposits" }}
+<div class="card">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0 el-data-table">
+        <thead>
+          <tr>
+            <th>Block</th>
+            <th data-timecol="duration">Age</th>
+            <th>Type</th>
+            <th>Amount</th>
+            <th>Details</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{ if gt .SystemDepositCount 0 }}
+            {{ range .SystemDeposits }}
+            <tr>
+              <td>
+                {{ if .BlockOrphaned }}
+                  <span class="badge text-bg-warning">Orphaned</span>
+                {{ else }}
+                  <a href="/slot/0x{{ printf "%x" .BlockRoot }}">{{ formatAddCommas .BlockNumber }}</a>
+                {{ end }}
+              </td>
+              <td data-timer="{{ .BlockTime.Unix }}">
+                <span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ .BlockTime }}">{{ formatRecentTimeShort .BlockTime }}</span>
+              </td>
+              <td>
+                {{ if eq .Type 0 }}
+                  <span class="badge text-bg-success">
+                    <i class="fas fa-arrow-down me-1"></i>Withdrawal
+                  </span>
+                {{ else if eq .Type 1 }}
+                  <span class="badge text-bg-info">
+                    <i class="fas fa-coins me-1"></i>Fee Reward
+                  </span>
+                {{ else }}
+                  <span class="badge text-bg-secondary">Unknown</span>
+                {{ end }}
+              </td>
+              <td class="text-monospace">
+                {{ formatFloat .Amount 6 }} ETH
+              </td>
+              <td>
+                {{ if eq .Type 0 }}
+                  {{ if .Validator }}
+                    from Validator <a href="/validator/{{ .Validator }}">{{ .Validator }}</a>
+                  {{ else }}
+                    Beacon Chain Withdrawal
+                  {{ end }}
+                {{ else if eq .Type 1 }}
+                  from Block <a href="/slot/0x{{ printf "%x" .BlockRoot }}">{{ formatAddCommas .BlockNumber }}</a>
+                {{ end }}
+              </td>
+            </tr>
+            {{ end }}
+          {{ else }}
+            <tr>
+              <td colspan="5" class="text-center py-4 text-muted">
+                <i class="fas fa-university fa-2x mb-2"></i>
+                <br>No system deposits found
+              </td>
+            </tr>
+          {{ end }}
+        </tbody>
+      </table>
+    </div>
+    {{ if gt .SystemTotalPages 1 }}
+    <div class="card-footer d-flex justify-content-between align-items-center">
+      <div>
+        Showing {{ formatAddCommas .SystemFirstItem }} - {{ formatAddCommas .SystemLastItem }} of {{ formatAddCommas .SystemDepositCount }}
+      </div>
+      <nav aria-label="System deposits pagination">
+        <ul class="pagination pagination-sm mb-0">
+          {{ if gt .SystemPageIndex 1 }}
+            <li class="page-item">
+              <a class="page-link" href="?v=system&p=1&c={{ .SystemPageSize }}">&laquo;</a>
+            </li>
+            <li class="page-item">
+              <a class="page-link" href="?v=system&p={{ subUI64 .SystemPageIndex 1 }}&c={{ .SystemPageSize }}">&lsaquo;</a>
+            </li>
+          {{ end }}
+          <li class="page-item disabled">
+            <span class="page-link">{{ .SystemPageIndex }} / {{ .SystemTotalPages }}</span>
+          </li>
+          {{ if lt .SystemPageIndex .SystemTotalPages }}
+            <li class="page-item">
+              <a class="page-link" href="?v=system&p={{ addUI64 .SystemPageIndex 1 }}&c={{ .SystemPageSize }}">&rsaquo;</a>
+            </li>
+            <li class="page-item">
+              <a class="page-link" href="?v=system&p={{ .SystemTotalPages }}&c={{ .SystemPageSize }}">&raquo;</a>
+            </li>
+          {{ end }}
+        </ul>
+      </nav>
+    </div>
+    {{ end }}
+  </div>
+</div>
+{{ end }}

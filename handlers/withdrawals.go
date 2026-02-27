@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"net/http"
@@ -66,7 +67,7 @@ func getWithdrawalsPageData(firstEpoch uint64, pageSize uint64, tabView string) 
 	pageData := &models.WithdrawalsPageData{}
 	pageCacheKey := fmt.Sprintf("withdrawals:%v:%v:%v", firstEpoch, pageSize, tabView)
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
-		pageData, cacheTimeout := buildWithdrawalsPageData(firstEpoch, pageSize, tabView)
+		pageData, cacheTimeout := buildWithdrawalsPageData(pageCall.CallCtx, firstEpoch, pageSize, tabView)
 		pageCall.CacheTimeout = cacheTimeout
 		return pageData
 	})
@@ -80,7 +81,7 @@ func getWithdrawalsPageData(firstEpoch uint64, pageSize uint64, tabView string) 
 	return pageData, pageErr
 }
 
-func buildWithdrawalsPageData(firstEpoch uint64, pageSize uint64, tabView string) (*models.WithdrawalsPageData, time.Duration) {
+func buildWithdrawalsPageData(ctx context.Context, firstEpoch uint64, pageSize uint64, tabView string) (*models.WithdrawalsPageData, time.Duration) {
 	logrus.Debugf("withdrawals page called: %v:%v:%v", firstEpoch, pageSize, tabView)
 	chainState := services.GlobalBeaconService.GetChainState()
 
@@ -90,7 +91,7 @@ func buildWithdrawalsPageData(firstEpoch uint64, pageSize uint64, tabView string
 
 	// Get withdrawal queue data for stats
 	queueFilter := &services.WithdrawalQueueFilter{}
-	queuedWithdrawals, queuedWithdrawalCount, queuedAmount := services.GlobalBeaconService.GetWithdrawalQueueByFilter(queueFilter, 0, 1)
+	queuedWithdrawals, queuedWithdrawalCount, queuedAmount := services.GlobalBeaconService.GetWithdrawalQueueByFilter(ctx, queueFilter, 0, 1)
 	pageData.QueuedWithdrawalCount = queuedWithdrawalCount
 	pageData.WithdrawingValidatorCount = queuedWithdrawalCount
 	pageData.WithdrawingAmount = uint64(queuedAmount)
@@ -105,7 +106,7 @@ func buildWithdrawalsPageData(firstEpoch uint64, pageSize uint64, tabView string
 	zeroAmount := uint64(0)
 	oneAmount := uint64(1)
 
-	_, _, totalWithdrawals := services.GlobalBeaconService.GetWithdrawalRequestsByFilter(&services.CombinedWithdrawalRequestFilter{
+	_, _, totalWithdrawals := services.GlobalBeaconService.GetWithdrawalRequestsByFilter(ctx, &services.CombinedWithdrawalRequestFilter{
 		Filter: &dbtypes.WithdrawalRequestFilter{
 			WithOrphaned: 1,
 			MinAmount:    &oneAmount,
@@ -113,7 +114,7 @@ func buildWithdrawalsPageData(firstEpoch uint64, pageSize uint64, tabView string
 	}, 0, 1)
 	pageData.TotalWithdrawalCount = totalWithdrawals
 
-	_, _, totalExits := services.GlobalBeaconService.GetWithdrawalRequestsByFilter(&services.CombinedWithdrawalRequestFilter{
+	_, _, totalExits := services.GlobalBeaconService.GetWithdrawalRequestsByFilter(ctx, &services.CombinedWithdrawalRequestFilter{
 		Filter: &dbtypes.WithdrawalRequestFilter{
 			WithOrphaned: 1,
 
@@ -131,7 +132,7 @@ func buildWithdrawalsPageData(firstEpoch uint64, pageSize uint64, tabView string
 			},
 		}
 
-		dbWithdrawals, _, _ := services.GlobalBeaconService.GetWithdrawalRequestsByFilter(withdrawalFilter, 0, uint32(20))
+		dbWithdrawals, _, _ := services.GlobalBeaconService.GetWithdrawalRequestsByFilter(ctx, withdrawalFilter, 0, uint32(20))
 		for _, withdrawal := range dbWithdrawals {
 			withdrawalData := &models.WithdrawalsPageDataRecentWithdrawal{
 				SourceAddr: withdrawal.SourceAddress(),
@@ -170,7 +171,7 @@ func buildWithdrawalsPageData(firstEpoch uint64, pageSize uint64, tabView string
 
 	case "queue":
 		// Load withdrawal queue
-		queueWithdrawals, _, _ := services.GlobalBeaconService.GetWithdrawalQueueByFilter(&services.WithdrawalQueueFilter{}, 0, 20)
+		queueWithdrawals, _, _ := services.GlobalBeaconService.GetWithdrawalQueueByFilter(ctx, &services.WithdrawalQueueFilter{}, 0, 20)
 		for _, queueEntry := range queueWithdrawals {
 			queueData := &models.WithdrawalsPageDataQueuedWithdrawal{
 				ValidatorIndex:    uint64(queueEntry.ValidatorIndex),

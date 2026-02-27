@@ -51,11 +51,16 @@
                   <option value="12" {{ if .DisplayGraffiti }}selected{{ end }}>Graffiti</option>
                   <option value="13" {{ if .DisplayElExtraData }}selected{{ end }}>Extra Data</option>
                 </select>
+                <noscript>
+                  <button type="submit" class="btn btn-outline-secondary" style="height: 38px;">
+                    Apply
+                  </button>
+                </noscript>
               </div>
             </div>
             <div class="col-3 col-md-3 text-end">
               <div class="px-2">
-                <a href="/slots/filtered?f&f.missing=0&d=1+2+3+4+5+9+13+15+14+12+16">
+                <a href="/blocks/filtered?f">
                   <i class="fas fa-filter mx-2"></i>Filter Blocks
                 </a>
               </div>
@@ -273,9 +278,13 @@ $('#blocksForm').submit(function () {
     return el.selected;
   }).map(function(el) {
     return el.value;
-  }).join(" ");
+  });
   if(displayColumns.length > 0) {
-    $(this).find("#displayColumnsField").prop('name', 'd').val(displayColumns);
+    var displayMask = 0;
+    displayColumns.forEach(function(col) {
+      displayMask |= 1 << (parseInt(col) - 1);
+    });
+    $(this).find("#displayColumnsField").prop('name', 'd').val("0x" + displayMask.toString(16));
   }
 });
 $(function() {

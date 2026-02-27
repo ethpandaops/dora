@@ -1,6 +1,7 @@
 package mevrelay
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -26,6 +27,7 @@ import (
 )
 
 type MevIndexer struct {
+	ctx                 context.Context
 	beaconIndexer       *beacon.Indexer
 	chainState          *consensus.ChainState
 	logger              logrus.FieldLogger
@@ -42,8 +44,9 @@ type mevIndexerBlockCache struct {
 	block   *dbtypes.MevBlock
 }
 
-func NewMevIndexer(logger logrus.FieldLogger, beaconIndexer *beacon.Indexer, chainState *consensus.ChainState) *MevIndexer {
+func NewMevIndexer(ctx context.Context, logger logrus.FieldLogger, beaconIndexer *beacon.Indexer, chainState *consensus.ChainState) *MevIndexer {
 	return &MevIndexer{
+		ctx:            ctx,
 		logger:         logger,
 		beaconIndexer:  beaconIndexer,
 		chainState:     chainState,
@@ -92,7 +95,7 @@ func (mev *MevIndexer) runUpdater() error {
 		}
 		loadedCount := uint64(0)
 		for {
-			mevBlocks, totalCount, err := db.GetMevBlocksFiltered(0, 1000, &dbtypes.MevBlockFilter{
+			mevBlocks, totalCount, err := db.GetMevBlocksFiltered(mev.ctx, 0, 1000, &dbtypes.MevBlockFilter{
 				MinSlot: uint64(finalizedSlot),
 			})
 			if err != nil {
@@ -113,7 +116,7 @@ func (mev *MevIndexer) runUpdater() error {
 		}
 
 		for _, relay := range utils.Config.MevIndexer.Relays {
-			lastSlot, err := db.GetHighestMevBlockSlotByRelay(relay.Index)
+			lastSlot, err := db.GetHighestMevBlockSlotByRelay(mev.ctx, relay.Index)
 			if err != nil {
 				continue
 			}
@@ -267,7 +270,7 @@ func (mev *MevIndexer) loadMevBlocksFromRelay(relay *types.MevRelayConfig) error
 
 			if slot < uint64(finalizedSlot) {
 				// try load from db
-				mevBlock := db.GetMevBlockByBlockHash(blockHash[:])
+				mevBlock := db.GetMevBlockByBlockHash(mev.ctx, blockHash[:])
 				if mevBlock != nil {
 					cachedBlock = &mevIndexerBlockCache{
 						block: mevBlock,
@@ -364,7 +367,7 @@ func (mev *MevIndexer) getMevBlockProposedStatus(mevBlock *dbtypes.MevBlock, fin
 			}
 		}
 	} else {
-		for _, block := range db.GetSlotsByBlockHash(mevBlock.BlockHash) {
+		for _, block := range db.GetSlotsByBlockHash(mev.ctx, mevBlock.BlockHash) {
 			if block.Status == dbtypes.Canonical {
 				proposed = 1
 			} else if proposed != 1 {
@@ -382,7 +385,7 @@ func (mev *MevIndexer) updateMevBlocks(updatedMevBlocks []*dbtypes.MevBlock) err
 	}
 
 	err := db.RunDBTransaction(func(tx *sqlx.Tx) error {
-		return db.InsertMevBlocks(updatedMevBlocks, tx)
+		return db.InsertMevBlocks(mev.ctx, tx, updatedMevBlocks)
 	})
 	if err != nil {
 		return fmt.Errorf("error saving mev blocks to db: %v", err)

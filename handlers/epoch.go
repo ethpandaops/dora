@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -68,7 +69,7 @@ func getEpochPageData(epoch uint64) (*models.EpochPageData, error) {
 	pageData := &models.EpochPageData{}
 	pageCacheKey := fmt.Sprintf("epoch:%v", epoch)
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
-		pageData, cacheTimeout := buildEpochPageData(epoch)
+		pageData, cacheTimeout := buildEpochPageData(pageCall.CallCtx, epoch)
 		pageCall.CacheTimeout = cacheTimeout
 		return pageData
 	})
@@ -82,7 +83,7 @@ func getEpochPageData(epoch uint64) (*models.EpochPageData, error) {
 	return pageData, pageErr
 }
 
-func buildEpochPageData(epoch uint64) (*models.EpochPageData, time.Duration) {
+func buildEpochPageData(ctx context.Context, epoch uint64) (*models.EpochPageData, time.Duration) {
 	logrus.Debugf("epoch page called: %v", epoch)
 
 	beaconIndexer := services.GlobalBeaconService.GetBeaconIndexer()
@@ -100,7 +101,7 @@ func buildEpochPageData(epoch uint64) (*models.EpochPageData, time.Duration) {
 
 	syncedEpoch := epochStats != nil
 	if !syncedEpoch && epoch < uint64(processedEpoch) {
-		syncedEpoch = db.IsEpochSynchronized(epoch)
+		syncedEpoch = db.IsEpochSynchronized(ctx, epoch)
 	}
 
 	nextEpoch := epoch + 1
@@ -118,7 +119,7 @@ func buildEpochPageData(epoch uint64) (*models.EpochPageData, time.Duration) {
 		Finalized:     finalizedEpoch > 0 && finalizedEpoch >= phase0.Epoch(epoch),
 	}
 
-	dbEpochs := services.GlobalBeaconService.GetDbEpochs(epoch, 1)
+	dbEpochs := services.GlobalBeaconService.GetDbEpochs(ctx, epoch, 1)
 	dbEpoch := dbEpochs[0]
 	if dbEpoch != nil {
 		pageData.AttestationCount = dbEpoch.AttestationCount
@@ -150,7 +151,7 @@ func buildEpochPageData(epoch uint64) (*models.EpochPageData, time.Duration) {
 
 	// load slots
 	pageData.Slots = make([]*models.EpochPageDataSlot, 0)
-	dbSlots := services.GlobalBeaconService.GetDbBlocksForSlots(uint64(lastSlot), uint32(specs.SlotsPerEpoch), true, true)
+	dbSlots := services.GlobalBeaconService.GetDbBlocksForSlots(ctx, uint64(lastSlot), uint32(specs.SlotsPerEpoch), true, true)
 	dbIdx := 0
 	dbCnt := len(dbSlots)
 	blockCount := uint64(0)

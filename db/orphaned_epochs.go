@@ -1,12 +1,14 @@
 package db
 
 import (
+	"context"
+
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/jmoiron/sqlx"
 )
 
-func InsertOrphanedEpoch(epoch *dbtypes.OrphanedEpoch, tx *sqlx.Tx) error {
-	_, err := tx.Exec(EngineQuery(map[dbtypes.DBEngineType]string{
+func InsertOrphanedEpoch(ctx context.Context, tx *sqlx.Tx, epoch *dbtypes.OrphanedEpoch) error {
+	_, err := tx.ExecContext(ctx, EngineQuery(map[dbtypes.DBEngineType]string{
 		dbtypes.DBEnginePgsql: `
 			INSERT INTO orphaned_epochs (
 				epoch, dependent_root, epoch_head_root, epoch_head_fork_id, validator_count, validator_balance, eligible, voted_target, 
@@ -56,8 +58,8 @@ func InsertOrphanedEpoch(epoch *dbtypes.OrphanedEpoch, tx *sqlx.Tx) error {
 	return nil
 }
 
-func StreamOrphanedEpochs(epoch uint64, cb func(duty *dbtypes.OrphanedEpoch)) error {
-	rows, err := ReaderDb.Query(`
+func StreamOrphanedEpochs(ctx context.Context, epoch uint64, cb func(duty *dbtypes.OrphanedEpoch)) error {
+	rows, err := ReaderDb.QueryContext(ctx, `
 	SELECT
 		epoch, dependent_root, epoch_head_root, epoch_head_fork_id, validator_count, validator_balance, eligible, voted_target,
 		voted_head, voted_total, block_count, orphaned_count, attestation_count, deposit_count, exit_count, withdraw_count,
@@ -88,9 +90,9 @@ func StreamOrphanedEpochs(epoch uint64, cb func(duty *dbtypes.OrphanedEpoch)) er
 	return nil
 }
 
-func GetOrphanedEpoch(epoch uint64, headRoot []byte) *dbtypes.OrphanedEpoch {
+func GetOrphanedEpoch(ctx context.Context, epoch uint64, headRoot []byte) *dbtypes.OrphanedEpoch {
 	orphanedEpoch := dbtypes.OrphanedEpoch{}
-	err := ReaderDb.Get(&orphanedEpoch, `
+	err := ReaderDb.GetContext(ctx, &orphanedEpoch, `
 	SELECT
 		epoch, dependent_root, epoch_head_root, epoch_head_fork_id, validator_count, validator_balance, eligible, voted_target,
 		voted_head, voted_total, block_count, orphaned_count, attestation_count, deposit_count, exit_count, withdraw_count,
@@ -117,10 +119,10 @@ type OrphanedEpochParticipation struct {
 }
 
 // GetOrphanedEpochParticipation gets participation data for orphaned epochs in the given range
-func GetOrphanedEpochParticipation(startEpoch, endEpoch uint64) ([]*OrphanedEpochParticipation, error) {
+func GetOrphanedEpochParticipation(ctx context.Context, startEpoch, endEpoch uint64) ([]*OrphanedEpochParticipation, error) {
 	var results []*OrphanedEpochParticipation
 
-	err := ReaderDb.Select(&results, `
+	err := ReaderDb.SelectContext(ctx, &results, `
 		SELECT 
 			epoch,
 			epoch_head_fork_id,

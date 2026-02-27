@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -9,7 +10,7 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-func GetTxFunctionSignaturesByBytes(sigBytes []types.TxSignatureBytes) []*dbtypes.TxFunctionSignature {
+func GetTxFunctionSignaturesByBytes(ctx context.Context, sigBytes []types.TxSignatureBytes) []*dbtypes.TxFunctionSignature {
 	fnSigs := []*dbtypes.TxFunctionSignature{}
 
 	var sql strings.Builder
@@ -30,7 +31,7 @@ func GetTxFunctionSignaturesByBytes(sigBytes []types.TxSignatureBytes) []*dbtype
 	}
 	fmt.Fprintf(&sql, ")")
 
-	err := ReaderDb.Select(&fnSigs, sql.String(), args...)
+	err := ReaderDb.SelectContext(ctx, &fnSigs, sql.String(), args...)
 	if err != nil {
 		logger.Errorf("Error while fetching tx function signatures: %v", err)
 		return nil
@@ -38,8 +39,8 @@ func GetTxFunctionSignaturesByBytes(sigBytes []types.TxSignatureBytes) []*dbtype
 	return fnSigs
 }
 
-func InsertTxFunctionSignature(txFuncSig *dbtypes.TxFunctionSignature, tx *sqlx.Tx) error {
-	_, err := tx.Exec(EngineQuery(map[dbtypes.DBEngineType]string{
+func InsertTxFunctionSignature(ctx context.Context, tx *sqlx.Tx, txFuncSig *dbtypes.TxFunctionSignature) error {
+	_, err := tx.ExecContext(ctx, EngineQuery(map[dbtypes.DBEngineType]string{
 		dbtypes.DBEnginePgsql: `
 			INSERT INTO tx_function_signatures (
 				signature, bytes, name
@@ -57,7 +58,7 @@ func InsertTxFunctionSignature(txFuncSig *dbtypes.TxFunctionSignature, tx *sqlx.
 	return nil
 }
 
-func GetUnknownFunctionSignatures(sigBytes []types.TxSignatureBytes) []*dbtypes.TxUnknownFunctionSignature {
+func GetUnknownFunctionSignatures(ctx context.Context, sigBytes []types.TxSignatureBytes) []*dbtypes.TxUnknownFunctionSignature {
 	unknownFnSigs := []*dbtypes.TxUnknownFunctionSignature{}
 	if len(sigBytes) == 0 {
 		return unknownFnSigs
@@ -79,7 +80,7 @@ func GetUnknownFunctionSignatures(sigBytes []types.TxSignatureBytes) []*dbtypes.
 		argIdx += 1
 	}
 	fmt.Fprintf(&sql, ")")
-	err := ReaderDb.Select(&unknownFnSigs, sql.String(), args...)
+	err := ReaderDb.SelectContext(ctx, &unknownFnSigs, sql.String(), args...)
 	if err != nil {
 		logger.Errorf("Error while fetching unknown function signatures: %v", err)
 		return nil
@@ -87,7 +88,7 @@ func GetUnknownFunctionSignatures(sigBytes []types.TxSignatureBytes) []*dbtypes.
 	return unknownFnSigs
 }
 
-func InsertUnknownFunctionSignatures(txUnknownSigs []*dbtypes.TxUnknownFunctionSignature, tx *sqlx.Tx) error {
+func InsertUnknownFunctionSignatures(ctx context.Context, tx *sqlx.Tx, txUnknownSigs []*dbtypes.TxUnknownFunctionSignature) error {
 	var sql strings.Builder
 	fmt.Fprint(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
 		dbtypes.DBEnginePgsql:  `INSERT INTO tx_unknown_signatures (bytes, lastcheck) VALUES `,
@@ -108,14 +109,14 @@ func InsertUnknownFunctionSignatures(txUnknownSigs []*dbtypes.TxUnknownFunctionS
 		dbtypes.DBEnginePgsql:  ` ON CONFLICT (bytes) DO UPDATE SET lastcheck = excluded.lastcheck`,
 		dbtypes.DBEngineSqlite: "",
 	}))
-	_, err := tx.Exec(sql.String(), args...)
+	_, err := tx.ExecContext(ctx, sql.String(), args...)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func InsertPendingFunctionSignatures(txPendingSigs []*dbtypes.TxPendingFunctionSignature, tx *sqlx.Tx) error {
+func InsertPendingFunctionSignatures(ctx context.Context, tx *sqlx.Tx, txPendingSigs []*dbtypes.TxPendingFunctionSignature) error {
 	var sql strings.Builder
 	fmt.Fprint(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
 		dbtypes.DBEnginePgsql:  `INSERT INTO tx_pending_signatures (bytes, queuetime) VALUES `,
@@ -136,16 +137,16 @@ func InsertPendingFunctionSignatures(txPendingSigs []*dbtypes.TxPendingFunctionS
 		dbtypes.DBEnginePgsql:  ` ON CONFLICT (bytes) DO NOTHING`,
 		dbtypes.DBEngineSqlite: "",
 	}))
-	_, err := tx.Exec(sql.String(), args...)
+	_, err := tx.ExecContext(ctx, sql.String(), args...)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func GetPendingFunctionSignatures(limit uint64) []*dbtypes.TxPendingFunctionSignature {
+func GetPendingFunctionSignatures(ctx context.Context, limit uint64) []*dbtypes.TxPendingFunctionSignature {
 	pendingFnSigs := []*dbtypes.TxPendingFunctionSignature{}
-	err := ReaderDb.Select(&pendingFnSigs, `
+	err := ReaderDb.SelectContext(ctx, &pendingFnSigs, `
 	SELECT
 		bytes, queuetime
 	FROM tx_pending_signatures
@@ -158,7 +159,7 @@ func GetPendingFunctionSignatures(limit uint64) []*dbtypes.TxPendingFunctionSign
 	return pendingFnSigs
 }
 
-func DeletePendingFunctionSignatures(sigBytes []types.TxSignatureBytes, tx *sqlx.Tx) error {
+func DeletePendingFunctionSignatures(ctx context.Context, tx *sqlx.Tx, sigBytes []types.TxSignatureBytes) error {
 	if len(sigBytes) == 0 {
 		return nil
 	}
@@ -175,6 +176,6 @@ func DeletePendingFunctionSignatures(sigBytes []types.TxSignatureBytes, tx *sqlx
 		args[i] = sigBytes[i][:]
 	}
 	fmt.Fprintf(&sql, ")")
-	_, err := tx.Exec(sql.String(), args...)
+	_, err := tx.ExecContext(ctx, sql.String(), args...)
 	return err
 }

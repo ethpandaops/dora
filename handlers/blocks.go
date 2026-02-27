@@ -2,10 +2,10 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"math"
 	"net/http"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -41,9 +41,9 @@ func Blocks(w http.ResponseWriter, r *http.Request) {
 	if urlArgs.Has("s") {
 		firstSlot, _ = strconv.ParseUint(urlArgs.Get("s"), 10, 64)
 	}
-	var displayColumns string = ""
+	var displayColumns uint64 = 0
 	if urlArgs.Has("d") {
-		displayColumns = urlArgs.Get("d")
+		displayColumns = utils.DecodeUint64BitfieldFromQuery(r.URL.RawQuery, "d")
 	}
 
 	var pageError error
@@ -61,11 +61,11 @@ func Blocks(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func getBlocksPageData(firstSlot uint64, pageSize uint64, displayColumns string) (*models.BlocksPageData, error) {
+func getBlocksPageData(firstSlot uint64, pageSize uint64, displayColumns uint64) (*models.BlocksPageData, error) {
 	pageData := &models.BlocksPageData{}
 	pageCacheKey := fmt.Sprintf("blocks:%v:%v:%v", firstSlot, pageSize, displayColumns)
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
-		pageData, cacheTimeout := buildBlocksPageData(firstSlot, pageSize, displayColumns)
+		pageData, cacheTimeout := buildBlocksPageData(pageCall.CallCtx, firstSlot, pageSize, displayColumns)
 		pageCall.CacheTimeout = cacheTimeout
 		return pageData
 	})
@@ -79,20 +79,17 @@ func getBlocksPageData(firstSlot uint64, pageSize uint64, displayColumns string)
 	return pageData, pageErr
 }
 
-func buildBlocksPageData(firstSlot uint64, pageSize uint64, displayColumns string) (*models.BlocksPageData, time.Duration) {
+func buildBlocksPageData(ctx context.Context, firstSlot uint64, pageSize uint64, displayColumns uint64) (*models.BlocksPageData, time.Duration) {
 	logrus.Debugf("blocks page called: %v:%v", firstSlot, pageSize)
 	pageData := &models.BlocksPageData{}
 
 	// Set display columns based on the parameter
 	displayMap := map[uint64]bool{}
-	displayList := []string{}
-	if displayColumns != "" {
-		for _, col := range strings.Split(displayColumns, " ") {
-			colNum, err := strconv.ParseUint(col, 10, 64)
-			if err != nil {
-				continue
+	if displayColumns != 0 {
+		for i := 0; i < 64; i++ {
+			if displayColumns&(1<<i) != 0 {
+				displayMap[uint64(i+1)] = true
 			}
-			displayMap[colNum] = true
 		}
 	}
 	if len(displayMap) == 0 {
@@ -117,10 +114,18 @@ func buildBlocksPageData(firstSlot uint64, pageSize uint64, displayColumns strin
 			18: false,
 			19: false,
 		}
-	} else {
-		for col := range displayMap {
-			displayList = append(displayList, fmt.Sprintf("%v", col))
+	}
+
+	displayMask := uint64(0)
+	for col := range displayMap {
+		if col == 0 || col > 64 {
+			continue
 		}
+		displayMask |= 1 << (col - 1)
+	}
+	displayColumnsParam := ""
+	if displayColumns != 0 {
+		displayColumnsParam = fmt.Sprintf("&d=0x%x", displayMask)
 	}
 
 	pageData.DisplayChain = displayMap[1]
@@ -143,17 +148,6 @@ func buildBlocksPageData(firstSlot uint64, pageSize uint64, displayColumns strin
 	pageData.DisplayRecvDelay = displayMap[18]
 	pageData.DisplayExecTime = displayMap[19]
 	pageData.DisplayColCount = uint64(len(displayMap))
-
-	// Build column selection URL parameter if not default
-	displayColumnsParam := ""
-	if len(displayList) > 0 {
-		sort.Slice(displayList, func(a, b int) bool {
-			colA, _ := strconv.ParseUint(displayList[a], 10, 64)
-			colB, _ := strconv.ParseUint(displayList[b], 10, 64)
-			return colA < colB
-		})
-		displayColumnsParam = "&d=" + strings.Join(displayList, "+")
-	}
 
 	chainState := services.GlobalBeaconService.GetChainState()
 	currentSlot := chainState.CurrentSlot()
@@ -193,8 +187,8 @@ func buildBlocksPageData(firstSlot uint64, pageSize uint64, displayColumns strin
 	// Populate UrlParams for page jump functionality
 	pageData.UrlParams = make(map[string]string)
 	pageData.UrlParams["c"] = fmt.Sprintf("%v", pageData.PageSize)
-	if len(displayList) > 0 {
-		pageData.UrlParams["d"] = strings.Join(displayList, "+")
+	if displayColumns != 0 {
+		pageData.UrlParams["d"] = fmt.Sprintf("0x%x", displayMask)
 	}
 	pageData.MaxSlot = uint64(maxSlot)
 
@@ -218,7 +212,7 @@ func buildBlocksPageData(firstSlot uint64, pageSize uint64, displayColumns strin
 
 	// load blocks
 	pageData.Blocks = make([]*models.BlocksPageDataSlot, 0)
-	dbBlocks := services.GlobalBeaconService.GetDbBlocksForSlots(firstSlot, uint32(pageSize), false, true)
+	dbBlocks := services.GlobalBeaconService.GetDbBlocksForSlots(ctx, firstSlot, uint32(pageSize), false, true)
 	dbIdx := 0
 	dbCnt := len(dbBlocks)
 	blockCount := uint64(0)
@@ -240,7 +234,7 @@ func buildBlocksPageData(firstSlot uint64, pageSize uint64, displayColumns strin
 		}
 
 		if len(execBlockHashes) > 0 {
-			mevBlocksMap = db.GetMevBlocksByBlockHashes(execBlockHashes)
+			mevBlocksMap = db.GetMevBlocksByBlockHashes(ctx, execBlockHashes)
 		}
 	}
 
@@ -343,7 +337,7 @@ func buildBlocksPageData(firstSlot uint64, pageSize uint64, displayColumns strin
 
 			pageData.Blocks = append(pageData.Blocks, slotData)
 			blockCount++
-			buildBlocksPageSlotGraph(pageData, slotData, &maxOpenFork, openForks, isFirstPage)
+			buildBlocksPageSlotGraph(ctx, pageData, slotData, &maxOpenFork, openForks, isFirstPage)
 		}
 	}
 	pageData.SlotCount = uint64(blockCount)
@@ -373,7 +367,7 @@ func getClientTypeName(clientType uint8) string {
 	return fmt.Sprintf("Unknown(%d)", clientType)
 }
 
-func buildBlocksPageSlotGraph(pageData *models.BlocksPageData, slotData *models.BlocksPageDataSlot, maxOpenFork *int, openForks map[int][]byte, isFirstPage bool) {
+func buildBlocksPageSlotGraph(ctx context.Context, pageData *models.BlocksPageData, slotData *models.BlocksPageDataSlot, maxOpenFork *int, openForks map[int][]byte, isFirstPage bool) {
 	// fork tree
 	var forkGraphIdx int = -1
 	var freeForkIdx int = -1
@@ -438,7 +432,7 @@ func buildBlocksPageSlotGraph(pageData *models.BlocksPageData, slotData *models.
 		hasForks := false
 		if !isFirstPage {
 			// get blocks that build on top of this
-			refBlocks := services.GlobalBeaconService.GetDbBlocksByParentRoot(phase0.Root(slotData.BlockRoot))
+			refBlocks := services.GlobalBeaconService.GetDbBlocksByParentRoot(ctx, phase0.Root(slotData.BlockRoot))
 			refBlockCount := len(refBlocks)
 			if refBlockCount > 0 {
 				freeForkIdx = *maxOpenFork

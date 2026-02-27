@@ -1,0 +1,335 @@
+{{ define "page" }}
+  <div class="container mt-2">
+    <div class="d-md-flex py-2 justify-content-md-between">
+      <h1 class="h4 mb-1 mb-md-0"><i class="fas fa-wallet mx-2"></i> Address {{ formatEthAddressFull .Address }}</h1>
+      <nav aria-label="breadcrumb">
+        <ol class="breadcrumb font-size-1 mb-0" style="padding:0; background-color:transparent;">
+          <li class="breadcrumb-item"><a href="/" title="Home">Home</a></li>
+          <li class="breadcrumb-item active" aria-current="page">Address</li>
+        </ol>
+      </nav>
+    </div>
+
+    <div class="row mt-2">
+      <div class="col-lg-8">
+        <div class="card">
+          <div class="card-body px-0 py-3">
+            <div class="row border-bottom p-2 mx-0">
+              <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="The address">Address:</span></div>
+              <div class="col-md-9 text-monospace">
+                {{ formatEthAddressFull .Address }}
+                <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ formatEthAddressFull .Address }}"></i>
+              </div>
+            </div>
+            {{ if .IsContract }}
+            <div class="row border-bottom p-2 mx-0">
+              <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Type of address">Type:</span></div>
+              <div class="col-md-9">
+                <span class="badge rounded-pill text-bg-info">Contract</span>
+              </div>
+            </div>
+            {{ end }}
+            <div class="row border-bottom p-2 mx-0">
+              <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Current ETH balance">Balance:</span></div>
+              <div class="col-md-9">
+                <span id="eth-balance-value">{{ formatFloat .EthBalance 6 }}</span> ETH
+              </div>
+            </div>
+            {{ if gt .FirstFunded 0 }}
+            <div class="row border-bottom p-2 mx-0">
+              <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="First seen in slot">First Seen:</span></div>
+              <div class="col-md-9">
+                Slot <a href="/slot/{{ .FirstFunded }}">{{ formatAddCommas .FirstFunded }}</a>
+              </div>
+            </div>
+            {{ end }}
+            {{ if gt (len .FundedBy) 0 }}
+            <div class="row border-bottom p-2 mx-0">
+              <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Address that first funded this account">Funded By:</span></div>
+              <div class="col-md-9 text-monospace">
+                {{ formatEthAddressShortLink .FundedBy .FundedByIsContract }}
+              </div>
+            </div>
+            {{ end }}
+            {{ if not .IsContract }}
+            <div class="row p-2 mx-0">
+              <div class="col-md-3"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Latest transaction nonce">Nonce:</span></div>
+              <div class="col-md-9">
+                {{ formatAddCommas .LastNonce }}
+              </div>
+            </div>
+            {{ end }}
+          </div>
+        </div>
+      </div>
+
+      <div class="col-lg-4 mt-3 mt-lg-0">
+        <div class="card">
+          <div class="card-header">
+            <h5 class="mb-0"><i class="fas fa-coins me-2"></i>Token Holdings ({{ .TokenBalanceCount }})</h5>
+          </div>
+          <div class="card-body p-0" style="max-height: 250px; overflow-y: auto;">
+            {{ if gt (len .TokenBalances) 0 }}
+            <div class="list-group list-group-flush">
+              {{ range .TokenBalances }}
+              <div class="list-group-item py-2 px-3 d-flex justify-content-between align-items-center">
+                <span class="text-monospace small" id="token-balance-{{ .TokenID }}">{{ formatTokenAmount .Balance .Symbol }}</span>
+                <a href="/address/0x{{ printf "%x" .Contract }}" class="text-truncate ms-2" style="max-width: 100px;" title="{{ if .Name }}{{ .Name }}{{ else }}Unknown{{ end }}">
+                  {{ if .Name }}{{ .Name }}{{ else }}Unknown{{ end }}
+                </a>
+              </div>
+              {{ end }}
+            </div>
+            {{ else }}
+            <div class="p-3 text-center text-muted small">
+              No token holdings
+            </div>
+            {{ end }}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <ul class="nav nav-tabs justify-content-start mt-3" id="tab" role="tablist">
+      <li class="nav-item">
+        <a class="nav-link{{ if eq .TabView "transactions" }} active{{ end }}" id="transactions-tab" data-lazy-tab="transactions" data-bs-toggle="tab" data-bs-target="#transactions" href="?v=transactions" role="tab" aria-controls="transactions" aria-selected="{{ if eq .TabView "transactions" }}true{{ else }}false{{ end }}">
+          <i class="fa fa-exchange-alt me-2"></i> Transactions
+        </a>
+      </li>
+      {{ if .HasInternalTxs }}
+      <li class="nav-item">
+        <a class="nav-link{{ if eq .TabView "internaltxs" }} active{{ end }}" id="internaltxs-tab" data-lazy-tab="internaltxs" data-bs-toggle="tab" data-bs-target="#internaltxs" href="?v=internaltxs" role="tab" aria-controls="internaltxs" aria-selected="{{ if eq .TabView "internaltxs" }}true{{ else }}false{{ end }}">
+          <i class="fa fa-sitemap me-2"></i> Internal Txs
+        </a>
+      </li>
+      {{ end }}
+      <li class="nav-item">
+        <a class="nav-link{{ if eq .TabView "erc20" }} active{{ end }}" id="erc20-tab" data-lazy-tab="erc20" data-bs-toggle="tab" data-bs-target="#erc20" href="?v=erc20" role="tab" aria-controls="erc20" aria-selected="{{ if eq .TabView "erc20" }}true{{ else }}false{{ end }}">
+          <i class="fa fa-coins me-2"></i> Token Transfers (ERC20)
+        </a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link{{ if eq .TabView "nft" }} active{{ end }}" id="nft-tab" data-lazy-tab="nft" data-bs-toggle="tab" data-bs-target="#nft" href="?v=nft" role="tab" aria-controls="nft" aria-selected="{{ if eq .TabView "nft" }}true{{ else }}false{{ end }}">
+          <i class="fa fa-image me-2"></i> NFT Transfers
+        </a>
+      </li>
+      {{ if .HasSystemDeposits }}
+      <li class="nav-item">
+        <a class="nav-link{{ if eq .TabView "system" }} active{{ end }}" id="system-tab" data-lazy-tab="system" data-bs-toggle="tab" data-bs-target="#system" href="?v=system" role="tab" aria-controls="system" aria-selected="{{ if eq .TabView "system" }}true{{ else }}false{{ end }}">
+          <i class="fa fa-university me-2"></i> System Deposits
+        </a>
+      </li>
+      {{ end }}
+    </ul>
+
+    <div class="tab-content" id="tabContent">
+      <div class="tab-pane fade{{ if eq .TabView "transactions" }} show active{{ end }}" id="transactions" role="tabpanel" aria-labelledby="transactions-tab" data-loaded="{{ if eq .TabView "transactions" }}true{{ else }}false{{ end }}">
+        {{ if eq .TabView "transactions" }}
+          {{ template "transactions" . }}
+        {{ end }}
+      </div>
+      {{ if .HasInternalTxs }}
+      <div class="tab-pane fade{{ if eq .TabView "internaltxs" }} show active{{ end }}" id="internaltxs" role="tabpanel" aria-labelledby="internaltxs-tab" data-loaded="{{ if eq .TabView "internaltxs" }}true{{ else }}false{{ end }}">
+        {{ if eq .TabView "internaltxs" }}
+          {{ template "internalTxs" . }}
+        {{ end }}
+      </div>
+      {{ end }}
+      <div class="tab-pane fade{{ if eq .TabView "erc20" }} show active{{ end }}" id="erc20" role="tabpanel" aria-labelledby="erc20-tab" data-loaded="{{ if eq .TabView "erc20" }}true{{ else }}false{{ end }}">
+        {{ if eq .TabView "erc20" }}
+          {{ template "erc20Transfers" . }}
+        {{ end }}
+      </div>
+      <div class="tab-pane fade{{ if eq .TabView "nft" }} show active{{ end }}" id="nft" role="tabpanel" aria-labelledby="nft-tab" data-loaded="{{ if eq .TabView "nft" }}true{{ else }}false{{ end }}">
+        {{ if eq .TabView "nft" }}
+          {{ template "nftTransfers" . }}
+        {{ end }}
+      </div>
+      {{ if .HasSystemDeposits }}
+      <div class="tab-pane fade{{ if eq .TabView "system" }} show active{{ end }}" id="system" role="tabpanel" aria-labelledby="system-tab" data-loaded="{{ if eq .TabView "system" }}true{{ else }}false{{ end }}">
+        {{ if eq .TabView "system" }}
+          {{ template "systemDeposits" . }}
+        {{ end }}
+      </div>
+      {{ end }}
+    </div>
+  </div>
+{{ end }}
+{{ define "lazyPage" }}
+  {{ if eq .TabView "transactions" }}
+    {{ template "transactions" . }}
+  {{ else if eq .TabView "erc20" }}
+    {{ template "erc20Transfers" . }}
+  {{ else if eq .TabView "nft" }}
+    {{ template "nftTransfers" . }}
+  {{ else if eq .TabView "internaltxs" }}
+    {{ template "internalTxs" . }}
+  {{ else if eq .TabView "system" }}
+    {{ template "systemDeposits" . }}
+  {{ else }}
+    Unknown tab
+  {{ end }}
+{{ end }}
+{{ define "js" }}
+<script type="text/javascript">
+  $(document).ready(function() {
+    var currentTab = "{{ .TabView }}";
+    var addressStr = "{{ formatEthAddressFull .Address }}";
+
+    // Balance auto-refresh (every 60 seconds)
+    var balanceRefreshInterval = 60000;
+    var isRefreshingBalances = false;
+
+    setInterval(function() {
+      if (!isRefreshingBalances) {
+        refreshBalances();
+      }
+    }, balanceRefreshInterval);
+
+    function refreshBalances() {
+      isRefreshingBalances = true;
+      $.get('/address/' + addressStr + '/balances')
+        .done(function(data) {
+          // Update ETH balance
+          if (data.eth_balance !== undefined) {
+            $('#eth-balance-value').text(formatEthBalance(data.eth_balance));
+          }
+          // Update token balances
+          if (data.token_balances) {
+            data.token_balances.forEach(function(token) {
+              var el = $('#token-balance-' + token.token_id);
+              if (el.length) {
+                el.text(formatTokenBalance(token.balance, token.symbol));
+              }
+            });
+          }
+        })
+        .fail(function(err) {
+          console.error('Balance refresh failed:', err);
+        })
+        .always(function() {
+          isRefreshingBalances = false;
+        });
+    }
+
+    // Format ETH balance with 6 decimal places, trimming trailing zeros
+    function formatEthBalance(balance) {
+      return balance.toFixed(6).replace(/\.?0+$/, '');
+    }
+
+    // Format token balance with full precision, trimming trailing zeros
+    function formatTokenBalance(balance, symbol) {
+      // Use high precision and trim trailing zeros
+      var formatted = balance.toFixed(18).replace(/\.?0+$/, '');
+      if (symbol) {
+        return formatted + ' ' + symbol;
+      }
+      return formatted;
+    }
+
+    // Handle tab selection
+    const tabLinks = document.querySelectorAll('a[data-lazy-tab]');
+    Array.from(tabLinks).forEach(el => {
+      el.addEventListener('click', onTabSelected);
+    });
+
+    function onTabSelected(event) {
+      event.preventDefault();
+      var tabId = event.target.getAttribute('data-lazy-tab');
+      var tabEl = document.getElementById(tabId);
+      currentTab = tabId;
+
+      if (!$(tabEl).data("loaded")) {
+        loadTabContent(tabEl, event.target.getAttribute('href'));
+      }
+
+      var tab = new bootstrap.Tab(event.target);
+      tab.show();
+
+      window.history.replaceState(null, document.title, "/address/" + addressStr + event.target.getAttribute('href'));
+    }
+
+    function loadTabContent(tabEl, url) {
+      $(tabEl).html('<div class="text-center p-4"><i class="fas fa-spinner fa-spin fa-2x"></i></div>');
+      $.get(url + "&lazy=true", function(data) {
+        $(tabEl).html(data);
+        $(tabEl).data("loaded", true);
+        bindPaginationLinks(tabEl);
+        explorer.initControls();
+      });
+    }
+
+    // Handle pagination within tabs via AJAX
+    function bindPaginationLinks(container) {
+      $(container).find('.pagination a.page-link').on('click', function(event) {
+        event.preventDefault();
+        var url = $(this).attr('href');
+        var tabEl = $(this).closest('.tab-pane');
+        loadTabContent(tabEl, url);
+        window.history.replaceState(null, document.title, "/address/" + addressStr + url);
+      });
+    }
+
+    // Bind pagination for initially loaded tab
+    bindPaginationLinks($('#' + currentTab));
+  });
+</script>
+{{ end }}
+{{ define "css" }}
+<style>
+/* Smaller font size for data tables */
+.el-data-table {
+  font-size: 0.9rem;
+}
+.el-data-table th {
+  font-size: 0.85rem;
+}
+
+/* Even smaller font for fee/value columns */
+.el-data-table .fee-value {
+  font-size: 0.8rem;
+}
+
+/* Method badge with ellipsis */
+.el-data-table .method-badge {
+  display: inline-block;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+/* Address cells - no line break, keep icon inline */
+.el-data-table .addr-cell {
+  white-space: nowrap;
+}
+.el-data-table .addr-cell a,
+.el-data-table .addr-cell span {
+  white-space: nowrap;
+}
+
+/* Smaller margin on copy buttons in tables */
+.el-data-table .fa-copy {
+  margin-left: 0.15rem !important;
+  margin-right: 0;
+  padding: 0.1rem;
+}
+
+/* Fix time column width to prevent table resizing when time updates */
+td[data-timer], th[data-timecol] {
+  width: 130px;
+  min-width: 130px;
+  max-width: 130px;
+}
+
+/* Ensure time content doesn't overflow */
+td[data-timer] span {
+  display: inline-block;
+  width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+</style>
+{{ end }}

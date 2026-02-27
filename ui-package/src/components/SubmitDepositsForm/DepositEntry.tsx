@@ -6,11 +6,13 @@ import { Modal } from 'react-bootstrap';
 import { IDeposit } from './DepositsTable';
 import { toReadableAmount } from '../../utils/ReadableAmount';
 import { DepositContractAbi } from './DepositContract';
+import { GatingContractData, PREFIX_TO_DEPOSIT_TYPE } from './GatingContract';
 
 interface IDepositEntryProps {
   deposit: IDeposit;
   depositContract: string;
   explorerUrl?: string;
+  gatingData?: GatingContractData | null;
 }
 
 const DepositEntry = (props: IDepositEntryProps): React.ReactElement => {
@@ -19,7 +21,18 @@ const DepositEntry = (props: IDepositEntryProps): React.ReactElement => {
   const [showTxDetails, setShowTxDetails] = useState<boolean>(false);
 
   const depositRequest = useWriteContract();
-  
+
+  // Check gating status for this deposit type
+  const prefix = props.deposit.withdrawal_credentials.substring(0, 2);
+  const depositType = PREFIX_TO_DEPOSIT_TYPE[prefix];
+  const gatingConfig = depositType !== undefined && props.gatingData
+    ? props.gatingData.depositConfigs.get(depositType)
+    : null;
+  const isBlocked = gatingConfig?.blocked ?? false;
+  const requiresToken = !(gatingConfig?.noToken ?? true);
+  const hasToken = (props.gatingData?.tokenBalance ?? 0n) > 0n;
+  const canSubmit = !isBlocked && (!requiresToken || hasToken);
+
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
       (window as any).explorer.initControls();
@@ -66,7 +79,7 @@ const DepositEntry = (props: IDepositEntryProps): React.ReactElement => {
         : null}
       </td>
       <td className="p-0">
-        <button className="btn btn-primary" disabled={!isConnected || !props.deposit.validity || depositRequest.isPending || depositRequest.isSuccess} onClick={() => submitDeposit()}>
+        <button className="btn btn-primary" disabled={!isConnected || !props.deposit.validity || depositRequest.isPending || depositRequest.isSuccess || (props.gatingData && !canSubmit)} onClick={() => submitDeposit()}>
           {depositRequest.isSuccess ?
             <span>Submitted</span> :
             depositRequest.isPending ? (
@@ -74,6 +87,10 @@ const DepositEntry = (props: IDepositEntryProps): React.ReactElement => {
               ) : (
                 depositRequest.isError ? (
                   <span className="text-nowrap"><i className="fa-solid fa-repeat me-1"></i> Retry</span>
+                ) : isBlocked ? (
+                  <span className="text-nowrap"><i className="fa fa-ban me-1"></i> Blocked</span>
+                ) : requiresToken && !hasToken ? (
+                  <span className="text-nowrap"><i className="fa fa-lock me-1"></i> Need Token</span>
                 ) : (
                   "Submit"
                 )

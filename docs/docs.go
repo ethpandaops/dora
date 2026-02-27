@@ -1255,13 +1255,25 @@ const docTemplate = `{
                     },
                     {
                         "type": "integer",
-                        "description": "Start slot for pagination (inclusive)",
-                        "name": "start_slot",
+                        "description": "Minimum slot number to return (inclusive)",
+                        "name": "min_slot",
                         "in": "query"
                     },
                     {
                         "type": "integer",
-                        "description": "Number of results to return (max 100, default 100)",
+                        "description": "Maximum slot number to return (inclusive)",
+                        "name": "max_slot",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page number for pagination (0-indexed, default 0)",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Number of results to return (max 1000, default 100)",
                         "name": "limit",
                         "in": "query"
                     }
@@ -3689,7 +3701,14 @@ const docTemplate = `{
         "api.APISlotsData": {
             "type": "object",
             "properties": {
+                "next_page": {
+                    "type": "integer"
+                },
                 "next_slot": {
+                    "description": "Use with max_slot for cursor-based pagination",
+                    "type": "integer"
+                },
+                "page": {
                     "type": "integer"
                 },
                 "slots": {
