@@ -21,7 +21,7 @@ type ExecutionProof struct {
 
 // ExecutionProofsResponse represents the API response for execution proofs
 type ExecutionProofsResponse struct {
-	Data               []ExecutionProof `json:"data"`
-	ExecutionOptimistic bool            `json:"execution_optimistic"`
-	Finalized          bool            `json:"finalized"`
+	Data                []ExecutionProof `json:"data"`
+	ExecutionOptimistic bool             `json:"execution_optimistic"`
+	Finalized           bool             `json:"finalized"`
 }
