@@ -321,10 +321,11 @@
 
     function onTabSelected(event) {
       event.preventDefault();
-      var tabId = event.target.getAttribute('data-lazy-tab');
+      var link = event.currentTarget;
+      var tabId = link.getAttribute('data-lazy-tab');
       var tabEl = document.getElementById(tabId);
       if (!$(tabEl).data("loaded")) {
-        $.get(event.target.getAttribute('href') + "&lazy=true", function(data) {
+        $.get(link.getAttribute('href') + "&lazy=true", function(data) {
           $(tabEl).html(data);
           $(tabEl).data("loaded", true);
           explorer.initControls();
@@ -334,7 +335,7 @@
       var tab = new bootstrap.Tab(tabEl);
       tab.show();
 
-      window.history.replaceState(null, document.title, "/validators/withdrawals" + event.target.getAttribute('href'));
+      window.history.replaceState(null, document.title, "/validators/withdrawals" + link.getAttribute('href'));
     }
   });
 </script>

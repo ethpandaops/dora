@@ -293,14 +293,14 @@ func GetElTransactionsByAccountIDCombined(ctx context.Context, accountID uint64,
 			method_id, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number,
 			tx_type, tx_index, eff_gas_price
 		FROM (
-			(SELECT block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw,
+			SELECT * FROM (SELECT block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw,
 				method_id, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number,
 				tx_type, tx_index, eff_gas_price
 			FROM el_transactions WHERE from_id = $1
 			ORDER BY block_uid DESC NULLS LAST
 			LIMIT $4)
 			UNION ALL
-			(SELECT block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw,
+			SELECT * FROM (SELECT block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw,
 				method_id, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number,
 				tx_type, tx_index, eff_gas_price
 			FROM el_transactions WHERE to_id = $2 AND from_id != $3
