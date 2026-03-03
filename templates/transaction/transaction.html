@@ -483,18 +483,19 @@
 
     function onTabSelected(event) {
       event.preventDefault();
-      var tabId = event.target.getAttribute('data-lazy-tab');
+      var link = event.currentTarget;
+      var tabId = link.getAttribute('data-lazy-tab');
       var tabEl = document.getElementById(tabId);
       currentTab = tabId;
 
       if (tabId !== 'details' && !$(tabEl).data("loaded")) {
-        loadTabContent(tabEl, event.target.getAttribute('href'));
+        loadTabContent(tabEl, link.getAttribute('href'));
       }
 
-      var tab = new bootstrap.Tab(event.target);
+      var tab = new bootstrap.Tab(link);
       tab.show();
 
-      window.history.replaceState(null, document.title, "/tx/" + txHashStr + event.target.getAttribute('href'));
+      window.history.replaceState(null, document.title, "/tx/" + txHashStr + link.getAttribute('href'));
 
       // Update inclusion block links with new tab view
       updateInclusionBlockLinks(tabToView[tabId] || 'overview');
