@@ -133,6 +133,7 @@ type TransactionPageData struct {
 	DataStatus              uint16                           `json:"data_status"` // blockdb data availability flags
 	EventsNotAvailable      bool                             `json:"events_not_available"`
 	InternalTxsNotAvailable bool                             `json:"internal_txs_not_available"`
+	InternalTxIndentPx      float64                          `json:"internal_tx_indent_px"`
 
 	// State changes tab (prestateTracer diffMode)
 	StateChanges             []*TransactionPageDataStateChangeAccount `json:"state_changes"`
