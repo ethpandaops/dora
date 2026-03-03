@@ -104,7 +104,7 @@ func Transaction(w http.ResponseWriter, r *http.Request) {
 
 	if pageData.TxNotFound {
 		data := InitPageData(w, r, "blockchain", "/tx", "Transaction not found", notfoundTemplateFiles)
-		data.Data = pageData
+		data.Data = "notfound"
 		w.Header().Set("Content-Type", "text/html")
 		handleTemplateError(w, r, "transaction.go", "Transaction", "notFound", templates.GetTemplate(notfoundTemplateFiles...).ExecuteTemplate(w, "layout", data))
 		return
