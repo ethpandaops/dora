@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"bytes"
 	"context"
 	"encoding/hex"
 	"encoding/json"
@@ -19,8 +18,6 @@ import (
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethereum/go-ethereum/common"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/core/types/bal"
-	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
 
@@ -870,82 +867,11 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 		}
 
 		if blockAccessListRlp, err := executionPayload.BlockAccessList(); err == nil {
-			// decode RLP encoded block access list
-			var blockAccessList bal.BlockAccessList
-			err = blockAccessList.DecodeRLP(rlp.NewStream(bytes.NewReader(blockAccessListRlp), 0))
+			accesses, err := utils.DecodeBlockAccessList(blockAccessListRlp)
 			if err != nil {
 				logrus.Warnf("error decoding block access list: %v", err)
 			} else {
-				pageData.ExecutionData.BlockAccessList = make([]*models.SlotPageBlockAccessListEntry, len(blockAccessList))
-				for i, entry := range blockAccessList {
-					balEntry := &models.SlotPageBlockAccessListEntry{
-						Address: entry.Address[:],
-					}
-
-					// Convert storage changes
-					if len(entry.StorageChanges) > 0 {
-						balEntry.StorageChanges = make([]*models.SlotPageBlockBALStorageChange, len(entry.StorageChanges))
-						for j, storageChange := range entry.StorageChanges {
-							changes := make([]*models.SlotPageBlockBALStorageSlotChange, len(storageChange.Accesses))
-							for k, write := range storageChange.Accesses {
-								valueAfter := write.ValueAfter.ToHash()
-								changes[k] = &models.SlotPageBlockBALStorageSlotChange{
-									BlockAccessIndex: write.TxIdx,
-									Value:            valueAfter[:],
-								}
-							}
-							slot := storageChange.Slot.ToHash()
-							balEntry.StorageChanges[j] = &models.SlotPageBlockBALStorageChange{
-								Slot:    slot[:],
-								Changes: changes,
-							}
-						}
-					}
-
-					// Convert storage reads
-					if len(entry.StorageReads) > 0 {
-						balEntry.StorageReads = make([][]byte, len(entry.StorageReads))
-						for j, read := range entry.StorageReads {
-							slot := read.ToHash()
-							balEntry.StorageReads[j] = slot[:]
-						}
-					}
-
-					// Convert balance changes
-					if len(entry.BalanceChanges) > 0 {
-						balEntry.BalanceChanges = make([]*models.SlotPageBlockBALBalanceChange, len(entry.BalanceChanges))
-						for j, balanceChange := range entry.BalanceChanges {
-							balEntry.BalanceChanges[j] = &models.SlotPageBlockBALBalanceChange{
-								BlockAccessIndex: balanceChange.TxIdx,
-								Balance:          balanceChange.Balance.Bytes(),
-							}
-						}
-					}
-
-					// Convert nonce changes
-					if len(entry.NonceChanges) > 0 {
-						balEntry.NonceChanges = make([]*models.SlotPageBlockBALNonceChange, len(entry.NonceChanges))
-						for j, nonceChange := range entry.NonceChanges {
-							balEntry.NonceChanges[j] = &models.SlotPageBlockBALNonceChange{
-								BlockAccessIndex: nonceChange.TxIdx,
-								Nonce:            nonceChange.Nonce,
-							}
-						}
-					}
-
-					// Convert code changes
-					if len(entry.CodeChanges) > 0 {
-						balEntry.CodeChanges = make([]*models.SlotPageBlockBALCodeChange, len(entry.CodeChanges))
-						for j, codeChange := range entry.CodeChanges {
-							balEntry.CodeChanges[j] = &models.SlotPageBlockBALCodeChange{
-								BlockAccessIndex: codeChange.TxIdx,
-								Code:             codeChange.Code,
-							}
-						}
-					}
-
-					pageData.ExecutionData.BlockAccessList[i] = balEntry
-				}
+				pageData.ExecutionData.BlockAccessList = convertBALToModel(accesses)
 			}
 		}
 
@@ -1236,60 +1162,54 @@ func handleSlotParseAccessList(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	// Parse RLP encoded access list
-	var blockAccessList bal.BlockAccessList
-	err = blockAccessList.DecodeRLP(rlp.NewStream(bytes.NewReader(rlpBytes), 0))
+	accesses, err := utils.DecodeBlockAccessList(rlpBytes)
 	if err != nil {
 		return fmt.Errorf("invalid access list RLP: %v", err)
 	}
 
-	// Convert to our model format
-	result := make([]*models.SlotPageBlockAccessListEntry, len(blockAccessList))
-	for i, entry := range blockAccessList {
+	return json.NewEncoder(w).Encode(convertBALToModel(accesses))
+}
+
+// convertBALToModel converts decoded EIP-7928 BAL entries to model types.
+func convertBALToModel(accesses []utils.BALAccountAccess) []*models.SlotPageBlockAccessListEntry {
+	result := make([]*models.SlotPageBlockAccessListEntry, len(accesses))
+	for i, entry := range accesses {
 		balEntry := &models.SlotPageBlockAccessListEntry{
 			Address: entry.Address[:],
 		}
 
-		// Convert storage changes
-		if len(entry.StorageChanges) > 0 {
-			balEntry.StorageChanges = make([]*models.SlotPageBlockBALStorageChange, len(entry.StorageChanges))
-			for j, storageChange := range entry.StorageChanges {
+		if len(entry.StorageWrites) > 0 {
+			balEntry.StorageChanges = make([]*models.SlotPageBlockBALStorageChange, len(entry.StorageWrites))
+			for j, storageChange := range entry.StorageWrites {
 				changes := make([]*models.SlotPageBlockBALStorageSlotChange, len(storageChange.Accesses))
 				for k, write := range storageChange.Accesses {
-					valueAfter := write.ValueAfter.ToHash()
 					changes[k] = &models.SlotPageBlockBALStorageSlotChange{
 						BlockAccessIndex: write.TxIdx,
-						Value:            valueAfter[:],
+						Value:            write.ValueAfter,
 					}
 				}
-				slot := storageChange.Slot.ToHash()
 				balEntry.StorageChanges[j] = &models.SlotPageBlockBALStorageChange{
-					Slot:    slot[:],
+					Slot:    storageChange.Slot,
 					Changes: changes,
 				}
 			}
 		}
 
-		// Convert storage reads
 		if len(entry.StorageReads) > 0 {
 			balEntry.StorageReads = make([][]byte, len(entry.StorageReads))
-			for j, read := range entry.StorageReads {
-				slot := read.ToHash()
-				balEntry.StorageReads[j] = slot[:]
-			}
+			copy(balEntry.StorageReads, entry.StorageReads)
 		}
 
-		// Convert balance changes
 		if len(entry.BalanceChanges) > 0 {
 			balEntry.BalanceChanges = make([]*models.SlotPageBlockBALBalanceChange, len(entry.BalanceChanges))
 			for j, balanceChange := range entry.BalanceChanges {
 				balEntry.BalanceChanges[j] = &models.SlotPageBlockBALBalanceChange{
 					BlockAccessIndex: balanceChange.TxIdx,
-					Balance:          balanceChange.Balance.Bytes(),
+					Balance:          balanceChange.Balance,
 				}
 			}
 		}
 
-		// Convert nonce changes
 		if len(entry.NonceChanges) > 0 {
 			balEntry.NonceChanges = make([]*models.SlotPageBlockBALNonceChange, len(entry.NonceChanges))
 			for j, nonceChange := range entry.NonceChanges {
@@ -1300,12 +1220,11 @@ func handleSlotParseAccessList(w http.ResponseWriter, r *http.Request) error {
 			}
 		}
 
-		// Convert code changes
 		if len(entry.CodeChanges) > 0 {
 			balEntry.CodeChanges = make([]*models.SlotPageBlockBALCodeChange, len(entry.CodeChanges))
 			for j, codeChange := range entry.CodeChanges {
 				balEntry.CodeChanges[j] = &models.SlotPageBlockBALCodeChange{
-					BlockAccessIndex: codeChange.TxIdx,
+					BlockAccessIndex: codeChange.TxIndex,
 					Code:             codeChange.Code,
 				}
 			}
@@ -1314,5 +1233,5 @@ func handleSlotParseAccessList(w http.ResponseWriter, r *http.Request) error {
 		result[i] = balEntry
 	}
 
-	return json.NewEncoder(w).Encode(result)
+	return result
 }
