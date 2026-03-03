@@ -424,6 +424,7 @@ func buildTransactionPageDataFromDB(ctx context.Context, pageData *models.Transa
 		loadTransactionTransfersFromData(ctx, pageData, transfers)
 	case "internaltxs":
 		loadTransactionInternalTxsFromBlockdb(ctx, pageData, tx.BlockUid)
+		computeInternalTxIndent(pageData)
 	case "statechanges":
 		loadTransactionStateChangesFromBlockdb(ctx, pageData, tx.BlockUid)
 	case "authorizations":
@@ -1170,6 +1171,35 @@ func loadTransactionInternalTxsFromDB(ctx context.Context, pageData *models.Tran
 
 		pageData.InternalTxs = append(pageData.InternalTxs, itx)
 	}
+}
+
+// computeInternalTxIndent sets InternalTxIndentPx based on the maximum
+// nesting depth so that deeply nested trees compress to ~300px total.
+func computeInternalTxIndent(pageData *models.TransactionPageData) {
+	if len(pageData.InternalTxs) == 0 {
+		return
+	}
+
+	var maxDepth uint16
+	for _, itx := range pageData.InternalTxs {
+		if itx.Depth > maxDepth {
+			maxDepth = itx.Depth
+		}
+	}
+
+	if maxDepth == 0 {
+		pageData.InternalTxIndentPx = 18.0
+		return
+	}
+
+	indent := 300.0 / float64(maxDepth)
+	if indent > 18.0 {
+		indent = 18.0
+	}
+	if indent < 2.0 {
+		indent = 2.0
+	}
+	pageData.InternalTxIndentPx = indent
 }
 
 func loadTransactionTransfersFromData(ctx context.Context, pageData *models.TransactionPageData, transfers []*dbtypes.ElTokenTransfer) {

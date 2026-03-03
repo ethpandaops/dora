@@ -55,10 +55,42 @@ func GetTemplateFuncs() template.FuncMap {
 		}
 	}
 
+	toFloat64 := func(v any) float64 {
+		switch x := v.(type) {
+		case int:
+			return float64(x)
+		case int8:
+			return float64(x)
+		case int16:
+			return float64(x)
+		case int32:
+			return float64(x)
+		case int64:
+			return float64(x)
+		case uint:
+			return float64(x)
+		case uint8:
+			return float64(x)
+		case uint16:
+			return float64(x)
+		case uint32:
+			return float64(x)
+		case uint64:
+			return float64(x)
+		case float32:
+			return float64(x)
+		case float64:
+			return x
+		default:
+			return 0
+		}
+	}
+
 	customFuncs := template.FuncMap{
 		"includeHTML": IncludeHTML,
 		"includeJSON": IncludeJSON,
 		"html":        func(x string) template.HTML { return template.HTML(x) },
+		"float64":     toFloat64,
 		"bigIntCmp":   func(i *big.Int, j int) int { return i.Cmp(big.NewInt(int64(j))) },
 		"mod":         func(i, j int) bool { return i%j == 0 },
 		"sub":         func(i, j int) int { return i - j },
