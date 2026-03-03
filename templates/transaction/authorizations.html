@@ -1,0 +1,55 @@
+{{ define "authorizations" }}
+<div class="card mt-0 border-top-0 rounded-top-0">
+  <div class="card-body p-0">
+    {{ if gt (len .Authorizations) 0 }}
+    <div class="table-responsive">
+      <table class="table table-hover mb-0 el-data-table">
+        <thead>
+          <tr>
+            <th class="px-3" style="width: 30px;">#</th>
+            <th>Wallet (Authority)</th>
+            <th>Delegate</th>
+            <th class="text-center px-3" style="width: 110px;">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{ range .Authorizations }}
+          <tr>
+            <td class="text-muted px-3">{{ .Index }}</td>
+            <td class="text-monospace text-break">
+              {{ if .AuthorityOk }}
+              {{ $authAddr := formatEthAddressFull .AuthorityAddr }}
+              <a href="/address/{{ $authAddr }}">{{ $authAddr }}</a>
+              <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy address" data-clipboard-text="{{ $authAddr }}" style="font-size: 0.75rem;"></i>
+              {{ else }}
+              <span class="text-muted">Recovery failed</span>
+              {{ end }}
+            </td>
+            <td class="text-monospace text-break">
+              {{ $delegateAddr := formatEthAddressFull .DelegateAddr }}
+              <a href="/address/{{ $delegateAddr }}">{{ $delegateAddr }}</a>
+              <i class="fa fa-copy text-muted p-1" role="button" data-bs-toggle="tooltip" title="Copy address" data-clipboard-text="{{ $delegateAddr }}" style="font-size: 0.75rem;"></i>
+            </td>
+            <td class="text-center px-3">
+              {{ if eq .Applied 1 }}
+              <span class="badge rounded-pill text-bg-success">Applied</span>
+              {{ else if eq .Applied 2 }}
+              <span class="badge rounded-pill text-bg-secondary">Not Applied</span>
+              {{ else }}
+              <span class="badge rounded-pill text-bg-light border">Unknown</span>
+              {{ end }}
+            </td>
+          </tr>
+          {{ end }}
+        </tbody>
+      </table>
+    </div>
+    {{ else }}
+    <div class="p-4 text-center text-muted">
+      <i class="fas fa-inbox fa-2x mb-2"></i>
+      <p>No authorizations found for this transaction</p>
+    </div>
+    {{ end }}
+  </div>
+</div>
+{{ end }}

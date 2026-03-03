@@ -113,6 +113,9 @@ type TransactionPageData struct {
 	BlobFeeSavings float64                    `json:"blob_fee_savings"` // Savings percentage ((fee_cap - price) / fee_cap * 100)
 	Blobs          []*TransactionPageDataBlob `json:"blobs"`            // Blob details
 
+	// Authorizations (EIP-7702, tx type 4)
+	Authorizations []*TransactionPageDataAuthorization `json:"authorizations"`
+
 	// Tab view
 	TabView string `json:"tab_view"`
 
@@ -266,4 +269,13 @@ type TransactionPageDataBlob struct {
 	KzgProof      []byte `json:"kzg_proof"`      // KZG proof (if available)
 	HaveData      bool   `json:"have_data"`      // Whether full blob data is available
 	BlobShort     []byte `json:"blob_short"`     // First bytes of blob data (preview)
+}
+
+// TransactionPageDataAuthorization represents an EIP-7702 authorization entry
+type TransactionPageDataAuthorization struct {
+	Index         uint32 `json:"index"`
+	AuthorityAddr []byte `json:"authority_addr"` // Recovered signer (wallet)
+	DelegateAddr  []byte `json:"delegate_addr"`  // Target delegation address
+	AuthorityOk   bool   `json:"authority_ok"`   // Whether authority recovery succeeded
+	Applied       uint8  `json:"applied"`        // 0=unknown, 1=applied, 2=not applied
 }

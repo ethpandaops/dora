@@ -338,13 +338,13 @@ func GetElTokenTransfersByAccountIDCombined(ctx context.Context, accountID uint6
 		SELECT block_uid, tx_hash, tx_pos, tx_idx, token_id, token_type, token_index,
 			from_id, to_id, amount, amount_raw
 		FROM (
-			(SELECT block_uid, tx_hash, tx_pos, tx_idx, token_id, token_type, token_index,
+			SELECT * FROM (SELECT block_uid, tx_hash, tx_pos, tx_idx, token_id, token_type, token_index,
 				from_id, to_id, amount, amount_raw
 			FROM el_token_transfers WHERE from_id = $1%s
 			ORDER BY block_uid DESC NULLS LAST
 			LIMIT $%d)
 			UNION ALL
-			(SELECT block_uid, tx_hash, tx_pos, tx_idx, token_id, token_type, token_index,
+			SELECT * FROM (SELECT block_uid, tx_hash, tx_pos, tx_idx, token_id, token_type, token_index,
 				from_id, to_id, amount, amount_raw
 			FROM el_token_transfers WHERE to_id = $2 AND from_id != $3%s
 			ORDER BY block_uid DESC NULLS LAST
