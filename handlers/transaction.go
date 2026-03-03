@@ -49,6 +49,7 @@ func Transaction(w http.ResponseWriter, r *http.Request) {
 		"transaction/statechanges.html",
 		"transaction/transfers.html",
 		"transaction/internaltxs.html",
+		"transaction/authorizations.html",
 		"transaction/blobs.html",
 	)
 	notfoundTemplateFiles := append(layoutTemplateFiles,
@@ -425,6 +426,10 @@ func buildTransactionPageDataFromDB(ctx context.Context, pageData *models.Transa
 		loadTransactionInternalTxsFromBlockdb(ctx, pageData, tx.BlockUid)
 	case "statechanges":
 		loadTransactionStateChangesFromBlockdb(ctx, pageData, tx.BlockUid)
+	case "authorizations":
+		if pageData.TxType == ethtypes.SetCodeTxType && len(pageData.Authorizations) > 0 {
+			resolveAuthorizationValidity(ctx, pageData, tx.BlockUid)
+		}
 	}
 }
 
@@ -531,6 +536,11 @@ func buildTransactionPageDataFromEL(ctx context.Context, pageData *models.Transa
 
 	// Blob hashes
 	pageData.BlobCount = uint32(len(ethTx.BlobHashes()))
+
+	// Authorization data for type 4 (EIP-7702) transactions
+	if ethTx.Type() == ethtypes.SetCodeTxType {
+		loadAuthorizationData(pageData, ethTx)
+	}
 
 	// Generate RLP and JSON
 	if rlpData, err := ethTx.MarshalBinary(); err == nil {
@@ -1294,6 +1304,11 @@ func loadFullTransactionData(ctx context.Context, pageData *models.TransactionPa
 	if ethTx.Type() == 3 && len(ethTx.BlobHashes()) > 0 {
 		loadBlobData(pageData, &ethTx, blockData)
 	}
+
+	// Load authorization data for type 4 (EIP-7702) transactions
+	if ethTx.Type() == ethtypes.SetCodeTxType {
+		loadAuthorizationData(pageData, &ethTx)
+	}
 }
 
 // loadBlobData populates blob-related data for type 3 (blob) transactions.
@@ -1405,5 +1420,114 @@ func applyCallTargetResolution(ctx context.Context, pageData *models.Transaction
 	pageData.DecodedCalldata = res.DecodedCalldata
 	if res.MethodID != nil {
 		pageData.MethodID = res.MethodID
+	}
+}
+
+// loadAuthorizationData extracts EIP-7702 authorization list entries from a
+// parsed transaction and populates pageData.Authorizations.
+func loadAuthorizationData(
+	pageData *models.TransactionPageData,
+	ethTx *ethtypes.Transaction,
+) {
+	authList := ethTx.SetCodeAuthorizations()
+	if len(authList) == 0 {
+		return
+	}
+
+	pageData.Authorizations = make(
+		[]*models.TransactionPageDataAuthorization,
+		len(authList),
+	)
+
+	for i := range authList {
+		auth := &authList[i]
+		entry := &models.TransactionPageDataAuthorization{
+			Index:        uint32(i),
+			DelegateAddr: auth.Address.Bytes(),
+		}
+
+		if authority, err := auth.Authority(); err == nil {
+			entry.AuthorityAddr = authority.Bytes()
+			entry.AuthorityOk = true
+		}
+
+		pageData.Authorizations[i] = entry
+	}
+}
+
+// resolveAuthorizationValidity loads state diffs from blockdb and checks
+// whether each EIP-7702 authorization was actually applied on-chain.
+// An authorization is considered applied when the authority address has a code
+// change whose post-state matches the delegation designator (0xef0100 + delegate).
+func resolveAuthorizationValidity(
+	ctx context.Context,
+	pageData *models.TransactionPageData,
+	blockUid uint64,
+) {
+	if pageData.DataStatus&dbtypes.ElBlockDataStateChanges == 0 {
+		return
+	}
+
+	if blockdb.GlobalBlockDb == nil || !blockdb.GlobalBlockDb.SupportsExecData() {
+		return
+	}
+
+	slot := blockUid >> 16
+	blockRoot := pageData.BlockRoot
+	if len(blockRoot) == 0 {
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	sections, err := blockdb.GlobalBlockDb.GetExecDataTxSections(
+		ctx, slot, blockRoot, pageData.TxHash,
+		bdbtypes.ExecDataSectionStateChange,
+	)
+	if err != nil || sections == nil || sections.StateChangeData == nil {
+		return
+	}
+
+	uncompData, err := snappy.Decode(nil, sections.StateChangeData)
+	if err != nil {
+		return
+	}
+
+	var accounts []bdbtypes.StateChangeAccount
+	if err := dynssz.GetGlobalDynSsz().UnmarshalSSZ(&accounts, uncompData); err != nil {
+		return
+	}
+
+	// Build a lookup of address -> post-code for accounts with code changes.
+	type codeInfo struct {
+		postCode []byte
+	}
+	codeByAddr := make(map[common.Address]codeInfo, len(accounts))
+	for i := range accounts {
+		a := &accounts[i]
+		if (a.Flags & bdbtypes.StateChangeFlagCodeChanged) != 0 {
+			codeByAddr[a.Address] = codeInfo{postCode: a.PostCode}
+		}
+	}
+
+	for _, auth := range pageData.Authorizations {
+		if !auth.AuthorityOk {
+			continue
+		}
+
+		authorityAddr := common.BytesToAddress(auth.AuthorityAddr)
+		ci, found := codeByAddr[authorityAddr]
+		if !found {
+			auth.Applied = 2 // not applied
+			continue
+		}
+
+		delegateAddr, ok := ethtypes.ParseDelegation(ci.postCode)
+		if ok && delegateAddr == common.BytesToAddress(auth.DelegateAddr) {
+			auth.Applied = 1 // applied
+		} else {
+			auth.Applied = 2 // not applied
+		}
 	}
 }
