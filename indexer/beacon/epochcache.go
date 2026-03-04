@@ -342,8 +342,8 @@ func (cache *epochCache) runLoaderLoop() {
 			return probablyBadB
 		}
 
-		highPriorityA := pendingStats[a].dependentState.highPriority || currentEpoch < 2 || pendingStats[a].epoch >= currentEpoch-2
-		highPriorityB := pendingStats[b].dependentState.highPriority || currentEpoch < 2 || pendingStats[b].epoch >= currentEpoch-2
+		highPriorityA := (pendingStats[a].dependentState.highPriority || currentEpoch < 2 || pendingStats[a].epoch >= currentEpoch-2) && pendingStats[a].dependentState.retryCount <= beaconStateHighPriorityRetryCount
+		highPriorityB := (pendingStats[b].dependentState.highPriority || currentEpoch < 2 || pendingStats[b].epoch >= currentEpoch-2) && pendingStats[b].dependentState.retryCount <= beaconStateHighPriorityRetryCount
 		if highPriorityA != highPriorityB {
 			return highPriorityA
 		}

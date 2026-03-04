@@ -23,6 +23,7 @@ const beaconStateRequestTimeout time.Duration = 600 * time.Second
 const executionPayloadRequestTimeout time.Duration = 30 * time.Second
 
 const beaconStateRetryCount = 10
+const beaconStateHighPriorityRetryCount uint64 = 3
 
 // LoadBeaconHeader loads the block header from the client.
 func LoadBeaconHeader(ctx context.Context, client *Client, root phase0.Root) (*phase0.SignedBeaconBlockHeader, error) {
