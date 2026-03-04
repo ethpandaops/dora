@@ -67,6 +67,20 @@ func InsertElTransactionsInternal(ctx context.Context, dbTx *sqlx.Tx, entries []
 	return err
 }
 
+// HasElTransactionsInternalByAccount returns true if the given account has any
+// internal transactions (as sender or receiver). Uses EXISTS for O(1) lookup.
+func HasElTransactionsInternalByAccount(ctx context.Context, accountID uint64) (bool, error) {
+	var exists bool
+	err := ReaderDb.GetContext(ctx, &exists,
+		"SELECT EXISTS(SELECT 1 FROM el_transactions_internal WHERE from_id = $1 LIMIT 1) OR EXISTS(SELECT 1 FROM el_transactions_internal WHERE to_id = $1 LIMIT 1)",
+		accountID,
+	)
+	if err != nil {
+		return false, err
+	}
+	return exists, nil
+}
+
 // MaxAccountInternalTxCount is the maximum count returned for address internal transaction queries.
 // If the actual count exceeds this, the query returns this limit and sets the "more" flag.
 const MaxAccountInternalTxCount = 100000

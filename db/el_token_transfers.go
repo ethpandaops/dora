@@ -342,13 +342,13 @@ func GetElTokenTransfersByAccountIDCombined(ctx context.Context, accountID uint6
 				from_id, to_id, amount, amount_raw
 			FROM el_token_transfers WHERE from_id = $1%s
 			ORDER BY block_uid DESC NULLS LAST
-			LIMIT $%d)
+			LIMIT $%d) AS a
 			UNION ALL
 			SELECT * FROM (SELECT block_uid, tx_hash, tx_pos, tx_idx, token_id, token_type, token_index,
 				from_id, to_id, amount, amount_raw
 			FROM el_token_transfers WHERE to_id = $2 AND from_id != $3%s
 			ORDER BY block_uid DESC NULLS LAST
-			LIMIT $%d)
+			LIMIT $%d) AS b
 		) combined
 		ORDER BY block_uid DESC, tx_pos DESC, tx_idx DESC
 		LIMIT $%d`, tokenTypeFilter, innerLimitIdx, tokenTypeFilter, innerLimitIdx, len(args)+1)
@@ -366,9 +366,11 @@ func GetElTokenTransfersByAccountIDCombined(ctx context.Context, accountID uint6
 		return nil, 0, false, err
 	}
 
-	// Get count with a separate query, capped at MaxAccountTokenTransferCount
-	// Build count query with same token type filter
-	countArgs := []any{accountID, accountID, accountID}
+	// Count using separate index-only scans per direction, capped at MaxAccountTokenTransferCount.
+	// Counts from_id and to_id separately (without from_id != exclusion) for index-only scan
+	// performance. May slightly overcount self-referencing transfers, which is acceptable
+	// since the count is already an approximation (capped).
+	countArgs := []any{accountID}
 	countTokenTypeFilter := ""
 	if len(tokenTypes) > 0 {
 		var tokenTypeArgs strings.Builder
@@ -382,20 +384,24 @@ func GetElTokenTransfersByAccountIDCombined(ctx context.Context, accountID uint6
 		countTokenTypeFilter = fmt.Sprintf(" AND token_type IN (%s)", tokenTypeArgs.String())
 	}
 
-	countSQL := fmt.Sprintf(`
-		SELECT COUNT(*) FROM (
-			SELECT 1 FROM el_token_transfers WHERE from_id = $1%s
-			UNION ALL
-			SELECT 1 FROM el_token_transfers WHERE to_id = $2 AND from_id != $3%s
-			LIMIT $%d
-		) limited`, countTokenTypeFilter, countTokenTypeFilter, len(countArgs)+1)
+	countLimitIdx := len(countArgs) + 1
 	countArgs = append(countArgs, MaxAccountTokenTransferCount)
+
+	countSQL := fmt.Sprintf(`
+		SELECT
+			(SELECT COUNT(*) FROM (SELECT 1 FROM el_token_transfers WHERE from_id = $1%s LIMIT $%d) AS a) +
+			(SELECT COUNT(*) FROM (SELECT 1 FROM el_token_transfers WHERE to_id = $1%s LIMIT $%d) AS b)`,
+		countTokenTypeFilter, countLimitIdx, countTokenTypeFilter, countLimitIdx)
 
 	var totalCount uint64
 	err = ReaderDb.GetContext(ctx, &totalCount, countSQL, countArgs...)
 	if err != nil {
 		logger.Errorf("Error while counting el token transfers by account id combined: %v", err)
 		return nil, 0, false, err
+	}
+
+	if totalCount > MaxAccountTokenTransferCount {
+		totalCount = MaxAccountTokenTransferCount
 	}
 
 	moreAvailable := totalCount >= MaxAccountTokenTransferCount

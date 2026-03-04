@@ -232,12 +232,12 @@ func buildAddressPageData(ctx context.Context, addressBytes []byte, tabView stri
 		}
 
 		// Check if address has any internal transactions (for tab visibility)
-		if _, count, err := db.GetElTransactionsInternalByAccount(ctx, account.ID, 0, 1); err == nil && count > 0 {
+		if has, err := db.HasElTransactionsInternalByAccount(ctx, account.ID); err == nil && has {
 			pageData.HasInternalTxs = true
 		}
 
 		// Check if address has any system deposits (for tab visibility)
-		if _, count, err := db.GetElWithdrawalsByAccountID(ctx, account.ID, 0, 1); err == nil && count > 0 {
+		if has, err := db.HasElWithdrawalsByAccountID(ctx, account.ID); err == nil && has {
 			pageData.HasSystemDeposits = true
 		}
 
