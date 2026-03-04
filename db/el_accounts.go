@@ -11,26 +11,40 @@ import (
 
 func InsertElAccount(ctx context.Context, dbTx *sqlx.Tx, account *dbtypes.ElAccount) (uint64, error) {
 	var id uint64
-	query := EngineQuery(map[dbtypes.DBEngineType]string{
-		dbtypes.DBEnginePgsql:  "INSERT INTO el_accounts (address, funder_id, funded, is_contract, last_nonce, last_block_uid) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id",
-		dbtypes.DBEngineSqlite: "INSERT INTO el_accounts (address, funder_id, funded, is_contract, last_nonce, last_block_uid) VALUES ($1, $2, $3, $4, $5, $6)",
-	})
 
 	if DbEngine == dbtypes.DBEnginePgsql {
+		// Use ON CONFLICT with a no-op update to return the existing id on conflict.
+		query := "INSERT INTO el_accounts (address, funder_id, funded, is_contract, last_nonce, last_block_uid) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (address) DO UPDATE SET address = excluded.address RETURNING id"
 		err := dbTx.QueryRowContext(ctx, query, account.Address, account.FunderID, account.Funded, account.IsContract, account.LastNonce, account.LastBlockUid).Scan(&id)
 		if err != nil {
 			return 0, err
 		}
 	} else {
+		// SQLite: use INSERT OR IGNORE to skip on duplicate address, then look up the id.
+		query := "INSERT OR IGNORE INTO el_accounts (address, funder_id, funded, is_contract, last_nonce, last_block_uid) VALUES ($1, $2, $3, $4, $5, $6)"
 		result, err := dbTx.ExecContext(ctx, query, account.Address, account.FunderID, account.Funded, account.IsContract, account.LastNonce, account.LastBlockUid)
 		if err != nil {
 			return 0, err
 		}
-		lastID, err := result.LastInsertId()
+
+		rowsAffected, err := result.RowsAffected()
 		if err != nil {
 			return 0, err
 		}
-		id = uint64(lastID)
+
+		if rowsAffected > 0 {
+			lastID, err := result.LastInsertId()
+			if err != nil {
+				return 0, err
+			}
+			id = uint64(lastID)
+		} else {
+			// Row already exists, look up the existing id.
+			err := dbTx.QueryRowContext(ctx, "SELECT id FROM el_accounts WHERE address = $1", account.Address).Scan(&id)
+			if err != nil {
+				return 0, fmt.Errorf("failed to get existing account id: %w", err)
+			}
+		}
 	}
 	return id, nil
 }
