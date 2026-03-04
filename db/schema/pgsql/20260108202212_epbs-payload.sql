@@ -1,18 +1,15 @@
 -- +goose Up
 -- +goose StatementBegin
 
-ALTER TABLE public."unfinalized_blocks" ADD
- "payload_ver" int NOT NULL DEFAULT 0,
- "payload_ssz" bytea NULL;
+ALTER TABLE public."unfinalized_blocks" ADD COLUMN "payload_ver" int NOT NULL DEFAULT 0;
+ALTER TABLE public."unfinalized_blocks" ADD COLUMN "payload_ssz" bytea NULL;
 
-ALTER TABLE public."orphaned_blocks" ADD
- "payload_ver" int NOT NULL DEFAULT 0,
- "payload_ssz" bytea NULL;
+ALTER TABLE public."orphaned_blocks" ADD COLUMN "payload_ver" int NOT NULL DEFAULT 0;
+ALTER TABLE public."orphaned_blocks" ADD COLUMN "payload_ssz" bytea NULL;
 
-ALTER TABLE public."slots" ADD
- "payload_status" smallint NOT NULL DEFAULT 0,
- "builder_index" bigint NOT NULL DEFAULT -1,
- "eth_block_parent_hash" bytea NULL;
+ALTER TABLE public."slots" ADD COLUMN "payload_status" smallint NOT NULL DEFAULT 0;
+ALTER TABLE public."slots" ADD COLUMN "builder_index" bigint NOT NULL DEFAULT -1;
+ALTER TABLE public."slots" ADD COLUMN "eth_block_parent_hash" bytea NULL;
 
 CREATE INDEX IF NOT EXISTS "slots_payload_status_idx"
     ON public."slots"
