@@ -34,6 +34,10 @@ var (
 
 	// TransferBatch(address indexed operator, address indexed from, address indexed to, uint256[] ids, uint256[] values)
 	topicTransferBatch = common.HexToHash("0x4a39dc06d4c0dbc64b70af90fd698a233a518aa5d07e595d983b8c0526c8f7fb")
+
+	// ethereum system address that emits native ETH transfer logs.
+	// These must not be tracked as ERC20 transfers.
+	ethereumSystemAddress = common.HexToAddress("0xffffFFFfFFffffffffffffffFfFFFfffFFFfFFfE")
 )
 
 // txProcessingContext holds state for processing a block's transactions.
@@ -641,6 +645,12 @@ func (ctx *txProcessingContext) detectTokenTransfers(
 	funderAccount *pendingAccount,
 ) []*pendingTokenTransfer {
 	if len(log.Topics) == 0 {
+		return nil
+	}
+
+	// Skip native ETH transfer logs from the ethereum system address.
+	// These are already tracked as regular transaction value transfers.
+	if log.Address == ethereumSystemAddress {
 		return nil
 	}
 

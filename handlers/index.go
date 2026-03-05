@@ -290,6 +290,19 @@ func buildIndexPageData(ctx context.Context) (*models.IndexPageData, time.Durati
 			ForkDigest: forkDigest[:],
 		})
 	}
+	if specs.GloasForkEpoch != nil && *specs.GloasForkEpoch < uint64(18446744073709551615) {
+		blobParams := chainState.GetBlobScheduleForEpoch(phase0.Epoch(*specs.GloasForkEpoch))
+		forkDigest := chainState.GetForkDigest(specs.GloasForkVersion, blobParams)
+		pageData.NetworkForks = append(pageData.NetworkForks, &models.IndexPageDataForks{
+			Name:       "Gloas",
+			Epoch:      *specs.GloasForkEpoch,
+			Version:    specs.GloasForkVersion[:],
+			Time:       uint64(chainState.EpochToTime(phase0.Epoch(*specs.GloasForkEpoch)).Unix()),
+			Active:     uint64(currentEpoch) >= *specs.GloasForkEpoch,
+			Type:       "consensus",
+			ForkDigest: forkDigest[:],
+		})
+	}
 
 	// Add BPO forks from BLOB_SCHEDULE
 	elBlobSchedule := services.GlobalBeaconService.GetExecutionChainState().GetFullBlobSchedule()
