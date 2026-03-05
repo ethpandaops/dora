@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bytes"
 	"context"
 	"encoding/hex"
 	"encoding/json"
@@ -766,7 +767,30 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 			Gloas:   blockData.Payload.Message.Payload,
 		}
 
-		pageData.PayloadHeader.PayloadStatus = uint16(1)
+		// Determine payload status by checking if any canonical child
+		// builds on this block's execution payload.
+		pageData.PayloadHeader.PayloadStatus = uint16(dbtypes.PayloadStatusCanonical)
+		childSlots := services.GlobalBeaconService.GetDbBlocksByParentRoot(ctx, blockData.Root)
+		hasCanonicalChild := false
+		payloadIncluded := false
+
+		for _, child := range childSlots {
+			if child.Status != dbtypes.Canonical {
+				continue
+			}
+
+			hasCanonicalChild = true
+
+			if bytes.Equal(child.EthBlockParentHash, pageData.PayloadHeader.BlockHash) {
+				payloadIncluded = true
+
+				break
+			}
+		}
+
+		if hasCanonicalChild && !payloadIncluded {
+			pageData.PayloadHeader.PayloadStatus = uint16(dbtypes.PayloadStatusOrphaned)
+		}
 	} else {
 		executionPayload, _ = blockData.Block.ExecutionPayload()
 	}
