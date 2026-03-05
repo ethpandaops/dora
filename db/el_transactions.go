@@ -298,14 +298,14 @@ func GetElTransactionsByAccountIDCombined(ctx context.Context, accountID uint64,
 				tx_type, tx_index, eff_gas_price
 			FROM el_transactions WHERE from_id = $1
 			ORDER BY block_uid DESC NULLS LAST
-			LIMIT $4)
+			LIMIT $4) AS a
 			UNION ALL
 			SELECT * FROM (SELECT block_uid, tx_hash, from_id, to_id, nonce, reverted, amount, amount_raw,
 				method_id, gas_limit, gas_used, gas_price, tip_price, blob_count, block_number,
 				tx_type, tx_index, eff_gas_price
 			FROM el_transactions WHERE to_id = $2 AND from_id != $3
 			ORDER BY block_uid DESC NULLS LAST
-			LIMIT $4)
+			LIMIT $4) AS b
 		) combined
 		ORDER BY block_uid DESC, tx_index DESC
 		LIMIT $5`)
@@ -323,20 +323,23 @@ func GetElTransactionsByAccountIDCombined(ctx context.Context, accountID uint64,
 		return nil, 0, false, err
 	}
 
-	// Get count with a separate query, capped at MaxAccountTransactionCount
-	// Using UNION ALL with LIMIT for efficient counting
+	// Count using separate index-only scans per direction, capped at MaxAccountTransactionCount.
+	// Counts from_id and to_id separately (without from_id != exclusion) for index-only scan
+	// performance. May slightly overcount self-transfers, which is acceptable since the count
+	// is already an approximation (capped).
 	countSQL := `
-		SELECT COUNT(*) FROM (
-			SELECT 1 FROM el_transactions WHERE from_id = $1
-			UNION ALL
-			SELECT 1 FROM el_transactions WHERE to_id = $2 AND from_id != $3
-			LIMIT $4
-		) limited`
+		SELECT
+			(SELECT COUNT(*) FROM (SELECT 1 FROM el_transactions WHERE from_id = $1 LIMIT $2) AS a) +
+			(SELECT COUNT(*) FROM (SELECT 1 FROM el_transactions WHERE to_id = $1 LIMIT $2) AS b)`
 	var totalCount uint64
-	err = ReaderDb.GetContext(ctx, &totalCount, countSQL, accountID, accountID, accountID, MaxAccountTransactionCount)
+	err = ReaderDb.GetContext(ctx, &totalCount, countSQL, accountID, MaxAccountTransactionCount)
 	if err != nil {
 		logger.Errorf("Error while counting el transactions by account id (combined): %v", err)
 		return nil, 0, false, err
+	}
+
+	if totalCount > MaxAccountTransactionCount {
+		totalCount = MaxAccountTransactionCount
 	}
 
 	moreAvailable := totalCount >= MaxAccountTransactionCount
