@@ -439,6 +439,50 @@ func (bc *BeaconClient) GetBlobSidecarsByBlockroot(ctx context.Context, blockroo
 	return result.Data, nil
 }
 
+func (bc *BeaconClient) GetExecutionProofsByBlockroot(ctx context.Context, blockroot []byte) (*ExecutionProofsResponse, error) {
+	// Make a direct HTTP request since this is a custom Lighthouse endpoint
+	// not part of the standard eth2 API
+	url := fmt.Sprintf("%s/eth/v1/beacon/execution_proofs/0x%x", bc.endpoint, blockroot)
+
+	req, err := nethttp.NewRequestWithContext(ctx, "GET", url, nethttp.NoBody)
+	if err != nil {
+		return nil, err
+	}
+
+	// Add custom headers
+	for headerKey, headerVal := range bc.headers {
+		req.Header.Set(headerKey, headerVal)
+	}
+	req.Header.Set("Accept", "application/json")
+
+	client := &nethttp.Client{Timeout: time.Second * 300}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != nethttp.StatusOK {
+		// If endpoint doesn't exist or block has no proofs, return empty response
+		if resp.StatusCode == nethttp.StatusNotFound {
+			return &ExecutionProofsResponse{
+				Data:                []ExecutionProof{},
+				ExecutionOptimistic: false,
+				Finalized:           false,
+			}, nil
+		}
+		data, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("url: %v, status: %d, error: %s", url, resp.StatusCode, data)
+	}
+
+	var response ExecutionProofsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+		return nil, fmt.Errorf("error parsing json response: %v", err)
+	}
+
+	return &response, nil
+}
+
 func (bc *BeaconClient) GetBlobsByBlockroot(ctx context.Context, blockroot []byte) ([]*deneb.Blob, error) {
 	provider, isProvider := bc.clientSvc.(eth2client.BlobsProvider)
 	if !isProvider {
