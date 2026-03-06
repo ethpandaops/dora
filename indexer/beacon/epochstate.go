@@ -175,12 +175,12 @@ func (s *epochState) processState(state *spec.VersionedBeaconState, beaconBlock 
 
 	dependentRoot := s.slotRoot
 	if state.Version >= spec.DataVersionFulu {
-		blockRoots, err := getStateBlockRoots(state)
+		parentRoot, err := getLatestBlockHeaderParentRoot(state)
 		if err != nil {
-			return fmt.Errorf("error getting block roots from state %v: %v", s.slotRoot.String(), err)
+			return fmt.Errorf("error getting latest block header parent root from state %v: %v", s.slotRoot.String(), err)
 		}
 
-		dependentRoot = blockRoots[(slot-1)%phase0.Slot(specs.SlotsPerHistoricalRoot)]
+		dependentRoot = parentRoot
 	}
 
 	validatorList, err := state.Validators()
