@@ -766,6 +766,27 @@ func getStateBlockRoots(v *spec.VersionedBeaconState) ([]phase0.Root, error) {
 	}
 }
 
+// getLatestBlockHeaderParentRoot returns the parent root from the latest block header in the state.
+// For Fulu+ states loaded from the first block of an epoch, this is the dependent root (last block of the previous epoch).
+func getLatestBlockHeaderParentRoot(v *spec.VersionedBeaconState) (phase0.Root, error) {
+	switch v.Version {
+	case spec.DataVersionFulu:
+		if v.Fulu == nil || v.Fulu.LatestBlockHeader == nil {
+			return phase0.Root{}, errors.New("no fulu state")
+		}
+
+		return v.Fulu.LatestBlockHeader.ParentRoot, nil
+	case spec.DataVersionGloas:
+		if v.Gloas == nil || v.Gloas.LatestBlockHeader == nil {
+			return phase0.Root{}, errors.New("no gloas state")
+		}
+
+		return v.Gloas.LatestBlockHeader.ParentRoot, nil
+	default:
+		return phase0.Root{}, errors.New("unknown version")
+	}
+}
+
 // getBlockSize returns the block size from a versioned beacon block.
 func getBlockSize(dynSsz *dynssz.DynSsz, block *spec.VersionedSignedBeaconBlock) (int, error) {
 	switch block.Version {

@@ -12,12 +12,12 @@ func InsertOrphanedBlock(ctx context.Context, tx *sqlx.Tx, block *dbtypes.Orphan
 		dbtypes.DBEnginePgsql: `
 			INSERT INTO orphaned_blocks (
 				root, header_ver, header_ssz, block_ver, block_ssz, block_uid, payload_ver, payload_ssz
-			) VALUES ($1, $2, $3, $4, $5, $6, $7)
+			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 			ON CONFLICT (root) DO NOTHING`,
 		dbtypes.DBEngineSqlite: `
 			INSERT OR IGNORE INTO orphaned_blocks (
 				root, header_ver, header_ssz, block_ver, block_ssz, block_uid, payload_ver, payload_ssz
-			) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
 	}),
 		block.Root, block.HeaderVer, block.HeaderSSZ, block.BlockVer, block.BlockSSZ, block.BlockUid, block.PayloadVer, block.PayloadSSZ)
 	if err != nil {
