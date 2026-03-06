@@ -9,9 +9,11 @@ import (
 
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
 	"github.com/attestantio/go-eth2-client/spec/electra"
+	"github.com/attestantio/go-eth2-client/spec/gloas"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/clients/consensus"
 	"github.com/ethpandaops/dora/db"
+	"github.com/ethpandaops/dora/dbtypes"
 	dynssz "github.com/pk910/dynamic-ssz"
 )
 
@@ -221,6 +223,14 @@ func (indexer *Indexer) GetOrphanedBlockByRoot(blockRoot phase0.Root) (*Block, e
 	block := newBlock(indexer.dynSsz, blockRoot, header.Message.Slot, orphanedBlock.BlockUid)
 	block.SetHeader(header)
 	block.SetBlock(blockBody)
+
+	if len(orphanedBlock.PayloadSSZ) > 0 {
+		payload, err := UnmarshalVersionedSignedExecutionPayloadEnvelopeSSZ(indexer.dynSsz, orphanedBlock.PayloadVer, orphanedBlock.PayloadSSZ)
+		if err != nil {
+			return nil, fmt.Errorf("could not restore orphaned block payload %v [%x] from db: %v", header.Message.Slot, orphanedBlock.Root, err)
+		}
+		block.SetExecutionPayload(payload)
+	}
 
 	return block, nil
 }
@@ -498,4 +508,77 @@ func (indexer *Indexer) GetFullValidatorByIndex(validatorIndex phase0.ValidatorI
 	}
 
 	return validatorData
+}
+
+// GetInclusionListsBySlot returns the cached inclusion lists for a given slot.
+func (indexer *Indexer) GetInclusionListsBySlot(slot phase0.Slot) []*v1.SignedInclusionList {
+	return indexer.inclusionListCache.getInclusionListsBySlot(slot)
+}
+
+// GetBlockBids returns the execution payload bids for a given parent block root.
+// It first checks the in-memory cache, then falls back to the database.
+func (indexer *Indexer) GetBlockBids(parentBlockRoot phase0.Root) []*dbtypes.BlockBid {
+	// First check the in-memory cache
+	bids := indexer.blockBidCache.GetBidsForBlockRoot(parentBlockRoot)
+	if len(bids) > 0 {
+		return bids
+	}
+
+	// Fall back to database
+	return db.GetBidsForBlockRoot(indexer.ctx, parentBlockRoot[:])
+}
+
+// StreamActiveBuilderDataForRoot streams the available builder set data for a given blockRoot.
+func (indexer *Indexer) StreamActiveBuilderDataForRoot(blockRoot phase0.Root, activeOnly bool, epoch *phase0.Epoch, cb BuilderSetStreamer) error {
+	return indexer.builderCache.streamBuilderSetForRoot(blockRoot, activeOnly, epoch, cb)
+}
+
+// GetBuilderSetSize returns the size of the builder set cache.
+func (indexer *Indexer) GetBuilderSetSize() uint64 {
+	return indexer.builderCache.getBuilderSetSize()
+}
+
+// GetBuilderByIndex returns the builder by index for the canonical head.
+func (indexer *Indexer) GetBuilderByIndex(index gloas.BuilderIndex, overrideForkId *ForkKey) *gloas.Builder {
+	return indexer.builderCache.getBuilderByIndex(index, overrideForkId)
+}
+
+// GetRecentBuilderBalances returns the most recent builder balances for the given fork.
+func (indexer *Indexer) GetRecentBuilderBalances(overrideForkId *ForkKey) []phase0.Gwei {
+	chainState := indexer.consensusPool.GetChainState()
+
+	canonicalHead := indexer.GetCanonicalHead(overrideForkId)
+	if canonicalHead == nil {
+		return nil
+	}
+
+	headEpoch := chainState.EpochOfSlot(canonicalHead.Slot)
+
+	var epochStats *EpochStats
+	for {
+		cEpoch := chainState.EpochOfSlot(canonicalHead.Slot)
+		if headEpoch-cEpoch > 2 {
+			return nil
+		}
+
+		dependentBlock := indexer.blockCache.getDependentBlock(chainState, canonicalHead, nil)
+		if dependentBlock == nil {
+			return nil
+		}
+		canonicalHead = dependentBlock
+
+		stats := indexer.epochCache.getEpochStats(cEpoch, dependentBlock.Root)
+		if cEpoch > 0 && (stats == nil || stats.dependentState == nil || stats.dependentState.loadingStatus != 2) {
+			continue // retry previous state
+		}
+
+		epochStats = stats
+		break
+	}
+
+	if epochStats == nil || epochStats.dependentState == nil {
+		return nil
+	}
+
+	return epochStats.dependentState.builderBalances
 }

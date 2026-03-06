@@ -11,15 +11,15 @@ func InsertOrphanedBlock(ctx context.Context, tx *sqlx.Tx, block *dbtypes.Orphan
 	_, err := tx.ExecContext(ctx, EngineQuery(map[dbtypes.DBEngineType]string{
 		dbtypes.DBEnginePgsql: `
 			INSERT INTO orphaned_blocks (
-				root, header_ver, header_ssz, block_ver, block_ssz, block_uid
-			) VALUES ($1, $2, $3, $4, $5, $6)
+				root, header_ver, header_ssz, block_ver, block_ssz, block_uid, payload_ver, payload_ssz
+			) VALUES ($1, $2, $3, $4, $5, $6, $7)
 			ON CONFLICT (root) DO NOTHING`,
 		dbtypes.DBEngineSqlite: `
 			INSERT OR IGNORE INTO orphaned_blocks (
-				root, header_ver, header_ssz, block_ver, block_ssz, block_uid
-			) VALUES ($1, $2, $3, $4, $5, $6)`,
+				root, header_ver, header_ssz, block_ver, block_ssz, block_uid, payload_ver, payload_ssz
+			) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
 	}),
-		block.Root, block.HeaderVer, block.HeaderSSZ, block.BlockVer, block.BlockSSZ, block.BlockUid)
+		block.Root, block.HeaderVer, block.HeaderSSZ, block.BlockVer, block.BlockSSZ, block.BlockUid, block.PayloadVer, block.PayloadSSZ)
 	if err != nil {
 		return err
 	}
@@ -29,7 +29,7 @@ func InsertOrphanedBlock(ctx context.Context, tx *sqlx.Tx, block *dbtypes.Orphan
 func GetOrphanedBlock(ctx context.Context, root []byte) *dbtypes.OrphanedBlock {
 	block := dbtypes.OrphanedBlock{}
 	err := ReaderDb.GetContext(ctx, &block, `
-	SELECT root, header_ver, header_ssz, block_ver, block_ssz, block_uid
+	SELECT root, header_ver, header_ssz, block_ver, block_ssz, block_uid, payload_ver, payload_ssz
 	FROM orphaned_blocks
 	WHERE root = $1
 	`, root)
