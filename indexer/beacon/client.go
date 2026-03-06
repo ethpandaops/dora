@@ -10,6 +10,7 @@ import (
 
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
 	"github.com/attestantio/go-eth2-client/spec"
+	"github.com/attestantio/go-eth2-client/spec/gloas"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethpandaops/dora/clients/consensus"
@@ -33,7 +34,9 @@ type Client struct {
 	archive        bool
 	skipValidators bool
 
-	streamSubscription *utils.Subscription[*rpc.BeaconStreamEvent]
+	streamSubscription              *utils.Subscription[*rpc.BeaconStreamEvent]
+	executionPayloadSubscription    *utils.Subscription[*v1.ExecutionPayloadAvailableEvent]
+	executionPayloadBidSubscription *utils.Subscription[*gloas.SignedExecutionPayloadBid]
 
 	headRoot phase0.Root
 }
@@ -80,6 +83,8 @@ func (c *Client) startIndexing() {
 
 	// single ordered subscription for block & head events to preserve SSE ordering
 	c.streamSubscription = c.client.SubscribeStreamEvent(100, true)
+	c.executionPayloadSubscription = c.client.SubscribeExecutionPayloadAvailableEvent(100, true)
+	c.executionPayloadBidSubscription = c.client.SubscribeExecutionPayloadBidEvent(100, true)
 
 	go c.startClientLoop()
 }
@@ -144,7 +149,7 @@ func (c *Client) runClientLoop() error {
 
 	c.headRoot = headRoot
 
-	headBlock, isNew, processingTimes, err := c.processBlock(headSlot, headRoot, nil, false)
+	headBlock, isNew, processingTimes, err := c.processBlock(headSlot, headRoot, nil, false, true)
 	if err != nil {
 		return fmt.Errorf("failed processing head block: %v", err)
 	}
@@ -184,6 +189,16 @@ func (c *Client) runClientLoop() error {
 					c.logger.Errorf("failed processing head %v (%v): %v",
 						headEvent.Slot, headEvent.Block.String(), err)
 				}
+			}
+		case executionPayloadEvent := <-c.executionPayloadSubscription.Channel():
+			err := c.processExecutionPayloadAvailableEvent(executionPayloadEvent)
+			if err != nil {
+				c.logger.Errorf("failed processing execution payload %v (%v): %v", executionPayloadEvent.Slot, executionPayloadEvent.BlockRoot.String(), err)
+			}
+		case executionPayloadBidEvent := <-c.executionPayloadBidSubscription.Channel():
+			err := c.processExecutionPayloadBidEvent(executionPayloadBidEvent)
+			if err != nil {
+				c.logger.Errorf("failed processing execution payload bid %v (%v): %v", executionPayloadBidEvent.Message.Slot, executionPayloadBidEvent.Message.ParentBlockRoot.String(), err)
 			}
 		}
 	}
@@ -245,50 +260,54 @@ func (c *Client) processHeadEvent(headEvent *v1.HeadEvent) error {
 
 	chainState := c.client.GetPool().GetChainState()
 	dependentRoot := headEvent.CurrentDutyDependentRoot
-
-	var dependentBlock *Block
 	if !bytes.Equal(dependentRoot[:], consensus.NullRoot[:]) {
 		block.dependentRoot = &dependentRoot
-
-		dependentBlock = c.indexer.blockCache.getBlockByRoot(dependentRoot)
-		if dependentBlock == nil {
-			c.logger.Warnf("dependent block (%v) not found after backfilling", dependentRoot.String())
-		}
-	} else {
-		dependentBlock = c.indexer.blockCache.getDependentBlock(chainState, block, c)
 	}
 
 	// walk back the chain of epoch stats to ensure we have all duties & epoch specific data for the clients chain
 	currentBlock := block
-	currentEpoch := chainState.EpochOfSlot(currentBlock.Slot)
+	headEpoch := chainState.EpochOfSlot(currentBlock.Slot)
+	currentEpoch := headEpoch
 	minInMemorySlot := c.indexer.getMinInMemorySlot()
 	absoluteMinInMemoryEpoch := c.indexer.getAbsoluteMinInMemoryEpoch()
 	for {
-		if dependentBlock != nil && currentBlock.Slot >= minInMemorySlot {
-			epoch := chainState.EpochOfSlot(currentBlock.Slot)
-
-			// only request state for epochs that are allowed in memory by configuration
-			// we accept some gaps here, these will be fixed by the pruning/finalization process
-			requestState := epoch >= absoluteMinInMemoryEpoch
-
-			// ensure epoch stats for the epoch
-			epochStats := c.indexer.epochCache.createOrGetEpochStats(epoch, dependentBlock.Root, requestState)
-			if !epochStats.addRequestedBy(c) {
-				break
-			}
-			if epochStats.dependentState == nil && epoch == currentEpoch {
-				// always load most recent dependent state to ensure we have the latest validator set
-				c.indexer.epochCache.addEpochStateRequest(epochStats)
-			}
-		} else {
-			if dependentBlock == nil {
-				c.logger.Debugf("epoch stats check failed: dependent block for %v:%v (%v) not found", currentBlock.Slot, chainState.EpochOfSlot(currentBlock.Slot), currentBlock.Root.String())
-			}
+		parentRoot := currentBlock.GetParentRoot()
+		if parentRoot == nil {
 			break
 		}
 
-		currentBlock = dependentBlock
-		dependentBlock = c.indexer.blockCache.getDependentBlock(chainState, currentBlock, c)
+		isEpochStart := false
+		parentBlock := c.indexer.blockCache.getBlockByRoot(*parentRoot)
+
+		if currentBlock.Slot == 0 {
+			isEpochStart = true
+		} else if currentBlock.dependentRoot != nil && *parentRoot == *currentBlock.dependentRoot && (parentBlock == nil || parentBlock.Slot > 0) {
+			isEpochStart = true
+		} else if parentBlock != nil && chainState.EpochOfSlot(parentBlock.Slot) < currentEpoch {
+			isEpochStart = true
+		}
+
+		if isEpochStart {
+			epoch := chainState.EpochOfSlot(currentBlock.Slot)
+			dependentRoot := *parentRoot
+
+			// ensure epoch stats for the epoch
+			epochStats := c.indexer.epochCache.createOrGetEpochStats(epoch, dependentRoot)
+
+			if epoch >= absoluteMinInMemoryEpoch {
+				c.indexer.epochCache.ensureEpochDependentState(epochStats, currentBlock.Root)
+			}
+			if !epochStats.addRequestedBy(c) {
+				break
+			}
+		}
+
+		if parentBlock == nil || parentBlock.Slot < minInMemorySlot {
+			break
+		}
+
+		currentBlock = parentBlock
+		currentEpoch = chainState.EpochOfSlot(currentBlock.Slot)
 	}
 
 	c.headRoot = block.Root
@@ -297,7 +316,7 @@ func (c *Client) processHeadEvent(headEvent *v1.HeadEvent) error {
 
 // processStreamBlock processes a block received from the stream (either via block or head events).
 func (c *Client) processStreamBlock(slot phase0.Slot, root phase0.Root) (*Block, error) {
-	block, isNew, processingTimes, err := c.processBlock(slot, root, nil, true)
+	block, isNew, processingTimes, err := c.processBlock(slot, root, nil, true, false)
 	if err != nil {
 		return nil, err
 	}
@@ -351,7 +370,7 @@ func (c *Client) processReorg(oldHead *Block, newHead *Block) error {
 }
 
 // processBlock processes a block (from stream & polling).
-func (c *Client) processBlock(slot phase0.Slot, root phase0.Root, header *phase0.SignedBeaconBlockHeader, trackRecvDelay bool) (block *Block, isNew bool, processingTimes []time.Duration, err error) {
+func (c *Client) processBlock(slot phase0.Slot, root phase0.Root, header *phase0.SignedBeaconBlockHeader, trackRecvDelay bool, loadPayload bool) (block *Block, isNew bool, processingTimes []time.Duration, err error) {
 	chainState := c.client.GetPool().GetChainState()
 	finalizedSlot := chainState.GetFinalizedSlot()
 	processingTimes = make([]time.Duration, 3)
@@ -407,6 +426,25 @@ func (c *Client) processBlock(slot phase0.Slot, root phase0.Root, header *phase0
 	})
 	if err != nil {
 		return
+	}
+
+	if loadPayload {
+		newPayload, _ := block.EnsureExecutionPayload(func() (*gloas.SignedExecutionPayloadEnvelope, error) {
+			t1 := time.Now()
+			defer func() {
+				processingTimes[0] += time.Since(t1)
+			}()
+
+			return LoadExecutionPayload(c.getContext(), c, root)
+		})
+
+		if !isNew && newPayload {
+			// write payload to db
+			err = c.persistExecutionPayload(block)
+			if err != nil {
+				return
+			}
+		}
 	}
 
 	if slot >= finalizedSlot && isNew {
@@ -532,7 +570,7 @@ func (c *Client) backfillParentBlocks(headBlock *Block) error {
 		if parentBlock == nil {
 			var err error
 
-			parentBlock, isNewBlock, processingTimes, err = c.processBlock(parentSlot, parentRoot, parentHead, false)
+			parentBlock, isNewBlock, processingTimes, err = c.processBlock(parentSlot, parentRoot, parentHead, false, true)
 			if err != nil {
 				return fmt.Errorf("could not process block [0x%x]: %v", parentRoot, err)
 			}
@@ -557,5 +595,89 @@ func (c *Client) backfillParentBlocks(headBlock *Block) error {
 			break
 		}
 	}
+	return nil
+}
+
+// processExecutionPayloadEvent processes an execution payload event from the event stream.
+func (c *Client) processExecutionPayloadAvailableEvent(executionPayloadEvent *v1.ExecutionPayloadAvailableEvent) error {
+	if c.client.GetStatus() != consensus.ClientStatusOnline && c.client.GetStatus() != consensus.ClientStatusOptimistic {
+		// client is not ready, skip
+		return nil
+	}
+
+	chainState := c.client.GetPool().GetChainState()
+	finalizedSlot := chainState.GetFinalizedSlot()
+
+	var block *Block
+
+	if executionPayloadEvent.Slot < finalizedSlot {
+		// block is in finalized epoch
+		// known block or a new orphaned block
+
+		// don't add to cache, process this block right after loading the details
+		block = newBlock(c.indexer.dynSsz, executionPayloadEvent.BlockRoot, executionPayloadEvent.Slot, 0)
+
+		dbBlockHead := db.GetBlockHeadByRoot(c.getContext(), executionPayloadEvent.BlockRoot[:])
+		if dbBlockHead != nil {
+			block.isInFinalizedDb = true
+			block.parentRoot = (*phase0.Root)(dbBlockHead.ParentRoot)
+		}
+
+	} else {
+		block, _ = c.indexer.blockCache.createOrGetBlock(executionPayloadEvent.BlockRoot, executionPayloadEvent.Slot)
+	}
+
+	if block == nil {
+		c.logger.Warnf("execution payload event for unknown block %v:%v [0x%x]", chainState.EpochOfSlot(executionPayloadEvent.Slot), executionPayloadEvent.Slot, executionPayloadEvent.BlockRoot)
+		return nil
+	}
+
+	newPayload, err := block.EnsureExecutionPayload(func() (*gloas.SignedExecutionPayloadEnvelope, error) {
+		return LoadExecutionPayload(c.getContext(), c, executionPayloadEvent.BlockRoot)
+	})
+	if err != nil {
+		return err
+	}
+
+	if newPayload {
+		// write payload to db
+		err = c.persistExecutionPayload(block)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (c *Client) persistExecutionPayload(block *Block) error {
+	payloadVer, payloadSSZ, err := MarshalVersionedSignedExecutionPayloadEnvelopeSSZ(block.dynSsz, block.executionPayload, c.indexer.blockCompression)
+	if err != nil {
+		return fmt.Errorf("marshal execution payload ssz failed: %v", err)
+	}
+
+	return db.RunDBTransaction(func(tx *sqlx.Tx) error {
+		err := db.UpdateUnfinalizedBlockPayload(c.getContext(), tx, block.Root[:], payloadVer, payloadSSZ)
+		if err != nil {
+			return err
+		}
+
+		return nil
+	})
+}
+
+func (c *Client) processExecutionPayloadBidEvent(executionPayloadBidEvent *gloas.SignedExecutionPayloadBid) error {
+	bid := &dbtypes.BlockBid{
+		ParentRoot:   executionPayloadBidEvent.Message.ParentBlockRoot[:],
+		ParentHash:   executionPayloadBidEvent.Message.ParentBlockHash[:],
+		BlockHash:    executionPayloadBidEvent.Message.BlockHash[:],
+		FeeRecipient: executionPayloadBidEvent.Message.FeeRecipient[:],
+		GasLimit:     uint64(executionPayloadBidEvent.Message.GasLimit),
+		BuilderIndex: int64(executionPayloadBidEvent.Message.BuilderIndex),
+		Slot:         uint64(executionPayloadBidEvent.Message.Slot),
+		Value:        uint64(executionPayloadBidEvent.Message.Value),
+		ElPayment:    uint64(executionPayloadBidEvent.Message.ExecutionPayment),
+	}
+	c.indexer.blockBidCache.AddBid(bid)
 	return nil
 }

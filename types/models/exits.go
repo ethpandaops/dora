@@ -29,6 +29,7 @@ type ExitsPageDataRecentExit struct {
 	Orphaned        bool      `json:"orphaned"`
 	ValidatorIndex  uint64    `json:"vindex"`
 	ValidatorName   string    `json:"vname"`
+	IsBuilder       bool      `json:"is_builder"`
 	PublicKey       []byte    `json:"pubkey"`
 	WithdrawalCreds []byte    `json:"wdcreds"`
 	ValidatorStatus string    `json:"vstatus"`

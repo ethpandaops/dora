@@ -265,6 +265,13 @@ func (cs *ChainService) StartService() error {
 			return fmt.Errorf("failed initializing s3 blockdb: %v", err)
 		}
 		cs.logger.Infof("S3 blockdb initialized at %v", utils.Config.BlockDb.S3.Bucket)
+	case "tiered":
+		err := blockdb.InitWithTiered(utils.Config.BlockDb.Tiered, cs.logger)
+		if err != nil {
+			return fmt.Errorf("failed initializing tiered blockdb: %v", err)
+		}
+		cs.logger.Infof("Tiered blockdb initialized (Pebble cache: %v, S3: %v)",
+			utils.Config.BlockDb.Tiered.Pebble.Path, utils.Config.BlockDb.Tiered.S3.Bucket)
 	default:
 		cs.logger.Infof("Blockdb disabled")
 	}

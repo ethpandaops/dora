@@ -1,0 +1,42 @@
+{{ define "block_bids" }}
+  <div class="table-ellipsis">
+    <table id="block_bids" class="table table-sm text-left">
+      <thead>
+        <tr>
+          <th class="border-0">Builder</th>
+          <th class="border-0">Block Hash</th>
+          <th class="border-0">Fee Recipient</th>
+          <th class="border-0">Gas Limit</th>
+          <th class="border-0">Value</th>
+          <th class="border-0">EL Payment</th>
+          <th class="border-0">Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{ range $i, $bid := .Block.Bids }}
+          <tr{{ if $bid.IsWinning }} style="border-left: 3px solid var(--bs-success);"{{ end }}>
+            <td>
+              {{ if $bid.IsSelfBuilt }}
+                <span class="validator-label validator-index"><i class="fas fa-male mr-2"></i> Self-built</span>
+              {{ else }}
+                {{ formatValidatorWithIndex $bid.BuilderIndex $bid.BuilderName }}
+              {{ end }}
+              {{ if $bid.IsWinning }}<span class="badge bg-success ms-1">Winner</span>{{ end }}
+            </td>
+            <td>
+              <div class="d-flex align-items-center">
+                <span class="text-monospace text-truncate">0x{{ printf "%x" $bid.BlockHash }}</span>
+                <i class="fa fa-copy text-muted p-1 flex-shrink-0" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $bid.BlockHash }}"></i>
+              </div>
+            </td>
+            <td>{{ ethAddressLink $bid.FeeRecipient }}</td>
+            <td>{{ formatAddCommas $bid.GasLimit }}</td>
+            <td>{{ formatEthFromGwei $bid.Value }}</td>
+            <td>{{ formatEthFromGwei $bid.ElPayment }}</td>
+            <td><strong>{{ formatEthFromGwei $bid.TotalValue }}</strong></td>
+          </tr>
+        {{ end }}
+      </tbody>
+    </table>
+  </div>
+{{ end }}

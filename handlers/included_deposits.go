@@ -195,15 +195,19 @@ func buildFilteredIncludedDepositsPageData(ctx context.Context, pageIdx uint64, 
 	chainState := services.GlobalBeaconService.GetChainState()
 
 	for _, deposit := range dbDeposits {
+		wdCreds := deposit.WithdrawalCredentials()
+		isBuilder := len(wdCreds) > 0 && wdCreds[0] == 0x03
+
 		depositData := &models.IncludedDepositsPageDataDeposit{
 			PublicKey:             deposit.PublicKey(),
-			Withdrawalcredentials: deposit.WithdrawalCredentials(),
+			Withdrawalcredentials: wdCreds,
 			Amount:                deposit.Amount(),
 			Time:                  chainState.SlotToTime(phase0.Slot(deposit.Request.SlotNumber)),
 			SlotNumber:            deposit.Request.SlotNumber,
 			SlotRoot:              deposit.Request.SlotRoot,
 			Orphaned:              deposit.RequestOrphaned,
 			DepositorAddress:      deposit.SourceAddress(),
+			IsBuilder:             isBuilder,
 		}
 
 		if deposit.Request != nil {
