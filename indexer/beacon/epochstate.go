@@ -15,8 +15,9 @@ import (
 
 // epochState represents a beacon state which a epoch status depends on.
 type epochState struct {
-	slotRoot  phase0.Root
-	stateRoot phase0.Root
+	slotRoot      phase0.Root
+	stateRoot     phase0.Root
+	dependentRoot phase0.Root
 
 	loadingCancel  context.CancelFunc
 	loadingStatus  uint8
@@ -173,14 +174,9 @@ func (s *epochState) processState(state *spec.VersionedBeaconState, beaconBlock 
 
 	s.stateSlot = slot
 
-	dependentRoot := s.slotRoot
-	if state.Version >= spec.DataVersionFulu {
-		blockRoots, err := getStateBlockRoots(state)
-		if err != nil {
-			return fmt.Errorf("error getting block roots from state %v: %v", s.slotRoot.String(), err)
-		}
-
-		dependentRoot = blockRoots[slot%phase0.Slot(specs.SlotsPerHistoricalRoot)]
+	dependentRoot := s.dependentRoot
+	if dependentRoot == (phase0.Root{}) {
+		dependentRoot = s.slotRoot
 	}
 
 	validatorList, err := state.Validators()

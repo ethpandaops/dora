@@ -98,6 +98,7 @@ func (cache *epochCache) ensureEpochDependentState(epochStats *EpochStats, first
 		}
 
 		epochState = newEpochState(stateRoot)
+		epochState.dependentRoot = epochStats.dependentRoot
 		cache.stateMap[epochStats.dependentRoot] = epochState
 
 		cache.indexer.logger.Infof("added epoch state request for epoch %v (%v) to queue", epochStats.epoch, epochStats.dependentRoot.String())
