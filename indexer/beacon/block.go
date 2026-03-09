@@ -512,7 +512,7 @@ func (block *Block) buildUnfinalizedBlock(ctx context.Context, compress bool) (*
 		return nil, fmt.Errorf("marshal exec times ssz failed: %v", err)
 	}
 
-	return &dbtypes.UnfinalizedBlock{
+	unfinalizedBlock := &dbtypes.UnfinalizedBlock{
 		Root:        block.Root[:],
 		Slot:        uint64(block.Slot),
 		HeaderVer:   1,
@@ -526,7 +526,18 @@ func (block *Block) buildUnfinalizedBlock(ctx context.Context, compress bool) (*
 		MaxExecTime: uint32(block.maxExecutionTime),
 		ExecTimes:   execTimesSSZ,
 		BlockUid:    block.BlockUID,
-	}, nil
+	}
+
+	if block.executionPayload != nil {
+		payloadVer, payloadSSZ, err := MarshalVersionedSignedExecutionPayloadEnvelopeSSZ(block.dynSsz, block.executionPayload, compress)
+		if err != nil {
+			return nil, fmt.Errorf("marshal execution payload ssz failed: %v", err)
+		}
+		unfinalizedBlock.PayloadVer = payloadVer
+		unfinalizedBlock.PayloadSSZ = payloadSSZ
+	}
+
+	return unfinalizedBlock, nil
 }
 
 // buildOrphanedBlock builds an orphaned block from the block data.
