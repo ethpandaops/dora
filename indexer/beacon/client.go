@@ -285,6 +285,11 @@ func (c *Client) processHeadEvent(headEvent *v1.HeadEvent) error {
 			isEpochStart = true
 		} else if parentBlock != nil && chainState.EpochOfSlot(parentBlock.Slot) < currentEpoch {
 			isEpochStart = true
+		} else if parentBlock == nil && chainState.EpochOfSlot(currentBlock.Slot) == currentEpoch {
+			// parent block is not in cache, but we're still in currentEpoch.
+			// this block is the oldest block in cache for this epoch, so treat its
+			// parent root as the dependent root for epoch boundary detection.
+			isEpochStart = true
 		}
 
 		if isEpochStart {

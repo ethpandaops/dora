@@ -602,11 +602,9 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 
 	t1 = time.Now()
 
-	// update validator cache
-	if len(canonicalBlocks) > 0 {
-		indexer.validatorCache.setFinalizedEpoch(epoch, canonicalBlocks[len(canonicalBlocks)-1].Root)
-		indexer.builderCache.setFinalizedEpoch(epoch, canonicalBlocks[len(canonicalBlocks)-1].Root)
-	}
+	// update validator & builder cache with the epoch's dependent root (last block of parent epoch)
+	indexer.validatorCache.setFinalizedEpoch(epoch, dependentRoot)
+	indexer.builderCache.setFinalizedEpoch(epoch, dependentRoot)
 
 	// clean fork cache
 	indexer.forkCache.setFinalizedEpoch(deleteBeforeSlot, justifiedRoot)
