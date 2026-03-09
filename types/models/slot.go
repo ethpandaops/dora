@@ -147,6 +147,8 @@ type SlotPageAttestation struct {
 	Validators         []uint64 `json:"validators"`
 	IncludedValidators []uint64 `json:"included_validators"`
 
+	PayloadStatus *uint64 `json:"payload_status,omitempty"`
+
 	Signature []byte `json:"signature"`
 
 	BeaconBlockRoot []byte `json:"beaconblockroot"`

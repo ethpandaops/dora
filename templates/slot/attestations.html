@@ -12,8 +12,24 @@
         <div class="col-md-2">
           <span data-bs-toggle="tooltip" data-bs-placement="top" title="Slot number to which the validator is attesting">Slot:</span>
         </div>
-        <div class="col-md-10">
+        <div class="col-md-4">
           <a data-bind="attr: {href: '/slot/' + slot}, text: slot"></a>
+        </div>
+        <div class="col-md-2">
+          {{ html "<!-- ko if: payload_status !== null -->" }}
+          <span data-bs-toggle="tooltip" data-bs-placement="top" title="Indicates whether the attesting validators have received the execution payload for this block (Gloas+)">Payload Status:</span>
+          {{ html "<!-- /ko -->" }}
+        </div>
+        <div class="col-md-4">
+          {{ html "<!-- ko if: payload_status === 1 -->" }}
+          <span class="badge bg-success" data-bs-toggle="tooltip" data-bs-placement="top" title="The attesting validators have received the execution payload">FULL</span>
+          {{ html "<!-- /ko -->" }}
+          {{ html "<!-- ko if: payload_status === 0 -->" }}
+          <span class="badge bg-warning" data-bs-toggle="tooltip" data-bs-placement="top" title="The attesting validators have not received the execution payload">EMPTY</span>
+          {{ html "<!-- /ko -->" }}
+          {{ html "<!-- ko if: payload_status !== null && payload_status !== 0 && payload_status !== 1 -->" }}
+          <span class="badge bg-secondary" data-bs-toggle="tooltip" data-bs-placement="top" title="Unknown payload status">UNKNOWN</span>
+          {{ html "<!-- /ko -->" }}
         </div>
       </div>
       <div class="row border-bottom p-1 mx-0">
@@ -177,6 +193,7 @@
     self.signature = base64ToBytes(data.signature);
     self.validators = data.validators;
     self.included_validators = data.included_validators;
+    self.payload_status = data.payload_status !== undefined ? data.payload_status : null;
 
     self.showDetails = ko.observable(false);
 

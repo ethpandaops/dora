@@ -526,6 +526,11 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 		includedValidators := []uint64{}
 		attEpochStatsValues := assignmentsMap[attEpoch]
 
+		if attVersioned.Version >= spec.DataVersionGloas {
+			payloadStatus := uint64(attData.Index)
+			attPageData.PayloadStatus = &payloadStatus
+		}
+
 		if attVersioned.Version >= spec.DataVersionElectra {
 			// EIP-7549 attestation
 			attAssignments = []uint64{}
