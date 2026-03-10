@@ -73,7 +73,7 @@ func main() {
 	}
 
 	if cfg.Frontend.Enabled {
-		err = services.StartFrontendCache()
+		err = services.StartFrontendCache(logger.WithField("module", "frontendcache"))
 		if err != nil {
 			logger.Fatalf("error starting frontend cache service: %v", err)
 		}

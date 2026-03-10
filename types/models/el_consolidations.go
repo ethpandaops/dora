@@ -36,7 +36,7 @@ type ElConsolidationsPageData struct {
 	NextPageLink  string `json:"next_page_link"`
 	LastPageLink  string `json:"last_page_link"`
 
-	UrlParams map[string]string `json:"url_params"`
+	UrlParams []UrlParam `json:"url_params"`
 }
 
 type ElConsolidationsPageDataConsolidation struct {
@@ -60,7 +60,7 @@ type ElConsolidationsPageDataConsolidation struct {
 	LinkedTransaction    bool      `json:"linked_tx"`
 	TransactionHash      []byte    `json:"tx_hash"`
 
-	TransactionDetails *ElConsolidationsPageDataConsolidationTxDetails `json:"tx_details"`
+	TransactionDetails *ElConsolidationsPageDataConsolidationTxDetails `json:"tx_details" ssz-type:"optional"`
 }
 
 type ElConsolidationsPageDataConsolidationTxDetails struct {

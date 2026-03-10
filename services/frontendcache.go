@@ -65,13 +65,13 @@ func (e FrontendCachePageError) Stack() string {
 var ErrTooManyPageRequests = fmt.Errorf("too many concurrent page requests")
 
 // StartFrontendCache is used to start the global frontend cache service
-func StartFrontendCache() error {
+func StartFrontendCache(logger logrus.FieldLogger) error {
 	if GlobalFrontendCache != nil {
 		return nil
 	}
 
 	cachePrefix := fmt.Sprintf("%sgui-", utils.Config.BeaconApi.RedisCachePrefix)
-	tieredCache, err := cache.NewTieredCache(utils.Config.BeaconApi.LocalCacheSize, utils.Config.BeaconApi.RedisCacheAddr, cachePrefix)
+	tieredCache, err := cache.NewTieredCache(utils.Config.BeaconApi.LocalCacheSize, utils.Config.BeaconApi.RedisCacheAddr, cachePrefix, logger)
 	if err != nil {
 		return err
 	}

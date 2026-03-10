@@ -10,7 +10,7 @@ type ForksPageData struct {
 
 type ForksPageDataFork struct {
 	HeadSlot    uint64                 `json:"head_slot"`
-	HeadRoot    []byte                 `json:"head_root"`
+	HeadRoot    []byte                 `json:"head_root" ssz-size:"32"`
 	Clients     []*ForksPageDataClient `json:"clients"`
 	ClientCount uint64                 `json:"client_count"`
 }
