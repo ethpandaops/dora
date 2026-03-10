@@ -436,12 +436,7 @@ func buildFilteredSlotsPageData(ctx context.Context, pageIdx uint64, pageSize ui
 		}
 	}
 
-	withScheduledCount := chainState.GetSpecs().SlotsPerEpoch - uint64(chainState.SlotToSlotIndex(currentSlot)) - 1
-	if withScheduledCount > 16 {
-		withScheduledCount = 16
-	}
-
-	dbBlocks := services.GlobalBeaconService.GetDbBlocksByFilter(ctx, blockFilter, pageIdx, uint32(pageSize), withScheduledCount)
+	dbBlocks := services.GlobalBeaconService.GetDbBlocksByFilter(ctx, blockFilter, pageIdx, uint32(pageSize), 16)
 	mevBlocksMap := make(map[string]*dbtypes.MevBlock)
 
 	if pageData.DisplayMevBlock {

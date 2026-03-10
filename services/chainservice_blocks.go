@@ -431,7 +431,10 @@ func (bs *ChainService) GetDbBlocksForSlots(ctx context.Context, firstSlot uint6
 	proposerAssignmentsEpoch := phase0.Epoch(math.MaxInt64)
 	getCanonicalProposer := func(slot phase0.Slot) phase0.ValidatorIndex {
 		epoch := chainState.EpochOfSlot(slot)
-		if epoch != proposerAssignmentsEpoch {
+		if proposerAssignmentsEpoch != phase0.Epoch(math.MaxInt64) && epoch == proposerAssignmentsEpoch+1 && chainState.IsFuluEnabled(epoch) {
+			// extended proposer lookahead in fulu, use the same proposer assignments as the previous epoch
+		} else if epoch != proposerAssignmentsEpoch {
+			assignmentsEpoch := epoch
 			if epochStats := bs.beaconIndexer.GetEpochStats(epoch, nil); epochStats != nil {
 				if epochStatsValues := epochStats.GetValues(true); epochStatsValues != nil {
 					proposerAssignments = map[phase0.Slot]phase0.ValidatorIndex{}
@@ -440,8 +443,20 @@ func (bs *ChainService) GetDbBlocksForSlots(ctx context.Context, firstSlot uint6
 						proposerAssignments[slot] = proposer
 					}
 				}
+			} else if epoch > 0 && chainState.IsFuluEnabled(epoch-1) {
+				if epochStats := bs.beaconIndexer.GetEpochStats(epoch-1, nil); epochStats != nil {
+					if epochStatsValues := epochStats.GetValues(true); epochStatsValues != nil {
+						assignmentsEpoch = epoch - 1
+						proposerAssignments = map[phase0.Slot]phase0.ValidatorIndex{}
+						for slotIdx, proposer := range epochStatsValues.ProposerDuties {
+							slot := chainState.EpochToSlot(assignmentsEpoch) + phase0.Slot(slotIdx)
+							proposerAssignments[slot] = proposer
+						}
+					}
+				}
+
 			}
-			proposerAssignmentsEpoch = epoch
+			proposerAssignmentsEpoch = assignmentsEpoch
 		}
 
 		proposer, ok := proposerAssignments[slot]
@@ -712,6 +727,10 @@ func (bs *ChainService) GetDbBlocksByFilter(ctx context.Context, filter *dbtypes
 	if filter.MaxEpoch != nil && filter.MaxSlot == nil {
 		maxSlot := uint64(chainState.EpochToSlot(phase0.Epoch(*filter.MaxEpoch+1))) - 1
 		filter.MaxSlot = &maxSlot
+	}
+
+	if filter.WithPayloadMask == 0 {
+		filter.WithPayloadMask = dbtypes.PayloadStatusMaskAll
 	}
 
 	// get blocks from cache
