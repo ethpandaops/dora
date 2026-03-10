@@ -331,29 +331,38 @@ func (indexer *Indexer) finalizeEpoch(epoch phase0.Epoch, justifiedRoot phase0.R
 	// Determine payload status for canonical blocks (ePBS only)
 	// A payload is orphaned if the next canonical block doesn't build on it
 	allCanonicalBlocks := append(canonicalBlocks, nextEpochCanonicalBlocks...)
-	for i, block := range canonicalBlocks {
-		if !chainState.IsEip7732Enabled(chainState.EpochOfSlot(block.Slot)) {
-			continue
-		}
+	if chainState.IsEip7732Enabled(epoch) {
+		for i, block := range canonicalBlocks {
+			blockIndex := block.GetBlockIndex(indexer.ctx)
+			if blockIndex == nil || blockIndex.ExecutionNumber == 0 {
+				fmt.Printf("payload status for slot %v: no execution payload\n", block.Slot)
+				continue // no execution payload
+			}
 
-		blockIndex := block.GetBlockIndex(indexer.ctx)
-		if blockIndex == nil || blockIndex.ExecutionNumber == 0 {
-			continue // no execution payload
-		}
+			// Find the next canonical block
+			if i+1 >= len(allCanonicalBlocks) {
+				fmt.Printf("payload status for slot %v: no next canonical block\n", block.Slot)
+				continue
+			}
 
-		// Find the next canonical block
-		var nextBlock *Block
-		if i+1 < len(allCanonicalBlocks) {
-			nextBlock = allCanonicalBlocks[i+1]
-		}
+			nextBlock := allCanonicalBlocks[i+1]
+			if nextBlock == nil {
+				fmt.Printf("payload status for slot %v: no next canonical block\n", block.Slot)
+				continue
+			}
 
-		if nextBlock != nil {
 			nextBlockIndex := nextBlock.GetBlockIndex(indexer.ctx)
-			if nextBlockIndex != nil {
-				// Check if next block builds on this block's payload
-				if !bytes.Equal(nextBlockIndex.ExecutionParentHash[:], blockIndex.ExecutionHash[:]) {
-					block.isPayloadOrphaned = true
-				}
+			if nextBlockIndex == nil {
+				fmt.Printf("payload status for slot %v: no next canonical block index\n", block.Slot)
+				continue
+			}
+
+			// Check if next block builds on this block's payload
+			if !bytes.Equal(nextBlockIndex.ExecutionParentHash[:], blockIndex.ExecutionHash[:]) {
+				fmt.Printf("payload status for slot %v: orphaned\n", block.Slot)
+				block.isPayloadOrphaned = true
+			} else {
+				fmt.Printf("payload status for slot %v: canonical\n", block.Slot)
 			}
 		}
 	}

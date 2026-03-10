@@ -243,6 +243,11 @@ func (block *Block) AwaitExecutionPayload(ctx context.Context, timeout time.Dura
 	return block.executionPayload
 }
 
+// HasExecutionPayload returns true if this block has an execution payload.
+func (block *Block) HasExecutionPayload() bool {
+	return block.hasExecutionPayload
+}
+
 // GetParentRoot returns the parent root of this block.
 func (block *Block) GetParentRoot() *phase0.Root {
 	if block.isDisposed {
