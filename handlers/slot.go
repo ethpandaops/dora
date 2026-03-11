@@ -902,6 +902,36 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 		}
 	}
 
+	if specs.DenebForkEpoch != nil && uint64(epoch) >= *specs.DenebForkEpoch {
+		pageData.BlobsCount = uint64(len(blobKzgCommitments))
+		pageData.Blobs = make([]*models.SlotPageBlob, pageData.BlobsCount)
+		for i := range blobKzgCommitments {
+			blobData := &models.SlotPageBlob{
+				Index:         uint64(i),
+				KzgCommitment: blobKzgCommitments[i][:],
+			}
+			pageData.Blobs[i] = blobData
+		}
+	}
+
+	if specs.ElectraForkEpoch != nil && uint64(epoch) >= *specs.ElectraForkEpoch {
+		var requests *electra.ExecutionRequests
+		if blockData.Block.Version >= spec.DataVersionGloas {
+			if blockData.Payload != nil {
+				requests = blockData.Payload.Message.ExecutionRequests
+				executionWithdrawals = blockData.Payload.Message.Payload.Withdrawals
+			}
+		} else {
+			requests, _ = blockData.Block.ExecutionRequests()
+		}
+
+		if requests != nil {
+			getSlotPageDepositRequests(pageData, requests.Deposits)
+			getSlotPageWithdrawalRequests(pageData, requests.Withdrawals)
+			getSlotPageConsolidationRequests(pageData, requests.Consolidations)
+		}
+	}
+
 	if specs.CapellaForkEpoch != nil && uint64(epoch) >= *specs.CapellaForkEpoch {
 		pageData.BLSChangesCount = uint64(len(blsToExecChanges))
 		pageData.BLSChanges = make([]*models.SlotPageBLSChange, pageData.BLSChangesCount)
@@ -925,35 +955,6 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 				Address:        withdrawal.Address[:],
 				Amount:         uint64(withdrawal.Amount),
 			}
-		}
-	}
-
-	if specs.DenebForkEpoch != nil && uint64(epoch) >= *specs.DenebForkEpoch {
-		pageData.BlobsCount = uint64(len(blobKzgCommitments))
-		pageData.Blobs = make([]*models.SlotPageBlob, pageData.BlobsCount)
-		for i := range blobKzgCommitments {
-			blobData := &models.SlotPageBlob{
-				Index:         uint64(i),
-				KzgCommitment: blobKzgCommitments[i][:],
-			}
-			pageData.Blobs[i] = blobData
-		}
-	}
-
-	if specs.ElectraForkEpoch != nil && uint64(epoch) >= *specs.ElectraForkEpoch {
-		var requests *electra.ExecutionRequests
-		if blockData.Block.Version >= spec.DataVersionGloas {
-			if blockData.Payload != nil {
-				requests = blockData.Payload.Message.ExecutionRequests
-			}
-		} else {
-			requests, _ = blockData.Block.ExecutionRequests()
-		}
-
-		if requests != nil {
-			getSlotPageDepositRequests(pageData, requests.Deposits)
-			getSlotPageWithdrawalRequests(pageData, requests.Withdrawals)
-			getSlotPageConsolidationRequests(pageData, requests.Consolidations)
 		}
 	}
 
