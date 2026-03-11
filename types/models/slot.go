@@ -273,6 +273,7 @@ type SlotPageTransaction struct {
 type SlotPageDepositRequest struct {
 	PublicKey       []byte `db:"pubkey"`
 	Exists          bool   `db:"exists"`
+	IsBuilder       bool   `db:"is_builder"`
 	ValidatorIndex  uint64 `db:"valindex"`
 	ValidatorName   string `db:"valname"`
 	WithdrawalCreds []byte `db:"withdrawal_creds"`
