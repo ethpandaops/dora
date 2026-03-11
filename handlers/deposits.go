@@ -182,7 +182,9 @@ func buildDepositsPageData(ctx context.Context, firstEpoch uint64, pageSize uint
 				depositTxData.ValidatorName = services.GlobalBeaconService.GetValidatorName(uint64(validatorIndex))
 
 				validator := services.GlobalBeaconService.GetValidatorByIndex(validatorIndex, false)
-				if strings.HasPrefix(validator.Status.String(), "pending") {
+				if validator == nil {
+					depositTxData.ValidatorStatus = "Deposited"
+				} else if strings.HasPrefix(validator.Status.String(), "pending") {
 					depositTxData.ValidatorStatus = "Pending"
 				} else if validator.Status == v1.ValidatorStateActiveOngoing {
 					depositTxData.ShowUpcheck = true
@@ -271,7 +273,9 @@ func buildDepositsPageData(ctx context.Context, firstEpoch uint64, pageSize uint
 				depositData.ValidatorName = services.GlobalBeaconService.GetValidatorName(uint64(validatorIndex))
 
 				validator := services.GlobalBeaconService.GetValidatorByIndex(validatorIndex, false)
-				if strings.HasPrefix(validator.Status.String(), "pending") {
+				if validator == nil {
+					depositData.ValidatorStatus = "Deposited"
+				} else if strings.HasPrefix(validator.Status.String(), "pending") {
 					depositData.ValidatorStatus = "Pending"
 				} else if validator.Status == v1.ValidatorStateActiveOngoing {
 					depositData.ValidatorStatus = "Active"
@@ -344,7 +348,9 @@ func buildDepositsPageData(ctx context.Context, firstEpoch uint64, pageSize uint
 					depositData.ValidatorName = services.GlobalBeaconService.GetValidatorName(uint64(validatorIdx))
 
 					validator := services.GlobalBeaconService.GetValidatorByIndex(validatorIdx, false)
-					if strings.HasPrefix(validator.Status.String(), "pending") {
+					if validator == nil {
+						depositData.ValidatorStatus = "Deposited"
+					} else if strings.HasPrefix(validator.Status.String(), "pending") {
 						depositData.ValidatorStatus = "Pending"
 					} else if validator.Status == v1.ValidatorStateActiveOngoing {
 						depositData.ValidatorStatus = "Active"
