@@ -334,11 +334,11 @@ func (t *TxIndexer) enqueueBeaconBlock(block *beacon.Block, highPriority bool) {
 		IsRecent:  highPriority,
 	}
 
-	// For high priority blocks (from subscription), delay processing by SecondsPerSlot + 2 seconds
+	// For high priority blocks (from subscription), delay processing by one slot + 2 seconds
 	// to allow for potential reorgs to settle.
 	if highPriority {
 		specs := t.indexerCtx.ChainState.GetSpecs()
-		delay := time.Duration(specs.SecondsPerSlot+2) * time.Second
+		delay := time.Duration(specs.SlotDurationMs)*time.Millisecond + 2*time.Second
 		ref.ProcessTime = time.Now().Add(delay)
 	}
 
