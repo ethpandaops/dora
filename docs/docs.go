@@ -2316,10 +2316,10 @@ const docTemplate = `{
                 "current_slot": {
                     "type": "integer"
                 },
-                "seconds_per_epoch": {
+                "epoch_duration_ms": {
                     "type": "integer"
                 },
-                "seconds_per_slot": {
+                "slot_duration_ms": {
                     "type": "integer"
                 },
                 "slots_per_epoch": {

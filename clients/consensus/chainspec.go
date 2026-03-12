@@ -55,6 +55,7 @@ type ChainSpecConfig struct {
 	FuluForkEpoch        *uint64        `yaml:"FULU_FORK_EPOCH"        check-if-fork:"FuluForkEpoch"`
 
 	// Time parameters
+	SlotDurationMs                  uint64 `yaml:"SLOT_DURATION_MS"`
 	SecondsPerSlot                  uint64 `yaml:"SECONDS_PER_SLOT"`
 	SecondsPerEth1Block             uint64 `yaml:"SECONDS_PER_ETH1_BLOCK"`
 	MinValidatorWithdrawbilityDelay uint64 `yaml:"MIN_VALIDATOR_WITHDRAWABILITY_DELAY"`
@@ -250,6 +251,10 @@ func (chain *ChainSpec) ParseAdditive(values map[string]interface{}) error {
 	err = yaml.Unmarshal(valuesYaml, &chain.ChainSpecDomainTypes)
 	if err != nil {
 		return err
+	}
+
+	if chain.SlotDurationMs == 0 && chain.SecondsPerSlot > 0 {
+		chain.SlotDurationMs = chain.SecondsPerSlot * 1000
 	}
 
 	return nil
