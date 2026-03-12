@@ -194,7 +194,11 @@
                       <div class="d-flex">
                         <span class="flex-grow-1 text-truncate" style="max-width: 150px;">
                           {{ if $deposit.ValidatorExists }}
-                            {{ formatValidatorWithIndex $deposit.ValidatorIndex $deposit.ValidatorName }}
+                            {{ if $deposit.IsBuilder }}
+                              {{ formatBuilderWithIndex $deposit.ValidatorIndex $deposit.ValidatorName }}
+                            {{ else }}
+                              {{ formatValidatorWithIndex $deposit.ValidatorIndex $deposit.ValidatorName }}
+                            {{ end }}
                           {{ else }}
                             0x{{ printf "%x" $deposit.PublicKey }}
                           {{ end }}

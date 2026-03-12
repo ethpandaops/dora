@@ -61,6 +61,10 @@ func (indexer *Indexer) IsCanonicalBlockByHead(block *Block, headBlock *Block) b
 		return false
 	}
 
+	if block == headBlock {
+		return true
+	}
+
 	if block.forkChecked && headBlock.forkChecked {
 		parentForkIds := indexer.forkCache.getParentForkIds(headBlock.forkId)
 		return slices.Contains(parentForkIds, block.forkId)

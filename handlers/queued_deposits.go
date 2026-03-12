@@ -207,12 +207,16 @@ func buildQueuedDepositsPageData(ctx context.Context, pageIdx uint64, pageSize u
 	for i := start; i < end; i++ {
 		queueEntry := filteredQueue[i]
 
+		wdCreds := queueEntry.PendingDeposit.WithdrawalCredentials[:]
+		isBuilder := len(wdCreds) > 0 && wdCreds[0] == 0x03
+
 		depositData := &models.QueuedDepositsPageDataDeposit{
 			QueuePosition:         queueEntry.QueuePos,
 			EstimatedTime:         chainState.EpochToTime(queueEntry.EpochEstimate),
 			PublicKey:             queueEntry.PendingDeposit.Pubkey[:],
 			Amount:                uint64(queueEntry.PendingDeposit.Amount),
-			Withdrawalcredentials: queueEntry.PendingDeposit.WithdrawalCredentials[:],
+			Withdrawalcredentials: wdCreds,
+			IsBuilder:             isBuilder,
 		}
 
 		// Get validator status if exists

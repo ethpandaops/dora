@@ -43,6 +43,16 @@ type UnfinalizedBlockFilter struct {
 	WithBody bool
 }
 
+type PayloadStatusMask uint8
+
+const (
+	PayloadStatusMaskMissing   PayloadStatusMask = 0x01
+	PayloadStatusMaskCanonical PayloadStatusMask = 0x02
+	PayloadStatusMaskOrphaned  PayloadStatusMask = 0x04
+
+	PayloadStatusMaskAll PayloadStatusMask = 0x07
+)
+
 type BlockFilter struct {
 	Graffiti             string
 	InvertGraffiti       bool
@@ -53,6 +63,7 @@ type BlockFilter struct {
 	InvertProposer       bool
 	WithOrphaned         uint8
 	WithMissing          uint8
+	WithPayloadMask      PayloadStatusMask
 	MinSyncParticipation *float32
 	MaxSyncParticipation *float32
 	MinExecTime          *uint32
@@ -67,6 +78,8 @@ type BlockFilter struct {
 	ForkIds              []uint64 // Filter by fork IDs
 	EthBlockNumber       *uint64  // Filter by EL block number
 	EthBlockHash         []byte   // Filter by EL block hash
+	EthBlockParentHash   []byte   // Filter by EL block parent hash
+	BuilderIndex         *int64   // Filter by builder index (-1 for self-built blocks)
 	MinGasUsed           *uint64  // Filter by minimum gas used
 	MaxGasUsed           *uint64  // Filter by maximum gas used
 	MinGasLimit          *uint64  // Filter by minimum gas limit
@@ -218,6 +231,43 @@ type ValidatorFilter struct {
 	Status            []v1.ValidatorState
 
 	OrderBy ValidatorOrder
+	Limit   uint64
+	Offset  uint64
+}
+
+// Builder filter types
+
+type BuilderOrder uint8
+
+const (
+	BuilderOrderIndexAsc BuilderOrder = iota
+	BuilderOrderIndexDesc
+	BuilderOrderPubKeyAsc
+	BuilderOrderPubKeyDesc
+	BuilderOrderBalanceAsc
+	BuilderOrderBalanceDesc
+	BuilderOrderDepositEpochAsc
+	BuilderOrderDepositEpochDesc
+	BuilderOrderWithdrawableEpochAsc
+	BuilderOrderWithdrawableEpochDesc
+)
+
+type BuilderStatus uint8
+
+const (
+	BuilderStatusActiveFilter BuilderStatus = iota
+	BuilderStatusExitedFilter
+	BuilderStatusSupersededFilter
+)
+
+type BuilderFilter struct {
+	MinIndex         *uint64
+	MaxIndex         *uint64
+	PubKey           []byte
+	ExecutionAddress []byte
+	Status           []BuilderStatus
+
+	OrderBy BuilderOrder
 	Limit   uint64
 	Offset  uint64
 }

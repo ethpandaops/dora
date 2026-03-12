@@ -158,9 +158,6 @@ func buildSlotsPageData(ctx context.Context, firstSlot uint64, pageSize uint64, 
 	currentSlot := chainState.CurrentSlot()
 	currentEpoch := chainState.EpochOfSlot(currentSlot)
 	maxSlot := currentSlot + 8
-	if maxSlot >= chainState.EpochToSlot(currentEpoch+1) {
-		maxSlot = chainState.EpochToSlot(currentEpoch+1) - 1
-	}
 	if firstSlot > uint64(maxSlot) {
 		pageData.IsDefaultPage = true
 		firstSlot = uint64(maxSlot)
@@ -254,12 +251,19 @@ func buildSlotsPageData(ctx context.Context, firstSlot uint64, pageSize uint64, 
 			dbSlot := dbSlots[dbIdx]
 			dbIdx++
 
+			epoch := chainState.EpochOfSlot(phase0.Slot(slot))
+			payloadStatus := dbSlot.PayloadStatus
+			if !chainState.IsEip7732Enabled(phase0.Epoch(epoch)) {
+				payloadStatus = dbtypes.PayloadStatusCanonical
+			}
+
 			slotData := &models.SlotsPageDataSlot{
 				Slot:                  slot,
-				Epoch:                 uint64(chainState.EpochOfSlot(phase0.Slot(slot))),
+				Epoch:                 uint64(epoch),
 				Ts:                    chainState.SlotToTime(phase0.Slot(slot)),
 				Finalized:             finalized,
 				Status:                uint8(dbSlot.Status),
+				PayloadStatus:         uint8(payloadStatus),
 				Scheduled:             slot >= uint64(currentSlot) && dbSlot.Status == dbtypes.Missing,
 				Synchronized:          dbSlot.SyncParticipation != -1,
 				Proposer:              dbSlot.Proposer,

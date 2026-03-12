@@ -306,7 +306,8 @@ func (bs *ChainService) GetDepositOperationsByFilter(ctx context.Context, filter
 
 			if len(txFilter.WithdrawalAddress) > 0 {
 				wdcreds := depositWithTx.WithdrawalCredentials
-				if wdcreds[0] != 0x01 && wdcreds[0] != 0x02 {
+				// 0x01 = ETH1, 0x02 = compounding, 0x03 = builder deposit
+				if wdcreds[0] != 0x01 && wdcreds[0] != 0x02 && wdcreds[0] != 0x03 {
 					continue
 				}
 
@@ -527,11 +528,11 @@ func (bs *ChainService) GetIndexedDepositQueue(ctx context.Context, headBlock *b
 	indexedQueue.QueueEstimation = queueEpoch
 
 	if lastNormalDeposit != nil && !bytes.Equal(lastNormalDeposit.PendingDeposit.Pubkey[:], lastIncludedDeposit.PublicKey[:]) {
-		// something is bad, return empty queue
-		logrus.Warnf("ChainService.GetIndexedDepositQueue: last included deposit not found in queue, %x != %x", lastNormalDeposit.PendingDeposit.Pubkey[:], lastIncludedDeposit.PublicKey[:])
-		return &IndexedDepositQueue{
-			Queue: []*IndexedDepositQueueEntry{},
-		}
+		// Mismatch between queue and included deposits - this can happen if there are
+		// builder deposits (0x03) that skip the queue. Log warning but still return
+		// the queue to show useful information. The deposit indexes might not be perfectly
+		// matched but the queue itself is still valid.
+		logrus.Debugf("ChainService.GetIndexedDepositQueue: last included deposit not found in queue (possibly due to builder deposits), %x != %x", lastNormalDeposit.PendingDeposit.Pubkey[:], lastIncludedDeposit.PublicKey[:])
 	}
 
 	return indexedQueue
@@ -599,7 +600,17 @@ func (bs *ChainService) getLastIncludedDeposit(ctx context.Context, headRoot pha
 				}
 
 				if len(deposits) > 0 {
-					lastDeposits = deposits
+					// Filter out builder deposits (0x03) as they skip the queue
+					filteredDeposits := make([]*dbtypes.Deposit, 0, len(deposits))
+					for _, deposit := range deposits {
+						if len(deposit.WithdrawalCredentials) > 0 && deposit.WithdrawalCredentials[0] == 0x03 {
+							continue // Skip builder deposits
+						}
+						filteredDeposits = append(filteredDeposits, deposit)
+					}
+					if len(filteredDeposits) > 0 {
+						lastDeposits = filteredDeposits
+					}
 				}
 			}
 		}
