@@ -12,6 +12,7 @@ import (
 
 	"github.com/attestantio/go-eth2-client/spec/gloas"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
 
@@ -63,14 +64,27 @@ func BuilderDetail(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	} else {
-		// search by pubkey
-		dbBuilder := db.GetBuilderByPubkey(r.Context(), builderPubKey)
-		if dbBuilder != nil {
-			builderIndex = dbBuilder.BuilderIndex
-			superseded = dbBuilder.Superseded
-			builder = services.GlobalBeaconService.GetBuilderByIndex(gloas.BuilderIndex(dbBuilder.BuilderIndex))
-			if builder == nil {
-				builder = beacon.UnwrapDbBuilder(dbBuilder)
+		// search by pubkey - check cache first (more accurate), then fall back to DB
+		var pubkey phase0.BLSPubKey
+		copy(pubkey[:], builderPubKey)
+		if validatorIdx, found := services.GlobalBeaconService.GetValidatorIndexByPubkey(pubkey); found {
+			idx := uint64(validatorIdx)
+			if idx&services.BuilderIndexFlag != 0 {
+				builderIndex = idx &^ services.BuilderIndexFlag
+				builder = services.GlobalBeaconService.GetBuilderByIndex(gloas.BuilderIndex(builderIndex))
+			}
+		}
+
+		if builder == nil {
+			// Fall back to DB
+			dbBuilder := db.GetBuilderByPubkey(r.Context(), builderPubKey)
+			if dbBuilder != nil {
+				builderIndex = dbBuilder.BuilderIndex
+				superseded = dbBuilder.Superseded
+				builder = services.GlobalBeaconService.GetBuilderByIndex(gloas.BuilderIndex(dbBuilder.BuilderIndex))
+				if builder == nil {
+					builder = beacon.UnwrapDbBuilder(dbBuilder)
+				}
 			}
 		}
 	}
@@ -149,11 +163,14 @@ func buildBuilderPageData(ctx context.Context, builderIndex uint64, superseded b
 	}
 
 	// Determine state
+	finalizedEpoch, _ := chainState.GetFinalizedCheckpoint()
 	state := "Active"
 	if superseded {
 		state = "Superseded"
 	} else if builder.WithdrawableEpoch <= currentEpoch {
 		state = "Exited"
+	} else if builder.DepositEpoch > finalizedEpoch {
+		state = "Pending"
 	}
 
 	pageData := &models.BuilderPageData{
@@ -184,6 +201,50 @@ func buildBuilderPageData(ctx context.Context, builderIndex uint64, superseded b
 		pageData.WithdrawableTs = chainState.EpochToTime(builder.WithdrawableEpoch)
 	}
 
+	// Check for exit reason if builder has exited or is exiting
+	if pageData.ShowWithdrawable {
+		builderIndexWithFlag := builderIndex | services.BuilderIndexFlag
+
+		// Check for voluntary exit
+		if exits, totalExits := services.GlobalBeaconService.GetVoluntaryExitsByFilter(ctx, &dbtypes.VoluntaryExitFilter{
+			MinIndex: builderIndexWithFlag,
+			MaxIndex: builderIndexWithFlag,
+		}, 0, 1); totalExits > 0 && len(exits) > 0 {
+			pageData.ExitReason = "Builder submitted a voluntary exit request"
+			pageData.ExitReasonVoluntaryExit = true
+			pageData.ExitReasonSlot = exits[0].SlotNumber
+
+			// Check for EL-triggered withdrawal request (full exit with amount=0)
+		} else {
+			zeroAmount := uint64(0)
+			if withdrawals, totalPendingTxs, totalReqs := services.GlobalBeaconService.GetWithdrawalRequestsByFilter(ctx, &services.CombinedWithdrawalRequestFilter{
+				Filter: &dbtypes.WithdrawalRequestFilter{
+					PublicKey: builder.PublicKey[:],
+					MaxAmount: &zeroAmount,
+				},
+			}, 0, 1); totalPendingTxs+totalReqs > 0 && len(withdrawals) > 0 {
+				withdrawal := withdrawals[0]
+				pageData.ExitReason = "Builder submitted a full withdrawal request"
+				pageData.ExitReasonWithdrawal = true
+				if withdrawal.Request != nil {
+					pageData.ExitReasonSlot = withdrawal.Request.SlotNumber
+				}
+
+				if withdrawal.Transaction != nil {
+					pageData.ExitReasonTxHash = withdrawal.Transaction.TxHash
+					pageData.ExitReasonTxDetails = &models.BuilderPageDataExitTxDetails{
+						BlockNumber: withdrawal.Transaction.BlockNumber,
+						BlockHash:   fmt.Sprintf("%#x", withdrawal.Transaction.BlockRoot),
+						BlockTime:   withdrawal.Transaction.BlockTime,
+						TxOrigin:    common.Address(withdrawal.Transaction.TxSender).Hex(),
+						TxTarget:    common.Address(withdrawal.Transaction.TxTarget).Hex(),
+						TxHash:      fmt.Sprintf("%#x", withdrawal.Transaction.TxHash),
+					}
+				}
+			}
+		}
+	}
+
 	// Load tab-specific data
 	switch tabView {
 	case "blocks":
@@ -191,7 +252,7 @@ func buildBuilderPageData(ctx context.Context, builderIndex uint64, superseded b
 	case "bids":
 		pageData.RecentBids = buildBuilderRecentBids(ctx, builderIndex, chainState)
 	case "deposits":
-		pageData.RecentDeposits = buildBuilderRecentDeposits(ctx, builderIndex, chainState)
+		pageData.RecentDeposits = buildBuilderRecentDeposits(ctx, builder.PublicKey[:], chainState)
 	}
 
 	return pageData, 10 * time.Minute
@@ -293,25 +354,30 @@ func buildBuilderRecentBids(ctx context.Context, builderIndex uint64, chainState
 	return result
 }
 
-func buildBuilderRecentDeposits(ctx context.Context, builderIndex uint64, chainState *consensus.ChainState) []*models.BuilderPageDataDeposit {
-	// Builder exits are tracked as voluntary exits with BuilderIndexFlag set
-	builderIndexWithFlag := builderIndex | services.BuilderIndexFlag
-	filter := &dbtypes.VoluntaryExitFilter{
-		MinIndex: builderIndexWithFlag,
-		MaxIndex: builderIndexWithFlag,
+func buildBuilderRecentDeposits(ctx context.Context, pubkey []byte, chainState *consensus.ChainState) []*models.BuilderPageDataDeposit {
+	result := make([]*models.BuilderPageDataDeposit, 0)
+
+	// Query deposit requests by builder pubkey
+	depositFilter := &services.CombinedDepositRequestFilter{
+		Filter: &dbtypes.DepositTxFilter{
+			PublicKey:    pubkey,
+			WithOrphaned: 1,
+		},
 	}
-
-	exits, _ := services.GlobalBeaconService.GetVoluntaryExitsByFilter(ctx, filter, 0, 20)
-
-	result := make([]*models.BuilderPageDataDeposit, 0, len(exits))
-	for _, exit := range exits {
-		result = append(result, &models.BuilderPageDataDeposit{
-			Type:       "exit",
-			SlotNumber: exit.SlotNumber,
-			SlotRoot:   exit.SlotRoot,
-			Time:       chainState.SlotToTime(phase0.Slot(exit.SlotNumber)),
-			Orphaned:   exit.Orphaned,
-		})
+	deposits, _ := services.GlobalBeaconService.GetDepositRequestsByFilter(ctx, depositFilter, 0, 20)
+	for _, deposit := range deposits {
+		entry := &models.BuilderPageDataDeposit{
+			Type: "deposit",
+		}
+		if deposit.Request != nil {
+			entry.SlotNumber = deposit.Request.SlotNumber
+			entry.SlotRoot = deposit.Request.SlotRoot
+			entry.Time = chainState.SlotToTime(phase0.Slot(deposit.Request.SlotNumber))
+			entry.Orphaned = deposit.RequestOrphaned
+		} else if deposit.Transaction != nil {
+			entry.Time = chainState.SlotToTime(phase0.Slot(deposit.Transaction.BlockTime))
+		}
+		result = append(result, entry)
 	}
 
 	return result

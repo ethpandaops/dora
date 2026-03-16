@@ -225,6 +225,7 @@ type SlotPageWithdrawal struct {
 	Index          uint64 `json:"index"`
 	ValidatorIndex uint64 `json:"validatorindex"`
 	ValidatorName  string `json:"validatorname"`
+	IsBuilder      bool   `json:"is_builder"`
 	Address        []byte `json:"address"`
 	Amount         uint64 `json:"amount"`
 }
@@ -275,6 +276,7 @@ type SlotPageDepositRequest struct {
 	Exists          bool   `db:"exists"`
 	ValidatorIndex  uint64 `db:"valindex"`
 	ValidatorName   string `db:"valname"`
+	IsBuilder       bool   `db:"is_builder"`
 	WithdrawalCreds []byte `db:"withdrawal_creds"`
 	Amount          uint64 `db:"amount"`
 	Signature       []byte `db:"signature"`
@@ -287,20 +289,23 @@ type SlotPageWithdrawalRequest struct {
 	Exists         bool   `db:"exists"`
 	ValidatorIndex uint64 `db:"valindex"`
 	ValidatorName  string `db:"valname"`
+	IsBuilder      bool   `db:"is_builder"`
 	Amount         uint64 `db:"amount"`
 }
 
 type SlotPageConsolidationRequest struct {
-	Address      []byte `db:"address"`
-	SourcePubkey []byte `db:"source_pubkey"`
-	SourceFound  bool   `db:"source_bool"`
-	SourceIndex  uint64 `db:"source_index"`
-	SourceName   string `db:"source_name"`
-	TargetPubkey []byte `db:"target_pubkey"`
-	TargetFound  bool   `db:"target_bool"`
-	TargetIndex  uint64 `db:"target_index"`
-	TargetName   string `db:"target_name"`
-	Epoch        uint64 `db:"epoch"`
+	Address         []byte `db:"address"`
+	SourcePubkey    []byte `db:"source_pubkey"`
+	SourceFound     bool   `db:"source_bool"`
+	SourceIndex     uint64 `db:"source_index"`
+	SourceName      string `db:"source_name"`
+	SourceIsBuilder bool   `db:"source_is_builder"`
+	TargetPubkey    []byte `db:"target_pubkey"`
+	TargetFound     bool   `db:"target_bool"`
+	TargetIndex     uint64 `db:"target_index"`
+	TargetName      string `db:"target_name"`
+	TargetIsBuilder bool   `db:"target_is_builder"`
+	Epoch           uint64 `db:"epoch"`
 }
 
 type SlotPageBid struct {

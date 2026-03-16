@@ -207,7 +207,12 @@ func buildFilteredElWithdrawalsPageData(ctx context.Context, pageIdx uint64, pag
 		}
 
 		if validatorIndex := elWithdrawal.ValidatorIndex(); validatorIndex != nil {
-			elWithdrawalData.ValidatorIndex = *validatorIndex
+			if *validatorIndex&services.BuilderIndexFlag != 0 {
+				elWithdrawalData.IsBuilder = true
+				elWithdrawalData.ValidatorIndex = *validatorIndex &^ services.BuilderIndexFlag
+			} else {
+				elWithdrawalData.ValidatorIndex = *validatorIndex
+			}
 			elWithdrawalData.ValidatorName = services.GlobalBeaconService.GetValidatorName(*validatorIndex)
 			elWithdrawalData.ValidatorValid = true
 		}

@@ -948,10 +948,17 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 		pageData.WithdrawalsCount = uint64(len(executionWithdrawals))
 		pageData.Withdrawals = make([]*models.SlotPageWithdrawal, pageData.WithdrawalsCount)
 		for i, withdrawal := range executionWithdrawals {
+			validatorIndex := uint64(withdrawal.ValidatorIndex)
+			isBuilder := validatorIndex&services.BuilderIndexFlag != 0
+			displayIndex := validatorIndex
+			if isBuilder {
+				displayIndex = validatorIndex &^ services.BuilderIndexFlag
+			}
 			pageData.Withdrawals[i] = &models.SlotPageWithdrawal{
 				Index:          uint64(withdrawal.Index),
-				ValidatorIndex: uint64(withdrawal.ValidatorIndex),
-				ValidatorName:  services.GlobalBeaconService.GetValidatorName(uint64(withdrawal.ValidatorIndex)),
+				ValidatorIndex: displayIndex,
+				ValidatorName:  services.GlobalBeaconService.GetValidatorName(validatorIndex),
+				IsBuilder:      isBuilder,
 				Address:        withdrawal.Address[:],
 				Amount:         uint64(withdrawal.Amount),
 			}
@@ -1114,8 +1121,14 @@ func getSlotPageDepositRequests(pageData *models.SlotPageBlockData, depositReque
 
 		if validatorIdx, found := services.GlobalBeaconService.GetValidatorIndexByPubkey(phase0.BLSPubKey(depositRequest.Pubkey)); found {
 			receiptData.Exists = true
-			receiptData.ValidatorIndex = uint64(validatorIdx)
-			receiptData.ValidatorName = services.GlobalBeaconService.GetValidatorName(receiptData.ValidatorIndex)
+			fullIndex := uint64(validatorIdx)
+			if fullIndex&services.BuilderIndexFlag != 0 {
+				receiptData.IsBuilder = true
+				receiptData.ValidatorIndex = fullIndex &^ services.BuilderIndexFlag
+			} else {
+				receiptData.ValidatorIndex = fullIndex
+			}
+			receiptData.ValidatorName = services.GlobalBeaconService.GetValidatorName(fullIndex)
 		}
 
 		pageData.DepositRequests = append(pageData.DepositRequests, receiptData)
@@ -1136,8 +1149,14 @@ func getSlotPageWithdrawalRequests(pageData *models.SlotPageBlockData, withdrawa
 
 		if validatorIdx, found := services.GlobalBeaconService.GetValidatorIndexByPubkey(phase0.BLSPubKey(withdrawalRequest.ValidatorPubkey)); found {
 			requestData.Exists = true
-			requestData.ValidatorIndex = uint64(validatorIdx)
-			requestData.ValidatorName = services.GlobalBeaconService.GetValidatorName(requestData.ValidatorIndex)
+			fullIndex := uint64(validatorIdx)
+			if fullIndex&services.BuilderIndexFlag != 0 {
+				requestData.IsBuilder = true
+				requestData.ValidatorIndex = fullIndex &^ services.BuilderIndexFlag
+			} else {
+				requestData.ValidatorIndex = fullIndex
+			}
+			requestData.ValidatorName = services.GlobalBeaconService.GetValidatorName(fullIndex)
 		}
 
 		pageData.WithdrawalRequests = append(pageData.WithdrawalRequests, requestData)
@@ -1158,14 +1177,26 @@ func getSlotPageConsolidationRequests(pageData *models.SlotPageBlockData, consol
 
 		if sourceValidatorIdx, found := services.GlobalBeaconService.GetValidatorIndexByPubkey(phase0.BLSPubKey(consolidationRequest.SourcePubkey)); found {
 			requestData.SourceFound = true
-			requestData.SourceIndex = uint64(sourceValidatorIdx)
-			requestData.SourceName = services.GlobalBeaconService.GetValidatorName(requestData.SourceIndex)
+			fullIndex := uint64(sourceValidatorIdx)
+			if fullIndex&services.BuilderIndexFlag != 0 {
+				requestData.SourceIsBuilder = true
+				requestData.SourceIndex = fullIndex &^ services.BuilderIndexFlag
+			} else {
+				requestData.SourceIndex = fullIndex
+			}
+			requestData.SourceName = services.GlobalBeaconService.GetValidatorName(fullIndex)
 		}
 
 		if targetValidatorIdx, found := services.GlobalBeaconService.GetValidatorIndexByPubkey(phase0.BLSPubKey(consolidationRequest.TargetPubkey)); found {
 			requestData.TargetFound = true
-			requestData.TargetIndex = uint64(targetValidatorIdx)
-			requestData.TargetName = services.GlobalBeaconService.GetValidatorName(requestData.TargetIndex)
+			fullIndex := uint64(targetValidatorIdx)
+			if fullIndex&services.BuilderIndexFlag != 0 {
+				requestData.TargetIsBuilder = true
+				requestData.TargetIndex = fullIndex &^ services.BuilderIndexFlag
+			} else {
+				requestData.TargetIndex = fullIndex
+			}
+			requestData.TargetName = services.GlobalBeaconService.GetValidatorName(fullIndex)
 		}
 
 		pageData.ConsolidationRequests = append(pageData.ConsolidationRequests, requestData)
