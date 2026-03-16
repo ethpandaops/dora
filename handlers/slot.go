@@ -1121,14 +1121,14 @@ func getSlotPageDepositRequests(pageData *models.SlotPageBlockData, depositReque
 
 		if validatorIdx, found := services.GlobalBeaconService.GetValidatorIndexByPubkey(phase0.BLSPubKey(depositRequest.Pubkey)); found {
 			receiptData.Exists = true
-			fullIndex := uint64(validatorIdx)
-			if fullIndex&services.BuilderIndexFlag != 0 {
+			rawIndex := uint64(validatorIdx)
+			if rawIndex&services.BuilderIndexFlag != 0 {
 				receiptData.IsBuilder = true
-				receiptData.ValidatorIndex = fullIndex &^ services.BuilderIndexFlag
+				receiptData.ValidatorIndex = rawIndex &^ services.BuilderIndexFlag
 			} else {
-				receiptData.ValidatorIndex = fullIndex
+				receiptData.ValidatorIndex = rawIndex
 			}
-			receiptData.ValidatorName = services.GlobalBeaconService.GetValidatorName(fullIndex)
+			receiptData.ValidatorName = services.GlobalBeaconService.GetValidatorName(rawIndex)
 		}
 
 		pageData.DepositRequests = append(pageData.DepositRequests, receiptData)

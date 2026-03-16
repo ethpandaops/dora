@@ -16,7 +16,11 @@
           <tr>
             <td>{{ $deposit.Index }}</td>
             <td>
+              {{- if $deposit.IsBuilder }}
+              <i class="fas fa-hard-hat mr-2"></i>
+              {{- else }}
               <i class="fas fa-male mr-2"></i>
+              {{- end }}
               0x{{ printf "%x" $deposit.PublicKey }}
               <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="0x{{ printf "%x" $deposit.PublicKey }}"></i>
             </td>
