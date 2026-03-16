@@ -1301,15 +1301,20 @@ func getSlotPagePtcVotes(pageData *models.SlotPageBlockData, blockData *services
 		}
 	}
 
+	// PTC_SIZE is a spec constant (512). The Bitvector is always PTC_SIZE bits.
+	// On small validator sets, validators appear multiple times in PTC duties
+	// via weighted selection, but voting is tracked by bit position.
+	ptcSize := specs.PtcSize
+
 	// Build PTC votes structure
 	ptcVotes := &models.SlotPagePtcVotes{
 		VotedSlot:    uint64(votedSlot),
-		TotalPtcSize: specs.PtcSize,
+		TotalPtcSize: ptcSize,
 		Aggregates:   make([]*models.SlotPagePtcAggregate, 0, len(payloadAttestations)),
 	}
 
-	// Track participating validators across all aggregates
-	participatingValidators := make(map[uint64]bool)
+	// Track voted bit positions across all aggregates
+	votedPositions := make(map[uint64]bool, ptcSize)
 	totalVotes := uint64(0)
 
 	for _, pa := range payloadAttestations {
@@ -1330,15 +1335,21 @@ func getSlotPagePtcVotes(pageData *models.SlotPageBlockData, blockData *services
 			Validators:        make([]uint64, 0),
 		}
 
-		// Map aggregation bits to validator indices
-		if len(ptcDuties) > 0 {
-			for i := 0; i < len(ptcDuties) && i < len(pa.AggregationBits)*8; i++ {
-				byteIdx := i / 8
-				bitIdx := i % 8
-				if byteIdx < len(pa.AggregationBits) && (pa.AggregationBits[byteIdx]>>bitIdx)&1 == 1 {
-					validatorIdx := uint64(ptcDuties[i])
-					aggregate.Validators = append(aggregate.Validators, validatorIdx)
-					participatingValidators[validatorIdx] = true
+		// Count votes from aggregation bits and map to unique validators
+		bitCount := uint64(len(pa.AggregationBits)) * 8
+		if bitCount > ptcSize {
+			bitCount = ptcSize
+		}
+		aggValidatorSet := make(map[uint64]bool)
+		for i := uint64(0); i < bitCount; i++ {
+			if (pa.AggregationBits[i/8]>>(i%8))&1 == 1 {
+				votedPositions[i] = true
+				if int(i) < len(ptcDuties) {
+					vidx := uint64(ptcDuties[i])
+					if !aggValidatorSet[vidx] {
+						aggValidatorSet[vidx] = true
+						aggregate.Validators = append(aggregate.Validators, vidx)
+					}
 				}
 			}
 		}
@@ -1349,24 +1360,72 @@ func getSlotPagePtcVotes(pageData *models.SlotPageBlockData, blockData *services
 		ptcVotes.Aggregates = append(ptcVotes.Aggregates, aggregate)
 	}
 
-	// Build PTC committee list
-	ptcVotes.PtcCommittee = make([]types.NamedValidator, len(ptcDuties))
-	for i, vidx := range ptcDuties {
-		ptcVotes.PtcCommittee[i] = types.NamedValidator{
-			Index: uint64(vidx),
-			Name:  services.GlobalBeaconService.GetValidatorName(uint64(vidx)),
+	// Calculate participation by unique validators, not bit positions.
+	// On small validator sets, the same validator occupies multiple PTC positions.
+	// A validator votes at their first PTC position only (ptc.index()), leaving
+	// duplicate positions unset. Count unique voters/non-voters for display.
+	voterSet := make(map[uint64]bool)
+	if len(ptcDuties) > 0 {
+		for i := range ptcDuties {
+			if votedPositions[uint64(i)] {
+				voterSet[uint64(ptcDuties[i])] = true
+			}
 		}
 
-		// Add to validator names map
-		if pageData.ValidatorNames == nil {
-			pageData.ValidatorNames = make(map[uint64]string)
+		// Non-voters: unique validators with NO voted position at all
+		nonVoterSet := make(map[uint64]bool)
+		for _, vidx := range ptcDuties {
+			v := uint64(vidx)
+			if !voterSet[v] {
+				nonVoterSet[v] = true
+			}
 		}
-		pageData.ValidatorNames[uint64(vidx)] = ptcVotes.PtcCommittee[i].Name
+		nonVoters := make([]uint64, 0, len(nonVoterSet))
+		for vidx := range nonVoterSet {
+			nonVoters = append(nonVoters, vidx)
+		}
+		ptcVotes.NonVoters = nonVoters
+		ptcVotes.NonVoterCount = uint64(len(nonVoters))
 	}
 
-	// Calculate participation rate
-	if specs.PtcSize > 0 {
-		ptcVotes.Participation = float64(len(participatingValidators)) / float64(specs.PtcSize)
+	// Calculate participation rate based on unique validators
+	totalUniqueValidators := uint64(len(voterSet)) + ptcVotes.NonVoterCount
+	if totalUniqueValidators > 0 {
+		ptcVotes.TotalPtcSize = totalUniqueValidators
+		ptcVotes.Participation = float64(len(voterSet)) / float64(totalUniqueValidators)
+		ptcVotes.NonVoterPercent = float64(ptcVotes.NonVoterCount) / float64(totalUniqueValidators) * 100
+
+		// Recalculate aggregate vote percentages based on unique validators
+		for _, agg := range ptcVotes.Aggregates {
+			agg.VotePercent = float64(agg.VoteCount) / float64(totalUniqueValidators) * 100
+		}
+	} else if ptcSize > 0 {
+		// No duties available, use bit positions as approximation
+		totalVoted := uint64(len(votedPositions))
+		ptcVotes.NonVoterCount = ptcSize - totalVoted
+		ptcVotes.Participation = float64(totalVoted) / float64(ptcSize)
+		ptcVotes.NonVoterPercent = float64(ptcVotes.NonVoterCount) / float64(ptcSize) * 100
+
+		for _, agg := range ptcVotes.Aggregates {
+			agg.VotePercent = float64(agg.VoteCount) / float64(ptcSize) * 100
+		}
+	}
+
+	// Populate validator names for all PTC validators
+	if pageData.ValidatorNames == nil {
+		pageData.ValidatorNames = make(map[uint64]string)
+	}
+	for _, agg := range ptcVotes.Aggregates {
+		for _, vidx := range agg.Validators {
+			if _, exists := pageData.ValidatorNames[vidx]; !exists {
+				pageData.ValidatorNames[vidx] = services.GlobalBeaconService.GetValidatorName(vidx)
+			}
+		}
+	}
+	for _, vidx := range ptcVotes.NonVoters {
+		if _, exists := pageData.ValidatorNames[vidx]; !exists {
+			pageData.ValidatorNames[vidx] = services.GlobalBeaconService.GetValidatorName(vidx)
+		}
 	}
 
 	pageData.PtcVotes = ptcVotes

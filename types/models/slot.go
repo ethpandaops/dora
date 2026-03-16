@@ -327,12 +327,14 @@ type SlotPageBid struct {
 // SlotPagePtcVotes holds PTC (Payload Timeliness Committee) vote information for a slot.
 // These are payload attestations included in this block for the PREVIOUS slot.
 type SlotPagePtcVotes struct {
-	VotedSlot      uint64                  `json:"voted_slot"`       // The slot the votes are for (previous slot)
-	VotedBlockRoot []byte                  `json:"voted_block_root"` // The block root being voted on
-	TotalPtcSize   uint64                  `json:"total_ptc_size"`   // Total PTC committee size
-	Aggregates     []*SlotPagePtcAggregate `json:"aggregates"`       // Up to 4 aggregates for different vote flag combinations
-	PtcCommittee   []types.NamedValidator  `json:"ptc_committee"`    // Full PTC committee with participation status
-	Participation  float64                 `json:"participation"`    // Overall participation rate
+	VotedSlot       uint64                  `json:"voted_slot"`        // The slot the votes are for (previous slot)
+	VotedBlockRoot  []byte                  `json:"voted_block_root"`  // The block root being voted on
+	TotalPtcSize    uint64                  `json:"total_ptc_size"`    // Total PTC committee size
+	Aggregates      []*SlotPagePtcAggregate `json:"aggregates"`        // Up to 4 aggregates for different vote flag combinations
+	NonVoters       []uint64                `json:"non_voters"`        // Validator indices that did not vote
+	NonVoterCount   uint64                  `json:"non_voter_count"`   // Number of non-voters
+	NonVoterPercent float64                 `json:"non_voter_percent"` // Percentage of non-voters
+	Participation   float64                 `json:"participation"`     // Overall participation rate
 }
 
 // SlotPagePtcAggregate represents a single PTC vote aggregate for a specific vote flag combination.
@@ -343,4 +345,5 @@ type SlotPagePtcAggregate struct {
 	Validators        []uint64 `json:"validators"`          // Validator indices that voted
 	Signature         []byte   `json:"signature"`           // Aggregate signature
 	VoteCount         uint64   `json:"vote_count"`          // Number of votes in this aggregate
+	VotePercent       float64  `json:"vote_percent"`        // Percentage of committee
 }
