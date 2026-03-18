@@ -169,6 +169,15 @@ func buildValidatorPageData(ctx context.Context, validatorIndex uint64, tabView 
 		pageData.UpcheckMaximum = uint8(3)
 	}
 
+	// compute aggregated inclusion distance from cached blocks (last 2 epochs only)
+	if pageData.IsActive || pageData.WasActive {
+		inclCount, inclTotalDelay := services.GlobalBeaconService.GetValidatorInclusionDistance(validator.Index, 2)
+		pageData.AttestationInclusionCount = inclCount
+		if inclCount > 0 {
+			pageData.AttestationInclusionAvgDelay = float64(inclTotalDelay) / float64(inclCount)
+		}
+	}
+
 	if validator.Validator.ActivationEligibilityEpoch < 18446744073709551615 {
 		pageData.ShowEligible = true
 		pageData.EligibleEpoch = uint64(validator.Validator.ActivationEligibilityEpoch)
