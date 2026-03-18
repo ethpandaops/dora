@@ -137,6 +137,19 @@
             {{ formatEthAddCommasFromGwei .EffectiveBalance }} ETH
           </div>
         </div>
+        {{ if or .IsActive .WasActive }}
+        <div class="row border-bottom p-2 mx-0">
+          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Average attestation inclusion distance based on cached blocks">Avg. Inclusion Distance:</span></div>
+          <div class="col-md-10">
+            {{ if gt .AttestationInclusionCount 0 }}
+              <span class="{{ if le .AttestationInclusionAvgDelay 1.01 }}text-success{{ else if le .AttestationInclusionAvgDelay 1.3 }}text-warning{{ else }}text-danger{{ end }}">{{ printf "%.2f" .AttestationInclusionAvgDelay }}</span>
+              <small class="text-muted ms-2">({{ .AttestationInclusionCount }} attestation{{ if gt .AttestationInclusionCount 1 }}s{{ end }})</small>
+            {{ else }}
+              <span class="text-muted">-</span>
+            {{ end }}
+          </div>
+        </div>
+        {{ end }}
         <div class="row border-bottom p-2 mx-0">
           <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Represents the current withdrawal credentials for this validator">W/Credentials:</span></div>
           <div class="col-md-10 text-monospace">
