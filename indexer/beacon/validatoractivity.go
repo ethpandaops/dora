@@ -146,6 +146,39 @@ func (cache *validatorActivityCache) getValidatorActivity(validatorIndex phase0.
 	return recentActivity
 }
 
+// getValidatorInclusionDistance returns the attestation count and total inclusion delay
+// for a validator over the last lookbackEpochs epochs, using only cached blocks.
+func (cache *validatorActivityCache) getValidatorInclusionDistance(validatorIndex phase0.ValidatorIndex, lookbackEpochs phase0.Epoch) (count uint64, totalDelay uint64) {
+	cache.activityMutex.RLock()
+	defer cache.activityMutex.RUnlock()
+
+	chainState := cache.indexer.consensusPool.GetChainState()
+	currentEpoch := chainState.CurrentEpoch()
+
+	startEpoch := phase0.Epoch(0)
+	if currentEpoch > lookbackEpochs {
+		startEpoch = currentEpoch - lookbackEpochs
+	}
+
+	startSlot := chainState.EpochToSlot(startEpoch)
+
+	for _, activity := range cache.activityMap[validatorIndex] {
+		if activity.VoteBlock == nil {
+			continue
+		}
+
+		dutySlot := activity.VoteBlock.Slot - phase0.Slot(activity.VoteDelay)
+		if dutySlot < startSlot {
+			continue
+		}
+
+		count++
+		totalDelay += uint64(activity.VoteDelay)
+	}
+
+	return
+}
+
 // getValidatorActivityCount returns the number of validator activity for a given validator index.
 func (cache *validatorActivityCache) getValidatorActivityCount(validatorIndex phase0.ValidatorIndex, startEpoch phase0.Epoch) (count uint64) {
 	cache.activityMutex.RLock()

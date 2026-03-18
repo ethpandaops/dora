@@ -79,6 +79,11 @@ type validatorsSummaryClientBalances struct {
 	offline uint64
 }
 
+type validatorsSummaryInclusionStats struct {
+	count      uint64
+	totalDelay uint64
+}
+
 func buildValidatorsSummaryPageData(ctx context.Context) (*models.ValidatorsSummaryPageData, time.Duration) {
 	logrus.Debugf("validators summary page called")
 	pageData := &models.ValidatorsSummaryPageData{}
@@ -113,6 +118,13 @@ func buildValidatorsSummaryPageData(ctx context.Context) (*models.ValidatorsSumm
 	// Track balances per client for breakdown table
 	elClientBalances := make(map[execution.ClientType]*validatorsSummaryClientBalances) // [client][online/offline] -> balance
 	clClientBalances := make(map[consensus.ClientType]*validatorsSummaryClientBalances)
+
+	// Track inclusion distance per client and per combination
+	elInclStats := make(map[execution.ClientType]*validatorsSummaryInclusionStats)
+	clInclStats := make(map[consensus.ClientType]*validatorsSummaryInclusionStats)
+	combinationInclStats := make(map[execution.ClientType]map[consensus.ClientType]*validatorsSummaryInclusionStats)
+	totalInclCount := uint64(0)
+	totalInclDelay := uint64(0)
 
 	onlineEffectiveBalance := uint64(0)
 	activeValidators := uint64(0)
@@ -178,10 +190,38 @@ func buildValidatorsSummaryPageData(ctx context.Context) (*models.ValidatorsSumm
 			clClientBalances[consensusClient].offline += effectiveBalance
 		}
 
+		// accumulate inclusion distance stats from cached blocks (last 2 epochs)
+		inclCount, inclTotalDelay := services.GlobalBeaconService.GetValidatorInclusionDistance(validator.Index, 2)
+		if inclCount > 0 {
+			if elInclStats[executionClient] == nil {
+				elInclStats[executionClient] = &validatorsSummaryInclusionStats{}
+			}
+			elInclStats[executionClient].count += inclCount
+			elInclStats[executionClient].totalDelay += inclTotalDelay
+
+			if clInclStats[consensusClient] == nil {
+				clInclStats[consensusClient] = &validatorsSummaryInclusionStats{}
+			}
+			clInclStats[consensusClient].count += inclCount
+			clInclStats[consensusClient].totalDelay += inclTotalDelay
+
+			if combinationInclStats[executionClient] == nil {
+				combinationInclStats[executionClient] = make(map[consensus.ClientType]*validatorsSummaryInclusionStats)
+			}
+			if combinationInclStats[executionClient][consensusClient] == nil {
+				combinationInclStats[executionClient][consensusClient] = &validatorsSummaryInclusionStats{}
+			}
+			combinationInclStats[executionClient][consensusClient].count += inclCount
+			combinationInclStats[executionClient][consensusClient].totalDelay += inclTotalDelay
+
+			totalInclCount += inclCount
+			totalInclDelay += inclTotalDelay
+		}
+
 		activeValidators++
 	}
 
-	// Calculate percentages and health status
+	// Calculate percentages, health status and avg inclusion delay per cell
 	for elClient := range clientCombinations {
 		for clClient := range clientCombinations[elClient] {
 			cell := clientCombinations[elClient][clClient]
@@ -196,6 +236,12 @@ func buildValidatorsSummaryPageData(ctx context.Context) (*models.ValidatorsSumm
 					cell.HealthStatus = "warning"
 				} else {
 					cell.HealthStatus = "critical"
+				}
+
+				if combinationInclStats[elClient] != nil {
+					if stats := combinationInclStats[elClient][clClient]; stats != nil && stats.count > 0 {
+						cell.AvgInclusionDelay = float64(stats.totalDelay) / float64(stats.count)
+					}
 				}
 			} else {
 				cell.HealthStatus = "empty"
@@ -238,7 +284,7 @@ func buildValidatorsSummaryPageData(ctx context.Context) (*models.ValidatorsSumm
 	}
 
 	// Build client breakdown for detailed table
-	clientBreakdown := buildClientBreakdown(clientCombinations, totalEffectiveBalance, elClientList, clClientList, elClientBalances, clClientBalances)
+	clientBreakdown := buildClientBreakdown(clientCombinations, totalEffectiveBalance, elClientList, clClientList, elClientBalances, clClientBalances, elInclStats, clInclStats)
 
 	elClientListStrings := make([]string, len(elClientList))
 	for i, elClient := range elClientList {
@@ -258,6 +304,11 @@ func buildValidatorsSummaryPageData(ctx context.Context) (*models.ValidatorsSumm
 	pageData.OverallHealthy = onlineEffectiveBalance / 1000000000   // Convert online EB to ETH
 	pageData.ClientBreakdown = clientBreakdown
 	pageData.NetworkHealthScore = (float64(onlineEffectiveBalance) / float64(totalEffectiveBalance)) * 100
+
+	if totalInclCount > 0 {
+		pageData.AvgInclusionDelay = float64(totalInclDelay) / float64(totalInclCount)
+		pageData.HasInclusionData = true
+	}
 
 	return pageData, cacheTime
 }
@@ -306,11 +357,20 @@ func parseClientTypesFromName(validatorName string) (execution.ClientType, conse
 	return executionClient, consensusClient
 }
 
-func buildClientBreakdown(clientCombinations map[execution.ClientType]map[consensus.ClientType]*models.ValidatorsSummaryMatrixCell, totalEffectiveBalance uint64, elClients []execution.ClientType, clClients []consensus.ClientType, elClientBalances map[execution.ClientType]*validatorsSummaryClientBalances, clClientBalances map[consensus.ClientType]*validatorsSummaryClientBalances) []models.ValidatorsSummaryClientBreak {
+func buildClientBreakdown(
+	clientCombinations map[execution.ClientType]map[consensus.ClientType]*models.ValidatorsSummaryMatrixCell,
+	totalEffectiveBalance uint64,
+	elClients []execution.ClientType,
+	clClients []consensus.ClientType,
+	elClientBalances map[execution.ClientType]*validatorsSummaryClientBalances,
+	clClientBalances map[consensus.ClientType]*validatorsSummaryClientBalances,
+	elInclStats map[execution.ClientType]*validatorsSummaryInclusionStats,
+	clInclStats map[consensus.ClientType]*validatorsSummaryInclusionStats,
+) []models.ValidatorsSummaryClientBreak {
 	breakdown := []models.ValidatorsSummaryClientBreak{}
 
 	// Aggregate by execution client
-	elStats := make(map[execution.ClientType]*models.ValidatorsSummaryClientBreak)
+	elStats := make(map[execution.ClientType]*models.ValidatorsSummaryClientBreak, len(elClients))
 	for _, elClient := range elClients {
 		elStats[elClient] = &models.ValidatorsSummaryClientBreak{
 			ClientName:              elClient.String(),
@@ -322,7 +382,7 @@ func buildClientBreakdown(clientCombinations map[execution.ClientType]map[consen
 	}
 
 	// Aggregate by consensus client
-	clStats := make(map[consensus.ClientType]*models.ValidatorsSummaryClientBreak)
+	clStats := make(map[consensus.ClientType]*models.ValidatorsSummaryClientBreak, len(clClients))
 	for _, clClient := range clClients {
 		clStats[clClient] = &models.ValidatorsSummaryClientBreak{
 			ClientName:              clClient.String(),
@@ -356,8 +416,8 @@ func buildClientBreakdown(clientCombinations map[execution.ClientType]map[consen
 		}
 	}
 
-	// Calculate percentages and health status
-	for _, stat := range elStats {
+	// Calculate percentages, health status and avg inclusion delay
+	for elClient, stat := range elStats {
 		if stat.ValidatorCount > 0 {
 			stat.EffectiveBalance = stat.OnlineEffectiveBalance + stat.OfflineEffectiveBalance
 			stat.BalancePercentage = (float64(stat.EffectiveBalance) / float64(totalEffectiveBalance)) * 100
@@ -371,11 +431,16 @@ func buildClientBreakdown(clientCombinations map[execution.ClientType]map[consen
 			} else {
 				stat.HealthStatus = "critical"
 			}
+
+			if inclStats := elInclStats[elClient]; inclStats != nil && inclStats.count > 0 {
+				stat.AvgInclusionDelay = float64(inclStats.totalDelay) / float64(inclStats.count)
+			}
+
 			breakdown = append(breakdown, *stat)
 		}
 	}
 
-	for _, stat := range clStats {
+	for clClient, stat := range clStats {
 		if stat.ValidatorCount > 0 {
 			stat.EffectiveBalance = stat.OnlineEffectiveBalance + stat.OfflineEffectiveBalance
 			stat.BalancePercentage = (float64(stat.EffectiveBalance) / float64(totalEffectiveBalance)) * 100
@@ -389,6 +454,11 @@ func buildClientBreakdown(clientCombinations map[execution.ClientType]map[consen
 			} else {
 				stat.HealthStatus = "critical"
 			}
+
+			if inclStats := clInclStats[clClient]; inclStats != nil && inclStats.count > 0 {
+				stat.AvgInclusionDelay = float64(inclStats.totalDelay) / float64(inclStats.count)
+			}
+
 			breakdown = append(breakdown, *stat)
 		}
 	}
