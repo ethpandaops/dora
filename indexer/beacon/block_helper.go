@@ -829,7 +829,7 @@ func getLatestBlockHeaderParentRoot(v *spec.VersionedBeaconState) (phase0.Root, 
 		return v.Gloas.LatestBlockHeader.ParentRoot, nil
 	case spec.DataVersionHeze:
 		if v.Heze == nil || v.Heze.BlockRoots == nil {
-			return nil, errors.New("no heze block")
+			return phase0.Root{}, errors.New("no heze block")
 		}
 
 		return v.Heze.LatestBlockHeader.ParentRoot, nil
