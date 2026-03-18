@@ -86,7 +86,6 @@ type ChainSpecConfig struct {
 	MaxPayloadSize                   uint64            `yaml:"MAX_PAYLOAD_SIZE"`
 	MaxRequestBlocks                 uint64            `yaml:"MAX_REQUEST_BLOCKS"`
 	EpochsPerSubnetSubscription      uint64            `yaml:"EPOCHS_PER_SUBNET_SUBSCRIPTION"`
-	MinEpochsForBlockRequests        uint64            `yaml:"MIN_EPOCHS_FOR_BLOCK_REQUESTS"`
 	AttestationPropoagationSlotRange uint64            `yaml:"ATTESTATION_PROPAGATION_SLOT_RANGE"`
 	MaximumGossipClockDisparity      uint64            `yaml:"MAXIMUM_GOSSIP_CLOCK_DISPARITY"`
 	MessageDomainInvalidSnappy       phase0.DomainType `yaml:"MESSAGE_DOMAIN_INVALID_SNAPPY"`
@@ -94,27 +93,23 @@ type ChainSpecConfig struct {
 	SubnetsPerNode                   uint64            `yaml:"SUBNETS_PER_NODE"`
 	AttestationSubnetCount           uint64            `yaml:"ATTESTATION_SUBNET_COUNT"`
 	AttestationSubnetExtraBits       uint64            `yaml:"ATTESTATION_SUBNET_EXTRA_BITS"`
-	AttestationSubnetPrefixBits      uint64            `yaml:"ATTESTATION_SUBNET_PREFIX_BITS"`
 
 	// Deneb
 	MaxRequestBlocksDeneb            uint64 `yaml:"MAX_REQUEST_BLOCKS_DENEB"              check-if-fork:"DenebForkEpoch"`
 	MinEpochsForBlobSidecarsRequests uint64 `yaml:"MIN_EPOCHS_FOR_BLOB_SIDECARS_REQUESTS" check-if-fork:"DenebForkEpoch"`
 	BlobSidecarSubnetCount           uint64 `yaml:"BLOB_SIDECAR_SUBNET_COUNT"             check-if-fork:"DenebForkEpoch"`
 	MaxBlobsPerBlock                 uint64 `yaml:"MAX_BLOBS_PER_BLOCK"                   check-if-fork:"DenebForkEpoch"`
-	MaxRequestBlobSidecars           uint64 `yaml:"MAX_REQUEST_BLOB_SIDECARS"             check-if-fork:"DenebForkEpoch"`
 
 	// Electra
 	MinPerEpochChurnLimitElectra        uint64 `yaml:"MIN_PER_EPOCH_CHURN_LIMIT_ELECTRA"         check-if-fork:"ElectraForkEpoch"`
 	MaxPerEpochActivationExitChurnLimit uint64 `yaml:"MAX_PER_EPOCH_ACTIVATION_EXIT_CHURN_LIMIT" check-if-fork:"ElectraForkEpoch"`
 	BlobSidecarSubnetCountElectra       uint64 `yaml:"BLOB_SIDECAR_SUBNET_COUNT_ELECTRA"         check-if-fork:"ElectraForkEpoch"`
 	MaxBlobsPerBlockElectra             uint64 `yaml:"MAX_BLOBS_PER_BLOCK_ELECTRA"               check-if-fork:"ElectraForkEpoch"`
-	MaxRequestBlobSidecarsElectra       uint64 `yaml:"MAX_REQUEST_BLOB_SIDECARS_ELECTRA"         check-if-fork:"ElectraForkEpoch"`
 
 	// Fulu
 	MinEpochsForDataColumnSidecars   uint64              `yaml:"MIN_EPOCHS_FOR_DATA_COLUMN_SIDECARS_REQUESTS"  check-if-fork:"FuluForkEpoch"`
 	NumberOfCustodyGroups            *uint64             `yaml:"NUMBER_OF_CUSTODY_GROUPS"                      check-if-fork:"FuluForkEpoch"`
 	DataColumnSidecarSubnetCount     *uint64             `yaml:"DATA_COLUMN_SIDECAR_SUBNET_COUNT"              check-if-fork:"FuluForkEpoch"`
-	MaxRequestDataColumnSidecars     uint64              `yaml:"MAX_REQUEST_DATA_COLUMN_SIDECARS"              check-if-fork:"FuluForkEpoch"`
 	SamplesPerSlot                   uint64              `yaml:"SAMPLES_PER_SLOT"                              check-if-fork:"FuluForkEpoch"`
 	CustodyRequirement               *uint64             `yaml:"CUSTODY_REQUIREMENT"                           check-if-fork:"FuluForkEpoch"`
 	ValidatorCustodyRequirement      *uint64             `yaml:"VALIDATOR_CUSTODY_REQUIREMENT"                 check-if-fork:"FuluForkEpoch"`
