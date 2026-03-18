@@ -91,7 +91,7 @@ func buildEpochPageData(ctx context.Context, epoch uint64) (*models.EpochPageDat
 	specs := chainState.GetSpecs()
 	currentSlot := chainState.CurrentSlot()
 	currentEpoch := chainState.EpochOfSlot(currentSlot)
-	if epoch > uint64(currentEpoch) {
+	if epoch > uint64(currentEpoch)+1 {
 		return nil, -1
 	}
 
@@ -105,7 +105,7 @@ func buildEpochPageData(ctx context.Context, epoch uint64) (*models.EpochPageDat
 	}
 
 	nextEpoch := epoch + 1
-	if nextEpoch > uint64(currentEpoch) {
+	if nextEpoch > uint64(currentEpoch)+1 {
 		nextEpoch = 0
 	}
 	firstSlot := chainState.EpochToSlot(phase0.Epoch(epoch))

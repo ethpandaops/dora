@@ -158,9 +158,6 @@ func buildSlotsPageData(ctx context.Context, firstSlot uint64, pageSize uint64, 
 	currentSlot := chainState.CurrentSlot()
 	currentEpoch := chainState.EpochOfSlot(currentSlot)
 	maxSlot := currentSlot + 8
-	if maxSlot >= chainState.EpochToSlot(currentEpoch+1) {
-		maxSlot = chainState.EpochToSlot(currentEpoch+1) - 1
-	}
 	if firstSlot > uint64(maxSlot) {
 		pageData.IsDefaultPage = true
 		firstSlot = uint64(maxSlot)

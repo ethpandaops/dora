@@ -53,9 +53,8 @@
                   Unavailable
                 {{ end }}
               </span>
-              <span class="text-muted">
-                {{ $agg.VoteCount }} vote{{ if ne $agg.VoteCount 1 }}s{{ end }}
-              </span>
+              <strong>{{ $agg.VoteCount }}</strong> vote{{ if ne $agg.VoteCount 1 }}s{{ end }}
+              <span class="text-muted">({{ formatFloat $agg.VotePercent 1 }}%)</span>
             </div>
             <div>
               <span class="badge bg-secondary">
@@ -66,37 +65,40 @@
               </span>
             </div>
           </div>
-          <div class="card-body">
-            {{ if gt (len $agg.Validators) 0 }}
-              <div class="mb-2">
-                <strong>Participating Validators ({{ len $agg.Validators }}):</strong>
-              </div>
-              <div class="validator-list" style="max-height: 200px; overflow-y: auto;">
+          {{ if gt (len $agg.Validators) 0 }}
+            <div class="card-body p-0">
+              <a class="d-block px-3 py-2 text-muted" data-bs-toggle="collapse" href="#ptc-agg-{{ $i }}" role="button" aria-expanded="false" aria-controls="ptc-agg-{{ $i }}">
+                <i class="fas fa-chevron-down me-1"></i> Show {{ len $agg.Validators }} validators
+              </a>
+              <div class="collapse px-3 pb-3" id="ptc-agg-{{ $i }}">
                 {{ range $j, $vidx := $agg.Validators }}
-                  <span class="badge bg-light text-dark me-1 mb-1">
-                    {{ formatValidator $vidx (index $.Block.ValidatorNames $vidx) }}
-                  </span>
+                  {{ formatValidatorWithIndex $vidx (index $.Block.ValidatorNames $vidx) }}
                 {{ end }}
               </div>
-            {{ else }}
-              <p class="text-muted mb-0">No validators in this aggregate</p>
-            {{ end }}
-          </div>
+            </div>
+          {{ end }}
         </div>
       {{ end }}
 
-      {{ if gt (len .Block.PtcVotes.PtcCommittee) 0 }}
-        <h5 class="mb-3 mt-4">Full PTC Committee</h5>
-        <div class="card">
-          <div class="card-body">
-            <div class="ptc-committee-grid" style="max-height: 300px; overflow-y: auto;">
-              {{ range $i, $member := .Block.PtcVotes.PtcCommittee }}
-                <span class="badge bg-light text-dark me-1 mb-1">
-                  {{ formatValidator $member.Index $member.Name }}
-                </span>
-              {{ end }}
-            </div>
+      {{ if gt .Block.PtcVotes.NonVoterCount 0 }}
+        <div class="card mb-3">
+          <div class="card-header">
+            <span class="badge bg-dark me-2">Absent</span>
+            <strong>{{ .Block.PtcVotes.NonVoterCount }}</strong> validator{{ if ne .Block.PtcVotes.NonVoterCount 1 }}s{{ end }}
+            <span class="text-muted">({{ formatFloat .Block.PtcVotes.NonVoterPercent 1 }}%)</span>
           </div>
+          {{ if gt (len .Block.PtcVotes.NonVoters) 0 }}
+            <div class="card-body p-0">
+              <a class="d-block px-3 py-2 text-muted" data-bs-toggle="collapse" href="#ptc-nonvoters" role="button" aria-expanded="false" aria-controls="ptc-nonvoters">
+                <i class="fas fa-chevron-down me-1"></i> Show {{ len .Block.PtcVotes.NonVoters }} validators
+              </a>
+              <div class="collapse px-3 pb-3" id="ptc-nonvoters">
+                {{ range $j, $vidx := .Block.PtcVotes.NonVoters }}
+                  {{ formatValidatorWithIndex $vidx (index $.Block.ValidatorNames $vidx) }}
+                {{ end }}
+              </div>
+            </div>
+          {{ end }}
         </div>
       {{ end }}
     {{ else }}

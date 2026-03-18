@@ -149,6 +149,8 @@ type SlotPageAttestation struct {
 	Validators         []uint64 `json:"validators"`
 	IncludedValidators []uint64 `json:"included_validators"`
 
+	PayloadStatus *uint64 `json:"payload_status,omitempty"`
+
 	Signature []byte `json:"signature"`
 
 	BeaconBlockRoot []byte `json:"beaconblockroot"`
@@ -225,6 +227,7 @@ type SlotPageWithdrawal struct {
 	Index          uint64 `json:"index"`
 	ValidatorIndex uint64 `json:"validatorindex"`
 	ValidatorName  string `json:"validatorname"`
+	IsBuilder      bool   `json:"is_builder"`
 	Address        []byte `json:"address"`
 	Amount         uint64 `json:"amount"`
 }
@@ -273,6 +276,7 @@ type SlotPageTransaction struct {
 type SlotPageDepositRequest struct {
 	PublicKey       []byte `db:"pubkey"`
 	Exists          bool   `db:"exists"`
+	IsBuilder       bool   `db:"is_builder"`
 	ValidatorIndex  uint64 `db:"valindex"`
 	ValidatorName   string `db:"valname"`
 	WithdrawalCreds []byte `db:"withdrawal_creds"`
@@ -287,20 +291,23 @@ type SlotPageWithdrawalRequest struct {
 	Exists         bool   `db:"exists"`
 	ValidatorIndex uint64 `db:"valindex"`
 	ValidatorName  string `db:"valname"`
+	IsBuilder      bool   `db:"is_builder"`
 	Amount         uint64 `db:"amount"`
 }
 
 type SlotPageConsolidationRequest struct {
-	Address      []byte `db:"address"`
-	SourcePubkey []byte `db:"source_pubkey"`
-	SourceFound  bool   `db:"source_bool"`
-	SourceIndex  uint64 `db:"source_index"`
-	SourceName   string `db:"source_name"`
-	TargetPubkey []byte `db:"target_pubkey"`
-	TargetFound  bool   `db:"target_bool"`
-	TargetIndex  uint64 `db:"target_index"`
-	TargetName   string `db:"target_name"`
-	Epoch        uint64 `db:"epoch"`
+	Address         []byte `db:"address"`
+	SourcePubkey    []byte `db:"source_pubkey"`
+	SourceFound     bool   `db:"source_bool"`
+	SourceIndex     uint64 `db:"source_index"`
+	SourceName      string `db:"source_name"`
+	SourceIsBuilder bool   `db:"source_is_builder"`
+	TargetPubkey    []byte `db:"target_pubkey"`
+	TargetFound     bool   `db:"target_bool"`
+	TargetIndex     uint64 `db:"target_index"`
+	TargetName      string `db:"target_name"`
+	TargetIsBuilder bool   `db:"target_is_builder"`
+	Epoch           uint64 `db:"epoch"`
 }
 
 type SlotPageBid struct {
@@ -322,12 +329,14 @@ type SlotPageBid struct {
 // SlotPagePtcVotes holds PTC (Payload Timeliness Committee) vote information for a slot.
 // These are payload attestations included in this block for the PREVIOUS slot.
 type SlotPagePtcVotes struct {
-	VotedSlot      uint64                  `json:"voted_slot"`       // The slot the votes are for (previous slot)
-	VotedBlockRoot []byte                  `json:"voted_block_root"` // The block root being voted on
-	TotalPtcSize   uint64                  `json:"total_ptc_size"`   // Total PTC committee size
-	Aggregates     []*SlotPagePtcAggregate `json:"aggregates"`       // Up to 4 aggregates for different vote flag combinations
-	PtcCommittee   []types.NamedValidator  `json:"ptc_committee"`    // Full PTC committee with participation status
-	Participation  float64                 `json:"participation"`    // Overall participation rate
+	VotedSlot       uint64                  `json:"voted_slot"`        // The slot the votes are for (previous slot)
+	VotedBlockRoot  []byte                  `json:"voted_block_root"`  // The block root being voted on
+	TotalPtcSize    uint64                  `json:"total_ptc_size"`    // Total PTC committee size
+	Aggregates      []*SlotPagePtcAggregate `json:"aggregates"`        // Up to 4 aggregates for different vote flag combinations
+	NonVoters       []uint64                `json:"non_voters"`        // Validator indices that did not vote
+	NonVoterCount   uint64                  `json:"non_voter_count"`   // Number of non-voters
+	NonVoterPercent float64                 `json:"non_voter_percent"` // Percentage of non-voters
+	Participation   float64                 `json:"participation"`     // Overall participation rate
 }
 
 // SlotPagePtcAggregate represents a single PTC vote aggregate for a specific vote flag combination.
@@ -338,6 +347,7 @@ type SlotPagePtcAggregate struct {
 	Validators        []uint64 `json:"validators"`          // Validator indices that voted
 	Signature         []byte   `json:"signature"`           // Aggregate signature
 	VoteCount         uint64   `json:"vote_count"`          // Number of votes in this aggregate
+	VotePercent       float64  `json:"vote_percent"`        // Percentage of committee
 }
 
 // SlotPageInclusionList holds data for an inclusion list entry on the slot page.

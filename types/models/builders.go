@@ -58,7 +58,7 @@ type BuilderPageData struct {
 	Balance          uint64 `json:"balance"`
 	ExecutionAddress []byte `json:"execution_address"`
 	Version          uint8  `json:"version"`
-	State            string `json:"state"` // "Active", "Exited", "Superseded"
+	State            string `json:"state"` // "Pending", "Active", "Exited", "Superseded"
 
 	// Deposit lifecycle
 	ShowDeposit  bool      `json:"show_deposit"`
@@ -71,6 +71,14 @@ type BuilderPageData struct {
 	WithdrawableTs    time.Time `json:"withdrawable_ts"`
 
 	IsSuperseded bool `json:"is_superseded"`
+
+	// Exit reason (shown in header when builder has exited)
+	ExitReason              string                        `json:"exit_reason"`
+	ExitReasonSlot          uint64                        `json:"exit_reason_slot"`
+	ExitReasonVoluntaryExit bool                          `json:"exit_reason_voluntary_exit"`
+	ExitReasonWithdrawal    bool                          `json:"exit_reason_withdrawal"`
+	ExitReasonTxHash        []byte                        `json:"exit_reason_tx_hash"`
+	ExitReasonTxDetails     *BuilderPageDataExitTxDetails `json:"exit_reason_tx_details"`
 
 	// Tab control
 	TabView       string `json:"tab_view"`
@@ -110,11 +118,21 @@ type BuilderPageDataBid struct {
 	IsWinning    bool      `json:"is_winning"`
 }
 
-// BuilderPageDataDeposit represents a builder deposit or voluntary exit
+// BuilderPageDataDeposit represents a builder deposit transaction
 type BuilderPageDataDeposit struct {
-	Type       string    `json:"type"` // "exit"
+	Type       string    `json:"type"` // "deposit"
 	SlotNumber uint64    `json:"slot"`
 	SlotRoot   []byte    `json:"slot_root"`
 	Time       time.Time `json:"time"`
 	Orphaned   bool      `json:"orphaned"`
+}
+
+// BuilderPageDataExitTxDetails contains transaction details for EL-triggered exits
+type BuilderPageDataExitTxDetails struct {
+	BlockNumber uint64 `json:"block"`
+	BlockHash   string `json:"block_hash"`
+	BlockTime   uint64 `json:"block_time"`
+	TxOrigin    string `json:"tx_origin"`
+	TxTarget    string `json:"tx_target"`
+	TxHash      string `json:"tx_hash"`
 }

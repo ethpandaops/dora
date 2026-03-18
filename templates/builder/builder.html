@@ -42,6 +42,22 @@
                     {{ end }}
                   </div>
                 </div>
+                <div id="lifecycle-pending" class="validator__lifecycle-node-container validator__lifecycle-pending {{ if eq .State "Pending" }}active{{ else if or (eq .State "Active") (eq .State "Exited") (eq .State "Superseded") }}done{{ end }}">
+                  <div class="validator__lifecycle-node-container">
+                    <div class="validator__lifecycle-node-header">Pending</div>
+                    <div class="validator__lifecycle-node" data-bs-toggle="tooltip" title="Builder is pending activation (deposit epoch not yet finalized)">
+                      <i class="fas fa-hourglass-half"></i>
+                      <i class="fas fa-check"></i>
+                      <div class="spinner">
+                        <div class="double-bounce1"></div>
+                        <div class="double-bounce2"></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="validator__lifecycle-progress validator__lifecycle-pending">
+                  <div class="validator__lifecycle-progress-epoch"></div>
+                </div>
                 <div id="lifecycle-active" class="validator__lifecycle-node-container validator__lifecycle-active {{ if eq .State "Active" }}online{{ else if or (eq .State "Exited") (eq .State "Superseded") }}done{{ end }}">
                   <div class="validator__lifecycle-node-container">
                     <div class="validator__lifecycle-node-header">Active</div>
@@ -105,7 +121,9 @@
         <div class="row border-bottom p-2 mx-0">
           <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="The current status for this builder">Status:</span></div>
           <div class="col-md-10">
-            {{ if eq .State "Active" }}
+            {{ if eq .State "Pending" }}
+              <span class="badge rounded-pill text-bg-info">Pending</span>
+            {{ else if eq .State "Active" }}
               <span class="badge rounded-pill text-bg-success">Active</span>
             {{ else if eq .State "Exited" }}
               <span class="badge rounded-pill text-bg-warning">Exited</span>
@@ -144,6 +162,27 @@
           <div class="col-md-10">
             <a href="/epoch/{{ .WithdrawableEpoch }}">{{ formatAddCommas .WithdrawableEpoch }}</a>
             <span class="text-muted ms-2">({{ formatRecentTimeShort .WithdrawableTs }})</span>
+          </div>
+        </div>
+        {{ end }}
+        {{ if .ExitReason }}
+        <div class="row border-bottom p-2 mx-0">
+          <div class="col-md-2"><span data-bs-toggle="tooltip" data-bs-placement="top" title="Reason why this builder is exiting or has exited">Exit Reason:</span></div>
+          <div class="col-md-10">
+            {{ if .ExitReasonVoluntaryExit }}
+              Builder submitted a voluntary exit request in <a href="/slot/{{ .ExitReasonSlot }}">slot {{ .ExitReasonSlot }}</a>
+            {{ else if .ExitReasonWithdrawal }}
+              Builder submitted a full withdrawal request in <a href="/slot/{{ .ExitReasonSlot }}">slot {{ .ExitReasonSlot }}</a>
+              {{ if .ExitReasonTxDetails }}
+              <br/>
+              <small class="text-muted">
+                Transaction: {{ ethTransactionLink .ExitReasonTxHash 0 }}
+                <i class="fa fa-info-circle text-muted ml-2 p-1 nojs-hide tx-details-btn" role="button" data-txdetails="{{ includeJSON .ExitReasonTxDetails true }}"></i>
+              </small>
+              {{ end }}
+            {{ else }}
+              {{ .ExitReason }}
+            {{ end }}
           </div>
         </div>
         {{ end }}

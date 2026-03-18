@@ -196,6 +196,7 @@ func buildBuildersPageData(ctx context.Context, pageNumber uint64, pageSize uint
 	}
 
 	currentEpoch := chainState.CurrentEpoch()
+	finalizedEpoch, _ := chainState.GetFinalizedCheckpoint()
 
 	// get status options
 	pageData.FilterStatusOpts = []models.BuildersPageDataStatusOption{
@@ -251,6 +252,8 @@ func buildBuildersPageData(ctx context.Context, pageNumber uint64, pageSize uint
 			builderData.State = "Superseded"
 		} else if builder.Builder.WithdrawableEpoch <= currentEpoch {
 			builderData.State = "Exited"
+		} else if builder.Builder.DepositEpoch > finalizedEpoch {
+			builderData.State = "Pending"
 		} else {
 			builderData.State = "Active"
 		}

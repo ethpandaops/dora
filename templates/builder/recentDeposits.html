@@ -18,6 +18,8 @@
                 <td>
                   {{ if eq $deposit.Type "exit" }}
                     <span class="badge rounded-pill text-bg-warning">Voluntary Exit</span>
+                  {{ else if eq $deposit.Type "deposit" }}
+                    <span class="badge rounded-pill text-bg-success">Deposit</span>
                   {{ else }}
                     <span class="badge rounded-pill text-bg-info">{{ $deposit.Type }}</span>
                   {{ end }}

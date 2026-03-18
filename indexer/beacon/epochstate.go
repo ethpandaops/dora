@@ -10,6 +10,7 @@ import (
 	"github.com/attestantio/go-eth2-client/spec/electra"
 	"github.com/attestantio/go-eth2-client/spec/gloas"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
+	"github.com/ethpandaops/dora/clients/consensus"
 )
 
 // epochState represents a beacon state which a epoch status depends on.
@@ -146,7 +147,7 @@ func (s *epochState) loadState(ctx context.Context, client *Client, cache *epoch
 		}
 	}
 
-	err = s.processState(resState, beaconBlock, executionPayload, cache)
+	err = s.processState(resState, beaconBlock, executionPayload, cache, client.indexer.consensusPool.GetChainState().GetSpecs())
 	if err != nil {
 		return nil, err
 	}
@@ -164,7 +165,7 @@ func (s *epochState) loadState(ctx context.Context, client *Client, cache *epoch
 
 // processState processes the state and updates the epochState instance.
 // the function extracts and unifies all relevant information from the beacon state, so the full beacon state can be dropped from memory afterwards.
-func (s *epochState) processState(state *spec.VersionedBeaconState, beaconBlock *spec.VersionedSignedBeaconBlock, executionPayload *gloas.SignedExecutionPayloadEnvelope, cache *epochCache) error {
+func (s *epochState) processState(state *spec.VersionedBeaconState, beaconBlock *spec.VersionedSignedBeaconBlock, executionPayload *gloas.SignedExecutionPayloadEnvelope, cache *epochCache, specs *consensus.ChainSpec) error {
 	slot, err := state.Slot()
 	if err != nil {
 		return fmt.Errorf("error getting slot from state %v: %v", s.slotRoot.String(), err)
@@ -174,13 +175,12 @@ func (s *epochState) processState(state *spec.VersionedBeaconState, beaconBlock 
 
 	dependentRoot := s.slotRoot
 	if state.Version >= spec.DataVersionFulu {
-		blockRoots, err := getStateBlockRoots(state)
+		parentRoot, err := getLatestBlockHeaderParentRoot(state)
 		if err != nil {
-			return fmt.Errorf("error getting block roots from state %v: %v", s.slotRoot.String(), err)
+			return fmt.Errorf("error getting latest block header parent root from state %v: %v", s.slotRoot.String(), err)
 		}
 
-		specs := cache.indexer.consensusPool.GetChainState().GetSpecs()
-		dependentRoot = blockRoots[slot%phase0.Slot(specs.SlotsPerHistoricalRoot)]
+		dependentRoot = parentRoot
 	}
 
 	validatorList, err := state.Validators()

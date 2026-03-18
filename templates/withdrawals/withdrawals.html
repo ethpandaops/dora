@@ -165,7 +165,11 @@
               </td>
               <td>
                 {{- if $withdrawal.ValidatorValid }}
-                  {{ formatValidatorWithIndex $withdrawal.ValidatorIndex $withdrawal.ValidatorName }}
+                  {{- if $withdrawal.IsBuilder }}
+                    {{ formatBuilderWithIndex $withdrawal.ValidatorIndex $withdrawal.ValidatorName }}
+                  {{- else }}
+                    {{ formatValidatorWithIndex $withdrawal.ValidatorIndex $withdrawal.ValidatorName }}
+                  {{- end }}
                 {{- else }}
                   <div class="d-flex">
                     <span class="flex-grow-1 text-truncate" style="max-width: 150px;" data-bs-toggle="tooltip" title="pubkey not in validator set">0x{{ printf "%x" $withdrawal.PublicKey }}</span>

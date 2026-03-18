@@ -6,26 +6,30 @@ import (
 
 // SlotsPageData is a struct to hold info for the slots page
 type SlotsFilteredPageData struct {
-	FilterGraffiti        string `json:"filter_graffiti"`
-	FilterInvertGraffiti  bool   `json:"filter_invert_graffiti"`
-	FilterExtraData       string `json:"filter_extra_data"`
-	FilterInvertExtraData bool   `json:"filter_invert_extra_data"`
-	FilterProposer        string `json:"filter_proposer"`
-	FilterProposerName    string `json:"filter_pname"`
-	FilterInvertProposer  bool   `json:"filter_invert_proposer"`
-	FilterWithOrphaned    uint8  `json:"filter_orphaned"`
-	FilterWithMissing     uint8  `json:"filter_missing"`
-	FilterMinSyncAgg      string `json:"filter_min_sync"`
-	FilterMaxSyncAgg      string `json:"filter_max_sync"`
-	FilterMinExecTime     string `json:"filter_min_exec"`
-	FilterMaxExecTime     string `json:"filter_max_exec"`
-	FilterMinTxCount      string `json:"filter_min_tx"`
-	FilterMaxTxCount      string `json:"filter_max_tx"`
-	FilterMinBlobCount    string `json:"filter_min_blob"`
-	FilterMaxBlobCount    string `json:"filter_max_blob"`
-	FilterForkIds         string `json:"filter_fork_ids"`
-	FilterMinEpoch        string `json:"filter_min_epoch"`
-	FilterMaxEpoch        string `json:"filter_max_epoch"`
+	FilterGraffiti         string `json:"filter_graffiti"`
+	FilterInvertGraffiti   bool   `json:"filter_invert_graffiti"`
+	FilterExtraData        string `json:"filter_extra_data"`
+	FilterInvertExtraData  bool   `json:"filter_invert_extra_data"`
+	FilterProposer         string `json:"filter_proposer"`
+	FilterProposerName     string `json:"filter_pname"`
+	FilterInvertProposer   bool   `json:"filter_invert_proposer"`
+	FilterStatusMissing    bool   `json:"filter_status_missing"`
+	FilterStatusCanonical  bool   `json:"filter_status_canonical"`
+	FilterStatusOrphaned   bool   `json:"filter_status_orphaned"`
+	FilterPayloadMissing   bool   `json:"filter_payload_missing"`
+	FilterPayloadCanonical bool   `json:"filter_payload_canonical"`
+	FilterPayloadOrphaned  bool   `json:"filter_payload_orphaned"`
+	FilterMinSyncAgg       string `json:"filter_min_sync"`
+	FilterMaxSyncAgg       string `json:"filter_max_sync"`
+	FilterMinExecTime      string `json:"filter_min_exec"`
+	FilterMaxExecTime      string `json:"filter_max_exec"`
+	FilterMinTxCount       string `json:"filter_min_tx"`
+	FilterMaxTxCount       string `json:"filter_max_tx"`
+	FilterMinBlobCount     string `json:"filter_min_blob"`
+	FilterMaxBlobCount     string `json:"filter_max_blob"`
+	FilterForkIds          string `json:"filter_fork_ids"`
+	FilterMinEpoch         string `json:"filter_min_epoch"`
+	FilterMaxEpoch         string `json:"filter_max_epoch"`
 
 	DisplayEpoch        bool   `json:"dp_epoch"`
 	DisplaySlot         bool   `json:"dp_slot"`

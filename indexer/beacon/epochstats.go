@@ -587,7 +587,7 @@ func (es *EpochStats) precomputeFromParentState(indexer *Indexer, parentState *E
 		proposerDuties := []phase0.ValidatorIndex{}
 
 		specs := chainState.GetSpecs()
-		if uint64(len(parentState.dependentState.proposerLookahead)) > specs.SlotsPerEpoch {
+		if parentState.dependentState != nil && uint64(len(parentState.dependentState.proposerLookahead)) > specs.SlotsPerEpoch {
 			proposerDuties = parentState.dependentState.proposerLookahead[specs.SlotsPerEpoch:]
 		} else {
 			for slot := chainState.EpochToSlot(es.epoch); slot < chainState.EpochToSlot(es.epoch+1); slot++ {

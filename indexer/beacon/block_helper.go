@@ -784,66 +784,57 @@ func getStateProposerLookahead(v *spec.VersionedBeaconState) ([]phase0.Validator
 	}
 }
 
-// getStateProposerLookahead returns the proposer lookahead from a versioned beacon state.
-func getStateBlockRoots(v *spec.VersionedBeaconState) ([]phase0.Root, error) {
+// getLatestBlockHeaderParentRoot returns the parent root from the latest block header in the state.
+func getLatestBlockHeaderParentRoot(v *spec.VersionedBeaconState) (phase0.Root, error) {
 	switch v.Version {
-
 	case spec.DataVersionPhase0:
-		if v.Phase0 == nil || v.Phase0.BlockRoots == nil {
-			return nil, errors.New("no phase0 block")
-		}
-
-		return v.Phase0.BlockRoots, nil
+		return phase0.Root{}, errors.New("no latest block header parent root in phase0 state")
 	case spec.DataVersionAltair:
-		if v.Altair == nil || v.Altair.BlockRoots == nil {
-			return nil, errors.New("no altair block")
-		}
-
-		return v.Altair.BlockRoots, nil
+		return phase0.Root{}, errors.New("no latest block header parent root in altair state")
 	case spec.DataVersionBellatrix:
-		if v.Bellatrix == nil || v.Bellatrix.BlockRoots == nil {
-			return nil, errors.New("no bellatrix block")
+		if v.Bellatrix == nil || v.Bellatrix.LatestBlockHeader == nil {
+			return phase0.Root{}, errors.New("no bellatrix state")
 		}
 
-		return v.Bellatrix.BlockRoots, nil
+		return v.Bellatrix.LatestBlockHeader.ParentRoot, nil
 	case spec.DataVersionCapella:
-		if v.Capella == nil || v.Capella.BlockRoots == nil {
-			return nil, errors.New("no capella block")
+		if v.Capella == nil || v.Capella.LatestBlockHeader == nil {
+			return phase0.Root{}, errors.New("no capella state")
 		}
 
-		return v.Capella.BlockRoots, nil
+		return v.Capella.LatestBlockHeader.ParentRoot, nil
 	case spec.DataVersionDeneb:
-		if v.Deneb == nil || v.Deneb.BlockRoots == nil {
-			return nil, errors.New("no deneb block")
+		if v.Deneb == nil || v.Deneb.LatestBlockHeader == nil {
+			return phase0.Root{}, errors.New("no deneb state")
 		}
 
-		return v.Deneb.BlockRoots, nil
+		return v.Deneb.LatestBlockHeader.ParentRoot, nil
 	case spec.DataVersionElectra:
-		if v.Electra == nil || v.Electra.BlockRoots == nil {
-			return nil, errors.New("no electra block")
+		if v.Electra == nil || v.Electra.LatestBlockHeader == nil {
+			return phase0.Root{}, errors.New("no electra state")
 		}
 
-		return v.Electra.BlockRoots, nil
+		return v.Electra.LatestBlockHeader.ParentRoot, nil
 	case spec.DataVersionFulu:
-		if v.Fulu == nil || v.Fulu.BlockRoots == nil {
-			return nil, errors.New("no fulu block")
+		if v.Fulu == nil || v.Fulu.LatestBlockHeader == nil {
+			return phase0.Root{}, errors.New("no fulu state")
 		}
 
-		return v.Fulu.BlockRoots, nil
+		return v.Fulu.LatestBlockHeader.ParentRoot, nil
 	case spec.DataVersionGloas:
-		if v.Gloas == nil || v.Gloas.BlockRoots == nil {
-			return nil, errors.New("no gloas block")
+		if v.Gloas == nil || v.Gloas.LatestBlockHeader == nil {
+			return phase0.Root{}, errors.New("no gloas state")
 		}
 
-		return v.Gloas.BlockRoots, nil
+		return v.Gloas.LatestBlockHeader.ParentRoot, nil
 	case spec.DataVersionHeze:
 		if v.Heze == nil || v.Heze.BlockRoots == nil {
 			return nil, errors.New("no heze block")
 		}
 
-		return v.Heze.BlockRoots, nil
+		return v.Heze.LatestBlockHeader.ParentRoot, nil
 	default:
-		return nil, errors.New("unknown version")
+		return phase0.Root{}, errors.New("unknown version")
 	}
 }
 

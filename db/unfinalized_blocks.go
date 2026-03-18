@@ -189,7 +189,7 @@ func GetUnfinalizedBlock(ctx context.Context, root []byte, withHeader bool, with
 
 	fmt.Fprint(&sql, `, status, fork_id, recv_delay, min_exec_time, max_exec_time, exec_times, block_uid`)
 
-	fmt.Fprint(&sql, `FROM unfinalized_blocks WHERE root = $1`)
+	fmt.Fprint(&sql, ` FROM unfinalized_blocks WHERE root = $1`)
 
 	block := dbtypes.UnfinalizedBlock{}
 	err := ReaderDb.GetContext(ctx, &block, sql.String(), root)

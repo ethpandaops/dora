@@ -37,6 +37,7 @@ type WithdrawalsPageDataRecentWithdrawal struct {
 	ValidatorValid    bool      `json:"vvalid"`
 	ValidatorIndex    uint64    `json:"vindex"`
 	ValidatorName     string    `json:"vname"`
+	IsBuilder         bool      `json:"is_builder"`
 	PublicKey         []byte    `json:"pubkey"`
 	LinkedTransaction bool      `json:"linked_tx"`
 	TransactionHash   []byte    `json:"tx_hash"`

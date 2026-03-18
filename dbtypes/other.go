@@ -43,6 +43,16 @@ type UnfinalizedBlockFilter struct {
 	WithBody bool
 }
 
+type PayloadStatusMask uint8
+
+const (
+	PayloadStatusMaskMissing   PayloadStatusMask = 0x01
+	PayloadStatusMaskCanonical PayloadStatusMask = 0x02
+	PayloadStatusMaskOrphaned  PayloadStatusMask = 0x04
+
+	PayloadStatusMaskAll PayloadStatusMask = 0x07
+)
+
 type BlockFilter struct {
 	Graffiti             string
 	InvertGraffiti       bool
@@ -53,7 +63,7 @@ type BlockFilter struct {
 	InvertProposer       bool
 	WithOrphaned         uint8
 	WithMissing          uint8
-	WithPayloadOrphaned  uint8 // 0: only canonical payloads, 1: all, 2: only orphaned payloads
+	WithPayloadMask      PayloadStatusMask
 	MinSyncParticipation *float32
 	MaxSyncParticipation *float32
 	MinExecTime          *uint32
