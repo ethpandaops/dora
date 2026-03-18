@@ -304,9 +304,9 @@ func (fc *FrontendCacheService) GetStats() *FrontendCacheStats {
 	}
 
 	fc.pageTypeSemMutex.Lock()
-	pageTypeSems := make(map[string]int, len(fc.pageTypeSemaphores))
+	pageTypeSemUsage := make(map[string]int, len(fc.pageTypeSemaphores))
 	for pageType, sem := range fc.pageTypeSemaphores {
-		pageTypeSems[pageType] = len(sem)
+		pageTypeSemUsage[pageType] = len(sem)
 	}
 	fc.pageTypeSemMutex.Unlock()
 
@@ -318,7 +318,7 @@ func (fc *FrontendCacheService) GetStats() *FrontendCacheStats {
 		ConcurrencyLimit:   concurrencyLimit,
 		ConcurrencyUsed:    concurrencyUsed,
 		PageTypeSemLimit:   fc.pageTypeSemLimit,
-		PageTypeSemaphores: pageTypeSems,
+		PageTypeSemaphores: pageTypeSemUsage,
 	}
 }
 
