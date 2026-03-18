@@ -56,7 +56,6 @@ type ChainSpecConfig struct {
 
 	// Time parameters
 	SlotDurationMs                  uint64 `yaml:"SLOT_DURATION_MS"`
-	SecondsPerSlot                  uint64 `yaml:"SECONDS_PER_SLOT"`
 	SecondsPerEth1Block             uint64 `yaml:"SECONDS_PER_ETH1_BLOCK"`
 	MinValidatorWithdrawbilityDelay uint64 `yaml:"MIN_VALIDATOR_WITHDRAWABILITY_DELAY"`
 	ShardCommitteePeriod            uint64 `yaml:"SHARD_COMMITTEE_PERIOD"`
@@ -253,8 +252,14 @@ func (chain *ChainSpec) ParseAdditive(values map[string]interface{}) error {
 		return err
 	}
 
-	if chain.SlotDurationMs == 0 && chain.SecondsPerSlot > 0 {
-		chain.SlotDurationMs = chain.SecondsPerSlot * 1000
+	if chain.SlotDurationMs == 0 {
+		var legacySlot struct {
+			SecondsPerSlot uint64 `yaml:"SECONDS_PER_SLOT"`
+		}
+
+		if err2 := yaml.Unmarshal(valuesYaml, &legacySlot); err2 == nil && legacySlot.SecondsPerSlot > 0 {
+			chain.SlotDurationMs = legacySlot.SecondsPerSlot * 1000
+		}
 	}
 
 	return nil
