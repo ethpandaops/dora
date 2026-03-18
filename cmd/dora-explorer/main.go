@@ -237,7 +237,7 @@ func startFrontend(router *mux.Router) {
 	if utils.Config.Frontend.Pprof {
 		// add pprof handler
 		router.PathPrefix("/debug/pprof/").Handler(http.DefaultServeMux)
-		router.HandleFunc("/debug/cache", handlers.DebugCache).Methods("GET")
+		router.HandleFunc("/debug/cache", handlers.DebugPage).Methods("GET")
 	}
 
 	if utils.Config.Frontend.Debug {

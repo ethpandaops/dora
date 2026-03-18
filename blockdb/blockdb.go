@@ -62,6 +62,11 @@ func InitWithS3(config dtypes.S3BlockDBConfig) error {
 	return nil
 }
 
+// GetEngine returns the underlying storage engine.
+func (db *BlockDb) GetEngine() types.BlockDbEngine {
+	return db.engine
+}
+
 func (db *BlockDb) Close() error {
 	return db.engine.Close()
 }
