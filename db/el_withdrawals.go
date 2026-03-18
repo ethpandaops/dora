@@ -90,38 +90,40 @@ func GetElWithdrawalsByBlockUid(ctx context.Context, blockUid uint64) ([]*dbtype
 	return withdrawals, nil
 }
 
+// HasElWithdrawalsByAccountID returns true if the given account has any
+// withdrawals or fee recipient rewards. Uses EXISTS for O(1) lookup.
+func HasElWithdrawalsByAccountID(ctx context.Context, accountID uint64) (bool, error) {
+	var exists bool
+	err := ReaderDb.GetContext(ctx, &exists,
+		"SELECT EXISTS(SELECT 1 FROM el_withdrawals WHERE account_id = $1 LIMIT 1)",
+		accountID,
+	)
+	if err != nil {
+		return false, err
+	}
+	return exists, nil
+}
+
+// MaxAccountWithdrawalCount is the maximum count returned for address withdrawal queries.
+const MaxAccountWithdrawalCount = 100000
+
 func GetElWithdrawalsByAccountID(ctx context.Context, accountID uint64, offset uint64, limit uint32) ([]*dbtypes.ElWithdrawal, uint64, error) {
+	// Data query
 	var sql strings.Builder
 	args := []any{accountID}
 
 	fmt.Fprint(&sql, `
-	WITH cte AS (
 		SELECT block_uid, block_index, account_id, type, amount, amount_raw, validator
 		FROM el_withdrawals
 		WHERE account_id = $1
-	)`)
-
-	fmt.Fprintf(&sql, `
-	SELECT
-		count(*) AS block_uid,
-		0 AS block_index,
-		0 AS account_id,
-		0 AS type,
-		0 AS amount,
-		null AS amount_raw,
-		null AS validator
-	FROM cte
-	UNION ALL SELECT * FROM (
-	SELECT * FROM cte
-	ORDER BY block_uid DESC NULLS LAST, block_index ASC
-	LIMIT $%v`, len(args)+1)
+		ORDER BY block_uid DESC NULLS LAST, block_index ASC
+		LIMIT $2`)
 	args = append(args, limit)
 
 	if offset > 0 {
 		args = append(args, offset)
 		fmt.Fprintf(&sql, " OFFSET $%v", len(args))
 	}
-	fmt.Fprint(&sql, ") AS t1")
 
 	withdrawals := []*dbtypes.ElWithdrawal{}
 	err := ReaderDb.SelectContext(ctx, &withdrawals, sql.String(), args...)
@@ -130,12 +132,18 @@ func GetElWithdrawalsByAccountID(ctx context.Context, accountID uint64, offset u
 		return nil, 0, err
 	}
 
-	if len(withdrawals) == 0 {
-		return []*dbtypes.ElWithdrawal{}, 0, nil
+	// Count query (index-only scan, capped)
+	var totalCount uint64
+	err = ReaderDb.GetContext(ctx, &totalCount,
+		"SELECT COUNT(*) FROM (SELECT 1 FROM el_withdrawals WHERE account_id = $1 LIMIT $2) AS a",
+		accountID, MaxAccountWithdrawalCount,
+	)
+	if err != nil {
+		logger.Errorf("Error while counting el withdrawals by account id: %v", err)
+		return nil, 0, err
 	}
 
-	count := withdrawals[0].BlockUid
-	return withdrawals[1:], count, nil
+	return withdrawals, totalCount, nil
 }
 
 func GetElWithdrawalsFiltered(ctx context.Context, offset uint64, limit uint32, filter *dbtypes.ElWithdrawalFilter) ([]*dbtypes.ElWithdrawal, uint64, error) {

@@ -12,33 +12,33 @@
     </div>
 
     <!-- Network Overview Cards -->
-    <div class="row mt-3">
-      <div class="col-md-3">
-        <div class="card">
+    <div class="row mt-3 row-cols-2 row-cols-md-{{ if .HasInclusionData }}5{{ else }}4{{ end }} g-3">
+      <div class="col">
+        <div class="card h-100">
           <div class="card-body text-center">
             <h5 class="card-title">Validators</h5>
             <h3 class="text-primary">{{ formatAddCommas .TotalValidators }}</h3>
           </div>
         </div>
       </div>
-      <div class="col-md-3">
-        <div class="card">
+      <div class="col">
+        <div class="card h-100">
           <div class="card-body text-center">
             <h5 class="card-title">Total Effective Balance</h5>
             <h3 class="text-info">{{ formatAddCommas .TotalEffectiveETH }} ETH</h3>
           </div>
         </div>
       </div>
-      <div class="col-md-3">
-        <div class="card">
+      <div class="col">
+        <div class="card h-100">
           <div class="card-body text-center">
             <h5 class="card-title">Online Stake</h5>
             <h3 class="text-success">{{ formatAddCommas .OverallHealthy }} ETH</h3>
           </div>
         </div>
       </div>
-      <div class="col-md-3">
-        <div class="card">
+      <div class="col">
+        <div class="card h-100">
           <div class="card-body text-center">
             <h5 class="card-title">Network Health</h5>
             <h3 class="{{ if eq .NetworkHealthScore 100.0 }}text-success{{ else if ge .NetworkHealthScore 95.0 }}text-warning{{ else }}text-danger{{ end }}">
@@ -47,6 +47,18 @@
           </div>
         </div>
       </div>
+      {{ if .HasInclusionData }}
+      <div class="col">
+        <div class="card h-100">
+          <div class="card-body text-center">
+            <h5 class="card-title" data-bs-toggle="tooltip" data-bs-placement="top" title="Average attestation inclusion distance based on cached blocks only.">Avg. Inclusion Distance</h5>
+            <h3 class="{{ if le .AvgInclusionDelay 1.01 }}text-success{{ else if le .AvgInclusionDelay 1.3 }}text-warning{{ else }}text-danger{{ end }}">
+              {{ printf "%.2f" .AvgInclusionDelay }}
+            </h3>
+          </div>
+        </div>
+      </div>
+      {{ end }}
     </div>
 
     <!-- Client Distribution Matrix -->
@@ -84,9 +96,9 @@
                     {{ $cell := index (index $.ClientMatrix $elIndex) $clIndex }}
                     <td class="text-center p-2 matrix-cell {{ $cell.HealthStatus }}" 
                         style="cursor: pointer; border: 1px solid #dee2e6;" 
-                        data-bs-toggle="tooltip" 
-                        data-bs-placement="top" 
-                        title="{{ $cell.ConsensusClient }}-{{ $cell.ExecutionClient }}: {{ $cell.ValidatorCount }} validators, {{ printf "%.2f" $cell.BalancePercentage }}% stake, {{ printf "%.1f" $cell.OnlinePercentage }}% online">
+                        data-bs-toggle="tooltip"
+                        data-bs-placement="top"
+                        title="{{ $cell.ConsensusClient }}-{{ $cell.ExecutionClient }}: {{ $cell.ValidatorCount }} validators, {{ printf "%.2f" $cell.BalancePercentage }}% stake, {{ printf "%.1f" $cell.OnlinePercentage }}% online{{ if gt $cell.AvgInclusionDelay 0.0 }}, avg incl. dist. {{ printf "%.2f" $cell.AvgInclusionDelay }}{{ end }}">
                       {{ if gt $cell.ValidatorCount 0 }}
                         <div class="fw-bold">{{ formatAddCommas $cell.ValidatorCount }}</div>
                         <div style="font-size: 0.7rem; color: #6c757d;">{{ printf "%.1f" $cell.BalancePercentage }}%</div>
@@ -117,7 +129,16 @@
       </div>
       <div class="card-body p-0">
         <div class="table-responsive">
-          <table class="table table-hover mb-0">
+          <table class="table table-hover mb-0 client-breakdown-table">
+            <colgroup>
+              <col style="width: 15%">
+              <col style="width: 18%">
+              <col style="width: 22%">
+              <col style="width: 13%">
+              <col style="width: 13%">
+              {{ if $.HasInclusionData }}<col style="width: 13%">{{ end }}
+              <col style="width: 6%">
+            </colgroup>
             <thead class="thead-light">
               <tr>
                 <th>Client</th>
@@ -125,6 +146,7 @@
                 <th class="text-end">Effective Balance (ETH)</th>
                 <th class="text-end">Network Share</th>
                 <th class="text-end">Online Rate</th>
+                {{ if $.HasInclusionData }}<th class="text-end" data-bs-toggle="tooltip" title="Average attestation inclusion distance">Avg. Inclusion Dist.</th>{{ end }}
                 <th class="text-center">Status</th>
               </tr>
             </thead>
@@ -147,6 +169,11 @@
                   <td class="text-end {{ if eq .OnlinePercentage 100.0 }}text-success{{ else if ge .OnlinePercentage 95.0 }}text-warning{{ else }}text-danger{{ end }}">
                     {{ printf "%.1f" .OnlinePercentage }}%
                   </td>
+                  {{ if $.HasInclusionData }}
+                  <td class="text-end {{ if gt .AvgInclusionDelay 0.0 }}{{ if le .AvgInclusionDelay 1.01 }}text-success{{ else if le .AvgInclusionDelay 1.3 }}text-warning{{ else }}text-danger{{ end }}{{ else }}text-muted{{ end }}">
+                    {{ if gt .AvgInclusionDelay 0.0 }}{{ printf "%.2f" .AvgInclusionDelay }}{{ else }}-{{ end }}
+                  </td>
+                  {{ end }}
                   <td class="text-center">
                     {{ if eq .HealthStatus "healthy" }}
                       <span class="badge badge-success">Healthy</span>
@@ -174,7 +201,16 @@
       </div>
       <div class="card-body p-0">
         <div class="table-responsive">
-          <table class="table table-hover mb-0">
+          <table class="table table-hover mb-0 client-breakdown-table">
+            <colgroup>
+              <col style="width: 15%">
+              <col style="width: 18%">
+              <col style="width: 22%">
+              <col style="width: 13%">
+              <col style="width: 13%">
+              {{ if $.HasInclusionData }}<col style="width: 13%">{{ end }}
+              <col style="width: 6%">
+            </colgroup>
             <thead class="thead-light">
               <tr>
                 <th>Client</th>
@@ -182,6 +218,7 @@
                 <th class="text-end">Effective Balance (ETH)</th>
                 <th class="text-end">Network Share</th>
                 <th class="text-end">Online Rate</th>
+                {{ if $.HasInclusionData }}<th class="text-end" data-bs-toggle="tooltip" title="Average attestation inclusion distance">Avg. Inclusion Dist.</th>{{ end }}
                 <th class="text-center">Status</th>
               </tr>
             </thead>
@@ -204,6 +241,11 @@
                   <td class="text-end {{ if eq .OnlinePercentage 100.0 }}text-success{{ else if ge .OnlinePercentage 95.0 }}text-warning{{ else }}text-danger{{ end }}">
                     {{ printf "%.1f" .OnlinePercentage }}%
                   </td>
+                  {{ if $.HasInclusionData }}
+                  <td class="text-end {{ if gt .AvgInclusionDelay 0.0 }}{{ if le .AvgInclusionDelay 1.01 }}text-success{{ else if le .AvgInclusionDelay 1.3 }}text-warning{{ else }}text-danger{{ end }}{{ else }}text-muted{{ end }}">
+                    {{ if gt .AvgInclusionDelay 0.0 }}{{ printf "%.2f" .AvgInclusionDelay }}{{ else }}-{{ end }}
+                  </td>
+                  {{ end }}
                   <td class="text-center">
                     {{ if eq .HealthStatus "healthy" }}
                       <span class="badge badge-success">Healthy</span>
@@ -349,6 +391,11 @@ $(document).ready(function() {
 
 .table th, .table td {
   vertical-align: middle;
+}
+
+.client-breakdown-table {
+  table-layout: fixed;
+  width: 100%;
 }
 
 /* Responsive adjustments */

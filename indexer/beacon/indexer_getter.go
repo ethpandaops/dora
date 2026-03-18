@@ -395,6 +395,12 @@ func (indexer *Indexer) GetValidatorActivityCount(validatorIndex phase0.Validato
 	return indexer.validatorActivity.getValidatorActivityCount(validatorIndex, startEpoch), indexer.validatorActivity.oldestActivityEpoch
 }
 
+// GetValidatorInclusionDistance returns the attestation count and total inclusion delay
+// for a validator over the last lookbackEpochs epochs, using only cached blocks.
+func (indexer *Indexer) GetValidatorInclusionDistance(validatorIndex phase0.ValidatorIndex, lookbackEpochs phase0.Epoch) (count uint64, totalDelay uint64) {
+	return indexer.validatorActivity.getValidatorInclusionDistance(validatorIndex, lookbackEpochs)
+}
+
 // GetRecentValidatorBalances returns the most recent validator balances for the given fork.
 func (indexer *Indexer) GetRecentValidatorBalances(overrideForkId *ForkKey) []phase0.Gwei {
 	chainState := indexer.consensusPool.GetChainState()

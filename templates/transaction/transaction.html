@@ -171,6 +171,13 @@
         </a>
       </li>
       {{ end }}
+      {{ if gt (len .Authorizations) 0 }}
+      <li class="nav-item">
+        <a class="nav-link{{ if eq .TabView "authorizations" }} active{{ end }}" id="authorizations-tab" data-lazy-tab="authorizations" data-bs-toggle="tab" data-bs-target="#authorizations" href="?v=authorizations{{ if gt .SelectedBlockUid 0 }}&b={{ .SelectedBlockUid }}{{ end }}" role="tab" aria-controls="authorizations" aria-selected="{{ if eq .TabView "authorizations" }}true{{ else }}false{{ end }}">
+          <i class="fa fa-key me-2"></i> Authorizations ({{ len .Authorizations }})
+        </a>
+      </li>
+      {{ end }}
       {{ if gt .BlobCount 0 }}
       <li class="nav-item">
         <a class="nav-link{{ if eq .TabView "blobs" }} active{{ end }}" id="blobs-tab" data-lazy-tab="blobs" data-bs-toggle="tab" data-bs-target="#blobs" href="?v=blobs{{ if gt .SelectedBlockUid 0 }}&b={{ .SelectedBlockUid }}{{ end }}" role="tab" aria-controls="blobs" aria-selected="{{ if eq .TabView "blobs" }}true{{ else }}false{{ end }}">
@@ -329,6 +336,13 @@
         {{ end }}
       </div>
       {{ end }}
+      {{ if gt (len .Authorizations) 0 }}
+      <div class="tab-pane fade{{ if eq .TabView "authorizations" }} show active{{ end }}" id="authorizations" role="tabpanel" aria-labelledby="authorizations-tab" data-loaded="{{ if eq .TabView "authorizations" }}true{{ else }}false{{ end }}">
+        {{ if eq .TabView "authorizations" }}
+          {{ template "authorizations" . }}
+        {{ end }}
+      </div>
+      {{ end }}
       {{ if gt .BlobCount 0 }}
       <div class="tab-pane fade{{ if eq .TabView "blobs" }} show active{{ end }}" id="blobs" role="tabpanel" aria-labelledby="blobs-tab" data-loaded="{{ if eq .TabView "blobs" }}true{{ else }}false{{ end }}">
         {{ if eq .TabView "blobs" }}
@@ -348,6 +362,8 @@
     {{ template "transfers" . }}
   {{ else if eq .TabView "internaltxs" }}
     {{ template "internaltxs" . }}
+  {{ else if eq .TabView "authorizations" }}
+    {{ template "authorizations" . }}
   {{ else if eq .TabView "blobs" }}
     {{ template "blobs" . }}
   {{ else }}
@@ -455,6 +471,7 @@
       'statechanges': 'statechanges',
       'transfers': 'transfers',
       'internaltxs': 'internaltxs',
+      'authorizations': 'authorizations',
       'blobs': 'blobs'
     };
 
@@ -466,18 +483,19 @@
 
     function onTabSelected(event) {
       event.preventDefault();
-      var tabId = event.target.getAttribute('data-lazy-tab');
+      var link = event.currentTarget;
+      var tabId = link.getAttribute('data-lazy-tab');
       var tabEl = document.getElementById(tabId);
       currentTab = tabId;
 
       if (tabId !== 'details' && !$(tabEl).data("loaded")) {
-        loadTabContent(tabEl, event.target.getAttribute('href'));
+        loadTabContent(tabEl, link.getAttribute('href'));
       }
 
-      var tab = new bootstrap.Tab(event.target);
+      var tab = new bootstrap.Tab(link);
       tab.show();
 
-      window.history.replaceState(null, document.title, "/tx/" + txHashStr + event.target.getAttribute('href'));
+      window.history.replaceState(null, document.title, "/tx/" + txHashStr + link.getAttribute('href'));
 
       // Update inclusion block links with new tab view
       updateInclusionBlockLinks(tabToView[tabId] || 'overview');
