@@ -214,6 +214,9 @@ type ChainSpecPreset struct {
 	BuilderRegistryLimit           uint64 `yaml:"BUILDER_REGISTRY_LIMIT" check-if-fork:"GloasForkEpoch"`
 	BuilderPendingWithdrawalsLimit uint64 `yaml:"BUILDER_PENDING_WITHDRAWALS_LIMIT" check-if-fork:"GloasForkEpoch"`
 	MaxBuildersPerWithdrawalsSweep uint64 `yaml:"MAX_BUILDERS_PER_WITHDRAWALS_SWEEP" check-if-fork:"GloasForkEpoch"`
+
+	// Heze
+	InclusionListCommitteeSize uint64 `yaml:"INCLUSION_LIST_COMMITTEE_SIZE" check-if-fork:"HezeForkEpoch"`
 }
 
 type ChainSpecDomainTypes struct {
