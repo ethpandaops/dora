@@ -141,7 +141,12 @@ func buildWithdrawalsPageData(ctx context.Context, firstEpoch uint64, pageSize u
 			}
 
 			if validatorIndex := withdrawal.ValidatorIndex(); validatorIndex != nil {
-				withdrawalData.ValidatorIndex = *validatorIndex
+				if *validatorIndex&services.BuilderIndexFlag != 0 {
+					withdrawalData.IsBuilder = true
+					withdrawalData.ValidatorIndex = *validatorIndex &^ services.BuilderIndexFlag
+				} else {
+					withdrawalData.ValidatorIndex = *validatorIndex
+				}
 				withdrawalData.ValidatorName = services.GlobalBeaconService.GetValidatorName(*validatorIndex)
 				withdrawalData.ValidatorValid = true
 			}

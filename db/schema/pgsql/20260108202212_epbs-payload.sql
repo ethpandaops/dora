@@ -1,18 +1,18 @@
 -- +goose Up
 -- +goose StatementBegin
 
-ALTER TABLE public."unfinalized_blocks" ADD
- "payload_ver" int NOT NULL DEFAULT 0,
- "payload_ssz" bytea NULL;
+ALTER TABLE public."unfinalized_blocks"
+ ADD COLUMN "payload_ver" int NOT NULL DEFAULT 0,
+ ADD COLUMN "payload_ssz" bytea NULL;
 
-ALTER TABLE public."orphaned_blocks" ADD
- "payload_ver" int NOT NULL DEFAULT 0,
- "payload_ssz" bytea NULL;
+ALTER TABLE public."orphaned_blocks"
+ ADD COLUMN "payload_ver" int NOT NULL DEFAULT 0,
+ ADD COLUMN "payload_ssz" bytea NULL;
 
-ALTER TABLE public."slots" ADD
- "payload_status" smallint NOT NULL DEFAULT 0,
- "builder_index" bigint NOT NULL DEFAULT -1,
- "eth_block_parent_hash" bytea NULL;
+ALTER TABLE public."slots"
+ ADD COLUMN "payload_status" smallint NOT NULL DEFAULT 0,
+ ADD COLUMN "builder_index" bigint NOT NULL DEFAULT -1,
+ ADD COLUMN "eth_block_parent_hash" bytea NULL;
 
 CREATE INDEX IF NOT EXISTS "slots_payload_status_idx"
     ON public."slots"
@@ -26,11 +26,11 @@ CREATE INDEX IF NOT EXISTS "slots_builder_index_idx"
     ON public."slots"
     ("builder_index" ASC NULLS LAST);
 
-ALTER TABLE public."epochs" ADD
- "payload_count" int NOT NULL DEFAULT 0;
+ALTER TABLE public."epochs"
+ ADD COLUMN "payload_count" int NOT NULL DEFAULT 0;
 
-ALTER TABLE public."unfinalized_epochs" ADD
- "payload_count" int NOT NULL DEFAULT 0;
+ALTER TABLE public."unfinalized_epochs"
+ ADD COLUMN "payload_count" int NOT NULL DEFAULT 0;
 
 CREATE TABLE IF NOT EXISTS public."block_bids" (
     "parent_root" bytea NOT NULL,

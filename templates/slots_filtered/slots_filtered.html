@@ -97,25 +97,27 @@
               <div class="container">
                 <div class="row mt-1">
                   <div class="col-sm-12 col-md-6 col-lg-4">
-                    <nobr>Missing Blocks</nobr>
+                    <nobr>Block Status</nobr>
                   </div>
-                  <div class="col-sm-12 col-md-6 col-lg-4">
-                    <select name="f.missing" aria-controls="missing" class="form-control">
-                      <option value="0" {{ if eq .FilterWithMissing 0 }}selected{{ end }}>Hide missing</option>
-                      <option value="1" {{ if eq .FilterWithMissing 1 }}selected{{ end }}>Show all</option>
-                      <option value="2" {{ if eq .FilterWithMissing 2 }}selected{{ end }}>Missing only</option>
+                  <div class="col-sm-12 col-md-6 col-lg-8">
+                    <input type="hidden" id="statusMaskField" />
+                    <select name="f.status" multiple="multiple" class="filter-multiselect">
+                      <option value="1" {{ if .FilterStatusMissing }}selected{{ end }}>Missing</option>
+                      <option value="2" {{ if .FilterStatusCanonical }}selected{{ end }}>Canonical</option>
+                      <option value="3" {{ if .FilterStatusOrphaned }}selected{{ end }}>Orphaned</option>
                     </select>
                   </div>
                 </div>
                 <div class="row mt-1">
                   <div class="col-sm-12 col-md-6 col-lg-4">
-                    <nobr>Orphaned Blocks</nobr>
+                    <nobr>Payload Status</nobr>
                   </div>
-                  <div class="col-sm-12 col-md-6 col-lg-4">
-                    <select name="f.orphaned" aria-controls="orphaned" class="form-control">
-                      <option value="0" {{ if eq .FilterWithOrphaned 0 }}selected{{ end }}>Hide orphaned</option>
-                      <option value="1" {{ if eq .FilterWithOrphaned 1 }}selected{{ end }}>Show all</option>
-                      <option value="2" {{ if eq .FilterWithOrphaned 2 }}selected{{ end }}>Orphaned only</option>
+                  <div class="col-sm-12 col-md-6 col-lg-8">
+                    <input type="hidden" id="payloadStatusMaskField" />
+                    <select name="f.pstatus" multiple="multiple" class="filter-multiselect">
+                      <option value="1" {{ if .FilterPayloadMissing }}selected{{ end }}>Missing</option>
+                      <option value="2" {{ if .FilterPayloadCanonical }}selected{{ end }}>Canonical</option>
+                      <option value="3" {{ if .FilterPayloadOrphaned }}selected{{ end }}>Orphaned</option>
                     </select>
                   </div>
                 </div>
@@ -463,17 +465,25 @@
 <script type="text/javascript">
 $('#slotsFilterForm').submit(function () {
   $(this).find('input[type="text"],input[type="number"]').filter(function () { return !this.value; }).prop('name', '');
-  var displayColumns = Array.prototype.filter.call($(this).find('select[name="d"]').prop('name', '').find("option"), function(el) {
-    return el.selected;
-  }).map(function(el) {
-    return el.value;
-  });
-  if(displayColumns.length > 0) {
-    var displayMask = 0;
-    displayColumns.forEach(function(col) {
-      displayMask |= 1 << (parseInt(col) - 1);
+
+  // Encode multiselect bitmasks
+  var multiselectFields = [
+    { select: 'select[name="d"]', hidden: '#displayColumnsField', param: 'd' },
+    { select: 'select[name="f.status"]', hidden: '#statusMaskField', param: 'f.status' },
+    { select: 'select[name="f.pstatus"]', hidden: '#payloadStatusMaskField', param: 'f.pstatus' }
+  ];
+  for (var i = 0; i < multiselectFields.length; i++) {
+    var field = multiselectFields[i];
+    var selected = Array.prototype.filter.call($(this).find(field.select).prop('name', '').find("option"), function(el) {
+      return el.selected;
+    }).map(function(el) {
+      return el.value;
     });
-    $(this).find("#displayColumnsField").prop('name', 'd').val("0x" + displayMask.toString(16));
+    var mask = 0;
+    selected.forEach(function(val) {
+      mask |= 1 << (parseInt(val) - 1);
+    });
+    $(this).find(field.hidden).prop('name', field.param).val("0x" + mask.toString(16));
   }
 });
 $(function() {

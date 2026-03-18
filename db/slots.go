@@ -483,10 +483,26 @@ func GetFilteredSlots(ctx context.Context, filter *dbtypes.BlockFilter, firstSlo
 		fmt.Fprintf(&sql, ` AND slots.builder_index = $%v `, argIdx)
 		args = append(args, *filter.BuilderIndex)
 	}
-	if filter.WithPayloadOrphaned == 0 {
-		fmt.Fprintf(&sql, ` AND slots.payload_status != 2 `)
-	} else if filter.WithPayloadOrphaned == 2 {
-		fmt.Fprintf(&sql, ` AND slots.payload_status = 2 `)
+
+	if filter.WithPayloadMask != dbtypes.PayloadStatusMaskAll {
+		allowedPayloadStatuses := []dbtypes.PayloadStatus{}
+		if filter.WithPayloadMask&dbtypes.PayloadStatusMaskMissing != 0 {
+			allowedPayloadStatuses = append(allowedPayloadStatuses, dbtypes.PayloadStatusMissing)
+		}
+		if filter.WithPayloadMask&dbtypes.PayloadStatusMaskCanonical != 0 {
+			allowedPayloadStatuses = append(allowedPayloadStatuses, dbtypes.PayloadStatusCanonical)
+		}
+		if filter.WithPayloadMask&dbtypes.PayloadStatusMaskOrphaned != 0 {
+			allowedPayloadStatuses = append(allowedPayloadStatuses, dbtypes.PayloadStatusOrphaned)
+		}
+
+		if len(allowedPayloadStatuses) > 0 {
+			allowedPayloadStatusesPlaceholders := make([]string, len(allowedPayloadStatuses))
+			for i, payloadStatus := range allowedPayloadStatuses {
+				allowedPayloadStatusesPlaceholders[i] = fmt.Sprintf("%v", payloadStatus)
+			}
+			fmt.Fprintf(&sql, ` AND slots.payload_status IN (%s) `, strings.Join(allowedPayloadStatusesPlaceholders, ", "))
+		}
 	}
 	if len(filter.EthBlockParentHash) > 0 {
 		argIdx++

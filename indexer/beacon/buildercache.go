@@ -290,8 +290,9 @@ func (cache *builderCache) getBuilderSetSize() uint64 {
 	return uint64(len(cache.builderSetCache))
 }
 
-// setFinalizedEpoch updates the builder cache when a new epoch is finalized
-func (cache *builderCache) setFinalizedEpoch(epoch phase0.Epoch, nextEpochDependentRoot phase0.Root) {
+// setFinalizedEpoch updates the builder cache when a new epoch is finalized.
+// dependentRoot is the dependent root of the finalized epoch (last block of the parent epoch).
+func (cache *builderCache) setFinalizedEpoch(epoch phase0.Epoch, dependentRoot phase0.Root) {
 	cache.cacheMutex.Lock()
 	defer cache.cacheMutex.Unlock()
 
@@ -304,7 +305,7 @@ func (cache *builderCache) setFinalizedEpoch(epoch phase0.Epoch, nextEpochDepend
 
 		// Find the finalized builder state
 		for _, diff := range cachedBuilder.builderDiffs {
-			if diff.dependentRoot == nextEpochDependentRoot {
+			if diff.dependentRoot == dependentRoot {
 				cachedBuilder.finalBuilder = diff.builder
 				cachedBuilder.finalChecksum = calculateBuilderChecksum(diff.builder)
 				cachedBuilder.statusFlags = GetBuilderStatusFlags(diff.builder)

@@ -13,7 +13,13 @@
         {{ range $i, $withdrawal := .Block.Withdrawals }}
           <tr>
             <td>{{ $withdrawal.Index }}</td>
-            <td>{{ formatValidatorWithIndex $withdrawal.ValidatorIndex $withdrawal.ValidatorName }}</td>
+            <td>
+              {{ if $withdrawal.IsBuilder }}
+                {{ formatBuilderWithIndex $withdrawal.ValidatorIndex $withdrawal.ValidatorName }}
+              {{ else }}
+                {{ formatValidatorWithIndex $withdrawal.ValidatorIndex $withdrawal.ValidatorName }}
+              {{ end }}
+            </td>
             <td>{{ ethAddressLink $withdrawal.Address }}</td>
             <td>{{ formatEthFromGwei $withdrawal.Amount }}</td>
           </tr>
