@@ -107,7 +107,7 @@
                     <td class="graph-container" style="min-width: {{ $treeWidth }}px;">
                       {{ range $j, $graph := $slot.ForkGraph }}
                         <div class="graph-fork" data-index="{{ $graph.Index }}" style="left: {{ $graph.Left }}px;">
-                          {{- range $tile, $val := $graph.Tiles -}}
+                          {{- range $tile := $graph.Tiles -}}
                             <div class="graph-layer graph-layer-{{ $tile }}"></div>
                           {{- end -}}
                           {{- if $graph.Block }}
@@ -228,8 +228,8 @@
             <div class="col-sm-12 col-md-7 table-paging">
               <div class="d-inline-block px-2">
                 <form method="GET" style="display: inline-flex; align-items: center;" id="pageJumpForm">
-                  {{ range $key, $value := .UrlParams }}
-                    <input type="hidden" name="{{ $key }}" value="{{ $value }}">
+                  {{ range $param := .UrlParams }}
+                    <input type="hidden" name="{{ $param.Key }}" value="{{ $param.Value }}">
                   {{ end }}
                   <input type="hidden" id="maxSlot" value="{{ .MaxSlot }}">
                   <input type="hidden" id="pageSize" value="{{ .PageSize }}">

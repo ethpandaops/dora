@@ -199,7 +199,7 @@ func (cs *ChainState) initWallclock() {
 		return
 	}
 
-	cs.wallclock = ethwallclock.NewEthereumBeaconChain(cs.genesis.GenesisTime, time.Duration(cs.specs.SecondsPerSlot)*time.Second, cs.specs.SlotsPerEpoch)
+	cs.wallclock = ethwallclock.NewEthereumBeaconChain(cs.genesis.GenesisTime, time.Duration(cs.specs.SlotDurationMs)*time.Millisecond, cs.specs.SlotsPerEpoch)
 	cs.wallclock.OnEpochChanged(func(current ethwallclock.Epoch) {
 		cs.wallclockEpochDispatcher.Fire(&current)
 	})
@@ -295,7 +295,7 @@ func (cs *ChainState) SlotToTime(slot phase0.Slot) time.Time {
 		return time.Time{}
 	}
 
-	return cs.genesis.GenesisTime.Add(time.Duration(uint64(slot)*cs.specs.SecondsPerSlot) * time.Second)
+	return cs.genesis.GenesisTime.Add(time.Duration(uint64(slot)*cs.specs.SlotDurationMs) * time.Millisecond)
 }
 
 func (cs *ChainState) EpochToTime(epoch phase0.Epoch) time.Time {
@@ -303,7 +303,7 @@ func (cs *ChainState) EpochToTime(epoch phase0.Epoch) time.Time {
 		return time.Time{}
 	}
 
-	return cs.genesis.GenesisTime.Add(time.Duration(uint64(cs.EpochToSlot(epoch))*cs.specs.SecondsPerSlot) * time.Second)
+	return cs.genesis.GenesisTime.Add(time.Duration(uint64(cs.EpochToSlot(epoch))*cs.specs.SlotDurationMs) * time.Millisecond)
 }
 
 func (cs *ChainState) TimeToSlot(timestamp time.Time) phase0.Slot {
@@ -315,7 +315,7 @@ func (cs *ChainState) TimeToSlot(timestamp time.Time) phase0.Slot {
 		return 0
 	}
 
-	return phase0.Slot(uint64((timestamp.Sub(cs.genesis.GenesisTime)).Seconds()) / cs.specs.SecondsPerSlot)
+	return phase0.Slot(uint64(timestamp.Sub(cs.genesis.GenesisTime).Milliseconds()) / cs.specs.SlotDurationMs)
 }
 
 func (cs *ChainState) SlotToSlotIndex(slot phase0.Slot) phase0.Slot {

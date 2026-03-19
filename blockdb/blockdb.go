@@ -85,7 +85,11 @@ func InitWithTiered(config dtypes.TieredBlockDBConfig, logger logrus.FieldLogger
 	return nil
 }
 
-// Close closes the block database.
+// GetEngine returns the underlying storage engine.
+func (db *BlockDb) GetEngine() types.BlockDbEngine {
+	return db.engine
+}
+
 func (db *BlockDb) Close() error {
 	return db.engine.Close()
 }

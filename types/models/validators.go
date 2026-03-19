@@ -28,7 +28,7 @@ type ValidatorsPageData struct {
 	LastPageIndex    uint64                         `json:"last_page_index"`
 	FilteredPageLink string                         `json:"filtered_page_link"`
 
-	UrlParams map[string]string `json:"url_params"`
+	UrlParams []UrlParam `json:"url_params"`
 }
 
 type ValidatorsPageDataStatusOption struct {
@@ -39,7 +39,7 @@ type ValidatorsPageDataStatusOption struct {
 type ValidatorsPageDataValidator struct {
 	Index               uint64    `json:"index"`
 	Name                string    `json:"name"`
-	PublicKey           []byte    `json:"pubkey"`
+	PublicKey           []byte    `json:"pubkey" ssz-size:"48"`
 	Balance             uint64    `json:"balance"`
 	EffectiveBalance    uint64    `json:"eff_balance"`
 	State               string    `json:"state"`
@@ -53,5 +53,5 @@ type ValidatorsPageDataValidator struct {
 	ExitTs              time.Time `json:"exit_ts"`
 	ExitEpoch           uint64    `json:"exit_epoch"`
 	ShowWithdrawAddress bool      `json:"show_withdraw_address"`
-	WithdrawAddress     []byte    `json:"withdraw_address"`
+	WithdrawAddress     []byte    `json:"withdraw_address" ssz-size:"20"`
 }

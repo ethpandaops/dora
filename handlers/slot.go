@@ -427,8 +427,10 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 		Eth1dataDepositroot:    eth1Data.DepositRoot[:],
 		Eth1dataDepositcount:   eth1Data.DepositCount,
 		Eth1dataBlockhash:      eth1Data.BlockHash,
-		ValidatorNames:         make(map[uint64]string),
-		SpecValues:             make(map[string]interface{}),
+		ValidatorNames:         make([]models.SlotPageValidatorName, 0),
+		SlotsPerEpoch:          specs.SlotsPerEpoch,
+		TargetCommitteeSize:    specs.TargetCommitteeSize,
+		MaxCommitteesPerSlot:   specs.MaxCommitteesPerSlot,
 		ProposerSlashingsCount: uint64(len(proposerSlashings)),
 		AttesterSlashingsCount: uint64(len(attesterSlashings)),
 		AttestationsCount:      uint64(len(attestations)),
@@ -437,9 +439,14 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 		SlashingsCount:         uint64(len(proposerSlashings)) + uint64(len(attesterSlashings)),
 	}
 
-	pageData.SpecValues["max_committees_per_slot"] = specs.MaxCommitteesPerSlot
-	pageData.SpecValues["target_committee_size"] = specs.TargetCommitteeSize
-	pageData.SpecValues["slots_per_epoch"] = specs.SlotsPerEpoch
+	appendValidatorName := func(index uint64, name string) {
+		for _, validatorName := range pageData.ValidatorNames {
+			if validatorName.Key == index {
+				return
+			}
+		}
+		pageData.ValidatorNames = append(pageData.ValidatorNames, models.SlotPageValidatorName{Key: index, Value: name})
+	}
 
 	epoch := chainState.EpochOfSlot(blockData.Header.Message.Slot)
 	assignmentsMap := make(map[phase0.Epoch]*beacon.EpochStatsValues)
@@ -592,16 +599,12 @@ func getSlotPageBlockData(ctx context.Context, blockData *services.CombinedBlock
 
 		attPageData.Validators = attAssignments
 		for j := 0; j < len(attAssignments); j++ {
-			if _, found := pageData.ValidatorNames[attAssignments[j]]; !found {
-				pageData.ValidatorNames[attAssignments[j]] = services.GlobalBeaconService.GetValidatorName(attAssignments[j])
-			}
+			appendValidatorName(attAssignments[j], services.GlobalBeaconService.GetValidatorName(attAssignments[j]))
 		}
 
 		attPageData.IncludedValidators = includedValidators
 		for j := 0; j < len(includedValidators); j++ {
-			if _, found := pageData.ValidatorNames[includedValidators[j]]; !found {
-				pageData.ValidatorNames[includedValidators[j]] = services.GlobalBeaconService.GetValidatorName(includedValidators[j])
-			}
+			appendValidatorName(includedValidators[j], services.GlobalBeaconService.GetValidatorName(includedValidators[j]))
 		}
 
 		pageData.Attestations[i] = &attPageData
@@ -1412,20 +1415,21 @@ func getSlotPagePtcVotes(pageData *models.SlotPageBlockData, blockData *services
 	}
 
 	// Populate validator names for all PTC validators
-	if pageData.ValidatorNames == nil {
-		pageData.ValidatorNames = make(map[uint64]string)
+	addName := func(index uint64, name string) {
+		for _, vn := range pageData.ValidatorNames {
+			if vn.Key == index {
+				return
+			}
+		}
+		pageData.ValidatorNames = append(pageData.ValidatorNames, models.SlotPageValidatorName{Key: index, Value: name})
 	}
 	for _, agg := range ptcVotes.Aggregates {
 		for _, vidx := range agg.Validators {
-			if _, exists := pageData.ValidatorNames[vidx]; !exists {
-				pageData.ValidatorNames[vidx] = services.GlobalBeaconService.GetValidatorName(vidx)
-			}
+			addName(vidx, services.GlobalBeaconService.GetValidatorName(vidx))
 		}
 	}
 	for _, vidx := range ptcVotes.NonVoters {
-		if _, exists := pageData.ValidatorNames[vidx]; !exists {
-			pageData.ValidatorNames[vidx] = services.GlobalBeaconService.GetValidatorName(vidx)
-		}
+		addName(vidx, services.GlobalBeaconService.GetValidatorName(vidx))
 	}
 
 	pageData.PtcVotes = ptcVotes

@@ -31,12 +31,12 @@ type QueuedConsolidationsPageData struct {
 	NextPageLink  string `json:"next_page_link"`
 	LastPageLink  string `json:"last_page_link"`
 
-	UrlParams map[string]string `json:"url_params"`
+	UrlParams []UrlParam `json:"url_params"`
 }
 
 type QueuedConsolidationsPageDataConsolidation struct {
-	SourcePublicKey        []byte    `json:"src_pubkey"`
-	TargetPublicKey        []byte    `json:"tgt_pubkey"`
+	SourcePublicKey        []byte    `json:"src_pubkey" ssz-size:"48"`
+	TargetPublicKey        []byte    `json:"tgt_pubkey" ssz-size:"48"`
 	SourceValidatorExists  bool      `json:"src_validator_exists"`
 	SourceValidatorIndex   uint64    `json:"src_validator_index"`
 	SourceValidatorName    string    `json:"src_validator_name"`
