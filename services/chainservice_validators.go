@@ -49,6 +49,12 @@ func (bs *ChainService) GetValidatorVotingActivity(validatorIndex phase0.Validat
 	return bs.beaconIndexer.GetValidatorActivity(validatorIndex)
 }
 
+// GetValidatorInclusionDistance returns the attestation count and total inclusion delay
+// for a validator over the last lookbackEpochs epochs, using only cached blocks.
+func (bs *ChainService) GetValidatorInclusionDistance(validatorIndex phase0.ValidatorIndex, lookbackEpochs phase0.Epoch) (count uint64, totalDelay uint64) {
+	return bs.beaconIndexer.GetValidatorInclusionDistance(validatorIndex, lookbackEpochs)
+}
+
 func (bs *ChainService) GetValidatorLiveness(validatorIndex phase0.ValidatorIndex, lookbackEpochs phase0.Epoch) uint64 {
 	chainState := bs.consensusPool.GetChainState()
 	latestEpoch := chainState.CurrentEpoch()

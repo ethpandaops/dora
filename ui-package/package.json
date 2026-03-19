@@ -13,19 +13,19 @@
     "@babel/preset-flow": "^7.27.1",
     "@babel/preset-react": "^7.28.5",
     "@babel/preset-typescript": "^7.28.5",
-    "babel-loader": "^10.1.0",
+    "babel-loader": "^10.1.1",
     "clean-webpack-plugin": "^4.0.0",
     "css-loader": "^7.1.4",
-    "mini-css-extract-plugin": "^2.10.0",
+    "mini-css-extract-plugin": "^2.10.1",
     "postcss-loader": "^8.2.1",
-    "sass": "^1.97.3",
+    "sass": "^1.98.0",
     "sass-loader": "^16.0.7",
     "style-loader": "^4.0.0",
     "ts-loader": "^9.5.4",
     "typescript": "^5.9.3",
     "url-loader": "^4.1.1",
     "webpack": "^5.105.4",
-    "webpack-cli": "^6.0.1",
+    "webpack-cli": "^7.0.0",
     "webpack-visualizer-plugin2": "^2.0.0"
   },
   "dependencies": {
@@ -39,7 +39,7 @@
     "react-bootstrap": "^2.10.10",
     "react-dom": "^19.2.4",
     "react-select": "^5.10.2",
-    "viem": "^2.47.0",
+    "viem": "^2.47.4",
     "wagmi": "^2.19.5"
   },
   "scripts": {

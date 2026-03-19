@@ -9,6 +9,8 @@ type ValidatorsSummaryPageData struct {
 	OverallHealthy     uint64                          `json:"overall_healthy"`
 	ClientBreakdown    []ValidatorsSummaryClientBreak  `json:"client_breakdown"`
 	NetworkHealthScore float64                         `json:"network_health_score"`
+	AvgInclusionDelay  float64                         `json:"avg_inclusion_delay"`
+	HasInclusionData   bool                            `json:"has_inclusion_data"`
 }
 
 type ValidatorsSummaryMatrixCell struct {
@@ -23,6 +25,7 @@ type ValidatorsSummaryMatrixCell struct {
 	OfflineValidators       uint64  `json:"offline_validators"`
 	OnlinePercentage        float64 `json:"online_percentage"`
 	HealthStatus            string  `json:"health_status"` // "healthy", "warning", "critical", "empty"
+	AvgInclusionDelay       float64 `json:"avg_inclusion_delay"`
 }
 
 type ValidatorsSummaryClientBreak struct {
@@ -38,4 +41,5 @@ type ValidatorsSummaryClientBreak struct {
 	OfflineValidators       uint64  `json:"offline_validators"`
 	OnlinePercentage        float64 `json:"online_percentage"`
 	HealthStatus            string  `json:"health_status"`
+	AvgInclusionDelay       float64 `json:"avg_inclusion_delay"`
 }
