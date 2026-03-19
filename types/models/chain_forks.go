@@ -35,11 +35,11 @@ type ChainForksDiagramData struct {
 type ChainFork struct {
 	ForkId               uint64                `json:"fork_id"`
 	BaseSlot             uint64                `json:"base_slot"`
-	BaseRoot             []byte                `json:"base_root"`
+	BaseRoot             []byte                `json:"base_root" ssz-size:"32"`
 	LeafSlot             uint64                `json:"leaf_slot"` // First block of this fork (where it diverged)
-	LeafRoot             []byte                `json:"leaf_root"`
+	LeafRoot             []byte                `json:"leaf_root" ssz-size:"32"`
 	HeadSlot             uint64                `json:"head_slot"` // Current head of this fork
-	HeadRoot             []byte                `json:"head_root"`
+	HeadRoot             []byte                `json:"head_root" ssz-size:"32"`
 	ParentFork           uint64                `json:"parent_fork"`
 	Participation        float64               `json:"participation"`          // Overall average participation
 	ParticipationByEpoch []*EpochParticipation `json:"participation_by_epoch"` // Participation per epoch

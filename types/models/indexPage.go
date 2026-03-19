@@ -30,8 +30,8 @@ type IndexPageData struct {
 	AverageValidatorBalance uint64    `json:"avg_balance"`
 	NewDepositProcessAfter  string    `json:"queue_delay"`
 	GenesisTime             time.Time `json:"genesis_time"`
-	GenesisForkVersion      []byte    `json:"genesis_version"`
-	GenesisValidatorsRoot   []byte    `json:"genesis_valroot"`
+	GenesisForkVersion      []byte    `json:"genesis_version" ssz-size:"4"`
+	GenesisValidatorsRoot   []byte    `json:"genesis_valroot" ssz-size:"32"`
 
 	NetworkForks     []*IndexPageDataForks  `json:"forks"`
 	RecentBlocks     []*IndexPageDataBlocks `json:"blocks"`
@@ -40,18 +40,18 @@ type IndexPageData struct {
 	RecentEpochCount uint64                 `json:"epoch_count"`
 	RecentSlots      []*IndexPageDataSlots  `json:"slots"`
 	RecentSlotCount  uint64                 `json:"slot_count"`
-	ForkTreeWidth    int                    `json:"forktree_width"`
+	ForkTreeWidth    int32                  `json:"forktree_width"`
 }
 
 type IndexPageDataForks struct {
 	Name             string  `json:"name"`
 	Epoch            uint64  `json:"epoch"`
-	Version          []byte  `json:"version"`
+	Version          []byte  `json:"version" ssz-size:"4"`
 	Active           bool    `json:"active"`
 	Time             uint64  `json:"time"`
-	Type             string  `json:"type"`                          // "consensus" or "bpo"
-	MaxBlobsPerBlock *uint64 `json:"max_blobs_per_block,omitempty"` // Only for BPO forks
-	ForkDigest       []byte  `json:"fork_digest"`                   // Fork digest for this fork
+	Type             string  `json:"type"`                                              // "consensus" or "bpo"
+	MaxBlobsPerBlock *uint64 `json:"max_blobs_per_block,omitempty" ssz-type:"optional"` // Only for BPO forks
+	ForkDigest       []byte  `json:"fork_digest" ssz-size:"4"`                          // Fork digest for this fork
 }
 
 type IndexPageDataEpochs struct {
@@ -77,7 +77,7 @@ type IndexPageDataBlocks struct {
 	Proposer     uint64    `json:"proposer"`
 	ProposerName string    `json:"proposer_name"`
 	Status       uint64    `json:"status"`
-	BlockRoot    []byte    `json:"block_root"`
+	BlockRoot    []byte    `json:"block_root" ssz-size:"32"`
 }
 
 type IndexPageDataSlots struct {
@@ -88,14 +88,14 @@ type IndexPageDataSlots struct {
 	Proposer     uint64                    `json:"proposer"`
 	ProposerName string                    `json:"proposer_name"`
 	Status       uint64                    `json:"status"`
-	BlockRoot    []byte                    `json:"block_root"`
-	ParentRoot   []byte                    `json:"-"`
+	BlockRoot    []byte                    `json:"block_root" ssz-size:"32"`
+	ParentRoot   []byte                    `json:"parent_root" ssz-size:"32"`
 	ForkGraph    []*IndexPageDataForkGraph `json:"fork_graph"`
 }
 
 type IndexPageDataForkGraph struct {
-	Index int             `json:"index"`
-	Left  int             `json:"left"`
-	Tiles map[string]bool `json:"tiles"`
-	Block bool            `json:"block"`
+	Index int32    `json:"index"`
+	Left  int32    `json:"left"`
+	Tiles []string `json:"tiles"`
+	Block bool     `json:"block"`
 }

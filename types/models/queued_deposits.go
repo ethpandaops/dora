@@ -32,15 +32,15 @@ type QueuedDepositsPageData struct {
 	NextPageLink     string `json:"next_page_link"`
 	LastPageLink     string `json:"last_page_link"`
 
-	UrlParams map[string]string `json:"url_params"`
+	UrlParams []UrlParam `json:"url_params"`
 }
 
 type QueuedDepositsPageDataDeposit struct {
 	Index                 uint64                                  `json:"index"`
 	HasIndex              bool                                    `json:"has_index"`
 	ExcessDeposit         bool                                    `json:"excess_deposit"`
-	PublicKey             []byte                                  `json:"pubkey"`
-	Withdrawalcredentials []byte                                  `json:"wtdcreds"`
+	PublicKey             []byte                                  `json:"pubkey" ssz-size:"48"`
+	Withdrawalcredentials []byte                                  `json:"wtdcreds" ssz-size:"32"`
 	Amount                uint64                                  `json:"amount"`
 	QueuePosition         uint64                                  `json:"queue_position"`
 	EstimatedTime         time.Time                               `json:"estimated_time"`
@@ -49,8 +49,8 @@ type QueuedDepositsPageDataDeposit struct {
 	UpcheckActivity       uint8                                   `json:"upcheck_act"`
 	UpcheckMaximum        uint8                                   `json:"upcheck_max"`
 	HasTransaction        bool                                    `json:"has_transaction"`
-	TransactionHash       []byte                                  `json:"tx_hash"`
-	TransactionDetails    *QueuedDepositsPageDataDepositTxDetails `json:"tx_details"`
+	TransactionHash       []byte                                  `json:"tx_hash" ssz-size:"32"`
+	TransactionDetails    *QueuedDepositsPageDataDepositTxDetails `json:"tx_details" ssz-type:"optional"`
 	ValidatorExists       bool                                    `json:"validator_exists"`
 	ValidatorIndex        uint64                                  `json:"validator_index"`
 	ValidatorName         string                                  `json:"validator_name"`
