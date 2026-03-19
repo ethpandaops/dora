@@ -145,36 +145,36 @@ type AddressPageDataTokenTransfer struct {
 
 // AddressPageDataInternalTransaction represents an internal transaction for the address page
 type AddressPageDataInternalTransaction struct {
-	TxHash         []byte    `json:"tx_hash"`
+	TxHash         []byte    `json:"tx_hash" ssz-size:"32"`
 	TxHashRowspan  int       `json:"tx_hash_rowspan"` // >0 means render with rowspan, 0 means skip cell
 	BlockNumber    uint64    `json:"block_number"`
 	BlockUid       uint64    `json:"block_uid"`
-	BlockRoot      []byte    `json:"block_root"`
+	BlockRoot      []byte    `json:"block_root" ssz-size:"32"`
 	BlockOrphaned  bool      `json:"block_orphaned"`
 	BlockTime      time.Time `json:"block_time"`
 	CallIndex      uint32    `json:"call_index"`
 	CallType       uint8     `json:"call_type"`
 	TypeName       string    `json:"type_name"`
-	FromAddr       []byte    `json:"from_addr"`
+	FromAddr       []byte    `json:"from_addr" ssz-size:"20"`
 	FromID         uint64    `json:"from_id"`
 	FromIsContract bool      `json:"from_is_contract"`
-	ToAddr         []byte    `json:"to_addr"`
+	ToAddr         []byte    `json:"to_addr" ssz-size:"20"`
 	ToID           uint64    `json:"to_id"`
 	ToIsContract   bool      `json:"to_is_contract"`
 	IsOutgoing     bool      `json:"is_outgoing"`
 	Amount         float64   `json:"amount"`
-	AmountRaw      []byte    `json:"amount_raw"`
+	AmountRaw      []byte    `json:"amount_raw" ssz-size:"32"`
 }
 
 // AddressPageDataSystemDeposit represents a system deposit (withdrawal or fee recipient reward)
 type AddressPageDataSystemDeposit struct {
 	BlockUid      uint64    `json:"block_uid"`
 	BlockNumber   uint64    `json:"block_number"`
-	BlockRoot     []byte    `json:"block_root"`     // For linking to /slot/{root}
-	BlockOrphaned bool      `json:"block_orphaned"` // True if block is orphaned
+	BlockRoot     []byte    `json:"block_root" ssz-size:"32"` // For linking to /slot/{root}
+	BlockOrphaned bool      `json:"block_orphaned"`           // True if block is orphaned
 	BlockTime     time.Time `json:"block_time"`
 	Type          uint8     `json:"type"`   // 0=withdrawal, 1=fee_recipient
 	Amount        float64   `json:"amount"` // Amount in ETH
-	AmountRaw     []byte    `json:"amount_raw"`
-	Validator     *uint64   `json:"validator"` // validator index for withdrawals, null for fee recipient
+	AmountRaw     []byte    `json:"amount_raw" ssz-size:"32"`
+	Validator     *uint64   `json:"validator" ssz-type:"optional"` // validator index for withdrawals, null for fee recipient
 }

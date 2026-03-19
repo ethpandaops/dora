@@ -451,13 +451,13 @@ func buildFilteredBlocksPageData(ctx context.Context, pageIdx uint64, pageSize u
 		pageData.TotalPages++
 	}
 
-	pageData.UrlParams = make(map[string]string, len(filterArgs)+1)
+	pageData.UrlParams = make([]models.UrlParam, 0, len(filterArgs)+1)
 	for key, values := range filterArgs {
 		if len(values) > 0 {
-			pageData.UrlParams[key] = values[0]
+			pageData.UrlParams = append(pageData.UrlParams, models.UrlParam{Key: key, Value: values[0]})
 		}
 	}
-	pageData.UrlParams["c"] = fmt.Sprintf("%v", pageData.PageSize)
+	pageData.UrlParams = append(pageData.UrlParams, models.UrlParam{Key: "c", Value: fmt.Sprintf("%v", pageData.PageSize)})
 
 	pageData.FirstPageLink = fmt.Sprintf("/blocks/filtered?f&%v&c=%v", filterArgs.Encode(), pageData.PageSize)
 	pageData.PrevPageLink = fmt.Sprintf("/blocks/filtered?f&%v&c=%v&s=%v", filterArgs.Encode(), pageData.PageSize, pageData.PrevPageSlot)

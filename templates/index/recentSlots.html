@@ -74,7 +74,7 @@
                   <td class="graph-container" style="width: {{ $treeWidth }}px;">
                     {{ range $j, $graph := $slot.ForkGraph }}
                       <div class="graph-fork" data-index="{{ $graph.Index }}" style="left: {{ $graph.Left }}px;">
-                        {{- range $tile, $val := $graph.Tiles -}}
+                        {{- range $tile := $graph.Tiles -}}
                           <div class="graph-layer graph-layer-{{ $tile }}"></div>
                         {{- end -}}
                         {{- if $graph.Block }}

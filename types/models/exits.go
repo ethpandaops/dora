@@ -24,13 +24,13 @@ type ExitsPageData struct {
 
 type ExitsPageDataRecentExit struct {
 	SlotNumber      uint64    `json:"slot"`
-	SlotRoot        []byte    `json:"slot_root"`
+	SlotRoot        []byte    `json:"slot_root" ssz-size:"32"`
 	Time            time.Time `json:"time"`
 	Orphaned        bool      `json:"orphaned"`
 	ValidatorIndex  uint64    `json:"vindex"`
 	ValidatorName   string    `json:"vname"`
-	PublicKey       []byte    `json:"pubkey"`
-	WithdrawalCreds []byte    `json:"wdcreds"`
+	PublicKey       []byte    `json:"pubkey" ssz-size:"48"`
+	WithdrawalCreds []byte    `json:"wdcreds" ssz-size:"32"`
 	ValidatorStatus string    `json:"vstatus"`
 	ShowUpcheck     bool      `json:"show_upcheck"`
 	UpcheckActivity uint8     `json:"upcheck_act"`
@@ -41,8 +41,8 @@ type ExitsPageDataExitingValidator struct {
 	ValidatorIndex   uint64    `json:"validator_index"`
 	ValidatorName    string    `json:"validator_name"`
 	ValidatorStatus  string    `json:"validator_status"`
-	PublicKey        []byte    `json:"pubkey"`
-	WithdrawalCreds  []byte    `json:"wdcreds"`
+	PublicKey        []byte    `json:"pubkey" ssz-size:"48"`
+	WithdrawalCreds  []byte    `json:"wdcreds" ssz-size:"32"`
 	EffectiveBalance uint64    `json:"effective_balance"`
 	ExitEpoch        uint64    `json:"exit_epoch"`
 	EstimatedTime    time.Time `json:"estimated_time"`

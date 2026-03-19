@@ -32,16 +32,16 @@ type InitiatedDepositsPageData struct {
 	NextPageLink  string `json:"next_page_link"`
 	LastPageLink  string `json:"last_page_link"`
 
-	UrlParams map[string]string `json:"url_params"`
+	UrlParams []UrlParam `json:"url_params"`
 }
 
 type InitiatedDepositsPageDataDeposit struct {
 	Index                 uint64    `json:"index"`
-	Address               []byte    `json:"address"`
-	PublicKey             []byte    `json:"pubkey"`
-	Withdrawalcredentials []byte    `json:"wtdcreds"`
+	Address               []byte    `json:"address" ssz-size:"20"`
+	PublicKey             []byte    `json:"pubkey" ssz-size:"48"`
+	Withdrawalcredentials []byte    `json:"wtdcreds" ssz-size:"32"`
 	Amount                uint64    `json:"amount"`
-	TxHash                []byte    `json:"txhash"`
+	TxHash                []byte    `json:"txhash" ssz-size:"32"`
 	Time                  time.Time `json:"time"`
 	Block                 uint64    `json:"block"`
 	Orphaned              bool      `json:"orphaned"`

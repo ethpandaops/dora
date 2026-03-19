@@ -114,8 +114,15 @@
 
 <script src="/js/knockout.min.js"></script>
 <script type="text/javascript">
-  var specValues = JSON.parse({{ includeJSON .Block.SpecValues false }});
-  var validatorNames = JSON.parse({{ includeJSON .Block.ValidatorNames false }});
+  var specValues = {
+    slots_per_epoch: {{ .Block.SlotsPerEpoch }},
+    target_committee_size: {{ .Block.TargetCommitteeSize }},
+    max_committees_per_slot: {{ .Block.MaxCommitteesPerSlot }},
+  };
+  var validatorNames = {};
+  JSON.parse({{ includeJSON .Block.ValidatorNames false }}).forEach(function(name) {
+    validatorNames[name.k] = name.v;
+  });
   var attestationsData = JSON.parse({{ includeJSON .Block.Attestations false }});
 
   function base64ToBytes(base64) {
