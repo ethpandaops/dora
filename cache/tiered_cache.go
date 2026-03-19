@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"sync"
@@ -153,6 +154,7 @@ func (cache *TieredCache) Set(key string, value interface{}, expiration time.Dur
 	}
 
 	cache.localGoCache.Set([]byte(key), cacheValueBytes, int(expiration.Seconds()))
+	fmt.Println("set local cache", key, expiration.Seconds())
 	if cache.remoteCache != nil {
 		return cache.remoteCache.SetBytes(ctx, key, cacheValueBytes, expiration)
 	}
@@ -166,6 +168,7 @@ func (cache *TieredCache) Get(key string, returnValue interface{}) (interface{},
 
 	// try to retrieve the key from the local cache
 	wanted, err := cache.localGoCache.Get([]byte(key))
+	fmt.Println("get local cache", key, err, len(wanted))
 	if err == nil {
 		err = cache.unmarshalValue(wanted, cacheValue, key)
 		if err != nil {

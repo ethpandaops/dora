@@ -62,7 +62,7 @@ func getBlockPageRedirect(numberOrHash string) ([]byte, error) {
 	pageCacheKey := fmt.Sprintf("block_redirect:%s", numberOrHash)
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
 		pageData, cacheTimeout := buildBlockPageRedirect(pageCall.CallCtx, numberOrHash)
-		_ = cacheTimeout
+		pageCall.CacheTimeout = cacheTimeout
 		return pageData
 	})
 	if pageErr == nil && pageRes != nil {

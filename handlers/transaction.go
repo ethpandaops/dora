@@ -127,7 +127,7 @@ func getTransactionPageData(txHash []byte, tabView string, selectedBlockUid uint
 	pageCacheKey := fmt.Sprintf("tx:%x:%v:%v", txHash, tabView, selectedBlockUid)
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
 		pageData, cacheTimeout := buildTransactionPageData(pageCall.CallCtx, txHash, tabView, selectedBlockUid)
-		_ = cacheTimeout
+		pageCall.CacheTimeout = cacheTimeout
 		return pageData
 	})
 	if pageErr == nil && pageRes != nil {

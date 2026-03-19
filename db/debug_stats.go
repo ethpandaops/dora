@@ -13,43 +13,34 @@ type TableStats struct {
 	Size     int64 // bytes, -1 if unavailable
 }
 
+// getTableNames returns the list of user table names from the database.
+func getTableNames() ([]string, error) {
+	var tables []string
+	var err error
+
+	switch DbEngine {
+	case dbtypes.DBEnginePgsql:
+		err = ReaderDb.Select(&tables,
+			"SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename")
+	case dbtypes.DBEngineSqlite:
+		err = ReaderDb.Select(&tables,
+			"SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
+	default:
+		return nil, fmt.Errorf("unknown database engine")
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return tables, nil
+}
+
 // GetTableStats returns row counts and sizes for all known tables.
 func GetTableStats() ([]*TableStats, error) {
-	tables := []string{
-		"blocks",
-		"orphaned_blocks",
-		"slot_assignments",
-		"epochs",
-		"orphaned_epochs",
-		"unfinalized_blocks",
-		"unfinalized_epochs",
-		"unfinalized_duties",
-		"sync_assignments",
-		"forks",
-		"validators",
-		"validator_names",
-		"deposits",
-		"deposit_txs",
-		"voluntary_exits",
-		"slashings",
-		"withdrawal_requests",
-		"withdrawal_request_txs",
-		"consolidation_requests",
-		"consolidation_request_txs",
-		"blobs",
-		"mev_blocks",
-		"explorer_state",
-		"tx_function_signatures",
-		"tx_pending_signatures",
-		"tx_unknown_signatures",
-		"el_blocks",
-		"el_accounts",
-		"el_balances",
-		"el_tokens",
-		"el_token_transfers",
-		"el_transactions",
-		"el_transactions_internal",
-		"el_event_index",
+	tables, err := getTableNames()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list tables: %w", err)
 	}
 
 	results := make([]*TableStats, 0, len(tables))
