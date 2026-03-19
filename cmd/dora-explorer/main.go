@@ -335,6 +335,7 @@ func startApi(router *mux.Router) {
 		{"/v1/network/overview", api.APINetworkOverviewV1, []string{"GET", "OPTIONS"}, 1},
 		{"/v1/network/forks", api.APINetworkForksV1, []string{"GET", "OPTIONS"}, 1},
 		{"/v1/network/splits", api.APINetworkSplitsV1, []string{"GET", "OPTIONS"}, 1},
+		{"/v1/network/client_head_forks", api.APINetworkClientHeadForksV1, []string{"GET", "OPTIONS"}, 1},
 
 		// Client APIs
 		{"/v1/clients/execution", api.APIExecutionClients, []string{"GET", "OPTIONS"}, 1},
