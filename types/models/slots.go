@@ -10,7 +10,7 @@ type SlotsPageData struct {
 	SlotCount     uint64               `json:"slot_count"`
 	FirstSlot     uint64               `json:"first_slot"`
 	LastSlot      uint64               `json:"last_slot"`
-	ForkTreeWidth int                  `json:"forktree_width"`
+	ForkTreeWidth int32                `json:"forktree_width"`
 
 	DisplayChain        bool   `json:"dp_chain"`
 	DisplayEpoch        bool   `json:"dp_epoch"`
@@ -49,8 +49,8 @@ type SlotsPageData struct {
 	NextPageLink  string `json:"next_page_link"`
 	LastPageLink  string `json:"last_page_link"`
 
-	UrlParams map[string]string `json:"url_params"`
-	MaxSlot   uint64            `json:"max_slot"`
+	UrlParams []UrlParam `json:"url_params"`
+	MaxSlot   uint64     `json:"max_slot"`
 }
 
 type SlotsPageDataSlot struct {
@@ -79,8 +79,8 @@ type SlotsPageDataSlot struct {
 	GasUsed               uint64                    `json:"gas_used"`
 	GasLimit              uint64                    `json:"gas_limit"`
 	BlockSize             uint64                    `json:"block_size"`
-	BlockRoot             []byte                    `json:"block_root"`
-	ParentRoot            []byte                    `json:"parent_root"`
+	BlockRoot             []byte                    `json:"block_root" ssz-size:"32"`
+	ParentRoot            []byte                    `json:"parent_root" ssz-size:"32"`
 	RecvDelay             int32                     `json:"recv_delay"`
 	MinExecTime           uint32                    `json:"min_exec_time"`
 	MaxExecTime           uint32                    `json:"max_exec_time"`
@@ -92,10 +92,10 @@ type SlotsPageDataSlot struct {
 }
 
 type SlotsPageDataForkGraph struct {
-	Index int             `json:"index"`
-	Left  int             `json:"left"`
-	Tiles map[string]bool `json:"tiles"`
-	Block bool            `json:"block"`
+	Index int32    `json:"index"`
+	Left  int32    `json:"left"`
+	Tiles []string `json:"tiles"`
+	Block bool     `json:"block"`
 }
 
 type ExecutionTimeDetail struct {

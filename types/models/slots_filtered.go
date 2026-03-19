@@ -74,7 +74,7 @@ type SlotsFilteredPageData struct {
 	NextPageLink  string `json:"next_page_link"`
 	LastPageLink  string `json:"last_page_link"`
 
-	UrlParams map[string]string `json:"url_params"`
+	UrlParams []UrlParam `json:"url_params"`
 }
 
 type SlotsFilteredPageDataSlot struct {
@@ -103,8 +103,8 @@ type SlotsFilteredPageDataSlot struct {
 	GasUsed               uint64                `json:"gas_used"`
 	GasLimit              uint64                `json:"gas_limit"`
 	BlockSize             uint64                `json:"block_size"`
-	BlockRoot             []byte                `json:"block_root"`
-	ParentRoot            []byte                `json:"parent_root"`
+	BlockRoot             []byte                `json:"block_root" ssz-size:"32"`
+	ParentRoot            []byte                `json:"parent_root" ssz-size:"32"`
 	RecvDelay             int32                 `json:"recv_delay"`
 	MinExecTime           uint32                `json:"min_exec_time"`
 	MaxExecTime           uint32                `json:"max_exec_time"`

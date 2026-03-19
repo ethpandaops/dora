@@ -2,27 +2,798 @@
 <div class="container mt-2">
   <div class="d-md-flex py-2 justify-content-md-between">
     <h1 class="h4 mb-1 mb-md-0">
-      <i class="fas fa-square-plus mx-2"></i> Debug Cache
+      <i class="fas fa-bug mx-2"></i> Debug
     </h1>
     <nav aria-label="breadcrumb">
       <ol class="breadcrumb font-size-1 mb-0" style="padding:0; background-color:transparent;">
         <li class="breadcrumb-item"><a href="/" title="Home">Home</a></li>
-        <li class="breadcrumb-item active" aria-current="page">Debug Cache</li>
+        <li class="breadcrumb-item active" aria-current="page">Debug</li>
       </ol>
     </nav>
   </div>
 
   <div id="header-placeholder" style="height:35px;"></div>
 
-  <div class="card mt-2">
-    <div class="card-body">
-      <pre>{{ . }}</pre>
+  <ul class="nav nav-tabs mt-2" id="debugTabs" role="tablist">
+    <li class="nav-item">
+      <a class="nav-link active" id="system-tab" data-bs-toggle="tab" data-bs-target="#system" href="#system" role="tab">
+        <i class="fa fa-microchip me-1"></i> System
+      </a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link" id="beacon-tab" data-bs-toggle="tab" data-bs-target="#beacon" href="#beacon" role="tab">
+        <i class="fa fa-database me-1"></i> Beacon Cache
+      </a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link" id="frontend-tab" data-bs-toggle="tab" data-bs-target="#frontend" href="#frontend" role="tab">
+        <i class="fa fa-globe me-1"></i> Frontend Cache
+      </a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link" id="blockdb-tab" data-bs-toggle="tab" data-bs-target="#blockdb" href="#blockdb" role="tab">
+        <i class="fa fa-cubes me-1"></i> Block DB
+      </a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link" id="execution-tab" data-bs-toggle="tab" data-bs-target="#execution" href="#execution" role="tab">
+        <i class="fa fa-bolt me-1"></i> Execution
+      </a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link" id="database-tab" data-bs-toggle="tab" data-bs-target="#database" href="#database" role="tab">
+        <i class="fa fa-server me-1"></i> Database
+      </a>
+    </li>
+  </ul>
+
+  <div class="tab-content" id="debugTabContent">
+    <!-- System Tab -->
+    <div class="tab-pane fade show active" id="system" role="tabpanel">
+      {{ template "debugSystemTab" . }}
+    </div>
+
+    <!-- Beacon Cache Tab -->
+    <div class="tab-pane fade" id="beacon" role="tabpanel">
+      {{ template "debugBeaconTab" . }}
+    </div>
+
+    <!-- Frontend Cache Tab -->
+    <div class="tab-pane fade" id="frontend" role="tabpanel">
+      {{ template "debugFrontendTab" . }}
+    </div>
+
+    <!-- Block DB Tab -->
+    <div class="tab-pane fade" id="blockdb" role="tabpanel">
+      {{ template "debugBlockDBTab" . }}
+    </div>
+
+    <!-- Execution Tab -->
+    <div class="tab-pane fade" id="execution" role="tabpanel">
+      {{ template "debugExecutionTab" . }}
+    </div>
+
+    <!-- Database Tab -->
+    <div class="tab-pane fade" id="database" role="tabpanel">
+      {{ template "debugDatabaseTab" . }}
     </div>
   </div>
 </div>
-
 {{ end }}
+
+<!-- System Tab -->
+{{ define "debugSystemTab" }}
+{{ with .System }}
+<div class="card mt-0" style="border-top:none; border-top-left-radius:0; border-top-right-radius:0;">
+  <div class="card-body">
+    <div class="row">
+      <div class="col-md-6">
+        <h5 class="card-title mb-3">Runtime</h5>
+        <table class="table table-sm table-borderless">
+          <tbody>
+            <tr><td class="text-muted" style="width:180px;">Go Version</td><td><code>{{ .GoVersion }}</code></td></tr>
+            <tr><td class="text-muted">Uptime</td><td>{{ .Uptime }}</td></tr>
+            <tr><td class="text-muted">Goroutines</td><td>{{ formatNumber .NumGoroutine }}</td></tr>
+            <tr><td class="text-muted">CPUs</td><td>{{ .NumCPU }}</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="col-md-6">
+        <h5 class="card-title mb-3">Garbage Collection</h5>
+        <table class="table table-sm table-borderless">
+          <tbody>
+            <tr><td class="text-muted" style="width:180px;">GC Cycles</td><td>{{ formatNumber .GCCycles }}</td></tr>
+            <tr><td class="text-muted">GC Pause Total</td><td>{{ .GCPauseTotal }}</td></tr>
+            <tr><td class="text-muted">GC Last Pause</td><td>{{ .GCLastPause }}</td></tr>
+            <tr><td class="text-muted">GC Next Target</td><td>{{ formatByteSize .GCNextTarget }}</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <h5 class="card-title mb-3 mt-3">Memory</h5>
+    <div class="row">
+      <div class="col-md-6">
+        <table class="table table-sm table-borderless">
+          <tbody>
+            <tr><td class="text-muted" style="width:180px;">Alloc</td><td>{{ formatByteSize .MemAlloc }}</td></tr>
+            <tr><td class="text-muted">Total Alloc</td><td>{{ formatByteSize .MemTotalAlloc }}</td></tr>
+            <tr><td class="text-muted">Sys</td><td>{{ formatByteSize .MemSys }}</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="col-md-6">
+        <table class="table table-sm table-borderless">
+          <tbody>
+            <tr><td class="text-muted" style="width:180px;">Heap Alloc</td><td>{{ formatByteSize .MemHeapAlloc }}</td></tr>
+            <tr><td class="text-muted">Heap Sys</td><td>{{ formatByteSize .MemHeapSys }}</td></tr>
+            <tr><td class="text-muted">Heap Idle</td><td>{{ formatByteSize .MemHeapIdle }}</td></tr>
+            <tr><td class="text-muted">Heap In-use</td><td>{{ formatByteSize .MemHeapInuse }}</td></tr>
+            <tr><td class="text-muted">Heap Objects</td><td>{{ formatNumber .MemHeapObjects }}</td></tr>
+            <tr><td class="text-muted">Stack In-use</td><td>{{ formatByteSize .MemStackInuse }}</td></tr>
+            <tr><td class="text-muted">Stack Sys</td><td>{{ formatByteSize .MemStackSys }}</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="row mt-3">
+      <div class="col-12">
+        <h5 class="card-title mb-3">Memory Distribution</h5>
+        <div class="progress" style="height: 30px;">
+          {{ $total := .MemSys }}
+          {{ if gt $total 0 }}
+          <div class="progress-bar bg-primary" role="progressbar" style="width: {{ pct .MemHeapInuse $total }}%;" title="Heap In-use: {{ formatByteSize .MemHeapInuse }}">
+            Heap
+          </div>
+          <div class="progress-bar bg-info" role="progressbar" style="width: {{ pct .MemStackInuse $total }}%;" title="Stack: {{ formatByteSize .MemStackInuse }}">
+            Stack
+          </div>
+          <div class="progress-bar bg-secondary" role="progressbar" style="width: {{ pct .MemHeapIdle $total }}%;" title="Heap Idle: {{ formatByteSize .MemHeapIdle }}">
+            Idle
+          </div>
+          {{ end }}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{{ end }}
+{{ end }}
+
+<!-- Beacon Cache Tab -->
+{{ define "debugBeaconTab" }}
+{{ with .BeaconCache }}
+<div class="card mt-0" style="border-top:none; border-top-left-radius:0; border-top-right-radius:0;">
+  <div class="card-body">
+
+    <!-- Summary bar -->
+    {{ if gt .TotalEstimated 0 }}
+    <div class="mb-4">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <span class="fw-bold">Estimated Memory Usage</span>
+        <span class="fw-bold">{{ formatByteSize .TotalEstimated }}</span>
+      </div>
+      <div class="progress" style="height: 24px;">
+        <div class="progress-bar bg-primary" role="progressbar" style="width: {{ pct .BlockCache.EstimatedTotal .TotalEstimated }}%;" title="Blocks: {{ formatByteSize .BlockCache.EstimatedTotal }}">
+          {{ if gtf (pct .BlockCache.EstimatedTotal .TotalEstimated) 8.0 }}Blocks{{ end }}
+        </div>
+        <div class="progress-bar bg-info" role="progressbar" style="width: {{ pct .EpochCache.EstimatedTotal .TotalEstimated }}%;" title="Epochs: {{ formatByteSize .EpochCache.EstimatedTotal }}">
+          {{ if gtf (pct .EpochCache.EstimatedTotal .TotalEstimated) 8.0 }}Epochs{{ end }}
+        </div>
+        <div class="progress-bar bg-warning" role="progressbar" style="width: {{ pct .ValidatorCache.EstimatedTotal .TotalEstimated }}%;" title="Validators: {{ formatByteSize .ValidatorCache.EstimatedTotal }}">
+          {{ if gtf (pct .ValidatorCache.EstimatedTotal .TotalEstimated) 8.0 }}Validators{{ end }}
+        </div>
+        <div class="progress-bar bg-secondary" role="progressbar" style="width: {{ pct .ForkCache.EstimatedTotal .TotalEstimated }}%;" title="Forks: {{ formatByteSize .ForkCache.EstimatedTotal }}">
+          {{ if gtf (pct .ForkCache.EstimatedTotal .TotalEstimated) 8.0 }}Forks{{ end }}
+        </div>
+      </div>
+      <div class="d-flex flex-wrap gap-3 mt-2 small text-muted">
+        <span><span class="badge bg-primary">&nbsp;</span> Blocks: {{ formatByteSize .BlockCache.EstimatedTotal }}</span>
+        <span><span class="badge bg-info">&nbsp;</span> Epochs: {{ formatByteSize .EpochCache.EstimatedTotal }}</span>
+        <span><span class="badge bg-warning">&nbsp;</span> Validators: {{ formatByteSize .ValidatorCache.EstimatedTotal }}</span>
+        <span><span class="badge bg-secondary">&nbsp;</span> Forks: {{ formatByteSize .ForkCache.EstimatedTotal }}</span>
+      </div>
+    </div>
+    {{ end }}
+
+    <div class="row">
+      <!-- Block Cache -->
+      <div class="col-md-6 mb-4">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <h5 class="card-title mb-0"><i class="fa fa-cube me-1"></i> Block Cache</h5>
+          <span class="badge bg-primary">{{ formatByteSize .BlockCache.EstimatedTotal }}</span>
+        </div>
+        <table class="table table-sm table-borderless mb-0">
+          <tbody>
+            <tr><td class="text-muted" style="width:180px;">Cached Blocks</td><td class="text-end">{{ formatNumber .BlockCache.RootMap.Length }}</td></tr>
+            <tr><td class="text-muted">Block Struct Size</td><td class="text-end">{{ formatByteSize .BlockCache.BlockSize }}</td></tr>
+            <tr><td class="text-muted">With Headers</td><td class="text-end">{{ formatNumber .BlockCache.BlockHeader }}</td></tr>
+            <tr><td class="text-muted">With Bodies</td><td class="text-end">{{ formatNumber .BlockCache.BlockBodies }}</td></tr>
+            <tr><td class="text-muted">With Indexes</td><td class="text-end">{{ formatNumber .BlockCache.BlockIndexes }}</td></tr>
+          </tbody>
+        </table>
+        <h6 class="mt-3 mb-2">Map Overhead</h6>
+        <table class="table table-sm table-borderless mb-0">
+          <tbody>
+            <tr><td class="text-muted" style="width:180px;">Slot Map</td><td class="text-end">{{ formatNumber .BlockCache.SlotMap.Length }} entries</td><td class="text-end">{{ formatByteSize .BlockCache.SlotMap.Size }}</td></tr>
+            <tr><td class="text-muted">Root Map</td><td class="text-end">{{ formatNumber .BlockCache.RootMap.Length }} entries</td><td class="text-end">{{ formatByteSize .BlockCache.RootMap.Size }}</td></tr>
+            <tr><td class="text-muted">Parent Map</td><td class="text-end">{{ formatNumber .BlockCache.ParentMap.Length }} entries</td><td class="text-end">{{ formatByteSize .BlockCache.ParentMap.Size }}</td></tr>
+            <tr><td class="text-muted">Exec Block Map</td><td class="text-end">{{ formatNumber .BlockCache.ExecBlockMap.Length }} entries</td><td class="text-end">{{ formatByteSize .BlockCache.ExecBlockMap.Size }}</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Epoch Cache -->
+      <div class="col-md-6 mb-4">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <h5 class="card-title mb-0"><i class="fa fa-history me-1"></i> Epoch Cache</h5>
+          <span class="badge bg-info">{{ formatByteSize .EpochCache.EstimatedTotal }}</span>
+        </div>
+        <table class="table table-sm table-borderless mb-0">
+          <tbody>
+            <tr><td class="text-muted" style="width:180px;">Epoch Stats</td><td class="text-end">{{ formatNumber .EpochCache.StatsMap.Length }}</td></tr>
+            <tr><td class="text-muted ps-3">Full</td><td class="text-end">{{ formatNumber .EpochCache.StatsFull }}</td></tr>
+            <tr><td class="text-muted ps-3">Precalculated</td><td class="text-end">{{ formatNumber .EpochCache.StatsPrecalc }}</td></tr>
+            <tr><td class="text-muted ps-3">Pruned</td><td class="text-end">{{ formatNumber .EpochCache.StatsPruned }}</td></tr>
+            <tr><td class="text-muted">Beacon States</td><td class="text-end">{{ formatNumber .EpochCache.StateMap.Length }}</td></tr>
+            <tr><td class="text-muted ps-3">Loaded</td><td class="text-end">{{ formatNumber .EpochCache.StateLoaded }}</td></tr>
+          </tbody>
+        </table>
+        {{ $votesTotal := addUI64 .EpochCache.VotesCacheHit .EpochCache.VotesCacheMiss }}
+        <h6 class="mt-3 mb-2">Votes LRU Cache</h6>
+        <table class="table table-sm table-borderless mb-0">
+          <tbody>
+            <tr><td class="text-muted" style="width:180px;">Entries</td><td class="text-end">{{ formatNumber .EpochCache.VotesCacheLen }}</td></tr>
+            <tr>
+              <td class="text-muted">Hit Rate</td>
+              <td class="text-end">
+                {{ if gt $votesTotal 0 }}
+                {{ formatNumber .EpochCache.VotesCacheHit }} / {{ formatNumber $votesTotal }}
+                ({{ printf "%.1f" (pct .EpochCache.VotesCacheHit $votesTotal) }}%)
+                {{ else }}N/A{{ end }}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="row">
+      <!-- Validator Cache -->
+      <div class="col-md-6 mb-4">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <h5 class="card-title mb-0"><i class="fa fa-users me-1"></i> Validator Cache</h5>
+          <span class="badge bg-warning text-dark">{{ formatByteSize .ValidatorCache.EstimatedTotal }}</span>
+        </div>
+        <table class="table table-sm table-borderless mb-0">
+          <tbody>
+            <tr><td class="text-muted" style="width:180px;">Validators</td><td class="text-end">{{ formatNumber .ValidatorCache.Validators }}</td></tr>
+            <tr><td class="text-muted">State Diffs</td><td class="text-end">{{ formatNumber .ValidatorCache.ValidatorDiffs }}</td></tr>
+            <tr><td class="text-muted">Unique Data Objects</td><td class="text-end">{{ formatNumber .ValidatorCache.ValidatorData }}</td></tr>
+            <tr><td class="text-muted">Activity Entries</td><td class="text-end">{{ formatNumber .ValidatorCache.ValidatorActivity }}</td></tr>
+          </tbody>
+        </table>
+        <h6 class="mt-3 mb-2">Pubkey Map</h6>
+        <table class="table table-sm table-borderless mb-0">
+          <tbody>
+            <tr><td class="text-muted" style="width:180px;">Entries</td><td class="text-end">{{ formatNumber .ValidatorCache.PubkeyMap.Length }}</td></tr>
+            <tr><td class="text-muted">Map Overhead</td><td class="text-end">{{ formatByteSize .ValidatorCache.PubkeyMap.Size }}</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Fork Cache -->
+      <div class="col-md-6 mb-4">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <h5 class="card-title mb-0"><i class="fa fa-code-fork me-1"></i> Fork Cache</h5>
+          <span class="badge bg-secondary">{{ formatByteSize .ForkCache.EstimatedTotal }}</span>
+        </div>
+        <table class="table table-sm table-borderless mb-0">
+          <tbody>
+            <tr><td class="text-muted" style="width:180px;">Forks</td><td class="text-end">{{ formatNumber .ForkCache.ForkMap.Length }}</td></tr>
+            <tr><td class="text-muted">Map Overhead</td><td class="text-end">{{ formatByteSize .ForkCache.ForkMap.Size }}</td></tr>
+          </tbody>
+        </table>
+        {{ $pidTotal := addUI64 .ForkCache.ParentIdCacheHit .ForkCache.ParentIdCacheMiss }}
+        {{ $pidsTotal := addUI64 .ForkCache.ParentIdsCacheHit .ForkCache.ParentIdsCacheMiss }}
+        <h6 class="mt-3 mb-2">LRU Caches</h6>
+        <table class="table table-sm table-borderless mb-0">
+          <tbody>
+            <tr><td class="text-muted" style="width:180px;">Parent ID Cache</td><td class="text-end">{{ formatNumber .ForkCache.ParentIdCacheLen }} entries</td></tr>
+            <tr>
+              <td class="text-muted ps-3">Hit Rate</td>
+              <td class="text-end">
+                {{ if gt $pidTotal 0 }}{{ printf "%.1f" (pct .ForkCache.ParentIdCacheHit $pidTotal) }}%{{ else }}N/A{{ end }}
+              </td>
+            </tr>
+            <tr><td class="text-muted">Parent IDs Cache</td><td class="text-end">{{ formatNumber .ForkCache.ParentIdsCacheLen }} entries</td></tr>
+            <tr>
+              <td class="text-muted ps-3">Hit Rate</td>
+              <td class="text-end">
+                {{ if gt $pidsTotal 0 }}{{ printf "%.1f" (pct .ForkCache.ParentIdsCacheHit $pidsTotal) }}%{{ else }}N/A{{ end }}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{{ end }}
+{{ end }}
+
+<!-- Frontend Cache Tab -->
+{{ define "debugFrontendTab" }}
+{{ if .FrontendCache }}
+<div class="card mt-0" style="border-top:none; border-top-left-radius:0; border-top-right-radius:0;">
+  <div class="card-body">
+    <div class="row">
+      <!-- Service Stats -->
+      <div class="col-md-6 mb-4">
+        <h5 class="card-title mb-3"><i class="fa fa-cog me-1"></i> Service</h5>
+        {{ with .FrontendCache.Service }}
+        <table class="table table-sm table-borderless">
+          <tbody>
+            <tr><td class="text-muted" style="width:200px;">Caching Enabled</td><td>{{ if .CachingEnabled }}<span class="badge bg-success">Yes</span>{{ else }}<span class="badge bg-danger">No</span>{{ end }}</td></tr>
+            <tr><td class="text-muted">Total Page Calls</td><td>{{ formatNumber .PageCallCounter }}</td></tr>
+            <tr><td class="text-muted">Currently Processing</td><td>{{ .ProcessingPages }}</td></tr>
+            <tr><td class="text-muted">Concurrency Limit</td><td>{{ .ConcurrencyLimit }}</td></tr>
+            <tr><td class="text-muted">Concurrency Used</td><td>{{ .ConcurrencyUsed }}</td></tr>
+            <tr><td class="text-muted">Per-Type Limit</td><td>{{ .PageTypeSemLimit }}</td></tr>
+          </tbody>
+        </table>
+        {{ if gt (len .ProcessingPageKeys) 0 }}
+        <h6 class="mt-3">Currently Processing Pages</h6>
+        <ul class="list-group list-group-flush">
+          {{ range .ProcessingPageKeys }}
+          <li class="list-group-item py-1 px-0"><code>{{ . }}</code></li>
+          {{ end }}
+        </ul>
+        {{ end }}
+        {{ if gt (len .PageTypeSemaphores) 0 }}
+        <h6 class="mt-3">Per-Type Concurrency</h6>
+        <table class="table table-sm">
+          <thead><tr><th>Page Type</th><th class="text-end">Active</th></tr></thead>
+          <tbody>
+            {{ range $type, $count := .PageTypeSemaphores }}
+            <tr><td><code>{{ $type }}</code></td><td class="text-end">{{ $count }}</td></tr>
+            {{ end }}
+          </tbody>
+        </table>
+        {{ end }}
+        {{ end }}
+      </div>
+
+      <!-- Tiered Cache Stats -->
+      <div class="col-md-6 mb-4">
+        {{ if .FrontendCache.Tiered }}
+        <h5 class="card-title mb-3"><i class="fa fa-layer-group me-1"></i> Local Cache (FreeCache)</h5>
+        {{ with .FrontendCache.Tiered }}
+        <table class="table table-sm table-borderless">
+          <tbody>
+            <tr><td class="text-muted" style="width:200px;">Entries</td><td>{{ formatNumber .LocalEntryCount }}</td></tr>
+            <tr><td class="text-muted">Lookups</td><td>{{ formatNumber .LocalLookupCount }}</td></tr>
+            <tr><td class="text-muted">Hits</td><td>{{ formatNumber .LocalHitCount }}</td></tr>
+            <tr><td class="text-muted">Misses</td><td>{{ formatNumber .LocalMissCount }}</td></tr>
+            <tr><td class="text-muted">Hit Rate</td><td>
+              {{ if gt .LocalLookupCount 0 }}
+              <div class="d-flex align-items-center">
+                <div class="progress flex-grow-1 me-2" style="height: 16px;">
+                  <div class="progress-bar {{ if gtf (mul .LocalHitRate 100.0) 80.0 }}bg-success{{ else if gtf (mul .LocalHitRate 100.0) 50.0 }}bg-warning{{ else }}bg-danger{{ end }}" role="progressbar" style="width: {{ mul .LocalHitRate 100.0 }}%;">
+                  </div>
+                </div>
+                <span>{{ printf "%.1f" (mul .LocalHitRate 100.0) }}%</span>
+              </div>
+              {{ else }}N/A{{ end }}
+            </td></tr>
+            <tr><td class="text-muted">Evacuated</td><td>{{ formatNumber .LocalEvacuateCount }}</td></tr>
+            <tr><td class="text-muted">Expired</td><td>{{ formatNumber .LocalExpiredCount }}</td></tr>
+            <tr><td class="text-muted">Overwritten</td><td>{{ formatNumber .LocalOverwriteCount }}</td></tr>
+            <tr><td class="text-muted">Avg Access Time</td><td>{{ formatNumber .LocalAverageAccessTime }} ns</td></tr>
+          </tbody>
+        </table>
+
+        <h6 class="mt-3">Configuration</h6>
+        <table class="table table-sm table-borderless">
+          <tbody>
+            <tr><td class="text-muted" style="width:200px;">Remote (Redis)</td><td>{{ if .RemoteEnabled }}<span class="badge bg-success">Enabled</span>{{ else }}<span class="badge bg-secondary">Disabled</span>{{ end }}</td></tr>
+            <tr><td class="text-muted">SSZ Encoding</td><td>{{ if .SSZEnabled }}<span class="badge bg-success">Enabled</span>{{ else }}<span class="badge bg-warning">Disabled</span>{{ end }}</td></tr>
+            <tr><td class="text-muted">SSZ Compatible Types</td><td>{{ .SSZCompatTypes }}</td></tr>
+            <tr><td class="text-muted">SSZ Incompatible Types</td><td>{{ .SSZIncompatTypes }}</td></tr>
+          </tbody>
+        </table>
+        {{ end }}
+        {{ end }}
+      </div>
+    </div>
+
+    {{ if .FrontendCache.PageTypes }}
+    {{ $ptTotal := .FrontendCache.PageTypesTotal }}
+    <h5 class="card-title mb-3"><i class="fa fa-file me-1"></i> Cached Models by Page Type</h5>
+    <div class="table-responsive">
+      <table class="table table-sm table-hover">
+        <thead>
+          <tr>
+            <th>Page Type</th>
+            <th class="text-end">Models</th>
+            <th class="text-end">Total Size</th>
+            <th class="text-end">Avg Size</th>
+            <th class="text-end">% of Total</th>
+            <th>Distribution</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{ range .FrontendCache.PageTypes }}
+          <tr>
+            <td><code>{{ .PageType }}</code></td>
+            <td class="text-end">{{ formatNumber .Count }}</td>
+            <td class="text-end">{{ formatByteSize .TotalSize }}</td>
+            <td class="text-end">{{ formatByteSize .AvgSize }}</td>
+            <td class="text-end">{{ if gt $ptTotal 0 }}{{ printf "%.1f" (pct .TotalSize $ptTotal) }}%{{ else }}N/A{{ end }}</td>
+            <td>
+              {{ if gt $ptTotal 0 }}
+              <div class="progress" style="height: 16px;">
+                <div class="progress-bar" role="progressbar" style="width: {{ pct .TotalSize $ptTotal }}%;"></div>
+              </div>
+              {{ end }}
+            </td>
+          </tr>
+          {{ end }}
+        </tbody>
+        <tfoot>
+          <tr class="fw-bold">
+            <td>Total</td>
+            <td class="text-end">{{ formatNumber (len .FrontendCache.PageTypes) }} types</td>
+            <td class="text-end">{{ formatByteSize $ptTotal }}</td>
+            <td></td>
+            <td class="text-end">100%</td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+    {{ end }}
+  </div>
+</div>
+{{ else }}
+<div class="card mt-0" style="border-top:none; border-top-left-radius:0; border-top-right-radius:0;">
+  <div class="card-body text-muted">Frontend cache is not initialized.</div>
+</div>
+{{ end }}
+{{ end }}
+
+<!-- Block DB Tab -->
+{{ define "debugBlockDBTab" }}
+{{ with .BlockDB }}
+<div class="card mt-0" style="border-top:none; border-top-left-radius:0; border-top-right-radius:0;">
+  <div class="card-body">
+    {{ if not .Enabled }}
+    <p class="text-muted">Block database is not enabled.</p>
+    {{ else }}
+    <div class="row mb-3">
+      <div class="col-md-12">
+        <table class="table table-sm table-borderless" style="max-width: 400px;">
+          <tbody>
+            <tr><td class="text-muted" style="width:150px;">Engine</td><td><span class="badge bg-primary">{{ .EngineName }}</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    {{ if .PebbleStats }}
+    {{ with .PebbleStats }}
+    <div class="row">
+      <div class="col-md-6 mb-4">
+        <h5 class="card-title mb-3">Storage</h5>
+        <table class="table table-sm table-borderless">
+          <tbody>
+            <tr><td class="text-muted" style="width:200px;">Total Size (LSM)</td><td>{{ formatByteSize .TotalSize }}</td></tr>
+            <tr><td class="text-muted">Total Files</td><td>{{ formatNumber .KeyCount }}</td></tr>
+            <tr><td class="text-muted">MemTable Size</td><td>{{ formatByteSize .MemTableSize }}</td></tr>
+            <tr><td class="text-muted">MemTable Count</td><td>{{ .MemTableCount }}</td></tr>
+            <tr><td class="text-muted">WAL Size</td><td>{{ formatByteSize .WALSize }}</td></tr>
+            <tr><td class="text-muted">WAL Files</td><td>{{ .WALCount }}</td></tr>
+            <tr><td class="text-muted">Zombie Tables</td><td>{{ .ZombieTableCount }} ({{ formatByteSize .ZombieTableSize }})</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="col-md-6 mb-4">
+        <h5 class="card-title mb-3">Block Cache</h5>
+        {{ $bcTotal := addI64 .BlockCacheHits .BlockCacheMisses }}
+        <table class="table table-sm table-borderless">
+          <tbody>
+            <tr><td class="text-muted" style="width:200px;">Cache Size</td><td>{{ formatByteSize .BlockCacheSize }}</td></tr>
+            <tr><td class="text-muted">Hits</td><td>{{ formatNumber .BlockCacheHits }}</td></tr>
+            <tr><td class="text-muted">Misses</td><td>{{ formatNumber .BlockCacheMisses }}</td></tr>
+            <tr><td class="text-muted">Hit Rate</td><td>{{ if gt $bcTotal 0 }}{{ printf "%.1f" (pct .BlockCacheHits $bcTotal) }}%{{ else }}N/A{{ end }}</td></tr>
+          </tbody>
+        </table>
+
+        <h5 class="card-title mb-3 mt-3">Compaction</h5>
+        <table class="table table-sm table-borderless">
+          <tbody>
+            <tr><td class="text-muted" style="width:200px;">Count</td><td>{{ formatNumber .CompactionCount }}</td></tr>
+            <tr><td class="text-muted">Estimated Debt</td><td>{{ formatByteSize .CompactionDebt }}</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    {{ if gt (len .Levels) 0 }}
+    {{ $pebbleTotalSize := .TotalSize }}
+    <h5 class="card-title mb-3">LSM Levels</h5>
+    <table class="table table-sm">
+      <thead>
+        <tr><th>Level</th><th class="text-end">Files</th><th class="text-end">Size</th><th class="text-end">Score</th><th>Size Distribution</th></tr>
+      </thead>
+      <tbody>
+        {{ range .Levels }}
+        <tr>
+          <td>L{{ .Level }}</td>
+          <td class="text-end">{{ formatNumber .NumFiles }}</td>
+          <td class="text-end">{{ formatByteSize .Size }}</td>
+          <td class="text-end">{{ printf "%.2f" .Score }}</td>
+          <td>
+            {{ if gt $pebbleTotalSize 0 }}
+            <div class="progress" style="height: 16px;">
+              <div class="progress-bar" role="progressbar" style="width: {{ pct .Size $pebbleTotalSize }}%;"></div>
+            </div>
+            {{ end }}
+          </td>
+        </tr>
+        {{ end }}
+      </tbody>
+    </table>
+    {{ end }}
+    {{ end }}
+    {{ end }}
+
+    {{ if .S3Stats }}
+    {{ with .S3Stats }}
+    <div class="row">
+      <div class="col-md-6 mb-4">
+        <h5 class="card-title mb-3"><i class="fa fa-cloud me-1"></i> S3 Configuration</h5>
+        <table class="table table-sm table-borderless">
+          <tbody>
+            <tr><td class="text-muted" style="width:200px;">Bucket</td><td><code>{{ .Bucket }}</code></td></tr>
+            <tr><td class="text-muted">Path Prefix</td><td><code>{{ if .PathPrefix }}{{ .PathPrefix }}{{ else }}/{{ end }}</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="col-md-6 mb-4">
+        <h5 class="card-title mb-3"><i class="fa fa-exchange me-1"></i> Operation Counts</h5>
+        <table class="table table-sm table-borderless">
+          <tbody>
+            <tr><td class="text-muted" style="width:200px;">GET Requests</td><td>{{ formatNumber .GetCount }}</td></tr>
+            <tr><td class="text-muted">PUT Requests</td><td>{{ formatNumber .PutCount }}</td></tr>
+            <tr><td class="text-muted">STAT Requests</td><td>{{ formatNumber .StatCount }}</td></tr>
+            <tr><td class="text-muted">Bytes Downloaded</td><td>{{ formatByteSize .GetBytes }}</td></tr>
+            <tr><td class="text-muted">Bytes Uploaded</td><td>{{ formatByteSize .PutBytes }}</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {{ end }}
+    {{ end }}
+
+    {{ if .StoredData }}
+    {{ with .StoredData }}
+    <h5 class="card-title mb-3"><i class="fa fa-folder-open me-1"></i> Stored Objects</h5>
+    <table class="table table-sm table-borderless" style="max-width: 400px;">
+      <tbody>
+        <tr><td class="text-muted" style="width:200px;">Total Objects</td><td>{{ formatNumber .TotalCount }}</td></tr>
+        <tr><td class="text-muted">Total Size</td><td>{{ formatByteSize .TotalSize }}</td></tr>
+      </tbody>
+    </table>
+
+    {{ if gt .TotalCount 0 }}
+    <table class="table table-sm">
+      <thead>
+        <tr><th>Type</th><th class="text-end">Count</th><th class="text-end">Size</th><th class="text-end">Avg Size</th><th>Distribution</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Beacon Blocks</td>
+          <td class="text-end">{{ formatNumber .BeaconBlockCount }}</td>
+          <td class="text-end">{{ formatByteSize .BeaconBlockSize }}</td>
+          <td class="text-end">{{ if gt .BeaconBlockCount 0 }}{{ formatByteSize (div (float64 .BeaconBlockSize) (float64 .BeaconBlockCount)) }}{{ else }}N/A{{ end }}</td>
+          <td>
+            <div class="progress" style="height: 16px;">
+              <div class="progress-bar bg-primary" role="progressbar" style="width: {{ pct .BeaconBlockSize .TotalSize }}%;"></div>
+            </div>
+          </td>
+        </tr>
+        <tr>
+          <td>Exec Data</td>
+          <td class="text-end">{{ formatNumber .ExecDataCount }}</td>
+          <td class="text-end">{{ formatByteSize .ExecDataSize }}</td>
+          <td class="text-end">{{ if gt .ExecDataCount 0 }}{{ formatByteSize (div (float64 .ExecDataSize) (float64 .ExecDataCount)) }}{{ else }}N/A{{ end }}</td>
+          <td>
+            <div class="progress" style="height: 16px;">
+              <div class="progress-bar bg-info" role="progressbar" style="width: {{ pct .ExecDataSize .TotalSize }}%;"></div>
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    {{ end }}
+    {{ end }}
+    {{ end }}
+
+    {{ end }}
+  </div>
+</div>
+{{ end }}
+{{ end }}
+
+<!-- Execution Tab -->
+{{ define "debugExecutionTab" }}
+{{ with .ExecIndexer }}
+<div class="card mt-0" style="border-top:none; border-top-left-radius:0; border-top-right-radius:0;">
+  <div class="card-body">
+    {{ if not .Enabled }}
+    <p class="text-muted">Execution indexer is not enabled.</p>
+    {{ else }}
+    <div class="row">
+      <div class="col-md-6 mb-4">
+        <h5 class="card-title mb-3"><i class="fa fa-cog me-1"></i> TX Indexer</h5>
+        {{ with .Indexer }}
+        <table class="table table-sm table-borderless">
+          <tbody>
+            <tr><td class="text-muted" style="width:200px;">Mode</td><td><span class="badge bg-primary">{{ .Mode }}</span></td></tr>
+            <tr><td class="text-muted">Running</td><td>{{ if .Running }}<span class="badge bg-success">Yes</span>{{ else }}<span class="badge bg-danger">No</span>{{ end }}</td></tr>
+            <tr><td class="text-muted">Sync Epoch</td><td>{{ formatNumber .SyncEpoch }}</td></tr>
+          </tbody>
+        </table>
+
+        <h6 class="mt-3">Block Processing Queue</h6>
+        <table class="table table-sm table-borderless">
+          <tbody>
+            <tr><td class="text-muted" style="width:200px;">High Priority</td><td>{{ .HighPrioQueueLen }}</td></tr>
+            <tr><td class="text-muted">Low Priority</td><td>{{ .LowPrioQueueLen }}</td></tr>
+          </tbody>
+        </table>
+
+        <h6 class="mt-3">Balance Lookup Queue</h6>
+        <table class="table table-sm table-borderless">
+          <tbody>
+            <tr><td class="text-muted" style="width:200px;">High Priority</td><td>{{ .BalanceHighPrioLen }}</td></tr>
+            <tr><td class="text-muted">Low Priority</td><td>{{ .BalanceLowPrioLen }}</td></tr>
+          </tbody>
+        </table>
+        {{ end }}
+      </div>
+
+      <div class="col-md-6 mb-4">
+        <h5 class="card-title mb-3"><i class="fa fa-chart-line me-1"></i> Indexing Progress</h5>
+        <table class="table table-sm table-borderless">
+          <tbody>
+            <tr><td class="text-muted" style="width:200px;">Latest Indexed Slot</td><td>{{ formatNumber .LatestSlot }}</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    {{ if .RecentBlockStats }}
+    <h5 class="card-title mb-3"><i class="fa fa-chart-bar me-1"></i> Recent Block Stats</h5>
+    <div class="table-responsive">
+      <table class="table table-sm table-hover">
+        <thead>
+          <tr>
+            <th>Range</th>
+            <th class="text-end">Blocks</th>
+            <th class="text-end">Transactions</th>
+            <th class="text-end">Events</th>
+            <th class="text-end">Transfers</th>
+            <th class="text-end">Exec Data Objects</th>
+            <th class="text-end">Exec Data Size</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{ range .RecentBlockStats }}
+          <tr>
+            <td>{{ .Label }}</td>
+            <td class="text-end">{{ formatNumber .BlockCount }}</td>
+            <td class="text-end">{{ formatNumber .Transactions }}</td>
+            <td class="text-end">{{ formatNumber .Events }}</td>
+            <td class="text-end">{{ formatNumber .Transfers }}</td>
+            <td class="text-end">{{ formatNumber .ExecData }}</td>
+            <td class="text-end">{{ formatByteSize .ExecDataSize }}</td>
+          </tr>
+          {{ end }}
+        </tbody>
+      </table>
+    </div>
+    {{ end }}
+    {{ end }}
+  </div>
+</div>
+{{ end }}
+{{ end }}
+
+<!-- Database Tab -->
+{{ define "debugDatabaseTab" }}
+{{ with .Database }}
+<div class="card mt-0" style="border-top:none; border-top-left-radius:0; border-top-right-radius:0;">
+  <div class="card-body">
+    <div class="row mb-3">
+      <div class="col-md-12">
+        <table class="table table-sm table-borderless" style="max-width: 400px;">
+          <tbody>
+            <tr><td class="text-muted" style="width:150px;">Engine</td><td><span class="badge bg-primary">{{ .Engine }}</span></td></tr>
+            {{ if gt .TotalSize 0 }}
+            <tr><td class="text-muted">Total Size</td><td>{{ formatByteSize .TotalSize }}</td></tr>
+            {{ end }}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    {{ if .Tables }}
+    {{ $dbTotalSize := .TotalSize }}
+    <h5 class="card-title mb-3">Tables</h5>
+    <div class="table-responsive">
+      <table class="table table-sm table-hover">
+        <thead>
+          <tr>
+            <th>Table</th>
+            <th class="text-end">Row Count</th>
+            <th class="text-end">Size</th>
+            {{ if gt $dbTotalSize 0 }}<th>Size Distribution</th>{{ end }}
+          </tr>
+        </thead>
+        <tbody>
+          {{ range .Tables }}
+          <tr>
+            <td><code>{{ .Name }}</code></td>
+            <td class="text-end">{{ formatNumber .RowCount }}</td>
+            <td class="text-end">{{ if ge .Size 0 }}{{ formatByteSize .Size }}{{ else }}<span class="text-muted">N/A</span>{{ end }}</td>
+            {{ if gt $dbTotalSize 0 }}
+            <td>
+              {{ if ge .Size 0 }}
+              <div class="progress" style="height: 16px;">
+                <div class="progress-bar" role="progressbar" style="width: {{ pct .Size $dbTotalSize }}%;"></div>
+              </div>
+              {{ end }}
+            </td>
+            {{ end }}
+          </tr>
+          {{ end }}
+        </tbody>
+      </table>
+    </div>
+    {{ end }}
+  </div>
+</div>
+{{ end }}
+{{ end }}
+
 {{ define "js" }}
+<script type="text/javascript">
+$(document).ready(function() {
+  // Persist selected tab in URL hash
+  var hash = window.location.hash;
+  if (hash) {
+    var tab = document.querySelector('#debugTabs a[href="' + hash + '"]');
+    if (tab) {
+      new bootstrap.Tab(tab).show();
+    }
+  }
+  document.querySelectorAll('#debugTabs a[data-bs-toggle="tab"]').forEach(function(el) {
+    el.addEventListener('shown.bs.tab', function(e) {
+      window.location.hash = e.target.getAttribute('href');
+    });
+  });
+});
+</script>
 {{ end }}
 {{ define "css" }}
+<style>
+  .tab-content .tab-pane > .card:first-child {
+    border-top: none;
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+  }
+</style>
 {{ end }}

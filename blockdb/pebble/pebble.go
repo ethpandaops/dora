@@ -47,6 +47,11 @@ func NewPebbleEngine(config dtypes.PebbleBlockDBConfig) (types.BlockDbEngine, er
 	}, nil
 }
 
+// GetDB returns the underlying pebble database for metrics collection.
+func (e *PebbleEngine) GetDB() *pebble.DB {
+	return e.db
+}
+
 func (e *PebbleEngine) Close() error {
 	return e.db.Close()
 }
@@ -287,11 +292,6 @@ func (e *PebbleEngine) AddBlock(
 	}
 
 	return isNew, isUpdated, nil
-}
-
-// GetDB returns the underlying Pebble database for cleanup operations.
-func (e *PebbleEngine) GetDB() *pebble.DB {
-	return e.db
 }
 
 // GetConfig returns the engine configuration.

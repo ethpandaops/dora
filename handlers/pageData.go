@@ -62,7 +62,7 @@ func InitPageData(w http.ResponseWriter, r *http.Request, active, path, title st
 	if specs := chainState.GetSpecs(); specs != nil {
 		data.IsReady = true
 		data.ChainSlotsPerEpoch = specs.SlotsPerEpoch
-		data.ChainSecondsPerSlot = uint64(specs.SecondsPerSlot)
+		data.ChainSlotDurationMs = specs.SlotDurationMs
 		data.ChainGenesisTimestamp = uint64(chainState.GetGenesis().GenesisTime.Unix())
 		data.DepositContract = common.BytesToAddress(specs.DepositContractAddress).String()
 		data.Mainnet = specs.ConfigName == "mainnet"

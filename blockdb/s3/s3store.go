@@ -8,6 +8,7 @@ import (
 	"io"
 	"path"
 	"strings"
+	"sync/atomic"
 
 	"github.com/attestantio/go-eth2-client/spec"
 	"github.com/ethpandaops/dora/blockdb/types"
@@ -24,6 +25,37 @@ type S3Engine struct {
 
 	// Range request support (configured via EnableRangeRequests)
 	rangeRequestsEnabled bool
+
+	// Operation counters
+	getCount  atomic.Int64
+	putCount  atomic.Int64
+	statCount atomic.Int64
+	getBytes  atomic.Int64
+	putBytes  atomic.Int64
+}
+
+// S3Stats holds S3 engine statistics.
+type S3Stats struct {
+	Bucket     string
+	PathPrefix string
+	GetCount   int64
+	PutCount   int64
+	StatCount  int64
+	GetBytes   int64
+	PutBytes   int64
+}
+
+// GetStats returns current S3 operation statistics.
+func (e *S3Engine) GetStats() *S3Stats {
+	return &S3Stats{
+		Bucket:     e.bucket,
+		PathPrefix: e.pathPrefix,
+		GetCount:   e.getCount.Load(),
+		PutCount:   e.putCount.Load(),
+		StatCount:  e.statCount.Load(),
+		GetBytes:   e.getBytes.Load(),
+		PutBytes:   e.putBytes.Load(),
+	}
 }
 
 func NewS3Engine(config dtypes.S3BlockDBConfig) (types.BlockDbEngine, error) {
@@ -68,6 +100,7 @@ func (e *S3Engine) getObjectKey(root []byte, slot uint64) string {
 // GetStoredComponents returns which components exist for a block by reading metadata.
 func (e *S3Engine) GetStoredComponents(ctx context.Context, slot uint64, root []byte) (types.BlockDataFlags, error) {
 	key := e.getObjectKey(root, slot)
+	e.getCount.Add(1)
 
 	// Read just the metadata
 	meta, err := e.readMetadata(ctx, key)
@@ -388,6 +421,7 @@ func (e *S3Engine) AddBlock(
 	dataCb func() (*types.BlockData, error),
 ) (bool, bool, error) {
 	key := e.getObjectKey(root, slot)
+	e.statCount.Add(1)
 
 	// Check what components already exist
 	existingMeta, err := e.readMetadata(ctx, key)
@@ -464,7 +498,8 @@ func (e *S3Engine) AddBlock(
 		)
 	}
 
-	// Upload object using MultiReader to stream without extra buffer allocation
+	// Upload object
+	e.putCount.Add(1)
 	_, err = e.client.PutObject(
 		ctx,
 		e.bucket,
@@ -476,6 +511,8 @@ func (e *S3Engine) AddBlock(
 	if err != nil {
 		return false, false, fmt.Errorf("failed to upload block: %w", err)
 	}
+
+	e.putBytes.Add(totalSize)
 
 	return isNew, !isNew && needsUpdate, nil
 }

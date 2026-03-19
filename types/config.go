@@ -172,6 +172,7 @@ type Config struct {
 		DisableSSZEncoding      bool `yaml:"disableSSZEncoding" envconfig:"KILLSWITCH_DISABLE_SSZ_ENCODING"`
 		DisableSSZRequests      bool `yaml:"disableSSZRequests" envconfig:"KILLSWITCH_DISABLE_SSZ_REQUESTS"`
 		DisableBlockCompression bool `yaml:"disableBlockCompression" envconfig:"KILLSWITCH_DISABLE_BLOCK_COMPRESSION"`
+		DisableSSZPageCache     bool `yaml:"disableSSZPageCache" envconfig:"KILLSWITCH_DISABLE_SSZ_PAGE_CACHE"`
 	} `yaml:"killSwitch"`
 
 	AuthGroups map[string]*AuthGroupConfig `yaml:"authGroups"`

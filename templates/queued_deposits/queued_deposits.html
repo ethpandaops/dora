@@ -284,9 +284,9 @@
               <div class="d-inline-block px-2">
                 <form method="GET" style="display: inline-flex; align-items: center;" id="pageJumpForm">
                   <input type="hidden" name="f">
-                  {{ range $key, $value := .UrlParams }}
-                    {{ if ne $key "p" }}
-                      <input type="hidden" name="{{ $key }}" value="{{ $value }}">
+                  {{ range $param := .UrlParams }}
+                    {{ if ne $param.Key "p" }}
+                      <input type="hidden" name="{{ $param.Key }}" value="{{ $param.Value }}">
                     {{ end }}
                   {{ end }}
                   <div class="input-group" style="width: 120px;">

@@ -26,28 +26,28 @@ type WithdrawalsPageData struct {
 type WithdrawalsPageDataRecentWithdrawal struct {
 	IsIncluded        bool      `json:"is_included"`
 	SlotNumber        uint64    `json:"slot"`
-	SlotRoot          []byte    `json:"slot_root"`
+	SlotRoot          []byte    `json:"slot_root" ssz-size:"32"`
 	Time              time.Time `json:"time"`
 	Status            uint64    `json:"status"`
 	Result            uint8     `json:"result"`
 	ResultMessage     string    `json:"result_message"`
 	TxStatus          uint64    `json:"tx_status"`
-	SourceAddr        []byte    `json:"source_addr"`
+	SourceAddr        []byte    `json:"source_addr" ssz-size:"20"`
 	Amount            uint64    `json:"amount"`
 	ValidatorValid    bool      `json:"vvalid"`
 	ValidatorIndex    uint64    `json:"vindex"`
 	ValidatorName     string    `json:"vname"`
 	IsBuilder         bool      `json:"is_builder"`
-	PublicKey         []byte    `json:"pubkey"`
+	PublicKey         []byte    `json:"pubkey" ssz-size:"48"`
 	LinkedTransaction bool      `json:"linked_tx"`
-	TransactionHash   []byte    `json:"tx_hash"`
+	TransactionHash   []byte    `json:"tx_hash" ssz-size:"32"`
 }
 
 type WithdrawalsPageDataQueuedWithdrawal struct {
 	ValidatorIndex    uint64    `json:"validator_index"`
 	ValidatorName     string    `json:"validator_name"`
 	ValidatorStatus   string    `json:"validator_status"`
-	PublicKey         []byte    `json:"pubkey"`
+	PublicKey         []byte    `json:"pubkey" ssz-size:"48"`
 	Amount            uint64    `json:"amount"`
 	WithdrawableEpoch uint64    `json:"withdrawable_epoch"`
 	EstimatedTime     time.Time `json:"estimated_time"`

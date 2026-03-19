@@ -33,12 +33,12 @@ type SlashingsPageData struct {
 	NextPageLink  string `json:"next_page_link"`
 	LastPageLink  string `json:"last_page_link"`
 
-	UrlParams map[string]string `json:"url_params"`
+	UrlParams []UrlParam `json:"url_params"`
 }
 
 type SlashingsPageDataSlashing struct {
 	SlotNumber      uint64    `json:"slot"`
-	SlotRoot        []byte    `json:"slot_root"`
+	SlotRoot        []byte    `json:"slot_root" ssz-size:"32"`
 	Time            time.Time `json:"time"`
 	Orphaned        bool      `json:"orphaned"`
 	ValidatorIndex  uint64    `json:"vindex"`
