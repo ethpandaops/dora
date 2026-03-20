@@ -53,7 +53,7 @@ func getAddressBalancesPageData(addressBytes []byte) (*AddressBalancesResponse, 
 	pageCacheKey := fmt.Sprintf("addr_balances:%x", addressBytes)
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
 		pageData, cacheTimeout := buildBalancesResponse(pageCall.CallCtx, addressBytes)
-		_ = cacheTimeout
+		pageCall.CacheTimeout = cacheTimeout
 		return pageData
 	})
 	if pageErr == nil && pageRes != nil {

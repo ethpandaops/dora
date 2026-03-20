@@ -16,7 +16,7 @@ type ForksPageDataFork struct {
 }
 
 type ForksPageDataClient struct {
-	Index       int       `json:"index"`
+	Index       uint64    `json:"index"`
 	Name        string    `json:"name"`
 	Version     string    `json:"version"`
 	Status      string    `json:"status"`
