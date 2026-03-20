@@ -113,7 +113,7 @@ func buildForksPageData(ctx context.Context) (*models.ForksPageData, time.Durati
 			consensusClient := client.GetClient()
 			clientHeadSlot, _ := consensusClient.GetLastHead()
 			forkClient := &models.ForksPageDataClient{
-				Index:       int(client.GetIndex()) + 1,
+				Index:       uint64(client.GetIndex()) + 1,
 				Name:        consensusClient.GetName(),
 				Version:     consensusClient.GetVersion(),
 				Status:      consensusClient.GetStatus().String(),

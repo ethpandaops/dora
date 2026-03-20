@@ -53,7 +53,7 @@ type SlotPageBlockData struct {
 	StateRoot                  []byte                  `json:"stateroot" ssz-size:"32"`
 	BodyRoot                   []byte                  `json:"bodyroot" ssz-size:"32"`
 	Signature                  []byte                  `json:"signature" ssz-size:"96"`
-	RandaoReveal               []byte                  `json:"randaoreveal" ssz-size:"32"`
+	RandaoReveal               []byte                  `json:"randaoreveal" ssz-size:"96"`
 	Graffiti                   []byte                  `json:"graffiti"`
 	Eth1dataDepositroot        []byte                  `json:"eth1data_depositroot" ssz-size:"32"`
 	Eth1dataDepositcount       uint64                  `json:"eth1data_depositcount"`
@@ -237,7 +237,7 @@ type SlotPageTransaction struct {
 	From          []byte  `json:"from" ssz-size:"20"`
 	To            []byte  `json:"to" ssz-size:"20"`
 	Value         float64 `json:"value"`
-	Data          []byte  `json:"data" ssz-size:"32"`
+	Data          []byte  `json:"data"`
 	DataLen       uint64  `json:"datalen"`
 	FuncSigStatus uint64  `json:"func_sig_status"`
 	FuncBytes     string  `json:"func_bytes"`
