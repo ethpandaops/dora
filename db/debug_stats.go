@@ -91,15 +91,15 @@ type BlockDbStats struct {
 func GetBlockDbStats() (*BlockDbStats, error) {
 	stats := &BlockDbStats{}
 
-	// Beacon blocks: count all blocks that have a block_size > 0
+	// Beacon blocks: count all slots that have a block_size > 0
 	err := ReaderDb.Get(&stats.BeaconBlockCount,
-		"SELECT COUNT(*) FROM blocks WHERE block_size > 0")
+		"SELECT COUNT(*) FROM slots WHERE block_size > 0")
 	if err != nil {
 		stats.BeaconBlockCount = 0
 	}
 
 	err = ReaderDb.Get(&stats.BeaconBlockSize,
-		"SELECT COALESCE(SUM(block_size), 0) FROM blocks WHERE block_size > 0")
+		"SELECT COALESCE(SUM(block_size), 0) FROM slots WHERE block_size > 0")
 	if err != nil {
 		stats.BeaconBlockSize = 0
 	}
