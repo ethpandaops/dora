@@ -368,7 +368,7 @@
       <!-- Tiered Cache Stats -->
       <div class="col-md-6 mb-4">
         {{ if .FrontendCache.Tiered }}
-        <h5 class="card-title mb-3"><i class="fa fa-layer-group me-1"></i> Local Cache (FreeCache)</h5>
+        <h5 class="card-title mb-3"><i class="fa fa-layer-group me-1"></i> Local Cache (BigCache)</h5>
         {{ with .FrontendCache.Tiered }}
         <table class="table table-sm table-borderless">
           <tbody>
@@ -387,10 +387,6 @@
               </div>
               {{ else }}N/A{{ end }}
             </td></tr>
-            <tr><td class="text-muted">Evacuated</td><td>{{ formatNumber .LocalEvacuateCount }}</td></tr>
-            <tr><td class="text-muted">Expired</td><td>{{ formatNumber .LocalExpiredCount }}</td></tr>
-            <tr><td class="text-muted">Overwritten</td><td>{{ formatNumber .LocalOverwriteCount }}</td></tr>
-            <tr><td class="text-muted">Avg Access Time</td><td>{{ formatNumber .LocalAverageAccessTime }} ns</td></tr>
           </tbody>
         </table>
 

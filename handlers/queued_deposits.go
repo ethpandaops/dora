@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	v1 "github.com/attestantio/go-eth2-client/api/v1"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
@@ -91,7 +92,9 @@ func getQueuedDepositsPageData(pageIdx uint64, pageSize uint64, minIndex uint64,
 	}
 	pageCacheKey := fmt.Sprintf("queued_deposits:%v:%v:%v:%v:%v:%v:%v", pageIdx, pageSize, minIndex, maxIndex, publickey, minAmount, maxAmount)
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
-		return buildQueuedDepositsPageData(pageCall.CallCtx, pageIdx, pageSize, minIndex, maxIndex, publickey, minAmount, maxAmount)
+		pageData, cacheTimeout := buildQueuedDepositsPageData(pageCall.CallCtx, pageIdx, pageSize, minIndex, maxIndex, publickey, minAmount, maxAmount)
+		pageCall.CacheTimeout = cacheTimeout
+		return pageData
 	})
 	if pageErr == nil && pageRes != nil {
 		resData, resOk := pageRes.(*models.QueuedDepositsPageData)
@@ -103,7 +106,7 @@ func getQueuedDepositsPageData(pageIdx uint64, pageSize uint64, minIndex uint64,
 	return pageData, pageErr
 }
 
-func buildQueuedDepositsPageData(ctx context.Context, pageIdx uint64, pageSize uint64, minIndex uint64, maxIndex uint64, publickey string, minAmount uint64, maxAmount uint64) *models.QueuedDepositsPageData {
+func buildQueuedDepositsPageData(ctx context.Context, pageIdx uint64, pageSize uint64, minIndex uint64, maxIndex uint64, publickey string, minAmount uint64, maxAmount uint64) (*models.QueuedDepositsPageData, time.Duration) {
 	chainState := services.GlobalBeaconService.GetChainState()
 	specs := chainState.GetSpecs()
 	pageData := &models.QueuedDepositsPageData{
@@ -115,6 +118,7 @@ func buildQueuedDepositsPageData(ctx context.Context, pageIdx uint64, pageSize u
 		MaxEffectiveBalance: specs.MaxEffectiveBalance,
 	}
 
+	cacheTimeout := 5 * time.Minute
 	if pageIdx == 1 {
 		pageData.IsDefaultPage = true
 	}
@@ -278,5 +282,5 @@ func buildQueuedDepositsPageData(ctx context.Context, pageIdx uint64, pageSize u
 	pageData.DepositsFrom = start + 1
 	pageData.DepositsTo = end
 	pageData.DepositCount = uint64(len(pageData.Deposits))
-	return pageData
+	return pageData, cacheTimeout
 }

@@ -904,8 +904,8 @@ func buildStateChangesFromBlockdb(accounts []bdbtypes.StateChangeAccount) []*mod
 			CodeChanged: (a.Flags & bdbtypes.StateChangeFlagCodeChanged) != 0,
 			PreCode:     a.PreCode,
 			PostCode:    a.PostCode,
-			PreCodeLen:  len(a.PreCode),
-			PostCodeLen: len(a.PostCode),
+			PreCodeLen:  uint64(len(a.PreCode)),
+			PostCodeLen: uint64(len(a.PostCode)),
 
 			StorageChanged: (a.Flags & bdbtypes.StateChangeFlagStorageChanged) != 0,
 		}
