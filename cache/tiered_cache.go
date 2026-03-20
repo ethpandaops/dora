@@ -5,12 +5,13 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/coocood/freecache"
+	"github.com/allegro/bigcache/v3"
 	dynssz "github.com/pk910/dynamic-ssz"
 	"github.com/sirupsen/logrus"
 
@@ -21,7 +22,7 @@ var modelDynSsz *dynssz.DynSsz = dynssz.NewDynSsz(map[string]any{}, dynssz.WithE
 
 // Tiered cache is a cache implementation combining a local & remote cache
 type TieredCache struct {
-	localGoCache   *freecache.Cache
+	localGoCache   *bigcache.BigCache
 	remoteCache    RemoteCache
 	logger         logrus.FieldLogger
 	sszCompatMap   map[reflect.Type]bool
@@ -58,9 +59,21 @@ func NewTieredCache(cacheSize int, redisAddress string, redisPrefix string, logg
 		}
 	}
 
+	cacheConfig := bigcache.DefaultConfig(24 * time.Hour)
+	cacheConfig.HardMaxCacheSize = cacheSize
+	cacheConfig.StatsEnabled = true
+	cacheConfig.CleanWindow = 5 * time.Minute
+	cacheConfig.Shards = 8
+	cacheConfig.MaxEntrySize = 100 * 1024 // 100KB
+
+	localCache, err := bigcache.New(context.Background(), cacheConfig)
+	if err != nil {
+		return nil, fmt.Errorf("error creating local cache: %w", err)
+	}
+
 	return &TieredCache{
 		remoteCache:  remoteCache,
-		localGoCache: freecache.NewCache(cacheSize * 1024 * 1024), // 100 MB
+		localGoCache: localCache,
 		logger:       logger,
 		sszCompatMap: make(map[reflect.Type]bool),
 	}, nil
@@ -149,10 +162,16 @@ func (cache *TieredCache) Set(key string, value interface{}, expiration time.Dur
 
 	cacheValueBytes, err := cache.marshalValue(&cacheValue, key)
 	if err != nil {
+		cacheType := reflect.TypeOf(value)
+		cache.sszCompatMutex.Lock()
+		cache.sszCompatMap[cacheType] = false
+		cache.sszCompatMutex.Unlock()
+		keySplit := strings.Split(key, ":")
+		cache.logger.WithError(err).Warnf("page model not ssz compatible: %v (%v): %v", keySplit[0], cacheType.Name(), err)
 		return err
 	}
 
-	cache.localGoCache.Set([]byte(key), cacheValueBytes, int(expiration.Seconds()))
+	cache.localGoCache.Set(key, cacheValueBytes)
 	if cache.remoteCache != nil {
 		return cache.remoteCache.SetBytes(ctx, key, cacheValueBytes, expiration)
 	}
@@ -165,7 +184,7 @@ func (cache *TieredCache) Get(key string, returnValue interface{}) (interface{},
 	}
 
 	// try to retrieve the key from the local cache
-	wanted, err := cache.localGoCache.Get([]byte(key))
+	wanted, err := cache.localGoCache.Get(key)
 	if err == nil {
 		err = cache.unmarshalValue(wanted, cacheValue, key)
 		if err != nil {
@@ -173,7 +192,12 @@ func (cache *TieredCache) Get(key string, returnValue interface{}) (interface{},
 			return nil, err
 		}
 
-		return cacheValue.Value, nil
+		// manual TTL check since bigcache uses a global LifeWindow
+		if cacheValue.Timeout > 0 && cacheValue.Timeout < uint64(time.Now().Unix()) {
+			cache.localGoCache.Delete(key)
+		} else {
+			return cacheValue.Value, nil
+		}
 	}
 
 	if cache.remoteCache == nil {
@@ -194,48 +218,42 @@ func (cache *TieredCache) Get(key string, returnValue interface{}) (interface{},
 		if err != nil {
 			return nil, err
 		}
-		var timeout uint64
-		if cacheValue.Timeout == 0 {
-			timeout = 0
-		} else {
-			timeout = cacheValue.Timeout - uint64(time.Now().Unix())
-		}
-		cache.localGoCache.Set([]byte(key), valueMarshal, int(timeout))
+		cache.localGoCache.Set(key, valueMarshal)
 	}
 	return cacheValue.Value, nil
 }
 
 // TieredCacheStats holds statistics about the tiered cache.
 type TieredCacheStats struct {
-	LocalEntryCount        int64
-	LocalHitCount          int64
-	LocalMissCount         int64
-	LocalLookupCount       int64
-	LocalHitRate           float64
-	LocalEvacuateCount     int64
-	LocalExpiredCount      int64
-	LocalOverwriteCount    int64
-	LocalAverageAccessTime int64
-	RemoteEnabled          bool
-	SSZEnabled             bool
-	SSZCompatTypes         int
-	SSZIncompatTypes       int
+	LocalEntryCount  int64
+	LocalHitCount    int64
+	LocalMissCount   int64
+	LocalLookupCount int64
+	LocalHitRate     float64
+	RemoteEnabled    bool
+	SSZEnabled       bool
+	SSZCompatTypes   int
+	SSZIncompatTypes int
 }
 
 // GetStats returns cache statistics.
 func (cache *TieredCache) GetStats() *TieredCacheStats {
+	bcStats := cache.localGoCache.Stats()
+	lookups := bcStats.Hits + bcStats.Misses
+
+	var hitRate float64
+	if lookups > 0 {
+		hitRate = float64(bcStats.Hits) / float64(lookups)
+	}
+
 	stats := &TieredCacheStats{
-		LocalEntryCount:        cache.localGoCache.EntryCount(),
-		LocalHitCount:          cache.localGoCache.HitCount(),
-		LocalMissCount:         cache.localGoCache.MissCount(),
-		LocalLookupCount:       cache.localGoCache.LookupCount(),
-		LocalHitRate:           cache.localGoCache.HitRate(),
-		LocalEvacuateCount:     cache.localGoCache.EvacuateCount(),
-		LocalExpiredCount:      cache.localGoCache.ExpiredCount(),
-		LocalOverwriteCount:    cache.localGoCache.OverwriteCount(),
-		LocalAverageAccessTime: cache.localGoCache.AverageAccessTime(),
-		RemoteEnabled:          cache.remoteCache != nil,
-		SSZEnabled:             !utils.Config.KillSwitch.DisableSSZPageCache,
+		LocalEntryCount:  int64(cache.localGoCache.Len()),
+		LocalHitCount:    int64(bcStats.Hits),
+		LocalMissCount:   int64(bcStats.Misses),
+		LocalLookupCount: int64(lookups),
+		LocalHitRate:     hitRate,
+		RemoteEnabled:    cache.remoteCache != nil,
+		SSZEnabled:       !utils.Config.KillSwitch.DisableSSZPageCache,
 	}
 
 	cache.sszCompatMutex.RLock()
@@ -268,15 +286,15 @@ func (cache *TieredCache) GetPageTypeStats() []*PageTypeStats {
 	}
 
 	byType := make(map[string]*accumulator, 64)
-	it := cache.localGoCache.NewIterator()
+	it := cache.localGoCache.Iterator()
 
-	for {
-		entry := it.Next()
-		if entry == nil {
-			break
+	for it.SetNext() {
+		entry, err := it.Value()
+		if err != nil {
+			continue
 		}
 
-		key := string(entry.Key)
+		key := entry.Key()
 		pageType := key
 		if idx := strings.IndexByte(key, ':'); idx >= 0 {
 			pageType = key[:idx]
@@ -289,7 +307,7 @@ func (cache *TieredCache) GetPageTypeStats() []*PageTypeStats {
 		}
 
 		acc.count++
-		acc.totalSize += int64(len(entry.Value))
+		acc.totalSize += int64(len(entry.Value()))
 	}
 
 	results := make([]*PageTypeStats, 0, len(byType))

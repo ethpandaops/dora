@@ -88,7 +88,9 @@ func getFilteredQueuedConsolidationsPageData(pageIdx uint64, pageSize uint64, mi
 	pageData := &models.QueuedConsolidationsPageData{}
 	pageCacheKey := fmt.Sprintf("queued_consolidations:%v:%v:%v:%v:%v:%v:%v:%v", pageIdx, pageSize, minSrcIndex, maxSrcIndex, minTgtIndex, maxTgtIndex, validatorName, pubkey)
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
-		return buildFilteredQueuedConsolidationsPageData(pageCall.CallCtx, pageIdx, pageSize, minSrcIndex, maxSrcIndex, minTgtIndex, maxTgtIndex, validatorName, pubkey)
+		pageData, cacheTimeout := buildFilteredQueuedConsolidationsPageData(pageCall.CallCtx, pageIdx, pageSize, minSrcIndex, maxSrcIndex, minTgtIndex, maxTgtIndex, validatorName, pubkey)
+		pageCall.CacheTimeout = cacheTimeout
+		return pageData
 	})
 	if pageErr == nil && pageRes != nil {
 		resData, resOk := pageRes.(*models.QueuedConsolidationsPageData)
@@ -100,7 +102,8 @@ func getFilteredQueuedConsolidationsPageData(pageIdx uint64, pageSize uint64, mi
 	return pageData, pageErr
 }
 
-func buildFilteredQueuedConsolidationsPageData(ctx context.Context, pageIdx uint64, pageSize uint64, minSrcIndex uint64, maxSrcIndex uint64, minTgtIndex uint64, maxTgtIndex uint64, validatorName string, pubkey string) *models.QueuedConsolidationsPageData {
+func buildFilteredQueuedConsolidationsPageData(ctx context.Context, pageIdx uint64, pageSize uint64, minSrcIndex uint64, maxSrcIndex uint64, minTgtIndex uint64, maxTgtIndex uint64, validatorName string, pubkey string) (*models.QueuedConsolidationsPageData, time.Duration) {
+	cacheTimeout := 5 * time.Minute
 	filterArgs := url.Values{}
 	if minSrcIndex != 0 {
 		filterArgs.Add("f.minsi", fmt.Sprintf("%v", minSrcIndex))
@@ -255,5 +258,5 @@ func buildFilteredQueuedConsolidationsPageData(ctx context.Context, pageIdx uint
 	pageData.NextPageLink = fmt.Sprintf("/validators/queued_consolidations?f&%v&c=%v&p=%v", filterArgs.Encode(), pageData.PageSize, pageData.NextPageIndex)
 	pageData.LastPageLink = fmt.Sprintf("/validators/queued_consolidations?f&%v&c=%v&p=%v", filterArgs.Encode(), pageData.PageSize, pageData.LastPageIndex)
 
-	return pageData
+	return pageData, cacheTimeout
 }

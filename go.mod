@@ -4,9 +4,9 @@ go 1.25.1
 
 require (
 	github.com/Masterminds/sprig/v3 v3.3.0
+	github.com/allegro/bigcache/v3 v3.1.0
 	github.com/attestantio/go-eth2-client v0.28.0
 	github.com/cockroachdb/pebble v1.1.5
-	github.com/coocood/freecache v1.2.5
 	github.com/ethereum/go-ethereum v1.17.0
 	github.com/ethpandaops/ethcore v0.0.0-20260225052739-1d2ffa8e298c
 	github.com/ethpandaops/ethwallclock v0.4.0

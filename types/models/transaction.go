@@ -162,8 +162,8 @@ type TransactionPageDataStateChangeAccount struct {
 	CodeChanged bool   `json:"code_changed"`
 	PreCode     []byte `json:"pre_code"`
 	PostCode    []byte `json:"post_code"`
-	PreCodeLen  int    `json:"pre_code_len"`
-	PostCodeLen int    `json:"post_code_len"`
+	PreCodeLen  uint64 `json:"pre_code_len"`
+	PostCodeLen uint64 `json:"post_code_len"`
 
 	StorageChanged bool                                  `json:"storage_changed"`
 	Slots          []*TransactionPageDataStateChangeSlot `json:"slots"`
