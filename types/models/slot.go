@@ -339,7 +339,7 @@ type SlotPagePtcVotes struct {
 	VotedBlockRoot  []byte                  `json:"voted_block_root"`  // The block root being voted on
 	TotalPtcSize    uint64                  `json:"total_ptc_size"`    // Total PTC committee size
 	Aggregates      []*SlotPagePtcAggregate `json:"aggregates"`        // Up to 4 aggregates for different vote flag combinations
-	NonVoters       []uint64                `json:"non_voters"`        // Validator indices that did not vote
+	NonVoters       []types.NamedValidator  `json:"non_voters"`        // Validators that did not vote
 	NonVoterCount   uint64                  `json:"non_voter_count"`   // Number of non-voters
 	NonVoterPercent float64                 `json:"non_voter_percent"` // Percentage of non-voters
 	Participation   float64                 `json:"participation"`     // Overall participation rate
@@ -347,11 +347,11 @@ type SlotPagePtcVotes struct {
 
 // SlotPagePtcAggregate represents a single PTC vote aggregate for a specific vote flag combination.
 type SlotPagePtcAggregate struct {
-	PayloadPresent    bool     `json:"payload_present"`     // Whether the payload was present
-	BlobDataAvailable bool     `json:"blob_data_available"` // Whether blob data was available
-	AggregationBits   []byte   `json:"aggregation_bits"`    // Bitfield of participating validators
-	Validators        []uint64 `json:"validators"`          // Validator indices that voted
-	Signature         []byte   `json:"signature"`           // Aggregate signature
-	VoteCount         uint64   `json:"vote_count"`          // Number of votes in this aggregate
-	VotePercent       float64  `json:"vote_percent"`        // Percentage of committee
+	PayloadPresent    bool                   `json:"payload_present"`     // Whether the payload was present
+	BlobDataAvailable bool                   `json:"blob_data_available"` // Whether blob data was available
+	AggregationBits   []byte                 `json:"aggregation_bits"`    // Bitfield of participating validators
+	Validators        []types.NamedValidator `json:"validators"`          // Validators that voted
+	Signature         []byte                 `json:"signature"`           // Aggregate signature
+	VoteCount         uint64                 `json:"vote_count"`          // Number of votes in this aggregate
+	VotePercent       float64                `json:"vote_percent"`        // Percentage of committee
 }

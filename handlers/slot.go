@@ -1335,7 +1335,7 @@ func getSlotPagePtcVotes(pageData *models.SlotPageBlockData, blockData *services
 			BlobDataAvailable: pa.Data.BlobDataAvailable,
 			AggregationBits:   pa.AggregationBits,
 			Signature:         pa.Signature[:],
-			Validators:        make([]uint64, 0),
+			Validators:        make([]types.NamedValidator, 0),
 		}
 
 		// Count votes from aggregation bits and map to unique validators
@@ -1351,7 +1351,10 @@ func getSlotPagePtcVotes(pageData *models.SlotPageBlockData, blockData *services
 					vidx := uint64(ptcDuties[i])
 					if !aggValidatorSet[vidx] {
 						aggValidatorSet[vidx] = true
-						aggregate.Validators = append(aggregate.Validators, vidx)
+						aggregate.Validators = append(aggregate.Validators, types.NamedValidator{
+							Index: vidx,
+							Name:  services.GlobalBeaconService.GetValidatorName(vidx),
+						})
 					}
 				}
 			}
@@ -1383,9 +1386,12 @@ func getSlotPagePtcVotes(pageData *models.SlotPageBlockData, blockData *services
 				nonVoterSet[v] = true
 			}
 		}
-		nonVoters := make([]uint64, 0, len(nonVoterSet))
+		nonVoters := make([]types.NamedValidator, 0, len(nonVoterSet))
 		for vidx := range nonVoterSet {
-			nonVoters = append(nonVoters, vidx)
+			nonVoters = append(nonVoters, types.NamedValidator{
+				Index: vidx,
+				Name:  services.GlobalBeaconService.GetValidatorName(vidx),
+			})
 		}
 		ptcVotes.NonVoters = nonVoters
 		ptcVotes.NonVoterCount = uint64(len(nonVoters))
@@ -1412,24 +1418,6 @@ func getSlotPagePtcVotes(pageData *models.SlotPageBlockData, blockData *services
 		for _, agg := range ptcVotes.Aggregates {
 			agg.VotePercent = float64(agg.VoteCount) / float64(ptcSize) * 100
 		}
-	}
-
-	// Populate validator names for all PTC validators
-	addName := func(index uint64, name string) {
-		for _, vn := range pageData.ValidatorNames {
-			if vn.Key == index {
-				return
-			}
-		}
-		pageData.ValidatorNames = append(pageData.ValidatorNames, models.SlotPageValidatorName{Key: index, Value: name})
-	}
-	for _, agg := range ptcVotes.Aggregates {
-		for _, vidx := range agg.Validators {
-			addName(vidx, services.GlobalBeaconService.GetValidatorName(vidx))
-		}
-	}
-	for _, vidx := range ptcVotes.NonVoters {
-		addName(vidx, services.GlobalBeaconService.GetValidatorName(vidx))
 	}
 
 	pageData.PtcVotes = ptcVotes
