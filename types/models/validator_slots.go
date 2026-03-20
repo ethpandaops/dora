@@ -47,5 +47,5 @@ type ValidatorSlotsPageDataSlot struct {
 	WithEthBlock          bool      `json:"with_eth_block"`
 	EthBlockNumber        uint64    `json:"eth_block_number"`
 	Graffiti              []byte    `json:"graffiti"`
-	BlockRoot             []byte    `json:"block_root"`
+	BlockRoot             []byte    `json:"block_root" ssz-size:"32"`
 }

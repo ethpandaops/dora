@@ -282,10 +282,10 @@ function isAtHead() {
     }
     
     // Calculate current slot based on time
-    const now = Math.floor(Date.now() / 1000); // Current time in seconds
-    const genesisTime = staticData.specs.genesis_time;
-    const secondsPerSlot = staticData.specs.seconds_per_slot;
-    const calculatedCurrentSlot = Math.floor((now - genesisTime) / secondsPerSlot);
+    const nowMs = Date.now();
+    const genesisTimeMs = staticData.specs.genesis_time * 1000;
+    const slotDurationMs = staticData.specs.slot_duration_ms;
+    const calculatedCurrentSlot = Math.floor((nowMs - genesisTimeMs) / slotDurationMs);
     
     // Use the more recent of calculated vs backend-provided current slot
     const currentSlot = Math.max(calculatedCurrentSlot, staticData.specs.current_slot || 0);
@@ -1135,7 +1135,7 @@ function showForkDetails(fork) {
                 </span>
                 
                 <span class="detail-label">Duration:</span>
-                <span class="detail-value">${(length * ((window.chainDiagramData.specs && window.chainDiagramData.specs.seconds_per_slot) ? window.chainDiagramData.specs.seconds_per_slot : 12)).toLocaleString()} seconds</span>
+                <span class="detail-value">${(length * ((window.chainDiagramData.specs && window.chainDiagramData.specs.slot_duration_ms) ? window.chainDiagramData.specs.slot_duration_ms / 1000 : 12)).toLocaleString()} seconds</span>
                 
                 <span class="detail-label">Parent Fork:</span>
                 <span class="detail-value">${fork.parentFork === 0 ? 'Canonical Chain' : `Fork ${fork.parentFork}`}</span>

@@ -8,7 +8,7 @@ type ChainForksPageData struct {
 // ChainSpecs contains chain specification values needed for visualization
 type ChainSpecs struct {
 	SlotsPerEpoch  uint64 `json:"slots_per_epoch"`
-	SecondsPerSlot uint64 `json:"seconds_per_slot"`
+	SlotDurationMs uint64 `json:"slot_duration_ms"`
 	GenesisTime    uint64 `json:"genesis_time"`   // Genesis time in unix timestamp
 	CurrentSlot    uint64 `json:"current_slot"`   // Current head slot
 	EpochsFor12h   uint64 `json:"epochs_for_12h"` // Pre-calculated epoch counts for time selectors
@@ -35,11 +35,11 @@ type ChainForksDiagramData struct {
 type ChainFork struct {
 	ForkId               uint64                `json:"fork_id"`
 	BaseSlot             uint64                `json:"base_slot"`
-	BaseRoot             []byte                `json:"base_root"`
+	BaseRoot             []byte                `json:"base_root" ssz-size:"32"`
 	LeafSlot             uint64                `json:"leaf_slot"` // First block of this fork (where it diverged)
-	LeafRoot             []byte                `json:"leaf_root"`
+	LeafRoot             []byte                `json:"leaf_root" ssz-size:"32"`
 	HeadSlot             uint64                `json:"head_slot"` // Current head of this fork
-	HeadRoot             []byte                `json:"head_root"`
+	HeadRoot             []byte                `json:"head_root" ssz-size:"32"`
 	ParentFork           uint64                `json:"parent_fork"`
 	Participation        float64               `json:"participation"`          // Overall average participation
 	ParticipationByEpoch []*EpochParticipation `json:"participation_by_epoch"` // Participation per epoch

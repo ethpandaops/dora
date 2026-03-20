@@ -862,6 +862,36 @@
                 }
             }
         },
+        "/v1/network/client_head_forks": {
+            "get": {
+                "description": "Returns information about consensus client head forks, showing which clients are on which chain head. Useful for detecting chain splits from the client perspective.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "network"
+                ],
+                "summary": "Get consensus client head forks",
+                "operationId": "getNetworkClientHeadForks",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIClientHeadForksResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/v1/network/forks": {
             "get": {
                 "description": "Returns comprehensive information about past, current, and future network forks including consensus forks and BPO (Block Parameter Override) forks with fork digests",
@@ -2091,6 +2121,80 @@
                 }
             }
         },
+        "api.APIClientHeadFork": {
+            "type": "object",
+            "properties": {
+                "client_count": {
+                    "type": "integer"
+                },
+                "clients": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/api.APIClientHeadForkPeer"
+                    }
+                },
+                "head_root": {
+                    "type": "string"
+                },
+                "head_slot": {
+                    "type": "integer"
+                }
+            }
+        },
+        "api.APIClientHeadForkPeer": {
+            "type": "object",
+            "properties": {
+                "distance": {
+                    "type": "integer"
+                },
+                "head_slot": {
+                    "type": "integer"
+                },
+                "index": {
+                    "type": "integer"
+                },
+                "last_error": {
+                    "type": "string"
+                },
+                "last_refresh": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.APIClientHeadForksData": {
+            "type": "object",
+            "properties": {
+                "fork_count": {
+                    "type": "integer"
+                },
+                "forks": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/api.APIClientHeadFork"
+                    }
+                }
+            }
+        },
+        "api.APIClientHeadForksResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/api.APIClientHeadForksData"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
         "api.APIConsensusClientMetadata": {
             "type": "object",
             "properties": {
@@ -2313,10 +2417,10 @@
                 "current_slot": {
                     "type": "integer"
                 },
-                "seconds_per_epoch": {
+                "epoch_duration_ms": {
                     "type": "integer"
                 },
-                "seconds_per_slot": {
+                "slot_duration_ms": {
                     "type": "integer"
                 },
                 "slots_per_epoch": {

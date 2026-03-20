@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -185,10 +186,10 @@ func buildBlocksPageData(ctx context.Context, firstSlot uint64, pageSize uint64,
 	pageData.LastPageSlot = pageSize - 1
 
 	// Populate UrlParams for page jump functionality
-	pageData.UrlParams = make(map[string]string)
-	pageData.UrlParams["c"] = fmt.Sprintf("%v", pageData.PageSize)
+	pageData.UrlParams = make([]models.UrlParam, 0)
+	pageData.UrlParams = append(pageData.UrlParams, models.UrlParam{Key: "c", Value: fmt.Sprintf("%v", pageData.PageSize)})
 	if displayColumns != 0 {
-		pageData.UrlParams["d"] = fmt.Sprintf("0x%x", displayMask)
+		pageData.UrlParams = append(pageData.UrlParams, models.UrlParam{Key: "d", Value: fmt.Sprintf("0x%x", displayMask)})
 	}
 	pageData.MaxSlot = uint64(maxSlot)
 
@@ -343,7 +344,7 @@ func buildBlocksPageData(ctx context.Context, firstSlot uint64, pageSize uint64,
 	pageData.SlotCount = uint64(blockCount)
 	pageData.FirstSlot = firstSlot
 	pageData.LastSlot = lastSlot
-	pageData.ForkTreeWidth = (maxOpenFork * 20) + 20
+	pageData.ForkTreeWidth = int32((maxOpenFork * 20) + 20)
 
 	var cacheTimeout time.Duration
 
@@ -379,15 +380,22 @@ func buildBlocksPageSlotGraph(ctx context.Context, pageData *models.BlocksPageDa
 		} else {
 			for graphCount <= forkIdx {
 				forkGraph = &models.BlocksPageDataForkGraph{
-					Index: graphCount,
-					Left:  10 + (graphCount * 20),
-					Tiles: map[string]bool{},
+					Index: int32(graphCount),
+					Left:  int32(10 + (graphCount * 20)),
+					Tiles: make([]string, 0),
 				}
 				slotData.ForkGraph = append(slotData.ForkGraph, forkGraph)
 				graphCount++
 			}
 		}
 		return forkGraph
+	}
+
+	addTile := func(forkGraph *models.BlocksPageDataForkGraph, tile string) {
+		if slices.Contains(forkGraph.Tiles, tile) {
+			return
+		}
+		forkGraph.Tiles = append(forkGraph.Tiles, tile)
 	}
 
 	for forkIdx := 0; forkIdx < *maxOpenFork; forkIdx++ {
@@ -398,7 +406,7 @@ func buildBlocksPageSlotGraph(ctx context.Context, pageData *models.BlocksPageDa
 			}
 			continue
 		} else {
-			forkGraph.Tiles["vline"] = true
+			addTile(forkGraph, "vline")
 			if bytes.Equal(openForks[forkIdx], slotData.BlockRoot) {
 				if forkGraphIdx != -1 {
 					continue
@@ -413,14 +421,14 @@ func buildBlocksPageSlotGraph(ctx context.Context, pageData *models.BlocksPageDa
 					for idx := forkIdx + 1; idx <= targetIdx; idx++ {
 						splitGraph := getForkGraph(slotData, idx)
 						if idx == targetIdx {
-							splitGraph.Tiles["tline"] = true
-							splitGraph.Tiles["lline"] = true
-							splitGraph.Tiles["fork"] = true
+							addTile(splitGraph, "tline")
+							addTile(splitGraph, "lline")
+							addTile(splitGraph, "fork")
 						} else {
-							splitGraph.Tiles["hline"] = true
+							addTile(splitGraph, "hline")
 						}
 					}
-					forkGraph.Tiles["rline"] = true
+					addTile(forkGraph, "rline")
 					openForks[targetIdx] = nil
 				}
 			}
@@ -445,11 +453,11 @@ func buildBlocksPageSlotGraph(ctx context.Context, pageData *models.BlocksPageDa
 						graphIdx := *maxOpenFork
 						*maxOpenFork++
 						splitGraph := getForkGraph(slotData, graphIdx)
-						splitGraph.Tiles["tline"] = true
-						splitGraph.Tiles["lline"] = true
-						splitGraph.Tiles["fork"] = true
+						addTile(splitGraph, "tline")
+						addTile(splitGraph, "lline")
+						addTile(splitGraph, "fork")
 						if idx < refBlockCount-1 {
-							splitGraph.Tiles["hline"] = true
+							addTile(splitGraph, "hline")
 						}
 					}
 				}
@@ -461,7 +469,7 @@ func buildBlocksPageSlotGraph(ctx context.Context, pageData *models.BlocksPageDa
 					}
 					for idx := 0; idx < refBlockCount; idx++ {
 						splitGraph := getForkGraph(slot, freeForkIdx+idx)
-						splitGraph.Tiles["vline"] = true
+						addTile(splitGraph, "vline")
 					}
 				}
 			}
@@ -475,12 +483,12 @@ func buildBlocksPageSlotGraph(ctx context.Context, pageData *models.BlocksPageDa
 		forkGraph := getForkGraph(slotData, freeForkIdx)
 		forkGraph.Block = true
 		if hasHead {
-			forkGraph.Tiles["vline"] = true
+			addTile(forkGraph, "vline")
 			if hasForks {
-				forkGraph.Tiles["rline"] = true
+				addTile(forkGraph, "rline")
 			}
 		} else {
-			forkGraph.Tiles["bline"] = true
+			addTile(forkGraph, "bline")
 		}
 	}
 }

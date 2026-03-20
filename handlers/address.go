@@ -121,7 +121,7 @@ func getAddressPageData(addressBytes []byte, tabView string, pageIdx, pageSize u
 	pageCacheKey := fmt.Sprintf("address:%x:%v:%v:%v", addressBytes, tabView, pageIdx, pageSize)
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
 		pageData, cacheTimeout := buildAddressPageData(pageCall.CallCtx, addressBytes, tabView, pageIdx, pageSize)
-		_ = cacheTimeout
+		pageCall.CacheTimeout = cacheTimeout
 		return pageData
 	})
 	if pageErr == nil && pageRes != nil {

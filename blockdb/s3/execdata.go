@@ -28,6 +28,7 @@ func (e *S3Engine) getExecDataKey(slot uint64, blockRoot []byte) string {
 // AddExecData stores execution data for a block. Returns stored size.
 func (e *S3Engine) AddExecData(ctx context.Context, slot uint64, blockHash []byte, data []byte) (int64, error) {
 	key := e.getExecDataKey(slot, blockHash)
+	e.putCount.Add(1)
 
 	_, err := e.client.PutObject(
 		ctx,
@@ -41,12 +42,14 @@ func (e *S3Engine) AddExecData(ctx context.Context, slot uint64, blockHash []byt
 		return 0, fmt.Errorf("failed to upload exec data: %w", err)
 	}
 
+	e.putBytes.Add(int64(len(data)))
 	return int64(len(data)), nil
 }
 
 // GetExecData retrieves full execution data for a block.
 func (e *S3Engine) GetExecData(ctx context.Context, slot uint64, blockHash []byte) ([]byte, error) {
 	key := e.getExecDataKey(slot, blockHash)
+	e.getCount.Add(1)
 
 	obj, err := e.client.GetObject(ctx, e.bucket, key, minio.GetObjectOptions{})
 	if err != nil {
@@ -65,6 +68,7 @@ func (e *S3Engine) GetExecData(ctx context.Context, slot uint64, blockHash []byt
 		return nil, fmt.Errorf("failed to read exec data: %w", err)
 	}
 
+	e.getBytes.Add(int64(len(data)))
 	return data, nil
 }
 
@@ -164,6 +168,7 @@ func (e *S3Engine) GetExecDataTxSections(ctx context.Context, slot uint64, block
 // HasExecData checks if execution data exists for a block.
 func (e *S3Engine) HasExecData(ctx context.Context, slot uint64, blockHash []byte) (bool, error) {
 	key := e.getExecDataKey(slot, blockHash)
+	e.statCount.Add(1)
 
 	stat, err := e.client.StatObject(ctx, e.bucket, key, minio.StatObjectOptions{})
 	if err != nil {
@@ -240,6 +245,8 @@ func (e *S3Engine) PruneExecDataBefore(ctx context.Context, maxSlot uint64) (int
 // rangeRead performs an S3 range read and returns the bytes.
 // Returns nil, nil if the object is not found.
 func (e *S3Engine) rangeRead(ctx context.Context, key string, offset int64, length int64) ([]byte, error) {
+	e.getCount.Add(1)
+
 	opts := minio.GetObjectOptions{}
 	if err := opts.SetRange(offset, offset+length-1); err != nil {
 		return nil, fmt.Errorf("failed to set range: %w", err)
@@ -262,6 +269,7 @@ func (e *S3Engine) rangeRead(ctx context.Context, key string, offset int64, leng
 		return nil, fmt.Errorf("failed to read range: %w", err)
 	}
 
+	e.getBytes.Add(int64(len(data)))
 	return data, nil
 }
 

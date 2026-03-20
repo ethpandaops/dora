@@ -26,14 +26,14 @@ type DepositsPageData struct {
 
 type DepositsPageDataInitiatedDeposit struct {
 	Index                 uint64    `json:"index"`
-	Address               []byte    `json:"address"`
-	PublicKey             []byte    `json:"pubkey"`
-	Withdrawalcredentials []byte    `json:"wtdcreds"`
+	Address               []byte    `json:"address" ssz-size:"20"`
+	PublicKey             []byte    `json:"pubkey" ssz-size:"48"`
+	Withdrawalcredentials []byte    `json:"wtdcreds" ssz-size:"32"`
 	Amount                uint64    `json:"amount"`
-	TxHash                []byte    `json:"txhash"`
+	TxHash                []byte    `json:"txhash" ssz-size:"32"`
 	Time                  time.Time `json:"time"`
 	Block                 uint64    `json:"block"`
-	BlockHash             []byte    `json:"block_hash"`
+	BlockHash             []byte    `json:"block_hash" ssz-size:"32"`
 	Orphaned              bool      `json:"orphaned"`
 	Valid                 bool      `json:"valid"`
 	ValidatorStatus       string    `json:"vstatus"`
@@ -48,11 +48,11 @@ type DepositsPageDataInitiatedDeposit struct {
 type DepositsPageDataIncludedDeposit struct {
 	Index                 uint64                                    `json:"index"`
 	HasIndex              bool                                      `json:"has_index"`
-	PublicKey             []byte                                    `json:"pubkey"`
-	Withdrawalcredentials []byte                                    `json:"wtdcreds"`
+	PublicKey             []byte                                    `json:"pubkey" ssz-size:"48"`
+	Withdrawalcredentials []byte                                    `json:"wtdcreds" ssz-size:"32"`
 	Amount                uint64                                    `json:"amount"`
 	SlotNumber            uint64                                    `json:"slot"`
-	SlotRoot              []byte                                    `json:"slot_root"`
+	SlotRoot              []byte                                    `json:"slot_root" ssz-size:"32"`
 	Time                  time.Time                                 `json:"time"`
 	Orphaned              bool                                      `json:"orphaned"`
 	ValidatorStatus       string                                    `json:"vstatus"`
@@ -62,7 +62,7 @@ type DepositsPageDataIncludedDeposit struct {
 	IsQueued              bool                                      `json:"is_queued"`
 	QueuePosition         uint64                                    `json:"queue_position"`
 	EstimatedTime         time.Time                                 `json:"estimated_time"`
-	DepositorAddress      []byte                                    `json:"depositor_address"`
+	DepositorAddress      []byte                                    `json:"depositor_address" ssz-size:"20"`
 	HasTransaction        bool                                      `json:"has_transaction"`
 	TransactionDetails    *DepositsPageDataIncludedDepositTxDetails `json:"tx_details"`
 	InvalidSignature      bool                                      `json:"invalid_signature"`
@@ -83,8 +83,8 @@ type DepositsPageDataIncludedDepositTxDetails struct {
 type DepositsPageDataQueuedDeposit struct {
 	Index                 uint64                                  `json:"index"`
 	HasIndex              bool                                    `json:"has_index"`
-	PublicKey             []byte                                  `json:"pubkey"`
-	Withdrawalcredentials []byte                                  `json:"wtdcreds"`
+	PublicKey             []byte                                  `json:"pubkey" ssz-size:"48"`
+	Withdrawalcredentials []byte                                  `json:"wtdcreds" ssz-size:"32"`
 	Amount                uint64                                  `json:"amount"`
 	QueuePosition         uint64                                  `json:"queue_position"`
 	EstimatedTime         time.Time                               `json:"estimated_time"`
@@ -93,7 +93,7 @@ type DepositsPageDataQueuedDeposit struct {
 	UpcheckActivity       uint8                                   `json:"upcheck_act"`
 	UpcheckMaximum        uint8                                   `json:"upcheck_max"`
 	HasTransaction        bool                                    `json:"has_transaction"`
-	TransactionHash       []byte                                  `json:"tx_hash"`
+	TransactionHash       []byte                                  `json:"tx_hash" ssz-size:"32"`
 	TransactionDetails    *DepositsPageDataQueuedDepositTxDetails `json:"tx_details"`
 	ValidatorExists       bool                                    `json:"validator_exists"`
 	ValidatorIndex        uint64                                  `json:"validator_index"`

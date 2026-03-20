@@ -22,8 +22,8 @@ const (
 type TransactionPageDataBlock struct {
 	BlockUid    uint64    `json:"block_uid"`
 	BlockNumber uint64    `json:"block_number"`
-	BlockHash   []byte    `json:"block_hash"`
-	BlockRoot   []byte    `json:"block_root"`
+	BlockHash   []byte    `json:"block_hash" ssz-size:"32"`
+	BlockRoot   []byte    `json:"block_root" ssz-size:"32"`
 	Slot        uint64    `json:"slot"`
 	BlockTime   time.Time `json:"block_time"`
 	IsOrphaned  bool      `json:"is_orphaned"`
@@ -34,7 +34,7 @@ type TransactionPageDataBlock struct {
 
 // TransactionPageData is a struct to hold info for the transaction page
 type TransactionPageData struct {
-	TxHash      []byte `json:"tx_hash"`
+	TxHash      []byte `json:"tx_hash" ssz-size:"32"`
 	TxNotFound  bool   `json:"tx_not_found"`
 	TxMultiple  bool   `json:"tx_multiple"`  // If there are multiple versions (due to reorg)
 	TxOrphaned  bool   `json:"tx_orphaned"`  // If the tx is from an orphaned block
@@ -50,8 +50,8 @@ type TransactionPageData struct {
 
 	// Block info (primary/canonical block)
 	BlockNumber uint64    `json:"block_number"`
-	BlockHash   []byte    `json:"block_hash"`
-	BlockRoot   []byte    `json:"block_root"` // Beacon block root for linking
+	BlockHash   []byte    `json:"block_hash" ssz-size:"32"`
+	BlockRoot   []byte    `json:"block_root" ssz-size:"32"` // Beacon block root for linking
 	BlockTime   time.Time `json:"block_time"`
 	Slot        uint64    `json:"slot"`
 
@@ -60,20 +60,20 @@ type TransactionPageData struct {
 	SelectedBlockUid uint64                      `json:"selected_block_uid"` // Currently selected block UID (0 = canonical)
 
 	// Addresses
-	FromAddr       []byte `json:"from_addr"`
+	FromAddr       []byte `json:"from_addr" ssz-size:"20"`
 	FromIsContract bool   `json:"from_is_contract"`
-	ToAddr         []byte `json:"to_addr"`
+	ToAddr         []byte `json:"to_addr" ssz-size:"20"`
 	ToIsContract   bool   `json:"to_is_contract"`
 	HasTo          bool   `json:"has_to"`    // false for contract creation
 	IsCreate       bool   `json:"is_create"` // Contract creation
 
 	// Value and fees
 	Amount        float64 `json:"amount"`
-	AmountRaw     []byte  `json:"amount_raw"`
+	AmountRaw     []byte  `json:"amount_raw" ssz-size:"32"`
 	TxFee         float64 `json:"tx_fee"`     // Gas used * effective gas price
 	TxFeeRaw      []byte  `json:"tx_fee_raw"` // Raw fee in wei
 	GasPrice      float64 `json:"gas_price"`  // Legacy: gas price; EIP-1559+: maxFeePerGas (in Gwei)
-	GasPriceRaw   []byte  `json:"gas_price_raw"`
+	GasPriceRaw   []byte  `json:"gas_price_raw" ssz-size:"32"`
 	TipPrice      float64 `json:"tip_price"`       // Tip (priority fee) in Gwei
 	EffGasPrice   float64 `json:"eff_gas_price"`   // Effective gas price actually paid (in Gwei)
 	FeeSavingsPct float64 `json:"fee_savings_pct"` // Percentage saved (maxFee - effGasPrice) / maxFee * 100
@@ -104,14 +104,14 @@ type TransactionPageData struct {
 
 	// Blobs (EIP-4844)
 	BlobCount      uint32                     `json:"blob_count"`
-	BlobGasLimit   uint64                     `json:"blob_gas_limit"`   // Max blob gas (131072 * blob_count)
-	BlobGasUsed    uint64                     `json:"blob_gas_used"`    // Actual blob gas used
-	BlobGasPrice   float64                    `json:"blob_gas_price"`   // Blob gas price in Gwei
-	BlobGasFeeCap  float64                    `json:"blob_gas_fee_cap"` // Max blob fee per gas in Gwei
-	BlobFee        float64                    `json:"blob_fee"`         // Total blob fee paid (blob_gas_used * blob_gas_price) in ETH
-	BlobFeeRaw     []byte                     `json:"blob_fee_raw"`     // Raw blob fee in wei
-	BlobFeeSavings float64                    `json:"blob_fee_savings"` // Savings percentage ((fee_cap - price) / fee_cap * 100)
-	Blobs          []*TransactionPageDataBlob `json:"blobs"`            // Blob details
+	BlobGasLimit   uint64                     `json:"blob_gas_limit"`             // Max blob gas (131072 * blob_count)
+	BlobGasUsed    uint64                     `json:"blob_gas_used"`              // Actual blob gas used
+	BlobGasPrice   float64                    `json:"blob_gas_price"`             // Blob gas price in Gwei
+	BlobGasFeeCap  float64                    `json:"blob_gas_fee_cap"`           // Max blob fee per gas in Gwei
+	BlobFee        float64                    `json:"blob_fee"`                   // Total blob fee paid (blob_gas_used * blob_gas_price) in ETH
+	BlobFeeRaw     []byte                     `json:"blob_fee_raw" ssz-size:"32"` // Raw blob fee in wei
+	BlobFeeSavings float64                    `json:"blob_fee_savings"`           // Savings percentage ((fee_cap - price) / fee_cap * 100)
+	Blobs          []*TransactionPageDataBlob `json:"blobs"`                      // Blob details
 
 	// Authorizations (EIP-7702, tx type 4)
 	Authorizations []*TransactionPageDataAuthorization `json:"authorizations"`
@@ -142,15 +142,15 @@ type TransactionPageData struct {
 
 // TransactionPageDataStateChangeAccount represents state changes for a single account.
 type TransactionPageDataStateChangeAccount struct {
-	Address []byte `json:"address"`
+	Address []byte `json:"address" ssz-size:"20"`
 
 	// High level flags (precomputed from the binary flags)
 	AccountCreated bool `json:"account_created"`
 	AccountKilled  bool `json:"account_killed"`
 
 	BalanceChanged bool   `json:"balance_changed"`
-	PreBalance     []byte `json:"pre_balance"`
-	PostBalance    []byte `json:"post_balance"`
+	PreBalance     []byte `json:"pre_balance" ssz-size:"32"`
+	PostBalance    []byte `json:"post_balance" ssz-size:"32"`
 	PreBalanceWei  string `json:"pre_balance_wei"`
 	PostBalanceWei string `json:"post_balance_wei"`
 	BalanceDiffWei string `json:"balance_diff_wei"` // post - pre (signed base-10)
@@ -162,8 +162,8 @@ type TransactionPageDataStateChangeAccount struct {
 	CodeChanged bool   `json:"code_changed"`
 	PreCode     []byte `json:"pre_code"`
 	PostCode    []byte `json:"post_code"`
-	PreCodeLen  int    `json:"pre_code_len"`
-	PostCodeLen int    `json:"post_code_len"`
+	PreCodeLen  uint64 `json:"pre_code_len"`
+	PostCodeLen uint64 `json:"post_code_len"`
 
 	StorageChanged bool                                  `json:"storage_changed"`
 	Slots          []*TransactionPageDataStateChangeSlot `json:"slots"`
@@ -171,10 +171,10 @@ type TransactionPageDataStateChangeAccount struct {
 
 // TransactionPageDataStateChangeSlot represents a storage slot diff.
 type TransactionPageDataStateChangeSlot struct {
-	Slot       []byte `json:"slot"`
+	Slot       []byte `json:"slot" ssz-size:"32"`
 	ChangeType string `json:"change_type"` // created/modified/deleted
-	PreValue   []byte `json:"pre_value"`
-	PostValue  []byte `json:"post_value"`
+	PreValue   []byte `json:"pre_value" ssz-size:"32"`
+	PostValue  []byte `json:"post_value" ssz-size:"32"`
 }
 
 // TransactionPageDataEvent represents an event/log in the transaction
@@ -182,7 +182,7 @@ type TransactionPageDataEvent struct {
 	EventIndex uint32 `json:"event_index"`
 
 	// Source contract
-	SourceAddr       []byte `json:"source_addr"`
+	SourceAddr       []byte `json:"source_addr" ssz-size:"20"`
 	SourceIsContract bool   `json:"source_is_contract"`
 
 	// Topics
@@ -205,24 +205,24 @@ type TransactionPageDataTokenTransfer struct {
 
 	// Token info
 	TokenID     uint64 `json:"token_id"`
-	Contract    []byte `json:"contract"`
+	Contract    []byte `json:"contract" ssz-size:"20"`
 	TokenName   string `json:"token_name"`
 	TokenSymbol string `json:"token_symbol"`
 	Decimals    uint8  `json:"decimals"`
 	TokenType   uint8  `json:"token_type"` // 1=ERC20, 2=ERC721, 3=ERC1155
 
 	// From/To
-	FromAddr       []byte `json:"from_addr"`
+	FromAddr       []byte `json:"from_addr" ssz-size:"20"`
 	FromIsContract bool   `json:"from_is_contract"`
-	ToAddr         []byte `json:"to_addr"`
+	ToAddr         []byte `json:"to_addr" ssz-size:"20"`
 	ToIsContract   bool   `json:"to_is_contract"`
 
 	// Amount
 	Amount    float64 `json:"amount"`
-	AmountRaw []byte  `json:"amount_raw"`
+	AmountRaw []byte  `json:"amount_raw" ssz-size:"32"`
 
 	// NFT token index
-	TokenIndex []byte `json:"token_index"`
+	TokenIndex []byte `json:"token_index" ssz-size:"32"`
 }
 
 // TransactionPageDataInternalTx represents an internal transaction (call trace frame)
@@ -233,14 +233,14 @@ type TransactionPageDataInternalTx struct {
 	TypeName  string `json:"type_name"`
 
 	// From/To
-	FromAddr       []byte `json:"from_addr"`
+	FromAddr       []byte `json:"from_addr" ssz-size:"20"`
 	FromIsContract bool   `json:"from_is_contract"`
-	ToAddr         []byte `json:"to_addr"`
+	ToAddr         []byte `json:"to_addr" ssz-size:"20"`
 	ToIsContract   bool   `json:"to_is_contract"`
 
 	// Value
 	Amount    float64 `json:"amount"`
-	AmountRaw []byte  `json:"amount_raw"`
+	AmountRaw []byte  `json:"amount_raw" ssz-size:"32"`
 
 	// Gas
 	Gas     uint64 `json:"gas"`
@@ -264,19 +264,19 @@ type TransactionPageDataInternalTx struct {
 
 // TransactionPageDataBlob represents a blob in a blob transaction
 type TransactionPageDataBlob struct {
-	Index         uint64 `json:"index"`          // Blob index in transaction
-	VersionedHash []byte `json:"versioned_hash"` // Versioned hash from transaction
-	KzgCommitment []byte `json:"kzg_commitment"` // KZG commitment from beacon block
-	KzgProof      []byte `json:"kzg_proof"`      // KZG proof (if available)
-	HaveData      bool   `json:"have_data"`      // Whether full blob data is available
-	BlobShort     []byte `json:"blob_short"`     // First bytes of blob data (preview)
+	Index         uint64 `json:"index"`                        // Blob index in transaction
+	VersionedHash []byte `json:"versioned_hash" ssz-size:"32"` // Versioned hash from transaction
+	KzgCommitment []byte `json:"kzg_commitment" ssz-size:"48"` // KZG commitment from beacon block
+	KzgProof      []byte `json:"kzg_proof" ssz-size:"32"`      // KZG proof (if available)
+	HaveData      bool   `json:"have_data"`                    // Whether full blob data is available
+	BlobShort     []byte `json:"blob_short"`                   // First bytes of blob data (preview)
 }
 
 // TransactionPageDataAuthorization represents an EIP-7702 authorization entry
 type TransactionPageDataAuthorization struct {
 	Index         uint32 `json:"index"`
-	AuthorityAddr []byte `json:"authority_addr"` // Recovered signer (wallet)
-	DelegateAddr  []byte `json:"delegate_addr"`  // Target delegation address
-	AuthorityOk   bool   `json:"authority_ok"`   // Whether authority recovery succeeded
-	Applied       uint8  `json:"applied"`        // 0=unknown, 1=applied, 2=not applied
+	AuthorityAddr []byte `json:"authority_addr" ssz-size:"20"` // Recovered signer (wallet)
+	DelegateAddr  []byte `json:"delegate_addr" ssz-size:"20"`  // Target delegation address
+	AuthorityOk   bool   `json:"authority_ok"`                 // Whether authority recovery succeeded
+	Applied       uint8  `json:"applied"`                      // 0=unknown, 1=applied, 2=not applied
 }

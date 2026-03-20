@@ -96,7 +96,9 @@ func getFilteredInitiatedDepositsPageData(pageIdx uint64, pageSize uint64, addre
 	pageData := &models.InitiatedDepositsPageData{}
 	pageCacheKey := fmt.Sprintf("initiated_deposits:%v:%v:%v:%v:%v:%v:%v:%v:%v", pageIdx, pageSize, address, publickey, vname, minAmount, maxAmount, withOrphaned, withValid)
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
-		return buildFilteredInitiatedDepositsPageData(pageCall.CallCtx, pageIdx, pageSize, address, publickey, vname, minAmount, maxAmount, withOrphaned, withValid)
+		pageData, cacheTimeout := buildFilteredInitiatedDepositsPageData(pageCall.CallCtx, pageIdx, pageSize, address, publickey, vname, minAmount, maxAmount, withOrphaned, withValid)
+		pageCall.CacheTimeout = cacheTimeout
+		return pageData
 	})
 	if pageErr == nil && pageRes != nil {
 		resData, resOk := pageRes.(*models.InitiatedDepositsPageData)
@@ -108,7 +110,7 @@ func getFilteredInitiatedDepositsPageData(pageIdx uint64, pageSize uint64, addre
 	return pageData, pageErr
 }
 
-func buildFilteredInitiatedDepositsPageData(ctx context.Context, pageIdx uint64, pageSize uint64, address string, publickey string, vname string, minAmount uint64, maxAmount uint64, withOrphaned uint8, withValid uint8) *models.InitiatedDepositsPageData {
+func buildFilteredInitiatedDepositsPageData(ctx context.Context, pageIdx uint64, pageSize uint64, address string, publickey string, vname string, minAmount uint64, maxAmount uint64, withOrphaned uint8, withValid uint8) (*models.InitiatedDepositsPageData, time.Duration) {
 	filterArgs := url.Values{}
 	if address != "" {
 		filterArgs.Add("f.address", address)
@@ -141,9 +143,12 @@ func buildFilteredInitiatedDepositsPageData(ctx context.Context, pageIdx uint64,
 		FilterWithOrphaned:  withOrphaned,
 		FilterWithValid:     withValid,
 	}
+	cacheTimeout := 5 * time.Minute
 	logrus.Debugf("initiated_deposits page called: %v:%v [%v,%v,%v,%v,%v]", pageIdx, pageSize, address, publickey, vname, minAmount, maxAmount)
 	if pageIdx == 1 {
 		pageData.IsDefaultPage = true
+	} else {
+		cacheTimeout = 15 * time.Minute
 	}
 
 	if pageSize > 100 {
@@ -243,18 +248,18 @@ func buildFilteredInitiatedDepositsPageData(ctx context.Context, pageIdx uint64,
 	}
 
 	// Populate UrlParams for page jump functionality
-	pageData.UrlParams = make(map[string]string)
+	pageData.UrlParams = make([]models.UrlParam, 0)
 	for key, values := range filterArgs {
 		if len(values) > 0 {
-			pageData.UrlParams[key] = values[0]
+			pageData.UrlParams = append(pageData.UrlParams, models.UrlParam{Key: key, Value: values[0]})
 		}
 	}
-	pageData.UrlParams["c"] = fmt.Sprintf("%v", pageData.PageSize)
+	pageData.UrlParams = append(pageData.UrlParams, models.UrlParam{Key: "c", Value: fmt.Sprintf("%v", pageData.PageSize)})
 
 	pageData.FirstPageLink = fmt.Sprintf("/validators/initiated_deposits?f&%v&c=%v", filterArgs.Encode(), pageData.PageSize)
 	pageData.PrevPageLink = fmt.Sprintf("/validators/initiated_deposits?f&%v&c=%v&p=%v", filterArgs.Encode(), pageData.PageSize, pageData.PrevPageIndex)
 	pageData.NextPageLink = fmt.Sprintf("/validators/initiated_deposits?f&%v&c=%v&p=%v", filterArgs.Encode(), pageData.PageSize, pageData.NextPageIndex)
 	pageData.LastPageLink = fmt.Sprintf("/validators/initiated_deposits?f&%v&c=%v&p=%v", filterArgs.Encode(), pageData.PageSize, pageData.LastPageIndex)
 
-	return pageData
+	return pageData, cacheTimeout
 }
