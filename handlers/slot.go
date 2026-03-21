@@ -309,12 +309,9 @@ func buildSlotPageData(ctx context.Context, blockSlot int64, blockRoot []byte) (
 		}
 		pageData.Block = getSlotPageBlockData(ctx, blockData, epochStatsValues, blockUid)
 
-		// Create transaction details map for access list UI
+		// Copy transaction details for access list UI
 		if pageData.Block != nil && pageData.Block.Transactions != nil {
-			pageData.TransactionDetails = make(map[uint64]*models.SlotPageTransaction)
-			for _, tx := range pageData.Block.Transactions {
-				pageData.TransactionDetails[tx.Index] = tx
-			}
+			pageData.TransactionDetails = pageData.Block.Transactions
 		}
 
 		// check mev block
@@ -340,29 +337,28 @@ func buildSlotPageData(ctx context.Context, blockSlot int64, blockRoot []byte) (
 	}
 
 	// Add system contract addresses
-	pageData.SystemContracts = make(map[string]string)
-
-	// Get system contract addresses from execution chain state
 	if execChainState := services.GlobalBeaconService.GetExecutionChainState(); execChainState != nil {
-		// Add known system contracts
 		consolidationAddr := execChainState.GetSystemContractAddress(rpc.ConsolidationRequestContract)
-		pageData.SystemContracts[consolidationAddr.Hex()] = "Consolidation Request Contract (EIP-7251)"
-
 		withdrawalAddr := execChainState.GetSystemContractAddress(rpc.WithdrawalRequestContract)
-		pageData.SystemContracts[withdrawalAddr.Hex()] = "Withdrawal Request Contract (EIP-7002)"
-
 		beaconRootsAddr := execChainState.GetSystemContractAddress(rpc.BeaconRootsContract)
-		pageData.SystemContracts[beaconRootsAddr.Hex()] = "Beacon Roots Contract (EIP-4788)"
-
 		historyStorageAddr := execChainState.GetSystemContractAddress(rpc.HistoryStorageContract)
-		pageData.SystemContracts[historyStorageAddr.Hex()] = "History Storage Contract (EIP-2935)"
+
+		pageData.SystemContracts = []*types.SystemContract{
+			{Address: consolidationAddr.Hex(), Name: "Consolidation Request Contract (EIP-7251)"},
+			{Address: withdrawalAddr.Hex(), Name: "Withdrawal Request Contract (EIP-7002)"},
+			{Address: beaconRootsAddr.Hex(), Name: "Beacon Roots Contract (EIP-4788)"},
+			{Address: historyStorageAddr.Hex(), Name: "History Storage Contract (EIP-2935)"},
+		}
 	}
 
 	// Add deposit contract from beacon chain config
 	if chainState := services.GlobalBeaconService.GetChainState(); chainState != nil {
 		if specs := chainState.GetSpecs(); specs != nil && specs.DepositContractAddress != nil {
 			depositAddr := common.BytesToAddress(specs.DepositContractAddress)
-			pageData.SystemContracts[depositAddr.Hex()] = "Deposit Contract"
+			pageData.SystemContracts = append(pageData.SystemContracts, &types.SystemContract{
+				Address: depositAddr.Hex(),
+				Name:    "Deposit Contract",
+			})
 		}
 	}
 

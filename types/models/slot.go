@@ -8,23 +8,23 @@ import (
 
 // SlotPageData is a struct to hold info for the slot details page
 type SlotPageData struct {
-	Slot                   uint64                          `json:"slot"`
-	Epoch                  uint64                          `json:"epoch"`
-	EpochFinalized         bool                            `json:"epoch_finalized"`
-	EpochParticipationRate float64                         `json:"epoch_participation_rate"`
-	Ts                     time.Time                       `json:"time"`
-	NextSlot               uint64                          `json:"next_slot"`
-	PreviousSlot           uint64                          `json:"prev_slot"`
-	Status                 uint16                          `json:"status"`
-	Future                 bool                            `json:"future"`
-	Proposer               uint64                          `json:"proposer"`
-	ProposerName           string                          `json:"proposer_name"`
-	Block                  *SlotPageBlockData              `json:"block" ssz-type:"optional"`
-	Badges                 []*SlotPageBlockBadge           `json:"badges"`
-	SlotBlocks             []*SlotPageSlotBlock            `json:"slot_blocks"`
-	TracoorUrl             string                          `json:"tracoor_url"`
-	SystemContracts        map[string]string               `json:"system_contracts"`
-	TransactionDetails     map[uint64]*SlotPageTransaction `json:"transaction_details"`
+	Slot                   uint64                  `json:"slot"`
+	Epoch                  uint64                  `json:"epoch"`
+	EpochFinalized         bool                    `json:"epoch_finalized"`
+	EpochParticipationRate float64                 `json:"epoch_participation_rate"`
+	Ts                     time.Time               `json:"time"`
+	NextSlot               uint64                  `json:"next_slot"`
+	PreviousSlot           uint64                  `json:"prev_slot"`
+	Status                 uint16                  `json:"status"`
+	Future                 bool                    `json:"future"`
+	Proposer               uint64                  `json:"proposer"`
+	ProposerName           string                  `json:"proposer_name"`
+	Block                  *SlotPageBlockData      `json:"block" ssz-type:"optional"`
+	Badges                 []*SlotPageBlockBadge   `json:"badges"`
+	SlotBlocks             []*SlotPageSlotBlock    `json:"slot_blocks"`
+	TracoorUrl             string                  `json:"tracoor_url"`
+	SystemContracts        []*types.SystemContract `json:"system_contracts"`
+	TransactionDetails     []*SlotPageTransaction  `json:"transaction_details"`
 }
 
 // SlotPageSlotBlock represents a block entry for the slot (for multi-block display)
