@@ -5,8 +5,8 @@ type SubmitDepositPageData struct {
 	PublicRPCUrl               string `json:"pubrpc"`
 	RainbowkitProjectId        string `json:"rainbowkit"`
 	ChainId                    uint64 `json:"chainid"`
-	GenesisForkVersion         []byte `json:"genesisforkversion"`
-	DepositContract            []byte `json:"depositcontract"`
+	GenesisForkVersion         []byte `json:"genesisforkversion" ssz-size:"4"`
+	DepositContract            []byte `json:"depositcontract" ssz-size:"20"`
 	ExplorerUrl                string `json:"explorer"`
 	MaxEffectiveBalance        string `json:"maxeffectivebalance"`
 	MaxEffectiveBalanceElectra string `json:"maxeffectivebalanceelectra"`

@@ -163,6 +163,22 @@ func GetTemplateFuncs() template.FuncMap {
 		"getSystemContractName":        GetSystemContractName,
 		"calculateBalanceDiff":         CalculateBalanceDiff,
 		"bitwiseAnd":                   func(a, b interface{}) int64 { return toInt64(a) & toInt64(b) },
+		"formatByteSize": func(v any) template.HTML {
+			n := toInt64(v)
+			if n < 0 {
+				return template.HTML("N/A")
+			}
+			return FormatByteAmount(uint64(n))
+		},
+		"formatNumber": func(v any) template.HTML { return FormatAddCommas(uint64(toInt64(v))) },
+		"pct": func(a, b any) float64 {
+			af := toFloat64(a)
+			bf := toFloat64(b)
+			if bf == 0 {
+				return 0
+			}
+			return af / bf * 100
+		},
 	}
 
 	for k, v := range customFuncs {

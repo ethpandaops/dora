@@ -25,7 +25,7 @@
               <td class="graph-container" data-bind="style: {width: $root.forktree_width() + 'px'}">
                 {{ html "<!-- ko foreach: fork_graph -->" }}
                 <div class="graph-fork" data-bind="attr: {'data-index': index}, style: {left: left + 'px'}">
-                  {{ html "<!-- ko foreach: Object.keys(tiles) -->" }}
+                  {{ html "<!-- ko foreach: tiles -->" }}
                     <div data-bind="class: 'graph-layer graph-layer-'+$data"></div>
                   {{ html "<!-- /ko -->" }}
                   <div class="graph-layer graph-layer-block" data-bind="if: block">
@@ -74,7 +74,7 @@
                   <td class="graph-container" style="width: {{ $treeWidth }}px;">
                     {{ range $j, $graph := $slot.ForkGraph }}
                       <div class="graph-fork" data-index="{{ $graph.Index }}" style="left: {{ $graph.Left }}px;">
-                        {{- range $tile, $val := $graph.Tiles -}}
+                        {{- range $tile := $graph.Tiles -}}
                           <div class="graph-layer graph-layer-{{ $tile }}"></div>
                         {{- end -}}
                         {{- if $graph.Block }}

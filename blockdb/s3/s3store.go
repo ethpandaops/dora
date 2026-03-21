@@ -9,6 +9,7 @@ import (
 	"io"
 	"path"
 	"strings"
+	"sync/atomic"
 
 	"github.com/ethpandaops/dora/blockdb/types"
 	dtypes "github.com/ethpandaops/dora/types"
@@ -20,6 +21,37 @@ type S3Engine struct {
 	client     *minio.Client
 	bucket     string
 	pathPrefix string
+
+	// Operation counters
+	getCount  atomic.Int64
+	putCount  atomic.Int64
+	statCount atomic.Int64
+	getBytes  atomic.Int64
+	putBytes  atomic.Int64
+}
+
+// S3Stats holds S3 engine statistics.
+type S3Stats struct {
+	Bucket     string
+	PathPrefix string
+	GetCount   int64
+	PutCount   int64
+	StatCount  int64
+	GetBytes   int64
+	PutBytes   int64
+}
+
+// GetStats returns current S3 operation statistics.
+func (e *S3Engine) GetStats() *S3Stats {
+	return &S3Stats{
+		Bucket:     e.bucket,
+		PathPrefix: e.pathPrefix,
+		GetCount:   e.getCount.Load(),
+		PutCount:   e.putCount.Load(),
+		StatCount:  e.statCount.Load(),
+		GetBytes:   e.getBytes.Load(),
+		PutBytes:   e.putBytes.Load(),
+	}
 }
 
 func NewS3Engine(config dtypes.S3BlockDBConfig) (types.BlockDbEngine, error) {
@@ -99,6 +131,7 @@ func (e *S3Engine) writeObjectMetadata(metadata *objectMetadata) []byte {
 
 func (e *S3Engine) GetBlock(ctx context.Context, slot uint64, root []byte, parseBlock func(uint64, []byte) (interface{}, error)) (*types.BlockData, error) {
 	key := e.getObjectKey(root, slot)
+	e.getCount.Add(1)
 
 	obj, err := e.client.GetObject(ctx, e.bucket, key, minio.GetObjectOptions{})
 	if err != nil {
@@ -155,6 +188,8 @@ func (e *S3Engine) GetBlock(ctx context.Context, slot uint64, root []byte, parse
 		BodyVersion:   uint64(metadata.bodyVersion),
 	}
 
+	e.getBytes.Add(int64(metadataLength) + int64(metadata.headerLength) + int64(metadata.bodyLength))
+
 	if parseBlock != nil {
 		body, err := parseBlock(uint64(metadata.bodyVersion), bodyData)
 		if err != nil {
@@ -171,6 +206,7 @@ func (e *S3Engine) GetBlock(ctx context.Context, slot uint64, root []byte, parse
 
 func (e *S3Engine) AddBlock(ctx context.Context, slot uint64, root []byte, dataCb func() (*types.BlockData, error)) (bool, error) {
 	key := e.getObjectKey(root, slot)
+	e.statCount.Add(1)
 
 	// Check if object already exists
 	stat, err := e.client.StatObject(ctx, e.bucket, key, minio.StatObjectOptions{})
@@ -200,6 +236,7 @@ func (e *S3Engine) AddBlock(ctx context.Context, slot uint64, root []byte, dataC
 	copy(data[metadataLength+int(metadata.headerLength):], blockData.BodyData)
 
 	// Upload object
+	e.putCount.Add(1)
 	_, err = e.client.PutObject(
 		ctx,
 		e.bucket,
@@ -212,5 +249,6 @@ func (e *S3Engine) AddBlock(ctx context.Context, slot uint64, root []byte, dataC
 		return false, fmt.Errorf("failed to upload block: %w", err)
 	}
 
+	e.putBytes.Add(int64(len(data)))
 	return true, nil
 }

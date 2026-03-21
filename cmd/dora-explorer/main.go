@@ -73,7 +73,7 @@ func main() {
 	}
 
 	if cfg.Frontend.Enabled {
-		err = services.StartFrontendCache()
+		err = services.StartFrontendCache(logger.WithField("module", "frontendcache"))
 		if err != nil {
 			logger.Fatalf("error starting frontend cache service: %v", err)
 		}
@@ -237,7 +237,7 @@ func startFrontend(router *mux.Router) {
 	if utils.Config.Frontend.Pprof {
 		// add pprof handler
 		router.PathPrefix("/debug/pprof/").Handler(http.DefaultServeMux)
-		router.HandleFunc("/debug/cache", handlers.DebugCache).Methods("GET")
+		router.HandleFunc("/debug/cache", handlers.DebugPage).Methods("GET")
 	}
 
 	if utils.Config.Frontend.Debug {

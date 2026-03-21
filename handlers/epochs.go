@@ -103,8 +103,8 @@ func buildEpochsPageData(ctx context.Context, firstEpoch uint64, pageSize uint64
 	pageData.LastPageEpoch = pageSize - 1
 
 	// Populate UrlParams for page jump functionality
-	pageData.UrlParams = make(map[string]string)
-	pageData.UrlParams["count"] = fmt.Sprintf("%v", pageData.PageSize)
+	pageData.UrlParams = make([]models.UrlParam, 0)
+	pageData.UrlParams = append(pageData.UrlParams, models.UrlParam{Key: "count", Value: fmt.Sprintf("%v", pageData.PageSize)})
 	pageData.MaxEpoch = uint64(currentEpoch)
 
 	specs := chainState.GetSpecs()

@@ -8,6 +8,7 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+	"slices"
 	"sort"
 	"strconv"
 	"time"
@@ -121,8 +122,8 @@ func buildIndexPageData(ctx context.Context) (*models.IndexPageData, time.Durati
 		DepositContract:       common.Address(specs.DepositContractAddress).String(),
 		ShowSyncingMessage:    !isSynced,
 		SlotsPerEpoch:         specs.SlotsPerEpoch,
-		SecondsPerSlot:        uint64(specs.SecondsPerSlot),
-		SecondsPerEpoch:       uint64(specs.SecondsPerSlot * specs.SlotsPerEpoch),
+		SlotDurationMs:        specs.SlotDurationMs,
+		EpochDurationMs:       specs.SlotDurationMs * specs.SlotsPerEpoch,
 		CurrentEpoch:          uint64(currentEpoch),
 		CurrentFinalizedEpoch: int64(finalizedEpoch),
 		CurrentJustifiedEpoch: int64(justifiedEpoch),
@@ -504,7 +505,7 @@ func buildIndexPageRecentSlotsData(ctx context.Context, pageData *models.IndexPa
 		}
 	}
 	pageData.RecentSlotCount = uint64(blockCount)
-	pageData.ForkTreeWidth = (maxOpenFork * 20) + 20
+	pageData.ForkTreeWidth = int32((maxOpenFork * 20) + 20)
 }
 
 func buildIndexPageSlotGraph(slotData *models.IndexPageDataSlots, maxOpenFork *int, openForks map[int][]byte) {
@@ -519,15 +520,22 @@ func buildIndexPageSlotGraph(slotData *models.IndexPageDataSlots, maxOpenFork *i
 		} else {
 			for graphCount <= forkIdx {
 				forkGraph = &models.IndexPageDataForkGraph{
-					Index: graphCount,
-					Left:  10 + (graphCount * 20),
-					Tiles: map[string]bool{},
+					Index: int32(graphCount),
+					Left:  int32(10 + (graphCount * 20)),
+					Tiles: make([]string, 0),
 				}
 				slotData.ForkGraph = append(slotData.ForkGraph, forkGraph)
 				graphCount++
 			}
 		}
 		return forkGraph
+	}
+
+	addTile := func(forkGraph *models.IndexPageDataForkGraph, tile string) {
+		if slices.Contains(forkGraph.Tiles, tile) {
+			return
+		}
+		forkGraph.Tiles = append(forkGraph.Tiles, tile)
 	}
 
 	for forkIdx := 0; forkIdx < *maxOpenFork; forkIdx++ {
@@ -538,7 +546,7 @@ func buildIndexPageSlotGraph(slotData *models.IndexPageDataSlots, maxOpenFork *i
 			}
 			continue
 		} else {
-			forkGraph.Tiles["vline"] = true
+			addTile(forkGraph, "vline")
 			if bytes.Equal(openForks[forkIdx], slotData.BlockRoot) {
 				if forkGraphIdx != -1 {
 					continue
@@ -553,14 +561,14 @@ func buildIndexPageSlotGraph(slotData *models.IndexPageDataSlots, maxOpenFork *i
 					for idx := forkIdx + 1; idx <= targetIdx; idx++ {
 						splitGraph := getForkGraph(slotData, idx)
 						if idx == targetIdx {
-							splitGraph.Tiles["tline"] = true
-							splitGraph.Tiles["lline"] = true
-							splitGraph.Tiles["fork"] = true
+							addTile(splitGraph, "tline")
+							addTile(splitGraph, "lline")
+							addTile(splitGraph, "fork")
 						} else {
-							splitGraph.Tiles["hline"] = true
+							addTile(splitGraph, "hline")
 						}
 					}
-					forkGraph.Tiles["rline"] = true
+					addTile(forkGraph, "rline")
 					openForks[targetIdx] = nil
 				}
 			}
@@ -575,6 +583,6 @@ func buildIndexPageSlotGraph(slotData *models.IndexPageDataSlots, maxOpenFork *i
 		openForks[freeForkIdx] = slotData.ParentRoot
 		forkGraph := getForkGraph(slotData, freeForkIdx)
 		forkGraph.Block = true
-		forkGraph.Tiles["bline"] = true
+		addTile(forkGraph, "bline")
 	}
 }

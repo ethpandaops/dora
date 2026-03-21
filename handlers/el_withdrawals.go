@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"time"
 
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethereum/go-ethereum/common"
@@ -100,7 +101,9 @@ func getFilteredElWithdrawalsPageData(pageIdx uint64, pageSize uint64, minSlot u
 	pageData := &models.ElWithdrawalsPageData{}
 	pageCacheKey := fmt.Sprintf("el_withdrawals:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v:%v", pageIdx, pageSize, minSlot, maxSlot, sourceAddr, minIndex, maxIndex, vname, withOrphaned, withType, pubkey)
 	pageRes, pageErr := services.GlobalFrontendCache.ProcessCachedPage(pageCacheKey, true, pageData, func(pageCall *services.FrontendCacheProcessingPage) interface{} {
-		return buildFilteredElWithdrawalsPageData(pageCall.CallCtx, pageIdx, pageSize, minSlot, maxSlot, sourceAddr, minIndex, maxIndex, vname, withOrphaned, withType, pubkey)
+		pageData, cacheTimeout := buildFilteredElWithdrawalsPageData(pageCall.CallCtx, pageIdx, pageSize, minSlot, maxSlot, sourceAddr, minIndex, maxIndex, vname, withOrphaned, withType, pubkey)
+		pageCall.CacheTimeout = cacheTimeout
+		return pageData
 	})
 	if pageErr == nil && pageRes != nil {
 		resData, resOk := pageRes.(*models.ElWithdrawalsPageData)
@@ -112,7 +115,7 @@ func getFilteredElWithdrawalsPageData(pageIdx uint64, pageSize uint64, minSlot u
 	return pageData, pageErr
 }
 
-func buildFilteredElWithdrawalsPageData(ctx context.Context, pageIdx uint64, pageSize uint64, minSlot uint64, maxSlot uint64, sourceAddr string, minIndex uint64, maxIndex uint64, vname string, withOrphaned uint8, withType uint8, pubkey string) *models.ElWithdrawalsPageData {
+func buildFilteredElWithdrawalsPageData(ctx context.Context, pageIdx uint64, pageSize uint64, minSlot uint64, maxSlot uint64, sourceAddr string, minIndex uint64, maxIndex uint64, vname string, withOrphaned uint8, withType uint8, pubkey string) (*models.ElWithdrawalsPageData, time.Duration) {
 	filterArgs := url.Values{}
 	if minSlot != 0 {
 		filterArgs.Add("f.mins", fmt.Sprintf("%v", minSlot))
@@ -153,9 +156,12 @@ func buildFilteredElWithdrawalsPageData(ctx context.Context, pageIdx uint64, pag
 		FilterWithType:      withType,
 		FilterPublicKey:     pubkey,
 	}
+	cacheTimeout := 5 * time.Minute
 	logrus.Debugf("el_withdrawals page called: %v:%v [%v,%v,%v,%v,%v]", pageIdx, pageSize, minSlot, maxSlot, minIndex, maxIndex, vname)
 	if pageIdx == 1 {
 		pageData.IsDefaultPage = true
+	} else {
+		cacheTimeout = 15 * time.Minute
 	}
 
 	if pageSize > 100 {
@@ -272,20 +278,20 @@ func buildFilteredElWithdrawalsPageData(ctx context.Context, pageIdx uint64, pag
 	}
 
 	// Populate UrlParams for page jump functionality
-	pageData.UrlParams = make(map[string]string)
+	pageData.UrlParams = make([]models.UrlParam, 0)
 	for key, values := range filterArgs {
 		if len(values) > 0 {
-			pageData.UrlParams[key] = values[0]
+			pageData.UrlParams = append(pageData.UrlParams, models.UrlParam{Key: key, Value: values[0]})
 		}
 	}
-	pageData.UrlParams["c"] = fmt.Sprintf("%v", pageData.PageSize)
+	pageData.UrlParams = append(pageData.UrlParams, models.UrlParam{Key: "c", Value: fmt.Sprintf("%v", pageData.PageSize)})
 
 	pageData.FirstPageLink = fmt.Sprintf("/validators/el_withdrawals?f&%v&c=%v", filterArgs.Encode(), pageData.PageSize)
 	pageData.PrevPageLink = fmt.Sprintf("/validators/el_withdrawals?f&%v&c=%v&p=%v", filterArgs.Encode(), pageData.PageSize, pageData.PrevPageIndex)
 	pageData.NextPageLink = fmt.Sprintf("/validators/el_withdrawals?f&%v&c=%v&p=%v", filterArgs.Encode(), pageData.PageSize, pageData.NextPageIndex)
 	pageData.LastPageLink = fmt.Sprintf("/validators/el_withdrawals?f&%v&c=%v&p=%v", filterArgs.Encode(), pageData.PageSize, pageData.LastPageIndex)
 
-	return pageData
+	return pageData, cacheTimeout
 }
 
 func getWithdrawalResultMessage(result uint8, specs *consensus.ChainSpec) string {
