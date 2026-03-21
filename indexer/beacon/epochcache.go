@@ -248,7 +248,7 @@ func (cache *epochCache) removeUnreferencedEpochStates() uint64 {
 	defer cache.cacheMutex.Unlock()
 
 	removed := uint64(0)
-	for _, state := range cache.stateMap {
+	for root, state := range cache.stateMap {
 		found := false
 		for _, stats := range cache.statsMap {
 			if stats.dependentState == state {
@@ -259,7 +259,7 @@ func (cache *epochCache) removeUnreferencedEpochStates() uint64 {
 
 		if !found {
 			state.dispose()
-			delete(cache.stateMap, state.slotRoot)
+			delete(cache.stateMap, root)
 			removed++
 		}
 	}
