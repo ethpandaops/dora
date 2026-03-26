@@ -55,6 +55,8 @@ type ChainSpecConfig struct {
 	FuluForkEpoch        *uint64        `yaml:"FULU_FORK_EPOCH"        check-if-fork:"FuluForkEpoch"`
 	GloasForkVersion     phase0.Version `yaml:"GLOAS_FORK_VERSION"   check-if-fork:"GloasForkEpoch"`
 	GloasForkEpoch       *uint64        `yaml:"GLOAS_FORK_EPOCH"     check-if-fork:"GloasForkEpoch"`
+	HezeForkVersion      phase0.Version `yaml:"HEZE_FORK_VERSION"    check-if-fork:"HezeForkEpoch"`
+	HezeForkEpoch        *uint64        `yaml:"HEZE_FORK_EPOCH"      check-if-fork:"HezeForkEpoch"`
 
 	// Time parameters
 	SlotDurationMs                  uint64 `yaml:"SLOT_DURATION_MS"`
@@ -212,6 +214,9 @@ type ChainSpecPreset struct {
 	BuilderRegistryLimit           uint64 `yaml:"BUILDER_REGISTRY_LIMIT" check-if-fork:"GloasForkEpoch"`
 	BuilderPendingWithdrawalsLimit uint64 `yaml:"BUILDER_PENDING_WITHDRAWALS_LIMIT" check-if-fork:"GloasForkEpoch"`
 	MaxBuildersPerWithdrawalsSweep uint64 `yaml:"MAX_BUILDERS_PER_WITHDRAWALS_SWEEP" check-if-fork:"GloasForkEpoch"`
+
+	// Heze
+	InclusionListCommitteeSize uint64 `yaml:"INCLUSION_LIST_COMMITTEE_SIZE" check-if-fork:"HezeForkEpoch"`
 }
 
 type ChainSpecDomainTypes struct {

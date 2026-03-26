@@ -137,7 +137,7 @@ func (client *Client) runClientLogic() error {
 	blockStream := client.rpcClient.NewBlockStream(
 		client.clientCtx,
 		client.logger,
-		rpc.StreamBlockEvent|rpc.StreamHeadEvent|rpc.StreamFinalizedEvent|rpc.StreamExecutionPayloadEvent|rpc.StreamExecutionPayloadBidEvent,
+		rpc.StreamBlockEvent|rpc.StreamHeadEvent|rpc.StreamFinalizedEvent|rpc.StreamExecutionPayloadEvent|rpc.StreamExecutionPayloadBidEvent|rpc.StreamInclusionListEvent,
 	)
 	defer blockStream.Close()
 
@@ -176,6 +176,9 @@ func (client *Client) runClientLogic() error {
 
 			case rpc.StreamExecutionPayloadBidEvent:
 				client.executionPayloadBidDispatcher.Fire(evt.Data.(*gloas.SignedExecutionPayloadBid))
+
+			case rpc.StreamInclusionListEvent:
+				client.inclusionListDispatcher.Fire(evt.Data.(*v1.InclusionListEvent))
 			}
 
 			// fire through stream dispatcher first to preserve SSE ordering

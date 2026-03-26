@@ -192,15 +192,17 @@ func (s *epochState) processState(state *spec.VersionedBeaconState, beaconBlock 
 		cache.indexer.validatorCache.updateValidatorSet(slot, dependentRoot, validatorList)
 	}
 
-	// Process builder set for Gloas
-	if state.Version >= spec.DataVersionGloas && state.Gloas != nil {
+	// Process builder set for Gloas/Heze
+	if state.Version >= spec.DataVersionGloas {
+		builders, _ := state.Builders()
+
 		if cache != nil {
-			cache.indexer.builderCache.updateBuilderSet(slot, dependentRoot, state.Gloas.Builders)
+			cache.indexer.builderCache.updateBuilderSet(slot, dependentRoot, builders)
 		}
 
 		// Extract builder balances
-		builderBalances := make([]phase0.Gwei, len(state.Gloas.Builders))
-		for i, builder := range state.Gloas.Builders {
+		builderBalances := make([]phase0.Gwei, len(builders))
+		for i, builder := range builders {
 			builderBalances[i] = builder.Balance
 		}
 		s.builderBalances = builderBalances
@@ -304,16 +306,19 @@ func (s *epochState) processState(state *spec.VersionedBeaconState, beaconBlock 
 	return nil
 }
 
-// isGloasPostPayloadState checks whether the Gloas state is post-payload
+// isGloasPostPayloadState checks whether the Gloas/Heze state is post-payload
 // (i.e. execution payload deposits have been applied) for the given slot.
 func isGloasPostPayloadState(state *spec.VersionedBeaconState, slot phase0.Slot) bool {
-	if state.Gloas == nil {
+	executionPayloadAvailability, err := state.ExecutionPayloadAvailability()
+	if err != nil {
 		return false
 	}
-	bitfieldLen := uint64(len(state.Gloas.ExecutionPayloadAvailability)) * 8
+
+	bitfieldLen := uint64(len(executionPayloadAvailability)) * 8
 	if bitfieldLen == 0 {
 		return false
 	}
+
 	idx := uint64(slot) % bitfieldLen
-	return state.Gloas.ExecutionPayloadAvailability[idx/8]&(1<<(idx%8)) != 0
+	return executionPayloadAvailability[idx/8]&(1<<(idx%8)) != 0
 }
