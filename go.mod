@@ -255,4 +255,4 @@ require (
 	modernc.org/sqlite v1.46.1 // indirect
 )
 
-replace github.com/attestantio/go-eth2-client => github.com/barnabasbusa/go-eth2-client v0.0.0-20260331081005-db190554167c
+replace github.com/attestantio/go-eth2-client => github.com/pk910/go-eth2-client v0.0.0-20260331085057-05aefaa5ce81
