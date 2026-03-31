@@ -37,6 +37,8 @@ github.com/allegro/bigcache v1.2.1-0.20190218064605-e24eb225f156/go.mod h1:Cb/ax
 github.com/allegro/bigcache/v3 v3.1.0 h1:H2Vp8VOvxcrB91o86fUSVJFqeuz8kpyyB02eH3bSzwk=
 github.com/allegro/bigcache/v3 v3.1.0/go.mod h1:aPyh7jEvrog9zAwx5N7+JUQX5dZTSGpxF1LAR4dr35I=
 github.com/anmitsu/go-shlex v0.0.0-20161002113705-648efa622239/go.mod h1:2FmKhYUyUczH0OGQWaF5ceTx0UBShxjsH6f8oGKYe2c=
+github.com/barnabasbusa/go-eth2-client v0.0.0-20260331081005-db190554167c h1:zufrjIDjhR9OJxBNHq4tHwm9Lzx4YlmoYlmLbrbJcM0=
+github.com/barnabasbusa/go-eth2-client v0.0.0-20260331081005-db190554167c/go.mod h1:lwj0l8l51hIjqdQpODPea01JfE33nyM++1VGjBZau08=
 github.com/benbjohnson/clock v1.3.5 h1:VvXlSJBzZpA/zum6Sj74hxwYI2DIxRWuNIoXAzHZz5o=
 github.com/benbjohnson/clock v1.3.5/go.mod h1:J11/hYXuz8f4ySSvYwY0FKfm+ezbsZBKZxNJlLklBHA=
 github.com/beorn7/perks v0.0.0-20180321164747-3a771d992973/go.mod h1:Dwedo/Wpr24TaqPxmxbtue+5NUziq4I4S80YR8gNf3Q=
@@ -560,8 +562,6 @@ github.com/pion/webrtc/v4 v4.1.4 h1:/gK1ACGHXQmtyVVbJFQDxNoODg4eSRiFLB7t9r9pg8M=
 github.com/pion/webrtc/v4 v4.1.4/go.mod h1:Oab9npu1iZtQRMic3K3toYq5zFPvToe/QBw7dMI2ok4=
 github.com/pk910/dynamic-ssz v1.2.3-0.20260318065836-323b83c1a387 h1:XkL2iLFDP6/NKAOF0fysZrhaa/qtcAtqzhLUxSIy79s=
 github.com/pk910/dynamic-ssz v1.2.3-0.20260318065836-323b83c1a387/go.mod h1:NmeFF4jxzVwWC8cnEhUB7xMI++8hd/0OZvZHFrUvFfs=
-github.com/pk910/go-eth2-client v0.0.0-20260225144847-75b86704f554 h1:FmusNWzB2XDzRQK1OoLo9XUH/PBatWPkztJOX/Ther4=
-github.com/pk910/go-eth2-client v0.0.0-20260225144847-75b86704f554/go.mod h1:8fpxrIBBVbOcVG3vcHe5ubOHIeqW3N5t7kS4oU5EeJU=
 github.com/pk910/hashtree-bindings v0.1.0 h1:w7NyRWFi2OaYEFvo9ADcE/QU6PMuVLl3hBgx92KiH9c=
 github.com/pk910/hashtree-bindings v0.1.0/go.mod h1:zrWt88783JmhBfcgni6kkIMYRdXTZi/FL//OyI5T/l4=
 github.com/pkg/diff v0.0.0-20210226163009-20ebb0f2a09e/go.mod h1:pJLUxLENpZxwdsKMEsNbx1VGcRFpLqf3715MtcvvzbA=
