@@ -76,9 +76,10 @@ func (bs *BeaconStream) startStream() {
 	// Subscribe to basic events (block, head, finalized_checkpoint)
 	basicEvents := bs.events & (StreamBlockEvent | StreamHeadEvent | StreamFinalizedEvent)
 	basicStream := bs.subscribeStream(bs.client.endpoint, basicEvents)
-	if basicStream != nil {
-		defer basicStream.Close()
+	if basicStream == nil {
+		return
 	}
+	defer basicStream.Close()
 
 	// Subscribe to advanced events (execution_payload_available, execution_payload_bid)
 	// These are in a separate stream because clients may not support them yet,
