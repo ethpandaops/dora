@@ -444,7 +444,7 @@ func (bs *ChainService) GetWithdrawalsByFilter(ctx context.Context, filter *dbty
 	// Pre-fetch fee recipient entries from DB for the unpruned slot range
 	minBlockUid := uint64(idxMinSlot) << 16
 	maxBlockUid := uint64(currentSlot+1) << 16
-	feeRecipientType := uint8(dbtypes.WithdrawalTypeFeeRecipient)
+	feeRecipientType := uint8(dbtypes.WithdrawalTypeFeeDistribution)
 	dbFeeEntries, _ := db.GetWithdrawalsByBlockUidRange(ctx, minBlockUid, maxBlockUid, &feeRecipientType)
 	feeByBlockUid := make(map[uint64]*dbtypes.Withdrawal, len(dbFeeEntries))
 	for _, entry := range dbFeeEntries {

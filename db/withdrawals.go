@@ -266,12 +266,12 @@ func GetWithdrawalsByBlockUidRange(ctx context.Context, minBlockUid uint64, maxB
 	return withdrawals, nil
 }
 
-// GetWithdrawalAmountSum returns the total withdrawal amount (float ETH) for beacon withdrawals
-// in the given block_uid range, excluding orphaned entries.
+// GetWithdrawalAmountSum returns the total withdrawal amount (float ETH) for CL withdrawals
+// (types 1-3) in the given block_uid range, excluding orphaned entries.
 func GetWithdrawalAmountSum(ctx context.Context, minBlockUid uint64, maxBlockUid uint64) (float64, error) {
 	var total float64
 	err := ReaderDb.GetContext(ctx, &total,
-		"SELECT COALESCE(SUM(amount), 0) FROM withdrawals WHERE block_uid >= $1 AND block_uid < $2 AND type = 0 AND orphaned = false",
+		"SELECT COALESCE(SUM(amount), 0) FROM withdrawals WHERE block_uid >= $1 AND block_uid < $2 AND type > 0 AND orphaned = false",
 		minBlockUid, maxBlockUid)
 	if err != nil {
 		return 0, err

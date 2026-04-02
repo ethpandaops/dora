@@ -302,7 +302,7 @@ func (t *TxIndexer) processElBlock(ref *BlockRef) (*blockStats, error) {
 
 			feeWithdrawals := make([]*dbtypes.Withdrawal, 0, 1)
 			for _, pending := range procCtx.systemDeposits {
-				if pending.depositType != dbtypes.WithdrawalTypeFeeRecipient {
+				if pending.depositType != dbtypes.WithdrawalTypeFeeDistribution {
 					continue // CL withdrawals handled by beacon indexer
 				}
 				if pending.account.id == 0 {
@@ -313,7 +313,7 @@ func (t *TxIndexer) processElBlock(ref *BlockRef) (*blockStats, error) {
 				feeWithdrawals = append(feeWithdrawals, &dbtypes.Withdrawal{
 					BlockUid:  ref.BlockUID,
 					BlockIdx:  dbtypes.WithdrawalBlockIdxFeeRecipient,
-					Type:      dbtypes.WithdrawalTypeFeeRecipient,
+					Type:      dbtypes.WithdrawalTypeFeeDistribution,
 					ForkId:    forkId,
 					Validator: pending.validator,
 					AccountID: &accountID,
@@ -385,7 +385,7 @@ func (t *TxIndexer) processBlockRewards(procCtx *txProcessingContext, data *bloc
 		// Create fee recipient withdrawal record (account ID will be resolved later)
 		feeAmount := weiToFloat(data.TotalPriorityFees, 18) // ETH uses 18 decimals
 		procCtx.systemDeposits = append(procCtx.systemDeposits, &pendingSystemDeposit{
-			depositType: dbtypes.WithdrawalTypeFeeRecipient,
+			depositType: dbtypes.WithdrawalTypeFeeDistribution,
 			account:     feeRecipientAccount,
 			amount:      feeAmount,
 			amountRaw:   data.TotalPriorityFees.Bytes(),

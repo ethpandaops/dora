@@ -552,8 +552,10 @@ type ElTokenTransfer struct {
 
 // Withdrawal types
 const (
-	WithdrawalTypeBeaconWithdrawal = 0
-	WithdrawalTypeFeeRecipient     = 1
+	WithdrawalTypeFeeDistribution     = 0 // Fee recipient reward
+	WithdrawalTypeFullWithdrawal      = 1 // Full withdrawal after validator exit
+	WithdrawalTypeSweepWithdrawal     = 2 // Regular scheduled sweep (excess balance)
+	WithdrawalTypeRequestedWithdrawal = 3 // EIP-7002 requested partial withdrawal
 )
 
 // WithdrawalBlockIdxFeeRecipient is the block_idx value used for fee recipient entries.

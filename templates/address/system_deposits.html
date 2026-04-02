@@ -28,12 +28,20 @@
               </td>
               <td>
                 {{ if eq .Type 0 }}
-                  <span class="badge text-bg-success">
-                    <i class="fas fa-arrow-down me-1"></i>Withdrawal
-                  </span>
-                {{ else if eq .Type 1 }}
                   <span class="badge text-bg-info">
                     <i class="fas fa-coins me-1"></i>Fee Reward
+                  </span>
+                {{ else if eq .Type 1 }}
+                  <span class="badge text-bg-primary">
+                    <i class="fas fa-arrow-down me-1"></i>Full
+                  </span>
+                {{ else if eq .Type 2 }}
+                  <span class="badge text-bg-success">
+                    <i class="fas fa-broom me-1"></i>Sweep
+                  </span>
+                {{ else if eq .Type 3 }}
+                  <span class="badge text-bg-warning">
+                    <i class="fas fa-hand-holding me-1"></i>Requested
                   </span>
                 {{ else }}
                   <span class="badge text-bg-secondary">Unknown</span>
@@ -44,13 +52,11 @@
               </td>
               <td>
                 {{ if eq .Type 0 }}
+                  from Block <a href="/slot/0x{{ printf "%x" .BlockRoot }}">{{ formatAddCommas .BlockNumber }}</a>
+                {{ else }}
                   {{ if .Validator }}
                     from Validator <a href="/validator/{{ .Validator }}">{{ .Validator }}</a>
-                  {{ else }}
-                    Beacon Chain Withdrawal
                   {{ end }}
-                {{ else if eq .Type 1 }}
-                  from Block <a href="/slot/0x{{ printf "%x" .BlockRoot }}">{{ formatAddCommas .BlockNumber }}</a>
                 {{ end }}
               </td>
             </tr>

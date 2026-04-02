@@ -180,12 +180,9 @@ func buildFilteredWithdrawalsListPageData(ctx context.Context, pageIdx uint64, p
 		}
 	}
 
-	// Parse type filter: 1=beacon withdrawal, 2=fee recipient
-	if withType == 1 {
-		t := uint8(dbtypes.WithdrawalTypeBeaconWithdrawal)
-		withdrawalFilter.Type = &t
-	} else if withType == 2 {
-		t := uint8(dbtypes.WithdrawalTypeFeeRecipient)
+	// Parse type filter (URL values 1-4 map to DB types 0-3)
+	if withType >= 1 && withType <= 4 {
+		t := withType - 1
 		withdrawalFilter.Type = &t
 	}
 

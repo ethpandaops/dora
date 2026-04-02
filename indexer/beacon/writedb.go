@@ -138,7 +138,7 @@ func (dbw *dbWriter) persistBlockChildObjects(tx *sqlx.Tx, block *Block, deposit
 	}
 
 	// insert withdrawals
-	err = dbw.persistBlockWithdrawals(tx, block, orphaned, overrideForkId)
+	err = dbw.persistBlockWithdrawals(tx, block, orphaned, overrideForkId, sim)
 	if err != nil {
 		return err
 	}
@@ -738,8 +738,8 @@ func (dbw *dbWriter) buildDbVoluntaryExits(block *Block, orphaned bool, override
 	return dbVoluntaryExits
 }
 
-func (dbw *dbWriter) persistBlockWithdrawals(tx *sqlx.Tx, block *Block, orphaned bool, overrideForkId *ForkKey) error {
-	dbWithdrawals := dbw.buildDbWithdrawals(block, orphaned, overrideForkId, tx)
+func (dbw *dbWriter) persistBlockWithdrawals(tx *sqlx.Tx, block *Block, orphaned bool, overrideForkId *ForkKey, sim *stateSimulator) error {
+	dbWithdrawals := dbw.buildDbWithdrawals(block, orphaned, overrideForkId, tx, sim)
 	if len(dbWithdrawals) > 0 {
 		err := db.InsertWithdrawals(dbw.indexer.ctx, tx, dbWithdrawals)
 		if err != nil {
@@ -761,10 +761,11 @@ func (dbw *dbWriter) persistBlockWithdrawals(tx *sqlx.Tx, block *Block, orphaned
 	return nil
 }
 
-// buildDbWithdrawals extracts CL withdrawals from the block.
+// buildDbWithdrawals extracts CL withdrawals from the block and classifies their types.
 // If tx is non-nil (persist path), missing accounts are created using that transaction.
 // If tx is nil (read path), only existing accounts are looked up.
-func (dbw *dbWriter) buildDbWithdrawals(block *Block, orphaned bool, overrideForkId *ForkKey, tx *sqlx.Tx) []*dbtypes.Withdrawal {
+// If sim is non-nil, it's used to determine pending partial withdrawal count for type classification.
+func (dbw *dbWriter) buildDbWithdrawals(block *Block, orphaned bool, overrideForkId *ForkKey, tx *sqlx.Tx, sim *stateSimulator) []*dbtypes.Withdrawal {
 	blockBody := block.GetBlock(dbw.indexer.ctx)
 	if blockBody == nil {
 		return nil
@@ -785,10 +786,24 @@ func (dbw *dbWriter) buildDbWithdrawals(block *Block, orphaned bool, overrideFor
 		forkId = uint64(*overrideForkId)
 	}
 
+	// Reconstruct sim from epoch stats if not provided (read path)
+	if sim == nil {
+		chainState := dbw.indexer.consensusPool.GetChainState()
+		epochStats := dbw.indexer.epochCache.getEpochStatsByEpochAndRoot(chainState.EpochOfSlot(block.Slot), block.Root)
+		if epochStats != nil {
+			sim = newStateSimulator(dbw.indexer, epochStats)
+		}
+	}
+
+	// Compute pending partial withdrawal count from sim state
+	pendingPartialCount := dbw.countPendingPartialWithdrawals(block, sim)
+
 	// Gwei-to-Wei multiplier
 	gweiMultiplier := big.NewInt(1e9)
 	// ETH divisor (10^18)
 	ethDivisor := new(big.Float).SetInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil))
+
+	blockEpoch := dbw.indexer.consensusPool.GetChainState().EpochOfSlot(block.Slot)
 
 	dbWithdrawals := make([]*dbtypes.Withdrawal, len(withdrawals))
 	for idx, withdrawal := range withdrawals {
@@ -798,10 +813,13 @@ func (dbw *dbWriter) buildDbWithdrawals(block *Block, orphaned bool, overrideFor
 		amountWei := new(big.Int).Mul(big.NewInt(int64(withdrawal.Amount)), gweiMultiplier)
 		amountFloat, _ := new(big.Float).Quo(new(big.Float).SetInt(amountWei), ethDivisor).Float64()
 
+		// Classify withdrawal type
+		withdrawalType := dbw.classifyWithdrawalType(idx, pendingPartialCount, withdrawal.ValidatorIndex, blockEpoch)
+
 		dbWithdrawals[idx] = &dbtypes.Withdrawal{
 			BlockUid:  block.BlockUID,
 			BlockIdx:  int16(idx),
-			Type:      dbtypes.WithdrawalTypeBeaconWithdrawal,
+			Type:      withdrawalType,
 			Orphaned:  orphaned,
 			ForkId:    forkId,
 			Validator: &validatorIndex,
@@ -817,6 +835,72 @@ func (dbw *dbWriter) buildDbWithdrawals(block *Block, orphaned bool, overrideFor
 	}
 
 	return dbWithdrawals
+}
+
+// countPendingPartialWithdrawals computes how many pending partial withdrawals
+// will be processed for the given block, following the consensus spec logic.
+// This replays the sim state up to (but not including) the target block to get
+// the pending withdrawals list, then counts how many would be processed.
+func (dbw *dbWriter) countPendingPartialWithdrawals(block *Block, sim *stateSimulator) int {
+	if sim == nil {
+		return 0
+	}
+
+	chainSpec := dbw.indexer.consensusPool.GetChainState().GetSpecs()
+	if chainSpec.MaxPendingPartialsPerWithdrawalsSweep == 0 {
+		return 0 // Pre-Electra: no pending partial withdrawals
+	}
+
+	// Replay state up to (but not including) target block
+	parentBlocks := sim.getParentBlocks(block)
+	state := sim.resetState(block)
+	if state == nil {
+		return 0
+	}
+	for _, parentBlock := range parentBlocks {
+		sim.applyBlock(parentBlock)
+	}
+
+	// Now sim.prevState.pendingWithdrawals reflects state before target block
+	processed := 0
+	for _, pw := range sim.prevState.pendingWithdrawals {
+		if pw.WithdrawableEpoch > sim.epochStats.epoch {
+			break
+		}
+
+		validator := sim.getValidator(pw.ValidatorIndex)
+		if validator == nil {
+			break
+		}
+
+		if validator.ExitEpoch != FarFutureEpoch || validator.EffectiveBalance < phase0.Gwei(chainSpec.MinActivationBalance) {
+			continue
+		}
+
+		processed++
+		if uint64(processed) >= chainSpec.MaxPendingPartialsPerWithdrawalsSweep {
+			break
+		}
+	}
+
+	return processed
+}
+
+// classifyWithdrawalType determines the withdrawal type based on position and validator state.
+func (dbw *dbWriter) classifyWithdrawalType(idx int, pendingPartialCount int, validatorIndex phase0.ValidatorIndex, blockEpoch phase0.Epoch) uint8 {
+	// First N withdrawals are from pending partial withdrawals (EIP-7002 requested)
+	if idx < pendingPartialCount {
+		return dbtypes.WithdrawalTypeRequestedWithdrawal
+	}
+
+	// Check if this is a full withdrawal (validator exited and withdrawable)
+	validator := dbw.indexer.GetValidatorByIndex(validatorIndex, nil)
+	if validator != nil && validator.ExitEpoch != FarFutureEpoch && validator.WithdrawableEpoch <= blockEpoch {
+		return dbtypes.WithdrawalTypeFullWithdrawal
+	}
+
+	// Default: sweep withdrawal (excess balance above max effective balance)
+	return dbtypes.WithdrawalTypeSweepWithdrawal
 }
 
 // resolveWithdrawalAccounts looks up account IDs for withdrawal addresses.
