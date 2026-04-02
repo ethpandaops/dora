@@ -113,10 +113,17 @@
           <i class="fa fa-image me-2"></i> NFT Transfers
         </a>
       </li>
-      {{ if .HasSystemDeposits }}
+      {{ if .HasWithdrawals }}
       <li class="nav-item">
-        <a class="nav-link{{ if eq .TabView "system" }} active{{ end }}" id="system-tab" data-lazy-tab="system" data-bs-toggle="tab" data-bs-target="#system" href="?v=system" role="tab" aria-controls="system" aria-selected="{{ if eq .TabView "system" }}true{{ else }}false{{ end }}">
-          <i class="fa fa-university me-2"></i> System Deposits
+        <a class="nav-link{{ if eq .TabView "withdrawals" }} active{{ end }}" id="withdrawals-tab" data-lazy-tab="withdrawals" data-bs-toggle="tab" data-bs-target="#withdrawals" href="?v=withdrawals" role="tab" aria-controls="withdrawals" aria-selected="{{ if eq .TabView "withdrawals" }}true{{ else }}false{{ end }}">
+          <i class="fa fa-arrow-down me-2"></i> Beacon Withdrawals
+        </a>
+      </li>
+      {{ end }}
+      {{ if .HasBlockFees }}
+      <li class="nav-item">
+        <a class="nav-link{{ if eq .TabView "blockfees" }} active{{ end }}" id="blockfees-tab" data-lazy-tab="blockfees" data-bs-toggle="tab" data-bs-target="#blockfees" href="?v=blockfees" role="tab" aria-controls="blockfees" aria-selected="{{ if eq .TabView "blockfees" }}true{{ else }}false{{ end }}">
+          <i class="fa fa-coins me-2"></i> Block Fees
         </a>
       </li>
       {{ end }}
@@ -145,10 +152,17 @@
           {{ template "nftTransfers" . }}
         {{ end }}
       </div>
-      {{ if .HasSystemDeposits }}
-      <div class="tab-pane fade{{ if eq .TabView "system" }} show active{{ end }}" id="system" role="tabpanel" aria-labelledby="system-tab" data-loaded="{{ if eq .TabView "system" }}true{{ else }}false{{ end }}">
-        {{ if eq .TabView "system" }}
-          {{ template "systemDeposits" . }}
+      {{ if .HasWithdrawals }}
+      <div class="tab-pane fade{{ if eq .TabView "withdrawals" }} show active{{ end }}" id="withdrawals" role="tabpanel" aria-labelledby="withdrawals-tab" data-loaded="{{ if eq .TabView "withdrawals" }}true{{ else }}false{{ end }}">
+        {{ if eq .TabView "withdrawals" }}
+          {{ template "addressWithdrawals" . }}
+        {{ end }}
+      </div>
+      {{ end }}
+      {{ if .HasBlockFees }}
+      <div class="tab-pane fade{{ if eq .TabView "blockfees" }} show active{{ end }}" id="blockfees" role="tabpanel" aria-labelledby="blockfees-tab" data-loaded="{{ if eq .TabView "blockfees" }}true{{ else }}false{{ end }}">
+        {{ if eq .TabView "blockfees" }}
+          {{ template "blockFees" . }}
         {{ end }}
       </div>
       {{ end }}
@@ -164,8 +178,10 @@
     {{ template "nftTransfers" . }}
   {{ else if eq .TabView "internaltxs" }}
     {{ template "internalTxs" . }}
-  {{ else if eq .TabView "system" }}
-    {{ template "systemDeposits" . }}
+  {{ else if eq .TabView "withdrawals" }}
+    {{ template "addressWithdrawals" . }}
+  {{ else if eq .TabView "blockfees" }}
+    {{ template "blockFees" . }}
   {{ else }}
     Unknown tab
   {{ end }}

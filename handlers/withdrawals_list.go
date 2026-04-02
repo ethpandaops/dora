@@ -180,21 +180,22 @@ func buildFilteredWithdrawalsListPageData(ctx context.Context, pageIdx uint64, p
 		}
 	}
 
-	// Parse type filter (URL values 1-4 map to DB types 0-3)
-	if withType >= 1 && withType <= 4 {
-		t := withType - 1
-		withdrawalFilter.Type = &t
+	// Parse type filter (URL values 1-3 map directly to DB types 1-3)
+	if withType >= 1 && withType <= 3 {
+		withdrawalFilter.Type = &withType
 	}
 
-	// Parse amount filters
+	// Parse amount filters (input is in ETH, convert to Gwei)
 	if minAmount != "" {
 		if v, err := strconv.ParseFloat(minAmount, 64); err == nil {
-			withdrawalFilter.MinAmount = &v
+			gwei := uint64(v * 1e9)
+			withdrawalFilter.MinAmount = &gwei
 		}
 	}
 	if maxAmount != "" {
 		if v, err := strconv.ParseFloat(maxAmount, 64); err == nil {
-			withdrawalFilter.MaxAmount = &v
+			gwei := uint64(v * 1e9)
+			withdrawalFilter.MaxAmount = &gwei
 		}
 	}
 
@@ -211,9 +212,9 @@ func buildFilteredWithdrawalsListPageData(ctx context.Context, pageIdx uint64, p
 		if w.AccountID != nil && *w.AccountID > 0 && !accountIDSet[*w.AccountID] {
 			accountIDSet[*w.AccountID] = true
 			accountIDs = append(accountIDs, *w.AccountID)
-		} else if w.Address == nil && w.Validator != nil && !validatorIDSet[*w.Validator] {
-			validatorIDSet[*w.Validator] = true
-			validatorIDs = append(validatorIDs, phase0.ValidatorIndex(*w.Validator))
+		} else if w.Address == nil && !validatorIDSet[w.Validator] {
+			validatorIDSet[w.Validator] = true
+			validatorIDs = append(validatorIDs, phase0.ValidatorIndex(w.Validator))
 		}
 	}
 	accountMap := make(map[uint64]*dbtypes.ElAccount, len(accountIDs))
@@ -268,14 +269,11 @@ func buildFilteredWithdrawalsListPageData(ctx context.Context, pageIdx uint64, p
 			Orphaned:   withdrawal.Orphaned,
 			Type:       withdrawal.Type,
 			Amount:     withdrawal.Amount,
-			AmountRaw:  withdrawal.AmountRaw,
 		}
 
-		if withdrawal.Validator != nil {
-			withdrawalData.HasValidator = true
-			withdrawalData.ValidatorIndex = *withdrawal.Validator
-			withdrawalData.ValidatorName = services.GlobalBeaconService.GetValidatorName(*withdrawal.Validator)
-		}
+		withdrawalData.HasValidator = true
+		withdrawalData.ValidatorIndex = withdrawal.Validator
+		withdrawalData.ValidatorName = services.GlobalBeaconService.GetValidatorName(withdrawal.Validator)
 
 		// Resolve address from account_id
 		hasAddress := false
@@ -289,8 +287,8 @@ func buildFilteredWithdrawalsListPageData(ctx context.Context, pageIdx uint64, p
 			withdrawalData.Address = withdrawal.Address
 			hasAddress = true
 		}
-		if !hasAddress && withdrawal.Validator != nil {
-			if validator, ok := validatorMap[*withdrawal.Validator]; ok && (validator.Validator.WithdrawalCredentials[0] == 0x01 || validator.Validator.WithdrawalCredentials[0] == 0x02) {
+		if !hasAddress {
+			if validator, ok := validatorMap[withdrawal.Validator]; ok && (validator.Validator.WithdrawalCredentials[0] == 0x01 || validator.Validator.WithdrawalCredentials[0] == 0x02) {
 				withdrawalData.Address = validator.Validator.WithdrawalCredentials[12:]
 				hasAddress = true
 			}

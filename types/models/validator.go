@@ -196,6 +196,5 @@ type ValidatorPageDataBeaconWithdrawal struct {
 	Orphaned    bool      `json:"orphaned"`
 	Type        uint8     `json:"type"`
 	Address     []byte    `json:"address" ssz-size:"20"`
-	Amount      float64   `json:"amount"`
-	AmountRaw   []byte    `json:"amount_raw" ssz-size:"32"`
+	Amount      uint64    `json:"amount"`
 }

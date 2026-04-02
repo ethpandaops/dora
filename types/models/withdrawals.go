@@ -6,7 +6,7 @@ import (
 
 // WithdrawalsPageData is a struct to hold info for the withdrawals overview page
 type WithdrawalsPageData struct {
-	WithdrawnAmount24h    float64   `json:"withdrawn_amount_24h"`
+	WithdrawnAmount24h    uint64    `json:"withdrawn_amount_24h"` // Gwei
 	TotalWithdrawalCount  uint64    `json:"total_withdrawal_count"`
 	QueuedWithdrawalCount uint64    `json:"queued_withdrawal_count"`
 	WithdrawingAmount     uint64    `json:"withdrawing_amount"`
@@ -69,6 +69,5 @@ type WithdrawalsPageDataBeaconWithdrawal struct {
 	ValidatorIndex uint64    `json:"vindex"`
 	ValidatorName  string    `json:"vname"`
 	Address        []byte    `json:"address" ssz-size:"20"`
-	Amount         float64   `json:"amount"`
-	AmountRaw      []byte    `json:"amount_raw" ssz-size:"32"`
+	Amount         uint64    `json:"amount"` // Gwei
 }

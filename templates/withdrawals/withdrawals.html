@@ -21,7 +21,7 @@
             <div class="card">
               <div class="card-body text-center">
                 <h6 class="card-title text-muted mb-1">Withdrawn (24h)</h6>
-                <h4 class="mb-0" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ formatFloat .WithdrawnAmount24h 4 }} ETH withdrawn in the last 24 hours">{{ formatFloat .WithdrawnAmount24h 2 }} ETH</h4>
+                <h4 class="mb-0" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ formatEthFromGwei .WithdrawnAmount24h }} withdrawn in the last 24 hours">{{ formatEthFromGwei .WithdrawnAmount24h }}</h4>
               </div>
             </div>
           </div>
@@ -40,7 +40,7 @@
             <div class="card">
               <div class="card-body text-center">
                 <h6 class="card-title text-muted mb-1">Queued Amount</h6>
-                <h4 class="mb-0" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ formatFullEthFromGwei .WithdrawingAmount }} ETH being withdrawn">{{ formatFullEthFromGwei .WithdrawingAmount }}</h4>
+                <h4 class="mb-0" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ formatEthFromGwei .WithdrawingAmount }} ETH being withdrawn">{{ formatEthFromGwei .WithdrawingAmount }}</h4>
               </div>
             </div>
           </div>
@@ -134,7 +134,6 @@
           <th>Slot</th>
           <th>Time</th>
           <th><span class="d-none d-lg-inline">Source </span>Address</th>
-          <th><span class="d-none d-lg-inline">Req. </span>Type</th>
           <th>Validator</th>
           <th>Amount</th>
           <th>Transaction</th>
@@ -170,13 +169,6 @@
                 </div>
               </td>
               <td>
-                {{- if eq $withdrawal.Amount 0 }}
-                  Exit
-                {{- else }}
-                  Withdrawal
-                {{- end }}
-              </td>
-              <td>
                 {{- if $withdrawal.ValidatorValid }}
                   {{ formatValidatorWithIndex $withdrawal.ValidatorIndex $withdrawal.ValidatorName }}
                 {{- else }}
@@ -188,7 +180,7 @@
                   </div>
                 {{- end }}
               </td>
-              <td>{{ formatFullEthFromGwei $withdrawal.Amount }}</td>
+              <td>{{ formatEthFromGweiP $withdrawal.Amount 6 }}</td>
               <td>
                 {{- if $withdrawal.LinkedTransaction }}
                 <div class="d-flex">
@@ -229,7 +221,7 @@
         <tbody>
           <tr style="height: 430px;">
             <td class="d-none d-md-table-cell"></td>
-            <td style="vertical-align: middle;" colspan="6">
+            <td style="vertical-align: middle;" colspan="5">
               <div class="img-fluid mx-auto p-3 d-flex align-items-center" style="max-height: 400px; max-width: 400px; overflow: hidden;">
                 {{ template "professor_svg" }}
               </div>
@@ -279,7 +271,7 @@
                 {{ formatValidatorWithIndex $withdrawal.ValidatorIndex $withdrawal.ValidatorName }}
               </td>
               <td>
-                {{ formatFullEthFromGwei $withdrawal.Amount }}
+                {{ formatEthFromGweiP $withdrawal.Amount 6 }}
               </td>
               <td>
                 {{- $withdrawal.ValidatorStatus -}}
@@ -377,11 +369,7 @@
               </td>
               <td data-timer="{{ $withdrawal.Time.Unix }}"><span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $withdrawal.Time }}">{{ formatRecentTimeShort $withdrawal.Time }}</span></td>
               <td>
-                {{ if eq $withdrawal.Type 0 }}
-                  <span class="badge text-bg-info">
-                    <i class="fas fa-coins me-1"></i>Fee Reward
-                  </span>
-                {{ else if eq $withdrawal.Type 1 }}
+                {{ if eq $withdrawal.Type 1 }}
                   <span class="badge text-bg-primary">
                     <i class="fas fa-arrow-down me-1"></i>Full
                   </span>
@@ -419,7 +407,7 @@
                 {{ end }}
               </td>
               <td class="text-monospace">
-                {{ formatBytesAmount $withdrawal.AmountRaw "ETH" 18 }}
+                {{ formatEthFromGweiP $withdrawal.Amount 6 }}
               </td>
               <td>
                 {{ if $withdrawal.Orphaned }}

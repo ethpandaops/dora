@@ -20,11 +20,11 @@ func InsertWithdrawals(ctx context.Context, dbTx *sqlx.Tx, withdrawals []*dbtype
 			dbtypes.DBEnginePgsql:  "INSERT INTO withdrawals ",
 			dbtypes.DBEngineSqlite: "INSERT OR REPLACE INTO withdrawals ",
 		}),
-		"(block_uid, block_idx, type, orphaned, fork_id, validator, account_id, amount, amount_raw)",
+		"(block_uid, block_idx, type, orphaned, fork_id, validator, account_id, amount)",
 		" VALUES ",
 	)
 	argIdx := 0
-	fieldCount := 9
+	fieldCount := 8
 
 	args := make([]any, len(withdrawals)*fieldCount)
 	for i, w := range withdrawals {
@@ -48,7 +48,6 @@ func InsertWithdrawals(ctx context.Context, dbTx *sqlx.Tx, withdrawals []*dbtype
 		args[argIdx+5] = w.Validator
 		args[argIdx+6] = w.AccountID
 		args[argIdx+7] = w.Amount
-		args[argIdx+8] = w.AmountRaw
 		argIdx += fieldCount
 	}
 	fmt.Fprint(&sql, EngineQuery(map[dbtypes.DBEngineType]string{
@@ -58,8 +57,7 @@ func InsertWithdrawals(ctx context.Context, dbTx *sqlx.Tx, withdrawals []*dbtype
 			" fork_id = excluded.fork_id," +
 			" validator = excluded.validator," +
 			" account_id = excluded.account_id," +
-			" amount = excluded.amount," +
-			" amount_raw = excluded.amount_raw",
+			" amount = excluded.amount",
 		dbtypes.DBEngineSqlite: "",
 	}))
 
@@ -73,7 +71,7 @@ func InsertWithdrawals(ctx context.Context, dbTx *sqlx.Tx, withdrawals []*dbtype
 func GetWithdrawalsByBlockUid(ctx context.Context, blockUid uint64) ([]*dbtypes.Withdrawal, error) {
 	withdrawals := []*dbtypes.Withdrawal{}
 	err := ReaderDb.SelectContext(ctx, &withdrawals,
-		"SELECT block_uid, block_idx, type, orphaned, fork_id, validator, account_id, amount, amount_raw"+
+		"SELECT block_uid, block_idx, type, orphaned, fork_id, validator, account_id, amount"+
 			" FROM withdrawals WHERE block_uid = $1 ORDER BY block_idx ASC",
 		blockUid)
 	if err != nil {
@@ -89,7 +87,7 @@ func GetWithdrawalsFiltered(ctx context.Context, offset uint64, limit uint32, fi
 	fmt.Fprint(&sql, `
 	WITH cte AS (
 		SELECT
-			block_uid, block_idx, type, orphaned, fork_id, validator, account_id, amount, amount_raw
+			block_uid, block_idx, type, orphaned, fork_id, validator, account_id, amount
 		FROM withdrawals
 	`)
 
@@ -154,10 +152,9 @@ func GetWithdrawalsFiltered(ctx context.Context, offset uint64, limit uint32, fi
 		0 AS type,
 		false AS orphaned,
 		0 AS fork_id,
-		null AS validator,
+		0 AS validator,
 		null AS account_id,
-		0 AS amount,
-		null AS amount_raw
+		0 AS amount
 	FROM cte
 	UNION ALL SELECT * FROM (
 	SELECT * FROM cte
@@ -193,7 +190,7 @@ func GetWithdrawalsByAccountID(ctx context.Context, accountID uint64, offset uin
 	args := []any{accountID}
 
 	fmt.Fprint(&sql, `
-		SELECT block_uid, block_idx, type, orphaned, fork_id, validator, account_id, amount, amount_raw
+		SELECT block_uid, block_idx, type, orphaned, fork_id, validator, account_id, amount
 		FROM withdrawals
 		WHERE account_id = $1
 		ORDER BY block_uid DESC NULLS LAST, block_idx ASC
@@ -248,7 +245,7 @@ func GetWithdrawalsByBlockUidRange(ctx context.Context, minBlockUid uint64, maxB
 	args := []any{minBlockUid, maxBlockUid}
 
 	fmt.Fprint(&sql,
-		"SELECT block_uid, block_idx, type, orphaned, fork_id, validator, account_id, amount, amount_raw"+
+		"SELECT block_uid, block_idx, type, orphaned, fork_id, validator, account_id, amount"+
 			" FROM withdrawals WHERE block_uid >= $1 AND block_uid < $2")
 
 	if typeFilter != nil {
@@ -266,12 +263,12 @@ func GetWithdrawalsByBlockUidRange(ctx context.Context, minBlockUid uint64, maxB
 	return withdrawals, nil
 }
 
-// GetWithdrawalAmountSum returns the total withdrawal amount (float ETH) for CL withdrawals
-// (types 1-3) in the given block_uid range, excluding orphaned entries.
-func GetWithdrawalAmountSum(ctx context.Context, minBlockUid uint64, maxBlockUid uint64) (float64, error) {
-	var total float64
+// GetWithdrawalAmountSum returns the total withdrawal amount (Gwei) for all withdrawals
+// in the given block_uid range, excluding orphaned entries.
+func GetWithdrawalAmountSum(ctx context.Context, minBlockUid uint64, maxBlockUid uint64) (uint64, error) {
+	var total uint64
 	err := ReaderDb.GetContext(ctx, &total,
-		"SELECT COALESCE(SUM(amount), 0) FROM withdrawals WHERE block_uid >= $1 AND block_uid < $2 AND type > 0 AND orphaned = false",
+		"SELECT COALESCE(SUM(amount), 0) FROM withdrawals WHERE block_uid >= $1 AND block_uid < $2 AND orphaned = false",
 		minBlockUid, maxBlockUid)
 	if err != nil {
 		return 0, err

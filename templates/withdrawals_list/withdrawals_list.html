@@ -68,10 +68,9 @@
                   <div class="col-sm-12 col-md-6 col-lg-4">
                     <select name="f.type" aria-controls="type" class="form-control">
                       <option value="0" {{ if eq .FilterWithType 0 }}selected{{ end }}>All Types</option>
-                      <option value="1" {{ if eq .FilterWithType 1 }}selected{{ end }}>Fee Rewards</option>
-                      <option value="2" {{ if eq .FilterWithType 2 }}selected{{ end }}>Full Withdrawals</option>
-                      <option value="3" {{ if eq .FilterWithType 3 }}selected{{ end }}>Sweep Withdrawals</option>
-                      <option value="4" {{ if eq .FilterWithType 4 }}selected{{ end }}>Requested Withdrawals</option>
+                      <option value="1" {{ if eq .FilterWithType 1 }}selected{{ end }}>Full Withdrawals</option>
+                      <option value="2" {{ if eq .FilterWithType 2 }}selected{{ end }}>Sweep Withdrawals</option>
+                      <option value="3" {{ if eq .FilterWithType 3 }}selected{{ end }}>Requested Withdrawals</option>
                     </select>
                   </div>
                 </div>
@@ -160,11 +159,7 @@
                     </td>
                     <td data-timer="{{ $withdrawal.Time.Unix }}"><span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $withdrawal.Time }}">{{ formatRecentTimeShort $withdrawal.Time }}</span></td>
                     <td>
-                      {{ if eq $withdrawal.Type 0 }}
-                        <span class="badge text-bg-info">
-                          <i class="fas fa-coins me-1"></i>Fee Reward
-                        </span>
-                      {{ else if eq $withdrawal.Type 1 }}
+                      {{ if eq $withdrawal.Type 1 }}
                         <span class="badge text-bg-primary">
                           <i class="fas fa-arrow-down me-1"></i>Full
                         </span>
@@ -202,7 +197,7 @@
                       {{ end }}
                     </td>
                     <td class="text-monospace">
-                      {{ formatBytesAmount $withdrawal.AmountRaw "ETH" 18 }}
+                      {{ formatEthFromGweiP $withdrawal.Amount 6 }}
                     </td>
                     <td>
                       {{ if $withdrawal.Orphaned }}

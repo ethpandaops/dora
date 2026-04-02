@@ -81,6 +81,8 @@ func (bs *ChainService) GetWithdrawalRequestsByFilter(ctx context.Context, filte
 		MinIndex:      filter.Filter.MinIndex,
 		MaxIndex:      filter.Filter.MaxIndex,
 		ValidatorName: filter.Filter.ValidatorName,
+		MinAmount:     filter.Filter.MinAmount,
+		MaxAmount:     filter.Filter.MaxAmount,
 		WithOrphaned:  filter.Filter.WithOrphaned,
 	}
 
@@ -226,6 +228,18 @@ func (bs *ChainService) GetWithdrawalRequestOperationsByFilter(ctx context.Conte
 						}
 						validatorName := bs.validatorNames.GetValidatorName(*withdrawalRequest.ValidatorIndex)
 						if !strings.Contains(validatorName, filter.ValidatorName) {
+							continue
+						}
+					}
+					if filter.MinAmount != nil {
+						reqAmount := db.ConvertInt64ToUint64(withdrawalRequest.Amount)
+						if reqAmount < *filter.MinAmount {
+							continue
+						}
+					}
+					if filter.MaxAmount != nil {
+						reqAmount := db.ConvertInt64ToUint64(withdrawalRequest.Amount)
+						if reqAmount > *filter.MaxAmount {
 							continue
 						}
 					}
@@ -441,16 +455,6 @@ func (bs *ChainService) GetWithdrawalsByFilter(ctx context.Context, filter *dbty
 		}
 	}
 
-	// Pre-fetch fee recipient entries from DB for the unpruned slot range
-	minBlockUid := uint64(idxMinSlot) << 16
-	maxBlockUid := uint64(currentSlot+1) << 16
-	feeRecipientType := uint8(dbtypes.WithdrawalTypeFeeDistribution)
-	dbFeeEntries, _ := db.GetWithdrawalsByBlockUidRange(ctx, minBlockUid, maxBlockUid, &feeRecipientType)
-	feeByBlockUid := make(map[uint64]*dbtypes.Withdrawal, len(dbFeeEntries))
-	for _, entry := range dbFeeEntries {
-		feeByBlockUid[entry.BlockUid] = entry
-	}
-
 	// Load most recent objects from indexer cache
 	cachedMatches := make([]*dbtypes.Withdrawal, 0)
 	for slotIdx := int64(currentSlot); slotIdx >= int64(idxMinSlot); slotIdx-- {
@@ -471,14 +475,8 @@ func (bs *ChainService) GetWithdrawalsByFilter(ctx context.Context, filter *dbty
 
 				withdrawals := block.GetDbWithdrawals(bs.beaconIndexer, isCanonical)
 
-				// Merge fee recipient entry from DB if available
-				if feeEntry, ok := feeByBlockUid[block.BlockUID]; ok {
-					feeEntry.Orphaned = !isCanonical
-					withdrawals = append(withdrawals, feeEntry)
-				}
-
 				for idx, withdrawal := range withdrawals {
-					if filter.Validator != nil && (withdrawal.Validator == nil || *withdrawal.Validator != *filter.Validator) {
+					if filter.Validator != nil && withdrawal.Validator != *filter.Validator {
 						continue
 					}
 					if filter.AccountID != nil {
@@ -501,8 +499,8 @@ func (bs *ChainService) GetWithdrawalsByFilter(ctx context.Context, filter *dbty
 					if filter.MaxAmount != nil && withdrawal.Amount > *filter.MaxAmount {
 						continue
 					}
-					if filter.ValidatorName != "" && withdrawal.Validator != nil {
-						validatorName := bs.validatorNames.GetValidatorName(*withdrawal.Validator)
+					if filter.ValidatorName != "" {
+						validatorName := bs.validatorNames.GetValidatorName(withdrawal.Validator)
 						if !strings.Contains(validatorName, filter.ValidatorName) {
 							continue
 						}

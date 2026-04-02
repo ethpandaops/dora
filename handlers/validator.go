@@ -79,9 +79,11 @@ func Validator(w http.ResponseWriter, r *http.Request) {
 	var pageError error
 	pageError = services.GlobalCallRateLimiter.CheckCallLimit(r, 1)
 	if pageError == nil {
-		data.Data, pageError = getValidatorPageData(uint64(validator.Index), tabView)
+		pageData, err := getValidatorPageData(uint64(validator.Index), tabView)
+		data.Data = pageData
+		pageError = err
 	}
-	if data.Data == nil {
+	if data.Data == nil || data.Data.(*models.ValidatorPageData) == nil {
 		pageError = errors.New("validator not found")
 	}
 	if pageError != nil {
@@ -653,7 +655,6 @@ func buildValidatorPageData(ctx context.Context, validatorIndex uint64, tabView 
 				Orphaned:   withdrawal.Orphaned,
 				Type:       withdrawal.Type,
 				Amount:     withdrawal.Amount,
-				AmountRaw:  withdrawal.AmountRaw,
 			}
 
 			hasAddress := false

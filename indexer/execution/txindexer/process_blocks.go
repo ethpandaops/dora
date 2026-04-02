@@ -292,50 +292,27 @@ func (t *TxIndexer) processElBlock(ref *BlockRef) (*blockStats, error) {
 			}
 		}
 
-		// Insert fee recipient entry (CL withdrawals are now handled by the beacon indexer)
-		if len(procCtx.systemDeposits) > 0 {
-			// Get fork_id from the beacon block if available
-			var forkId uint64
-			if ref.Block != nil {
-				forkId = uint64(ref.Block.GetForkId())
-			}
-
-			feeWithdrawals := make([]*dbtypes.Withdrawal, 0, 1)
-			for _, pending := range procCtx.systemDeposits {
-				if pending.depositType != dbtypes.WithdrawalTypeFeeDistribution {
-					continue // CL withdrawals handled by beacon indexer
-				}
-				if pending.account.id == 0 {
-					continue // Skip if account ID not resolved
-				}
-
-				accountID := pending.account.id
-				feeWithdrawals = append(feeWithdrawals, &dbtypes.Withdrawal{
-					BlockUid:  ref.BlockUID,
-					BlockIdx:  dbtypes.WithdrawalBlockIdxFeeRecipient,
-					Type:      dbtypes.WithdrawalTypeFeeDistribution,
-					ForkId:    forkId,
-					Validator: pending.validator,
-					AccountID: &accountID,
-					Amount:    pending.amount,
-					AmountRaw: pending.amountRaw,
-				})
-			}
-
-			if len(feeWithdrawals) > 0 {
-				if err := db.InsertWithdrawals(commitCtx, tx, feeWithdrawals); err != nil {
-					return fmt.Errorf("failed to insert fee recipient withdrawal: %w", err)
-				}
-			}
-		}
-
-		return db.InsertElBlock(commitCtx, tx, &dbtypes.ElBlock{
+		// Build el_block with fee data
+		elBlock := &dbtypes.ElBlock{
 			BlockUid:     ref.BlockUID,
 			Status:       0x01,
 			Events:       data.Stats.events,
 			Transactions: data.Stats.transactions,
 			Transfers:    data.Stats.transfers,
-		})
+		}
+
+		// Add fee recipient data to the block
+		for _, pending := range procCtx.systemDeposits {
+			if pending.account.id == 0 {
+				continue
+			}
+			accountID := pending.account.id
+			elBlock.FeeAmount = pending.amount
+			elBlock.FeeAmountRaw = pending.amountRaw
+			elBlock.FeeAccountID = &accountID
+		}
+
+		return db.InsertElBlock(commitCtx, tx, elBlock)
 	})
 
 	if err != nil {
@@ -382,14 +359,12 @@ func (t *TxIndexer) processBlockRewards(procCtx *txProcessingContext, data *bloc
 		// Ensure fee recipient account exists
 		feeRecipientAccount := procCtx.ensureAccount(data.FeeRecipient, nil, false)
 
-		// Create fee recipient withdrawal record (account ID will be resolved later)
+		// Store fee data for inclusion in el_blocks record
 		feeAmount := weiToFloat(data.TotalPriorityFees, 18) // ETH uses 18 decimals
 		procCtx.systemDeposits = append(procCtx.systemDeposits, &pendingSystemDeposit{
-			depositType: dbtypes.WithdrawalTypeFeeDistribution,
-			account:     feeRecipientAccount,
-			amount:      feeAmount,
-			amountRaw:   data.TotalPriorityFees.Bytes(),
-			validator:   nil,
+			account:   feeRecipientAccount,
+			amount:    feeAmount,
+			amountRaw: data.TotalPriorityFees.Bytes(),
 		})
 	}
 

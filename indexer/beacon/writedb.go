@@ -3,7 +3,6 @@ package beacon
 import (
 	"fmt"
 	"math"
-	"math/big"
 
 	"github.com/attestantio/go-eth2-client/spec"
 	"github.com/attestantio/go-eth2-client/spec/bellatrix"
@@ -798,21 +797,10 @@ func (dbw *dbWriter) buildDbWithdrawals(block *Block, orphaned bool, overrideFor
 	// Compute pending partial withdrawal count from sim state
 	pendingPartialCount := dbw.countPendingPartialWithdrawals(block, sim)
 
-	// Gwei-to-Wei multiplier
-	gweiMultiplier := big.NewInt(1e9)
-	// ETH divisor (10^18)
-	ethDivisor := new(big.Float).SetInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil))
-
 	blockEpoch := dbw.indexer.consensusPool.GetChainState().EpochOfSlot(block.Slot)
 
 	dbWithdrawals := make([]*dbtypes.Withdrawal, len(withdrawals))
 	for idx, withdrawal := range withdrawals {
-		validatorIndex := uint64(withdrawal.ValidatorIndex)
-
-		// Convert Gwei to Wei
-		amountWei := new(big.Int).Mul(big.NewInt(int64(withdrawal.Amount)), gweiMultiplier)
-		amountFloat, _ := new(big.Float).Quo(new(big.Float).SetInt(amountWei), ethDivisor).Float64()
-
 		// Classify withdrawal type
 		withdrawalType := dbw.classifyWithdrawalType(idx, pendingPartialCount, withdrawal.ValidatorIndex, blockEpoch)
 
@@ -822,10 +810,9 @@ func (dbw *dbWriter) buildDbWithdrawals(block *Block, orphaned bool, overrideFor
 			Type:      withdrawalType,
 			Orphaned:  orphaned,
 			ForkId:    forkId,
-			Validator: &validatorIndex,
+			Validator: uint64(withdrawal.ValidatorIndex),
 			Address:   withdrawal.Address[:],
-			Amount:    amountFloat,
-			AmountRaw: amountWei.Bytes(),
+			Amount:    uint64(withdrawal.Amount),
 		}
 	}
 

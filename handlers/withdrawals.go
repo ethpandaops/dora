@@ -130,6 +130,7 @@ func buildWithdrawalsPageData(ctx context.Context, firstEpoch uint64, pageSize u
 	case "recent":
 		withdrawalFilter := &services.CombinedWithdrawalRequestFilter{
 			Filter: &dbtypes.WithdrawalRequestFilter{
+				MinAmount:    &oneAmount,
 				WithOrphaned: 1,
 			},
 		}
@@ -187,9 +188,9 @@ func buildWithdrawalsPageData(ctx context.Context, firstEpoch uint64, pageSize u
 			if w.AccountID != nil && *w.AccountID > 0 && !accountIDSet[*w.AccountID] {
 				accountIDSet[*w.AccountID] = true
 				accountIDs = append(accountIDs, *w.AccountID)
-			} else if w.Address == nil && w.Validator != nil && !validatorIDSet[*w.Validator] {
-				validatorIDSet[*w.Validator] = true
-				validatorIDs = append(validatorIDs, phase0.ValidatorIndex(*w.Validator))
+			} else if w.Address == nil && !validatorIDSet[w.Validator] {
+				validatorIDSet[w.Validator] = true
+				validatorIDs = append(validatorIDs, phase0.ValidatorIndex(w.Validator))
 			}
 		}
 		accountMap := make(map[uint64]*dbtypes.ElAccount, len(accountIDs))
@@ -244,14 +245,11 @@ func buildWithdrawalsPageData(ctx context.Context, firstEpoch uint64, pageSize u
 				Orphaned:   withdrawal.Orphaned,
 				Type:       withdrawal.Type,
 				Amount:     withdrawal.Amount,
-				AmountRaw:  withdrawal.AmountRaw,
 			}
 
-			if withdrawal.Validator != nil {
-				withdrawalData.HasValidator = true
-				withdrawalData.ValidatorIndex = *withdrawal.Validator
-				withdrawalData.ValidatorName = services.GlobalBeaconService.GetValidatorName(*withdrawal.Validator)
-			}
+			withdrawalData.HasValidator = true
+			withdrawalData.ValidatorIndex = withdrawal.Validator
+			withdrawalData.ValidatorName = services.GlobalBeaconService.GetValidatorName(withdrawal.Validator)
 
 			hasAddress := false
 			if withdrawal.AccountID != nil {
@@ -264,8 +262,8 @@ func buildWithdrawalsPageData(ctx context.Context, firstEpoch uint64, pageSize u
 				withdrawalData.Address = withdrawal.Address
 				hasAddress = true
 			}
-			if !hasAddress && withdrawal.Validator != nil {
-				if validator, ok := validatorMap[*withdrawal.Validator]; ok && (validator.Validator.WithdrawalCredentials[0] == 0x01 || validator.Validator.WithdrawalCredentials[0] == 0x02) {
+			if !hasAddress {
+				if validator, ok := validatorMap[withdrawal.Validator]; ok && (validator.Validator.WithdrawalCredentials[0] == 0x01 || validator.Validator.WithdrawalCredentials[0] == 0x02) {
 					withdrawalData.Address = validator.Validator.WithdrawalCredentials[12:]
 					hasAddress = true
 				}

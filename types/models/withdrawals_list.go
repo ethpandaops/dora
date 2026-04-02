@@ -46,6 +46,5 @@ type WithdrawalsListPageDataWithdrawal struct {
 	ValidatorIndex uint64    `json:"vindex"`
 	ValidatorName  string    `json:"vname"`
 	Address        []byte    `json:"address" ssz-size:"20"`
-	Amount         float64   `json:"amount"`
-	AmountRaw      []byte    `json:"amount_raw" ssz-size:"32"`
+	Amount         uint64    `json:"amount"` // Gwei
 }
