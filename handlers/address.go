@@ -237,7 +237,7 @@ func buildAddressPageData(ctx context.Context, addressBytes []byte, tabView stri
 		}
 
 		// Check if address has any system deposits (for tab visibility)
-		if has, err := db.HasElWithdrawalsByAccountID(ctx, account.ID); err == nil && has {
+		if has, err := db.HasWithdrawalsByAccountID(ctx, account.ID); err == nil && has {
 			pageData.HasSystemDeposits = true
 		}
 
@@ -828,7 +828,7 @@ func calculateInternalTxHashRowspans(txs []*models.AddressPageDataInternalTransa
 
 func loadSystemDepositsTab(ctx context.Context, pageData *models.AddressPageData, account *dbtypes.ElAccount, chainState *consensus.ChainState, offset uint64, limit uint32, pageIdx uint64) {
 	// Get system deposits (withdrawals and fee recipient rewards)
-	dbDeposits, totalCount, _ := db.GetElWithdrawalsByAccountID(ctx, account.ID, offset, limit)
+	dbDeposits, totalCount, _ := db.GetWithdrawalsByAccountID(ctx, account.ID, offset, limit)
 
 	pageData.SystemDepositCount = totalCount
 	pageData.SystemPageIndex = pageIdx

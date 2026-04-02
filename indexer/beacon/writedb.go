@@ -3,6 +3,7 @@ package beacon
 import (
 	"fmt"
 	"math"
+	"math/big"
 
 	"github.com/attestantio/go-eth2-client/spec"
 	"github.com/attestantio/go-eth2-client/spec/bellatrix"
@@ -132,6 +133,12 @@ func (dbw *dbWriter) persistBlockChildObjects(tx *sqlx.Tx, block *Block, deposit
 
 	// insert withdrawal requests
 	err = dbw.persistBlockWithdrawalRequests(tx, block, orphaned, overrideForkId, sim)
+	if err != nil {
+		return err
+	}
+
+	// insert withdrawals
+	err = dbw.persistBlockWithdrawals(tx, block, orphaned, overrideForkId)
 	if err != nil {
 		return err
 	}
@@ -729,6 +736,136 @@ func (dbw *dbWriter) buildDbVoluntaryExits(block *Block, orphaned bool, override
 	}
 
 	return dbVoluntaryExits
+}
+
+func (dbw *dbWriter) persistBlockWithdrawals(tx *sqlx.Tx, block *Block, orphaned bool, overrideForkId *ForkKey) error {
+	dbWithdrawals := dbw.buildDbWithdrawals(block, orphaned, overrideForkId, utils.Config.ExecutionIndexer.Enabled)
+	if len(dbWithdrawals) > 0 {
+		err := db.InsertWithdrawals(dbw.indexer.ctx, tx, dbWithdrawals)
+		if err != nil {
+			return fmt.Errorf("error inserting withdrawals: %v", err)
+		}
+	}
+
+	// Update fork_id/orphaned for all entries of this block_uid (including fee recipient entries written by EL tx indexer)
+	forkId := uint64(block.forkId)
+	if overrideForkId != nil {
+		forkId = uint64(*overrideForkId)
+	}
+
+	err := db.UpdateWithdrawalsForkId(dbw.indexer.ctx, tx, block.BlockUID, forkId, orphaned)
+	if err != nil {
+		return fmt.Errorf("error updating withdrawals fork id: %v", err)
+	}
+
+	return nil
+}
+
+func (dbw *dbWriter) buildDbWithdrawals(block *Block, orphaned bool, overrideForkId *ForkKey, lookupAccounts bool) []*dbtypes.Withdrawal {
+	blockBody := block.GetBlock(dbw.indexer.ctx)
+	if blockBody == nil {
+		return nil
+	}
+
+	executionPayload, err := blockBody.ExecutionPayload()
+	if err != nil || executionPayload == nil {
+		return nil
+	}
+
+	withdrawals, err := executionPayload.Withdrawals()
+	if err != nil || len(withdrawals) == 0 {
+		return nil
+	}
+
+	forkId := uint64(block.forkId)
+	if overrideForkId != nil {
+		forkId = uint64(*overrideForkId)
+	}
+
+	// Gwei-to-Wei multiplier
+	gweiMultiplier := big.NewInt(1e9)
+	// ETH divisor (10^18)
+	ethDivisor := new(big.Float).SetInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil))
+
+	dbWithdrawals := make([]*dbtypes.Withdrawal, len(withdrawals))
+	for idx, withdrawal := range withdrawals {
+		validatorIndex := uint64(withdrawal.ValidatorIndex)
+
+		// Convert Gwei to Wei
+		amountWei := new(big.Int).Mul(big.NewInt(int64(withdrawal.Amount)), gweiMultiplier)
+		amountFloat, _ := new(big.Float).Quo(new(big.Float).SetInt(amountWei), ethDivisor).Float64()
+
+		dbWithdrawals[idx] = &dbtypes.Withdrawal{
+			BlockUid:  block.BlockUID,
+			BlockIdx:  int16(idx),
+			Type:      dbtypes.WithdrawalTypeBeaconWithdrawal,
+			Orphaned:  orphaned,
+			ForkId:    forkId,
+			Validator: &validatorIndex,
+			Amount:    amountFloat,
+			AmountRaw: amountWei.Bytes(),
+		}
+	}
+
+	// Resolve account IDs if EL indexer is enabled
+	if lookupAccounts {
+		dbw.resolveWithdrawalAccounts(block, withdrawals, dbWithdrawals)
+	}
+
+	return dbWithdrawals
+}
+
+func (dbw *dbWriter) resolveWithdrawalAccounts(block *Block, withdrawals []*capella.Withdrawal, dbWithdrawals []*dbtypes.Withdrawal) {
+	// Collect unique withdrawal addresses
+	addrSet := make(map[[20]byte]bool, len(withdrawals))
+	addrList := make([][]byte, 0, len(withdrawals))
+	for _, w := range withdrawals {
+		if !addrSet[w.Address] {
+			addrSet[w.Address] = true
+			addrList = append(addrList, w.Address[:])
+		}
+	}
+
+	// Batch lookup existing accounts
+	accountMap, err := db.GetElAccountsByAddresses(dbw.indexer.ctx, addrList)
+	if err != nil {
+		dbw.indexer.logger.Warnf("error looking up withdrawal accounts: %v", err)
+		return
+	}
+
+	// Create missing accounts
+	for _, w := range withdrawals {
+		addrHex := fmt.Sprintf("0x%x", w.Address[:])
+		if _, ok := accountMap[addrHex]; !ok {
+			newAccount := &dbtypes.ElAccount{
+				Address: w.Address[:],
+			}
+
+			err := db.RunDBTransaction(func(tx *sqlx.Tx) error {
+				id, insertErr := db.InsertElAccount(dbw.indexer.ctx, tx, newAccount)
+				if insertErr != nil {
+					return insertErr
+				}
+				newAccount.ID = id
+				return nil
+			})
+			if err != nil {
+				dbw.indexer.logger.Warnf("error inserting withdrawal account: %v", err)
+				continue
+			}
+
+			accountMap[addrHex] = newAccount
+		}
+	}
+
+	// Set account IDs on withdrawal entries
+	for idx, w := range withdrawals {
+		addrHex := fmt.Sprintf("0x%x", w.Address[:])
+		if acct, ok := accountMap[addrHex]; ok && acct.ID > 0 {
+			accountID := acct.ID
+			dbWithdrawals[idx].AccountID = &accountID
+		}
+	}
 }
 
 func (dbw *dbWriter) persistBlockSlashings(tx *sqlx.Tx, block *Block, orphaned bool, overrideForkId *ForkKey) error {

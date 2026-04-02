@@ -269,10 +269,12 @@ type ElTokenTransferFilter struct {
 	MaxAmount *float64
 }
 
-type ElWithdrawalFilter struct {
-	AccountID uint64
-	Type      *uint8 // 0=withdrawal, 1=fee_recipient
-	Validator *uint64
-	MinAmount *float64
-	MaxAmount *float64
+type WithdrawalFilter struct {
+	Validator     *uint64
+	ValidatorName string
+	AccountID     *uint64
+	Type          *uint8
+	MinAmount     *float64
+	MaxAmount     *float64
+	WithOrphaned  uint8 // 0=canonical only, 1=all, 2=orphaned only
 }

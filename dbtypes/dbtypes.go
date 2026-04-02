@@ -1,5 +1,7 @@
 package dbtypes
 
+import "math"
+
 type ExplorerState struct {
 	Key   string `db:"key"`
 	Value string `db:"value"`
@@ -554,12 +556,17 @@ const (
 	WithdrawalTypeFeeRecipient     = 1
 )
 
-type ElWithdrawal struct {
-	BlockUid   uint64  `db:"block_uid"`
-	BlockIndex uint16  `db:"block_index"`
-	AccountID  uint64  `db:"account_id"`
-	Type       uint8   `db:"type"` // 0=withdrawal, 1=fee_recipient
-	Amount     float64 `db:"amount"`
-	AmountRaw  []byte  `db:"amount_raw"`
-	Validator  *uint64 `db:"validator"` // validator index for withdrawals, null for fee recipient
+// WithdrawalBlockIdxFeeRecipient is the block_idx value used for fee recipient entries.
+const WithdrawalBlockIdxFeeRecipient = int16(math.MaxInt16) // 32767
+
+type Withdrawal struct {
+	BlockUid  uint64  `db:"block_uid"`
+	BlockIdx  int16   `db:"block_idx"`
+	Type      uint8   `db:"type"` // 0=beacon_withdrawal, 1=fee_recipient
+	Orphaned  bool    `db:"orphaned"`
+	ForkId    uint64  `db:"fork_id"`
+	Validator *uint64 `db:"validator"`
+	AccountID *uint64 `db:"account_id"`
+	Amount    float64 `db:"amount"`
+	AmountRaw []byte  `db:"amount_raw"`
 }
