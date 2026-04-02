@@ -872,15 +872,15 @@ func (dbw *dbWriter) buildDbWithdrawals(block *Block, orphaned bool, overrideFor
 		}
 	}
 
-	// Compute pending partial withdrawal count from sim state
-	pendingPartialCount := dbw.countPendingPartialWithdrawals(block, sim)
+	// Compute pending withdrawal counts from sim state
+	builderPendingCount, pendingPartialCount := dbw.countPendingWithdrawals(block, sim)
 
 	blockEpoch := dbw.indexer.consensusPool.GetChainState().EpochOfSlot(block.Slot)
 
 	dbWithdrawals := make([]*dbtypes.Withdrawal, len(withdrawals))
 	for idx, withdrawal := range withdrawals {
 		// Classify withdrawal type
-		withdrawalType := dbw.classifyWithdrawalType(idx, pendingPartialCount, withdrawal.ValidatorIndex, phase0.Gwei(withdrawal.Amount), blockEpoch)
+		withdrawalType := dbw.classifyWithdrawalType(idx, builderPendingCount, pendingPartialCount, withdrawal.ValidatorIndex, phase0.Gwei(withdrawal.Amount), blockEpoch)
 
 		dbWithdrawals[idx] = &dbtypes.Withdrawal{
 			BlockUid:  block.BlockUID,
@@ -902,32 +902,38 @@ func (dbw *dbWriter) buildDbWithdrawals(block *Block, orphaned bool, overrideFor
 	return dbWithdrawals
 }
 
-// countPendingPartialWithdrawals computes how many pending partial withdrawals
-// will be processed for the given block, following the consensus spec logic.
-// This replays the sim state up to (but not including) the target block to get
-// the pending withdrawals list, then counts how many would be processed.
-func (dbw *dbWriter) countPendingPartialWithdrawals(block *Block, sim *stateSimulator) int {
+// countPendingWithdrawals computes how many builder pending withdrawals and
+// pending partial withdrawals will be processed for the given block.
+// Returns (builderPendingCount, partialPendingCount).
+// The spec order is: builder payments → partial withdrawals → builder sweep → validator sweep.
+func (dbw *dbWriter) countPendingWithdrawals(block *Block, sim *stateSimulator) (int, int) {
 	if sim == nil {
-		return 0
+		return 0, 0
 	}
 
 	chainSpec := dbw.indexer.consensusPool.GetChainState().GetSpecs()
 	if chainSpec.MaxPendingPartialsPerWithdrawalsSweep == 0 {
-		return 0 // Pre-Electra: no pending partial withdrawals
+		return 0, 0 // Pre-Electra: no pending withdrawals
 	}
+
+	// Use the correct sim for this block (handles Fulu first-block-of-epoch case)
+	sim = sim.getSimForBlock(block)
 
 	// Replay state up to (but not including) target block
 	parentBlocks := sim.getParentBlocks(block)
 	state := sim.resetState(block)
 	if state == nil {
-		return 0
+		return 0, 0
 	}
 	for _, parentBlock := range parentBlocks {
 		sim.applyBlock(parentBlock)
 	}
 
-	// Now sim.prevState.pendingWithdrawals reflects state before target block
-	processed := 0
+	// Count builder pending withdrawals (processed first per spec)
+	builderCount := len(sim.prevState.builderPendingWithdrawals)
+
+	// Count pending partial withdrawals
+	partialCount := 0
 	for _, pw := range sim.prevState.pendingWithdrawals {
 		if pw.WithdrawableEpoch > sim.epochStats.epoch {
 			break
@@ -942,25 +948,42 @@ func (dbw *dbWriter) countPendingPartialWithdrawals(block *Block, sim *stateSimu
 			continue
 		}
 
-		processed++
-		if uint64(processed) >= chainSpec.MaxPendingPartialsPerWithdrawalsSweep {
+		partialCount++
+		if uint64(partialCount) >= chainSpec.MaxPendingPartialsPerWithdrawalsSweep {
 			break
 		}
 	}
 
-	return processed
+	return builderCount, partialCount
 }
 
 // classifyWithdrawalType determines the withdrawal type based on position, validator state, and amount.
-func (dbw *dbWriter) classifyWithdrawalType(idx int, pendingPartialCount int, validatorIndex phase0.ValidatorIndex, amount phase0.Gwei, blockEpoch phase0.Epoch) uint8 {
-	// First N withdrawals are from pending partial withdrawals (EIP-7002 requested)
-	if idx < pendingPartialCount {
+// The spec order in the execution payload is:
+//
+//	[0..builderPendingCount-1]                          = builder payments (type 4)
+//	[builderPendingCount..builderPendingCount+partialCount-1] = requested withdrawals (type 3)
+//	[remaining with builder flag]                       = builder full withdrawal (type 5)
+//	[remaining without builder flag, exited+withdrawable] = full withdrawal (type 1)
+//	[remaining without builder flag]                    = sweep withdrawal (type 2)
+func (dbw *dbWriter) classifyWithdrawalType(idx int, builderPendingCount int, pendingPartialCount int, validatorIndex phase0.ValidatorIndex, amount phase0.Gwei, blockEpoch phase0.Epoch) uint8 {
+	isBuilder := uint64(validatorIndex)&BuilderIndexFlag != 0
+
+	// First N withdrawals are builder payments (from builder_pending_withdrawals)
+	if idx < builderPendingCount {
+		return dbtypes.WithdrawalTypeBuilderPayment
+	}
+
+	// Next M withdrawals are from pending partial withdrawals (EIP-7002 requested)
+	if idx < builderPendingCount+pendingPartialCount {
 		return dbtypes.WithdrawalTypeRequestedWithdrawal
 	}
 
+	// Remaining withdrawals with builder flag are builder sweep (full balance withdrawal)
+	if isBuilder {
+		return dbtypes.WithdrawalTypeBuilderFullWithdrawal
+	}
+
 	// Check if this is a full withdrawal (validator exited and withdrawable, with significant amount)
-	// Only flag as full withdrawal when amount >= EJECTION_BALANCE - 0.5 ETH to avoid
-	// flagging small dust sweeps that happen after exit/consolidation.
 	validator := dbw.indexer.GetValidatorByIndex(validatorIndex, nil)
 	if validator != nil && validator.ExitEpoch != FarFutureEpoch && validator.WithdrawableEpoch <= blockEpoch {
 		chainSpec := dbw.indexer.consensusPool.GetChainState().GetSpecs()

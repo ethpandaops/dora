@@ -71,6 +71,8 @@
                       <option value="1" {{ if inlist "1" $filterTypeList }}selected{{ end }}>Full Withdrawal</option>
                       <option value="2" {{ if inlist "2" $filterTypeList }}selected{{ end }}>Sweep Withdrawal</option>
                       <option value="3" {{ if inlist "3" $filterTypeList }}selected{{ end }}>Requested Withdrawal</option>
+                      <option value="4" {{ if inlist "4" $filterTypeList }}selected{{ end }}>Builder Payment</option>
+                      <option value="5" {{ if inlist "5" $filterTypeList }}selected{{ end }}>Builder Withdrawal</option>
                     </select>
                   </div>
                 </div>
@@ -170,6 +172,14 @@
                       {{ else if eq $withdrawal.Type 3 }}
                         <span class="badge text-bg-warning">
                           <i class="fas fa-hand-holding me-1"></i>Requested
+                        </span>
+                      {{ else if eq $withdrawal.Type 4 }}
+                        <span class="badge text-bg-info">
+                          <i class="fas fa-building me-1"></i>Builder Payment
+                        </span>
+                      {{ else if eq $withdrawal.Type 5 }}
+                        <span class="badge text-bg-primary">
+                          <i class="fas fa-building me-1"></i>Builder Withdrawal
                         </span>
                       {{ else }}
                         <span class="badge text-bg-secondary">Unknown</span>

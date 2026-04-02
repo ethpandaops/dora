@@ -34,6 +34,7 @@ type epochState struct {
 	depositBalanceToConsume   phase0.Gwei
 	pendingDeposits           []*electra.PendingDeposit
 	pendingPartialWithdrawals []*electra.PendingPartialWithdrawal
+	builderPendingWithdrawals []*gloas.BuilderPendingWithdrawal
 	pendingConsolidations     []*electra.PendingConsolidation
 	proposerLookahead         []phase0.ValidatorIndex
 }
@@ -288,6 +289,11 @@ func (s *epochState) processState(state *spec.VersionedBeaconState, beaconBlock 
 			return fmt.Errorf("error getting pending withdrawal indices from state %v: %v", s.slotRoot.String(), err)
 		}
 		s.pendingPartialWithdrawals = pendingPartialWithdrawals
+
+		builderPendingWithdrawals, err := getStateBuilderPendingWithdrawals(state)
+		if err == nil {
+			s.builderPendingWithdrawals = builderPendingWithdrawals
+		}
 
 		pendingConsolidations, err := getStatePendingConsolidations(state)
 		if err != nil {

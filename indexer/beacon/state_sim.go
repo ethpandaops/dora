@@ -5,6 +5,7 @@ import (
 	"slices"
 
 	"github.com/attestantio/go-eth2-client/spec/electra"
+	"github.com/attestantio/go-eth2-client/spec/gloas"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethpandaops/dora/dbtypes"
 	"github.com/ethpandaops/dora/utils"
@@ -22,6 +23,7 @@ type stateSimulatorState struct {
 	epochRoot                 phase0.Root
 	block                     *Block
 	pendingWithdrawals        []electra.PendingPartialWithdrawal
+	builderPendingWithdrawals []gloas.BuilderPendingWithdrawal
 	additionalWithdrawals     []phase0.ValidatorIndex
 	pendingConsolidationCount uint64
 	validatorMap              map[phase0.ValidatorIndex]*phase0.Validator
@@ -43,9 +45,25 @@ func newStateSimulator(indexer *Indexer, epochStats *EpochStats) *stateSimulator
 	return sim
 }
 
+// getParentBlocks returns blocks that need to be replayed before the target block.
+// Uses the sim's epoch as the boundary.
+//
+// In Fulu+, the epoch state is the post-state of the first block of the epoch,
+// so the first block must be excluded (its effects are already in the state).
+// The boundary is set to firstSlot+1 to exclude it.
+//
+// In pre-Fulu, the epoch state is from the last block of the previous epoch,
+// so all blocks in the current epoch need to be replayed (boundary = firstSlot).
 func (sim *stateSimulator) getParentBlocks(block *Block) []*Block {
 	chainState := sim.indexer.consensusPool.GetChainState()
-	minSlot := chainState.EpochToSlot(chainState.EpochOfSlot(block.Slot))
+	simEpoch := sim.epochStats.epoch
+	minSlot := chainState.EpochToSlot(simEpoch)
+
+	// In Fulu+, skip the first block of the sim's epoch (state is its post-state)
+	if chainState.IsFuluEnabled(simEpoch) {
+		minSlot++
+	}
+
 	parentBlocks := []*Block{}
 
 	for {
@@ -72,6 +90,41 @@ func (sim *stateSimulator) getParentBlocks(block *Block) []*Block {
 	return parentBlocks
 }
 
+// getSimForBlock returns the correct stateSimulator for a given block.
+// In Fulu+, the first block of an epoch needs the previous epoch's sim,
+// since the current epoch state is the post-state of that first block.
+// For all other blocks, the current sim is returned unchanged.
+func (sim *stateSimulator) getSimForBlock(block *Block) *stateSimulator {
+	chainState := sim.indexer.consensusPool.GetChainState()
+	blockEpoch := chainState.EpochOfSlot(block.Slot)
+
+	if !chainState.IsFuluEnabled(blockEpoch) || blockEpoch == 0 {
+		return sim
+	}
+
+	epochFirstSlot := chainState.EpochToSlot(blockEpoch)
+	if block.Slot != epochFirstSlot {
+		return sim
+	}
+
+	// First block of a Fulu+ epoch: need previous epoch's sim
+	prevEpoch := blockEpoch - 1
+	prevEpochStats := sim.indexer.epochCache.getEpochStatsByEpochAndRoot(prevEpoch, block.Root)
+	if prevEpochStats == nil {
+		if parentRoot := block.GetParentRoot(); parentRoot != nil {
+			prevEpochStats = sim.indexer.epochCache.getEpochStatsByEpochAndRoot(prevEpoch, *parentRoot)
+		}
+	}
+	if prevEpochStats != nil {
+		prevSim := newStateSimulator(sim.indexer, prevEpochStats)
+		if prevSim != nil {
+			return prevSim
+		}
+	}
+
+	return sim // fallback: can't get prev epoch, use current (may be imprecise)
+}
+
 func (sim *stateSimulator) resetState(block *Block) *stateSimulatorState {
 	pendingWithdrawals := sim.epochStatsValues.PendingWithdrawals
 	if pendingWithdrawals == nil {
@@ -88,10 +141,16 @@ func (sim *stateSimulator) resetState(block *Block) *stateSimulatorState {
 		}
 	}
 
+	builderPendingWithdrawals := sim.epochStatsValues.BuilderPendingWithdrawals
+	if builderPendingWithdrawals == nil {
+		builderPendingWithdrawals = []gloas.BuilderPendingWithdrawal{}
+	}
+
 	state := &stateSimulatorState{
 		block:                     nil,
 		epochRoot:                 epochRoot,
 		pendingWithdrawals:        pendingWithdrawals,
+		builderPendingWithdrawals: builderPendingWithdrawals,
 		pendingConsolidationCount: 0,
 		additionalWithdrawals:     []phase0.ValidatorIndex{},
 		validatorMap:              map[phase0.ValidatorIndex]*phase0.Validator{},
@@ -337,9 +396,20 @@ func (sim *stateSimulator) applyBlock(block *Block) [][]uint8 {
 		return nil
 	}
 
-	// process pending withdrawals
+	// process builder pending withdrawals (come first in the spec)
 	chainState := sim.indexer.consensusPool.GetChainState()
 	chainSpec := chainState.GetSpecs()
+	processedBuilderWithdrawals := uint64(0)
+	for range sim.prevState.builderPendingWithdrawals {
+		processedBuilderWithdrawals++
+		// Builder pending withdrawals are always processed (no skip conditions in spec)
+		// They are limited by MAX_WITHDRAWALS_PER_PAYLOAD - 1
+	}
+	if processedBuilderWithdrawals > 0 {
+		sim.prevState.builderPendingWithdrawals = sim.prevState.builderPendingWithdrawals[processedBuilderWithdrawals:]
+	}
+
+	// process pending partial withdrawals
 	processedWithdrawals := uint64(0)
 	skippedWithdrawals := uint64(0)
 	for _, pendingWithdrawal := range sim.prevState.pendingWithdrawals {
@@ -467,6 +537,9 @@ func (sim *stateSimulator) applyBlock(block *Block) [][]uint8 {
 }
 
 func (sim *stateSimulator) replayBlockResults(block *Block) [][]uint8 {
+	// Use the correct sim for this block (handles Fulu first-block-of-epoch case)
+	sim = sim.getSimForBlock(block)
+
 	chainState := sim.indexer.consensusPool.GetChainState()
 	chainSpec := chainState.GetSpecs()
 	if chainSpec.ElectraForkEpoch == nil || sim.epochStats.epoch < phase0.Epoch(*chainSpec.ElectraForkEpoch) {
