@@ -20,6 +20,9 @@ type ExitsPageData struct {
 
 	ExitingValidators        []*ExitsPageDataExitingValidator `json:"exiting_validators"`
 	ExitingValidatorTabCount uint64                           `json:"exiting_validator_tab_count"`
+
+	RecentExitRequests     []*ExitsPageDataRecentExitRequest `json:"recent_exit_requests"`
+	RecentExitRequestCount uint64                            `json:"recent_exit_request_count"`
 }
 
 type ExitsPageDataRecentExit struct {
@@ -50,4 +53,23 @@ type ExitsPageDataExitingValidator struct {
 	ShowUpcheck      bool      `json:"show_upcheck"`
 	UpcheckActivity  uint8     `json:"upcheck_act"`
 	UpcheckMaximum   uint8     `json:"upcheck_max"`
+}
+
+// ExitsPageDataRecentExitRequest represents an EL-triggered exit request.
+type ExitsPageDataRecentExitRequest struct {
+	IsIncluded        bool      `json:"is_included"`
+	SlotNumber        uint64    `json:"slot"`
+	SlotRoot          []byte    `json:"slot_root" ssz-size:"32"`
+	Time              time.Time `json:"time"`
+	Status            uint64    `json:"status"`
+	Result            uint8     `json:"result"`
+	ResultMessage     string    `json:"result_message"`
+	TxStatus          uint64    `json:"tx_status"`
+	SourceAddr        []byte    `json:"source_addr" ssz-size:"20"`
+	ValidatorValid    bool      `json:"vvalid"`
+	ValidatorIndex    uint64    `json:"vindex"`
+	ValidatorName     string    `json:"vname"`
+	PublicKey         []byte    `json:"pubkey" ssz-size:"48"`
+	LinkedTransaction bool      `json:"linked_tx"`
+	TransactionHash   []byte    `json:"tx_hash" ssz-size:"32"`
 }

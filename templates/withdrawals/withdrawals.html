@@ -2,13 +2,13 @@
   <div class="container mt-2">
     <div class="d-md-flex py-2 justify-content-md-between">
       <h1 class="h4 mb-1 mb-md-0">
-        <i class="fas fa-money-bill-transfer mx-2"></i>Withdrawal Requests
+        <i class="fas fa-money-bill-transfer mx-2"></i>Withdrawals
       </h1>
       <nav aria-label="breadcrumb">
         <ol class="breadcrumb font-size-1 mb-0" style="padding:0; background-color:transparent;">
           <li class="breadcrumb-item"><a href="/" title="Home">Home</a></li>
           <li class="breadcrumb-item"><a href="/validators" title="Validators">Validators</a></li>
-          <li class="breadcrumb-item active" aria-current="page">Withdrawal Requests</li>
+          <li class="breadcrumb-item active" aria-current="page">Withdrawals</li>
         </ol>
       </nav>
     </div>
@@ -20,10 +20,18 @@
           <div class="col-md-3">
             <div class="card">
               <div class="card-body text-center">
-                <h6 class="card-title text-muted mb-1">Total Requests</h6>
+                <h6 class="card-title text-muted mb-1">Withdrawn (24h)</h6>
+                <h4 class="mb-0" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ formatEthFromGwei .WithdrawnAmount24h }} withdrawn in the last 24 hours">{{ formatEthFromGwei .WithdrawnAmount24h }}</h4>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-3">
+            <div class="card">
+              <div class="card-body text-center">
+                <h6 class="card-title text-muted mb-1">Requests / Queued</h6>
                 <h4 class="mb-0">
                   <span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ .TotalWithdrawalCount }} total withdrawal requests">{{ formatAddCommas .TotalWithdrawalCount }}</span> /
-                  <span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ .TotalExitCount }} total el triggered exit requests">{{ formatAddCommas .TotalExitCount }}</span>
+                  <span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ .QueuedWithdrawalCount }} queued withdrawal requests">{{ formatAddCommas .QueuedWithdrawalCount }}</span>
                 </h4>
               </div>
             </div>
@@ -31,16 +39,8 @@
           <div class="col-md-3">
             <div class="card">
               <div class="card-body text-center">
-                <h6 class="card-title text-muted mb-1">Queued Withdrawal Requests</h6>
-                <h4 class="mb-0" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ .WithdrawingValidatorCount }} validators being withdrawn">{{ formatAddCommas .WithdrawingValidatorCount }}</h4>
-              </div>
-            </div>
-          </div>
-          <div class="col-md-3">
-            <div class="card">
-              <div class="card-body text-center">
-                <h6 class="card-title text-muted mb-1">Queued Withdrawal Amount</h6>
-                <h4 class="mb-0" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ formatFullEthFromGwei .WithdrawingAmount }} ETH being withdrawn">{{ formatFullEthFromGwei .WithdrawingAmount }}</h4>
+                <h6 class="card-title text-muted mb-1">Queued Amount</h6>
+                <h4 class="mb-0" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ formatEthFromGwei .WithdrawingAmount }} ETH being withdrawn">{{ formatEthFromGwei .WithdrawingAmount }}</h4>
               </div>
             </div>
           </div>
@@ -60,6 +60,11 @@
 
         <ul class="nav nav-tabs" id="withdrawalTabs" role="tablist">
           <li class="nav-item" role="presentation">
+            <a class="nav-link {{ if eq .TabView "beaconwithdrawals" }}active{{ end }}" id="beaconwithdrawals-tab" data-lazy-tab="beaconwithdrawals" data-bs-toggle="tab" data-bs-target="#beaconwithdrawals" type="button" role="tab" href="?v=beaconwithdrawals">
+              Recent Withdrawals
+            </a>
+          </li>
+          <li class="nav-item" role="presentation">
             <a class="nav-link {{ if eq .TabView "recent" }}active{{ end }}" id="recent-tab" data-lazy-tab="recent" data-bs-toggle="tab" data-bs-target="#recent" type="button" role="tab" href="?v=recent">
               Withdrawal Requests
             </a>
@@ -72,6 +77,12 @@
         </ul>
 
         <div class="tab-content" id="withdrawalTabsContent">
+          <div class="tab-pane fade {{ if eq .TabView "beaconwithdrawals" }}show active{{ end }}" id="beaconwithdrawals" role="tabpanel" data-loaded="{{ if eq .TabView "beaconwithdrawals" }}true{{ else }}false{{ end }}">
+            {{ if eq .TabView "beaconwithdrawals" }}
+              {{ template "beaconWithdrawals" . }}
+            {{ end }}
+          </div>
+
           <div class="tab-pane fade {{ if eq .TabView "recent" }}show active{{ end }}" id="recent" role="tabpanel" data-loaded="{{ if eq .TabView "recent" }}true{{ else }}false{{ end }}">
             {{ if eq .TabView "recent" }}
               {{ template "recentWithdrawals" . }}
@@ -94,6 +105,8 @@
     {{ template "recentWithdrawals" . }}
   {{ else if eq .TabView "queue" }}
     {{ template "queueWithdrawals" . }}
+  {{ else if eq .TabView "beaconwithdrawals" }}
+    {{ template "beaconWithdrawals" . }}
   {{ else }}
     Unknown tab
   {{ end }}
@@ -103,12 +116,12 @@
 <div class="container">
   <div class="row">
     <div class="col-sm-12 col-md-6">
-      <h5 class="mx-2">Recent Withdrawals</h6>
+      <h5 class="mx-2">Recent Withdrawal Requests</h5>
     </div>
     <div class="col-sm-12 col-md-6 table-search">
       <div class="px-2" style="text-align: right;">
-        <a href="/validators/el_withdrawals">
-          <i class="fas fa-filter mx-2"></i>Filter All Withdrawals
+        <a href="/validators/el_withdrawals?f=&f.type=1&f.orphaned=1">
+          <i class="fas fa-filter mx-2"></i>Filter All Withdrawal Requests
         </a>
       </div>
     </div>
@@ -121,7 +134,6 @@
           <th>Slot</th>
           <th>Time</th>
           <th><span class="d-none d-lg-inline">Source </span>Address</th>
-          <th><span class="d-none d-lg-inline">Req. </span>Type</th>
           <th>Validator</th>
           <th>Amount</th>
           <th>Transaction</th>
@@ -157,13 +169,6 @@
                 </div>
               </td>
               <td>
-                {{- if eq $withdrawal.Amount 0 }}
-                  Exit
-                {{- else }}
-                  Withdrawal
-                {{- end }}
-              </td>
-              <td>
                 {{- if $withdrawal.ValidatorValid }}
                   {{- if $withdrawal.IsBuilder }}
                     {{ formatBuilderWithIndex $withdrawal.ValidatorIndex $withdrawal.ValidatorName }}
@@ -179,7 +184,7 @@
                   </div>
                 {{- end }}
               </td>
-              <td>{{ formatFullEthFromGwei $withdrawal.Amount }}</td>
+              <td>{{ formatEthFromGweiP $withdrawal.Amount 6 }}</td>
               <td>
                 {{- if $withdrawal.LinkedTransaction }}
                 <div class="d-flex">
@@ -220,7 +225,7 @@
         <tbody>
           <tr style="height: 430px;">
             <td class="d-none d-md-table-cell"></td>
-            <td style="vertical-align: middle;" colspan="6">
+            <td style="vertical-align: middle;" colspan="5">
               <div class="img-fluid mx-auto p-3 d-flex align-items-center" style="max-height: 400px; max-width: 400px; overflow: hidden;">
                 {{ template "professor_svg" }}
               </div>
@@ -232,7 +237,7 @@
     </table>
   </div>
   <div class="text-center">
-    <a class="text-white" href="/validators/el_withdrawals">View more</a>
+    <a class="text-white" href="/validators/el_withdrawals?f=&f.type=1&f.orphaned=1">View more</a>
   </div>
 </div>
 {{ end }}
@@ -270,7 +275,7 @@
                 {{ formatValidatorWithIndex $withdrawal.ValidatorIndex $withdrawal.ValidatorName }}
               </td>
               <td>
-                {{ formatFullEthFromGwei $withdrawal.Amount }}
+                {{ formatEthFromGweiP $withdrawal.Amount 6 }}
               </td>
               <td>
                 {{- $withdrawal.ValidatorStatus -}}
@@ -311,6 +316,130 @@
   </div>
   <div class="text-center">
     <a class="text-white" href="/validators/queued_withdrawals">View more</a>
+  </div>
+</div>
+{{ end }}
+
+{{ define "beaconWithdrawals" }}
+<div class="container">
+  <div class="row">
+    <div class="col-sm-12 col-md-6">
+      <h5 class="mx-2">Recent Beacon Withdrawals</h5>
+    </div>
+    <div class="col-sm-12 col-md-6 table-search">
+      <div class="px-2" style="text-align: right;">
+        <a href="/validators/withdrawals/filtered">
+          <i class="fas fa-filter mx-2"></i>Filter All Withdrawals
+        </a>
+      </div>
+    </div>
+  </div>
+  <h6 class="m-2 text-muted">This table displays the most recent beacon chain withdrawals and fee recipient rewards.</h6>
+  <div class="table-responsive px-0 py-1 pt-2">
+    <table class="table table-nobr mb-0" id="beacon_withdrawals">
+      <thead>
+        <tr>
+          <th>Slot</th>
+          <th>Block</th>
+          <th>Time</th>
+          <th>Type</th>
+          <th>Validator</th>
+          <th>Address</th>
+          <th>Amount</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      {{ if gt .BeaconWithdrawalCount 0 }}
+        <tbody>
+          {{ range $i, $withdrawal := .BeaconWithdrawals }}
+            <tr>
+              <td>
+                {{ if $withdrawal.Orphaned }}
+                  {{ if $withdrawal.BlockRoot }}
+                    <a href="/slot/0x{{ printf "%x" $withdrawal.BlockRoot }}">{{ formatAddCommas $withdrawal.SlotNumber }}</a>
+                  {{ else }}
+                    {{ formatAddCommas $withdrawal.SlotNumber }}
+                  {{ end }}
+                {{ else }}
+                  <a href="/slot/{{ $withdrawal.SlotNumber }}">{{ formatAddCommas $withdrawal.SlotNumber }}</a>
+                {{ end }}
+              </td>
+              <td>
+                {{ if gt $withdrawal.BlockNumber 0 }}
+                  {{ ethBlockLink $withdrawal.BlockNumber }}
+                {{ else }}
+                  -
+                {{ end }}
+              </td>
+              <td data-timer="{{ $withdrawal.Time.Unix }}"><span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="{{ $withdrawal.Time }}">{{ formatRecentTimeShort $withdrawal.Time }}</span></td>
+              <td>
+                {{ if eq $withdrawal.Type 1 }}
+                  <span class="badge text-bg-primary">
+                    <i class="fas fa-arrow-down me-1"></i>Full
+                  </span>
+                {{ else if eq $withdrawal.Type 2 }}
+                  <span class="badge text-bg-success">
+                    <i class="fas fa-broom me-1"></i>Sweep
+                  </span>
+                {{ else if eq $withdrawal.Type 3 }}
+                  <span class="badge text-bg-warning">
+                    <i class="fas fa-hand-holding me-1"></i>Requested
+                  </span>
+                {{ else }}
+                  <span class="badge text-bg-secondary">Unknown</span>
+                {{ end }}
+              </td>
+              <td>
+                {{ if $withdrawal.HasValidator }}
+                  {{ formatValidatorWithIndex $withdrawal.ValidatorIndex $withdrawal.ValidatorName }}
+                {{ else }}
+                  -
+                {{ end }}
+              </td>
+              <td>
+                {{ if $withdrawal.Address }}
+                  <div class="d-flex">
+                    <span class="flex-grow-1 text-truncate" style="max-width: 200px;">
+                      {{ ethAddressLink $withdrawal.Address }}
+                    </span>
+                    <div>
+                      <i class="fa fa-copy text-muted ml-2 p-1" role="button" data-bs-toggle="tooltip" title="Copy to clipboard" data-clipboard-text="{{ formatEthAddress $withdrawal.Address }}"></i>
+                    </div>
+                  </div>
+                {{ else }}
+                  -
+                {{ end }}
+              </td>
+              <td class="text-monospace">
+                {{ formatEthFromGweiP $withdrawal.Amount 6 }}
+              </td>
+              <td>
+                {{ if $withdrawal.Orphaned }}
+                  <span class="badge rounded-pill text-bg-warning">Orphaned</span>
+                {{ else }}
+                  <span class="badge rounded-pill text-bg-success">Canonical</span>
+                {{ end }}
+              </td>
+            </tr>
+          {{ end }}
+        </tbody>
+      {{ else }}
+        <tbody>
+          <tr style="height: 430px;">
+            <td class="d-none d-md-table-cell"></td>
+            <td style="vertical-align: middle;" colspan="6">
+              <div class="img-fluid mx-auto p-3 d-flex align-items-center" style="max-height: 400px; max-width: 400px; overflow: hidden;">
+                {{ template "professor_svg" }}
+              </div>
+            </td>
+            <td class="d-none d-md-table-cell"></td>
+          </tr>
+        </tbody>
+      {{ end }}
+    </table>
+  </div>
+  <div class="text-center">
+    <a class="text-white" href="/validators/withdrawals/filtered">View more</a>
   </div>
 </div>
 {{ end }}

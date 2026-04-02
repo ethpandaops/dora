@@ -21,7 +21,7 @@
               {{ end }}
             </td>
             <td>{{ ethAddressLink $withdrawal.Address }}</td>
-            <td>{{ formatEthFromGwei $withdrawal.Amount }}</td>
+            <td>{{ formatEthFromGweiP $withdrawal.Amount 6 }}</td>
           </tr>
         {{ end }}
       </tbody>

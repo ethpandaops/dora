@@ -236,9 +236,17 @@ func buildAddressPageData(ctx context.Context, addressBytes []byte, tabView stri
 			pageData.HasInternalTxs = true
 		}
 
-		// Check if address has any system deposits (for tab visibility)
-		if has, err := db.HasElWithdrawalsByAccountID(ctx, account.ID); err == nil && has {
-			pageData.HasSystemDeposits = true
+		// Check if address has any withdrawals (for tab visibility) - use combined accessor to include cached blocks
+		if _, count := services.GlobalBeaconService.GetWithdrawalsByFilter(ctx, &dbtypes.WithdrawalFilter{
+			AccountID:    &account.ID,
+			WithOrphaned: 1,
+		}, 0, 1); count > 0 {
+			pageData.HasWithdrawals = true
+		}
+
+		// Check if address has any block fees (for tab visibility)
+		if has, err := db.HasBlockFeesByAccountID(ctx, account.ID); err == nil && has {
+			pageData.HasBlockFees = true
 		}
 
 		offset := (pageIdx - 1) * pageSize
@@ -253,8 +261,10 @@ func buildAddressPageData(ctx context.Context, addressBytes []byte, tabView stri
 			loadNFTTransfersTab(ctx, pageData, account, chainState, offset, uint32(pageSize), pageIdx)
 		case "internaltxs":
 			loadInternalTxsTab(ctx, pageData, account, chainState, offset, uint32(pageSize), pageIdx)
-		case "system":
-			loadSystemDepositsTab(ctx, pageData, account, chainState, offset, uint32(pageSize), pageIdx)
+		case "withdrawals":
+			loadWithdrawalsTab(ctx, pageData, account, chainState, uint32(pageSize), pageIdx)
+		case "blockfees":
+			loadBlockFeesTab(ctx, pageData, account, chainState, offset, uint32(pageSize), pageIdx)
 		default:
 			loadTransactionsTab(ctx, pageData, account, chainState, offset, uint32(pageSize), pageIdx)
 		}
@@ -826,33 +836,35 @@ func calculateInternalTxHashRowspans(txs []*models.AddressPageDataInternalTransa
 	}
 }
 
-func loadSystemDepositsTab(ctx context.Context, pageData *models.AddressPageData, account *dbtypes.ElAccount, chainState *consensus.ChainState, offset uint64, limit uint32, pageIdx uint64) {
-	// Get system deposits (withdrawals and fee recipient rewards)
-	dbDeposits, totalCount, _ := db.GetElWithdrawalsByAccountID(ctx, account.ID, offset, limit)
+func loadWithdrawalsTab(ctx context.Context, pageData *models.AddressPageData, account *dbtypes.ElAccount, chainState *consensus.ChainState, limit uint32, pageIdx uint64) {
+	withdrawalFilter := &dbtypes.WithdrawalFilter{
+		AccountID:    &account.ID,
+		WithOrphaned: 1,
+	}
+	dbWithdrawals, totalCount := services.GlobalBeaconService.GetWithdrawalsByFilter(ctx, withdrawalFilter, pageIdx-1, limit)
 
-	pageData.SystemDepositCount = totalCount
-	pageData.SystemPageIndex = pageIdx
-	pageData.SystemPageSize = uint64(limit)
-	pageData.SystemTotalPages = uint64(math.Ceil(float64(totalCount) / float64(limit)))
-	pageData.SystemFirstItem = (pageIdx-1)*uint64(limit) + 1
-	pageData.SystemLastItem = min(pageIdx*uint64(limit), totalCount)
+	pageData.WithdrawalCount = totalCount
+	pageData.WdPageIndex = pageIdx
+	pageData.WdPageSize = uint64(limit)
+	pageData.WdTotalPages = uint64(math.Ceil(float64(totalCount) / float64(limit)))
+	pageData.WdFirstItem = (pageIdx-1)*uint64(limit) + 1
+	pageData.WdLastItem = min(pageIdx*uint64(limit), totalCount)
 
 	// Collect block UIDs for batch lookup
-	blockUids := make([]uint64, 0, len(dbDeposits))
-	blockUidSet := make(map[uint64]bool, len(dbDeposits))
-	for _, deposit := range dbDeposits {
-		if !blockUidSet[deposit.BlockUid] {
-			blockUidSet[deposit.BlockUid] = true
-			blockUids = append(blockUids, deposit.BlockUid)
+	blockUids := make([]uint64, 0, len(dbWithdrawals))
+	blockUidSet := make(map[uint64]bool, len(dbWithdrawals))
+	for _, w := range dbWithdrawals {
+		if !blockUidSet[w.BlockUid] {
+			blockUidSet[w.BlockUid] = true
+			blockUids = append(blockUids, w.BlockUid)
 		}
 	}
 
-	// Batch lookup blocks using GetDbBlocksByFilter (includes cached blocks)
 	blockMap := make(map[uint64]*dbtypes.AssignedSlot, len(blockUids))
 	if len(blockUids) > 0 {
 		filter := &dbtypes.BlockFilter{
 			BlockUids:    blockUids,
-			WithOrphaned: 1, // Include both canonical and orphaned
+			WithOrphaned: 1,
 		}
 		blocks := services.GlobalBeaconService.GetDbBlocksByFilter(ctx, filter, 0, uint32(len(blockUids)), 0)
 		for _, b := range blocks {
@@ -862,30 +874,78 @@ func loadSystemDepositsTab(ctx context.Context, pageData *models.AddressPageData
 		}
 	}
 
-	// Build system deposits list
-	pageData.SystemDeposits = make([]*models.AddressPageDataSystemDeposit, 0, len(dbDeposits))
-	for _, deposit := range dbDeposits {
-		slot := deposit.BlockUid >> 16
-		blockTime := chainState.SlotToTime(phase0.Slot(slot))
-
-		systemDeposit := &models.AddressPageDataSystemDeposit{
-			BlockUid:  deposit.BlockUid,
-			BlockTime: blockTime,
-			Type:      deposit.Type,
-			Amount:    deposit.Amount,
-			AmountRaw: deposit.AmountRaw,
-			Validator: deposit.Validator,
+	pageData.Withdrawals = make([]*models.AddressPageDataWithdrawal, 0, len(dbWithdrawals))
+	for _, w := range dbWithdrawals {
+		slot := w.BlockUid >> 16
+		entry := &models.AddressPageDataWithdrawal{
+			BlockUid:       w.BlockUid,
+			BlockTime:      chainState.SlotToTime(phase0.Slot(slot)),
+			Type:           w.Type,
+			Amount:         w.Amount,
+			ValidatorIndex: w.Validator,
+			ValidatorName:  services.GlobalBeaconService.GetValidatorName(w.Validator),
 		}
 
-		// Set block info from block lookup
-		if blockInfo, ok := blockMap[deposit.BlockUid]; ok && blockInfo.Block != nil {
-			systemDeposit.BlockRoot = blockInfo.Block.Root
-			systemDeposit.BlockOrphaned = blockInfo.Block.Status == dbtypes.Orphaned
+		if blockInfo, ok := blockMap[w.BlockUid]; ok && blockInfo.Block != nil {
+			entry.BlockRoot = blockInfo.Block.Root
+			entry.BlockOrphaned = blockInfo.Block.Status == dbtypes.Orphaned
 			if blockInfo.Block.EthBlockNumber != nil {
-				systemDeposit.BlockNumber = *blockInfo.Block.EthBlockNumber
+				entry.BlockNumber = *blockInfo.Block.EthBlockNumber
 			}
 		}
 
-		pageData.SystemDeposits = append(pageData.SystemDeposits, systemDeposit)
+		pageData.Withdrawals = append(pageData.Withdrawals, entry)
+	}
+}
+
+func loadBlockFeesTab(ctx context.Context, pageData *models.AddressPageData, account *dbtypes.ElAccount, chainState *consensus.ChainState, offset uint64, limit uint32, pageIdx uint64) {
+	dbBlocks, totalCount, _ := db.GetBlockFeesByAccountID(ctx, account.ID, offset, limit)
+
+	pageData.BlockFeeCount = totalCount
+	pageData.BfPageIndex = pageIdx
+	pageData.BfPageSize = uint64(limit)
+	pageData.BfTotalPages = uint64(math.Ceil(float64(totalCount) / float64(limit)))
+	pageData.BfFirstItem = (pageIdx-1)*uint64(limit) + 1
+	pageData.BfLastItem = min(pageIdx*uint64(limit), totalCount)
+
+	// Collect block UIDs for batch lookup (to get roots)
+	blockUids := make([]uint64, 0, len(dbBlocks))
+	for _, b := range dbBlocks {
+		blockUids = append(blockUids, b.BlockUid)
+	}
+
+	blockMap := make(map[uint64]*dbtypes.AssignedSlot, len(blockUids))
+	if len(blockUids) > 0 {
+		filter := &dbtypes.BlockFilter{
+			BlockUids:    blockUids,
+			WithOrphaned: 1,
+		}
+		blocks := services.GlobalBeaconService.GetDbBlocksByFilter(ctx, filter, 0, uint32(len(blockUids)), 0)
+		for _, b := range blocks {
+			if b.Block != nil {
+				blockMap[b.Block.BlockUid] = b
+			}
+		}
+	}
+
+	pageData.BlockFees = make([]*models.AddressPageDataBlockFee, 0, len(dbBlocks))
+	for _, elBlock := range dbBlocks {
+		slot := elBlock.BlockUid >> 16
+		entry := &models.AddressPageDataBlockFee{
+			BlockUid:  elBlock.BlockUid,
+			BlockTime: chainState.SlotToTime(phase0.Slot(slot)),
+			Amount:    elBlock.FeeAmount,
+			AmountRaw: elBlock.FeeAmountRaw,
+		}
+
+		if blockInfo, ok := blockMap[elBlock.BlockUid]; ok && blockInfo.Block != nil {
+			entry.BlockRoot = blockInfo.Block.Root
+			entry.BlockOrphaned = blockInfo.Block.Status == dbtypes.Orphaned
+			if blockInfo.Block.EthBlockNumber != nil {
+				entry.BlockNumber = *blockInfo.Block.EthBlockNumber
+			}
+		}
+
+		pageData.BlockFees = append(pageData.BlockFees, entry)
 	}
 }
